@@ -1,6 +1,6 @@
 -- =============================================================
 -- easymindmap PostgreSQL Schema
--- Version: v2.0
+-- Version: v2.1
 -- DB: PostgreSQL 16+
 -- 변경 이력:
 --   v1.0: 초기 설계
@@ -11,6 +11,10 @@
 --         - nodes: style_override_json 통합 (개별 스타일 컬럼 대체)
 --         - nodes: level 캐시 컬럼 추가
 --         - nodes: bg_image_config_json 추가
+--   v2.1: users 테이블 휴대폰 번호 컬럼 추가
+--         - phone_country_code: E.164 국가코드 (예: '82')
+--         - phone_number: 로컬 번호 숫자만 (예: '01012345678')
+--         - phone_verified: 본인인증 여부
 -- =============================================================
 
 -- ▶ Extension
@@ -20,18 +24,52 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 -- =============================================================
 -- 1. USERS
 -- =============================================================
+--
+-- 휴대폰 번호 저장 설계 (E.164 국제 표준 기반)
+-- ─────────────────────────────────────────────────────────────
+-- phone_country_code : 국가코드 숫자만, '+' 없이 저장
+--                      예) 한국=82, 미국=1, 일본=81, 중국=86
+--
+-- phone_number       : 사용자가 입력하는 로컬 번호, 숫자만 저장
+--                      예) 01012345678  (하이픈 제거, 선행 0 포함)
+--
+-- 실제 발신 시 E.164 변환 (앱 레이어):
+--   e164 = '+' || phone_country_code || substr(phone_number, 2)
+--   예) +82 + '1012345678' → +821012345678
+--
+--   ※ 대부분의 국가에서 로컬 번호 맨 앞 '0'을 제거
+--     (한국: 010-1234-5678 → 01012345678 → +821012345678)
+--
+-- UNIQUE 제약: (phone_country_code, phone_number) 조합
+--   두 컬럼 모두 NULL인 경우는 중복 허용 (전화번호 미입력 사용자)
+-- =============================================================
 CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email           VARCHAR(255) NOT NULL UNIQUE,
-    password_hash   TEXT NULL,                         -- OAuth 사용 시 NULL 가능
-    display_name    VARCHAR(120) NOT NULL,
-    locale          VARCHAR(20)  NOT NULL DEFAULT 'ko',
-    timezone        VARCHAR(50)  NOT NULL DEFAULT 'Asia/Seoul',
-    avatar_url      TEXT NULL,
-    status          VARCHAR(20)  NOT NULL DEFAULT 'active',  -- active / suspended / deleted
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email               VARCHAR(255) NOT NULL UNIQUE,
+    password_hash       TEXT NULL,                          -- OAuth 사용 시 NULL 가능
+    display_name        VARCHAR(120) NOT NULL,
+    locale              VARCHAR(20)  NOT NULL DEFAULT 'ko',
+    timezone            VARCHAR(50)  NOT NULL DEFAULT 'Asia/Seoul',
+    avatar_url          TEXT NULL,
+
+    -- 휴대폰 번호 (E.164 기반 분리 저장, 둘 다 NULL = 미입력)
+    phone_country_code  VARCHAR(5)   NULL,                  -- 국가코드 (예: '82', '1', '81')
+    phone_number        VARCHAR(20)  NULL,                  -- 로컬 번호 숫자만 (예: '01012345678')
+    phone_verified      BOOLEAN      NOT NULL DEFAULT FALSE, -- 본인인증 완료 여부
+
+    status              VARCHAR(20)  NOT NULL DEFAULT 'active', -- active / suspended / deleted
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    -- 전화번호 조합 UNIQUE: 둘 다 입력된 경우에만 중복 방지
+    CONSTRAINT uq_users_phone UNIQUE (phone_country_code, phone_number)
+        DEFERRABLE INITIALLY DEFERRED
 );
+
+-- 전화번호 조회 인덱스 (NULL 제외한 부분 인덱스)
+CREATE UNIQUE INDEX idx_users_phone
+    ON users (phone_country_code, phone_number)
+    WHERE phone_number IS NOT NULL;
 
 -- =============================================================
 -- 2. WORKSPACES
@@ -497,6 +535,11 @@ CREATE TABLE audit_logs (
 -- INDEXES
 -- =============================================================
 
+-- users
+CREATE UNIQUE INDEX idx_users_phone
+    ON users (phone_country_code, phone_number)
+    WHERE phone_number IS NOT NULL;
+
 -- map_themes
 CREATE INDEX idx_map_themes_workspace_id    ON map_themes(workspace_id);
 
@@ -573,3 +616,21 @@ CREATE INDEX idx_node_translations_node     ON node_translations(node_id, target
 --     { "op": "updateNodeLayout", "nodeId": "n3", "layoutType": "ProcessTree-Right" }
 --   ]
 -- }
+
+-- =============================================================
+-- 전화번호 E.164 변환 참고 (앱 레이어)
+-- =============================================================
+-- 저장값 예시:
+--   phone_country_code = '82'
+--   phone_number       = '01012345678'
+--
+-- E.164 발신 번호 변환:
+--   e164 = '+' || phone_country_code || substr(phone_number, 2)
+--        = '+' || '82' || '1012345678'
+--        = '+821012345678'
+--
+-- 국가별 예시:
+--   한국(82):  010-1234-5678  → 01012345678  → +821012345678
+--   미국(1):   212-555-1234   → 2125551234   → +12125551234  (선행 0 없음)
+--   일본(81):  090-1234-5678  → 09012345678  → +819012345678
+--   중국(86):  138-0013-8000  → 13800138000  → +8613800138000

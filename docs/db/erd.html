@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>easymindmap ERD v2.0</title>
+<title>easymindmap ERD v2.1</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -25,11 +25,9 @@
   .panel { display: none; padding: 24px; }
   .panel.active { display: block; }
 
-  /* ERD diagram */
   #erd-panel { overflow-x: auto; }
   .mermaid { max-width: 100%; }
 
-  /* Table list */
   .table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
   .tbl-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden;
               box-shadow: 0 1px 3px rgba(0,0,0,.06); }
@@ -51,6 +49,19 @@
   .fk   { color: #3b82f6; font-size: 10px; margin-right: 4px; font-weight: 700; }
   .v2   { background: #fef3c7; color: #92400e; font-size: 10px; padding: 1px 5px;
           border-radius: 4px; margin-left: 4px; font-weight: 600; }
+  .v21  { background: #dbeafe; color: #1e40af; font-size: 10px; padding: 1px 5px;
+          border-radius: 4px; margin-left: 4px; font-weight: 600; }
+
+  /* Phone conversion box */
+  .phone-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px 18px;
+               margin-bottom: 16px; font-size: 12px; }
+  .phone-box h4 { font-size: 13px; font-weight: 600; color: #0369a1; margin-bottom: 10px; }
+  .phone-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .phone-label { color: #6b7280; width: 110px; flex-shrink: 0; }
+  .phone-val { font-family: monospace; background: #fff; border: 1px solid #e0f2fe;
+               border-radius: 4px; padding: 2px 8px; color: #0c4a6e; }
+  .phone-result { font-family: monospace; font-weight: 700; color: #0369a1;
+                  background: #e0f2fe; border-radius: 4px; padding: 2px 8px; }
 
   /* Style resolution */
   .resolve-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 24px;
@@ -72,7 +83,7 @@
 
 <header>
   <h1>easymindmap &mdash; Database ERD</h1>
-  <span class="badge">v2.0</span>
+  <span class="badge">v2.1</span>
 </header>
 
 <div class="tab-bar">
@@ -89,8 +100,10 @@ erDiagram
     uuid id PK
     varchar email
     varchar display_name
+    varchar phone_country_code
+    varchar phone_number
+    boolean phone_verified
     varchar status
-    timestamptz created_at
   }
   workspaces {
     uuid id PK
@@ -130,7 +143,6 @@ erDiagram
     varchar bg_image_mode
     jsonb bg_image_config_json
     boolean collapsed
-    timestamptz created_at
   }
   node_notes {
     uuid id PK
@@ -177,7 +189,6 @@ erDiagram
     uuid map_id FK
     uuid user_id FK
     varchar role
-    varchar share_token
   }
   ai_jobs {
     uuid id PK
@@ -185,7 +196,6 @@ erDiagram
     uuid node_id FK
     varchar job_type
     varchar status
-    jsonb result_json
   }
   users ||--o{ workspace_members : "belongs to"
   workspaces ||--o{ workspace_members : "has"
@@ -209,7 +219,46 @@ erDiagram
 
 <!-- TAB 2: Tables -->
 <div id="tables" class="panel">
+
+  <!-- 전화번호 변환 예시 박스 -->
+  <div class="phone-box" style="max-width:560px;margin-bottom:20px">
+    <h4>휴대폰 번호 저장 / E.164 변환 예시 (v2.1)</h4>
+    <div class="phone-row">
+      <span class="phone-label">phone_country_code</span>
+      <span class="phone-val">82</span>
+      <span style="color:#9ca3af;font-size:11px">← 국가코드, '+' 없이 숫자만</span>
+    </div>
+    <div class="phone-row">
+      <span class="phone-label">phone_number</span>
+      <span class="phone-val">01012345678</span>
+      <span style="color:#9ca3af;font-size:11px">← 로컬 번호, 하이픈 없이 숫자만</span>
+    </div>
+    <div class="phone-row" style="margin-top:8px;padding-top:8px;border-top:1px solid #bae6fd">
+      <span class="phone-label">발신 변환 결과</span>
+      <span class="phone-result">+821012345678</span>
+      <span style="color:#9ca3af;font-size:11px">← '+' + 82 + 1012345678 (앞의 0 제거)</span>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:#64748b">
+      변환 공식: <code style="background:#e0f2fe;padding:1px 6px;border-radius:3px">e164 = '+' || country_code || substr(phone_number, 2)</code>
+    </div>
+  </div>
+
   <div class="table-grid">
+
+    <div class="tbl-card">
+      <div class="tbl-header changed">users <span class="tbl-tag changed">v2.1 변경</span></div>
+      <table class="cols">
+        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">email</td><td class="col-type">varchar UNIQUE</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">password_hash</td><td class="col-type">text</td><td class="col-note">nullable (OAuth)</td></tr>
+        <tr><td class="col-name">display_name</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">locale / timezone</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">phone_country_code<span class="v21">v2.1</span></td><td class="col-type">varchar(5)</td><td class="col-note">'82', '1' 등</td></tr>
+        <tr><td class="col-name">phone_number<span class="v21">v2.1</span></td><td class="col-type">varchar(20)</td><td class="col-note">'01012345678'</td></tr>
+        <tr><td class="col-name">phone_verified<span class="v21">v2.1</span></td><td class="col-type">boolean</td><td class="col-note">본인인증 여부</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">varchar</td><td class="col-note">active/suspended</td></tr>
+      </table>
+    </div>
 
     <div class="tbl-card">
       <div class="tbl-header new">map_themes <span class="tbl-tag new">v2.0 신규</span></div>
@@ -219,7 +268,6 @@ erDiagram
         <tr><td class="col-name">name</td><td class="col-type">varchar</td><td class="col-note">테마 이름</td></tr>
         <tr><td class="col-name">config_json</td><td class="col-type">jsonb</td><td class="col-note">MapConfig 전체 구조</td></tr>
         <tr><td class="col-name">is_system</td><td class="col-type">boolean</td><td class="col-note">시스템 기본 테마</td></tr>
-        <tr><td class="col-name"><span class="fk">FK</span>created_by</td><td class="col-type">uuid</td><td class="col-note">→ users</td></tr>
       </table>
     </div>
 
@@ -250,7 +298,6 @@ erDiagram
         <tr><td class="col-name">bg_image_mode<span class="v2">v2</span></td><td class="col-type">varchar</td><td class="col-note">none/preset/upload</td></tr>
         <tr><td class="col-name">bg_image_config_json<span class="v2">v2</span></td><td class="col-type">jsonb</td><td class="col-note">{fit, position, opacity}</td></tr>
         <tr><td class="col-name">collapsed</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
-        <tr><td class="col-name">manual_x / manual_y</td><td class="col-type">numeric</td><td class="col-note">freeform 전용</td></tr>
         <tr><td class="col-name">has_note / link_count...</td><td class="col-type">int/bool</td><td class="col-note">Indicator 캐시</td></tr>
       </table>
     </div>
@@ -282,17 +329,6 @@ erDiagram
         <tr><td class="col-name">title</td><td class="col-type">varchar</td><td class="col-note">nullable</td></tr>
         <tr><td class="col-name">url</td><td class="col-type">text</td><td class="col-note"></td></tr>
         <tr><td class="col-name">sort_order</td><td class="col-type">int</td><td class="col-note"></td></tr>
-      </table>
-    </div>
-
-    <div class="tbl-card">
-      <div class="tbl-header normal">node_attachments</div>
-      <table class="cols">
-        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
-        <tr><td class="col-name"><span class="fk">FK</span>node_id</td><td class="col-type">uuid</td><td class="col-note">1:N</td></tr>
-        <tr><td class="col-name">original_name</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
-        <tr><td class="col-name">mime_type</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
-        <tr><td class="col-name">file_size</td><td class="col-type">bigint</td><td class="col-note"></td></tr>
       </table>
     </div>
 

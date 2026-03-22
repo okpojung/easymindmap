@@ -1,17 +1,18 @@
 # easymindmap — PostgreSQL ERD
 
 > DB: PostgreSQL 16  
-> 문서 버전: v2.0  
+> 문서 버전: v2.1  
 > 변경 이력:
 > - v1.0: 초기 설계
 > - v2.0: Map Properties 레벨별 설계 반영 (map_themes 신규, nodes 변경)
+> - v2.1: users 테이블 휴대폰 번호 컬럼 추가
 
 ---
 
 ## 1. 전체 구조
 
 ```
-users
+users  ← [v2.1] phone_country_code, phone_number, phone_verified 추가
  └── workspace_members
       └── workspaces
            ├── map_themes              [v2.0 신규] 테마 프리셋
@@ -32,14 +33,15 @@ users
 
 ---
 
-## 2. v2.0 변경 사항 요약
+## 2. 변경 이력 요약
 
-| 테이블 | 변경 | 내용 |
-|--------|------|------|
-| `map_themes` | **신규** | Typography/Shape/Layout 레벨별 프리셋 저장 |
-| `maps` | **변경** | `theme_id` UUID FK화, `map_config_json JSONB` 추가 |
-| `nodes` | **변경** | `layout_type` CHECK 3종→14종, `style_override_json` 추가, `level` 캐시 추가, `bg_image_config_json` 추가 |
-| 나머지 | **유지** | node_notes, tags, node_tags, node_links, node_attachments, node_media |
+| 버전 | 테이블 | 변경 | 내용 |
+|------|--------|------|------|
+| v2.1 | `users` | **변경** | `phone_country_code`, `phone_number`, `phone_verified` 추가 |
+| v2.0 | `map_themes` | **신규** | Typography/Shape/Layout 레벨별 프리셋 저장 |
+| v2.0 | `maps` | **변경** | `theme_id` UUID FK화, `map_config_json JSONB` 추가 |
+| v2.0 | `nodes` | **변경** | `layout_type` CHECK 3종→14종, `style_override_json` 추가, `level` 캐시 추가, `bg_image_config_json` 추가 |
+| 유지 | 나머지 | **유지** | node_notes, tags, node_tags, node_links, node_attachments, node_media |
 
 ---
 
@@ -51,7 +53,7 @@ users
 
 ### workspaces ↔ map_themes [v2.0 신규]
 - 1:N — 워크스페이스별 테마 프리셋 관리
-- `is_system=TRUE` 인 테마는 시스템 기본 테마
+- `is_system=TRUE`인 테마는 시스템 기본 테마
 
 ### workspaces ↔ maps
 - 1:N — 하나의 워크스페이스에 여러 맵
@@ -62,7 +64,7 @@ users
 
 ### maps ↔ nodes
 - 1:N — 하나의 맵에 여러 노드
-- 노드는 `parent_id` self-reference로 트리 구조
+- 노드는 `parent_id` self-reference로 트리 구조 형성
 
 ### nodes ↔ tags
 - N:N — 연결 테이블: `node_tags`
@@ -86,6 +88,46 @@ users
 ---
 
 ## 4. 핵심 테이블 상세
+
+### 4.0 users [v2.1 변경]
+
+```
+[users]
+  id                  PK
+  email               UNIQUE
+  password_hash       NULL 허용 (OAuth 사용 시)
+  display_name
+  locale
+  timezone
+  avatar_url
+
+  phone_country_code  ← [v2.1] E.164 국가코드 (예: '82', '1', '81')
+  phone_number        ← [v2.1] 로컬 번호 숫자만 (예: '01012345678')
+  phone_verified      ← [v2.1] 본인인증 여부 (BOOLEAN, DEFAULT FALSE)
+
+  status              active / suspended / deleted
+```
+
+**휴대폰 번호 저장 설계 (E.164 국제 표준):**
+
+| 항목 | 설명 | 예시 |
+|------|------|------|
+| `phone_country_code` | 국가코드 숫자만, `+` 없이 저장 | `82` (한국), `1` (미국) |
+| `phone_number` | 로컬 번호 숫자만, 선행 0 포함 | `01012345678` |
+| `phone_verified` | 본인인증 완료 여부 | `FALSE` (기본) |
+
+**실제 발신 번호 변환 (앱 레이어):**
+```
+e164 = '+' || country_code || substr(phone_number, 2)
+
+예) 한국: '82' + '1012345678' → +821012345678
+    미국: '1'  + '2125551234' → +12125551234
+    일본: '81' + '9012345678' → +819012345678
+```
+
+**UNIQUE 제약:** `(phone_country_code, phone_number)` — 둘 다 NULL이면 중복 허용 (전화번호 미입력 사용자)
+
+---
 
 ### 4.1 map_themes [v2.0 신규]
 
@@ -249,30 +291,28 @@ DEFAULT_MAP_CONFIG.levels[level][prop]   ← 시스템 하드코딩 기본값
 
 ## 7. 설계 포인트
 
-### ① layout_type은 node 단위 override
+### ① 전화번호 E.164 분리 저장 (v2.1)
+- 국가코드와 로컬 번호를 분리 저장하여 국가별 포맷 유연 대응
+- 발신 변환: `'+' || country_code || substr(phone_number, 2)`
+- 전화번호 미입력 사용자: 두 컬럼 모두 NULL (UNIQUE 중복 허용)
+
+### ② layout_type은 node 단위 override
 - `maps.map_config_json.layout.levels` = 맵 전체 레벨별 기본값
 - `nodes.layout_type` = 해당 subtree override (NULL이면 상속)
-- subtree 단위 레이아웃 전환 필수 지원
 
-### ② level 캐시 컬럼
+### ③ level 캐시 컬럼
 - 트리 순회 없이 레벨 기반 스타일 즉시 계산 가능
 - 노드 이동(parent 변경) 시 해당 subtree 전체 level 재계산 필요
 - `MIN(level, 5)` 적용: level 5 이상은 level5 설정으로 통일
 
-### ③ style_override_json은 예외값만 저장
+### ④ style_override_json은 예외값만 저장
 - 기본값과 동일한 속성은 저장하지 않음 → Markdown 파일도 깔끔하게 유지
 - NULL이면 Style Resolution 계층에서 상위값 사용
 
-### ④ node_media vs bg_image 구분
+### ⑤ node_media vs bg_image 구분
 - `node_media`: 노드 Indicator에 표시되는 오디오/비디오 재생 파일 (1:1)
 - `bg_image_*`: 노드 도형 배경에 깔리는 이미지 스타일 속성 (nodes 테이블 내 컬럼)
 
-### ⑤ map_revisions는 Undo/Redo와 구분
+### ⑥ map_revisions는 Undo/Redo와 구분
 - Undo/Redo: 클라이언트 메모리 히스토리 (빠른 편집 UX)
 - map_revisions: 서버 영속 버전 (Diff Viewer / 복구 / 감사)
-
-### ⑥ 자동 저장 (autosave)
-- 일반 텍스트 편집: debounce 1000ms
-- 노드 생성/삭제/이동: 즉시 저장
-- 스타일 변경: debounce 500ms
-- 저장 실패 시 로컬 큐 보존 → 재시도

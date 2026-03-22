@@ -89,13 +89,26 @@
 
 ## 4. CANVAS — 캔버스 조작
 
-| 기능ID | 기능명 | 설명 |
-|--------|--------|------|
-| CANVAS-01 | Zoom In | 확대 |
-| CANVAS-02 | Zoom Out | 축소 |
-| CANVAS-03 | Fit Screen | 전체 화면 맞춤 |
-| CANVAS-04 | Pan Canvas | 캔버스 이동 |
-| CANVAS-05 | Center Node | 선택 Node를 화면 중앙으로 이동 |
+> 상세 설계: [canvas-spec.md](./canvas-spec.md)
+
+| 기능ID | 기능명 | 설명 | 단축키 | 마우스/제스처 |
+|--------|--------|------|--------|---------------|
+| CANVAS-01 | Zoom In | 캔버스 확대 | `Ctrl + =` | `Ctrl + 휠 위` |
+| CANVAS-02 | Zoom Out | 캔버스 축소 | `Ctrl + -` | `Ctrl + 휠 아래` |
+| CANVAS-03 | Fit Screen | 전체 맵을 화면에 맞춤 | `Ctrl + Shift + F` | — |
+| CANVAS-04 | Pan Canvas | 손바닥 모드로 캔버스 이동 | `Space + 드래그` / `H` | `우클릭 + 드래그` / `미들버튼 + 드래그` |
+| CANVAS-05 | Center Node | 선택 노드를 화면 중앙으로 이동 (줌 유지) | `Ctrl + Enter` | 노드 우클릭 → 컨텍스트 메뉴 |
+| CANVAS-06 | 100% View | 줌 배율을 100%로 초기화 | `Ctrl + 0` | — |
+| CANVAS-07 | Fullscreen Mode | 브라우저 전체화면 전환 / ESC로 종료 | `F11` / `ESC` | — |
+| CANVAS-08 | Focus Node View | 선택 노드+하위만 표시, 상위 숨김 | `Alt + F` | 노드 우클릭 → 컨텍스트 메뉴 |
+
+### CANVAS-05 Center Node 설계 결정
+
+> **Center Node는 zoom 배율을 변경하지 않는다.**  
+> pan만 수행하여 선택 노드를 화면 중앙으로 이동.  
+> 노드를 중앙으로 이동하면서 100% 배율도 원하는 경우,  
+> `Ctrl + Enter` → `Ctrl + 0` 을 순서대로 사용하거나  
+> 노드 우클릭 컨텍스트 메뉴에서 **"100%로 중앙 이동"** 옵션을 별도 제공.
 
 ---
 
@@ -231,20 +244,20 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 
 ## 기능 수 요약
 
-| 그룹 | 기능 수 |
-|------|---------|
-| MAP | 5 |
-| NODE | 12 |
-| LAYOUT (기능) | 4 |
-| LAYOUT (유형) | 14 |
-| CANVAS | 5 |
-| SELECTION | 4 |
-| HISTORY | 2 |
-| SAVE | 1 |
-| TAG | 4 |
-| SEARCH | 2 |
-| AI | 2 |
-| EXPORT | 2 |
-| DASHBOARD (V3) | 5 |
-| TRANSLATION (V2) | 7 |
-| **합계** | **55+** |
+| 그룹 | 기능 수 | 변경 |
+|------|---------|------|
+| MAP | 5 | — |
+| NODE | 12 | — |
+| LAYOUT (기능) | 4 | — |
+| LAYOUT (유형) | 14 | — |
+| CANVAS | **8** | ⭐ +3 (100%보기, 전체화면, 선택노드보기) |
+| SELECTION | 4 | — |
+| HISTORY | 2 | — |
+| SAVE | 1 | — |
+| TAG | 4 | — |
+| SEARCH | 2 | — |
+| AI | 2 | — |
+| EXPORT | 2 | — |
+| DASHBOARD (V3) | 5 | — |
+| TRANSLATION (V2) | 7 | — |
+| **합계** | **58+** | |

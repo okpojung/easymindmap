@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>easymindmap ERD v2.0</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f8f9fb; color: #1a1a1a; }
+
+  header { background: #1e2329; color: #fff; padding: 16px 24px;
+           display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 18px; font-weight: 600; }
+  .badge { background: #3b82f6; color: #fff; padding: 3px 10px; border-radius: 12px;
+           font-size: 12px; font-weight: 500; }
+
+  .tab-bar { background: #fff; border-bottom: 1px solid #e5e7eb;
+             display: flex; gap: 0; padding: 0 24px; }
+  .tab { padding: 12px 20px; font-size: 13px; font-weight: 500; cursor: pointer;
+         border-bottom: 2px solid transparent; color: #6b7280; transition: all .15s; }
+  .tab:hover { color: #3b82f6; }
+  .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+  .panel { display: none; padding: 24px; }
+  .panel.active { display: block; }
+
+  /* ERD diagram */
+  #erd-panel { overflow-x: auto; }
+  .mermaid { max-width: 100%; }
+
+  /* Table list */
+  .table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .tbl-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden;
+              box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .tbl-header { padding: 10px 16px; font-weight: 600; font-size: 13px;
+                display: flex; align-items: center; gap: 8px; }
+  .tbl-header.new    { background: #ecfdf5; color: #065f46; }
+  .tbl-header.changed{ background: #fffbeb; color: #92400e; }
+  .tbl-header.normal { background: #eff6ff; color: #1e3a5f; }
+  .tbl-tag { font-size: 10px; padding: 1px 7px; border-radius: 10px; font-weight: 600; }
+  .tbl-tag.new    { background: #d1fae5; color: #065f46; }
+  .tbl-tag.changed{ background: #fde68a; color: #78350f; }
+  table.cols { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.cols td { padding: 5px 16px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+  table.cols tr:last-child td { border-bottom: none; }
+  .col-name  { font-weight: 500; color: #111; width: 40%; }
+  .col-type  { color: #6b7280; width: 28%; }
+  .col-note  { color: #9ca3af; width: 32%; }
+  .pk   { color: #f59e0b; font-size: 10px; margin-right: 4px; font-weight: 700; }
+  .fk   { color: #3b82f6; font-size: 10px; margin-right: 4px; font-weight: 700; }
+  .v2   { background: #fef3c7; color: #92400e; font-size: 10px; padding: 1px 5px;
+          border-radius: 4px; margin-left: 4px; font-weight: 600; }
+
+  /* Style resolution */
+  .resolve-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 24px;
+                 max-width: 640px; }
+  .resolve-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+  .resolve-step { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+  .step-num  { width: 26px; height: 26px; border-radius: 50%; background: #3b82f6; color: #fff;
+               font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+               flex-shrink: 0; }
+  .step-body { flex: 1; }
+  .step-title{ font-size: 13px; font-weight: 600; color: #111; margin-bottom: 2px; }
+  .step-code { font-family: monospace; font-size: 11px; background: #f3f4f6; padding: 4px 8px;
+               border-radius: 4px; color: #374151; }
+  .step-note { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+  .arrow-down { text-align: center; color: #d1d5db; font-size: 18px; margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>easymindmap &mdash; Database ERD</h1>
+  <span class="badge">v2.0</span>
+</header>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab('erd')">ERD 다이어그램</div>
+  <div class="tab" onclick="showTab('tables')">테이블 목록</div>
+  <div class="tab" onclick="showTab('resolve')">Style Resolution</div>
+</div>
+
+<!-- TAB 1: ERD -->
+<div id="erd" class="panel active">
+  <div class="mermaid">
+erDiagram
+  users {
+    uuid id PK
+    varchar email
+    varchar display_name
+    varchar status
+    timestamptz created_at
+  }
+  workspaces {
+    uuid id PK
+    uuid owner_id FK
+    varchar name
+    varchar plan
+  }
+  workspace_members {
+    uuid workspace_id PK
+    uuid user_id PK
+    varchar role
+  }
+  map_themes {
+    uuid id PK
+    uuid workspace_id FK
+    varchar name
+    jsonb config_json
+    boolean is_system
+  }
+  maps {
+    uuid id PK
+    uuid workspace_id FK
+    uuid theme_id FK
+    varchar title
+    jsonb map_config_json
+    uuid root_node_id
+    bigint current_version
+  }
+  nodes {
+    uuid id PK
+    uuid map_id FK
+    uuid parent_id FK
+    text text
+    varchar layout_type
+    integer level
+    jsonb style_override_json
+    varchar bg_image_mode
+    jsonb bg_image_config_json
+    boolean collapsed
+    timestamptz created_at
+  }
+  node_notes {
+    uuid id PK
+    uuid node_id FK
+    text content
+  }
+  tags {
+    uuid id PK
+    uuid workspace_id FK
+    varchar name
+    varchar color
+  }
+  node_tags {
+    uuid node_id PK
+    uuid tag_id PK
+  }
+  node_links {
+    uuid id PK
+    uuid node_id FK
+    varchar title
+    text url
+  }
+  node_attachments {
+    uuid id PK
+    uuid node_id FK
+    varchar original_name
+    varchar mime_type
+    bigint file_size
+  }
+  node_media {
+    uuid id PK
+    uuid node_id FK
+    varchar mime_type
+    bigint file_size
+  }
+  map_revisions {
+    uuid id PK
+    uuid map_id FK
+    bigint version
+    jsonb patch_json
+  }
+  map_permissions {
+    uuid id PK
+    uuid map_id FK
+    uuid user_id FK
+    varchar role
+    varchar share_token
+  }
+  ai_jobs {
+    uuid id PK
+    uuid map_id FK
+    uuid node_id FK
+    varchar job_type
+    varchar status
+    jsonb result_json
+  }
+  users ||--o{ workspace_members : "belongs to"
+  workspaces ||--o{ workspace_members : "has"
+  workspaces ||--o{ map_themes : "defines"
+  workspaces ||--o{ maps : "owns"
+  workspaces ||--o{ tags : "manages"
+  map_themes ||--o{ maps : "applied to"
+  maps ||--o{ nodes : "contains"
+  maps ||--o{ map_revisions : "versioned by"
+  maps ||--o{ map_permissions : "shared via"
+  maps ||--o{ ai_jobs : "has"
+  nodes ||--o{ nodes : "parent of"
+  nodes ||--o| node_notes : "has"
+  nodes ||--o{ node_tags : "tagged"
+  nodes ||--o{ node_links : "links"
+  nodes ||--o{ node_attachments : "attaches"
+  nodes ||--o| node_media : "media"
+  tags ||--o{ node_tags : "used in"
+  </div>
+</div>
+
+<!-- TAB 2: Tables -->
+<div id="tables" class="panel">
+  <div class="table-grid">
+
+    <div class="tbl-card">
+      <div class="tbl-header new">map_themes <span class="tbl-tag new">v2.0 신규</span></div>
+      <table class="cols">
+        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>workspace_id</td><td class="col-type">uuid</td><td class="col-note">→ workspaces</td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">varchar</td><td class="col-note">테마 이름</td></tr>
+        <tr><td class="col-name">config_json</td><td class="col-type">jsonb</td><td class="col-note">MapConfig 전체 구조</td></tr>
+        <tr><td class="col-name">is_system</td><td class="col-type">boolean</td><td class="col-note">시스템 기본 테마</td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>created_by</td><td class="col-type">uuid</td><td class="col-note">→ users</td></tr>
+      </table>
+    </div>
+
+    <div class="tbl-card">
+      <div class="tbl-header changed">maps <span class="tbl-tag changed">v2.0 변경</span></div>
+      <table class="cols">
+        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>workspace_id</td><td class="col-type">uuid</td><td class="col-note">→ workspaces</td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>theme_id<span class="v2">v2</span></td><td class="col-type">uuid</td><td class="col-note">→ map_themes (nullable)</td></tr>
+        <tr><td class="col-name">title</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">map_config_json<span class="v2">v2</span></td><td class="col-type">jsonb</td><td class="col-note">Typography/Shape/Layout</td></tr>
+        <tr><td class="col-name">root_node_id</td><td class="col-type">uuid</td><td class="col-note">nullable</td></tr>
+        <tr><td class="col-name">edge_policy</td><td class="col-type">varchar</td><td class="col-note">layout-based</td></tr>
+        <tr><td class="col-name">current_version</td><td class="col-type">bigint</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <div class="tbl-card">
+      <div class="tbl-header changed">nodes <span class="tbl-tag changed">v2.0 변경</span></div>
+      <table class="cols">
+        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>map_id</td><td class="col-type">uuid</td><td class="col-note">→ maps</td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>parent_id</td><td class="col-type">uuid</td><td class="col-note">→ nodes (nullable)</td></tr>
+        <tr><td class="col-name">text</td><td class="col-type">text</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">layout_type<span class="v2">v2</span></td><td class="col-type">varchar(40)</td><td class="col-note">14종 CHECK | NULL=상속</td></tr>
+        <tr><td class="col-name">level<span class="v2">v2</span></td><td class="col-type">integer</td><td class="col-note">레벨 캐시, MIN(n,5)</td></tr>
+        <tr><td class="col-name">style_override_json<span class="v2">v2</span></td><td class="col-type">jsonb</td><td class="col-note">예외 스타일만 저장</td></tr>
+        <tr><td class="col-name">bg_image_mode<span class="v2">v2</span></td><td class="col-type">varchar</td><td class="col-note">none/preset/upload</td></tr>
+        <tr><td class="col-name">bg_image_config_json<span class="v2">v2</span></td><td class="col-type">jsonb</td><td class="col-note">{fit, position, opacity}</td></tr>
+        <tr><td class="col-name">collapsed</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">manual_x / manual_y</td><td class="col-type">numeric</td><td class="col-note">freeform 전용</td></tr>
+        <tr><td class="col-name">has_note / link_count...</td><td class="col-type">int/bool</td><td class="col-note">Indicator 캐시</td></tr>
+      </table>
+    </div>
+
+    <div class="tbl-card">
+      <div class="tbl-header normal">node_notes</div>
+      <table class="cols">
+        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>node_id</td><td class="col-type">uuid UNIQUE</td><td class="col-note">1:1</td></tr>
+        <tr><td class="col-name">content</td><td class="col-type">text</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <div class="tbl-card">
+      <div class="tbl-header normal">tags</div>
+      <table class="cols">
+        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>workspace_id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">varchar</td><td class="col-note">UNIQUE(ws, normalized)</td></tr>
+        <tr><td class="col-name">color</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <div class="tbl-card">
+      <div class="tbl-header normal">node_links</div>
+      <table class="cols">
+        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>node_id</td><td class="col-type">uuid</td><td class="col-note">1:N</td></tr>
+        <tr><td class="col-name">title</td><td class="col-type">varchar</td><td class="col-note">nullable</td></tr>
+        <tr><td class="col-name">url</td><td class="col-type">text</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">sort_order</td><td class="col-type">int</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <div class="tbl-card">
+      <div class="tbl-header normal">node_attachments</div>
+      <table class="cols">
+        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>node_id</td><td class="col-type">uuid</td><td class="col-note">1:N</td></tr>
+        <tr><td class="col-name">original_name</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">mime_type</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">file_size</td><td class="col-type">bigint</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <div class="tbl-card">
+      <div class="tbl-header normal">node_media</div>
+      <table class="cols">
+        <tr><td class="col-name"><span class="pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="fk">FK</span>node_id</td><td class="col-type">uuid UNIQUE</td><td class="col-note">1:1 오디오/비디오</td></tr>
+        <tr><td class="col-name">mime_type</td><td class="col-type">varchar</td><td class="col-note">audio/* / video/*</td></tr>
+        <tr><td class="col-name">file_size</td><td class="col-type">bigint</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- TAB 3: Style Resolution -->
+<div id="resolve" class="panel">
+  <div class="resolve-box">
+    <h3>Style Resolution 계층 (v2.0)</h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:20px">노드 렌더링 시 최종 스타일 결정 순서 — effectiveLevel = MIN(node.level, 5)</p>
+
+    <div class="resolve-step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">nodes.style_override_json</div>
+        <div class="step-code">node.style_override_json?.fontSize</div>
+        <div class="step-note">노드에 직접 지정된 예외값. NULL이면 다음 단계로.</div>
+      </div>
+    </div>
+    <div class="arrow-down">↓</div>
+
+    <div class="resolve-step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">maps.map_config_json (맵 설정)</div>
+        <div class="step-code">map.map_config_json?.typography.levels[level].fontSize</div>
+        <div class="step-note">이 맵에만 적용되는 레벨별 커스텀 설정.</div>
+      </div>
+    </div>
+    <div class="arrow-down">↓</div>
+
+    <div class="resolve-step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">map_themes.config_json (테마 설정)</div>
+        <div class="step-code">theme.config_json?.typography.levels[level].fontSize</div>
+        <div class="step-note">워크스페이스 공유 테마. maps.theme_id 가 NULL이면 스킵.</div>
+      </div>
+    </div>
+    <div class="arrow-down">↓</div>
+
+    <div class="resolve-step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-title">DEFAULT_MAP_CONFIG (시스템 기본값)</div>
+        <div class="step-code">DEFAULT_MAP_CONFIG.typography.levels[level].fontSize</div>
+        <div class="step-note">하드코딩 기본값 (root=18pt, level1=16pt ... level5=12pt).</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default',
+    er: { useMaxWidth: true, diagramPadding: 20 },
+    themeVariables: { fontSize: '13px' } });
+
+  function showTab(id) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', ['erd','tables','resolve'][i] === id);
+    });
+    document.querySelectorAll('.panel').forEach(p => {
+      p.classList.toggle('active', p.id === id);
+    });
+  }
+</script>
+</body>
+</html>

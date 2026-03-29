@@ -33,7 +33,7 @@ AI mindmap + multilingual collaboration + real-time + export = easymindmap
 | 버전 히스토리 | 맵 변경 이력, Diff Viewer | V1 |
 | 다국어 자동 번역 | 협업 시 각 사용자 언어로 자동 번역 | V2 |
 | 대시보드 맵 | 외부 데이터 연동 + 자동 갱신 | V3 |
-
+| Kanban Layout | 3레벨 제한 보드형 레이아웃 (보드/컬럼/카드) | MVP |
 ---
 
 ## 🏗️ 기술 스택
@@ -74,6 +74,7 @@ docs/
 │   ├── prd.md                        # Product Requirement Document
 │   ├── functional-spec.md            # 전체 기능 명세 (62개 기능 정의)
 │   └── ui-ux-spec.md                 # 화면별 UX 명세 / 컴포넌트 / 단축키
+│   └── kanban-layout-spec.md         # Kanban Layout 기능 명세
 │
 ├── 02-domain/                        # 데이터 모델 & DB
 │   ├── node-model.md                 # NodeObject 스키마 / LayoutType / ShapeType

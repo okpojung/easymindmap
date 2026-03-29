@@ -60,7 +60,7 @@ Map 목록 조회
 
 2. NODE — 노드 조작
 
-노드 추가 인디케이터(+ 버튼) 상세 설계: node-add-indicator.md
+노드 추가 인디케이터(+ 버튼) 상세 설계: node-indicator.md
 
 2-1. 키보드/단축키 기반 노드 조작
 
@@ -143,7 +143,7 @@ Click
 2-2. 노드 추가 인디케이터 (+ 버튼 UI)
 
 노드를 싱글 클릭하면 4방향으로 + 아이콘이 표시되며, 클릭 방향에 따라 노드를 추가한다.
-상세 설계 → node-add-indicator.md
+상세 설계 → node-indicator.md
 
 기능ID
 기능명
@@ -326,6 +326,23 @@ icon-process-right-b
 Freeform
 icon-freeform
 자동 정렬보다 사용자의 드래그 위치를 우선하는 방식. subtree 단위 적용 권장
+
+보드형
+Kanban
+Kanban
+icon-kanban
+보드 제목(Level 1) / 컬럼(Level 2) / 카드(Level 3) 구조로 동작하는 3레벨 제한 보드형 레이아웃
+
+### 3-3. Kanban Layout 특수 규칙
+
+Kanban Layout은 일반 mindmap 계열과 달리 **최대 3레벨까지만 허용**한다.
+
+- Level 1: 보드 제목
+- Level 2: 컬럼
+- Level 3: 카드
+- Level 4 이상 생성 불가
+
+Kanban은 별도 보드형 레이아웃으로 동작하며, edge 렌더링은 기본적으로 사용하지 않는다.
 
 4. CANVAS — 캔버스 조작
 
@@ -670,7 +687,7 @@ LAYOUT (기능)
 
 
 LAYOUT (유형)
-14
+15
 —
 
 

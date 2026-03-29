@@ -17,6 +17,11 @@ type NodeObject = {
   // === 콘텐츠 ===
   text: string;                  // 노드 표시 텍스트
   note: string | null;           // 긴 설명 (노트)
+  // [변경 주석]
+  // note는 프론트엔드/도메인 관점의 "논리 필드"로 유지한다.
+  // 현재 저장소의 물리 DB 설계는 node_notes 테이블 분리안과 nodes.note 컬럼 공존 흔적이 있어
+  // 구현 단계에서 "어디를 최종 저장 원천으로 할지"를 1곳으로 확정해야 한다.
+  // 문서/API 응답에서는 편의상 note를 NodeObject에 포함하여 다루는 것이 가장 이해하기 쉽다.
 
   // === 레이아웃 ===
   layoutType: LayoutType;        // 이 노드 이하 subtree 전개 방식
@@ -31,6 +36,24 @@ type NodeObject = {
   hyperlinkIds: string[];        // 하이퍼링크 ID 목록
   attachmentIds: string[];       // 첨부파일 ID 목록
   multimediaId: string | null;   // 멀티미디어 ID
+
+  // [변경 주석]
+  // 위 4개 필드는 "API/프론트엔드 조립 결과 기준"의 논리 필드로 정의한다.
+  // 즉, 에디터/뷰어가 NodeObject 하나만 보고도 indicator/tag 상태를 쉽게 판단할 수 있도록 유지한다.
+  //
+  // 단, 현재 최신 DB 물리 설계(schema.sql 기준)는 아래와 같이 정규화 관계 테이블을 사용한다.
+  // - node_tags
+  // - node_links
+  // - node_attachments
+  // - node_media
+  //
+  // 따라서 실제 저장은 관계 테이블에 하고,
+  // API 응답에서 필요 시 집계/조립하여 tags, hyperlinkIds, attachmentIds, multimediaId 형태로 내려준다.
+  // 즉:
+  //   NodeObject = "논리/응답 모델"
+  //   schema.sql = "물리 저장 모델"
+  //
+  // 이렇게 구분해 두면 프론트엔드 사용성은 유지하면서도 DB 정규화와 충돌하지 않는다.
 
   // === 자유배치 ===
   manualPosition: { x: number; y: number } | null;  // freeform 전용
@@ -102,6 +125,14 @@ type NodeStyle = {
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   backgroundImage?: string; // URL 또는 base64
   backgroundImageOpacity?: number;
+
+  // [변경 주석]
+  // backgroundImage는 "노드 스타일 속성"으로 본다.
+  // 즉, 첨부파일(node_attachments)과는 별도 개념이다.
+  // - backgroundImage: 노드 자체 표현용 스타일
+  // - attachment: 사용자가 열어보는 일반 파일
+  //
+  // 이 구분을 명확히 해두면 노드 배경 이미지 기능과 첨부파일 기능이 서로 꼬이지 않는다.
 };
 ```
 
@@ -126,6 +157,11 @@ type NodeStyle = {
 ### childIds
 성능 최적화용 캐시. DB에서 parentId로 조회하는 것보다 빠른 접근 필요 시 사용.
 항상 DB의 parentId 관계와 동기화 유지 필요.
+
+### tags / hyperlinkIds / attachmentIds / multimediaId
+- 프론트엔드/응답 모델 기준에서는 NodeObject에 포함한다.
+- 실제 저장은 최신 DB 설계 기준으로 관계 테이블에 정규화한다.
+- 즉, "응답 편의 모델"과 "물리 저장 모델"을 분리하여 이해해야 한다.
 
 ---
 
@@ -152,3 +188,9 @@ const rootNode: NodeObject = {
    - depth 2: 14px
    - depth 3+: 12px
 3. 명시적으로 지정한 style 필드는 상속값을 override
+
+4. [변경 주석] shapeType과 fillColor 상속 규칙
+   - 형제 노드 생성 / 자식 노드 생성 / 다중 가지 추가 시
+     기준 노드의 shapeType과 style.fillColor를 기본 상속하는 정책과 연결된다.
+   - 따라서 프론트엔드 생성 명령(Command) 설계 시
+     단순히 text만 복사하지 말고 style/shape 기본값도 함께 복사해야 한다.

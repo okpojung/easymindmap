@@ -14,6 +14,11 @@ https://api.mindmap.ai.kr/v1
 Authorization: Bearer {token}
 ```
 
+### [변경 주석]
+- 위 설명은 "Bearer Token 사용" 관점에서는 그대로 유효하다.
+- 다만 현재 최신 아키텍처 기준으로 이 토큰은 **Supabase Auth가 발급하는 JWT**로 이해하는 것이 맞다.
+- 즉, API 사용 방식은 비슷하지만 토큰 발급/검증 책임은 자체 JWT 서버가 아니라 Supabase Auth에 있다.
+
 ---
 
 ## 1. Auth
@@ -134,6 +139,12 @@ Authorization: Bearer {token}
 { "title": "Updated Title" }
 ```
 
+### [변경 주석]
+- 최신 설계 기준으로는 title 외에도 아래 필드까지 PATCH 대상이 될 수 있다.
+  - viewMode
+  - refreshIntervalSeconds
+- 즉, dashboard 기능(V3)까지 고려하면 map 메타 PATCH 범위를 더 넓게 잡는 편이 좋다.
+
 ---
 
 ### DELETE /maps/{mapId}
@@ -155,6 +166,41 @@ Authorization: Bearer {token}
 ```
 
 **Response** `200 OK`
+
+### [변경 주석 - 매우 중요]
+- 위 `/snapshot` 설명은 초기 autosave 설계 단계의 흔적이다.
+- 최신 autosave-engine / backend-architecture / system-architecture 문맥 기준으로는
+  autosave API가 **snapshot 방식이 아니라 patch 방식**으로 변경되었다.
+- 따라서 실제 구현 기준의 최신 권장 엔드포인트는 아래와 같다.
+
+```http
+PATCH /maps/{mapId}/document
+```
+
+#### 최신 권장 Request Body (patch 기반)
+```json
+{
+  "clientId": "cli_abc123",
+  "patchId": "p_1710598325_001",
+  "baseVersion": 128,
+  "timestamp": "2026-03-16T14:32:05.123Z",
+  "patches": [
+    { "op": "updateNodeText", "nodeId": "node_1", "text": "Updated Text" },
+    { "op": "moveNode", "nodeId": "node_2", "parentId": "node_root", "orderIndex": 3 }
+  ]
+}
+```
+
+#### 최신 권장 Response
+```json
+{
+  "newVersion": 129
+}
+```
+
+#### 정리
+- 기존 문서의 `/snapshot` 설명은 참고용 legacy 흐름으로 남겨둘 수 있다.
+- 그러나 **실제 개발 착수 기준 문서**로는 `/maps/{mapId}/document` patch API를 우선 사용해야 한다.
 
 ---
 
@@ -183,6 +229,14 @@ Authorization: Bearer {token}
 }
 ```
 
+### [변경 주석]
+- 실제 생성 로직에서는 text 외에도 아래 기본값 상속이 함께 고려되어야 한다.
+  - shapeType
+  - style.fillColor
+  - 기타 style 기본값
+- 즉, 단순 CRUD 문서로는 위 Request가 최소 예시이고,
+  실제 Command/Service 계층에서는 "기준 노드 스타일 상속" 로직이 추가된다.
+
 ---
 
 ### PATCH /nodes/{nodeId}
@@ -200,6 +254,14 @@ Authorization: Bearer {token}
   }
 }
 ```
+
+### [변경 주석]
+- 최신 DB 컬럼명은 `style_json`이지만,
+  API 요청/응답에서는 프론트엔드 친화적으로 `style` 이름을 유지하는 것이 자연스럽다.
+- 즉:
+  - API 모델: style
+  - DB 컬럼: style_json
+- 이 변환은 repository/service 계층에서 처리한다.
 
 ---
 
@@ -257,6 +319,17 @@ Content-Type: text/html
 Content-Disposition: attachment; filename="map.html"
 ```
 
+### [변경 주석]
+- 초기 문서에서는 동기 다운로드형처럼 보이지만,
+  최신 schema.sql에는 `exports` 테이블이 존재한다.
+- 따라서 구현이 커지면 아래처럼 job 기반으로 확장될 수 있다.
+  - export 요청
+  - exports 테이블에 status=pending 기록
+  - worker 처리
+  - 완료 후 storage_path 반환
+- MVP에서는 즉시 응답형으로 시작하고,
+  파일 크기/복잡도가 커지면 job 방식으로 전환하는 전략이 적절하다.
+
 ---
 
 ## 5. Publish
@@ -303,6 +376,14 @@ AI 마인드맵 자동 생성
 }
 ```
 
+### [변경 주석]
+- 최신 worker / ai_jobs 구조까지 반영하면,
+  AI 생성도 즉시 응답형과 비동기 job형 둘 다 가능하다.
+- 초기 MVP는 즉시 응답형으로 충분하지만,
+  긴 응답/고비용 모델 사용 시 아래 확장도 고려할 수 있다.
+  - POST /ai/generate → job 생성
+  - GET /ai/jobs/{jobId} → 상태 조회
+
 ---
 
 ## 7. 공개 API (인증 불필요)
@@ -330,3 +411,10 @@ AI 마인드맵 자동 생성
 | 404 | Not Found |
 | 409 | Conflict — 중복 데이터 |
 | 500 | Internal Server Error |
+
+### [변경 주석]
+- patch 기반 autosave로 전환되면 409 Conflict 의미가 특히 중요해진다.
+- 예:
+  - baseVersion != currentVersion
+  - 이미 처리된 patchId와 충돌
+- 따라서 autosave 관련 에러 문서에서는 409를 좀 더 자세히 별도 설명하는 것이 좋다.

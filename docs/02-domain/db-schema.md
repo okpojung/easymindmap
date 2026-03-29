@@ -23,6 +23,19 @@
 변경:  VM1(Nginx) + VM2(Frontend) + VM3(NestJS) + VM5(Redis) + [Supabase Cloud]
 ```
 
+### [변경 주석]
+- 위의 "Supabase Cloud" 표기는 초기 설명 단계의 표현이다.
+- 현재 저장소의 최신 아키텍처 문맥은 **Supabase Self-hosted (ESXi VM)** 기준으로 더 많이 정리되어 있다.
+- 따라서 실제 구현/운영 기준은 다음처럼 이해하는 것이 맞다.
+
+```
+권장 최종 해석:
+VM1(Nginx) + VM2(App) + VM3(Supabase Self-hosted) + VM4(Redis) + VM5(Worker)
+```
+
+- 즉, 이 문서의 상단 배경 설명은 "Supabase로 통합한다"는 취지는 유지하되,
+  실제 배포 형태는 Self-hosted 기준으로 읽어야 한다.
+
 ---
 
 ## Supabase 프로젝트 설정
@@ -81,18 +94,60 @@ CREATE TRIGGER on_auth_user_created
 
 ```sql
 CREATE TABLE public.maps (
-  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id             UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  title                VARCHAR(255) NOT NULL DEFAULT 'Untitled',
-  default_layout_type  VARCHAR(50) DEFAULT 'radial-bidirectional',
-  deleted_at           TIMESTAMPTZ,   -- soft delete
-  created_at           TIMESTAMPTZ DEFAULT NOW(),
-  updated_at           TIMESTAMPTZ DEFAULT NOW()
+  id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id                  UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  workspace_id              UUID REFERENCES public.workspaces(id) ON DELETE SET NULL,
+  title                     VARCHAR(255) NOT NULL DEFAULT 'Untitled',
+  default_layout_type       VARCHAR(50)  NOT NULL DEFAULT 'radial-bidirectional',
+  view_mode                 VARCHAR(20)  NOT NULL DEFAULT 'edit',  -- 'edit' | 'dashboard'
+  refresh_interval_seconds  INT          NOT NULL DEFAULT 0,       -- 0: off
+  current_version           INT          NOT NULL DEFAULT 0,
+  deleted_at                TIMESTAMPTZ,  -- soft delete
+  created_at                TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at                TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_maps_owner_id ON public.maps(owner_id);
-CREATE INDEX idx_maps_deleted_at ON public.maps(deleted_at);
+CREATE INDEX idx_maps_workspace_id ON public.maps(workspace_id);
+CREATE INDEX idx_maps_deleted_at ON public.maps(deleted_at) WHERE deleted_at IS NULL;
 ```
+
+### [변경 주석]
+- 기존 문서에는 maps 테이블이 `owner_id`, `title`, `default_layout_type`, `deleted_at` 정도로만 설명되어 있었음.
+- 최신 schema.sql 기준으로는 아래 항목이 추가 반영되어야 함:
+  - workspace_id
+  - view_mode
+  - refresh_interval_seconds
+  - current_version
+- 특히 `current_version`은 patch 기반 autosave / 충돌 처리의 핵심 필드이므로 문서에서 빠지면 안 된다.
+
+---
+
+### 2-1. workspaces / workspace_members
+
+```sql
+CREATE TABLE public.workspaces (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id    UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  name        VARCHAR(255) NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE public.workspace_members (
+  workspace_id  UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id       UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  role          VARCHAR(20) NOT NULL DEFAULT 'editor', -- 'owner' | 'editor' | 'viewer'
+  joined_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (workspace_id, user_id)
+);
+```
+
+### [변경 주석]
+- 기존 문서에는 workspace 관련 설명이 없었지만,
+  최신 schema.sql에는 workspaces / workspace_members 구조가 포함되어 있다.
+- 협업 기능(V1+)까지 고려하면 이 테이블은 더 이상 선택사항이 아니라
+  기본 도메인 구조에 포함되는 편이 맞다.
 
 ---
 
@@ -118,22 +173,23 @@ CREATE TABLE public.nodes (
 
   -- 도형 & 스타일
   shape_type       VARCHAR(50) NOT NULL DEFAULT 'rounded-rectangle',
-  style            JSONB NOT NULL DEFAULT '{}',
+  style_json       JSONB NOT NULL DEFAULT '{}',
 
-  -- 부가 요소
-  tags             UUID[] NOT NULL DEFAULT '{}',
-  hyperlink_ids    UUID[] NOT NULL DEFAULT '{}',
-  attachment_ids   UUID[] NOT NULL DEFAULT '{}',
-  multimedia_id    UUID,
+  -- 노드 타입 (V3 대시보드 대비)
+  node_type        VARCHAR(30) NOT NULL DEFAULT 'text',  -- 'text' | 'data-live'
+
+  -- 다국어 번역 (V2 대비)
+  text_lang        VARCHAR(20),
+  text_hash        VARCHAR(128),
 
   -- 자유배치
   manual_position  JSONB,   -- { x: number, y: number }
 
   -- 캐시
-  size             JSONB,   -- { width: number, height: number }
+  size_cache       JSONB,   -- { width: number, height: number }
 
-  created_at       TIMESTAMPTZ DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ DEFAULT NOW()
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_nodes_map_id ON public.nodes(map_id);
@@ -157,26 +213,126 @@ CREATE INDEX idx_nodes_map_order ON public.nodes(map_id, order_index);
 }
 ```
 
+### [변경 주석]
+- 기존 문서의 nodes 정의에는 아래 "배열/단일 FK" 필드가 직접 들어 있었음:
+  - tags UUID[]
+  - hyperlink_ids UUID[]
+  - attachment_ids UUID[]
+  - multimedia_id UUID
+- 최신 schema.sql 기준에서는 이 구조를 **정규화 관계 테이블 방식**으로 변경한다.
+- 따라서 nodes 본문에서는 위 필드를 제거하고,
+  아래 별도 테이블(node_tags, node_links, node_attachments, node_media)로 설명해야 한다.
+- 또한 style 컬럼명도 기존 `style` 대신 최신 schema.sql 기준으로 `style_json`으로 맞춘다.
+- size 컬럼도 `size` 대신 `size_cache`로 맞춘다.
+
 ---
 
-### 4. revisions
+### 3-1. node_notes
 
 ```sql
-CREATE TABLE public.revisions (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  map_id       UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
-  change_type  VARCHAR(20) NOT NULL CHECK (change_type IN ('snapshot', 'patch')),
-  data         JSONB NOT NULL,
-  created_by   UUID REFERENCES public.users(id),
-  created_at   TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE public.node_notes (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  node_id     UUID NOT NULL UNIQUE REFERENCES public.nodes(id) ON DELETE CASCADE,
+  content     TEXT NOT NULL DEFAULT '',
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### [변경 주석]
+- 기존 문서/기존 노드 모델에는 `nodes.note` 설명이 있었음.
+- 최신 schema.sql에는 `node_notes` 별도 테이블도 존재한다.
+- 즉, 현재 설계에는 note가 "nodes.note 컬럼"과 "node_notes 테이블" 양쪽 흔적이 공존한다.
+- 구현 착수 전 반드시 아래 둘 중 하나를 최종 기준으로 확정하는 것이 좋다.
+  1. 짧은 노트만 허용 → nodes.note 단일 컬럼
+  2. 별도 관리/확장성 우선 → node_notes 테이블
+- 이 문서에서는 최신 schema.sql에 맞추어 node_notes도 함께 명시한다.
+
+---
+
+### 3-2. node_tags
+
+```sql
+CREATE TABLE public.node_tags (
+  node_id     UUID NOT NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
+  tag_id      UUID NOT NULL REFERENCES public.tags(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (node_id, tag_id)
+);
+```
+
+### 3-3. node_links
+
+```sql
+CREATE TABLE public.node_links (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  node_id    UUID NOT NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
+  url        TEXT NOT NULL,
+  label      VARCHAR(255),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### 3-4. node_attachments
+
+```sql
+CREATE TABLE public.node_attachments (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  node_id         UUID NOT NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
+  storage_path    VARCHAR(500) NOT NULL,
+  filename        VARCHAR(255) NOT NULL,
+  mime_type       VARCHAR(100),
+  file_size_bytes INT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### 3-5. node_media
+
+```sql
+CREATE TABLE public.node_media (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  node_id         UUID NOT NULL UNIQUE REFERENCES public.nodes(id) ON DELETE CASCADE,
+  storage_path    VARCHAR(500) NOT NULL,
+  media_type      VARCHAR(20) NOT NULL DEFAULT 'image',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### [변경 주석]
+- node의 부가요소(tag/link/attachment/media)는 이제 nodes 테이블 본문에 넣지 않고 별도 정규화 테이블로 분리한다.
+- 이유:
+  - 검색/필터링/통계 처리 쉬움
+  - 다중 링크/다중 첨부 자연스럽게 지원
+  - node indicator UI와 실제 저장 구조 분리 가능
+- 프론트엔드에서는 응답 조립 시 다시 NodeObject에 합쳐서 쓸 수 있다.
+
+---
+
+### 4. revisions → map_revisions
+
+```sql
+CREATE TABLE public.map_revisions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id      UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  version     INT  NOT NULL,
+  patch_json  JSONB NOT NULL,
+  client_id   VARCHAR(100),
+  patch_id    VARCHAR(200) UNIQUE,
+  created_by  UUID REFERENCES public.users(id),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_revisions_map_id ON public.revisions(map_id);
-CREATE INDEX idx_revisions_created_at ON public.revisions(map_id, created_at DESC);
-
--- 오래된 patch 자동 정리 (30일 초과 patch 삭제, snapshot은 유지)
--- Supabase pg_cron 또는 Edge Function으로 스케줄 실행
+CREATE INDEX idx_map_revisions_map_id ON public.map_revisions(map_id, version DESC);
 ```
+
+### [변경 주석]
+- 기존 문서에는 `revisions` 테이블과 `change_type = snapshot | patch` 구조가 설명돼 있었음.
+- 최신 autosave / backend 문맥은 **snapshot 중심이 아니라 patch 중심**이므로,
+  최신 schema.sql 기준의 `map_revisions` 구조로 맞추는 것이 더 정확하다.
+- 핵심 변경점:
+  - revisions → map_revisions
+  - snapshot/patch 혼합 설명 → patch_json + version 중심 구조
+  - patch_id(unique)로 멱등성(idempotency) 보장
 
 ---
 
@@ -215,21 +371,88 @@ CREATE INDEX idx_tags_owner_id ON public.tags(owner_id);
 
 ---
 
-### 7. ai_requests
+### 7. exports
 
 ```sql
-CREATE TABLE public.ai_requests (
+CREATE TABLE public.exports (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id        UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  user_id       UUID REFERENCES public.users(id),
+  format        VARCHAR(20) NOT NULL,  -- 'markdown' | 'html'
+  status        VARCHAR(20) NOT NULL DEFAULT 'pending',
+  storage_path  VARCHAR(500),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### [변경 주석]
+- 기존 문서에는 exports 테이블 설명이 없었지만,
+  최신 schema.sql에는 export 작업 이력 관리용 exports 테이블이 추가되어 있다.
+- export가 즉시 다운로드형에서 background job형으로 커질 가능성을 생각하면
+  이 테이블은 문서에 반드시 반영하는 편이 맞다.
+
+---
+
+### 8. ai_requests / ai_jobs
+
+```sql
+CREATE TABLE public.ai_jobs (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id          UUID NOT NULL REFERENCES public.users(id),
   map_id           UUID REFERENCES public.maps(id),
+  job_type         VARCHAR(30) NOT NULL,   -- 'generate' | 'expand' | 'summarize'
   prompt           TEXT NOT NULL,
   result_markdown  TEXT,
-  model            VARCHAR(100),   -- 'gpt-4o', 'claude-3-5-sonnet' 등
+  model            VARCHAR(100),
   tokens_used      INTEGER,
-  created_at       TIMESTAMPTZ DEFAULT NOW()
+  status           VARCHAR(20) NOT NULL DEFAULT 'pending',
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+```
 
-CREATE INDEX idx_ai_requests_user_id ON public.ai_requests(user_id);
+### [변경 주석]
+- 기존 문서에는 `ai_requests` 테이블로 설명했으나,
+  최신 schema.sql은 작업 큐/비동기 처리 관점을 반영한 `ai_jobs` 형태다.
+- Worker/BullMQ 구조와 더 잘 맞는 것은 ai_jobs 쪽이다.
+- 따라서 최신 구현 기준 설명은 ai_jobs로 통일하는 것이 좋다.
+
+---
+
+### 9. node_translations (V2)
+
+```sql
+CREATE TABLE public.node_translations (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  node_id           UUID NOT NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
+  target_lang       VARCHAR(20) NOT NULL,
+  translated_text   TEXT NOT NULL,
+  source_text_hash  VARCHAR(128) NOT NULL,
+  model_version     VARCHAR(60),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (node_id, target_lang)
+);
+```
+
+---
+
+### 10. field_registry (V3)
+
+```sql
+CREATE TABLE public.field_registry (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_type     VARCHAR(50)  NOT NULL,
+  field_key       VARCHAR(100) NOT NULL,
+  label_ko        VARCHAR(200) NOT NULL,
+  table_name      VARCHAR(100) NOT NULL,
+  column_name     VARCHAR(200) NOT NULL,
+  data_type       VARCHAR(50)  NOT NULL,
+  is_editable     BOOLEAN NOT NULL DEFAULT TRUE,
+  is_json_path    BOOLEAN NOT NULL DEFAULT FALSE,
+  json_path       VARCHAR(200),
+  display_order   INT NOT NULL DEFAULT 0,
+  description     TEXT
+);
 ```
 
 ---
@@ -301,6 +524,16 @@ CREATE POLICY "owners can manage publish"
 접근: Private (RLS로 소유자만 접근)
 ```
 
+### [변경 주석]
+- 최신 schema.sql/구현 문맥에서는 아래 버킷까지 함께 고려하는 편이 자연스럽다.
+  - uploads
+  - attachments
+  - exports
+  - published
+  - media
+- 위의 본문은 초기 축약 설명으로 두고,
+  실제 구현 시에는 버킷 설계를 env-spec / backend-architecture와 함께 맞춰야 한다.
+
 ---
 
 ## Supabase Realtime (Phase 3 대비)
@@ -326,15 +559,25 @@ public.users (프로필 확장)
 public.maps
     │ 1:N
     ├── public.nodes (트리 구조, self-join)
-    ├── public.revisions
+    ├── public.map_revisions
+    ├── public.exports
     └── public.published_maps
 
 public.users
     │ 1:N
     └── public.tags
 
-public.nodes.tags[] → public.tags.id (배열 참조)
+public.nodes
+    ├── public.node_tags
+    ├── public.node_links
+    ├── public.node_attachments
+    ├── public.node_media
+    └── public.node_notes
 ```
+
+### [변경 주석]
+- 기존 ERD 요약의 `public.nodes.tags[] → public.tags.id (배열 참조)` 설명은 최신 구조와 맞지 않는다.
+- 최신 구조는 node_tags를 통한 N:N 관계로 이해해야 한다.
 
 ---
 
@@ -363,3 +606,8 @@ WHERE owner_id = auth.uid()
   AND deleted_at IS NULL
 ORDER BY updated_at DESC;
 ```
+
+### [변경 주석]
+- autosave가 patch 기반으로 가더라도,
+  실제 내부 처리에서 일부 node upsert 패턴은 여전히 유효하다.
+- 다만 문서상 API 설명은 snapshot 중심보다 patch/version 중심으로 함께 기술하는 것이 정확하다.

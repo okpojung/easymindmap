@@ -174,6 +174,12 @@ type NodeStyle = {
 - depth 3 이상: 허용하지 않음
 
 Kanban은 일반 subtree 확장 구조가 아니라, 3레벨 제한 보드형 구조로 동작한다.
+
+### kanbanRole 확장 권장
+Kanban Layout 구현 시 아래와 같은 role metadata를 둘 수 있다.
+
+```typescript
+type KanbanNodeRole = 'board' | 'column' | 'card';
 ---
 
 ## 루트 노드 특이사항

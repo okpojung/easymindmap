@@ -733,20 +733,21 @@ Ctrl + Space 입력으로 8개 노드 생성
 폰트는 단순 부모 상속만으로 가기보다,  
 Level 기반 기본 규칙을 두는 것이 더 안정적이다.
 
-| Level | Font Size |
+`node-model.md` 기준으로 통일한다. 단위는 **px**, 4단계 적용.
+
+| depth | Font Size |
 |---|---|
-| Root | 18pt |
-| Level 1 | 16pt |
-| Level 2 | 15pt |
-| Level 3 | 14pt |
-| Level 4 | 13pt |
-| Level 5+ | 12pt |
+| 0 (Root) | 20px |
+| 1 | 16px |
+| 2 | 14px |
+| 3+ | 12px |
 
 즉:
 
 - 색상/shape는 부모 상속
-- font size는 기본적으로 level rule 적용
+- font size는 기본적으로 depth 기준 level rule 적용
 - 사용자가 custom 지정하면 override
+- 단위는 **px** 통일 (pt 혼용 금지)
 
 ---
 

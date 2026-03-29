@@ -196,7 +196,14 @@ CREATE INDEX idx_nodes_map_id ON public.nodes(map_id);
 CREATE INDEX idx_nodes_parent_id ON public.nodes(parent_id);
 CREATE INDEX idx_nodes_map_order ON public.nodes(map_id, order_index);
 ```
+### Kanban Layout 사용 시 depth 규칙
+Kanban layout에서는 nodes.depth를 다음처럼 제한적으로 해석한다.
 
+- depth 0: board
+- depth 1: column
+- depth 2: card
+- depth 3 이상 금지
+ 
 #### style JSONB 구조 예시
 ```json
 {

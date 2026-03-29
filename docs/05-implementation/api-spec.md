@@ -154,8 +154,8 @@ Authorization: Bearer {token}
 
 ---
 
-### PATCH /maps/{mapId}/snapshot
-전체 맵 스냅샷 저장 (Autosave용)
+### PATCH /maps/{mapId}/document
+맵 변경 patch 저장 (Autosave용)
 
 **Request Body**
 ```json

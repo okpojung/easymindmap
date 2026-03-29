@@ -5,12 +5,25 @@
 -- 설계 기준: docs/02-domain/node-hierarchy-storage-strategy.md
 -- 호출: NodeService.moveNodeSubtree() → supabase.rpc('move_node_subtree', ...)
 --
+-- ★ ltree 레이블 규칙 (UUID → 레이블 변환)
+--   ltree 레이블: [A-Za-z0-9_] 만 허용, 하이픈(-) 불가
+--   변환: uuid 앞 8자리에서 하이픈 제거 후 'n_' 접두사 추가
+--   예: uuid = 'a1b2c3d4-...' → label = 'n_a1b2c3d4'
+--   변환 함수(앱단): uuidToLabel() in node.service.ts
+--   path 형식: 'root.n_a1b2c3d4.n_e5f6a7b8'
+--
+-- ★ depth 계산 규칙
+--   depth = nlevel(path) - 1
+--   이유: nlevel()은 1-based (루트='root' → nlevel=1), depth는 0-based
+--   예: 'root' → depth=0, 'root.n_abc' → depth=1
+--
 -- 처리 내용 (단일 트랜잭션):
 --   1. 이동 노드의 현재 path (old_path) 확인
 --   2. 새 부모의 path (new_base_path) 확인
---   3. subtree 전체의 path를 ltree subpath 치환으로 일괄 갱신
---   4. depth = nlevel(new_path) - 1 로 일괄 재계산
---   5. 이동 노드의 parent_id, order_index 갱신
+--   3. 순환 참조 방지: new_base_path <@ old_path 이면 예외
+--   4. subtree 전체의 path를 ltree subpath 치환으로 일괄 갱신
+--   5. depth = nlevel(new_path) - 1 로 일괄 재계산
+--   6. 이동 노드의 parent_id, order_index 갱신
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.move_node_subtree(

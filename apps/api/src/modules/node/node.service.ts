@@ -23,6 +23,57 @@ import {
 import { SupabaseService } from '../../supabase/supabase.service';
 
 // ----------------------------------------------------------------
+// 반환 타입 — DB 레코드 (JSONB 필드 포함)
+// ----------------------------------------------------------------
+
+/**
+ * manual_position JSONB 필드 구조
+ * DB 컬럼: manual_position JSONB  →  { x: number, y: number }
+ * freeform layout 전용. 그 외 layout에서는 null.
+ * 프론트엔드 접근: node.manual_position?.x, node.manual_position?.y
+ */
+export interface ManualPosition {
+  x: number;
+  y: number;
+}
+
+/**
+ * size_cache JSONB 필드 구조
+ * DB 컬럼: size_cache JSONB  →  { width: number, height: number }
+ * 렌더링 최적화용 캐시. 클라이언트에서 측정 후 저장.
+ */
+export interface SizeCache {
+  width: number;
+  height: number;
+}
+
+/**
+ * DB nodes 레코드 반환 타입
+ * Supabase JS Client의 .select()가 반환하는 실제 컬럼명(snake_case)을 그대로 사용.
+ * 프론트엔드는 이 타입을 기준으로 JSONB 필드에 접근한다.
+ */
+export interface NodeRecord {
+  id: string;
+  map_id: string;
+  parent_id: string | null;
+  text: string;
+  depth: number;
+  order_index: number;
+  path: string;                         // ltree (문자열로 직렬화됨)
+  layout_type: string;
+  collapsed: boolean;
+  shape_type: string;
+  style_json: Record<string, unknown>;
+  node_type: string;
+  text_lang: string | null;
+  text_hash: string | null;
+  manual_position: ManualPosition | null;   // JSONB: { x, y }
+  size_cache: SizeCache | null;             // JSONB: { width, height }
+  created_at: string;
+  updated_at: string;
+}
+
+// ----------------------------------------------------------------
 // DTO 타입 정의
 // ----------------------------------------------------------------
 export interface CreateNodeDto {
@@ -39,7 +90,8 @@ export interface UpdateNodeDto {
   collapsed?: boolean;
   shapeType?: string;
   styleJson?: Record<string, unknown>;
-  manualPosition?: { x: number; y: number } | null;
+  /** freeform layout 전용 좌표. null 전달 시 manual_position 초기화 */
+  manualPosition?: ManualPosition | null;
 }
 
 export interface MoveNodeDto {
@@ -79,7 +131,7 @@ export class NodeService {
    * - order_index: parentId 하위 마지막 노드 order_index + 1.0
    *   (중간 삽입 시 호출부에서 orderIndex 직접 지정 가능)
    */
-  async createNode(dto: CreateNodeDto) {
+  async createNode(dto: CreateNodeDto): Promise<NodeRecord> {
     const newId = crypto.randomUUID();
     const label = uuidToLabel(newId);
 
@@ -144,7 +196,7 @@ export class NodeService {
   // ──────────────────────────────────────────────
   // 노드 수정
   // ──────────────────────────────────────────────
-  async updateNode(nodeId: string, dto: UpdateNodeDto) {
+  async updateNode(nodeId: string, dto: UpdateNodeDto): Promise<NodeRecord> {
     const updatePayload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
@@ -252,7 +304,7 @@ export class NodeService {
    * 클라이언트는 반환된 flat 배열을 parent_id 기준으로 트리로 조립합니다.
    * childIds는 DB에 저장하지 않고 클라이언트 런타임에 파생합니다.
    */
-  async getMapNodes(mapId: string) {
+  async getMapNodes(mapId: string): Promise<NodeRecord[]> {
     const { data, error } = await this.supabase
       .from('nodes')
       .select('*')
@@ -271,7 +323,7 @@ export class NodeService {
    * 특정 노드의 subtree 전체를 조회합니다 (자신 포함).
    * GIST 인덱스 덕분에 재귀 CTE 없이 효율적으로 조회됩니다.
    */
-  async getSubtree(nodeId: string) {
+  async getSubtree(nodeId: string): Promise<NodeRecord[]> {
     // ltree <@ 연산자를 직접 지원하는 Supabase JS 필터가 없으므로 rpc 사용
     const { data, error } = await this.supabase.rpc('get_node_subtree', {
       p_node_id: nodeId,

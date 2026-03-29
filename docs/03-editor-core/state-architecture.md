@@ -264,6 +264,60 @@ nodes.find(...)
 
 ---
 
+### 5.1.3-A childIds — 런타임 파생 구조 (DB 저장 안 함)
+
+`NodeObject`와 `MindmapNode`에는 `childIds: string[]` 필드가 존재하지만,  
+**이 필드는 DB에 저장하지 않는다.**
+
+#### 왜 DB에 저장하지 않는가
+
+- `parent_id` 관계만 DB에 저장하면 충분하다.
+- `childIds`를 별도 컬럼으로 두면 parent_id와 이중 관리가 되어 정합성 문제가 생긴다.
+- PostgreSQL에서 `parent_id` 기반 자식 조회는 인덱스로 충분히 빠르다.
+
+#### 어떻게 만들어지는가
+
+DB에서 노드를 로딩하면 아래처럼 `parent_id` 기반으로 클라이언트에서 파생한다.
+
+```ts
+// DB에서 flat 배열로 받은 nodes를 Record + childIds 구조로 조립
+function buildNodeTree(flatNodes: DBNode[]): Record<string, MindmapNode> {
+  const nodeMap: Record<string, MindmapNode> = {}
+
+  // 1단계: Record 생성 (childIds 빈 배열로 초기화)
+  for (const n of flatNodes) {
+    nodeMap[n.id] = { ...n, childIds: [] }
+  }
+
+  // 2단계: parentId 기반으로 childIds 채우기
+  for (const n of flatNodes) {
+    if (n.parentId && nodeMap[n.parentId]) {
+      nodeMap[n.parentId].childIds.push(n.id)
+    }
+  }
+
+  // 3단계: childIds를 orderIndex 기준으로 정렬
+  for (const node of Object.values(nodeMap)) {
+    node.childIds.sort((a, b) => nodeMap[a].orderIndex - nodeMap[b].orderIndex)
+  }
+
+  return nodeMap
+}
+```
+
+#### 동기화 원칙
+
+- 노드 생성/삭제/이동 시 Document Store의 `childIds`를 즉시 갱신
+- DB에는 `parent_id`와 `order_index`만 저장
+- 새로고침 시 위 `buildNodeTree`를 다시 실행하여 재구성
+
+```text
+DB: parent_id (원본)
+클라이언트 Document Store: childIds (파생 캐시)
+```
+
+---
+
 ### 5.1.4 Node 모델 예시
 
 ```ts

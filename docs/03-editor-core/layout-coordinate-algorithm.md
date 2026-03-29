@@ -1196,7 +1196,67 @@ document/layout layer ≠ viewport layer
 
 ---
 
-# 22. 최종 설계안 요약
+# 22. depth 컬럼 동기화 전략
+
+`depth`는 `parent_id`에서 파생 가능한 derived data이지만, 렌더링/조회 성능을 위해 DB에 저장한다.
+
+---
+
+## 22.1 depth 계산 원칙
+
+- **앱단(클라이언트 또는 NestJS 서비스)에서 계산 후 저장** — DB 트리거 사용 안 함
+- 노드 생성 시: `depth = parent.depth + 1` (루트 노드는 `0`)
+- 노드 이동 시: 이동된 노드와 **모든 하위 노드의 depth를 일괄 갱신**
+
+---
+
+## 22.2 노드 이동 시 depth 갱신 방법
+
+노드를 다른 부모 아래로 이동하면 아래 순서로 처리한다.
+
+```text
+1. 이동 대상 노드의 새 parent.depth 확인
+2. 이동 대상 노드의 new_depth = new_parent.depth + 1
+3. 이동 대상 노드를 root로 하는 subtree 전체의 depth를 재귀적으로 갱신
+4. parent_id + order_index + depth 변경을 하나의 트랜잭션으로 처리
+```
+
+구현 예시 (재귀 CTE):
+
+```sql
+WITH RECURSIVE moved_subtree AS (
+    SELECT id, $new_depth AS new_depth
+    FROM public.nodes WHERE id = $moved_node_id
+
+    UNION ALL
+
+    SELECT n.id, ms.new_depth + 1
+    FROM public.nodes n
+    JOIN moved_subtree ms ON n.parent_id = ms.id
+)
+UPDATE public.nodes n
+SET depth = ms.new_depth
+FROM moved_subtree ms
+WHERE n.id = ms.id;
+```
+
+---
+
+## 22.3 Layout Engine에서 depth 활용
+
+Layout Engine은 `depth`를 다음 목적으로 직접 사용한다.
+
+- Font size 기본값 결정 (depth → level rule)
+- Radial layout의 반지름 계산 (`radius = baseRadius + depth * radialLevelGap`)
+- Kanban depth 제한 검증 (`depth ≤ 2`)
+- 렌더링 우선순위 및 collapse 처리
+
+> ⚠️ depth는 DB 저장값이지만, Layout Engine이 직접 수정하지는 않는다.  
+> depth 변경은 반드시 Document Store → autosave → API → DB 경로로만 처리한다.
+
+---
+
+# 23. 최종 설계안 요약
 
 easymindmap에 가장 적합한 최종 좌표 계산 엔진은 다음과 같다.
 
@@ -1222,9 +1282,12 @@ easymindmap에 가장 적합한 최종 좌표 계산 엔진은 다음과 같다.
 7. **Kanban 별도 지원**
    - column/card 구조 수용
 
+8. **depth 앱단 동기화**
+   - DB 트리거 없이 앱이 직접 계산/갱신
+
 ---
 
-# 23. 한 줄 최종 결론
+# 24. 한 줄 최종 결론
 
 > easymindmap의 Node 좌표 계산 엔진은  
 > **2-pass(Measure → Arrange) + layoutType별 전략 패턴 + subtree bounding box 기반 + partial relayout 지원** 구조로 설계한다.

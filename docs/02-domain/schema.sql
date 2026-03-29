@@ -96,7 +96,7 @@ CREATE TABLE public.nodes (
 
     -- 콘텐츠
     text             TEXT NOT NULL DEFAULT '',
-    note             TEXT,
+    -- note 컬럼 없음: 노트는 node_notes 테이블로 단일화 (Issue #8)
 
     -- 트리 구조
     depth            INT  NOT NULL DEFAULT 0,
@@ -275,6 +275,7 @@ CREATE TABLE public.field_registry (
 -- maps
 ALTER TABLE public.maps ENABLE ROW LEVEL SECURITY;
 
+-- 맵 소유자 정책
 CREATE POLICY "users can view own maps"
     ON public.maps FOR SELECT
     USING (auth.uid() = owner_id AND deleted_at IS NULL);
@@ -291,16 +292,67 @@ CREATE POLICY "users can delete own maps"
     ON public.maps FOR DELETE
     USING (auth.uid() = owner_id);
 
--- nodes (맵 소유자만 접근)
+-- 워크스페이스 멤버 맵 읽기 (V1 협업 대비)
+CREATE POLICY "workspace members can view maps"
+    ON public.maps FOR SELECT
+    USING (
+        deleted_at IS NULL AND
+        EXISTS (
+            SELECT 1 FROM public.workspace_members wm
+            WHERE wm.workspace_id = maps.workspace_id
+              AND wm.user_id = auth.uid()
+        )
+    );
+
+-- 워크스페이스 editor/owner 멤버 맵 수정
+CREATE POLICY "workspace editors can update maps"
+    ON public.maps FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.workspace_members wm
+            WHERE wm.workspace_id = maps.workspace_id
+              AND wm.user_id = auth.uid()
+              AND wm.role IN ('editor', 'owner')
+        )
+    );
+
+-- nodes (맵 소유자 + 워크스페이스 멤버 접근 허용)
 ALTER TABLE public.nodes ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "users can manage nodes of own maps"
+-- 맵 소유자
+CREATE POLICY "map owners can manage nodes"
     ON public.nodes FOR ALL
     USING (
         EXISTS (
             SELECT 1 FROM public.maps
             WHERE maps.id = nodes.map_id
               AND maps.owner_id = auth.uid()
+        )
+    );
+
+-- 워크스페이스 멤버 (V1 협업 대비): editor/owner 역할만 쓰기 가능
+CREATE POLICY "workspace members can manage nodes"
+    ON public.nodes FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.workspace_members wm
+            JOIN public.maps m ON m.workspace_id = wm.workspace_id
+            WHERE m.id = nodes.map_id
+              AND wm.user_id = auth.uid()
+              AND wm.role IN ('editor', 'owner')
+        )
+    );
+
+-- 워크스페이스 멤버 (viewer): 읽기만 가능
+CREATE POLICY "workspace viewers can read nodes"
+    ON public.nodes FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.workspace_members wm
+            JOIN public.maps m ON m.workspace_id = wm.workspace_id
+            WHERE m.id = nodes.map_id
+              AND wm.user_id = auth.uid()
+              AND wm.role = 'viewer'
         )
     );
 

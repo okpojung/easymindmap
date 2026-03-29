@@ -1,882 +1,740 @@
-# Edge 스타일 정책
+# easymindmap — Edge / Layout / Node Inheritance Policy
 
-**User:** Anonymous (ok@baro.pro)  
-**Created:** 3/16/2026 1:28:04  
-**Updated:** 3/16/2026 1:55:31  
-**Exported:** 3/16/2026 2:04:09  
-**Link:** [https://chatgpt.com/g/g-p-69b64962a1b8819187e5863aa1808e92-mindmap-gaebal/c/69b6de0c-a79c-83a7-acc0-1c9733729534](https://chatgpt.com/g/g-p-69b64962a1b8819187e5863aa1808e92-mindmap-gaebal/c/69b6de0c-a79c-83a7-acc0-1c9733729534)  
+문서 버전: v3.0  
+상태: Final Draft  
+대상 파일: `docs/03-editor-core/edge-policy.md`  
+관련 문서:
+- `docs/01-product/functional-spec.md`
+- `docs/03-editor-core/layout-engine.md`
+- `docs/03-editor-core/layout-coordinate-algorithm.md`
+- `docs/03-editor-core/node-editing.md`
+- `docs/03-editor-core/bulk-branch-insert.md`
+- `docs/03-editor-core/state-architecture.md`
+- `docs/02-domain/node-model.md`
 
-## Prompt:
-Edge 구조  즉 부모-자식 연결선은 보통 curve-line, tree-line, straight-line으로 지벙해줄수 있는데..
-우리는 방사형은 curve-line을 기본으로 하고 나머지 layout은 tree-line으로 하자..
+---
 
-## Response:
-좋습니다.  
-지금 말씀하신 **Edge(부모-자식 연결선) 정책**은 **레이아웃 엔진 설계에서 매우 중요한 결정**입니다.  
-그래서 이걸 **개발 문서 수준으로 정확히 정의**해 두는 것이 좋습니다.
+# 1. 문서 목적
 
-사용자 의도를 정리하면 다음과 같습니다.
+본 문서는 easymindmap에서 부모-자식 연결선(Edge)과 하위 전개 방식(Layout), 그리고 Node 생성 시 상속 규칙을 하나의 정책 문서로 통합 정의한다.
 
+이 문서의 목적은 다음과 같다.
+
+1. Layout 유형별 Edge 스타일을 최종 확정한다.
+2. Layout Engine이 어떤 기준으로 Edge를 선택하고 경로를 생성하는지 정의한다.
+3. Node가 부모로부터 어떤 Layout과 Style을 상속받는지 규칙을 명확히 한다.
+4. 자유배치형과 Kanban 같은 특수 Layout을 기존 구조와 충돌 없이 확장 가능하도록 설계한다.
+5. 실제 프론트엔드/렌더링/AI 코드 생성 기준 문서로 사용한다.
+
+즉, 이 문서는 단순한 “선 모양 정하기” 문서가 아니라  
+**Layout Engine 전체 정책의 핵심 축**을 정의하는 문서이다.
+
+---
+
+# 2. 배경과 문제 정의
+
+마인드맵 편집기에서 Node의 위치만 잘 계산한다고 끝나지 않는다.  
+부모-자식 관계를 어떤 선으로 연결하느냐에 따라 전체 UX가 크게 달라진다.
+
+같은 데이터라도 다음처럼 보일 수 있다.
+
+- 곡선 중심의 전통적 마인드맵
+- 직각 꺾임 중심의 구조도
+- 타임라인 느낌의 프로세스 흐름
+- 자유 위치 기반 다이어그램형 구성
+- 보드형(Kanban) 컬럼 구성
+
+따라서 easymindmap은 Edge 정책을 단순한 시각 옵션이 아니라  
+**Layout의 일부**로 정의해야 한다.
+
+문제는 다음과 같다.
+
+1. Layout 종류가 많다.
+2. 자유배치형은 직선이 좋아 보일 수 있지만 관계 표현이 약해질 수 있다.
+3. Node 생성 시 부모의 style/layout 상속 규칙이 없으면 사용자 경험이 끊긴다.
+4. AI 자동 생성이나 다중 가지 생성 시도 동일한 규칙을 따라야 한다.
+5. 향후 Kanban, Timeline, OrgChart 같은 확장 Layout도 수용해야 한다.
+
+이 문서는 위 문제를 해결하기 위한 최종 정책 문서이다.
+
+---
+
+# 3. 핵심 결론 요약
+
+easymindmap의 최종 Edge 정책은 아래 한 줄로 정리된다.
+
+```text
+방사형(Radial)만 curve-line
+그 외 모든 Layout은 tree-line
 ```
-Edge Style 정책
 
-1. 방사형 계열 Layout
-   → curve-line (곡선)
+즉,
 
-2. 나머지 Layout
-   → tree-line (직선 + 꺾임)
+- Radial-Bidirectional → curve-line
+- Radial-Right → curve-line
+- Radial-Left → curve-line
+- Tree 계열 → tree-line
+- Hierarchy 계열 → tree-line
+- ProcessTree 계열 → tree-line
+- Freeform → tree-line
+- Kanban → tree-line
+
+이 정책은 UX, 구현 단순성, 확장성 측면에서 가장 균형이 좋다.
+
+---
+
+# 4. 설계 원칙
+
+## 4.1 Layout이 Edge를 결정한다
+
+Edge는 독립 1차 속성이 아니라 **Layout 해석 결과**로 결정된다.
+
+즉 사용자가 일반적으로 “선 스타일”을 먼저 고르는 구조보다,
+
+```text
+Layout 선택
+→ Edge 타입 자동 결정
 ```
 
-이 정책은 이미 정리된 **레이아웃 분류와도 정확히 맞습니다**.  
-(방사형 / 트리형 / 계층형 / 진행트리 / 자유배치)
+흐름이 기본이다.
 
-기능정의테이블
+향후 고급 옵션에서 override는 허용할 수 있지만, 기본 정책은 Layout 기준 자동 결정으로 한다.
 
-* * *
+---
 
-1️⃣ Edge Style 정책 (최종 권장안)
-==========================
+## 4.2 Edge는 2종을 기본으로 한다
+
+초기 설계에서 straight-line까지 3종을 고려했지만,  
+easymindmap의 제품 방향에서는 기본값으로는 2종만 두는 것이 낫다.
+
+- `curve-line`
+- `tree-line`
+
+straight-line은 향후 고급 사용자용 override 옵션으로 남길 수는 있지만,  
+기본 정책에서는 제외한다.
+
+---
+
+## 4.3 Node는 부모의 Layout을 기본 상속한다
+
+Node는 단독으로 존재하는 UI 박스가 아니라 트리 구조 안의 일부이다.  
+따라서 생성 직후에는 기본적으로 부모의 Layout 규칙을 따른다.
+
+---
+
+## 4.4 Node는 부모의 시각 스타일을 기본 상속한다
+
+형제/자식 노드를 계속 추가할 때 사용자가 매번 shape, fillColor, border를 다시 지정하게 하면 UX가 매우 나빠진다.  
+따라서 생성 시점의 기본값은 부모 스타일을 상속하는 방식으로 한다.
+
+---
+
+## 4.5 Subtree 단위 Layout Override를 허용한다
+
+easymindmap의 중요한 특성은 하나의 맵 안에서 subtree별로 다른 Layout을 허용하는 것이다.
+
+예:
+
+- 루트는 Radial-Bidirectional
+- 특정 절차 영역은 ProcessTree-Right
+- 어떤 설명 영역은 Tree-Right
+- 대시보드나 상태 영역은 Kanban
+
+이 구조를 허용해야 실제 제품이 강력해진다.
+
+---
+
+# 5. Layout 그룹 정의
+
+easymindmap은 아래 6개 Layout 그룹을 사용한다.
+
+| Layout Group | 설명 |
+|---|---|
+| Radial | 중심 또는 부모 기준으로 방사형으로 퍼지는 마인드맵 |
+| Tree | 일반적인 트리 구조 |
+| Hierarchy | 조직도/계층 구조 |
+| ProcessTree | 절차/흐름 중심의 진행형 구조 |
+| Freeform | 위치는 사용자가 직접 배치하는 자유배치형 |
+| Kanban | 컬럼과 카드 중심의 보드형 구조 |
+
+---
+
+# 6. Layout Type 정의
+
+## 6.1 Radial 계열
+
+| 코드 | 영문명 | 한글명 | 설명 |
+|---|---|---|---|
+| BL-RD-BI | Radial-Bidirectional | 방사형-양쪽 | 중심 기준 좌우 균형 방사형 |
+| BL-RD-R | Radial-Right | 방사형-오른쪽 | 오른쪽 중심 방사형 |
+| BL-RD-L | Radial-Left | 방사형-왼쪽 | 왼쪽 중심 방사형 |
+
+---
+
+## 6.2 Tree 계열
+
+| 코드 | 영문명 | 한글명 | 설명 |
+|---|---|---|---|
+| BL-TR-U | Tree-Up | 트리형-위쪽 | 위 방향 전개 |
+| BL-TR-D | Tree-Down | 트리형-아래쪽 | 아래 방향 전개 |
+| BL-TR-R | Tree-Right | 트리형-오른쪽 | 오른쪽 방향 수평 트리 |
+| BL-TR-L | Tree-Left | 트리형-왼쪽 | 왼쪽 방향 수평 트리 |
+
+---
+
+## 6.3 Hierarchy 계열
+
+| 코드 | 영문명 | 한글명 | 설명 |
+|---|---|---|---|
+| BL-HR-R | Hierarchy-Right | 계층형-오른쪽 | 좌→우 계층 구조 |
+| BL-HR-L | Hierarchy-Left | 계층형-왼쪽 | 우→좌 계층 구조 |
+
+---
+
+## 6.4 ProcessTree 계열
+
+| 코드 | 영문명 | 한글명 | 설명 |
+|---|---|---|---|
+| BL-PR-R | ProcessTree-Right | 진행트리-오른쪽 | 좌→우 절차형 |
+| BL-PR-L | ProcessTree-Left | 진행트리-왼쪽 | 우→좌 절차형 |
+| BL-PR-RA | ProcessTree-Right-A | 진행트리-오른쪽A | 상단 기준선 중심 분기형 |
+| BL-PR-RB | ProcessTree-Right-B | 진행트리-오른쪽B | 타임라인/로드맵형 |
+
+---
+
+## 6.5 Freeform
+
+| 코드 | 영문명 | 한글명 | 설명 |
+|---|---|---|---|
+| BL-FR | Freeform | 자유배치형 | 수동 좌표 기반 배치 |
+
+---
+
+## 6.6 Kanban
+
+| 코드 | 영문명 | 한글명 | 설명 |
+|---|---|---|---|
+| BL-KB | Kanban | 칸반형 | 컬럼/카드 중심 보드형 구조 |
+
+---
+
+# 7. Edge 정책 최종 확정안
+
+## 7.1 정책표
 
 | Layout Group | Layout Type | Edge Style |
-| --- | --- | --- |
-| 방사형 | Radial-Bidirectional | curve-line |
-| 방사형 | Radial-Right | curve-line |
-| 방사형 | Radial-Left | curve-line |
-| 트리형 | Tree-Up | tree-line |
-| 트리형 | Tree-Down | tree-line |
-| 트리형 | Tree-Right | tree-line |
-| 트리형 | Tree-Left | tree-line |
-| 계층형 | Hierarchy-Right | tree-line |
-| 계층형 | Hierarchy-Left | tree-line |
-| 진행트리 | ProcessTree-Right | tree-line |
-| 진행트리 | ProcessTree-Left | tree-line |
-| 진행트리 | ProcessTree-Right-A | tree-line |
-| 진행트리 | ProcessTree-Right-B | tree-line |
-| 자유배치 | Freeform | straight-line |
+|---|---|---|
+| Radial | Radial-Bidirectional | curve-line |
+| Radial | Radial-Right | curve-line |
+| Radial | Radial-Left | curve-line |
+| Tree | Tree-Up | tree-line |
+| Tree | Tree-Down | tree-line |
+| Tree | Tree-Right | tree-line |
+| Tree | Tree-Left | tree-line |
+| Hierarchy | Hierarchy-Right | tree-line |
+| Hierarchy | Hierarchy-Left | tree-line |
+| ProcessTree | ProcessTree-Right | tree-line |
+| ProcessTree | ProcessTree-Left | tree-line |
+| ProcessTree | ProcessTree-Right-A | tree-line |
+| ProcessTree | ProcessTree-Right-B | tree-line |
+| Freeform | Freeform | tree-line |
+| Kanban | Kanban | tree-line |
 
-### 정리
+---
 
-```
-방사형  → curve
-트리형  → tree
-계층형  → tree
-진행트리 → tree
-자유배치 → straight
-```
+## 7.2 한 줄 정리
 
-* * *
-
-2️⃣ Edge Type 정의 (엔진 내부)
-========================
-
-Edge 타입은 3개만 정의하면 충분합니다.
-
-```
-enum EdgeType {
-
-  CURVE,      // 방사형
-  TREE,       // 트리형 꺾인선
-  STRAIGHT    // 직선
-
-}
+```text
+Radial = curve-line
+Others = tree-line
 ```
 
-* * *
+---
 
-3️⃣ Layout → Edge 자동 매핑 규칙
-==========================
+## 7.3 왜 Freeform도 tree-line인가
 
-레이아웃 엔진에서 자동으로 결정되도록 합니다.
+초기에는 Freeform에서 straight-line을 고려할 수 있다.  
+그러나 easymindmap의 Freeform은 완전한 다이어그램 툴이 아니라  
+“부모-자식 관계를 유지한 채 위치만 자유로운 구조”에 더 가깝다.
 
+따라서 다음 이유로 tree-line이 더 적합하다.
+
+### 1. 관계가 더 잘 보인다
+직선 연결은 노드가 자유롭게 움직일수록 대각선이 많아져 산만해질 수 있다.  
+반면 tree-line은 방향성과 부모-자식 관계를 더 분명히 드러낸다.
+
+### 2. 전체 제품 정책이 단순해진다
+정책이 아래처럼 매우 단순해진다.
+
+```ts
+if (layoutGroup === "radial") return "curve-line"
+return "tree-line"
 ```
-function getEdgeType(layoutType){
 
-  switch(layoutType){
+### 3. Freeform의 본질을 해치지 않는다
+Freeform의 자유는 “노드 위치”에 있고,  
+관계선까지 완전 자유 직선으로 가는 것이 필수는 아니다.
 
+### 4. straight-line은 옵션으로 남길 수 있다
+향후 고급 설정에서 아래처럼 override를 둘 수 있다.
+
+- Default
+- Curve
+- Tree
+- Straight
+
+하지만 기본 정책은 tree-line이 더 안정적이다.
+
+---
+
+## 7.4 왜 Kanban도 tree-line인가
+
+Kanban은 컬럼 중심 구조이기 때문에 선 사용 자체를 최소화할 수는 있다.  
+그러나 데이터 모델은 여전히 parent-child를 유지하고, 특정 상황에서는 선이 필요하다.
+
+예:
+
+- column ↔ card 관계 시각화
+- outline/tree 전환 시 관계 유지
+- export HTML/Markdown에서 계층 일관성 유지
+- AI 자동 생성 후 Kanban 변환 시 구조 보존
+
+따라서 Kanban도 기본 Edge 스타일은 tree-line으로 정의한다.
+
+단, 렌더링 단계에서 Kanban 화면에서는 edge를 축약/약화/비표시 처리할 수는 있다.  
+즉:
+
+```text
+정책상 Edge = tree-line
+UI 표시 여부 = Kanban Renderer 옵션
+```
+
+이렇게 이해하는 것이 정확하다.
+
+---
+
+# 8. Edge 타입 정의
+
+## 8.1 기본 Edge 타입
+
+```ts
+export type EdgeType =
+  | "curve-line"
+  | "tree-line"
+```
+
+---
+
+## 8.2 향후 확장 가능 타입
+
+향후 고급 옵션 또는 특수 모드 확장 시 아래를 추가할 수 있다.
+
+```ts
+export type ExtendedEdgeType =
+  | "curve-line"
+  | "tree-line"
+  | "straight-line"
+  | "orthogonal-line"
+  | "timeline-line"
+```
+
+하지만 v1 기준 기본 정책은 2종만 공식 지원한다.
+
+---
+
+# 9. Layout → Edge 자동 매핑 규칙
+
+## 9.1 기본 함수 예시
+
+```ts
+function resolveEdgeType(layoutType: string): EdgeType {
+  switch (layoutType) {
     case "Radial-Bidirectional":
     case "Radial-Right":
     case "Radial-Left":
-      return "curve"
-
-    case "Freeform":
-      return "straight"
+      return "curve-line"
 
     default:
-      return "tree"
+      return "tree-line"
   }
-
 }
 ```
 
-* * *
+---
 
-4️⃣ 각 Edge 타입의 실제 모양
-====================
+## 9.2 layoutGroup 기준 매핑 예시
 
-1️⃣ curve-line (방사형)
---------------------
+실무 구현에서는 layoutType을 직접 switch하는 것보다  
+내부적으로 group/direction/variant로 나누는 것이 더 좋다.
 
-방사형 마인드맵
+```ts
+type LayoutGroup =
+  | "radial"
+  | "tree"
+  | "hierarchy"
+  | "process"
+  | "freeform"
+  | "kanban"
 
-```
-      node
-       )
-      )
-root )
-      )
-       )
-      node
-```
-
-SVG
-
-```
-Cubic Bezier Curve
+function resolveEdgeTypeByGroup(group: LayoutGroup): EdgeType {
+  return group === "radial" ? "curve-line" : "tree-line"
+}
 ```
 
-예
+---
 
+## 9.3 override 고려 예시
+
+향후 사용자가 edge를 강제 선택할 수 있도록 하려면 다음 구조를 둘 수 있다.
+
+```ts
+type EdgeOverride = "default" | "curve-line" | "tree-line" | "straight-line"
+
+function resolveEffectiveEdgeType(
+  layoutType: string,
+  override: EdgeOverride
+): string {
+  if (override !== "default") return override
+  return resolveEdgeType(layoutType)
+}
 ```
+
+---
+
+# 10. 각 Edge 타입의 실제 형태
+
+## 10.1 curve-line
+
+### 적용 대상
+- Radial-Bidirectional
+- Radial-Right
+- Radial-Left
+
+### 의도
+- 마인드맵다운 자연스러운 흐름
+- 중앙 주제에서 가지가 퍼지는 느낌 강화
+
+### SVG 예시
+```text
 M x1 y1
 C cx1 cy1, cx2 cy2, x2 y2
 ```
 
-특징
+### 특징
+- 곡선이 부드럽다
+- 전통적 마인드맵 UX와 유사
+- root 중심 구조에 자연스럽다
 
-*   자연스러운 곡선
-*   방사형에 적합
-*   mymind / xmind 스타일
+### 적합한 사례
+- 아이디어 발산
+- 브레인스토밍
+- 중심 주제 기반 정리
 
-* * *
+---
 
-2️⃣ tree-line (트리형)
--------------------
+## 10.2 tree-line
 
-트리 / 계층 / 프로세스
+### 적용 대상
+- Tree 계열 전체
+- Hierarchy 계열 전체
+- ProcessTree 계열 전체
+- Freeform
+- Kanban
 
-```
-parent
-   |
-   └── child
-```
+### 의도
+- 구조/흐름/계층 관계 명확화
+- 절차/조직/작업 분류에 적합
 
-또는
-
-```
-parent
-   |
-   ├─ child1
-   |
-   └─ child2
-```
-
-SVG
-
-```
-L (line)
-또는
-
-└ shape
-```
-
-예
-
-```
+### SVG 예시
+```text
 M x1 y1
 L x1 midY
 L x2 midY
 L x2 y2
 ```
 
-장점
+또는 수평/수직 방향에 따라 다음처럼 변형될 수 있다.
 
-*   구조가 명확
-*   조직도 / 프로세스에 좋음
-
-* * *
-
-3️⃣ straight-line (자유배치)
-------------------------
-
-```
-node ───── node
-```
-
-SVG
-
-```
+```text
 M x1 y1
+L midX y1
+L midX y2
 L x2 y2
 ```
 
-* * *
+### 특징
+- 부모-자식 관계가 명확하다
+- 트리형/조직도/프로세스형에 적합
+- 구현이 단순하고 안정적이다
 
-5️⃣ Edge Style 추가 옵션 (추천)
-=========================
+### 적합한 사례
+- 문서 구조
+- 프로젝트 업무 분해
+- 프로세스 단계
+- 보드형 카드 관계
 
-향후 사용자 설정을 위해 옵션을 남겨두는 것이 좋습니다.
+---
 
-```
-EdgeStyle {
+# 11. Edge Style 세부 옵션
 
+초기 MVP에서 필수는 아니지만, 구조상 아래 옵션을 고려해두는 것이 좋다.
+
+```ts
+type EdgeStyle = {
   width: number
   color: string
   dash?: boolean
   arrow?: boolean
   curvature?: number
-
+  opacity?: number
 }
 ```
 
-예
+예:
 
-```
-width : 2px
-color : #666
-curvature : 0.4
-```
-
-* * *
-
-6️⃣ Layout Engine 구조에 반영
-========================
-
-Edge 계산 순서
-
-```
-layout engine
-     │
-     │ node 위치 계산
-     ▼
-edge style 결정
-     │
-     │ layoutType
-     ▼
-edge path 생성
-     │
-     ▼
-SVG 렌더링
-```
-
-구조
-
-```
-LayoutEngine
- ├─ NodeLayout
- ├─ EdgeRouter
- ├─ EdgeStyleResolver
- └─ SvgRenderer
-```
-
-* * *
-
-7️⃣ 실제 코드 구조 예시
-===============
-
-```
-class EdgeRouter {
-
-  getPath(parent, child, layoutType){
-
-     const edgeType = getEdgeType(layoutType)
-
-     if(edgeType === "curve")
-        return curvePath(parent, child)
-
-     if(edgeType === "tree")
-        return treePath(parent, child)
-
-     if(edgeType === "straight")
-        return straightPath(parent, child)
-
-  }
-
+```ts
+const defaultEdgeStyle: EdgeStyle = {
+  width: 2,
+  color: "#666666",
+  dash: false,
+  arrow: false,
+  curvature: 0.4,
+  opacity: 1
 }
 ```
 
-* * *
+---
 
-8️⃣ 왜 이 정책이 좋은가 (중요)
-====================
+## 11.1 width
+- 선 두께
+- 기본 2px 권장
 
-이 구조의 장점
+## 11.2 color
+- 기본 선 색상
+- theme와 연동 가능
 
-### 1️⃣ UX가 자연스럽다
+## 11.3 dash
+- 점선/파선 여부
+- 특수 관계선 확장 시 유용
 
-방사형 → 곡선  
-트리형 → 꺾임
+## 11.4 arrow
+- 화살표 여부
+- ProcessTree/Timeline/Dependency line 확장 시 유용
 
-마인드맵 사용자들이 익숙한 스타일입니다.
+## 11.5 curvature
+- curve-line의 굽힘 정도
+- Radial의 느낌 조정에 유용
 
-* * *
+## 11.6 opacity
+- Kanban/Freeform에서 edge를 약하게 표현할 때 유용
 
-### 2️⃣ 렌더링 성능이 좋다
+---
 
-edge 계산이 단순합니다.
+# 12. Edge 정책이 좋은 이유
 
-```
-curve
-tree
-straight
-```
+## 12.1 UX가 자연스럽다
 
-3개만 계산
+- 방사형 = 곡선
+- 구조형 = 직각 꺾임
 
-* * *
+이 규칙은 사용자가 쉽게 이해한다.
 
-### 3️⃣ 코드가 매우 단순해진다
+---
 
-Edge router 단순화
+## 12.2 코드가 단순해진다
 
-* * *
+기본 resolver가 매우 단순하다.
 
-### 4️⃣ Layout별 UI 일관성
-
-방사형은 항상 곡선  
-트리는 항상 꺾임
-
-사용자가 헷갈리지 않습니다.
-
-* * *
-
-9️⃣ 제가 하나만 추가 제안
-================
-
-지금 구조에서 **추가 옵션 하나만 넣으면 좋습니다.**
-
-사용자 설정
-
-```
-Edge Style Override
+```text
+radial → curve
+others → tree
 ```
 
-예
+---
 
-```
-Default
-Curve
-Tree
-Straight
-```
+## 12.3 렌더링이 안정적이다
 
-즉
+Edge path 생성이 예측 가능해진다.
 
-```
-기본 : layout 기반
-사용자 : 강제 override 가능
-```
+- CurveRouter
+- TreeRouter
 
-이 기능은 나중에 매우 유용합니다.
+2종만 관리하면 된다.
 
-* * *
+---
 
-🔟 지금 easymindmap 설계에서 이 결정은 매우 좋습니다
-====================================
+## 12.4 Layout별 시각 언어가 일관된다
 
-정리
+레이아웃이 바뀌면 선 스타일도 자연스럽게 따라간다.  
+사용자가 “왜 이 선이 이렇게 나왔지?”라고 혼란스러워할 가능성이 줄어든다.
 
-```
-방사형 → curve
-트리/계층/프로세스 → tree
-자유배치 → straight
-```
+---
 
-이건 **XMind / MindManager / MindMeister 스타일과 거의 동일한 UX**입니다.
+## 12.5 확장성이 좋다
 
-* * *
+나중에 다음 기능을 붙이기 쉽다.
 
-원하시면 다음으로 **easymindmap에서 가장 중요한 설계**인
+- Edge override
+- 관계선 추가
+- straight-line 옵션
+- timeline 전용 edge
+- dependency arrow
 
-👉 **Mindmap Layout Engine (좌표 계산 알고리즘)**  
-을 **실제 구현 가능한 수준으로 설계**해 드리겠습니다.
+---
 
-이 부분이 \*\*마인드맵 프로그램 난이도의 70%\*\*입니다.
+# 13. Node Layout 상속 규칙
 
-## Prompt:
-자유배치는 tree-line이 좋지 않을까?
+## 13.1 기본 규칙
 
-## Response:
-네, **자유배치도 tree-line이 더 좋을 가능성이 큽니다.**  
-오히려 easymindmap 방향에는 그쪽이 더 일관적입니다.
+Node는 기본적으로 부모의 Layout을 상속한다.
 
-처음엔 자유배치는 노드 위치가 완전히 임의라서 `straight-line`을 떠올리기 쉬운데, 실제 사용성으로 보면 **부모-자식 관계를 더 또렷하게 보여주는 건 tree-line**입니다.
-
-정리하면 이렇게 보는 게 좋습니다.
-
-추천 최종안
-------
-
-```
-방사형  → curve-line
-그 외 전부 → tree-line
+```text
+child.layoutType = parent.layoutType
 ```
 
 즉:
 
-*   방사형: curve-line
-*   트리형: tree-line
-*   계층형: tree-line
-*   진행트리: tree-line
-*   자유배치형: tree-line
+- 부모가 Radial이면 자식도 기본적으로 Radial
+- 부모가 Tree-Right면 자식도 Tree-Right
+- 부모가 Kanban이면 하위 노드도 Kanban 해석 규칙을 따른다
 
-* * *
+---
 
-왜 자유배치도 tree-line이 더 좋은가
-------------------------
+## 13.2 Layout 결정 우선순위
 
-### 1\. 관계가 더 잘 보임
+실제 계산 시 우선순위는 아래와 같다.
 
-자유배치는 노드 위치가 사용자의 드래그에 따라 달라지기 때문에,  
-직선(straight-line)으로 연결하면 선이 대각선으로 많이 생기고 꽤 산만해질 수 있습니다.
-
-반면 tree-line은
-
-*   어디가 부모인지
-*   어디가 자식인지
-*   연결 방향이 어떻게 흐르는지
-
-를 더 명확하게 보여줍니다.
-
-* * *
-
-### 2\. 전체 제품 정책이 단순해짐
-
-룰이 아주 깔끔해집니다.
-
-```
-if (layoutGroup === "radial") edgeType = "curve";
-else edgeType = "tree";
+```text
+1. node.layoutType 명시값
+2. parent.layoutType 상속값
+3. map.defaultLayout
 ```
 
-이렇게 되면 개발도 단순하고, 사용자도 예측하기 쉽습니다.
+즉:
 
-* * *
+```text
+node.layoutType 존재 → 사용
+없으면 parent.layoutType
+없으면 map.defaultLayout
+```
 
-### 3\. 자유배치여도 “관계형 마인드맵” 성격은 유지됨
+---
 
-easymindmap의 자유배치는 완전한 다이어그램 툴이 아니라  
-기본적으로 **mindmap/tree 구조를 가진 상태에서 위치만 자유로운 것**에 가깝습니다.
+## 13.3 Subtree Layout Override
 
-그렇다면 edge도 완전 자유선보다는  
-**관계가 드러나는 tree-line**이 더 잘 맞습니다.
-
-* * *
-
-### 4\. straight-line은 오히려 특수 옵션으로 두는 게 좋음
-
-직선 연결은 기본값보다는 나중에 옵션으로 두는 편이 낫습니다.
+Node는 특정 시점에서 subtree 전체의 Layout을 바꿀 수 있다.
 
 예:
 
-*   기본: tree-line
-*   옵션: straight-line 강제 변경
-
-이렇게 두면 일부 사용자가 “완전 다이어그램처럼” 쓰고 싶을 때만 쓰게 할 수 있습니다.
-
-* * *
-
-권장 정책 문구
---------
-
-문서에는 이렇게 적으면 됩니다.
-
-| Layout Group | Edge Style |
-| --- | --- |
-| 방사형 | curve-line |
-| 트리형 | tree-line |
-| 계층형 | tree-line |
-| 진행트리 | tree-line |
-| 자유배치형 | tree-line |
-
-* * *
-
-구현 규칙도 단순화 가능
--------------
-
-```
-function getEdgeType(layoutType: string): "curve" | "tree" {
-  switch (layoutType) {
-    case "Radial-Bidirectional":
-    case "Radial-Right":
-    case "Radial-Left":
-      return "curve";
-    default:
-      return "tree";
-  }
-}
+```text
+Root (Radial-Bidirectional)
+ ├ A (inherit → Radial)
+ ├ B (inherit → Radial)
+ └ C (Tree-Right 지정)
+     ├ C-1 (inherit → Tree-Right)
+     └ C-2 (inherit → Tree-Right)
 ```
 
-* * *
+이 방식은 easymindmap의 핵심 차별점 중 하나이다.
 
-제 의견
-----
+---
 
-저도 지금 말씀하신 쪽으로 수정하는 게 맞다고 봅니다.
+## 13.4 Override 시 동작
 
-**최종 권장안:**
+특정 node의 layoutType이 변경되면 다음이 수행되어야 한다.
 
-*   **방사형만 curve-line**
-*   **나머지는 모두 tree-line**
+1. 해당 node를 root로 하는 subtree 범위 식별
+2. subtree 내부의 effective layout 재해석
+3. 좌표 재계산
+4. edge 경로 재계산
+5. 화면 재렌더링
+6. autosave patch 생성
 
-이게 UX, 가독성, 구현 단순성 셋 다 가장 좋습니다.
+---
 
-원하시면 제가 바로 이어서 **Layout/Edge 정책표를 최종 확정본 형태로 다시 깔끔하게 정리**해드릴게요.
+# 14. Node Style 상속 규칙
 
-## Prompt:
-Layout/Edge 정책표를 최종 확정본 형태로 다시 깔끔하게 정리해줘
-
-## Response:
-좋습니다.  
-아래처럼 **easymindmap Layout / Edge 정책표 최종 확정본**으로 정리하면 됩니다.  
-레이아웃 그룹과 세부 타입은 기존 정의를 기준으로 반영했습니다.
-
-기능정의테이블
-
-* * *
-
-easymindmap Layout / Edge 정책표
-=============================
-
-**Document Version:** v1.0  
-**Status:** Final  
-**Project:** easymindmap
-
-1\. 정책 요약
----------
-
-### 최종 원칙
-
-*   **방사형 계열 Layout** → **curve-line**
-*   **그 외 모든 Layout** → **tree-line**
-
-즉, easymindmap의 부모-자식 연결선은 다음 원칙으로 통일합니다.
-
-```
-방사형만 curve-line
-나머지는 모두 tree-line
-```
-
-* * *
-
-2\. Layout Group별 Edge 정책표
---------------------------
-
-| 그룹 | Layout 명칭(한글) | Layout 명칭(영문) | Edge Style | 비고 |
-| --- | --- | --- | --- | --- |
-| 방사형 | 방사형-양쪽 | Radial-Bidirectional | curve-line | 전통적 마인드맵 기본형 |
-| 방사형 | 방사형-오른쪽 | Radial-Right | curve-line | 우측 확장형 |
-| 방사형 | 방사형-왼쪽 | Radial-Left | curve-line | 좌측 확장형 |
-| 트리형 | 트리형-위쪽 | Tree-Up | tree-line | 상향 트리 |
-| 트리형 | 트리형-아래쪽 | Tree-Down | tree-line | 기본 수직 트리 |
-| 트리형 | 트리형-오른쪽 | Tree-Right | tree-line | 일반 수평 트리 |
-| 트리형 | 트리형-왼쪽 | Tree-Left | tree-line | 역방향 수평 트리 |
-| 계층형 | 계층형-오른쪽 | Hierarchy-Right | tree-line | 조직도/단계형 |
-| 계층형 | 계층형-왼쪽 | Hierarchy-Left | tree-line | 역방향 계층형 |
-| 진행트리 | 진행트리-오른쪽 | ProcessTree-Right | tree-line | 좌→우 절차형 |
-| 진행트리 | 진행트리-왼쪽 | ProcessTree-Left | tree-line | 우→좌 절차형 |
-| 진행트리 | 진행트리-오른쪽A | ProcessTree-Right-A | tree-line | 메인라인 기반 분기형 |
-| 진행트리 | 진행트리-오른쪽B | ProcessTree-Right-B | tree-line | 타임라인/로드맵형 |
-| 자유배치형 | 자유배치형 | Freeform | tree-line | 자유 위치 배치, 관계선은 tree-line 유지 |
-
-* * *
-
-3\. Edge Style 정의
------------------
-
-| Edge Style | 설명 | 적용 대상 |
-| --- | --- | --- |
-| curve-line | 부모와 자식을 곡선으로 연결하는 방식 | 방사형 |
-| tree-line | 부모-자식 관계를 직선 + 꺾임 구조로 연결하는 방식 | 트리형, 계층형, 진행트리, 자유배치형 |
-
-* * *
-
-4\. 정책 적용 규칙
-------------
-
-### 4.1 기본 규칙
-
-1.  각 노드는 자신의 `layoutType` 또는 상속된 레이아웃 정책에 따라 Edge Style이 결정된다.
-2.  방사형 계열은 항상 `curve-line`을 사용한다.
-3.  방사형 이외의 모든 계열은 항상 `tree-line`을 사용한다.
-4.  자유배치형은 노드 위치는 자유롭게 이동 가능하지만, 부모-자식 관계선은 `tree-line`으로 유지한다.
-
-### 4.2 설계 의도
-
-*   방사형은 곡선이 시각적으로 자연스럽고 마인드맵다운 느낌이 강함
-*   트리형/계층형/진행트리는 구조와 흐름을 명확히 보여주는 것이 중요함
-*   자유배치형도 위치는 자유롭지만 데이터 구조는 부모-자식 관계를 유지하므로 `tree-line`이 더 적합함
-*   전체 정책을 단순화하여 사용성과 개발 일관성을 높임
-
-* * *
-
-5\. 구현 기준
----------
-
-### 5.1 내부 enum 예시
-
-```
-export type EdgeType = "curve-line" | "tree-line";
-```
-
-### 5.2 Layout → Edge 매핑 규칙
-
-```
-function resolveEdgeType(layoutType: string): EdgeType {
-  switch (layoutType) {
-    case "Radial-Bidirectional":
-    case "Radial-Right":
-    case "Radial-Left":
-      return "curve-line";
-
-    default:
-      return "tree-line";
-  }
-}
-```
-
-* * *
-
-6\. 최종 정책 문구
-------------
-
-아래 문구를 기능명세/아키텍처 설계서에 공통으로 넣으면 됩니다.
-
-> easymindmap의 부모-자식 연결선(Edge)은 레이아웃 유형에 따라 자동 결정한다.  
-> 방사형 계열 Layout은 `curve-line`을 사용하며,  
-> 트리형 / 계층형 / 진행트리 / 자유배치형 Layout은 모두 `tree-line`을 사용한다.
-
-* * *
-
-7\. 한 줄 최종 결론
--------------
-
-```
-방사형 = curve-line
-그 외 전부 = tree-line
-```
-
-원하시면 다음 단계로 이어서 **Layout/Edge/Node 상속 규칙까지 포함한 “레이아웃 엔진 정책서”** 형태로 확장해서 정리해드리겠습니다.
-
-## Prompt:
-Layout/Edge/Node 상속 규칙까지 포함한 “레이아웃 엔진 정책서” 형태로 확장해서 정리해줘
-
-## Response:
-좋습니다.  
-지금까지 정리된 내용(레이아웃 종류, Edge 정책, Node 상속 규칙)을 모두 포함해서 **easymindmap Layout Engine 정책서 (Layout / Edge / Node Inheritance)** 형태로 정리해 드리겠습니다.  
-이 문서는 **개발 기준 문서 + AI 코드 생성 기준 문서**로 바로 사용할 수 있는 수준으로 작성합니다.
-
-* * *
-
-easymindmap Layout Engine 정책서
-=============================
-
-**Document Version:** v1.0  
-**Project:** easymindmap  
-**Scope:** Mindmap Layout / Edge Routing / Node Inheritance  
-**Status:** Final Design
-
-* * *
-
-1\. Layout Engine 목적
-====================
-
-Layout Engine은 다음을 담당한다.
-
-1.  Node의 **좌표 계산**
-2.  부모-자식 **Edge 연결선 생성**
-3.  Node의 **Layout 상속 규칙 관리**
-4.  Node 이동 시 **자동 재배치**
-5.  Subtree 단위 **Layout 변경 지원**
-
-즉,
-
-```
-Mindmap Data
-      ↓
-Layout Engine
-      ↓
-Node Position + Edge Path
-      ↓
-SVG Renderer
-```
-
-* * *
-
-2\. Layout 그룹 정의
-================
-
-easymindmap은 다음 **5개 Layout 그룹**을 사용한다.
-
-| Layout Group | 설명 |
-| --- | --- |
-| 방사형 | 중심에서 퍼지는 마인드맵 |
-| 트리형 | 일반적인 Tree 구조 |
-| 계층형 | 레벨 정렬 강조 |
-| 진행트리 | 절차 / 프로세스 흐름 |
-| 자유배치형 | 사용자가 위치 결정 |
-
-레이아웃 종류는 아래와 같다.
-
-기능정의테이블
-
-| Layout Group | Layout Type |
-| --- | --- |
-| 방사형 | Radial-Bidirectional |
-| 방사형 | Radial-Right |
-| 방사형 | Radial-Left |
-| 트리형 | Tree-Up |
-| 트리형 | Tree-Down |
-| 트리형 | Tree-Right |
-| 트리형 | Tree-Left |
-| 계층형 | Hierarchy-Right |
-| 계층형 | Hierarchy-Left |
-| 진행트리 | ProcessTree-Right |
-| 진행트리 | ProcessTree-Left |
-| 진행트리 | ProcessTree-Right-A |
-| 진행트리 | ProcessTree-Right-B |
-| 자유배치형 | Freeform |
-
-* * *
-
-3\. Edge 정책
-===========
-
-Edge는 **2가지 타입만 사용한다.**
-
-| Edge Type | 설명 |
-| --- | --- |
-| curve-line | 곡선 연결 |
-| tree-line | 직선 + 꺾임 연결 |
-
-* * *
-
-Edge 정책 규칙
-----------
-
-| Layout Group | Edge Style |
-| --- | --- |
-| 방사형 | curve-line |
-| 트리형 | tree-line |
-| 계층형 | tree-line |
-| 진행트리 | tree-line |
-| 자유배치형 | tree-line |
-
-즉
-
-```
-방사형 → curve
-나머지 → tree
-```
-
-* * *
-
-4\. Node Layout 상속 규칙
-=====================
-
-Node는 기본적으로 **부모 Layout을 상속한다.**
-
-기본 규칙
------
-
-```
-child.layoutType = parent.layoutType
-```
-
-예
-
-```
-Root (Radial)
- ├ Node A
- └ Node B
-```
-
-Node A / B는 모두 Radial Layout
-
-* * *
-
-Subtree Layout Override
------------------------
-
-Node는 자신의 Layout을 변경할 수 있다.
-
-예
-
-```
-Root (Radial)
-
- ├ Node A (Radial)
- │   ├ A1
- │   └ A2
-
- └ Node B (Tree)
-     ├ B1
-     └ B2
-```
-
-Node B subtree만 Tree Layout
-
-* * *
-
-Layout 결정 순서
-------------
-
-Layout 계산 순서
-
-```
-node.layoutType 존재
-      ↓
-사용
-      ↓
-없으면
-      ↓
-parent.layoutType 상속
-      ↓
-없으면
-      ↓
-map.defaultLayout 사용
-```
-
-* * *
-
-5\. Node Style 상속 규칙
-====================
-
-Node 생성 시 다음 속성을 **부모에서 상속**한다.
+Node 생성 시 아래 속성을 부모 기준으로 상속한다.
 
 | 속성 | 상속 여부 |
-| --- | --- |
-| Layout | O |
-| Shape | O |
-| Node 색상 | O |
-| Border 스타일 | O |
-| Font Family | O |
-| Font Size | Level 기준 |
-| Edge Style | Layout 기반 |
+|---|---|
+| layoutType | O |
+| shapeType | O |
+| fillColor | O |
+| borderColor | O |
+| borderStyle | O |
+| borderWidth | O |
+| textColor | O |
+| fontFamily | O |
+| fontWeight | O |
+| fontSize | Level Rule 우선, 필요 시 부모 반영 |
+| backgroundImage 정책 | 옵션 |
+| edgeStyle | layout 기반 자동 |
 
-* * *
+---
 
-Node Style 상속 구조
-----------------
+## 14.1 핵심 규칙
 
+생성 시 기본값:
+
+```ts
+newNode.layoutType = parent.layoutType
+newNode.shapeType = parent.shapeType
+newNode.style.fillColor = parent.style.fillColor
+newNode.style.borderColor = parent.style.borderColor
+newNode.style.textColor = parent.style.textColor
 ```
-Map Default Style
-      ↓
-Root Node
-      ↓
-Parent Node
-      ↓
-Child Node
+
+---
+
+## 14.2 왜 상속이 중요한가
+
+형제/자식 노드를 연속 생성할 때 사용자가 기대하는 UX는 “같은 계열 노드가 자연스럽게 이어지는 것”이다.
+
+예:
+
+- 둥근 사각형 노드 아래에 자식 추가
+- 같은 색 계열 유지
+- 같은 layout 흐름 유지
+
+이 규칙이 없으면 노드 생성 후 매번 스타일을 다시 맞춰야 한다.
+
+---
+
+## 14.3 적용 대상 기능
+
+아래 기능에서 동일하게 적용한다.
+
+- 형제 노드 생성 (앞/뒤)
+- 자식 노드 생성
+- 다중 자식 노드 생성
+- 다중 가지 추가
+- AI 자동 확장 결과 삽입
+- 붙여넣기/복제 시 기본 style 유지
+
+---
+
+## 14.4 다중 가지 추가와의 관계
+
+다중 가지 추가 시 생성되는 subtree 전체도 기본적으로 기준 노드의 shape/style/layout을 상속한다.
+
+예:
+
+```text
+기준 노드 = 노란색 rounded rectangle + Tree-Right
+Ctrl + Space 입력으로 8개 노드 생성
+→ 생성된 8개 노드도 기본적으로 같은 계열로 생성
 ```
 
-* * *
+---
 
-6\. Font Size 규칙
-================
+# 15. Font Size 정책
 
-폰트는 **Level 기반 자동 설정**
+폰트는 단순 부모 상속만으로 가기보다,  
+Level 기반 기본 규칙을 두는 것이 더 안정적이다.
 
 | Level | Font Size |
-| --- | --- |
+|---|---|
 | Root | 18pt |
 | Level 1 | 16pt |
 | Level 2 | 15pt |
@@ -884,498 +742,596 @@ Child Node
 | Level 4 | 13pt |
 | Level 5+ | 12pt |
 
-사용자는 Map 설정에서 변경 가능
+즉:
 
-* * *
+- 색상/shape는 부모 상속
+- font size는 기본적으로 level rule 적용
+- 사용자가 custom 지정하면 override
 
-7\. Node 좌표 계산 정책
-=================
+---
 
-Layout Engine은 다음 순서로 좌표를 계산한다.
+## 15.1 실제 우선순위 예시
 
-```
-Root Node 위치 계산
-      ↓
-Level 계산
-      ↓
-Sibling 정렬
-      ↓
-Subtree 폭 계산
-      ↓
-Node Position 확정
+```text
+Node custom fontSize
+→ Level Rule
+→ Theme default
 ```
 
-* * *
+---
 
-기본 Node 좌표 데이터
---------------
+# 16. Layout Engine 구조와의 연결
 
-```
-node.x
-node.y
-node.width
-node.height
-```
+Edge 정책은 Layout Engine 내부에서 아래 구조와 연결된다.
 
-* * *
-
-8\. Layout별 Node 배치 정책
-======================
-
-8.1 Radial Layout
------------------
-
-```
-        Node
-      /     \
-   Node     Node
+```text
+LayoutEngine
+ ├ LayoutResolver
+ ├ NodeLayout
+ ├ EdgeRouter
+ ├ EdgeStyleResolver
+ ├ SubtreeCalculator
+ └ CollisionResolver
 ```
 
-특징
+---
 
-*   Root 중심
-*   angle 기반 배치
-*   subtree 각도 분배
+## 16.1 LayoutResolver
 
-좌표 계산
+역할:
+- node의 effective layout 계산
+- parent 상속 반영
+- subtree override 반영
+- map default fallback 처리
 
+---
+
+## 16.2 NodeLayout
+
+역할:
+- subtree 크기 계산
+- node position 계산
+- layout group별 strategy 선택
+
+---
+
+## 16.3 EdgeRouter
+
+역할:
+- curve-line / tree-line path 계산
+- parent-child anchor 계산
+- 방향별 routing 처리
+
+---
+
+## 16.4 EdgeStyleResolver
+
+역할:
+- layoutType → edgeType 결정
+- override 적용
+- theme/style 매핑
+
+---
+
+## 16.5 CollisionResolver
+
+역할:
+- subtree 간 겹침 보정
+- 간격 유지
+- Freeform/Kanban 특수 배치 조정
+
+---
+
+# 17. Layout 계산 흐름
+
+전체 계산 흐름은 아래와 같다.
+
+```text
+Map Load
+   ↓
+Node Tree Build
+   ↓
+Effective Layout Resolve
+   ↓
+Subtree Measure
+   ↓
+Node Position Compute
+   ↓
+Edge Type Resolve
+   ↓
+Edge Path Compute
+   ↓
+Collision Resolve
+   ↓
+SVG Render
 ```
+
+---
+
+# 18. Layout별 배치 정책 요약
+
+## 18.1 Radial
+
+특징:
+- 중심 노드 기반
+- angle, radius 계산
+- 양쪽/오른쪽/왼쪽 변형 지원
+
+좌표 예시:
+
+```text
 x = centerX + radius * cos(angle)
 y = centerY + radius * sin(angle)
 ```
 
-* * *
+Edge:
+- curve-line
 
-8.2 Tree Layout
----------------
+---
 
+## 18.2 Tree
+
+특징:
+- level 기반
+- 부모 기준 자식 정렬
+- 위/아래/좌/우 변형 지원
+
+Edge:
+- tree-line
+
+---
+
+## 18.3 Hierarchy
+
+특징:
+- 레벨 중심 정렬
+- 조직도 느낌
+- 같은 레벨 노드 정렬 강조
+
+Edge:
+- tree-line
+
+---
+
+## 18.4 ProcessTree
+
+특징:
+- 흐름/단계/절차 강조
+- Right / Left / A / B 변형
+- line과 step 느낌 강화
+
+Edge:
+- tree-line
+
+---
+
+## 18.5 Freeform
+
+특징:
+- node 위치는 manualPosition 우선
+- layout engine은 관계 유지 + 충돌 보조
+- 수동 이동이 주요 인터랙션
+
+Edge:
+- tree-line
+
+---
+
+## 18.6 Kanban
+
+특징:
+- 컬럼과 카드 중심 구조
+- parent-child를 column/card 관계로 해석 가능
+- 카드 reorder와 column 이동 지원
+
+Edge:
+- 기본 정책상 tree-line
+- 실제 화면에서는 약화/비표시 가능
+
+---
+
+# 19. Kanban 정책 상세
+
+Kanban은 기존 edge-policy 원본에는 직접 포함되지 않았지만,  
+현재 easymindmap 설계에서는 반드시 포함해야 하는 확장 Layout이다.
+
+## 19.1 Kanban의 목적
+
+Kanban Layout은 전통적 마인드맵 구조와 달리  
+“컬럼 + 카드” 흐름을 강조하는 보드형 구조이다.
+
+예:
+
+```text
+[TODO]   [DOING]   [DONE]
+
+ Task1     Task3     Task5
+ Task2     Task4
 ```
-Root
-  |
-  ├ Node
-  |
-  └ Node
+
+---
+
+## 19.2 Kanban Node 역할
+
+권장 역할 구분:
+
+```ts
+type KanbanNodeRole =
+  | "board"
+  | "column"
+  | "card"
 ```
 
-특징
+---
 
-*   Level 기반
-*   subtree width 계산
+## 19.3 Kanban depth 규칙
 
-좌표
+권장 규칙:
 
-```
-x = level * levelSpacing
-y = subtreeCenter
-```
+- depth 0 = board
+- depth 1 = column
+- depth 2 = card
+- depth 3 이상 = 금지 또는 별도 확장 모드
 
-* * *
+즉 Kanban은 일반 트리보다 더 제한된 계층 구조를 가진다.
 
-8.3 Hierarchy Layout
---------------------
+---
 
-```
-CEO
- |
- ├ Manager
- |   └ Staff
- |
- └ Manager
-```
+## 19.4 Kanban 배치 규칙
 
-특징
+### 컬럼
+- 가로 배치
+- 동일 폭 또는 최소 폭 보장
+- column orderIndex 기준 좌→우 정렬
 
-*   레벨 정렬 강조
-*   조직도 스타일
+### 카드
+- 컬럼 내부 세로 정렬
+- card orderIndex 기준 상→하 정렬
 
-* * *
+---
 
-8.4 Process Tree
-----------------
+## 19.5 Kanban 좌표 예시
 
-```
-Step1 → Step2 → Step3
+컬럼:
+
+```text
+x = boardLeft + columnIndex * (columnWidth + columnGap)
+y = fixedTop
 ```
 
-특징
+카드:
 
-*   흐름 강조
-*   일정 간격 유지
-
-* * *
-
-8.5 Freeform
-------------
-
-특징
-
-*   Node 위치는 사용자 Drag 우선
-*   Layout Engine은 충돌 방지만 수행
-
-* * *
-
-9\. Edge Routing 정책
-===================
-
-Edge는 **EdgeRouter**가 계산한다.
-
-구조
-
+```text
+x = columnX
+y = columnTop + orderIndex * (cardHeight + cardGap)
 ```
+
+---
+
+## 19.6 Kanban Edge 정책
+
+Kanban도 데이터 구조상 parent-child 관계를 유지하므로 기본 정책상 tree-line을 따른다.
+
+다만 UI 렌더링에서는 다음 중 하나를 선택할 수 있다.
+
+1. edge 표시
+2. edge 약하게 표시
+3. edge 완전 숨김
+
+즉:
+
+```text
+정책 = tree-line
+표시 = renderer 옵션
+```
+
+---
+
+## 19.7 Kanban Interaction 특징
+
+- 카드 드래그로 같은 컬럼 내 reorder
+- 카드 드래그로 다른 컬럼 이동
+- 이동 시 parentId 변경 + orderIndex 재계산
+- autosave patch 발생
+- undo/redo 한 번의 transaction으로 처리
+
+---
+
+## 19.8 Kanban과 기존 Layout 관계
+
+| 항목 | 일반 Layout | Kanban |
+|---|---|---|
+| 중심 구조 | 트리/방사형 | 컬럼+카드 |
+| 배치 방식 | subtree 계산 | 컬럼 기준 |
+| edge | curve/tree | 기본 tree |
+| 이동 | subtree 이동 | card/column 이동 |
+| 계층 제한 | 일반적으로 자유 | depth 제한 있음 |
+
+---
+
+# 20. Edge Routing 정책
+
+## 20.1 EdgeRouter 구조
+
+```text
 EdgeRouter
  ├ CurveEdgeRouter
  └ TreeEdgeRouter
 ```
 
-* * *
+---
 
-Curve Edge
-----------
+## 20.2 Curve Router
 
-방사형
+적용:
+- Radial
 
-```
-M x1 y1
-C cx1 cy1 cx2 cy2 x2 y2
-```
+입력:
+- parent anchor
+- child anchor
+- curvature
 
-* * *
+출력:
+- bezier path string
 
-Tree Edge
----------
+예:
 
-```
-parent
-   |
-   └── child
-```
-
-SVG
-
-```
-M x1 y1
-L x1 midY
-L x2 midY
-L x2 y2
+```ts
+function curvePath(x1, y1, x2, y2, c1x, c1y, c2x, c2y) {
+  return `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`
+}
 ```
 
-* * *
+---
 
-10\. Layout Engine 구조
-=====================
+## 20.3 Tree Router
 
-```
-LayoutEngine
- ├ LayoutResolver
- ├ NodeLayout
- ├ EdgeRouter
- ├ SubtreeCalculator
- └ CollisionResolver
-```
+적용:
+- Tree
+- Hierarchy
+- ProcessTree
+- Freeform
+- Kanban
 
-* * *
+출력 예시:
 
-11\. Layout 계산 흐름
-=================
-
-```
-Map Load
-   ↓
-Node Tree Build
-   ↓
-Layout Resolve
-   ↓
-Subtree Size Calculate
-   ↓
-Node Position Compute
-   ↓
-Edge Path Compute
-   ↓
-SVG Render
+```ts
+function treePath(x1, y1, x2, y2) {
+  const midX = (x1 + x2) / 2
+  return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`
+}
 ```
 
-* * *
+또는 수직 기반 라우팅일 경우:
 
-12\. Node 생성 시 동작
-=================
-
-Node 생성 시
-
-```
-1 Node 생성
-2 부모 Layout 상속
-3 부모 Style 상속
-4 Level 계산
-5 좌표 계산
-6 Edge 생성
+```ts
+function treePathVertical(x1, y1, x2, y2) {
+  const midY = (y1 + y2) / 2
+  return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`
+}
 ```
 
-* * *
+---
 
-13\. 다중 가지 생성 정책
-================
+## 20.4 Anchor 계산
 
-사용자는 한 번에 여러 Node 생성 가능
+Edge는 단순히 node center를 연결하는 것이 아니라  
+node box의 적절한 anchor point를 사용해야 한다.
 
-동작 방식은 아래와 같다.
+예:
 
-◆ ‘다중 가지’ 추가
+- Tree-Right → parent right edge, child left edge
+- Tree-Left → parent left edge, child right edge
+- Tree-Down → parent bottom edge, child top edge
+- Radial → angle 기준 tangent/normal anchor
 
-```
-Ctrl + Space
-```
+---
 
-입력 예
+# 21. Node 생성 시 동작 규칙
 
-```
-A
- B
- C
-  D
-```
+Node 생성 시 내부적으로 아래 순서를 따른다.
 
-결과
-
-```
-Parent
- └ A
-     ├ B
-     └ C
-         └ D
-```
-
-* * *
-
-14\. Layout 변경 정책
-=================
-
-사용자는 다음 두 가지 변경 가능
-
-### Map Layout 변경
-
-```
-Map 전체 Layout 변경
+```text
+1. 새 Node ID 생성
+2. parentId 결정
+3. orderIndex 결정
+4. layoutType 상속
+5. shapeType/style 상속
+6. depth 계산
+7. subtree / layout 재계산
+8. edge 생성
+9. autosave dirty
+10. history entry 기록
 ```
 
-### Subtree Layout 변경
+---
 
+## 21.1 형제 노드 생성
+
+기준 노드의 다음/이전 위치에 생성  
+기준 노드의 shape/style/layout을 기본 상속
+
+---
+
+## 21.2 자식 노드 생성
+
+부모가 되는 현재 선택 노드의 shape/style/layout을 기본 상속
+
+---
+
+## 21.3 다중 가지 생성
+
+기준 노드 아래 subtree 전체를 일괄 생성  
+생성된 subtree 전체는 기본적으로 기준 노드의 계열을 상속
+
+---
+
+# 22. Layout 변경 시 동작 규칙
+
+사용자는 아래 2가지 변경을 할 수 있다.
+
+## 22.1 Map 전체 Layout 변경
+- map.defaultLayout 변경
+- layoutType 미지정 subtree 전체에 영향
+- 전체 맵 relayout
+
+## 22.2 Subtree Layout 변경
+- 특정 node.layoutType 변경
+- 해당 subtree만 relayout
+- edge path 재생성
+
+---
+
+# 23. Layout Reset 정책
+
+Reset 수행 시:
+
+```text
+manualPosition 초기화
+layout override 재검토
+position 재계산
+edge 재생성
+collision 재보정
 ```
-특정 Node 이하 Layout 변경
-```
 
-* * *
+특히 Freeform/Kanban에서는 reset의 범위를 어떻게 잡을지 옵션화할 수 있다.
 
-15\. Layout Reset 정책
-====================
+예:
 
-Reset 수행 시
+- 전체 reset
+- subtree reset
+- manual offset만 reset
 
-```
-Node Position 초기화
-Layout 재계산
-Edge 재생성
-```
+---
 
-* * *
+# 24. 성능 기준
 
-16\. Layout Engine 성능 기준
-========================
+초기 목표 성능은 다음과 같다.
 
-목표 성능
-
-| Node 수 | 반응 속도 |
-| --- | --- |
+| Node 수 | 반응 속도 목표 |
+|---|---|
 | 100 | 즉시 |
-| 500 | < 50ms |
-| 1000 | < 100ms |
-| 3000 | < 300ms |
+| 500 | 50ms 이하 |
+| 1000 | 100ms 이하 |
+| 3000 | 300ms 이하 |
 
-* * *
+이 목표를 위해 다음 전략을 사용한다.
 
-17\. 미래 확장 고려
-=============
+- 2-pass layout
+- subtree partial relayout
+- viewport culling
+- derived path 계산 최적화
+- freeform/kanban 수동 영역 국소 업데이트
 
-향후 추가 가능
+---
 
-*   Fishbone Layout
-*   Timeline Layout
-*   OrgChart Layout
-*   Mindmap AI Auto Layout
+# 25. 향후 확장 고려
 
-* * *
+향후 아래 Layout 또는 Edge 정책이 추가될 수 있다.
 
-18\. 최종 정책 요약
-=============
+- Fishbone Layout
+- Timeline Layout
+- OrgChart Layout
+- Dependency Edge
+- Reference Edge
+- Edge arrow mode
+- Straight-line override
+- AI auto-layout recommendation
 
-### Layout 정책
+현재 문서는 이러한 확장을 막지 않도록 최소한의 공통 구조를 유지한다.
 
+---
+
+# 26. 구현 시 권장 TypeScript 구조
+
+```ts
+type LayoutGroup =
+  | "radial"
+  | "tree"
+  | "hierarchy"
+  | "process"
+  | "freeform"
+  | "kanban"
+
+type LayoutDirection =
+  | "left"
+  | "right"
+  | "up"
+  | "down"
+  | "bi"
+
+type LayoutVariant =
+  | "default"
+  | "a"
+  | "b"
+
+type EdgeType =
+  | "curve-line"
+  | "tree-line"
 ```
+
+예:
+
+```ts
+type ResolvedLayout = {
+  layoutType: string
+  group: LayoutGroup
+  direction: LayoutDirection
+  variant: LayoutVariant
+  edgeType: EdgeType
+}
+```
+
+---
+
+# 27. 최종 요약
+
+## 27.1 Layout 정책
+
+```text
 Radial
 Tree
 Hierarchy
-Process
+ProcessTree
 Freeform
+Kanban
 ```
 
-* * *
+---
 
-### Edge 정책
+## 27.2 Edge 정책
 
-```
-Radial → curve-line
-others → tree-line
-```
-
-* * *
-
-### Node 상속 정책
-
-```
-child inherits parent layout
-child inherits parent style
-font = level based
-```
-
-* * *
-
-⭐ 중요
-====
-
-이 문서는 **easymindmap에서 가장 중요한 설계 문서 중 하나입니다.**
-
-왜냐하면
-
-```
-Mindmap Editor 난이도 70% =
-Layout Engine
-```
-
-입니다.
-
-* * *
-
-원하시면 다음 단계로 **실제 개발에서 가장 중요한 설계**인
-
-👉 **Node 좌표 계산 알고리즘 (세계 수준 설계)**  
-👉 **Undo / Redo 구조 (Figma급 설계)**  
-👉 **Mindmap Editor 상태 아키텍처**
-
-를 이어서 정리해 드리겠습니다.
-
-## Prompt:
-#이제 이 대화는 여기서 종료하고 추가 대화는 새 대화에서 질문할께..
-#여때까지의 대화 내용을 프로젝트의 다른 질문및 대화에서 참조할수 있도록 기억하고 업데이트해줘
-
-## Response:
-저장된 메모리 업데이트됨
-
-알겠습니다 👍  
-지금까지의 **핵심 설계 내용은 프로젝트 메모리에 업데이트해 두었습니다.**
-
-특히 다음 내용이 **easymindmap 프로젝트 기준 설계로 저장되었습니다.**
-
-### 저장된 주요 내용
-
-1️⃣ **Layout / Edge 정책**
-
-*   **Radial (방사형)** → `curve-line`
-*   **Tree / Hierarchy / ProcessTree / Freeform** → `tree-line`
-
-즉
-
-```
+```text
 Radial → curve-line
 Others → tree-line
 ```
 
-* * *
+---
 
-2️⃣ **Node 상속 규칙**
+## 27.3 Node 상속 정책
 
-*   Node는 기본적으로 **부모 layout 상속**
-*   Node는 **부모 스타일 상속**
-*   **Subtree Layout override 가능**
-
+```text
+child inherits parent layout
+child inherits parent shape/style
+font size uses level rule by default
+subtree override allowed
 ```
-child.layoutType = parent.layoutType
-```
-
-* * *
-
-3️⃣ **Layout Engine 기본 정책**
-
-Layout Engine 역할
-
-```
-Node Tree
-   ↓
-Layout Resolve
-   ↓
-Node Position 계산
-   ↓
-Edge Path 생성
-   ↓
-Render
-```
-
-* * *
-
-4️⃣ **Font Level 정책**
-
-```
-Root        18pt
-Level1      16pt
-Level2      15pt
-Level3      14pt
-Level4      13pt
-Level5+     12pt
-```
-
-* * *
-
-5️⃣ **다중 가지 생성 규칙**
-
-```
-Ctrl + Space
-```
-
-입력 텍스트의 **space 들여쓰기 기반으로 계층 생성**  
-(이미지 문서 기준 설계)
-
-◆ ‘다중 가지’ 추가
-
-* * *
-
-앞으로 **새 대화에서 easymindmap 관련 질문을 하시면**
-
-제가 자동으로 다음을 **기존 합의 설계로 간주하고 이어서 답변합니다.**
-
-*   Layout Engine 정책
-*   Layout / Edge 정책
-*   Node 상속 규칙
-*   다중 가지 생성
-*   Tag 시스템
-*   Store 아키텍처
-*   2-pass Layout 알고리즘
-
-즉 **새 대화에서도 설계 문맥이 끊기지 않습니다.**
-
-* * *
-
-👍 다음 대화에서 이어서 추천드리는 주제 (중요도 순)
-
-1️⃣ **Node 좌표 계산 알고리즘 (실제 구현 수준)**  
-2️⃣ **Edge routing 알고리즘**  
-3️⃣ **Mindmap Editor 내부 아키텍처 (Figma급)**  
-4️⃣ **Undo / Redo History 구조**  
-5️⃣ **대형 Mindmap 성능 설계 (1000~10000 node)**
-
-* * *
-
-새 대화에서 \*\*“easymindmap 계속”\*\*이라고만 시작하셔도  
-지금까지 설계를 기준으로 이어서 진행하겠습니다.
-
-
 
 ---
-Powered by [ChatGPT Exporter](https://www.chatgptexporter.com)
+
+## 27.4 Kanban 정책
+
+```text
+Kanban = board/column/card 구조
+정책상 edge = tree-line
+표시는 renderer에서 조절 가능
+```
+
+---
+
+# 28. 한 줄 최종 결론
+
+> easymindmap의 부모-자식 연결선은  
+> **방사형 계열만 curve-line, 나머지 모든 Layout은 tree-line** 을 사용하며,  
+> Node는 기본적으로 부모의 Layout과 Style을 상속하고,  
+> 필요 시 subtree 단위로 Layout을 override 할 수 있다.

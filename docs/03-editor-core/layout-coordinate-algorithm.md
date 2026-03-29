@@ -370,6 +370,48 @@ Pass 2: Arrange Pass
 
 * * *
 
+## 6-1. Collision Detection & Resolution
+
+레이아웃 계산 후 노드 간 겹침을 방지하기 위해 다음 규칙을 적용한다.
+
+### 최소 간격 유지
+
+- sibling 간 최소 vertical gap 유지
+- subtree 간 최소 bounding box 간격 유지
+
+### Bounding Box 기반 충돌 검사
+
+각 subtree는 bounding box를 가진다:
+
+{
+  minX, minY, maxX, maxY
+}
+
+겹칠 경우:
+
+- 아래 subtree를 아래로 밀기
+- 또는 오른쪽 subtree를 옆으로 이동
+
+---
+
+## 6-2. Subtree Push Algorithm
+
+충돌 발생 시:
+
+1. 충돌 subtree 탐색
+2. 충돌 방향 계산
+3. 전체 subtree를 이동
+4. 재귀적으로 하위 subtree도 이동
+
+---
+
+## 6-3. Soft vs Hard Constraint
+
+- Soft: gap 유지
+- Hard: 겹침 금지
+
+MVP에서는 Hard Constraint만 적용
+
 7\. 트리형(Tree) 좌표 계산 알고리즘
 ========================
 

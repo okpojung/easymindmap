@@ -146,6 +146,12 @@ type NodeStyle = {
 가장 중요한 필드. **이 노드 이하 subtree 전체**의 전개 방식을 결정한다.
 - 루트 노드의 layoutType이 전체 기본 레이아웃을 결정
 - 하위 노드에서 다른 layoutType을 지정하면 그 subtree만 독립 전환
+- 단, `kanban`은 일반 subtree 확장형 레이아웃이 아니라 board 기반 레이아웃으로 해석한다.
+- `kanban` 사용 시 depth 의미는 다음과 같이 고정된다:
+  - depth 0 = board
+  - depth 1 = column
+  - depth 2 = card
+  - depth 3 이상 = 허용하지 않음
 
 ### manualPosition
 `freeform` layoutType일 때만 사용.

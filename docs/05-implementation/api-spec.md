@@ -241,6 +241,13 @@ PATCH /maps/{mapId}/document
   - 기타 style 기본값
 - 즉, 단순 CRUD 문서로는 위 Request가 최소 예시이고,
   실제 Command/Service 계층에서는 "기준 노드 스타일 상속" 로직이 추가된다.
+  - `layoutType = "kanban"` 인 맵에서는 노드 생성 시 depth 제한 규칙을 적용해야 한다.
+  - depth 0 = board
+  - depth 1 = column
+  - depth 2 = card
+  - depth 3 이상 생성 불가
+- 즉, kanban에서는 card 아래 자식 생성 요청을 서버에서 거부해야 한다.
+- 또한 board 아래에 card를 직접 생성하거나, column 아래에 column을 생성하는 요청도 검증 단계에서 차단해야 한다.
 
 ---
 

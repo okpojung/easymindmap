@@ -106,6 +106,14 @@ CREATE TABLE public.nodes (
     layout_type      VARCHAR(50) NOT NULL DEFAULT 'radial-bidirectional',
     collapsed        BOOLEAN NOT NULL DEFAULT FALSE,
 
+    -- layout_type은 radial/tree/hierarchy/process/freeform 외에
+    -- kanban도 허용될 수 있음.
+    -- kanban 사용 시 depth 규칙:
+    --   0 = board
+    --   1 = column
+    --   2 = card
+    --   3 이상 금지
+    
     -- 도형 & 스타일
     shape_type       VARCHAR(50) NOT NULL DEFAULT 'rounded-rectangle',
     style_json       JSONB NOT NULL DEFAULT '{}',

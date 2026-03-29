@@ -160,18 +160,23 @@ Authorization: Bearer {token}
 **Request Body**
 ```json
 {
-  "nodes": [ ...NodeObject[] ],
-  "snapshotAt": "2025-01-01T00:00:00Z"
+  "clientId": "cli_abc123",
+  "patchId": "p_1710598325_001",
+  "baseVersion": 128,
+  "timestamp": "2026-03-16T14:32:05.123Z",
+  "patches": [
+    { "op": "updateNodeText", "nodeId": "node_1", "text": "Updated Text" },
+    { "op": "moveNode", "nodeId": "node_2", "parentId": "node_root", "orderIndex": 3 }
+  ]
 }
 ```
 
 **Response** `200 OK`
 
 ### [변경 주석 - 매우 중요]
-- 위 `/snapshot` 설명은 초기 autosave 설계 단계의 흔적이다.
-- 최신 autosave-engine / backend-architecture / system-architecture 문맥 기준으로는
-  autosave API가 **snapshot 방식이 아니라 patch 방식**으로 변경되었다.
-- 따라서 실제 구현 기준의 최신 권장 엔드포인트는 아래와 같다.
+- autosave API는 초기 snapshot 설계에서 patch 기반 document 저장 방식으로 변경되었다.
+- 현재 구현 기준 엔드포인트는 `/maps/{mapId}/document` 이다.
+- version / patchId / clientId를 사용하여 충돌 처리와 멱등성을 보장한다.
 
 ```http
 PATCH /maps/{mapId}/document
@@ -303,6 +308,10 @@ PATCH /maps/{mapId}/document
 Markdown 파일 Export
 
 **Response** `200 OK`
+```json
+{
+  "newVersion": 129
+}
 ```
 Content-Type: text/markdown
 Content-Disposition: attachment; filename="map.md"

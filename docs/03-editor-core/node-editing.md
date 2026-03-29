@@ -170,8 +170,13 @@ Topic2
 
 * * *
 
-5\. 다중 자식 노드 생성 (Multi Child)
-=============================
+5\. 다중 자식 노드 생성 (Bulk Branch Insert)
+==========================================
+
+> **[통합 정책 2026-03-29]**  
+> 이 기능은 `docs/03-editor-core/bulk-branch-insert.md`의 설계와 완전히 통일된다.  
+> 내부 기능 키: `bulkInsertBranches`  
+> 입력 방식: **들여쓰기(공백 기반) 계층 표현 — 유일하게 지원되는 공식 방식**
 
 이 기능은 **easymindmap의 생산성을 높이는 핵심 기능**입니다.
 
@@ -181,9 +186,28 @@ Topic2
 Ctrl + Space
 ```
 
-실행 시 **Multi Input Popup**이 열린다.
+그 외 진입 방법:
+- 우클릭 메뉴 → `다중 가지 추가`
+- 툴바 → `Insert > Bulk Branch Insert`
 
-### 입력 예
+실행 시 **Bulk Branch Insert 패널(모달 또는 우측 패널)** 이 열린다.
+
+* * *
+
+5.1 입력 규칙 — 들여쓰기 계층 방식 (공식 유일 방식)
+----------------------------------------------
+
+> **통일 결정**: 쉼표/탭 구분자 방식은 사용하지 않는다.  
+> 한 줄 = 노드 1개, **줄 앞 공백(스페이스 2칸 = 1단계)** 으로 계층을 표현한다.
+
+```
+안내문:
+  한 줄에 한 가지가 생성됩니다.
+  줄 앞 공백으로 하위 가지를 표현합니다.
+  공백이 깊어질수록 더 하위 레벨로 생성됩니다.
+```
+
+#### 입력 예 — 동일 레벨 (형제 노드)
 
 ```
 API Server
@@ -195,53 +219,81 @@ etcd
 생성 결과
 
 ```
-Kubernetes
+Kubernetes (기준 노드)
    ├ API Server
    ├ Scheduler
    ├ Controller Manager
    └ etcd
 ```
 
+#### 입력 예 — 계층 구조 (들여쓰기)
+
+```
+Frontend
+  React
+  TypeScript
+Backend
+  NestJS
+  PostgreSQL
+```
+
+생성 결과
+
+```
+Architecture (기준 노드)
+   ├ Frontend
+   │   ├ React
+   │   └ TypeScript
+   └ Backend
+       ├ NestJS
+       └ PostgreSQL
+```
+
+#### 들여쓰기 규칙
+
+| 공백 수 | 상대 깊이 |
+|--------|---------|
+| 0      | 기준 노드의 직계 자식 (depth +1) |
+| 2      | depth +2 |
+| 4      | depth +3 |
+| (n×2)  | depth +(n+1) |
+
+- 공백은 **2칸 단위**를 기본으로 한다 (탭 1개 = 2칸으로 자동 변환).
+- 갑자기 깊이가 2단계 이상 올라가는 경우(de-indent)는 허용되며, 해당 상위 노드의 자식으로 배치된다.
+
 * * *
 
-5.1 Multi Child 입력 규칙
----------------------
+5.2 스타일 상속 규칙
+-----------------
 
-지원 입력 방식
+- 기준 노드(Ctrl+Space 선택 노드)의 **도형(shape)** 및 **배경색(fillColor)** 을 모든 생성 노드에 기본 상속
+- 생성 후 각 노드는 독립적으로 스타일 변경 가능 (상속은 **생성 시점에만** 적용)
 
-### 줄바꿈 입력
+* * *
 
-```
-node1
-node2
-node3
-```
-
-### 쉼표 입력
+5.3 생성 알고리즘
+--------------
 
 ```
-node1,node2,node3
-```
-
-### 탭 입력
-
-```
-node1	node2	node3
+parseIndentedLines(input)
+→ normalizeIndent(lines)  // 탭 → 스페이스 2칸 변환
+→ buildNodeDraftTree(parsedLines)
+→ validate (빈 줄 제거, 깊이 범위 확인)
+→ preview (UI 미리보기)
+→ [확인] bulkInsertBranches() 실행
+   → 트랜잭션: 모든 노드 생성 + path/depth/order_index 일괄 설정
+   → undoCommand 등록 (Undo 시 일괄 삭제)
+→ layout engine 재계산
 ```
 
 * * *
 
-5.2 Multi Child 생성 알고리즘
------------------------
+5.4 MVP vs 확장 기능
 
-```
-split input
-→ trim text
-→ remove empty
-→ create nodes
-→ append to parent
-→ update layout
-```
+| 구분 | 기능 |
+|------|------|
+| **MVP** | Ctrl+Space 진입, 들여쓰기 파싱, 미리보기, 일괄 생성, Undo |
+| **확장** | 번호 목록 자동 인식, 탭/공백 혼합 교정, AI 결과 자동 삽입 |
 
 * * *
 

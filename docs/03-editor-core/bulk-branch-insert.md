@@ -1,4 +1,16 @@
-# 다중 가지 추가 설계
+# 다중 가지 추가 설계 (Bulk Branch Insert)
+
+> **[정책 통일 노트 2026-03-29]**  
+> 이 문서는 `docs/03-editor-core/node-editing.md` 섹션 5 "다중 자식 노드 생성"과 **완전히 통일**된다.  
+> 
+> **확정 정책 요약:**
+> - 단축키: `Ctrl + Space` (고정)
+> - 입력 방식: **들여쓰기(공백 2칸 = 1단계) 계층 표현 — 유일하게 공식 지원**
+> - 쉼표/탭 구분자 방식은 **사용하지 않음** (MVP 범위 제외)
+> - 내부 기능 키: `bulkInsertBranches`
+> - 상세 입력 규칙은 node-editing.md 섹션 5.1 참조
+
+---
 
 **User:** Anonymous (ok@baro.pro)  
 **Created:** 3/16/2026 0:34:47  

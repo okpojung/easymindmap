@@ -113,6 +113,7 @@ CREATE TABLE public.nodes (
     --   1 = column
     --   2 = card
     --   3 이상 금지
+    -- 현재는 별도 kanban_role 컬럼 없이 layout_type + depth 규칙으로 해석 가능하도록 설계
     
     -- 도형 & 스타일
     shape_type       VARCHAR(50) NOT NULL DEFAULT 'rounded-rectangle',

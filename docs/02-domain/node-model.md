@@ -55,6 +55,17 @@ type NodeObject = {
   //
   // 이렇게 구분해 두면 프론트엔드 사용성은 유지하면서도 DB 정규화와 충돌하지 않는다.
 
+  // === 노드 배경 이미지 ===
+  // [변경 주석 2026-03-29]
+  // node-background-image.md에서 완전히 설계되었으나 NodeObject에 누락됨 → 추가
+  // 물리 저장: nodes.style_json JSONB 또는 nodes.background_image_json JSONB
+  //   MVP: style_json 내 backgroundImage 키로 통합 저장
+  //   확장: 별도 background_image_json JSONB 컬럼 분리 (erd.md bg_image_config_json 참조)
+  // 첨부파일(node_attachments)과는 별개 개념:
+  //   backgroundImage = 노드 자체 시각 표현 스타일
+  //   attachment = 사용자가 열어보는 일반 파일
+  backgroundImage?: NodeBackgroundImage | null;
+
   // === 자유배치 ===
   manualPosition: { x: number; y: number } | null;  // freeform 전용
 
@@ -96,6 +107,31 @@ type LayoutType =
   | 'kanban';                // BL-KB     Kanban 보드형 레이아웃
 ```
 
+### LayoutType ↔ BL 코드 매핑표
+
+> **확정 규칙**: `layoutType` 필드에 저장되는 값은 **kebab-case 영문 문자열**을 사용한다.  
+> BL 코드는 문서 내 참조용 식별자이며, DB 저장값이 아니다.
+
+| BL 코드 | DB 저장값 (layoutType) | 한국어 명칭 | 기본값 |
+|---------|----------------------|-----------|--------|
+| BL-RD-BI | `radial-bidirectional` | 방사형 양쪽 | ✅ 기본 |
+| BL-RD-R | `radial-right` | 방사형 오른쪽 | |
+| BL-RD-L | `radial-left` | 방사형 왼쪽 | |
+| BL-TR-U | `tree-up` | 트리형 위 | |
+| BL-TR-D | `tree-down` | 트리형 아래 | |
+| BL-TR-R | `tree-right` | 트리형 오른쪽 | |
+| BL-TR-L | `tree-left` | 트리형 왼쪽 | |
+| BL-HR-R | `hierarchy-right` | 계층형 오른쪽 | |
+| BL-HR-L | `hierarchy-left` | 계층형 왼쪽 | |
+| BL-PR-R | `process-tree-right` | 진행트리 오른쪽 | |
+| BL-PR-L | `process-tree-left` | 진행트리 왼쪽 | |
+| BL-PR-RA | `process-tree-right-a` | 진행트리 오른쪽A (버블형) | |
+| BL-PR-RB | `process-tree-right-b` | 진행트리 오른쪽B (타임라인형) | |
+| BL-FR | `freeform` | 자유배치 | |
+| BL-KB | `kanban` | Kanban 보드형 | |
+
+**주의**: `schema.sql`의 `nodes.layout_type` 컬럼은 `VARCHAR(50)`으로 위 DB 저장값 문자열을 그대로 저장한다.
+
 ---
 
 ## ShapeType
@@ -125,16 +161,37 @@ type NodeStyle = {
   fontStyle?: 'normal' | 'italic';
   borderWidth?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
-  backgroundImage?: string; // URL 또는 base64
-  backgroundImageOpacity?: number;
+  // [변경 주석 2026-03-29]
+  // backgroundImage/backgroundImageOpacity 필드는 NodeStyle에서 제거됨
+  // → NodeObject.backgroundImage (NodeBackgroundImage 타입)로 승격
+  // 이유: 배경 이미지는 단순 스타일 속성이 아닌 독립 기능 (type, fit, overlay 등 복합 구조)
+};
 
-  // [변경 주석]
-  // backgroundImage는 "노드 스타일 속성"으로 본다.
-  // 즉, 첨부파일(node_attachments)과는 별도 개념이다.
-  // - backgroundImage: 노드 자체 표현용 스타일
-  // - attachment: 사용자가 열어보는 일반 파일
-  //
-  // 이 구분을 명확히 해두면 노드 배경 이미지 기능과 첨부파일 기능이 서로 꼬이지 않는다.
+// ─────────────────────────────────────────────
+// NodeBackgroundImage — 노드 배경 이미지 타입
+// ─────────────────────────────────────────────
+// 설계 기준: docs/03-editor-core/node-background-image.md
+// 물리 저장: nodes.style_json 내 backgroundImage 키 (MVP)
+//           또는 nodes.background_image_json JSONB 컬럼 (확장)
+type NodeBackgroundImage = {
+  type: 'preset' | 'upload';
+
+  // preset 타입
+  assetId?: string;          // 프리셋 식별자 (예: 'preset_img_102')
+
+  // upload 타입
+  fileId?: string;           // 업로드 파일 ID
+  originalName?: string;     // 원본 파일명
+  width?: number;            // 이미지 원본 너비 (px)
+  height?: number;           // 이미지 원본 높이 (px)
+
+  // 공통
+  url: string;               // CDN URL 또는 Supabase Storage URL
+  fit: 'cover' | 'contain' | 'fill';
+  position?: string;         // CSS object-position 값 (기본: 'center')
+  overlayOpacity: number;    // 0.0 ~ 1.0 (텍스트 가독성 보정 오버레이)
+  overlayColor?: string;     // hex (기본: '#000000')
+  mediaType?: string;        // MIME 타입 ('image/png', 'image/jpeg' 등)
 };
 ```
 
@@ -188,7 +245,7 @@ Kanban Layout 구현 시 아래와 같은 role metadata를 둘 수 있다.
 type KanbanNodeRole = 'board' | 'column' | 'card';
 ---
 
-## 루트 노드 특이사항
+## 루트 노드 특수 처리 정책
 
 ```typescript
 const rootNode: NodeObject = {
@@ -199,6 +256,29 @@ const rootNode: NodeObject = {
   // ...
 };
 ```
+
+### 루트 노드 제약사항
+
+| 항목 | 정책 |
+|------|------|
+| 삭제 | **불가** — 루트 노드는 삭제 버튼 비활성화, 키보드 단축키도 무시 |
+| 부모 이동 | **불가** — 루트는 항상 `parentId: null` |
+| layoutType 변경 | **가능** — 단, 전체 맵 레이아웃에 영향 (즉시 relayout 트리거) |
+| 텍스트 편집 | **가능** — 맵 제목 역할, 기본값은 "New Mind Map" |
+| collapsed | **불가** — 루트 노드는 collapse 기능 없음 (아이콘 미표시) |
+| path (ltree) | `'root'` 고정 |
+| order_index | `0.0` 고정 |
+
+### freeform ↔ auto layout 전환 정책
+
+`manualPosition`과 자동 레이아웃의 공존 규칙:
+
+| 상황 | 처리 |
+|------|------|
+| auto layout → freeform 전환 | 전환 시점의 `computedX/Y`를 `manualPosition`에 복사하여 저장 |
+| freeform → auto layout 전환 | `manualPosition = null` 로 초기화, Layout Engine이 재계산 |
+| auto layout 중 drag | 해당 노드만 `freeform`으로 전환 + `manualPosition` 저장 |
+| 부모 layoutType 변경 시 | 자식 노드 `manualPosition`은 유지 (수동 지정 좌표 보존) |
 
 ---
 

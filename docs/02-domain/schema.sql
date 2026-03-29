@@ -2,7 +2,15 @@
 -- easymindmap — Database Schema
 -- DB: Supabase PostgreSQL 16 (Self-hosted on ESXi VM-03)
 -- 결정: 2026-03-27 Supabase Self-hosted 채택
+-- 결정: 2026-03-29 ltree extension 채택 (path 컬럼, GIST 인덱스)
 -- ============================================================
+
+-- ============================================================
+-- 0. Extensions
+-- ============================================================
+-- ltree: 계층 경로(path) 기반 subtree 조회 최적화
+-- Supabase Self-hosted PostgreSQL 16에서 기본 제공
+CREATE EXTENSION IF NOT EXISTS ltree;
 
 -- ============================================================
 -- 1. 사용자 (Supabase Auth 연동)
@@ -99,8 +107,9 @@ CREATE TABLE public.nodes (
     -- note 컬럼 없음: 노트는 node_notes 테이블로 단일화 (Issue #8)
 
     -- 트리 구조
-    depth            INT  NOT NULL DEFAULT 0,
-    order_index      INT  NOT NULL DEFAULT 0,
+    depth            INT    NOT NULL DEFAULT 0,
+    order_index      FLOAT  NOT NULL DEFAULT 0.0,   -- FLOAT: 중간 삽입 O(1), 재정규화 주기적 실행
+    path             LTREE  NOT NULL,                -- ltree 계층 경로 (예: 'root.n_a1b2c3d4.n_e5f6a7b8')
 
     -- 레이아웃
     layout_type      VARCHAR(50) NOT NULL DEFAULT 'radial-bidirectional',
@@ -136,9 +145,12 @@ CREATE TABLE public.nodes (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_nodes_map_id ON public.nodes(map_id);
+CREATE INDEX idx_nodes_map_id    ON public.nodes(map_id);
 CREATE INDEX idx_nodes_parent_id ON public.nodes(parent_id);
 CREATE INDEX idx_nodes_map_order ON public.nodes(map_id, order_index);
+-- ltree 인덱스
+CREATE INDEX idx_nodes_path_gist  ON public.nodes USING GIST (path);   -- subtree <@ 조회 최적화
+CREATE INDEX idx_nodes_path_btree ON public.nodes USING BTREE (path);  -- exact match / ORDER BY 최적화
 
 -- ============================================================
 -- 5. 태그
@@ -374,14 +386,33 @@ CREATE POLICY "owners can manage publish"
     );
 
 -- ============================================================
--- 12. Supabase Realtime (V1 협업 대비)
+-- 12. 삭제 정책 (Deletion Policy)
+-- ============================================================
+-- [맵 삭제] Soft-delete (deleted_at 설정)
+--   - maps.deleted_at IS NOT NULL → 사용자에게 숨김
+--   - 30일 경과 후 BullMQ Worker 배치 잡에서 hard-delete
+--   - 복구: deleted_at = NULL 설정 (30일 이내)
+--
+-- [노드 삭제] Hard-delete (ON DELETE CASCADE)
+--   - 부모 노드 삭제 시 하위 노드 자동 cascade hard-delete
+--   - 단일 노드 삭제는 클라이언트 Command 히스토리로 Undo 가능 (5–10초 창)
+--   - subtree 삭제 시 경고 모달 표시 (자식 3개 이상인 경우)
+--
+-- 자세한 내용: docs/02-domain/node-hierarchy-storage-strategy.md
+--             「삭제 정책 & Trash 메커니즘」 섹션 참조
+
+-- 30일 경과 맵 삭제 배치 (pg_cron 또는 BullMQ Worker에서 실행)
+-- DELETE FROM public.maps WHERE deleted_at < NOW() - INTERVAL '30 days';
+
+-- ============================================================
+-- 13. Supabase Realtime (V1 협업 대비)
 -- ============================================================
 -- nodes와 maps 테이블을 Realtime publication에 추가
 ALTER PUBLICATION supabase_realtime ADD TABLE public.nodes;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.maps;
 
 -- ============================================================
--- 13. Supabase Storage 버킷 (Supabase 대시보드 또는 마이그레이션)
+-- 14. Supabase Storage 버킷 (Supabase 대시보드 또는 마이그레이션)
 -- ============================================================
 -- INSERT INTO storage.buckets (id, name, public) VALUES
 --   ('uploads',     'uploads',     false),

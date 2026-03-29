@@ -92,6 +92,8 @@ type LayoutType =
   | 'process-tree-right-b'   // BL-PR-RB  진행트리 오른쪽B (타임라인형)
   // 자유배치
   | 'freeform';              // BL-FR     수동 좌표 배치
+  // 보드형
+  | 'kanban';                // BL-KB     Kanban 보드형 레이아웃
 ```
 
 ---
@@ -163,6 +165,15 @@ type NodeStyle = {
 - 실제 저장은 최신 DB 설계 기준으로 관계 테이블에 정규화한다.
 - 즉, "응답 편의 모델"과 "물리 저장 모델"을 분리하여 이해해야 한다.
 
+### kanban layout 사용 시 depth 규칙
+`layoutType = "kanban"` 인 경우 depth는 아래처럼 해석한다.
+
+- depth 0: board
+- depth 1: column
+- depth 2: card
+- depth 3 이상: 허용하지 않음
+
+Kanban은 일반 subtree 확장 구조가 아니라, 3레벨 제한 보드형 구조로 동작한다.
 ---
 
 ## 루트 노드 특이사항

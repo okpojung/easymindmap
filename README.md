@@ -148,7 +148,7 @@ docs/           # 설계 문서 전체 (00~05 체계)
 [vision](docs/00-project-overview/vision.md) · [roadmap](docs/00-project-overview/roadmap.md) · [mvp-scope](docs/00-project-overview/mvp-scope.md)
 
 ### 📋 01 — 제품 요구사항
-[prd](docs/01-product/prd.md) · [functional-spec](docs/01-product/functional-spec.md) · [ui-ux-spec](docs/01-product/ui-ux-spec.md)
+[prd](docs/01-product/prd.md) · [functional-spec](docs/01-product/functional-spec.md) · [ui-ux-spec](docs/01-product/ui-ux-spec.md) · [kanban-layout-spec](docs/01-product/kanban-layout-spec.md)
 
 ### 🗄️ 02 — 도메인 & DB
 [node-model](docs/02-domain/node-model.md) · [map-model](docs/02-domain/map-model.md) · [db-schema](docs/02-domain/db-schema.md) · [schema.sql](docs/02-domain/schema.sql) · [erd](docs/02-domain/erd.md)

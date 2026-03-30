@@ -429,8 +429,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.maps;
 ALTER TABLE public.users
   ADD COLUMN IF NOT EXISTS secondary_languages
     VARCHAR(20)[]  NOT NULL DEFAULT '{}',
-    -- 2차 언어 배열, 최대 3개 (예: '{ja,zh}')
-    -- translation_mode='skip' 자동 결정에 사용
+    -- 2차 언어 배열, 최대 3개 (예: '{ja,zh}')\n    -- translation_mode='skip' 자동 결정에 사용
 
   ADD COLUMN IF NOT EXISTS skip_english_translation
     BOOLEAN  NOT NULL DEFAULT TRUE;
@@ -441,6 +440,20 @@ ALTER TABLE public.users
   ADD CONSTRAINT chk_secondary_languages_max
     CHECK (array_length(secondary_languages, 1) <= 3
            OR secondary_languages = '{}');
+
+-- [NODE-15 신규] users 테이블: UI 표시 환경설정 추가
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS ui_preferences_json
+    JSONB  NOT NULL DEFAULT '{}'::jsonb;
+    -- 인디케이터 등 클라이언트 UI 표시 설정을 서버에 영속
+    -- 구조 (UiPreferences):
+    --   { "showTranslationIndicator": true,
+    --     "showTranslationOverrideIcon": true,
+    --     "showTagBadge": true }
+    -- 필드 누락 시 기본값(true) 적용
+
+COMMENT ON COLUMN public.users.ui_preferences_json
+  IS 'UI 표시 환경설정. showTranslationIndicator(bool), showTranslationOverrideIcon(bool), showTagBadge(bool). 미설정 키는 기본값 true 적용.';
 
 -- 2. maps 테이블: 맵별 번역 정책 추가
 ALTER TABLE public.maps

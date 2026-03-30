@@ -58,6 +58,15 @@ DATABASE_URL=postgresql://postgres:[password]@db.xxxxxxxxxxxx.supabase.co:5432/p
 
 ## 테이블 DDL
 
+> **필수 Extension**: `nodes.path` 컬럼(LTREE 타입)을 사용하기 위해 ltree 확장이 활성화되어야 한다.
+>
+> ```sql
+> -- PostgreSQL ltree 확장 활성화 (1회, Supabase 대시보드 또는 마이그레이션에서 실행)
+> CREATE EXTENSION IF NOT EXISTS ltree;
+> ```
+>
+> GIST 인덱스(`idx_nodes_path_gist`)는 이 확장이 활성화된 후에만 생성 가능하다.
+
 ### 1. users (Supabase Auth 연동)
 
 > Supabase Auth를 사용하면 `auth.users` 테이블이 자동 생성됨.  
@@ -165,7 +174,14 @@ CREATE TABLE public.nodes (
 
   -- 트리 구조
   depth            INTEGER NOT NULL DEFAULT 0,
-  order_index      INTEGER NOT NULL DEFAULT 0,
+  -- order_index: FLOAT 채택 — 중간 삽입 O(1) (예: 1.0↔2.0 사이 → 1.5)
+  -- 재정규화 트리거: |prev - next| < 0.001 이면 renormalizeOrderIndex() 실행
+  -- 자세한 정책: docs/02-domain/node-hierarchy-storage-strategy.md § order_index 전략
+  order_index      FLOAT NOT NULL DEFAULT 0.0,
+  -- path: ltree 계층 경로 (예: 'root.n_a1b2.n_c3d4')
+  -- DB에만 존재하며 서버 서브트리 쿼리 전용 (path <@ $target)
+  -- 클라이언트 childIds는 이 경로가 아닌 parent_id 역전으로 구성
+  path             LTREE NOT NULL DEFAULT 'root',
 
   -- 레이아웃
   layout_type      VARCHAR(50) NOT NULL DEFAULT 'radial-bidirectional',
@@ -192,9 +208,13 @@ CREATE TABLE public.nodes (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_nodes_map_id ON public.nodes(map_id);
-CREATE INDEX idx_nodes_parent_id ON public.nodes(parent_id);
-CREATE INDEX idx_nodes_map_order ON public.nodes(map_id, order_index);
+CREATE INDEX idx_nodes_map_id      ON public.nodes(map_id);
+CREATE INDEX idx_nodes_parent_id   ON public.nodes(parent_id);
+CREATE INDEX idx_nodes_map_order   ON public.nodes(map_id, order_index);
+-- ltree GIST 인덱스: 서브트리 조회 (path <@ $target) 최적화
+CREATE INDEX idx_nodes_path_gist   ON public.nodes USING GIST (path);
+-- ltree BTREE 인덱스: 정확한 경로 매칭 및 정렬
+CREATE INDEX idx_nodes_path_btree  ON public.nodes(path);
 ```
 ### Kanban Layout 사용 시 depth 규칙
 Kanban layout에서는 nodes.depth를 다음처럼 제한적으로 해석한다.

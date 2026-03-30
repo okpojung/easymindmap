@@ -100,6 +100,9 @@ PATCH /maps/:id/document 수신
         ▼
 3. 트랜잭션 시작
    - 각 patch 적용 (nodes UPDATE/INSERT/DELETE)
+   - moveNode 패치: orderIndex 삽입 전 gap 검사
+     • |prev_order - next_order| < 0.001 이면 재정규화(renormalizeOrderIndex) 실행 후 재삽입
+     • 자세한 트리거 조건: node-hierarchy-storage-strategy.md § 재정규화
    - current_version + 1
    - map_revisions INSERT (patch_json 포함)
         │

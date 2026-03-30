@@ -491,19 +491,19 @@ const displayText = useMemo(() => {
 | 상태 | 표시 | 아이콘 |
 |------|------|--------|
 | 내 언어로 작성된 노드 | 원문 그대로 | 없음 |
-| 유효한 번역 캐시 있음 | 번역본 표시 | 🌐 (클릭 → 원문 팝오버) |
+| 유효한 번역 캐시 있음 | 번역본 표시 | 🔤 (클릭 → 원문 팝오버) |
 | 번역 대기 중 | Skeleton (회색 바) | 없음 |
-| 번역 실패 | 원문 표시 | ⚠️ |
-| force_off 노드 (편집자) | 원문 표시 | 🚫 |
-| force_on 노드 (편집자) | 번역본 표시 | 🔄 |
+| 번역 실패 | 원문 표시 | 🔴 |
+| force_off 노드 (편집자) | 원문 표시 | ⛔ |
+| force_on 노드 (편집자) | 번역본 표시 | 🔁 |
 
 ### 10.3 원문 보기 기능 (오역 대응)
 
 ```
 번역된 노드 hover 시:
-  [딸기 🌐]
+  [딸기 🔤]
 
-🌐 클릭 시:
+🔤 클릭 시:
   ┌─────────────────────────┐
   │ 원문 (English)           │
   │ strawberry               │
@@ -706,8 +706,8 @@ CREATE TABLE IF NOT EXISTS public.node_translations (
   │ 번역 설정                 │
   │                          │
   │ ● 자동 (기본)             │  ← translation_override = null
-  │ ○ 번역 강제 ON   🔄       │  ← translation_override = 'force_on'
-  │ ○ 번역 강제 OFF  🚫       │  ← translation_override = 'force_off'
+  │ ○ 번역 강제 ON   🔁       │  ← translation_override = 'force_on'
+  │ ○ 번역 강제 OFF  ⛔       │  ← translation_override = 'force_off'
   └──────────────────────────┘
 ```
 

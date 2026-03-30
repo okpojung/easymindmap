@@ -76,6 +76,29 @@ type NodeObject = {
   // === 캐시 ===
   size: { width: number; height: number } | null;   // 렌더링 캐시
 
+  // === 다국어 번역 (V2 신규) ===
+  // 물리 저장: nodes.text_lang, text_hash, translation_mode,
+  //           translation_override, author_preferred_language 컬럼
+  text_lang: string;             // franc 자동 감지 언어 코드 (ISO 639-1, 예: 'ko', 'en', 'ja')
+  text_hash: string;             // SHA-256[:16] — 번역 캐시 유효성 검증용
+
+  translation_mode: 'auto' | 'skip';
+  // 'auto': 열람자 언어에 맞춰 자동 번역 대상
+  // 'skip': 모든 열람자에게 원문 그대로 표시
+  //   → 비영어권 작성자가 영어로 작성한 경우 저장 시 자동 설정
+  //   → 2차 언어(secondaryLanguages)로 작성한 경우 자동 설정
+
+  translation_override: 'force_on' | 'force_off' | null;
+  // null:        자동 정책 적용 (기본)
+  // 'force_on':  강제 번역 (skip 설정도 무시하고 번역 실행)
+  // 'force_off': 강제 번역 금지 (모든 열람자에게 원문 표시)
+  // 우선순위 최상위 — 맵/사용자 정책보다 항상 먼저 적용
+
+  author_preferred_language: string | null;
+  // 노드 작성 시점의 작성자 기본 언어 스냅샷 (예: 'ko')
+  // 작성자가 이후 언어 설정을 바꿔도 기존 노드 translation_mode에 영향 없도록 저장
+  // null: 레거시 노드 (migration 전 데이터)
+
   // === 메타 ===
   createdAt: string;             // ISO 8601
   updatedAt: string;
@@ -279,6 +302,29 @@ function buildChildIds(nodes: NodeObject[]): Map<string, string[]> {
 - 프론트엔드/응답 모델 기준에서는 NodeObject에 포함한다.
 - 실제 저장은 최신 DB 설계 기준으로 관계 테이블에 정규화한다.
 - 즉, "응답 편의 모델"과 "물리 저장 모델"을 분리하여 이해해야 한다.
+
+### 번역 관련 필드 (V2 신규)
+
+| 필드 | DB 컬럼 | 설명 |
+|------|---------|------|
+| `text_lang` | `nodes.text_lang` | franc 자동 감지 언어 코드 (저장 시 결정) |
+| `text_hash` | `nodes.text_hash` | SHA-256[:16] — 번역 캐시 유효성 검증 |
+| `translation_mode` | `nodes.translation_mode` | `'auto'`\|`'skip'` — 저장 시 자동 결정 |
+| `translation_override` | `nodes.translation_override` | `'force_on'`\|`'force_off'`\|`null` — 편집자 수동 설정 |
+| `author_preferred_language` | `nodes.author_preferred_language` | 작성 시점 작성자 기본 언어 스냅샷 |
+
+**`translation_mode` 결정 규칙 (저장 시 서버가 자동 계산):**
+
+| 조건 | translation_mode |
+|------|-----------------|
+| 작성자 기본 언어로 작성 | `'auto'` (번역 대상) |
+| 2차 언어(secondaryLanguages)로 작성 | `'skip'` |
+| 비영어권 작성자가 영어로 작성 + skipEnglish=true | `'skip'` |
+| 그 외 (다른 언어) | `'auto'` (번역 대상) |
+
+**`translation_override` 우선순위:**
+> 노드별 override → 맵별 정책 → 사용자 기본 설정  
+> 상세 알고리즘: `docs/04-extensions/multilingual-translation.md` § 3. shouldTranslate
 
 ### kanban layout 사용 시 depth 규칙
 `layoutType = "kanban"` 인 경우 depth는 아래처럼 해석한다.

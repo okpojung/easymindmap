@@ -119,14 +119,54 @@ AI_TIMEOUT_MS=60000
 AI_MAX_RETRIES=2
 
 ########################################
-# TRANSLATION (V2)
+# TRANSLATION (V2) — multilingual-translation.md v3.0
 ########################################
-TRANSLATION_PROVIDER=deepl            # deepl | openai | hybrid
+
+# 번역 엔진
+TRANSLATION_PROVIDER=deepl
+# deepl: DeepL API 사용 (권장)
+# openai: OpenAI GPT 사용
+# hybrid: DeepL 1차, LLM 2차 fallback (권장)
+
 TRANSLATION_DEEPL_API_KEY=change_me_deepl_key
-TRANSLATION_ENABLE_CACHE=true
-TRANSLATION_QUEUE_CONCURRENCY=5
+# DeepL API 키 (Free 또는 Pro)
+
 TRANSLATION_DEFAULT_TARGETS=ko,en,ja
+# 기본 번역 대상 언어 (쉼표 구분)
+
 TRANSLATION_SKIP_SAME_LANGUAGE=true
+# true: 노드 언어 = 열람자 언어이면 번역 생략
+
+TRANSLATION_QUEUE_CONCURRENCY=5
+# 번역 Worker 동시 처리 수
+
+TRANSLATION_ENABLE_CACHE=true
+# Redis 캐시 활성화 여부
+
+# ── Redis 캐시 TTL (Sliding TTL + Jitter 전략) ─────────────
+TRANSLATION_CACHE_TTL_INITIAL=7200
+# 초기 저장 TTL (초). 기본: 2시간
+# 처음 번역 결과를 Redis에 저장할 때 적용
+
+TRANSLATION_CACHE_TTL_SLIDING=1800
+# Sliding TTL (초). 기본: 30분
+# 캐시 조회 시마다 TTL 리셋 (expire-after-access)
+# 활성 세션 중 캐시 유지, 미접근 시 30분 후 자동 만료
+
+TRANSLATION_CACHE_TTL_MAX=21600
+# Max TTL 절대 상한 (초). 기본: 6시간
+# 자주 접근해도 이 시간 후 강제 만료 (정기 캐시 갱신)
+
+TRANSLATION_CACHE_TTL_JITTER=600
+# Jitter 범위 (초). 기본: 10분
+# TTL에 0~JITTER 랜덤값 추가 → Thundering Herd 방지
+
+TRANSLATION_CACHE_MAX_MEMORY=512mb
+# 번역 캐시 전용 Redis maxmemory 상한
+
+TRANSLATION_CACHE_EVICTION_POLICY=allkeys-lru
+# maxmemory 초과 시 eviction 정책
+# allkeys-lru: 가장 오래 안 쓴 캐시부터 삭제 (권장)
 
 ########################################
 # EXPORT

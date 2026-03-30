@@ -29,6 +29,13 @@ Node ←→ Tag (N:N)
 ## MapObject
 
 ```typescript
+// 맵별 번역 정책 (V2 신규)
+// null = 맵별 정책 없음, 사용자 기본 설정(UserObject)을 그대로 따름
+type MapTranslationPolicy = {
+  skipLanguages: SupportedLanguage[];   // 이 맵에서 번역을 생략할 언어 목록
+  skipEnglish: boolean | null;          // null = 사용자 기본 설정 따름
+} | null;
+
 type MapObject = {
   id: string;             // UUID
   ownerId: string;        // users.id
@@ -53,6 +60,11 @@ type MapObject = {
   // refreshIntervalSeconds?: number;
   // currentVersion?: number;
 
+  // 번역 정책 (V2 신규)
+  // DB 컬럼: maps.translation_policy_json JSONB
+  // null이면 사용자 기본 설정(UserObject.secondaryLanguages 등) 따름
+  translationPolicy: MapTranslationPolicy;
+
   // 상태
   deletedAt: string | null;       // soft delete
   createdAt: string;
@@ -65,6 +77,12 @@ type MapObject = {
 ## UserObject
 
 ```typescript
+// 지원 언어 (V2 신규 — ISO 639-1)
+type SupportedLanguage =
+  | 'ko' | 'en' | 'ja' | 'zh' | 'zh-TW'
+  | 'fr' | 'de' | 'es' | 'pt' | 'ru'
+  | 'ar' | 'vi' | 'th';
+
 type UserObject = {
   id: string;
   email: string;
@@ -72,7 +90,9 @@ type UserObject = {
   displayName: string | null;
 
   // 설정
-  preferredLanguage: 'ko' | 'en';
+  preferredLanguage: SupportedLanguage;     // [V2 수정] 타입 확장 ('ko'|'en' → SupportedLanguage)
+  secondaryLanguages: SupportedLanguage[];  // [V2 신규] 2차 언어 목록 (최대 3개)
+  skipEnglishTranslation: boolean;          // [V2 신규] 영어 번역 생략 여부 (기본: true)
   defaultLayoutType: LayoutType;
 
   createdAt: string;
@@ -93,7 +113,9 @@ type UserObject = {
   displayName: string | null;
 
   // 설정
-  preferredLanguage: 'ko' | 'en';
+  preferredLanguage: SupportedLanguage;     // [V2 수정] 타입 확장
+  secondaryLanguages: SupportedLanguage[];  // [V2 신규] 2차 언어 최대 3개
+  skipEnglishTranslation: boolean;          // [V2 신규] 영어 번역 생략
   defaultLayoutType: LayoutType;
 
   createdAt: string;
@@ -107,7 +129,40 @@ type UserObject = {
 
 ---
 
-## RevisionObject
+## 번역 정책 설계 원칙 (V2 신규)
+
+번역 정책은 **3단계 계층**으로 적용된다. 상위(높은 레벨) 설정이 하위보다 우선한다.
+
+```
+레벨 3 (노드):  NodeObject.translation_override  ← 최우선
+레벨 2 (맵):    MapObject.translationPolicy       ← 중간
+레벨 1 (사용자): UserObject.preferredLanguage
+                UserObject.secondaryLanguages
+                UserObject.skipEnglishTranslation ← 기본값
+```
+
+| 레벨 | 적용 범위 | 타입 / 필드 | 기본값 |
+|------|----------|------------|--------|
+| 1 (사용자) | 모든 맵 | `preferredLanguage`, `secondaryLanguages`, `skipEnglishTranslation` | 가입 시 자동 설정 |
+| 2 (맵) | 해당 맵만 | `translationPolicy: MapTranslationPolicy` | `null` (레벨 1 따름) |
+| 3 (노드) | 해당 노드만 | `translation_override: 'force_on'\|'force_off'\|null` | `null` (자동) |
+
+**예시:**
+```
+사용자 설정: preferredLanguage='ko', secondaryLanguages=['ja'], skipEnglishTranslation=true
+
+  맵 A (일본어 학습 맵):
+    translationPolicy = { skipLanguages: ['ja'], skipEnglish: true }
+    → ja 노드: 번역X  ✅ (맵 정책)
+    → en 노드: 번역X  ✅ (영어 skip)
+
+  맵 B (국제 협업 맵):
+    translationPolicy = { skipLanguages: [], skipEnglish: false }
+    → ja 노드: 번역O  ✅ (맵 정책이 사용자 설정 override)
+    → en 노드: 번역O  ✅ (skipEnglish=false override)
+```
+
+> 상세 알고리즘 및 `shouldTranslate()` 구현: `docs/04-extensions/multilingual-translation.md` § 3
 
 ```typescript
 type RevisionObject = {

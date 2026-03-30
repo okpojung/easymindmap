@@ -10,7 +10,11 @@ type NodeObject = {
 
   // === 트리 구조 ===
   parentId: string | null;       // 루트 노드는 null
-  childIds: string[];            // 빠른 탐색용 자식 ID 목록
+  // [중요] childIds는 DB 컬럼이 아님 — 클라이언트 Document Store 전용 메모리 캐시
+  // DB에는 nodes.parent_id (+ ltree path) 만 저장되며,
+  // childIds는 맵 로딩 시 parent_id 관계를 역전하여 런타임에 구성된다.
+  // ltree path 기반 subtree 탐색은 서버 사이드 DB 쿼리 전용이다.
+  childIds: string[];            // ⚠ DB 없음 — 런타임 메모리 캐시
   depth: number;                 // 루트 = 0, 1레벨 = 1, ...
   orderIndex: number;            // 형제 내 순서
 
@@ -173,25 +177,52 @@ type NodeStyle = {
 // 설계 기준: docs/03-editor-core/node-background-image.md
 // 물리 저장: nodes.style_json 내 backgroundImage 키 (MVP)
 //           또는 nodes.background_image_json JSONB 컬럼 (확장)
+//
+// [수정 2026-03-30]
+// - fit: 'fill' → 'stretch' | 'original' 추가
+//   node-background-image.md BackgroundFit과 동기화
+//   ('fill'은 CSS 용어, 이 프로젝트에서는 'stretch'로 통일)
+// - position: string → 구체적 유니온 타입으로 변경
+//   (CSS object-position 자유 문자열 대신 사전 정의 값 사용)
+
+// 배경 이미지 fit 모드
+// cover    : 비율 유지, 노드 영역 꽉 채움 (잘릴 수 있음) — 기본값
+// contain  : 비율 유지, 노드 영역 내에 전체 표시 (여백 생길 수 있음)
+// stretch  : 비율 무시, 노드 영역에 꽉 맞게 늘림 (CSS fill에 해당)
+// original : 이미지 원본 크기 그대로 표시 (노드보다 크면 잘림)
+type BackgroundFit = 'cover' | 'contain' | 'stretch' | 'original';
+
+// 배경 이미지 정렬 위치 (CSS object-position 사전 정의 값)
+type BackgroundPosition =
+  | 'center'       // 기본값
+  | 'top'
+  | 'bottom'
+  | 'left'
+  | 'right'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
+
 type NodeBackgroundImage = {
   type: 'preset' | 'upload';
 
-  // preset 타입
+  // preset 타입 전용
   assetId?: string;          // 프리셋 식별자 (예: 'preset_img_102')
 
-  // upload 타입
-  fileId?: string;           // 업로드 파일 ID
+  // upload 타입 전용
+  fileId?: string;           // 업로드 파일 ID (Supabase Storage 기준)
   originalName?: string;     // 원본 파일명
   width?: number;            // 이미지 원본 너비 (px)
   height?: number;           // 이미지 원본 높이 (px)
 
-  // 공통
-  url: string;               // CDN URL 또는 Supabase Storage URL
-  fit: 'cover' | 'contain' | 'fill';
-  position?: string;         // CSS object-position 값 (기본: 'center')
-  overlayOpacity: number;    // 0.0 ~ 1.0 (텍스트 가독성 보정 오버레이)
-  overlayColor?: string;     // hex (기본: '#000000')
-  mediaType?: string;        // MIME 타입 ('image/png', 'image/jpeg' 등)
+  // 공통 필드
+  url: string;               // CDN URL 또는 Supabase Storage URL (필수)
+  fit: BackgroundFit;        // 기본값: 'cover'
+  position?: BackgroundPosition; // 기본값: 'center'
+  overlayOpacity: number;    // 0.0 ~ 1.0 (텍스트 가독성 보정 오버레이, 기본값: 0)
+  overlayColor?: string;     // hex 색상 (기본값: '#000000')
+  mediaType?: string;        // MIME 타입 (예: 'image/png', 'image/jpeg', 'image/webp')
 };
 ```
 
@@ -220,8 +251,29 @@ type NodeBackgroundImage = {
 노드 indicator로 자식 존재 여부를 표시.
 
 ### childIds
-성능 최적화용 캐시. DB에서 parentId로 조회하는 것보다 빠른 접근 필요 시 사용.
-항상 DB의 parentId 관계와 동기화 유지 필요.
+**⚠ DB 컬럼이 아닌 클라이언트 전용 메모리 캐시.**
+
+| 항목 | 내용 |
+|------|------|
+| DB 저장 여부 | ❌ 없음 — `nodes` 테이블에 `child_ids` 컬럼 없음 |
+| 서버 subtree 탐색 | `nodes.path LTREE` + GIST 인덱스로 `path <@ $target` 쿼리 |
+| 클라이언트 구성 | 맵 로딩 시(`GET /maps/{mapId}`) `parent_id` 역전 → `childIds` 빌드 |
+| 동기화 책임 | Document Store의 `applyPatch()` 가 노드 생성/삭제/이동 시 자동 갱신 |
+
+```typescript
+// 맵 로딩 시 childIds 구성 예시
+function buildChildIds(nodes: NodeObject[]): Map<string, string[]> {
+  const childMap = new Map<string, string[]>();
+  for (const node of nodes) {
+    if (node.parentId) {
+      const siblings = childMap.get(node.parentId) ?? [];
+      siblings.push(node.id);
+      childMap.set(node.parentId, siblings);
+    }
+  }
+  return childMap;
+}
+```
 
 ### tags / hyperlinkIds / attachmentIds / multimediaId
 - 프론트엔드/응답 모델 기준에서는 NodeObject에 포함한다.

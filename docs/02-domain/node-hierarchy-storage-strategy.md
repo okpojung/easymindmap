@@ -268,6 +268,52 @@ VALUES ($map_id, $parent_id, $path, $depth, 1.5, $text);
 
 소수점이 일정 깊이 이상 누적되면 서버 측 백그라운드 잡에서 재정규화를 실행한다.
 
+#### 트리거 조건
+
+재정규화는 다음 두 조건 중 하나를 만족할 때 실행된다.
+
+| # | 조건 | 설명 |
+|---|------|------|
+| 1 | **인접 간격 임계값 이하** | 새 노드 삽입 직전, `\|prev_order - next_order\| < 0.001` 이면 해당 `parent_id` 전체 재정규화 |
+| 2 | **소수점 깊이 초과** | `order_index`의 소수부 자릿수가 15자리(IEEE 754 float 정밀도 한계)를 초과할 위험이 있을 때 (삽입 시 계산된 `mid` 값이 `prev`와 `next`와 동일한 부동소수점 값이 되는 경우) |
+
+**조건 1 적용 예시 (서버 삽입 로직)**
+
+```typescript
+// apps/api/src/services/nodeOrder.ts
+
+const RENORMALIZE_THRESHOLD = 0.001;
+
+async function getInsertOrderIndex(
+  db: D1Database,
+  mapId: string,
+  parentId: string,
+  prevOrderIndex: number | null,
+  nextOrderIndex: number | null
+): Promise<number> {
+  const prev = prevOrderIndex ?? 0.0;
+  const next = nextOrderIndex ?? prev + 1.0;
+  const gap = Math.abs(next - prev);
+
+  if (gap < RENORMALIZE_THRESHOLD) {
+    // 간격이 임계값 미만 → 먼저 재정규화 실행 후 새 order_index 계산
+    await renormalizeOrderIndex(db, mapId, parentId);
+    // 재정규화 후 prev/next를 다시 조회해야 하므로 caller에서 처리
+    throw new RenormalizedError('Order index renormalized, retry insert');
+  }
+
+  return (prev + next) / 2;
+}
+
+class RenormalizedError extends Error {}
+```
+
+**조건 2 적용 기준**: JavaScript `Number` (IEEE 754 double)는 약 15~17자리의 유효 십진수를 표현한다.  
+`prev = 1.0`, `next = 1.0 + ε (machine epsilon ≈ 2.22e-16)` 같은 상황이 되면 `mid = prev`가 되어 삽입이 불가능해진다.  
+이 경우 서버는 새 `mid` 계산 전에 재정규화를 강제 실행한다.
+
+#### 재정규화 SQL
+
 ```sql
 -- 특정 부모 하위 형제 노드를 1.0 간격으로 재정규화
 WITH ranked AS (
@@ -280,6 +326,23 @@ SET order_index = r.rn * 1.0
 FROM ranked r
 WHERE n.id = r.id;
 ```
+
+#### 재정규화 실행 시점 요약
+
+```
+삽입 요청
+    │
+    ├─ gap = |next - prev|
+    │
+    ├─ gap >= 0.001 → mid = (prev + next) / 2 사용, 삽입 완료
+    │
+    └─ gap < 0.001  → renormalizeOrderIndex(mapId, parentId) 실행
+                          → 1.0 간격으로 재배열
+                          → 삽입 재시도 (새 prev/next 기준)
+```
+
+> **참고**: 재정규화는 형제 노드의 상대 순서를 유지하면서 절대값만 재설정한다.  
+> 진행 중인 다른 트랜잭션과의 충돌을 피하기 위해 `SELECT ... FOR UPDATE` 로 잠금 후 실행한다.
 
 ---
 

@@ -1,23 +1,103 @@
 # easymindmap — API Specification
 
+문서 버전: v2.0
+결정일: 2026-03-29
+
+> **[v2.0 주요 추가]**
+> - 이미지(배경 이미지) 엔드포인트 추가 (섹션 5)
+> - 태그 CRUD 엔드포인트 추가 (섹션 6)
+> - Node Indicator 엔드포인트 추가 (섹션 7)
+> - 보안/인증 정책 상세화: JWT 수명, refresh 전략, rate limit (섹션 0)
+
+---
+
 ## Base URL
 
 ```
 https://api.mindmap.ai.kr/v1
 ```
 
-## 인증 방식
+---
 
-모든 API는 JWT Bearer Token 필요 (공개 API 제외)
+## 0. 보안 및 인증 정책
+
+### 0.1 JWT 토큰 구조
+
+모든 API는 Supabase Auth가 발급하는 JWT Bearer Token을 사용한다.
 
 ```
-Authorization: Bearer {token}
+Authorization: Bearer {accessToken}
 ```
 
-### [변경 주석]
-- 위 설명은 "Bearer Token 사용" 관점에서는 그대로 유효하다.
-- 다만 현재 최신 아키텍처 기준으로 이 토큰은 **Supabase Auth가 발급하는 JWT**로 이해하는 것이 맞다.
-- 즉, API 사용 방식은 비슷하지만 토큰 발급/검증 책임은 자체 JWT 서버가 아니라 Supabase Auth에 있다.
+| 토큰 종류 | 수명 | 저장 위치 | 용도 |
+|-----------|------|-----------|------|
+| Access Token | **1시간** | 메모리 (변수) | API 요청 인증 |
+| Refresh Token | **7일** | httpOnly Cookie | Access Token 재발급 |
+
+> **보안 원칙**: Access Token은 localStorage에 저장하지 않는다. XSS 공격 방어를 위해 메모리(Zustand store)에만 보관한다.
+
+### 0.2 토큰 갱신 전략 (Silent Refresh)
+
+```
+1. API 요청 → 401 Unauthorized 응답
+2. 클라이언트: POST /auth/refresh (httpOnly Cookie의 refreshToken 자동 전송)
+3. 서버: 새 accessToken + 새 refreshToken 발급
+4. 클라이언트: 새 accessToken으로 원래 요청 재시도
+5. refreshToken도 만료된 경우: 로그인 페이지로 리다이렉트
+```
+
+```typescript
+// axios interceptor 예시
+axiosInstance.interceptors.response.use(
+  res => res,
+  async (error) => {
+    if (error.response?.status === 401 && !error.config._retry) {
+      error.config._retry = true;
+      await authClient.refresh();            // POST /auth/refresh
+      return axiosInstance(error.config);    // 원래 요청 재시도
+    }
+    return Promise.reject(error);
+  }
+);
+```
+
+### 0.3 Rate Limit 정책
+
+| 엔드포인트 그룹 | 제한 | 초과 시 |
+|----------------|------|---------|
+| 인증 (`/auth/*`) | **10 req/min/IP** | 429 Too Many Requests |
+| 일반 API (`/maps/*`, `/nodes/*`) | **300 req/min/user** | 429 Too Many Requests |
+| AI 생성 (`/ai/*`) | **20 req/hour/user** | 429 Too Many Requests |
+| Export (`/export/*`) | **10 req/hour/user** | 429 Too Many Requests |
+| 공개 API (`/p/*`) | **100 req/min/IP** | 429 Too Many Requests |
+
+429 응답 형식:
+```json
+{
+  "error": "RATE_LIMIT_EXCEEDED",
+  "message": "Too many requests. Please wait before retrying.",
+  "retryAfter": 60,
+  "statusCode": 429
+}
+```
+
+헤더:
+```
+X-RateLimit-Limit: 300
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1711200000
+Retry-After: 60
+```
+
+### 0.4 권한 모델 요약
+
+| 역할 | maps READ | maps WRITE | nodes READ | nodes WRITE |
+|------|-----------|------------|------------|-------------|
+| `owner` | ✅ | ✅ | ✅ | ✅ |
+| `editor` (workspace member) | ✅ | ✅ | ✅ | ✅ |
+| `viewer` (workspace member) | ✅ | ❌ | ✅ | ❌ |
+| `public_read` (publish URL) | ✅ | ❌ | ✅ | ❌ |
+| 비인증 (일반) | ❌ | ❌ | ❌ | ❌ |
 
 ---
 
@@ -37,7 +117,7 @@ Authorization: Bearer {token}
 **Response** `201 Created`
 ```json
 {
-  "userId": "u_abc123",
+  "userId": "uuid-...",
   "email": "user@example.com"
 }
 ```
@@ -59,19 +139,35 @@ Authorization: Bearer {token}
 ```json
 {
   "accessToken": "eyJ...",
-  "refreshToken": "eyJ..."
+  "expiresIn": 3600
 }
 ```
+> refreshToken은 `Set-Cookie: refreshToken=...; HttpOnly; Secure; SameSite=Strict` 로 전송
 
 ---
 
 ### POST /auth/refresh
-토큰 갱신
+Access Token 갱신
 
-**Request Body**
+**Cookie** (자동 전송): `refreshToken=eyJ...`
+
+**Response** `200 OK`
 ```json
-{ "refreshToken": "eyJ..." }
+{
+  "accessToken": "eyJ...",
+  "expiresIn": 3600
+}
 ```
+
+**실패 시** `401 Unauthorized` → 재로그인 필요
+
+---
+
+### POST /auth/logout
+로그아웃 (refreshToken 무효화)
+
+**Response** `204 No Content`
+> `Set-Cookie: refreshToken=; Max-Age=0` 로 쿠키 삭제
 
 ---
 
@@ -83,34 +179,41 @@ Authorization: Bearer {token}
 **Request Body**
 ```json
 {
-  "title": "New Mindmap"
+  "title": "New Mindmap",
+  "workspaceId": "uuid-...",
+  "defaultLayoutType": "radial-bidirectional"
 }
 ```
 
 **Response** `201 Created`
 ```json
 {
-  "mapId": "map_xyz",
+  "mapId": "uuid-...",
   "title": "New Mindmap",
-  "createdAt": "2025-01-01T00:00:00Z"
+  "currentVersion": 0,
+  "createdAt": "2026-03-29T00:00:00Z"
 }
 ```
 
 ---
 
 ### GET /maps
-내 맵 목록 조회
+내 맵 목록 조회 (소유 + 워크스페이스 공유)
+
+**Query** `?workspaceId=uuid&deleted=false&page=1&limit=20`
 
 **Response** `200 OK`
 ```json
 {
   "maps": [
     {
-      "mapId": "map_xyz",
-      "title": "New Mindmap",
-      "updatedAt": "2025-01-01T00:00:00Z"
+      "mapId": "uuid-...",
+      "title": "My Map",
+      "deletedAt": null,
+      "updatedAt": "2026-03-29T00:00:00Z"
     }
-  ]
+  ],
+  "total": 1
 }
 ```
 
@@ -122,40 +225,39 @@ Authorization: Bearer {token}
 **Response** `200 OK`
 ```json
 {
-  "mapId": "map_xyz",
+  "mapId": "uuid-...",
   "title": "My Map",
+  "currentVersion": 42,
   "nodes": [ ...NodeObject[] ],
-  "updatedAt": "2025-01-01T00:00:00Z"
+  "updatedAt": "2026-03-29T00:00:00Z"
 }
 ```
 
 ---
 
 ### PATCH /maps/{mapId}
-맵 메타 업데이트 (제목 등)
+맵 메타 업데이트
 
-**Request Body**
+**Request Body** (변경 필드만)
 ```json
-{ "title": "Updated Title" }
+{
+  "title": "Updated Title",
+  "viewMode": "dashboard",
+  "refreshIntervalSeconds": 30
+}
 ```
-
-### [변경 주석]
-- 최신 설계 기준으로는 title 외에도 아래 필드까지 PATCH 대상이 될 수 있다.
-  - viewMode
-  - refreshIntervalSeconds
-- 즉, dashboard 기능(V3)까지 고려하면 map 메타 PATCH 범위를 더 넓게 잡는 편이 좋다.
 
 ---
 
 ### DELETE /maps/{mapId}
-맵 삭제 (soft delete)
+맵 삭제 (soft-delete, 30일 후 영구 삭제)
 
 **Response** `204 No Content`
 
 ---
 
 ### PATCH /maps/{mapId}/document
-맵 변경 patch 저장 (Autosave용)
+Autosave — 맵 변경 patch 저장
 
 **Request Body**
 ```json
@@ -163,49 +265,23 @@ Authorization: Bearer {token}
   "clientId": "cli_abc123",
   "patchId": "p_1710598325_001",
   "baseVersion": 128,
-  "timestamp": "2026-03-16T14:32:05.123Z",
+  "timestamp": "2026-03-29T14:32:05.123Z",
   "patches": [
-    { "op": "updateNodeText", "nodeId": "node_1", "text": "Updated Text" },
-    { "op": "moveNode", "nodeId": "node_2", "parentId": "node_root", "orderIndex": 3 }
+    { "op": "updateNodeText", "nodeId": "uuid-...", "text": "Updated" },
+    { "op": "moveNode", "nodeId": "uuid-...", "parentId": "uuid-...", "orderIndex": 1.5 }
   ]
 }
 ```
 
 **Response** `200 OK`
-
-### [변경 주석 - 매우 중요]
-- autosave API는 초기 snapshot 설계에서 patch 기반 document 저장 방식으로 변경되었다.
-- 현재 구현 기준 엔드포인트는 `/maps/{mapId}/document` 이다.
-- version / patchId / clientId를 사용하여 충돌 처리와 멱등성을 보장한다.
-
-```http
-PATCH /maps/{mapId}/document
-```
-
-#### 최신 권장 Request Body (patch 기반)
 ```json
-{
-  "clientId": "cli_abc123",
-  "patchId": "p_1710598325_001",
-  "baseVersion": 128,
-  "timestamp": "2026-03-16T14:32:05.123Z",
-  "patches": [
-    { "op": "updateNodeText", "nodeId": "node_1", "text": "Updated Text" },
-    { "op": "moveNode", "nodeId": "node_2", "parentId": "node_root", "orderIndex": 3 }
-  ]
-}
+{ "newVersion": 129 }
 ```
 
-#### 최신 권장 Response
+**충돌 시** `409 Conflict`
 ```json
-{
-  "newVersion": 129
-}
+{ "error": "VERSION_CONFLICT", "currentVersion": 130 }
 ```
-
-#### 정리
-- 기존 문서의 `/snapshot` 설명은 참고용 legacy 흐름으로 남겨둘 수 있다.
-- 그러나 **실제 개발 착수 기준 문서**로는 `/maps/{mapId}/document` patch API를 우선 사용해야 한다.
 
 ---
 
@@ -217,44 +293,21 @@ PATCH /maps/{mapId}/document
 **Request Body**
 ```json
 {
-  "parentId": "node_root",
+  "parentId": "uuid-...",
   "text": "New Node",
   "layoutType": "tree-right",
-  "orderIndex": 0
+  "orderIndex": 1.5
 }
 ```
 
-**Response** `201 Created`
-```json
-{
-  "nodeId": "node_abc",
-  "mapId": "map_xyz",
-  "parentId": "node_root",
-  "text": "New Node"
-}
-```
-
-### [변경 주석]
-- 실제 생성 로직에서는 text 외에도 아래 기본값 상속이 함께 고려되어야 한다.
-  - shapeType
-  - style.fillColor
-  - 기타 style 기본값
-- 즉, 단순 CRUD 문서로는 위 Request가 최소 예시이고,
-  실제 Command/Service 계층에서는 "기준 노드 스타일 상속" 로직이 추가된다.
-  - `layoutType = "kanban"` 인 맵에서는 노드 생성 시 depth 제한 규칙을 적용해야 한다.
-  - depth 0 = board
-  - depth 1 = column
-  - depth 2 = card
-  - depth 3 이상 생성 불가
-- 즉, kanban에서는 card 아래 자식 생성 요청을 서버에서 거부해야 한다.
-- 또한 board 아래에 card를 직접 생성하거나, column 아래에 column을 생성하는 요청도 검증 단계에서 차단해야 한다.
+**Response** `201 Created` → NodeObject
 
 ---
 
 ### PATCH /nodes/{nodeId}
 노드 속성 업데이트
 
-**Request Body** (변경 필드만 포함)
+**Request Body** (변경 필드만)
 ```json
 {
   "text": "Updated Text",
@@ -267,18 +320,12 @@ PATCH /maps/{mapId}/document
 }
 ```
 
-### [변경 주석]
-- 최신 DB 컬럼명은 `style_json`이지만,
-  API 요청/응답에서는 프론트엔드 친화적으로 `style` 이름을 유지하는 것이 자연스럽다.
-- 즉:
-  - API 모델: style
-  - DB 컬럼: style_json
-- 이 변환은 repository/service 계층에서 처리한다.
+> API: `style` 키 사용 / DB 컬럼: `style_json` — 서비스 레이어에서 변환
 
 ---
 
 ### DELETE /nodes/{nodeId}
-노드 삭제 (하위 subtree 포함)
+노드 삭제 (하위 subtree cascade)
 
 **Response** `204 No Content`
 
@@ -290,8 +337,8 @@ PATCH /maps/{mapId}/document
 **Request Body**
 ```json
 {
-  "newParentId": "node_xyz",
-  "orderIndex": 1
+  "newParentId": "uuid-...",
+  "orderIndex": 2.0
 }
 ```
 
@@ -302,9 +349,7 @@ PATCH /maps/{mapId}/document
 
 **Request Body**
 ```json
-{
-  "layoutType": "tree-down"
-}
+{ "layoutType": "tree-down" }
 ```
 
 ---
@@ -312,16 +357,25 @@ PATCH /maps/{mapId}/document
 ## 4. Export
 
 ### POST /maps/{mapId}/export/markdown
-Markdown 파일 Export
+Markdown Export
 
-**Response** `200 OK`
+**Request Body**
 ```json
 {
-  "newVersion": 129
+  "includeCollapsed": true,
+  "includeTags": true,
+  "imageHandling": "omit"
 }
 ```
-Content-Type: text/markdown
-Content-Disposition: attachment; filename="map.md"
+
+> 상세 동작 정의는 `docs/04-extensions/markdown-export.md` 참조
+
+**Response** `202 Accepted` (비동기 Job)
+```json
+{
+  "exportId": "uuid-...",
+  "status": "pending"
+}
 ```
 
 ---
@@ -329,26 +383,382 @@ Content-Disposition: attachment; filename="map.md"
 ### POST /maps/{mapId}/export/html
 Standalone HTML Export
 
-**Response** `200 OK`
-```
-Content-Type: text/html
-Content-Disposition: attachment; filename="map.html"
+**Request Body**
+```json
+{
+  "includeCollapsed": false,
+  "includeTags": true,
+  "imageHandling": "embed"
+}
 ```
 
-### [변경 주석]
-- 초기 문서에서는 동기 다운로드형처럼 보이지만,
-  최신 schema.sql에는 `exports` 테이블이 존재한다.
-- 따라서 구현이 커지면 아래처럼 job 기반으로 확장될 수 있다.
-  - export 요청
-  - exports 테이블에 status=pending 기록
-  - worker 처리
-  - 완료 후 storage_path 반환
-- MVP에서는 즉시 응답형으로 시작하고,
-  파일 크기/복잡도가 커지면 job 방식으로 전환하는 전략이 적절하다.
+> 상세 동작 정의는 `docs/04-extensions/html-export.md` 참조
+
+**Response** `202 Accepted` (비동기 Job)
+```json
+{
+  "exportId": "uuid-...",
+  "status": "pending"
+}
+```
 
 ---
 
-## 5. Publish
+### GET /maps/{mapId}/export/{exportId}
+Export 작업 상태 조회
+
+**Response** `200 OK`
+```json
+{
+  "exportId": "uuid-...",
+  "status": "done",
+  "downloadUrl": "https://storage.../exports/map.md",
+  "expiresAt": "2026-03-30T00:00:00Z"
+}
+```
+
+`status`: `pending` | `processing` | `done` | `error`
+
+---
+
+## 5. 노드 배경 이미지 (Node Background Image)
+
+### PATCH /nodes/{nodeId}/background-image
+노드 배경 이미지 설정 (preset 또는 업로드된 이미지 적용)
+
+**Request Body — preset 타입**
+```json
+{
+  "type": "preset",
+  "assetId": "preset_img_102",
+  "url": "https://cdn.mindmap.ai.kr/assets/preset/102.png",
+  "fit": "cover",
+  "position": "center",
+  "overlayOpacity": 0.28,
+  "overlayColor": "#000000"
+}
+```
+
+**Request Body — upload 타입**
+```json
+{
+  "type": "upload",
+  "fileId": "file_abc123",
+  "url": "https://storage.mindmap.ai.kr/uploads/node/bg.png",
+  "fit": "cover",
+  "position": "center",
+  "overlayOpacity": 0.2,
+  "overlayColor": "#000000"
+}
+```
+
+**Response** `200 OK`
+```json
+{
+  "nodeId": "uuid-...",
+  "backgroundImage": {
+    "type": "upload",
+    "fileId": "file_abc123",
+    "url": "https://storage.mindmap.ai.kr/uploads/node/bg.png",
+    "fit": "cover",
+    "position": "center",
+    "overlayOpacity": 0.2,
+    "overlayColor": "#000000"
+  }
+}
+```
+
+> 저장 위치: `nodes.style_json` 내 `backgroundImage` 키 (MVP)
+
+---
+
+### DELETE /nodes/{nodeId}/background-image
+노드 배경 이미지 제거
+
+**Response** `204 No Content`
+
+> `nodes.style_json` 에서 `backgroundImage` 키 삭제
+
+---
+
+### POST /nodes/{nodeId}/background-image/upload
+배경 이미지 파일 직접 업로드
+
+**Request** `multipart/form-data`
+```
+file: (binary)
+```
+
+**Response** `201 Created`
+```json
+{
+  "fileId": "file_abc123",
+  "url": "https://storage.mindmap.ai.kr/uploads/nodes/{nodeId}/bg.png",
+  "width": 1280,
+  "height": 720,
+  "mimeType": "image/png",
+  "fileSizeBytes": 204800
+}
+```
+
+> Supabase Storage `uploads` 버킷에 저장
+
+---
+
+### GET /assets/presets/background-images
+배경 이미지 프리셋 목록 조회 (인증 불필요)
+
+**Response** `200 OK`
+```json
+{
+  "presets": [
+    {
+      "assetId": "preset_img_101",
+      "name": "Blue Sky",
+      "thumbnailUrl": "https://cdn.mindmap.ai.kr/assets/preset/101_thumb.png",
+      "url": "https://cdn.mindmap.ai.kr/assets/preset/101.png"
+    }
+  ]
+}
+```
+
+---
+
+## 6. 태그 (Tags)
+
+### GET /tags
+내 태그 목록 조회
+
+**Response** `200 OK`
+```json
+{
+  "tags": [
+    { "tagId": "uuid-...", "name": "중요", "color": "#FF5733" }
+  ]
+}
+```
+
+---
+
+### POST /tags
+태그 생성
+
+**Request Body**
+```json
+{
+  "name": "중요",
+  "color": "#FF5733"
+}
+```
+
+**Response** `201 Created`
+```json
+{ "tagId": "uuid-...", "name": "중요", "color": "#FF5733" }
+```
+
+---
+
+### PATCH /tags/{tagId}
+태그 수정 (이름/색상)
+
+**Request Body** (변경 필드만)
+```json
+{ "color": "#33A1FF" }
+```
+
+---
+
+### DELETE /tags/{tagId}
+태그 삭제 (node_tags cascade 포함)
+
+**Response** `204 No Content`
+
+---
+
+### POST /nodes/{nodeId}/tags
+노드에 태그 추가
+
+**Request Body**
+```json
+{ "tagId": "uuid-..." }
+```
+
+**Response** `201 Created`
+```json
+{
+  "nodeId": "uuid-...",
+  "tagId": "uuid-...",
+  "createdAt": "2026-03-29T00:00:00Z"
+}
+```
+
+---
+
+### DELETE /nodes/{nodeId}/tags/{tagId}
+노드에서 태그 제거
+
+**Response** `204 No Content`
+
+---
+
+### GET /nodes/{nodeId}/tags
+노드에 붙은 태그 목록 조회
+
+**Response** `200 OK`
+```json
+{
+  "tags": [
+    { "tagId": "uuid-...", "name": "중요", "color": "#FF5733" }
+  ]
+}
+```
+
+---
+
+### GET /maps/{mapId}/tags
+맵에 사용된 태그 전체 조회 (필터링용)
+
+**Response** `200 OK`
+```json
+{
+  "tags": [ ...Tag[] ],
+  "usageCount": { "uuid-...": 5, "uuid-...": 2 }
+}
+```
+
+---
+
+## 7. Node Indicator
+
+Indicator = 노드 하단에 표시되는 요약 배지 (메모/링크/첨부/미디어/태그 수)
+
+### GET /nodes/{nodeId}/indicator
+노드 Indicator 데이터 조회
+
+**Response** `200 OK`
+```json
+{
+  "nodeId": "uuid-...",
+  "hasNote": true,
+  "notePreview": "첫 줄 미리보기...",
+  "linkCount": 2,
+  "attachmentCount": 1,
+  "hasMedia": false,
+  "tagCount": 3,
+  "tags": [
+    { "tagId": "uuid-...", "name": "중요", "color": "#FF5733" }
+  ]
+}
+```
+
+---
+
+### GET /nodes/{nodeId}/note
+노드 메모 조회
+
+**Response** `200 OK`
+```json
+{
+  "nodeId": "uuid-...",
+  "content": "메모 내용...",
+  "updatedAt": "2026-03-29T00:00:00Z"
+}
+```
+
+---
+
+### PUT /nodes/{nodeId}/note
+노드 메모 저장 (upsert)
+
+**Request Body**
+```json
+{ "content": "메모 내용..." }
+```
+
+**Response** `200 OK`
+
+---
+
+### DELETE /nodes/{nodeId}/note
+노드 메모 삭제
+
+**Response** `204 No Content`
+
+---
+
+### GET /nodes/{nodeId}/links
+노드 링크 목록 조회
+
+**Response** `200 OK`
+```json
+{
+  "links": [
+    { "linkId": "uuid-...", "url": "https://example.com", "label": "참고 자료" }
+  ]
+}
+```
+
+---
+
+### POST /nodes/{nodeId}/links
+링크 추가
+
+**Request Body**
+```json
+{ "url": "https://example.com", "label": "참고 자료" }
+```
+
+**Response** `201 Created`
+
+---
+
+### DELETE /nodes/{nodeId}/links/{linkId}
+링크 삭제
+
+**Response** `204 No Content`
+
+---
+
+### GET /nodes/{nodeId}/attachments
+첨부파일 목록 조회
+
+**Response** `200 OK`
+```json
+{
+  "attachments": [
+    {
+      "attachmentId": "uuid-...",
+      "filename": "report.pdf",
+      "mimeType": "application/pdf",
+      "fileSizeBytes": 1048576,
+      "url": "https://storage.mindmap.ai.kr/attachments/..."
+    }
+  ]
+}
+```
+
+---
+
+### POST /nodes/{nodeId}/attachments
+첨부파일 업로드
+
+**Request** `multipart/form-data`
+```
+file: (binary)
+```
+
+**Response** `201 Created`
+
+---
+
+### DELETE /nodes/{nodeId}/attachments/{attachmentId}
+첨부파일 삭제
+
+**Response** `204 No Content`
+
+---
+
+## 8. Publish
 
 ### POST /maps/{mapId}/publish
 맵을 공개 URL로 퍼블리싱
@@ -356,21 +766,37 @@ Content-Disposition: attachment; filename="map.html"
 **Response** `200 OK`
 ```json
 {
-  "publishUrl": "https://mindmap.ai.kr/p/abcd1234",
-  "publishedAt": "2025-01-01T00:00:00Z"
+  "publishId": "abcd1234efgh5678",
+  "publishUrl": "https://app.mindmap.ai.kr/published/abcd1234efgh5678",
+  "publishedAt": "2026-03-29T00:00:00Z"
 }
 ```
 
 ---
 
 ### DELETE /maps/{mapId}/publish
-퍼블리싱 취소
+퍼블리싱 취소 (unpublished_at 설정)
 
 **Response** `204 No Content`
 
 ---
 
-## 6. AI Generation
+### GET /published/{publishId}
+공개 맵 데이터 조회 (인증 불필요)
+
+**Response** `200 OK`
+```json
+{
+  "mapId": "uuid-...",
+  "title": "My Map",
+  "nodes": [ ...NodeObject[] ],
+  "publishedAt": "2026-03-29T00:00:00Z"
+}
+```
+
+---
+
+## 9. AI Generation
 
 ### POST /ai/generate
 AI 마인드맵 자동 생성
@@ -380,32 +806,53 @@ AI 마인드맵 자동 생성
 {
   "prompt": "Explain Kubernetes architecture",
   "maxDepth": 3,
-  "maxChildrenPerNode": 5
+  "maxChildrenPerNode": 5,
+  "targetMapId": "uuid-..."
 }
+```
+
+**Response** `200 OK` (MVP: 즉시 응답)
+```json
+{
+  "nodes": [ ...NodeObject[] ],
+  "tokensUsed": 1200
+}
+```
+
+확장 시 비동기 Job:
+```
+POST /ai/generate → 202 { jobId }
+GET  /ai/jobs/{jobId} → { status, nodes }
+```
+
+---
+
+### POST /ai/expand
+선택 노드 하위 AI 확장
+
+**Request Body**
+```json
+{
+  "nodeId": "uuid-...",
+  "prompt": "더 자세하게",
+  "maxChildren": 5
+}
+```
+
+---
+
+### POST /ai/summarize
+맵 요약 텍스트 생성
+
+**Request Body**
+```json
+{ "mapId": "uuid-..." }
 ```
 
 **Response** `200 OK`
 ```json
-{
-  "markdown": "# Kubernetes\n## Node\n## Pod\n## Scheduler\n## API Server",
-  "nodes": [ ...NodeObject[] ]
-}
+{ "summary": "이 맵은 Kubernetes 아키텍처를 설명합니다..." }
 ```
-
-### [변경 주석]
-- 최신 worker / ai_jobs 구조까지 반영하면,
-  AI 생성도 즉시 응답형과 비동기 job형 둘 다 가능하다.
-- 초기 MVP는 즉시 응답형으로 충분하지만,
-  긴 응답/고비용 모델 사용 시 아래 확장도 고려할 수 있다.
-  - POST /ai/generate → job 생성
-  - GET /ai/jobs/{jobId} → 상태 조회
-
----
-
-## 7. 공개 API (인증 불필요)
-
-### GET /p/{publishId}
-퍼블리시된 맵 뷰어 페이지 (HTML)
 
 ---
 
@@ -413,24 +860,20 @@ AI 마인드맵 자동 생성
 
 ```json
 {
-  "error": "UNAUTHORIZED",
-  "message": "Invalid or expired token",
-  "statusCode": 401
+  "error": "ERROR_CODE",
+  "message": "Human-readable message",
+  "statusCode": 400
 }
 ```
 
-| Code | 의미 |
-|------|------|
-| 400 | Bad Request — 입력값 오류 |
-| 401 | Unauthorized — 인증 필요 |
-| 403 | Forbidden — 권한 없음 |
-| 404 | Not Found |
-| 409 | Conflict — 중복 데이터 |
-| 500 | Internal Server Error |
-
-### [변경 주석]
-- patch 기반 autosave로 전환되면 409 Conflict 의미가 특히 중요해진다.
-- 예:
-  - baseVersion != currentVersion
-  - 이미 처리된 patchId와 충돌
-- 따라서 autosave 관련 에러 문서에서는 409를 좀 더 자세히 별도 설명하는 것이 좋다.
+| Code | 에러 코드 | 의미 |
+|------|-----------|------|
+| 400 | `BAD_REQUEST` | 입력값 오류 |
+| 401 | `UNAUTHORIZED` | 인증 필요 또는 토큰 만료 |
+| 403 | `FORBIDDEN` | 권한 없음 |
+| 404 | `NOT_FOUND` | 리소스 없음 |
+| 409 | `VERSION_CONFLICT` | Autosave 버전 충돌 (baseVersion != currentVersion) |
+| 409 | `DUPLICATE_PATCH` | 동일 patchId 중복 처리 |
+| 409 | `DUPLICATE_TAG_NAME` | 같은 이름의 태그 이미 존재 |
+| 429 | `RATE_LIMIT_EXCEEDED` | 요청 한도 초과 (Retry-After 헤더 참조) |
+| 500 | `INTERNAL_SERVER_ERROR` | 서버 내부 오류 |

@@ -420,3 +420,70 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.maps;
 --   ('exports',     'exports',     false),
 --   ('published',   'published',   true),   -- 퍼블리시된 HTML은 공개
 --   ('media',       'media',       false);
+
+-- ============================================================
+-- V2: 다국어 번역 기능 스키마 확장 (multilingual-translation.md v3.0)
+-- ============================================================
+
+-- 1. users 테이블: 언어 설정 확장
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS secondary_languages
+    VARCHAR(20)[]  NOT NULL DEFAULT '{}',
+    -- 2차 언어 배열, 최대 3개 (예: '{ja,zh}')
+    -- translation_mode='skip' 자동 결정에 사용
+
+  ADD COLUMN IF NOT EXISTS skip_english_translation
+    BOOLEAN  NOT NULL DEFAULT TRUE;
+    -- true: 영어 텍스트 번역 생략 (기술 용어, 브랜드명 등)
+    -- false: 영어도 번역 대상으로 처리
+
+ALTER TABLE public.users
+  ADD CONSTRAINT chk_secondary_languages_max
+    CHECK (array_length(secondary_languages, 1) <= 3
+           OR secondary_languages = '{}');
+
+-- 2. maps 테이블: 맵별 번역 정책 추가
+ALTER TABLE public.maps
+  ADD COLUMN IF NOT EXISTS translation_policy_json
+    JSONB  NULL  DEFAULT NULL;
+    -- NULL: 사용자 기본 설정 따름
+    -- 구조: { "skipLanguages": ["ja", "zh"], "skipEnglish": true }
+    -- skipEnglish: null이면 사용자 설정 따름
+
+COMMENT ON COLUMN public.maps.translation_policy_json
+  IS '맵별 번역 정책. NULL=사용자 기본 설정 사용. { skipLanguages: string[], skipEnglish: boolean|null }';
+
+-- 3. nodes 테이블: 번역 제어 필드 추가
+ALTER TABLE public.nodes
+  ADD COLUMN IF NOT EXISTS translation_mode
+    VARCHAR(10)  NOT NULL DEFAULT 'auto',
+    -- 'auto': 열람자 언어에 맞춰 자동 번역 (기본)
+    -- 'skip': 모든 열람자에게 원문 표시 (저장 시 서버가 자동 결정)
+
+  ADD COLUMN IF NOT EXISTS translation_override
+    VARCHAR(10)  NULL  DEFAULT NULL,
+    -- NULL: 자동 정책 적용 (기본)
+    -- 'force_on': 강제 번역 (skip 설정도 무시)
+    -- 'force_off': 강제 번역 금지 (모든 열람자에게 원문)
+
+  ADD COLUMN IF NOT EXISTS author_preferred_language
+    VARCHAR(20)  NULL;
+    -- 노드 작성 시점의 작성자 기본 언어 스냅샷 (예: 'ko')
+    -- 작성자가 나중에 언어 설정 변경해도 기존 노드 translation_mode에 영향 없도록 보존
+
+ALTER TABLE public.nodes
+  ADD CONSTRAINT chk_translation_mode
+    CHECK (translation_mode IN ('auto', 'skip')),
+  ADD CONSTRAINT chk_translation_override
+    CHECK (translation_override IN ('force_on', 'force_off')
+           OR translation_override IS NULL);
+
+-- nodes 번역 skip 조회 최적화 인덱스
+CREATE INDEX IF NOT EXISTS idx_nodes_translation_skip
+  ON public.nodes (map_id, translation_mode)
+  WHERE translation_mode = 'skip';
+-- 맵 로딩 시 번역 필요 여부 판단 쿼리 가속
+
+-- 4. node_translations 인덱스 추가 (테이블은 섹션 9에서 이미 생성됨)
+CREATE INDEX IF NOT EXISTS idx_node_translations_node_id
+  ON public.node_translations (node_id);

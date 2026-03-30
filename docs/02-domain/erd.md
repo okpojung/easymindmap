@@ -20,10 +20,15 @@ DB: PostgreSQL 16 (Supabase Self-hosted on ESXi VM-03)
         - published_maps, ai_jobs, node_translations, field_registry 테이블 추가
         - map_revisions 관계 명시
         - 전체 인덱스 목록 갱신
+  v3.1: [2026-03-30] 다국어 번역 V2 스키마 반영
+        - users: secondary_languages VARCHAR(20)[], skip_english_translation BOOLEAN 추가
+        - maps: translation_policy_json JSONB 추가
+        - nodes: translation_mode, translation_override, author_preferred_language 추가
+        - node_translations: idx_node_translations_node_id 인덱스 추가
+        - idx_nodes_translation_skip 인덱스 추가
+        - 번역 정책 3단계 계층 설계 포인트 추가
 
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. 전체 테이블 구조
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 auth.users (Supabase Auth 자동 생성)
@@ -53,12 +58,14 @@ field_registry  (독립 테이블, 대시보드 필드 메타)
 
 2.1 public.users
 ──────────────────
-  id                  UUID PK  REFERENCES auth.users(id) ON DELETE CASCADE
-  display_name        VARCHAR(100)
-  preferred_language  VARCHAR(10)  DEFAULT 'ko'
-  default_layout_type VARCHAR(50)  DEFAULT 'radial-bidirectional'
-  created_at          TIMESTAMPTZ
-  updated_at          TIMESTAMPTZ
+  id                          UUID PK  REFERENCES auth.users(id) ON DELETE CASCADE
+  display_name                VARCHAR(100)
+  preferred_language          VARCHAR(10)  DEFAULT 'ko'
+  secondary_languages         VARCHAR(20)[]  DEFAULT '{}'   -- [V2 신규] 2차 언어 배열 (최대 3개)
+  skip_english_translation    BOOLEAN  DEFAULT TRUE           -- [V2 신규] 영어 번역 생략 여부
+  default_layout_type         VARCHAR(50)  DEFAULT 'radial-bidirectional'
+  created_at                  TIMESTAMPTZ
+  updated_at                  TIMESTAMPTZ
 
   ※ auth.users 생성 시 handle_new_user() 트리거로 자동 INSERT
   ※ 이메일/비밀번호는 auth.users에 있으며 public.users에는 없음
@@ -89,6 +96,8 @@ public.workspace_members (N:N 연결 테이블)
   view_mode                VARCHAR(20)  DEFAULT 'edit'  -- 'edit' | 'dashboard'
   refresh_interval_seconds INT          DEFAULT 0       -- 0: off, Dashboard 갱신 주기
   current_version          INT          DEFAULT 0
+  translation_policy_json  JSONB  NULL                  -- [V2 신규] 맵별 번역 정책. NULL=사용자 기본 설정 따름
+                                                        -- 구조: { skipLanguages: string[], skipEnglish: boolean|null }
   deleted_at               TIMESTAMPTZ  NULL            -- [soft-delete] NULL=활성, NOT NULL=삭제됨
   created_at               TIMESTAMPTZ
   updated_at               TIMESTAMPTZ
@@ -135,8 +144,12 @@ public.workspace_members (N:N 연결 테이블)
   node_type   VARCHAR(30) DEFAULT 'text'   -- 'text' | 'data-live'
 
   -- 다국어
-  text_lang   VARCHAR(20)    -- 작성 언어 코드 ('ko', 'en', 'ja')
-  text_hash   VARCHAR(128)   -- SHA-256[:16], 번역 캐시 무효화 키
+  text_lang                 VARCHAR(20)    -- 작성 언어 코드 ('ko', 'en', 'ja')
+  text_hash                 VARCHAR(128)   -- SHA-256[:16], 번역 캐시 무효화 키
+  -- [V2 신규] 번역 제어 필드
+  translation_mode          VARCHAR(10)  DEFAULT 'auto'   -- 'auto'|’skip’, 저장 시 서버 자동 결정
+  translation_override      VARCHAR(10)  NULL             -- 'force_on'|'force_off'|NULL, 편집자 수동 설정
+  author_preferred_language VARCHAR(20)  NULL             -- 작성 시점 작성자 기본 언어 스냅샷
 
   -- 트리 구조 (v3.0 추가)
   depth       INT   DEFAULT 0              -- 앱단 계산 (ltree nlevel(path) - 1)
@@ -171,9 +184,10 @@ public.workspace_members (N:N 연결 테이블)
   인덱스:
     idx_nodes_map_id       ON (map_id)
     idx_nodes_parent_id    ON (parent_id)
-    idx_nodes_map_order    ON (map_id, order_index)
-    idx_nodes_path_gist    ON (path) USING GIST   -- [v3.0] subtree <@ 조회 최적화 O(log n)
-    idx_nodes_path_btree   ON (path) USING BTREE  -- [v3.0] exact match / ORDER BY
+    idx_nodes_map_order          ON (map_id, order_index)
+    idx_nodes_path_gist          ON (path) USING GIST   -- [v3.0] subtree <@ 조회 최적화 O(log n)
+    idx_nodes_path_btree         ON (path) USING BTREE  -- [v3.0] exact match / ORDER BY
+    idx_nodes_translation_skip   ON (map_id, translation_mode) WHERE translation_mode = 'skip'  -- [V2]
 
   ltree path 규칙:
     - Root: 'root'
@@ -261,6 +275,9 @@ public.workspace_members (N:N 연결 테이블)
   created_at        TIMESTAMPTZ
   updated_at        TIMESTAMPTZ
   UNIQUE (node_id, target_lang)
+
+  인덱스:
+    idx_node_translations_node_id  ON (node_id)  -- [V2 신규] 노드별 번역 일괄 조회 최적화
 
 
 2.12 public.field_registry  (대시보드 필드 메타)
@@ -402,3 +419,22 @@ published_maps  SELECT (공개): 누구나 (unpublished_at IS NULL 조건)
   - DB 저장값: kebab-case 영문 소문자 (예: 'radial-bidirectional')
   - BL 코드 ↔ DB 저장값 전체 매핑: docs/02-domain/node-model.md 참조
   - kanban 특수 규칙: depth 0=board, depth 1=column, depth 2=card, depth 3+ 금지
+
+⑨ 번역 정책 3단계 계층 (V2 신규)
+
+  레벨 1 (사용자): users.preferred_language, secondary_languages, skip_english_translation
+    → 모든 맵에 적용되는 기본값. 가입/설정 화면에서 한 번 설정.
+
+  레벨 2 (맵):     maps.translation_policy_json
+    → NULL이면 사용자 기본 설정 그대로 따름.
+    → 특정 맵에서만 다른 정책이 필요할 때 사용.
+    → 예) 일본어 학습 맵: { "skipLanguages": ["ja"], "skipEnglish": true }
+
+  레벨 3 (노드):   nodes.translation_override
+    → 'force_on': 강제 번역 (다른 모든 설정 무시)
+    → 'force_off': 강제 번역 금지 (모든 열람자 원문)
+    → null: 상위 정책 따름 (기본)
+    → 우선순위 최상위 — 레벨 1/2보다 항상 먼저 적용
+
+  결정 알고리즘(shouldTranslate):
+    docs/04-extensions/multilingual-translation.md § 3 참조

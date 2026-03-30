@@ -73,10 +73,16 @@ apps/api/
  │   │
  │   ├── translation/            # 번역 모듈 (V2)
  │   │   ├── translation.module.ts
- │   │   ├── translation.service.ts
+ │   │   ├── translation.service.ts       # shouldTranslate() 번역 여부 결정 통합
+ │   │   ├── translation-cache.service.ts # Redis Sliding TTL 캐시 관리
+ │   │   │                                # (TTL_INITIAL, TTL_SLIDING, TTL_MAX, Jitter)
+ │   │   ├── language-detect.service.ts   # franc 언어 자동 감지 (ISO 639-1)
+ │   │   ├── translation-mode.service.ts  # translation_mode 결정 로직
+ │   │   │                                # (노드 저장 시 'auto'|'skip' 자동 계산)
+ │   │   ├── translation.controller.ts    # REST API 엔드포인트
  │   │   └── providers/
- │   │       ├── deepl.provider.ts
- │   │       └── llm-fallback.provider.ts
+ │   │       ├── deepl.provider.ts        # DeepL API 1차 번역 엔진
+ │   │       └── llm-fallback.provider.ts # OpenAI GPT fallback (DeepL 실패/미지원 언어)
  │   │
  │   ├── export/                 # Export 모듈
  │   ├── tags/                   # 태그 모듈
@@ -364,6 +370,21 @@ POST /maps/:id/export/markdown   Markdown export 요청
 POST /maps/:id/export/html       HTML export 요청
 GET  /exports/:jobId/status      export 진행 상태 확인
 POST /maps/:id/publish           Supabase Storage에 HTML 업로드 → 공개 URL 반환
+
+Translation (V2)
+GET    /users/me/language-settings              사용자 언어 설정 조회
+PATCH  /users/me/language-settings              사용자 언어 설정 수정
+                                                body: { preferredLanguage, secondaryLanguages, skipEnglishTranslation }
+
+GET    /maps/:id/translation-policy             맵 번역 정책 조회
+PATCH  /maps/:id/translation-policy             맵 번역 정책 수정
+                                                body: { skipLanguages: string[], skipEnglish: boolean|null } | null
+
+PATCH  /nodes/:id/translation-override          노드 번역 override 설정
+                                                body: { override: 'force_on'|'force_off'|null }
+
+GET    /maps/:id/translations?lang=en           맵 내 특정 언어 번역 일괄 조회 (초기 로딩 최적화)
+POST   /maps/:id/retranslate                    맵 전체 재번역 요청 (관리용, 번역 엔진 업그레이드 시)
 ```
 
 ---

@@ -2,7 +2,7 @@ easymindmap — 노드 인디케이터 기능 설계
 (노드 추가 +버튼 인디케이터 + 번역 상태 인디케이터)
 
 최종 업데이트: 2026-03-30
-관련 기능ID: NODE-13 (추가 인디케이터), NODE-14 (번역 인디케이터)
+관련 기능ID: NODE-13 (추가 인디케이터), NODE-14 (번역 인디케이터), NODE-15 (인디케이터 ON/OFF 설정)
 참고:
   - iThinkWise 사용자 설명서 Ver 4.0 (가지 추가 UX)
   - docs/04-extensions/multilingual-translation.md v3.0 § 10
@@ -619,3 +619,183 @@ Step 4: 원문 팝오버 (🌐 클릭 → 원문 + 언어명 표시 + 닫기)
 Step 5: ⚠️ 번역 실패 아이콘
 Step 6: 🚫 / 🔄 편집자 override 아이콘 + 클릭 시 설정 패널
 Step 7: WebSocket translation:ready 이벤트 수신 → 자동 UI 갱신
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ PART 3. 인디케이터 표시 ON/OFF 설정 (NODE-15)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+21. 배경 — 인디케이터 혼잡 문제
+
+노드에 번역 인디케이터(🌐/⚠️/🚫/🔄), 태그 badge, 첨부/링크 아이콘이 모두 표시될 경우
+노드 텍스트 가독성이 저하된다. 특히 번역 기능을 활발히 사용하는 맵에서 🌐 아이콘이
+모든 번역 노드에 상시 표시되면 시각적 피로가 증가한다.
+
+  [딸기 🌐] [AI 분석 🌐] [머신러닝 🌐]  ← 번역 아이콘 과다 표시 예시
+  [딸기 #ML #AI] [분석 #AI]             ← 태그 badge 과다 표시 예시
+
+  → 사용자 설정으로 각 인디케이터 표시 여부를 제어할 수 있어야 한다.
+
+
+22. 표시 제어 대상
+
+  ┌──────────────────────────────────────────────────────────────┐
+  │ 인디케이터             │ 기본값  │ 설정 키                      │
+  ├──────────────────────────────────────────────────────────────┤
+  │ 번역 아이콘 (🌐 / ⚠️) │ ON     │ showTranslationIndicator     │
+  │ 편집자 override 아이콘 │ ON     │ showTranslationOverrideIcon  │
+  │  (🚫 / 🔄, 편집자만)  │        │                              │
+  │ 태그 badge             │ ON     │ showTagBadge                 │
+  └──────────────────────────────────────────────────────────────┘
+
+  * 번역 아이콘 OFF 시: 🌐·⚠️ 아이콘을 숨기지만 번역 자체는 유지된다.
+    (텍스트는 여전히 번역본으로 표시, 단 아이콘 미표시)
+  * Skeleton 바는 설정과 무관하게 항상 표시한다.
+    (번역 대기 상태는 UX상 반드시 알려야 하기 때문)
+  * 편집자 override 아이콘은 편집자 권한인 경우에만 설정 항목이 노출된다.
+  * 설정 범위: 전역 사용자 설정 (모든 맵에 공통 적용).
+    맵별/노드별 개별 설정은 지원하지 않는다 (V2 범위 외).
+
+
+23. 설정 저장 위치
+
+  사용자별 UI 표시 환경설정은 DB의 users.ui_preferences_json (JSONB)에 저장한다.
+
+  ```json
+  // users.ui_preferences_json 예시
+  {
+    "showTranslationIndicator": true,
+    "showTranslationOverrideIcon": true,
+    "showTagBadge": true
+  }
+  ```
+
+  참고: users.ui_preferences_json 컬럼 정의 → docs/02-domain/schema.sql
+        UiPreferences 타입 정의 → docs/02-domain/map-model.md
+
+
+24. 표시 판단 로직 변경
+
+번역 아이콘 표시 판단 로직에 uiPreferences 체크를 추가한다.
+
+```typescript
+// NodeText.tsx
+function getTranslationIconState(
+  node: NodeObject,
+  viewerLang: string,
+  cachedTranslation: CachedTranslation | undefined,
+  isEditor: boolean,
+  uiPrefs: UiPreferences,          // [NODE-15 추가]
+): 'none' | 'globe' | 'warning' | 'force-off' | 'force-on' | 'skeleton' {
+
+  // [NODE-15] 번역 아이콘 OFF 설정 시: 🌐·⚠️ 를 숨기고 'none' 반환
+  //   단, 편집자 override 아이콘(🚫/🔄)은 별도 설정(showTranslationOverrideIcon)으로 제어
+  //   Skeleton은 항상 표시 (설정 무시)
+
+  // 편집자 override 아이콘 (편집자 권한만)
+  if (isEditor && node.translation_override === 'force_off') {
+    if (!uiPrefs.showTranslationOverrideIcon) return 'none';  // [NODE-15]
+    return 'force-off';
+  }
+  if (isEditor && node.translation_override === 'force_on') {
+    if (!uiPrefs.showTranslationOverrideIcon) return 'none';  // [NODE-15]
+    return 'force-on';
+  }
+
+  // 번역 불필요 (같은 언어, skip 등)
+  const decision = shouldTranslate(node, viewerSettings, mapPolicy);
+  if (!decision.shouldTranslate) return 'none';
+
+  // 번역 캐시 있고 유효 → 🌐
+  if (cachedTranslation?.hash === node.text_hash) {
+    if (!uiPrefs.showTranslationIndicator) return 'none';  // [NODE-15] 아이콘만 숨김
+    return 'globe';
+  }
+
+  // 번역 실패 상태 → ⚠️
+  if (translationFailed[node.id]) {
+    if (!uiPrefs.showTranslationIndicator) return 'none';  // [NODE-15]
+    return 'warning';
+  }
+
+  // 번역 대기 중 → Skeleton (설정 무관, 항상 표시)
+  return 'skeleton';
+}
+```
+
+
+25. 태그 badge 표시 제어
+
+```typescript
+// NodeTagBadge.tsx
+function shouldShowTagBadge(
+  node: NodeObject,
+  uiPrefs: UiPreferences,
+): boolean {
+  if (!uiPrefs.showTagBadge) return false;
+  return node.tags.length > 0;
+}
+```
+
+  * showTagBadge = false 시: 태그 badge UI 자체를 렌더링하지 않는다.
+  * 태그 데이터(node.tags)는 유지되며, 태그 검색/필터 기능도 정상 동작한다.
+    오직 시각적 badge 표시만 OFF된다.
+
+
+26. 설정 UI — 위치 및 와이어프레임
+
+  설정 위치: 사이드바 "표시 설정" 패널 또는 메뉴 > 설정 > 인디케이터
+
+  ┌─────────────────────────────────────────────┐
+  │  표시 설정                                   │
+  │                                             │
+  │  인디케이터                                  │
+  │  ─────────────────────────────────────────  │
+  │  번역 아이콘 표시 (🌐 / ⚠️)    [ ON  ● ]   │
+  │  번역 override 아이콘 (🚫/🔄)  [ ON  ● ]   │  ← 편집자 권한일 때만 표시
+  │  태그 badge 표시                [ ON  ● ]   │
+  │                                             │
+  │  * 번역 아이콘 OFF 시에도 번역 텍스트는      │
+  │    그대로 표시됩니다.                        │
+  └─────────────────────────────────────────────┘
+
+  토글 OFF 시 즉시 반영 (API 저장 + 로컬 state 동기화).
+  저장 API: PATCH /users/me/ui-preferences
+
+
+27. 번역 아이콘 OFF 시 동작 정리
+
+  상태                  showTranslationIndicator=true  showTranslationIndicator=false
+  ────────────────────────────────────────────────────────────────────────────────
+  번역본 표시 중         [딸기 🌐]                      [딸기]
+  번역 실패              [딸기 ⚠️]                      [딸기]
+  번역 대기 중           [■■■■■]  (Skeleton)           [■■■■■]  (Skeleton 유지)
+  force_off 편집자       [딸기 🚫]                      [딸기 🚫] ← override 아이콘은 별도 설정
+  force_on 편집자        [번역본 🔄]                    [번역본 🔄]
+  ────────────────────────────────────────────────────────────────────────────────
+
+  핵심 원칙:
+  ① 번역 아이콘 OFF = 아이콘만 숨김. 번역 텍스트 자체는 유지.
+  ② Skeleton은 설정에 상관없이 항상 표시. (진행 중 상태 피드백)
+  ③ override 아이콘은 독립 설정. 번역 아이콘 OFF 여도 override 아이콘은 ON 가능.
+
+
+28. 관련 API 엔드포인트 (신규)
+
+  PATCH /users/me/ui-preferences
+    Body: Partial<UiPreferences>
+    → users.ui_preferences_json 업데이트
+    → 응답: 200 OK + 갱신된 UiPreferences
+
+  GET /users/me
+    → 기존 사용자 프로필 API에 uiPreferences 필드 포함하여 반환
+
+
+29. 구현 우선순위 (인디케이터 ON/OFF)
+
+Step 1: UiPreferences 타입 정의 및 users.ui_preferences_json 컬럼 추가 (schema)
+Step 2: PATCH /users/me/ui-preferences API 구현
+Step 3: uiPreferences 전역 상태 (Zustand store) 연동
+Step 4: getTranslationIconState()에 showTranslationIndicator 체크 추가
+Step 5: NodeTagBadge에 showTagBadge 체크 추가
+Step 6: 설정 UI 패널 구현 (토글 컴포넌트)

@@ -106,17 +106,40 @@ type UserObject = {
   애플리케이션 도메인 모델에서 passwordHash를 직접 다루지 않는 것이 맞다.
 - 따라서 실제 구현용 최종 UserObject는 아래처럼 이해하는 것을 권장한다.
 
+// [NODE-15 신규] UI 표시 환경설정 타입
+// DB 컬럼: users.ui_preferences_json JSONB
+// 모든 필드는 선택적 (없으면 기본값 적용)
+type UiPreferences = {
+  showTranslationIndicator: boolean;     // 번역 아이콘 (🌐/⚠️) 표시 여부 (기본: true)
+  showTranslationOverrideIcon: boolean;  // 편집자 override 아이콘 (🚫/🔄) 표시 여부 (기본: true)
+  showTagBadge: boolean;                 // 태그 badge 표시 여부 (기본: true)
+};
+
+// UI 환경설정 기본값
+const defaultUiPreferences: UiPreferences = {
+  showTranslationIndicator: true,
+  showTranslationOverrideIcon: true,
+  showTagBadge: true,
+};
+
 ```typescript
 type UserObject = {
   id: string;
   email: string;
   displayName: string | null;
 
-  // 설정
+  // 번역 설정
   preferredLanguage: SupportedLanguage;     // [V2 수정] 타입 확장
   secondaryLanguages: SupportedLanguage[];  // [V2 신규] 2차 언어 최대 3개
   skipEnglishTranslation: boolean;          // [V2 신규] 영어 번역 생략
+
+  // 기본 레이아웃
   defaultLayoutType: LayoutType;
+
+  // UI 표시 환경설정 [NODE-15 신규]
+  // DB 컬럼: users.ui_preferences_json JSONB
+  // 인디케이터 표시 제어 등 클라이언트 UI 설정을 서버에 영속
+  uiPreferences: UiPreferences;
 
   createdAt: string;
   updatedAt: string;
@@ -126,6 +149,7 @@ type UserObject = {
 - 즉:
   - 비밀번호 해시 저장/검증 책임 → Supabase Auth
   - 앱 도메인 프로필 책임 → public.users
+  - UI 환경설정 영속화 → users.ui_preferences_json (JSONB)
 
 ---
 

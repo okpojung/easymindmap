@@ -1,8 +1,11 @@
-easymindmap — 노드 추가 인디케이터 (+버튼) 기능 설계
+easymindmap — 노드 인디케이터 기능 설계
+(노드 추가 +버튼 인디케이터 + 번역 상태 인디케이터)
 
-최종 업데이트: 2026-03-23
-관련 기능ID: NODE-13
-참고: iThinkWise 사용자 설명서 Ver 4.0 (가지 추가 UX)
+최종 업데이트: 2026-03-30
+관련 기능ID: NODE-13 (추가 인디케이터), NODE-14 (번역 인디케이터)
+참고:
+  - iThinkWise 사용자 설명서 Ver 4.0 (가지 추가 UX)
+  - docs/04-extensions/multilingual-translation.md v3.0 § 10
 
 
 1. 기능 개요
@@ -370,3 +373,249 @@ Step 9: Undo/Redo 연동
              ┌─────┴─────┐
              │    [+]    │  ← ⬇ 자식 노드 추가
              └───────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ PART 2. 번역 상태 인디케이터 (NODE-14, V2)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+12. 번역 인디케이터 개요
+
+번역된 노드임을 열람자에게 알리고, 원문 확인 및 번역 override 설정 진입점을 제공하는 인디케이터.
+노드 텍스트 우측 끝에 작은 아이콘 형태로 표시된다.
+
+  [딸기 🌐]   ← 번역본 표시 중. 🌐 클릭 시 원문 팝오버
+  [AI 분석]   ← 번역 불필요 (내 언어). 아이콘 없음
+  [■■■■■]   ← 번역 대기 중. Skeleton(회색 바) 표시
+
+적용 단계: V2 (다국어 번역 기능과 함께 구현)
+설계 기준: docs/04-extensions/multilingual-translation.md § 10
+
+
+13. 번역 상태별 인디케이터 정의
+
+────────────────────────────────────────────────────
+상태                 표시 텍스트        아이콘     설명
+────────────────────────────────────────────────────
+내 언어로 작성        원문 그대로        없음      번역 불필요
+유효 번역 캐시 있음   번역본 표시        🌐        클릭 → 원문 팝오버
+번역 대기 중          Skeleton(회색 바)  없음      번역 완료 시 자동 교체
+번역 실패             원문 표시          ⚠️        재시도 없이 원문 fallback
+force_off 노드        원문 표시          🚫        편집자가 번역 강제 OFF
+force_on 노드         번역본 표시        🔄        편집자가 번역 강제 ON
+────────────────────────────────────────────────────
+
+아이콘 색상 가이드
+  🌐  파란색 계열 (#2B8EF0) — 번역 완료, 클릭 가능
+  ⚠️  주황색/노란색 — 번역 실패 경고
+  🚫  회색 — 강제 OFF (원문 고정)
+  🔄  초록색 계열 — 강제 ON (항상 번역)
+
+
+14. 🌐 원문 보기 팝오버 (오역 대응)
+
+14-1. 트리거 및 와이어프레임
+
+  번역된 노드에 hover 시 → 🌐 아이콘 강조
+  🌐 아이콘 클릭 시 → 원문 팝오버 표시
+
+  [딸기 🌐]   ← hover 상태
+
+  클릭 후:
+  ┌─────────────────────────────┐
+  │ 원문 (English)               │
+  │ strawberry                   │
+  │                              │
+  │  [번역본으로 돌아가기]        │
+  └─────────────────────────────┘
+
+14-2. 동작 원칙
+
+  ① API 호출 없음 — 클라이언트 state 전환만으로 처리
+     원문(node.text)은 항상 메모리에 있으므로 별도 요청 불필요
+
+  ② 팝오버 표시 중에도 맵 조작 가능 (모달 아님, non-blocking)
+
+  ③ [번역본으로 돌아가기] 클릭 또는 팝오버 외부 클릭 → 팝오버 닫힘
+
+  ④ 여러 노드를 동시에 원문 보기할 수 없음 (1개 팝오버 원칙)
+     다른 노드의 🌐 클릭 시 기존 팝오버는 닫히고 새 팝오버 열림
+
+14-3. 팝오버 표시 정보
+
+  항목              내용
+  ─────────────────────────────────────────────
+  원문 언어 레이블  text_lang → 언어명 변환 (예: 'en' → 'English')
+  원문 텍스트       node.text (DB 저장 원문)
+  번역 엔진         model_version (예: 'DeepL v3') — 선택적 표시
+  번역 날짜         node_translations.updated_at — 선택적 표시
+
+14-4. 클라이언트 State 구조
+
+```typescript
+// translationStore (Zustand) 추가 필드
+type TranslationStore = {
+  // ... 기존 번역 캐시 필드 ...
+
+  // 원문 팝오버 상태
+  originalPopover: {
+    nodeId: string | null;   // 현재 팝오버가 열린 노드 ID (null = 닫힘)
+  };
+
+  // 액션
+  openOriginalPopover: (nodeId: string) => void;
+  closeOriginalPopover: () => void;
+};
+
+// 노드 텍스트 표시 로직 (NodeText.tsx)
+const { originalPopover } = useTranslationStore();
+const isShowingOriginal = originalPopover.nodeId === node.id;
+
+const displayText = isShowingOriginal
+  ? node.text                                      // 원문 표시
+  : translationCache[node.id]?.[viewerLang]?.text  // 번역본 표시
+    ?? node.text;                                  // fallback: 원문
+```
+
+
+15. Skeleton 인디케이터 (번역 대기 중)
+
+15-1. 표시 조건
+
+  shouldTranslate = true  AND  번역 캐시 없음 (Redis miss + DB miss)
+  → 노드 텍스트 영역에 회색 Skeleton 바 표시
+
+15-2. 와이어프레임
+
+  번역 대기 전:          번역 대기 중:           번역 완료 후:
+  ┌─────────────┐       ┌─────────────┐        ┌─────────────┐
+  │  strawberry │  →→   │  ■■■■■■■   │  →→    │  딸기 🌐    │
+  └─────────────┘       └─────────────┘        └─────────────┘
+                         (회색 바, 펄스 애니)
+
+15-3. Skeleton 스타일
+
+  배경색:     #E0E0E0 (연회색)
+  너비:       노드 텍스트 영역과 동일
+  높이:       폰트 크기와 동일 (1em)
+  애니메이션: pulse (opacity 0.4 ↔ 1.0, 1.2초 주기)
+  transition: 번역 완료 시 fadeIn으로 번역본 텍스트 교체 (0.2초)
+
+
+16. 편집자 전용 — translation_override 아이콘 (🚫 / 🔄)
+
+16-1. 표시 조건
+
+  열람자 권한:  아이콘 표시 안 함 (열람 전용)
+  편집자 권한:  translation_override 설정 여부에 따라 표시
+
+  translation_override = null       → 아이콘 없음 (자동 정책 따름)
+  translation_override = 'force_off' → 🚫 표시 (강제 번역 금지)
+  translation_override = 'force_on'  → 🔄 표시 (강제 번역)
+
+16-2. 클릭 동작 (편집자만)
+
+  🚫 또는 🔄 클릭 → 우클릭 메뉴(번역 설정)과 동일한 설정 패널 오픈
+
+  ┌──────────────────────────┐
+  │ 번역 설정                 │
+  │                          │
+  │ ● 자동 (기본)             │  ← translation_override = null
+  │ ○ 번역 강제 ON   🔄       │  ← translation_override = 'force_on'
+  │ ○ 번역 강제 OFF  🚫       │  ← translation_override = 'force_off'
+  └──────────────────────────┘
+
+  설정 변경 시 → PATCH /nodes/:id/translation-override → Autosave 즉시 저장
+
+
+17. 컴포넌트 구조
+
+ NodeRenderer
+   ├── NodeText (텍스트 + 번역 인디케이터)
+   │    ├── displayText      ← 번역본 or 원문 (state 기반)
+   │    ├── SkeletonBar       ← 번역 대기 중일 때만 렌더링
+   │    ├── TranslationIcon   ← 🌐 / ⚠️ / 🚫 / 🔄 (상태별 조건부)
+   │    └── OriginalPopover   ← 🌐 클릭 시 원문 팝오버
+   │
+   └── NodeAddIndicator (Part 1 — + 버튼, 싱글 클릭 시 표시)
+
+TranslationIcon 상태 판단 로직
+```typescript
+function getTranslationIconState(
+  node: NodeObject,
+  viewerLang: string,
+  cachedTranslation: CachedTranslation | undefined,
+  isEditor: boolean,
+): 'none' | 'globe' | 'warning' | 'force-off' | 'force-on' | 'skeleton' {
+
+  // 편집자 override 아이콘 (편집자 권한만)
+  if (isEditor && node.translation_override === 'force_off') return 'force-off';
+  if (isEditor && node.translation_override === 'force_on')  return 'force-on';
+
+  // 번역 불필요 (같은 언어, skip 등)
+  const decision = shouldTranslate(node, viewerSettings, mapPolicy);
+  if (!decision.shouldTranslate) return 'none';
+
+  // 번역 캐시 있고 유효 → 🌐
+  if (cachedTranslation?.hash === node.text_hash) return 'globe';
+
+  // 번역 실패 상태 → ⚠️
+  if (translationFailed[node.id]) return 'warning';
+
+  // 번역 대기 중 → Skeleton
+  return 'skeleton';
+}
+```
+
+
+18. 인디케이터 간 충돌 방지 규칙
+
+  ┌────────────────────────────────────────────────────────────┐
+  │ 인디케이터 종류        │ 표시 조건              │ 동시 표시  │
+  ├────────────────────────────────────────────────────────────┤
+  │ + 버튼 (4방향)         │ 싱글 클릭 선택 시      │ ✅ 가능   │
+  │ 🌐 번역 아이콘         │ 번역본 표시 중         │ ✅ 가능   │
+  │ ⚠️ 번역 실패           │ 번역 실패 상태         │ ✅ 가능   │
+  │ 🚫 / 🔄 override      │ 편집자 + override 설정 │ ✅ 가능   │
+  │ Skeleton 바            │ 번역 대기 중           │ ❌ 불가   │
+  └────────────────────────────────────────────────────────────┘
+
+  Skeleton과 실제 텍스트 + 번역 아이콘은 동시 표시 불가 (둘 중 하나만).
+  + 버튼과 번역 아이콘은 독립적이므로 동시 표시 가능.
+
+
+19. WebSocket 연동 — 번역 완료 시 자동 업데이트
+
+```typescript
+// WsGateway에서 브로드캐스트 수신
+wsClient.on('translation:ready', ({ nodeId, targetLang, translatedText, textHash }) => {
+  // 번역 캐시 업데이트
+  translationStore.setTranslation(nodeId, targetLang, translatedText, textHash);
+  // → NodeText 리렌더링 → Skeleton → 번역본 + 🌐 아이콘으로 자동 전환
+});
+```
+
+  번역 완료 이벤트 수신 흐름:
+
+  translation:ready 이벤트
+        │
+        ▼
+  translationStore.setTranslation() 호출
+        │
+        ▼
+  NodeText 리렌더링
+        │
+        ├── Skeleton 제거
+        ├── 번역본 텍스트 표시 (fadeIn 0.2초)
+        └── 🌐 아이콘 표시
+
+
+20. 구현 우선순위 (번역 인디케이터)
+
+Step 1: 번역 캐시 연동 — displayText 로직 (shouldTranslate + 캐시 조회)
+Step 2: 🌐 아이콘 표시 (번역본 표시 중)
+Step 3: Skeleton UI (번역 대기 중 — pulse 애니메이션)
+Step 4: 원문 팝오버 (🌐 클릭 → 원문 + 언어명 표시 + 닫기)
+Step 5: ⚠️ 번역 실패 아이콘
+Step 6: 🚫 / 🔄 편집자 override 아이콘 + 클릭 시 설정 패널
+Step 7: WebSocket translation:ready 이벤트 수신 → 자동 UI 갱신

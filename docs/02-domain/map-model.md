@@ -110,8 +110,8 @@ type UserObject = {
 // DB 컬럼: users.ui_preferences_json JSONB
 // 모든 필드는 선택적 (없으면 기본값 적용)
 type UiPreferences = {
-  showTranslationIndicator: boolean;     // 번역 아이콘 (🌐/⚠️) 표시 여부 (기본: true)
-  showTranslationOverrideIcon: boolean;  // 편집자 override 아이콘 (🚫/🔄) 표시 여부 (기본: true)
+  showTranslationIndicator: boolean;     // 번역 아이콘 (🔤/🔴) 표시 여부 (기본: true)
+  showTranslationOverrideIcon: boolean;  // 편집자 override 아이콘 (⛔/🔁) 표시 여부 (기본: true)
   showTagBadge: boolean;                 // 태그 badge 표시 여부 (기본: true)
 };
 

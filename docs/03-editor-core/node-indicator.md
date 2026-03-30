@@ -334,7 +334,7 @@ Step 9: Undo/Redo 연동
 노드 텍스트 우측 끝에 작은 아이콘 형태로 표시된다.
 
 ```
-[딸기 🌐]   ← 번역본 표시 중. 🌐 클릭 시 원문 팝오버
+[딸기 🔤]   ← 번역본 표시 중. 🔤 클릭 시 원문 팝오버
 [AI 분석]   ← 번역 불필요 (내 언어). 아이콘 없음
 [■■■■■]   ← 번역 대기 중. Skeleton(회색 바) 표시
 ```
@@ -348,30 +348,30 @@ Step 9: Undo/Redo 연동
 | 상태 | 표시 텍스트 | 아이콘 | 설명 |
 |---|---|:---:|---|
 | 내 언어로 작성 | 원문 그대로 | 없음 | 번역 불필요 |
-| 유효 번역 캐시 있음 | 번역본 표시 | 🌐 | 클릭 → 원문 팝오버 |
+| 유효 번역 캐시 있음 | 번역본 표시 | 🔤 | 클릭 → 원문 팝오버 |
 | 번역 대기 중 | Skeleton (회색 바) | 없음 | 번역 완료 시 자동 교체 |
-| 번역 실패 | 원문 표시 | ⚠️ | 재시도 없이 원문 fallback |
-| force_off 노드 | 원문 표시 | 🚫 | 편집자가 번역 강제 OFF |
-| force_on 노드 | 번역본 표시 | 🔄 | 편집자가 번역 강제 ON |
+| 번역 실패 | 원문 표시 | 🔴 | 재시도 없이 원문 fallback |
+| force_off 노드 | 원문 표시 | ⛔ | 편집자가 번역 강제 OFF |
+| force_on 노드 | 번역본 표시 | 🔁 | 편집자가 번역 강제 ON |
 
 **아이콘 색상 가이드**
 
 | 아이콘 | 색상 | 의미 |
 |:---:|---|---|
-| 🌐 | 파란색 계열 (`#2B8EF0`) | 번역 완료, 클릭 가능 |
-| ⚠️ | 주황색/노란색 | 번역 실패 경고 |
-| 🚫 | 회색 | 강제 OFF (원문 고정) |
-| 🔄 | 초록색 계열 | 강제 ON (항상 번역) |
+| 🔤 | 파란색 계열 (`#2B8EF0`) | 번역 완료, 클릭 가능 |
+| 🔴 | 주황색/노란색 | 번역 실패 경고 |
+| ⛔ | 회색 | 강제 OFF (원문 고정) |
+| 🔁 | 초록색 계열 | 강제 ON (항상 번역) |
 
 
-14. 🌐 원문 보기 팝오버 (오역 대응)
+14. 🔤 원문 보기 팝오버 (오역 대응)
 
 14-1. 트리거 및 와이어프레임
 
-- 번역된 노드에 hover 시 → 🌐 아이콘 강조
-- 🌐 아이콘 클릭 시 → 원문 팝오버 표시
+- 번역된 노드에 hover 시 → 🔤 아이콘 강조
+- 🔤 아이콘 클릭 시 → 원문 팝오버 표시
 
-`[딸기 🌐]` ← hover 상태
+`[딸기 🔤]` ← hover 상태
 
 클릭 후:
 
@@ -390,7 +390,7 @@ Step 9: Undo/Redo 연동
    원문(`node.text`)은 항상 메모리에 있으므로 별도 요청 불필요
 2. 팝오버 표시 중에도 맵 조작 가능 (모달 아님, non-blocking)
 3. `[번역본으로 돌아가기]` 클릭 또는 팝오버 외부 클릭 → 팝오버 닫힘
-4. **1개 팝오버 원칙** — 다른 노드의 🌐 클릭 시 기존 팝오버는 닫히고 새 팝오버 열림
+4. **1개 팝오버 원칙** — 다른 노드의 🔤 클릭 시 기존 팝오버는 닫히고 새 팝오버 열림
 
 14-3. 팝오버 표시 정보
 
@@ -441,7 +441,7 @@ const displayText = isShowingOriginal
 ```
 번역 대기 전:          번역 대기 중:           번역 완료 후:
 ┌─────────────┐       ┌─────────────┐        ┌─────────────┐
-│  strawberry │  →→   │  ■■■■■■■   │  →→    │  딸기 🌐    │
+│  strawberry │  →→   │  ■■■■■■■   │  →→    │  딸기 🔤    │
 └─────────────┘       └─────────────┘        └─────────────┘
                        (회색 바, 펄스 애니)
 ```
@@ -457,7 +457,7 @@ const displayText = isShowingOriginal
 | transition | 번역 완료 시 fadeIn으로 번역본 텍스트 교체 (0.2초) |
 
 
-16. 편집자 전용 — translation_override 아이콘 (🚫 / 🔄)
+16. 편집자 전용 — translation_override 아이콘 (⛔ / 🔁)
 
 16-1. 표시 조건
 
@@ -469,20 +469,20 @@ const displayText = isShowingOriginal
 | `translation_override` 값 | 표시 | 설명 |
 |---|:---:|---|
 | `null` | 없음 | 자동 정책 따름 |
-| `'force_off'` | 🚫 | 강제 번역 금지 |
-| `'force_on'` | 🔄 | 강제 번역 |
+| `'force_off'` | ⛔ | 강제 번역 금지 |
+| `'force_on'` | 🔁 | 강제 번역 |
 
 16-2. 클릭 동작 (편집자만)
 
-🚫 또는 🔄 클릭 → 우클릭 메뉴(번역 설정)과 동일한 설정 패널 오픈
+⛔ 또는 🔁 클릭 → 우클릭 메뉴(번역 설정)과 동일한 설정 패널 오픈
 
 ```
 ┌──────────────────────────┐
 │ 번역 설정                 │
 │                          │
 │ ● 자동 (기본)             │  ← translation_override = null
-│ ○ 번역 강제 ON   🔄       │  ← translation_override = 'force_on'
-│ ○ 번역 강제 OFF  🚫       │  ← translation_override = 'force_off'
+│ ○ 번역 강제 ON   🔁       │  ← translation_override = 'force_on'
+│ ○ 번역 강제 OFF  ⛔       │  ← translation_override = 'force_off'
 └──────────────────────────┘
 ```
 
@@ -496,8 +496,8 @@ NodeRenderer
   ├── NodeText (텍스트 + 번역 인디케이터)
   │    ├── displayText      ← 번역본 or 원문 (state 기반)
   │    ├── SkeletonBar       ← 번역 대기 중일 때만 렌더링
-  │    ├── TranslationIcon   ← 🌐 / ⚠️ / 🚫 / 🔄 (상태별 조건부)
-  │    └── OriginalPopover   ← 🌐 클릭 시 원문 팝오버
+  │    ├── TranslationIcon   ← 🔤 / 🔴 / ⛔ / 🔁 (상태별 조건부)
+  │    └── OriginalPopover   ← 🔤 클릭 시 원문 팝오버
   │
   └── NodeAddIndicator (Part 1 — + 버튼, 싱글 클릭 시 표시)
 ```
@@ -520,10 +520,10 @@ function getTranslationIconState(
   const decision = shouldTranslate(node, viewerSettings, mapPolicy);
   if (!decision.shouldTranslate) return 'none';
 
-  // 번역 캐시 있고 유효 → 🌐
+  // 번역 캐시 있고 유효 → 🔤
   if (cachedTranslation?.hash === node.text_hash) return 'globe';
 
-  // 번역 실패 상태 → ⚠️
+  // 번역 실패 상태 → 🔴
   if (translationFailed[node.id]) return 'warning';
 
   // 번역 대기 중 → Skeleton
@@ -537,9 +537,9 @@ function getTranslationIconState(
 | 인디케이터 종류 | 표시 조건 | 동시 표시 |
 |---|---|:---:|
 | + 버튼 (4방향) | 싱글 클릭 선택 시 | ✅ 가능 |
-| 🌐 번역 아이콘 | 번역본 표시 중 | ✅ 가능 |
-| ⚠️ 번역 실패 | 번역 실패 상태 | ✅ 가능 |
-| 🚫 / 🔄 override | 편집자 + override 설정 | ✅ 가능 |
+| 🔤 번역 아이콘 | 번역본 표시 중 | ✅ 가능 |
+| 🔴 번역 실패 | 번역 실패 상태 | ✅ 가능 |
+| ⛔ / 🔁 override | 편집자 + override 설정 | ✅ 가능 |
 | Skeleton 바 | 번역 대기 중 | ❌ 불가 |
 
 Skeleton과 실제 텍스트 + 번역 아이콘은 동시 표시 불가 (둘 중 하나만).
@@ -553,7 +553,7 @@ Skeleton과 실제 텍스트 + 번역 아이콘은 동시 표시 불가 (둘 중
 wsClient.on('translation:ready', ({ nodeId, targetLang, translatedText, textHash }) => {
   // 번역 캐시 업데이트
   translationStore.setTranslation(nodeId, targetLang, translatedText, textHash);
-  // → NodeText 리렌더링 → Skeleton → 번역본 + 🌐 아이콘으로 자동 전환
+  // → NodeText 리렌더링 → Skeleton → 번역본 + 🔤 아이콘으로 자동 전환
 });
 ```
 
@@ -570,18 +570,18 @@ NodeText 리렌더링
       │
       ├── Skeleton 제거
       ├── 번역본 텍스트 표시 (fadeIn 0.2초)
-      └── 🌐 아이콘 표시
+      └── 🔤 아이콘 표시
 ```
 
 
 20. 구현 우선순위 (번역 인디케이터)
 
 Step 1: 번역 캐시 연동 — displayText 로직 (shouldTranslate + 캐시 조회)
-Step 2: 🌐 아이콘 표시 (번역본 표시 중)
+Step 2: 🔤 아이콘 표시 (번역본 표시 중)
 Step 3: Skeleton UI (번역 대기 중 — pulse 애니메이션)
-Step 4: 원문 팝오버 (🌐 클릭 → 원문 + 언어명 표시 + 닫기)
-Step 5: ⚠️ 번역 실패 아이콘
-Step 6: 🚫 / 🔄 편집자 override 아이콘 + 클릭 시 설정 패널
+Step 4: 원문 팝오버 (🔤 클릭 → 원문 + 언어명 표시 + 닫기)
+Step 5: 🔴 번역 실패 아이콘
+Step 6: ⛔ / 🔁 편집자 override 아이콘 + 클릭 시 설정 패널
 Step 7: WebSocket translation:ready 이벤트 수신 → 자동 UI 갱신
 
 
@@ -593,12 +593,12 @@ Step 7: WebSocket translation:ready 이벤트 수신 → 자동 UI 갱신
 
 21. 배경 — 인디케이터 혼잡 문제
 
-노드에 번역 인디케이터(🌐/⚠️/🚫/🔄), 태그 badge, 노트(≡)·하이퍼링크(🌐🔗)·첨부파일(📎)·멀티미디어(▶) 아이콘이
-모두 표시될 경우 노드 텍스트 가독성이 저하된다. 특히 번역 기능을 활발히 사용하는 맵에서 🌐 아이콘이
+노드에 번역 인디케이터(🔤/🔴/⛔/🔁), 태그 badge, 노트(≡)·하이퍼링크(🔗)·첨부파일(📎)·멀티미디어(▶) 아이콘이
+모두 표시될 경우 노드 텍스트 가독성이 저하된다. 특히 번역 기능을 활발히 사용하는 맵에서 🔤 아이콘이
 모든 번역 노드에 상시 표시되면 시각적 피로가 증가한다.
 
 ```
-[딸기 ≡ 📎 🌐]  ← 노트+첨부파일+번역 아이콘 동시 표시 예시
+[딸기 ≡ 📎 🔤]  ← 노트+첨부파일+번역 아이콘 동시 표시 예시
 [딸기 #ML #AI]  ← 태그 badge 과다 표시 예시
 ```
 
@@ -612,13 +612,13 @@ Step 7: WebSocket translation:ready 이벤트 수신 → 자동 UI 갱신
 | 인디케이터 | 표시 방식 | 기본값 | 설정 키 |
 |---|---|:---:|---|
 | 노트 아이콘 (≡) | **항상 표시** | — | (설정 없음) |
-| Hyperlink 아이콘 (🌐🔗) | **항상 표시** | — | (설정 없음) |
+| Hyperlink 아이콘 (🔗) | **항상 표시** | — | (설정 없음) |
 | 첨부파일 아이콘 (📎) | **항상 표시** | — | (설정 없음) |
 | 멀티미디어 아이콘 (▶) | **항상 표시** | — | (설정 없음) |
 | 접기/펼치기 버튼 | **항상 표시** | — | (설정 없음) |
 | Skeleton 바 (번역 대기) | **항상 표시** | — | (설정 없음) |
-| 번역 아이콘 (🌐 / ⚠️) | ON/OFF 설정 | ON | `showTranslationIndicator` |
-| 편집자 override 아이콘 (🚫 / 🔄, 편집자만) | ON/OFF 설정 | ON | `showTranslationOverrideIcon` |
+| 번역 아이콘 (🔤 / 🔴) | ON/OFF 설정 | ON | `showTranslationIndicator` |
+| 편집자 override 아이콘 (⛔ / 🔁, 편집자만) | ON/OFF 설정 | ON | `showTranslationOverrideIcon` |
 | 태그 badge | ON/OFF 설정 | ON | `showTagBadge` |
 
 **[항상 표시]**
@@ -628,7 +628,7 @@ Step 7: WebSocket translation:ready 이벤트 수신 → 자동 UI 갱신
 - Skeleton 바: 번역 진행 중임을 알려야 사용자가 콘텐츠 로딩 중임을 인지 가능.
 
 **[ON/OFF 설정]**
-- 번역 아이콘 OFF 시: 🌐·⚠️ 아이콘을 숨기지만 번역 텍스트 자체는 유지된다.
+- 번역 아이콘 OFF 시: 🔤·🔴 아이콘을 숨기지만 번역 텍스트 자체는 유지된다.
 - 편집자 override 아이콘은 편집자 권한인 경우에만 설정 항목이 노출된다.
 - 설정 범위: 전역 사용자 설정 (모든 맵에 공통 적용).
   맵별/노드별 개별 설정은 지원하지 않는다 (V2 범위 외).
@@ -664,8 +664,8 @@ function getTranslationIconState(
   uiPrefs: UiPreferences,          // [NODE-15 추가]
 ): 'none' | 'globe' | 'warning' | 'force-off' | 'force-on' | 'skeleton' {
 
-  // [NODE-15] 번역 아이콘 OFF 설정 시: 🌐·⚠️ 를 숨기고 'none' 반환
-  //   단, 편집자 override 아이콘(🚫/🔄)은 별도 설정(showTranslationOverrideIcon)으로 제어
+  // [NODE-15] 번역 아이콘 OFF 설정 시: 🔤·🔴 를 숨기고 'none' 반환
+  //   단, 편집자 override 아이콘(⛔/🔁)은 별도 설정(showTranslationOverrideIcon)으로 제어
   //   Skeleton은 항상 표시 (설정 무관, 항상 표시)
 
   // 편집자 override 아이콘 (편집자 권한만)
@@ -682,13 +682,13 @@ function getTranslationIconState(
   const decision = shouldTranslate(node, viewerSettings, mapPolicy);
   if (!decision.shouldTranslate) return 'none';
 
-  // 번역 캐시 있고 유효 → 🌐
+  // 번역 캐시 있고 유효 → 🔤
   if (cachedTranslation?.hash === node.text_hash) {
     if (!uiPrefs.showTranslationIndicator) return 'none';  // [NODE-15] 아이콘만 숨김
     return 'globe';
   }
 
-  // 번역 실패 상태 → ⚠️
+  // 번역 실패 상태 → 🔴
   if (translationFailed[node.id]) {
     if (!uiPrefs.showTranslationIndicator) return 'none';  // [NODE-15]
     return 'warning';
@@ -725,15 +725,15 @@ function shouldShowTagBadge(
 **표시 설정 패널 구성**
 
 > **항상 표시 (설정 불가)**
-> 노트 (≡) · Hyperlink (🌐🔗) · 첨부파일 (📎) · 멀티미디어 (▶) · 접기/펼치기 · Skeleton 바
+> 노트 (≡) · Hyperlink (🔗) · 첨부파일 (📎) · 멀티미디어 (▶) · 접기/펼치기 · Skeleton 바
 > → 데이터가 있으면 항상 표시됩니다.
 
 > **인디케이터 ON/OFF**
 >
 > | 항목 | 상태 | 비고 |
 > |---|:---:|---|
-> | 번역 아이콘 표시 (🌐 / ⚠️) | `ON ●` | |
-> | 번역 override 아이콘 (🚫/🔄) | `ON ●` | 편집자 권한일 때만 노출 |
+> | 번역 아이콘 표시 (🔤 / 🔴) | `ON ●` | |
+> | 번역 override 아이콘 (⛔/🔁) | `ON ●` | 편집자 권한일 때만 노출 |
 > | 태그 badge 표시 | `ON ●` | |
 >
 > \* 번역 아이콘 OFF 시에도 번역 텍스트는 그대로 표시됩니다.
@@ -746,11 +746,11 @@ function shouldShowTagBadge(
 
 | 상태 | `showTranslationIndicator=true` | `showTranslationIndicator=false` |
 |---|---|---|
-| 번역본 표시 중 | `[딸기 🌐]` | `[딸기]` |
-| 번역 실패 | `[딸기 ⚠️]` | `[딸기]` |
+| 번역본 표시 중 | `[딸기 🔤]` | `[딸기]` |
+| 번역 실패 | `[딸기 🔴]` | `[딸기]` |
 | 번역 대기 중 | `[■■■■■]` (Skeleton) | `[■■■■■]` (Skeleton **유지**) |
-| force_off 편집자 | `[딸기 🚫]` | `[딸기 🚫]` ← override 아이콘은 별도 설정 |
-| force_on 편집자 | `[번역본 🔄]` | `[번역본 🔄]` |
+| force_off 편집자 | `[딸기 ⛔]` | `[딸기 ⛔]` ← override 아이콘은 별도 설정 |
+| force_on 편집자 | `[번역본 🔁]` | `[번역본 🔁]` |
 
 **핵심 원칙:**
 1. 번역 아이콘 OFF = 아이콘만 숨김. 번역 텍스트 자체는 유지.
@@ -794,7 +794,7 @@ Step 6: 설정 UI 패널 구현 (토글 컴포넌트)
 
 ```
 [노트  ≡]         ← 노트(긴 설명)가 작성된 노드
-[Hyperlink 🌐🔗]  ← 하이퍼링크가 1개 이상 연결된 노드
+[Hyperlink 🔗]  ← 하이퍼링크가 1개 이상 연결된 노드
 [첨부파일 📎]      ← 첨부파일이 1개 이상 연결된 노드
 [멀티미디어 ▶]    ← 멀티미디어(영상/음성 등)가 연결된 노드
 ```
@@ -808,7 +808,7 @@ Step 6: 설정 UI 패널 구현 (토글 컴포넌트)
 | 인디케이터 | 아이콘 | 색상 | 표시 조건 | 위치 |
 |---|:---:|---|---|:---:|
 | 노트 | ≡ | 주황/베이지 | `node.note ≠ null` | 노드 우측 |
-| Hyperlink | 🌐🔗 | 파란 계열 | `node.hyperlinkIds.length > 0` | 노드 우측 |
+| Hyperlink | 🔗 | 파란 계열 | `node.hyperlinkIds.length > 0` | 노드 우측 |
 | 첨부파일 | 📎 | 주황/베이지 | `node.attachmentIds.length > 0` | 노드 우측 |
 | 멀티미디어 | ▶ | 파란 계열 | `node.multimediaId ≠ null` | 노드 우측 |
 
@@ -851,7 +851,7 @@ NodeRenderer
   ├── NodeTagBadge          (태그 badge — tag-system.md)
   ├── NodeContentIndicators ← [NODE-16 신규]
   │    ├── NoteIcon      (≡)    — hasNote = true 일 때
-  │    ├── HyperlinkIcon (🌐🔗) — hasHyperlink = true 일 때
+  │    ├── HyperlinkIcon (🔗) — hasHyperlink = true 일 때
   │    ├── AttachmentIcon(📎)   — hasAttachment = true 일 때
   │    └── MultimediaIcon(▶)   — hasMultimedia = true 일 때
   └── NodeAddIndicator      (+ 버튼 4방향 — PART 1)
@@ -864,12 +864,12 @@ NodeRenderer
 |---|---|:---:|
 | + 버튼 (4방향) | 싱글 클릭 선택 시 | ✅ 가능 |
 | 접기/펼치기 버튼 | 자식 노드 존재 시 | ✅ 가능 |
-| 🌐 번역 아이콘 | 번역본 표시 중 | ✅ 가능 |
-| ⚠️ 번역 실패 | 번역 실패 상태 | ✅ 가능 |
-| 🚫 / 🔄 override | 편집자 + override 설정 | ✅ 가능 |
+| 🔤 번역 아이콘 | 번역본 표시 중 | ✅ 가능 |
+| 🔴 번역 실패 | 번역 실패 상태 | ✅ 가능 |
+| ⛔ / 🔁 override | 편집자 + override 설정 | ✅ 가능 |
 | Skeleton 바 | 번역 대기 중 | ❌ 불가 |
 | 노트 ≡ | note 존재 | ✅ 가능 |
-| Hyperlink 🌐🔗 | hyperlinkIds 존재 | ✅ 가능 |
+| Hyperlink 🔗 | hyperlinkIds 존재 | ✅ 가능 |
 | 첨부파일 📎 | attachmentIds 존재 | ✅ 가능 |
 | 멀티미디어 ▶ | multimediaId 존재 | ✅ 가능 |
 

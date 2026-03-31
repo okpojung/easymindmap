@@ -29,7 +29,7 @@ type NodeObject = {
   //   - 참고: docs/02-domain/db-schema.md §3-1 node_notes, docs/05-implementation/api-spec.md §Indicator/Note API
 
   // === 레이아웃 ===
-  layoutType: LayoutType;        // 항상 구체적인 값 저장
+  layoutType: LayoutType;        // 항상 구체적인 layoutType 값을 저장
   collapsed: boolean;            // true = 자식 숨김
 
   // === 스타일 ===

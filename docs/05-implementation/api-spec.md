@@ -247,6 +247,13 @@ Access Token 갱신
 }
 ```
 
+> **`viewMode` 허용값**
+> | 값 | 설명 |
+> |----|----|
+> | `"edit"` | 기본 편집 모드 |
+> | `"dashboard"` | 읽기 전용 대시보드, 자동 갱신 활성화 가능 |
+> | `"kanban"` | 칸반 레이아웃 보기 (depth 0=board / 1=column / 2=card 규칙 적용) |
+
 ---
 
 ### DELETE /maps/{mapId}
@@ -527,13 +534,20 @@ file: (binary)
 ## 6. 태그 (Tags)
 
 ### GET /tags
-내 태그 목록 조회
+내 태그 목록 조회 (개인 태그 + 멤버인 워크스페이스 공유 태그 포함)
+
+**Query Parameters**
+
+| 파라미터 | 필수 | 설명 |
+|---------|:---:|------|
+| `workspaceId` | ❌ | 특정 워크스페이스의 공유 태그만 조회 |
 
 **Response** `200 OK`
 ```json
 {
   "tags": [
-    { "tagId": "uuid-...", "name": "중요", "color": "#FF5733" }
+    { "tagId": "uuid-...", "name": "중요", "color": "#FF5733", "workspaceId": null },
+    { "tagId": "uuid-...", "name": "팀공유태그", "color": "#3399FF", "workspaceId": "uuid-..." }
   ]
 }
 ```
@@ -543,17 +557,27 @@ file: (binary)
 ### POST /tags
 태그 생성
 
+> - `workspaceId` 생략 시: 개인 태그 생성 (`tags.workspace_id = NULL`)
+> - `workspaceId` 지정 시: 워크스페이스 공유 태그 생성 (멤버 전원 사용 가능)
+
 **Request Body**
 ```json
 {
   "name": "중요",
-  "color": "#FF5733"
+  "color": "#FF5733",
+  "workspaceId": "uuid-..."  // optional — 생략 시 개인 태그
 }
 ```
 
 **Response** `201 Created`
 ```json
-{ "tagId": "uuid-...", "name": "중요", "color": "#FF5733" }
+{
+  "tagId": "uuid-...",
+  "name": "중요",
+  "color": "#FF5733",
+  "workspaceId": "uuid-..."  // null if 개인 태그
+}
+```
 ```
 
 ---

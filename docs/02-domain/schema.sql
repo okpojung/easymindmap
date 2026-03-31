@@ -113,16 +113,37 @@ CREATE TABLE public.nodes (
 
     -- 레이아웃
     layout_type      VARCHAR(50) NOT NULL DEFAULT 'radial-bidirectional',
+
+    CONSTRAINT chk_nodes_layout_type
+    CHECK (
+      layout_type IN (
+        'radial-bidirectional',
+        'radial-right',
+        'radial-left',
+        'tree-right',
+        'tree-left',
+        'tree-down',
+        'tree-up',
+        'hierarchy-right',
+        'hierarchy-left',
+        'process-tree-right',
+        'process-tree-left',
+        'process-tree-right-a',
+        'process-tree-right-b',
+        'freeform',
+        'kanban'
+      )
+    ),
+    CONSTRAINT chk_nodes_kanban_depth
+    CHECK (
+      layout_type <> 'kanban'
+      OR depth BETWEEN 0 AND 2
+    ),
+    
     collapsed        BOOLEAN NOT NULL DEFAULT FALSE,
 
-    -- layout_type은 radial/tree/hierarchy/process/freeform 외에
-    -- kanban도 허용될 수 있음.
-    -- kanban 사용 시 depth 규칙:
-    --   0 = board
-    --   1 = column
-    --   2 = card
-    --   3 이상 금지
-    -- 현재는 별도 kanban_role 컬럼 없이 layout_type + depth 규칙으로 해석 가능하도록 설계
+    -- layout_type 허용값은 chk_nodes_layout_type 제약으로 강제
+    -- kanban depth 규칙(0=board, 1=column, 2=card)은 chk_nodes_kanban_depth로 강제
     
     -- 도형 & 스타일
     shape_type       VARCHAR(50) NOT NULL DEFAULT 'rounded-rectangle',

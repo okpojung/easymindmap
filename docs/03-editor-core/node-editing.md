@@ -532,6 +532,11 @@ update subtree layout
 > **이 enum이 프론트엔드 · 백엔드 · DB · AI 모두의 단일 기준이다.**  
 > 아래 값 이외의 문자열은 DB 저장 및 API 요청에서 **거부(400 Bad Request)** 한다.
 
+📌 DB 정합성:
+- `layoutType`은 항상 구체적인 값으로 저장한다.
+- 새 노드 생성 시 별도 override가 없으면 기준 노드의 `layoutType` 값을 복사하여 저장한다.
+- `freeform`은 `manualPosition`을 함께 사용하고, `kanban`은 depth 0~2 규칙을 따른다.
+
 ```typescript
 // docs/02-domain/node-model.md §LayoutType 와 동일 — 반드시 동기화 유지
 export type LayoutType =

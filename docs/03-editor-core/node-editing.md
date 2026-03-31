@@ -527,20 +527,112 @@ Node 생성 시
 update subtree layout
 ```
 
-지원 Layout
+### ⚠️ LayoutType 완전 고정 선언
 
-| Layout 타입 | 코드값 | 노드 생성 시 subtree 재계산 방식 |
-|-------------|--------|----------------------------------|
-| Radial (방사형) | `radial-bidirectional` | 양방향 방사 배치 재계산 |
-| Tree (단방향 트리) | `tree-right` / `tree-down` 등 | 단방향 계층 재배치 |
-| Hierarchy (조직도) | `hierarchy` | 수직 계층 재배치 |
-| Process-Tree (프로세스) | `process-tree` | 좌→우 순서 흐름 재계산 |
-| Freeform (자유 배치) | `freeform` | 자동 재계산 없음 — `manual_position` 우선 |
-| **Kanban** | `kanban` | depth 0=보드 / 1=컬럼 / 2=카드; depth 3+ 생성 불가 |
+> **이 enum이 프론트엔드 · 백엔드 · DB · AI 모두의 단일 기준이다.**  
+> 아래 값 이외의 문자열은 DB 저장 및 API 요청에서 **거부(400 Bad Request)** 한다.
 
-> **Freeform 예외**: 노드 생성 시 부모 근처에 초기 좌표를 부여하되, 이후 위치는 사용자 drag로만 결정된다.  
-> **Kanban 예외**: depth 제한(최대 depth 2, 카드 레벨)을 초과하는 자식 노드 생성은 UI에서 차단한다.  
-> 참고: `docs/03-editor-core/layout-engine.md`, `docs/02-domain/node-model.md §layoutType`
+```typescript
+// docs/02-domain/node-model.md §LayoutType 와 동일 — 반드시 동기화 유지
+export type LayoutType =
+  // 방사형
+  | 'radial-bidirectional'   // 기본값 (루트 노드 미설정 시 적용)
+  | 'radial-right'
+  | 'radial-left'
+  // 트리형
+  | 'tree-right'
+  | 'tree-left'
+  | 'tree-down'
+  | 'tree-up'
+  // 계층형
+  | 'hierarchy-right'
+  | 'hierarchy-left'
+  // 진행트리
+  | 'process-tree-right'
+  | 'process-tree-left'
+  | 'process-tree-right-a'   // 버블형
+  | 'process-tree-right-b'   // 타임라인형
+  // 자유배치
+  | 'freeform'
+  // 보드형
+  | 'kanban';
+```
+
+> 상세 BL 코드 매핑은 `docs/02-domain/node-model.md §LayoutType ↔ BL 코드 매핑표` 참조.
+
+---
+
+### 지원 Layout — 노드 편집 동작 규칙
+
+| Layout 타입 | 대표 코드값 | 노드 생성 시 subtree 재계산 | 특이 규칙 |
+|-------------|------------|--------------------------|-----------|
+| Radial (방사형) | `radial-bidirectional` | 양방향 방사 배치 재계산 | — |
+| Tree (트리형) | `tree-right` / `tree-down` 등 | 단방향 계층 재배치 | — |
+| Hierarchy (계층형) | `hierarchy-right` / `hierarchy-left` | 수직 계층 재배치 | — |
+| Process-Tree (진행트리) | `process-tree-right` 등 | 좌→우 순서 흐름 재계산 | — |
+| **Freeform (자유배치)** | `freeform` | **자동 재계산 없음** — `manual_position` 우선 | ⬇ 아래 ⚠️ 참조 |
+| **Kanban** | `kanban` | depth 제한 적용 (depth 3+ 불가) | ⬇ 아래 ⚠️ 참조 |
+
+---
+
+### ⚠️ Freeform + Drag 시 History 규칙
+
+> **미정의 시 발생 문제**: Undo 미작동 · Autosave 중복 패치 충돌
+
+| 상황 | Command 타입 | 저장 필드 | History 처리 |
+|------|-------------|----------|-------------|
+| Freeform에서 노드 drag 이동 | **`moveNode`** | `manual_position: { x, y }` | ✅ History Stack push — Undo/Redo 가능 |
+| drag 중 (mousedown → mousemove) | — | — | History push **안 함** (최종 drop 시만 기록) |
+| drag 완료 (mouseup / drop) | `moveNode` | `manual_position` 확정값 저장 | ✅ Autosave 즉시 트리거 (0ms, `IMMEDIATE_SAVE_OPS`) |
+| Undo 후 위치 복원 | `moveNode` inverse | 이전 `manual_position` 복원 | ✅ patchId 신규 생성 후 Autosave |
+
+```typescript
+// Freeform drag 완료 시 dispatch 예시
+dispatch({
+  type: 'moveNode',
+  nodeId: 'n_abc123',
+  // freeform: manualPosition 변경
+  manualPosition: { x: 420, y: 180 },
+  // 일반 트리 이동: parentId + orderIndex 변경
+  // parentId: ...,
+  // orderIndex: ...,
+});
+// → History Stack push → Autosave 즉시 트리거
+```
+
+> 참고: `docs/03-editor-core/autosave-engine.md §IMMEDIATE_SAVE_OPS`,  
+> `docs/03-editor-core/command-history.md §patch_id Undo 규칙`
+
+---
+
+### ⚠️ Kanban + Node Editing 충돌 방지 규칙
+
+> **미정의 시 발생 문제**: Space / Shift+Space 단축키가 Kanban 구조를 깨뜨림
+
+| 편집 액션 | 일반 레이아웃 동작 | Kanban 재정의 동작 |
+|-----------|-------------------|-------------------|
+| **Space** (Create Child) | 현재 노드의 자식 생성 | **depth 0 (보드)** → 컬럼(depth 1) 생성<br>**depth 1 (컬럼)** → 카드(depth 2) 생성<br>**depth 2 (카드)** → ❌ 차단 (depth 3 불가) |
+| **Shift+Space** (Create Sibling-after) | 다음 형제 노드 생성 | **depth 1 (컬럼)** → 다음 컬럼 추가<br>**depth 2 (카드)** → **같은 컬럼 내** 다음 카드 추가<br>**depth 0 (보드)** → ❌ 차단 (보드 형제 불가) |
+| **Shift+Ctrl+Space** (Create Sibling-before) | 이전 형제 노드 생성 | Shift+Space와 동일 규칙 |
+| **Delete** | 노드 삭제 | 컬럼 삭제 시 하위 카드 전체 cascade 삭제 — **확인 다이얼로그 필수** |
+
+```
+Kanban 구조 예시:
+  보드 (depth 0)
+   ├── 컬럼 A (depth 1)   ← Space로 생성 가능
+   │    ├── 카드 1 (depth 2)  ← Space로 생성 가능
+   │    └── 카드 2 (depth 2)  ← Shift+Space로 카드 1 다음에 추가
+   └── 컬럼 B (depth 1)   ← Shift+Space로 컬럼 A 다음에 추가
+        └── 카드 3 (depth 2)
+```
+
+> **핵심 규칙 요약**:
+> - Kanban에서 sibling 생성(Shift+Space) = **같은 depth 레벨** 내 추가  
+> - Kanban에서 child 생성(Space) = **컬럼 → 카드** 단계만 허용, depth 3+ 완전 차단  
+> - 단축키 동작은 `currentNode.depth`와 `currentNode.layoutType`을 조합하여 분기
+
+> 참고: `docs/03-editor-core/layout-engine.md §Kanban`,  
+> `docs/02-domain/node-model.md §layoutType kanban`
 
 이 부분은 **진행방향 문서와 연결됩니다.**
 

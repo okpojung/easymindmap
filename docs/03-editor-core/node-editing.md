@@ -529,10 +529,18 @@ update subtree layout
 
 지원 Layout
 
-*   Map
-*   Radial
-*   Tree
-*   Process
+| Layout 타입 | 코드값 | 노드 생성 시 subtree 재계산 방식 |
+|-------------|--------|----------------------------------|
+| Radial (방사형) | `radial-bidirectional` | 양방향 방사 배치 재계산 |
+| Tree (단방향 트리) | `tree-right` / `tree-down` 등 | 단방향 계층 재배치 |
+| Hierarchy (조직도) | `hierarchy` | 수직 계층 재배치 |
+| Process-Tree (프로세스) | `process-tree` | 좌→우 순서 흐름 재계산 |
+| Freeform (자유 배치) | `freeform` | 자동 재계산 없음 — `manual_position` 우선 |
+| **Kanban** | `kanban` | depth 0=보드 / 1=컬럼 / 2=카드; depth 3+ 생성 불가 |
+
+> **Freeform 예외**: 노드 생성 시 부모 근처에 초기 좌표를 부여하되, 이후 위치는 사용자 drag로만 결정된다.  
+> **Kanban 예외**: depth 제한(최대 depth 2, 카드 레벨)을 초과하는 자식 노드 생성은 UI에서 차단한다.  
+> 참고: `docs/03-editor-core/layout-engine.md`, `docs/02-domain/node-model.md §layoutType`
 
 이 부분은 **진행방향 문서와 연결됩니다.**
 

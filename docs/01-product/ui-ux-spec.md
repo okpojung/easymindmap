@@ -351,7 +351,7 @@ Overlays:
 
 ## 7. 상태관리 (Zustand 5-Store)
 
-> 상세: `docs/dev/frontend-architecture.md`
+> 상세: `docs/05-implementation/frontend-architecture.md`
 
 | Store | 담당 |
 |-------|------|
@@ -393,7 +393,7 @@ Overlays:
 ## 11. 다음 단계
 
 1. React + Vite 프로젝트 생성
-2. 폴더 구조 반영 (`docs/dev/frontend-architecture.md` 참고)
+2. 폴더 구조 반영 (`docs/05-implementation/frontend-architecture.md` 참고)
 3. AppShell 구현
 4. Canvas skeleton 구현
 5. Node 1개 렌더링

@@ -1,54 +1,17 @@
-# Node Editing 기능 정리
+# easymindmap — Node Editing 기능 명세
 
-**User:** Anonymous (ok@baro.pro)  
-**Created:** 3/16/2026 0:28:56  
-**Updated:** 3/16/2026 0:30:17  
-**Exported:** 3/16/2026 2:05:35  
-**Link:** [https://chatgpt.com/g/g-p-69b64962a1b8819187e5863aa1808e92-mindmap-gaebal/c/69b6cf81-3fcc-83a3-96ae-23595093f74c](https://chatgpt.com/g/g-p-69b64962a1b8819187e5863aa1808e92-mindmap-gaebal/c/69b6cf81-3fcc-83a3-96ae-23595093f74c)  
+> **문서 위치**: `docs/03-editor-core/node-editing.md`  
+> **최종 업데이트**: 2026-03-31  
+> **버전**: v2.0  
+> **관련 문서**: `docs/03-editor-core/autosave-engine.md`, `docs/01-product/functional-spec.md §NODE`
 
-## Prompt:
-![업로드한 이미지](https://chatgpt.com/backend-api/estuary/content?id=file_000000008fc07207903d3961b5f5599d&ts=492664&p=fs&cid=1&sig=3954db03d5a5870734bf012b90346c8662ca57693d84e396eaf89598087d208c&v=0)
+---
 
-![업로드한 이미지](https://chatgpt.com/backend-api/estuary/content?id=file_00000000307472079564ceec81617ac8&ts=492664&p=fs&cid=1&sig=aa49bb4205140ab17a29849cd41138420884ed08e1c8b2edaffb62b2293f1b68&v=0)
+## 1. Node Editing 기능 명세
 
-#Node Edting 기능
-#Node Edting 기능에서 단축키를 아래와 에서 단축키를 아래와 같이 정의해줘 (www.mindmapper.com 과 같은 기준)
-#다중 가지 추가 기능도 추가해줘기능
-# ID	기능명	설명	단축키 
-NODE-01	Create Sibling Node-after	형제 Node 생성(다음)	LeftShift + Space
-NODE-02	Create Sibling Node-before	형제 Node 생성(이전)	LeftShift + Ctl + Space
-NODE-03	Create Child Node	자식 Node 생성	Space
-NODE-04	Create Child Node (multi)	자식 Node 생성 (multi)	Ctl + Space
-NODE-05	Edit Node Text	Node 텍스트 편집	Double Click
-NODE-06	Delete Node	Node 삭제	Delete
-NODE-07	Move Node	Node Drag 이동	Drag
-NODE-08	Copy Node	Node 복사	Ctrl+C
-NODE-09	Paste Node	Node 붙여넣기	Ctrl+V
-NODE-10	Duplicate Node	Node 복제	Ctrl+D
-NODE-11	Collapse Node	Node 접기	Click
-NODE-12	Expand Node	Node 펼치기	Click
+> **지원 레이아웃 범위**: Radial / Tree / Hierarchy / Process-Tree / Freeform / **Kanban** (전체 레이아웃 지원)
 
-## Response:
-좋습니다. 올려주신 **Node Editing 기능 + 단축키 기준(mindmapper 스타일)**을 기준으로 **실제 개발 문서 수준으로 정리**해 드리겠습니다.  
-또한 요청하신 **다중 가지 추가 기능 (multi child)**도 포함해 정리합니다.
-
-현재 프로젝트 흐름상 이 문서는 **Editor Interaction Spec** 문서에 들어가는 내용입니다.
-
-* * *
-
-easymindmap Node Editing 기능 명세
-==============================
-
-Document : Editor Interaction Spec  
-Module : Mindmap Editor  
-Version : v1.0
-
-* * *
-
-1\. Node Editing 기능 개요
-======================
-
-Node Editing 기능은 **mindmap 편집기의 핵심 인터랙션 기능**이다.
+Node Editing 기능은 mindmap 편집기의 핵심 인터랙션 기능이다.
 
 사용자는 아래 작업을 수행할 수 있어야 한다.
 
@@ -539,20 +502,19 @@ NODE_DUPLICATE
 
 Node Editing 후 자동 저장
 
-Trigger
+> **[확정 2026-03-29]** 저장 타이밍 기준: `docs/03-editor-core/autosave-engine.md §8` 기준으로 통일
 
-```
-node_create
-node_delete
-node_move
-node_edit
-```
+Trigger 및 저장 방식
 
-저장 방식
+| 트리거 | 저장 방식 | 딜레이 |
+|--------|----------|--------|
+| `node_create` | 즉시 저장 | 0ms |
+| `node_delete` | 즉시 저장 | 0ms |
+| `node_move` | 즉시 저장 | 0ms |
+| `node_edit` (텍스트) | Debounce | **800ms** |
+| `node_style` | Debounce | 800ms |
 
-```
-debounce 1000ms
-```
+> ~~debounce 1000ms~~ → 800ms로 확정 (autosave-engine.md 기준)
 
 * * *
 

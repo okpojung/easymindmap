@@ -1,6 +1,6 @@
 # easymindmap — Backend 개발 아키텍처
 
-문서 위치: `docs/dev/backend-architecture.md`  
+문서 위치: `docs/05-implementation/backend-architecture.md`  
 스택: **NestJS + TypeScript + Supabase (Self-hosted) + Redis + BullMQ**  
 변경: 2026-03-27 — PostgreSQL/MinIO/JWT 직접 구현 → Supabase Self-hosted 전환
 

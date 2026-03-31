@@ -303,14 +303,12 @@ CREATE TABLE public.node_notes (
 );
 ```
 
-### [변경 주석]
-- 기존 문서/기존 노드 모델에는 `nodes.note` 설명이 있었음.
-- 최신 schema.sql에는 `node_notes` 별도 테이블도 존재한다.
-- 즉, 현재 설계에는 note가 "nodes.note 컬럼"과 "node_notes 테이블" 양쪽 흔적이 공존한다.
-- 구현 착수 전 반드시 아래 둘 중 하나를 최종 기준으로 확정하는 것이 좋다.
-  1. 짧은 노트만 허용 → nodes.note 단일 컬럼
-  2. 별도 관리/확장성 우선 → node_notes 테이블
-- 이 문서에서는 최신 schema.sql에 맞추어 node_notes도 함께 명시한다.
+### [확정 — 2026-03-31]
+- **물리 DB 저장 원천: `public.node_notes` 테이블로 단일화 확정.**
+- `nodes.note` 컬럼은 존재하지 않는다. schema.sql에서 `node_notes` 별도 테이블이 공식 저장 원천.
+- ~~nodes.note 단일 컬럼 방안 (취소)~~
+- 프론트엔드/API 응답에서는 `NodeObject.note` 논리 필드로 노출하되, DB 읽기/쓰기는 `node_notes` 테이블을 통한다.
+- API: `GET /nodes/{nodeId}/note`, `PUT /nodes/{nodeId}/note`, `DELETE /nodes/{nodeId}/note`
 
 ---
 

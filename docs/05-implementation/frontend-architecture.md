@@ -1,6 +1,6 @@
 easymindmap — Frontend 개발 아키텍처
 
-문서 위치: docs/dev/frontend-architecture.md
+문서 위치: docs/05-implementation/frontend-architecture.md
 스택: React + TypeScript + Zustand + React Query
 
 

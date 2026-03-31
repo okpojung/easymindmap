@@ -1677,3 +1677,61 @@ easymindmap 기능명세서
 
 ---
 Powered by [ChatGPT Exporter](https://www.chatgptexporter.com)
+
+---
+
+## [정합성 보완] 배경 이미지(backgroundImage) vs 첨부파일(Attachment) 역할 구분
+
+> **⚠️ 개발 시 혼동 방지를 위한 명확한 경계 정의**
+
+### 핵심 구분 원칙
+
+| 구분 | 노드 배경 이미지 (`backgroundImage`) | 첨부파일 (`node_attachments`) |
+|------|--------------------------------------|-------------------------------|
+| **저장 위치** | `nodes.style_json.backgroundImage` (JSONB) | `node_attachments` 별도 테이블 |
+| **표시 방식** | 노드 도형 **내부** 배경으로 렌더링 | 노드 우측 📎 아이콘으로 표시 (인디케이터) |
+| **지원 타입** | 이미지 파일만 (jpg, png, webp, gif, svg) | 모든 파일 (pdf, docx, xlsx, zip, jpg 등) |
+| **텍스트 공존** | ✅ 이미지 위에 노드 텍스트 입력 가능 | ❌ 텍스트와 무관한 보조 파일 |
+| **노드 크기 영향** | ✅ 배경 이미지에 따라 노드 크기 조절 가능 | ❌ 노드 크기 영향 없음 |
+| **기능 ID** | IMG-01 ~ IMG-20 | (Node Indicator 문서 참조) |
+| **API 엔드포인트** | `POST /nodes/{id}/background-image` | `POST /nodes/{id}/attachments` |
+| **Export 처리** | HTML export 시 인라인 Base64 또는 URL | 다운로드 링크로 표시 |
+
+### 이미지 파일의 처리 분기
+
+이미지 파일(jpg, png 등)은 **사용자의 의도**에 따라 두 가지 방식으로 처리된다.
+
+```
+사용자가 이미지 파일을 드래그/업로드
+    │
+    ├── "노드 배경으로 삽입" 선택
+    │       → style_json.backgroundImage 에 저장
+    │       → 노드 도형 내부 배경으로 렌더링
+    │
+    └── "첨부파일로 추가" 선택
+            → node_attachments 테이블에 저장
+            → 노드 우측 📎 아이콘으로 표시
+```
+
+### DB 저장 구조
+
+```sql
+-- 배경 이미지: nodes 테이블의 style_json 컬럼 내부에 저장
+-- nodes.style_json 예시:
+{
+  "fillColor": "#FFE08A",
+  "backgroundImage": {
+    "url": "https://storage.mindmap.ai.kr/images/abc123.png",
+    "fit": "cover",           -- cover | contain | stretch | original
+    "overlayOpacity": 0.3     -- 0.0 ~ 1.0 (텍스트 가독성을 위한 오버레이)
+  }
+}
+
+-- 첨부파일: 별도 테이블 (이미지 파일도 첨부파일로 추가 가능)
+-- node_attachments 테이블 참조: docs/02-domain/db-schema.md § 3-4
+```
+
+### 참고 문서
+- `docs/03-editor-core/node-indicator.md § 31` — Attachment 인디케이터(📎) 표시 규칙
+- `docs/02-domain/node-model.md § NodeBackgroundImage` — NodeBackgroundImage 타입 정의
+- `docs/02-domain/db-schema.md § 3-4` — node_attachments 테이블 DDL

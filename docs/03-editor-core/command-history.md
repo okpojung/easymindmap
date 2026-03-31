@@ -932,3 +932,53 @@ easymindmap의 Undo / Redo History Store는 아래처럼 설계하는 것이 가
 
 ---
 Powered by [ChatGPT Exporter](https://www.chatgptexporter.com)
+
+---
+
+## [정합성 보완] map_revisions(서버 이력) vs History Store(클라이언트) 역할 구분
+
+> **⚠️ 개발 착수 전 반드시 확인해야 하는 개념 구분**
+
+두 개념은 이름이 비슷하여 혼동하기 쉽지만, 목적·저장 위치·접근 방식이 완전히 다릅니다.
+
+| 구분 | `map_revisions` 테이블 (서버) | Undo/Redo History Store (클라이언트) |
+|------|-------------------------------|--------------------------------------|
+| **저장 위치** | PostgreSQL DB (`public.map_revisions`) | 브라우저 메모리 (Zustand Store) |
+| **지속성** | 영구 저장 (서버 재시작 후에도 유지) | 세션 한정 (새로고침 시 초기화) |
+| **목적** | 버전 이력 관리, 협업 충돌 해소, 히스토리 패널 표시 | Ctrl+Z / Ctrl+Y 편집 취소·복원 |
+| **단위** | 서버 저장 시마다 `NodePatch[]` 배열로 1 revision 생성 | 사용자 액션 단위 (Command) |
+| **최대 보존** | 무제한 (DB 용량 한도) | 기본 50개 (maxHistorySize) |
+| **접근 주체** | 서버 API를 통해 버전 히스토리 패널에서 조회 | 클라이언트 전용 — API 요청 없음 |
+| **사용 시나리오** | "3일 전 버전으로 롤백", 협업 충돌 병합 | "방금 전 텍스트 편집 취소" |
+
+### 아키텍처 흐름
+
+```
+사용자 편집
+    │
+    ▼
+① Command 생성
+    ├─── History Store.push(command)    ← 클라이언트 Undo 스택
+    └─── Document Store 상태 변경
+            │
+            ▼
+        autosaveStore.markDirty(patch)
+            │
+            ▼
+        서버 PATCH /maps/{mapId}/document
+            │
+            ▼
+        map_revisions에 1 row 삽입       ← 서버 버전 이력
+```
+
+### 핵심 규칙
+
+1. **History Store는 map_revisions를 직접 조회하거나 쓰지 않는다.**
+2. **Ctrl+Z는 map_revisions를 rollback하는 것이 아니라** History Store의 undoStack을 pop하여 Document Store를 역방향으로 업데이트한다.
+3. **버전 히스토리 패널(V1 기능)** 에서 과거 버전으로 이동하는 것은 map_revisions를 읽어서 Document Store를 교체하는 별도 작업이며, Undo/Redo와 독립적으로 동작한다.
+4. **Undo 후 Autosave**: Undo 실행 후 Document Store가 변경되므로, autosave가 자동으로 트리거되어 서버에 역방향 patch가 저장된다.
+
+### 참고 문서
+- `docs/03-editor-core/autosave-engine.md` — autosave 파이프라인, IMMEDIATE_SAVE_OPS
+- `docs/02-domain/db-schema.md § map_revisions` — 서버 이력 테이블 DDL
+- `docs/05-implementation/system-architecture.md` — 5-Store 아키텍처 개요

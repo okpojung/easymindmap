@@ -130,7 +130,7 @@ type LayoutType =
   | 'process-tree-right-a'   // BL-PR-RA  진행트리 오른쪽A (버블형)
   | 'process-tree-right-b'   // BL-PR-RB  진행트리 오른쪽B (타임라인형)
   // 자유배치
-  | 'freeform';              // BL-FR     수동 좌표 배치
+  | 'freeform'               // BL-FR     수동 좌표 배치
   // 보드형
   | 'kanban';                // BL-KB     Kanban 보드형 레이아웃
 ```
@@ -387,8 +387,8 @@ const rootNode: NodeObject = {
 ## 스타일 상속 규칙
 
 1. 노드 생성 시 부모 노드의 style을 기본으로 복사
-2. depth에 따른 기본 fontSize 자동 적용
-   - depth 0 (루트): 20px
+2. depth에 따른 기본 fontSize 자동 적용 (확정값 — px 단위, 2026-03-31 기준)
+   - depth 0 (루트): 20px  ← 최종 확정값 (이전 설계 초안의 18pt와 다름; 이 문서 기준 우선)
    - depth 1: 16px
    - depth 2: 14px
    - depth 3+: 12px

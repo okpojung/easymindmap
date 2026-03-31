@@ -51,7 +51,11 @@ PostgreSQL 연결 (TypeORM), JWT 인증 기본 구조 포함.
 ```
 node-model.md와 map-model.md의 스키마 기준으로
 TypeORM Entity 파일과 초기 마이그레이션을 생성해줘.
-테이블: users, maps, nodes, revisions, published_maps, ai_requests, tags
+테이블 (schema.sql 기준 전체 목록):
+  핵심: users, workspaces, workspace_members, maps, nodes
+  노드 관계: node_notes, node_links, node_attachments, node_media, node_tags, node_translations
+  맵 관련: revisions, published_maps, field_registry
+  AI/작업: ai_jobs, tags
 ```
 
 ---
@@ -66,7 +70,8 @@ api-spec.md의 Auth 섹션 기준으로 다음을 구현해줘:
 - POST /auth/signup
 - POST /auth/login
 - POST /auth/refresh
-JWT access token (15m) + refresh token (7d) 방식.
+JWT access token (1h) + refresh token (7d) 방식.
+-- ※ api-spec.md §0.1 기준: Access Token 1시간, Refresh Token 7일
 ```
 
 ---

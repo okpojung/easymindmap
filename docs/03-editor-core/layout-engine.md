@@ -7,7 +7,7 @@ easymindmap — Layout Engine 개발 명세
 1. 2-pass algorithm (Measure → Arrange)
 2. subtree 단위 계산
 3. computedX / computedY = 계산값 (DB 저장 안 함)
-4. manualX / manualY = 사용자 지정 (DB 저장)
+4. manualPosition = 사용자 지정 { x, y } JSONB (freeform 전용, DB 저장)
 5. partial relayout (변경된 subtree만 재계산)
 6. bounding box 기반 배치
 
@@ -20,7 +20,7 @@ LayoutEngine
  ├── RadialStrategy        방사형 (radial-bidirectional, radial-right, radial-left)
  ├── TreeStrategy          트리 (tree-up, tree-down, tree-right, tree-left)
  ├── HierarchyStrategy     계층형 (hierarchy-right, hierarchy-left)
- ├── ProcessStrategy       프로세스 (process-right, process-left, process-right-a/b)
+ ├── ProcessStrategy       프로세스 (process-tree-right, process-tree-left, process-tree-right-a/b)
  └── FreeformStrategy      자유배치 (freeform)
  │
  ├── CollisionResolver     노드 겹침 해소
@@ -54,18 +54,21 @@ arrangeNode(node, parentPos, depth):
 
 
 4. 레이아웃 타입별 규칙
-radial-bidirectional   루트 중심, 자식 좌우 분산
-radial-right           루트 중심, 자식 오른쪽으로만
-radial-left            루트 중심, 자식 왼쪽으로만
-tree-down              루트 상단, 자식 아래로
-tree-up                루트 하단, 자식 위로
-tree-right             루트 왼쪽, 자식 오른쪽으로
-tree-left              루트 오른쪽, 자식 왼쪽으로
-hierarchy-right        들여쓰기 계층 (오른쪽 확장)
-hierarchy-left         들여쓰기 계층 (왼쪽 확장)
-process-right          가로 플로우차트
-process-left           가로 플로우차트 (왼쪽)
-freeform               manual_x / manual_y 그대로 사용
+radial-bidirectional      루트 중심, 자식 좌우 분산
+radial-right              루트 중심, 자식 오른쪽으로만
+radial-left               루트 중심, 자식 왼쪽으로만
+tree-down                 루트 상단, 자식 아래로
+tree-up                   루트 하단, 자식 위로
+tree-right                루트 왼쪽, 자식 오른쪽으로
+tree-left                 루트 오른쪽, 자식 왼쪽으로
+hierarchy-right           들여쓰기 계층 (오른쪽 확장)
+hierarchy-left            들여쓰기 계층 (왼쪽 확장)
+process-tree-right        가로 플로우차트 (오른쪽)
+process-tree-left         가로 플로우차트 (왼쪽)
+process-tree-right-a      가로 플로우차트 오른쪽A (버블형)
+process-tree-right-b      가로 플로우차트 오른쪽B (타임라인형)
+freeform                  manualPosition { x, y } 그대로 사용
+kanban                    3레벨 제한 보드형 (depth 0=board / 1=column / 2=card)
 
 
 5. Edge 정책 (최종 확정)
@@ -90,10 +93,10 @@ function relayout(changedNodeId: string): void {
 }
 
 7. 좌표 저장 정책
-computedX / computedY  → 렌더링 전용, DB 저장 안 함
-manualX / manualY      → position_mode='manual'인 경우에만 DB 저장
+computedX / computedY  → 렌더링 전용, DB 저장 안 함 (Layout Engine이 매 렌더링마다 계산)
+manualPosition         → freeform 레이아웃일 때만 DB 저장 (JSONB 형식)
 
-nodes 테이블:
-  manual_x    NUMERIC(14,2)  NULL
-  manual_y    NUMERIC(14,2)  NULL
-  position_mode VARCHAR(20)  DEFAULT 'auto'  -- 'auto' | 'manual'
+nodes 테이블 (schema.sql 기준):
+  manual_position  JSONB  NULL   -- { x: number, y: number } | null
+  -- ⚠ manual_x, manual_y, position_mode 컬럼은 존재하지 않음
+  -- freeform이 아닌 레이아웃에서는 manual_position = NULL 유지

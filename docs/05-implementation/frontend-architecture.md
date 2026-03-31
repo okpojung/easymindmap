@@ -78,7 +78,7 @@ interface DocumentStore {
   mapId: string | null;
   mapMeta: MapMeta | null;
   nodes: Record<string, Node>;     // id → Node
-  edges: Record<string, Edge>;     // id → Edge
+  edges: Record<string, Edge>;     // id → Edge ⚠ 런타임 계산값 — DB 저장 안 함 (Layout Engine이 렌더링마다 엣지 경로를 계산하며, schema.sql에 edges 테이블 없음)
   nodeOrder: Record<string, string[]>; // parentId → childIds[]
 
   // actions
@@ -196,7 +196,7 @@ SVG + HTML Overlay 리렌더링
         │
         ▼
 Autosave debounce 타이머
-  (500ms~1500ms 후)
+  (텍스트/스타일 변경: 800ms 후 / 구조 변경(생성·삭제·이동): 즉시 0ms)
         │
         ▼
 PATCH /maps/:id/document

@@ -856,6 +856,135 @@ GET  /ai/jobs/{jobId} → { status, nodes }
 
 ---
 
+## 10. Users (사용자 프로필 & UI 환경설정)
+
+### GET /users/me
+현재 로그인 사용자 프로필 조회
+
+**Response** `200 OK`
+```json
+{
+  "id": "uuid-...",
+  "email": "user@example.com",
+  "displayName": "홍길동",
+  "preferredLanguage": "ko",
+  "secondaryLanguages": ["ja"],
+  "skipEnglishTranslation": true,
+  "defaultLayoutType": "radial-bidirectional",
+  "uiPreferences": {
+    "showTranslationIndicator": true,
+    "showTranslationOverrideIcon": true,
+    "showTagBadge": true
+  },
+  "createdAt": "2026-01-01T00:00:00Z"
+}
+```
+
+---
+
+### PATCH /users/me/ui-preferences
+UI 표시 환경설정 업데이트 (인디케이터 ON/OFF 등)
+
+**Request Body** (부분 업데이트 가능)
+```json
+{
+  "showTranslationIndicator": false,
+  "showTranslationOverrideIcon": true,
+  "showTagBadge": true
+}
+```
+
+**Response** `200 OK`
+```json
+{
+  "showTranslationIndicator": false,
+  "showTranslationOverrideIcon": true,
+  "showTagBadge": true
+}
+```
+
+> - `users.ui_preferences_json` JSONB 컬럼에 저장
+> - 참조: `docs/03-editor-core/node-indicator.md` §23 (NODE-15)
+
+---
+
+## 11. Translation (다국어 번역, V2)
+
+### GET /maps/{mapId}/translations
+맵 전체 노드의 번역 캐시 일괄 조회 (맵 오픈 시 배치 번역 TRANS-06)
+
+**Query Parameters**
+| 파라미터 | 필수 | 설명 |
+|---------|:---:|------|
+| `lang` | ✅ | 대상 언어 코드 (예: `ko`, `ja`, `en`) |
+
+**Response** `200 OK`
+```json
+{
+  "translations": [
+    {
+      "nodeId": "uuid-...",
+      "targetLang": "ko",
+      "translatedText": "AI 전략",
+      "sourceTextHash": "a1b2c3d4",
+      "modelVersion": "deepl-v2"
+    }
+  ]
+}
+```
+
+---
+
+### POST /maps/{mapId}/translations/batch
+미번역 노드 배치 번역 요청 (TRANS-06)
+
+**Request Body**
+```json
+{
+  "targetLang": "ko",
+  "nodeIds": ["uuid-1", "uuid-2"]
+}
+```
+
+**Response** `202 Accepted`
+```json
+{ "jobId": "uuid-...", "nodeCount": 2 }
+```
+
+> 번역 완료 시 WebSocket `translation:ready` 이벤트로 클라이언트에 푸시 (TRANS-07)
+
+---
+
+### PATCH /nodes/{nodeId}/translation-override
+편집자 전용 — 노드 번역 강제 설정 (NODE-14, 번역 상태 인디케이터)
+
+**Request Body**
+```json
+{
+  "translationOverride": "force_on"
+}
+```
+
+| 값 | 의미 |
+|---|---|
+| `"force_on"` | 강제 번역 ON (⛔ 설정도 무시) |
+| `"force_off"` | 강제 번역 OFF (모든 열람자 원문) |
+| `null` | 자동 정책으로 복원 |
+
+**Response** `200 OK`
+```json
+{
+  "nodeId": "uuid-...",
+  "translationOverride": "force_on"
+}
+```
+
+> - 권한: 해당 맵의 `editor` 또는 `owner`만 가능
+> - 즉시 autosave 트리거
+> - 참조: `docs/03-editor-core/node-indicator.md` §16 (편집자 override 아이콘 ⛔/🔁)
+
+---
+
 ## 공통 에러 응답
 
 ```json

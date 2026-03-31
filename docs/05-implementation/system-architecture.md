@@ -289,30 +289,32 @@ POST   /ai/expand/:nodeId
 ### 6.2 핵심 테이블 목록
 
 ```
-users                  사용자 (auth.users 연동)
+users                  사용자 (auth.users 연동, ui_preferences_json 포함)
 workspaces             워크스페이스
 workspace_members      멤버십
 
-maps                   맵 메타 (view_mode, refresh_interval 포함)
+maps                   맵 메타 (view_mode, refresh_interval, translation_policy_json 포함)
 map_revisions          서버 버전 히스토리
 
-nodes                  노드 (node_type, text_lang, text_hash 포함)
-node_order             형제 노드 순서
-edges                  확장 연결선
+nodes                  노드 (node_type, text_lang, text_hash,
+                              translation_mode, translation_override 포함)
+-- ※ node_order 컬럼 없음: 순서는 nodes.order_index FLOAT 컬럼으로 관리 (erd.md §2.5)
+-- ※ edges 테이블 없음: 연결선은 nodes.parent_id + path(ltree) 관계로 표현
 
 tags                   태그
 node_tags              노드-태그 관계
-node_notes             노드 노트
-node_links             하이퍼링크
-node_attachments       첨부파일
-node_media             배경이미지
+node_notes             노드 노트 (1:1)
+node_links             하이퍼링크 (1:N)
+node_attachments       첨부파일 (1:N)
+node_media             오디오/비디오 미디어 (1:1, ※ 배경이미지 ≠ node_media)
+                       -- 배경이미지는 nodes.style_json.backgroundImage 에 저장
 
 exports                Export 작업 이력
 published_maps         퍼블리시된 맵
 
 ai_jobs                AI 작업 이력
-translation_jobs       번역 작업 큐 (V2~)
-node_translations      번역 캐시 (V2~)
+-- ※ translation_jobs 테이블 없음: 번역은 BullMQ worker 큐로 처리 (worker-translation)
+node_translations      번역 캐시 (V2~, node_id + target_lang UNIQUE)
 
 field_registry         대시보드 편집 가능 필드 메타 (V3~)
 ```

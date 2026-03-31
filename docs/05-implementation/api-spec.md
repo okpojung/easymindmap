@@ -149,6 +149,19 @@ Retry-After: 60
 ### POST /auth/refresh
 Access Token 갱신
 
+> **처리 주체 확정 (2026-03-31)**
+>
+> | 항목 | 결정 | 근거 |
+> |------|------|------|
+> | **토큰 갱신 실행자** | **NestJS API 서버** (`/auth/refresh` 엔드포인트) | httpOnly Cookie를 서버에서 직접 파싱해 보안 강화 |
+> | Supabase JS SDK 역할 | 클라이언트-사이드 세션 상태 관리 전용 (로그인/로그아웃 UI 흐름) | Supabase `auth.refreshSession()` 는 **직접 호출하지 않는다** |
+> | 이중 갱신 방지 | axios interceptor에서 `_retry` 플래그로 중복 호출 차단 | 동시 401 응답 시 하나만 갱신 요청, 나머지는 Promise 대기 |
+> | refreshToken 저장 | `Set-Cookie: HttpOnly; Secure; SameSite=Strict` | JavaScript에서 읽기 불가 — XSS 방어 |
+>
+> **결론**: 프론트엔드는 Supabase JS SDK의 자동 갱신(`autoRefreshToken: false` 설정)을 비활성화하고,
+> 모든 토큰 갱신을 `POST /auth/refresh` NestJS 엔드포인트로 위임한다.
+> Supabase SDK는 로그인·로그아웃 UI 흐름 및 세션 상태 구독(`onAuthStateChange`)에만 사용한다.
+
 **Cookie** (자동 전송): `refreshToken=eyJ...`
 
 **Response** `200 OK`

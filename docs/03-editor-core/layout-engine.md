@@ -1,6 +1,6 @@
 easymindmap — Layout Engine 개발 명세
 
-문서 위치: docs/dev/layout-engine.md
+문서 위치: docs/03-editor-core/layout-engine.md
 
 
 1. 핵심 원칙

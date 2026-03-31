@@ -20,12 +20,13 @@ type NodeObject = {
 
   // === 콘텐츠 ===
   text: string;                  // 노드 표시 텍스트
-  note: string | null;           // 긴 설명 (노트)
-  // [변경 주석]
-  // note는 프론트엔드/도메인 관점의 "논리 필드"로 유지한다.
-  // 현재 저장소의 물리 DB 설계는 node_notes 테이블 분리안과 nodes.note 컬럼 공존 흔적이 있어
-  // 구현 단계에서 "어디를 최종 저장 원천으로 할지"를 1곳으로 확정해야 한다.
-  // 문서/API 응답에서는 편의상 note를 NodeObject에 포함하여 다루는 것이 가장 이해하기 쉽다.
+  note: string | null;           // 긴 설명 (노트) — 논리 필드 (API 응답/클라이언트 상태에서 포함)
+  // [저장 원천 확정 — 2026-03-31]
+  // 물리 DB 저장 원천: public.node_notes 테이블 (1:1 관계, 별도 테이블 단일화 확정)
+  //   - nodes.note 컬럼은 존재하지 않는다 (schema.sql 기준)
+  //   - API 응답/클라이언트 NodeObject에는 편의상 note 필드로 포함하여 노출
+  //   - PUT /nodes/{nodeId}/note, GET /nodes/{nodeId}/note API 사용
+  //   - 참고: docs/02-domain/db-schema.md §3-1 node_notes, docs/05-implementation/api-spec.md §Indicator/Note API
 
   // === 레이아웃 ===
   layoutType: LayoutType | null;  // null = 부모 layoutType 상속. 루트 노드는 항상 구체적인 값을 가짐

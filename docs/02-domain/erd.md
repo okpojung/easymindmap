@@ -15,6 +15,7 @@
 | v2.1 | — | `users` 테이블 휴대폰 번호 컬럼 추가 |
 | v3.0 | 2026-03-29 | `ltree` extension 채택 → `nodes.path` LTREE 컬럼 + GIST/BTREE 인덱스 추가<br>`nodes.order_index` INT → FLOAT (중간 삽입 O(1))<br>`nodes.depth` 컬럼 추가 (앱단 계산, `ltree nlevel()-1`)<br>`nodes.manual_position` JSONB (`{ x, y }`) → `manual_x/manual_y` 대체<br>`nodes.size_cache` JSONB 추가 (렌더링 캐시)<br>`nodes.style_json` JSONB 내 `backgroundImage` 키로 배경이미지 통합 (MVP)<br>`maps.deleted_at` soft-delete 추가 (30일 휴지통)<br>`published_maps`, `ai_jobs`, `node_translations`, `field_registry` 테이블 추가<br>`map_revisions` 관계 명시 / 전체 인덱스 목록 갱신 |
 | v3.1 | 2026-03-30 | 다국어 번역 V2 스키마 반영<br>`users`: `secondary_languages`, `skip_english_translation` 추가<br>`maps`: `translation_policy_json` JSONB 추가<br>`nodes`: `translation_mode`, `translation_override`, `author_preferred_language` 추가<br>`node_translations`: `idx_node_translations_node_id` 인덱스 추가<br>번역 정책 3단계 계층 설계 포인트 추가 |
+| v3.2 | 2026-03-31 | 정합성 보완 수정<br>`tags`: `workspace_id` 추가 (개인↔워크스페이스 공유 태그 분리)<br>`nodes.layout_type`: NOT NULL → NULL 허용 (부모 상속 의미 명확화)<br>`nodes.background_image_*`: 3개 전용 컬럼 분리 (`background_image_path`, `_fit`, `_opacity`) — `style_json`에서 분리<br>`node_media.media_type`: CHECK(`'audio'`, `'video'`) 제약 추가 (이미지 혼용 방지)<br>`maps.view_mode`: `'kanban'` 값 추가<br>RLS: workspace_members 기반 공유 접근 정책 추가 (editor/viewer 역할 분리) |
 
 ---
 
@@ -167,11 +168,15 @@ field_registry  (독립 테이블 — 대시보드 필드 메타)
 | `order_index` | FLOAT | DEFAULT `0.0` | **[v3.0]** 중간 삽입 O(1), 기존 INT에서 변경 |
 | `path` | LTREE | NOT NULL | **[v3.0]** 예: `root.n_a1b2c3d4.n_e5f6a7b8` |
 | **레이아웃** | | | |
-| `layout_type` | VARCHAR(50) | DEFAULT `'radial-bidirectional'` | kebab-case 저장. kanban 시 depth 0=board, 1=column, 2=card, 3+ 금지 |
+| `layout_type` | VARCHAR(50) | **NULL 허용** | **[v3.1]** `NULL` = 부모 레이아웃 상속. 루트 노드는 앱단에서 `'radial-bidirectional'` 기본값 보장. kebab-case 저장. kanban 시 depth 0=board, 1=column, 2=card, 3+ 금지 |
 | `collapsed` | BOOLEAN | DEFAULT `FALSE` | |
 | **도형 & 스타일** | | | |
 | `shape_type` | VARCHAR(50) | DEFAULT `'rounded-rectangle'` | `'rounded-rectangle'` \| `'rectangle'` \| `'ellipse'` \| `'pill'` \| `'diamond'` \| `'parallelogram'` \| `'none'` |
-| `style_json` | JSONB | DEFAULT `'{}'` | `NodeStyle` + `backgroundImage` 통합 저장 (MVP)<br>구조: `{ fillColor, borderColor, textColor, fontSize, ..., backgroundImage: NodeBackgroundImage }` |
+| `style_json` | JSONB | DEFAULT `'{}'` | `NodeStyle` 저장. |
+| **배경 이미지** | | | |
+| `background_image_path` | VARCHAR(500) | NULL | **[v3.1]** Supabase Storage 경로. NULL = 배경 이미지 없음. node_media(오디오/비디오)와 역할 분리 |
+| `background_image_fit` | VARCHAR(20) | DEFAULT `'cover'` | `'cover'` \| `'contain'` \| `'stretch'` \| `'original'` |
+| `background_image_opacity` | NUMERIC(3,2) | DEFAULT `1.0` | 0.00~1.00, 텍스트 가독성을 위한 오버레이 불투명도 |
 | **자유배치** | | | |
 | `manual_position` | JSONB | NULL | **[v3.0]** `{ x: number, y: number }`, freeform 전용 |
 | **캐시** | | | |
@@ -214,13 +219,20 @@ subtree 이동:
 
 #### `public.tags`
 
+> **[v3.1 수정]** `workspace_id` 컬럼 추가 — 워크스페이스 공유 태그 지원
+
 | 컬럼 | 타입 | 제약 / 기본값 | 설명 |
 |---|---|---|---|
 | `id` | UUID | PK | |
-| `owner_id` | UUID | FK → `users(id)` ON DELETE CASCADE | |
-| `name` | VARCHAR(50) | UNIQUE (owner_id, name) | |
+| `owner_id` | UUID | FK → `users(id)` ON DELETE CASCADE | 생성자 (개인 태그 소유자) |
+| `workspace_id` | UUID | FK → `workspaces(id)` ON DELETE CASCADE, NULLABLE | NULL = 개인 태그, NOT NULL = 워크스페이스 공유 태그 |
+| `name` | VARCHAR(50) | UNIQUE (owner_id, name), UNIQUE (workspace_id, name) | |
 | `color` | VARCHAR(7) | DEFAULT `'#888888'` | |
 | `created_at` | TIMESTAMPTZ | | |
+
+**태그 소유 단위 정책**
+- `workspace_id IS NULL` → 개인 태그: 생성자만 사용 가능
+- `workspace_id IS NOT NULL` → 워크스페이스 공유 태그: 멤버 전원 사용 가능, UNIQUE(workspace_id, name)으로 중복 방지
 
 #### `public.node_tags` (N:N 연결 테이블)
 

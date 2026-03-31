@@ -116,7 +116,9 @@ CREATE TABLE public.maps (
   workspace_id              UUID REFERENCES public.workspaces(id) ON DELETE SET NULL,
   title                     VARCHAR(255) NOT NULL DEFAULT 'Untitled',
   default_layout_type       VARCHAR(50)  NOT NULL DEFAULT 'radial-bidirectional',
-  view_mode                 VARCHAR(20)  NOT NULL DEFAULT 'edit',  -- 'edit' | 'dashboard'
+  view_mode                 VARCHAR(20)  NOT NULL DEFAULT 'edit',  -- 'edit' | 'dashboard' | 'kanban'
+  -- ⚠️ 'kanban'은 nodes.layout_type 기반 kanban 레이아웃을 사용하는 맵의 보기 모드
+  --    kanban 맵은 depth 0=board / 1=column / 2=card 규칙을 따름 (db-schema.md §3 kanban 규칙)
   refresh_interval_seconds  INT          NOT NULL DEFAULT 0,       -- 0: off
   current_version           INT          NOT NULL DEFAULT 0,
 
@@ -199,7 +201,10 @@ CREATE TABLE public.nodes (
   path             LTREE NOT NULL DEFAULT 'root',
 
   -- 레이아웃
-  layout_type      VARCHAR(50) NOT NULL DEFAULT 'radial-bidirectional',
+  -- NULL = 부모 노드 layout_type 상속 (서브트리 변경 UX를 위해 NULL 허용)
+  -- 루트 노드는 애플리케이션 레이어에서 기본값 'radial-bidirectional' 보장
+  -- NOT NULL을 쓰면 "부모 상속" 상태를 DEFAULT 값과 구분할 수 없음
+  layout_type      VARCHAR(50) NULL,
   collapsed        BOOLEAN NOT NULL DEFAULT FALSE,
 
   -- 도형 & 스타일
@@ -215,6 +220,12 @@ CREATE TABLE public.nodes (
   translation_mode          VARCHAR(20)  NOT NULL DEFAULT 'auto',  -- 'auto' | 'manual'
   translation_override      VARCHAR(20),   -- null | 'force_on' | 'force_off'
   author_preferred_language VARCHAR(10),   -- 작성자 선호 언어 (번역 건너뜀 여부 결정)
+
+  -- 노드 배경 이미지 (IMG-01~09, node_media와 역할 구분)
+  -- node_media = 오디오/비디오 인디케이터, background_image = 노드 도형 배경
+  background_image_path    VARCHAR(500),              -- Supabase Storage 경로 (NULL = 배경 없음)
+  background_image_fit     VARCHAR(20) DEFAULT 'cover',  -- 'cover' | 'contain' | 'stretch' | 'original'
+  background_image_opacity NUMERIC(3,2) DEFAULT 1.0,    -- 0.00 ~ 1.00 (오버레이 불투명도)
 
   -- 자유배치
   manual_position  JSONB,   -- { x: number, y: number }
@@ -347,7 +358,9 @@ CREATE TABLE public.node_media (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   node_id         UUID NOT NULL UNIQUE REFERENCES public.nodes(id) ON DELETE CASCADE,
   storage_path    VARCHAR(500) NOT NULL,
-  media_type      VARCHAR(20) NOT NULL DEFAULT 'image',
+  -- 'audio' | 'video' 만 허용 — 이미지 배경은 nodes.background_image_path 사용
+  -- ⚠️ 'image'를 기본값으로 쓰면 node_background_image 기능과 역할 혼용됨
+  media_type      VARCHAR(20) NOT NULL CHECK (media_type IN ('audio', 'video')),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
@@ -359,6 +372,10 @@ CREATE TABLE public.node_media (
   - 다중 링크/다중 첨부 자연스럽게 지원
   - node indicator UI와 실제 저장 구조 분리 가능
 - 프론트엔드에서는 응답 조립 시 다시 NodeObject에 합쳐서 쓸 수 있다.
+- **⚠️ node_media 역할 명확화 (v3.1)**: `media_type`을 `'audio' | 'video'`만 허용하도록 CHECK 제약 추가.
+  - 이미지 배경(`background_image`)은 nodes 테이블의 `background_image_path` 컬럼으로 분리 저장.
+  - node_media = 오디오/비디오 인디케이터(▶), background_image = 노드 도형 배경 렌더링 — 역할이 완전히 다름.
+  - 참고: `docs/03-editor-core/node-background-image.md` § 정합성 보완
 
 ---
 
@@ -409,18 +426,31 @@ CREATE INDEX idx_published_maps_publish_id ON public.published_maps(publish_id);
 
 ### 6. tags
 
+> **[v3.1 수정]** workspace 협업 시 태그 공유를 지원하기 위해 `workspace_id` 컬럼 추가.
+> - `workspace_id = NULL` : 개인 태그 (워크스페이스 없이 사용하는 사용자)
+> - `workspace_id = UUID` : 워크스페이스 공유 태그 (멤버 모두 사용 가능)
+> - UNIQUE 제약도 `(workspace_id, name)` 기준으로 변경하여 워크스페이스별 중복 방지
+
 ```sql
 CREATE TABLE public.tags (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id    UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  name        VARCHAR(50) NOT NULL,
-  color       VARCHAR(7) NOT NULL DEFAULT '#888888',  -- hex
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- 생성자 (ON DELETE CASCADE: 사용자 탈퇴 시 개인 태그 삭제)
+  owner_id      UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  -- 워크스페이스 태그 (NULL = 개인 태그, NOT NULL = 워크스페이스 공유 태그)
+  workspace_id  UUID REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name          VARCHAR(50) NOT NULL,
+  color         VARCHAR(7) NOT NULL DEFAULT '#888888',  -- hex
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
 
-  UNIQUE(owner_id, name)
+  -- workspace_id 기준 중복 방지
+  --   개인 태그 (workspace_id IS NULL): owner_id + name 조합 유일
+  --   워크스페이스 태그: workspace_id + name 조합 유일
+  UNIQUE(owner_id, name),
+  UNIQUE(workspace_id, name)
 );
 
-CREATE INDEX idx_tags_owner_id ON public.tags(owner_id);
+CREATE INDEX idx_tags_owner_id      ON public.tags(owner_id);
+CREATE INDEX idx_tags_workspace_id  ON public.tags(workspace_id) WHERE workspace_id IS NOT NULL;
 ```
 
 ---
@@ -535,6 +565,18 @@ CREATE POLICY "users can view own maps"
   ON public.maps FOR SELECT
   USING (auth.uid() = owner_id AND deleted_at IS NULL);
 
+-- 워크스페이스 멤버도 maps 조회 가능 (V1 협업)
+CREATE POLICY "workspace members can view maps"
+  ON public.maps FOR SELECT
+  USING (
+    deleted_at IS NULL AND
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = maps.workspace_id
+        AND wm.user_id = auth.uid()
+    )
+  );
+
 CREATE POLICY "users can insert own maps"
   ON public.maps FOR INSERT
   WITH CHECK (auth.uid() = owner_id);
@@ -543,20 +585,60 @@ CREATE POLICY "users can update own maps"
   ON public.maps FOR UPDATE
   USING (auth.uid() = owner_id);
 
+-- 워크스페이스 editor 역할은 맵 업데이트 가능
+CREATE POLICY "workspace editors can update maps"
+  ON public.maps FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = maps.workspace_id
+        AND wm.user_id = auth.uid()
+        AND wm.role IN ('owner', 'editor')
+    )
+  );
+
 CREATE POLICY "users can delete own maps"
   ON public.maps FOR DELETE
   USING (auth.uid() = owner_id);
 
--- nodes 테이블 RLS (map 소유자만 접근)
+-- nodes 테이블 RLS (소유자 + 워크스페이스 멤버 접근)
+-- ⚠️ MVP에서는 소유자 전용으로 시작, V1 협업 활성화 시 아래 두 정책 추가
 ALTER TABLE public.nodes ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "users can manage nodes of own maps"
+-- 소유자: 모든 조작 허용
+CREATE POLICY "map owners can manage all nodes"
   ON public.nodes FOR ALL
   USING (
     EXISTS (
       SELECT 1 FROM public.maps
       WHERE maps.id = nodes.map_id
         AND maps.owner_id = auth.uid()
+    )
+  );
+
+-- 워크스페이스 editor: 노드 읽기 + 쓰기 허용 (V1)
+CREATE POLICY "workspace editors can manage nodes"
+  ON public.nodes FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.maps m
+      JOIN public.workspace_members wm ON wm.workspace_id = m.workspace_id
+      WHERE m.id = nodes.map_id
+        AND wm.user_id = auth.uid()
+        AND wm.role IN ('owner', 'editor')
+    )
+  );
+
+-- 워크스페이스 viewer: 노드 읽기만 허용 (V1)
+CREATE POLICY "workspace viewers can read nodes"
+  ON public.nodes FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.maps m
+      JOIN public.workspace_members wm ON wm.workspace_id = m.workspace_id
+      WHERE m.id = nodes.map_id
+        AND wm.user_id = auth.uid()
+        AND wm.role = 'viewer'
     )
   );
 

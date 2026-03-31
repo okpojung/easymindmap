@@ -28,7 +28,7 @@ type NodeObject = {
   // 문서/API 응답에서는 편의상 note를 NodeObject에 포함하여 다루는 것이 가장 이해하기 쉽다.
 
   // === 레이아웃 ===
-  layoutType: LayoutType;        // 이 노드 이하 subtree 전개 방식
+  layoutType: LayoutType | null;  // null = 부모 layoutType 상속. 루트 노드는 항상 구체적인 값을 가짐
   collapsed: boolean;            // true = 자식 숨김
 
   // === 스타일 ===
@@ -257,6 +257,9 @@ type NodeBackgroundImage = {
 가장 중요한 필드. **이 노드 이하 subtree 전체**의 전개 방식을 결정한다.
 - 루트 노드의 layoutType이 전체 기본 레이아웃을 결정
 - 하위 노드에서 다른 layoutType을 지정하면 그 subtree만 독립 전환
+- **`null` (DB 저장값) = 부모 layoutType 상속**: 자식 노드는 `null`로 저장하여 부모 레이아웃을 따름
+  - 루트 노드는 항상 구체적인 layoutType 값을 가져야 함 (앱 레이어에서 기본값 `'radial-bidirectional'` 보장)
+  - DB의 `layout_type` 컬럼은 `NULL` 허용 — NOT NULL + DEFAULT 구조를 쓰면 "상속" 상태를 표현할 수 없음
 - 단, `kanban`은 일반 subtree 확장형 레이아웃이 아니라 board 기반 레이아웃으로 해석한다.
 - `kanban` 사용 시 depth 의미는 다음과 같이 고정된다:
   - depth 0 = board

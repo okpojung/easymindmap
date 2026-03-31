@@ -70,6 +70,37 @@ interface PatchRequest {
 }
 ```
 
+> **⚠️ patchId 생성 규칙 — Undo/Redo 후 재저장 시 UNIQUE 충돌 방지**
+>
+> `map_revisions.patch_id`에 `UNIQUE` 제약이 있으므로, Undo/Redo 실행 후 재저장할 때
+> 기존 patchId를 **절대 재사용하면 안 된다**. 항상 새로운 patchId를 생성해야 한다.
+>
+> | 시나리오 | patchId 규칙 |
+> |----------|-------------|
+> | 일반 편집 저장 | `p_{Date.now()}_{counter}` |
+> | Undo 실행 후 저장 | `p_{Date.now()}_{counter}_undo` (새 timestamp) |
+> | Redo 실행 후 저장 | `p_{Date.now()}_{counter}_redo` (새 timestamp) |
+> | 네트워크 오류 재시도 | **동일 patchId 재사용** (멱등성 보장 목적) |
+>
+> ```typescript
+> // patchId 생성 유틸리티
+> let counter = 0;
+> function generatePatchId(type: 'normal' | 'undo' | 'redo' = 'normal'): string {
+>   counter++;
+>   const suffix = type !== 'normal' ? `_${type}` : '';
+>   return `p_${Date.now()}_${counter.toString().padStart(3, '0')}${suffix}`;
+> }
+>
+> // Undo 실행 후 autosave
+> function applyUndo() {
+>   const inversePatches = historyStore.undo();   // Document Store 역방향 업데이트
+>   autosaveStore.markDirty({
+>     patchId: generatePatchId('undo'),           // 항상 새 patchId
+>     patches: inversePatches,
+>   });
+> }
+> ```
+
 Patch 종류 (NodePatch)
 
 ```typescript

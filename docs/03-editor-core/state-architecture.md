@@ -320,6 +320,16 @@ DB: parent_id (원본)
 
 ### 5.1.4 Node 모델 예시
 
+> **타입명 통일 규칙 (2026-03-31 확정)**
+> - `MindmapNode` = 이 문서(state-architecture.md) 및 Zustand Store 내부에서 사용하는 타입명
+> - `NodeObject` = `docs/02-domain/node-model.md`에서 정의하는 도메인 모델 타입명
+> - 두 타입은 **동일한 구조**를 가리키며, 별칭 관계로 이해하면 된다:
+>   ```ts
+>   type MindmapNode = NodeObject; // 별칭 — 실제 구현 시 한쪽으로 통일 권장
+>   ```
+> - 실제 코드 작성 시에는 `NodeObject`를 canonical 타입으로 사용하고,
+>   Store 파일 내에서 `import type { NodeObject as MindmapNode }` 형태로 import하는 것을 권장한다.
+
 ```ts
 type MindmapNode = {
   id: string;

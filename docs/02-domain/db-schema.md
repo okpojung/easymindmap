@@ -511,6 +511,18 @@ CREATE TABLE public.field_registry (
 
 ---
 
+### [설계 노트] map_themes 테이블 미포함 사유
+
+> 다른 검토 문서에서 `map_themes` 테이블이 언급되었으나, 현재 easymindmap MVP/V1 설계 범위에는 포함되지 않습니다.
+
+| 항목 | 내용 |
+|------|------|
+| **제외 사유** | 노드 스타일은 `nodes.style_json` JSONB 컬럼에 개별 저장. 맵 전체 테마는 현재 구현 범위 외 (V2+ 후보) |
+| **현재 대안** | 사용자가 개별 노드 색상/폰트/도형을 직접 설정. 루트→자식 스타일 상속 규칙으로 일관성 유지 |
+| **향후 확장** | V2 이후 `map_themes` 테이블 추가 검토 가능: `{id, name, stylePresets: JSONB, isPublic, ownerId}` |
+
+---
+
 ## Row Level Security (RLS) 정책
 
 Supabase는 RLS로 사용자별 데이터 격리를 자동으로 처리.

@@ -39,6 +39,14 @@
 ## 2. NODE — 노드 조작
 
 > 노드 추가 인디케이터(+ 버튼) 상세 설계: `node-indicator.md`
+>
+> **[기능ID 체계 주의]** NODE-13~16은 node-indicator.md 기준 기능 분류 ID로 사용됨:
+> - NODE-13: 추가 인디케이터 (+ 버튼 4방향)
+> - NODE-14: 번역 상태 인디케이터 (V2)
+> - NODE-15: 인디케이터 ON/OFF 설정 (V2)
+> - NODE-16: 콘텐츠 존재 인디케이터 (노트/Hyperlink/첨부파일/멀티미디어)
+>
+> 아래 표의 `NODE-IND-*` ID는 NODE-13(+버튼) 내부 4방향 동작의 세부 식별자로 사용한다.
 
 ### 2-1. 키보드/단축키 기반 노드 조작
 
@@ -64,10 +72,10 @@
 
 | 기능ID | 기능명 | 방향 | 동작 | 비고 |
 |---|---|:---:|---|---|
-| NODE-13 | Add Parent Node (Indicator) | ⬆ 상 | 선택 노드와 기존 부모 사이에 부모 노드 중간 삽입 | Root 노드에서 비활성 |
-| NODE-14 | Add Child Node (Indicator) | ⬇ 하 | 선택 노드의 마지막 자식으로 자식 노드 추가 | NODE-03(Space)과 동일 동작 |
-| NODE-15 | Add Sibling Before (Indicator) | ⬅ 좌 | 선택 노드 바로 앞(이전)에 형제 노드 삽입 | NODE-02와 동일 동작 |
-| NODE-16 | Add Sibling After (Indicator) | ➡ 우 | 선택 노드 바로 뒤(다음)에 형제 노드 삽입 | NODE-01과 동일 동작 |
+| NODE-IND-01 | Add Parent Node (Indicator) | ⬆ 상 | 선택 노드와 기존 부모 사이에 부모 노드 중간 삽입 | Root 노드에서 비활성 |
+| NODE-IND-02 | Add Child Node (Indicator) | ⬇ 하 | 선택 노드의 마지막 자식으로 자식 노드 추가 | NODE-03(Space)과 동일 동작 |
+| NODE-IND-03 | Add Sibling Before (Indicator) | ⬅ 좌 | 선택 노드 바로 앞(이전)에 형제 노드 삽입 | NODE-02와 동일 동작 |
+| NODE-IND-04 | Add Sibling After (Indicator) | ➡ 우 | 선택 노드 바로 뒤(다음)에 형제 노드 삽입 | NODE-01과 동일 동작 |
 
 **인디케이터 UX 요약**
 
@@ -304,7 +312,7 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 |---|:---:|---|
 | MAP | 5 | — |
 | NODE (단축키) | 12 | — |
-| NODE (인디케이터 +버튼) | 4 | ⭐ 신규 (NODE-13~16) |
+| NODE (인디케이터 +버튼) | 4 | ⭐ 신규 (NODE-IND-01~04 / NODE-13) |
 | LAYOUT (기능) | 4 | — |
 | LAYOUT (유형) | 15 | — |
 | CANVAS | 8 | — |

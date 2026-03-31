@@ -74,12 +74,20 @@ DATABASE_URL=postgresql://postgres:[password]@db.xxxxxxxxxxxx.supabase.co:5432/p
 
 ```sql
 CREATE TABLE public.users (
-  id            UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  display_name  VARCHAR(100),
-  preferred_language  VARCHAR(10) DEFAULT 'ko',
-  default_layout_type VARCHAR(50) DEFAULT 'radial-bidirectional',
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ DEFAULT NOW()
+  id                      UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  display_name            VARCHAR(100),
+  preferred_language      VARCHAR(10)  DEFAULT 'ko',
+  default_layout_type     VARCHAR(50)  DEFAULT 'radial-bidirectional',
+
+  -- 다국어 번역 설정 (V2)
+  secondary_languages     TEXT[]       NOT NULL DEFAULT '{}',  -- 최대 3개 언어 코드
+  skip_english_translation BOOLEAN     NOT NULL DEFAULT TRUE,  -- 영어 번역 건너뜀
+
+  -- UI 표시 환경설정 (JSON, V2)
+  ui_preferences_json     JSONB        NOT NULL DEFAULT '{"showTranslationIndicator":true,"showTranslationOverrideIcon":true,"showTagBadge":true}',
+
+  created_at              TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ  DEFAULT NOW()
 );
 
 -- auth.users 생성 시 자동으로 public.users row 생성하는 트리거
@@ -111,6 +119,12 @@ CREATE TABLE public.maps (
   view_mode                 VARCHAR(20)  NOT NULL DEFAULT 'edit',  -- 'edit' | 'dashboard'
   refresh_interval_seconds  INT          NOT NULL DEFAULT 0,       -- 0: off
   current_version           INT          NOT NULL DEFAULT 0,
+
+  -- 번역 정책 (V2, 맵 단위 오버라이드)
+  -- null: 사용자 기본 설정 따름 / 설정 시 해당 맵의 번역 정책 재정의
+  -- 예: {"mode":"off"} | {"allowedTargetLanguages":["ko","ja"]}
+  translation_policy_json   JSONB,
+
   deleted_at                TIMESTAMPTZ,  -- soft delete
   created_at                TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -129,6 +143,7 @@ CREATE INDEX idx_maps_deleted_at ON public.maps(deleted_at) WHERE deleted_at IS 
   - refresh_interval_seconds
   - current_version
 - 특히 `current_version`은 patch 기반 autosave / 충돌 처리의 핵심 필드이므로 문서에서 빠지면 안 된다.
+- `translation_policy_json` (V2): 맵 단위 번역 정책 오버라이드. null이면 사용자 기본 설정을 따른다.
 
 ---
 
@@ -194,9 +209,12 @@ CREATE TABLE public.nodes (
   -- 노드 타입 (V3 대시보드 대비)
   node_type        VARCHAR(30) NOT NULL DEFAULT 'text',  -- 'text' | 'data-live'
 
-  -- 다국어 번역 (V2 대비)
-  text_lang        VARCHAR(20),
-  text_hash        VARCHAR(128),
+  -- 다국어 번역 (V2)
+  text_lang                 VARCHAR(20),   -- 원문 언어 코드 (ISO 639-1)
+  text_hash                 VARCHAR(128),  -- 원문 해시 (번역 캐시 유효성 검증)
+  translation_mode          VARCHAR(20)  NOT NULL DEFAULT 'auto',  -- 'auto' | 'manual'
+  translation_override      VARCHAR(20),   -- null | 'force_on' | 'force_off'
+  author_preferred_language VARCHAR(10),   -- 작성자 선호 언어 (번역 건너뜀 여부 결정)
 
   -- 자유배치
   manual_position  JSONB,   -- { x: number, y: number }
@@ -215,6 +233,10 @@ CREATE INDEX idx_nodes_map_order   ON public.nodes(map_id, order_index);
 CREATE INDEX idx_nodes_path_gist   ON public.nodes USING GIST (path);
 -- ltree BTREE 인덱스: 정확한 경로 매칭 및 정렬
 CREATE INDEX idx_nodes_path_btree  ON public.nodes(path);
+-- 번역 스킵 인덱스: translation_mode='auto' & translation_override IS NULL 조회 최적화 (V2)
+CREATE INDEX idx_nodes_translation_skip
+  ON public.nodes(map_id, translation_mode, translation_override)
+  WHERE translation_mode = 'auto' AND translation_override IS NULL;
 ```
 ### Kanban Layout 사용 시 depth 규칙
 Kanban layout에서는 nodes.depth를 다음처럼 제한적으로 해석한다.
@@ -251,6 +273,11 @@ Kanban layout에서는 nodes.depth를 다음처럼 제한적으로 해석한다.
   아래 별도 테이블(node_tags, node_links, node_attachments, node_media)로 설명해야 한다.
 - 또한 style 컬럼명도 기존 `style` 대신 최신 schema.sql 기준으로 `style_json`으로 맞춘다.
 - size 컬럼도 `size` 대신 `size_cache`로 맞춘다.
+- **V2 번역 컬럼 추가**: `translation_mode`, `translation_override`, `author_preferred_language`
+  - `translation_mode`: 'auto'(기본) | 'manual' — 노드별 번역 동작 방식
+  - `translation_override`: null(기본) | 'force_on' | 'force_off' — 편집자 강제 재정의
+  - `author_preferred_language`: 작성자 선호 언어 — 영어 원문 번역 건너뜀 여부 판단에 사용
+  - 3-레벨 번역 정책: node.translation_override > map.translation_policy_json > user(preferred_language, secondary_languages)
 
 ---
 

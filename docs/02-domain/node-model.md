@@ -29,7 +29,7 @@ type NodeObject = {
   //   - 참고: docs/02-domain/db-schema.md §3-1 node_notes, docs/05-implementation/api-spec.md §Indicator/Note API
 
   // === 레이아웃 ===
-  layoutType: LayoutType | null;  // null = 부모 layoutType 상속. 루트 노드는 항상 구체적인 값을 가짐
+  layoutType: LayoutType;        // 항상 구체적인 layoutType 값을 저장
   collapsed: boolean;            // true = 자식 숨김
 
   // === 스타일 ===
@@ -256,17 +256,22 @@ type NodeBackgroundImage = {
 
 ### layoutType
 가장 중요한 필드. **이 노드 이하 subtree 전체**의 전개 방식을 결정한다.
-- 루트 노드의 layoutType이 전체 기본 레이아웃을 결정
-- 하위 노드에서 다른 layoutType을 지정하면 그 subtree만 독립 전환
-- **`null` (DB 저장값) = 부모 layoutType 상속**: 자식 노드는 `null`로 저장하여 부모 레이아웃을 따름
-  - 루트 노드는 항상 구체적인 layoutType 값을 가져야 함 (앱 레이어에서 기본값 `'radial-bidirectional'` 보장)
-  - DB의 `layout_type` 컬럼은 `NULL` 허용 — NOT NULL + DEFAULT 구조를 쓰면 "상속" 상태를 표현할 수 없음
+
+- 루트 노드의 `layoutType`이 전체 기본 레이아웃을 결정한다.
+- 하위 노드에서 다른 `layoutType`을 지정하면 그 subtree만 독립적으로 전환된다.
+- 새 노드를 생성할 때 별도 override가 없으면 **기준 노드의 `layoutType` 값을 상속(복사)하여 저장**한다.
+- DB의 `layout_type` 컬럼은 `NOT NULL`이며, 항상 구체적인 layout 값을 저장한다.
+- 기본값은 `'radial-bidirectional'`이다.
 - 단, `kanban`은 일반 subtree 확장형 레이아웃이 아니라 board 기반 레이아웃으로 해석한다.
 - `kanban` 사용 시 depth 의미는 다음과 같이 고정된다:
   - depth 0 = board
   - depth 1 = column
   - depth 2 = card
   - depth 3 이상 = 허용하지 않음
+
+📌 DB 제약:
+- `layoutType` 값은 DB의 `chk_nodes_layout_type` CHECK 제약으로 허용된 값만 저장할 수 있다.
+- `kanban` layout의 경우 `chk_nodes_kanban_depth` 제약에 의해 depth는 0~2까지만 허용된다.
 
 ### manualPosition
 `freeform` layoutType일 때만 사용.

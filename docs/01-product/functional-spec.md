@@ -22,7 +22,8 @@
 12. [EXPORT — 내보내기](#12-export--내보내기)
 13. [DASHBOARD — 대시보드 맵 (V3)](#13-dashboard--대시보드-맵-v3)
 14. [TRANSLATION — 다국어 번역 (V2)](#14-translation--다국어-번역-v2)
-15. [개발 단계별 로드맵](#15-개발-단계별-로드맵)
+15. [AI WORKFLOW — AI 실행형 절차](#15-ai-workflow--ai-실행형-절차)
+16. [개발 단계별 로드맵](#16-개발-단계별-로드맵)
 
 ---
 
@@ -330,7 +331,71 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 
 ---
 
-## 15. 개발 단계별 로드맵
+## 15. AI WORKFLOW — AI 실행형 절차
+
+> 상세 정의: `docs/01-product/AI-Executable-Workflow-PRD.md`
+
+**개요**
+사용자가 자연어로 요청한 작업을 AI가 step 기반 node tree로 구조화하고,
+사용자는 각 step를 실제 실행하면서 오류를 해결하며, 최종적으로 정제된 절차 문서를 완성한다.
+
+### 1. AI Workflow Generation
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-01 | Workflow Generate | 자연어 요청을 step 기반 node tree로 생성 |
+| WFLOW-02 | Step Node 구조 | 각 step는 독립 node — node title은 요약, 상세는 note에 저장 |
+
+---
+
+### 2. Step Execution Model
+
+각 node는 실행 단위이며 아래 상태를 가진다.
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-03 | Step Status | step 상태 관리 (not_started / in_progress / blocked / resolved / done) |
+| WFLOW-04 | Step Progress | 현재 실행 중인 step 추적 및 표시 |
+
+---
+
+### 3. Error Resolution
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-05 | Error Input | 특정 step node에서 오류 내용 입력 |
+| WFLOW-06 | AI Resolution | AI가 해당 step 문맥에서 해결 방법 제시 (반복 가능) |
+
+---
+
+### 4. Workflow Cleanup
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-07 | Cleanup | 오류 해결 과정의 중간 시도 제거, 최종 성공 방법만 node에 반영 |
+
+---
+
+### 5. Note Code Block
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-08 | Structured Note | note의 block 기반 구조 (paragraph / code_block / warning / checklist) |
+| WFLOW-09 | Code Block | 언어 지정 code block 지원 (bash, sql, json 등) |
+| WFLOW-10 | Copy Button | code block별 Copy 버튼 제공 |
+
+---
+
+### 6. AI Usage Policy
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-11 | Solo-only AI | 단독 편집 모드(접속자 1명)에서만 AI 기능 허용 |
+| WFLOW-12 | Collab Restriction | 협업 중(2명 이상) AI 기능 비활성화 + 안내 메시지 표시 |
+
+---
+
+## 16. 개발 단계별 로드맵
 
 | 단계 | 포함 기능 그룹 | 비고 |
 |---|---|---|
@@ -358,4 +423,5 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 | EXPORT | 2 | — |
 | DASHBOARD (V3) | 5 | — |
 | TRANSLATION (V2) | 7 | — |
-| **합계** | **67+** | |
+| AI WORKFLOW | 12 | ⭐ 신규 (WFLOW-01~12) |
+| **합계** | **79+** | |

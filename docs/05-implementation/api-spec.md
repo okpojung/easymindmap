@@ -1022,6 +1022,117 @@ UI 표시 환경설정 업데이트 (인디케이터 ON/OFF 등)
 
 ---
 
+## 12. AI Workflow
+
+> 관련 PRD: `docs/01-product/AI-Executable-Workflow-PRD.md`
+
+**정책**: 동시 접속자가 2명 이상인 협업 상태에서는 모든 AI Workflow API 호출을 차단한다 (`403 FORBIDDEN`).
+
+### POST /ai/workflow/generate
+step 기반 workflow 생성
+
+**Request Body**
+```json
+{
+  "prompt": "Ubuntu 22.04에 Apache 설치 및 Let's Encrypt SSL 발급 절차를 초보자 수준으로 설명해줘",
+  "mapId": "uuid-...",
+  "language": "ko"
+}
+```
+
+**Response** `200 OK`
+```json
+{
+  "nodes": [
+    {
+      "id": "uuid-...",
+      "text": "Step 1: 패키지 업데이트",
+      "workflowType": "executable",
+      "stepState": "not_started",
+      "note": "```bash\nsudo apt update && sudo apt upgrade -y\n```"
+    }
+  ],
+  "tokensUsed": 1500
+}
+```
+
+---
+
+### POST /ai/workflow/resolve
+특정 step node의 오류 해결
+
+**Request Body**
+```json
+{
+  "nodeId": "uuid-...",
+  "errorMessage": "E: Package 'apache2' has no installation candidate",
+  "context": "step 문맥 요약 (선택)"
+}
+```
+
+**Response** `200 OK`
+```json
+{
+  "resolution": "sudo add-apt-repository universe && sudo apt update 후 재시도",
+  "updatedNote": "```bash\nsudo add-apt-repository universe\nsudo apt update\nsudo apt install apache2 -y\n```",
+  "tokensUsed": 400
+}
+```
+
+---
+
+### POST /ai/workflow/cleanup
+중간 실패 이력 제거 및 최종 절차 정제
+
+**Request Body**
+```json
+{
+  "mapId": "uuid-...",
+  "nodeIds": ["uuid-1", "uuid-2"]
+}
+```
+
+**Response** `200 OK`
+```json
+{
+  "cleanedNodes": [
+    { "nodeId": "uuid-1", "finalNote": "최종 성공 절차..." }
+  ],
+  "removedNodeIds": ["uuid-temp-1", "uuid-temp-2"]
+}
+```
+
+---
+
+### PATCH /nodes/{nodeId}/step-status
+step 상태 변경
+
+**Request Body**
+```json
+{
+  "stepState": "in_progress"
+}
+```
+
+| stepState 값 | 의미 |
+|---|---|
+| `not_started` | 아직 실행 안 함 |
+| `in_progress` | 현재 실행 중 |
+| `blocked` | 오류 등으로 진행 막힘 |
+| `resolved` | blocking 해결됨 |
+| `done` | 완료 |
+
+**Response** `200 OK`
+```json
+{
+  "nodeId": "uuid-...",
+  "stepState": "in_progress",
+  "updatedAt": "2026-03-31T00:00:00Z"
+}
+```
+
+---
+
 ## 공통 에러 응답
 
 ```json

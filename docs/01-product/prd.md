@@ -110,6 +110,44 @@ layoutType: "freeform"              // 자유배치형
 
 ---
 
+## Product Positioning (Updated)
+
+easymindmap은 단순한 아이디어 정리 도구가 아니라,
+AI를 활용하여 실제 작업 절차를 생성하고 실행하며 정제하는 도구이다.
+
+### 기존 정의
+- Mindmap 기반 아이디어 정리 도구
+
+### 확장 정의
+- AI 기반 실행형 절차 관리 도구 (AI-powered Executable Workflow Tool)
+
+### 핵심 특징
+
+- AI가 작업 절차를 step 기반으로 생성
+- 사용자가 step을 실제 실행
+- 오류 발생 시 해당 step에서 해결
+- 최종적으로 정제된 절차만 유지
+- 실행 가능한 문서(runbook/playbook) 생성
+
+> 상세 정의: `docs/01-product/AI-Executable-Workflow-PRD.md`
+
+---
+
+## Key Differentiators
+
+### 기존 Mindmap 도구
+- 정적 정보 구조화
+- 아이디어 정리 중심
+
+### easymindmap (확장 기능 포함)
+- 구조 생성 + 실행 지원
+- step 기반 진행
+- 오류 해결 통합
+- 절차 정제 (cleanup)
+- note 내 code block + copy 기능
+
+---
+
 ## 6. 향후 기능 (Out of MVP)
 
 - 실시간 협업 (WebSocket + CRDT)

@@ -347,6 +347,66 @@ Kanban Layout 구현 시 아래와 같은 role metadata를 둘 수 있다.
 type KanbanNodeRole = 'board' | 'column' | 'card';
 ---
 
+## Extended Node Model (Workflow Support)
+
+> 관련 PRD: `docs/01-product/AI-Executable-Workflow-PRD.md`
+
+AI 실행형 절차 기능을 위해 NodeObject에 아래 필드가 확장된다.
+
+### New Properties
+
+```typescript
+// AI Workflow 전용 확장 필드 (선택적 — 일반 노드는 생략 가능)
+workflowType?: 'normal' | 'executable';
+// 'normal':     일반 mindmap 노드 (기본값)
+// 'executable': AI Workflow step 노드 — 실행 대상임을 표시
+
+stepState?: 'not_started' | 'in_progress' | 'blocked' | 'resolved' | 'done';
+// not_started: 아직 실행 안 함 (기본값)
+// in_progress: 현재 실행 중
+// blocked:     오류 등으로 진행 막힘
+// resolved:    blocking 해결됨, 완료 대기 중
+// done:        완료
+
+isExecutableStep?: boolean;
+// true: workflow의 실행 대상 step node
+// false / undefined: 일반 노드
+
+resolutionStatus?: 'none' | 'in_progress' | 'resolved';
+// none:        오류 없음 (기본값)
+// in_progress: 오류 해결 진행 중
+// resolved:    오류 해결 완료
+```
+
+### Note Structure (Extended)
+
+note는 단순 text가 아닌 structured block을 가진다.
+
+```typescript
+type NoteBlock =
+  | { type: 'paragraph'; content: string }
+  | { type: 'code_block'; language: string; content: string; copyEnabled: boolean }
+  | { type: 'warning'; content: string }
+  | { type: 'tip'; content: string }
+  | { type: 'checklist'; items: { text: string; checked: boolean }[] };
+
+// note의 구조화된 표현 (structured rich note)
+// 물리 저장: node_notes.content (JSON 직렬화 또는 Markdown 직렬화)
+// MVP: Markdown 직렬화 유지, code block fencing(```language) 활용
+```
+
+### Code Block
+
+code block은 다음 속성을 가진다:
+
+| 속성 | 타입 | 설명 |
+|---|---|---|
+| `language` | `string` | 언어 지정 (bash, sql, json, yaml, typescript, python 등) |
+| `content` | `string` | 코드 내용 |
+| `copyEnabled` | `boolean` | UI Copy 버튼 활성화 여부 (기본값: true) |
+
+---
+
 ## 루트 노드 특수 처리 정책
 
 ```typescript

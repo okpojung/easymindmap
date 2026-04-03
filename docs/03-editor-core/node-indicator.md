@@ -893,3 +893,56 @@ Step 3: HyperlinkIcon — hyperlinkIds.length > 0 시 아이콘 렌더링
 Step 4: AttachmentIcon — attachmentIds.length > 0 시 아이콘 렌더링
 Step 5: MultimediaIcon — multimediaId 존재 시 ▶ 아이콘 렌더링
 Step 6: NodeContentIndicators 컨테이너 — 4개 아이콘 배치 및 간격
+
+
+---
+
+## 36. Workflow Indicators (AI Workflow 전용)
+
+> 관련 PRD: `docs/01-product/AI-Executable-Workflow-PRD.md` §10.7
+> 관련 기능ID: WFLOW-03, WFLOW-04
+
+`workflowType = 'executable'`인 step node는 실행 상태를 인디케이터로 표시한다.
+
+### 상태 표시
+
+| stepState | 색상 | 아이콘/배지 | 의미 |
+|---|---|---|---|
+| `not_started` | 회색 | ○ | 아직 실행 안 함 |
+| `in_progress` | 파랑 | ▶ | 현재 실행 중 |
+| `blocked` | 빨강 | ✕ | 오류로 진행 막힘 |
+| `resolved` | 노랑 | ✓ | blocking 해결됨, 완료 대기 |
+| `done` | 초록 | ✔ | 완료 |
+
+### 표시 위치
+
+- 노드 좌측 상단 또는 노드 테두리 색상으로 표현
+- 콘텐츠 인디케이터 행 좌측에 workflow 상태 배지 우선 표시
+
+### 우선순위 (§18 기준 확장)
+
+```
+멀티미디어 ▶ > 링크 🔗 > 첨부 📎 > workflow 상태 배지 > note ≡
+```
+
+### 인디케이터 충돌 방지 추가 규칙
+
+| 인디케이터 종류 | 표시 조건 | 동시 표시 |
+|---|---|:---:|
+| workflow 상태 배지 | isExecutableStep = true | ✅ 가능 |
+| note ≡ | note 존재 | ✅ 가능 |
+
+### 구현 시 참고
+
+```typescript
+function getWorkflowBadgeColor(stepState: StepState): string {
+  const colorMap: Record<StepState, string> = {
+    'not_started': '#9CA3AF',  // gray-400
+    'in_progress': '#3B82F6',  // blue-500
+    'blocked':     '#EF4444',  // red-500
+    'resolved':    '#F59E0B',  // amber-500
+    'done':        '#22C55E',  // green-500
+  };
+  return colorMap[stepState];
+}
+```

@@ -143,6 +143,56 @@ FROM public.nodes AS parent
 WHERE parent.id = $parent_id;
 ```
 
+### ⚠ ltree 제약 사항 및 최대 깊이 제한
+
+PostgreSQL의 ltree extension에는 다음 물리적 제한이 있다.
+
+| 제한 항목 | 제한값 | 비고 |
+|---|---|---|
+| 레이블당 최대 크기 | **256 바이트** | `n_a1b2c3d4` 같은 개별 레이블 하나 |
+| 전체 path 최대 크기 | **2,000 바이트** | `root.n_xxx.n_yyy...` 문자열 전체 |
+
+**easymindmap의 레이블 크기 계산:**
+
+```
+레이블 형식: n_<UUID 앞 8자> = 10자 = 10 바이트 (ASCII)
+구분자 (.)                  =  1 바이트
+레이블 + 구분자 합계         = 11 바이트/노드
+
+루트 레이블 "root"           =  4 바이트
+
+이론적 최대 깊이 = (2000 - 4) / 11 ≈ 181 단계
+```
+
+> UUID 앞 8자를 레이블로 사용하면 이론적으로 매우 깊은 깊이가 가능하지만,
+> 실제 UI/UX와 레이아웃 엔진 성능을 고려한 **운영 제한**을 별도로 설정한다.
+
+**확정 정책: 최대 깊이 50단계 제한 (depth ≤ 50)**
+
+```
+권장 제한: depth ≤ 50 (DB CHECK 제약 또는 앱 레이어 검증)
+```
+
+- 일반적인 마인드맵 사용 패턴에서 depth 10을 초과하는 경우는 드물다.
+- depth 50 제한은 ltree 물리 한계보다 충분히 여유 있으며, 엣지 케이스(무한 중첩 버그 등) 방어를 위한 안전망이다.
+- **Kanban 레이아웃**은 별도 규칙에 의해 depth ≤ 2 로 더 엄격하게 제한된다.
+
+**구현 가이드:**
+
+```sql
+-- 앱 레이어 또는 DB CHECK 제약으로 depth 상한 적용
+ALTER TABLE public.nodes
+  ADD CONSTRAINT chk_nodes_depth_limit CHECK (depth <= 50);
+```
+
+```typescript
+// 서비스 레이어에서 노드 생성 전 검증
+if (parentDepth + 1 > MAX_NODE_DEPTH) {
+  throw new AppError('NODE_DEPTH_LIMIT_EXCEEDED', `최대 깊이(${MAX_NODE_DEPTH})를 초과할 수 없습니다.`);
+}
+const MAX_NODE_DEPTH = 50;
+```
+
 ---
 
 ## ltree 기반 subtree 조회
@@ -186,6 +236,28 @@ WHERE map_id = $map_id
 
 노드를 다른 부모 아래로 이동할 때, 해당 노드와 모든 하위 노드의 `path`를 일괄 갱신해야 한다.
 
+### ⚠ 트랜잭션 격리 수준 요구사항
+
+`move_node_subtree` 실행 시 다음 두 가지 동시성 문제가 발생할 수 있다.
+
+| 문제 | 설명 |
+|---|---|
+| **Non-repeatable Read** | path 조회 직후 다른 트랜잭션이 부모 노드를 이동하면 계산된 `new_base`가 stale 값이 됨 |
+| **Phantom node** | subtree UPDATE 도중 다른 트랜잭션이 하위 노드를 추가하면 해당 노드의 path가 갱신되지 않아 불일치 발생 |
+
+**요구 격리 수준**: 최소 `REPEATABLE READ`, 안전을 위해 `SERIALIZABLE` 권장
+
+```sql
+-- 노드 이동 트랜잭션 시작 시 격리 수준 명시
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- 또는 더 엄격하게:
+-- BEGIN ISOLATION LEVEL SERIALIZABLE;
+```
+
+- **Supabase/PostgreSQL 기본값은 `READ COMMITTED`**이므로 이동 로직에서는 반드시 격리 수준을 명시해야 한다.
+- `SERIALIZABLE`은 직렬화 실패(40001 오류) 시 클라이언트가 재시도해야 하므로, 재시도 로직이 없는 경우 `REPEATABLE READ`를 사용한다.
+- 재정규화(order_index housekeeping)는 `SELECT ... FOR UPDATE`로 충분하므로 별도 격리 수준 변경 불필요.
+
 ### 이동 전략
 
 ```sql
@@ -193,8 +265,8 @@ WHERE map_id = $map_id
 -- old_path: 이동할 노드의 현재 path
 -- new_path: 새 부모의 path || 이동 노드의 레이블
 
--- 2. subtree 전체 path 일괄 교체 (트랜잭션 내 실행)
-BEGIN;
+-- 2. subtree 전체 path 일괄 교체 (REPEATABLE READ 이상 격리 수준 필수)
+BEGIN ISOLATION LEVEL REPEATABLE READ;
 
 -- 새 부모의 path 조회
 DO $$
@@ -364,6 +436,48 @@ WHERE n.id = r.id;
 - 그 외 레이아웃에서는 `null`
 - drag 종료 시 autosave patch로 저장
 
+### size_cache 갱신 주체: 클라이언트 확정
+
+`size_cache JSONB` (`{ width: number, height: number }`) 컬럼의 갱신 주체는 **클라이언트(브라우저)**로 확정한다.
+
+**이유:**
+
+- 노드의 실제 렌더링 크기(width/height)는 **브라우저의 폰트 렌더링 엔진**에 의존한다.
+- 동일 텍스트라도 OS, 브라우저, 폰트 hinting, DPI 설정에 따라 픽셀 단위 크기가 달라질 수 있다.
+- 서버 측에서는 정확한 렌더링 크기를 계산할 수 없다.
+
+**갱신 시점 및 흐름:**
+
+```
+1. 노드 텍스트 변경 (commitEdit)
+   → 레이아웃 재계산 전 클라이언트가 DOM 측정 (MeasureEngine)
+   → { width, height } 값 획득
+
+2. autosave patch에 size_cache 포함하여 서버 전송
+   → PATCH /maps/:id/document 의 patch payload에 포함
+
+3. 서버는 전달된 size_cache를 그대로 nodes 테이블에 저장
+   → 서버 독자 계산 없음
+```
+
+**주의사항:**
+
+| 항목 | 정책 |
+|---|---|
+| 서버가 size_cache를 직접 계산 | ❌ 금지 |
+| 클라이언트가 undefined로 전송 | NULL 유지 (레이아웃 엔진이 추정값 사용) |
+| size_cache가 NULL인 노드 | Layout Engine의 `estimateNodeSize()` 함수로 폴백 |
+
+```typescript
+// MeasureEngine.ts — 클라이언트 측 DOM 측정
+function measureNodeSize(nodeId: string): { width: number; height: number } {
+  const el = document.getElementById(`node-${nodeId}`);
+  if (!el) return estimateNodeSize(nodeId); // DOM 없으면 추정값
+  const rect = el.getBoundingClientRect();
+  return { width: rect.width, height: rect.height };
+}
+```
+
 ---
 
 ## depth 컬럼 동기화 전략
@@ -412,9 +526,11 @@ ORDER BY depth ASC, order_index ASC;
 저장: Flat (parent_id 기반)
 조회: ltree path 기반 prefix-match (GIST 인덱스)
 정렬: FLOAT order_index (중간 삽입 O(1), 주기적 재정규화)
-이동: ltree subpath 치환 + depth 갱신 (단일 트랜잭션)
+이동: ltree subpath 치환 + depth 갱신 (REPEATABLE READ 이상 격리 수준 필수)
 좌표: manual_position JSONB (freeform 전용)
 depth: 앱단 계산 후 저장 (ltree nlevel 기준)
+깊이 제한: 최대 depth 50단계 (ltree 물리 한계 ~181단계 대비 운영 안전망)
+size_cache: 클라이언트(브라우저)가 DOM 측정 후 autosave patch로 전송
 ```
 
 ---

@@ -330,11 +330,123 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 
 ---
 
-## 15. 개발 단계별 로드맵
+## 15. AI WORKFLOW — AI 실행형 절차
+
+> 상세 정의: `docs/01-product/AI-Executable-Workflow-PRD.md`
+
+**개요**
+사용자가 자연어로 요청한 작업을 AI가 step 기반 node tree로 구조화하고,
+사용자는 각 step를 실제 실행하면서 오류를 해결하며, 최종적으로 정제된 절차 문서를 완성한다.
+
+### 1. AI Workflow Generation
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-01 | Workflow Generate | 자연어 요청을 step 기반 node tree로 생성 |
+| WFLOW-02 | Step Node 구조 | 각 step는 독립 node — node title은 요약, 상세는 note에 저장 |
+
+---
+
+### 2. Step Execution Model
+
+각 node는 실행 단위이며 아래 상태를 가진다.
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-03 | Step Status | step 상태 관리 (not_started / in_progress / blocked / resolved / done) |
+| WFLOW-04 | Step Progress | 현재 실행 중인 step 추적 및 표시 |
+
+---
+
+### 3. Error Resolution
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-05 | Error Input | 특정 step node에서 오류 내용 입력 |
+| WFLOW-06 | AI Resolution | AI가 해당 step 문맥에서 해결 방법 제시 (반복 가능) |
+
+---
+
+### 4. Workflow Cleanup
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-07 | Cleanup | 오류 해결 과정의 중간 시도 제거, 최종 성공 방법만 node에 반영 |
+
+---
+
+### 5. Note Code Block
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-08 | Structured Note | note의 block 기반 구조 (paragraph / code_block / warning / checklist) |
+| WFLOW-09 | Code Block | 언어 지정 code block 지원 (bash, sql, json 등) |
+| WFLOW-10 | Copy Button | code block별 Copy 버튼 제공 |
+
+---
+
+### 6. AI Usage Policy
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| WFLOW-11 | Solo-only AI | 단독 편집 모드(접속자 1명)에서만 AI 기능 허용 |
+| WFLOW-12 | Collab Restriction | 협업 중(2명 이상) AI 기능 비활성화 + 안내 메시지 표시 |
+
+---
+
+## 16. WBS — WBS 모드
+
+> 관련 설계: `docs/04-extensions/redmine-integration-plan.md` §13
+
+### WBS 모드 기능
+
+| 기능ID | 기능명 | 설명 | 적용 단계 |
+|--------|--------|------|-----------|
+| WBS-01 | WBS 모드 전환 | 맵을 WBS 모드로 전환 (`view_mode = 'wbs'`) | V1 |
+| WBS-02 | 일정 설정 (시작/종료일) | 노드에 시작일/종료일 설정 | V1 |
+| WBS-03 | 마일스톤 설정 | 노드를 마일스톤으로 지정 (단일 날짜) | V1 |
+| WBS-04 | 진척률 설정 | 0~100% 진척률 입력 | V1 |
+| WBS-05 | WBS 일정 인디케이터 | 날짜 배지/마일스톤 마커/진척률 바/상태 색상 표시 | V1 |
+
+---
+
+## 17. RESOURCE — 리소스 할당 (WBS · Kanban 공통)
+
+### 리소스 할당 기능
+
+| 기능ID | 기능명 | 설명 | 적용 단계 |
+|--------|--------|------|-----------|
+| RES-01 | 리소스 할당 패널 | 노드에 사람 할당 UI (WBS·Kanban 공통) | V1 |
+| RES-02 | 담당자 검색/추가 | 내부 사용자 및 Redmine 사용자 검색 | V1 |
+| RES-03 | 역할 지정 | 담당자/검토자/참관자 역할 지정 | V1 |
+| RES-04 | 공수 입력 | 할당 시간(h) 입력 (WBS 전용) | V1 |
+| RES-05 | 리소스 아바타 인디케이터 | 노드에 담당자 아바타 표시 (WBS·Kanban 공통) | V1 |
+
+---
+
+## 18. RDMN — Redmine 연동
+
+### Redmine 연동 기능
+
+| 기능ID | 기능명 | 설명 | 적용 단계 |
+|--------|--------|------|-----------|
+| RDMN-01 | Redmine 연동 설정 | URL/API Key/프로젝트 설정 | V1 |
+| RDMN-02 | Pull 동기화 | Redmine Issues → Mindmap Nodes | V1 |
+| RDMN-03 | Push 동기화 | Mindmap Nodes → Redmine Issues | V1 |
+| RDMN-04 | 노드 생성 시 Issue 자동 생성 | 노드 추가 → Redmine Issue 자동 생성 (비동기) | V1 |
+| RDMN-05 | 노드 수정 시 Issue 업데이트 | 텍스트/일정/담당자 변경 → Issue PATCH | V1 |
+| RDMN-06 | 노드 삭제 시 Issue 삭제 | 노드 삭제 → Redmine Issue DELETE | V1 |
+| RDMN-07 | 동기화 상태 인디케이터 | ⟳/⚠/✕ 아이콘으로 sync_status 표시 | V1 |
+| RDMN-08 | Redmine Plugin 탭 | Redmine 프로젝트 내 WBS 맵 탭 임베드 | V1 |
+
+---
+
+## 19. 개발 단계별 로드맵
 
 | 단계 | 포함 기능 그룹 | 비고 |
 |---|---|---|
 | V1 (MVP) | MAP, NODE, LAYOUT, CANVAS, SELECTION, HISTORY, SAVE, TAG, SEARCH, AI, EXPORT | 핵심 편집 기능 전체 |
+| V1 (확장) | WBS, RESOURCE, RDMN | WBS 모드 + Redmine 연동 |
 | V2 | TRANSLATION (다국어 번역) | 협업 차별화 기능 |
 | V3 | DASHBOARD (대시보드 맵) | Polling → WebSocket Push 진화 포함 |
 
@@ -358,4 +470,8 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 | EXPORT | 2 | — |
 | DASHBOARD (V3) | 5 | — |
 | TRANSLATION (V2) | 7 | — |
-| **합계** | **67+** | |
+| AI WORKFLOW | 12 | ⭐ 신규 (WFLOW-01~12) |
+| WBS | 5 | ⭐ 신규 (WBS-01~05) |
+| RESOURCE | 5 | ⭐ 신규 (RES-01~05) |
+| RDMN | 8 | ⭐ 신규 (RDMN-01~08) |
+| **합계** | **97+** | |

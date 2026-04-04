@@ -116,8 +116,10 @@ CREATE TABLE public.maps (
   workspace_id              UUID REFERENCES public.workspaces(id) ON DELETE SET NULL,
   title                     VARCHAR(255) NOT NULL DEFAULT 'Untitled',
   default_layout_type       VARCHAR(50)  NOT NULL DEFAULT 'radial-bidirectional',
-  view_mode                 VARCHAR(20)  NOT NULL DEFAULT 'edit',  -- 'edit' | 'dashboard' | 'kanban'
+  view_mode                 VARCHAR(20)  NOT NULL DEFAULT 'edit',  -- 'edit' | 'dashboard' | 'kanban' | 'wbs'
   -- ⚠️ 'kanban'은 nodes.layout_type 기반 kanban 레이아웃을 사용하는 맵의 보기 모드
+  -- ⚠️ 'wbs': WBS 모드 — node_schedule·node_resources 인디케이터 활성화
+  --           redmine_project_maps row 존재 시 Redmine 양방향 동기화 활성화
   --    kanban 맵은 depth 0=board / 1=column / 2=card 규칙을 따름 (db-schema.md §3 kanban 규칙)
   refresh_interval_seconds  INT          NOT NULL DEFAULT 0,       -- 0: off
   current_version           INT          NOT NULL DEFAULT 0,
@@ -233,6 +235,11 @@ CREATE TABLE public.nodes (
   -- 캐시
   size_cache       JSONB,   -- { width: number, height: number }
 
+  -- Redmine 연동 (V1 WBS)
+  redmine_issue_id INTEGER      DEFAULT NULL,
+  sync_status      VARCHAR(20)  DEFAULT NULL
+    CHECK (sync_status IN ('synced', 'pending', 'error', 'failed')),
+
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -248,6 +255,13 @@ CREATE INDEX idx_nodes_path_btree  ON public.nodes(path);
 CREATE INDEX idx_nodes_translation_skip
   ON public.nodes(map_id, translation_mode, translation_override)
   WHERE translation_mode = 'auto' AND translation_override IS NULL;
+-- Redmine 연동 인덱스 (V1 WBS)
+CREATE INDEX idx_nodes_redmine_issue
+  ON public.nodes(redmine_issue_id)
+  WHERE redmine_issue_id IS NOT NULL;
+CREATE INDEX idx_nodes_sync_status
+  ON public.nodes(map_id, sync_status)
+  WHERE sync_status IS NOT NULL;
 ```
 ### Kanban Layout 사용 시 depth 규칙
 Kanban layout에서는 nodes.depth를 다음처럼 제한적으로 해석한다.
@@ -539,6 +553,143 @@ CREATE TABLE public.field_registry (
 
 ---
 
+### 11. node_schedule — WBS 일정/마일스톤/진척률
+
+```sql
+-- WBS 일정 정보 (1:1 optional, node_id = PK)
+CREATE TABLE public.node_schedule (
+  node_id       UUID     PRIMARY KEY REFERENCES public.nodes(id) ON DELETE CASCADE,
+  start_date    DATE     DEFAULT NULL,
+  end_date      DATE     DEFAULT NULL,
+  is_milestone  BOOLEAN  NOT NULL DEFAULT FALSE,
+  progress      SMALLINT DEFAULT 0
+                CHECK (progress BETWEEN 0 AND 100),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  -- 유효성 제약
+  CONSTRAINT chk_wbs_date_order CHECK (
+    end_date IS NULL OR start_date IS NULL
+    OR end_date >= start_date
+  ),
+  CONSTRAINT chk_milestone_single_date CHECK (
+    NOT is_milestone
+    OR (start_date = end_date)
+    OR end_date IS NULL
+  )
+);
+
+CREATE INDEX idx_node_schedule_dates
+  ON public.node_schedule(start_date, end_date)
+  WHERE start_date IS NOT NULL;
+```
+
+> **설계 결정 이유**: WBS 비활성 노드는 row 자체가 없어 NULL 컬럼 낭비 없음. 독립적 마이그레이션 가능.
+
+---
+
+### 12. node_resources — 리소스(사람) 할당 (WBS · Kanban 공통)
+
+```sql
+-- 노드에 사람(리소스)을 할당하는 테이블
+-- WBS 모드: Activity 담당자/검토자 / Kanban 모드: 카드 담당자 공통 사용
+CREATE TABLE public.node_resources (
+  id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  node_id           UUID         NOT NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
+
+  -- 내부 사용자 (easymindmap 계정)
+  user_id           UUID         REFERENCES public.users(id) ON DELETE SET NULL,
+
+  -- 외부 사용자 (Redmine 연동 시)
+  redmine_user_id   INTEGER      DEFAULT NULL,   -- Redmine user.id
+  redmine_user_name VARCHAR(100) DEFAULT NULL,  -- 캐시 (API 호출 최소화)
+
+  -- 역할
+  role              VARCHAR(30)  NOT NULL DEFAULT 'assignee',
+  -- 'assignee'  : 담당자 (메인 책임자)
+  -- 'reviewer'  : 검토자
+  -- 'observer'  : 참관자 (알림만)
+
+  -- WBS 전용 (Kanban에서는 NULL 허용)
+  allocated_hours   NUMERIC(6,2) DEFAULT NULL,  -- 할당 공수 (시간)
+
+  created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+  -- 동일 노드에 동일 사용자를 동일 역할로 중복 할당 불가
+  CONSTRAINT uq_node_resource_user
+    UNIQUE NULLS NOT DISTINCT (node_id, user_id, role),
+  CONSTRAINT uq_node_resource_redmine_user
+    UNIQUE NULLS NOT DISTINCT (node_id, redmine_user_id, role),
+
+  -- user_id 또는 redmine_user_id 중 하나는 반드시 있어야 함
+  CONSTRAINT chk_resource_identity CHECK (
+    user_id IS NOT NULL OR redmine_user_id IS NOT NULL
+  )
+);
+
+CREATE INDEX idx_node_resources_node_id ON public.node_resources(node_id);
+CREATE INDEX idx_node_resources_user_id ON public.node_resources(user_id)
+  WHERE user_id IS NOT NULL;
+```
+
+| 모드 | 사용 방식 |
+|------|----------|
+| WBS 모드 | Activity 담당자/검토자 할당, `allocated_hours` 입력 가능 |
+| Kanban 모드 | 카드(Level 3 노드) 담당자 할당, `allocated_hours` 미사용 (NULL) |
+| 일반 mindmap | 선택적 사용 가능 (view_mode 무관) |
+
+---
+
+### 13. redmine_project_maps — 맵 ↔ Redmine 프로젝트 연결
+
+```sql
+CREATE TABLE public.redmine_project_maps (
+  id                         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id                     UUID        NOT NULL UNIQUE REFERENCES public.maps(id) ON DELETE CASCADE,
+  redmine_base_url           VARCHAR(500) NOT NULL,        -- 예: https://redmine.example.com
+  redmine_project_id         INTEGER     NOT NULL,          -- Redmine project.id
+  redmine_project_identifier VARCHAR(100),                  -- Redmine project.identifier (slug)
+  api_key_encrypted          VARCHAR(500) NOT NULL,         -- AES-256 암호화 저장 (절대 평문 보관 금지)
+  sync_direction             VARCHAR(20) NOT NULL DEFAULT 'bidirectional',
+  -- 'pull_only'     : Redmine → Mindmap 단방향
+  -- 'push_only'     : Mindmap → Redmine 단방향
+  -- 'bidirectional' : 양방향 (기본값)
+  auto_create_issues         BOOLEAN     NOT NULL DEFAULT TRUE,
+  -- TRUE: 노드 생성 시 Redmine Issue 자동 생성
+  default_tracker_id         INTEGER     DEFAULT NULL,
+  default_status_id          INTEGER     DEFAULT NULL,
+  last_synced_at             TIMESTAMPTZ DEFAULT NULL,
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+---
+
+### 14. redmine_sync_log — 동기화 이력
+
+```sql
+CREATE TABLE public.redmine_sync_log (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id           UUID        NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  node_id          UUID        REFERENCES public.nodes(id) ON DELETE SET NULL,
+  direction        VARCHAR(10) NOT NULL,   -- 'pull' | 'push'
+  action           VARCHAR(20) NOT NULL,   -- 'create' | 'update' | 'delete' | 'full_sync'
+  status           VARCHAR(20) NOT NULL,   -- 'success' | 'failed'
+  redmine_issue_id INTEGER     DEFAULT NULL,
+  http_status      SMALLINT    DEFAULT NULL,  -- Redmine API 응답 HTTP 코드
+  error_detail     TEXT        DEFAULT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_sync_log_map_id
+  ON public.redmine_sync_log(map_id, created_at DESC);
+CREATE INDEX idx_sync_log_node_id
+  ON public.redmine_sync_log(node_id)
+  WHERE node_id IS NOT NULL;
+```
+
+---
+
 ### [설계 노트] map_themes 테이블 미포함 사유
 
 > 다른 검토 문서에서 `map_themes` 테이블이 언급되었으나, 현재 easymindmap MVP/V1 설계 범위에는 포함되지 않습니다.
@@ -707,7 +858,8 @@ public.maps
     ├── public.nodes (트리 구조, self-join)
     ├── public.map_revisions
     ├── public.exports
-    └── public.published_maps
+    ├── public.published_maps
+    └── public.redmine_project_maps   (1:0..1, Redmine 연동 설정)
 
 public.users
     │ 1:N
@@ -718,12 +870,20 @@ public.nodes
     ├── public.node_links
     ├── public.node_attachments
     ├── public.node_media
-    └── public.node_notes
+    ├── public.node_notes
+    ├── public.node_schedule           (1:0..1, WBS 일정)
+    ├── public.node_resources          (1:N, WBS·Kanban 리소스 할당)
+    └── (redmine_issue_id → Redmine Issue, 외부 참조)
+
+public.redmine_sync_log
+    ├── → public.maps
+    └── → public.nodes
 ```
 
 ### [변경 주석]
 - 기존 ERD 요약의 `public.nodes.tags[] → public.tags.id (배열 참조)` 설명은 최신 구조와 맞지 않는다.
 - 최신 구조는 node_tags를 통한 N:N 관계로 이해해야 한다.
+- V1 WBS/Redmine 연동 테이블 4종 추가: `node_schedule`, `node_resources`, `redmine_project_maps`, `redmine_sync_log`
 
 ---
 

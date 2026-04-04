@@ -946,3 +946,123 @@ function getWorkflowBadgeColor(stepState: StepState): string {
   return colorMap[stepState];
 }
 ```
+
+---
+
+## PART 5. WBS 일정 인디케이터 (NODE-17)
+
+> 관련 설계: `docs/04-extensions/redmine-integration-plan.md` §6
+> 관련 기능ID: NODE-17 · SCHED-01~04
+
+**기능 ID 정의**
+
+| ID | 기능 | 설명 |
+|----|------|------|
+| NODE-17 | WBS 일정 인디케이터 | WBS 모드 노드의 일정/상태 표시 (SCHED-01~04) |
+| SCHED-01 | 날짜 배지 | 시작일~종료일 표시 및 편집 |
+| SCHED-02 | 마일스톤 마커 | ◆ 오버레이 및 단일 날짜 표시 |
+| SCHED-03 | 진척률 바 | 0~100% 시각화 및 편집 |
+| SCHED-04 | 상태 색상 코딩 | 완료/진행중/지연/예정 색상 구분 |
+
+### 인디케이터 배치 구조
+
+```
+┌──────────────────────────────────────┐
+│ ◆  [노드 텍스트]             ⟳/⚠/✕  │
+│    (마일스톤 시 ◆ 오버레이)  (sync)  │
+├──────────────────────────────────────┤
+│ 📅  04/01 ~ 04/30              🟢    │
+│ ▓▓▓▓▓░░░░░░  50%                    │
+│ 👤 홍길동  👤 김철수                 │
+└──────────────────────────────────────┘
+
+마일스톤 노드:
+┌──────────────────────────────────────┐
+│ ◆  [마일스톤 텍스트]                 │
+├──────────────────────────────────────┤
+│ 📅  04/30 (단일 날짜)          🟣    │
+│ 👤 홍길동                            │
+└──────────────────────────────────────┘
+```
+
+### WBS 상태 판별 로직
+
+```typescript
+type WbsStatus = 'done' | 'on-track' | 'delayed' | 'upcoming' | 'no-date';
+
+function getWbsStatus(schedule: NodeSchedule): WbsStatus {
+  if (schedule.progress === 100) return 'done';
+  if (!schedule.startDate)       return 'no-date';
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = parseISO(schedule.startDate);
+  const end   = schedule.endDate ? parseISO(schedule.endDate) : null;
+
+  if (start > today)             return 'upcoming';
+  if (end && end < today)        return 'delayed';
+  return 'on-track';
+}
+
+const WBS_STATUS_COLOR: Record<WbsStatus, string> = {
+  'done':     '#22C55E',  // green-500  — 완료
+  'on-track': '#3B82F6',  // blue-500   — 진행중(정상)
+  'delayed':  '#EF4444',  // red-500    — 지연
+  'upcoming': '#9CA3AF',  // gray-400   — 예정
+  'no-date':  'transparent',  //        — 날짜 미설정(배지 미표시)
+};
+```
+
+### 날짜 배지 표시 규칙
+
+| 조건 | 표시 형식 | 예시 |
+|------|-----------|------|
+| start와 end 모두 있음 | `MM/DD ~ MM/DD` | `04/01 ~ 04/30` |
+| start만 있음 | `MM/DD ~` | `04/01 ~` |
+| end만 있음 | `~ MM/DD` | `~ 04/30` |
+| 마일스톤 (`isMilestone=true`) | `◆ MM/DD` | `◆ 04/30` |
+| 모두 null | 배지 미표시 | — |
+
+### Redmine sync_status 인디케이터 (연동 시 추가 표시)
+
+| sync_status | 아이콘 | 색상 | 위치 | 의미 |
+|-------------|--------|------|------|------|
+| `synced` | 없음 | — | — | 정상 동기화 |
+| `pending` | ⟳ (회전) | `#3B82F6` | 노드 우상단 | Redmine 동기화 진행중 |
+| `error` | ⚠ | `#F59E0B` | 노드 우상단 | 동기화 실패, 재시도 대기 |
+| `failed` | ✕ | `#EF4444` | 노드 우상단 | 수동 처리 필요 |
+
+### 컴포넌트 구조
+
+```
+NodeRenderer
+  ├── NodeText
+  ├── NodeTagBadge
+  ├── NodeContentIndicators
+  ├── NodeWbsIndicator          ← [NODE-17 신규, WBS 모드에서만 렌더링]
+  │    ├── MilestoneMarker      (◆ 배지, isMilestone=true 시)
+  │    ├── DateBadge            (📅 날짜 범위, 클릭→DatePicker 팝오버)
+  │    ├── ProgressBar          (▓░ 진척률, 클릭→슬라이더 팝오버)
+  │    ├── ResourceAvatars      (👤 담당자 아바타, 최대 3개 표시 후 +N)
+  │    └── SyncStatusIcon       (⟳/⚠/✕, Redmine 연동 시에만)
+  └── NodeAddIndicator
+```
+
+### 인터랙션
+
+| 요소 | 클릭 동작 |
+|------|-----------|
+| 날짜 배지 | DatePicker 팝오버 (시작일/종료일 + 마일스톤 토글) |
+| 진척률 바 | 0~100 슬라이더 팝오버 |
+| 리소스 아바타 | 리소스 할당 패널 오픈 |
+| ⚠ 오류 아이콘 | 동기화 오류 상세 + 재시도 버튼 |
+| ✕ 실패 아이콘 | 수동 처리 가이드 패널 |
+
+### ui_preferences_json 추가 키
+
+```json
+{
+  "showWbsIndicator": true,
+  "showResourceAvatars": true
+}
+```

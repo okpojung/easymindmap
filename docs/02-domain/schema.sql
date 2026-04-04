@@ -69,7 +69,7 @@ CREATE TABLE public.maps (
     workspace_id              UUID REFERENCES public.workspaces(id) ON DELETE SET NULL,
     title                     VARCHAR(255) NOT NULL DEFAULT 'Untitled',
     default_layout_type       VARCHAR(50)  NOT NULL DEFAULT 'radial-bidirectional',
-    view_mode                 VARCHAR(20)  NOT NULL DEFAULT 'edit',  -- 'edit' | 'dashboard'
+    view_mode                 VARCHAR(20)  NOT NULL DEFAULT 'edit',  -- 'edit' | 'dashboard' | 'kanban' | 'wbs'
     refresh_interval_seconds  INT          NOT NULL DEFAULT 0,       -- 0: off
     current_version           INT          NOT NULL DEFAULT 0,
     deleted_at                TIMESTAMPTZ,  -- soft delete
@@ -162,6 +162,11 @@ CREATE TABLE public.nodes (
     -- 캐시
     size_cache       JSONB,   -- { width: number, height: number }
 
+    -- Redmine 연동 (V1 WBS)
+    redmine_issue_id INTEGER     DEFAULT NULL,
+    sync_status      VARCHAR(20) DEFAULT NULL
+        CHECK (sync_status IN ('synced', 'pending', 'error', 'failed')),
+
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -172,6 +177,11 @@ CREATE INDEX idx_nodes_map_order ON public.nodes(map_id, order_index);
 -- ltree 인덱스
 CREATE INDEX idx_nodes_path_gist  ON public.nodes USING GIST (path);   -- subtree <@ 조회 최적화
 CREATE INDEX idx_nodes_path_btree ON public.nodes USING BTREE (path);  -- exact match / ORDER BY 최적화
+-- Redmine 연동 인덱스 (V1 WBS)
+CREATE INDEX idx_nodes_redmine_issue ON public.nodes(redmine_issue_id)
+    WHERE redmine_issue_id IS NOT NULL;
+CREATE INDEX idx_nodes_sync_status   ON public.nodes(map_id, sync_status)
+    WHERE sync_status IS NOT NULL;
 
 -- ============================================================
 -- 5. 태그
@@ -521,3 +531,141 @@ CREATE INDEX IF NOT EXISTS idx_nodes_translation_skip
 -- 4. node_translations 인덱스 추가 (테이블은 섹션 9에서 이미 생성됨)
 CREATE INDEX IF NOT EXISTS idx_node_translations_node_id
   ON public.node_translations (node_id);
+
+-- ============================================================
+-- 15. WBS 모드 / 리소스 할당 / Redmine 연동 (V1)
+-- ============================================================
+
+-- 15-1. node_schedule — WBS 일정/마일스톤/진척률 (1:1 optional)
+CREATE TABLE public.node_schedule (
+    node_id       UUID     PRIMARY KEY REFERENCES public.nodes(id) ON DELETE CASCADE,
+    start_date    DATE     DEFAULT NULL,
+    end_date      DATE     DEFAULT NULL,
+    is_milestone  BOOLEAN  NOT NULL DEFAULT FALSE,
+    progress      SMALLINT DEFAULT 0
+                  CHECK (progress BETWEEN 0 AND 100),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_wbs_date_order CHECK (
+        end_date IS NULL OR start_date IS NULL
+        OR end_date >= start_date
+    ),
+    CONSTRAINT chk_milestone_single_date CHECK (
+        NOT is_milestone
+        OR (start_date = end_date)
+        OR end_date IS NULL
+    )
+);
+
+CREATE INDEX idx_node_schedule_dates
+    ON public.node_schedule(start_date, end_date)
+    WHERE start_date IS NOT NULL;
+
+-- 15-2. node_resources — 리소스(사람) 할당 (WBS · Kanban 공통, 1:N)
+CREATE TABLE public.node_resources (
+    id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    node_id           UUID         NOT NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
+    user_id           UUID         REFERENCES public.users(id) ON DELETE SET NULL,
+    redmine_user_id   INTEGER      DEFAULT NULL,
+    redmine_user_name VARCHAR(100) DEFAULT NULL,
+    role              VARCHAR(30)  NOT NULL DEFAULT 'assignee',
+    -- 'assignee' | 'reviewer' | 'observer'
+    allocated_hours   NUMERIC(6,2) DEFAULT NULL,  -- WBS 전용, Kanban은 NULL
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_node_resource_user
+        UNIQUE NULLS NOT DISTINCT (node_id, user_id, role),
+    CONSTRAINT uq_node_resource_redmine_user
+        UNIQUE NULLS NOT DISTINCT (node_id, redmine_user_id, role),
+    CONSTRAINT chk_resource_identity CHECK (
+        user_id IS NOT NULL OR redmine_user_id IS NOT NULL
+    )
+);
+
+CREATE INDEX idx_node_resources_node_id ON public.node_resources(node_id);
+CREATE INDEX idx_node_resources_user_id ON public.node_resources(user_id)
+    WHERE user_id IS NOT NULL;
+
+-- 15-3. redmine_project_maps — 맵 ↔ Redmine 프로젝트 연결 (1:0..1)
+CREATE TABLE public.redmine_project_maps (
+    id                         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id                     UUID         NOT NULL UNIQUE REFERENCES public.maps(id) ON DELETE CASCADE,
+    redmine_base_url           VARCHAR(500) NOT NULL,
+    redmine_project_id         INTEGER      NOT NULL,
+    redmine_project_identifier VARCHAR(100),
+    api_key_encrypted          VARCHAR(500) NOT NULL,  -- AES-256-GCM 암호화 (절대 평문 보관 금지)
+    sync_direction             VARCHAR(20)  NOT NULL DEFAULT 'bidirectional',
+    -- 'pull_only' | 'push_only' | 'bidirectional'
+    auto_create_issues         BOOLEAN      NOT NULL DEFAULT TRUE,
+    default_tracker_id         INTEGER      DEFAULT NULL,
+    default_status_id          INTEGER      DEFAULT NULL,
+    last_synced_at             TIMESTAMPTZ  DEFAULT NULL,
+    created_at                 TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at                 TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+-- 15-4. redmine_sync_log — 동기화 이력
+CREATE TABLE public.redmine_sync_log (
+    id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id           UUID        NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+    node_id          UUID        REFERENCES public.nodes(id) ON DELETE SET NULL,
+    direction        VARCHAR(10) NOT NULL,   -- 'pull' | 'push'
+    action           VARCHAR(20) NOT NULL,   -- 'create' | 'update' | 'delete' | 'full_sync'
+    status           VARCHAR(20) NOT NULL,   -- 'success' | 'failed'
+    redmine_issue_id INTEGER     DEFAULT NULL,
+    http_status      SMALLINT    DEFAULT NULL,
+    error_detail     TEXT        DEFAULT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_sync_log_map_id  ON public.redmine_sync_log(map_id, created_at DESC);
+CREATE INDEX idx_sync_log_node_id ON public.redmine_sync_log(node_id)
+    WHERE node_id IS NOT NULL;
+
+-- 15-5. RLS for WBS/Redmine tables
+ALTER TABLE public.node_schedule       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.node_resources      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.redmine_project_maps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.redmine_sync_log    ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "map owners manage node_schedule"
+    ON public.node_schedule FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.nodes n
+            JOIN public.maps m ON m.id = n.map_id
+            WHERE n.id = node_schedule.node_id
+              AND m.owner_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "map owners manage node_resources"
+    ON public.node_resources FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.nodes n
+            JOIN public.maps m ON m.id = n.map_id
+            WHERE n.id = node_resources.node_id
+              AND m.owner_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "map owners manage redmine_project_maps"
+    ON public.redmine_project_maps FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.maps
+            WHERE maps.id = redmine_project_maps.map_id
+              AND maps.owner_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "map owners read sync_log"
+    ON public.redmine_sync_log FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.maps
+            WHERE maps.id = redmine_sync_log.map_id
+              AND maps.owner_id = auth.uid()
+        )
+    );

@@ -100,6 +100,18 @@ type NodeObject = {
   // 작성자가 이후 언어 설정을 바꿔도 기존 노드 translation_mode에 영향 없도록 저장
   // null: 레거시 노드 (migration 전 데이터)
 
+  // === WBS 일정 (node_schedule 테이블 JOIN, WBS 모드에서 사용) ===
+  // null = 일정 미설정 노드 (node_schedule row 없음)
+  schedule: NodeSchedule | null;
+
+  // === 리소스 할당 (node_resources 테이블 JOIN, WBS·Kanban 공통) ===
+  resources: NodeResource[];   // 빈 배열 = 할당 없음
+
+  // === Redmine 연동 ===
+  redmineIssueId: number | null;   // null = 비연동
+  syncStatus: 'synced' | 'pending' | 'error' | 'failed' | null;
+  // null = Redmine 비연동 노드 (Standalone WBS 또는 일반 mindmap)
+
   // === 메타 ===
   createdAt: string;             // ISO 8601
   updatedAt: string;
@@ -464,3 +476,55 @@ const rootNode: NodeObject = {
      기준 노드의 shapeType과 style.fillColor를 기본 상속하는 정책과 연결된다.
    - 따라서 프론트엔드 생성 명령(Command) 설계 시
      단순히 text만 복사하지 말고 style/shape 기본값도 함께 복사해야 한다.
+
+---
+
+## WBS / Resource / Redmine 확장 타입
+
+> 관련 설계: `docs/04-extensions/redmine-integration-plan.md`
+
+### NodeSchedule — WBS 일정
+
+```typescript
+// ─────────────────────────────────────────
+// WBS 일정 타입 (node_schedule 테이블 1:1 대응)
+// ─────────────────────────────────────────
+type NodeSchedule = {
+  startDate:   string | null;   // YYYY-MM-DD, null = 미설정
+  endDate:     string | null;   // YYYY-MM-DD
+  isMilestone: boolean;         // true이면 startDate = endDate 강제
+  progress:    number;          // 0~100 (기본값 0)
+  updatedAt:   string;          // ISO 8601
+};
+```
+
+### NodeResource — 리소스 할당 (WBS · Kanban 공통)
+
+```typescript
+// ─────────────────────────────────────────
+// 리소스 할당 타입 (node_resources 테이블 1:N 대응)
+// WBS 모드: Activity 담당자/검토자 할당
+// Kanban 모드: 카드 담당자 할당 (allocatedHours = null)
+// ─────────────────────────────────────────
+type NodeResource = {
+  id:              string;            // UUID
+  nodeId:          string;
+  userId:          string | null;     // easymindmap 내부 사용자
+  redmineUserId:   number | null;     // Redmine user.id (연동 시)
+  redmineUserName: string | null;     // 캐시된 Redmine 사용자 이름
+  displayName:     string;            // 화면 표시용 이름 (userId or redmineUserName)
+  avatarUrl:       string | null;     // 아바타 이미지 URL
+  role:            'assignee' | 'reviewer' | 'observer';
+  allocatedHours:  number | null;     // WBS 전용, Kanban에서는 null
+};
+```
+
+### syncStatus 필드 설명
+
+| 값 | 의미 |
+|---|---|
+| `null` | Redmine 비연동 노드 (Standalone WBS 또는 일반 mindmap) |
+| `'synced'` | 정상 동기화 완료 |
+| `'pending'` | 동기화 진행 중 (BullMQ 큐 대기/처리 중) |
+| `'error'` | 동기화 실패, 자동 재시도 대기 (최대 3회) |
+| `'failed'` | 3회 재시도 모두 실패 — 수동 처리 필요 |

@@ -702,6 +702,46 @@ CREATE INDEX idx_sync_log_node_id
 
 ---
 
+---
+
+### [v3.3 추가] 협업맵 관련 테이블
+
+> 상세 DDL: `docs/02-domain/collaboration-schema.sql`
+
+#### maps 컬럼 추가
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `is_collaborative` | BOOLEAN DEFAULT false | 협업맵 여부 |
+| `collab_owner_id` | UUID FK → users | 현재 creator (소유권 이양 시 업데이트) |
+
+#### nodes 컬럼 추가
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `created_by` | UUID FK → users | 노드 최초 생성자 (수정/삭제 권한 판단 기준) |
+
+#### map_collaborators (신규)
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `id` | UUID PK | |
+| `map_id` | UUID FK → maps | |
+| `user_id` | UUID FK → users | |
+| `role` | VARCHAR(20) | `'creator'` \| `'editor'` |
+| `scope_type` | VARCHAR(20) | `'full'`(creator전용) \| `'level'` \| `'node'` |
+| `scope_level` | INT NULL | depth ≥ scope_level 편집 가능 |
+| `scope_node_id` | UUID NULL FK → nodes | 해당 노드+하위 편집 가능 |
+| `status` | VARCHAR(20) | `pending\|active\|rejected\|removed` |
+
+#### map_ownership_history (신규)
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `id` | UUID PK | |
+| `map_id` | UUID FK → maps | |
+| `from_user_id` | UUID FK → users | 이양한 creator |
+| `to_user_id` | UUID FK → users | 이양받은 editor |
+| `transferred_at` | TIMESTAMPTZ | |
+
+---
+
 ## Row Level Security (RLS) 정책
 
 Supabase는 RLS로 사용자별 데이터 격리를 자동으로 처리.

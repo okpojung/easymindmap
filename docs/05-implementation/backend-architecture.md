@@ -633,3 +633,29 @@ DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD
 MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY
 AUTH_JWT_ACCESS_SECRET / AUTH_JWT_REFRESH_SECRET
 ```
+
+---
+
+## [v3.3 추가] Collaboration Module
+
+```
+apps/api/src/
+  collaboration/
+    collaboration.module.ts
+    collaboration.service.ts      ← 초대/탈퇴/scope 관리
+    collaboration.controller.ts   ← REST 엔드포인트
+    guards/
+      collab-member.guard.ts      ← 맵 참여자 확인
+      collab-scope.guard.ts       ← scope 범위 검사
+      node-owner.guard.ts         ← 노드 소유권 검사
+    services/
+      permission.service.ts       ← canEdit() / canModifyOrDelete()
+      invite.service.ts           ← 초대 토큰 생성, 이메일 발송
+      ownership-transfer.service.ts
+    entities/
+      map-collaborator.entity.ts
+      map-ownership-history.entity.ts
+```
+
+> 상세: `docs/05-implementation/collaboration-api.md`
+> 권한 파이프라인: `docs/05-implementation/collaboration-engine.md` 섹션 9

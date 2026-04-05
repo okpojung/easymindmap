@@ -1066,3 +1066,65 @@ NodeRenderer
   "showResourceAvatars": true
 }
 ```
+
+---
+
+## PART 6. 협업 인디케이터 (Collaboration Indicator, V3.3)
+
+협업맵(`is_collaborative = true`)에서 동시 편집 중 노드의 시각적 상태를 표시한다.
+
+### 6-1. scope 밖 노드 — 편집 불가 표시
+
+| 항목 | 규격 |
+|------|------|
+| 시각 처리 | `opacity: 0.4` (반투명 처리) |
+| 커서 | `cursor: not-allowed` |
+| 클릭 동작 | 읽기만 가능. 편집 시도 시 툴팁 표시 |
+| 툴팁 메시지 | "이 노드는 편집 권한 범위 밖입니다." |
+| 적용 대상 | `collab_editor` 역할의 scope 밖 노드 전체 |
+| `collab_creator` | scope 제한 없으므로 dim 처리 없음 |
+
+```typescript
+// scope 외부 판단 예시
+function isOutOfScope(node: NodeObject, permission: CollabPermission): boolean {
+  if (permission.role === 'collab_creator') return false;
+  if (permission.scopeType === 'level') {
+    return node.depth < permission.scopeLevel!;
+  }
+  if (permission.scopeType === 'node') {
+    return !isDescendantOf(node.id, permission.scopeNodeId!);
+  }
+  return false;
+}
+```
+
+### 6-2. 타인이 편집 중인 노드 — 잠금 표시
+
+| 항목 | 규격 |
+|------|------|
+| 테두리 색 | 편집자의 presence 색상 (color 풀에서 할당된 색) |
+| 테두리 두께 | `3px solid` |
+| 이름 배지 | 노드 상단 왼쪽, 편집자 displayName 표시 |
+| 배지 배경 | 동일 presence 색상, `opacity: 0.85` |
+| 잠금 해제 | `node:editing:ended` 이벤트 수신 시 자동 해제 |
+| 소프트 잠금 | 5초 타임아웃 후 자동 해제 |
+
+```typescript
+// 노드 잠금 상태 타입
+type NodeEditingState = {
+  nodeId: string;
+  userId: string;
+  displayName: string;
+  color: string;      // presence 색상
+  startedAt: number;  // timestamp
+};
+```
+
+### 6-3. ui_preferences_json 추가 키
+
+```json
+{
+  "showCollabScopeOverlay": true,
+  "showCollabEditingBadge": true
+}
+```

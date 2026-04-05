@@ -453,6 +453,19 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.maps;
 --   ('media',       'media',       false);
 
 -- ============================================================
+-- [v3.3 추가] 협업맵 — maps / nodes 컬럼 추가
+-- ============================================================
+ALTER TABLE public.maps
+  ADD COLUMN IF NOT EXISTS is_collaborative BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS collab_owner_id  UUID REFERENCES public.users(id);
+
+ALTER TABLE public.nodes
+  ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES public.users(id);
+
+-- map_collaborators, map_ownership_history 전체 DDL
+-- → docs/02-domain/collaboration-schema.sql 참조 (별도 마이그레이션으로 실행)
+
+-- ============================================================
 -- V2: 다국어 번역 기능 스키마 확장 (multilingual-translation.md v3.0)
 -- ============================================================
 

@@ -21,13 +21,17 @@ apps/frontend/
  │   │   ├── inspector-panels/       # 우측 속성 패널 (스타일, 레이아웃)
  │   │   ├── dialogs/        # 노드 설정, export 모달
  │   │   └── collaboration/  # presence, cursor, selection 표시
+ │   │       ├── CollabPanel.tsx         # [v3.3] 협업자 목록·초대 UI 패널
+ │   │       ├── CollabCursorOverlay.tsx # presence cursor 표시 오버레이
+ │   │       └── CollabScopeOverlay.tsx  # scope 밖 노드 dim 처리 오버레이
  │   │
  │   ├── stores/             # Zustand 5-Store
  │   │   ├── documentStore.ts
  │   │   ├── editorUiStore.ts
  │   │   ├── viewportStore.ts
  │   │   ├── interactionStore.ts
- │   │   └── autosaveStore.ts
+ │   │   ├── autosaveStore.ts
+ │   │   └── collabStore.ts          # [v3.3] 협업 상태 (collaborators, myRole, myScope)
  │   │
  │   ├── commands/           # Command 패턴 구현
  │   │   ├── types.ts
@@ -60,6 +64,7 @@ apps/frontend/
  │   │
  │   ├── selectors/          # Zustand selector 함수
  │   ├── hooks/              # 공통 custom hooks
+ │   │   └── useCollabPermission.ts  # [v3.3] 협업 권한 조회 hook (canEdit, canDelete)
  │   ├── components/         # 공통 UI 컴포넌트
  │   └── pages/              # 페이지 컴포넌트
  │       ├── LoginPage.tsx

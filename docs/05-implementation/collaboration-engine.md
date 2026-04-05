@@ -249,6 +249,79 @@ dashboard:refresh 이벤트 → 해당 맵 모든 클라이언트 Push
 
 ---
 
+## 7. Presence 색상 정책
+
+협업 중 각 참여자의 cursor / 선택 노드 표시에 사용할 색상을 할당한다.
+
+### 색상 할당 규칙
+
+| 항목 | 정책 |
+|------|------|
+| 색상 풀 | 최대 8색 (HSL 기반 분산 배치) |
+| 할당 시점 | 참여자가 맵 세션에 입장 시 서버에서 `map_collaborators.session_color` 임시 할당 |
+| 재입장 시 | 동일한 userId면 기존 색상 재사용 (다른 참여자가 사용 중이면 차순위 색상) |
+| 표시 대상 | cursor 테두리, 선택 노드 하이라이트, 이름 배지 배경 |
+
+### 기본 색상 팔레트 (8색)
+
+```
+#FF6B6B (빨강)  #4ECDC4 (청록)  #45B7D1 (하늘)  #96CEB4 (민트)
+#FFEAA7 (노랑)  #DDA0DD (보라)  #98D8C8 (연초록) #F7DC6F (연노랑)
+```
+
+### Supabase Realtime Presence payload 예시
+
+```typescript
+type PresencePayload = {
+  userId: string;
+  displayName: string;
+  color: string;          // 할당된 hex 색상
+  cursor?: { x: number; y: number };
+  selectedNodeId?: string | null;
+  lastActiveAt: string;   // ISO 8601
+};
+```
+
+---
+
+## 8. 초대 플로우 다이어그램
+
+```
+Creator                   Server                    Invitee
+  │                         │                         │
+  │ POST /maps/:id/         │                         │
+  │ collaborators           │                         │
+  │ { email, role, scope }  │                         │
+  │ ─────────────────────►  │                         │
+  │                         │ INSERT map_collaborators│
+  │                         │ status = 'pending'      │
+  │                         │ 초대 토큰 생성           │
+  │                         │ 이메일 발송 ──────────► │
+  │ 201 Created             │                         │
+  │ ◄─────────────────────  │                         │
+  │                         │                         │
+  │                         │ POST /invite/accept     │
+  │                         │ { token }     ◄──────── │
+  │                         │                         │
+  │                         │ 토큰 검증               │
+  │                         │ status = 'active'       │
+  │                         │ maps.is_collaborative   │
+  │                         │ = true                  │
+  │                         │ 200 OK ──────────────► │
+  │                         │                         │
+```
+
+### 초대 만료 정책
+
+| 항목 | 값 |
+|------|-----|
+| 초대 토큰 유효 기간 | 7일 |
+| 만료 후 수락 시 | `410 Gone` (재초대 필요) |
+| 토큰 저장 위치 | Redis (TTL 7일) or `map_collaborators.invite_token` 컬럼 |
+| 중복 초대 방지 | 동일 `(map_id, user_id)` 존재 시 `409 Conflict` |
+
+---
+
 ## 9. 협업 권한 레이어 (Permission Guard Pipeline)
 
 모든 노드 CRUD API에 아래 순서로 권한을 검사한다.

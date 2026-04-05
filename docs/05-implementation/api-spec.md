@@ -1136,6 +1136,27 @@ step 상태 변경
 ---
 
 
+## 13. Collaboration — 협업맵
+
+> 상세 명세: `docs/05-implementation/collaboration-api.md`
+>
+> 핵심 엔드포인트:
+> - `POST /maps/:mapId/collaborators` — 협업자 초대 (creator 전용)
+> - `DELETE /maps/:mapId/collaborators/:id` — 강제 탈퇴
+> - `PATCH /maps/:mapId/collaborators/:id` — scope 변경
+> - `PATCH /maps/:mapId/transfer-ownership` — 소유권 이양
+> - `POST /invite/accept` — 초대 수락
+> - `GET /maps/:mapId/my-permissions` — 내 편집 권한 조회
+>
+> 권한 모델 추가:
+>
+> | 역할 | 설명 |
+> |------|------|
+> | `collab_creator` | full scope, 모든 노드 수정/삭제 가능 |
+> | `collab_editor` | level/node scope 내 본인 작성 노드만 수정/삭제 |
+
+---
+
 ## 14. Collaboration Chat / Node Thread / AI Assist (V2~V3)
 
 > 상세 엔드포인트는 `docs/05-implementation/collaboration-api.md`를 기준으로 한다.

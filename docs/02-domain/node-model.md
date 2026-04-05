@@ -31,6 +31,9 @@ type NodeObject = {
   // === 레이아웃 ===
   layoutType: LayoutType;        // 항상 구체적인 layoutType 값을 저장
   collapsed: boolean;            // true = 자식 숨김
+  created_by: string | null;     // [V3.3] 최초 생성자 userId — 협업 수정/삭제 권한 판단 기준
+  // DB 컬럼: nodes.created_by UUID FK → users
+  // null: 레거시 노드 (협업 기능 도입 이전 데이터) 또는 비협업 맵 노드
 
   // === 스타일 ===
   shapeType: ShapeType;

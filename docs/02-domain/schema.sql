@@ -72,6 +72,12 @@ CREATE TABLE public.maps (
     view_mode                 VARCHAR(20)  NOT NULL DEFAULT 'edit',  -- 'edit' | 'dashboard' | 'kanban' | 'wbs'
     refresh_interval_seconds  INT          NOT NULL DEFAULT 0,       -- 0: off
     current_version           INT          NOT NULL DEFAULT 0,
+    -- 협업맵 (v3.3)
+    is_collaborative          BOOLEAN      NOT NULL DEFAULT false,
+    collab_owner_id           UUID         REFERENCES public.users(id),
+    -- is_collaborative: active editor ≥ 1명이면 true. 모든 editor removed 시 false로 복귀.
+    -- collab_owner_id: 현재 creator userId. 소유권 이양(transfer-ownership) 시 업데이트.
+
     deleted_at                TIMESTAMPTZ,  -- soft delete
     created_at                TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at                TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -161,6 +167,11 @@ CREATE TABLE public.nodes (
 
     -- 캐시
     size_cache       JSONB,   -- { width: number, height: number }
+
+    -- 협업 (v3.3)
+    created_by       UUID        REFERENCES public.users(id),
+    -- created_by: 노드 최초 생성자 userId. 협업맵에서 수정/삭제 권한 판단 기준.
+    --             비협업 맵 노드는 NULL 허용.
 
     -- Redmine 연동 (V1 WBS)
     redmine_issue_id INTEGER     DEFAULT NULL,

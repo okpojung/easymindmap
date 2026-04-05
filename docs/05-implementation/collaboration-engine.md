@@ -190,3 +190,83 @@ WS Gateway SUBSCRIBE dashboard:{mapId}
         ▼
 dashboard:refresh 이벤트 → 해당 맵 모든 클라이언트 Push
 ```
+
+---
+
+## 9. 협업 권한 레이어 (Permission Guard Pipeline)
+
+모든 노드 CRUD API에 아래 순서로 권한을 검사한다.
+
+```
+요청 (PATCH /nodes/:id)
+    │
+    ▼ ① JWT 인증 → userId 추출
+    ▼ ② map_collaborators 참여자 확인 (없으면 403)
+    ▼ ③ scope 검사 (creator: 통과 / level: depth 확인 / node: ltree 확인)
+    ▼ ④ 수정/삭제 권한 검사 — scope 내 + (creator OR 본인 작성)
+    ▼ ⑤ 실제 처리 → Redis Pub/Sub 브로드캐스트
+```
+
+### NestJS Guard 파일 위치
+
+```
+src/collaboration/guards/
+  collab-member.guard.ts   ← ② 참여자 확인
+  collab-scope.guard.ts    ← ③ scope 검사
+  node-owner.guard.ts      ← ④ 노드 소유권 검사
+src/collaboration/services/
+  permission.service.ts    ← canEdit() / canModifyOrDelete()
+```
+
+### permission.service.ts 핵심 로직
+
+```typescript
+async canEdit(userId: string, nodeId: string, mapId: string): Promise<boolean> {
+  const collab = await this.getCollaborator(mapId, userId);
+  if (!collab) return false;
+  if (collab.role === 'creator') return true; // full scope
+
+  const node = await this.nodeRepo.findOne(nodeId);
+  if (collab.scope_type === 'level') return node.depth >= collab.scope_level;
+  if (collab.scope_type === 'node')
+    return await this.isNodeOrDescendant(nodeId, collab.scope_node_id);
+  return false;
+}
+
+async canModifyOrDelete(userId: string, nodeId: string, mapId: string): Promise<boolean> {
+  if (!(await this.canEdit(userId, nodeId, mapId))) return false; // 1단계
+  const collab = await this.getCollaborator(mapId, userId);
+  if (collab.role === 'creator') return true;                     // 2단계-a
+  const node = await this.nodeRepo.findOne(nodeId);
+  return node.created_by === userId;                              // 2단계-b
+}
+
+// ltree 기반 하위 노드 여부 확인
+async isNodeOrDescendant(nodeId: string, ancestorId: string): Promise<boolean> {
+  const result = await this.db.query(
+    `SELECT 1 FROM nodes WHERE id = $1
+     AND path <@ (SELECT path FROM nodes WHERE id = $2)`,
+    [nodeId, ancestorId]
+  );
+  return result.rowCount > 0;
+}
+```
+
+---
+
+## 10. 초대 이메일 정책
+
+```
+제목: [easymindmap] {inviterName}님이 "{mapTitle}" 맵에 초대했습니다
+
+편집 권한: {scopeDescription}
+[초대 수락하기] → https://mindmap.ai.kr/invite/accept?token={token}
+(7일 후 만료)
+```
+
+### invite_token 생성
+
+```typescript
+const token = crypto.randomBytes(64).toString('hex');
+const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+```

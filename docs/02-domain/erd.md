@@ -465,3 +465,44 @@ subtree 이동:
 > **우선순위**: 레벨 3 (노드) > 레벨 2 (맵) > 레벨 1 (사용자)
 >
 > 결정 알고리즘(`shouldTranslate`): `docs/04-extensions/multilingual-translation.md § 3` 참조
+
+---
+
+## [v3.3 추가] 협업맵 관련 테이블
+
+> **변경 이력 추가**: v3.3 | 2026-04-05 | 협업맵 스키마 반영
+> - `maps`: `is_collaborative` BOOLEAN, `collab_owner_id` UUID 추가
+> - `nodes`: `created_by` UUID 추가 (수정/삭제 권한 판단)
+> - `map_collaborators` 신규 (role: creator/editor, scope_type: full/level/node)
+> - `map_ownership_history` 신규 (creator 이양 이력 감사 로그)
+
+### `public.map_collaborators`
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `id` | UUID PK | |
+| `map_id` | UUID FK → maps | |
+| `user_id` | UUID FK → users | |
+| `role` | VARCHAR(20) | `'creator'` \| `'editor'` |
+| `scope_type` | VARCHAR(20) | `'full'`(creator전용) \| `'level'` \| `'node'` |
+| `scope_level` | INT NULL | scope_type='level' 시 depth 기준값 |
+| `scope_node_id` | UUID NULL FK → nodes | scope_type='node' 시 기준 노드 |
+| `invited_by` | UUID FK → users | 초대한 creator |
+| `invite_token` | VARCHAR(120) UNIQUE NULL | 수락 링크 토큰 (7일 만료) |
+| `status` | VARCHAR(20) | `pending`\|`active`\|`rejected`\|`removed` |
+
+**핵심 제약**:
+- `UNIQUE (map_id, user_id)`
+- `UNIQUE (map_id) WHERE role='creator' AND status='active'` — creator 1명 강제
+- Trigger: editor에게 full scope 배정 방지
+
+### `public.map_ownership_history`
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `id` | UUID PK | |
+| `map_id` | UUID FK → maps | |
+| `from_user_id` | UUID FK → users | 이양한 creator |
+| `to_user_id` | UUID FK → users | 이양받은 editor |
+| `transferred_at` | TIMESTAMPTZ | |
+| `note` | TEXT NULL | 이양 사유 |

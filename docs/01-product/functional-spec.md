@@ -476,3 +476,41 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 | RESOURCE | 5 | ⭐ 신규 (RES-01~05) |
 | RDMN | 8 | ⭐ 신규 (RDMN-01~08) |
 | **합계** | **97+** | |
+
+---
+
+## 17. COLLAB — 협업맵
+
+> **상세 설계**: `docs/04-extensions/collaboration-and-concurrency-strategy.md`
+> **API 명세**: `docs/05-implementation/collaboration-api.md`
+> **DB 스키마**: `docs/02-domain/collaboration-schema.sql`
+
+### 17-1. 협업맵 정의
+
+맵 생성자(creator)가 1명 이상의 다른 사용자를 **editor로 초대**한 맵.
+읽기 전용(viewer) 초대는 협업맵이 아니며 퍼블리싱 기능으로 처리.
+
+### 17-2. 기능 목록
+
+| 기능ID | 기능명 | 설명 | 개발 단계 |
+|---|---|---|---|
+| COLLAB-01 | 협업자 초대 | creator가 이메일로 editor 초대. scope 지정 필수. | V2 |
+| COLLAB-02 | 초대 이메일 발송 | 수락 링크 포함 이메일 자동 발송 (7일 만료) | V2 |
+| COLLAB-03 | 편집 범위(Scope) 제어 | level(depth 기준) / node(특정 노드+하위) | V2 |
+| COLLAB-04 | 노드 소유권 기반 수정/삭제 | 본인 작성 노드만 수정/삭제. creator 예외. | V2 |
+| COLLAB-05 | 협업자 강제 탈퇴 | creator만 가능. WS 연결 강제 종료. | V2 |
+| COLLAB-06 | Presence 표시 | 현재 접속 협업자 아바타/이름/색상 표시 | V2 |
+| COLLAB-07 | 실시간 동시 편집 (LWW) | Phase 1: Last Write Wins | V2 |
+| COLLAB-08 | 노드 soft lock | 편집 중 노드에 색상 테두리. 5초 타임아웃. | V2 |
+| COLLAB-09 | 소유권 이양 | creator → active editor 권한 이양. History 보관. | V2 |
+| COLLAB-10 | 채팅 + 번역 | 참여자 간 실시간 채팅. 수신 메시지 자동 번역. | V3 |
+| COLLAB-11 | 맵 변경 알림 | 수정 발생 시 이메일/Push 알림. | V3 |
+| COLLAB-12 | CRDT (Yjs) | Phase 3: 완전한 동시 편집 지원 | V4 |
+
+### 17-3. Scope 규칙 요약
+
+| scope_type | 배정 가능 역할 | 편집 범위 |
+|---|---|---|
+| `full` | creator 전용 (자동 배정) | 맵 전체 |
+| `level` | editor만 | depth ≥ scope_level 노드 |
+| `node` | editor만 | 지정 노드 + 모든 하위 노드 |

@@ -57,6 +57,24 @@
 - remote patch ordering
 - Yjs / CRDT adapter
 
+
+**Phase 2.5 (V2): Live Collaboration Chat**
+- map-room chat (현재 접속 협업자 간 라이브 대화)
+- light notification (dot only, unread 없음)
+- chat translation with language-group cache
+- reconnect 시 최근 메시지 복구
+
+**Phase 3 (V3): Node Thread + AI Assist**
+- node-linked thread (`nodeId` 기반)
+- 메시지 클릭 시 node focus / zoom
+- AI thread summary / task extraction preview
+- 승인 기반 task node 생성
+
+> **중요 원칙**
+> - 채팅/댓글/AI preview 결과는 문서 편집 파이프라인과 분리한다.
+> - Undo/Redo 및 autosave revision history에는 포함하지 않는다.
+
+
 ---
 
 ## 2. WebSocket 이벤트 전체 목록
@@ -72,6 +90,9 @@
 | `selection:update` | `{ nodeIds: string[] }` |
 | `node:editing:start` | `{ nodeId }` |
 | `node:editing:end` | `{ nodeId }` |
+| `chat:message:send` | `{ mapId, clientMsgId, text, nodeId? }` |
+| `chat:panel:open` | `{ mapId, lastSeenMessageId? }` |
+| `node:thread:ai:run` | `{ mapId, nodeId, action: 'summarize' | 'extract_tasks' | 'generate_task_nodes_preview' }` |
 
 ### 서버 → 클라이언트
 
@@ -86,11 +107,44 @@
 | `node:editing:started` | `{ nodeId, userId }` | Redis Pub/Sub |
 | `node:editing:ended` | `{ nodeId, userId }` | Redis Pub/Sub |
 | `translation:ready` | `{ nodeId, targetLang, translatedText, textHash }` | Redis Pub/Sub |
+| `chat:message` | `{ messageId, mapId, userId, text, nodeId?, createdAt }` | Redis Pub/Sub |
+| `chat:translation:ready` | `{ messageId, targetLang, translatedText, sourceTextHash }` | Redis Pub/Sub |
+| `node:thread:updated` | `{ nodeId, messageCount, lastMessageAt }` | Redis Pub/Sub |
+| `node:thread:ai:preview` | `{ nodeId, action, summary?, tasks? }` | Redis Pub/Sub |
 | `dashboard:refresh` | `{ changedNodes: [{id, text, updatedAt}] }` (V3) | Redis Pub/Sub |
 | `export:completed` | `{ jobId, downloadUrl }` | Redis Pub/Sub |
 | `publish:completed` | `{ mapId, publishUrl }` | Redis Pub/Sub |
 
 ---
+
+
+## 2-1. 실시간 협업 채팅 / Node Thread 확장
+
+### 채널 설계
+
+| 채널 | 용도 |
+|------|------|
+| `chat:{mapId}` | 맵 전체 채팅 메시지 브로드캐스트 |
+| `thread:{mapId}:{nodeId}` | 특정 node thread 갱신 이벤트 |
+| `chat-translation:{mapId}` | 채팅 번역 완료 이벤트 |
+| `thread-ai:{mapId}:{nodeId}` | AI preview 결과 전달 |
+
+### 이벤트 경계
+
+- `map:patch` 는 문서 구조 변경 이벤트다.
+- `chat:*` 는 협업 대화 이벤트다.
+- `node:thread:*` 는 문맥형 토론 이벤트다.
+- `node:thread:ai:*` 는 AI preview 결과 이벤트다.
+
+이 네 계층은 같은 WS Gateway를 쓰더라도 **이벤트 버스와 저장소, Undo/Redo 처리 경계가 다르다**.
+
+### 채팅 메시지 처리 원칙
+
+1. 원문 메시지는 무조건 1회 저장
+2. 번역은 targetLang 단위로 파생 레코드/캐시 생성
+3. 채팅 패널이 닫혀 있으면 dot 표시만 갱신
+4. 재접속 시 최근 30~50개 메시지 재조회
+5. nodeId가 있는 메시지는 node thread와 map chat 양쪽 컨텍스트에서 조회 가능
 
 ## 3. 아키텍처
 
@@ -106,6 +160,8 @@ WS Gateway (room 관리)
     │
     ├── [Redis Pub/Sub] 구독
     │   channel: map:{mapId}
+    │   channel: chat:{mapId}
+    │   channel: thread:{mapId}:{nodeId}
     │   channel: dashboard:{mapId}
     │
     ▼
@@ -189,4 +245,157 @@ WS Gateway SUBSCRIBE dashboard:{mapId}
         │
         ▼
 dashboard:refresh 이벤트 → 해당 맵 모든 클라이언트 Push
+```
+
+---
+
+## 7. Presence 색상 정책
+
+협업 중 각 참여자의 cursor / 선택 노드 표시에 사용할 색상을 할당한다.
+
+### 색상 할당 규칙
+
+| 항목 | 정책 |
+|------|------|
+| 색상 풀 | 최대 8색 (HSL 기반 분산 배치) |
+| 할당 시점 | 참여자가 맵 세션에 입장 시 서버에서 `map_collaborators.session_color` 임시 할당 |
+| 재입장 시 | 동일한 userId면 기존 색상 재사용 (다른 참여자가 사용 중이면 차순위 색상) |
+| 표시 대상 | cursor 테두리, 선택 노드 하이라이트, 이름 배지 배경 |
+
+### 기본 색상 팔레트 (8색)
+
+```
+#FF6B6B (빨강)  #4ECDC4 (청록)  #45B7D1 (하늘)  #96CEB4 (민트)
+#FFEAA7 (노랑)  #DDA0DD (보라)  #98D8C8 (연초록) #F7DC6F (연노랑)
+```
+
+### Supabase Realtime Presence payload 예시
+
+```typescript
+type PresencePayload = {
+  userId: string;
+  displayName: string;
+  color: string;          // 할당된 hex 색상
+  cursor?: { x: number; y: number };
+  selectedNodeId?: string | null;
+  lastActiveAt: string;   // ISO 8601
+};
+```
+
+---
+
+## 8. 초대 플로우 다이어그램
+
+```
+Creator                   Server                    Invitee
+  │                         │                         │
+  │ POST /maps/:id/         │                         │
+  │ collaborators           │                         │
+  │ { email, role, scope }  │                         │
+  │ ─────────────────────►  │                         │
+  │                         │ INSERT map_collaborators│
+  │                         │ status = 'pending'      │
+  │                         │ 초대 토큰 생성           │
+  │                         │ 이메일 발송 ──────────► │
+  │ 201 Created             │                         │
+  │ ◄─────────────────────  │                         │
+  │                         │                         │
+  │                         │ POST /invite/accept     │
+  │                         │ { token }     ◄──────── │
+  │                         │                         │
+  │                         │ 토큰 검증               │
+  │                         │ status = 'active'       │
+  │                         │ maps.is_collaborative   │
+  │                         │ = true                  │
+  │                         │ 200 OK ──────────────► │
+  │                         │                         │
+```
+
+### 초대 만료 정책
+
+| 항목 | 값 |
+|------|-----|
+| 초대 토큰 유효 기간 | 7일 |
+| 만료 후 수락 시 | `410 Gone` (재초대 필요) |
+| 토큰 저장 위치 | Redis (TTL 7일) or `map_collaborators.invite_token` 컬럼 |
+| 중복 초대 방지 | 동일 `(map_id, user_id)` 존재 시 `409 Conflict` |
+
+---
+
+## 9. 협업 권한 레이어 (Permission Guard Pipeline)
+
+모든 노드 CRUD API에 아래 순서로 권한을 검사한다.
+
+```
+요청 (PATCH /nodes/:id)
+    │
+    ▼ ① JWT 인증 → userId 추출
+    ▼ ② map_collaborators 참여자 확인 (없으면 403)
+    ▼ ③ scope 검사 (creator: 통과 / level: depth 확인 / node: ltree 확인)
+    ▼ ④ 수정/삭제 권한 검사 — scope 내 + (creator OR 본인 작성)
+    ▼ ⑤ 실제 처리 → Redis Pub/Sub 브로드캐스트
+```
+
+### NestJS Guard 파일 위치
+
+```
+src/collaboration/guards/
+  collab-member.guard.ts   ← ② 참여자 확인
+  collab-scope.guard.ts    ← ③ scope 검사
+  node-owner.guard.ts      ← ④ 노드 소유권 검사
+src/collaboration/services/
+  permission.service.ts    ← canEdit() / canModifyOrDelete()
+```
+
+### permission.service.ts 핵심 로직
+
+```typescript
+async canEdit(userId: string, nodeId: string, mapId: string): Promise<boolean> {
+  const collab = await this.getCollaborator(mapId, userId);
+  if (!collab) return false;
+  if (collab.role === 'creator') return true; // full scope
+
+  const node = await this.nodeRepo.findOne(nodeId);
+  if (collab.scope_type === 'level') return node.depth >= collab.scope_level;
+  if (collab.scope_type === 'node')
+    return await this.isNodeOrDescendant(nodeId, collab.scope_node_id);
+  return false;
+}
+
+async canModifyOrDelete(userId: string, nodeId: string, mapId: string): Promise<boolean> {
+  if (!(await this.canEdit(userId, nodeId, mapId))) return false; // 1단계
+  const collab = await this.getCollaborator(mapId, userId);
+  if (collab.role === 'creator') return true;                     // 2단계-a
+  const node = await this.nodeRepo.findOne(nodeId);
+  return node.created_by === userId;                              // 2단계-b
+}
+
+// ltree 기반 하위 노드 여부 확인
+async isNodeOrDescendant(nodeId: string, ancestorId: string): Promise<boolean> {
+  const result = await this.db.query(
+    `SELECT 1 FROM nodes WHERE id = $1
+     AND path <@ (SELECT path FROM nodes WHERE id = $2)`,
+    [nodeId, ancestorId]
+  );
+  return result.rowCount > 0;
+}
+```
+
+---
+
+## 10. 초대 이메일 정책
+
+```
+제목: [easymindmap] {inviterName}님이 "{mapTitle}" 맵에 초대했습니다
+
+편집 권한: {scopeDescription}
+[초대 수락하기] → https://mindmap.ai.kr/invite/accept?token={token}
+(7일 후 만료)
+```
+
+### invite_token 생성
+
+```typescript
+const token = crypto.randomBytes(64).toString('hex');
+const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 ```

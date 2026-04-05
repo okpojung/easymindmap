@@ -311,3 +311,41 @@ export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY,  // Anon Key만
 );
 ```
+
+---
+
+## [v3.3 추가] 협업 관련 환경변수 (V1 구현 전 추가 필요)
+
+```bash
+########################################
+# COLLABORATION — 협업맵 초대 / 알림
+########################################
+
+# 초대 토큰 설정
+INVITE_TOKEN_SECRET=change_me_invite_secret   # 초대 토큰 서명 키
+INVITE_TOKEN_EXPIRES_DAYS=7                    # 초대 링크 유효 기간 (일)
+INVITE_BASE_URL=https://mindmap.ai.kr/invite   # 초대 수락 URL 기반 경로
+
+# 이메일 발송 (초대 이메일)
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=noreply@mindmap.ai.kr
+SMTP_PASSWORD=change_me_smtp_password
+SMTP_FROM_NAME=easymindmap
+SMTP_FROM_EMAIL=noreply@mindmap.ai.kr
+
+# FCM (Firebase Cloud Messaging) — V3 알림 구현 전 준비
+# 협업 초대/탈퇴/소유권이양 등 푸시 알림용
+FCM_PROJECT_ID=                   # Firebase 프로젝트 ID (V3 구현 시 활성화)
+FCM_CLIENT_EMAIL=                 # Firebase 서비스 계정 이메일
+FCM_PRIVATE_KEY=                  # Firebase 서비스 계정 Private Key
+
+# 협업 기능 토글
+FEATURE_COLLABORATION=true        # 협업맵 기능 활성화 여부
+FEATURE_COLLAB_INVITE_EMAIL=true  # 초대 이메일 발송 여부
+FEATURE_FCM_NOTIFY=false          # FCM 푸시 알림 (V3 구현 전까지 false)
+```
+
+> **주의**: `INVITE_TOKEN_SECRET`, `SMTP_PASSWORD`, `FCM_PRIVATE_KEY`는 절대 소스코드에 하드코딩 금지.  
+> 운영 환경에서는 Vault 또는 비밀 관리 시스템 사용.

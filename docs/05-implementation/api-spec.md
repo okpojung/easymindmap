@@ -97,6 +97,8 @@ Retry-After: 60
 | `editor` (workspace member) | ✅ | ✅ | ✅ | ✅ |
 | `viewer` (workspace member) | ✅ | ❌ | ✅ | ❌ |
 | `public_read` (publish URL) | ✅ | ❌ | ✅ | ❌ |
+| `collab_creator` | ✅ | ✅ (full scope) | ✅ | ✅ (full scope) |
+| `collab_editor` | ✅ (scope 내) | ✅ (scope 내 본인 노드) | ✅ | ✅ (scope 내) |
 | 비인증 (일반) | ❌ | ❌ | ❌ | ❌ |
 
 ---
@@ -1132,6 +1134,335 @@ step 상태 변경
 ```
 
 ---
+
+
+## 13. Collaboration — 협업맵
+
+> **Base URL**: `https://api.mindmap.ai.kr/v1`  
+> **인증**: 모든 엔드포인트 `Authorization: Bearer {accessToken}` 필수  
+> 전체 WS 이벤트 및 상세 정책: `docs/05-implementation/collaboration-api.md`
+
+### 권한 모델
+
+| 역할 | 설명 |
+|------|------|
+| `collab_creator` | full scope — 맵 내 모든 노드 수정/삭제, 협업자 초대/탈퇴, 소유권 이양 가능 |
+| `collab_editor` | level/node scope 내 **본인 작성 노드**만 수정/삭제 |
+
+---
+
+### 13-1. 협업자 초대
+
+```
+POST /maps/:mapId/collaborators
+```
+
+> `collab_creator` 권한 필요
+
+**Request Body**
+```json
+{
+  "email": "b@example.com",
+  "scope_type": "level",
+  "scope_level": 3,
+  "scope_node_id": null
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|:---:|---|
+| `email` | string | ✅ | 초대할 사용자 이메일 |
+| `scope_type` | `"level"` \| `"node"` | ✅ | `"full"` 선택 불가 (editor 전용 제한) |
+| `scope_level` | number | scope_type=level 시 | depth ≥ scope_level 편집 가능 |
+| `scope_node_id` | string(UUID) | scope_type=node 시 | 해당 노드+하위 편집 가능 |
+
+**Response `201 Created`**
+```json
+{
+  "id": "collab-uuid",
+  "map_id": "map-uuid",
+  "email": "b@example.com",
+  "role": "editor",
+  "scope_type": "level",
+  "scope_level": 3,
+  "scope_node_id": null,
+  "status": "pending",
+  "invite_expires_at": "2026-04-12T00:00:00Z"
+}
+```
+
+**Error**
+```json
+// 400 — full scope 요청 시
+{ "error": "INVALID_SCOPE", "message": "editor에게 full scope를 배정할 수 없습니다." }
+// 403 — creator 아닌 경우
+{ "error": "FORBIDDEN", "message": "협업자 초대는 creator만 가능합니다." }
+// 409 — 이미 초대된 사용자
+{ "error": "ALREADY_INVITED", "message": "이미 초대된 사용자입니다." }
+```
+
+---
+
+### 13-2. 협업자 목록 조회
+
+```
+GET /maps/:mapId/collaborators
+```
+
+> 해당 맵 참여자 누구나 조회 가능
+
+**Response `200 OK`**
+```json
+{
+  "collaborators": [
+    {
+      "id": "collab-uuid",
+      "user_id": "user-uuid",
+      "display_name": "홍길동",
+      "email": "b@example.com",
+      "avatar_url": "https://...",
+      "role": "editor",
+      "scope_type": "level",
+      "scope_level": 3,
+      "scope_node_id": null,
+      "status": "active",
+      "invited_at": "2026-04-05T10:00:00Z",
+      "accepted_at": "2026-04-05T11:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 13-3. 편집 범위(scope) 변경
+
+```
+PATCH /maps/:mapId/collaborators/:collaboratorId
+```
+
+> `collab_creator` 권한 필요
+
+**Request Body**
+```json
+{
+  "scope_type": "node",
+  "scope_node_id": "node-uuid"
+}
+```
+
+> `scope_type: "full"` 불가. 에러: `400 INVALID_SCOPE`
+
+**Response `200 OK`**: 업데이트된 collaborator 객체
+
+---
+
+### 13-4. 협업자 강제 탈퇴
+
+```
+DELETE /maps/:mapId/collaborators/:collaboratorId
+```
+
+> `collab_creator` 권한 필요
+
+**Response `200 OK`**
+```json
+{
+  "removed_user_id": "user-uuid",
+  "map_is_collaborative": false
+}
+```
+
+**처리 내역**:
+- `map_collaborators.status = 'removed'`, `removed_at = now()`
+- WS 이벤트: `collab:member_removed { userId }` → 해당 유저 소켓 강제 퇴장
+- 잔류 노드 삭제하지 않음 (`nodes.created_by` 기록 유지)
+- 모든 editor가 removed 되면 `maps.is_collaborative = false`
+
+---
+
+### 13-5. 초대 수락
+
+```
+POST /invite/accept
+```
+
+> 인증 불필요 (토큰 기반), 단 로그인 상태 확인 후 처리
+
+**Request Body**
+```json
+{
+  "token": "invite-token-string"
+}
+```
+
+**Response `200 OK`**
+```json
+{
+  "map_id": "map-uuid",
+  "map_title": "우리 팀 기획서",
+  "role": "editor",
+  "scope_type": "level",
+  "scope_level": 3,
+  "redirect_url": "https://mindmap.ai.kr/maps/map-uuid"
+}
+```
+
+**Error**
+```json
+// 401 — 미로그인 시
+{ "error": "LOGIN_REQUIRED", "redirectAfterLogin": "/invite/accept?token=..." }
+// 410 — 만료된 토큰
+{ "error": "INVITE_EXPIRED", "message": "초대 링크가 만료되었습니다. 다시 초대를 요청하세요." }
+// 404 — 유효하지 않은 토큰
+{ "error": "INVITE_NOT_FOUND" }
+```
+
+---
+
+### 13-6. 소유권 이양
+
+```
+PATCH /maps/:mapId/transfer-ownership
+```
+
+> 현재 `collab_creator`만 호출 가능
+
+**Request Body**
+```json
+{
+  "to_user_id": "editor-uuid",
+  "note": "장기 출장으로 인해 이양합니다."
+}
+```
+
+**Response `200 OK`**
+```json
+{
+  "map_id": "map-uuid",
+  "previous_creator_id": "a-uuid",
+  "new_creator_id": "b-uuid",
+  "transferred_at": "2026-04-05T12:00:00Z"
+}
+```
+
+**Error**
+```json
+// 400 — to_user_id가 active editor가 아닌 경우
+{ "error": "INVALID_TARGET", "message": "대상 사용자가 이 맵의 active editor가 아닙니다." }
+// 403 — creator 아닌 경우
+{ "error": "FORBIDDEN" }
+```
+
+**WS 이벤트**: `collab:ownership_transferred { newCreatorId }` — 전체 참여자에게 전송
+
+---
+
+### 13-7. 소유권 이양 이력 조회
+
+```
+GET /maps/:mapId/ownership-history
+```
+
+**Response `200 OK`**
+```json
+{
+  "history": [
+    {
+      "from_user": { "id": "a-uuid", "display_name": "김철수" },
+      "to_user":   { "id": "b-uuid", "display_name": "이영희" },
+      "transferred_at": "2026-04-05T12:00:00Z",
+      "note": "장기 출장으로 인해 이양합니다."
+    }
+  ]
+}
+```
+
+---
+
+### 13-8. 내 편집 권한 조회
+
+```
+GET /maps/:mapId/my-permissions
+```
+
+> 클라이언트는 이 응답을 캐시하여 편집 가능 노드에만 편집 UI를 표시한다.
+
+**Response `200 OK`**
+```json
+{
+  "role": "editor",
+  "scope_type": "level",
+  "scope_level": 3,
+  "scope_node_id": null,
+  "can_invite": false,
+  "can_transfer_ownership": false,
+  "can_modify_others_nodes": false
+}
+```
+
+---
+
+## 14. Collaboration Chat / Node Thread / AI Assist (V2~V3)
+
+> 상세 엔드포인트는 `docs/05-implementation/collaboration-api.md`를 기준으로 한다.
+
+### GET /maps/{mapId}/chat/messages
+최근 map-room chat 메시지 조회
+
+**Query**
+- `limit=50` (기본 30, 최대 100)
+- `beforeMessageId=uuid` (페이징)
+- `includeTranslations=true`
+
+### POST /maps/{mapId}/chat/messages
+REST fallback 또는 초기 송신용 메시지 저장
+
+**Request Body**
+```json
+{
+  "clientMsgId": "cmsg_1712300000000_001",
+  "text": "이 노드 구조 다시 봐주세요",
+  "nodeId": "uuid-node-optional"
+}
+```
+
+### GET /nodes/{nodeId}/threads/messages
+특정 node thread 메시지 조회
+
+### POST /nodes/{nodeId}/threads/messages
+특정 node에 연결된 댓글/대화 생성
+
+### POST /nodes/{nodeId}/threads/ai/summarize
+thread 요약 preview 생성
+
+### POST /nodes/{nodeId}/threads/ai/tasks
+thread action item 추출 preview 생성
+
+### POST /nodes/{nodeId}/threads/ai/task-nodes
+승인된 action item을 child node 생성 preview 또는 apply
+
+**Request Body**
+```json
+{
+  "mode": "preview",
+  "messageIds": ["uuid-1", "uuid-2"],
+  "approvedTaskIndexes": [0, 2]
+}
+```
+
+> `mode=preview`가 기본이며, 실제 문서 반영은 명시적 승인 요청에서만 수행한다.
+
+### WebSocket 추가 이벤트
+
+| 방향 | 이벤트 | 설명 |
+|------|--------|------|
+| C→S | `chat:message:send` | map-room / node thread 메시지 송신 |
+| S→C | `chat:message` | 원문 메시지 수신 |
+| S→C | `chat:translation:ready` | targetLang 번역 결과 수신 |
+| S→C | `node:thread:updated` | 댓글 수 / 최신 시각 갱신 |
+| C→S | `node:thread:ai:run` | AI preview 요청 |
+| S→C | `node:thread:ai:preview` | AI 요약 / 작업 후보 preview |
 
 ## 공통 에러 응답
 

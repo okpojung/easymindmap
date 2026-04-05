@@ -74,6 +74,31 @@ type MapObject = {
 
 ---
 
+---
+
+## [v3.3 추가] 협업맵 관련 필드
+
+| 필드 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `is_collaborative` | boolean | false | 협업맵 여부. active editor ≥ 1명이면 true. |
+| `collab_owner_id` | string (UUID) | null | 현재 creator userId. 소유권 이양 시 변경. |
+
+> 협업맵 상세: `docs/04-extensions/collaboration-and-concurrency-strategy.md`
+
+```typescript
+// MapObject에 협업 필드 추가 (v3.3)
+type MapObject = {
+  // ... 기존 필드 ...
+
+  // 협업맵 설정 (V3.3 신규)
+  // DB 컬럼: maps.is_collaborative BOOLEAN, maps.collab_owner_id UUID
+  isCollaborative: boolean;          // 협업맵 여부 (active editor ≥ 1명이면 true)
+  collabOwnerId: string | null;      // 현재 creator userId. 소유권 이양 시 변경됨.
+};
+```
+
+---
+
 ## UserObject
 
 ```typescript

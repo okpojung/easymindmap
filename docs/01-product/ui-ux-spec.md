@@ -192,7 +192,7 @@
 
 선택된 노드/브랜치 속성 편집 (선택 기반 dynamic panel)
 
-탭 구조: Style / Layout / Content / Note · Tag / AI / Translation(V2~)
+탭 구조: Style / Layout / Content / Note · Tag / AI / Translation(V2~) / Collaboration(V2~)
 
 ```
 [Node Properties]
@@ -213,9 +213,45 @@
 태그: [Tag1] [Tag2] [+ 추가]
 ```
 
+
+#### 4.5-1 Collaboration Panel (V2~)
+
+협업 채팅은 **기본적으로 닫힌 우측 보조 패널**로 제공한다.  
+상시 노출되는 메신저가 아니라, 편집 집중도를 해치지 않는 **라이브 협업 패널**로 취급한다.
+
+```
+[Collaboration]
+[참여자 3]  [Map Chat] [Node Thread]
+────────────────────────────────
+● 김철수   ● Jane   ● Sato
+
+[Map Chat]
+- 최근 메시지 30~50개 유지
+- 패널이 닫혀 있을 때는 상단에 작은 점만 표시
+- unread count / read receipt 없음
+
+[Node Thread]
+[Node: 결제 API]
+💬 댓글(3)
+- 해당 node 문맥의 대화만 표시
+- 메시지 클릭 시 canvas가 해당 node로 zoom/focus
+- node에 💬 아이콘 + 댓글 수 badge 표시
+
+[AI 요약] [작업 추출] [작업 노드 생성]
+→ AI 결과는 즉시 반영하지 않고 preview panel에 먼저 표시
+```
+
+**UX 규칙**
+- 채팅 패널 기본 상태: 닫힘
+- 패널이 열려 있으면 새 메시지 시 하이라이트 또는 자동 스크롤
+- 패널이 닫혀 있으면 toolbar / side toggle에 작은 점(dot)만 표시
+- 네트워크 재연결 시 최근 20~50개 메시지 재수신
+- Node Thread는 일반 Map Chat과 분리된 탭/뷰로 제공
+- AI 버튼은 Node Thread 문맥에서만 활성화되며, 다중 사용자 협업 중에도 **preview 생성까지만 허용**하고 문서 반영은 명시적 승인 시에만 수행
+
 #### 4.6 Bottom Status Bar
 
-표시: zoom % / autosave 상태 / collaborator 수(V1~) / 현재 layout type / 커서 좌표
+표시: zoom % / autosave 상태 / collaborator 수(V1~) / 현재 layout type / 커서 좌표 / 새 메시지 dot 상태(V2~)
 
 #### 4.7 노드 컨텍스트 메뉴 (우클릭)
 
@@ -231,7 +267,7 @@
 이 노드를 화면 중앙으로  (Ctrl+Enter)
 이 노드부터 보기 (Focus) (Alt+F)
 ────────────────────────────────
-레이아웃 변경 ▶ / 태그 추가 / 링크 추가
+레이아웃 변경 ▶ / 태그 추가 / 링크 추가 / 노드 토론 열기
 ────────────────────────────────
 노드 삭제 (Delete)
 ```

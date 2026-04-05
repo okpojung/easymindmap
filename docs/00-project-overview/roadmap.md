@@ -12,8 +12,8 @@
 MVP   ──── 편집기 코어 / Kanban / 자동저장 / AI 생성 / Export
 V1    ──── 협업 / 공유 / 버전 히스토리 / Diff Viewer
 V1.5  ──── AI 실행형 절차 (AI Executable Workflow)
-V2    ──── 다국어 자동 번역 (DeepL + LLM)
-V3    ──── 대시보드 맵 / 라이브 데이터 노드
+V2    ──── 다국어 자동 번역 / 실시간 협업 채팅 번역
+V3    ──── Node Thread / AI 댓글 요약·작업 생성 / 대시보드 맵
 ```
 
 ---
@@ -169,6 +169,9 @@ Phase 2 (V2+): CRDT
 | 원문 토글 | 번역본 ↔ 원문 전환 (TRANS-05) |
 | 배치 번역 | 맵 오픈 시 미캐시 노드 일괄 번역 (TRANS-06) |
 | 번역 Broadcast | 완료 시 WebSocket으로 전체 열람자 업데이트 (TRANS-07) |
+| 라이브 협업 채팅 | 현재 접속 협업자끼리만 사용하는 맵 단위 채팅 패널 (COLLAB-10) |
+| 채팅 번역 | 개인 ON/OFF + 원문/번역 동시 표시 + 언어별 캐시 fan-out (COLLAB-11 / TRANS-08~11) |
+| Light Notification | unread/read receipt 대신 새 메시지 점 표시 + 재접속 시 최근 N개 복구 |
 
 ### 번역 엔진
 
@@ -196,6 +199,9 @@ easymindmap: AI mindmap + multilingual collaboration
 
 | 기능 | 설명 |
 |------|------|
+| Node Thread | 특정 node에 연결된 댓글/대화 스레드 (COLLAB-12) |
+| AI 댓글 요약 | thread 논점/결정/미결정 사항 요약 (COLLAB-13 / AI-03) |
+| AI 작업 추출/노드 생성 | action item 후보 추출 후 승인 기반 노드 생성 (COLLAB-14~15 / AI-04~05) |
 | 대시보드 모드 | 맵을 Read-only 대시보드로 전환 (DASH-01) |
 | 자동 리프레시 | 설정 주기로 화면 자동 갱신 (DASH-02) |
 | 변경 하이라이트 | 값 변경 시 flash animation (DASH-03) |

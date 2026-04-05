@@ -97,6 +97,8 @@ Retry-After: 60
 | `editor` (workspace member) | ✅ | ✅ | ✅ | ✅ |
 | `viewer` (workspace member) | ✅ | ❌ | ✅ | ❌ |
 | `public_read` (publish URL) | ✅ | ❌ | ✅ | ❌ |
+| `collab_creator` | ✅ | ✅ (full scope) | ✅ | ✅ (full scope) |
+| `collab_editor` | ✅ (scope 내) | ✅ (scope 내 본인 노드) | ✅ | ✅ (scope 내) |
 | 비인증 (일반) | ❌ | ❌ | ❌ | ❌ |
 
 ---
@@ -1132,6 +1134,68 @@ step 상태 변경
 ```
 
 ---
+
+
+## 14. Collaboration Chat / Node Thread / AI Assist (V2~V3)
+
+> 상세 엔드포인트는 `docs/05-implementation/collaboration-api.md`를 기준으로 한다.
+
+### GET /maps/{mapId}/chat/messages
+최근 map-room chat 메시지 조회
+
+**Query**
+- `limit=50` (기본 30, 최대 100)
+- `beforeMessageId=uuid` (페이징)
+- `includeTranslations=true`
+
+### POST /maps/{mapId}/chat/messages
+REST fallback 또는 초기 송신용 메시지 저장
+
+**Request Body**
+```json
+{
+  "clientMsgId": "cmsg_1712300000000_001",
+  "text": "이 노드 구조 다시 봐주세요",
+  "nodeId": "uuid-node-optional"
+}
+```
+
+### GET /nodes/{nodeId}/threads/messages
+특정 node thread 메시지 조회
+
+### POST /nodes/{nodeId}/threads/messages
+특정 node에 연결된 댓글/대화 생성
+
+### POST /nodes/{nodeId}/threads/ai/summarize
+thread 요약 preview 생성
+
+### POST /nodes/{nodeId}/threads/ai/tasks
+thread action item 추출 preview 생성
+
+### POST /nodes/{nodeId}/threads/ai/task-nodes
+승인된 action item을 child node 생성 preview 또는 apply
+
+**Request Body**
+```json
+{
+  "mode": "preview",
+  "messageIds": ["uuid-1", "uuid-2"],
+  "approvedTaskIndexes": [0, 2]
+}
+```
+
+> `mode=preview`가 기본이며, 실제 문서 반영은 명시적 승인 요청에서만 수행한다.
+
+### WebSocket 추가 이벤트
+
+| 방향 | 이벤트 | 설명 |
+|------|--------|------|
+| C→S | `chat:message:send` | map-room / node thread 메시지 송신 |
+| S→C | `chat:message` | 원문 메시지 수신 |
+| S→C | `chat:translation:ready` | targetLang 번역 결과 수신 |
+| S→C | `node:thread:updated` | 댓글 수 / 최신 시각 갱신 |
+| C→S | `node:thread:ai:run` | AI preview 요청 |
+| S→C | `node:thread:ai:preview` | AI 요약 / 작업 후보 preview |
 
 ## 공통 에러 응답
 

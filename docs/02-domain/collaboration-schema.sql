@@ -164,3 +164,68 @@ CREATE POLICY "collaborators_update" ON public.map_collaborators
     )
     OR auth.uid() = user_id  -- 본인 수락/거절
   );
+
+
+-- ============================================================
+-- F. 실시간 협업 채팅 / Node Thread / AI Preview
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.chat_messages (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id            UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+    node_id           UUID NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
+    user_id           UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    client_msg_id     VARCHAR(80) NOT NULL,
+    text              TEXT NOT NULL,
+    source_lang       VARCHAR(20) NULL,
+    source_text_hash  VARCHAR(128) NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (map_id, user_id, client_msg_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_map_created
+    ON public.chat_messages (map_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_node_created
+    ON public.chat_messages (node_id, created_at DESC)
+    WHERE node_id IS NOT NULL;
+
+COMMENT ON TABLE public.chat_messages IS
+  '맵 단위 실시간 협업 채팅 메시지. node_id가 있으면 node thread 연결 메시지다.';
+
+CREATE TABLE IF NOT EXISTS public.chat_message_translations (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id        UUID NOT NULL REFERENCES public.chat_messages(id) ON DELETE CASCADE,
+    target_lang       VARCHAR(20) NOT NULL,
+    translated_text   TEXT NOT NULL,
+    source_text_hash  VARCHAR(128) NOT NULL,
+    provider          VARCHAR(50) NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (message_id, target_lang)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_message_translations_message_lang
+    ON public.chat_message_translations (message_id, target_lang);
+
+COMMENT ON TABLE public.chat_message_translations IS
+  '채팅 번역 영속 캐시. 수신자별이 아니라 targetLang별 1건 저장 원칙.';
+
+CREATE TABLE IF NOT EXISTS public.node_thread_ai_previews (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id             UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+    node_id            UUID NOT NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
+    requested_by       UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    action_type        VARCHAR(30) NOT NULL
+                      CHECK (action_type IN ('summarize', 'extract_tasks', 'generate_task_nodes')),
+    source_message_ids JSONB NOT NULL DEFAULT '[]',
+    result_json        JSONB NOT NULL,
+    approval_state     VARCHAR(20) NOT NULL DEFAULT 'preview'
+                      CHECK (approval_state IN ('preview', 'approved', 'applied', 'discarded')),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    approved_at        TIMESTAMPTZ NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_thread_ai_previews_node_created
+    ON public.node_thread_ai_previews (node_id, created_at DESC);
+
+COMMENT ON TABLE public.node_thread_ai_previews IS
+  'node thread 기반 AI 요약/작업 추출 preview 저장소. 사용자 승인 후에만 문서 반영.';

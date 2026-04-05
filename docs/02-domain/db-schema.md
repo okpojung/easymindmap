@@ -917,3 +917,76 @@ ORDER BY updated_at DESC;
 - autosave가 patch 기반으로 가더라도,
   실제 내부 처리에서 일부 node upsert 패턴은 여전히 유효하다.
 - 다만 문서상 API 설명은 snapshot 중심보다 patch/version 중심으로 함께 기술하는 것이 정확하다.
+
+
+---
+
+## 17. 협업 채팅 / Node Thread / AI Preview 저장 구조 (V2~V3)
+
+기존 `node_translations`는 **문서 노드 번역**용이다.  
+실시간 협업 채팅과 node thread는 별도의 저장 구조를 둔다.
+
+### 17-1. chat_messages
+
+```sql
+CREATE TABLE public.chat_messages (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id            UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  node_id           UUID REFERENCES public.nodes(id) ON DELETE CASCADE,
+  user_id           UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  client_msg_id     VARCHAR(80) NOT NULL,
+  text              TEXT NOT NULL,
+  source_lang       VARCHAR(20),
+  source_text_hash  VARCHAR(128),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (map_id, user_id, client_msg_id)
+);
+
+CREATE INDEX idx_chat_messages_map_created
+  ON public.chat_messages(map_id, created_at DESC);
+CREATE INDEX idx_chat_messages_node_created
+  ON public.chat_messages(node_id, created_at DESC)
+  WHERE node_id IS NOT NULL;
+```
+
+- `node_id IS NULL` → map-room chat
+- `node_id IS NOT NULL` → node thread 연결 메시지
+- 채팅 메시지는 autosave revision / undo history 대상이 아님
+
+### 17-2. chat_message_translations
+
+```sql
+CREATE TABLE public.chat_message_translations (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  message_id        UUID NOT NULL REFERENCES public.chat_messages(id) ON DELETE CASCADE,
+  target_lang       VARCHAR(20) NOT NULL,
+  translated_text   TEXT NOT NULL,
+  source_text_hash  VARCHAR(128) NOT NULL,
+  provider          VARCHAR(50),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (message_id, target_lang)
+);
+```
+
+- 수신자별 저장이 아니라 **언어별 1건 저장**이 원칙
+- Redis 핫 캐시와 PostgreSQL 영속 캐시를 병행
+
+### 17-3. node_thread_ai_previews
+
+```sql
+CREATE TABLE public.node_thread_ai_previews (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id            UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  node_id           UUID NOT NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
+  requested_by      UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  action_type       VARCHAR(30) NOT NULL CHECK (action_type IN ('summarize', 'extract_tasks', 'generate_task_nodes')),
+  source_message_ids JSONB NOT NULL DEFAULT '[]',
+  result_json       JSONB NOT NULL,
+  approval_state    VARCHAR(20) NOT NULL DEFAULT 'preview' CHECK (approval_state IN ('preview', 'approved', 'applied', 'discarded')),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  approved_at       TIMESTAMPTZ
+);
+```
+
+- AI 결과는 바로 문서에 반영하지 않는다.
+- preview 결과를 저장한 뒤, 사용자 승인 시에만 note 업데이트 또는 child node 생성 patch를 수행한다.

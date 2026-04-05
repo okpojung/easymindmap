@@ -26,6 +26,8 @@
 4. 번역 여부는 3단계 정책(사용자 → 맵 → 노드)으로 결정
 5. 영어는 세계 공용어이므로 기본적으로 번역 생략 대상
 6. 오역 대응을 위해 열람자는 언제든 원문을 확인할 수 있어야 함
+7. **실시간 협업 채팅 번역은 노드 번역과 별도 파이프라인으로 처리**한다.
+8. 채팅 번역은 수신자별 실시간 UI를 제공하되, 내부적으로는 **언어별 캐시(language-group cache)** 를 사용한다.
 
 ### 경쟁사 현황
 
@@ -583,9 +585,75 @@ User C (ja) 화면: 果物, りんご, バナナ, apple
 
 ---
 
-## 12. DB 스키마 변경 사항 (최종)
 
-### 12.1 users 테이블 추가
+## 12. 실시간 협업 채팅 번역 정책 (V2 확장)
+
+실시간 협업 채팅의 번역은 노드 텍스트 번역과 목적이 다르다.
+노드 번역이 **문서 열람 최적화**라면, 채팅 번역은 **현재 접속한 협업자 간 실시간 이해 보조**가 목적이다.
+
+### 12-1. UX 원칙
+
+- 채팅은 현재 접속한 협업자끼리만 사용하는 라이브 패널이다.
+- unread count / read receipt / 메시지 상태 추적은 제공하지 않는다.
+- 개인 설정으로 채팅 번역 ON/OFF 가능.
+- 번역 표시 시에도 **원문 + 번역문**을 함께 보여 오역 대응 가능해야 한다.
+- 같은 언어 사용자는 번역 없이 원문만 본다.
+
+### 12-2. 수신자별 표시, 언어별 캐시
+
+잘못된 접근:
+
+```
+메시지 1개 → 사용자 수만큼 번역 API 호출
+```
+
+권장 구조:
+
+```
+메시지 1개 저장
+  → ko 번역 1개
+  → en 번역 1개
+  → ja 번역 1개
+  → 각 언어 그룹에 fan-out
+```
+
+즉, 외부 번역 호출 단위는 **recipient별**이 아니라 **targetLang별**이어야 한다.
+같은 방에 일본어 사용자가 5명 있어도 `ja` 번역은 1회만 생성/캐시한다.
+
+### 12-3. 언어 감지 운영 정책
+
+짧은 채팅은 언어 감지 오탐이 높으므로 노드 번역보다 보수적으로 처리한다.
+
+- 사용자 프로필의 기본 작성 언어를 1차 힌트로 사용
+- 3자 이하 혹은 `ok`, `네`, `ㅇㅋ` 같은 초단문은 감지 생략 가능
+- 길이가 일정 이상일 때만 자동 감지 수행
+- 감지 신뢰도가 낮으면 원문만 우선 표시
+- 동일 언어 또는 번역 OFF 사용자는 worker enqueue 자체를 생략
+
+### 12-4. 실시간 처리 흐름
+
+```
+chat:message:send
+  → chat_messages 원문 저장
+  → targetLang별 번역 필요 여부 판정
+  → BullMQ translate-chat job enqueue
+  → chat:translation:ready 이벤트 broadcast
+  → 각 클라이언트가 원문+번역문 동시 렌더링
+```
+
+### 12-5. 캐시 키 예시
+
+```text
+chat:translation:{messageId}:{targetLang}
+```
+
+- Redis: 짧은 TTL 기반 핫 캐시
+- PostgreSQL: 재접속 / 최근 메시지 복구용 영속 캐시
+- message 원문이 수정되면 `source_text_hash` 기준으로 무효화
+
+## 13. DB 스키마 변경 사항 (최종)
+
+### 13.1 users 테이블 추가
 
 ```sql
 ALTER TABLE public.users
@@ -598,7 +666,7 @@ ALTER TABLE public.users
            OR secondary_languages = '{}');
 ```
 
-### 12.2 maps 테이블 추가
+### 13.2 maps 테이블 추가
 
 ```sql
 ALTER TABLE public.maps
@@ -610,7 +678,7 @@ COMMENT ON COLUMN public.maps.translation_policy_json
   IS '맵별 번역 정책. NULL이면 사용자 기본 설정 사용. skipLanguages: 번역 생략 언어 배열, skipEnglish: 영어 번역 생략 여부';
 ```
 
-### 12.3 nodes 테이블 추가
+### 13.3 nodes 테이블 추가
 
 ```sql
 ALTER TABLE public.nodes
@@ -630,7 +698,7 @@ CREATE INDEX IF NOT EXISTS idx_nodes_translation_mode
   WHERE translation_mode = 'skip';
 ```
 
-### 12.4 node_translations 테이블 (기존 유지)
+### 13.4 node_translations 테이블 (기존 유지)
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.node_translations (
@@ -648,9 +716,9 @@ CREATE TABLE IF NOT EXISTS public.node_translations (
 
 ---
 
-## 13. 설정 화면 UX
+## 14. 설정 화면 UX
 
-### 13.1 사용자 설정 — 언어 설정
+### 14.1 사용자 설정 — 언어 설정
 
 ```
 설정 > 언어 설정
@@ -713,7 +781,7 @@ CREATE TABLE IF NOT EXISTS public.node_translations (
 
 ---
 
-## 14. 구현 순서 (최종)
+## 15. 구현 순서 (최종)
 
 | Step | 작업 | 관련 파일 |
 |------|------|---------|
@@ -735,7 +803,7 @@ CREATE TABLE IF NOT EXISTS public.node_translations (
 
 ---
 
-## 15. 난이도 평가
+## 16. 난이도 평가
 
 | 항목 | 난이도 | 비고 |
 |------|--------|------|
@@ -754,7 +822,7 @@ CREATE TABLE IF NOT EXISTS public.node_translations (
 
 ---
 
-## 16. 전략적 가치
+## 17. 전략적 가치
 
 ```
 XMind, MindMeister, Miro → 다국어 번역 없음

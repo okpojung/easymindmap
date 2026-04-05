@@ -57,6 +57,24 @@
 - remote patch ordering
 - Yjs / CRDT adapter
 
+
+**Phase 2.5 (V2): Live Collaboration Chat**
+- map-room chat (현재 접속 협업자 간 라이브 대화)
+- light notification (dot only, unread 없음)
+- chat translation with language-group cache
+- reconnect 시 최근 메시지 복구
+
+**Phase 3 (V3): Node Thread + AI Assist**
+- node-linked thread (`nodeId` 기반)
+- 메시지 클릭 시 node focus / zoom
+- AI thread summary / task extraction preview
+- 승인 기반 task node 생성
+
+> **중요 원칙**
+> - 채팅/댓글/AI preview 결과는 문서 편집 파이프라인과 분리한다.
+> - Undo/Redo 및 autosave revision history에는 포함하지 않는다.
+
+
 ---
 
 ## 2. WebSocket 이벤트 전체 목록
@@ -72,6 +90,9 @@
 | `selection:update` | `{ nodeIds: string[] }` |
 | `node:editing:start` | `{ nodeId }` |
 | `node:editing:end` | `{ nodeId }` |
+| `chat:message:send` | `{ mapId, clientMsgId, text, nodeId? }` |
+| `chat:panel:open` | `{ mapId, lastSeenMessageId? }` |
+| `node:thread:ai:run` | `{ mapId, nodeId, action: 'summarize' | 'extract_tasks' | 'generate_task_nodes_preview' }` |
 
 ### 서버 → 클라이언트
 
@@ -86,11 +107,44 @@
 | `node:editing:started` | `{ nodeId, userId }` | Redis Pub/Sub |
 | `node:editing:ended` | `{ nodeId, userId }` | Redis Pub/Sub |
 | `translation:ready` | `{ nodeId, targetLang, translatedText, textHash }` | Redis Pub/Sub |
+| `chat:message` | `{ messageId, mapId, userId, text, nodeId?, createdAt }` | Redis Pub/Sub |
+| `chat:translation:ready` | `{ messageId, targetLang, translatedText, sourceTextHash }` | Redis Pub/Sub |
+| `node:thread:updated` | `{ nodeId, messageCount, lastMessageAt }` | Redis Pub/Sub |
+| `node:thread:ai:preview` | `{ nodeId, action, summary?, tasks? }` | Redis Pub/Sub |
 | `dashboard:refresh` | `{ changedNodes: [{id, text, updatedAt}] }` (V3) | Redis Pub/Sub |
 | `export:completed` | `{ jobId, downloadUrl }` | Redis Pub/Sub |
 | `publish:completed` | `{ mapId, publishUrl }` | Redis Pub/Sub |
 
 ---
+
+
+## 2-1. 실시간 협업 채팅 / Node Thread 확장
+
+### 채널 설계
+
+| 채널 | 용도 |
+|------|------|
+| `chat:{mapId}` | 맵 전체 채팅 메시지 브로드캐스트 |
+| `thread:{mapId}:{nodeId}` | 특정 node thread 갱신 이벤트 |
+| `chat-translation:{mapId}` | 채팅 번역 완료 이벤트 |
+| `thread-ai:{mapId}:{nodeId}` | AI preview 결과 전달 |
+
+### 이벤트 경계
+
+- `map:patch` 는 문서 구조 변경 이벤트다.
+- `chat:*` 는 협업 대화 이벤트다.
+- `node:thread:*` 는 문맥형 토론 이벤트다.
+- `node:thread:ai:*` 는 AI preview 결과 이벤트다.
+
+이 네 계층은 같은 WS Gateway를 쓰더라도 **이벤트 버스와 저장소, Undo/Redo 처리 경계가 다르다**.
+
+### 채팅 메시지 처리 원칙
+
+1. 원문 메시지는 무조건 1회 저장
+2. 번역은 targetLang 단위로 파생 레코드/캐시 생성
+3. 채팅 패널이 닫혀 있으면 dot 표시만 갱신
+4. 재접속 시 최근 30~50개 메시지 재조회
+5. nodeId가 있는 메시지는 node thread와 map chat 양쪽 컨텍스트에서 조회 가능
 
 ## 3. 아키텍처
 
@@ -106,6 +160,8 @@ WS Gateway (room 관리)
     │
     ├── [Redis Pub/Sub] 구독
     │   channel: map:{mapId}
+    │   channel: chat:{mapId}
+    │   channel: thread:{mapId}:{nodeId}
     │   channel: dashboard:{mapId}
     │
     ▼

@@ -13,16 +13,6 @@
 
 ---
 
-### ✅ 핵심 결론
-
-| | |
-|---|---|
-| ❌ | `title`은 map의 타이틀이 아님 |
-| ❌ | `title`은 따로 둘 필요 없음 (삭제 추천) |
-| ✅ | node는 `content` 하나만 가지는 구조가 가장 좋음 |
-
----
-
 ### 1. 기능 목적
 
 * 노드의 **의미적 콘텐츠(텍스트, 코드, 설명)**를 저장하고 표현하는 핵심 기능
@@ -71,7 +61,6 @@
 
 ```json
 {
-  "title": "Apache 설치",
   "content": "## 설치\n\n설치 명령은 아래와 같다.",
   "content_type": "markdown",
   "source": "user",
@@ -83,7 +72,6 @@
 
 ```json
 {
-  "title": "설치 명령어",
   "content": "sudo apt install apache2 -y",
   "content_type": "code",
   "source": "ai",
@@ -162,7 +150,6 @@ source:
 
 #### 6.7 길이 제한
 
-* title: 200자
 * content: 10,000자
 * note: 50,000자
 
@@ -207,7 +194,7 @@ Edge Case 기준은 프로젝트 규칙을 따른다.
 
 #### 8.1 빈 값
 
-* content 없음 → title만 허용
+* content 없음 → 저장 금지
 * 공백만 입력 → 저장 금지
 
 #### 8.2 최대 길이 초과

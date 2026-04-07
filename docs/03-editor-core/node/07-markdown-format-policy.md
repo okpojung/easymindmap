@@ -1,8 +1,4 @@
 # 07. Markdown Format Policy
-# 📄 07-markdown-format-policy.md (최종본 v1.0)
-
-````md
-# 07. Markdown Format Policy
 - 문서 버전: v1.0
 - 작성일: 2026-04-08
 

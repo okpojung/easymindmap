@@ -105,7 +105,199 @@ Level < L 인 가장 가까운 Node를 Parent로 설정
 
 ---
 
-## 4. Node Content 수집 규칙 (Content Aggregation)
+## 4. Markdown 해석 유형 정의 (Document vs Outline)
+
+Markdown은 동일한 문법을 사용하더라도 작성 목적에 따라 두 가지 유형으로 구분된다.
+
+- Document Markdown (문서형)
+- Outline Markdown (아웃라인형)
+
+이 구분은 Import 시 Node Tree 생성 방식에 직접적인 영향을 준다.
+
+---
+
+### 4.1 Document Markdown (문서형)
+
+#### 정의
+
+- 설명, 서술, 전달을 목적으로 작성된 Markdown
+- 사람이 읽기 위한 문서 구조가 중심
+
+#### 주요 특징
+
+- Heading은 문서의 "장/절 구분" 역할
+- Paragraph(본문 설명)가 핵심 콘텐츠
+- List는 구조가 아닌 "본문 정리용"이 대부분
+- Code Block, Table, Quote 등이 자주 포함됨
+
+#### 예시
+
+```md
+## Apache 설치
+Apache는 대표적인 웹서버이다.
+
+- apt update
+- apt install apache2
+```
+
+#### Import 규칙
+
+- Heading → Node 생성
+- Paragraph / List / Code / Table → 해당 Node의 Content로 유지
+- List는 기본적으로 Node로 변환하지 않는다
+
+---
+
+### 4.2 Outline Markdown (아웃라인형)
+
+#### 정의
+
+- 항목 정리, 구조화, 업무 분해를 목적으로 작성된 Markdown
+- 계층 구조 표현이 중심
+
+#### 주요 특징
+
+- List 자체가 구조(Tree)를 표현
+- Nested List가 계층 구조를 의미
+- 문단 설명보다 항목명이 중요
+- 각 항목이 Node로 변환되기 적합
+
+#### 예시
+
+```md
+# 서버 구축
+- Apache 설치
+  - Ubuntu
+  - CentOS
+- SSL 적용
+```
+
+#### Import 규칙
+
+- Heading → 상위 Node
+- List Item → 자식 Node
+- Nested List → 하위 Tree로 재귀 생성
+
+---
+
+### 4.3 해석 모드 (Import Mode)
+
+Markdown Import 시 다음 모드를 지원한다.
+
+| Mode     | 설명                          |
+| -------- | ----------------------------- |
+| document | 문서형 해석 (기본값)           |
+| outline  | 리스트를 구조로 해석           |
+| hybrid   | Heading + 일부 리스트만 구조화 |
+
+---
+
+### 4.4 기본 정책
+
+- 기본 Import 모드는 `document`로 한다.
+- 사용자가 명시적으로 선택한 경우에만 outline 모드를 적용한다.
+- 자동 추론에 의해 모드를 변경하지 않는다.
+
+---
+
+## 5. Heading 기호 (`#`) 정의
+
+### 5.1 기본 정의
+
+- `#`는 Markdown에서 Heading(제목)을 나타내는 기호이다.
+- Heading은 Node Tree 구조를 생성하는 기준이 된다.
+
+---
+
+### 5.2 Heading 인식 조건
+
+다음 조건을 모두 만족할 때만 Heading으로 인정한다.
+
+1. 라인의 시작 위치에서 등장해야 한다.
+2. `#` 개수는 1개 이상 6개 이하만 허용한다.
+3. `#` 뒤에는 텍스트가 존재해야 한다.
+4. `#` 뒤 공백은 선택적으로 허용한다.
+
+허용 예:
+
+```md
+# 제목
+##기능 정의
+### 기능 상세
+```
+
+---
+
+### 5.3 Heading Level 정의
+
+| 기호   | Level | 의미          |
+| ------ | ----- | ------------- |
+| #      | 1     | Root 또는 최상위 |
+| ##     | 2     | 1단계 하위     |
+| ###    | 3     | 2단계 하위     |
+| ...    | ...   | ...           |
+| ###### | 6     | 최대 depth    |
+
+---
+
+### 5.4 Heading 변환 규칙
+
+- Heading은 Node로 변환된다.
+- Level 차이에 따라 Parent-Child 관계가 결정된다.
+- Level이 2 → 4로 점프하는 경우:
+  → 중간 Level은 자동 보정하지 않고 가장 가까운 상위 Node에 연결한다.
+
+---
+
+### 5.5 Heading이 아닌 `#` 처리
+
+다음 경우의 `#`는 Heading으로 해석하지 않는다.
+
+| 경우 | 예시 | 처리 |
+|---|---|---|
+| 문장 중간 | `가격은 #1 정책을 따른다` | 일반 Content |
+| 프로그래밍 언어 | `C#` | 일반 Content |
+| 태그/해시 | `#todo` `#중요` | 일반 Content |
+| escape 문자 | `\# 제목 아님` | 일반 Content |
+| 코드 블록 내부 | ` ```bash\n# 주석 ``` ` | 일반 Content |
+| 인라인 코드 | `` `# not heading` `` | 일반 Content |
+
+---
+
+### 5.6 Literal Sharp (`#` 문자) 표현
+
+문서 작성자가 `#`를 문자 그대로 사용하고 싶을 경우 허용 방식:
+
+- `\#`
+- 인라인 코드: `` `#` ``
+- 코드 블록 내부 사용
+
+> 권장: Heading으로 오해될 수 있는 경우 반드시 escape 사용
+
+---
+
+### 5.7 Heading 판정 우선순위
+
+1. Code Block 내부 → 무조건 Heading 제외
+2. Inline Code 내부 → 제외
+3. Escape(`\#`) → 제외
+4. 라인 시작 여부 확인
+5. Heading 규칙 적용
+
+---
+
+### 5.8 Edge Case 처리
+
+| Case | 입력 예시 | 처리 |
+|---|---|---|
+| 빈 Heading | `##` | 무시 (Node 생성 안함) |
+| 공백만 존재 | `##    ` | 무시 |
+| 잘못된 Level Jump | `# A` → `#### B` | B는 A의 child로 처리 |
+| Heading + List 혼합 | `## 기능\n- 항목` | Heading Node 생성 후 List는 규칙에 따라 처리 |
+
+---
+
+## 6. Node Content 수집 규칙 (Content Aggregation)
 
 ### 4.1 핵심 규칙
 
@@ -155,7 +347,7 @@ Content:
 
 ---
 
-## 5. 공백 및 포맷 처리 규칙
+## 7. 공백 및 포맷 처리 규칙
 
 ### 5.1 Heading 공백 허용
 
@@ -185,7 +377,7 @@ Content:
 
 ---
 
-## 6. 리스트 처리 규칙
+## 8. 리스트 처리 규칙
 
 ```md
 - 항목1
@@ -202,7 +394,7 @@ Content:
 
 ---
 
-## 7. 코드 블록 처리
+## 9. 코드 블록 처리
 
 ````md
 ```bash
@@ -220,7 +412,7 @@ apt install apache2
 
 ---
 
-## 8. 스타일 관련 정책 (중요)
+## 10. 스타일 관련 정책 (중요)
 
 ### 8.1 Markdown 스타일 무시
 
@@ -239,7 +431,7 @@ apt install apache2
 
 ---
 
-## 9. 예외 / 경계 (Edge Case)
+## 11. 예외 / 경계 (Edge Case)
 
 (※ 아래 기준은 별도 문서와 동일 정책 적용) :contentReference[oaicite:0]{index=0}
 
@@ -312,7 +504,7 @@ ROOT
 
 ---
 
-## 10. Import 처리 흐름
+## 12. Import 처리 흐름
 
 ```pseudo
 Markdown 입력
@@ -325,7 +517,7 @@ Markdown 입력
 
 ---
 
-## 11. Export 정책
+## 13. Export 정책
 
 ### 11.1 Simple Mode
 
@@ -341,7 +533,7 @@ Markdown 입력
 
 ---
 
-## 12. 확장 기능 (Future)
+## 14. 확장 기능 (Future)
 
 * Markdown ↔ Mindmap Round-trip 지원
 * AI 자동 생성 지원
@@ -349,7 +541,7 @@ Markdown 입력
 
 ---
 
-## 13. 연관 기능
+## 15. 연관 기능
 
 * NODE_CONTENT
 * NODE_STYLE

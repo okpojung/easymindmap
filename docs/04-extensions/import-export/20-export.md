@@ -56,7 +56,19 @@ CREATE TABLE public.exports (
 );
 ```
 
-#### 4.2 Markdown 변환 규칙
+#### 4.2 Markdown exportMode — Basic vs Extended
+
+| 항목 | Basic (기본) | Extended (확장) |
+|---|---|---|
+| **대상** | 범용 Markdown 편집기, Notion, VS Code | Obsidian, 팀 보관, 버전 관리 |
+| **YAML Front Matter** | ❌ 없음 | ✅ 맵 전체 메타 포함 |
+| **포함 메타** | 노드 텍스트·태그·메모·링크 (옵션) | title, map_id, owner, layout_type, theme, node_count, tags, created_at, updated_at |
+| **API 파라미터** | `exportMode: "basic"` (기본값) | `exportMode: "extended"` |
+| **Import 역호환** | — | Extended 파일 Import 시 Front Matter로 맵 메타 자동 복원 |
+
+---
+
+##### 4.2-A. Basic 포맷 — 노드 트리 변환 규칙
 
 ```text
 Root 노드 → # 제목
@@ -64,7 +76,7 @@ Root 노드 → # 제목
     Depth 2  → ### 제목
       Depth 3  → #### 제목 (이하 동일)
   노드 note → 해당 헤딩 아래 paragraph로 포함
-  태그     → 헤딩 옆 `[tag]` 형태로 inline 표기
+  태그      → 헤딩 옆 `[tag]` 형태로 inline 표기
 ```
 
 예시 출력:
@@ -80,6 +92,61 @@ Root 노드 → # 제목
 ### 방화벽 설정
 ### SSH 설정
 ```
+
+---
+
+##### 4.2-B. Extended 포맷 — YAML Front Matter + 노드 트리
+
+YAML Front Matter에 **맵 메타 정보 전체**를 포함한다.
+
+**포함되는 맵 메타 필드**
+
+| 필드 | 출처 | 설명 |
+|---|---|---|
+| `title` | `maps.title` | 맵 제목 |
+| `map_id` | `maps.id` | 맵 UUID |
+| `owner` | `users.display_name` | 맵 소유자(creator) 이름 |
+| `layout_type` | `maps.layout_type` | 레이아웃 종류 (`mindmap` \| `kanban`) |
+| `theme` | `maps.theme` | 적용 테마 이름 |
+| `node_count` | 집계 | 전체 노드 수 |
+| `tags` | `maps.tags` | 맵 단위 태그 목록 |
+| `created_at` | `maps.created_at` | 맵 최초 생성 일시 (ISO 8601) |
+| `updated_at` | `maps.updated_at` | 맵 최종 수정 일시 (ISO 8601) |
+| `export_mode` | 고정값 | `"extended"` |
+| `easymindmap_version` | 서버 버전 | 내보내기 시 앱 버전 |
+
+예시 출력:
+
+```markdown
+---
+title: "AI 개념 정리"
+map_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+owner: "홍길동"
+layout_type: "mindmap"
+theme: "default"
+node_count: 42
+tags:
+  - AI
+  - 연구
+created_at: "2026-04-01T09:00:00Z"
+updated_at: "2026-04-16T12:30:00Z"
+export_mode: "extended"
+easymindmap_version: "1.2.0"
+---
+
+# AI 개념 정리
+
+## Machine Learning
+### Supervised Learning
+### Unsupervised Learning
+
+## Deep Learning
+### CNN
+### RNN
+```
+
+> **Obsidian 호환**: YAML Front Matter는 Obsidian Properties 패널에서 자동 인식됨.  
+> **Import 역호환**: Extended 포맷 파일을 Import 시 Front Matter를 파싱하여 맵 메타 자동 복원 가능 (IMPORT-01 연동).
 
 #### 4.3 Standalone HTML 구조
 
@@ -102,7 +169,17 @@ Root 노드 → # 제목
 #### 5.2 시스템 처리 흐름
 
 ```
-POST /maps/{mapId}/export { format: 'markdown' | 'html' }
+POST /maps/{mapId}/export {
+  format: 'markdown' | 'html',
+  exportMode: 'basic' | 'extended',   // Markdown 전용, 기본값: 'basic'
+  includeTags: true | false,           // 기본값: true
+  includeNotes: true | false,          // 기본값: true
+  includeLinks: true | false,          // 기본값: true
+  includeCollapsed: true | false,      // 기본값: true
+  imageHandling: 'omit' | 'alt-text' | 'link',  // Markdown 기본값: 'omit'
+  scope: 'full' | 'subtree',          // 기본값: 'full'
+  rootNodeId: UUID | null              // scope='subtree'일 때 기준 노드
+}
     │
     ▼
 exports INSERT (status: pending)
@@ -167,7 +244,7 @@ GET /exports/{exportId}/download → Signed URL 반환 → 파일 다운로드
 
 ### 10. API 영향
 
-* `POST /maps/{mapId}/export` — 내보내기 요청
+* `POST /maps/{mapId}/export` — 내보내기 요청 (`exportMode: 'basic' | 'extended'` 파라미터 포함)
 * `GET /exports/{exportId}` — 작업 상태 조회
 * `GET /exports/{exportId}/download` — Signed URL 발급
 
@@ -183,10 +260,11 @@ GET /exports/{exportId}/download → Signed URL 반환 → 파일 다운로드
 ### 12. 구현 우선순위
 
 #### MVP
-* EXPORT-01 Markdown 내보내기 (즉시 방식, ≤ 200 nodes)
+* EXPORT-01 Markdown Basic 내보내기 (즉시 방식, ≤ 200 nodes)
 * EXPORT-02 HTML 내보내기 (즉시 방식)
 
 #### 2단계
+* EXPORT-01E Markdown Extended 내보내기 (YAML Front Matter + 맵 메타 포함)
 * Background Job 패턴 (대형 맵 지원)
 * 서브트리 내보내기
 * Supabase Storage 보관 + Signed URL 다운로드

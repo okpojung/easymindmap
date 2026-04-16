@@ -474,3 +474,313 @@ CONSTRAINT chk_nodes_kanban_depth
 * WBS 연계 레이아웃
 
 ---
+
+## 15. 레이아웃 엔진 아키텍처
+
+### 15.1 엔진 구성 요소
+
+Layout Engine은 다음 컴포넌트로 분리된다:
+
+```
+LayoutEngine
+ ├── StrategyResolver      layoutType → Strategy 선택
+ ├── MeasureEngine         노드/subtree 크기 측정 (바텀업)
+ ├── ArrangeEngine         strategy 기반 실제 좌표 배치 (탑다운)
+ ├── CollisionResolver     bounding box 겹침 해소
+ ├── EdgeAnchorResolver    부모/자식 box에서 edge 시작·끝점 계산
+ └── BoundsCalculator      전체/부분 bounds 계산 (fit screen, minimap, export)
+```
+
+진입점:
+
+```ts
+layoutDocument(document, options)   // 전체 맵 레이아웃
+layoutSubtree(nodeId, document, options)  // 특정 subtree만 재계산
+```
+
+### 15.2 2-Pass 알고리즘
+
+레이아웃 계산은 반드시 2단계를 순서대로 실행한다.
+
+**Pass 1: Measure Pass (바텀업)**
+
+리프 노드부터 루트 방향으로 bounding box를 계산한다. 아직 좌표를 결정하지 않는다.
+
+```ts
+type LayoutBox = {
+  selfWidth: number
+  selfHeight: number
+  subtreeWidth: number
+  subtreeHeight: number
+}
+
+measureNode(node):
+  if node.isLeaf:
+    node.box = { selfWidth: node.width, selfHeight: node.height,
+                 subtreeWidth: node.width, subtreeHeight: node.height }
+    return node.box
+
+  childrenBounds = node.children.map(measureNode)
+  node.box = calculateSubtreeBounds(childrenBounds, layoutType)
+  return node.box
+```
+
+Tree-Right 기준 Measure 공식:
+
+```
+subtreeWidth  = selfWidth + horizontalGap + max(child.subtreeWidth)
+subtreeHeight = max(selfHeight, sum(child.subtreeHeight) + (n-1) * verticalGap)
+```
+
+**Pass 2: Arrange Pass (탑다운)**
+
+루트에서 리프 방향으로 실제 좌표를 배정한다.
+
+```ts
+arrangeNode(node, parentPos, depth):
+  node.computedX = calculateX(node, parentPos, depth)
+  node.computedY = calculateY(node, parentPos, depth)
+  childOffset = calculateChildStartOffset(node)
+  node.children.forEach((child, i) => {
+    arrangeNode(child, { x: node.computedX, y: node.computedY }, depth + 1)
+  })
+```
+
+### 15.3 Layout 옵션 (gap 값)
+
+```ts
+type LayoutOptions = {
+  horizontalGap: number      // Tree 계열 좌우 간격
+  verticalGap: number        // Tree 계열 상하 간격
+  radialLevelGap: number     // Radial 계열 레벨당 반지름 증가량
+  levelGap: number           // Hierarchy 계층 간격
+  siblingGap: number         // Radial 형제 간격
+  subtreePadding: number     // subtree bounding box 여백
+  minNodeGap: number         // 노드 간 최소 거리 (Hard Constraint)
+  processStepGap: number     // ProcessTree step 간격
+  kanbanColumnGap: number    // Kanban 컬럼 간격
+  kanbanCardGap: number      // Kanban 카드 간격
+}
+```
+
+권장 기본값 매핑:
+
+| 레이아웃 계열    | 주요 gap 항목                             |
+| ---------- | ------------------------------------- |
+| Tree       | `horizontalGap`, `verticalGap`        |
+| Radial     | `radialLevelGap`, `siblingGap`        |
+| Hierarchy  | `levelGap`                            |
+| Process    | `processStepGap`                      |
+| Kanban     | `kanbanColumnGap`, `kanbanCardGap`    |
+
+---
+
+## 16. 레이아웃별 좌표 계산
+
+### 16.1 Radial — weight 기반 angle allocation
+
+단순 균등 각도 분배가 아니라 **subtree 크기(weight)** 에 비례하여 각도를 할당한다. 큰 subtree에 더 넓은 각도가 주어지므로 겹침이 줄고 가독성이 높아진다.
+
+weight 계산 (두 방식 중 선택):
+
+```ts
+// 방식 A: subtree 박스 크기 기준
+childWeight = max(child.box.subtreeWidth, child.box.subtreeHeight)
+
+// 방식 B: 자손 수 기준
+childWeight = 1 + descendantCount
+```
+
+angle 할당:
+
+```ts
+totalWeight = sum(children.map(getSubtreeWeight))
+allocatedAngle = totalAngleRange * (childWeight / totalWeight)
+```
+
+각도 범위 정책:
+
+| 타입                    | startAngle | endAngle         |
+| --------------------- | ---------- | ---------------- |
+| `radial-right`        | -60°       | +60°             |
+| `radial-left`         | 120°       | 240°             |
+| `radial-bidirectional` | 좌/우 그룹 분리  | 각 그룹 내 weight 분배 |
+
+Radial 의사코드:
+
+```ts
+function arrangeRadial(node, x, y, startAngle, endAngle, radius, options) {
+  node.computedX = x
+  node.computedY = y
+
+  const children = getVisibleChildren(node)
+  if (children.length === 0) return
+
+  const totalWeight = children.reduce((sum, c) => sum + getSubtreeWeight(c), 0)
+  let cursorAngle = startAngle
+
+  for (const child of children) {
+    const ratio = getSubtreeWeight(child) / totalWeight
+    const childAngleRange = (endAngle - startAngle) * ratio
+    const childMidAngle = cursorAngle + childAngleRange / 2
+
+    // radius = baseRadius + depth * radialLevelGap
+    const childRadius = radius + options.radialLevelGap
+    const childX = x + Math.cos(childMidAngle) * childRadius
+    const childY = y + Math.sin(childMidAngle) * childRadius
+
+    arrangeRadial(child, childX, childY,
+      childMidAngle - childAngleRange / 2,
+      childMidAngle + childAngleRange / 2,
+      childRadius, options)
+
+    cursorAngle += childAngleRange
+  }
+}
+```
+
+### 16.2 Hierarchy — level 기반 그룹화
+
+Tree와 달리 같은 depth의 노드를 같은 축에 정렬하여 조직도 느낌을 강조한다.
+
+```
+1단계: BFS/DFS로 level 계산
+  root.level = 0
+  child.level = parent.level + 1
+
+2단계: 레벨별 그룹화
+  levelMap[0] = [root]
+  levelMap[1] = [A, B, C]
+  levelMap[2] = [A1, A2, B1]
+
+3단계: 레벨 위치 고정 (hierarchy-right 기준)
+  x = level * levelGap
+  y = levelMap[level] 내에서 orderIndex 순서대로 분산
+```
+
+특징: subtree 균형보다 level 기준 시각 정렬이 우선이므로, 부모·자식 간 수직 연결이 들여쓰기처럼 보인다.
+
+### 16.3 ProcessTree — main path + secondary branch
+
+흐름(flow)이 핵심이므로 `orderIndex`의 중요도가 매우 높다.
+
+구조:
+
+```
+메인 path: Step1 → Step2 → Step3  (x축 방향 순차 배치)
+부가 branch: 각 Step의 자식 상세 → 위/아래 보조 subtree로 배치
+```
+
+구현 방식:
+
+```
+1. 최상위 자식(depth 1)을 main path로 선정 → x 방향 순차 좌표 부여
+2. 각 main path 노드의 자식 = secondary branch → 별도 subtree 계산
+3. process-tree-right-b (타임라인형): 같은 y축 선상에 step 나열
+4. process-tree-right-a (버블형): main path 유지, 세부 단계 아래로 확장
+```
+
+### 16.4 Freeform — suggested position + manual priority
+
+Freeform은 "완전 자동배치"가 아니라 **자동 추천 + 수동 우선** 구조이다.
+
+```
+computed position (자동 추천)
+  └─ manualPosition 없으면 사용
+manual position (사용자 지정)
+  └─ manualPosition 있으면 항상 최우선
+```
+
+신규 자식 추가 시 추천 위치 산출:
+
+```
+1. 부모 노드 오른쪽 아래로 기본 offset 적용
+2. 기존 형제의 bounding box와 겹치지 않는 근처 위치 선택
+3. manualPosition 없으면 auto suggested position 유지
+```
+
+Layout Engine의 역할:
+
+* `manualPosition` 존재 시 그대로 사용, 계산 개입 없음
+* edge 연결성(부모↔자식 선) 유지
+* 충돌이 심각한 경우 약한 보정(soft push) 가능
+* layout reset 시 `manualPosition = null` → 자동 재계산
+
+---
+
+## 17. Partial Relayout
+
+전체 맵을 매번 풀 리레이아웃하면 비효율적이다. 변경이 발생한 subtree만 재계산하는 partial relayout 흐름을 사용한다.
+
+**흐름:**
+
+```
+local update → upward propagate → limited arrange
+```
+
+단계별 처리:
+
+```ts
+function relayout(changedNodeId: string): void {
+  // 1. 변경된 노드의 subtree root 탐색
+  const subtreeRoot = findSubtreeRoot(changedNodeId)
+
+  // 2. 해당 subtree만 Measure (바텀업)
+  measureNode(subtreeRoot)
+
+  // 3. 해당 subtree만 Arrange (탑다운)
+  arrangeNode(subtreeRoot, getParentPos(subtreeRoot), getDepth(subtreeRoot))
+
+  // 4. 조상 방향으로 bounding box 업데이트 (upward propagate)
+  propagateBoundsUpward(subtreeRoot)
+}
+```
+
+**Partial relayout가 트리거되는 상황:**
+
+* 노드 텍스트 수정 (크기 변화)
+* 자식 추가 / 삭제
+* 접기 / 펼치기 (collapsed 토글)
+* 다중 가지 추가 (bulk branch insert)
+* Subtree layoutType 변경
+* Freeform drag
+* Kanban 카드 이동 (source column + target column만 재계산)
+
+**다중 가지 추가 시 흐름:**
+
+```
+1. 텍스트 파싱 → 임시 subtree 생성
+2. parent 노드 아래에 삽입
+3. parent subtree만 measure + arrange
+4. 필요 시 조상까지 upward propagate
+```
+
+---
+
+## 18. 에지 렌더링 정책
+
+에지 타입은 루트 노드의 layoutType을 기준으로 결정된다.
+
+```ts
+function getEdgeType(node: Node): EdgeType {
+  const rootLayout = getRootLayoutType(node)
+
+  if (rootLayout.startsWith('radial-')) {
+    return 'curve-line'   // 방사형 → 곡선
+  }
+  return 'tree-line'      // 그 외 → 직각 연결선
+}
+```
+
+레이아웃별 에지 타입 정리:
+
+| 레이아웃 계열            | 에지 타입       | 이유                     |
+| ------------------ | ----------- | ---------------------- |
+| `radial-*`         | `curve-line` | 방사형 배치에서 곡선이 자연스럽다     |
+| `tree-*`           | `tree-line` | 직각 연결선이 계층 구조를 명확히 한다  |
+| `hierarchy-*`      | `tree-line` | 들여쓰기 구조에 직각선 적합        |
+| `process-tree-*`   | `tree-line` | 흐름 강조, 화살표 형태 가능       |
+| `freeform`         | `curve-line` | 자유 배치에서 곡선이 유연하게 연결된다 |
+| `kanban`           | 없음 (엣지 미사용) | 컬럼/카드 구조는 엣지 불필요       |
+
+EdgeAnchorResolver는 각 node box의 시작점(source)과 끝점(target)을 계산하여 EdgeRouter에 전달한다. 에지 경로 계산은 `curve-line`과 `tree-line` 두 가지 라우팅 알고리즘으로 분기된다.

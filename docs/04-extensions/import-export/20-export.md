@@ -190,3 +190,164 @@ GET /exports/{exportId}/download → Signed URL 반환 → 파일 다운로드
 * Background Job 패턴 (대형 맵 지원)
 * 서브트리 내보내기
 * Supabase Storage 보관 + Signed URL 다운로드
+
+---
+
+## Markdown 내보내기 상세 규칙
+
+### tagFormat 옵션
+
+`includeTags: true`일 때 태그를 어떤 형식으로 출력할지 결정한다. 헤더 바로 아래에 삽입된다.
+
+| `tagFormat` 값 | 출력 예시 | 설명 |
+|----------------|-----------|------|
+| `"badge"` (기본값) | `` `#AI` `` `` `#연구` `` | 코드 span으로 감싼 해시태그 배지 |
+| `"hashtag"` | `#AI #연구` | 일반 텍스트 해시태그 |
+| `"list"` | `**태그**: AI, 연구` | 볼드 레이블 + 쉼표 구분 목록 |
+
+```markdown
+<!-- badge (기본값) -->
+## Machine Learning
+`#AI` `#연구`
+
+<!-- hashtag -->
+## Machine Learning
+#AI #연구
+
+<!-- list -->
+## Machine Learning
+**태그**: AI, 연구
+```
+
+### 접힌 노드 (Collapsed) 처리 — Markdown
+
+Markdown Export에서 `includeCollapsed: false`일 때, **collapsed 노드 자체는 출력에 포함**되고 그 하위 subtree(자식 노드)만 제외된다. HTML Export와 반대되는 동작이다.
+
+| `includeCollapsed` | 동작 |
+|--------------------|------|
+| `true` (기본값) | collapsed 노드 및 하위 subtree 전체 포함 |
+| `false` | collapsed 노드 자체는 포함, **하위 자식 노드만 제외** |
+
+예시 (`includeCollapsed: false`):
+```
+AI (root)
+ └ Machine Learning (collapsed: true)
+     └ Supervised      ← 미포함
+     └ Unsupervised    ← 미포함
+```
+출력:
+```markdown
+# AI
+
+## Machine Learning
+<!-- 하위 노드는 접힌 상태로 제외됨 -->
+```
+
+### 노드별 출력 순서
+
+노드 한 개당 Markdown 출력 순서는 다음과 같이 고정된다.
+
+```
+1. 헤더 (#, ##, ...)     ← node.text
+2. 태그 행               ← includeTags: true + node.tags
+3. 배경 이미지 행        ← imageHandling: "alt-text" 또는 "link"
+4. 메모 본문             ← includeNotes: true + node.note
+5. 하이퍼링크 목록       ← includeLinks: true + node.links
+6. (하위 노드 재귀)
+```
+
+### 이미지 처리 옵션 (Markdown)
+
+Markdown은 이미지 overlay/opacity/fit 스타일을 표현할 수 없으므로 기본값은 `"omit"`이다.
+
+| `imageHandling` 값 | 동작 | 출력 예시 |
+|--------------------|------|-----------|
+| `"omit"` (기본값) | 배경 이미지 정보 완전 제외 | (없음) |
+| `"alt-text"` | 이미지 존재 여부만 텍스트로 표시 | `> 🖼 배경 이미지 포함` |
+| `"link"` | 이미지 URL을 Markdown 링크 문법으로 삽입 | `![배경 이미지](https://...)` |
+
+### 파일명 규칙
+
+* 맵 제목에서 특수문자 제거
+* 공백은 언더스코어(`_`)로 치환
+* 예: `"AI 개념 정리"` → `AI_개념_정리.md`
+
+---
+
+## HTML 내보내기 상세 규칙
+
+### imageHandling 3가지 모드
+
+배경 이미지는 HTML 파일 크기에 가장 큰 영향을 준다. 3가지 처리 방식의 트레이드오프는 다음과 같다.
+
+| `imageHandling` 값 | 동작 | 파일 크기 영향 | 오프라인 지원 |
+|--------------------|------|---------------|--------------|
+| `"embed"` (기본값) | Base64 인코딩 후 `data:` URL로 HTML에 직접 삽입 | 크게 증가 | 완전 오프라인 가능 |
+| `"link"` | 원본 URL을 그대로 사용 (`src="https://..."`) | 변화 없음 | 인터넷 연결 필요 |
+| `"omit"` | 배경 이미지 완전 제외 | 감소 | 해당 없음 |
+
+### 접힌 노드 (Collapsed) 처리 — HTML
+
+HTML Export에서 `includeCollapsed: false`(기본값)일 때, collapsed 노드는 **데이터는 HTML에 포함**되지만 **뷰어 초기 렌더링 시 접힌 채로 시작**된다. 노드 옆에 `▶` 아이콘이 표시되며 사용자가 클릭해 펼칠 수 있다. Markdown Export에서 노드 자체를 포함하는 것과 달리, HTML은 인터랙티브 뷰어이므로 collapsed 상태 자체를 보존한다.
+
+| `includeCollapsed` | 동작 |
+|--------------------|------|
+| `false` (기본값) | collapsed 노드를 **접힌 채로 렌더링** — 뷰어에서 `▶` 아이콘 클릭으로 펼치기 가능 |
+| `true` | 모든 노드를 **펼친 상태**로 export (collapsed 플래그 완전 무시) |
+
+### Standalone HTML 요건
+
+| 항목 | 요건 |
+|------|------|
+| 파일 수 | 단일 `.html` 파일 1개 |
+| 파일 크기 목표 | 500KB 이하 (이미지 없는 일반 맵 기준) |
+| 외부 CDN | 없음 — 모든 JS/CSS 인라인 포함 |
+| 실행 환경 | 인터넷 연결 없이 브라우저에서 바로 열림 |
+
+### 뷰어 기능 목록
+
+HTML Export로 생성된 파일은 읽기 전용 뷰어로 동작한다. 편집은 불가능하다.
+
+| 기능 | 지원 여부 |
+|------|-----------|
+| 전체 맵 렌더링 | 지원 |
+| Zoom In / Out (마우스 휠) | 지원 |
+| Pan (Space+Drag 또는 Drag) | 지원 |
+| Fit Screen | 지원 |
+| 노드 접기 / 펼치기 (collapse-expand) | 지원 |
+| 태그 배지 표시 | 지원 (`includeTags: true`) |
+| 메모 패널 | 지원 (`includeNotes: true`) |
+| 하이퍼링크 클릭 | 지원 (`includeLinks: true`) |
+| 배경 이미지 렌더링 | 지원 (`imageHandling: embed` 또는 `link`) |
+| 노드 편집 | 불가 |
+| AI 생성 | 불가 |
+| 저장 | 불가 |
+
+### Base64 최적화 (embed 모드)
+
+`imageHandling: "embed"` 선택 시 서버에서 다음 과정을 거쳐 이미지를 최적화한다.
+
+```
+1. nodes.style_json.backgroundImage.url → 서버에서 이미지 다운로드
+2. WebP 변환 (가능한 경우, 원본 대비 약 30% 크기 절감)
+3. 최대 1280px 단변 기준 리사이즈
+4. Base64 인코딩 → data:image/webp;base64,...
+5. 노드 SVG 요소의 배경으로 삽입
+```
+
+### 이미지 크기 제한 및 처리 정책
+
+| 조건 | 처리 |
+|------|------|
+| 단일 이미지 200KB 초과 | 리사이즈 후 embed (최대 1280px 단변 기준) |
+| 전체 HTML 크기 5MB 초과 ~ 10MB 이하 | `imageHandling: "link"`으로 자동 전환 + 경고 헤더 포함 |
+| 전체 HTML 크기 10MB 초과 | Export 거부 + 오류 메시지 반환 |
+
+### Signed URL 유효기간 주의사항
+
+`imageHandling: "link"` 방식에서 이미지 URL이 Supabase Storage Private 버킷을 가리키는 경우 Signed URL이 발급된다.
+
+* Signed URL 기본 유효 기간: **1시간**
+* 유효 기간 만료 후 이미지가 표시되지 않으므로, `"link"` 방식은 **장기 보관 목적에 부적합**하다.
+* 공개 CDN 이미지(preset)에는 `"link"` 방식이 적합하다.
+* 장기 보관이 필요한 경우 `"embed"` 방식을 사용한다.

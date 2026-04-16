@@ -232,3 +232,129 @@ PATCH /maps/{mapId}/document
 
 #### 3단계
 * 오프라인 큐 / 다중 탭 고도화
+
+---
+
+### 12. 서버 저장 처리 세부 단계
+
+#### 12.1 전체 처리 순서
+
+`autosave-engine.md`에서 정의된 서버 측 전체 처리 흐름은 다음과 같다.
+
+```
+PATCH /maps/{mapId}/document 수신
+        │
+        ▼
+1. patchId 중복 검사 (Redis SET NX로 구현)
+   이미 처리됨 → 200 OK 반환 (멱등성 보장)
+        │
+        ▼
+2. baseVersion vs current_version 비교
+   불일치 → 409 Conflict { currentVersion }
+        │
+        ▼
+3. 트랜잭션 시작
+   - 각 patch 적용 (nodes UPDATE/INSERT/DELETE)
+   - moveNode 패치: orderIndex 삽입 전 gap 검사 → [12.2 참조]
+   - current_version + 1
+   - map_revisions INSERT (patch_json 포함)
+        │
+        ▼
+4. Redis snapshot:{mapId} DEL (캐시 무효화) → [12.3 참조]
+        │
+        ▼
+5. WebSocket broadcast (협업 참가자) → [12.4 참조]
+        │
+        ▼
+6. 200 OK { newVersion }
+```
+
+---
+
+#### 12.2 orderIndex 재정규화 트리거
+
+`moveNode` 패치를 적용할 때, 삽입 위치 앞뒤 노드의 `orderIndex` 간격이 너무 좁아지면 재정규화를 수행한 뒤 재삽입한다.
+
+```
+moveNode 패치 처리 시:
+  prev_order = 삽입 위치 직전 노드의 orderIndex
+  next_order = 삽입 위치 직후 노드의 orderIndex
+
+  if |prev_order - next_order| < 0.001:
+    → renormalizeOrderIndex() 실행 (전체 형제 노드 orderIndex 재부여)
+    → 재정규화 완료 후 moveNode 재삽입
+  else:
+    → 일반 삽입
+```
+
+* 트리거 조건: `|prev_order - next_order| < 0.001`
+* 재정규화 함수: `renormalizeOrderIndex(parentId)` — 해당 부모의 모든 자식에 균등 간격 부여
+* 세부 정책: `node-hierarchy-storage-strategy.md § 재정규화` 참조
+
+---
+
+#### 12.3 Redis 스냅샷 캐시 무효화
+
+서버에 patch가 성공적으로 적용되면, 즉시 Redis에 저장된 맵 스냅샷 캐시를 삭제하여 오래된 스냅샷이 클라이언트에게 제공되는 것을 방지한다.
+
+```
+캐시 키: snapshot:{mapId}
+무효화 시점: map_revisions INSERT 직후
+무효화 방식: Redis DEL snapshot:{mapId}
+```
+
+| 상황                   | 처리 방식                                    |
+| -------------------- | ---------------------------------------- |
+| 정상 저장 완료             | `DEL snapshot:{mapId}` 즉시 실행            |
+| 트랜잭션 롤백 시            | DEL 실행 안 함 (patch 미적용이므로 캐시 유효)          |
+| 공개 맵 (`published_maps`) | 별도 캐시 키 관리 필요 (`snapshot:published:{publishId}`) |
+
+다음 조회 시 캐시 MISS → DB에서 최신 상태 재로드 → Redis에 재캐시.
+
+---
+
+#### 12.4 WebSocket 협업 브로드캐스트
+
+patch 저장 완료 후, 같은 맵을 열고 있는 **다른 협업 참가자**에게 변경 사항을 실시간으로 전파한다.
+
+```
+브로드캐스트 대상: 동일 mapId의 WebSocket 연결 중인 모든 클라이언트 (요청자 제외)
+브로드캐스트 시점: Redis DEL 직후 (step 4 완료 후)
+```
+
+브로드캐스트 페이로드 예시:
+
+```typescript
+{
+  type: 'patch',
+  mapId: 'map_xyz',
+  newVersion: 129,
+  patches: [...NodePatch[]],
+  clientId: 'cli_abc123',    // 원본 요청자 clientId (수신자 식별용)
+  patchId: 'p_1710598325_001'
+}
+```
+
+수신 클라이언트 처리:
+1. `clientId`가 자신이면 무시 (자신의 patch 반영은 이미 완료)
+2. `newVersion`과 로컬 `baseVersion` 비교
+3. 정상 → Document Store에 patch 적용 + `baseVersion` 갱신
+4. 버전 불일치 → 전체 맵 재로드
+
+협업 UI 연동:
+* 다른 사용자의 변경이 수신되면 해당 노드에 잠깐 하이라이트 표시
+* 실시간 협업 커서: `CollabCursor` 컴포넌트
+* 협업 참가자 목록: 에디터 우상단 아바타
+
+---
+
+### 13. 저장 상태 전체 표시 목록
+
+| 상태         | 표시                          |
+| ---------- | --------------------------- |
+| 저장 중       | `● Saving...` (회전 아이콘)      |
+| 저장 완료      | `✓ Saved` (3초 후 사라짐)        |
+| 재시도 중      | `Retrying...`               |
+| 최종 오류      | `⚠ Save failed` (재시도 버튼 포함) |
+| 오프라인       | `⚡ Offline` (로컬 보관 중)       |
+| 충돌 감지      | `⚡ Conflict` (충돌 해소 다이얼로그)  |

@@ -193,3 +193,143 @@ Short Message Guard 확인 (5자 미만 → 번역 생략)
 #### 2단계 (V2)
 * TRANS-09 Language-group Cache (fan-out 최적화)
 * 채팅 번역 on/off 설정
+
+---
+
+### 13. Language-group Fan-out 중복 제거 로직
+
+#### 13.1 원칙
+
+같은 방에 접속한 협업자를 언어 그룹별로 묶어, 동일 언어에 대한 번역 API는 1회만 호출한다.  
+번역 결과는 해당 언어 그룹의 모든 사용자에게 fan-out한다.
+
+```
+메시지 수신: "Let's finalize the roadmap"
+    │
+    ▼
+접속 협업자 언어 그룹 확인
+  ko → [User A (Kim), User C (Park)]
+  ja → [User B (Tanaka)]
+  en → [User D (Alice)]  ← 발신자와 동일 언어 → 번역 생략
+    │
+    ▼
+번역 API 호출: ko 1회, ja 1회  (총 2회, en은 생략)
+    │
+    ▼
+fan-out
+  ko 번역 결과 "로드맵을 마무리합시다" → User A, User C에 동시 전송
+  ja 번역 결과 "ロードマップを確定させましょう" → User B에 전송
+```
+
+**핵심 절약 효과**: 협업자가 20명이어도 언어 그룹이 3개라면 번역 API 호출은 최대 3회.
+
+#### 13.2 Short Message Guard (채팅 vs 노드 비교)
+
+짧은 메시지는 언어 감지 오탐률이 높고 번역 효용도 낮아 번역을 생략한다.
+
+| 대상 | Guard 임계값 | 이유 |
+|------|------------|------|
+| 채팅 메시지 | **5자 미만** | 이모지·감탄사·초단문은 번역 실익 없음 |
+| 노드 텍스트 | **3자 미만** | 노드는 키워드 중심이므로 더 짧은 기준 적용 |
+
+```typescript
+// 채팅 Short Message Guard
+const CHAT_MIN_LENGTH = 5;
+
+function shouldTranslateChatMessage(text: string): boolean {
+  if (text.trim().length < CHAT_MIN_LENGTH) return false; // 번역 생략
+  return true;
+}
+```
+
+---
+
+### 14. 언어 감지 힌트 전략
+
+#### 14.1 발신자 `preferred_language`를 1차 힌트로 사용
+
+채팅 메시지는 짧아 `franc` 단독 감지 오탐이 많다.  
+발신자 프로필의 `users.preferred_language`를 언어 감지의 1차 힌트로 사용하여 정확도를 높인다.
+
+```typescript
+async function detectChatMessageLang(
+  text: string,
+  senderPreferredLang: SupportedLanguage,
+): Promise<SupportedLanguage> {
+  // 1차: 발신자 preferred_language를 힌트로 franc 호출
+  if (text.trim().length >= 5) {
+    const detected = franc(text, { minLength: 5 });
+    if (detected !== 'und') {
+      return LANG_MAP[detected] ?? senderPreferredLang;
+    }
+  }
+  // 감지 실패 또는 초단문 → 발신자 preferred_language로 fallback
+  return senderPreferredLang;
+}
+```
+
+#### 14.2 수신자 언어와 동일하면 번역 생략
+
+감지(또는 힌트)된 메시지 언어가 수신자의 `preferred_language`와 동일하면  
+번역 API 호출 및 큐 enqueue 자체를 건너뛴다.
+
+```typescript
+function needsTranslationForRecipient(
+  messageLang: SupportedLanguage,
+  recipientLang: SupportedLanguage,
+): boolean {
+  return messageLang !== recipientLang; // 동일 언어면 false → 번역 생략
+}
+```
+
+| 발신자 언어 | 수신자 언어 | 결과 |
+|-----------|-----------|------|
+| en | en | 번역 생략 |
+| ko | en | 번역 실행 |
+| ja | ko | 번역 실행 |
+| en | en (여러 명) | 전원 번역 생략 → fan-out 없음 |
+
+---
+
+### 15. 캐시 TTL 전략
+
+#### 15.1 Redis TTL: 24시간
+
+채팅 번역은 문서 번역과 달리 실시간 대화 맥락에 귀속된다.  
+세션이 종료되거나 오래된 메시지는 재번역 수요가 없으므로 24시간 TTL로 관리한다.
+
+```typescript
+const CHAT_TRANSLATION_TTL = 86400; // 24시간 (초 단위)
+
+await redis.setex(cacheKey, CHAT_TRANSLATION_TTL, translatedText);
+```
+
+| 저장소 | TTL | 용도 |
+|--------|-----|------|
+| Redis | 24시간 | 실시간 채팅 세션 캐시, 재접속 시 빠른 복구 |
+| PostgreSQL | 영구 | 없음 (채팅 번역은 영구 저장 안 함) |
+
+> 노드 번역(`TTL_BASE=7200`, Sliding TTL 최대 6시간)과 달리  
+> 채팅 번역은 고정 24시간 TTL만 사용하며 Sliding 갱신은 적용하지 않는다.
+
+#### 15.2 메시지별 캐시 키 구조
+
+```text
+chat:translation:{messageId}:{targetLang}
+```
+
+**예시:**
+
+```text
+chat:translation:msg_9f3a2c:ko   → "로드맵을 마무리합시다"
+chat:translation:msg_9f3a2c:ja   → "ロードマップを確定させましょう"
+chat:translation:msg_7b1d4e:ko   → "스키마부터 시작합시다"
+```
+
+**캐시 무효화 규칙:**
+
+| 이벤트 | 처리 |
+|--------|------|
+| TTL 만료 | Redis 자동 삭제 (24시간 후) |
+| 메시지 원문 수정 | `source_text_hash` 변경 → 해당 `messageId` 키 전체 DEL |
+| 메시지 삭제 | `chat:translation:{messageId}:*` 패턴 DEL |

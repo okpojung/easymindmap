@@ -535,3 +535,132 @@ CREATE TABLE public.map_revisions (
 * Subtree layout 일괄 변경 Transaction
 
 ---
+
+### 16. Undo → 새 revision 생성 흐름 (13-version-history.md 연동)
+
+> **⚠️ 개발 착수 전 반드시 확인해야 하는 정합성 규칙**
+>
+> History Store(클라이언트 Undo/Redo)와 map_revisions(서버 버전 이력)은 이름이 비슷하지만
+> 목적·저장 위치·접근 방식이 완전히 다르다. 아래 흐름과 규칙을 숙지해야 한다.
+
+#### 16.1 전체 아키텍처 흐름
+
+```
+사용자 편집
+    │
+    ▼
+① Command 생성
+    ├─── History Store.push(command)       ← 클라이언트 Undo 스택 (세션 한정)
+    └─── Document Store 상태 변경
+              │
+              ▼
+          autosaveStore.markDirty(patch)
+              │
+              ▼
+          서버 PATCH /maps/{mapId}/document
+              │
+              ▼
+          map_revisions에 1 row 삽입         ← 서버 버전 이력 (영구 저장)
+```
+
+Undo 실행 시에도 동일한 흐름을 따른다:
+
+```
+Ctrl+Z (Undo) 실행
+    │
+    ▼
+② History Store.undo()
+    ├─── undoStack.pop()
+    ├─── isApplyingHistory = true
+    ├─── applyOperations(entry.undo)       ← Document Store 역방향 업데이트
+    └─── isApplyingHistory = false
+              │
+              ▼
+          autosaveStore.markDirty({
+            patchId: generatePatchId('undo'),  ← 반드시 새 patchId (_undo suffix)
+            patches: inversePatches,
+          })
+              │
+              ▼
+          서버 PATCH /maps/{mapId}/document
+              │
+              ▼
+          map_revisions에 새 revision 1 row 삽입  ← Undo 결과도 영구 이력으로 기록
+```
+
+#### 16.2 핵심 규칙
+
+1. **History Store는 map_revisions를 직접 조회하거나 쓰지 않는다.**
+   - History Store는 클라이언트 전용 상태 관리 계층이다.
+   - map_revisions 접근은 항상 autosave 파이프라인을 경유한다.
+
+2. **Ctrl+Z는 map_revisions를 rollback하는 것이 아니다.**
+   - History Store의 undoStack을 pop하여 Document Store를 역방향으로 업데이트하는 것이다.
+   - map_revisions는 rollback되지 않고, Undo 결과 patch가 **새 revision으로 추가**된다.
+
+3. **버전 히스토리 패널(13-version-history.md) 롤백과 Undo/Redo는 독립적으로 동작한다.**
+   - 버전 패널에서 과거 버전으로 이동하는 것은 map_revisions를 읽어서 Document Store를 교체하는 별도 작업이다.
+   - 버전 롤백 실행 후에는 로컬 History Store(undoStack/redoStack)를 **초기화**한다.
+   - 이후 사용자의 Ctrl+Z는 롤백 이전 상태가 아닌 롤백 이후 편집부터 취소한다.
+
+4. **Undo 후 autosave 시 반드시 새 patchId를 생성해야 한다.**
+   - `map_revisions.patch_id`에 `UNIQUE` 제약이 있으므로, 기존 patchId 재사용 시 DB 오류 발생.
+   - Undo: `generatePatchId('undo')` → `p_{timestamp}_{counter}_undo`
+   - Redo: `generatePatchId('redo')` → `p_{timestamp}_{counter}_redo`
+
+#### 16.3 두 시스템 비교 — 아키텍처 흐름 요약
+
+| 구분              | History Store (클라이언트)            | map_revisions (서버 DB)                      |
+| --------------- | --------------------------------- | ------------------------------------------ |
+| 저장 위치           | 브라우저 메모리 (Zustand)               | PostgreSQL (`public.map_revisions`)         |
+| 지속성             | 세션 한정 (새로고침 시 초기화)               | 영구 저장 (서버 재시작 후에도 유지)                      |
+| 목적              | `Ctrl+Z / Y` 편집 취소·복원 (즉각 반응)    | 버전 이력 조회, 협업 충돌 해소, 장기 롤백                  |
+| 저장 단위           | 사용자 액션 단위 (Command)              | autosave 시마다 `NodePatch[]` 1 row            |
+| 최대 보존           | 기본 100개 (maxHistorySize)          | 무제한 (DB 용량 한도)                             |
+| 접근 주체           | 클라이언트 전용 — API 없음               | 서버 API 통해 버전 히스토리 패널 조회                    |
+| Undo 발생 시       | undoStack.pop() → 역방향 연산 적용      | 역방향 patch가 새 revision으로 저장됨 (autosave 경유)  |
+| 버전 롤백 발생 시      | History Store 초기화                | inverse patch → 새 revision 추가              |
+
+#### 16.4 연동 시나리오 — Undo 후 새 revision 생성
+
+아래는 Undo 실행이 어떻게 새 map_revision을 생성하는지 전체 흐름이다.
+
+1. 사용자: `기능 정의` 노드 삭제
+2. Document Store: 노드 삭제 반영
+3. autosave: `deleteNode` patch → `PATCH /maps/{mapId}/document`
+4. 서버: patch 적용 → `map_revisions` revision 42 생성
+5. 사용자: `Ctrl+Z` (Undo)
+6. History Store: `isApplyingHistory = true` → `createNode` 역방향 연산 적용 → `isApplyingHistory = false`
+7. autosave: `patchId = generatePatchId('undo')` 새 ID 생성 → `PATCH /maps/{mapId}/document`
+8. 서버: 복원 patch 적용 → `map_revisions` **revision 43 생성** (`patch_id` = `p_xxx_undo`)
+9. 버전 히스토리 패널(13-version-history.md): revision 43이 목록에 추가됨
+
+#### 16.5 연동 시나리오 — 버전 롤백 후 History Store 초기화
+
+버전 히스토리 패널에서 롤백이 발생하면 로컬 Undo/Redo 스택을 초기화해야 한다.
+
+```typescript
+// POST /maps/{mapId}/revisions/{version}/restore 성공 후
+async function handleVersionRestore(restoredVersion: number) {
+  // 1. Document Store를 복원된 버전 상태로 교체
+  documentStore.applyRestoredState(await fetchMapAtVersion(restoredVersion));
+
+  // 2. History Store 초기화 — 롤백 이전 Undo/Redo 스택 무효화
+  historyStore.clearHistory();
+
+  // 3. autosave baseVersion 갱신
+  autosaveStore.syncVersion(maps.current_version);
+}
+```
+
+- 롤백 후 `undoStack`과 `redoStack`이 비워지므로 Undo/Redo 버튼 비활성화 상태로 전환
+- 이후 사용자의 새 편집은 복원된 상태 기준으로 History에 기록 시작
+
+#### 16.6 참조 문서
+
+* `docs/03-editor-core/history/13-version-history.md` — 버전 이력 패널, 롤백 규칙, revision 생성 흐름
+* `docs/03-editor-core/autosave-engine.md` — autosave 파이프라인, patchId 생성 규칙, IMMEDIATE_SAVE_OPS
+* `docs/02-domain/db-schema.md § map_revisions` — 서버 이력 테이블 DDL
+* `docs/03-editor-core/save/14-save.md` — SAVE 기능 전체 명세
+
+---

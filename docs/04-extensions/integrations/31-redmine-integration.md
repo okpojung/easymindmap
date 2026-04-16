@@ -234,3 +234,235 @@ sync_status = 'synced', last_synced_at 갱신
 #### 2단계 (V1)
 * RDMN-08 Redmine Plugin 탭 임베드
 * 자동 동기화 모드 (`sync_mode = 'auto'`)
+
+---
+
+### 13. Tracker → Node 색상 매핑
+
+Redmine Issue의 tracker 유형에 따라 노드 배경색을 자동으로 지정한다 (Pull 전용).
+
+```typescript
+const TRACKER_COLOR_MAP: Record<string, string> = {
+  'Bug':       '#EF4444',  // red-500
+  'Feature':   '#3B82F6',  // blue-500
+  'Task':      '#F59E0B',  // amber-500
+  'Epic':      '#8B5CF6',  // violet-500
+  'Milestone': '#7B2D8B',  // purple-700
+};
+```
+
+* 매핑되지 않는 tracker는 기본 노드 색상 유지
+* 색상 값은 `style_json.fillColor` 컬럼에 저장 (Pull only, 사용자가 덮어쓰기 가능)
+
+---
+
+### 14. WBS 상태 판별 로직 (getWbsStatus)
+
+```typescript
+type WbsStatus = 'done' | 'on-track' | 'delayed' | 'upcoming' | 'no-date';
+
+function getWbsStatus(schedule: NodeSchedule): WbsStatus {
+  if (schedule.progress === 100) return 'done';
+  if (!schedule.startDate)       return 'no-date';
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = parseISO(schedule.startDate);
+  const end   = schedule.endDate ? parseISO(schedule.endDate) : null;
+
+  if (start > today)             return 'upcoming';
+  if (end && end < today)        return 'delayed';
+  return 'on-track';
+}
+
+const WBS_STATUS_COLOR: Record<WbsStatus, string> = {
+  'done':     '#22C55E',   // green-500  — 완료
+  'on-track': '#3B82F6',   // blue-500   — 진행중(정상)
+  'delayed':  '#EF4444',   // red-500    — 지연
+  'upcoming': '#9CA3AF',   // gray-400   — 예정
+  'no-date':  'transparent',             // 날짜 미설정(배지 미표시)
+};
+```
+
+---
+
+### 15. NodeWbsIndicator 컴포넌트 계층
+
+WBS 모드에서 노드에 일정·진척·리소스·동기화 상태를 표시하는 컴포넌트 구조:
+
+```
+NodeRenderer
+  ├── NodeText
+  ├── NodeTagBadge
+  ├── NodeContentIndicators
+  ├── NodeWbsIndicator          ← [NODE-17 신규, WBS 모드에서만 렌더링]
+  │    ├── MilestoneMarker      (◆ 배지, isMilestone=true 시)
+  │    ├── DateBadge            (📅 날짜 범위, 클릭→DatePicker 팝오버)
+  │    ├── ProgressBar          (▓░ 진척률, 클릭→슬라이더 팝오버)
+  │    ├── ResourceAvatars      (👤 담당자 아바타, 최대 3개 표시 후 +N)
+  │    └── SyncStatusIcon       (⟳/⚠/✕, Redmine 연동 시에만)
+  └── NodeAddIndicator
+```
+
+#### 인디케이터 배치 예시
+
+```
+┌──────────────────────────────────────┐
+│ ◆  [노드 텍스트]             ⟳/⚠/✕  │
+│    (마일스톤 시 ◆ 오버레이)  (sync)  │
+├──────────────────────────────────────┤
+│ 📅  04/01 ~ 04/30              🟢    │
+│ ▓▓▓▓▓░░░░░░  50%                    │
+│ 👤 홍길동  👤 김철수                 │
+└──────────────────────────────────────┘
+```
+
+#### 요소별 인터랙션
+
+| 요소 | 클릭 동작 |
+| --- | --- |
+| 날짜 배지 | DatePicker 팝오버 (시작일/종료일 + 마일스톤 토글) |
+| 진척률 바 | 0~100 슬라이더 팝오버 |
+| 리소스 아바타 | 리소스 할당 패널 오픈 |
+| ⚠ 오류 아이콘 | 동기화 오류 상세 + 재시도 버튼 |
+| ✕ 실패 아이콘 | 수동 처리 가이드 패널 |
+
+---
+
+### 16. API Key 암호화 — AES-256-GCM
+
+```
+저장 방식: AES-256-GCM 암호화 (인증 암호화 모드)
+암호화 키: 환경변수 REDMINE_ENCRYPTION_KEY (256-bit)
+저장 위치: redmine_project_maps.api_key_encrypted
+복호화:    NestJS Backend에서만 수행, 클라이언트에 절대 노출 금지
+마스킹:    GET 응답 시 '*****' 처리
+```
+
+> GCM 모드를 사용하므로 복호화 시 무결성 검증(인증 태그)이 자동으로 수행된다.  
+> 저장 형식: `base64(iv) + '.' + base64(authTag) + '.' + base64(ciphertext)`
+
+---
+
+### 17. RLS 정책
+
+신규 테이블 전체에 Row Level Security를 적용한다.
+
+```sql
+-- node_schedule
+ALTER TABLE public.node_schedule ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "map owners manage node_schedule"
+  ON public.node_schedule FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.nodes n
+      JOIN public.maps m ON m.id = n.map_id
+      WHERE n.id = node_schedule.node_id
+        AND m.owner_id = auth.uid()
+    )
+  );
+
+-- node_resources
+ALTER TABLE public.node_resources ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "map owners manage node_resources"
+  ON public.node_resources FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.nodes n
+      JOIN public.maps m ON m.id = n.map_id
+      WHERE n.id = node_resources.node_id
+        AND m.owner_id = auth.uid()
+    )
+  );
+
+-- redmine_project_maps
+ALTER TABLE public.redmine_project_maps ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "map owners manage redmine_project_maps"
+  ON public.redmine_project_maps FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.maps
+      WHERE maps.id = redmine_project_maps.map_id
+        AND maps.owner_id = auth.uid()
+    )
+  );
+
+-- redmine_sync_log (읽기 전용)
+ALTER TABLE public.redmine_sync_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "map owners read sync_log"
+  ON public.redmine_sync_log FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.maps
+      WHERE maps.id = redmine_sync_log.map_id
+        AND maps.owner_id = auth.uid()
+    )
+  );
+```
+
+---
+
+### 18. 동기화 상태 머신 (sync_status)
+
+```
+          [노드 생성/수정 이벤트]
+                   │
+           sync_status = 'pending'
+                   │
+            BullMQ 큐 투입
+                   │
+            Worker 처리 시작
+           ┌───────┴───────┐
+        성공│               │실패
+           ▼               ▼
+       'synced'         'error'
+                           │
+                      자동 재시도 (최대 3회, 지수 백오프: 1s → 2s → 4s)
+                           │
+                    3회 모두 실패
+                           ▼
+                        'failed'
+                    (수동 처리 필요, ✕ 아이콘 표시)
+```
+
+* `pending` → Worker가 Redmine API 호출 시작
+* `error` → 일시적 실패, 자동 재시도 대기 (⚠ 아이콘)
+* `failed` → 최종 실패, 수동 처리 필요 (✕ 아이콘)
+* `synced` → 정상 동기화 완료 (아이콘 없음)
+
+---
+
+### 19. 구현 단계 (Phase 1~3 상세)
+
+#### Phase 1: WBS Standalone (Redmine 없이)
+
+**목표**: WBS 모드 자체 기능 완성
+
+1. `maps.view_mode = 'wbs'` 지원 및 모드 전환 UI
+2. `node_schedule` 테이블 + API (`GET/POST/PATCH/DELETE /nodes/:id/schedule`)
+3. `NodeWbsIndicator` 컴포넌트 (날짜 배지/마일스톤/진척률 바/상태 색상)
+4. `node_resources` 테이블 + API
+5. 리소스 할당 패널 UI (WBS · Kanban 공통)
+6. 리소스 아바타 인디케이터 (WBS · Kanban 공통)
+
+#### Phase 2: Redmine 연동 기본 (Basic)
+
+**목표**: Redmine Issue ↔ Node 동기화
+
+1. `redmine_project_maps` 테이블 + 연동 설정 UI
+2. API Key AES-256-GCM 암호화 저장
+3. Pull 동기화: Redmine Issues → Nodes 일괄 가져오기
+4. Push 동기화: 노드 수정 → Redmine Issue PATCH (BullMQ Worker)
+5. `redmine_sync_log` 기록 + 동기화 상태 조회 API
+6. `sync_status` 인디케이터 (⟳/⚠/✕) UI
+
+#### Phase 3: Redmine Plugin + 자동 Issue 생성
+
+**목표**: Redmine과 seamless 통합
+
+1. 노드 생성 시 Redmine Issue 자동 생성 (`auto_create_issues = true`)
+2. Redmine Plugin (`easymindmap_wbs`) 개발
+3. 인증 토큰 교환 API (`/api/redmine/auth/token-exchange`)
+4. iframe 임베드 + 부모↔iframe 메시지 브릿지
+5. Redmine 사용자 목록 조회 연동 (리소스 할당 시 사용)
+6. 트리 구조 양방향 동기화 (`parent_issue_id` ↔ `parent_id`)

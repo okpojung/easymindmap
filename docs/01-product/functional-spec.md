@@ -227,16 +227,31 @@ markdown / code 타입을 구분하여 자동 크기 계산, 줄바꿈, overflow
 Layout 유형별 부모-자식 연결선(Edge) 스타일 및 노드 상속 규칙을 정의한다.  
 Edge는 독립 속성이 아니라 **Layout의 해석 결과**로 자동 결정된다.
 
-**핵심 정책**
+**핵심 정책 (MVP)**
 
 ```text
-Radial 계열 (radial-bidirectional / radial-right / radial-left) → curve-line
-나머지 모든 Layout (Tree / Hierarchy / ProcessTree / Freeform / Kanban) → tree-line
+Radial 계열 (radial-bidirectional / radial-right / radial-left)
+  → curve-line  (Cubic Bezier 곡선, 방향각 θ 기반 제어점 계산)
+
+나머지 모든 Layout (Tree / Hierarchy / ProcessTree / Freeform / Kanban)
+  → tree-line  (직각선 / Orthogonal Connector — 완전 대각선 아님)
 ```
+
+**MVP 제약 사항**
+
+| 항목 | MVP 정책 |
+|---|---|
+| **사용자 선 스타일 선택** | ❌ 미제공 — 레이아웃에 따라 시스템이 자동 결정 |
+| **UI 선 스타일 버튼** | ❌ 툴바/컨텍스트 메뉴에 없음 |
+| **DB 컬럼** | `connector_style` 컬럼 불필요 — 레이아웃에서 파생 |
+| **API 파라미터** | `line_type` 파라미터 불필요 — 레이아웃값으로 서버 결정 |
+
+**Backlog (차기 과제)**  
+선 스타일 수동 override (curve / tree / straight), Fishbone·Timeline·OrgChart 레이아웃 추가
 
 | 기능ID | 기능명 | 설명 |
 |---|---|---|
-| EDGE-01 | Layout → Edge 자동 결정 | layoutType에 따라 curve-line / tree-line 자동 선택 |
+| EDGE-01 | Layout → Edge 자동 결정 | layoutType에 따라 curve-line(Bezier) / tree-line(직각) 자동 선택 |
 | EDGE-02 | Subtree Layout Override | 특정 노드부터 subtree 단위로 다른 Layout 적용 가능 |
 | EDGE-03 | Node Layout 상속 | 자식 노드는 부모의 layoutType 기본 상속 |
 | EDGE-04 | Node Style 상속 | 자식 노드 생성 시 부모 shape/fillColor/borderColor/textColor 상속 |

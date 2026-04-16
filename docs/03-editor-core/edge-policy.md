@@ -1,16 +1,15 @@
 # easymindmap — Edge / Layout / Node Inheritance Policy
 
-문서 버전: v3.0  
+문서 버전: v3.1  
 상태: Final Draft  
 대상 파일: `docs/03-editor-core/edge-policy.md`  
 관련 문서:
 - `docs/01-product/functional-spec.md`
-- `docs/03-editor-core/layout-engine.md`
-- `docs/03-editor-core/layout-coordinate-algorithm.md`
-- `docs/03-editor-core/node-editing.md`
-- `docs/03-editor-core/bulk-branch-insert.md`
+- `docs/02-domain/domain-models.md` ← LayoutType 정의 정본 (kebab-case DB 저장값), 스타일 상속 규칙 §6
+- `docs/03-editor-core/layout/08-layout.md` ← Layout Engine 정책 §18 (에지 타입 결정 로직), Kanban depth 규칙 §6.6
 - `docs/03-editor-core/state-architecture.md`
-- `docs/02-domain/node-model.md`
+- `docs/03-editor-core/node/02-node-editing.md`
+- `docs/02-domain/db-schema.md` ← nodes 테이블 DDL, chk_nodes_kanban_depth CHECK 제약
 
 ---
 
@@ -161,60 +160,64 @@ easymindmap은 아래 6개 Layout 그룹을 사용한다.
 
 # 6. Layout Type 정의
 
+> **LayoutType DB 저장값**: 모두 kebab-case 영문 소문자 (예: `'radial-bidirectional'`).  
+> 전체 15개 LayoutType의 정본 정의는 `docs/02-domain/domain-models.md § 2.2` 참조.  
+> Layout Engine에서의 처리 방식은 `docs/03-editor-core/layout/08-layout.md § 4.1` 참조.
+
 ## 6.1 Radial 계열
 
-| 코드 | 영문명 | 한글명 | 설명 |
-|---|---|---|---|
-| BL-RD-BI | Radial-Bidirectional | 방사형-양쪽 | 중심 기준 좌우 균형 방사형 |
-| BL-RD-R | Radial-Right | 방사형-오른쪽 | 오른쪽 중심 방사형 |
-| BL-RD-L | Radial-Left | 방사형-왼쪽 | 왼쪽 중심 방사형 |
+| 코드 | 영문명 | DB 저장값 | 한글명 | 설명 |
+|---|---|---|---|---|
+| BL-RD-BI | Radial-Bidirectional | `radial-bidirectional` | 방사형-양쪽 | 중심 기준 좌우 균형 방사형 |
+| BL-RD-R | Radial-Right | `radial-right` | 방사형-오른쪽 | 오른쪽 중심 방사형 |
+| BL-RD-L | Radial-Left | `radial-left` | 방사형-왼쪽 | 왼쪽 중심 방사형 |
 
 ---
 
 ## 6.2 Tree 계열
 
-| 코드 | 영문명 | 한글명 | 설명 |
-|---|---|---|---|
-| BL-TR-U | Tree-Up | 트리형-위쪽 | 위 방향 전개 |
-| BL-TR-D | Tree-Down | 트리형-아래쪽 | 아래 방향 전개 |
-| BL-TR-R | Tree-Right | 트리형-오른쪽 | 오른쪽 방향 수평 트리 |
-| BL-TR-L | Tree-Left | 트리형-왼쪽 | 왼쪽 방향 수평 트리 |
+| 코드 | 영문명 | DB 저장값 | 한글명 | 설명 |
+|---|---|---|---|---|
+| BL-TR-U | Tree-Up | `tree-up` | 트리형-위쪽 | 위 방향 전개 |
+| BL-TR-D | Tree-Down | `tree-down` | 트리형-아래쪽 | 아래 방향 전개 |
+| BL-TR-R | Tree-Right | `tree-right` | 트리형-오른쪽 | 오른쪽 방향 수평 트리 |
+| BL-TR-L | Tree-Left | `tree-left` | 트리형-왼쪽 | 왼쪽 방향 수평 트리 |
 
 ---
 
 ## 6.3 Hierarchy 계열
 
-| 코드 | 영문명 | 한글명 | 설명 |
-|---|---|---|---|
-| BL-HR-R | Hierarchy-Right | 계층형-오른쪽 | 좌→우 계층 구조 |
-| BL-HR-L | Hierarchy-Left | 계층형-왼쪽 | 우→좌 계층 구조 |
+| 코드 | 영문명 | DB 저장값 | 한글명 | 설명 |
+|---|---|---|---|---|
+| BL-HR-R | Hierarchy-Right | `hierarchy-right` | 계층형-오른쪽 | 좌→우 계층 구조 |
+| BL-HR-L | Hierarchy-Left | `hierarchy-left` | 계층형-왼쪽 | 우→좌 계층 구조 |
 
 ---
 
 ## 6.4 ProcessTree 계열
 
-| 코드 | 영문명 | 한글명 | 설명 |
-|---|---|---|---|
-| BL-PR-R | ProcessTree-Right | 진행트리-오른쪽 | 좌→우 절차형 |
-| BL-PR-L | ProcessTree-Left | 진행트리-왼쪽 | 우→좌 절차형 |
-| BL-PR-RA | ProcessTree-Right-A | 진행트리-오른쪽A | 상단 기준선 중심 분기형 |
-| BL-PR-RB | ProcessTree-Right-B | 진행트리-오른쪽B | 타임라인/로드맵형 |
+| 코드 | 영문명 | DB 저장값 | 한글명 | 설명 |
+|---|---|---|---|---|
+| BL-PR-R | ProcessTree-Right | `process-tree-right` | 진행트리-오른쪽 | 좌→우 절차형 |
+| BL-PR-L | ProcessTree-Left | `process-tree-left` | 진행트리-왼쪽 | 우→좌 절차형 |
+| BL-PR-RA | ProcessTree-Right-A | `process-tree-right-a` | 진행트리-오른쪽A | 상단 기준선 중심 분기형 |
+| BL-PR-RB | ProcessTree-Right-B | `process-tree-right-b` | 진행트리-오른쪽B | 타임라인/로드맵형 |
 
 ---
 
 ## 6.5 Freeform
 
-| 코드 | 영문명 | 한글명 | 설명 |
-|---|---|---|---|
-| BL-FR | Freeform | 자유배치형 | 수동 좌표 기반 배치 |
+| 코드 | 영문명 | DB 저장값 | 한글명 | 설명 |
+|---|---|---|---|---|
+| BL-FR | Freeform | `freeform` | 자유배치형 | 수동 좌표 기반 배치 |
 
 ---
 
 ## 6.6 Kanban
 
-| 코드 | 영문명 | 한글명 | 설명 |
-|---|---|---|---|
-| BL-KB | Kanban | 칸반형 | 컬럼/카드 중심 보드형 구조 |
+| 코드 | 영문명 | DB 저장값 | 한글명 | 설명 |
+|---|---|---|---|---|
+| BL-KB | Kanban | `kanban` | 칸반형 | 컬럼/카드 중심 보드형 구조 |
 
 ---
 
@@ -287,7 +290,14 @@ Freeform의 자유는 “노드 위치”에 있고,
 
 ---
 
-## 7.4 왜 Kanban도 tree-line인가
+## 7.4 왜 Kanban도 tree-line인가 (그리고 실제 UI에서는 미표시)
+
+> **`docs/03-editor-core/layout/08-layout.md § 18` 에지 렌더링 정책 표**에서  
+> Kanban의 에지 타입을 "없음 (엣지 미사용)"으로 정의한다.  
+> 이 문서의 정책은 다음처럼 정합적으로 이해한다:  
+> - **정책(policy) 레벨**: `kanban` layoutType의 기본 Edge 타입 = `tree-line`  
+> - **렌더링(display) 레벨**: Kanban Renderer가 board/column/card 관계를 컬럼 배치로 표현하므로 엣지 선을 기본적으로 **미표시**  
+> - 즉, "엣지 타입 = tree-line"은 데이터 구조 일관성을 위한 정책이며, 실제 화면에서는 `opacity: 0` 또는 렌더 스킵으로 처리 가능
 
 Kanban은 컬럼 중심 구조이기 때문에 선 사용 자체를 최소화할 수는 있다.  
 그러나 데이터 모델은 여전히 parent-child를 유지하고, 특정 상황에서는 선이 필요하다.
@@ -347,11 +357,13 @@ export type ExtendedEdgeType =
 ## 9.1 기본 함수 예시
 
 ```ts
-function resolveEdgeType(layoutType: string): EdgeType {
+// LayoutType 값은 domain-models.md § 2.2의 kebab-case 정의를 따른다
+// (DB 저장값 기준: 예: 'radial-bidirectional', 'tree-right' 등)
+function resolveEdgeType(layoutType: LayoutType): EdgeType {
   switch (layoutType) {
-    case "Radial-Bidirectional":
-    case "Radial-Right":
-    case "Radial-Left":
+    case "radial-bidirectional":
+    case "radial-right":
+    case "radial-left":
       return "curve-line"
 
     default:
@@ -733,7 +745,10 @@ Ctrl + Space 입력으로 8개 노드 생성
 폰트는 단순 부모 상속만으로 가기보다,  
 Level 기반 기본 규칙을 두는 것이 더 안정적이다.
 
-`node-model.md` 기준으로 통일한다. 단위는 **px**, 4단계 적용.
+> **스타일 상속 규칙 정본**: `docs/02-domain/domain-models.md § 6` (스타일 상속 규칙)  
+> 아래 폰트 크기 규칙은 `domain-models.md § 6` 확정값(2026-03-31)과 일치한다.
+
+단위는 **px**, 4단계 적용.
 
 | depth | Font Size |
 |---|---|
@@ -1330,7 +1345,22 @@ Kanban = board/column/card 구조
 
 ---
 
-# 28. 한 줄 최종 결론
+# 28. 관련 문서 (Cross-Reference)
+
+| 문서 | 관련 내용 |
+|------|---------|
+| `docs/02-domain/domain-models.md § 2.2` | LayoutType 전체 15종 정의 (kebab-case DB 저장값 정본) |
+| `docs/02-domain/domain-models.md § 6` | 스타일 상속 규칙, depth별 fontSize 확정값 |
+| `docs/03-editor-core/layout/08-layout.md § 4.1` | LayoutType 목록, Layout Engine 기능 정의 |
+| `docs/03-editor-core/layout/08-layout.md § 6.6` | Kanban depth 규칙 (board/column/card, `chk_nodes_kanban_depth`) |
+| `docs/03-editor-core/layout/08-layout.md § 18` | 에지 렌더링 정책 (Kanban = 엣지 미표시) |
+| `docs/02-domain/db-schema.md § 3` | nodes 테이블 DDL, `chk_nodes_layout_type` CHECK 제약 |
+| `docs/03-editor-core/state-architecture.md` | MindmapDocument, Document Store, 5-Store 구조 |
+| `docs/03-editor-core/node/02-node-editing.md` | 노드 생성/이동 시 layoutType 상속 적용 |
+
+---
+
+# 29. 한 줄 최종 결론
 
 > easymindmap의 부모-자식 연결선은  
 > **방사형 계열만 curve-line, 나머지 모든 Layout은 tree-line** 을 사용하며,  

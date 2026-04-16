@@ -48,6 +48,8 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 
 ## 테이블 구조
 
+> **참고**: 아래는 ltree/order_index 전략 관점의 핵심 컬럼 위주 요약이다. 전체 DDL은 `docs/02-domain/db-schema.md § 3. nodes` 참조.
+
 ```sql
 CREATE TABLE public.nodes (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -56,20 +58,30 @@ CREATE TABLE public.nodes (
 
     -- 콘텐츠
     text             TEXT NOT NULL DEFAULT '',
-    -- note 컬럼 없음: 노트는 node_notes 테이블로 단일화
+    -- note 컬럼 없음: 노트는 node_notes 테이블로 단일화 (db-schema.md § 3-1)
 
     -- 트리 구조
-    depth            INT    NOT NULL DEFAULT 0,
-    order_index      FLOAT  NOT NULL DEFAULT 0.0,   -- FLOAT: 중간 삽입 O(1)
-    path             LTREE  NOT NULL,                -- ltree 계층 경로 (예: 'root.n_abc.n_def')
+    depth            INTEGER NOT NULL DEFAULT 0,
+    order_index      FLOAT   NOT NULL DEFAULT 0.0,   -- FLOAT: 중간 삽입 O(1)
+    -- path: ltree 계층 경로 (예: 'root.n_abc.n_def')
+    -- NULL 허용 없음, 기본값 'root' (루트 노드용)
+    path             LTREE   NOT NULL DEFAULT 'root',
 
     -- 레이아웃
-    layout_type      VARCHAR(50)  NOT NULL DEFAULT 'radial-bidirectional',
+    -- NULL = 부모 layoutType 상속 (NOT NULL 제거로 "상속" 상태와 기본값 구분 가능)
+    -- 루트 노드는 앱 레이어에서 'radial-bidirectional' 보장
+    layout_type      VARCHAR(50)  NULL,
     collapsed        BOOLEAN      NOT NULL DEFAULT FALSE,
 
     -- 도형 & 스타일
     shape_type       VARCHAR(50)  NOT NULL DEFAULT 'rounded-rectangle',
     style_json       JSONB        NOT NULL DEFAULT '{}',
+
+    -- 노드 타입 (V3 대시보드 대비)
+    node_type        VARCHAR(30)  NOT NULL DEFAULT 'text',  -- 'text' | 'data-live'
+
+    -- 협업: 노드 최초 생성자 (수정/삭제 권한 판단 기준) — db-schema.md v3.3
+    created_by       UUID REFERENCES public.users(id),
 
     -- 자유배치 좌표 (freeform 전용)
     manual_position  JSONB,   -- { x: number, y: number }
@@ -175,7 +187,7 @@ PostgreSQL의 ltree extension에는 다음 물리적 제한이 있다.
 
 - 일반적인 마인드맵 사용 패턴에서 depth 10을 초과하는 경우는 드물다.
 - depth 50 제한은 ltree 물리 한계보다 충분히 여유 있으며, 엣지 케이스(무한 중첩 버그 등) 방어를 위한 안전망이다.
-- **Kanban 레이아웃**은 별도 규칙에 의해 depth ≤ 2 로 더 엄격하게 제한된다.
+- **Kanban 레이아웃**은 별도 규칙에 의해 depth ≤ 2 로 더 엄격하게 제한된다 (→ `docs/02-domain/domain-models.md § 5.4`, `docs/03-editor-core/layout/08-layout.md § 6.6`).
 
 **구현 가이드:**
 
@@ -183,6 +195,12 @@ PostgreSQL의 ltree extension에는 다음 물리적 제한이 있다.
 -- 앱 레이어 또는 DB CHECK 제약으로 depth 상한 적용
 ALTER TABLE public.nodes
   ADD CONSTRAINT chk_nodes_depth_limit CHECK (depth <= 50);
+
+-- Kanban 전용 depth 제한 (board=0, column=1, card=2, 3+ 금지)
+-- → docs/03-editor-core/layout/08-layout.md § 6.6 참조
+ALTER TABLE public.nodes
+  ADD CONSTRAINT chk_nodes_kanban_depth
+    CHECK (layout_type != 'kanban' OR depth BETWEEN 0 AND 2);
 ```
 
 ```typescript
@@ -504,7 +522,7 @@ ORDER BY depth ASC, order_index ASC;
 ```
 
 클라이언트에서 이 flat 배열을 받아 `parent_id` 기준으로 트리 구조를 조립한다.  
-`childIds`는 DB에 저장하지 않고 클라이언트 런타임에 파생한다. (→ `state-architecture.md` 참조)
+`childIds`는 DB에 저장하지 않고 클라이언트 런타임에 파생한다. (→ `docs/03-editor-core/state-architecture.md` 참조)
 
 ---
 
@@ -520,6 +538,31 @@ ORDER BY depth ASC, order_index ASC;
 
 ---
 
+## 협업 중 노드 이동 충돌 처리
+
+> **관련 문서**: `docs/04-extensions/collaboration/25-map-collaboration.md § LWW 충돌 해소`  
+> **관련 문서**: `docs/03-editor-core/node/02-node-editing.md § 16. 협업 충돌 처리 규칙`
+
+협업 중 두 사용자가 동시에 노드를 이동하면 `path`, `parent_id`, `order_index` 갱신이 충돌할 수 있다. 다음 정책을 따른다.
+
+### 충돌 유형별 처리
+
+| 충돌 유형 | 처리 정책 |
+|---------|---------|
+| 동일 노드를 두 사용자가 동시에 다른 부모로 이동 | **Server-First** — 서버에 먼저 도착한 이동 요청을 승인, 이후 요청은 409 Conflict로 반환 후 클라이언트 재시도 |
+| 한 사용자가 이동 중 다른 사용자가 이동 대상 노드 삭제 | 삭제가 우선 처리되면 이동 요청 거부 ("편집 대상 노드가 삭제되었습니다" 알림) |
+| 동일 부모 아래 같은 위치에 두 사용자가 동시 삽입 (`order_index` 충돌) | LWW — 두 값 모두 수용하되 `order_index`를 재정규화로 구분 |
+| 한 사용자의 이동 대상 부모가 다른 사용자에 의해 이동됨 | 서버가 최신 path 기준으로 재계산 후 적용 |
+
+### 동시성 보호 메커니즘
+
+1. **REPEATABLE READ 트랜잭션**: 노드 이동(`move_node_subtree`) 실행 시 최소 `REPEATABLE READ` 격리 수준 적용 (→ 본 문서 § 트랜잭션 격리 수준 요구사항)
+2. **Soft Lock**: 클라이언트는 `node:editing:start` 이벤트로 이동 중인 노드를 Soft Lock 표시 — TTL 5초 (→ `docs/04-extensions/collaboration/25-map-collaboration.md § 14.6`)
+3. **baseVersion 검증**: Autosave patch 처리 시 `baseVersion` vs `current_version` 불일치 → 409 Conflict 반환 → 클라이언트 3단계 충돌 해소 적용 (→ `docs/03-editor-core/save/14-save.md § 5.3`)
+4. **순환 참조 방지**: 이동 요청 시 서버에서 `path <@` 연산으로 자기 자신 또는 자기 하위 노드 아래 이동 시도를 차단
+
+---
+
 ## 결론
 
 ```
@@ -530,7 +573,10 @@ ORDER BY depth ASC, order_index ASC;
 좌표: manual_position JSONB (freeform 전용)
 depth: 앱단 계산 후 저장 (ltree nlevel 기준)
 깊이 제한: 최대 depth 50단계 (ltree 물리 한계 ~181단계 대비 운영 안전망)
+           Kanban 레이아웃은 depth ≤ 2 (chk_nodes_kanban_depth CHECK 제약)
 size_cache: 클라이언트(브라우저)가 DOM 측정 후 autosave patch로 전송
+협업 충돌: Server-First (구조 이동) + LWW (텍스트/스타일) + Soft Lock TTL 5초
+node_type: 'text' | 'data-live' (기본값 'text', V3 대시보드 대비)
 ```
 
 ---
@@ -615,7 +661,7 @@ class DeleteNodeCommand implements Command {
 
 - **subtree 삭제 시 경고 모달**: 자식 노드가 3개 이상인 노드 삭제 시 확인 다이얼로그 표시
 - **Undo 가능 시간 창**: 단일 노드 삭제는 5초, subtree 삭제는 10초
-- **Undo 스택 한도**: 최대 50개 명령어 (초과 시 가장 오래된 항목 제거)
+- **Undo 스택 한도**: 최대 100개 명령어 (초과 시 가장 오래된 항목 제거 — `12-history-undo-redo.md § 6.6`)
 
 ### 삭제 관련 RLS
 
@@ -627,3 +673,18 @@ class DeleteNodeCommand implements Command {
 -- 노드 삭제: 맵 소유자 또는 workspace editor/owner만 가능
 -- "map owners can manage nodes" 및 "workspace members can manage nodes" 정책이 커버
 ```
+
+---
+
+## 관련 문서 (Cross-Reference)
+
+| 문서 | 관련 내용 |
+|------|---------|
+| `docs/02-domain/db-schema.md` | nodes 테이블 전체 DDL, RLS 정책, ERD |
+| `docs/02-domain/domain-models.md` | NodeObject 타입 정의, LayoutType, ShapeType, kanban depth 규칙 |
+| `docs/03-editor-core/state-architecture.md` | childIds 런타임 파생, MindmapNode 타입, Autosave Store |
+| `docs/03-editor-core/save/14-save.md` | Autosave patch 흐름, orderIndex 재정규화 트리거, 충돌 해소 3단계 |
+| `docs/03-editor-core/history/12-history-undo-redo.md` | 노드 삭제 Undo 메커니즘, Command 히스토리 구조 |
+| `docs/03-editor-core/node/02-node-editing.md` | 노드 이동 규칙, 협업 충돌 처리 규칙 (§ 16) |
+| `docs/03-editor-core/layout/08-layout.md` | LayoutType 목록, Kanban depth 제약, freeform manualPosition |
+| `docs/04-extensions/collaboration/25-map-collaboration.md` | Soft Lock TTL, LWW 충돌 정책, 실시간 동기화 흐름 |

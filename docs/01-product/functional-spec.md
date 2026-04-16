@@ -1,8 +1,10 @@
 # easymindmap — 전체 기능 명세서
 
-**최종 업데이트:** 2026-03-31
+**최종 업데이트:** 2026-04-16
 **출처:** 기능정의테이블 + docs/features 문서 통합 정리
-**변경 이력:** 2026-03-31 — Kanban 레이아웃 기능 ID 추가, node-background-image 반영, P0-A~C 수정사항 통합
+**변경 이력:**
+- 2026-04-16 — 참조 문서 경로 정정 (map-model.md, node-model.md → domain-models.md; prd.md → vision.md + mvp-scope.md), 로드맵 단계 정렬 수정, 기능 수 요약 갱신
+- 2026-03-31 — Kanban 레이아웃 기능 ID 추가, node-background-image 반영, P0-A~C 수정사항 통합
 
 ---
 
@@ -22,8 +24,12 @@
 12. [EXPORT — 내보내기](#12-export--내보내기)
 13. [DASHBOARD — 대시보드 맵 (V3)](#13-dashboard--대시보드-맵-v3)
 14. [TRANSLATION — 다국어 번역 (V2)](#14-translation--다국어-번역-v2)
-15. [AI WORKFLOW — AI 실행형 절차](#15-ai-workflow--ai-실행형-절차)
-16. [개발 단계별 로드맵](#16-개발-단계별-로드맵)
+15. [AI WORKFLOW — AI 실행형 절차 (V1.5)](#15-ai-workflow--ai-실행형-절차-v15)
+16. [WBS — WBS 모드 (V1)](#16-wbs--wbs-모드-v1)
+17. [RESOURCE — 리소스 할당 (V1)](#17-resource--리소스-할당-v1)
+18. [RDMN — Redmine 연동 (V1)](#18-rdmn--redmine-연동-v1)
+19. [COLLAB — 협업맵](#19-collab--협업맵)
+20. [개발 단계별 로드맵](#20-개발-단계별-로드맵)
 
 ---
 
@@ -41,9 +47,10 @@
 
 ## 2. NODE — 노드 조작
 
-> 노드 추가 인디케이터(+ 버튼) 상세 설계: `node-indicator.md`
+> 노드 추가 인디케이터(+ 버튼) 상세 설계: `docs/03-editor-core/node/02-node-editing.md`
+> 도메인 모델 정의: `docs/02-domain/domain-models.md`
 >
-> **[기능ID 체계 주의]** NODE-13~16은 node-indicator.md 기준 기능 분류 ID로 사용됨:
+> **[기능ID 체계 주의]** NODE-13~16은 node-indicator 기준 기능 분류 ID로 사용됨:
 > - NODE-13: 추가 인디케이터 (+ 버튼 4방향)
 > - NODE-14: 번역 상태 인디케이터 (V2)
 > - NODE-15: 인디케이터 ON/OFF 설정 (V2)

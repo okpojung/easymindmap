@@ -2,6 +2,7 @@
 
 - 문서 위치: `docs/05-implementation/frontend-architecture.md`
 - 스택: React + TypeScript + Zustand + React Query
+- 변경: 2026-04-16 — collabStore 상세화(Presence/Soft Lock/Permission Guard), TranslationStore 추가, Dashboard 모드 Hook 추가, Supabase JS Client 연동 명시
 
 ---
 
@@ -28,13 +29,18 @@ apps/frontend/
 │   │       ├── CollabCursorOverlay.tsx # presence cursor 표시 오버레이
 │   │       └── CollabScopeOverlay.tsx  # scope 밖 노드 dim 처리 오버레이
 │   │
-│   ├── stores/                        # Zustand 5-Store
-│   │   ├── documentStore.ts
-│   │   ├── editorUiStore.ts
-│   │   ├── viewportStore.ts
-│   │   ├── interactionStore.ts
-│   │   ├── autosaveStore.ts
-│   │   └── collabStore.ts             # [v3.3] 협업 상태 (collaborators, myRole, myScope)
+│   ├── stores/                        # Zustand Store 모음
+│   │   ├── documentStore.ts           # [핵심] Mindmap 원본 데이터 (DB 저장 대상)
+│   │   ├── editorUiStore.ts           # UI 상태 (패널/모달/도구)
+│   │   ├── viewportStore.ts           # 캔버스 zoom/pan
+│   │   ├── interactionStore.ts        # drag/selection/편집 중 draft
+│   │   ├── autosaveStore.ts           # dirty flag / pending patches / save status
+│   │   ├── collabStore.ts             # [v3.3] 협업 상태
+│   │   └── translationStore.ts        # [V2] 번역 캐시 상태
+│   │   # ⚠️ 5-Store 핵심 원칙 (state-architecture.md 기준):
+│   │   #   Document / EditorUI / Viewport / Interaction / Autosave
+│   │   #   → 협업/번역/대시보드 기능은 위 5개에 통합하거나 별도 독립 store로 추가
+│   │   #   → 절대 5개 핵심 store에 혼재 금지
 │   │
 │   ├── commands/                      # Command 패턴 구현
 │   │   ├── types.ts
@@ -59,15 +65,19 @@ apps/frontend/
 │   │   └── EdgeRouter.ts
 │   │
 │   ├── services/                      # 외부 통신
-│   │   ├── apiClient.ts               # axios + interceptors
-│   │   ├── websocketClient.ts
+│   │   ├── apiClient.ts               # axios + interceptors (Silent Refresh 포함)
+│   │   ├── supabaseClient.ts          # Supabase JS Client (Anon Key — Auth/Realtime)
+│   │   ├── websocketClient.ts         # WS Gateway 연결 (map patch / soft lock / translation:ready)
 │   │   ├── exportClient.ts
 │   │   ├── aiClient.ts
-│   │   └── authClient.ts
+│   │   ├── translationClient.ts       # [V2] 번역 API 호출 (batch, override)
+│   │   └── authClient.ts              # Supabase Auth 래핑 (login/logout/refresh)
 │   │
 │   ├── selectors/                     # Zustand selector 함수
 │   ├── hooks/                         # 공통 custom hooks
-│   │   └── useCollabPermission.ts     # [v3.3] 협업 권한 조회 hook (canEdit, canDelete)
+│   │   ├── useCollabPermission.ts     # [v3.3] 협업 권한 조회 hook (canEdit, canDelete)
+│   │   ├── useDashboardRefresh.ts     # [V3] Dashboard 모드 polling hook
+│   │   └── useTranslation.ts          # [V2] 노드 번역 표시 텍스트 조회 hook
 │   ├── components/                    # 공통 UI 컴포넌트
 │   └── pages/                         # 페이지 컴포넌트
 │       ├── LoginPage.tsx
@@ -184,6 +194,81 @@ interface AutosaveStore {
   generatePatchId: () => string;    // `p_{timestamp}_{counter}`
 }
 ```
+
+### 2.6 collabStore (V3.3)
+
+협업 기능 관련 클라이언트 상태 관리 (DB 저장 안 함)
+
+```typescript
+interface CollabStore {
+  // 협업 기본 정보
+  isCollaborative: boolean;           // 현재 맵이 협업맵인지 여부
+  collaborators: CollaboratorInfo[];  // 현재 맵 전체 협업자 목록
+  myRole: 'creator' | 'editor' | null;
+  myScope: CollabScope | null;        // { type, level?, nodeId? }
+
+  // Presence (Supabase Realtime — 일시적 상태)
+  presenceMap: Record<string, PresenceState>;  // userId → PresenceState
+  // PresenceState: { userId, displayName, avatarUrl, color, cursor, selection, status }
+
+  // Soft Lock (Redis Pub/Sub 경유 — 5초 TTL)
+  softLocks: Record<string, SoftLock>;  // nodeId → { lockedBy, displayName, lockedAt }
+  // ⚠️ Soft Lock TTL: 5초 (node:editing:start → 5초 후 자동 해제 또는 node:editing:end)
+
+  // Permission Guard (GET /maps/:id/my-permissions 캐시)
+  myPermissions: {
+    role: 'creator' | 'editor' | null;
+    scope_type: 'full' | 'level' | 'node' | null;
+    scope_level: number | null;
+    scope_node_id: string | null;
+    can_invite: boolean;
+    can_transfer_ownership: boolean;
+    can_modify_others_nodes: boolean;
+  } | null;
+
+  // actions
+  setCollaborators: (list: CollaboratorInfo[]) => void;
+  updatePresence: (userId: string, state: PresenceState) => void;
+  removePresence: (userId: string) => void;
+  setLock: (nodeId: string, lock: SoftLock) => void;
+  clearLock: (nodeId: string) => void;
+  setPermissions: (permissions: MyPermissions) => void;
+  reset: () => void;
+}
+```
+
+> - Presence 채널: Supabase Realtime (`realtime:presence:{mapId}`) — 상세: `docs/04-extensions/collaboration/25-map-collaboration.md` §14.1
+> - Soft Lock 이벤트: Redis Pub/Sub → WS Gateway (`node:editing:started`, `node:editing:ended`)
+> - Permission Guard 사용: `useCollabPermission` hook → 편집 가능 노드에만 편집 UI 표시
+
+### 2.7 translationStore (V2)
+
+다국어 번역 클라이언트 캐시 상태 (DB 저장 안 함)
+
+```typescript
+interface TranslationStore {
+  // { nodeId: { targetLang: { text, hash, pending } } }
+  cache: Record<string, Record<string, TranslationCacheEntry>>;
+  pending: Set<string>;    // 번역 대기 중인 nodeId (Skeleton UI 표시 대상)
+  viewerLang: string;      // 현재 열람자 표시 언어 코드
+
+  // actions
+  setCacheEntry: (nodeId: string, lang: string, entry: TranslationCacheEntry) => void;
+  setPending: (nodeId: string) => void;
+  clearPending: (nodeId: string) => void;
+  invalidate: (nodeId: string) => void;    // 노드 수정 시 캐시 무효화
+  getDisplayText: (node: NodeObject, userLocale: string) => string | null;
+  // getDisplayText: 번역 우선순위 적용 후 표시할 텍스트 반환
+  //   1. node.translation_override = 'force_off' → 원문 반환
+  //   2. cache HIT → 번역 텍스트 반환
+  //   3. cache MISS + pending → null (Skeleton UI)
+  //   4. cache MISS + not pending → 번역 요청 enqueue 후 null
+}
+```
+
+> - 번역 정책 3단계 계층: `docs/04-extensions/translation/23-node-translation.md` §13
+> - 초기 로딩 전략 (Skeleton → fade-in): `docs/04-extensions/translation/23-node-translation.md` §15
+> - text_hash 알고리즘 (SHA-256 128자): `docs/04-extensions/translation/23-node-translation.md` §14
 
 ---
 

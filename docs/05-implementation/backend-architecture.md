@@ -1,8 +1,9 @@
 # easymindmap — Backend 개발 아키텍처
 
 문서 위치: `docs/05-implementation/backend-architecture.md`  
-스택: **NestJS + TypeScript + Supabase (Self-hosted) + Redis + BullMQ**  
-변경: 2026-03-27 — PostgreSQL/MinIO/JWT 직접 구현 → Supabase Self-hosted 전환
+스택: **NestJS + TypeScript + Supabase Self-hosted + Redis + BullMQ**  
+변경: 2026-03-27 — PostgreSQL/MinIO/JWT 직접 구현 → Supabase Self-hosted 전환  
+변경: 2026-04-16 — Collaboration 모듈 상세화, Dashboard/Redmine 모듈 추가, BullMQ 워커 모듈 목록 확장
 
 ---
 
@@ -84,11 +85,25 @@ apps/api/
  │   │       ├── deepl.provider.ts        # DeepL API 1차 번역 엔진
  │   │       └── llm-fallback.provider.ts # OpenAI GPT fallback (DeepL 실패/미지원 언어)
  │   │
- │   ├── export/                 # Export 모듈
+ │   ├── export/                 # Export 모듈 (BullMQ 'export' 큐)
  │   ├── tags/                   # 태그 모듈
  │   ├── search/                 # 검색 모듈
  │   ├── revisions/              # 버전 히스토리
  │   ├── audit/                  # 감사 로그
+ │   │
+ │   ├── dashboard/              # Dashboard 모듈 (V3)
+ │   │   ├── dashboard.module.ts
+ │   │   ├── dashboard.controller.ts  # PATCH /maps/:id/view-mode, /refresh-interval, /data
+ │   │   ├── dashboard.service.ts     # 외부 노드 업데이트, API Key 검증
+ │   │   └── schema.controller.ts     # GET /api/dashboard/schema/node-fields (field_registry)
+ │   │
+ │   ├── redmine/                # Redmine 연동 모듈 (V1 WBS)
+ │   │   ├── redmine.module.ts
+ │   │   ├── redmine.controller.ts    # POST /maps/:id/redmine/connect, sync, status, logs
+ │   │   ├── redmine.service.ts       # Redmine API 호출, Pull/Push 동기화
+ │   │   ├── redmine-crypto.service.ts # AES-256-GCM 암호화/복호화
+ │   │   └── workers/
+ │   │       └── redmine-sync.worker.ts  # BullMQ Worker (Exponential Backoff: 1s→2s→4s, 최대 3회)
  │   │
  │   ├── common/
  │   │   ├── filters/
@@ -384,7 +399,35 @@ PATCH  /nodes/:id/translation-override          노드 번역 override 설정
                                                 body: { override: 'force_on'|'force_off'|null }
 
 GET    /maps/:id/translations?lang=en           맵 내 특정 언어 번역 일괄 조회 (초기 로딩 최적화)
+POST   /maps/:id/translations/batch             미번역 노드 배치 번역 요청 (TRANS-06)
 POST   /maps/:id/retranslate                    맵 전체 재번역 요청 (관리용, 번역 엔진 업그레이드 시)
+
+POST   /translate/chat                          채팅 메시지 번역 (내부 서버 간 호출, TRANS-08)
+GET    /translate/chat/:messageId/:targetLang   채팅 번역 캐시 조회 (Redis 24h TTL)
+
+Collaboration (V1~)
+POST   /maps/:id/collaborators                  협업자 초대 (creator 전용)
+GET    /maps/:id/collaborators                  협업자 목록 조회
+PATCH  /maps/:id/collaborators/:collaboratorId  편집 범위(scope) 변경 (creator 전용)
+DELETE /maps/:id/collaborators/:collaboratorId  협업자 강제 탈퇴 (creator 전용)
+POST   /invite/accept                           초대 수락 (토큰 기반)
+PATCH  /maps/:id/transfer-ownership             소유권 이양 (creator 전용)
+GET    /maps/:id/ownership-history              소유권 이양 이력 조회
+GET    /maps/:id/my-permissions                 내 편집 권한 조회
+
+Dashboard (V3)
+PATCH  /maps/:id/view-mode                      대시보드 모드 전환 (view_mode 변경)
+PATCH  /maps/:id/refresh-interval               갱신 주기 설정
+PATCH  /maps/:id/data                           외부 시스템 노드 값 일괄 업데이트 (API Key 인증)
+GET    /maps/:id/api-key                        대시보드 API Key 조회
+GET    /api/dashboard/schema/node-fields        편집 가능 필드 목록 (field_registry, 인증 불필요)
+GET    /api/dashboard/maps/:id/nodes            대시보드 웹앱용 노드 목록 (_meta 포함)
+
+Redmine (V1 WBS)
+POST   /maps/:id/redmine/connect                Redmine 연동 설정 (URL/API Key/프로젝트 ID)
+POST   /maps/:id/redmine/sync                   수동 Push/Pull 동기화 { direction: 'push'|'pull' }
+GET    /maps/:id/redmine/status                 연동 상태 조회
+GET    /maps/:id/redmine/logs                   동기화 이력 조회 (redmine_sync_log)
 ```
 
 ---
@@ -657,5 +700,5 @@ apps/api/src/
       map-ownership-history.entity.ts
 ```
 
-> 상세: `docs/05-implementation/collaboration-api.md`
-> 권한 파이프라인: `docs/05-implementation/collaboration-engine.md` 섹션 9
+> 상세 권한 정책 및 Scope 알고리즘: `docs/04-extensions/collaboration/25-map-collaboration.md` §13, §15
+> WebSocket 이벤트 페이로드: `docs/04-extensions/collaboration/25-map-collaboration.md` §14

@@ -1,6 +1,6 @@
 # easymindmap — 환경변수 명세
 
-문서명: `docs/infra/env-spec.md`  
+문서명: `docs/05-implementation/env-spec.md`  
 변경: **Supabase Self-hosted 기준으로 DB / Storage / Auth 환경변수 전면 교체**
 
 ---
@@ -202,6 +202,32 @@ SECURITY_MAX_UPLOAD_MB=20
 SECURITY_ALLOWED_UPLOAD_MIME=image/png,image/jpeg,image/webp,application/pdf,text/markdown
 
 ########################################
+# REDMINE INTEGRATION (V1 WBS)
+# 참조: docs/04-extensions/integrations/31-redmine-integration.md
+########################################
+REDMINE_ENCRYPTION_KEY=change_me_redmine_aes256_key_32bytes
+# AES-256-GCM 암호화 키 (redmine_project_maps.api_key_encrypted 복호화용)
+# 반드시 32바이트(256비트) 이상의 랜덤값 사용
+# 저장 형식: base64(iv).base64(authTag).base64(ciphertext)
+
+REDMINE_SYNC_QUEUE_CONCURRENCY=3
+# Redmine 동기화 Worker 동시 처리 수
+
+REDMINE_SYNC_RETRY_TIMES=3
+# BullMQ Job 최대 재시도 횟수 (Exponential Backoff: 1s → 2s → 4s)
+
+########################################
+# DASHBOARD (V3)
+# 참조: docs/04-extensions/dashboard/22-dashboard.md
+########################################
+DASHBOARD_DEFAULT_REFRESH_INTERVAL=0
+# 기본 리프레시 간격 (초). 0 = off
+# 허용값: 0(off) | 10 | 30 | 60 | 300 | 600
+
+DASHBOARD_REFRESH_CHANNEL_PREFIX=dashboard:
+# Redis Pub/Sub 채널 접두사 (dashboard:{mapId} 형식)
+
+########################################
 # FEATURE FLAGS
 ########################################
 FEATURE_REALTIME_COLLAB=false         # V1
@@ -211,6 +237,8 @@ FEATURE_EXPORT_HTML=true
 FEATURE_EXPORT_MARKDOWN=true
 FEATURE_PUBLISH=true
 FEATURE_DASHBOARD_MAP=false           # V3
+FEATURE_REDMINE_INTEGRATION=false     # V1 WBS
+FEATURE_WBS=false                     # V1 WBS
 FEATURE_BILLING=false
 ```
 
@@ -281,6 +309,9 @@ POSTGRES_PASSWORD
 REDIS_PASSWORD
 AI_API_KEY
 TRANSLATION_DEEPL_API_KEY
+REDMINE_ENCRYPTION_KEY      ← Redmine API Key AES-256 암호화 마스터 키 (V1 WBS)
+INVITE_TOKEN_SECRET         ← 협업 초대 토큰 서명 키
+FCM_PRIVATE_KEY             ← Firebase 서비스 계정 키 (V3 알림)
 ```
 
 운영 환경에서는 **Vault 또는 별도 비밀 저장소** 권장.

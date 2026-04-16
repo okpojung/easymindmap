@@ -101,6 +101,46 @@ if (!node) return;
 }
 ```
 
+### nullable 필드 처리 규칙
+
+도메인 모델(`domain-models.md`)에서 nullable 필드는 아래 규칙으로 처리한다:
+
+```typescript
+// ✅ nullable 필드 — 명시적 null 분리 (undefined와 혼용 금지)
+type NodeObject = {
+  parentId: string | null;          // 루트는 null, undefined 아님
+  multimediaId: string | null;      // 없으면 null
+  manualPosition: { x: number; y: number } | null;  // freeform 전용
+  redmineIssueId: number | null;    // Redmine 비연동 시 null
+};
+
+// ✅ nullable 필드 접근 시 optional chaining 사용
+const x = node.manualPosition?.x ?? 0;
+
+// ❌ 금지: null과 undefined 혼용
+type BadType = {
+  parentId?: string;   // X — 루트 여부를 null로 명시해야 함
+};
+```
+
+### JSONB 필드 타입 처리
+
+DB의 JSONB 컬럼(`style_json`, `manual_position`, `size_cache` 등)은 아래 규칙으로 처리한다:
+
+```typescript
+// ✅ JSONB 컬럼은 TypeScript 타입으로 명시적 정의
+// DB: nodes.style_json JSONB → TypeScript: NodeStyle
+// DB: nodes.manual_position JSONB → TypeScript: { x: number; y: number } | null
+
+// ✅ API 응답에서 JSONB 파싱 시 타입 가드 사용
+function isNodeStyle(v: unknown): v is NodeStyle {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+// ✅ JSONB 직렬화는 JSON.stringify 사용 (Date는 ISO string으로 변환)
+const styleJson = JSON.stringify(node.style);
+```
+
 ---
 
 ## 5. 컴포넌트 규칙 (React)
@@ -149,6 +189,8 @@ export function useEverything() {
 
 ```typescript
 // ✅ Store는 slice 단위로 분리, 하나의 파일에 하나의 store
+// Store 목록: documentStore, editorUiStore, viewportStore, interactionStore, autosaveStore
+// 참조: docs/05-implementation/system-architecture.md §4.3
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
@@ -307,12 +349,133 @@ docs: db-schema.md Supabase RLS 정책 추가
 
 ---
 
-## 12. AI 코드 생성 시 주의사항
+## 12. WebSocket / 협업 이벤트 네이밍 규칙 (V1~)
+
+협업 기능(`25-map-collaboration.md`) 구현 시 WebSocket 이벤트 이름은 아래 규칙을 따른다:
+
+```
+{도메인}:{동작}           예: map:patch, node:editing:started
+{도메인}:{동작}:{상태}    예: node:editing:started, node:editing:ended
+```
+
+```typescript
+// ✅ 서버 → 클라이언트 이벤트 (Redis Pub/Sub 경유)
+const WS_EVENTS = {
+  MAP_PATCH:              'map:patch',
+  NODE_EDITING_STARTED:   'node:editing:started',
+  NODE_EDITING_ENDED:     'node:editing:ended',
+  TRANSLATION_READY:      'translation:ready',
+  EXPORT_COMPLETED:       'export:completed',
+  DASHBOARD_REFRESH:      'dashboard:refresh',
+  COLLAB_OWNERSHIP_TRANSFERRED: 'collab:ownership_transferred',
+} as const;
+
+// ✅ 클라이언트 → 서버 이벤트
+const WS_CLIENT_EVENTS = {
+  NODE_EDITING_START:  'node:editing:start',
+  NODE_EDITING_END:    'node:editing:end',
+  PRESENCE_UPDATE:     'presence:update',
+  CURSOR_UPDATE:       'cursor:update',
+  SELECTION_UPDATE:    'selection:update',
+} as const;
+
+// ✅ Supabase Realtime 채널 이름 패턴
+// realtime:presence:{mapId}
+// realtime:map:{mapId}
+```
+
+> 채널 라우팅 전체 규칙: `docs/04-extensions/collaboration/25-map-collaboration.md §14.2`
+
+---
+
+## 13. BullMQ Worker 네이밍 규칙 (V1~)
+
+Worker 클래스와 큐 이름은 아래 규칙을 따른다:
+
+```typescript
+// ✅ Queue 이름: kebab-case 소문자
+// 큐 목록
+const QUEUE_NAMES = {
+  AI:           'ai',
+  TRANSLATION:  'translation',
+  EXPORT:       'export',
+  REDMINE_SYNC: 'redmine-sync',   // Redmine 연동 (V1 WBS)
+  PUBLISH:      'publish',
+  CORE:         'core',            // cleanup / reindex 등 일반 작업
+} as const;
+
+// ✅ Worker 클래스명: PascalCase + Worker
+// AiWorker, TranslationWorker, ExportWorker, RedmineSyncWorker
+
+// ✅ Job 클래스명: PascalCase + Job
+// CreateRedmineIssueJob, TranslateNodeJob, ExportMapJob
+
+// ✅ Worker 파일 위치 (VM-05 src/worker/)
+// worker-ai.ts       → AiWorker
+// worker-translation.ts → TranslationWorker
+// worker-export.ts   → ExportWorker
+// worker-redmine.ts  → RedmineSyncWorker (V1 WBS)
+```
+
+---
+
+## 14. 번역 관련 코딩 규칙 (V2~)
+
+언어 감지에는 `franc-min` 라이브러리를 사용한다 (`23-node-translation.md §16` 참조):
+
+```typescript
+// ✅ franc-min 사용 (경량 언어 감지, 82개 언어 지원)
+import { franc } from 'franc-min';
+
+// ✅ ISO 639-3 → ISO 639-1 변환 필수 (franc은 639-3 반환)
+// 예: 'kor' → 'ko', 'eng' → 'en', 'jpn' → 'ja'
+
+// ✅ 3자 미만 텍스트는 franc 호출 없이 fallback 처리
+// ✅ franc이 'und' 반환 시 작성자 preferredLanguage로 fallback
+
+// ✅ text_hash 생성 — SHA-256 앞 128자
+import { createHash } from 'crypto';
+function makeTextHash(text: string): string {
+  return createHash('sha256').update(text).digest('hex').substring(0, 128);
+}
+
+// ✅ Jitter TTL — Thundering Herd 방지
+const TTL_BASE   = 7200;   // 2시간
+const TTL_JITTER = 600;    // ±10분
+const ttl = TTL_BASE + Math.floor(Math.random() * TTL_JITTER);
+```
+
+---
+
+## 15. Redmine 연동 규칙 (V1 WBS)
+
+Redmine API Key는 반드시 AES-256-GCM으로 암호화 저장한다 (`31-redmine-integration.md §16` 참조):
+
+```typescript
+// ✅ 암호화 키는 환경변수 REDMINE_ENCRYPTION_KEY에서만 읽음
+// ✅ 저장 형식: base64(iv) + '.' + base64(authTag) + '.' + base64(ciphertext)
+// ✅ GET 응답 시 반드시 '*****' 마스킹 처리
+// ❌ 클라이언트에 복호화된 API Key 절대 노출 금지
+
+// sync_status 상태 상수
+const SYNC_STATUS = {
+  SYNCED:  'synced',   // 정상 동기화 완료
+  PENDING: 'pending',  // BullMQ 큐 대기 중
+  ERROR:   'error',    // 실패, 자동 재시도 대기 (최대 3회)
+  FAILED:  'failed',   // 3회 모두 실패 — 수동 처리 필요
+} as const;
+
+// BullMQ 재시도: 최대 3회, Exponential Backoff (1s → 2s → 4s)
+```
+
+---
+
+## 16. AI 코드 생성 시 주의사항
 
 AI(Claude/Codex)에게 코드 생성을 요청할 때 반드시 포함할 내용:
 
 1. **관련 문서 첨부**: 해당 Task의 입력 문서 (`codex-task-plan.md` 참조)
-2. **타입 파일 첨부**: `02-domain/node-model.md` 또는 관련 타입 정의
+2. **타입 파일 첨부**: `02-domain/domain-models.md` (NodeObject, MapObject 등 통합 타입)
 3. **기존 코드 첨부**: 연결되는 Store / Hook / API 클라이언트
 4. **이 문서 첨부**: coding-conventions.md를 항상 포함
 
@@ -320,7 +483,7 @@ AI(Claude/Codex)에게 코드 생성을 요청할 때 반드시 포함할 내용
 // AI에게 전달하는 프롬프트 예시:
 "아래 문서를 참고해서 [기능명]을 구현해줘.
 - coding-conventions.md (코드 스타일 규칙)
-- node-model.md (NodeObject 타입)
+- domain-models.md (NodeObject, MapObject 타입)
 - api-spec.md (API 명세)
 strict TypeScript, named export, class-validator DTO 사용."
 ```

@@ -426,10 +426,57 @@ autosave 저장 시마다 `map_revisions`에 1 row 자동 누적.
 
 ## 17. EXPORT — 내보내기
 
-| 기능ID | 기능명 | 설명 |
+> 상세 설계: `docs/04-extensions/import-export/20-export.md`
+
+**개요**  
+마인드맵을 Markdown 또는 Standalone HTML 파일로 내보내는 기능.  
+Markdown은 **Basic(기본)** 과 **Extended(확장)** 두 가지 포맷을 지원한다.
+
+| 기능ID | 기능명 | 설명 | 단계 |
+|---|---|---|---|
+| EXPORT-01 | Export Markdown (Basic) | 노드 텍스트 계층 구조만 포함한 범용 Markdown 내보내기 | MVP |
+| EXPORT-01E | Export Markdown (Extended) | YAML Front Matter에 맵 전체 메타 정보 포함 Markdown 내보내기 | V1 |
+| EXPORT-02 | Export HTML | 맵 구조를 Standalone HTML로 내보내기 (읽기 전용 뷰어 포함) | MVP |
+
+### 17-1. Markdown 포맷 비교
+
+| 항목 | Basic (기본) | Extended (확장) |
 |---|---|---|
-| EXPORT-01 | Export Markdown | Markdown 파일 생성 |
-| EXPORT-02 | Export HTML | Standalone HTML 파일 생성 |
+| **대상** | 범용 Markdown 편집기, Notion, VS Code | Obsidian, 팀 보관, 버전 관리 |
+| **YAML Front Matter** | ❌ 없음 | ✅ 맵 전체 메타 포함 |
+| **포함 메타** | 노드 텍스트·태그·메모·링크 (옵션) | title, map_id, owner, layout_type, theme, node_count, tags, created_at, updated_at |
+| **API 파라미터** | `exportMode: "basic"` (기본값) | `exportMode: "extended"` |
+| **Import 역호환** | — | Extended 파일 Import 시 Front Matter로 맵 메타 자동 복원 |
+
+### 17-2. Extended 포맷 출력 예시
+
+```markdown
+---
+title: "AI 개념 정리"
+map_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+owner: "홍길동"
+layout_type: "mindmap"
+theme: "default"
+node_count: 42
+tags:
+  - AI
+  - 연구
+created_at: "2026-04-01T09:00:00Z"
+updated_at: "2026-04-16T12:30:00Z"
+export_mode: "extended"
+easymindmap_version: "1.2.0"
+---
+
+# AI 개념 정리
+
+## Machine Learning
+### Supervised Learning
+### Unsupervised Learning
+
+## Deep Learning
+### CNN
+### RNN
+```
 
 ---
 
@@ -964,7 +1011,7 @@ Supabase Realtime Channel: `chat:map:{mapId}`
 | TAG | 4 | MVP | — |
 | SEARCH | 2 | MVP | — |
 | AI | 5 | MVP / V3 | ⭐ 확장 (AI-03~05 추가) |
-| EXPORT | 2 | MVP | — |
+| EXPORT | 3 | MVP / V1 | ⭐ 확장 (EXPORT-01E: Markdown Extended 포맷 추가) |
 | IMPORT | 4 | MVP | ⭐ 신규 (IMPORT-01~04) |
 | PUBLISH | 4 | MVP | ⭐ 신규 (PUBL-01~04) |
 | COLLAB Phase 1 | 8 | V1 | ⭐ 신규 (COLLAB-01~06, COLLAB-16~17) |

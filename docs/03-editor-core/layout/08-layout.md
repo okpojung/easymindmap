@@ -766,21 +766,27 @@ function getEdgeType(node: Node): EdgeType {
   const rootLayout = getRootLayoutType(node)
 
   if (rootLayout.startsWith('radial-')) {
-    return 'curve-line'   // 방사형 → 곡선
+    return 'curve-line'   // 방사형(Radial) → Cubic Bezier 곡선
   }
-  return 'tree-line'      // 그 외 → 직각 연결선
+  // Tree / Hierarchy / ProcessTree / Freeform / Kanban
+  // → 모두 직각선 (tree-line / Orthogonal Connector)
+  // ⚠ straight-line(대각선) 은 사용하지 않는다
+  return 'tree-line'
 }
 ```
 
 레이아웃별 에지 타입 정리:
 
-| 레이아웃 계열            | 에지 타입       | 이유                     |
-| ------------------ | ----------- | ---------------------- |
-| `radial-*`         | `curve-line` | 방사형 배치에서 곡선이 자연스럽다     |
-| `tree-*`           | `tree-line` | 직각 연결선이 계층 구조를 명확히 한다  |
-| `hierarchy-*`      | `tree-line` | 들여쓰기 구조에 직각선 적합        |
-| `process-tree-*`   | `tree-line` | 흐름 강조, 화살표 형태 가능       |
-| `freeform`         | `curve-line` | 자유 배치에서 곡선이 유연하게 연결된다 |
-| `kanban`           | 없음 (엣지 미사용) | 컬럼/카드 구조는 엣지 불필요       |
+| 레이아웃 계열            | 에지 타입       | 이유                                      |
+| ------------------ | ----------- | --------------------------------------- |
+| `radial-*`         | `curve-line` | 방사형 배치에서 **Cubic Bezier 곡선**이 자연스럽다    |
+| `tree-*`           | `tree-line` | **직각선(Orthogonal)** — 계층 구조를 명확히 한다    |
+| `hierarchy-*`      | `tree-line` | **직각선(Orthogonal)** — 들여쓰기 계층 구조에 적합   |
+| `process-tree-*`   | `tree-line` | **직각선(Orthogonal)** — 흐름·단계 강조, 화살표 가능 |
+| `freeform`         | `tree-line` | **직각선(Orthogonal)** — 자유 배치에서도 직각 유지   |
+| `kanban`           | `tree-line` | 정책상 tree-line; UI 렌더러에서 edge 미표시 처리    |
+
+> **핵심 규칙**: 방사형(Radial) 계열만 곡선(Cubic Bezier), **나머지 모든 레이아웃은 직각선(tree-line / Orthogonal Connector)**.  
+> 대각선(straight-line)은 사용하지 않는다. (참조: `docs/assets/맵진행방향.pdf`)
 
 EdgeAnchorResolver는 각 node box의 시작점(source)과 끝점(target)을 계산하여 EdgeRouter에 전달한다. 에지 경로 계산은 `curve-line`과 `tree-line` 두 가지 라우팅 알고리즘으로 분기된다.

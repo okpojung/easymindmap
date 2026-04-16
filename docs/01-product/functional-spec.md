@@ -221,7 +221,8 @@ markdown / code 타입을 구분하여 자동 크기 계산, 줄바꿈, overflow
 
 ## 6. EDGE POLICY — 에지 정책
 
-> 상세 설계: `docs/03-editor-core/edge-policy.md`
+> 상세 설계: `docs/03-editor-core/edge-policy.md`  
+> 시각 참조: `docs/assets/맵진행방향.pdf` (방사형=곡선, 트리/계층/진행트리=직각선 확인)
 
 **개요**  
 Layout 유형별 부모-자식 연결선(Edge) 스타일 및 노드 상속 규칙을 정의한다.  
@@ -234,8 +235,18 @@ Radial 계열 (radial-bidirectional / radial-right / radial-left)
   → curve-line  (Cubic Bezier 곡선, 방향각 θ 기반 제어점 계산)
 
 나머지 모든 Layout (Tree / Hierarchy / ProcessTree / Freeform / Kanban)
-  → tree-line  (직각선 / Orthogonal Connector — 완전 대각선 아님)
+  → tree-line  (직각선 / Orthogonal Connector)
+     ⚠ 대각선(straight-line)이 아닌 수평·수직 꺾임만 사용하는 직각 연결선
 ```
+
+| layoutType 계열 | Edge 타입 | 비고 |
+|---|---|---|
+| `radial-*` | `curve-line` | Cubic Bezier 곡선 (방사형 전용) |
+| `tree-*` | `tree-line` | 직각선 (Orthogonal) |
+| `hierarchy-*` | `tree-line` | 직각선 (Orthogonal) |
+| `process-tree-*` | `tree-line` | 직각선 (Orthogonal) |
+| `freeform` | `tree-line` | 직각선 (Orthogonal) |
+| `kanban` | `tree-line` | 정책=직각선, UI에서 미표시 처리 |
 
 **MVP 제약 사항**
 

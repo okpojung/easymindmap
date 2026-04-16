@@ -1280,3 +1280,17 @@ field_registry  (독립 테이블 — 대시보드 필드 메타)
 | **레벨 3** (노드) | 개별 노드 | `nodes.translation_override` — `force_on` / `force_off` / null |
 
 > **우선순위**: 레벨 3 (노드) > 레벨 2 (맵) > 레벨 1 (사용자)
+
+#### ⑩ Edge 타입 — DB 컬럼 없음 (레이아웃에서 자동 파생)
+
+Edge(연결선) 스타일은 `nodes.layout_type` 값에서 자동으로 파생되므로, 별도 `connector_style` 컬럼이 필요하지 않다.
+
+| layoutType 계열 | Edge 타입 | 연결선 형태 |
+|---|---|---|
+| `radial-*` | `curve-line` | Cubic Bezier 곡선 |
+| `tree-*` / `hierarchy-*` / `process-tree-*` / `freeform` / `kanban` | `tree-line` | **직각선(Orthogonal Connector)** |
+
+- **`connector_style` 컬럼 불필요** — 레이아웃값으로 서버/클라이언트가 자동 결정
+- **`line_type` API 파라미터 불필요** — 레이아웃 변경으로 Edge 자동 전환
+- 사용자 수동 선택은 MVP 미제공 (Backlog 항목)
+- 참조: `docs/03-editor-core/edge-policy.md §3`, `docs/assets/맵진행방향.pdf`

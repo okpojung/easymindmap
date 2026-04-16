@@ -155,7 +155,7 @@ src/
  ├── editor/
  │   ├── canvas/           # SVG viewport, pan/zoom
  │   ├── node-renderer/    # 노드 SVG + HTML Overlay
- │   ├── edge-renderer/    # curve-line / tree-line
+ │   ├── edge-renderer/    # curve-line(방사형 곡선) / tree-line(직각선 Orthogonal)
  │   ├── layout-engine-adapter/
  │   ├── command-dispatcher/
  │   ├── inspector-panels/

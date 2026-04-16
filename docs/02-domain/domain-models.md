@@ -99,6 +99,26 @@ type LayoutType =
 | BL-FR | `freeform` | 자유배치 | |
 | BL-KB | `kanban` | Kanban 보드형 | |
 
+#### LayoutType ↔ Edge 타입 매핑 (자동 결정)
+
+> Edge 타입은 `layoutType`에서 자동 파생된다. 별도 DB 컬럼(`connector_style`) 불필요.  
+> 참조: `docs/03-editor-core/edge-policy.md §3`, `docs/assets/맵진행방향.pdf`
+
+| layoutType 계열 | Edge 타입 | 연결선 형태 |
+|---|---|---|
+| `radial-bidirectional`, `radial-right`, `radial-left` | `curve-line` | **Cubic Bezier 곡선** |
+| `tree-*`, `hierarchy-*`, `process-tree-*`, `freeform`, `kanban` | `tree-line` | **직각선 (Orthogonal Connector)** |
+
+```typescript
+// Edge 타입 결정 함수
+function resolveEdgeType(layoutType: LayoutType): 'curve-line' | 'tree-line' {
+  if (layoutType.startsWith('radial-')) return 'curve-line';
+  return 'tree-line';  // tree / hierarchy / process-tree / freeform / kanban 모두 직각선
+}
+```
+
+> **⚠ 핵심**: `tree-line` = 직각선(Orthogonal), **대각선(straight-line) 아님**
+
 ### 2.3 ShapeType
 
 ```typescript

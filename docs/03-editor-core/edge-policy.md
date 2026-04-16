@@ -1,8 +1,9 @@
 # easymindmap — Edge / Layout / Node Inheritance Policy
 
-문서 버전: v3.2  
+문서 버전: v3.3  
 상태: Final Draft  
 변경 이력:
+- v3.3 (2026-04-16) — 맵진행방향.pdf 시각자료 기반 최종 확인: 방사형=곡선(Cubic Bezier), 나머지 전체=직각선(Orthogonal). `08-layout.md §18` freeform 오류(curve-line→tree-line) 수정. Kanban도 tree-line 정책 명시(UI 미표시 처리). §3 핵심 결론에 시각 예시 참조 추가
 - v3.2 (2026-04-16) — MVP 제약 사항 섹션 추가(§4-A), tree-line = 직각선(Orthogonal) 명칭 명시(§10.2, §20.3), Radial CP 방향각 기반 계산 상세 추가(§20.2), getEdgeStyle 팩토리 패턴 섹션 추가(§26-A)
 - v3.1 — 이전 버전
 대상 파일: `docs/03-editor-core/edge-policy.md`  
@@ -66,22 +67,33 @@
 easymindmap의 최종 Edge 정책은 아래 한 줄로 정리된다.
 
 ```text
-방사형(Radial)만 curve-line
-그 외 모든 Layout은 tree-line
+방사형(Radial)만 curve-line (Cubic Bezier 곡선)
+그 외 모든 Layout은 tree-line (직각선 / Orthogonal Connector)
+대각선(straight-line)은 사용하지 않는다
 ```
 
-즉,
+> **시각 참조**: `docs/assets/맵진행방향.pdf`  
+> - 방사형(양쪽/왼쪽/오른쪽): 노드 간 **곡선(Bezier)** 연결 확인  
+> - 트리(위/아래/왼쪽/오른쪽): 노드 간 **직각선(Orthogonal)** 연결 확인  
+> - 계층(왼쪽/오른쪽): 노드 간 **직각선(Orthogonal)** 연결 확인  
+> - 진행트리(왼쪽/오른쪽): 노드 간 **직각선(Orthogonal)** 연결 확인
 
-- Radial-Bidirectional → curve-line
-- Radial-Right → curve-line
-- Radial-Left → curve-line
-- Tree 계열 → tree-line
-- Hierarchy 계열 → tree-line
-- ProcessTree 계열 → tree-line
-- Freeform → tree-line
-- Kanban → tree-line
+| Layout 계열 | Edge 타입 | 연결선 형태 |
+|---|---|---|
+| Radial-Bidirectional | `curve-line` | Cubic Bezier 곡선 |
+| Radial-Right | `curve-line` | Cubic Bezier 곡선 |
+| Radial-Left | `curve-line` | Cubic Bezier 곡선 |
+| Tree 계열 (Up/Down/Left/Right) | `tree-line` | **직각선(Orthogonal)** |
+| Hierarchy 계열 (Left/Right) | `tree-line` | **직각선(Orthogonal)** |
+| ProcessTree 계열 (Right/Left/A/B) | `tree-line` | **직각선(Orthogonal)** |
+| Freeform | `tree-line` | **직각선(Orthogonal)** |
+| Kanban | `tree-line` | 정책=직각선, UI에서 edge 미표시 |
 
 이 정책은 UX, 구현 단순성, 확장성 측면에서 가장 균형이 좋다.
+
+> **⚠ 주의**: `tree-line`은 대각선(diagonal straight-line)이 **아니다**.  
+> 수평·수직 꺾임으로만 이루어진 **직각 Orthogonal Connector**이다.  
+> SVG 경로: `M x1 y1 L midX y1 L midX y2 L x2 y2` (수평 우선 라우팅)
 
 ---
 

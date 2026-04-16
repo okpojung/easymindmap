@@ -211,6 +211,11 @@ type MindmapDocument = {
   edges: Record<string, MindmapEdge>;
   tags: Record<string, TagEntity>;
 
+  // 맵 전체에 적용되는 테마 ID (노드 색상/스타일 프리셋 기준)
+  themeId: string | null;
+  // 레벨별 폰트 크기·굵기 규칙 목록 (depth 0 = root 기준, 오름차순)
+  levelFontRules: LevelFontRule[];
+
   settings: DocumentSettings;
   metadata: DocumentMetadata;
 
@@ -218,6 +223,8 @@ type MindmapDocument = {
   updatedAt: string;
 };
 ```
+
+> `LayoutType` 전체 값 목록은 `docs/03-editor-core/layout/08-layout.md § 4.1`에 정의되어 있다.
 
 ---
 
@@ -351,6 +358,11 @@ type MindmapNode = {
   multimediaId?: string | null;
 
   collapsed: boolean;
+
+  // 부모 노드의 도형·색상 스타일을 상속할지 여부
+  inheritStyleFromParent: boolean;
+  // 부모 노드의 shapeType을 상속할지 여부
+  inheritShapeFromParent: boolean;
 
   manualPosition?: {
     x: number;

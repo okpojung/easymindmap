@@ -1,6 +1,6 @@
 # easymindmap — API Specification
 
-문서 버전: v2.1
+문서 버전: v2.2
 결정일: 2026-03-29
 최종 업데이트: 2026-04-16
 
@@ -16,6 +16,12 @@
 > - Redmine V1 WBS: config PATCH 엔드포인트 추가 (섹션 15)
 > - Dashboard V3: GET /maps/:id/dashboard/data, GET /api/dashboard/schema/node-fields (섹션 16)
 > - AI Chat V1: POST /maps/:id/chat, GET /maps/:id/chat/history (섹션 17 신규)
+>
+> **[v2.2 주요 추가 — 2026-04-16]**
+> - Chat v1.1: `recipientId` (DM 전송 대상 지정), `recipientFilter` 파라미터 추가 (섹션 14, 17)
+> - Chat 오프라인 확인: GET /maps/:id/chat/mentions/unread, PATCH /maps/:id/chat/mentions/read (섹션 17 신규)
+> - WebSocket 이벤트 추가: `chat:mention:new`, `chat:mention:read` (섹션 14)
+> - `text` → `content` 필드명 통일 (chat_messages)
 
 ---
 
@@ -1625,6 +1631,7 @@ DELETE /maps/:mapId/soft-lock
 - `limit=50` (기본 30, 최대 100)
 - `beforeMessageId=uuid` (페이징)
 - `includeTranslations=true`
+- `recipientFilter=all|mine` (v1.1) — `all`: 전체 공개 메시지만 / `mine`: 전체 공개 + 나의 DM 포함 (기본: `mine`)
 
 ### POST /maps/{mapId}/chat/messages
 REST fallback 또는 초기 송신용 메시지 저장
@@ -1633,10 +1640,18 @@ REST fallback 또는 초기 송신용 메시지 저장
 ```json
 {
   "clientMsgId": "cmsg_1712300000000_001",
-  "text": "이 노드 구조 다시 봐주세요",
-  "nodeId": "uuid-node-optional"
+  "content": "이 노드 구조 다시 봐주세요",
+  "nodeId": "uuid-node-optional",
+  "recipientId": null
 }
 ```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|:---:|------|
+| `clientMsgId` | string | ✅ | 멱등성 키 (중복 전송 방지) |
+| `content` | string | ✅ | 메시지 본문 |
+| `nodeId` | string \| null | ❌ | null = map-room, UUID = node thread |
+| `recipientId` | string \| null | ❌ | null = 전체 공개, UUID = DM 수신자 (v1.1) |
 
 ### GET /nodes/{nodeId}/threads/messages
 특정 node thread 메시지 조회
@@ -1668,9 +1683,11 @@ thread action item 추출 preview 생성
 
 | 방향 | 이벤트 | 설명 |
 |------|--------|------|
-| C→S | `chat:message:send` | map-room / node thread 메시지 송신 |
-| S→C | `chat:message` | 원문 메시지 수신 |
+| C→S | `chat:message:send` | map-room / node thread 메시지 송신 (`recipientId` 포함 가능, v1.1) |
+| S→C | `chat:message` | 원문 메시지 수신 (`recipientId`, `isDm` 필드 포함, v1.1) |
 | S→C | `chat:translation:ready` | targetLang 번역 결과 수신 |
+| S→C | `chat:mention:new` | 본인에게 온 멘션/DM 알림 (`unreadCount` 포함, v1.1) |
+| C→S | `chat:mention:read` | 멘션/DM 읽음 처리 (`mentionIds[]`, v1.1) |
 | S→C | `node:thread:updated` | 댓글 수 / 최신 시각 갱신 |
 | C→S | `node:thread:ai:run` | AI preview 요청 |
 | S→C | `node:thread:ai:preview` | AI 요약 / 작업 후보 preview |
@@ -1921,10 +1938,11 @@ Redmine 동기화 이력 조회 (`redmine_sync_log`)
 
 ---
 
-## 17. AI Chat (V1)
+## 17. Chat (V2) — 채팅 REST 인터페이스
 
 > 협업 맵 내 map-room 채팅 REST 인터페이스.  
-> WebSocket(`chat:message:send`) 미지원 환경용 REST fallback.
+> WebSocket(`chat:message:send`) 미지원 환경용 REST fallback.  
+> **v1.1**: `recipientId` (DM), 오프라인 멘션/DM 확인 API 추가.
 
 ### POST /maps/{mapId}/chat
 채팅 메시지 전송 (REST fallback)
@@ -1935,16 +1953,18 @@ Redmine 동기화 이력 조회 (`redmine_sync_log`)
 ```json
 {
   "clientMsgId": "cmsg_1712300000000_001",
-  "text": "이 부분을 더 상세하게 다듬어봅시다.",
-  "nodeId": null
+  "content": "이 부분을 더 상세하게 다듬어봅시다.",
+  "nodeId": null,
+  "recipientId": null
 }
 ```
 
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|:---:|------|
 | `clientMsgId` | string | ✅ | 클라이언트 생성 멱등성 키 (중복 전송 방지) |
-| `text` | string | ✅ | 메시지 본문 |
+| `content` | string | ✅ | 메시지 본문 |
 | `nodeId` | string \| null | ❌ | null = map-room, UUID = 특정 node thread 연결 |
+| `recipientId` | string \| null | ❌ | null = 전체 공개, UUID = DM 수신자 (v1.1) |
 
 **Response** `201 Created`
 ```json
@@ -1954,7 +1974,9 @@ Redmine 동기화 이력 조회 (`redmine_sync_log`)
   "nodeId": null,
   "userId": "uuid-...",
   "clientMsgId": "cmsg_1712300000000_001",
-  "text": "이 부분을 더 상세하게 다듬어봅시다.",
+  "content": "이 부분을 더 상세하게 다듬어봅시다.",
+  "recipientId": null,
+  "isDm": false,
   "sourceLang": "ko",
   "createdAt": "2026-04-16T10:00:00Z"
 }
@@ -1972,6 +1994,7 @@ Redmine 동기화 이력 조회 (`redmine_sync_log`)
 | `beforeMessageId` | ❌ | 페이징: 해당 messageId 이전 메시지 조회 |
 | `nodeId` | ❌ | null 생략 시 map-room, UUID 지정 시 node thread |
 | `includeTranslations` | ❌ | true 시 번역 캐시 포함 (기본: false) |
+| `recipientFilter` | ❌ | `all` = 전체 공개만 / `mine` = DM 포함 (기본: `mine`, v1.1) |
 
 **Response** `200 OK`
 ```json
@@ -1981,7 +2004,9 @@ Redmine 동기화 이력 조회 (`redmine_sync_log`)
       "id": "uuid-...",
       "userId": "uuid-...",
       "displayName": "홍길동",
-      "text": "이 부분을 더 상세하게 다듬어봅시다.",
+      "content": "이 부분을 더 상세하게 다듬어봅시다.",
+      "recipientId": null,
+      "isDm": false,
       "sourceLang": "ko",
       "createdAt": "2026-04-16T10:00:00Z",
       "translations": []
@@ -1989,6 +2014,55 @@ Redmine 동기화 이력 조회 (`redmine_sync_log`)
   ],
   "hasMore": false
 }
+```
+
+---
+
+### GET /maps/{mapId}/chat/mentions/unread
+미읽음 멘션/DM 목록 조회 (v1.1 신규)
+
+> 재접속 시 미읽음 멘션·DM 수를 뱃지로 표시하기 위해 호출.  
+> 최근 50건 우선 반환.
+
+**Response** `200 OK`
+```json
+{
+  "unreadCount": 3,
+  "mentions": [
+    {
+      "id": "mention-uuid",
+      "messageId": "msg-uuid",
+      "senderId": "user-uuid",
+      "senderName": "Alice",
+      "mentionType": "mention",
+      "contentPreview": "@홍길동 이 부분 확인 부탁드립니다...",
+      "createdAt": "2026-04-16T10:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### PATCH /maps/{mapId}/chat/mentions/read
+멘션/DM 읽음 처리 (v1.1 신규)
+
+**Request Body**
+```json
+{
+  "mentionIds": ["mention-uuid-1", "mention-uuid-2"],
+  "readAll": false
+}
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `mentionIds` | string[] | 읽음 처리할 chat_mentions.id 목록 |
+| `readAll` | boolean | true 시 해당 맵의 본인 미읽음 전체 읽음 처리 |
+
+**Response** `200 OK`
+```json
+{ "updatedCount": 2, "remainingUnread": 1 }
 ```
 
 ---

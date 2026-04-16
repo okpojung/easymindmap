@@ -480,7 +480,8 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 ### 19-2. 채팅 MVP 원칙
 
 > - 채팅은 메신저가 아니라 **실시간 협업 보조 패널**이다.
-> - unread count / read receipt / 메시지 상태 추적은 MVP 범위에서 제외한다.
+> - 전체 메시지 read receipt는 MVP 범위에서 제외한다.
+> - **단, @멘션 및 DM(특정 사용자 지정 메시지)은 `chat_mentions` 테이블로 추적하여 재접속 시 확인 가능하게 한다.**
 > - 대신 presence, 새 메시지 점 표시, 재접속 시 최근 30~50개 메시지 복구를 제공한다.
 > - 채팅/댓글/AI 결과는 문서 편집 Undo/Redo history에 포함하지 않는다.
 
@@ -522,8 +523,10 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 | CHAT-01 | 맵 채팅 패널 | 우측 사이드바 채팅 패널 표시/숨기기 | V2 |
 | CHAT-02 | 메시지 전송 | 텍스트 메시지 전송 (Enter 전송) | V2 |
 | CHAT-03 | 이전 메시지 로딩 | 스크롤 업 시 이전 메시지 페이징 로딩 | V2 |
-| CHAT-04 | 파일 첨부 | 이미지/파일 첨부 전송 (후순위) | V2 |
-| CHAT-05 | @멘션 | @이름으로 특정 협업자 알림 | V2 |
+| CHAT-04 | **전송 대상 지정** | 전체 협업자 또는 특정 사용자(DM) 지정 전송 (`recipient_id`) | V2 |
+| CHAT-05 | @멘션 | @이름으로 특정 협업자 알림 (`chat_mentions` 추적) | V2 |
+| CHAT-06 | **오프라인 메시지 확인** | 재접속 시 본인 미읽음 멘션/DM 뱃지 표시 및 목록 확인 | V2 |
+| CHAT-07 | 파일 첨부 | 이미지/파일 첨부 전송 (후순위) | V3 |
 
 **Phase 3 (V3) — AI 협업 요약**
 
@@ -556,7 +559,7 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 | MVP | MAP, NODE, LAYOUT, KANBAN, CANVAS, SELECTION, HISTORY, SAVE, TAG, SEARCH, AI, EXPORT | 핵심 편집 기능 전체 |
 | V1 | COLLAB Phase 1 (COLLAB-01~06, 16~17), WBS, RESOURCE, RDMN | 협업 초대·동기화 + WBS 모드 + Redmine 연동 |
 | V1.5 | AI WORKFLOW (WFLOW-01~12) | AI 실행형 절차 (단독 편집 모드 전용) |
-| V2 | TRANSLATION (TRANS-01~11), COLLAB Phase 2 (COLLAB-07~13), CHAT (CHAT-01~05) | 글로벌 다국어 협업 + 커서/Soft Lock/Node Thread |
+| V2 | TRANSLATION (TRANS-01~11), COLLAB Phase 2 (COLLAB-07~13), CHAT (CHAT-01~06) | 글로벌 다국어 협업 + 커서/Soft Lock/Node Thread + DM·오프라인 메시지 확인 |
 | V3 | DASHBOARD (DASH-01~05), AI 협업 요약 (COLLAB-14~15, AI-03~05) | 대시보드 맵 + AI 협업 요약·작업 생성 |
 
 **기능 수 요약**
@@ -583,7 +586,7 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 | RDMN | 8 | V1 | ⭐ 신규 (RDMN-01~08) |
 | AI WORKFLOW | 12 | V1.5 | ⭐ 신규 (WFLOW-01~12) |
 | TRANSLATION (V2) | 11 | V2 | ⭐ 확장 (TRANS-08~11 추가) |
-| COLLAB Phase 2 + CHAT | 12 | V2 | ⭐ 신규 (COLLAB-07~13 / CHAT-01~05) |
+| COLLAB Phase 2 + CHAT | 14 | V2 | ⭐ 신규 (COLLAB-07~13 / CHAT-01~06) + CHAT-04·06 신규 격상 |
 | DASHBOARD (V3) | 5 | V3 | — |
 | COLLAB AI (V3) | 5 | V3 | ⭐ 신규 (COLLAB-14~15 / AI-03~05 교차) |
-| **합계** | **124+** | | |
+| **합계** | **126+** | | |

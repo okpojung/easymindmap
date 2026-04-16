@@ -966,19 +966,32 @@ ORDER BY updated_at DESC;
 기존 `node_translations`는 **문서 노드 번역**용이다.  
 실시간 협업 채팅과 node thread는 별도의 저장 구조를 둔다.
 
-### 17-1. chat_messages
+### 17-1. chat_messages (v1.1 변경)
+
+> **v1.1 변경 사항** (`26-realtime-chat.md` v1.1 반영)
+> - `recipient_id` 컬럼 추가: NULL = 전체 공개, UUID = 특정 사용자 DM
+> - `client_msg_id` 멱등성 키 추가 (중복 전송 방지)
+> - `content` 필드명 통일 (기존 `text` → `content`)
+> - DM 수신자 조회 인덱스 추가
 
 ```sql
 CREATE TABLE public.chat_messages (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  map_id            UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
-  node_id           UUID REFERENCES public.nodes(id) ON DELETE CASCADE,
-  user_id           UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  client_msg_id     VARCHAR(80) NOT NULL,
-  text              TEXT NOT NULL,
-  source_lang       VARCHAR(20),
-  source_text_hash  VARCHAR(128),
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id          UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  node_id         UUID REFERENCES public.nodes(id) ON DELETE CASCADE,
+  user_id         UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+
+  -- v1.1: 전송 대상 지정
+  -- NULL     = 전체 협업자에게 공개 (브로드캐스트)
+  -- UUID     = 특정 사용자에게만 보이는 DM 메시지
+  recipient_id    UUID REFERENCES public.users(id),
+
+  client_msg_id   VARCHAR(80) NOT NULL,     -- 멱등성 키 (중복 전송 방지)
+  content         TEXT NOT NULL,
+  source_lang     VARCHAR(20),
+  source_text_hash VARCHAR(128),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
   UNIQUE (map_id, user_id, client_msg_id)
 );
 
@@ -987,11 +1000,105 @@ CREATE INDEX idx_chat_messages_map_created
 CREATE INDEX idx_chat_messages_node_created
   ON public.chat_messages(node_id, created_at DESC)
   WHERE node_id IS NOT NULL;
+-- v1.1: DM 수신자 조회 인덱스
+CREATE INDEX idx_chat_messages_recipient
+  ON public.chat_messages(recipient_id, map_id, created_at DESC)
+  WHERE recipient_id IS NOT NULL;
 ```
 
 - `node_id IS NULL` → map-room chat
 - `node_id IS NOT NULL` → node thread 연결 메시지
+- `recipient_id IS NULL` → 전체 공개 메시지 (모든 협업자 조회 가능)
+- `recipient_id IS NOT NULL` → DM 메시지 (발신자·수신자만 조회 가능, RLS 적용)
 - 채팅 메시지는 autosave revision / undo history 대상이 아님
+
+### 17-1-1. chat_messages RLS 정책 (v1.1 신규)
+
+```sql
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+
+-- 전체 공개 메시지: 해당 맵 협업자 전원 조회 가능
+-- DM 메시지: 발신자(user_id) 또는 수신자(recipient_id)만 조회 가능
+CREATE POLICY "chat_messages_select"
+  ON public.chat_messages FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.map_collaborators mc
+      WHERE mc.map_id = chat_messages.map_id
+        AND mc.user_id = auth.uid()
+        AND mc.status = 'active'
+    )
+    AND (
+      recipient_id IS NULL                   -- 전체 공개
+      OR user_id = auth.uid()                -- 내가 보낸 DM
+      OR recipient_id = auth.uid()           -- 내가 받은 DM
+    )
+  );
+
+-- 메시지 전송: 해당 맵 협업자 (editor 이상)
+CREATE POLICY "chat_messages_insert"
+  ON public.chat_messages FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id AND
+    EXISTS (
+      SELECT 1 FROM public.map_collaborators mc
+      WHERE mc.map_id = chat_messages.map_id
+        AND mc.user_id = auth.uid()
+        AND mc.status = 'active'
+        AND mc.role IN ('creator', 'editor')
+    )
+  );
+```
+
+### 17-1-2. chat_mentions (v1.1 신규)
+
+> @멘션 및 DM 수신 추적 테이블.  
+> 오프라인 재접속 시 미읽음 메시지 확인 기능(`CHAT-06`)의 핵심 저장 구조.
+
+```sql
+CREATE TABLE public.chat_mentions (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id        UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  message_id    UUID NOT NULL REFERENCES public.chat_messages(id) ON DELETE CASCADE,
+  sender_id     UUID NOT NULL REFERENCES public.users(id),
+  receiver_id   UUID NOT NULL REFERENCES public.users(id),  -- 멘션 수신자 or DM 수신자
+  mention_type  VARCHAR(10) NOT NULL DEFAULT 'mention',
+                -- 'mention' : @멘션 메시지
+                -- 'dm'      : recipient_id 지정 DM 메시지
+  is_read       BOOLEAN NOT NULL DEFAULT FALSE,
+  read_at       TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE (message_id, receiver_id)              -- 동일 메시지 중복 알림 방지
+);
+
+-- 수신자별 미읽음 조회 (재접속 시 뱃지 표시)
+CREATE INDEX idx_chat_mentions_receiver
+  ON public.chat_mentions(receiver_id, map_id, is_read, created_at DESC);
+
+-- 맵별 미읽음 집계 (부분 인덱스로 is_read=FALSE 건만 관리)
+CREATE INDEX idx_chat_mentions_map_unread
+  ON public.chat_mentions(map_id, receiver_id, is_read)
+  WHERE is_read = FALSE;
+```
+
+- `mention_type = 'mention'` → @멘션 메시지 (전체 공개 메시지 중 특정인 태그)
+- `mention_type = 'dm'` → DM 메시지 수신 (`chat_messages.recipient_id IS NOT NULL` 연동)
+- `is_read = false` → 재접속 시 미읽음 뱃지에 카운트됨
+- 맵 삭제 시 CASCADE 삭제, 별도 만료 정책 없음
+
+```sql
+-- chat_mentions RLS: 본인의 수신 알림만 조회/수정 가능
+ALTER TABLE public.chat_mentions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "chat_mentions_select"
+  ON public.chat_mentions FOR SELECT
+  USING (receiver_id = auth.uid());
+
+CREATE POLICY "chat_mentions_update"
+  ON public.chat_mentions FOR UPDATE
+  USING (receiver_id = auth.uid());
+```
 
 ### 17-2. chat_message_translations
 
@@ -1048,6 +1155,7 @@ CREATE TABLE public.node_thread_ai_previews (
 | v3.1 | 2026-03-30 | 다국어 번역 V2 스키마 반영<br>`users`: `secondary_languages`, `skip_english_translation` 추가<br>`maps`: `translation_policy_json` JSONB 추가<br>`nodes`: `translation_mode`, `translation_override`, `author_preferred_language` 추가 |
 | v3.2 | 2026-03-31 | `tags.workspace_id` 추가<br>`nodes.layout_type` NULL 허용<br>`nodes.background_image_*` 전용 컬럼 3개 분리<br>`maps.view_mode`에 `'kanban'` 추가<br>RLS: workspace_members 기반 공유 접근 정책 추가 |
 | v3.3 | 2026-04-05 | 협업맵 스키마 반영<br>`maps`: `is_collaborative`, `collab_owner_id` 추가<br>`nodes`: `created_by` 추가<br>`map_collaborators`, `map_ownership_history` 테이블 신규 |
+| v3.4 | 2026-04-16 | 채팅 v1.1 반영<br>`chat_messages`: `recipient_id`, `client_msg_id` 추가, `text` → `content` 필드명 통일<br>`chat_mentions` 테이블 신규 (오프라인 멘션/DM 추적)<br>RLS 정책 추가 (`chat_messages`, `chat_mentions`) |
 
 ---
 

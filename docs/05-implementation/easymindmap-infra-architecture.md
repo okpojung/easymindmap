@@ -1,9 +1,16 @@
 # easymindmap — 인프라 아키텍처 & 설치 가이드
 
 > **문서 위치**: `docs/05-implementation/infra-architecture.md`
-> **최종 업데이트**: 2026-04-04
-> **버전**: v1.2 (전체 확정)
+> **최종 업데이트**: 2026-04-16
+> **버전**: v1.3
 > **환경**: IDC / ESXi 5대 / FortiGate IPSec VPN / 192.168.94.0/24
+>
+> **[v1.3 변경 — 2026-04-16]**
+> - VM-05 Worker 구성에 `worker-redmine` 추가 (BullMQ 'redmine-sync' 큐)
+> - Redis 용도 표에 Soft Lock (TTL 5초) 명시
+> - Supabase Realtime 협업 채널 역할 분리 설명 추가
+> - VM-05 Worker 레이어 → 외부 Redmine 연결 경로 명시
+> - IDC 내부 VM 통신 구조에 WebSocket Soft Lock / Realtime 협업 경로 보완
 
 ---
 
@@ -86,8 +93,11 @@ VM-02 App (192.168.94.112)
 
 VM-05 Worker (192.168.94.115)
   ├──▶ VM-03 :5432   PostgreSQL
-  ├──▶ VM-04 :6379   Redis (BullMQ 큐)
-  └──▶ 외부 openai.com (AI API)
+  ├──▶ VM-03 :9000   Supabase Storage (export 결과 저장)
+  ├──▶ VM-04 :6379   Redis (BullMQ 큐: export / ai-generate / translation / redmine-sync)
+  ├──▶ 외부 openai.com   (AI API — worker-ai)
+  ├──▶ 외부 api.deepl.com (Translation API — worker-translation, V2~)
+  └──▶ 외부 redmine.example.com (Redmine REST API — worker-redmine, V1 WBS~)
 
 VM-DEV (192.168.94.110)
   └── 개발 전체 스택 (Docker: Supabase + Redis + NestJS + Vite)
@@ -737,9 +747,48 @@ sudo systemctl start supabase
 
 ---
 
+## 8-1. WebSocket 라우팅 — 협업 실시간 통신
+
+VM-02의 WebSocket Gateway (포트 3100)는 다음 두 채널을 구분하여 처리한다:
+
+| 채널 | 담당 레이어 | 주 용도 |
+|------|-----------|---------|
+| **Supabase Realtime** (VM-03:4000) | Presence / Cursor / Selection | 일시적 UI 상태 — DB 저장 불필요 |
+| **Redis Pub/Sub** (VM-04:6379) | Map patch broadcast / Soft Lock / Translation Ready / Dashboard refresh | 문서 무결성 보장 — API 서버 경유 |
+
+```
+클라이언트 WSS
+    │
+    ▼
+VM-02 WebSocket Gateway (:3100)
+    ├── Supabase Realtime Channel ──▶ VM-03:4000
+    │    └── map:{mapId} Presence/Cursor (일시 UI 상태)
+    └── Redis Pub/Sub ──────────────▶ VM-04:6379
+         ├── map:{mapId}         (patch broadcast / Soft Lock)
+         └── dashboard:{mapId}  (dashboard refresh 신호)
+```
+
+> **Soft Lock**: Redis Key `lock:node:{nodeId}`, TTL **5초**  
+> 노드 편집 시작 시 SET NX EX 5 로 Lock 획득, 편집 완료 시 DEL.  
+> TTL 만료 전 편집 중인 경우 Worker가 자동 갱신(EXPIRE 5).
+
+---
+
 ## 9. VM-04: Redis 설치
 
 > **호스트**: ESXi 192.168.94.80
+
+### Redis 용도 전체 정리
+
+| 용도 | Key 패턴 | TTL | 담당 서비스 |
+|------|---------|-----|------------|
+| **Snapshot 캐시** | `snapshot:{mapId}` | `refresh_interval × 0.8` (최소 30s) | SnapshotService |
+| **번역 캐시** (Sliding TTL) | `trans:{nodeId}:{lang}` | Initial 2h + Sliding 30min + Max 6h (±10min jitter) | TranslationCacheService |
+| **채팅 번역 캐시** | `chat_trans:{messageId}:{lang}` | 24h | ChatTranslationService |
+| **Soft Lock** (협업) | `lock:node:{nodeId}` | **5초** (편집 시작/갱신 시 리셋) | CollaborationService |
+| **BullMQ 큐** | `bull:{queue}:*` | 큐 보유 동안 영속 | BullMQ Worker |
+| **Pub/Sub 채널** | `map:{mapId}`, `dashboard:{mapId}` | — | WsGateway / DashboardService |
+| **Patch 멱등성** | `patch:{mapId}:{patchId}` | 24h | AutosaveService |
 
 ```bash
 # 방화벽
@@ -800,17 +849,22 @@ sudo npm install -g pm2
 mkdir -p /opt/easymindmap && cd /opt/easymindmap
 git clone https://github.com/okpojung/easymindmap.git .
 
-# Backend 환경변수
+# Backend 환경변수 (전체 명세: docs/05-implementation/env-spec.md)
 cat > apps/backend/.env << 'EOF'
 NODE_ENV=production
 PORT=3000
 SUPABASE_URL=http://192.168.94.113:8000
-SUPABASE_SERVICE_KEY=eyJ...SERVICE_ROLE_KEY
+SUPABASE_SERVICE_ROLE_KEY=eyJ...SERVICE_ROLE_KEY
 DATABASE_URL=postgresql://postgres:Postgres_비밀번호@192.168.94.113:5432/postgres
-REDIS_URL=redis://:Redis_비밀번호@192.168.94.114:6379
-JWT_SECRET=반드시-여기에-32자이상-강력한-JWT-시크릿-값을-입력하세요
-JWT_EXPIRY=3600
+REDIS_HOST=192.168.94.114
+REDIS_PORT=6379
+REDIS_PASSWORD=Redis_비밀번호
 OPENAI_API_KEY=sk-...
+AI_MODEL_GENERATE=gpt-4o
+TRANSLATION_PROVIDER=hybrid
+TRANSLATION_DEEPL_API_KEY=...
+REDMINE_ENCRYPTION_KEY=...
+INVITE_TOKEN_SECRET=...
 APP_URL=https://mindmap.ai.kr
 EOF
 
@@ -866,9 +920,16 @@ pm2 save && pm2 startup
 
 ## 11. VM-05: Worker 서버 설치
 
-> **호스트**: ESXi 192.168.94.12
+> **호스트**: ESXi 192.168.94.12  
+> **외부 연결**: VM-05는 AI API(openai.com), 번역 API(api.deepl.com), Redmine 인스턴스(외부 또는 내부망)에 HTTPS 아웃바운드 접속 필요
 
 ```bash
+# 방화벽 — VM-03/04 접근 허용 (아웃바운드는 기본 허용)
+sudo ufw allow from 192.168.94.112 to any port 6379   # 이미 Redis 설정에 포함
+# VM-05 → VM-03 Supabase Storage
+sudo ufw allow from 192.168.94.115 to any port 9000
+sudo ufw reload
+
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs && sudo npm install -g pm2
 
@@ -879,16 +940,49 @@ cat > apps/worker/.env << 'EOF'
 NODE_ENV=production
 REDIS_URL=redis://:Redis_비밀번호@192.168.94.114:6379
 DATABASE_URL=postgresql://postgres:Postgres_비밀번호@192.168.94.113:5432/postgres
-SUPABASE_SERVICE_KEY=eyJ...SERVICE_ROLE_KEY
+SUPABASE_URL=http://192.168.94.113:8000
+SUPABASE_SERVICE_ROLE_KEY=eyJ...SERVICE_ROLE_KEY
 SUPABASE_STORAGE_URL=http://192.168.94.113:9000
+
+# AI (worker-ai)
 OPENAI_API_KEY=sk-...
-AI_MODEL=gpt-4o
+AI_MODEL_GENERATE=gpt-4o
+AI_MODEL_EXPAND=gpt-4o-mini
+
+# Translation (worker-translation, V2)
+TRANSLATION_PROVIDER=hybrid
+TRANSLATION_DEEPL_API_KEY=...
+TRANSLATION_QUEUE_CONCURRENCY=5
+
+# Redmine (worker-redmine, V1 WBS)
+REDMINE_ENCRYPTION_KEY=...
+REDMINE_SYNC_QUEUE_CONCURRENCY=3
+REDMINE_SYNC_RETRY_TIMES=3
+
+# Export (worker-export)
+EXPORT_QUEUE_CONCURRENCY=3
 EOF
 
 cd apps/worker && npm install && npm run build
-pm2 start dist/worker.js --name em-worker -i 2
+
+# BullMQ 워커별 PM2 프로세스 실행
+pm2 start dist/worker/ai.js          --name em-worker-ai          -i 1
+pm2 start dist/worker/export.js      --name em-worker-export      -i 1
+pm2 start dist/worker/translation.js --name em-worker-translation -i 1
+pm2 start dist/worker/redmine.js     --name em-worker-redmine     -i 1
+pm2 start dist/worker/core.js        --name em-worker-core        -i 1
 pm2 save && pm2 startup
 ```
+
+> **BullMQ 큐 → Worker 매핑**
+>
+> | 큐 이름 | PM2 프로세스 | 비고 |
+> |---------|------------|------|
+> | `ai-generate` | `em-worker-ai` | solo-only 정책: 협업 중 비활성 |
+> | `export` | `em-worker-export` | Markdown / HTML export |
+> | `translation` | `em-worker-translation` | DeepL + LLM fallback (V2~) |
+> | `redmine-sync` | `em-worker-redmine` | Exponential Backoff 3회 재시도 (V1 WBS~) |
+> | (공통 cleanup) | `em-worker-core` | 인덱스 재정규화 등 |
 
 ---
 
@@ -1374,6 +1468,7 @@ chmod +x /opt/disk-check.sh
 | VM-04 | 192.168.94.114 | 2222 | SSH | VPN 경유 |
 | VM-04 | 192.168.94.114 | 6379 | Redis | VM-02, VM-05, VM-DEV |
 | VM-05 | 192.168.94.115 | 2222 | SSH | VPN 경유 |
+| VM-05 | 192.168.94.115 | — | BullMQ Workers (outbound only) | openai.com / api.deepl.com / Redmine |
 | 개발 PC | 192.168.94.201 | 3389 | RDP (Windows 11) | FortiGate 경유 (IP 제한) |
 
 ---
@@ -1392,6 +1487,8 @@ chmod +x /opt/disk-check.sh
 
 ---
 
-*easymindmap-infra-architecture.md v1.2 (전체 확정)*
+*easymindmap-infra-architecture.md v1.3 — 최종 업데이트: 2026-04-16*
 *IDC 환경: FortiGate IPSec VPN(218.232.94.74) / NPM(192.168.94.74) / L4 Nortel AS3408(192.168.94.2)*
 *Cloudflare DNS: mindmap.ai.kr / ESXi 5대 / 192.168.94.0/24*
+*VM-05 Workers: worker-ai / worker-export / worker-translation / worker-redmine / worker-core*
+*BullMQ 큐: ai-generate / export / translation / redmine-sync*

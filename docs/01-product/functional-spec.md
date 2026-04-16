@@ -29,7 +29,7 @@
 16. [AI — AI 기능](#16-ai--ai-기능)
 17. [EXPORT — 내보내기](#17-export--내보내기)
 18. [IMPORT — 가져오기](#18-import--가져오기)
-19. [PUBLISH — 퍼블리시 / 공유](#19-publish--퍼블리시--공유)
+19. [PUBLISH / SHARE — 퍼블리시 / 공유](#19-publish--share--퍼블리시--공유)
 20. [DASHBOARD — 대시보드 맵 (V3)](#20-dashboard--대시보드-맵-v3)
 21. [TRANSLATION — 다국어 번역 (V2)](#21-translation--다국어-번역-v2)
 22. [AI WORKFLOW — AI 실행형 절차 (V1.5)](#22-ai-workflow--ai-실행형-절차-v15)
@@ -39,7 +39,8 @@
 26. [OBSIDIAN — Obsidian 연동 (V1)](#26-obsidian--obsidian-연동-v1)
 27. [SETTINGS — 설정](#27-settings--설정)
 28. [COLLAB — 협업맵](#28-collab--협업맵)
-29. [개발 단계별 로드맵](#29-개발-단계별-로드맵)
+29. [CHAT — 실시간 채팅](#29-chat--실시간-채팅)
+30. [개발 단계별 로드맵](#30-개발-단계별-로드맵)
 
 ---
 
@@ -449,13 +450,25 @@ Obsidian, Notion, VS Code 등에서 작성한 아웃라인·문서를 즉시 마
 
 ---
 
-## 19. PUBLISH — 퍼블리시 / 공유
+## 19. PUBLISH / SHARE — 퍼블리시 / 공유
 
 > 상세 설계: `docs/04-extensions/publish/27-publish-share.md`
 
 **개요**  
-맵을 공개 URL로 게시하여 로그인 없이 읽기 전용 접근을 허용하는 기능.  
+맵을 공개 URL로 게시하거나 협업자에게 링크를 공유하는 기능.  
 외부 공유, 프레젠테이션, 포트폴리오 게시 등에 활용하며 언제든 게시 취소 가능.
+
+**Publish(게시) vs Share(공유) 구분**
+
+| 구분 | Publish (게시) | Share (공유) |
+|---|---|---|
+| **대상** | 불특정 다수 (인터넷 전체) | 특정 사용자 (협업자 초대) |
+| **인증** | 불필요 (Anonymous 접근) | 필요 (로그인 후 협업 참여) |
+| **권한** | 읽기 전용 고정 | editor / viewer 역할 선택 |
+| **URL** | `easymindmap.com/p/{publish_id}` | 이메일/링크로 초대 |
+| **관련 기능** | PUBL-01~04 (이 섹션) | COLLAB-01~03 (`§ 28 COLLAB`) |
+
+### 19-1. Publish 기능 (공개 게시)
 
 | 기능ID | 기능명 | 설명 |
 |---|---|---|
@@ -466,6 +479,16 @@ Obsidian, Notion, VS Code 등에서 작성한 아웃라인·문서를 즉시 마
 
 **공개 URL 구조**: `https://easymindmap.com/p/{publish_id}`  
 **권한**: creator만 게시/취소 가능 — editor/viewer/anonymous는 읽기 전용
+
+### 19-2. Share 기능 (협업 공유)
+
+> 협업 초대 방식의 Share — 상세는 `§ 28 COLLAB` 참조
+
+| 기능ID | 기능명 | 설명 |
+|---|---|---|
+| COLLAB-01 | 협업자 초대 | creator가 이메일/링크로 editor 초대, scope 지정 | 
+| COLLAB-02 | 권한 변경 | creator가 editor의 scope를 수정 |
+| COLLAB-03 | 협업자 제거 | creator가 editor를 맵에서 제거 |
 
 ---
 
@@ -750,13 +773,8 @@ Obsidian에서 작성한 노트를 마인드맵으로 가져오고, 마인드맵
 | COLLAB-11 | Thread Reply | 스레드 답글 작성 | V2 |
 | COLLAB-12 | Thread Resolve | 스레드 해결 처리 | V2 |
 | COLLAB-13 | Thread Mention | @멘션으로 협업자 알림 | V2 |
-| CHAT-01 | 맵 채팅 패널 | 우측 사이드바 채팅 패널 표시/숨기기 | V2 |
-| CHAT-02 | 메시지 전송 | 텍스트 메시지 전송 (Enter 전송) | V2 |
-| CHAT-03 | 이전 메시지 로딩 | 스크롤 업 시 이전 메시지 페이징 로딩 | V2 |
-| CHAT-04 | **전송 대상 지정** | 전체 협업자 또는 특정 사용자(DM) 지정 전송 (`recipient_id`) | V2 |
-| CHAT-05 | @멘션 | @이름으로 특정 협업자 알림 (`chat_mentions` 추적) | V2 |
-| CHAT-06 | **오프라인 메시지 확인** | 재접속 시 본인 미읽음 멘션/DM 뱃지 표시 및 목록 확인 | V2 |
-| CHAT-07 | 파일 첨부 | 이미지/파일 첨부 전송 (후순위) | V3 |
+
+> 실시간 채팅(CHAT-01~07) 기능은 **§ 29 CHAT** 에 별도 정의됨.
 
 **Phase 3 (V3) — AI 협업 요약**
 
@@ -782,7 +800,139 @@ Obsidian에서 작성한 노트를 마인드맵으로 가져오고, 마인드맵
 
 ---
 
-## 29. 개발 단계별 로드맵
+## 29. CHAT — 실시간 채팅
+
+> 상세 설계: `docs/04-extensions/collaboration/26-realtime-chat.md`  
+> 번역 연동: `docs/04-extensions/translation/24-chat-translation.md`
+
+**개요**  
+협업 맵 내에서 실시간으로 소통하는 채팅 기능.  
+채팅은 메신저가 아니라 **실시간 협업 보조 패널**이다.  
+**협업 비접속 중에도** 본인에게 수신된 멘션/DM을 재접속 시 확인할 수 있으며,  
+메시지 전송 대상을 **전체 협업자** 또는 **특정 사용자(DM)** 로 지정할 수 있다.
+
+### 29-1. 기능 목록
+
+| 기능ID | 기능명 | 설명 | 단계 |
+|---|---|---|---|
+| CHAT-01 | 맵 채팅 패널 | 우측 사이드바 채팅 패널 표시/숨기기 | V2 |
+| CHAT-02 | 메시지 전송 | 텍스트 메시지 전송 (Enter 전송) | V2 |
+| CHAT-03 | 이전 메시지 로딩 | 스크롤 업 시 이전 메시지 Cursor pagination | V2 |
+| CHAT-04 | **전송 대상 지정** | 전체 협업자 또는 특정 사용자(DM) 지정 전송 (`recipient_id`) | V2 |
+| CHAT-05 | @멘션 | @이름으로 특정 협업자 알림 (`chat_mentions` 추적) | V2 |
+| CHAT-06 | **오프라인 메시지 확인** | 재접속 시 본인 미읽음 멘션/DM 뱃지 표시 및 목록 확인 | V2 |
+| CHAT-07 | 파일 첨부 | 이미지/파일 첨부 전송 (후순위) | V3 |
+
+### 29-2. 핵심 설계 원칙
+
+- 전체 메시지 read receipt는 MVP 범위에서 제외
+- **@멘션 및 DM은 `chat_mentions` 테이블로 추적** → 재접속 시 확인 가능
+- 채팅/댓글/AI 결과는 문서 편집 Undo/Redo history에 포함하지 않음
+- Presence, 새 메시지 점 표시, 재접속 시 최근 30~50개 메시지 복구 제공
+
+### 29-3. 전송 대상 규칙 (CHAT-04)
+
+| recipient_id 값 | 의미 | 가시성 |
+|---|---|---|
+| `NULL` | 전체 공개 브로드캐스트 | 모든 협업자 조회 가능 |
+| `UUID` | 특정 사용자 DM | 발신자 + 수신자만 조회 가능 (RLS) |
+
+```sql
+-- DM 가시성 RLS 정책
+recipient_id IS NULL                    -- 전체 공개
+OR user_id = auth.uid()                 -- 내가 보낸 DM
+OR recipient_id = auth.uid()            -- 내가 받은 DM
+```
+
+### 29-4. 오프라인 메시지 확인 흐름 (CHAT-06)
+
+```
+협업 맵 재접속
+    │
+    ▼
+GET /maps/{mapId}/chat/mentions/unread
+  → chat_mentions (receiver_id=나, is_read=false) 조회
+    │
+    ▼
+미읽음 수 > 0 → 채팅 아이콘 뱃지 표시 (🔴 N)
+    │
+    ▼
+사용자 확인 → PATCH /maps/{mapId}/chat/mentions/read
+    │
+    ▼
+chat_mentions.is_read = true, read_at = NOW()
+→ 뱃지 수 감소/클리어
+```
+
+### 29-5. DB 구조 요약
+
+| 테이블 | 주요 컬럼 | 용도 |
+|---|---|---|
+| `chat_messages` | id, map_id, user_id, **recipient_id**, content, client_msg_id, source_lang, created_at | 채팅 메시지 저장 |
+| `chat_mentions` | id, map_id, message_id, sender_id, receiver_id, **mention_type**, **is_read**, read_at, created_at | @멘션/DM 수신 추적 |
+
+- `mention_type`: `'mention'`(@멘션) / `'dm'`(DM 메시지)
+- 페이지네이션: `before={cursor}&limit=50`, `recipientFilter={all|mine}`
+
+### 29-6. API 요약
+
+| 메서드 | 엔드포인트 | 설명 |
+|---|---|---|
+| GET | `/maps/{mapId}/chat/messages` | 메시지 이력 조회 (`recipientFilter` 파라미터) |
+| POST | `/maps/{mapId}/chat/messages` | 메시지 전송 (`recipientId` 필드 포함) |
+| GET | `/maps/{mapId}/chat/mentions/unread` | 미읽음 멘션/DM 목록 조회 |
+| PATCH | `/maps/{mapId}/chat/mentions/read` | 멘션/DM 읽음 처리 |
+
+Supabase Realtime Channel: `chat:map:{mapId}`
+
+### 29-7. 권한 규칙
+
+| 역할 | 채팅 전송 (전체) | DM 전송 | 채팅 읽기 | 멘션/DM 수신 확인 |
+|---|---|---|---|---|
+| creator | ✅ | ✅ | ✅ | ✅ |
+| editor | ✅ | ✅ | ✅ | ✅ |
+| viewer | ❌ | ❌ | ✅ | ✅ (수신만) |
+
+> **RLS 정책 (DM)**  
+> `chat_messages` SELECT: `recipient_id IS NULL` (전체 공개) OR `user_id = auth.uid()` (내가 보낸 DM) OR `recipient_id = auth.uid()` (내가 받은 DM)
+
+### 29-8. 규칙 (Rule)
+
+- 메시지 최대 길이: **2,000자**
+- 이전 메시지 로딩: **50개/요청** (Cursor pagination)
+- 채팅 이력: 맵 삭제 시 CASCADE 삭제
+- @멘션: `@displayName` 형식, 알림 전송 + `chat_mentions` row INSERT
+- DM 메시지: `recipient_id = UUID` — 발신자와 수신자만 조회/수신 가능 (RLS 필수)
+- **오프라인 멘션/DM**: 재접속 시 `chat_mentions.is_read = false` 건수를 뱃지로 표시
+- **미읽음 만료**: 맵 삭제 시 CASCADE, 별도 만료 정책 없음 (영구 보관)
+- 패널 닫힌 상태에서 새 메시지 → 아이콘에 미읽음 뱃지 표시
+- **전체 공개 메시지 미읽음**: 접속 중 패널 닫혀 있을 때만 뱃지 표시 (재접속 추적 없음)  
+  → 오프라인 추적은 **멘션/DM 한정** (`chat_mentions`)
+
+### 29-9. 예외 / 경계 (Edge Case)
+
+| 상황 | 처리 |
+|---|---|
+| 빈 메시지 전송 | 전송 버튼/Enter 비활성화 |
+| 메시지 길이 초과 | textarea maxLength 2000자 제한 |
+| 네트워크 단절 중 전송 | 재연결 후 큐에서 전송 재시도 |
+| viewer가 메시지 전송 시도 | UI + API 레벨 차단 (읽기 전용) |
+| 본인에게 DM 전송 | UI + API 레벨 방지 (자기 자신 선택 불가) |
+| DM 수신자가 맵에서 제거됨 | DM 메시지는 발신자만 조회 가능, `chat_mentions` row는 유지 |
+| 재접속 시 대량 미읽음 | 최대 `99+` 뱃지 표시, 상세 목록은 최근 50건 우선 |
+| 동시 읽음 처리 | `read_at` 최초 SET 이후 중복 PATCH 무시 (idempotent) |
+
+### 29-10. 구현 우선순위
+
+| 단계 | 기능 |
+|---|---|
+| **V2 1차 (MVP Chat)** | CHAT-01 채팅 패널, CHAT-02 메시지 전송/수신 (전체 브로드캐스트), CHAT-03 이전 메시지 로딩 |
+| **V2 2차** | CHAT-05 @멘션, CHAT-04 전송 대상 지정 (DM), CHAT-06 오프라인 멘션/DM 확인, 번역 연동 (TRANS-08~11) |
+| **V3** | CHAT-07 파일/이미지 첨부 |
+
+---
+
+## 30. 개발 단계별 로드맵
 
 | 단계 | 포함 기능 그룹 | 비고 |
 |---|---|---|

@@ -400,3 +400,485 @@
   - MAP COLLABORATION
   - VERSION_HISTORY
   - AI_WORKFLOW
+
+---
+
+### 14. 다중 가지 추가 (Bulk Branch Insert) 상세 명세
+
+> **관련 문서**: `docs/03-editor-core/bulk-branch-insert.md`, `docs/03-editor-core/node-editing.md §5`  
+> **내부 기능 키**: `bulkInsertBranches`  
+> **단축키**: `Ctrl + Space`
+
+#### 14.1 입력 문법 — 들여쓰기 계층 방식
+
+다중 가지 추가의 유일하게 지원되는 공식 입력 방식은 **들여쓰기(공백 기반) 계층 표현**이다. 쉼표/탭 구분자 방식은 사용하지 않는다.
+
+**기본 규칙**
+- 한 줄 = 노드 1개
+- 빈 줄은 무시한다
+- 줄 앞의 들여쓰기 수준으로 부모-자식 관계를 결정한다
+- 탭(`\t`) 1개는 공백 2칸으로 자동 변환(normalize)한다
+
+**들여쓰기 규칙**
+
+| 공백 수 | 상대 깊이 |
+|--------|---------|
+| 0 | 기준 노드(targetNode)의 직계 자식 (depth +1) |
+| 2 | depth +2 |
+| 4 | depth +3 |
+| n×2 | depth +(n+1) |
+
+- 공백은 **2칸 단위**를 기본으로 한다.
+- 갑자기 깊이가 2단계 이상 올라가는 경우(de-indent)는 허용되며, 해당 상위 노드의 자식으로 배치된다.
+- 1칸 이상 증가하면 하위 레벨로 인정하는 완화형 파싱을 적용한다.
+
+**입력 예시**
+
+```
+주제A
+ 상세A-1
+  상세A-1-1
+ 상세A-2
+주제B
+```
+
+생성 결과:
+- 기준노드
+  - 주제A
+    - 상세A-1
+      - 상세A-1-1
+    - 상세A-2
+  - 주제B
+
+**입력 제한 정책**
+- 1회 최대 200줄
+- 최대 계층 10레벨
+- 한 줄 최대 200자
+- 텍스트 없는 들여쓰기 줄은 차단
+- 최대 노드 수 초과 시 차단
+
+#### 14.2 파싱 중간 구조 타입
+
+입력 텍스트를 파싱한 결과를 다음 구조로 변환한다.
+
+```typescript
+type ParsedBulkLine = {
+  raw: string;
+  text: string;
+  indent: number;
+  level: number;
+  lineNumber: number;
+};
+```
+
+#### 14.3 스택 기반 트리 생성 알고리즘 (의사코드)
+
+입력 라인을 순회하면서 스택을 이용해 부모-자식 관계를 결정한다.
+
+```typescript
+const stack: { level: number; nodeId: string }[] = [];
+stack.push({ level: -1, nodeId: targetNodeId });
+
+for (const line of parsedLines) {
+  while (stack.length > 0 && stack[stack.length - 1].level >= line.level) {
+    stack.pop();
+  }
+
+  const parent = stack[stack.length - 1];
+  const newNode = createNodeDraft({
+    parentId: parent.nodeId,
+    text: line.text,
+  });
+
+  stack.push({ level: line.level, nodeId: newNode.id });
+}
+```
+
+**전체 처리 흐름**
+1. 줄 단위 분리
+2. 빈 줄 제거
+3. 각 줄의 앞 공백 수 계산
+4. indent → level 변환
+5. 스택을 이용해 부모 결정
+6. 생성 예정 노드 배열 작성
+7. 한 번에 트랜잭션으로 저장
+
+#### 14.4 미리보기 API 명세
+
+입력 텍스트를 실제 저장하지 않고 파싱 결과(트리 구조)만 반환하는 미리보기 API를 제공한다.
+
+**요청**
+
+```
+POST /maps/{mapId}/nodes/{targetNodeId}/bulk-insert/preview
+Content-Type: application/json
+
+{
+  "text": "내용\n 상세내용\n내용2",
+  "indentMode": "space"
+}
+```
+
+**응답**
+
+```json
+{
+  "success": true,
+  "tree": [
+    {
+      "text": "내용",
+      "children": [
+        { "text": "상세내용", "children": [] }
+      ]
+    },
+    {
+      "text": "내용2",
+      "children": []
+    }
+  ]
+}
+```
+
+**실제 삽입 API**
+
+```
+POST /maps/{mapId}/nodes/{targetNodeId}/bulk-insert
+Content-Type: application/json
+
+{
+  "text": "내용\n 상세내용\n내용2",
+  "indentMode": "space",
+  "preview": false
+}
+```
+
+응답:
+
+```json
+{
+  "success": true,
+  "createdCount": 3,
+  "createdNodeIds": ["n101", "n102", "n103"]
+}
+```
+
+#### 14.5 DB 저장 방식
+
+여러 노드를 한 번에 추가하므로 반드시 **트랜잭션**으로 저장한다.
+
+저장 순서:
+1. bulk insert 요청 생성
+2. 파싱/검증
+3. 노드 draft 배열 생성
+4. `orderIndex` 계산
+5. DB 트랜잭션 시작
+6. nodes 일괄 insert
+7. revision/event log 저장
+8. commit
+
+revision 로그 예시:
+
+```json
+{
+  "type": "bulk_insert_branches",
+  "targetNodeId": "node_100",
+  "createdCount": 8
+}
+```
+
+#### 14.6 생성 후 UX 규칙
+
+- 생성 완료 후 첫 번째 생성 노드를 선택하고 전체 생성 노드를 2초간 강조 표시한다.
+- 기준 노드가 접혀 있으면 자동 펼침한다.
+- 생성된 하위 부모들도 자동 펼침한다.
+- **Undo 1회로 전체 생성된 노드가 일괄 삭제**되어야 한다 (12개 노드가 생성되었더라도 `Ctrl + Z` 한 번에 전체 삭제).
+
+---
+
+### 15. 노드 생성 시 스타일 상속 규칙
+
+> **관련 문서**: `docs/03-editor-core/bulk-branch-insert.md §2`, `docs/03-editor-core/node-editing.md §5.2`  
+> **내부 키**: `inheritNodeStyleOnCreate`
+
+#### 15.1 상속 정책 개요
+
+형제 노드 생성, 자식 노드 생성, 다중 자식 노드 생성 및 다중 가지 추가 시, **새로 생성되는 노드는 기준 노드의 도형(shape)과 도형 내부 색상(fillColor)을 기본 상속**한다.
+
+상속은 **생성 시점에만** 적용되며, 생성 후 각 노드는 독립적으로 스타일을 수정할 수 있다.
+
+#### 15.2 상속 대상 속성 (MVP)
+
+```typescript
+type NodeStyle = {
+  shape: NodeShape;     // rectangle, rounded-rectangle, ellipse, diamond, capsule 등
+  fillColor: string;    // 도형 내부 색상 (예: "#FFE699")
+};
+
+// 노드 생성 로직
+newNode.style.shape = baseNode.style.shape;
+newNode.style.fillColor = baseNode.style.fillColor;
+```
+
+#### 15.3 기준 노드 정의
+
+| 생성 유형 | 기준 노드 |
+|----------|---------|
+| 형제 노드 생성 (NODE-01, NODE-02) | 현재 선택 노드 자신 |
+| 자식 노드 생성 (NODE-03, NODE-04) | 부모가 되는 현재 선택 노드 |
+| 다중 가지 추가 (bulkInsertBranches) | 삽입 기준(target) 노드 |
+
+#### 15.4 폰트 크기 상속 규칙
+
+폰트 크기는 부모를 그대로 상속하는 것이 아니라, **새 노드의 실제 레벨(depth)에 따라 자동 계산**한다.
+
+기본 레벨별 폰트 크기:
+
+| 레벨 | 폰트 크기 |
+|------|---------|
+| Main Topic (root) | 18pt |
+| Level 1 | 16pt |
+| Level 2 | 15pt |
+| Level 3 | 14pt |
+| Level 4 | 13pt |
+| Level 5 이하 | 12pt |
+
+적용 규칙:
+- **형제 노드 생성 시**: 동일 레벨 폰트 크기 적용
+- **자식 노드 생성 시**: 하위 레벨(level+1) 폰트 크기 적용
+- **다중 가지 추가 시**: 생성된 각 노드의 실제 레벨에 맞는 폰트 크기 적용
+
+#### 15.5 기능 목록 추가 항목
+
+| ID | 기능명 | 설명 | 단축키 |
+|----|-------|------|--------|
+| NODE-04A | Inherit Node Shape & Fill on Create | 형제/자식/다중 생성 시 기준 노드의 도형 및 내부 색상을 상속 | 자동 적용 |
+
+#### 15.6 확장 설계 포인트
+
+나중에 상속 범위를 옵션화할 수 있다.
+
+MVP 범위:
+- shape
+- fillColor
+
+확장 단계:
+- borderColor까지 상속
+- fontStyle까지 상속
+- tag/marker까지 상속
+
+---
+
+### 16. 협업 충돌 처리 규칙 (Node Editing 관점)
+
+> **관련 문서**: `docs/03-editor-core/node-editing.md §6.9`
+
+NODE_EDITING 관점에서 협업 충돌이 발생하는 상황과 처리 정책은 다음과 같다.
+
+#### 16.1 텍스트 수정 충돌 — Last-Write-Wins (LWW)
+
+같은 노드의 **제목(title/text) 수정**이 두 사용자에서 동시에 발생한 경우:
+
+- **기본 정책**: Last-Write-Wins (마지막 저장 우선)
+- 서버 수신 시각 기준으로 나중에 도착한 값이 최종값이 된다.
+- 협업 UI에서 충돌 알림(예: "다른 사용자가 이 노드를 수정했습니다")을 표시할 수 있다.
+- 충돌 알림은 toast 또는 노드 인디케이터로 표시한다.
+
+```
+사용자 A: "Apache 설치" 입력 → t=100ms에 서버 도착
+사용자 B: "Apache 2.4 설치" 입력 → t=150ms에 서버 도착
+→ 최종값: "Apache 2.4 설치" (B의 값 적용)
+→ 사용자 A에게 변경 알림 표시
+```
+
+#### 16.2 구조 이동/삭제 충돌 — 서버 검증 우선 (Server-First)
+
+**노드 이동, 삭제, 부모 변경** 등 구조 변경은 텍스트 수정보다 영향 범위가 크므로 서버 검증을 우선한다.
+
+- 클라이언트는 변경 의도를 서버에 전송한다.
+- 서버는 현재 구조 상태를 기준으로 유효성을 검증한다.
+- 서버 승인 후 클라이언트에 최종 상태를 반영한다.
+- 서버 거부 시 클라이언트는 변경 전 상태로 롤백한다.
+
+| 충돌 유형 | 처리 정책 |
+|---------|---------|
+| 두 사용자가 동시에 같은 노드 제목 수정 | LWW — 마지막 저장 우선 |
+| 한 사용자 이동 + 다른 사용자 삭제 | 서버 검증 우선 — 먼저 도착한 구조 변경 적용, 나중 요청 거부 또는 재평가 |
+| 한 사용자 부모 변경 + 다른 사용자 복제 | 서버 검증 우선 — 복제 시점의 구조 기준으로 처리 |
+| 이미 삭제된 노드를 현재 사용자가 수정 시도 | 수정 거부 — "편집 대상 노드가 삭제되었습니다" 알림 표시 |
+| 버전 복원 직후 편집 세션 구조 충돌 | 서버 기준 최신 상태로 클라이언트 동기화 |
+
+#### 16.3 다중 가지 추가 시 협업 충돌
+
+다중 가지 추가(bulkInsertBranches)는 트랜잭션으로 처리되므로:
+
+- 트랜잭션 전체가 성공하거나 전체가 실패한다.
+- 삽입 도중 대상 targetNode가 다른 사용자에 의해 삭제된 경우, 전체 bulk insert를 거부하고 사용자에게 오류 메시지를 표시한다.
+- 배경 이미지 스타일 수정과 같은 단순 스타일 변경은 LWW로 처리한다.
+
+---
+
+### 17. Typography 시스템 설계
+
+> **관련 문서**: `docs/03-editor-core/bulk-branch-insert.md §3(폰트 섹션)`, `docs/03-editor-core/node-editing.md §15`  
+> 노드 생성 시 폰트 크기 적용 규칙과 연계하여 맵 전체 타이포그래피 시스템을 정의한다.
+
+#### 17.1 Typography 계층 구조
+
+맵의 텍스트 스타일은 아래 4개의 계층으로 설계한다.
+
+```
+Map Theme (맵 전체 스타일)
+        │
+        ├─ Typography (폰트 규칙)
+        │
+        ├─ Level Style (레벨별 기본 스타일)
+        │
+        └─ Node Override (개별 노드 예외 스타일)
+```
+
+스타일 우선순위:
+
+```
+Node Override
+    ↓
+Level Style
+    ↓
+Map Theme
+    ↓
+System Default
+```
+
+렌더링 시 적용 예시:
+
+```typescript
+resolvedFontFamily = node.override.fontFamily ?? map.typography.fontFamily;
+resolvedFontSize   = node.override.fontSize   ?? getLevelFontSize(node.level);
+```
+
+#### 17.2 맵 단위 Typography 데이터 구조
+
+```typescript
+type MapTypographySettings = {
+  fontFamily: string;
+  fontFallbacks: string[];
+  levelFontSizes: {
+    root: number;    // 기본 18
+    level1: number;  // 기본 16
+    level2: number;  // 기본 15
+    level3: number;  // 기본 14
+    level4: number;  // 기본 13
+    level5Plus: number; // 기본 12
+  };
+  levelFontWeights: {
+    root: number;    // Bold
+    level1: number;  // SemiBold
+    level2: number;  // Medium
+    level3: number;  // Regular
+    level4: number;  // Regular
+    level5Plus: number; // Regular
+  };
+  lineHeight: number;
+};
+```
+
+#### 17.3 노드 단위 텍스트 스타일 오버라이드
+
+특정 노드에만 예외 스타일을 적용하는 경우 다음 타입을 사용한다.
+
+```typescript
+type NodeTextStyleOverride = {
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: number;
+  italic?: boolean;
+  underline?: boolean;
+  color?: string;
+};
+```
+
+MVP 허용 범위:
+- `bold`, `italic`, `underline`, `textColor`
+
+확장 단계:
+- `fontFamily` override
+- `fontSize` override
+
+#### 17.4 레벨별 폰트 스타일 기본값
+
+| Level | Font Size | Font Weight |
+|-------|-----------|-------------|
+| Root (Main Topic) | 18pt | Bold |
+| Level 1 | 16pt | SemiBold |
+| Level 2 | 15pt | Medium |
+| Level 3 | 14pt | Regular |
+| Level 4 | 13pt | Regular |
+| Level 5+ | 12pt | Regular |
+
+#### 17.5 폰트 패밀리 정책
+
+- **기본 폰트**: `Pretendard`
+- **Fallback**: `Noto Sans KR → Malgun Gothic → Arial → sans-serif`
+- MVP에서는 **맵 전체 폰트 패밀리**만 변경 가능하다.
+- 노드별 폰트 패밀리 override는 2차 확장에서 지원한다.
+
+#### 17.6 Map Settings > Typography UI 구성
+
+```
+Map Settings
+    └─ Typography
+         ├─ Font Family (맵 전체)
+         ├─ Line Height
+         ├─ Letter Spacing
+         └─ Level Font Size (레벨별 수정 가능)
+              ├─ Main Topic: 18
+              ├─ Level 1: 16
+              ├─ Level 2: 15
+              ├─ Level 3: 14
+              ├─ Level 4: 13
+              └─ Level 5+: 12
+```
+
+#### 17.7 Export 시 Typography 처리
+
+**Markdown Export**
+
+폰트 정보를 frontmatter metadata로 보존한다.
+
+```yaml
+---
+fontFamily: Pretendard
+levelFontSizes:
+  root: 18
+  level1: 16
+  level2: 15
+  level3: 14
+  level4: 13
+  level5Plus: 12
+---
+```
+
+**HTML Export**
+
+레벨별 CSS 클래스를 생성하여 폰트를 적용한다.
+
+```css
+.node.level-root { font-size: 18pt; font-family: 'Pretendard', 'Noto Sans KR', sans-serif; }
+.node.level-1    { font-size: 16pt; }
+.node.level-2    { font-size: 15pt; }
+.node.level-3    { font-size: 14pt; }
+.node.level-4    { font-size: 13pt; }
+.node.level-5    { font-size: 12pt; }
+```
+
+#### 17.8 MVP 구현 범위
+
+| 구분 | 기능 | 포함 여부 |
+|------|------|----------|
+| MVP | 폰트 패밀리 (맵 전체) | ✔ |
+| MVP | 레벨별 폰트 크기 | ✔ |
+| MVP | 레벨별 폰트 굵기 | ✔ |
+| MVP | Bold / Italic / Underline (노드 단위) | ✔ |
+| MVP | 텍스트 색상 (노드 단위) | ✔ |
+| 2단계 | 노드별 폰트 패밀리 override | ◻ |
+| 2단계 | 노드별 폰트 크기 override | ◻ |
+| 3단계 | subtree 단위 스타일 일괄 적용 | ◻ |

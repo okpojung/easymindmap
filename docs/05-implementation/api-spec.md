@@ -1,13 +1,21 @@
 # easymindmap — API Specification
 
-문서 버전: v2.0
+문서 버전: v2.1
 결정일: 2026-03-29
+최종 업데이트: 2026-04-16
 
 > **[v2.0 주요 추가]**
 > - 이미지(배경 이미지) 엔드포인트 추가 (섹션 5)
 > - 태그 CRUD 엔드포인트 추가 (섹션 6)
 > - Node Indicator 엔드포인트 추가 (섹션 7)
 > - 보안/인증 정책 상세화: JWT 수명, refresh 전략, rate limit (섹션 0)
+>
+> **[v2.1 주요 추가 — 2026-04-16]**
+> - Collaboration 추가 엔드포인트: Soft Lock (섹션 13-9, 13-10)
+> - Translation V2 추가 엔드포인트: 노드별 번역 조회/저장/삭제, 맵 번역 정책 PUT, AI 일괄 번역 (섹션 11)
+> - Redmine V1 WBS: config PATCH 엔드포인트 추가 (섹션 15)
+> - Dashboard V3: GET /maps/:id/dashboard/data, GET /api/dashboard/schema/node-fields (섹션 16)
+> - AI Chat V1: POST /maps/:id/chat, GET /maps/:id/chat/history (섹션 17 신규)
 
 ---
 
@@ -974,6 +982,92 @@ UI 표시 환경설정 업데이트 (인디케이터 ON/OFF 등)
 
 ---
 
+### GET /maps/{mapId}/nodes/{nodeId}/translations
+특정 노드의 모든 언어 번역 캐시 조회
+
+**Response** `200 OK`
+```json
+{
+  "nodeId": "uuid-...",
+  "translations": [
+    {
+      "targetLang": "ko",
+      "translatedText": "AI 전략",
+      "sourceTextHash": "a1b2c3d4",
+      "modelVersion": "deepl-v2",
+      "updatedAt": "2026-04-16T00:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### PUT /maps/{mapId}/nodes/{nodeId}/translations/{lang}
+특정 노드의 특정 언어 번역 저장 (upsert)
+
+> 편집자/owner 전용. 수동 번역 교정 또는 강제 번역 저장 용도.
+
+**Request Body**
+```json
+{
+  "translatedText": "AI 전략 수정본",
+  "sourceTextHash": "a1b2c3d4"
+}
+```
+
+**Response** `200 OK`
+```json
+{
+  "nodeId": "uuid-...",
+  "targetLang": "ko",
+  "translatedText": "AI 전략 수정본",
+  "sourceTextHash": "a1b2c3d4",
+  "updatedAt": "2026-04-16T00:00:00Z"
+}
+```
+
+---
+
+### DELETE /maps/{mapId}/nodes/{nodeId}/translations/{lang}
+특정 노드의 특정 언어 번역 캐시 삭제
+
+> 삭제 후 다음 열람 시 재번역 트리거됨.
+
+**Response** `204 No Content`
+
+---
+
+### POST /maps/{mapId}/translate
+맵 전체 AI 일괄 번역 요청 (BullMQ 'translation' 큐)
+
+> 번역 엔진 업그레이드 또는 맵 전체 재번역 시 사용. owner 전용.
+
+**Request Body**
+```json
+{
+  "targetLang": "ko",
+  "forceRetranslate": false
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|:---:|------|
+| `targetLang` | string | ✅ | 대상 언어 코드 |
+| `forceRetranslate` | boolean | ❌ | true 시 기존 캐시 무시 후 전체 재번역 (기본: false) |
+
+**Response** `202 Accepted`
+```json
+{
+  "jobId": "uuid-...",
+  "nodeCount": 42,
+  "targetLang": "ko",
+  "status": "pending"
+}
+```
+
+---
+
 ### POST /maps/{mapId}/translations/batch
 미번역 노드 배치 번역 요청 (TRANS-06)
 
@@ -991,6 +1085,55 @@ UI 표시 환경설정 업데이트 (인디케이터 ON/OFF 등)
 ```
 
 > 번역 완료 시 WebSocket `translation:ready` 이벤트로 클라이언트에 푸시 (TRANS-07)
+
+---
+
+### GET /maps/{mapId}/translation-policy
+맵 번역 정책 조회
+
+**Response** `200 OK`
+```json
+{
+  "mapId": "uuid-...",
+  "translationPolicy": {
+    "skipLanguages": ["en"],
+    "skipEnglish": true
+  }
+}
+```
+
+> `translationPolicy` 가 `null` 이면 사용자 기본 설정을 따름 (3단계 계층 레벨 2).
+
+---
+
+### PUT /maps/{mapId}/translation-policy
+맵 번역 정책 저장 (전체 교체)
+
+> owner/collab_creator 전용. `null` 전송 시 맵 정책 제거 → 사용자 기본값 복원.
+
+**Request Body**
+```json
+{
+  "skipLanguages": ["en", "fr"],
+  "skipEnglish": null
+}
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `skipLanguages` | string[] | 이 맵에서 번역 생략할 언어 목록 |
+| `skipEnglish` | boolean \| null | null = 사용자 기본 설정 따름 |
+
+**Response** `200 OK`
+```json
+{
+  "mapId": "uuid-...",
+  "translationPolicy": {
+    "skipLanguages": ["en", "fr"],
+    "skipEnglish": null
+  }
+}
+```
 
 ---
 
@@ -1403,6 +1546,74 @@ GET /maps/:mapId/my-permissions
 
 ---
 
+### 13-9. Soft Lock 획득
+
+```
+POST /maps/:mapId/soft-lock
+```
+
+> 노드 편집 시작 시 Soft Lock을 획득한다. Redis Key: `lock:node:{nodeId}`, TTL: 5초.
+
+**Request Body**
+```json
+{
+  "nodeId": "node-uuid"
+}
+```
+
+**Response `200 OK`**
+```json
+{
+  "nodeId": "node-uuid",
+  "lockedBy": "user-uuid",
+  "lockedAt": "2026-04-16T10:00:00.000Z",
+  "expiresAt": "2026-04-16T10:00:05.000Z"
+}
+```
+
+**Error**
+```json
+// 409 — 다른 사용자가 이미 Lock 보유 중
+{
+  "error": "LOCK_CONFLICT",
+  "lockedBy": "other-user-uuid",
+  "displayName": "홍길동",
+  "lockedAt": "2026-04-16T10:00:00.000Z",
+  "expiresAt": "2026-04-16T10:00:05.000Z"
+}
+```
+
+> WS 이벤트: `collab:soft_lock { nodeId, lockedBy, displayName }` — 동일 맵 참여자에게 브로드캐스트
+
+---
+
+### 13-10. Soft Lock 해제
+
+```
+DELETE /maps/:mapId/soft-lock
+```
+
+> 편집 완료 후 즉시 Lock을 해제한다. TTL 만료(5초) 전 명시적 해제.
+
+**Request Body**
+```json
+{
+  "nodeId": "node-uuid"
+}
+```
+
+**Response `200 OK`**
+```json
+{
+  "nodeId": "node-uuid",
+  "released": true
+}
+```
+
+> WS 이벤트: `collab:soft_lock_released { nodeId }` — 동일 맵 참여자에게 브로드캐스트
+
+---
+
 ## 14. Collaboration Chat / Node Thread / AI Assist (V2~V3)
 
 > 상세 엔드포인트는 `docs/05-implementation/collaboration-api.md`를 기준으로 한다.
@@ -1463,6 +1674,324 @@ thread action item 추출 preview 생성
 | S→C | `node:thread:updated` | 댓글 수 / 최신 시각 갱신 |
 | C→S | `node:thread:ai:run` | AI preview 요청 |
 | S→C | `node:thread:ai:preview` | AI 요약 / 작업 후보 preview |
+
+---
+
+## 15. Redmine 연동 (V1 WBS)
+
+> 참조: `docs/04-extensions/integrations/31-redmine-integration.md`  
+> BullMQ 'redmine-sync' 큐, Exponential Backoff 재시도 (1s → 2s → 4s, 최대 3회)  
+> Redmine API Key는 AES-256-GCM 암호화 후 `redmine_project_maps.api_key_encrypted` 에 저장
+
+### POST /maps/{mapId}/redmine/connect
+Redmine 연동 설정 (URL / API Key / 프로젝트 ID)
+
+**Request Body**
+```json
+{
+  "redmineBaseUrl": "https://redmine.example.com",
+  "redmineProjectId": 42,
+  "apiKey": "plain-text-api-key",
+  "syncDirection": "bidirectional",
+  "autoCreateIssues": true,
+  "defaultTrackerId": 1,
+  "defaultStatusId": 1
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|:---:|------|
+| `redmineBaseUrl` | string | ✅ | Redmine 서버 URL |
+| `redmineProjectId` | number | ✅ | Redmine project.id |
+| `apiKey` | string | ✅ | 평문 API Key (서버에서 AES-256-GCM 암호화 저장) |
+| `syncDirection` | `pull_only` \| `push_only` \| `bidirectional` | ❌ | 기본: `bidirectional` |
+| `autoCreateIssues` | boolean | ❌ | 노드 생성 시 Issue 자동 생성 여부 (기본: true) |
+| `defaultTrackerId` | number | ❌ | 기본 Tracker ID |
+| `defaultStatusId` | number | ❌ | 기본 Status ID |
+
+**Response** `201 Created`
+```json
+{
+  "mapId": "uuid-...",
+  "redmineBaseUrl": "https://redmine.example.com",
+  "redmineProjectId": 42,
+  "syncDirection": "bidirectional",
+  "autoCreateIssues": true,
+  "createdAt": "2026-04-16T00:00:00Z"
+}
+```
+
+---
+
+### PATCH /maps/{mapId}/redmine/config
+Redmine 연동 설정 부분 수정
+
+**Request Body** (변경 필드만)
+```json
+{
+  "syncDirection": "pull_only",
+  "autoCreateIssues": false
+}
+```
+
+**Response** `200 OK`
+```json
+{
+  "mapId": "uuid-...",
+  "syncDirection": "pull_only",
+  "autoCreateIssues": false,
+  "updatedAt": "2026-04-16T00:00:00Z"
+}
+```
+
+---
+
+### POST /maps/{mapId}/redmine/sync
+수동 동기화 요청 (BullMQ 큐에 즉시 추가)
+
+**Request Body**
+```json
+{
+  "direction": "pull"
+}
+```
+
+| `direction` 값 | 의미 |
+|---|---|
+| `"pull"` | Redmine Issues → 맵 노드 가져오기 |
+| `"push"` | 맵 노드 → Redmine Issues 반영 |
+
+**Response** `202 Accepted`
+```json
+{
+  "jobId": "bullmq-job-id",
+  "direction": "pull",
+  "status": "pending"
+}
+```
+
+---
+
+### GET /maps/{mapId}/redmine/status
+Redmine 연동 상태 조회
+
+**Response** `200 OK`
+```json
+{
+  "connected": true,
+  "redmineBaseUrl": "https://redmine.example.com",
+  "redmineProjectId": 42,
+  "syncDirection": "bidirectional",
+  "lastSyncedAt": "2026-04-16T09:00:00Z",
+  "pendingNodes": 3
+}
+```
+
+---
+
+### GET /maps/{mapId}/redmine/logs
+Redmine 동기화 이력 조회 (`redmine_sync_log`)
+
+**Query Parameters**
+| 파라미터 | 필수 | 설명 |
+|---------|:---:|------|
+| `limit` | ❌ | 최대 반환 건수 (기본: 20, 최대: 100) |
+| `direction` | ❌ | `pull` 또는 `push` 필터 |
+
+**Response** `200 OK`
+```json
+{
+  "logs": [
+    {
+      "id": "uuid-...",
+      "direction": "pull",
+      "action": "full_sync",
+      "status": "success",
+      "redmineIssueId": 101,
+      "nodeId": "uuid-...",
+      "httpStatus": 200,
+      "createdAt": "2026-04-16T09:00:00Z"
+    }
+  ],
+  "total": 10
+}
+```
+
+---
+
+## 16. Dashboard (V3)
+
+> 참조: `docs/04-extensions/dashboard/22-dashboard.md`
+
+### GET /maps/{mapId}/dashboard/data
+대시보드 모드에서 최신 노드 데이터 조회 (Redis 캐시 적용)
+
+> `refresh_interval_seconds` 기반 polling 용도. 캐시 TTL = `refresh_interval_seconds × 0.8` (최소 30초).
+
+**Response** `200 OK`
+```json
+{
+  "mapVersion": 42,
+  "refreshIntervalSeconds": 30,
+  "nodes": [
+    {
+      "id": "uuid-...",
+      "text": "98.5%",
+      "text_lang": "ko",
+      "text_hash": "a1b2c3d4",
+      "updatedAt": "2026-04-16T09:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### PATCH /maps/{mapId}/view-mode
+대시보드 모드 전환
+
+**Request Body**
+```json
+{
+  "viewMode": "dashboard"
+}
+```
+
+| `viewMode` 값 | 의미 |
+|---|---|
+| `"edit"` | 기본 편집 모드 |
+| `"dashboard"` | Read-only 대시보드, 자동 갱신 활성화 가능 |
+| `"kanban"` | Kanban 레이아웃 보기 |
+| `"wbs"` | WBS 모드 (node_schedule / node_resources 인디케이터 활성화) |
+
+**Response** `200 OK`
+```json
+{
+  "mapId": "uuid-...",
+  "viewMode": "dashboard"
+}
+```
+
+---
+
+### PATCH /maps/{mapId}/refresh-interval
+대시보드 갱신 주기 설정
+
+**Request Body**
+```json
+{
+  "refreshIntervalSeconds": 30
+}
+```
+
+허용값: `0`(off) | `10` | `30` | `60` | `300` | `600`
+
+**Response** `200 OK`
+```json
+{
+  "mapId": "uuid-...",
+  "refreshIntervalSeconds": 30
+}
+```
+
+---
+
+### GET /api/dashboard/schema/node-fields
+편집 가능 필드 메타 목록 (`field_registry` 테이블 조회, 인증 불필요)
+
+**Response** `200 OK`
+```json
+{
+  "fields": [
+    {
+      "id": "uuid-...",
+      "entityType": "node",
+      "fieldKey": "text",
+      "labelKo": "노드 텍스트",
+      "tableName": "nodes",
+      "columnName": "text",
+      "dataType": "text",
+      "isEditable": true,
+      "isJsonPath": false,
+      "displayOrder": 1
+    }
+  ]
+}
+```
+
+---
+
+## 17. AI Chat (V1)
+
+> 협업 맵 내 map-room 채팅 REST 인터페이스.  
+> WebSocket(`chat:message:send`) 미지원 환경용 REST fallback.
+
+### POST /maps/{mapId}/chat
+채팅 메시지 전송 (REST fallback)
+
+> WebSocket 연결이 없는 환경에서 메시지를 전송하거나 초기 메시지를 저장할 때 사용한다.
+
+**Request Body**
+```json
+{
+  "clientMsgId": "cmsg_1712300000000_001",
+  "text": "이 부분을 더 상세하게 다듬어봅시다.",
+  "nodeId": null
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|:---:|------|
+| `clientMsgId` | string | ✅ | 클라이언트 생성 멱등성 키 (중복 전송 방지) |
+| `text` | string | ✅ | 메시지 본문 |
+| `nodeId` | string \| null | ❌ | null = map-room, UUID = 특정 node thread 연결 |
+
+**Response** `201 Created`
+```json
+{
+  "id": "uuid-...",
+  "mapId": "uuid-...",
+  "nodeId": null,
+  "userId": "uuid-...",
+  "clientMsgId": "cmsg_1712300000000_001",
+  "text": "이 부분을 더 상세하게 다듬어봅시다.",
+  "sourceLang": "ko",
+  "createdAt": "2026-04-16T10:00:00Z"
+}
+```
+
+---
+
+### GET /maps/{mapId}/chat/history
+채팅 메시지 히스토리 조회
+
+**Query Parameters**
+| 파라미터 | 필수 | 설명 |
+|---------|:---:|------|
+| `limit` | ❌ | 반환 건수 (기본: 30, 최대: 100) |
+| `beforeMessageId` | ❌ | 페이징: 해당 messageId 이전 메시지 조회 |
+| `nodeId` | ❌ | null 생략 시 map-room, UUID 지정 시 node thread |
+| `includeTranslations` | ❌ | true 시 번역 캐시 포함 (기본: false) |
+
+**Response** `200 OK`
+```json
+{
+  "messages": [
+    {
+      "id": "uuid-...",
+      "userId": "uuid-...",
+      "displayName": "홍길동",
+      "text": "이 부분을 더 상세하게 다듬어봅시다.",
+      "sourceLang": "ko",
+      "createdAt": "2026-04-16T10:00:00Z",
+      "translations": []
+    }
+  ],
+  "hasMore": false
+}
+```
+
+---
 
 ## 공통 에러 응답
 

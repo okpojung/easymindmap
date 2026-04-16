@@ -2,7 +2,8 @@
 
 문서명: `docs/infra/docker-compose-spec.md`  
 기준: **ESXi 7.0.3 환경, Supabase Self-hosted + VM별 분리 배포**  
-결정일: 2026-03-27
+결정일: 2026-03-27  
+최종 업데이트: 2026-04-16
 
 ---
 
@@ -45,6 +46,7 @@ worker-core       Queue consumer / 백그라운드 작업 (VM-05)
 worker-ai         AI generation / expand worker (VM-05)
 worker-export     Markdown/HTML export worker (VM-05)
 worker-translation 다국어 번역 worker (VM-05, V2~)
+worker-redmine    Redmine 동기화 worker (VM-05, V1 WBS~, BullMQ 'redmine-sync' 큐)
 
 --- Supabase VM-03 내부 (자동 관리) ---
 supabase-db       PostgreSQL 16
@@ -58,6 +60,9 @@ supabase-studio   관리 대시보드
 --- VM-04 ---
 redis             Redis 7
 ```
+
+> **BullMQ 큐 목록**: `export`, `ai-generate`, `translation`, `redmine-sync`  
+> `redmine-sync` 큐: Exponential Backoff 재시도 (1s → 2s → 4s, 최대 3회)
 
 ---
 
@@ -124,6 +129,33 @@ services:
     env_file: .env
     ports:
       - "${API_PORT:-3000}:3000"
+    environment:
+      # Supabase (VM-03)
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      # Redis (VM-04)
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      # AI
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - AI_API_KEY=${AI_API_KEY}
+      - AI_MODEL_GENERATE=${AI_MODEL_GENERATE:-gpt-4o}
+      # Translation (V2)
+      - TRANSLATION_PROVIDER=${TRANSLATION_PROVIDER:-hybrid}
+      - TRANSLATION_DEEPL_API_KEY=${TRANSLATION_DEEPL_API_KEY}
+      # Redmine (V1 WBS)
+      - REDMINE_ENCRYPTION_KEY=${REDMINE_ENCRYPTION_KEY}
+      # Dashboard (V3)
+      - DASHBOARD_REFRESH_CHANNEL_PREFIX=${DASHBOARD_REFRESH_CHANNEL_PREFIX:-dashboard:}
+      # Collaboration
+      - INVITE_TOKEN_SECRET=${INVITE_TOKEN_SECRET}
+      - INVITE_TOKEN_EXPIRES_DAYS=${INVITE_TOKEN_EXPIRES_DAYS:-7}
+      # Feature flags
+      - FEATURE_REALTIME_COLLAB=${FEATURE_REALTIME_COLLAB:-false}
+      - FEATURE_AI_TRANSLATION=${FEATURE_AI_TRANSLATION:-false}
+      - FEATURE_REDMINE_INTEGRATION=${FEATURE_REDMINE_INTEGRATION:-false}
+      - FEATURE_DASHBOARD_MAP=${FEATURE_DASHBOARD_MAP:-false}
     depends_on:
       - redis  # redis는 VM-04이지만 네트워크로 연결
     restart: unless-stopped
@@ -134,6 +166,13 @@ services:
     env_file: .env
     ports:
       - "${WS_PORT:-3100}:3100"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - WS_ALLOWED_ORIGINS=${WS_ALLOWED_ORIGINS}
     restart: unless-stopped
 ```
 
@@ -170,7 +209,37 @@ services:
     container_name: easymindmap-worker-translation
     env_file: .env
     restart: unless-stopped
+
+  worker-redmine:
+    image: easymindmap/worker-redmine:latest
+    container_name: easymindmap-worker-redmine
+    env_file: .env
+    environment:
+      - REDMINE_SYNC_QUEUE_CONCURRENCY=3
+      - REDMINE_SYNC_RETRY_TIMES=3
+    restart: unless-stopped
 ```
+
+---
+
+## 5-1. 개발용 BullMQ Worker (단일 컨테이너)
+
+단일 컨테이너로 빠르게 실행하는 통합 worker (개발/스테이징 환경용):
+
+```yaml
+  worker:
+    build: ./backend
+    command: node dist/worker/main.js
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+```
+
+> 운영 환경(VM-05)에서는 위의 개별 worker 서비스(worker-core, worker-ai, worker-export, worker-translation, worker-redmine)를 각각 실행하여 큐별 독립 스케일링을 권장한다.
 
 ---
 

@@ -752,3 +752,219 @@ sudo apt install apache2 certbot python3-certbot-apache -y
 * 고밀도 대형 맵 렌더링 최적화
 
 ```
+
+---
+
+## 좌표 시스템 완전 정의
+
+easymindmap은 세 가지 좌표계를 명확히 구분한다.
+
+| 좌표계 | 이름 | 설명 | 저장 여부 |
+|--------|------|------|-----------|
+| World 좌표 | `computedX / computedY` | Layout Engine이 계산한 노드의 논리적 위치 | 런타임만 |
+| Manual 좌표 | `manualPosition.x / .y` | freeform 레이아웃 전용, 사용자가 drag한 위치 | DB 저장 |
+| Screen 좌표 | `screenX / screenY` | 브라우저 픽셀 좌표 (렌더링에 사용) | 매 프레임 계산 |
+
+**World 원점 (0, 0):** 루트 노드의 중심, 캔버스 중앙이 기본 표시 기준점, Y축 아래 방향이 양수.  
+**Screen 원점 (0, 0):** 브라우저 뷰포트의 좌상단, Y축 아래 방향이 양수.
+
+### World → Screen 변환 (렌더링 시)
+
+```
+screenX = worldX × zoom + panX
+screenY = worldY × zoom + panY
+```
+
+### Screen → World 역변환 (마우스 → 월드)
+
+```
+worldX = (screenX - panX) / zoom
+worldY = (screenY - panY) / zoom
+```
+
+TypeScript 구현:
+
+```typescript
+interface ViewportState {
+  zoom: number;   // 기본값: 1.0, 범위: 0.1 ~ 4.0
+  panX: number;   // 뷰포트 X 이동량 (픽셀)
+  panY: number;   // 뷰포트 Y 이동량 (픽셀)
+  width: number;  // 캔버스 요소의 실제 픽셀 너비
+  height: number; // 캔버스 요소의 실제 픽셀 높이
+}
+
+function worldToScreen(worldX: number, worldY: number, viewport: ViewportState) {
+  return {
+    x: worldX * viewport.zoom + viewport.panX,
+    y: worldY * viewport.zoom + viewport.panY,
+  };
+}
+
+function screenToWorld(screenX: number, screenY: number, viewport: ViewportState) {
+  return {
+    x: (screenX - viewport.panX) / viewport.zoom,
+    y: (screenY - viewport.panY) / viewport.zoom,
+  };
+}
+```
+
+### CSS Transform 적용 방법
+
+캔버스 컨테이너에 단일 `transform`을 적용하여 모든 자식 요소가 동일한 변환을 받는다.
+
+```typescript
+const canvasStyle: React.CSSProperties = {
+  transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
+  transformOrigin: '0 0',  // 원점 고정: 좌상단
+};
+```
+
+> `transformOrigin: '0 0'`으로 설정해야 위 공식의 `panX`, `panY`가 정확히 적용된다.  
+> 기본값 `transformOrigin: '50% 50%'`은 공식과 다른 offset이 필요하므로 사용하지 않는다.
+
+---
+
+## Zoom-to-Point 알고리즘
+
+마우스 휠 줌 시, 커서 위치를 기준으로 줌해야 뷰포트가 자연스럽게 유지된다.
+
+```typescript
+function zoomToPoint(
+  viewport: ViewportState,
+  newZoom: number,
+  cursorScreenX: number,
+  cursorScreenY: number
+): Pick<ViewportState, 'zoom' | 'panX' | 'panY'> {
+  const zoomRatio = newZoom / viewport.zoom;
+
+  return {
+    zoom: newZoom,
+    // 커서 위치가 변하지 않도록 pan 보정
+    panX: cursorScreenX - zoomRatio * (cursorScreenX - viewport.panX),
+    panY: cursorScreenY - zoomRatio * (cursorScreenY - viewport.panY),
+  };
+}
+```
+
+수학적 도출 (Pan 보정 계산):
+
+```
+// 줌 전 커서의 world 좌표 (불변이어야 함)
+worldCursorX = (cursorScreenX - panX) / zoom
+
+// 줌 후 같은 world 좌표가 같은 screen 위치에 있으려면:
+cursorScreenX = worldCursorX * newZoom + newPanX
+
+// 풀면:
+newPanX = cursorScreenX - worldCursorX * newZoom
+        = cursorScreenX - ((cursorScreenX - panX) / zoom) * newZoom
+        = cursorScreenX - (newZoom / zoom) * (cursorScreenX - panX)
+```
+
+---
+
+## Fit-to-Screen 알고리즘
+
+전체 맵을 화면에 맞추는 알고리즘. padding 기본값 60px, scale은 X/Y 중 작은 값을 사용하며 최대 4.0으로 제한한다.
+
+```typescript
+function fitToScreen(
+  worldBounds: BoundingBox,  // 전체 노드의 world 좌표 bounding box
+  viewport: ViewportState,
+  padding: number = 60
+): Pick<ViewportState, 'zoom' | 'panX' | 'panY'> {
+  const scaleX = (viewport.width  - padding * 2) / worldBounds.width;
+  const scaleY = (viewport.height - padding * 2) / worldBounds.height;
+  const newZoom = Math.min(scaleX, scaleY, 4.0);  // 최대 4배로 제한
+
+  // 맵 중심이 뷰포트 중앙에 오도록 pan 계산
+  const worldCenterX = worldBounds.x + worldBounds.width  / 2;
+  const worldCenterY = worldBounds.y + worldBounds.height / 2;
+
+  return {
+    zoom: newZoom,
+    panX: viewport.width  / 2 - worldCenterX * newZoom,
+    panY: viewport.height / 2 - worldCenterY * newZoom,
+  };
+}
+```
+
+---
+
+## 뷰포트 컬링 (Viewport Culling)
+
+현재 화면(viewport)에 포함된 노드만 렌더링하여 DOM/SVG 요소 수를 최소화한다.
+
+AABB(Axis-Aligned Bounding Box) intersection test로 노드 가시성을 판단하며, 200px margin buffer를 추가해 스크롤 시 깜빡임을 방지한다.
+
+```typescript
+function isNodeVisible(node: LayoutNode, viewport: ViewportState): boolean {
+  const { zoom, panX, panY, width, height } = viewport;
+  const margin = 200; // 깜빡임 방지 버퍼
+
+  // world 좌표 → screen 좌표 변환
+  const screenX = node.computedX * zoom + panX;
+  const screenY = node.computedY * zoom + panY;
+  const screenW = node.width * zoom;
+  const screenH = node.height * zoom;
+
+  // 뷰포트 경계와 AABB 교차 검사 (margin 포함)
+  return (
+    screenX + screenW >= -margin &&
+    screenY + screenH >= -margin &&
+    screenX <= width  + margin &&
+    screenY <= height + margin
+  );
+}
+```
+
+- Viewport Store의 `worldBounds`를 기준으로 필터링
+- margin buffer(200px)를 추가해 스크롤 시 깜빡임 방지
+
+---
+
+## Partial Relayout
+
+변경된 subtree만 재계산하여 CPU 연산을 절감한다.
+
+| 트리거 | 처리 범위 |
+|--------|-----------|
+| 텍스트 변경 | 해당 노드 크기 재측정 → 부모 방향으로 bounding-box 전파 |
+| 구조 변경 (자식 추가/삭제) | 해당 subtree root부터 재계산 |
+| 전체 맵 relayout | 최초 로드 및 레이아웃 타입 변경 시에만 실행 |
+
+- expand/collapse 상태 변경 시에도 subtree relayout을 수행하며, 전체 캔버스 full relayout은 피한다.
+
+---
+
+## 렌더링 방식 비교
+
+| 단계 | 방식 | 이유 |
+|------|------|------|
+| MVP | SVG (edges) + HTML (node content) | 구현 단순, CSS 스타일링 용이 |
+| V2 이후 | Canvas (선택적 확장) | 10,000+ 노드 시 SVG 성능 한계 |
+
+현재 목표: SVG + HTML 방식으로 1,000 노드 / 60fps 달성.
+
+---
+
+## 성능 목표치
+
+| 지표 | 목표 |
+|------|------|
+| 초기 로딩 | ≤ 3초 (1,000 노드 기준) |
+| 렌더링 프레임 | 60fps (1,000 노드) |
+| 텍스트 편집 반응 | ≤ 16ms (1 프레임 이내) |
+| 줌/팬 반응 | ≤ 16ms (CSS transform 기반) |
+| Partial Relayout | ≤ 50ms (subtree 100노드 기준) |
+
+---
+
+## Debounce 타이밍
+
+| 트리거 유형 | debounce 시간 | 이유 |
+|-------------|---------------|------|
+| 텍스트 입력 | 500–1,000ms | 타이핑 중 과도한 저장 방지 |
+| 노드 drag 종료 | 즉시 (0ms) | 위치 확정 시 저장 |
+| 구조 변경 (create/delete) | 즉시 (0ms) | 데이터 유실 방지 |
+| 레이아웃 변경 | 즉시 (0ms) | 설정 변경 즉시 반영 |

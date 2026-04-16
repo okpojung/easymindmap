@@ -106,7 +106,8 @@ YAML Front Matter에 **맵 메타 정보 전체**를 포함한다.
 | `title` | `maps.title` | 맵 제목 |
 | `map_id` | `maps.id` | 맵 UUID |
 | `owner` | `users.display_name` | 맵 소유자(creator) 이름 |
-| `layout_type` | `maps.layout_type` | 레이아웃 종류 (`mindmap` \| `kanban`) |
+| `layout_type` | `maps.default_layout_type` | 맵 기본 레이아웃 종류 (예: `radial-bidirectional`, `tree-right`) |
+| `edge_default` | 레이아웃에서 자동 파생 | 연결선 기본 스타일: `curve` (방사형) \| `orthogonal` (그 외 모든 레이아웃) |
 | `theme` | `maps.theme` | 적용 테마 이름 |
 | `node_count` | 집계 | 전체 노드 수 |
 | `tags` | `maps.tags` | 맵 단위 태그 목록 |
@@ -115,6 +116,11 @@ YAML Front Matter에 **맵 메타 정보 전체**를 포함한다.
 | `export_mode` | 고정값 | `"extended"` |
 | `easymindmap_version` | 서버 버전 | 내보내기 시 앱 버전 |
 
+> **`edge_default` 허용값**  
+> - `curve` — 방사형(Radial) 레이아웃: Cubic Bezier 곡선  
+> - `orthogonal` — 트리·계층·진행트리·자유배치·Kanban: 직각선 (Orthogonal Connector)  
+> ⚠ 구 스펙의 `straight` 표기는 사용하지 않는다. 직각선은 반드시 `orthogonal`로 표기할 것.
+
 예시 출력:
 
 ```markdown
@@ -122,7 +128,8 @@ YAML Front Matter에 **맵 메타 정보 전체**를 포함한다.
 title: "AI 개념 정리"
 map_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 owner: "홍길동"
-layout_type: "mindmap"
+layout_type: "radial-bidirectional"
+edge_default: "curve"
 theme: "default"
 node_count: 42
 tags:

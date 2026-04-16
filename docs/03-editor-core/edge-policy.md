@@ -1224,6 +1224,20 @@ function treePathVertical(x1: number, y1: number, x2: number, y2: number): strin
 | Tree-Up | 수직 (↑) | `treePathVertical` (y 반전) | 부모 상단 → 자식 하단 |
 | Freeform | anchor 방향 자동 선택 | 두 함수 중 적합한 것 | 두 노드 위치 차에 따라 결정 |
 
+### 20.3-A. 직각선 교차(Cross) 처리 — Jump / Bridge 가이드라인
+
+직각선(Orthogonal)이 많아지면 선끼리 교차하는 경우가 발생할 수 있다.
+
+| 항목 | MVP 정책 | 비고 |
+|---|---|---|
+| **교차 처리** | 별도 처리 없음 (단순 겹침 허용) | 트리 구조는 교차 빈도 낮음 |
+| **Jump(Arc) 효과** | ❌ MVP 미제공 | 교차 지점에 호(弧)를 그려 구분하는 방식 |
+| **Bridge 효과** | ❌ MVP 미제공 | 교차 지점에 작은 단절 구간을 두어 구분 |
+| **백로그** | Jump/Bridge 옵션 추가 | Freeform·복잡 맵에서 가독성 향상 목적 |
+
+> **MVP 근거**: easymindmap의 트리 구조는 부모-자식 단방향 연결이므로, Freeform을 제외하면  
+> 교차가 거의 발생하지 않는다. Freeform에서 복잡해질 경우 V2+ 단계에서 Jump/Bridge 옵션을 추가한다.
+
 ---
 
 ## 20.4 Anchor 계산

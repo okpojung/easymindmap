@@ -388,6 +388,19 @@ Autosave — 맵 변경 patch 저장
 { "layoutType": "tree-down" }
 ```
 
+**Edge 자동 결정 정책**
+
+`layoutType` 변경 시 서버/클라이언트는 별도 파라미터 없이 아래 규칙으로 연결선(Edge) 타입을 **자동 전환**한다.
+
+| layoutType 계열 | Edge 타입 (자동) | 연결선 형태 |
+|---|---|---|
+| `radial-*` | `curve-line` | Cubic Bezier 곡선 |
+| `tree-*` / `hierarchy-*` / `process-tree-*` / `freeform` / `kanban` | `tree-line` | 직각선 (Orthogonal) |
+
+> - `line_type` / `connector_style` 파라미터는 불필요 — 레이아웃값으로 자동 결정  
+> - `straight`(대각선) 타입은 사용하지 않음  
+> - 참조: `docs/03-editor-core/edge-policy.md §3`
+
 ---
 
 ## 4. Export

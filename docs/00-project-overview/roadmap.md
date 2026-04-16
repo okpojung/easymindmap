@@ -62,7 +62,7 @@ Auth     : Supabase Auth (NestJS JWT 직접 구현 제거)
 Storage  : Supabase Storage (MinIO 대체)
 Queue    : BullMQ + Redis (VM-04)
 Layout   : 2-pass algorithm, subtree 단위, partial relayout (15종 레이아웃)
-Edge     : 방사형 → curve-line, 나머지 → tree-line
+Edge     : 방사형 → curve-line (Cubic Bezier 곡선), 나머지(트리/계층/진행트리/자유배치/Kanban) → tree-line (직각선, Orthogonal Connector)
 Autosave : patch 기반 저장 (텍스트/스타일 800ms, 구조 변경 0ms)
 Export   : Markdown serializer + Markmap 기반 HTML
 노드 깊이 : 최대 depth 50 제한 (ltree 운영 안전망)

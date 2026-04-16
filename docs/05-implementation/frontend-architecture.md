@@ -19,7 +19,7 @@ apps/frontend/
 │   ├── editor/                        # 마인드맵 에디터 핵심
 │   │   ├── canvas/                    # SVG viewport, pan/zoom 처리
 │   │   ├── node-renderer/             # 노드 SVG + HTML Overlay 렌더링
-│   │   ├── edge-renderer/             # 엣지 curve-line / tree-line 렌더링
+│   │   ├── edge-renderer/             # 엣지 curve-line(방사형 곡선) / tree-line(직각선 Orthogonal) 렌더링
 │   │   ├── layout-engine-adapter/     # 레이아웃 엔진 React 어댑터
 │   │   ├── command-dispatcher/        # 사용자 액션 → Command 변환
 │   │   ├── inspector-panels/          # 우측 속성 패널 (스타일, 레이아웃)
@@ -341,7 +341,7 @@ PATCH /maps/:id/document
 
 ```
 SVG Layer (z-index 낮음)
-  └── EdgeRenderer       (curve-line / tree-line)
+  └── EdgeRenderer       (curve-line: 방사형 곡선 | tree-line: 직각선/Orthogonal)
   └── SelectionBox       (다중 선택 영역)
   └── ConnectionLine     (드래그 연결선)
 

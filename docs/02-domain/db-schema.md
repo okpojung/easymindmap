@@ -1030,3 +1030,145 @@ CREATE TABLE public.node_thread_ai_previews (
 
 - AI 결과는 바로 문서에 반영하지 않는다.
 - preview 결과를 저장한 뒤, 사용자 승인 시에만 note 업데이트 또는 child node 생성 patch를 수행한다.
+
+---
+
+## ERD — 전체 구조 요약
+
+> 이 섹션은 `erd.md`(v3.1)의 내용을 통합한 것이다.
+
+### 스키마 변경 이력
+
+| 버전 | 날짜 | 주요 변경 내용 |
+|---|---|---|
+| v1.0 | — | 초기 설계 |
+| v2.0 | — | Map Properties 레벨별 설계 반영 (`map_themes` 신규, `nodes` 변경) |
+| v2.1 | — | `users` 테이블 휴대폰 번호 컬럼 추가 |
+| v3.0 | 2026-03-29 | `ltree` extension 채택 → `nodes.path` LTREE 컬럼 + GIST/BTREE 인덱스<br>`nodes.order_index` INT → FLOAT<br>`nodes.depth` 컬럼 추가<br>`nodes.manual_position` JSONB 도입<br>`nodes.size_cache` JSONB 추가<br>`maps.deleted_at` soft-delete 추가 (30일 휴지통)<br>`published_maps`, `ai_jobs`, `node_translations`, `field_registry` 테이블 추가 |
+| v3.1 | 2026-03-30 | 다국어 번역 V2 스키마 반영<br>`users`: `secondary_languages`, `skip_english_translation` 추가<br>`maps`: `translation_policy_json` JSONB 추가<br>`nodes`: `translation_mode`, `translation_override`, `author_preferred_language` 추가 |
+| v3.2 | 2026-03-31 | `tags.workspace_id` 추가<br>`nodes.layout_type` NULL 허용<br>`nodes.background_image_*` 전용 컬럼 3개 분리<br>`maps.view_mode`에 `'kanban'` 추가<br>RLS: workspace_members 기반 공유 접근 정책 추가 |
+| v3.3 | 2026-04-05 | 협업맵 스키마 반영<br>`maps`: `is_collaborative`, `collab_owner_id` 추가<br>`nodes`: `created_by` 추가<br>`map_collaborators`, `map_ownership_history` 테이블 신규 |
+
+---
+
+### 전체 관계 트리
+
+```
+auth.users  (Supabase Auth 자동 생성)
+ └── public.users  (프로필 확장)
+      ├── workspaces  (1:N)
+      │    ├── workspace_members  (N:N ↔ users)
+      │    └── maps  (1:N)
+      │         ├── map_revisions     (1:N, 버전 히스토리)
+      │         ├── published_maps    (1:N, 공개 스냅샷)
+      │         ├── exports           (1:N, 내보내기 작업)
+      │         ├── map_collaborators (1:N, 협업자)
+      │         └── nodes             (1:N)
+      │              ├── node_notes        (1:1)
+      │              ├── node_links        (1:N)
+      │              ├── node_attachments  (1:N)
+      │              ├── node_media        (1:1)
+      │              ├── node_tags         (N:N ↔ tags)
+      │              └── node_translations (1:N, 다국어)
+      ├── tags     (1:N)
+      └── ai_jobs  (1:N)
+
+field_registry  (독립 테이블 — 대시보드 필드 메타)
+```
+
+---
+
+### 관계 정의
+
+| 관계 | 카디널리티 | FK / 삭제 정책 | 비고 |
+|---|---|---|---|
+| `auth.users` → `public.users` | 1:1 | 트리거 `handle_new_user` 자동 동기화 | |
+| `users` ↔ `workspaces` | N:N | `workspace_members` 연결 테이블 | role: `'owner'` \| `'editor'` \| `'viewer'` |
+| `workspaces` → `maps` | 1:N | `workspace_id` FK, **ON DELETE SET NULL** | 워크스페이스 삭제 시 맵은 유지 |
+| `maps` → `nodes` | 1:N | `map_id` FK, **ON DELETE CASCADE** | 맵 삭제 시 전체 노드 cascade |
+| `nodes` → `nodes` | self-ref | `parent_id` FK, **ON DELETE CASCADE** | 부모 삭제 시 자식 전체 cascade |
+| `maps` → `map_revisions` | 1:N | ON DELETE CASCADE | 서버 영속 패치 히스토리 |
+| `maps` → `published_maps` | 1:N | ON DELETE CASCADE | 한 맵에 여러 공개 링크 히스토리 |
+| `maps` → `exports` | 1:N | ON DELETE CASCADE | export 작업 이력 |
+| `nodes` → `node_notes` | 1:1 | `node_id` UNIQUE | |
+| `nodes` → `node_links` | 1:N | ON DELETE CASCADE | |
+| `nodes` → `node_attachments` | 1:N | ON DELETE CASCADE | |
+| `nodes` → `node_media` | 1:1 | `node_id` UNIQUE | Indicator 표시용 오디오/비디오 |
+| `nodes` ↔ `tags` | N:N | `node_tags` 연결 테이블 | |
+| `nodes` → `node_translations` | 1:N | (`node_id` + `target_lang`) UNIQUE | |
+| `users` → `ai_jobs` | 1:N | | |
+
+---
+
+### 인덱스 전체 목록
+
+| 테이블 | 인덱스명 | 컬럼 / 조건 |
+|---|---|---|
+| `maps` | `idx_maps_owner_id` | `(owner_id)` |
+| `maps` | `idx_maps_workspace_id` | `(workspace_id)` |
+| `maps` | `idx_maps_deleted_at` | `(deleted_at) WHERE deleted_at IS NULL` |
+| `map_revisions` | `idx_map_revisions_map_id` | `(map_id, version DESC)` |
+| `nodes` | `idx_nodes_map_id` | `(map_id)` |
+| `nodes` | `idx_nodes_parent_id` | `(parent_id)` |
+| `nodes` | `idx_nodes_map_order` | `(map_id, order_index)` |
+| `nodes` | `idx_nodes_path_gist` | `(path) USING GIST` — ltree `<@` 연산자 |
+| `nodes` | `idx_nodes_path_btree` | `(path) USING BTREE` |
+| `nodes` | `idx_nodes_translation_skip` | `(map_id, translation_mode) WHERE translation_mode = 'skip'` |
+| `node_translations` | `idx_node_translations_node_id` | `(node_id)` |
+| `published_maps` | `idx_published_maps_publish_id` | `(publish_id)` |
+
+---
+
+### 주요 설계 포인트
+
+#### ① ltree path (v3.0)
+- UUID 하이픈 제거 → `'n_'` + 첫 8자 형태로 ltree 레이블 생성
+- GIST 인덱스로 `<@`, `@>`, `~` 연산자 O(log n) 성능
+- 노드 이동 시 path 일괄 UPDATE (`move_node_subtree` PostgreSQL 함수)
+- `depth = nlevel(path) - 1` (ltree nlevel은 1-based)
+
+#### ② order_index FLOAT (v3.0)
+- 새 노드를 두 노드 사이에 삽입: `order = (prev + next) / 2`
+- 정수 충돌 없이 O(1) 삽입 가능
+- 값이 너무 가까워지면 주기적으로 `1.0, 2.0, 3.0…` 재정규화
+
+#### ③ manual_position JSONB (v3.0)
+- freeform 레이아웃 전용: `{ "x": 120.5, "y": 340.0 }`
+- 프론트엔드 접근: `node.manual_position?.x`, `node.manual_position?.y`
+
+#### ④ backgroundImage 저장 위치
+- **MVP**: `nodes.style_json` 내 `backgroundImage` 키로 통합 저장
+- **확장**: `nodes.background_image_json` JSONB 별도 컬럼 분리 가능
+
+#### ⑤ maps soft-delete + 30일 휴지통
+- `deleted_at IS NOT NULL` → 사용자에게 숨김, RLS에서 필터
+- 클라이언트 Undo 창(5~10초): 즉시 삭제 취소 가능
+- 30일 경과 후 배치 영구 삭제
+
+#### ⑥ node_media vs backgroundImage 구분
+
+| 항목 | 저장 위치 | 용도 |
+|---|---|---|
+| `node_media` | `node_media` 테이블 (1:1) | Indicator에 표시되는 오디오/비디오 |
+| `backgroundImage` | `nodes.style_json` 내 키 | 노드 도형 배경 이미지 스타일 |
+
+#### ⑦ map_revisions vs 클라이언트 Undo/Redo
+
+| 항목 | 위치 | 특징 |
+|---|---|---|
+| Undo/Redo | 클라이언트 메모리 | 빠른 편집 UX, 세션 종료 시 소멸 |
+| map_revisions | 서버 DB | 영속 버전 — Diff Viewer / 복구 / 감사 로그 |
+
+#### ⑧ layoutType kebab-case 표준화 (v3.0)
+- DB 저장값: kebab-case 영문 소문자 (예: `'radial-bidirectional'`)
+- kanban 특수 규칙: depth 0 = board, depth 1 = column, depth 2 = card, depth 3+ 금지
+
+#### ⑨ 번역 정책 3단계 계층 (V2)
+
+| 레벨 | 적용 범위 | 컬럼 / 필드 |
+|---|---|---|
+| **레벨 1** (사용자) | 모든 맵 기본값 | `users.preferred_language`, `secondary_languages`, `skip_english_translation` |
+| **레벨 2** (맵) | 특정 맵 | `maps.translation_policy_json` — NULL이면 사용자 기본 설정 따름 |
+| **레벨 3** (노드) | 개별 노드 | `nodes.translation_override` — `force_on` / `force_off` / null |
+
+> **우선순위**: 레벨 3 (노드) > 레벨 2 (맵) > 레벨 1 (사용자)

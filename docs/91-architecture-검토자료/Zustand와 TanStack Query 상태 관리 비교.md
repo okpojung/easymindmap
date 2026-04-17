@@ -1,7 +1,6 @@
 # Zustand와 TanStack Query 상태 관리 비교
 
 **Exported:** 4/17/2026 15:04:02  
-**Link:** [https://gemini.google.com/app/a342f5fc57f40036?android-min-version=301356232&ios-min-version=322.0&is_sa=1&hl=ko-KR&utm_campaign=microsite_gemini_image_generation_page&icid=microsite_gemini_image_generation_page&utm_source=gemini&utm_medium=web&_gl=1*1lpwujm*_ga*MzIwNDY1NjUwLjE3NzY0MDM5MTU.*_ga_WC57KJ50ZZ*czE3NzY0MDM5MTUkbzEkZzAkdDE3NzY0MDM5MTckajYwJGwwJGgw*_gcl_au*MzcyMzQ4NTM3LjE3NzY0MDM5MTg.](https://gemini.google.com/app/a342f5fc57f40036?android-min-version=301356232&ios-min-version=322.0&is_sa=1&hl=ko-KR&utm_campaign=microsite_gemini_image_generation_page&icid=microsite_gemini_image_generation_page&utm_source=gemini&utm_medium=web&_gl=1*1lpwujm*_ga*MzIwNDY1NjUwLjE3NzY0MDM5MTU.*_ga_WC57KJ50ZZ*czE3NzY0MDM5MTUkbzEkZzAkdDE3NzY0MDM5MTckajYwJGwwJGgw*_gcl_au*MzcyMzQ4NTM3LjE3NzY0MDM5MTg.)
 
 ## Prompt:
 node.js 기반에서 상태 관리를 위해 Zustand, TanStack Query등 추천하는 방식이 각 방식에 대해 자세히 설명해주고 어떤것이 좋은지 알려줘
@@ -522,10 +521,6 @@ graph TD
 3.  **데이터 안전성:** TypeScript를 활용하여 서버 데이터와 UI 상태의 구조를 명확히 정의함으로써 런타임 에러를 사전에 차단합니다.
 
 * * *
-
-### 💡 문서 활용 팁
-
-이 문서는 `docs/05-implementation/` 폴더 내에 `state-management.md`라는 이름으로 저장하여 관리하시길 권장합니다. 이를 통해 프로젝트 참여자들은 상태 관리의 주체와 흐름을 명확히 파악할 수 있습니다.
 
 
 

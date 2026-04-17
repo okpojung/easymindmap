@@ -1,7 +1,6 @@
 # EasyMindMap 5-Store 상세 설명
 
 **Exported:** 4/17/2026 15:04:27  
-**Link:** [https://gemini.google.com/app/1c21399816ee9c35?android-min-version=301356232&ios-min-version=322.0&is_sa=1&hl=ko-KR&utm_campaign=microsite_gemini_image_generation_page&icid=microsite_gemini_image_generation_page&utm_source=gemini&utm_medium=web&_gl=1*1lpwujm*_ga*MzIwNDY1NjUwLjE3NzY0MDM5MTU.*_ga_WC57KJ50ZZ*czE3NzY0MDM5MTUkbzEkZzAkdDE3NzY0MDM5MTckajYwJGwwJGgw*_gcl_au*MzcyMzQ4NTM3LjE3NzY0MDM5MTg.](https://gemini.google.com/app/1c21399816ee9c35?android-min-version=301356232&ios-min-version=322.0&is_sa=1&hl=ko-KR&utm_campaign=microsite_gemini_image_generation_page&icid=microsite_gemini_image_generation_page&utm_source=gemini&utm_medium=web&_gl=1*1lpwujm*_ga*MzIwNDY1NjUwLjE3NzY0MDM5MTU.*_ga_WC57KJ50ZZ*czE3NzY0MDM5MTUkbzEkZzAkdDE3NzY0MDM5MTckajYwJGwwJGgw*_gcl_au*MzcyMzQ4NTM3LjE3NzY0MDM5MTg.)
 
 ## Prompt:
 https://github.com/okpojung/easymindmap/blob/main/docs/05-implementation/frontend-architecture.md의 내용중에서 "2. 5-Store 상세 명세"에 대해 해당 용어를 처음 듣는 왕초보자 수준으로 어떤 개념, 기능, 구체적인 적용사례등에 대해 구조화하고 시작화하여 자세히 설명해줘

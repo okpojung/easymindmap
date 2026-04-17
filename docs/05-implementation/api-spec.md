@@ -292,8 +292,12 @@ Access Token 갱신
 
 ---
 
-### PATCH /maps/{mapId}/document
+### PATCH /maps/{mapId}/nodes
 Autosave — 맵 변경 patch 저장
+
+> 클라이언트가 편집 작업을 debounce 후 전송하는 autosave 엔드포인트.  
+> `baseVersion`은 클라이언트가 인지한 마지막 버전이며, 서버의 `currentVersion`과 불일치 시 409를 반환한다.  
+> `patchId`는 멱등성 키로 동일 patchId의 중복 처리를 방지한다.
 
 **Request Body**
 ```json
@@ -303,20 +307,61 @@ Autosave — 맵 변경 patch 저장
   "baseVersion": 128,
   "timestamp": "2026-03-29T14:32:05.123Z",
   "patches": [
-    { "op": "updateNodeText", "nodeId": "uuid-...", "text": "Updated" },
-    { "op": "moveNode", "nodeId": "uuid-...", "parentId": "uuid-...", "orderIndex": 1.5 }
+    {
+      "op": "add",
+      "nodeId": "uuid-new",
+      "data": { "parentId": "uuid-parent", "text": "New Node", "orderIndex": 1.5 }
+    },
+    {
+      "op": "update",
+      "nodeId": "uuid-...",
+      "data": { "text": "Updated Text" }
+    },
+    {
+      "op": "delete",
+      "nodeId": "uuid-..."
+    },
+    {
+      "op": "move",
+      "nodeId": "uuid-...",
+      "data": { "parentId": "uuid-...", "orderIndex": 2.0 }
+    }
   ]
 }
 ```
 
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|:---:|------|
+| `clientId` | string | ✅ | 클라이언트 식별자 |
+| `patchId` | string | ✅ | 멱등성 키 (중복 처리 방지) |
+| `baseVersion` | number | ✅ | 클라이언트가 인지한 마지막 버전 |
+| `timestamp` | string (ISO 8601) | ✅ | 패치 생성 시각 |
+| `patches` | Array | ✅ | 변경 작업 목록 |
+| `patches[].op` | `"add"` \| `"update"` \| `"delete"` \| `"move"` | ✅ | 작업 종류 |
+| `patches[].nodeId` | string | ✅ | 대상 노드 UUID |
+| `patches[].data` | Partial\<NodeObject\> | ❌ | `"delete"` 시 생략, 나머지는 변경 필드만 포함 |
+
 **Response** `200 OK`
 ```json
-{ "newVersion": 129 }
+{
+  "newVersion": 129,
+  "conflicts": []
+}
 ```
 
-**충돌 시** `409 Conflict`
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `newVersion` | number | 서버 반영 후의 새 버전 번호 |
+| `conflicts` | string[] | 충돌 발생 nodeId 목록 (LWW 적용 후 패배한 항목) |
+
+**버전 충돌 시** `409 Conflict`
 ```json
 { "error": "VERSION_CONFLICT", "currentVersion": 130 }
+```
+
+**중복 패치 시** `409 Conflict`
+```json
+{ "error": "DUPLICATE_PATCH", "patchId": "p_1710598325_001" }
 ```
 
 ---
@@ -405,61 +450,57 @@ Autosave — 맵 변경 patch 저장
 
 ## 4. Export
 
-### POST /maps/{mapId}/export/markdown
-Markdown Export
+> 상세 동작 정의: `docs/04-extensions/import-export/20-export.md`
+
+### POST /maps/{mapId}/export
+Export 작업 요청 (Markdown 또는 HTML)
 
 **Request Body**
 ```json
 {
+  "format": "markdown",
+  "exportMode": "basic",
   "includeCollapsed": true,
   "includeTags": true,
-  "imageHandling": "omit"
+  "includeNotes": true,
+  "includeLinks": true,
+  "imageHandling": "omit",
+  "scope": "full",
+  "rootNodeId": null
 }
 ```
 
-> 상세 동작 정의는 `docs/04-extensions/markdown-export.md` 참조
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|:---:|------|
+| `format` | `"markdown"` \| `"html"` | ✅ | 내보내기 포맷 |
+| `exportMode` | `"basic"` \| `"extended"` | ❌ | Markdown 전용. `"extended"` 시 YAML Front Matter 포함 (기본: `"basic"`) |
+| `includeCollapsed` | boolean | ❌ | 접힌 노드 포함 여부 (기본: true) |
+| `includeTags` | boolean | ❌ | 태그 포함 여부 (기본: true) |
+| `includeNotes` | boolean | ❌ | 노드 메모 포함 여부 (기본: true) |
+| `includeLinks` | boolean | ❌ | 링크 포함 여부 (기본: true) |
+| `imageHandling` | `"omit"` \| `"alt-text"` \| `"link"` \| `"embed"` | ❌ | 배경 이미지 처리 (Markdown 기본: `"omit"`, HTML 기본: `"embed"`) |
+| `scope` | `"full"` \| `"subtree"` | ❌ | 내보내기 범위 (기본: `"full"`) |
+| `rootNodeId` | string \| null | ❌ | `scope="subtree"` 시 기준 노드 UUID |
 
 **Response** `202 Accepted` (비동기 Job)
 ```json
 {
-  "exportId": "uuid-...",
+  "jobId": "uuid-...",
   "status": "pending"
 }
 ```
 
----
-
-### POST /maps/{mapId}/export/html
-Standalone HTML Export
-
-**Request Body**
-```json
-{
-  "includeCollapsed": false,
-  "includeTags": true,
-  "imageHandling": "embed"
-}
-```
-
-> 상세 동작 정의는 `docs/04-extensions/html-export.md` 참조
-
-**Response** `202 Accepted` (비동기 Job)
-```json
-{
-  "exportId": "uuid-...",
-  "status": "pending"
-}
-```
+> 소형 맵(≤ 200 nodes)은 즉시 변환하여 `200 OK`로 반환 (`Content-Disposition: attachment`).
 
 ---
 
-### GET /maps/{mapId}/export/{exportId}
+### GET /maps/{mapId}/export/{jobId}
 Export 작업 상태 조회
 
 **Response** `200 OK`
 ```json
 {
-  "exportId": "uuid-...",
+  "jobId": "uuid-...",
   "status": "done",
   "downloadUrl": "https://storage.../exports/map.md",
   "expiresAt": "2026-03-30T00:00:00Z"
@@ -467,6 +508,52 @@ Export 작업 상태 조회
 ```
 
 `status`: `pending` | `processing` | `done` | `error`
+
+---
+
+## 4-1. Import
+
+> 상세 동작 정의: `docs/04-extensions/import-export/21-import.md`
+
+### POST /maps/{mapId}/import
+현재 맵에 노드 추가 (Markdown 가져오기)
+
+**Request Body**
+```json
+{
+  "nodes": { }
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|:---:|------|
+| `nodes` | NodeTree | ✅ | 클라이언트에서 파싱한 노드 트리 (Markdown → AST → NodeTree 변환 결과) |
+
+**Response** `200 OK`
+```json
+{
+  "importedCount": 24
+}
+```
+
+> `POST /maps` 에 `nodes` 파라미터를 추가하면 새 맵 생성과 동시에 가져오기가 가능하다 (아래 참조).
+
+---
+
+> **`POST /maps` 업데이트 — `nodes` 파라미터 추가**
+>
+> 새 맵 생성과 동시에 Markdown 가져오기를 처리하는 경우, 기존 `POST /maps` 요청 Body에 `nodes` 필드를 포함한다.
+>
+> ```json
+> {
+>   "title": "가져온 맵 제목",
+>   "workspaceId": "uuid-...",
+>   "defaultLayoutType": "radial-bidirectional",
+>   "nodes": { }
+> }
+> ```
+>
+> `nodes` 가 포함된 경우 서버는 맵 생성 후 `POST /maps/{mapId}/import` 와 동일한 방식으로 노드 트리를 삽입한다.
 
 ---
 
@@ -1641,10 +1728,18 @@ DELETE /maps/:mapId/soft-lock
 최근 map-room chat 메시지 조회
 
 **Query**
+- `before={cursor}` — 커서 페이징: 해당 messageId 이전 메시지 조회
 - `limit=50` (기본 30, 최대 100)
-- `beforeMessageId=uuid` (페이징)
 - `includeTranslations=true`
 - `recipientFilter=all|mine` (v1.1) — `all`: 전체 공개 메시지만 / `mine`: 전체 공개 + 나의 DM 포함 (기본: `mine`)
+
+**Response** `200 OK`
+```json
+{
+  "messages": [ ...ChatMessage[] ],
+  "hasMore": false
+}
+```
 
 ### POST /maps/{mapId}/chat/messages
 REST fallback 또는 초기 송신용 메시지 저장
@@ -1655,7 +1750,8 @@ REST fallback 또는 초기 송신용 메시지 저장
   "clientMsgId": "cmsg_1712300000000_001",
   "content": "이 노드 구조 다시 봐주세요",
   "nodeId": "uuid-node-optional",
-  "recipientId": null
+  "recipientId": null,
+  "mentionedUserIds": ["uuid-user-1"]
 }
 ```
 
@@ -1665,6 +1761,9 @@ REST fallback 또는 초기 송신용 메시지 저장
 | `content` | string | ✅ | 메시지 본문 |
 | `nodeId` | string \| null | ❌ | null = map-room, UUID = node thread |
 | `recipientId` | string \| null | ❌ | null = 전체 공개, UUID = DM 수신자 (v1.1) |
+| `mentionedUserIds` | string[] | ❌ | @멘션 대상 userId 목록 (`chat_mentions` INSERT 트리거) |
+
+**Response** `201 Created` → ChatMessage
 
 ### GET /nodes/{nodeId}/threads/messages
 특정 node thread 메시지 조회
@@ -1926,6 +2025,61 @@ Redmine 동기화 이력 조회 (`redmine_sync_log`)
 
 ---
 
+### PATCH /maps/{mapId}/data
+외부 시스템에서 노드 값 일괄 업데이트 (DASH-05)
+
+> Dashboard 외부 업데이트 전용 엔드포인트.  
+> `Authorization: Bearer` 대신 **`X-API-Key`** 헤더로 인증한다 (API Key는 `SETT-07`에서 발급).  
+> Redis 캐시를 무효화하여 다음 polling 시 즉시 반영된다.
+
+**Headers**
+```
+X-API-Key: {apiKey}
+```
+
+**Request Body**
+```json
+{
+  "nodes": [
+    {
+      "nodeId": "uuid-...",
+      "value": "98.5%",
+      "label": "가용성"
+    },
+    {
+      "nodeId": "uuid-...",
+      "value": 42,
+      "label": null
+    }
+  ]
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|:---:|------|
+| `nodes` | Array | ✅ | 업데이트할 노드 목록 |
+| `nodes[].nodeId` | string | ✅ | 대상 노드 UUID |
+| `nodes[].value` | string \| number \| null | ✅ | 노드에 표시할 값 (`nodes.text` 업데이트) |
+| `nodes[].label` | string | ❌ | 노드 레이블 변경 (생략 시 기존 유지) |
+
+**Response** `200 OK`
+```json
+{
+  "updatedCount": 2,
+  "refreshedAt": "2026-04-16T10:00:00Z"
+}
+```
+
+**Error**
+```json
+// 401 — API Key 인증 실패
+{ "error": "UNAUTHORIZED", "message": "Invalid or missing API Key." }
+// 403 — API Key가 해당 맵에 대한 권한 없음
+{ "error": "FORBIDDEN" }
+```
+
+---
+
 ### GET /api/dashboard/schema/node-fields
 편집 가능 필드 메타 목록 (`field_registry` 테이블 조회, 인증 불필요)
 
@@ -2045,20 +2199,40 @@ Redmine 동기화 이력 조회 (`redmine_sync_log`)
     {
       "id": "mention-uuid",
       "messageId": "msg-uuid",
-      "senderId": "user-uuid",
+      "mentionedAt": "2026-04-16T10:00:00Z",
+      "content": "@홍길동 이 부분 확인 부탁드립니다...",
       "senderName": "Alice",
-      "mentionType": "mention",
-      "contentPreview": "@홍길동 이 부분 확인 부탁드립니다...",
-      "createdAt": "2026-04-16T10:00:00Z"
+      "isRead": false
     }
   ]
 }
 ```
 
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `messageId` | string | 멘션이 포함된 메시지의 ID |
+| `mentionedAt` | string (ISO 8601) | 멘션 발생 시각 (`chat_mentions.created_at`) |
+| `content` | string | 메시지 본문 미리보기 |
+| `senderName` | string | 발신자 표시 이름 |
+| `isRead` | boolean | 읽음 여부 (`chat_mentions.is_read`) |
+
+---
+
+### PATCH /maps/{mapId}/chat/mentions/{messageId}/read
+단일 메시지의 멘션/DM 읽음 처리 (v1.1 신규)
+
+> `messageId`에 해당하는 `chat_mentions` row를 읽음 처리한다 (`is_read = true`, `read_at = NOW()`).  
+> 멱등 처리: 이미 읽음 상태이면 변경 없이 `{ ok: true }` 반환.
+
+**Response** `200 OK`
+```json
+{ "ok": true }
+```
+
 ---
 
 ### PATCH /maps/{mapId}/chat/mentions/read
-멘션/DM 읽음 처리 (v1.1 신규)
+멘션/DM 일괄 읽음 처리 (v1.1 신규)
 
 **Request Body**
 ```json

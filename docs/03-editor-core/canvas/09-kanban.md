@@ -3,7 +3,7 @@
 
 * 문서 버전: v1.0
 * 작성일: 2026-04-14
-* 참조: `docs/01-product/kanban-layout-spec.md`
+* 참조: `docs/01-product/functional-spec.md § KANBAN` 또는 `docs/03-editor-core/layout/08-layout.md`
 
 ---
 

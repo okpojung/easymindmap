@@ -1,6 +1,6 @@
 # easymindmap — API Specification
 
-문서 버전: v2.2
+문서 버전: v2.3
 결정일: 2026-03-29
 최종 업데이트: 2026-04-16
 
@@ -22,6 +22,14 @@
 > - Chat 오프라인 확인: GET /maps/:id/chat/mentions/unread, PATCH /maps/:id/chat/mentions/read (섹션 17 신규)
 > - WebSocket 이벤트 추가: `chat:mention:new`, `chat:mention:read` (섹션 14)
 > - `text` → `content` 필드명 통일 (chat_messages)
+>
+> **[v2.3 주요 추가 — 2026-04-16]**
+> - Export 엔드포인트 통합: `POST /maps/:id/export/markdown` + `POST /maps/:id/export/html` → `POST /maps/:id/export { format }` 로 통합 (섹션 4)
+> - Import 엔드포인트 추가: `POST /maps/:id/import`, `POST /maps` 의 `nodes` 파라미터 (섹션 4-1 신규)
+> - Autosave 엔드포인트 경로 변경: `PATCH /maps/:id/document` → `PATCH /maps/:id/nodes`, 패치 op 타입 명확화 (`add`/`update`/`delete`/`move`), 응답에 `conflicts[]` 추가 (섹션 2)
+> - Dashboard 외부 업데이트: `PATCH /maps/:id/data` (X-API-Key 인증) 추가 (섹션 16)
+> - Chat 섹션 14: GET /maps/:id/chat/messages 응답에 `hasMore` 명시, `before={cursor}` 파라미터 명확화, POST 에 `mentionedUserIds` 추가
+> - Chat 섹션 17: 멘션 unread 응답 스키마 정규화 (`mentionedAt`, `content`, `isRead`), 단건 읽음 처리 `PATCH /maps/:id/chat/mentions/:messageId/read` 추가
 
 ---
 

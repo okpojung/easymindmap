@@ -1,12 +1,5 @@
 # Zustand와 TanStack Query 상태 관리 비교
 
-**Exported:** 4/17/2026 15:04:02  
-**Link:** [https://gemini.google.com/app/a342f5fc57f40036?android-min-version=301356232&ios-min-version=322.0&is_sa=1&hl=ko-KR&utm_campaign=microsite_gemini_image_generation_page&icid=microsite_gemini_image_generation_page&utm_source=gemini&utm_medium=web&_gl=1*1lpwujm*_ga*MzIwNDY1NjUwLjE3NzY0MDM5MTU.*_ga_WC57KJ50ZZ*czE3NzY0MDM5MTUkbzEkZzAkdDE3NzY0MDM5MTckajYwJGwwJGgw*_gcl_au*MzcyMzQ4NTM3LjE3NzY0MDM5MTg.](https://gemini.google.com/app/a342f5fc57f40036?android-min-version=301356232&ios-min-version=322.0&is_sa=1&hl=ko-KR&utm_campaign=microsite_gemini_image_generation_page&icid=microsite_gemini_image_generation_page&utm_source=gemini&utm_medium=web&_gl=1*1lpwujm*_ga*MzIwNDY1NjUwLjE3NzY0MDM5MTU.*_ga_WC57KJ50ZZ*czE3NzY0MDM5MTUkbzEkZzAkdDE3NzY0MDM5MTckajYwJGwwJGgw*_gcl_au*MzcyMzQ4NTM3LjE3NzY0MDM5MTg.)
-
-## Prompt:
-node.js 기반에서 상태 관리를 위해 Zustand, TanStack Query등 추천하는 방식이 각 방식에 대해 자세히 설명해주고 어떤것이 좋은지 알려줘
-
-## Response:
 Node.js 환경(주로 React, Next.js 등 프론트엔드 프레임워크와 함께 사용하는 경우)에서 **Zustand**와 \*\*TanStack Query(React Query)\*\*는 현재 가장 권장되는 조합입니다.
 
 과거에는 모든 데이터를 Redux 같은 하나의 거대한 저장소에 담았지만, 현대적인 방식은 \*\*"데이터의 성격"\*\*에 따라 도구를 나누어 사용하는 것입니다.

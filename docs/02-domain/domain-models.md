@@ -243,7 +243,11 @@ type MapObject = {
 
   // 설정
   defaultLayoutType: LayoutType;
-  viewMode?: 'edit' | 'dashboard';
+  viewMode?: 'edit' | 'dashboard' | 'kanban' | 'wbs';
+  // 'edit'      : 기본 편집 모드
+  // 'dashboard' : 읽기 전용 대시보드 모드 (V3)
+  // 'kanban'    : Kanban 보드 뷰 (해당 맵 루트가 kanban layoutType일 때)
+  // 'wbs'       : WBS 일정 관리 뷰 (V1)
   refreshIntervalSeconds?: number;
   currentVersion?: number;
 
@@ -328,7 +332,7 @@ type NodeObject = {
   // === 다국어 번역 (V2 신규) ===
   text_lang: string;
   text_hash: string;              // SHA-256[:16]
-  translation_mode: 'auto' | 'skip';
+  translation_mode: 'auto' | 'manual' | 'skip';
   translation_override: 'force_on' | 'force_off' | null;
   author_preferred_language: string | null;
 
@@ -372,7 +376,7 @@ function buildChildIds(nodes: NodeObject[]): Map<string, string[]> {
 |------|---------|------|
 | `text_lang` | `nodes.text_lang` | franc 자동 감지 언어 코드 |
 | `text_hash` | `nodes.text_hash` | SHA-256[:16] — 캐시 유효성 검증 |
-| `translation_mode` | `nodes.translation_mode` | `'auto'`\|`'skip'` — 저장 시 서버 자동 결정 |
+| `translation_mode` | `nodes.translation_mode` | `'auto'`\|`'manual'`\|`'skip'` — 저장 시 서버 자동 결정 |
 | `translation_override` | `nodes.translation_override` | `'force_on'`\|`'force_off'`\|`null` — 편집자 수동 설정 |
 | `author_preferred_language` | `nodes.author_preferred_language` | 작성 시점 작성자 언어 스냅샷 |
 

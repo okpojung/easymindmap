@@ -3,9 +3,9 @@
 
 * 문서 버전: v1.1
 * 작성일: 2026-04-16
-* 최종 수정: 2026-04-16
+* 최종 업데이트: 2026-04-16
 * 변경 이력:
-  * v1.1 — 오프라인 메시지 확인(chat_mentions), 전송 대상 지정(recipient_id) 기능 반영
+  * v1.1 — 미확인 @멘션 표시(CHAT-06), 1:1 DM(CHAT-07, V3) 추가; 기능 목적 및 범위 업데이트
   * v1.0 — 최초 작성
 * 참조: `docs/01-product/functional-spec.md § COLLAB`, `docs/04-extensions/collaboration/25-map-collaboration.md`
 
@@ -13,7 +13,7 @@
 
 ### 1. 기능 목적
 
-* 협업 맵 내에서 **실시간 채팅으로 소통**하는 기능
+* 협업 참여자 간 **맵 채널 채팅과 1:1 DM으로 소통**하는 기능
 * 맵 채널 채팅과 노드 스레드 댓글로 맥락에 맞는 소통 지원
 * **협업 비접속 중에도** 본인에게 수신된 멘션/DM 메시지를 재접속 시 확인 가능
 * 메시지 전송 대상을 **전체 협업자** 또는 **특정 사용자** 로 지정 가능
@@ -29,13 +29,14 @@
   * 채팅 이력 로딩 (CHAT-03)
   * **전송 대상 지정 — 전체/특정 사용자** (CHAT-04) ← v1.1 격상
   * @멘션 (CHAT-05)
-  * **오프라인 멘션/DM 확인 — 재접속 시 읽지 않은 메시지 뱃지/목록** (CHAT-06) ← v1.1 신규
+  * **미확인 @멘션 표시** (CHAT-06)
+  * **1:1 DM** (CHAT-07, V3)
   * 채팅 메시지 번역 연동 (→ `24-chat-translation.md`)
 
 * 제외:
   * Node Thread (→ `25-map-collaboration.md` COLLAB-10~13)
   * 채팅 검색
-  * 파일/이미지 첨부 (CHAT-07, 후순위)
+  * 파일/이미지 첨부 (후순위)
 
 ---
 
@@ -48,8 +49,8 @@
 | CHAT-03 | 이전 메시지 로딩       | 스크롤 업 시 이전 메시지 페이징 로딩                        | Cursor pagination  |
 | CHAT-04 | **전송 대상 지정**    | 전체 협업자 또는 특정 1명에게 메시지 전송 (DM)               | 수신자 드롭다운 선택        |
 | CHAT-05 | @멘션             | @이름으로 특정 협업자 알림                              | 알림 전송              |
-| CHAT-06 | **오프라인 메시지 확인** | 재접속 시 본인에게 온 멘션/DM 읽지 않은 메시지 뱃지 및 목록 표시    | 미읽음 뱃지, 목록 필터링     |
-| CHAT-07 | 파일 첨부           | 이미지/파일 첨부 전송 (후순위)                           | 파일 선택              |
+| CHAT-06 | 미확인 @멘션 표시      | 나중에 맵 참여 시 본인에게 온 @멘션 강조 표시                   | 채팅 패널 열기 시 자동 표시   |
+| CHAT-07 | 1:1 DM          | 협업자와 1:1 비공개 대화 채널 (V3)                        | DM 패널 열기           |
 
 ---
 
@@ -142,7 +143,48 @@ CREATE INDEX idx_chat_mentions_map_unread
 > **미읽음 뱃지**: 채팅 아이콘에 `🔴 N` 뱃지 — 본인에게 온 멘션/DM 미읽음 수 표시  
 > **DM 표시**: `[발신자 → 수신자]` 형식으로 당사자에게만 렌더링
 
-#### 4.4 메시지 구조 (v1.1 변경)
+#### 4.4 CHAT-06 미확인 @멘션 처리
+
+미확인 @멘션은 `chat_mentions` 보조 테이블로 추적한다.
+
+```sql
+CREATE TABLE public.chat_mentions (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  message_id     UUID NOT NULL REFERENCES public.chat_messages(id) ON DELETE CASCADE,
+  mentioned_uid  UUID NOT NULL REFERENCES public.users(id),
+  is_read        BOOLEAN NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_chat_mentions_uid ON public.chat_mentions(mentioned_uid, is_read);
+```
+
+- 맵 채팅 패널 열기 시 `is_read = false`인 @멘션 메시지를 강조 표시
+- 채팅 패널에서 해당 메시지를 본 시점에 `is_read = true`로 업데이트
+- 나중에 협업에 참여한 사람도 본인 @멘션 이력 확인 가능
+
+#### 4.5 CHAT-07 1:1 DM (V3)
+
+1:1 DM은 그룹 채팅 채널과 독립된 별도 채널로 동작한다.
+
+```sql
+CREATE TABLE public.dm_messages (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id       UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  sender_id    UUID NOT NULL REFERENCES public.users(id),
+  recipient_id UUID NOT NULL REFERENCES public.users(id),
+  content      TEXT NOT NULL,
+  is_read      BOOLEAN NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_dm_messages_pair
+  ON public.dm_messages(map_id, sender_id, recipient_id, created_at DESC);
+```
+
+- Supabase Realtime Channel: `dm:map:{mapId}:pair:{minUid}:{maxUid}` (두 UID 오름차순 정렬)
+- 그룹 채팅 패널과 별도의 DM 패널/탭으로 표시
+- viewer는 DM 전송 불가
+
+#### 4.6 메시지 구조 (v1.1 변경)
 
 ```typescript
 interface ChatMessage {
@@ -332,14 +374,16 @@ chat_mentions UPDATE (is_read = true, read_at = NOW())
 
 #### MVP (V2)
 * CHAT-01 채팅 패널
-* CHAT-02 메시지 전송/수신 (전체 브로드캐스트)
+* CHAT-02 메시지 전송/수신
 * CHAT-03 이전 메시지 로딩
+* CHAT-06 미확인 @멘션 표시
 
 #### 2단계 (V2)
 * CHAT-05 @멘션
-* CHAT-04 **전송 대상 지정 (전체/특정 사용자 DM)** ← v1.1 격상
-* CHAT-06 **오프라인 멘션/DM 확인 (재접속 시 미읽음 뱃지)** ← v1.1 신규
 * 번역 연동 (TRANS-08~11)
 
-#### 3단계
-* CHAT-07 파일/이미지 첨부
+#### 3단계 (V3)
+* CHAT-07 1:1 DM
+
+#### 4단계 (후순위)
+* CHAT-04 파일/이미지 첨부

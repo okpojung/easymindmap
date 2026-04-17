@@ -103,13 +103,13 @@ Layout 선택
 
 ## 4.2 Edge는 2종을 기본으로 한다
 
-초기 설계에서 straight-line까지 3종을 고려했지만,  
+초기 설계에서 straight-line(legacy)까지 3종을 고려했지만,  
 easymindmap의 제품 방향에서는 기본값으로는 2종만 두는 것이 낫다.
 
 - `curve-line`
 - `tree-line`
 
-straight-line은 향후 고급 사용자용 override 옵션으로 남길 수는 있지만,  
+legacy straight-line은 향후 고급 사용자용 override 옵션으로만 남길 수 있지만,  
 기본 정책에서는 제외한다.
 
 ---
@@ -256,7 +256,7 @@ Others = tree-line
 
 ## 7.3 왜 Freeform도 tree-line인가
 
-초기에는 Freeform에서 straight-line을 고려할 수 있다.  
+초기에는 Freeform에서 straight-line을 고려할 수 있으나, 현재 정책 기본값은 orthogonal(tree-line)이다.  
 그러나 easymindmap의 Freeform은 완전한 다이어그램 툴이 아니라  
 “부모-자식 관계를 유지한 채 위치만 자유로운 구조”에 더 가깝다.
 
@@ -278,7 +278,7 @@ return "tree-line"
 Freeform의 자유는 “노드 위치”에 있고,  
 관계선까지 완전 자유 직선으로 가는 것이 필수는 아니다.
 
-### 4. straight-line은 옵션으로 남길 수 있다
+### 4. orthogonal-line(직각선) 외 별도 straight-line은 기본 정책에서 제외
 향후 고급 설정에서 아래처럼 override를 둘 수 있다.
 
 - Default
@@ -343,7 +343,6 @@ export type EdgeType =
 export type ExtendedEdgeType =
   | "curve-line"
   | "tree-line"
-  | "straight-line"
   | "orthogonal-line"
   | "timeline-line"
 ```
@@ -400,7 +399,7 @@ function resolveEdgeTypeByGroup(group: LayoutGroup): EdgeType {
 향후 사용자가 edge를 강제 선택할 수 있도록 하려면 다음 구조를 둘 수 있다.
 
 ```ts
-type EdgeOverride = "default" | "curve-line" | "tree-line" | "straight-line"
+type EdgeOverride = "default" | "curve-line" | "tree-line" | "orthogonal-line"
 
 function resolveEffectiveEdgeType(
   layoutType: string,
@@ -588,7 +587,7 @@ Edge path 생성이 예측 가능해진다.
 
 - Edge override
 - 관계선 추가
-- straight-line 옵션
+- orthogonal-line 옵션
 - timeline 전용 edge
 - dependency arrow
 
@@ -661,6 +660,32 @@ Root (Radial-Bidirectional)
 4. edge 경로 재계산
 5. 화면 재렌더링
 6. autosave patch 생성
+
+---
+
+## 13.5 노드 이동 시 Edge 재라우팅 보강 규칙 (MVP)
+
+직각 연결선(`tree-line`)에서 노드 이동 시 경로가 끊기거나 겹쳐 보이지 않도록 아래 규칙을 적용한다.
+
+1. **재계산 트리거**: drag 중 1프레임 단위 미리보기 + drop 시 최종 경로 확정
+2. **꺾임 지점(inflection) 기준**: 부모-자식의 주축 거리 50% 지점을 기본 꺾임 축으로 사용
+3. **연결점 offset**: 노드 박스 경계에서 최소 8px 바깥 지점부터 선 시작/종료
+4. **겹침 완화**: 동일 축 중복 시 lane offset(4~8px)으로 시각적 분리
+
+> 구현 메모: Jump/Bridge(교차선 브릿지)는 V2 후보, MVP에서는 lane offset 우선 적용.
+
+### 13.5.1 Curve 제어점 보정 (Radial)
+
+`curve-line`은 부모→자식 방향각(θ)에 비례해 제어점을 계산한다.
+
+- `P1 = source + k * dir(θ)`
+- `P2 = target - k * dir(θ)`
+- `k`는 거리 기반 감쇠값(`min(80, distance * 0.35)`) 권장
+
+### 13.5.2 Layout 전환 애니메이션 정책
+
+- `radial-* ↔ non-radial` 전환 시 edge path는 120~180ms 보간 애니메이션 적용
+- 저사양/대용량 맵에서는 즉시 교체(fallback) 허용
 
 ---
 

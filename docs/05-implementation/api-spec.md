@@ -404,7 +404,7 @@ Markdown Export
 }
 ```
 
-> 상세 동작 정의는 `docs/04-extensions/markdown-export.md` 참조
+> 상세 동작 정의는 `docs/04-extensions/import-export/20-export.md` 참조
 
 **Response** `202 Accepted` (비동기 Job)
 ```json
@@ -428,7 +428,7 @@ Standalone HTML Export
 }
 ```
 
-> 상세 동작 정의는 `docs/04-extensions/html-export.md` 참조
+> 상세 동작 정의는 `docs/04-extensions/import-export/20-export.md` 참조
 
 **Response** `202 Accepted` (비동기 Job)
 ```json
@@ -957,7 +957,7 @@ UI 표시 환경설정 업데이트 (인디케이터 ON/OFF 등)
 ```
 
 > - `users.ui_preferences_json` JSONB 컬럼에 저장
-> - 참조: `docs/03-editor-core/node-indicator.md` §23 (NODE-15)
+> - 참조: `docs/03-editor-core/node/03-node-indicator.md` §23 (NODE-15)
 
 ---
 
@@ -1169,13 +1169,13 @@ UI 표시 환경설정 업데이트 (인디케이터 ON/OFF 등)
 
 > - 권한: 해당 맵의 `editor` 또는 `owner`만 가능
 > - 즉시 autosave 트리거
-> - 참조: `docs/03-editor-core/node-indicator.md` §16 (편집자 override 아이콘 ⛔/🔁)
+> - 참조: `docs/03-editor-core/node/03-node-indicator.md` §16 (편집자 override 아이콘 ⛔/🔁)
 
 ---
 
 ## 12. AI Workflow
 
-> 관련 PRD: `docs/01-product/AI-Executable-Workflow-PRD.md`
+> 관련 PRD: `docs/04-extensions/ai/19-ai-workflow.md`
 
 **정책**: 동시 접속자가 2명 이상인 협업 상태에서는 모든 AI Workflow API 호출을 차단한다 (`403 FORBIDDEN`).
 
@@ -1289,7 +1289,7 @@ step 상태 변경
 
 > **Base URL**: `https://api.mindmap.ai.kr/v1`  
 > **인증**: 모든 엔드포인트 `Authorization: Bearer {accessToken}` 필수  
-> 전체 WS 이벤트 및 상세 정책: `docs/05-implementation/collaboration-api.md`
+> 전체 WS 이벤트 및 상세 정책: 본 문서 §13 Collaboration / `docs/04-extensions/collaboration/25-map-collaboration.md`
 
 ### 권한 모델
 
@@ -1622,7 +1622,7 @@ DELETE /maps/:mapId/soft-lock
 
 ## 14. Collaboration Chat / Node Thread / AI Assist (V2~V3)
 
-> 상세 엔드포인트는 `docs/05-implementation/collaboration-api.md`를 기준으로 한다.
+> 상세 엔드포인트는 본 문서 §14를 기준으로 한다.
 
 ### GET /maps/{mapId}/chat/messages
 최근 map-room chat 메시지 조회

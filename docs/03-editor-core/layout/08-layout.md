@@ -780,7 +780,7 @@ function getEdgeType(node: Node): EdgeType {
 | `tree-*`           | `tree-line` | 직각 연결선이 계층 구조를 명확히 한다  |
 | `hierarchy-*`      | `tree-line` | 들여쓰기 구조에 직각선 적합        |
 | `process-tree-*`   | `tree-line` | 흐름 강조, 화살표 형태 가능       |
-| `freeform`         | `curve-line` | 자유 배치에서 곡선이 유연하게 연결된다 |
+| `freeform`         | `tree-line` | MVP 정책상 방사형 외 레이아웃은 직각 연결선 사용 |
 | `kanban`           | 없음 (엣지 미사용) | 컬럼/카드 구조는 엣지 불필요       |
 
 EdgeAnchorResolver는 각 node box의 시작점(source)과 끝점(target)을 계산하여 EdgeRouter에 전달한다. 에지 경로 계산은 `curve-line`과 `tree-line` 두 가지 라우팅 알고리즘으로 분기된다.

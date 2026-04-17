@@ -387,7 +387,7 @@ CREATE TABLE public.node_media (
 - **⚠️ node_media 역할 명확화 (v3.1)**: `media_type`을 `'audio' | 'video'`만 허용하도록 CHECK 제약 추가.
   - 이미지 배경(`background_image`)은 nodes 테이블의 `background_image_path` 컬럼으로 분리 저장.
   - node_media = 오디오/비디오 인디케이터(▶), background_image = 노드 도형 배경 렌더링 — 역할이 완전히 다름.
-  - 참고: `docs/03-editor-core/node-background-image.md` § 정합성 보완
+  - 참고: `docs/03-editor-core/node/05-node-style.md` § 정합성 보완
 
 ---
 

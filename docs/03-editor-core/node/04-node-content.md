@@ -44,43 +44,55 @@
 
 | 기능ID  | 기능명         | 설명             | 주요 동작       |
 | ----- | ----------- | -------------- | ----------- |
-| NC-01 | 콘텐츠 입력      | markdown 기반 입력 | 클릭 → 입력     |
+| NC-01 | 콘텐츠 입력      | `nodes.text` 기반 입력 | 클릭 → 입력     |
 | NC-02 | code node   | 실행형 콘텐츠        | code UI     |
 | NC-03 | note 필드     | 상세 설명          | expand      |
 | NC-04 | autosave    | 자동 저장          | debounce    |
-| NC-05 | source 추적   | AI/사용자 구분      | metadata    |
+| NC-05 | 생성 출처 추적   | AI/사용자 구분(메타)      | ai_jobs/revision 메타    |
 | NC-06 | 줄바꿈 지원      | 수동/자동 줄바꿈      | Enter       |
-| NC-07 | 리스트 지원      | markdown list  | render      |
-| NC-08 | language 지정 | code 언어        | bash/python |
+| NC-07 | 리스트 지원      | markdown list(node 내부 유지)  | render      |
+| NC-08 | 코드 언어 확장 | V2 `code_language` 확장 검토 | schema 확장 |
 
 ---
 
 ### 4. 기능 정의 (What)
 
-* node는 **단일 content 필드만 가진다**
-* 별도의 title 필드는 존재하지 않는다
-* node에 표시되는 모든 정보는 content 내부 markdown 또는 code로 표현된다
+NODE_CONTENT는 노드의 “본문 데이터” 저장/해석 기준을 정의한다.
 
-#### markdown node
+#### 4.1 저장 모델 (schema.sql 기준)
 
-```json
-{
-  "content": "## 에버그린복지재단\n- 산하시설\n- 운영법인",
-  "content_type": "markdown",
-  "source": "user"
-}
-```
+- 기본 본문: `nodes.text`
+- 본문 유형: `nodes.node_type`
+- 확장 설명(note): `node_notes.content` (1:1)
+- 링크: `node_links`
+- 첨부파일: `node_attachments`
+- 오디오/비디오: `node_media`
 
-#### code node
+#### 4.2 본문 규칙
 
-```json
-{
-  "content": "sudo apt install apache2 -y",
-  "content_type": "code",
-  "code_language": "bash",
-  "source": "ai"
-}
-```
+- `nodes.text`는 Markdown raw text로 저장한다.
+- 렌더링 시 Markdown 파서가 뷰 텍스트/HTML로 해석한다.
+- 리스트는 child node로 강제 변환하지 않고, 기본적으로 node 내부 Markdown list로 유지한다.
+- 수동 줄바꿈은 raw text 그대로 저장한다.
+- note는 `nodes` 컬럼에 넣지 않고 `node_notes` 테이블에 분리 저장한다.
+
+#### 4.3 node_type 규칙
+
+- 기본값: `text` (`schema.sql` 기준)
+- 현재 확정 타입: `text`, `data-live`
+- 문서 확장 타입: `code` (MVP 문서 허용)
+- `image-card` 등 추가 타입은 후속 버전에서 확장한다.
+
+#### 4.4 code node 정책
+
+- MVP에서 `node_type='code'`는 문서 설계상 허용한다.
+- 물리 DB에 `code_language` 컬럼이 아직 없으면, 언어 정보는 `style_json`/metadata로 보류한다.
+- V2에서는 `nodes.code_language VARCHAR(30)` 추가를 권장한다.
+
+#### 4.5 source 추적 정책
+
+- AI/사용자 생성 구분은 노드 단일 컬럼보다 `ai_jobs` + revision/patch 메타로 추적한다.
+- 노드 본체에 `source` 컬럼 강제를 기본 정책으로 두지 않는다.
 
 ---
 
@@ -98,7 +110,8 @@
 
 #### 5.2 시스템 처리
 
-* 입력 내용을 content로 저장
+* 입력 내용을 `nodes.text`로 저장
+* 타입 정보는 `nodes.node_type`로 관리
 * markdown 파싱은 렌더링 단계에서 수행
 * autosave debounce 적용
 
@@ -117,35 +130,25 @@
 
 ---
 
-#### 6.1 콘텐츠 타입 규칙
+#### 6.1 본문/타입 규칙
 
 ```txt
-content_type:
-  - markdown
-  - code
+nodes.text: markdown raw text
+nodes.node_type: 'text' | 'data-live' (현재 DB 기준)
+문서 확장: 'code' (MVP 문서 허용)
 ```
 
 ---
 
-#### 6.2 source 규칙
+#### 6.2 콘텐츠 구조 규칙
 
-```txt
-source:
-  - user
-  - ai
-```
+* node 본문은 `nodes.text` 단일 원문으로 관리한다.
+* title 별도 컬럼은 사용하지 않는다.
+* heading/첫 줄 강조는 저장 구조가 아니라 렌더링 표현 규칙이다.
 
 ---
 
-#### 6.3 콘텐츠 구조 규칙
-
-* node는 content 하나만 가진다
-* title은 별도 저장하지 않는다
-* heading 또는 첫 줄은 렌더링 시 강조될 수 있다 (UI 표현)
-
----
-
-#### 6.4 줄바꿈 규칙
+#### 6.3 줄바꿈 규칙
 
 * 사용자는 Enter를 통해 수동 줄바꿈을 입력할 수 있다
 * 자동 줄바꿈과 수동 줄바꿈은 함께 적용된다
@@ -160,7 +163,7 @@ source:
 
 ---
 
-#### 6.5 리스트 규칙
+#### 6.4 리스트 규칙
 
 * markdown 리스트를 지원한다
 * 리스트는 node 내부 표현이며 child node와는 별개이다
@@ -175,7 +178,7 @@ source:
 
 ---
 
-#### 6.6 code node 규칙
+#### 6.5 code node 규칙
 
 * 실행형 콘텐츠는 code 타입 사용
 * language 지정 권장
@@ -183,14 +186,14 @@ source:
 
 ---
 
-#### 6.7 우선순위 규칙
+#### 6.6 우선순위 규칙
 
 * 사용자 수정 > AI 생성
 * AI 자동 overwrite 금지
 
 ---
 
-#### 6.8 길이 제한
+#### 6.7 길이 제한
 
 * title 없음
 * content: 10,000자
@@ -211,7 +214,7 @@ source:
 
 ### 8. 예외 / 경계 (Edge Case)
 
-* content 없음 → 최소 노드 표시
+* `nodes.text` 비어있음 → 최소 노드 표시
 * 공백만 입력 → 저장 제한 가능
 * 매우 긴 텍스트 → 렌더링에서 collapse 처리
 * 긴 URL → 줄바꿈 처리
@@ -231,18 +234,18 @@ source:
 
 ### 10. DB 영향
 
-* nodes.content
-* nodes.content_type
-* nodes.source
-* nodes.code_language
-* nodes.note
+* `nodes.text`
+* `nodes.node_type`
+* `node_notes.content`
+* `node_links`, `node_attachments`, `node_media`
 
 ---
 
 ### 11. API 영향
 
-* PATCH /nodes/{id}/content
-* GET /nodes/{id}
+* `PATCH /nodes/{id}` (본문/타입 갱신)
+* `PATCH /nodes/{id}/note` (note 분리 저장)
+* `GET /nodes/{id}` / `GET /maps/{mapId}/document`
 
 ---
 
@@ -273,7 +276,7 @@ Enter로 줄바꿈 → 2줄 표시
 
 #### 시나리오 4
 
-AI 생성 → source=ai 저장
+AI 생성 → `ai_jobs`/revision 메타와 연계 저장
 
 ---
 

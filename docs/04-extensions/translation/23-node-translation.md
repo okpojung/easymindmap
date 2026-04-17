@@ -71,9 +71,11 @@ CREATE TABLE public.node_translations (
 -- nodes 테이블 번역 컬럼
 text_lang                 VARCHAR(20),   -- 원문 언어 코드 (ISO 639-1)
 text_hash                 VARCHAR(128),  -- 원문 해시 (캐시 유효성 검증)
-translation_mode          VARCHAR(20)  NOT NULL DEFAULT 'auto',
-  -- 'auto': 시스템 자동 번역
-  -- 'manual': 사용자 직접 지정
+translation_mode          VARCHAR(20)  NOT NULL DEFAULT 'auto'
+                            CHECK (translation_mode IN ('auto', 'manual', 'skip')),
+  -- 'auto'  : 자동 번역 (기본값) — 열람자 언어로 시스템 자동 번역
+  -- 'manual': 수동 번역만 (AI 자동 번역 비활성, 편집자가 직접 번역 제공)
+  -- 'skip'  : 이 노드 번역 완전 제외 (모든 열람자에게 원문 표시)
 translation_override      VARCHAR(20),
   -- null: 정책 따름
   -- 'force_on': 강제 번역 표시

@@ -22,6 +22,7 @@ subtree 조회 성능, 형제 노드 순서 삽입 용이성, 노드 이동 시 
 | path 컬럼 | **채택 (ltree 타입)** | prefix-match 기반 subtree 조회, depth 없이도 레벨 계산 가능 |
 | order_index 타입 | **FLOAT (NUMERIC)** | 형제 노드 중간 삽입 시 reorder 없이 O(1) 삽입 (예: 1.0 → 1.5 → 2.0) |
 | 좌표 저장 | **manual_position JSONB** | `{ x: number, y: number }`, schema.sql 기준과 일치 |
+| layout_type 저장 | **노드별 항상 저장 (NOT NULL)** | 부모 상속은 생성 시 값 복사로 처리, 런타임 NULL 해석 제거 |
 
 ---
 
@@ -68,9 +69,8 @@ CREATE TABLE public.nodes (
     path             LTREE   NOT NULL DEFAULT 'root',
 
     -- 레이아웃
-    -- NULL = 부모 layoutType 상속 (NOT NULL 제거로 "상속" 상태와 기본값 구분 가능)
-    -- 루트 노드는 앱 레이어에서 'radial-bidirectional' 보장
-    layout_type      VARCHAR(50)  NULL,
+    -- layout_type은 항상 저장 (NOT NULL). 부모 상속은 생성 시 부모 값을 복사 저장
+    layout_type      VARCHAR(50)  NOT NULL DEFAULT 'radial-bidirectional',
     collapsed        BOOLEAN      NOT NULL DEFAULT FALSE,
 
     -- 도형 & 스타일
@@ -104,6 +104,22 @@ CREATE INDEX idx_nodes_path_gist ON public.nodes USING GIST (path);
 -- ltree B-Tree 인덱스 (exact match / ORDER BY 최적화)
 CREATE INDEX idx_nodes_path_btree ON public.nodes USING BTREE (path);
 ```
+
+---
+
+## 레이아웃 저장 정책 (최종 확정)
+
+- `nodes.layout_type` 는 **항상 저장한다**.
+- DB에서 `NULL = 부모 상속` 방식은 사용하지 않는다.
+- 부모 상속은 **노드 생성 시 부모의 `layout_type` 값을 복사 저장**하는 방식으로 처리한다.
+- 특정 노드의 `layout_type` 변경 시 해당 노드 subtree의 기본 레이아웃 기준이 된다.
+- 렌더러는 DB의 `nodes.layout_type` 값을 신뢰하고, 별도의 상속 해석 로직을 최소화한다.
+
+### 이유
+
+- `schema.sql`에서 `nodes.layout_type` 는 `NOT NULL` + 허용 enum check로 강제된다.
+- 협업/Undo/부분 relayout에서 `NULL 상속 해석`은 서버/클라이언트 복잡도를 높인다.
+- 생성 시 복사 저장 방식이 API/서비스/렌더링 계층에서 가장 단순하고 안정적이다.
 
 ---
 

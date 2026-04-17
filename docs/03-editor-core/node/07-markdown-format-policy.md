@@ -61,6 +61,34 @@ Markdown Heading은 다음과 같이 변환된다:
 
 ---
 
+### 2.4 문서형 Markdown vs 아웃라인형 Markdown
+
+#### 문서형 Markdown
+
+- 문단, 리스트, 코드블럭, 인용문 등을 하나의 node 본문 안에서 유지한다.
+- 기본 import 대상 형식이다.
+
+#### 아웃라인형 Markdown
+
+- Heading 계층(`#`, `##`, `###` ...)을 node 계층으로 변환한다.
+- 본문 문단/리스트는 해당 heading node의 내부 콘텐츠로 유지한다.
+
+### 2.5 리스트 정책
+
+- 기본 정책: Markdown list는 child node로 자동 분해하지 않는다.
+- 옵션 import 모드에서만 “리스트 → 자식 노드 변환”을 허용한다.
+- export 기본값도 node 내부 list 유지다.
+
+### 2.6 `#` 기호 처리 정책
+
+- 줄 시작 후 공백 규칙을 만족하는 경우만 heading으로 해석한다.
+- 예:
+  - `# 제목` → heading
+  - `C#`, `#태그`, `가격 #1` → heading 아님
+- import parser는 CommonMark heading 규칙을 기본 준수한다.
+
+---
+
 ## 3. Node 생성 규칙 (Node Creation Rule)
 
 ### 3.1 기본 생성 규칙
@@ -109,74 +137,18 @@ Level < L 인 가장 가까운 Node를 Parent로 설정
 
 Markdown은 동일한 문법을 사용하더라도 작성 목적에 따라 두 가지 유형으로 구분된다.
 
-- Document Markdown (문서형)
-- Outline Markdown (아웃라인형)
+- 문서형(Document Markdown)
+- 아웃라인형(Outline Markdown)
 
 이 구분은 Import 시 Node Tree 생성 방식에 직접적인 영향을 준다.
 
 ---
 
-### 4.1 Document Markdown (문서형)
+### 4.1 유형별 Import 기준 요약
 
-#### 정의
-
-- 설명, 서술, 전달을 목적으로 작성된 Markdown
-- 사람이 읽기 위한 문서 구조가 중심
-
-#### 주요 특징
-
-- Heading은 문서의 "장/절 구분" 역할
-- Paragraph(본문 설명)가 핵심 콘텐츠
-- List는 구조가 아닌 "본문 정리용"이 대부분
-- Code Block, Table, Quote 등이 자주 포함됨
-
-#### 예시
-
-```md
-## Apache 설치
-Apache는 대표적인 웹서버이다.
-
-- apt update
-- apt install apache2
-```
-
-#### Import 규칙
-
-- Heading → Node 생성
-- Paragraph / List / Code / Table → 해당 Node의 Content로 유지
-- List는 기본적으로 Node로 변환하지 않는다
-
----
-
-### 4.2 Outline Markdown (아웃라인형)
-
-#### 정의
-
-- 항목 정리, 구조화, 업무 분해를 목적으로 작성된 Markdown
-- 계층 구조 표현이 중심
-
-#### 주요 특징
-
-- List 자체가 구조(Tree)를 표현
-- Nested List가 계층 구조를 의미
-- 문단 설명보다 항목명이 중요
-- 각 항목이 Node로 변환되기 적합
-
-#### 예시
-
-```md
-# 서버 구축
-- Apache 설치
-  - Ubuntu
-  - CentOS
-- SSL 적용
-```
-
-#### Import 규칙
-
-- Heading → 상위 Node
-- List Item → 자식 Node
-- Nested List → 하위 Tree로 재귀 생성
+- 문서형: Heading만 트리 구조로 사용하고, 문단/리스트/코드는 node 내부 콘텐츠로 유지
+- 아웃라인형: Heading + List Item을 구조로 해석하여 자식 node 생성
+- 세부 기준은 §2.4(문서형/아웃라인형), §2.5(리스트 정책), §2.6(`#` 처리)를 우선 적용
 
 ---
 
@@ -216,13 +188,12 @@ Markdown Import 시 다음 모드를 지원한다.
 1. 라인의 시작 위치에서 등장해야 한다.
 2. `#` 개수는 1개 이상 6개 이하만 허용한다.
 3. `#` 뒤에는 텍스트가 존재해야 한다.
-4. `#` 뒤 공백은 선택적으로 허용한다.
+4. `#` 뒤에는 최소 1칸 공백이 있어야 한다.
 
 허용 예:
 
 ```md
 # 제목
-##기능 정의
 ### 기능 상세
 ```
 

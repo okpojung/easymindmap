@@ -160,7 +160,7 @@
 
 ### 14. 노드 배경 이미지 (Node Background Image)
 
-> **관련 문서**: `docs/03-editor-core/node-background-image.md`  
+> **관련 문서**: `docs/02-domain/db-schema.md § node_media`, `docs/03-editor-core/node/03-node-indicator.md`  
 > **기능 그룹**: Node Style / Media  
 > **기능 ID 범위**: IMG-01 ~ IMG-20
 

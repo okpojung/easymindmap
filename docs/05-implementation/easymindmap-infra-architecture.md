@@ -1,6 +1,6 @@
 # easymindmap — 인프라 아키텍처 & 설치 가이드
 
-> **문서 위치**: `docs/05-implementation/infra-architecture.md`
+> **문서 위치**: `docs/05-implementation/easymindmap-infra-architecture.md`
 > **최종 업데이트**: 2026-04-16
 > **버전**: v1.3
 > **환경**: IDC / ESXi 5대 / FortiGate IPSec VPN / 192.168.94.0/24

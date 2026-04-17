@@ -102,6 +102,22 @@
 * collapsed 노드의 숨겨진 자식도 검색 대상
 * 검색 중 캔버스 편집 가능 (상태 유지)
 
+#### 6.1 MVP 검색 범위
+
+- 대상:
+  - `nodes.text`
+  - `tags.name` / `node_tags`
+- 제외:
+  - `node_notes.content` (후순위)
+  - 첨부파일 본문 OCR
+  - 오디오/비디오 transcript
+
+#### 6.2 구현 단계
+
+1. MVP: 클라이언트 필터링 + 서버 기본 LIKE/ILIKE
+2. V2: PostgreSQL Full Text Search + GIN index
+3. V3: note / attachment metadata / AI semantic search 확장
+
 ---
 
 ### 7. 예외 / 경계 (Edge Case)

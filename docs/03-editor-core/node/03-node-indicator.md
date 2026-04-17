@@ -760,7 +760,7 @@ const getIndicatorPositions = (nodeBounds: DOMRect) => ({
 ```
 
 - 적용 단계: V2 (다국어 번역 기능과 함께 구현)
-- 설계 기준: `docs/04-extensions/multilingual-translation.md` § 10
+- 설계 기준: `docs/04-extensions/translation/23-node-translation.md` § 10
 
 ### 13. 번역 상태별 인디케이터 정의
 
@@ -1199,7 +1199,7 @@ NodeRenderer
 
 ## PART 5. WBS 일정 인디케이터 (NODE-17)
 
-> 관련 설계: `docs/04-extensions/redmine-integration-plan.md` §6
+> 관련 설계: `docs/04-extensions/integrations/31-redmine-integration.md` §6
 > 관련 기능ID: NODE-17 · SCHED-01~04
 
 ### 인디케이터 배치 구조
@@ -1283,7 +1283,7 @@ const WBS_STATUS_COLOR: Record<WbsStatus, string> = {
 
 ## PART 6. AI Workflow 상태 인디케이터 (WFLOW-03/04)
 
-> 관련 PRD: `docs/01-product/AI-Executable-Workflow-PRD.md` §10.7
+> 관련 PRD: `docs/04-extensions/ai/19-ai-workflow.md` §10.7
 
 `workflowType = 'executable'`인 step node는 실행 상태를 인디케이터로 표시한다.
 

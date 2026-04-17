@@ -51,18 +51,17 @@
 ---
 
 ### 4. 기능 정의 (What)
-- node는 **단일 content 필드**를 가진다.
+- node 본문은 **`nodes.text` 단일 필드**를 사용한다.
 - 별도의 title 필드는 존재하지 않는다.
-- 렌더링은 content 전체를 기준으로 수행한다.
-- 다만 content 내부 구조(예: 첫 heading, 첫 줄, 리스트, 링크, 코드)를 분석하여 시각적으로 강조할 수 있다.
+- 렌더링은 `nodes.text` 전체를 기준으로 수행한다.
+- 다만 본문 내부 구조(예: 첫 heading, 첫 줄, 리스트, 링크, 코드)를 분석하여 시각적으로 강조할 수 있다.
 - 즉, “제목처럼 보이는 부분”이 있을 수는 있으나, 그것은 별도 데이터 필드가 아니라 **렌더링 결과**이다.
 
 #### 예시 1: markdown node
 ```json
 {
-  "content": "## 에버그린복지재단\n- 산하시설\n- 운영법인",
-  "content_type": "markdown",
-  "source": "user"
+  "text": "## 에버그린복지재단\n- 산하시설\n- 운영법인",
+  "node_type": "text"
 }
 ````
 
@@ -70,12 +69,21 @@
 
 ```json
 {
-  "content": "sudo apt install apache2 -y",
-  "content_type": "code",
-  "code_language": "bash",
-  "source": "ai"
+  "text": "sudo apt install apache2 -y",
+  "node_type": "code",
+  "style_json": { "codeLanguage": "bash" }
 }
 ```
+
+---
+
+### 4.1 저장 모델과의 연결 규칙
+
+- 렌더링 입력 원본은 `nodes.text` 이다.
+- note는 본문 렌더 트리와 분리하며, 필요 시 보조 패널/expand UI에서 `node_notes.content`를 표시한다.
+- Markdown list는 기본적으로 node 내부 렌더링 대상으로 처리한다.
+- `node_type='code'`인 경우 raw code block 렌더링 정책을 우선 적용한다.
+- 본문(`text`)과 스타일(`style_json`)은 분리한다.
 
 ---
 
@@ -83,8 +91,8 @@
 
 #### 5.1 렌더링 기본 흐름
 
-1. node의 content_type 확인
-2. markdown 또는 code 렌더러 선택
+1. node의 node_type 확인
+2. text 또는 code 렌더러 선택
 3. content 구조 분석
 4. node width/height 계산
 5. 줄바꿈 정책 적용
@@ -405,7 +413,7 @@ sudo apt install apache2 certbot python3-certbot-apache -y
 * 필요 시 해당 subtree만 부분 relayout 한다.
 * 전체 캔버스를 강제로 다시 layout하지 않고 partial relayout을 우선한다.
 
-##### 6.4.6 content_type별 정책
+##### 6.4.6 node_type별 정책
 
 ###### markdown/text node
 

@@ -3,7 +3,7 @@
 
 * 문서 버전: v1.0
 * 작성일: 2026-04-16
-* 참조: `docs/01-product/functional-spec.md § AI_WORKFLOW`, `docs/01-product/AI-Executable-Workflow-PRD.md`
+* 참조: `docs/01-product/functional-spec.md § AI_WORKFLOW`, `docs/04-extensions/ai/18-ai.md`
 
 ---
 

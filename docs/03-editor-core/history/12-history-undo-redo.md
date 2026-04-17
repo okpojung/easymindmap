@@ -3,7 +3,7 @@
 
 * 문서 버전: v1.0
 * 작성일: 2026-04-15
-* 참조: `docs/03-editor-core/command-history.md`, `docs/03-editor-core/autosave-engine.md`
+* 참조: `docs/01-product/functional-spec.md § HISTORY`, `docs/03-editor-core/save/14-save.md`, `docs/03-editor-core/history/13-version-history.md`
 
 ---
 
@@ -659,7 +659,7 @@ async function handleVersionRestore(restoredVersion: number) {
 #### 16.6 참조 문서
 
 * `docs/03-editor-core/history/13-version-history.md` — 버전 이력 패널, 롤백 규칙, revision 생성 흐름
-* `docs/03-editor-core/autosave-engine.md` — autosave 파이프라인, patchId 생성 규칙, IMMEDIATE_SAVE_OPS
+* `docs/03-editor-core/save/14-save.md` — autosave 파이프라인, patchId 생성 규칙, IMMEDIATE_SAVE_OPS
 * `docs/02-domain/db-schema.md § map_revisions` — 서버 이력 테이블 DDL
 * `docs/03-editor-core/save/14-save.md` — SAVE 기능 전체 명세
 

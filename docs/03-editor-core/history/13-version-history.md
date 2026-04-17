@@ -3,7 +3,7 @@
 
 * 문서 버전: v1.0
 * 작성일: 2026-04-15
-* 참조: `docs/02-domain/db-schema.md § map_revisions`, `docs/03-editor-core/autosave-engine.md`, `docs/03-editor-core/command-history.md`
+* 참조: `docs/02-domain/db-schema.md § map_revisions`, `docs/03-editor-core/save/14-save.md`, `docs/03-editor-core/history/12-history-undo-redo.md`
 
 ---
 

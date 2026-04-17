@@ -3,7 +3,7 @@
 
 * 문서 버전: v1.0
 * 작성일: 2026-04-16
-* 참조: `docs/01-product/functional-spec.md § RDMN`, `docs/04-extensions/redmine-integration-plan.md`, `docs/02-domain/db-schema.md § redmine_project_maps`
+* 참조: `docs/01-product/functional-spec.md § RDMN`, `docs/04-extensions/project/28-wbs.md`, `docs/02-domain/db-schema.md § redmine_project_maps`
 
 ---
 

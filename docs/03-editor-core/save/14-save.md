@@ -3,7 +3,7 @@
 
 * 문서 버전: v1.0
 * 작성일: 2026-04-16
-* 참조: `docs/03-editor-core/autosave-engine.md`, `docs/03-editor-core/history/12-history-undo-redo.md`
+* 참조: `docs/01-product/functional-spec.md § SAVE`, `docs/03-editor-core/history/12-history-undo-redo.md`, `docs/03-editor-core/history/13-version-history.md`
 
 ---
 

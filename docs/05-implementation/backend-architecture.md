@@ -646,7 +646,7 @@ npm run test:e2e
 
 ## 9. 환경변수 (Backend 핵심)
 
-> 전체 명세: `docs/infra/env-spec.md` 참고
+> 전체 명세: `docs/05-implementation/env-spec.md` 참고
 
 ```bash
 # Supabase (기존 DB_* / MINIO_* / AUTH_JWT_* 전부 제거)

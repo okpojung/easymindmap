@@ -6,32 +6,32 @@
 
 ---
 
-## 1. 전체 도메인 엔티티 관계
+## 1. 전체 도메인 엔티티 관계 (구현 상태 포함)
 
 ```
 User
- └── Workspace (1:N)
-      └── WorkspaceMember (N:N ↔ User)
+└── Workspace (implemented)
+    └── WorkspaceMember (implemented)
 
 User
- └── Map (1:N)
-      ├── Node (1:N, 트리 구조)
-      │    ├── NodeNote (1:1)
-      │    ├── NodeLink (1:N)
-      │    ├── NodeAttachment (1:N)
-      │    ├── NodeMedia (1:1)
-      │    ├── NodeTag (N:N ↔ Tag)
-      │    ├── NodeTranslation (1:N)
-      │    ├── NodeSchedule (1:1, WBS)
-      │    └── NodeResource (1:N, WBS/Kanban)
-      ├── MapRevision (1:N, 버전 히스토리)
-      ├── PublishedMap (1:N, 공개 스냅샷)
-      ├── Export (1:N)
-      └── MapCollaborator (1:N, 협업자)
+└── Map (implemented)
+    ├── Node (implemented)
+    │   ├── NodeNote (implemented)
+    │   ├── NodeLink (implemented)
+    │   ├── NodeAttachment (implemented)
+    │   ├── NodeMedia (implemented)
+    │   ├── NodeTag (implemented)
+    │   ├── NodeTranslation (implemented)
+    │   ├── NodeSchedule (planned)
+    │   └── NodeResource (planned)
+    ├── MapRevision (implemented)
+    ├── PublishedMap (implemented)
+    ├── Export (implemented)
+    └── MapCollaborator (separate-schema)
 
-Tag (User 또는 Workspace 소속)
-AIJob (User 소속)
-FieldRegistry (독립 — 대시보드 필드 메타)
+Tag (implemented)
+AIJob (implemented)
+FieldRegistry (implemented)
 ```
 
 > 물리 DB 스키마 전체: `docs/02-domain/db-schema.md`

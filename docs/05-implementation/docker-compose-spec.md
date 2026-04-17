@@ -1,6 +1,6 @@
 # easymindmap — Docker Compose 설계
 
-문서명: `docs/infra/docker-compose-spec.md`  
+문서명: `docs/05-implementation/docker-compose-spec.md`  
 기준: **ESXi 7.0.3 환경, Supabase Self-hosted + VM별 분리 배포**  
 결정일: 2026-03-27  
 최종 업데이트: 2026-04-16

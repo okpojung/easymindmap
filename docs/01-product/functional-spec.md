@@ -1,8 +1,12 @@
 # easymindmap — 전체 기능 명세서
 
-**최종 업데이트:** 2026-04-16
+**최종 업데이트:** 2026-04-17
 **출처:** 기능정의테이블 + docs/features 문서 통합 정리
 **변경 이력:**
+- 2026-04-17 — main 브랜치 동기화 확인(문서 반영 커밋 체인 유지)
+- 2026-04-17 — main 반영 확인: EDGE-07~09, KANBAN 상세 참조, PUBLISH/SHARE 권한(scope) 항목 유지
+- 2026-04-17 — 반영 재확인: KANBAN 상세 참조(`docs/03-editor-core/canvas/09-kanban.md`), PUBLISH/SHARE 권한 문구, EDGE-07~09(재라우팅/오프셋/전환) 유지
+- 2026-04-16 — KANBAN/WBS 참조 경로 정정, Publish/Share 권한 표현을 COLLAB scope 정책과 정합화
 - 2026-04-16 — CHAT-06(미확인 @멘션), CHAT-07(1:1 DM V3) 추가
 - 2026-04-16 — NODE STYLE(NS), NODE BG IMAGE(IMG), NODE RENDERING(NR), EDGE POLICY, VERSION HISTORY(VH), PUBLISH/SHARE(PUBL), SETTINGS(SETT), IMPORT(IMPORT), OBSIDIAN(OBS) 기능군 추가; 목차 및 기능 수 요약 갱신
 - 2026-04-16 — 참조 문서 경로 정정 (map-model.md, node-model.md → domain-models.md; prd.md → vision.md + mvp-scope.md), 로드맵 단계 정렬 수정, 기능 수 요약 갱신
@@ -269,6 +273,9 @@ Radial 계열 (radial-bidirectional / radial-right / radial-left)
 | EDGE-04 | Node Style 상속 | 자식 노드 생성 시 부모 shape/fillColor/borderColor/textColor 상속 |
 | EDGE-05 | Font Size Level Rule | depth별 기본 font size 적용 (Root 20px / L1 16px / L2 14px / L3+ 12px) |
 | EDGE-06 | Kanban Edge 비표시 | Kanban은 정책상 tree-line이나 UI에서 edge 미표시 처리 |
+| EDGE-07 | Drag Re-routing | 노드 이동 시 edge 경로를 실시간 재계산하고 drop 시 최종 확정 |
+| EDGE-08 | Anchor Offset | 노드 경계에서 최소 offset을 두어 텍스트와 선의 충돌 방지 |
+| EDGE-09 | Layout Transition | radial↔non-radial 전환 시 path 보간 애니메이션(저사양 fallback 허용) |
 
 ---
 
@@ -545,7 +552,7 @@ Obsidian, Notion, VS Code 등에서 작성한 아웃라인·문서를 즉시 마
 |---|---|---|
 | **대상** | 불특정 다수 (인터넷 전체) | 특정 사용자 (협업자 초대) |
 | **인증** | 불필요 (Anonymous 접근) | 필요 (로그인 후 협업 참여) |
-| **권한** | 읽기 전용 고정 | editor / viewer 역할 선택 |
+| **권한** | 읽기 전용 고정 | creator / editor (scope 기반) |
 | **URL** | `easymindmap.com/p/{publish_id}` | 이메일/링크로 초대 |
 | **관련 기능** | PUBL-01~04 (이 섹션) | COLLAB-01~03 (`§ 28 COLLAB`) |
 
@@ -559,7 +566,7 @@ Obsidian, Notion, VS Code 등에서 작성한 아웃라인·문서를 즉시 마
 | PUBL-04 | 공유 링크 복사 | 클립보드에 공개 URL 복사 |
 
 **공개 URL 구조**: `https://easymindmap.com/p/{publish_id}`  
-**권한**: creator만 게시/취소 가능 — editor/viewer/anonymous는 읽기 전용
+**권한**: creator만 게시/취소 가능 — editor/anonymous는 읽기 전용
 
 ### 19-2. Share 기능 (협업 공유)
 
@@ -717,7 +724,8 @@ maps.refresh_interval_seconds INT          DEFAULT 0        -- 0: off, 30, 60, 3
 
 ## 23. WBS — WBS 모드 (V1)
 
-> 관련 설계: `docs/04-extensions/integrations/` (Redmine 연동)
+> 관련 설계: `docs/04-extensions/project/28-wbs.md`  
+> 연동 설계: `docs/04-extensions/integrations/31-redmine-integration.md`
 
 ### WBS 모드 기능
 

@@ -1,9 +1,10 @@
 # 25. Map Collaboration
 ## COLLABORATION
 
-* 문서 버전: v1.0
+* 문서 버전: v1.1
 * 작성일: 2026-04-16
-* 참조: `docs/01-product/functional-spec.md § COLLAB`, `docs/04-extensions/collaboration-and-concurrency-strategy.md`
+* 참조: `docs/01-product/functional-spec.md § COLLAB`, `docs/05-implementation/backend-architecture.md`
+* 변경: Soft Lock TTL(5초) 및 creator/editor + scope 정책 정합화
 
 ---
 
@@ -38,14 +39,14 @@
 | 기능ID      | 기능명                  | 설명                                  | 주요 동작              |
 | --------- | -------------------- | ----------------------------------- | ------------------ |
 | COLLAB-01 | 맵 초대                 | 이메일/링크로 editor 초대                   | 초대 링크 생성           |
-| COLLAB-02 | 권한 변경                | editor ↔ viewer 역할 변경               | 권한 설정 UI           |
+| COLLAB-02 | 권한 변경                | creator가 editor의 scope(level/node) 수정 | 권한 설정 UI           |
 | COLLAB-03 | 협업자 제거               | 맵에서 특정 협업자 삭제                       | 멤버 관리              |
 | COLLAB-04 | 실시간 편집 동기화           | 편집 내용 즉시 전파 (Supabase Realtime)     | WebSocket           |
 | COLLAB-05 | LWW 충돌 정책            | 마지막 쓰기 우선 (Last-Write-Wins)         | timestamp 비교       |
 | COLLAB-06 | 변경 수신 및 반영           | 원격 편집 수신 → Document Store 반영        | CRDT-like 병합       |
 | COLLAB-07 | 커서 공유                | 협업자 커서 위치 실시간 표시 (이름 + 색상)          | Presence           |
 | COLLAB-08 | Soft Lock            | 노드 편집 시 Soft Lock 설정 (다른 사람 편집 경고) | Lock 표시            |
-| COLLAB-09 | Lock 해제              | 편집 완료 또는 timeout(30s) 후 자동 해제       | 자동 해제              |
+| COLLAB-09 | Lock 해제              | 편집 완료 또는 timeout(5s) 후 자동 해제        | 자동 해제              |
 | COLLAB-10 | Node Thread          | 노드에 댓글 스레드 추가                       | 스레드 패널 열기          |
 | COLLAB-11 | Thread Reply         | 스레드 답글 작성                           | 답글 입력              |
 | COLLAB-12 | Thread Resolve       | 스레드 해결 처리                           | 해결 표시              |
@@ -64,18 +65,41 @@
 * 맵 생성자(creator)가 1명 이상 사용자를 **editor로 초대**한 맵
 * viewer 초대 = 협업맵 아님 (퍼블리싱으로 처리)
 
-#### 4.2 map_members 테이블
+#### 4.2 map_collaborators 테이블 (물리 스키마 기준)
 
 ```sql
-CREATE TABLE public.map_members (
+CREATE TABLE public.map_collaborators (
   map_id      UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
   user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  role        VARCHAR(20) NOT NULL DEFAULT 'editor',
-              -- 'editor' | 'viewer'
+  role        VARCHAR(20) NOT NULL,
+              -- 'creator' | 'editor'
+  scope_type  VARCHAR(20) NOT NULL,
+              -- 'full' (creator 전용) | 'level' | 'node'
+  scope_level INT NULL,
+  scope_node_id UUID NULL REFERENCES public.nodes(id) ON DELETE CASCADE,
   invited_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (map_id, user_id)
 );
 ```
+
+> 구현 기준: `docs/02-domain/collaboration-schema.sql`의 `map_collaborators` 테이블을 사용한다.
+
+#### 4.2.1 권한 모델 분리 원칙
+
+**workspace_members**
+- 워크스페이스 단위 접근 제어
+- `owner / editor / viewer` 역할 사용
+- 워크스페이스 소속 맵 접근 권한의 상위 기반
+
+**map_collaborators**
+- 협업맵 전용 편집 참여자
+- `creator / editor` 역할만 사용
+- `viewer`는 퍼블리시/공유 모델로 처리
+- 소유권 이양, 협업 편집 범위, creator 권한 추적은 `map_collaborators` 기준으로 처리
+
+**정리**
+- 일반 접근: `workspace_members`
+- 협업 편집 세부 제어: `map_collaborators`
 
 #### 4.3 node_threads / thread_messages 테이블
 
@@ -101,7 +125,7 @@ CREATE TABLE public.thread_messages (
 
 ```typescript
 // Redis Key: `lock:node:{nodeId}`
-// TTL: 30초
+// TTL: 5초
 type SoftLock = {
   nodeId: string;
   lockedBy: string;     // userId
@@ -161,7 +185,7 @@ Supabase Realtime 브로드캐스트
 ### 6. 규칙 (Rule)
 
 * AI 기능: 협업 중(접속자 2명 이상) 비활성화
-* Soft Lock TTL: 30초 (비활동 시 자동 해제)
+* Soft Lock TTL: 5초 (비활동 시 자동 해제)
 * 협업자 최대 수: 20명/맵
 * Thread 메시지 최대 길이: 2000자
 * @멘션: `@displayName` 형식, 알림 전송
@@ -183,13 +207,12 @@ Supabase Realtime 브로드캐스트
 | ------- | -- | -- | ------ | ------ |
 | creator | ✅  | ✅  | ✅      | solo만  |
 | editor  | ✅  | ❌  | ✅      | solo만  |
-| viewer  | ❌  | ❌  | 읽기만   | ❌      |
 
 ---
 
 ### 9. DB 영향
 
-* `map_members` — 협업자 초대 및 역할
+* `map_collaborators` — 협업자 초대 및 역할
 * `node_threads` — 노드 댓글 스레드
 * `thread_messages` — 스레드 메시지
 * Redis — Soft Lock, Presence 상태

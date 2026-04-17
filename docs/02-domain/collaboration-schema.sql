@@ -26,7 +26,7 @@ COMMENT ON COLUMN public.maps.collab_owner_id IS
 ALTER TABLE public.nodes
   ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES public.users(id);
 -- 기존 nodes 테이블에 depth 컬럼이 이미 있는지 확인 후 추가
--- erd.md v3.0에 nodes.depth가 이미 존재하므로 중복 추가 안 함
+-- db-schema.md v3.0에 nodes.depth가 이미 존재하므로 중복 추가 안 함
 
 COMMENT ON COLUMN public.nodes.created_by IS
   '노드를 최초 생성한 사용자 ID. 수정/삭제 권한 판단 기준.';

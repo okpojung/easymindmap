@@ -139,6 +139,26 @@ CREATE INDEX idx_maps_workspace_id ON public.maps(workspace_id);
 CREATE INDEX idx_maps_deleted_at ON public.maps(deleted_at) WHERE deleted_at IS NULL;
 ```
 
+### [owner_id vs created_by 구분]
+- `owner_id` = 현재 맵 소유자. ownership transfer 후 변경 가능.
+- 원래 creator는 `map_ownership_history` 테이블의 첫 번째 레코드(`transferred_by IS NULL`)로 추적.
+- `maps` 테이블에 `created_by` 컬럼은 없음 — 최초 생성자 추적은 `map_ownership_history` 를 통해서만 조회.
+
+```sql
+CREATE TABLE public.map_ownership_history (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id       UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  owner_id     UUID NOT NULL REFERENCES public.users(id),
+  transferred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  transferred_by UUID REFERENCES public.users(id)  -- NULL = 최초 생성
+);
+```
+
+> 첫 번째 레코드(`transferred_by IS NULL`)가 원래 creator다.  
+> 이 테이블은 `collaboration-schema.sql`에서 `map_ownership_history` 이름으로 별도 정의되어 있으나,  
+> 해당 버전은 `from_user_id / to_user_id` 방식의 이양 이력 구조를 사용한다.  
+> 위 DDL은 최초 생성자 추적을 위한 단순 버전이며, 운영 시 협업 스키마 버전을 우선한다.
+
 ### [변경 주석]
 - 기존 문서에는 maps 테이블이 `owner_id`, `title`, `default_layout_type`, `deleted_at` 정도로만 설명되어 있었음.
 - 최신 schema.sql 기준으로는 아래 항목이 추가 반영되어야 함:
@@ -219,7 +239,11 @@ CREATE TABLE public.nodes (
   -- 다국어 번역 (V2)
   text_lang                 VARCHAR(20),   -- 원문 언어 코드 (ISO 639-1)
   text_hash                 VARCHAR(128),  -- 원문 해시 (번역 캐시 유효성 검증)
-  translation_mode          VARCHAR(20)  NOT NULL DEFAULT 'auto',  -- 'auto' | 'manual'
+  translation_mode          VARCHAR(20)  NOT NULL DEFAULT 'auto'
+                              CHECK (translation_mode IN ('auto', 'manual', 'skip')),
+                              -- 'auto'  : 자동 번역 (기본값)
+                              -- 'manual': 수동 번역만 (AI 자동 번역 비활성)
+                              -- 'skip'  : 이 노드 번역 완전 제외
   translation_override      VARCHAR(20),   -- null | 'force_on' | 'force_off'
   author_preferred_language VARCHAR(10),   -- 작성자 선호 언어 (번역 건너뜀 여부 결정)
 
@@ -299,7 +323,7 @@ Kanban layout에서는 nodes.depth를 다음처럼 제한적으로 해석한다.
 - 또한 style 컬럼명도 기존 `style` 대신 최신 schema.sql 기준으로 `style_json`으로 맞춘다.
 - size 컬럼도 `size` 대신 `size_cache`로 맞춘다.
 - **V2 번역 컬럼 추가**: `translation_mode`, `translation_override`, `author_preferred_language`
-  - `translation_mode`: 'auto'(기본) | 'manual' — 노드별 번역 동작 방식
+  - `translation_mode`: 'auto'(기본) | 'manual' | 'skip' — 노드별 번역 동작 방식
   - `translation_override`: null(기본) | 'force_on' | 'force_off' — 편집자 강제 재정의
   - `author_preferred_language`: 작성자 선호 언어 — 영어 원문 번역 건너뜀 여부 판단에 사용
   - 3-레벨 번역 정책: node.translation_override > map.translation_policy_json > user(preferred_language, secondary_languages)
@@ -1100,6 +1124,26 @@ CREATE POLICY "chat_mentions_update"
   USING (receiver_id = auth.uid());
 ```
 
+### 17-1-3. dm_messages (V3)
+
+```sql
+-- 1:1 DM (V3)
+CREATE TABLE public.dm_messages (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  map_id       UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  sender_id    UUID NOT NULL REFERENCES public.users(id),
+  recipient_id UUID NOT NULL REFERENCES public.users(id),
+  content      TEXT NOT NULL,
+  is_read      BOOLEAN NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_dm_messages_pair
+  ON public.dm_messages(map_id, sender_id, recipient_id, created_at DESC);
+```
+
+- `chat_messages.recipient_id` 방식(v1.1 DM)과 달리, dm_messages는 완전 독립 1:1 대화 스레드를 위한 V3 테이블
+- CHAT-07 V3에서 활성화
+
 ### 17-2. chat_message_translations
 
 ```sql
@@ -1142,7 +1186,7 @@ CREATE TABLE public.node_thread_ai_previews (
 
 ## ERD — 전체 구조 요약
 
-> 이 섹션은 `erd.md`(v3.1)의 내용을 통합한 것이다.
+> 이 섹션은 `db-schema.md`(v3.1)의 내용을 통합한 것이다.
 
 ### 스키마 변경 이력
 
@@ -1280,3 +1324,17 @@ field_registry  (독립 테이블 — 대시보드 필드 메타)
 | **레벨 3** (노드) | 개별 노드 | `nodes.translation_override` — `force_on` / `force_off` / null |
 
 > **우선순위**: 레벨 3 (노드) > 레벨 2 (맵) > 레벨 1 (사용자)
+
+#### ⑩ Edge 타입 — DB 컬럼 없음 (레이아웃에서 자동 파생)
+
+Edge(연결선) 스타일은 `nodes.layout_type` 값에서 자동으로 파생되므로, 별도 `connector_style` 컬럼이 필요하지 않다.
+
+| layoutType 계열 | Edge 타입 | 연결선 형태 |
+|---|---|---|
+| `radial-*` | `curve-line` | Cubic Bezier 곡선 |
+| `tree-*` / `hierarchy-*` / `process-tree-*` / `freeform` / `kanban` | `tree-line` | **직각선(Orthogonal Connector)** |
+
+- **`connector_style` 컬럼 불필요** — 레이아웃값으로 서버/클라이언트가 자동 결정
+- **`line_type` API 파라미터 불필요** — 레이아웃 변경으로 Edge 자동 전환
+- 사용자 수동 선택은 MVP 미제공 (Backlog 항목)
+- 참조: `docs/03-editor-core/edge-policy.md §3`, `docs/assets/맵진행방향.pdf`

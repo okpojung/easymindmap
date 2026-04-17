@@ -477,7 +477,7 @@ ALTER TABLE public.nodes
 -- → docs/02-domain/collaboration-schema.sql 참조 (별도 마이그레이션으로 실행)
 
 -- ============================================================
--- V2: 다국어 번역 기능 스키마 확장 (multilingual-translation.md v3.0)
+-- V2: 다국어 번역 기능 스키마 확장 (23-node-translation.md v3.0)
 -- ============================================================
 
 -- 1. users 테이블: 언어 설정 확장
@@ -524,9 +524,10 @@ COMMENT ON COLUMN public.maps.translation_policy_json
 -- 3. nodes 테이블: 번역 제어 필드 추가
 ALTER TABLE public.nodes
   ADD COLUMN IF NOT EXISTS translation_mode
-    VARCHAR(10)  NOT NULL DEFAULT 'auto',
-    -- 'auto': 열람자 언어에 맞춰 자동 번역 (기본)
-    -- 'skip': 모든 열람자에게 원문 표시 (저장 시 서버가 자동 결정)
+    VARCHAR(20)  NOT NULL DEFAULT 'auto',
+    -- 'auto'  : 열람자 언어에 맞춰 자동 번역 (기본)
+    -- 'manual': 수동 번역만 (AI 자동 번역 비활성)
+    -- 'skip'  : 이 노드 번역 완전 제외 (저장 시 서버가 자동 결정)
 
   ADD COLUMN IF NOT EXISTS translation_override
     VARCHAR(10)  NULL  DEFAULT NULL,
@@ -541,7 +542,7 @@ ALTER TABLE public.nodes
 
 ALTER TABLE public.nodes
   ADD CONSTRAINT chk_translation_mode
-    CHECK (translation_mode IN ('auto', 'skip')),
+    CHECK (translation_mode IN ('auto', 'manual', 'skip')),
   ADD CONSTRAINT chk_translation_override
     CHECK (translation_override IN ('force_on', 'force_off')
            OR translation_override IS NULL);

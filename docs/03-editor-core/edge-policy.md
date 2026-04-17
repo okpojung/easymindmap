@@ -1,7 +1,11 @@
 # easymindmap — Edge / Layout / Node Inheritance Policy
 
-문서 버전: v3.1  
+문서 버전: v3.3  
 상태: Final Draft  
+변경 이력:
+- v3.3 (2026-04-16) — 맵진행방향.pdf 시각자료 기반 최종 확인: 방사형=곡선(Cubic Bezier), 나머지 전체=직각선(Orthogonal). `08-layout.md §18` freeform 오류(curve-line→tree-line) 수정. Kanban도 tree-line 정책 명시(UI 미표시 처리). §3 핵심 결론에 시각 예시 참조 추가
+- v3.2 (2026-04-16) — MVP 제약 사항 섹션 추가(§4-A), tree-line = 직각선(Orthogonal) 명칭 명시(§10.2, §20.3), Radial CP 방향각 기반 계산 상세 추가(§20.2), getEdgeStyle 팩토리 패턴 섹션 추가(§26-A)
+- v3.1 — 이전 버전
 대상 파일: `docs/03-editor-core/edge-policy.md`  
 관련 문서:
 - `docs/01-product/functional-spec.md`
@@ -63,22 +67,33 @@
 easymindmap의 최종 Edge 정책은 아래 한 줄로 정리된다.
 
 ```text
-방사형(Radial)만 curve-line
-그 외 모든 Layout은 tree-line
+방사형(Radial)만 curve-line (Cubic Bezier 곡선)
+그 외 모든 Layout은 tree-line (직각선 / Orthogonal Connector)
+대각선(straight-line)은 사용하지 않는다
 ```
 
-즉,
+> **시각 참조**: `docs/assets/맵진행방향.pdf`  
+> - 방사형(양쪽/왼쪽/오른쪽): 노드 간 **곡선(Bezier)** 연결 확인  
+> - 트리(위/아래/왼쪽/오른쪽): 노드 간 **직각선(Orthogonal)** 연결 확인  
+> - 계층(왼쪽/오른쪽): 노드 간 **직각선(Orthogonal)** 연결 확인  
+> - 진행트리(왼쪽/오른쪽): 노드 간 **직각선(Orthogonal)** 연결 확인
 
-- Radial-Bidirectional → curve-line
-- Radial-Right → curve-line
-- Radial-Left → curve-line
-- Tree 계열 → tree-line
-- Hierarchy 계열 → tree-line
-- ProcessTree 계열 → tree-line
-- Freeform → tree-line
-- Kanban → tree-line
+| Layout 계열 | Edge 타입 | 연결선 형태 |
+|---|---|---|
+| Radial-Bidirectional | `curve-line` | Cubic Bezier 곡선 |
+| Radial-Right | `curve-line` | Cubic Bezier 곡선 |
+| Radial-Left | `curve-line` | Cubic Bezier 곡선 |
+| Tree 계열 (Up/Down/Left/Right) | `tree-line` | **직각선(Orthogonal)** |
+| Hierarchy 계열 (Left/Right) | `tree-line` | **직각선(Orthogonal)** |
+| ProcessTree 계열 (Right/Left/A/B) | `tree-line` | **직각선(Orthogonal)** |
+| Freeform | `tree-line` | **직각선(Orthogonal)** |
+| Kanban | `tree-line` | 정책=직각선, UI에서 edge 미표시 |
 
 이 정책은 UX, 구현 단순성, 확장성 측면에서 가장 균형이 좋다.
+
+> **⚠ 주의**: `tree-line`은 대각선(diagonal straight-line)이 **아니다**.  
+> 수평·수직 꺾임으로만 이루어진 **직각 Orthogonal Connector**이다.  
+> SVG 경로: `M x1 y1 L midX y1 L midX y2 L x2 y2` (수평 우선 라우팅)
 
 ---
 
@@ -98,6 +113,27 @@ Layout 선택
 흐름이 기본이다.
 
 향후 고급 옵션에서 override는 허용할 수 있지만, 기본 정책은 Layout 기준 자동 결정으로 한다.
+
+---
+
+## 4-A. MVP 스코프 제약 (중요)
+
+> **MVP 단계에서는 사용자가 선 스타일을 직접 선택하는 기능을 제공하지 않는다.**
+
+| 구분 | 내용 |
+|---|---|
+| **MVP 정책** | 레이아웃 종류에 따라 시스템이 Edge 타입을 **자동 결정** |
+| **사용자 선택** | MVP 미제공 — 레이아웃 전환으로 Edge가 자동 변경됨 |
+| **UI** | 툴바/컨텍스트 메뉴에 '선 스타일 변경' 버튼 **없음** |
+| **DB** | `connector_style` 컬럼 불필요 — 레이아웃에서 자동 파생 |
+| **API** | `line_type` 파라미터 불필요 — 레이아웃값으로 서버가 결정 |
+
+**MVP 이후 Backlog (차기 과제):**
+- 선 스타일 수동 override 기능 (사용자가 curve/tree/straight 직접 선택)
+- Fishbone Layout 지원
+- Timeline Layout 지원
+- OrgChart Layout 지원
+- 직선(straight-line) override 옵션
 
 ---
 
@@ -443,7 +479,9 @@ C cx1 cy1, cx2 cy2, x2 y2
 
 ---
 
-## 10.2 tree-line
+## 10.2 tree-line (직각선 / Orthogonal Connector)
+
+> **MVP에서 '직선'이란 완전 대각선(두 점 직접 연결)이 아닌 직각 꺾임 선(Orthogonal Connector)을 의미한다.**
 
 ### 적용 대상
 - Tree 계열 전체
@@ -456,27 +494,34 @@ C cx1 cy1, cx2 cy2, x2 y2
 - 구조/흐름/계층 관계 명확화
 - 절차/조직/작업 분류에 적합
 
-### SVG 예시
+### 직선 vs 직각선 구분
+
+| 종류 | 설명 | MVP 채택 |
+|---|---|---|
+| **완전 대각선 (Straight)** | A → B를 대각선으로 직접 연결. 노드가 많으면 산만해짐 | ❌ MVP 미채택 |
+| **직각선 / Orthogonal (tree-line)** | 수평으로 이동 후 수직으로 꺾이는 형태. 트리/조직도에 가장 적합 | ✅ **MVP 채택** |
+
+### SVG 예시 (수평 전개 — Tree-Right 기준)
 ```text
-M x1 y1
-L x1 midY
-L x2 midY
-L x2 y2
+M x1 y1          (부모 우측 anchor)
+L midX y1        (수평 이동)
+L midX y2        (수직 이동)
+L x2 y2          (자식 좌측 anchor)
 ```
 
-또는 수평/수직 방향에 따라 다음처럼 변형될 수 있다.
-
+### SVG 예시 (수직 전개 — Tree-Down 기준)
 ```text
-M x1 y1
-L midX y1
-L midX y2
-L x2 y2
+M x1 y1          (부모 하단 anchor)
+L x1 midY        (수직 이동)
+L x2 midY        (수평 이동)
+L x2 y2          (자식 상단 anchor)
 ```
 
 ### 특징
 - 부모-자식 관계가 명확하다
 - 트리형/조직도/프로세스형에 적합
 - 구현이 단순하고 안정적이다
+- 노드가 많아도 선이 겹치거나 산만해지지 않는다
 
 ### 적합한 사례
 - 문서 구조
@@ -1102,30 +1147,70 @@ EdgeRouter
 
 ---
 
-## 20.2 Curve Router
+## 20.2 Curve Router (Radial 전용 — 방향각 기반 제어점 계산)
 
 적용:
-- Radial
+- Radial (Radial-Bidirectional / Radial-Right / Radial-Left)
+
+> **핵심:** 방사형은 360도 모든 방향으로 가지가 뻗어나가므로, 제어점(CP)이 노드의 **방향각(θ)** 에 따라 가변적으로 계산되어야 한다.  
+> 단순히 고정된 수평 곡선이 아니라 상/하/좌/우 모든 방향에 대응하는 수식이 필요하다.
 
 입력:
-- parent anchor
-- child anchor
-- curvature
+- parent anchor (x1, y1)
+- child anchor (x2, y2)
+- curvature (곡률, 기본값 0.4)
 
 출력:
-- bezier path string
+- Cubic Bezier path string (`M ... C ...`)
 
-예:
+### 방향각 기반 제어점 계산 방식
 
 ```ts
-function curvePath(x1, y1, x2, y2, c1x, c1y, c2x, c2y) {
+/**
+ * Radial curve-line: 방향각(θ)에 따라 제어점을 동적으로 산출
+ * @param x1, y1 - 부모 노드 anchor
+ * @param x2, y2 - 자식 노드 anchor
+ * @param curvature - 곡률 (0.3 ~ 0.5 권장)
+ */
+function curvePathRadial(
+  x1: number, y1: number,
+  x2: number, y2: number,
+  curvature: number = 0.4
+): string {
+  // 두 점 사이의 방향각 계산
+  const angle = Math.atan2(y2 - y1, x2 - x1)  // θ (라디안)
+  const dist  = Math.hypot(x2 - x1, y2 - y1)  // 두 점 사이 거리
+  const cpLen = dist * curvature               // 제어점 거리 (곡률 비례)
+
+  // 부모 쪽 제어점: 부모에서 자식 방향으로 cpLen만큼
+  const c1x = x1 + Math.cos(angle) * cpLen
+  const c1y = y1 + Math.sin(angle) * cpLen
+
+  // 자식 쪽 제어점: 자식에서 부모 방향으로 cpLen만큼
+  const c2x = x2 - Math.cos(angle) * cpLen
+  const c2y = y2 - Math.sin(angle) * cpLen
+
   return `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`
 }
 ```
 
+### 방향각 대응 예시
+
+| 자식 방향 | angle(θ) | 제어점 위치 |
+|---|---|---|
+| 오른쪽 (→) | 0° | 부모 우측, 자식 좌측 |
+| 왼쪽 (←) | 180° | 부모 좌측, 자식 우측 |
+| 아래 (↓) | 90° | 부모 하단, 자식 상단 |
+| 위 (↑) | -90° | 부모 상단, 자식 하단 |
+| 우하 대각선 | 45° | 사선 방향 제어점 |
+
+> 이 방식은 Radial-Bidirectional에서 360도 전 방향에 자연스러운 곡선을 보장한다.
+
 ---
 
-## 20.3 Tree Router
+## 20.3 Tree Router (직각선 / Orthogonal Connector)
+
+> **MVP에서 tree-line은 완전 대각선이 아닌 직각 꺾임 선(Orthogonal Connector)으로 구현한다.**
 
 적용:
 - Tree
@@ -1134,23 +1219,49 @@ function curvePath(x1, y1, x2, y2, c1x, c1y, c2x, c2y) {
 - Freeform
 - Kanban
 
-출력 예시:
-
 ```ts
-function treePath(x1, y1, x2, y2) {
+/**
+ * 수평 전개 레이아웃용 직각선 (Tree-Right / Hierarchy-Right 등)
+ * 부모 우측 → 자식 좌측 방향
+ */
+function treePath(x1: number, y1: number, x2: number, y2: number): string {
   const midX = (x1 + x2) / 2
   return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`
 }
-```
 
-또는 수직 기반 라우팅일 경우:
-
-```ts
-function treePathVertical(x1, y1, x2, y2) {
+/**
+ * 수직 전개 레이아웃용 직각선 (Tree-Down / Tree-Up 등)
+ * 부모 하단 → 자식 상단 방향
+ */
+function treePathVertical(x1: number, y1: number, x2: number, y2: number): string {
   const midY = (y1 + y2) / 2
   return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`
 }
 ```
+
+### 레이아웃별 직각선 라우팅 방향
+
+| 레이아웃 | 전개 방향 | 사용 함수 | anchor |
+|---|---|---|---|
+| Tree-Right / Hierarchy-Right | 수평 (→) | `treePath` | 부모 우측 → 자식 좌측 |
+| Tree-Left / Hierarchy-Left | 수평 (←) | `treePath` (x 반전) | 부모 좌측 → 자식 우측 |
+| Tree-Down / ProcessTree-Right | 수직 (↓) | `treePathVertical` | 부모 하단 → 자식 상단 |
+| Tree-Up | 수직 (↑) | `treePathVertical` (y 반전) | 부모 상단 → 자식 하단 |
+| Freeform | anchor 방향 자동 선택 | 두 함수 중 적합한 것 | 두 노드 위치 차에 따라 결정 |
+
+### 20.3-A. 직각선 교차(Cross) 처리 — Jump / Bridge 가이드라인
+
+직각선(Orthogonal)이 많아지면 선끼리 교차하는 경우가 발생할 수 있다.
+
+| 항목 | MVP 정책 | 비고 |
+|---|---|---|
+| **교차 처리** | 별도 처리 없음 (단순 겹침 허용) | 트리 구조는 교차 빈도 낮음 |
+| **Jump(Arc) 효과** | ❌ MVP 미제공 | 교차 지점에 호(弧)를 그려 구분하는 방식 |
+| **Bridge 효과** | ❌ MVP 미제공 | 교차 지점에 작은 단절 구간을 두어 구분 |
+| **백로그** | Jump/Bridge 옵션 추가 | Freeform·복잡 맵에서 가독성 향상 목적 |
+
+> **MVP 근거**: easymindmap의 트리 구조는 부모-자식 단방향 연결이므로, Freeform을 제외하면  
+> 교차가 거의 발생하지 않는다. Freeform에서 복잡해질 경우 V2+ 단계에서 Jump/Bridge 옵션을 추가한다.
 
 ---
 
@@ -1280,6 +1391,44 @@ collision 재보정
 - AI auto-layout recommendation
 
 현재 문서는 이러한 확장을 막지 않도록 최소한의 공통 구조를 유지한다.
+
+---
+
+# 26-A. getEdgeStyle 팩토리 패턴 (확장성 설계)
+
+> **팁 (Gemini 검토 반영):** 나중에 사용자 선택 스타일을 추가할 때 코드를 전면 개편하지 않아도 되도록,
+> Edge 스타일 결정 로직을 **팩토리 함수(Factory Function)** 형태로 분리해 두는 것을 강권한다.
+
+```ts
+/**
+ * getEdgeStyle — 레이아웃 타입으로부터 Edge 스타일을 결정하는 팩토리 함수
+ *
+ * MVP: layoutType 기반 자동 결정 (사용자 override 없음)
+ * V2+: edgeOverride 파라미터로 사용자 수동 선택 지원 예정
+ */
+type EdgeOverride = 'auto' | 'curve-line' | 'tree-line' | 'straight-line'
+
+function getEdgeStyle(
+  layoutType: string,
+  edgeOverride: EdgeOverride = 'auto'
+): EdgeType {
+  // MVP: override가 'auto'이면 레이아웃 기반 자동 결정
+  if (edgeOverride !== 'auto') return edgeOverride as EdgeType
+
+  return resolveEdgeType(layoutType)  // §9.1 참조
+}
+
+// 사용 예시
+const edgeType = getEdgeStyle('radial-bidirectional')  // → 'curve-line'
+const edgeType2 = getEdgeStyle('tree-right')           // → 'tree-line'
+const edgeType3 = getEdgeStyle('freeform')             // → 'tree-line'
+```
+
+**이 구조의 장점:**
+- MVP에서는 `edgeOverride = 'auto'`로 고정 → 자동 결정만 동작
+- V2에서 사용자 선택 기능 추가 시 이 함수의 파라미터만 활성화하면 됨
+- 새 레이아웃(Fishbone 등) 추가 시 `resolveEdgeType` 내부만 수정
+- 렌더러, API, 저장 레이어는 변경 불필요
 
 ---
 

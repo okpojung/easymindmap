@@ -114,6 +114,19 @@ sudo apt-get install nginx
 1. 툴바 `AI Workflow` 버튼 → 프롬프트 입력 다이얼로그 표시
 2. 자연어 요청 입력 (예: `"Ubuntu 20.04에 LAMP 스택 설치하는 절차"`)
 3. AI가 Step node tree 생성 → 맵에 삽입
+
+> **레이아웃·연결선(Edge) 자동 결정 규칙 (System Rule)**  
+> Workflow Generate(WFLOW-01)로 생성된 Step node tree는 절차형 구조이므로  
+> 기본 레이아웃 `process-tree-right`가 적용되고, 연결선은 **자동으로 `tree-line`(직각선/Orthogonal)** 이 결정된다.  
+>  
+> | 생성 레이아웃 | Edge 타입 (자동) | 연결선 형태 |
+> |---|---|---|
+> | `process-tree-right` (Workflow 기본값) | `tree-line` | **직각선 (Orthogonal)** |
+> | `radial-*` (사용자가 명시한 경우) | `curve-line` | Cubic Bezier 곡선 |
+> | `tree-*` / `hierarchy-*` / `freeform` / `kanban` | `tree-line` | **직각선 (Orthogonal)** |
+>  
+> MVP 버전에서는 연결선 종류를 사용자가 직접 선택할 수 없다.  
+> 참조: `docs/03-editor-core/edge-policy.md §3`, `docs/04-extensions/ai/18-ai.md §4.1`
 4. 각 Step 노드 클릭 → 상태를 `in_progress`로 변경 → 코드 실행
 5. 오류 발생 시 → 해당 노드에 오류 내용 입력
 6. `[AI 해결책]` 버튼 → AI가 문맥 기반 해결 방법 제시

@@ -144,7 +144,7 @@
 |----------|------|
 | 로고 / 맵 이름 | 맵 제목 클릭 시 인라인 수정 |
 | Undo / Redo | Ctrl+Z / Ctrl+Y |
-| Layout 선택 | 레이아웃 드롭다운 |
+| Layout 선택 | 레이아웃 드롭다운 — 선택 시 연결선(Edge) 타입 자동 결정 (방사형→곡선, 그 외→직각선) |
 | AI 생성 버튼 | AI 패널 토글 |
 | 협업 (Share) | 공유 다이얼로그 (V1~) |
 | Export | Markdown / HTML 드롭다운 |
@@ -347,11 +347,31 @@
 #### 4.9 Export 모달
 
 ```
-○ Markdown (.md) — 헤더 계층 구조
-○ Standalone HTML (.html) — 단독 실행, 웹 퍼블리싱 가능
-[내보내기] [취소]
+[ 내보내기 형식 선택 ]
+─────────────────────────────────────────
+○ Markdown (.md)
+    포맷: ● Basic (기본)  ○ Extended (맵 전체 메타 + YAML Front Matter)
+    옵션: [✓] 태그 포함   [✓] 메모 포함   [✓] 링크 포함
+          이미지: ( 제외 ▾ )
+          접힌 노드: [✓] 포함
+
+○ Standalone HTML (.html) — 단독 실행, 읽기 전용 뷰어 포함
+    이미지: ( 삽입(Base64) ▾ )
+
+─────────────────────────────────────────
+내보낼 범위: ● 전체 맵  ○ 선택한 서브트리
+
+[내보내기]  [취소]
 또는 [퍼블리시 URL 생성] → https://mindmap.ai.kr/p/...
 ```
+
+| 항목 | 설명 |
+|---|---|
+| **Basic** | 노드 텍스트 계층만 포함한 범용 Markdown (Notion, VS Code 등) |
+| **Extended** | YAML Front Matter에 맵 메타(title, owner, layout, node_count 등) 포함 — Obsidian 호환 |
+| **이미지 옵션 (Markdown)** | `제외` / `alt-text` / `URL 링크` |
+| **이미지 옵션 (HTML)** | `삽입(Base64)` / `URL 링크` / `제외` |
+| **내보낼 범위** | 전체 맵 또는 현재 선택된 노드 기준 서브트리 |
 
 ---
 

@@ -97,9 +97,10 @@ CREATE TABLE public.map_collaborators (
 - `viewer`는 퍼블리시/공유 모델로 처리
 - 소유권 이양, 협업 편집 범위, creator 권한 추적은 `map_collaborators` 기준으로 처리
 
-**정리**
-- 일반 접근: `workspace_members`
-- 협업 편집 세부 제어: `map_collaborators`
+**정리 (3가지 핵심 차이)**
+1. `workspace_members`는 워크스페이스 단위 접근(읽기) 권한을 관리하고, `map_collaborators`는 특정 맵 단위 편집(쓰기) 권한을 관리한다.
+2. `workspace_members`에 속한다고 해서 해당 워크스페이스의 모든 맵을 편집할 수 있는 것은 아니다 — 편집하려면 해당 맵의 `map_collaborators`에 등록되어야 한다.
+3. `map_collaborators`의 `editor` 역할은 `scope` 설정(`level` 또는 `node`)으로 편집 가능 노드 범위를 제한할 수 있어, `workspace_members` 역할보다 세밀한 권한 제어가 가능하다.
 
 #### 4.3 node_threads / thread_messages 테이블
 

@@ -142,6 +142,8 @@ published_maps.unpublished_at = NOW()
 * 게시 취소 즉시 URL 무효화 (CDN 캐시 고려 시 최대 5분)
 * 동일 맵에 다수의 publish_id 생성 가능 (이전 링크 유지 목적)
 
+> **MVP 정책**: MVP 단계에서는 맵 1개당 활성(active) 공개 링크를 **1개**로 제한한다. 새 링크를 생성하면 기존 활성 링크는 자동으로 `unpublished_at = NOW()`로 무효화된다. 다중 활성 링크 지원(이전 링크 유지)은 V2 이후 기능으로 분리한다.
+
 ---
 
 ### 7. 예외 / 경계 (Edge Case)

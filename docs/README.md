@@ -5,10 +5,21 @@ EasyMindMap 문서는 아래와 같은 구조로 구성됩니다.
 ```text
 docs/
 ├─ 00-project-overview/
+│  ├─ mvp-scope.md
+│  ├─ roadmap.md
+│  └─ vision.md
 ├─ 01-product/
+│  ├─ functional-spec.md
+│  └─ ui-ux-spec.md
 ├─ 02-domain/
+│  ├─ README.md
+│  ├─ db-schema.md
+│  ├─ domain-models.md
+│  ├─ node-hierarchy-storage-strategy.md
+│  ├─ schema.sql                          ← DB 스키마 (Clean Edition)
+│  └─ collaboration-schema.sql            ← 협업 관련 스키마
 │
-├─ 03-editor-core/        👈 핵심 기능 (대부분의 핵심 편집 기능)
+├─ 03-editor-core/        👈 핵심 기능 (편집기 핵심)
 │  ├─ map/
 │  │  └─ 01-map.md
 │  ├─ node/
@@ -61,8 +72,30 @@ docs/
 │  │  └─ 31-redmine-integration.md
 │  └─ settings/
 │     └─ 32-settings.md
-├─ 05-implementation/
-├─ assets/
+│
+├─ 05-implementation/     👈 API / 개발 규약 / 작업 계획
+│  ├─ api-spec.md
+│  ├─ codex-task-plan.md
+│  ├─ coding-conventions.md
+│  ├─ env-spec.md
+│  └─ state-management.md
+│
+├─ 90-architecture/       👈 시스템·인프라 아키텍처 문서
+│  ├─ backend-architecture.md
+│  ├─ docker-compose-spec.md
+│  ├─ frontend-architecture.md
+│  ├─ infra-architecture.md
+│  └─ system-architecture.md
+│
+├─ 91-architecture-검토자료/  👈 기술 비교 분석 자료
+│  ├─ EasyMindMap 5-Store 상세 설명.md
+│  ├─ React, Angular, Vue 비교 분석.md
+│  └─ Zustand와 TanStack Query 상태 관리 비교.md
+│
+├─ 99-ai-validation/      👈 AI 검증 규칙 및 결과
+│  └─ ai-validation-rules.md
+│
+└─ assets/                👈 문서 내 이미지/첨부 파일 리소스
 ```
 
 ## 빠른 가이드
@@ -70,14 +103,17 @@ docs/
 - **00~02**: 프로젝트 개요, 제품 기획, 도메인 모델
 - **03-editor-core**: 맵/노드/레이아웃/히스토리/저장/검색 등 편집기 핵심 기능
 - **04-extensions**: AI, 번역, 협업, 퍼블리시, 외부 연동 등 확장 기능
-- **05-implementation**: 아키텍처, API, 인프라, 개발 규약
+- **05-implementation**: API 명세, 개발 규약, 작업 계획, 환경변수
+- **90-architecture**: 백엔드/프론트엔드/인프라 아키텍처 설계 문서
+- **91-architecture-검토자료**: 기술 선택을 위한 비교 분석 자료
+- **99-ai-validation**: AI 문서 검증 규칙 및 결과물
 - **assets**: 문서 내 이미지/첨부 파일 리소스
 
 ---
 
 ## 전체 문서 목록
 
-### 번호 없는 문서 (19개)
+### 번호 없는 문서 (27개, README.md 제외)
 
 | 경로 | 설명 |
 |------|------|
@@ -96,18 +132,21 @@ docs/
 | `docs/03-editor-core/state-architecture.md` | 상태관리 아키텍처 |
 | `docs/04-extensions/README.md` | 확장 기능 개요 |
 | `docs/05-implementation/api-spec.md` | API 명세 |
-| `docs/05-implementation/backend-architecture.md` | 백엔드 아키텍처 |
 | `docs/05-implementation/codex-task-plan.md` | 개발 작업 계획 |
 | `docs/05-implementation/coding-conventions.md` | 코딩 컨벤션 |
-| `docs/05-implementation/docker-compose-spec.md` | Docker Compose 명세 |
-| `docs/05-implementation/easymindmap-infra-architecture.md` | 인프라 아키텍처 |
 | `docs/05-implementation/env-spec.md` | 환경변수 명세 |
-| `docs/05-implementation/frontend-architecture.md` | 프론트엔드 아키텍처 |
-| `docs/05-implementation/system-architecture.md` | 시스템 아키텍처 |
+| `docs/05-implementation/state-management.md` | 상태관리 설계 (Zustand 스토어 구조) |
+| `docs/90-architecture/backend-architecture.md` | 백엔드 아키텍처 |
+| `docs/90-architecture/docker-compose-spec.md` | Docker Compose 명세 |
+| `docs/90-architecture/frontend-architecture.md` | 프론트엔드 아키텍처 |
+| `docs/90-architecture/infra-architecture.md` | 인프라 아키텍처 |
+| `docs/90-architecture/system-architecture.md` | 시스템 아키텍처 |
+| `docs/91-architecture-검토자료/EasyMindMap 5-Store 상세 설명.md` | Zustand 5-Store 상세 설계 |
+| `docs/91-architecture-검토자료/React, Angular, Vue 비교 분석.md` | 프레임워크 비교 분석 |
+| `docs/91-architecture-검토자료/Zustand와 TanStack Query 상태 관리 비교.md` | 상태관리 라이브러리 비교 |
+| `docs/99-ai-validation/ai-validation-rules.md` | AI 문서 검증 규칙 |
 
-> ※ `docs/README.md` 포함 시 23개, 제외 시 22개. `05-implementation` 하위 8개 포함 기준.
-> 상단 "번호 없는 문서 19개"는 번호 붙은 문서(01~32) 외의 문서로,
-> 프로젝트 개요/도메인/구현/정책 관련 문서가 해당됩니다.
+> ※ README.md 포함 시 28개. 번호 붙은 문서(01~32) 외의 모든 .md 문서 기준.
 
 ---
 
@@ -142,7 +181,7 @@ docs/
 | 23 | `docs/04-extensions/translation/23-node-translation.md` | TRANSLATION | 노드 다국어 자동 번역 |
 | 24 | `docs/04-extensions/translation/24-chat-translation.md` | TRANSLATION | 채팅 메시지 실시간 번역 |
 | 25 | `docs/04-extensions/collaboration/25-map-collaboration.md` | COLLAB | 협업 초대/동기화/커서/Soft Lock/Node Thread |
-| 26 | `docs/04-extensions/collaboration/26-realtime-chat.md` | CHAT | 실시간 채팅 (맵 채팅 패널, DM, 오프라인 메시지) |
+| 26 | `docs/04-extensions/collaboration/26-realtime-chat.md` | CHAT | 실시간 채팅 (맵 채널 채팅, 1:1 DM, @멘션) |
 | 27 | `docs/04-extensions/publish/27-publish-share.md` | PUBLISH | 공개 URL 게시 및 읽기 전용 공유 |
 | 28 | `docs/04-extensions/project/28-wbs.md` | WBS | WBS 모드 (일정/마일스톤/진척률) |
 | 29 | `docs/04-extensions/project/29-resource.md` | RESOURCE | 리소스 할당 (담당자/역할/공수) |

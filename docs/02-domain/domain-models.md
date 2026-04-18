@@ -8,26 +8,31 @@
 
 ## 1. 전체 도메인 엔티티 관계 (구현 상태 포함)
 
-```
-User
-└── Workspace (implemented)
-    └── WorkspaceMember (implemented)
+> **구현 상태 범례**:
+> - `(implemented)` — MVP 또는 현행 스키마에 물리 테이블/컬럼이 존재함
+> - `(separate-schema)` — 논리 모델로 정의되었으나 별도 테이블로 분리 구현됨
+> - `(planned)` — V2+ 계획 항목, 아직 DB에 존재하지 않음
 
-User
+```
+User (implemented)
+└── Workspace (implemented)
+    └── WorkspaceMember (implemented)      ← workspace 접근 권한 (≠ map 편집 권한)
+
+User (implemented)
 └── Map (implemented)
     ├── Node (implemented)
-    │   ├── NodeNote (implemented)
+    │   ├── NodeNote (separate-schema)     ← node_notes 별도 테이블
     │   ├── NodeLink (implemented)
     │   ├── NodeAttachment (implemented)
     │   ├── NodeMedia (implemented)
     │   ├── NodeTag (implemented)
     │   ├── NodeTranslation (implemented)
-    │   ├── NodeSchedule (planned)
-    │   └── NodeResource (planned)
+    │   ├── NodeSchedule (planned)         ← V2
+    │   └── NodeResource (planned)         ← V2
     ├── MapRevision (implemented)
     ├── PublishedMap (implemented)
     ├── Export (implemented)
-    └── MapCollaborator (separate-schema)
+    └── MapCollaborator (separate-schema)  ← map_collaborators 테이블 (map 편집 권한)
 
 Tag (implemented)
 AIJob (implemented)
@@ -184,7 +189,7 @@ type NodeBackgroundImage = {
 
 ---
 
-## 3. UserObject
+## 3. UserObject `(implemented)`
 
 ```typescript
 // UI 환경설정 (users.ui_preferences_json JSONB)
@@ -218,7 +223,7 @@ type UserObject = {
 
 ---
 
-## 4. MapObject
+## 4. MapObject `(implemented)`
 
 ### 4.1 번역 정책 타입
 
@@ -287,7 +292,9 @@ type MapObject = {
 
 ---
 
-## 5. NodeObject
+## 5. NodeObject `(implemented)`
+
+> **스키마 정합 노트**: 주요 콘텐츠 필드는 `nodes.text` (raw markdown/code), `nodes.node_type` (`text`|`data-live`, code는 문서 허용), 확장 설명은 `node_notes` 테이블 `(separate-schema)` 저장.
 
 ```typescript
 type NodeObject = {
@@ -446,7 +453,7 @@ const rootNode: NodeObject = {
 
 ---
 
-## 7. AI Workflow 확장 필드
+## 7. AI Workflow 확장 필드 `(planned — V2)`
 
 ```typescript
 // AI Workflow 전용 확장 (선택적 — 일반 노드는 생략 가능)
@@ -469,7 +476,7 @@ type NoteBlock =
 
 ---
 
-## 8. WBS / Resource / Redmine 확장 타입
+## 8. WBS / Resource / Redmine 확장 타입 `(planned — V2)`
 
 ### 8.1 NodeSchedule — WBS 일정
 
@@ -516,7 +523,7 @@ type NodeResource = {
 
 ## 9. 보조 엔티티
 
-### 9.1 RevisionObject
+### 9.1 RevisionObject `(implemented)`
 
 ```typescript
 // map_revisions 테이블 대응 (patch 중심 버전 모델)
@@ -532,7 +539,7 @@ type RevisionObject = {
 };
 ```
 
-### 9.2 PublishedMapObject
+### 9.2 PublishedMapObject `(implemented)`
 
 ```typescript
 // published_maps 테이블 대응
@@ -546,7 +553,7 @@ type PublishedMapObject = {
 };
 ```
 
-### 9.3 AIJobObject
+### 9.3 AIJobObject `(implemented)`
 
 ```typescript
 // ai_jobs 테이블 대응
@@ -564,7 +571,7 @@ type AIJobObject = {
 };
 ```
 
-### 9.4 TagObject
+### 9.4 TagObject `(implemented)`
 
 ```typescript
 // tags 테이블 대응

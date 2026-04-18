@@ -18,6 +18,21 @@ Markdown 문서를 기반으로 Mindmap을 생성하기 위한
 
 ---
 
+## 1A. 핵심 저장 정책 (Storage Policy)
+
+> 이 세 가지 정책은 DB 스키마(`nodes.text`, `nodes.node_type`)와 직결되는 핵심 규칙이다.
+
+**정책 1 — Raw Text 저장:**  
+Markdown 텍스트는 파싱하거나 HTML로 변환하지 않고 **raw 원문 그대로** `nodes.text`에 저장한다. 렌더링(파싱)은 항상 프론트엔드 표시 시점에 수행한다.
+
+**정책 2 — 리스트(List) 처리:**  
+Markdown 리스트(`-`, `*`, `1.`)는 기본적으로 자식 Node로 분리하지 않고, 해당 Heading Node의 `nodes.text` 내부 콘텐츠로 유지한다. 단, Import 시 `outline` 모드를 명시적으로 선택한 경우에만 리스트 항목을 자식 Node로 변환한다.
+
+**정책 3 — Heading 저장 포함:**  
+Heading 기호(`##`, `###` 등)는 Node 텍스트 파싱의 기준으로만 사용하며, 실제 Node의 `nodes.text`에는 **Heading 기호를 포함한 원문 전체**를 저장한다. Heading 레벨에 따른 글자 크기 변경은 적용하지 않는다(스타일은 NODE_STYLE 정책 따름).
+
+---
+
 ## 2. 기본 원칙 (Core Principles)
 
 ### 2.1 구조와 스타일의 완전 분리

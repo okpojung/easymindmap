@@ -1,17 +1,8 @@
 # easymindmap — 전체 기능 명세서
 
-**최종 업데이트:** 2026-04-17
-**출처:** 기능정의테이블 + docs/features 문서 통합 정리
+**최종 업데이트:** 2026-04-26
 **변경 이력:**
-- 2026-04-17 — main 브랜치 동기화 확인(문서 반영 커밋 체인 유지)
-- 2026-04-17 — main 반영 확인: EDGE-07~09, KANBAN 상세 참조, PUBLISH/SHARE 권한(scope) 항목 유지
-- 2026-04-17 — 반영 재확인: KANBAN 상세 참조(`docs/03-editor-core/canvas/09-kanban.md`), PUBLISH/SHARE 권한 문구, EDGE-07~09(재라우팅/오프셋/전환) 유지
-- 2026-04-16 — KANBAN/WBS 참조 경로 정정, Publish/Share 권한 표현을 COLLAB scope 정책과 정합화
-- 2026-04-16 — CHAT-06(미확인 @멘션), CHAT-07(1:1 DM V3) 추가
-- 2026-04-16 — NODE STYLE(NS), NODE BG IMAGE(IMG), NODE RENDERING(NR), EDGE POLICY, VERSION HISTORY(VH), PUBLISH/SHARE(PUBL), SETTINGS(SETT), IMPORT(IMPORT), OBSIDIAN(OBS) 기능군 추가; 목차 및 기능 수 요약 갱신
-- 2026-04-16 — 참조 문서 경로 정정 (map-model.md, node-model.md → domain-models.md; prd.md → vision.md + mvp-scope.md), 로드맵 단계 정렬 수정, 기능 수 요약 갱신
-- 2026-03-31 — Kanban 레이아웃 기능 ID 추가, node-background-image 반영, P0-A~C 수정사항 통합
-
+- 2026-04-26 —  기능 인덱스 + 마스터 기능표(Full Table) 중심의 명세 문서
 ---
 
 # easymindmap — Functional Specification

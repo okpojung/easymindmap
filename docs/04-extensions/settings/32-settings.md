@@ -43,7 +43,7 @@
 | SETT-04  | 기본 레이아웃        | 새 맵 생성 시 기본 레이아웃 타입 설정             | 레이아웃 선택     |
 | SETT-05  | UI 표시 설정       | 번역 인디케이터, 태그 배지, 단축키 표시 등         | 토글 스위치      |
 | SETT-06  | 맵별 설정          | 맵별 번역 정책, 뷰 모드 등 오버라이드             | 맵 Settings  |
-| SETT-07  | API Key 관리     | Dashboard 외부 업데이트용 API Key 발급/재생성  | Key 관리 UI   |
+| SETT-07  | API Key 관리     | Dashboard 외부 업데이트용 API Key 발급/재생성 — **맵별** 발급, Map Settings에서 관리 | Key 관리 UI   |
 
 ---
 
@@ -190,6 +190,7 @@ document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
 * `default_layout_type`: 15개 LayoutType 중 하나
 * `ui_preferences_json` 변경 시 즉시 저장 (debounce 없음)
 * API Key는 Dashboard 외부 업데이트 API 인증용, AES-256 암호화 저장
+* API Key는 **맵 단위**로 발급된다 — Map Settings 화면에서 관리 (`22-dashboard.md` 참조)
 * 설정 화면에서 API Key는 처음 생성 시만 전체 표시, 이후 `****...` 마스킹
 
 ---
@@ -221,6 +222,7 @@ document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
 * `users.skip_english_translation` — 영어 번역 건너뜀
 * `users.ui_preferences_json` — UI 환경설정 전반
 * `maps.translation_policy_json` — 맵별 번역 정책
+* `maps.dashboard_api_key_encrypted` — Dashboard API Key (맵별, AES-256 암호화)
 
 ---
 
@@ -229,8 +231,9 @@ document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
 * `GET /users/me` — 현재 사용자 설정 조회
 * `PATCH /users/me` — 기본 설정 변경
 * `PATCH /users/me/preferences` — UI 환경설정 변경
-* `POST /users/me/api-key` — Dashboard API Key 발급
-* `DELETE /users/me/api-key` — API Key 삭제
+* `GET /maps/{mapId}/api-key` — Dashboard API Key 조회 (Map Settings)
+* `POST /maps/{mapId}/api-key` — Dashboard API Key 발급/재생성 (Map Settings)
+* `DELETE /maps/{mapId}/api-key` — API Key 삭제 (Map Settings)
 
 ---
 

@@ -49,11 +49,16 @@
 
 ```sql
 -- maps 테이블 관련 컬럼
-maps.view_mode                VARCHAR(20)  DEFAULT 'edit'
+maps.view_mode                       VARCHAR(20)  DEFAULT 'edit'
   -- 'edit' | 'dashboard' | 'kanban' | 'wbs'
 
-maps.refresh_interval_seconds INT          DEFAULT 0
+maps.refresh_interval_seconds        INT          DEFAULT 0
   -- 0: off, 10, 30, 60, 300, 600 (초 단위)
+
+maps.dashboard_api_key_encrypted     TEXT         DEFAULT NULL
+  -- 맵별 Dashboard API Key (AES-256-GCM 암호화 저장)
+  -- NULL: 미발급 상태
+  -- 발급: POST /maps/{mapId}/api-key (creator 전용)
 ```
 
 #### 4.2 갱신 주기 옵션

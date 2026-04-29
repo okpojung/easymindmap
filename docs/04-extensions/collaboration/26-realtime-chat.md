@@ -164,6 +164,7 @@ CREATE TABLE public.dm_messages (
   sender_id    UUID NOT NULL REFERENCES public.users(id),
   recipient_id UUID NOT NULL REFERENCES public.users(id),
   content      TEXT NOT NULL,
+  source_lang  VARCHAR(20),           -- 원문 언어 코드 (번역 처리용, → 24-chat-translation.md §16)
   is_read      BOOLEAN NOT NULL DEFAULT false,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

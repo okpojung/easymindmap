@@ -72,10 +72,10 @@ CREATE TABLE public.node_translations (
 text_lang                 VARCHAR(20),   -- 원문 언어 코드 (ISO 639-1)
 text_hash                 VARCHAR(128),  -- 원문 해시 (캐시 유효성 검증)
 translation_mode          VARCHAR(20)  NOT NULL DEFAULT 'auto'
-                            CHECK (translation_mode IN ('auto', 'manual', 'skip')),
+                            CHECK (translation_mode IN ('auto', 'skip')),
   -- 'auto'  : 자동 번역 (기본값) — 열람자 언어로 시스템 자동 번역
-  -- 'manual': 수동 번역만 (AI 자동 번역 비활성, 편집자가 직접 번역 제공)
   -- 'skip'  : 이 노드 번역 완전 제외 (모든 열람자에게 원문 표시)
+  -- ※ 'manual' 모드는 제외 — 입력 UI·API·충돌 해소 정책 등 구현 비용 대비 효용이 낮아 auto/skip 2종으로 단순화
 translation_override      VARCHAR(20),
   -- null: 정책 따름
   -- 'force_on': 강제 번역 표시
@@ -162,7 +162,7 @@ if (hash !== node.text_hash) {
 * 배치 번역 청크 크기: 50 nodes/request
 * text_hash 알고리즘: SHA-256 (128자 substring)
 * 번역 결과는 `node_translations` 테이블에 영구 캐시
-* `translation_mode = 'manual'` 노드: 자동 번역 생략
+* `translation_mode = 'skip'` 노드: 자동 번역 생략, 모든 열람자에게 원문 표시
 
 ---
 
@@ -189,7 +189,7 @@ if (hash !== node.text_hash) {
 
 * `node_translations` — 번역 결과 캐시
 * `nodes.text_hash` — 원문 변경 감지
-* `nodes.translation_mode`, `translation_override` — 노드별 번역 정책
+* `nodes.translation_mode` (`auto` | `skip`), `translation_override` — 노드별 번역 정책
 * `users.secondary_languages`, `skip_english_translation` — 사용자 번역 설정
 
 ---
@@ -199,7 +199,7 @@ if (hash !== node.text_hash) {
 * `POST /translate/batch` — 배치 번역 요청
 * `POST /nodes/{nodeId}/translate` — 단일 노드 번역
 * `DELETE /nodes/{nodeId}/translations/{lang}` — 번역 캐시 무효화
-* `PATCH /nodes/{nodeId}/translation-mode` — 번역 모드 변경
+* `PATCH /nodes/{nodeId}/translation-mode` — 번역 모드 변경 (`auto` | `skip`)
 
 ---
 

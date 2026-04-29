@@ -664,3 +664,56 @@ async function handleVersionRestore(restoredVersion: number) {
 * `docs/03-editor-core/save/14-save.md` — SAVE 기능 전체 명세
 
 ---
+
+### 17. Undo/Redo 적용 범위
+
+#### Undo/Redo 대상
+
+* 노드 생성
+* 노드 삭제 (단일 및 subtree 전체)
+* 노드 텍스트 수정
+* 노드 이동
+* subtree 이동
+* 노드 순서 변경
+* layoutType 변경
+* 스타일 변경 (색상, 폰트, 테두리, 아이콘 등)
+* 배경 이미지 변경 (추가 / 교체 / 삭제)
+* import 적용
+* AI 생성 결과 적용 (사용자 확인 후 반영된 경우만)
+
+#### Undo/Redo 제외 대상
+
+* 채팅 메시지 전송
+* node thread 댓글 작성
+* presence 상태 (커서 위치, 접속자 목록)
+* 번역 캐시 생성 / 갱신
+* export 파일 생성 이력
+* 선택 상태 변경 (viewport pan, zoom, 패널 열기/닫기 포함)
+
+---
+
+### 18. Transaction Rule
+
+다음 작업은 하나의 Transaction으로 기록한다. Transaction으로 묶인 작업은 Undo 시 전체가 한 번에 취소된다.
+
+| 작업 | Transaction 레이블 |
+|---|---|
+| subtree 이동 | 'subtree 이동' |
+| layout 변경 (전체 맵 또는 subtree) | 'layoutType 변경' |
+| bulk node update (경로·순서 일괄 갱신) | 'bulk 노드 업데이트' |
+| import 결과 적용 | 'import 적용' |
+| AI generated node tree 적용 | 'AI 노드 생성' |
+| paste 여러 노드 | 'paste' |
+| duplicate subtree | 'subtree 복제' |
+
+```typescript
+// subtree 이동 예시
+beginTransaction('subtree 이동')
+addToTransaction(moveNode(nodeId, newParentId, newIndex))
+addToTransaction(updatePath(nodeId, newPath))
+addToTransaction(updateDepth(nodeId, newDepth))
+commitTransaction()
+// → undoStack에 batch 1개만 push
+```
+
+---

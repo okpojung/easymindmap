@@ -363,8 +363,7 @@ board (depth 0)
 ### 10. DB 영향
 
 * `nodes.layout_type` — VARCHAR(50) NOT NULL, CHECK 제약 적용
-* `nodes.manual_position_x` — FLOAT NULL (freeform 전용)
-* `nodes.manual_position_y` — FLOAT NULL (freeform 전용)
+* `nodes.manual_position` — JSONB NULL, Freeform 또는 수동 위치 보정 전용 `{ x, y }` (Auto Layout의 computedX/Y는 DB 저장 안 함)
 * `nodes.collapsed` — BOOLEAN DEFAULT FALSE
 * `maps.default_layout_type` — VARCHAR(50) NOT NULL DEFAULT 'radial-bidirectional'
 * `maps.layout_config` — JSONB NULL (nodeSpacing, levelSpacing 등)

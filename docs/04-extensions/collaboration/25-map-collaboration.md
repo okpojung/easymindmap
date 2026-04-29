@@ -162,7 +162,7 @@ type SoftLock = {
 Document Store 즉시 반영 (낙관적 업데이트)
     │
     ▼
-PATCH /maps/{mapId}/document
+PATCH /maps/{mapId}/nodes
   { patches: [{ op: 'moveNode', ... }] }
     │
     ▼

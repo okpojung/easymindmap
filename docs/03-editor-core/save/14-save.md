@@ -118,7 +118,7 @@ autosaveStore.markDirty(patch)
     └─ 텍스트/스타일 → 800ms debounce
     │
     ▼
-PATCH /maps/{mapId}/document
+PATCH /maps/{mapId}/nodes
     ├─ 1. patchId 중복 검사 (Redis SET NX)
     ├─ 2. baseVersion 비교 → 불일치 시 409
     ├─ 3. 각 patch 적용 (nodes 테이블)
@@ -206,7 +206,7 @@ PATCH /maps/{mapId}/document
 
 ### 9. API 영향
 
-* `PATCH /maps/{mapId}/document` — autosave 핵심 엔드포인트
+* `PATCH /maps/{mapId}/nodes` — autosave 핵심 엔드포인트
 
 ---
 
@@ -242,7 +242,7 @@ PATCH /maps/{mapId}/document
 `autosave-engine.md`에서 정의된 서버 측 전체 처리 흐름은 다음과 같다.
 
 ```
-PATCH /maps/{mapId}/document 수신
+PATCH /maps/{mapId}/nodes 수신
         │
         ▼
 1. patchId 중복 검사 (Redis SET NX로 구현)

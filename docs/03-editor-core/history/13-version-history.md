@@ -95,7 +95,7 @@ Document Store 상태 변경
 autosaveStore.markDirty(patch)
     │
     ▼
-PATCH /maps/{mapId}/document
+PATCH /maps/{mapId}/nodes
     │
     ├─ patchId 중복 검사 (Redis SET NX)
     ├─ baseVersion 비교 (409 Conflict 처리)
@@ -225,7 +225,7 @@ POST /maps/{mapId}/revisions/{version}/restore
 
 * 롤백은 과거 버전을 "덮어쓰기"가 아닌 **새 revision으로 추가**
 * 롤백 후 히스토리는 보존됨 (롤백 전 버전들 삭제 안 함)
-* 롤백 실행도 autosave와 동일하게 `PATCH /maps/{mapId}/document`로 처리
+* 롤백 실행도 autosave와 동일하게 `PATCH /maps/{mapId}/nodes`로 처리
 
 ---
 
@@ -293,7 +293,7 @@ POST /maps/{mapId}/revisions/{version}/restore
 
 ### 11. API 영향
 
-* `PATCH /maps/{mapId}/document` — autosave 저장 (revision 자동 생성)
+* `PATCH /maps/{mapId}/nodes` — autosave 저장 (revision 자동 생성)
 * `GET /maps/{mapId}/revisions` — 버전 목록 조회 (페이지네이션)
 * `GET /maps/{mapId}/revisions/{version}` — 특정 버전 상태 조회
 * `POST /maps/{mapId}/revisions/{version}/restore` — 특정 버전으로 롤백
@@ -315,7 +315,7 @@ POST /maps/{mapId}/revisions/{version}/restore
 #### 시나리오 1 — 자동 revision 생성
 
 1. 사용자: `기능 정의` 노드 텍스트 수정
-2. autosave debounce 후 `PATCH /maps/{mapId}/document` 호출
+2. autosave debounce 후 `PATCH /maps/{mapId}/nodes` 호출
 3. 서버: patch 적용 → `current_version + 1` → `map_revisions` INSERT
 4. 버전 히스토리 패널에 새 항목 추가
 

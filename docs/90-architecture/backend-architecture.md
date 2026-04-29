@@ -366,7 +366,7 @@ POST   /maps               맵 생성
 GET    /maps/:id           맵 상세 (노드 트리 포함)
 DELETE /maps/:id           맵 삭제 (soft delete)
 PATCH  /maps/:id           맵 메타 수정 (title, view_mode 등)
-PATCH  /maps/:id/document  Autosave patch 저장
+PATCH  /maps/:id/nodes     Autosave patch 저장
 GET    /maps/:id/snapshot  대시보드 리프레시용 경량 API
 
 Nodes

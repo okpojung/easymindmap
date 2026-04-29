@@ -236,7 +236,7 @@ Layout Engine (Derived 계산)
 SVG/HTML 렌더링
     │
     ▼
-Autosave Store → debounce → PATCH /maps/:id/document
+Autosave Store → debounce → PATCH /maps/:id/nodes
 ```
 
 ---
@@ -289,7 +289,7 @@ GET    /maps
 POST   /maps
 GET    /maps/:id
 DELETE /maps/:id
-PATCH  /maps/:id/document          (autosave patch)
+PATCH  /maps/:id/nodes             (autosave patch)
 GET    /maps/:id/snapshot          (dashboard refresh용 경량 API)
 
 POST   /nodes

@@ -488,7 +488,7 @@ WHERE n.id = r.id;
    → { width, height } 값 획득
 
 2. autosave patch에 size_cache 포함하여 서버 전송
-   → PATCH /maps/:id/document 의 patch payload에 포함
+   → PATCH /maps/:id/nodes 의 patch payload에 포함
 
 3. 서버는 전달된 size_cache를 그대로 nodes 테이블에 저장
    → 서버 독자 계산 없음
@@ -645,7 +645,7 @@ WHERE deleted_at < NOW() - INTERVAL '30 days';
 1. 클라이언트: Command 히스토리에 DeleteNodeCommand 기록
               (삭제된 노드 데이터 스냅샷 포함)
    ↓
-2. PATCH /maps/:id/document → 노드 삭제 패치 서버 전송
+2. PATCH /maps/:id/nodes → 노드 삭제 패치 서버 전송
    ↓
 3. 서버: DB에서 노드 hard-delete (CASCADE로 하위 노드 함께 삭제)
    ↓

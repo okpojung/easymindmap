@@ -331,7 +331,7 @@ Autosave debounce 타이머
 (500ms~1500ms 후)
       │
       ▼
-PATCH /maps/:id/document
+PATCH /maps/:id/nodes
 { clientId, patchId, baseVersion, timestamp, patches }
 ```
 

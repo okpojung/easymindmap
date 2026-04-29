@@ -681,7 +681,7 @@ type AutosaveState = {
   saving: boolean;
   lastSavedAt: string | null;
 
-  // 전송 대기 중인 patch 목록 (PATCH /maps/{mapId}/document 페이로드)
+  // 전송 대기 중인 patch 목록 (PATCH /maps/{mapId}/nodes 페이로드)
   // 세부 타입: docs/03-editor-core/save/14-save.md § 4.2 (PatchRequest / NodePatch)
   pendingPatches: DocumentPatch[];
   lastError: string | null;

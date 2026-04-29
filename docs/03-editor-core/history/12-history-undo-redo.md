@@ -455,7 +455,7 @@ CREATE TABLE public.map_revisions (
 
 * History Store 자체는 API 없음 (클라이언트 전용)
 * Undo/Redo 실행 후 autosave가 트리거하는 API:
-  * `PATCH /maps/{mapId}/document` — 역방향 patch 서버 반영
+  * `PATCH /maps/{mapId}/nodes` — 역방향 patch 서버 반영
 
 ---
 
@@ -557,7 +557,7 @@ CREATE TABLE public.map_revisions (
           autosaveStore.markDirty(patch)
               │
               ▼
-          서버 PATCH /maps/{mapId}/document
+          서버 PATCH /maps/{mapId}/nodes
               │
               ▼
           map_revisions에 1 row 삽입         ← 서버 버전 이력 (영구 저장)
@@ -582,7 +582,7 @@ Ctrl+Z (Undo) 실행
           })
               │
               ▼
-          서버 PATCH /maps/{mapId}/document
+          서버 PATCH /maps/{mapId}/nodes
               │
               ▼
           map_revisions에 새 revision 1 row 삽입  ← Undo 결과도 영구 이력으로 기록
@@ -627,11 +627,11 @@ Ctrl+Z (Undo) 실행
 
 1. 사용자: `기능 정의` 노드 삭제
 2. Document Store: 노드 삭제 반영
-3. autosave: `deleteNode` patch → `PATCH /maps/{mapId}/document`
+3. autosave: `deleteNode` patch → `PATCH /maps/{mapId}/nodes`
 4. 서버: patch 적용 → `map_revisions` revision 42 생성
 5. 사용자: `Ctrl+Z` (Undo)
 6. History Store: `isApplyingHistory = true` → `createNode` 역방향 연산 적용 → `isApplyingHistory = false`
-7. autosave: `patchId = generatePatchId('undo')` 새 ID 생성 → `PATCH /maps/{mapId}/document`
+7. autosave: `patchId = generatePatchId('undo')` 새 ID 생성 → `PATCH /maps/{mapId}/nodes`
 8. 서버: 복원 patch 적용 → `map_revisions` **revision 43 생성** (`patch_id` = `p_xxx_undo`)
 9. 버전 히스토리 패널(13-version-history.md): revision 43이 목록에 추가됨
 

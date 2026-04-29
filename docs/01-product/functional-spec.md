@@ -1,148 +1,79 @@
-# easymindmap — 전체 기능 명세서
-
-**최종 업데이트:** 2026-04-26
-**변경 이력:**
-- 2026-04-26 —  기능 인덱스 + 마스터 기능표(Full Table) 중심의 명세 문서
----
-
 # easymindmap — Functional Specification
 
----
-
-## 1. 기능 문서 INDEX
-
-### 01. MAP
-
-→ ../03-editor-core/map/01-map.md
-
-### 02. NODE EDITING
-
-→ ../03-editor-core/node/02-node-editing.md
-
-### 03. NODE INDICATOR
-
-→ ../03-editor-core/node/03-node-indicator.md
-
-### 04. NODE CONTENT
-
-→ ../03-editor-core/node/04-node-content.md
-
-### 05. NODE STYLE
-
-→ ../03-editor-core/node/05-node-style.md
-
-### 06. NODE RENDERING
-
-→ ../03-editor-core/node/06-node-rendering.md
-
-### 07. MARKDOWN FORMAT POLICY
-
-→ ../03-editor-core/node/07-markdown-format-policy.md
-
-### 08. LAYOUT
-
-→ ../03-editor-core/layout/08-layout.md
-
-### 09. KANBAN
-
-→ ../03-editor-core/canvas/09-kanban.md
-
-### 10. CANVAS
-
-→ ../03-editor-core/canvas/10-canvas.md
-
-### 11. SELECTION
-
-→ ../03-editor-core/canvas/11-selection.md
-
-### 12. HISTORY UNDO REDO
-
-→ ../03-editor-core/history/12-history-undo-redo.md
-
-### 13. VERSION HISTORY
-
-→ ../03-editor-core/history/13-version-history.md
-
-### 14. SAVE
-
-→ ../03-editor-core/save/14-save.md
-
-### 15. TAG
-
-→ ../03-editor-core/search/15-tag.md
-
-### 16. SEARCH
-
-→ ../03-editor-core/search/16-search.md
-
-### 17. KEYBOARD SHORTCUTS
-
-→ ../03-editor-core/search/17-keyboard-shortcuts.md
-
-### 18. AI
-
-→ ../04-extensions/ai/18-ai.md
-
-### 19. AI WORKFLOW
-
-→ ../04-extensions/ai/19-ai-workflow.md
-
-### 20. EXPORT
-
-→ ../04-extensions/import-export/20-export.md
-
-### 21. IMPORT
-
-→ ../04-extensions/import-export/21-import.md
-
-### 22. DASHBOARD
-
-→ ../04-extensions/dashboard/22-dashboard.md
-
-### 23. NODE TRANSLATION
-
-→ ../04-extensions/translation/23-node-translation.md
-
-### 24. CHAT TRANSLATION
-
-→ ../04-extensions/translation/24-chat-translation.md
-
-### 25. MAP COLLABORATION
-
-→ ../04-extensions/collaboration/25-map-collaboration.md
-
-### 26. REALTIME CHAT
-
-→ ../04-extensions/collaboration/26-realtime-chat.md
-
-### 27. PUBLISH SHARE
-
-→ ../04-extensions/publish/27-publish-share.md
-
-### 28. WBS
-
-→ ../04-extensions/project/28-wbs.md
-
-### 29. RESOURCE
-
-→ ../04-extensions/project/29-resource.md
-
-### 30. OBSIDIAN INTEGRATION
-
-→ ../04-extensions/integrations/30-obsidian-integration.md
-
-### 31. REDMINE INTEGRATION
-
-→ ../04-extensions/integrations/31-redmine-integration.md
-
-### 32. SETTINGS
-
-→ ../04-extensions/settings/32-settings.md
+**최종 업데이트:** 2026-04-29
+**버전:** v2.6
 
 ---
 
-## 2. 전체 기능 목록 (Master Table)
-### 📑 프로젝트 기능 명세서 (전체 리스트)
+# 1. 문서 목적
+
+본 문서는 다음을 위한 기준 문서이다:
+
+* 전체 기능 INDEX
+* 전체 기능 Master Table (기능ID 기준)
+* 설계/개발/검증 기준 (Single Source of Truth)
+* validate_docs.py 검증 기준
+
+---
+
+# 2. 기능 문서 INDEX
+
+## 📌 규칙
+
+* 모든 기능 문서는 반드시 01~32에 존재해야 한다
+* functional-spec는 INDEX 역할만 수행한다
+* 상세 기능은 각 문서에서 관리
+
+---
+
+## Editor Core (01~17)
+
+| No | 기능명             | 문서                                                                                  |
+| -- | --------------- | ----------------------------------------------------------------------------------- |
+| 01 | MAP             | [01-map.md](../03-editor-core/map/01-map.md)                                        |
+| 02 | NODE EDITING    | [02-node-editing.md](../03-editor-core/node/02-node-editing.md)                     |
+| 03 | NODE INDICATOR  | [03-node-indicator.md](../03-editor-core/node/03-node-indicator.md)                 |
+| 04 | NODE CONTENT    | [04-node-content.md](../03-editor-core/node/04-node-content.md)                     |
+| 05 | NODE STYLE      | [05-node-style.md](../03-editor-core/node/05-node-style.md)                         |
+| 06 | NODE RENDERING  | [06-node-rendering.md](../03-editor-core/node/06-node-rendering.md)                 |
+| 07 | MARKDOWN POLICY | [07-markdown-format-policy.md](../03-editor-core/node/07-markdown-format-policy.md) |
+| 08 | LAYOUT          | [08-layout.md](../03-editor-core/layout/08-layout.md)                               |
+| 09 | KANBAN          | [09-kanban.md](../03-editor-core/canvas/09-kanban.md)                               |
+| 10 | CANVAS          | [10-canvas.md](../03-editor-core/canvas/10-canvas.md)                               |
+| 11 | SELECTION       | [11-selection.md](../03-editor-core/canvas/11-selection.md)                         |
+| 12 | HISTORY         | [12-history-undo-redo.md](../03-editor-core/history/12-history-undo-redo.md)        |
+| 13 | VERSION HISTORY | [13-version-history.md](../03-editor-core/history/13-version-history.md)            |
+| 14 | SAVE            | [14-save.md](../03-editor-core/save/14-save.md)                                     |
+| 15 | TAG             | [15-tag.md](../03-editor-core/search/15-tag.md)                                     |
+| 16 | SEARCH          | [16-search.md](../03-editor-core/search/16-search.md)                               |
+| 17 | KEYBOARD        | [17-keyboard-shortcuts.md](../03-editor-core/search/17-keyboard-shortcuts.md)       |
+
+---
+
+## Extensions (18~32)
+
+| No | 기능명              | 문서                                                                                     |
+| -- | ---------------- | -------------------------------------------------------------------------------------- |
+| 18 | AI               | [18-ai.md](../04-extensions/ai/18-ai.md)                                               |
+| 19 | AI WORKFLOW      | [19-ai-workflow.md](../04-extensions/ai/19-ai-workflow.md)                             |
+| 20 | EXPORT           | [20-export.md](../04-extensions/import-export/20-export.md)                            |
+| 21 | IMPORT           | [21-import.md](../04-extensions/import-export/21-import.md)                            |
+| 22 | DASHBOARD        | [22-dashboard.md](../04-extensions/dashboard/22-dashboard.md)                          |
+| 23 | TRANSLATION      | [23-node-translation.md](../04-extensions/translation/23-node-translation.md)          |
+| 24 | CHAT TRANSLATION | [24-chat-translation.md](../04-extensions/translation/24-chat-translation.md)          |
+| 25 | COLLAB           | [25-map-collaboration.md](../04-extensions/collaboration/25-map-collaboration.md)      |
+| 26 | CHAT             | [26-realtime-chat.md](../04-extensions/collaboration/26-realtime-chat.md)              |
+| 27 | PUBLISH          | [27-publish-share.md](../04-extensions/publish/27-publish-share.md)                    |
+| 28 | WBS              | [28-wbs.md](../04-extensions/project/28-wbs.md)                                        |
+| 29 | RESOURCE         | [29-resource.md](../04-extensions/project/29-resource.md)                              |
+| 30 | OBSIDIAN         | [30-obsidian-integration.md](../04-extensions/integrations/30-obsidian-integration.md) |
+| 31 | REDMINE          | [31-redmine-integration.md](../04-extensions/integrations/31-redmine-integration.md)   |
+| 32 | SETTINGS         | [32-settings.md](../04-extensions/settings/32-settings.md)                             |
+
+---
+
+# 3. 전체 기능 목록 (Master Table)
+## 📑 프로젝트 기능 명세서 (전체 리스트)
 
 | No  | 그룹          | 기능ID        | 기능명                    | 설명                               | 주요 동작 단계                                                                                         |
 |-----|-------------|-------------|------------------------|----------------------------------|--------------------------------------------------------------------------------------------------|

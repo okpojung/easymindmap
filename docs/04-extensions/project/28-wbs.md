@@ -80,13 +80,15 @@ CREATE TABLE public.node_schedule (
 
 #### 4.3 WbsStatus 색상 코딩
 
-| 상태       | 조건                              | 색상           |
-| -------- | ------------------------------- | ------------ |
-| 완료       | progress = 100                  | 초록 (#10B981) |
-| 진행 중     | progress > 0, end_date >= today | 파랑 (#3B82F6) |
-| 지연       | end_date < today, progress < 100 | 빨강 (#EF4444) |
-| 미시작      | progress = 0, start_date > today | 회색 (#9CA3AF) |
-| 마일스톤 완료  | is_milestone = true, progress = 100 | 별 (#F59E0B) |
+> 상태 코드는 `31-redmine-integration.md`와 공유하는 단일 표준이다.
+
+| 상태코드     | 한글 명칭   | 조건                                          | 색상                  |
+| ---------- | --------- | --------------------------------------------- | ------------------- |
+| `done`     | 완료       | `progress = 100`                              | 초록 (`#22C55E`)      |
+| `on-track` | 정상 진행   | `start_date <= today`, `end_date >= today`, `progress < 100` | 파랑 (`#3B82F6`) |
+| `delayed`  | 지연       | `end_date < today`, `progress < 100`          | 빨강 (`#EF4444`)      |
+| `upcoming` | 예정       | `start_date > today`                          | 회색 (`#9CA3AF`)      |
+| `no-date`  | 날짜 미설정 | `start_date` 없음                              | 없음 (배지 미표시)     |
 
 #### 4.4 WBS 패널 (Right Panel)
 
@@ -136,16 +138,33 @@ WBS 인디케이터 즉시 갱신
 
 #### 5.3 WbsStatus 계산
 
+> `getWbsStatus` 함수는 WBS 인디케이터와 Redmine 연동 양쪽에서 공유한다.  
+> 단일 구현 소스: 이 파일이 정의 기준. `31-redmine-integration.md`는 이 정의를 참조.
+
 ```typescript
-function calcWbsStatus(schedule: NodeSchedule): WbsStatus {
-  const today = new Date();
+type WbsStatus = 'done' | 'on-track' | 'delayed' | 'upcoming' | 'no-date';
+
+function getWbsStatus(schedule: NodeSchedule): WbsStatus {
   if (schedule.progress === 100) return 'done';
-  if (schedule.is_milestone && schedule.progress === 100) return 'milestone_done';
-  if (schedule.end_date && schedule.end_date < today && schedule.progress < 100)
-    return 'delayed';
-  if (schedule.progress > 0) return 'in_progress';
-  return 'not_started';
+  if (!schedule.startDate)       return 'no-date';
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = parseISO(schedule.startDate);
+  const end   = schedule.endDate ? parseISO(schedule.endDate) : null;
+
+  if (start > today)  return 'upcoming';
+  if (end && end < today) return 'delayed';
+  return 'on-track';
 }
+
+const WBS_STATUS_COLOR: Record<WbsStatus, string> = {
+  'done':     '#22C55E',   // green-500  — 완료
+  'on-track': '#3B82F6',   // blue-500   — 정상 진행
+  'delayed':  '#EF4444',   // red-500    — 지연
+  'upcoming': '#9CA3AF',   // gray-400   — 예정
+  'no-date':  'transparent',             // 날짜 미설정 (배지 미표시)
+};
 ```
 
 ---

@@ -18,8 +18,8 @@
 ### 2. 기능 범위
 
 * 포함:
-  * 채팅 메시지 자동 번역 (TRANS-08)
-  * Language-group 캐시 (TRANS-09)
+  * 채팅 메시지 자동 번역 (TRANS-08) — **그룹 채팅 및 1:1 DM 메시지 모두 적용**
+  * Language-group 캐시 (TRANS-09) — 그룹 채팅 전용; DM은 단방향 단일 번역
   * Short Message Guard (TRANS-10)
   * 원문 + 번역문 동시 표시 (TRANS-11)
 
@@ -333,3 +333,67 @@ chat:translation:msg_7b1d4e:ko   → "스키마부터 시작합시다"
 | TTL 만료 | Redis 자동 삭제 (24시간 후) |
 | 메시지 원문 수정 | `source_text_hash` 변경 → 해당 `messageId` 키 전체 DEL |
 | 메시지 삭제 | `chat:translation:{messageId}:*` 패턴 DEL |
+
+---
+
+### 16. 1:1 DM 메시지 번역 정책
+
+DM 메시지(`dm_messages`)는 그룹 채팅과 **동일한 번역 파이프라인(TRANS-08~11)을 공유**한다.  
+fan-out 대상이 수신자 1명으로 단순화된다는 점만 다르다.
+
+#### 16.1 그룹 채팅 vs DM 번역 비교
+
+| 항목                  | 그룹 채팅 (`chat_messages`)         | 1:1 DM (`dm_messages`)            |
+| ------------------- | ---------------------------------- | ---------------------------------- |
+| 번역 트리거             | 메시지 수신 시 (TRANS-08)              | 동일                               |
+| Short Message Guard | 5자 미만 생략 (TRANS-10)              | 동일                               |
+| 번역 엔진              | DeepL → LLM Fallback               | 동일                               |
+| fan-out             | Language-group 단위 (TRANS-09)      | 수신자 1명에게만 단방향 전송               |
+| 캐시 키               | `chat:translation:{messageId}:{lang}` | `dm:translation:{messageId}:{lang}` |
+| 캐시 TTL             | 24시간                               | 동일                               |
+| 원문 + 번역 동시 표시      | TRANS-11                           | 동일                               |
+| 번역 생략 조건           | 발신자 언어 = 수신자 언어                   | 동일                               |
+| `source_lang` 저장   | `chat_messages.source_lang`        | `dm_messages.source_lang`          |
+
+> **DM Language-group 처리**: 수신자가 1명이므로 Language-group 캐시(TRANS-09)는 적용되지 않는다.  
+> `sender.preferred_language === recipient.preferred_language`이면 번역 API 호출 없이 생략한다.
+
+#### 16.2 DM 번역 처리 흐름
+
+```
+DM 메시지 수신 (WebSocket: dm:map:{mapId}:pair:{uidA}:{uidB})
+    │
+    ▼
+Short Message Guard 확인 (5자 미만 → 번역 생략)
+    │
+    ▼
+sender.preferred_language === recipient.preferred_language?
+  ├─ YES → 번역 생략 (원문 그대로 표시)
+  └─ NO
+        │
+        ▼
+    캐시 조회 (Redis: dm:translation:{messageId}:{recipientLang})
+      ├─ HIT → 즉시 번역문 렌더링
+      └─ MISS
+              │
+              ▼
+          번역 API 호출 (DeepL → LLM Fallback)
+              │
+              ▼
+          Redis 캐시 저장 (TTL: 24h)
+              │
+              ▼
+          수신자에게 번역문 전송 (단방향, fan-out 없음)
+```
+
+#### 16.3 dm_messages 테이블 — source_lang 컬럼
+
+DM 번역을 지원하기 위해 `dm_messages` 테이블에 `source_lang` 컬럼이 필요하다.  
+이 컬럼은 `26-realtime-chat.md § 4.5`의 `dm_messages` 정의에 포함된다.
+
+```sql
+source_lang  VARCHAR(20)   -- 원문 언어 코드 (번역 처리용, NULL 허용)
+```
+
+언어 감지 방식은 그룹 채팅과 동일 (`§14` 참조):  
+`sender.preferred_language`를 1차 힌트로, 감지 실패 시 DeepL Language Detection 사용.

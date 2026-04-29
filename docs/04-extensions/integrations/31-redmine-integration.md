@@ -258,31 +258,14 @@ const TRACKER_COLOR_MAP: Record<string, string> = {
 
 ### 14. WBS 상태 판별 로직 (getWbsStatus)
 
-```typescript
-type WbsStatus = 'done' | 'on-track' | 'delayed' | 'upcoming' | 'no-date';
+> **단일 소스 원칙**: `getWbsStatus` 구현과 `WBS_STATUS_COLOR` 상수는  
+> `docs/04-extensions/project/28-wbs.md § 5.3`에 정의되어 있다.  
+> Redmine 연동 코드도 동일 함수를 임포트하여 사용한다.  
+> 이 문서에서 별도 재정의하지 않는다.
 
-function getWbsStatus(schedule: NodeSchedule): WbsStatus {
-  if (schedule.progress === 100) return 'done';
-  if (!schedule.startDate)       return 'no-date';
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = parseISO(schedule.startDate);
-  const end   = schedule.endDate ? parseISO(schedule.endDate) : null;
-
-  if (start > today)             return 'upcoming';
-  if (end && end < today)        return 'delayed';
-  return 'on-track';
-}
-
-const WBS_STATUS_COLOR: Record<WbsStatus, string> = {
-  'done':     '#22C55E',   // green-500  — 완료
-  'on-track': '#3B82F6',   // blue-500   — 진행중(정상)
-  'delayed':  '#EF4444',   // red-500    — 지연
-  'upcoming': '#9CA3AF',   // gray-400   — 예정
-  'no-date':  'transparent',             // 날짜 미설정(배지 미표시)
-};
-```
+Pull 동기화 시 Tracker 색상(`TRACKER_COLOR_MAP`)과 WBS 상태 색상(`WBS_STATUS_COLOR`)은 서로 독립 적용된다.
+- `TRACKER_COLOR_MAP` → `style_json.fillColor` (노드 배경색)
+- `WBS_STATUS_COLOR` → `NodeWbsIndicator`의 상태 배지 색상
 
 ---
 

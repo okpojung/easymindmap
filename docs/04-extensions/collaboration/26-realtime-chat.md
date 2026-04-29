@@ -145,22 +145,13 @@ CREATE INDEX idx_chat_mentions_map_unread
 
 #### 4.4 CHAT-06 미확인 @멘션 처리
 
-미확인 @멘션은 `chat_mentions` 보조 테이블로 추적한다.
+> **테이블 정의**: `chat_mentions` 스키마는 **§4.2**에 단일 정의되어 있다.  
+> `mention_type = 'mention'`인 row가 @멘션 수신 추적에 해당한다.
 
-```sql
-CREATE TABLE public.chat_mentions (
-  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  message_id     UUID NOT NULL REFERENCES public.chat_messages(id) ON DELETE CASCADE,
-  mentioned_uid  UUID NOT NULL REFERENCES public.users(id),
-  is_read        BOOLEAN NOT NULL DEFAULT false,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX idx_chat_mentions_uid ON public.chat_mentions(mentioned_uid, is_read);
-```
-
-- 맵 채팅 패널 열기 시 `is_read = false`인 @멘션 메시지를 강조 표시
-- 채팅 패널에서 해당 메시지를 본 시점에 `is_read = true`로 업데이트
-- 나중에 협업에 참여한 사람도 본인 @멘션 이력 확인 가능
+- 맵 채팅 패널 열기 시 `is_read = false`, `mention_type = 'mention'`인 행을 강조 표시
+- 채팅 패널에서 해당 메시지를 본 시점에 `is_read = true`, `read_at = NOW()`로 업데이트
+- 나중에 협업에 참여한 사람도 본인 @멘션 이력 확인 가능 (오프라인 추적)
+- 조회: `GET /maps/{mapId}/chat/mentions/unread` — `receiver_id = 나`, `is_read = false` 필터
 
 #### 4.5 CHAT-07 1:1 DM (V3)
 
@@ -173,6 +164,7 @@ CREATE TABLE public.dm_messages (
   sender_id    UUID NOT NULL REFERENCES public.users(id),
   recipient_id UUID NOT NULL REFERENCES public.users(id),
   content      TEXT NOT NULL,
+  source_lang  VARCHAR(20),           -- 원문 언어 코드 (번역 처리용, → 24-chat-translation.md §16)
   is_read      BOOLEAN NOT NULL DEFAULT false,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

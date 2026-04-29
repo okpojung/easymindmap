@@ -539,3 +539,30 @@ Root > 전략 > AI전략 (이 노드부터 보기)
 * 활성 상태에서 툴바 Focus 버튼도 하이라이트 표시
 
 ---
+
+### 20. Freeform 보조 배치 정책
+
+Grid Snapping과 Collision Detection은 **freeform layout에서만** 선택적으로 적용한다.
+
+Auto Layout 계열에서는 Layout Engine이 좌표를 결정하므로 사용자의 grid snapping을 적용하지 않는다.
+
+| 항목 | MVP 정책 |
+|---|---|
+| Grid Snapping | 선택 옵션, 기본 **OFF** |
+| Collision Detection | 기본 경고 또는 약한 보정 (강제 이동 없음) |
+| Auto Layout 충돌 방지 | Layout Engine의 Measure / Arrange / CollisionResolver에서 처리 |
+| Freeform 충돌 방지 | 사용자가 수동 위치 조정 가능하므로 강제 이동하지 않음 |
+
+#### Grid Snapping 동작
+
+* `freeform` layoutType에서 노드 drag 종료 시 가장 가까운 grid 격자에 snap
+* Grid 크기: 기본 20px (사용자 설정 가능)
+* Auto Layout 모드에서는 grid snapping 비활성 (Layout Engine이 좌표 결정)
+
+#### Collision Detection 동작
+
+* 두 노드의 bounding box가 겹칠 경우 경고 표시 또는 약한 보정(soft push)
+* 강제로 노드를 이동시키지 않으며, 사용자가 직접 해소
+* Auto Layout 계열의 충돌은 CollisionResolver가 Measure/Arrange 단계에서 자동 처리
+
+---

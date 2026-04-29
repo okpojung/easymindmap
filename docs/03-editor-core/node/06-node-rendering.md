@@ -976,3 +976,51 @@ function isNodeVisible(node: LayoutNode, viewport: ViewportState): boolean {
 | 노드 drag 종료 | 즉시 (0ms) | 위치 확정 시 저장 |
 | 구조 변경 (create/delete) | 즉시 (0ms) | 데이터 유실 방지 |
 | 레이아웃 변경 | 즉시 (0ms) | 설정 변경 즉시 반영 |
+
+---
+
+## Edge Rendering Policy
+
+### Orthogonal Edge
+
+Radial 계열을 제외한 모든 layoutType은 orthogonal edge를 사용한다.
+
+Orthogonal edge는 3-segment path를 기본으로 한다.
+
+```svg
+M x1,y1 L midX,y1 L midX,y2 L x2,y2
+```
+
+#### midX 계산 규칙
+
+```text
+midX = (parentAnchorX + childAnchorX) / 2
+```
+
+단, 부모와 자식의 거리가 너무 가까운 경우 선이 노드와 겹칠 수 있으므로 최소 수평 거리 기준을 둔다.
+
+```text
+minHorizontalLength = 20px
+```
+
+부모-자식 간 수평 거리가 `20px` 미만이면, edge anchor offset을 적용하여 노드 경계와 선이 겹치지 않게 한다.
+
+### Curve Edge
+
+Radial 계열 layoutType은 cubic bezier curve를 사용한다.
+
+```svg
+M x1,y1 C cp1x,cp1y cp2x,cp2y x2,y2
+```
+
+Control Point는 부모-자식 방향각(theta)과 거리(distance)를 기준으로 계산한다.
+
+```text
+cp1 = parentAnchor + directionVector(theta) * controlDistance
+cp2 = childAnchor - directionVector(theta) * controlDistance
+```
+
+기본 controlDistance는 부모-자식 거리의 30~40% 범위에서 계산한다.
+
+> **핵심 규칙**: SVG path 규칙을 명시적으로 정의함으로써 개발자별 구현 편차(ㄱ자/Z자/┐자 등)를 방지한다.  
+> Edge path 계산값은 DB에 저장하지 않으며, 렌더링 시마다 노드 위치와 layoutType을 기준으로 재계산한다.

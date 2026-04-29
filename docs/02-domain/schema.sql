@@ -237,6 +237,15 @@ CREATE TABLE IF NOT EXISTS public.nodes (
         CHECK (sync_status IN ('synced', 'pending', 'error', 'failed') OR sync_status IS NULL)
 );
 
+COMMENT ON COLUMN public.maps.default_layout_type IS
+'맵 생성 및 루트 노드의 기본 layoutType. 실제 노드별 layout은 nodes.layout_type에 저장되며, edge style은 layoutType에서 자동 파생된다.';
+
+COMMENT ON COLUMN public.nodes.layout_type IS
+'노드 및 subtree의 배치 방식. radial-*은 curve-line(Cubic Bezier), 그 외 layoutType은 orthogonal-line(직각선)으로 렌더링한다.';
+
+COMMENT ON COLUMN public.nodes.manual_position IS
+'Freeform 또는 수동 위치 보정 전용 좌표 { x, y }. Auto Layout의 computedX/computedY는 클라이언트 계산값이며 DB에 저장하지 않는다.';
+
 COMMENT ON COLUMN public.nodes.text IS
 '노드의 기본 본문 raw text. Markdown raw 저장을 기본으로 한다.';
 COMMENT ON COLUMN public.nodes.node_type IS

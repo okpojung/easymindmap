@@ -2264,6 +2264,107 @@ X-API-Key: {apiKey}
 
 ---
 
+## 18. Layout 변경 API
+
+> **[v2.4 신규]** Layout 변경 및 Bulk Node Update Atomic 처리
+
+### PATCH /maps/{mapId}/layout
+
+맵 또는 루트 노드의 layoutType을 변경하고, 재배치 결과를 반영한다.
+
+**Request Body**
+```json
+{
+  "layoutType": "tree-right",
+  "scope": "entire-map"
+}
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `layoutType` | string | 변경할 layoutType (허용 값: `08-layout.md §4.1` 참조) |
+| `scope` | `"entire-map"` \| `"subtree"` | 적용 범위. `"subtree"` 시 `nodeId` 필드 필요 |
+| `nodeId` | string? | `scope="subtree"` 시 Subtree root 노드 ID |
+
+**Response** `200 OK`
+```json
+{
+  "mapId": "uuid",
+  "layoutType": "tree-right",
+  "affectedNodeCount": 42,
+  "revisionId": "uuid"
+}
+```
+
+**Rule**
+
+* Edge Style은 layoutType에서 자동 결정된다.
+  * `radial-*` → `curve-line`
+  * 그 외 → `orthogonal-line`
+* MVP에서는 edge style 수동 변경을 지원하지 않는다.
+* layoutType 변경은 즉시 autosave 대상이 된다.
+
+---
+
+## 19. Bulk Node Update API
+
+### PATCH /nodes/bulk
+
+여러 노드의 `parent_id`, `order_index`, `path`, `depth`, `manual_position` 등을 한 번에 갱신한다.  
+레이아웃 변경, subtree 이동 등 다수 노드의 구조 정보를 동시에 업데이트해야 할 때 사용한다.
+
+**Request Body**
+```json
+{
+  "mapId": "uuid",
+  "transactionId": "client-generated-id",
+  "nodes": [
+    {
+      "id": "node-1",
+      "parentId": "node-root",
+      "orderIndex": 10,
+      "path": "root.n_node1",
+      "depth": 1,
+      "manualPosition": null
+    }
+  ]
+}
+```
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `mapId` | string | 대상 맵 ID |
+| `transactionId` | string | 클라이언트 생성 멱등성 키 |
+| `nodes` | object[] | 업데이트할 노드 목록 |
+| `nodes[].id` | string | 노드 ID |
+| `nodes[].parentId` | string? | 변경할 부모 노드 ID (null = 루트) |
+| `nodes[].orderIndex` | number? | 형제 간 정렬 순서 |
+| `nodes[].path` | string? | ltree 경로 |
+| `nodes[].depth` | number? | 계층 깊이 |
+| `nodes[].manualPosition` | object? | `{ x, y }` Freeform 좌표, null 시 초기화 |
+
+**Response** `200 OK`
+```json
+{
+  "status": "success",
+  "updatedNodeCount": 1,
+  "revisionId": "uuid"
+}
+```
+
+**Atomic Rule**
+
+Bulk Node Update는 반드시 atomic transaction으로 처리한다.
+
+* 모든 노드 업데이트 성공 → commit
+* 하나라도 실패 → rollback, `409 BULK_UPDATE_PARTIAL_FAILURE` 반환
+* rollback 시 클라이언트는 이전 상태를 유지하거나 `GET /maps/{mapId}` 재조회한다
+
+> **이유**: 레이아웃 변경이나 subtree 이동은 여러 노드의 `path`, `depth`, `order_index`를 동시에 변경한다.  
+> 일부만 저장되면 맵 구조(ltree 경로, depth 계층)가 깨지므로 atomic 처리가 필수다.
+
+---
+
 ## 공통 에러 응답
 
 ```json

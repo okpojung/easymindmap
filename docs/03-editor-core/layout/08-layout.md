@@ -790,3 +790,58 @@ function getEdgeType(node: Node): EdgeType {
 > 대각선(straight-line)은 사용하지 않는다. (참조: `docs/assets/맵진행방향.pdf`)
 
 EdgeAnchorResolver는 각 node box의 시작점(source)과 끝점(target)을 계산하여 EdgeRouter에 전달한다. 에지 경로 계산은 `curve-line`과 `tree-line` 두 가지 라우팅 알고리즘으로 분기된다.
+
+---
+
+## 19. Edge Style 결정 규칙
+
+Edge Style은 layoutType에 의해 자동 결정된다.
+
+| layoutType 계열 | Edge Style |
+|---|---|
+| `radial-*` | `curve-line` (Cubic Bezier 곡선) |
+| `tree-*` | `orthogonal-line` (직각선) |
+| `hierarchy-*` | `orthogonal-line` (직각선) |
+| `process-tree-*` | `orthogonal-line` (직각선) |
+| `freeform` | `orthogonal-line` (직각선) |
+| `kanban` | `orthogonal-line`, 단 UI에서는 기본적으로 미표시 |
+
+MVP에서는 사용자가 Edge Style을 수동으로 변경할 수 없다.
+
+따라서 MVP 범위에서는 다음 기능을 제공하지 않는다.
+
+* 선 스타일 선택 버튼
+* 노드별 선 스타일 override
+* `edge_style` 컬럼 저장
+* 사용자 지정 straight / curve / orthogonal 선택
+
+---
+
+## 20. Freeform 보조 배치 정책
+
+Grid Snapping과 Collision Detection은 freeform layout에서만 선택적으로 적용한다.
+
+Auto Layout 계열에서는 Layout Engine이 좌표를 결정하므로 사용자의 grid snapping을 적용하지 않는다.
+
+| 항목 | MVP 정책 |
+|---|---|
+| Grid Snapping | 선택 옵션, 기본 OFF |
+| Collision Detection | 기본 경고 또는 약한 보정 |
+| Auto Layout 충돌 방지 | Layout Engine의 Measure / Arrange / CollisionResolver에서 처리 |
+| Freeform 충돌 방지 | 사용자가 수동 위치 조정 가능하므로 강제 이동하지 않음 |
+
+---
+
+## 21. 좌표 저장 정책
+
+좌표는 자동 배치 좌표와 수동 배치 좌표를 분리한다.
+
+| 좌표 유형 | 저장 위치 | 설명 |
+|---|---|---|
+| `computedX / computedY` | 클라이언트 계산값 | Auto Layout 결과. DB 저장 대상 아님 |
+| `manualPosition` | `nodes.manual_position` JSONB | Freeform 또는 수동 위치 보정 좌표 |
+| edge path | 저장하지 않음 | 노드 위치와 layoutType 기준으로 렌더링 시 계산 |
+
+Auto Layout에서는 `computedX/Y`를 사용한다.  
+Freeform에서는 `manualPosition`을 사용한다.  
+Edge 꺾임점 또는 Bezier control point는 DB에 저장하지 않는다.

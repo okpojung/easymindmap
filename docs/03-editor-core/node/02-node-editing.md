@@ -147,7 +147,7 @@
 - 이동 시 부모 변경과 순서 변경을 명확히 구분한다.
 - 같은 부모 아래 reorder는 구조 변경이 아닌 순서 변경으로 처리한다.
 - 레이아웃이 자동 정렬형일 경우 드래그는 구조 이동 우선이다.
-- 자유배치형 또는 수동보정 허용 상태에서는 drag 결과가 manualX/manualY 변경으로 기록될 수 있다.
+- 자유배치형 또는 수동보정 허용 상태에서는 drag 결과가 `nodes.manual_position { x, y }` 변경으로 기록될 수 있다.
 - subtree 이동 시 자식 전체가 함께 이동한다.
 - 이동 후 partial relayout만 수행하고 전체 relayout은 최소화한다.
 
@@ -248,29 +248,26 @@
 ### 9. DB 영향
 - 관련 테이블:
   - maps
-  - map_nodes
-  - map_node_relations 또는 map_nodes 내부 parent/path 컬럼
-  - map_node_view_state (개인별 접힘 상태를 분리 저장하는 경우)
-  - map_history / map_operations / audit_logs
+  - nodes
+  - node_notes, node_tags (연관 데이터)
+  - map_revisions (undo/버전 이력)
+  - audit_logs (협업·감사)
 - 생성/수정/삭제 컬럼 예시:
-  - map_nodes.node_id
-  - map_nodes.map_id
-  - map_nodes.parent_id
-  - map_nodes.path
-  - map_nodes.depth
-  - map_nodes.order_index
-  - map_nodes.title
-  - map_nodes.collapsed
-  - map_nodes.manual_x
-  - map_nodes.manual_y
-  - map_nodes.computed_x
-  - map_nodes.computed_y
-  - map_nodes.layout_type (subtree override 지원 시)
-  - map_nodes.created_at
-  - map_nodes.updated_at
-  - map_nodes.deleted_at (soft delete 사용 시)
-  - map_nodes.created_by
-  - map_nodes.updated_by
+  - nodes.node_id
+  - nodes.map_id
+  - nodes.parent_id
+  - nodes.path
+  - nodes.depth
+  - nodes.order_index
+  - nodes.title
+  - nodes.collapsed
+  - nodes.manual_position (JSONB `{ x, y }`, Freeform 전용 — computedX/Y는 DB 미저장)
+  - nodes.layout_type (subtree override 지원 시)
+  - nodes.created_at
+  - nodes.updated_at
+  - nodes.deleted_at (soft delete 사용 시)
+  - nodes.created_by
+  - nodes.updated_by
 
 #### DB 처리 원칙
 - 저장 모델은 flat 구조를 기본으로 하되 parent_id + path + order_index 기반으로 subtree 조회를 지원한다.
@@ -302,7 +299,7 @@
 #### 10.2 노드 수정
 - 요청:
   - title
-  - manual_x/manual_y
+  - manualPosition (`{ x, y }` — Freeform 좌표)
   - collapsed
 - 응답:
   - 수정된 node

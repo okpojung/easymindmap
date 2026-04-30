@@ -266,10 +266,11 @@ export interface NodeBackgroundImage {
 }
 ```
 
-**방법 B. `mindmap_nodes` 테이블 전용 컬럼 (확장형 권장)**
+**방법 B. `nodes` 테이블 전용 컬럼 (확장형 — MVP 이후 고려)**
+> ⚠ MVP에서는 방법 A(`nodes.style_json JSONB`)를 채택한다. 방법 B는 이후 성능 최적화 시 검토한다.
 
 ```sql
-CREATE TABLE mindmap_nodes (
+CREATE TABLE nodes (  -- 방법 B 예시 (MVP 이후 검토용)
     id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     map_id          BIGINT UNSIGNED NOT NULL,
     parent_id       BIGINT UNSIGNED NULL,

@@ -1,17 +1,19 @@
 # easymindmap — Domain Models
 
 > `map-model.md` + `node-model.md` 통합 문서  
-> 문서 버전: v3.3  
-> 최종 업데이트: 2026-04-16
+> 문서 버전: v3.4  
+> 최종 업데이트: 2026-05-07  
+> 변경 이력:  
+> - v3.4 — AI Workflow 단계를 V1.5로, WBS/리소스 단계를 V1로 수정 (roadmap.md 동기화)
 
 ---
 
 ## 1. 전체 도메인 엔티티 관계 (구현 상태 포함)
 
 > **구현 상태 범례**:
-> - `(implemented)` — MVP 또는 현행 스키마에 물리 테이블/컬럼이 존재함
+> - `(implemented)` — MVP 또는 현행 스키마에 물리 테이블/컨럼이 존재함
 > - `(separate-schema)` — 논리 모델로 정의되었으나 별도 테이블로 분리 구현됨
-> - `(planned)` — V2+ 계획 항목, 아직 DB에 존재하지 않음
+> - `(planned)` — 아직 DB에 존재하지 않음. 표기된 단계는 roadmap.md 기준으로 수정됨 (v3.4)
 
 ```
 User (implemented)
@@ -27,8 +29,8 @@ User (implemented)
     │   ├── NodeMedia (implemented)
     │   ├── NodeTag (implemented)
     │   ├── NodeTranslation (implemented)
-    │   ├── NodeSchedule (planned)         ← V2
-    │   └── NodeResource (planned)         ← V2
+    │   ├── NodeSchedule (planned)         ← V1
+    │   └── NodeResource (planned)         ← V1
     ├── MapRevision (implemented)
     ├── PublishedMap (implemented)
     ├── Export (implemented)
@@ -453,7 +455,7 @@ const rootNode: NodeObject = {
 
 ---
 
-## 7. AI Workflow 확장 필드 `(planned — V2)`
+## 7. AI Workflow 확장 필드 `(planned — V1.5)`
 
 ```typescript
 // AI Workflow 전용 확장 (선택적 — 일반 노드는 생략 가능)
@@ -476,7 +478,7 @@ type NoteBlock =
 
 ---
 
-## 8. WBS / Resource / Redmine 확장 타입 `(planned — V2)`
+## 8. WBS / Resource / Redmine 확장 타입 `(planned — V1)`
 
 ### 8.1 NodeSchedule — WBS 일정
 

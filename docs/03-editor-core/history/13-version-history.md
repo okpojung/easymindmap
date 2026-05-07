@@ -1,8 +1,11 @@
 # 13. Version History
 ## VERSION_HISTORY
 
-* 문서 버전: v1.0
+* 문서 버전: v1.1
 * 작성일: 2026-04-15
+* 최종 업데이트: 2026-05-07
+* 변경 이력:
+  * v1.1 — NodePatch op 명칭을 api-spec.md v2.3 기준으로 통일; Diff Viewer 기능 ID(VH-07) 및 명세 추가 (CON-001 정합성 보정)
 * 참조: `docs/02-domain/db-schema.md § map_revisions`, `docs/03-editor-core/save/14-save.md`, `docs/03-editor-core/history/12-history-undo-redo.md`
 
 ---
@@ -46,6 +49,7 @@
 | VH-04 | 버전 미리보기         | 특정 버전 맵 read-only 렌더링         | V1  |
 | VH-05 | 버전 롤백 (Restore) | 특정 버전으로 현재 맵 상태 복원            | V1  |
 | VH-06 | 작성자 / 시각 표시     | 각 revision의 created_by / created_at 표시 | V1  |
+| VH-07 | Diff Viewer           | 두 버전 간 변경 노드 시각화 (추가/삭제/변경 하이라이트) | V1  |
 
 ---
 
@@ -72,15 +76,13 @@ CREATE INDEX idx_map_revisions_map_id
 #### 4.2 NodePatch 종류 (patch_json에 저장되는 단위)
 
 ```typescript
+// ※ op 명칭은 api-spec.md v2.3 §2 PATCH /maps/{mapId}/nodes 기준
+// patch_json에 저장되는 단위는 동일한 4종 op를 사용한다
 type NodePatch =
-  | { op: 'updateNodeText';   nodeId: string; text: string }
-  | { op: 'createNode';       node: NodeData }
-  | { op: 'deleteNode';       nodeId: string }
-  | { op: 'moveNode';         nodeId: string; parentId: string; orderIndex: number }
-  | { op: 'updateNodeStyle';  nodeId: string; style: Partial<NodeStyle> }
-  | { op: 'updateNodeLayout'; nodeId: string; layoutType: string }
-  | { op: 'collapseNode';     nodeId: string; collapsed: boolean }
-  | { op: 'updateMapMeta';    meta: Partial<MapMeta> };
+  | { op: 'add';    nodeId: string; data: { parentId: string; text: string; orderIndex: number; layoutType?: string } }
+  | { op: 'update'; nodeId: string; data: Partial<Pick<NodeObject, 'text' | 'collapsed' | 'layoutType' | 'style' | 'backgroundImage' | 'manualPosition'>> }
+  | { op: 'delete'; nodeId: string }
+  | { op: 'move';   nodeId: string; data: { parentId: string; orderIndex: number } };
 ```
 
 #### 4.3 revision 생성 흐름
@@ -141,6 +143,37 @@ autosaveStore.markDirty({
   patches: inversePatches,
 });
 ```
+
+#### 4.6 Diff Viewer (VH-07)
+
+Diff Viewer는 두 버전(revision) 사이의 노드 변경 내용을 시각적으로 비교하는 기능이다. 버전 히스토리 패널에서 두 버전을 선택하면 캔버스 위에 변경 결과가 색상으로 구분되어 표시된다.
+
+| 변경 유형 | 표시 색상 | 설명 |
+|----------|----------|------|
+| `+` 추가된 노드 | 초록색 테두리 / 배경 | 해당 버전에서 새로 생성된 노드 |
+| `-` 삭제된 노드 | 빨간색 테두리 / 배경 | 해당 버전에서 제거된 노드 |
+| `*` 변경된 노드 | 노란색 테두리 / 배경 | 텍스트·스타일·위치가 변경된 노드 |
+
+**처리 흐름:**
+
+```
+사용자: 버전 A 선택 → 버전 B 선택 → [비교] 클릭
+    │
+    ▼
+GET /maps/{mapId}/revisions/{versionA} → 상태 A 재구성
+GET /maps/{mapId}/revisions/{versionB} → 상태 B 재구성
+    │
+    ▼
+diff(stateA, stateB) → 추가/삭제/변경 노드 목록 산출
+    │
+    ▼
+캔버스에 색상 오버레이 렌더링 (read-only)
+```
+
+**API 영향:**
+
+* `GET /maps/{mapId}/revisions/{version}` — 두 버전 상태 각각 조회
+* 별도 diff 전용 엔드포인트 없음 — 클라이언트에서 두 상태를 비교하여 렌더링
 
 ---
 
@@ -364,11 +397,19 @@ POST /maps/{mapId}/revisions/{version}/restore
 * 버전 롤백 (VH-05)
 * 작성자 / 시각 표시 (VH-06)
 
+#### V1
+
+* 버전 히스토리 패널 UI (VH-02)
+* 버전 상세 조회 (VH-03)
+* 버전 미리보기 (VH-04)
+* 버전 롤백 (VH-05)
+* 작성자 / 시각 표시 (VH-06)
+* **Diff Viewer — 두 버전 간 노드 변경 시각화 (VH-07)**
+
 #### 후순위
 
 * 오래된 revision 자동 압축 (snapshot 병합)
 * 버전별 변경 요약 자동 생성 (diff label)
 * 협업자별 버전 필터링
-* 버전 간 diff 시각화 (변경된 노드 하이라이트)
 
 ---

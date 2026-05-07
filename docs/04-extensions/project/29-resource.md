@@ -1,8 +1,11 @@
 # 29. Resource
 ## RESOURCE
 
-* 문서 버전: v1.0
+* 문서 버전: v1.1
 * 작성일: 2026-04-16
+* 최종 업데이트: 2026-05-07
+* 변경 이력:
+  * v1.1 — 구현 우선순위 표기를 `MVP (V1)` → `V1`로 명확화 (roadmap.md 동기화)
 * 참조: `docs/01-product/functional-spec.md § RESOURCE`, `docs/02-domain/db-schema.md § node_resources`
 
 ---
@@ -207,12 +210,16 @@ node_resources INSERT
 
 ### 12. 구현 우선순위
 
-#### MVP (V1)
+#### V1 — 1단계
+
+> 로드맵 V1 단계에 포함. MVP에는 포함되지 않음.
+
 * RES-01 리소스 할당 패널
 * RES-02 담당자 검색/추가 (내부 사용자)
 * RES-03 역할 지정
 * RES-05 아바타 인디케이터
 
-#### 2단계 (V1)
+#### V1 — 2단계
+
 * RES-04 공수 입력 (WBS 모드)
 * Redmine 사용자 연동 검색

@@ -35,7 +35,7 @@ easymindmap은 단순한 아이디어 정리 도구가 아니라,
 
 1. **웹 기반 Mindmap Editor** — 설치 없이 브라우저에서 즉시 사용
 2. **15종 레이아웃** — 방사형(3종) / 트리(4종) / 계층형(2종) / 진행트리(4종) / 자유배치 / **Kanban 보드형** 지원
-3. **노드 배경 이미지** — preset 또는 직접 업로드, fit/position/overlay 설정 (`NodeBackgroundImage` 타입)
+3. **노드 배경 이미지** — preset 또는 직접 업로드, fit/position/overlay 설정 (`NodeBackgroundImage` 타입, **V1**)
 4. **AI 기반 자동 생성** — 질문 하나로 마인드맵 초안 생성 (AI-01), 선택 노드 AI 확장 (AI-02); 협업 중(2명 이상)에는 AI 기능 비활성
 5. **AI 실행형 절차 (Workflow)** — step 기반 절차 생성 + 오류 해결 + 최종 정제 → runbook 완성 (V1.5); solo 편집 모드 전용 (WFLOW-01~12)
 6. **Note Code Block** — paragraph / code_block / warning / tip / checklist 블록 구조, 언어별 syntax highlight + Copy 버튼

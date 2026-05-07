@@ -17,7 +17,9 @@
 
 ```
 MVP   ── 편집기 코어 / Kanban / 자동저장 / AI 생성 / Export / Publish   [T-01~T-20]
+        / 노드 노트 / 노드 링크 / 노드 첨부파일                             [T-20a~T-20b]
 V1    ── 협업 / WBS / Redmine 연동 / Obsidian 연동 / 버전 히스토리       [T-21~T-40]
+        / 노드 배경이미지(IMG-01~20)                                          [T-35]
 V1.5  ── AI 실행형 절차 (AI Executable Workflow)                        [T-41~T-45]
 V2    ── 다국어 번역 / 실시간 채팅 / 채팅 번역                            [T-46~T-55]
 V3    ── Node Thread / AI 협업 요약 / 대시보드 맵                        [T-56~T-65]
@@ -219,6 +221,22 @@ style_json → NodeStyle 타입으로 역직렬화.
 
 ---
 
+### [T-20a] 노드 노트 (node_notes) API + UI
+
+**입력 문서**: `03-editor-core/node/04-node-content.md`, `02-domain/db-schema.md` (§3-1 node_notes)
+
+**주의**: `nodes.note` 컬럼 없음. API: `GET/PUT/DELETE /nodes/{nodeId}/note`
+
+---
+
+### [T-20b] 노드 링크 / 첨부파일 / 미디어 (node_links, node_attachments, node_media)
+
+**입력 문서**: `03-editor-core/node/04-node-content.md`, `02-domain/db-schema.md` (§3-3~§3-5)
+
+**주의**: `node_media.media_type`은 `'audio' | 'video'`만 허용. 이미지 배경은 `nodes.style_json.backgroundImage` (≠ node_media)
+
+---
+
 ## Phase 2 — V1 (협업 & WBS & 연동)
 
 ### [T-21] Workspace / Map 권한 관리 API
@@ -370,23 +388,15 @@ Queue 이름: 'redmine-sync' (QUEUE_NAMES.REDMINE_SYNC)
 
 ---
 
-### [T-35] Node Note (node_notes) API + UI
+### [T-35] 노드 배경 이미지 (IMG-01~20) API + UI
 
-**입력 문서**: `03-editor-core/node/04-node-content.md`, `02-domain/db-schema.md` (§3-1 node_notes)
+**입력 문서**: `03-editor-core/node/05-node-style.md` (§14), `05-implementation/api-spec.md` (배경 이미지 섹션)
 
-**주의**: `nodes.note` 컬럼 없음. API: `GET/PUT/DELETE /nodes/{nodeId}/note`
-
----
-
-### [T-36] 노드 링크 / 첨부파일 / 미디어 (node_links, node_attachments, node_media)
-
-**입력 문서**: `03-editor-core/node/04-node-content.md`, `02-domain/db-schema.md` (§3-3~§3-5)
-
-**주의**: `node_media.media_type`은 `'audio' | 'video'`만 허용 — 이미지 배경은 `nodes.background_image_path`
+**주의**: 배경 이미지는 `nodes.style_json.backgroundImage` (JSONB) 저장. `node_media`와 다름. API: `PATCH /maps/{mapId}/nodes/{nodeId}/background-image`
 
 ---
 
-### [T-37] Kanban 레이아웃 완성
+### [T-36] Kanban 레이아웃 완성
 
 **입력 문서**: `03-editor-core/canvas/09-kanban.md`, `02-domain/domain-models.md` (§5.4 kanban depth 규칙)
 
@@ -394,19 +404,19 @@ Queue 이름: 'redmine-sync' (QUEUE_NAMES.REDMINE_SYNC)
 
 ---
 
-### [T-38] Import (Markdown / Obsidian 호환)
+### [T-37] Import (Markdown / Obsidian 호환)
 
 **입력 문서**: `04-extensions/import-export/21-import.md`
 
 ---
 
-### [T-39] 검색 기능 (텍스트/태그)
+### [T-38] 검색 기능 (텍스트/태그)
 
 **입력 문서**: `03-editor-core/search/16-search.md`
 
 ---
 
-### [T-40] 키보드 단축키 전체 구현
+### [T-39] 키보드 단축키 전체 구현
 
 **입력 문서**: `03-editor-core/search/17-keyboard-shortcuts.md`
 
@@ -628,8 +638,8 @@ Redis Pub/Sub 채널: dashboard:{mapId} (DASHBOARD_REFRESH_CHANNEL_PREFIX 환경
 
 | 단계 | Task 범위 | 상태 |
 |------|-----------|------|
-| MVP | T-01~T-20 | 구현 중 |
-| V1 | T-21~T-40 | 예정 |
+| MVP | T-01~T-20, T-20a~T-20b | 구현 중 |
+| V1 | T-21~T-39 (노드 배경이미지: T-35 포함) | 예정 |
 | V1.5 | T-41~T-45 | 예정 |
 | V2 | T-46~T-55 | 예정 |
 | V3 | T-56~T-65 | 예정 |

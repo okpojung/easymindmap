@@ -36,8 +36,8 @@
 | 기능ID      | 기능명              | 설명                              | 주요 동작       |
 | --------- | ---------------- | ------------------------------- | ----------- |
 | IMPORT-01 | Import Markdown  | Markdown 파일을 노드 트리로 변환하여 가져오기   | 파일 선택 → 변환  |
-| IMPORT-02 | Outline Mode     | # 헤딩 계층 구조 기반 파싱                | 헤딩 → 노드 깊이  |
-| IMPORT-03 | Document Mode    | 헤딩 없는 단락 문서를 섹션별로 파싱            | 단락 → 리프 노드  |
+| IMPORT-02 | Hybrid Mode      | 헤딩 계층 구조 + 리스트 타입별 분리 파싱        | 헤딩/리스트 → 노드 |
+| IMPORT-03 | Document Mode    | 모든 리스트를 노드 내부 콘텐츠로 강제 유지       | 단락/리스트 → 내용 |
 | IMPORT-04 | Import Preview   | 변환 결과 미리보기 후 확정                 | 트리 미리보기 표시  |
 
 ---
@@ -48,17 +48,20 @@
 
 | 모드          | 적용 조건                     | 설명                   |
 | ----------- | ------------------------- | -------------------- |
-| Outline Mode | `#`, `##`, `###` 헤딩 3개 이상 | 헤딩 레벨을 노드 깊이로 변환     |
-| Document Mode | 헤딩 없거나 1~2개              | 단락/줄바꿈 기반 리프 노드 생성   |
+| Hybrid Mode  | 기본값 (권장)                 | 헤딩 구조화 + 리스트 타입별 분리 적용 |
+| Document Mode | 명시적 선택 시                 | 모든 리스트를 내부 콘텐츠로 강제 유지 |
+| Outline Mode | 명시적 선택 시                 | 모든 리스트를 자식 노드로 강제 구조화 |
 
-#### 4.2 Outline Mode 변환 규칙
+#### 4.2 Hybrid Mode 변환 규칙 (Smart Hybrid Mode)
 
 ```text
 # Root 제목         → Root 노드 (depth 0)
 ## 섹션 A           → 자식 노드 (depth 1)
 ### 항목 A-1        → 자식 노드 (depth 2)
-### 항목 A-2        → 자식 노드 (depth 2)
-## 섹션 B           → 자식 노드 (depth 1)
+
+- 순서 없는 목록      → 상위 노드의 note/text로 병합 (구조화 안함)
+1. 순서 있는 목록     → 상위 노드의 자식 노드로 분리
+- [ ] 체크박스 목록   → 상위 노드의 자식 TODO 노드로 분리
 
 헤딩 사이 paragraph → 상위 노드의 note로 저장
 코드 블록           → 상위 노드의 note 코드 블록으로 저장
@@ -69,6 +72,7 @@
 
 ```text
 빈 줄 구분 단락 → 각각 독립 자식 노드
+모든 리스트     → 노드 내부 콘텐츠로 강제 유지 (자식 노드 생성 안함)
 파일명          → Root 노드 text
 ```
 
@@ -79,7 +83,7 @@
 │  가져오기 미리보기                          [✕]       │
 ├─────────────────────────────────────────────────────┤
 │  파일: linux-setup.md                                │
-│  모드: Outline Mode    [변경]                         │
+│  모드: Hybrid Mode     [변경]                         │
 │  노드 수: 24개                                        │
 │                                                     │
 │  📁 Linux 서버 구축                                   │
@@ -189,10 +193,10 @@ Document Store 반영 + Auto Save
 
 #### MVP
 * IMPORT-01 Markdown 파일 가져오기
-* IMPORT-02 Outline Mode 파싱
+* IMPORT-02 Hybrid Mode 파싱 (Smart Hybrid Mode)
 * IMPORT-04 미리보기
 
 #### 2단계
-* IMPORT-03 Document Mode 파싱
+* IMPORT-03 Document Mode / Outline Mode 파싱
 * 인라인 태그 자동 할당
 * 드래그 앤 드롭 파일 선택

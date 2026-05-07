@@ -1,8 +1,11 @@
 # 14. Save
 ## SAVE
 
-* 문서 버전: v1.0
+* 문서 버전: v1.1
 * 작성일: 2026-04-16
+* 최종 업데이트: 2026-05-07
+* 변경 이력:
+  * v1.1 — NodePatch op 명칭을 api-spec.md v2.3 기준(`add`/`update`/`delete`/`move`)으로 통일 (CON-001 정합성 보정)
 * 참조: `docs/01-product/functional-spec.md § SAVE`, `docs/03-editor-core/history/12-history-undo-redo.md`, `docs/03-editor-core/history/13-version-history.md`
 
 ---
@@ -70,15 +73,12 @@ interface PatchRequest {
   patches: NodePatch[];
 }
 
+// ※ op 명칭은 api-spec.md v2.3 §2 PATCH /maps/{mapId}/nodes 기준
 type NodePatch =
-  | { op: 'updateNodeText';   nodeId: string; text: string }
-  | { op: 'createNode';       node: NodeData }
-  | { op: 'deleteNode';       nodeId: string }
-  | { op: 'moveNode';         nodeId: string; parentId: string; orderIndex: number }
-  | { op: 'updateNodeStyle';  nodeId: string; style: Partial<NodeStyle> }
-  | { op: 'updateNodeLayout'; nodeId: string; layoutType: string }
-  | { op: 'collapseNode';     nodeId: string; collapsed: boolean }
-  | { op: 'updateMapMeta';    meta: Partial<MapMeta> };
+  | { op: 'add';    nodeId: string; data: { parentId: string; text: string; orderIndex: number; layoutType?: string } }
+  | { op: 'update'; nodeId: string; data: Partial<Pick<NodeObject, 'text' | 'collapsed' | 'layoutType' | 'style' | 'backgroundImage' | 'manualPosition'>> }
+  | { op: 'delete'; nodeId: string }
+  | { op: 'move';   nodeId: string; data: { parentId: string; orderIndex: number } };
 ```
 
 #### 4.3 patchId 생성 규칙
@@ -329,7 +329,7 @@ patch 저장 완료 후, 같은 맵을 열고 있는 **다른 협업 참가자**
   type: 'patch',
   mapId: 'map_xyz',
   newVersion: 129,
-  patches: [...NodePatch[]],
+  patches: [...NodePatch[]],   // op: 'add' | 'update' | 'delete' | 'move'
   clientId: 'cli_abc123',    // 원본 요청자 clientId (수신자 식별용)
   patchId: 'p_1710598325_001'
 }

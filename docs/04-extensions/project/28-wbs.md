@@ -1,8 +1,11 @@
 # 28. WBS
 ## WBS
 
-* 문서 버전: v1.0
+* 문서 버전: v1.1
 * 작성일: 2026-04-16
+* 최종 업데이트: 2026-05-07
+* 변경 이력:
+  * v1.1 — 구현 우선순위 표기를 `MVP (V1)` → `V1`로 명확화 (roadmap.md 동기화)
 * 참조: `docs/01-product/functional-spec.md § WBS`, `docs/02-domain/db-schema.md § node_schedule`
 
 ---
@@ -223,11 +226,14 @@ const WBS_STATUS_COLOR: Record<WbsStatus, string> = {
 
 ### 12. 구현 우선순위
 
-#### MVP (V1)
+#### V1
+
+> 로드맵 V1 단계에 포함. MVP에는 포함되지 않음.
+
 * WBS-01 WBS 모드 전환
 * WBS-02 시작일/종료일 설정
 * WBS-03 마일스톤 설정
-* WBS-04 진척률 설정
+* WBS-04 진첩률 설정
 * WBS-05 WBS 인디케이터 표시
 
 #### 2단계

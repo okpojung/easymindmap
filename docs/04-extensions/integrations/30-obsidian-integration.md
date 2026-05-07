@@ -1,8 +1,11 @@
 # 30. Obsidian Integration
 ## OBSIDIAN_INTEGRATION
 
-* 문서 버전: v1.0
+* 문서 버전: v1.1
 * 작성일: 2026-04-16
+* 최종 업데이트: 2026-05-07
+* 변경 이력:
+  * v1.1 — Export API 경로를 `api-spec.md` v2.3 통합 방식으로 수정; 구형 문서명 참조 제거 (IMP-002 정합성 보정)
 * 참조: `docs/04-extensions/import-export/20-export.md`, `docs/04-extensions/import-export/21-import.md`
 
 ---
@@ -158,7 +161,11 @@ easymindmap > 가져오기 > Markdown 파일 선택
 ### 10. API 영향
 
 * `POST /maps/{mapId}/import` — Obsidian Markdown 가져오기 (기존 Import API 공유)
-* `POST /maps/{mapId}/export?format=obsidian` — Obsidian 호환 Markdown 내보내기
+* `POST /maps/{mapId}/export` — Obsidian 호환 Markdown 내보내기
+  ```json
+  { "format": "markdown", "exportMode": "extended" }
+  ```
+  > Obsidian 호환 Markdown은 `format: "markdown"` + `exportMode: "extended"` 조합으로 요청한다. `api-spec.md` v2.3 §4 참조.
 
 ---
 
@@ -463,7 +470,7 @@ packages/
 
 ```
 NodeObject[]
-  ↓  markdown-export.md 참조
+  ↓  `20-export.md` 참조
 Markdown
   ↓
 Markmap Renderer
@@ -481,4 +488,4 @@ NodeObject[]
 Editor
 ```
 
-`MarkdownAdapter.serialize()` 출력은 `markdown-export.md` 의 포맷과 동일해야 한다.
+`MarkdownAdapter.serialize()` 출력은 `20-export.md`에 정의된 Markdown 포맷과 동일해야 한다.

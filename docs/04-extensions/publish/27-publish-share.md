@@ -1,8 +1,11 @@
 # 27. Publish / Share
 ## PUBLISH_SHARE
 
-* 문서 버전: v1.0
+* 문서 버전: v1.1
 * 작성일: 2026-04-16
+* 최종 업데이트: 2026-05-07
+* 변경 이력:
+  * v1.1 — API 경로를 `api-spec.md` v2.3 기준으로 통일: `GET /p/{publishId}` → `GET /published/{publishId}`, `PATCH` → `DELETE` (IMP-002 정합성 보정)
 * 참조: `docs/01-product/functional-spec.md`, `docs/02-domain/db-schema.md § published_maps`
 
 ---
@@ -106,7 +109,7 @@ const isPublished = (pm: PublishedMap): boolean =>
 #### 5.2 공개 맵 로딩 흐름
 
 ```
-GET /p/{publishId}  (비인증 접근)
+GET /published/{publishId}  (비인증 접근)
     │
     ▼
 published_maps 조회 (publish_id = publishId, unpublished_at IS NULL)
@@ -174,9 +177,11 @@ published_maps.unpublished_at = NOW()
 ### 10. API 영향
 
 * `POST /maps/{mapId}/publish` — 게시 (publish_id 생성)
-* `PATCH /maps/{mapId}/publish` — 게시 취소
-* `GET /p/{publishId}` — 공개 맵 뷰 (비인증)
+* `DELETE /maps/{mapId}/publish` — 게시 취소 (unpublished_at 설정)
+* `GET /published/{publishId}` — 공개 맵 데이터 조회 (비인증)
 * `GET /maps/{mapId}/publish-status` — 게시 상태 조회
+
+> **경로 정리**: 라우팅 레벨에서는 `/p/{publishId}` 단축 형태를 사용할 수 있으나, **API 엔드포인트 기준은 `GET /published/{publishId}`로 통일**한다. (`api-spec.md` v2.3 §8 기준)
 
 ---
 

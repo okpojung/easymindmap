@@ -1,10 +1,11 @@
 # 26. Realtime Chat
 ## REALTIME_CHAT
 
-* 문서 버전: v1.1
+* 문서 버전: v1.2
 * 작성일: 2026-04-16
-* 최종 업데이트: 2026-04-16
+* 최종 업데이트: 2026-05-07
 * 변경 이력:
+  * v1.2 — 12장 구현 우선순위 4단계의 CHAT-04 오기재 (파일/이미지 첨부) 수정 — CHAT-04는 '전송 대상 지정'이며 파일 첨부는 미정의 기능으로 분리
   * v1.1 — 미확인 @멘션 표시(CHAT-06), 1:1 DM(CHAT-07, V3) 추가; 기능 목적 및 범위 업데이트
   * v1.0 — 최초 작성
 * 참조: `docs/01-product/functional-spec.md § COLLAB`, `docs/04-extensions/collaboration/25-map-collaboration.md`
@@ -378,4 +379,6 @@ chat_mentions UPDATE (is_read = true, read_at = NOW())
 * CHAT-07 1:1 DM
 
 #### 4단계 (후순위)
-* CHAT-04 파일/이미지 첨부
+* **파일/이미지 첨부** — 별도 기능 ID 미정의 (추후 기능으로 정의 필요)
+
+> **⚠️ 주의**: CHAT-04는 '전송 대상 지정 (전체/특정 사용자)' 기능이다. 파일/이미지 첨부는 CHAT-04와 다른 미정의 확장 기능이며, V2.5 이후 신규 기능 ID를 부여하여 별도 정의할 것.

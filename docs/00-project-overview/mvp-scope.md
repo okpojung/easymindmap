@@ -1,6 +1,6 @@
 # easymindmap — MVP Scope
 
-**최종 업데이트:** 2026-05-07
+**최종 업데이트:** 2026-05-07 (MVP/V1 단계 조정 반영)
 
 > **v1.1 변경 사항 (2026-05-07)**
 > - 노드 노트 / 링크 / 첨부파일: **MVP로 상향 조정**
@@ -43,8 +43,8 @@
   - **보드형: kanban** ← depth 2 이하 제한 (board/column/card, `chk_nodes_kanban_depth` DB 제약)
 - 노드 추가 인디케이터 (4방향 + 버튼 UI, NODE-IND-01~04 / NODE-13)
 - 노드 노트 (structured note: paragraph / code_block / warning / tip / checklist)
-- 노드 링크 (URL 첨부, `node_links` 테이블)
-- 노드 첨부파일 (파일 첨부, Supabase Storage, `node_attachments` 테이블)
+- 노드 링크: URL 첨부 (`node_links` 테이블)
+- 노드 첨부파일: 일반 파일 (`node_attachments`) 및 멀티미디어 파일 (`node_media`, audio/video)
 - 스타일: fillColor / borderColor / textColor / fontSize / fontWeight / fontStyle / borderWidth / borderStyle / shapeType(7종)
 - 스타일 상속: 노드 생성 시 부모 style 기본 복사, depth별 기본 fontSize 자동 적용
 
@@ -80,7 +80,8 @@
 ## MVP 제외 범위
 
 | 제외 항목 | 이유 / 예정 단계 |
-|-----------|------|
+|-----------|---------|
+| 노드 배경 이미지 (IMG-01~20) | 코어 편집기 안정화 후 적용 → V1 |
 | 실시간 협업 초대·동기화 (COLLAB-01~06) | 인프라 난도 높음 → V1 |
 | 커서 공유 / Soft Lock (COLLAB-07~09) | → V2 |
 | 협업 채팅 (CHAT-01~05) | → V2 |

@@ -1,6 +1,10 @@
 # easymindmap — MVP Scope
 
-**최종 업데이트:** 2026-04-16 (cross-ref 갱신)
+**최종 업데이트:** 2026-05-07
+
+> **v1.1 변경 사항 (2026-05-07)**
+> - 노드 노트 / 링크 / 첨부파일: **MVP로 상향 조정**
+> - 노드 배경 이미지: **MVP 제외 범위로 이동 (V1)**
 
 ## MVP 정의 기준
 
@@ -38,8 +42,9 @@
   - 자유배치: freeform
   - **보드형: kanban** ← depth 2 이하 제한 (board/column/card, `chk_nodes_kanban_depth` DB 제약)
 - 노드 추가 인디케이터 (4방향 + 버튼 UI, NODE-IND-01~04 / NODE-13)
-- 노드 배경 이미지 설정 (`NodeBackgroundImage` 타입: preset/upload, fit/position/overlayOpacity)
 - 노드 노트 (structured note: paragraph / code_block / warning / tip / checklist)
+- 노드 링크 (URL 첨부, `node_links` 테이블)
+- 노드 첨부파일 (파일 첨부, Supabase Storage, `node_attachments` 테이블)
 - 스타일: fillColor / borderColor / textColor / fontSize / fontWeight / fontStyle / borderWidth / borderStyle / shapeType(7종)
 - 스타일 상속: 노드 생성 시 부모 style 기본 복사, depth별 기본 fontSize 자동 적용
 
@@ -87,6 +92,7 @@
 | WBS 모드 + Redmine 연동 (WBS-01~05 / RDMN-01~08) | → V1 |
 | 리소스 할당 (RES-01~05) | → V1 |
 | Obsidian 연동 (OBS-01~05) | → V1 (OBS-01~02 기본 import/export는 MVP 부분 포함) |
+| 노드 배경 이미지 (IMG-01~20) | 구현 연동 부하 중간 수준 → V1 |
 | AI 실행형 절차 (Workflow, WFLOW-01~12) | 단독 편집 모드 전용 고급 기능 → V1.5 |
 | 소셜 로그인 | V1 |
 | 다국어 자동 번역 (TRANS-01~11) | → V2 |
@@ -109,5 +115,7 @@
 | 렌더링 방식 | SVG 기반 자체 엔진 |
 | 저장 방식 | 스냅샷 + patch 로그 병행 |
 | Kanban | 3레벨(board/column/card) 제한 보드형 레이아웃, MVP 포함 |
+| 노드 노트 / 링크 / 첨부파일 | MVP 포함 (노드 콘텐츠 확장의 핵심) |
+| 노드 배경 이미지 | V1 포함 (구현 부하 고려) |
 | 최대 노드 깊이 | depth ≤ 50 (ltree 물리 한계 내 운영 제한) |
 | Autosave 타이밍 | 텍스트/스타일 800ms debounce, 구조 변경 0ms 즉시 |

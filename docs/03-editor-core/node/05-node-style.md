@@ -1,8 +1,11 @@
 # 05. Node Style
 ## NODE_STYLE
 
-* 문서 버전: v1.0
+* 문서 버전: v1.1
 * 작성일: 2026-04-06
+* 최종 업데이트: 2026-05-07
+* 변경 이력:
+  * v1.1 — 노드 배경 이미지 구현 단계를 MVP → V1으로 변경 (roadmap.md v1.6 동기화)
 
 ---
 
@@ -465,15 +468,17 @@ standalone HTML export 시 배경 이미지, overlay, 텍스트 정렬, clipping
   <!-- backgroundImage: {"mode":"upload","url":"assets/node-bg-101.webp","fit":"cover"} -->
 ```
 
-#### 14.13 MVP 구현 범위
+#### 14.13 V1 구현 범위
+
+> **로드맵 V1 단계에 포함.** MVP에는 포함되지 않음 (roadmap.md v1.6 기준).
 
 | 구분 | 포함 기능 |
 |------|----------|
-| **MVP 필수** | IMG-01, IMG-02, IMG-03, IMG-04, IMG-05, IMG-09, IMG-11, IMG-12, IMG-14, IMG-16 |
-| **MVP 선택** | IMG-06, IMG-07, IMG-08, IMG-10, IMG-15 |
+| **V1 필수** | IMG-01, IMG-02, IMG-03, IMG-04, IMG-05, IMG-09, IMG-11, IMG-12, IMG-14, IMG-16 |
+| **V1 선택** | IMG-06, IMG-07, IMG-08, IMG-10, IMG-15 |
 | **후속 단계** | IMG-13, IMG-17, IMG-18, IMG-19, IMG-20 |
 
 Phase별 개발 순서:
-- **Phase 1**: 데이터 모델 확장, 업로드 API, preset 이미지 API, node renderer 배경 이미지 지원, 텍스트 오버레이 렌더링, 이미지 삽입 패널
-- **Phase 2**: fit/position/overlay 옵션, HTML export 반영, undo/redo 지원, autosave 반영
-- **Phase 3**: 이미지 crop, 최근 사용 이미지, 즐겨찾기, workspace 공용 이미지 라이브러리
+- **Phase 1 (V1)**: 데이터 모델 확장, 업로드 API, preset 이미지 API, node renderer 배경 이미지 지원, 텍스트 오버레이 렌더링, 이미지 삽입 패널
+- **Phase 2 (V1)**: fit/position/overlay 옵션, HTML export 반영, undo/redo 지원, autosave 반영
+- **Phase 3 (후속)**: 이미지 crop, 최근 사용 이미지, 즐겨찾기, workspace 공용 이미지 라이브러리

@@ -1,15 +1,13 @@
 # 04. Node Content
 ## NODE_CONTENT
 
-* 문서 버전: v3.0
+* 문서 버전: v3.1
 * 작성일: 2026-04-06
+* 최종 업데이트: 2026-05-07
 * 수정 내용:
 
-  * title 필드 제거 (content 단일 구조로 통합)
-  * markdown 정책 반영
-  * 수동 줄바꿈 지원 추가
-  * 리스트 표현 지원 명확화
-  * NODE_RENDERING 문서 참조 추가
+  * v3.1 — 구현 우선순위 수정: note / 링크 / 첨부파일 MVP로 상향 (roadmap.md v1.6 동기화)
+  * v3.0 — title 필드 제거 (content 단일 구조로 통합), markdown 정송 반영, 수동 줄바꾸 지원 추가, 리스트 표현 지원 명확화, NODE_RENDERING 문서 참조 추가
 
 ---
 
@@ -285,14 +283,16 @@ AI 생성 → `ai_jobs`/revision 메타와 연계 저장
 #### MVP
 
 * markdown 입력
-* 줄바꿈 지원
+* 줄바꾸 지원
 * 리스트 지원
 * code node 기본
+* **note 확장** (structured note: paragraph / code_block / warning / tip / checklist)
+* **노드 링크** (URL 첨부, `node_links` 테이블)
+* **노드 첨부파일** (파일 첨부, Supabase Storage, `node_attachments` 테이블)
 
 #### 2단계
 
 * syntax highlight
-* note 확장
 
 #### 3단계
 

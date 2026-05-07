@@ -687,11 +687,11 @@ Override:   [없음 ▾] → force_on / force_off / null
 
 ## 14. MVP 구현 범위
 
-**포함**: editor layout 4영역 / 노드 CRUD / 노드 추가 인디케이터 (NODE-IND-01~04) / layout 15종 / Kanban 보드 UI / autosave / undo·redo / style / canvas CANVAS-01~08 / export / AI 생성
+**포함**: editor layout 4영역 / 노드 CRUD / 노드 추가 인디케이터 (NODE-IND-01~04) / layout 15종 / Kanban 보드 UI / autosave / undo·redo / style / canvas CANVAS-01~08 / export / AI 생성 / **노드 노트 · 링크 · 첨부파일**
 
-**제외 (후순위)**: 협업 채팅(V2) / 다국어 번역 인디케이터(V2) / 대시보드맵(V3) / 모바일(V1)
+**제외 (후순위)**: 협업 채팅(V2) / 다국어 번역 인디케이터(V2) / 대시보드맵(V3) / 모바일(V1) / **노드 배경 이미지(V1)**
 
-> V1부터 포함: 협업 초대 UI, 협업 참여자 아바타 표시, Soft Lock UI
+> V1부터 포함: 협업 초대 UI, 협업 참여자 아바타 표시, Soft Lock UI, **노드 배경 이미지 패널**
 
 ---
 

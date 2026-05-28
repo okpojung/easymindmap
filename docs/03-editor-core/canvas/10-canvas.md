@@ -1,8 +1,9 @@
 # 10. Canvas
 ## CANVAS
 
-* 문서 버전: v1.0
+* 문서 버전: v1.1
 * 작성일: 2026-04-14
+* 최종 갱신: 2026-05-28 (§ 21~27 추가 — UI 디자인 시안 v1.1 반영)
 * 참조: `docs/01-product/functional-spec.md § 5. CANVAS`, `docs/03-editor-core/state-architecture.md § 5.3`
 
 ---
@@ -287,6 +288,8 @@ function zoomToPoint(
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+> 참고 — UI 디자인 시안 v1.1에서는 좌·우 패널을 **하나의 좌측 통합 사이드바**로 합쳤다. 자세한 내용은 § 21 참조.
+
 ---
 
 ### 8. Status Bar 표시 항목
@@ -566,3 +569,383 @@ Auto Layout 계열에서는 Layout Engine이 좌표를 결정하므로 사용자
 * Auto Layout 계열의 충돌은 CollisionResolver가 Measure/Arrange 단계에서 자동 처리
 
 ---
+
+## v1.1 추가 — UI 디자인 시안 반영 (2026-05-28)
+
+> 시안 파일: `apps/frontend/EasyMindMap Editor.html` (디자인 초안 v1.1)
+> 디자인 방향: 따뜻한 크림 + 앰버 액센트 (MindManager 계열) + 다크 옵션
+> 아래 § 21~27 절은 v1.0 명세를 시각/구조 측면에서 보강한다.
+
+---
+
+### 21. 캔버스 영역 레이아웃 (시안 확정)
+
+좌·우 두 개 패널 대신 **좌측 통합 사이드바** 하나로 단순화한다. 우측 패널은 폐지하고, 그 기능(Style/Layout/Content/Note·Tag/AI Inspector)은 좌측 사이드바의 "속성" 그룹에 통합한다.
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│ Top Toolbar                                                     │
+├──────┬───────┬──────────────────────────────────────────────────┤
+│ Rail │ Group │                                                  │
+│ 44px │ Panel │     Canvas (SVG, flex:1)                         │
+│      │ 300px │     점 그리드 배경 · 24px × zoom                  │
+│ 탐색 │       │                                                  │
+│  🌲  │ 아웃  │     ┌─ 좌상단: 레이아웃 힌트 뱃지                 │
+│  🔍  │ 라인  │     ├─ 우상단: 플로팅 액션 툴바                   │
+│  📑  │       │     │   · 노드 그룹: [+다중자식] [🗑삭제]         │
+│  ⏱  │       │     │   · 보기 그룹: [✋Pan][🎯Focus][⊙Fit][⛶FS] │
+│ ──── │       │     │                                            │
+│ 속성 │       │     └─ 우하단(향후): Minimap                     │
+│  🎨  │       │                                                  │
+│  ▦   │       │                                                  │
+│  🔗  │       │                                                  │
+│  📝  │       │                                                  │
+│  ✨  │       │                                                  │
+├──────┴───────┴──────────────────────────────────────────────────┤
+│ Bottom Status Bar (zoom 컨트롤 + 저장상태 + 협업 + 좌표)         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 21.1 좌상단 캔버스 힌트 뱃지
+
+선택된 레이아웃과 자동 배치 상태를 작은 pill 형태로 알린다.
+
+| 요소 | 값 |
+|---|---|
+| 위치 | `top: 14, left: 14`, `zIndex: 5` |
+| 형태 | pill (`border-radius: 20`) |
+| 내용 | `● {레이아웃명} ({엣지스타일}) · 자동 배치 · {n} 노드 · {zoom}%` |
+| 예시 | `● 방사형 · 양쪽 (곡선) · 자동 배치 · 20 노드 · 100%` |
+
+#### 21.2 우상단 플로팅 액션 툴바
+
+좌클릭 기반 컨텍스트 메뉴는 별도로 제공하지 않는다 (우클릭 메뉴는 향후 단계). 대신 노드 선택 시 사용 가능한 액션을 우상단 플로팅 툴바에 **두 그룹**으로 노출한다.
+
+| 그룹 | 라벨 | 버튼 | 활성 조건 | 단축키 |
+|---|---|---|---|---|
+| 노드 | **노드** | `+` 다중 자식 추가 | 선택 노드 있을 때 | `Ctrl+Space` |
+| 노드 | | 🗑 노드 삭제 | 선택 노드 있을 때 | `Del` |
+| 보기 | **보기** | ✋ Pan 모드 | 항상 | `H` |
+| 보기 | | 🎯 선택 Focus | 선택 노드 있을 때 | `Alt+F` |
+| 보기 | | ⊙ Fit Screen | 항상 | `Ctrl+Shift+F` |
+| 보기 | | ⛶ Fullscreen | 항상 | `F11` |
+
+> 시각 처리: 그룹 사이에 1px divider, 그룹 시작에 9.5px 700 weight `letter-spacing: 0.4` 의 uppercase 라벨.
+
+#### 21.3 점 그리드 배경
+
+캔버스 배경은 단일 `background` shorthand로 페인트한다 (React가 shorthand/longhand 충돌 경고를 발생시키지 않도록).
+
+```ts
+style={{
+  background: `${tokens.canvas} radial-gradient(circle at center, ${tokens.border}aa 1px, transparent 1px) 0 0 / ${24 * scale}px ${24 * scale}px repeat`,
+}}
+```
+
+- 그리드 간격 = `24 * zoomScale` → 줌과 함께 자연스럽게 늘어남
+- 다크 테마에서는 `tokens.canvas`가 어두워지면서 그리드 점도 자동으로 약하게 보임
+
+---
+
+### 22. 4방향 노드 추가 인디케이터 시각 명세 (NODE-IND-01~04)
+
+선택 노드가 있을 때 SVG 내부에 인디케이터를 함께 그린다. `02-node-editing.md § NODE-IND` 의 4종 기능 정의를 시각화한다.
+
+```text
+                  [+]   ⬆ NODE-IND-01 — 부모 노드 중간 삽입
+                   :    : (점선)
+                   :
+   NODE-IND-03 [+]:::::[ 선택 노드 ]:::::[+]  NODE-IND-04
+   형제(이전)              :              형제(다음)
+                           :
+                          [+]   ⬇ NODE-IND-02 — 자식 노드 추가
+```
+
+| 속성 | 값 |
+|---|---|
+| 원 반지름 | 11px |
+| 원 테두리 | 1.8px (앰버 primary) |
+| 원 배경 | surface (라이트: 흰색 / 다크: 어두운 회색) |
+| 십자(+) | 5px × 5px, 1.8px stroke, 둥근 끝 |
+| 연결자 | 점선 `2 3`, primary 색, 1.3px |
+| Root에서 disabled | ⬆ ⬅ ➡ 모두 opacity 0.25 (자식 추가만 활성) |
+| 단축키 안내 | 인디케이터 옆 텍스트 라벨 **표시하지 않음** (시각 노이즈 방지). 안내는 캔버스 위 별도 placement 또는 우상단 툴바의 `+` 버튼 hover tooltip으로 제공 |
+
+---
+
+### 23. 노드 자동 크기 & 자동 줄바꿈 (NR-03, NR-04 시각 구현)
+
+노드 폭은 텍스트 길이에 따라 자동 결정되며, max-width 초과 시 자동 줄바꿈한다. **수동 줄바꿈(`\n`)은 항상 우선**한다.
+
+#### 23.1 depth별 폭/높이 토큰
+
+| depth | 역할 | minW | maxW | fontSize | fontWeight | lineHeight | padX | padY |
+|---|---|---|---|---|---|---|---|---|
+| 0 | Root | 170 | 260 | 18 | 700 | 24 | 22 | 14 |
+| 1 | Branch | 150 | 240 | 14 | 600 | 18 | 14 | 9 |
+| 2 | Leaf | 130 | 320 | 13 | 500 | 18 | 14 | 9 |
+
+> Branch에 아이콘(NS-05)이 있는 경우 `padX + 22px` 만큼 텍스트 공간을 좌측에 추가 확보한다.
+
+#### 23.2 글자 폭 측정 (Pretendard 기준 경험치)
+
+| 문자 종류 | 폭 |
+|---|---|
+| CJK (한/중/일) | `fontSize × 1.00` |
+| 공백 | `fontSize × 0.34` |
+| 숫자 | `fontSize × 0.58` |
+| 기타 (영문/기호) | `fontSize × 0.55` |
+
+#### 23.3 줄바꿈 알고리즘 (의사 코드)
+
+```text
+1. text를 \n 기준으로 segments 분리 (수동 줄바꿈 보존)
+2. 각 segment에 대해:
+   a. 공백 단위로 토큰화
+   b. innerMaxW = maxW - padX*2 - iconReserve
+   c. 토큰을 한 줄에 누적, 누적 폭 > innerMaxW 이면 줄 분리
+   d. 단일 토큰이 innerMaxW 보다 길면 글자 단위로 break
+3. 최종 폭 = clamp(min, ceil(widest_line + padX*2 + iconReserve), max)
+4. 최종 높이 = line_count * lineHeight + padY*2
+```
+
+#### 23.4 텍스트 렌더링
+
+- SVG `<text>` 다중 줄: 각 줄을 별도 `<text>` 요소로, `y`는 `(i - (n-1)/2) * lineHeight + fontSize * 0.34` 로 수직 중앙 정렬
+- 텍스트는 항상 `text-anchor="middle"` (수평 중앙)
+- Branch 아이콘이 있으면 텍스트 `x` 를 `+10px` 시프트하여 아이콘과 겹치지 않게
+
+---
+
+### 24. 태그 칩 시각 명세 (TAG-04, `docs/assets/태그2.png` 형식)
+
+태그는 노드 **하단 외부**에 깃발(리본) 모양 칩으로 표시한다. 노드 우상단에 떠 있는 채움 뱃지는 액션 버튼처럼 보이므로 사용하지 않는다.
+
+#### 24.1 형태
+
+```text
+┌─ 노드 ─────────────────┐
+│  에디터 코어 — 노드 CRUD  │
+└────────────────────────┘
+  ◢ MVP  | ✕   ◢ Core | ✕    ← 노드 하단, 좌측에서부터 정렬
+   ↑
+   화살표 꼬리 (좌측)
+```
+
+#### 24.2 측정값
+
+| 속성 | 값 |
+|---|---|
+| 위치 | 노드 bottom + 6px gap |
+| 정렬 | 노드 좌측 edge + 8px 들여쓰기부터 좌→우 |
+| 칩 높이 | 16px |
+| 화살표 꼬리 폭 | 6px |
+| 내부 padding X | 8px |
+| ✕ 핸들 폭 | 14px |
+| 칩 사이 gap | 4px |
+| 라벨 폰트 | 10px / 600 / letter-spacing 0.2 |
+| 우측 라운드 | radius 3px |
+| 테두리 | 0.8px (칩 색상 family border) |
+
+#### 24.3 색상 family 매핑
+
+태그 명칭별 의미색을 고정 매핑한다. 사용자가 직접 색을 선택하지 않아도 일관된 색 분류가 가능하다.
+
+| 태그명 | family | light bg | light text | dark bg | dark text |
+|---|---|---|---|---|---|
+| `MVP` `Core` | amber | `#FEF3C7` | `#92400E` | `#3B2A0A` | `#FBBF24` |
+| `AI` | violet | `#EDE9FE` | `#5B21B6` | `#2E1B4C` | `#C4B5FD` |
+| `Export` | teal | `#CCFBF1` | `#115E59` | `#134E4A` | `#5EEAD4` |
+| `V1` `V2` `V3` | blue | `#DBEAFE` | `#1E40AF` | `#172554` | `#93C5FD` |
+| `Q1`~`Q4` | green | `#DCFCE7` | `#166534` | `#14532D` | `#86EFAC` |
+| `Auth` `UI` `UX` | rose | `#FFE4E6` | `#9F1239` | `#4C0519` | `#FDA4AF` |
+| 그 외 | slate | `#F1F5F9` | `#475569` | `#1E293B` | `#94A3B8` |
+
+> 노드 데이터 모델: `node.tags: string[]` (다중 태그). 단일 `node.tag: string` 도 호환.
+
+#### 24.4 SVG path 정의
+
+```text
+M  x0,        ymid       — 화살표 꼬리 끝
+L  x1,        ytop        — 좌상단 (x1 = x0 + arrowW)
+L  x2 - 3,    ytop        — 우상단 직전
+Q  x2,  ytop, x2, ytop+3  — 우상단 라운드
+L  x2,        ybot - 3    — 우측 수직
+Q  x2,  ybot, x2-3, ybot  — 우하단 라운드
+L  x1,        ybot        — 좌하단
+Z
+```
+
+#### 24.5 ✕ 삭제 핸들
+
+- 라벨과 ✕ 사이 1px 세로 divider (`opacity 0.25`)
+- ✕ 자체는 두 개의 line으로 그려 1.2px stroke (`opacity 0.65`)
+- 호버 시 opacity 1.0로 진해짐 (구현 시 `<g pointer-events="auto" style="cursor:pointer">`)
+
+---
+
+### 25. 줌 적용 범위 — 확정 (6.7 규칙 시각 구현)
+
+Viewport Store 분리 규칙(§ 6.7)을 시각적으로 명확히 한다.
+
+| 영역 | 줌 적용 |
+|---|---|
+| Top Toolbar | ❌ 고정 |
+| Left Unified Sidebar | ❌ 고정 |
+| Bottom Status Bar | ❌ 고정 |
+| Canvas SVG `<g>` 내부 (노드/엣지/인디케이터/태그/Soft Lock) | ✅ |
+| 점 그리드 배경 | ✅ (`backgroundSize × scale`) |
+| 캔버스 좌상단 힌트 뱃지, 우상단 플로팅 툴바 | ❌ 고정 |
+| 협업 커서 화살표 | ✅ (scale로 좌표 보정) |
+
+#### 25.1 SVG 구현
+
+```html
+<svg viewBox="0 0 W H">
+  <g transform="translate(CX,CY) scale(scale) translate(-CX,-CY)">
+    <!-- edges, nodes, indicators, tags, soft-lock -->
+  </g>
+</svg>
+```
+
+- `translate-scale-translate` 패턴으로 캔버스 중앙 기준 확대
+- React 리렌더링 없이 `transform` 속성만 갱신하므로 60fps 유지
+
+---
+
+### 26. Soft Lock 시각 표현 (V1 — `25-map-collaboration.md` 참조)
+
+다른 사용자가 편집 중인 노드는 다음 두 가지로 표시한다.
+
+| 요소 | 사양 |
+|---|---|
+| 외곽 테두리 | 노드 외곽 2.5px 편집자 색 실선 (1px stroke + 3px outer padding) |
+| 편집자 라벨 | 노드 하단 외부 (태그 칩과는 별도 라인) — `✏ {이름} 편집 중` 둥근 pill |
+| 라벨 색 | 편집자 협업 색상 채움 + 흰색 글자 |
+| 라벨 크기 | 92 × 18, radius 9, fontSize 10 / 600 |
+| 협업 커서 | 화살표 + 이름 태그가 노드 우상단 외부에 떠 있음 |
+
+> Soft Lock 노드는 다른 사용자가 클릭해도 편집 진입이 차단된다 (`shake` 애니메이션 + 토스트 안내).
+
+---
+
+### 27. 레이아웃별 엣지 스타일 (시안 확정)
+
+레이아웃마다 시각적 구분이 명확하도록 엣지 그리기 방식을 분리한다. 사용자 지정 엣지 스타일은 V1+ 기능이며, MVP에서는 레이아웃 종류에 따라 자동 결정된다.
+
+| 레이아웃 | 엣지 스타일 | 굵기 |
+|---|---|---|
+| `radial-bidirectional` | cubic bezier (S-curve), 부드러운 곡선 | 2.2px (root→branch), 1.6px (branch→leaf) |
+| `radial-right` / `radial-left` | cubic bezier | 동일 |
+| `tree-right` / `tree-left` | orthogonal **H-V-H** (직각 가로→세로→가로) | 2.2 / 1.6 |
+| `tree-up` / `tree-down` | orthogonal **V-H-V** | 2.2 / 1.6 |
+| `hierarchy-right` / `hierarchy-left` | **L-shape** (들여쓰기 가이드 라인 — 부모 좌측 12px 위치에서 수직선 + 자식 좌단으로 짧은 수평선) | 1.4 |
+| `process-tree-*` | (V1) 화살표 마커 부착 직선 | 1.8 |
+| `freeform` | 곡선 (radial과 동일) | 동일 |
+| `kanban` | 엣지 비표시 (보드 컬럼/카드 시각 그룹화로 대체) | — |
+
+#### 27.1 직각 엣지 — Tree-right 예시
+
+```text
+parent right edge  ──┐                ┌── child left edge
+                     │                │
+                     └────────────────┘
+                          mid X
+```
+
+```ts
+const fx = parent.x + parent.w/2;
+const tx = child.x - child.w/2;
+const mx = fx + (tx - fx) * 0.5;
+d = `M ${fx} ${fy} H ${mx} V ${ty} H ${tx}`;
+```
+
+#### 27.2 들여쓰기 L-shape — Hierarchy-right 예시
+
+```text
+└─ Q1 기반 구축          ← 부모 하단 좌측에서 수직선
+   ├─ 인증 시스템         ← 짧은 수평선으로 자식 좌단 연결
+   ├─ 에디터 코어
+   └─ 자동저장 엔진
+```
+
+```ts
+const px = parent.x - parent.w/2 + 14;  // 부모 좌측 인덴트 가이드
+const py = parent.y + parent.h/2;
+const tx = child.x - child.w/2;
+const ty = child.y;
+d = `M ${px} ${py} V ${ty} H ${tx}`;
+```
+
+---
+
+### 28. 디자인 토큰 (요약)
+
+> 자세한 토큰은 `apps/frontend/src/components/design-tokens/theme.ts` 참조.
+
+#### 28.1 라이트 테마 — "Warm Productivity"
+
+| 토큰 | 값 |
+|---|---|
+| `bg` | `#FAF7F2` (크림) |
+| `canvas` | `#F5F0E8` |
+| `surface` | `#FFFFFF` |
+| `border` | `#E8E0D2` |
+| `text` | `#1F1B16` |
+| `primary` | `#D97706` (앰버) |
+| `primarySoft` | `#FEF3C7` |
+| `accent` | `#0284C7` (스카이) |
+| `success` | `#15803D` |
+| `danger` | `#DC2626` |
+
+#### 28.2 다크 테마 — "Modern Dark"
+
+| 토큰 | 값 |
+|---|---|
+| `bg` | `#0F1115` |
+| `canvas` | `#14171D` |
+| `surface` | `#181A20` |
+| `border` | `#2A2E38` |
+| `text` | `#E8E6E3` |
+| `primary` | `#F59E0B` (앰버) |
+| `primarySoft` | `#3B2A0A` |
+| `accent` | `#38BDF8` |
+| `success` | `#4ADE80` |
+| `danger` | `#F87171` |
+
+#### 28.3 노드 색상 family
+
+브랜치 노드(depth 1)는 5종 의미색 중 하나를 가진다. 각 family는 `{fill, text, border}` 3-색 세트로 정의된다.
+
+| family | 의미 | light fill | light text | light border |
+|---|---|---|---|---|
+| amber | 기본 / 강조 | `#FEF3C7` | `#78350F` | `#F59E0B` |
+| blue | 전략 / 시스템 | `#DBEAFE` | `#1E3A8A` | `#3B82F6` |
+| green | 결과 / 지표 | `#DCFCE7` | `#14532D` | `#22C55E` |
+| red | 리스크 / 경고 | `#FEE2E2` | `#7F1D1D` | `#EF4444` |
+| violet | 협업 / 사람 | `#EDE9FE` | `#4C1D95` | `#8B5CF6` |
+
+다크 테마는 위 값에 대응되는 어두운 톤을 사용한다.
+
+---
+
+### 29. Tweaks 패널 (시안 전용 — 프로덕션 제외)
+
+디자인 시안 검토용으로만 제공되는 우하단 플로팅 패널이다. 최종 빌드에서는 제거된다.
+
+| 컨트롤 | 옵션 |
+|---|---|
+| 테마 | `라이트` / `다크` |
+| 레이아웃 | `radial-bidirectional` / `radial-right` / `tree-right` / `tree-down` / `hierarchy-right` / `kanban` |
+| Inspector 탭 | `style` / `layout` / `content` / `note` / `ai` |
+| 샘플 주제 | `2026 제품 로드맵` / `easymindmap MVP 설계` |
+
+패널 헤더에는 `시안 전용` 황색 배지로 명시한다.
+
+---
+
+### 30. 참고 — 시안 파일
+
+- 데모: `apps/frontend/EasyMindMap Editor.html` (브라우저 직접 열람 가능)
+- 컴포넌트 구조: `apps/frontend/src/editor/canvas/`, `apps/frontend/src/editor/node-renderer/`, `apps/frontend/src/editor/edge-renderer/`, `apps/frontend/src/components/`
+- 적용 가이드: 패치 zip의 `README_적용방법.md`

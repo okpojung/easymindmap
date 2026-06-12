@@ -2,49 +2,61 @@
 // These are intentionally lightweight — production code will use the canonical
 // NodeObject / Map types from `domain-models.md` once the API is wired up.
 
+import type { LayoutType } from '@/types/mindmap';
+export type { LayoutType } from '@/types/mindmap';
+
 export type NodeColorKey =
   | 'root'
-  | 'l1A' | 'l1B' | 'l1C' | 'l1D' | 'l1E'
+  | 'l1A'
+  | 'l1B'
+  | 'l1C'
+  | 'l1D'
+  | 'l1E'
   | 'l2';
 
-export type LayoutType =
-  | 'radial-bidirectional'
-  | 'radial-right'
-  | 'radial-left'
-  | 'tree-up'
-  | 'tree-down'
-  | 'tree-right'
-  | 'tree-left'
-  | 'hierarchy-right'
-  | 'hierarchy-left'
-  | 'process-tree-right'
-  | 'process-tree-left'
-  | 'process-tree-right-a'
-  | 'process-tree-right-b'
-  | 'freeform'
-  | 'kanban';
+export type TextAlign = 'left' | 'center' | 'right';
 
-export interface SampleLeaf {
+export interface MindNode {
   id: string;
   text: string;
+
+  textAlign?: TextAlign;
+  layoutType?: LayoutType;
+
+  colorKey?: NodeColorKey;
+  side?: 'left' | 'right' | 'center';
+
+  icon?: string;
+
   tag?: string;
   tags?: string[];
+
   note?: boolean;
   locked?: boolean;
+
+  children?: MindNode[];
 }
 
-export interface SampleBranch {
-  id: string;
-  text: string;
+export interface SampleLeaf extends MindNode {}
+
+export interface SampleBranch extends MindNode {
   colorKey: NodeColorKey;
   side: 'left' | 'right';
   icon?: string;
-  children?: SampleLeaf[];
+  children?: MindNode[];
 }
 
 export interface SampleMap {
   title: string;
-  root: { id: 'root'; text: string; colorKey: 'root'; side?: 'center' };
+  root: {
+    id: 'root';
+    text: string;
+    colorKey: 'root';
+    side?: 'center';
+
+    textAlign?: TextAlign;
+    layoutType?: LayoutType;
+  };
   branches: SampleBranch[];
 }
 

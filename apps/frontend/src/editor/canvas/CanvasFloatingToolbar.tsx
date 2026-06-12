@@ -7,17 +7,23 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
+import { useViewportStore } from '@/stores/viewportStore';
 
 interface Props {
   t: ThemeTokens;
   hasSelection: boolean;
+  onFitView?: () => void;
+  onFocusSelected?: () => void;
 }
 
-export function CanvasFloatingToolbar({ t, hasSelection }: Props) {
+export function CanvasFloatingToolbar({ t, hasSelection, onFitView, onFocusSelected }: Props) {
   const selectedId = useInteractionStore((state) => state.selectedId);
   const setSelectedId = useInteractionStore((state) => state.setSelectedId);
   const addChildNode = useDocumentStore((state) => state.addChildNode);
   const deleteNode = useDocumentStore((state) => state.deleteNode);
+
+  const panMode = useViewportStore((state) => state.panMode);
+  const togglePanMode = useViewportStore((state) => state.togglePanMode);
 
   const handleAddNode = () => {
     const newNodeId = addChildNode(selectedId);
@@ -27,6 +33,14 @@ export function CanvasFloatingToolbar({ t, hasSelection }: Props) {
   const handleDeleteNode = () => {
     deleteNode(selectedId);
     setSelectedId(null);
+  };
+
+  const handleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void document.documentElement.requestFullscreen();
+    }
   };
 
   return (
@@ -61,12 +75,28 @@ export function CanvasFloatingToolbar({ t, hasSelection }: Props) {
       <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
 
       <GroupLabel t={t}>보기</GroupLabel>
-      <ToolbarBtn t={t} title="Pan 모드 — 캔버스 끌기 (H)"><I.Hand size={15} /></ToolbarBtn>
-      <ToolbarBtn t={t} title="선택 노드 화면 가득 보기 (Alt+F)" disabled={!hasSelection}>
+      <ToolbarBtn
+        t={t}
+        title="Pan 모드 — 캔버스 끌기 (H)"
+        highlight={panMode}
+        onClick={togglePanMode}
+      >
+        <I.Hand size={15} />
+      </ToolbarBtn>
+      <ToolbarBtn
+        t={t}
+        title="선택 노드 화면 중앙 보기 (Alt+F)"
+        disabled={!hasSelection}
+        onClick={onFocusSelected}
+      >
         <I.Focus size={15} />
       </ToolbarBtn>
-      <ToolbarBtn t={t} title="맵 전체를 화면에 맞추기 (Ctrl+Shift+F)"><I.Fit size={15} /></ToolbarBtn>
-      <ToolbarBtn t={t} title="편집기 전체 화면 전환 (F11)"><I.Full size={15} /></ToolbarBtn>
+      <ToolbarBtn t={t} title="맵 전체를 화면에 맞추기" onClick={onFitView}>
+        <I.Fit size={15} />
+      </ToolbarBtn>
+      <ToolbarBtn t={t} title="편집기 전체 화면 전환" onClick={handleFullscreen}>
+        <I.Full size={15} />
+      </ToolbarBtn>
     </div>
   );
 }

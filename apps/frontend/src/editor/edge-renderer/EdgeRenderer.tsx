@@ -1,11 +1,15 @@
 // File: src/editor/edge-renderer/EdgeRenderer.tsx
-// Version: MVP-EdgeRenderer-TreeRight-As-Hierarchy-v1.0.0
+// Version: MVP-EdgeRenderer-PerNodeLayout-v2.0.0
 // Description:
+// - Edge style is resolved per edge from the PARENT node's laid-out
+//   layoutType (falling back to the map layoutType), so mixed layouts
+//   (per-subtree overrides) render correctly.
 // - Radial layouts use curve edges.
-// - Tree-right uses hierarchy-style orthogonal edges.
-// - Hierarchy-right uses hierarchy-style orthogonal edges.
+// - Tree-right uses outline-style orthogonal edges (parent bottom-left → child left).
+// - Hierarchy-right uses centered orthogonal elbow edges (parent right → child left).
 // - Tree-down uses vertical-down orthogonal edges.
-// - Process-tree uses horizontal stage + vertical card edges.
+// - Process-tree uses horizontal stage edges + vertical column edges,
+//   chosen by geometry so subtree overrides also connect cleanly.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType } from '@/editor/__samples__/types';
@@ -24,7 +28,9 @@ function isRadialLayout(layoutType?: LayoutType): boolean {
     layoutType === 'both-radial' ||
     layoutType === 'radial-right' ||
     layoutType === 'radial-left' ||
-    layoutType === 'radial-bidirectional'
+    layoutType === 'radial-bidirectional' ||
+    layoutType === 'free' ||
+    layoutType === 'freeform'
   );
 }
 
@@ -79,7 +85,8 @@ function createTreeDownPath(from: LaidOutNode, to: LaidOutNode): string {
   return `M ${fromX} ${fromY} V ${midY} H ${toX} V ${toY}`;
 }
 
-function createHierarchyLikePath(from: LaidOutNode, to: LaidOutNode): string {
+// Outline (tree-right) edge: parent bottom-left → down → child left edge.
+function createOutlinePath(from: LaidOutNode, to: LaidOutNode): string {
   const fromX = from.x - from.w / 2 + 12;
   const fromY = from.y + from.h / 2;
 
@@ -89,38 +96,61 @@ function createHierarchyLikePath(from: LaidOutNode, to: LaidOutNode): string {
   return `M ${fromX} ${fromY} V ${toY} H ${toX}`;
 }
 
+// Centered hierarchy edge: parent right edge → elbow → child left edge.
+function createHierarchyPath(from: LaidOutNode, to: LaidOutNode): string {
+  const goesLeft = to.side === 'left';
+
+  const fromX = goesLeft ? from.x - from.w / 2 : from.x + from.w / 2;
+  const toX = goesLeft ? to.x + to.w / 2 : to.x - to.w / 2;
+
+  const fromY = from.y;
+  const toY = to.y;
+
+  const midX = fromX + (toX - fromX) / 2;
+
+  return `M ${fromX} ${fromY} H ${midX} V ${toY} H ${toX}`;
+}
+
 function createProcessPath(from: LaidOutNode, to: LaidOutNode): string {
-  if (to.depth === 1) {
-    const fromX = from.x + from.w / 2;
-    const fromY = from.y;
+  const fromRight = from.x + from.w / 2;
+  const toLeft = to.x - to.w / 2;
 
-    const toX = to.x - to.w / 2;
-    const toY = to.y;
-
-    return `M ${fromX} ${fromY} H ${toX}`;
+  // Stage edge: child sits clearly to the right of the parent.
+  if (toLeft >= fromRight + 4) {
+    const midX = fromRight + (toLeft - fromRight) / 2;
+    return `M ${fromRight} ${from.y} H ${midX} V ${to.y} H ${toLeft}`;
   }
 
-  const fromX = from.x;
+  // Column edge: child sits below the parent.
   const fromY = from.y + from.h / 2;
-
-  const toX = to.x;
   const toY = to.y - to.h / 2;
 
-  return `M ${fromX} ${fromY} V ${toY}`;
+  if (Math.abs(to.x - from.x) < 1) {
+    return `M ${from.x} ${fromY} V ${toY}`;
+  }
+
+  const midY = fromY + (toY - fromY) / 2;
+  return `M ${from.x} ${fromY} V ${midY} H ${to.x} V ${toY}`;
 }
 
 export function EdgeRenderer({ from, to, t, layoutType }: Props) {
   const width = from.depth === 0 ? 2.3 : 1.6;
 
-  const d = isRadialLayout(layoutType)
+  // The parent's layout determines how its outgoing edges are drawn, so
+  // subtrees with their own layoutType render with matching edges.
+  const effectiveType = from.layoutType ?? to.layoutType ?? layoutType;
+
+  const d = isRadialLayout(effectiveType)
     ? createRadialPath(from, to)
-    : isProcessLayout(layoutType)
+    : isProcessLayout(effectiveType)
       ? createProcessPath(from, to)
-      : isTreeDownLayout(layoutType)
+      : isTreeDownLayout(effectiveType)
         ? createTreeDownPath(from, to)
-        : isTreeRightLayout(layoutType) || isHierarchyLayout(layoutType)
-          ? createHierarchyLikePath(from, to)
-          : createHierarchyLikePath(from, to);
+        : isHierarchyLayout(effectiveType)
+          ? createHierarchyPath(from, to)
+          : isTreeRightLayout(effectiveType)
+            ? createOutlinePath(from, to)
+            : createOutlinePath(from, to);
 
   return (
     <path

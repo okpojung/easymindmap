@@ -14,9 +14,11 @@ interface Props {
   scale?: number;
   CX: number;
   CY: number;
+  panX?: number;
+  panY?: number;
 }
 
-export function CollabCursor({ t, collab, W, H, nodes, scale = 1, CX, CY }: Props) {
+export function CollabCursor({ t, collab, W, H, nodes, scale = 1, CX, CY, panX = 0, panY = 0 }: Props) {
   if (!collab) return null;
   const targetNode = nodes.find(n => n.id === collab.editing);
   if (!targetNode) return null;
@@ -24,9 +26,9 @@ export function CollabCursor({ t, collab, W, H, nodes, scale = 1, CX, CY }: Prop
   // Offset the cursor slightly outside the node's top-right corner.
   const rawX = targetNode.x + targetNode.w/2 - 10;
   const rawY = targetNode.y - targetNode.h/2 - 16;
-  // Apply the same scale transform used inside the SVG <g>
-  const cx = CX + (rawX - CX) * scale;
-  const cy = CY + (rawY - CY) * scale;
+  // Apply the same pan + scale transform used inside the SVG <g>
+  const cx = CX + panX + (rawX - CX) * scale;
+  const cy = CY + panY + (rawY - CY) * scale;
   const leftPct = (cx / W) * 100;
   const topPct  = (cy / H) * 100;
   const color = (t as any)[collab.colorKey] as string;

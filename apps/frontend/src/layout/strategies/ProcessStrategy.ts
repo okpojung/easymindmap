@@ -1,12 +1,16 @@
 // File: src/layout/strategies/ProcessStrategy.ts
-// Version: MVP-ProcessStrategy-Timeline-v2.0.0
+// Version: MVP-ProcessStrategy-RowBelowRoot-v3.0.0
+// Reference: docs/assets/layout_진행트리형.png,
+//            docs/assets/트리오른쪽_계층형오른쪽_진행트리오른쪽.JPG
 // Description:
-// - process-tree-right: timeline layout.
-//   Root sits at the left; level-1 stages flow left → right on the same row.
-//   Each stage's descendants stack vertically BELOW the stage (one column),
-//   matching the vertical drop edges drawn by EdgeRenderer.createProcessPath.
-// - The whole flow is measured first and centered horizontally in the
-//   viewBox; wide maps overflow evenly on both sides (use fit/zoom/pan).
+// - process-tree-right ("오른쪽-진행트리"):
+//   · Root sits at the upper-left.
+//   · Level-1 stages flow left → right on a row BELOW the root
+//     (stage tops aligned).
+//   · The connector drops from the root's bottom, runs along a horizontal
+//     spine, then drops into the TOP edge of each stage
+//     (EdgeRenderer.createProcessPath).
+//   · Each stage's descendants stack vertically below the stage (one column).
 // - layoutProcessChildren() is shared with SubtreeStrategy so the same
 //   placement can be applied below any selected node.
 
@@ -14,12 +18,13 @@ import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 
-const ROOT_Y_OFFSET = 150;
+const ROOT_Y_OFFSET = 250;       // root near the top of the viewBox
 const ROOT_MIN_LEFT = 40;
 
-const ANCHOR_TO_STAGE_GAP = 70;
-const STAGE_GAP = 40;
-const STAGE_TO_CHILD_GAP = 42;
+const STAGE_START_INDENT = 56;   // root left edge → first stage column left
+const STAGE_GAP = 40;            // gap between stage columns
+const ROOT_TO_STAGE_ROW_GAP = 64; // root bottom → stage row top
+const STAGE_TO_CHILD_GAP = 42;   // stage bottom → first child top
 const CHILD_V_GAP = 10;
 
 const PROCESS_TAG = 'process-tree-right' as LayoutType;
@@ -111,7 +116,7 @@ function flowWidth(columns: MeasuredColumn[]): number {
 function placeColumns(
   columns: MeasuredColumn[],
   startLeft: number,
-  rowY: number,
+  rowTop: number,
   stageDepth: number,
   parentId: string,
   out: LaidOutNode[],
@@ -121,12 +126,13 @@ function placeColumns(
 
   for (const column of columns) {
     const stageX = groupLeft + column.columnW / 2;
+    const stageY = rowTop + column.stageSize.h / 2; // stage tops aligned
 
     out.push({
       ...column.stage,
       layoutType: PROCESS_TAG,
       x: stageX,
-      y: rowY,
+      y: stageY,
       w: column.stageSize.w,
       h: column.stageSize.h,
       _lines: column.stageSize.lines,
@@ -135,11 +141,11 @@ function placeColumns(
       _lineHeight: column.stageSize.lineHeight,
       depth: stageDepth,
       parent: parentId,
-      side: 'right',
+      side: 'down',
       parentColorKey: parentColorKey as any,
     });
 
-    let cursorY = rowY + column.stageSize.h / 2 + STAGE_TO_CHILD_GAP;
+    let cursorY = stageY + column.stageSize.h / 2 + STAGE_TO_CHILD_GAP;
 
     for (const item of column.items) {
       out.push({
@@ -166,13 +172,14 @@ function placeColumns(
   }
 }
 
-// Lays out `stages` as a horizontal flow to the right of an anchor node,
+// Lays out `stages` as a horizontal flow on a row BELOW the anchor node,
 // with each stage's descendants stacked vertically below the stage.
 export function layoutProcessChildren(
   stages: MindNode[],
   anchorX: number,
   anchorY: number,
   anchorW: number,
+  anchorH: number,
   anchorDepth: number,
   parentId: string,
   out: LaidOutNode[],
@@ -182,8 +189,8 @@ export function layoutProcessChildren(
 
   placeColumns(
     columns,
-    anchorX + anchorW / 2 + ANCHOR_TO_STAGE_GAP,
-    anchorY,
+    anchorX - anchorW / 2 + STAGE_START_INDENT,
+    anchorY + anchorH / 2 + ROOT_TO_STAGE_ROW_GAP,
     anchorDepth + 1,
     parentId,
     out,
@@ -198,22 +205,25 @@ export function layoutProcessTreeRight(
   rootW: number,
   out: LaidOutNode[],
 ): void {
+  const rootH = out[0].h;
   const columns = measureColumns(branches, 1);
 
-  // Center the whole flow (root + stages) horizontally in the viewBox.
-  const totalW = rootW + ANCHOR_TO_STAGE_GAP + flowWidth(columns);
-  const rootX = Math.max(CX - totalW / 2 + rootW / 2, ROOT_MIN_LEFT + rootW / 2);
+  // Center the whole block (root + stage flow) horizontally in the viewBox.
+  const totalW = Math.max(rootW, STAGE_START_INDENT + flowWidth(columns));
+  const blockLeft = Math.max(CX - totalW / 2, ROOT_MIN_LEFT);
+
+  const rootX = blockLeft + rootW / 2;
   const rootY = CY - ROOT_Y_OFFSET;
 
   out[0].x = rootX;
   out[0].y = rootY;
-  out[0].side = 'right';
+  out[0].side = 'down';
   out[0].layoutType = PROCESS_TAG;
 
   placeColumns(
     columns,
-    rootX + rootW / 2 + ANCHOR_TO_STAGE_GAP,
-    rootY,
+    blockLeft + STAGE_START_INDENT,
+    rootY + rootH / 2 + ROOT_TO_STAGE_ROW_GAP,
     1,
     'root',
     out,

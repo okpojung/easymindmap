@@ -11,17 +11,21 @@ interface Props {
   collabs: Collaborator[];
   zoom: number;
   onZoomChange: (v: number) => void;
+  onFitView?: () => void;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
   'radial-bidirectional': '방사형 · 양쪽',
+  'radial-right':         '방사형 · 오른쪽',
   'tree-right':           '트리 · 오른쪽',
   'tree-down':            '트리 · 아래',
   'hierarchy-right':      '계층형 · 오른쪽',
+  'process-tree-right':   '진행트리 · 오른쪽',
+  'freeform':             '자유 배치',
   'kanban':               'Kanban 보드',
 };
 
-export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange }: Props) {
+export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange, onFitView }: Props) {
   const activeCount = collabs.filter(c => c.active).length;
 
   return (
@@ -71,12 +75,12 @@ export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange }: 
 
       <span style={{ width: 1, height: 14, background: t.divider }} />
 
-      <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} />
+      <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} onFitView={onFitView} />
     </div>
   );
 }
 
-function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void }) {
+function ZoomControl({ t, zoom, onZoomChange, onFitView }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void; onFitView?: () => void }) {
   const stepBtn = (children: React.ReactNode, onClick?: () => void, title?: string) => (
     <button onClick={onClick} title={title} style={{
       width: 22, height: 20, background: 'transparent', border: 'none',
@@ -88,14 +92,14 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
       {stepBtn(<I.Minus size={12} />, () => onZoomChange(Math.max(33, zoom - 10)))}
-      <button style={{
+      <button onClick={() => onZoomChange(100)} title="100%로 재설정" style={{
         padding: '2px 10px', background: t.surface,
         border: `1px solid ${t.border}`, borderRadius: 4,
         color: t.text, cursor: 'pointer', fontSize: 11, fontWeight: 600,
         fontFamily: 'ui-monospace, monospace', minWidth: 44,
-      }}>{zoom}%</button>
+      }}>{Math.round(zoom)}%</button>
       {stepBtn(<I.Plus size={12} />, () => onZoomChange(Math.min(400, zoom + 10)))}
-      <span style={{ marginLeft: 3 }}>{stepBtn(<I.Fit size={12} />, undefined, 'Fit Screen')}</span>
+      <span style={{ marginLeft: 3 }}>{stepBtn(<I.Fit size={12} />, onFitView, '맵 전체를 화면에 맞추기')}</span>
     </div>
   );
 }

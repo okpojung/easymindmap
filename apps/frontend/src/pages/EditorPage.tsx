@@ -44,7 +44,6 @@ function buildKanbanFromMap(map: SampleMap): KanbanBoardData {
 export function EditorPage() {
   const map = useDocumentStore((s) => s.map);
   const setSample = useDocumentStore((s) => s.setSample);
-  const updateNodeLayoutType = useDocumentStore((s) => s.updateNodeLayoutType);
 
   const themeName = useEditorUiStore((s) => s.themeName);
   const setThemeName = useEditorUiStore((s) => s.setThemeName);
@@ -65,6 +64,7 @@ export function EditorPage() {
 
   const zoom = useViewportStore((s) => s.zoom);
   const setZoom = useViewportStore((s) => s.setZoom);
+  const requestFit = useViewportStore((s) => s.requestFit);
 
   const selectedId = useInteractionStore((s) => s.selectedId);
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
@@ -72,16 +72,6 @@ export function EditorPage() {
   const saveState = useAutosaveStore((s) => s.saveState);
 
   const kanbanFromMap = buildKanbanFromMap(map);
-
-  const handleLayoutChange = (nextLayoutType: typeof layoutType) => {
-    setLayoutType(nextLayoutType);
-
-    if (selectedId) {
-      updateNodeLayoutType(selectedId, nextLayoutType);
-    } else {
-      updateNodeLayoutType('root', nextLayoutType);
-    }
-  };
 
   const t = THEMES[themeName];
 
@@ -176,7 +166,6 @@ export function EditorPage() {
               }
             }}
             collabs={SAMPLE_COLLABS}
-            zoom={zoom}
           />
         )}
       </div>
@@ -187,6 +176,7 @@ export function EditorPage() {
         collabs={SAMPLE_COLLABS}
         zoom={zoom}
         onZoomChange={setZoom}
+        onFitView={requestFit}
       />
 
       {tweaksOpen && (

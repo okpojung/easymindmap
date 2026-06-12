@@ -1,5 +1,11 @@
-// EdgeRenderer — draws a single edge between two laid-out nodes.
-// Edge style is decided by the active layoutType — see 10-canvas.md § 27.
+// File: src/editor/edge-renderer/EdgeRenderer.tsx
+// Version: MVP-EdgeRenderer-TreeRight-As-Hierarchy-v1.0.0
+// Description:
+// - Radial layouts use curve edges.
+// - Tree-right uses hierarchy-style orthogonal edges.
+// - Hierarchy-right uses hierarchy-style orthogonal edges.
+// - Tree-down uses vertical-down orthogonal edges.
+// - Process-tree uses horizontal stage + vertical card edges.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType } from '@/editor/__samples__/types';
@@ -12,48 +18,118 @@ interface Props {
   layoutType: LayoutType;
 }
 
+function isRadialLayout(layoutType?: LayoutType): boolean {
+  return (
+    layoutType === 'radial' ||
+    layoutType === 'both-radial' ||
+    layoutType === 'radial-right' ||
+    layoutType === 'radial-left' ||
+    layoutType === 'radial-bidirectional'
+  );
+}
+
+function isTreeRightLayout(layoutType?: LayoutType): boolean {
+  return layoutType === 'tree' || layoutType === 'tree-right';
+}
+
+function isTreeDownLayout(layoutType?: LayoutType): boolean {
+  return layoutType === 'tree-down';
+}
+
+function isHierarchyLayout(layoutType?: LayoutType): boolean {
+  return layoutType === 'hierarchy' || layoutType === 'hierarchy-right';
+}
+
+function isProcessLayout(layoutType?: LayoutType): boolean {
+  return (
+    layoutType === 'progress-tree' ||
+    layoutType === 'process-tree-right' ||
+    layoutType === 'process-tree-right-a' ||
+    layoutType === 'process-tree-right-b'
+  );
+}
+
+function createRadialPath(from: LaidOutNode, to: LaidOutNode): string {
+  const isLeft = to.side === 'left';
+
+  const fromX = isLeft ? from.x - from.w / 2 : from.x + from.w / 2;
+  const toX = isLeft ? to.x + to.w / 2 : to.x - to.w / 2;
+
+  const fromY = from.y;
+  const toY = to.y;
+
+  const distance = Math.abs(toX - fromX);
+  const offset = Math.max(36, Math.min(120, distance * 0.45));
+
+  const c1x = isLeft ? fromX - offset : fromX + offset;
+  const c2x = isLeft ? toX + offset : toX - offset;
+
+  return `M ${fromX} ${fromY} C ${c1x} ${fromY}, ${c2x} ${toY}, ${toX} ${toY}`;
+}
+
+function createTreeDownPath(from: LaidOutNode, to: LaidOutNode): string {
+  const fromX = from.x;
+  const fromY = from.y + from.h / 2;
+
+  const toX = to.x;
+  const toY = to.y - to.h / 2;
+
+  const midY = fromY + (toY - fromY) / 2;
+
+  return `M ${fromX} ${fromY} V ${midY} H ${toX} V ${toY}`;
+}
+
+function createHierarchyLikePath(from: LaidOutNode, to: LaidOutNode): string {
+  const fromX = from.x - from.w / 2 + 12;
+  const fromY = from.y + from.h / 2;
+
+  const toX = to.x - to.w / 2;
+  const toY = to.y;
+
+  return `M ${fromX} ${fromY} V ${toY} H ${toX}`;
+}
+
+function createProcessPath(from: LaidOutNode, to: LaidOutNode): string {
+  if (to.depth === 1) {
+    const fromX = from.x + from.w / 2;
+    const fromY = from.y;
+
+    const toX = to.x - to.w / 2;
+    const toY = to.y;
+
+    return `M ${fromX} ${fromY} H ${toX}`;
+  }
+
+  const fromX = from.x;
+  const fromY = from.y + from.h / 2;
+
+  const toX = to.x;
+  const toY = to.y - to.h / 2;
+
+  return `M ${fromX} ${fromY} V ${toY}`;
+}
+
 export function EdgeRenderer({ from, to, t, layoutType }: Props) {
-  const color = t.edge;
-  const width = from.depth === 0 ? 2.2 : 1.6;
+  const width = from.depth === 0 ? 2.3 : 1.6;
 
-  // Hierarchy-right: L-shape connector (indent guide line)
-  if (layoutType === 'hierarchy-right') {
-    const px = from.x - from.w/2 + 14;
-    const py = from.y + from.h/2;
-    const tx = to.x - to.w/2;
-    const ty = to.y;
-    const d = `M ${px} ${py} V ${ty} H ${tx}`;
-    return <path d={d} fill="none" stroke={color} strokeWidth={1.4} strokeLinecap="round" />;
-  }
+  const d = isRadialLayout(layoutType)
+    ? createRadialPath(from, to)
+    : isProcessLayout(layoutType)
+      ? createProcessPath(from, to)
+      : isTreeDownLayout(layoutType)
+        ? createTreeDownPath(from, to)
+        : isTreeRightLayout(layoutType) || isHierarchyLayout(layoutType)
+          ? createHierarchyLikePath(from, to)
+          : createHierarchyLikePath(from, to);
 
-  // Tree-down: orthogonal top → bottom
-  if (layoutType === 'tree-down') {
-    const fx = from.x;
-    const fy = from.y + from.h/2;
-    const tx = to.x;
-    const ty = to.y - to.h/2;
-    const my = fy + (ty - fy) * 0.5;
-    const d = `M ${fx} ${fy} V ${my} H ${tx} V ${ty}`;
-    return <path d={d} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" />;
-  }
-
-  // Tree-right / tree-left: orthogonal horizontal
-  if (layoutType === 'tree-right' || layoutType === 'tree-left') {
-    const fx = from.x + (to.side === 'right' ? from.w/2 : -from.w/2);
-    const fy = from.y;
-    const tx = to.side === 'right' ? to.x - to.w/2 : to.x + to.w/2;
-    const ty = to.y;
-    const mx = fx + (tx - fx) * 0.5;
-    const d = `M ${fx} ${fy} H ${mx} V ${ty} H ${tx}`;
-    return <path d={d} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" />;
-  }
-
-  // Default: smooth cubic bezier (radial variants, freeform)
-  const fx2 = from.x + (to.side === 'right' ? from.w/2 : to.side === 'left' ? -from.w/2 : 0);
-  const tx2 = to.side === 'right' ? to.x - to.w/2 : to.side === 'left' ? to.x + to.w/2 : to.x;
-  const fy = from.y;
-  const ty = to.y;
-  const mx = (fx2 + tx2) / 2;
-  const d = `M ${fx2} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx2} ${ty}`;
-  return <path d={d} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" />;
+  return (
+    <path
+      d={d}
+      fill="none"
+      stroke={t.edge}
+      strokeWidth={width}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
 }

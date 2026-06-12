@@ -5,6 +5,8 @@
 import { useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
+import { useDocumentStore } from '@/stores/documentStore';
+import { useInteractionStore } from '@/stores/interactionStore';
 
 interface Props {
   t: ThemeTokens;
@@ -12,6 +14,21 @@ interface Props {
 }
 
 export function CanvasFloatingToolbar({ t, hasSelection }: Props) {
+  const selectedId = useInteractionStore((state) => state.selectedId);
+  const setSelectedId = useInteractionStore((state) => state.setSelectedId);
+  const addChildNode = useDocumentStore((state) => state.addChildNode);
+  const deleteNode = useDocumentStore((state) => state.deleteNode);
+
+  const handleAddNode = () => {
+    const newNodeId = addChildNode(selectedId);
+    setSelectedId(newNodeId);
+  };
+
+  const handleDeleteNode = () => {
+    deleteNode(selectedId);
+    setSelectedId(null);
+  };
+
   return (
     <div style={{
       position: 'absolute', top: 14, right: 14, zIndex: 5,
@@ -22,10 +39,22 @@ export function CanvasFloatingToolbar({ t, hasSelection }: Props) {
       boxShadow: t.shadowSm,
     }}>
       <GroupLabel t={t}>노드</GroupLabel>
-      <ToolbarBtn t={t} title="선택 노드에 다중 자식 추가 (⌃Space)" highlight={hasSelection}>
+      <ToolbarBtn
+        t={t}
+        title="선택 노드에 자식 노드 추가"
+        highlight={hasSelection}
+        onClick={handleAddNode}
+      >
         <I.Plus size={15} />
       </ToolbarBtn>
-      <ToolbarBtn t={t} title="선택 노드 삭제 (Del)" danger disabled={!hasSelection}>
+      
+      <ToolbarBtn
+       t={t}
+       title="선택 노드 삭제 (Del)"
+       danger
+       disabled={!hasSelection}
+       onClick={handleDeleteNode}
+      >
         <I.Trash size={15} />
       </ToolbarBtn>
 

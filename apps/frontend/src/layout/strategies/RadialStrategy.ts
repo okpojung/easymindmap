@@ -1,120 +1,184 @@
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
-import type { SampleBranch } from '@/editor/__samples__/types';
+import type { MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 
-// Radial — bidirectional. Branches split left/right by their declared `side`.
+const V_GAP = 10;
+const H_GAP = 42;
+const ROOT_TO_BRANCH_GAP = 90;
+
+interface MeasuredNode {
+  node: MindNode;
+  w: number;
+  h: number;
+  lines: string[];
+  fontSize: number;
+  fontWeight: number;
+  lineHeight: number;
+  subtreeH: number;
+  children: MeasuredNode[];
+}
+
+function measureNode(node: MindNode, depth: number): MeasuredNode {
+  const size = sizeNodeForText(node.text, depth, {
+    hasIcon: !!node.icon,
+    minW: depth <= 1 ? 150 : 130,
+    maxW: depth <= 1 ? 240 : 320,
+  });
+
+  const children = (node.children ?? []).map((child) => measureNode(child, depth + 1));
+
+  const childrenTotalH =
+    children.length === 0
+      ? 0
+      : children.reduce((sum, child) => sum + child.subtreeH, 0) +
+        (children.length - 1) * V_GAP;
+
+  return {
+    node,
+    w: size.w,
+    h: size.h,
+    lines: size.lines,
+    fontSize: size.fontSize,
+    fontWeight: size.fontWeight,
+    lineHeight: size.lineHeight,
+    subtreeH: Math.max(size.h, childrenTotalH),
+    children,
+  };
+}
+
+function pushLaidOutNode(
+  out: LaidOutNode[],
+  measured: MeasuredNode,
+  x: number,
+  y: number,
+  depth: number,
+  parent: string | null,
+  side: 'left' | 'right',
+  parentColorKey?: string,
+) {
+  out.push({
+    ...measured.node,
+    x,
+    y,
+    w: measured.w,
+    h: measured.h,
+    _lines: measured.lines,
+    _fontSize: measured.fontSize,
+    _fontWeight: measured.fontWeight,
+    _lineHeight: measured.lineHeight,
+    depth,
+    parent,
+    side,
+    parentColorKey: parentColorKey as any,
+  });
+}
+
+function layoutMeasuredNode(
+  measured: MeasuredNode,
+  x: number,
+  y: number,
+  depth: number,
+  parent: string | null,
+  side: 'left' | 'right',
+  out: LaidOutNode[],
+  parentColorKey?: string,
+) {
+  pushLaidOutNode(out, measured, x, y, depth, parent, side, parentColorKey);
+
+  if (measured.children.length === 0) return;
+
+  const childrenTotalH =
+    measured.children.reduce((sum, child) => sum + child.subtreeH, 0) +
+    (measured.children.length - 1) * V_GAP;
+
+  let childY = y - childrenTotalH / 2;
+
+  for (const child of measured.children) {
+    const childCenterY = childY + child.subtreeH / 2;
+
+    const childX =
+      side === 'right'
+        ? x + measured.w / 2 + H_GAP + child.w / 2
+        : x - measured.w / 2 - H_GAP - child.w / 2;
+
+    layoutMeasuredNode(
+      child,
+      childX,
+      childCenterY,
+      depth + 1,
+      measured.node.id,
+      side,
+      out,
+      measured.node.colorKey,
+    );
+
+    childY += child.subtreeH + V_GAP;
+  }
+}
+
+// Radial — bidirectional
 export function layoutRadial(
   branches: SampleBranch[],
-  CX: number, CY: number,
+  CX: number,
+  CY: number,
   rootW: number,
   out: LaidOutNode[],
 ): void {
-  const rightBranches = branches.filter(b => b.side === 'right');
-  const leftBranches  = branches.filter(b => b.side === 'left');
+  const rightBranches = branches.filter((branch) => branch.side === 'right');
+  const leftBranches = branches.filter((branch) => branch.side === 'left');
 
-  const vGap = 16;
-  const hGap = 90;
-  const kHGap = 36;
-  const kvGap = 6;
-
-  function layoutSide(brs: SampleBranch[], side: 'left' | 'right') {
-    const measured = brs.map(b => {
-      const bs = sizeNodeForText(b.text, 1, { hasIcon: !!b.icon, minW: 150, maxW: 240 });
-      const kids = (b.children || []).map(c => ({
-        node: c,
-        size: sizeNodeForText(c.text, 2, { minW: 130, maxW: 320 }),
-      }));
-      const kidsTotalH = kids.length === 0 ? 0
-        : kids.reduce((s, k) => s + k.size.h, 0) + (kids.length - 1) * kvGap;
-      const subtreeH = Math.max(bs.h, kidsTotalH);
-      return { branch: b, bs, kids, subtreeH };
-    });
-
-    const totalH = measured.reduce((s, m) => s + m.subtreeH, 0) + (measured.length - 1) * vGap;
-    let yStart = CY - totalH / 2;
-
-    measured.forEach(({ branch, bs, kids, subtreeH }) => {
-      const by = yStart + subtreeH / 2;
-      const bx = side === 'right'
-        ? CX + rootW/2 + hGap + bs.w/2
-        : CX - rootW/2 - hGap - bs.w/2;
-      out.push({
-        ...branch, x: bx, y: by, w: bs.w, h: bs.h,
-        _lines: bs.lines, _fontSize: bs.fontSize,
-        _fontWeight: bs.fontWeight, _lineHeight: bs.lineHeight,
-        depth: 1, parent: 'root', side,
-      });
-
-      if (kids.length === 0) { yStart += subtreeH + vGap; return; }
-      const kidsTotalH = kids.reduce((s, k) => s + k.size.h, 0) + (kids.length - 1) * kvGap;
-      let ky = by - kidsTotalH / 2;
-      kids.forEach(({ node: c, size: cs }) => {
-        const kx = side === 'right'
-          ? bx + bs.w/2 + kHGap + cs.w/2
-          : bx - bs.w/2 - kHGap - cs.w/2;
-        out.push({
-          ...c, x: kx, y: ky + cs.h/2, w: cs.w, h: cs.h,
-          _lines: cs.lines, _fontSize: cs.fontSize,
-          _fontWeight: cs.fontWeight, _lineHeight: cs.lineHeight,
-          depth: 2, parent: branch.id, side,
-          parentColorKey: branch.colorKey,
-        });
-        ky += cs.h + kvGap;
-      });
-
-      yStart += subtreeH + vGap;
-    });
-  }
-
-  layoutSide(rightBranches, 'right');
-  layoutSide(leftBranches, 'left');
+  layoutSide(rightBranches, 'right', CX, CY, rootW, out);
+  layoutSide(leftBranches, 'left', CX, CY, rootW, out);
 }
 
-// Radial — single side (right or left only)
+// Radial — single side
 export function layoutRadialOneSide(
   branches: SampleBranch[],
-  CX: number, CY: number,
+  CX: number,
+  CY: number,
   rootW: number,
   out: LaidOutNode[],
   side: 'left' | 'right',
 ): void {
-  const hGap = 90, kHGap = 36, kvGap = 6, vGap = 16;
-  const measured = branches.map(b => {
-    const bs = sizeNodeForText(b.text, 1, { hasIcon: !!b.icon, minW: 150, maxW: 240 });
-    const kids = (b.children || []).map(c => ({
-      node: c, size: sizeNodeForText(c.text, 2, { minW: 130, maxW: 320 }),
-    }));
-    const kidsTotalH = kids.length === 0 ? 0
-      : kids.reduce((s, k) => s + k.size.h, 0) + (kids.length - 1) * kvGap;
-    const subtreeH = Math.max(bs.h, kidsTotalH);
-    return { branch: b, bs, kids, subtreeH };
-  });
-  const totalH = measured.reduce((s, m) => s + m.subtreeH, 0) + (measured.length - 1) * vGap;
+  layoutSide(branches, side, CX, CY, rootW, out);
+}
+
+function layoutSide(
+  branches: SampleBranch[],
+  side: 'left' | 'right',
+  CX: number,
+  CY: number,
+  rootW: number,
+  out: LaidOutNode[],
+) {
+  const measuredBranches = branches.map((branch) => measureNode(branch, 1));
+
+  const totalH =
+    measuredBranches.length === 0
+      ? 0
+      : measuredBranches.reduce((sum, item) => sum + item.subtreeH, 0) +
+        (measuredBranches.length - 1) * 16;
+
   let yStart = CY - totalH / 2;
-  measured.forEach(({ branch, bs, kids, subtreeH }) => {
-    const by = yStart + subtreeH / 2;
-    const bx = side === 'right'
-      ? CX + rootW/2 + hGap + bs.w/2
-      : CX - rootW/2 - hGap - bs.w/2;
-    out.push({
-      ...branch, x: bx, y: by, w: bs.w, h: bs.h,
-      _lines: bs.lines, _fontSize: bs.fontSize, _fontWeight: bs.fontWeight, _lineHeight: bs.lineHeight,
-      depth: 1, parent: 'root', side,
-    });
-    if (kids.length === 0) { yStart += subtreeH + vGap; return; }
-    const kidsTotalH = kids.reduce((s, k) => s + k.size.h, 0) + (kids.length - 1) * kvGap;
-    let ky = by - kidsTotalH / 2;
-    kids.forEach(({ node: c, size: cs }) => {
-      const kx = side === 'right'
-        ? bx + bs.w/2 + kHGap + cs.w/2
-        : bx - bs.w/2 - kHGap - cs.w/2;
-      out.push({
-        ...c, x: kx, y: ky + cs.h/2, w: cs.w, h: cs.h,
-        _lines: cs.lines, _fontSize: cs.fontSize, _fontWeight: cs.fontWeight, _lineHeight: cs.lineHeight,
-        depth: 2, parent: branch.id, side, parentColorKey: branch.colorKey,
-      });
-      ky += cs.h + kvGap;
-    });
-    yStart += subtreeH + vGap;
-  });
+
+  for (const measured of measuredBranches) {
+    const branchY = yStart + measured.subtreeH / 2;
+
+    const branchX =
+      side === 'right'
+        ? CX + rootW / 2 + ROOT_TO_BRANCH_GAP + measured.w / 2
+        : CX - rootW / 2 - ROOT_TO_BRANCH_GAP - measured.w / 2;
+
+    layoutMeasuredNode(
+      measured,
+      branchX,
+      branchY,
+      1,
+      'root',
+      side,
+      out,
+    );
+
+    yStart += measured.subtreeH + 16;
+  }
 }

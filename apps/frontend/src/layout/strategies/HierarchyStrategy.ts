@@ -1,161 +1,125 @@
 // File: src/layout/strategies/HierarchyStrategy.ts
-// Version: MVP-HierarchyStrategy-CenteredRight-v2.0.0
+// Version: MVP-HierarchyStrategy-TopAlignedRight-v3.0.0
+// Reference: docs/assets/layout_계층형.png,
+//            docs/assets/트리오른쪽_계층형오른쪽_진행트리오른쪽.JPG
 // Description:
-// - hierarchy-right: classic logic-chart layout.
-//   Root sits at the left edge, vertically centered.
-//   Children grow to the right; each subtree is vertically centered on its parent.
-//   Edges are orthogonal elbows (EdgeRenderer.createHierarchyPath).
-// - Distinct from tree-right, which is the indented outline layout.
-// - layoutCenteredChildren() is shared with SubtreeStrategy so the same
+// - hierarchy-right ("오른쪽-계층"):
+//   · Root sits at the upper-left.
+//   · Children form ONE vertical column to the RIGHT of their parent.
+//   · The FIRST child shares the parent's row; siblings stack below the
+//     previous sibling's whole subtree (top-aligned, NOT centered).
+//   · Edges: parent right edge → vertical spine → child left edge
+//     (EdgeRenderer.createHierarchyPath).
+// - layoutHierarchyChildren() is shared with SubtreeStrategy so the same
 //   placement can be applied below any selected node.
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 
-const H_GAP = 56;
-const V_GAP = 12;
-const BRANCH_V_GAP = 16;
-const ROOT_TO_BRANCH_GAP = 90;
+const H_GAP = 44;        // parent right edge → child left edge
+const ROW_GAP = 12;      // vertical gap between sibling subtrees
 const ROOT_X_OFFSET = 470;
+const ROOT_Y_OFFSET = 280;
 
-interface MeasuredNode {
-  node: MindNode;
-  w: number;
-  h: number;
-  lines: string[];
-  fontSize: number;
-  fontWeight: number;
-  lineHeight: number;
-  subtreeH: number;
-  children: MeasuredNode[];
-}
+const HIERARCHY_TAG = 'hierarchy-right' as LayoutType;
 
-function measureNode(node: MindNode, depth: number): MeasuredNode {
-  const size = sizeNodeForText(node.text, depth, {
+function measureNode(node: MindNode, depth: number) {
+  return sizeNodeForText(node.text, depth, {
     hasIcon: !!node.icon,
     minW: depth <= 1 ? 150 : 130,
     maxW: depth <= 1 ? 240 : 320,
   });
-
-  const children = (node.children ?? []).map((child) => measureNode(child, depth + 1));
-
-  const childrenH =
-    children.length === 0
-      ? 0
-      : children.reduce((sum, child) => sum + child.subtreeH, 0) +
-        (children.length - 1) * V_GAP;
-
-  return {
-    node,
-    w: size.w,
-    h: size.h,
-    lines: size.lines,
-    fontSize: size.fontSize,
-    fontWeight: size.fontWeight,
-    lineHeight: size.lineHeight,
-    subtreeH: Math.max(size.h, childrenH),
-    children,
-  };
 }
 
-function placeNode(
-  measured: MeasuredNode,
-  x: number,
-  y: number,
+// Places `node` with its left edge at `leftX` and its center at `centerY`,
+// then lays out its children in a column to the right (first child on the
+// same row). Returns the bottom-most y reached by the subtree.
+function placeSubtree(
+  node: MindNode,
   depth: number,
-  parent: string | null,
-  side: 'left' | 'right',
-  tag: LayoutType,
+  leftX: number,
+  centerY: number,
+  parentId: string,
   out: LaidOutNode[],
   parentColorKey?: string,
-): void {
+): number {
+  const size = measureNode(node, depth);
+  const x = leftX + size.w / 2;
+
   out.push({
-    ...measured.node,
-    layoutType: tag,
+    ...node,
+    layoutType: HIERARCHY_TAG,
     x,
-    y,
-    w: measured.w,
-    h: measured.h,
-    _lines: measured.lines,
-    _fontSize: measured.fontSize,
-    _fontWeight: measured.fontWeight,
-    _lineHeight: measured.lineHeight,
+    y: centerY,
+    w: size.w,
+    h: size.h,
+    _lines: size.lines,
+    _fontSize: size.fontSize,
+    _fontWeight: size.fontWeight,
+    _lineHeight: size.lineHeight,
     depth,
-    parent,
-    side,
+    parent: parentId,
+    side: 'right',
     parentColorKey: parentColorKey as any,
   });
 
-  if (measured.children.length === 0) return;
+  let bottom = centerY + size.h / 2;
 
-  const childrenH =
-    measured.children.reduce((sum, child) => sum + child.subtreeH, 0) +
-    (measured.children.length - 1) * V_GAP;
+  const childLeft = x + size.w / 2 + H_GAP;
+  const children = node.children ?? [];
 
-  let cursorY = y - childrenH / 2;
+  for (let i = 0; i < children.length; i += 1) {
+    const child = children[i];
+    const childSize = measureNode(child, depth + 1);
 
-  for (const child of measured.children) {
-    const childY = cursorY + child.subtreeH / 2;
+    const childCenterY =
+      i === 0 ? centerY : bottom + ROW_GAP + childSize.h / 2;
 
-    const childX =
-      side === 'right'
-        ? x + measured.w / 2 + H_GAP + child.w / 2
-        : x - measured.w / 2 - H_GAP - child.w / 2;
-
-    placeNode(
-      child,
-      childX,
-      childY,
-      depth + 1,
-      measured.node.id,
-      side,
-      tag,
-      out,
-      measured.node.colorKey,
+    bottom = Math.max(
+      bottom,
+      placeSubtree(child, depth + 1, childLeft, childCenterY, node.id, out, node.colorKey),
     );
-
-    cursorY += child.subtreeH + V_GAP;
   }
+
+  return bottom;
 }
 
-// Lays out `children` beside an arbitrary anchor node, subtree-centered.
-// Used both for the whole-map hierarchy layout (anchor = root) and for
-// per-node layout overrides (SubtreeStrategy).
-export function layoutCenteredChildren(
+// Lays out `children` as a top-aligned column to the right of an anchor
+// node. Used for the whole-map layout (anchor = root) and for per-node
+// overrides (SubtreeStrategy).
+export function layoutHierarchyChildren(
   children: MindNode[],
   anchorX: number,
   anchorY: number,
   anchorW: number,
   anchorDepth: number,
   parentId: string,
-  side: 'left' | 'right',
-  tag: LayoutType,
   out: LaidOutNode[],
   parentColorKey?: string,
-  gap: number = H_GAP,
 ): void {
-  const measured = children.map((child) => measureNode(child, anchorDepth + 1));
+  const childLeft = anchorX + anchorW / 2 + H_GAP;
+  let bottom = anchorY;
 
-  const totalH =
-    measured.length === 0
-      ? 0
-      : measured.reduce((sum, item) => sum + item.subtreeH, 0) +
-        (measured.length - 1) * BRANCH_V_GAP;
+  for (let i = 0; i < children.length; i += 1) {
+    const child = children[i];
+    const childSize = measureNode(child, anchorDepth + 1);
 
-  let cursorY = anchorY - totalH / 2;
+    const childCenterY =
+      i === 0 ? anchorY : bottom + ROW_GAP + childSize.h / 2;
 
-  for (const item of measured) {
-    const y = cursorY + item.subtreeH / 2;
-
-    const x =
-      side === 'right'
-        ? anchorX + anchorW / 2 + gap + item.w / 2
-        : anchorX - anchorW / 2 - gap - item.w / 2;
-
-    placeNode(item, x, y, anchorDepth + 1, parentId, side, tag, out, parentColorKey);
-
-    cursorY += item.subtreeH + BRANCH_V_GAP;
+    bottom = Math.max(
+      bottom,
+      placeSubtree(
+        child,
+        anchorDepth + 1,
+        childLeft,
+        childCenterY,
+        parentId,
+        out,
+        parentColorKey,
+      ),
+    );
   }
 }
 
@@ -167,23 +131,12 @@ export function layoutHierarchyRight(
   out: LaidOutNode[],
 ): void {
   const rootX = CX - ROOT_X_OFFSET;
+  const rootY = CY - ROOT_Y_OFFSET;
 
   out[0].x = rootX;
-  out[0].y = CY;
+  out[0].y = rootY;
   out[0].side = 'right';
-  out[0].layoutType = 'hierarchy-right' as LayoutType;
+  out[0].layoutType = HIERARCHY_TAG;
 
-  layoutCenteredChildren(
-    branches,
-    rootX,
-    CY,
-    rootW,
-    0,
-    'root',
-    'right',
-    'hierarchy-right' as LayoutType,
-    out,
-    undefined,
-    ROOT_TO_BRANCH_GAP,
-  );
+  layoutHierarchyChildren(branches, rootX, rootY, rootW, 0, 'root', out);
 }

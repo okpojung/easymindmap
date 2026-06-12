@@ -112,25 +112,27 @@ function createHierarchyPath(from: LaidOutNode, to: LaidOutNode): string {
 }
 
 function createProcessPath(from: LaidOutNode, to: LaidOutNode): string {
+  const fromBottom = from.y + from.h / 2;
+  const toTop = to.y - to.h / 2;
+
+  // Child below the parent (root → stage, stage → column item):
+  // drop from the parent's bottom, run along a horizontal spine,
+  // then drop into the child's TOP edge.
+  if (toTop >= fromBottom + 4) {
+    if (Math.abs(to.x - from.x) < 1) {
+      return `M ${from.x} ${fromBottom} V ${toTop}`;
+    }
+
+    const midY = fromBottom + (toTop - fromBottom) / 2;
+    return `M ${from.x} ${fromBottom} V ${midY} H ${to.x} V ${toTop}`;
+  }
+
+  // Fallback (side-by-side): horizontal elbow into the child's left edge.
   const fromRight = from.x + from.w / 2;
   const toLeft = to.x - to.w / 2;
+  const midX = fromRight + (toLeft - fromRight) / 2;
 
-  // Stage edge: child sits clearly to the right of the parent.
-  if (toLeft >= fromRight + 4) {
-    const midX = fromRight + (toLeft - fromRight) / 2;
-    return `M ${fromRight} ${from.y} H ${midX} V ${to.y} H ${toLeft}`;
-  }
-
-  // Column edge: child sits below the parent.
-  const fromY = from.y + from.h / 2;
-  const toY = to.y - to.h / 2;
-
-  if (Math.abs(to.x - from.x) < 1) {
-    return `M ${from.x} ${fromY} V ${toY}`;
-  }
-
-  const midY = fromY + (toY - fromY) / 2;
-  return `M ${from.x} ${fromY} V ${midY} H ${to.x} V ${toY}`;
+  return `M ${fromRight} ${from.y} H ${midX} V ${to.y} H ${toLeft}`;
 }
 
 export function EdgeRenderer({ from, to, t, layoutType }: Props) {

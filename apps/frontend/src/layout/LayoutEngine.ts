@@ -1,5 +1,5 @@
 // File: src/layout/LayoutEngine.ts
-// Version: MVP-LayoutEngine-TreeRight-Fix-v1.0.0
+// Version: MVP-LayoutEngine-SubtreeOverrides-v2.0.0
 // Description:
 // - Dispatches each layout type to its own strategy.
 // - tree-right      -> layoutTreeRight()
@@ -7,29 +7,21 @@
 // - hierarchy-right -> layoutHierarchyRight()
 // - process-tree    -> layoutProcessTreeRight()
 // - radial layouts  -> radial strategies
-// - Does not use stale sample.root.layoutType for dispatch.
+// - After the base layout, per-node layoutType overrides stored in the
+//   document are applied via applyLayoutOverrides(): any node whose
+//   layoutType differs from its parent's effective layout gets its subtree
+//   re-laid-out in that style around the node's position.
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import type { LaidOutNode } from './types';
+import { normalizeLayoutType } from './normalizeLayoutType';
 
 import { layoutRadial, layoutRadialOneSide } from './strategies/RadialStrategy';
 import { layoutTreeRight, layoutTreeDown } from './strategies/TreeStrategy';
 import { layoutHierarchyRight } from './strategies/HierarchyStrategy';
 import { layoutProcessTreeRight } from './strategies/ProcessStrategy';
-
-function normalizeLayoutType(layoutType?: LayoutType): LayoutType {
-  if (!layoutType) return 'radial-bidirectional' as LayoutType;
-
-  if (layoutType === 'radial') return 'radial-right' as LayoutType;
-  if (layoutType === 'both-radial') return 'radial-bidirectional' as LayoutType;
-  if (layoutType === 'tree') return 'tree-right' as LayoutType;
-  if (layoutType === 'hierarchy') return 'hierarchy-right' as LayoutType;
-  if (layoutType === 'progress-tree') return 'process-tree-right' as LayoutType;
-  if (layoutType === 'free') return 'freeform' as LayoutType;
-
-  return layoutType;
-}
+import { applyLayoutOverrides } from './strategies/SubtreeStrategy';
 
 export function computeLayout(
   sample: SampleMap,
@@ -83,8 +75,6 @@ export function computeLayout(
       break;
 
     case 'process-tree-right':
-    case 'process-tree-right-a':
-    case 'process-tree-right-b':
       layoutProcessTreeRight(branches, CX, CY, rootW, out);
       break;
 
@@ -105,6 +95,10 @@ export function computeLayout(
       layoutRadialOneSide(branches, CX, CY, rootW, out, 'right');
       break;
   }
+
+  // Per-node layout overrides (e.g. a level-2 node whose subtree uses a
+  // different layout than the map).
+  applyLayoutOverrides(branches, activeLayoutType, out);
 
   return out;
 }

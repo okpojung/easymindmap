@@ -39,19 +39,18 @@ function resolveEdgeType(layoutType: LayoutType): EdgeType {
   return 'tree-line';
 }
 
-function createNewNode(layoutType: LayoutType): MindNode {
+// New nodes intentionally have no layoutType: they inherit the layout of
+// their parent / the map until the user explicitly overrides them.
+function createNewNode(): MindNode {
   return {
     id: createNodeId(),
     text: '새 노드',
     textAlign: 'left',
-    layoutType,
-    edgeType: resolveEdgeType(layoutType),
     children: [],
   } as MindNode;
 }
 
 function normalizeNode<T extends MindNode>(node: T): T {
-  const layoutType = node.layoutType ?? 'radial';
   const nodeWithOptionalEdgeType = node as T & {
     edgeType?: EdgeType;
   };
@@ -59,8 +58,9 @@ function normalizeNode<T extends MindNode>(node: T): T {
   return {
     ...node,
     textAlign: node.textAlign ?? 'left',
-    layoutType,
-    edgeType: nodeWithOptionalEdgeType.edgeType ?? resolveEdgeType(layoutType),
+    edgeType:
+      nodeWithOptionalEdgeType.edgeType ??
+      resolveEdgeType(node.layoutType ?? 'radial'),
     children: node.children
       ? node.children.map((child) => normalizeNode(child))
       : [],
@@ -77,7 +77,6 @@ function cloneMap(map: SampleMap): SampleMap {
     root: {
       ...map.root,
       textAlign: map.root.textAlign ?? 'left',
-      layoutType: map.root.layoutType ?? 'radial',
     },
     branches: map.branches.map((branch) => cloneNode(branch)),
   };
@@ -134,6 +133,16 @@ function updateNodeTextAlignRecursive(
   });
 }
 
+// Clears layoutType so descendants inherit the layout applied to their
+// ancestor instead of keeping stale per-node overrides.
+function clearLayoutTypeRecursive(nodes: MindNode[]): MindNode[] {
+  return nodes.map((node) => ({
+    ...node,
+    layoutType: undefined,
+    children: clearLayoutTypeRecursive(node.children ?? []),
+  }));
+}
+
 function updateNodeLayoutTypeRecursive(
   nodes: MindNode[],
   nodeId: string,
@@ -145,6 +154,7 @@ function updateNodeLayoutTypeRecursive(
         ...node,
         layoutType,
         edgeType: resolveEdgeType(layoutType),
+        children: clearLayoutTypeRecursive(node.children ?? []),
       } as MindNode;
     }
 
@@ -180,8 +190,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       const nextMap = cloneMap(state.map);
 
       if (!parentId || parentId === 'root') {
-        const rootLayoutType = nextMap.root.layoutType ?? 'radial';
-        const newNode = createNewNode(rootLayoutType);
+        const newNode = createNewNode();
 
         const newBranch: SampleBranch = {
           ...newNode,
@@ -200,8 +209,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       const parentNode = findNode(nextMap.branches, parentId);
 
       if (parentNode) {
-        const parentLayoutType = parentNode.layoutType ?? 'radial';
-        const newNode = createNewNode(parentLayoutType);
+        const newNode = createNewNode();
 
         newNodeId = newNode.id;
         parentNode.children = parentNode.children ?? [];
@@ -284,6 +292,11 @@ export const useDocumentStore = create<DocumentState>((set) => ({
           ...nextMap.root,
           layoutType,
         };
+
+        // Whole-map layout change resets every per-node override.
+        nextMap.branches = clearLayoutTypeRecursive(
+          nextMap.branches,
+        ) as SampleBranch[];
 
         return { map: nextMap };
       }

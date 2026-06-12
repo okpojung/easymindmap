@@ -1,25 +1,34 @@
 // File: src/layout/strategies/ProcessStrategy.ts
-// Version: MVP-ProcessStrategy-ChildrenRight-v1.0.0
+// Version: MVP-ProcessStrategy-Timeline-v2.0.0
 // Description:
-// - process-tree-right: Level 1 stages move from left to right.
-// - Level 2 nodes are placed to the right of their parent stage.
-// - This avoids tree-down-like child placement.
+// - process-tree-right: timeline layout.
+//   Root sits at the left; level-1 stages flow left → right on the same row.
+//   Each stage's descendants stack vertically BELOW the stage (one column),
+//   matching the vertical drop edges drawn by EdgeRenderer.createProcessPath.
+// - The whole flow is measured first and centered horizontally in the
+//   viewBox; wide maps overflow evenly on both sides (use fit/zoom/pan).
+// - layoutProcessChildren() is shared with SubtreeStrategy so the same
+//   placement can be applied below any selected node.
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
-import type { MindNode, SampleBranch } from '@/editor/__samples__/types';
+import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 
-const ROOT_X_OFFSET = 430;
-const ROOT_Y_OFFSET = 120;
+const ROOT_Y_OFFSET = 150;
+const ROOT_MIN_LEFT = 40;
 
-const ROOT_TO_STAGE_GAP = 130;
-const STAGE_GROUP_GAP = 56;
-
-const CHILD_RIGHT_GAP = 42;
+const ANCHOR_TO_STAGE_GAP = 70;
+const STAGE_GAP = 40;
+const STAGE_TO_CHILD_GAP = 42;
 const CHILD_V_GAP = 10;
 
-interface MeasuredChild {
+const PROCESS_TAG = 'process-tree-right' as LayoutType;
+
+interface ColumnItem {
   node: MindNode;
+  depth: number;
+  parentId: string;
+  parentColorKey?: string;
   w: number;
   h: number;
   lines: string[];
@@ -28,126 +37,158 @@ interface MeasuredChild {
   lineHeight: number;
 }
 
-interface MeasuredStage {
-  node: SampleBranch;
-  w: number;
-  h: number;
-  lines: string[];
-  fontSize: number;
-  fontWeight: number;
-  lineHeight: number;
-  children: MeasuredChild[];
-  childrenH: number;
-  maxChildW: number;
-  groupW: number;
-  groupH: number;
+interface MeasuredColumn {
+  stage: MindNode;
+  stageSize: ReturnType<typeof sizeNodeForText>;
+  items: ColumnItem[];
+  columnW: number;
 }
 
-function measureChild(node: MindNode): MeasuredChild {
-  const size = sizeNodeForText(node.text, 2, {
+function measureInto(
+  node: MindNode,
+  depth: number,
+  parentId: string,
+  parentColorKey: string | undefined,
+  items: ColumnItem[],
+): void {
+  const size = sizeNodeForText(node.text, depth, {
     hasIcon: !!node.icon,
     minW: 130,
-    maxW: 240,
+    maxW: 220,
   });
 
-  return {
+  items.push({
     node,
+    depth,
+    parentId,
+    parentColorKey,
     w: size.w,
     h: size.h,
     lines: size.lines,
     fontSize: size.fontSize,
     fontWeight: size.fontWeight,
     lineHeight: size.lineHeight,
-  };
-}
-
-function measureStage(node: SampleBranch): MeasuredStage {
-  const size = sizeNodeForText(node.text, 1, {
-    hasIcon: !!node.icon,
-    minW: 150,
-    maxW: 240,
   });
 
-  const children = (node.children ?? []).map(measureChild);
-
-  const childrenH =
-    children.length === 0
-      ? 0
-      : children.reduce((sum, child) => sum + child.h, 0) +
-        (children.length - 1) * CHILD_V_GAP;
-
-  const maxChildW =
-    children.length === 0 ? 0 : Math.max(...children.map((child) => child.w));
-
-  const groupW =
-    size.w +
-    (children.length > 0 ? CHILD_RIGHT_GAP + maxChildW : 0);
-
-  const groupH = Math.max(size.h, childrenH);
-
-  return {
-    node,
-    w: size.w,
-    h: size.h,
-    lines: size.lines,
-    fontSize: size.fontSize,
-    fontWeight: size.fontWeight,
-    lineHeight: size.lineHeight,
-    children,
-    childrenH,
-    maxChildW,
-    groupW,
-    groupH,
-  };
+  for (const child of node.children ?? []) {
+    measureInto(child, depth + 1, node.id, node.colorKey ?? parentColorKey, items);
+  }
 }
 
-function pushStage(
-  out: LaidOutNode[],
-  stage: MeasuredStage,
-  x: number,
-  y: number,
-): void {
-  out.push({
-    ...stage.node,
-    layoutType: 'process-tree-right' as any,
-    x,
-    y,
-    w: stage.w,
-    h: stage.h,
-    _lines: stage.lines,
-    _fontSize: stage.fontSize,
-    _fontWeight: stage.fontWeight,
-    _lineHeight: stage.lineHeight,
-    depth: 1,
-    parent: 'root',
-    side: 'right',
+function measureColumns(
+  stages: MindNode[],
+  stageDepth: number,
+  parentColorKey?: string,
+): MeasuredColumn[] {
+  return stages.map((stage) => {
+    const stageSize = sizeNodeForText(stage.text, stageDepth, {
+      hasIcon: !!stage.icon,
+      minW: 140,
+      maxW: 220,
+    });
+
+    const items: ColumnItem[] = [];
+    for (const child of stage.children ?? []) {
+      measureInto(child, stageDepth + 1, stage.id, stage.colorKey ?? parentColorKey, items);
+    }
+
+    return {
+      stage,
+      stageSize,
+      items,
+      columnW: Math.max(stageSize.w, ...items.map((item) => item.w), 0),
+    };
   });
 }
 
-function pushChild(
-  out: LaidOutNode[],
-  child: MeasuredChild,
-  x: number,
-  y: number,
+function flowWidth(columns: MeasuredColumn[]): number {
+  return (
+    columns.reduce((sum, column) => sum + column.columnW, 0) +
+    Math.max(0, columns.length - 1) * STAGE_GAP
+  );
+}
+
+function placeColumns(
+  columns: MeasuredColumn[],
+  startLeft: number,
+  rowY: number,
+  stageDepth: number,
   parentId: string,
+  out: LaidOutNode[],
   parentColorKey?: string,
 ): void {
-  out.push({
-    ...child.node,
-    layoutType: 'process-tree-right' as any,
-    x,
-    y,
-    w: child.w,
-    h: child.h,
-    _lines: child.lines,
-    _fontSize: child.fontSize,
-    _fontWeight: child.fontWeight,
-    _lineHeight: child.lineHeight,
-    depth: 2,
-    parent: parentId,
-    side: 'right',
-    parentColorKey: parentColorKey as any,
-  });
+  let groupLeft = startLeft;
+
+  for (const column of columns) {
+    const stageX = groupLeft + column.columnW / 2;
+
+    out.push({
+      ...column.stage,
+      layoutType: PROCESS_TAG,
+      x: stageX,
+      y: rowY,
+      w: column.stageSize.w,
+      h: column.stageSize.h,
+      _lines: column.stageSize.lines,
+      _fontSize: column.stageSize.fontSize,
+      _fontWeight: column.stageSize.fontWeight,
+      _lineHeight: column.stageSize.lineHeight,
+      depth: stageDepth,
+      parent: parentId,
+      side: 'right',
+      parentColorKey: parentColorKey as any,
+    });
+
+    let cursorY = rowY + column.stageSize.h / 2 + STAGE_TO_CHILD_GAP;
+
+    for (const item of column.items) {
+      out.push({
+        ...item.node,
+        layoutType: PROCESS_TAG,
+        x: stageX,
+        y: cursorY + item.h / 2,
+        w: item.w,
+        h: item.h,
+        _lines: item.lines,
+        _fontSize: item.fontSize,
+        _fontWeight: item.fontWeight,
+        _lineHeight: item.lineHeight,
+        depth: item.depth,
+        parent: item.parentId,
+        side: 'down',
+        parentColorKey: item.parentColorKey as any,
+      });
+
+      cursorY += item.h + CHILD_V_GAP;
+    }
+
+    groupLeft += column.columnW + STAGE_GAP;
+  }
+}
+
+// Lays out `stages` as a horizontal flow to the right of an anchor node,
+// with each stage's descendants stacked vertically below the stage.
+export function layoutProcessChildren(
+  stages: MindNode[],
+  anchorX: number,
+  anchorY: number,
+  anchorW: number,
+  anchorDepth: number,
+  parentId: string,
+  out: LaidOutNode[],
+  parentColorKey?: string,
+): void {
+  const columns = measureColumns(stages, anchorDepth + 1, parentColorKey);
+
+  placeColumns(
+    columns,
+    anchorX + anchorW / 2 + ANCHOR_TO_STAGE_GAP,
+    anchorY,
+    anchorDepth + 1,
+    parentId,
+    out,
+    parentColorKey,
+  );
 }
 
 export function layoutProcessTreeRight(
@@ -157,56 +198,24 @@ export function layoutProcessTreeRight(
   rootW: number,
   out: LaidOutNode[],
 ): void {
-  const stages = branches.map(measureStage);
+  const columns = measureColumns(branches, 1);
 
-  const rootX = CX - ROOT_X_OFFSET;
+  // Center the whole flow (root + stages) horizontally in the viewBox.
+  const totalW = rootW + ANCHOR_TO_STAGE_GAP + flowWidth(columns);
+  const rootX = Math.max(CX - totalW / 2 + rootW / 2, ROOT_MIN_LEFT + rootW / 2);
   const rootY = CY - ROOT_Y_OFFSET;
 
   out[0].x = rootX;
   out[0].y = rootY;
   out[0].side = 'right';
-  out[0].layoutType = 'process-tree-right' as any;
+  out[0].layoutType = PROCESS_TAG;
 
-  let groupLeftX = rootX + rootW / 2 + ROOT_TO_STAGE_GAP;
-  const stageY = rootY;
-
-  for (const stage of stages) {
-    const stageX = groupLeftX + stage.w / 2;
-
-    pushStage(out, stage, stageX, stageY);
-
-    if (stage.children.length > 0) {
-      const childX =
-        stageX + stage.w / 2 + CHILD_RIGHT_GAP + stage.maxChildW / 2;
-
-      let childTopY = stageY - stage.childrenH / 2;
-
-      for (const child of stage.children) {
-        const childY = childTopY + child.h / 2;
-
-        pushChild(
-          out,
-          child,
-          childX,
-          childY,
-          stage.node.id,
-          stage.node.colorKey,
-        );
-
-        childTopY += child.h + CHILD_V_GAP;
-      }
-    }
-
-    groupLeftX += stage.groupW + STAGE_GROUP_GAP;
-  }
-}
-
-export function layoutProcessTreeLeft(
-  branches: SampleBranch[],
-  CX: number,
-  CY: number,
-  rootW: number,
-  out: LaidOutNode[],
-): void {
-  layoutProcessTreeRight(branches, CX, CY, rootW, out);
+  placeColumns(
+    columns,
+    rootX + rootW / 2 + ANCHOR_TO_STAGE_GAP,
+    rootY,
+    1,
+    'root',
+    out,
+  );
 }

@@ -1,14 +1,20 @@
 // File: src/editor/inspector-panels/LayoutTab.tsx
-// Version: MVP-LayoutTab-Use-LayoutGlyph-v1.0.1
+// Version: MVP-LayoutTab-SubtreeScope-v2.0.0
 // Description:
 // - Left inspector layout tab
 // - Uses src/components/icons/LayoutGlyph.tsx for layout icons
-// - Layout change is applied to the whole map in current MVP stage
+// - Scope: when a non-root node is selected, the layout is applied to that
+//   node's subtree by default. The "맵 전체" toggle switches back to applying
+//   the layout to the whole map.
+// - Kanban / freeform can only be applied to the whole map.
 
+import { useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType } from '@/types/mindmap';
+import type { MindNode, SampleMap } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { LayoutGlyph, type LayoutGlyphType } from '@/components/icons/LayoutGlyph';
+import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
 import { InspectorSection, InspectorRow, Toggle } from './InspectorSection';
 import { useDocumentStore, useEditorUiStore, useInteractionStore } from '@/stores';
 
@@ -16,6 +22,7 @@ interface LayoutOption {
   key: LayoutType;
   label: string;
   glyph: LayoutGlyphType;
+  mapOnly?: boolean;
 }
 
 const LAYOUTS: LayoutOption[] = [
@@ -53,28 +60,50 @@ const LAYOUTS: LayoutOption[] = [
     key: 'kanban' as LayoutType,
     label: 'Kanban 보드',
     glyph: 'kanban',
+    mapOnly: true,
   },
   {
     key: 'freeform' as LayoutType,
     label: '자유 배치',
     glyph: 'freeform',
+    mapOnly: true,
   },
 ];
 
-function normalizeLayoutType(layoutType?: LayoutType): LayoutType {
-  if (!layoutType) return 'radial-bidirectional' as LayoutType;
+function findNode(nodes: MindNode[], nodeId: string): MindNode | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) return node;
 
-  if (layoutType === 'radial') return 'radial-right' as LayoutType;
-  if (layoutType === 'both-radial') return 'radial-bidirectional' as LayoutType;
-  if (layoutType === 'tree') return 'tree-right' as LayoutType;
-  if (layoutType === 'hierarchy') return 'hierarchy-right' as LayoutType;
-  if (layoutType === 'progress-tree') return 'process-tree-right' as LayoutType;
-  if (layoutType === 'free') return 'freeform' as LayoutType;
+    const found = findNode(node.children ?? [], nodeId);
+    if (found) return found;
+  }
 
-  return layoutType;
+  return null;
+}
+
+// Effective layout of a node = its own layoutType, or the nearest ancestor's.
+function effectiveLayoutOf(
+  map: SampleMap,
+  nodeId: string,
+  fallback: LayoutType,
+): LayoutType {
+  const walk = (nodes: MindNode[], inherited: LayoutType): LayoutType | null => {
+    for (const node of nodes) {
+      const current = node.layoutType ?? inherited;
+      if (node.id === nodeId) return current;
+
+      const found = walk(node.children ?? [], current);
+      if (found) return found;
+    }
+
+    return null;
+  };
+
+  return walk(map.branches, map.root.layoutType ?? fallback) ?? fallback;
 }
 
 export function LayoutTab({ t }: { t: ThemeTokens }) {
+  const map = useDocumentStore((s) => s.map);
   const updateNodeLayoutType = useDocumentStore((s) => s.updateNodeLayoutType);
 
   const selectedId = useInteractionStore((s) => s.selectedId);
@@ -82,11 +111,28 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   const layoutType = useEditorUiStore((s) => s.layoutType);
   const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
 
-  const activeLayoutType = normalizeLayoutType(layoutType);
+  const [wholeMap, setWholeMap] = useState(false);
 
-  const handleLayoutClick = (nextLayoutType: LayoutType) => {
-    setLayoutType(nextLayoutType);
-    updateNodeLayoutType('root', nextLayoutType);
+  const nodeScopeAvailable =
+    !!selectedId && selectedId !== 'root' && !!findNode(map.branches, selectedId);
+  const applyToWholeMap = wholeMap || !nodeScopeAvailable;
+
+  const activeLayoutType = normalizeLayoutType(
+    applyToWholeMap
+      ? layoutType
+      : effectiveLayoutOf(map, selectedId!, layoutType),
+  );
+
+  const handleLayoutClick = (option: LayoutOption) => {
+    if (applyToWholeMap) {
+      setLayoutType(option.key);
+      updateNodeLayoutType('root', option.key);
+      return;
+    }
+
+    if (option.mapOnly) return;
+
+    updateNodeLayoutType(selectedId, option.key);
   };
 
   return (
@@ -101,17 +147,25 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
         >
           {LAYOUTS.map((layout) => {
             const active = normalizeLayoutType(layout.key) === activeLayoutType;
+            const disabled = !applyToWholeMap && !!layout.mapOnly;
 
             return (
               <button
                 key={layout.key}
-                onClick={() => handleLayoutClick(layout.key)}
+                onClick={() => handleLayoutClick(layout)}
+                disabled={disabled}
+                title={
+                  disabled
+                    ? '맵 전체에만 적용할 수 있는 레이아웃입니다.'
+                    : undefined
+                }
                 style={{
                   padding: '8px 8px 6px',
                   background: active ? t.primarySoft : t.surfaceAlt,
                   border: `1.5px solid ${active ? t.primary : t.border}`,
                   borderRadius: 7,
-                  cursor: 'pointer',
+                  cursor: disabled ? 'default' : 'pointer',
+                  opacity: disabled ? 0.45 : 1,
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 5,
@@ -144,7 +198,13 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
 
       <InspectorSection t={t} title="적용 범위">
         <InspectorRow t={t} label="맵 전체">
-          <Toggle t={t} on />
+          <Toggle
+            t={t}
+            on={applyToWholeMap}
+            onChange={(v) => {
+              if (nodeScopeAvailable) setWholeMap(v);
+            }}
+          />
         </InspectorRow>
 
         <div
@@ -155,8 +215,11 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
             lineHeight: 1.5,
           }}
         >
-          MVP 현재 단계에서는 전체 맵 레이아웃만 변경합니다. 선택 노드:{' '}
-          {selectedId ?? '없음'}
+          {nodeScopeAvailable
+            ? applyToWholeMap
+              ? `토글을 끄면 선택한 노드(${selectedId}) 하위에만 레이아웃이 적용됩니다.`
+              : `레이아웃이 선택한 노드(${selectedId}) 하위 서브트리에만 적용됩니다.`
+            : '노드를 선택하면 해당 노드 하위에만 레이아웃을 적용할 수 있습니다. 선택 노드: 없음'}
         </div>
       </InspectorSection>
 

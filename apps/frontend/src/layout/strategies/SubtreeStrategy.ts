@@ -1,5 +1,5 @@
 // File: src/layout/strategies/SubtreeStrategy.ts
-// Version: MVP-SubtreeStrategy-v1.0.0
+// Version: MVP-SubtreeStrategy-v1.1.0
 // Description:
 // - Applies per-node layout overrides on top of the base map layout.
 // - A node whose document layoutType differs from its parent's effective
@@ -13,7 +13,7 @@ import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { normalizeLayoutType } from '../normalizeLayoutType';
-import { layoutCenteredChildren } from './HierarchyStrategy';
+import { layoutHierarchyChildren } from './HierarchyStrategy';
 import { layoutProcessChildren } from './ProcessStrategy';
 
 const SUBTREE_SUPPORTED = new Set<LayoutType>([
@@ -93,15 +93,15 @@ function relayoutSubtree(node: MindNode, effective: LayoutType, out: LaidOutNode
       break;
 
     case 'hierarchy-right':
-      layoutCenteredChildren(
+      layoutHierarchyChildren(
         children, anchor.x, anchor.y, anchor.w, anchor.depth,
-        node.id, 'right', 'hierarchy-right' as LayoutType, out, node.colorKey,
+        node.id, out, node.colorKey,
       );
       break;
 
     case 'process-tree-right':
       layoutProcessChildren(
-        children, anchor.x, anchor.y, anchor.w, anchor.depth,
+        children, anchor.x, anchor.y, anchor.w, anchor.h, anchor.depth,
         node.id, out, node.colorKey,
       );
       break;
@@ -116,6 +116,148 @@ function relayoutSubtree(node: MindNode, effective: LayoutType, out: LaidOutNode
 
     default:
       break;
+  }
+}
+
+// --- radial (curved edges, subtree vertically centered) ---------------------
+
+const RADIAL_H_GAP = 42;
+const RADIAL_V_GAP = 10;
+const RADIAL_BRANCH_V_GAP = 16;
+
+interface MeasuredCentered {
+  node: MindNode;
+  w: number;
+  h: number;
+  lines: string[];
+  fontSize: number;
+  fontWeight: number;
+  lineHeight: number;
+  subtreeH: number;
+  children: MeasuredCentered[];
+}
+
+function measureCentered(node: MindNode, depth: number): MeasuredCentered {
+  const size = sizeNodeForText(node.text, depth, {
+    hasIcon: !!node.icon,
+    minW: depth <= 1 ? 150 : 130,
+    maxW: depth <= 1 ? 240 : 320,
+  });
+
+  const children = (node.children ?? []).map((child) => measureCentered(child, depth + 1));
+
+  const childrenH =
+    children.length === 0
+      ? 0
+      : children.reduce((sum, child) => sum + child.subtreeH, 0) +
+        (children.length - 1) * RADIAL_V_GAP;
+
+  return {
+    node,
+    w: size.w,
+    h: size.h,
+    lines: size.lines,
+    fontSize: size.fontSize,
+    fontWeight: size.fontWeight,
+    lineHeight: size.lineHeight,
+    subtreeH: Math.max(size.h, childrenH),
+    children,
+  };
+}
+
+function placeCentered(
+  measured: MeasuredCentered,
+  x: number,
+  y: number,
+  depth: number,
+  parent: string | null,
+  side: 'left' | 'right',
+  tag: LayoutType,
+  out: LaidOutNode[],
+  parentColorKey?: string,
+): void {
+  out.push({
+    ...measured.node,
+    layoutType: tag,
+    x,
+    y,
+    w: measured.w,
+    h: measured.h,
+    _lines: measured.lines,
+    _fontSize: measured.fontSize,
+    _fontWeight: measured.fontWeight,
+    _lineHeight: measured.lineHeight,
+    depth,
+    parent,
+    side,
+    parentColorKey: parentColorKey as any,
+  });
+
+  if (measured.children.length === 0) return;
+
+  const childrenH =
+    measured.children.reduce((sum, child) => sum + child.subtreeH, 0) +
+    (measured.children.length - 1) * RADIAL_V_GAP;
+
+  let cursorY = y - childrenH / 2;
+
+  for (const child of measured.children) {
+    const childY = cursorY + child.subtreeH / 2;
+
+    const childX =
+      side === 'right'
+        ? x + measured.w / 2 + RADIAL_H_GAP + child.w / 2
+        : x - measured.w / 2 - RADIAL_H_GAP - child.w / 2;
+
+    placeCentered(
+      child,
+      childX,
+      childY,
+      depth + 1,
+      measured.node.id,
+      side,
+      tag,
+      out,
+      measured.node.colorKey,
+    );
+
+    cursorY += child.subtreeH + RADIAL_V_GAP;
+  }
+}
+
+function layoutCenteredChildren(
+  children: MindNode[],
+  anchorX: number,
+  anchorY: number,
+  anchorW: number,
+  anchorDepth: number,
+  parentId: string,
+  side: 'left' | 'right',
+  tag: LayoutType,
+  out: LaidOutNode[],
+  parentColorKey?: string,
+): void {
+  const measured = children.map((child) => measureCentered(child, anchorDepth + 1));
+
+  const totalH =
+    measured.length === 0
+      ? 0
+      : measured.reduce((sum, item) => sum + item.subtreeH, 0) +
+        (measured.length - 1) * RADIAL_BRANCH_V_GAP;
+
+  let cursorY = anchorY - totalH / 2;
+
+  for (const item of measured) {
+    const y = cursorY + item.subtreeH / 2;
+
+    const x =
+      side === 'right'
+        ? anchorX + anchorW / 2 + RADIAL_H_GAP + item.w / 2
+        : anchorX - anchorW / 2 - RADIAL_H_GAP - item.w / 2;
+
+    placeCentered(item, x, y, anchorDepth + 1, parentId, side, tag, out, parentColorKey);
+
+    cursorY += item.subtreeH + RADIAL_BRANCH_V_GAP;
   }
 }
 

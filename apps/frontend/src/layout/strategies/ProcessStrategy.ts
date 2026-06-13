@@ -73,10 +73,18 @@ function measure(node: MindNode, depth: number): Measured {
   };
 }
 
-// Places `m` with its block's LEFT edge at `left` and its node TOP at `top`,
-// then lays its children out as a horizontal row below it (left-aligned to
-// the block, so the node sits above the leftmost child and the row extends
-// to the right).
+// Width of the horizontal row formed by a list of measured subtrees.
+function rowWidth(items: Measured[]): number {
+  return items.length === 0
+    ? 0
+    : items.reduce((sum, m) => sum + m.blockW, 0) + (items.length - 1) * COL_GAP;
+}
+
+// Places `m` inside a block whose LEFT edge is `left` and whose width is
+// `m.blockW`, with the node TOP at `top`. The node is CENTERED over its
+// children: both the node box and the children row are centered within the
+// block, so every parent sits in the middle above its children regardless of
+// the relative widths (consistent placement at every level).
 function place(
   m: Measured,
   left: number,
@@ -86,7 +94,7 @@ function place(
   out: LaidOutNode[],
   parentColorKey?: string,
 ): void {
-  const x = left + m.w / 2;
+  const x = left + m.blockW / 2;
   const y = top + m.h / 2;
 
   out.push({
@@ -109,7 +117,8 @@ function place(
   if (m.children.length === 0) return;
 
   const childTop = y + m.h / 2 + ROW_GAP;
-  let cursorLeft = left;
+  const childrenW = rowWidth(m.children);
+  let cursorLeft = left + (m.blockW - childrenW) / 2; // center the children row in the block
 
   for (const child of m.children) {
     place(child, cursorLeft, childTop, depth + 1, m.node.id, out, m.node.colorKey ?? parentColorKey);
@@ -117,8 +126,9 @@ function place(
   }
 }
 
-// Lays `stages` out as a horizontal row below an anchor node, each stage
-// recursively expanding its own subtree downward. Shared with SubtreeStrategy.
+// Lays `stages` out as a horizontal row below an anchor node, the row CENTERED
+// under the anchor's center, each stage recursively expanding its own subtree
+// downward. Shared with SubtreeStrategy.
 export function layoutProcessChildren(
   stages: MindNode[],
   anchorX: number,
@@ -132,9 +142,8 @@ export function layoutProcessChildren(
 ): void {
   const measured = stages.map((stage) => measure(stage, anchorDepth + 1));
 
-  const left = anchorX - anchorW / 2;
   const childTop = anchorY + anchorH / 2 + ROW_GAP;
-  let cursorLeft = left;
+  let cursorLeft = anchorX - rowWidth(measured) / 2;
 
   for (const m of measured) {
     place(m, cursorLeft, childTop, anchorDepth + 1, parentId, out, parentColorKey);
@@ -152,16 +161,14 @@ export function layoutProcessTreeRight(
   const rootH = out[0].h;
   const measured = branches.map((branch) => measure(branch, 1));
 
-  const stagesRowW =
-    measured.length === 0
-      ? 0
-      : measured.reduce((sum, m) => sum + m.blockW, 0) + (measured.length - 1) * COL_GAP;
+  const stagesRowW = rowWidth(measured);
 
-  // Center the whole block (root + stage flow) horizontally in the viewBox.
+  // Center the whole block (root + stage flow) horizontally in the viewBox,
+  // and center the root over the stage row (consistent with every level).
   const totalW = Math.max(rootW, stagesRowW);
   const blockLeft = Math.max(CX - totalW / 2, ROOT_MIN_LEFT);
 
-  const rootX = blockLeft + rootW / 2;
+  const rootX = blockLeft + totalW / 2;
   const rootY = CY - ROOT_Y_OFFSET;
 
   out[0].x = rootX;
@@ -170,7 +177,7 @@ export function layoutProcessTreeRight(
   out[0].layoutType = PROCESS_TAG;
 
   const childTop = rootY + rootH / 2 + ROOT_TO_STAGE_ROW_GAP;
-  let cursorLeft = blockLeft;
+  let cursorLeft = blockLeft + (totalW - stagesRowW) / 2;
 
   for (const m of measured) {
     place(m, cursorLeft, childTop, 1, 'root', out);

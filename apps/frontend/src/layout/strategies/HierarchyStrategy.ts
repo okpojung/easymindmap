@@ -16,7 +16,7 @@
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
-import { tagOverhang } from '../tagOverhang';
+import { nodeOverhang } from '../tagOverhang';
 
 const H_GAP = 44;        // parent right edge → child left edge
 const ROW_GAP = 12;      // vertical gap between sibling subtrees
@@ -67,7 +67,7 @@ function placeSubtree(
 
   // Reserve room below for this node's tag chips so the next sibling in the
   // column doesn't get covered by them.
-  let bottom = centerY + size.h / 2 + tagOverhang(node);
+  let bottom = centerY + size.h / 2 + nodeOverhang(node);
 
   const childLeft = x + size.w / 2 + H_GAP;
   const children = node.children ?? [];

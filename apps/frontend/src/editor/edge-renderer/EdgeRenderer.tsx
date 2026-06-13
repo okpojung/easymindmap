@@ -111,18 +111,20 @@ function createHierarchyPath(from: LaidOutNode, to: LaidOutNode): string {
   return `M ${fromX} ${fromY} H ${midX} V ${toY} H ${toX}`;
 }
 
-// Process-tree edge (every level): drop from the parent's bottom, run along a
-// horizontal spine shared by all siblings, then drop into the child's TOP edge.
+// Process-tree edge (every level): drop from just inside the parent's LEFT
+// edge, run right along a horizontal spine shared by all siblings, then drop
+// into the child's TOP edge (the 진행트리오른쪽 reference connector).
 function createProcessPath(from: LaidOutNode, to: LaidOutNode): string {
   const fromBottom = from.y + from.h / 2;
   const toTop = to.y - to.h / 2;
+  const spineX = from.x - from.w / 2 + 14;
 
-  if (Math.abs(to.x - from.x) < 1) {
-    return `M ${from.x} ${fromBottom} V ${toTop}`;
+  if (Math.abs(to.x - spineX) < 1) {
+    return `M ${spineX} ${fromBottom} V ${toTop}`;
   }
 
   const midY = fromBottom + (toTop - fromBottom) / 2;
-  return `M ${from.x} ${fromBottom} V ${midY} H ${to.x} V ${toTop}`;
+  return `M ${spineX} ${fromBottom} V ${midY} H ${to.x} V ${toTop}`;
 }
 
 export function EdgeRenderer({ from, to, t, layoutType }: Props) {

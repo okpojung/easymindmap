@@ -18,20 +18,23 @@ export function NodeTagChips({ n, tagList, t }: Props) {
   const closeW = 14;
   const gap = 4;
 
-  // In process-tree layouts the connector to a node's children runs down the
-  // node's LEFT side (spine ≈ left + 14, see EdgeRenderer.PROCESS_SPINE_INSET).
-  // Start the chips to the RIGHT of that spine so they don't cover the
-  // connector line dropping to the children below. Other layouts keep the
-  // small left inset.
-  const isProcessTree =
+  // Some layouts route the connector to a node's children down the node's LEFT
+  // side: process-tree (spine ≈ left + 14, EdgeRenderer.PROCESS_SPINE_INSET) and
+  // tree-right (outline spine ≈ left + 12, EdgeRenderer.createOutlinePath). For
+  // those, start the chips to the RIGHT of that spine so they don't cover the
+  // connector line dropping to the children below. Other layouts keep the small
+  // left inset.
+  const connectorOnLeftSide =
     n.layoutType === 'process-tree-right' ||
     n.layoutType === 'process-tree-left' ||
     n.layoutType === 'process-tree-right-a' ||
     n.layoutType === 'process-tree-right-b' ||
-    n.layoutType === 'progress-tree';
+    n.layoutType === 'progress-tree' ||
+    n.layoutType === 'tree-right' ||
+    n.layoutType === 'tree';
 
   // Layout left → right, indented from the node's left edge.
-  let cursor = n.x - n.w / 2 + (isProcessTree ? 28 : 8);
+  let cursor = n.x - n.w / 2 + (connectorOnLeftSide ? 28 : 8);
   const baseY = n.y + n.h / 2 + 6;
 
   return (

@@ -55,8 +55,9 @@ interface DocumentState {
   updateNodeTextAlign: (nodeId: string | null, textAlign: TextAlign) => void;
   updateNodeLayoutType: (nodeId: string | null, layoutType: LayoutType) => void;
 
-  // Style
+  // Style / icon
   updateNodeStyle: (nodeId: string | null, style: Partial<NodeStyle>) => void;
+  setNodeIcon: (nodeId: string | null, icon: string | undefined) => void;
 
   // Tags
   addNodeTag: (nodeId: string | null, tag: string) => void;
@@ -531,6 +532,11 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         style: { ...n.style, ...style },
       })),
     }));
+  },
+
+  setNodeIcon: (nodeId, icon) => {
+    if (!nodeId) return;
+    set((state) => ({ map: mutateNode(state.map, nodeId, (n) => ({ ...n, icon })) }));
   },
 
   addNodeTag: (nodeId, tag) => {

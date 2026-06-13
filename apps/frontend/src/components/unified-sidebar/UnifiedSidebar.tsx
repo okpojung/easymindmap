@@ -285,8 +285,8 @@ function InspectorContent({ t, tab }: {
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0, background: t.surface }}>
         {tab === 'style'   && <StyleTab t={t} selectedId={selectedId} />}
         {tab === 'layout'  && <LayoutTab t={t} />}
-        {tab === 'content' && <ContentTab t={t} />}
-        {tab === 'note'    && <NoteTagTab t={t} />}
+        {tab === 'content' && <ContentTab t={t} selectedId={selectedId} />}
+        {tab === 'note'    && <NoteTagTab t={t} selectedId={selectedId} />}
         {tab === 'ai'      && <AITab t={t} />}
       </div>
     </>

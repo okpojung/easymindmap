@@ -26,6 +26,13 @@ const SUBTREE_SUPPORTED = new Set<LayoutType>([
   'process-tree-right' as LayoutType,
 ]);
 
+// Layouts whose direct children are arranged left → right (a wider subtree
+// pushes siblings sideways). Everything else stacks siblings vertically.
+const HORIZONTAL_SIBLING_PARENTS = new Set<LayoutType>([
+  'process-tree-right' as LayoutType,
+  'tree-down' as LayoutType,
+]);
+
 export function applyLayoutOverrides(
   branches: SampleBranch[],
   mapLayoutType: LayoutType,
@@ -44,7 +51,7 @@ function walk(node: MindNode, parentEffective: LayoutType, out: LaidOutNode[]): 
     : parentEffective;
 
   if (effective !== parentEffective && SUBTREE_SUPPORTED.has(effective)) {
-    relayoutSubtree(node, effective, out);
+    relayoutSubtree(node, effective, parentEffective, out);
   }
 
   for (const child of node.children ?? []) {
@@ -59,7 +66,69 @@ function collectDescendantIds(node: MindNode, ids: Set<string>): void {
   }
 }
 
-function relayoutSubtree(node: MindNode, effective: LayoutType, out: LaidOutNode[]): void {
+interface BBox {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+function bboxOf(out: LaidOutNode[], ids: Set<string>): BBox | null {
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+
+  for (const n of out) {
+    if (!ids.has(n.id)) continue;
+    left = Math.min(left, n.x - n.w / 2);
+    right = Math.max(right, n.x + n.w / 2);
+    top = Math.min(top, n.y - n.h / 2);
+    bottom = Math.max(bottom, n.y + n.h / 2);
+  }
+
+  return left === Infinity ? null : { left, right, top, bottom };
+}
+
+// After a subtree is re-laid-out it may occupy more room than the gap the
+// base layout reserved. Push the nodes that sat AFTER the anchor (to its
+// right for horizontal parents, below it for vertical ones) by the amount
+// the subtree grew, so siblings never overlap.
+function pushSiblingsAway(
+  out: LaidOutNode[],
+  subtreeIds: Set<string>,
+  anchor: LaidOutNode,
+  before: BBox,
+  after: BBox,
+  parentEffective: LayoutType,
+): void {
+  const horizontal = HORIZONTAL_SIBLING_PARENTS.has(parentEffective);
+
+  if (horizontal) {
+    const extra = after.right - before.right;
+    if (extra <= 0.5) return;
+
+    for (const n of out) {
+      if (subtreeIds.has(n.id)) continue;
+      if (n.x > anchor.x + 0.5) n.x += extra;
+    }
+  } else {
+    const extra = after.bottom - before.bottom;
+    if (extra <= 0.5) return;
+
+    for (const n of out) {
+      if (subtreeIds.has(n.id)) continue;
+      if (n.y > anchor.y + 0.5) n.y += extra;
+    }
+  }
+}
+
+function relayoutSubtree(
+  node: MindNode,
+  effective: LayoutType,
+  parentEffective: LayoutType,
+  out: LaidOutNode[],
+): void {
   const anchor = out.find((laid) => laid.id === node.id);
   if (!anchor) return;
 
@@ -69,12 +138,17 @@ function relayoutSubtree(node: MindNode, effective: LayoutType, out: LaidOutNode
   const descendantIds = new Set<string>();
   collectDescendantIds(node, descendantIds);
 
+  const children = node.children ?? [];
+  if (children.length === 0) return;
+
+  // Box the subtree occupied under the base layout, before re-laying it out.
+  const subtreeIds = new Set(descendantIds);
+  subtreeIds.add(node.id);
+  const before = bboxOf(out, subtreeIds);
+
   for (let i = out.length - 1; i >= 0; i -= 1) {
     if (descendantIds.has(out[i].id)) out.splice(i, 1);
   }
-
-  const children = node.children ?? [];
-  if (children.length === 0) return;
 
   switch (effective) {
     case 'radial-left':
@@ -116,6 +190,154 @@ function relayoutSubtree(node: MindNode, effective: LayoutType, out: LaidOutNode
 
     default:
       break;
+  }
+
+  // Re-flow siblings so the resized subtree doesn't overlap them.
+  const after = bboxOf(out, subtreeIds);
+  if (before && after) {
+    pushSiblingsAway(out, subtreeIds, anchor, before, after, parentEffective);
+  }
+}
+
+// --- radial (curved edges, subtree vertically centered) ---------------------
+
+const RADIAL_H_GAP = 42;
+const RADIAL_V_GAP = 10;
+const RADIAL_BRANCH_V_GAP = 16;
+
+interface MeasuredCentered {
+  node: MindNode;
+  w: number;
+  h: number;
+  lines: string[];
+  fontSize: number;
+  fontWeight: number;
+  lineHeight: number;
+  subtreeH: number;
+  children: MeasuredCentered[];
+}
+
+function measureCentered(node: MindNode, depth: number): MeasuredCentered {
+  const size = sizeNodeForText(node.text, depth, {
+    hasIcon: !!node.icon,
+    minW: depth <= 1 ? 150 : 130,
+    maxW: depth <= 1 ? 240 : 320,
+  });
+
+  const children = (node.children ?? []).map((child) => measureCentered(child, depth + 1));
+
+  const childrenH =
+    children.length === 0
+      ? 0
+      : children.reduce((sum, child) => sum + child.subtreeH, 0) +
+        (children.length - 1) * RADIAL_V_GAP;
+
+  return {
+    node,
+    w: size.w,
+    h: size.h,
+    lines: size.lines,
+    fontSize: size.fontSize,
+    fontWeight: size.fontWeight,
+    lineHeight: size.lineHeight,
+    subtreeH: Math.max(size.h, childrenH),
+    children,
+  };
+}
+
+function placeCentered(
+  measured: MeasuredCentered,
+  x: number,
+  y: number,
+  depth: number,
+  parent: string | null,
+  side: 'left' | 'right',
+  tag: LayoutType,
+  out: LaidOutNode[],
+  parentColorKey?: string,
+): void {
+  out.push({
+    ...measured.node,
+    layoutType: tag,
+    x,
+    y,
+    w: measured.w,
+    h: measured.h,
+    _lines: measured.lines,
+    _fontSize: measured.fontSize,
+    _fontWeight: measured.fontWeight,
+    _lineHeight: measured.lineHeight,
+    depth,
+    parent,
+    side,
+    parentColorKey: parentColorKey as any,
+  });
+
+  if (measured.children.length === 0) return;
+
+  const childrenH =
+    measured.children.reduce((sum, child) => sum + child.subtreeH, 0) +
+    (measured.children.length - 1) * RADIAL_V_GAP;
+
+  let cursorY = y - childrenH / 2;
+
+  for (const child of measured.children) {
+    const childY = cursorY + child.subtreeH / 2;
+
+    const childX =
+      side === 'right'
+        ? x + measured.w / 2 + RADIAL_H_GAP + child.w / 2
+        : x - measured.w / 2 - RADIAL_H_GAP - child.w / 2;
+
+    placeCentered(
+      child,
+      childX,
+      childY,
+      depth + 1,
+      measured.node.id,
+      side,
+      tag,
+      out,
+      measured.node.colorKey,
+    );
+
+    cursorY += child.subtreeH + RADIAL_V_GAP;
+  }
+}
+
+function layoutCenteredChildren(
+  children: MindNode[],
+  anchorX: number,
+  anchorY: number,
+  anchorW: number,
+  anchorDepth: number,
+  parentId: string,
+  side: 'left' | 'right',
+  tag: LayoutType,
+  out: LaidOutNode[],
+  parentColorKey?: string,
+): void {
+  const measured = children.map((child) => measureCentered(child, anchorDepth + 1));
+
+  const totalH =
+    measured.length === 0
+      ? 0
+      : measured.reduce((sum, item) => sum + item.subtreeH, 0) +
+        (measured.length - 1) * RADIAL_BRANCH_V_GAP;
+
+  let cursorY = anchorY - totalH / 2;
+
+  for (const item of measured) {
+    const y = cursorY + item.subtreeH / 2;
+
+    const x =
+      side === 'right'
+        ? anchorX + anchorW / 2 + RADIAL_H_GAP + item.w / 2
+        : anchorX - anchorW / 2 - RADIAL_H_GAP - item.w / 2;
+
+    placeCentered(item, x, y, anchorDepth + 1, parentId, side, tag, out, parentColorKey);
+
+    cursorY += item.subtreeH + RADIAL_BRANCH_V_GAP;
   }
 }
 

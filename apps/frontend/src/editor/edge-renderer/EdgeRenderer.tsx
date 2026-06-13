@@ -64,12 +64,14 @@ function createRadialPath(from: LaidOutNode, to: LaidOutNode): string {
   const fromY = from.y;
   const toY = to.y;
 
-  // Curvature scales with BOTH the horizontal and vertical distance, so a
-  // child sitting well above/below its parent gets a smooth sweeping arc
-  // instead of leaving the parent flat and then kinking near the child.
-  const dx = Math.abs(toX - fromX);
-  const dy = Math.abs(toY - fromY);
-  const offset = Math.max(40, Math.min(160, (dx + dy) * 0.4));
+  // The control-point horizontal offset must stay proportional to the
+  // HORIZONTAL distance only (and below the span). If it also scales with the
+  // vertical distance it can exceed dx, pushing the control points PAST the
+  // opposite endpoint — the curve then overshoots sideways and neighbouring
+  // edges loop and overlap. Clamping to [36, 120] keeps control points between
+  // parent and child for a clean, non-overlapping fan.
+  const distance = Math.abs(toX - fromX);
+  const offset = Math.max(36, Math.min(120, distance * 0.45));
 
   const c1x = isLeft ? fromX - offset : fromX + offset;
   const c2x = isLeft ? toX + offset : toX - offset;

@@ -1,6 +1,7 @@
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
+import { belowNodeReserve } from '@/layout/nodeDecorations';
 
 const V_GAP = 10;
 const H_GAP = 42;
@@ -41,7 +42,9 @@ function measureNode(node: MindNode, depth: number): MeasuredNode {
     fontSize: size.fontSize,
     fontWeight: size.fontWeight,
     lineHeight: size.lineHeight,
-    subtreeH: Math.max(size.h, childrenTotalH),
+    // Include tag / lock badge reserve in the node's own vertical footprint so
+    // vertically-stacked siblings leave room for those below-box decorations.
+    subtreeH: Math.max(size.h + belowNodeReserve(node), childrenTotalH),
     children,
   };
 }

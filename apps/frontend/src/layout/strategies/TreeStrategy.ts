@@ -10,6 +10,7 @@
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
+import { belowNodeReserve } from '@/layout/nodeDecorations';
 
 const TREE_RIGHT_ROOT_X_OFFSET = 430;
 const TREE_RIGHT_ROOT_Y_OFFSET = 235;
@@ -88,7 +89,7 @@ function arrangeTreeRightNode(
 
   pushTreeRightNode(out, node, x, y, depth, parentId, parentColorKey);
 
-  yRef.value += size.h + TREE_RIGHT_ROW_GAP;
+  yRef.value += size.h + belowNodeReserve(node) + TREE_RIGHT_ROW_GAP;
 
   for (const child of node.children ?? []) {
     arrangeTreeRightNode(
@@ -205,7 +206,8 @@ function arrangeDownNode(
     (measured.children.length - 1) * TREE_DOWN_CHILD_H_GAP;
 
   let childLeftX = x - childrenTotalW / 2;
-  const childY = y + measured.h / 2 + TREE_DOWN_CHILD_GAP;
+  const childY =
+    y + measured.h / 2 + TREE_DOWN_CHILD_GAP + belowNodeReserve(measured.node);
 
   for (const child of measured.children) {
     const childCenterX = childLeftX + child.subtreeW / 2;
@@ -248,7 +250,8 @@ export function layoutTreeDown(
         (measuredBranches.length - 1) * TREE_DOWN_BRANCH_H_GAP;
 
   let branchLeftX = CX - totalW / 2;
-  const branchY = rootY + out[0].h / 2 + TREE_DOWN_ROOT_TO_BRANCH_GAP;
+  const branchY =
+    rootY + out[0].h / 2 + TREE_DOWN_ROOT_TO_BRANCH_GAP + belowNodeReserve(out[0]);
 
   for (const branch of measuredBranches) {
     const branchCenterX = branchLeftX + branch.subtreeW / 2;

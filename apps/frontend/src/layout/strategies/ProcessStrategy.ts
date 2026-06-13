@@ -23,6 +23,7 @@
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
+import { belowNodeReserve } from '@/layout/nodeDecorations';
 
 const ROOT_Y_OFFSET = 250;        // root near the top of the viewBox
 const ROOT_MIN_LEFT = 40;
@@ -122,7 +123,8 @@ function place(
 
   if (m.children.length === 0) return;
 
-  const childTop = y + m.h / 2 + ROW_GAP;
+  // Reserve room below the box for tag chips / lock badge before the row below.
+  const childTop = y + m.h / 2 + ROW_GAP + belowNodeReserve(m.node);
   let cursorLeft = left + CHILD_INDENT; // children begin indented right of the node's left edge
 
   for (const child of m.children) {
@@ -144,10 +146,11 @@ export function layoutProcessChildren(
   parentId: string,
   out: LaidOutNode[],
   parentColorKey?: string,
+  anchorReserve = 0,
 ): void {
   const measured = stages.map((stage) => measure(stage, anchorDepth + 1));
 
-  const childTop = anchorY + anchorH / 2 + ROW_GAP;
+  const childTop = anchorY + anchorH / 2 + ROW_GAP + anchorReserve;
   let cursorLeft = anchorX - anchorW / 2 + CHILD_INDENT;
 
   for (const m of measured) {
@@ -182,7 +185,7 @@ export function layoutProcessTreeRight(
   out[0].side = 'down';
   out[0].layoutType = PROCESS_TAG;
 
-  const childTop = rootY + rootH / 2 + ROOT_TO_STAGE_ROW_GAP;
+  const childTop = rootY + rootH / 2 + ROOT_TO_STAGE_ROW_GAP + belowNodeReserve(out[0]);
   let cursorLeft = blockLeft + CHILD_INDENT;
 
   for (const m of measured) {

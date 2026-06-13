@@ -16,6 +16,7 @@
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
+import { belowNodeReserve } from '@/layout/nodeDecorations';
 
 const H_GAP = 44;        // parent right edge → child left edge
 const ROW_GAP = 12;      // vertical gap between sibling subtrees
@@ -64,7 +65,9 @@ function placeSubtree(
     parentColorKey: parentColorKey as any,
   });
 
-  let bottom = centerY + size.h / 2;
+  // Reserve room below the box for tag chips / lock badge so the next sibling
+  // (placed below this subtree) doesn't cover them.
+  let bottom = centerY + size.h / 2 + belowNodeReserve(node);
 
   const childLeft = x + size.w / 2 + H_GAP;
   const children = node.children ?? [];

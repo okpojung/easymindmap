@@ -1,16 +1,18 @@
 // File: src/layout/strategies/ProcessStrategy.ts
-// Version: MVP-ProcessStrategy-RowBelowRoot-v3.0.0
+// Version: MVP-ProcessStrategy-IndentedColumns-v4.0.0
 // Reference: docs/assets/layout_진행트리형.png,
 //            docs/assets/트리오른쪽_계층형오른쪽_진행트리오른쪽.JPG
 // Description:
 // - process-tree-right ("오른쪽-진행트리"):
 //   · Root sits at the upper-left.
 //   · Level-1 stages flow left → right on a row BELOW the root
-//     (stage tops aligned).
-//   · The connector drops from the root's bottom, runs along a horizontal
-//     spine, then drops into the TOP edge of each stage
-//     (EdgeRenderer.createProcessPath).
-//   · Each stage's descendants stack vertically below the stage (one column).
+//     (stage tops aligned, connector drops from root → spine → stage top).
+//   · Each stage owns ONE column below it. Inside that column the stage's
+//     descendants are stacked vertically as a LEFT-ALIGNED OUTLINE: each
+//     deeper level is indented to the right, so depth 3/4/… stay readable
+//     and never overlap their depth-2 parents.
+//   · Column width accounts for the deepest indent, so neighbouring stages
+//     never collide.
 // - layoutProcessChildren() is shared with SubtreeStrategy so the same
 //   placement can be applied below any selected node.
 
@@ -22,16 +24,18 @@ const ROOT_Y_OFFSET = 250;       // root near the top of the viewBox
 const ROOT_MIN_LEFT = 40;
 
 const STAGE_START_INDENT = 56;   // root left edge → first stage column left
-const STAGE_GAP = 40;            // gap between stage columns
+const STAGE_GAP = 44;            // gap between stage columns
 const ROOT_TO_STAGE_ROW_GAP = 64; // root bottom → stage row top
-const STAGE_TO_CHILD_GAP = 42;   // stage bottom → first child top
-const CHILD_V_GAP = 10;
+const STAGE_TO_CHILD_GAP = 40;   // stage bottom → first child top
+const CHILD_V_GAP = 10;          // vertical gap between stacked column items
+const CHILD_INDENT = 28;         // horizontal indent per depth level inside a column
 
 const PROCESS_TAG = 'process-tree-right' as LayoutType;
 
 interface ColumnItem {
   node: MindNode;
   depth: number;
+  relIndent: number; // 0 for the stage's direct children, +1 per deeper level
   parentId: string;
   parentColorKey?: string;
   w: number;
@@ -49,9 +53,12 @@ interface MeasuredColumn {
   columnW: number;
 }
 
+// Depth-first pre-order collection so each child immediately follows its
+// parent, with its indent level recorded for left-aligned outline placement.
 function measureInto(
   node: MindNode,
   depth: number,
+  relIndent: number,
   parentId: string,
   parentColorKey: string | undefined,
   items: ColumnItem[],
@@ -65,6 +72,7 @@ function measureInto(
   items.push({
     node,
     depth,
+    relIndent,
     parentId,
     parentColorKey,
     w: size.w,
@@ -76,7 +84,7 @@ function measureInto(
   });
 
   for (const child of node.children ?? []) {
-    measureInto(child, depth + 1, node.id, node.colorKey ?? parentColorKey, items);
+    measureInto(child, depth + 1, relIndent + 1, node.id, node.colorKey ?? parentColorKey, items);
   }
 }
 
@@ -94,15 +102,14 @@ function measureColumns(
 
     const items: ColumnItem[] = [];
     for (const child of stage.children ?? []) {
-      measureInto(child, stageDepth + 1, stage.id, stage.colorKey ?? parentColorKey, items);
+      measureInto(child, stageDepth + 1, 0, stage.id, stage.colorKey ?? parentColorKey, items);
     }
 
-    return {
-      stage,
-      stageSize,
-      items,
-      columnW: Math.max(stageSize.w, ...items.map((item) => item.w), 0),
-    };
+    // Column width = the widest of the stage box and every indented item.
+    const itemsRight = items.map((item) => item.relIndent * CHILD_INDENT + item.w);
+    const columnW = Math.max(stageSize.w, ...itemsRight, 0);
+
+    return { stage, stageSize, items, columnW };
   });
 }
 
@@ -122,11 +129,12 @@ function placeColumns(
   out: LaidOutNode[],
   parentColorKey?: string,
 ): void {
-  let groupLeft = startLeft;
+  let columnLeft = startLeft;
 
   for (const column of columns) {
-    const stageX = groupLeft + column.columnW / 2;
-    const stageY = rowTop + column.stageSize.h / 2; // stage tops aligned
+    // Stage box is left-aligned at the column's left edge.
+    const stageX = columnLeft + column.stageSize.w / 2;
+    const stageY = rowTop + column.stageSize.h / 2;
 
     out.push({
       ...column.stage,
@@ -148,10 +156,12 @@ function placeColumns(
     let cursorY = stageY + column.stageSize.h / 2 + STAGE_TO_CHILD_GAP;
 
     for (const item of column.items) {
+      const itemLeft = columnLeft + item.relIndent * CHILD_INDENT;
+
       out.push({
         ...item.node,
         layoutType: PROCESS_TAG,
-        x: stageX,
+        x: itemLeft + item.w / 2,
         y: cursorY + item.h / 2,
         w: item.w,
         h: item.h,
@@ -168,12 +178,12 @@ function placeColumns(
       cursorY += item.h + CHILD_V_GAP;
     }
 
-    groupLeft += column.columnW + STAGE_GAP;
+    columnLeft += column.columnW + STAGE_GAP;
   }
 }
 
 // Lays out `stages` as a horizontal flow on a row BELOW the anchor node,
-// with each stage's descendants stacked vertically below the stage.
+// with each stage's descendants stacked as a left-aligned outline column.
 export function layoutProcessChildren(
   stages: MindNode[],
   anchorX: number,

@@ -9,6 +9,13 @@ import { useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator, OutlineNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
+import { useInteractionStore } from '@/stores/interactionStore';
+import {
+  useDocumentStore,
+  findNodeInMap,
+  findParentId,
+  getNodeDepth,
+} from '@/stores/documentStore';
 
 import { OutlinePanel } from '@/components/left-sidebar/OutlinePanel';
 import { SearchPanel }  from '@/components/left-sidebar/SearchPanel';
@@ -233,6 +240,14 @@ function InspectorContent({ t, tab }: {
   tab: InspectorTabKey;
   collabs: Collaborator[];
 }) {
+  const selectedId = useInteractionStore((s) => s.selectedId);
+  const map = useDocumentStore((s) => s.map);
+
+  const node = findNodeInMap(map, selectedId);
+  const depth = getNodeDepth(map, selectedId);
+  const parentId = findParentId(map, selectedId);
+  const parentNode = findNodeInMap(map, parentId);
+
   const title = ({
     style:   '스타일',
     layout:  '레이아웃',
@@ -252,21 +267,23 @@ function InspectorContent({ t, tab }: {
         <div style={{
           fontSize: 10, fontWeight: 700, color: t.textSubtle,
           textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3,
-        }}>선택 · depth 2</div>
+        }}>{node ? `선택 · depth ${depth}` : '선택된 노드 없음'}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
           <div style={{
-            fontSize: 13.5, fontWeight: 600, color: t.text,
+            fontSize: 13.5, fontWeight: 600, color: node ? t.text : t.textMuted,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>에디터 코어 — 노드 CRUD</div>
+          }}>{node ? node.text : '노드를 선택하세요'}</div>
         </div>
-        <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 3 }}>Q1 · 기반 구축</div>
+        {parentNode && parentId !== selectedId && (
+          <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 3 }}>{parentNode.text}</div>
+        )}
       </div>
 
       <ContentHeader t={t} title={title} compact />
 
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0, background: t.surface }}>
-        {tab === 'style'   && <StyleTab t={t} />}
+        {tab === 'style'   && <StyleTab t={t} selectedId={selectedId} />}
         {tab === 'layout'  && <LayoutTab t={t} />}
         {tab === 'content' && <ContentTab t={t} />}
         {tab === 'note'    && <NoteTagTab t={t} />}

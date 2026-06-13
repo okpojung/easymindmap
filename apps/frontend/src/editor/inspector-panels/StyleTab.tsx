@@ -5,18 +5,22 @@
 // reference level→font preview block. Spec: 10-canvas.md § 28.3, NS-04 / NS-01 / NS-02.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import type { ShapeType, NodeStyle } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
+import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection, InspectorRow, ColorSwatchInput } from './InspectorSection';
 
-const SHAPES = [
-  { key: 'rounded', label: '둥근',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:6}} />, active: true },
-  { key: 'square',  label: '사각',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:2}} /> },
-  { key: 'pill',    label: '캡슐',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:999}} /> },
-  { key: 'circle',  label: '원',    shape: <span style={{display:'inline-block', width:14, height:14, border:'1.5px solid currentColor', borderRadius:'50%'}} /> },
-  { key: 'hex',     label: '육각',  shape: <I.Hexagon size={15} /> },
-  { key: 'diamond', label: '다이아', shape: <I.Diamond size={13} /> },
-  { key: 'cloud',   label: '구름',  shape: <CloudGlyph /> },
+const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
+  { key: 'rounded',       label: '둥근',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:6}} /> },
+  { key: 'rectangle',     label: '사각',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:2}} /> },
+  { key: 'pill',          label: '캡슐',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:999}} /> },
+  { key: 'ellipse',       label: '원',    shape: <span style={{display:'inline-block', width:18, height:14, border:'1.5px solid currentColor', borderRadius:'50%'}} /> },
+  { key: 'hexagon',       label: '육각',  shape: <I.Hexagon size={15} /> },
+  { key: 'diamond',       label: '다이아', shape: <I.Diamond size={13} /> },
+  { key: 'parallelogram', label: '평행', shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', transform:'skewX(-18deg)'}} /> },
 ];
+
+const DEFAULT_COLORS = { fillColor: '#FEF3C7', borderColor: '#F59E0B', textColor: '#78350F' };
 
 const LEVEL_FONTS = [
   { l: 'Root',     px: 18, w: 700 },
@@ -26,50 +30,88 @@ const LEVEL_FONTS = [
   { l: 'Level 4+', px: 13, w: 500 },
 ];
 
-export function StyleTab({ t }: { t: ThemeTokens }) {
+export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
+  const map = useDocumentStore((s) => s.map);
+  const updateNodeStyle = useDocumentStore((s) => s.updateNodeStyle);
+
+  const node = findNodeInMap(map, selectedId);
+  const style: NodeStyle = node?.style ?? {};
+  const shape: ShapeType = style.shapeType ?? 'rounded';
+
+  const disabled = !selectedId || !node;
+  const set = (patch: Partial<NodeStyle>) => {
+    if (selectedId) updateNodeStyle(selectedId, patch);
+  };
+
   return (
-    <div>
+    <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
       <InspectorSection t={t} title="도형 (NS-04)">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-          {SHAPES.map(s => (
-            <button key={s.key} title={s.label} style={{
-              padding: '7px 0 5px', borderRadius: 6,
-              background: s.active ? t.primarySoft : t.surfaceAlt,
-              color:      s.active ? t.primary     : t.textMuted,
-              border: `1px solid ${s.active ? t.primaryBorder : t.border}`,
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-              cursor: 'pointer',
-            }}>
-              {s.shape}
-              <span style={{ fontSize: 9.5, fontWeight: s.active ? 600 : 500 }}>{s.label}</span>
-            </button>
-          ))}
+          {SHAPES.map(s => {
+            const active = shape === s.key;
+            return (
+              <button key={s.key} title={s.label}
+                onClick={() => set({ shapeType: s.key })}
+                style={{
+                  padding: '7px 0 5px', borderRadius: 6,
+                  background: active ? t.primarySoft : t.surfaceAlt,
+                  color:      active ? t.primary     : t.textMuted,
+                  border: `1px solid ${active ? t.primaryBorder : t.border}`,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                  cursor: 'pointer',
+                }}>
+                {s.shape}
+                <span style={{ fontSize: 9.5, fontWeight: active ? 600 : 500 }}>{s.label}</span>
+              </button>
+            );
+          })}
         </div>
       </InspectorSection>
 
       <InspectorSection t={t} title="채움 · 테두리 · 글자색">
-        <InspectorRow t={t} label="채움색"><ColorSwatchInput t={t} value="#FEF3C7" /></InspectorRow>
-        <InspectorRow t={t} label="테두리"><ColorSwatchInput t={t} value="#F59E0B" /></InspectorRow>
-        <InspectorRow t={t} label="글자색"><ColorSwatchInput t={t} value="#78350F" /></InspectorRow>
-        <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 2, lineHeight: 1.5 }}>
-          MVP에서는 NS-01·02·04만 노드별 지정. 나머지는 맵 기본값 따름.
+        <InspectorRow t={t} label="채움색">
+          <ColorSwatchInput t={t} value={style.fillColor ?? DEFAULT_COLORS.fillColor}
+            onChange={(v) => set({ fillColor: v })} />
+        </InspectorRow>
+        <InspectorRow t={t} label="테두리">
+          <ColorSwatchInput t={t} value={style.borderColor ?? DEFAULT_COLORS.borderColor}
+            onChange={(v) => set({ borderColor: v })} />
+        </InspectorRow>
+        <InspectorRow t={t} label="글자색">
+          <ColorSwatchInput t={t} value={style.textColor ?? DEFAULT_COLORS.textColor}
+            onChange={(v) => set({ textColor: v })} />
+        </InspectorRow>
+      </InspectorSection>
+
+      <InspectorSection t={t} title="테두리 스타일">
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['solid', 'dashed', 'dotted'] as const).map((bs) => {
+            const active = (style.borderStyle ?? 'solid') === bs;
+            return (
+              <button key={bs} onClick={() => set({ borderStyle: bs })}
+                style={{
+                  flex: 1, padding: '6px 0', borderRadius: 5, fontSize: 11,
+                  background: active ? t.primarySoft : t.surfaceAlt,
+                  color: active ? t.primary : t.textMuted,
+                  border: `1px solid ${active ? t.primaryBorder : t.border}`,
+                  cursor: 'pointer',
+                }}>
+                {bs === 'solid' ? '실선' : bs === 'dashed' ? '파선' : '점선'}
+              </button>
+            );
+          })}
         </div>
       </InspectorSection>
 
       <InspectorSection t={t} title="텍스트 강조">
-        <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 8, lineHeight: 1.5 }}>
-          폰트 크기는 노드 레벨에 따라 자동 결정됩니다. 강조는 markdown 문법으로 입력하세요.
-        </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <MarkdownToggle t={t} sample="**굵게**"  rendered="굵게"   weight={700} />
-          <MarkdownToggle t={t} sample="*기울임*"  rendered="기울임" italic />
-          <MarkdownToggle t={t} sample="`코드`"    rendered="코드"   code />
-          <MarkdownToggle t={t} sample="~~취소~~"  rendered="취소"   strike />
+          <StyleToggle t={t} label="굵게" weight={700}
+            active={style.fontWeight === 'bold'}
+            onClick={() => set({ fontWeight: style.fontWeight === 'bold' ? 'normal' : 'bold' })} />
+          <StyleToggle t={t} label="기울임" italic
+            active={style.fontStyle === 'italic'}
+            onClick={() => set({ fontStyle: style.fontStyle === 'italic' ? 'normal' : 'italic' })} />
         </div>
-        <a href="#md-policy" style={{
-          display: 'inline-block', marginTop: 8,
-          fontSize: 10.5, color: t.accent, textDecoration: 'none', fontWeight: 500,
-        }}>마크다운 문법 가이드 →</a>
       </InspectorSection>
 
       <InspectorSection t={t} title="레벨별 폰트 (맵 전체 설정)">
@@ -94,45 +136,26 @@ export function StyleTab({ t }: { t: ThemeTokens }) {
   );
 }
 
-function CloudGlyph() {
-  return (
-    <svg width="22" height="14" viewBox="0 0 22 14" fill="none">
-      <path d="M5 11 C 2 11, 2 7, 5 7 C 5 4, 9 4, 10 6 C 11 3, 16 3, 16 7 C 19 7, 19 11, 16 11 Z"
-            stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-interface MdProps {
+function StyleToggle({
+  t, label, active, onClick, weight, italic,
+}: {
   t: ThemeTokens;
-  sample: string;
-  rendered: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
   weight?: number;
   italic?: boolean;
-  code?: boolean;
-  strike?: boolean;
-}
-
-function MarkdownToggle({ t, sample, rendered, weight, italic, code, strike }: MdProps) {
+}) {
   return (
-    <button style={{
+    <button onClick={onClick} style={{
       flex: 1, padding: '6px 4px', borderRadius: 5,
-      background: t.surfaceAlt, border: `1px solid ${t.border}`,
+      background: active ? t.primarySoft : t.surfaceAlt,
+      color: active ? t.primary : t.text,
+      border: `1px solid ${active ? t.primaryBorder : t.border}`,
       cursor: 'pointer',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
-    }}>
-      <span style={{
-        fontSize: 12,
-        fontWeight: weight || 500,
-        fontStyle: italic ? 'italic' : 'normal',
-        textDecoration: strike ? 'line-through' : 'none',
-        fontFamily: code ? 'ui-monospace, monospace' : 'inherit',
-        color: code ? t.accent : t.text,
-        background: code ? t.surfaceSunken : 'transparent',
-        padding: code ? '0 4px' : 0,
-        borderRadius: 3,
-      }}>{rendered}</span>
-      <span style={{ fontSize: 9, color: t.textSubtle, fontFamily: 'ui-monospace, monospace' }}>{sample}</span>
-    </button>
+      fontSize: 12,
+      fontWeight: weight || 500,
+      fontStyle: italic ? 'italic' : 'normal',
+    }}>{label}</button>
   );
 }

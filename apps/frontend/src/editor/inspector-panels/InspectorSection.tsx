@@ -76,14 +76,16 @@ export function Toggle({ t, on, onChange }: ToggleProps) {
 interface ColorSwatchProps {
   t: ThemeTokens;
   value: string;
+  onChange?: (v: string) => void;
 }
 
-export function ColorSwatchInput({ t, value }: ColorSwatchProps) {
+export function ColorSwatchInput({ t, value, onChange }: ColorSwatchProps) {
   return (
-    <div style={{
+    <label style={{
       display: 'flex', alignItems: 'center', gap: 6,
       padding: '4px 6px', borderRadius: 6,
       border: `1px solid ${t.border}`, background: t.surface,
+      cursor: onChange ? 'pointer' : 'default',
     }}>
       <span style={{
         width: 18, height: 18, borderRadius: 4,
@@ -94,6 +96,14 @@ export function ColorSwatchInput({ t, value }: ColorSwatchProps) {
         color: t.textMuted,
       }}>{value}</span>
       <span style={{ marginLeft: 'auto', color: t.textMuted, fontSize: 10 }}>▾</span>
-    </div>
+      {onChange && (
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ width: 0, height: 0, opacity: 0, position: 'absolute', pointerEvents: 'none' }}
+        />
+      )}
+    </label>
   );
 }

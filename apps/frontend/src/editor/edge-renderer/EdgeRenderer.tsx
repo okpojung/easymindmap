@@ -64,19 +64,14 @@ function createRadialPath(from: LaidOutNode, to: LaidOutNode): string {
   const fromY = from.y;
   const toY = to.y;
 
-  // The control-point horizontal offset must stay proportional to the
-  // HORIZONTAL distance only (and below the span). If it also scales with the
-  // vertical distance it can exceed dx, pushing the control points PAST the
-  // opposite endpoint — the curve then overshoots sideways and neighbouring
-  // edges loop and overlap. Clamping to [36, 120] keeps control points between
-  // parent and child for a clean, non-overlapping fan.
-  const distance = Math.abs(toX - fromX);
-  const offset = Math.max(36, Math.min(120, distance * 0.45));
+  // markmap-style link — d3.linkHorizontal() (= link(curveBumpX)): a cubic
+  // Bézier whose BOTH control points sit at the horizontal MIDPOINT, giving a
+  // smooth symmetric S-curve with horizontal tangents at each end (the markmap
+  // connector look). Because the control points are exactly at the midpoint
+  // they never pass the endpoints, so the curves never overshoot or overlap.
+  const midX = (fromX + toX) / 2;
 
-  const c1x = isLeft ? fromX - offset : fromX + offset;
-  const c2x = isLeft ? toX + offset : toX - offset;
-
-  return `M ${fromX} ${fromY} C ${c1x} ${fromY}, ${c2x} ${toY}, ${toX} ${toY}`;
+  return `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`;
 }
 
 function createTreeDownPath(from: LaidOutNode, to: LaidOutNode): string {

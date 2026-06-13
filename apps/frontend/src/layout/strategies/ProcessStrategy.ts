@@ -28,7 +28,7 @@ const STAGE_GAP = 44;            // gap between stage columns
 const ROOT_TO_STAGE_ROW_GAP = 64; // root bottom → stage row top
 const STAGE_TO_CHILD_GAP = 40;   // stage bottom → first child top
 const CHILD_V_GAP = 10;          // vertical gap between stacked column items
-const CHILD_INDENT = 28;         // horizontal indent per depth level inside a column
+const CHILD_INDENT = 36;         // horizontal indent per depth level inside a column
 
 const PROCESS_TAG = 'process-tree-right' as LayoutType;
 

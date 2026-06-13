@@ -9,15 +9,38 @@ export const SAMPLE_ROADMAP: SampleMap = {
     {
       id: 'b1', text: 'Q1 · 기반 구축', colorKey: 'l1B', side: 'right', icon: '🧱',
       children: [
-        { id: 'b1-1', text: '인증 시스템 (Supabase Auth)', tags: ['MVP', 'Auth'] },
-        { id: 'b1-2', text: '에디터 코어 — 노드 CRUD', tags: ['MVP', 'Core'], note: true },
+        {
+          id: 'b1-1', text: '인증 시스템 (Supabase Auth)', tags: ['MVP', 'Auth'],
+          children: [
+            { id: 'b1-1-1', text: '이메일 / 소셜 로그인' },
+            { id: 'b1-1-2', text: '세션 · 권한 관리' },
+          ],
+        },
+        {
+          id: 'b1-2', text: '에디터 코어 — 노드 CRUD', tags: ['MVP', 'Core'], note: true,
+          children: [
+            { id: 'b1-2-1', text: '노드 추가 / 삭제 / 이동' },
+            {
+              id: 'b1-2-2', text: '실행 취소 · 재실행',
+              children: [
+                { id: 'b1-2-2-1', text: '히스토리 스택 (depth 4)' },
+              ],
+            },
+          ],
+        },
         { id: 'b1-3', text: '자동저장 엔진 (800ms debounce)' },
       ],
     },
     {
       id: 'b2', text: 'Q2 · AI 통합', colorKey: 'l1A', side: 'right', icon: '✨',
       children: [
-        { id: 'b2-1', text: '프롬프트 → 맵 생성', tags: ['AI', 'MVP'], locked: true },
+        {
+          id: 'b2-1', text: '프롬프트 → 맵 생성', tags: ['AI', 'MVP'], locked: true,
+          children: [
+            { id: 'b2-1-1', text: '템플릿 프롬프트 모음' },
+            { id: 'b2-1-2', text: '스트리밍 응답 파싱' },
+          ],
+        },
         { id: 'b2-2', text: '최대 depth 3, 50 노드' },
         { id: 'b2-3', text: '결과 프리뷰 & 수락 플로우' },
       ],

@@ -13,9 +13,22 @@
 //   re-laid-out in that style around the node's position.
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
-import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
+import type { LayoutType, SampleMap, SampleBranch, MindNode } from '@/editor/__samples__/types';
 import type { LaidOutNode } from './types';
 import { normalizeLayoutType } from './normalizeLayoutType';
+
+// Hides children of collapsed nodes from the layout, while recording the
+// original child count on `_childCount` so the canvas can still draw a
+// collapse/expand toggle on a collapsed node.
+function pruneCollapsed<T extends MindNode>(nodes: T[]): T[] {
+  return nodes.map((node) => {
+    const childCount = node.children?.length ?? 0;
+    if (node.collapsed) {
+      return { ...node, _childCount: childCount, children: [] };
+    }
+    return { ...node, _childCount: childCount, children: pruneCollapsed(node.children ?? []) };
+  });
+}
 
 import { layoutRadial, layoutRadialOneSide } from './strategies/RadialStrategy';
 import { layoutTreeRight, layoutTreeDown } from './strategies/TreeStrategy';
@@ -59,7 +72,7 @@ export function computeLayout(
   ];
 
   const rootW = rootSize.w;
-  const branches = sample.branches;
+  const branches = pruneCollapsed(sample.branches) as SampleBranch[];
 
   switch (activeLayoutType) {
     case 'tree-right':

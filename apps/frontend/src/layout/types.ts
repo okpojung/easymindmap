@@ -4,6 +4,10 @@ import type { TextAlign, LayoutType, EdgeType } from '@/types/mindmap';
 import type {
   NodeColorKey,
   SampleMap,
+  NodeStyle,
+  NodeLink,
+  NoteBlock,
+  NodeAttachment,
 } from '@/editor/__samples__/types';
 
 export interface LaidOutNode {
@@ -31,6 +35,15 @@ export interface LaidOutNode {
 
   note?: boolean;
   locked?: boolean;
+
+  collapsed?: boolean;
+  style?: NodeStyle;
+  links?: NodeLink[];
+  notes?: NoteBlock[];
+  attachments?: NodeAttachment[];
+
+  // Layout-internal: original child count (children may be hidden when collapsed)
+  _childCount?: number;
 
   textAlign?: TextAlign;
   layoutType?: LayoutType;

@@ -1,5 +1,5 @@
 // File: src/layout/strategies/ProcessStrategy.ts
-// Version: MVP-ProcessStrategy-RecursiveRows-v5.0.0
+// Version: MVP-ProcessStrategy-RecursiveRows-v5.1.0
 // Reference: docs/assets/layout_진행트리형.png,
 //            docs/assets/트리오른쪽_계층형오른쪽_진행트리오른쪽.JPG
 // Description:
@@ -13,8 +13,10 @@
 //   · The connector drops from the parent's bottom, runs along a horizontal
 //     spine, then drops into the TOP edge of each child
 //     (EdgeRenderer.createProcessPath).
+//   · The children row begins CHILD_INDENT px to the RIGHT of the parent's
+//     left edge, so each child is slightly indented under its parent.
 //   · Each subtree reserves a "block" whose width is the wider of the node
-//     box and its children row, so neighbouring subtrees never collide.
+//     box and (indent + children row), so neighbouring subtrees never collide.
 // - layoutProcessChildren() is shared with SubtreeStrategy so the same
 //   recursive placement can be applied below any selected node.
 
@@ -28,6 +30,7 @@ const ROOT_MIN_LEFT = 40;
 const ROW_GAP = 48;               // parent bottom → children row top
 const COL_GAP = 28;               // horizontal gap between sibling subtree blocks
 const ROOT_TO_STAGE_ROW_GAP = 56; // root bottom → first (stage) row top
+const CHILD_INDENT = 24;          // children row starts indented to the RIGHT of the parent's left edge
 
 const PROCESS_TAG = 'process-tree-right' as LayoutType;
 
@@ -69,7 +72,9 @@ function measure(node: MindNode, depth: number): Measured {
     fontWeight: size.fontWeight,
     lineHeight: size.lineHeight,
     children,
-    blockW: Math.max(size.w, childrenRowW),
+    // Children start CHILD_INDENT px to the right of the block's left edge, so
+    // the reserved block must be wide enough for that indent plus the row.
+    blockW: Math.max(size.w, children.length === 0 ? 0 : CHILD_INDENT + childrenRowW),
   };
 }
 
@@ -82,9 +87,10 @@ function rowWidth(items: Measured[]): number {
 
 // Places `m` inside a block whose LEFT edge is `left`, with the node TOP at
 // `top`. The layout is LEFT-ANCHORED: the node sits at the top-LEFT of its
-// block and its children row begins at the same left edge, so the node sits
-// above the leftmost child and the children fan out to the RIGHT (the
-// 진행트리오른쪽 reference shape). Applied recursively at every level.
+// block and its children row begins CHILD_INDENT px to the RIGHT of that left
+// edge, so each child is slightly indented under its parent and the children
+// fan out to the RIGHT (the 진행트리오른쪽 reference shape). Applied recursively
+// at every level.
 function place(
   m: Measured,
   left: number,
@@ -117,7 +123,7 @@ function place(
   if (m.children.length === 0) return;
 
   const childTop = y + m.h / 2 + ROW_GAP;
-  let cursorLeft = left; // children begin at the node's left edge
+  let cursorLeft = left + CHILD_INDENT; // children begin indented right of the node's left edge
 
   for (const child of m.children) {
     place(child, cursorLeft, childTop, depth + 1, m.node.id, out, m.node.colorKey ?? parentColorKey);
@@ -142,7 +148,7 @@ export function layoutProcessChildren(
   const measured = stages.map((stage) => measure(stage, anchorDepth + 1));
 
   const childTop = anchorY + anchorH / 2 + ROW_GAP;
-  let cursorLeft = anchorX - anchorW / 2;
+  let cursorLeft = anchorX - anchorW / 2 + CHILD_INDENT;
 
   for (const m of measured) {
     place(m, cursorLeft, childTop, anchorDepth + 1, parentId, out, parentColorKey);
@@ -163,9 +169,9 @@ export function layoutProcessTreeRight(
   const stagesRowW = rowWidth(measured);
 
   // Center the whole block (root + stage flow) horizontally in the viewBox.
-  // The root sits at the top-LEFT and the stage row begins at the same left
-  // edge (left-anchored, consistent with every level).
-  const totalW = Math.max(rootW, stagesRowW);
+  // The root sits at the top-LEFT and the stage row begins CHILD_INDENT px to
+  // the right of that left edge (left-anchored, consistent with every level).
+  const totalW = Math.max(rootW, CHILD_INDENT + stagesRowW);
   const blockLeft = Math.max(CX - totalW / 2, ROOT_MIN_LEFT);
 
   const rootX = blockLeft + rootW / 2;
@@ -177,7 +183,7 @@ export function layoutProcessTreeRight(
   out[0].layoutType = PROCESS_TAG;
 
   const childTop = rootY + rootH / 2 + ROOT_TO_STAGE_ROW_GAP;
-  let cursorLeft = blockLeft;
+  let cursorLeft = blockLeft + CHILD_INDENT;
 
   for (const m of measured) {
     place(m, cursorLeft, childTop, 1, 'root', out);

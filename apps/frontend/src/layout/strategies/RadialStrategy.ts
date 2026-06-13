@@ -1,7 +1,7 @@
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
-import { tagOverhang } from '../tagOverhang';
+import { nodeOverhang } from '../tagOverhang';
 
 const V_GAP = 10;
 const H_GAP = 42;
@@ -32,7 +32,7 @@ function measureNode(node: MindNode, depth: number): MeasuredNode {
   const childrenTotalH =
     children.length === 0
       ? 0
-      : children.reduce((sum, child) => sum + child.subtreeH + tagOverhang(child.node), 0) +
+      : children.reduce((sum, child) => sum + child.subtreeH + nodeOverhang(child.node), 0) +
         (children.length - 1) * V_GAP;
 
   return {
@@ -90,7 +90,7 @@ function layoutMeasuredNode(
   if (measured.children.length === 0) return;
 
   const childrenTotalH =
-    measured.children.reduce((sum, child) => sum + child.subtreeH + tagOverhang(child.node), 0) +
+    measured.children.reduce((sum, child) => sum + child.subtreeH + nodeOverhang(child.node), 0) +
     (measured.children.length - 1) * V_GAP;
 
   let childY = y - childrenTotalH / 2;
@@ -115,7 +115,7 @@ function layoutMeasuredNode(
       measured.node.colorKey,
     );
 
-    childY += child.subtreeH + tagOverhang(child.node) + V_GAP;
+    childY += child.subtreeH + nodeOverhang(child.node) + V_GAP;
   }
 }
 
@@ -159,7 +159,7 @@ function layoutSide(
   const totalH =
     measuredBranches.length === 0
       ? 0
-      : measuredBranches.reduce((sum, item) => sum + item.subtreeH + tagOverhang(item.node), 0) +
+      : measuredBranches.reduce((sum, item) => sum + item.subtreeH + nodeOverhang(item.node), 0) +
         (measuredBranches.length - 1) * 16;
 
   let yStart = CY - totalH / 2;
@@ -182,6 +182,6 @@ function layoutSide(
       out,
     );
 
-    yStart += measured.subtreeH + tagOverhang(measured.node) + 16;
+    yStart += measured.subtreeH + nodeOverhang(measured.node) + 16;
   }
 }

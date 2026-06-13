@@ -10,6 +10,7 @@
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
+import { tagOverhang } from '../tagOverhang';
 
 const TREE_RIGHT_ROOT_X_OFFSET = 430;
 const TREE_RIGHT_ROOT_Y_OFFSET = 235;
@@ -88,7 +89,8 @@ function arrangeTreeRightNode(
 
   pushTreeRightNode(out, node, x, y, depth, parentId, parentColorKey);
 
-  yRef.value += size.h + TREE_RIGHT_ROW_GAP;
+  // Reserve room for tag chips below the node so the next outline row clears them.
+  yRef.value += size.h + TREE_RIGHT_ROW_GAP + tagOverhang(node);
 
   for (const child of node.children ?? []) {
     arrangeTreeRightNode(

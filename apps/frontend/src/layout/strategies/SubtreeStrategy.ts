@@ -13,6 +13,7 @@ import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { normalizeLayoutType } from '../normalizeLayoutType';
+import { tagOverhang } from '../tagOverhang';
 import { layoutHierarchyChildren } from './HierarchyStrategy';
 import { layoutProcessChildren } from './ProcessStrategy';
 
@@ -229,7 +230,7 @@ function measureCentered(node: MindNode, depth: number): MeasuredCentered {
   const childrenH =
     children.length === 0
       ? 0
-      : children.reduce((sum, child) => sum + child.subtreeH, 0) +
+      : children.reduce((sum, child) => sum + child.subtreeH + tagOverhang(child.node), 0) +
         (children.length - 1) * RADIAL_V_GAP;
 
   return {
@@ -276,7 +277,7 @@ function placeCentered(
   if (measured.children.length === 0) return;
 
   const childrenH =
-    measured.children.reduce((sum, child) => sum + child.subtreeH, 0) +
+    measured.children.reduce((sum, child) => sum + child.subtreeH + tagOverhang(child.node), 0) +
     (measured.children.length - 1) * RADIAL_V_GAP;
 
   let cursorY = y - childrenH / 2;
@@ -301,7 +302,7 @@ function placeCentered(
       measured.node.colorKey,
     );
 
-    cursorY += child.subtreeH + RADIAL_V_GAP;
+    cursorY += child.subtreeH + tagOverhang(child.node) + RADIAL_V_GAP;
   }
 }
 
@@ -322,7 +323,7 @@ function layoutCenteredChildren(
   const totalH =
     measured.length === 0
       ? 0
-      : measured.reduce((sum, item) => sum + item.subtreeH, 0) +
+      : measured.reduce((sum, item) => sum + item.subtreeH + tagOverhang(item.node), 0) +
         (measured.length - 1) * RADIAL_BRANCH_V_GAP;
 
   let cursorY = anchorY - totalH / 2;
@@ -337,7 +338,7 @@ function layoutCenteredChildren(
 
     placeCentered(item, x, y, anchorDepth + 1, parentId, side, tag, out, parentColorKey);
 
-    cursorY += item.subtreeH + RADIAL_BRANCH_V_GAP;
+    cursorY += item.subtreeH + tagOverhang(item.node) + RADIAL_BRANCH_V_GAP;
   }
 }
 
@@ -401,7 +402,7 @@ function arrangeOutlineNode(
     parentColorKey: parentColorKey as any,
   });
 
-  yRef.value += size.h + OUTLINE_ROW_GAP;
+  yRef.value += size.h + OUTLINE_ROW_GAP + tagOverhang(node);
 
   for (const child of node.children ?? []) {
     arrangeOutlineNode(

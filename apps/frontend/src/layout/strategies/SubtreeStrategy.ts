@@ -26,6 +26,13 @@ const SUBTREE_SUPPORTED = new Set<LayoutType>([
   'process-tree-right' as LayoutType,
 ]);
 
+// Layouts whose direct children are arranged left → right (a wider subtree
+// pushes siblings sideways). Everything else stacks siblings vertically.
+const HORIZONTAL_SIBLING_PARENTS = new Set<LayoutType>([
+  'process-tree-right' as LayoutType,
+  'tree-down' as LayoutType,
+]);
+
 export function applyLayoutOverrides(
   branches: SampleBranch[],
   mapLayoutType: LayoutType,
@@ -44,7 +51,7 @@ function walk(node: MindNode, parentEffective: LayoutType, out: LaidOutNode[]): 
     : parentEffective;
 
   if (effective !== parentEffective && SUBTREE_SUPPORTED.has(effective)) {
-    relayoutSubtree(node, effective, out);
+    relayoutSubtree(node, effective, parentEffective, out);
   }
 
   for (const child of node.children ?? []) {
@@ -59,7 +66,69 @@ function collectDescendantIds(node: MindNode, ids: Set<string>): void {
   }
 }
 
-function relayoutSubtree(node: MindNode, effective: LayoutType, out: LaidOutNode[]): void {
+interface BBox {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+function bboxOf(out: LaidOutNode[], ids: Set<string>): BBox | null {
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+
+  for (const n of out) {
+    if (!ids.has(n.id)) continue;
+    left = Math.min(left, n.x - n.w / 2);
+    right = Math.max(right, n.x + n.w / 2);
+    top = Math.min(top, n.y - n.h / 2);
+    bottom = Math.max(bottom, n.y + n.h / 2);
+  }
+
+  return left === Infinity ? null : { left, right, top, bottom };
+}
+
+// After a subtree is re-laid-out it may occupy more room than the gap the
+// base layout reserved. Push the nodes that sat AFTER the anchor (to its
+// right for horizontal parents, below it for vertical ones) by the amount
+// the subtree grew, so siblings never overlap.
+function pushSiblingsAway(
+  out: LaidOutNode[],
+  subtreeIds: Set<string>,
+  anchor: LaidOutNode,
+  before: BBox,
+  after: BBox,
+  parentEffective: LayoutType,
+): void {
+  const horizontal = HORIZONTAL_SIBLING_PARENTS.has(parentEffective);
+
+  if (horizontal) {
+    const extra = after.right - before.right;
+    if (extra <= 0.5) return;
+
+    for (const n of out) {
+      if (subtreeIds.has(n.id)) continue;
+      if (n.x > anchor.x + 0.5) n.x += extra;
+    }
+  } else {
+    const extra = after.bottom - before.bottom;
+    if (extra <= 0.5) return;
+
+    for (const n of out) {
+      if (subtreeIds.has(n.id)) continue;
+      if (n.y > anchor.y + 0.5) n.y += extra;
+    }
+  }
+}
+
+function relayoutSubtree(
+  node: MindNode,
+  effective: LayoutType,
+  parentEffective: LayoutType,
+  out: LaidOutNode[],
+): void {
   const anchor = out.find((laid) => laid.id === node.id);
   if (!anchor) return;
 
@@ -69,12 +138,17 @@ function relayoutSubtree(node: MindNode, effective: LayoutType, out: LaidOutNode
   const descendantIds = new Set<string>();
   collectDescendantIds(node, descendantIds);
 
+  const children = node.children ?? [];
+  if (children.length === 0) return;
+
+  // Box the subtree occupied under the base layout, before re-laying it out.
+  const subtreeIds = new Set(descendantIds);
+  subtreeIds.add(node.id);
+  const before = bboxOf(out, subtreeIds);
+
   for (let i = out.length - 1; i >= 0; i -= 1) {
     if (descendantIds.has(out[i].id)) out.splice(i, 1);
   }
-
-  const children = node.children ?? [];
-  if (children.length === 0) return;
 
   switch (effective) {
     case 'radial-left':
@@ -116,6 +190,12 @@ function relayoutSubtree(node: MindNode, effective: LayoutType, out: LaidOutNode
 
     default:
       break;
+  }
+
+  // Re-flow siblings so the resized subtree doesn't overlap them.
+  const after = bboxOf(out, subtreeIds);
+  if (before && after) {
+    pushSiblingsAway(out, subtreeIds, anchor, before, after, parentEffective);
   }
 }
 

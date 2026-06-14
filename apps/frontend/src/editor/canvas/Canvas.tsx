@@ -11,6 +11,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -73,7 +74,9 @@ export function Canvas({
   const CY = H / 2;
 
   const addChildNode = useDocumentStore((state) => state.addChildNode);
+  const addSiblingNode = useDocumentStore((state) => state.addSiblingNode);
   const deleteNode = useDocumentStore((state) => state.deleteNode);
+  const moveNode = useDocumentStore((state) => state.moveNode);
 
   const zoom = useViewportStore((s) => s.zoom);
   const panX = useViewportStore((s) => s.panX);
@@ -100,6 +103,18 @@ export function Canvas({
     moved: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
+
+  // Node drag-and-drop (reparent) state
+  const nodeDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    id: string;
+    dragging: boolean;
+  } | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const dropTargetRef = useRef<string | null>(null);
+  dropTargetRef.current = dropTargetId;
 
   const nodes = useMemo(
     () => computeLayout(sample, layoutType, CX, CY),
@@ -131,6 +146,38 @@ export function Canvas({
       x: (clientX - rect.left - (rect.width - W * k) / 2) / k,
       y: (clientY - rect.top - (rect.height - H * k) / 2) / k,
     };
+  };
+
+  // Client pixel → layout (world) coordinate, undoing the inner <g> transform.
+  const clientToWorld = (clientX: number, clientY: number) => {
+    const v = clientToViewBox(clientX, clientY);
+    const vp = useViewportStore.getState();
+    const s = (vp.zoom || 100) / 100;
+    return {
+      x: (v.x - CX - vp.panX) / s + CX,
+      y: (v.y - CY - vp.panY) / s + CY,
+    };
+  };
+
+  // Node under a world point, excluding the dragged node and its own subtree.
+  const findDropTarget = (wx: number, wy: number, draggingId: string): string | null => {
+    const ns = nodesRef.current;
+    let hit: (typeof ns)[number] | null = null;
+    for (const node of ns) {
+      if (node.id === draggingId) continue;
+      if (Math.abs(wx - node.x) <= node.w / 2 && Math.abs(wy - node.y) <= node.h / 2) {
+        hit = node;
+      }
+    }
+    if (!hit) return null;
+
+    const byId = new Map(ns.map((x) => [x.id, x]));
+    let cur: (typeof ns)[number] | undefined = hit;
+    while (cur) {
+      if (cur.id === draggingId) return null; // can't drop into own subtree
+      cur = cur.parent ? byId.get(cur.parent) : undefined;
+    }
+    return hit.id;
   };
 
   // Wheel zoom anchored at the cursor. Attached manually with passive:false
@@ -201,6 +248,20 @@ export function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRequestId]);
 
+  const handleAddChild = () => {
+    const id = addChildNode(selectedId || 'root');
+    if (id) onSelect(id);
+  };
+
+  const handleAddSibling = () => {
+    if (!selectedId || selectedId === 'root') {
+      handleAddChild();
+      return;
+    }
+    const id = addSiblingNode(selectedId);
+    if (id) onSelect(id);
+  };
+
   // Center the selected node at the current zoom (Focus button / Alt+F).
   const focusSelected = () => {
     const node = nodesRef.current.find((n) => n.id === selectedId);
@@ -223,9 +284,20 @@ export function Canvas({
 
       if (e.code === 'Space') {
         e.preventDefault();
+        handleAddChild();
+        return;
+      }
 
-        const newNodeId = addChildNode(selectedId || 'root');
-        onSelect(newNodeId);
+      // Tab → add child, Enter → add sibling (mindmap conventions)
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        handleAddChild();
+        return;
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleAddSibling();
         return;
       }
 
@@ -284,7 +356,25 @@ export function Canvas({
 
   const handlePointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     const isMiddleButton = e.button === 1;
+    const nodeEl = (e.target as Element).closest('[data-node-id]');
     const onEmptyCanvas = (e.target as Element).tagName === 'svg';
+
+    // Start a node drag (reparent) when pressing on a non-root node body and
+    // not in pan mode. Capture happens later, only once it actually moves, so a
+    // plain tap still selects via the node's onClick.
+    if (!isMiddleButton && !panMode && nodeEl) {
+      const id = nodeEl.getAttribute('data-node-id');
+      if (e.button === 0 && id && id !== 'root') {
+        nodeDragRef.current = {
+          pointerId: e.pointerId,
+          startX: e.clientX,
+          startY: e.clientY,
+          id,
+          dragging: false,
+        };
+        return;
+      }
+    }
 
     if (e.button !== 0 && !isMiddleButton) return;
     if (!isMiddleButton && !panMode && !onEmptyCanvas) return;
@@ -302,6 +392,23 @@ export function Canvas({
   };
 
   const handlePointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const nodeDrag = nodeDragRef.current;
+    if (nodeDrag && nodeDrag.pointerId === e.pointerId) {
+      const dx = e.clientX - nodeDrag.startX;
+      const dy = e.clientY - nodeDrag.startY;
+
+      if (!nodeDrag.dragging && Math.abs(dx) + Math.abs(dy) > 4) {
+        nodeDrag.dragging = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+
+      if (nodeDrag.dragging) {
+        const w = clientToWorld(e.clientX, e.clientY);
+        setDropTargetId(findDropTarget(w.x, w.y, nodeDrag.id));
+      }
+      return;
+    }
+
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
 
@@ -315,6 +422,22 @@ export function Canvas({
   };
 
   const handlePointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const nodeDrag = nodeDragRef.current;
+    if (nodeDrag && nodeDrag.pointerId === e.pointerId) {
+      nodeDragRef.current = null;
+
+      if (nodeDrag.dragging) {
+        const target = dropTargetRef.current;
+        if (target) {
+          const moved = moveNode(nodeDrag.id, target);
+          if (moved) onSelect(nodeDrag.id);
+        }
+        suppressClickRef.current = true;
+        setDropTargetId(null);
+      }
+      return;
+    }
+
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
 
@@ -427,13 +550,21 @@ export function Canvas({
                 n={n}
                 t={t}
                 selected={n.id === selectedId}
+                dropTarget={n.id === dropTargetId}
                 onSelect={() => onSelect(n.id)}
                 collabs={collabs}
               />
             ))}
           </g>
 
-          {selectedNode && <NodeIndicators node={selectedNode} t={t} />}
+          {selectedNode && !dropTargetId && (
+            <NodeIndicators
+              node={selectedNode}
+              t={t}
+              onAddChild={handleAddChild}
+              onAddSibling={handleAddSibling}
+            />
+          )}
         </g>
       </svg>
 

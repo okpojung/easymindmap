@@ -1,19 +1,48 @@
-// NoteTagTab — tag chips + structured note (paragraph/code_block/warning/tip/checklist).
-// Note structure follows the spec at docs/00-project-overview/vision.md § 6 and
-// MVP scope: "structured note: paragraph / code_block / warning / tip / checklist".
+// NoteTagTab — tag chips + structured note (paragraph/code_block/warning/tip/checklist)
+// editor, wired to the selected node via documentStore.
 
-import type { ReactNode } from 'react';
+import { useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import type { NoteBlock as NoteBlockData, NoteBlockType } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
+import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection } from './InspectorSection';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 
-export function NoteTagTab({ t }: { t: ThemeTokens }) {
+const BLOCK_TYPES: { type: NoteBlockType; label: string }[] = [
+  { type: 'paragraph', label: '문단' },
+  { type: 'code_block', label: '코드' },
+  { type: 'tip', label: '팁' },
+  { type: 'warning', label: '경고' },
+  { type: 'checklist', label: '체크' },
+];
+
+export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
+  const map = useDocumentStore((s) => s.map);
+  const addNodeTag = useDocumentStore((s) => s.addNodeTag);
+  const removeNodeTag = useDocumentStore((s) => s.removeNodeTag);
+  const addNoteBlock = useDocumentStore((s) => s.addNoteBlock);
+  const updateNoteBlock = useDocumentStore((s) => s.updateNoteBlock);
+  const removeNoteBlock = useDocumentStore((s) => s.removeNoteBlock);
+
+  const [tagDraft, setTagDraft] = useState('');
+
+  const node = findNodeInMap(map, selectedId);
+  const disabled = !selectedId || !node;
+  const tags = node?.tags ?? (node?.tag ? [node.tag] : []);
+  const notes = node?.notes ?? [];
+
+  const commitTag = () => {
+    const v = tagDraft.trim();
+    if (v && selectedId) addNodeTag(selectedId, v);
+    setTagDraft('');
+  };
+
   return (
-    <div>
+    <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
       <InspectorSection t={t} title="태그">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-          {['MVP', 'Core', 'Q1'].map(tagName => {
+          {tags.map((tagName) => {
             const tc = resolveTagColor(tagName, t);
             return (
               <span key={tagName} style={{
@@ -25,167 +54,161 @@ export function NoteTagTab({ t }: { t: ThemeTokens }) {
                 letterSpacing: 0.2,
               }}>
                 #{tagName}
-                <span style={{ opacity: 0.6, cursor: 'pointer', fontSize: 11, lineHeight: 1 }}>×</span>
+                <span
+                  onClick={() => selectedId && removeNodeTag(selectedId, tagName)}
+                  style={{ opacity: 0.6, cursor: 'pointer', fontSize: 11, lineHeight: 1 }}
+                >×</span>
               </span>
             );
           })}
-          <button style={{
-            fontSize: 11, padding: '3px 8px', borderRadius: 3,
-            border: `1px dashed ${t.border}`, background: 'transparent',
-            color: t.textMuted, cursor: 'pointer',
-          }}>+ 태그</button>
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <input
+            value={tagDraft}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitTag(); }}
+            placeholder="태그 입력 후 Enter"
+            style={{
+              flex: 1, fontSize: 11, padding: '4px 7px', borderRadius: 4,
+              border: `1px solid ${t.border}`, background: t.surface, color: t.text,
+              outline: 'none',
+            }}
+          />
+          <button onClick={commitTag} style={{
+            fontSize: 11, padding: '4px 8px', borderRadius: 4,
+            border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,
+            color: t.primary, cursor: 'pointer', fontWeight: 600,
+          }}>추가</button>
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="노드 노트" action={<AddBlockMenu t={t} />}>
+      <InspectorSection
+        t={t}
+        title="노드 노트"
+        action={
+          <div style={{ display: 'flex', gap: 3 }}>
+            {BLOCK_TYPES.map((b) => (
+              <button key={b.type}
+                onClick={() => selectedId && addNoteBlock(selectedId, b.type)}
+                title={`${b.label} 블록 추가`}
+                style={{
+                  padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                  background: t.primarySoft, color: t.primary,
+                  border: `1px solid ${t.primaryBorder}40`, cursor: 'pointer',
+                }}>+{b.label}</button>
+            ))}
+          </div>
+        }
+      >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <NoteBlock t={t} type="paragraph">
-            노드 생성 · 읽기 · 수정 · 삭제 CRUD. 루트 노드는 삭제/이동 불가 제약.
-          </NoteBlock>
-
-          <NoteBlock t={t} type="code_block" lang="typescript">
-{`type NodeCrud = {
-  create: (parent: NodeId) => Node;
-  update: (id: NodeId, patch: Partial<Node>) => void;
-  remove: (id: NodeId) => void;
-};`}
-          </NoteBlock>
-
-          <NoteBlock t={t} type="tip">
-            Space 키로 자식 노드를, ⇧Space로 형제 노드를 빠르게 추가할 수 있어요.
-          </NoteBlock>
-
-          <NoteBlock t={t} type="checklist" items={[
-            { done: true,  label: 'API 엔드포인트 정의' },
-            { done: true,  label: 'Zustand 스토어 설계' },
-            { done: false, label: 'Drag & Drop 이동' },
-            { done: false, label: 'Collapse/Expand 동기화' },
-          ]} />
-
-          <NoteBlock t={t} type="warning">
-            depth 50 초과는 DB CHECK 제약으로 거부됩니다.
-          </NoteBlock>
+          {notes.length === 0 && (
+            <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>
+              위 버튼으로 노트 블록을 추가하세요 (문단 / 코드 / 팁 / 경고 / 체크리스트).
+            </div>
+          )}
+          {notes.map((block) => (
+            <NoteBlockEditor
+              key={block.id}
+              t={t}
+              block={block}
+              onChange={(patch) => selectedId && updateNoteBlock(selectedId, block.id, patch)}
+              onRemove={() => selectedId && removeNoteBlock(selectedId, block.id)}
+            />
+          ))}
         </div>
       </InspectorSection>
     </div>
   );
 }
 
-function AddBlockMenu({ t }: { t: ThemeTokens }) {
-  return (
-    <button style={{
-      display: 'flex', alignItems: 'center', gap: 4,
-      padding: '3px 7px', borderRadius: 5,
-      background: t.primarySoft, color: t.primary,
-      border: `1px solid ${t.primaryBorder}40`,
-      fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
-    }}>
-      <I.Plus size={11} /> 블록 추가
-    </button>
-  );
-}
+const BLOCK_META: Record<NoteBlockType, { icon: string; label: string }> = {
+  paragraph: { icon: '¶', label: '문단' },
+  code_block: { icon: '</>', label: '코드' },
+  warning: { icon: '⚠', label: '경고' },
+  tip: { icon: '💡', label: '팁' },
+  checklist: { icon: '☑', label: '체크리스트' },
+};
 
-type BlockType = 'paragraph' | 'code_block' | 'warning' | 'tip' | 'checklist';
-
-interface NoteBlockProps {
+function NoteBlockEditor({
+  t, block, onChange, onRemove,
+}: {
   t: ThemeTokens;
-  type: BlockType;
-  lang?: string;
-  children?: ReactNode;
-  items?: { done: boolean; label: string }[];
-}
-
-function NoteBlock({ t, type, lang, children, items }: NoteBlockProps) {
-  const meta = {
-    paragraph:  { icon: '¶',   label: '문단',                   color: t.textMuted },
-    code_block: { icon: '</>', label: `코드 · ${lang || 'text'}`, color: t.accent    },
-    warning:    { icon: '⚠',   label: '경고',                   color: t.danger    },
-    tip:        { icon: '💡',  label: '팁',                     color: t.primary   },
-    checklist:  { icon: '☑',   label: '체크리스트',             color: t.success   },
-  }[type];
-
-  const bg = {
-    paragraph: t.surfaceAlt,
-    code_block: t.surfaceSunken,
-    warning: t.name === 'dark' ? '#3B1414' : '#FEE2E2',
-    tip: t.primarySoft,
-    checklist: t.surfaceAlt,
-  }[type];
-
-  const leftBorder = {
-    paragraph: 'transparent',
-    code_block: t.accent,
-    warning: t.danger,
-    tip: t.primary,
-    checklist: t.success,
-  }[type];
+  block: NoteBlockData;
+  onChange: (patch: Partial<NoteBlockData>) => void;
+  onRemove: () => void;
+}) {
+  const meta = BLOCK_META[block.type];
+  const accent =
+    block.type === 'warning' ? t.danger
+    : block.type === 'tip' ? t.primary
+    : block.type === 'code_block' ? t.accent
+    : block.type === 'checklist' ? t.success
+    : t.borderStrong;
 
   return (
     <div style={{
       borderRadius: 6,
-      background: bg,
-      borderLeft: `3px solid ${leftBorder}`,
+      background: t.surfaceAlt,
       border: `1px solid ${t.border}`,
-      borderLeftColor: leftBorder,
+      borderLeft: `3px solid ${accent}`,
       overflow: 'hidden',
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 5,
-        padding: '4px 8px 3px',
-        fontSize: 9.5, fontWeight: 700,
-        color: meta.color, letterSpacing: 0.3,
-        textTransform: 'uppercase',
-        borderBottom: type === 'paragraph' ? 'none' : `1px solid ${t.divider}`,
+        padding: '4px 8px',
+        fontSize: 9.5, fontWeight: 700, color: accent,
+        letterSpacing: 0.3, textTransform: 'uppercase',
+        borderBottom: `1px solid ${t.divider}`,
       }}>
         <span style={{ fontSize: 10 }}>{meta.icon}</span>
         <span>{meta.label}</span>
-        {type === 'code_block' && (
-          <button style={{
-            marginLeft: 'auto', padding: '1px 6px',
-            background: 'transparent', border: `1px solid ${t.border}`,
-            borderRadius: 3, fontSize: 9.5, color: t.textMuted,
-            cursor: 'pointer', fontWeight: 600,
-          }}>Copy</button>
-        )}
+        <button onClick={onRemove} title="블록 삭제" style={{
+          marginLeft: 'auto', background: 'transparent', border: 'none',
+          color: t.textMuted, cursor: 'pointer', fontSize: 13, lineHeight: 1,
+        }}>×</button>
       </div>
 
-      <div style={{ padding: '6px 10px 8px' }}>
-        {type === 'paragraph' && (
-          <div style={{ fontSize: 12, color: t.text, lineHeight: 1.5 }}>{children}</div>
-        )}
-        {type === 'code_block' && (
-          <pre style={{
-            margin: 0, fontSize: 11, lineHeight: 1.5,
-            color: t.text,
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            whiteSpace: 'pre', overflow: 'auto',
-          }}>{children}</pre>
-        )}
-        {(type === 'warning' || type === 'tip') && (
-          <div style={{ fontSize: 12, color: t.text, lineHeight: 1.5 }}>{children}</div>
-        )}
-        {type === 'checklist' && items && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {items.map((item, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                fontSize: 12, lineHeight: 1.4,
-                color: item.done ? t.textMuted : t.text,
-                textDecoration: item.done ? 'line-through' : 'none',
-              }}>
-                <span style={{
-                  width: 13, height: 13, borderRadius: 3,
-                  border: `1.5px solid ${item.done ? t.success : t.borderStrong}`,
-                  background: item.done ? t.success : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  {item.done && <I.Check size={9} style={{ color: '#fff' }} />}
-                </span>
-                {item.label}
-              </div>
-            ))}
+      <div style={{ padding: '6px 8px' }}>
+        {block.type === 'checklist' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span
+              onClick={() => onChange({ checked: !block.checked })}
+              style={{
+                width: 14, height: 14, borderRadius: 3, cursor: 'pointer',
+                border: `1.5px solid ${block.checked ? t.success : t.borderStrong}`,
+                background: block.checked ? t.success : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}
+            >
+              {block.checked && <I.Check size={9} style={{ color: '#fff' }} />}
+            </span>
+            <input
+              value={block.text}
+              onChange={(e) => onChange({ text: e.target.value })}
+              placeholder="할 일"
+              style={{
+                flex: 1, fontSize: 12, border: 'none', outline: 'none',
+                background: 'transparent', color: t.text,
+                textDecoration: block.checked ? 'line-through' : 'none',
+              }}
+            />
           </div>
+        ) : (
+          <textarea
+            value={block.text}
+            onChange={(e) => onChange({ text: e.target.value })}
+            rows={block.type === 'code_block' ? 4 : 2}
+            placeholder={block.type === 'code_block' ? '코드를 입력하세요' : '내용을 입력하세요'}
+            style={{
+              width: '100%', resize: 'vertical', border: 'none', outline: 'none',
+              background: 'transparent', color: t.text,
+              fontSize: block.type === 'code_block' ? 11 : 12, lineHeight: 1.5,
+              fontFamily: block.type === 'code_block'
+                ? 'ui-monospace, SFMono-Regular, Menlo, monospace'
+                : 'inherit',
+              padding: 0,
+            }}
+          />
         )}
       </div>
     </div>

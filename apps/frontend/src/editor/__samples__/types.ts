@@ -16,6 +16,62 @@ export type NodeColorKey =
 
 export type TextAlign = 'left' | 'center' | 'right';
 
+// --- Node style (spec NODE_STYLE / NS-01..NS-05) ---------------------------
+export type ShapeType =
+  | 'rounded'
+  | 'rectangle'
+  | 'pill'
+  | 'ellipse'
+  | 'diamond'
+  | 'hexagon'
+  | 'parallelogram';
+
+export type NodeFontWeight = 'normal' | 'bold';
+export type NodeFontStyle = 'normal' | 'italic';
+export type NodeBorderStyle = 'solid' | 'dashed' | 'dotted';
+
+export interface NodeStyle {
+  fillColor?: string;
+  borderColor?: string;
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: NodeFontWeight;
+  fontStyle?: NodeFontStyle;
+  borderWidth?: number;
+  borderStyle?: NodeBorderStyle;
+  shapeType?: ShapeType;
+}
+
+// --- Node content (links / notes / attachments) ----------------------------
+export interface NodeLink {
+  id: string;
+  url: string;
+  label?: string;
+}
+
+export type NoteBlockType =
+  | 'paragraph'
+  | 'code_block'
+  | 'warning'
+  | 'tip'
+  | 'checklist';
+
+export interface NoteBlock {
+  id: string;
+  type: NoteBlockType;
+  text: string;
+  checked?: boolean; // checklist items only
+}
+
+export type AttachmentKind = 'file' | 'audio' | 'video';
+
+export interface NodeAttachment {
+  id: string;
+  name: string;
+  url?: string;
+  kind: AttachmentKind;
+}
+
 export interface MindNode {
   id: string;
   text: string;
@@ -34,6 +90,17 @@ export interface MindNode {
   note?: boolean;
   locked?: boolean;
 
+  // Editor-core node metadata
+  collapsed?: boolean;
+  style?: NodeStyle;
+  links?: NodeLink[];
+  notes?: NoteBlock[];
+  attachments?: NodeAttachment[];
+
+  // Layout-internal: original child count, kept on the pruned node so the
+  // canvas can show a collapse/expand toggle even when children are hidden.
+  _childCount?: number;
+
   children?: MindNode[];
 }
 
@@ -46,17 +113,31 @@ export interface SampleBranch extends MindNode {
   children?: MindNode[];
 }
 
+export interface SampleRoot {
+  id: 'root';
+  text: string;
+  colorKey: 'root';
+  side?: 'center';
+
+  textAlign?: TextAlign;
+  layoutType?: LayoutType;
+
+  // Root may carry the same content metadata as any node (it can't be moved,
+  // deleted or collapsed, but it can have style / tags / notes / links).
+  icon?: string;
+  tag?: string;
+  tags?: string[];
+  note?: boolean;
+  style?: NodeStyle;
+  links?: NodeLink[];
+  notes?: NoteBlock[];
+  attachments?: NodeAttachment[];
+  _childCount?: number;
+}
+
 export interface SampleMap {
   title: string;
-  root: {
-    id: 'root';
-    text: string;
-    colorKey: 'root';
-    side?: 'center';
-
-    textAlign?: TextAlign;
-    layoutType?: LayoutType;
-  };
+  root: SampleRoot;
   branches: SampleBranch[];
 }
 

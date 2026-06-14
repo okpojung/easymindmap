@@ -8,20 +8,32 @@ import type { LaidOutNode } from '@/layout/types';
 interface Props {
   node: LaidOutNode;
   t: ThemeTokens;
+  onAddChild: () => void;
+  onAddSibling: () => void;
 }
 
-export function NodeIndicators({ node, t }: Props) {
+export function NodeIndicators({ node, t, onAddChild, onAddSibling }: Props) {
   const isRoot = node.depth === 0;
+  // up/left → sibling, down/right → child (root only allows child via "down").
   const spots = [
-    { dir: 'up'    as const, x: node.x,                  y: node.y - node.h/2 - 22, disabled: isRoot },
-    { dir: 'down'  as const, x: node.x,                  y: node.y + node.h/2 + 22, disabled: false  },
-    { dir: 'left'  as const, x: node.x - node.w/2 - 22,  y: node.y,                 disabled: isRoot },
-    { dir: 'right' as const, x: node.x + node.w/2 + 22,  y: node.y,                 disabled: isRoot },
+    { dir: 'up'    as const, x: node.x,                  y: node.y - node.h/2 - 22, disabled: isRoot, action: onAddSibling },
+    { dir: 'down'  as const, x: node.x,                  y: node.y + node.h/2 + 22, disabled: false,  action: onAddChild   },
+    { dir: 'left'  as const, x: node.x - node.w/2 - 22,  y: node.y,                 disabled: isRoot, action: onAddSibling },
+    { dir: 'right' as const, x: node.x + node.w/2 + 22,  y: node.y,                 disabled: isRoot, action: onAddChild   },
   ];
   return (
     <g>
       {spots.map(s => (
-        <g key={s.dir} opacity={s.disabled ? 0.25 : 1}>
+        <g
+          key={s.dir}
+          opacity={s.disabled ? 0.25 : 1}
+          style={{ cursor: s.disabled ? 'default' : 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!s.disabled) s.action();
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
           <line
             x1={s.dir === 'up' ? node.x
               : s.dir === 'down' ? node.x

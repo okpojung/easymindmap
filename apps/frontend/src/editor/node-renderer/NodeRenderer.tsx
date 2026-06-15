@@ -12,6 +12,7 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { useDocumentStore } from '@/stores/documentStore';
 import { resolveNodeColors } from './resolveNodeColors';
 import { NodeTagChips } from './NodeTagChips';
+import { nodeContentIndicators, type ContentKind } from './nodeContent';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -23,6 +24,7 @@ interface Props {
   selected: boolean;
   dropTarget?: boolean;
   onSelect: () => void;
+  onOpenPopover?: (nodeId: string, kind: ContentKind) => void;
   collabs: Collaborator[];
 }
 
@@ -94,13 +96,12 @@ function NodeShape({
   return <rect x={x0} y={y0} width={n.w} height={n.h} rx={rx} {...common} />;
 }
 
-export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: Props) {
+export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onOpenPopover, collabs }: Props) {
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
 
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(n.text);
-  const [linkMenuOpen, setLinkMenuOpen] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -110,21 +111,9 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
   const lockedBy = n.locked ? collabs.find((c) => c.editing === n.id) : undefined;
   const tagList = Array.isArray(n.tags) ? n.tags : n.tag ? [n.tag] : [];
   const hasTags = tagList.length > 0;
-  const hasNote = !!n.note || (n.notes?.length ?? 0) > 0;
-  const links = n.links ?? [];
-  const attachments = n.attachments ?? [];
-  const fileAtt = attachments.find((a) => a.kind === 'file');
-  const mediaAtt = attachments.find((a) => a.kind === 'audio' || a.kind === 'video');
 
-  // Order + icons follow docs/assets/노드-인디케이트(Thinkwise).png:
-  // 노트 / 하이퍼링크 / 첨부파일 / 멀티미디어
-  const linkTitle = links.length > 1 ? `링크 ${links.length}개` : links[0]?.label || links[0]?.url || '';
-  const contentIcons: { key: string; icon: string; title: string; url?: string }[] = [
-    ...(hasNote ? [{ key: 'note', icon: '📝', title: '노트' }] : []),
-    ...(links.length ? [{ key: 'link', icon: '🔗', title: linkTitle, url: links[0].url }] : []),
-    ...(fileAtt ? [{ key: 'file', icon: '📎', title: fileAtt.name, url: fileAtt.url }] : []),
-    ...(mediaAtt ? [{ key: 'media', icon: '▶️', title: mediaAtt.name, url: mediaAtt.url }] : []),
-  ];
+  // Content indicators (note / link / file / media) — see nodeContent.ts
+  const contentIcons = nodeContentIndicators(n);
 
   const style = n.style ?? {};
   const shape: ShapeType = style.shapeType ?? 'rounded';
@@ -334,79 +323,43 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
 
       {hasTags && !editing && <NodeTagChips n={n} tagList={tagList} t={t} />}
 
-      {/* Content indicators (Thinkwise-style): a horizontal row of small icons
-          just below the node (below tags), in note / link / file / media order.
-          Clicking a link/attachment icon opens it. */}
+      {/* Content indicators: small icons INSIDE the node's right edge
+          (note / link / file / media). 1 item → opens directly; multiple → a
+          chooser popover (rendered on the top overlay by Canvas). */}
       {!editing && contentIcons.length > 0 && (
         <g>
           {contentIcons.map((ic, i) => {
-            const cx = n.x - n.w / 2 + 11 + i * 19;
-            const cy = n.y + n.h / 2 + (hasTags ? 30 : 11);
+            // right-aligned row inside the node, going left from the right edge,
+            // anchored near the bottom so it overlaps text as little as possible
+            const cx = n.x + n.w / 2 - 11 - i * 17;
+            const cy = n.y + n.h / 2 - 9;
+            const single = ic.items[0];
             return (
               <g
-                key={ic.key}
+                key={ic.kind}
                 transform={`translate(${cx}, ${cy})`}
-                style={{ cursor: ic.url ? 'pointer' : 'default' }}
+                style={{ cursor: ic.kind === 'note' ? 'default' : 'pointer' }}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
-                  // Multiple links → open a chooser popover; otherwise open directly.
-                  if (ic.key === 'link' && links.length > 1) {
-                    setLinkMenuOpen((v) => !v);
-                    return;
-                  }
-                  if (ic.url) window.open(ic.url, '_blank', 'noopener');
+                  if (ic.kind === 'note') return;
+                  if (ic.count > 1) { onOpenPopover?.(n.id, ic.kind); return; }
+                  if (single?.url) window.open(single.url, '_blank', 'noopener');
                 }}
                 onDoubleClick={(e) => e.stopPropagation()}
               >
                 <title>{ic.title}</title>
-                <circle r="8" fill={t.surface} stroke={border} strokeWidth="0.9" />
-                <text y="3.2" fontSize="9" textAnchor="middle">{ic.icon}</text>
+                <circle r="7.5" fill={t.surface} stroke={border} strokeWidth="0.9" />
+                <text y="3" fontSize="8.5" textAnchor="middle">{ic.icon}</text>
+                {ic.count > 1 && (
+                  <text x="7" y="-5" fontSize="7" fontWeight="700" fill={t.primary} textAnchor="middle">
+                    {ic.count}
+                  </text>
+                )}
               </g>
             );
           })}
         </g>
-      )}
-
-      {/* Multiple-link chooser popover */}
-      {!editing && linkMenuOpen && links.length > 1 && (
-        <foreignObject
-          x={n.x - n.w / 2}
-          y={n.y + n.h / 2 + (hasTags ? 44 : 25)}
-          width={Math.max(200, n.w)}
-          height={Math.min(180, 12 + links.length * 26)}
-        >
-          <div
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: t.surface,
-              border: `1px solid ${border}`,
-              borderRadius: 6,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-              padding: 4,
-              fontFamily: 'inherit',
-              maxHeight: 176,
-              overflow: 'auto',
-            }}
-          >
-            {links.map((l) => (
-              <button
-                key={l.id}
-                onClick={() => { window.open(l.url, '_blank', 'noopener'); setLinkMenuOpen(false); }}
-                title={l.url}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left',
-                  padding: '5px 8px', border: 'none', background: 'transparent',
-                  color: t.text, fontSize: 11.5, cursor: 'pointer', borderRadius: 4,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}
-              >
-                🔗 {l.label || l.url}
-              </button>
-            ))}
-          </div>
-        </foreignObject>
       )}
 
       {lockedBy && !editing && (

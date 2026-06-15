@@ -25,6 +25,7 @@ interface Props {
   selected: boolean;
   dropTarget?: boolean;
   onSelect: () => void;
+  onHover?: (id: string | null) => void;
   onOpenPopover?: (nodeId: string, kind: ContentKind) => void;
   collabs: Collaborator[];
 }
@@ -97,7 +98,7 @@ function NodeShape({
   return <rect x={x0} y={y0} width={n.w} height={n.h} rx={rx} {...common} />;
 }
 
-export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onOpenPopover, collabs }: Props) {
+export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, onOpenPopover, collabs }: Props) {
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const showTags = useEditorUiStore((state) => state.showTags);
@@ -186,6 +187,8 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onOpenPopov
         e.stopPropagation();
         startEdit();
       }}
+      onMouseEnter={() => onHover?.(n.id)}
+      onMouseLeave={() => onHover?.(null)}
       style={{ cursor: editing ? 'text' : 'pointer' }}
     >
       {dropTarget && (

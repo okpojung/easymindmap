@@ -12,6 +12,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type MouseEvent,
   type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
@@ -135,6 +136,10 @@ export function Canvas({
 
   // "Focus selected" mode — when set, the viewport is zoomed to a node's subtree.
   const [focusedId, setFocusedId] = useState<string | null>(null);
+
+  // Node currently hovered — reveals the collapse affordance (● dot) on the
+  // node's children-connector start.
+  const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
 
   const nodes = useMemo(
     () => computeLayout(sample, layoutType, CX, CY),
@@ -696,6 +701,7 @@ export function Canvas({
                 selected={n.id === selectedId}
                 dropTarget={n.id === dropZone?.targetId}
                 onSelect={() => onSelect(n.id)}
+                onHover={setHoverNodeId}
                 onOpenPopover={(nodeId, kind) =>
                   setPopover((p) => (p && p.nodeId === nodeId && p.kind === kind ? null : { nodeId, kind }))
                 }
@@ -755,8 +761,8 @@ export function Canvas({
             <g className="mm-overlay-controls">
               {nodes
                 .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)
-                // Hide the toggle on the selected node and its parent so it does
-                // not overlap the selected node's +/- add indicators.
+                // Hide on the selected node and its parent so it doesn't overlap
+                // the selected node's +/- add indicators.
                 .filter((n) => n.id !== selectedId && n.id !== (selectedNode?.parent ?? ''))
                 .map((n) => {
                   const pos =
@@ -766,21 +772,15 @@ export function Canvas({
                         ? { x: n.x, y: n.y + n.h / 2 + 11 }
                         : { x: n.x + n.w / 2 + 11, y: n.y };
                   return (
-                    <g
+                    <CollapseControl
                       key={`toggle-${n.id}`}
-                      transform={`translate(${pos.x}, ${pos.y})`}
-                      style={{ cursor: 'pointer' }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); toggleCollapse(n.id); }}
-                      onDoubleClick={(e) => e.stopPropagation()}
-                    >
-                      <title>{n.collapsed ? '펼치기' : '접기'}</title>
-                      <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
-                      <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
-                      {n.collapsed && (
-                        <line x1={0} y1={-4} x2={0} y2={4} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
-                      )}
-                    </g>
+                      t={t}
+                      x={pos.x}
+                      y={pos.y}
+                      collapsed={!!n.collapsed}
+                      nodeHovered={hoverNodeId === n.id}
+                      onToggle={() => toggleCollapse(n.id)}
+                    />
                   );
                 })}
             </g>
@@ -872,4 +872,67 @@ export function Canvas({
       />
     </div>
   );
+}
+
+// Collapse / expand affordance shown at a node's children-connector start.
+// - collapsed   → persistent "+" expand button (so the hidden subtree is visible)
+// - expanded    → nothing by default; on NODE hover a small ● dot appears, and
+//                 hovering the dot reveals the collapse (−) icon. Clicking it
+//                 collapses. This keeps the map clean (no icon on every node).
+function CollapseControl({
+  t, x, y, collapsed, nodeHovered, onToggle,
+}: {
+  t: ThemeTokens;
+  x: number;
+  y: number;
+  collapsed: boolean;
+  nodeHovered: boolean;
+  onToggle: () => void;
+}) {
+  const [h, setH] = useState(false);
+
+  const wrap = (children: ReactNode, title: string) => (
+    <g
+      transform={`translate(${x}, ${y})`}
+      style={{ cursor: 'pointer' }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onMouseEnter={() => setH(true)}
+      onMouseLeave={() => setH(false)}
+    >
+      <title>{title}</title>
+      {/* larger transparent hit area */}
+      <circle r="11" fill="transparent" />
+      {children}
+    </g>
+  );
+
+  if (collapsed) {
+    return wrap(
+      <>
+        <circle r="8.5" fill={t.primary} stroke={t.primary} strokeWidth="1.4" />
+        <line x1={-4} y1={0} x2={4} y2={0} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+        <line x1={0} y1={-4} x2={0} y2={4} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+      </>,
+      '펼치기',
+    );
+  }
+
+  // expanded: hidden until the node (or this control) is hovered
+  if (!nodeHovered && !h) return null;
+
+  if (h) {
+    // collapse icon — a clean "fold" glyph (circle + minus), not a swirl
+    return wrap(
+      <>
+        <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
+        <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.6" strokeLinecap="round" />
+      </>,
+      '접기',
+    );
+  }
+
+  // node hovered → small dot at the connector start
+  return wrap(<circle r="4.5" fill={t.primary} />, '접기');
 }

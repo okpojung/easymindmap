@@ -12,11 +12,12 @@ import { useViewportStore } from '@/stores/viewportStore';
 interface Props {
   t: ThemeTokens;
   hasSelection: boolean;
+  focusActive?: boolean;
   onFitView?: () => void;
   onFocusSelected?: () => void;
 }
 
-export function CanvasFloatingToolbar({ t, hasSelection, onFitView, onFocusSelected }: Props) {
+export function CanvasFloatingToolbar({ t, hasSelection, focusActive, onFitView, onFocusSelected }: Props) {
   const selectedId = useInteractionStore((state) => state.selectedId);
   const setSelectedId = useInteractionStore((state) => state.setSelectedId);
   const addChildNode = useDocumentStore((state) => state.addChildNode);
@@ -85,17 +86,18 @@ export function CanvasFloatingToolbar({ t, hasSelection, onFitView, onFocusSelec
       </ToolbarBtn>
       <ToolbarBtn
         t={t}
-        title="선택 노드 화면 중앙 보기 (Alt+F)"
-        disabled={!hasSelection}
+        title={focusActive ? '선택 노드 보기 취소 — 맵 전체 보기' : '선택 노드 화면 중앙 보기 (Alt+F)'}
+        highlight={focusActive}
+        disabled={!focusActive && !hasSelection}
         onClick={onFocusSelected}
       >
-        <I.Focus size={15} />
+        {focusActive ? <I.FocusOff size={15} /> : <I.Focus size={15} />}
       </ToolbarBtn>
       <ToolbarBtn t={t} title="맵 전체를 화면에 맞추기" onClick={onFitView}>
         <I.Fit size={15} />
       </ToolbarBtn>
-      <ToolbarBtn t={t} title="편집기 전체 화면 전환" onClick={handleFullscreen}>
-        <I.Full size={15} />
+      <ToolbarBtn t={t} title="전체화면 모드" onClick={handleFullscreen}>
+        <I.Maximize size={15} />
       </ToolbarBtn>
     </div>
   );

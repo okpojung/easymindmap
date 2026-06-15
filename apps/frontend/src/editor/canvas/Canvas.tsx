@@ -12,6 +12,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type MouseEvent,
   type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
@@ -26,6 +27,7 @@ import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useViewportStore } from '@/stores/viewportStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 
 const LAYOUT_LABEL: Record<string, string> = {
@@ -83,6 +85,8 @@ export function Canvas({
   const toggleCollapse = useDocumentStore((state) => state.toggleCollapse);
   const addNodeLink = useDocumentStore((state) => state.addNodeLink);
   const addNodeAttachment = useDocumentStore((state) => state.addNodeAttachment);
+  const setMultiAddOpen = useEditorUiStore((state) => state.setMultiAddOpen);
+  const showCollapseIcons = useEditorUiStore((state) => state.showCollapseIcons);
 
   const zoom = useViewportStore((s) => s.zoom);
   const panX = useViewportStore((s) => s.panX);
@@ -129,6 +133,13 @@ export function Canvas({
   // Multi-item content chooser popover (link/file/media), rendered on the TOP
   // overlay so other nodes never cover it.
   const [popover, setPopover] = useState<{ nodeId: string; kind: ContentKind } | null>(null);
+
+  // "Focus selected" mode — when set, the viewport is zoomed to a node's subtree.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+
+  // Node currently hovered — reveals the collapse affordance (● dot) on the
+  // node's children-connector start.
+  const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
 
   const nodes = useMemo(
     () => computeLayout(sample, layoutType, CX, CY),
@@ -304,38 +315,46 @@ export function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fit the whole map into view when requested (toolbar / status bar).
-  useEffect(() => {
-    if (!fitRequestId) return;
-
-    const laidNodes = nodesRef.current;
-    if (!laidNodes.length) return;
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
-    for (const n of laidNodes) {
+  // Zoom + pan so the given laid-out nodes all fit in the viewport.
+  const fitToNodes = (list: typeof nodes, margin = 70) => {
+    if (!list.length) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of list) {
       minX = Math.min(minX, n.x - n.w / 2);
       maxX = Math.max(maxX, n.x + n.w / 2);
       minY = Math.min(minY, n.y - n.h / 2);
       maxY = Math.max(maxY, n.y + n.h / 2);
     }
-
-    const margin = 70;
     const bw = Math.max(1, maxX - minX);
     const bh = Math.max(1, maxY - minY);
-
     const fitScale = Math.min((W - margin * 2) / bw, (H - margin * 2) / bh, 2);
     const zoomNext = clampZoom(Math.round(fitScale * 100));
     const s2 = zoomNext / 100;
-
     const bcx = (minX + maxX) / 2;
     const bcy = (minY + maxY) / 2;
-
     setZoom(zoomNext);
     setPan(-(bcx - CX) * s2, -(bcy - CY) * s2);
+  };
+
+  // Selected node + all its descendants (for "focus selected").
+  const subtreeNodes = (rootId: string) => {
+    const ns = nodesRef.current;
+    const byId = new Map(ns.map((x) => [x.id, x]));
+    return ns.filter((n) => {
+      let cur: (typeof ns)[number] | undefined = n;
+      while (cur) {
+        if (cur.id === rootId) return true;
+        cur = cur.parent ? byId.get(cur.parent) : undefined;
+      }
+      return false;
+    });
+  };
+
+  // Fit the whole map into view when requested (toolbar / status bar).
+  useEffect(() => {
+    if (!fitRequestId) return;
+    setFocusedId(null);
+    fitToNodes(nodesRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRequestId]);
 
@@ -359,13 +378,21 @@ export function Canvas({
     if (id) onSelect(id);
   };
 
-  // Center the selected node at the current zoom (Focus button / Alt+F).
+  // Focus selected (toggle): zoom to the selected node's subtree so only that
+  // node and its descendants are shown. Clicking again (or when already focused)
+  // returns to fitting the whole map. (Focus button / Alt+F)
   const focusSelected = () => {
+    // Already focused → exit back to whole-map fit.
+    if (focusedId) {
+      setFocusedId(null);
+      fitToNodes(nodesRef.current);
+      return;
+    }
+    if (!selectedId) return;
     const node = nodesRef.current.find((n) => n.id === selectedId);
     if (!node) return;
-
-    const s = useViewportStore.getState().zoom / 100;
-    setPan(-(node.x - CX) * s, -(node.y - CY) * s);
+    setFocusedId(selectedId);
+    fitToNodes(subtreeNodes(selectedId), 90);
   };
 
   useEffect(() => {
@@ -378,6 +405,13 @@ export function Canvas({
         target?.isContentEditable;
 
       if (isEditingText) return;
+
+      // Ctrl/⌘ + Space → multi-node add dialog
+      if (e.code === 'Space' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setMultiAddOpen(true);
+        return;
+      }
 
       if (e.code === 'Space') {
         e.preventDefault();
@@ -605,6 +639,7 @@ export function Canvas({
       <CanvasFloatingToolbar
         t={t}
         hasSelection={!!selectedNode}
+        focusActive={!!focusedId}
         onFitView={requestFit}
         onFocusSelected={focusSelected}
       />
@@ -666,6 +701,7 @@ export function Canvas({
                 selected={n.id === selectedId}
                 dropTarget={n.id === dropZone?.targetId}
                 onSelect={() => onSelect(n.id)}
+                onHover={setHoverNodeId}
                 onOpenPopover={(nodeId, kind) =>
                   setPopover((p) => (p && p.nodeId === nodeId && p.kind === kind ? null : { nodeId, kind }))
                 }
@@ -704,26 +740,29 @@ export function Canvas({
           })()}
 
           {selectedNode && !dropZone && (
-            <NodeIndicators
-              node={selectedNode}
-              t={t}
-              onAddChild={handleAddChild}
-              onAddParent={handleAddParent}
-              onAddSiblingBefore={() => handleAddSibling('before')}
-              onAddSiblingAfter={() => handleAddSibling('after')}
-            />
+            <g className="mm-overlay-controls">
+              <NodeIndicators
+                node={selectedNode}
+                t={t}
+                onAddChild={handleAddChild}
+                onAddParent={handleAddParent}
+                onAddSiblingBefore={() => handleAddSibling('before')}
+                onAddSiblingAfter={() => handleAddSibling('after')}
+              />
+            </g>
           )}
 
           {/* Collapse / expand toggle (top overlay, always clickable). Shown
-              only for nodes that have children. The add-child "+" is NOT
-              persistent — it appears only on the selected node via
-              NodeIndicators (spec NODE-13). */}
-          {!dragGhost && (
-            <g>
+              only for nodes that have children, and only when the display
+              toggle is on. Hidden in print / image export (mm-overlay-controls).
+              The add-child "+" is NOT persistent — it appears only on the
+              selected node via NodeIndicators (spec NODE-13). */}
+          {!dragGhost && showCollapseIcons && (
+            <g className="mm-overlay-controls">
               {nodes
                 .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)
-                // Hide the toggle on the selected node and its parent so it does
-                // not overlap the selected node's +/- add indicators.
+                // Hide on the selected node and its parent so it doesn't overlap
+                // the selected node's +/- add indicators.
                 .filter((n) => n.id !== selectedId && n.id !== (selectedNode?.parent ?? ''))
                 .map((n) => {
                   const pos =
@@ -733,21 +772,15 @@ export function Canvas({
                         ? { x: n.x, y: n.y + n.h / 2 + 11 }
                         : { x: n.x + n.w / 2 + 11, y: n.y };
                   return (
-                    <g
+                    <CollapseControl
                       key={`toggle-${n.id}`}
-                      transform={`translate(${pos.x}, ${pos.y})`}
-                      style={{ cursor: 'pointer' }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); toggleCollapse(n.id); }}
-                      onDoubleClick={(e) => e.stopPropagation()}
-                    >
-                      <title>{n.collapsed ? '펼치기' : '접기'}</title>
-                      <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
-                      <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
-                      {n.collapsed && (
-                        <line x1={0} y1={-4} x2={0} y2={4} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
-                      )}
-                    </g>
+                      t={t}
+                      x={pos.x}
+                      y={pos.y}
+                      collapsed={!!n.collapsed}
+                      nodeHovered={hoverNodeId === n.id}
+                      onToggle={() => toggleCollapse(n.id)}
+                    />
                   );
                 })}
             </g>
@@ -839,4 +872,67 @@ export function Canvas({
       />
     </div>
   );
+}
+
+// Collapse / expand affordance shown at a node's children-connector start.
+// - collapsed   → persistent "+" expand button (so the hidden subtree is visible)
+// - expanded    → nothing by default; on NODE hover a small ● dot appears, and
+//                 hovering the dot reveals the collapse (−) icon. Clicking it
+//                 collapses. This keeps the map clean (no icon on every node).
+function CollapseControl({
+  t, x, y, collapsed, nodeHovered, onToggle,
+}: {
+  t: ThemeTokens;
+  x: number;
+  y: number;
+  collapsed: boolean;
+  nodeHovered: boolean;
+  onToggle: () => void;
+}) {
+  const [h, setH] = useState(false);
+
+  const wrap = (children: ReactNode, title: string) => (
+    <g
+      transform={`translate(${x}, ${y})`}
+      style={{ cursor: 'pointer' }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onMouseEnter={() => setH(true)}
+      onMouseLeave={() => setH(false)}
+    >
+      <title>{title}</title>
+      {/* larger transparent hit area */}
+      <circle r="11" fill="transparent" />
+      {children}
+    </g>
+  );
+
+  if (collapsed) {
+    return wrap(
+      <>
+        <circle r="8.5" fill={t.primary} stroke={t.primary} strokeWidth="1.4" />
+        <line x1={-4} y1={0} x2={4} y2={0} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+        <line x1={0} y1={-4} x2={0} y2={4} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+      </>,
+      '펼치기',
+    );
+  }
+
+  // expanded: hidden until the node (or this control) is hovered
+  if (!nodeHovered && !h) return null;
+
+  if (h) {
+    // collapse icon — a clean "fold" glyph (circle + minus), not a swirl
+    return wrap(
+      <>
+        <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
+        <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.6" strokeLinecap="round" />
+      </>,
+      '접기',
+    );
+  }
+
+  // node hovered → small dot at the connector start
+  return wrap(<circle r="4.5" fill={t.primary} />, '접기');
 }

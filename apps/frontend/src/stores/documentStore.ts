@@ -132,6 +132,16 @@ function inheritStyle(
   return { ...parentStyle, fontSize: defaultFontSizeForDepth(childDepth) };
 }
 
+// Inherit the reference node's colour family so a new node keeps the SAME fill
+// (and border/text) as the node it was created from — the default fill comes
+// from colorKey, not style, so it must be inherited explicitly. Root's 'root'
+// key is not inheritable (new branches cycle their own colour).
+function inheritColorKey(ref: { colorKey?: NodeColorKey } | null | undefined): NodeColorKey | undefined {
+  const key = ref?.colorKey;
+  if (!key || key === 'root') return undefined;
+  return key;
+}
+
 // ---------------------------------------------------------------------------
 // normalization / cloning
 // ---------------------------------------------------------------------------
@@ -375,6 +385,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
 
       const newNode: MindNode = {
         ...createNewNode(),
+        colorKey: inheritColorKey(parent),
         style: inheritStyle(parent.style, parentDepth + 1),
       };
       newNodeId = newNode.id;
@@ -406,7 +417,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         const newNode = createNewNode();
         newNodeId = newNode.id;
         const branch = makeBranch(
-          { ...newNode, style: inheritStyle(refBranch?.style, 1) },
+          { ...newNode, colorKey: inheritColorKey(refBranch), style: inheritStyle(refBranch?.style, 1) },
           map.branches.length,
         );
         return {
@@ -419,6 +430,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       const reference = findNode(map.branches, nodeId);
       const newNode: MindNode = {
         ...createNewNode(),
+        colorKey: inheritColorKey(reference),
         style: inheritStyle(reference?.style, depth),
       };
       newNodeId = newNode.id;
@@ -450,6 +462,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       const parentId = findParentId(map, nodeId);
       const newNode: MindNode = {
         ...createNewNode(),
+        colorKey: inheritColorKey(target),
         style: inheritStyle(target.style, depth),
       };
       newNodeId = newNode.id;

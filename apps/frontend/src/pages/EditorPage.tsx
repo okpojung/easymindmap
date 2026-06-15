@@ -9,6 +9,7 @@ import { BottomStatusBar } from '@/components/bottom-status-bar/BottomStatusBar'
 import { Canvas } from '@/editor/canvas/Canvas';
 import { KanbanBoard } from '@/editor/canvas/KanbanBoard';
 import { DesignTweaksPanel } from '@/editor/dialogs/DesignTweaksPanel';
+import { MultiAddDialog } from '@/editor/dialogs/MultiAddDialog';
 import { SAMPLE_COLLABS, SAMPLE_OUTLINE } from '@/editor/__samples__';
 import type {
   KanbanBoardData,
@@ -64,7 +65,6 @@ export function EditorPage() {
 
   const zoom = useViewportStore((s) => s.zoom);
   const setZoom = useViewportStore((s) => s.setZoom);
-  const requestFit = useViewportStore((s) => s.requestFit);
 
   const selectedId = useInteractionStore((s) => s.selectedId);
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
@@ -176,8 +176,13 @@ export function EditorPage() {
         collabs={SAMPLE_COLLABS}
         zoom={zoom}
         onZoomChange={setZoom}
-        onFitView={requestFit}
       />
+
+      {/* Hide canvas-only overlays (collapse toggles, +indicators) when printing
+          or exporting to image. */}
+      <style>{`@media print { .mm-overlay-controls { display: none !important; } }`}</style>
+
+      <MultiAddDialog t={t} />
 
       {tweaksOpen && (
         <DesignTweaksPanel

@@ -11,7 +11,6 @@ interface Props {
   collabs: Collaborator[];
   zoom: number;
   onZoomChange: (v: number) => void;
-  onFitView?: () => void;
 }
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -25,7 +24,7 @@ const LAYOUT_LABELS: Record<string, string> = {
   'kanban':               'Kanban 보드',
 };
 
-export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange, onFitView }: Props) {
+export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange }: Props) {
   const activeCount = collabs.filter(c => c.active).length;
 
   return (
@@ -75,12 +74,12 @@ export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange, on
 
       <span style={{ width: 1, height: 14, background: t.divider }} />
 
-      <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} onFitView={onFitView} />
+      <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} />
     </div>
   );
 }
 
-function ZoomControl({ t, zoom, onZoomChange, onFitView }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void; onFitView?: () => void }) {
+function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void }) {
   const stepBtn = (children: React.ReactNode, onClick?: () => void, title?: string) => (
     <button onClick={onClick} title={title} style={{
       width: 22, height: 20, background: 'transparent', border: 'none',
@@ -99,7 +98,7 @@ function ZoomControl({ t, zoom, onZoomChange, onFitView }: { t: ThemeTokens; zoo
         fontFamily: 'ui-monospace, monospace', minWidth: 44,
       }}>{Math.round(zoom)}%</button>
       {stepBtn(<I.Plus size={12} />, () => onZoomChange(Math.min(400, zoom + 10)))}
-      <span style={{ marginLeft: 3 }}>{stepBtn(<I.Fit size={12} />, onFitView, '맵 전체를 화면에 맞추기')}</span>
+      <span style={{ marginLeft: 3 }}>{stepBtn(<I.Zoom100 size={13} />, () => onZoomChange(100), '100%로 보기')}</span>
     </div>
   );
 }

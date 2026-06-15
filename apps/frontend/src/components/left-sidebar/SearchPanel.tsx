@@ -1,6 +1,8 @@
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
+import { Toggle } from '@/editor/inspector-panels/InspectorSection';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 
 const RESULTS = [
   { title: '에디터 코어 — 노드 CRUD', path: 'Q1 기반 구축', match: '에디터' },
@@ -11,6 +13,11 @@ const RESULTS = [
 const TAG_FILTERS = ['MVP', 'AI', 'V1', 'Export', 'DB'];
 
 export function SearchPanel({ t }: { t: ThemeTokens }) {
+  const showTags = useEditorUiStore((s) => s.showTags);
+  const setShowTags = useEditorUiStore((s) => s.setShowTags);
+  const showCollapseIcons = useEditorUiStore((s) => s.showCollapseIcons);
+  const setShowCollapseIcons = useEditorUiStore((s) => s.setShowCollapseIcons);
+
   return (
     <div style={{ padding: 12 }}>
       <div style={{ position: 'relative', marginBottom: 12 }}>
@@ -59,9 +66,28 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
       ))}
 
       <div style={{
-        marginTop: 14, fontSize: 11, color: t.textSubtle, marginBottom: 6,
-        textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
-      }}>태그 필터</div>
+        marginTop: 14, marginBottom: 6,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <span style={{
+          fontSize: 11, color: t.textSubtle,
+          textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
+        }}>태그 필터</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <span style={{ fontSize: 11, color: t.textMuted }}>Tag 표시</span>
+          <Toggle t={t} on={showTags} onChange={setShowTags} />
+        </label>
+      </div>
+
+      {/* Display toggle: collapse/expand icons */}
+      <label style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 10, cursor: 'pointer',
+      }}>
+        <span style={{ fontSize: 11.5, color: t.textMuted }}>접기/펼치기 아이콘 표시</span>
+        <Toggle t={t} on={showCollapseIcons} onChange={setShowCollapseIcons} />
+      </label>
+
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {TAG_FILTERS.map(tag => {
           const tc = resolveTagColor(tag, t);

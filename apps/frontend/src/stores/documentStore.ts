@@ -42,6 +42,7 @@ interface DocumentState {
 
   // Structure
   addChildNode: (parentId: string | null) => string;
+  addChildNodesBulk: (parentId: string | null, texts: string[]) => void;
   addSiblingNode: (nodeId: string | null, position?: 'before' | 'after') => string;
   addParentNode: (nodeId: string | null) => string;
   deleteNode: (nodeId: string | null) => void;
@@ -396,6 +397,48 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     });
 
     return newNodeId;
+  },
+
+  addChildNodesBulk: (parentId, texts) => {
+    const clean = texts.map((s) => s.trim()).filter(Boolean);
+    if (clean.length === 0) return;
+
+    set((state) => {
+      const map = state.map;
+      const pid = !parentId || parentId === 'root' ? 'root' : parentId;
+
+      // Add under root → each becomes a branch.
+      if (pid === 'root') {
+        let branches = map.branches;
+        clean.forEach((text) => {
+          const branch = makeBranch(
+            { ...createNewNode(), text, style: inheritStyle(map.root.style, 1) },
+            branches.length,
+          );
+          branches = [...branches, branch];
+        });
+        return { map: { ...map, branches: branches as SampleBranch[] } };
+      }
+
+      const parent = findNode(map.branches, pid);
+      if (!parent) return {};
+      const parentDepth = getNodeDepth(map, pid);
+      if (parentDepth + 1 > MAX_DEPTH) return {};
+
+      const newChildren = clean.map((text) => ({
+        ...createNewNode(),
+        text,
+        colorKey: inheritColorKey(parent),
+        style: inheritStyle(parent.style, parentDepth + 1),
+      }));
+
+      const branches = updateNodeById(map.branches, pid, (p) => ({
+        ...p,
+        children: [...(p.children ?? []), ...newChildren],
+      })) as SampleBranch[];
+
+      return { map: { ...map, branches } };
+    });
   },
 
   addSiblingNode: (nodeId, position = 'after') => {

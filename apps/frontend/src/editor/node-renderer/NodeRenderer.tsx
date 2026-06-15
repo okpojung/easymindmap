@@ -110,8 +110,20 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
   const tagList = Array.isArray(n.tags) ? n.tags : n.tag ? [n.tag] : [];
   const hasTags = tagList.length > 0;
   const hasNote = !!n.note || (n.notes?.length ?? 0) > 0;
-  const linkCount = n.links?.length ?? 0;
-  const attachmentCount = n.attachments?.length ?? 0;
+  const links = n.links ?? [];
+  const attachments = n.attachments ?? [];
+  const firstOfKind = (kind: 'file' | 'audio' | 'video') => attachments.find((a) => a.kind === kind);
+  const fileAtt = firstOfKind('file');
+  const audioAtt = firstOfKind('audio');
+  const videoAtt = firstOfKind('video');
+
+  const contentIcons: { key: string; icon: string; title: string; url?: string }[] = [
+    ...(hasNote ? [{ key: 'note', icon: '📝', title: '노트' }] : []),
+    ...(links.length ? [{ key: 'link', icon: '🔗', title: links[0].label || links[0].url, url: links[0].url }] : []),
+    ...(fileAtt ? [{ key: 'file', icon: '📎', title: fileAtt.name, url: fileAtt.url }] : []),
+    ...(audioAtt ? [{ key: 'audio', icon: '🎵', title: audioAtt.name, url: audioAtt.url }] : []),
+    ...(videoAtt ? [{ key: 'video', icon: '🎬', title: videoAtt.name, url: videoAtt.url }] : []),
+  ];
 
   const style = n.style ?? {};
   const shape: ShapeType = style.shapeType ?? 'rounded';
@@ -191,9 +203,9 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
           width={n.w + 14}
           height={n.h + 14}
           rx={isRoot ? 18 : 12}
-          fill={t.primary}
+          fill={t.success}
           opacity="0.12"
-          stroke={t.primary}
+          stroke={t.success}
           strokeWidth="2"
           strokeDasharray="5 3"
         />
@@ -321,26 +333,32 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
 
       {hasTags && !editing && <NodeTagChips n={n} tagList={tagList} t={t} />}
 
-      {/* Content indicators: note / link / attachment */}
-      {!editing && (hasNote || linkCount > 0 || attachmentCount > 0) && (
+      {/* Content indicators (Thinkwise-style): small icons at the node's
+          RIGHT edge. Clicking a link/attachment icon opens it. */}
+      {!editing && contentIcons.length > 0 && (
         <g>
-          {[
-            hasNote ? '📝' : null,
-            linkCount > 0 ? '🔗' : null,
-            attachmentCount > 0 ? '📎' : null,
-          ]
-            .filter(Boolean)
-            .map((icon, i) => (
+          {contentIcons.map((ic, i) => {
+            // laid out as a row just inside the top-right corner, going left
+            const cx = n.x + n.w / 2 - 11 - i * 17;
+            const cy = n.y - n.h / 2 + 10;
+            return (
               <g
-                key={i}
-                transform={`translate(${n.x - n.w / 2 + 9 + i * 15}, ${n.y + n.h / 2 - 8})`}
+                key={ic.key}
+                transform={`translate(${cx}, ${cy})`}
+                style={{ cursor: ic.url ? 'pointer' : 'default' }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (ic.url) window.open(ic.url, '_blank', 'noopener');
+                }}
+                onDoubleClick={(e) => e.stopPropagation()}
               >
-                <circle r="6.5" fill={t.surface} stroke={border} strokeWidth="0.8" />
-                <text y="3" fontSize="8" textAnchor="middle">
-                  {icon}
-                </text>
+                <title>{ic.title}</title>
+                <circle r="8" fill={t.surface} stroke={border} strokeWidth="0.9" />
+                <text y="3.2" fontSize="9" textAnchor="middle">{ic.icon}</text>
               </g>
-            ))}
+            );
+          })}
         </g>
       )}
 

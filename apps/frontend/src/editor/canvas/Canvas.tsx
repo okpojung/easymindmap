@@ -77,7 +77,7 @@ export function Canvas({
   const addSiblingNode = useDocumentStore((state) => state.addSiblingNode);
   const addParentNode = useDocumentStore((state) => state.addParentNode);
   const deleteNode = useDocumentStore((state) => state.deleteNode);
-  const moveNode = useDocumentStore((state) => state.moveNode);
+  const moveNodeRelative = useDocumentStore((state) => state.moveNodeRelative);
   const toggleCollapse = useDocumentStore((state) => state.toggleCollapse);
 
   const zoom = useViewportStore((s) => s.zoom);
@@ -114,9 +114,10 @@ export function Canvas({
     id: string;
     dragging: boolean;
   } | null>(null);
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-  const dropTargetRef = useRef<string | null>(null);
-  dropTargetRef.current = dropTargetId;
+  type DropPosition = 'child' | 'parent' | 'before' | 'after';
+  const [dropZone, setDropZone] = useState<{ targetId: string; position: DropPosition } | null>(null);
+  const dropZoneRef = useRef<typeof dropZone>(null);
+  dropZoneRef.current = dropZone;
 
   // Visible ghost of the node being dragged (world coords).
   const [dragGhost, setDragGhost] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -164,25 +165,63 @@ export function Canvas({
     };
   };
 
-  // Node under a world point, excluding the dragged node and its own subtree.
-  const findDropTarget = (wx: number, wy: number, draggingId: string): string | null => {
+  // Finds the drop target (within an expanded hit box) and which of the four
+  // drop zones the cursor is in, excluding the dragged node and its subtree.
+  const findDropZone = (
+    wx: number,
+    wy: number,
+    draggingId: string,
+  ): { targetId: string; position: DropPosition } | null => {
     const ns = nodesRef.current;
+    const M = 30; // expanded margin so child/parent zones reach outside the box
+
     let hit: (typeof ns)[number] | null = null;
+    let bestDist = Infinity;
     for (const node of ns) {
       if (node.id === draggingId) continue;
-      if (Math.abs(wx - node.x) <= node.w / 2 && Math.abs(wy - node.y) <= node.h / 2) {
-        hit = node;
+      const insideX = Math.abs(wx - node.x) <= node.w / 2 + M;
+      const insideY = Math.abs(wy - node.y) <= node.h / 2 + M;
+      if (insideX && insideY) {
+        const d = Math.abs(wx - node.x) + Math.abs(wy - node.y);
+        if (d < bestDist) {
+          bestDist = d;
+          hit = node;
+        }
       }
     }
     if (!hit) return null;
 
+    // exclude the dragged node's own subtree
     const byId = new Map(ns.map((x) => [x.id, x]));
     let cur: (typeof ns)[number] | undefined = hit;
     while (cur) {
-      if (cur.id === draggingId) return null; // can't drop into own subtree
+      if (cur.id === draggingId) return null;
       cur = cur.parent ? byId.get(cur.parent) : undefined;
     }
-    return hit.id;
+
+    const dx = wx - hit.x;
+    const dy = wy - hit.y;
+    const isRoot = hit.depth === 0;
+
+    let position: DropPosition;
+    if (hit.side === 'down') {
+      // children grow downward
+      if (dy > hit.h * 0.18) position = 'child';
+      else if (dy < -hit.h * 0.18 && !isRoot) position = 'parent';
+      else position = dx < 0 ? 'before' : 'after';
+    } else {
+      // children grow left/right
+      const childSign = hit.side === 'left' ? -1 : 1; // right by default
+      const along = dx * childSign;
+      if (along > hit.w * 0.18) position = 'child';
+      else if (along < -hit.w * 0.18 && !isRoot) position = 'parent';
+      else position = dy < 0 ? 'before' : 'after';
+    }
+
+    // Root can only accept children; siblings/parent make no sense on root.
+    if (isRoot) position = 'child';
+
+    return { targetId: hit.id, position };
   };
 
   // Wheel zoom anchored at the cursor. Attached manually with passive:false
@@ -255,6 +294,11 @@ export function Canvas({
 
   const handleAddChild = () => {
     const id = addChildNode(selectedId || 'root');
+    if (id) onSelect(id);
+  };
+
+  const addChildTo = (parentId: string) => {
+    const id = addChildNode(parentId);
     if (id) onSelect(id);
   };
 
@@ -415,7 +459,7 @@ export function Canvas({
 
       if (nodeDrag.dragging) {
         const w = clientToWorld(e.clientX, e.clientY);
-        setDropTargetId(findDropTarget(w.x, w.y, nodeDrag.id));
+        setDropZone(findDropZone(w.x, w.y, nodeDrag.id));
         const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
         if (dragged) setDragGhost({ x: w.x, y: w.y, w: dragged.w, h: dragged.h });
       }
@@ -440,16 +484,16 @@ export function Canvas({
       nodeDragRef.current = null;
 
       if (nodeDrag.dragging) {
-        // Compute the drop target from the final pointer position directly so
-        // we don't depend on render timing of dropTargetId state.
+        // Compute the drop zone from the final pointer position directly so we
+        // don't depend on render timing of state.
         const w = clientToWorld(e.clientX, e.clientY);
-        const target = findDropTarget(w.x, w.y, nodeDrag.id) ?? dropTargetRef.current;
-        if (target) {
-          const moved = moveNode(nodeDrag.id, target);
+        const zone = findDropZone(w.x, w.y, nodeDrag.id) ?? dropZoneRef.current;
+        if (zone) {
+          const moved = moveNodeRelative(nodeDrag.id, zone.targetId, zone.position);
           if (moved) onSelect(nodeDrag.id);
         }
         suppressClickRef.current = true;
-        setDropTargetId(null);
+        setDropZone(null);
         setDragGhost(null);
       }
       return;
@@ -567,14 +611,43 @@ export function Canvas({
                 n={n}
                 t={t}
                 selected={n.id === selectedId}
-                dropTarget={n.id === dropTargetId}
+                dropTarget={n.id === dropZone?.targetId}
                 onSelect={() => onSelect(n.id)}
                 collabs={collabs}
               />
             ))}
           </g>
 
-          {selectedNode && !dropTargetId && (
+          {/* Drop-zone indicator while dragging (green bar at the target side) */}
+          {dropZone && (() => {
+            const tgt = nodes.find((n) => n.id === dropZone.targetId);
+            if (!tgt) return null;
+            const BAR = 6;
+            const childSign = tgt.side === 'left' ? -1 : 1;
+            let bar: { x: number; y: number; w: number; h: number };
+            if (dropZone.position === 'before') {
+              bar = { x: tgt.x - tgt.w / 2, y: tgt.y - tgt.h / 2 - BAR, w: tgt.w, h: BAR };
+            } else if (dropZone.position === 'after') {
+              bar = { x: tgt.x - tgt.w / 2, y: tgt.y + tgt.h / 2, w: tgt.w, h: BAR };
+            } else if (dropZone.position === 'parent') {
+              const onLeft = childSign < 0 ? false : true; // parent is opposite child side
+              const px = onLeft ? tgt.x - tgt.w / 2 - BAR : tgt.x + tgt.w / 2;
+              bar = { x: px, y: tgt.y - tgt.h / 2, w: BAR, h: tgt.h };
+            } else {
+              // child — bar on the children side
+              const cx = childSign < 0 ? tgt.x - tgt.w / 2 - BAR : tgt.x + tgt.w / 2;
+              bar =
+                tgt.side === 'down'
+                  ? { x: tgt.x - tgt.w / 2, y: tgt.y + tgt.h / 2, w: tgt.w, h: BAR }
+                  : { x: cx, y: tgt.y - tgt.h / 2, w: BAR, h: tgt.h };
+            }
+            return (
+              <rect x={bar.x} y={bar.y} width={bar.w} height={bar.h} rx={3}
+                fill={t.success} opacity="0.95" pointerEvents="none" />
+            );
+          })()}
+
+          {selectedNode && !dropZone && (
             <NodeIndicators
               node={selectedNode}
               t={t}
@@ -585,39 +658,70 @@ export function Canvas({
             />
           )}
 
-          {/* Collapse / expand toggles — top overlay so they are always
-              clickable, even when a node is selected (indicators don't cover them). */}
-          <g>
-            {nodes
-              .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)
-              .map((n) => {
-                const pos =
-                  n.side === 'left'
-                    ? { x: n.x - n.w / 2 - 11, y: n.y }
-                    : n.side === 'down'
-                      ? { x: n.x, y: n.y + n.h / 2 + 11 }
-                      : { x: n.x + n.w / 2 + 11, y: n.y };
-                return (
-                  <g
-                    key={`toggle-${n.id}`}
-                    transform={`translate(${pos.x}, ${pos.y})`}
-                    style={{ cursor: 'pointer' }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleCollapse(n.id);
-                    }}
-                    onDoubleClick={(e) => e.stopPropagation()}
-                  >
-                    <circle r="9" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
-                    <line x1={-4.5} y1={0} x2={4.5} y2={0} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
-                    {n.collapsed && (
-                      <line x1={0} y1={-4.5} x2={0} y2={4.5} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
-                    )}
-                  </g>
-                );
-              })}
-          </g>
+          {/* Per-node controls (top overlay, always clickable): collapse/expand
+              toggle (when the node has children) + a persistent add-child button,
+              placed on the side children grow toward. */}
+          {!dragGhost && (
+            <g>
+              {nodes
+                .filter((n) => n.depth > 0)
+                .map((n) => {
+                  const hasKids = (n._childCount ?? 0) > 0;
+                  // edge point on the children side
+                  const edge =
+                    n.side === 'left'
+                      ? { x: n.x - n.w / 2 - 11, y: n.y, vertical: false }
+                      : n.side === 'down'
+                        ? { x: n.x, y: n.y + n.h / 2 + 11, vertical: true }
+                        : { x: n.x + n.w / 2 + 11, y: n.y, vertical: false };
+
+                  // When both controls show, offset them so they don't overlap.
+                  const togglePos = hasKids
+                    ? edge.vertical
+                      ? { x: edge.x - 11, y: edge.y }
+                      : { x: edge.x, y: edge.y - 11 }
+                    : null;
+                  const addPos = hasKids
+                    ? edge.vertical
+                      ? { x: edge.x + 11, y: edge.y }
+                      : { x: edge.x, y: edge.y + 11 }
+                    : { x: edge.x, y: edge.y };
+
+                  return (
+                    <g key={`ctrl-${n.id}`}>
+                      {togglePos && (
+                        <g
+                          transform={`translate(${togglePos.x}, ${togglePos.y})`}
+                          style={{ cursor: 'pointer' }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.stopPropagation(); toggleCollapse(n.id); }}
+                          onDoubleClick={(e) => e.stopPropagation()}
+                        >
+                          <title>{n.collapsed ? '펼치기' : '접기'}</title>
+                          <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
+                          <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
+                          {n.collapsed && (
+                            <line x1={0} y1={-4} x2={0} y2={4} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
+                          )}
+                        </g>
+                      )}
+                      <g
+                        transform={`translate(${addPos.x}, ${addPos.y})`}
+                        style={{ cursor: 'pointer' }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); addChildTo(n.id); }}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                      >
+                        <title>하위 노드 추가</title>
+                        <circle r="8.5" fill={t.primary} stroke={t.primary} strokeWidth="1.4" />
+                        <line x1={-4} y1={0} x2={4} y2={0} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+                        <line x1={0} y1={-4} x2={0} y2={4} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+                      </g>
+                    </g>
+                  );
+                })}
+            </g>
+          )}
 
           {/* Drag ghost while reparenting */}
           {dragGhost && (

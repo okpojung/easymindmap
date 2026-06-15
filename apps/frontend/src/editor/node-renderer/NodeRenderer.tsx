@@ -100,6 +100,7 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
 
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(n.text);
+  const [linkMenuOpen, setLinkMenuOpen] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -117,9 +118,10 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
 
   // Order + icons follow docs/assets/노드-인디케이트(Thinkwise).png:
   // 노트 / 하이퍼링크 / 첨부파일 / 멀티미디어
+  const linkTitle = links.length > 1 ? `링크 ${links.length}개` : links[0]?.label || links[0]?.url || '';
   const contentIcons: { key: string; icon: string; title: string; url?: string }[] = [
     ...(hasNote ? [{ key: 'note', icon: '📝', title: '노트' }] : []),
-    ...(links.length ? [{ key: 'link', icon: '🔗', title: links[0].label || links[0].url, url: links[0].url }] : []),
+    ...(links.length ? [{ key: 'link', icon: '🔗', title: linkTitle, url: links[0].url }] : []),
     ...(fileAtt ? [{ key: 'file', icon: '📎', title: fileAtt.name, url: fileAtt.url }] : []),
     ...(mediaAtt ? [{ key: 'media', icon: '▶️', title: mediaAtt.name, url: mediaAtt.url }] : []),
   ];
@@ -348,6 +350,11 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
+                  // Multiple links → open a chooser popover; otherwise open directly.
+                  if (ic.key === 'link' && links.length > 1) {
+                    setLinkMenuOpen((v) => !v);
+                    return;
+                  }
                   if (ic.url) window.open(ic.url, '_blank', 'noopener');
                 }}
                 onDoubleClick={(e) => e.stopPropagation()}
@@ -359,6 +366,47 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
             );
           })}
         </g>
+      )}
+
+      {/* Multiple-link chooser popover */}
+      {!editing && linkMenuOpen && links.length > 1 && (
+        <foreignObject
+          x={n.x - n.w / 2}
+          y={n.y + n.h / 2 + (hasTags ? 44 : 25)}
+          width={Math.max(200, n.w)}
+          height={Math.min(180, 12 + links.length * 26)}
+        >
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: t.surface,
+              border: `1px solid ${border}`,
+              borderRadius: 6,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+              padding: 4,
+              fontFamily: 'inherit',
+              maxHeight: 176,
+              overflow: 'auto',
+            }}
+          >
+            {links.map((l) => (
+              <button
+                key={l.id}
+                onClick={() => { window.open(l.url, '_blank', 'noopener'); setLinkMenuOpen(false); }}
+                title={l.url}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '5px 8px', border: 'none', background: 'transparent',
+                  color: t.text, fontSize: 11.5, cursor: 'pointer', borderRadius: 4,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}
+              >
+                🔗 {l.label || l.url}
+              </button>
+            ))}
+          </div>
+        </foreignObject>
       )}
 
       {lockedBy && !editing && (

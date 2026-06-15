@@ -42,7 +42,8 @@ interface DocumentState {
 
   // Structure
   addChildNode: (parentId: string | null) => string;
-  addSiblingNode: (nodeId: string | null) => string;
+  addSiblingNode: (nodeId: string | null, position?: 'before' | 'after') => string;
+  addParentNode: (nodeId: string | null) => string;
   deleteNode: (nodeId: string | null) => void;
   moveNode: (nodeId: string | null, newParentId: string | null) => boolean;
 
@@ -303,22 +304,22 @@ function appendChild(nodes: MindNode[], parentId: string, child: MindNode): Mind
   }));
 }
 
-function insertSiblingAfter(
+function insertSibling(
   nodes: MindNode[],
   siblingId: string,
   newNode: MindNode,
+  position: 'before' | 'after',
 ): MindNode[] {
-  // top-level (branch) siblings
   const idx = nodes.findIndex((n) => n.id === siblingId);
   if (idx !== -1) {
     const next = [...nodes];
-    next.splice(idx + 1, 0, newNode);
+    next.splice(position === 'before' ? idx : idx + 1, 0, newNode);
     return next;
   }
   return nodes.map((node) => {
     const children = node.children ?? [];
     if (children.length === 0) return node;
-    return { ...node, children: insertSiblingAfter(children, siblingId, newNode) };
+    return { ...node, children: insertSibling(children, siblingId, newNode, position) };
   });
 }
 
@@ -380,7 +381,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     return newNodeId;
   },
 
-  addSiblingNode: (nodeId) => {
+  addSiblingNode: (nodeId, position = 'after') => {
     let newNodeId = '';
 
     set((state) => {
@@ -402,7 +403,7 @@ export const useDocumentStore = create<DocumentState>((set) => ({
           map.branches.length,
         );
         return {
-          map: { ...map, branches: insertSiblingAfter(map.branches, nodeId, branch) as SampleBranch[] },
+          map: { ...map, branches: insertSibling(map.branches, nodeId, branch, position) as SampleBranch[] },
         };
       }
 
@@ -414,8 +415,58 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       newNodeId = newNode.id;
 
       return {
-        map: { ...map, branches: insertSiblingAfter(map.branches, nodeId, newNode) as SampleBranch[] },
+        map: { ...map, branches: insertSibling(map.branches, nodeId, newNode, position) as SampleBranch[] },
       };
+    });
+
+    return newNodeId;
+  },
+
+  // Inserts a new node BETWEEN nodeId and its current parent: nodeId becomes a
+  // child of the new node, which takes nodeId's old slot. ("상위 노드 추가")
+  addParentNode: (nodeId) => {
+    let newNodeId = '';
+
+    set((state) => {
+      const map = state.map;
+      if (!nodeId || nodeId === 'root') return {};
+
+      const target = findNode(map.branches, nodeId);
+      if (!target) return {};
+
+      const depth = getNodeDepth(map, nodeId);
+      // wrapping pushes target's whole subtree one level deeper
+      if (depth + 1 + subtreeHeight(target) > MAX_DEPTH) return {};
+
+      const parentId = findParentId(map, nodeId);
+      const newNode: MindNode = {
+        ...createNewNode(),
+        style: inheritStyle(target.style, depth),
+      };
+      newNodeId = newNode.id;
+
+      // Wrapping a top-level branch: the new node becomes the branch.
+      if (parentId === 'root') {
+        const idx = map.branches.findIndex((b) => b.id === nodeId);
+        const wrapped = makeBranch({ ...newNode, children: [target] }, idx);
+        wrapped.side = target.side === 'left' || target.side === 'right' ? target.side : wrapped.side;
+        wrapped.colorKey = (target.colorKey as NodeColorKey) ?? wrapped.colorKey;
+        return {
+          map: {
+            ...map,
+            branches: map.branches.map((b) => (b.id === nodeId ? wrapped : b)) as SampleBranch[],
+          },
+        };
+      }
+
+      const branches = updateNodeById(map.branches, parentId!, (p) => ({
+        ...p,
+        children: (p.children ?? []).map((c) =>
+          c.id === nodeId ? { ...newNode, children: [c] } : c,
+        ),
+      })) as SampleBranch[];
+
+      return { map: { ...map, branches } };
     });
 
     return newNodeId;

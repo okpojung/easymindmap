@@ -112,17 +112,16 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
   const hasNote = !!n.note || (n.notes?.length ?? 0) > 0;
   const links = n.links ?? [];
   const attachments = n.attachments ?? [];
-  const firstOfKind = (kind: 'file' | 'audio' | 'video') => attachments.find((a) => a.kind === kind);
-  const fileAtt = firstOfKind('file');
-  const audioAtt = firstOfKind('audio');
-  const videoAtt = firstOfKind('video');
+  const fileAtt = attachments.find((a) => a.kind === 'file');
+  const mediaAtt = attachments.find((a) => a.kind === 'audio' || a.kind === 'video');
 
+  // Order + icons follow docs/assets/노드-인디케이트(Thinkwise).png:
+  // 노트 / 하이퍼링크 / 첨부파일 / 멀티미디어
   const contentIcons: { key: string; icon: string; title: string; url?: string }[] = [
     ...(hasNote ? [{ key: 'note', icon: '📝', title: '노트' }] : []),
     ...(links.length ? [{ key: 'link', icon: '🔗', title: links[0].label || links[0].url, url: links[0].url }] : []),
     ...(fileAtt ? [{ key: 'file', icon: '📎', title: fileAtt.name, url: fileAtt.url }] : []),
-    ...(audioAtt ? [{ key: 'audio', icon: '🎵', title: audioAtt.name, url: audioAtt.url }] : []),
-    ...(videoAtt ? [{ key: 'video', icon: '🎬', title: videoAtt.name, url: videoAtt.url }] : []),
+    ...(mediaAtt ? [{ key: 'media', icon: '▶️', title: mediaAtt.name, url: mediaAtt.url }] : []),
   ];
 
   const style = n.style ?? {};
@@ -333,14 +332,14 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
 
       {hasTags && !editing && <NodeTagChips n={n} tagList={tagList} t={t} />}
 
-      {/* Content indicators (Thinkwise-style): small icons at the node's
-          RIGHT edge. Clicking a link/attachment icon opens it. */}
+      {/* Content indicators (Thinkwise-style): a horizontal row of small icons
+          just below the node (below tags), in note / link / file / media order.
+          Clicking a link/attachment icon opens it. */}
       {!editing && contentIcons.length > 0 && (
         <g>
           {contentIcons.map((ic, i) => {
-            // laid out as a row just inside the top-right corner, going left
-            const cx = n.x + n.w / 2 - 11 - i * 17;
-            const cy = n.y - n.h / 2 + 10;
+            const cx = n.x - n.w / 2 + 11 + i * 19;
+            const cy = n.y + n.h / 2 + (hasTags ? 30 : 11);
             return (
               <g
                 key={ic.key}

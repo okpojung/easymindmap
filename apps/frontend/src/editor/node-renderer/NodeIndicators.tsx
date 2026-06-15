@@ -1,9 +1,11 @@
-// NodeIndicators — 4-direction "+" buttons around the selected node.
-// The four actions (parent / child / sibling-before / sibling-after) are mapped
-// to physical directions based on the node's layout side, so they stay spatially
-// intuitive (child always points toward where children grow, parent toward the
-// parent, siblings perpendicular). Root only allows "child".
-// Spec: docs/03-editor-core/node/02-node-editing.md (NODE-IND-01~04)
+// NodeIndicators — "+" buttons around the selected node.
+// Direction meaning is FIXED for every layout (spec docs/03-editor-core/node/
+// 03-node-indicator.md §"방향 매핑 고정 원칙"):
+//   ⬆ up    = 상위(부모) 추가
+//   ⬇ down  = 하위(자식) 추가
+//   ⬅ left  = 형제(이전) 추가
+//   ➡ right = 형제(다음) 추가
+// Root node: only "child" is allowed; the other directions are hidden.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
@@ -20,26 +22,17 @@ interface Props {
 }
 
 const LABELS: Record<ActionKey, string> = {
-  child: '하위 노드 추가',
   parent: '상위 노드 추가',
-  before: '형제 앞에 추가',
-  after: '형제 뒤에 추가',
+  child: '하위 노드 추가',
+  before: '형제 노드 앞에 추가',
+  after: '형제 노드 뒤에 추가',
 };
-
-// Which action each physical direction performs, given the node's side.
-function dirActions(side: LaidOutNode['side']): Record<'up' | 'down' | 'left' | 'right', ActionKey> {
-  if (side === 'left') return { up: 'before', down: 'after', left: 'child', right: 'parent' };
-  if (side === 'down') return { up: 'parent', down: 'child', left: 'before', right: 'after' };
-  // right / center / default
-  return { up: 'before', down: 'after', left: 'parent', right: 'child' };
-}
 
 export function NodeIndicators({
   node, t, onAddChild, onAddParent, onAddSiblingBefore, onAddSiblingAfter,
 }: Props) {
   const isRoot = node.depth === 0;
   const GAP = 26;
-  const map = dirActions(node.side);
 
   const handlers: Record<ActionKey, () => void> = {
     child: onAddChild,
@@ -48,33 +41,28 @@ export function NodeIndicators({
     after: onAddSiblingAfter,
   };
 
-  const spots = [
-    { dir: 'up' as const,    x: node.x,                    y: node.y - node.h / 2 - GAP, action: map.up },
-    { dir: 'down' as const,  x: node.x,                    y: node.y + node.h / 2 + GAP, action: map.down },
-    { dir: 'left' as const,  x: node.x - node.w / 2 - GAP, y: node.y,                    action: map.left },
-    { dir: 'right' as const, x: node.x + node.w / 2 + GAP, y: node.y,                    action: map.right },
-  ].map((s) => ({
-    ...s,
-    // Root can only gain children; everything else can do all four.
-    disabled: isRoot && s.action !== 'child',
-    label: LABELS[s.action],
-  }));
+  // Fixed physical direction → action.
+  const spots: { dir: string; x: number; y: number; action: ActionKey }[] = [
+    { dir: 'up',    x: node.x,                    y: node.y - node.h / 2 - GAP, action: 'parent' },
+    { dir: 'down',  x: node.x,                    y: node.y + node.h / 2 + GAP, action: 'child' },
+    { dir: 'left',  x: node.x - node.w / 2 - GAP, y: node.y,                    action: 'before' },
+    { dir: 'right', x: node.x + node.w / 2 + GAP, y: node.y,                    action: 'after' },
+  ];
+
+  // Root: show only the child (down) indicator.
+  const visible = isRoot ? spots.filter((s) => s.action === 'child') : spots;
 
   return (
     <g>
-      {spots.map((s) => (
+      {visible.map((s) => (
         <g
           key={s.dir}
-          opacity={s.disabled ? 0.18 : 1}
-          style={{ cursor: s.disabled ? 'default' : 'pointer' }}
+          style={{ cursor: 'pointer' }}
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!s.disabled) handlers[s.action]();
-          }}
+          onClick={(e) => { e.stopPropagation(); handlers[s.action](); }}
           onDoubleClick={(e) => e.stopPropagation()}
         >
-          <title>{s.label}</title>
+          <title>{LABELS[s.action]}</title>
           <line
             x1={s.dir === 'left' ? node.x - node.w / 2 : s.dir === 'right' ? node.x + node.w / 2 : node.x}
             y1={s.dir === 'up' ? node.y - node.h / 2 : s.dir === 'down' ? node.y + node.h / 2 : node.y}

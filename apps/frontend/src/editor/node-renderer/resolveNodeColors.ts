@@ -10,16 +10,18 @@ import type { LaidOutNode } from '@/layout/types';
 
 export function resolveNodeColors(n: LaidOutNode, t: ThemeTokens): NodeFamily {
   if (n.depth === 0) return t.nodeRoot;
-  if (n.depth === 1) {
-    const key = n.colorKey || 'l1A';
-    const family =
-      key === 'l1A' ? t.nodeL1A :
-      key === 'l1B' ? t.nodeL1B :
-      key === 'l1C' ? t.nodeL1C :
-      key === 'l1D' ? t.nodeL1D :
-      key === 'l1E' ? t.nodeL1E :
-      t.nodeL1A;
-    return family;
+
+  // Honor an explicit colorKey at ANY depth so that nodes which inherit their
+  // parent's colorKey (added child/sibling) keep the same colour family —
+  // including the fill, not just border/text. Without a colorKey, fall back to
+  // the depth default (L1 palette for branches, L2 for deeper nodes).
+  switch (n.colorKey) {
+    case 'l1A': return t.nodeL1A;
+    case 'l1B': return t.nodeL1B;
+    case 'l1C': return t.nodeL1C;
+    case 'l1D': return t.nodeL1D;
+    case 'l1E': return t.nodeL1E;
+    case 'l2':  return t.nodeL2;
+    default:    return n.depth === 1 ? t.nodeL1A : t.nodeL2;
   }
-  return t.nodeL2;
 }

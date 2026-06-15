@@ -46,6 +46,12 @@ interface DocumentState {
   addParentNode: (nodeId: string | null) => string;
   deleteNode: (nodeId: string | null) => void;
   moveNode: (nodeId: string | null, newParentId: string | null) => boolean;
+  // Drag-and-drop move relative to a target node (drop zones).
+  moveNodeRelative: (
+    nodeId: string | null,
+    targetId: string | null,
+    position: 'child' | 'before' | 'after' | 'parent',
+  ) => boolean;
 
   // View state
   toggleCollapse: (nodeId: string | null) => void;
@@ -394,12 +400,13 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       const depth = getNodeDepth(map, nodeId);
       if (depth > MAX_DEPTH) return {};
 
-      // Sibling of a branch → another branch.
+      // Sibling of a branch → another branch (inherit the reference branch's style).
       if (parentId === 'root') {
+        const refBranch = findNode(map.branches, nodeId);
         const newNode = createNewNode();
         newNodeId = newNode.id;
         const branch = makeBranch(
-          { ...newNode, style: inheritStyle(map.root.style, 1) },
+          { ...newNode, style: inheritStyle(refBranch?.style, 1) },
           map.branches.length,
         );
         return {
@@ -407,10 +414,12 @@ export const useDocumentStore = create<DocumentState>((set) => ({
         };
       }
 
-      const parent = findNode(map.branches, parentId);
+      // Inherit the SELECTED (reference) node's style, not the parent's, so a
+      // new sibling looks like the node it was created from (minus level font).
+      const reference = findNode(map.branches, nodeId);
       const newNode: MindNode = {
         ...createNewNode(),
-        style: inheritStyle(parent?.style, depth),
+        style: inheritStyle(reference?.style, depth),
       };
       newNodeId = newNode.id;
 
@@ -517,6 +526,95 @@ export const useDocumentStore = create<DocumentState>((set) => ({
       return {
         map: { ...map, branches: appendChild(pruned, newParentId, removed) as SampleBranch[] },
       };
+    });
+
+    return ok;
+  },
+
+  moveNodeRelative: (nodeId, targetId, position) => {
+    let ok = false;
+
+    set((state) => {
+      const map = state.map;
+      if (!nodeId || nodeId === 'root' || !targetId) return {};
+      if (nodeId === targetId) return {};
+
+      const moving = findNode(map.branches, nodeId);
+      if (!moving) return {};
+      if (isSelfOrDescendant(moving, targetId)) return {}; // can't drop into own subtree
+
+      const hMoving = subtreeHeight(moving);
+
+      // --- become a CHILD of target ---
+      if (position === 'child') {
+        if (targetId !== 'root') {
+          const tDepth = getNodeDepth(map, targetId);
+          if (tDepth < 0 || tDepth + 1 + hMoving > MAX_DEPTH) return {};
+        }
+        const { nodes: pruned, removed } = extractNode(map.branches, nodeId);
+        if (!removed) return {};
+        if (targetId === 'root') {
+          ok = true;
+          return { map: { ...map, branches: [...(pruned as SampleBranch[]), makeBranch(removed, pruned.length)] } };
+        }
+        ok = true;
+        return { map: { ...map, branches: appendChild(pruned, targetId, removed) as SampleBranch[] } };
+      }
+
+      // --- become a SIBLING before/after target ---
+      if (position === 'before' || position === 'after') {
+        if (targetId === 'root') return {};
+        const tParent = findParentId(map, targetId);
+        if (!tParent) return {};
+        const tDepth = getNodeDepth(map, targetId);
+        if (tDepth + hMoving > MAX_DEPTH) return {};
+
+        const { nodes: pruned, removed } = extractNode(map.branches, nodeId);
+        if (!removed) return {};
+
+        if (tParent === 'root') {
+          const branch = makeBranch(removed, pruned.length);
+          ok = true;
+          return { map: { ...map, branches: insertSibling(pruned, targetId, branch, position) as SampleBranch[] } };
+        }
+        ok = true;
+        return { map: { ...map, branches: insertSibling(pruned, targetId, removed, position) as SampleBranch[] } };
+      }
+
+      // --- become the PARENT of target (target moves under moving) ---
+      if (position === 'parent') {
+        if (targetId === 'root') return {};
+        const target = findNode(map.branches, targetId);
+        if (!target) return {};
+        const tParent = findParentId(map, targetId);
+        if (!tParent) return {};
+        const tDepth = getNodeDepth(map, targetId);
+        const hT = subtreeHeight(target);
+        if (tDepth + 1 + Math.max(hMoving, hT) > MAX_DEPTH) return {};
+
+        // Remove the moving node, then the target, then nest target under moving.
+        const ex1 = extractNode(map.branches, nodeId);
+        if (!ex1.removed) return {};
+        const ex2 = extractNode(ex1.nodes, targetId);
+        if (!ex2.removed) return {};
+
+        const newParent: MindNode = {
+          ...ex1.removed,
+          children: [...(ex1.removed.children ?? []), ex2.removed],
+        };
+
+        if (tParent === 'root') {
+          const branch = makeBranch(newParent, ex2.nodes.length);
+          branch.side = target.side === 'left' || target.side === 'right' ? target.side : branch.side;
+          branch.colorKey = (target.colorKey as NodeColorKey) ?? branch.colorKey;
+          ok = true;
+          return { map: { ...map, branches: [...(ex2.nodes as SampleBranch[]), branch] } };
+        }
+        ok = true;
+        return { map: { ...map, branches: appendChild(ex2.nodes, tParent, newParent) as SampleBranch[] } };
+      }
+
+      return {};
     });
 
     return ok;

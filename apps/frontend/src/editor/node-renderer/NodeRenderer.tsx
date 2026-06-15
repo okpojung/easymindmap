@@ -10,6 +10,7 @@ import type { LaidOutNode } from '@/layout/types';
 import type { TextAlign, ShapeType } from '@/editor/__samples__/types';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import { resolveNodeColors } from './resolveNodeColors';
 import { NodeTagChips } from './NodeTagChips';
 import { nodeContentIndicators, type ContentKind } from './nodeContent';
@@ -99,6 +100,7 @@ function NodeShape({
 export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onOpenPopover, collabs }: Props) {
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
+  const showTags = useEditorUiStore((state) => state.showTags);
 
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(n.text);
@@ -321,7 +323,7 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onOpenPopov
         </foreignObject>
       )}
 
-      {hasTags && !editing && <NodeTagChips n={n} tagList={tagList} t={t} />}
+      {hasTags && showTags && !editing && <NodeTagChips n={n} tagList={tagList} t={t} />}
 
       {/* Content indicators: small icons INSIDE the node's right edge
           (note / link / file / media). 1 item → opens directly; multiple → a

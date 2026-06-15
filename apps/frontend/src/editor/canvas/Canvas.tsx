@@ -297,11 +297,6 @@ export function Canvas({
     if (id) onSelect(id);
   };
 
-  const addChildTo = (parentId: string) => {
-    const id = addChildNode(parentId);
-    if (id) onSelect(id);
-  };
-
   const handleAddSibling = (position: 'before' | 'after' = 'after') => {
     if (!selectedId || selectedId === 'root') {
       handleAddChild();
@@ -658,65 +653,36 @@ export function Canvas({
             />
           )}
 
-          {/* Per-node controls (top overlay, always clickable): collapse/expand
-              toggle (when the node has children) + a persistent add-child button,
-              placed on the side children grow toward. */}
+          {/* Collapse / expand toggle (top overlay, always clickable). Shown
+              only for nodes that have children. The add-child "+" is NOT
+              persistent — it appears only on the selected node via
+              NodeIndicators (spec NODE-13). */}
           {!dragGhost && (
             <g>
               {nodes
-                .filter((n) => n.depth > 0)
+                .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)
                 .map((n) => {
-                  const hasKids = (n._childCount ?? 0) > 0;
-                  // edge point on the children side
-                  const edge =
+                  const pos =
                     n.side === 'left'
-                      ? { x: n.x - n.w / 2 - 11, y: n.y, vertical: false }
+                      ? { x: n.x - n.w / 2 - 11, y: n.y }
                       : n.side === 'down'
-                        ? { x: n.x, y: n.y + n.h / 2 + 11, vertical: true }
-                        : { x: n.x + n.w / 2 + 11, y: n.y, vertical: false };
-
-                  // When both controls show, offset them so they don't overlap.
-                  const togglePos = hasKids
-                    ? edge.vertical
-                      ? { x: edge.x - 11, y: edge.y }
-                      : { x: edge.x, y: edge.y - 11 }
-                    : null;
-                  const addPos = hasKids
-                    ? edge.vertical
-                      ? { x: edge.x + 11, y: edge.y }
-                      : { x: edge.x, y: edge.y + 11 }
-                    : { x: edge.x, y: edge.y };
-
+                        ? { x: n.x, y: n.y + n.h / 2 + 11 }
+                        : { x: n.x + n.w / 2 + 11, y: n.y };
                   return (
-                    <g key={`ctrl-${n.id}`}>
-                      {togglePos && (
-                        <g
-                          transform={`translate(${togglePos.x}, ${togglePos.y})`}
-                          style={{ cursor: 'pointer' }}
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => { e.stopPropagation(); toggleCollapse(n.id); }}
-                          onDoubleClick={(e) => e.stopPropagation()}
-                        >
-                          <title>{n.collapsed ? '펼치기' : '접기'}</title>
-                          <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
-                          <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
-                          {n.collapsed && (
-                            <line x1={0} y1={-4} x2={0} y2={4} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
-                          )}
-                        </g>
+                    <g
+                      key={`toggle-${n.id}`}
+                      transform={`translate(${pos.x}, ${pos.y})`}
+                      style={{ cursor: 'pointer' }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); toggleCollapse(n.id); }}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                    >
+                      <title>{n.collapsed ? '펼치기' : '접기'}</title>
+                      <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
+                      <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
+                      {n.collapsed && (
+                        <line x1={0} y1={-4} x2={0} y2={4} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
                       )}
-                      <g
-                        transform={`translate(${addPos.x}, ${addPos.y})`}
-                        style={{ cursor: 'pointer' }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); addChildTo(n.id); }}
-                        onDoubleClick={(e) => e.stopPropagation()}
-                      >
-                        <title>하위 노드 추가</title>
-                        <circle r="8.5" fill={t.primary} stroke={t.primary} strokeWidth="1.4" />
-                        <line x1={-4} y1={0} x2={4} y2={0} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
-                        <line x1={0} y1={-4} x2={0} y2={4} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
-                      </g>
                     </g>
                   );
                 })}

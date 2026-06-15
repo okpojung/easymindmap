@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -20,6 +21,7 @@ import type { LayoutType, SampleMap, Collaborator } from '@/editor/__samples__/t
 import { computeLayout } from '@/layout/LayoutEngine';
 import { NodeRenderer } from '@/editor/node-renderer/NodeRenderer';
 import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
+import { nodeContentIndicators, type ContentKind } from '@/editor/node-renderer/nodeContent';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -79,6 +81,8 @@ export function Canvas({
   const deleteNode = useDocumentStore((state) => state.deleteNode);
   const moveNodeRelative = useDocumentStore((state) => state.moveNodeRelative);
   const toggleCollapse = useDocumentStore((state) => state.toggleCollapse);
+  const addNodeLink = useDocumentStore((state) => state.addNodeLink);
+  const addNodeAttachment = useDocumentStore((state) => state.addNodeAttachment);
 
   const zoom = useViewportStore((s) => s.zoom);
   const panX = useViewportStore((s) => s.panX);
@@ -121,6 +125,10 @@ export function Canvas({
 
   // Visible ghost of the node being dragged (world coords).
   const [dragGhost, setDragGhost] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  // Multi-item content chooser popover (link/file/media), rendered on the TOP
+  // overlay so other nodes never cover it.
+  const [popover, setPopover] = useState<{ nodeId: string; kind: ContentKind } | null>(null);
 
   const nodes = useMemo(
     () => computeLayout(sample, layoutType, CX, CY),
@@ -222,6 +230,45 @@ export function Canvas({
     if (isRoot) position = 'child';
 
     return { targetId: hit.id, position };
+  };
+
+  // Node whose box contains a world point (topmost match).
+  const nodeAt = (wx: number, wy: number) => {
+    const ns = nodesRef.current;
+    let hit: (typeof ns)[number] | null = null;
+    for (const node of ns) {
+      if (Math.abs(wx - node.x) <= node.w / 2 && Math.abs(wy - node.y) <= node.h / 2) hit = node;
+    }
+    return hit;
+  };
+
+  // Drop a link (URL) or file(s) from outside the app directly onto a node.
+  const handleExternalDrop = (e: ReactDragEvent) => {
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    const files = Array.from(dt.files ?? []);
+    const uri = dt.getData('text/uri-list') || dt.getData('text/plain');
+    const url = uri
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .find((s) => /^https?:\/\//i.test(s));
+
+    if (files.length === 0 && !url) return;
+
+    e.preventDefault();
+    const w = clientToWorld(e.clientX, e.clientY);
+    const target = nodeAt(w.x, w.y);
+    if (!target) return;
+
+    if (files.length) {
+      files.forEach((f) => {
+        const kind = f.type.startsWith('audio') ? 'audio' : f.type.startsWith('video') ? 'video' : 'file';
+        addNodeAttachment(target.id, { name: f.name, kind, url: URL.createObjectURL(f) });
+      });
+    } else if (url) {
+      addNodeLink(target.id, url);
+    }
+    onSelect(target.id);
   };
 
   // Wheel zoom anchored at the cursor. Attached manually with passive:false
@@ -364,6 +411,7 @@ export function Canvas({
       if (e.key === 'Escape') {
         e.preventDefault();
         onSelect(null);
+        setPopover(null);
         return;
       }
 
@@ -504,6 +552,13 @@ export function Canvas({
   return (
     <div
       ref={containerRef}
+      onDragOver={(e) => {
+        // allow dropping external links / files onto a node
+        if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('text/uri-list') || e.dataTransfer.types.includes('text/plain')) {
+          e.preventDefault();
+        }
+      }}
+      onDrop={handleExternalDrop}
       style={{
         flex: 1,
         position: 'relative',
@@ -574,7 +629,10 @@ export function Canvas({
             suppressClickRef.current = false;
             return;
           }
-          if ((e.target as Element).tagName === 'svg') onSelect(null);
+          if ((e.target as Element).tagName === 'svg') {
+            onSelect(null);
+            setPopover(null);
+          }
         }}
       >
         <g
@@ -608,6 +666,9 @@ export function Canvas({
                 selected={n.id === selectedId}
                 dropTarget={n.id === dropZone?.targetId}
                 onSelect={() => onSelect(n.id)}
+                onOpenPopover={(nodeId, kind) =>
+                  setPopover((p) => (p && p.nodeId === nodeId && p.kind === kind ? null : { nodeId, kind }))
+                }
                 collabs={collabs}
               />
             ))}
@@ -661,6 +722,9 @@ export function Canvas({
             <g>
               {nodes
                 .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)
+                // Hide the toggle on the selected node and its parent so it does
+                // not overlap the selected node's +/- add indicators.
+                .filter((n) => n.id !== selectedId && n.id !== (selectedNode?.parent ?? ''))
                 .map((n) => {
                   const pos =
                     n.side === 'left'
@@ -705,6 +769,59 @@ export function Canvas({
               pointerEvents="none"
             />
           )}
+
+          {/* Multi-item chooser popover (link/file/media) — TOP overlay so it's
+              never covered by other nodes. */}
+          {popover && (() => {
+            const node = nodes.find((n) => n.id === popover.nodeId);
+            if (!node) return null;
+            const ind = nodeContentIndicators(node).find((c) => c.kind === popover.kind);
+            if (!ind || ind.items.length === 0) return null;
+            const width = Math.max(200, node.w);
+            const height = Math.min(190, 10 + ind.items.length * 26);
+            return (
+              <foreignObject
+                x={node.x - node.w / 2}
+                y={node.y + node.h / 2 + 6}
+                width={width}
+                height={height}
+              >
+                <div
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    background: t.surface,
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 6,
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
+                    padding: 4,
+                    fontFamily: 'inherit',
+                    maxHeight: height,
+                    overflow: 'auto',
+                  }}
+                >
+                  {ind.items.map((it, i) => (
+                    <button
+                      key={i}
+                      title={it.url || it.label}
+                      onClick={() => {
+                        if (it.url) window.open(it.url, '_blank', 'noopener');
+                        setPopover(null);
+                      }}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '5px 8px', border: 'none', background: 'transparent',
+                        color: t.text, fontSize: 11.5, cursor: 'pointer', borderRadius: 4,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {ind.icon} {it.label}
+                    </button>
+                  ))}
+                </div>
+              </foreignObject>
+            );
+          })()}
         </g>
       </svg>
 

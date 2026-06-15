@@ -75,8 +75,10 @@ export function Canvas({
 
   const addChildNode = useDocumentStore((state) => state.addChildNode);
   const addSiblingNode = useDocumentStore((state) => state.addSiblingNode);
+  const addParentNode = useDocumentStore((state) => state.addParentNode);
   const deleteNode = useDocumentStore((state) => state.deleteNode);
   const moveNode = useDocumentStore((state) => state.moveNode);
+  const toggleCollapse = useDocumentStore((state) => state.toggleCollapse);
 
   const zoom = useViewportStore((s) => s.zoom);
   const panX = useViewportStore((s) => s.panX);
@@ -115,6 +117,9 @@ export function Canvas({
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const dropTargetRef = useRef<string | null>(null);
   dropTargetRef.current = dropTargetId;
+
+  // Visible ghost of the node being dragged (world coords).
+  const [dragGhost, setDragGhost] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
   const nodes = useMemo(
     () => computeLayout(sample, layoutType, CX, CY),
@@ -253,12 +258,18 @@ export function Canvas({
     if (id) onSelect(id);
   };
 
-  const handleAddSibling = () => {
+  const handleAddSibling = (position: 'before' | 'after' = 'after') => {
     if (!selectedId || selectedId === 'root') {
       handleAddChild();
       return;
     }
-    const id = addSiblingNode(selectedId);
+    const id = addSiblingNode(selectedId, position);
+    if (id) onSelect(id);
+  };
+
+  const handleAddParent = () => {
+    if (!selectedId || selectedId === 'root') return;
+    const id = addParentNode(selectedId);
     if (id) onSelect(id);
   };
 
@@ -405,6 +416,8 @@ export function Canvas({
       if (nodeDrag.dragging) {
         const w = clientToWorld(e.clientX, e.clientY);
         setDropTargetId(findDropTarget(w.x, w.y, nodeDrag.id));
+        const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
+        if (dragged) setDragGhost({ x: w.x, y: w.y, w: dragged.w, h: dragged.h });
       }
       return;
     }
@@ -427,13 +440,17 @@ export function Canvas({
       nodeDragRef.current = null;
 
       if (nodeDrag.dragging) {
-        const target = dropTargetRef.current;
+        // Compute the drop target from the final pointer position directly so
+        // we don't depend on render timing of dropTargetId state.
+        const w = clientToWorld(e.clientX, e.clientY);
+        const target = findDropTarget(w.x, w.y, nodeDrag.id) ?? dropTargetRef.current;
         if (target) {
           const moved = moveNode(nodeDrag.id, target);
           if (moved) onSelect(nodeDrag.id);
         }
         suppressClickRef.current = true;
         setDropTargetId(null);
+        setDragGhost(null);
       }
       return;
     }
@@ -562,7 +579,60 @@ export function Canvas({
               node={selectedNode}
               t={t}
               onAddChild={handleAddChild}
-              onAddSibling={handleAddSibling}
+              onAddParent={handleAddParent}
+              onAddSiblingBefore={() => handleAddSibling('before')}
+              onAddSiblingAfter={() => handleAddSibling('after')}
+            />
+          )}
+
+          {/* Collapse / expand toggles — top overlay so they are always
+              clickable, even when a node is selected (indicators don't cover them). */}
+          <g>
+            {nodes
+              .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)
+              .map((n) => {
+                const pos =
+                  n.side === 'left'
+                    ? { x: n.x - n.w / 2 - 11, y: n.y }
+                    : n.side === 'down'
+                      ? { x: n.x, y: n.y + n.h / 2 + 11 }
+                      : { x: n.x + n.w / 2 + 11, y: n.y };
+                return (
+                  <g
+                    key={`toggle-${n.id}`}
+                    transform={`translate(${pos.x}, ${pos.y})`}
+                    style={{ cursor: 'pointer' }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCollapse(n.id);
+                    }}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                  >
+                    <circle r="9" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
+                    <line x1={-4.5} y1={0} x2={4.5} y2={0} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
+                    {n.collapsed && (
+                      <line x1={0} y1={-4.5} x2={0} y2={4.5} stroke={t.primary} strokeWidth="1.5" strokeLinecap="round" />
+                    )}
+                  </g>
+                );
+              })}
+          </g>
+
+          {/* Drag ghost while reparenting */}
+          {dragGhost && (
+            <rect
+              x={dragGhost.x - dragGhost.w / 2}
+              y={dragGhost.y - dragGhost.h / 2}
+              width={dragGhost.w}
+              height={dragGhost.h}
+              rx={10}
+              fill={t.primary}
+              opacity="0.22"
+              stroke={t.primary}
+              strokeWidth="1.5"
+              strokeDasharray="4 3"
+              pointerEvents="none"
             />
           )}
         </g>

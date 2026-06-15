@@ -97,7 +97,6 @@ function NodeShape({
 export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: Props) {
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
-  const toggleCollapse = useDocumentStore((state) => state.toggleCollapse);
 
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(n.text);
@@ -113,8 +112,6 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
   const hasNote = !!n.note || (n.notes?.length ?? 0) > 0;
   const linkCount = n.links?.length ?? 0;
   const attachmentCount = n.attachments?.length ?? 0;
-  const childCount = n._childCount ?? 0;
-  const collapsible = !isRoot && childCount > 0;
 
   const style = n.style ?? {};
   const shape: ShapeType = style.shapeType ?? 'rounded';
@@ -146,14 +143,6 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
       : textAlign === 'center'
         ? n.x
         : n.x - n.w / 2 + 14 + (isBranch && n.icon ? 24 : 0);
-
-  // collapse toggle position depends on the side children extend toward
-  const toggle =
-    n.side === 'left'
-      ? { x: n.x - n.w / 2 - 10, y: n.y }
-      : n.side === 'down'
-        ? { x: n.x, y: n.y + n.h / 2 + 10 }
-        : { x: n.x + n.w / 2 + 10, y: n.y };
 
   const startEdit = () => {
     setDraftText(n.text);
@@ -352,25 +341,6 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, collabs }: 
                 </text>
               </g>
             ))}
-        </g>
-      )}
-
-      {/* Collapse / expand toggle (shown when the node has children) */}
-      {collapsible && !editing && (
-        <g
-          transform={`translate(${toggle.x}, ${toggle.y})`}
-          style={{ cursor: 'pointer' }}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleCollapse(n.id);
-          }}
-          onDoubleClick={(e) => e.stopPropagation()}
-        >
-          <circle r="8" fill={t.surface} stroke={border} strokeWidth="1.4" />
-          <line x1={-4} y1={0} x2={4} y2={0} stroke={textColor} strokeWidth="1.4" strokeLinecap="round" />
-          {n.collapsed && (
-            <line x1={0} y1={-4} x2={0} y2={4} stroke={textColor} strokeWidth="1.4" strokeLinecap="round" />
-          )}
         </g>
       )}
 

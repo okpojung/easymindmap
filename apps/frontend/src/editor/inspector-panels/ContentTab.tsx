@@ -24,9 +24,6 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
 
   const [linkUrl, setLinkUrl] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
-  const [docName, setDocName] = useState('');
-  const [mediaName, setMediaName] = useState('');
-  const [mediaKind, setMediaKind] = useState<AttachmentKind>('video');
 
   const node = findNodeInMap(map, selectedId);
   const disabled = !selectedId || !node;
@@ -125,18 +122,14 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
               onRemove={() => selectedId && removeNodeAttachment(selectedId, a.id)} />
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <input value={docName} onChange={(e) => setDocName(e.target.value)}
-            placeholder="파일명 (예: 명세서.pdf)" style={{ ...inputStyle(t), flex: 1 }} />
-          <button
-            onClick={() => {
-              const name = docName.trim();
-              if (name && selectedId) addNodeAttachment(selectedId, { name, kind: 'file' });
-              setDocName('');
-            }}
-            style={addBtnStyle(t)}
-          >첨부</button>
-        </div>
+        <FilePickerButton t={t} label="문서 선택" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md"
+          disabled={!selectedId}
+          onFiles={(files) => {
+            if (!selectedId) return;
+            files.forEach((f) =>
+              addNodeAttachment(selectedId, { name: f.name, kind: 'file', url: URL.createObjectURL(f) }),
+            );
+          }} />
       </InspectorSection>
 
       <InspectorSection t={t} title="첨부 (멀티미디어)">
@@ -146,23 +139,15 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
               onRemove={() => selectedId && removeNodeAttachment(selectedId, a.id)} />
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <select value={mediaKind} onChange={(e) => setMediaKind(e.target.value as AttachmentKind)}
-            style={{ ...inputStyle(t), width: 70 }}>
-            <option value="video">비디오</option>
-            <option value="audio">오디오</option>
-          </select>
-          <input value={mediaName} onChange={(e) => setMediaName(e.target.value)}
-            placeholder="미디어 파일명" style={{ ...inputStyle(t), flex: 1 }} />
-          <button
-            onClick={() => {
-              const name = mediaName.trim();
-              if (name && selectedId) addNodeAttachment(selectedId, { name, kind: mediaKind });
-              setMediaName('');
-            }}
-            style={addBtnStyle(t)}
-          >첨부</button>
-        </div>
+        <FilePickerButton t={t} label="미디어 선택" accept="audio/*,video/*,image/*"
+          disabled={!selectedId}
+          onFiles={(files) => {
+            if (!selectedId) return;
+            files.forEach((f) => {
+              const kind: AttachmentKind = f.type.startsWith('audio') ? 'audio' : 'video';
+              addNodeAttachment(selectedId, { name: f.name, kind, url: URL.createObjectURL(f) });
+            });
+          }} />
       </InspectorSection>
 
       <InspectorSection t={t} title="노드 배경 이미지 (IMG-01~05 · V1)">
@@ -171,6 +156,40 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         </div>
       </InspectorSection>
     </div>
+  );
+}
+
+function FilePickerButton({ t, label, accept, disabled, onFiles }: {
+  t: ThemeTokens;
+  label: string;
+  accept: string;
+  disabled?: boolean;
+  onFiles: (files: File[]) => void;
+}) {
+  return (
+    <label style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      width: '100%', padding: '6px 10px',
+      background: 'transparent', border: `1px dashed ${t.border}`,
+      borderRadius: 5, color: t.textMuted,
+      cursor: disabled ? 'default' : 'pointer',
+      fontSize: 11.5, fontWeight: 500, justifyContent: 'center',
+      boxSizing: 'border-box',
+    }}>
+      <I.Plus size={12} /> {label}
+      <input
+        type="file"
+        accept={accept}
+        multiple
+        disabled={disabled}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          if (files.length) onFiles(files);
+          e.target.value = '';
+        }}
+        style={{ display: 'none' }}
+      />
+    </label>
   );
 }
 

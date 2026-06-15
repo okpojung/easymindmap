@@ -2,7 +2,7 @@
 // wired to the selected node via documentStore. Background image (IMG-01~05) is
 // a V1 feature and stays as a visual placeholder.
 
-import { useState } from 'react';
+import { useState, type DragEvent } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { AttachmentKind } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -38,6 +38,17 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
     if (url && selectedId) addNodeLink(selectedId, url, linkLabel.trim() || undefined);
     setLinkUrl('');
     setLinkLabel('');
+  };
+
+  const handleUrlDrop = (e: DragEvent) => {
+    e.preventDefault();
+    if (!selectedId) return;
+    const raw = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+    const url = raw
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .find((s) => /^https?:\/\//i.test(s));
+    if (url) addNodeLink(selectedId, url);
   };
 
   return (
@@ -112,6 +123,18 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
               placeholder="https://..." style={{ ...inputStyle(t), flex: 1 }} />
             <button onClick={commitLink} style={addBtnStyle(t)}>추가</button>
           </div>
+          {/* Drag the address-bar lock/URL from a browser and drop here. */}
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleUrlDrop}
+            style={{
+              padding: '8px 10px', borderRadius: 6, textAlign: 'center',
+              border: `1px dashed ${t.border}`, background: t.surfaceAlt,
+              fontSize: 10.5, color: t.textSubtle,
+            }}
+          >
+            브라우저 주소창의 자물쇠/URL을 여기로 Drag &amp; Drop
+          </div>
         </div>
       </InspectorSection>
 
@@ -167,16 +190,24 @@ function FilePickerButton({ t, label, accept, disabled, onFiles }: {
   onFiles: (files: File[]) => void;
 }) {
   return (
-    <label style={{
-      display: 'flex', alignItems: 'center', gap: 6,
-      width: '100%', padding: '6px 10px',
-      background: 'transparent', border: `1px dashed ${t.border}`,
-      borderRadius: 5, color: t.textMuted,
-      cursor: disabled ? 'default' : 'pointer',
-      fontSize: 11.5, fontWeight: 500, justifyContent: 'center',
-      boxSizing: 'border-box',
-    }}>
-      <I.Plus size={12} /> {label}
+    <label
+      onDragOver={(e) => { if (!disabled) e.preventDefault(); }}
+      onDrop={(e) => {
+        if (disabled) return;
+        e.preventDefault();
+        const files = Array.from(e.dataTransfer.files ?? []);
+        if (files.length) onFiles(files);
+      }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        width: '100%', padding: '8px 10px',
+        background: t.surfaceAlt, border: `1px dashed ${t.border}`,
+        borderRadius: 5, color: t.textMuted,
+        cursor: disabled ? 'default' : 'pointer',
+        fontSize: 11.5, fontWeight: 500, justifyContent: 'center',
+        boxSizing: 'border-box',
+      }}>
+      <I.Plus size={12} /> {label} · 또는 Drag &amp; Drop
       <input
         type="file"
         accept={accept}

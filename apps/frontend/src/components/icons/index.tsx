@@ -430,4 +430,33 @@ export const I = {
       <path d="M5 3l7 18 2.5-8 8-2.5z" />
     </Icon>
   ),
+
+  // Maximize (전체화면 모드) — two diagonal arrows, distinct from Fit's corner brackets
+  Maximize: (p: P = {}) => (
+    <Icon {...p}>
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </Icon>
+  ),
+
+  // 100% view — magnifier with "100"
+  Zoom100: (p: P = {}) => (
+    <Icon {...p}>
+      <circle cx="10" cy="10" r="7" />
+      <line x1="20" y1="20" x2="15" y2="15" />
+      <text x="10" y="13" fontSize="7" fontWeight="700" textAnchor="middle" fill="currentColor" stroke="none">100</text>
+    </Icon>
+  ),
+
+  // Focus cancel — magnifier with an X (선택 노드 보기 취소)
+  FocusOff: (p: P = {}) => (
+    <Icon {...p}>
+      <circle cx="11" cy="11" r="7" />
+      <line x1="20" y1="20" x2="16.65" y2="16.65" />
+      <line x1="8.6" y1="8.6" x2="13.4" y2="13.4" />
+      <line x1="13.4" y1="8.6" x2="8.6" y2="13.4" />
+    </Icon>
+  ),
 };

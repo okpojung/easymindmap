@@ -16,6 +16,13 @@ interface EditorUiState {
   tweaksOpen: boolean;
   sampleTopic: 'roadmap' | 'meta';
 
+  // Display toggles (NODE-15 style)
+  showTags: boolean;
+  showCollapseIcons: boolean;
+
+  // Multi-node add dialog (Ctrl+Space)
+  multiAddOpen: boolean;
+
   setThemeName: (v: ThemeName) => void;
   setLayoutType: (v: LayoutType) => void;
   setNavTab: (v: NavTabKey) => void;
@@ -24,6 +31,9 @@ interface EditorUiState {
   toggleSidebar: () => void;
   setTweaksOpen: (v: boolean) => void;
   setSampleTopic: (v: 'roadmap' | 'meta') => void;
+  setShowTags: (v: boolean) => void;
+  setShowCollapseIcons: (v: boolean) => void;
+  setMultiAddOpen: (v: boolean) => void;
 }
 
 export const useEditorUiStore = create<EditorUiState>((set) => ({
@@ -35,6 +45,9 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   sidebarCollapsed: false,
   tweaksOpen: false,
   sampleTopic: 'roadmap',
+  showTags: true,
+  showCollapseIcons: true,
+  multiAddOpen: false,
 
   setThemeName: (themeName) => set({ themeName }),
   setLayoutType: (layoutType) => set({ layoutType }),
@@ -45,4 +58,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setTweaksOpen: (tweaksOpen) => set({ tweaksOpen }),
   setSampleTopic: (sampleTopic) => set({ sampleTopic }),
+  setShowTags: (showTags) => set({ showTags }),
+  setShowCollapseIcons: (showCollapseIcons) => set({ showCollapseIcons }),
+  setMultiAddOpen: (multiAddOpen) => set({ multiAddOpen }),
 }));

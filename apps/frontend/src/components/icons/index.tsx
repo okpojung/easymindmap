@@ -441,6 +441,28 @@ export const I = {
     </Icon>
   ),
 
+  // Enter fullscreen — boxed outward diagonal arrows
+  FullscreenEnter: (p: P = {}) => (
+    <Icon {...p}>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="3" />
+      <polyline points="14 8 16 8 16 10" />
+      <polyline points="10 16 8 16 8 14" />
+      <line x1="16" y1="8" x2="12.5" y2="11.5" />
+      <line x1="8" y1="16" x2="11.5" y2="12.5" />
+    </Icon>
+  ),
+
+  // Exit fullscreen — boxed inward diagonal arrows
+  FullscreenExit: (p: P = {}) => (
+    <Icon {...p}>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="3" />
+      <polyline points="13 9 13 11 15 11" />
+      <polyline points="11 15 11 13 9 13" />
+      <line x1="16" y1="8" x2="13" y2="11" />
+      <line x1="8" y1="16" x2="11" y2="13" />
+    </Icon>
+  ),
+
   // 100% view — magnifier with "100"
   Zoom100: (p: P = {}) => (
     <Icon {...p}>

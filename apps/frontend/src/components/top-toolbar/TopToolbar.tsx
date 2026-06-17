@@ -3,6 +3,7 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { IconBtn } from './IconBtn';
 import { CollabAvatars } from './CollabAvatars';
+import { useDocumentStore } from '@/stores/documentStore';
 
 export type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
 
@@ -19,6 +20,11 @@ export function TopToolbar({
   mapTitle,
   saveState = 'saved',
 }: Props) {
+  const undo = useDocumentStore((s) => s.undo);
+  const redo = useDocumentStore((s) => s.redo);
+  const canUndo = useDocumentStore((s) => s.past.length > 0);
+  const canRedo = useDocumentStore((s) => s.future.length > 0);
+
   const saveStateInfo = ({
     saved: { text: '저장됨 · 방금 전', color: t.textMuted, dot: t.success },
     saving: { text: '저장 중…', color: t.accent, dot: t.accent },
@@ -87,10 +93,10 @@ export function TopToolbar({
       <div style={{ width: 1, height: 28, background: t.divider }} />
 
       <div style={{ display: 'flex', gap: 2 }}>
-        <IconBtn t={t} title="되돌리기 (Ctrl+Z)">
+        <IconBtn t={t} title="되돌리기 (Ctrl+Z)" disabled={!canUndo} onClick={undo}>
           <I.Undo size={17} />
         </IconBtn>
-        <IconBtn t={t} title="다시 실행 (Ctrl+Y)" disabled>
+        <IconBtn t={t} title="다시 실행 (Ctrl+Y)" disabled={!canRedo} onClick={redo}>
           <I.Redo size={17} />
         </IconBtn>
       </div>

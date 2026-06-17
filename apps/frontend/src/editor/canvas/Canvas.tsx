@@ -18,17 +18,54 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { LayoutType, SampleMap, Collaborator } from '@/editor/__samples__/types';
+import type {
+  LayoutType,
+  SampleMap,
+  SampleBranch,
+  MindNode,
+  NodeColorKey,
+  Collaborator,
+} from '@/editor/__samples__/types';
 import { computeLayout } from '@/layout/LayoutEngine';
 import { NodeRenderer } from '@/editor/node-renderer/NodeRenderer';
 import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
 import { nodeContentIndicators, type ContentKind } from '@/editor/node-renderer/nodeContent';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
-import { useDocumentStore } from '@/stores/documentStore';
+import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
+
+const FOCUS_BRANCH_KEYS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
+
+// Builds a temporary map re-rooted at `focusedId`, so only that node (as the
+// main node) and its descendants are laid out — everything else is hidden.
+function buildFocusedMap(docMap: SampleMap, focusedId: string): SampleMap | null {
+  const node = findNodeInMap(docMap, focusedId) as MindNode | null;
+  if (!node) return null;
+  const children = node.children ?? [];
+  const branches = children.map((c, i) => ({
+    ...c,
+    colorKey: (c.colorKey as NodeColorKey) ?? FOCUS_BRANCH_KEYS[i % FOCUS_BRANCH_KEYS.length],
+    side: c.side === 'left' || c.side === 'right' ? c.side : i % 2 === 0 ? 'right' : 'left',
+  })) as SampleBranch[];
+
+  return {
+    title: docMap.title,
+    root: {
+      id: node.id as 'root',
+      text: node.text,
+      colorKey: 'root',
+      side: 'center',
+      layoutType: docMap.root.layoutType,
+      textAlign: node.textAlign,
+      icon: node.icon,
+      style: node.style,
+    },
+    branches,
+  };
+}
 
 const LAYOUT_LABEL: Record<string, string> = {
   tree: '트리 · 오른쪽 (직각선)',
@@ -85,8 +122,9 @@ export function Canvas({
   const toggleCollapse = useDocumentStore((state) => state.toggleCollapse);
   const addNodeLink = useDocumentStore((state) => state.addNodeLink);
   const addNodeAttachment = useDocumentStore((state) => state.addNodeAttachment);
+  const undo = useDocumentStore((state) => state.undo);
+  const redo = useDocumentStore((state) => state.redo);
   const setMultiAddOpen = useEditorUiStore((state) => state.setMultiAddOpen);
-  const showCollapseIcons = useEditorUiStore((state) => state.showCollapseIcons);
 
   const zoom = useViewportStore((s) => s.zoom);
   const panX = useViewportStore((s) => s.panX);
@@ -141,10 +179,10 @@ export function Canvas({
   // node's children-connector start.
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
 
-  const nodes = useMemo(
-    () => computeLayout(sample, layoutType, CX, CY),
-    [sample, layoutType, CX, CY],
-  );
+  const nodes = useMemo(() => {
+    const effective = focusedId ? buildFocusedMap(sample, focusedId) ?? sample : sample;
+    return computeLayout(effective, layoutType, CX, CY);
+  }, [sample, layoutType, CX, CY, focusedId]);
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
@@ -336,25 +374,12 @@ export function Canvas({
     setPan(-(bcx - CX) * s2, -(bcy - CY) * s2);
   };
 
-  // Selected node + all its descendants (for "focus selected").
-  const subtreeNodes = (rootId: string) => {
-    const ns = nodesRef.current;
-    const byId = new Map(ns.map((x) => [x.id, x]));
-    return ns.filter((n) => {
-      let cur: (typeof ns)[number] | undefined = n;
-      while (cur) {
-        if (cur.id === rootId) return true;
-        cur = cur.parent ? byId.get(cur.parent) : undefined;
-      }
-      return false;
-    });
-  };
-
-  // Fit the whole map into view when requested (toolbar / status bar).
+  // Fit the currently-laid-out nodes when requested. In focus mode the laid-out
+  // set is already just the focused subtree, so this fits the subtree; otherwise
+  // it fits the whole map. (toolbar / status bar / focus toggle)
   useEffect(() => {
     if (!fitRequestId) return;
-    setFocusedId(null);
-    fitToNodes(nodesRef.current);
+    fitToNodes(nodesRef.current, focusedId ? 90 : 70);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRequestId]);
 
@@ -378,21 +403,25 @@ export function Canvas({
     if (id) onSelect(id);
   };
 
-  // Focus selected (toggle): zoom to the selected node's subtree so only that
-  // node and its descendants are shown. Clicking again (or when already focused)
-  // returns to fitting the whole map. (Focus button / Alt+F)
+  // Focus selected (toggle): re-root the view at the selected node so ONLY that
+  // node (as the main node) and its descendants are shown — the parent, siblings
+  // and everything else are hidden. Clicking again returns to the whole map.
+  // (Focus button / Alt+F)
   const focusSelected = () => {
-    // Already focused → exit back to whole-map fit.
     if (focusedId) {
       setFocusedId(null);
-      fitToNodes(nodesRef.current);
+      requestFit();
       return;
     }
-    if (!selectedId) return;
-    const node = nodesRef.current.find((n) => n.id === selectedId);
-    if (!node) return;
+    if (!selectedId || selectedId === 'root') return;
     setFocusedId(selectedId);
-    fitToNodes(subtreeNodes(selectedId), 90);
+    requestFit();
+  };
+
+  // "맵 전체 맞추기" — always exit focus and fit the whole map.
+  const handleFitWhole = () => {
+    setFocusedId(null);
+    requestFit();
   };
 
   useEffect(() => {
@@ -406,20 +435,53 @@ export function Canvas({
 
       if (isEditingText) return;
 
-      // Ctrl/⌘ + Space → multi-node add dialog
-      if (e.code === 'Space' && (e.ctrlKey || e.metaKey)) {
+      const mod = e.ctrlKey || e.metaKey;
+
+      // Undo / redo (in-memory, no DB)
+      if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (mod && ((e.key === 'y' || e.key === 'Y') || ((e.key === 'z' || e.key === 'Z') && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      // ── Node-add direction shortcuts (spec NODE-13) ──
+      // ⬅ 형제 이전: Shift + Ctrl + Space
+      if (e.code === 'Space' && e.shiftKey && mod) {
+        e.preventDefault();
+        handleAddSibling('before');
+        return;
+      }
+      // Ctrl + Space → 다중 노드 추가
+      if (e.code === 'Space' && mod) {
         e.preventDefault();
         setMultiAddOpen(true);
         return;
       }
-
+      // ➡ 형제 다음: Shift + Space
+      if (e.code === 'Space' && e.shiftKey) {
+        e.preventDefault();
+        handleAddSibling('after');
+        return;
+      }
+      // ⬇ 자식: Space
       if (e.code === 'Space') {
         e.preventDefault();
         handleAddChild();
         return;
       }
+      // ⬆ 부모: Ctrl + ←
+      if (e.key === 'ArrowLeft' && mod) {
+        e.preventDefault();
+        handleAddParent();
+        return;
+      }
 
-      // Tab → add child, Enter → add sibling (mindmap conventions)
+      // Tab → add child, Enter → add sibling (next) — convenience
       if (e.key === 'Tab') {
         e.preventDefault();
         handleAddChild();
@@ -640,7 +702,7 @@ export function Canvas({
         t={t}
         hasSelection={!!selectedNode}
         focusActive={!!focusedId}
-        onFitView={requestFit}
+        onFitView={handleFitWhole}
         onFocusSelected={focusSelected}
       />
 
@@ -757,7 +819,7 @@ export function Canvas({
               toggle is on. Hidden in print / image export (mm-overlay-controls).
               The add-child "+" is NOT persistent — it appears only on the
               selected node via NodeIndicators (spec NODE-13). */}
-          {!dragGhost && showCollapseIcons && (
+          {!dragGhost && (
             <g className="mm-overlay-controls">
               {nodes
                 .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)

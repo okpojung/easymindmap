@@ -18,7 +18,8 @@ interface EditorUiState {
 
   // Display toggles (NODE-15 style)
   showTags: boolean;
-  showCollapseIcons: boolean;
+  // Tags hidden from the canvas when showTags is on (per-tag filter).
+  hiddenTags: string[];
 
   // Multi-node add dialog (Ctrl+Space)
   multiAddOpen: boolean;
@@ -32,7 +33,7 @@ interface EditorUiState {
   setTweaksOpen: (v: boolean) => void;
   setSampleTopic: (v: 'roadmap' | 'meta') => void;
   setShowTags: (v: boolean) => void;
-  setShowCollapseIcons: (v: boolean) => void;
+  toggleTagHidden: (tag: string) => void;
   setMultiAddOpen: (v: boolean) => void;
 }
 
@@ -46,7 +47,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   tweaksOpen: false,
   sampleTopic: 'roadmap',
   showTags: true,
-  showCollapseIcons: true,
+  hiddenTags: [],
   multiAddOpen: false,
 
   setThemeName: (themeName) => set({ themeName }),
@@ -59,6 +60,11 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   setTweaksOpen: (tweaksOpen) => set({ tweaksOpen }),
   setSampleTopic: (sampleTopic) => set({ sampleTopic }),
   setShowTags: (showTags) => set({ showTags }),
-  setShowCollapseIcons: (showCollapseIcons) => set({ showCollapseIcons }),
+  toggleTagHidden: (tag) =>
+    set((s) => ({
+      hiddenTags: s.hiddenTags.includes(tag)
+        ? s.hiddenTags.filter((x) => x !== tag)
+        : [...s.hiddenTags, tag],
+    })),
   setMultiAddOpen: (multiAddOpen) => set({ multiAddOpen }),
 }));

@@ -28,11 +28,23 @@ const SUBTREE_SUPPORTED = new Set<LayoutType>([
 ]);
 
 // Layouts whose direct children are arranged left → right (a wider subtree
-// pushes siblings sideways). Everything else stacks siblings vertically.
+// pushes siblings sideways).
 const HORIZONTAL_SIBLING_PARENTS = new Set<LayoutType>([
   'process-tree-right' as LayoutType,
   'tree-down' as LayoutType,
 ]);
+
+// Layouts that stack their direct children top → bottom (a taller subtree
+// pushes the siblings below it down).
+const VERTICAL_SIBLING_PARENTS = new Set<LayoutType>([
+  'hierarchy-right' as LayoutType,
+  'hierarchy-left' as LayoutType,
+  'tree-right' as LayoutType,
+  'tree-left' as LayoutType,
+]);
+// Radial / freeform parents place children by angle/position, so the naive
+// "push everything below/right of the anchor" reflow would scramble them —
+// those layouts are intentionally left untouched (some overlap is accepted).
 
 export function applyLayoutOverrides(
   branches: SampleBranch[],
@@ -103,9 +115,7 @@ function pushSiblingsAway(
   after: BBox,
   parentEffective: LayoutType,
 ): void {
-  const horizontal = HORIZONTAL_SIBLING_PARENTS.has(parentEffective);
-
-  if (horizontal) {
+  if (HORIZONTAL_SIBLING_PARENTS.has(parentEffective)) {
     const extra = after.right - before.right;
     if (extra <= 0.5) return;
 
@@ -113,7 +123,7 @@ function pushSiblingsAway(
       if (subtreeIds.has(n.id)) continue;
       if (n.x > anchor.x + 0.5) n.x += extra;
     }
-  } else {
+  } else if (VERTICAL_SIBLING_PARENTS.has(parentEffective)) {
     const extra = after.bottom - before.bottom;
     if (extra <= 0.5) return;
 
@@ -122,6 +132,7 @@ function pushSiblingsAway(
       if (n.y > anchor.y + 0.5) n.y += extra;
     }
   }
+  // Radial / freeform: no reflow (avoids scrambling angularly-placed siblings).
 }
 
 function relayoutSubtree(

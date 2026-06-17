@@ -180,8 +180,22 @@ export function Canvas({
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
 
   const nodes = useMemo(() => {
-    const effective = focusedId ? buildFocusedMap(sample, focusedId) ?? sample : sample;
-    return computeLayout(effective, layoutType, CX, CY);
+    if (focusedId) {
+      const fm = buildFocusedMap(sample, focusedId);
+      if (fm) {
+        const laid = computeLayout(fm, layoutType, CX, CY);
+        // Layout strategies set each top-level branch's parent to the literal
+        // 'root'; in focus mode the root carries the focused node's real id, so
+        // rewire those parents to it — otherwise the root↔child edges can't find
+        // their parent and don't render.
+        const rootId = laid[0]?.id;
+        if (rootId && rootId !== 'root') {
+          for (const n of laid) if (n.parent === 'root') n.parent = rootId;
+        }
+        return laid;
+      }
+    }
+    return computeLayout(sample, layoutType, CX, CY);
   }, [sample, layoutType, CX, CY, focusedId]);
 
   const nodesRef = useRef(nodes);

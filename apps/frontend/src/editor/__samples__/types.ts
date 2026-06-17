@@ -83,6 +83,7 @@ export interface MindNode {
   side?: 'left' | 'right' | 'center';
 
   icon?: string;
+  iconSide?: 'left' | 'right';
 
   tag?: string;
   tags?: string[];
@@ -125,6 +126,7 @@ export interface SampleRoot {
   // Root may carry the same content metadata as any node (it can't be moved,
   // deleted or collapsed, but it can have style / tags / notes / links).
   icon?: string;
+  iconSide?: 'left' | 'right';
   tag?: string;
   tags?: string[];
   note?: boolean;

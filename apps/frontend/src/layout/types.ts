@@ -29,6 +29,7 @@ export interface LaidOutNode {
   parentColorKey?: NodeColorKey;
 
   icon?: string;
+  iconSide?: 'left' | 'right';
 
   tag?: string;
   tags?: string[];

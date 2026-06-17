@@ -2,7 +2,7 @@
 // (1) Node-scoped actions  (2) View controls
 // Spec: docs/03-editor-core/canvas/10-canvas.md § 21.2
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -25,6 +25,16 @@ export function CanvasFloatingToolbar({ t, hasSelection, focusActive, onFitView,
 
   const panMode = useViewportStore((state) => state.panMode);
   const togglePanMode = useViewportStore((state) => state.togglePanMode);
+
+  const [isFullscreen, setIsFullscreen] = useState(
+    typeof document !== 'undefined' && !!document.fullscreenElement,
+  );
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
 
   const handleAddNode = () => {
     const newNodeId = addChildNode(selectedId);
@@ -96,8 +106,13 @@ export function CanvasFloatingToolbar({ t, hasSelection, focusActive, onFitView,
       <ToolbarBtn t={t} title="맵 전체를 화면에 맞추기" onClick={onFitView}>
         <I.Fit size={15} />
       </ToolbarBtn>
-      <ToolbarBtn t={t} title="전체화면 모드" onClick={handleFullscreen}>
-        <I.Maximize size={15} />
+      <ToolbarBtn
+        t={t}
+        title={isFullscreen ? '전체화면 종료' : '전체화면 모드'}
+        highlight={isFullscreen}
+        onClick={handleFullscreen}
+      >
+        {isFullscreen ? <I.FullscreenExit size={16} /> : <I.FullscreenEnter size={16} />}
       </ToolbarBtn>
     </div>
   );

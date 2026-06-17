@@ -102,6 +102,7 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const showTags = useEditorUiStore((state) => state.showTags);
+  const hiddenTags = useEditorUiStore((state) => state.hiddenTags);
 
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(n.text);
@@ -112,7 +113,9 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const isBranch = n.depth === 1;
 
   const lockedBy = n.locked ? collabs.find((c) => c.editing === n.id) : undefined;
-  const tagList = Array.isArray(n.tags) ? n.tags : n.tag ? [n.tag] : [];
+  const allTags = Array.isArray(n.tags) ? n.tags : n.tag ? [n.tag] : [];
+  // Only show tags that aren't filtered out in the search panel.
+  const tagList = allTags.filter((tg) => !hiddenTags.includes(tg));
   const hasTags = tagList.length > 0;
 
   // Content indicators (note / link / file / media) — see nodeContent.ts

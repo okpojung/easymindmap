@@ -1,8 +1,10 @@
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import type { MindNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { Toggle } from '@/editor/inspector-panels/InspectorSection';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useDocumentStore } from '@/stores/documentStore';
 
 const RESULTS = [
   { title: '에디터 코어 — 노드 CRUD', path: 'Q1 기반 구축', match: '에디터' },
@@ -10,13 +12,27 @@ const RESULTS = [
   { title: '에디터 단축키 정책', path: '리스크 & 완화', match: '에디터' },
 ];
 
-const TAG_FILTERS = ['MVP', 'AI', 'V1', 'Export', 'DB'];
+// Collect every distinct tag defined anywhere in the map.
+function collectTags(nodes: MindNode[], acc: Set<string>) {
+  for (const n of nodes) {
+    if (n.tag) acc.add(n.tag);
+    (n.tags ?? []).forEach((tg) => acc.add(tg));
+    if (n.children) collectTags(n.children, acc);
+  }
+}
 
 export function SearchPanel({ t }: { t: ThemeTokens }) {
   const showTags = useEditorUiStore((s) => s.showTags);
   const setShowTags = useEditorUiStore((s) => s.setShowTags);
-  const showCollapseIcons = useEditorUiStore((s) => s.showCollapseIcons);
-  const setShowCollapseIcons = useEditorUiStore((s) => s.setShowCollapseIcons);
+  const hiddenTags = useEditorUiStore((s) => s.hiddenTags);
+  const toggleTagHidden = useEditorUiStore((s) => s.toggleTagHidden);
+  const map = useDocumentStore((s) => s.map);
+
+  const tagSet = new Set<string>();
+  if (map.root.tag) tagSet.add(map.root.tag);
+  (map.root.tags ?? []).forEach((tg) => tagSet.add(tg));
+  collectTags(map.branches, tagSet);
+  const mapTags = Array.from(tagSet);
 
   return (
     <div style={{ padding: 12 }}>
@@ -79,25 +95,41 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
         </label>
       </div>
 
-      {/* Display toggle: collapse/expand icons */}
-      <label style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 10, cursor: 'pointer',
-      }}>
-        <span style={{ fontSize: 11.5, color: t.textMuted }}>접기/펼치기 아이콘 표시</span>
-        <Toggle t={t} on={showCollapseIcons} onChange={setShowCollapseIcons} />
-      </label>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-        {TAG_FILTERS.map(tag => {
+      {/* Per-tag visibility filter — when "Tag 표시" is on, only checked tags
+          are shown on the canvas. */}
+      <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 6, lineHeight: 1.4 }}>
+        선택한 태그만 노드에 표시됩니다.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {mapTags.length === 0 && (
+          <div style={{ fontSize: 11.5, color: t.textSubtle }}>맵에 정의된 태그가 없습니다.</div>
+        )}
+        {mapTags.map((tag) => {
           const tc = resolveTagColor(tag, t);
+          const checked = !hiddenTags.includes(tag);
           return (
-            <span key={tag} style={{
-              fontSize: 11, padding: '3px 7px', borderRadius: 3,
-              background: tc.bg, border: `1px solid ${tc.border}`,
-              color: tc.text, cursor: 'pointer', fontWeight: 600,
-              letterSpacing: 0.2,
-            }}>#{tag}</span>
+            <label
+              key={tag}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                cursor: showTags ? 'pointer' : 'default',
+                opacity: showTags ? 1 : 0.5,
+                padding: '3px 2px',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={!showTags}
+                onChange={() => toggleTagHidden(tag)}
+                style={{ accentColor: t.primary, cursor: 'inherit' }}
+              />
+              <span style={{
+                fontSize: 11, padding: '3px 7px', borderRadius: 3,
+                background: tc.bg, border: `1px solid ${tc.border}`,
+                color: tc.text, fontWeight: 600, letterSpacing: 0.2,
+              }}>#{tag}</span>
+            </label>
           );
         })}
       </div>

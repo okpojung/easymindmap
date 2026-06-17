@@ -34,9 +34,20 @@ export const MAX_DEPTH = 50;
 
 const BRANCH_COLOR_KEYS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 
+// Undo/redo history: max snapshots, and a guard so undo/redo themselves aren't
+// recorded as new history entries.
+const HISTORY_LIMIT = 100;
+let applyingHistory = false;
+
 interface DocumentState {
   map: SampleMap;
   kanban: KanbanBoardData;
+
+  // Undo / redo history (in-memory — no DB required)
+  past: SampleMap[];
+  future: SampleMap[];
+  undo: () => void;
+  redo: () => void;
 
   setSample: (key: SampleKey) => void;
 
@@ -354,9 +365,35 @@ function makeBranch(node: MindNode, indexForColor: number): SampleBranch {
 // store
 // ---------------------------------------------------------------------------
 
-export const useDocumentStore = create<DocumentState>((set) => ({
+export const useDocumentStore = create<DocumentState>((set, get) => ({
   map: cloneMap(SAMPLE_ROADMAP),
   kanban: SAMPLE_KANBAN,
+  past: [],
+  future: [],
+
+  undo: () => {
+    const { past, map, future } = get();
+    if (past.length === 0) return;
+    applyingHistory = true;
+    set({
+      map: past[past.length - 1],
+      past: past.slice(0, -1),
+      future: [map, ...future].slice(0, HISTORY_LIMIT),
+    });
+    applyingHistory = false;
+  },
+
+  redo: () => {
+    const { future, map, past } = get();
+    if (future.length === 0) return;
+    applyingHistory = true;
+    set({
+      map: future[0],
+      future: future.slice(1),
+      past: [...past, map].slice(-HISTORY_LIMIT),
+    });
+    applyingHistory = false;
+  },
 
   setSample: (key) =>
     set({ map: cloneMap(key === 'meta' ? SAMPLE_META : SAMPLE_ROADMAP) }),
@@ -846,3 +883,15 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     }));
   },
 }));
+
+// Record every `map` mutation (that isn't an undo/redo) into the history so the
+// toolbar / Ctrl+Z / Ctrl+Y can step through document states. In-memory only.
+useDocumentStore.subscribe((state, prev) => {
+  if (applyingHistory) return;
+  if (state.map !== prev.map) {
+    useDocumentStore.setState((s) => ({
+      past: [...s.past, prev.map].slice(-HISTORY_LIMIT),
+      future: [],
+    }));
+  }
+});

@@ -9,14 +9,8 @@ import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection } from './InspectorSection';
 
-const EMOJI_PALETTE = [
-  '📌','✅','⭐','⚠️','💡','🚀','🔥','🎯',
-  '📊','🧱','🔒','💬','📎','🌐','⏱','🗂',
-];
-
 export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
   const map = useDocumentStore((s) => s.map);
-  const setNodeIcon = useDocumentStore((s) => s.setNodeIcon);
   const addNodeLink = useDocumentStore((s) => s.addNodeLink);
   const removeNodeLink = useDocumentStore((s) => s.removeNodeLink);
   const addNodeAttachment = useDocumentStore((s) => s.addNodeAttachment);
@@ -53,43 +47,6 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
 
   return (
     <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
-      <InspectorSection t={t} title="아이콘 · 기호 (NS-05)">
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
-          padding: '6px 8px', background: t.surfaceAlt,
-          border: `1px solid ${t.border}`, borderRadius: 6,
-        }}>
-          <span style={{ fontSize: 18 }}>{node?.icon ?? '∅'}</span>
-          <span style={{ fontSize: 11, color: t.textMuted, flex: 1 }}>
-            {node?.icon ? '현재 아이콘' : '아이콘 없음'}
-          </span>
-          {node?.icon && (
-            <button onClick={() => selectedId && setNodeIcon(selectedId, undefined)} style={{
-              fontSize: 10, padding: '1px 6px', borderRadius: 3,
-              background: 'transparent', border: `1px solid ${t.border}`,
-              color: t.textMuted, cursor: 'pointer',
-            }}>제거</button>
-          )}
-        </div>
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 3,
-          padding: 6, borderRadius: 6,
-          background: t.surfaceAlt, border: `1px solid ${t.border}`,
-        }}>
-          {EMOJI_PALETTE.map((em) => (
-            <button key={em} title={em}
-              onClick={() => selectedId && setNodeIcon(selectedId, em)}
-              style={{
-                padding: 4, borderRadius: 4,
-                background: node?.icon === em ? t.primarySoft : 'transparent',
-                border: 'none', cursor: 'pointer', fontSize: 16,
-              }}>
-              {em}
-            </button>
-          ))}
-        </div>
-      </InspectorSection>
-
       <InspectorSection t={t} title="하이퍼링크">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {links.map((link) => (

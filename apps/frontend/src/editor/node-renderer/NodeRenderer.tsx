@@ -142,15 +142,20 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const strokeWidth = style.borderWidth ?? (isRoot ? 2 : selected ? 1.5 : 1);
   const dash = borderDash(style.borderStyle, strokeWidth);
 
+  // Icon can be shown on any node (not only branches), on the left or right.
+  const hasIcon = !!n.icon;
+  const iconSide: 'left' | 'right' = n.iconSide ?? 'left';
+  const iconX = iconSide === 'right' ? n.x + n.w / 2 - 16 : n.x - n.w / 2 + 12;
+
   const textAlign: TextAlign = n.textAlign ?? 'left';
   const textAnchor =
     textAlign === 'right' ? 'end' : textAlign === 'center' ? 'middle' : 'start';
   const textX =
     textAlign === 'right'
-      ? n.x + n.w / 2 - 14
+      ? n.x + n.w / 2 - 14 - (hasIcon && iconSide === 'right' ? 22 : 0)
       : textAlign === 'center'
         ? n.x
-        : n.x - n.w / 2 + 14 + (isBranch && n.icon ? 24 : 0);
+        : n.x - n.w / 2 + 14 + (hasIcon && iconSide === 'left' ? 24 : 0);
 
   const startEdit = () => {
     setDraftText(n.text);
@@ -247,12 +252,12 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
         filter={isRoot ? 'url(#nodeShadow)' : undefined}
       />
 
-      {isBranch && n.icon && !editing && (
+      {hasIcon && !editing && (
         <text
-          x={n.x - n.w / 2 + 12}
+          x={iconX}
           y={n.y + 5}
           fontSize={fontSize + 2}
-          textAnchor="start"
+          textAnchor={iconSide === 'right' ? 'middle' : 'start'}
           style={{ fontFamily: 'inherit' }}
         >
           {n.icon}

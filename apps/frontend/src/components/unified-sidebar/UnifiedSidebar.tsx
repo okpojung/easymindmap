@@ -24,12 +24,13 @@ import { HistoryPanel }  from '@/components/left-sidebar/HistoryPanel';
 
 import { StyleTab }   from '@/editor/inspector-panels/StyleTab';
 import { LayoutTab }  from '@/editor/inspector-panels/LayoutTab';
+import { IconTab }    from '@/editor/inspector-panels/IconTab';
 import { ContentTab } from '@/editor/inspector-panels/ContentTab';
 import { NoteTagTab } from '@/editor/inspector-panels/NoteTagTab';
 import { AITab }      from '@/editor/inspector-panels/AITab';
 
 export type NavTabKey       = 'outline' | 'search' | 'template' | 'history';
-export type InspectorTabKey = 'style' | 'layout' | 'content' | 'note' | 'ai';
+export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
 export type SidebarSection  = 'nav' | 'inspector';
 
 interface Props {
@@ -60,11 +61,12 @@ export function UnifiedSidebar({
     { key: 'history'  as NavTabKey, label: '히스토리', icon: <I.History size={17} /> },
   ];
   const inspectorItems = [
-    { key: 'style'   as InspectorTabKey, label: '스타일',     icon: <I.Palette size={17} /> },
-    { key: 'layout'  as InspectorTabKey, label: '레이아웃',   icon: <I.Layout size={17} /> },
-    { key: 'content' as InspectorTabKey, label: '아이콘·첨부', icon: <I.Link size={17} /> },
-    { key: 'note'    as InspectorTabKey, label: '노트·태그',  icon: <I.Note size={17} /> },
-    { key: 'ai'      as InspectorTabKey, label: 'AI',          icon: <I.Sparkles size={17} /> },
+    { key: 'style'   as InspectorTabKey, label: '스타일',   icon: <I.Palette size={17} /> },
+    { key: 'layout'  as InspectorTabKey, label: '레이아웃', icon: <I.Layout size={17} /> },
+    { key: 'icon'    as InspectorTabKey, label: '아이콘',   icon: <span style={{ fontSize: 15, lineHeight: 1 }}>🙂</span> },
+    { key: 'content' as InspectorTabKey, label: '링크·첨부', icon: <I.Link size={17} /> },
+    { key: 'note'    as InspectorTabKey, label: '노트·태그', icon: <I.Note size={17} /> },
+    { key: 'ai'      as InspectorTabKey, label: 'AI',        icon: <I.Sparkles size={17} /> },
   ];
 
   function handleRailClick(section: SidebarSection, key: string) {
@@ -251,7 +253,8 @@ function InspectorContent({ t, tab }: {
   const title = ({
     style:   '스타일',
     layout:  '레이아웃',
-    content: '아이콘 · 링크 · 첨부 · 배경',
+    icon:    '아이콘 · 기호',
+    content: '링크 · 첨부 · 배경',
     note:    '노트 · 태그',
     ai:      'AI 생성',
   } as const)[tab];
@@ -285,6 +288,7 @@ function InspectorContent({ t, tab }: {
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0, background: t.surface }}>
         {tab === 'style'   && <StyleTab t={t} selectedId={selectedId} />}
         {tab === 'layout'  && <LayoutTab t={t} />}
+        {tab === 'icon'    && <IconTab t={t} selectedId={selectedId} />}
         {tab === 'content' && <ContentTab t={t} selectedId={selectedId} />}
         {tab === 'note'    && <NoteTagTab t={t} selectedId={selectedId} />}
         {tab === 'ai'      && <AITab t={t} />}

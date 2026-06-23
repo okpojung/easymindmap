@@ -77,6 +77,7 @@ interface DocumentState {
   // Style / icon
   updateNodeStyle: (nodeId: string | null, style: Partial<NodeStyle>) => void;
   setNodeIcon: (nodeId: string | null, icon: string | undefined) => void;
+  setNodeIconSide: (nodeId: string | null, iconSide: 'left' | 'right') => void;
 
   // Tags
   addNodeTag: (nodeId: string | null, tag: string) => void;
@@ -779,6 +780,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   setNodeIcon: (nodeId, icon) => {
     if (!nodeId) return;
     set((state) => ({ map: mutateNode(state.map, nodeId, (n) => ({ ...n, icon })) }));
+  },
+
+  setNodeIconSide: (nodeId, iconSide) => {
+    if (!nodeId) return;
+    set((state) => ({ map: mutateNode(state.map, nodeId, (n) => ({ ...n, iconSide })) }));
   },
 
   addNodeTag: (nodeId, tag) => {

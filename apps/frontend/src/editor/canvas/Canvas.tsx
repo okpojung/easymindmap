@@ -18,54 +18,17 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type {
-  LayoutType,
-  SampleMap,
-  SampleBranch,
-  MindNode,
-  NodeColorKey,
-  Collaborator,
-} from '@/editor/__samples__/types';
+import type { LayoutType, SampleMap, Collaborator } from '@/editor/__samples__/types';
 import { computeLayout } from '@/layout/LayoutEngine';
 import { NodeRenderer } from '@/editor/node-renderer/NodeRenderer';
 import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
 import { nodeContentIndicators, type ContentKind } from '@/editor/node-renderer/nodeContent';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
-import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
+import { useDocumentStore } from '@/stores/documentStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
-
-const FOCUS_BRANCH_KEYS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
-
-// Builds a temporary map re-rooted at `focusedId`, so only that node (as the
-// main node) and its descendants are laid out — everything else is hidden.
-function buildFocusedMap(docMap: SampleMap, focusedId: string): SampleMap | null {
-  const node = findNodeInMap(docMap, focusedId) as MindNode | null;
-  if (!node) return null;
-  const children = node.children ?? [];
-  const branches = children.map((c, i) => ({
-    ...c,
-    colorKey: (c.colorKey as NodeColorKey) ?? FOCUS_BRANCH_KEYS[i % FOCUS_BRANCH_KEYS.length],
-    side: c.side === 'left' || c.side === 'right' ? c.side : i % 2 === 0 ? 'right' : 'left',
-  })) as SampleBranch[];
-
-  return {
-    title: docMap.title,
-    root: {
-      id: node.id as 'root',
-      text: node.text,
-      colorKey: 'root',
-      side: 'center',
-      layoutType: docMap.root.layoutType,
-      textAlign: node.textAlign,
-      icon: node.icon,
-      style: node.style,
-    },
-    branches,
-  };
-}
 
 const LAYOUT_LABEL: Record<string, string> = {
   tree: '트리 · 오른쪽 (직각선)',
@@ -179,24 +142,25 @@ export function Canvas({
   // node's children-connector start.
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
 
-  const nodes = useMemo(() => {
-    if (focusedId) {
-      const fm = buildFocusedMap(sample, focusedId);
-      if (fm) {
-        const laid = computeLayout(fm, layoutType, CX, CY);
-        // Layout strategies set each top-level branch's parent to the literal
-        // 'root'; in focus mode the root carries the focused node's real id, so
-        // rewire those parents to it — otherwise the root↔child edges can't find
-        // their parent and don't render.
-        const rootId = laid[0]?.id;
-        if (rootId && rootId !== 'root') {
-          for (const n of laid) if (n.parent === 'root') n.parent = rootId;
-        }
-        return laid;
+  const nodes = useMemo(
+    () => computeLayout(sample, layoutType, CX, CY),
+    [sample, layoutType, CX, CY],
+  );
+
+  // In focus mode, render only the focused node and its descendants — keeping
+  // their existing layout positions (the layout is NOT recomputed/re-rooted).
+  const subtreeOf = (rootId: string, list: typeof nodes) => {
+    const byId = new Map(list.map((x) => [x.id, x]));
+    return list.filter((n) => {
+      let cur: (typeof list)[number] | undefined = n;
+      while (cur) {
+        if (cur.id === rootId) return true;
+        cur = cur.parent ? byId.get(cur.parent) : undefined;
       }
-    }
-    return computeLayout(sample, layoutType, CX, CY);
-  }, [sample, layoutType, CX, CY, focusedId]);
+      return false;
+    });
+  };
+  const visibleNodes = focusedId ? subtreeOf(focusedId, nodes) : nodes;
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
@@ -393,7 +357,8 @@ export function Canvas({
   // it fits the whole map. (toolbar / status bar / focus toggle)
   useEffect(() => {
     if (!fitRequestId) return;
-    fitToNodes(nodesRef.current, focusedId ? 90 : 70);
+    const list = focusedId ? subtreeOf(focusedId, nodesRef.current) : nodesRef.current;
+    fitToNodes(list, focusedId ? 90 : 70);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRequestId]);
 
@@ -750,10 +715,10 @@ export function Canvas({
           transform={`translate(${CX + panX} ${CY + panY}) scale(${scale}) translate(${-CX} ${-CY})`}
         >
           <g>
-            {nodes
+            {visibleNodes
               .filter((n) => n.parent)
               .map((n) => {
-                const p = nodes.find((x) => x.id === n.parent);
+                const p = visibleNodes.find((x) => x.id === n.parent);
                 if (!p) return null;
 
                 return (
@@ -769,7 +734,7 @@ export function Canvas({
           </g>
 
           <g>
-            {nodes.map((n) => (
+            {visibleNodes.map((n) => (
               <NodeRenderer
                 key={n.id}
                 n={n}
@@ -835,7 +800,7 @@ export function Canvas({
               selected node via NodeIndicators (spec NODE-13). */}
           {!dragGhost && (
             <g className="mm-overlay-controls">
-              {nodes
+              {visibleNodes
                 .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)
                 // Hide on the selected node and its parent so it doesn't overlap
                 // the selected node's +/- add indicators.

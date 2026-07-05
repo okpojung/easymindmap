@@ -1,28 +1,40 @@
 // File: src/editor/inspector-panels/LayoutTab.tsx
-// Version: MVP-LayoutTab-SubtreeScope-v2.0.0
+// Version: MVP-LayoutTab-RootOnlyRules-v3.0.0
 // Description:
-// - Left inspector layout tab
-// - Uses src/components/icons/LayoutGlyph.tsx for layout icons
-// - Scope: when a non-root node is selected, the layout is applied to that
-//   node's subtree by default. The "맵 전체" toggle switches back to applying
-//   the layout to the whole map.
-// - Kanban / freeform can only be applied to the whole map.
+// - Left inspector layout tab.
+// - Selection-scope rules (no "맵 전체" toggle — the ROOT node IS the whole
+//   map):
+//   · Root selected (or nothing selected) → every layout is selectable and
+//     applies to the whole map.
+//   · A depth ≥ 1 node selected → the layout applies to that node's subtree,
+//     and root-only layouts (방사형·양쪽 / 트리·아래 / Kanban / 자유배치) are
+//     shown disabled.
+//   · While the map layout is Kanban, subtree layout overrides are disabled
+//     entirely (cards follow the board; change the map layout at the root
+//     first).
+// - 자유배치(freeform) is selectable at the root but does NOT change the map
+//   layout — it is reserved for future flowchart/diagram authoring. Clicking
+//   it only shows the explanation; the current map layout stays.
 
-import { useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType } from '@/types/mindmap';
 import type { MindNode, SampleMap } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { LayoutGlyph, type LayoutGlyphType } from '@/components/icons/LayoutGlyph';
 import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
-import { InspectorSection, InspectorRow, Toggle } from './InspectorSection';
+import { InspectorSection } from './InspectorSection';
 import { useDocumentStore, useEditorUiStore, useInteractionStore } from '@/stores';
 
 interface LayoutOption {
   key: LayoutType;
   label: string;
   glyph: LayoutGlyphType;
-  mapOnly?: boolean;
+  // Only applicable to the ROOT node (= the whole map): layouts that place
+  // branches on both sides of / all around the root, board views, and manual
+  // placement. A subtree hanging off one side cannot use them.
+  rootOnly?: boolean;
+  // Selecting it never changes the map layout (future flowchart use).
+  neverApplies?: boolean;
 }
 
 const LAYOUTS: LayoutOption[] = [
@@ -30,6 +42,7 @@ const LAYOUTS: LayoutOption[] = [
     key: 'radial-bidirectional' as LayoutType,
     label: '방사형 · 양쪽',
     glyph: 'both-radial',
+    rootOnly: true,
   },
   {
     key: 'radial-right' as LayoutType,
@@ -45,6 +58,7 @@ const LAYOUTS: LayoutOption[] = [
     key: 'tree-down' as LayoutType,
     label: '트리 · 아래',
     glyph: 'tree-down',
+    rootOnly: true,
   },
   {
     key: 'hierarchy-right' as LayoutType,
@@ -60,13 +74,14 @@ const LAYOUTS: LayoutOption[] = [
     key: 'kanban' as LayoutType,
     label: 'Kanban 보드',
     glyph: 'kanban',
-    mapOnly: true,
+    rootOnly: true,
   },
   {
     key: 'freeform' as LayoutType,
     label: '자유 배치',
     glyph: 'freeform',
-    mapOnly: true,
+    rootOnly: true,
+    neverApplies: true,
   },
 ];
 
@@ -111,26 +126,43 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   const layoutType = useEditorUiStore((s) => s.layoutType);
   const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
 
-  const [wholeMap, setWholeMap] = useState(false);
-
-  const nodeScopeAvailable =
+  // Root scope = root selected, nothing selected, or a stale selection id.
+  // In root scope the chosen layout applies to the WHOLE map.
+  const subtreeScope =
     !!selectedId && selectedId !== 'root' && !!findNode(map.branches, selectedId);
-  const applyToWholeMap = wholeMap || !nodeScopeAvailable;
+
+  const mapIsKanban = normalizeLayoutType(layoutType) === ('kanban' as LayoutType);
 
   const activeLayoutType = normalizeLayoutType(
-    applyToWholeMap
-      ? layoutType
-      : effectiveLayoutOf(map, selectedId!, layoutType),
+    subtreeScope ? effectiveLayoutOf(map, selectedId!, layoutType) : layoutType,
   );
 
+  const optionDisabled = (option: LayoutOption): boolean => {
+    if (!subtreeScope) return false; // root scope: everything selectable
+    if (mapIsKanban) return true; // Kanban board: no subtree overrides at all
+    return !!option.rootOnly; // subtree: root-only layouts are unavailable
+  };
+
+  const disabledReason = (option: LayoutOption): string | undefined => {
+    if (!subtreeScope) return undefined;
+    if (mapIsKanban)
+      return 'Kanban 보드에서는 하위 노드 레이아웃을 변경할 수 없습니다. 메인 노드에서 맵 레이아웃을 먼저 변경하세요.';
+    if (option.rootOnly) return '메인 노드에서만 적용할 수 있는 레이아웃입니다.';
+    return undefined;
+  };
+
   const handleLayoutClick = (option: LayoutOption) => {
-    if (applyToWholeMap) {
+    if (optionDisabled(option)) return;
+
+    // 자유배치: 메인 노드에서만 선택할 수 있지만 맵 레이아웃은 변경하지
+    // 않는다 (순서도·플로차트 등 향후 용도 — 아래 안내 참조).
+    if (option.neverApplies) return;
+
+    if (!subtreeScope) {
       setLayoutType(option.key);
       updateNodeLayoutType('root', option.key);
       return;
     }
-
-    if (option.mapOnly) return;
 
     updateNodeLayoutType(selectedId, option.key);
   };
@@ -147,25 +179,21 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
         >
           {LAYOUTS.map((layout) => {
             const active = normalizeLayoutType(layout.key) === activeLayoutType;
-            const disabled = !applyToWholeMap && !!layout.mapOnly;
+            const disabled = optionDisabled(layout);
 
             return (
               <button
                 key={layout.key}
                 onClick={() => handleLayoutClick(layout)}
                 disabled={disabled}
-                title={
-                  disabled
-                    ? '맵 전체에만 적용할 수 있는 레이아웃입니다.'
-                    : undefined
-                }
+                title={disabledReason(layout)}
                 style={{
                   padding: '8px 8px 6px',
                   background: active ? t.primarySoft : t.surfaceAlt,
                   border: `1.5px solid ${active ? t.primary : t.border}`,
                   borderRadius: 7,
                   cursor: disabled ? 'default' : 'pointer',
-                  opacity: disabled ? 0.45 : 1,
+                  opacity: disabled ? 0.4 : 1,
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 5,
@@ -194,32 +222,60 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
             );
           })}
         </div>
-      </InspectorSection>
-
-      <InspectorSection t={t} title="적용 범위">
-        <InspectorRow t={t} label="맵 전체">
-          <Toggle
-            t={t}
-            on={applyToWholeMap}
-            onChange={(v) => {
-              if (nodeScopeAvailable) setWholeMap(v);
-            }}
-          />
-        </InspectorRow>
 
         <div
           style={{
             fontSize: 10.5,
             color: t.textSubtle,
-            marginTop: 4,
-            lineHeight: 1.5,
+            marginTop: 8,
+            lineHeight: 1.55,
           }}
         >
-          {nodeScopeAvailable
-            ? applyToWholeMap
-              ? `토글을 끄면 선택한 노드(${selectedId}) 하위에만 레이아웃이 적용됩니다.`
-              : `레이아웃이 선택한 노드(${selectedId}) 하위 서브트리에만 적용됩니다.`
-            : '노드를 선택하면 해당 노드 하위에만 레이아웃을 적용할 수 있습니다. 선택 노드: 없음'}
+          {subtreeScope
+            ? mapIsKanban
+              ? 'Kanban 보드에서는 하위 노드 레이아웃을 변경할 수 없습니다.'
+              : `선택한 노드(${selectedId}) 하위 서브트리에 레이아웃이 적용됩니다. 흐리게 표시된 레이아웃은 메인 노드 전용입니다.`
+            : '메인 노드 기준 — 선택한 레이아웃이 맵 전체에 적용됩니다.'}
+        </div>
+      </InspectorSection>
+
+      <InspectorSection t={t} title="자유 배치">
+        <div
+          style={{
+            padding: '10px 12px',
+            borderRadius: 7,
+            background: t.surfaceAlt,
+            border: `1px dashed ${t.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 9.5,
+              fontWeight: 700,
+              padding: '2px 6px',
+              borderRadius: 3,
+              background: t.accent + '22',
+              color: t.accent,
+              letterSpacing: 0.4,
+              flexShrink: 0,
+            }}
+          >
+            V1+
+          </span>
+
+          <div
+            style={{
+              fontSize: 11,
+              color: t.textMuted,
+              lineHeight: 1.5,
+            }}
+          >
+            자유 배치는 순서도·플로차트 등 자유형 문서를 위한 모드로 향후
+            제공됩니다. 선택해도 현재 맵 레이아웃은 변경되지 않습니다.
+          </div>
         </div>
       </InspectorSection>
 

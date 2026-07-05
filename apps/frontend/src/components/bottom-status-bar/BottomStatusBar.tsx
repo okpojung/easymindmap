@@ -4,6 +4,7 @@
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator, LayoutType } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
+import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 
 interface Props {
   t: ThemeTokens;
@@ -59,13 +60,20 @@ export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange }: 
 
       <div style={{ flex: 1 }} />
 
-      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <I.Users size={12} />
-        협업자 {activeCount}명 ·{' '}
-        <span style={{ color: t.success, fontWeight: 600 }}>● 실시간 연결됨</span>
-      </span>
+      {/* [협업 UI 숨김 — MVP] "협업자 N명 · 실시간 연결됨" 안내.
+          협업 기능(V2) 개발 시 featureFlags.ts의 COLLAB_PRESENCE_UI를 true로
+          바꾸면 다시 표시된다. 코드는 삭제하지 않고 보존. */}
+      {COLLAB_PRESENCE_UI && (
+        <>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <I.Users size={12} />
+            협업자 {activeCount}명 ·{' '}
+            <span style={{ color: t.success, fontWeight: 600 }}>● 실시간 연결됨</span>
+          </span>
 
-      <span style={{ width: 1, height: 14, background: t.divider }} />
+          <span style={{ width: 1, height: 14, background: t.divider }} />
+        </>
+      )}
 
       <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <I.Cloud size={12} />

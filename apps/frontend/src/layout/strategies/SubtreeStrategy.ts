@@ -43,8 +43,9 @@ const VERTICAL_SIBLING_PARENTS = new Set<LayoutType>([
   'tree-left' as LayoutType,
 ]);
 // Radial / freeform parents place children by angle/position, so the naive
-// "push everything below/right of the anchor" reflow would scramble them —
-// those layouts are intentionally left untouched (some overlap is accepted).
+// "push everything below/right of the anchor" reflow would scramble them.
+// Instead, radial parents rely on the branch-group separation pass below
+// (separateBranchGroups), which moves whole depth-1 branches out of the way.
 
 export function applyLayoutOverrides(
   branches: SampleBranch[],
@@ -132,7 +133,184 @@ function pushSiblingsAway(
       if (n.y > anchor.y + 0.5) n.y += extra;
     }
   }
-  // Radial / freeform: no reflow (avoids scrambling angularly-placed siblings).
+  // Radial / freeform: handled by separateBranchGroups() instead.
+}
+
+// --- branch-group collision separation --------------------------------------
+// Safety net run after every subtree relayout: if the re-laid-out subtree's
+// bounding box still intersects another depth-1 branch (common when the BASE
+// map is radial, where pushSiblingsAway can't safely reflow), move that WHOLE
+// branch out of the way as a rigid group. Moving whole branches keeps their
+// internal structure intact. Cascading collisions (pushed branch hits the
+// next one) are resolved by iterating until stable.
+
+const SEPARATION_MARGIN = 16; // min gap kept between the subtree and a branch
+const MAX_SEPARATION_PASSES = 8;
+
+function bboxOfNodes(nodes: LaidOutNode[]): BBox | null {
+  let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+  for (const n of nodes) {
+    left = Math.min(left, n.x - n.w / 2);
+    right = Math.max(right, n.x + n.w / 2);
+    top = Math.min(top, n.y - n.h / 2);
+    bottom = Math.max(bottom, n.y + n.h / 2);
+  }
+  return left === Infinity ? null : { left, right, top, bottom };
+}
+
+function boxesIntersect(a: BBox, b: BBox, margin: number): boolean {
+  return (
+    a.left < b.right + margin &&
+    b.left < a.right + margin &&
+    a.top < b.bottom + margin &&
+    b.top < a.bottom + margin
+  );
+}
+
+// Groups every laid-out node (except root and the overridden subtree) under
+// its depth-1 ancestor branch, following parent pointers.
+function collectBranchGroups(
+  out: LaidOutNode[],
+  subtreeIds: Set<string>,
+): LaidOutNode[][] {
+  const byId = new Map(out.map((n) => [n.id, n]));
+  const groups = new Map<string, LaidOutNode[]>();
+
+  for (const n of out) {
+    if (n.depth === 0 || subtreeIds.has(n.id)) continue;
+
+    // Walk up to the depth-1 ancestor.
+    let cur: LaidOutNode | undefined = n;
+    while (cur && cur.depth > 1) cur = cur.parent ? byId.get(cur.parent) : undefined;
+    if (!cur || cur.depth !== 1) continue;
+
+    const group = groups.get(cur.id) ?? [];
+    group.push(n);
+    groups.set(cur.id, group);
+  }
+
+  return [...groups.values()];
+}
+
+// The root can never be pushed aside. When an override points a subtree back
+// toward the map center (e.g. hierarchy-right on a LEFT-side branch), the
+// re-laid-out children can land on the root box. In that case shift the
+// children (the anchor stays put) vertically past the root; the branch
+// separation pass afterwards resolves any knock-on collisions.
+function clearRootCollision(
+  out: LaidOutNode[],
+  subtreeIds: Set<string>,
+  anchor: LaidOutNode,
+): void {
+  const root = out.find((n) => n.depth === 0);
+  if (!root) return;
+
+  const childIds = new Set(subtreeIds);
+  childIds.delete(anchor.id);
+  const cBox = bboxOf(out, childIds);
+  if (!cBox) return;
+
+  const rootBox: BBox = {
+    left: root.x - root.w / 2,
+    right: root.x + root.w / 2,
+    top: root.y - root.h / 2,
+    bottom: root.y + root.h / 2,
+  };
+  if (!boxesIntersect(cBox, rootBox, SEPARATION_MARGIN / 2)) return;
+
+  const dy =
+    anchor.y >= root.y
+      ? rootBox.bottom + SEPARATION_MARGIN - cBox.top
+      : -(cBox.bottom - (rootBox.top - SEPARATION_MARGIN));
+
+  for (const n of out) {
+    if (childIds.has(n.id)) n.y += dy;
+  }
+}
+
+function separateBranchGroups(
+  out: LaidOutNode[],
+  subtreeIds: Set<string>,
+  anchor: LaidOutNode,
+  parentEffective: LayoutType,
+): void {
+  // Horizontal-sibling base maps resolve along x; everything else (vertical,
+  // radial — whose same-side branches stack vertically) resolves along y.
+  const horizontal = HORIZONTAL_SIBLING_PARENTS.has(parentEffective);
+
+  for (let pass = 0; pass < MAX_SEPARATION_PASSES; pass += 1) {
+    const sBox = bboxOf(out, subtreeIds);
+    if (!sBox) return;
+
+    const groups = collectBranchGroups(out, subtreeIds);
+    let moved = false;
+
+    // 1) Move branches out of the overridden subtree's box (subtree is fixed).
+    for (const group of groups) {
+      const gBox = bboxOfNodes(group);
+      if (!gBox || !boxesIntersect(sBox, gBox, SEPARATION_MARGIN / 2)) continue;
+
+      const gCenterX = (gBox.left + gBox.right) / 2;
+      const gCenterY = (gBox.top + gBox.bottom) / 2;
+
+      if (horizontal) {
+        const dx =
+          gCenterX >= anchor.x
+            ? sBox.right + SEPARATION_MARGIN - gBox.left
+            : -(gBox.right - (sBox.left - SEPARATION_MARGIN));
+        for (const n of group) n.x += dx;
+      } else {
+        const dy =
+          gCenterY >= anchor.y
+            ? sBox.bottom + SEPARATION_MARGIN - gBox.top
+            : -(gBox.bottom - (sBox.top - SEPARATION_MARGIN));
+        for (const n of group) n.y += dy;
+      }
+      moved = true;
+    }
+
+    // 2) Cascade: separate pushed branches from each other. The group whose
+    //    center is FARTHER from the anchor yields, and it always moves AWAY
+    //    from the anchor — a consistent direction, so passes converge instead
+    //    of oscillating a group back into the subtree's box.
+    for (let i = 0; i < groups.length; i += 1) {
+      for (let j = i + 1; j < groups.length; j += 1) {
+        const a = bboxOfNodes(groups[i]);
+        const b = bboxOfNodes(groups[j]);
+        if (!a || !b || !boxesIntersect(a, b, SEPARATION_MARGIN / 2)) continue;
+
+        if (horizontal) {
+          const aC = (a.left + a.right) / 2;
+          const bC = (b.left + b.right) / 2;
+          const [lead, follow, fC] =
+            Math.abs(aC - anchor.x) <= Math.abs(bC - anchor.x)
+              ? [a, groups[j], bC]
+              : [b, groups[i], aC];
+          const fBox = bboxOfNodes(follow)!;
+          const dx =
+            fC >= anchor.x
+              ? lead.right + SEPARATION_MARGIN - fBox.left
+              : -(fBox.right - (lead.left - SEPARATION_MARGIN));
+          if (Math.abs(dx) > 0.5) { for (const n of follow) n.x += dx; moved = true; }
+        } else {
+          const aC = (a.top + a.bottom) / 2;
+          const bC = (b.top + b.bottom) / 2;
+          const [lead, follow, fC] =
+            Math.abs(aC - anchor.y) <= Math.abs(bC - anchor.y)
+              ? [a, groups[j], bC]
+              : [b, groups[i], aC];
+          const fBox = bboxOfNodes(follow)!;
+          const dy =
+            fC >= anchor.y
+              ? lead.bottom + SEPARATION_MARGIN - fBox.top
+              : -(fBox.bottom - (lead.top - SEPARATION_MARGIN));
+          if (Math.abs(dy) > 0.5) { for (const n of follow) n.y += dy; moved = true; }
+        }
+      }
+    }
+
+    if (!moved) return;
+  }
 }
 
 function relayoutSubtree(
@@ -164,19 +342,28 @@ function relayoutSubtree(
 
   switch (effective) {
     case 'radial-left':
-      layoutCenteredChildren(
-        children, anchor.x, anchor.y, anchor.w, anchor.depth,
-        node.id, 'left', 'radial-left' as LayoutType, out, node.colorKey,
-      );
-      break;
-
     case 'radial-right':
-    case 'radial-bidirectional':
+    case 'radial-bidirectional': {
+      // Children must fan out AWAY from the root: on a radial base map an
+      // anchor on the right side has the root immediately to its left, so
+      // pointing the subtree left would bury it in the root/opposite side
+      // (the root cannot be pushed away). The anchor's own laid-out side wins
+      // over the requested direction when they conflict.
+      const side: 'left' | 'right' =
+        anchor.side === 'left' || anchor.side === 'right'
+          ? anchor.side
+          : effective === 'radial-left'
+            ? 'left'
+            : 'right';
+
       layoutCenteredChildren(
         children, anchor.x, anchor.y, anchor.w, anchor.depth,
-        node.id, 'right', 'radial-right' as LayoutType, out, node.colorKey,
+        node.id, side,
+        (side === 'left' ? 'radial-left' : 'radial-right') as LayoutType,
+        out, node.colorKey,
       );
       break;
+    }
 
     case 'hierarchy-right':
       layoutHierarchyChildren(
@@ -209,6 +396,14 @@ function relayoutSubtree(
   if (before && after) {
     pushSiblingsAway(out, subtreeIds, anchor, before, after, parentEffective);
   }
+
+  // The root is immovable — if the new children landed on it, move them clear
+  // first so the branch separation below works from their final position.
+  clearRootCollision(out, subtreeIds, anchor);
+
+  // Safety net: move whole depth-1 branches that still collide with the
+  // re-laid-out subtree (the only reflow that is safe for radial base maps).
+  separateBranchGroups(out, subtreeIds, anchor, parentEffective);
 }
 
 // --- radial (curved edges, subtree vertically centered) ---------------------

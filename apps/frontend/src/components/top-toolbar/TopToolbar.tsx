@@ -3,6 +3,7 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { IconBtn } from './IconBtn';
 import { CollabAvatars } from './CollabAvatars';
+import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
 
 export type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
@@ -128,9 +129,16 @@ export function TopToolbar({
         {saveStateInfo.text}
       </div>
 
-      <CollabAvatars t={t} collabs={collabs} />
+      {/* [협업 UI 숨김 — MVP] 협업자 아바타 스택(지/민/J).
+          협업 기능(V2) 개발 시 featureFlags.ts의 COLLAB_PRESENCE_UI를 true로
+          바꾸면 다시 표시된다. 코드는 삭제하지 않고 보존. */}
+      {COLLAB_PRESENCE_UI && (
+        <>
+          <CollabAvatars t={t} collabs={collabs} />
 
-      <div style={{ width: 1, height: 28, background: t.divider }} />
+          <div style={{ width: 1, height: 28, background: t.divider }} />
+        </>
+      )}
 
       <button
         style={{

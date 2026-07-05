@@ -7,6 +7,8 @@
 //
 // Keep these constants in sync with NodeTagChips.tsx and NodeRenderer.tsx.
 
+import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
+
 const TAG_ROW_H = 16; // chip height (NodeTagChips.tagH)
 const TAG_TOP_GAP = 6; // node bottom → chips top (NodeTagChips baseY offset)
 const TAG_BOTTOM_PAD = 6; // breathing room below the chips
@@ -34,6 +36,11 @@ export function tagOverhang(node: DecoratedNode): number {
 // Extra vertical space a node needs BELOW its box to fit the collaborator
 // "편집 중" lock badge.
 export function lockOverhang(node: DecoratedNode): number {
+  // [협업 UI 숨김 — MVP] "편집 중" 배지가 featureFlags.COLLAB_PRESENCE_UI로
+  // 숨겨져 있는 동안에는 배지용 아래 여백도 예약하지 않는다 (안 보이는 배지
+  // 때문에 노드 간격이 벌어지는 것을 방지). 협업 기능(V2)에서 배지를 다시
+  // 켜면 이 예약도 함께 되살아난다.
+  if (!COLLAB_PRESENCE_UI) return 0;
   return node.locked ? LOCK_BADGE_BOTTOM + LOCK_BOTTOM_PAD : 0;
 }
 

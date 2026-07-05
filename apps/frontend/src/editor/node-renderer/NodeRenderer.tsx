@@ -13,6 +13,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { resolveNodeColors } from './resolveNodeColors';
 import { NodeTagChips } from './NodeTagChips';
+import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, type ContentKind } from './nodeContent';
 
 type RenderableNode = LaidOutNode & {
@@ -229,7 +230,10 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
         />
       )}
 
-      {lockedBy && (
+      {/* [협업 UI 숨김 — MVP] 협업자가 편집 중인 노드의 색상 잠금 테두리 링.
+          협업 기능(V2) 개발 시 featureFlags.ts의 COLLAB_PRESENCE_UI를 true로
+          바꾸면 다시 표시된다. 코드는 삭제하지 않고 보존. */}
+      {COLLAB_PRESENCE_UI && lockedBy && (
         <rect
           x={n.x - n.w / 2 - 3}
           y={n.y - n.h / 2 - 3}
@@ -375,7 +379,10 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
         </g>
       )}
 
-      {lockedBy && !editing && (
+      {/* [협업 UI 숨김 — MVP] 노드 아래 "○○○ 편집 중" 배지(협업자 수정위치 표시).
+          협업 기능(V2) 개발 시 featureFlags.ts의 COLLAB_PRESENCE_UI를 true로
+          바꾸면 다시 표시된다. 코드는 삭제하지 않고 보존. */}
+      {COLLAB_PRESENCE_UI && lockedBy && !editing && (
         <g transform={`translate(${n.x}, ${n.y + n.h / 2 + 14})`}>
           <rect x={-46} y={-9} width={92} height={18} rx={9} fill={(t as any)[lockedBy.colorKey]} />
           <text x="-32" y="4" fontSize="10" fill="#fff" fontWeight="600">

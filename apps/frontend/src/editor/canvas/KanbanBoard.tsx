@@ -1,9 +1,13 @@
 // KanbanBoard — alternative canvas renderer when layoutType = 'kanban'.
-// Spec: docs/03-editor-core/layout/08-layout.md § 7.6 (3-level board/column/card)
+// Spec: docs/03-editor-core/layout/08-layout.md § 7.6, updated:
+// - The 3-level (board/column/card) depth LIMIT is removed. depth-1 nodes are
+//   columns and depth-2 nodes are cards, and depth-3+ descendants render
+//   INSIDE the column as an indented tree-right outline under their card
+//   (small elbow connector on the left, like nested cards).
 // Same dot-grid background as the SVG canvas for visual consistency.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { KanbanBoardData } from '@/editor/__samples__/types';
+import type { KanbanBoardData, KanbanCard } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 
@@ -12,6 +16,114 @@ interface Props {
   kanban: KanbanBoardData;
   selectedId: string | null;
   onSelect: (id: string) => void;
+}
+
+const CHILD_INDENT = 16; // px per depth level inside a column (tree-right feel)
+
+// One card box + its descendants, indented tree-right style. `depth` is the
+// nesting level inside the column (0 = the card itself, 1+ = its subtree).
+function CardNode({
+  t,
+  card,
+  depth,
+  selectedId,
+  onSelect,
+}: {
+  t: ThemeTokens;
+  card: KanbanCard;
+  depth: number;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const tc = card.tag ? resolveTagColor(card.tag, t) : null;
+  const hasChildren = (card.children?.length ?? 0) > 0;
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div
+        onClick={() => onSelect(card.id)}
+        style={{
+          background: t.surface,
+          border: `1px solid ${card.active || selectedId === card.id ? t.primary : t.border}`,
+          borderRadius: 8,
+          padding: depth === 0 ? 10 : '7px 9px',
+          marginBottom: 6,
+          cursor: 'pointer',
+          boxShadow: card.active ? `0 0 0 3px ${t.primary}22` : 'none',
+        }}
+      >
+        <div
+          style={{
+            fontSize: depth === 0 ? 12.5 : 11.5,
+            color: t.text,
+            fontWeight: 500,
+            marginBottom: tc ? 6 : 0,
+            lineHeight: 1.35,
+          }}
+        >
+          {card.title}
+        </div>
+        {tc && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span
+              style={{
+                fontSize: 10,
+                padding: '1px 6px',
+                borderRadius: 3,
+                background: tc.bg,
+                color: tc.text,
+                border: `1px solid ${tc.border}`,
+                fontWeight: 600,
+                letterSpacing: 0.2,
+              }}
+            >
+              #{card.tag}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {hasChildren && (
+        <div style={{ position: 'relative', marginLeft: CHILD_INDENT }}>
+          {/* tree-right elbow: a vertical spine down the parent card's left
+              inset; each child gets a short horizontal tick into its box. */}
+          <div
+            style={{
+              position: 'absolute',
+              left: -CHILD_INDENT + 6,
+              top: -6,
+              bottom: 12,
+              width: 1.5,
+              background: t.borderStrong,
+              borderRadius: 1,
+            }}
+          />
+          {card.children!.map((child) => (
+            <div key={child.id} style={{ position: 'relative' }}>
+              <div
+                style={{
+                  position: 'absolute',
+                  left: -CHILD_INDENT + 6,
+                  top: 14,
+                  width: CHILD_INDENT - 8,
+                  height: 1.5,
+                  background: t.borderStrong,
+                  borderRadius: 1,
+                }}
+              />
+              <CardNode
+                t={t}
+                card={child}
+                depth={depth + 1}
+                selectedId={selectedId}
+                onSelect={onSelect}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
@@ -30,7 +142,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
         fontSize: 11, color: t.textMuted, fontWeight: 500,
       }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary }} />
-        Kanban 보드 · 3레벨 · board/column/card
+        Kanban 보드 · 하위 레벨은 카드 아래 트리로 표시
       </div>
 
       <div style={{ fontSize: 20, fontWeight: 700, color: t.text, marginBottom: 20, paddingLeft: 4 }}>
@@ -61,32 +173,16 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
                 {col.count}
               </span>
             </div>
-            {col.cards.map(card => {
-              const tc = resolveTagColor(card.tag, t);
-              return (
-                <div key={card.id} onClick={() => onSelect(card.id)}
-                  style={{
-                    background: t.surface,
-                    border: `1px solid ${card.active || selectedId === card.id ? t.primary : t.border}`,
-                    borderRadius: 8, padding: 10, marginBottom: 6,
-                    cursor: 'pointer',
-                    boxShadow: card.active ? `0 0 0 3px ${t.primary}22` : 'none',
-                  }}>
-                  <div style={{
-                    fontSize: 12.5, color: t.text, fontWeight: 500,
-                    marginBottom: 6, lineHeight: 1.35,
-                  }}>{card.title}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{
-                      fontSize: 10, padding: '1px 6px', borderRadius: 3,
-                      background: tc.bg, color: tc.text,
-                      border: `1px solid ${tc.border}`,
-                      fontWeight: 600, letterSpacing: 0.2,
-                    }}>#{card.tag}</span>
-                  </div>
-                </div>
-              );
-            })}
+            {col.cards.map(card => (
+              <CardNode
+                key={card.id}
+                t={t}
+                card={card}
+                depth={0}
+                selectedId={selectedId}
+                onSelect={onSelect}
+              />
+            ))}
             <button style={{
               width: '100%', padding: '6px 8px',
               background: 'transparent', border: `1px dashed ${t.border}`,

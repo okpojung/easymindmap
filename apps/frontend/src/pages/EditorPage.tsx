@@ -13,6 +13,7 @@ import { MultiAddDialog } from '@/editor/dialogs/MultiAddDialog';
 import { SAMPLE_COLLABS, SAMPLE_OUTLINE } from '@/editor/__samples__';
 import type {
   KanbanBoardData,
+  KanbanCard,
   SampleMap,
 } from '@/editor/__samples__/types';
 import {
@@ -22,6 +23,25 @@ import {
   useInteractionStore,
   useAutosaveStore,
 } from '@/stores';
+
+// Maps the live document tree onto the Kanban board WITHOUT a depth limit:
+// depth-1 nodes become columns, depth-2 nodes become cards, and depth-3+
+// descendants are carried along recursively — KanbanBoard renders them as an
+// indented tree-right outline under their card inside the column.
+function buildKanbanCard(node: {
+  id: string;
+  text: string;
+  tag?: string;
+  tags?: string[];
+  children?: any[];
+}): KanbanCard {
+  return {
+    id: node.id,
+    title: node.text,
+    tag: node.tag ?? node.tags?.[0],
+    children: (node.children ?? []).map(buildKanbanCard),
+  };
+}
 
 function buildKanbanFromMap(map: SampleMap): KanbanBoardData {
   const colors = ['#d97706', '#0284c7', '#16a34a', '#9333ea', '#dc2626'];
@@ -33,11 +53,7 @@ function buildKanbanFromMap(map: SampleMap): KanbanBoardData {
       title: branch.text,
       count: branch.children?.length ?? 0,
       color: colors[index % colors.length],
-      cards: (branch.children ?? []).map((child) => ({
-        id: child.id,
-        title: child.text,
-        tag: child.tag ?? child.tags?.[0] ?? '#MVP',
-      })),
+      cards: (branch.children ?? []).map(buildKanbanCard),
     })),
   };
 }

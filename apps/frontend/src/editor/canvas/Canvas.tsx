@@ -25,6 +25,7 @@ import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
 import { nodeContentIndicators, type ContentKind } from '@/editor/node-renderer/nodeContent';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
+import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
@@ -899,18 +900,24 @@ export function Canvas({
         </g>
       </svg>
 
-      <CollabCursor
-        t={t}
-        collab={editingCollab}
-        W={W}
-        H={H}
-        nodes={nodes}
-        scale={scale}
-        CX={CX}
-        CY={CY}
-        panX={panX}
-        panY={panY}
-      />
+      {/* [협업 UI 숨김 — MVP] 캔버스 위 협업자 커서/이름 말풍선("박민호" 화살표).
+          협업자의 수정위치 표시는 협업 기능(V2) 개발 시 적용 예정.
+          featureFlags.ts의 COLLAB_PRESENCE_UI를 true로 바꾸면 다시 표시된다.
+          코드는 삭제하지 않고 보존. */}
+      {COLLAB_PRESENCE_UI && (
+        <CollabCursor
+          t={t}
+          collab={editingCollab}
+          W={W}
+          H={H}
+          nodes={nodes}
+          scale={scale}
+          CX={CX}
+          CY={CY}
+          panX={panX}
+          panY={panY}
+        />
+      )}
     </div>
   );
 }

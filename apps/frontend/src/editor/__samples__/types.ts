@@ -146,8 +146,11 @@ export interface SampleMap {
 export interface KanbanCard {
   id: string;
   title: string;
-  tag: string;
+  tag?: string;
   active?: boolean;
+  // depth-3+ descendants of the card node, rendered inside the column as an
+  // indented tree-right outline under the card (no depth limit for Kanban).
+  children?: KanbanCard[];
 }
 
 export interface KanbanColumn {

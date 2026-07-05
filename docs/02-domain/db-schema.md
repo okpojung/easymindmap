@@ -120,7 +120,8 @@ CREATE TABLE public.maps (
   -- ⚠️ 'kanban'은 nodes.layout_type 기반 kanban 레이아웃을 사용하는 맵의 보기 모드
   -- ⚠️ 'wbs': WBS 모드 — node_schedule·node_resources 인디케이터 활성화
   --           redmine_project_maps row 존재 시 Redmine 양방향 동기화 활성화
-  --    kanban 맵은 depth 0=board / 1=column / 2=card 규칙을 따름 (db-schema.md §3 kanban 규칙)
+  --    kanban 맵은 depth 0=board / 1=column / 2=card 매핑을 따르고,
+  --    depth 3+는 카드 하위 트리로 표시 (깊이 제한 없음 — 08-layout.md §6.6)
   refresh_interval_seconds  INT          NOT NULL DEFAULT 0,       -- 0: off
   current_version           INT          NOT NULL DEFAULT 0,
 
@@ -1313,7 +1314,8 @@ field_registry  (독립 테이블 — 대시보드 필드 메타)
 
 #### ⑧ layoutType kebab-case 표준화 (v3.0)
 - DB 저장값: kebab-case 영문 소문자 (예: `'radial-bidirectional'`)
-- kanban 특수 규칙: depth 0 = board, depth 1 = column, depth 2 = card, depth 3+ 금지
+- kanban 특수 규칙: depth 0 = board, depth 1 = column, depth 2 = card,
+  depth 3+ = 카드 하위 트리로 표시 (v1.1에서 3레벨 제한 폐기 — 깊이 제한 없음)
 
 #### ⑨ 번역 정책 3단계 계층 (V2)
 

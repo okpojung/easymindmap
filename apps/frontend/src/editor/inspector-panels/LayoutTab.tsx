@@ -9,9 +9,10 @@
 //   · A depth ≥ 1 node selected → the layout applies to that node's subtree,
 //     and root-only layouts (방사형·양쪽 / 트리·아래 / Kanban / 자유배치) are
 //     shown disabled.
-//   · While the map layout is Kanban, subtree layout overrides are disabled
-//     entirely (cards follow the board; change the map layout at the root
-//     first).
+//   · While the map layout is Kanban there is no per-subtree layout (cards
+//     follow the board), so EVERY selection acts as root scope: all layouts
+//     stay selectable and clicking one changes the WHOLE map layout — this is
+//     also the escape hatch out of Kanban.
 // - 자유배치(freeform) is selectable at the root but does NOT change the map
 //   layout — it is reserved for future flowchart/diagram authoring. Clicking
 //   it only shows the explanation; the current map layout stays.
@@ -126,12 +127,17 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   const layoutType = useEditorUiStore((s) => s.layoutType);
   const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
 
+  const mapIsKanban = normalizeLayoutType(layoutType) === ('kanban' as LayoutType);
+
   // Root scope = root selected, nothing selected, or a stale selection id.
   // In root scope the chosen layout applies to the WHOLE map.
+  // Kanban has no per-subtree layout, so while the board is active EVERY
+  // selection acts as root scope: clicking a layout changes the whole map.
   const subtreeScope =
-    !!selectedId && selectedId !== 'root' && !!findNode(map.branches, selectedId);
-
-  const mapIsKanban = normalizeLayoutType(layoutType) === ('kanban' as LayoutType);
+    !mapIsKanban &&
+    !!selectedId &&
+    selectedId !== 'root' &&
+    !!findNode(map.branches, selectedId);
 
   const activeLayoutType = normalizeLayoutType(
     subtreeScope ? effectiveLayoutOf(map, selectedId!, layoutType) : layoutType,
@@ -139,15 +145,12 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
 
   const optionDisabled = (option: LayoutOption): boolean => {
     if (!subtreeScope) return false; // root scope: everything selectable
-    if (mapIsKanban) return true; // Kanban board: no subtree overrides at all
     return !!option.rootOnly; // subtree: root-only layouts are unavailable
   };
 
   const disabledReason = (option: LayoutOption): string | undefined => {
-    if (!subtreeScope) return undefined;
-    if (mapIsKanban)
-      return 'Kanban 보드에서는 하위 노드 레이아웃을 변경할 수 없습니다. 메인 노드에서 맵 레이아웃을 먼저 변경하세요.';
-    if (option.rootOnly) return '메인 노드에서만 적용할 수 있는 레이아웃입니다.';
+    if (subtreeScope && option.rootOnly)
+      return '메인 노드에서만 적용할 수 있는 레이아웃입니다.';
     return undefined;
   };
 
@@ -232,10 +235,10 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
           }}
         >
           {subtreeScope
-            ? mapIsKanban
-              ? 'Kanban 보드에서는 하위 노드 레이아웃을 변경할 수 없습니다.'
-              : `선택한 노드(${selectedId}) 하위 서브트리에 레이아웃이 적용됩니다. 흐리게 표시된 레이아웃은 메인 노드 전용입니다.`
-            : '메인 노드 기준 — 선택한 레이아웃이 맵 전체에 적용됩니다.'}
+            ? `선택한 노드(${selectedId}) 하위 서브트리에 레이아웃이 적용됩니다. 흐리게 표시된 레이아웃은 메인 노드 전용입니다.`
+            : mapIsKanban
+              ? 'Kanban 보드에는 하위 노드별 레이아웃이 없습니다. 어떤 노드를 선택해도 선택한 레이아웃이 맵 전체에 적용됩니다.'
+              : '메인 노드 기준 — 선택한 레이아웃이 맵 전체에 적용됩니다.'}
         </div>
       </InspectorSection>
 

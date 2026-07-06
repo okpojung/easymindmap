@@ -11,7 +11,8 @@
 * 마인드맵의 **노드 배치 방식(레이아웃)**을 정의하고 제어하는 핵심 기능
 * 15가지 레이아웃 타입을 지원하며, 루트 노드 또는 Subtree 단위로 독립 적용 가능
 * 자동 배치(Auto Layout)와 수동 배치(Freeform)를 혼용할 수 있는 구조 제공
-* Kanban 보드형 레이아웃은 별도 Depth 제한 정책을 따른다
+* Kanban 보드형 레이아웃은 depth 제한 없이 전환 가능하며, depth 3+ 노드는
+  카드 아래 트리(트리·오른쪽 아웃라인)로 표시한다
 
 ---
 
@@ -45,7 +46,7 @@
 | LT-03 | Auto Layout 엔진     | 좌표 자동 계산 및 렌더링              | 노드 추가/삭제/이동 시 재계산  |
 | LT-04 | Freeform 수동 배치     | drag & drop으로 노드 위치 수동 지정   | manualPosition 저장  |
 | LT-05 | Auto ↔ Freeform 전환 | 두 모드 간 전환 정책 및 좌표 보존        | layoutType 변경      |
-| LT-06 | Kanban 레이아웃        | 보드형 3-depth 구조              | column/card 관리     |
+| LT-06 | Kanban 레이아웃        | 보드형 구조 (depth 제한 없음, depth 3+는 카드 내 트리) | column/card 관리     |
 | LT-07 | 레이아웃 전환 애니메이션      | 전환 시 부드러운 위치 이동             | CSS transition      |
 | LT-08 | 레이아웃 상속            | 하위 노드가 부모 layoutType 상속     | 노드 생성 시 자동 적용      |
 | LT-09 | 루트 노드 레이아웃 결정      | 루트의 layoutType이 전체 기본 레이아웃  | 맵 전체 레이아웃 기준       |
@@ -188,6 +189,24 @@ type NodeObject = {
 * 특정 노드에 다른 `layoutType`을 지정하면 해당 노드 이하 Subtree 전체에 적용된다
 * 상위 노드의 레이아웃 변경이 있어도 override된 Subtree는 유지된다
 
+##### 6.3.1 선택 노드별 허용 레이아웃 (LayoutTab 규칙)
+
+| 선택 상태 | 동작 |
+| --- | --- |
+| 메인(루트) 노드 선택 또는 선택 없음 | 모든 레이아웃 선택 가능 · 맵 전체에 적용 |
+| depth ≥ 1 노드 선택 | 해당 Subtree에 적용 · **메인노드 전용 레이아웃은 비활성 표시** |
+| 맵 레이아웃이 `kanban`일 때 (어떤 노드를 선택해도) | 모든 레이아웃 선택 가능 · **항상 맵 전체에 적용** (Kanban에는 Subtree 레이아웃이 없음 — Kanban 탈출 경로) |
+
+* **메인노드 전용 레이아웃**: `radial-bidirectional`(방사형·양쪽),
+  `tree-down`(트리·아래), `kanban`, `freeform`.
+  루트 양쪽/사방으로 가지를 전개하거나(방사형·양쪽, 트리·아래),
+  보드 뷰(kanban)·수동 배치(freeform)라서 한쪽에 매달린 Subtree에는
+  적용할 수 없다.
+* Subtree에 허용되는 레이아웃: `radial-right`, `tree-right`,
+  `hierarchy-right`, `process-tree-right`.
+* 별도의 "적용 범위(맵 전체)" 토글은 두지 않는다 — 메인노드 선택이 곧
+  맵 전체 적용이다.
+
 ---
 
 #### 6.4 루트 노드 레이아웃 규칙
@@ -208,17 +227,19 @@ type NodeObject = {
 
 #### 6.6 Kanban 레이아웃 규칙
 
-* `layoutType = 'kanban'`일 경우 depth 의미는 고정된다:
+* `layoutType = 'kanban'`일 경우 depth 의미:
 
   | depth | 역할     |
   | ----- | ------ |
   | 0     | board  |
   | 1     | column |
   | 2     | card   |
-  | 3+    | 허용 안 함 |
+  | 3+    | 카드 하위 트리 — 컬럼 안에서 카드 아래에 들여쓰기 + 엘보 연결선(트리·오른쪽 아웃라인)으로 표시 |
 
-* `chk_nodes_kanban_depth` CHECK 제약에 의해 depth는 0~2까지만 허용된다
-* Kanban은 일반 Subtree 확장 구조가 아닌 3-depth 제한 보드형 구조로 동작한다
+* **depth 제한 없음**: 어떤 깊이의 맵이든 Kanban으로 전환할 수 있다
+  (기존 3-depth 제한 및 `chk_nodes_kanban_depth` CHECK 제약은 폐기)
+* Kanban일 때는 **하위 노드별 Subtree 레이아웃이 존재하지 않는다** —
+  어떤 노드를 선택해도 레이아웃 선택은 맵 전체에 적용된다 (§6.3.1)
 * Kanban 노드는 `KanbanNodeRole` (`'board' | 'column' | 'card'`) metadata를 가질 수 있다
 
 ---
@@ -314,7 +335,9 @@ type NodeObject = {
 * 노드 위치를 drag & drop으로 자유롭게 지정
 * `manualPosition: { x, y }`에 좌표 저장
 * Layout Engine이 개입하지 않음
-* 전체 또는 특정 Subtree 단위로 적용 가능
+* **메인(루트) 노드에서만 선택 가능** — Subtree 단위 적용 불가
+* **선택해도 맵 레이아웃을 변경하지 않는다** — 자유배치는 마인드맵 외에
+  순서도·플로차트 등 자유형 문서 작성을 위한 모드로 향후(V1+) 제공 예정
 
 ---
 
@@ -333,13 +356,15 @@ board (depth 0)
 * depth 0: 보드 (하나의 맵에 1개)
 * depth 1: 칸반 컬럼 (TO DO, IN PROGRESS, DONE 등)
 * depth 2: 카드 (업무 항목)
-* depth 3 이상: 생성 불가
+* depth 3 이상: 카드 아래 트리 — 컬럼 안에서 카드 아래에 들여쓰기 +
+  엘보 연결선(트리·오른쪽 아웃라인)으로 표시 (제한 없음)
 
 ---
 
 ### 8. 예외 / 경계 (Edge Case)
 
-* **Kanban에서 depth 3+ 생성 시도**: DB CHECK 제약에 의해 거부 → 오류 메시지 표시
+* **Kanban에서 depth 3+ 노드**: 생성 허용 — 컬럼 안에서 해당 카드 아래
+  트리(트리·오른쪽 아웃라인)로 표시
 * **레이아웃 전환 중 노드 추가**: 전환 완료 후 신규 노드 배치 계산
 * **Freeform에서 노드 삭제 후 재배치**: 삭제된 노드 좌표는 무관, 나머지 노드 위치 유지
 * **Subtree override + 부모 레이아웃 변경**: override된 Subtree의 `layoutType`은 유지
@@ -383,9 +408,10 @@ CONSTRAINT chk_nodes_layout_type
     'freeform','kanban'
   )),
 
--- Kanban depth 제한
-CONSTRAINT chk_nodes_kanban_depth
-  CHECK (layout_type != 'kanban' OR depth BETWEEN 0 AND 2)
+-- Kanban depth 제한: 폐기됨 (v1.1) — Kanban은 depth 제한 없이 전환 가능,
+-- depth 3+는 카드 아래 트리로 표시한다. 기존 제약이 남아 있다면 DROP 한다.
+-- (구) CONSTRAINT chk_nodes_kanban_depth
+--       CHECK (layout_type != 'kanban' OR depth BETWEEN 0 AND 2)
 ```
 
 ---
@@ -438,8 +464,9 @@ CONSTRAINT chk_nodes_kanban_depth
 
 1. 사용자: 루트 노드 레이아웃 > `kanban` 선택
 2. 시스템: 루트 = board (depth 0), 자식 = column (depth 1), 손자 = card (depth 2)
-3. 사용자: depth 3 노드 생성 시도
-4. 시스템: 거부 (CHECK 제약 위반 오류 표시)
+3. depth 3+ 노드: 해당 카드 아래에 들여쓰기 트리로 함께 표시 (생성 제한 없음)
+4. 사용자: Kanban 상태에서 하위 노드를 선택하고 다른 레이아웃 클릭
+5. 시스템: 맵 전체 레이아웃을 해당 레이아웃으로 변경 (Kanban 탈출)
 
 #### 시나리오 5 — auto layout 중 단일 노드 drag
 

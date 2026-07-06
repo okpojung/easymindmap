@@ -72,7 +72,8 @@ Level (depth)   역할      설명
 depth 0         board     보드 제목 (맵 전체 주제)
 depth 1         column    좌→우 컬럼 헤더
 depth 2         card      컬럼 내 activity 카드
-depth 3+        금지      생성 불가 (DB CHECK 제약)
+depth 3+        카드 하위   카드 아래에 들여쓰기 + 엘보 연결선
+                          (트리·오른쪽 아웃라인)으로 표시 — 제한 없음
 ```
 
 #### 4.2 Kanban 구조 예시
@@ -81,6 +82,8 @@ depth 3+        금지      생성 불가 (DB CHECK 제약)
 프로젝트 A           (depth 0 — board)
  ├ 분석              (depth 1 — column)
  │   ├ 요구사항 정리   (depth 2 — card)
+ │   │   ├ 이해관계자 목록 (depth 3 — 카드 하위 트리)
+ │   │   └ 우선순위 기준   (depth 3 — 카드 하위 트리)
  │   ├ 인터뷰         (depth 2 — card)
  │   └ 경쟁사 조사    (depth 2 — card)
  ├ 설계              (depth 1 — column)
@@ -201,26 +204,33 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
 
 ---
 
-#### 6.1 레벨 제한 규칙
+#### 6.1 레벨 규칙 (제한 폐기 — v1.1)
 
-* Kanban Layout은 **최대 3레벨(depth 0~2)**만 허용한다
-* depth 3 이상 생성 시도 → DB `chk_nodes_kanban_depth` CHECK 제약 위반으로 거부
-* 프론트엔드에서도 `+ 카드` UI를 depth 2에서만 노출하여 예방
+* Kanban Layout의 **3레벨 제한은 폐기**되었다. 어떤 깊이의 맵이든
+  Kanban으로 전환할 수 있다.
+* depth 0 = board, depth 1 = column, depth 2 = card 매핑은 유지된다.
+* **depth 3+ 노드는 컬럼 안에서 자신의 카드(depth 2) 아래에
+  들여쓰기 + 왼쪽 엘보 연결선(트리·오른쪽 아웃라인)으로 재귀 표시**된다.
+* Kanban일 때는 하위 노드별 Subtree 레이아웃이 존재하지 않는다 —
+  어떤 노드를 선택해도 레이아웃 선택은 맵 전체에 적용된다
+  (08-layout.md §6.3.1 / §6.6 참조).
 
 ```sql
-CONSTRAINT chk_nodes_kanban_depth
-  CHECK (layout_type != 'kanban' OR depth BETWEEN 0 AND 2)
+-- (구) 제약 — 폐기됨. 기존 DB에 남아 있다면 DROP 한다.
+-- CONSTRAINT chk_nodes_kanban_depth
+--   CHECK (layout_type != 'kanban' OR depth BETWEEN 0 AND 2)
 ```
 
 ---
 
 #### 6.2 생성 허용/금지 규칙
 
-| 위치       | 허용 생성       | 금지 생성              |
-| -------- | ----------- | ------------------ |
-| board(0) | column(1)   | card(2) 직접 생성      |
-| column(1)| card(2)     | column(1) 중첩 생성    |
-| card(2)  | 형제 카드만      | 자식 생성 (depth 3) 금지 |
+| 위치       | 허용 생성            | 금지 생성           |
+| -------- | ---------------- | --------------- |
+| board(0) | column(1)        | card(2) 직접 생성   |
+| column(1)| card(2)          | column(1) 중첩 생성 |
+| card(2)  | 형제 카드, 하위 노드(3+) |                 |
+| 3+       | 형제·하위 노드         |                 |
 
 ---
 

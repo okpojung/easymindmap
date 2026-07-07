@@ -20,7 +20,17 @@
 // - The map data is embedded as JSON; '<' is escaped so closing tags inside
 //   node text can never break out of the <script> block.
 
-import type { LayoutType, MindNode, SampleMap } from '@/editor/__samples__/types';
+import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
+import { buildZip, type ZipEntry } from './zip';
+
+interface ExportAttachment {
+  name: string;
+  // 'files/…' relative path when packaged into the zip next to the HTML,
+  // or the original absolute URL when it couldn't be fetched (external).
+  href?: string;
+  kind: string;
+  external?: boolean;
+}
 
 interface ExportNode {
   id: string;
@@ -29,6 +39,7 @@ interface ExportNode {
   tags?: string[];
   links?: { url: string; label?: string }[];
   notes?: { type: string; text: string; checked?: boolean }[];
+  attachments?: ExportAttachment[];
   collapsed?: boolean;
   colorKey?: string;
   // Layout preservation: per-node subtree override + radial side.
@@ -37,7 +48,11 @@ interface ExportNode {
   children?: ExportNode[];
 }
 
-function toExportNode(node: MindNode): ExportNode {
+// Maps attachment id → packaged relative href ('files/…'). Attachments not in
+// the map keep their original URL and are marked external.
+type AttachmentHrefResolver = (attachmentId: string) => string | undefined;
+
+function toExportNode(node: MindNode, resolveHref?: AttachmentHrefResolver): ExportNode {
   const tags =
     Array.isArray(node.tags) && node.tags.length > 0
       ? node.tags
@@ -52,11 +67,20 @@ function toExportNode(node: MindNode): ExportNode {
     tags,
     links: node.links?.map((l) => ({ url: l.url, label: l.label })),
     notes: node.notes?.map((n) => ({ type: n.type, text: n.text, checked: n.checked })),
+    attachments: node.attachments?.map((a) => {
+      const packaged = resolveHref?.(a.id);
+      return {
+        name: a.name,
+        href: packaged ?? a.url,
+        kind: a.kind,
+        external: packaged ? undefined : true,
+      };
+    }),
     collapsed: node.collapsed || undefined,
     colorKey: node.colorKey,
     layoutType: node.layoutType,
     side: node.side,
-    children: (node.children ?? []).map(toExportNode),
+    children: (node.children ?? []).map((c) => toExportNode(c, resolveHref)),
   };
 }
 
@@ -420,23 +444,18 @@ const VIEWER_JS = String.raw`
       }
     }
 
-    if (node.links && node.links.length) {
-      var lk = el('text', { x: x0 + node._w - PAD_X + 2, y: y0 + 13,
-        'font-size': 10, cursor: 'pointer' }, g);
-      lk.textContent = '🔗';
-      (function (url) {
-        lk.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
-        lk.addEventListener('click', function (ev) { ev.stopPropagation(); window.open(url, '_blank'); });
-      })(node.links[0].url);
-    }
-
-    if (node.notes && node.notes.length) {
-      var nm = el('text', { x: x0 + 3, y: node._cy + node._h / 2 - 4,
-        'font-size': 9.5, cursor: 'pointer' }, g);
-      nm.textContent = '📝';
+    // content markers — each opens the detail panel (tags/links/notes/files)
+    var markers = [];
+    if (node.links && node.links.length) markers.push('🔗');
+    if (node.notes && node.notes.length) markers.push('📝');
+    if (node.attachments && node.attachments.length) markers.push('📎');
+    if (markers.length) {
+      var mk = el('text', { x: x0 + node._w - PAD_X + 4, y: y0 + 12,
+        'font-size': 9.5, 'text-anchor': 'end', cursor: 'pointer' }, g);
+      mk.textContent = markers.join('');
       (function (n) {
-        nm.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
-        nm.addEventListener('click', function (ev) { ev.stopPropagation(); showNote(n); });
+        mk.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+        mk.addEventListener('click', function (ev) { ev.stopPropagation(); showDetail(n); });
       })(node);
     }
 
@@ -468,16 +487,80 @@ const VIEWER_JS = String.raw`
     return c;
   }
 
-  function showNote(node) {
+  // Detail panel: everything attached to a node — tags, hyperlinks, notes,
+  // and attachments (packaged files link to ./files/…, external ones to the
+  // original URL with an ↗ mark).
+  function section(title) {
+    var h = document.createElement('div');
+    h.className = 'mm-sec';
+    h.textContent = title;
+    noteBody.appendChild(h);
+  }
+  function showDetail(node) {
     noteTitle.textContent = node.text;
     noteBody.textContent = '';
-    for (var i = 0; i < node.notes.length; i++) {
-      var p = document.createElement('div');
-      p.className = 'mm-note-block mm-note-' + node.notes[i].type;
-      p.textContent = (node.notes[i].type === 'checklist'
-        ? (node.notes[i].checked ? '☑ ' : '☐ ') : '') + node.notes[i].text;
-      noteBody.appendChild(p);
+    var i, a, row;
+
+    if (node.tags && node.tags.length) {
+      section('태그');
+      row = document.createElement('div');
+      row.className = 'mm-tagrow';
+      for (i = 0; i < node.tags.length; i++) {
+        var chip = document.createElement('span');
+        chip.className = 'mm-chip';
+        chip.textContent = '#' + node.tags[i];
+        row.appendChild(chip);
+      }
+      noteBody.appendChild(row);
     }
+
+    if (node.links && node.links.length) {
+      section('링크');
+      for (i = 0; i < node.links.length; i++) {
+        row = document.createElement('div');
+        row.className = 'mm-note-block';
+        a = document.createElement('a');
+        a.href = node.links[i].url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = '🔗 ' + (node.links[i].label || node.links[i].url);
+        row.appendChild(a);
+        noteBody.appendChild(row);
+      }
+    }
+
+    if (node.notes && node.notes.length) {
+      section('메모');
+      for (i = 0; i < node.notes.length; i++) {
+        var pEl = document.createElement('div');
+        pEl.className = 'mm-note-block mm-note-' + node.notes[i].type;
+        pEl.textContent = (node.notes[i].type === 'checklist'
+          ? (node.notes[i].checked ? '☑ ' : '☐ ') : '') + node.notes[i].text;
+        noteBody.appendChild(pEl);
+      }
+    }
+
+    if (node.attachments && node.attachments.length) {
+      section('첨부 파일');
+      for (i = 0; i < node.attachments.length; i++) {
+        var att = node.attachments[i];
+        row = document.createElement('div');
+        row.className = 'mm-note-block';
+        if (att.href) {
+          a = document.createElement('a');
+          a.href = att.href;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.textContent = '📎 ' + att.name + (att.external ? ' ↗' : '');
+          if (!att.external) a.setAttribute('download', att.name);
+          row.appendChild(a);
+        } else {
+          row.textContent = '📎 ' + att.name + ' (파일 없음)';
+        }
+        noteBody.appendChild(row);
+      }
+    }
+
     notePanel.style.display = 'block';
   }
   document.getElementById('mm-note-close').addEventListener('click', function () {
@@ -598,6 +681,18 @@ const VIEWER_CSS = `
     font-size: 14px; cursor: pointer; color: #8B7D68;
   }
   .mm-note-block { margin-bottom: 6px; line-height: 1.5; white-space: pre-wrap; }
+  .mm-note-block a { color: #1D4ED8; text-decoration: none; word-break: break-all; }
+  .mm-note-block a:hover { text-decoration: underline; }
+  .mm-sec {
+    font-size: 10px; font-weight: 700; color: #8B7D68; letter-spacing: 0.5px;
+    margin: 10px 0 5px; padding-top: 8px; border-top: 1px solid #EFE7D6;
+  }
+  .mm-sec:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+  .mm-tagrow { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+  .mm-chip {
+    font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px;
+    background: #C2410C1A; color: #C2410C; border: 1px solid #C2410C44;
+  }
   .mm-note-code_block {
     font-family: ui-monospace, monospace; background: #F3ECDD;
     border-radius: 5px; padding: 6px 8px; font-size: 11px;
@@ -622,15 +717,19 @@ function escapeHtml(s: string): string {
 // Builds the complete standalone HTML document for the given map.
 // `mapLayoutType` = the editor's current whole-map layout (editorUiStore);
 // per-node overrides ride along on each node's layoutType field.
-export function buildStandaloneHtml(map: SampleMap, mapLayoutType?: LayoutType): string {
+export function buildStandaloneHtml(
+  map: SampleMap,
+  mapLayoutType?: LayoutType,
+  resolveHref?: AttachmentHrefResolver,
+): string {
   const data = {
     title: map.title,
     mapLayout: mapLayoutType ?? map.root.layoutType ?? 'radial-bidirectional',
     root: {
-      ...toExportNode({ id: 'root', text: map.root.text } as MindNode),
+      ...toExportNode({ id: 'root', text: map.root.text } as MindNode, resolveHref),
       colorKey: 'root',
       layoutType: map.root.layoutType ?? mapLayoutType,
-      children: map.branches.map(toExportNode),
+      children: map.branches.map((b) => toExportNode(b, resolveHref)),
     },
   };
 
@@ -668,15 +767,119 @@ export function buildStandaloneHtml(map: SampleMap, mapLayoutType?: LayoutType):
 </html>`;
 }
 
-// Triggers a browser download of the standalone HTML file.
-export function downloadMapAsHtml(map: SampleMap, mapLayoutType?: LayoutType): void {
-  const html = buildStandaloneHtml(map, mapLayoutType);
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
+function safeName(s: string, fallback: string): string {
+  const cleaned = s.replace(/[\\/:*?"<>|]/g, '_').trim();
+  return cleaned || fallback;
+}
+
+function collectAttachments(nodes: MindNode[], out: NodeAttachment[]): void {
+  for (const n of nodes) {
+    if (n.attachments) out.push(...n.attachments);
+    collectAttachments(n.children ?? [], out);
+  }
+}
+
+export interface ExportPackage {
+  fileName: string;
+  blob: Blob;
+  // how many attachments were packaged into files/ vs left as external links
+  packaged: number;
+  external: number;
+}
+
+// Builds the export payload. With no attachments this is the single
+// standalone .html; with attachments it is a .zip whose unzipped layout is
+//   맵제목.html
+//   files/<첨부파일들>          ← the HTML links to them via ./files/…
+// (browsers cannot write into a disk folder directly, so the folder ships
+// inside the zip). Attachments whose bytes cannot be fetched (e.g. CORS or
+// dead URL) stay as external links in the HTML instead of files/ entries.
+export async function buildExportPackage(
+  map: SampleMap,
+  mapLayoutType?: LayoutType,
+): Promise<ExportPackage> {
+  const title = safeName(map.title, 'mindmap');
+
+  const attachments: NodeAttachment[] = [];
+  collectAttachments(map.branches, attachments);
+
+  if (attachments.length === 0) {
+    const html = buildStandaloneHtml(map, mapLayoutType);
+    return {
+      fileName: `${title}.html`,
+      blob: new Blob([html], { type: 'text/html;charset=utf-8' }),
+      packaged: 0,
+      external: 0,
+    };
+  }
+
+  // Fetch each attachment; successes go into files/, failures stay external.
+  const hrefById = new Map<string, string>();
+  const files: ZipEntry[] = [];
+  const usedNames = new Set<string>();
+
+  for (const att of attachments) {
+    if (!att.url) continue;
+    try {
+      const res = await fetch(att.url);
+      if (!res.ok) throw new Error(String(res.status));
+      const bytes = new Uint8Array(await res.arrayBuffer());
+
+      let name = safeName(att.name, att.id);
+      if (usedNames.has(name)) {
+        const dot = name.lastIndexOf('.');
+        const stem = dot > 0 ? name.slice(0, dot) : name;
+        const ext = dot > 0 ? name.slice(dot) : '';
+        let i = 2;
+        while (usedNames.has(`${stem}-${i}${ext}`)) i += 1;
+        name = `${stem}-${i}${ext}`;
+      }
+      usedNames.add(name);
+
+      files.push({ path: `files/${name}`, data: bytes });
+      hrefById.set(att.id, `files/${name}`);
+    } catch {
+      // leave as external link (original URL) in the HTML
+    }
+  }
+
+  const html = buildStandaloneHtml(map, mapLayoutType, (id) => hrefById.get(id));
+
+  if (files.length === 0) {
+    // nothing could be packaged — fall back to the single HTML
+    return {
+      fileName: `${title}.html`,
+      blob: new Blob([html], { type: 'text/html;charset=utf-8' }),
+      packaged: 0,
+      external: attachments.length,
+    };
+  }
+
+  const entries: ZipEntry[] = [
+    { path: `${title}.html`, data: new TextEncoder().encode(html) },
+    ...files,
+  ];
+
+  return {
+    fileName: `${title}.zip`,
+    blob: new Blob([buildZip(entries) as BlobPart], { type: 'application/zip' }),
+    packaged: files.length,
+    external: attachments.length - files.length,
+  };
+}
+
+// Triggers a browser download: single .html, or .zip(맵.html + files/…)
+// when the map has attachments.
+export async function downloadMapAsHtml(
+  map: SampleMap,
+  mapLayoutType?: LayoutType,
+): Promise<void> {
+  const pkg = await buildExportPackage(map, mapLayoutType);
+  const url = URL.createObjectURL(pkg.blob);
 
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${map.title.replace(/[\\/:*?"<>|]/g, '_') || 'mindmap'}.html`;
+  a.download = pkg.fileName;
   document.body.appendChild(a);
   a.click();
   a.remove();

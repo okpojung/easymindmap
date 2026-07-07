@@ -186,7 +186,7 @@ export function TopToolbar({
       <IconBtn
         t={t}
         title="내보내기 (HTML 단독 파일)"
-        onClick={() => downloadMapAsHtml(map, layoutType)}
+        onClick={() => { void downloadMapAsHtml(map, layoutType); }}
       >
         <I.Download size={16} />
       </IconBtn>

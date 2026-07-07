@@ -5,6 +5,8 @@ import { IconBtn } from './IconBtn';
 import { CollabAvatars } from './CollabAvatars';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
+import { downloadMapAsHtml } from '@/export/exportHtml';
 
 export type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
 
@@ -21,6 +23,8 @@ export function TopToolbar({
   mapTitle,
   saveState = 'saved',
 }: Props) {
+  const map = useDocumentStore((s) => s.map);
+  const layoutType = useEditorUiStore((s) => s.layoutType);
   const undo = useDocumentStore((s) => s.undo);
   const redo = useDocumentStore((s) => s.redo);
   const canUndo = useDocumentStore((s) => s.past.length > 0);
@@ -177,7 +181,13 @@ export function TopToolbar({
         <I.Share size={15} /> 공유
       </button>
 
-      <IconBtn t={t} title="내보내기">
+      {/* 내보내기 — 단일 HTML 파일(오프라인 읽기 전용 뷰어: 줌·팬·맞춤·
+          노드 접기/펴기·태그·링크·메모 지원)로 저장. EXPORT-02. */}
+      <IconBtn
+        t={t}
+        title="내보내기 (HTML 단독 파일)"
+        onClick={() => { void downloadMapAsHtml(map, layoutType); }}
+      >
         <I.Download size={16} />
       </IconBtn>
 

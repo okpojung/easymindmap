@@ -66,7 +66,7 @@ function toExportNode(node: MindNode, resolveHref?: AttachmentHrefResolver): Exp
     icon: node.icon,
     tags,
     links: node.links?.map((l) => ({ url: l.url, label: l.label })),
-    notes: node.notes?.map((n) => ({ type: n.type, text: n.text, checked: n.checked })),
+    notes: node.notes?.map((n) => ({ type: n.type, text: n.text, checked: n.checked, lang: n.lang })),
     attachments: node.attachments?.map((a) => {
       const packaged = resolveHref?.(a.id);
       return {
@@ -444,19 +444,50 @@ const VIEWER_JS = String.raw`
       }
     }
 
-    // content markers — each opens the detail panel (tags/links/notes/files)
+    // Content markers — one per kind, sized like the node's leading icon
+    // (에디터 인디케이터와 동일: 🔗 링크, 📝 노트, 📎 파일, ▶️ 멀티미디어).
+    // Single item → open it directly; multiple → detail-panel list.
+    var files = [], media = [], ai;
+    if (node.attachments) {
+      for (ai = 0; ai < node.attachments.length; ai++) {
+        (node.attachments[ai].kind === 'audio' || node.attachments[ai].kind === 'video'
+          ? media : files).push(node.attachments[ai]);
+      }
+    }
     var markers = [];
-    if (node.links && node.links.length) markers.push('🔗');
-    if (node.notes && node.notes.length) markers.push('📝');
-    if (node.attachments && node.attachments.length) markers.push('📎');
+    if (node.links && node.links.length) {
+      markers.push({ icon: '🔗', act: (node.links.length === 1
+        ? function () { window.open(node.links[0].url, '_blank'); }
+        : function () { showDetail(node, 'links'); }) });
+    }
+    if (node.notes && node.notes.length) {
+      markers.push({ icon: '📝', act: function () { showDetail(node, 'notes'); } });
+    }
+    if (files.length) {
+      markers.push({ icon: '📎', act: (files.length === 1 && files[0].href
+        ? function () { window.open(files[0].href, '_blank'); }
+        : function () { showDetail(node, 'files'); }) });
+    }
+    if (media.length) {
+      markers.push({ icon: '▶️', act: (media.length === 1 && media[0].href
+        ? function () { window.open(media[0].href, '_blank'); }
+        : function () { showDetail(node, 'media'); }) });
+    }
     if (markers.length) {
-      var mk = el('text', { x: x0 + node._w - PAD_X + 4, y: y0 + 12,
-        'font-size': 9.5, 'text-anchor': 'end', cursor: 'pointer' }, g);
-      mk.textContent = markers.join('');
-      (function (n) {
-        mk.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
-        mk.addEventListener('click', function (ev) { ev.stopPropagation(); showDetail(n); });
-      })(node);
+      var mfs = node._fs + 1; // same size as the node's leading icon
+      // Along the top-right corner, growing right — clears the collapse chip
+      // (which sits at the box's vertical center).
+      var mx0 = x0 + node._w - mfs + 2;
+      for (var mi = 0; mi < markers.length; mi++) {
+        var mk = el('text', { x: mx0, y: y0 + 4,
+          'font-size': mfs, cursor: 'pointer' }, g);
+        mk.textContent = markers[mi].icon;
+        (function (act) {
+          mk.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+          mk.addEventListener('click', function (ev) { ev.stopPropagation(); act(); });
+        })(markers[mi].act);
+        mx0 += mfs + 4;
+      }
     }
 
     if (kids.length) {
@@ -496,25 +527,102 @@ const VIEWER_JS = String.raw`
     h.textContent = title;
     noteBody.appendChild(h);
   }
-  function showDetail(node) {
+  function copyText(text, btn) {
+    function done() {
+      var prev = btn.textContent;
+      btn.textContent = '복사됨 ✓';
+      setTimeout(function () { btn.textContent = prev; }, 1200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+    } else { fallbackCopy(text); done(); }
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+  }
+
+  function renderNoteBlock(note) {
+    // 폐기된 옛 타입(warning/tip)은 문단으로 렌더링 (하위호환)
+    var type = note.type === 'warning' || note.type === 'tip' ? 'paragraph' : note.type;
+
+    if (type === 'table') {
+      // 줄 = 행, '|' = 열. 첫 행은 헤더.
+      var tbl = document.createElement('table');
+      tbl.className = 'mm-table';
+      var rows = String(note.text || '').split('\n');
+      for (var r = 0; r < rows.length; r++) {
+        if (!rows[r].trim()) continue;
+        var tr = document.createElement('tr');
+        var cells = rows[r].split('|');
+        for (var cIdx = 0; cIdx < cells.length; cIdx++) {
+          var cell = document.createElement(r === 0 ? 'th' : 'td');
+          cell.textContent = cells[cIdx].trim();
+          tr.appendChild(cell);
+        }
+        tbl.appendChild(tr);
+      }
+      return tbl;
+    }
+
+    if (type === 'code_block') {
+      var wrap = document.createElement('div');
+      wrap.className = 'mm-code';
+      var head = document.createElement('div');
+      head.className = 'mm-code-head';
+      var langEl = document.createElement('span');
+      langEl.textContent = note.lang || 'code';
+      var btn = document.createElement('button');
+      btn.className = 'mm-copy';
+      btn.textContent = '⧉ 복사';
+      (function (text, b) {
+        b.addEventListener('click', function () { copyText(text, b); });
+      })(note.text, btn);
+      head.appendChild(langEl);
+      head.appendChild(btn);
+      var pre = document.createElement('pre');
+      pre.textContent = note.text;
+      wrap.appendChild(head);
+      wrap.appendChild(pre);
+      return wrap;
+    }
+
+    var pEl = document.createElement('div');
+    pEl.className = 'mm-note-block mm-note-' + type;
+    pEl.textContent = (type === 'checklist'
+      ? (note.checked ? '☑ ' : '☐ ') : '') + note.text;
+    return pEl;
+  }
+
+  function attachmentRow(att, icon) {
+    var row = document.createElement('div');
+    row.className = 'mm-note-block';
+    if (att.href) {
+      var a = document.createElement('a');
+      a.href = att.href;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = icon + ' ' + att.name + (att.external ? ' ↗' : '');
+      if (!att.external) a.setAttribute('download', att.name);
+      row.appendChild(a);
+    } else {
+      row.textContent = icon + ' ' + att.name + ' (파일 없음)';
+    }
+    return row;
+  }
+
+  // kind: 'links' | 'notes' | 'files' | 'media' — 클릭한 마커의 정보만 표시.
+  function showDetail(node, kind) {
     noteTitle.textContent = node.text;
     noteBody.textContent = '';
     var i, a, row;
 
-    if (node.tags && node.tags.length) {
-      section('태그');
-      row = document.createElement('div');
-      row.className = 'mm-tagrow';
-      for (i = 0; i < node.tags.length; i++) {
-        var chip = document.createElement('span');
-        chip.className = 'mm-chip';
-        chip.textContent = '#' + node.tags[i];
-        row.appendChild(chip);
-      }
-      noteBody.appendChild(row);
-    }
-
-    if (node.links && node.links.length) {
+    if (kind === 'links' && node.links) {
       section('링크');
       for (i = 0; i < node.links.length; i++) {
         row = document.createElement('div');
@@ -529,35 +637,21 @@ const VIEWER_JS = String.raw`
       }
     }
 
-    if (node.notes && node.notes.length) {
+    if (kind === 'notes' && node.notes) {
       section('메모');
       for (i = 0; i < node.notes.length; i++) {
-        var pEl = document.createElement('div');
-        pEl.className = 'mm-note-block mm-note-' + node.notes[i].type;
-        pEl.textContent = (node.notes[i].type === 'checklist'
-          ? (node.notes[i].checked ? '☑ ' : '☐ ') : '') + node.notes[i].text;
-        noteBody.appendChild(pEl);
+        noteBody.appendChild(renderNoteBlock(node.notes[i]));
       }
     }
 
-    if (node.attachments && node.attachments.length) {
-      section('첨부 파일');
+    if ((kind === 'files' || kind === 'media') && node.attachments) {
+      var wantMedia = kind === 'media';
+      section(wantMedia ? '멀티미디어' : '첨부 파일');
       for (i = 0; i < node.attachments.length; i++) {
         var att = node.attachments[i];
-        row = document.createElement('div');
-        row.className = 'mm-note-block';
-        if (att.href) {
-          a = document.createElement('a');
-          a.href = att.href;
-          a.target = '_blank';
-          a.rel = 'noopener';
-          a.textContent = '📎 ' + att.name + (att.external ? ' ↗' : '');
-          if (!att.external) a.setAttribute('download', att.name);
-          row.appendChild(a);
-        } else {
-          row.textContent = '📎 ' + att.name + ' (파일 없음)';
-        }
-        noteBody.appendChild(row);
+        var isMedia = att.kind === 'audio' || att.kind === 'video';
+        if (isMedia !== wantMedia) continue;
+        noteBody.appendChild(attachmentRow(att, wantMedia ? '▶️' : '📎'));
       }
     }
 
@@ -689,6 +783,30 @@ const VIEWER_CSS = `
   }
   .mm-sec:first-child { margin-top: 0; padding-top: 0; border-top: none; }
   .mm-tagrow { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+  .mm-table {
+    border-collapse: collapse; width: 100%; margin-bottom: 8px; font-size: 11.5px;
+  }
+  .mm-table th, .mm-table td {
+    border: 1px solid #DDD0BA; padding: 4px 7px; text-align: left;
+  }
+  .mm-table th { background: #F3ECDD; font-weight: 700; }
+  .mm-code { margin-bottom: 8px; border: 1px solid #DDD0BA; border-radius: 6px; overflow: hidden; }
+  .mm-code-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 3px 8px; background: #EFE7D6; font-size: 10px; font-weight: 700;
+    color: #6E5F49; letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  .mm-copy {
+    border: 1px solid #D8CBB2; border-radius: 4px; background: #FFF;
+    font-size: 10px; padding: 1px 7px; cursor: pointer; color: #3F3428;
+    font-weight: 600; text-transform: none;
+  }
+  .mm-copy:hover { background: #F3ECDD; }
+  .mm-code pre {
+    margin: 0; padding: 7px 9px; font-size: 11px; line-height: 1.5;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-all; background: #FBF7EE;
+  }
   .mm-chip {
     font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px;
     background: #C2410C1A; color: #C2410C; border: 1px solid #C2410C44;

@@ -49,11 +49,12 @@ export interface NodeLink {
   label?: string;
 }
 
+// 문단 / 코드 / 표 / 체크리스트. ('warning'·'tip'은 v1.1에서 폐기 —
+// 기존 데이터는 뷰어·에디터에서 문단으로 렌더링해 하위호환 유지)
 export type NoteBlockType =
   | 'paragraph'
   | 'code_block'
-  | 'warning'
-  | 'tip'
+  | 'table'
   | 'checklist';
 
 export interface NoteBlock {
@@ -61,6 +62,7 @@ export interface NoteBlock {
   type: NoteBlockType;
   text: string;
   checked?: boolean; // checklist items only
+  lang?: string; // code_block only — 표시용 언어 라벨 (Shell, PHP, Node …)
 }
 
 export type AttachmentKind = 'file' | 'audio' | 'video';

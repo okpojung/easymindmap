@@ -1,4 +1,4 @@
-// NoteTagTab — tag chips + structured note (paragraph/code_block/warning/tip/checklist)
+// NoteTagTab — tag chips + structured note (paragraph/code_block/table/checklist)
 // editor, wired to the selected node via documentStore.
 
 import { useState } from 'react';
@@ -12,8 +12,7 @@ import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 const BLOCK_TYPES: { type: NoteBlockType; label: string }[] = [
   { type: 'paragraph', label: '문단' },
   { type: 'code_block', label: '코드' },
-  { type: 'tip', label: '팁' },
-  { type: 'warning', label: '경고' },
+  { type: 'table', label: '표' },
   { type: 'checklist', label: '체크' },
 ];
 
@@ -103,7 +102,7 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {notes.length === 0 && (
             <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>
-              위 버튼으로 노트 블록을 추가하세요 (문단 / 코드 / 팁 / 경고 / 체크리스트).
+              위 버튼으로 노트 블록을 추가하세요 (문단 / 코드 / 표 / 체크리스트).
             </div>
           )}
           {notes.map((block) => (
@@ -121,12 +120,14 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   );
 }
 
-const BLOCK_META: Record<NoteBlockType, { icon: string; label: string }> = {
+const BLOCK_META: Record<string, { icon: string; label: string }> = {
   paragraph: { icon: '¶', label: '문단' },
   code_block: { icon: '</>', label: '코드' },
-  warning: { icon: '⚠', label: '경고' },
-  tip: { icon: '💡', label: '팁' },
+  table: { icon: '⊞', label: '표' },
   checklist: { icon: '☑', label: '체크리스트' },
+  // 폐기된 옛 타입(warning/tip) 데이터 하위호환 — 문단으로 취급
+  warning: { icon: '¶', label: '문단' },
+  tip: { icon: '¶', label: '문단' },
 };
 
 function NoteBlockEditor({
@@ -137,11 +138,10 @@ function NoteBlockEditor({
   onChange: (patch: Partial<NoteBlockData>) => void;
   onRemove: () => void;
 }) {
-  const meta = BLOCK_META[block.type];
+  const meta = BLOCK_META[block.type] ?? BLOCK_META.paragraph;
   const accent =
-    block.type === 'warning' ? t.danger
-    : block.type === 'tip' ? t.primary
-    : block.type === 'code_block' ? t.accent
+    block.type === 'code_block' ? t.accent
+    : block.type === 'table' ? t.primary
     : block.type === 'checklist' ? t.success
     : t.borderStrong;
 
@@ -162,6 +162,19 @@ function NoteBlockEditor({
       }}>
         <span style={{ fontSize: 10 }}>{meta.icon}</span>
         <span>{meta.label}</span>
+        {block.type === 'code_block' && (
+          <input
+            value={block.lang ?? ''}
+            onChange={(e) => onChange({ lang: e.target.value })}
+            placeholder="언어 (Shell, PHP…)"
+            style={{
+              width: 90, fontSize: 9.5, padding: '1px 5px', borderRadius: 3,
+              border: `1px solid ${t.border}`, background: t.surface,
+              color: t.text, outline: 'none', fontWeight: 500,
+              textTransform: 'none', letterSpacing: 0,
+            }}
+          />
+        )}
         <button onClick={onRemove} title="블록 삭제" style={{
           marginLeft: 'auto', background: 'transparent', border: 'none',
           color: t.textMuted, cursor: 'pointer', fontSize: 13, lineHeight: 1,
@@ -197,13 +210,19 @@ function NoteBlockEditor({
           <textarea
             value={block.text}
             onChange={(e) => onChange({ text: e.target.value })}
-            rows={block.type === 'code_block' ? 4 : 2}
-            placeholder={block.type === 'code_block' ? '코드를 입력하세요' : '내용을 입력하세요'}
+            rows={block.type === 'code_block' ? 4 : block.type === 'table' ? 3 : 2}
+            placeholder={
+              block.type === 'code_block'
+                ? '코드를 입력하세요'
+                : block.type === 'table'
+                  ? '항목 | 값\n행1 | 내용1  (줄=행, |=열 구분)'
+                  : '내용을 입력하세요'
+            }
             style={{
               width: '100%', resize: 'vertical', border: 'none', outline: 'none',
               background: 'transparent', color: t.text,
               fontSize: block.type === 'code_block' ? 11 : 12, lineHeight: 1.5,
-              fontFamily: block.type === 'code_block'
+              fontFamily: block.type === 'code_block' || block.type === 'table'
                 ? 'ui-monospace, SFMono-Regular, Menlo, monospace'
                 : 'inherit',
               padding: 0,

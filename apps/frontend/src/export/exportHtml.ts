@@ -179,6 +179,23 @@ const VIEWER_JS = String.raw`
   function sum(kids, f) { var s = 0; for (var i = 0; i < kids.length; i++) s += f(kids[i]); return s; }
   function maxOf(kids, f) { var s = 0; for (var i = 0; i < kids.length; i++) s = Math.max(s, f(kids[i])); return s; }
 
+  // 인디케이터(🔗📝📎▶️) 개수 — 노드 박스 안(텍스트 뒤)에 그려지므로
+  // 폭 계산에 포함해 모든 마커가 박스 안에 들어가게 한다.
+  function markerCount(node) {
+    var n = 0, hasFile = false, hasMedia = false, i;
+    if (node.links && node.links.length) n++;
+    if (node.notes && node.notes.length) n++;
+    if (node.attachments) {
+      for (i = 0; i < node.attachments.length; i++) {
+        if (node.attachments[i].kind === 'audio' || node.attachments[i].kind === 'video') hasMedia = true;
+        else hasFile = true;
+      }
+    }
+    if (hasFile) n++;
+    if (hasMedia) n++;
+    return n;
+  }
+
   function measure(node, depth, inheritedEff) {
     var eff = normalize(node.layoutType) || inheritedEff;
     node._eff = eff;
@@ -187,7 +204,11 @@ const VIEWER_JS = String.raw`
     var wrapped = wrapText(node.text, fontSize, depth === 0 ? 240 : 220);
     var lineH = fontSize * 1.35;
     var iconW = node.icon ? fontSize + 6 : 0;
-    var w = Math.max(depth === 0 ? 120 : 90, wrapped.w + iconW) + PAD_X * 2;
+    var mfs = fontSize + 1;
+    var marks = markerCount(node);
+    var marksW = marks ? marks * (mfs + 3) + 5 : 0; // 마커 영역(텍스트 뒤)
+    node._marksW = marksW;
+    var w = Math.max(depth === 0 ? 120 : 90, wrapped.w + iconW + marksW) + PAD_X * 2;
     var h = wrapped.lines.length * lineH + PAD_Y * 2;
     var tagsH = (node.tags && node.tags.length) ? TAG_H + 7 : 0;
 
@@ -475,18 +496,18 @@ const VIEWER_JS = String.raw`
     }
     if (markers.length) {
       var mfs = node._fs + 1; // same size as the node's leading icon
-      // Along the top-right corner, growing right — clears the collapse chip
-      // (which sits at the box's vertical center).
-      var mx0 = x0 + node._w - mfs + 2;
+      // INSIDE the box, right of the text (leading-icon style) — the measure
+      // pass reserved node._marksW so every marker fits within the border.
+      var mx0 = x0 + node._w - PAD_X - markers.length * (mfs + 3) + 3;
       for (var mi = 0; mi < markers.length; mi++) {
-        var mk = el('text', { x: mx0, y: y0 + 4,
+        var mk = el('text', { x: mx0, y: node._cy + mfs * 0.36,
           'font-size': mfs, cursor: 'pointer' }, g);
         mk.textContent = markers[mi].icon;
         (function (act) {
           mk.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
           mk.addEventListener('click', function (ev) { ev.stopPropagation(); act(); });
         })(markers[mi].act);
-        mx0 += mfs + 4;
+        mx0 += mfs + 3;
       }
     }
 

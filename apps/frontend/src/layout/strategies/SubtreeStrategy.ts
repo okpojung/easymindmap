@@ -37,6 +37,15 @@ const HORIZONTAL_SIBLING_PARENTS = new Set<LayoutType>([
 
 // Layouts that stack their direct children top → bottom (a taller subtree
 // pushes the siblings below it down).
+// Radial parents place children vertically centered around the anchor, so an
+// override subtree extending above its anchor is normal there — the upward-
+// overflow shift below must NOT apply to them.
+const RADIAL_PARENTS = new Set<LayoutType>([
+  'radial-bidirectional' as LayoutType,
+  'radial-right' as LayoutType,
+  'radial-left' as LayoutType,
+]);
+
 const VERTICAL_SIBLING_PARENTS = new Set<LayoutType>([
   'hierarchy-right' as LayoutType,
   'hierarchy-left' as LayoutType,
@@ -436,7 +445,27 @@ function relayoutSubtree(
   }
 
   // Re-flow siblings so the resized subtree doesn't overlap them.
-  const after = bboxOf(out, subtreeIds);
+  let after = bboxOf(out, subtreeIds);
+
+  // Vertically-centered overrides (radial) extend ABOVE the anchor. When the
+  // parent layout flows downward (진행트리/트리·아래) or stacks rows (트리·
+  // 오른쪽/계층형), that upward overflow lands on the parent's connector
+  // spine or the previous sibling — e.g. a radial-right child column crossing
+  // the process-tree elbow line. Shift only the re-laid-out CHILDREN down so
+  // the subtree starts no higher than it did under the base layout; the
+  // anchor stays put and edges are re-drawn from the new positions.
+  if (
+    before && after &&
+    after.top < before.top - 0.5 &&
+    !RADIAL_PARENTS.has(parentEffective)
+  ) {
+    const dy = before.top - after.top;
+    for (const n of out) {
+      if (descendantIds.has(n.id)) n.y += dy;
+    }
+    after = bboxOf(out, subtreeIds);
+  }
+
   if (before && after) {
     pushSiblingsAway(out, subtreeIds, anchor, before, after, parentEffective, scope);
   }

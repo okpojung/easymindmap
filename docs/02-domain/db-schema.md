@@ -759,6 +759,26 @@ CREATE TABLE icon_catalog (
 * 노트 블록의 `lang`도 표시명 문자열을 저장 — 언어 비활성화 시 기존 노트는
   유지되고 선택 목록에서만 사라진다.
 
+```sql
+-- 시스템 전역 기본값 (관리자 설정 메뉴에서 수정)
+-- 예: 노트 뷰어 팝업 창의 기본 크기
+CREATE TABLE system_settings (
+  key         VARCHAR(80) PRIMARY KEY,       -- 'note_viewer.width' 등
+  value       JSONB NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 초기값 예시
+-- ('note_viewer.size', '{"width": 300, "maxHeightPct": 62}')
+```
+
+* **노트 뷰어 창 크기 우선순위**: 사용자 설정
+  (`users.ui_preferences_json.noteViewer = {width, maxHeightPct}`) →
+  시스템 기본값(`system_settings['note_viewer.size']`) → 프론트 하드코딩
+  (현재 NoteViewerPopover.tsx: 300 × 62%).
+* MVP 프론트엔드는 하드코딩 값을 사용하며, 서버 연동 시 위 우선순위로
+  이관한다 (32-settings.md §4.2, §4.3.1 참조).
+
 ---
 
 ---

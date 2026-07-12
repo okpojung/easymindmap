@@ -482,3 +482,27 @@ Phase별 개발 순서:
 - **Phase 1 (V1)**: 데이터 모델 확장, 업로드 API, preset 이미지 API, node renderer 배경 이미지 지원, 텍스트 오버레이 렌더링, 이미지 삽입 패널
 - **Phase 2 (V1)**: fit/position/overlay 옵션, HTML export 반영, undo/redo 지원, autosave 반영
 - **Phase 3 (후속)**: 이미지 crop, 최근 사용 이미지, 즐겨찾기, workspace 공용 이미지 라이브러리
+
+---
+
+### 15. 텍스트 강조·정렬 확장 (MVS 구현 — 2026-07)
+
+- **텍스트 강조**(스타일 탭): 굵게 / 기울임에 **취소선(strike)** 과
+  **하이라이트(highlight)** 토글 추가. `NodeStyle.strike?: boolean`,
+  `NodeStyle.highlight?: boolean`. 취소선은 SVG `text-decoration:
+  line-through`, 하이라이트는 각 텍스트 줄 뒤에 노란(#FFE066) 형광 띠를
+  그린다. HTML 내보내기 뷰어에도 동일하게 재현.
+- **텍스트 정렬**(스타일 탭): 왼쪽(기본) / 중앙 / 오른쪽 버튼 —
+  `MindNode.textAlign` 사용 (documentStore.updateNodeTextAlign).
+- **레벨별 폰트는 스타일 탭에서 제거** — 좌측 상단 **맵 설정** 메뉴
+  (MapSettingsPanel)로 이동, 레벨(Root/L1/L2/L3/L4+)별 **글자 크기 +
+  글꼴(font-family)** 을 실제로 변경할 수 있다.
+  - 저장: `map.settings.levelFonts[0..4] = { size?, family? }`
+  - 측정·그리기 일치: Canvas가 레이아웃 계산 직전
+    `setLevelFontConfig()`로 주입 → 모든 레이아웃 전략의
+    `sizeNodeForText()`와 NodeRenderer가 같은 값 사용. 줄 높이는
+    기본값(24/18) + (설정 크기 − 기본 크기)로 따라 움직인다.
+  - 글꼴 목록(MVS 하드코딩): 기본(시스템)/맑은 고딕/나눔고딕/본고딕/
+    명조/고정폭 — [서버 연결 예정] 코드 언어 목록처럼 시스템 관리자
+    카탈로그로 이관 (docs/02-domain/db-schema.md §향후 관리 테이블 참조)
+  - [서버 연결 예정] `maps.settings_json.levelFonts`로 저장.

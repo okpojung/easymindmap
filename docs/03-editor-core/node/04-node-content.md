@@ -300,3 +300,40 @@ AI 생성 → `ai_jobs`/revision 메타와 연계 저장
 * execution 연계
 
 ---
+
+### 15. 노트 문단 리치 붙여넣기 (MVS 구현 — 2026-07)
+
+웹 기사 등에서 복사한 내용(클립보드 `text/html`)을 **문단(paragraph) 노트
+블록에 사진+서식째 붙여넣기**할 수 있다.
+
+- 저장 모델: `NoteBlock.html`(선택 필드)에 정리된 HTML 저장, `NoteBlock.text`
+  에는 같은 내용의 일반 텍스트를 함께 저장 (검색·하위호환용).
+- 정리 규칙(`sanitizeRichHtml`, 화이트리스트 방식):
+  - 허용 태그: p/div/span/br/b/strong/i/em/u/s/mark/a/img/figure/ul/ol/li/
+    h1~h6/blockquote/pre/code/table 계열 — 그 외 태그는 벗기고 내용만 유지
+  - 통째 제거: script/style/iframe/object/embed/form/입력류/미디어류
+  - 속성: `style`/`class`/`on*` 전부 제거. `a[href]`는 http(s)만
+    (`target=_blank rel=noopener`), `img[src]`는 http(s)·`data:image` base64만
+    (`loading=lazy referrerpolicy=no-referrer`)
+- 편집 UX: 붙여넣으면 텍스트영역 아래에 "서식·이미지 포함" 배지 + 미리보기
+  표시. 텍스트영역을 직접 수정하면 html은 버리고 일반 텍스트로 돌아간다.
+  "서식 제거" 버튼으로 수동 제거 가능.
+- 표시: 에디터 노트 뷰어 팝업(NoteViewerPopover)과 HTML 내보내기 뷰어의
+  상세 패널 모두 리치 HTML을 렌더링 (`img { max-width:100% }`).
+- [서버 연결 예정] `node_notes.html_json`(또는 blocks JSON의 html 필드)로
+  저장. 서버에서도 저장 전 동일 정책으로 재-sanitize 한다.
+
+### 16. 노드 본문 Markdown 표 렌더링 (MVS 구현 — 2026-07)
+
+노드 **본문 텍스트**에 Markdown 표가 들어 있으면 파이프 원문 대신 실제
+표로 그린다 (markmap 스타일 — 향후 Markdown 파일 가져오기 대비).
+
+- 감지: 파이프(`|`) 행 바로 다음 줄이 구분선 행(각 셀 `:?--:?`)이면 표.
+  노드당 첫 번째 표 하나만 표로 그리고 나머지 텍스트는 그대로 표시.
+- 측정·그리기 일치: `mdTable.ts`의 `layoutMdTable()`을 `sizeNodeForText()`
+  (노드 크기 계산)와 `NodeRenderer`(그리기)가 공유 — 셀 글자 = 본문−2pt
+  (최소 10), 행 높이 = 셀 글자+10, 열 폭 = 최장 셀 폭+12 (최소 26).
+  표 폭이 노드 최대 폭(maxW)보다 크면 노드가 표 폭만큼 늘어난다.
+- 표 스타일: 첫 행 = 헤더(굵게 + 연한 배경), 격자선은 노드 테두리색.
+- 구분선 없는 파이프 텍스트(예: `항목 | 값` 한 줄)는 표로 취급하지 않는다.
+- HTML 내보내기 뷰어도 동일 규칙으로 표를 그린다 (에디터 좌표 모드).

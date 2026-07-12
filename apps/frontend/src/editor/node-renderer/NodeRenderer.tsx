@@ -4,7 +4,7 @@
 // NodeTagChips), content indicators (note / link / attachment), collapse toggle,
 // inline text edit, soft-lock editor label.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ThemeTokens, ThemeName } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import type { TextAlign, ShapeType } from '@/editor/__samples__/types';
@@ -16,6 +16,8 @@ import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, type ContentKind } from './nodeContent';
 import { IndicatorGlyph } from './IndicatorGlyph';
+import { levelFontFamily, levelFontSize } from './sizeNodeForText';
+import { layoutMdTable, measureTextApprox, MD_TABLE_CELL_PAD_X } from './mdTable';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -103,6 +105,7 @@ function NodeShape({
 export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, onOpenPopover, collabs }: Props) {
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
+  const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
   const showTags = useEditorUiStore((state) => state.showTags);
   const hiddenTags = useEditorUiStore((state) => state.hiddenTags);
 
@@ -132,7 +135,7 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
 
   const lines = n._lines || String(n.text || '').split('\n');
   const lineHeight = n._lineHeight ?? (n.depth === 0 ? 24 : 18);
-  const fontSize = style.fontSize ?? n._fontSize ?? (n.depth === 0 ? 18 : n.depth === 1 ? 14 : 13);
+  const fontSize = style.fontSize ?? n._fontSize ?? levelFontSize(n.depth);
   const fontWeight =
     style.fontWeight === 'bold'
       ? 700
@@ -140,6 +143,14 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
         ? 400
         : (n._fontWeight ?? (n.depth === 0 ? 700 : n.depth === 1 ? 600 : 500));
   const fontStyle = style.fontStyle ?? 'normal';
+  // 맵 설정(레벨별 폰트)의 글꼴 — 없으면 상위(문서 기본) 글꼴 상속
+  const fontFamily = levelFontFamily(n.depth) ?? 'inherit';
+  const strike = !!style.strike;
+  const highlight = !!style.highlight;
+
+  // 노드 텍스트 속 Markdown 표 — sizeNodeForText와 같은 측정으로 그린다.
+  // (lines에는 표를 제외한 텍스트만 들어 있다)
+  const mdTable = useMemo(() => layoutMdTable(String(n.text || ''), fontSize), [n.text, fontSize]);
 
   const strokeWidth = style.borderWidth ?? (isRoot ? 2 : selected ? 1.5 : 1);
   const dash = borderDash(style.borderStyle, strokeWidth);
@@ -269,27 +280,103 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
         </text>
       )}
 
-      {!editing &&
-        lines.map((line, i) => {
-          const yCenter =
-            n.y + (i - (lines.length - 1) / 2) * lineHeight + fontSize * 0.34;
+      {!editing && (() => {
+        // 표가 있으면 텍스트 줄들 + 표를 세로로 쌓아 박스 안 가운데 정렬
+        // (sizeNodeForText의 높이 계산과 동일한 배치)
+        const tableGap = mdTable && lines.length > 0 ? 6 : 0;
+        const contentH =
+          lines.length * lineHeight + (mdTable ? mdTable.h + tableGap : 0);
+        const contentTop = n.y - contentH / 2;
+        const padX = n.depth === 0 ? 22 : 14;
 
-          return (
-            <text
-              key={i}
-              x={textX}
-              y={yCenter}
-              textAnchor={textAnchor}
-              fontSize={fontSize}
-              fontWeight={fontWeight}
-              fontStyle={fontStyle}
-              fill={textColor}
-              style={{ fontFamily: 'inherit' }}
-            >
-              {line}
-            </text>
-          );
-        })}
+        return (
+          <g>
+            {lines.map((line, i) => {
+              const lineCenter = contentTop + i * lineHeight + lineHeight / 2;
+              const lineW = measureTextApprox(line, fontSize);
+              const hlX =
+                textAlign === 'right'
+                  ? textX - lineW - 3
+                  : textAlign === 'center'
+                    ? textX - lineW / 2 - 3
+                    : textX - 3;
+              return (
+                <g key={i}>
+                  {highlight && line.trim() !== '' && (
+                    // 형광펜 — 글자 뒤에 노란 띠
+                    <rect
+                      x={hlX}
+                      y={lineCenter - fontSize * 0.72}
+                      width={lineW + 6}
+                      height={fontSize * 1.44}
+                      rx={2}
+                      fill="#FFE066"
+                      opacity={0.85}
+                    />
+                  )}
+                  <text
+                    x={textX}
+                    y={lineCenter + fontSize * 0.34}
+                    textAnchor={textAnchor}
+                    fontSize={fontSize}
+                    fontWeight={fontWeight}
+                    fontStyle={fontStyle}
+                    fill={textColor}
+                    style={{
+                      fontFamily,
+                      textDecoration: strike ? 'line-through' : undefined,
+                    }}
+                  >
+                    {line}
+                  </text>
+                </g>
+              );
+            })}
+
+            {mdTable && (() => {
+              // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
+              const tX = n.x - n.w / 2 + padX;
+              const tY = contentTop + lines.length * lineHeight + tableGap;
+              const { colWs, rowH, cellFs, headers, rows, w: tW, h: tH } = mdTable;
+              const colX: number[] = [];
+              let acc = tX;
+              for (const cw of colWs) { colX.push(acc); acc += cw; }
+              const gridColor = border;
+              const allRows = [headers, ...rows];
+              return (
+                <g>
+                  <rect x={tX} y={tY} width={tW} height={rowH}
+                        fill={border} opacity={0.16} />
+                  <rect x={tX} y={tY} width={tW} height={tH}
+                        fill="none" stroke={gridColor} strokeWidth={1} opacity={0.75} />
+                  {allRows.slice(1).map((_, r) => (
+                    <line key={`h${r}`} x1={tX} y1={tY + (r + 1) * rowH}
+                          x2={tX + tW} y2={tY + (r + 1) * rowH}
+                          stroke={gridColor} strokeWidth={0.7} opacity={0.55} />
+                  ))}
+                  {colX.slice(1).map((x, c) => (
+                    <line key={`v${c}`} x1={x} y1={tY} x2={x} y2={tY + tH}
+                          stroke={gridColor} strokeWidth={0.7} opacity={0.55} />
+                  ))}
+                  {allRows.map((cells, r) =>
+                    cells.map((cell, c) => (
+                      <text key={`c${r}-${c}`}
+                            x={colX[c] + MD_TABLE_CELL_PAD_X}
+                            y={tY + r * rowH + rowH / 2 + cellFs * 0.34}
+                            fontSize={cellFs}
+                            fontWeight={r === 0 ? 700 : 400}
+                            fill={textColor}
+                            style={{ fontFamily }}>
+                        {cell}
+                      </text>
+                    )),
+                  )}
+                </g>
+              );
+            })()}
+          </g>
+        );
+      })()}
 
       {editing && (
         <foreignObject
@@ -329,7 +416,7 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
               fontWeight,
               fontStyle,
               lineHeight: `${lineHeight}px`,
-              fontFamily: 'inherit',
+              fontFamily,
               textAlign,
               overflow: 'hidden',
               padding: 0,
@@ -339,7 +426,14 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
         </foreignObject>
       )}
 
-      {hasTags && showTags && !editing && <NodeTagChips n={n} tagList={tagList} t={t} />}
+      {hasTags && showTags && !editing && (
+        <NodeTagChips
+          n={n}
+          tagList={tagList}
+          t={t}
+          onRemove={(tag) => removeNodeTag(n.id, tag)}
+        />
+      )}
 
       {/* Content indicators: leading-icon-sized icons INSIDE the node, right
           of the text (note / link / file / media). sizeNodeForText reserved

@@ -21,6 +21,7 @@ import { OutlinePanel } from '@/components/left-sidebar/OutlinePanel';
 import { SearchPanel }  from '@/components/left-sidebar/SearchPanel';
 import { TemplatePanel } from '@/components/left-sidebar/TemplatePanel';
 import { HistoryPanel }  from '@/components/left-sidebar/HistoryPanel';
+import { MapSettingsPanel } from '@/components/left-sidebar/MapSettingsPanel';
 
 import { StyleTab }   from '@/editor/inspector-panels/StyleTab';
 import { LayoutTab }  from '@/editor/inspector-panels/LayoutTab';
@@ -29,7 +30,7 @@ import { ContentTab } from '@/editor/inspector-panels/ContentTab';
 import { NoteTagTab } from '@/editor/inspector-panels/NoteTagTab';
 import { AITab }      from '@/editor/inspector-panels/AITab';
 
-export type NavTabKey       = 'outline' | 'search' | 'template' | 'history';
+export type NavTabKey       = 'outline' | 'search' | 'template' | 'history' | 'mapSettings';
 export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
 export type SidebarSection  = 'nav' | 'inspector';
 
@@ -59,6 +60,8 @@ export function UnifiedSidebar({
     { key: 'search'   as NavTabKey, label: '검색',     icon: <I.Search size={17} /> },
     { key: 'template' as NavTabKey, label: '템플릿',   icon: <I.Template size={17} /> },
     { key: 'history'  as NavTabKey, label: '히스토리', icon: <I.History size={17} /> },
+    // 맵 전체 설정 (레벨별 폰트 등) — 특정 노드가 아닌 맵 단위 설정 메뉴
+    { key: 'mapSettings' as NavTabKey, label: '맵 설정', icon: <I.Settings size={17} /> },
   ];
   const inspectorItems = [
     { key: 'style'   as InspectorTabKey, label: '스타일',   icon: <I.Palette size={17} /> },
@@ -218,20 +221,23 @@ function RailIcon({ t, title, active, expanded, onClick, children }: RailIconPro
 
 function NavContent({ t, tab, outline }: { t: ThemeTokens; tab: NavTabKey; outline: OutlineNode[] }) {
   const title = ({
-    outline:  '아웃라인',
-    search:   '검색',
-    template: '템플릿',
-    history:  '히스토리',
+    outline:     '아웃라인',
+    search:      '검색',
+    template:    '템플릿',
+    history:     '히스토리',
+    mapSettings: '맵 설정',
   } as const)[tab];
 
   return (
     <>
-      <ContentHeader t={t} title={title} subtitle="전체 맵 탐색" />
+      <ContentHeader t={t} title={title}
+        subtitle={tab === 'mapSettings' ? '맵 전체에 적용' : '전체 맵 탐색'} />
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {tab === 'outline'  && <OutlinePanel t={t} outline={outline} />}
-        {tab === 'search'   && <SearchPanel t={t} />}
-        {tab === 'template' && <TemplatePanel t={t} />}
-        {tab === 'history'  && <HistoryPanel t={t} />}
+        {tab === 'outline'     && <OutlinePanel t={t} outline={outline} />}
+        {tab === 'search'      && <SearchPanel t={t} />}
+        {tab === 'template'    && <TemplatePanel t={t} />}
+        {tab === 'history'     && <HistoryPanel t={t} />}
+        {tab === 'mapSettings' && <MapSettingsPanel t={t} />}
       </div>
     </>
   );

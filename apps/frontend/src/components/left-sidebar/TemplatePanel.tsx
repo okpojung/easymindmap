@@ -10,8 +10,9 @@
 
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { SampleMap } from '@/editor/__samples__/types';
+import type { SampleMap, LayoutType } from '@/editor/__samples__/types';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 
 const TEMPLATES = [
   { name: '제품 로드맵',   desc: 'Q1~Q4 분기별 마일스톤', colors: ['#D97706','#0284C7','#15803D','#9333EA'] },
@@ -29,6 +30,14 @@ interface UserTemplate {
   savedAt: string; // ISO
   nodeCount: number;
   map: SampleMap;
+  // 맵 전체 레이아웃·간격은 문서(map)가 아니라 editorUiStore에 있으므로
+  // 템플릿에 따로 저장해 적용 시 함께 복원한다. (없으면 — 구버전 등록분 —
+  // map.root.layoutType으로 폴백)
+  editor?: {
+    layoutType?: LayoutType;
+    spacingX?: number;
+    spacingY?: number;
+  };
 }
 
 function loadUserTemplates(): UserTemplate[] {
@@ -65,6 +74,12 @@ function countNodes(map: SampleMap): number {
 export function TemplatePanel({ t }: { t: ThemeTokens }) {
   const map = useDocumentStore((s) => s.map);
   const loadMap = useDocumentStore((s) => s.loadMap);
+  const layoutType = useEditorUiStore((s) => s.layoutType);
+  const spacingX = useEditorUiStore((s) => s.spacingX);
+  const spacingY = useEditorUiStore((s) => s.spacingY);
+  const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
+  const setSpacingX = useEditorUiStore((s) => s.setSpacingX);
+  const setSpacingY = useEditorUiStore((s) => s.setSpacingY);
 
   const [userTpls, setUserTpls] = useState<UserTemplate[]>([]);
   const [nameDraft, setNameDraft] = useState('');
@@ -87,6 +102,7 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
       savedAt: new Date().toISOString(),
       nodeCount: countNodes(map),
       map: JSON.parse(JSON.stringify(map)),
+      editor: { layoutType, spacingX, spacingY },
     };
     const next = [tpl, ...userTpls];
     if (!saveUserTemplates(next)) {
@@ -100,6 +116,13 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
 
   const apply = (tpl: UserTemplate) => {
     loadMap(tpl.map);
+    // 맵 전체 레이아웃·간격 복원 — 문서(map)에는 노드별 오버라이드만 있고
+    // 전체 레이아웃은 editorUiStore가 들고 있어서 함께 되살려야
+    // 등록 당시 모습 그대로 나온다. (구버전 템플릿은 root.layoutType 폴백)
+    const lt = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
+    if (lt) setLayoutType(lt);
+    if (tpl.editor?.spacingX) setSpacingX(tpl.editor.spacingX);
+    if (tpl.editor?.spacingY) setSpacingY(tpl.editor.spacingY);
     flash(`'${tpl.name}' 템플릿을 적용했습니다 (Ctrl+Z로 되돌리기)`);
   };
 

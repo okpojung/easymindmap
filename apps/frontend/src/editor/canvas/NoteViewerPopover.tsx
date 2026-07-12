@@ -1,15 +1,20 @@
-// NoteViewerPopover — 에디터 캔버스에서 노드의 📝 인디케이터를 클릭하면 뜨는
-// 읽기 전용 노트 뷰어 팝업. HTML 내보내기 뷰어의 상세 패널과 동일한 규칙으로
-// 문단 / 코드(언어 라벨 + 복사 버튼) / 표(줄=행, |=열, 첫 행=헤더) /
-// 체크리스트를 렌더링한다. (편집은 좌측 노트·태그 탭에서)
+// NoteViewerPopover — 노드의 노트 인디케이터(문단 T/코드 C/표 ⊞/체크 ✓)를
+// 클릭하면 뜨는 읽기 전용 노트 뷰어 팝업. 클릭한 종류의 노트만 표시한다.
+// HTML 내보내기 뷰어의 상세 패널과 동일한 규칙으로 문단(리치 포함) /
+// 코드(언어 라벨 + 복사 버튼) / 표 / 체크리스트를 렌더링한다.
+//
+// 창 조작: 제목줄 드래그 = 이동, 우하단 모서리 드래그(CSS resize) = 크기
+// 조절. (편집은 좌측 노트·태그 탭에서)
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
 
 interface Props {
   t: ThemeTokens;
-  title: string;
+  title: string; // 노드 제목
+  heading?: string; // 노트 종류 라벨 (문단 노트 / 코드 노트 / 표 노트 / 체크리스트)
+  accent?: string; // 노트 종류 색 (인디케이터 배지와 동일)
   notes: NoteBlock[];
   onClose: () => void;
 }
@@ -128,47 +133,103 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
   );
 }
 
-export function NoteViewerPopover({ t, title, notes, onClose }: Props) {
+export function NoteViewerPopover({ t, title, heading, accent, notes, onClose }: Props) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  // 제목줄 드래그로 옮긴 위치 — 옮기기 전에는 기본 위치(우측 상단 도킹)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{
+    pointerId: number; px: number; py: number; left: number; top: number;
+  } | null>(null);
+
+  const accentColor = accent ?? t.primary;
+
   return (
     <div
+      ref={rootRef}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
-      // 창 크기(가로 300 · 세로 최대 62%) — 내용이 넘치면 가로/세로
-      // 스크롤바 표시.
+      // 기본 크기(가로 300 · 세로 최대 62%) — 우하단 모서리를 드래그해
+      // 크기를 바꿀 수 있다 (CSS resize). 내용이 넘치면 스크롤.
       // [서버 연결 예정] 시스템 기본 크기는 관리자 설정(system_settings),
       // 사용자별 크기는 users.ui_preferences_json.noteViewer 로 이관 —
       // docs/02-domain/db-schema.md §향후 관리 테이블, 32-settings.md 참조.
       style={{
-        position: 'absolute', right: 14, top: 60, width: 300,
-        maxHeight: '62%', overflow: 'auto', background: t.surface,
-        border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px',
+        position: 'absolute',
+        ...(pos ? { left: pos.x, top: pos.y } : { right: 14, top: 60 }),
+        width: 300, maxWidth: '85%',
+        maxHeight: pos ? '85%' : '62%', minWidth: 220, minHeight: 120,
+        resize: 'both', overflow: 'auto',
+        background: t.surface,
+        border: `1px solid ${t.border}`, borderRadius: 10,
         boxShadow: '0 8px 24px rgba(80, 60, 20, 0.18)', zIndex: 30,
         color: t.text,
+        display: 'flex', flexDirection: 'column',
       }}
     >
-      <button
-        onClick={onClose}
-        title="닫기"
+      {/* 제목줄 — 드래그하면 창이 움직인다 */}
+      <div
+        title="드래그하여 이동"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          const root = rootRef.current;
+          if (!root) return;
+          dragRef.current = {
+            pointerId: e.pointerId,
+            px: e.clientX, py: e.clientY,
+            left: root.offsetLeft, top: root.offsetTop,
+          };
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const d = dragRef.current;
+          if (!d || d.pointerId !== e.pointerId) return;
+          setPos({
+            x: Math.max(0, d.left + e.clientX - d.px),
+            y: Math.max(0, d.top + e.clientY - d.py),
+          });
+        }}
+        onPointerUp={(e) => {
+          if (dragRef.current?.pointerId === e.pointerId) dragRef.current = null;
+        }}
         style={{
-          position: 'absolute', top: 8, right: 10, border: 'none',
-          background: 'none', fontSize: 14, cursor: 'pointer', color: t.textMuted,
+          display: 'flex', alignItems: 'center', gap: 7,
+          padding: '8px 12px', cursor: 'move', userSelect: 'none',
+          borderBottom: `1px solid ${t.divider}`,
+          background: t.surfaceAlt,
+          borderRadius: '10px 10px 0 0', flexShrink: 0,
         }}
       >
-        ✕
-      </button>
-      <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4, paddingRight: 20 }}>
-        {title}
+        <span style={{
+          width: 9, height: 9, borderRadius: 3, background: accentColor, flexShrink: 0,
+        }} />
+        <span style={{
+          fontSize: 10.5, fontWeight: 700, color: t.textSubtle,
+          letterSpacing: 0.4, flexShrink: 0,
+        }}>{heading ?? '메모'}</span>
+        <span style={{
+          fontSize: 12, fontWeight: 700, color: t.text, flex: 1, minWidth: 0,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{title}</span>
+        <button
+          onClick={onClose}
+          onPointerDown={(e) => e.stopPropagation()}
+          title="닫기"
+          style={{
+            border: 'none', background: 'none', fontSize: 14,
+            cursor: 'pointer', color: t.textMuted, flexShrink: 0,
+            padding: 0, lineHeight: 1,
+          }}
+        >
+          ✕
+        </button>
       </div>
-      <div style={{
-        fontSize: 10, fontWeight: 700, color: t.textSubtle, letterSpacing: 0.5,
-        margin: '6px 0 7px', paddingBottom: 5, borderBottom: `1px solid ${t.divider}`,
-      }}>
-        메모
+
+      <div style={{ padding: '9px 14px 12px', overflow: 'auto', flex: 1, minHeight: 0 }}>
+        {notes.map((block) => (
+          <NoteBlockView key={block.id} t={t} block={block} />
+        ))}
       </div>
-      {notes.map((block) => (
-        <NoteBlockView key={block.id} t={t} block={block} />
-      ))}
     </div>
   );
 }

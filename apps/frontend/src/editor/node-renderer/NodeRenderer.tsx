@@ -14,8 +14,8 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { resolveNodeColors } from './resolveNodeColors';
 import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
-import { nodeContentIndicators, type ContentKind } from './nodeContent';
-import { IndicatorGlyph } from './IndicatorGlyph';
+import { nodeContentIndicators, isNoteKind, type ContentKind } from './nodeContent';
+import { IndicatorGlyph, NoteTypeGlyph } from './IndicatorGlyph';
 import { levelFontFamily, levelFontSize } from './sizeNodeForText';
 import { layoutMdTable, measureTextApprox, MD_TABLE_CELL_PAD_X } from './mdTable';
 
@@ -462,16 +462,19 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
                   // 인디케이터를 눌러도 노드 자체는 항상 선택된다 —
                   // 노드 오른쪽(아이콘 영역) 클릭이 무반응이던 문제 방지.
                   onSelect();
-                  // 📝 노트: 읽기 전용 노트 뷰어 팝업을 연다 (Canvas의
-                  // NoteViewerPopover — 문단/코드/표/체크 렌더링).
-                  if (ic.kind === 'note') { onOpenPopover?.(n.id, 'note'); return; }
+                  // 노트(종류별): 그 종류의 노트만 담은 읽기 전용 뷰어
+                  // 팝업을 연다 (Canvas의 NoteViewerPopover).
+                  if (isNoteKind(ic.kind)) { onOpenPopover?.(n.id, ic.kind); return; }
                   if (ic.count > 1) { onOpenPopover?.(n.id, ic.kind); return; }
                   if (single?.url) window.open(single.url, '_blank', 'noopener');
                 }}
                 onDoubleClick={(e) => e.stopPropagation()}
               >
                 <title>{ic.title}</title>
-                {ic.kind === 'link' || ic.kind === 'file' ? (
+                {isNoteKind(ic.kind) ? (
+                  // 노트 종류별 배지 글리프 — 문단 T / 코드 C / 표 ⊞ / 체크 ✓
+                  <NoteTypeGlyph kind={ic.kind} size={icSize + 2} />
+                ) : ic.kind === 'link' || ic.kind === 'file' ? (
                   // 이모지 대신 진한 SVG 글리프(지구본+체인 / 클립) —
                   // OS에 따라 흐리게 렌더링되는 문제 해소
                   <IndicatorGlyph kind={ic.kind} size={icSize + 2} />

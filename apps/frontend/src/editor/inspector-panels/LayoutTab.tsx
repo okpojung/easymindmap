@@ -126,6 +126,11 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
 
   const layoutType = useEditorUiStore((s) => s.layoutType);
   const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
+  const spacingX = useEditorUiStore((s) => s.spacingX);
+  const spacingY = useEditorUiStore((s) => s.spacingY);
+  const setSpacingX = useEditorUiStore((s) => s.setSpacingX);
+  const setSpacingY = useEditorUiStore((s) => s.setSpacingY);
+  const resetSpacing = useEditorUiStore((s) => s.resetSpacing);
 
   const mapIsKanban = normalizeLayoutType(layoutType) === ('kanban' as LayoutType);
 
@@ -288,37 +293,48 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="간격 · 정렬">
+      <InspectorSection
+        t={t}
+        title="간격 · 정렬"
+        action={
+          (spacingX !== 1 || spacingY !== 1) ? (
+            <button
+              onClick={resetSpacing}
+              title="간격을 기본값(100%)으로 되돌립니다"
+              style={{
+                padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                background: t.surfaceAlt, color: t.textMuted,
+                border: `1px solid ${t.border}`, cursor: 'pointer',
+              }}
+            >
+              초기화
+            </button>
+          ) : undefined
+        }
+      >
+        <SpacingSlider
+          t={t}
+          label="가로 간격"
+          value={spacingX}
+          onChange={setSpacingX}
+        />
+        <SpacingSlider
+          t={t}
+          label="세로 간격"
+          value={spacingY}
+          onChange={setSpacingY}
+        />
         <div
           style={{
             fontSize: 10.5,
             color: t.textSubtle,
-            marginBottom: 8,
+            marginTop: 6,
             lineHeight: 1.5,
           }}
         >
-          노드 간격 / 레벨 간격은 향후 맵 설정에서 조정합니다.
+          맵 전체의 노드 사이 거리를 조정합니다 (노드 크기는 유지). 모든
+          레이아웃과 서브트리 오버라이드에 함께 적용됩니다.
         </div>
-
-        <button
-          style={{
-            width: '100%',
-            padding: '7px 10px',
-            borderRadius: 6,
-            background: t.surfaceAlt,
-            border: `1px solid ${t.border}`,
-            color: t.text,
-            cursor: 'pointer',
-            fontSize: 12,
-            fontWeight: 500,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-          }}
-        >
-          <I.Settings size={13} /> 맵 설정 열기
-        </button>
       </InspectorSection>
 
       <InspectorSection t={t} title="연결선 스타일">
@@ -360,6 +376,42 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
           </div>
         </div>
       </InspectorSection>
+    </div>
+  );
+}
+
+// 간격 슬라이더 — 70%~200%, 기본 100%. 값은 레이아웃 배율(0.7~2.0)로 저장.
+function SpacingSlider({
+  t, label, value, onChange,
+}: {
+  t: ThemeTokens;
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const pct = Math.round(value * 100);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+      <span style={{ fontSize: 11, color: t.text, width: 54, flexShrink: 0 }}>{label}</span>
+      <input
+        type="range"
+        min={90}
+        max={200}
+        step={5}
+        value={pct}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+        style={{ flex: 1, accentColor: t.primary, cursor: 'pointer' }}
+      />
+      <span
+        style={{
+          fontSize: 10.5, fontVariantNumeric: 'tabular-nums',
+          color: pct === 100 ? t.textMuted : t.primary,
+          fontWeight: pct === 100 ? 500 : 700,
+          width: 36, textAlign: 'right', flexShrink: 0,
+        }}
+      >
+        {pct}%
+      </span>
     </div>
   );
 }

@@ -956,3 +956,9 @@ d = `M ${px} ${py} V ${ty} H ${tx}`;
 - 데모: `apps/frontend/EasyMindMap Editor.html` (브라우저 직접 열람 가능)
 - 컴포넌트 구조: `apps/frontend/src/editor/canvas/`, `apps/frontend/src/editor/node-renderer/`, `apps/frontend/src/editor/edge-renderer/`, `apps/frontend/src/components/`
 - 적용 가이드: 패치 zip의 `README_적용방법.md`
+
+#### 24.5 라벨 폭 측정 (2026-07 수정)
+
+라벨 폭은 `글자 수 × 6.2px` 고정 계산이 아니라 **문자 종류별 근사 폭**
+(`measureTextApprox` — 한글·CJK ≈ 폰트크기 1.0배, 숫자 0.58, 라틴 0.55,
+공백 0.34)으로 잰다. 한글 태그에서 라벨이 ✕ 핸들과 겹치던 문제 수정.

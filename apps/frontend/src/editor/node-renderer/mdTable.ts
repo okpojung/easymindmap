@@ -63,15 +63,24 @@ function isSeparatorRow(line: string): boolean {
   return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c));
 }
 
+// 두 문법을 모두 지원한다 (노트 표 블록과 동일한 사용감):
+//   ① Markdown 표 — 헤더 행 다음에 구분선 행(|---|---|)이 있는 형태
+//   ② 단순 파이프 표 — 구분선 없이 파이프 행이 2줄 이상 연속 (줄=행,
+//      |=열, 첫 행=헤더). 헤더가 2칸 이상이어야 표로 인정해
+//      본문 속 파이프 한 줄이 표로 오인되는 것을 막는다.
 export function parseMdTable(text: string): MdTableParse | null {
   const lines = String(text || '').split('\n');
   for (let i = 0; i < lines.length - 1; i++) {
     if (!isPipeRow(lines[i]) || isSeparatorRow(lines[i])) continue;
-    if (!isSeparatorRow(lines[i + 1])) continue;
+    if (!isPipeRow(lines[i + 1])) continue; // 다음 줄도 파이프 행이어야 표
 
     const headers = splitCells(lines[i]);
+    if (headers.length < 2) continue;
+
+    let j = i + 1;
+    if (isSeparatorRow(lines[j])) j++; // MD 구분선 행은 건너뛴다 (선택 사항)
+
     const rows: string[][] = [];
-    let j = i + 2;
     while (j < lines.length && isPipeRow(lines[j]) && !isSeparatorRow(lines[j])) {
       const cells = splitCells(lines[j]);
       // 열 수를 헤더에 맞춘다 (모자라면 빈 칸, 넘치면 자름)

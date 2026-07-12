@@ -79,6 +79,12 @@ interface DocumentState {
   // level: 0=Root, 1~3=Level1~3, 4=Level4+ / patch에 size·family 부분 갱신
   updateLevelFont: (level: number, patch: LevelFontSetting) => void;
   resetLevelFonts: () => void;
+  // 레벨별 레이아웃 — 해당 레벨(1~3, 4=Level4+)의 모든 노드에 서브트리
+  // 레이아웃을 일괄 적용 (null = 해제하고 상위 레이아웃 따름)
+  setLevelLayout: (level: number, layoutType: LayoutType | null) => void;
+
+  // 현재 맵 전체 교체 (템플릿 적용 등 — undo 히스토리에 기록됨)
+  loadMap: (map: SampleMap) => void;
 
   // Style / icon
   updateNodeStyle: (nodeId: string | null, style: Partial<NodeStyle>) => void;
@@ -756,8 +762,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
           map: {
             ...map,
             root: { ...map.root, layoutType },
-            // Whole-map layout change resets every per-node override.
+            // Whole-map layout change resets every per-node override —
+            // 맵 설정의 레벨별 레이아웃 선택도 함께 초기화한다.
             branches: clearLayoutTypeRecursive(map.branches) as SampleBranch[],
+            settings: map.settings
+              ? { ...map.settings, levelLayouts: undefined }
+              : map.settings,
           },
         };
       }
@@ -796,6 +806,44 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         settings: { ...state.map.settings, levelFonts: undefined },
       },
     }));
+  },
+
+  setLevelLayout: (level, layoutType) => {
+    if (level < 1 || level > 4) return; // 0=Root는 맵 전체 레이아웃(레이아웃 탭)
+    set((state) => {
+      // 해당 레벨(4는 depth 4 이상 전부)의 모든 노드에 일괄 적용/해제.
+      // 개별 노드의 기존 서브트리 오버라이드는 이 레벨에 한해 덮어쓴다.
+      const applyAtDepth = (nodes: MindNode[], depth: number): MindNode[] =>
+        nodes.map((n) => {
+          const match = level === 4 ? depth >= 4 : depth === level;
+          const next: MindNode = {
+            ...n,
+            children: applyAtDepth(n.children ?? [], depth + 1),
+          };
+          if (match) {
+            next.layoutType = layoutType ?? undefined;
+            next.edgeType = layoutType ? resolveEdgeType(layoutType) : undefined;
+          }
+          return next;
+        });
+
+      const prev = state.map.settings?.levelLayouts ?? [];
+      const nextLayouts: (LayoutType | null | undefined)[] = [...prev];
+      while (nextLayouts.length < 5) nextLayouts.push(undefined);
+      nextLayouts[level] = layoutType ?? undefined;
+
+      return {
+        map: {
+          ...state.map,
+          branches: applyAtDepth(state.map.branches, 1) as SampleBranch[],
+          settings: { ...state.map.settings, levelLayouts: nextLayouts },
+        },
+      };
+    });
+  },
+
+  loadMap: (map) => {
+    set({ map: cloneMap(map) });
   },
 
   updateNodeStyle: (nodeId, style) => {

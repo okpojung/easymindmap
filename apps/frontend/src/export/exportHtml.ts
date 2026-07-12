@@ -229,10 +229,15 @@ const VIEWER_JS = String.raw`
       for (i2 = 0; i2 < c.length; i2++) { if (!/^:?-{2,}:?$/.test(c[i2])) return false; }
       return true;
     }
+    // MD 구분선(|---|)은 선택 사항 — 구분선 없이 파이프 행 2줄 이상이면
+    // 표로 취급 (줄=행, |=열, 첫 행=헤더. 에디터 mdTable.ts와 동일 규칙)
     for (var i = 0; i < lines.length - 1; i++) {
       if (!isPipe(lines[i]) || isSep(lines[i])) continue;
-      if (!isSep(lines[i + 1])) continue;
-      var headers = cells(lines[i]), rows = [], j = i + 2;
+      if (!isPipe(lines[i + 1])) continue;
+      var headers = cells(lines[i]);
+      if (headers.length < 2) continue;
+      var rows = [], j = i + 1;
+      if (isSep(lines[j])) j++;
       while (j < lines.length && isPipe(lines[j]) && !isSep(lines[j])) {
         var c2 = cells(lines[j]);
         while (c2.length < headers.length) c2.push('');

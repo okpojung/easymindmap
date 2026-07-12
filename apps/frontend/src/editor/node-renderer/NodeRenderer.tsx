@@ -365,6 +365,9 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
+                  // 인디케이터를 눌러도 노드 자체는 항상 선택된다 —
+                  // 노드 오른쪽(아이콘 영역) 클릭이 무반응이던 문제 방지.
+                  onSelect();
                   if (ic.kind === 'note') return;
                   if (ic.count > 1) { onOpenPopover?.(n.id, ic.kind); return; }
                   if (single?.url) window.open(single.url, '_blank', 'noopener');

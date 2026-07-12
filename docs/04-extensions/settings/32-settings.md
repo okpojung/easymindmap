@@ -113,6 +113,20 @@ type TranslationPolicy =
   | null;                                                 // 사용자 기본 설정 따름
 ```
 
+#### 4.3.1 시스템 관리자 설정 (Supabase 연동 시)
+
+시스템 관리자 전용 설정 메뉴에서 아래 카탈로그를 CRUD 한다
+(db-schema.md §향후 관리 테이블):
+
+| 항목 | 테이블 | 관리 내용 |
+| --- | --- | --- |
+| 노트 코드 언어 | `code_languages` | 코드 블록 언어(Shell, PHP, Node …) 추가·수정·비활성화 |
+| 노드 아이콘 | `icon_catalog` | 아이콘 분류·그림(glyph)·명칭 추가·수정·비활성화 |
+
+MVP 프론트엔드는 위 목록을 각각 `NoteTagTab.tsx`(CODE_LANGUAGES),
+`IconTab.tsx`(CATEGORIES)에 하드코딩하고 있으며, 서버 연동 시 이 테이블로
+이관한다.
+
 #### 4.4 설정 화면 구조
 
 ```text

@@ -725,6 +725,40 @@ CREATE INDEX idx_sync_log_node_id
 | **현재 대안** | 사용자가 개별 노드 색상/폰트/도형을 직접 설정. 루트→자식 스타일 상속 규칙으로 일관성 유지 |
 | **향후 확장** | V2 이후 `map_themes` 테이블 추가 검토 가능: `{id, name, stylePresets: JSONB, isPublic, ownerId}` |
 
+#### 향후 관리 테이블 (Supabase 연동 시 — 시스템 관리자 설정 메뉴에서 CRUD)
+
+현재 프론트엔드에 하드코딩된 두 목록은 서버 연동 시 아래 테이블로 이관하고,
+시스템 관리자 설정 메뉴(32-settings.md)에서 추가·수정·삭제한다.
+
+```sql
+-- 노트 코드 블록의 언어 목록
+-- (현재: NoteTagTab.tsx의 CODE_LANGUAGES 상수)
+CREATE TABLE code_languages (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        VARCHAR(50) NOT NULL UNIQUE,   -- 표시명 (Shell, PHP, Node …)
+  sort_order  INT NOT NULL DEFAULT 0,
+  is_active   BOOLEAN NOT NULL DEFAULT TRUE, -- 삭제 대신 비활성화 (기존 노트 보존)
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 노드 아이콘 카탈로그
+-- (현재: IconTab.tsx의 CATEGORIES 상수 — 분류별 이모지 목록)
+CREATE TABLE icon_catalog (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  category    VARCHAR(50) NOT NULL,          -- 아이콘 분류 (상태, 사물, 기호 …)
+  glyph       VARCHAR(50) NOT NULL,          -- 아이콘 그림 (이모지 또는 이미지 URL)
+  name        VARCHAR(100) NOT NULL,         -- 아이콘 명칭 (검색·툴팁용)
+  sort_order  INT NOT NULL DEFAULT 0,
+  is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+* `nodes.icon`은 glyph 값을 그대로 저장(비정규화)하므로, 카탈로그 항목을
+  삭제해도 기존 맵의 아이콘 표시는 깨지지 않는다 (is_active로만 관리).
+* 노트 블록의 `lang`도 표시명 문자열을 저장 — 언어 비활성화 시 기존 노트는
+  유지되고 선택 목록에서만 사라진다.
+
 ---
 
 ---

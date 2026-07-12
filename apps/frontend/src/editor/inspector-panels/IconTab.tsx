@@ -6,6 +6,10 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection } from './InspectorSection';
 
+// [서버 연결 예정] Supabase 연동 시 이 하드코딩 카탈로그는 icon_catalog
+// 테이블(분류·glyph·명칭)로 이관되어 시스템 관리자 설정 메뉴에서
+// 추가·수정·삭제한다 (docs/02-domain/db-schema.md §향후 관리 테이블,
+// docs/04-extensions/settings/32-settings.md §4.3.1 참조).
 const CATEGORIES: { label: string; icons: string[] }[] = [
   { label: '깃발 · 표시', icons: ['🚩', '⛳', '📌', '📍', '🏁', '🔖', '🏷️'] },
   { label: '별 · 평점', icons: ['⭐', '🌟', '✨', '💫', '🏆', '🥇'] },

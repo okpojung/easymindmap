@@ -9,6 +9,16 @@ import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection } from './InspectorSection';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 
+// 코드 블록 언어 목록.
+// [서버 연결 예정] Supabase 연동 시 이 하드코딩 목록은 code_languages
+// 테이블로 이관되어 시스템 관리자 설정 메뉴에서 추가·수정·삭제한다
+// (docs/02-domain/db-schema.md §향후 관리 테이블, 32-settings.md 참조).
+const CODE_LANGUAGES = [
+  'Shell', 'JavaScript', 'TypeScript', 'Node', 'Python', 'PHP', 'Java',
+  'C', 'C++', 'C#', 'Go', 'Rust', 'SQL', 'HTML', 'CSS', 'JSON', 'YAML',
+  'Markdown', '기타',
+];
+
 const BLOCK_TYPES: { type: NoteBlockType; label: string }[] = [
   { type: 'paragraph', label: '문단' },
   { type: 'code_block', label: '코드' },
@@ -86,23 +96,34 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         title="노드 노트"
         action={
           <div style={{ display: 'flex', gap: 3 }}>
-            {BLOCK_TYPES.map((b) => (
-              <button key={b.type}
-                onClick={() => selectedId && addNoteBlock(selectedId, b.type)}
-                title={`${b.label} 블록 추가`}
-                style={{
-                  padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-                  background: t.primarySoft, color: t.primary,
-                  border: `1px solid ${t.primaryBorder}40`, cursor: 'pointer',
-                }}>+{b.label}</button>
-            ))}
+            {BLOCK_TYPES.map((b) => {
+              // 문단/코드/표는 노드당 1개만 — 이미 있으면 추가 비활성.
+              // 체크리스트만 여러 개 허용.
+              const exists =
+                b.type !== 'checklist' && notes.some((n) => n.type === b.type);
+              return (
+                <button key={b.type}
+                  onClick={() => !exists && selectedId && addNoteBlock(selectedId, b.type)}
+                  disabled={exists}
+                  title={exists ? `${b.label} 블록은 노드당 1개만 추가할 수 있습니다` : `${b.label} 블록 추가`}
+                  style={{
+                    padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                    background: exists ? t.surfaceAlt : t.primarySoft,
+                    color: exists ? t.textSubtle : t.primary,
+                    border: `1px solid ${exists ? t.border : `${t.primaryBorder}40`}`,
+                    cursor: exists ? 'default' : 'pointer',
+                    opacity: exists ? 0.6 : 1,
+                  }}>+{b.label}</button>
+              );
+            })}
           </div>
         }
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {notes.length === 0 && (
             <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>
-              위 버튼으로 노트 블록을 추가하세요 (문단 / 코드 / 표 / 체크리스트).
+              위 버튼으로 노트 블록을 추가하세요. 문단·코드·표는 노드당
+              1개, 체크리스트는 여러 개 추가할 수 있습니다.
             </div>
           )}
           {notes.map((block) => (
@@ -163,17 +184,21 @@ function NoteBlockEditor({
         <span style={{ fontSize: 10 }}>{meta.icon}</span>
         <span>{meta.label}</span>
         {block.type === 'code_block' && (
-          <input
+          <select
             value={block.lang ?? ''}
             onChange={(e) => onChange({ lang: e.target.value })}
-            placeholder="언어 (Shell, PHP…)"
             style={{
-              width: 90, fontSize: 9.5, padding: '1px 5px', borderRadius: 3,
+              width: 104, fontSize: 9.5, padding: '1px 3px', borderRadius: 3,
               border: `1px solid ${t.border}`, background: t.surface,
               color: t.text, outline: 'none', fontWeight: 500,
-              textTransform: 'none', letterSpacing: 0,
+              textTransform: 'none', letterSpacing: 0, cursor: 'pointer',
             }}
-          />
+          >
+            <option value="">언어 선택</option>
+            {CODE_LANGUAGES.map((lang) => (
+              <option key={lang} value={lang}>{lang}</option>
+            ))}
+          </select>
         )}
         <button onClick={onRemove} title="블록 삭제" style={{
           marginLeft: 'auto', background: 'transparent', border: 'none',
@@ -210,7 +235,7 @@ function NoteBlockEditor({
           <textarea
             value={block.text}
             onChange={(e) => onChange({ text: e.target.value })}
-            rows={block.type === 'code_block' ? 4 : block.type === 'table' ? 3 : 2}
+            rows={block.type === 'code_block' ? 9 : block.type === 'table' ? 6 : 5}
             placeholder={
               block.type === 'code_block'
                 ? '코드를 입력하세요'

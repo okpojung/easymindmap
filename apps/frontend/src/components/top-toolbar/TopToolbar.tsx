@@ -25,6 +25,8 @@ export function TopToolbar({
 }: Props) {
   const map = useDocumentStore((s) => s.map);
   const layoutType = useEditorUiStore((s) => s.layoutType);
+  const spacingX = useEditorUiStore((s) => s.spacingX);
+  const spacingY = useEditorUiStore((s) => s.spacingY);
   const undo = useDocumentStore((s) => s.undo);
   const redo = useDocumentStore((s) => s.redo);
   const canUndo = useDocumentStore((s) => s.past.length > 0);
@@ -186,7 +188,7 @@ export function TopToolbar({
       <IconBtn
         t={t}
         title="내보내기 (HTML 단독 파일)"
-        onClick={() => { void downloadMapAsHtml(map, layoutType); }}
+        onClick={() => { void downloadMapAsHtml(map, layoutType, { x: spacingX, y: spacingY }); }}
       >
         <I.Download size={16} />
       </IconBtn>

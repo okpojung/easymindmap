@@ -10,6 +10,7 @@
 //   tree-down, hierarchy-right, process-tree-right.
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
+import { contentIndicatorCount } from '@/editor/node-renderer/nodeContent';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { normalizeLayoutType } from '../normalizeLayoutType';
@@ -54,22 +55,55 @@ export function applyLayoutOverrides(
 ): void {
   const rootEffective = normalizeLayoutType(mapLayoutType);
 
+  // Top-level override anchors, collected so the GLOBAL branch separation can
+  // run once at the end — after any nested overrides inside them have been
+  // applied and their final size is known.
+  const topLevel: { node: MindNode; parentEffective: LayoutType }[] = [];
+
   for (const branch of branches) {
-    walk(branch, rootEffective, out);
+    walk(branch, rootEffective, out, null, topLevel);
+  }
+
+  for (const top of topLevel) {
+    const anchor = out.find((laid) => laid.id === top.node.id);
+    if (!anchor) continue;
+    const subtreeIds = new Set<string>([top.node.id]);
+    collectDescendantIds(top.node, subtreeIds);
+    clearRootCollision(out, subtreeIds, anchor);
+    separateBranchGroups(out, subtreeIds, anchor, top.parentEffective);
   }
 }
 
-function walk(node: MindNode, parentEffective: LayoutType, out: LaidOutNode[]): void {
+// `scope` = the enclosing top-level override's subtree ids. A NESTED override
+// (one inside another override) must only reflow siblings WITHIN that scope —
+// pushing the whole map from deep inside a subtree scatters the outer
+// override's own arrangement (and every other branch with it).
+function walk(
+  node: MindNode,
+  parentEffective: LayoutType,
+  out: LaidOutNode[],
+  scope: Set<string> | null,
+  topLevel: { node: MindNode; parentEffective: LayoutType }[],
+): void {
   const effective = node.layoutType
     ? normalizeLayoutType(node.layoutType)
     : parentEffective;
 
+  let childScope = scope;
+
   if (effective !== parentEffective && SUBTREE_SUPPORTED.has(effective)) {
-    relayoutSubtree(node, effective, parentEffective, out);
+    relayoutSubtree(node, effective, parentEffective, out, scope);
+
+    if (!scope) {
+      // top-level override: nested overrides below it reflow within it
+      topLevel.push({ node, parentEffective });
+      childScope = new Set<string>([node.id]);
+      collectDescendantIds(node, childScope);
+    }
   }
 
   for (const child of node.children ?? []) {
-    walk(child, effective, out);
+    walk(child, effective, out, childScope, topLevel);
   }
 }
 
@@ -115,13 +149,17 @@ function pushSiblingsAway(
   before: BBox,
   after: BBox,
   parentEffective: LayoutType,
+  scope: Set<string> | null,
 ): void {
+  // Nested override: only nodes inside the enclosing override move.
+  const movable = (n: LaidOutNode) => (scope ? scope.has(n.id) : true);
+
   if (HORIZONTAL_SIBLING_PARENTS.has(parentEffective)) {
     const extra = after.right - before.right;
     if (extra <= 0.5) return;
 
     for (const n of out) {
-      if (subtreeIds.has(n.id)) continue;
+      if (subtreeIds.has(n.id) || !movable(n)) continue;
       if (n.x > anchor.x + 0.5) n.x += extra;
     }
   } else if (VERTICAL_SIBLING_PARENTS.has(parentEffective)) {
@@ -129,7 +167,7 @@ function pushSiblingsAway(
     if (extra <= 0.5) return;
 
     for (const n of out) {
-      if (subtreeIds.has(n.id)) continue;
+      if (subtreeIds.has(n.id) || !movable(n)) continue;
       if (n.y > anchor.y + 0.5) n.y += extra;
     }
   }
@@ -318,6 +356,7 @@ function relayoutSubtree(
   effective: LayoutType,
   parentEffective: LayoutType,
   out: LaidOutNode[],
+  scope: Set<string> | null,
 ): void {
   const anchor = out.find((laid) => laid.id === node.id);
   if (!anchor) return;
@@ -394,16 +433,13 @@ function relayoutSubtree(
   // Re-flow siblings so the resized subtree doesn't overlap them.
   const after = bboxOf(out, subtreeIds);
   if (before && after) {
-    pushSiblingsAway(out, subtreeIds, anchor, before, after, parentEffective);
+    pushSiblingsAway(out, subtreeIds, anchor, before, after, parentEffective, scope);
   }
 
-  // The root is immovable — if the new children landed on it, move them clear
-  // first so the branch separation below works from their final position.
-  clearRootCollision(out, subtreeIds, anchor);
-
-  // Safety net: move whole depth-1 branches that still collide with the
-  // re-laid-out subtree (the only reflow that is safe for radial base maps).
-  separateBranchGroups(out, subtreeIds, anchor, parentEffective);
+  // Global collision passes run only for TOP-LEVEL overrides — and they run
+  // in applyLayoutOverrides() AFTER nested overrides have finished, so the
+  // subtree's FINAL bounding box is what gets separated from other branches.
+  // (A nested override reflows purely inside its enclosing scope above.)
 }
 
 // --- radial (curved edges, subtree vertically centered) ---------------------
@@ -427,6 +463,7 @@ interface MeasuredCentered {
 function measureCentered(node: MindNode, depth: number): MeasuredCentered {
   const size = sizeNodeForText(node.text, depth, {
     hasIcon: !!node.icon,
+    indicators: contentIndicatorCount(node),
     minW: depth <= 1 ? 150 : 130,
     maxW: depth <= 1 ? 240 : 320,
   });
@@ -584,6 +621,7 @@ function arrangeOutlineNode(
 
   const size = sizeNodeForText(node.text, depth, {
     hasIcon: !!node.icon,
+    indicators: contentIndicatorCount(node),
     minW: 150,
     maxW: 300,
   });
@@ -637,6 +675,7 @@ interface MeasuredDown {
 function measureDown(node: MindNode, depth: number): MeasuredDown {
   const size = sizeNodeForText(node.text, depth, {
     hasIcon: !!node.icon,
+    indicators: contentIndicatorCount(node),
     minW: 120,
     maxW: 220,
   });

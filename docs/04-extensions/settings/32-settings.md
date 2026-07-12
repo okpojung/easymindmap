@@ -103,6 +103,22 @@ interface UiPreferences {
 }
 ```
 
+##### 4.2.1 노트 뷰어 창 크기 (사용자별)
+
+`ui_preferences_json`에 노트 뷰어 팝업 창 크기를 사용자별로 저장한다:
+
+```json
+{
+  "noteViewer": { "width": 300, "maxHeightPct": 62 }
+}
+```
+
+* 미설정 시 시스템 기본값(`system_settings['note_viewer.size']`,
+  관리자 메뉴에서 관리)을 따르고, 그것도 없으면 프론트 하드코딩
+  (300 × 62%)을 사용한다.
+* 에디터의 NoteViewerPopover와 HTML 내보내기 뷰어의 노트 패널 모두
+  이 값을 따른다 (내보내기 시점의 값을 파일에 포함).
+
 #### 4.3 맵별 번역 정책 오버라이드
 
 ```typescript
@@ -122,6 +138,7 @@ type TranslationPolicy =
 | --- | --- | --- |
 | 노트 코드 언어 | `code_languages` | 코드 블록 언어(Shell, PHP, Node …) 추가·수정·비활성화 |
 | 노드 아이콘 | `icon_catalog` | 아이콘 분류·그림(glyph)·명칭 추가·수정·비활성화 |
+| 노트 뷰어 기본 크기 | `system_settings` | 노트 뷰어 팝업 창의 시스템 기본 가로/세로 크기 |
 
 MVP 프론트엔드는 위 목록을 각각 `NoteTagTab.tsx`(CODE_LANGUAGES),
 `IconTab.tsx`(CATEGORIES)에 하드코딩하고 있으며, 서버 연동 시 이 테이블로

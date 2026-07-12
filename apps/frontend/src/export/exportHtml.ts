@@ -384,7 +384,10 @@ const VIEWER_JS = String.raw`
     var childLeft = c._cx - c._w / 2, childRight = c._cx + c._w / 2;
     var childTop = c._cy - c._h / 2;
     var pLeft = p._cx - p._w / 2, pRight = p._cx + p._w / 2;
-    var pBottom = p._cy + p._h / 2;
+    // 태그 칩은 박스 바깥 아래(+4~+19)에 그려지므로, 아래로 내려가는
+    // 직각 연결선은 태그 밑에서 시작해 태그를 관통하지 않는다.
+    var pTagPad = (p.tags && p.tags.length) ? TAG_H + 7 : 0;
+    var pBottom = p._cy + p._h / 2 + pTagPad;
     var mx, my;
 
     if (eff === 'tree-right') {
@@ -532,6 +535,10 @@ const VIEWER_JS = String.raw`
       for (var ti = 0; ti < node.tags.length; ti++) {
         var label = node.tags[ti];
         var bw2 = measureText(label, 9.5) + 14;
+        // 배경을 불투명하게(흰 바탕 + 파스텔 칩) — 반투명이면 뒤로 지나가는
+        // 연결선이 비쳐 태그와 겹쳐 보인다.
+        el('rect', { x: bx2, y: node._cy + node._h / 2 + 4, width: bw2, height: TAG_H,
+          rx: 3, fill: '#FFFDF8' }, g);
         el('rect', { x: bx2, y: node._cy + node._h / 2 + 4, width: bw2, height: TAG_H,
           rx: 3, fill: color + '1A', stroke: color + '55', 'stroke-width': 0.8 }, g);
         var bt = el('text', { x: bx2 + 7, y: node._cy + node._h / 2 + 4 + TAG_H - 4,
@@ -552,21 +559,34 @@ const VIEWER_JS = String.raw`
       }
     }
     var markers = [];
+    function urlList(arr, f) {
+      var out = [];
+      for (var i2 = 0; i2 < arr.length; i2++) out.push(f(arr[i2]));
+      return out.join('\n');
+    }
     if (node.links && node.links.length) {
-      markers.push({ kind: 'link', act: (node.links.length === 1
+      markers.push({ kind: 'link',
+        // 호버 시 링크된 URL 표시 (에디터와 동일)
+        tip: urlList(node.links, function (l) { return l.label ? l.label + ' — ' + l.url : l.url; }),
+        act: (node.links.length === 1
         ? function () { window.open(node.links[0].url, '_blank'); }
         : function () { showDetail(node, 'links'); }) });
     }
     if (node.notes && node.notes.length) {
-      markers.push({ kind: 'note', act: function () { showDetail(node, 'notes'); } });
+      markers.push({ kind: 'note', tip: '메모 보기',
+        act: function () { showDetail(node, 'notes'); } });
     }
     if (files.length) {
-      markers.push({ kind: 'file', act: (files.length === 1 && files[0].href
+      markers.push({ kind: 'file',
+        tip: urlList(files, function (a) { return a.name; }),
+        act: (files.length === 1 && files[0].href
         ? function () { window.open(files[0].href, '_blank'); }
         : function () { showDetail(node, 'files'); }) });
     }
     if (media.length) {
-      markers.push({ kind: 'media', act: (media.length === 1 && media[0].href
+      markers.push({ kind: 'media',
+        tip: urlList(media, function (a) { return a.name; }),
+        act: (media.length === 1 && media[0].href
         ? function () { window.open(media[0].href, '_blank'); }
         : function () { showDetail(node, 'media'); }) });
     }
@@ -577,6 +597,10 @@ const VIEWER_JS = String.raw`
       var mx0 = x0 + node._w - PAD_X - markers.length * (mfs + 3) + 3;
       for (var mi = 0; mi < markers.length; mi++) {
         var mk = drawMarkerGlyph(g, markers[mi].kind, mx0 + mfs / 2, node._cy, mfs + 2);
+        if (markers[mi].tip) {
+          var tt = el('title', {}, mk); // SVG 네이티브 툴팁 — 호버 시 URL/이름 표시
+          tt.textContent = markers[mi].tip;
+        }
         (function (act) {
           mk.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
           mk.addEventListener('click', function (ev) { ev.stopPropagation(); act(); });
@@ -858,6 +882,10 @@ const VIEWER_CSS = `
     background: radial-gradient(circle, #E4D9C377 1px, transparent 1px) 0 0 / 24px 24px;
   }
   .mm-toggle:hover circle { filter: brightness(0.93); }
+  /* 노트 뷰어 창 크기.
+     [서버 연결 예정] 시스템 기본 크기는 관리자 설정(system_settings),
+     사용자별 크기는 users.ui_preferences_json.noteViewer 로 이관 —
+     docs/02-domain/db-schema.md §향후 관리 테이블, 32-settings.md 참조. */
   #mm-note {
     display: none; position: fixed; right: 14px; top: 60px; width: 280px;
     max-height: 60vh; overflow: auto; background: #FFFDF8;
@@ -869,7 +897,12 @@ const VIEWER_CSS = `
     position: absolute; top: 8px; right: 10px; border: none; background: none;
     font-size: 14px; cursor: pointer; color: #8B7D68;
   }
-  .mm-note-block { margin-bottom: 6px; line-height: 1.5; white-space: pre-wrap; }
+  /* 문단·코드 글자 크기 10 통일. 문단은 입력한 줄 그대로(pre) 표시하고
+     창 폭보다 길면 블록에 가로 스크롤바가 나타난다. */
+  .mm-note-block {
+    margin-bottom: 6px; line-height: 1.5; font-size: 10px;
+    white-space: pre; overflow-x: auto;
+  }
   .mm-note-block a { color: #1D4ED8; text-decoration: none; word-break: break-all; }
   .mm-note-block a:hover { text-decoration: underline; }
   .mm-sec {
@@ -898,9 +931,9 @@ const VIEWER_CSS = `
   }
   .mm-copy:hover { background: #F3ECDD; }
   .mm-code pre {
-    margin: 0; padding: 7px 9px; font-size: 11px; line-height: 1.5;
+    margin: 0; padding: 7px 9px; font-size: 10px; line-height: 1.5;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    white-space: pre-wrap; word-break: break-all; background: #FBF7EE;
+    white-space: pre; overflow-x: auto; background: #FBF7EE;
   }
   .mm-chip {
     font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px;

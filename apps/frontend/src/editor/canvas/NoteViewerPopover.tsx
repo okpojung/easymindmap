@@ -96,16 +96,21 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
           <CopyButton t={t} text={block.text} />
         </div>
         <pre style={{
-          margin: 0, padding: '7px 9px', fontSize: 11, lineHeight: 1.5,
+          margin: 0, padding: '7px 9px', fontSize: 10, lineHeight: 1.5,
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: t.surface,
+          whiteSpace: 'pre', overflowX: 'auto', background: t.surface,
         }}>{block.text}</pre>
       </div>
     );
   }
 
+  // 문단·체크: 글자 크기 10, 입력한 줄 그대로(pre) 표시 — 창 폭보다 긴
+  // 줄은 블록 가로 스크롤바로 본다.
   return (
-    <div style={{ marginBottom: 6, lineHeight: 1.5, whiteSpace: 'pre-wrap', fontSize: 12 }}>
+    <div style={{
+      marginBottom: 6, lineHeight: 1.5, whiteSpace: 'pre', fontSize: 10,
+      overflowX: 'auto',
+    }}>
       {type === 'checklist' ? (block.checked ? '☑ ' : '☐ ') : ''}
       {block.text}
     </div>
@@ -118,6 +123,11 @@ export function NoteViewerPopover({ t, title, notes, onClose }: Props) {
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
+      // 창 크기(가로 300 · 세로 최대 62%) — 내용이 넘치면 가로/세로
+      // 스크롤바 표시.
+      // [서버 연결 예정] 시스템 기본 크기는 관리자 설정(system_settings),
+      // 사용자별 크기는 users.ui_preferences_json.noteViewer 로 이관 —
+      // docs/02-domain/db-schema.md §향후 관리 테이블, 32-settings.md 참조.
       style={{
         position: 'absolute', right: 14, top: 60, width: 300,
         maxHeight: '62%', overflow: 'auto', background: t.surface,

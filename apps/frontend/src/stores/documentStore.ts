@@ -24,6 +24,7 @@ import type {
   NoteBlock,
   NoteBlockType,
   NodeAttachment,
+  LevelFontSetting,
 } from '@/editor/__samples__/types';
 import type { TextAlign, LayoutType, EdgeType } from '@/types/mindmap';
 
@@ -73,6 +74,11 @@ interface DocumentState {
   updateNodeText: (nodeId: string | null, text: string) => void;
   updateNodeTextAlign: (nodeId: string | null, textAlign: TextAlign) => void;
   updateNodeLayoutType: (nodeId: string | null, layoutType: LayoutType) => void;
+
+  // 맵 전체 설정 — 레벨(깊이)별 기본 폰트 (좌측 '맵 설정' 메뉴)
+  // level: 0=Root, 1~3=Level1~3, 4=Level4+ / patch에 size·family 부분 갱신
+  updateLevelFont: (level: number, patch: LevelFontSetting) => void;
+  resetLevelFonts: () => void;
 
   // Style / icon
   updateNodeStyle: (nodeId: string | null, style: Partial<NodeStyle>) => void;
@@ -765,6 +771,31 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         })),
       };
     });
+  },
+
+  updateLevelFont: (level, patch) => {
+    if (level < 0 || level > 4) return;
+    set((state) => {
+      const prev = state.map.settings?.levelFonts ?? [];
+      const next: LevelFontSetting[] = [];
+      for (let i = 0; i < 5; i++) next[i] = { ...prev[i] };
+      next[level] = { ...next[level], ...patch };
+      return {
+        map: {
+          ...state.map,
+          settings: { ...state.map.settings, levelFonts: next },
+        },
+      };
+    });
+  },
+
+  resetLevelFonts: () => {
+    set((state) => ({
+      map: {
+        ...state.map,
+        settings: { ...state.map.settings, levelFonts: undefined },
+      },
+    }));
   },
 
   updateNodeStyle: (nodeId, style) => {

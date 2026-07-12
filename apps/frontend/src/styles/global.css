@@ -29,3 +29,30 @@ input, textarea, select { font-family: inherit; }
 }
 
 mark { background: transparent; }
+
+/* 리치 노트(웹 기사 붙여넣기) 콘텐츠 — 노트 탭 미리보기 + 노트 뷰어 팝업 */
+.mm-rich-note img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 4px 0;
+}
+.mm-rich-note p, .mm-rich-note div { margin: 0 0 6px; }
+.mm-rich-note a { color: #1D4ED8; word-break: break-all; }
+.mm-rich-note table { border-collapse: collapse; max-width: 100%; }
+.mm-rich-note td, .mm-rich-note th {
+  border: 1px solid rgba(120, 110, 90, 0.35);
+  padding: 3px 6px;
+}
+.mm-rich-note pre {
+  overflow-x: auto;
+  background: rgba(120, 110, 90, 0.08);
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+.mm-rich-note h1, .mm-rich-note h2, .mm-rich-note h3,
+.mm-rich-note h4, .mm-rich-note h5, .mm-rich-note h6 {
+  font-size: 1.1em;
+  margin: 8px 0 4px;
+}

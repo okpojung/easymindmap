@@ -8,6 +8,7 @@ import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection } from './InspectorSection';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
+import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
 
 // 코드 블록 언어 목록.
 // [서버 연결 예정] Supabase 연동 시 이 하드코딩 목록은 code_languages
@@ -234,14 +235,27 @@ function NoteBlockEditor({
         ) : (
           <textarea
             value={block.text}
-            onChange={(e) => onChange({ text: e.target.value })}
+            // 리치 붙여넣기 후 텍스트를 직접 수정하면 서식(html)은 버리고
+            // 일반 텍스트 편집으로 돌아간다 (아래 배지에 안내 표시).
+            onChange={(e) => onChange({ text: e.target.value, html: undefined })}
+            onPaste={(e) => {
+              // 문단 블록: 웹 기사 등에서 복사한 내용(text/html)이 있으면
+              // 사진+텍스트를 서식째 살려 붙여넣는다 (sanitize 통과분만).
+              if (block.type !== 'paragraph') return;
+              const raw = e.clipboardData?.getData('text/html');
+              if (!raw) return;
+              const clean = sanitizeRichHtml(raw);
+              if (!clean.html) return;
+              e.preventDefault();
+              onChange({ html: clean.html, text: clean.text });
+            }}
             rows={block.type === 'code_block' ? 9 : block.type === 'table' ? 6 : 5}
             placeholder={
               block.type === 'code_block'
                 ? '코드를 입력하세요'
                 : block.type === 'table'
                   ? '항목 | 값\n행1 | 내용1  (줄=행, |=열 구분)'
-                  : '내용을 입력하세요'
+                  : '내용을 입력하세요 — 웹 기사 붙여넣기 시 사진·서식 유지'
             }
             style={{
               width: '100%', resize: 'vertical', border: 'none', outline: 'none',
@@ -253,6 +267,41 @@ function NoteBlockEditor({
               padding: 0,
             }}
           />
+        )}
+
+        {/* 리치 붙여넣기(사진+서식) 미리보기 — 문단 블록에 html이 있을 때 */}
+        {block.type === 'paragraph' && block.html && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
+                padding: '1px 6px', borderRadius: 3,
+                background: t.primarySoft, color: t.primary,
+                border: `1px solid ${t.primaryBorder}40`,
+              }}>서식·이미지 포함</span>
+              <span style={{ fontSize: 9, color: t.textSubtle }}>
+                위 텍스트를 수정하면 서식이 제거됩니다
+              </span>
+              <button
+                onClick={() => onChange({ html: undefined })}
+                title="서식과 이미지를 버리고 일반 텍스트만 남깁니다"
+                style={{
+                  marginLeft: 'auto', fontSize: 9, padding: '1px 6px', borderRadius: 3,
+                  border: `1px solid ${t.border}`, background: t.surface,
+                  color: t.textMuted, cursor: 'pointer', fontWeight: 600,
+                }}>서식 제거</button>
+            </div>
+            <div
+              className="mm-rich-note"
+              style={{
+                maxHeight: 220, overflow: 'auto', fontSize: 11, lineHeight: 1.6,
+                border: `1px solid ${t.border}`, borderRadius: 5,
+                background: t.surface, color: t.text, padding: '6px 8px',
+              }}
+              // sanitizeRichHtml()을 통과한 안전한 HTML만 저장·표시된다
+              dangerouslySetInnerHTML={{ __html: block.html }}
+            />
+          </div>
         )}
       </div>
     </div>

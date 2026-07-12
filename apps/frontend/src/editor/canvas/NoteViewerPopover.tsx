@@ -104,6 +104,17 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
     );
   }
 
+  // 리치 문단(웹 기사 붙여넣기) — sanitize된 HTML을 사진·서식째 표시
+  if (type === 'paragraph' && block.html) {
+    return (
+      <div
+        className="mm-rich-note"
+        style={{ marginBottom: 6, fontSize: 10.5, lineHeight: 1.6 }}
+        dangerouslySetInnerHTML={{ __html: block.html }}
+      />
+    );
+  }
+
   // 문단·체크: 글자 크기 10, 입력한 줄 그대로(pre) 표시 — 창 폭보다 긴
   // 줄은 블록 가로 스크롤바로 본다.
   return (

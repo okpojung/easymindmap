@@ -5,7 +5,7 @@
 // reference level→font preview block. Spec: 10-canvas.md § 28.3, NS-04 / NS-01 / NS-02.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { ShapeType, NodeStyle } from '@/editor/__samples__/types';
+import type { ShapeType, NodeStyle, TextAlign } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection, InspectorRow, ColorSwatchInput } from './InspectorSection';
@@ -22,21 +22,21 @@ const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
 
 const DEFAULT_COLORS = { fillColor: '#FEF3C7', borderColor: '#F59E0B', textColor: '#78350F' };
 
-const LEVEL_FONTS = [
-  { l: 'Root',     px: 18, w: 700 },
-  { l: 'Level 1',  px: 16, w: 600 },
-  { l: 'Level 2',  px: 15, w: 500 },
-  { l: 'Level 3',  px: 14, w: 500 },
-  { l: 'Level 4+', px: 13, w: 500 },
+const ALIGNS: { key: TextAlign; label: string }[] = [
+  { key: 'left',   label: '왼쪽' },
+  { key: 'center', label: '중앙' },
+  { key: 'right',  label: '오른쪽' },
 ];
 
 export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
   const map = useDocumentStore((s) => s.map);
   const updateNodeStyle = useDocumentStore((s) => s.updateNodeStyle);
+  const updateNodeTextAlign = useDocumentStore((s) => s.updateNodeTextAlign);
 
   const node = findNodeInMap(map, selectedId);
   const style: NodeStyle = node?.style ?? {};
   const shape: ShapeType = style.shapeType ?? 'rounded';
+  const textAlign: TextAlign = node?.textAlign ?? 'left';
 
   const disabled = !selectedId || !node;
   const set = (patch: Partial<NodeStyle>) => {
@@ -111,33 +111,44 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
           <StyleToggle t={t} label="기울임" italic
             active={style.fontStyle === 'italic'}
             onClick={() => set({ fontStyle: style.fontStyle === 'italic' ? 'normal' : 'italic' })} />
+          <StyleToggle t={t} label="취소선" strike
+            active={!!style.strike}
+            onClick={() => set({ strike: !style.strike })} />
+          <StyleToggle t={t} label="하이라이트" highlightSwatch
+            active={!!style.highlight}
+            onClick={() => set({ highlight: !style.highlight })} />
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="레벨별 폰트 (맵 전체 설정)">
-        <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 8, lineHeight: 1.5 }}>
-          노드 깊이별 기본 폰트. 모든 노드에 일괄 적용. 변경은 <b>맵 설정</b>에서.
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {LEVEL_FONTS.map(r => (
-            <div key={r.l} style={{
-              display: 'flex', alignItems: 'baseline', gap: 8,
-              padding: '4px 8px', borderRadius: 4,
-              background: t.surfaceAlt, border: `1px solid ${t.border}`,
-            }}>
-              <span style={{ fontSize: 10.5, color: t.textMuted, width: 56, fontWeight: 500 }}>{r.l}</span>
-              <span style={{ fontSize: r.px, fontWeight: r.w, color: t.text, flex: 1, lineHeight: 1.2 }}>가나다 Aa</span>
-              <span style={{ fontSize: 10, color: t.textSubtle, fontFamily: 'ui-monospace, monospace' }}>{r.px}pt</span>
-            </div>
-          ))}
+      <InspectorSection t={t} title="텍스트 정렬">
+        <div style={{ display: 'flex', gap: 4 }}>
+          {ALIGNS.map((a) => {
+            const active = textAlign === a.key;
+            return (
+              <button key={a.key}
+                onClick={() => selectedId && updateNodeTextAlign(selectedId, a.key)}
+                style={{
+                  flex: 1, padding: '6px 0', borderRadius: 5, fontSize: 11,
+                  background: active ? t.primarySoft : t.surfaceAlt,
+                  color: active ? t.primary : t.textMuted,
+                  border: `1px solid ${active ? t.primaryBorder : t.border}`,
+                  cursor: 'pointer', fontWeight: active ? 600 : 500,
+                }}>
+                {a.label}{a.key === 'left' ? ' (기본)' : ''}
+              </button>
+            );
+          })}
         </div>
       </InspectorSection>
+
+      {/* 레벨별 폰트(맵 전체 설정)는 좌측 상단 '맵 설정' 메뉴로 이동 —
+          MapSettingsPanel에서 크기·글꼴을 실제로 변경할 수 있다. */}
     </div>
   );
 }
 
 function StyleToggle({
-  t, label, active, onClick, weight, italic,
+  t, label, active, onClick, weight, italic, strike, highlightSwatch,
 }: {
   t: ThemeTokens;
   label: string;
@@ -145,6 +156,8 @@ function StyleToggle({
   onClick: () => void;
   weight?: number;
   italic?: boolean;
+  strike?: boolean;
+  highlightSwatch?: boolean;
 }) {
   return (
     <button onClick={onClick} style={{
@@ -153,9 +166,15 @@ function StyleToggle({
       color: active ? t.primary : t.text,
       border: `1px solid ${active ? t.primaryBorder : t.border}`,
       cursor: 'pointer',
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: weight || 500,
       fontStyle: italic ? 'italic' : 'normal',
-    }}>{label}</button>
+      textDecoration: strike ? 'line-through' : 'none',
+      whiteSpace: 'nowrap',
+    }}>
+      {highlightSwatch
+        ? <span style={{ background: '#FFE066', borderRadius: 2, padding: '0 3px', color: '#5B4A12' }}>{label}</span>
+        : label}
+    </button>
   );
 }

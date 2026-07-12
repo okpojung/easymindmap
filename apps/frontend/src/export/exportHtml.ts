@@ -400,6 +400,40 @@ const VIEWER_JS = String.raw`
     return e;
   }
 
+  // Content-marker glyphs, centered at (cx, cy) and scaled to size.
+  // link/file are drawn as bold SVG (globe+gold chain / dark paperclip —
+  // the editor's IndicatorGlyph.tsx design; emojis render faint on some OSes).
+  // note/media keep their vivid emojis. Returns the clickable <g>.
+  function drawMarkerGlyph(parent, kind, cx, cy, size) {
+    var g2 = el('g', { cursor: 'pointer' }, parent);
+    var s = size / 24;
+
+    if (kind === 'link' || kind === 'file') {
+      var inner = el('g', {
+        transform: 'translate(' + cx + ',' + cy + ') scale(' + s + ') translate(-12,-12)'
+      }, g2);
+      if (kind === 'link') {
+        el('circle', { cx: 10, cy: 9.5, r: 7.2, fill: '#3B82F6', stroke: '#1D4ED8', 'stroke-width': 1.6 }, inner);
+        el('ellipse', { cx: 10, cy: 9.5, rx: 3.1, ry: 7.2, fill: 'none', stroke: '#DBEAFE', 'stroke-width': 1.2 }, inner);
+        el('line', { x1: 2.8, y1: 9.5, x2: 17.2, y2: 9.5, stroke: '#DBEAFE', 'stroke-width': 1.2 }, inner);
+        el('rect', { x: 10.2, y: 14.4, width: 6.6, height: 4.8, rx: 2.4, fill: '#F59E0B', stroke: '#92400E', 'stroke-width': 1.5 }, inner);
+        el('rect', { x: 15.2, y: 14.4, width: 6.6, height: 4.8, rx: 2.4, fill: '#FBBF24', stroke: '#92400E', 'stroke-width': 1.5 }, inner);
+      } else {
+        el('path', {
+          d: 'M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48',
+          fill: 'none', stroke: '#4A3B28', 'stroke-width': 2.5,
+          'stroke-linecap': 'round', 'stroke-linejoin': 'round'
+        }, inner);
+      }
+      // transparent hit area so clicks land anywhere on the glyph
+      el('rect', { x: cx - size / 2, y: cy - size / 2, width: size, height: size, fill: 'transparent' }, g2);
+    } else {
+      var t2 = el('text', { x: cx, y: cy + size * 0.32, 'font-size': size - 2, 'text-anchor': 'middle' }, g2);
+      t2.textContent = kind === 'note' ? '📝' : '▶️';
+    }
+    return g2;
+  }
+
   function render() {
     while (world.firstChild) world.removeChild(world.firstChild);
     var rootEff = normalize(DATA.root.layoutType) || normalize(DATA.mapLayout) || 'radial-bidirectional';
@@ -477,20 +511,20 @@ const VIEWER_JS = String.raw`
     }
     var markers = [];
     if (node.links && node.links.length) {
-      markers.push({ icon: '🔗', act: (node.links.length === 1
+      markers.push({ kind: 'link', act: (node.links.length === 1
         ? function () { window.open(node.links[0].url, '_blank'); }
         : function () { showDetail(node, 'links'); }) });
     }
     if (node.notes && node.notes.length) {
-      markers.push({ icon: '📝', act: function () { showDetail(node, 'notes'); } });
+      markers.push({ kind: 'note', act: function () { showDetail(node, 'notes'); } });
     }
     if (files.length) {
-      markers.push({ icon: '📎', act: (files.length === 1 && files[0].href
+      markers.push({ kind: 'file', act: (files.length === 1 && files[0].href
         ? function () { window.open(files[0].href, '_blank'); }
         : function () { showDetail(node, 'files'); }) });
     }
     if (media.length) {
-      markers.push({ icon: '▶️', act: (media.length === 1 && media[0].href
+      markers.push({ kind: 'media', act: (media.length === 1 && media[0].href
         ? function () { window.open(media[0].href, '_blank'); }
         : function () { showDetail(node, 'media'); }) });
     }
@@ -500,9 +534,7 @@ const VIEWER_JS = String.raw`
       // pass reserved node._marksW so every marker fits within the border.
       var mx0 = x0 + node._w - PAD_X - markers.length * (mfs + 3) + 3;
       for (var mi = 0; mi < markers.length; mi++) {
-        var mk = el('text', { x: mx0, y: node._cy + mfs * 0.36,
-          'font-size': mfs, cursor: 'pointer' }, g);
-        mk.textContent = markers[mi].icon;
+        var mk = drawMarkerGlyph(g, markers[mi].kind, mx0 + mfs / 2, node._cy, mfs + 2);
         (function (act) {
           mk.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
           mk.addEventListener('click', function (ev) { ev.stopPropagation(); act(); });

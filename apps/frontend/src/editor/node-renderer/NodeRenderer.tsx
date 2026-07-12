@@ -15,6 +15,7 @@ import { resolveNodeColors } from './resolveNodeColors';
 import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, type ContentKind } from './nodeContent';
+import { IndicatorGlyph } from './IndicatorGlyph';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -371,7 +372,13 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
                 onDoubleClick={(e) => e.stopPropagation()}
               >
                 <title>{ic.title}</title>
-                <text y={icSize * 0.36} fontSize={icSize} textAnchor="middle">{ic.icon}</text>
+                {ic.kind === 'link' || ic.kind === 'file' ? (
+                  // 이모지 대신 진한 SVG 글리프(지구본+체인 / 클립) —
+                  // OS에 따라 흐리게 렌더링되는 문제 해소
+                  <IndicatorGlyph kind={ic.kind} size={icSize + 2} />
+                ) : (
+                  <text y={icSize * 0.36} fontSize={icSize} textAnchor="middle">{ic.icon}</text>
+                )}
                 {ic.count > 1 && (
                   <text x={icSize / 2 + 2} y={-icSize / 2 + 3} fontSize="8" fontWeight="700" fill={t.primary} textAnchor="middle">
                     {ic.count}

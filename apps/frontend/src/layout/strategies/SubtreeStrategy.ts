@@ -69,8 +69,20 @@ export function applyLayoutOverrides(
   // applied and their final size is known.
   const topLevel: { node: MindNode; parentEffective: LayoutType }[] = [];
 
-  for (const branch of branches) {
-    walk(branch, rootEffective, out, null, topLevel);
+  for (let i = 0; i < branches.length; i += 1) {
+    // radial-bidirectional splits branches into two independent columns —
+    // only SAME-SIDE siblings stack together, so filter the chain level.
+    const sameSide = (b: SampleBranch) =>
+      rootEffective !== ('radial-bidirectional' as LayoutType) ||
+      (b.side ?? 'right') === (branches[i].side ?? 'right');
+
+    walk(branches[i], rootEffective, out, null, topLevel, [
+      {
+        before: branches.slice(0, i).filter(sameSide),
+        after: branches.slice(i + 1).filter(sameSide),
+        axis: axisOf(rootEffective),
+      },
+    ]);
   }
 
   for (const top of topLevel) {
@@ -87,12 +99,31 @@ export function applyLayoutOverrides(
 // (one inside another override) must only reflow siblings WITHIN that scope —
 // pushing the whole map from deep inside a subtree scatters the outer
 // override's own arrangement (and every other branch with it).
+// One ancestor level in the reflow chain: the siblings that come AFTER the
+// current path at that level, and the axis along which that level's parent
+// stacks its children ('x' = horizontal row, 'y' = vertical column, null =
+// radial/positional — no linear push; separateBranchGroups handles those).
+interface ChainLevel {
+  before: MindNode[]; // earlier siblings — receive TOP/LEFT growth (radial 등 중앙정렬)
+  after: MindNode[]; // later siblings — receive BOTTOM/RIGHT growth
+  axis: 'x' | 'y' | null;
+}
+
+function axisOf(effective: LayoutType): 'x' | 'y' | null {
+  if (HORIZONTAL_SIBLING_PARENTS.has(effective)) return 'x';
+  // Radial layouts in this codebase stack siblings as a vertical column
+  // (vertically centered on the parent), so their linear axis is 'y' too.
+  if (VERTICAL_SIBLING_PARENTS.has(effective) || RADIAL_PARENTS.has(effective)) return 'y';
+  return null; // freeform / kanban 등
+}
+
 function walk(
   node: MindNode,
   parentEffective: LayoutType,
   out: LaidOutNode[],
   scope: Set<string> | null,
   topLevel: { node: MindNode; parentEffective: LayoutType }[],
+  chain: ChainLevel[],
 ): void {
   const effective = node.layoutType
     ? normalizeLayoutType(node.layoutType)
@@ -101,7 +132,7 @@ function walk(
   let childScope = scope;
 
   if (effective !== parentEffective && SUBTREE_SUPPORTED.has(effective)) {
-    relayoutSubtree(node, effective, parentEffective, out, scope);
+    relayoutSubtree(node, effective, parentEffective, out, chain);
 
     if (!scope) {
       // top-level override: nested overrides below it reflow within it
@@ -111,8 +142,16 @@ function walk(
     }
   }
 
-  for (const child of node.children ?? []) {
-    walk(child, effective, out, childScope, topLevel);
+  const children = node.children ?? [];
+  for (let i = 0; i < children.length; i += 1) {
+    walk(children[i], effective, out, childScope, topLevel, [
+      ...chain,
+      {
+        before: children.slice(0, i),
+        after: children.slice(i + 1),
+        axis: axisOf(effective),
+      },
+    ]);
   }
 }
 
@@ -147,51 +186,66 @@ function bboxOf(out: LaidOutNode[], ids: Set<string>): BBox | null {
   return left === Infinity ? null : { left, right, top, bottom };
 }
 
-// After a subtree is re-laid-out it may occupy a DIFFERENT amount of room
-// than the gap the base layout reserved. Shift the nodes that sat AFTER the
-// anchor (to its right for horizontal parents, below it for vertical ones) by
-// the amount the subtree grew — or SHRANK. The shrink direction matters when
-// e.g. a process-tree stage is overridden to a narrow tree-right outline:
-// without pulling the later siblings back in, the huge horizontal gaps the
-// base layout reserved for the wide process block would remain. Shifting by
-// exactly (after − before) preserves the base layout's relative gaps, so it
-// can never introduce an overlap in either direction.
-function pushSiblingsAway(
+// After a subtree is re-laid-out it occupies a DIFFERENT amount of room than
+// the gap the base layout reserved. The size change (after − before, grow OR
+// shrink) is propagated UP THE ANCESTOR CHAIN: at every ancestor level, only
+// the sibling subtrees that come AFTER the current path shift, along the axis
+// that level's parent uses to stack its children. This is precise where the
+// old "move everything right/below the anchor" was not — it never drags
+// ancestors or unrelated cousins sideways (which scrambled deeply nested
+// overrides), yet the growth still reaches e.g. the grand-parent's next
+// sibling through its own chain level. Shifting by the exact delta preserves
+// the base layout's relative gaps, so it cannot introduce overlaps in either
+// direction. Radial levels (axis null) don't stack linearly and are handled
+// by separateBranchGroups instead.
+function propagateDelta(
   out: LaidOutNode[],
-  subtreeIds: Set<string>,
-  anchor: LaidOutNode,
   before: BBox,
   after: BBox,
-  parentEffective: LayoutType,
-  scope: Set<string> | null,
+  chain: ChainLevel[],
 ): void {
-  // Nested override: only nodes inside the enclosing override move.
-  const movable = (n: LaidOutNode) => (scope ? scope.has(n.id) : true);
+  // growth toward bottom/right → later siblings move down/right;
+  // growth toward top/left (vertically-centered radial subtrees) → earlier
+  // siblings move up/left by the same amount.
+  const dRight = after.right - before.right;
+  const dBottom = after.bottom - before.bottom;
+  const dLeft = before.left - after.left;
+  const dTop = before.top - after.top;
+  if (
+    Math.abs(dRight) <= 0.5 && Math.abs(dBottom) <= 0.5 &&
+    Math.abs(dLeft) <= 0.5 && Math.abs(dTop) <= 0.5
+  ) return;
 
-  if (HORIZONTAL_SIBLING_PARENTS.has(parentEffective)) {
-    const delta = after.right - before.right;
-    if (Math.abs(delta) <= 0.5) return;
-
-    for (const n of out) {
-      if (subtreeIds.has(n.id) || !movable(n)) continue;
-      if (n.x > anchor.x + 0.5) n.x += delta;
+  const shift = (sibs: MindNode[], axis: 'x' | 'y', delta: number) => {
+    if (sibs.length === 0 || Math.abs(delta) <= 0.5) return;
+    const ids = new Set<string>();
+    for (const sib of sibs) {
+      ids.add(sib.id);
+      collectDescendantIds(sib, ids);
     }
-  } else if (VERTICAL_SIBLING_PARENTS.has(parentEffective)) {
-    const delta = after.bottom - before.bottom;
-    if (Math.abs(delta) <= 0.5) return;
-
     for (const n of out) {
-      if (subtreeIds.has(n.id) || !movable(n)) continue;
-      if (n.y > anchor.y + 0.5) n.y += delta;
+      if (!ids.has(n.id)) continue;
+      if (axis === 'x') n.x += delta;
+      else n.y += delta;
+    }
+  };
+
+  for (const level of chain) {
+    if (!level.axis) continue;
+    if (level.axis === 'x') {
+      shift(level.after, 'x', dRight);
+      shift(level.before, 'x', -dLeft);
+    } else {
+      shift(level.after, 'y', dBottom);
+      shift(level.before, 'y', -dTop);
     }
   }
-  // Radial / freeform: handled by separateBranchGroups() instead.
 }
 
 // --- branch-group collision separation --------------------------------------
 // Safety net run after every subtree relayout: if the re-laid-out subtree's
 // bounding box still intersects another depth-1 branch (common when the BASE
-// map is radial, where pushSiblingsAway can't safely reflow), move that WHOLE
+// map is radial, where the linear delta propagation can't reflow), move that WHOLE
 // branch out of the way as a rigid group. Moving whole branches keeps their
 // internal structure intact. Cascading collisions (pushed branch hits the
 // next one) are resolved by iterating until stable.
@@ -221,24 +275,35 @@ function boxesIntersect(a: BBox, b: BBox, margin: number): boolean {
 
 // Groups every laid-out node (except root and the overridden subtree) under
 // its depth-1 ancestor branch, following parent pointers.
+function branchIdOf(byId: Map<string, LaidOutNode>, node: LaidOutNode): string | null {
+  let cur: LaidOutNode | undefined = node;
+  while (cur && cur.depth > 1) cur = cur.parent ? byId.get(cur.parent) : undefined;
+  return cur && cur.depth === 1 ? cur.id : null;
+}
+
 function collectBranchGroups(
   out: LaidOutNode[],
   subtreeIds: Set<string>,
+  anchor: LaidOutNode,
 ): LaidOutNode[][] {
   const byId = new Map(out.map((n) => [n.id, n]));
   const groups = new Map<string, LaidOutNode[]>();
 
+  // The branch the ANCHOR belongs to must never be treated as a colliding
+  // group: it contains the anchor's own ancestors/relatives, and shoving the
+  // whole branch away from a subtree nested inside it tears the branch apart
+  // (e.g. b1 + root ending up overlapped after a depth-3 override inside b1).
+  const anchorBranchId = branchIdOf(byId, anchor);
+
   for (const n of out) {
     if (n.depth === 0 || subtreeIds.has(n.id)) continue;
 
-    // Walk up to the depth-1 ancestor.
-    let cur: LaidOutNode | undefined = n;
-    while (cur && cur.depth > 1) cur = cur.parent ? byId.get(cur.parent) : undefined;
-    if (!cur || cur.depth !== 1) continue;
+    const bid = branchIdOf(byId, n);
+    if (!bid || bid === anchorBranchId) continue;
 
-    const group = groups.get(cur.id) ?? [];
+    const group = groups.get(bid) ?? [];
     group.push(n);
-    groups.set(cur.id, group);
+    groups.set(bid, group);
   }
 
   return [...groups.values()];
@@ -294,7 +359,7 @@ function separateBranchGroups(
     const sBox = bboxOf(out, subtreeIds);
     if (!sBox) return;
 
-    const groups = collectBranchGroups(out, subtreeIds);
+    const groups = collectBranchGroups(out, subtreeIds, anchor);
     let moved = false;
 
     // 1) Move branches out of the overridden subtree's box (subtree is fixed).
@@ -370,7 +435,7 @@ function relayoutSubtree(
   effective: LayoutType,
   parentEffective: LayoutType,
   out: LaidOutNode[],
-  scope: Set<string> | null,
+  chain: ChainLevel[],
 ): void {
   const anchor = out.find((laid) => laid.id === node.id);
   if (!anchor) return;
@@ -467,7 +532,7 @@ function relayoutSubtree(
   }
 
   if (before && after) {
-    pushSiblingsAway(out, subtreeIds, anchor, before, after, parentEffective, scope);
+    propagateDelta(out, before, after, chain);
   }
 
   // Global collision passes run only for TOP-LEVEL overrides — and they run

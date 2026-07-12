@@ -8,6 +8,7 @@
 
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import type { LayoutType } from '@/editor/__samples__/types';
 import { useDocumentStore } from '@/stores/documentStore';
 import {
   LEVEL_FONT_DEFAULT_SIZES,
@@ -29,10 +30,25 @@ const FONT_FAMILIES: { label: string; css: string }[] = [
   { label: '고정폭 (코드)', css: 'ui-monospace, Consolas, "Nanum Gothic Coding", monospace' },
 ];
 
+// 레벨별 레이아웃 선택지 — 서브트리에 적용 가능한 레이아웃만
+// (방사형·양쪽 / 트리·아래 / Kanban / 자유배치는 루트 전용이라 제외.
+//  레이아웃 탭의 rootOnly 규칙과 동일 — 08-layout.md §6.3.1)
+const LEVEL_LAYOUTS: { key: LayoutType | ''; label: string }[] = [
+  { key: '',                    label: '기본 (상위 따름)' },
+  { key: 'radial-right' as LayoutType,       label: '방사형 · 오른쪽' },
+  { key: 'tree-right' as LayoutType,         label: '트리 · 오른쪽' },
+  { key: 'hierarchy-right' as LayoutType,    label: '계층형 · 오른쪽' },
+  { key: 'process-tree-right' as LayoutType, label: '진행트리 · 오른쪽' },
+];
+
+const LAYOUT_LEVEL_LABELS = ['Level 1', 'Level 2', 'Level 3', 'Level 4+'];
+
 export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
   const levelFonts = useDocumentStore((s) => s.map.settings?.levelFonts);
+  const levelLayouts = useDocumentStore((s) => s.map.settings?.levelLayouts);
   const updateLevelFont = useDocumentStore((s) => s.updateLevelFont);
   const resetLevelFonts = useDocumentStore((s) => s.resetLevelFonts);
+  const setLevelLayout = useDocumentStore((s) => s.setLevelLayout);
 
   const hasCustom = (levelFonts ?? []).some(
     (f) => f && ((f.size && f.size > 0) || (f.family && f.family.trim())),
@@ -114,6 +130,45 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
                   ))}
                 </select>
               </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: t.textSubtle,
+        textTransform: 'uppercase', letterSpacing: 0.5,
+        margin: '16px 0 6px',
+      }}>레벨별 레이아웃 (맵 전체 설정)</div>
+      <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 10, lineHeight: 1.5 }}>
+        선택하면 해당 레벨의 <b>모든 노드</b>에 서브트리 레이아웃을 일괄
+        적용합니다 (개별 노드 설정을 덮어씀). '기본'으로 되돌리면 상위
+        레이아웃을 따릅니다. Root(맵 전체)는 레이아웃 탭에서 설정합니다.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {LAYOUT_LEVEL_LABELS.map((label, i) => {
+          const level = i + 1; // 1~4 (4 = Level 4+)
+          const value = levelLayouts?.[level] ?? '';
+          return (
+            <div key={label} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 8px', borderRadius: 5,
+              background: t.surfaceAlt, border: `1px solid ${t.border}`,
+            }}>
+              <span style={{ fontSize: 10.5, color: t.textMuted, width: 52, fontWeight: 600 }}>
+                {label}
+              </span>
+              <select
+                value={value}
+                onChange={(e) =>
+                  setLevelLayout(level, (e.target.value || null) as LayoutType | null)}
+                title={`${label} 노드들의 서브트리 레이아웃`}
+                style={{ ...selectStyle, flex: 1, minWidth: 0 }}
+              >
+                {LEVEL_LAYOUTS.map((o) => (
+                  <option key={o.key} value={o.key}>{o.label}</option>
+                ))}
+              </select>
             </div>
           );
         })}

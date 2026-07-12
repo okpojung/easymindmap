@@ -3,6 +3,7 @@
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import { resolveTagColor } from './resolveTagColor';
+import { measureTextApprox } from './mdTable';
 
 interface Props {
   n: LaidOutNode;
@@ -16,7 +17,6 @@ export function NodeTagChips({ n, tagList, t, onRemove }: Props) {
   const tagH = 16;
   const arrowW = 6;
   const padX = 8;
-  const charW = 6.2;
   const closeW = 14;
   const gap = 4;
 
@@ -43,7 +43,9 @@ export function NodeTagChips({ n, tagList, t, onRemove }: Props) {
     <g>
       {tagList.map((tagName, i) => {
         const tc = resolveTagColor(tagName, t);
-        const labelW = Math.max(20, tagName.length * charW);
+        // 글자 수 × 고정폭(6.2)은 한글 태그에서 폭이 모자라 라벨과 ✕가
+        // 겹쳤다 — 문자 종류별 근사 폭(한글≈10px)으로 실제 폭을 잰다.
+        const labelW = Math.max(20, Math.ceil(measureTextApprox(tagName, 10)));
         const chipW = arrowW + padX + labelW + 4 + closeW;
         const x0 = cursor;
         const x1 = x0 + arrowW;

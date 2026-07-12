@@ -796,6 +796,28 @@ CREATE TABLE font_catalog (
   (`[{size?, family?} × 5]` — index 0=Root … 4=Level4+, 현재 프론트
   `map.settings.levelFonts`). `family`에는 css_stack 문자열을 비정규화
   저장하므로 카탈로그 항목 비활성화 후에도 기존 맵 표시는 유지된다.
+* **맵 설정(레벨별 레이아웃)**: `maps.settings_json.levelLayouts`
+  (`[(layoutType|null) × 5]` — index 1=Level1 … 4=Level4+, 0=Root는 맵
+  전체 레이아웃). 선택 시 해당 레벨 노드 전체에 서브트리 레이아웃을 일괄
+  적용(각 노드의 layoutType에도 기록됨 — 뷰어·내보내기 호환). 맵 전체
+  레이아웃 변경 시 함께 초기화.
+
+```sql
+-- 사용자 템플릿 (템플릿 패널 '내 템플릿' — 편집 중인 맵을 템플릿으로 등록)
+-- (현재: 프론트 localStorage 'easymindmap.userTemplates.v1' — 서버 연동 시
+--  최초 로그인 때 이 로컬 등록분을 서버로 이관한다)
+CREATE TABLE templates (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  workspace_id UUID REFERENCES workspaces(id),    -- NULL = 개인 템플릿
+  name         VARCHAR(120) NOT NULL,
+  node_count   INT NOT NULL DEFAULT 0,            -- 목록 표시용
+  map_json     JSONB NOT NULL,                    -- SampleMap 직렬화 (settings 포함)
+  is_shared    BOOLEAN NOT NULL DEFAULT FALSE,    -- 워크스페이스 공유 여부
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
 
 ---
 

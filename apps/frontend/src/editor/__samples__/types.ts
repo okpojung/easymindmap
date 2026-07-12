@@ -2,7 +2,7 @@
 // These are intentionally lightweight — production code will use the canonical
 // NodeObject / Map types from `domain-models.md` once the API is wired up.
 
-import type { LayoutType } from '@/types/mindmap';
+import type { LayoutType, EdgeType } from '@/types/mindmap';
 export type { LayoutType } from '@/types/mindmap';
 
 export type NodeColorKey =
@@ -86,6 +86,8 @@ export interface MindNode {
 
   textAlign?: TextAlign;
   layoutType?: LayoutType;
+  // layoutType과 함께 기록되는 연결선 종류 (resolveEdgeType 결과)
+  edgeType?: EdgeType;
 
   colorKey?: NodeColorKey;
   side?: 'left' | 'right' | 'center';
@@ -155,6 +157,11 @@ export interface LevelFontSetting {
 
 export interface MapSettings {
   levelFonts?: LevelFontSetting[];
+  // 레벨별 레이아웃 — index 1=Level1 … 4=Level4+ (0=Root는 맵 전체
+  // 레이아웃이므로 레이아웃 탭에서 관리). 값을 지정하면 해당 레벨의
+  // 모든 노드에 서브트리 레이아웃을 일괄 적용하고, null/미지정이면
+  // 상위 레이아웃을 따른다.
+  levelLayouts?: (LayoutType | null | undefined)[];
 }
 
 export interface SampleMap {

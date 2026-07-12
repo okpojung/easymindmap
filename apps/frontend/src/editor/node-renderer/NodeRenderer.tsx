@@ -361,14 +361,16 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
               <g
                 key={ic.kind}
                 transform={`translate(${cx}, ${cy})`}
-                style={{ cursor: ic.kind === 'note' ? 'default' : 'pointer' }}
+                style={{ cursor: 'pointer' }}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   // 인디케이터를 눌러도 노드 자체는 항상 선택된다 —
                   // 노드 오른쪽(아이콘 영역) 클릭이 무반응이던 문제 방지.
                   onSelect();
-                  if (ic.kind === 'note') return;
+                  // 📝 노트: 읽기 전용 노트 뷰어 팝업을 연다 (Canvas의
+                  // NoteViewerPopover — 문단/코드/표/체크 렌더링).
+                  if (ic.kind === 'note') { onOpenPopover?.(n.id, 'note'); return; }
                   if (ic.count > 1) { onOpenPopover?.(n.id, ic.kind); return; }
                   if (single?.url) window.open(single.url, '_blank', 'noopener');
                 }}

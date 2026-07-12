@@ -23,6 +23,7 @@ import { computeLayout } from '@/layout/LayoutEngine';
 import { NodeRenderer } from '@/editor/node-renderer/NodeRenderer';
 import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
 import { nodeContentIndicators, type ContentKind } from '@/editor/node-renderer/nodeContent';
+import { NoteViewerPopover } from './NoteViewerPopover';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
@@ -854,8 +855,8 @@ export function Canvas({
           )}
 
           {/* Multi-item chooser popover (link/file/media) — TOP overlay so it's
-              never covered by other nodes. */}
-          {popover && (() => {
+              never covered by other nodes. (📝 노트는 아래 NoteViewerPopover) */}
+          {popover && popover.kind !== 'note' && (() => {
             const node = nodes.find((n) => n.id === popover.nodeId);
             if (!node) return null;
             const ind = nodeContentIndicators(node).find((c) => c.kind === popover.kind);
@@ -907,6 +908,21 @@ export function Canvas({
           })()}
         </g>
       </svg>
+
+      {/* 📝 노트 뷰어 팝업 — 노드의 노트를 읽기 전용으로 표시 (HTML 오버레이,
+          내보내기 뷰어의 상세 패널과 동일한 문단/코드/표/체크 렌더링). */}
+      {popover?.kind === 'note' && (() => {
+        const node = nodes.find((n) => n.id === popover.nodeId);
+        if (!node || !node.notes?.length) return null;
+        return (
+          <NoteViewerPopover
+            t={t}
+            title={node.text}
+            notes={node.notes}
+            onClose={() => setPopover(null)}
+          />
+        );
+      })()}
 
       {/* [협업 UI 숨김 — MVP] 캔버스 위 협업자 커서/이름 말풍선("박민호" 화살표).
           협업자의 수정위치 표시는 협업 기능(V2) 개발 시 적용 예정.

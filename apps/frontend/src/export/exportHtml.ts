@@ -21,7 +21,21 @@
 //   node text can never break out of the <script> block.
 
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
+import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import { buildZip, type ZipEntry } from './zip';
+
+// 에디터가 계산한 노드의 최종 배치 좌표 — 뷰어는 이 좌표를 그대로 사용해
+// 에디터 화면과 100% 동일한 레이아웃을 재현한다 (자체 레이아웃은 좌표가
+// 없을 때의 폴백). 접기/펴기는 표시/숨김만 하고 재배치하지 않는다.
+interface ExportPos {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  lines: string[];
+  fs: number;
+  lh: number;
+}
 
 interface ExportAttachment {
   name: string;
@@ -45,14 +59,21 @@ interface ExportNode {
   // Layout preservation: per-node subtree override + radial side.
   layoutType?: string;
   side?: string;
+  pos?: ExportPos; // 에디터 계산 좌표 (있으면 뷰어가 그대로 사용)
   children?: ExportNode[];
 }
+
+type PosResolver = (nodeId: string) => ExportPos | undefined;
 
 // Maps attachment id → packaged relative href ('files/…'). Attachments not in
 // the map keep their original URL and are marked external.
 type AttachmentHrefResolver = (attachmentId: string) => string | undefined;
 
-function toExportNode(node: MindNode, resolveHref?: AttachmentHrefResolver): ExportNode {
+function toExportNode(
+  node: MindNode,
+  resolveHref?: AttachmentHrefResolver,
+  resolvePos?: PosResolver,
+): ExportNode {
   const tags =
     Array.isArray(node.tags) && node.tags.length > 0
       ? node.tags
@@ -80,7 +101,8 @@ function toExportNode(node: MindNode, resolveHref?: AttachmentHrefResolver): Exp
     colorKey: node.colorKey,
     layoutType: node.layoutType,
     side: node.side,
-    children: (node.children ?? []).map((c) => toExportNode(c, resolveHref)),
+    pos: resolvePos?.(node.id),
+    children: (node.children ?? []).map((c) => toExportNode(c, resolveHref, resolvePos)),
   };
 }
 
@@ -434,12 +456,32 @@ const VIEWER_JS = String.raw`
     return g2;
   }
 
+  // 에디터 계산 좌표(pos)가 있으면 그대로 사용 — 에디터 화면과 동일한
+  // 배치를 재현한다. 접기/펴기는 표시/숨김만 하고 재배치하지 않는다.
+  function assignFixed(node, depth, inheritedEff) {
+    var eff = normalize(node.layoutType) || inheritedEff;
+    node._eff = eff;
+    node._cx = node.pos.x; node._cy = node.pos.y;
+    node._w = node.pos.w; node._h = node.pos.h;
+    node._lines = node.pos.lines; node._lineH = node.pos.lh;
+    node._fs = node.pos.fs;
+    node._open = !node.collapsed;
+    var kids = node.children || [];
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i].pos) assignFixed(kids[i], depth + 1, eff);
+    }
+  }
+
   function render() {
     while (world.firstChild) world.removeChild(world.firstChild);
     var rootEff = normalize(DATA.root.layoutType) || normalize(DATA.mapLayout) || 'radial-bidirectional';
     DATA.root.layoutType = DATA.root.layoutType || rootEff;
-    measure(DATA.root, 0, rootEff);
-    arrange(DATA.root, 40, 40);
+    if (DATA.root.pos) {
+      assignFixed(DATA.root, 0, rootEff);
+    } else {
+      measure(DATA.root, 0, rootEff);
+      arrange(DATA.root, 40, 40);
+    }
     drawNode(DATA.root, 0, null);
     updateCount();
   }
@@ -892,15 +934,39 @@ export function buildStandaloneHtml(
   map: SampleMap,
   mapLayoutType?: LayoutType,
   resolveHref?: AttachmentHrefResolver,
+  spacing?: LayoutSpacing,
 ): string {
+  const layoutType = (mapLayoutType ??
+    map.root.layoutType ??
+    'radial-bidirectional') as LayoutType;
+
+  // 에디터와 동일한 레이아웃 엔진으로 최종 좌표(간격 배율 포함)를 계산해
+  // 노드마다 실어 보낸다 — 뷰어가 에디터 화면과 똑같이 그린다.
+  const laid = computeLayout(map, layoutType, 700, 400, spacing);
+  const posById = new Map<string, ExportPos>(
+    laid.map((n) => [
+      n.id,
+      {
+        x: Math.round(n.x * 10) / 10,
+        y: Math.round(n.y * 10) / 10,
+        w: Math.round(n.w * 10) / 10,
+        h: Math.round(n.h * 10) / 10,
+        lines: n._lines ?? [String(n.text ?? '')],
+        fs: n._fontSize ?? 13,
+        lh: n._lineHeight ?? 18,
+      },
+    ]),
+  );
+  const resolvePos: PosResolver = (id) => posById.get(id);
+
   const data = {
     title: map.title,
-    mapLayout: mapLayoutType ?? map.root.layoutType ?? 'radial-bidirectional',
+    mapLayout: layoutType,
     root: {
-      ...toExportNode({ id: 'root', text: map.root.text } as MindNode, resolveHref),
+      ...toExportNode({ id: 'root', text: map.root.text } as MindNode, resolveHref, resolvePos),
       colorKey: 'root',
       layoutType: map.root.layoutType ?? mapLayoutType,
-      children: map.branches.map((b) => toExportNode(b, resolveHref)),
+      children: map.branches.map((b) => toExportNode(b, resolveHref, resolvePos)),
     },
   };
 
@@ -968,6 +1034,7 @@ export interface ExportPackage {
 export async function buildExportPackage(
   map: SampleMap,
   mapLayoutType?: LayoutType,
+  spacing?: LayoutSpacing,
 ): Promise<ExportPackage> {
   const title = safeName(map.title, 'mindmap');
 
@@ -975,7 +1042,7 @@ export async function buildExportPackage(
   collectAttachments(map.branches, attachments);
 
   if (attachments.length === 0) {
-    const html = buildStandaloneHtml(map, mapLayoutType);
+    const html = buildStandaloneHtml(map, mapLayoutType, undefined, spacing);
     return {
       fileName: `${title}.html`,
       blob: new Blob([html], { type: 'text/html;charset=utf-8' }),
@@ -1014,7 +1081,7 @@ export async function buildExportPackage(
     }
   }
 
-  const html = buildStandaloneHtml(map, mapLayoutType, (id) => hrefById.get(id));
+  const html = buildStandaloneHtml(map, mapLayoutType, (id) => hrefById.get(id), spacing);
 
   if (files.length === 0) {
     // nothing could be packaged — fall back to the single HTML
@@ -1044,8 +1111,9 @@ export async function buildExportPackage(
 export async function downloadMapAsHtml(
   map: SampleMap,
   mapLayoutType?: LayoutType,
+  spacing?: LayoutSpacing,
 ): Promise<void> {
-  const pkg = await buildExportPackage(map, mapLayoutType);
+  const pkg = await buildExportPackage(map, mapLayoutType, spacing);
   const url = URL.createObjectURL(pkg.blob);
 
   const a = document.createElement('a');

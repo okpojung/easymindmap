@@ -257,12 +257,36 @@ const VIEWER_JS = String.raw`
   function sum(kids, f) { var s = 0; for (var i = 0; i < kids.length; i++) s += f(kids[i]); return s; }
   function maxOf(kids, f) { var s = 0; for (var i = 0; i < kids.length; i++) s = Math.max(s, f(kids[i])); return s; }
 
-  // 인디케이터(🔗📝📎▶️) 개수 — 노드 박스 안(텍스트 뒤)에 그려지므로
-  // 폭 계산에 포함해 모든 마커가 박스 안에 들어가게 한다.
+  // 노트 종류(문단/코드/표/체크) — 종류별로 개별 마커를 그린다.
+  // 에디터의 NOTE_KIND_META(nodeContent.ts)와 동일한 규격.
+  var NOTE_STYLE = {
+    'note-paragraph': { color: '#64748B', letter: 'T', label: '문단 노트', type: 'paragraph' },
+    'note-code':      { color: '#B45309', letter: 'C', label: '코드 노트', type: 'code_block' },
+    'note-table':     { color: '#1D4ED8', letter: '',  label: '표 노트', type: 'table' },
+    'note-check':     { color: '#15803D', letter: '',  label: '체크리스트', type: 'checklist' }
+  };
+  var NOTE_KIND_ORDER = ['note-paragraph', 'note-code', 'note-table', 'note-check'];
+  function noteType(b) {
+    return b.type === 'warning' || b.type === 'tip' ? 'paragraph' : b.type;
+  }
+  function notesOf(node, type) {
+    var out = [], i, list = node.notes || [];
+    for (i = 0; i < list.length; i++) { if (noteType(list[i]) === type) out.push(list[i]); }
+    return out;
+  }
+
+  // 인디케이터 개수 — 노드 박스 안(텍스트 뒤)에 그려지므로 폭 계산에
+  // 포함해 모든 마커가 박스 안에 들어가게 한다. 노트는 종류 수만큼.
   function markerCount(node) {
     var n = 0, hasFile = false, hasMedia = false, i;
     if (node.links && node.links.length) n++;
-    if (node.notes && node.notes.length) n++;
+    if (node.notes && node.notes.length) {
+      var seen = {};
+      for (i = 0; i < node.notes.length; i++) {
+        var tp = noteType(node.notes[i]);
+        if (!seen[tp]) { seen[tp] = 1; n++; }
+      }
+    }
     if (node.attachments) {
       for (i = 0; i < node.attachments.length; i++) {
         if (node.attachments[i].kind === 'audio' || node.attachments[i].kind === 'video') hasMedia = true;
@@ -508,9 +532,30 @@ const VIEWER_JS = String.raw`
       }
       // transparent hit area so clicks land anywhere on the glyph
       el('rect', { x: cx - size / 2, y: cy - size / 2, width: size, height: size, fill: 'transparent' }, g2);
+    } else if (NOTE_STYLE[kind]) {
+      // 노트 종류별 배지 — 문단 T(회색) / 코드 C(주황) / 표 ⊞(파랑) /
+      // 체크 ✓(초록). 에디터 NoteTypeGlyph와 동일한 모양.
+      var innerN = el('g', {
+        transform: 'translate(' + cx + ',' + cy + ') scale(' + s + ') translate(-12,-12)'
+      }, g2);
+      el('rect', { x: 2, y: 2, width: 20, height: 20, rx: 5, fill: NOTE_STYLE[kind].color }, innerN);
+      if (kind === 'note-table') {
+        el('rect', { x: 6, y: 6, width: 12, height: 12, rx: 1, fill: 'none',
+          stroke: '#FFFFFF', 'stroke-width': 1.8 }, innerN);
+        el('line', { x1: 6, y1: 12, x2: 18, y2: 12, stroke: '#FFFFFF', 'stroke-width': 1.8 }, innerN);
+        el('line', { x1: 12, y1: 6, x2: 12, y2: 18, stroke: '#FFFFFF', 'stroke-width': 1.8 }, innerN);
+      } else if (kind === 'note-check') {
+        el('path', { d: 'M6.5 12.5l3.6 3.6 7.4-8', fill: 'none', stroke: '#FFFFFF',
+          'stroke-width': 2.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, innerN);
+      } else {
+        var lt2 = el('text', { x: 12, y: 17, 'text-anchor': 'middle', 'font-size': 14.5,
+          'font-weight': 800, fill: '#FFFFFF', 'font-family': 'Arial, sans-serif' }, innerN);
+        lt2.textContent = NOTE_STYLE[kind].letter;
+      }
+      el('rect', { x: cx - size / 2, y: cy - size / 2, width: size, height: size, fill: 'transparent' }, g2);
     } else {
       var t2 = el('text', { x: cx, y: cy + size * 0.32, 'font-size': size - 2, 'text-anchor': 'middle' }, g2);
-      t2.textContent = kind === 'note' ? '📝' : '▶️';
+      t2.textContent = '▶️';
     }
     return g2;
   }
@@ -706,8 +751,19 @@ const VIEWER_JS = String.raw`
         : function () { showDetail(node, 'links'); }) });
     }
     if (node.notes && node.notes.length) {
-      markers.push({ kind: 'note', tip: '메모 보기',
-        act: function () { showDetail(node, 'notes'); } });
+      // 노트 종류별 개별 마커 — 클릭하면 그 종류의 노트만 상세 패널에 표시
+      for (var nk = 0; nk < NOTE_KIND_ORDER.length; nk++) {
+        (function (kind) {
+          var def = NOTE_STYLE[kind];
+          var blocks = notesOf(node, def.type);
+          if (!blocks.length) return;
+          markers.push({
+            kind: kind,
+            tip: blocks.length > 1 ? def.label + ' ' + blocks.length + '개' : def.label,
+            act: function () { showDetail(node, kind); }
+          });
+        })(NOTE_KIND_ORDER[nk]);
+      }
     }
     if (files.length) {
       markers.push({ kind: 'file',
@@ -904,6 +960,16 @@ const VIEWER_JS = String.raw`
       }
     }
 
+    // 노트 종류별 상세 — 클릭한 마커의 종류(문단/코드/표/체크)만 표시
+    if (NOTE_STYLE[kind]) {
+      var noteDef = NOTE_STYLE[kind];
+      section(noteDef.label);
+      var typed = notesOf(node, noteDef.type);
+      for (i = 0; i < typed.length; i++) {
+        noteBody.appendChild(renderNoteBlock(typed[i]));
+      }
+    }
+
     if ((kind === 'files' || kind === 'media') && node.attachments) {
       var wantMedia = kind === 'media';
       section(wantMedia ? '멀티미디어' : '첨부 파일');
@@ -920,6 +986,27 @@ const VIEWER_JS = String.raw`
   document.getElementById('mm-note-close').addEventListener('click', function () {
     notePanel.style.display = 'none';
   });
+
+  // 상세 패널 이동 — 제목줄을 드래그하면 창이 움직인다 (크기 조절은
+  // 우하단 모서리 드래그: CSS resize). 에디터 노트 뷰어 팝업과 동일 조작.
+  (function () {
+    var drag = null;
+    noteTitle.addEventListener('pointerdown', function (e) {
+      var r = notePanel.getBoundingClientRect();
+      drag = { id: e.pointerId, px: e.clientX, py: e.clientY, left: r.left, top: r.top };
+      noteTitle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    noteTitle.addEventListener('pointermove', function (e) {
+      if (!drag || drag.id !== e.pointerId) return;
+      notePanel.style.right = 'auto';
+      notePanel.style.left = Math.max(0, drag.left + e.clientX - drag.px) + 'px';
+      notePanel.style.top = Math.max(0, drag.top + e.clientY - drag.py) + 'px';
+    });
+    noteTitle.addEventListener('pointerup', function (e) {
+      if (drag && drag.id === e.pointerId) drag = null;
+    });
+  })();
 
   // ---- viewport: wheel zoom (cursor-anchored) + drag pan + fit ---------------
   var view = { x: 0, y: 0, k: 1 };
@@ -1032,8 +1119,13 @@ const VIEWER_CSS = `
     max-height: 60vh; overflow: auto; background: #FFFDF8;
     border: 1px solid #D8CBB2; border-radius: 10px; padding: 12px 14px;
     box-shadow: 0 8px 24px rgba(80, 60, 20, 0.15); font-size: 12px;
+    /* 우하단 모서리 드래그로 크기 조절, 제목줄 드래그로 이동 */
+    resize: both; min-width: 220px; min-height: 120px;
   }
-  #mm-note h2 { font-size: 12.5px; margin-bottom: 8px; padding-right: 20px; }
+  #mm-note h2 {
+    font-size: 12.5px; margin-bottom: 8px; padding-right: 20px;
+    cursor: move; user-select: none;
+  }
   #mm-note-close {
     position: absolute; top: 8px; right: 10px; border: none; background: none;
     font-size: 14px; cursor: pointer; color: #8B7D68;

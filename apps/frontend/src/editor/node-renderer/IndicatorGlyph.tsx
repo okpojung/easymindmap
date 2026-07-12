@@ -4,7 +4,38 @@
 // 어떤 환경에서도 진하고 선명하게 표시한다. 24×24 좌표계를 size로 스케일.
 // note(📝)·media(▶️) 이모지는 원래 선명해서 그대로 사용한다.
 
-import type { ContentKind } from './nodeContent';
+import type { ContentKind, NoteKind } from './nodeContent';
+import { NOTE_KIND_META } from './nodeContent';
+
+// 노트 종류별 인디케이터 글리프 — 색이 다른 둥근 사각 배지 + 구분 문자.
+//   문단 = T(회색) · 코드 = C(주황) · 표 = 격자(파랑) · 체크 = ✓(초록)
+// HTML 내보내기 뷰어(drawMarkerGlyph)도 동일한 모양을 그린다.
+export function NoteTypeGlyph({ kind, size }: { kind: NoteKind; size: number }) {
+  const meta = NOTE_KIND_META[kind];
+  const s = size / 24;
+
+  return (
+    <g transform={`scale(${s}) translate(-12,-12)`}>
+      <rect x="2" y="2" width="20" height="20" rx="5" fill={meta.color} />
+      {kind === 'note-table' ? (
+        // 격자(⊞) — 문자 대신 미니 그리드를 직접 그린다 (모든 OS에서 선명)
+        <g stroke="#FFFFFF" strokeWidth="1.8">
+          <rect x="6" y="6" width="12" height="12" rx="1" fill="none" />
+          <line x1="6" y1="12" x2="18" y2="12" />
+          <line x1="12" y1="6" x2="12" y2="18" />
+        </g>
+      ) : kind === 'note-check' ? (
+        <path d="M6.5 12.5l3.6 3.6 7.4-8" fill="none" stroke="#FFFFFF"
+              strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      ) : (
+        <text x="12" y="17" textAnchor="middle" fontSize="14.5" fontWeight="800"
+              fill="#FFFFFF" style={{ fontFamily: 'Arial, sans-serif' }}>
+          {meta.letter}
+        </text>
+      )}
+    </g>
+  );
+}
 
 // HTML 내보내기 뷰어(exportHtml.ts)와 동일한 도형을 유지할 것 — 뷰어는 이
 // 좌표들을 문자열 path로 복제해 그린다. 수정 시 양쪽을 함께 바꾼다.

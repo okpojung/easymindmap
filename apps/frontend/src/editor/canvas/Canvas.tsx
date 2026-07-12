@@ -364,12 +364,17 @@ export function Canvas({
   }, [fitRequestId]);
 
   const handleAddChild = () => {
-    const id = addChildNode(selectedId || 'root');
+    // 선택된 노드가 없으면 아무것도 하지 않는다 — 미선택 상태에서
+    // Enter/Space/Tab이 메인 노드 밑에 노드를 만들어 버리는 것을 방지.
+    if (!selectedId) return;
+    const id = addChildNode(selectedId);
     if (id) onSelect(id);
   };
 
   const handleAddSibling = (position: 'before' | 'after' = 'after') => {
-    if (!selectedId || selectedId === 'root') {
+    if (!selectedId) return;
+    if (selectedId === 'root') {
+      // 루트의 형제는 없으므로 루트가 '선택된' 상태에서만 자식 추가로 대체
       handleAddChild();
       return;
     }

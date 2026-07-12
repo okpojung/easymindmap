@@ -15,6 +15,7 @@ import { resolveNodeColors } from './resolveNodeColors';
 import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, type ContentKind } from './nodeContent';
+import { IndicatorGlyph } from './IndicatorGlyph';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -340,16 +341,21 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
 
       {hasTags && showTags && !editing && <NodeTagChips n={n} tagList={tagList} t={t} />}
 
-      {/* Content indicators: small icons INSIDE the node's right edge
-          (note / link / file / media). 1 item → opens directly; multiple → a
-          chooser popover (rendered on the top overlay by Canvas). */}
+      {/* Content indicators: leading-icon-sized icons INSIDE the node, right
+          of the text (note / link / file / media). sizeNodeForText reserved
+          `indicators` width so they all fit within the border. 1 item → opens
+          directly; multiple → chooser popover (top overlay, Canvas). */}
       {!editing && contentIcons.length > 0 && (
         <g>
           {contentIcons.map((ic, i) => {
-            // right-aligned row inside the node, going left from the right edge,
-            // anchored near the bottom so it overlaps text as little as possible
-            const cx = n.x + n.w / 2 - 11 - i * 17;
-            const cy = n.y + n.h / 2 - 9;
+            const icSize = fontSize + 2; // same scale as the node's leading icon
+            // right-aligned row inside the box, matching the reserve
+            // (indicators * (fontSize + 5) + 4) in sizeNodeForText
+            const cx =
+              n.x + n.w / 2 - 9 -
+              (contentIcons.length - 1 - i) * (fontSize + 5) -
+              icSize / 2;
+            const cy = n.y;
             const single = ic.items[0];
             return (
               <g
@@ -366,10 +372,15 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
                 onDoubleClick={(e) => e.stopPropagation()}
               >
                 <title>{ic.title}</title>
-                <circle r="7.5" fill={t.surface} stroke={border} strokeWidth="0.9" />
-                <text y="3" fontSize="8.5" textAnchor="middle">{ic.icon}</text>
+                {ic.kind === 'link' || ic.kind === 'file' ? (
+                  // 이모지 대신 진한 SVG 글리프(지구본+체인 / 클립) —
+                  // OS에 따라 흐리게 렌더링되는 문제 해소
+                  <IndicatorGlyph kind={ic.kind} size={icSize + 2} />
+                ) : (
+                  <text y={icSize * 0.36} fontSize={icSize} textAnchor="middle">{ic.icon}</text>
+                )}
                 {ic.count > 1 && (
-                  <text x="7" y="-5" fontSize="7" fontWeight="700" fill={t.primary} textAnchor="middle">
+                  <text x={icSize / 2 + 2} y={-icSize / 2 + 3} fontSize="8" fontWeight="700" fill={t.primary} textAnchor="middle">
                     {ic.count}
                   </text>
                 )}

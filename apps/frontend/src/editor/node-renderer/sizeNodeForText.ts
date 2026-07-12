@@ -7,6 +7,9 @@ export interface SizeOpts {
   minW?: number;
   maxW?: number;
   hasIcon?: boolean;
+  // Content-indicator icons (🔗📝📎▶️) drawn INSIDE the box right of the
+  // text — the box widens so they all fit (contentIndicatorCount()).
+  indicators?: number;
 }
 
 export interface NodeSize {
@@ -43,6 +46,10 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   const maxW = opts.maxW ?? (depth === 0 ? 260 : 320);
   // Reserve space for branch icon (NS-05) when present
   const iconReserve = (depth === 1 && opts.hasIcon) ? 22 : 0;
+  // Reserve space for content-indicator icons inside the right edge
+  const indicatorReserve = (opts.indicators ?? 0) > 0
+    ? (opts.indicators ?? 0) * (fontSize + 5) + 4
+    : 0;
 
   // Honor manual breaks first, then word-wrap each segment
   const manualLines = String(text || '').split('\n');
@@ -90,7 +97,10 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
 
   // Width = widest wrapped line + padding (clamped between min and max)
   const widest = wrappedLines.reduce((m, l) => Math.max(m, measure(l)), 0);
-  const w = Math.min(maxW, Math.max(minW, Math.ceil(widest + padX * 2 + iconReserve)));
+  const w = Math.min(
+    maxW + indicatorReserve,
+    Math.max(minW, Math.ceil(widest + padX * 2 + iconReserve + indicatorReserve)),
+  );
   const h = wrappedLines.length * lineHeight + padY * 2;
 
   return { w, h, lines: wrappedLines, fontSize, fontWeight, lineHeight, padX, padY };

@@ -286,7 +286,7 @@ AI 생성 → `ai_jobs`/revision 메타와 연계 저장
 * 줄바꾸 지원
 * 리스트 지원
 * code node 기본
-* **note 확장** (structured note: paragraph / code_block / warning / tip / checklist)
+* **note 확장** (structured note: paragraph / code_block / table / checklist — v1.1에서 warning·tip 폐기, table 추가; code_block은 언어 라벨(lang) 표기)
 * **노드 링크** (URL 첨부, `node_links` 테이블)
 * **노드 첨부파일** (파일 첨부, Supabase Storage, `node_attachments` 테이블)
 

@@ -138,10 +138,15 @@ function bboxOf(out: LaidOutNode[], ids: Set<string>): BBox | null {
   return left === Infinity ? null : { left, right, top, bottom };
 }
 
-// After a subtree is re-laid-out it may occupy more room than the gap the
-// base layout reserved. Push the nodes that sat AFTER the anchor (to its
-// right for horizontal parents, below it for vertical ones) by the amount
-// the subtree grew, so siblings never overlap.
+// After a subtree is re-laid-out it may occupy a DIFFERENT amount of room
+// than the gap the base layout reserved. Shift the nodes that sat AFTER the
+// anchor (to its right for horizontal parents, below it for vertical ones) by
+// the amount the subtree grew — or SHRANK. The shrink direction matters when
+// e.g. a process-tree stage is overridden to a narrow tree-right outline:
+// without pulling the later siblings back in, the huge horizontal gaps the
+// base layout reserved for the wide process block would remain. Shifting by
+// exactly (after − before) preserves the base layout's relative gaps, so it
+// can never introduce an overlap in either direction.
 function pushSiblingsAway(
   out: LaidOutNode[],
   subtreeIds: Set<string>,
@@ -155,20 +160,20 @@ function pushSiblingsAway(
   const movable = (n: LaidOutNode) => (scope ? scope.has(n.id) : true);
 
   if (HORIZONTAL_SIBLING_PARENTS.has(parentEffective)) {
-    const extra = after.right - before.right;
-    if (extra <= 0.5) return;
+    const delta = after.right - before.right;
+    if (Math.abs(delta) <= 0.5) return;
 
     for (const n of out) {
       if (subtreeIds.has(n.id) || !movable(n)) continue;
-      if (n.x > anchor.x + 0.5) n.x += extra;
+      if (n.x > anchor.x + 0.5) n.x += delta;
     }
   } else if (VERTICAL_SIBLING_PARENTS.has(parentEffective)) {
-    const extra = after.bottom - before.bottom;
-    if (extra <= 0.5) return;
+    const delta = after.bottom - before.bottom;
+    if (Math.abs(delta) <= 0.5) return;
 
     for (const n of out) {
       if (subtreeIds.has(n.id) || !movable(n)) continue;
-      if (n.y > anchor.y + 0.5) n.y += extra;
+      if (n.y > anchor.y + 0.5) n.y += delta;
     }
   }
   // Radial / freeform: handled by separateBranchGroups() instead.

@@ -384,7 +384,10 @@ const VIEWER_JS = String.raw`
     var childLeft = c._cx - c._w / 2, childRight = c._cx + c._w / 2;
     var childTop = c._cy - c._h / 2;
     var pLeft = p._cx - p._w / 2, pRight = p._cx + p._w / 2;
-    var pBottom = p._cy + p._h / 2;
+    // 태그 칩은 박스 바깥 아래(+4~+19)에 그려지므로, 아래로 내려가는
+    // 직각 연결선은 태그 밑에서 시작해 태그를 관통하지 않는다.
+    var pTagPad = (p.tags && p.tags.length) ? TAG_H + 7 : 0;
+    var pBottom = p._cy + p._h / 2 + pTagPad;
     var mx, my;
 
     if (eff === 'tree-right') {
@@ -532,6 +535,10 @@ const VIEWER_JS = String.raw`
       for (var ti = 0; ti < node.tags.length; ti++) {
         var label = node.tags[ti];
         var bw2 = measureText(label, 9.5) + 14;
+        // 배경을 불투명하게(흰 바탕 + 파스텔 칩) — 반투명이면 뒤로 지나가는
+        // 연결선이 비쳐 태그와 겹쳐 보인다.
+        el('rect', { x: bx2, y: node._cy + node._h / 2 + 4, width: bw2, height: TAG_H,
+          rx: 3, fill: '#FFFDF8' }, g);
         el('rect', { x: bx2, y: node._cy + node._h / 2 + 4, width: bw2, height: TAG_H,
           rx: 3, fill: color + '1A', stroke: color + '55', 'stroke-width': 0.8 }, g);
         var bt = el('text', { x: bx2 + 7, y: node._cy + node._h / 2 + 4 + TAG_H - 4,

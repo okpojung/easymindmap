@@ -75,3 +75,21 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
 
   return out;
 }
+
+// Number of content-indicator icons a node shows (note / link / file /
+// media). Layout strategies pass this to sizeNodeForText so the node box is
+// widened to fit the icons INSIDE it, next to the text.
+export function contentIndicatorCount(n: {
+  note?: boolean;
+  notes?: unknown[];
+  links?: unknown[];
+  attachments?: { kind?: string }[];
+}): number {
+  let count = 0;
+  if (n.note || (n.notes?.length ?? 0) > 0) count += 1;
+  if ((n.links?.length ?? 0) > 0) count += 1;
+  const atts = n.attachments ?? [];
+  if (atts.some((a) => a.kind !== 'audio' && a.kind !== 'video')) count += 1;
+  if (atts.some((a) => a.kind === 'audio' || a.kind === 'video')) count += 1;
+  return count;
+}

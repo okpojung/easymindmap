@@ -1,4 +1,5 @@
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
+import { contentIndicatorCount } from '@/editor/node-renderer/nodeContent';
 import type { MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { nodeOverhang } from '../tagOverhang';
@@ -22,6 +23,7 @@ interface MeasuredNode {
 function measureNode(node: MindNode, depth: number): MeasuredNode {
   const size = sizeNodeForText(node.text, depth, {
     hasIcon: !!node.icon,
+    indicators: contentIndicatorCount(node),
     minW: depth <= 1 ? 150 : 130,
     maxW: depth <= 1 ? 240 : 320,
   });

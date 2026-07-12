@@ -873,6 +873,14 @@ Map Settings
               └─ Level 5+: 12
 ```
 
+> **MVS 구현 현황 (2026-07)** — 좌측 상단 **맵 설정** 메뉴
+> (MapSettingsPanel)에 레벨별 폰트가 구현됨. MVS는 레벨을 5단계
+> (Root/L1/L2/L3/L4+)로 묶고 기본 크기 18/14/13/13/13을 사용하며,
+> 레벨별 **크기 + 글꼴(font-family)** 을 함께 변경할 수 있다 (위 명세의
+> "맵 전체 글꼴 하나"보다 확장). 저장: `map.settings.levelFonts` →
+> [서버 연결 예정] `maps.settings_json.levelFonts`. Line Height는 기본값
+> +(설정 크기−기본 크기)로 자동 산출, Letter Spacing은 후속.
+
 #### 17.7 Export 시 Typography 처리
 
 **Markdown Export**

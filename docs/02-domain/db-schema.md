@@ -779,6 +779,24 @@ CREATE TABLE system_settings (
 * MVP 프론트엔드는 하드코딩 값을 사용하며, 서버 연동 시 위 우선순위로
   이관한다 (32-settings.md §4.2, §4.3.1 참조).
 
+```sql
+-- 글꼴 카탈로그 (맵 설정 > 레벨별 폰트의 글꼴 선택 목록)
+-- (현재: MapSettingsPanel.tsx의 FONT_FAMILIES 상수 — 하드코딩 6종)
+CREATE TABLE font_catalog (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  label       VARCHAR(80) NOT NULL,          -- 표시명 (맑은 고딕, 명조 …)
+  css_stack   VARCHAR(300) NOT NULL,         -- CSS font-family 문자열
+  sort_order  INT NOT NULL DEFAULT 0,
+  is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+* **맵 설정(레벨별 폰트) 저장 위치**: `maps.settings_json.levelFonts`
+  (`[{size?, family?} × 5]` — index 0=Root … 4=Level4+, 현재 프론트
+  `map.settings.levelFonts`). `family`에는 css_stack 문자열을 비정규화
+  저장하므로 카탈로그 항목 비활성화 후에도 기존 맵 표시는 유지된다.
+
 ---
 
 ---

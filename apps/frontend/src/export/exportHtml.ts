@@ -22,6 +22,7 @@
 
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
+import { setLevelFontConfig, levelFontFamily } from '@/editor/node-renderer/sizeNodeForText';
 import { buildZip, type ZipEntry } from './zip';
 
 // 에디터가 계산한 노드의 최종 배치 좌표 — 뷰어는 이 좌표를 그대로 사용해
@@ -35,6 +36,8 @@ interface ExportPos {
   lines: string[];
   fs: number;
   lh: number;
+  // 맵 설정(레벨별 폰트)의 글꼴 — 없으면 뷰어 기본 글꼴
+  ff?: string;
 }
 
 interface ExportAttachment {
@@ -52,10 +55,13 @@ interface ExportNode {
   icon?: string;
   tags?: string[];
   links?: { url: string; label?: string }[];
-  notes?: { type: string; text: string; checked?: boolean }[];
+  notes?: { type: string; text: string; checked?: boolean; lang?: string; html?: string }[];
   attachments?: ExportAttachment[];
   collapsed?: boolean;
   colorKey?: string;
+  // 텍스트 강조·정렬 (에디터 스타일 탭과 동일하게 표시)
+  textAlign?: string;
+  style?: { strike?: boolean; highlight?: boolean };
   // Layout preservation: per-node subtree override + radial side.
   layoutType?: string;
   side?: string;
@@ -87,7 +93,11 @@ function toExportNode(
     icon: node.icon,
     tags,
     links: node.links?.map((l) => ({ url: l.url, label: l.label })),
-    notes: node.notes?.map((n) => ({ type: n.type, text: n.text, checked: n.checked, lang: n.lang })),
+    notes: node.notes?.map((n) => ({
+      type: n.type, text: n.text, checked: n.checked, lang: n.lang,
+      // 리치 붙여넣기(사진+서식) — sanitizeRichHtml을 통과한 HTML만 저장됨
+      html: n.html,
+    })),
     attachments: node.attachments?.map((a) => {
       const packaged = resolveHref?.(a.id);
       return {
@@ -99,6 +109,10 @@ function toExportNode(
     }),
     collapsed: node.collapsed || undefined,
     colorKey: node.colorKey,
+    textAlign: node.textAlign,
+    style: node.style && (node.style.strike || node.style.highlight)
+      ? { strike: node.style.strike || undefined, highlight: node.style.highlight || undefined }
+      : undefined,
     layoutType: node.layoutType,
     side: node.side,
     pos: resolvePos?.(node.id),
@@ -192,6 +206,43 @@ const VIEWER_JS = String.raw`
     var w = 0;
     for (var j = 0; j < out.length; j++) w = Math.max(w, measureText(out[j], fontSize));
     return { lines: out, w: w };
+  }
+
+  // 노드 텍스트 속 Markdown 표 감지 — 에디터(mdTable.ts)와 같은 규칙.
+  // 파이프 행 + 바로 다음 줄이 구분선(:?--:?)이면 표. 첫 표 하나만.
+  function parseMdTable(text) {
+    var lines = String(text || '').split('\n');
+    function trimS(s) { return s.replace(/^\s+|\s+$/g, ''); }
+    function isPipe(s) { s = trimS(s); return s.length > 1 && s.indexOf('|') >= 0; }
+    function cells(s) {
+      s = trimS(s);
+      if (s.charAt(0) === '|') s = s.slice(1);
+      if (s.charAt(s.length - 1) === '|') s = s.slice(0, -1);
+      var a = s.split('|'), o = [], i2;
+      for (i2 = 0; i2 < a.length; i2++) o.push(trimS(a[i2]));
+      return o;
+    }
+    function isSep(s) {
+      if (!isPipe(s)) return false;
+      var c = cells(s), i2;
+      if (!c.length) return false;
+      for (i2 = 0; i2 < c.length; i2++) { if (!/^:?-{2,}:?$/.test(c[i2])) return false; }
+      return true;
+    }
+    for (var i = 0; i < lines.length - 1; i++) {
+      if (!isPipe(lines[i]) || isSep(lines[i])) continue;
+      if (!isSep(lines[i + 1])) continue;
+      var headers = cells(lines[i]), rows = [], j = i + 2;
+      while (j < lines.length && isPipe(lines[j]) && !isSep(lines[j])) {
+        var c2 = cells(lines[j]);
+        while (c2.length < headers.length) c2.push('');
+        rows.push(c2.slice(0, headers.length));
+        j++;
+      }
+      if (!rows.length) continue;
+      return { headers: headers, rows: rows };
+    }
+    return null;
   }
 
   // ---- measure pass (bottom-up, per-layout block model) ----------------------
@@ -468,6 +519,10 @@ const VIEWER_JS = String.raw`
     node._w = node.pos.w; node._h = node.pos.h;
     node._lines = node.pos.lines; node._lineH = node.pos.lh;
     node._fs = node.pos.fs;
+    node._ff = node.pos.ff; // 맵 설정(레벨별 폰트)의 글꼴
+    // 에디터 좌표 모드 — _lines가 Markdown 표를 제외한 텍스트만 담고
+    // 있으므로 drawNode가 표를 직접 그린다.
+    node._fixed = true;
     node._open = !node.collapsed;
     var kids = node.children || [];
     for (var i = 0; i < kids.length; i++) {
@@ -520,14 +575,87 @@ const VIEWER_JS = String.raw`
       ic.textContent = node.icon;
       tx += node._fs + 6;
     }
+    // 텍스트 강조(취소선·하이라이트)·정렬·글꼴 + Markdown 표 — 에디터와 동일
+    var st = node.style || {};
+    var align = node.textAlign || 'left';
+    var mdt = node._fixed ? parseMdTable(node.text) : null;
+    var cellFs = 0, rowH2 = 0, tGap = 0, tblH = 0;
+    if (mdt) {
+      cellFs = Math.max(10, node._fs - 2);
+      rowH2 = cellFs + 10;
+      tGap = node._lines.length ? 6 : 0;
+      tblH = (1 + mdt.rows.length) * rowH2;
+    }
+    var contentH = node._lines.length * node._lineH + (mdt ? tblH + tGap : 0);
+    var topY = node._cy - contentH / 2;
+    var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
     for (var li = 0; li < node._lines.length; li++) {
-      var t = el('text', {
-        x: tx, y: y0 + PAD_Y + node._fs * 0.85 + li * node._lineH,
+      var lineTxt = node._lines[li];
+      var baseY = mdt
+        ? topY + li * node._lineH + node._lineH / 2 + node._fs * 0.34
+        : y0 + PAD_Y + node._fs * 0.85 + li * node._lineH;
+      var lx = align === 'center' ? x0 + node._w / 2
+        : (align === 'right' ? x0 + node._w - PAD_X - (node._marksW || 0) : tx);
+      if (st.highlight && lineTxt) {
+        var lw = measureText(lineTxt, node._fs);
+        var hx = anchor === 'middle' ? lx - lw / 2 - 3 : (anchor === 'end' ? lx - lw - 3 : lx - 3);
+        el('rect', { x: hx, y: baseY - node._fs * 1.06, width: lw + 6,
+          height: node._fs * 1.44, rx: 2, fill: '#FFE066', opacity: 0.85 }, g);
+      }
+      var tAttrs = {
+        x: lx, y: baseY,
         'font-size': node._fs,
         'font-weight': isRoot ? 700 : (depth === 1 ? 600 : 500),
+        'text-anchor': anchor,
         fill: textColor
-      }, g);
-      t.textContent = node._lines[li];
+      };
+      if (st.strike) tAttrs['text-decoration'] = 'line-through';
+      if (node._ff) tAttrs['font-family'] = node._ff;
+      var t = el('text', tAttrs, g);
+      t.textContent = lineTxt;
+    }
+    if (mdt) {
+      // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
+      var gridC = color || textColor;
+      var tblX = x0 + PAD_X;
+      var tblY = topY + node._lines.length * node._lineH + tGap;
+      var colWs = [], ci, ri, mmax;
+      for (ci = 0; ci < mdt.headers.length; ci++) {
+        mmax = measureText(mdt.headers[ci], cellFs);
+        for (ri = 0; ri < mdt.rows.length; ri++) {
+          mmax = Math.max(mmax, measureText(mdt.rows[ri][ci] || '', cellFs));
+        }
+        colWs.push(Math.max(26, Math.ceil(mmax) + 12));
+      }
+      var tblW = 0;
+      for (ci = 0; ci < colWs.length; ci++) tblW += colWs[ci];
+      el('rect', { x: tblX, y: tblY, width: tblW, height: rowH2,
+        fill: gridC, opacity: 0.16 }, g);
+      el('rect', { x: tblX, y: tblY, width: tblW, height: tblH, fill: 'none',
+        stroke: gridC, 'stroke-width': 1, opacity: 0.75 }, g);
+      var allRows = [mdt.headers].concat(mdt.rows);
+      for (ri = 1; ri < allRows.length; ri++) {
+        el('line', { x1: tblX, y1: tblY + ri * rowH2, x2: tblX + tblW, y2: tblY + ri * rowH2,
+          stroke: gridC, 'stroke-width': 0.7, opacity: 0.55 }, g);
+      }
+      var vlx = tblX;
+      for (ci = 1; ci < colWs.length; ci++) {
+        vlx += colWs[ci - 1];
+        el('line', { x1: vlx, y1: tblY, x2: vlx, y2: tblY + tblH,
+          stroke: gridC, 'stroke-width': 0.7, opacity: 0.55 }, g);
+      }
+      for (ri = 0; ri < allRows.length; ri++) {
+        var cellX = tblX;
+        for (ci = 0; ci < allRows[ri].length; ci++) {
+          var cellT = el('text', {
+            x: cellX + 6, y: tblY + ri * rowH2 + rowH2 / 2 + cellFs * 0.34,
+            'font-size': cellFs, 'font-weight': ri === 0 ? 700 : 400, fill: textColor
+          }, g);
+          if (node._ff) cellT.setAttribute('font-family', node._ff);
+          cellT.textContent = allRows[ri][ci];
+          cellX += colWs[ci];
+        }
+      }
     }
 
     if (node.tags && node.tags.length) {
@@ -669,6 +797,14 @@ const VIEWER_JS = String.raw`
   function renderNoteBlock(note) {
     // 폐기된 옛 타입(warning/tip)은 문단으로 렌더링 (하위호환)
     var type = note.type === 'warning' || note.type === 'tip' ? 'paragraph' : note.type;
+
+    // 리치 문단(웹 기사 붙여넣기) — 에디터에서 sanitize된 HTML을 그대로 표시
+    if (type === 'paragraph' && note.html) {
+      var rich = document.createElement('div');
+      rich.className = 'mm-note-block mm-note-rich';
+      rich.innerHTML = note.html;
+      return rich;
+    }
 
     if (type === 'table') {
       // 줄 = 행, '|' = 열. 첫 행은 헤더.
@@ -945,6 +1081,18 @@ const VIEWER_CSS = `
   }
   .mm-note-warning { color: #B45309; }
   .mm-note-tip { color: #15803D; }
+  /* 리치 문단(웹 기사 붙여넣기) — 사진+서식 표시 */
+  .mm-note-rich { white-space: normal; font-size: 10.5px; line-height: 1.6; }
+  .mm-note-rich img {
+    max-width: 100%; height: auto; border-radius: 4px;
+    display: block; margin: 4px 0;
+  }
+  .mm-note-rich p, .mm-note-rich div { margin: 0 0 6px; }
+  .mm-note-rich table { border-collapse: collapse; max-width: 100%; }
+  .mm-note-rich td, .mm-note-rich th { border: 1px solid #E4D9C3; padding: 3px 6px; }
+  .mm-note-rich pre { overflow-x: auto; background: #F3ECDD; padding: 6px 8px; border-radius: 4px; }
+  .mm-note-rich h1, .mm-note-rich h2, .mm-note-rich h3,
+  .mm-note-rich h4 { font-size: 1.1em; margin: 8px 0 4px; }
   footer {
     height: 26px; flex-shrink: 0; display: flex; align-items: center;
     padding: 0 14px; gap: 8px; background: #FFFDF8;
@@ -975,6 +1123,8 @@ export function buildStandaloneHtml(
 
   // 에디터와 동일한 레이아웃 엔진으로 최종 좌표(간격 배율 포함)를 계산해
   // 노드마다 실어 보낸다 — 뷰어가 에디터 화면과 똑같이 그린다.
+  // 맵 설정(레벨별 폰트)도 측정에 반영하고 글꼴(ff)을 노드마다 실어 보낸다.
+  setLevelFontConfig(map.settings?.levelFonts);
   const laid = computeLayout(map, layoutType, 700, 400, spacing);
   const posById = new Map<string, ExportPos>(
     laid.map((n) => [
@@ -987,6 +1137,7 @@ export function buildStandaloneHtml(
         lines: n._lines ?? [String(n.text ?? '')],
         fs: n._fontSize ?? 13,
         lh: n._lineHeight ?? 18,
+        ff: levelFontFamily(n.depth),
       },
     ]),
   );
@@ -996,7 +1147,12 @@ export function buildStandaloneHtml(
     title: map.title,
     mapLayout: layoutType,
     root: {
-      ...toExportNode({ id: 'root', text: map.root.text } as MindNode, resolveHref, resolvePos),
+      ...toExportNode({
+        id: 'root',
+        text: map.root.text,
+        textAlign: map.root.textAlign,
+        style: map.root.style,
+      } as MindNode, resolveHref, resolvePos),
       colorKey: 'root',
       layoutType: map.root.layoutType ?? mapLayoutType,
       children: map.branches.map((b) => toExportNode(b, resolveHref, resolvePos)),

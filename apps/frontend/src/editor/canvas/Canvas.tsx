@@ -20,6 +20,7 @@ import {
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType, SampleMap, Collaborator } from '@/editor/__samples__/types';
 import { computeLayout } from '@/layout/LayoutEngine';
+import { setLevelFontConfig } from '@/editor/node-renderer/sizeNodeForText';
 import { NodeRenderer } from '@/editor/node-renderer/NodeRenderer';
 import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
 import { nodeContentIndicators, type ContentKind } from '@/editor/node-renderer/nodeContent';
@@ -147,10 +148,13 @@ export function Canvas({
   const spacingX = useEditorUiStore((s) => s.spacingX);
   const spacingY = useEditorUiStore((s) => s.spacingY);
 
-  const nodes = useMemo(
-    () => computeLayout(sample, layoutType, CX, CY, { x: spacingX, y: spacingY }),
-    [sample, layoutType, CX, CY, spacingX, spacingY],
-  );
+  const nodes = useMemo(() => {
+    // 맵 설정(레벨별 폰트)을 측정기에 주입 — 모든 레이아웃 전략의
+    // sizeNodeForText()와 NodeRenderer가 같은 크기·글꼴을 쓴다.
+    // sample(map)이 의존성이므로 설정 변경 시 레이아웃도 다시 계산된다.
+    setLevelFontConfig(sample.settings?.levelFonts);
+    return computeLayout(sample, layoutType, CX, CY, { x: spacingX, y: spacingY });
+  }, [sample, layoutType, CX, CY, spacingX, spacingY]);
 
   // In focus mode, render only the focused node and its descendants — keeping
   // their existing layout positions (the layout is NOT recomputed/re-rooted).

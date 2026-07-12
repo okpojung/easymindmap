@@ -8,9 +8,11 @@ interface Props {
   n: LaidOutNode;
   tagList: string[];
   t: ThemeTokens;
+  // X(닫기) 클릭 시 해당 태그를 노드에서 제거 (documentStore.removeNodeTag)
+  onRemove?: (tag: string) => void;
 }
 
-export function NodeTagChips({ n, tagList, t }: Props) {
+export function NodeTagChips({ n, tagList, t, onRemove }: Props) {
   const tagH = 16;
   const arrowW = 6;
   const padX = 8;
@@ -76,7 +78,17 @@ export function NodeTagChips({ n, tagList, t }: Props) {
                   x2={x1 + padX + labelW + 2} y2={yBot - 3}
                   stroke={tc.text} strokeOpacity="0.25" strokeWidth="0.8" />
             <g transform={`translate(${x1 + padX + labelW + 8}, ${yMid})`}
-               style={{ cursor: 'pointer' }}>
+               style={{ cursor: 'pointer' }}
+               onPointerDown={(e) => e.stopPropagation()}
+               onDoubleClick={(e) => e.stopPropagation()}
+               onClick={(e) => {
+                 // 노드 선택/드래그로 번지지 않게 막고 태그를 삭제한다
+                 e.stopPropagation();
+                 onRemove?.(tagName);
+               }}>
+              <title>태그 삭제</title>
+              {/* 투명 히트 영역 — X 선만으로는 클릭 판정이 너무 좁다 */}
+              <circle r={7} fill="transparent" />
               <line x1={-3} y1={-3} x2={3} y2={3}
                     stroke={tc.text} strokeOpacity="0.65" strokeWidth="1.2" strokeLinecap="round" />
               <line x1={3} y1={-3} x2={-3} y2={3}

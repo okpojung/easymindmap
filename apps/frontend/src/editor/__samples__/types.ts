@@ -37,6 +37,8 @@ export interface NodeStyle {
   fontSize?: number;
   fontWeight?: NodeFontWeight;
   fontStyle?: NodeFontStyle;
+  strike?: boolean; // 취소선 (텍스트 강조)
+  highlight?: boolean; // 형광펜 하이라이트 (텍스트 강조)
   borderWidth?: number;
   borderStyle?: NodeBorderStyle;
   shapeType?: ShapeType;
@@ -63,6 +65,10 @@ export interface NoteBlock {
   text: string;
   checked?: boolean; // checklist items only
   lang?: string; // code_block only — 표시용 언어 라벨 (Shell, PHP, Node …)
+  // paragraph only — 웹 기사 등을 서식·이미지째 붙여넣은 리치 콘텐츠.
+  // sanitizeRichHtml()을 통과한 안전한 HTML만 저장되며, text에는 같은
+  // 내용의 일반 텍스트를 함께 보관한다 (검색·하위호환용).
+  html?: string;
 }
 
 export type AttachmentKind = 'file' | 'audio' | 'video';
@@ -139,10 +145,23 @@ export interface SampleRoot {
   _childCount?: number;
 }
 
+// --- 맵 전체 설정 (좌측 상단 '맵 설정' 메뉴) --------------------------------
+// 레벨(깊이)별 기본 폰트 — index 0=Root, 1=Level1 … 4=Level4+.
+// size를 비우면 기본값(18/14/13…), family를 비우면 시스템 기본 글꼴.
+export interface LevelFontSetting {
+  size?: number;
+  family?: string; // CSS font-family 문자열
+}
+
+export interface MapSettings {
+  levelFonts?: LevelFontSetting[];
+}
+
 export interface SampleMap {
   title: string;
   root: SampleRoot;
   branches: SampleBranch[];
+  settings?: MapSettings;
 }
 
 export interface KanbanCard {

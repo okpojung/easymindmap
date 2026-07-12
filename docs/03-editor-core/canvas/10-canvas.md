@@ -763,6 +763,13 @@ style={{
 
 > 노드 데이터 모델: `node.tags: string[]` (다중 태그). 단일 `node.tag: string` 도 호환.
 
+#### 24.3.1 ✕ 핸들 동작 (MVS 구현 — 2026-07)
+
+캔버스 태그 칩의 **✕ 클릭 = 해당 태그 삭제** (`documentStore.removeNodeTag`).
+✕ 핸들은 투명 히트 원(r=7)으로 클릭 판정을 넓히고, `pointerdown`/`click`을
+`stopPropagation` 해 노드 선택·드래그로 번지지 않는다. 호버 시 "태그 삭제"
+네이티브 툴팁 표시. (노트·태그 탭의 칩 ✕와 동일한 동작으로 통일)
+
 #### 24.4 SVG path 정의
 
 ```text

@@ -143,9 +143,12 @@ export function Canvas({
   // node's children-connector start.
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
 
+  const spacingX = useEditorUiStore((s) => s.spacingX);
+  const spacingY = useEditorUiStore((s) => s.spacingY);
+
   const nodes = useMemo(
-    () => computeLayout(sample, layoutType, CX, CY),
-    [sample, layoutType, CX, CY],
+    () => computeLayout(sample, layoutType, CX, CY, { x: spacingX, y: spacingY }),
+    [sample, layoutType, CX, CY, spacingX, spacingY],
   );
 
   // In focus mode, render only the focused node and its descendants — keeping

@@ -36,11 +36,36 @@ import { layoutHierarchyRight } from './strategies/HierarchyStrategy';
 import { layoutProcessTreeRight } from './strategies/ProcessStrategy';
 import { applyLayoutOverrides } from './strategies/SubtreeStrategy';
 
+// 간격 조정 (08-layout.md §6.8 MVP): 레이아웃·오버라이드 계산이 모두 끝난
+// 좌표에 루트 위치 기준 축별 배율을 적용한다. 노드 박스 크기는 그대로 두고
+// 노드 사이 거리만 늘리거나 줄이므로 어떤 레이아웃/오버라이드 조합에도
+// 동일하게 동작하며, 전략 코드를 건드리지 않는다. (배율 ≥ 1은 겹침을 만들
+// 수 없고, 하한 0.9는 editorUiStore에서 강제 — 그 아래는 촘촘한 레이아웃
+// (트리·아래/진행트리)에서 노드 겹침이 생기는 것을 측정으로 확인)
+export interface LayoutSpacing {
+  x: number; // 가로 간격 배율 (1 = 기본)
+  y: number; // 세로 간격 배율
+}
+
+function applySpacing(out: LaidOutNode[], spacing: LayoutSpacing): void {
+  if (out.length === 0) return;
+  if (Math.abs(spacing.x - 1) < 0.01 && Math.abs(spacing.y - 1) < 0.01) return;
+
+  const rootX = out[0].x;
+  const rootY = out[0].y;
+
+  for (const n of out) {
+    n.x = rootX + (n.x - rootX) * spacing.x;
+    n.y = rootY + (n.y - rootY) * spacing.y;
+  }
+}
+
 export function computeLayout(
   sample: SampleMap,
   layoutType: LayoutType,
   CX: number,
   CY: number,
+  spacing?: LayoutSpacing,
 ): LaidOutNode[] {
   const activeLayoutType = normalizeLayoutType(layoutType);
 
@@ -112,6 +137,9 @@ export function computeLayout(
   // Per-node layout overrides (e.g. a level-2 node whose subtree uses a
   // different layout than the map).
   applyLayoutOverrides(branches, activeLayoutType, out);
+
+  // 사용자 간격 조정 — 항상 마지막에, 최종 좌표 기준으로.
+  if (spacing) applySpacing(out, spacing);
 
   return out;
 }

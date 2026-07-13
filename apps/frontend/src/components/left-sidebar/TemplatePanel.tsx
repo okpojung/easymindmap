@@ -10,9 +10,14 @@
 
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { SampleMap, LayoutType } from '@/editor/__samples__/types';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import {
+  loadUserTemplates,
+  saveUserTemplates,
+  countMapNodes,
+  type UserTemplate,
+} from '@/utils/userTemplates';
 
 const TEMPLATES = [
   { name: '제품 로드맵',   desc: 'Q1~Q4 분기별 마일스톤', colors: ['#D97706','#0284C7','#15803D','#9333EA'] },
@@ -21,55 +26,6 @@ const TEMPLATES = [
   { name: 'Kanban 보드',  desc: '백로그 → 완료 흐름',     colors: ['#958A78','#D97706','#0284C7','#15803D'] },
   { name: '회의록',       desc: '안건 · 결정 · 액션',     colors: ['#DC2626','#F59E0B','#15803D'] },
 ];
-
-const USER_TPL_KEY = 'easymindmap.userTemplates.v1';
-
-interface UserTemplate {
-  id: string;
-  name: string;
-  savedAt: string; // ISO
-  nodeCount: number;
-  map: SampleMap;
-  // 맵 전체 레이아웃·간격은 문서(map)가 아니라 editorUiStore에 있으므로
-  // 템플릿에 따로 저장해 적용 시 함께 복원한다. (없으면 — 구버전 등록분 —
-  // map.root.layoutType으로 폴백)
-  editor?: {
-    layoutType?: LayoutType;
-    spacingX?: number;
-    spacingY?: number;
-  };
-}
-
-function loadUserTemplates(): UserTemplate[] {
-  try {
-    const raw = localStorage.getItem(USER_TPL_KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveUserTemplates(list: UserTemplate[]): boolean {
-  try {
-    localStorage.setItem(USER_TPL_KEY, JSON.stringify(list));
-    return true;
-  } catch {
-    return false; // 저장소 초과 등
-  }
-}
-
-function countNodes(map: SampleMap): number {
-  let n = 1; // root
-  const walk = (nodes: { children?: unknown[] }[]) => {
-    for (const node of nodes) {
-      n++;
-      walk((node.children ?? []) as { children?: unknown[] }[]);
-    }
-  };
-  walk(map.branches);
-  return n;
-}
 
 export function TemplatePanel({ t }: { t: ThemeTokens }) {
   const map = useDocumentStore((s) => s.map);
@@ -100,7 +56,7 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
       id: `tpl-${Date.now()}`,
       name,
       savedAt: new Date().toISOString(),
-      nodeCount: countNodes(map),
+      nodeCount: countMapNodes(map),
       map: JSON.parse(JSON.stringify(map)),
       editor: { layoutType, spacingX, spacingY },
     };

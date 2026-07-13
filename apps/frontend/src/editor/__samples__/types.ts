@@ -73,6 +73,14 @@ export interface NoteBlock {
 
 export type AttachmentKind = 'file' | 'audio' | 'video';
 
+// 노드에 붙여넣은 사진 (클립보드 이미지 = data URL, 웹 이미지 = http URL).
+// w/h는 원본 픽셀 크기 — 노드 안에서 노드 폭에 맞춰 축소 표시된다.
+export interface NodeImage {
+  src: string;
+  w: number;
+  h: number;
+}
+
 export interface NodeAttachment {
   id: string;
   name: string;
@@ -107,6 +115,11 @@ export interface MindNode {
   links?: NodeLink[];
   notes?: NoteBlock[];
   attachments?: NodeAttachment[];
+  // 노드 안에 표시되는 붙여넣은 사진 (텍스트 아래)
+  image?: NodeImage;
+  // 노드 우하단 핸들로 수동 조절한 박스 크기 (없으면 자동 크기)
+  sizeW?: number;
+  sizeH?: number;
 
   // Layout-internal: original child count, kept on the pruned node so the
   // canvas can show a collapse/expand toggle even when children are hidden.
@@ -144,6 +157,9 @@ export interface SampleRoot {
   links?: NodeLink[];
   notes?: NoteBlock[];
   attachments?: NodeAttachment[];
+  image?: NodeImage;
+  sizeW?: number;
+  sizeH?: number;
   _childCount?: number;
 }
 

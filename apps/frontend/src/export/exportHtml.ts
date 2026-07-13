@@ -62,6 +62,8 @@ interface ExportNode {
   // 텍스트 강조·정렬 (에디터 스타일 탭과 동일하게 표시)
   textAlign?: string;
   style?: { strike?: boolean; highlight?: boolean };
+  // 노드 안 사진 (data URL 또는 원본 URL) — 노드 폭에 맞춰 축소 표시
+  image?: { src: string; w: number; h: number };
   // Layout preservation: per-node subtree override + radial side.
   layoutType?: string;
   side?: string;
@@ -109,6 +111,7 @@ function toExportNode(
     }),
     collapsed: node.collapsed || undefined,
     colorKey: node.colorKey,
+    image: node.image,
     textAlign: node.textAlign,
     style: node.style && (node.style.strike || node.style.highlight)
       ? { strike: node.style.strike || undefined, highlight: node.style.highlight || undefined }
@@ -636,12 +639,22 @@ const VIEWER_JS = String.raw`
       tGap = node._lines.length ? 6 : 0;
       tblH = (1 + mdt.rows.length) * rowH2;
     }
-    var contentH = node._lines.length * node._lineH + (mdt ? tblH + tGap : 0);
+    // 노드 안 사진 — 노드 폭에 맞춰 축소 (에디터 scaleNodeImage와 동일)
+    var img = null;
+    if (node.image && node.image.src) {
+      var innerW = Math.max(40, node._w - PAD_X * 2);
+      var isc = Math.min(1, innerW / Math.max(1, node.image.w));
+      img = { w: Math.round(node.image.w * isc), h: Math.round(node.image.h * isc) };
+    }
+    var imgGap = img && (node._lines.length || mdt) ? 6 : 0;
+    var stacked = !!(mdt || img); // 표·사진이 있으면 세로 스택 가운데 정렬
+    var contentH = node._lines.length * node._lineH +
+      (mdt ? tblH + tGap : 0) + (img ? img.h + imgGap : 0);
     var topY = node._cy - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
     for (var li = 0; li < node._lines.length; li++) {
       var lineTxt = node._lines[li];
-      var baseY = mdt
+      var baseY = stacked
         ? topY + li * node._lineH + node._lineH / 2 + node._fs * 0.34
         : y0 + PAD_Y + node._fs * 0.85 + li * node._lineH;
       var lx = align === 'center' ? x0 + node._w / 2
@@ -706,6 +719,17 @@ const VIEWER_JS = String.raw`
           cellX += colWs[ci];
         }
       }
+    }
+    if (img) {
+      // 노드 안 사진 — 텍스트(·표) 아래 가운데 정렬
+      var imgY = topY + node._lines.length * node._lineH +
+        (mdt ? tblH + tGap : 0) + imgGap;
+      el('image', {
+        href: node.image.src,
+        x: node._cx - img.w / 2, y: imgY,
+        width: img.w, height: img.h,
+        preserveAspectRatio: 'xMidYMid meet'
+      }, g);
     }
 
     if (node.tags && node.tags.length) {

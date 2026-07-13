@@ -8,6 +8,7 @@ import type {
   NodeLink,
   NoteBlock,
   NodeAttachment,
+  NodeImage,
 } from '@/editor/__samples__/types';
 
 export interface LaidOutNode {
@@ -42,6 +43,9 @@ export interface LaidOutNode {
   links?: NodeLink[];
   notes?: NoteBlock[];
   attachments?: NodeAttachment[];
+  image?: NodeImage; // 노드 안 사진 (텍스트 아래 표시)
+  sizeW?: number; // 수동 박스 크기 (우하단 핸들)
+  sizeH?: number;
 
   // Layout-internal: original child count (children may be hidden when collapsed)
   _childCount?: number;

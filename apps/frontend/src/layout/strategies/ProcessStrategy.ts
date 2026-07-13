@@ -19,7 +19,7 @@
 //   recursive placement can be applied below any selected node.
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
-import { contentIndicatorCount } from '@/editor/node-renderer/nodeContent';
+import { nodeSizingOpts } from '@/editor/node-renderer/nodeContent';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { nodeOverhang } from '@/layout/tagOverhang';
@@ -50,8 +50,7 @@ interface Measured {
 // box and the horizontal row formed by its children's blocks.
 function measure(node: MindNode, depth: number): Measured {
   const size = sizeNodeForText(node.text, depth, {
-    hasIcon: !!node.icon,
-    indicators: contentIndicatorCount(node),
+    ...nodeSizingOpts(node),
     minW: depth <= 1 ? 140 : 130,
     maxW: 220,
   });

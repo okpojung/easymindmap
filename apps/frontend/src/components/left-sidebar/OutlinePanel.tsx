@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { OutlineNode as OutlineNodeData } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
+import { useInteractionStore } from '@/stores/interactionStore';
 
 interface PanelProps {
   t: ThemeTokens;
@@ -55,10 +56,14 @@ export function OutlinePanel({ t, outline }: PanelProps) {
 function OutlineRow({ t, node }: { t: ThemeTokens; node: OutlineNodeData }) {
   const [expanded, setExpanded] = useState(node.expanded !== false);
   const hasChildren = !!node.children && node.children.length > 0;
+  // 아웃라인 행 클릭 = 캔버스의 노드 선택과 연동
+  const setSelectedId = useInteractionStore((s) => s.setSelectedId);
 
   return (
     <div>
       <div
+        data-outline-id={node.id}
+        onClick={() => setSelectedId(node.id)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -76,7 +81,7 @@ function OutlineRow({ t, node }: { t: ThemeTokens; node: OutlineNodeData }) {
         }}
       >
         <button
-          onClick={() => setExpanded((e) => !e)}
+          onClick={(e) => { e.stopPropagation(); setExpanded((x) => !x); }}
           style={{
             width: 16,
             height: 16,

@@ -18,6 +18,13 @@ export interface SizeOpts {
   // Content-indicator icons (🔗📝📎▶️) drawn INSIDE the box right of the
   // text — the box widens so they all fit (contentIndicatorCount()).
   indicators?: number;
+  // 노드 우하단 핸들로 수동 조절한 박스 크기 — 폭은 고정(텍스트가 이 폭에
+  // 맞춰 다시 줄바꿈), 높이는 최소값으로 취급 (내용이 더 크면 내용 우선).
+  manualW?: number;
+  manualH?: number;
+  // 노드 안에 붙여넣은 사진의 원본 크기 — 노드 폭에 맞춰 축소한 높이만큼
+  // 박스가 커진다 (표시는 NodeRenderer의 scaleNodeImage와 동일 공식).
+  image?: { w: number; h: number };
 }
 
 export interface NodeSize {
@@ -32,6 +39,17 @@ export interface NodeSize {
   // 노드 텍스트에 Markdown 표가 있으면 그 측정 결과 — lines에는 표를 뺀
   // 나머지 텍스트만 남는다. NodeRenderer가 같은 값으로 표를 그린다.
   mdTable?: MdTableLayout;
+}
+
+// 노드 폭(w)에 맞춘 사진 표시 크기 — 측정과 그리기가 같은 공식을 쓴다.
+export function scaleNodeImage(
+  image: { w: number; h: number },
+  nodeW: number,
+  padX: number,
+): { w: number; h: number } {
+  const innerW = Math.max(40, nodeW - padX * 2);
+  const scale = Math.min(1, innerW / Math.max(1, image.w));
+  return { w: Math.round(image.w * scale), h: Math.round(image.h * scale) };
 }
 
 // --- 레벨별 폰트 (맵 전체 설정) ---------------------------------------------
@@ -81,8 +99,15 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   const measure = (s: string): number =>
     Array.from(s).reduce((acc, ch) => acc + charW(ch), 0);
 
-  const minW = opts.minW ?? (depth === 0 ? 160 : 130);
-  const maxW = opts.maxW ?? (depth === 0 ? 260 : 320);
+  // 수동 폭(우하단 핸들)이 있으면 그 폭에 고정 — 텍스트는 이 폭에 맞춰
+  // 다시 줄바꿈된다.
+  const manualW = opts.manualW && opts.manualW >= 90
+    ? Math.min(900, Math.round(opts.manualW))
+    : undefined;
+  // 사진이 있으면 기본 최소 폭을 조금 넉넉하게 (너무 작게 축소되지 않게)
+  const imageMin = opts.image ? 170 : 0;
+  const minW = manualW ?? Math.max(imageMin, opts.minW ?? (depth === 0 ? 160 : 130));
+  const maxW = manualW ?? Math.max(minW, opts.maxW ?? (depth === 0 ? 260 : 320));
   // Reserve space for branch icon (NS-05) when present
   const iconReserve = (depth === 1 && opts.hasIcon) ? 22 : 0;
   // Reserve space for content-indicator icons inside the right edge
@@ -144,16 +169,25 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
 
   // Width = widest wrapped line + padding (clamped between min and max).
   // 표가 있으면 표 폭만큼은 항상 확보한다 (maxW보다 넓어도 잘리지 않게).
+  // 수동 폭이면 그 값 그대로 (표가 더 넓을 때만 예외적으로 확장).
   const widest = wrappedLines.reduce((m, l) => Math.max(m, measure(l)), 0);
   const contentW = Math.max(widest, mdTable ? mdTable.w : 0);
   const wCap = Math.max(maxW, mdTable ? mdTable.w + padX * 2 : 0) + indicatorReserve;
-  const w = Math.min(
-    wCap,
-    Math.max(minW, Math.ceil(contentW + padX * 2 + iconReserve + indicatorReserve)),
-  );
+  const w = manualW
+    ? Math.max(manualW, mdTable ? mdTable.w + padX * 2 : 0)
+    : Math.min(
+        wCap,
+        Math.max(minW, Math.ceil(contentW + padX * 2 + iconReserve + indicatorReserve)),
+      );
   const textH = wrappedLines.length * lineHeight;
   const tableH = mdTable ? mdTable.h + (wrappedLines.length > 0 ? 6 : 0) : 0;
-  const h = textH + tableH + padY * 2;
+  // 붙여넣은 사진 — 노드 폭에 맞춰 축소한 높이만큼 박스가 커진다
+  const imgH = opts.image
+    ? scaleNodeImage(opts.image, w, padX).h + (wrappedLines.length > 0 || mdTable ? 6 : 0)
+    : 0;
+  let h = textH + tableH + imgH + padY * 2;
+  // 수동 높이는 최소값 — 내용이 더 크면 내용에 맞춘다
+  if (opts.manualH && opts.manualH > h) h = Math.min(1200, Math.round(opts.manualH));
 
   return { w, h, lines: wrappedLines, fontSize, fontWeight, lineHeight, padX, padY, mdTable };
 }

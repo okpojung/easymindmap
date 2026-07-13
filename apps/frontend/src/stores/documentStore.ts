@@ -24,6 +24,7 @@ import type {
   NoteBlock,
   NoteBlockType,
   NodeAttachment,
+  NodeImage,
   LevelFontSetting,
 } from '@/editor/__samples__/types';
 import type { TextAlign, LayoutType, EdgeType } from '@/types/mindmap';
@@ -39,6 +40,13 @@ const BRANCH_COLOR_KEYS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 // recorded as new history entries.
 const HISTORY_LIMIT = 100;
 let applyingHistory = false;
+
+// 연속 갱신(노드 크기 핸들 드래그 등) 동안 히스토리 기록을 잠근다 —
+// 첫 변경만 기록해 1회 드래그 = 1개 undo 단계가 되게 한다.
+let historyPaused = false;
+export function setHistoryPaused(v: boolean) {
+  historyPaused = v;
+}
 
 interface DocumentState {
   map: SampleMap;
@@ -85,6 +93,13 @@ interface DocumentState {
 
   // 현재 맵 전체 교체 (템플릿 적용 등 — undo 히스토리에 기록됨)
   loadMap: (map: SampleMap) => void;
+  // 새 맵 시작 — 루트만 있는 기본 맵 ('새 맵' 메뉴)
+  newMap: (title?: string) => void;
+
+  // 노드 박스 수동 크기 (우하단 핸들 드래그, null = 자동 크기로 복귀)
+  updateNodeSize: (nodeId: string | null, size: { w?: number; h?: number } | null) => void;
+  // 노드 안 사진 (붙여넣기, undefined = 제거)
+  setNodeImage: (nodeId: string | null, image: NodeImage | undefined) => void;
 
   // Style / icon
   updateNodeStyle: (nodeId: string | null, style: Partial<NodeStyle>) => void;
@@ -846,6 +861,34 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set({ map: cloneMap(map) });
   },
 
+  newMap: (title = '새 마인드맵') => {
+    set({
+      map: {
+        title,
+        root: { id: 'root', text: '중심 주제', colorKey: 'root', side: 'center' },
+        branches: [],
+      },
+    });
+  },
+
+  updateNodeSize: (nodeId, size) => {
+    if (!nodeId) return;
+    set((state) => ({
+      map: mutateNode(state.map, nodeId, (n) => ({
+        ...n,
+        sizeW: size?.w ? Math.max(90, Math.min(900, Math.round(size.w))) : undefined,
+        sizeH: size?.h ? Math.max(36, Math.min(1200, Math.round(size.h))) : undefined,
+      })),
+    }));
+  },
+
+  setNodeImage: (nodeId, image) => {
+    if (!nodeId) return;
+    set((state) => ({
+      map: mutateNode(state.map, nodeId, (n) => ({ ...n, image })),
+    }));
+  },
+
   updateNodeStyle: (nodeId, style) => {
     if (!nodeId) return;
     set((state) => ({
@@ -972,7 +1015,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 // Record every `map` mutation (that isn't an undo/redo) into the history so the
 // toolbar / Ctrl+Z / Ctrl+Y can step through document states. In-memory only.
 useDocumentStore.subscribe((state, prev) => {
-  if (applyingHistory) return;
+  if (applyingHistory || historyPaused) return;
   if (state.map !== prev.map) {
     useDocumentStore.setState((s) => ({
       past: [...s.past, prev.map].slice(-HISTORY_LIMIT),

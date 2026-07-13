@@ -16,8 +16,10 @@ import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, isNoteKind, type ContentKind } from './nodeContent';
 import { IndicatorGlyph, NoteTypeGlyph } from './IndicatorGlyph';
-import { levelFontFamily, levelFontSize } from './sizeNodeForText';
+import { levelFontFamily, levelFontSize, scaleNodeImage } from './sizeNodeForText';
 import { layoutMdTable, measureTextApprox, MD_TABLE_CELL_PAD_X } from './mdTable';
+import { useViewportStore } from '@/stores/viewportStore';
+import { setHistoryPaused } from '@/stores/documentStore';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -106,7 +108,15 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
+  const updateNodeSize = useDocumentStore((state) => state.updateNodeSize);
+  const setNodeImage = useDocumentStore((state) => state.setNodeImage);
+  const zoom = useViewportStore((state) => state.zoom);
   const showTags = useEditorUiStore((state) => state.showTags);
+
+  // 우하단 크기 조절 핸들 드래그 상태
+  const resizeRef = useRef<{
+    pointerId: number; x: number; y: number; w: number; h: number; moved: boolean;
+  } | null>(null);
   const hiddenTags = useEditorUiStore((state) => state.hiddenTags);
 
   const [editing, setEditing] = useState(false);
@@ -281,13 +291,20 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
       )}
 
       {!editing && (() => {
-        // 표가 있으면 텍스트 줄들 + 표를 세로로 쌓아 박스 안 가운데 정렬
-        // (sizeNodeForText의 높이 계산과 동일한 배치)
-        const tableGap = mdTable && lines.length > 0 ? 6 : 0;
-        const contentH =
-          lines.length * lineHeight + (mdTable ? mdTable.h + tableGap : 0);
-        const contentTop = n.y - contentH / 2;
+        // 텍스트 줄 + (Markdown 표) + (붙여넣은 사진)을 세로로 쌓아 박스 안
+        // 가운데 정렬 (sizeNodeForText의 높이 계산과 동일한 배치)
         const padX = n.depth === 0 ? 22 : 14;
+        const img = n.image ? scaleNodeImage(n.image, n.w, padX) : null;
+        const tableGap = mdTable && lines.length > 0 ? 6 : 0;
+        const imgGap = img && (lines.length > 0 || mdTable) ? 6 : 0;
+        const contentH =
+          lines.length * lineHeight +
+          (mdTable ? mdTable.h + tableGap : 0) +
+          (img ? img.h + imgGap : 0);
+        const contentTop = n.y - contentH / 2;
+        const imgTop =
+          contentTop + lines.length * lineHeight +
+          (mdTable ? mdTable.h + tableGap : 0) + imgGap;
 
         return (
           <g>
@@ -374,9 +391,93 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
                 </g>
               );
             })()}
+
+            {img && n.image && (
+              // 붙여넣은 사진 — 노드 폭에 맞춰 축소, 가운데 정렬
+              <g>
+                <image
+                  href={n.image.src}
+                  x={n.x - img.w / 2}
+                  y={imgTop}
+                  width={img.w}
+                  height={img.h}
+                  preserveAspectRatio="xMidYMid meet"
+                />
+                {selected && (
+                  // 선택 상태에서 사진 우상단 ✕ = 사진 제거
+                  <g
+                    transform={`translate(${n.x + img.w / 2 - 9}, ${imgTop + 9})`}
+                    style={{ cursor: 'pointer' }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNodeImage(n.id, undefined);
+                    }}
+                  >
+                    <title>사진 제거</title>
+                    <circle r={8} fill="#FFFFFF" stroke={t.border} strokeWidth={1}
+                            opacity={0.92} />
+                    <line x1={-3.2} y1={-3.2} x2={3.2} y2={3.2}
+                          stroke="#7A6A50" strokeWidth={1.6} strokeLinecap="round" />
+                    <line x1={3.2} y1={-3.2} x2={-3.2} y2={3.2}
+                          stroke="#7A6A50" strokeWidth={1.6} strokeLinecap="round" />
+                  </g>
+                )}
+              </g>
+            )}
           </g>
         );
       })()}
+
+      {/* 우하단 크기 조절 핸들 — 드래그: 수동 크기, 더블클릭: 자동 크기 복귀.
+          (노트 뷰어 창의 모서리 크기 조절과 같은 조작감) */}
+      {selected && !editing && (
+        <g
+          transform={`translate(${n.x + n.w / 2 - 3}, ${n.y + n.h / 2 - 3})`}
+          style={{ cursor: 'nwse-resize' }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            resizeRef.current = {
+              pointerId: e.pointerId,
+              x: e.clientX, y: e.clientY,
+              w: n.w, h: n.h, moved: false,
+            };
+            (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const d = resizeRef.current;
+            if (!d || d.pointerId !== e.pointerId) return;
+            const scale = Math.max(0.1, zoom / 100);
+            const w = d.w + (e.clientX - d.x) / scale;
+            const h = d.h + (e.clientY - d.y) / scale;
+            if (!d.moved) {
+              // 첫 이동만 undo 히스토리에 기록하고, 드래그 중 연속 갱신은
+              // 히스토리를 잠가 1회 드래그 = 1개 undo 단계로 만든다
+              d.moved = true;
+              updateNodeSize(n.id, { w, h });
+              setHistoryPaused(true);
+            } else {
+              updateNodeSize(n.id, { w, h });
+            }
+          }}
+          onPointerUp={(e) => {
+            if (resizeRef.current?.pointerId === e.pointerId) {
+              resizeRef.current = null;
+              setHistoryPaused(false);
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            updateNodeSize(n.id, null); // 자동 크기로 복귀
+          }}
+        >
+          <title>드래그: 크기 조절 · 더블클릭: 자동 크기</title>
+          <rect x={-11} y={-11} width={16} height={16} fill="transparent" />
+          <path d="M0,-7 L-7,0 M0,-2.5 L-2.5,0" fill="none"
+                stroke={t.primary} strokeWidth={1.8} strokeLinecap="round" />
+        </g>
+      )}
 
       {editing && (
         <foreignObject

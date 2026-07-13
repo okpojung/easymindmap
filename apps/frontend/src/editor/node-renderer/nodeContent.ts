@@ -133,6 +133,33 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
   return out;
 }
 
+// 노드에서 나오는 측정 옵션 묶음 — 모든 레이아웃 전략이 sizeNodeForText에
+// 전략별 minW/maxW와 함께 spread 한다 (아이콘·인디케이터·수동 크기·사진).
+export function nodeSizingOpts(n: {
+  icon?: string;
+  note?: boolean;
+  notes?: { type?: string }[];
+  links?: unknown[];
+  attachments?: { kind?: string }[];
+  sizeW?: number;
+  sizeH?: number;
+  image?: { w: number; h: number };
+}): {
+  hasIcon: boolean;
+  indicators: number;
+  manualW?: number;
+  manualH?: number;
+  image?: { w: number; h: number };
+} {
+  return {
+    hasIcon: !!n.icon,
+    indicators: contentIndicatorCount(n),
+    manualW: n.sizeW,
+    manualH: n.sizeH,
+    image: n.image ? { w: n.image.w, h: n.image.h } : undefined,
+  };
+}
+
 // Number of content-indicator icons a node shows. Layout strategies pass
 // this to sizeNodeForText so the node box is widened to fit the icons
 // INSIDE it, next to the text. 노트는 종류 수만큼 아이콘이 생기므로

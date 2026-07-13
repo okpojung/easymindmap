@@ -1,7 +1,7 @@
 // File: src/pages/EditorPage.tsx
 // Version: MVP-Layout-Kanban-Fix-v1
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { THEMES } from '@/components/design-tokens/theme';
 import { TopToolbar } from '@/components/top-toolbar/TopToolbar';
 import { UnifiedSidebar } from '@/components/unified-sidebar/UnifiedSidebar';
@@ -10,11 +10,13 @@ import { Canvas } from '@/editor/canvas/Canvas';
 import { KanbanBoard } from '@/editor/canvas/KanbanBoard';
 import { DesignTweaksPanel } from '@/editor/dialogs/DesignTweaksPanel';
 import { MultiAddDialog } from '@/editor/dialogs/MultiAddDialog';
-import { SAMPLE_COLLABS, SAMPLE_OUTLINE } from '@/editor/__samples__';
+import { SAMPLE_COLLABS } from '@/editor/__samples__';
 import type {
   KanbanBoardData,
   KanbanCard,
   SampleMap,
+  MindNode,
+  OutlineNode,
 } from '@/editor/__samples__/types';
 import {
   useDocumentStore,
@@ -89,6 +91,29 @@ export function EditorPage() {
 
   const kanbanFromMap = buildKanbanFromMap(map);
 
+  // 아웃라인 패널용 트리 — 실제 편집 중인 맵을 그대로 반영 (텍스트·구조·
+  // 접힘 상태·선택 표시). 노드를 클릭하면 캔버스 선택과 연동된다.
+  const outline = useMemo<OutlineNode[]>(() => {
+    const walk = (n: MindNode, depth: number): OutlineNode => ({
+      id: n.id,
+      text: n.text,
+      depth,
+      expanded: !n.collapsed,
+      selected: n.id === selectedId,
+      children: (n.children ?? []).map((c) => walk(c, depth + 1)),
+    });
+    return [
+      {
+        id: 'root',
+        text: map.root.text,
+        depth: 0,
+        expanded: true,
+        selected: selectedId === 'root',
+        children: map.branches.map((b) => walk(b, 1)),
+      },
+    ];
+  }, [map, selectedId]);
+
   const t = THEMES[themeName];
 
   useEffect(() => {
@@ -149,7 +174,7 @@ export function EditorPage() {
       >
         <UnifiedSidebar
           t={t}
-          outline={SAMPLE_OUTLINE}
+          outline={outline}
           collabs={SAMPLE_COLLABS}
           navTab={navTab}
           onNavTabChange={setNavTab}

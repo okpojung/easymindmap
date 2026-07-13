@@ -8,7 +8,7 @@
 // - This avoids confusing tree-right with hierarchy-right dispatch.
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
-import { contentIndicatorCount } from '@/editor/node-renderer/nodeContent';
+import { nodeSizingOpts } from '@/editor/node-renderer/nodeContent';
 import type { MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { nodeOverhang } from '../tagOverhang';
@@ -39,8 +39,7 @@ interface MeasuredDownNode {
 
 function measureTreeRightNode(node: MindNode, depth: number) {
   return sizeNodeForText(node.text, depth, {
-    hasIcon: !!node.icon,
-    indicators: contentIndicatorCount(node),
+    ...nodeSizingOpts(node),
     minW: depth <= 1 ? 180 : 190,
     maxW: depth <= 1 ? 300 : 340,
   });
@@ -136,8 +135,7 @@ export function layoutTreeRight(
 
 function measureDownNode(node: MindNode, depth: number): MeasuredDownNode {
   const size = sizeNodeForText(node.text, depth, {
-    hasIcon: !!node.icon,
-    indicators: contentIndicatorCount(node),
+    ...nodeSizingOpts(node),
     minW: depth <= 1 ? 140 : 120,
     maxW: depth <= 1 ? 230 : 220,
   });

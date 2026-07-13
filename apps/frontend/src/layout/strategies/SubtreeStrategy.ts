@@ -10,7 +10,7 @@
 //   tree-down, hierarchy-right, process-tree-right.
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
-import { contentIndicatorCount } from '@/editor/node-renderer/nodeContent';
+import { nodeSizingOpts } from '@/editor/node-renderer/nodeContent';
 import type { LayoutType, MindNode, SampleBranch } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { normalizeLayoutType } from '../normalizeLayoutType';
@@ -561,8 +561,7 @@ interface MeasuredCentered {
 
 function measureCentered(node: MindNode, depth: number): MeasuredCentered {
   const size = sizeNodeForText(node.text, depth, {
-    hasIcon: !!node.icon,
-    indicators: contentIndicatorCount(node),
+    ...nodeSizingOpts(node),
     minW: depth <= 1 ? 150 : 130,
     maxW: depth <= 1 ? 240 : 320,
   });
@@ -719,8 +718,7 @@ function arrangeOutlineNode(
   const depth = anchorDepth + relDepth;
 
   const size = sizeNodeForText(node.text, depth, {
-    hasIcon: !!node.icon,
-    indicators: contentIndicatorCount(node),
+    ...nodeSizingOpts(node),
     minW: 150,
     maxW: 300,
   });
@@ -773,8 +771,7 @@ interface MeasuredDown {
 
 function measureDown(node: MindNode, depth: number): MeasuredDown {
   const size = sizeNodeForText(node.text, depth, {
-    hasIcon: !!node.icon,
-    indicators: contentIndicatorCount(node),
+    ...nodeSizingOpts(node),
     minW: 120,
     maxW: 220,
   });

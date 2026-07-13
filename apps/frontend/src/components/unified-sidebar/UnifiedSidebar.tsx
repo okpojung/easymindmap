@@ -22,6 +22,7 @@ import { SearchPanel }  from '@/components/left-sidebar/SearchPanel';
 import { TemplatePanel } from '@/components/left-sidebar/TemplatePanel';
 import { HistoryPanel }  from '@/components/left-sidebar/HistoryPanel';
 import { MapSettingsPanel } from '@/components/left-sidebar/MapSettingsPanel';
+import { NewMapPanel } from '@/components/left-sidebar/NewMapPanel';
 
 import { StyleTab }   from '@/editor/inspector-panels/StyleTab';
 import { LayoutTab }  from '@/editor/inspector-panels/LayoutTab';
@@ -30,7 +31,7 @@ import { ContentTab } from '@/editor/inspector-panels/ContentTab';
 import { NoteTagTab } from '@/editor/inspector-panels/NoteTagTab';
 import { AITab }      from '@/editor/inspector-panels/AITab';
 
-export type NavTabKey       = 'outline' | 'search' | 'template' | 'history' | 'mapSettings';
+export type NavTabKey       = 'newMap' | 'outline' | 'search' | 'template' | 'history' | 'mapSettings';
 export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
 export type SidebarSection  = 'nav' | 'inspector';
 
@@ -56,6 +57,8 @@ export function UnifiedSidebar({
   collapsed, onToggleCollapsed,
 }: Props) {
   const navItems = [
+    // 새 맵 만들기 — 기본 맵 또는 등록된 템플릿에서 시작
+    { key: 'newMap'   as NavTabKey, label: '새 맵',    icon: <I.Plus size={17} /> },
     { key: 'outline'  as NavTabKey, label: '아웃라인', icon: <I.Tree size={17} /> },
     { key: 'search'   as NavTabKey, label: '검색',     icon: <I.Search size={17} /> },
     { key: 'template' as NavTabKey, label: '템플릿',   icon: <I.Template size={17} /> },
@@ -221,6 +224,7 @@ function RailIcon({ t, title, active, expanded, onClick, children }: RailIconPro
 
 function NavContent({ t, tab, outline }: { t: ThemeTokens; tab: NavTabKey; outline: OutlineNode[] }) {
   const title = ({
+    newMap:      '새 맵',
     outline:     '아웃라인',
     search:      '검색',
     template:    '템플릿',
@@ -228,11 +232,16 @@ function NavContent({ t, tab, outline }: { t: ThemeTokens; tab: NavTabKey; outli
     mapSettings: '맵 설정',
   } as const)[tab];
 
+  const subtitle =
+    tab === 'mapSettings' ? '맵 전체에 적용'
+    : tab === 'newMap' ? '기본 맵 또는 템플릿에서 시작'
+    : '전체 맵 탐색';
+
   return (
     <>
-      <ContentHeader t={t} title={title}
-        subtitle={tab === 'mapSettings' ? '맵 전체에 적용' : '전체 맵 탐색'} />
+      <ContentHeader t={t} title={title} subtitle={subtitle} />
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        {tab === 'newMap'      && <NewMapPanel t={t} />}
         {tab === 'outline'     && <OutlinePanel t={t} outline={outline} />}
         {tab === 'search'      && <SearchPanel t={t} />}
         {tab === 'template'    && <TemplatePanel t={t} />}

@@ -13,6 +13,7 @@
 //   re-laid-out in that style around the node's position.
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
+import { nodeSizingOpts } from '@/editor/node-renderer/nodeContent';
 import type { LayoutType, SampleMap, SampleBranch, MindNode } from '@/editor/__samples__/types';
 import type { LaidOutNode } from './types';
 import { normalizeLayoutType } from './normalizeLayoutType';
@@ -74,6 +75,7 @@ export function computeLayout(
   }
 
   const rootSize = sizeNodeForText(sample.root.text, 0, {
+    ...nodeSizingOpts(sample.root),
     minW: 170,
     maxW: 260,
   });

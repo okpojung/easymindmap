@@ -5,11 +5,12 @@
 //
 // Spec: docs/03-editor-core/canvas/10-canvas.md § 21 (unified left sidebar).
 
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator, OutlineNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useInteractionStore } from '@/stores/interactionStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import {
   useDocumentStore,
   findNodeInMap,
@@ -56,6 +57,11 @@ export function UnifiedSidebar({
   activeSection, onActiveSectionChange,
   collapsed, onToggleCollapsed,
 }: Props) {
+  // 사이드바(패널)와 맵 화면 사이 세로 스플리터 — 드래그로 패널 폭 조절
+  const sidebarWidth = useEditorUiStore((s) => s.sidebarWidth);
+  const setSidebarWidth = useEditorUiStore((s) => s.setSidebarWidth);
+  const splitRef = useRef<{ pointerId: number; x: number; w: number } | null>(null);
+  const [resizing, setResizing] = useState(false);
   const navItems = [
     // 새 맵 만들기 — 기본 맵 또는 등록된 템플릿에서 시작
     { key: 'newMap'   as NavTabKey, label: '새 맵',    icon: <I.Plus size={17} /> },
@@ -84,12 +90,14 @@ export function UnifiedSidebar({
 
   return (
     <div style={{
-      width: collapsed ? 44 : 344, flexShrink: 0,
+      width: collapsed ? 44 : 44 + sidebarWidth, flexShrink: 0,
       background: t.surfaceAlt,
       borderRight: `1px solid ${t.border}`,
       display: 'flex',
       overflow: 'hidden',
-      transition: 'width 180ms cubic-bezier(.4,0,.2,1)',
+      position: 'relative',
+      // 스플리터 드래그 중에는 전환 애니메이션을 꺼서 즉시 따라오게
+      transition: resizing ? 'none' : 'width 180ms cubic-bezier(.4,0,.2,1)',
     }}>
       {/* Icon rail */}
       <div style={{
@@ -168,6 +176,43 @@ export function UnifiedSidebar({
             ? <NavContent t={t} tab={navTab} outline={outline} />
             : <InspectorContent t={t} tab={inspectorTab} collabs={collabs} />}
         </div>
+      )}
+
+      {/* 세로 스플리터 — 사이드바(아웃라인 등)와 맵 화면의 영역을 드래그로
+          조절 (220~640px). 더블클릭 시 기본 폭(300px)으로 복귀. */}
+      {!collapsed && (
+        <div
+          title="드래그: 패널 폭 조절 · 더블클릭: 기본 폭"
+          onPointerDown={(e) => {
+            splitRef.current = { pointerId: e.pointerId, x: e.clientX, w: sidebarWidth };
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            setResizing(true);
+            e.preventDefault();
+          }}
+          onPointerMove={(e) => {
+            const d = splitRef.current;
+            if (!d || d.pointerId !== e.pointerId) return;
+            setSidebarWidth(d.w + (e.clientX - d.x));
+          }}
+          onPointerUp={(e) => {
+            if (splitRef.current?.pointerId === e.pointerId) {
+              splitRef.current = null;
+              setResizing(false);
+            }
+          }}
+          onDoubleClick={() => setSidebarWidth(300)}
+          style={{
+            position: 'absolute', top: 0, right: 0, bottom: 0, width: 6,
+            cursor: 'col-resize', zIndex: 5,
+            background: resizing ? `${t.primary}33` : 'transparent',
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = `${t.primary}22`;
+          }}
+          onMouseLeave={(e) => {
+            if (!resizing) (e.currentTarget as HTMLElement).style.background = 'transparent';
+          }}
+        />
       )}
     </div>
   );

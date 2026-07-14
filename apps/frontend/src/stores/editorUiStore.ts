@@ -31,6 +31,9 @@ interface EditorUiState {
   spacingX: number;
   spacingY: number;
 
+  // 사이드바 콘텐츠 패널 폭(px) — 사이드바와 맵 사이 세로 스플리터로 조절
+  sidebarWidth: number;
+
   setThemeName: (v: ThemeName) => void;
   setLayoutType: (v: LayoutType) => void;
   setNavTab: (v: NavTabKey) => void;
@@ -45,6 +48,7 @@ interface EditorUiState {
   setSpacingX: (v: number) => void;
   setSpacingY: (v: number) => void;
   resetSpacing: () => void;
+  setSidebarWidth: (v: number) => void;
 }
 
 export const useEditorUiStore = create<EditorUiState>((set) => ({
@@ -61,6 +65,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   multiAddOpen: false,
   spacingX: 1,
   spacingY: 1,
+  sidebarWidth: 300,
 
   setThemeName: (themeName) => set({ themeName }),
   setLayoutType: (layoutType) => set({ layoutType }),
@@ -73,6 +78,8 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   setSpacingX: (spacingX) => set({ spacingX: Math.min(2, Math.max(0.9, spacingX)) }),
   setSpacingY: (spacingY) => set({ spacingY: Math.min(2, Math.max(0.9, spacingY)) }),
   resetSpacing: () => set({ spacingX: 1, spacingY: 1 }),
+  // 폭 220~640px 허용 — 아웃라인을 넓게 놓고 편집할 수 있게
+  setSidebarWidth: (v) => set({ sidebarWidth: Math.min(640, Math.max(220, Math.round(v))) }),
   setSampleTopic: (sampleTopic) => set({ sampleTopic }),
   setShowTags: (showTags) => set({ showTags }),
   toggleTagHidden: (tag) =>

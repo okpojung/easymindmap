@@ -9,7 +9,11 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
-import { loadUserTemplates, type UserTemplate } from '@/utils/userTemplates';
+import {
+  loadUserTemplates,
+  templateSkeletonMap,
+  type UserTemplate,
+} from '@/utils/userTemplates';
 
 export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const newMap = useDocumentStore((s) => s.newMap);
@@ -43,7 +47,9 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   };
 
   const startFromTemplate = (tpl: UserTemplate) => {
-    const map = JSON.parse(JSON.stringify(tpl.map));
+    // 템플릿은 맵의 속성(레이아웃·폰트·크기·스타일)과 뼈대를 물려주는
+    // 용도 — 구조는 Level 4까지만, 노트·링크·첨부·사진 콘텐츠는 제외.
+    const map = templateSkeletonMap(tpl.map);
     if (title.trim()) map.title = title.trim();
     loadMap(map);
     // 템플릿 등록 당시의 맵 전체 레이아웃·간격 복원 (템플릿 패널과 동일)
@@ -98,6 +104,10 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         fontSize: 11, color: t.textSubtle, margin: '4px 0 8px',
         textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
       }}>등록된 템플릿에서 시작</div>
+      <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, marginBottom: 8 }}>
+        템플릿의 레이아웃·폰트·스타일과 뼈대 구조(Level 4까지)로
+        시작합니다. 노트·링크·첨부·사진 등 본문 콘텐츠는 제외됩니다.
+      </div>
 
       {userTpls.length === 0 && (
         <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>

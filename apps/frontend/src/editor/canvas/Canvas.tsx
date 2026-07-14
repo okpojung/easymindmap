@@ -38,6 +38,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
+import { extractClipboardImage } from '@/utils/clipboardImage';
 
 const LAYOUT_LABEL: Record<string, string> = {
   tree: '트리 · 오른쪽 (직각선)',
@@ -428,19 +429,8 @@ export function Canvas({
   // 클립보드의 이미지 파일(스크린샷·복사한 그림)은 data URL로,
   // 웹에서 복사한 이미지(text/html의 <img>)는 원본 URL로 노드에 저장한다.
   // 사진은 노드 안 텍스트 아래에 노드 폭에 맞춰 표시된다 (NodeRenderer).
+  // (노드 텍스트 편집 중 붙여넣기는 NodeRenderer의 textarea onPaste가 처리)
   useEffect(() => {
-    const applyImage = (nodeId: string, src: string) => {
-      const probe = new Image();
-      probe.onload = () => {
-        setNodeImage(nodeId, {
-          src,
-          w: probe.naturalWidth || 400,
-          h: probe.naturalHeight || 300,
-        });
-      };
-      probe.src = src;
-    };
-
     const handlePaste = (e: ClipboardEvent) => {
       const target = e.target as HTMLElement | null;
       const isEditingText =
@@ -449,31 +439,10 @@ export function Canvas({
         target?.isContentEditable;
       if (isEditingText) return; // 입력창 붙여넣기는 각 입력창이 처리
       if (!selectedId) return;
-      const dt = e.clipboardData;
-      if (!dt) return;
-
-      // 1) 이미지 파일 (스크린샷·복사한 그림)
-      for (const f of Array.from(dt.files ?? [])) {
-        if (f.type.startsWith('image/')) {
-          e.preventDefault();
-          const reader = new FileReader();
-          reader.onload = () => applyImage(selectedId, String(reader.result));
-          reader.readAsDataURL(f);
-          return;
-        }
-      }
-
-      // 2) 웹에서 복사한 이미지 — text/html 속 첫 <img>
-      const html = dt.getData('text/html');
-      if (html) {
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        const img = doc.querySelector('img[src^="http"], img[src^="data:image/"]');
-        const src = img?.getAttribute('src');
-        if (src) {
-          e.preventDefault();
-          applyImage(selectedId, src);
-        }
-      }
+      const kind = extractClipboardImage(e.clipboardData, (img) =>
+        setNodeImage(selectedId, img),
+      );
+      if (kind) e.preventDefault();
     };
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);

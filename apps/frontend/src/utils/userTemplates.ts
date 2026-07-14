@@ -42,24 +42,40 @@ export function saveUserTemplates(list: UserTemplate[]): boolean {
   }
 }
 
-// '이 템플릿으로 새 맵 시작'용 골격 맵 — 템플릿은 맵의 속성(레이아웃·
-// 폰트·크기·스타일)과 뼈대 구조를 물려주는 용도이므로:
-//   · 구조는 Level 4까지만 유지 (그 아래는 잘라냄)
-//   · 노드 본문 콘텐츠(노트·링크·첨부·사진)는 제외
-//   · 텍스트·태그·아이콘·스타일·레이아웃·수동 크기·맵 설정은 유지
+// '이 템플릿으로 새 맵 시작'용 골격 맵 (ThinkWise 방식) —
+// 템플릿은 맵의 속성만 물려준다: 구조(4레벨까지)·레이아웃·폰트(맵 설정)·
+// 도형/색(스타일)·정렬. 원본 맵의 "내용"은 모두 비운다:
+//   · 노드 텍스트 → 자리 표시 텍스트로 교체
+//       1레벨(루트) '중심 주제' · 2레벨 '주제 1..n' · 3레벨 '하위 주제' ·
+//       4레벨 '내용'
+//   · 노트·링크·첨부·사진·태그·아이콘·수동 크기 제외, 접힘 해제
+//   · 구조는 4레벨(루트 포함)까지만 — 그 아래는 잘라냄
 // (템플릿 패널의 '적용'은 기존대로 맵 전체를 그대로 복제한다)
+const SKELETON_TEXT: Record<number, string> = {
+  2: '하위 주제',
+  3: '내용',
+};
+
 export function templateSkeletonMap(map: SampleMap): SampleMap {
-  const strip = (n: MindNode, depth: number): MindNode => ({
+  // depth: 루트=0 … '4레벨'=depth 3 (루트를 1레벨로 세는 사용자 기준)
+  const strip = (n: MindNode, depth: number, index: number): MindNode => ({
     ...n,
+    text: depth === 1 ? `주제 ${index + 1}` : SKELETON_TEXT[depth] ?? '내용',
     note: undefined,
     notes: undefined,
     links: undefined,
     attachments: undefined,
     image: undefined,
+    tag: undefined,
+    tags: undefined,
+    icon: undefined,
+    sizeW: undefined,
+    sizeH: undefined,
+    collapsed: undefined,
     children:
-      depth >= 4
+      depth >= 3
         ? undefined
-        : (n.children ?? []).map((c) => strip(c, depth + 1)),
+        : (n.children ?? []).map((c, i) => strip(c, depth + 1, i)),
   });
 
   const cloned = JSON.parse(JSON.stringify(map)) as SampleMap;
@@ -67,13 +83,19 @@ export function templateSkeletonMap(map: SampleMap): SampleMap {
     ...cloned,
     root: {
       ...cloned.root,
+      text: '중심 주제',
       note: undefined,
       notes: undefined,
       links: undefined,
       attachments: undefined,
       image: undefined,
+      tag: undefined,
+      tags: undefined,
+      icon: undefined,
+      sizeW: undefined,
+      sizeH: undefined,
     },
-    branches: cloned.branches.map((b) => strip(b, 1) as SampleBranch),
+    branches: cloned.branches.map((b, i) => strip(b, 1, i) as SampleBranch),
   };
 }
 

@@ -47,10 +47,14 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   };
 
   const startFromTemplate = (tpl: UserTemplate) => {
-    // 템플릿은 맵의 속성(레이아웃·폰트·크기·스타일)과 뼈대를 물려주는
-    // 용도 — 구조는 Level 4까지만, 노트·링크·첨부·사진 콘텐츠는 제외.
+    // 템플릿은 맵의 속성(레이아웃·폰트·도형·스타일)과 뼈대만 물려준다 —
+    // 구조는 4레벨까지, 노드 텍스트는 자리 표시 텍스트(중심 주제/주제 N/
+    // 하위 주제/내용)로 교체 (ThinkWise 방식, templateSkeletonMap).
     const map = templateSkeletonMap(tpl.map);
-    if (title.trim()) map.title = title.trim();
+    if (title.trim()) {
+      map.title = title.trim();
+      map.root = { ...map.root, text: title.trim() }; // 제목 = 중심 주제
+    }
     loadMap(map);
     // 템플릿 등록 당시의 맵 전체 레이아웃·간격 복원 (템플릿 패널과 동일)
     const lt = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
@@ -105,8 +109,9 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
       }}>등록된 템플릿에서 시작</div>
       <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, marginBottom: 8 }}>
-        템플릿의 레이아웃·폰트·스타일과 뼈대 구조(Level 4까지)로
-        시작합니다. 노트·링크·첨부·사진 등 본문 콘텐츠는 제외됩니다.
+        템플릿의 레이아웃·폰트·도형·스타일과 뼈대 구조(4레벨까지)만
+        가져오고, 노드 텍스트는 자리 표시 텍스트(중심 주제 · 주제 1~n ·
+        하위 주제 · 내용)로 채워집니다. 원본 맵의 내용은 복사되지 않습니다.
       </div>
 
       {userTpls.length === 0 && (

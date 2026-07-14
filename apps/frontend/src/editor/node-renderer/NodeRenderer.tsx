@@ -20,6 +20,7 @@ import { levelFontFamily, levelFontSize, scaleNodeImage } from './sizeNodeForTex
 import { layoutMdTable, measureTextApprox, MD_TABLE_CELL_PAD_X } from './mdTable';
 import { useViewportStore } from '@/stores/viewportStore';
 import { setHistoryPaused } from '@/stores/documentStore';
+import { extractClipboardImage } from '@/utils/clipboardImage';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -490,6 +491,16 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
             ref={textareaRef}
             value={draftText}
             onChange={(e) => setDraftText(e.target.value)}
+            onPaste={(e) => {
+              // 텍스트 편집 중에도 사진 붙여넣기 지원 — 기사 등을 복사해
+              // 붙이면 텍스트는 입력창에, 사진은 노드에 함께 들어간다.
+              const kind = extractClipboardImage(e.clipboardData, (img) =>
+                setNodeImage(n.id, img),
+              );
+              // 이미지 '파일'만 있을 때는 넣을 텍스트가 없으므로 기본
+              // 붙여넣기를 막는다. 웹 복사(html)는 텍스트도 함께 붙인다.
+              if (kind === 'file') e.preventDefault();
+            }}
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {

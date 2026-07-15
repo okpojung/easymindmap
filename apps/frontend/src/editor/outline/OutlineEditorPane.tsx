@@ -26,6 +26,7 @@ import {
   type NoteKind,
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from '@/editor/canvas/NoteViewerPopover';
+import { stripInlineMarks } from '@/editor/node-renderer/inlineMarks';
 import type { LaidOutNode } from '@/layout/types';
 
 interface PaneProps {
@@ -60,7 +61,7 @@ export function OutlineEditorPane({ t, outline }: PaneProps) {
       }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: t.text }}>아웃라인</div>
         <div style={{ fontSize: 9.5, color: t.textSubtle, flex: 1, minWidth: 0 }}>
-          더블클릭: 수정 · Tab/Shift+Tab: 레벨 · Delete: 삭제
+          더블클릭: 수정(Shift+Enter 줄바꿈) · Tab: 레벨 · Delete: 삭제
         </div>
         <button onClick={() => setOutlineSplit(false)} title="아웃라인 닫기"
           style={{
@@ -142,7 +143,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(node.text);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (editing) window.setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select(); }, 0);
@@ -250,7 +251,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 4,
+          display: 'flex', alignItems: 'flex-start', gap: 4,
           padding: '5px 6px',
           paddingLeft: 8 + node.depth * 16,
           borderRadius: 6,
@@ -284,15 +285,17 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
         }} />
 
         {editing ? (
-          <input
+          <textarea
             ref={inputRef}
             value={draft}
+            rows={Math.min(10, Math.max(1, draft.split('\n').length))}
             onChange={(e) => setDraft(e.target.value)}
             onClick={(e) => e.stopPropagation()}
             onBlur={commitEdit}
             onKeyDown={(e) => {
               e.stopPropagation();
-              if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+              // Enter = 저장, Shift+Enter = 줄바꿈 (캔버스 노드 편집과 동일)
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitEdit(); }
               if (e.key === 'Escape') { e.preventDefault(); setDraft(node.text); setEditing(false); }
               if (e.key === 'Tab') {
                 e.preventDefault();
@@ -302,15 +305,31 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
               }
             }}
             style={{
-              flex: 1, minWidth: 0, fontSize: 13, padding: '1px 5px',
+              flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.5,
+              padding: '2px 6px', resize: 'vertical',
               borderRadius: 4, border: `1px solid ${t.primaryBorder}`,
               background: t.surface, color: t.text, outline: 'none',
+              fontFamily: 'inherit',
             }}
           />
         ) : (
-          <span style={{
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{node.text}</span>
+          // 노드 내용 전체 표시 — 여러 줄 텍스트(줄바꿈 유지) + 사진
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.45,
+            }}>{stripInlineMarks(node.text)}</div>
+            {rawNode?.image?.src && (
+              <img
+                src={rawNode.image.src}
+                alt=""
+                style={{
+                  display: 'block', maxWidth: '75%', maxHeight: 140,
+                  borderRadius: 6, margin: '4px 0 2px',
+                  border: `1px solid ${t.border}`,
+                }}
+              />
+            )}
+          </div>
         )}
 
         {/* 콘텐츠 인디케이터 — 클릭 시 맵과 동일한 동작 */}

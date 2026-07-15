@@ -191,7 +191,7 @@ function normalizeNode<T extends MindNode>(node: T): T {
 
   return {
     ...node,
-    textAlign: node.textAlign ?? 'left',
+    textAlign: node.textAlign ?? 'center', // 기본 정렬 = 중앙
     edgeType: withEdge.edgeType ?? resolveEdgeType(node.layoutType ?? 'radial'),
     children: node.children ? node.children.map((child) => normalizeNode(child)) : [],
   } as T;
@@ -202,7 +202,7 @@ function cloneMap(map: SampleMap): SampleMap {
     ...map,
     root: {
       ...map.root,
-      textAlign: map.root.textAlign ?? 'left',
+      textAlign: map.root.textAlign ?? 'center', // 기본 정렬 = 중앙
     },
     branches: map.branches.map((branch) => normalizeNode(branch)),
   };
@@ -862,11 +862,25 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   newMap: (title = '새 마인드맵') => {
+    // 기본 맵 골격 — 중심 주제 + 주제 1~3 + 각 하위 주제 2개 (3레벨,
+    // 방사형·오른쪽). ThinkWise 기본 맵과 같은 시작 구조.
+    const colorKeys: NodeColorKey[] = ['l1A', 'l1B', 'l1C'];
+    const now = Date.now();
+    const branches: SampleBranch[] = [0, 1, 2].map((i) => ({
+      id: `n-${now}-${i}`,
+      text: `주제 ${i + 1}`,
+      colorKey: colorKeys[i],
+      side: 'right' as const,
+      children: [0, 1].map((j) => ({
+        id: `n-${now}-${i}-${j}`,
+        text: '하위 주제',
+      })),
+    }));
     set({
       map: {
         title,
         root: { id: 'root', text: '중심 주제', colorKey: 'root', side: 'center' },
-        branches: [],
+        branches,
       },
     });
   },

@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { MindNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -5,12 +6,44 @@ import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { Toggle } from '@/editor/inspector-panels/InspectorSection';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useInteractionStore } from '@/stores/interactionStore';
 
-const RESULTS = [
-  { title: '에디터 코어 — 노드 CRUD', path: 'Q1 기반 구축', match: '에디터' },
-  { title: '에디터 마크다운 파이프라인', path: 'Q2 AI 통합', match: '에디터' },
-  { title: '에디터 단축키 정책', path: '리스크 & 완화', match: '에디터' },
-];
+// 실시간 검색 — 노드 텍스트·태그·노트 본문·링크(라벨/URL)를 대상으로
+// 대소문자 무시 부분 일치. 결과 클릭 = 캔버스 노드 선택.
+interface SearchHit {
+  id: string;
+  title: string;
+  path: string; // 상위 노드 경로
+  where: string; // 일치한 위치 (노드/태그/노트/링크)
+}
+
+function searchMap(
+  nodes: MindNode[],
+  q: string,
+  path: string[],
+  out: SearchHit[],
+): void {
+  for (const n of nodes) {
+    const hay = q.toLowerCase();
+    const inText = (n.text || '').toLowerCase().includes(hay);
+    const inTags = [...(n.tags ?? []), ...(n.tag ? [n.tag] : [])]
+      .some((tg) => tg.toLowerCase().includes(hay));
+    const inNotes = (n.notes ?? []).some((b) => (b.text || '').toLowerCase().includes(hay));
+    const inLinks = (n.links ?? []).some(
+      (l) => (l.label ?? '').toLowerCase().includes(hay) || l.url.toLowerCase().includes(hay),
+    );
+    if (inText || inTags || inNotes || inLinks) {
+      const where = [
+        inText ? '노드' : '',
+        inTags ? '태그' : '',
+        inNotes ? '노트' : '',
+        inLinks ? '링크' : '',
+      ].filter(Boolean).join(' · ');
+      out.push({ id: n.id, title: n.text, path: path.join(' › '), where });
+    }
+    searchMap(n.children ?? [], q, [...path, n.text], out);
+  }
+}
 
 // Collect every distinct tag defined anywhere in the map.
 function collectTags(nodes: MindNode[], acc: Set<string>) {
@@ -27,6 +60,20 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
   const hiddenTags = useEditorUiStore((s) => s.hiddenTags);
   const toggleTagHidden = useEditorUiStore((s) => s.toggleTagHidden);
   const map = useDocumentStore((s) => s.map);
+  const setSelectedId = useInteractionStore((s) => s.setSelectedId);
+
+  const [query, setQuery] = useState('');
+  const results = useMemo<SearchHit[]>(() => {
+    const q = query.trim();
+    if (!q) return [];
+    const out: SearchHit[] = [];
+    // 루트 포함
+    if ((map.root.text || '').toLowerCase().includes(q.toLowerCase())) {
+      out.push({ id: 'root', title: map.root.text, path: '', where: '노드' });
+    }
+    searchMap(map.branches, q, [map.root.text], out);
+    return out.slice(0, 50);
+  }, [map, query]);
 
   const tagSet = new Set<string>();
   if (map.root.tag) tagSet.add(map.root.tag);
@@ -46,7 +93,8 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
         </div>
         <input
           placeholder="노드 · 태그 · 노트 검색"
-          defaultValue="에디터"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
           style={{
             width: '100%', boxSizing: 'border-box',
             padding: '8px 10px 8px 30px',
@@ -58,26 +106,33 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
           }} />
       </div>
 
-      <div style={{
-        fontSize: 11, color: t.textSubtle, marginBottom: 6,
-        textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
-      }}>결과 {RESULTS.length}건</div>
+      {query.trim() !== '' && (
+        <div style={{
+          fontSize: 11, color: t.textSubtle, marginBottom: 6,
+          textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
+        }}>결과 {results.length}건</div>
+      )}
 
-      {RESULTS.map((r, i) => (
-        <div key={i} style={{
-          padding: '8px 10px', borderRadius: 7, marginBottom: 4,
-          background: i === 0 ? t.primarySoft : 'transparent',
-          border: `1px solid ${i === 0 ? t.primaryBorder + '40' : 'transparent'}`,
-          cursor: 'pointer',
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 2 }}
-               dangerouslySetInnerHTML={{
-                 __html: r.title.replace(
-                   r.match,
-                   `<mark style="background:${t.primary}44; color:${t.text}; border-radius:2px; padding:0 2px;">${r.match}</mark>`,
-                 ),
-               }} />
-          <div style={{ fontSize: 11, color: t.textSubtle }}>{r.path}</div>
+      {results.map((r) => (
+        <div key={r.id}
+          data-search-hit={r.id}
+          onClick={() => setSelectedId(r.id)}
+          title="클릭하면 캔버스에서 선택됩니다"
+          style={{
+            padding: '8px 10px', borderRadius: 7, marginBottom: 4,
+            background: 'transparent',
+            border: '1px solid transparent',
+            cursor: 'pointer',
+          }}>
+          <div style={{
+            fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 2,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {highlight(r.title, query, t.primary)}
+          </div>
+          <div style={{ fontSize: 11, color: t.textSubtle }}>
+            {r.path || '루트'} · <b>{r.where}</b>
+          </div>
         </div>
       ))}
 
@@ -134,5 +189,22 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
         })}
       </div>
     </div>
+  );
+}
+
+
+// 일치 구간을 <mark> 스타일로 강조 (innerHTML 없이 안전하게 분할 렌더)
+function highlight(text: string, q: string, color: string) {
+  const idx = text.toLowerCase().indexOf(q.trim().toLowerCase());
+  if (idx < 0 || !q.trim()) return text;
+  const end = idx + q.trim().length;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark style={{ background: `${color}44`, borderRadius: 2, padding: '0 2px', color: 'inherit' }}>
+        {text.slice(idx, end)}
+      </mark>
+      {text.slice(end)}
+    </>
   );
 }

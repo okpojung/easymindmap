@@ -5,11 +5,12 @@
 //
 // Spec: docs/03-editor-core/canvas/10-canvas.md § 21 (unified left sidebar).
 
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { Collaborator, OutlineNode } from '@/editor/__samples__/types';
+import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useInteractionStore } from '@/stores/interactionStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import {
   useDocumentStore,
   findNodeInMap,
@@ -17,7 +18,6 @@ import {
   getNodeDepth,
 } from '@/stores/documentStore';
 
-import { OutlinePanel } from '@/components/left-sidebar/OutlinePanel';
 import { SearchPanel }  from '@/components/left-sidebar/SearchPanel';
 import { TemplatePanel } from '@/components/left-sidebar/TemplatePanel';
 import { HistoryPanel }  from '@/components/left-sidebar/HistoryPanel';
@@ -31,13 +31,12 @@ import { ContentTab } from '@/editor/inspector-panels/ContentTab';
 import { NoteTagTab } from '@/editor/inspector-panels/NoteTagTab';
 import { AITab }      from '@/editor/inspector-panels/AITab';
 
-export type NavTabKey       = 'newMap' | 'outline' | 'search' | 'template' | 'history' | 'mapSettings';
+export type NavTabKey       = 'newMap' | 'search' | 'template' | 'history' | 'mapSettings';
 export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
 export type SidebarSection  = 'nav' | 'inspector';
 
 interface Props {
   t: ThemeTokens;
-  outline: OutlineNode[];
   collabs: Collaborator[];
   navTab: NavTabKey;
   onNavTabChange: (v: NavTabKey) => void;
@@ -47,19 +46,26 @@ interface Props {
   onActiveSectionChange: (v: SidebarSection) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  outlineSplit: boolean;
+  onToggleOutlineSplit: () => void;
 }
 
 export function UnifiedSidebar({
-  t, outline, collabs,
+  t, collabs,
   navTab, onNavTabChange,
   inspectorTab, onInspectorTabChange,
   activeSection, onActiveSectionChange,
   collapsed, onToggleCollapsed,
+  outlineSplit, onToggleOutlineSplit,
 }: Props) {
+  // 사이드바(패널)와 맵 화면 사이 세로 스플리터 — 드래그로 패널 폭 조절
+  const sidebarWidth = useEditorUiStore((s) => s.sidebarWidth);
+  const setSidebarWidth = useEditorUiStore((s) => s.setSidebarWidth);
+  const splitRef = useRef<{ pointerId: number; x: number; w: number } | null>(null);
+  const [resizing, setResizing] = useState(false);
   const navItems = [
     // 새 맵 만들기 — 기본 맵 또는 등록된 템플릿에서 시작
     { key: 'newMap'   as NavTabKey, label: '새 맵',    icon: <I.Plus size={17} /> },
-    { key: 'outline'  as NavTabKey, label: '아웃라인', icon: <I.Tree size={17} /> },
     { key: 'search'   as NavTabKey, label: '검색',     icon: <I.Search size={17} /> },
     { key: 'template' as NavTabKey, label: '템플릿',   icon: <I.Template size={17} /> },
     { key: 'history'  as NavTabKey, label: '히스토리', icon: <I.History size={17} /> },
@@ -84,12 +90,14 @@ export function UnifiedSidebar({
 
   return (
     <div style={{
-      width: collapsed ? 44 : 344, flexShrink: 0,
+      width: collapsed ? 44 : 44 + sidebarWidth, flexShrink: 0,
       background: t.surfaceAlt,
       borderRight: `1px solid ${t.border}`,
       display: 'flex',
       overflow: 'hidden',
-      transition: 'width 180ms cubic-bezier(.4,0,.2,1)',
+      position: 'relative',
+      // 스플리터 드래그 중에는 전환 애니메이션을 꺼서 즉시 따라오게
+      transition: resizing ? 'none' : 'width 180ms cubic-bezier(.4,0,.2,1)',
     }}>
       {/* Icon rail */}
       <div style={{
@@ -115,6 +123,22 @@ export function UnifiedSidebar({
 
         <div style={{ margin: '0 10px 6px', height: 1, background: t.divider }} />
         <RailGroupLabel t={t}>탐색</RailGroupLabel>
+        {/* 아웃라인 — 사이드 패널이 아니라 메인 화면을 좌(아웃라인)/우(맵)로
+            나누는 분할 보기 토글. 아이콘도 분할 화면 모양. */}
+        <RailIcon t={t} title={outlineSplit ? '아웃라인 분할 닫기' : '아웃라인 분할 보기'}
+                  active={outlineSplit}
+                  expanded={!collapsed}
+                  onClick={onToggleOutlineSplit}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <line x1="12" y1="4" x2="12" y2="20" />
+            <line x1="6" y1="9" x2="9.5" y2="9" />
+            <line x1="6" y1="12.5" x2="9.5" y2="12.5" />
+            <line x1="6" y1="16" x2="9.5" y2="16" />
+            <circle cx="16.5" cy="12.5" r="1.7" fill="currentColor" stroke="none" />
+          </svg>
+        </RailIcon>
         {navItems.map(it => (
           <RailIcon key={it.key} t={t} title={it.label}
                     active={activeSection === 'nav' && navTab === it.key}
@@ -165,9 +189,46 @@ export function UnifiedSidebar({
           minWidth: 0, overflow: 'hidden',
         }}>
           {activeSection === 'nav'
-            ? <NavContent t={t} tab={navTab} outline={outline} />
+            ? <NavContent t={t} tab={navTab} />
             : <InspectorContent t={t} tab={inspectorTab} collabs={collabs} />}
         </div>
+      )}
+
+      {/* 세로 스플리터 — 사이드바(아웃라인 등)와 맵 화면의 영역을 드래그로
+          조절 (220~640px). 더블클릭 시 기본 폭(300px)으로 복귀. */}
+      {!collapsed && (
+        <div
+          title="드래그: 패널 폭 조절 · 더블클릭: 기본 폭"
+          onPointerDown={(e) => {
+            splitRef.current = { pointerId: e.pointerId, x: e.clientX, w: sidebarWidth };
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            setResizing(true);
+            e.preventDefault();
+          }}
+          onPointerMove={(e) => {
+            const d = splitRef.current;
+            if (!d || d.pointerId !== e.pointerId) return;
+            setSidebarWidth(d.w + (e.clientX - d.x));
+          }}
+          onPointerUp={(e) => {
+            if (splitRef.current?.pointerId === e.pointerId) {
+              splitRef.current = null;
+              setResizing(false);
+            }
+          }}
+          onDoubleClick={() => setSidebarWidth(300)}
+          style={{
+            position: 'absolute', top: 0, right: 0, bottom: 0, width: 6,
+            cursor: 'col-resize', zIndex: 5,
+            background: resizing ? `${t.primary}33` : 'transparent',
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = `${t.primary}22`;
+          }}
+          onMouseLeave={(e) => {
+            if (!resizing) (e.currentTarget as HTMLElement).style.background = 'transparent';
+          }}
+        />
       )}
     </div>
   );
@@ -222,10 +283,9 @@ function RailIcon({ t, title, active, expanded, onClick, children }: RailIconPro
   );
 }
 
-function NavContent({ t, tab, outline }: { t: ThemeTokens; tab: NavTabKey; outline: OutlineNode[] }) {
+function NavContent({ t, tab }: { t: ThemeTokens; tab: NavTabKey }) {
   const title = ({
     newMap:      '새 맵',
-    outline:     '아웃라인',
     search:      '검색',
     template:    '템플릿',
     history:     '히스토리',
@@ -242,7 +302,6 @@ function NavContent({ t, tab, outline }: { t: ThemeTokens; tab: NavTabKey; outli
       <ContentHeader t={t} title={title} subtitle={subtitle} />
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {tab === 'newMap'      && <NewMapPanel t={t} />}
-        {tab === 'outline'     && <OutlinePanel t={t} outline={outline} />}
         {tab === 'search'      && <SearchPanel t={t} />}
         {tab === 'template'    && <TemplatePanel t={t} />}
         {tab === 'history'     && <HistoryPanel t={t} />}

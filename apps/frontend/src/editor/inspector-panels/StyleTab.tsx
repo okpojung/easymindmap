@@ -24,7 +24,7 @@ const DEFAULT_COLORS = { fillColor: '#FEF3C7', borderColor: '#F59E0B', textColor
 
 const ALIGNS: { key: TextAlign; label: string }[] = [
   { key: 'left',   label: '왼쪽' },
-  { key: 'center', label: '중앙' },
+  { key: 'center', label: '중앙' }, // 기본값
   { key: 'right',  label: '오른쪽' },
 ];
 
@@ -36,7 +36,7 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
   const node = findNodeInMap(map, selectedId);
   const style: NodeStyle = node?.style ?? {};
   const shape: ShapeType = style.shapeType ?? 'rounded';
-  const textAlign: TextAlign = node?.textAlign ?? 'left';
+  const textAlign: TextAlign = node?.textAlign ?? 'center'; // 기본 = 중앙
 
   const disabled = !selectedId || !node;
   const set = (patch: Partial<NodeStyle>) => {
@@ -134,7 +134,7 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
                   border: `1px solid ${active ? t.primaryBorder : t.border}`,
                   cursor: 'pointer', fontWeight: active ? 600 : 500,
                 }}>
-                {a.label}{a.key === 'left' ? ' (기본)' : ''}
+                {a.label}{a.key === 'center' ? ' (기본)' : ''}
               </button>
             );
           })}

@@ -630,7 +630,7 @@ const VIEWER_JS = String.raw`
     }
     // 텍스트 강조(취소선·하이라이트)·정렬·글꼴 + Markdown 표 — 에디터와 동일
     var st = node.style || {};
-    var align = node.textAlign || 'left';
+    var align = node.textAlign || 'center'; // 기본 정렬 = 중앙 (에디터와 동일)
     var mdt = node._fixed ? parseMdTable(node.text) : null;
     var cellFs = 0, rowH2 = 0, tGap = 0, tblH = 0;
     if (mdt) {

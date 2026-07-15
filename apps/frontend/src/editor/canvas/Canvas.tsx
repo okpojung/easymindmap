@@ -439,8 +439,13 @@ export function Canvas({
         target?.isContentEditable;
       if (isEditingText) return; // 입력창 붙여넣기는 각 입력창이 처리
       if (!selectedId) return;
-      const kind = extractClipboardImage(e.clipboardData, (img) =>
-        setNodeImage(selectedId, img),
+      // 전역 경로는 이미지 '파일'(스크린샷 등)만 — 웹 기사(text/html)까지
+      // 받으면 노트 문단 등 다른 붙여넣기를 가로챈다. 기사는 노드 텍스트
+      // 편집창(더블클릭) 붙여넣기로 처리.
+      const kind = extractClipboardImage(
+        e.clipboardData,
+        (img) => setNodeImage(selectedId, img),
+        { allowHtml: false },
       );
       if (kind) e.preventDefault();
     };

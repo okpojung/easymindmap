@@ -26,11 +26,18 @@ function probeAndApply(src: string, apply: (img: NodeImage) => void): void {
 //   'file' = 이미지 파일이 소비됨 (호출부에서 preventDefault 권장)
 //   'html' = 웹 이미지 URL만 추출 (텍스트 붙여넣기는 그대로 진행해도 됨)
 //   null   = 사진 없음
+// opts.allowHtml=false — 이미지 '파일'만 받는다. 캔버스의 전역(윈도우)
+// 붙여넣기 핸들러가 사용: 웹 기사(text/html) 붙여넣기까지 받으면 노트
+// 문단 등 다른 붙여넣기 대상(포커스가 입력창 밖일 때)을 가로채므로,
+// 전역 경로는 스크린샷·복사한 그림만 노드에 붙인다. 기사(텍스트+사진)는
+// 노드 텍스트 편집창의 onPaste가 처리한다.
 export function extractClipboardImage(
   dt: DataTransfer | null,
   apply: (img: NodeImage) => void,
+  opts: { allowHtml?: boolean } = {},
 ): 'file' | 'html' | null {
   if (!dt) return null;
+  const allowHtml = opts.allowHtml !== false;
 
   for (const f of Array.from(dt.files ?? [])) {
     if (f.type.startsWith('image/')) {
@@ -40,6 +47,8 @@ export function extractClipboardImage(
       return 'file';
     }
   }
+
+  if (!allowHtml) return null;
 
   const html = dt.getData('text/html');
   if (html) {

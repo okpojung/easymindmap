@@ -171,7 +171,8 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const iconSide: 'left' | 'right' = n.iconSide ?? 'left';
   const iconX = iconSide === 'right' ? n.x + n.w / 2 - 16 : n.x - n.w / 2 + 12;
 
-  const textAlign: TextAlign = n.textAlign ?? 'left';
+  // 기본 정렬 = 중앙 (스타일 탭에서 왼쪽/오른쪽으로 변경 가능)
+  const textAlign: TextAlign = n.textAlign ?? 'center';
   const textAnchor =
     textAlign === 'right' ? 'end' : textAlign === 'center' ? 'middle' : 'start';
   const textX =

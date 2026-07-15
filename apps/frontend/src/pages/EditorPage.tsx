@@ -7,6 +7,7 @@ import { TopToolbar } from '@/components/top-toolbar/TopToolbar';
 import { UnifiedSidebar } from '@/components/unified-sidebar/UnifiedSidebar';
 import { BottomStatusBar } from '@/components/bottom-status-bar/BottomStatusBar';
 import { Canvas } from '@/editor/canvas/Canvas';
+import { OutlineEditorPane } from '@/editor/outline/OutlineEditorPane';
 import { KanbanBoard } from '@/editor/canvas/KanbanBoard';
 import { DesignTweaksPanel } from '@/editor/dialogs/DesignTweaksPanel';
 import { MultiAddDialog } from '@/editor/dialogs/MultiAddDialog';
@@ -60,6 +61,45 @@ function buildKanbanFromMap(map: SampleMap): KanbanBoardData {
   };
 }
 
+// 아웃라인/맵 분할 스플리터 — 드래그로 두 화면의 비율을 조절한다.
+function OutlineSplitHandle({ t, ratio, onRatioChange }: {
+  t: { primary: string };
+  ratio: number;
+  onRatioChange: (v: number) => void;
+}) {
+  return (
+    <div
+      title="드래그: 아웃라인/맵 영역 조절"
+      onPointerDown={(e) => {
+        const parent = (e.currentTarget as HTMLElement).parentElement!;
+        const rect = parent.getBoundingClientRect();
+        const el = e.currentTarget as HTMLElement;
+        el.setPointerCapture(e.pointerId);
+        const move = (ev: PointerEvent) => {
+          onRatioChange((ev.clientX - rect.left) / Math.max(1, rect.width));
+        };
+        const up = () => {
+          el.removeEventListener('pointermove', move as any);
+          el.removeEventListener('pointerup', up as any);
+        };
+        el.addEventListener('pointermove', move as any);
+        el.addEventListener('pointerup', up as any);
+        e.preventDefault();
+      }}
+      style={{
+        width: 6, flexShrink: 0, cursor: 'col-resize', zIndex: 5,
+        background: 'transparent',
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.background = `${t.primary}22`;
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = 'transparent';
+      }}
+    />
+  );
+}
+
 export function EditorPage() {
   const map = useDocumentStore((s) => s.map);
   const setSample = useDocumentStore((s) => s.setSample);
@@ -76,6 +116,10 @@ export function EditorPage() {
   const setActiveSection = useEditorUiStore((s) => s.setActiveSection);
   const sidebarCollapsed = useEditorUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useEditorUiStore((s) => s.toggleSidebar);
+  const outlineSplit = useEditorUiStore((s) => s.outlineSplit);
+  const toggleOutlineSplit = useEditorUiStore((s) => s.toggleOutlineSplit);
+  const outlineSplitRatio = useEditorUiStore((s) => s.outlineSplitRatio);
+  const setOutlineSplitRatio = useEditorUiStore((s) => s.setOutlineSplitRatio);
   const tweaksOpen = useEditorUiStore((s) => s.tweaksOpen);
   const setTweaksOpen = useEditorUiStore((s) => s.setTweaksOpen);
   const sampleTopic = useEditorUiStore((s) => s.sampleTopic);
@@ -174,8 +218,9 @@ export function EditorPage() {
       >
         <UnifiedSidebar
           t={t}
-          outline={outline}
           collabs={SAMPLE_COLLABS}
+          outlineSplit={outlineSplit}
+          onToggleOutlineSplit={toggleOutlineSplit}
           navTab={navTab}
           onNavTabChange={setNavTab}
           inspectorTab={inspectorTab}
@@ -194,20 +239,43 @@ export function EditorPage() {
             onSelect={setSelectedId}
           />
         ) : (
-          <Canvas
-            t={t}
-            sample={map}
-            layoutType={layoutType}
-            selectedId={selectedId}
-            onSelect={(id) => {
-              setSelectedId(id);
+          // 아웃라인 분할 보기: 왼쪽 = 아웃라인 편집, 오른쪽 = 맵.
+          // 가운데 세로 스플리터로 비율(20~75%) 조절.
+          <div style={{ flex: 1, display: 'flex', minWidth: 0, position: 'relative' }}>
+            {outlineSplit && (
+              <>
+                <div style={{
+                  width: `${outlineSplitRatio * 100}%`,
+                  minWidth: 240, flexShrink: 0,
+                  borderRight: `1px solid ${t.border}`,
+                  overflow: 'hidden', display: 'flex',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <OutlineEditorPane t={t} outline={outline} />
+                  </div>
+                </div>
+                <OutlineSplitHandle
+                  t={t}
+                  ratio={outlineSplitRatio}
+                  onRatioChange={setOutlineSplitRatio}
+                />
+              </>
+            )}
+            <Canvas
+              t={t}
+              sample={map}
+              layoutType={layoutType}
+              selectedId={selectedId}
+              onSelect={(id) => {
+                setSelectedId(id);
 
-              if (id) {
-                setActiveSection('inspector');
-              }
-            }}
-            collabs={SAMPLE_COLLABS}
-          />
+                if (id) {
+                  setActiveSection('inspector');
+                }
+              }}
+              collabs={SAMPLE_COLLABS}
+            />
+          </div>
         )}
       </div>
 

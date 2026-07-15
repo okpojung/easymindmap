@@ -234,6 +234,9 @@ function NoteBlockEditor({
           </div>
         ) : (
           <textarea
+            // 새로 추가된 빈 블록은 바로 입력·붙여넣기할 수 있게 자동 포커스
+            // (포커스가 없으면 Ctrl+V가 노드 쪽으로 가는 혼동 방지)
+            autoFocus={block.text === ''}
             value={block.text}
             // 리치 붙여넣기 후 텍스트를 직접 수정하면 서식(html)은 버리고
             // 일반 텍스트 편집으로 돌아간다 (아래 배지에 안내 표시).

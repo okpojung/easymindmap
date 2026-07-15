@@ -4,8 +4,9 @@
 // 현재 편집 중인 맵은 교체되지만 Ctrl+Z로 되돌릴 수 있다.
 // [서버 연결 예정] 서버 연동 시 새 문서(maps 레코드) 생성으로 이관.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { parseMarkdownToMap } from '@/utils/importMarkdown';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -27,6 +28,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const [title, setTitle] = useState('');
   const [userTpls, setUserTpls] = useState<UserTemplate[]>([]);
   const [notice, setNotice] = useState('');
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setUserTpls(loadUserTemplates());
@@ -38,12 +40,13 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   };
 
   const startBlank = () => {
+    // 기본 맵: 중심 주제 + 주제 1~3 + 하위 주제 (3레벨) · 방사형 오른쪽
     newMap(title.trim() || '새 마인드맵');
-    setLayoutType('radial-bidirectional');
+    setLayoutType('radial-right');
     resetSpacing();
     setSelectedId('root');
     setTitle('');
-    flash('새 맵을 시작했습니다 — 중심 주제를 더블클릭해 이름을 바꿔 보세요');
+    flash('새 맵을 시작했습니다 — 노드를 더블클릭해 내용을 채워 보세요');
   };
 
   const startFromTemplate = (tpl: UserTemplate) => {
@@ -66,6 +69,25 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     flash(`'${tpl.name}' 템플릿으로 새 맵을 시작했습니다`);
   };
 
+  // 로컬 Markdown 파일 불러오기 — # 견출/리스트 구조를 맵으로 변환
+  const importMd = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const name = file.name.replace(/\.(md|markdown|txt)$/i, '');
+      const map = parseMarkdownToMap(String(reader.result ?? ''), name);
+      if (!map) {
+        flash('맵으로 만들 견출(#)·리스트(-) 구조를 찾지 못했습니다');
+        return;
+      }
+      loadMap(map);
+      setLayoutType('radial-right');
+      resetSpacing();
+      setSelectedId('root');
+      flash(`'${map.title}' — MD 파일에서 맵을 만들었습니다`);
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div style={{ padding: 12 }}>
       <div style={{
@@ -85,7 +107,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       />
 
       <button onClick={startBlank}
-        title="루트 노드만 있는 빈 맵으로 시작합니다"
+        title="중심 주제 + 주제 1~3 + 하위 주제(3레벨) 기본 골격으로 시작합니다"
         style={{
           width: '100%', fontSize: 12, padding: '9px 0', borderRadius: 7,
           border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,
@@ -103,6 +125,41 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           padding: '5px 8px', borderRadius: 5, background: t.primarySoft,
         }}>{notice}</div>
       )}
+
+      {/* ---- 맵 불러오기 ---- */}
+      <div style={{
+        fontSize: 11, color: t.textSubtle, margin: '4px 0 8px',
+        textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
+      }}>맵 불러오기</div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".md,.markdown,.txt"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) importMd(f);
+          e.target.value = '';
+        }}
+      />
+      <button onClick={() => fileRef.current?.click()}
+        title="로컬 Markdown 파일(# 견출·- 리스트)을 맵으로 변환합니다"
+        style={{
+          width: '100%', fontSize: 11.5, padding: '7px 0', borderRadius: 6,
+          border: `1px solid ${t.border}`, background: t.surfaceAlt,
+          color: t.text, cursor: 'pointer', fontWeight: 600, marginBottom: 5,
+        }}>📄 MD 파일 불러오기</button>
+
+      {/* [서버 연결 예정] 서버에 저장된 맵 목록에서 불러오기 —
+          maps 테이블 연동 후 활성화 (docs/02-domain/db-schema.md) */}
+      <button disabled
+        title="서버 연결 후 사용할 수 있습니다"
+        style={{
+          width: '100%', fontSize: 11.5, padding: '7px 0', borderRadius: 6,
+          border: `1px dashed ${t.border}`, background: 'transparent',
+          color: t.textSubtle, cursor: 'default', fontWeight: 600, marginBottom: 10,
+        }}>☁ 서버에 저장된 맵 불러오기 (서버 연결 후)</button>
 
       <div style={{
         fontSize: 11, color: t.textSubtle, margin: '4px 0 8px',

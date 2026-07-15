@@ -20,6 +20,14 @@ const CODE_LANGUAGES = [
   'Markdown', '기타',
 ];
 
+// 노트 블록 입력창 높이(행 수) — 길이를 조절하려면 이 숫자만 바꾸면 된다.
+// (docs/03-editor-core/node/04-node-content.md §UI 조정 가이드 참조)
+const NOTE_INPUT_ROWS: Record<string, number> = {
+  paragraph: 15,
+  code_block: 15,
+  table: 15,
+};
+
 const BLOCK_TYPES: { type: NoteBlockType; label: string }[] = [
   { type: 'paragraph', label: '문단' },
   { type: 'code_block', label: '코드' },
@@ -252,7 +260,7 @@ function NoteBlockEditor({
               e.preventDefault();
               onChange({ html: clean.html, text: clean.text });
             }}
-            rows={block.type === 'code_block' ? 9 : block.type === 'table' ? 6 : 5}
+            rows={NOTE_INPUT_ROWS[block.type] ?? 15}
             placeholder={
               block.type === 'code_block'
                 ? '코드를 입력하세요'

@@ -253,6 +253,27 @@ const VIEWER_JS = String.raw`
     return null;
   }
 
+  // 인라인 강조 파서 — 에디터 inlineMarks.ts와 동일 (마커 토글, 짝이
+  // 없으면 줄 끝까지). t=텍스트, b/i/s/u/h=굵게/기울임/취소선/밑줄/형광
+  function parseInlineSegs(line) {
+    var segs = [], b = false, it = false, st2 = false, u = false, h = false, buf = '';
+    function push() { if (buf) { segs.push({ t: buf, b: b, i: it, s: st2, u: u, h: h }); buf = ''; } }
+    var idx = 0;
+    while (idx < line.length) {
+      var two = line.substr(idx, 2);
+      if (two === '**') { push(); b = !b; idx += 2; continue; }
+      if (two === '~~') { push(); st2 = !st2; idx += 2; continue; }
+      if (two === '==') { push(); h = !h; idx += 2; continue; }
+      if (two === '__') { push(); u = !u; idx += 2; continue; }
+      if (line.charAt(idx) === '*') { push(); it = !it; idx += 1; continue; }
+      buf += line.charAt(idx);
+      idx += 1;
+    }
+    push();
+    if (!segs.length) segs.push({ t: '' });
+    return segs;
+  }
+
   // ---- measure pass (bottom-up, per-layout block model) ----------------------
   // Sets on each node: _w/_h (box), _boxH (box + tag reserve), _lines/_fs/
   // _lineH, _open, _eff (effective layout for ITS children), _bw/_bh (block),
@@ -653,29 +674,42 @@ const VIEWER_JS = String.raw`
     var topY = node._cy - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
     for (var li = 0; li < node._lines.length; li++) {
-      var lineTxt = node._lines[li];
+      // 인라인 강조(부분 텍스트) — 에디터 inlineMarks.ts와 동일 규칙:
+      // **굵게** *기울임* ~~취소선~~ __밑줄__ ==하이라이트== (마커는 숨김)
+      var segs = parseInlineSegs(node._lines[li]);
+      var segWs = [], lw2 = 0, si;
+      for (si = 0; si < segs.length; si++) {
+        segWs.push(measureText(segs[si].t, node._fs));
+        lw2 += segWs[si];
+      }
       var baseY = stacked
         ? topY + li * node._lineH + node._lineH / 2 + node._fs * 0.34
         : y0 + PAD_Y + node._fs * 0.85 + li * node._lineH;
-      var lx = align === 'center' ? x0 + node._w / 2
-        : (align === 'right' ? x0 + node._w - PAD_X - (node._marksW || 0) : tx);
-      if (st.highlight && lineTxt) {
-        var lw = measureText(lineTxt, node._fs);
-        var hx = anchor === 'middle' ? lx - lw / 2 - 3 : (anchor === 'end' ? lx - lw - 3 : lx - 3);
-        el('rect', { x: hx, y: baseY - node._fs * 1.06, width: lw + 6,
-          height: node._fs * 1.44, rx: 2, fill: '#FFE066', opacity: 0.85 }, g);
+      var sx = align === 'center' ? x0 + node._w / 2 - lw2 / 2
+        : (align === 'right' ? x0 + node._w - PAD_X - (node._marksW || 0) - lw2 : tx);
+      var segX = [], accX = sx;
+      for (si = 0; si < segs.length; si++) { segX.push(accX); accX += segWs[si]; }
+      for (si = 0; si < segs.length; si++) {
+        if ((st.highlight || segs[si].h) && segs[si].t.replace(/\s/g, '')) {
+          el('rect', { x: segX[si] - 2, y: baseY - node._fs * 1.06,
+            width: segWs[si] + 4, height: node._fs * 1.44, rx: 2,
+            fill: '#FFE066', opacity: 0.85 }, g);
+        }
       }
-      var tAttrs = {
-        x: lx, y: baseY,
-        'font-size': node._fs,
-        'font-weight': isRoot ? 700 : (depth === 1 ? 600 : 500),
-        'text-anchor': anchor,
-        fill: textColor
-      };
-      if (st.strike) tAttrs['text-decoration'] = 'line-through';
-      if (node._ff) tAttrs['font-family'] = node._ff;
-      var t = el('text', tAttrs, g);
-      t.textContent = lineTxt;
+      var tEl = el('text', { y: baseY, 'font-size': node._fs, fill: textColor }, g);
+      if (node._ff) tEl.setAttribute('font-family', node._ff);
+      for (si = 0; si < segs.length; si++) {
+        var sp = el('tspan', {
+          x: segX[si],
+          'font-weight': segs[si].b ? 700 : (isRoot ? 700 : (depth === 1 ? 600 : 500)),
+          'font-style': segs[si].i ? 'italic' : 'normal'
+        }, tEl);
+        var deco = [];
+        if (st.strike || segs[si].s) deco.push('line-through');
+        if (segs[si].u) deco.push('underline');
+        if (deco.length) sp.setAttribute('text-decoration', deco.join(' '));
+        sp.textContent = segs[si].t;
+      }
     }
     if (mdt) {
       // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트

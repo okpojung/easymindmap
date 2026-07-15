@@ -745,6 +745,11 @@ export function Canvas({
           display: 'block',
           cursor: panMode ? 'grab' : 'default',
           touchAction: 'none',
+          // 드래그 시 SVG 글자가 브라우저 '텍스트 선택'으로 잡혀 주황
+          // 선택 배경이 그려지는 문제 방지 — 캔버스 글자는 선택 대상이
+          // 아니다 (노드 편집창(textarea) 안의 선택은 그대로 동작).
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

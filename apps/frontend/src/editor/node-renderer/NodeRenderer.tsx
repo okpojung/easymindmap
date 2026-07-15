@@ -18,6 +18,7 @@ import { nodeContentIndicators, isNoteKind, type ContentKind } from './nodeConte
 import { IndicatorGlyph, NoteTypeGlyph } from './IndicatorGlyph';
 import { levelFontFamily, levelFontSize, scaleNodeImage } from './sizeNodeForText';
 import { layoutMdTable, measureTextApprox, MD_TABLE_CELL_PAD_X } from './mdTable';
+import { parseInlineMarks } from './inlineMarks';
 import { useViewportStore } from '@/stores/viewportStore';
 import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
@@ -201,6 +202,22 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
     setEditing(false);
   };
 
+  // 편집 중 선택한 텍스트를 인라인 마커로 감싼다 (부분 강조 — 미니 툴바/
+  // Ctrl+B·I·U). 마커 문법은 inlineMarks.ts 참조 (**굵게** 등).
+  const wrapSelection = (mark: string) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const s0 = ta.selectionStart ?? 0;
+    const e0 = ta.selectionEnd ?? s0;
+    const next =
+      draftText.slice(0, s0) + mark + draftText.slice(s0, e0) + mark + draftText.slice(e0);
+    setDraftText(next);
+    window.setTimeout(() => {
+      ta.focus();
+      ta.setSelectionRange(s0 + mark.length, e0 + mark.length);
+    }, 0);
+  };
+
   useEffect(() => {
     if (!editing) return;
     window.setTimeout(() => {
@@ -312,41 +329,64 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
           <g>
             {lines.map((line, i) => {
               const lineCenter = contentTop + i * lineHeight + lineHeight / 2;
-              const lineW = measureTextApprox(line, fontSize);
-              const hlX =
+              // 인라인 강조(부분 텍스트) — **굵게** *기울임* ~~취소선~~
+              // __밑줄__ ==하이라이트== 마커를 구간(tspan)으로 그린다.
+              // 마커 문자는 표시에서 제거되고, 노드 전체 강조(스타일 탭)와
+              // 결합된다.
+              const segs = parseInlineMarks(line);
+              const segWs = segs.map((sg) => measureTextApprox(sg.text, fontSize));
+              const lineW = segWs.reduce((a, b) => a + b, 0);
+              const startX =
                 textAlign === 'right'
-                  ? textX - lineW - 3
+                  ? textX - lineW
                   : textAlign === 'center'
-                    ? textX - lineW / 2 - 3
-                    : textX - 3;
+                    ? textX - lineW / 2
+                    : textX;
+              // 구간별 시작 x (하이라이트 띠와 tspan이 같은 좌표를 쓴다)
+              const segXs: number[] = [];
+              let acc = startX;
+              for (const w of segWs) { segXs.push(acc); acc += w; }
               return (
                 <g key={i}>
-                  {highlight && line.trim() !== '' && (
-                    // 형광펜 — 글자 뒤에 노란 띠
-                    <rect
-                      x={hlX}
-                      y={lineCenter - fontSize * 0.72}
-                      width={lineW + 6}
-                      height={fontSize * 1.44}
-                      rx={2}
-                      fill="#FFE066"
-                      opacity={0.85}
-                    />
+                  {segs.map((sg, k) =>
+                    (highlight || sg.h) && sg.text.trim() !== '' ? (
+                      // 형광펜 — 해당 구간 뒤에 노란 띠
+                      <rect
+                        key={`h${k}`}
+                        x={segXs[k] - 2}
+                        y={lineCenter - fontSize * 0.72}
+                        width={segWs[k] + 4}
+                        height={fontSize * 1.44}
+                        rx={2}
+                        fill="#FFE066"
+                        opacity={0.85}
+                      />
+                    ) : null,
                   )}
                   <text
-                    x={textX}
                     y={lineCenter + fontSize * 0.34}
-                    textAnchor={textAnchor}
+                    textAnchor="start"
                     fontSize={fontSize}
-                    fontWeight={fontWeight}
-                    fontStyle={fontStyle}
                     fill={textColor}
-                    style={{
-                      fontFamily,
-                      textDecoration: strike ? 'line-through' : undefined,
-                    }}
+                    style={{ fontFamily }}
                   >
-                    {line}
+                    {segs.map((sg, k) => {
+                      const deco = [
+                        strike || sg.s ? 'line-through' : '',
+                        sg.u ? 'underline' : '',
+                      ].filter(Boolean).join(' ');
+                      return (
+                        <tspan
+                          key={k}
+                          x={segXs[k]}
+                          fontWeight={sg.b ? 700 : fontWeight}
+                          fontStyle={sg.i ? 'italic' : fontStyle}
+                          style={{ textDecoration: deco || undefined }}
+                        >
+                          {sg.text}
+                        </tspan>
+                      );
+                    })}
                   </text>
                 </g>
               );
@@ -482,6 +522,53 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
       )}
 
       {editing && (
+        // 부분 강조 미니 툴바 — 편집창에서 텍스트를 선택하고 누르면 해당
+        // 구간만 강조된다 (마커로 감싸기: **굵게** *기울임* ~~취소선~~
+        // __밑줄__ ==하이라이트==). onMouseDown preventDefault로 편집창의
+        // 포커스·선택이 풀리지 않게 유지한다. 단축키: Ctrl+B/I/U.
+        <foreignObject
+          x={n.x - 92}
+          y={n.y - n.h / 2 - 36}
+          width={184}
+          height={32}
+          style={{ overflow: 'visible' }}
+        >
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+              display: 'flex', gap: 3, justifyContent: 'center',
+              background: t.surface, border: `1px solid ${t.border}`,
+              borderRadius: 7, padding: '3px 5px',
+              boxShadow: '0 3px 10px rgba(80,60,20,0.15)', width: 'fit-content',
+              margin: '0 auto',
+            }}
+          >
+            {([
+              { m: '**', label: 'B', st: { fontWeight: 700 } },
+              { m: '*', label: 'I', st: { fontStyle: 'italic' } },
+              { m: '~~', label: 'S', st: { textDecoration: 'line-through' } },
+              { m: '__', label: 'U', st: { textDecoration: 'underline' } },
+              { m: '==', label: 'H', st: { background: '#FFE066', borderRadius: 2, padding: '0 3px' } },
+            ] as const).map((b) => (
+              <button
+                key={b.label}
+                title={`선택 구간에 적용 (${b.m}…${b.m})`}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => wrapSelection(b.m)}
+                style={{
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  fontSize: 12, color: t.text, padding: '1px 5px',
+                  borderRadius: 4, lineHeight: 1.4,
+                }}
+              >
+                <span style={b.st as React.CSSProperties}>{b.label}</span>
+              </button>
+            ))}
+          </div>
+        </foreignObject>
+      )}
+
+      {editing && (
         <foreignObject
           x={n.x - n.w / 2 + 8}
           y={n.y - n.h / 2 + 6}
@@ -505,6 +592,13 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
+              // 부분 강조 단축키 — 선택한 텍스트를 마커로 감싼다
+              if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+                const k = e.key.toLowerCase();
+                if (k === 'b') { e.preventDefault(); wrapSelection('**'); return; }
+                if (k === 'i') { e.preventDefault(); wrapSelection('*'); return; }
+                if (k === 'u') { e.preventDefault(); wrapSelection('__'); return; }
+              }
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 saveEdit();

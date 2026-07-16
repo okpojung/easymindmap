@@ -11,6 +11,7 @@ import type { TextAlign, ShapeType } from '@/editor/__samples__/types';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useInteractionStore } from '@/stores/interactionStore';
 import { resolveNodeColors } from './resolveNodeColors';
 import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
@@ -113,6 +114,7 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const updateNodeSize = useDocumentStore((state) => state.updateNodeSize);
   const setNodeImage = useDocumentStore((state) => state.setNodeImage);
   const zoom = useViewportStore((state) => state.zoom);
+  const setEditingNodeId = useInteractionStore((state) => state.setEditingNodeId);
   const showTags = useEditorUiStore((state) => state.showTags);
 
   // 우하단 크기 조절 핸들 드래그 상태
@@ -186,6 +188,7 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const startEdit = () => {
     setDraftText(n.text);
     setEditing(true);
+    setEditingNodeId(n.id); // 편집 중 +/− 인디케이터 숨김 (겹침 방지)
     onSelect();
   };
 
@@ -195,11 +198,13 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
       updateNodeText(n.id, nextText);
     }
     setEditing(false);
+    setEditingNodeId(null);
   };
 
   const cancelEdit = () => {
     setDraftText(n.text);
     setEditing(false);
+    setEditingNodeId(null);
   };
 
   // 편집 중 선택한 텍스트를 인라인 마커로 감싼다 (부분 강조 — 미니 툴바/
@@ -209,12 +214,18 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
     const e0 = ta.selectionEnd ?? s0;
-    const next =
-      draftText.slice(0, s0) + mark + draftText.slice(s0, e0) + mark + draftText.slice(e0);
+    // 여러 줄 선택이면 줄마다 따로 감싼다 — 인라인 마커는 줄 단위 토글이라
+    // 줄을 건너 감싸면 가운데 줄이 빠지거나 뒤집힌다.
+    const wrapped = draftText
+      .slice(s0, e0)
+      .split('\n')
+      .map((seg) => (seg.trim() === '' ? seg : mark + seg + mark))
+      .join('\n');
+    const next = draftText.slice(0, s0) + wrapped + draftText.slice(e0);
     setDraftText(next);
     window.setTimeout(() => {
       ta.focus();
-      ta.setSelectionRange(s0 + mark.length, e0 + mark.length);
+      ta.setSelectionRange(s0, s0 + wrapped.length);
     }, 0);
   };
 
@@ -591,6 +602,11 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
             }}
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
+            // 선택된 텍스트 위에서 다시 드래그하면 브라우저가 선택 내용을
+            // '끌어다 놓기'(드래그 앤 드롭)하려고 고스트 창을 띄운다 —
+            // 재선택을 방해하므로 차단한다.
+            onDragStart={(e) => e.preventDefault()}
+            draggable={false}
             onKeyDown={(e) => {
               // 부분 강조 단축키 — 선택한 텍스트를 마커로 감싼다
               if ((e.ctrlKey || e.metaKey) && !e.altKey) {

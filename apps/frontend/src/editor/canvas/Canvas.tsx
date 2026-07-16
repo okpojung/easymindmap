@@ -37,6 +37,7 @@ import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useInteractionStore } from '@/stores/interactionStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 
@@ -155,6 +156,9 @@ export function Canvas({
 
   const spacingX = useEditorUiStore((s) => s.spacingX);
   const spacingY = useEditorUiStore((s) => s.spacingY);
+  // 편집 중인 노드 — +/− 추가 인디케이터를 숨겨 편집창·미니 툴바와
+  // 겹치지 않게 한다.
+  const editingNodeId = useInteractionStore((s) => s.editingNodeId);
 
   const nodes = useMemo(() => {
     // 맵 설정(레벨별 폰트)을 측정기에 주입 — 모든 레이아웃 전략의
@@ -835,7 +839,7 @@ export function Canvas({
             );
           })()}
 
-          {selectedNode && !dropZone && (
+          {selectedNode && !dropZone && editingNodeId !== selectedNode.id && (
             <g className="mm-overlay-controls">
               <NodeIndicators
                 node={selectedNode}

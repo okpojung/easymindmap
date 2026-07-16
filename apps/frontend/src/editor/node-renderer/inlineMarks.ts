@@ -53,6 +53,58 @@ export function parseInlineMarks(line: string): InlineSeg[] {
   return segs;
 }
 
+// 선택 구간에 마커 토글 — 이미 그 마커로 감싸져 있으면 해제, 아니면 감싼다.
+// (여러 줄 선택은 줄마다 처리 — 마커는 줄 단위 토글이므로)
+// 반환: 바뀐 전체 문자열 + 새 선택 범위.
+export function toggleMarkRange(
+  value: string,
+  s0: number,
+  e0: number,
+  mark: string,
+): { next: string; selStart: number; selEnd: number } {
+  const sel = value.slice(s0, e0);
+  const lines = sel.split('\n');
+  const isWrapped = (seg: string) => {
+    const tr = seg.trim();
+    return tr.length >= mark.length * 2 && tr.startsWith(mark) && tr.endsWith(mark);
+  };
+
+  // ① 선택 자체가 마커로 감싸져 있음 (툴바 적용 직후 재클릭 등) → 해제
+  const nonEmpty = lines.filter((l) => l.trim() !== '');
+  if (sel && nonEmpty.length > 0 && nonEmpty.every(isWrapped)) {
+    const un = lines
+      .map((l) => {
+        const tr = l.trim();
+        if (!tr) return l;
+        const lead = l.slice(0, l.indexOf(tr));
+        const trail = l.slice(l.indexOf(tr) + tr.length);
+        return lead + tr.slice(mark.length, tr.length - mark.length) + trail;
+      })
+      .join('\n');
+    return { next: value.slice(0, s0) + un + value.slice(e0), selStart: s0, selEnd: s0 + un.length };
+  }
+
+  // ② 선택 바로 바깥이 마커 (안쪽 텍스트만 선택한 경우) → 해제
+  if (
+    sel && !sel.includes('\n') &&
+    value.slice(Math.max(0, s0 - mark.length), s0) === mark &&
+    value.slice(e0, e0 + mark.length) === mark
+  ) {
+    const next = value.slice(0, s0 - mark.length) + sel + value.slice(e0 + mark.length);
+    return { next, selStart: s0 - mark.length, selEnd: s0 - mark.length + sel.length };
+  }
+
+  // ③ 감싸기 (줄마다)
+  const wrapped = lines
+    .map((seg) => (seg.trim() === '' ? seg : mark + seg + mark))
+    .join('\n');
+  return {
+    next: value.slice(0, s0) + wrapped + value.slice(e0),
+    selStart: s0,
+    selEnd: s0 + wrapped.length,
+  };
+}
+
 // 마커를 제거한 표시용 텍스트 (아웃라인 목록 등)
 export function stripInlineMarks(text: string): string {
   return text

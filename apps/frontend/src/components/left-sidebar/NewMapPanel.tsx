@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { parseMarkdownToMap } from '@/utils/importMarkdown';
+import { parseHtmlMapFile, parseMarkdownMapFile } from '@/utils/importMapFile';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -84,24 +84,44 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const startBlank = () => confirmThen('기본 맵으로 시작', doStartBlank);
   const startFromTemplate = (tpl: UserTemplate) =>
     confirmThen(`'${tpl.name}' 템플릿으로 시작`, () => doStartFromTemplate(tpl));
-  const startImportMd = () =>
-    confirmThen('MD 파일 불러오기', () => fileRef.current?.click());
+  const startImportFile = () =>
+    confirmThen('MD/HTML 파일 불러오기', () => fileRef.current?.click());
 
-  // 로컬 Markdown 파일 불러오기 — # 견출/리스트 구조를 맵으로 변환
-  const importMd = (file: File) => {
+  // 로컬 MD/HTML 파일 불러오기.
+  //  · EasyMindMap이 내보낸 HTML/MD: 내장 메타데이터로 원본 맵을 복원
+  //    (MD는 본문에서 고친 구조·텍스트도 반영 — importMapFile.ts)
+  //  · 일반 MD: # 견출/리스트 구조를 맵으로 변환
+  const importFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const name = file.name.replace(/\.(md|markdown|txt)$/i, '');
-      const map = parseMarkdownToMap(String(reader.result ?? ''), name);
-      if (!map) {
-        flash('맵으로 만들 견출(#)·리스트(-) 구조를 찾지 못했습니다');
+      const text = String(reader.result ?? '');
+      const name = file.name.replace(/\.(md|markdown|txt|html?)$/i, '');
+      // HTML 판별은 확장자 + 내용 둘 다 — 확장자가 지워진/바뀐 파일도 인식
+      const isHtml = /\.html?$/i.test(file.name) ||
+        /^\s*<!doctype html/i.test(text) ||
+        text.includes('id="easymindmap-map"');
+      const imported = isHtml
+        ? parseHtmlMapFile(text)
+        : parseMarkdownMapFile(text, name);
+      if (!imported) {
+        flash(isHtml
+          ? 'EasyMindMap이 내보낸 HTML이 아닙니다 (맵 메타데이터 없음)'
+          : '맵으로 만들 견출(#)·리스트(-) 구조를 찾지 못했습니다');
         return;
       }
-      loadMap(map);
-      setLayoutType('radial-right');
-      resetSpacing();
+      loadMap(imported.map);
+      // 내보낼 당시의 레이아웃·간격 복원 (메타데이터), 일반 MD는 기본값
+      if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
+      else setLayoutType('radial-right');
+      if (imported.editor?.spacingX) setSpacingX(imported.editor.spacingX);
+      else resetSpacing();
+      if (imported.editor?.spacingY) setSpacingY(imported.editor.spacingY);
       setSelectedId('root');
-      flash(`'${map.title}' — MD 파일에서 맵을 만들었습니다`);
+      flash(
+        imported.source === 'plain-md'
+          ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다`
+          : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다`,
+      );
     };
     reader.readAsText(file);
   };
@@ -186,21 +206,21 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       <input
         ref={fileRef}
         type="file"
-        accept=".md,.markdown,.txt"
+        accept=".md,.markdown,.txt,.html,.htm"
         style={{ display: 'none' }}
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) importMd(f);
+          if (f) importFile(f);
           e.target.value = '';
         }}
       />
-      <button onClick={startImportMd}
-        title="로컬 Markdown 파일(# 견출·- 리스트)을 맵으로 변환합니다"
+      <button onClick={startImportFile}
+        title="일반 MD(# 견출·- 리스트) 또는 EasyMindMap이 내보낸 MD/HTML(메타데이터로 원본 복원)을 불러옵니다"
         style={{
           width: '100%', fontSize: 11.5, padding: '7px 0', borderRadius: 6,
           border: `1px solid ${t.border}`, background: t.surfaceAlt,
           color: t.text, cursor: 'pointer', fontWeight: 600, marginBottom: 5,
-        }}>📄 MD 파일 불러오기</button>
+        }}>📄 MD / HTML 파일 불러오기</button>
 
       {/* [서버 연결 예정] 서버에 저장된 맵 목록에서 불러오기 —
           maps 테이블 연동 후 활성화 (docs/02-domain/db-schema.md) */}

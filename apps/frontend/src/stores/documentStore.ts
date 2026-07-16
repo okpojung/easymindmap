@@ -702,6 +702,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
         if (tParent === 'root') {
           const branch = makeBranch(removed, pruned.length);
+          // 형제로 붙는 대상 브랜치의 side를 따라간다 — 방사형·양쪽에서
+          // 왼쪽 브랜치의 상/하 드롭존에 놓으면 왼쪽으로 이동해야 한다.
+          // (side를 그대로 두면 배열 순서만 바뀌고 반대쪽에 그려져
+          // "이동이 안 된 것"처럼 보인다)
+          const tgt = map.branches.find((b) => b.id === targetId);
+          if (tgt && (tgt.side === 'left' || tgt.side === 'right')) {
+            branch.side = tgt.side;
+          }
           ok = true;
           return { map: { ...map, branches: insertSibling(pruned, targetId, branch, position) as SampleBranch[] } };
         }

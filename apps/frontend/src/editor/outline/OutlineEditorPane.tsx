@@ -31,7 +31,8 @@ import {
   type NoteKind,
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from '@/editor/canvas/NoteViewerPopover';
-import { parseInlineMarks } from '@/editor/node-renderer/inlineMarks';
+import { parseInlineMarks, toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
+import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import type { LaidOutNode } from '@/layout/types';
 
@@ -182,23 +183,18 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
     setEditing(false);
   };
 
-  // 선택 구간을 인라인 마커로 감싼다 (맵 편집창과 동일 — 미니 툴바/
-  // Ctrl+B·I·U). 여러 줄 선택이면 줄마다 감싼다.
+  // 선택 구간에 인라인 마커 토글 (맵 편집창과 동일 — 툴바/Ctrl+B·I·U).
+  // 이미 그 마커가 적용돼 있으면 해제한다.
   const wrapSelection = (mark: string) => {
     const ta = inputRef.current;
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
     const e0 = ta.selectionEnd ?? s0;
-    const wrapped = draft
-      .slice(s0, e0)
-      .split('\n')
-      .map((seg) => (seg.trim() === '' ? seg : mark + seg + mark))
-      .join('\n');
-    const next = draft.slice(0, s0) + wrapped + draft.slice(e0);
-    setDraft(next);
+    const r = toggleMarkRange(draft, s0, e0, mark);
+    setDraft(r.next);
     window.setTimeout(() => {
       ta.focus();
-      ta.setSelectionRange(s0, s0 + wrapped.length);
+      ta.setSelectionRange(r.selStart, r.selEnd);
     }, 0);
   };
 
@@ -323,34 +319,14 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 
         {editing ? (
           <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-            {/* 부분 강조 미니 툴바 — 맵 편집창과 동일 (B/I/S/U/H) */}
-            <div style={{
-              position: 'absolute', top: -30, left: 0, zIndex: 5,
-              display: 'flex', gap: 3,
-              background: t.surface, border: `1px solid ${t.border}`,
-              borderRadius: 7, padding: '2px 5px',
-              boxShadow: '0 3px 10px rgba(80,60,20,0.15)', whiteSpace: 'nowrap',
-            }}>
-              {([
-                { m: '**', label: 'B', st: { fontWeight: 700 } },
-                { m: '*', label: 'I', st: { fontStyle: 'italic' } },
-                { m: '~~', label: 'S', st: { textDecoration: 'line-through' } },
-                { m: '__', label: 'U', st: { textDecoration: 'underline' } },
-                { m: '==', label: 'H', st: { background: '#FFE066', borderRadius: 2, padding: '0 3px' } },
-              ] as const).map((b) => (
-                <button key={b.label}
-                  title={`선택 구간에 적용 (${b.m}…${b.m})`}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={(e) => { e.stopPropagation(); wrapSelection(b.m); }}
-                  style={{
-                    border: 'none', background: 'transparent', cursor: 'pointer',
-                    fontSize: 11.5, color: t.text, padding: '0 4px',
-                    borderRadius: 4, lineHeight: 1.4,
-                  }}>
-                  <span style={b.st as React.CSSProperties}>{b.label}</span>
-                </button>
-              ))}
-            </div>
+            {/* 부분 강조 툴바 (공용 MarkToolbar) — 맵 편집창과 동일 (B/I/S/U/H).
+                떠 있는(absolute) 위치는 첫 행(루트)에서 페인 스크롤 영역에
+                잘려 눌리지 않으므로, 입력창 위에 일반 흐름으로 놓는다. */}
+            <MarkToolbar
+              t={t}
+              onApply={wrapSelection}
+              style={{ display: 'inline-flex', marginBottom: 4 }}
+            />
           <textarea
             ref={inputRef}
             value={draft}

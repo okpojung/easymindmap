@@ -19,8 +19,10 @@ import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, isNoteKind, type ContentKind } from './nodeContent';
 import { IndicatorGlyph, NoteTypeGlyph } from './IndicatorGlyph';
 import { levelFontFamily, levelFontSize, scaleNodeImage } from './sizeNodeForText';
-import { layoutMdTable, measureTextApprox, MD_TABLE_CELL_PAD_X } from './mdTable';
-import { parseInlineMarks } from './inlineMarks';
+import { layoutMdTable, MD_TABLE_CELL_PAD_X } from './mdTable';
+import { parseInlineMarks, toggleMarkRange } from './inlineMarks';
+import { measureTextPx } from './textMeasure';
+import { MarkToolbar } from './MarkToolbar';
 import { useViewportStore } from '@/stores/viewportStore';
 import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
@@ -244,25 +246,18 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
     setEditingNodeId(null);
   };
 
-  // 편집 중 선택한 텍스트를 인라인 마커로 감싼다 (부분 강조 — 미니 툴바/
-  // Ctrl+B·I·U). 마커 문법은 inlineMarks.ts 참조 (**굵게** 등).
+  // 편집 중 선택한 텍스트에 인라인 마커 토글 (부분 강조 — 미니 툴바/
+  // Ctrl+B·I·U). 이미 그 마커가 적용돼 있으면 해제한다. inlineMarks.ts 참조.
   const wrapSelection = (mark: string) => {
     const ta = textareaRef.current;
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
     const e0 = ta.selectionEnd ?? s0;
-    // 여러 줄 선택이면 줄마다 따로 감싼다 — 인라인 마커는 줄 단위 토글이라
-    // 줄을 건너 감싸면 가운데 줄이 빠지거나 뒤집힌다.
-    const wrapped = draftText
-      .slice(s0, e0)
-      .split('\n')
-      .map((seg) => (seg.trim() === '' ? seg : mark + seg + mark))
-      .join('\n');
-    const next = draftText.slice(0, s0) + wrapped + draftText.slice(e0);
-    setDraftText(next);
+    const r = toggleMarkRange(draftText, s0, e0, mark);
+    setDraftText(r.next);
     window.setTimeout(() => {
       ta.focus();
-      ta.setSelectionRange(s0, s0 + wrapped.length);
+      ta.setSelectionRange(r.selStart, r.selEnd);
     }, 0);
   };
 
@@ -385,7 +380,15 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
               // 마커 문자는 표시에서 제거되고, 노드 전체 강조(스타일 탭)와
               // 결합된다.
               const segs = parseInlineMarks(line);
-              const segWs = segs.map((sg) => measureTextApprox(sg.text, fontSize));
+              // 표시 좌표는 근사 폭이 아니라 캔버스 실측 폭 — 근사로 놓으면
+              // 인접 구간(tspan)의 x가 실제 렌더 폭과 어긋나 글자가 겹친다.
+              const segWs = segs.map((sg) =>
+                measureTextPx(sg.text, fontSize, {
+                  weight: sg.b ? 700 : fontWeight,
+                  italic: sg.i || fontStyle === 'italic',
+                  family: fontFamily,
+                }),
+              );
               const lineW = segWs.reduce((a, b) => a + b, 0);
               const startX =
                 textAlign === 'right'
@@ -589,43 +592,17 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
           }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          {/* 부분 강조 미니 툴바 — 선택 구간을 마커로 감싼다. onMouseDown
-              preventDefault로 편집창의 포커스·선택이 풀리지 않게 유지. */}
-          <div
+          {/* 부분 강조 툴바 (공용 MarkToolbar) — 선택 구간에 마커 토글 */}
+          <MarkToolbar
+            t={t}
+            onApply={wrapSelection}
             style={{
               position: 'absolute',
               left: '50%',
               transform: 'translateX(-50%)',
-              top: -36,
-              display: 'flex', gap: 3,
-              background: t.surface, border: `1px solid ${t.border}`,
-              borderRadius: 7, padding: '3px 5px',
-              boxShadow: '0 3px 10px rgba(80,60,20,0.15)',
-              whiteSpace: 'nowrap',
+              top: -46,
             }}
-          >
-            {([
-              { m: '**', label: 'B', st: { fontWeight: 700 } },
-              { m: '*', label: 'I', st: { fontStyle: 'italic' } },
-              { m: '~~', label: 'S', st: { textDecoration: 'line-through' } },
-              { m: '__', label: 'U', st: { textDecoration: 'underline' } },
-              { m: '==', label: 'H', st: { background: '#FFE066', borderRadius: 2, padding: '0 3px' } },
-            ] as const).map((b) => (
-              <button
-                key={b.label}
-                title={`선택 구간에 적용 (${b.m}…${b.m})`}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => wrapSelection(b.m)}
-                style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  fontSize: 12, color: t.text, padding: '1px 5px',
-                  borderRadius: 4, lineHeight: 1.4,
-                }}
-              >
-                <span style={b.st as React.CSSProperties}>{b.label}</span>
-              </button>
-            ))}
-          </div>
+          />
 
           <textarea
             ref={textareaRef}

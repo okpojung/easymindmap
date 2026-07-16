@@ -883,3 +883,24 @@ Auto Layout 계열에서는 Layout Engine이 좌표를 결정하므로 사용자
 Auto Layout에서는 `computedX/Y`를 사용한다.  
 Freeform에서는 `manualPosition`을 사용한다.  
 Edge 꺾임점 또는 Bezier control point는 DB에 저장하지 않는다.
+
+## 22. 시간배치 (타임라인) 레이아웃 (MVS 구현 — 2026-07)
+
+중심 주제(1레벨)에서 오른쪽으로 **수평 시간축 화살표**가 뻗고, 2레벨
+주제들이 축 위/아래에 **번갈아** 배치된다. 각 주제의 하위(3레벨+)는
+축에서 멀어지는 방향(위쪽 주제는 위로, 아래쪽 주제는 아래로)으로
+들여쓰기 세로 스택으로 쌓인다 (왼쪽 스파인 직각 연결).
+
+- **중심 주제 전용(rootOnly)** — 트리·아래와 동일한 제약 (LayoutTab).
+- `side`: 위쪽 서브트리 = `'up'`, 아래쪽 = `'down'` — +버튼 방향
+  (03-node-indicator.md)과 드롭존이 이 방향을 따른다 (up이면 위 = 자식).
+- 태그 칩은 항상 노드 아래에 그려지므로, 위 방향 스택에서는 칩 공간을
+  노드 아래(축쪽)에 예약해 겹침을 막는다 (TimelineStrategy).
+- 시간축 화살표는 Canvas가 레이아웃 위에 그린다 (루트 오른쪽 가장자리 →
+  마지막 주제 너머 +46px, 화살촉 polygon).
+- 엣지: 루트→주제는 축을 따라가다 주제 x에서 꺾여 내려/올라감
+  (`M rootRight rootY H topicX V topicEdge`), 주제 이하는 왼쪽 스파인
+  세로 아웃라인 (EdgeRenderer.createTimelinePath).
+- **HTML 내보내기 파리티**: 내보내기는 에디터 계산 좌표(pos)를 그대로
+  쓰므로 배치는 자동 일치 — 뷰어에는 timeline 엣지 스타일과 시간축
+  화살표만 추가했다 (exportHtml VIEWER_JS).

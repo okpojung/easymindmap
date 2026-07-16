@@ -24,7 +24,8 @@ export type LayoutType =
   | 'process-tree-right-a'
   | 'process-tree-right-b'
   | 'freeform'
-  | 'kanban';
+  | 'kanban'
+  | 'timeline';
 
 export type EdgeType = 'tree-line' | 'curve-line';
 

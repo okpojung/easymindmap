@@ -24,11 +24,15 @@ export type ShapeType =
   | 'ellipse'
   | 'diamond'
   | 'hexagon'
-  | 'parallelogram';
+  | 'parallelogram'
+  | 'arrow-left'   // ◀ 왼쪽 화살표
+  | 'arrow-right'  // ▶ 오른쪽 화살표
+  | 'cylinder'     // ⛁ 원통 (데이터베이스)
+  | 'star';        // ★ 별
 
 export type NodeFontWeight = 'normal' | 'bold';
 export type NodeFontStyle = 'normal' | 'italic';
-export type NodeBorderStyle = 'solid' | 'dashed' | 'dotted';
+export type NodeBorderStyle = 'solid' | 'dashed' | 'dotted' | 'double';
 
 export interface NodeStyle {
   fillColor?: string;

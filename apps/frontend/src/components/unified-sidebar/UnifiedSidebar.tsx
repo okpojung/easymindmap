@@ -345,7 +345,9 @@ function InspectorContent({ t, tab }: {
         <div style={{
           fontSize: 10, fontWeight: 700, color: t.textSubtle,
           textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3,
-        }}>{multiCount > 1 ? `${multiCount}개 노드 선택 · 일괄 편집` : node ? `선택 · depth ${depth}` : '선택된 노드 없음'}</div>
+        }}>{multiCount > 1 ? `${multiCount}개 노드 선택 · 일괄 편집`
+          // 레벨 표기 = 중심 주제가 1레벨 (내부 depth 0 기준 → 표시 +1)
+          : node ? `선택 · ${depth + 1}레벨${depth === 0 ? ' (중심 주제)' : ''}` : '선택된 노드 없음'}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
           <div style={{

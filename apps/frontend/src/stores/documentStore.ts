@@ -109,7 +109,7 @@ interface DocumentState {
   setNodeIcon: (nodeId: string | null, icon: string | undefined) => void;
   setNodeIconSide: (nodeId: string | null, iconSide: 'left' | 'right') => void;
 
-  // 방사형·양쪽 레이아웃에서 1레벨 브랜치의 좌/우 배치 — 드래그로 반대쪽
+  // 방사형·양쪽 레이아웃에서 2레벨(depth 1) 브랜치의 좌/우 배치 — 드래그로 반대쪽
   // 이동, 루트 +버튼의 좌/우 추가에 사용 (다른 레이아웃에서는 무시됨)
   setBranchSide: (branchId: string | null, side: 'left' | 'right') => void;
 
@@ -942,7 +942,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     if (!branchId) return;
     set((state) => {
       const map = state.map;
-      if (!map.branches.some((b) => b.id === branchId)) return {}; // 1레벨만
+      if (!map.branches.some((b) => b.id === branchId)) return {}; // 루트 직계만
       return {
         map: {
           ...map,

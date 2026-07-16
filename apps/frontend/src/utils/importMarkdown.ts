@@ -65,7 +65,7 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
         lastHeadingDepth = 0;
         continue;
       }
-      const depth = level - 1; // ## = 1레벨(루트의 자식)
+      const depth = level - 1; // ## = depth 1 (루트 직계 = 표시 2레벨)
       attach(depth, text);
       lastHeadingDepth = depth;
       continue;

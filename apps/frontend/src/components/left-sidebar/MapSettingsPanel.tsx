@@ -14,7 +14,8 @@ import {
   LEVEL_FONT_DEFAULT_SIZES,
 } from '@/editor/node-renderer/sizeNodeForText';
 
-const LEVEL_LABELS = ['Root', 'Level 1', 'Level 2', 'Level 3', 'Level 4+'];
+// 레벨 표기 = 중심 주제가 1레벨 (내부 depth 0=중심 → 표시 레벨 = depth+1)
+const LEVEL_LABELS = ['1레벨 (중심)', '2레벨', '3레벨', '4레벨', '5레벨+'];
 const LEVEL_WEIGHTS = [700, 600, 500, 500, 500];
 
 const FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 26, 28];
@@ -41,7 +42,7 @@ const LEVEL_LAYOUTS: { key: LayoutType | ''; label: string }[] = [
   { key: 'process-tree-right' as LayoutType, label: '진행트리 · 오른쪽' },
 ];
 
-const LAYOUT_LEVEL_LABELS = ['Level 1', 'Level 2', 'Level 3', 'Level 4+'];
+const LAYOUT_LEVEL_LABELS = ['2레벨', '3레벨', '4레벨', '5레벨+'];
 
 export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
   const levelFonts = useDocumentStore((s) => s.map.settings?.levelFonts);

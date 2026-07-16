@@ -154,7 +154,7 @@ const VIEWER_JS = String.raw`
   var KNOWN = {
     'radial-bidirectional': 1, 'radial-right': 1, 'radial-left': 1,
     'tree-right': 1, 'tree-down': 1, 'hierarchy-right': 1,
-    'process-tree-right': 1
+    'process-tree-right': 1, 'timeline': 1
   };
   function normalize(lt) {
     if (!lt) return null;
@@ -499,6 +499,19 @@ const VIEWER_JS = String.raw`
   // ---- edges (style follows the PARENT's effective layout, 08-layout §18) ----
   function edgePath(p, c) {
     var eff = p._eff;
+    if (eff === 'timeline') {
+      // 시간배치 — 루트→주제: 시간축을 따라가다 주제로 꺾임.
+      // 주제 이하: 왼쪽 스파인 세로 아웃라인 (위/아래 방향).
+      if (p === DATA.root) {
+        var edgeY0 = c._cy < p._cy ? c._cy + c._h / 2 : c._cy - c._h / 2;
+        return 'M ' + (p._cx + p._w / 2) + ' ' + p._cy + ' H ' + c._cx + ' V ' + edgeY0;
+      }
+      var up = c._cy < p._cy;
+      var tagPad0 = (!up && p.tags && p.tags.length) ? TAG_H + 7 : 0;
+      var fy = up ? p._cy - p._h / 2 : p._cy + p._h / 2 + tagPad0;
+      var sp = p._cx - p._w / 2 + 12;
+      return 'M ' + sp + ' ' + fy + ' V ' + c._cy + ' H ' + (c._cx - c._w / 2);
+    }
     var childLeft = c._cx - c._w / 2, childRight = c._cx + c._w / 2;
     var childTop = c._cy - c._h / 2;
     var pLeft = p._cx - p._w / 2, pRight = p._cx + p._w / 2;
@@ -635,6 +648,21 @@ const VIEWER_JS = String.raw`
   function drawNode(node, depth, parentColor) {
     var color = depth === 0 ? COLORS.root : (depth === 1 ? branchColor(node.colorKey) : (parentColor || '#8B7355'));
     var kids = node.children || [];
+
+    if (depth === 0 && node._eff === 'timeline') {
+      // 수평 시간축 화살표 (루트 → 마지막 주제 너머) — 에디터와 동일
+      var maxX = node._cx + node._w / 2;
+      (function scan(n2) {
+        maxX = Math.max(maxX, n2._cx + n2._w / 2);
+        var ks = n2._open ? (n2.children || []) : [];
+        for (var q = 0; q < ks.length; q++) if (ks[q]._cx != null) scan(ks[q]);
+      })(node);
+      var endX = maxX + 46;
+      el('line', { x1: node._cx + node._w / 2, y1: node._cy, x2: endX, y2: node._cy,
+        stroke: '#C9BBA4', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, world);
+      el('polygon', { points: (endX + 12) + ',' + node._cy + ' ' + (endX - 2) + ',' +
+        (node._cy - 6) + ' ' + (endX - 2) + ',' + (node._cy + 6), fill: '#C9BBA4' }, world);
+    }
 
     if (node._open) {
       for (var i = 0; i < kids.length; i++) {
@@ -1143,7 +1171,7 @@ const VIEWER_JS = String.raw`
       'radial-bidirectional': '방사형·양쪽', 'radial-right': '방사형·오른쪽',
       'radial-left': '방사형·왼쪽', 'tree-right': '트리·오른쪽',
       'tree-down': '트리·아래', 'hierarchy-right': '계층형·오른쪽',
-      'process-tree-right': '진행트리·오른쪽'
+      'process-tree-right': '진행트리·오른쪽', 'timeline': '시간배치'
     };
     var eff = normalize(DATA.root.layoutType) || 'radial-bidirectional';
     document.getElementById('mm-count').textContent =

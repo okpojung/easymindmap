@@ -24,7 +24,7 @@ export interface LaidOutNode {
   depth: number;
   parent: string | null;
 
-  side?: 'left' | 'right' | 'down' | 'center';
+  side?: 'left' | 'right' | 'down' | 'up' | 'center';
 
   colorKey?: NodeColorKey;
   parentColorKey?: NodeColorKey;

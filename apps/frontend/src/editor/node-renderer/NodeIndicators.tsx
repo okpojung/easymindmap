@@ -5,6 +5,7 @@
 //   side='right' (오른쪽으로 자람): ➡ 자식 · ⬅ 부모 · ⬆ 형제(앞) · ⬇ 형제(뒤)
 //   side='left'  (왼쪽으로 자람):   ⬅ 자식 · ➡ 부모 · ⬆ 형제(앞) · ⬇ 형제(뒤)
 //   side='down'  (아래로 자람):     ⬇ 자식 · ⬆ 부모 · ⬅ 형제(앞) · ➡ 형제(뒤)
+//   side='up'    (위로 자람 — 시간배치): ⬆ 자식 · ⬇ 부모 · ⬅/➡ 형제
 //
 // Root: 자식 추가만 — 자식이 자라는 방향에 표시. 방사형·양쪽 레이아웃이면
 // 좌·우 양쪽에 표시되고, 누른 쪽으로 새 브랜치가 배치된다.
@@ -76,6 +77,13 @@ export function NodeIndicators({
     mapping = [
       { dir: 'down', action: 'child' },
       { dir: 'up', action: 'parent' },
+      { dir: 'left', action: 'before' },
+      { dir: 'right', action: 'after' },
+    ];
+  } else if (node.side === 'up') {
+    mapping = [
+      { dir: 'up', action: 'child' },
+      { dir: 'down', action: 'parent' },
       { dir: 'left', action: 'before' },
       { dir: 'right', action: 'after' },
     ];

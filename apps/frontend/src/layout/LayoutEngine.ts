@@ -35,6 +35,7 @@ import { layoutRadial, layoutRadialOneSide } from './strategies/RadialStrategy';
 import { layoutTreeRight, layoutTreeDown } from './strategies/TreeStrategy';
 import { layoutHierarchyRight } from './strategies/HierarchyStrategy';
 import { layoutProcessTreeRight } from './strategies/ProcessStrategy';
+import { layoutTimeline } from './strategies/TimelineStrategy';
 import { applyLayoutOverrides } from './strategies/SubtreeStrategy';
 
 // 간격 조정 (08-layout.md §6.8 MVP): 레이아웃·오버라이드 계산이 모두 끝난
@@ -116,6 +117,10 @@ export function computeLayout(
 
     case 'process-tree-right':
       layoutProcessTreeRight(branches, CX, CY, rootW, out);
+      break;
+
+    case 'timeline':
+      layoutTimeline(branches, CX, CY, rootW, out);
       break;
 
     case 'radial-left':

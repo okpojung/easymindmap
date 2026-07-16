@@ -354,7 +354,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
           <textarea
             ref={inputRef}
             value={draft}
-            rows={Math.min(10, Math.max(1, draft.split('\n').length))}
+            rows={Math.min(12, Math.max(2, draft.split('\n').length))}
             onChange={(e) => setDraft(e.target.value)}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => {
@@ -431,7 +431,11 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
               }
             }}
             style={{
-              flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.5,
+              // 래퍼(div) 안이므로 flex가 아니라 width 100%로 행 폭을 채운다
+              // (툴바 래퍼 도입 시 flex:1이 무효가 되어 편집창이 아주 작게
+              //  줄어들던 회귀의 수정 — 회귀 E2E로 검증)
+              width: '100%', boxSizing: 'border-box',
+              fontSize: 13, lineHeight: 1.5,
               padding: '2px 6px', resize: 'vertical',
               borderRadius: 4, border: `1px solid ${t.primaryBorder}`,
               background: t.surface, color: t.text, outline: 'none',

@@ -14,13 +14,21 @@ import type { LayoutSpacing } from '@/layout/LayoutEngine';
 
 export const MAP_FILE_FORMAT = 'easymindmap-map';
 export const MAP_FILE_VERSION = 1;
-export const MD_META_RE = /<!--\s*easymindmap:v(\d+):([A-Za-z0-9+/=]+)\s*-->/;
+// MD 메타데이터 토큰 — 주석 안에서 base64가 줄바꿈되어 있어도 매칭
+// (v1 초기 파일의 한 줄 형식도 그대로 매칭된다)
+export const MD_META_RE = /easymindmap:v(\d+):\s*([A-Za-z0-9+/=\r\n ]+)/;
+// 본문 파싱 전에 제거할 메타데이터 주석 블록 전체
+export const MD_META_BLOCK_RE = /<!--(?:(?!-->)[\s\S])*?easymindmap:v\d+:(?:(?!-->)[\s\S])*?-->/;
 
 export interface MapFileMeta {
   format: typeof MAP_FILE_FORMAT;
   version: number;
   generator: 'EasyMindMap';
+  // 내보낸 시각 (ISO 8601 UTC) — 파일이 언제 만들어졌는지
   exportedAt: string;
+  // 사람이 읽기 위한 요약 (map 안에도 있지만 디코드 없이 보이도록 중복)
+  title: string;
+  nodeCount: number;
   // 내보낼 당시의 에디터 상태 — 불러올 때 레이아웃·간격을 복원한다
   editor?: {
     layoutType?: LayoutType;
@@ -28,6 +36,12 @@ export interface MapFileMeta {
     spacingY?: number;
   };
   map: SampleMap;
+}
+
+export function countMapNodes(map: SampleMap): number {
+  const walk = (nodes: { children?: unknown[] }[]): number =>
+    nodes.reduce((s2, n) => s2 + 1 + walk((n.children ?? []) as { children?: unknown[] }[]), 0);
+  return 1 + walk(map.branches);
 }
 
 export function buildMapMeta(
@@ -40,6 +54,8 @@ export function buildMapMeta(
     version: MAP_FILE_VERSION,
     generator: 'EasyMindMap',
     exportedAt: new Date().toISOString(),
+    title: map.title,
+    nodeCount: countMapNodes(map),
     editor: {
       layoutType,
       spacingX: spacing?.x,

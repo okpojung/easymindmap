@@ -12,6 +12,7 @@ import type { MindNode, SampleMap, SampleBranch } from '@/editor/__samples__/typ
 import { parseMarkdownToMap } from './importMarkdown';
 import {
   MD_META_RE,
+  MD_META_BLOCK_RE,
   decodeMetaBase64,
   parseMetaJson,
   type MapFileMeta,
@@ -109,9 +110,10 @@ export function parseMarkdownMapFile(
   const metaMatch = raw.match(MD_META_RE);
 
   if (metaMatch) {
-    const meta = decodeMetaBase64(metaMatch[2]);
+    // base64는 가독성을 위해 줄바꿈되어 있을 수 있다 — 공백 제거 후 디코드
+    const meta = decodeMetaBase64(metaMatch[2].replace(/\s+/g, ''));
     if (meta) {
-      const body = raw.replace(MD_META_RE, '');
+      const body = raw.replace(MD_META_BLOCK_RE, '');
       const bodyMap = parseMarkdownToMap(body, meta.map.title || fallbackTitle);
       // 본문이 파싱 불가능하게 바뀌었으면 메타데이터의 원본 맵으로 복원
       const map = bodyMap ? enrich(bodyMap, meta) : meta.map;

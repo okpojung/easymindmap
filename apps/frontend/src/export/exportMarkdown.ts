@@ -17,7 +17,7 @@
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
 import type { LayoutSpacing } from '@/layout/LayoutEngine';
 import { buildZip, type ZipEntry } from './zip';
-import { buildMapMeta, encodeMetaBase64 } from './mapMeta';
+import { buildMapMeta, countMapNodes, encodeMetaBase64 } from './mapMeta';
 
 interface MdImage {
   path: string; // files/img-1.png
@@ -142,10 +142,34 @@ export async function buildMarkdownExportPackage(
   }
 
   const meta = buildMapMeta(map, mapLayoutType, spacing);
+  // 메타데이터 주석 — 일반 에디터에서 한눈에 알아볼 수 있게 머리말 +
+  // 100자 줄바꿈 base64 (파서는 easymindmap:v1: 토큰만 찾으므로 형식 자유)
+  const b64 = encodeMetaBase64(meta).replace(/(.{100})/g, '$1\n');
+  const exportedLocal = new Date().toLocaleString('ko-KR');
+  const metaComment = [
+    '',
+    '<!--',
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    'EasyMindMap 맵 파일 메타데이터',
+    `제목: ${map.title}`,
+    `노드 수: ${countMapNodes(map)}`,
+    `내보낸 시각: ${exportedLocal} (${meta.exportedAt})`,
+    `형식: ${meta.format} v${meta.version} · 생성기: ${meta.generator}`,
+    '',
+    '이 주석은 EasyMindMap이 다시 불러올 때 스타일·노트·사진·태그·맵',
+    '설정을 복원하는 데 씁니다 — 지우면 구조·텍스트만 불러와집니다.',
+    '위 본문(견출·리스트)은 자유롭게 수정해도 됩니다.',
+    '',
+    'easymindmap:v1:',
+    b64,
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    '-->',
+    '',
+  ].join('\n');
   const md = [
     body,
     attLines.length ? `\n---\n\n${attLines.join('\n')}\n` : '',
-    '\n<!-- easymindmap:v1:' + encodeMetaBase64(meta) + ' -->\n',
+    metaComment,
   ].join('');
 
   if (files.length === 0) {

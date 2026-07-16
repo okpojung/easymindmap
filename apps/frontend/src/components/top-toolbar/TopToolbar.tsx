@@ -7,6 +7,7 @@ import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { downloadMapAsHtml } from '@/export/exportHtml';
+import { downloadMapAsMarkdown } from '@/export/exportMarkdown';
 
 export type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
 
@@ -184,13 +185,22 @@ export function TopToolbar({
       </button>
 
       {/* 내보내기 — 단일 HTML 파일(오프라인 읽기 전용 뷰어: 줌·팬·맞춤·
-          노드 접기/펴기·태그·링크·메모 지원)로 저장. EXPORT-02. */}
+          노드 접기/펴기·태그·링크·메모 지원)로 저장. EXPORT-02.
+          두 형식 모두 맵 메타데이터를 내장해 '새 맵 > 불러오기'로 편집
+          가능하게 복원된다. 사진·첨부가 있으면 ZIP(md/html + files/). */}
       <IconBtn
         t={t}
-        title="내보내기 (HTML 단독 파일)"
+        title="내보내기 (HTML — 읽기 전용 뷰어 + 다시 불러오기 가능)"
         onClick={() => { void downloadMapAsHtml(map, layoutType, { x: spacingX, y: spacingY }); }}
       >
         <I.Download size={16} />
+      </IconBtn>
+      <IconBtn
+        t={t}
+        title="내보내기 (Markdown — 일반 에디터에서 수정 + 다시 불러오기 가능)"
+        onClick={() => { void downloadMapAsMarkdown(map, layoutType, { x: spacingX, y: spacingY }); }}
+      >
+        <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.3 }}>MD</span>
       </IconBtn>
 
       <div

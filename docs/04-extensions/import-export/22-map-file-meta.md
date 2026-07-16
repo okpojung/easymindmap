@@ -113,6 +113,20 @@ eyJmb3JtYXQiOiJlYXN5bWluZG1hcC1tYXAiLCJ2ZXJzaW9uIjoxLCJnZW5lcmF0b3IiOiJFYXN5TWlu
 | 일반 MD | 토큰 없음 | 구조 파싱만 (`importMarkdown.ts`) |
 | 일반 HTML | 메타데이터 없음 | 거부 (안내 메시지) |
 
+### ZIP 불러오기 · 첨부 복원 (2026-07 추가)
+
+- **ZIP을 직접 불러올 수 있다** — '새 맵 > MD/HTML/ZIP 파일 불러오기'.
+  ZIP 안의 .html(우선)/.md를 파싱하고, `files/…`의 실제 파일을 첨부에
+  **data URL로 재연결**한다 (`parseZipMapFile` / zip.ts `parseZip` —
+  STORE는 물론 다른 도구로 재압축된 deflate도 DecompressionStream으로
+  해제).
+- **작은 첨부(≤2MB)는 내보낼 때 메타데이터에 data URL로 인라인**
+  (`INLINE_ATTACHMENT_LIMIT`) — ZIP 없이 단일 .md/.html 파일만
+  불러와도 첨부까지 복원된다. 큰 첨부는 ZIP의 files/로만 담기며
+  ZIP 불러오기에서 재연결된다.
+- 첨부 URL 우선순위(불러오기): 이미 살아있는 data:/http(s) URL은
+  그대로 두고, blob:(원 세션 한정)·빈 URL만 files/에서 재연결한다.
+
 ### 버전 정책
 
 `version`이 올라가면 필드 추가는 하위 호환(무시)으로, 의미 변경은

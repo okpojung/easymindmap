@@ -17,7 +17,14 @@
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
 import type { LayoutSpacing } from '@/layout/LayoutEngine';
 import { buildZip, type ZipEntry } from './zip';
-import { buildMapMeta, countMapNodes, encodeMetaBase64 } from './mapMeta';
+import {
+  buildMapMeta,
+  bytesToDataUrl,
+  countMapNodes,
+  encodeMetaBase64,
+  withInlinedAttachments,
+  INLINE_ATTACHMENT_LIMIT,
+} from './mapMeta';
 
 interface MdImage {
   path: string; // files/img-1.png
@@ -123,6 +130,8 @@ export async function buildMarkdownExportPackage(
   collectAttachments(map.branches, attachments);
   const files: ZipEntry[] = images.map((im) => ({ path: im.path, data: im.data }));
   const usedNames = new Set(files.map((f) => f.path));
+  // ≤2MB 첨부는 메타데이터에 data URL로 인라인 (단일 .md만으로 복원)
+  const inlineById = new Map<string, string>();
   const attLines: string[] = [];
   for (const att of attachments) {
     if (!att.url) continue;
@@ -130,6 +139,9 @@ export async function buildMarkdownExportPackage(
       const res = await fetch(att.url);
       if (!res.ok) throw new Error(String(res.status));
       const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.length <= INLINE_ATTACHMENT_LIMIT) {
+        inlineById.set(att.id, bytesToDataUrl(bytes, att.name));
+      }
       let name = `files/${safeName(att.name, att.id)}`;
       let i = 2;
       while (usedNames.has(name)) name = `files/${safeName(att.name, att.id)}-${i++}`;
@@ -141,7 +153,9 @@ export async function buildMarkdownExportPackage(
     }
   }
 
-  const meta = buildMapMeta(map, mapLayoutType, spacing);
+  const meta = buildMapMeta(
+    withInlinedAttachments(map, (id) => inlineById.get(id)),
+    mapLayoutType, spacing);
   // 메타데이터 주석 — 일반 에디터에서 한눈에 알아볼 수 있게 머리말 +
   // 100자 줄바꿈 base64 (파서는 easymindmap:v1: 토큰만 찾으므로 형식 자유)
   const b64 = encodeMetaBase64(meta).replace(/(.{100})/g, '$1\n');

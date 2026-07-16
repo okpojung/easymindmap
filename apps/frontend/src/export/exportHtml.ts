@@ -24,7 +24,12 @@ import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/_
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import { setLevelFontConfig, levelFontFamily } from '@/editor/node-renderer/sizeNodeForText';
 import { buildZip, type ZipEntry } from './zip';
-import { buildMapMeta } from './mapMeta';
+import {
+  buildMapMeta,
+  bytesToDataUrl,
+  withInlinedAttachments,
+  INLINE_ATTACHMENT_LIMIT,
+} from './mapMeta';
 
 // 에디터가 계산한 노드의 최종 배치 좌표 — 뷰어는 이 좌표를 그대로 사용해
 // 에디터 화면과 100% 동일한 레이아웃을 재현한다 (자체 레이아웃은 좌표가
@@ -1336,6 +1341,9 @@ export function buildStandaloneHtml(
   mapLayoutType?: LayoutType,
   resolveHref?: AttachmentHrefResolver,
   spacing?: LayoutSpacing,
+  // 메타데이터에 실을 맵 (작은 첨부가 data URL로 인라인된 사본) —
+  // 없으면 map 그대로. 뷰어 표시용 데이터에는 영향 없다.
+  metaMap?: SampleMap,
 ): string {
   const layoutType = (mapLayoutType ??
     map.root.layoutType ??
@@ -1389,7 +1397,7 @@ export function buildStandaloneHtml(
   // 맵 메타데이터 — EasyMindMap 생성 파일 표시 + 편집 가능한 원본 맵
   // 전체(스타일·노트·설정 포함). '새 맵 > 불러오기'가 이 블록을 읽어
   // 내보낸 맵을 그대로 복원한다 (mapMeta.ts / importMapFile.ts).
-  const metaJson = JSON.stringify(buildMapMeta(map, layoutType, spacing))
+  const metaJson = JSON.stringify(buildMapMeta(metaMap ?? map, layoutType, spacing))
     .replace(/</g, '\\u003c');
 
   return `<!DOCTYPE html>
@@ -1474,6 +1482,9 @@ export async function buildExportPackage(
 
   // Fetch each attachment; successes go into files/, failures stay external.
   const hrefById = new Map<string, string>();
+  // ≤2MB 첨부는 메타데이터에 data URL로 인라인 — 단일 HTML만으로도
+  // '새 맵 > 불러오기'에서 첨부까지 복원된다 (mapMeta.ts)
+  const inlineById = new Map<string, string>();
   const files: ZipEntry[] = [];
   const usedNames = new Set<string>();
 
@@ -1483,6 +1494,9 @@ export async function buildExportPackage(
       const res = await fetch(att.url);
       if (!res.ok) throw new Error(String(res.status));
       const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.length <= INLINE_ATTACHMENT_LIMIT) {
+        inlineById.set(att.id, bytesToDataUrl(bytes, att.name));
+      }
 
       let name = safeName(att.name, att.id);
       if (usedNames.has(name)) {
@@ -1502,7 +1516,9 @@ export async function buildExportPackage(
     }
   }
 
-  const html = buildStandaloneHtml(map, mapLayoutType, (id) => hrefById.get(id), spacing);
+  const metaMap = withInlinedAttachments(map, (id) => inlineById.get(id));
+  const html = buildStandaloneHtml(
+    map, mapLayoutType, (id) => hrefById.get(id), spacing, metaMap);
 
   if (files.length === 0) {
     // nothing could be packaged — fall back to the single HTML

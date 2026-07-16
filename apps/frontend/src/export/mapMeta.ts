@@ -98,3 +98,52 @@ export function parseMetaJson(json: string): MapFileMeta | null {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// 작은 첨부 인라인 — 내보낼 때 ≤2MB 첨부는 메타데이터의 맵 사본에
+// data URL로 심어, ZIP 없이 단일 .md/.html 파일만으로도 첨부까지
+// 복원되게 한다. (큰 첨부는 ZIP의 files/로만 — 불러오기에서 재연결)
+// ---------------------------------------------------------------------------
+
+export const INLINE_ATTACHMENT_LIMIT = 2 * 1024 * 1024; // 2MB
+
+const MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', svg: 'image/svg+xml', pdf: 'application/pdf',
+  txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json',
+  mp3: 'audio/mpeg', wav: 'audio/wav', mp4: 'video/mp4', webm: 'video/webm',
+};
+
+export function bytesToDataUrl(bytes: Uint8Array, fileName: string): string {
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  const mime = MIME_BY_EXT[ext] ?? 'application/octet-stream';
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return `data:${mime};base64,${btoa(bin)}`;
+}
+
+// 맵 사본을 만들어 첨부 URL을 resolve가 주는 값(data URL)으로 교체한다.
+// resolve가 undefined를 주면 원래 URL 유지.
+export function withInlinedAttachments(
+  map: SampleMap,
+  resolve: (attachmentId: string) => string | undefined,
+): SampleMap {
+  interface NodeLike {
+    attachments?: { id: string; url?: string }[];
+    children?: NodeLike[];
+  }
+  const walk = <T extends NodeLike>(n: T): T => ({
+    ...n,
+    attachments: n.attachments?.map((a) => {
+      const inlined = resolve(a.id);
+      return inlined ? { ...a, url: inlined } : a;
+    }),
+    children: (n.children ?? []).map(walk),
+  });
+  return {
+    ...map,
+    branches: map.branches.map((b) => walk(b)),
+  };
+}

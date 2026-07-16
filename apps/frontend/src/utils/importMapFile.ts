@@ -125,3 +125,83 @@ export function parseMarkdownMapFile(
   if (!map) return null;
   return { map, source: 'plain-md' };
 }
+
+// ---------------------------------------------------------------------------
+// ZIP 불러오기 — 내보낸 ZIP(맵.md/.html + files/…)을 통째로 받아
+// 안의 맵 파일을 파싱하고, files/의 실제 파일을 첨부에 data URL로
+// 재연결한다 (로컬 첨부의 blob: URL은 원 세션에서만 유효하므로).
+// ---------------------------------------------------------------------------
+
+import { parseZip } from '@/export/zip';
+import { bytesToDataUrl } from '@/export/mapMeta';
+
+function relinkAttachments(
+  map: SampleMap,
+  files: { path: string; data: Uint8Array }[],
+): { map: SampleMap; relinked: number } {
+  // files/ 아래 항목을 "경로 끝부분(files/이름)" 기준으로 색인
+  const byName = new Map<string, Uint8Array>();
+  for (const f of files) {
+    const m = f.path.match(/(?:^|\/)files\/(.+)$/);
+    if (m) byName.set(m[1], f.data);
+  }
+  if (byName.size === 0) return { map, relinked: 0 };
+
+  const safe = (s: string) =>
+    String(s || '').trim().replace(/[\\/:*?"<>|]+/g, '-').slice(0, 60);
+  let relinked = 0;
+
+  interface NodeLike {
+    attachments?: { id: string; name: string; url?: string }[];
+    children?: NodeLike[];
+  }
+  const walk = <T extends NodeLike>(n: T): T => ({
+    ...n,
+    attachments: n.attachments?.map((a) => {
+      // 이미 살아있는 URL(data:/http)은 그대로 — blob:/빈 URL만 재연결
+      if (a.url && (/^data:/.test(a.url) || /^https?:\/\//i.test(a.url))) return a;
+      const want = safe(a.name || a.id);
+      let data = byName.get(want);
+      if (!data) {
+        // 내보내기의 중복 이름 처리(name-2 등) 대비 — 어간 일치 폴백
+        const stem = want.replace(/\.[^.]+$/, '');
+        for (const [k, v] of byName) {
+          if (k === want || k.startsWith(stem)) { data = v; break; }
+        }
+      }
+      if (!data) return a;
+      relinked += 1;
+      return { ...a, url: bytesToDataUrl(data, a.name || want) };
+    }),
+    children: (n.children ?? []).map(walk),
+  });
+
+  return {
+    map: { ...map, branches: map.branches.map((b) => walk(b)) as SampleBranch[] },
+    relinked,
+  };
+}
+
+export interface ImportedZipMap extends ImportedMap {
+  relinked: number; // files/에서 data URL로 재연결한 첨부 수
+}
+
+export async function parseZipMapFile(bytes: Uint8Array): Promise<ImportedZipMap | null> {
+  const entries = await parseZip(bytes);
+  if (entries.length === 0) return null;
+
+  // ZIP 안의 맵 파일 — .html 우선, 없으면 .md
+  const mapEntry =
+    entries.find((e) => /\.html?$/i.test(e.path)) ??
+    entries.find((e) => /\.(md|markdown)$/i.test(e.path));
+  if (!mapEntry) return null;
+
+  const text = new TextDecoder().decode(mapEntry.data);
+  const inner = /\.html?$/i.test(mapEntry.path)
+    ? parseHtmlMapFile(text)
+    : parseMarkdownMapFile(text, mapEntry.path.replace(/\.(md|markdown|html?)$/i, ''));
+  if (!inner) return null;
+
+  const { map, relinked } = relinkAttachments(inner.map, entries);
+  return { ...inner, map, relinked };
+}

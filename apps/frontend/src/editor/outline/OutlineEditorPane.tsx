@@ -26,7 +26,7 @@ import {
   type NoteKind,
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from '@/editor/canvas/NoteViewerPopover';
-import { stripInlineMarks } from '@/editor/node-renderer/inlineMarks';
+import { parseInlineMarks } from '@/editor/node-renderer/inlineMarks';
 import type { LaidOutNode } from '@/layout/types';
 
 interface PaneProps {
@@ -291,6 +291,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             rows={Math.min(10, Math.max(1, draft.split('\n').length))}
             onChange={(e) => setDraft(e.target.value)}
             onClick={(e) => e.stopPropagation()}
+            onDragStart={(e) => e.preventDefault()}
             onBlur={commitEdit}
             onKeyDown={(e) => {
               e.stopPropagation();
@@ -313,11 +314,12 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             }}
           />
         ) : (
-          // 노드 내용 전체 표시 — 여러 줄 텍스트(줄바꿈 유지) + 사진
+          // 노드 내용 전체 표시 — 여러 줄 텍스트(줄바꿈 유지, 인라인
+          // 강조 스타일 그대로 표시) + 사진
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.45,
-            }}>{stripInlineMarks(node.text)}</div>
+            }}><InlineText text={node.text} /></div>
             {rawNode?.image?.src && (
               <img
                 src={rawNode.image.src}
@@ -380,5 +382,38 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
           <PaneRow key={c.id} t={t} node={c} onOpenNote={onOpenNote} onOpenList={onOpenList} />
         ))}
     </div>
+  );
+}
+
+
+// 인라인 강조 표시 — 노드의 **굵게**/*기울임*/~~취소선~~/__밑줄__/
+// ==하이라이트== 마커를 맵과 동일한 스타일로 렌더링 (마커 문자 숨김)
+function InlineText({ text }: { text: string }) {
+  const lines = String(text || '').split('\n');
+  return (
+    <>
+      {lines.map((line, li) => (
+        <span key={li}>
+          {li > 0 && '\n'}
+          {parseInlineMarks(line).map((sg, k) => (
+            <span
+              key={k}
+              style={{
+                fontWeight: sg.b ? 700 : undefined,
+                fontStyle: sg.i ? 'italic' : undefined,
+                textDecoration:
+                  [sg.s ? 'line-through' : '', sg.u ? 'underline' : '']
+                    .filter(Boolean)
+                    .join(' ') || undefined,
+                background: sg.h ? '#FFE066' : undefined,
+                borderRadius: sg.h ? 2 : undefined,
+              }}
+            >
+              {sg.text}
+            </span>
+          ))}
+        </span>
+      ))}
+    </>
   );
 }

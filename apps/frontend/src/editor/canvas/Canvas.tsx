@@ -917,6 +917,12 @@ export function Canvas({
           userSelect: 'none',
           WebkitUserSelect: 'none',
         }}
+        // 노드 안 사진(SVG image)은 브라우저가 기본 드래그 대상으로 취급해
+        // 노드를 끌면 반투명 스냅샷(주황빛 창)이 네이티브 드래그 고스트로
+        // 뜬다 — 캔버스 안에서 시작되는 네이티브 드래그를 전부 차단한다.
+        // (노드 이동은 포인터 이벤트 기반이라 영향 없고, 외부 파일을
+        // 캔버스로 끌어오는 드롭은 밖에서 시작되므로 그대로 동작한다)
+        onDragStart={(e) => e.preventDefault()}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

@@ -24,6 +24,7 @@ import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/_
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import { setLevelFontConfig, levelFontFamily } from '@/editor/node-renderer/sizeNodeForText';
 import { buildZip, type ZipEntry } from './zip';
+import { buildMapMeta } from './mapMeta';
 
 // 에디터가 계산한 노드의 최종 배치 좌표 — 뷰어는 이 좌표를 그대로 사용해
 // 에디터 화면과 100% 동일한 레이아웃을 재현한다 (자체 레이아웃은 좌표가
@@ -1368,6 +1369,12 @@ export function buildStandaloneHtml(
   const json = JSON.stringify(data).replace(/</g, '\\u003c');
   const exportedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
 
+  // 맵 메타데이터 — EasyMindMap 생성 파일 표시 + 편집 가능한 원본 맵
+  // 전체(스타일·노트·설정 포함). '새 맵 > 불러오기'가 이 블록을 읽어
+  // 내보낸 맵을 그대로 복원한다 (mapMeta.ts / importMapFile.ts).
+  const metaJson = JSON.stringify(buildMapMeta(map, layoutType, spacing))
+    .replace(/</g, '\\u003c');
+
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -1392,6 +1399,8 @@ export function buildStandaloneHtml(
   <div id="mm-note-body"></div>
 </div>
 <footer>EasyMindMap 내보내기 · 읽기 전용 뷰어 · ${exportedAt}</footer>
+<!-- EasyMindMap 생성 파일 — 아래 메타데이터로 편집 가능하게 다시 불러올 수 있습니다 -->
+<script type="application/json" id="easymindmap-map">${metaJson}</script>
 <script>window.__MINDMAP__ = ${json};</script>
 <script>${VIEWER_JS}</script>
 </body>

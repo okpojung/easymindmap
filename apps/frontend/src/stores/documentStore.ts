@@ -103,8 +103,15 @@ interface DocumentState {
 
   // Style / icon
   updateNodeStyle: (nodeId: string | null, style: Partial<NodeStyle>) => void;
+  // 여러 노드에 일괄 적용 (러버밴드 다중 선택) — 한 번의 undo 단계
+  updateNodesStyle: (nodeIds: string[], style: Partial<NodeStyle>) => void;
+  updateNodesTextAlign: (nodeIds: string[], textAlign: TextAlign) => void;
   setNodeIcon: (nodeId: string | null, icon: string | undefined) => void;
   setNodeIconSide: (nodeId: string | null, iconSide: 'left' | 'right') => void;
+
+  // 방사형·양쪽 레이아웃에서 1레벨 브랜치의 좌/우 배치 — 드래그로 반대쪽
+  // 이동, 루트 +버튼의 좌/우 추가에 사용 (다른 레이아웃에서는 무시됨)
+  setBranchSide: (branchId: string | null, side: 'left' | 'right') => void;
 
   // Tags
   addNodeTag: (nodeId: string | null, tag: string) => void;
@@ -911,6 +918,38 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         style: { ...n.style, ...style },
       })),
     }));
+  },
+
+  updateNodesStyle: (nodeIds, style) => {
+    if (!nodeIds.length) return;
+    // set() 한 번 = undo 한 단계 (노드마다 히스토리가 쌓이지 않게)
+    set((state) => ({
+      map: nodeIds.reduce(
+        (m, id) => mutateNode(m, id, (n) => ({ ...n, style: { ...n.style, ...style } })),
+        state.map,
+      ),
+    }));
+  },
+
+  updateNodesTextAlign: (nodeIds, textAlign) => {
+    if (!nodeIds.length) return;
+    set((state) => ({
+      map: nodeIds.reduce((m, id) => mutateNode(m, id, (n) => ({ ...n, textAlign })), state.map),
+    }));
+  },
+
+  setBranchSide: (branchId, side) => {
+    if (!branchId) return;
+    set((state) => {
+      const map = state.map;
+      if (!map.branches.some((b) => b.id === branchId)) return {}; // 1레벨만
+      return {
+        map: {
+          ...map,
+          branches: map.branches.map((b) => (b.id === branchId ? { ...b, side } : b)),
+        },
+      };
+    });
   },
 
   setNodeIcon: (nodeId, icon) => {

@@ -140,11 +140,16 @@ export function Canvas({
   } | null>(null);
   type DropPosition = 'child' | 'parent' | 'before' | 'after';
   const [dropZone, setDropZone] = useState<{ targetId: string; position: DropPosition } | null>(null);
+  // 렌더 타이밍과 무관하게 항상 "마지막 move에서 계산한" 드롭존 —
+  // 상태(dropZone)를 폴백으로 쓰면 렌더가 늦을 때 낡은 값이 드롭을
+  // 가로채(제자리 재삽입 = 이동 안 된 것처럼 보임) 버그가 된다.
   const dropZoneRef = useRef<typeof dropZone>(null);
-  dropZoneRef.current = dropZone;
 
   // Visible ghost of the node being dragged (world coords).
-  const [dragGhost, setDragGhost] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // flip: 방사형·양쪽에서 반대쪽 빈 공간 위 — 놓으면 좌/우 이동됨을 안내
+  const [dragGhost, setDragGhost] = useState<{
+    x: number; y: number; w: number; h: number; flip?: 'left' | 'right' | null;
+  } | null>(null);
 
   // 러버밴드(드래그 사각형) 다중 선택 — Pan 모드가 아닐 때 빈 캔버스 드래그.
   // 사각형에 걸친 노드 전체가 multiSelectedIds가 되어 스타일 일괄 적용 대상.
@@ -627,6 +632,7 @@ export function Canvas({
     if (!isMiddleButton && !panMode && nodeEl) {
       const id = nodeEl.getAttribute('data-node-id');
       if (e.button === 0 && id && id !== 'root') {
+        dropZoneRef.current = null; // 이전 드래그의 드롭존 잔류 방지
         nodeDragRef.current = {
           pointerId: e.pointerId,
           startX: e.clientX,
@@ -677,9 +683,18 @@ export function Canvas({
 
       if (nodeDrag.dragging) {
         const w = clientToWorld(e.clientX, e.clientY);
-        setDropZone(findDropZone(w.x, w.y, nodeDrag.id));
+        const zone = findDropZone(w.x, w.y, nodeDrag.id);
+        dropZoneRef.current = zone; // 동기 갱신 — 드롭 시 낡은 값 방지
+        setDropZone(zone);
         const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
-        if (dragged) setDragGhost({ x: w.x, y: w.y, w: dragged.w, h: dragged.h });
+        if (dragged) {
+          // 방사형·양쪽에서 반대쪽 빈 공간 위 → "놓으면 좌/우 이동" 안내
+          const rootN = nodesRef.current.find((nd) => nd.depth === 0);
+          const dropSide = rootN && w.x < rootN.x ? 'left' : 'right';
+          const flip =
+            bothSided && !zone && rootN && dragged.side !== dropSide ? dropSide : null;
+          setDragGhost({ x: w.x, y: w.y, w: dragged.w, h: dragged.h, flip });
+        }
       }
       return;
     }
@@ -714,7 +729,10 @@ export function Canvas({
         // Compute the drop zone from the final pointer position directly so we
         // don't depend on render timing of state.
         const w = clientToWorld(e.clientX, e.clientY);
+        // 최종 위치에서 새로 계산 — 폴백은 마지막 move에서 동기 저장한 값
+        // (같은 좌표이므로 사실상 동일; 좌표가 어긋난 경우만 대비)
         const zone = findDropZone(w.x, w.y, nodeDrag.id) ?? dropZoneRef.current;
+        dropZoneRef.current = null;
         const rootN = nodesRef.current.find((nd) => nd.depth === 0);
         if (zone) {
           const moved = moveNodeRelative(nodeDrag.id, zone.targetId, zone.position);
@@ -727,8 +745,8 @@ export function Canvas({
           }
         } else if (bothSided && rootN) {
           // 반대쪽 빈 곳에 놓음 (방사형·양쪽) — 좌/우 이동.
-          //   · 1레벨 브랜치: side만 전환 (서브트리 그대로)
-          //   · 2레벨 이하 노드: 그쪽의 새 1레벨 브랜치가 된다
+          //   · 2레벨(depth 1) 브랜치: side만 전환 (서브트리 그대로)
+          //   · 3레벨(depth 2) 이하 노드: 그쪽의 새 2레벨 브랜치가 된다
           //     (반대쪽에는 붙을 부모가 없으므로 루트 자식으로 이동)
           const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
           const dropSide = w.x < rootN.x ? 'left' : 'right';
@@ -1041,19 +1059,34 @@ export function Canvas({
 
           {/* Drag ghost while reparenting */}
           {dragGhost && (
-            <rect
-              x={dragGhost.x - dragGhost.w / 2}
-              y={dragGhost.y - dragGhost.h / 2}
-              width={dragGhost.w}
-              height={dragGhost.h}
-              rx={10}
-              fill={t.primary}
-              opacity="0.22"
-              stroke={t.primary}
-              strokeWidth="1.5"
-              strokeDasharray="4 3"
-              pointerEvents="none"
-            />
+            <g pointerEvents="none">
+              <rect
+                x={dragGhost.x - dragGhost.w / 2}
+                y={dragGhost.y - dragGhost.h / 2}
+                width={dragGhost.w}
+                height={dragGhost.h}
+                rx={10}
+                fill={t.primary}
+                opacity="0.22"
+                stroke={t.primary}
+                strokeWidth="1.5"
+                strokeDasharray="4 3"
+              />
+              {/* 방사형·양쪽: 반대쪽 빈 공간 — 놓으면 좌/우 이동 안내 */}
+              {dragGhost.flip && (
+                <g data-testid="flip-hint"
+                   transform={`translate(${dragGhost.x}, ${dragGhost.y + dragGhost.h / 2 + 18})`}>
+                  <rect x={-86} y={-11} width={172} height={22} rx={11}
+                        fill={t.primary} opacity={0.95} />
+                  <text y={4} fontSize={11.5} fontWeight={700} fill="#FFFFFF"
+                        textAnchor="middle">
+                    {dragGhost.flip === 'left'
+                      ? '⬅ 놓으면 왼쪽으로 이동'
+                      : '놓으면 오른쪽으로 이동 ➡'}
+                  </text>
+                </g>
+              )}
+            </g>
           )}
 
           {/* Multi-item chooser popover (link/file/media) — TOP overlay so it's

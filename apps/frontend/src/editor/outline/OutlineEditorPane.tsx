@@ -32,6 +32,7 @@ import {
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from '@/editor/canvas/NoteViewerPopover';
 import { parseInlineMarks } from '@/editor/node-renderer/inlineMarks';
+import { extractClipboardImage } from '@/utils/clipboardImage';
 import type { LaidOutNode } from '@/layout/types';
 
 interface PaneProps {
@@ -145,6 +146,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   const addChildNode = useDocumentStore((s) => s.addChildNode);
   const addSiblingNode = useDocumentStore((s) => s.addSiblingNode);
   const deleteNode = useDocumentStore((s) => s.deleteNode);
+  const setNodeImage = useDocumentStore((s) => s.setNodeImage);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(node.text);
@@ -178,6 +180,26 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
     const v = draft.trim();
     if (v && v !== node.text) updateNodeText(node.id, v);
     setEditing(false);
+  };
+
+  // 선택 구간을 인라인 마커로 감싼다 (맵 편집창과 동일 — 미니 툴바/
+  // Ctrl+B·I·U). 여러 줄 선택이면 줄마다 감싼다.
+  const wrapSelection = (mark: string) => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    const s0 = ta.selectionStart ?? 0;
+    const e0 = ta.selectionEnd ?? s0;
+    const wrapped = draft
+      .slice(s0, e0)
+      .split('\n')
+      .map((seg) => (seg.trim() === '' ? seg : mark + seg + mark))
+      .join('\n');
+    const next = draft.slice(0, s0) + wrapped + draft.slice(e0);
+    setDraft(next);
+    window.setTimeout(() => {
+      ta.focus();
+      ta.setSelectionRange(s0, s0 + wrapped.length);
+    }, 0);
   };
 
   const siblingsOf = (): MindNode[] => {
@@ -300,16 +322,70 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
         }} />
 
         {editing ? (
+          <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+            {/* 부분 강조 미니 툴바 — 맵 편집창과 동일 (B/I/S/U/H) */}
+            <div style={{
+              position: 'absolute', top: -30, left: 0, zIndex: 5,
+              display: 'flex', gap: 3,
+              background: t.surface, border: `1px solid ${t.border}`,
+              borderRadius: 7, padding: '2px 5px',
+              boxShadow: '0 3px 10px rgba(80,60,20,0.15)', whiteSpace: 'nowrap',
+            }}>
+              {([
+                { m: '**', label: 'B', st: { fontWeight: 700 } },
+                { m: '*', label: 'I', st: { fontStyle: 'italic' } },
+                { m: '~~', label: 'S', st: { textDecoration: 'line-through' } },
+                { m: '__', label: 'U', st: { textDecoration: 'underline' } },
+                { m: '==', label: 'H', st: { background: '#FFE066', borderRadius: 2, padding: '0 3px' } },
+              ] as const).map((b) => (
+                <button key={b.label}
+                  title={`선택 구간에 적용 (${b.m}…${b.m})`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => { e.stopPropagation(); wrapSelection(b.m); }}
+                  style={{
+                    border: 'none', background: 'transparent', cursor: 'pointer',
+                    fontSize: 11.5, color: t.text, padding: '0 4px',
+                    borderRadius: 4, lineHeight: 1.4,
+                  }}>
+                  <span style={b.st as React.CSSProperties}>{b.label}</span>
+                </button>
+              ))}
+            </div>
           <textarea
             ref={inputRef}
             value={draft}
             rows={Math.min(10, Math.max(1, draft.split('\n').length))}
             onChange={(e) => setDraft(e.target.value)}
             onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => {
+              // 기존 선택 위를 누르면 브라우저가 '선택 끌기'를 준비하느라
+              // 새 드래그 선택이 시작되지 않는다(끌기는 차단됨 → 선택 붕괴).
+              // Shift+클릭(선택 확장)이 아니면 누르는 순간 선택을 접어
+              // 항상 새로 드래그 선택이 되게 한다.
+              const ta2 = e.currentTarget as HTMLTextAreaElement;
+              if (!e.shiftKey && ta2.selectionStart !== ta2.selectionEnd) {
+                ta2.setSelectionRange(ta2.selectionStart, ta2.selectionStart);
+              }
+            }}
             onDragStart={(e) => e.preventDefault()}
+            onPaste={(e) => {
+              // 아웃라인 편집 중에도 사진 붙여넣기 — 기사를 붙이면
+              // 텍스트는 입력창에, 사진은 노드에 함께 들어간다 (맵과 동일)
+              const kind = extractClipboardImage(e.clipboardData, (img) =>
+                setNodeImage(node.id, img),
+              );
+              if (kind === 'file') e.preventDefault();
+            }}
             onBlur={commitEdit}
             onKeyDown={(e) => {
               e.stopPropagation();
+              // 부분 강조 단축키 (Ctrl+B/I/U)
+              if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+                const k2 = e.key.toLowerCase();
+                if (k2 === 'b') { e.preventDefault(); wrapSelection('**'); return; }
+                if (k2 === 'i') { e.preventDefault(); wrapSelection('*'); return; }
+                if (k2 === 'u') { e.preventDefault(); wrapSelection('__'); return; }
+              }
               // 노트패드식 연속 입력:
               //   Enter        = 저장 + 아래 형제 행 추가 + 이어서 입력
               //   Shift+Enter  = 줄바꿈 (한 노드 안에서)
@@ -362,6 +438,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
               fontFamily: 'inherit',
             }}
           />
+          </div>
         ) : (
           // 노드 내용 전체 표시 — 여러 줄 텍스트(줄바꿈 유지, 인라인
           // 강조 스타일 그대로 표시) + 사진

@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { parseHtmlMapFile, parseMarkdownMapFile } from '@/utils/importMapFile';
+import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile } from '@/utils/importMapFile';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -85,13 +85,50 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const startFromTemplate = (tpl: UserTemplate) =>
     confirmThen(`'${tpl.name}' 템플릿으로 시작`, () => doStartFromTemplate(tpl));
   const startImportFile = () =>
-    confirmThen('MD/HTML 파일 불러오기', () => fileRef.current?.click());
+    confirmThen('MD/HTML/ZIP 파일 불러오기', () => fileRef.current?.click());
 
   // 로컬 MD/HTML 파일 불러오기.
   //  · EasyMindMap이 내보낸 HTML/MD: 내장 메타데이터로 원본 맵을 복원
   //    (MD는 본문에서 고친 구조·텍스트도 반영 — importMapFile.ts)
   //  · 일반 MD: # 견출/리스트 구조를 맵으로 변환
+  const applyImported = (imported: {
+    map: Parameters<typeof loadMap>[0];
+    editor?: { layoutType?: Parameters<typeof setLayoutType>[0]; spacingX?: number; spacingY?: number };
+    source: string;
+  } & { relinked?: number }) => {
+    loadMap(imported.map);
+    if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
+    else setLayoutType('radial-right');
+    if (imported.editor?.spacingX) setSpacingX(imported.editor.spacingX);
+    else resetSpacing();
+    if (imported.editor?.spacingY) setSpacingY(imported.editor.spacingY);
+    setSelectedId('root');
+    const extra = imported.relinked ? ` (첨부 ${imported.relinked}개 연결)` : '';
+    flash(
+      imported.source === 'plain-md'
+        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다`
+        : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다${extra}`,
+    );
+  };
+
   const importFile = (file: File) => {
+    // ZIP(맵 + files/) — 안의 맵 파일 + 첨부를 함께 복원
+    if (/\.zip$/i.test(file.name)) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        void (async () => {
+          const bytes = new Uint8Array(reader.result as ArrayBuffer);
+          const imported = await parseZipMapFile(bytes);
+          if (!imported) {
+            flash('ZIP 안에서 EasyMindMap 맵 파일(.md/.html)을 찾지 못했습니다');
+            return;
+          }
+          applyImported(imported);
+        })();
+      };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? '');
@@ -109,19 +146,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           : '맵으로 만들 견출(#)·리스트(-) 구조를 찾지 못했습니다');
         return;
       }
-      loadMap(imported.map);
-      // 내보낼 당시의 레이아웃·간격 복원 (메타데이터), 일반 MD는 기본값
-      if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
-      else setLayoutType('radial-right');
-      if (imported.editor?.spacingX) setSpacingX(imported.editor.spacingX);
-      else resetSpacing();
-      if (imported.editor?.spacingY) setSpacingY(imported.editor.spacingY);
-      setSelectedId('root');
-      flash(
-        imported.source === 'plain-md'
-          ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다`
-          : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다`,
-      );
+      applyImported(imported);
     };
     reader.readAsText(file);
   };
@@ -206,7 +231,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       <input
         ref={fileRef}
         type="file"
-        accept=".md,.markdown,.txt,.html,.htm"
+        accept=".md,.markdown,.txt,.html,.htm,.zip"
         style={{ display: 'none' }}
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -215,12 +240,12 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         }}
       />
       <button onClick={startImportFile}
-        title="일반 MD(# 견출·- 리스트) 또는 EasyMindMap이 내보낸 MD/HTML(메타데이터로 원본 복원)을 불러옵니다"
+        title="일반 MD(# 견출·- 리스트), EasyMindMap이 내보낸 MD/HTML(메타데이터로 원본 복원), 또는 ZIP(맵+첨부 files/ 재연결)을 불러옵니다"
         style={{
           width: '100%', fontSize: 11.5, padding: '7px 0', borderRadius: 6,
           border: `1px solid ${t.border}`, background: t.surfaceAlt,
           color: t.text, cursor: 'pointer', fontWeight: 600, marginBottom: 5,
-        }}>📄 MD / HTML 파일 불러오기</button>
+        }}>📄 MD / HTML / ZIP 파일 불러오기</button>
 
       {/* [서버 연결 예정] 서버에 저장된 맵 목록에서 불러오기 —
           maps 테이블 연동 후 활성화 (docs/02-domain/db-schema.md) */}

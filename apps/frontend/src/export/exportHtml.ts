@@ -188,6 +188,20 @@ const VIEWER_JS = String.raw`
     return w;
   }
 
+  // 인라인 강조 구간(tspan)의 표시 좌표용 "실측" 폭 — 근사 폭(measureText)으로
+  // x를 정하면 실제 렌더 폭과 어긋나 인접 구간 글자가 겹친다 (에디터
+  // textMeasure.ts와 동일한 방식). 캔버스 불가 환경은 근사 폭으로 폴백.
+  var _mCtx = null;
+  function measureReal(text, fontSize, weight, italic, family) {
+    try {
+      if (!_mCtx) _mCtx = document.createElement('canvas').getContext('2d');
+      if (!_mCtx) return measureText(text, fontSize);
+      _mCtx.font = (italic ? 'italic ' : '') + (weight || 500) + ' ' + fontSize + 'px ' +
+        (family || "'Pretendard Variable',Pretendard,'Malgun Gothic',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif");
+      return _mCtx.measureText(text).width;
+    } catch (e) { return measureText(text, fontSize); }
+  }
+
   function wrapText(text, fontSize, maxW) {
     var out = [];
     var manual = String(text || '').split('\n');
@@ -678,8 +692,10 @@ const VIEWER_JS = String.raw`
       // **굵게** *기울임* ~~취소선~~ __밑줄__ ==하이라이트== (마커는 숨김)
       var segs = parseInlineSegs(node._lines[li]);
       var segWs = [], lw2 = 0, si;
+      var baseW2 = isRoot ? 700 : (depth === 1 ? 600 : 500);
       for (si = 0; si < segs.length; si++) {
-        segWs.push(measureText(segs[si].t, node._fs));
+        segWs.push(measureReal(segs[si].t, node._fs,
+          segs[si].b ? 700 : baseW2, segs[si].i, node._ff));
         lw2 += segWs[si];
       }
       var baseY = stacked

@@ -4,7 +4,8 @@
 // NodeTagChips), content indicators (note / link / attachment), collapse toggle,
 // inline text edit, soft-lock editor label.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ThemeTokens, ThemeName } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import type { TextAlign, ShapeType } from '@/editor/__samples__/types';
@@ -127,6 +128,34 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const [draftText, setDraftText] = useState(n.text);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // 편집 오버레이 위치 측정용 — 노드 박스와 정확히 일치하는 투명 rect
+  const boxRef = useRef<SVGRectElement | null>(null);
+  // 편집창은 SVG(foreignObject) 안이 아니라 문서 최상위 HTML 오버레이로
+  // 띄운다 — 변환(줌/팬)이 걸린 foreignObject 안 textarea는 Chromium이
+  // 선택 좌표를 잘못 계산해 선택이 SVG 문서로 새고(주황 하이라이트),
+  // 드래그 선택이 끊기는 버그가 있다. HTML 오버레이에서는 네이티브
+  // 선택이 완벽하게 동작한다.
+  const [ovr, setOvr] = useState<{
+    left: number; top: number; width: number; height: number; k: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!editing) { setOvr(null); return; }
+    const measure = () => {
+      const r = boxRef.current?.getBoundingClientRect();
+      if (r && r.width > 0) {
+        setOvr({ left: r.left, top: r.top, width: r.width, height: r.height, k: r.width / n.w });
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('wheel', measure, true); // 편집 중 줌/팬 대응
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('wheel', measure, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, n.x, n.y, n.w, n.h]);
 
   const isRoot = n.depth === 0;
   const isBranch = n.depth === 1;
@@ -315,6 +344,9 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
         dash={dash}
         filter={isRoot ? 'url(#nodeShadow)' : undefined}
       />
+      {/* 편집 오버레이 위치 측정용 투명 rect (노드 박스와 동일 좌표) */}
+      <rect ref={boxRef} x={n.x - n.w / 2} y={n.y - n.h / 2}
+            width={n.w} height={n.h} fill="none" pointerEvents="none" />
 
       {hasIcon && !editing && (
         <text
@@ -540,26 +572,36 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
         </g>
       )}
 
-      {editing && (
-        // 부분 강조 미니 툴바 — 편집창에서 텍스트를 선택하고 누르면 해당
-        // 구간만 강조된다 (마커로 감싸기: **굵게** *기울임* ~~취소선~~
-        // __밑줄__ ==하이라이트==). onMouseDown preventDefault로 편집창의
-        // 포커스·선택이 풀리지 않게 유지한다. 단축키: Ctrl+B/I/U.
-        <foreignObject
-          x={n.x - 92}
-          y={n.y - n.h / 2 - 36}
-          width={184}
-          height={32}
-          style={{ overflow: 'visible' }}
+      {editing && ovr && createPortal(
+        // ── 노드 텍스트 편집 오버레이 (SVG 밖 HTML) ──
+        // foreignObject 안 textarea는 줌/팬 변환 때문에 Chromium이 선택
+        // 좌표를 잘못 계산해 선택이 새는 버그가 있어, 노드의 화면 좌표를
+        // 재서 문서 최상위에 HTML로 띄운다. 선택·드래그가 네이티브로
+        // 완벽하게 동작한다. 크기·글자는 현재 줌 배율(k)로 스케일.
+        <div
+          style={{
+            position: 'fixed',
+            left: ovr.left,
+            top: ovr.top,
+            width: ovr.width,
+            height: ovr.height,
+            zIndex: 1000,
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
         >
+          {/* 부분 강조 미니 툴바 — 선택 구간을 마커로 감싼다. onMouseDown
+              preventDefault로 편집창의 포커스·선택이 풀리지 않게 유지. */}
           <div
-            onPointerDown={(e) => e.stopPropagation()}
             style={{
-              display: 'flex', gap: 3, justifyContent: 'center',
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              top: -36,
+              display: 'flex', gap: 3,
               background: t.surface, border: `1px solid ${t.border}`,
               borderRadius: 7, padding: '3px 5px',
-              boxShadow: '0 3px 10px rgba(80,60,20,0.15)', width: 'fit-content',
-              margin: '0 auto',
+              boxShadow: '0 3px 10px rgba(80,60,20,0.15)',
+              whiteSpace: 'nowrap',
             }}
           >
             {([
@@ -584,16 +626,7 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
               </button>
             ))}
           </div>
-        </foreignObject>
-      )}
 
-      {editing && (
-        <foreignObject
-          x={n.x - n.w / 2 + 8}
-          y={n.y - n.h / 2 + 6}
-          width={n.w - 16}
-          height={n.h - 12}
-        >
           <textarea
             ref={textareaRef}
             value={draftText}
@@ -604,24 +637,26 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
               const kind = extractClipboardImage(e.clipboardData, (img) =>
                 setNodeImage(n.id, img),
               );
-              // 이미지 '파일'만 있을 때는 넣을 텍스트가 없으므로 기본
-              // 붙여넣기를 막는다. 웹 복사(html)는 텍스트도 함께 붙인다.
               if (kind === 'file') e.preventDefault();
             }}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-            // 선택된 텍스트 위에서 다시 드래그하면 브라우저가 선택 내용을
-            // '끌어다 놓기'(드래그 앤 드롭)하려고 고스트 창을 띄운다 —
-            // 재선택을 방해하므로 차단한다.
+            onMouseDown={(e) => {
+              // 기존 선택 위를 누르면 브라우저가 '선택 끌기'를 준비하느라
+              // 새 드래그 선택이 시작되지 않는다(끌기는 차단됨 → 선택 붕괴).
+              // Shift+클릭(선택 확장)이 아니면 누르는 순간 선택을 접어
+              // 항상 새로 드래그 선택이 되게 한다.
+              const ta2 = e.currentTarget as HTMLTextAreaElement;
+              if (!e.shiftKey && ta2.selectionStart !== ta2.selectionEnd) {
+                ta2.setSelectionRange(ta2.selectionStart, ta2.selectionStart);
+              }
+            }}
             onDragStart={(e) => e.preventDefault()}
-            draggable={false}
             onKeyDown={(e) => {
               // 부분 강조 단축키 — 선택한 텍스트를 마커로 감싼다
               if ((e.ctrlKey || e.metaKey) && !e.altKey) {
-                const k = e.key.toLowerCase();
-                if (k === 'b') { e.preventDefault(); wrapSelection('**'); return; }
-                if (k === 'i') { e.preventDefault(); wrapSelection('*'); return; }
-                if (k === 'u') { e.preventDefault(); wrapSelection('__'); return; }
+                const k2 = e.key.toLowerCase();
+                if (k2 === 'b') { e.preventDefault(); wrapSelection('**'); return; }
+                if (k2 === 'i') { e.preventDefault(); wrapSelection('*'); return; }
+                if (k2 === 'u') { e.preventDefault(); wrapSelection('__'); return; }
               }
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -636,6 +671,9 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
               saveEdit();
             }}
             style={{
+              position: 'absolute',
+              inset: 0,
+              boxSizing: 'border-box',
               width: '100%',
               height: '100%',
               border: 'none',
@@ -643,18 +681,19 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
               resize: 'none',
               background: 'transparent',
               color: textColor,
-              fontSize,
+              fontSize: fontSize * ovr.k,
               fontWeight,
               fontStyle,
-              lineHeight: `${lineHeight}px`,
+              lineHeight: `${lineHeight * ovr.k}px`,
               fontFamily,
               textAlign,
               overflow: 'hidden',
-              padding: 0,
+              padding: `${6 * ovr.k}px ${8 * ovr.k}px`,
               margin: 0,
             }}
           />
-        </foreignObject>
+        </div>,
+        document.body,
       )}
 
       {hasTags && showTags && !editing && (

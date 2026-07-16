@@ -8,6 +8,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { ShapeType, NodeStyle, TextAlign } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
+import { useInteractionStore } from '@/stores/interactionStore';
 import { InspectorSection, InspectorRow, ColorSwatchInput } from './InspectorSection';
 
 const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
@@ -30,21 +31,35 @@ const ALIGNS: { key: TextAlign; label: string }[] = [
 
 export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
   const map = useDocumentStore((s) => s.map);
-  const updateNodeStyle = useDocumentStore((s) => s.updateNodeStyle);
-  const updateNodeTextAlign = useDocumentStore((s) => s.updateNodeTextAlign);
+  const updateNodesStyle = useDocumentStore((s) => s.updateNodesStyle);
+  const updateNodesTextAlign = useDocumentStore((s) => s.updateNodesTextAlign);
+  // 러버밴드 다중 선택 — 2개 이상이면 모든 컨트롤이 선택된 노드 전체에
+  // 일괄 적용된다 (한 번의 undo 단계). 표시 상태는 대표(첫) 노드 기준.
+  const multiSelectedIds = useInteractionStore((s) => s.multiSelectedIds);
+  const targets =
+    multiSelectedIds.length > 1 ? multiSelectedIds : selectedId ? [selectedId] : [];
 
   const node = findNodeInMap(map, selectedId);
   const style: NodeStyle = node?.style ?? {};
   const shape: ShapeType = style.shapeType ?? 'rounded';
   const textAlign: TextAlign = node?.textAlign ?? 'center'; // 기본 = 중앙
 
-  const disabled = !selectedId || !node;
+  const disabled = targets.length === 0 || !node;
   const set = (patch: Partial<NodeStyle>) => {
-    if (selectedId) updateNodeStyle(selectedId, patch);
+    if (targets.length) updateNodesStyle(targets, patch);
   };
 
   return (
     <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
+      {targets.length > 1 && (
+        <div style={{
+          margin: '10px 14px 0', padding: '7px 10px', borderRadius: 7,
+          background: t.primarySoft, border: `1px solid ${t.primaryBorder}`,
+          color: t.primary, fontSize: 11.5, fontWeight: 700,
+        }}>
+          {targets.length}개 노드 선택 — 스타일이 일괄 적용됩니다
+        </div>
+      )}
       <InspectorSection t={t} title="도형 (NS-04)">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
           {SHAPES.map(s => {
@@ -126,7 +141,7 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
             const active = textAlign === a.key;
             return (
               <button key={a.key}
-                onClick={() => selectedId && updateNodeTextAlign(selectedId, a.key)}
+                onClick={() => targets.length && updateNodesTextAlign(targets, a.key)}
                 style={{
                   flex: 1, padding: '6px 0', borderRadius: 5, fontSize: 11,
                   background: active ? t.primarySoft : t.surfaceAlt,

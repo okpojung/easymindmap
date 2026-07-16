@@ -3,7 +3,8 @@
 // - Layout (incl. per-node overrides) comes from computeLayout().
 // - Viewport controls:
 //   · mouse wheel / trackpad pinch → zoom anchored at the cursor
-//   · drag on empty canvas (or Hand mode / middle button) → pan
+//   · Pan(Hand) mode or middle button drag → pan (Pan 모드 배지·테두리 표시)
+//   · drag on empty canvas (normal mode) → rubber-band multi-select
 //   · +, - → zoom step · 0 → reset view · H → toggle Hand(pan) mode
 //   · Fit button → fit the whole map into the view
 
@@ -20,6 +21,7 @@ import {
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType, SampleMap, Collaborator } from '@/editor/__samples__/types';
 import { computeLayout } from '@/layout/LayoutEngine';
+import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
 import { setLevelFontConfig } from '@/editor/node-renderer/sizeNodeForText';
 import { NodeRenderer } from '@/editor/node-renderer/NodeRenderer';
 import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
@@ -99,6 +101,7 @@ export function Canvas({
   const setNodeImage = useDocumentStore((state) => state.setNodeImage);
   const undo = useDocumentStore((state) => state.undo);
   const redo = useDocumentStore((state) => state.redo);
+  const setBranchSide = useDocumentStore((state) => state.setBranchSide);
   const setMultiAddOpen = useEditorUiStore((state) => state.setMultiAddOpen);
 
   const zoom = useViewportStore((s) => s.zoom);
@@ -143,6 +146,15 @@ export function Canvas({
   // Visible ghost of the node being dragged (world coords).
   const [dragGhost, setDragGhost] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
+  // 러버밴드(드래그 사각형) 다중 선택 — Pan 모드가 아닐 때 빈 캔버스 드래그.
+  // 사각형에 걸친 노드 전체가 multiSelectedIds가 되어 스타일 일괄 적용 대상.
+  const marqueeRef = useRef<{
+    pointerId: number; x0: number; y0: number; moved: boolean;
+  } | null>(null);
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // Pan 드래그 중 여부 — 커서 grab → grabbing 전환용
+  const [panning, setPanning] = useState(false);
+
   // Multi-item content chooser popover (link/file/media), rendered on the TOP
   // overlay so other nodes never cover it.
   const [popover, setPopover] = useState<{ nodeId: string; kind: ContentKind } | null>(null);
@@ -159,6 +171,24 @@ export function Canvas({
   // 편집 중인 노드 — +/− 추가 인디케이터를 숨겨 편집창·미니 툴바와
   // 겹치지 않게 한다.
   const editingNodeId = useInteractionStore((s) => s.editingNodeId);
+  const multiSelectedIds = useInteractionStore((s) => s.multiSelectedIds);
+  const setMultiSelectedIds = useInteractionStore((s) => s.setMultiSelectedIds);
+  const multiSet = useMemo(() => new Set(multiSelectedIds), [multiSelectedIds]);
+
+  // 단일 선택은 항상 다중 선택을 해제한다 (러버밴드만이 다중 선택을 만든다)
+  const selectOne = (id: string | null) => {
+    if (multiSelectedIds.length) setMultiSelectedIds([]);
+    onSelect(id);
+  };
+
+  // 레이아웃 방향 — 루트 +버튼 위치와 방사형·양쪽 좌/우 이동에 사용
+  const normalizedLayout = normalizeLayoutType(layoutType);
+  const bothSided = normalizedLayout === 'radial-bidirectional';
+  const rootChildSides: ('left' | 'right' | 'down')[] =
+    bothSided ? ['right', 'left']
+      : normalizedLayout === 'radial-left' ? ['left']
+        : normalizedLayout === 'tree-down' ? ['down']
+          : ['right'];
 
   const nodes = useMemo(() => {
     // 맵 설정(레벨별 폰트)을 측정기에 주입 — 모든 레이아웃 전략의
@@ -316,7 +346,7 @@ export function Canvas({
     } else if (url) {
       addNodeLink(target.id, url);
     }
-    onSelect(target.id);
+    selectOne(target.id);
   };
 
   // Wheel zoom anchored at the cursor. Attached manually with passive:false
@@ -383,12 +413,17 @@ export function Canvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRequestId]);
 
-  const handleAddChild = () => {
+  // side: 루트의 좌/우 +버튼(방사형·양쪽)이 누른 쪽으로 새 브랜치를 배치.
+  // 키보드(Space/Tab) 등 side 없이 부르면 기존 좌우 교대 배치 그대로.
+  const handleAddChild = (side?: 'left' | 'right') => {
     // 선택된 노드가 없으면 아무것도 하지 않는다 — 미선택 상태에서
     // Enter/Space/Tab이 메인 노드 밑에 노드를 만들어 버리는 것을 방지.
     if (!selectedId) return;
     const id = addChildNode(selectedId);
-    if (id) onSelect(id);
+    if (id) {
+      if (side && selectedId === 'root') setBranchSide(id, side);
+      selectOne(id);
+    }
   };
 
   const handleAddSibling = (position: 'before' | 'after' = 'after') => {
@@ -399,13 +434,13 @@ export function Canvas({
       return;
     }
     const id = addSiblingNode(selectedId, position);
-    if (id) onSelect(id);
+    if (id) selectOne(id);
   };
 
   const handleAddParent = () => {
     if (!selectedId || selectedId === 'root') return;
     const id = addParentNode(selectedId);
-    if (id) onSelect(id);
+    if (id) selectOne(id);
   };
 
   // Focus selected (toggle): re-root the view at the selected node so ONLY that
@@ -533,13 +568,13 @@ export function Canvas({
         if (!selectedId || selectedId === 'root') return;
 
         deleteNode(selectedId);
-        onSelect(null);
+        selectOne(null);
         return;
       }
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        onSelect(null);
+        selectOne(null);
         setPopover(null);
         return;
       }
@@ -604,9 +639,20 @@ export function Canvas({
     }
 
     if (e.button !== 0 && !isMiddleButton) return;
-    if (!isMiddleButton && !panMode && !onEmptyCanvas) return;
+
+    // Pan은 Pan 모드(H) 또는 휠 클릭에서만 — Pan 모드가 아닐 때 빈 캔버스
+    // 드래그는 러버밴드(사각형) 다중 선택이다.
+    if (!isMiddleButton && !panMode) {
+      if (onEmptyCanvas) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        const w = clientToWorld(e.clientX, e.clientY);
+        marqueeRef.current = { pointerId: e.pointerId, x0: w.x, y0: w.y, moved: false };
+      }
+      return;
+    }
 
     e.currentTarget.setPointerCapture(e.pointerId);
+    setPanning(true);
 
     dragRef.current = {
       pointerId: e.pointerId,
@@ -638,6 +684,15 @@ export function Canvas({
       return;
     }
 
+    // 러버밴드 갱신 — 살짝 움직인 뒤부터 사각형을 그린다
+    const mq = marqueeRef.current;
+    if (mq && mq.pointerId === e.pointerId) {
+      const w = clientToWorld(e.clientX, e.clientY);
+      if (!mq.moved && Math.abs(w.x - mq.x0) + Math.abs(w.y - mq.y0) > 4) mq.moved = true;
+      if (mq.moved) setMarquee({ x0: mq.x0, y0: mq.y0, x1: w.x, y1: w.y });
+      return;
+    }
+
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
 
@@ -660,9 +715,26 @@ export function Canvas({
         // don't depend on render timing of state.
         const w = clientToWorld(e.clientX, e.clientY);
         const zone = findDropZone(w.x, w.y, nodeDrag.id) ?? dropZoneRef.current;
+        const rootN = nodesRef.current.find((nd) => nd.depth === 0);
         if (zone) {
           const moved = moveNodeRelative(nodeDrag.id, zone.targetId, zone.position);
-          if (moved) onSelect(nodeDrag.id);
+          if (moved) {
+            // 방사형·양쪽: 루트에 떨어뜨리면 놓은 쪽(좌/우)으로 배치
+            if (bothSided && zone.targetId === 'root' && zone.position === 'child' && rootN) {
+              setBranchSide(nodeDrag.id, w.x < rootN.x ? 'left' : 'right');
+            }
+            selectOne(nodeDrag.id);
+          }
+        } else if (bothSided && rootN) {
+          // 빈 곳에 놓음 — 1레벨 브랜치를 루트 반대쪽으로 끌면 좌/우 이동
+          const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
+          if (dragged && dragged.depth === 1) {
+            const dropSide = w.x < rootN.x ? 'left' : 'right';
+            if (dropSide !== dragged.side) {
+              setBranchSide(nodeDrag.id, dropSide);
+              selectOne(nodeDrag.id);
+            }
+          }
         }
         suppressClickRef.current = true;
         setDropZone(null);
@@ -671,10 +743,33 @@ export function Canvas({
       return;
     }
 
+    // 러버밴드 확정 — 사각형에 걸친 노드 전체를 다중 선택
+    const mq = marqueeRef.current;
+    if (mq && mq.pointerId === e.pointerId) {
+      marqueeRef.current = null;
+      if (mq.moved) {
+        const w = clientToWorld(e.clientX, e.clientY);
+        const minX = Math.min(mq.x0, w.x), maxX = Math.max(mq.x0, w.x);
+        const minY = Math.min(mq.y0, w.y), maxY = Math.max(mq.y0, w.y);
+        const hits = nodesRef.current.filter(
+          (n) =>
+            n.x + n.w / 2 >= minX && n.x - n.w / 2 <= maxX &&
+            n.y + n.h / 2 >= minY && n.y - n.h / 2 <= maxY,
+        );
+        setMultiSelectedIds(hits.map((n) => n.id));
+        // 스타일 탭이 열리도록 첫 노드를 대표 선택으로 지정
+        onSelect(hits[0]?.id ?? null);
+        suppressClickRef.current = true;
+      }
+      setMarquee(null);
+      return;
+    }
+
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
 
     dragRef.current = null;
+    setPanning(false);
     if (drag.moved) suppressClickRef.current = true;
   };
 
@@ -739,6 +834,37 @@ export function Canvas({
         onFocusSelected={focusSelected}
       />
 
+      {/* Pan 모드 표시 — 상단 중앙 배지 + 캔버스 테두리 하이라이트.
+          Pan 모드에서는 드래그가 화면 이동이고, 해제하면 드래그가
+          다중 선택(러버밴드)이 된다. */}
+      {panMode && (
+        <>
+          <div
+            data-testid="pan-mode-badge"
+            style={{
+              position: 'absolute', top: 14, left: '50%',
+              transform: 'translateX(-50%)', zIndex: 6,
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '7px 16px', borderRadius: 20,
+              background: t.primary, color: '#FFFFFF',
+              fontSize: 12.5, fontWeight: 700,
+              boxShadow: '0 4px 14px rgba(60,45,15,0.35)',
+              pointerEvents: 'none', whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ fontSize: 15 }}>✋</span>
+            Pan 모드 — 드래그로 화면 이동 · H 키로 해제
+          </div>
+          <div
+            style={{
+              position: 'absolute', inset: 0, zIndex: 4,
+              border: `2.5px solid ${t.primary}`, borderRadius: 2,
+              opacity: 0.55, pointerEvents: 'none',
+            }}
+          />
+        </>
+      )}
+
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
@@ -747,7 +873,7 @@ export function Canvas({
           width: '100%',
           height: '100%',
           display: 'block',
-          cursor: panMode ? 'grab' : 'default',
+          cursor: panMode ? (panning ? 'grabbing' : 'grab') : 'default',
           touchAction: 'none',
           // 드래그 시 SVG 글자가 브라우저 '텍스트 선택'으로 잡혀 주황
           // 선택 배경이 그려지는 문제 방지 — 캔버스 글자는 선택 대상이
@@ -765,7 +891,7 @@ export function Canvas({
             return;
           }
           if ((e.target as Element).tagName === 'svg') {
-            onSelect(null);
+            selectOne(null);
             setPopover(null);
           }
         }}
@@ -798,9 +924,9 @@ export function Canvas({
                 key={n.id}
                 n={n}
                 t={t}
-                selected={n.id === selectedId}
+                selected={n.id === selectedId || multiSet.has(n.id)}
                 dropTarget={n.id === dropZone?.targetId}
-                onSelect={() => onSelect(n.id)}
+                onSelect={() => selectOne(n.id)}
                 onHover={setHoverNodeId}
                 onOpenPopover={(nodeId, kind) =>
                   setPopover((p) => (p && p.nodeId === nodeId && p.kind === kind ? null : { nodeId, kind }))
@@ -839,17 +965,35 @@ export function Canvas({
             );
           })()}
 
-          {selectedNode && !dropZone && editingNodeId !== selectedNode.id && (
+          {selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
+            multiSelectedIds.length <= 1 && (
             <g className="mm-overlay-controls">
               <NodeIndicators
                 node={selectedNode}
                 t={t}
+                rootChildSides={rootChildSides}
                 onAddChild={handleAddChild}
                 onAddParent={handleAddParent}
                 onAddSiblingBefore={() => handleAddSibling('before')}
                 onAddSiblingAfter={() => handleAddSibling('after')}
               />
             </g>
+          )}
+
+          {/* 러버밴드(다중 선택) 사각형 */}
+          {marquee && (
+            <rect
+              x={Math.min(marquee.x0, marquee.x1)}
+              y={Math.min(marquee.y0, marquee.y1)}
+              width={Math.abs(marquee.x1 - marquee.x0)}
+              height={Math.abs(marquee.y1 - marquee.y0)}
+              fill={t.primary}
+              opacity="0.08"
+              stroke={t.primary}
+              strokeWidth="1.4"
+              strokeDasharray="5 3"
+              pointerEvents="none"
+            />
           )}
 
           {/* Collapse / expand toggle (top overlay, always clickable). Shown

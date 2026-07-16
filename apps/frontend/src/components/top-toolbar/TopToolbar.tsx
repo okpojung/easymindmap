@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -32,6 +33,18 @@ export function TopToolbar({
   const redo = useDocumentStore((s) => s.redo);
   const canUndo = useDocumentStore((s) => s.past.length > 0);
   const canRedo = useDocumentStore((s) => s.future.length > 0);
+
+  // 내보내기 메뉴 — HTML/MD를 하위 항목으로 구분 (바깥 클릭 시 닫힘)
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!exportOpen) return;
+    const close = (e: PointerEvent) => {
+      if (!exportRef.current?.contains(e.target as Node)) setExportOpen(false);
+    };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [exportOpen]);
 
   const saveStateInfo = ({
     saved: { text: '저장됨 · 방금 전', color: t.textMuted, dot: t.success },
@@ -184,24 +197,77 @@ export function TopToolbar({
         <I.Share size={15} /> 공유
       </button>
 
-      {/* 내보내기 — 단일 HTML 파일(오프라인 읽기 전용 뷰어: 줌·팬·맞춤·
-          노드 접기/펴기·태그·링크·메모 지원)로 저장. EXPORT-02.
-          두 형식 모두 맵 메타데이터를 내장해 '새 맵 > 불러오기'로 편집
-          가능하게 복원된다. 사진·첨부가 있으면 ZIP(md/html + files/). */}
-      <IconBtn
-        t={t}
-        title="내보내기 (HTML — 읽기 전용 뷰어 + 다시 불러오기 가능)"
-        onClick={() => { void downloadMapAsHtml(map, layoutType, { x: spacingX, y: spacingY }); }}
-      >
-        <I.Download size={16} />
-      </IconBtn>
-      <IconBtn
-        t={t}
-        title="내보내기 (Markdown — 일반 에디터에서 수정 + 다시 불러오기 가능)"
-        onClick={() => { void downloadMapAsMarkdown(map, layoutType, { x: spacingX, y: spacingY }); }}
-      >
-        <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.3 }}>MD</span>
-      </IconBtn>
+      {/* 내보내기 메뉴 — 하위 항목: HTML 파일 / MD 파일. 두 형식 모두
+          맵 메타데이터를 내장해 '새 맵 > 불러오기'로 편집 가능하게
+          복원되고, 사진·첨부가 있으면 ZIP(파일 + files/)으로 내려간다. */}
+      <div ref={exportRef} style={{ position: 'relative' }}>
+        <button
+          title="내보내기"
+          onClick={() => setExportOpen((v) => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            height: 32, padding: '0 10px', borderRadius: 7,
+            border: `1px solid ${exportOpen ? t.primaryBorder : t.border}`,
+            background: exportOpen ? t.primarySoft : t.surface,
+            color: exportOpen ? t.primary : t.text,
+            cursor: 'pointer', fontSize: 12, fontWeight: 600,
+          }}
+        >
+          <I.Download size={15} /> 내보내기 <span style={{ fontSize: 8 }}>▼</span>
+        </button>
+        {exportOpen && (
+          <div
+            data-testid="export-menu"
+            style={{
+              position: 'absolute', top: 38, right: 0, zIndex: 40,
+              minWidth: 250, background: t.surface,
+              border: `1px solid ${t.border}`, borderRadius: 9,
+              boxShadow: '0 8px 24px rgba(80,60,20,0.18)', padding: 5,
+            }}
+          >
+            {([
+              {
+                label: 'HTML 파일 내보내기',
+                desc: '읽기 전용 뷰어 · 다시 불러오기 가능',
+                title: '내보내기 (HTML — 읽기 전용 뷰어 + 다시 불러오기 가능)',
+                run: () => downloadMapAsHtml(map, layoutType, { x: spacingX, y: spacingY }),
+              },
+              {
+                label: 'MD 파일 내보내기',
+                desc: '일반 에디터에서 수정 · 다시 불러오기 가능',
+                title: '내보내기 (Markdown — 일반 에디터에서 수정 + 다시 불러오기 가능)',
+                run: () => downloadMapAsMarkdown(map, layoutType, { x: spacingX, y: spacingY }),
+              },
+            ] as const).map((item) => (
+              <button
+                key={item.label}
+                title={item.title}
+                onClick={() => { setExportOpen(false); void item.run(); }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '8px 10px', borderRadius: 6, border: 'none',
+                  background: 'transparent', cursor: 'pointer', color: t.text,
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = t.surfaceAlt;
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = 'transparent';
+                }}
+              >
+                <div style={{ fontSize: 12.5, fontWeight: 700 }}>{item.label}</div>
+                <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 1 }}>{item.desc}</div>
+              </button>
+            ))}
+            <div style={{
+              fontSize: 9.5, color: t.textSubtle, padding: '6px 10px 4px',
+              borderTop: `1px solid ${t.divider}`, marginTop: 4, lineHeight: 1.5,
+            }}>
+              사진·첨부가 있으면 ZIP(파일 + files/)으로 내려갑니다
+            </div>
+          </div>
+        )}
+      </div>
 
       <div
         style={{

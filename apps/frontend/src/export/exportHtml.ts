@@ -24,7 +24,12 @@ import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/_
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import { setLevelFontConfig, levelFontFamily } from '@/editor/node-renderer/sizeNodeForText';
 import { buildZip, type ZipEntry } from './zip';
-import { buildMapMeta } from './mapMeta';
+import {
+  buildMapMeta,
+  bytesToDataUrl,
+  withInlinedAttachments,
+  INLINE_ATTACHMENT_LIMIT,
+} from './mapMeta';
 
 // 에디터가 계산한 노드의 최종 배치 좌표 — 뷰어는 이 좌표를 그대로 사용해
 // 에디터 화면과 100% 동일한 레이아웃을 재현한다 (자체 레이아웃은 좌표가
@@ -73,6 +78,10 @@ interface ExportNode {
 }
 
 type PosResolver = (nodeId: string) => ExportPos | undefined;
+// 레이아웃 엔진이 계산한 유효 side (자식이 자라는 방향) — 노드에 저장된
+// side(방사형의 left/right)가 아니라 현재 레이아웃 기준이어야 뷰어의
+// 접기 토글이 에디터와 같은 자리에 놓인다.
+type SideResolver = (nodeId: string) => string | undefined;
 
 // Maps attachment id → packaged relative href ('files/…'). Attachments not in
 // the map keep their original URL and are marked external.
@@ -82,6 +91,7 @@ function toExportNode(
   node: MindNode,
   resolveHref?: AttachmentHrefResolver,
   resolvePos?: PosResolver,
+  resolveSide?: SideResolver,
 ): ExportNode {
   const tags =
     Array.isArray(node.tags) && node.tags.length > 0
@@ -118,9 +128,10 @@ function toExportNode(
       ? { strike: node.style.strike || undefined, highlight: node.style.highlight || undefined }
       : undefined,
     layoutType: node.layoutType,
-    side: node.side,
+    side: resolveSide?.(node.id) ?? node.side,
     pos: resolvePos?.(node.id),
-    children: (node.children ?? []).map((c) => toExportNode(c, resolveHref, resolvePos)),
+    children: (node.children ?? []).map((c) =>
+      toExportNode(c, resolveHref, resolvePos, resolveSide)),
   };
 }
 
@@ -908,14 +919,22 @@ const VIEWER_JS = String.raw`
     }
 
     if (kids.length) {
-      // chip on the side the subtree grows toward
-      var leftish = node._eff === 'radial-left' ||
-        (node._eff === 'radial-bidirectional' && node.side === 'left' && depth > 0);
-      var ccx = leftish ? x0 - 11 : x0 + node._w + 11;
+      // 접기 토글 — 에디터(CollapseControl)와 동일하게 "자식이 자라는
+      // 방향(node.side)"에 놓는다: down=아래, up=위, left=왼쪽, 그 외 오른쪽.
+      // (트리·진행트리는 side 'down'/'right', 시간배치는 'up'/'down',
+      // 방사형은 'left'/'right' — side가 없는 옛 파일은 레이아웃으로 폴백)
+      var sd = node.side;
+      var leftish = sd === 'left' || node._eff === 'radial-left' ||
+        (node._eff === 'radial-bidirectional' && sd === 'left' && depth > 0);
+      var ccx, ccy;
+      if (sd === 'down') { ccx = node._cx; ccy = node._cy + node._h / 2 + 11; }
+      else if (sd === 'up') { ccx = node._cx; ccy = node._cy - node._h / 2 - 11; }
+      else if (leftish) { ccx = x0 - 11; ccy = node._cy; }
+      else { ccx = x0 + node._w + 11; ccy = node._cy; }
       var chip = el('g', { cursor: 'pointer', 'class': 'mm-toggle' }, g);
-      el('circle', { cx: ccx, cy: node._cy, r: 8.5, fill: node._open ? '#FFFFFF' : color,
+      el('circle', { cx: ccx, cy: ccy, r: 8.5, fill: node._open ? '#FFFFFF' : color,
         stroke: color, 'stroke-width': 1.3 }, chip);
-      var ct = el('text', { x: ccx, y: node._cy + 3.4, 'text-anchor': 'middle',
+      var ct = el('text', { x: ccx, y: ccy + 3.4, 'text-anchor': 'middle',
         'font-size': 9.5, 'font-weight': 700, fill: node._open ? color : '#FFFFFF' }, chip);
       ct.textContent = node._open ? '−' : String(countDescendants(node));
       (function (n) {
@@ -1322,6 +1341,9 @@ export function buildStandaloneHtml(
   mapLayoutType?: LayoutType,
   resolveHref?: AttachmentHrefResolver,
   spacing?: LayoutSpacing,
+  // 메타데이터에 실을 맵 (작은 첨부가 data URL로 인라인된 사본) —
+  // 없으면 map 그대로. 뷰어 표시용 데이터에는 영향 없다.
+  metaMap?: SampleMap,
 ): string {
   const layoutType = (mapLayoutType ??
     map.root.layoutType ??
@@ -1348,6 +1370,8 @@ export function buildStandaloneHtml(
     ]),
   );
   const resolvePos: PosResolver = (id) => posById.get(id);
+  const sideById = new Map<string, string | undefined>(laid.map((n) => [n.id, n.side]));
+  const resolveSide: SideResolver = (id) => sideById.get(id);
 
   const data = {
     title: map.title,
@@ -1358,10 +1382,11 @@ export function buildStandaloneHtml(
         text: map.root.text,
         textAlign: map.root.textAlign,
         style: map.root.style,
-      } as MindNode, resolveHref, resolvePos),
+      } as MindNode, resolveHref, resolvePos, resolveSide),
       colorKey: 'root',
       layoutType: map.root.layoutType ?? mapLayoutType,
-      children: map.branches.map((b) => toExportNode(b, resolveHref, resolvePos)),
+      children: map.branches.map((b) =>
+        toExportNode(b, resolveHref, resolvePos, resolveSide)),
     },
   };
 
@@ -1372,7 +1397,7 @@ export function buildStandaloneHtml(
   // 맵 메타데이터 — EasyMindMap 생성 파일 표시 + 편집 가능한 원본 맵
   // 전체(스타일·노트·설정 포함). '새 맵 > 불러오기'가 이 블록을 읽어
   // 내보낸 맵을 그대로 복원한다 (mapMeta.ts / importMapFile.ts).
-  const metaJson = JSON.stringify(buildMapMeta(map, layoutType, spacing))
+  const metaJson = JSON.stringify(buildMapMeta(metaMap ?? map, layoutType, spacing))
     .replace(/</g, '\\u003c');
 
   return `<!DOCTYPE html>
@@ -1399,7 +1424,8 @@ export function buildStandaloneHtml(
   <div id="mm-note-body"></div>
 </div>
 <footer>EasyMindMap 내보내기 · 읽기 전용 뷰어 · ${exportedAt}</footer>
-<!-- EasyMindMap 생성 파일 — 아래 메타데이터로 편집 가능하게 다시 불러올 수 있습니다 -->
+<!-- EasyMindMap 생성 파일 · 제목: ${escapeHtml(map.title)} · 내보낸 시각: ${exportedAt}
+     아래 메타데이터(#easymindmap-map)로 '새 맵 > 불러오기'에서 편집 가능하게 복원됩니다 -->
 <script type="application/json" id="easymindmap-map">${metaJson}</script>
 <script>window.__MINDMAP__ = ${json};</script>
 <script>${VIEWER_JS}</script>
@@ -1456,6 +1482,9 @@ export async function buildExportPackage(
 
   // Fetch each attachment; successes go into files/, failures stay external.
   const hrefById = new Map<string, string>();
+  // ≤2MB 첨부는 메타데이터에 data URL로 인라인 — 단일 HTML만으로도
+  // '새 맵 > 불러오기'에서 첨부까지 복원된다 (mapMeta.ts)
+  const inlineById = new Map<string, string>();
   const files: ZipEntry[] = [];
   const usedNames = new Set<string>();
 
@@ -1465,6 +1494,9 @@ export async function buildExportPackage(
       const res = await fetch(att.url);
       if (!res.ok) throw new Error(String(res.status));
       const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.length <= INLINE_ATTACHMENT_LIMIT) {
+        inlineById.set(att.id, bytesToDataUrl(bytes, att.name));
+      }
 
       let name = safeName(att.name, att.id);
       if (usedNames.has(name)) {
@@ -1484,7 +1516,9 @@ export async function buildExportPackage(
     }
   }
 
-  const html = buildStandaloneHtml(map, mapLayoutType, (id) => hrefById.get(id), spacing);
+  const metaMap = withInlinedAttachments(map, (id) => inlineById.get(id));
+  const html = buildStandaloneHtml(
+    map, mapLayoutType, (id) => hrefById.get(id), spacing, metaMap);
 
   if (files.length === 0) {
     // nothing could be packaged — fall back to the single HTML

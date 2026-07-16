@@ -317,6 +317,7 @@ function InspectorContent({ t, tab }: {
   collabs: Collaborator[];
 }) {
   const selectedId = useInteractionStore((s) => s.selectedId);
+  const multiCount = useInteractionStore((s) => s.multiSelectedIds.length);
   const map = useDocumentStore((s) => s.map);
 
   const node = findNodeInMap(map, selectedId);
@@ -344,7 +345,7 @@ function InspectorContent({ t, tab }: {
         <div style={{
           fontSize: 10, fontWeight: 700, color: t.textSubtle,
           textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3,
-        }}>{node ? `선택 · depth ${depth}` : '선택된 노드 없음'}</div>
+        }}>{multiCount > 1 ? `${multiCount}개 노드 선택 · 일괄 편집` : node ? `선택 · depth ${depth}` : '선택된 노드 없음'}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
           <div style={{

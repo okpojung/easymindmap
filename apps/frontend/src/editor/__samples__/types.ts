@@ -196,6 +196,7 @@ export interface KanbanCard {
   title: string;
   tag?: string;
   active?: boolean;
+  image?: NodeImage; // 노드에 붙여넣은 사진 — 카드 썸네일로 표시
   // depth-3+ descendants of the card node, rendered inside the column as an
   // indented tree-right outline under the card (no depth limit for Kanban).
   children?: KanbanCard[];

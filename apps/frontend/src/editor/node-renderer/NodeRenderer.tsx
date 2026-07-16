@@ -178,11 +178,19 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const textAlign: TextAlign = n.textAlign ?? 'center';
   const textAnchor =
     textAlign === 'right' ? 'end' : textAlign === 'center' ? 'middle' : 'start';
+  // 중앙 정렬은 박스 중앙이 아니라 "텍스트가 실제로 쓸 수 있는 띠"
+  // (왼쪽 아이콘 영역과 오른쪽 인디케이터 영역을 뺀 구간)의 중앙에 놓는다
+  // — 박스 중앙 기준으로 두면 긴 줄이 아이콘/인디케이터와 겹친다.
+  const indicatorReserve = contentIcons.length > 0
+    ? contentIcons.length * (fontSize + 5) + 4
+    : 0;
+  const iconLeftPad = hasIcon && iconSide === 'left' ? (n.depth === 1 ? 22 : 20) : 0;
+  const iconRightPad = hasIcon && iconSide === 'right' ? 22 : 0;
   const textX =
     textAlign === 'right'
-      ? n.x + n.w / 2 - 14 - (hasIcon && iconSide === 'right' ? 22 : 0)
+      ? n.x + n.w / 2 - 14 - indicatorReserve - iconRightPad
       : textAlign === 'center'
-        ? n.x
+        ? n.x + (iconLeftPad - iconRightPad - indicatorReserve) / 2
         : n.x - n.w / 2 + 14 + (hasIcon && iconSide === 'left' ? 24 : 0);
 
   const startEdit = () => {

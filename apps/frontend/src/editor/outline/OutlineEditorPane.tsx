@@ -15,6 +15,11 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { OutlineNode as OutlineNodeData, MindNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useInteractionStore } from '@/stores/interactionStore';
+
+// 아웃라인 연속 입력 — "이 노드를 바로 편집 상태로 열어라" 신호.
+// Enter로 형제를 추가하면 새 행이 곧바로 입력 모드가 된다 (노트패드처럼).
+let editRequestId: string | null = null;
+export function requestOutlineEdit(id: string | null) { editRequestId = id; }
 import { useDocumentStore, findNodeInMap, findParentId } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import {
@@ -61,7 +66,7 @@ export function OutlineEditorPane({ t, outline }: PaneProps) {
       }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: t.text }}>아웃라인</div>
         <div style={{ fontSize: 9.5, color: t.textSubtle, flex: 1, minWidth: 0 }}>
-          더블클릭: 수정(Shift+Enter 줄바꿈) · Tab: 레벨 · Delete: 삭제
+          더블클릭: 입력 · Enter: 아래 행 추가 · Tab/Space: 들여쓰기 · Shift+Enter: 줄바꿈
         </div>
         <button onClick={() => setOutlineSplit(false)} title="아웃라인 닫기"
           style={{
@@ -148,6 +153,16 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   useEffect(() => {
     if (editing) window.setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select(); }, 0);
   }, [editing]);
+
+  // Enter로 방금 만든 행이면 곧바로 입력 모드로 (노트패드식 연속 입력)
+  useEffect(() => {
+    if (editRequestId === node.id) {
+      editRequestId = null;
+      setDraft(node.text);
+      setEditing(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.id]);
 
   // 인디케이터 — 맵과 동일한 규칙 (nodeContentIndicators)
   const rawNode = (node.id === 'root' ? map.root : findNodeInMap(map, node.id)) as MindNode | null;
@@ -295,14 +310,48 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             onBlur={commitEdit}
             onKeyDown={(e) => {
               e.stopPropagation();
-              // Enter = 저장, Shift+Enter = 줄바꿈 (캔버스 노드 편집과 동일)
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitEdit(); }
+              // 노트패드식 연속 입력:
+              //   Enter        = 저장 + 아래 형제 행 추가 + 이어서 입력
+              //   Shift+Enter  = 줄바꿈 (한 노드 안에서)
+              //   Tab / (빈 행에서) Space = 들여쓰기 → 하위 노드로
+              //   Shift+Tab    = 내어쓰기
+              //   (빈 행에서) Backspace   = 행 삭제
+              //   Esc          = 취소(입력 종료)
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                commitEdit();
+                const newId = node.id === 'root'
+                  ? addChildNode('root')
+                  : addSiblingNode(node.id, 'after');
+                if (newId) {
+                  setSelectedId(newId);
+                  requestOutlineEdit(newId);
+                }
+                return;
+              }
               if (e.key === 'Escape') { e.preventDefault(); setDraft(node.text); setEditing(false); }
               if (e.key === 'Tab') {
                 e.preventDefault();
                 commitEdit();
                 if (e.shiftKey) outdent();
                 else indent();
+                requestOutlineEdit(node.id); // 레벨 이동 후 계속 입력
+                return;
+              }
+              const ta = e.currentTarget as HTMLTextAreaElement;
+              if (e.key === ' ' && draft === '' && (ta.selectionStart ?? 0) === 0) {
+                // 빈 새 행에서 스페이스 = 들여쓰기 (하위 노드로)
+                e.preventDefault();
+                commitEdit();
+                indent();
+                requestOutlineEdit(node.id);
+                return;
+              }
+              if (e.key === 'Backspace' && draft === '') {
+                // 빈 행에서 백스페이스 = 행 삭제
+                e.preventDefault();
+                setEditing(false);
+                if (node.id !== 'root') deleteNode(node.id);
               }
             }}
             style={{

@@ -685,8 +685,14 @@ const VIEWER_JS = String.raw`
       var baseY = stacked
         ? topY + li * node._lineH + node._lineH / 2 + node._fs * 0.34
         : y0 + PAD_Y + node._fs * 0.85 + li * node._lineH;
-      var sx = align === 'center' ? x0 + node._w / 2 - lw2 / 2
-        : (align === 'right' ? x0 + node._w - PAD_X - (node._marksW || 0) - lw2 : tx);
+      // 중앙 정렬은 아이콘(왼쪽)·마커(오른쪽) 영역을 뺀 띠의 중앙 —
+      // 박스 중앙 기준이면 긴 줄이 아이콘/마커와 겹친다 (에디터와 동일 보정)
+      var iconW2 = node.icon ? node._fs + 6 : 0;
+      var mW2 = node._marksW != null ? node._marksW
+        : (markerCount(node) ? markerCount(node) * (node._fs + 1 + 3) + 5 : 0);
+      var sx = align === 'center'
+        ? x0 + node._w / 2 + (iconW2 - mW2) / 2 - lw2 / 2
+        : (align === 'right' ? x0 + node._w - PAD_X - mW2 - lw2 : tx);
       var segX = [], accX = sx;
       for (si = 0; si < segs.length; si++) { segX.push(accX); accX += segWs[si]; }
       for (si = 0; si < segs.length; si++) {

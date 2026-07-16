@@ -726,13 +726,22 @@ export function Canvas({
             selectOne(nodeDrag.id);
           }
         } else if (bothSided && rootN) {
-          // 빈 곳에 놓음 — 1레벨 브랜치를 루트 반대쪽으로 끌면 좌/우 이동
+          // 반대쪽 빈 곳에 놓음 (방사형·양쪽) — 좌/우 이동.
+          //   · 1레벨 브랜치: side만 전환 (서브트리 그대로)
+          //   · 2레벨 이하 노드: 그쪽의 새 1레벨 브랜치가 된다
+          //     (반대쪽에는 붙을 부모가 없으므로 루트 자식으로 이동)
           const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
-          if (dragged && dragged.depth === 1) {
-            const dropSide = w.x < rootN.x ? 'left' : 'right';
-            if (dropSide !== dragged.side) {
+          const dropSide = w.x < rootN.x ? 'left' : 'right';
+          if (dragged && dragged.side !== dropSide) {
+            if (dragged.depth === 1) {
               setBranchSide(nodeDrag.id, dropSide);
               selectOne(nodeDrag.id);
+            } else {
+              const moved = moveNodeRelative(nodeDrag.id, 'root', 'child');
+              if (moved) {
+                setBranchSide(nodeDrag.id, dropSide);
+                selectOne(nodeDrag.id);
+              }
             }
           }
         }

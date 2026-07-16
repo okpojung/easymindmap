@@ -72,6 +72,13 @@ const LAYOUTS: LayoutOption[] = [
     glyph: 'process-tree-right',
   },
   {
+    // 시간배치 — 트리·아래처럼 중심 주제(맵 전체) 전용
+    key: 'timeline' as LayoutType,
+    label: '시간배치 (타임라인)',
+    glyph: 'timeline',
+    rootOnly: true,
+  },
+  {
     key: 'kanban' as LayoutType,
     label: 'Kanban 보드',
     glyph: 'kanban',

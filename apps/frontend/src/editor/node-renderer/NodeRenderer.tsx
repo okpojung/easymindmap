@@ -104,6 +104,49 @@ function NodeShape({
       />
     );
   }
+  if (shape === 'arrow-left') {
+    // ◀ 왼쪽 화살표 — 촉이 왼쪽 중앙, 몸통은 오른쪽
+    const a = Math.min(26, n.w * 0.24);
+    return (
+      <polygon
+        points={`${x0},${n.y} ${x0 + a},${y0} ${x1},${y0} ${x1},${y1} ${x0 + a},${y1}`}
+        {...common}
+      />
+    );
+  }
+  if (shape === 'arrow-right') {
+    // ▶ 오른쪽 화살표 — 촉이 오른쪽 중앙
+    const a = Math.min(26, n.w * 0.24);
+    return (
+      <polygon
+        points={`${x1},${n.y} ${x1 - a},${y1} ${x0},${y1} ${x0},${y0} ${x1 - a},${y0}`}
+        {...common}
+      />
+    );
+  }
+  if (shape === 'cylinder') {
+    // ⛁ 원통 — 위 뚜껑 타원 + 몸통 + 아래 볼록 바닥
+    const ry = Math.min(9, n.h * 0.18);
+    return (
+      <g>
+        <path
+          d={`M ${x0} ${y0 + ry} V ${y1 - ry} A ${n.w / 2} ${ry} 0 0 0 ${x1} ${y1 - ry} V ${y0 + ry}`}
+          {...common}
+        />
+        <ellipse cx={n.x} cy={y0 + ry} rx={n.w / 2} ry={ry} {...common} />
+      </g>
+    );
+  }
+  if (shape === 'star') {
+    // ★ 5각 별 — 박스에 맞춰 늘린 별 (텍스트는 중앙)
+    const pts: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const ang = -Math.PI / 2 + (i * Math.PI) / 5;
+      const k = i % 2 === 0 ? 1 : 0.45;
+      pts.push(`${n.x + Math.cos(ang) * (n.w / 2) * k},${n.y + Math.sin(ang) * (n.h / 2) * k}`);
+    }
+    return <polygon points={pts.join(' ')} {...common} />;
+  }
 
   // rect family
   const rx = shape === 'rectangle' ? 2 : shape === 'pill' ? n.h / 2 : n.depth === 0 ? 14 : 10;
@@ -339,6 +382,17 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
         dash={dash}
         filter={isRoot ? 'url(#nodeShadow)' : undefined}
       />
+      {/* 이중선 테두리 — 같은 도형을 살짝 안쪽에 한 번 더 그린다 (SVG는
+          CSS double stroke가 없으므로 도형 이중 렌더로 구현) */}
+      {style.borderStyle === 'double' && (
+        <NodeShape
+          shape={shape}
+          n={{ ...n, w: Math.max(10, n.w - 9), h: Math.max(8, n.h - 9) }}
+          fill="none"
+          stroke={border}
+          strokeWidth={Math.max(1, strokeWidth * 0.85)}
+        />
+      )}
       {/* 편집 오버레이 위치 측정용 투명 rect (노드 박스와 동일 좌표) */}
       <rect ref={boxRef} x={n.x - n.w / 2} y={n.y - n.h / 2}
             width={n.w} height={n.h} fill="none" pointerEvents="none" />

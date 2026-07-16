@@ -46,6 +46,10 @@ function isHierarchyLayout(layoutType?: LayoutType): boolean {
   return layoutType === 'hierarchy' || layoutType === 'hierarchy-right';
 }
 
+function isTimelineLayout(layoutType?: LayoutType): boolean {
+  return layoutType === 'timeline';
+}
+
 function isProcessLayout(layoutType?: LayoutType): boolean {
   return (
     layoutType === 'progress-tree' ||
@@ -132,6 +136,21 @@ function createProcessPath(from: LaidOutNode, to: LaidOutNode): string {
   return `M ${fromSpineX} ${fromBottom} V ${midY} H ${toSpineX} V ${toTop}`;
 }
 
+// 시간배치: 루트→주제는 시간축(루트 중앙 높이 수평선)을 따라가다 주제로
+// 꺾이고, 주제 이하는 왼쪽 스파인 세로 아웃라인(위/아래 방향)이다.
+function createTimelinePath(from: LaidOutNode, to: LaidOutNode): string {
+  if (from.depth === 0) {
+    const fromX = from.x + from.w / 2;
+    const toEdgeY = to.y > from.y ? to.y - to.h / 2 : to.y + to.h / 2;
+    return `M ${fromX} ${from.y} H ${to.x} V ${toEdgeY}`;
+  }
+  const spineX = from.x - from.w / 2 + 12;
+  const goesUp = to.side === 'up';
+  const fromY = goesUp ? from.y - from.h / 2 : from.y + from.h / 2;
+  const toX = to.x - to.w / 2;
+  return `M ${spineX} ${fromY} V ${to.y} H ${toX}`;
+}
+
 export function EdgeRenderer({ from, to, t, layoutType }: Props) {
   const width = from.depth === 0 ? 2.3 : 1.6;
 
@@ -139,7 +158,9 @@ export function EdgeRenderer({ from, to, t, layoutType }: Props) {
   // subtrees with their own layoutType render with matching edges.
   const effectiveType = from.layoutType ?? to.layoutType ?? layoutType;
 
-  const d = isRadialLayout(effectiveType)
+  const d = isTimelineLayout(effectiveType)
+    ? createTimelinePath(from, to)
+    : isRadialLayout(effectiveType)
     ? createRadialPath(from, to)
     : isProcessLayout(effectiveType)
       ? createProcessPath(from, to)

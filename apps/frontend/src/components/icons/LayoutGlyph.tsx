@@ -15,7 +15,8 @@ export type LayoutGlyphType =
   | 'hierarchy-right'
   | 'process-tree-right'
   | 'kanban'
-  | 'freeform';
+  | 'freeform'
+  | 'timeline';
 
 interface LayoutGlyphProps {
   type: LayoutGlyphType;
@@ -72,6 +73,20 @@ export function LayoutGlyph({
     ry: 0.8,
     vectorEffect: 'non-scaling-stroke' as const,
   };
+
+  if (type === 'timeline') {
+    // 시간배치 — 수평 시간축 화살표 + 위/아래에 매달린 주제 상자
+    return (
+      <SvgWrap width={width} height={height}>
+        <line x1="4" y1="13" x2="38" y2="13" {...lineProps} />
+        <path d="M36 10.5 L40 13 L36 15.5" {...lineProps} />
+        <rect x="10" y="3" width="9" height="5" {...rectProps} />
+        <line x1="14.5" y1="8" x2="14.5" y2="13" {...lineProps} />
+        <rect x="23" y="18" width="9" height="5" {...rectProps} />
+        <line x1="27.5" y1="13" x2="27.5" y2="18" {...lineProps} />
+      </SvgWrap>
+    );
+  }
 
   if (type === 'both-radial') {
     return (

@@ -19,6 +19,18 @@ const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
   { key: 'hexagon',       label: '육각',  shape: <I.Hexagon size={15} /> },
   { key: 'diamond',       label: '다이아', shape: <I.Diamond size={13} /> },
   { key: 'parallelogram', label: '평행', shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', transform:'skewX(-18deg)'}} /> },
+  { key: 'arrow-left',  label: '화살◀', shape: (
+    <svg width="24" height="14" viewBox="0 0 24 14"><polygon points="1,7 7,1 23,1 23,13 7,13" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  { key: 'arrow-right', label: '화살▶', shape: (
+    <svg width="24" height="14" viewBox="0 0 24 14"><polygon points="23,7 17,13 1,13 1,1 17,1" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  { key: 'cylinder',    label: '원통', shape: (
+    <svg width="20" height="16" viewBox="0 0 20 16"><path d="M1 4 V12 A9 3 0 0 0 19 12 V4" fill="none" stroke="currentColor" strokeWidth="1.5" /><ellipse cx="10" cy="4" rx="9" ry="3" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  { key: 'star',        label: '별', shape: (
+    <svg width="18" height="17" viewBox="0 0 18 17"><polygon points="9,1 11.2,6.2 17,6.6 12.6,10.3 14,16 9,12.9 4,16 5.4,10.3 1,6.6 6.8,6.2" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>
+  ) },
 ];
 
 const DEFAULT_COLORS = { fillColor: '#FEF3C7', borderColor: '#F59E0B', textColor: '#78350F' };
@@ -100,7 +112,7 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
 
       <InspectorSection t={t} title="테두리 스타일">
         <div style={{ display: 'flex', gap: 4 }}>
-          {(['solid', 'dashed', 'dotted'] as const).map((bs) => {
+          {(['solid', 'dashed', 'dotted', 'double'] as const).map((bs) => {
             const active = (style.borderStyle ?? 'solid') === bs;
             return (
               <button key={bs} onClick={() => set({ borderStyle: bs })}
@@ -111,7 +123,7 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
                   border: `1px solid ${active ? t.primaryBorder : t.border}`,
                   cursor: 'pointer',
                 }}>
-                {bs === 'solid' ? '실선' : bs === 'dashed' ? '파선' : '점선'}
+                {bs === 'solid' ? '실선' : bs === 'dashed' ? '파선' : bs === 'dotted' ? '점선' : '이중선'}
               </button>
             );
           })}

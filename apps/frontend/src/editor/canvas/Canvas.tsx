@@ -59,6 +59,7 @@ const LAYOUT_LABEL: Record<string, string> = {
   'hierarchy-right': '계층형 · 오른쪽 (직각선)',
   'process-tree-right': '진행트리 · 오른쪽 (직각선)',
   freeform: '자유배치',
+  timeline: '시간배치 (타임라인)',
 };
 
 interface Props {
@@ -299,6 +300,11 @@ export function Canvas({
       // children grow downward
       if (dy > hit.h * 0.18) position = 'child';
       else if (dy < -hit.h * 0.18 && !isRoot) position = 'parent';
+      else position = dx < 0 ? 'before' : 'after';
+    } else if (hit.side === 'up') {
+      // children grow upward (시간배치 위쪽 주제)
+      if (dy < -hit.h * 0.18) position = 'child';
+      else if (dy > hit.h * 0.18 && !isRoot) position = 'parent';
       else position = dx < 0 ? 'before' : 'after';
     } else {
       // children grow left/right
@@ -929,6 +935,24 @@ export function Canvas({
         <g
           transform={`translate(${CX + panX} ${CY + panY}) scale(${scale}) translate(${-CX} ${-CY})`}
         >
+          {/* 시간배치 — 수평 시간축 화살표 (루트 → 마지막 주제 너머) */}
+          {normalizedLayout === 'timeline' && !focusedId && (() => {
+            const root = nodes.find((n) => n.depth === 0);
+            if (!root) return null;
+            const maxX = nodes.reduce((m, n) => Math.max(m, n.x + n.w / 2), root.x + root.w / 2);
+            const endX = maxX + 46;
+            return (
+              <g data-testid="timeline-axis" pointerEvents="none">
+                <line x1={root.x + root.w / 2} y1={root.y} x2={endX} y2={root.y}
+                      stroke={t.edge} strokeWidth={2.3} strokeLinecap="round" />
+                <polygon
+                  points={`${endX + 12},${root.y} ${endX - 2},${root.y - 6} ${endX - 2},${root.y + 6}`}
+                  fill={t.edge}
+                />
+              </g>
+            );
+          })()}
+
           <g>
             {visibleNodes
               .filter((n) => n.parent)
@@ -987,7 +1011,9 @@ export function Canvas({
               bar =
                 tgt.side === 'down'
                   ? { x: tgt.x - tgt.w / 2, y: tgt.y + tgt.h / 2, w: tgt.w, h: BAR }
-                  : { x: cx, y: tgt.y - tgt.h / 2, w: BAR, h: tgt.h };
+                  : tgt.side === 'up'
+                    ? { x: tgt.x - tgt.w / 2, y: tgt.y - tgt.h / 2 - BAR, w: tgt.w, h: BAR }
+                    : { x: cx, y: tgt.y - tgt.h / 2, w: BAR, h: tgt.h };
             }
             return (
               <rect x={bar.x} y={bar.y} width={bar.w} height={bar.h} rx={3}
@@ -1044,7 +1070,9 @@ export function Canvas({
                       ? { x: n.x - n.w / 2 - 11, y: n.y }
                       : n.side === 'down'
                         ? { x: n.x, y: n.y + n.h / 2 + 11 }
-                        : { x: n.x + n.w / 2 + 11, y: n.y };
+                        : n.side === 'up'
+                          ? { x: n.x, y: n.y - n.h / 2 - 11 }
+                          : { x: n.x + n.w / 2 + 11, y: n.y };
                   return (
                     <CollapseControl
                       key={`toggle-${n.id}`}

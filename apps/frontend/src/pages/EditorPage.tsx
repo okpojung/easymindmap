@@ -36,12 +36,14 @@ function buildKanbanCard(node: {
   text: string;
   tag?: string;
   tags?: string[];
+  image?: KanbanCard['image'];
   children?: any[];
 }): KanbanCard {
   return {
     id: node.id,
     title: node.text,
     tag: node.tag ?? node.tags?.[0],
+    image: node.image,
     children: (node.children ?? []).map(buildKanbanCard),
   };
 }
@@ -231,16 +233,9 @@ export function EditorPage() {
           onToggleCollapsed={toggleSidebar}
         />
 
-        {layoutType === 'kanban' ? (
-          <KanbanBoard
-            t={t}
-            kanban={kanbanFromMap}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
-        ) : (
-          // 아웃라인 분할 보기: 왼쪽 = 아웃라인 편집, 오른쪽 = 맵.
-          // 가운데 세로 스플리터로 비율(20~75%) 조절.
+        {/* 아웃라인 분할 보기: 왼쪽 = 아웃라인 편집, 오른쪽 = 맵/칸반.
+            가운데 세로 스플리터로 비율(20~75%) 조절 — 칸반 모드에서도 동작 */}
+        {(
           <div style={{ flex: 1, display: 'flex', minWidth: 0, position: 'relative' }}>
             {outlineSplit && (
               <>
@@ -261,20 +256,32 @@ export function EditorPage() {
                 />
               </>
             )}
-            <Canvas
-              t={t}
-              sample={map}
-              layoutType={layoutType}
-              selectedId={selectedId}
-              onSelect={(id) => {
-                setSelectedId(id);
+            {layoutType === 'kanban' ? (
+              <KanbanBoard
+                t={t}
+                kanban={kanbanFromMap}
+                selectedId={selectedId}
+                onSelect={(id) => {
+                  setSelectedId(id);
+                  if (id) setActiveSection('inspector');
+                }}
+              />
+            ) : (
+              <Canvas
+                t={t}
+                sample={map}
+                layoutType={layoutType}
+                selectedId={selectedId}
+                onSelect={(id) => {
+                  setSelectedId(id);
 
-                if (id) {
-                  setActiveSection('inspector');
-                }
-              }}
-              collabs={SAMPLE_COLLABS}
-            />
+                  if (id) {
+                    setActiveSection('inspector');
+                  }
+                }}
+                collabs={SAMPLE_COLLABS}
+              />
+            )}
           </div>
         )}
       </div>

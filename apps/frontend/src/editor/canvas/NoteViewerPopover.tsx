@@ -6,10 +6,46 @@
 // 창 조작: 제목줄 드래그 = 이동, 우하단 모서리 드래그(CSS resize) = 크기
 // 조절. (편집은 좌측 노트·태그 탭에서)
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { parseInlineMarks } from '@/editor/node-renderer/inlineMarks';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
+
+// Markdown 링크 — [라벨](url). 노트 원문에 그대로 남아 있는 링크를
+// 클릭 가능한 <a>로 렌더링한다 (MD 불러오기의 인용문 노트 등).
+const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g;
+
+// 한 줄 텍스트 → 인라인 마커 span + Markdown 링크 <a> 렌더링
+function InlineText({ t, text }: { t: ThemeTokens; text: string }) {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  const marks = (s: string) =>
+    parseInlineMarks(s).map((sg) => (
+      <span key={`m${key++}`} style={{
+        fontWeight: sg.b ? 700 : undefined,
+        fontStyle: sg.i ? 'italic' : undefined,
+        textDecoration: [sg.s ? 'line-through' : '', sg.u ? 'underline' : '']
+          .filter(Boolean).join(' ') || undefined,
+        background: sg.h ? '#FFE066' : undefined,
+        borderRadius: sg.h ? 2 : undefined,
+      }}>{sg.text}</span>
+    ));
+  for (const m of text.matchAll(MD_LINK_RE)) {
+    const idx = m.index ?? 0;
+    if (idx > last) parts.push(...marks(text.slice(last, idx)));
+    parts.push(
+      <a key={`a${key++}`} href={m[2]} target="_blank" rel="noopener noreferrer"
+         style={{ color: t.primary, textDecoration: 'underline', wordBreak: 'break-all' }}>
+        {m[1].trim() || m[2]}
+      </a>,
+    );
+    last = idx + m[0].length;
+  }
+  if (last < text.length) parts.push(...marks(text.slice(last)));
+  if (parts.length === 0) parts.push(...marks(text));
+  return <>{parts}</>;
+}
 
 interface Props {
   t: ThemeTokens;
@@ -65,7 +101,11 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
       : block.type;
 
   if (type === 'table') {
-    const rows = String(block.text || '').split('\n').filter((r) => r.trim());
+    // 구분선 행(|---|)은 표시하지 않는다 (예전 데이터 하위호환). 셀 안의
+    // 인라인 마커(**굵게** 등)·링크는 서식으로 렌더링 — 마커 문자 숨김.
+    const rows = String(block.text || '').split('\n')
+      .filter((r) => r.trim() && !/^[\s|:\-]+$/.test(r))
+      .map((r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, ''));
     return (
       <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 8, fontSize: 11.5 }}>
         <tbody>
@@ -76,11 +116,11 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
                   <th key={c} style={{
                     border: `1px solid ${t.border}`, padding: '4px 7px',
                     textAlign: 'left', background: t.surfaceAlt, fontWeight: 700,
-                  }}>{cell.trim()}</th>
+                  }}><InlineText t={t} text={cell.trim()} /></th>
                 ) : (
                   <td key={c} style={{
                     border: `1px solid ${t.border}`, padding: '4px 7px', textAlign: 'left',
-                  }}>{cell.trim()}</td>
+                  }}><InlineText t={t} text={cell.trim()} /></td>
                 ),
               )}
             </tr>
@@ -122,7 +162,8 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
   }
 
   // 문단·체크: 글자 크기 10, 입력한 줄 그대로 표시하되 인라인 마커
-  // (**굵게** ==하이라이트== 등)는 서식으로 렌더링 — 마커 문자는 숨김.
+  // (**굵게** ==하이라이트== 등)는 서식으로, [라벨](url)은 링크로 렌더링
+  // — 마커 문자는 숨김.
   return (
     <div style={{
       marginBottom: 6, lineHeight: 1.5, fontSize: 10, overflowX: 'auto',
@@ -130,16 +171,7 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
       {String(block.text).split('\n').map((line, li) => (
         <div key={li} style={{ whiteSpace: 'pre' }}>
           {li === 0 && type === 'checklist' ? (block.checked ? '☑ ' : '☐ ') : ''}
-          {parseInlineMarks(line).map((sg, k) => (
-            <span key={k} style={{
-              fontWeight: sg.b ? 700 : undefined,
-              fontStyle: sg.i ? 'italic' : undefined,
-              textDecoration: [sg.s ? 'line-through' : '', sg.u ? 'underline' : '']
-                .filter(Boolean).join(' ') || undefined,
-              background: sg.h ? '#FFE066' : undefined,
-              borderRadius: sg.h ? 2 : undefined,
-            }}>{sg.text}</span>
-          ))}
+          <InlineText t={t} text={line} />
         </div>
       ))}
     </div>

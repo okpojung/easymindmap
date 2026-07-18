@@ -22,7 +22,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType, SampleMap, Collaborator } from '@/editor/__samples__/types';
 import { computeLayout } from '@/layout/LayoutEngine';
 import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
-import { setLevelFontConfig } from '@/editor/node-renderer/sizeNodeForText';
+import { setLevelFontConfig, setLevelShapeConfig } from '@/editor/node-renderer/sizeNodeForText';
 import { NodeRenderer } from '@/editor/node-renderer/NodeRenderer';
 import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
 import {
@@ -71,7 +71,9 @@ interface Props {
   collabs: Collaborator[];
 }
 
-const ZOOM_MIN = 33;
+// 큰 맵(수백 노드)도 '맵 전체 맞추기'가 전부 담을 수 있게 최소 2%
+// (viewportStore의 하한과 반드시 같아야 한다 — 다르면 fit이 잘린다)
+const ZOOM_MIN = 2;
 const ZOOM_MAX = 400;
 
 function clampZoom(v: number) {
@@ -201,6 +203,7 @@ export function Canvas({
     // sizeNodeForText()와 NodeRenderer가 같은 크기·글꼴을 쓴다.
     // sample(map)이 의존성이므로 설정 변경 시 레이아웃도 다시 계산된다.
     setLevelFontConfig(sample.settings?.levelFonts);
+    setLevelShapeConfig(sample.settings?.levelShapes);
     return computeLayout(sample, layoutType, CX, CY, { x: spacingX, y: spacingY });
   }, [sample, layoutType, CX, CY, spacingX, spacingY]);
 
@@ -628,7 +631,9 @@ export function Canvas({
   });
 
   const handlePointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    const isMiddleButton = e.button === 1;
+    // 휠 클릭 + 우클릭 드래그 = 임시 Pan (Pan 모드를 켜지 않고도 화면 이동,
+    // 버튼을 떼면 자동 해제). 우클릭 컨텍스트 메뉴는 svg에서 차단.
+    const isMiddleButton = e.button === 1 || e.button === 2;
     const nodeEl = (e.target as Element).closest('[data-node-id]');
     const onEmptyCanvas = (e.target as Element).tagName === 'svg';
 
@@ -923,6 +928,7 @@ export function Canvas({
         // (노드 이동은 포인터 이벤트 기반이라 영향 없고, 외부 파일을
         // 캔버스로 끌어오는 드롭은 밖에서 시작되므로 그대로 동작한다)
         onDragStart={(e) => e.preventDefault()}
+        onContextMenu={(e) => e.preventDefault()}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

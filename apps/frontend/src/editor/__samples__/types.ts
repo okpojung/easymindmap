@@ -173,6 +173,7 @@ export interface SampleRoot {
 export interface LevelFontSetting {
   size?: number;
   family?: string; // CSS font-family 문자열
+  align?: TextAlign; // 레벨 기본 텍스트 맞춤 (노드별 설정이 우선)
 }
 
 export interface MapSettings {
@@ -182,6 +183,8 @@ export interface MapSettings {
   // 모든 노드에 서브트리 레이아웃을 일괄 적용하고, null/미지정이면
   // 상위 레이아웃을 따른다.
   levelLayouts?: (LayoutType | null | undefined)[];
+  // 레벨별 기본 도형 — index 0=1레벨(중심) … 4=5레벨+ (노드별 설정이 우선)
+  levelShapes?: (ShapeType | null | undefined)[];
 }
 
 export interface SampleMap {

@@ -21,7 +21,10 @@ export function measureTextApprox(s: string, fontSize: number): number {
   for (const ch of Array.from(s)) {
     if (CJK_RE.test(ch)) w += fontSize * 1.0;
     else if (ch === ' ') w += fontSize * 0.34;
-    else if (/\d/.test(ch)) w += fontSize * 0.58;
+    else if (/\d/.test(ch)) w += fontSize * 0.62;
+    // 대문자 라틴은 소문자보다 넓다 (KISTI·NHN·POS 등 약어가 많은 노드가
+    // 0.55 배율로는 과소측정되어 텍스트가 테두리를 넘던 문제 보정)
+    else if (/[A-Z]/.test(ch)) w += fontSize * 0.72;
     else w += fontSize * 0.55;
   }
   return w;

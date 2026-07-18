@@ -16,6 +16,7 @@ import {
   loadUserTemplates,
   saveUserTemplates,
   countMapNodes,
+  applyTemplateStyles,
   type UserTemplate,
 } from '@/utils/userTemplates';
 
@@ -70,16 +71,16 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
     flash(`'${name}' 템플릿으로 등록했습니다`);
   };
 
+  // '적용' = 현재 맵의 내용은 그대로 두고 템플릿의 "속성"만 입힌다 —
+  // 레벨별 대표 스타일(도형·색·테두리) + 맵 설정(레벨별 폰트·레이아웃)
+  // + 전체 레이아웃·간격. 맵 전체 교체는 '새 맵 > 이 템플릿으로 시작'.
   const apply = (tpl: UserTemplate) => {
-    loadMap(tpl.map);
-    // 맵 전체 레이아웃·간격 복원 — 문서(map)에는 노드별 오버라이드만 있고
-    // 전체 레이아웃은 editorUiStore가 들고 있어서 함께 되살려야
-    // 등록 당시 모습 그대로 나온다. (구버전 템플릿은 root.layoutType 폴백)
+    loadMap(applyTemplateStyles(map, tpl.map));
     const lt = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
     if (lt) setLayoutType(lt);
     if (tpl.editor?.spacingX) setSpacingX(tpl.editor.spacingX);
     if (tpl.editor?.spacingY) setSpacingY(tpl.editor.spacingY);
-    flash(`'${tpl.name}' 템플릿을 적용했습니다 (Ctrl+Z로 되돌리기)`);
+    flash(`'${tpl.name}' 템플릿의 스타일·설정을 현재 맵에 적용했습니다 (내용 유지 · Ctrl+Z로 되돌리기)`);
   };
 
   const remove = (tpl: UserTemplate) => {
@@ -147,7 +148,7 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             <button onClick={() => apply(tpl)}
-              title="현재 맵을 이 템플릿으로 교체합니다 (Ctrl+Z로 되돌리기 가능)"
+              title="현재 맵의 내용은 유지하고 템플릿의 스타일·레이아웃·맵 설정만 적용합니다 (Ctrl+Z로 되돌리기 가능)"
               style={{
                 fontSize: 10.5, padding: '3px 10px', borderRadius: 4, fontWeight: 600,
                 border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,

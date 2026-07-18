@@ -110,3 +110,50 @@ export function countMapNodes(map: SampleMap): number {
   walk(map.branches);
   return n;
 }
+
+// ---------------------------------------------------------------------------
+// 템플릿 "속성만" 적용 — 현재 맵의 내용(노드·텍스트·노트·태그)은 그대로
+// 두고, 템플릿의 맵 설정(레벨별 폰트·레이아웃)과 레벨별 대표 스타일
+// (도형·색·테두리)만 입힌다. (템플릿 패널의 '적용' — 맵 전체를 교체하지
+// 않는다. 교체가 필요하면 '새 맵 > 이 템플릿으로 시작'을 쓴다.)
+// ---------------------------------------------------------------------------
+
+import type { NodeStyle } from '@/editor/__samples__/types';
+
+// 템플릿 맵에서 depth별 대표 스타일(그 depth 첫 노드의 style)을 뽑는다
+function levelStylesOf(map: SampleMap): (NodeStyle | undefined)[] {
+  const styles: (NodeStyle | undefined)[] = [];
+  const walk = (nodes: MindNode[], depth: number) => {
+    for (const n of nodes) {
+      if (styles[depth] === undefined && n.style) styles[depth] = n.style;
+      if (styles.length <= depth) styles.length = depth + 1;
+      walk(n.children ?? [], depth + 1);
+    }
+  };
+  walk(map.branches as MindNode[], 1);
+  return styles;
+}
+
+export function applyTemplateStyles(current: SampleMap, tpl: SampleMap): SampleMap {
+  const levelStyles = levelStylesOf(tpl);
+  const maxLevel = levelStyles.length - 1;
+
+  const restyle = (n: MindNode, depth: number): MindNode => ({
+    ...n,
+    // depth별 대표 스타일 — 템플릿에 그 depth가 없으면 마지막 레벨 스타일
+    style: levelStyles[Math.min(depth, Math.max(1, maxLevel))] ?? undefined,
+    children: (n.children ?? []).map((c) => restyle(c, depth + 1)),
+  });
+
+  return {
+    ...current,
+    root: {
+      ...current.root,
+      style: tpl.root.style,
+      textAlign: tpl.root.textAlign ?? current.root.textAlign,
+    },
+    branches: current.branches.map((b) => restyle(b, 1)) as SampleMap['branches'],
+    // 맵 설정(레벨별 폰트·레이아웃)은 템플릿 것으로
+    settings: tpl.settings,
+  };
+}

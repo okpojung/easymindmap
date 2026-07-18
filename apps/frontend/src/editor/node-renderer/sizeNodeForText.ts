@@ -93,7 +93,10 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   const charW = (ch: string): number => {
     if (CJK_RE.test(ch)) return fontSize * 1.0;
     if (/[ ]/.test(ch)) return fontSize * 0.34;
-    if (/[\d]/.test(ch)) return fontSize * 0.58;
+    if (/[\d]/.test(ch)) return fontSize * 0.62;
+    // 대문자 라틴은 소문자보다 넓다 (KISTI·NHN·POS 등 약어가 많은 줄이
+    // 과소측정되어 텍스트가 테두리를 넘던 문제 보정 — mdTable.ts와 동일)
+    if (/[A-Z]/.test(ch)) return fontSize * 0.72;
     return fontSize * 0.55;
   };
   const measure = (s: string): number =>
@@ -138,8 +141,12 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
     let curW = 0;
     for (const w of words) {
       const wLen = measure(w);
-      if (cur === '' && wLen > innerMaxW) {
-        // Single word too long — break by char
+      if (wLen > innerMaxW) {
+        // 한 단어가 줄 폭보다 길다 — 줄 어디에서 나와도(줄 처음뿐 아니라
+        // 중간에서도) 지금 줄을 끊고 문자 단위로 분해한다. 그러지 않으면
+        // '과기정통부·…·나이스정보통신이' 같은 무공백 토큰이 한 줄로
+        // 밀려 들어가 테두리를 넘는다.
+        if (cur.trim()) wrappedLines.push(cur.trimEnd());
         let buf = '';
         let bufW = 0;
         for (const ch of Array.from(w)) {

@@ -62,6 +62,13 @@ function buildBody(
   const lines: string[] = [];
   lines.push(`# ${oneLine(map.root.text) || map.title}`);
   lines.push('');
+  // 루트의 문단 노트 → 제목 바로 아래 인용문 (불러오기 시 다시 루트 노트로)
+  for (const n of map.root.notes ?? []) {
+    if (n.type === 'paragraph' && n.text.trim()) {
+      for (const ln of n.text.split('\n')) lines.push(`> ${ln}`);
+      lines.push('');
+    }
+  }
 
   const walk = (node: MindNode, depth: number) => {
     // depth 1(2레벨)=## … depth 5(6레벨)=###### / 그 아래는 리스트 들여쓰기
@@ -84,15 +91,21 @@ function buildBody(
         lines.push(`![${oneLine(node.text).slice(0, 20)}](${node.image.src})`);
       }
     }
-    // 링크·노트 — 사람이 읽도록 일반 문단으로 (importMarkdown 파서는 무시)
+    // 링크 — 사람이 읽도록 일반 문단으로
     for (const l of node.links ?? []) {
       lines.push('');
       lines.push(`🔗 ${l.label ? `${oneLine(l.label)}: ` : ''}${l.url}`);
     }
+    // 문단 노트 → 인용문(>) · 코드 노트 → 펜스 (불러오기 시 다시 노트로)
     for (const n of node.notes ?? []) {
       if (n.type === 'paragraph' && n.text.trim()) {
         lines.push('');
-        lines.push(oneLine(n.text));
+        for (const ln of n.text.split('\n')) lines.push(`> ${ln}`);
+      } else if (n.type === 'code_block' && n.text.trim()) {
+        lines.push('');
+        lines.push('```' + (n.lang ?? ''));
+        lines.push(n.text);
+        lines.push('```');
       }
     }
     lines.push('');

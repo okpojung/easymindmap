@@ -16,6 +16,8 @@
 const CJK_RE = /[\u3000-\u9FFF\uAC00-\uD7AF]/;
 
 // sizeNodeForText와 동일한 근사 폭 측정 (글꼴 미측정 환경용)
+import { stripInlineMarks } from './inlineMarks';
+
 export function measureTextApprox(s: string, fontSize: number): number {
   let w = 0;
   for (const ch of Array.from(s)) {
@@ -112,8 +114,11 @@ export function layoutMdTable(text: string, fontSize: number): MdTableLayout | n
   const rowH = cellFs + 10;
 
   const colWs = parsed.headers.map((h, c) => {
-    let m = measureTextApprox(h, cellFs);
-    for (const row of parsed.rows) m = Math.max(m, measureTextApprox(row[c] ?? '', cellFs));
+    // 셀 폭은 마커(** 등)를 뺀 표시 텍스트 기준으로 잰다
+    let m = measureTextApprox(stripInlineMarks(h), cellFs);
+    for (const row of parsed.rows) {
+      m = Math.max(m, measureTextApprox(stripInlineMarks(row[c] ?? ''), cellFs));
+    }
     return Math.max(MIN_COL_W, Math.ceil(m) + CELL_PAD_X * 2);
   });
 

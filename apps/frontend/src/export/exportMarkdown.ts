@@ -55,6 +55,16 @@ function oneLine(text: string): string {
   return String(text || '').replace(/\s*\n+\s*/g, ' ').trim();
 }
 
+// 표 노트("셀 | 셀" 줄들) → Markdown 파이프 표 (헤더 다음 구분선 포함)
+function pushTableNote(lines: string[], text: string): void {
+  const rows = String(text).split('\n').filter((r) => r.trim());
+  rows.forEach((row, i) => {
+    const cells = row.split('|').map((c) => c.trim());
+    lines.push(`| ${cells.join(' | ')} |`);
+    if (i === 0) lines.push(`|${cells.map(() => '---').join('|')}|`);
+  });
+}
+
 function buildBody(
   map: SampleMap,
   images: MdImage[],
@@ -62,10 +72,19 @@ function buildBody(
   const lines: string[] = [];
   lines.push(`# ${oneLine(map.root.text) || map.title}`);
   lines.push('');
-  // 루트의 문단 노트 → 제목 바로 아래 인용문 (불러오기 시 다시 루트 노트로)
+  // 루트의 노트 → 제목 바로 아래 (문단=인용문, 표=파이프 표, 코드=펜스 —
+  // 불러오기 시 다시 루트 노트로)
   for (const n of map.root.notes ?? []) {
     if (n.type === 'paragraph' && n.text.trim()) {
       for (const ln of n.text.split('\n')) lines.push(`> ${ln}`);
+      lines.push('');
+    } else if (n.type === 'table' && n.text.trim()) {
+      pushTableNote(lines, n.text);
+      lines.push('');
+    } else if (n.type === 'code_block' && n.text.trim()) {
+      lines.push('```' + (n.lang ?? ''));
+      lines.push(n.text);
+      lines.push('```');
       lines.push('');
     }
   }
@@ -91,12 +110,13 @@ function buildBody(
         lines.push(`![${oneLine(node.text).slice(0, 20)}](${node.image.src})`);
       }
     }
-    // 링크 — 사람이 읽도록 일반 문단으로
+    // 링크 — Markdown 링크 문법으로 (불러오기 시 다시 노드 링크로 추출)
     for (const l of node.links ?? []) {
       lines.push('');
-      lines.push(`🔗 ${l.label ? `${oneLine(l.label)}: ` : ''}${l.url}`);
+      lines.push(`🔗 [${oneLine(l.label ?? '') || l.url}](${l.url})`);
     }
-    // 문단 노트 → 인용문(>) · 코드 노트 → 펜스 (불러오기 시 다시 노트로)
+    // 문단 노트 → 인용문(>) · 코드 노트 → 펜스 · 표 노트 → 파이프 표
+    // (불러오기 시 다시 노트로)
     for (const n of node.notes ?? []) {
       if (n.type === 'paragraph' && n.text.trim()) {
         lines.push('');
@@ -106,6 +126,9 @@ function buildBody(
         lines.push('```' + (n.lang ?? ''));
         lines.push(n.text);
         lines.push('```');
+      } else if (n.type === 'table' && n.text.trim()) {
+        lines.push('');
+        pushTableNote(lines, n.text);
       }
     }
     lines.push('');

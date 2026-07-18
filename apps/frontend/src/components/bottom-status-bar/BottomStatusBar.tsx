@@ -98,7 +98,7 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-      {stepBtn(<I.Minus size={12} />, () => onZoomChange(Math.max(33, zoom - 10)))}
+      {stepBtn(<I.Minus size={12} />, () => onZoomChange(Math.max(2, zoom - 10)))}
       <button onClick={() => onZoomChange(100)} title="100%로 재설정" style={{
         padding: '2px 10px', background: t.surface,
         border: `1px solid ${t.border}`, borderRadius: 4,

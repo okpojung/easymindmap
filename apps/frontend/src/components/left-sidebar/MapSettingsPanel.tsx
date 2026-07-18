@@ -8,7 +8,8 @@
 
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { LayoutType } from '@/editor/__samples__/types';
+import type { LayoutType, ShapeType, TextAlign } from '@/editor/__samples__/types';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import {
   LEVEL_FONT_DEFAULT_SIZES,
@@ -44,12 +45,52 @@ const LEVEL_LAYOUTS: { key: LayoutType | ''; label: string }[] = [
 
 const LAYOUT_LEVEL_LABELS = ['2레벨', '3레벨', '4레벨', '5레벨+'];
 
+// 1레벨(중심) = 맵 전체 레이아웃 — 레이아웃 탭과 동일한 선택지
+const ROOT_LAYOUTS: { key: LayoutType; label: string }[] = [
+  { key: 'radial-bidirectional' as LayoutType, label: '방사형 · 양쪽' },
+  { key: 'radial-right' as LayoutType,         label: '방사형 · 오른쪽' },
+  { key: 'tree-right' as LayoutType,           label: '트리 · 오른쪽' },
+  { key: 'tree-down' as LayoutType,            label: '트리 · 아래' },
+  { key: 'hierarchy-right' as LayoutType,      label: '계층형 · 오른쪽' },
+  { key: 'process-tree-right' as LayoutType,   label: '진행트리 · 오른쪽' },
+  { key: 'timeline' as LayoutType,             label: '시간배치 (타임라인)' },
+];
+
+// 텍스트 맞춤 선택지 — '' = 기본(중앙)
+const ALIGN_OPTIONS: { key: TextAlign | ''; label: string }[] = [
+  { key: '',       label: '맞춤 · 기본(중앙)' },
+  { key: 'left',   label: '왼쪽 맞춤' },
+  { key: 'center', label: '중앙 맞춤' },
+  { key: 'right',  label: '오른쪽 맞춤' },
+];
+
+// 레벨별 도형 선택지 — '' = 기본(둥근)
+const SHAPE_OPTIONS: { key: ShapeType | ''; label: string }[] = [
+  { key: '',              label: '기본 (둥근)' },
+  { key: 'rounded',       label: '둥근' },
+  { key: 'rectangle',     label: '사각' },
+  { key: 'pill',          label: '캡슐' },
+  { key: 'ellipse',       label: '원' },
+  { key: 'hexagon',       label: '육각' },
+  { key: 'diamond',       label: '다이아' },
+  { key: 'parallelogram', label: '평행' },
+  { key: 'arrow-left',    label: '화살◀' },
+  { key: 'arrow-right',   label: '화살▶' },
+  { key: 'cylinder',      label: '원통' },
+  { key: 'star',          label: '별' },
+];
+
 export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
   const levelFonts = useDocumentStore((s) => s.map.settings?.levelFonts);
   const levelLayouts = useDocumentStore((s) => s.map.settings?.levelLayouts);
   const updateLevelFont = useDocumentStore((s) => s.updateLevelFont);
   const resetLevelFonts = useDocumentStore((s) => s.resetLevelFonts);
   const setLevelLayout = useDocumentStore((s) => s.setLevelLayout);
+  const levelShapes = useDocumentStore((s) => s.map.settings?.levelShapes);
+  const setLevelShape = useDocumentStore((s) => s.setLevelShape);
+  const updateNodeLayoutType = useDocumentStore((s) => s.updateNodeLayoutType);
+  const mapLayoutType = useEditorUiStore((s) => s.layoutType);
+  const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
 
   const hasCustom = (levelFonts ?? []).some(
     (f) => f && ((f.size && f.size > 0) || (f.family && f.family.trim())),
@@ -130,6 +171,17 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
                     <option key={f.label} value={f.css}>{f.label}</option>
                   ))}
                 </select>
+                <select
+                  value={setting?.align ?? ''}
+                  onChange={(e) =>
+                    updateLevelFont(li, { align: (e.target.value || undefined) as TextAlign | undefined })}
+                  title="텍스트 맞춤 (노드별 설정이 우선)"
+                  style={{ ...selectStyle, width: 96 }}
+                >
+                  {ALIGN_OPTIONS.map((a) => (
+                    <option key={a.key} value={a.key}>{a.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
           );
@@ -144,9 +196,33 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
       <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 10, lineHeight: 1.5 }}>
         선택하면 해당 레벨의 <b>모든 노드</b>에 서브트리 레이아웃을 일괄
         적용합니다 (개별 노드 설정을 덮어씀). '기본'으로 되돌리면 상위
-        레이아웃을 따릅니다. Root(맵 전체)는 레이아웃 탭에서 설정합니다.
+        레이아웃을 따릅니다. 1레벨(중심)은 맵 전체 레이아웃입니다.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {/* 1레벨(중심) = 맵 전체 레이아웃 (레이아웃 탭과 동일 동작) */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '6px 8px', borderRadius: 5,
+          background: t.surfaceAlt, border: `1px solid ${t.border}`,
+        }}>
+          <span style={{ fontSize: 10.5, color: t.textMuted, width: 52, fontWeight: 600 }}>
+            1레벨 (중심)
+          </span>
+          <select
+            value={mapLayoutType}
+            onChange={(e) => {
+              const lt = e.target.value as LayoutType;
+              setLayoutType(lt);
+              updateNodeLayoutType('root', lt);
+            }}
+            title="맵 전체 레이아웃 (레이아웃 탭과 동일)"
+            style={{ ...selectStyle, flex: 1, minWidth: 0 }}
+          >
+            {ROOT_LAYOUTS.map((o) => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
+        </div>
         {LAYOUT_LEVEL_LABELS.map((label, i) => {
           const level = i + 1; // 1~4 (4 = Level 4+)
           const value = levelLayouts?.[level] ?? '';
@@ -173,6 +249,40 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
             </div>
           );
         })}
+      </div>
+
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: t.textSubtle,
+        textTransform: 'uppercase', letterSpacing: 0.5,
+        margin: '16px 0 6px',
+      }}>레벨별 도형 (맵 전체 설정)</div>
+      <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 10, lineHeight: 1.5 }}>
+        레벨의 기본 도형입니다. 스타일 탭에서 노드별로 정한 도형이
+        우선하고, '기본'이면 둥근 사각형입니다.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {LEVEL_LABELS.map((label, li) => (
+          <div key={`shape-${label}`} style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 8px', borderRadius: 5,
+            background: t.surfaceAlt, border: `1px solid ${t.border}`,
+          }}>
+            <span style={{ fontSize: 10.5, color: t.textMuted, width: 52, fontWeight: 600 }}>
+              {label}
+            </span>
+            <select
+              value={levelShapes?.[li] ?? ''}
+              onChange={(e) =>
+                setLevelShape(li, (e.target.value || null) as ShapeType | null)}
+              title={`${label} 기본 도형`}
+              style={{ ...selectStyle, flex: 1, minWidth: 0 }}
+            >
+              {SHAPE_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        ))}
       </div>
     </div>
   );

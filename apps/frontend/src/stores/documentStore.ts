@@ -13,6 +13,7 @@
 import { create } from 'zustand';
 import { SAMPLE_ROADMAP, SAMPLE_META, SAMPLE_KANBAN } from '@/editor/__samples__';
 import type {
+  ShapeType,
   SampleMap,
   SampleRoot,
   SampleBranch,
@@ -90,6 +91,8 @@ interface DocumentState {
   // 레벨별 레이아웃 — 해당 레벨(1~3, 4=Level4+)의 모든 노드에 서브트리
   // 레이아웃을 일괄 적용 (null = 해제하고 상위 레이아웃 따름)
   setLevelLayout: (level: number, layoutType: LayoutType | null) => void;
+  // 레벨별 기본 도형 — index 0=1레벨(중심) … 4=5레벨+ (null = 기본)
+  setLevelShape: (level: number, shape: ShapeType | null) => void;
 
   // 현재 맵 전체 교체 (템플릿 적용 등 — undo 히스토리에 기록됨)
   loadMap: (map: SampleMap) => void;
@@ -198,7 +201,10 @@ function normalizeNode<T extends MindNode>(node: T): T {
 
   return {
     ...node,
-    textAlign: node.textAlign ?? 'center', // 기본 정렬 = 중앙
+    // 정렬은 저장값 그대로 — 미지정이면 렌더 시 '레벨 기본 맞춤(맵 설정)
+    // → 중앙' 순으로 적용된다 (여기서 center를 강제하면 레벨 맞춤이
+    // 영원히 적용되지 못한다)
+    textAlign: node.textAlign,
     edgeType: withEdge.edgeType ?? resolveEdgeType(node.layoutType ?? 'radial'),
     children: node.children ? node.children.map((child) => normalizeNode(child)) : [],
   } as T;
@@ -209,7 +215,7 @@ function cloneMap(map: SampleMap): SampleMap {
     ...map,
     root: {
       ...map.root,
-      textAlign: map.root.textAlign ?? 'center', // 기본 정렬 = 중앙
+      textAlign: map.root.textAlign,
     },
     branches: map.branches.map((branch) => normalizeNode(branch)),
   };
@@ -809,6 +815,22 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
           edgeType: resolveEdgeType(layoutType),
           children: clearLayoutTypeRecursive(n.children ?? []),
         })),
+      };
+    });
+  },
+
+  setLevelShape: (level, shape) => {
+    if (level < 0 || level > 4) return;
+    set((state) => {
+      const prev = state.map.settings?.levelShapes ?? [];
+      const next = [...prev];
+      for (let i = 0; i < 5; i++) if (next[i] === undefined) next[i] = null;
+      next[level] = shape;
+      return {
+        map: {
+          ...state.map,
+          settings: { ...state.map.settings, levelShapes: next },
+        },
       };
     });
   },

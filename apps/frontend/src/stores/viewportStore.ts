@@ -3,8 +3,13 @@
 
 import { create } from 'zustand';
 
+// 최소 2% — '맵 전체 맞추기'가 수백 노드 맵도 전부 담을 수 있어야 하므로
+// (예전 33%·10% 하한은 큰 맵에서 fit이 잘리는 원인이었다. 10-canvas.md §6)
+export const ZOOM_MIN = 2;
+export const ZOOM_MAX = 400;
+
 interface ViewportState {
-  zoom: number;     // 33 ~ 400 (percent for the UI; multiply by /100 for transform scale)
+  zoom: number;     // ZOOM_MIN ~ ZOOM_MAX (percent for the UI; /100 for transform scale)
   panX: number;     // viewBox units
   panY: number;
   panMode: boolean; // Hand tool — drag anywhere on the canvas pans the view
@@ -27,10 +32,10 @@ export const useViewportStore = create<ViewportState>((set) => ({
   panMode: false,
   fitRequestId: 0,
 
-  setZoom: (zoom) => set({ zoom: clamp(zoom, 33, 400) }),
+  setZoom: (zoom) => set({ zoom: clamp(zoom, ZOOM_MIN, ZOOM_MAX) }),
   setPan: (panX, panY) => set({ panX, panY }),
-  zoomIn:  () => set((s) => ({ zoom: clamp(s.zoom + 10, 33, 400) })),
-  zoomOut: () => set((s) => ({ zoom: clamp(s.zoom - 10, 33, 400) })),
+  zoomIn:  () => set((s) => ({ zoom: clamp(s.zoom + 10, ZOOM_MIN, ZOOM_MAX) })),
+  zoomOut: () => set((s) => ({ zoom: clamp(s.zoom - 10, ZOOM_MIN, ZOOM_MAX) })),
   setPanMode: (panMode) => set({ panMode }),
   togglePanMode: () => set((s) => ({ panMode: !s.panMode })),
   requestFit: () => set((s) => ({ fitRequestId: s.fitRequestId + 1 })),

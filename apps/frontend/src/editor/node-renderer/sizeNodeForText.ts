@@ -77,6 +77,21 @@ export function levelFontFamily(depth: number): string | undefined {
   return f && f.trim() ? f : undefined;
 }
 
+// 레벨 기본 텍스트 맞춤 (맵 설정) — 노드별 textAlign이 없을 때 적용
+export function levelTextAlign(depth: number): 'left' | 'center' | 'right' | undefined {
+  return levelFontConfig[levelIndex(depth)]?.align ?? undefined;
+}
+
+// 레벨 기본 도형 (맵 설정) — 노드별 shapeType이 없을 때 적용
+let levelShapeConfig: (string | null | undefined)[] = [];
+export function setLevelShapeConfig(cfg?: (string | null | undefined)[]): void {
+  levelShapeConfig = cfg ?? [];
+}
+export function levelShape(depth: number): string | undefined {
+  const v = levelShapeConfig[levelIndex(depth)];
+  return v ?? undefined;
+}
+
 const CJK_RE = /[\u3000-\u9FFF\uAC00-\uD7AF]/;
 
 export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}): NodeSize {

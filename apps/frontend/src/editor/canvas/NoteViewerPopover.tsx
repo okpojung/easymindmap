@@ -7,6 +7,7 @@
 // 조절. (편집은 좌측 노트·태그 탭에서)
 
 import { useRef, useState } from 'react';
+import { parseInlineMarks } from '@/editor/node-renderer/inlineMarks';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
 
@@ -120,15 +121,27 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
     );
   }
 
-  // 문단·체크: 글자 크기 10, 입력한 줄 그대로(pre) 표시 — 창 폭보다 긴
-  // 줄은 블록 가로 스크롤바로 본다.
+  // 문단·체크: 글자 크기 10, 입력한 줄 그대로 표시하되 인라인 마커
+  // (**굵게** ==하이라이트== 등)는 서식으로 렌더링 — 마커 문자는 숨김.
   return (
     <div style={{
-      marginBottom: 6, lineHeight: 1.5, whiteSpace: 'pre', fontSize: 10,
-      overflowX: 'auto',
+      marginBottom: 6, lineHeight: 1.5, fontSize: 10, overflowX: 'auto',
     }}>
-      {type === 'checklist' ? (block.checked ? '☑ ' : '☐ ') : ''}
-      {block.text}
+      {String(block.text).split('\n').map((line, li) => (
+        <div key={li} style={{ whiteSpace: 'pre' }}>
+          {li === 0 && type === 'checklist' ? (block.checked ? '☑ ' : '☐ ') : ''}
+          {parseInlineMarks(line).map((sg, k) => (
+            <span key={k} style={{
+              fontWeight: sg.b ? 700 : undefined,
+              fontStyle: sg.i ? 'italic' : undefined,
+              textDecoration: [sg.s ? 'line-through' : '', sg.u ? 'underline' : '']
+                .filter(Boolean).join(' ') || undefined,
+              background: sg.h ? '#FFE066' : undefined,
+              borderRadius: sg.h ? 2 : undefined,
+            }}>{sg.text}</span>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

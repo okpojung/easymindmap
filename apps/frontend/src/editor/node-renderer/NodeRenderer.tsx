@@ -18,7 +18,13 @@ import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, isNoteKind, type ContentKind } from './nodeContent';
 import { IndicatorGlyph, NoteTypeGlyph } from './IndicatorGlyph';
-import { levelFontFamily, levelFontSize, scaleNodeImage } from './sizeNodeForText';
+import {
+  levelFontFamily,
+  levelFontSize,
+  levelShape,
+  levelTextAlign,
+  scaleNodeImage,
+} from './sizeNodeForText';
 import { layoutMdTable, MD_TABLE_CELL_PAD_X } from './mdTable';
 import { parseInlineMarks, toggleMarkRange } from './inlineMarks';
 import { measureTextPx } from './textMeasure';
@@ -215,7 +221,9 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const contentIcons = nodeContentIndicators(n);
 
   const style = n.style ?? {};
-  const shape: ShapeType = style.shapeType ?? 'rounded';
+  // 도형: 노드별 설정 → 레벨 기본 도형(맵 설정) → 둥근
+  const shape: ShapeType =
+    style.shapeType ?? (levelShape(n.depth) as ShapeType | undefined) ?? 'rounded';
 
   const fill = style.fillColor ?? colors.fill;
   const border = style.borderColor ?? colors.border;
@@ -248,8 +256,8 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const iconSide: 'left' | 'right' = n.iconSide ?? 'left';
   const iconX = iconSide === 'right' ? n.x + n.w / 2 - 16 : n.x - n.w / 2 + 12;
 
-  // 기본 정렬 = 중앙 (스타일 탭에서 왼쪽/오른쪽으로 변경 가능)
-  const textAlign: TextAlign = n.textAlign ?? 'center';
+  // 정렬: 노드별 설정 → 레벨 기본 맞춤(맵 설정) → 중앙
+  const textAlign: TextAlign = n.textAlign ?? levelTextAlign(n.depth) ?? 'center';
   const textAnchor =
     textAlign === 'right' ? 'end' : textAlign === 'center' ? 'middle' : 'start';
   // 중앙 정렬은 박스 중앙이 아니라 "텍스트가 실제로 쓸 수 있는 띠"
@@ -526,17 +534,40 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
                           stroke={gridColor} strokeWidth={0.7} opacity={0.55} />
                   ))}
                   {allRows.map((cells, r) =>
-                    cells.map((cell, c) => (
-                      <text key={`c${r}-${c}`}
-                            x={colX[c] + MD_TABLE_CELL_PAD_X}
-                            y={tY + r * rowH + rowH / 2 + cellFs * 0.34}
-                            fontSize={cellFs}
-                            fontWeight={r === 0 ? 700 : 400}
-                            fill={textColor}
-                            style={{ fontFamily }}>
-                        {cell}
-                      </text>
-                    )),
+                    cells.map((cell, c) => {
+                      // 셀 안 인라인 마커(**굵게** 등) — 마커 문자는 숨기고
+                      // 서식만 적용 (tspan 구간, 실측 오프셋)
+                      const cSegs = parseInlineMarks(cell);
+                      let cx2 = colX[c] + MD_TABLE_CELL_PAD_X;
+                      return (
+                        <text key={`c${r}-${c}`}
+                              y={tY + r * rowH + rowH / 2 + cellFs * 0.34}
+                              fontSize={cellFs}
+                              fill={textColor}
+                              style={{ fontFamily }}>
+                          {cSegs.map((sg, k) => {
+                            const x2 = cx2;
+                            cx2 += measureTextPx(sg.text, cellFs, {
+                              weight: r === 0 || sg.b ? 700 : 400,
+                              italic: sg.i,
+                              family: fontFamily,
+                            });
+                            const deco = [
+                              sg.s ? 'line-through' : '',
+                              sg.u ? 'underline' : '',
+                            ].filter(Boolean).join(' ');
+                            return (
+                              <tspan key={k} x={x2}
+                                     fontWeight={r === 0 || sg.b ? 700 : 400}
+                                     fontStyle={sg.i ? 'italic' : 'normal'}
+                                     style={{ textDecoration: deco || undefined }}>
+                                {sg.text}
+                              </tspan>
+                            );
+                          })}
+                        </text>
+                      );
+                    }),
                   )}
                 </g>
               );

@@ -69,7 +69,11 @@ interface ExportNode {
   colorKey?: string;
   // 텍스트 강조·정렬 (에디터 스타일 탭과 동일하게 표시)
   textAlign?: string;
-  style?: { strike?: boolean; highlight?: boolean };
+  style?: {
+    strike?: boolean; highlight?: boolean;
+    // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용
+    fillColor?: string; borderColor?: string; textColor?: string;
+  };
   // 노드 안 사진 (data URL 또는 원본 URL) — 노드 폭에 맞춰 축소 표시
   image?: { src: string; w: number; h: number };
   // Layout preservation: per-node subtree override + radial side.
@@ -128,8 +132,16 @@ function toExportNode(
     image: node.image,
     // 실효 정렬을 굽는다 — 뷰어는 맵 설정(레벨별 맞춤)을 모른다
     textAlign: node.textAlign ?? levelTextAlign(depth),
-    style: node.style && (node.style.strike || node.style.highlight)
-      ? { strike: node.style.strike || undefined, highlight: node.style.highlight || undefined }
+    style: node.style && (node.style.strike || node.style.highlight ||
+      node.style.fillColor || node.style.borderColor || node.style.textColor)
+      ? {
+        strike: node.style.strike || undefined,
+        highlight: node.style.highlight || undefined,
+        // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용 (원본 색 파리티)
+        fillColor: node.style.fillColor || undefined,
+        borderColor: node.style.borderColor || undefined,
+        textColor: node.style.textColor || undefined,
+      }
       : undefined,
     layoutType: node.layoutType,
     side: resolveSide?.(node.id) ?? node.side,
@@ -155,7 +167,7 @@ const VIEWER_JS = String.raw`
   var noteBody = document.getElementById('mm-note-body');
   // 노트 글꼴·크기 (맵 설정 — 기본 13pt, 에디터 노트 뷰어와 동일)
   var NOTE_FONT = DATA.noteFont || {};
-  noteBody.style.fontSize = ((NOTE_FONT.size > 0 ? NOTE_FONT.size : 13)) + 'px';
+  noteBody.style.fontSize = ((NOTE_FONT.size > 0 ? NOTE_FONT.size : 15)) + 'px';
   if (NOTE_FONT.family) noteBody.style.fontFamily = NOTE_FONT.family;
   var noteTitle = document.getElementById('mm-note-title');
   var NS = 'http://www.w3.org/2000/svg';
@@ -167,15 +179,35 @@ const VIEWER_JS = String.raw`
   };
   // 노드/엣지 스킨 — 다크 모드에서 에디터(THEMES.dark)와 동일한 느낌으로
   // 노드 카드·글자·연결선까지 통째로 바뀐다 (setDark → render()).
+  // 노드 패밀리 팔레트 — 에디터 디자인 토큰(THEMES.light/dark)과 동일.
+  // depth1 = colorKey 패밀리(파스텔 채움 + 컬러 테두리), depth2+ = L2
+  // (흰 채움 + 황갈 테두리) — "뷰어 테두리 색이 원본과 다르다" 수정.
+  var FAM_LIGHT = {
+    root: { fill: '#D97706', text: '#FFFFFF', border: '#B45309' },
+    l1A: { fill: '#FEF3C7', text: '#78350F', border: '#F59E0B' },
+    l1B: { fill: '#DBEAFE', text: '#1E3A8A', border: '#3B82F6' },
+    l1C: { fill: '#DCFCE7', text: '#14532D', border: '#22C55E' },
+    l1D: { fill: '#FEE2E2', text: '#7F1D1D', border: '#EF4444' },
+    l1E: { fill: '#EDE9FE', text: '#4C1D95', border: '#8B5CF6' },
+    l2:  { fill: '#FFFFFF', text: '#1F1B16', border: '#D6CBB7' }
+  };
+  var FAM_DARK = {
+    root: { fill: '#F59E0B', text: '#1A120A', border: '#FBBF24' },
+    l1A: { fill: '#3B2A0A', text: '#FBBF24', border: '#F59E0B' },
+    l1B: { fill: '#0C2340', text: '#93C5FD', border: '#3B82F6' },
+    l1C: { fill: '#0F2F1E', text: '#86EFAC', border: '#22C55E' },
+    l1D: { fill: '#3B1414', text: '#FCA5A5', border: '#EF4444' },
+    l1E: { fill: '#231640', text: '#C4B5FD', border: '#8B5CF6' },
+    l2:  { fill: '#1C1F26', text: '#E8E6E3', border: '#3A3F4B' }
+  };
   var SKIN_LIGHT = {
-    rootFill: '#C2410C', rootText: '#FFFFFF', nodeFill: '#FFFFFF',
-    text: '#3F3428', edge: '#C9BBA4', tagBase: '#FFFDF8', hl: '#FFE066'
+    fam: FAM_LIGHT, edge: '#B8A888', tagBase: '#FFFDF8', hl: '#FFE066'
   };
   var SKIN_DARK = {
-    rootFill: '#F59E0B', rootText: '#1A120A', nodeFill: '#1C1F26',
-    text: '#E8E6E3', edge: '#4A4E5A', tagBase: '#14171D', hl: '#3B2A0A'
+    fam: FAM_DARK, edge: '#4A4E5A', tagBase: '#14171D', hl: '#3B2A0A'
   };
   var SKIN = SKIN_LIGHT;
+  function famOf(colorKey) { return SKIN.fam[colorKey] || SKIN.fam.l2; }
   function branchColor(key) { return COLORS[key] || '#8B7355'; }
 
   // ---- effective layout ----------------------------------------------------
@@ -682,12 +714,36 @@ const VIEWER_JS = String.raw`
       measure(DATA.root, 0, rootEff);
       arrange(DATA.root, 40, 40);
     }
-    drawNode(DATA.root, 0, null);
+    // Focus 모드(에디터 Alt+F 파리티) — 배치는 전체 기준 그대로 두고,
+    // 선택 노드의 서브트리만 그린다 (fit이 곧 서브트리 맞춤이 된다)
+    var start = DATA.root, sd = 0, scol = null;
+    if (FOCUS && FOCUS !== DATA.root.id) {
+      (function walk(n, depth, color) {
+        var c2 = depth === 0 ? null
+          : (depth === 1 ? famOf(n.colorKey).border : (color || SKIN.fam.l2.border));
+        if (n.id === FOCUS) { start = n; sd = depth; scol = color; return true; }
+        var kids = n.children || [];
+        for (var i = 0; i < kids.length; i++) {
+          if (walk(kids[i], depth + 1, c2)) return true;
+        }
+        return false;
+      })(DATA.root, 0, null);
+      if (start._cx == null) { start = DATA.root; sd = 0; scol = null; }
+    }
+    drawNode(start, sd, scol);
     updateCount();
   }
 
   function drawNode(node, depth, parentColor) {
-    var color = depth === 0 ? COLORS.root : (depth === 1 ? branchColor(node.colorKey) : (parentColor || '#8B7355'));
+    // 액센트(접기 칩·태그·표 격자) = 브랜치 테두리 색 (에디터와 동일 계열)
+    var color = depth === 0 ? SKIN.fam.root.border
+      : (depth === 1 ? famOf(node.colorKey).border : (parentColor || SKIN.fam.l2.border));
+    // 노드 채움·테두리·글자 = 에디터 패밀리 팔레트, 노드별 지정 색 우선
+    var fam0 = depth === 0 ? SKIN.fam.root : (depth === 1 ? famOf(node.colorKey) : SKIN.fam.l2);
+    var stPre = node.style || {};
+    var nodeFill2 = stPre.fillColor || fam0.fill;
+    var nodeStroke2 = stPre.borderColor || fam0.border;
+    var nodeText2 = stPre.textColor || fam0.text;
     var kids = node.children || [];
 
     if (depth === 0 && node._eff === 'timeline') {
@@ -715,6 +771,16 @@ const VIEWER_JS = String.raw`
     }
 
     var g = el('g', { 'class': 'mm-node' + (SEL === node.id ? ' mm-selected' : '') }, world);
+    if (SEL === node.id) {
+      // 에디터와 동일: 노드 테두리 "밖" 별도 점선 사각형으로 선택 표시
+      // (도형 테두리 스타일을 바꾸면 원래 점선 테두리로 오해된다)
+      el('rect', {
+        x: node._cx - node._w / 2 - 5, y: node._cy - node._h / 2 - 5,
+        width: node._w + 10, height: node._h + 10, rx: 12,
+        fill: 'none', stroke: '#D97706', 'stroke-width': 1.8,
+        'stroke-dasharray': '4 3'
+      }, g);
+    }
     g.addEventListener('click', function (ev) {
       ev.stopPropagation();
       SEL = node.id;
@@ -725,12 +791,12 @@ const VIEWER_JS = String.raw`
     el('rect', {
       x: x0, y: y0, width: node._w, height: node._h,
       rx: isRoot ? 13 : 9,
-      fill: isRoot ? SKIN.rootFill : SKIN.nodeFill,
-      stroke: isRoot ? SKIN.rootFill : color,
+      fill: nodeFill2,
+      stroke: isRoot ? (stPre.borderColor || SKIN.fam.root.fill) : nodeStroke2,
       'stroke-width': isRoot ? 0 : 1.4
     }, g);
 
-    var textColor = isRoot ? SKIN.rootText : SKIN.text;
+    var textColor = nodeText2;
     var tx = x0 + PAD_X;
     if (node.icon) {
       var ic = el('text', { x: tx, y: y0 + PAD_Y + node._fs * 0.85, 'font-size': node._fs + 1 }, g);
@@ -989,7 +1055,7 @@ const VIEWER_JS = String.raw`
       // 서브트리를 알려야 하므로 항상 표시.
       var chip = el('g', { cursor: 'pointer',
         'class': node._open ? 'mm-toggle mm-toggle-open' : 'mm-toggle' }, g);
-      el('circle', { cx: ccx, cy: ccy, r: 8.5, fill: node._open ? SKIN.nodeFill : color,
+      el('circle', { cx: ccx, cy: ccy, r: 8.5, fill: node._open ? SKIN.fam.l2.fill : color,
         stroke: color, 'stroke-width': 1.3 }, chip);
       var ct = el('text', { x: ccx, y: ccy + 3.4, 'text-anchor': 'middle',
         'font-size': 9.5, 'font-weight': 700, fill: node._open ? color : '#FFFFFF' }, chip);
@@ -1167,6 +1233,22 @@ const VIEWER_JS = String.raw`
     }
 
     notePanel.style.display = 'block';
+    // 자동 크기 — 에디터 노트 뷰어 팝업과 동일: 내용의 자연 크기에 맞추되
+    // 최소 220×120 ~ 최대 "화면 4분할 시 우측 상단"(화면의 1/2 × 1/2).
+    // 먼저 최대 폭으로 그려 내용 폭(max-content)을 재고 즉시 줄인다.
+    var maxW2 = Math.floor(window.innerWidth / 2);
+    var maxH2 = Math.floor(window.innerHeight / 2);
+    notePanel.style.width = maxW2 + 'px';
+    notePanel.style.height = 'auto';
+    notePanel.style.maxHeight = maxH2 + 'px';
+    var prevW3 = noteBody.style.width;
+    noteBody.style.width = 'max-content';
+    var natW3 = noteBody.offsetWidth;
+    noteBody.style.width = prevW3;
+    var w3 = Math.min(maxW2, Math.max(220, natW3 + 34));
+    notePanel.style.width = w3 + 'px';
+    var h3 = Math.min(maxH2, Math.max(120, notePanel.scrollHeight + 4));
+    notePanel.style.height = h3 + 'px';
   }
   document.getElementById('mm-note-close').addEventListener('click', function () {
     notePanel.style.display = 'none';
@@ -1195,10 +1277,23 @@ const VIEWER_JS = String.raw`
 
   // ---- viewport: wheel zoom (cursor-anchored) + drag pan + fit ---------------
   var view = { x: 0, y: 0, k: 1 };
-  var SEL = null; // 클릭으로 선택한 노드 id (⌖ 중앙 보기 대상)
+  var SEL = null; // 클릭으로 선택한 노드 id (⌖ 보기 대상)
+  var FOCUS = null; // ⌖ Focus 모드 — 이 노드의 서브트리만 표시 (null=전체)
   function applyView() {
     world.setAttribute('transform',
       'translate(' + view.x + ',' + view.y + ') scale(' + view.k + ')');
+    var pct = document.getElementById('mm-zoom-pct');
+    if (pct) pct.textContent = Math.round(view.k * 100) + '%';
+  }
+  // 화면 중앙 기준 줌 (에디터 축소/확대 버튼과 동일: 10% 단위)
+  function zoomTo(kNext) {
+    var rect = svg.getBoundingClientRect();
+    var cx = rect.width / 2, cy = rect.height / 2;
+    var k2 = Math.min(4, Math.max(0.02, kNext));
+    view.x = cx - ((cx - view.x) / view.k) * k2;
+    view.y = cy - ((cy - view.y) / view.k) * k2;
+    view.k = k2;
+    applyView();
   }
 
   svg.addEventListener('wheel', function (e) {
@@ -1206,7 +1301,7 @@ const VIEWER_JS = String.raw`
     var rect = svg.getBoundingClientRect();
     var px = e.clientX - rect.left, py = e.clientY - rect.top;
     var factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    var k2 = Math.min(3, Math.max(0.1, view.k * factor));
+    var k2 = Math.min(4, Math.max(0.02, view.k * factor)); // 에디터와 동일 (2%~400%)
     view.x = px - ((px - view.x) / view.k) * k2;
     view.y = py - ((py - view.y) / view.k) * k2;
     view.k = k2;
@@ -1266,23 +1361,42 @@ const VIEWER_JS = String.raw`
   }
 
   document.getElementById('mm-fit').addEventListener('click', fit);
+  document.getElementById('mm-zoom-out').addEventListener('click', function () {
+    zoomTo((Math.round(view.k * 100) - 10) / 100); // 에디터와 동일: 10%p 단위
+  });
+  document.getElementById('mm-zoom-in').addEventListener('click', function () {
+    zoomTo((Math.round(view.k * 100) + 10) / 100);
+  });
+  document.getElementById('mm-zoom-pct').addEventListener('click', function () {
+    zoomTo(1);
+  });
   // 선택 노드 화면 중앙 보기 — 배치 좌표(_cx/_cy)를 현재 줌 유지한 채 중앙에
-  document.getElementById('mm-center').addEventListener('click', function () {
-    var found = null;
-    if (SEL) {
-      (function walk(n) {
-        if (n.id === SEL) { found = n; return; }
-        var kids = n.children || [];
-        for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
-      })(DATA.root);
+  // ⌖ 선택 노드 화면 중앙 보기 — 에디터(Alt+F)와 동일한 토글:
+  // 켜면 선택 노드(없으면 중심 주제)의 서브트리만 표시하고 화면에 맞추고,
+  // 다시 누르면 전체 맵으로 복귀. 활성 상태는 버튼 하이라이트 + 아이콘
+  // 전환(FocusOff)으로 표시한다.
+  var centerBtn = document.getElementById('mm-center');
+  function setCenterIcon(on) {
+    centerBtn.innerHTML = on
+      ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/><line x1="8.6" y1="8.6" x2="13.4" y2="13.4"/><line x1="13.4" y1="8.6" x2="8.6" y2="13.4"/></svg>'
+      : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg>';
+    centerBtn.className = on ? 'icon active' : 'icon';
+    centerBtn.setAttribute('title', on
+      ? '선택 노드 보기 취소 — 맵 전체 보기'
+      : '선택 노드 화면 중앙 보기 (노드를 클릭해 선택 · 다시 누르면 전체 보기)');
+  }
+  centerBtn.addEventListener('click', function () {
+    if (FOCUS) {
+      FOCUS = null;
+      setCenterIcon(false);
+      render();
+      fit();
+      return;
     }
-    // 선택이 없거나(또는 접힌 서브트리 안이라 좌표가 없으면) 중심 주제로
-    if (!found || found._cx == null) found = DATA.root;
-    if (found._cx == null) return;
-    var rect = svg.getBoundingClientRect();
-    view.x = rect.width / 2 - found._cx * view.k;
-    view.y = rect.height / 2 - found._cy * view.k;
-    applyView();
+    FOCUS = SEL || DATA.root.id;
+    setCenterIcon(true);
+    render();
+    fit(); // 그려진 것이 서브트리뿐이므로 fit = 서브트리 맞춤
   });
   var panBtn = document.getElementById('mm-pan');
   panBtn.addEventListener('click', function () {
@@ -1296,6 +1410,7 @@ const VIEWER_JS = String.raw`
   function setDark(on) {
     document.body.classList.toggle('mm-dark', on);
     darkBtn.textContent = on ? '☀' : '🌙';
+    darkBtn.setAttribute('title', on ? '라이트 모드로 전환' : '다크 모드로 전환');
     SKIN = on ? SKIN_DARK : SKIN_LIGHT;
     render(); // 노드 카드·글자·연결선까지 스킨 교체 (에디터 다크와 파리티)
     try { localStorage.setItem('easymindmap.viewer.dark', on ? '1' : '0'); } catch (e) {}
@@ -1412,10 +1527,6 @@ const VIEWER_CSS = `
     display: inline-flex; align-items: center; justify-content: center;
   }
   header button.active { background: #F0E2C4; border-color: #D8B25E; color: #8A5A00; }
-  .mm-node.mm-selected > rect:first-of-type {
-    stroke: #D97706 !important; stroke-width: 2.6 !important;
-    stroke-dasharray: 5 3;
-  }
   /* 커스텀 툴팁 — 커서가 설명을 가리지 않게 요소 "위쪽"에 표시 */
   #mm-tip {
     position: fixed; z-index: 99999; pointer-events: none; display: none;
@@ -1440,6 +1551,42 @@ const VIEWER_CSS = `
   }
   body.mm-dark footer { background: #1F2229; color: #8A8DA0; border-color: #33363E; }
   .mm-toggle:hover circle { filter: brightness(0.93); }
+  /* 우하단 줌 바 — 에디터 하단 상태바의 축소/100%/확대와 동일 */
+  #mm-zoombar {
+    position: fixed; right: 12px; bottom: 34px; z-index: 40;
+    display: flex; align-items: center; gap: 3px;
+    background: #FFFDF8; border: 1px solid #D8CBB2; border-radius: 8px;
+    padding: 3px 4px; box-shadow: 0 2px 8px rgba(80, 60, 20, 0.12);
+  }
+  #mm-zoombar button {
+    border: 1px solid #E4D9C3; background: #FFF; color: #3F3428;
+    border-radius: 5px; cursor: pointer; font-size: 12px; height: 22px;
+    min-width: 24px; padding: 0 5px;
+  }
+  #mm-zoombar button:hover { background: #F3ECDD; }
+  #mm-zoom-pct { min-width: 46px; font-weight: 700; }
+  body.mm-dark #mm-zoombar { background: #1F2229; border-color: #3A3E47; }
+  body.mm-dark #mm-zoombar button {
+    background: #262A31; color: #D8D4CC; border-color: #3A3E47;
+  }
+  body.mm-dark #mm-zoombar button:hover { background: #2E333C; }
+  /* 다크 모드 — 노트 패널 내부(블록·표·코드·글자)까지 다크 (에디터 파리티) */
+  body.mm-dark #mm-note h2, body.mm-dark #mm-note .mm-sec { color: #E8E4DC; }
+  body.mm-dark #mm-note .mm-note-block { color: #D8D4CC; }
+  body.mm-dark #mm-note .mm-table th {
+    background: #262A31; color: #E8E4DC; border-color: #3A3E47;
+  }
+  body.mm-dark #mm-note .mm-table td { border-color: #3A3E47; color: #D8D4CC; }
+  body.mm-dark #mm-note .mm-code { border-color: #3A3E47; }
+  body.mm-dark #mm-note .mm-code-head {
+    background: #262A31; color: #A8ABB8; border-color: #3A3E47;
+  }
+  body.mm-dark #mm-note .mm-code pre { background: #14171D; color: #D8D4CC; }
+  body.mm-dark #mm-note .mm-copy {
+    background: #262A31; color: #D8D4CC; border-color: #3A3E47;
+  }
+  body.mm-dark #mm-note a { color: #FBBF24; }
+  body.mm-dark #mm-note-close { color: #A8ABB8; }
   /* 펼쳐진 노드의 접기(−) 토글 — 노드/토글에 호버할 때만 표시 (에디터 동일) */
   .mm-toggle-open { opacity: 0; transition: opacity 0.12s; }
   .mm-node:hover .mm-toggle-open, .mm-toggle-open:hover { opacity: 1; }
@@ -1621,18 +1768,23 @@ export function buildStandaloneHtml(
   <h1>🗺 ${escapeHtml(map.title)}</h1>
   <span class="meta" id="mm-count"></span>
   <span class="spacer"></span>
-  <button id="mm-center" class="icon" title="선택 노드 화면 중앙 보기 (노드를 클릭해 선택)">⌖</button>
+  <button id="mm-center" class="icon" title="선택 노드 화면 중앙 보기 (노드를 클릭해 선택 · 다시 누르면 전체 보기)"><svg id="mm-center-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></button>
   <button id="mm-pan" class="icon" title="Pan 모드 — 드래그로 화면 이동 (마우스 오른쪽 버튼 드래그로도 이동)">✋</button>
   <button id="mm-fit" class="icon" title="맵 전체를 화면에 맞추기">⛶</button>
   <button id="mm-expand" class="icon" title="모두 펼치기">+</button>
   <button id="mm-collapse" class="icon" title="모두 접기">−</button>
-  <button id="mm-dark" class="icon" title="다크 모드 전환">🌙</button>
+  <button id="mm-dark" class="icon" title="다크 모드로 전환">🌙</button>
 </header>
 <svg id="mm-svg"><g id="mm-world"></g></svg>
 <div id="mm-note">
   <button id="mm-note-close">✕</button>
   <h2 id="mm-note-title"></h2>
   <div id="mm-note-body"></div>
+</div>
+<div id="mm-zoombar">
+  <button id="mm-zoom-out" title="축소 (10% 단위)">−</button>
+  <button id="mm-zoom-pct" title="100%로 재설정">100%</button>
+  <button id="mm-zoom-in" title="확대 (10% 단위)">+</button>
 </div>
 <footer>EasyMindMap 내보내기 · 읽기 전용 뷰어 · ${exportedAt}</footer>
 <!-- EasyMindMap 생성 파일 · 제목: ${escapeHtml(map.title)} · 내보낸 시각: ${exportedAt}

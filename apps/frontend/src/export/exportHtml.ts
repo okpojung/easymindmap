@@ -159,6 +159,17 @@ const VIEWER_JS = String.raw`
     l1A: '#B45309', l1B: '#1D4ED8', l1C: '#15803D',
     l1D: '#BE185D', l1E: '#7C3AED', l2: '#64748B'
   };
+  // 노드/엣지 스킨 — 다크 모드에서 에디터(THEMES.dark)와 동일한 느낌으로
+  // 노드 카드·글자·연결선까지 통째로 바뀐다 (setDark → render()).
+  var SKIN_LIGHT = {
+    rootFill: '#C2410C', rootText: '#FFFFFF', nodeFill: '#FFFFFF',
+    text: '#3F3428', edge: '#C9BBA4', tagBase: '#FFFDF8', hl: '#FFE066'
+  };
+  var SKIN_DARK = {
+    rootFill: '#F59E0B', rootText: '#1A120A', nodeFill: '#1C1F26',
+    text: '#E8E6E3', edge: '#4A4E5A', tagBase: '#14171D', hl: '#3B2A0A'
+  };
+  var SKIN = SKIN_LIGHT;
   function branchColor(key) { return COLORS[key] || '#8B7355'; }
 
   // ---- effective layout ----------------------------------------------------
@@ -681,7 +692,7 @@ const VIEWER_JS = String.raw`
     if (node._open) {
       for (var i = 0; i < kids.length; i++) {
         el('path', { d: edgePath(node, kids[i]), fill: 'none',
-          stroke: '#C9BBA4', 'stroke-width': depth === 0 ? 2.2 : 1.6,
+          stroke: SKIN.edge, 'stroke-width': depth === 0 ? 2.2 : 1.6,
           'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, world);
         drawNode(kids[i], depth + 1, color);
       }
@@ -698,12 +709,12 @@ const VIEWER_JS = String.raw`
     el('rect', {
       x: x0, y: y0, width: node._w, height: node._h,
       rx: isRoot ? 13 : 9,
-      fill: isRoot ? COLORS.root : '#FFFFFF',
-      stroke: isRoot ? COLORS.root : color,
+      fill: isRoot ? SKIN.rootFill : SKIN.nodeFill,
+      stroke: isRoot ? SKIN.rootFill : color,
       'stroke-width': isRoot ? 0 : 1.4
     }, g);
 
-    var textColor = isRoot ? '#FFFFFF' : '#3F3428';
+    var textColor = isRoot ? SKIN.rootText : SKIN.text;
     var tx = x0 + PAD_X;
     if (node.icon) {
       var ic = el('text', { x: tx, y: y0 + PAD_Y + node._fs * 0.85, 'font-size': node._fs + 1 }, g);
@@ -762,7 +773,7 @@ const VIEWER_JS = String.raw`
         if ((st.highlight || segs[si].h) && segs[si].t.replace(/\s/g, '')) {
           el('rect', { x: segX[si] - 2, y: baseY - node._fs * 1.06,
             width: segWs[si] + 4, height: node._fs * 1.44, rx: 2,
-            fill: '#FFE066', opacity: 0.85 }, g);
+            fill: SKIN.hl, opacity: 0.85 }, g);
         }
       }
       var tEl = el('text', { y: baseY, 'font-size': node._fs, fill: textColor }, g);
@@ -843,7 +854,7 @@ const VIEWER_JS = String.raw`
         // 배경을 불투명하게(흰 바탕 + 파스텔 칩) — 반투명이면 뒤로 지나가는
         // 연결선이 비쳐 태그와 겹쳐 보인다.
         el('rect', { x: bx2, y: node._cy + node._h / 2 + 4, width: bw2, height: TAG_H,
-          rx: 3, fill: '#FFFDF8' }, g);
+          rx: 3, fill: SKIN.tagBase }, g);
         el('rect', { x: bx2, y: node._cy + node._h / 2 + 4, width: bw2, height: TAG_H,
           rx: 3, fill: color + '1A', stroke: color + '55', 'stroke-width': 0.8 }, g);
         var bt = el('text', { x: bx2 + 7, y: node._cy + node._h / 2 + 4 + TAG_H - 4,
@@ -957,7 +968,7 @@ const VIEWER_JS = String.raw`
       // 서브트리를 알려야 하므로 항상 표시.
       var chip = el('g', { cursor: 'pointer',
         'class': node._open ? 'mm-toggle mm-toggle-open' : 'mm-toggle' }, g);
-      el('circle', { cx: ccx, cy: ccy, r: 8.5, fill: node._open ? '#FFFFFF' : color,
+      el('circle', { cx: ccx, cy: ccy, r: 8.5, fill: node._open ? SKIN.nodeFill : color,
         stroke: color, 'stroke-width': 1.3 }, chip);
       var ct = el('text', { x: ccx, y: ccy + 3.4, 'text-anchor': 'middle',
         'font-size': 9.5, 'font-weight': 700, fill: node._open ? color : '#FFFFFF' }, chip);
@@ -1236,14 +1247,17 @@ const VIEWER_JS = String.raw`
   document.getElementById('mm-fit').addEventListener('click', fit);
   // 선택 노드 화면 중앙 보기 — 배치 좌표(_cx/_cy)를 현재 줌 유지한 채 중앙에
   document.getElementById('mm-center').addEventListener('click', function () {
-    if (!SEL) return;
     var found = null;
-    (function walk(n) {
-      if (n.id === SEL) { found = n; return; }
-      var kids = n.children || [];
-      for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
-    })(DATA.root);
-    if (!found || found._cx == null) return;
+    if (SEL) {
+      (function walk(n) {
+        if (n.id === SEL) { found = n; return; }
+        var kids = n.children || [];
+        for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
+      })(DATA.root);
+    }
+    // 선택이 없거나(또는 접힌 서브트리 안이라 좌표가 없으면) 중심 주제로
+    if (!found || found._cx == null) found = DATA.root;
+    if (found._cx == null) return;
     var rect = svg.getBoundingClientRect();
     view.x = rect.width / 2 - found._cx * view.k;
     view.y = rect.height / 2 - found._cy * view.k;
@@ -1261,6 +1275,8 @@ const VIEWER_JS = String.raw`
   function setDark(on) {
     document.body.classList.toggle('mm-dark', on);
     darkBtn.textContent = on ? '☀' : '🌙';
+    SKIN = on ? SKIN_DARK : SKIN_LIGHT;
+    render(); // 노드 카드·글자·연결선까지 스킨 교체 (에디터 다크와 파리티)
     try { localStorage.setItem('easymindmap.viewer.dark', on ? '1' : '0'); } catch (e) {}
   }
   darkBtn.addEventListener('click', function () {
@@ -1286,14 +1302,16 @@ const VIEWER_JS = String.raw`
     }
     tipEl.style.display = 'none';
   }
-  function tipShow(anchor, text) {
+  function tipShow(anchor, text, cursorY) {
     tipEl.textContent = text;
     tipEl.style.display = 'block';
     var r = anchor.getBoundingClientRect();
     var tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
     var left = Math.max(4, Math.min(window.innerWidth - tw - 4, r.left + r.width / 2 - tw / 2));
     var top = r.top - th - 8;
-    if (top < 4) top = r.bottom + 8;
+    // 위 공간이 없어 아래에 표시할 때는 마우스 커서 그림(핫스팟 아래로
+    // ~22px)보다 더 아래에 — 최상단 아이콘에서 커서가 설명을 가리던 문제
+    if (top < 4) top = Math.max(r.bottom + 8, (cursorY || 0) + 24);
     tipEl.style.left = left + 'px';
     tipEl.style.top = top + 'px';
   }
@@ -1306,7 +1324,7 @@ const VIEWER_JS = String.raw`
       var text = host.getAttribute('title');
       host.removeAttribute('title');
       tipSavedAttr = { el: host, t: text };
-      tipShow(host, text);
+      tipShow(host, text, e.clientY);
       return;
     }
     var n = target;
@@ -1316,7 +1334,7 @@ const VIEWER_JS = String.raw`
         tipSavedSvg = { parent: n, node: tt };
         var txt2 = tt.textContent;
         tt.parentNode.removeChild(tt);
-        tipShow(n, txt2);
+        tipShow(n, txt2, e.clientY);
         return;
       }
       n = n.parentElement;

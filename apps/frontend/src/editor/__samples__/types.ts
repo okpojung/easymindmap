@@ -185,6 +185,9 @@ export interface MapSettings {
   levelLayouts?: (LayoutType | null | undefined)[];
   // 레벨별 기본 도형 — index 0=1레벨(중심) … 4=5레벨+ (노드별 설정이 우선)
   levelShapes?: (ShapeType | null | undefined)[];
+  // 노트(문단·코드·표·체크) 글꼴·크기 — 노트 뷰어 팝업·노트 편집창에
+  // 적용 (기본 크기 13pt)
+  noteFont?: { size?: number; family?: string };
 }
 
 export interface SampleMap {

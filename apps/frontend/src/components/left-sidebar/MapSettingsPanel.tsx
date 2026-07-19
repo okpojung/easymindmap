@@ -88,6 +88,8 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
   const setLevelLayout = useDocumentStore((s) => s.setLevelLayout);
   const levelShapes = useDocumentStore((s) => s.map.settings?.levelShapes);
   const setLevelShape = useDocumentStore((s) => s.setLevelShape);
+  const noteFont = useDocumentStore((s) => s.map.settings?.noteFont);
+  const setNoteFont = useDocumentStore((s) => s.setNoteFont);
   const updateNodeLayoutType = useDocumentStore((s) => s.updateNodeLayoutType);
   const mapLayoutType = useEditorUiStore((s) => s.layoutType);
   const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
@@ -249,6 +251,42 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
             </div>
           );
         })}
+      </div>
+
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: t.textSubtle,
+        textTransform: 'uppercase', letterSpacing: 0.5,
+        margin: '16px 0 6px',
+      }}>노트 폰트 (맵 전체 설정)</div>
+      <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 10, lineHeight: 1.5 }}>
+        노트(문단·코드·표·체크리스트)의 글꼴과 크기입니다. 노트 뷰어
+        팝업과 노트 편집창에 적용됩니다. 기본 크기는 13pt입니다.
+      </div>
+      <div style={{
+        display: 'flex', gap: 5, padding: '6px 8px', borderRadius: 5,
+        background: t.surfaceAlt, border: `1px solid ${t.border}`,
+        marginBottom: 4,
+      }}>
+        <select
+          value={noteFont?.size && noteFont.size > 0 ? noteFont.size : 13}
+          onChange={(e) => setNoteFont({ size: Number(e.target.value) })}
+          title="노트 글자 크기"
+          style={{ ...selectStyle, width: 74 }}
+        >
+          {[10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24].map((sz) => (
+            <option key={sz} value={sz}>{sz}pt{sz === 13 ? ' ·기본' : ''}</option>
+          ))}
+        </select>
+        <select
+          value={noteFont?.family ?? ''}
+          onChange={(e) => setNoteFont({ family: e.target.value })}
+          title="노트 글꼴"
+          style={{ ...selectStyle, flex: 1, minWidth: 0 }}
+        >
+          {FONT_FAMILIES.map((f) => (
+            <option key={f.label} value={f.css}>{f.label}</option>
+          ))}
+        </select>
       </div>
 
       <div style={{

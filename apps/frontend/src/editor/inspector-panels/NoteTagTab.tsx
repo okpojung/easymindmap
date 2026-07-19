@@ -168,6 +168,10 @@ function NoteBlockEditor({
   onChange: (patch: Partial<NoteBlockData>) => void;
   onRemove: () => void;
 }) {
+  // 노트 글꼴·크기 (맵 설정) — 뷰어 팝업과 동일 규칙 (기본 13pt)
+  const noteFont = useDocumentStore((st) => st.map.settings?.noteFont);
+  const noteFs = noteFont?.size && noteFont.size > 0 ? noteFont.size : 13;
+  const noteFamily = noteFont?.family && noteFont.family.trim() ? noteFont.family : undefined;
   const meta = BLOCK_META[block.type] ?? BLOCK_META.paragraph;
   const accent =
     block.type === 'code_block' ? t.accent
@@ -271,10 +275,12 @@ function NoteBlockEditor({
             style={{
               width: '100%', resize: 'vertical', border: 'none', outline: 'none',
               background: 'transparent', color: t.text,
-              fontSize: block.type === 'code_block' ? 11 : 12, lineHeight: 1.5,
+              // 노트 글꼴·크기 (맵 설정 — 기본 13pt, 코드/표는 고정폭 유지)
+              fontSize: block.type === 'code_block' ? Math.max(9, noteFs - 2) : noteFs,
+              lineHeight: 1.5,
               fontFamily: block.type === 'code_block' || block.type === 'table'
                 ? 'ui-monospace, SFMono-Regular, Menlo, monospace'
-                : 'inherit',
+                : (noteFamily ?? 'inherit'),
               padding: 0,
             }}
           />

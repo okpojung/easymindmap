@@ -151,6 +151,10 @@ const VIEWER_JS = String.raw`
   var world = document.getElementById('mm-world');
   var notePanel = document.getElementById('mm-note');
   var noteBody = document.getElementById('mm-note-body');
+  // 노트 글꼴·크기 (맵 설정 — 기본 13pt, 에디터 노트 뷰어와 동일)
+  var NOTE_FONT = DATA.noteFont || {};
+  noteBody.style.fontSize = ((NOTE_FONT.size > 0 ? NOTE_FONT.size : 13)) + 'px';
+  if (NOTE_FONT.family) noteBody.style.fontFamily = NOTE_FONT.family;
   var noteTitle = document.getElementById('mm-note-title');
   var NS = 'http://www.w3.org/2000/svg';
 
@@ -1560,6 +1564,8 @@ export function buildStandaloneHtml(
   const data = {
     title: map.title,
     mapLayout: layoutType,
+    // 노트 글꼴·크기 (맵 설정 — 뷰어 노트 패널에 적용, 기본 13pt)
+    noteFont: map.settings?.noteFont,
     root: {
       ...toExportNode({
         id: 'root',

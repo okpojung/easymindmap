@@ -743,6 +743,8 @@ const VIEWER_JS = String.raw`
     var stPre = node.style || {};
     var nodeFill2 = stPre.fillColor || fam0.fill;
     var nodeStroke2 = stPre.borderColor || fam0.border;
+    // 검색 결과 — 어떤 스타일보다 우선해 또렷하게 (에디터와 동일)
+    if (SEARCHHIT === node.id) { nodeFill2 = '#FFE066'; nodeStroke2 = '#DC2626'; }
     var nodeText2 = stPre.textColor || fam0.text;
     var kids = node.children || [];
 
@@ -1278,6 +1280,7 @@ const VIEWER_JS = String.raw`
   // ---- viewport: wheel zoom (cursor-anchored) + drag pan + fit ---------------
   var view = { x: 0, y: 0, k: 1 };
   var SEL = null; // 클릭으로 선택한 노드 id (⌖ 보기 대상)
+  var SEARCHHIT = null; // 검색 결과로 강조할 노드 id (노란 채움 + 붉은 테두리)
   var FOCUS = null; // ⌖ Focus 모드 — 이 노드의 서브트리만 표시 (null=전체)
   function applyView() {
     world.setAttribute('transform',
@@ -1361,6 +1364,75 @@ const VIEWER_JS = String.raw`
   }
 
   document.getElementById('mm-fit').addEventListener('click', fit);
+
+  // ── 검색 — 에디터 검색과 동일하게, 일치 노드를 노란 채움 + 붉은
+  //    테두리로 강조하고 화면 중앙으로 이동한다 (접힌 조상은 펼침) ──
+  var searchHits = [], searchIdx = -1;
+  var searchInput = document.getElementById('mm-search');
+  var searchCount = document.getElementById('mm-search-count');
+  function collectHits(q) {
+    var out = [];
+    (function walk(n) {
+      if ((n.text || '').toLowerCase().indexOf(q) >= 0) out.push(n.id);
+      var kids = n.children || [];
+      for (var i = 0; i < kids.length; i++) walk(kids[i]);
+    })(DATA.root);
+    return out;
+  }
+  function expandTo(id) {
+    var path = [];
+    (function walk(n, anc) {
+      if (n.id === id) { path = anc.slice(); return true; }
+      var kids = n.children || [];
+      for (var i = 0; i < kids.length; i++) {
+        if (walk(kids[i], anc.concat([n]))) return true;
+      }
+      return false;
+    })(DATA.root, []);
+    for (var i = 0; i < path.length; i++) path[i].collapsed = false;
+  }
+  function gotoHit(step) {
+    var q = (searchInput.value || '').trim().toLowerCase();
+    if (!q) {
+      searchHits = []; searchIdx = -1; SEARCHHIT = null;
+      searchCount.textContent = '';
+      render();
+      return;
+    }
+    searchHits = collectHits(q);
+    if (!searchHits.length) {
+      SEARCHHIT = null; searchCount.textContent = '0건'; render();
+      return;
+    }
+    searchIdx = ((searchIdx + step) % searchHits.length + searchHits.length) % searchHits.length;
+    SEARCHHIT = searchHits[searchIdx];
+    searchCount.textContent = (searchIdx + 1) + '/' + searchHits.length;
+    if (FOCUS) { FOCUS = null; setCenterIcon(false); } // 전체 맵에서 찾는다
+    expandTo(SEARCHHIT);
+    render();
+    var found = null;
+    (function walk(n) {
+      if (n.id === SEARCHHIT) { found = n; return; }
+      var kids = n.children || [];
+      for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
+    })(DATA.root);
+    if (found && found._cx != null) {
+      var rect = svg.getBoundingClientRect();
+      view.x = rect.width / 2 - found._cx * view.k;
+      view.y = rect.height / 2 - found._cy * view.k;
+      applyView();
+    }
+  }
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); gotoHit(1); }
+    if (e.key === 'Escape') { searchInput.value = ''; gotoHit(0); }
+  });
+  searchInput.addEventListener('input', function () {
+    searchIdx = -1;
+    if (!(searchInput.value || '').trim()) gotoHit(0);
+  });
+  document.getElementById('mm-search-next').addEventListener('click', function () { gotoHit(1); });
+  document.getElementById('mm-search-prev').addEventListener('click', function () { gotoHit(-1); });
   document.getElementById('mm-zoom-out').addEventListener('click', function () {
     zoomTo((Math.round(view.k * 100) - 10) / 100); // 에디터와 동일: 10%p 단위
   });
@@ -1527,6 +1599,16 @@ const VIEWER_CSS = `
     display: inline-flex; align-items: center; justify-content: center;
   }
   header button.active { background: #F0E2C4; border-color: #D8B25E; color: #8A5A00; }
+  #mm-search {
+    width: 150px; height: 26px; padding: 0 8px; font-size: 12px;
+    border: 1px solid #D8CBB2; border-radius: 6px; background: #FFFDF8;
+    color: #3F3428; outline: none;
+  }
+  #mm-search:focus { border-color: #D8B25E; }
+  #mm-search-count { min-width: 40px; text-align: center; }
+  body.mm-dark #mm-search {
+    background: #262A31; color: #D8D4CC; border-color: #3A3E47;
+  }
   /* 커스텀 툴팁 — 커서가 설명을 가리지 않게 요소 "위쪽"에 표시 */
   #mm-tip {
     position: fixed; z-index: 99999; pointer-events: none; display: none;
@@ -1613,7 +1695,7 @@ const VIEWER_CSS = `
   /* 문단·코드 글자 크기 10 통일. 문단은 입력한 줄 그대로(pre) 표시하고
      창 폭보다 길면 블록에 가로 스크롤바가 나타난다. */
   .mm-note-block {
-    margin-bottom: 6px; line-height: 1.5; font-size: 10px;
+    margin-bottom: 6px; line-height: 1.5; font-size: inherit;
     white-space: pre; overflow-x: auto;
   }
   .mm-note-block a { color: #1D4ED8; text-decoration: none; word-break: break-all; }
@@ -1625,7 +1707,7 @@ const VIEWER_CSS = `
   .mm-sec:first-child { margin-top: 0; padding-top: 0; border-top: none; }
   .mm-tagrow { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
   .mm-table {
-    border-collapse: collapse; width: 100%; margin-bottom: 8px; font-size: 11.5px;
+    border-collapse: collapse; width: 100%; margin-bottom: 8px; font-size: 0.93em;
   }
   .mm-table th, .mm-table td {
     border: 1px solid #DDD0BA; padding: 4px 7px; text-align: left;
@@ -1644,7 +1726,7 @@ const VIEWER_CSS = `
   }
   .mm-copy:hover { background: #F3ECDD; }
   .mm-code pre {
-    margin: 0; padding: 7px 9px; font-size: 10px; line-height: 1.5;
+    margin: 0; padding: 7px 9px; font-size: 0.87em; line-height: 1.5;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     white-space: pre; overflow-x: auto; background: #FBF7EE;
   }
@@ -1659,7 +1741,7 @@ const VIEWER_CSS = `
   .mm-note-warning { color: #B45309; }
   .mm-note-tip { color: #15803D; }
   /* 리치 문단(웹 기사 붙여넣기) — 사진+서식 표시 */
-  .mm-note-rich { white-space: normal; font-size: 10.5px; line-height: 1.6; }
+  .mm-note-rich { white-space: normal; font-size: inherit; line-height: 1.6; }
   .mm-note-rich img {
     max-width: 100%; height: auto; border-radius: 4px;
     display: block; margin: 4px 0;
@@ -1768,6 +1850,11 @@ export function buildStandaloneHtml(
   <h1>🗺 ${escapeHtml(map.title)}</h1>
   <span class="meta" id="mm-count"></span>
   <span class="spacer"></span>
+  <input id="mm-search" type="search" placeholder="검색 (Enter=다음)"
+    title="노드 텍스트 검색 — Enter: 다음 결과로 이동" />
+  <span id="mm-search-count" class="meta"></span>
+  <button id="mm-search-prev" class="icon" title="이전 검색 결과">‹</button>
+  <button id="mm-search-next" class="icon" title="다음 검색 결과">›</button>
   <button id="mm-center" class="icon" title="선택 노드 화면 중앙 보기 (노드를 클릭해 선택 · 다시 누르면 전체 보기)"><svg id="mm-center-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></button>
   <button id="mm-pan" class="icon" title="Pan 모드 — 드래그로 화면 이동 (마우스 오른쪽 버튼 드래그로도 이동)">✋</button>
   <button id="mm-fit" class="icon" title="맵 전체를 화면에 맞추기">⛶</button>

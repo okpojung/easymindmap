@@ -88,8 +88,13 @@ export function Canvas({
   onSelect,
   collabs,
 }: Props) {
-  const W = 1400;
-  const H = 760;
+  // 캔버스 viewBox를 "실제 컨테이너 픽셀 크기"로 맞춘다 — 예전 고정
+  // 1400×760 viewBox는 화면 폭에 맞춰 통째로 축소되어, 줌 100%인데도
+  // 글자가 실제 px보다 작게 보였다 (HTML 뷰어와 크기가 달라 보이던 원인).
+  // 이제 100% = 1 world unit = 1 CSS px — 뷰어와 동일 배율.
+  const [vpSize, setVpSize] = useState({ w: 1400, h: 760 });
+  const W = vpSize.w;
+  const H = vpSize.h;
   const CX = W / 2;
   const CY = H / 2;
 
@@ -122,6 +127,19 @@ export function Canvas({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 50 && r.height > 50) {
+        setVpSize({ w: Math.round(r.width), h: Math.round(r.height) });
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const dragRef = useRef<{
     pointerId: number;
@@ -180,12 +198,16 @@ export function Canvas({
   // 겹치지 않게 한다.
   const editingNodeId = useInteractionStore((s) => s.editingNodeId);
   const multiSelectedIds = useInteractionStore((s) => s.multiSelectedIds);
+  const searchHitId = useInteractionStore((s) => s.searchHitId);
+  const setSearchHitId = useInteractionStore((s) => s.setSearchHitId);
   const setMultiSelectedIds = useInteractionStore((s) => s.setMultiSelectedIds);
   const multiSet = useMemo(() => new Set(multiSelectedIds), [multiSelectedIds]);
 
   // 단일 선택은 항상 다중 선택을 해제한다 (러버밴드만이 다중 선택을 만든다)
   const selectOne = (id: string | null) => {
     if (multiSelectedIds.length) setMultiSelectedIds([]);
+    // 캔버스에서 직접 조작하면 검색 강조는 해제
+    if (searchHitId && id !== searchHitId) setSearchHitId(null);
     onSelect(id);
   };
 
@@ -991,6 +1013,7 @@ export function Canvas({
                 n={n}
                 t={t}
                 selected={n.id === selectedId || multiSet.has(n.id)}
+                searchHit={n.id === searchHitId}
                 dropTarget={n.id === dropZone?.targetId}
                 onSelect={() => selectOne(n.id)}
                 onHover={setHoverNodeId}

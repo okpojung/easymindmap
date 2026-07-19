@@ -85,6 +85,14 @@ export interface NodeImage {
   h: number;
 }
 
+// 노드 텍스트 "중간"에 끼워 넣는 사진 (기사 붙여넣기 등) — afterLine은
+// 노드 텍스트의 논리 줄(\n 기준) 몇 개 뒤에 놓이는지. 0 = 텍스트 맨 앞,
+// 줄 수 이상 = 텍스트 맨 뒤. images가 있으면 image(레거시 단일, 항상
+// 마지막)보다 우선 표시된다.
+export interface NodeInlineImage extends NodeImage {
+  afterLine: number;
+}
+
 export interface NodeAttachment {
   id: string;
   name: string;
@@ -121,6 +129,8 @@ export interface MindNode {
   attachments?: NodeAttachment[];
   // 노드 안에 표시되는 붙여넣은 사진 (텍스트 아래)
   image?: NodeImage;
+  // 노드 텍스트 중간에 원문 위치대로 끼워 넣은 사진들 (기사 붙여넣기)
+  images?: NodeInlineImage[];
   // 노드 우하단 핸들로 수동 조절한 박스 크기 (없으면 자동 크기)
   sizeW?: number;
   sizeH?: number;
@@ -162,6 +172,7 @@ export interface SampleRoot {
   notes?: NoteBlock[];
   attachments?: NodeAttachment[];
   image?: NodeImage;
+  images?: NodeInlineImage[];
   sizeW?: number;
   sizeH?: number;
   _childCount?: number;

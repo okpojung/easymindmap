@@ -42,7 +42,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
-import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
+import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 
 const LAYOUT_LABEL: Record<string, string> = {
   tree: '트리 · 오른쪽 (직각선)',
@@ -108,6 +108,7 @@ export function Canvas({
   const addNodeLink = useDocumentStore((state) => state.addNodeLink);
   const addNodeAttachment = useDocumentStore((state) => state.addNodeAttachment);
   const setNodeImage = useDocumentStore((state) => state.setNodeImage);
+  const setNodeImages = useDocumentStore((state) => state.setNodeImages);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const undo = useDocumentStore((state) => state.undo);
   const redo = useDocumentStore((state) => state.redo);
@@ -506,8 +507,8 @@ export function Canvas({
   // 하면 선택 노드의 "하위 노드"를 만들고 클립보드 내용을 **모두 그 노드에
   // 직접** 넣는다 (노트로 나누지 않는다 — 2026-07 사용자 피드백).
   //   · 텍스트(한 줄/여러 줄) → 하위 노드 텍스트에 줄바꿈 포함 전체 저장
-  //   · 웹 기사 등 text/html → 텍스트 전체 = 노드 텍스트, 첫 사진은
-  //     노드 사진(텍스트 아래)으로 함께 첨부
+  //   · 웹 기사 등 text/html → 텍스트 전체 = 노드 텍스트, 사진들은
+  //     **원문 위치 그대로 텍스트 중간에**(인라인 이미지, afterLine 앵커)
   //   · 이미지 파일(스크린샷·복사한 그림) → "이미지" 하위 노드 + 사진
   // (노드 텍스트 편집 중 붙여넣기는 NodeRenderer의 textarea onPaste가 처리)
   useEffect(() => {
@@ -526,11 +527,14 @@ export function Canvas({
         f.type.startsWith('image/'),
       );
       const rawHtml = hasImgFile ? '' : dt.getData('text/html');
-      let text = (dt.getData('text/plain') ?? '').replace(/\r\n?/g, '\n').trim();
-      // 이미지만 복사한 웹 콘텐츠 등 plain이 비면 html의 텍스트로 폴백
-      if (!text && rawHtml) text = sanitizeRichHtml(rawHtml).text.trim();
-      const htmlHasImg = /<img[\s>]/i.test(rawHtml);
-      if (!hasImgFile && !text && !htmlHasImg) return; // 붙일 내용 없음
+      // 기사(html)는 텍스트와 사진 위치를 "같은 줄 규칙"으로 함께 뽑는다 —
+      // text/plain과 줄을 맞추면 사진 앵커가 어긋나기 쉽다
+      const art = rawHtml
+        ? extractArticleContent(rawHtml)
+        : { text: '', images: [] };
+      const plain = (dt.getData('text/plain') ?? '').replace(/\r\n?/g, '\n').trim();
+      const text = art.text || plain;
+      if (!hasImgFile && !text && art.images.length === 0) return; // 붙일 내용 없음
 
       e.preventDefault();
       const childId = addChildNode(selectedId);
@@ -538,16 +542,26 @@ export function Canvas({
 
       // 텍스트 전체(줄바꿈 포함)를 노드에 그대로 — 없으면 "이미지"
       updateNodeText(childId, text || '이미지');
-      // 사진: 이미지 파일(data URL) 또는 html 속 첫 이미지(원본 URL,
-      // lazy-load 자리표시자는 실제 주소로 복원) → 노드 사진
-      extractClipboardImage(dt, (img) => setNodeImage(childId, img));
+      if (art.images.length) {
+        // 사진들을 원문 위치(afterLine)째 노드 텍스트 중간에 — 우선 기본
+        // 크기로 배치하고, 실측이 끝나면 실제 비율로 갱신한다
+        const initial = probeArticleImages(art.images, (resolved) =>
+          setNodeImages(childId, resolved),
+        );
+        setNodeImages(childId, initial);
+      } else {
+        // 이미지 파일(스크린샷 등) → 노드 사진
+        extractClipboardImage(dt, (img) => setNodeImage(childId, img), {
+          allowHtml: false,
+        });
+      }
       // 만든 하위 노드를 바로 선택
       selectOne(childId);
     };
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, setNodeImage, addChildNode, updateNodeText]);
+  }, [selectedId, setNodeImage, setNodeImages, addChildNode, updateNodeText]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

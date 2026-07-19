@@ -426,9 +426,15 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             <div style={{
               whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.45,
             }}><InlineText text={node.text} /></div>
-            {rawNode?.image?.src && (
+            {(rawNode?.images?.length
+              ? rawNode.images // 인라인 사진(기사) — 아웃라인은 목록으로 표시
+              : rawNode?.image?.src
+                ? [rawNode.image]
+                : []
+            ).map((im, k) => (
               <img
-                src={rawNode.image.src}
+                key={k}
+                src={im.src}
                 alt=""
                 style={{
                   display: 'block', maxWidth: '75%', maxHeight: 140,
@@ -436,7 +442,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
                   border: `1px solid ${t.border}`,
                 }}
               />
-            )}
+            ))}
           </div>
         )}
 

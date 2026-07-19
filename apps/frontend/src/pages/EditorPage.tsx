@@ -44,7 +44,8 @@ function buildKanbanCard(node: {
     id: node.id,
     title: node.text,
     tag: node.tag ?? node.tags?.[0],
-    image: node.image,
+    // 카드 썸네일 — 인라인 사진(기사 붙여넣기)이 있으면 첫 장을 쓴다
+    image: node.image ?? (node as { images?: KanbanCard['image'][] }).images?.[0],
     children: (node.children ?? []).map(buildKanbanCard),
   };
 }

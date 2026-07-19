@@ -687,7 +687,12 @@ const VIEWER_JS = String.raw`
       }
     }
 
-    var g = el('g', { 'class': 'mm-node' }, world);
+    var g = el('g', { 'class': 'mm-node' + (SEL === node.id ? ' mm-selected' : '') }, world);
+    g.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      SEL = node.id;
+      render();
+    });
     var isRoot = depth === 0;
     var x0 = node._cx - node._w / 2, y0 = node._cy - node._h / 2;
     el('rect', {
@@ -1158,6 +1163,7 @@ const VIEWER_JS = String.raw`
 
   // ---- viewport: wheel zoom (cursor-anchored) + drag pan + fit ---------------
   var view = { x: 0, y: 0, k: 1 };
+  var SEL = null; // 클릭으로 선택한 노드 id (⌖ 중앙 보기 대상)
   function applyView() {
     world.setAttribute('transform',
       'translate(' + view.x + ',' + view.y + ') scale(' + view.k + ')');
@@ -1175,8 +1181,14 @@ const VIEWER_JS = String.raw`
     applyView();
   }, { passive: false });
 
+  // Pan은 에디터와 동일 규칙: 기본은 꺼짐 — Pan 모드(✋ 토글)일 때의 왼쪽
+  // 드래그, 또는 마우스 오른쪽/미들 버튼 드래그(임시 Pan, 떼면 해제)만.
+  var panMode = false;
   var drag = null;
+  svg.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   svg.addEventListener('pointerdown', function (e) {
+    var temp = e.button === 1 || e.button === 2;
+    if (!panMode && !temp) return;
     drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
     svg.setPointerCapture(e.pointerId);
     svg.style.cursor = 'grabbing';
@@ -1187,7 +1199,10 @@ const VIEWER_JS = String.raw`
     view.y = drag.vy + (e.clientY - drag.y);
     applyView();
   });
-  svg.addEventListener('pointerup', function () { drag = null; svg.style.cursor = 'grab'; });
+  svg.addEventListener('pointerup', function () {
+    drag = null;
+    svg.style.cursor = panMode ? 'grab' : 'default';
+  });
 
   function fit() {
     var bb = world.getBBox();
@@ -1219,6 +1234,101 @@ const VIEWER_JS = String.raw`
   }
 
   document.getElementById('mm-fit').addEventListener('click', fit);
+  // 선택 노드 화면 중앙 보기 — 배치 좌표(_cx/_cy)를 현재 줌 유지한 채 중앙에
+  document.getElementById('mm-center').addEventListener('click', function () {
+    if (!SEL) return;
+    var found = null;
+    (function walk(n) {
+      if (n.id === SEL) { found = n; return; }
+      var kids = n.children || [];
+      for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
+    })(DATA.root);
+    if (!found || found._cx == null) return;
+    var rect = svg.getBoundingClientRect();
+    view.x = rect.width / 2 - found._cx * view.k;
+    view.y = rect.height / 2 - found._cy * view.k;
+    applyView();
+  });
+  var panBtn = document.getElementById('mm-pan');
+  panBtn.addEventListener('click', function () {
+    panMode = !panMode;
+    panBtn.className = panMode ? 'icon active' : 'icon';
+    document.body.classList.toggle('mm-panmode', panMode);
+    svg.style.cursor = panMode ? 'grab' : 'default';
+  });
+  // 다크 모드 — 브라우저에 저장 (다음에 열 때 유지)
+  var darkBtn = document.getElementById('mm-dark');
+  function setDark(on) {
+    document.body.classList.toggle('mm-dark', on);
+    darkBtn.textContent = on ? '☀' : '🌙';
+    try { localStorage.setItem('easymindmap.viewer.dark', on ? '1' : '0'); } catch (e) {}
+  }
+  darkBtn.addEventListener('click', function () {
+    setDark(!document.body.classList.contains('mm-dark'));
+  });
+  try { if (localStorage.getItem('easymindmap.viewer.dark') === '1') setDark(true); } catch (e) {}
+
+  // ── 커스텀 툴팁: 커서가 설명을 가리지 않게 요소 "위쪽 중앙"에 표시 ──
+  var tipEl = document.createElement('div');
+  tipEl.id = 'mm-tip';
+  document.body.appendChild(tipEl);
+  var tipSavedAttr = null, tipSavedSvg = null;
+  function tipRestore() {
+    if (tipSavedAttr) {
+      if (!tipSavedAttr.el.getAttribute('title')) tipSavedAttr.el.setAttribute('title', tipSavedAttr.t);
+      tipSavedAttr = null;
+    }
+    if (tipSavedSvg) {
+      if (tipSavedSvg.node.parentNode !== tipSavedSvg.parent) {
+        tipSavedSvg.parent.insertBefore(tipSavedSvg.node, tipSavedSvg.parent.firstChild);
+      }
+      tipSavedSvg = null;
+    }
+    tipEl.style.display = 'none';
+  }
+  function tipShow(anchor, text) {
+    tipEl.textContent = text;
+    tipEl.style.display = 'block';
+    var r = anchor.getBoundingClientRect();
+    var tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+    var left = Math.max(4, Math.min(window.innerWidth - tw - 4, r.left + r.width / 2 - tw / 2));
+    var top = r.top - th - 8;
+    if (top < 4) top = r.bottom + 8;
+    tipEl.style.left = left + 'px';
+    tipEl.style.top = top + 'px';
+  }
+  document.addEventListener('mouseover', function (e) {
+    var target = e.target;
+    if (!target || !target.closest) return;
+    tipRestore();
+    var host = target.closest('[title]');
+    if (host && (host.getAttribute('title') || '').replace(/\s/g, '')) {
+      var text = host.getAttribute('title');
+      host.removeAttribute('title');
+      tipSavedAttr = { el: host, t: text };
+      tipShow(host, text);
+      return;
+    }
+    var n = target;
+    while (n && n.tagName && n.tagName.toLowerCase() !== 'svg' && n.tagName.toLowerCase() !== 'body') {
+      var tt = n.querySelector && n.querySelector(':scope > title');
+      if (tt && (tt.textContent || '').replace(/\s/g, '')) {
+        tipSavedSvg = { parent: n, node: tt };
+        var txt2 = tt.textContent;
+        tt.parentNode.removeChild(tt);
+        tipShow(n, txt2);
+        return;
+      }
+      n = n.parentElement;
+    }
+  });
+  document.addEventListener('mouseout', function (e) {
+    var anchor = tipSavedAttr ? tipSavedAttr.el : (tipSavedSvg ? tipSavedSvg.parent : null);
+    if (!anchor) return;
+    if (e.relatedTarget && anchor.contains(e.relatedTarget)) return;
+    tipRestore();
+  });
+  document.addEventListener('pointerdown', tipRestore, true);
   document.getElementById('mm-expand').addEventListener('click', function () {
     setAll(DATA.root, false); DATA.root.collapsed = false; render(); fit();
   });
@@ -1254,9 +1364,42 @@ const VIEWER_CSS = `
   }
   header button:hover { background: #F3ECDD; }
   #mm-svg {
-    flex: 1; width: 100%; height: 100%; cursor: grab; touch-action: none;
+    flex: 1; width: 100%; height: 100%; cursor: default; touch-action: none;
     background: radial-gradient(circle, #E4D9C377 1px, transparent 1px) 0 0 / 24px 24px;
   }
+  body.mm-panmode #mm-svg { cursor: grab; }
+  header button.icon {
+    width: 30px; height: 28px; padding: 0; font-size: 15px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  header button.active { background: #F0E2C4; border-color: #D8B25E; color: #8A5A00; }
+  .mm-node.mm-selected > rect:first-of-type {
+    stroke: #D97706 !important; stroke-width: 2.6 !important;
+    stroke-dasharray: 5 3;
+  }
+  /* 커스텀 툴팁 — 커서가 설명을 가리지 않게 요소 "위쪽"에 표시 */
+  #mm-tip {
+    position: fixed; z-index: 99999; pointer-events: none; display: none;
+    background: rgba(32,30,26,0.95); color: #FFF; font-size: 11px;
+    line-height: 1.45; padding: 4px 8px; border-radius: 5px;
+    max-width: 280px; white-space: pre-line; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  }
+  /* ── 다크 모드 ── */
+  body.mm-dark { background: #17191E; color: #D8D4CC; }
+  body.mm-dark header { background: #1F2229; border-color: #33363E; }
+  body.mm-dark header h1, body.mm-dark header .meta { color: #E8E4DC; }
+  body.mm-dark header button {
+    background: #262A31; color: #D8D4CC; border-color: #3A3E47;
+  }
+  body.mm-dark header button:hover { background: #2E333C; }
+  body.mm-dark header button.active { background: #4A3B18; border-color: #8A6A24; color: #F0C86A; }
+  body.mm-dark #mm-svg {
+    background: #17191E radial-gradient(circle, #2A2D3466 1px, transparent 1px) 0 0 / 24px 24px;
+  }
+  body.mm-dark #mm-note {
+    background: #20242B; color: #D8D4CC; border-color: #3A3E47;
+  }
+  body.mm-dark footer { background: #1F2229; color: #8A8DA0; border-color: #33363E; }
   .mm-toggle:hover circle { filter: brightness(0.93); }
   /* 펼쳐진 노드의 접기(−) 토글 — 노드/토글에 호버할 때만 표시 (에디터 동일) */
   .mm-toggle-open { opacity: 0; transition: opacity 0.12s; }
@@ -1436,9 +1579,12 @@ export function buildStandaloneHtml(
   <h1>🗺 ${escapeHtml(map.title)}</h1>
   <span class="meta" id="mm-count"></span>
   <span class="spacer"></span>
-  <button id="mm-fit" title="화면에 맞추기">⛶ 맞춤</button>
-  <button id="mm-expand" title="모두 펼치기">모두 펼치기</button>
-  <button id="mm-collapse" title="모두 접기">모두 접기</button>
+  <button id="mm-center" class="icon" title="선택 노드 화면 중앙 보기 (노드를 클릭해 선택)">⌖</button>
+  <button id="mm-pan" class="icon" title="Pan 모드 — 드래그로 화면 이동 (마우스 오른쪽 버튼 드래그로도 이동)">✋</button>
+  <button id="mm-fit" class="icon" title="맵 전체를 화면에 맞추기">⛶</button>
+  <button id="mm-expand" class="icon" title="모두 펼치기">+</button>
+  <button id="mm-collapse" class="icon" title="모두 접기">−</button>
+  <button id="mm-dark" class="icon" title="다크 모드 전환">🌙</button>
 </header>
 <svg id="mm-svg"><g id="mm-world"></g></svg>
 <div id="mm-note">

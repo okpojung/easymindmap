@@ -71,52 +71,71 @@ docs/
 │   └── mvp-scope.md                  # MVP 포함/제외 범위 정의
 │
 ├── 01-product/                       # 제품 요구사항
-│   ├── prd.md                        # Product Requirement Document
-│   ├── functional-spec.md            # 전체 기능 명세 (62개 기능 정의)
+│   ├── functional-spec.md            # 전체 기능 명세
 │   └── ui-ux-spec.md                 # 화면별 UX 명세 / 컴포넌트 / 단축키
-│   └── kanban-layout-spec.md         # Kanban Layout 기능 명세
 │
 ├── 02-domain/                        # 데이터 모델 & DB
-│   ├── node-model.md                 # NodeObject 스키마 / LayoutType / ShapeType
-│   ├── map-model.md                  # Map / User / Revision / Tag 도메인 모델
-│   ├── db-schema.md                  # Supabase DB 설계 설명 / RLS 정책
-│   ├── schema.sql                    # Supabase PostgreSQL DDL (실행 가능)
-│   └── erd.md                        # ERD 다이어그램
+│   ├── domain-models.md              # Node / Map / User 도메인 모델 · 레벨 용어
+│   ├── db-schema.md                  # Supabase DB 설계 / RLS 정책
+│   ├── schema.sql                    # Supabase PostgreSQL DDL
+│   ├── collaboration-schema.sql      # 협업(V2) 스키마
+│   └── node-hierarchy-storage-strategy.md # 노드 계층 저장 전략
 │
 ├── 03-editor-core/                   # 에디터 핵심 설계
 │   ├── state-architecture.md         # Zustand 5-Store 상태관리 설계
-│   ├── editor-core-design.md         # 에디터 전체 구조 설계
-│   ├── command-history.md            # Undo / Redo History (Command 패턴)
-│   ├── autosave-engine.md            # Autosave 엔진 (patch / 충돌 처리)
-│   ├── layout-engine.md              # Layout 엔진 (2-pass / 14종 Strategy)
-│   ├── layout-coordinate-algorithm.md # 노드 좌표 계산 알고리즘
 │   ├── edge-policy.md                # Edge 스타일 정책 (곡선/직각)
-│   ├── node-editing.md               # 노드 편집 기능 정리
-│   ├── bulk-branch-insert.md         # 다중 가지 일괄 추가 (NODE-04)
-│   ├── node-indicator.md             # 노드 추가 인디케이터 +버튼 설계
-│   ├── tag-system.md                 # 태그 기능 명세 (TAG-01~04)
-│   └── node-background-image.md      # 노드 배경 이미지 삽입
+│   ├── map/01-map.md                 # 맵 문서 기본
+│   ├── node/02-node-editing.md       # 노드 편집
+│   ├── node/03-node-indicator.md     # 인디케이터 · 접기/펼치기 토글
+│   ├── node/04-node-content.md       # 링크/노트/첨부 콘텐츠
+│   ├── node/05-node-style.md         # 스타일 · 인라인 강조 · 맵 설정(레벨별)
+│   ├── node/06-node-rendering.md     # 노드 렌더링
+│   ├── node/07-markdown-format-policy.md # 노드 안 Markdown 표기 정책
+│   ├── layout/08-layout.md           # 레이아웃 엔진 (14종 Strategy)
+│   ├── canvas/09-kanban.md           # Kanban 보드
+│   ├── canvas/10-canvas.md           # 캔버스 Pan/Zoom/Fit (줌 하한 2%)
+│   ├── canvas/11-selection.md        # 선택 · 러버밴드 다중 선택
+│   ├── history/12-history-undo-redo.md # Undo/Redo
+│   ├── history/13-version-history.md # 버전 히스토리
+│   ├── save/14-save.md               # 저장/자동저장
+│   └── search/15-tag.md · 16-search.md · 17-keyboard-shortcuts.md
 │
 ├── 04-extensions/                    # Export / AI / 확장 기능
-│   ├── markdown-export.md            # Markdown Export 명세
-│   ├── html-export.md                # Standalone HTML Export / Publish 연동
-│   ├── ai-mindmap-generation.md      # AI 마인드맵 자동 생성 파이프라인
-│   ├── canvas-spec.md                # Canvas 조작 상세 (CANVAS-01~08)
-│   ├── multilingual-translation.md   # 다국어 자동 번역 (V2, DeepL + LLM)
-│   ├── dashboard-map.md              # 대시보드 맵 기능 설계 (V3)
-│   └── dashboard-web-app-spec.md     # 대시보드 노드 편집 웹앱 설계 (V3)
+│   ├── markdown-export.md            # ★ MD ↔ 맵 변환 규칙 단일 명세 (핵심)
+│   ├── import-export/20-export.md    # MD/HTML 내보내기 UI · 패키징 · 뷰어
+│   ├── import-export/21-import.md    # 불러오기 UI · 새 맵 메뉴 · 템플릿 선택
+│   ├── import-export/22-map-file-meta.md # 맵 파일 메타데이터 왕복
+│   ├── ai/18-ai.md · 19-ai-workflow.md   # AI 생성 (V1+)
+│   ├── dashboard/22-dashboard.md     # 대시보드 (V3)
+│   ├── translation/23-node-translation.md · 24-chat-translation.md
+│   ├── collaboration/25-map-collaboration.md · 26-realtime-chat.md
+│   ├── publish/27-publish-share.md   # 공개/공유
+│   ├── project/28-wbs.md · 29-resource.md
+│   ├── integrations/30-obsidian-integration.md · 31-redmine-integration.md
+│   └── settings/32-settings.md       # 환경 설정
 │
-└── 05-implementation/                # 구현 가이드
-    ├── system-architecture.md        # 전체 시스템 아키텍처 (Supabase 기준)
-    ├── frontend-architecture.md      # 프론트엔드 (Store / Command / Render)
-    ├── backend-architecture.md       # 백엔드 (Supabase 연동 패턴 / NestJS)
-    ├── collaboration-engine.md       # 협업 엔진 (WS / Presence / Redis)
-    ├── docker-compose-spec.md        # Docker Compose 설계 (VM별 분리)
-    ├── env-spec.md                   # 환경변수 명세 (Supabase 기준)
-    ├── api-spec.md                   # REST API 전체 명세
-    ├── codex-task-plan.md            # AI 개발 작업 분해 (T-01 ~ T-20)
-    └── coding-conventions.md         # TypeScript / Supabase / Git 컨벤션
+├── 05-implementation/                # 구현 가이드
+│   ├── api-spec.md                   # REST API 전체 명세
+│   ├── state-management.md           # 상태관리 구현
+│   ├── sprint-plan.md · sprint-mvp-tasks.md # 스프린트 계획
+│   ├── codex-task-plan.md            # AI 개발 작업 분해
+│   ├── env-spec.md                   # 환경변수 명세
+│   └── coding-conventions.md         # TypeScript / Supabase / Git 컨벤션
+│
+├── 90-architecture/                  # 아키텍처
+│   ├── system-architecture.md        # 전체 시스템 아키텍처
+│   ├── frontend-architecture.md      # 프론트엔드
+│   ├── backend-architecture.md       # 백엔드
+│   ├── infra-architecture.md         # 인프라
+│   └── docker-compose-spec.md        # Docker Compose 설계
+│
+└── 91-architecture-검토자료/          # 검토 자료
 ```
+
+> 이 목록은 실제 `docs/` 트리와 1:1로 유지한다. (2026-07: 예전 문서명
+> 기준의 낡은 목록을 실제 구조로 전면 갱신 — 문서가 삭제된 것이 아니라
+> 저장소 생성 시점부터 현재의 번호 체계로 정리되어 있었다.
+> `markdown-export.md`는 MD↔맵 변환 규칙의 단일 명세로 신설.)
 
 ---
 

@@ -1077,12 +1077,28 @@ export function Canvas({
                 // the selected node's +/- add indicators.
                 .filter((n) => n.id !== selectedId && n.id !== (selectedNode?.parent ?? ''))
                 .map((n) => {
+                  // 자식이 "실제로 배치된 방향"에 토글을 놓는다 — 트리·
+                  // 진행트리의 3레벨 이하는 side가 'right'여도 자식이 아래로
+                  // 자라므로 자식 좌표로 방향을 계산한다 (접힘 시 side 폴백)
+                  let sd: string = n.side ?? 'right';
+                  if (!n.collapsed) {
+                    let adx = 0; let ady = 0; let acnt = 0;
+                    for (const c of visibleNodes) {
+                      if (c.parent !== n.id) continue;
+                      adx += c.x - n.x; ady += c.y - n.y; acnt++;
+                    }
+                    if (acnt) {
+                      sd = Math.abs(ady) > Math.abs(adx)
+                        ? (ady > 0 ? 'down' : 'up')
+                        : (adx > 0 ? 'right' : 'left');
+                    }
+                  }
                   const pos =
-                    n.side === 'left'
+                    sd === 'left'
                       ? { x: n.x - n.w / 2 - 11, y: n.y }
-                      : n.side === 'down'
+                      : sd === 'down'
                         ? { x: n.x, y: n.y + n.h / 2 + 11 }
-                        : n.side === 'up'
+                        : sd === 'up'
                           ? { x: n.x, y: n.y - n.h / 2 - 11 }
                           : { x: n.x + n.w / 2 + 11, y: n.y };
                   return (
@@ -1232,9 +1248,11 @@ export function Canvas({
 
 // Collapse / expand affordance shown at a node's children-connector start.
 // - collapsed   → persistent "+" expand button (so the hidden subtree is visible)
-// - expanded    → nothing by default; on NODE hover a small ● dot appears, and
-//                 hovering the dot reveals the collapse (−) icon. Clicking it
-//                 collapses. This keeps the map clean (no icon on every node).
+// - expanded    → nothing by default; hovering the NODE (or this spot) shows
+//                 the collapse (−) icon right away — click collapses.
+//                 (예전의 "점 → 호버 시 아이콘" 2단계는 클릭까지 두 번
+//                 조준해야 해서 제거 — 2026-07. 맵은 여전히 깨끗하다:
+//                 호버 전에는 아무것도 그리지 않는다.)
 function CollapseControl({
   t, x, y, collapsed, nodeHovered, onToggle,
 }: {
@@ -1275,20 +1293,15 @@ function CollapseControl({
     );
   }
 
-  // expanded: hidden until the node (or this control) is hovered
+  // expanded: hidden until the node (or this control) is hovered —
+  // 호버 즉시 접기(−) 아이콘을 보여주고 한 번의 클릭으로 접는다
   if (!nodeHovered && !h) return null;
 
-  if (h) {
-    // collapse icon — a clean "fold" glyph (circle + minus), not a swirl
-    return wrap(
-      <>
-        <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
-        <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.6" strokeLinecap="round" />
-      </>,
-      '접기',
-    );
-  }
-
-  // node hovered → small dot at the connector start
-  return wrap(<circle r="4.5" fill={t.primary} />, '접기');
+  return wrap(
+    <>
+      <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
+      <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.6" strokeLinecap="round" />
+    </>,
+    '접기',
+  );
 }

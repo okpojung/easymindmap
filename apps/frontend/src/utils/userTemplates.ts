@@ -134,14 +134,37 @@ function levelStylesOf(map: SampleMap): (NodeStyle | undefined)[] {
   return styles;
 }
 
+// 템플릿 맵에서 depth별 대표 서브트리 레이아웃(그 depth 첫 노드의
+// layoutType)을 뽑는다 — 기본트리맵처럼 "1레벨 진행트리 + 2레벨 트리"를
+// 노드별 layoutType으로 저장한 템플릿을 '적용'으로 재현하기 위함.
+function levelLayoutsOf(map: SampleMap): (LayoutType | undefined)[] {
+  const layouts: (LayoutType | undefined)[] = [];
+  const walk = (nodes: MindNode[], depth: number) => {
+    for (const n of nodes) {
+      if (layouts[depth] === undefined && n.layoutType) layouts[depth] = n.layoutType;
+      if (layouts.length <= depth) layouts.length = depth + 1;
+      walk(n.children ?? [], depth + 1);
+    }
+  };
+  walk(map.branches as MindNode[], 1);
+  return layouts;
+}
+
 export function applyTemplateStyles(current: SampleMap, tpl: SampleMap): SampleMap {
   const levelStyles = levelStylesOf(tpl);
+  const levelLayouts = levelLayoutsOf(tpl);
   const maxLevel = levelStyles.length - 1;
+  const maxLevelLayout = levelLayouts.length - 1;
 
   const restyle = (n: MindNode, depth: number): MindNode => ({
     ...n,
     // depth별 대표 스타일 — 템플릿에 그 depth가 없으면 마지막 레벨 스타일
     style: levelStyles[Math.min(depth, Math.max(1, maxLevel))] ?? undefined,
+    // depth별 대표 서브트리 레이아웃 — 템플릿의 그 depth 노드가 레이아웃
+    // 오버라이드를 갖고 있으면 같은 depth의 모든 노드에 적용, 없으면 해제
+    // (스타일과 동일한 "템플릿이 곧 정답" 규칙 — 2026-07: MD 불러온 맵에
+    //  기본트리맵을 적용해도 2레벨 트리 레이아웃이 재현되지 않던 문제)
+    layoutType: depth <= maxLevelLayout ? levelLayouts[depth] : n.layoutType,
     children: (n.children ?? []).map((c) => restyle(c, depth + 1)),
   });
 
@@ -151,6 +174,8 @@ export function applyTemplateStyles(current: SampleMap, tpl: SampleMap): SampleM
       ...current.root,
       style: tpl.root.style,
       textAlign: tpl.root.textAlign ?? current.root.textAlign,
+      // 맵 전체 레이아웃 — 템플릿 루트의 오버라이드도 함께 복원
+      layoutType: tpl.root.layoutType ?? current.root.layoutType,
     },
     branches: current.branches.map((b) => restyle(b, 1)) as SampleMap['branches'],
     // 맵 설정(레벨별 폰트·레이아웃)은 템플릿 것으로

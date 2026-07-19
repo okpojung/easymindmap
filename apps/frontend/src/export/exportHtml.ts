@@ -22,7 +22,7 @@
 
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
-import { setLevelFontConfig, levelFontFamily } from '@/editor/node-renderer/sizeNodeForText';
+import { setLevelFontConfig, levelFontFamily, levelTextAlign } from '@/editor/node-renderer/sizeNodeForText';
 import { buildZip, type ZipEntry } from './zip';
 import {
   buildMapMeta,
@@ -92,6 +92,7 @@ function toExportNode(
   resolveHref?: AttachmentHrefResolver,
   resolvePos?: PosResolver,
   resolveSide?: SideResolver,
+  depth = 0,
 ): ExportNode {
   const tags =
     Array.isArray(node.tags) && node.tags.length > 0
@@ -123,7 +124,8 @@ function toExportNode(
     collapsed: node.collapsed || undefined,
     colorKey: node.colorKey,
     image: node.image,
-    textAlign: node.textAlign,
+    // 실효 정렬을 굽는다 — 뷰어는 맵 설정(레벨별 맞춤)을 모른다
+    textAlign: node.textAlign ?? levelTextAlign(depth),
     style: node.style && (node.style.strike || node.style.highlight)
       ? { strike: node.style.strike || undefined, highlight: node.style.highlight || undefined }
       : undefined,
@@ -131,7 +133,7 @@ function toExportNode(
     side: resolveSide?.(node.id) ?? node.side,
     pos: resolvePos?.(node.id),
     children: (node.children ?? []).map((c) =>
-      toExportNode(c, resolveHref, resolvePos, resolveSide)),
+      toExportNode(c, resolveHref, resolvePos, resolveSide, depth + 1)),
   };
 }
 
@@ -919,19 +921,37 @@ const VIEWER_JS = String.raw`
     }
 
     if (kids.length) {
-      // 접기 토글 — 에디터(CollapseControl)와 동일하게 "자식이 자라는
-      // 방향(node.side)"에 놓는다: down=아래, up=위, left=왼쪽, 그 외 오른쪽.
-      // (트리·진행트리는 side 'down'/'right', 시간배치는 'up'/'down',
-      // 방사형은 'left'/'right' — side가 없는 옛 파일은 레이아웃으로 폴백)
+      // 접기 토글 위치 — 자식이 "실제로 배치된 방향"으로 계산한다 (펼쳐진
+      // 노드는 자식 좌표의 평균 방향; 트리·진행트리의 3레벨 이하에서 자식이
+      // 아래로 자라는데 토글이 오른쪽에 붙던 문제 수정 — 2026-07). 접힌
+      // 노드는 자식 좌표가 없으므로 내보낸 side로 폴백.
       var sd = node.side;
-      var leftish = sd === 'left' || node._eff === 'radial-left' ||
-        (node._eff === 'radial-bidirectional' && sd === 'left' && depth > 0);
+      if (node._open) {
+        var adx = 0, ady = 0, acnt = 0;
+        for (var kg = 0; kg < kids.length; kg++) {
+          if (kids[kg]._cx == null) continue;
+          adx += kids[kg]._cx - node._cx;
+          ady += kids[kg]._cy - node._cy;
+          acnt++;
+        }
+        if (acnt) {
+          sd = Math.abs(ady) > Math.abs(adx)
+            ? (ady > 0 ? 'down' : 'up')
+            : (adx > 0 ? 'right' : 'left');
+        }
+      }
+      var leftish = sd === 'left' || (!node._open && (node._eff === 'radial-left' ||
+        (node._eff === 'radial-bidirectional' && sd === 'left' && depth > 0)));
       var ccx, ccy;
       if (sd === 'down') { ccx = node._cx; ccy = node._cy + node._h / 2 + 11; }
       else if (sd === 'up') { ccx = node._cx; ccy = node._cy - node._h / 2 - 11; }
       else if (leftish) { ccx = x0 - 11; ccy = node._cy; }
       else { ccx = x0 + node._w + 11; ccy = node._cy; }
-      var chip = el('g', { cursor: 'pointer', 'class': 'mm-toggle' }, g);
+      // 펼쳐진 노드의 접기(−) 토글은 항상 보이지 않고 노드에 마우스를
+      // 올렸을 때만 나타난다 (에디터와 동일). 접힌 노드의 +N 배지는 숨은
+      // 서브트리를 알려야 하므로 항상 표시.
+      var chip = el('g', { cursor: 'pointer',
+        'class': node._open ? 'mm-toggle mm-toggle-open' : 'mm-toggle' }, g);
       el('circle', { cx: ccx, cy: ccy, r: 8.5, fill: node._open ? '#FFFFFF' : color,
         stroke: color, 'stroke-width': 1.3 }, chip);
       var ct = el('text', { x: ccx, y: ccy + 3.4, 'text-anchor': 'middle',
@@ -1238,6 +1258,9 @@ const VIEWER_CSS = `
     background: radial-gradient(circle, #E4D9C377 1px, transparent 1px) 0 0 / 24px 24px;
   }
   .mm-toggle:hover circle { filter: brightness(0.93); }
+  /* 펼쳐진 노드의 접기(−) 토글 — 노드/토글에 호버할 때만 표시 (에디터 동일) */
+  .mm-toggle-open { opacity: 0; transition: opacity 0.12s; }
+  .mm-node:hover .mm-toggle-open, .mm-toggle-open:hover { opacity: 1; }
   /* 노트 뷰어 창 크기.
      [서버 연결 예정] 시스템 기본 크기는 관리자 설정(system_settings),
      사용자별 크기는 users.ui_preferences_json.noteViewer 로 이관 —
@@ -1380,13 +1403,13 @@ export function buildStandaloneHtml(
       ...toExportNode({
         id: 'root',
         text: map.root.text,
-        textAlign: map.root.textAlign,
+        textAlign: map.root.textAlign ?? levelTextAlign(0),
         style: map.root.style,
       } as MindNode, resolveHref, resolvePos, resolveSide),
       colorKey: 'root',
       layoutType: map.root.layoutType ?? mapLayoutType,
       children: map.branches.map((b) =>
-        toExportNode(b, resolveHref, resolvePos, resolveSide)),
+        toExportNode(b, resolveHref, resolvePos, resolveSide, 1)),
     },
   };
 

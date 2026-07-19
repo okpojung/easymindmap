@@ -19,14 +19,8 @@ import {
   applyTemplateStyles,
   type UserTemplate,
 } from '@/utils/userTemplates';
-
-const TEMPLATES = [
-  { name: '제품 로드맵',   desc: 'Q1~Q4 분기별 마일스톤', colors: ['#D97706','#0284C7','#15803D','#9333EA'] },
-  { name: '브레인스토밍', desc: '자유 확장 방사형 맵',    colors: ['#F59E0B','#FBBF24'] },
-  { name: 'WBS 프로젝트', desc: '계층형 작업 분해 구조',  colors: ['#0284C7','#38BDF8','#7DD3FC'] },
-  { name: 'Kanban 보드',  desc: '백로그 → 완료 흐름',     colors: ['#958A78','#D97706','#0284C7','#15803D'] },
-  { name: '회의록',       desc: '안건 · 결정 · 액션',     colors: ['#DC2626','#F59E0B','#15803D'] },
-];
+import { LIBRARY_TEMPLATES } from '@/utils/libraryTemplates';
+import type { SampleMap, LayoutType } from '@/editor/__samples__/types';
 
 export function TemplatePanel({ t }: { t: ThemeTokens }) {
   const map = useDocumentStore((s) => s.map);
@@ -74,7 +68,11 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
   // '적용' = 현재 맵의 내용은 그대로 두고 템플릿의 "속성"만 입힌다 —
   // 레벨별 대표 스타일(도형·색·테두리) + 맵 설정(레벨별 폰트·레이아웃)
   // + 전체 레이아웃·간격. 맵 전체 교체는 '새 맵 > 이 템플릿으로 시작'.
-  const apply = (tpl: UserTemplate) => {
+  const apply = (tpl: {
+    name: string;
+    map: SampleMap;
+    editor?: { layoutType?: LayoutType; spacingX?: number; spacingY?: number };
+  }) => {
     loadMap(applyTemplateStyles(map, tpl.map));
     const lt = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
     if (lt) setLayoutType(lt);
@@ -169,11 +167,16 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
         fontSize: 11, color: t.textSubtle, margin: '14px 0 8px',
         textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
       }}>템플릿 라이브러리</div>
-      {TEMPLATES.map((tpl, i) => (
-        <div key={i} style={{
+      <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, marginBottom: 8 }}>
+        기본 제공 템플릿입니다. '적용'은 현재 맵의 내용은 유지하고
+        레이아웃·스타일만 입힙니다. 새 맵으로 시작하려면 '새 맵' 메뉴에서
+        고르세요.
+      </div>
+      {LIBRARY_TEMPLATES.map((tpl) => (
+        <div key={tpl.id} style={{
           padding: 10, borderRadius: 8,
           background: t.surface, border: `1px solid ${t.border}`,
-          marginBottom: 6, cursor: 'pointer',
+          marginBottom: 6,
         }}>
           <div style={{ display: 'flex', gap: 3, marginBottom: 6 }}>
             {tpl.colors.map((c, j) => (
@@ -183,7 +186,14 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
           <div style={{ fontSize: 13, fontWeight: 600, color: t.text, marginBottom: 2 }}>
             {tpl.name}
           </div>
-          <div style={{ fontSize: 11, color: t.textMuted }}>{tpl.desc}</div>
+          <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 6 }}>{tpl.desc}</div>
+          <button onClick={() => apply(tpl)}
+            title="현재 맵의 내용은 유지하고 이 템플릿의 레이아웃·스타일·맵 설정만 적용합니다 (Ctrl+Z로 되돌리기 가능)"
+            style={{
+              fontSize: 10.5, padding: '3px 10px', borderRadius: 4, fontWeight: 600,
+              border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,
+              color: t.primary, cursor: 'pointer',
+            }}>적용</button>
         </div>
       ))}
     </div>

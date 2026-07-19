@@ -96,6 +96,9 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
       if (next === text) break;
       text = next;
     }
+    // Markdown 백슬래시 이스케이프 해제 — "1\." "\-" 같은 표기를
+    // 원래 문자로 (ChatGPT 내보내기가 자주 씀)
+    text = text.replace(/\\([\\`*_{}[\]()#+\-.!|~])/g, '$1');
     return { text: text.trim(), links };
   };
 
@@ -113,6 +116,12 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
   let sawHeading = false;
   // 마지막 리스트 항목 — 들여쓴 연속 줄을 이 노드의 추가 줄로 합친다
   let lastItem: { node: MindNode; indent: number } | null = null;
+  // "순번 문단 섹션" — 들여쓰기 없는 순번 항목("1. WEB 서버 …")은 절
+  // 머리 역할을 한다: 다음 순번/견출 전까지의 문단이 그 하위로 붙는다
+  // (ChatGPT 답변처럼 견출 없이 "1. 제목" + 본문 문단으로 쓰는 문서)
+  let sectionDepth: number | null = null;
+  // 마지막 문단 노드의 깊이 — 문단 뒤의 불릿(-,*)은 그 문단의 하위로
+  let paraDepth: number | null = null;
 
   const attach = (depth: number, rawText: string): MindNode | null => {
     if (depth < 1 || !rawText.trim()) return null;
@@ -170,7 +179,9 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
       rootNotes.push({ id: nid(), type: 'paragraph', text });
       return;
     }
-    attach(lastHeadingDepth + 1, text);
+    // 순번 문단 섹션이 열려 있으면 그 하위로 (아니면 견출 하위)
+    const depth = sectionDepth !== null ? sectionDepth + 1 : lastHeadingDepth + 1;
+    if (attach(depth, text)) paraDepth = depth;
   };
   const flushTable = () => {
     if (!tableBuf.length) return;
@@ -245,12 +256,17 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
     if (!line.trim()) { flushPara(); continue; }
 
     // 수평선
-    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { flushPara(); lastItem = null; continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      flushPara(); lastItem = null; sectionDepth = null; paraDepth = null;
+      continue;
+    }
 
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       flushAll();
       lastItem = null;
+      sectionDepth = null;
+      paraDepth = null;
       const level = heading[1].length; // 1~6
       const text = heading[2].trim();
       if (level === 1 && !rootText && !sawHeading) {
@@ -277,8 +293,22 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
       const indent = bullet[1].replace(/\t/g, '  ').length;
       const indentLevel = Math.floor(indent / 2);
       const marker = bullet[2];
-      const text = /^\d/.test(marker) ? `${marker} ${bullet[3].trim()}` : bullet[3].trim();
-      const node = attach(lastHeadingDepth + 1 + indentLevel, text);
+      const ordered = /^\d/.test(marker);
+      const text = ordered ? `${marker} ${bullet[3].trim()}` : bullet[3].trim();
+      let node: MindNode | null;
+      if (ordered && indentLevel === 0) {
+        // 들여쓰기 없는 순번 항목 = 절 머리 (다음 문단들이 이 하위로)
+        const depth = lastHeadingDepth + 1;
+        node = attach(depth, text);
+        sectionDepth = node ? depth : null;
+        paraDepth = null;
+      } else {
+        // 불릿(그리고 들여쓴 순번)은 직전 문단 → 순번 절 → 견출 순의
+        // 기준에 상대적으로 붙는다 ("Apache 설정 파일 수정" 문단 아래의
+        // "- DocumentRoot: …" 불릿이 그 문단의 하위가 되도록)
+        const base = paraDepth ?? (sectionDepth !== null ? sectionDepth : lastHeadingDepth);
+        node = attach(base + 1 + indentLevel, text);
+      }
       lastItem = node ? { node, indent } : null;
       continue;
     }

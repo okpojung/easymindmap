@@ -42,6 +42,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
+import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
 
 const LAYOUT_LABEL: Record<string, string> = {
   tree: '트리 · 오른쪽 (직각선)',
@@ -107,6 +108,8 @@ export function Canvas({
   const addNodeLink = useDocumentStore((state) => state.addNodeLink);
   const addNodeAttachment = useDocumentStore((state) => state.addNodeAttachment);
   const setNodeImage = useDocumentStore((state) => state.setNodeImage);
+  const updateNodeText = useDocumentStore((state) => state.updateNodeText);
+  const addNoteBlock = useDocumentStore((state) => state.addNoteBlock);
   const undo = useDocumentStore((state) => state.undo);
   const redo = useDocumentStore((state) => state.redo);
   const setBranchSide = useDocumentStore((state) => state.setBranchSide);
@@ -500,10 +503,14 @@ export function Canvas({
     requestFit();
   };
 
-  // 노드에 사진 붙여넣기 — 노드를 선택한 상태에서 Ctrl+V.
-  // 클립보드의 이미지 파일(스크린샷·복사한 그림)은 data URL로,
-  // 웹에서 복사한 이미지(text/html의 <img>)는 원본 URL로 노드에 저장한다.
-  // 사진은 노드 안 텍스트 아래에 노드 폭에 맞춰 표시된다 (NodeRenderer).
+  // ThinkWise식 붙여넣기 — 노드를 '선택만' 한 상태(편집 아님)에서 Ctrl+V
+  // 하면 선택 노드의 "하위 노드"를 만들고 거기에 클립보드 내용을 넣는다.
+  //   · 이미지 파일(스크린샷·복사한 그림) → 하위 노드 + 사진(data URL)
+  //   · 웹 기사 등 text/html → 하위 노드 텍스트 = 첫 줄, 본문·사진은
+  //     문단 노트에 서식·원래 위치째 보관 (sanitizeRichHtml — 사진이
+  //     항상 마지막으로 밀리던 문제의 근본 해결)
+  //   · 일반 텍스트 → 하위 노드 텍스트 = 첫 줄, 여러 줄이면 전체를
+  //     문단 노트로 함께 보관
   // (노드 텍스트 편집 중 붙여넣기는 NodeRenderer의 textarea onPaste가 처리)
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -514,19 +521,58 @@ export function Canvas({
         target?.isContentEditable;
       if (isEditingText) return; // 입력창 붙여넣기는 각 입력창이 처리
       if (!selectedId) return;
-      // 전역 경로는 이미지 '파일'(스크린샷 등)만 — 웹 기사(text/html)까지
-      // 받으면 노트 문단 등 다른 붙여넣기를 가로챈다. 기사는 노드 텍스트
-      // 편집창(더블클릭) 붙여넣기로 처리.
-      const kind = extractClipboardImage(
-        e.clipboardData,
-        (img) => setNodeImage(selectedId, img),
-        { allowHtml: false },
+      const dt = e.clipboardData;
+      if (!dt) return;
+
+      const hasImgFile = Array.from(dt.files ?? []).some((f) =>
+        f.type.startsWith('image/'),
       );
-      if (kind) e.preventDefault();
+      const rawHtml = hasImgFile ? '' : dt.getData('text/html');
+      const clean = rawHtml ? sanitizeRichHtml(rawHtml) : { html: '', text: '' };
+      const plain = (dt.getData('text/plain') ?? '').replace(/\r\n?/g, '\n');
+      if (!hasImgFile && !clean.html && !plain.trim()) return; // 붙일 내용 없음
+
+      e.preventDefault();
+      const childId = addChildNode(selectedId);
+      if (!childId) return;
+
+      if (hasImgFile) {
+        updateNodeText(childId, '이미지');
+        extractClipboardImage(dt, (img) => setNodeImage(childId, img), {
+          allowHtml: false,
+        });
+      } else if (clean.html) {
+        // 줄 구조는 text/plain에서 얻는다 — html의 textContent에는 <br>
+        // 줄바꿈이 없어 첫 줄을 나눌 수 없다
+        const lineSource = plain.trim() || clean.text.trim();
+        const rawFirst =
+          lineSource.split('\n').map((s) => s.trim()).find(Boolean) ?? '붙여넣은 내용';
+        const firstLine =
+          rawFirst.length > 80 ? rawFirst.slice(0, 80) + '…' : rawFirst;
+        updateNodeText(childId, firstLine);
+        // 사진이 있거나 여러 줄 본문이면 전체를 문단 노트로 (원문 순서 유지)
+        const hasImg = /<img\s/i.test(clean.html);
+        if (hasImg || lineSource.length > rawFirst.length) {
+          addNoteBlock(childId, 'paragraph', lineSource, { html: clean.html });
+        }
+      } else {
+        const lines = plain.split('\n').map((s) => s.trim());
+        const rawFirst = lines.find(Boolean) ?? '';
+        updateNodeText(
+          childId,
+          rawFirst.length > 80 ? rawFirst.slice(0, 80) + '…' : rawFirst,
+        );
+        if (lines.filter(Boolean).length > 1) {
+          addNoteBlock(childId, 'paragraph', plain.trim());
+        }
+      }
+      // 만든 하위 노드를 바로 선택 — 이어서 붙여넣으면 그 아래로 계속 생성
+      selectOne(childId);
     };
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [selectedId, setNodeImage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, setNodeImage, addChildNode, updateNodeText, addNoteBlock]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

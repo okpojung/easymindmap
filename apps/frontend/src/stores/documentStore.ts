@@ -126,8 +126,13 @@ interface DocumentState {
   addNodeLink: (nodeId: string | null, url: string, label?: string) => void;
   removeNodeLink: (nodeId: string | null, linkId: string) => void;
 
-  // Notes (structured blocks)
-  addNoteBlock: (nodeId: string | null, type: NoteBlockType, text?: string) => void;
+  // Notes (structured blocks) — extra: 리치 붙여넣기(html) 등 초기 필드
+  addNoteBlock: (
+    nodeId: string | null,
+    type: NoteBlockType,
+    text?: string,
+    extra?: Partial<NoteBlock>,
+  ) => void;
   updateNoteBlock: (nodeId: string | null, blockId: string, patch: Partial<NoteBlock>) => void;
   removeNoteBlock: (nodeId: string | null, blockId: string) => void;
 
@@ -1049,7 +1054,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }));
   },
 
-  addNoteBlock: (nodeId, type, text = '') => {
+  addNoteBlock: (nodeId, type, text = '', extra) => {
     if (!nodeId) return;
     set((state) => ({
       map: mutateNode(state.map, nodeId, (n) => ({
@@ -1062,6 +1067,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
             type,
             text,
             ...(type === 'checklist' ? { checked: false } : {}),
+            ...(extra ?? {}),
           },
         ],
       })),

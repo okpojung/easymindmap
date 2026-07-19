@@ -63,7 +63,7 @@ export function resolveLazyImgSrc(elIn: Element): string | null {
   return src;
 }
 
-function sanitizeNode(node: Node, out: Node, doc: Document): void {
+function sanitizeNode(node: Node, out: Node, doc: Document, seenImg: Set<string>): void {
   for (const child of Array.from(node.childNodes)) {
     if (child.nodeType === Node.TEXT_NODE) {
       out.appendChild(doc.createTextNode(child.textContent ?? ''));
@@ -78,7 +78,7 @@ function sanitizeNode(node: Node, out: Node, doc: Document): void {
 
     if (!ALLOWED_TAGS.has(tag)) {
       // 허용 외 태그 — 태그는 벗기고 내용만 이어붙인다
-      sanitizeNode(elIn, out, doc);
+      sanitizeNode(elIn, out, doc, seenImg);
       continue;
     }
 
@@ -86,6 +86,12 @@ function sanitizeNode(node: Node, out: Node, doc: Document): void {
       // 지연 로딩 자리표시자면 data-src·srcset의 실제 주소로 복원
       const src = resolveLazyImgSrc(elIn);
       if (!src) continue;
+      // 같은 주소의 이미지가 원문에 두 번 실리는 경우(숨겨진 자리표시자
+      // + 로드된 본 이미지가 함께 복사되는 lazy-load 구현)는 첫 위치만
+      // 살린다 — 뒤쪽 중복이 남으면 "사진이 마지막에 또 나오는" 것처럼
+      // 보인다. 기사에서 같은 사진을 두 번 싣는 일은 없어 안전하다.
+      if (seenImg.has(src)) continue;
+      seenImg.add(src);
       const img = doc.createElement('img');
       img.setAttribute('src', src);
       const alt = elIn.getAttribute('alt');
@@ -113,7 +119,7 @@ function sanitizeNode(node: Node, out: Node, doc: Document): void {
     }
     // 그 외 속성(style/class/on* 등)은 전부 버린다
 
-    sanitizeNode(elIn, elOut, doc);
+    sanitizeNode(elIn, elOut, doc, seenImg);
     out.appendChild(elOut);
   }
 }
@@ -126,7 +132,7 @@ export interface SanitizedRich {
 export function sanitizeRichHtml(rawHtml: string): SanitizedRich {
   const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
   const container = doc.createElement('div');
-  sanitizeNode(doc.body, container, doc);
+  sanitizeNode(doc.body, container, doc, new Set<string>());
 
   // 빈 래퍼만 남았으면(텍스트도 이미지도 없음) 서식 없음으로 처리
   const text = (container.textContent ?? '').replace(/\u00A0/g, ' ').trim();

@@ -56,17 +56,22 @@ export function IndicatorGlyph({ kind, size }: { kind: ContentKind; size: number
   }
 
   if (kind === 'file') {
-    // 진한 클립 — 참고 이미지의 첨부파일 아이콘을 선명한 색·두께로
+    // 첨부파일 — 노트 배지(NoteTypeGlyph)와 같은 색상 박스 안에 흰 클립.
+    // 맨클립(진갈색 선)만 그리면 다크 모드의 어두운 노드 배경에서 보이지
+    // 않아, 보라 배지 + 흰 클립으로 라이트·다크 모두에서 또렷하게 표시.
     return (
       <g transform={`scale(${s}) translate(-12,-12)`}>
-        <path
-          d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-          fill="none"
-          stroke="#4A3B28"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        <rect x="2" y="2" width="20" height="20" rx="5" fill="#7C3AED" />
+        <g transform="translate(12,12) scale(0.68) translate(-12,-11.5)">
+          <path
+            d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+            fill="none"
+            stroke="#FFFFFF"
+            strokeWidth="2.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
       </g>
     );
   }

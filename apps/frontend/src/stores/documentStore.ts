@@ -93,6 +93,8 @@ interface DocumentState {
   setLevelLayout: (level: number, layoutType: LayoutType | null) => void;
   // 레벨별 기본 도형 — index 0=1레벨(중심) … 4=5레벨+ (null = 기본)
   setLevelShape: (level: number, shape: ShapeType | null) => void;
+  // 노트 글꼴·크기 (맵 설정 — 기본 13pt)
+  setNoteFont: (patch: { size?: number; family?: string }) => void;
 
   // 현재 맵 전체 교체 (템플릿 적용 등 — undo 히스토리에 기록됨)
   loadMap: (map: SampleMap) => void;
@@ -833,6 +835,18 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         },
       };
     });
+  },
+
+  setNoteFont: (patch) => {
+    set((state) => ({
+      map: {
+        ...state.map,
+        settings: {
+          ...state.map.settings,
+          noteFont: { ...state.map.settings?.noteFont, ...patch },
+        },
+      },
+    }));
   },
 
   updateLevelFont: (level, patch) => {

@@ -6,7 +6,8 @@
 // 창 조작: 제목줄 드래그 = 이동, 우하단 모서리 드래그(CSS resize) = 크기
 // 조절. (편집은 좌측 노트·태그 탭에서)
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useDocumentStore } from '@/stores/documentStore';
 import { parseInlineMarks } from '@/editor/node-renderer/inlineMarks';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
@@ -93,7 +94,9 @@ function CopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   );
 }
 
-function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
+function NoteBlockView({ t, block, fs, family }: {
+  t: ThemeTokens; block: NoteBlock; fs: number; family?: string;
+}) {
   // 폐기된 옛 타입(warning/tip)은 문단으로 렌더 (하위호환)
   const type =
     (block.type as string) === 'warning' || (block.type as string) === 'tip'
@@ -107,7 +110,8 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
       .filter((r) => r.trim() && !/^[\s|:\-]+$/.test(r))
       .map((r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, ''));
     return (
-      <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 8, fontSize: 11.5 }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 8,
+        fontSize: Math.max(9, fs - 1), fontFamily: family }}>
         <tbody>
           {rows.map((row, r) => (
             <tr key={r}>
@@ -142,7 +146,7 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
           <CopyButton t={t} text={block.text} />
         </div>
         <pre style={{
-          margin: 0, padding: '7px 9px', fontSize: 10, lineHeight: 1.5,
+          margin: 0, padding: '7px 9px', fontSize: Math.max(9, fs - 2), lineHeight: 1.5,
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
           whiteSpace: 'pre', overflowX: 'auto', background: t.surface,
         }}>{block.text}</pre>
@@ -155,7 +159,7 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
     return (
       <div
         className="mm-rich-note"
-        style={{ marginBottom: 6, fontSize: 10.5, lineHeight: 1.6 }}
+        style={{ marginBottom: 6, fontSize: fs, fontFamily: family, lineHeight: 1.6 }}
         dangerouslySetInnerHTML={{ __html: block.html }}
       />
     );
@@ -166,7 +170,8 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
   // — 마커 문자는 숨김.
   return (
     <div style={{
-      marginBottom: 6, lineHeight: 1.5, fontSize: 10, overflowX: 'auto',
+      marginBottom: 6, lineHeight: 1.55, fontSize: fs, fontFamily: family,
+      overflowX: 'auto',
     }}>
       {String(block.text).split('\n').map((line, li) => (
         <div key={li} style={{ whiteSpace: 'pre' }}>
@@ -180,6 +185,8 @@ function NoteBlockView({ t, block }: { t: ThemeTokens; block: NoteBlock }) {
 
 export function NoteViewerPopover({ t, title, heading, accent, notes, onClose }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const headRef = useRef<HTMLDivElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   // 제목줄 드래그로 옮긴 위치 — 옮기기 전에는 기본 위치(우측 상단 도킹)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const dragRef = useRef<{
@@ -187,6 +194,36 @@ export function NoteViewerPopover({ t, title, heading, accent, notes, onClose }:
   } | null>(null);
 
   const accentColor = accent ?? t.primary;
+
+  // 노트 글꼴·크기 (맵 설정 — 기본 13pt)
+  const noteFont = useDocumentStore((s) => s.map.settings?.noteFont);
+  const fs = noteFont?.size && noteFont.size > 0 ? noteFont.size : 13;
+  const family = noteFont?.family && noteFont.family.trim() ? noteFont.family : undefined;
+
+  // 자동 크기 — 내용에 맞추되 최소 220×120 ~ 최대 "화면 4분할 시 우측
+  // 상단"(화면의 1/2 × 1/2) 범위. 첫 렌더는 최대 폭으로 그려 내용의
+  // 자연 크기(scrollWidth/Height)를 재고, 페인트 전에 줄인다.
+  const [autoSize, setAutoSize] = useState<{ w: number; h: number } | null>(null);
+  useLayoutEffect(() => {
+    setAutoSize(null); // 노트·폰트가 바뀌면 다시 측정
+  }, [notes, fs, family]);
+  useLayoutEffect(() => {
+    if (autoSize) return;
+    const body = bodyRef.current;
+    const head = headRef.current;
+    if (!body || !head) return;
+    const maxW = Math.floor(window.innerWidth / 2);
+    const maxH = Math.floor(window.innerHeight / 2);
+    // 자연 폭 측정 — 블록 요소는 컨테이너 폭을 다 차지하므로 잠시
+    // max-content로 줄여 내용의 실제 폭을 잰다
+    const prevW = body.style.width;
+    body.style.width = 'max-content';
+    const natW = body.offsetWidth;
+    body.style.width = prevW;
+    const w = Math.min(maxW, Math.max(220, natW + 6));
+    const h = Math.min(maxH, Math.max(120, body.scrollHeight + head.offsetHeight + 8));
+    setAutoSize({ w, h });
+  }, [autoSize]);
 
   return (
     <div
@@ -202,8 +239,13 @@ export function NoteViewerPopover({ t, title, heading, accent, notes, onClose }:
       style={{
         position: 'absolute',
         ...(pos ? { left: pos.x, top: pos.y } : { right: 14, top: 60 }),
-        width: 300, maxWidth: '85%',
-        maxHeight: pos ? '85%' : '62%', minWidth: 220, minHeight: 120,
+        // 자동 크기 — 측정 전 한 프레임은 최대 폭으로 그려 내용을 잰다
+        width: autoSize ? autoSize.w : Math.floor(window.innerWidth / 2),
+        ...(autoSize ? { height: autoSize.h } : {}),
+        // 최대 = "화면 4분할 시 우측 상단" — 브라우저 화면의 1/2 × 1/2
+        maxWidth: Math.floor(window.innerWidth / 2),
+        maxHeight: Math.floor(window.innerHeight / 2),
+        minWidth: 220, minHeight: 120,
         resize: 'both', overflow: 'auto',
         background: t.surface,
         border: `1px solid ${t.border}`, borderRadius: 10,
@@ -214,6 +256,7 @@ export function NoteViewerPopover({ t, title, heading, accent, notes, onClose }:
     >
       {/* 제목줄 — 드래그하면 창이 움직인다 */}
       <div
+        ref={headRef}
         title="드래그하여 이동"
         onPointerDown={(e) => {
           e.stopPropagation();
@@ -270,9 +313,10 @@ export function NoteViewerPopover({ t, title, heading, accent, notes, onClose }:
         </button>
       </div>
 
-      <div style={{ padding: '9px 14px 12px', overflow: 'auto', flex: 1, minHeight: 0 }}>
+      <div ref={bodyRef}
+        style={{ padding: '9px 14px 12px', overflow: 'auto', flex: 1, minHeight: 0 }}>
         {notes.map((block) => (
-          <NoteBlockView key={block.id} t={t} block={block} />
+          <NoteBlockView key={block.id} t={t} block={block} fs={fs} family={family} />
         ))}
       </div>
     </div>

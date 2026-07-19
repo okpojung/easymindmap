@@ -34,6 +34,35 @@ function safeImgSrc(url: string): string | null {
   return null;
 }
 
+// 지연 로딩(lazy-load) 이미지의 실제 주소 해석 — 뉴스 사이트 등은 본문
+// 위치의 <img>가 1×1 자리표시자(src)이고 실제 주소를 data-src·srcset에
+// 둔다. 자리표시자를 그대로 살리거나 버리면 "사진이 원문 위치에서
+// 사라지고 다른 곳의 이미지만 남아" 순서가 달라 보인다 — 실제 주소로
+// 바꿔 원래 위치에 복원한다.
+export function resolveLazyImgSrc(elIn: Element): string | null {
+  const rawSrc = elIn.getAttribute('src') ?? '';
+  let src = safeImgSrc(rawSrc);
+  // 극소 data:gif(투명 1px 자리표시자)는 유효 src로 치지 않는다
+  const isPlaceholder =
+    !src || (/^data:image\/gif/i.test(rawSrc) && rawSrc.length < 400);
+  if (isPlaceholder) {
+    const lazyAttrs = ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-url'];
+    for (const a of lazyAttrs) {
+      const v = elIn.getAttribute(a);
+      const ok = v && safeImgSrc(v);
+      if (ok) return ok;
+    }
+    const ss = elIn.getAttribute('srcset') ?? elIn.getAttribute('data-srcset');
+    if (ss) {
+      const first = ss.split(',')[0].trim().split(/\s+/)[0];
+      const ok = first && safeImgSrc(first);
+      if (ok) return ok;
+    }
+    return src; // 폴백 없음 — 자리표시자(또는 null) 그대로
+  }
+  return src;
+}
+
 function sanitizeNode(node: Node, out: Node, doc: Document): void {
   for (const child of Array.from(node.childNodes)) {
     if (child.nodeType === Node.TEXT_NODE) {
@@ -54,7 +83,8 @@ function sanitizeNode(node: Node, out: Node, doc: Document): void {
     }
 
     if (tag === 'IMG') {
-      const src = safeImgSrc(elIn.getAttribute('src') ?? '');
+      // 지연 로딩 자리표시자면 data-src·srcset의 실제 주소로 복원
+      const src = resolveLazyImgSrc(elIn);
       if (!src) continue;
       const img = doc.createElement('img');
       img.setAttribute('src', src);

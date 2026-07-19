@@ -9,6 +9,7 @@
 // ✕ 버튼으로 제거할 수 있다.
 
 import type { NodeImage } from '@/editor/__samples__/types';
+import { resolveLazyImgSrc } from './sanitizeRichHtml';
 
 function probeAndApply(src: string, apply: (img: NodeImage) => void): void {
   const probe = new Image();
@@ -53,8 +54,13 @@ export function extractClipboardImage(
   const html = dt.getData('text/html');
   if (html) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    const img = doc.querySelector('img[src^="http"], img[src^="data:image/"]');
-    const src = img?.getAttribute('src');
+    // 지연 로딩 자리표시자(1px gif 등)는 건너뛰고 실제 주소를 가진 첫
+    // 이미지를 찾는다 (data-src·srcset 폴백 — sanitizeRichHtml과 동일)
+    let src: string | null = null;
+    for (const im of Array.from(doc.querySelectorAll('img'))) {
+      src = resolveLazyImgSrc(im);
+      if (src) break;
+    }
     if (src) {
       probeAndApply(src, apply);
       return 'html';

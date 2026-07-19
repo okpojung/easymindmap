@@ -55,6 +55,8 @@ export interface LaidOutNode {
   edgeType?: EdgeType;
 
   _lines?: string[];
+  // 수동 줄바꿈 세그먼트 시작 인덱스 — 인라인 마커 상태 이월 리셋 지점
+  _manualStarts?: number[];
   _fontSize?: number;
   _fontWeight?: number;
   _lineHeight?: number;

@@ -26,7 +26,12 @@ import {
   scaleNodeImage,
 } from './sizeNodeForText';
 import { layoutMdTable, MD_TABLE_CELL_PAD_X } from './mdTable';
-import { parseInlineMarks, toggleMarkRange } from './inlineMarks';
+import {
+  parseInlineMarks,
+  parseInlineMarksWithState,
+  toggleMarkRange,
+  type MarkState,
+} from './inlineMarks';
 import { measureTextPx } from './textMeasure';
 import { MarkToolbar } from './MarkToolbar';
 import { useViewportStore } from '@/stores/viewportStore';
@@ -433,6 +438,19 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
           contentTop + lines.length * lineHeight +
           (mdTable ? mdTable.h + tableGap : 0) + imgGap;
 
+        // 인라인 마커 상태를 자동 줄바꿈 사이로 이월한다 — 마커 구간이
+        // 줄 경계에 걸치면 다음 줄에서 여는 마커로 재해석되어 강조
+        // 위치가 밀리던 버그 수정. 수동 줄바꿈(\n) 세그먼트가 시작하는
+        // 줄(_manualStarts)에서만 상태를 리셋한다 (기존 줄 단위 규칙 유지).
+        const manualStarts = n._manualStarts;
+        let markSt: MarkState | undefined;
+        const lineSegs = lines.map((ln, li2) => {
+          if (!manualStarts || manualStarts.includes(li2)) markSt = undefined;
+          const r = parseInlineMarksWithState(ln, markSt);
+          markSt = r.end;
+          return r.segs;
+        });
+
         return (
           <g>
             {lines.map((line, i) => {
@@ -440,8 +458,8 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
               // 인라인 강조(부분 텍스트) — **굵게** *기울임* ~~취소선~~
               // __밑줄__ ==하이라이트== 마커를 구간(tspan)으로 그린다.
               // 마커 문자는 표시에서 제거되고, 노드 전체 강조(스타일 탭)와
-              // 결합된다.
-              const segs = parseInlineMarks(line);
+              // 결합된다. (구간은 위 lineSegs — 줄 간 상태 이월 반영)
+              const segs = lineSegs[i];
               // 표시 좌표는 근사 폭이 아니라 캔버스 실측 폭 — 근사로 놓으면
               // 인접 구간(tspan)의 x가 실제 렌더 폭과 어긋나 글자가 겹친다.
               const segWs = segs.map((sg) =>

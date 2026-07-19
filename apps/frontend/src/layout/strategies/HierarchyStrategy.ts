@@ -57,6 +57,7 @@ function placeSubtree(
     w: size.w,
     h: size.h,
     _lines: size.lines,
+    _manualStarts: size.manualStarts,
     _fontSize: size.fontSize,
     _fontWeight: size.fontWeight,
     _lineHeight: size.lineHeight,

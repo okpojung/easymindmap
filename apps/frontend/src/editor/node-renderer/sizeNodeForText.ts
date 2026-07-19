@@ -39,6 +39,9 @@ export interface NodeSize {
   // 노드 텍스트에 Markdown 표가 있으면 그 측정 결과 — lines에는 표를 뺀
   // 나머지 텍스트만 남는다. NodeRenderer가 같은 값으로 표를 그린다.
   mdTable?: MdTableLayout;
+  // 수동 줄바꿈(\n) 세그먼트가 시작하는 lines 인덱스 — 인라인 마커 상태
+  // 이월의 리셋 지점 (자동 줄바꿈 줄에는 상태가 이어진다)
+  manualStarts?: number[];
 }
 
 // 노드 폭(w)에 맞춘 사진 표시 크기 — 측정과 그리기가 같은 공식을 쓴다.
@@ -144,9 +147,11 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   // (표만 있는 노드는 텍스트 줄이 없다 — 빈 줄 하나를 만들지 않는다)
   const manualLines = mdTable && plainText === '' ? [] : plainText.split('\n');
   const wrappedLines: string[] = [];
+  const manualStarts: number[] = [];
   const innerMaxW = maxW - padX * 2 - iconReserve;
 
   manualLines.forEach((seg) => {
+    manualStarts.push(wrappedLines.length);
     if (seg === '') {
       wrappedLines.push('');
       return;
@@ -211,5 +216,8 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   // 수동 높이는 최소값 — 내용이 더 크면 내용에 맞춘다
   if (opts.manualH && opts.manualH > h) h = Math.min(1200, Math.round(opts.manualH));
 
-  return { w, h, lines: wrappedLines, fontSize, fontWeight, lineHeight, padX, padY, mdTable };
+  return {
+    w, h, lines: wrappedLines, fontSize, fontWeight, lineHeight,
+    padX, padY, mdTable, manualStarts,
+  };
 }

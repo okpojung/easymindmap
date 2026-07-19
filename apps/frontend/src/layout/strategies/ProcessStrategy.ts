@@ -39,6 +39,7 @@ interface Measured {
   w: number;
   h: number;
   lines: string[];
+  manualStarts?: number[];
   fontSize: number;
   fontWeight: number;
   lineHeight: number;
@@ -68,6 +69,7 @@ function measure(node: MindNode, depth: number): Measured {
     w: size.w,
     h: size.h,
     lines: size.lines,
+    manualStarts: size.manualStarts,
     fontSize: size.fontSize,
     fontWeight: size.fontWeight,
     lineHeight: size.lineHeight,
@@ -110,6 +112,7 @@ function place(
     w: m.w,
     h: m.h,
     _lines: m.lines,
+    _manualStarts: m.manualStarts,
     _fontSize: m.fontSize,
     _fontWeight: m.fontWeight,
     _lineHeight: m.lineHeight,

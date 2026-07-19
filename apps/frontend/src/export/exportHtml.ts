@@ -629,7 +629,7 @@ const VIEWER_JS = String.raw`
   }
 
   // Content-marker glyphs, centered at (cx, cy) and scaled to size.
-  // link/file are drawn as bold SVG (globe+gold chain / dark paperclip —
+  // link/file are drawn as bold SVG (globe+gold chain / violet clip badge —
   // the editor's IndicatorGlyph.tsx design; emojis render faint on some OSes).
   // note/media keep their vivid emojis. Returns the clickable <g>.
   function drawMarkerGlyph(parent, kind, cx, cy, size) {
@@ -647,11 +647,17 @@ const VIEWER_JS = String.raw`
         el('rect', { x: 10.2, y: 14.4, width: 6.6, height: 4.8, rx: 2.4, fill: '#F59E0B', stroke: '#92400E', 'stroke-width': 1.5 }, inner);
         el('rect', { x: 15.2, y: 14.4, width: 6.6, height: 4.8, rx: 2.4, fill: '#FBBF24', stroke: '#92400E', 'stroke-width': 1.5 }, inner);
       } else {
+        // 첨부파일 — 에디터 IndicatorGlyph와 동일한 보라 배지 + 흰 클립
+        // (맨클립 선만 그리면 다크 모드 노드 배경에서 안 보인다)
+        el('rect', { x: 2, y: 2, width: 20, height: 20, rx: 5, fill: '#7C3AED' }, inner);
+        var clipG = el('g', {
+          transform: 'translate(12,12) scale(0.68) translate(-12,-11.5)'
+        }, inner);
         el('path', {
           d: 'M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48',
-          fill: 'none', stroke: '#4A3B28', 'stroke-width': 2.5,
+          fill: 'none', stroke: '#FFFFFF', 'stroke-width': 2.7,
           'stroke-linecap': 'round', 'stroke-linejoin': 'round'
-        }, inner);
+        }, clipG);
       }
       // transparent hit area so clicks land anywhere on the glyph
       el('rect', { x: cx - size / 2, y: cy - size / 2, width: size, height: size, fill: 'transparent' }, g2);

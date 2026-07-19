@@ -1365,19 +1365,43 @@ const VIEWER_JS = String.raw`
 
   document.getElementById('mm-fit').addEventListener('click', fit);
 
-  // ── 검색 — 에디터 검색과 동일하게, 일치 노드를 노란 채움 + 붉은
-  //    테두리로 강조하고 화면 중앙으로 이동한다 (접힌 조상은 펼침) ──
-  var searchHits = [], searchIdx = -1;
+  // ── 검색 — 에디터 검색 패널과 동일한 인터페이스: 입력하면 결과
+  //    목록("결과 N건" + 제목·경로·일치 위치)이 드롭다운으로 나오고,
+  //    결과를 클릭하면 노란 채움 + 붉은 테두리로 강조하고 접힌 조상을
+  //    펼친 뒤 화면 중앙으로 이동한다. Enter = 첫(다음) 결과로 이동.
   var searchInput = document.getElementById('mm-search');
-  var searchCount = document.getElementById('mm-search-count');
+  var searchResults = document.getElementById('mm-search-results');
+  var searchHits = [], searchSel = -1;
+  function escapeHtml2(x) {
+    return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
   function collectHits(q) {
     var out = [];
-    (function walk(n) {
-      if ((n.text || '').toLowerCase().indexOf(q) >= 0) out.push(n.id);
+    (function walk(n, path) {
+      var text = (n.text || '');
+      var inText = text.toLowerCase().indexOf(q) >= 0;
+      var inTags = (n.tags || []).some(function (tg) {
+        return String(tg).toLowerCase().indexOf(q) >= 0;
+      });
+      var inNotes = (n.notes || []).some(function (b) {
+        return String(b.text || '').toLowerCase().indexOf(q) >= 0;
+      });
+      var inLinks = (n.links || []).some(function (l) {
+        return String(l.label || '').toLowerCase().indexOf(q) >= 0 ||
+          String(l.url || '').toLowerCase().indexOf(q) >= 0;
+      });
+      if (inText || inTags || inNotes || inLinks) {
+        var where = [];
+        if (inText) where.push('노드');
+        if (inTags) where.push('태그');
+        if (inNotes) where.push('노트');
+        if (inLinks) where.push('링크');
+        out.push({ id: n.id, title: text, path: path.join(' › '), where: where.join(' · ') });
+      }
       var kids = n.children || [];
-      for (var i = 0; i < kids.length; i++) walk(kids[i]);
-    })(DATA.root);
-    return out;
+      for (var i = 0; i < kids.length; i++) walk(kids[i], path.concat([text]));
+    })(DATA.root, []);
+    return out.slice(0, 50);
   }
   function expandTo(id) {
     var path = [];
@@ -1391,28 +1415,14 @@ const VIEWER_JS = String.raw`
     })(DATA.root, []);
     for (var i = 0; i < path.length; i++) path[i].collapsed = false;
   }
-  function gotoHit(step) {
-    var q = (searchInput.value || '').trim().toLowerCase();
-    if (!q) {
-      searchHits = []; searchIdx = -1; SEARCHHIT = null;
-      searchCount.textContent = '';
-      render();
-      return;
-    }
-    searchHits = collectHits(q);
-    if (!searchHits.length) {
-      SEARCHHIT = null; searchCount.textContent = '0건'; render();
-      return;
-    }
-    searchIdx = ((searchIdx + step) % searchHits.length + searchHits.length) % searchHits.length;
-    SEARCHHIT = searchHits[searchIdx];
-    searchCount.textContent = (searchIdx + 1) + '/' + searchHits.length;
+  function jumpToHit(id) {
+    SEARCHHIT = id;
     if (FOCUS) { FOCUS = null; setCenterIcon(false); } // 전체 맵에서 찾는다
-    expandTo(SEARCHHIT);
+    expandTo(id);
     render();
     var found = null;
     (function walk(n) {
-      if (n.id === SEARCHHIT) { found = n; return; }
+      if (n.id === id) { found = n; return; }
       var kids = n.children || [];
       for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
     })(DATA.root);
@@ -1422,17 +1432,99 @@ const VIEWER_JS = String.raw`
       view.y = rect.height / 2 - found._cy * view.k;
       applyView();
     }
+    renderSearchList(); // 선택 항목 표시 갱신
   }
+  function renderSearchList() {
+    if (!searchHits.length) {
+      var q0 = (searchInput.value || '').trim();
+      searchResults.style.display = q0 ? 'block' : 'none';
+      searchResults.innerHTML = q0 ? '<div class="cnt">결과 0건</div>' : '';
+      return;
+    }
+    var q = (searchInput.value || '').trim().toLowerCase();
+    var html = '<div class="cnt">결과 ' + searchHits.length + '건</div>';
+    for (var i = 0; i < searchHits.length; i++) {
+      var h = searchHits[i];
+      var t2 = escapeHtml2(h.title);
+      var idx = h.title.toLowerCase().indexOf(q);
+      if (idx >= 0) {
+        t2 = escapeHtml2(h.title.slice(0, idx)) + '<mark>' +
+          escapeHtml2(h.title.slice(idx, idx + q.length)) + '</mark>' +
+          escapeHtml2(h.title.slice(idx + q.length));
+      }
+      html += '<div class="hit' + (h.id === SEARCHHIT ? ' on' : '') +
+        '" data-hit="' + escapeHtml2(h.id) + '" title="클릭하면 노란 강조로 표시됩니다">' +
+        '<div class="ttl">' + t2 + '</div>' +
+        '<div class="sub">' + escapeHtml2(h.path || '루트') + ' · <b>' +
+        escapeHtml2(h.where) + '</b></div></div>';
+    }
+    searchResults.innerHTML = html;
+    searchResults.style.display = 'block';
+    var items = searchResults.querySelectorAll('.hit');
+    for (var j = 0; j < items.length; j++) {
+      (function (el2) {
+        el2.addEventListener('click', function () {
+          searchSel = Array.prototype.indexOf.call(items, el2);
+          jumpToHit(el2.getAttribute('data-hit'));
+        });
+      })(items[j]);
+    }
+  }
+  function runSearch() {
+    var q = (searchInput.value || '').trim().toLowerCase();
+    if (!q) {
+      searchHits = []; searchSel = -1;
+      if (SEARCHHIT) { SEARCHHIT = null; render(); }
+      searchResults.style.display = 'none';
+      searchResults.innerHTML = '';
+      return;
+    }
+    searchHits = collectHits(q);
+    searchSel = -1;
+    renderSearchList();
+  }
+  searchInput.addEventListener('input', runSearch);
+  searchInput.addEventListener('focus', function () {
+    if ((searchInput.value || '').trim()) runSearch();
+  });
   searchInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); gotoHit(1); }
-    if (e.key === 'Escape') { searchInput.value = ''; gotoHit(0); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!searchHits.length) return;
+      searchSel = (searchSel + 1) % searchHits.length;
+      jumpToHit(searchHits[searchSel].id);
+    }
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      runSearch();
+      searchInput.blur();
+    }
   });
-  searchInput.addEventListener('input', function () {
-    searchIdx = -1;
-    if (!(searchInput.value || '').trim()) gotoHit(0);
+  // 바깥 클릭 시 결과 목록 닫기 (강조는 유지)
+  document.addEventListener('pointerdown', function (e) {
+    if (!document.getElementById('mm-search-wrap').contains(e.target)) {
+      searchResults.style.display = 'none';
+    }
   });
-  document.getElementById('mm-search-next').addEventListener('click', function () { gotoHit(1); });
-  document.getElementById('mm-search-prev').addEventListener('click', function () { gotoHit(-1); });
+
+  // ── 전체화면 모드 — 에디터 툴바와 동일 (F11식 토글, 아이콘·title 전환) ──
+  var fsBtn = document.getElementById('mm-fullscreen');
+  var FS_ENTER = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg>';
+  var FS_EXIT = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="13 9 13 11 15 11"/><polyline points="11 15 11 13 9 13"/><line x1="16" y1="8" x2="13" y2="11"/><line x1="8" y1="16" x2="11" y2="13"/></svg>';
+  function syncFsBtn() {
+    var on = !!document.fullscreenElement;
+    fsBtn.innerHTML = on ? FS_EXIT : FS_ENTER;
+    fsBtn.className = on ? 'icon active' : 'icon';
+    fsBtn.setAttribute('title', on ? '전체화면 종료' : '전체화면 모드');
+  }
+  fsBtn.addEventListener('click', function () {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen();
+    }
+  });
+  document.addEventListener('fullscreenchange', syncFsBtn);
   document.getElementById('mm-zoom-out').addEventListener('click', function () {
     zoomTo((Math.round(view.k * 100) - 10) / 100); // 에디터와 동일: 10%p 단위
   });
@@ -1599,16 +1691,52 @@ const VIEWER_CSS = `
     display: inline-flex; align-items: center; justify-content: center;
   }
   header button.active { background: #F0E2C4; border-color: #D8B25E; color: #8A5A00; }
+  #mm-search-wrap { position: relative; display: inline-flex; align-items: center; }
+  #mm-search-ic {
+    position: absolute; left: 8px; color: #8B7D68; pointer-events: none;
+  }
   #mm-search {
-    width: 150px; height: 26px; padding: 0 8px; font-size: 12px;
-    border: 1px solid #D8CBB2; border-radius: 6px; background: #FFFDF8;
-    color: #3F3428; outline: none;
+    width: 190px; height: 27px; padding: 0 8px 0 27px; font-size: 12.5px;
+    border: 1px solid #D8CBB2; border-radius: 7px; background: #FFFDF8;
+    color: #3F3428; outline: none; font-family: inherit;
   }
   #mm-search:focus { border-color: #D8B25E; }
-  #mm-search-count { min-width: 40px; text-align: center; }
+  /* 결과 드롭다운 — 에디터 검색 패널과 동일한 목록 형식 */
+  #mm-search-results {
+    display: none; position: absolute; top: 31px; left: 0; z-index: 60;
+    width: 320px; max-height: 55vh; overflow: auto;
+    background: #FFFDF8; border: 1px solid #D8CBB2; border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(80, 60, 20, 0.15); padding: 8px;
+  }
+  #mm-search-results .cnt {
+    font-size: 11px; color: #958A78; margin: 2px 2px 6px; font-weight: 600;
+    letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  #mm-search-results .hit {
+    padding: 8px 10px; border-radius: 7px; margin-bottom: 4px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  #mm-search-results .hit:hover { background: #F3ECDD; }
+  #mm-search-results .hit.on { background: #FDF0D5; border-color: #D8B25E; }
+  #mm-search-results .hit .ttl {
+    font-size: 13px; font-weight: 500; color: #3F3428; margin-bottom: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #mm-search-results .hit .ttl mark {
+    background: #D9770644; border-radius: 2px; padding: 0 2px; color: inherit;
+  }
+  #mm-search-results .hit .sub { font-size: 11px; color: #958A78; }
+  #mm-search-results .hit .sub b { color: #6B6358; }
   body.mm-dark #mm-search {
     background: #262A31; color: #D8D4CC; border-color: #3A3E47;
   }
+  body.mm-dark #mm-search-results {
+    background: #20242B; border-color: #3A3E47;
+  }
+  body.mm-dark #mm-search-results .hit:hover { background: #262A31; }
+  body.mm-dark #mm-search-results .hit.on { background: #3B2A0A; border-color: #8A6A24; }
+  body.mm-dark #mm-search-results .hit .ttl { color: #D8D4CC; }
+  body.mm-dark #mm-search-results .hit .sub { color: #8A8DA0; }
   /* 커스텀 툴팁 — 커서가 설명을 가리지 않게 요소 "위쪽"에 표시 */
   #mm-tip {
     position: fixed; z-index: 99999; pointer-events: none; display: none;
@@ -1850,16 +1978,18 @@ export function buildStandaloneHtml(
   <h1>🗺 ${escapeHtml(map.title)}</h1>
   <span class="meta" id="mm-count"></span>
   <span class="spacer"></span>
-  <input id="mm-search" type="search" placeholder="검색 (Enter=다음)"
-    title="노드 텍스트 검색 — Enter: 다음 결과로 이동" />
-  <span id="mm-search-count" class="meta"></span>
-  <button id="mm-search-prev" class="icon" title="이전 검색 결과">‹</button>
-  <button id="mm-search-next" class="icon" title="다음 검색 결과">›</button>
+  <span id="mm-search-wrap">
+    <svg id="mm-search-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
+    <input id="mm-search" type="search" placeholder="노드 · 태그 · 노트 검색"
+      title="노드 텍스트·태그·노트·링크 검색 — 결과를 클릭하면 노란 강조로 표시됩니다" />
+    <div id="mm-search-results"></div>
+  </span>
   <button id="mm-center" class="icon" title="선택 노드 화면 중앙 보기 (노드를 클릭해 선택 · 다시 누르면 전체 보기)"><svg id="mm-center-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></button>
   <button id="mm-pan" class="icon" title="Pan 모드 — 드래그로 화면 이동 (마우스 오른쪽 버튼 드래그로도 이동)">✋</button>
   <button id="mm-fit" class="icon" title="맵 전체를 화면에 맞추기">⛶</button>
   <button id="mm-expand" class="icon" title="모두 펼치기">+</button>
   <button id="mm-collapse" class="icon" title="모두 접기">−</button>
+  <button id="mm-fullscreen" class="icon" title="전체화면 모드"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>
   <button id="mm-dark" class="icon" title="다크 모드로 전환">🌙</button>
 </header>
 <svg id="mm-svg"><g id="mm-world"></g></svg>

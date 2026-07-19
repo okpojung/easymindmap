@@ -90,6 +90,7 @@ export function computeLayout(
       w: rootSize.w,
       h: rootSize.h,
       _lines: rootSize.lines,
+      _manualStarts: rootSize.manualStarts,
       _fontSize: rootSize.fontSize,
       _fontWeight: rootSize.fontWeight,
       _lineHeight: rootSize.lineHeight,

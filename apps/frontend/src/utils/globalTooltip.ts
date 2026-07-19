@@ -59,7 +59,7 @@ export function installGlobalTooltip(): void {
     tip.style.display = 'none';
   };
 
-  const show = (anchor: Element, text: string) => {
+  const show = (anchor: Element, text: string, cursorY = 0) => {
     tip.textContent = text;
     tip.style.display = 'block';
     const r = anchor.getBoundingClientRect();
@@ -69,7 +69,9 @@ export function installGlobalTooltip(): void {
     let left = r.left + r.width / 2 - tw / 2;
     left = Math.max(4, Math.min(window.innerWidth - tw - 4, left));
     let top = r.top - th - 8;
-    if (top < 4) top = r.bottom + 8;
+    // 아래 폴백 시에는 마우스 커서 그림(핫스팟 아래로 ~22px)보다 더
+    // 아래에 — 최상단 버튼에서 커서가 설명을 가리지 않게
+    if (top < 4) top = Math.max(r.bottom + 8, cursorY + 24);
     tip.style.left = `${left}px`;
     tip.style.top = `${top}px`;
   };
@@ -86,7 +88,7 @@ export function installGlobalTooltip(): void {
       if (text.trim()) {
         host.removeAttribute('title');
         savedAttr = { el: host, title: text };
-        show(host, text);
+        show(host, text, e.clientY);
         return;
       }
     }
@@ -96,8 +98,9 @@ export function installGlobalTooltip(): void {
       const t = n.querySelector(':scope > title');
       if (t && (t.textContent || '').trim()) {
         savedSvg = { parent: n, node: t };
+        const svgText = t.textContent || '';
         t.remove();
-        show(n, t.textContent || '');
+        show(n, svgText, e.clientY);
         return;
       }
       n = n.parentElement;

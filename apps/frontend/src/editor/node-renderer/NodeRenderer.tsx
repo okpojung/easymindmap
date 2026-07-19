@@ -37,6 +37,7 @@ import { MarkToolbar } from './MarkToolbar';
 import { useViewportStore } from '@/stores/viewportStore';
 import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
+import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -172,6 +173,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
   const updateNodeSize = useDocumentStore((state) => state.updateNodeSize);
   const setNodeImage = useDocumentStore((state) => state.setNodeImage);
+  const addNoteBlock = useDocumentStore((state) => state.addNoteBlock);
   const zoom = useViewportStore((state) => state.zoom);
   const setEditingNodeId = useInteractionStore((state) => state.setEditingNodeId);
   const showTags = useEditorUiStore((state) => state.showTags);
@@ -715,8 +717,20 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
             value={draftText}
             onChange={(e) => setDraftText(e.target.value)}
             onPaste={(e) => {
-              // 텍스트 편집 중에도 사진 붙여넣기 지원 — 기사 등을 복사해
-              // 붙이면 텍스트는 입력창에, 사진은 노드에 함께 들어간다.
+              // 기사(사진+본문) 붙여넣기 — 사진을 노드 아래로 빼면 "사진이
+              // 마지막에 표시"되므로, 서식·사진을 원래 위치째 문단 노트에
+              // 보관한다 (sanitizeRichHtml). 텍스트 입력창은 그대로 둔다.
+              const rawHtml = e.clipboardData?.getData('text/html');
+              if (rawHtml) {
+                const clean = sanitizeRichHtml(rawHtml);
+                const hasImg = /<img\s/i.test(clean.html);
+                if (hasImg && clean.text.trim().length >= 40) {
+                  e.preventDefault();
+                  addNoteBlock(n.id, 'paragraph', clean.text.trim(), { html: clean.html });
+                  return;
+                }
+              }
+              // 사진만 복사한 경우 — 기존처럼 노드 사진으로 첨부
               const kind = extractClipboardImage(e.clipboardData, (img) =>
                 setNodeImage(n.id, img),
               );

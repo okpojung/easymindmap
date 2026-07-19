@@ -30,6 +30,7 @@ interface MeasuredDownNode {
   w: number;
   h: number;
   lines: string[];
+  manualStarts?: number[];
   fontSize: number;
   fontWeight: number;
   lineHeight: number;
@@ -64,6 +65,7 @@ function pushTreeRightNode(
     w: size.w,
     h: size.h,
     _lines: size.lines,
+    _manualStarts: size.manualStarts,
     _fontSize: size.fontSize,
     _fontWeight: size.fontWeight,
     _lineHeight: size.lineHeight,
@@ -155,6 +157,7 @@ function measureDownNode(node: MindNode, depth: number): MeasuredDownNode {
     w: size.w,
     h: size.h,
     lines: size.lines,
+    manualStarts: size.manualStarts,
     fontSize: size.fontSize,
     fontWeight: size.fontWeight,
     lineHeight: size.lineHeight,
@@ -180,6 +183,7 @@ function pushDownNode(
     w: measured.w,
     h: measured.h,
     _lines: measured.lines,
+    _manualStarts: measured.manualStarts,
     _fontSize: measured.fontSize,
     _fontWeight: measured.fontWeight,
     _lineHeight: measured.lineHeight,

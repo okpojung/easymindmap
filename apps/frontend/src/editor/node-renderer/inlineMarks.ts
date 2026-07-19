@@ -25,10 +25,24 @@ export function hasInlineMarks(line: string): boolean {
   return MARK_RE.test(line);
 }
 
+// 줄이 끝날 때의 마커 토글 상태 — 자동 줄바꿈으로 감긴 다음 줄에
+// 이월된다 (마커 구간이 줄 경계에 걸쳐도 위치가 밀리지 않게)
+export interface MarkState { b: boolean; i: boolean; s: boolean; u: boolean; h: boolean }
+
 // 한 줄을 스타일 구간으로 나눈다 (마커 문자는 결과 text에서 제거됨)
 export function parseInlineMarks(line: string): InlineSeg[] {
+  return parseInlineMarksWithState(line).segs;
+}
+
+// init 상태에서 시작해 파싱하고 줄 끝 상태를 함께 반환 — 자동 줄바꿈
+// 이월용 (NodeRenderer가 수동 \n에서만 상태를 리셋한다)
+export function parseInlineMarksWithState(
+  line: string,
+  init?: MarkState,
+): { segs: InlineSeg[]; end: MarkState } {
   const segs: InlineSeg[] = [];
-  let b = false, i = false, s = false, u = false, h = false;
+  let b = init?.b ?? false, i = init?.i ?? false, s = init?.s ?? false,
+    u = init?.u ?? false, h = init?.h ?? false;
   let buf = '';
   const push = () => {
     if (buf) {
@@ -49,8 +63,8 @@ export function parseInlineMarks(line: string): InlineSeg[] {
     idx += 1;
   }
   push();
-  if (segs.length === 0) segs.push({ text: '' });
-  return segs;
+  if (segs.length === 0) segs.push({ text: '', b, i, s, u, h });
+  return { segs, end: { b, i, s, u, h } };
 }
 
 // 선택 구간에 마커 토글 — 이미 그 마커로 감싸져 있으면 해제, 아니면 감싼다.

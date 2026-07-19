@@ -40,6 +40,8 @@ interface ExportPos {
   w: number;
   h: number;
   lines: string[];
+  // 수동 줄바꿈 세그먼트 시작 인덱스 — 인라인 마커 이월 리셋 지점
+  ms?: number[];
   fs: number;
   lh: number;
   // 맵 설정(레벨별 폰트)의 글꼴 — 없으면 뷰어 기본 글꼴
@@ -233,8 +235,10 @@ const VIEWER_JS = String.raw`
 
   function wrapText(text, fontSize, maxW) {
     var out = [];
+    var starts = []; // 수동 줄바꿈 세그먼트가 시작하는 줄 인덱스 (마커 이월 리셋점)
     var manual = String(text || '').split('\n');
     for (var m = 0; m < manual.length; m++) {
+      starts.push(out.length);
       var words = manual[m].split(/(\s+)/), cur = '', curW = 0;
       for (var i = 0; i < words.length; i++) {
         var ww = measureText(words[i], fontSize);
@@ -251,7 +255,7 @@ const VIEWER_JS = String.raw`
     }
     var w = 0;
     for (var j = 0; j < out.length; j++) w = Math.max(w, measureText(out[j], fontSize));
-    return { lines: out, w: w };
+    return { lines: out, w: w, starts: starts };
   }
 
   // 노드 텍스트 속 Markdown 표 감지 — 에디터(mdTable.ts)와 같은 규칙.
@@ -298,8 +302,13 @@ const VIEWER_JS = String.raw`
 
   // 인라인 강조 파서 — 에디터 inlineMarks.ts와 동일 (마커 토글, 짝이
   // 없으면 줄 끝까지). t=텍스트, b/i/s/u/h=굵게/기울임/취소선/밑줄/형광
-  function parseInlineSegs(line) {
-    var segs = [], b = false, it = false, st2 = false, u = false, h = false, buf = '';
+  // init 상태에서 시작해 파싱하고 줄 끝 상태를 함께 반환 — 마커 구간이
+  // 자동 줄바꿈 경계에 걸치면 다음 줄로 상태를 이월한다 (에디터와 동일)
+  function parseInlineSegsState(line, init) {
+    var segs = [], buf = '';
+    var b = init ? !!init.b : false, it = init ? !!init.i : false,
+      st2 = init ? !!init.s : false, u = init ? !!init.u : false,
+      h = init ? !!init.h : false;
     function push() { if (buf) { segs.push({ t: buf, b: b, i: it, s: st2, u: u, h: h }); buf = ''; } }
     var idx = 0;
     while (idx < line.length) {
@@ -314,8 +323,9 @@ const VIEWER_JS = String.raw`
     }
     push();
     if (!segs.length) segs.push({ t: '' });
-    return segs;
+    return { segs: segs, end: { b: b, i: it, s: st2, u: u, h: h } };
   }
+  function parseInlineSegs(line) { return parseInlineSegsState(line).segs; }
 
   // ---- measure pass (bottom-up, per-layout block model) ----------------------
   // Sets on each node: _w/_h (box), _boxH (box + tag reserve), _lines/_fs/
@@ -382,6 +392,7 @@ const VIEWER_JS = String.raw`
     var tagsH = (node.tags && node.tags.length) ? TAG_H + 7 : 0;
 
     node._fs = fontSize; node._lines = wrapped.lines; node._lineH = lineH;
+    node._manualStarts = wrapped.starts;
     node._w = w; node._h = h; node._boxH = h + tagsH;
     node._open = !node.collapsed;
 
@@ -648,6 +659,7 @@ const VIEWER_JS = String.raw`
     node._cx = node.pos.x; node._cy = node.pos.y;
     node._w = node.pos.w; node._h = node.pos.h;
     node._lines = node.pos.lines; node._lineH = node.pos.lh;
+    node._manualStarts = node.pos.ms;
     node._fs = node.pos.fs;
     node._ff = node.pos.ff; // 맵 설정(레벨별 폰트)의 글꼴
     // 에디터 좌표 모드 — _lines가 Markdown 표를 제외한 텍스트만 담고
@@ -749,10 +761,15 @@ const VIEWER_JS = String.raw`
       (mdt ? tblH + tGap : 0) + (img ? img.h + imgGap : 0);
     var topY = node._cy - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
+    // 인라인 마커 상태를 자동 줄바꿈 사이로 이월 (수동 \n 시작 줄에서 리셋)
+    var markCarry;
     for (var li = 0; li < node._lines.length; li++) {
       // 인라인 강조(부분 텍스트) — 에디터 inlineMarks.ts와 동일 규칙:
       // **굵게** *기울임* ~~취소선~~ __밑줄__ ==하이라이트== (마커는 숨김)
-      var segs = parseInlineSegs(node._lines[li]);
+      if (!node._manualStarts || node._manualStarts.indexOf(li) >= 0) markCarry = undefined;
+      var segParse = parseInlineSegsState(node._lines[li], markCarry);
+      markCarry = segParse.end;
+      var segs = segParse.segs;
       var segWs = [], lw2 = 0, si;
       var baseW2 = isRoot ? 700 : (depth === 1 ? 600 : 500);
       for (si = 0; si < segs.length; si++) {
@@ -1551,6 +1568,7 @@ export function buildStandaloneHtml(
         w: Math.round(n.w * 10) / 10,
         h: Math.round(n.h * 10) / 10,
         lines: n._lines ?? [String(n.text ?? '')],
+        ms: n._manualStarts,
         fs: n._fontSize ?? 13,
         lh: n._lineHeight ?? 18,
         ff: levelFontFamily(n.depth),

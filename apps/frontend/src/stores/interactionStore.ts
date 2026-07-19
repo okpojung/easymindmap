@@ -5,7 +5,11 @@ import { create } from 'zustand';
 
 interface InteractionState {
   selectedId: string | null;
+  // 검색 결과 클릭으로 선택된 노드 — 캔버스에서 노란 채움 + 붉은 테두리로
+  // 강하게 표시한다 (캔버스에서 다른 조작을 하면 해제)
+  searchHitId: string | null;
   setSelectedId: (id: string | null) => void;
+  setSearchHitId: (id: string | null) => void;
   // 러버밴드(드래그 사각형)로 선택한 노드들 — 스타일 탭에서 일괄 적용 대상.
   // 단일 클릭 선택 시에는 비워진다.
   multiSelectedIds: string[];
@@ -18,6 +22,8 @@ interface InteractionState {
 
 export const useInteractionStore = create<InteractionState>((set) => ({
   selectedId: 'b1-2',
+  setSearchHitId: (searchHitId: string | null) => set({ searchHitId }),
+  searchHitId: null,
   setSelectedId: (selectedId) => set({ selectedId }),
   multiSelectedIds: [],
   setMultiSelectedIds: (multiSelectedIds) => set({ multiSelectedIds }),

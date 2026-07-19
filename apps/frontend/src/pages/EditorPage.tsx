@@ -19,6 +19,7 @@ import type {
   MindNode,
   OutlineNode,
 } from '@/editor/__samples__/types';
+import { installGlobalTooltip } from '@/utils/globalTooltip';
 import {
   useDocumentStore,
   useEditorUiStore,
@@ -165,6 +166,11 @@ export function EditorPage() {
   useEffect(() => {
     setSample(sampleTopic);
   }, [sampleTopic, setSample]);
+
+  // 커서가 설명 텍스트를 가리지 않는 전역 커스텀 툴팁 (요소 위쪽 표시)
+  useEffect(() => {
+    installGlobalTooltip();
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

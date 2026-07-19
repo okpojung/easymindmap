@@ -27,6 +27,8 @@ export function TopToolbar({
 }: Props) {
   const map = useDocumentStore((s) => s.map);
   const layoutType = useEditorUiStore((s) => s.layoutType);
+  const themeName = useEditorUiStore((s) => s.themeName);
+  const setThemeName = useEditorUiStore((s) => s.setThemeName);
   const spacingX = useEditorUiStore((s) => s.spacingX);
   const spacingY = useEditorUiStore((s) => s.spacingY);
   const undo = useDocumentStore((s) => s.undo);
@@ -195,6 +197,21 @@ export function TopToolbar({
         }}
       >
         <I.Share size={15} /> 공유
+      </button>
+
+      {/* 다크 모드 토글 — 라이트/다크 테마 전환 (브라우저에 저장) */}
+      <button
+        title={themeName === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+        data-testid="theme-toggle"
+        onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 34, height: 32, borderRadius: 8,
+          background: t.surfaceAlt, color: t.text,
+          border: `1px solid ${t.border}`, cursor: 'pointer', fontSize: 15,
+        }}
+      >
+        {themeName === 'dark' ? '☀' : '🌙'}
       </button>
 
       {/* 내보내기 메뉴 — 하위 항목: HTML 파일 / MD 파일. 두 형식 모두

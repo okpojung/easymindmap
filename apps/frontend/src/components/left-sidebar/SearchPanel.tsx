@@ -61,6 +61,7 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
   const toggleTagHidden = useEditorUiStore((s) => s.toggleTagHidden);
   const map = useDocumentStore((s) => s.map);
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
+  const setSearchHitId = useInteractionStore((s) => s.setSearchHitId);
 
   const [query, setQuery] = useState('');
   const results = useMemo<SearchHit[]>(() => {
@@ -116,8 +117,12 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
       {results.map((r) => (
         <div key={r.id}
           data-search-hit={r.id}
-          onClick={() => setSelectedId(r.id)}
-          title="클릭하면 캔버스에서 선택됩니다"
+          onClick={() => {
+            setSelectedId(r.id);
+            // 캔버스에서 노란 채움 + 붉은 테두리로 또렷하게 표시
+            setSearchHitId(r.id);
+          }}
+          title="클릭하면 캔버스에서 노란 강조로 표시됩니다"
           style={{
             padding: '8px 10px', borderRadius: 7, marginBottom: 4,
             background: 'transparent',

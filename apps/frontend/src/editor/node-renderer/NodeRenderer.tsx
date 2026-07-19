@@ -46,6 +46,8 @@ interface Props {
   n: RenderableNode;
   t: ThemeTokens;
   selected: boolean;
+  // 검색 결과로 강조 표시 (노란 채움 + 붉은 테두리)
+  searchHit?: boolean;
   dropTarget?: boolean;
   onSelect: () => void;
   onHover?: (id: string | null) => void;
@@ -164,7 +166,7 @@ function NodeShape({
   return <rect x={x0} y={y0} width={n.w} height={n.h} rx={rx} {...common} />;
 }
 
-export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, onOpenPopover, collabs }: Props) {
+export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, onHover, onOpenPopover, collabs }: Props) {
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
@@ -230,8 +232,9 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   const shape: ShapeType =
     style.shapeType ?? (levelShape(n.depth) as ShapeType | undefined) ?? 'rounded';
 
-  const fill = style.fillColor ?? colors.fill;
-  const border = style.borderColor ?? colors.border;
+  // 검색 결과 표시 — 어떤 스타일보다 우선해 노란 채움 + 붉은 테두리
+  const fill = searchHit ? '#FFE066' : (style.fillColor ?? colors.fill);
+  const border = searchHit ? '#DC2626' : (style.borderColor ?? colors.border);
   const textColor = style.textColor ?? colors.text;
 
   const lines = n._lines || String(n.text || '').split('\n');
@@ -253,7 +256,7 @@ export function NodeRenderer({ n, t, selected, dropTarget, onSelect, onHover, on
   // (lines에는 표를 제외한 텍스트만 들어 있다)
   const mdTable = useMemo(() => layoutMdTable(String(n.text || ''), fontSize), [n.text, fontSize]);
 
-  const strokeWidth = style.borderWidth ?? (isRoot ? 2 : selected ? 1.5 : 1);
+  const strokeWidth = searchHit ? 2.6 : (style.borderWidth ?? (isRoot ? 2 : selected ? 1.5 : 1));
   const dash = borderDash(style.borderStyle, strokeWidth);
 
   // Icon can be shown on any node (not only branches), on the left or right.

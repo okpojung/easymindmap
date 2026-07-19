@@ -59,8 +59,19 @@ interface EditorUiState {
   setOutlineSplitRatio: (v: number) => void;
 }
 
+// 다크 모드 지속 — 브라우저별 저장 (서버 연결 후 users.ui_preferences로 이관)
+const THEME_KEY = 'easymindmap.theme';
+function initialTheme(): ThemeName {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
 export const useEditorUiStore = create<EditorUiState>((set) => ({
-  themeName: 'light',
+  themeName: initialTheme(),
   layoutType: 'radial-bidirectional',
   navTab: 'newMap',
   inspectorTab: 'style',
@@ -77,7 +88,10 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   outlineSplit: false,
   outlineSplitRatio: 0.42,
 
-  setThemeName: (themeName) => set({ themeName }),
+  setThemeName: (themeName) => {
+    try { localStorage.setItem(THEME_KEY, themeName); } catch { /* 저장 실패 무시 */ }
+    set({ themeName });
+  },
   setLayoutType: (layoutType) => set({ layoutType }),
   setNavTab: (navTab) => set({ navTab, activeSection: 'nav' }),
   setInspectorTab: (inspectorTab) =>

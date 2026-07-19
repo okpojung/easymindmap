@@ -786,6 +786,9 @@ const VIEWER_JS = String.raw`
     g.addEventListener('click', function (ev) {
       ev.stopPropagation();
       SEL = node.id;
+      // 맵에서 직접 조작하면 검색 강조 해제 (에디터 selectOne과 동일 —
+      // 강조된 노드 자체를 클릭한 경우는 유지)
+      if (SEARCHHIT && SEARCHHIT !== node.id) SEARCHHIT = null;
       render();
     });
     var isRoot = depth === 0;
@@ -1316,6 +1319,16 @@ const VIEWER_JS = String.raw`
   var panMode = false;
   var drag = null;
   svg.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  var panMoved = false; // Pan 드래그 직후의 click은 "클릭"으로 치지 않는다
+  svg.addEventListener('click', function () {
+    if (panMoved) { panMoved = false; return; }
+    // 빈 캔버스 클릭 — 선택·검색 강조 해제 (노드 클릭은 stopPropagation)
+    if (SEL || SEARCHHIT) {
+      SEL = null;
+      SEARCHHIT = null;
+      render();
+    }
+  });
   svg.addEventListener('pointerdown', function (e) {
     var temp = e.button === 1 || e.button === 2;
     if (!panMode && !temp) return;
@@ -1325,6 +1338,7 @@ const VIEWER_JS = String.raw`
   });
   svg.addEventListener('pointermove', function (e) {
     if (!drag) return;
+    if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) panMoved = true;
     view.x = drag.vx + (e.clientX - drag.x);
     view.y = drag.vy + (e.clientY - drag.y);
     applyView();
@@ -1416,6 +1430,13 @@ const VIEWER_JS = String.raw`
     for (var i = 0; i < path.length; i++) path[i].collapsed = false;
   }
   function jumpToHit(id) {
+    if (SEARCHHIT === id) {
+      // 같은 결과를 다시 클릭 = 강조 해제 (선택하지 않은 상태로 복귀)
+      SEARCHHIT = null;
+      render();
+      renderSearchList();
+      return;
+    }
     SEARCHHIT = id;
     if (FOCUS) { FOCUS = null; setCenterIcon(false); } // 전체 맵에서 찾는다
     expandTo(id);

@@ -37,7 +37,6 @@ import { MarkToolbar } from './MarkToolbar';
 import { useViewportStore } from '@/stores/viewportStore';
 import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
-import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -173,7 +172,6 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
   const updateNodeSize = useDocumentStore((state) => state.updateNodeSize);
   const setNodeImage = useDocumentStore((state) => state.setNodeImage);
-  const addNoteBlock = useDocumentStore((state) => state.addNoteBlock);
   const zoom = useViewportStore((state) => state.zoom);
   const setEditingNodeId = useInteractionStore((state) => state.setEditingNodeId);
   const showTags = useEditorUiStore((state) => state.showTags);
@@ -717,20 +715,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
             value={draftText}
             onChange={(e) => setDraftText(e.target.value)}
             onPaste={(e) => {
-              // 기사(사진+본문) 붙여넣기 — 사진을 노드 아래로 빼면 "사진이
-              // 마지막에 표시"되므로, 서식·사진을 원래 위치째 문단 노트에
-              // 보관한다 (sanitizeRichHtml). 텍스트 입력창은 그대로 둔다.
-              const rawHtml = e.clipboardData?.getData('text/html');
-              if (rawHtml) {
-                const clean = sanitizeRichHtml(rawHtml);
-                const hasImg = /<img\s/i.test(clean.html);
-                if (hasImg && clean.text.trim().length >= 40) {
-                  e.preventDefault();
-                  addNoteBlock(n.id, 'paragraph', clean.text.trim(), { html: clean.html });
-                  return;
-                }
-              }
-              // 사진만 복사한 경우 — 기존처럼 노드 사진으로 첨부
+              // 텍스트 편집 중 붙여넣기는 "모두 노드에" — 텍스트는 입력창에
+              // 그대로 들어가고, 기사 등에 사진이 있으면 노드 사진으로 함께
+              // 첨부한다. (노트로 빼는 방식은 2026-07 사용자 피드백으로 되돌림)
               const kind = extractClipboardImage(e.clipboardData, (img) =>
                 setNodeImage(n.id, img),
               );

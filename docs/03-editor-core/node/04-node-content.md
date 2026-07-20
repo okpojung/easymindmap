@@ -315,9 +315,10 @@ AI 생성 → `ai_jobs`/revision 메타와 연계 저장
   - 속성: `style`/`class`/`on*` 전부 제거. `a[href]`는 http(s)만
     (`target=_blank rel=noopener`), `img[src]`는 http(s)·`data:image` base64만
     (`loading=lazy referrerpolicy=no-referrer`)
-- 편집 UX: 붙여넣으면 텍스트영역 아래에 "서식·이미지 포함" 배지 + 미리보기
-  표시. 텍스트영역을 직접 수정하면 html은 버리고 일반 텍스트로 돌아간다.
-  "서식 제거" 버튼으로 수동 제거 가능.
+- 편집 UX: 붙여넣으면 텍스트영역 아래에 미리보기(사진+서식)만 깔끔하게
+  표시한다 — "서식·이미지 포함" 배지·안내 문구·"서식 제거" 버튼은
+  사용자 피드백(2026-07)으로 제거했다. 텍스트영역을 직접 수정하면
+  html은 자연히 버려지고 일반 텍스트로 돌아간다.
 - 표시: 에디터 노트 뷰어 팝업(NoteViewerPopover)과 HTML 내보내기 뷰어의
   상세 패널 모두 리치 HTML을 렌더링 (`img { max-width:100% }`).
 - [서버 연결 예정] `node_notes.html_json`(또는 blocks JSON의 html 필드)로

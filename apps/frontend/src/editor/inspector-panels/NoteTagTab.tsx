@@ -286,28 +286,12 @@ function NoteBlockEditor({
           />
         )}
 
-        {/* 리치 붙여넣기(사진+서식) 미리보기 — 문단 블록에 html이 있을 때 */}
+        {/* 리치 붙여넣기(사진+서식) 미리보기 — 문단 블록에 html이 있을 때.
+            배지·"서식 제거" 버튼 등 부가 UI는 두지 않는다(2026-07 사용자
+            피드백: 사진+텍스트만 깔끔하게). 위 텍스트를 수정하면 서식은
+            자연히 제거된다(onChange에서 html: undefined). */}
         {block.type === 'paragraph' && block.html && (
           <div style={{ marginTop: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
-                padding: '1px 6px', borderRadius: 3,
-                background: t.primarySoft, color: t.primary,
-                border: `1px solid ${t.primaryBorder}40`,
-              }}>서식·이미지 포함</span>
-              <span style={{ fontSize: 9, color: t.textSubtle }}>
-                위 텍스트를 수정하면 서식이 제거됩니다
-              </span>
-              <button
-                onClick={() => onChange({ html: undefined })}
-                title="서식과 이미지를 버리고 일반 텍스트만 남깁니다"
-                style={{
-                  marginLeft: 'auto', fontSize: 9, padding: '1px 6px', borderRadius: 3,
-                  border: `1px solid ${t.border}`, background: t.surface,
-                  color: t.textMuted, cursor: 'pointer', fontWeight: 600,
-                }}>서식 제거</button>
-            </div>
             <div
               className="mm-rich-note"
               style={{

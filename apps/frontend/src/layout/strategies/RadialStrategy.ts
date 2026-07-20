@@ -131,8 +131,20 @@ export function layoutRadial(
   rootW: number,
   out: LaidOutNode[],
 ): void {
-  const rightBranches = branches.filter((branch) => branch.side === 'right');
-  const leftBranches = branches.filter((branch) => branch.side === 'left');
+  // side 미지정 가지는 오른쪽으로 취급 (누락돼도 노드가 사라지지 않게)
+  let rightBranches = branches.filter((branch) => branch.side !== 'left');
+  let leftBranches = branches.filter((branch) => branch.side === 'left');
+
+  // 안전장치 — 모든 가지가 한쪽에만 있으면(MD 불러오기·새 맵 등 side가
+  // 일괄 지정된 문서) 문서 순서대로 앞 절반 오른쪽 · 뒤 절반 왼쪽으로
+  // 자동 배분한다. 이대로 두면 '방사형·양쪽'이 한쪽 방사형과 똑같이
+  // 보인다 (2026-07 버그). 좌우가 섞여 있으면(사용자가 드래그로 옮긴
+  // 맵) 저장된 side를 그대로 존중한다.
+  if (branches.length >= 2 && (rightBranches.length === 0 || leftBranches.length === 0)) {
+    const half = Math.ceil(branches.length / 2);
+    rightBranches = branches.slice(0, half);
+    leftBranches = branches.slice(half);
+  }
 
   layoutSide(rightBranches, 'right', CX, CY, rootW, out);
   layoutSide(leftBranches, 'left', CX, CY, rootW, out);

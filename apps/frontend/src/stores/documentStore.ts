@@ -932,7 +932,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       id: `n-${now}-${i}`,
       text: `주제 ${i + 1}`,
       colorKey: colorKeys[i],
-      side: 'right' as const,
+      // 앞 절반 오른쪽·뒤 절반 왼쪽 — 방사형·양쪽에서 좌우로 나뉘도록
+      // (전부 'right'면 양쪽 레이아웃이 오른쪽 방사형과 똑같아 보인다)
+      side: (i < 2 ? 'right' : 'left') as 'right' | 'left',
       children: [0, 1].map((j) => ({
         id: `n-${now}-${i}-${j}`,
         text: '하위 주제',

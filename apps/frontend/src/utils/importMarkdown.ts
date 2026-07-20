@@ -335,6 +335,15 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
 
   if (!rootText && branches.length === 0) return null; // 인식할 구조 없음
 
+  // 1레벨 가지 좌/우 배분 — 문서 순서대로 앞 절반 오른쪽, 뒤 절반 왼쪽.
+  // 전부 'right'로 두면 '방사형·양쪽' 레이아웃이 좌우로 나눌 가지가 없어
+  // 방사형·오른쪽과 똑같이 보인다 (2026-07 버그). 트리·계층형 등 다른
+  // 레이아웃은 side를 무시하므로 영향이 없다.
+  if (branches.length >= 2) {
+    const half = Math.ceil(branches.length / 2);
+    branches.forEach((b, i) => { b.side = i < half ? 'right' : 'left'; });
+  }
+
   return {
     title,
     root: {

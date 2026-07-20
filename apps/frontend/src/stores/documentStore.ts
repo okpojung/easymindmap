@@ -26,6 +26,7 @@ import type {
   NoteBlockType,
   NodeAttachment,
   NodeImage,
+  NodeInlineImage,
   LevelFontSetting,
 } from '@/editor/__samples__/types';
 import type { TextAlign, LayoutType, EdgeType } from '@/types/mindmap';
@@ -105,6 +106,11 @@ interface DocumentState {
   updateNodeSize: (nodeId: string | null, size: { w?: number; h?: number } | null) => void;
   // 노드 안 사진 (붙여넣기, undefined = 제거)
   setNodeImage: (nodeId: string | null, image: NodeImage | undefined) => void;
+  // 노드 텍스트 중간 인라인 사진들 (기사 붙여넣기 — 원문 위치 보존)
+  setNodeImages: (
+    nodeId: string | null,
+    images: NodeInlineImage[] | undefined,
+  ) => void;
 
   // Style / icon
   updateNodeStyle: (nodeId: string | null, style: Partial<NodeStyle>) => void;
@@ -956,6 +962,16 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     if (!nodeId) return;
     set((state) => ({
       map: mutateNode(state.map, nodeId, (n) => ({ ...n, image })),
+    }));
+  },
+
+  setNodeImages: (nodeId, images) => {
+    if (!nodeId) return;
+    set((state) => ({
+      map: mutateNode(state.map, nodeId, (n) => ({
+        ...n,
+        images: images && images.length ? images : undefined,
+      })),
     }));
   },
 

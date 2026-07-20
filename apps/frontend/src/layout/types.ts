@@ -9,6 +9,7 @@ import type {
   NoteBlock,
   NodeAttachment,
   NodeImage,
+  NodeInlineImage,
 } from '@/editor/__samples__/types';
 
 export interface LaidOutNode {
@@ -44,6 +45,7 @@ export interface LaidOutNode {
   notes?: NoteBlock[];
   attachments?: NodeAttachment[];
   image?: NodeImage; // 노드 안 사진 (텍스트 아래 표시)
+  images?: NodeInlineImage[]; // 텍스트 중간 인라인 사진 (원문 위치)
   sizeW?: number; // 수동 박스 크기 (우하단 핸들)
   sizeH?: number;
 

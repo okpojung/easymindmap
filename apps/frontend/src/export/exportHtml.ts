@@ -76,6 +76,8 @@ interface ExportNode {
   };
   // 노드 안 사진 (data URL 또는 원본 URL) — 노드 폭에 맞춰 축소 표시
   image?: { src: string; w: number; h: number };
+  // 텍스트 중간 인라인 사진 — afterLine(논리 줄 기준 위치)째 원문 자리에
+  images?: { src: string; w: number; h: number; afterLine: number }[];
   // Layout preservation: per-node subtree override + radial side.
   layoutType?: string;
   side?: string;
@@ -130,6 +132,7 @@ function toExportNode(
     collapsed: node.collapsed || undefined,
     colorKey: node.colorKey,
     image: node.image,
+    images: node.images?.length ? node.images : undefined,
     // 실효 정렬을 굽는다 — 뷰어는 맵 설정(레벨별 맞춤)을 모른다
     textAlign: node.textAlign ?? levelTextAlign(depth),
     style: node.style && (node.style.strike || node.style.highlight ||
@@ -421,6 +424,16 @@ const VIEWER_JS = String.raw`
     node._marksW = marksW;
     var w = Math.max(depth === 0 ? 120 : 90, wrapped.w + iconW + marksW) + PAD_X * 2;
     var h = wrapped.lines.length * lineH + PAD_Y * 2;
+    // 사진 높이 (폴백 측정 모드 — 에디터 좌표가 없을 때만 쓰인다)
+    var mInner = Math.max(40, w - PAD_X * 2);
+    if (node.images && node.images.length) {
+      for (var mi2 = 0; mi2 < node.images.length; mi2++) {
+        var mim = node.images[mi2];
+        h += Math.round(mim.h * Math.min(1, mInner / Math.max(1, mim.w))) + 6;
+      }
+    } else if (node.image && node.image.src) {
+      h += Math.round(node.image.h * Math.min(1, mInner / Math.max(1, node.image.w))) + 6;
+    }
     var tagsH = (node.tags && node.tags.length) ? TAG_H + 7 : 0;
 
     node._fs = fontSize; node._lines = wrapped.lines; node._lineH = lineH;
@@ -825,16 +838,45 @@ const VIEWER_JS = String.raw`
       tGap = node._lines.length ? 6 : 0;
       tblH = (1 + mdt.rows.length) * rowH2;
     }
-    // 노드 안 사진 — 노드 폭에 맞춰 축소 (에디터 scaleNodeImage와 동일)
+    // 텍스트 중간 인라인 사진(기사 붙여넣기) — 에디터 layoutInlineImages와
+    // 동일 규칙: afterLine(논리 줄)을 _manualStarts로 래핑 줄 자리로 바꿔
+    // 각 줄(flowTops)·사진(flowBands)의 세로 위치를 구한다.
+    var inImgs = node.images && node.images.length ? node.images : null;
+    var inScaled = null, flowTops = null, flowBands = null;
+    var flowH = node._lines.length * node._lineH;
+    if (inImgs) {
+      var innerW2 = Math.max(40, node._w - PAD_X * 2);
+      inScaled = inImgs.map(function (im) {
+        var s2 = Math.min(1, innerW2 / Math.max(1, im.w));
+        return { w: Math.round(im.w * s2), h: Math.round(im.h * s2) };
+      });
+      var ws2 = (node._manualStarts && node._manualStarts.length) ? node._manualStarts : [0];
+      var insAt2 = inImgs.map(function (im) {
+        var a2 = Math.max(0, Math.round(im.afterLine || 0));
+        return a2 < ws2.length ? ws2[a2] : node._lines.length;
+      });
+      flowTops = []; flowBands = [];
+      var yy = 0, IPAD = 3;
+      for (var fi = 0; fi <= node._lines.length; fi++) {
+        for (var fk = 0; fk < inImgs.length; fk++) {
+          if (insAt2[fk] !== fi) continue;
+          flowBands.push({ idx: fk, top: yy + IPAD });
+          yy += inScaled[fk].h + IPAD * 2;
+        }
+        if (fi < node._lines.length) { flowTops.push(yy); yy += node._lineH; }
+      }
+      flowH = yy;
+    }
+    // 노드 안 사진(레거시 단일 — 텍스트 아래) — 인라인 사진이 있으면 생략
     var img = null;
-    if (node.image && node.image.src) {
+    if (!inImgs && node.image && node.image.src) {
       var innerW = Math.max(40, node._w - PAD_X * 2);
       var isc = Math.min(1, innerW / Math.max(1, node.image.w));
       img = { w: Math.round(node.image.w * isc), h: Math.round(node.image.h * isc) };
     }
     var imgGap = img && (node._lines.length || mdt) ? 6 : 0;
-    var stacked = !!(mdt || img); // 표·사진이 있으면 세로 스택 가운데 정렬
-    var contentH = node._lines.length * node._lineH +
+    var stacked = !!(mdt || img || inImgs); // 표·사진이 있으면 세로 스택 가운데 정렬
+    var contentH = flowH +
       (mdt ? tblH + tGap : 0) + (img ? img.h + imgGap : 0);
     var topY = node._cy - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
@@ -855,7 +897,8 @@ const VIEWER_JS = String.raw`
         lw2 += segWs[si];
       }
       var baseY = stacked
-        ? topY + li * node._lineH + node._lineH / 2 + node._fs * 0.34
+        ? topY + (flowTops ? flowTops[li] : li * node._lineH) +
+          node._lineH / 2 + node._fs * 0.34
         : y0 + PAD_Y + node._fs * 0.85 + li * node._lineH;
       // 중앙 정렬은 아이콘(왼쪽)·마커(오른쪽) 영역을 뺀 띠의 중앙 —
       // 박스 중앙 기준이면 긴 줄이 아이콘/마커와 겹친다 (에디터와 동일 보정)
@@ -893,7 +936,7 @@ const VIEWER_JS = String.raw`
       // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
       var gridC = color || textColor;
       var tblX = x0 + PAD_X;
-      var tblY = topY + node._lines.length * node._lineH + tGap;
+      var tblY = topY + flowH + tGap;
       var colWs = [], ci, ri, mmax;
       for (ci = 0; ci < mdt.headers.length; ci++) {
         mmax = measureText(mdt.headers[ci], cellFs);
@@ -932,9 +975,21 @@ const VIEWER_JS = String.raw`
         }
       }
     }
+    if (flowBands) {
+      // 텍스트 중간 인라인 사진 — 원문 위치(afterLine) 밴드에 그린다
+      for (var bi = 0; bi < flowBands.length; bi++) {
+        var bd = flowBands[bi];
+        el('image', {
+          href: inImgs[bd.idx].src,
+          x: node._cx - inScaled[bd.idx].w / 2, y: topY + bd.top,
+          width: inScaled[bd.idx].w, height: inScaled[bd.idx].h,
+          preserveAspectRatio: 'xMidYMid meet'
+        }, g);
+      }
+    }
     if (img) {
       // 노드 안 사진 — 텍스트(·표) 아래 가운데 정렬
-      var imgY = topY + node._lines.length * node._lineH +
+      var imgY = topY + flowH +
         (mdt ? tblH + tGap : 0) + imgGap;
       el('image', {
         href: node.image.src,

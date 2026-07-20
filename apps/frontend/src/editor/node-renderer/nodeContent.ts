@@ -144,19 +144,28 @@ export function nodeSizingOpts(n: {
   sizeW?: number;
   sizeH?: number;
   image?: { w: number; h: number };
+  images?: { w: number; h: number }[];
 }): {
   hasIcon: boolean;
   indicators: number;
   manualW?: number;
   manualH?: number;
   image?: { w: number; h: number };
+  images?: { w: number; h: number }[];
 } {
   return {
     hasIcon: !!n.icon,
     indicators: contentIndicatorCount(n),
     manualW: n.sizeW,
     manualH: n.sizeH,
-    image: n.image ? { w: n.image.w, h: n.image.h } : undefined,
+    // 인라인 사진(images)이 있으면 레거시 단일 사진은 무시 — 렌더러와
+    // 같은 규칙이어야 측정·표시 높이가 일치한다
+    image: !n.images?.length && n.image
+      ? { w: n.image.w, h: n.image.h }
+      : undefined,
+    images: n.images?.length
+      ? n.images.map((im) => ({ w: im.w, h: im.h }))
+      : undefined,
   };
 }
 

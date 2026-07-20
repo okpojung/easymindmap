@@ -10,7 +10,7 @@ import type { ThemeTokens, ThemeName } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import type { TextAlign, ShapeType } from '@/editor/__samples__/types';
 import type { Collaborator } from '@/editor/__samples__/types';
-import { useDocumentStore } from '@/stores/documentStore';
+import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { resolveNodeColors } from './resolveNodeColors';
@@ -19,6 +19,7 @@ import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, isNoteKind, type ContentKind } from './nodeContent';
 import { IndicatorGlyph, NoteTypeGlyph } from './IndicatorGlyph';
 import {
+  layoutInlineImages,
   levelFontFamily,
   levelFontSize,
   levelShape,
@@ -37,7 +38,7 @@ import { MarkToolbar } from './MarkToolbar';
 import { useViewportStore } from '@/stores/viewportStore';
 import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
-import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
+import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -173,7 +174,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
   const updateNodeSize = useDocumentStore((state) => state.updateNodeSize);
   const setNodeImage = useDocumentStore((state) => state.setNodeImage);
-  const addNoteBlock = useDocumentStore((state) => state.addNoteBlock);
+  const setNodeImages = useDocumentStore((state) => state.setNodeImages);
   const zoom = useViewportStore((state) => state.zoom);
   const setEditingNodeId = useInteractionStore((state) => state.setEditingNodeId);
   const showTags = useEditorUiStore((state) => state.showTags);
@@ -285,6 +286,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
         ? n.x + (iconLeftPad - iconRightPad - indicatorReserve) / 2
         : n.x - n.w / 2 + 14 + (hasIcon && iconSide === 'left' ? 24 : 0);
 
+  // 편집 중 기사 붙여넣기로 들어온 인라인 사진 대기 목록 — 저장 시 반영,
+  // 취소 시 폐기 (원문 위치 afterLine 포함)
+  const pendingImgsRef = useRef<
+    { src: string; w: number; h: number; afterLine: number }[] | null
+  >(null);
+
   const startEdit = () => {
     setDraftText(n.text);
     setEditing(true);
@@ -297,12 +304,18 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     if (nextText.trim().length > 0 && nextText !== n.text) {
       updateNodeText(n.id, nextText);
     }
+    // 편집 중 기사 붙여넣기로 쌓인 인라인 사진 — 저장 시 함께 반영
+    if (pendingImgsRef.current?.length) {
+      setNodeImages(n.id, [...(n.images ?? []), ...pendingImgsRef.current]);
+    }
+    pendingImgsRef.current = null;
     setEditing(false);
     setEditingNodeId(null);
   };
 
   const cancelEdit = () => {
     setDraftText(n.text);
+    pendingImgsRef.current = null; // 취소 = 붙여넣은 사진도 폐기
     setEditing(false);
     setEditingNodeId(null);
   };
@@ -428,26 +441,35 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
       )}
 
       {!editing && (() => {
-        // 텍스트 줄 + (Markdown 표) + (붙여넣은 사진)을 세로로 쌓아 박스 안
-        // 가운데 정렬 (sizeNodeForText의 높이 계산과 동일한 배치)
+        // 텍스트 줄(+중간 인라인 사진) + (Markdown 표) + (레거시 사진)을
+        // 세로로 쌓아 박스 안 가운데 정렬 (sizeNodeForText와 동일한 배치)
         const padX = n.depth === 0 ? 22 : 14;
-        const img = n.image ? scaleNodeImage(n.image, n.w, padX) : null;
+        const manualStarts = n._manualStarts;
+        // 텍스트 중간 인라인 사진 — afterLine(논리 줄)을 래핑 줄 자리로
+        // 바꿔 각 줄·사진의 세로 위치를 구한다 (뷰어와 같은 규칙)
+        const inlineImgs = n.images ?? [];
+        const inlineScaled = inlineImgs.map((im) => scaleNodeImage(im, n.w, padX));
+        const flow = layoutInlineImages(
+          inlineImgs, inlineScaled, lines.length, manualStarts, lineHeight,
+        );
+        const img = n.image && inlineImgs.length === 0
+          ? scaleNodeImage(n.image, n.w, padX)
+          : null;
         const tableGap = mdTable && lines.length > 0 ? 6 : 0;
         const imgGap = img && (lines.length > 0 || mdTable) ? 6 : 0;
         const contentH =
-          lines.length * lineHeight +
+          flow.totalH +
           (mdTable ? mdTable.h + tableGap : 0) +
           (img ? img.h + imgGap : 0);
         const contentTop = n.y - contentH / 2;
         const imgTop =
-          contentTop + lines.length * lineHeight +
+          contentTop + flow.totalH +
           (mdTable ? mdTable.h + tableGap : 0) + imgGap;
 
         // 인라인 마커 상태를 자동 줄바꿈 사이로 이월한다 — 마커 구간이
         // 줄 경계에 걸치면 다음 줄에서 여는 마커로 재해석되어 강조
         // 위치가 밀리던 버그 수정. 수동 줄바꿈(\n) 세그먼트가 시작하는
         // 줄(_manualStarts)에서만 상태를 리셋한다 (기존 줄 단위 규칙 유지).
-        const manualStarts = n._manualStarts;
         let markSt: MarkState | undefined;
         const lineSegs = lines.map((ln, li2) => {
           if (!manualStarts || manualStarts.includes(li2)) markSt = undefined;
@@ -459,7 +481,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
         return (
           <g>
             {lines.map((line, i) => {
-              const lineCenter = contentTop + i * lineHeight + lineHeight / 2;
+              // 인라인 사진 밴드만큼 아래로 밀린 줄 위치 (flow.lineTops)
+              const lineCenter = contentTop + flow.lineTops[i] + lineHeight / 2;
               // 인라인 강조(부분 텍스트) — **굵게** *기울임* ~~취소선~~
               // __밑줄__ ==하이라이트== 마커를 구간(tspan)으로 그린다.
               // 마커 문자는 표시에서 제거되고, 노드 전체 강조(스타일 탭)와
@@ -534,7 +557,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
             {mdTable && (() => {
               // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
               const tX = n.x - n.w / 2 + padX;
-              const tY = contentTop + lines.length * lineHeight + tableGap;
+              const tY = contentTop + flow.totalH + tableGap;
               const { colWs, rowH, cellFs, headers, rows, w: tW, h: tH } = mdTable;
               const colX: number[] = [];
               let acc = tX;
@@ -595,6 +618,48 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                 </g>
               );
             })()}
+
+            {flow.bands.map((band) => {
+              // 텍스트 중간 인라인 사진 — 원문 위치(afterLine)의 밴드에
+              const sc = inlineScaled[band.idx];
+              const im = inlineImgs[band.idx];
+              const top = contentTop + band.top;
+              return (
+                <g key={`inimg${band.idx}`}>
+                  <image
+                    href={im.src}
+                    x={n.x - sc.w / 2}
+                    y={top}
+                    width={sc.w}
+                    height={sc.h}
+                    preserveAspectRatio="xMidYMid meet"
+                  />
+                  {selected && (
+                    // 선택 상태에서 사진 우상단 ✕ = 그 사진만 제거
+                    <g
+                      transform={`translate(${n.x + sc.w / 2 - 9}, ${top + 9})`}
+                      style={{ cursor: 'pointer' }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNodeImages(
+                          n.id,
+                          inlineImgs.filter((_, k) => k !== band.idx),
+                        );
+                      }}
+                    >
+                      <title>사진 제거</title>
+                      <circle r={8} fill="#FFFFFF" stroke={t.border} strokeWidth={1}
+                              opacity={0.92} />
+                      <line x1={-3.2} y1={-3.2} x2={3.2} y2={3.2}
+                            stroke="#7A6A50" strokeWidth={1.6} strokeLinecap="round" />
+                      <line x1={3.2} y1={-3.2} x2={-3.2} y2={3.2}
+                            stroke="#7A6A50" strokeWidth={1.6} strokeLinecap="round" />
+                    </g>
+                  )}
+                </g>
+              );
+            })}
 
             {img && n.image && (
               // 붙여넣은 사진 — 노드 폭에 맞춰 축소, 가운데 정렬
@@ -717,20 +782,54 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
             value={draftText}
             onChange={(e) => setDraftText(e.target.value)}
             onPaste={(e) => {
-              // 기사(사진+본문) 붙여넣기 — 사진을 노드 아래로 빼면 "사진이
-              // 마지막에 표시"되므로, 서식·사진을 원래 위치째 문단 노트에
-              // 보관한다 (sanitizeRichHtml). 텍스트 입력창은 그대로 둔다.
+              // 텍스트 편집 중 붙여넣기도 "모두 노드에" — 기사(text/html에
+              // 사진 포함)는 텍스트를 커서 위치에 넣고 사진은 **원문 위치
+              // (afterLine)째** 인라인 사진으로 쌓아 두었다가 저장(Enter) 시
+              // 반영한다 (Esc 취소 시 폐기). 사진 없는 붙여넣기는 브라우저
+              // 기본 동작(텍스트 삽입), 이미지 파일은 노드 사진.
               const rawHtml = e.clipboardData?.getData('text/html');
               if (rawHtml) {
-                const clean = sanitizeRichHtml(rawHtml);
-                const hasImg = /<img\s/i.test(clean.html);
-                if (hasImg && clean.text.trim().length >= 40) {
+                const art = extractArticleContent(rawHtml);
+                if (art.images.length) {
                   e.preventDefault();
-                  addNoteBlock(n.id, 'paragraph', clean.text.trim(), { html: clean.html });
+                  const ta2 = e.currentTarget;
+                  const s0 = ta2.selectionStart ?? draftText.length;
+                  const e0 = ta2.selectionEnd ?? s0;
+                  const before = draftText.slice(0, s0);
+                  const after = draftText.slice(e0);
+                  // 붙는 지점 앞의 논리 줄 수 — 사진 앵커를 그만큼 이동
+                  const base = before.split('\n').length - 1;
+                  setDraftText(before + art.text + after);
+                  const withBase = (
+                    imgs: { src: string; w: number; h: number; afterLine: number }[],
+                  ) => imgs.map((im) => ({ ...im, afterLine: im.afterLine + base }));
+                  const initial = probeArticleImages(art.images, (resolved) => {
+                    // 실측 완료 — 아직 편집 중이면 대기 목록 갱신, 이미
+                    // 저장됐으면 노드의 같은 사진 크기를 갱신
+                    const mapped = withBase(resolved);
+                    if (pendingImgsRef.current) {
+                      pendingImgsRef.current = mapped;
+                      return;
+                    }
+                    const cur = findNodeInMap(
+                      useDocumentStore.getState().map, n.id,
+                    )?.images;
+                    if (!cur) return;
+                    setNodeImages(n.id, cur.map((ci) => {
+                      const m = mapped.find(
+                        (mm) => mm.src === ci.src && mm.afterLine === ci.afterLine,
+                      );
+                      return m ?? ci;
+                    }));
+                  });
+                  pendingImgsRef.current = [
+                    ...(pendingImgsRef.current ?? []),
+                    ...withBase(initial),
+                  ];
                   return;
                 }
               }
-              // 사진만 복사한 경우 — 기존처럼 노드 사진으로 첨부
+              // 사진 없는 웹 콘텐츠 → 기본 텍스트 삽입 / 이미지 파일 → 노드 사진
               const kind = extractClipboardImage(e.clipboardData, (img) =>
                 setNodeImage(n.id, img),
               );

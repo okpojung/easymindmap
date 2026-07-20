@@ -97,17 +97,25 @@ function buildBody(
       lines.push(`${'  '.repeat(depth - 6)}- ${oneLine(node.text)}`);
     }
 
-    // 사진 — files/로 패키징된 경우 상대 경로, 아니면 원본 URL
-    if (node.image?.src) {
-      const packed = dataUrlToBytes(node.image.src);
+    // 사진 — files/로 패키징된 경우 상대 경로, 아니면 원본 URL.
+    // 인라인 사진(images — 텍스트 중간)이 있으면 원문 순서대로 모두 내보낸다
+    // (MD에서 노드는 한 줄이라 "텍스트 중간" 위치는 표현하지 못하고, 제목
+    // 아래에 순서대로 나열된다 — markdown-export.md §노드 사진 참조).
+    const nodeImgs = node.images?.length
+      ? node.images
+      : node.image?.src
+        ? [node.image]
+        : [];
+    for (const im of nodeImgs) {
+      const packed = dataUrlToBytes(im.src);
       if (packed) {
         const path = `files/img-${images.length + 1}.${packed.ext}`;
         images.push({ path, data: packed.bytes });
         lines.push('');
         lines.push(`![${oneLine(node.text).slice(0, 20)}](${path})`);
-      } else if (/^https?:\/\//i.test(node.image.src)) {
+      } else if (/^https?:\/\//i.test(im.src)) {
         lines.push('');
-        lines.push(`![${oneLine(node.text).slice(0, 20)}](${node.image.src})`);
+        lines.push(`![${oneLine(node.text).slice(0, 20)}](${im.src})`);
       }
     }
     // 링크 — Markdown 링크 문법으로 (불러오기 시 다시 노드 링크로 추출)

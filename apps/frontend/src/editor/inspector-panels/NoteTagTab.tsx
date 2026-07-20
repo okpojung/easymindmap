@@ -9,6 +9,31 @@ import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection } from './InspectorSection';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
+import { embedRichHtmlImages } from '@/utils/embedImage';
+
+// 맵 전체에서 노트 블록을 id로 찾는다 — 사진 내장(비동기) 완료 시점에
+// 블록이 아직 그 서식(html)을 갖고 있는지 확인하는 용도.
+function findBlockById(
+  map: { root: { notes?: NoteBlockData[] }; branches: MindNodeLike[] },
+  blockId: string,
+): NoteBlockData | undefined {
+  const inRoot = (map.root.notes ?? []).find((b) => b.id === blockId);
+  if (inRoot) return inRoot;
+  const walk = (nodes: MindNodeLike[]): NoteBlockData | undefined => {
+    for (const n of nodes) {
+      const hit = (n.notes ?? []).find((b) => b.id === blockId);
+      if (hit) return hit;
+      const deep = walk(n.children ?? []);
+      if (deep) return deep;
+    }
+    return undefined;
+  };
+  return walk(map.branches);
+}
+interface MindNodeLike {
+  notes?: NoteBlockData[];
+  children?: MindNodeLike[];
+}
 
 // 코드 블록 언어 목록.
 // [서버 연결 예정] Supabase 연동 시 이 하드코딩 목록은 code_languages
@@ -263,6 +288,16 @@ function NoteBlockEditor({
               if (!clean.html) return;
               e.preventDefault();
               onChange({ html: clean.html, text: clean.text });
+              // 사진 다운로드 내장 — 기사 삭제·오프라인에도 보존.
+              // 완료 시 블록 html이 그대로일 때만 교체 (그 사이 사용자가
+              // 텍스트를 수정해 서식이 제거됐으면 되살리지 않는다)
+              void embedRichHtmlImages(clean.html).then((h2) => {
+                if (!h2) return;
+                const cur = findBlockById(
+                  useDocumentStore.getState().map, block.id,
+                );
+                if (cur?.html === clean.html) onChange({ html: h2 });
+              });
             }}
             rows={NOTE_INPUT_ROWS[block.type] ?? 15}
             placeholder={

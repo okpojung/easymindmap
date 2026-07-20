@@ -9,6 +9,31 @@ import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection } from './InspectorSection';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
+import { embedRichHtmlImages } from '@/utils/embedImage';
+
+// 맵 전체에서 노트 블록을 id로 찾는다 — 사진 내장(비동기) 완료 시점에
+// 블록이 아직 그 서식(html)을 갖고 있는지 확인하는 용도.
+function findBlockById(
+  map: { root: { notes?: NoteBlockData[] }; branches: MindNodeLike[] },
+  blockId: string,
+): NoteBlockData | undefined {
+  const inRoot = (map.root.notes ?? []).find((b) => b.id === blockId);
+  if (inRoot) return inRoot;
+  const walk = (nodes: MindNodeLike[]): NoteBlockData | undefined => {
+    for (const n of nodes) {
+      const hit = (n.notes ?? []).find((b) => b.id === blockId);
+      if (hit) return hit;
+      const deep = walk(n.children ?? []);
+      if (deep) return deep;
+    }
+    return undefined;
+  };
+  return walk(map.branches);
+}
+interface MindNodeLike {
+  notes?: NoteBlockData[];
+  children?: MindNodeLike[];
+}
 
 // 코드 블록 언어 목록.
 // [서버 연결 예정] Supabase 연동 시 이 하드코딩 목록은 code_languages
@@ -263,6 +288,16 @@ function NoteBlockEditor({
               if (!clean.html) return;
               e.preventDefault();
               onChange({ html: clean.html, text: clean.text });
+              // 사진 다운로드 내장 — 기사 삭제·오프라인에도 보존.
+              // 완료 시 블록 html이 그대로일 때만 교체 (그 사이 사용자가
+              // 텍스트를 수정해 서식이 제거됐으면 되살리지 않는다)
+              void embedRichHtmlImages(clean.html).then((h2) => {
+                if (!h2) return;
+                const cur = findBlockById(
+                  useDocumentStore.getState().map, block.id,
+                );
+                if (cur?.html === clean.html) onChange({ html: h2 });
+              });
             }}
             rows={NOTE_INPUT_ROWS[block.type] ?? 15}
             placeholder={
@@ -286,28 +321,12 @@ function NoteBlockEditor({
           />
         )}
 
-        {/* 리치 붙여넣기(사진+서식) 미리보기 — 문단 블록에 html이 있을 때 */}
+        {/* 리치 붙여넣기(사진+서식) 미리보기 — 문단 블록에 html이 있을 때.
+            배지·"서식 제거" 버튼 등 부가 UI는 두지 않는다(2026-07 사용자
+            피드백: 사진+텍스트만 깔끔하게). 위 텍스트를 수정하면 서식은
+            자연히 제거된다(onChange에서 html: undefined). */}
         {block.type === 'paragraph' && block.html && (
           <div style={{ marginTop: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
-                padding: '1px 6px', borderRadius: 3,
-                background: t.primarySoft, color: t.primary,
-                border: `1px solid ${t.primaryBorder}40`,
-              }}>서식·이미지 포함</span>
-              <span style={{ fontSize: 9, color: t.textSubtle }}>
-                위 텍스트를 수정하면 서식이 제거됩니다
-              </span>
-              <button
-                onClick={() => onChange({ html: undefined })}
-                title="서식과 이미지를 버리고 일반 텍스트만 남깁니다"
-                style={{
-                  marginLeft: 'auto', fontSize: 9, padding: '1px 6px', borderRadius: 3,
-                  border: `1px solid ${t.border}`, background: t.surface,
-                  color: t.textMuted, cursor: 'pointer', fontWeight: 600,
-                }}>서식 제거</button>
-            </div>
             <div
               className="mm-rich-note"
               style={{

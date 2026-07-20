@@ -1,7 +1,10 @@
 # Markdown ↔ 맵 변환 규칙 명세 (markdown-export.md)
 
-* 문서 버전: v1.1
+* 문서 버전: v1.2
 * 최초 작성: 2026-07 (MVS)
+* **위상**: 이 문서는 **EMM(EasyMindMap Markdown) 스펙의 구현 규칙
+  상세서**다 — 포맷의 설계 원칙·적합성·버전 정책은 `emm-spec.md`가
+  규범이고, 변환 표 단위의 현행 규칙은 이 문서가 규범이다.
 * **이 문서는 EasyMindMap의 핵심 기능인 "MD 파일 ↔ 맵" 변환의 단일
   기준 명세다. `importMarkdown.ts` / `exportMarkdown.ts`의 변환 규칙이
   바뀔 때마다 반드시 이 문서에 반영한다.**

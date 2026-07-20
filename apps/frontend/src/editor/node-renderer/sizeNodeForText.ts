@@ -25,6 +25,10 @@ export interface SizeOpts {
   // 노드 안에 붙여넣은 사진의 원본 크기 — 노드 폭에 맞춰 축소한 높이만큼
   // 박스가 커진다 (표시는 NodeRenderer의 scaleNodeImage와 동일 공식).
   image?: { w: number; h: number };
+  // 텍스트 중간에 끼워 넣은 사진들(기사 붙여넣기) — 각 사진은 위아래
+  // INLINE_IMG_PAD 여백 포함 (h + 6)만큼 박스를 키운다. 위치(afterLine)는
+  // 높이 합계에 영향이 없어 여기서는 크기만 받는다.
+  images?: { w: number; h: number }[];
 }
 
 export interface NodeSize {
@@ -42,6 +46,44 @@ export interface NodeSize {
   // 수동 줄바꿈(\n) 세그먼트가 시작하는 lines 인덱스 — 인라인 마커 상태
   // 이월의 리셋 지점 (자동 줄바꿈 줄에는 상태가 이어진다)
   manualStarts?: number[];
+}
+
+// 인라인 사진의 위아래 여백(px) — 측정·에디터 렌더·HTML 뷰어가 같은 값.
+export const INLINE_IMG_PAD = 3;
+
+// 인라인 사진(텍스트 중간)의 세로 배치 — 래핑된 줄 수(wrappedCount)와
+// 수동 줄 시작 인덱스(manualStarts, 논리 줄 L이 시작하는 래핑 줄 번호)를
+// 기준으로 afterLine(논리 줄 기준 위치)을 래핑 줄 사이 자리로 바꿔,
+// 각 줄의 상단(lineTops)과 각 사진의 상단(bands[].top)을 콘텐츠 상단
+// 기준 상대좌표로 돌려준다. NodeRenderer와 HTML 뷰어가 같은 규칙을 쓴다.
+export function layoutInlineImages(
+  images: { afterLine: number }[],
+  scaled: { w: number; h: number }[],
+  wrappedCount: number,
+  manualStarts: number[] | undefined,
+  lineHeight: number,
+): { lineTops: number[]; bands: { idx: number; top: number }[]; totalH: number } {
+  const ws = manualStarts && manualStarts.length ? manualStarts : [0];
+  // 논리 줄 위치(afterLine) → 래핑 줄 삽입 인덱스
+  const insAt = images.map((im) => {
+    const a = Math.max(0, Math.round(im.afterLine));
+    return a < ws.length ? ws[a] : wrappedCount;
+  });
+  const lineTops: number[] = [];
+  const bands: { idx: number; top: number }[] = [];
+  let y = 0;
+  for (let i = 0; i <= wrappedCount; i++) {
+    for (let k = 0; k < images.length; k++) {
+      if (insAt[k] !== i) continue;
+      bands.push({ idx: k, top: y + INLINE_IMG_PAD });
+      y += scaled[k].h + INLINE_IMG_PAD * 2;
+    }
+    if (i < wrappedCount) {
+      lineTops.push(y);
+      y += lineHeight;
+    }
+  }
+  return { lineTops, bands, totalH: y };
 }
 
 // 노드 폭(w)에 맞춘 사진 표시 크기 — 측정과 그리기가 같은 공식을 쓴다.
@@ -126,7 +168,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
     ? Math.min(900, Math.round(opts.manualW))
     : undefined;
   // 사진이 있으면 기본 최소 폭을 조금 넉넉하게 (너무 작게 축소되지 않게)
-  const imageMin = opts.image ? 170 : 0;
+  const imageMin = (opts.image || (opts.images && opts.images.length)) ? 170 : 0;
   const minW = manualW ?? Math.max(imageMin, opts.minW ?? (depth === 0 ? 160 : 130));
   const maxW = manualW ?? Math.max(minW, opts.maxW ?? (depth === 0 ? 260 : 320));
   // Reserve space for branch icon (NS-05) when present
@@ -212,7 +254,12 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   const imgH = opts.image
     ? scaleNodeImage(opts.image, w, padX).h + (wrappedLines.length > 0 || mdTable ? 6 : 0)
     : 0;
-  let h = textH + tableH + imgH + padY * 2;
+  // 텍스트 중간 인라인 사진들 — 각 사진이 (축소 높이 + 위아래 여백)만큼
+  const inlineImgsH = (opts.images ?? []).reduce(
+    (acc, im) => acc + scaleNodeImage(im, w, padX).h + INLINE_IMG_PAD * 2,
+    0,
+  );
+  let h = textH + tableH + imgH + inlineImgsH + padY * 2;
   // 수동 높이는 최소값 — 내용이 더 크면 내용에 맞춘다
   if (opts.manualH && opts.manualH > h) h = Math.min(1200, Math.round(opts.manualH));
 

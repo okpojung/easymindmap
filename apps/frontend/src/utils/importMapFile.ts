@@ -76,6 +76,7 @@ function enrich(bodyMap: SampleMap, meta: MapFileMeta): SampleMap {
       out.notes = src.notes;
       out.attachments = src.attachments;
       out.image = src.image;
+      out.images = src.images;
       out.textAlign = src.textAlign;
       out.layoutType = src.layoutType;
       out.edgeType = src.edgeType;

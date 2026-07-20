@@ -803,12 +803,22 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                   const withBase = (
                     imgs: { src: string; w: number; h: number; afterLine: number }[],
                   ) => imgs.map((im) => ({ ...im, afterLine: im.afterLine + base }));
+                  let initialMapped:
+                    { src: string; w: number; h: number; afterLine: number }[] = [];
                   const initial = probeArticleImages(art.images, (resolved) => {
-                    // 실측 완료 — 아직 편집 중이면 대기 목록 갱신, 이미
-                    // 저장됐으면 노드의 같은 사진 크기를 갱신
+                    // 내장(다운로드)·실측 완료 — 아직 편집 중이면 대기 목록
+                    // 갱신, 이미 저장됐으면 노드의 해당 사진을 교체.
+                    // (내장되면 src가 data URL로 바뀌므로 원래 URL 목록
+                    // initialMapped와 짝을 맞춰 찾는다)
                     const mapped = withBase(resolved);
                     if (pendingImgsRef.current) {
-                      pendingImgsRef.current = mapped;
+                      // 같은 편집 중 이전 붙여넣기분은 보존하고 이번 것만 교체
+                      pendingImgsRef.current = pendingImgsRef.current.map((ci) => {
+                        const idx = initialMapped.findIndex(
+                          (mm) => mm.src === ci.src && mm.afterLine === ci.afterLine,
+                        );
+                        return idx >= 0 ? mapped[idx] : ci;
+                      });
                       return;
                     }
                     const cur = findNodeInMap(
@@ -816,15 +826,16 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     )?.images;
                     if (!cur) return;
                     setNodeImages(n.id, cur.map((ci) => {
-                      const m = mapped.find(
+                      const idx = initialMapped.findIndex(
                         (mm) => mm.src === ci.src && mm.afterLine === ci.afterLine,
                       );
-                      return m ?? ci;
+                      return idx >= 0 ? mapped[idx] : ci;
                     }));
                   });
+                  initialMapped = withBase(initial);
                   pendingImgsRef.current = [
                     ...(pendingImgsRef.current ?? []),
-                    ...withBase(initial),
+                    ...initialMapped,
                   ];
                   return;
                 }

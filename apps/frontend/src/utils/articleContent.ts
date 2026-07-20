@@ -9,6 +9,7 @@
 // 텍스트와 항상 일치한다 (text/plain과 줄을 맞추는 방식은 어긋나기 쉽다).
 
 import { sanitizeRichHtml } from './sanitizeRichHtml';
+import { fetchImageAsDataUrl } from './embedImage';
 
 const BLOCK_TAGS = new Set([
   'P', 'DIV', 'LI', 'UL', 'OL', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
@@ -78,9 +79,10 @@ export function extractArticleContent(rawHtml: string): ArticleContent {
   return { text: lines.join('\n'), images };
 }
 
-// 사진의 실제 픽셀 크기를 재서 done에 전달한다 — 로드 실패(핫링크 차단
-// 등)해도 기본 크기(400×300)로 유지해 위치는 지킨다. 모든 probe가 끝나면
-// 한 번 호출된다.
+// 사진을 ① 다운로드해 data URL로 맵에 내장(fetchImageAsDataUrl — 기사
+// 삭제·오프라인에도 사진 보존)하고, 차단(CORS 등) 시에만 ② 원본 URL을
+// 유지한 채 실제 픽셀 크기를 재서 done에 전달한다. 실측도 실패하면 기본
+// 크기(400×300) — 위치는 항상 지킨다. 모든 처리가 끝나면 한 번 호출된다.
 export function probeArticleImages(
   images: ArticleImageRef[],
   done: (resolved: { src: string; w: number; h: number; afterLine: number }[]) => void,
@@ -94,14 +96,23 @@ export function probeArticleImages(
     if (pending === 0) done(resolved);
   };
   images.forEach((im, i) => {
-    const probe = new Image();
-    probe.onload = () => {
-      resolved[i].w = probe.naturalWidth || 400;
-      resolved[i].h = probe.naturalHeight || 300;
-      finish();
-    };
-    probe.onerror = finish;
-    probe.src = im.src;
+    (async () => {
+      const emb = await fetchImageAsDataUrl(im.src);
+      if (emb) {
+        resolved[i] = { ...resolved[i], src: emb.dataUrl, w: emb.w, h: emb.h };
+        return;
+      }
+      await new Promise<void>((res) => {
+        const probe = new Image();
+        probe.onload = () => {
+          resolved[i].w = probe.naturalWidth || 400;
+          resolved[i].h = probe.naturalHeight || 300;
+          res();
+        };
+        probe.onerror = () => res();
+        probe.src = im.src;
+      });
+    })().catch(() => undefined).finally(finish);
   });
   return initial;
 }

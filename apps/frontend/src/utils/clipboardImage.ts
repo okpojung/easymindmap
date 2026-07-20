@@ -10,17 +10,30 @@
 
 import type { NodeImage } from '@/editor/__samples__/types';
 import { resolveLazyImgSrc } from './sanitizeRichHtml';
+import { fetchImageAsDataUrl } from './embedImage';
 
 function probeAndApply(src: string, apply: (img: NodeImage) => void): void {
-  const probe = new Image();
-  probe.onload = () => {
-    apply({ src, w: probe.naturalWidth || 400, h: probe.naturalHeight || 300 });
+  const probeOnly = () => {
+    const probe = new Image();
+    probe.onload = () => {
+      apply({ src, w: probe.naturalWidth || 400, h: probe.naturalHeight || 300 });
+    };
+    probe.onerror = () => {
+      // 크기를 못 재도 첨부는 한다 (기본 비율) — 렌더링이 되면 그 크기로 표시
+      apply({ src, w: 400, h: 300 });
+    };
+    probe.src = src;
   };
-  probe.onerror = () => {
-    // 크기를 못 재도 첨부는 한다 (기본 비율) — 렌더링이 되면 그 크기로 표시
-    apply({ src, w: 400, h: 300 });
-  };
-  probe.src = src;
+  // 웹 이미지는 다운로드해 맵에 내장 (기사 삭제·오프라인에도 보존) —
+  // 차단(CORS 등) 시에만 원본 URL 유지
+  if (/^https?:\/\//i.test(src)) {
+    fetchImageAsDataUrl(src).then((emb) => {
+      if (emb) apply({ src: emb.dataUrl, w: emb.w, h: emb.h });
+      else probeOnly();
+    });
+    return;
+  }
+  probeOnly();
 }
 
 // 클립보드에 사진이 있으면 apply를 호출하고 그 종류를 반환한다.

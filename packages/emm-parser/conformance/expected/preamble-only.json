@@ -1,0 +1,36 @@
+{
+  "nodes": 1,
+  "bodyRoundTripNodes": 1,
+  "map": {
+    "title": "개요만 있는 문서",
+    "root": {
+      "id": "root",
+      "text": "개요만 있는 문서",
+      "colorKey": "root",
+      "side": "center",
+      "notes": [
+        {
+          "id": "md#0",
+          "type": "paragraph",
+          "text": "이 문서는 견출이 하나뿐입니다."
+        },
+        {
+          "id": "md#1",
+          "type": "paragraph",
+          "text": "인용 머리말 **강조** 포함 — [참고](https://example.com/ref)"
+        },
+        {
+          "id": "md#2",
+          "type": "table",
+          "text": "키 | 값\na | 1\nb | 2"
+        },
+        {
+          "id": "md#3",
+          "type": "paragraph",
+          "text": "본문 문단 하나 더."
+        }
+      ]
+    },
+    "branches": []
+  }
+}

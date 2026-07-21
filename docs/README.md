@@ -53,7 +53,8 @@ docs/
 │  ├─ markdown-export.md                  ← MD ↔ 맵 변환 규칙 (EMM 구현 규칙서)
 │  ├─ ai/
 │  │  ├─ 18-ai.md
-│  │  └─ 19-ai-workflow.md
+│  │  ├─ 19-ai-workflow.md
+│  │  └─ emm-prompt-templates.md          ← AI용 EMM 생성 프롬프트 템플릿
 │  ├─ import-export/
 │  │  ├─ 20-export.md
 │  │  ├─ 21-import.md
@@ -117,7 +118,7 @@ docs/
 
 ## 전체 문서 목록
 
-### 번호 없는 문서 (31개, README.md 제외)
+### 번호 없는 문서 (32개, README.md 제외)
 
 | 경로 | 설명 |
 |------|------|
@@ -137,6 +138,7 @@ docs/
 | `docs/03-editor-core/state-architecture.md` | 상태관리 아키텍처 |
 | `docs/04-extensions/README.md` | 확장 기능 개요 |
 | `docs/04-extensions/emm-spec.md` | EasyMindMap Markdown(EMM) 정식 스펙 |
+| `docs/04-extensions/ai/emm-prompt-templates.md` | AI용 EMM 생성 프롬프트 템플릿 |
 | `docs/04-extensions/markdown-export.md` | MD ↔ 맵 변환 규칙 명세 (EMM 구현 규칙서) |
 | `docs/04-extensions/import-export/22-map-file-meta.md` | 맵 파일 메타데이터 왕복 (easymindmap:v1) |
 | `docs/05-implementation/api-spec.md` | API 명세 |

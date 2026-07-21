@@ -1,0 +1,108 @@
+{
+  "nodes": 15,
+  "bodyRoundTripNodes": 15,
+  "map": {
+    "title": "7월 제품팀 주간회의",
+    "root": {
+      "id": "root",
+      "text": "7월 제품팀 주간회의",
+      "colorKey": "root",
+      "side": "center"
+    },
+    "branches": [
+      {
+        "id": "md#0",
+        "text": "논의 사항",
+        "colorKey": "l1A",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#1",
+            "text": "에디터 성능 개선",
+            "notes": [
+              {
+                "id": "md#2",
+                "type": "paragraph",
+                "text": "대형 맵(300노드+)에서 팬/줌 프레임 저하 보고가 2건 접수됨."
+              }
+            ],
+            "children": [
+              {
+                "id": "md#3",
+                "text": "렌더링 프로파일링 결과 공유"
+              },
+              {
+                "id": "md#4",
+                "text": "뷰포트 밖 노드 렌더 생략(가상화) 검토"
+              }
+            ]
+          },
+          {
+            "id": "md#5",
+            "text": "EMM 스펙 공개 일정",
+            "children": [
+              {
+                "id": "md#6",
+                "text": "영문판 번역 범위 합의 필요"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#7",
+        "text": "결정 사항",
+        "colorKey": "l1B",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#8",
+            "text": "가상화 렌더링은 8월 스프린트로 편성한다"
+          },
+          {
+            "id": "md#9",
+            "text": "EMM 스펙 v1.0은 국문 우선 공개, 영문은 2주 후"
+          }
+        ]
+      },
+      {
+        "id": "md#10",
+        "text": "실행 항목",
+        "colorKey": "l1C",
+        "side": "left",
+        "children": [
+          {
+            "id": "md#11",
+            "text": "김개발 — 렌더 프로파일 리포트 작성 (7/25)"
+          },
+          {
+            "id": "md#12",
+            "text": "이문서 — 스펙 영문 초벌 번역 (8/1)"
+          },
+          {
+            "id": "md#13",
+            "text": "박기획 — 공개 리포 이름 후보 3안 (7/23)"
+          }
+        ]
+      },
+      {
+        "id": "md#14",
+        "text": "위험",
+        "colorKey": "l1D",
+        "side": "left",
+        "notes": [
+          {
+            "id": "md#15",
+            "type": "paragraph",
+            "text": "협업 기능 일정과 가상화 작업이 같은 모듈을 수정한다 — 충돌 주의."
+          },
+          {
+            "id": "md#16",
+            "type": "table",
+            "text": "위험 | 영향 | 대응\n모듈 충돌 | 일정 지연 | 브랜치 순서 조정\n번역 리소스 부족 | 공개 지연 | 외부 감수 1회"
+          }
+        ]
+      }
+    ]
+  }
+}

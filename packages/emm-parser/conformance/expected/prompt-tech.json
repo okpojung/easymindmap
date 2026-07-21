@@ -1,0 +1,141 @@
+{
+  "nodes": 14,
+  "bodyRoundTripNodes": 15,
+  "map": {
+    "title": "Ubuntu Apache + SSL 구축",
+    "root": {
+      "id": "root",
+      "text": "Ubuntu Apache + SSL 구축",
+      "colorKey": "root",
+      "side": "center"
+    },
+    "branches": [
+      {
+        "id": "md#0",
+        "text": "사전 준비",
+        "colorKey": "l1A",
+        "side": "right",
+        "notes": [
+          {
+            "id": "md#1",
+            "type": "paragraph",
+            "text": "Ubuntu 22.04 LTS 기준. sudo 권한과 도메인(A 레코드 연결)이 필요하다."
+          }
+        ],
+        "children": [
+          {
+            "id": "md#2",
+            "text": "서버 SSH 접속 확인"
+          },
+          {
+            "id": "md#3",
+            "text": "sudo 권한 확인"
+          },
+          {
+            "id": "md#4",
+            "text": "도메인 DNS 연결 확인"
+          }
+        ]
+      },
+      {
+        "id": "md#5",
+        "text": "Apache 설치",
+        "colorKey": "l1B",
+        "side": "right",
+        "notes": [
+          {
+            "id": "md#6",
+            "type": "paragraph",
+            "text": "패키지 목록을 갱신한 뒤 Apache를 설치하고 서비스 상태를 확인한다."
+          },
+          {
+            "id": "md#7",
+            "type": "code_block",
+            "text": "sudo apt update\nsudo apt install -y apache2\nsudo systemctl status apache2",
+            "lang": "bash"
+          }
+        ],
+        "children": [
+          {
+            "id": "md#8",
+            "text": "방화벽 개방",
+            "notes": [
+              {
+                "id": "md#9",
+                "type": "code_block",
+                "text": "sudo ufw allow \"Apache Full\"",
+                "lang": "bash"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#10",
+        "text": "SSL 발급 (Let's Encrypt)",
+        "colorKey": "l1C",
+        "side": "left",
+        "notes": [
+          {
+            "id": "md#11",
+            "type": "paragraph",
+            "text": "certbot이 Apache 설정을 자동으로 수정해 HTTPS를 활성화한다."
+          },
+          {
+            "id": "md#12",
+            "type": "code_block",
+            "text": "sudo apt install -y certbot python3-certbot-apache\nsudo certbot --apache",
+            "lang": "bash"
+          }
+        ],
+        "children": [
+          {
+            "id": "md#13",
+            "text": "자동 갱신 확인",
+            "notes": [
+              {
+                "id": "md#14",
+                "type": "code_block",
+                "text": "sudo certbot renew --dry-run",
+                "lang": "bash"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#15",
+        "text": "설치 검증",
+        "colorKey": "l1D",
+        "side": "left",
+        "children": [
+          {
+            "id": "md#16",
+            "text": "1. 브라우저에서 https://도메인 접속"
+          },
+          {
+            "id": "md#17",
+            "text": "2. 인증서 발급자(Let's Encrypt) 확인"
+          },
+          {
+            "id": "md#18",
+            "text": "3. http → https 리다이렉트 확인",
+            "children": [
+              {
+                "id": "md#19",
+                "text": "🔗 Certbot 공식 문서",
+                "links": [
+                  {
+                    "id": "md#20",
+                    "url": "https://certbot.eff.org/",
+                    "label": "Certbot 공식 문서"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

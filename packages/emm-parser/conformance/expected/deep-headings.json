@@ -1,0 +1,91 @@
+{
+  "nodes": 15,
+  "bodyRoundTripNodes": 15,
+  "map": {
+    "title": "딥 구조 테스트",
+    "root": {
+      "id": "root",
+      "text": "딥 구조 테스트",
+      "colorKey": "root",
+      "side": "center"
+    },
+    "branches": [
+      {
+        "id": "md#0",
+        "text": "A장",
+        "colorKey": "l1A",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#1",
+            "text": "A-1절",
+            "children": [
+              {
+                "id": "md#2",
+                "text": "A-1-a항",
+                "children": [
+                  {
+                    "id": "md#3",
+                    "text": "세부 견출",
+                    "children": [
+                      {
+                        "id": "md#4",
+                        "text": "불릿1",
+                        "children": [
+                          {
+                            "id": "md#5",
+                            "text": "불릿1-1",
+                            "children": [
+                              {
+                                "id": "md#6",
+                                "text": "1. 순번 a"
+                              },
+                              {
+                                "id": "md#7",
+                                "text": "2. 순번 b"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "id": "md#8",
+                        "text": "불릿2"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "md#9",
+            "text": "A-2절",
+            "children": [
+              {
+                "id": "md#10",
+                "text": "내용 문단입니다."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#11",
+        "text": "B장",
+        "colorKey": "l1B",
+        "side": "left",
+        "children": [
+          {
+            "id": "md#12",
+            "text": "1) 괄호 순번 항목"
+          },
+          {
+            "id": "md#13",
+            "text": "2) 두번째 항목"
+          }
+        ]
+      }
+    ]
+  }
+}

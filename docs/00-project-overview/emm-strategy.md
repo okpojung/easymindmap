@@ -142,9 +142,12 @@
 ## 7. 즉시 실행 항목
 
 1. `emm-spec.md` 영문판 초안 (공개 리포 준비물)
-2. `packages/emm-parser` 분리 설계 (현 importMarkdown/exportMarkdown의
-   앱 의존 제거 — DOM 의존 없는 순수 함수화)
-3. 적합성 코퍼스의 파일·기대 결과를 리포지토리 자산으로 정리
-   (현재는 E2E 스크립트 내장)
+2. ~~`packages/emm-parser` 분리 설계~~ → **완료(2026-07)**:
+   `packages/emm-parser` — 순수 코어(parse/serialize/meta/model, 런타임
+   의존 0, DOM 없음) + CLI(convert/validate). 앱은 재수출 심으로 소비
+3. ~~적합성 코퍼스 자산화~~ → **완료(2026-07)**:
+   `packages/emm-parser/conformance/` 11케이스 + 스냅숏 + 러너(npm test)
 4. 공개 리포 이름·라이선스 파일·상표 문구 확정
-5. "AI에게 EMM을 만들게 하는" 시스템 프롬프트 템플릿 1종 공개
+5. ~~AI 시스템 프롬프트 템플릿 공개~~ → **완료(2026-07)**:
+   `docs/04-extensions/ai/emm-prompt-templates.md` — 공통 코어 + 용도별
+   4종, 기대 출력은 적합성 코퍼스로 상시 검증

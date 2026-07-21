@@ -1,0 +1,126 @@
+{
+  "nodes": 14,
+  "bodyRoundTripNodes": 16,
+  "map": {
+    "title": "AwesomeLib",
+    "root": {
+      "id": "root",
+      "text": "AwesomeLib",
+      "colorKey": "root",
+      "side": "center",
+      "notes": [
+        {
+          "id": "md#0",
+          "type": "paragraph",
+          "text": "A tiny library for **fast** parsing."
+        }
+      ]
+    },
+    "branches": [
+      {
+        "id": "md#1",
+        "text": "About",
+        "colorKey": "l1A",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#2",
+            "text": "The lib is described at docs.\nBadge: CI",
+            "links": [
+              {
+                "id": "md#3",
+                "url": "https://ci.example.com/awesomelib",
+                "label": "CI"
+              },
+              {
+                "id": "md#4",
+                "url": "https://docs.example.com",
+                "label": "docs"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#5",
+        "text": "Installation",
+        "colorKey": "l1B",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#6",
+            "text": "Install via npm:",
+            "notes": [
+              {
+                "id": "md#7",
+                "type": "code_block",
+                "text": "npm install awesomelib",
+                "lang": "bash"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#8",
+        "text": "Usage",
+        "colorKey": "l1C",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#9",
+            "text": "1. Import the library\n`import awesome from 'awesomelib'`"
+          },
+          {
+            "id": "md#10",
+            "text": "2. Call parse()"
+          },
+          {
+            "id": "md#11",
+            "text": "3. Profit",
+            "children": [
+              {
+                "id": "md#12",
+                "text": "Supports *streaming*\nwith backpressure"
+              },
+              {
+                "id": "md#13",
+                "text": "Zero dependencies"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#14",
+        "text": "API",
+        "colorKey": "l1D",
+        "side": "left",
+        "notes": [
+          {
+            "id": "md#15",
+            "type": "table",
+            "text": "Method | Args | Returns\nparse | string | AST\nstringify | AST | string"
+          },
+          {
+            "id": "md#16",
+            "type": "paragraph",
+            "text": "Note: see the [API reference](https://docs.example.com/api) for details."
+          }
+        ]
+      },
+      {
+        "id": "md#17",
+        "text": "License",
+        "colorKey": "l1E",
+        "side": "left",
+        "children": [
+          {
+            "id": "md#18",
+            "text": "MIT"
+          }
+        ]
+      }
+    ]
+  }
+}

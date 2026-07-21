@@ -22,7 +22,62 @@ export const DEFAULT_MODELS: Record<AiProvider, string> = {
   gemini: 'gemini-2.0-flash',
 };
 
+// 회사별 알려진 모델 목록 (첫 항목 = 기본) — 목록에 없는 새 모델은
+// AI 설정의 '직접 입력'으로 쓸 수 있다
+export const KNOWN_MODELS: Record<AiProvider, string[]> = {
+  anthropic: [
+    'claude-sonnet-5',
+    'claude-opus-4-8',
+    'claude-haiku-4-5-20251001',
+  ],
+  openai: [
+    'gpt-4o-mini',
+    'gpt-4o',
+    'gpt-4.1-mini',
+    'gpt-4.1',
+  ],
+  gemini: [
+    'gemini-2.0-flash',
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+    'gemini-1.5-pro',
+  ],
+};
+
 export const PROVIDERS: AiProvider[] = ['anthropic', 'openai', 'gemini'];
+
+// API 키 발급 방법 — AI 설정 메뉴의 도움말 (IT 초보자 단계 안내)
+export const KEY_HELP: Record<AiProvider, { url: string; steps: string[] }> = {
+  anthropic: {
+    url: 'https://console.anthropic.com/settings/keys',
+    steps: [
+      'console.anthropic.com 에 접속해 계정을 만들고 로그인합니다.',
+      '왼쪽 메뉴 Settings → API Keys 로 이동합니다.',
+      "'Create Key' 버튼을 누르고 이름을 아무거나 정합니다.",
+      "만들어진 'sk-ant-' 로 시작하는 키를 복사해 아래 칸에 붙여넣습니다 (키는 만들 때 한 번만 보입니다).",
+      '사용하려면 Billing 메뉴에서 결제 수단(크레딧)을 등록해야 합니다.',
+    ],
+  },
+  openai: {
+    url: 'https://platform.openai.com/api-keys',
+    steps: [
+      'platform.openai.com 에 접속해 계정을 만들고 로그인합니다 (ChatGPT 계정과 같은 계정).',
+      '왼쪽 메뉴 API keys 로 이동합니다.',
+      "'Create new secret key' 버튼을 누릅니다.",
+      "만들어진 'sk-' 로 시작하는 키를 복사해 아래 칸에 붙여넣습니다 (키는 만들 때 한 번만 보입니다).",
+      'Settings → Billing 에서 결제 수단을 등록해야 호출이 됩니다 (ChatGPT Plus 구독과는 별개 요금).',
+    ],
+  },
+  gemini: {
+    url: 'https://aistudio.google.com/apikey',
+    steps: [
+      'aistudio.google.com/apikey 에 접속해 Google 계정으로 로그인합니다.',
+      "'API 키 만들기(Create API key)' 버튼을 누릅니다.",
+      "만들어진 'AIza' 로 시작하는 키를 복사해 아래 칸에 붙여넣습니다.",
+      '무료 사용량이 제공되어 결제 등록 없이 바로 시험해 볼 수 있습니다.',
+    ],
+  },
+};
 
 // 모델이 답변 전체를 ```markdown … ``` 하나로 감싼 경우 바깥 펜스만 벗긴다
 // (EMM 본문 안의 코드 펜스는 건드리지 않는다 — 첫 줄/끝 줄만 검사)

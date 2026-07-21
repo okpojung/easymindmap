@@ -1,0 +1,250 @@
+// EMM 데이터 모델 — EasyMindMap Markdown(EMM)의 맵 JSON 모델.
+//
+// 이 파일이 맵 데이터 타입의 단일 원본이다. 앱(apps/frontend)은
+// `@/types/mindmap`·`@/editor/__samples__/types`에서 이 타입들을
+// 재수출해 소비한다 (docs/04-extensions/emm-spec.md §데이터 모델).
+//
+// 주의: 브라우저/앱 의존이 전혀 없어야 한다 — 이 패키지는 Node.js·CLI·
+// 서버·제3자 도구에서 그대로 쓰인다.
+
+export type TextAlign = 'left' | 'center' | 'right';
+
+export type LayoutType =
+  // MVP canonical layout names
+  | 'tree'
+  | 'radial'
+  | 'both-radial'
+  | 'hierarchy'
+  | 'progress-tree'
+  | 'free'
+  // Legacy/demo layout names currently used by existing UI/layout code
+  | 'radial-bidirectional'
+  | 'radial-right'
+  | 'radial-left'
+  | 'tree-up'
+  | 'tree-down'
+  | 'tree-right'
+  | 'tree-left'
+  | 'hierarchy-right'
+  | 'hierarchy-left'
+  | 'process-tree-right'
+  | 'process-tree-left'
+  | 'process-tree-right-a'
+  | 'process-tree-right-b'
+  | 'freeform'
+  | 'kanban'
+  | 'timeline';
+
+export type EdgeType = 'tree-line' | 'curve-line';
+
+export type NodeColorKey =
+  | 'root'
+  | 'l1A'
+  | 'l1B'
+  | 'l1C'
+  | 'l1D'
+  | 'l1E'
+  | 'l2';
+
+// --- Node style (spec NODE_STYLE / NS-01..NS-05) ---------------------------
+export type ShapeType =
+  | 'rounded'
+  | 'rectangle'
+  | 'pill'
+  | 'ellipse'
+  | 'diamond'
+  | 'hexagon'
+  | 'parallelogram'
+  | 'arrow-left'   // ◀ 왼쪽 화살표
+  | 'arrow-right'  // ▶ 오른쪽 화살표
+  | 'cylinder'     // ⛁ 원통 (데이터베이스)
+  | 'star';        // ★ 별
+
+export type NodeFontWeight = 'normal' | 'bold';
+export type NodeFontStyle = 'normal' | 'italic';
+export type NodeBorderStyle = 'solid' | 'dashed' | 'dotted' | 'double';
+
+export interface NodeStyle {
+  fillColor?: string;
+  borderColor?: string;
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: NodeFontWeight;
+  fontStyle?: NodeFontStyle;
+  strike?: boolean; // 취소선 (텍스트 강조)
+  highlight?: boolean; // 형광펜 하이라이트 (텍스트 강조)
+  borderWidth?: number;
+  borderStyle?: NodeBorderStyle;
+  shapeType?: ShapeType;
+}
+
+// --- Node content (links / notes / attachments) ----------------------------
+export interface NodeLink {
+  id: string;
+  url: string;
+  label?: string;
+}
+
+// 문단 / 코드 / 표 / 체크리스트. ('warning'·'tip'은 v1.1에서 폐기 —
+// 기존 데이터는 뷰어·에디터에서 문단으로 렌더링해 하위호환 유지)
+export type NoteBlockType =
+  | 'paragraph'
+  | 'code_block'
+  | 'table'
+  | 'checklist';
+
+export interface NoteBlock {
+  id: string;
+  type: NoteBlockType;
+  text: string;
+  checked?: boolean; // checklist items only
+  lang?: string; // code_block only — 표시용 언어 라벨 (Shell, PHP, Node …)
+  // paragraph only — 웹 기사 등을 서식·이미지째 붙여넣은 리치 콘텐츠.
+  // sanitize를 통과한 안전한 HTML만 저장되며, text에는 같은 내용의
+  // 일반 텍스트를 함께 보관한다 (검색·하위호환용).
+  html?: string;
+}
+
+export type AttachmentKind = 'file' | 'audio' | 'video';
+
+// 노드에 붙여넣은 사진 (클립보드 이미지 = data URL, 웹 이미지 = http URL).
+// w/h는 원본 픽셀 크기 — 노드 안에서 노드 폭에 맞춰 축소 표시된다.
+export interface NodeImage {
+  src: string;
+  w: number;
+  h: number;
+}
+
+// 노드 텍스트 "중간"에 끼워 넣는 사진 (기사 붙여넣기 등) — afterLine은
+// 노드 텍스트의 논리 줄(\n 기준) 몇 개 뒤에 놓이는지. 0 = 텍스트 맨 앞,
+// 줄 수 이상 = 텍스트 맨 뒤. images가 있으면 image(레거시 단일, 항상
+// 마지막)보다 우선 표시된다.
+export interface NodeInlineImage extends NodeImage {
+  afterLine: number;
+}
+
+export interface NodeAttachment {
+  id: string;
+  name: string;
+  url?: string;
+  kind: AttachmentKind;
+}
+
+export interface MindNode {
+  id: string;
+  text: string;
+
+  textAlign?: TextAlign;
+  layoutType?: LayoutType;
+  // layoutType과 함께 기록되는 연결선 종류 (resolveEdgeType 결과)
+  edgeType?: EdgeType;
+
+  colorKey?: NodeColorKey;
+  side?: 'left' | 'right' | 'center';
+
+  icon?: string;
+  iconSide?: 'left' | 'right';
+
+  tag?: string;
+  tags?: string[];
+
+  note?: boolean;
+  locked?: boolean;
+
+  // Editor-core node metadata
+  collapsed?: boolean;
+  style?: NodeStyle;
+  links?: NodeLink[];
+  notes?: NoteBlock[];
+  attachments?: NodeAttachment[];
+  // 노드 안에 표시되는 붙여넣은 사진 (텍스트 아래)
+  image?: NodeImage;
+  // 노드 텍스트 중간에 원문 위치대로 끼워 넣은 사진들 (기사 붙여넣기)
+  images?: NodeInlineImage[];
+  // 노드 우하단 핸들로 수동 조절한 박스 크기 (없으면 자동 크기)
+  sizeW?: number;
+  sizeH?: number;
+
+  // Layout-internal: original child count, kept on the pruned node so the
+  // canvas can show a collapse/expand toggle even when children are hidden.
+  _childCount?: number;
+
+  children?: MindNode[];
+}
+
+export interface SampleLeaf extends MindNode {}
+
+export interface SampleBranch extends MindNode {
+  colorKey: NodeColorKey;
+  side: 'left' | 'right';
+  icon?: string;
+  children?: MindNode[];
+}
+
+export interface SampleRoot {
+  id: 'root';
+  text: string;
+  colorKey: 'root';
+  side?: 'center';
+
+  textAlign?: TextAlign;
+  layoutType?: LayoutType;
+
+  // Root may carry the same content metadata as any node (it can't be moved,
+  // deleted or collapsed, but it can have style / tags / notes / links).
+  icon?: string;
+  iconSide?: 'left' | 'right';
+  tag?: string;
+  tags?: string[];
+  note?: boolean;
+  style?: NodeStyle;
+  links?: NodeLink[];
+  notes?: NoteBlock[];
+  attachments?: NodeAttachment[];
+  image?: NodeImage;
+  images?: NodeInlineImage[];
+  sizeW?: number;
+  sizeH?: number;
+  _childCount?: number;
+}
+
+// --- 맵 전체 설정 (좌측 상단 '맵 설정' 메뉴) --------------------------------
+// 레벨(깊이)별 기본 폰트 — index 0=Root, 1=Level1 … 4=Level4+.
+// size를 비우면 기본값(18/14/13…), family를 비우면 시스템 기본 글꼴.
+export interface LevelFontSetting {
+  size?: number;
+  family?: string; // CSS font-family 문자열
+  align?: TextAlign; // 레벨 기본 텍스트 맞춤 (노드별 설정이 우선)
+}
+
+export interface MapSettings {
+  levelFonts?: LevelFontSetting[];
+  // 레벨별 레이아웃 — index 1=Level1 … 4=Level4+ (0=Root는 맵 전체
+  // 레이아웃이므로 레이아웃 탭에서 관리). 값을 지정하면 해당 레벨의
+  // 모든 노드에 서브트리 레이아웃을 일괄 적용하고, null/미지정이면
+  // 상위 레이아웃을 따른다.
+  levelLayouts?: (LayoutType | null | undefined)[];
+  // 레벨별 기본 도형 — index 0=1레벨(중심) … 4=5레벨+ (노드별 설정이 우선)
+  levelShapes?: (ShapeType | null | undefined)[];
+  // 노트(문단·코드·표·체크) 글꼴·크기 — 노트 뷰어 팝업·노트 편집창에
+  // 적용 (기본 크기 13pt)
+  noteFont?: { size?: number; family?: string };
+}
+
+export interface SampleMap {
+  title: string;
+  root: SampleRoot;
+  branches: SampleBranch[];
+  settings?: MapSettings;
+}
+
+// --- EMM 별칭 (패키지 공개 API 이름) ---------------------------------------
+export type EmmMap = SampleMap;
+export type EmmNode = MindNode;
+
+// 에디터 간격 배율 (메타데이터의 editor.spacing — 앱의 LayoutSpacing과
+// 구조 동일)
+export interface EditorSpacing {
+  x: number; // 가로 간격 배율 (1 = 기본)
+  y: number; // 세로 간격 배율
+}

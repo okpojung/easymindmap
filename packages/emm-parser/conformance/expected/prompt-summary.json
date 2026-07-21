@@ -1,0 +1,105 @@
+{
+  "nodes": 13,
+  "bodyRoundTripNodes": 14,
+  "map": {
+    "title": "전기차 배터리 시장 동향 요약",
+    "root": {
+      "id": "root",
+      "text": "전기차 배터리 시장 동향 요약",
+      "colorKey": "root",
+      "side": "center"
+    },
+    "branches": [
+      {
+        "id": "md#0",
+        "text": "원문 정보",
+        "colorKey": "l1A",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#1",
+            "text": "🔗 원문 기사",
+            "links": [
+              {
+                "id": "md#2",
+                "url": "https://example.com/ev-battery-2026",
+                "label": "원문 기사"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#3",
+        "text": "시장 규모",
+        "colorKey": "l1B",
+        "side": "right",
+        "notes": [
+          {
+            "id": "md#4",
+            "type": "paragraph",
+            "text": "2026년 글로벌 전기차 배터리 시장은 전년 대비 21% 성장했다."
+          },
+          {
+            "id": "md#5",
+            "type": "table",
+            "text": "지역 | 점유율 | 성장률\n중국 | 58% | +18%\n유럽 | 22% | +25%\n북미 | 14% | +31%"
+          }
+        ]
+      },
+      {
+        "id": "md#6",
+        "text": "기술 동향",
+        "colorKey": "l1C",
+        "side": "left",
+        "children": [
+          {
+            "id": "md#7",
+            "text": "LFP 확산",
+            "notes": [
+              {
+                "id": "md#8",
+                "type": "paragraph",
+                "text": "저가형 모델을 중심으로 LFP 채택이 **표준**이 되고 있다."
+              }
+            ]
+          },
+          {
+            "id": "md#9",
+            "text": "전고체 전지",
+            "children": [
+              {
+                "id": "md#10",
+                "text": "파일럿 라인 가동 3사"
+              },
+              {
+                "id": "md#11",
+                "text": "양산 목표는 ==2028년== 전후"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#12",
+        "text": "시사점",
+        "colorKey": "l1D",
+        "side": "left",
+        "children": [
+          {
+            "id": "md#13",
+            "text": "1. 소재 다변화 압력 증가"
+          },
+          {
+            "id": "md#14",
+            "text": "2. 충전 인프라 투자 가속"
+          },
+          {
+            "id": "md#15",
+            "text": "3. 재활용 규제 대응 필요"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -7,7 +7,8 @@ docs/
 ├─ 00-project-overview/
 │  ├─ mvp-scope.md
 │  ├─ roadmap.md
-│  └─ vision.md
+│  ├─ vision.md
+│  └─ emm-strategy.md                     ← EMM 표준화·오픈소스·사업화 전략
 ├─ 01-product/
 │  ├─ functional-spec.md
 │  └─ ui-ux-spec.md
@@ -48,12 +49,15 @@ docs/
 │  └─ state-architecture.md
 │
 ├─ 04-extensions/         👈 확장 기능 (AI / 협업 / 외부 연동)
+│  ├─ emm-spec.md                         ← EasyMindMap Markdown(EMM) 정식 스펙
+│  ├─ markdown-export.md                  ← MD ↔ 맵 변환 규칙 (EMM 구현 규칙서)
 │  ├─ ai/
 │  │  ├─ 18-ai.md
 │  │  └─ 19-ai-workflow.md
 │  ├─ import-export/
 │  │  ├─ 20-export.md
-│  │  └─ 21-import.md
+│  │  ├─ 21-import.md
+│  │  └─ 22-map-file-meta.md
 │  ├─ dashboard/
 │  │  └─ 22-dashboard.md
 │  ├─ translation/
@@ -113,7 +117,7 @@ docs/
 
 ## 전체 문서 목록
 
-### 번호 없는 문서 (27개, README.md 제외)
+### 번호 없는 문서 (31개, README.md 제외)
 
 | 경로 | 설명 |
 |------|------|
@@ -121,6 +125,7 @@ docs/
 | `docs/00-project-overview/mvp-scope.md` | MVP 범위 정의 |
 | `docs/00-project-overview/roadmap.md` | 개발 로드맵 |
 | `docs/00-project-overview/vision.md` | 제품 비전 |
+| `docs/00-project-overview/emm-strategy.md` | EMM 표준화·오픈소스·사업화 전략 |
 | `docs/01-product/functional-spec.md` | 전체 기능 명세서 |
 | `docs/01-product/ui-ux-spec.md` | UI/UX 설계 명세 |
 | `docs/02-domain/README.md` | 도메인 모델 개요 |
@@ -131,6 +136,9 @@ docs/
 | `docs/03-editor-core/edge-policy.md` | 에지/레이아웃/노드 상속 정책 |
 | `docs/03-editor-core/state-architecture.md` | 상태관리 아키텍처 |
 | `docs/04-extensions/README.md` | 확장 기능 개요 |
+| `docs/04-extensions/emm-spec.md` | EasyMindMap Markdown(EMM) 정식 스펙 |
+| `docs/04-extensions/markdown-export.md` | MD ↔ 맵 변환 규칙 명세 (EMM 구현 규칙서) |
+| `docs/04-extensions/import-export/22-map-file-meta.md` | 맵 파일 메타데이터 왕복 (easymindmap:v1) |
 | `docs/05-implementation/api-spec.md` | API 명세 |
 | `docs/05-implementation/codex-task-plan.md` | 개발 작업 계획 |
 | `docs/05-implementation/coding-conventions.md` | 코딩 컨벤션 |

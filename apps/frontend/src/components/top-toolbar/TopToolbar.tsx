@@ -28,6 +28,7 @@ export function TopToolbar({
   const map = useDocumentStore((s) => s.map);
   const layoutType = useEditorUiStore((s) => s.layoutType);
   const themeName = useEditorUiStore((s) => s.themeName);
+  const setInspectorTab = useEditorUiStore((s) => s.setInspectorTab);
   const setThemeName = useEditorUiStore((s) => s.setThemeName);
   const spacingX = useEditorUiStore((s) => s.spacingX);
   const spacingY = useEditorUiStore((s) => s.spacingY);
@@ -163,6 +164,8 @@ export function TopToolbar({
       )}
 
       <button
+        onClick={() => setInspectorTab('ai')}
+        title="AI에게 질문하고 답변을 그대로 맵으로 변환합니다"
         style={{
           display: 'flex',
           alignItems: 'center',

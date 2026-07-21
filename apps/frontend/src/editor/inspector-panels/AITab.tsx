@@ -20,11 +20,17 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import {
   DEFAULT_MODELS,
+  KEY_HELP,
+  KNOWN_MODELS,
   PROVIDERS,
   PROVIDER_LABELS,
   generateWithAi,
   type AiProvider,
 } from '@/utils/aiProviders';
+import {
+  resolveProvider,
+  type AiProviderChoice,
+} from '@/stores/aiSettingsStore';
 import { GENERATION_TYPES } from '@/utils/emmSystemPrompt';
 import { parseEmm } from '@/utils/importMarkdown';
 import { countMapNodes } from '@/export/mapMeta';
@@ -69,6 +75,7 @@ export function AITab({ t }: { t: ThemeTokens }) {
 function GenerateView({ t }: { t: ThemeTokens }) {
   const provider = useAiSettingsStore((s) => s.provider);
   const setProvider = useAiSettingsStore((s) => s.setProvider);
+  const priority = useAiSettingsStore((s) => s.priority);
   const keys = useAiSettingsStore((s) => s.keys);
   const models = useAiSettingsStore((s) => s.models);
   const systemPrompt = useAiSettingsStore((s) => s.systemPrompt);
@@ -85,7 +92,9 @@ function GenerateView({ t }: { t: ThemeTokens }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const hasKey = !!keys[provider]?.trim();
+  // '자동'은 우선순위 순서에서 키가 등록된 첫 회사로 해석
+  const effective = resolveProvider(provider, priority, keys);
+  const hasKey = !!keys[effective]?.trim();
 
   const run = async () => {
     const q = prompt.trim();
@@ -96,7 +105,8 @@ function GenerateView({ t }: { t: ThemeTokens }) {
       const addition = GENERATION_TYPES.find((g) => g.key === genType)?.addition ?? '';
       const system = addition ? `${systemPrompt}\n\n${addition}` : systemPrompt;
       const md = await generateWithAi(
-        provider, keys[provider], models[provider] || DEFAULT_MODELS[provider], system, q,
+        effective, keys[effective],
+        models[effective] || DEFAULT_MODELS[effective], system, q,
       );
       const map = parseEmm(md, 'AI 생성 맵');
       if (!map) {
@@ -115,7 +125,7 @@ function GenerateView({ t }: { t: ThemeTokens }) {
         prompt: q,
         at: new Date().toISOString(),
         nodes: countMapNodes(map),
-        provider,
+        provider: effective,
       });
       setPrompt('');
     } catch (e) {
@@ -133,10 +143,13 @@ function GenerateView({ t }: { t: ThemeTokens }) {
             <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 3 }}>AI</div>
             <select
               value={provider}
-              onChange={(e) => setProvider(e.target.value as AiProvider)}
-              title="답변을 요청할 AI (키 등록은 AI 설정에서)"
+              onChange={(e) => setProvider(e.target.value as AiProviderChoice)}
+              title="답변을 요청할 AI (키 등록·우선순위는 AI 설정에서)"
               style={selectStyle(t)}
             >
+              <option value="auto">
+                자동 — 우선순위 순 ({PROVIDER_LABELS[effective].split(' ')[0]})
+              </option>
               {PROVIDERS.map((p) => (
                 <option key={p} value={p}>
                   {PROVIDER_LABELS[p]}{keys[p]?.trim() ? '' : ' — 키 미등록'}
@@ -250,6 +263,8 @@ function GenerateView({ t }: { t: ThemeTokens }) {
 function SettingsView({ t }: { t: ThemeTokens }) {
   const keys = useAiSettingsStore((s) => s.keys);
   const models = useAiSettingsStore((s) => s.models);
+  const priority = useAiSettingsStore((s) => s.priority);
+  const movePriority = useAiSettingsStore((s) => s.movePriority);
   const setKey = useAiSettingsStore((s) => s.setKey);
   const setModel = useAiSettingsStore((s) => s.setModel);
   const systemPrompt = useAiSettingsStore((s) => s.systemPrompt);
@@ -258,13 +273,54 @@ function SettingsView({ t }: { t: ThemeTokens }) {
 
   return (
     <div>
+      <InspectorSection t={t} title="사용 우선순위">
+        <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 8, lineHeight: 1.5 }}>
+          키를 여러 개 등록했을 때 어떤 AI를 먼저 쓸지의 순서입니다 —
+          생성 화면의 <b>'자동'</b>은 이 순서에서 키가 등록된 첫 회사를
+          사용합니다.
+        </div>
+        {priority.map((p, i) => (
+          <div key={p} data-ai-priority={p} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 8px', borderRadius: 6, marginBottom: 4,
+            background: t.surfaceAlt, border: `1px solid ${t.border}`,
+          }}>
+            <span style={{
+              width: 18, height: 18, borderRadius: 9, flexShrink: 0,
+              background: t.primarySoft, color: t.primary,
+              fontSize: 10.5, fontWeight: 800,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{i + 1}</span>
+            <span style={{ flex: 1, fontSize: 11.5, fontWeight: 600, color: t.text }}>
+              {PROVIDER_LABELS[p]}
+              {!keys[p]?.trim() && (
+                <span style={{ color: t.textSubtle, fontWeight: 400 }}> — 키 미등록</span>
+              )}
+            </span>
+            <button
+              onClick={() => movePriority(p, -1)}
+              disabled={i === 0}
+              title="우선순위 올리기"
+              data-ai-priority-up={p}
+              style={priorityBtnStyle(t, i === 0)}
+            >▲</button>
+            <button
+              onClick={() => movePriority(p, 1)}
+              disabled={i === priority.length - 1}
+              title="우선순위 내리기"
+              style={priorityBtnStyle(t, i === priority.length - 1)}
+            >▼</button>
+          </div>
+        ))}
+      </InspectorSection>
+
       <InspectorSection t={t} title="API 키 등록">
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 8, lineHeight: 1.5 }}>
           키는 이 브라우저(localStorage)에만 저장되며, 질문할 때 해당 AI
           사에만 전달됩니다.
         </div>
         {PROVIDERS.map((p) => (
-          <div key={p} style={{ marginBottom: 10 }}>
+          <div key={p} style={{ marginBottom: 12 }}>
             <div style={{
               fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 4,
               display: 'flex', alignItems: 'center', gap: 6,
@@ -294,19 +350,8 @@ function SettingsView({ t }: { t: ThemeTokens }) {
                 background: t.surfaceAlt, color: t.text, fontSize: 12,
                 outline: 'none', fontFamily: 'ui-monospace, monospace',
               }} />
-            <input
-              value={models[p]}
-              data-ai-model={p}
-              onChange={(e) => setModel(p, e.target.value)}
-              placeholder={`모델 (기본: ${DEFAULT_MODELS[p]})`}
-              title="사용할 모델 이름 — 비우면 기본 모델"
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '5px 9px',
-                marginTop: 4,
-                borderRadius: 6, border: `1px solid ${t.border}`,
-                background: t.surface, color: t.textMuted, fontSize: 11,
-                outline: 'none', fontFamily: 'ui-monospace, monospace',
-              }} />
+            <ModelPicker t={t} p={p} value={models[p]} onChange={(m) => setModel(p, m)} />
+            <KeyHelp t={t} p={p} />
           </div>
         ))}
       </InspectorSection>
@@ -344,6 +389,119 @@ function SettingsView({ t }: { t: ThemeTokens }) {
       </InspectorSection>
     </div>
   );
+}
+
+// 모델 선택 — 알려진 모델 목록(기본 표시) + '직접 입력…'
+function ModelPicker({
+  t, p, value, onChange,
+}: {
+  t: ThemeTokens;
+  p: AiProvider;
+  value: string;
+  onChange: (m: string) => void;
+}) {
+  const known = KNOWN_MODELS[p];
+  const isKnown = known.includes(value);
+  const [custom, setCustom] = useState(!isKnown && !!value);
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <select
+        value={custom || !isKnown ? '__custom__' : value}
+        data-ai-model-select={p}
+        onChange={(e) => {
+          if (e.target.value === '__custom__') {
+            setCustom(true);
+          } else {
+            setCustom(false);
+            onChange(e.target.value);
+          }
+        }}
+        title="사용할 모델 — 목록에 없는 새 모델은 '직접 입력'"
+        style={{
+          width: '100%', padding: '5px 8px', borderRadius: 6,
+          border: `1px solid ${t.border}`,
+          background: t.surface, color: t.textMuted, fontSize: 11,
+          fontFamily: 'ui-monospace, monospace',
+        }}
+      >
+        {known.map((m) => (
+          <option key={m} value={m}>
+            {m}{m === DEFAULT_MODELS[p] ? ' (기본)' : ''}
+          </option>
+        ))}
+        <option value="__custom__">직접 입력…</option>
+      </select>
+      {(custom || !isKnown) && (
+        <input
+          value={value}
+          data-ai-model={p}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={`모델 이름 (예: ${DEFAULT_MODELS[p]})`}
+          style={{
+            width: '100%', boxSizing: 'border-box', padding: '5px 9px',
+            marginTop: 4,
+            borderRadius: 6, border: `1px solid ${t.border}`,
+            background: t.surfaceAlt, color: t.text, fontSize: 11,
+            outline: 'none', fontFamily: 'ui-monospace, monospace',
+          }} />
+      )}
+    </div>
+  );
+}
+
+// API 키 발급 방법 도움말 — 접었다 펴는 단계 안내 (IT 초보자용)
+function KeyHelp({ t, p }: { t: ThemeTokens; p: AiProvider }) {
+  const [open, setOpen] = useState(false);
+  const help = KEY_HELP[p];
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button
+        onClick={() => setOpen(!open)}
+        data-ai-key-help={p}
+        style={{
+          padding: '3px 8px', borderRadius: 5,
+          border: `1px solid ${t.border}`, background: t.surface,
+          color: t.textMuted, fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
+        }}
+      >
+        {open ? '▾' : '▸'} 키 발급 방법 (처음이신가요?)
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 5, padding: '8px 10px', borderRadius: 6,
+          background: t.surfaceAlt, border: `1px solid ${t.border}`,
+          fontSize: 10.5, color: t.textMuted, lineHeight: 1.6,
+        }}>
+          <div style={{ marginBottom: 4 }}>
+            발급 페이지:{' '}
+            <a
+              href={help.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: t.primary, fontWeight: 600, wordBreak: 'break-all' }}
+            >{help.url}</a>
+          </div>
+          <ol style={{ margin: 0, paddingLeft: 16 }}>
+            {help.steps.map((s2, i) => (
+              <li key={i} style={{ marginBottom: 2 }}>{s2}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function priorityBtnStyle(t: ThemeTokens, disabled: boolean) {
+  return {
+    width: 22, height: 20, borderRadius: 4,
+    border: `1px solid ${t.border}`,
+    background: t.surface, color: disabled ? t.textSubtle : t.text,
+    fontSize: 9, cursor: disabled ? 'default' : 'pointer',
+    opacity: disabled ? 0.4 : 1,
+    padding: 0,
+  } as const;
 }
 
 function selectStyle(t: ThemeTokens) {

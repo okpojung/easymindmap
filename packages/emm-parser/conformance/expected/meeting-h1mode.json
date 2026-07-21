@@ -1,0 +1,96 @@
+{
+  "nodes": 12,
+  "bodyRoundTripNodes": 12,
+  "map": {
+    "title": "주간 회의록 2026-07-17",
+    "root": {
+      "id": "root",
+      "text": "주간 회의록 2026-07-17",
+      "colorKey": "root",
+      "side": "center",
+      "notes": [
+        {
+          "id": "md#0",
+          "type": "paragraph",
+          "text": "**참석:** 김AA, 이BB"
+        }
+      ]
+    },
+    "branches": [
+      {
+        "id": "md#1",
+        "text": "1. 지난 액션 아이템",
+        "colorKey": "l1A",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#2",
+            "text": "1. 서버 마이그레이션 완료 확인"
+          },
+          {
+            "id": "md#3",
+            "text": "2. 백업 정책 문서화\n담당: 김AA"
+          }
+        ]
+      },
+      {
+        "id": "md#4",
+        "text": "2. 논의 사항",
+        "colorKey": "l1B",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#5",
+            "text": "예산",
+            "notes": [
+              {
+                "id": "md#6",
+                "type": "table",
+                "text": "항목 | 금액\n서버 | **300만원**\n라이선스 | 120만원"
+              }
+            ]
+          },
+          {
+            "id": "md#7",
+            "text": "일정",
+            "children": [
+              {
+                "id": "md#8",
+                "text": "7월: 개발"
+              },
+              {
+                "id": "md#9",
+                "text": "8월: QA",
+                "children": [
+                  {
+                    "id": "md#10",
+                    "text": "8/1 QA 킥오프"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#11",
+        "text": "3. 결정 사항",
+        "colorKey": "l1C",
+        "side": "left",
+        "notes": [
+          {
+            "id": "md#12",
+            "type": "paragraph",
+            "text": "배포는 **8월 말**로 확정한다. 근거는 [일정 문서](https://wiki.example.com/plan) 참조."
+          }
+        ],
+        "children": [
+          {
+            "id": "md#13",
+            "text": "끝."
+          }
+        ]
+      }
+    ]
+  }
+}

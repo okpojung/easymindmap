@@ -1,9 +1,17 @@
 # 20. Export
 ## EXPORT
 
-* 문서 버전: v1.0
-* 작성일: 2026-04-16
+* 문서 버전: v1.1
+* 작성일: 2026-04-16 (2026-07 EMM 스펙 체계로 개정)
 * 참조: `docs/01-product/functional-spec.md § EXPORT`, `docs/02-domain/db-schema.md § exports`
+
+> **📐 포맷 정의는 이 문서가 아니라 EMM 스펙이 규범이다.**
+> Markdown 내보내기가 만드는 파일은 **EasyMindMap Markdown(EMM)** 문서다.
+> - 포맷 명세(설계 원칙·문법·적합성): `docs/04-extensions/emm-spec.md`
+> - 변환 규칙 상세(구현 규칙서): `docs/04-extensions/markdown-export.md`
+> - 메타데이터 계층: `22-map-file-meta.md`
+>
+> 이 문서는 내보내기 **제품 기능**(UI·패키징·Job 처리)을 정의한다.
 
 ---
 
@@ -56,15 +64,18 @@ CREATE TABLE public.exports (
 );
 ```
 
-#### 4.2 Markdown exportMode — Basic vs Extended
+#### 4.2 Markdown 내보내기 모드 — 단일 모드 (EMM 2계층)
 
-| 항목 | Basic (기본) | Extended (확장) |
-|---|---|---|
-| **대상** | 범용 Markdown 편집기, Notion, VS Code | Obsidian, 팀 보관, 버전 관리 |
-| **YAML Front Matter** | ❌ 없음 | ✅ 맵 전체 메타 포함 |
-| **포함 메타** | 노드 텍스트·태그·메모·링크 (옵션) | title, map_id, owner, layout_type, theme, node_count, tags, created_at, updated_at |
-| **API 파라미터** | `exportMode: "basic"` (기본값) | `exportMode: "extended"` |
-| **Import 역호환** | — | Extended 파일 Import 시 Front Matter로 맵 메타 자동 복원 |
+> **[개정 — 2026-07] 초기 설계의 Basic/Extended(simple/full) 이원화는
+> 폐기되었다.** EMM의 2계층 구조(본문 = 순수 GFM, 파일 끝 1줄 메타데이터
+> 주석 `easymindmap:v1:BASE64`)가 두 목적을 동시에 달성하기 때문이다:
+>
+> - 본문만 보면 = 사람 읽기용(구 Basic) — 어떤 MD 뷰어에서도 정상 문서
+> - 메타데이터까지 읽으면 = 무손실 복원용(구 Extended)
+>
+> 따라서 export는 **단일 모드**이며 항상 메타데이터를 포함한다.
+> 근거·상세: `emm-spec.md` §2.1, 메타 스키마: `22-map-file-meta.md`.
+> 아래 4.2-A/4.2-B는 초기 개념의 기록으로만 보존한다 (구현 기준 아님).
 
 ---
 

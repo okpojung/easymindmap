@@ -460,13 +460,16 @@ const VIEWER_JS = String.raw`
 
     var kids = node.children || [];
     for (var i = 0; i < kids.length; i++) measure(kids[i], depth + 1, eff);
-    layoutBlock(node);
+    layoutBlock(node, depth);
   }
 
   // 블록(서브트리 묶음) 크기·자기 위치 계산 — 크기(_w/_h/_boxH)·_eff·
   // _open이 준비된 노드에 대해 동작한다. measure()(자체 측정)와
   // reflowFixed()(에디터 좌표 크기 유지 + 접기 재배치)가 공유한다.
-  function layoutBlock(node) {
+  // depth는 방사형·양쪽 루트(depth 0)의 좌/우 분할 판정에만 쓰인다 —
+  // 빠뜨리면 그 분기에서만 ReferenceError로 재배치 전체가 죽는다 (2026-07
+  // 방사형·양쪽 모두 접기 백지 버그).
+  function layoutBlock(node, depth) {
     var w = node._w, h = node._h, eff = node._eff;
     var kids = node.children || [];
 
@@ -771,7 +774,7 @@ const VIEWER_JS = String.raw`
   // 에디터 좌표 모드에서의 재배치 — 노드 크기·글꼴·줄바꿈은 에디터가
   // 계산한 값(pos)을 그대로 쓰고, 위치만 layoutBlock+arrange로 다시 계산.
   function reflowFixed(rootEff) {
-    (function prep(n, inheritedEff) {
+    (function prep(n, inheritedEff, depth) {
       var eff = normalize(n.layoutType) || inheritedEff;
       n._eff = eff;
       n._open = !n.collapsed;
@@ -784,10 +787,10 @@ const VIEWER_JS = String.raw`
       n._boxH = n._h + tagsH;
       var kids = n.children || [];
       for (var i = 0; i < kids.length; i++) {
-        if (kids[i].pos) prep(kids[i], eff);
+        if (kids[i].pos) prep(kids[i], eff, depth + 1);
       }
-      layoutBlock(n); // 자식 블록 계산 후 자기 블록 (후위 순회)
-    })(DATA.root, rootEff);
+      layoutBlock(n, depth); // 자식 블록 계산 후 자기 블록 (후위 순회)
+    })(DATA.root, rootEff, 0);
     arrange(DATA.root, 40, 40);
   }
 

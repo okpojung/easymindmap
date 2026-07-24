@@ -456,6 +456,19 @@ const VIEWER_JS = String.raw`
     if (!node._open || kids.length === 0) {
       node._bw = w; node._bh = node._boxH;
       node._nx = w / 2; node._ny = h / 2;
+      // 접힌 노드의 +N 칩 자리 확보 — 칩이 다음 노드에 겹치지 않게
+      // (하단 칩 = 트리/진행트리, 그 외 = 좌우 칩)
+      if (!node._open && kids.length) {
+        var effC = node._eff || '';
+        if (effC === 'tree-right' || effC === 'tree-down' ||
+            effC.indexOf('process-tree') === 0) {
+          node._bh += 26;
+        } else if (effC === 'radial-left' || effC === 'hierarchy-left') {
+          node._bw += 28; node._nx += 28;
+        } else {
+          node._bw += 28;
+        }
+      }
       return;
     }
 
@@ -761,8 +774,13 @@ const VIEWER_JS = String.raw`
     arrange(DATA.root, 40, 40);
   }
 
+  // 접힌 노드의 +N 칩을 담는 최상위 레이어 — 형제 노드가 나중에
+  // 그려지며 칩 숫자를 덮던 문제 수정 (항상 노드들 위에 보인다)
+  var chipLayer = null;
+
   function render() {
     while (world.firstChild) world.removeChild(world.firstChild);
+    chipLayer = el('g', { 'class': 'mm-chip-layer' });
     var rootEff = normalize(DATA.root.layoutType) || normalize(DATA.mapLayout) || 'radial-bidirectional';
     DATA.root.layoutType = DATA.root.layoutType || rootEff;
     if (DATA.root.pos && !DYN) {
@@ -790,6 +808,7 @@ const VIEWER_JS = String.raw`
       if (start._cx == null) { start = DATA.root; sd = 0; scol = null; }
     }
     drawNode(start, sd, scol);
+    world.appendChild(chipLayer); // 접힘 칩을 마지막에 올려 항상 위에
     updateCount();
   }
 
@@ -1170,13 +1189,21 @@ const VIEWER_JS = String.raw`
       // 펼쳐진 노드의 접기(−) 토글은 항상 보이지 않고 노드에 마우스를
       // 올렸을 때만 나타난다 (에디터와 동일). 접힌 노드의 +N 배지는 숨은
       // 서브트리를 알려야 하므로 항상 표시.
+      // 펼침 '−' 칩은 호버 표시용으로 노드 그룹에, 접힘 +N 칩은 숫자가
+      // 가려지지 않게 최상위 chipLayer에 그린다
       var chip = el('g', { cursor: 'pointer',
-        'class': node._open ? 'mm-toggle mm-toggle-open' : 'mm-toggle' }, g);
-      el('circle', { cx: ccx, cy: ccy, r: 8.5, fill: node._open ? SKIN.fam.l2.fill : color,
+        'class': node._open ? 'mm-toggle mm-toggle-open' : 'mm-toggle' },
+        node._open ? g : chipLayer);
+      var cnt = node._open ? '' : String(countDescendants(node));
+      // 숫자 자릿수에 맞춰 칩 크기 확대 (두 자리 10.5, 세 자리+ 13)
+      var cr = node._open ? 8.5 : (cnt.length >= 3 ? 13 : cnt.length === 2 ? 10.5 : 8.5);
+      el('circle', { cx: ccx, cy: ccy, r: cr, fill: node._open ? SKIN.fam.l2.fill : color,
         stroke: color, 'stroke-width': 1.3 }, chip);
+      var chTitle = el('title', {}, chip);
+      chTitle.textContent = node._open ? '접기' : ('펼치기 — 숨은 노드 ' + cnt + '개');
       var ct = el('text', { x: ccx, y: ccy + 3.4, 'text-anchor': 'middle',
         'font-size': 9.5, 'font-weight': 700, fill: node._open ? color : '#FFFFFF' }, chip);
-      ct.textContent = node._open ? '−' : String(countDescendants(node));
+      ct.textContent = node._open ? '−' : cnt;
       (function (n) {
         chip.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
         chip.addEventListener('click', function (ev) {
@@ -1660,12 +1687,34 @@ const VIEWER_JS = String.raw`
   });
   document.addEventListener('fullscreenchange', syncFsBtn);
   document.getElementById('mm-zoom-out').addEventListener('click', function () {
-    zoomTo((Math.round(view.k * 100) - 10) / 100); // 에디터와 동일: 10%p 단위
+    zoomTo((Math.round(view.k * 100) - 5) / 100); // 에디터와 동일: 5%p 단위
   });
   document.getElementById('mm-zoom-in').addEventListener('click', function () {
-    zoomTo((Math.round(view.k * 100) + 10) / 100);
+    zoomTo((Math.round(view.k * 100) + 5) / 100);
   });
-  document.getElementById('mm-zoom-pct').addEventListener('click', function () {
+  // % 클릭 = 직접 입력 (2~400 사이 숫자, Enter 적용 / Esc 취소)
+  var zoomPctBtn = document.getElementById('mm-zoom-pct');
+  var zoomInput = document.getElementById('mm-zoom-input');
+  zoomPctBtn.addEventListener('click', function () {
+    zoomInput.value = String(Math.round(view.k * 100));
+    zoomPctBtn.style.display = 'none';
+    zoomInput.style.display = 'inline-block';
+    zoomInput.focus();
+    zoomInput.select();
+  });
+  function commitZoomInput(apply) {
+    zoomInput.style.display = 'none';
+    zoomPctBtn.style.display = '';
+    if (!apply) return;
+    var v = parseInt(zoomInput.value, 10);
+    if (!isNaN(v)) zoomTo(Math.min(400, Math.max(2, v)) / 100);
+  }
+  zoomInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') commitZoomInput(true);
+    else if (e.key === 'Escape') commitZoomInput(false);
+  });
+  zoomInput.addEventListener('blur', function () { commitZoomInput(true); });
+  document.getElementById('mm-zoom-100').addEventListener('click', function () {
     zoomTo(1);
   });
   // 선택 노드 화면 중앙 보기 — 배치 좌표(_cx/_cy)를 현재 줌 유지한 채 중앙에
@@ -1909,6 +1958,13 @@ const VIEWER_CSS = `
   }
   #mm-zoombar button:hover { background: #F3ECDD; }
   #mm-zoom-pct { min-width: 46px; font-weight: 700; }
+  #mm-zoom-input {
+    width: 52px; padding: 4px 6px; border: 1px solid #D97706;
+    border-radius: 6px; font-size: 12px; font-weight: 700;
+    text-align: center; outline: none; background: #FFFDF8; color: #4A3B28;
+  }
+  body.mm-dark #mm-zoom-input { background: #14171D; color: #E7E3DA; }
+  #mm-zoom-100 { font-size: 10.5px; letter-spacing: 0.5px; }
   body.mm-dark #mm-zoombar { background: #1F2229; border-color: #3A3E47; }
   body.mm-dark #mm-zoombar button {
     background: #262A31; color: #D8D4CC; border-color: #3A3E47;
@@ -2133,9 +2189,11 @@ export function buildStandaloneHtml(
   <div id="mm-note-body"></div>
 </div>
 <div id="mm-zoombar">
-  <button id="mm-zoom-out" title="축소 (10% 단위)">−</button>
-  <button id="mm-zoom-pct" title="100%로 재설정">100%</button>
-  <button id="mm-zoom-in" title="확대 (10% 단위)">+</button>
+  <button id="mm-zoom-out" title="축소 (5% 단위)">−</button>
+  <button id="mm-zoom-pct" title="클릭해서 배율 직접 입력 (2~400)">100%</button>
+  <input id="mm-zoom-input" type="number" min="2" max="400" style="display:none" title="배율 입력 후 Enter" />
+  <button id="mm-zoom-in" title="확대 (5% 단위)">+</button>
+  <button id="mm-zoom-100" title="100%로 보기">1:1</button>
 </div>
 <footer>EasyMindMap 내보내기 · 읽기 전용 뷰어 · ${exportedAt}</footer>
 <!-- EasyMindMap 생성 파일 · 제목: ${escapeHtml(map.title)} · 내보낸 시각: ${exportedAt}

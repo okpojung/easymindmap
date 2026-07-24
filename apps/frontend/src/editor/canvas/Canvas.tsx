@@ -270,6 +270,22 @@ export function Canvas({
     return m;
   }, [sample, layoutType]);
 
+  // 노드별 전체 자손 수 — 접힌 노드의 +N 칩에 "숨은 노드 수"를 표시
+  // (HTML 뷰어 countDescendants와 동일 의미)
+  const descCount = useMemo(() => {
+    const m = new Map<string, number>();
+    const walk = (n: { id: string; children?: unknown[] }): number => {
+      let c = 0;
+      for (const ch of (n.children ?? []) as { id: string; children?: unknown[] }[]) {
+        c += 1 + walk(ch);
+      }
+      m.set(n.id, c);
+      return c;
+    };
+    sample.branches.forEach(walk);
+    return m;
+  }, [sample]);
+
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
@@ -1205,6 +1221,7 @@ export function Canvas({
                       x={pos.x}
                       y={pos.y}
                       collapsed={!!n.collapsed}
+                      count={descCount.get(n.id) ?? n._childCount ?? 0}
                       nodeHovered={hoverNodeId === n.id}
                       onToggle={() => toggleCollapse(n.id)}
                     />
@@ -1351,12 +1368,13 @@ export function Canvas({
 //                 조준해야 해서 제거 — 2026-07. 맵은 여전히 깨끗하다:
 //                 호버 전에는 아무것도 그리지 않는다.)
 function CollapseControl({
-  t, x, y, collapsed, nodeHovered, onToggle,
+  t, x, y, collapsed, count, nodeHovered, onToggle,
 }: {
   t: ThemeTokens;
   x: number;
   y: number;
   collapsed: boolean;
+  count: number; // 접힘 시 표시할 숨은 노드(전체 자손) 수
   nodeHovered: boolean;
   onToggle: () => void;
 }) {
@@ -1374,19 +1392,28 @@ function CollapseControl({
     >
       <title>{title}</title>
       {/* larger transparent hit area */}
-      <circle r="11" fill="transparent" />
+      <circle r="13" fill="transparent" />
       {children}
     </g>
   );
 
   if (collapsed) {
+    // 숨은 노드 수를 칩 안에 표시 (HTML 뷰어 +N 칩과 동일) —
+    // 자릿수에 맞춰 칩 크기 확대
+    const label = String(count);
+    const r = label.length >= 3 ? 13 : label.length === 2 ? 10.5 : 8.5;
     return wrap(
       <>
-        <circle r="8.5" fill={t.primary} stroke={t.primary} strokeWidth="1.4" />
-        <line x1={-4} y1={0} x2={4} y2={0} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
-        <line x1={0} y1={-4} x2={0} y2={4} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+        <circle r={r} fill={t.primary} stroke={t.primary} strokeWidth="1.4" />
+        <text
+          y={3.4}
+          textAnchor="middle"
+          fontSize="9.5"
+          fontWeight={700}
+          fill="#fff"
+        >{label}</text>
       </>,
-      '펼치기',
+      `펼치기 — 숨은 노드 ${count}개`,
     );
   }
 

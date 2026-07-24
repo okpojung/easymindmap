@@ -1,6 +1,7 @@
 // BottomStatusBar — zoom / save / collab / layout / cursor coords.
 // Zoom controls here are the SOLE way to change viewport scale (per § 25 — affects canvas only).
 
+import { useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator, LayoutType } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -88,6 +89,17 @@ export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange }: 
 }
 
 function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void }) {
+  // % 클릭 = 배율 직접 입력 (2~400, Enter 적용 / Esc 취소)
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState('');
+
+  const commit = (apply: boolean) => {
+    setEditing(false);
+    if (!apply) return;
+    const v = parseInt(val, 10);
+    if (!Number.isNaN(v)) onZoomChange(Math.min(400, Math.max(2, v)));
+  };
+
   const stepBtn = (children: React.ReactNode, onClick?: () => void, title?: string) => (
     <button onClick={onClick} title={title} style={{
       width: 22, height: 20, background: 'transparent', border: 'none',
@@ -98,14 +110,36 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-      {stepBtn(<I.Minus size={12} />, () => onZoomChange(Math.max(2, zoom - 10)))}
-      <button onClick={() => onZoomChange(100)} title="100%로 재설정" style={{
-        padding: '2px 10px', background: t.surface,
-        border: `1px solid ${t.border}`, borderRadius: 4,
-        color: t.text, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-        fontFamily: 'ui-monospace, monospace', minWidth: 44,
-      }}>{Math.round(zoom)}%</button>
-      {stepBtn(<I.Plus size={12} />, () => onZoomChange(Math.min(400, zoom + 10)))}
+      {stepBtn(<I.Minus size={12} />, () => onZoomChange(Math.max(2, zoom - 5)), '축소 (5% 단위)')}
+      {editing ? (
+        <input
+          autoFocus
+          value={val}
+          onChange={(e) => setVal(e.target.value.replace(/[^0-9]/g, ''))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit(true);
+            else if (e.key === 'Escape') commit(false);
+          }}
+          onBlur={() => commit(true)}
+          title="배율 입력 후 Enter (2~400)"
+          style={{
+            width: 44, padding: '2px 4px', textAlign: 'center',
+            background: t.surface, border: `1px solid ${t.primary}`,
+            borderRadius: 4, color: t.text, fontSize: 11, fontWeight: 700,
+            fontFamily: 'ui-monospace, monospace', outline: 'none',
+          }} />
+      ) : (
+        <button
+          onClick={() => { setVal(String(Math.round(zoom))); setEditing(true); }}
+          title="클릭해서 배율 직접 입력 (2~400)"
+          style={{
+            padding: '2px 10px', background: t.surface,
+            border: `1px solid ${t.border}`, borderRadius: 4,
+            color: t.text, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+            fontFamily: 'ui-monospace, monospace', minWidth: 44,
+          }}>{Math.round(zoom)}%</button>
+      )}
+      {stepBtn(<I.Plus size={12} />, () => onZoomChange(Math.min(400, zoom + 5)), '확대 (5% 단위)')}
       <span style={{ marginLeft: 3 }}>{stepBtn(<I.Zoom100 size={13} />, () => onZoomChange(100), '100%로 보기')}</span>
     </div>
   );

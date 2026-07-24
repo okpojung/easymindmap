@@ -16,10 +16,14 @@ export const PROVIDER_LABELS: Record<AiProvider, string> = {
 };
 
 // 기본 모델 — AI 설정에서 자유롭게 바꿀 수 있다
+// 기본 모델 — "웹 채팅과 같은 상세함"이 목표이므로 소형(mini/저가)
+// 모델이 아니라 각 사의 표준 모델을 기본으로 한다 (2026-07: 웹
+// ChatGPT 대비 답변이 크게 짧던 원인 중 하나가 gpt-4o-mini 기본값).
+// 비용을 아끼려면 AI 설정에서 mini/flash 계열로 바꿀 수 있다.
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
   anthropic: 'claude-sonnet-5',
-  openai: 'gpt-4o-mini',
-  gemini: 'gemini-2.0-flash',
+  openai: 'gpt-4o',
+  gemini: 'gemini-2.5-flash',
 };
 
 // 회사별 알려진 모델 목록 (첫 항목 = 기본) — 목록에 없는 새 모델은
@@ -31,15 +35,15 @@ export const KNOWN_MODELS: Record<AiProvider, string[]> = {
     'claude-haiku-4-5-20251001',
   ],
   openai: [
-    'gpt-4o-mini',
     'gpt-4o',
-    'gpt-4.1-mini',
+    'gpt-4o-mini',
     'gpt-4.1',
+    'gpt-4.1-mini',
   ],
   gemini: [
-    'gemini-2.0-flash',
     'gemini-2.5-flash',
     'gemini-2.5-pro',
+    'gemini-2.0-flash',
     'gemini-1.5-pro',
   ],
 };
@@ -116,22 +120,35 @@ export async function generateWithAi(
   if (!apiKey.trim()) throw new Error('API 키가 등록되지 않았습니다 — AI 설정에서 등록하세요');
 
   if (provider === 'anthropic') {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        // 브라우저 직접 호출 허용 (Anthropic CORS 요구 헤더)
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 8192,
-        system,
-        messages: [{ role: 'user', content: user }],
-      }),
-    });
+    // max_tokens를 넉넉히 요청한다 — 예전 8192는 "웹 채팅과 같은 상세함"
+    // 답변(수만 토큰)이 물리적으로 잘리는 상한이었다 (2026-07). 모델이
+    // 지원하는 상한을 넘으면 400이 오므로 절반씩 줄여 재시도한다.
+    const tryCall = async (maxTokens: number): Promise<Response> =>
+      fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          // 브라우저 직접 호출 허용 (Anthropic CORS 요구 헤더)
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          system,
+          messages: [{ role: 'user', content: user }],
+        }),
+      });
+    let res = await tryCall(32000);
+    if (res.status === 400) {
+      const errText = await res.clone().text();
+      if (/max_tokens/i.test(errText)) res = await tryCall(16000);
+    }
+    if (res.status === 400) {
+      const errText = await res.clone().text();
+      if (/max_tokens/i.test(errText)) res = await tryCall(8192);
+    }
     if (!res.ok) throw new Error(`Anthropic 호출 실패: ${await readError(res)}`);
     const data = await res.json();
     const text = (data.content ?? [])

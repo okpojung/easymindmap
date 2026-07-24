@@ -952,20 +952,28 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   newMap: (title = '새 마인드맵') => {
-    // 기본 맵 골격 — 중심 주제 + 주제 1~3 + 각 하위 주제 2개 (3레벨,
-    // 방사형·오른쪽). ThinkWise 기본 맵과 같은 시작 구조.
+    // 기본 맵 골격 = '트리-진행트리맵' 기본 템플릿 (2026-07 지정) —
+    // 중심 주제 + 주제 1~3 + 각 하위 주제 2개 + 내용 (4레벨).
+    // 레벨별 레이아웃: 1레벨 트리·오른쪽(맵 전체 = NewMapPanel에서 설정) →
+    // 2레벨 진행트리·오른쪽 → 3레벨 트리·오른쪽 → 4레벨 진행트리·오른쪽
+    // (노드의 layoutType = 그 노드의 "자식" 배치 방식)
     const colorKeys: NodeColorKey[] = ['l1A', 'l1B', 'l1C'];
     const now = Date.now();
     const branches: SampleBranch[] = [0, 1, 2].map((i) => ({
       id: `n-${now}-${i}`,
       text: `주제 ${i + 1}`,
       colorKey: colorKeys[i],
-      // 앞 절반 오른쪽·뒤 절반 왼쪽 — 방사형·양쪽에서 좌우로 나뉘도록
-      // (전부 'right'면 양쪽 레이아웃이 오른쪽 방사형과 똑같아 보인다)
-      side: (i < 2 ? 'right' : 'left') as 'right' | 'left',
+      side: 'right' as const,
+      layoutType: 'process-tree-right' as const,
       children: [0, 1].map((j) => ({
         id: `n-${now}-${i}-${j}`,
         text: '하위 주제',
+        layoutType: 'tree-right' as const,
+        children: [{
+          id: `n-${now}-${i}-${j}-0`,
+          text: '내용',
+          layoutType: 'process-tree-right' as const,
+        }],
       })),
     }));
     set({

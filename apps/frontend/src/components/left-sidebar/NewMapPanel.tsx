@@ -71,9 +71,11 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   };
 
   const doStartBlank = () => {
-    // 기본 맵: 중심 주제 + 주제 1~3 + 하위 주제 (3레벨) · 방사형 오른쪽
+    // 기본 맵 = '트리-진행트리맵' 기본 템플릿: 중심 주제 + 주제 1~3 +
+    // 하위 주제 + 내용 (4레벨) · 1레벨 트리·오른쪽 → 2레벨 진행트리 →
+    // 3레벨 트리 → 4레벨 진행트리 (documentStore.newMap과 한 쌍)
     newMap(title.trim() || '새 마인드맵');
-    setLayoutType('radial-right');
+    setLayoutType('tree-right');
     resetSpacing();
     setSelectedId('root');
     setTitle('');
@@ -243,7 +245,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       />
 
       <button onClick={startBlank}
-        title="기본 골격(중심 주제 + 주제 1~3 + 하위 주제)으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다"
+        title="기본 템플릿 '트리-진행트리맵' 골격(중심 주제 + 주제 1~3 + 하위 주제 + 내용)으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다"
         style={{
           width: '100%', fontSize: 12, padding: '9px 0', borderRadius: 7,
           border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,

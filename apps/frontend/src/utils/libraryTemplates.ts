@@ -43,6 +43,30 @@ const br = (
 const rootOf = (text: string): SampleMap['root'] =>
   ({ id: 'root', text, colorKey: 'root', side: 'center' }) as SampleMap['root'];
 
+// ── 트리-진행트리맵 — 기본 템플릿 (2026-07 지정) ─────────────────────────
+// 레벨별 레이아웃: 1레벨(중심) 트리·오른쪽 → 2레벨 진행트리·오른쪽 →
+// 3레벨 트리·오른쪽 → 4레벨 진행트리·오른쪽. (노드의 layoutType = 그 노드의
+// "자식" 배치 — 맵 전체 기본은 editor.layoutType이 1레벨 몫을 맡는다)
+// '새 맵 만들기'의 기본 골격(documentStore.newMap)도 이 구조로 시작한다.
+const treeProgressMap = (): SampleMap => ({
+  title: '트리-진행트리맵',
+  root: rootOf('중심 주제'),
+  branches: [
+    br('주제 1', 'l1A', 'right', [
+      n('하위 주제', [n('내용', undefined, 'process-tree-right'), n('내용', undefined, 'process-tree-right')], 'tree-right'),
+      n('하위 주제', [n('내용', undefined, 'process-tree-right')], 'tree-right'),
+    ], 'process-tree-right'),
+    br('주제 2', 'l1B', 'right', [
+      n('하위 주제', [n('내용', undefined, 'process-tree-right'), n('내용', undefined, 'process-tree-right')], 'tree-right'),
+      n('하위 주제', [n('내용', undefined, 'process-tree-right')], 'tree-right'),
+    ], 'process-tree-right'),
+    br('주제 3', 'l1C', 'right', [
+      n('하위 주제', [n('내용', undefined, 'process-tree-right')], 'tree-right'),
+      n('하위 주제', [n('내용', undefined, 'process-tree-right')], 'tree-right'),
+    ], 'process-tree-right'),
+  ],
+});
+
 // ── 진행트리-트리맵 — 1레벨 진행트리·오른쪽 + 2레벨 트리·오른쪽 ─────────
 // ('새 맵 > 기본 맵'과 같은 뼈대를 라이브러리에 상시 제공 — 2026-07 요청)
 const progressTreeMap = (): SampleMap => ({
@@ -128,6 +152,14 @@ const meetingMap = (): SampleMap => ({
 });
 
 export const LIBRARY_TEMPLATES: LibraryTemplate[] = [
+  {
+    id: 'lib-tree-progress',
+    name: '트리-진행트리맵',
+    desc: '기본 템플릿 · 1레벨 트리 → 2레벨 진행트리 → 3레벨 트리 → 4레벨 진행트리',
+    colors: ['#D97706', '#0284C7', '#15803D', '#9333EA', '#DC2626'],
+    map: treeProgressMap(),
+    editor: { layoutType: 'tree-right' },
+  },
   {
     id: 'lib-progress-tree',
     name: '진행트리-트리맵',

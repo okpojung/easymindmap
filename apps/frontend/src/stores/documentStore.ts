@@ -79,6 +79,10 @@ interface DocumentState {
   // View state
   toggleCollapse: (nodeId: string | null) => void;
   setCollapsed: (nodeId: string | null, collapsed: boolean) => void;
+  // 모두 접기/펼치기 — 자식이 있는 모든 노드(2레벨 이하 전부)를 일괄
+  // 접거나 편다 (HTML 뷰어의 +/− 아이콘과 동일 동작)
+  collapseAll: () => void;
+  expandAll: () => void;
 
   // Text / align / layout
   updateNodeText: (nodeId: string | null, text: string) => void;
@@ -786,6 +790,30 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     if (!nodeId || nodeId === 'root') return;
     set((state) => ({
       map: mutateNode(state.map, nodeId, (n) => ({ ...n, collapsed })),
+    }));
+  },
+
+  collapseAll: () => {
+    const walk = (nodes: MindNode[]): MindNode[] =>
+      nodes.map((n) => ({
+        ...n,
+        collapsed: (n.children?.length ?? 0) > 0 ? true : n.collapsed,
+        children: walk(n.children ?? []),
+      }));
+    set((state) => ({
+      map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
+    }));
+  },
+
+  expandAll: () => {
+    const walk = (nodes: MindNode[]): MindNode[] =>
+      nodes.map((n) => ({
+        ...n,
+        collapsed: undefined,
+        children: walk(n.children ?? []),
+      }));
+    set((state) => ({
+      map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
     }));
   },
 

@@ -443,6 +443,15 @@ const VIEWER_JS = String.raw`
 
     var kids = node.children || [];
     for (var i = 0; i < kids.length; i++) measure(kids[i], depth + 1, eff);
+    layoutBlock(node);
+  }
+
+  // 블록(서브트리 묶음) 크기·자기 위치 계산 — 크기(_w/_h/_boxH)·_eff·
+  // _open이 준비된 노드에 대해 동작한다. measure()(자체 측정)와
+  // reflowFixed()(에디터 좌표 크기 유지 + 접기 재배치)가 공유한다.
+  function layoutBlock(node) {
+    var w = node._w, h = node._h, eff = node._eff;
+    var kids = node.children || [];
 
     if (!node._open || kids.length === 0) {
       node._bw = w; node._bh = node._boxH;
@@ -703,7 +712,8 @@ const VIEWER_JS = String.raw`
   }
 
   // 에디터 계산 좌표(pos)가 있으면 그대로 사용 — 에디터 화면과 동일한
-  // 배치를 재현한다. 접기/펴기는 표시/숨김만 하고 재배치하지 않는다.
+  // 배치를 재현한다. (최초 표시 전용 — 접기를 한 번이라도 조작하면
+  // reflowFixed()로 전환해 에디터처럼 간격을 재배치한다)
   function assignFixed(node, depth, inheritedEff) {
     var eff = normalize(node.layoutType) || inheritedEff;
     node._eff = eff;
@@ -723,12 +733,42 @@ const VIEWER_JS = String.raw`
     }
   }
 
+  // 접기 재배치(dynamic) 모드 — 접기/펴기를 한 번이라도 조작하면 켜져,
+  // 이후에는 에디터 좌표의 "크기"만 유지한 채 위치를 다시 계산한다
+  // (에디터처럼 접으면 간격이 줄고, 펴면 다시 늘어난다).
+  var DYN = false;
+
+  // 에디터 좌표 모드에서의 재배치 — 노드 크기·글꼴·줄바꿈은 에디터가
+  // 계산한 값(pos)을 그대로 쓰고, 위치만 layoutBlock+arrange로 다시 계산.
+  function reflowFixed(rootEff) {
+    (function prep(n, inheritedEff) {
+      var eff = normalize(n.layoutType) || inheritedEff;
+      n._eff = eff;
+      n._open = !n.collapsed;
+      n._fixed = true;
+      n._w = n.pos.w; n._h = n.pos.h;
+      n._lines = n.pos.lines; n._lineH = n.pos.lh;
+      n._manualStarts = n.pos.ms;
+      n._fs = n.pos.fs; n._ff = n.pos.ff;
+      var tagsH = (n.tags && n.tags.length) ? TAG_H + 7 : 0;
+      n._boxH = n._h + tagsH;
+      var kids = n.children || [];
+      for (var i = 0; i < kids.length; i++) {
+        if (kids[i].pos) prep(kids[i], eff);
+      }
+      layoutBlock(n); // 자식 블록 계산 후 자기 블록 (후위 순회)
+    })(DATA.root, rootEff);
+    arrange(DATA.root, 40, 40);
+  }
+
   function render() {
     while (world.firstChild) world.removeChild(world.firstChild);
     var rootEff = normalize(DATA.root.layoutType) || normalize(DATA.mapLayout) || 'radial-bidirectional';
     DATA.root.layoutType = DATA.root.layoutType || rootEff;
-    if (DATA.root.pos) {
+    if (DATA.root.pos && !DYN) {
       assignFixed(DATA.root, 0, rootEff);
+    } else if (DATA.root.pos) {
+      reflowFixed(rootEff);
     } else {
       measure(DATA.root, 0, rootEff);
       arrange(DATA.root, 40, 40);
@@ -1090,12 +1130,23 @@ const VIEWER_JS = String.raw`
     }
 
     if (kids.length) {
-      // 접기 토글 위치 — 자식이 "실제로 배치된 방향"으로 계산한다 (펼쳐진
-      // 노드는 자식 좌표의 평균 방향; 트리·진행트리의 3레벨 이하에서 자식이
-      // 아래로 자라는데 토글이 오른쪽에 붙던 문제 수정 — 2026-07). 접힌
-      // 노드는 자식 좌표가 없으므로 내보낸 side로 폴백.
+      // 접기 토글 위치 — 레이아웃 종류로 "결정론적으로" 정한다. 예전의
+      // 자식 좌표 평균 방향 방식은 같은 레이아웃에서도 자식 수·높이에
+      // 따라 노드마다 하단/오른쪽이 뒤섞이는 문제가 있었다 (2026-07:
+      // 트리·오른쪽에서 자식이 적은 노드만 토글이 오른쪽에 붙던 현상).
+      // 방사형·양쪽/타임라인처럼 방향이 데이터에 달린 레이아웃만 자식
+      // 좌표 평균으로 판단한다. (에디터 CollapseControl과 동일 규칙)
+      var effT = node._eff || '';
       var sd = node.side;
-      if (node._open) {
+      if (effT === 'tree-right' || effT === 'tree-down' ||
+          effT.indexOf('process-tree') === 0) {
+        sd = 'down';
+      } else if (effT === 'hierarchy-right' || effT === 'radial-right' ||
+                 effT === 'freeform') {
+        sd = 'right';
+      } else if (effT === 'hierarchy-left' || effT === 'radial-left') {
+        sd = 'left';
+      } else if (node._open) {
         var adx = 0, ady = 0, acnt = 0;
         for (var kg = 0; kg < kids.length; kg++) {
           if (kids[kg]._cx == null) continue;
@@ -1131,6 +1182,7 @@ const VIEWER_JS = String.raw`
         chip.addEventListener('click', function (ev) {
           ev.stopPropagation();
           n.collapsed = !n.collapsed;
+          DYN = true; // 이후로는 에디터처럼 접기/펴기 시 간격 재배치
           render();
         });
       })(node);
@@ -1730,10 +1782,10 @@ const VIEWER_JS = String.raw`
   });
   document.addEventListener('pointerdown', tipRestore, true);
   document.getElementById('mm-expand').addEventListener('click', function () {
-    setAll(DATA.root, false); DATA.root.collapsed = false; render(); fit();
+    setAll(DATA.root, false); DATA.root.collapsed = false; DYN = true; render(); fit();
   });
   document.getElementById('mm-collapse').addEventListener('click', function () {
-    setAll(DATA.root, true); DATA.root.collapsed = false; render(); fit();
+    setAll(DATA.root, true); DATA.root.collapsed = false; DYN = true; render(); fit();
   });
 
   render();

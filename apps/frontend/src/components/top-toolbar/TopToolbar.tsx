@@ -71,20 +71,19 @@ export function TopToolbar({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 280 }}>
+        {/* EasyMindMap 로고 — 배지형이라 배경 상자 없이 그대로 표시 */}
         <div
           style={{
             width: 32,
             height: 32,
-            borderRadius: 8,
-            background: t.primarySoft,
-            border: `1px solid ${t.primaryBorder}40`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
           }}
+          title="EasyMindMap"
         >
-          <I.Logo size={20} />
+          <I.Logo size={30} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, minWidth: 0 }}>

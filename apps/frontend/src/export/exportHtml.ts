@@ -154,6 +154,23 @@ function toExportNode(
   };
 }
 
+// EasyMindMap 로고 — 에디터 I.Logo(components/icons)와 같은 도안.
+// 뷰어 헤더 아이콘 + 브라우저 파비콘(data URL)으로 쓰인다.
+const LOGO_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">'
+  + '<defs><linearGradient id="emmlg" x1="0" y1="0" x2="1" y2="1">'
+  + '<stop offset="0" stop-color="#F7A21B"/><stop offset="1" stop-color="#C2610A"/>'
+  + '</linearGradient></defs>'
+  + '<rect x="1" y="1" width="22" height="22" rx="5.5" fill="url(#emmlg)"/>'
+  + '<circle cx="8" cy="12" r="2.7" fill="#FFFFFF"/>'
+  + '<path d="M10.4 10.9C12.6 9.6 13.9 8.4 15.9 7.5" stroke="#FFFFFF" stroke-width="1.5" fill="none" stroke-linecap="round"/>'
+  + '<line x1="10.9" y1="12" x2="15.9" y2="12" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/>'
+  + '<path d="M10.4 13.1C12.6 14.4 13.9 15.6 15.9 16.5" stroke="#FFFFFF" stroke-width="1.5" fill="none" stroke-linecap="round"/>'
+  + '<circle cx="17.5" cy="7" r="1.7" fill="#FFFFFF"/>'
+  + '<circle cx="17.5" cy="12" r="1.7" fill="#FFFFFF"/>'
+  + '<circle cx="17.5" cy="17" r="1.7" fill="#FFFFFF"/>'
+  + '</svg>';
+
 // The read-only viewer that runs inside the exported file. Plain ES5-ish JS,
 // no dependencies, no backticks (this whole script lives inside a template
 // literal). Layout is a recursive block model: measure() computes each
@@ -821,9 +838,13 @@ const VIEWER_JS = String.raw`
     var stPre = node.style || {};
     var nodeFill2 = stPre.fillColor || fam0.fill;
     var nodeStroke2 = stPre.borderColor || fam0.border;
-    // 검색 결과 — 어떤 스타일보다 우선해 또렷하게 (에디터와 동일)
-    if (SEARCHHIT === node.id) { nodeFill2 = '#FFE066'; nodeStroke2 = '#DC2626'; }
+    // 검색 결과 — 어떤 스타일보다 우선해 또렷하게 (에디터와 동일).
+    // 글자도 항상 진한 색 — 다크 모드에서 밝은 글자가 노란 배경에
+    // 묻혀 안 보이던 문제 (라이트/다크 공통 고정색)
     var nodeText2 = stPre.textColor || fam0.text;
+    if (SEARCHHIT === node.id) {
+      nodeFill2 = '#FFE066'; nodeStroke2 = '#DC2626'; nodeText2 = '#1F1B16';
+    }
     var kids = node.children || [];
 
     if (depth === 0 && node._eff === 'timeline') {
@@ -1588,12 +1609,17 @@ const VIEWER_JS = String.raw`
       for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
     })(DATA.root);
     if (found && found._cx != null) {
+      // 결과 클릭 = 해당 노드를 화면 중앙 + 100% 보기 (에디터와 동일)
       var rect = svg.getBoundingClientRect();
-      view.x = rect.width / 2 - found._cx * view.k;
-      view.y = rect.height / 2 - found._cy * view.k;
+      view.k = 1;
+      view.x = rect.width / 2 - found._cx;
+      view.y = rect.height / 2 - found._cy;
       applyView();
     }
     renderSearchList(); // 선택 항목 표시 갱신
+    // 결과 목록이 맵(강조 노드)을 가리지 않게 닫는다 — 검색창을 다시
+    // 클릭하면 목록이 다시 열린다 (강조는 유지)
+    searchResults.style.display = 'none';
   }
   function renderSearchList() {
     if (!searchHits.length) {
@@ -1964,7 +1990,7 @@ const VIEWER_CSS = `
     text-align: center; outline: none; background: #FFFDF8; color: #4A3B28;
   }
   body.mm-dark #mm-zoom-input { background: #14171D; color: #E7E3DA; }
-  #mm-zoom-100 { font-size: 10.5px; letter-spacing: 0.5px; }
+  #mm-zoom-100 { display: inline-flex; align-items: center; justify-content: center; }
   body.mm-dark #mm-zoombar { background: #1F2229; border-color: #3A3E47; }
   body.mm-dark #mm-zoombar button {
     background: #262A31; color: #D8D4CC; border-color: #3A3E47;
@@ -2161,11 +2187,12 @@ export function buildStandaloneHtml(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(map.title)} — EasyMindMap</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent(LOGO_SVG)}">
 <style>${VIEWER_CSS}</style>
 </head>
 <body>
 <header>
-  <h1>🗺 ${escapeHtml(map.title)}</h1>
+  <h1>${LOGO_SVG.replace('<svg ', '<svg width="20" height="20" style="vertical-align:-4px;margin-right:6px" ')}${escapeHtml(map.title)}</h1>
   <span class="meta" id="mm-count"></span>
   <span class="spacer"></span>
   <span id="mm-search-wrap">
@@ -2193,7 +2220,7 @@ export function buildStandaloneHtml(
   <button id="mm-zoom-pct" title="클릭해서 배율 직접 입력 (2~400)">100%</button>
   <input id="mm-zoom-input" type="number" min="2" max="400" style="display:none" title="배율 입력 후 Enter" />
   <button id="mm-zoom-in" title="확대 (5% 단위)">+</button>
-  <button id="mm-zoom-100" title="100%로 보기">1:1</button>
+  <button id="mm-zoom-100" title="100%로 보기"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><line x1="20" y1="20" x2="15" y2="15"/><text x="10" y="12.3" font-size="6.3" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">100</text></svg></button>
 </div>
 <footer>EasyMindMap 내보내기 · 읽기 전용 뷰어 · ${exportedAt}</footer>
 <!-- EasyMindMap 생성 파일 · 제목: ${escapeHtml(map.title)} · 내보낸 시각: ${exportedAt}

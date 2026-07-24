@@ -120,6 +120,7 @@ export function Canvas({
   const panY = useViewportStore((s) => s.panY);
   const panMode = useViewportStore((s) => s.panMode);
   const fitRequestId = useViewportStore((s) => s.fitRequestId);
+  const centerRequest = useViewportStore((s) => s.centerRequest);
   const setZoom = useViewportStore((s) => s.setZoom);
   const setPan = useViewportStore((s) => s.setPan);
   const zoomIn = useViewportStore((s) => s.zoomIn);
@@ -490,6 +491,18 @@ export function Canvas({
     fitToNodes(list, focusedId ? 90 : 70);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRequestId]);
+
+  // 특정 노드를 화면 중앙 + 지정 배율로 보기 (검색 결과 클릭 —
+  // requestCenterNode). 접힌 조상 때문에 아직 배치에 없으면 무시.
+  useEffect(() => {
+    if (!centerRequest) return;
+    const node = nodesRef.current.find((n) => n.id === centerRequest.id);
+    if (!node) return;
+    const s2 = clampZoom(centerRequest.zoom) / 100;
+    setZoom(centerRequest.zoom);
+    setPan(-(node.x - CX) * s2, -(node.y - CY) * s2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [centerRequest?.seq]);
 
   // side: 루트의 좌/우 +버튼(방사형·양쪽)이 누른 쪽으로 새 브랜치를 배치.
   // 키보드(Space/Tab) 등 side 없이 부르면 기존 좌우 교대 배치 그대로.

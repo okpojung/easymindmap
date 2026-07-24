@@ -22,6 +22,8 @@ export function CanvasFloatingToolbar({ t, hasSelection, focusActive, onFitView,
   const setSelectedId = useInteractionStore((state) => state.setSelectedId);
   const addChildNode = useDocumentStore((state) => state.addChildNode);
   const deleteNode = useDocumentStore((state) => state.deleteNode);
+  const collapseAll = useDocumentStore((state) => state.collapseAll);
+  const expandAll = useDocumentStore((state) => state.expandAll);
 
   const panMode = useViewportStore((state) => state.panMode);
   const togglePanMode = useViewportStore((state) => state.togglePanMode);
@@ -102,6 +104,22 @@ export function CanvasFloatingToolbar({ t, hasSelection, focusActive, onFitView,
         onClick={onFocusSelected}
       >
         {focusActive ? <I.FocusOff size={15} /> : <I.Focus size={15} />}
+      </ToolbarBtn>
+      {/* 모두 펼치기/접기 — HTML 뷰어의 +/− 아이콘과 동일 동작
+          (모두 접기 = 자식이 있는 2레벨 이하 노드를 전부 접는다) */}
+      <ToolbarBtn
+        t={t}
+        title="모두 펼치기"
+        onClick={() => { expandAll(); onFitView?.(); }}
+      >
+        <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>+</span>
+      </ToolbarBtn>
+      <ToolbarBtn
+        t={t}
+        title="모두 접기 — 2레벨만 남기고 전부 접기"
+        onClick={() => { collapseAll(); onFitView?.(); }}
+      >
+        <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>−</span>
       </ToolbarBtn>
       <ToolbarBtn t={t} title="맵 전체를 화면에 맞추기" onClick={onFitView}>
         <I.Fit size={15} />

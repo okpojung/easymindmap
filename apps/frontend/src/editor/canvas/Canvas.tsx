@@ -247,6 +247,29 @@ export function Canvas({
   };
   const visibleNodes = focusedId ? subtreeOf(focusedId, nodes) : nodes;
 
+  // 노드별 "자식 배치에 쓰이는 실효 레이아웃" — 접기 토글 위치를
+  // 레이아웃 종류로 결정하기 위해 오버라이드 체인을 한 번 걸어 둔다.
+  // (레벨별 레이아웃 정책은 setLevelLayout이 노드 layoutType에 직접
+  // 기록하므로 노드 체인만 보면 된다)
+  const effByNode = useMemo(() => {
+    const m = new Map<string, string>();
+    const base = normalizeLayoutType(
+      sample.root.layoutType ?? layoutType,
+    ) as string;
+    m.set('root', base);
+    const walk = (list: { id: string; layoutType?: LayoutType; children?: unknown[] }[], inherited: string) => {
+      for (const n of list) {
+        const eff = n.layoutType
+          ? (normalizeLayoutType(n.layoutType) as string)
+          : inherited;
+        m.set(n.id, eff);
+        walk((n.children ?? []) as typeof list, eff);
+      }
+    };
+    walk(sample.branches, base);
+    return m;
+  }, [sample, layoutType]);
+
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
@@ -1135,11 +1158,27 @@ export function Canvas({
                 // the selected node's +/- add indicators.
                 .filter((n) => n.id !== selectedId && n.id !== (selectedNode?.parent ?? ''))
                 .map((n) => {
-                  // 자식이 "실제로 배치된 방향"에 토글을 놓는다 — 트리·
-                  // 진행트리의 3레벨 이하는 side가 'right'여도 자식이 아래로
-                  // 자라므로 자식 좌표로 방향을 계산한다 (접힘 시 side 폴백)
+                  // 접기 토글 위치 — 레이아웃 종류로 "결정론적으로" 정한다.
+                  // 예전의 자식 좌표 평균 방향 방식은 같은 레이아웃에서도
+                  // 자식 수·높이에 따라 노드마다 하단/오른쪽이 뒤섞였다
+                  // (2026-07). 방사형·양쪽/타임라인처럼 방향이 데이터에
+                  // 달린 레이아웃만 자식 좌표 평균으로 판단한다.
+                  // (HTML 뷰어 drawNode와 동일 규칙)
+                  const eff = effByNode.get(n.id) ?? '';
                   let sd: string = n.side ?? 'right';
-                  if (!n.collapsed) {
+                  if (
+                    eff === 'tree-right' || eff === 'tree-down' ||
+                    eff.startsWith('process-tree')
+                  ) {
+                    sd = 'down';
+                  } else if (
+                    eff === 'hierarchy-right' || eff === 'radial-right' ||
+                    eff === 'freeform'
+                  ) {
+                    sd = 'right';
+                  } else if (eff === 'hierarchy-left' || eff === 'radial-left') {
+                    sd = 'left';
+                  } else if (!n.collapsed) {
                     let adx = 0; let ady = 0; let acnt = 0;
                     for (const c of visibleNodes) {
                       if (c.parent !== n.id) continue;

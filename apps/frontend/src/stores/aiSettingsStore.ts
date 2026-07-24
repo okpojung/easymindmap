@@ -86,10 +86,12 @@ export const useAiSettingsStore = create<AiSettingsState>()(
     }),
     {
       name: 'easymindmap-ai-settings',
-      version: 2,
-      // v1 → v2: 우선순위 필드 추가 + 옛 "기본" 템플릿을 그대로 쓰던
-      // 사용자는 새 기본 템플릿(상세함 규칙 포함)으로 자동 갱신.
-      // 사용자가 직접 수정한 템플릿은 건드리지 않는다.
+      version: 3,
+      // v1 → v2: 우선순위 필드 추가.
+      // v2 → v3: 기본 템플릿 v3(2단계 작업 + 정보량 보존 규칙) 승격 +
+      // 예전 "기본 모델"(gpt-4o-mini·gemini-2.0-flash)을 그대로 쓰던
+      // 사용자는 새 기본 모델로 자동 승격 — 웹 채팅 대비 답변이 짧던
+      // 원인. 사용자가 직접 고른 템플릿/모델은 건드리지 않는다.
       migrate: (persisted: unknown) => {
         const s = (persisted ?? {}) as Partial<AiSettingsState>;
         if (!Array.isArray(s.priority) || s.priority.length === 0) {
@@ -101,6 +103,17 @@ export const useAiSettingsStore = create<AiSettingsState>()(
           EMM_SYSTEM_PROMPT_PREVIOUS.some((prev) => s.systemPrompt === prev)
         ) {
           s.systemPrompt = EMM_SYSTEM_PROMPT;
+        }
+        const OLD_DEFAULT_MODELS: Partial<Record<AiProvider, string[]>> = {
+          openai: ['gpt-4o-mini'],
+          gemini: ['gemini-2.0-flash'],
+        };
+        if (s.models) {
+          for (const p of PROVIDERS) {
+            if ((OLD_DEFAULT_MODELS[p] ?? []).includes(s.models[p])) {
+              s.models[p] = DEFAULT_MODELS[p];
+            }
+          }
         }
         return s as AiSettingsState;
       },

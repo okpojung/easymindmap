@@ -14,6 +14,9 @@ interface ViewportState {
   panY: number;
   panMode: boolean; // Hand tool — drag anywhere on the canvas pans the view
   fitRequestId: number; // bumped by requestFit(); the canvas reacts and fits the map
+  // 특정 노드를 화면 중앙 + 지정 배율로 보기 요청 (검색 결과 클릭 등).
+  // seq가 바뀔 때마다 캔버스가 반응한다 — fitRequestId와 같은 패턴.
+  centerRequest: { id: string; zoom: number; seq: number } | null;
 
   setZoom: (v: number) => void;
   setPan: (x: number, y: number) => void;
@@ -22,6 +25,7 @@ interface ViewportState {
   setPanMode: (v: boolean) => void;
   togglePanMode: () => void;
   requestFit: () => void;
+  requestCenterNode: (id: string, zoom?: number) => void;
   reset: () => void;
 }
 
@@ -31,14 +35,20 @@ export const useViewportStore = create<ViewportState>((set) => ({
   panY: 0,
   panMode: false,
   fitRequestId: 0,
+  centerRequest: null,
 
   setZoom: (zoom) => set({ zoom: clamp(zoom, ZOOM_MIN, ZOOM_MAX) }),
   setPan: (panX, panY) => set({ panX, panY }),
-  zoomIn:  () => set((s) => ({ zoom: clamp(s.zoom + 10, ZOOM_MIN, ZOOM_MAX) })),
-  zoomOut: () => set((s) => ({ zoom: clamp(s.zoom - 10, ZOOM_MIN, ZOOM_MAX) })),
+  // 버튼·단축키 줌 스텝 5% — 하단 상태바 ±버튼과 동일 (10-canvas.md §17)
+  zoomIn:  () => set((s) => ({ zoom: clamp(s.zoom + 5, ZOOM_MIN, ZOOM_MAX) })),
+  zoomOut: () => set((s) => ({ zoom: clamp(s.zoom - 5, ZOOM_MIN, ZOOM_MAX) })),
   setPanMode: (panMode) => set({ panMode }),
   togglePanMode: () => set((s) => ({ panMode: !s.panMode })),
   requestFit: () => set((s) => ({ fitRequestId: s.fitRequestId + 1 })),
+  requestCenterNode: (id, zoom = 100) =>
+    set((s) => ({
+      centerRequest: { id, zoom, seq: (s.centerRequest?.seq ?? 0) + 1 },
+    })),
   reset:   () => set({ zoom: 100, panX: 0, panY: 0 }),
 }));
 

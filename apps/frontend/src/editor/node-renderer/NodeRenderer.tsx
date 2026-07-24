@@ -238,7 +238,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   // 검색 결과 표시 — 어떤 스타일보다 우선해 노란 채움 + 붉은 테두리
   const fill = searchHit ? '#FFE066' : (style.fillColor ?? colors.fill);
   const border = searchHit ? '#DC2626' : (style.borderColor ?? colors.border);
-  const textColor = style.textColor ?? colors.text;
+  // 검색 강조(노란 채움) 위에서는 항상 진한 글자 — 다크 모드에서 밝은
+  // 글자가 노란 배경에 묻혀 안 보이던 문제 (라이트/다크 공통 고정색)
+  const textColor = searchHit ? '#1F1B16' : (style.textColor ?? colors.text);
 
   const lines = n._lines || String(n.text || '').split('\n');
   const lineHeight = n._lineHeight ?? (n.depth === 0 ? 24 : 18);

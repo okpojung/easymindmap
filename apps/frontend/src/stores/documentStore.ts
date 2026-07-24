@@ -83,6 +83,7 @@ interface DocumentState {
   // 접거나 편다 (HTML 뷰어의 +/− 아이콘과 동일 동작)
   collapseAll: () => void;
   expandAll: () => void;
+  expandAncestors: (nodeId: string) => void;
 
   // Text / align / layout
   updateNodeText: (nodeId: string | null, text: string) => void;
@@ -814,6 +815,26 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       }));
     set((state) => ({
       map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
+    }));
+  },
+
+  // 해당 노드가 화면에 보이도록 접힌 조상들만 펼친다 (검색 결과 이동 —
+  // 뷰어 expandTo와 동일 동작). 노드 자체의 접힘 상태는 건드리지 않는다.
+  expandAncestors: (nodeId) => {
+    if (!nodeId || nodeId === 'root') return;
+    const walk = (nodes: MindNode[]): [MindNode[], boolean] => {
+      let found = false;
+      const next = nodes.map((n) => {
+        if (n.id === nodeId) { found = true; return n; }
+        const [kids, hit] = walk(n.children ?? []);
+        if (!hit) return n;
+        found = true;
+        return { ...n, collapsed: undefined, children: kids };
+      });
+      return [next, found];
+    };
+    set((state) => ({
+      map: { ...state.map, branches: walk(state.map.branches)[0] as SampleBranch[] },
     }));
   },
 

@@ -36,6 +36,9 @@ const Icon = ({
 type P = Partial<IconProps>;
 
 export const I = {
+  // EasyMindMap 로고 — 주황 그라디언트 배지 + 흰 마인드맵 글리프
+  // (중심 노드에서 오른쪽 세 가지). 뷰어 헤더·파비콘(exportHtml.ts의
+  // LOGO_SVG)과 같은 도안 — 바꿀 때 함께 바꾼다.
   Logo: (p: P = {}) => (
     <svg
       width={p.size || 22}
@@ -44,17 +47,20 @@ export const I = {
       fill="none"
       {...(p as any)}
     >
-      <circle cx="12" cy="12" r="3.2" fill="#D97706" />
-      <circle cx="5" cy="6.5" r="2" fill="#F59E0B" />
-      <circle cx="19" cy="6.5" r="2" fill="#F59E0B" />
-      <circle cx="5" cy="17.5" r="2" fill="#F59E0B" />
-      <circle cx="19" cy="17.5" r="2" fill="#F59E0B" />
-      <path
-        d="M7 7.5L10 10.5M17 7.5L14 10.5M7 16.5L10 13.5M17 16.5L14 13.5"
-        stroke="#D97706"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
+      <defs>
+        <linearGradient id="emm-logo-g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#F7A21B" />
+          <stop offset="1" stopColor="#C2610A" />
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="22" height="22" rx="5.5" fill="url(#emm-logo-g)" />
+      <circle cx="8" cy="12" r="2.7" fill="#FFFFFF" />
+      <path d="M10.4 10.9C12.6 9.6 13.9 8.4 15.9 7.5" stroke="#FFFFFF" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      <line x1="10.9" y1="12" x2="15.9" y2="12" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M10.4 13.1C12.6 14.4 13.9 15.6 15.9 16.5" stroke="#FFFFFF" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      <circle cx="17.5" cy="7" r="1.7" fill="#FFFFFF" />
+      <circle cx="17.5" cy="12" r="1.7" fill="#FFFFFF" />
+      <circle cx="17.5" cy="17" r="1.7" fill="#FFFFFF" />
     </svg>
   ),
 

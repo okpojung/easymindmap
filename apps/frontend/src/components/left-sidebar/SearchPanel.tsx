@@ -7,6 +7,7 @@ import { Toggle } from '@/editor/inspector-panels/InspectorSection';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
+import { useViewportStore } from '@/stores/viewportStore';
 
 // 실시간 검색 — 노드 텍스트·태그·노트 본문·링크(라벨/URL)를 대상으로
 // 대소문자 무시 부분 일치. 결과 클릭 = 캔버스 노드 선택.
@@ -60,8 +61,10 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
   const hiddenTags = useEditorUiStore((s) => s.hiddenTags);
   const toggleTagHidden = useEditorUiStore((s) => s.toggleTagHidden);
   const map = useDocumentStore((s) => s.map);
+  const expandAncestors = useDocumentStore((s) => s.expandAncestors);
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
   const setSearchHitId = useInteractionStore((s) => s.setSearchHitId);
+  const requestCenterNode = useViewportStore((s) => s.requestCenterNode);
 
   const [query, setQuery] = useState('');
   const results = useMemo<SearchHit[]>(() => {
@@ -121,8 +124,12 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
             setSelectedId(r.id);
             // 캔버스에서 노란 채움 + 붉은 테두리로 또렷하게 표시
             setSearchHitId(r.id);
+            // 접힌 조상은 펼치고, 해당 노드를 화면 중앙 + 100% 보기
+            // (HTML 뷰어 검색과 동일 동작)
+            expandAncestors(r.id);
+            requestCenterNode(r.id, 100);
           }}
-          title="클릭하면 캔버스에서 노란 강조로 표시됩니다"
+          title="클릭하면 노란 강조 + 화면 중앙 100% 보기로 이동합니다"
           style={{
             padding: '8px 10px', borderRadius: 7, marginBottom: 4,
             background: 'transparent',

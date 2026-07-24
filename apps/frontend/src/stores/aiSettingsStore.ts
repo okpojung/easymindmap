@@ -86,12 +86,14 @@ export const useAiSettingsStore = create<AiSettingsState>()(
     }),
     {
       name: 'easymindmap-ai-settings',
-      version: 3,
+      version: 4,
       // v1 → v2: 우선순위 필드 추가.
       // v2 → v3: 기본 템플릿 v3(2단계 작업 + 정보량 보존 규칙) 승격 +
       // 예전 "기본 모델"(gpt-4o-mini·gemini-2.0-flash)을 그대로 쓰던
       // 사용자는 새 기본 모델로 자동 승격 — 웹 채팅 대비 답변이 짧던
       // 원인. 사용자가 직접 고른 템플릿/모델은 건드리지 않는다.
+      // v3 → v4: gemini-2.5-flash가 신규 사용자 404로 은퇴 —
+      // 상시 별칭(gemini-flash-latest)으로 재승격.
       migrate: (persisted: unknown) => {
         const s = (persisted ?? {}) as Partial<AiSettingsState>;
         if (!Array.isArray(s.priority) || s.priority.length === 0) {
@@ -106,7 +108,7 @@ export const useAiSettingsStore = create<AiSettingsState>()(
         }
         const OLD_DEFAULT_MODELS: Partial<Record<AiProvider, string[]>> = {
           openai: ['gpt-4o-mini'],
-          gemini: ['gemini-2.0-flash'],
+          gemini: ['gemini-2.0-flash', 'gemini-2.5-flash'],
         };
         if (s.models) {
           for (const p of PROVIDERS) {

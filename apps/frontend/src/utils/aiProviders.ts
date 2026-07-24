@@ -23,11 +23,16 @@ export const PROVIDER_LABELS: Record<AiProvider, string> = {
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
   anthropic: 'claude-sonnet-5',
   openai: 'gpt-4o',
-  gemini: 'gemini-2.5-flash',
+  // Google은 구형 모델을 빠르게 은퇴시킨다 (2026-07: 2.0-flash에 이어
+  // 2.5-flash도 신규 사용자 404). 고정 모델명 대신 구글이 상시 최신
+  // flash를 가리키도록 제공하는 별칭을 기본값으로 써서 재발을 막는다.
+  gemini: 'gemini-flash-latest',
 };
 
 // 회사별 알려진 모델 목록 (첫 항목 = 기본) — 목록에 없는 새 모델은
-// AI 설정의 '직접 입력'으로 쓸 수 있다
+// AI 설정의 '직접 입력'으로 쓸 수 있고, Gemini는 '지금 키로 사용
+// 가능한 모델 불러오기'(listGeminiModels)로 실시간 목록을 조회할 수
+// 있다.
 export const KNOWN_MODELS: Record<AiProvider, string[]> = {
   anthropic: [
     'claude-sonnet-5',
@@ -41,12 +46,33 @@ export const KNOWN_MODELS: Record<AiProvider, string[]> = {
     'gpt-4.1-mini',
   ],
   gemini: [
-    'gemini-2.5-flash',
-    'gemini-2.5-pro',
-    'gemini-2.0-flash',
-    'gemini-1.5-pro',
+    'gemini-flash-latest',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-pro',
   ],
 };
+
+// Gemini — 지금 등록한 키로 실제 호출 가능한 모델 목록을 조회한다
+// (generateContent 지원 모델만). 구글의 잦은 모델 은퇴로 목록이
+// 낡아도 사용자가 스스로 최신 목록을 받아 고를 수 있게 한다.
+export async function listGeminiModels(apiKey: string): Promise<string[]> {
+  if (!apiKey.trim()) throw new Error('먼저 Gemini API 키를 입력하세요');
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`,
+  );
+  if (!res.ok) throw new Error(`모델 목록 조회 실패: ${await readError(res)}`);
+  const data = await res.json();
+  const names = ((data.models ?? []) as {
+    name?: string; supportedGenerationMethods?: string[];
+  }[])
+    .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
+    .map((m) => String(m.name ?? '').replace(/^models\//, ''))
+    .filter((n) => n.startsWith('gemini'));
+  if (!names.length) throw new Error('이 키로 사용 가능한 Gemini 모델이 없습니다');
+  return names;
+}
 
 export const PROVIDERS: AiProvider[] = ['anthropic', 'openai', 'gemini'];
 
@@ -193,7 +219,14 @@ export async function generateWithAi(
       }),
     },
   );
-  if (!res.ok) throw new Error(`Gemini 호출 실패: ${await readError(res)}`);
+  if (!res.ok) {
+    const msg = await readError(res);
+    // 구글이 모델을 은퇴시킨 경우 — 해결 방법을 함께 안내
+    const hint = /no longer available|not found/i.test(msg)
+      ? " — AI 설정 > Gemini 모델에서 '지금 키로 사용 가능한 모델 불러오기'를 눌러 현재 모델을 선택하세요"
+      : '';
+    throw new Error(`Gemini 호출 실패: ${msg}${hint}`);
+  }
   const data = await res.json();
   const text = (data.candidates?.[0]?.content?.parts ?? [])
     .map((p: { text?: string }) => p.text ?? '')

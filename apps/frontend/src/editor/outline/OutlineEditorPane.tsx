@@ -15,6 +15,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { OutlineNode as OutlineNodeData, MindNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useInteractionStore } from '@/stores/interactionStore';
+import { useViewportStore } from '@/stores/viewportStore';
 
 // 아웃라인 연속 입력 — "이 노드를 바로 편집 상태로 열어라" 신호.
 // Enter로 형제를 추가하면 새 행이 곧바로 입력 모드가 된다 (노트패드처럼).
@@ -77,6 +78,7 @@ export function OutlineEditorPane({ t, outline }: PaneProps) {
           }}>✕</button>
       </div>
 
+      <OutlineScrollSync />
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0, padding: '8px 6px 16px' }}>
         {outline.map((node) => (
           <PaneRow key={node.id} t={t} node={node}
@@ -128,6 +130,21 @@ export function OutlineEditorPane({ t, outline }: PaneProps) {
       )}
     </div>
   );
+}
+
+// 맵에서 노드를 선택하면 아웃라인의 해당 행이 보이도록 자동 스크롤 —
+// 아웃라인이 다른 구간을 보고 있어도 선택 노드를 바로 찾을 수 있다
+// (아웃라인 안에서의 선택은 이미 보이는 행이라 스크롤이 일어나지 않는다)
+function OutlineScrollSync() {
+  const selectedId = useInteractionStore((s) => s.selectedId);
+  useEffect(() => {
+    if (!selectedId) return;
+    const row = document.querySelector(
+      `[data-outline-id="${CSS.escape(selectedId)}"]`,
+    );
+    row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedId]);
+  return null;
 }
 
 function PaneRow({ t, node, onOpenNote, onOpenList }: {
@@ -278,7 +295,15 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
       <div
         data-outline-id={node.id}
         tabIndex={0}
-        onClick={() => setSelectedId(node.id)}
+        onClick={() => {
+          setSelectedId(node.id);
+          // 맵에서도 해당 노드를 화면 중앙에 보여준다 — 배율은 그대로
+          // 유지(검색 이동과 달리 100% 강제 없음). 맵 쪽에서 접힌
+          // 조상 아래에 있으면 펼쳐서 보이게 한다.
+          useDocumentStore.getState().expandAncestors(node.id);
+          useViewportStore.getState()
+            .requestCenterNode(node.id, useViewportStore.getState().zoom);
+        }}
         onDoubleClick={(e) => { e.stopPropagation(); startEdit(); }}
         onKeyDown={handleKeyDown}
         onMouseEnter={() => setHover(true)}
@@ -473,9 +498,16 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
           </span>
         )}
 
-        {/* 호버 시 추가/삭제 버튼 (아웃라인에서 허용된 편집) */}
-        {hover && !editing && (
-          <span style={{ display: 'inline-flex', gap: 3, marginLeft: 'auto', flexShrink: 0 }}>
+        {/* 호버 시 추가/삭제 버튼 (아웃라인에서 허용된 편집).
+            호버 전에도 자리를 "항상 차지"(visibility만 전환)한다 —
+            예전에는 호버 순간 버튼이 끼어들며 인디케이터가 왼쪽으로
+            밀려, 인디케이터를 누르려다 삭제 버튼이 눌리는 오클릭이
+            났다 (레이아웃 이동 0). */}
+        {!editing && (
+          <span style={{
+            display: 'inline-flex', gap: 3, marginLeft: 'auto', flexShrink: 0,
+            visibility: hover ? 'visible' : 'hidden',
+          }}>
             {node.id !== 'root' && btn('＋형제', '아래에 형제 노드 추가', () => {
               const id = addSiblingNode(node.id, 'after');
               if (id) setSelectedId(id);

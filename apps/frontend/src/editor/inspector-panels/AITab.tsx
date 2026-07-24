@@ -25,6 +25,7 @@ import {
   PROVIDERS,
   PROVIDER_LABELS,
   generateWithAi,
+  listGeminiModels,
   type AiProvider,
 } from '@/utils/aiProviders';
 import {
@@ -391,7 +392,10 @@ function SettingsView({ t }: { t: ThemeTokens }) {
   );
 }
 
-// 모델 선택 — 알려진 모델 목록(기본 표시) + '직접 입력…'
+// 모델 선택 — 알려진 모델 목록(기본 표시) + '직접 입력…'.
+// Gemini는 구글이 구형 모델을 빠르게 은퇴시키므로(2026-07: 2.5-flash도
+// 신규 사용자 404) '지금 키로 사용 가능한 모델 불러오기'로 실시간
+// 목록을 조회해 고를 수 있다.
 function ModelPicker({
   t, p, value, onChange,
 }: {
@@ -400,7 +404,9 @@ function ModelPicker({
   value: string;
   onChange: (m: string) => void;
 }) {
-  const known = KNOWN_MODELS[p];
+  const [fetched, setFetched] = useState<string[] | null>(null);
+  const [fetchMsg, setFetchMsg] = useState('');
+  const known = fetched ?? KNOWN_MODELS[p];
   const isKnown = known.includes(value);
   const [custom, setCustom] = useState(!isKnown && !!value);
 
@@ -432,6 +438,35 @@ function ModelPicker({
         ))}
         <option value="__custom__">직접 입력…</option>
       </select>
+      {p === 'gemini' && (
+        <>
+          <button
+            data-ai-model-refresh="gemini"
+            title="등록한 Gemini 키로 지금 실제 호출 가능한 모델 목록을 조회합니다 — 구글이 구형 모델을 없애 404가 날 때 여기서 현재 모델을 고르세요"
+            onClick={() => {
+              const key = useAiSettingsStore.getState().keys.gemini;
+              setFetchMsg('불러오는 중…');
+              void listGeminiModels(key)
+                .then((list) => {
+                  setFetched(list);
+                  setFetchMsg(`이 키로 사용 가능한 모델 ${list.length}개`);
+                })
+                .catch((e: Error) => setFetchMsg(e.message || String(e)));
+            }}
+            style={{
+              marginTop: 4, padding: '3px 8px', borderRadius: 5,
+              border: `1px solid ${t.border}`, background: t.surface,
+              color: t.textMuted, fontSize: 10.5, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >↻ 지금 키로 사용 가능한 모델 불러오기</button>
+          {fetchMsg && (
+            <div data-ai-model-refresh-msg style={{
+              fontSize: 10, color: t.textSubtle, marginTop: 3, lineHeight: 1.4,
+            }}>{fetchMsg}</div>
+          )}
+        </>
+      )}
       {(custom || !isKnown) && (
         <input
           value={value}

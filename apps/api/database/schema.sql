@@ -100,6 +100,16 @@ CREATE TABLE IF NOT EXISTS public.map_revisions (
 
 CREATE INDEX IF NOT EXISTS idx_map_revisions_map_id ON public.map_revisions(map_id, version DESC);
 
+-- map_documents: 맵당 1건의 "전체 문서 스냅샷"(JSONB).
+--   프론트엔드 문서 트리(임베드 이미지·노트·태그·스타일 포함)를 손실 없이
+--   통째로 보관하는 단순 클라우드 저장 경로. 정규화된 nodes/map_revisions
+--   (세밀 동기화·협업용)와 병행한다.
+CREATE TABLE IF NOT EXISTS public.map_documents (
+    map_id      UUID PRIMARY KEY REFERENCES public.maps(id) ON DELETE CASCADE,
+    doc         JSONB NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ============================================================
 -- 4. 노드
 -- ============================================================
@@ -332,6 +342,18 @@ CREATE POLICY "workspace editors can update maps"
             WHERE wm.workspace_id = maps.workspace_id
               AND wm.user_id = auth.uid()
               AND wm.role IN ('editor', 'owner')
+        )
+    );
+
+-- map_documents: 소유한 맵의 문서 스냅샷만 접근
+ALTER TABLE public.map_documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "owners can manage own map document"
+    ON public.map_documents FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.maps m
+            WHERE m.id = map_documents.map_id AND m.owner_id = auth.uid()
         )
     );
 

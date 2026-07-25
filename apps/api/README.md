@@ -90,6 +90,8 @@ npm run smoke             # 기본 API_URL=http://localhost:3000
 | GET | `/v1/maps/:id` | 맵 단건(+노드 트리) |
 | PATCH | `/v1/maps/:id` | 메타 수정(title·viewMode·refreshIntervalSeconds·layout) |
 | DELETE | `/v1/maps/:id` | 소프트 삭제(204) |
+| PUT | `/v1/maps/:id/document` | **전체 문서 스냅샷 저장**(임베드 이미지·노트 포함, upsert) |
+| GET | `/v1/maps/:id/document` | 저장된 문서 스냅샷 조회 |
 
 **노드 · autosave (Phase 2)**
 

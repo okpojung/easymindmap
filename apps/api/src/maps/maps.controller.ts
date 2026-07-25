@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,7 @@ import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorato
 import { MapsService } from './maps.service';
 import { CreateMapDto } from './dto/create-map.dto';
 import { UpdateMapDto } from './dto/update-map.dto';
+import { SaveDocumentDto } from './dto/save-document.dto';
 
 /**
  * /v1/maps — 맵 CRUD. 모든 엔드포인트는 인증 필요.
@@ -63,5 +65,20 @@ export class MapsController {
   @HttpCode(204)
   remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.maps.remove(user.id, id);
+  }
+
+  // ── 전체 문서 스냅샷(클라우드 저장) ──────────────────────────
+  @Put(':id/document')
+  saveDocument(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaveDocumentDto,
+  ) {
+    return this.maps.saveDocument(user.id, id, dto.doc, dto.title);
+  }
+
+  @Get(':id/document')
+  getDocument(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.maps.getDocument(user.id, id);
   }
 }

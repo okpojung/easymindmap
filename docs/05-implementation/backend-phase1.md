@@ -83,12 +83,33 @@ Redis)은 뒤로 미루고 실제로 돌아가는 최소 단위**부터 세웠�
 맵 로드·수정·레이아웃·이동(depth 2·path 재작성)·순환 차단·autosave
 newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
 
+## Phase 4a — 프론트엔드 연결 (클라우드 문서 저장, 완료)
+
+프론트가 지금까지 인메모리(파일 내보내기/불러오기)뿐이던 것에, **서버에
+문서를 저장·복원**하는 첫 연결을 붙였다. 임베드 이미지가 이 제품의 핵심
+차별점이라 **손실 없는 전체 문서 스냅샷** 방식으로 저장한다.
+
+- **백엔드**: `map_documents(map_id PK, doc JSONB, updated_at)` 테이블 + RLS.
+  - `PUT /v1/maps/:id/document` — 문서 스냅샷 upsert(+title 갱신)
+  - `GET /v1/maps/:id/document` — 조회
+  - 임베드 이미지(data URL)로 커질 수 있어 JSON 바디 한도 **25mb**.
+- **프론트**: `services/cloud/apiClient.ts`(fetch 래퍼) + `stores/cloudStore.ts`
+  (현재 문서↔서버 맵 연결 정보 localStorage 영속) + TopToolbar **☁ 클라우드**
+  메뉴(저장 / 열기 목록 모달). 스냅샷 = `{ v, map, kanban }`, 열기 시
+  `documentStore.loadMap(doc.map)`.
+  - 인증은 현재 개발 모드(단일 개발 사용자). 실제 로그인은 Phase 3.
+- **정규화 노드 vs 스냅샷**: Phase 2의 정규화 노드/autosave 는 세밀 동기화·
+  협업용으로 유지하고, 첫 클라우드 저장은 **전체 스냅샷**(손실 0)으로 간다.
+
+검증: 백엔드 smoke(문서 저장·손실 없는 왕복·404) + **풀스택 E2E**
+(루트 편집→저장→새로고침 리셋→목록→열기→마커 복원, JS 오류 0).
+
 ## 다음 단계
 
 | Phase | 내용 |
 |---|---|
 | **3** | Supabase Auth(JWT 검증)로 인증 스텁 교체, RLS 실사용 |
-| **4** | 노드 부가정보(노트·태그·링크·첨부/사진 스토리지), 프론트엔드 연결(로그인·클라우드 저장) |
+| **4b** | 자동 저장(주기적 스냅샷/autosave 연동), 목록에서 삭제·이름변경, 사진 별도 스토리지 |
 | **5** | 배포(`deploy.yml`) — `ci-cd-github-actions.md` 순서대로 |
 
 관련: `backend-architecture.md`, `api-spec.md`, `../02-domain/schema.sql`,

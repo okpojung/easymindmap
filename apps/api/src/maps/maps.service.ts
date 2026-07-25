@@ -116,6 +116,41 @@ export class MapsService {
     };
   }
 
+  /** PUT /maps/:id/document — 전체 문서 스냅샷 저장(upsert). title 도 함께 갱신 가능 */
+  async saveDocument(userId: string, mapId: string, doc: unknown, title?: string) {
+    await this.requireOwnedMap(userId, mapId);
+    const { rows } = await this.db.query<{ updated_at: Date }>(
+      `INSERT INTO public.map_documents (map_id, doc)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (map_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = NOW()
+       RETURNING updated_at`,
+      [mapId, JSON.stringify(doc)],
+    );
+    if (title !== undefined) {
+      await this.db.query(
+        `UPDATE public.maps SET title = $2, updated_at = NOW() WHERE id = $1`,
+        [mapId, title],
+      );
+    }
+    return { mapId, updatedAt: rows[0].updated_at };
+  }
+
+  /** GET /maps/:id/document — 저장된 문서 스냅샷 조회 */
+  async getDocument(userId: string, mapId: string) {
+    const map = await this.requireOwnedMap(userId, mapId);
+    const { rows } = await this.db.query<{ doc: unknown; updated_at: Date }>(
+      `SELECT doc, updated_at FROM public.map_documents WHERE map_id = $1`,
+      [mapId],
+    );
+    if (!rows[0]) throw new NotFoundException('저장된 문서 스냅샷이 없습니다.');
+    return {
+      mapId: map.id,
+      title: map.title,
+      doc: rows[0].doc,
+      updatedAt: rows[0].updated_at,
+    };
+  }
+
   /** DELETE /maps/:id — 소프트 삭제(deleted_at) */
   async remove(userId: string, mapId: string): Promise<void> {
     const { rowCount } = await this.db.query(

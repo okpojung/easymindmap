@@ -92,6 +92,24 @@ const afterAv = (await req('GET', `/v1/maps/${mapId}`)).data;
 ok('autosave 반영(추가 노드 존재·child 텍스트 AS수정)',
    afterAv.nodes.some((n) => n.id === newId) && afterAv.nodes.find((n) => n.id === child.id)?.text === 'AS수정');
 
+// ═══ 문서 스냅샷(클라우드 저장) ════════════════════════════
+const doc = {
+  version: 1,
+  map: { id: 'root', text: '중심', children: [{ id: 'c', text: '자식', img: 'data:image/png;base64,AAAA' }] },
+};
+const saveDoc = await req('PUT', `/v1/maps/${mapId}/document`, { doc, title: '스냅샷 저장됨' });
+ok('문서 스냅샷 저장(200)', saveDoc.status === 200 && !!saveDoc.data.updatedAt, JSON.stringify(saveDoc.data));
+
+const getDoc = await req('GET', `/v1/maps/${mapId}/document`);
+ok('문서 스냅샷 조회(손실 없이 왕복)',
+   getDoc.status === 200 &&
+   getDoc.data.doc?.map?.children?.[0]?.img === 'data:image/png;base64,AAAA' &&
+   getDoc.data.title === '스냅샷 저장됨',
+   JSON.stringify(getDoc.data).slice(0, 120));
+
+const noDoc = await req('GET', `/v1/maps/11111111-1111-1111-1111-111111111111/document`);
+ok('없는 맵 문서 404', noDoc.status === 404, `status=${noDoc.status}`);
+
 // ═══ cascade 삭제 ══════════════════════════════════════════
 const delRoot = await req('DELETE', `/v1/nodes/${root.id}`);
 ok('root 삭제 204', delRoot.status === 204, `status=${delRoot.status}`);

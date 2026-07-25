@@ -4,6 +4,7 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { IconBtn } from './IconBtn';
 import { CollabAvatars } from './CollabAvatars';
+import { CloudMenu } from './CloudMenu';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
@@ -242,6 +243,10 @@ export function TopToolbar({
       >
         {themeName === 'dark' ? '☀' : '🌙'}
       </button>
+
+      {/* 클라우드 저장/열기 — 문서 전체 스냅샷을 서버에 저장(임베드 이미지
+          포함 손실 없이). 개발 모드에선 단일 개발 사용자로 저장된다. */}
+      <CloudMenu t={t} />
 
       {/* 내보내기 메뉴 — 하위 항목: HTML 파일 / MD 파일. 두 형식 모두
           맵 메타데이터를 내장해 '새 맵 > 불러오기'로 편집 가능하게

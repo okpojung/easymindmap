@@ -125,6 +125,7 @@
 |---|---|---|---|
 | smoke(api) | 백엔드 맵·노드·autosave·문서 | CI backend 잡에서 임시 Postgres로 매 PR 실행 — 맵 CRUD·노드 CRUD·ltree 이동·순환 차단·autosave(버전·멱등)·문서 스냅샷 손실 없는 왕복·소유권 격리·404 | backend-phase1 |
 | e2e-cloud | 클라우드 저장/열기(풀스택) | 프론트 ☁ 메뉴 → 루트 편집→저장(토스트)→새로고침 리셋→목록→열기→마커 복원(실제 백엔드+DB 왕복)·JS 오류 0 | backend-phase1 |
+| e2e-cloud2 | 클라우드 사용성(풀스택) | 자동 저장이 수동 저장 없이 서버 반영(디바운스)·목록 이름변경 반영·삭제 후 목록 비움·JS 오류 0 | backend-phase1 |
 
 ---
 

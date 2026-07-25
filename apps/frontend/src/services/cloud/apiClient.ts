@@ -46,6 +46,8 @@ export const cloudApi = {
   listMaps: () => req<{ maps: MapListItem[]; total: number }>('GET', '/maps'),
   createMap: (title: string) =>
     req<{ mapId: string; title: string }>('POST', '/maps', { title }),
+  renameMap: (mapId: string, title: string) =>
+    req<{ mapId: string; title: string }>('PATCH', `/maps/${mapId}`, { title }),
   saveDocument: (mapId: string, doc: unknown, title?: string) =>
     req<{ mapId: string; updatedAt: string }>('PUT', `/maps/${mapId}/document`, { doc, title }),
   getDocument: (mapId: string) =>

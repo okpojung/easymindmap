@@ -3,6 +3,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useCloudStore } from '@/stores/cloudStore';
+import { useAutosaveStore } from '@/stores/autosaveStore';
+import { useCloudAutosave, suppressCloudAutosave } from '@/hooks/useCloudAutosave';
 import { cloudApi, CloudError, type MapListItem } from '@/services/cloud/apiClient';
 
 // 클라우드 문서 스냅샷 포맷 — 프론트 문서(map)와 칸반 보드를 통째로 담는다.
@@ -24,6 +26,9 @@ export function CloudMenu({ t }: { t: ThemeTokens }) {
   const lastSavedAt = useCloudStore((s) => s.lastSavedAt);
   const busy = useCloudStore((s) => s.busy);
   const link = useCloudStore((s) => s.link);
+
+  // 문서가 클라우드에 연결돼 있으면 편집 후 자동 저장(디바운스)
+  useCloudAutosave();
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -57,6 +62,8 @@ export function CloudMenu({ t }: { t: ThemeTokens }) {
       }
       const res = await cloudApi.saveDocument(id, buildSnapshot(), title);
       link(id, res.updatedAt);
+      // 수동 저장은 맵을 바꾸지 않으므로 자동저장이 트리거되지 않는다(억제 불필요).
+      useAutosaveStore.getState().setSaveState('saved');
       flash('☁ 클라우드에 저장했습니다.');
     } catch (err) {
       const m = err instanceof CloudError ? err.message : '저장 중 오류가 발생했습니다.';
@@ -93,8 +100,10 @@ export function CloudMenu({ t }: { t: ThemeTokens }) {
       };
       const loadedMap = (snap as { map?: unknown }).map;
       if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
+      suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
       useDocumentStore.getState().loadMap(loadedMap as never);
       link(mapId, updatedAt);
+      useAutosaveStore.getState().setSaveState('saved');
       setListOpen(false);
       flash('☁ 클라우드에서 불러왔습니다.');
     } catch (err) {
@@ -102,6 +111,32 @@ export function CloudMenu({ t }: { t: ThemeTokens }) {
       flash('⚠ ' + m);
     } finally {
       useCloudStore.getState().setBusy('idle');
+    }
+  };
+
+  // ── 목록 항목: 이름변경 / 삭제 ──────────────────────────
+  const handleRename = async (m: MapListItem) => {
+    const next = window.prompt('새 이름', m.title || '');
+    if (next == null || next.trim() === '' || next.trim() === m.title) return;
+    try {
+      await cloudApi.renameMap(m.mapId, next.trim());
+      setMaps((list) => list.map((x) => (x.mapId === m.mapId ? { ...x, title: next.trim() } : x)));
+    } catch (err) {
+      flash('⚠ ' + (err instanceof CloudError ? err.message : '이름 변경 실패'));
+    }
+  };
+
+  const handleDelete = async (m: MapListItem) => {
+    if (!window.confirm(`“${m.title || '제목 없음'}” 맵을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    try {
+      await cloudApi.deleteMap(m.mapId);
+      setMaps((list) => list.filter((x) => x.mapId !== m.mapId));
+      if (useCloudStore.getState().cloudMapId === m.mapId) {
+        useCloudStore.getState().unlink();
+        useAutosaveStore.getState().setSaveState('saved');
+      }
+    } catch (err) {
+      flash('⚠ ' + (err instanceof CloudError ? err.message : '삭제 실패'));
     }
   };
 
@@ -156,7 +191,14 @@ export function CloudMenu({ t }: { t: ThemeTokens }) {
       )}
 
       {listOpen && (
-        <MapListModal t={t} maps={maps} onPick={handleOpen} onClose={() => setListOpen(false)} />
+        <MapListModal
+          t={t}
+          maps={maps}
+          onPick={handleOpen}
+          onRename={handleRename}
+          onDelete={handleDelete}
+          onClose={() => setListOpen(false)}
+        />
       )}
     </div>
   );
@@ -184,8 +226,15 @@ function MenuItem({
 }
 
 function MapListModal({
-  t, maps, onPick, onClose,
-}: { t: ThemeTokens; maps: MapListItem[]; onPick: (id: string) => void; onClose: () => void }) {
+  t, maps, onPick, onRename, onDelete, onClose,
+}: {
+  t: ThemeTokens;
+  maps: MapListItem[];
+  onPick: (id: string) => void;
+  onRename: (m: MapListItem) => void;
+  onDelete: (m: MapListItem) => void;
+  onClose: () => void;
+}) {
   return (
     <div
       onClick={onClose}
@@ -213,23 +262,44 @@ function MapListModal({
           </div>
         ) : (
           maps.map((m) => (
-            <button
+            <div
               key={m.mapId}
-              data-testid="cloud-list-item"
-              onClick={() => onPick(m.mapId)}
               style={{
-                display: 'flex', justifyContent: 'space-between', gap: 10, width: '100%',
-                textAlign: 'left', padding: '10px 12px', marginBottom: 6, borderRadius: 8,
-                background: t.surfaceAlt, color: t.text, border: `1px solid ${t.border}`, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6,
+                borderRadius: 8, background: t.surfaceAlt, border: `1px solid ${t.border}`,
+                padding: '4px 6px 4px 12px',
               }}
             >
-              <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {m.title || '(제목 없음)'}
-              </span>
-              <span style={{ color: t.textSubtle, fontSize: 11, flexShrink: 0 }}>
-                {new Date(m.updatedAt).toLocaleDateString()}
-              </span>
-            </button>
+              <button
+                data-testid="cloud-list-item"
+                onClick={() => onPick(m.mapId)}
+                title="이 맵 열기"
+                style={{
+                  flex: 1, display: 'flex', justifyContent: 'space-between', gap: 10,
+                  textAlign: 'left', background: 'transparent', border: 'none', color: t.text,
+                  cursor: 'pointer', padding: '6px 0', overflow: 'hidden',
+                }}
+              >
+                <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {m.title || '(제목 없음)'}
+                </span>
+                <span style={{ color: t.textSubtle, fontSize: 11, flexShrink: 0 }}>
+                  {new Date(m.updatedAt).toLocaleDateString()}
+                </span>
+              </button>
+              <button
+                data-testid="cloud-item-rename"
+                onClick={() => onRename(m)}
+                title="이름 변경"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: t.textSubtle, padding: 6, borderRadius: 6, fontSize: 14 }}
+              >✏</button>
+              <button
+                data-testid="cloud-item-delete"
+                onClick={() => onDelete(m)}
+                title="삭제"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#d9534f', padding: 6, borderRadius: 6, fontSize: 14 }}
+              >🗑</button>
+            </div>
           ))
         )}
       </div>

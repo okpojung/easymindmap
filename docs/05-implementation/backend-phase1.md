@@ -104,12 +104,27 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
 검증: 백엔드 smoke(문서 저장·손실 없는 왕복·404) + **풀스택 E2E**
 (루트 편집→저장→새로고침 리셋→목록→열기→마커 복원, JS 오류 0).
 
+### Phase 4b — 클라우드 사용성 (완료)
+
+- **자동 저장**(`hooks/useCloudAutosave.ts`): 문서가 서버 맵에 연결된
+  상태에서 편집이 멈추면 1.5s 디바운스 후 스냅샷을 자동 저장. 상태는
+  상단 툴바 배지(`useAutosaveStore`: dirty→saving→saved/error)로 표시.
+- **안전장치**: `cloudStore` 를 **세션 한정(비영속)** 으로 — cloudMapId 를
+  새로고침 후에도 유지하면 인메모리 기본 문서가 서버 맵을 덮어써 유실될
+  수 있어, 재접속은 명시적 "열기"로만. 열기(loadMap) 직후 1건은
+  자동저장에서 제외(방금 불러온 문서 되쓰기 방지).
+- **목록 관리**: 열기 모달의 각 맵에 **이름변경(✏, PATCH /maps/:id)**·
+  **삭제(🗑, DELETE /maps/:id)**. 연결된 맵 삭제 시 링크 해제.
+
+검증: 풀스택 E2E(e2e-cloud2) — 자동저장이 수동 저장 없이 서버에 반영·
+이름변경 반영·삭제 후 목록 비움·JS 오류 0.
+
 ## 다음 단계
 
 | Phase | 내용 |
 |---|---|
 | **3** | Supabase Auth(JWT 검증)로 인증 스텁 교체, RLS 실사용 |
-| **4b** | 자동 저장(주기적 스냅샷/autosave 연동), 목록에서 삭제·이름변경, 사진 별도 스토리지 |
+| **4c** | 사진 별도 스토리지(object storage), 스냅샷↔정규화 노드 동기(협업 준비) |
 | **5** | 배포(`deploy.yml`) — `ci-cd-github-actions.md` 순서대로 |
 
 관련: `backend-architecture.md`, `api-spec.md`, `../02-domain/schema.sql`,

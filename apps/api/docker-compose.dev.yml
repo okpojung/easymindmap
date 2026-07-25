@@ -1,0 +1,32 @@
+# 로컬 개발용 PostgreSQL 16 (ltree 포함).
+#   실행:   docker compose -f docker-compose.dev.yml up -d
+#   접속:   postgres://emm:emm@localhost:5432/easymindmap
+#   초기화: database/dev/*.sql 와 database/schema.sql 이 최초 1회 자동 로드
+#           (순서: 00-supabase-shim → 10-schema → 20-functions → 30-seed)
+# ⚠️ 이 구성은 "순정 Postgres" 개발용이다. 실제 Supabase Self-hosted 는
+#    별도(docker-compose-spec.md 참조). shim 은 로컬 편의를 위한 것.
+services:
+  db:
+    image: postgres:16
+    container_name: emm-dev-db
+    environment:
+      POSTGRES_USER: emm
+      POSTGRES_PASSWORD: emm
+      POSTGRES_DB: easymindmap
+    ports:
+      - '5432:5432'
+    volumes:
+      - emm_dev_pg:/var/lib/postgresql/data
+      # 최초 기동 시 알파벳 순으로 실행됨
+      - ./database/dev/00-supabase-shim.sql:/docker-entrypoint-initdb.d/00-supabase-shim.sql:ro
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+      - ./database/functions/move_node_subtree.sql:/docker-entrypoint-initdb.d/20-move-node.sql:ro
+      - ./database/dev/01-seed-dev-user.sql:/docker-entrypoint-initdb.d/30-seed.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U emm -d easymindmap']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  emm_dev_pg:

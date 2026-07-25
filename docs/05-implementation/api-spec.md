@@ -36,7 +36,7 @@
 ## Base URL
 
 ```
-https://api.mindmap.ai.kr/v1
+https://api.example.com/v1
 ```
 
 ---
@@ -577,7 +577,7 @@ Export 작업 상태 조회
 {
   "type": "preset",
   "assetId": "preset_img_102",
-  "url": "https://cdn.mindmap.ai.kr/assets/preset/102.png",
+  "url": "https://cdn.example.com/assets/preset/102.png",
   "fit": "cover",
   "position": "center",
   "overlayOpacity": 0.28,
@@ -590,7 +590,7 @@ Export 작업 상태 조회
 {
   "type": "upload",
   "fileId": "file_abc123",
-  "url": "https://storage.mindmap.ai.kr/uploads/node/bg.png",
+  "url": "https://storage.example.com/uploads/node/bg.png",
   "fit": "cover",
   "position": "center",
   "overlayOpacity": 0.2,
@@ -605,7 +605,7 @@ Export 작업 상태 조회
   "backgroundImage": {
     "type": "upload",
     "fileId": "file_abc123",
-    "url": "https://storage.mindmap.ai.kr/uploads/node/bg.png",
+    "url": "https://storage.example.com/uploads/node/bg.png",
     "fit": "cover",
     "position": "center",
     "overlayOpacity": 0.2,
@@ -639,7 +639,7 @@ file: (binary)
 ```json
 {
   "fileId": "file_abc123",
-  "url": "https://storage.mindmap.ai.kr/uploads/nodes/{nodeId}/bg.png",
+  "url": "https://storage.example.com/uploads/nodes/{nodeId}/bg.png",
   "width": 1280,
   "height": 720,
   "mimeType": "image/png",
@@ -661,8 +661,8 @@ file: (binary)
     {
       "assetId": "preset_img_101",
       "name": "Blue Sky",
-      "thumbnailUrl": "https://cdn.mindmap.ai.kr/assets/preset/101_thumb.png",
-      "url": "https://cdn.mindmap.ai.kr/assets/preset/101.png"
+      "thumbnailUrl": "https://cdn.example.com/assets/preset/101_thumb.png",
+      "url": "https://cdn.example.com/assets/preset/101.png"
     }
   ]
 }
@@ -894,7 +894,7 @@ Indicator = 노드 하단에 표시되는 요약 배지 (메모/링크/첨부/�
       "filename": "report.pdf",
       "mimeType": "application/pdf",
       "fileSizeBytes": 1048576,
-      "url": "https://storage.mindmap.ai.kr/attachments/..."
+      "url": "https://storage.example.com/attachments/..."
     }
   ]
 }
@@ -930,7 +930,7 @@ file: (binary)
 ```json
 {
   "publishId": "abcd1234efgh5678",
-  "publishUrl": "https://app.mindmap.ai.kr/published/abcd1234efgh5678",
+  "publishUrl": "https://app.example.com/published/abcd1234efgh5678",
   "publishedAt": "2026-03-29T00:00:00Z"
 }
 ```
@@ -1397,7 +1397,7 @@ step 상태 변경
 
 ## 13. Collaboration — 협업맵
 
-> **Base URL**: `https://api.mindmap.ai.kr/v1`  
+> **Base URL**: `https://api.example.com/v1`  
 > **인증**: 모든 엔드포인트 `Authorization: Bearer {accessToken}` 필수  
 > 전체 WS 이벤트 및 상세 정책: 본 문서 §13 Collaboration / `docs/04-extensions/collaboration/25-map-collaboration.md`
 
@@ -1563,7 +1563,7 @@ POST /invite/accept
   "role": "editor",
   "scope_type": "level",
   "scope_level": 3,
-  "redirect_url": "https://mindmap.ai.kr/maps/map-uuid"
+  "redirect_url": "https://example.com/maps/map-uuid"
 }
 ```
 

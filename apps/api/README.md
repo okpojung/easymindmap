@@ -44,45 +44,80 @@ apps/api/
 
 ---
 
-## 개발 환경 실행
+## 개발 환경 실행 (Phase 1 — 걷는 뼈대)
+
+현재 단계는 **NestJS + 순정 PostgreSQL**로 실행되는 걷는 뼈대다.
+인증은 개발 스텁(`AUTH_MODE=dev`), 맵 CRUD가 동작한다. Supabase Auth/
+Storage·Redis 는 다음 단계에서 얹는다.
 
 ```bash
 # 1. 의존성 설치
 npm install
 
-# 2. Supabase 로컬 실행 (개발용)
-npx supabase start
-# API: http://localhost:54321
-# Studio: http://localhost:54323
+# 2. 개발용 DB 기동 (Postgres 16 + ltree, ltree shim·schema 자동 로드)
+docker compose -f docker-compose.dev.yml up -d
+#   접속: postgres://emm:emm@localhost:5432/easymindmap
+#   (도커가 없으면 로컬 postgres 에 database/dev/*.sql 와 schema.sql 을
+#    순서대로 psql 로 직접 로드해도 된다)
 
-# 3. DB 초기화
-npx supabase db push
-# 또는 직접 실행:
-# psql $DATABASE_URL -f database/schema.sql
-# psql $DATABASE_URL -f database/functions/move_node_subtree.sql
+# 3. 환경변수
+cp .env.example .env      # 기본값이면 그대로 사용 가능
 
 # 4. 개발 서버 시작 (hot reload)
 npm run start:dev
+#   → http://localhost:3000/v1
+
+# 5. (선택) 스모크 테스트 — 맵 CRUD 왕복
+npm run smoke             # 기본 API_URL=http://localhost:3000
 ```
+
+> **DB 초기화 순서**(docker-compose.dev.yml 이 자동 처리):
+> `dev/00-supabase-shim.sql` → `schema.sql` → `functions/move_node_subtree.sql`
+> → `dev/01-seed-dev-user.sql`.
+> shim 은 순정 Postgres에서 Supabase 전용 객체(`auth.users`·`auth.uid()`·
+> realtime 퍼블리케이션)를 흉내 내 실제 `schema.sql` 을 그대로 로드하기 위한
+> **로컬 전용** 파일이다. 실제 Supabase Self-hosted 배포에는 쓰지 않는다.
+
+### 엔드포인트 (Phase 1)
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| GET | `/v1/health` | 헬스체크(DB 연결 포함) |
+| POST | `/v1/maps` | 맵 생성 |
+| GET | `/v1/maps` | 내 맵 목록(`?deleted=&page=&limit=`) |
+| GET | `/v1/maps/:id` | 맵 단건(+노드, 현재 빈 배열) |
+| PATCH | `/v1/maps/:id` | 메타 수정(title·viewMode·refreshIntervalSeconds·layout) |
+| DELETE | `/v1/maps/:id` | 소프트 삭제(204) |
 
 ---
 
 ## 환경변수
 
-```bash
-SUPABASE_URL=https://supabase.mindmap.ai.kr
-SUPABASE_SERVICE_ROLE_KEY=eyJ...   # 서버 전용, 절대 클라이언트 노출 금지
+**Phase 1 (현재) — 전체 예시는 `.env.example`:**
 
-REDIS_HOST=VM-04-IP
+```bash
+PORT=3000
+CORS_ORIGIN=http://localhost:5173
+DATABASE_URL=postgres://emm:emm@localhost:5432/easymindmap
+AUTH_MODE=dev                        # dev | supabase(다음 단계)
+DEV_USER_ID=00000000-0000-0000-0000-000000000001
+```
+
+**다음 단계에서 추가 (Supabase/Redis/AI):**
+
+```bash
+SUPABASE_URL=https://supabase.example.com
+SUPABASE_SERVICE_ROLE_KEY=eyJ...   # 서버 전용, 절대 클라이언트 노출 금지
+REDIS_HOST=<redis-host>
 REDIS_PORT=6379
 REDIS_PASSWORD=...
-
 AI_PROVIDER=openai
 AI_API_KEY=...
 AI_MODEL_GENERATE=gpt-4o
 ```
 
-전체 환경변수: `docs/05-implementation/env-spec.md` 참조
+전체 환경변수: `docs/05-implementation/env-spec.md` 참조.
+⚠️ 실제 값은 `.env`(gitignore)와 배포 Secrets 에만 둔다.
 
 ---
 

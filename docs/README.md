@@ -83,6 +83,7 @@ docs/
 │
 ├─ 05-implementation/     👈 API / 개발 규약 / 작업 계획
 │  ├─ api-spec.md
+│  ├─ backend-phase1.md                   ← 백엔드 걷는 뼈대(맵 저장) 구현 노트
 │  ├─ codex-task-plan.md
 │  ├─ coding-conventions.md
 │  ├─ env-spec.md
@@ -155,6 +156,7 @@ docs/
 | `docs/04-extensions/markdown-export.md` | MD ↔ 맵 변환 규칙 명세 (EMM 구현 규칙서) |
 | `docs/04-extensions/import-export/22-map-file-meta.md` | 맵 파일 메타데이터 왕복 (easymindmap:v1) |
 | `docs/05-implementation/api-spec.md` | API 명세 |
+| `docs/05-implementation/backend-phase1.md` | 백엔드 Phase 1(걷는 뼈대·맵 저장) 구현·검증·로드맵 |
 | `docs/05-implementation/codex-task-plan.md` | 개발 작업 계획 |
 | `docs/05-implementation/coding-conventions.md` | 코딩 컨벤션 |
 | `docs/05-implementation/env-spec.md` | 환경변수 명세 |

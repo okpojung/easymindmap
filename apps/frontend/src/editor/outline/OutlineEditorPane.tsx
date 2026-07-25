@@ -158,6 +158,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   const hasChildren = !!node.children && node.children.length > 0;
 
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
+  const setSearchHitId = useInteractionStore((s) => s.setSearchHitId);
   const map = useDocumentStore((s) => s.map);
   const updateNodeText = useDocumentStore((s) => s.updateNodeText);
   const moveNodeRelative = useDocumentStore((s) => s.moveNodeRelative);
@@ -297,7 +298,11 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
         tabIndex={0}
         onClick={() => {
           setSelectedId(node.id);
-          // 맵에서도 해당 노드를 화면 중앙에 보여준다 — 배율은 그대로
+          // 맵에서도 검색 선택처럼 노란 채움 + 붉은 테두리로 또렷하게
+          // 강조한다 (다크 모드도 같은 고정색). 아웃라인만 선택하면
+          // 맵에서 어느 노드인지 시인성이 떨어지던 문제 해소.
+          setSearchHitId(node.id);
+          // 그리고 해당 노드를 화면 중앙에 보여준다 — 배율은 그대로
           // 유지(검색 이동과 달리 100% 강제 없음). 맵 쪽에서 접힌
           // 조상 아래에 있으면 펼쳐서 보이게 한다.
           useDocumentStore.getState().expandAncestors(node.id);

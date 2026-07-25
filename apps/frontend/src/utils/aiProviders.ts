@@ -136,16 +136,25 @@ async function readError(res: Response): Promise<string> {
 
 // 프롬프트를 보내고 답변 텍스트를 받는다. 실패 시 사람이 읽을 수 있는
 // 메시지의 Error를 던진다.
+// opts.cacheSystem: 시스템 프롬프트가 프로젝트 안에서 반복 재사용되는
+//   고정 접두사일 때 켠다 — Anthropic은 cache_control로 명시 캐싱해
+//   두 번째 호출부터 그 부분 입력 요금을 ~90% 절감(OpenAI·Gemini는
+//   자동 캐싱이라 별도 처리 불필요). (ai-project-workspace.md §4)
 export async function generateWithAi(
   provider: AiProvider,
   apiKey: string,
   model: string,
   system: string,
   user: string,
+  opts?: { cacheSystem?: boolean },
 ): Promise<string> {
   if (!apiKey.trim()) throw new Error('API 키가 등록되지 않았습니다 — AI 설정에서 등록하세요');
 
   if (provider === 'anthropic') {
+    // 캐싱 켜짐 = system을 블록 배열로 보내고 마지막에 cache_control 마킹
+    const systemField: unknown = opts?.cacheSystem
+      ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+      : system;
     // max_tokens를 넉넉히 요청한다 — 예전 8192는 "웹 채팅과 같은 상세함"
     // 답변(수만 토큰)이 물리적으로 잘리는 상한이었다 (2026-07). 모델이
     // 지원하는 상한을 넘으면 400이 오므로 절반씩 줄여 재시도한다.
@@ -162,7 +171,7 @@ export async function generateWithAi(
         body: JSON.stringify({
           model,
           max_tokens: maxTokens,
-          system,
+          system: systemField,
           messages: [{ role: 'user', content: user }],
         }),
       });

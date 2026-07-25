@@ -65,6 +65,8 @@ interface DocumentState {
   // Structure
   addChildNode: (parentId: string | null) => string;
   addChildNodesBulk: (parentId: string | null, texts: string[]) => void;
+  // AI 노드 확장 — 파싱된 하위 트리(children)를 선택 노드 아래에 붙인다.
+  appendChildren: (nodeId: string | null, children: MindNode[]) => void;
   addSiblingNode: (nodeId: string | null, position?: 'before' | 'after') => string;
   addParentNode: (nodeId: string | null) => string;
   deleteNode: (nodeId: string | null) => void;
@@ -533,6 +535,42 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         children: [...(p.children ?? []), ...newChildren],
       })) as SampleBranch[];
 
+      return { map: { ...map, branches } };
+    });
+  },
+
+  appendChildren: (nodeId, children) => {
+    if (!children.length) return;
+    set((state) => {
+      const map = state.map;
+      const pid = !nodeId || nodeId === 'root' ? 'root' : nodeId;
+
+      // 루트 아래 → 각 최상위 노드를 브랜치로 (색 순환)
+      if (pid === 'root') {
+        let branches = map.branches as MindNode[];
+        children.forEach((c) => {
+          branches = [
+            ...branches,
+            makeBranch({ ...c, style: c.style ?? inheritStyle(map.root.style, 1) }, branches.length),
+          ];
+        });
+        return { map: { ...map, branches: branches as SampleBranch[] } };
+      }
+
+      const parent = findNode(map.branches, pid);
+      if (!parent) return {};
+      const parentDepth = getNodeDepth(map, pid);
+      // 삽입되는 최상위 자식은 부모 색/스타일을 상속(하위는 파싱값 유지)
+      const prepared = children.map((c) => ({
+        ...c,
+        colorKey: c.colorKey ?? inheritColorKey(parent),
+        style: c.style ?? inheritStyle(parent.style, parentDepth + 1),
+      }));
+      const branches = updateNodeById(map.branches, pid, (p) => ({
+        ...p,
+        collapsed: undefined, // 새 자식이 보이도록 펼침
+        children: [...(p.children ?? []), ...prepared],
+      })) as SampleBranch[];
       return { map: { ...map, branches } };
     });
   },

@@ -15,9 +15,10 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { InspectorSection } from './InspectorSection';
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
-import { useDocumentStore } from '@/stores/documentStore';
+import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
+import { buildExpandContext, reassignIds } from '@/utils/aiProjectContext';
 import {
   DEFAULT_MODELS,
   KEY_HELP,
@@ -84,14 +85,20 @@ function GenerateView({ t }: { t: ThemeTokens }) {
   const pushHistory = useAiSettingsStore((s) => s.pushHistory);
 
   const loadMap = useDocumentStore((s) => s.loadMap);
+  const map = useDocumentStore((s) => s.map);
+  const appendChildren = useDocumentStore((s) => s.appendChildren);
   const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
   const resetSpacing = useEditorUiStore((s) => s.resetSpacing);
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
+  const selectedId = useInteractionStore((s) => s.selectedId);
 
   const [prompt, setPrompt] = useState('');
   const [genType, setGenType] = useState('basic');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [expandBusy, setExpandBusy] = useState(false);
+
+  const selectedNode = findNodeInMap(map, selectedId);
 
   // '자동'은 우선순위 순서에서 키가 등록된 첫 회사로 해석
   const effective = resolveProvider(provider, priority, keys);
@@ -133,6 +140,50 @@ function GenerateView({ t }: { t: ThemeTokens }) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  // 선택 노드 확장 — (루트 프로젝트 지침 + 프로젝트 소스 + 직계 조상
+  // 경로 + 이 노드)를 캐싱 호출해 답변을 이 노드의 하위로 붙인다.
+  // (ai-project-workspace.md MVP). AI/사용자가 만든 노드 무관.
+  const runExpand = async () => {
+    if (!selectedId || !selectedNode || expandBusy) return;
+    setError('');
+    setExpandBusy(true);
+    try {
+      const ctx = buildExpandContext(map, selectedId, systemPrompt);
+      if (!ctx) throw new Error('선택한 노드를 찾지 못했습니다');
+      const md = await generateWithAi(
+        effective, keys[effective],
+        models[effective] || DEFAULT_MODELS[effective],
+        ctx.system, ctx.user, { cacheSystem: true },
+      );
+      // 확장 답변은 ## 하위 구조만 온다 — 혹시 온 # 줄은 제거하고,
+      // 타깃 제목으로 감싼 뒤 파싱해 그 자식(branches)을 꺼낸다.
+      const body = md.trim().replace(/^\s*#\s[^\n]*\n+/, '');
+      const wrapped = `# ${ctx.targetText}\n\n${body}`;
+      const parsed = parseEmm(wrapped, '확장');
+      const kids = parsed ? reassignIds(parsed.branches as never) : [];
+      if (!kids.length) {
+        throw new Error('확장 결과에서 하위 구조를 인식하지 못했습니다 — 다시 시도해 보세요');
+      }
+      const ok = window.confirm(
+        `'${ctx.targetText}' 아래에 AI가 만든 세부 ${kids.length}개 항목을 추가할까요?\n` +
+        '(실행 취소 Ctrl+Z 로 되돌릴 수 있습니다)',
+      );
+      if (!ok) return;
+      appendChildren(selectedId, kids as never);
+      setSelectedId(selectedId);
+      pushHistory({
+        prompt: `[확장] ${ctx.targetText}`,
+        at: new Date().toISOString(),
+        nodes: kids.length,
+        provider: effective,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExpandBusy(false);
     }
   };
 
@@ -219,6 +270,43 @@ function GenerateView({ t }: { t: ThemeTokens }) {
           }}>
           <I.Sparkles size={14} />
           {busy ? 'AI 답변을 기다리는 중…' : hasKey ? 'AI로 맵 생성' : 'API 키를 등록하세요 (AI 설정)'}
+        </button>
+      </InspectorSection>
+
+      <InspectorSection t={t} title="선택 노드 자세히 확장">
+        <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5, marginBottom: 6 }}>
+          맵에서 노드를 고르고 누르면, <b>중심 주제(프로젝트 지침) + 상위
+          경로 + 이 노드</b>를 AI에게 보내 <b>세부 내용을 하위 노드로</b>
+          채웁니다. AI가 만든 노드든 직접 만든 노드든 상관없습니다.
+        </div>
+        <div data-ai-expand-target style={{
+          fontSize: 11.5, padding: '6px 9px', borderRadius: 6, marginBottom: 6,
+          background: t.surfaceAlt, border: `1px solid ${t.border}`,
+          color: selectedNode ? t.text : t.textSubtle,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {selectedNode
+            ? `대상: ${selectedNode.text || '(빈 노드)'}`
+            : '맵에서 확장할 노드를 선택하세요'}
+        </div>
+        <button
+          onClick={runExpand}
+          disabled={expandBusy || !selectedNode || !hasKey}
+          data-ai-expand
+          title={!hasKey ? 'AI 설정에서 API 키를 먼저 등록하세요'
+            : !selectedNode ? '맵에서 노드를 선택하세요'
+              : '선택 노드를 AI로 상세 확장 (하위 노드 추가)'}
+          style={{
+            width: '100%', padding: 9,
+            background: expandBusy || !selectedNode || !hasKey ? t.surfaceAlt : t.primarySoft,
+            color: expandBusy || !selectedNode || !hasKey ? t.textSubtle : t.primary,
+            border: `1px solid ${expandBusy || !selectedNode || !hasKey ? t.border : t.primaryBorder + '40'}`,
+            borderRadius: 7, fontSize: 12.5, fontWeight: 700,
+            cursor: expandBusy || !selectedNode || !hasKey ? 'default' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+          <I.Sparkles size={13} />
+          {expandBusy ? 'AI가 확장 중…' : '선택 노드 자세히 확장'}
         </button>
       </InspectorSection>
 

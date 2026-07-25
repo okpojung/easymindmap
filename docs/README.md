@@ -84,7 +84,8 @@ docs/
 │  ├─ codex-task-plan.md
 │  ├─ coding-conventions.md
 │  ├─ env-spec.md
-│  └─ state-management.md
+│  ├─ state-management.md
+│  └─ test-catalog.md                     ← MVS E2E 테스트 카탈로그(회귀 목록)
 │
 ├─ 90-architecture/       👈 시스템·인프라 아키텍처 문서
 │  ├─ backend-architecture.md
@@ -148,6 +149,7 @@ docs/
 | `docs/05-implementation/coding-conventions.md` | 코딩 컨벤션 |
 | `docs/05-implementation/env-spec.md` | 환경변수 명세 |
 | `docs/05-implementation/state-management.md` | 상태관리 설계 (Zustand 스토어 구조) |
+| `docs/05-implementation/test-catalog.md` | MVS E2E 테스트 카탈로그 — 영역별 검증 항목·회귀 실행 가이드 |
 | `docs/90-architecture/backend-architecture.md` | 백엔드 아키텍처 |
 | `docs/90-architecture/docker-compose-spec.md` | Docker Compose 명세 |
 | `docs/90-architecture/frontend-architecture.md` | 프론트엔드 아키텍처 |

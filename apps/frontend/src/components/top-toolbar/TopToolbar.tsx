@@ -28,6 +28,9 @@ export function TopToolbar({
   const map = useDocumentStore((s) => s.map);
   const layoutType = useEditorUiStore((s) => s.layoutType);
   const themeName = useEditorUiStore((s) => s.themeName);
+  const mainView = useEditorUiStore((s) => s.mainView);
+  const outlineSplit = useEditorUiStore((s) => s.outlineSplit);
+  const toggleMainView = useEditorUiStore((s) => s.toggleMainView);
   const setInspectorTab = useEditorUiStore((s) => s.setInspectorTab);
   const setThemeName = useEditorUiStore((s) => s.setThemeName);
   const spacingX = useEditorUiStore((s) => s.spacingX);
@@ -199,6 +202,28 @@ export function TopToolbar({
         }}
       >
         <I.Share size={15} /> 공유
+      </button>
+
+      {/* 아웃라인 모드 / 맵 모드 전환 — 다크 토글과 같은 방식. 편집
+          영역 전체를 아웃라인 전용/맵 전용으로 바꾼다. 분할 보기가
+          켜져 있으면 비활성(분할이 이미 아웃라인+맵이므로). */}
+      <button
+        title={outlineSplit
+          ? '분할 보기 중에는 사용할 수 없습니다 (분할 닫은 뒤 전환)'
+          : mainView === 'outline' ? '맵 모드로 전환' : '아웃라인 모드로 전환 (편집 영역 전체)'}
+        data-testid="mainview-toggle"
+        disabled={outlineSplit}
+        onClick={() => !outlineSplit && toggleMainView()}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 34, height: 32, borderRadius: 8,
+          background: mainView === 'outline' && !outlineSplit ? t.primarySoft : t.surfaceAlt,
+          color: outlineSplit ? t.textSubtle : (mainView === 'outline' ? t.primary : t.text),
+          border: `1px solid ${outlineSplit ? t.border : (mainView === 'outline' ? t.primaryBorder + '55' : t.border)}`,
+          cursor: outlineSplit ? 'default' : 'pointer', fontSize: 15,
+        }}
+      >
+        {mainView === 'outline' && !outlineSplit ? '🗺' : '☰'}
       </button>
 
       {/* 다크 모드 토글 — 라이트/다크 테마 전환 (브라우저에 저장) */}

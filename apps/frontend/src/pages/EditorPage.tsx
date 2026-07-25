@@ -124,6 +124,10 @@ export function EditorPage() {
   const toggleOutlineSplit = useEditorUiStore((s) => s.toggleOutlineSplit);
   const outlineSplitRatio = useEditorUiStore((s) => s.outlineSplitRatio);
   const setOutlineSplitRatio = useEditorUiStore((s) => s.setOutlineSplitRatio);
+  const mainView = useEditorUiStore((s) => s.mainView);
+  const setMainView = useEditorUiStore((s) => s.setMainView);
+  // 아웃라인 전체 모드 = 분할이 아니고 mainView가 'outline'일 때
+  const fullOutline = !outlineSplit && mainView === 'outline';
   const tweaksOpen = useEditorUiStore((s) => s.tweaksOpen);
   const setTweaksOpen = useEditorUiStore((s) => s.setTweaksOpen);
   const sampleTopic = useEditorUiStore((s) => s.sampleTopic);
@@ -263,7 +267,18 @@ export function EditorPage() {
                 />
               </>
             )}
-            {layoutType === 'kanban' ? (
+            {fullOutline ? (
+              // 아웃라인 전체 모드 — 편집 영역을 아웃라인 하나로 채운다.
+              // ✕(또는 상단 토글)로 맵 모드로 돌아간다.
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <OutlineEditorPane
+                  t={t}
+                  outline={outline}
+                  onClose={() => setMainView('map')}
+                  closeTitle="맵 모드로 전환"
+                />
+              </div>
+            ) : layoutType === 'kanban' ? (
               <KanbanBoard
                 t={t}
                 kanban={kanbanFromMap}

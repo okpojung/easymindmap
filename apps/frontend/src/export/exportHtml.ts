@@ -833,6 +833,7 @@ const VIEWER_JS = String.raw`
     drawNode(start, sd, scol);
     world.appendChild(chipLayer); // 접힘 칩을 마지막에 올려 항상 위에
     updateCount();
+    syncOutline(); // 아웃라인 페인이 보이면 함께 갱신 (function 선언 호이스팅)
   }
 
   function drawNode(node, depth, parentColor) {
@@ -1872,8 +1873,119 @@ const VIEWER_JS = String.raw`
     setAll(DATA.root, true); DATA.root.collapsed = false; DYN = true; render(); fit();
   });
 
+  // ── 아웃라인 페인 (읽기 전용 네비게이션) — 에디터의 아웃라인과 짝 ──
+  //   분할 보기(mm-outline-split): 좌 아웃라인 + 우 맵
+  //   전체 모드(mm-outline-full): 화면 전체 아웃라인 (맵 숨김)
+  //   행 클릭 = 그 노드를 맵에서 중앙+강조(검색 이동과 동일). 캐럿 =
+  //   접기/펴기. 노트 배지 클릭 = 노트 팝업.
+  var olBody = document.getElementById('mm-outline-body');
+  var NOTE_BADGE = { paragraph: { c: '#6B7280', t: 'T' }, code_block: { c: '#D97706', t: 'C' },
+    table: { c: '#0EA5E9', t: '⊞' }, checklist: { c: '#16A34A', t: '✓' } };
+  function outlineVisible() {
+    return document.body.classList.contains('mm-outline-split') ||
+      document.body.classList.contains('mm-outline-full');
+  }
+  function focusNodeFromOutline(id) {
+    // 검색 이동과 동일: 강조 + 접힌 조상 펼침 + 중앙(맵이 보일 때만 이동)
+    SEARCHHIT = id;
+    if (FOCUS) { FOCUS = null; setCenterIcon(false); }
+    expandTo(id);
+    render();
+    if (!document.body.classList.contains('mm-outline-full')) {
+      var found = null;
+      (function walk(n) {
+        if (n.id === id) { found = n; return; }
+        var kids = n.children || [];
+        for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
+      })(DATA.root);
+      if (found && found._cx != null) {
+        var rect = svg.getBoundingClientRect();
+        view.k = 1;
+        view.x = rect.width / 2 - found._cx;
+        view.y = rect.height / 2 - found._cy;
+        applyView();
+      }
+    }
+  }
+  function buildOutline() {
+    olBody.textContent = '';
+    (function walk(node, depth) {
+      var row = el2('div', 'mm-ol-row' + (depth === 0 ? ' root' : '') +
+        (SEARCHHIT === node.id ? ' on' : ''));
+      row.setAttribute('data-oid', node.id);
+      row.style.paddingLeft = (6 + depth * 16) + 'px';
+      var kids = node.children || [];
+      // 캐럿(접기) 또는 점
+      if (kids.length) {
+        var car = el2('span', 'mm-ol-caret');
+        car.textContent = node.collapsed ? '▸' : '▾';
+        car.addEventListener('click', function (e) {
+          e.stopPropagation();
+          node.collapsed = !node.collapsed; DYN = true; render();
+        });
+        row.appendChild(car);
+      } else {
+        var dot = el2('span', 'mm-ol-caret mm-ol-dot'); dot.textContent = '·';
+        row.appendChild(dot);
+      }
+      var txt = el2('span', 'mm-ol-txt'); txt.textContent = node.text || '';
+      row.appendChild(txt);
+      // 노트 배지
+      var notes = node.notes || [];
+      var kinds = {};
+      for (var n2 = 0; n2 < notes.length; n2++) {
+        var tp = noteType(notes[n2]); if (!kinds[tp]) kinds[tp] = true;
+      }
+      Object.keys(kinds).forEach(function (k) {
+        var meta = NOTE_BADGE[k] || NOTE_BADGE.paragraph;
+        var b = el2('span', 'mm-ol-badge'); b.style.background = meta.c;
+        b.textContent = meta.t; b.title = '노트 보기';
+        b.addEventListener('click', function (e) { e.stopPropagation(); showDetail(node, 'notes'); });
+        row.appendChild(b);
+      });
+      row.addEventListener('click', function () { focusNodeFromOutline(node.id); });
+      olBody.appendChild(row);
+      if (!node.collapsed) for (var i = 0; i < kids.length; i++) walk(kids[i], depth + 1);
+    })(DATA.root, 0);
+  }
+  function el2(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
+  // render()가 끝날 때마다 호출됨 (호이스팅) — 보일 때만 재구축
+  function syncOutline() { if (outlineVisible()) buildOutline(); }
+
+  // 헤더 토글 — 분할 / 전체(아웃라인·맵)
+  var olSplitBtn = document.getElementById('mm-outline-split');
+  var viewToggleBtn = document.getElementById('mm-view-toggle');
+  function syncViewToggle() {
+    var split = document.body.classList.contains('mm-outline-split');
+    var full = document.body.classList.contains('mm-outline-full');
+    olSplitBtn.className = split ? 'icon active' : 'icon';
+    olSplitBtn.setAttribute('title', split ? '분할 보기 닫기' : '아웃라인 분할 보기');
+    // 분할 중에는 전체 토글 비활성 (에디터와 동일 규칙)
+    viewToggleBtn.disabled = split;
+    viewToggleBtn.style.opacity = split ? '0.4' : '1';
+    viewToggleBtn.style.cursor = split ? 'default' : 'pointer';
+    viewToggleBtn.textContent = full ? '🗺' : '☰';
+    viewToggleBtn.className = full ? 'icon active' : 'icon';
+    viewToggleBtn.setAttribute('title', split
+      ? '분할 보기 중에는 사용할 수 없습니다 (분할 닫은 뒤 전환)'
+      : (full ? '맵 모드로 전환' : '아웃라인 모드로 전환 (화면 전체)'));
+  }
+  olSplitBtn.addEventListener('click', function () {
+    var on = document.body.classList.toggle('mm-outline-split');
+    if (on) document.body.classList.remove('mm-outline-full');
+    syncViewToggle();
+    if (outlineVisible()) buildOutline();
+  });
+  viewToggleBtn.addEventListener('click', function () {
+    if (document.body.classList.contains('mm-outline-split')) return; // 비활성
+    document.body.classList.toggle('mm-outline-full');
+    syncViewToggle();
+    if (outlineVisible()) buildOutline();
+  });
+
   render();
   fit();
+  syncViewToggle();
 })();
 `;
 
@@ -1899,11 +2011,47 @@ const VIEWER_CSS = `
     cursor: pointer;
   }
   header button:hover { background: #F3ECDD; }
+  #mm-main { flex: 1; min-height: 0; display: flex; }
   #mm-svg {
-    flex: 1; width: 100%; height: 100%; cursor: default; touch-action: none;
+    flex: 1; min-width: 0; height: 100%; cursor: default; touch-action: none;
     background: radial-gradient(circle, #E4D9C377 1px, transparent 1px) 0 0 / 24px 24px;
   }
   body.mm-panmode #mm-svg { cursor: grab; }
+  /* 아웃라인 페인 — 기본 숨김. 분할(mm-outline-split) 또는 전체
+     (mm-outline-full) 모드에서만 표시. 읽기 전용 네비게이션 리스트. */
+  #mm-outline {
+    display: none; overflow: auto; flex-shrink: 0;
+    background: #FFFDF8; border-right: 1px solid #E4D9C3;
+    padding: 8px 6px 20px;
+  }
+  body.mm-outline-split #mm-outline { display: block; width: 40%; min-width: 240px; max-width: 620px; }
+  body.mm-outline-full  #mm-outline { display: block; width: 100%; border-right: none; }
+  body.mm-outline-full  #mm-svg { display: none; }
+  body.mm-outline-full  #mm-zoombar { display: none; }
+  .mm-ol-row {
+    display: flex; align-items: flex-start; gap: 4px; padding: 4px 6px;
+    border-radius: 6px; cursor: pointer; font-size: 13px; line-height: 1.4;
+    color: #3F3428;
+  }
+  .mm-ol-row:hover { background: #F3ECDD; }
+  .mm-ol-row.on { background: #FDF0D5; }
+  .mm-ol-row.root { font-weight: 700; }
+  .mm-ol-caret {
+    width: 15px; flex-shrink: 0; color: #958A78; text-align: center;
+    user-select: none;
+  }
+  .mm-ol-dot { color: #B8A888; flex-shrink: 0; }
+  .mm-ol-txt { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+  .mm-ol-badge {
+    flex-shrink: 0; font-size: 9px; font-weight: 800; color: #FFF;
+    border-radius: 3.5px; padding: 1px 4px; margin-left: 3px;
+    font-family: Arial, sans-serif;
+  }
+  body.mm-dark #mm-outline { background: #1F2229; border-color: #33363E; }
+  body.mm-dark .mm-ol-row { color: #D8D4CC; }
+  body.mm-dark .mm-ol-row:hover { background: #262A31; }
+  body.mm-dark .mm-ol-row.on { background: #3B2A0A; }
+  body.mm-dark .mm-ol-caret, body.mm-dark .mm-ol-dot { color: #6B6E78; }
   header button.icon {
     width: 30px; height: 28px; padding: 0; font-size: 15px; line-height: 1;
     display: inline-flex; align-items: center; justify-content: center;
@@ -2215,10 +2363,15 @@ export function buildStandaloneHtml(
   <button id="mm-fit" class="icon" title="맵 전체를 화면에 맞추기">⛶</button>
   <button id="mm-expand" class="icon" title="모두 펼치기">+</button>
   <button id="mm-collapse" class="icon" title="모두 접기">−</button>
+  <button id="mm-outline-split" class="icon" title="아웃라인 분할 보기">◫</button>
+  <button id="mm-view-toggle" class="icon" title="아웃라인 모드로 전환 (화면 전체)">☰</button>
   <button id="mm-fullscreen" class="icon" title="전체화면 모드"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>
   <button id="mm-dark" class="icon" title="다크 모드로 전환">🌙</button>
 </header>
-<svg id="mm-svg"><g id="mm-world"></g></svg>
+<div id="mm-main">
+  <div id="mm-outline"><div id="mm-outline-body"></div></div>
+  <svg id="mm-svg"><g id="mm-world"></g></svg>
+</div>
 <div id="mm-note">
   <button id="mm-note-close">✕</button>
   <h2 id="mm-note-title"></h2>

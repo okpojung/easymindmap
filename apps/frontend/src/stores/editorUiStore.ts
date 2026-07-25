@@ -38,6 +38,9 @@ interface EditorUiState {
   // 나뉜다. ratio = 아웃라인 영역 비율 (0.2~0.75)
   outlineSplit: boolean;
   outlineSplitRatio: number;
+  // 메인 편집 영역 전체 모드 — 'map'(맵 전체) / 'outline'(아웃라인 전체).
+  // 분할 화면(outlineSplit)과 별개: 분할이 켜져 있으면 이 토글은 비활성.
+  mainView: 'map' | 'outline';
 
   setThemeName: (v: ThemeName) => void;
   setLayoutType: (v: LayoutType) => void;
@@ -57,6 +60,8 @@ interface EditorUiState {
   toggleOutlineSplit: () => void;
   setOutlineSplit: (v: boolean) => void;
   setOutlineSplitRatio: (v: number) => void;
+  setMainView: (v: 'map' | 'outline') => void;
+  toggleMainView: () => void;
 }
 
 // 다크 모드 지속 — 브라우저별 저장 (서버 연결 후 users.ui_preferences로 이관)
@@ -87,6 +92,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   sidebarWidth: 300,
   outlineSplit: false,
   outlineSplitRatio: 0.42,
+  mainView: 'map',
 
   setThemeName: (themeName) => {
     try { localStorage.setItem(THEME_KEY, themeName); } catch { /* 저장 실패 무시 */ }
@@ -108,6 +114,8 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   setOutlineSplit: (outlineSplit) => set({ outlineSplit }),
   setOutlineSplitRatio: (v) =>
     set({ outlineSplitRatio: Math.min(0.75, Math.max(0.2, v)) }),
+  setMainView: (mainView) => set({ mainView }),
+  toggleMainView: () => set((s) => ({ mainView: s.mainView === 'map' ? 'outline' : 'map' })),
   setSampleTopic: (sampleTopic) => set({ sampleTopic }),
   setShowTags: (showTags) => set({ showTags }),
   toggleTagHidden: (tag) =>

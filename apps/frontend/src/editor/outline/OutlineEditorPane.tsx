@@ -40,6 +40,10 @@ import type { LaidOutNode } from '@/layout/types';
 interface PaneProps {
   t: ThemeTokens;
   outline: OutlineNodeData[];
+  // 닫기(✕) 동작 — 분할 보기면 분할 닫기, 전체 아웃라인 모드면 맵 모드로.
+  // 없으면 기본으로 분할 닫기(setOutlineSplit(false)).
+  onClose?: () => void;
+  closeTitle?: string;
 }
 
 interface ListPopup {
@@ -48,8 +52,9 @@ interface ListPopup {
   items: { label: string; url?: string }[];
 }
 
-export function OutlineEditorPane({ t, outline }: PaneProps) {
+export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps) {
   const setOutlineSplit = useEditorUiStore((s) => s.setOutlineSplit);
+  const handleClose = onClose ?? (() => setOutlineSplit(false));
   const [notePopup, setNotePopup] = useState<{ nodeId: string; kind: NoteKind } | null>(null);
   const [listPopup, setListPopup] = useState<ListPopup | null>(null);
   const map = useDocumentStore((s) => s.map);
@@ -71,7 +76,7 @@ export function OutlineEditorPane({ t, outline }: PaneProps) {
         <div style={{ fontSize: 9.5, color: t.textSubtle, flex: 1, minWidth: 0 }}>
           더블클릭: 입력 · Enter: 아래 행 추가 · Tab/Space: 들여쓰기 · Shift+Enter: 줄바꿈
         </div>
-        <button onClick={() => setOutlineSplit(false)} title="아웃라인 닫기"
+        <button onClick={handleClose} title={closeTitle ?? '아웃라인 닫기'}
           style={{
             border: 'none', background: 'none', color: t.textMuted,
             cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 2,

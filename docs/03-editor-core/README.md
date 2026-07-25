@@ -53,6 +53,7 @@ Canvas, Interaction, Layout, State, History 등
   - Kanban 보드형 레이아웃 (컬럼 / 카드 / depth 제한)
 - **canvas/10-canvas.md**
   - 캔버스 조작 (줌 / 팬 / FitScreen / Fullscreen)
+  - 아웃라인 분할 보기 · 아웃라인 모드/맵 모드 전환 (에디터·HTML 뷰어 파리티)
 - **canvas/11-selection.md**
   - 노드 선택 (단일 / 다중 / 서브트리 / 영역 선택)
 

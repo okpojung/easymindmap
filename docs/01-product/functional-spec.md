@@ -188,6 +188,8 @@
 | 109 | CANVAS      | CANVAS-07   | Focus Node View        | 선택 노드 집중 보기 (주변 dim)             | 1. 노드 선택2. Focus 활성화3. 주변 opacity 저하                                                             |
 | 110 | CANVAS      | CANVAS-08   | Minimap                | 전체 맵 축소 미니맵 표시                   | 1. 미니맵 렌더링2. 뷰포트 범위 표시3. 클릭/drag 이동                                                              |
 | 111 | CANVAS      | CANVAS-09   | Status Bar             | 줌 레벨·노드 수 상태 표시                  | 1. 실시간 데이터 집계2. 상태바 갱신                                                                           |
+| 111a | CANVAS     | CANVAS-10   | Outline Split          | 편집 영역을 좌(아웃라인)/우(맵) 분할, 실시간 양방향 동기 | 1. 아웃라인 아이콘 토글2. editorUiStore.outlineSplit3. 스플리터로 비율(20~75%)4. 노드 클릭 시 상호 스크롤·중앙 강조 |
+| 111b | CANVAS     | CANVAS-11   | Outline/Map Mode       | 편집 영역 전체를 아웃라인 전용 ↔ 맵 전용으로 통째 전환 | 1. 툴바 모드 토글(목록/마인드맵 SVG)2. editorUiStore.mainView3. 분할 보기 중엔 비활성4. HTML 뷰어도 동일 파리티 |
 | 112 | 선택          | SEL-01      | Single Select          | 단일 노드 선택                         | 1. 클릭2. 하이라이트 및 UI 활성화                                                                           |
 | 113 | 선택          | SEL-02      | Multi Select           | 여러 노드 동시 선택                      | 1. Ctrl+클릭2. 선택 상태 토글                                                                            |
 | 114 | 선택          | SEL-03      | Subtree Select         | 노드 및 하위 노드 일괄 선택                 | 1. 단축키/메뉴 실행2. 전체 하위 노드 선택 상태                                                                    |

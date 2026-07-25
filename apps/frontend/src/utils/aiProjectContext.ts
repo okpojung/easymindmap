@@ -51,10 +51,15 @@ export function ancestorPath(map: SampleMap, nodeId: string): AnyNode[] {
   return path;
 }
 
-// "프로젝트 소스" 노드 — 중심 주제 바로 아래(2레벨)에서 이름에
-// "프로젝트 소스"가 들어간 첫 노드. 없으면 null.
+// 소스 노드 식별 마커. 일반 노드 텍스트("프로젝트 소스" 등)와 섞이지
+// 않게 눈에 띄는 "@소스"를 쓴다 (2026-07 사용자 요청).
+export const SOURCE_MARKER = '@소스';
+
+// 소스 노드 — 중심 주제 바로 아래(2레벨)에서 이름에 "@소스"가 들어간
+// 첫 노드. 그 노드의 텍스트·노트 + 하위 노드 내용이 확장 맥락에 항상
+// 참고 자료로 실린다. 없으면 null.
 export function findProjectSourceNode(map: SampleMap): MindNode | null {
-  return map.branches.find((b) => (b.text || '').includes('프로젝트 소스')) ?? null;
+  return map.branches.find((b) => (b.text || '').includes(SOURCE_MARKER)) ?? null;
 }
 
 export interface ExpandContext {
@@ -77,10 +82,10 @@ export function buildExpandContext(
   const root = map.root;
   const source = findProjectSourceNode(map);
 
-  // system: EMM 규칙 + 확장 지시 + 프로젝트 지침(루트) + 프로젝트 소스
+  // system: EMM 규칙 + 확장 지시 + 프로젝트 지침(루트) + 소스(@소스)
   const sysParts = [baseSystem, EMM_EXPAND_DIRECTIVE];
   sysParts.push('[프로젝트 지침]\n' + nodeContent(root));
-  // 프로젝트 소스가 확장 대상 경로에 없을 때만 별도 첨부(중복 방지)
+  // @소스 노드가 확장 대상 경로에 없을 때만 별도 첨부(중복 방지)
   if (source && !path.some((p) => p.id === source.id)) {
     sysParts.push('[프로젝트 소스]\n' + subtreeContent(source));
   }

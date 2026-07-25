@@ -308,6 +308,7 @@ function GenerateView({ t }: { t: ThemeTokens }) {
           <I.Sparkles size={13} />
           {expandBusy ? 'AI가 확장 중…' : '선택 노드 자세히 확장'}
         </button>
+        <ExpandHelp t={t} />
       </InspectorSection>
 
       <InspectorSection t={t} title="최근 생성 기록">
@@ -568,6 +569,50 @@ function ModelPicker({
             background: t.surfaceAlt, color: t.text, fontSize: 11,
             outline: 'none', fontFamily: 'ui-monospace, monospace',
           }} />
+      )}
+    </div>
+  );
+}
+
+// 선택 노드 확장 — 프로젝트 지침·@소스·전달 범위 도움말 (접이식)
+function ExpandHelp({ t }: { t: ThemeTokens }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button
+        onClick={() => setOpen(!open)}
+        data-ai-expand-help
+        style={{
+          padding: '3px 8px', borderRadius: 5,
+          border: `1px solid ${t.border}`, background: t.surface,
+          color: t.textMuted, fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
+        }}
+      >
+        {open ? '▾' : '▸'} 프로젝트 지침·소스 설정 방법
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 5, padding: '8px 10px', borderRadius: 6,
+          background: t.surfaceAlt, border: `1px solid ${t.border}`,
+          fontSize: 10.5, color: t.textMuted, lineHeight: 1.6,
+        }}>
+          <div style={{ marginBottom: 5 }}>
+            <b style={{ color: t.text }}>① 프로젝트 지침</b> — <b>중심 주제
+            노드의 노트</b>에 적습니다(중심 주제 선택 → 노트·태그 탭 →
+            문단 노트). 모든 확장에 공통 지시로 함께 전달됩니다.
+          </div>
+          <div style={{ marginBottom: 5 }}>
+            <b style={{ color: t.text }}>② 소스(참고 자료)</b> — 중심 주제
+            바로 아래(<b>2레벨</b>)에 <b>제목에 <code>@소스</code>가 들어간
+            노드</b>를 만들고, 그 노드의 <b>텍스트·노트·하위 노드</b>에
+            참고 내용을 적습니다. 확장할 때 자동으로 함께 참고합니다.
+          </div>
+          <div>
+            <b style={{ color: t.text }}>전달되는 것 = 글(텍스트)뿐</b>입니다.
+            PDF·이미지 첨부와 하이퍼링크는 AI가 열지 못하므로 참고되지
+            않습니다 — 필요한 내용은 <b>글로 적어</b> 두세요.
+          </div>
+        </div>
       )}
     </div>
   );

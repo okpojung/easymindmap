@@ -220,10 +220,12 @@ export function TopToolbar({
           background: mainView === 'outline' && !outlineSplit ? t.primarySoft : t.surfaceAlt,
           color: outlineSplit ? t.textSubtle : (mainView === 'outline' ? t.primary : t.text),
           border: `1px solid ${outlineSplit ? t.border : (mainView === 'outline' ? t.primaryBorder + '55' : t.border)}`,
-          cursor: outlineSplit ? 'default' : 'pointer', fontSize: 15,
+          cursor: outlineSplit ? 'default' : 'pointer',
         }}
       >
-        {mainView === 'outline' && !outlineSplit ? '🗺' : '☰'}
+        {mainView === 'outline' && !outlineSplit
+          ? <I.MindMap size={17} />
+          : <I.Outline size={17} />}
       </button>
 
       {/* 다크 모드 토글 — 라이트/다크 테마 전환 (브라우저에 저장) */}

@@ -1955,6 +1955,9 @@ const VIEWER_JS = String.raw`
   // 헤더 토글 — 분할 / 전체(아웃라인·맵)
   var olSplitBtn = document.getElementById('mm-outline-split');
   var viewToggleBtn = document.getElementById('mm-view-toggle');
+  // 아웃라인 모드(불릿 목록) / 맵 모드(마인드맵 노드) 아이콘 — 에디터와 동일 도안.
+  var OUTLINE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg>';
+  var MINDMAP_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.1 10.9 16.9 6"/><line x1="7.3" y1="12" x2="17" y2="12"/><path d="M7.1 13.1 16.9 18"/><circle cx="5" cy="12" r="2.4" fill="currentColor" stroke="none"/><circle cx="19" cy="5.5" r="1.9"/><circle cx="19" cy="12" r="1.9"/><circle cx="19" cy="18.5" r="1.9"/></svg>';
   function syncViewToggle() {
     var split = document.body.classList.contains('mm-outline-split');
     var full = document.body.classList.contains('mm-outline-full');
@@ -1964,7 +1967,7 @@ const VIEWER_JS = String.raw`
     viewToggleBtn.disabled = split;
     viewToggleBtn.style.opacity = split ? '0.4' : '1';
     viewToggleBtn.style.cursor = split ? 'default' : 'pointer';
-    viewToggleBtn.textContent = full ? '🗺' : '☰';
+    viewToggleBtn.innerHTML = full ? MINDMAP_ICON : OUTLINE_ICON;
     viewToggleBtn.className = full ? 'icon active' : 'icon';
     viewToggleBtn.setAttribute('title', split
       ? '분할 보기 중에는 사용할 수 없습니다 (분할 닫은 뒤 전환)'
@@ -2364,7 +2367,7 @@ export function buildStandaloneHtml(
   <button id="mm-expand" class="icon" title="모두 펼치기">+</button>
   <button id="mm-collapse" class="icon" title="모두 접기">−</button>
   <button id="mm-outline-split" class="icon" title="아웃라인 분할 보기">◫</button>
-  <button id="mm-view-toggle" class="icon" title="아웃라인 모드로 전환 (화면 전체)">☰</button>
+  <button id="mm-view-toggle" class="icon" title="아웃라인 모드로 전환 (화면 전체)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg></button>
   <button id="mm-fullscreen" class="icon" title="전체화면 모드"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>
   <button id="mm-dark" class="icon" title="다크 모드로 전환">🌙</button>
 </header>

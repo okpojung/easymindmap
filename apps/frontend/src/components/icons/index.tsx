@@ -289,6 +289,32 @@ export const I = {
     </Icon>
   ),
 
+  // 아웃라인 모드 — 불릿 목록(점 + 줄). 「아웃라인으로 전환」 토글용.
+  Outline: (p: P = {}) => (
+    <Icon {...p}>
+      <circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none" />
+      <line x1="9" y1="6" x2="20" y2="6" />
+      <line x1="9" y1="12" x2="20" y2="12" />
+      <line x1="9" y1="18" x2="20" y2="18" />
+    </Icon>
+  ),
+
+  // 맵 모드 — 중심 노드에서 오른쪽 세 갈래(로고와 같은 마인드맵 모티프).
+  // 「맵으로 전환」 토글용. 접힌 지도(우산처럼 보이던 🗺) 대신 노드 글리프.
+  MindMap: (p: P = {}) => (
+    <Icon {...p}>
+      <path d="M7.1 10.9 16.9 6" />
+      <line x1="7.3" y1="12" x2="17" y2="12" />
+      <path d="M7.1 13.1 16.9 18" />
+      <circle cx="5" cy="12" r="2.4" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="5.5" r="1.9" />
+      <circle cx="19" cy="12" r="1.9" />
+      <circle cx="19" cy="18.5" r="1.9" />
+    </Icon>
+  ),
+
   Full: (p: P = {}) => (
     <Icon {...p}>
       <polyline points="3 9 3 3 9 3" />

@@ -87,6 +87,11 @@ docs/
 │  ├─ state-management.md
 │  └─ test-catalog.md                     ← MVS E2E 테스트 카탈로그(회귀 목록)
 │
+├─ user-guide/            👈 최종 사용자용 사용 설명서 (골격 → 스크린샷 예정)
+│  ├─ README.md                           ← 목차·30초 요약
+│  ├─ 01-시작하기.md ~ 10-자주-묻는-질문.md
+│  └─ assets/                             ← 스크린샷 보관
+│
 ├─ 90-architecture/       👈 시스템·인프라 아키텍처 문서
 │  ├─ backend-architecture.md
 │  ├─ docker-compose-spec.md

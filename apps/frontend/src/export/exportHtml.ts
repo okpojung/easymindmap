@@ -224,7 +224,10 @@ const VIEWER_JS = String.raw`
     fam: FAM_LIGHT, edge: '#B8A888', tagBase: '#FFFDF8', hl: '#FFE066'
   };
   var SKIN_DARK = {
-    fam: FAM_DARK, edge: '#4A4E5A', tagBase: '#14171D', hl: '#3B2A0A'
+    // 형광펜 띠(hl)는 다크에서도 노란색 유지 — 진한 글자(#1F1B16)와
+    // 짝을 이뤄 항상 읽힌다 (에디터와 동일). 예전 어두운 갈색 띠는
+    // 진한 글자와 대비가 낮아 안 보였다.
+    fam: FAM_DARK, edge: '#4A4E5A', tagBase: '#14171D', hl: '#FFE066'
   };
   var SKIN = SKIN_LIGHT;
   function famOf(colorKey) { return SKIN.fam[colorKey] || SKIN.fam.l2; }
@@ -1008,6 +1011,9 @@ const VIEWER_JS = String.raw`
           'font-weight': segs[si].b ? 700 : (isRoot ? 700 : (depth === 1 ? 600 : 500)),
           'font-style': segs[si].i ? 'italic' : 'normal'
         }, tEl);
+        // 형광펜(노란 띠) 위 글자는 항상 진한 고정색 — 다크 모드에서
+        // 밝은 글자가 노란 배경에 묻히던 문제 (에디터와 동일 규칙)
+        if (st.highlight || segs[si].h) sp.setAttribute('fill', '#1F1B16');
         var deco = [];
         if (st.strike || segs[si].s) deco.push('line-through');
         if (segs[si].u) deco.push('underline');

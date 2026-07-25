@@ -539,12 +539,18 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                         strike || sg.s ? 'line-through' : '',
                         sg.u ? 'underline' : '',
                       ].filter(Boolean).join(' ');
+                      // 형광펜(노란 띠) 위 글자는 항상 진한 고정색 —
+                      // 다크 모드에서 밝은 글자가 노란 배경에 묻혀 안
+                      // 보이던 문제 (검색 강조와 동일 규칙). 띠가 없는
+                      // 구간은 노드 글자색(textColor) 상속.
+                      const onHighlight = highlight || sg.h;
                       return (
                         <tspan
                           key={k}
                           x={segXs[k]}
                           fontWeight={sg.b ? 700 : fontWeight}
                           fontStyle={sg.i ? 'italic' : fontStyle}
+                          fill={onHighlight ? '#1F1B16' : undefined}
                           style={{ textDecoration: deco || undefined }}
                         >
                           {sg.text}

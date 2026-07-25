@@ -29,7 +29,10 @@ function InlineText({ t, text }: { t: ThemeTokens; text: string }) {
         textDecoration: [sg.s ? 'line-through' : '', sg.u ? 'underline' : '']
           .filter(Boolean).join(' ') || undefined,
         background: sg.h ? '#FFE066' : undefined,
+        // 형광펜 배경 위 글자는 진한 고정색 (다크 모드 가독성)
+        color: sg.h ? '#1F1B16' : undefined,
         borderRadius: sg.h ? 2 : undefined,
+        padding: sg.h ? '0 1px' : undefined,
       }}>{sg.text}</span>
     ));
   for (const m of text.matchAll(MD_LINK_RE)) {

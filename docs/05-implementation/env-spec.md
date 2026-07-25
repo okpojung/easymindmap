@@ -67,12 +67,12 @@ API_RATE_LIMIT_MAX=300
 ########################################
 # SUPABASE (Self-hosted on ESXi VM-03)
 ########################################
-SUPABASE_URL=https://supabase.mindmap.ai.kr
+SUPABASE_URL=https://supabase.example.com
 SUPABASE_ANON_KEY=eyJ...                    # 공개 가능 (RLS로 보호)
 SUPABASE_SERVICE_ROLE_KEY=eyJ...            # 서버 전용, 절대 클라이언트 노출 금지
 
 # 프론트엔드용 (VITE_ 접두사로 클라이언트에 노출)
-VITE_SUPABASE_URL=https://supabase.mindmap.ai.kr
+VITE_SUPABASE_URL=https://supabase.example.com
 VITE_SUPABASE_ANON_KEY=eyJ...              # Anon Key만 클라이언트 노출 허용
 
 # Supabase 직접 PostgreSQL 연결 (NestJS → DB 직접 쿼리 필요 시)
@@ -92,8 +92,8 @@ REDIS_TLS=false
 ########################################
 WS_PORT=3100
 WS_PATH=/ws
-WS_PUBLIC_URL=wss://mindmap.ai.kr/ws
-WS_ALLOWED_ORIGINS=https://mindmap.ai.kr
+WS_PUBLIC_URL=wss://example.com/ws
+WS_ALLOWED_ORIGINS=https://example.com
 
 ########################################
 # STORAGE — Supabase Storage 사용
@@ -183,7 +183,7 @@ EXPORT_QUEUE_CONCURRENCY=3
 MAIL_ENABLED=false
 MAIL_HOST=
 MAIL_PORT=587
-MAIL_FROM=no-reply@mindmap.ai.kr
+MAIL_FROM=no-reply@example.com
 
 ########################################
 # LOGGING / MONITORING
@@ -260,12 +260,12 @@ DASHBOARD_USERNAME=admin
 DASHBOARD_PASSWORD=change_me_dashboard_password
 
 # 외부 접근 URL
-SUPABASE_PUBLIC_URL=https://supabase.mindmap.ai.kr
-API_EXTERNAL_URL=https://supabase.mindmap.ai.kr
-SITE_URL=https://mindmap.ai.kr
+SUPABASE_PUBLIC_URL=https://supabase.example.com
+API_EXTERNAL_URL=https://supabase.example.com
+SITE_URL=https://example.com
 
 # SMTP (회원가입 이메일 발송)
-SMTP_ADMIN_EMAIL=admin@mindmap.ai.kr
+SMTP_ADMIN_EMAIL=admin@example.com
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your_gmail@gmail.com
@@ -289,8 +289,8 @@ LOG_SQL=true
 ### .env.prod (운영)
 ```bash
 APP_ENV=production
-SUPABASE_URL=https://supabase.mindmap.ai.kr
-VITE_SUPABASE_URL=https://supabase.mindmap.ai.kr
+SUPABASE_URL=https://supabase.example.com
+VITE_SUPABASE_URL=https://supabase.example.com
 REDIS_HOST=VM-04-IP
 REDIS_TLS=false                        # 내부망이므로 TLS 불필요
 LOG_SQL=false
@@ -355,16 +355,16 @@ export const supabase = createClient(
 # 초대 토큰 설정
 INVITE_TOKEN_SECRET=change_me_invite_secret   # 초대 토큰 서명 키
 INVITE_TOKEN_EXPIRES_DAYS=7                    # 초대 링크 유효 기간 (일)
-INVITE_BASE_URL=https://mindmap.ai.kr/invite   # 초대 수락 URL 기반 경로
+INVITE_BASE_URL=https://example.com/invite   # 초대 수락 URL 기반 경로
 
 # 이메일 발송 (초대 이메일)
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=noreply@mindmap.ai.kr
+SMTP_USER=noreply@example.com
 SMTP_PASSWORD=change_me_smtp_password
 SMTP_FROM_NAME=easymindmap
-SMTP_FROM_EMAIL=noreply@mindmap.ai.kr
+SMTP_FROM_EMAIL=noreply@example.com
 
 # FCM (Firebase Cloud Messaging) — V3 알림 구현 전 준비
 # 협업 초대/탈퇴/소유권이양 등 푸시 알림용

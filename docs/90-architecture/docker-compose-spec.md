@@ -85,9 +85,9 @@ cd /opt/supabase
 sh ./utils/generate-keys.sh
 
 # 4. .env 핵심 설정
-# SUPABASE_PUBLIC_URL=https://supabase.mindmap.ai.kr
-# API_EXTERNAL_URL=https://supabase.mindmap.ai.kr
-# SITE_URL=https://mindmap.ai.kr
+# SUPABASE_PUBLIC_URL=https://supabase.example.com
+# API_EXTERNAL_URL=https://supabase.example.com
+# SITE_URL=https://example.com
 
 # 5. MVP에서 불필요한 서비스 제거 (리소스 절감)
 # docker-compose.yml에서 analytics(Logflare), imgproxy 섹션 제거
@@ -277,7 +277,7 @@ upstream supabase { server VM-03-IP:8000; }  # Supabase Kong Gateway
 
 server {
     listen 443 ssl;
-    server_name mindmap.ai.kr;
+    server_name example.com;
 
     location /api/     { proxy_pass http://api; }
     location /ws/      { proxy_pass http://ws; upgrade websocket; }
@@ -286,7 +286,7 @@ server {
 
 server {
     listen 443 ssl;
-    server_name supabase.mindmap.ai.kr;
+    server_name supabase.example.com;
 
     location / { proxy_pass http://supabase; }   # Supabase Studio + API
 }

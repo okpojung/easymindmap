@@ -1,9 +1,16 @@
 # easymindmap — 인프라 아키텍처 & 설치 가이드
 
-> **문서 위치**: `docs/05-implementation/infra-architecture.md`
+> ⚠️ **공개 안전을 위해 예시 값으로 치환됨(sanitized)**: 이 문서의
+> 공인 IP·내부 IP·도메인·호스트명·이메일은 **실제 값이 아니라 문서용
+> 예시 플레이스홀더**입니다 (공인 IP=`203.0.113.10` [RFC 5737],
+> 내부망=`192.168.0.0/24`, 도메인=`example.com`, 프록시=`npm.example.com`).
+> 실제 운영 값은 저장소 밖(로컬)에서 별도 관리합니다. 아키텍처 구조·
+> 절차를 이해하는 데는 지장이 없습니다.
+>
+> **문서 위치**: `docs/90-architecture/infra-architecture.md`
 > **최종 업데이트**: 2026-04-04
 > **버전**: v1.2 (전체 확정)
-> **환경**: IDC / ESXi 5대 / FortiGate IPSec VPN / 192.168.94.0/24
+> **환경**: IDC / ESXi 5대 / FortiGate IPSec VPN / 192.168.0.0/24
 
 ---
 
@@ -38,68 +45,68 @@
      │
      ▼
 [ Cloudflare DNS ]
-  mindmap.ai.kr → 218.232.94.74 (A 레코드)
+  example.com → 203.0.113.10 (A 레코드)
   Proxy: 오렌지 클라우드 OFF (DNS only) 권장
   ※ NPM이 SSL 처리하므로 Cloudflare Proxy 불필요
      │
      ▼
 [ IDC 방화벽 (FortiGate) ]
-  공인 IP  : 218.232.94.74
+  공인 IP  : 203.0.113.10
   오픈 포트 : 80 (HTTP), 443 (HTTPS)
-  RDP 포트 : 3389 → 192.168.94.201 (사무실/집 IP 허용)
+  RDP 포트 : 3389 → 192.168.0.201 (사무실/집 IP 허용)
   VPN      : IPSec VPN (사무실/집 PC → IDC 내부망)
      │
-     ▼ NAT → 192.168.94.0/24
+     ▼ NAT → 192.168.0.0/24
      │
      ├──────────────────────────────────────────────────┐
      ▼                                                  ▼
 [ L4 스위치 ]                                   [ NPM 서버 ]
-  Nortel Application Switch 3408                  내부: 192.168.94.74
-  VIP : 192.168.94.2                              외부: npm74.baro.me
-  관리: 192.168.94.160 / 161                      역할: Reverse Proxy + SSL
+  Nortel Application Switch 3408                  내부: 192.168.0.74
+  VIP : 192.168.0.2                              외부: npm.example.com
+  관리: 192.168.0.160 / 161                      역할: Reverse Proxy + SSL
   역할: 내부 부하분산 (DAU 300+ 활성화)                │
-                                                  ├── mindmap.ai.kr
+                                                  ├── example.com
                                                   │     → VM-02 :5173
-                                                  ├── api.mindmap.ai.kr
+                                                  ├── api.example.com
                                                   │     → VM-02 :3000
-                                                  ├── supabase.mindmap.ai.kr
+                                                  ├── supabase.example.com
                                                   │     → VM-03 :54323 [IP제한]
-                                                  └── dev.mindmap.ai.kr
+                                                  └── dev.example.com
                                                         → VM-DEV :5173 [IP제한]
 ```
 
 ### 1.2 IDC 내부 VM 통신 구조
 
 ```
-NPM (192.168.94.74)
-  ├──[443→5173]──▶ VM-02  Frontend    (192.168.94.112)
-  ├──[443→3000]──▶ VM-02  NestJS API  (192.168.94.112)
-  ├──[443→3100]──▶ VM-02  WebSocket   (192.168.94.112)
-  └──[443→54323]─▶ VM-03  Supabase Studio (192.168.94.113) [IP 제한]
+NPM (192.168.0.74)
+  ├──[443→5173]──▶ VM-02  Frontend    (192.168.0.112)
+  ├──[443→3000]──▶ VM-02  NestJS API  (192.168.0.112)
+  ├──[443→3100]──▶ VM-02  WebSocket   (192.168.0.112)
+  └──[443→54323]─▶ VM-03  Supabase Studio (192.168.0.113) [IP 제한]
 
-VM-02 App (192.168.94.112)
+VM-02 App (192.168.0.112)
   ├──▶ VM-03 :5432   PostgreSQL 16
   ├──▶ VM-03 :9999   Supabase Auth
   ├──▶ VM-03 :9000   Supabase Storage
   ├──▶ VM-03 :4000   Supabase Realtime
   └──▶ VM-04 :6379   Redis 7
 
-VM-05 Worker (192.168.94.115)
+VM-05 Worker (192.168.0.115)
   ├──▶ VM-03 :5432   PostgreSQL
   ├──▶ VM-04 :6379   Redis (BullMQ 큐)
   └──▶ 외부 openai.com (AI API)
 
-VM-DEV (192.168.94.110)
+VM-DEV (192.168.0.110)
   └── 개발 전체 스택 (Docker: Supabase + Redis + NestJS + Vite)
 
-개발 PC — Windows 11 (192.168.94.201)
+개발 PC — Windows 11 (192.168.0.201)
   ├── VS Code / 브라우저 / DBeaver
   └── VM-DEV 접속 (VS Code Remote SSH)
 
 사무실 / 집 PC (32GB RAM+, GPU)
-  └──[FortiGate IPSec VPN]──▶ IDC 192.168.94.0/24
-      ├── RDP  → 192.168.94.201:3389 (개발 PC)
-      └── SSH  → 192.168.94.110:2222 (VM-DEV 직접)
+  └──[FortiGate IPSec VPN]──▶ IDC 192.168.0.0/24
+      ├── RDP  → 192.168.0.201:3389 (개발 PC)
+      └── SSH  → 192.168.0.110:2222 (VM-DEV 직접)
 ```
 
 ---
@@ -110,11 +117,11 @@ VM-DEV (192.168.94.110)
 
 | ESXi IP | 모델 | CPU | 코어(물리/논리) | RAM | 스토리지 |
 |---|---|---|---|---|---|
-| 192.168.94.80 | HP ProLiant DL380 Gen9 | E5-2630 v3 × 2 | 16코어 / 32스레드 | 256 GB | HDD 10TB + NVMe 931GB |
-| 192.168.94.81 | HP ProLiant DL380 Gen8 | E5-2690 v0 × 2 | 16코어 / 32스레드 | 192 GB | HDD 10TB + NVMe 931GB |
-| 192.168.94.82 | HP ProLiant DL380 Gen8 | E5-2630 v3 × 2 | 16코어 / 32스레드 | 192 GB | HDD 10TB + NVMe 931GB |
-| 192.168.94.11 | HP ProLiant DL360 Gen9 | E5-2660 v4 × 2 | **28코어 / 56스레드** | 256 GB | SSD 3TB + NVMe **3.8TB** |
-| 192.168.94.12 | HP ProLiant DL360 Gen9 | E5-2660 v4 × 2 | **28코어 / 56스레드** | 256 GB | SSD 3TB + NVMe **2TB** |
+| 192.168.0.80 | HP ProLiant DL380 Gen9 | E5-2630 v3 × 2 | 16코어 / 32스레드 | 256 GB | HDD 10TB + NVMe 931GB |
+| 192.168.0.81 | HP ProLiant DL380 Gen8 | E5-2690 v0 × 2 | 16코어 / 32스레드 | 192 GB | HDD 10TB + NVMe 931GB |
+| 192.168.0.82 | HP ProLiant DL380 Gen8 | E5-2630 v3 × 2 | 16코어 / 32스레드 | 192 GB | HDD 10TB + NVMe 931GB |
+| 192.168.0.11 | HP ProLiant DL360 Gen9 | E5-2660 v4 × 2 | **28코어 / 56스레드** | 256 GB | SSD 3TB + NVMe **3.8TB** |
+| 192.168.0.12 | HP ProLiant DL360 Gen9 | E5-2660 v4 × 2 | **28코어 / 56스레드** | 256 GB | SSD 3TB + NVMe **2TB** |
 
 > **E5-2630 v3**: 8코어, E5-2690 v0: 8코어, E5-2660 v4: 14코어 (2소켓 합산)
 
@@ -124,27 +131,27 @@ NVMe 용량이 크고 CPU 성능이 높은 .11, .12 호스트에 I/O 집약적 V
 
 | ESXi 호스트 | 배치 VM | 이유 |
 |---|---|---|
-| **192.168.94.11** (NVMe 3.8TB) | **VM-03 Supabase** | PostgreSQL I/O 집약적 → NVMe 최대 활용 |
-| **192.168.94.11** (NVMe 3.8TB) | **VM-DEV** | 개발 스택 전체 → 빠른 Docker 빌드 |
-| **192.168.94.12** (NVMe 2TB) | **VM-02 App** | NestJS + Frontend 서빙 |
-| **192.168.94.12** (NVMe 2TB) | **VM-05 Worker** | AI/Export 처리 |
-| **192.168.94.80** (NVMe 931GB) | **VM-04 Redis** | Redis AOF 영속성용 NVMe |
-| 192.168.94.81, 82 | 예비 / 확장 | DAU 300+ 시 Read Replica, Worker 추가 |
+| **192.168.0.11** (NVMe 3.8TB) | **VM-03 Supabase** | PostgreSQL I/O 집약적 → NVMe 최대 활용 |
+| **192.168.0.11** (NVMe 3.8TB) | **VM-DEV** | 개발 스택 전체 → 빠른 Docker 빌드 |
+| **192.168.0.12** (NVMe 2TB) | **VM-02 App** | NestJS + Frontend 서빙 |
+| **192.168.0.12** (NVMe 2TB) | **VM-05 Worker** | AI/Export 처리 |
+| **192.168.0.80** (NVMe 931GB) | **VM-04 Redis** | Redis AOF 영속성용 NVMe |
+| 192.168.0.81, 82 | 예비 / 확장 | DAU 300+ 시 Read Replica, Worker 추가 |
 
 ### 2.3 ESXi 데이터스토어 구성 권장
 
 각 호스트에서 NVMe를 VM 디스크 전용 데이터스토어로 구성:
 
 ```
-ESXi 192.168.94.11 데이터스토어:
+ESXi 192.168.0.11 데이터스토어:
   datastore-nvme   → NVMe 3.8TB (VM 디스크 — VM-03, VM-DEV)
   datastore-ssd    → SSD 3TB    (백업, ISO)
 
-ESXi 192.168.94.12 데이터스토어:
+ESXi 192.168.0.12 데이터스토어:
   datastore-nvme   → NVMe 2TB   (VM 디스크 — VM-02, VM-05)
   datastore-ssd    → SSD 3TB    (백업, ISO)
 
-ESXi 192.168.94.80 데이터스토어:
+ESXi 192.168.0.80 데이터스토어:
   datastore-nvme   → NVMe 931GB (VM 디스크 — VM-04)
   datastore-hdd    → HDD 10TB   (백업 저장)
 ```
@@ -157,27 +164,27 @@ ESXi 192.168.94.80 데이터스토어:
 
 | 구분 | 호스트명 | IP | 포트 | 역할 |
 |---|---|---|---|---|
-| FortiGate | — | 218.232.94.74 (공인) | 80,443,3389,IPSec | 방화벽 / IPSec VPN |
-| L4 스위치 | Nortel AS3408 | 192.168.94.2 (VIP) | — | 부하분산 VIP |
-| L4 스위치 | Nortel AS3408 | 192.168.94.160 / .161 | — | 관리 포트 |
-| NPM | npm74.baro.me | 192.168.94.74 | 80,443,81 | Nginx Proxy Manager |
-| ESXi #1 | — | 192.168.94.80 | 443 | HP DL380 Gen9 |
-| ESXi #2 | — | 192.168.94.81 | 443 | HP DL380 Gen8 |
-| ESXi #3 | — | 192.168.94.82 | 443 | HP DL380 Gen8 |
-| ESXi #4 | — | 192.168.94.11 | 443 | HP DL360 Gen9 ★ (VM-03, VM-DEV 호스트) |
-| ESXi #5 | — | 192.168.94.12 | 443 | HP DL360 Gen9 ★ (VM-02, VM-05 호스트) |
-| **VM-DEV** | em-dev | **192.168.94.110** | 2222,3000,5173,54323 | 개발 서버 |
-| **VM-02** | em-app | **192.168.94.112** | 2222,3000,3100,5173 | App (NestJS+Frontend) |
-| **VM-03** | em-supabase | **192.168.94.113** | 2222,5432,9999,9000,4000,54323 | Supabase |
-| **VM-04** | em-redis | **192.168.94.114** | 2222,6379 | Redis |
-| **VM-05** | em-worker | **192.168.94.115** | 2222 | Worker |
-| 개발 PC | dev-pc | **192.168.94.201** | 3389 | Windows 11 (RDP) |
+| FortiGate | — | 203.0.113.10 (공인) | 80,443,3389,IPSec | 방화벽 / IPSec VPN |
+| L4 스위치 | Nortel AS3408 | 192.168.0.2 (VIP) | — | 부하분산 VIP |
+| L4 스위치 | Nortel AS3408 | 192.168.0.160 / .161 | — | 관리 포트 |
+| NPM | npm.example.com | 192.168.0.74 | 80,443,81 | Nginx Proxy Manager |
+| ESXi #1 | — | 192.168.0.80 | 443 | HP DL380 Gen9 |
+| ESXi #2 | — | 192.168.0.81 | 443 | HP DL380 Gen8 |
+| ESXi #3 | — | 192.168.0.82 | 443 | HP DL380 Gen8 |
+| ESXi #4 | — | 192.168.0.11 | 443 | HP DL360 Gen9 ★ (VM-03, VM-DEV 호스트) |
+| ESXi #5 | — | 192.168.0.12 | 443 | HP DL360 Gen9 ★ (VM-02, VM-05 호스트) |
+| **VM-DEV** | em-dev | **192.168.0.110** | 2222,3000,5173,54323 | 개발 서버 |
+| **VM-02** | em-app | **192.168.0.112** | 2222,3000,3100,5173 | App (NestJS+Frontend) |
+| **VM-03** | em-supabase | **192.168.0.113** | 2222,5432,9999,9000,4000,54323 | Supabase |
+| **VM-04** | em-redis | **192.168.0.114** | 2222,6379 | Redis |
+| **VM-05** | em-worker | **192.168.0.115** | 2222 | Worker |
+| 개발 PC | dev-pc | **192.168.0.201** | 3389 | Windows 11 (RDP) |
 
 ### 3.2 게이트웨이 및 DNS
 
 ```
-Subnet  : 192.168.94.0/24
-Gateway : 192.168.94.1
+Subnet  : 192.168.0.0/24
+Gateway : 192.168.0.1
 DNS     : 8.8.8.8, 1.1.1.1
 ```
 
@@ -185,10 +192,10 @@ DNS     : 8.8.8.8, 1.1.1.1
 
 | 도메인 | Cloudflare | NPM Forward | 접근 제한 | SSL |
 |---|---|---|---|---|
-| mindmap.ai.kr | A 218.232.94.74 (DNS only) | 192.168.94.112:5173 | 없음 | Let's Encrypt |
-| api.mindmap.ai.kr | A 218.232.94.74 (DNS only) | 192.168.94.112:3000 | 없음 | Let's Encrypt |
-| supabase.mindmap.ai.kr | A 218.232.94.74 (DNS only) | 192.168.94.113:54323 | IPSec VPN IP 허용 | Let's Encrypt |
-| dev.mindmap.ai.kr | A 218.232.94.74 (DNS only) | 192.168.94.110:5173 | IPSec VPN IP 허용 | Let's Encrypt |
+| example.com | A 203.0.113.10 (DNS only) | 192.168.0.112:5173 | 없음 | Let's Encrypt |
+| api.example.com | A 203.0.113.10 (DNS only) | 192.168.0.112:3000 | 없음 | Let's Encrypt |
+| supabase.example.com | A 203.0.113.10 (DNS only) | 192.168.0.113:54323 | IPSec VPN IP 허용 | Let's Encrypt |
+| dev.example.com | A 203.0.113.10 (DNS only) | 192.168.0.110:5173 | IPSec VPN IP 허용 | Let's Encrypt |
 
 > **Cloudflare 주의사항**:
 > - Proxy (오렌지 클라우드) 를 **OFF (DNS only, 회색 구름)** 으로 설정해야 합니다
@@ -203,11 +210,11 @@ DNS     : 8.8.8.8, 1.1.1.1
 
 | VM | IP | ESXi 호스트 | vCPU | RAM | Disk (NVMe) |
 |---|---|---|---|---|---|
-| VM-DEV | 192.168.94.110 | 192.168.94.11 | 8 | 16 GB | 200 GB |
-| VM-02 | 192.168.94.112 | 192.168.94.12 | 4 | 8 GB | 50 GB |
-| VM-03 | 192.168.94.113 | 192.168.94.11 | 4 | 8 GB | 100 GB |
-| VM-04 | 192.168.94.114 | 192.168.94.80 | 2 | 4 GB | 20 GB |
-| VM-05 | 192.168.94.115 | 192.168.94.12 | 2 | 4 GB | 50 GB |
+| VM-DEV | 192.168.0.110 | 192.168.0.11 | 8 | 16 GB | 200 GB |
+| VM-02 | 192.168.0.112 | 192.168.0.12 | 4 | 8 GB | 50 GB |
+| VM-03 | 192.168.0.113 | 192.168.0.11 | 4 | 8 GB | 100 GB |
+| VM-04 | 192.168.0.114 | 192.168.0.80 | 2 | 4 GB | 20 GB |
+| VM-05 | 192.168.0.115 | 192.168.0.12 | 2 | 4 GB | 50 GB |
 
 > 전체 VM 합계: vCPU 20개, RAM 40GB — 각 호스트 리소스에 여유 충분
 
@@ -236,9 +243,9 @@ DNS     : 8.8.8.8, 1.1.1.1
 ### 5.1 ESXi 웹 콘솔 접속
 
 ```
-ESXi #4 (VM-03, VM-DEV 생성):  https://192.168.94.11/ui
-ESXi #5 (VM-02, VM-05 생성):   https://192.168.94.12/ui
-ESXi #1 (VM-04 생성):          https://192.168.94.80/ui
+ESXi #4 (VM-03, VM-DEV 생성):  https://192.168.0.11/ui
+ESXi #5 (VM-02, VM-05 생성):   https://192.168.0.12/ui
+ESXi #1 (VM-04 생성):          https://192.168.0.80/ui
 계정: root / [비밀번호]
 ```
 
@@ -266,7 +273,7 @@ Step 4:
   CPU:          4
   Memory:       8192 MB
   Hard disk 1:  100 GB (Thin provisioned)
-  Network:      [192.168.94.0/24 Port Group 선택]
+  Network:      [192.168.0.0/24 Port Group 선택]
   CD/DVD:       Datastore ISO → ubuntu-22.04.4-live-server-amd64.iso
                 Connect at power on: ✅
 Step 5: Finish → Power On
@@ -276,11 +283,11 @@ Step 5: Finish → Power On
 
 | VM | ESXi | ESXi Datastore | vCPU | RAM (MB) | Disk | ESXi Name |
 |---|---|---|---|---|---|---|
-| VM-DEV | 192.168.94.11 | datastore-nvme | 8 | 16384 | 200 GB | easymindmap-vmdev |
-| VM-02 | 192.168.94.12 | datastore-nvme | 4 | 8192 | 50 GB | easymindmap-vm02-app |
-| VM-03 | 192.168.94.11 | datastore-nvme | 4 | 8192 | 100 GB | easymindmap-vm03-supabase |
-| VM-04 | 192.168.94.80 | datastore-nvme | 2 | 4096 | 20 GB | easymindmap-vm04-redis |
-| VM-05 | 192.168.94.12 | datastore-nvme | 2 | 4096 | 50 GB | easymindmap-vm05-worker |
+| VM-DEV | 192.168.0.11 | datastore-nvme | 8 | 16384 | 200 GB | easymindmap-vmdev |
+| VM-02 | 192.168.0.12 | datastore-nvme | 4 | 8192 | 50 GB | easymindmap-vm02-app |
+| VM-03 | 192.168.0.11 | datastore-nvme | 4 | 8192 | 100 GB | easymindmap-vm03-supabase |
+| VM-04 | 192.168.0.80 | datastore-nvme | 2 | 4096 | 20 GB | easymindmap-vm04-redis |
+| VM-05 | 192.168.0.12 | datastore-nvme | 2 | 4096 | 50 GB | easymindmap-vm05-worker |
 
 ---
 
@@ -296,7 +303,7 @@ Network:
   ens192: Static
     IP:      [VM별 IP — 아래 표 참조]
     Mask:    255.255.255.0
-    Gateway: 192.168.94.1
+    Gateway: 192.168.0.1
     DNS:     8.8.8.8, 1.1.1.1
 
 Storage: Use entire disk + LVM ✅
@@ -314,11 +321,11 @@ SSH: Install OpenSSH server ✅
 
 | VM | IP | Hostname |
 |---|---|---|
-| VM-DEV | 192.168.94.110 | em-dev |
-| VM-02 | 192.168.94.112 | em-app |
-| VM-03 | 192.168.94.113 | em-supabase |
-| VM-04 | 192.168.94.114 | em-redis |
-| VM-05 | 192.168.94.115 | em-worker |
+| VM-DEV | 192.168.0.110 | em-dev |
+| VM-02 | 192.168.0.112 | em-app |
+| VM-03 | 192.168.0.113 | em-supabase |
+| VM-04 | 192.168.0.114 | em-redis |
+| VM-05 | 192.168.0.115 | em-worker |
 
 ### 6.3 고정 IP netplan 설정
 
@@ -333,17 +340,17 @@ network:
   ethernets:
     ens192:
       addresses:
-        - 192.168.94.113/24    # ← VM별 IP
+        - 192.168.0.113/24    # ← VM별 IP
       routes:
         - to: default
-          via: 192.168.94.1
+          via: 192.168.0.1
       nameservers:
         addresses: [8.8.8.8, 1.1.1.1]
 ```
 
 ```bash
 sudo netplan apply
-ping -c 3 192.168.94.1    # 게이트웨이 확인
+ping -c 3 192.168.0.1    # 게이트웨이 확인
 ping -c 3 8.8.8.8         # 외부 인터넷 확인
 ping -c 3 github.com      # GitHub 통신 확인
 ```
@@ -406,8 +413,8 @@ sudo systemctl restart ssh
 
 ## 7. NPM 연동 설정 (Cloudflare + Let's Encrypt)
 
-> - NPM 관리 UI: `http://192.168.94.74:81`
-> - NPM 서버 SSH: `ssh ubuntu@192.168.94.74 -p 2222`
+> - NPM 관리 UI: `http://192.168.0.74:81`
+> - NPM 서버 SSH: `ssh ubuntu@192.168.0.74 -p 2222`
 
 ### 7.1 Cloudflare DNS 설정
 
@@ -415,10 +422,10 @@ Cloudflare 대시보드 → DNS 탭:
 
 ```
 Type  Name                        Content          Proxy
-A     mindmap.ai.kr               218.232.94.74    🔘 DNS only (회색)
-A     api.mindmap.ai.kr           218.232.94.74    🔘 DNS only (회색)
-A     supabase.mindmap.ai.kr      218.232.94.74    🔘 DNS only (회색)
-A     dev.mindmap.ai.kr           218.232.94.74    🔘 DNS only (회색)
+A     example.com               203.0.113.10    🔘 DNS only (회색)
+A     api.example.com           203.0.113.10    🔘 DNS only (회색)
+A     supabase.example.com      203.0.113.10    🔘 DNS only (회색)
+A     dev.example.com           203.0.113.10    🔘 DNS only (회색)
 ```
 
 > ⚠️ **Proxy (오렌지 클라우드) 반드시 OFF** — NPM이 직접 SSL 처리합니다
@@ -426,7 +433,7 @@ A     dev.mindmap.ai.kr           218.232.94.74    🔘 DNS only (회색)
 ### 7.2 NPM Rate Limit 전역 설정
 
 ```bash
-ssh ubuntu@192.168.94.74 -p 2222
+ssh ubuntu@192.168.0.74 -p 2222
 
 # NPM 커스텀 Nginx 설정 경로 (실제 경로 확인 필요)
 sudo mkdir -p /opt/npm/data/nginx/custom
@@ -449,22 +456,22 @@ Name: IPSec-VPN-Only
 Satisfy: Any
 
 Allowed IPs:
-  192.168.94.201              # 개발 PC (Windows 11)
+  192.168.0.201              # 개발 PC (Windows 11)
   [IPSec VPN 클라이언트 대역]  # FortiGate에서 할당하는 VPN IP 확인 후 추가
   예) 10.x.x.0/24 또는 172.x.x.0/24
 
 Pass Auth: ✅ (Allow)
 ```
 
-### 7.4 Proxy Host — mindmap.ai.kr
+### 7.4 Proxy Host — example.com
 
 NPM UI → Hosts → Proxy Hosts → Add:
 
 ```
 [ Details 탭 ]
-Domain Names:       mindmap.ai.kr
+Domain Names:       example.com
 Scheme:             http
-Forward Hostname:   192.168.94.112
+Forward Hostname:   192.168.0.112
 Forward Port:       5173
 Cache Assets:       ✅
 Block Common Exploits: ✅
@@ -472,7 +479,7 @@ Websockets Support: ✅
 
 [ SSL 탭 ]
 SSL Certificate:    Request a new SSL Certificate
-Email:              admin@mindmap.ai.kr
+Email:              admin@example.com
 Force SSL:          ✅
 HTTP/2 Support:     ✅
 HSTS Enabled:       ✅
@@ -483,7 +490,7 @@ HSTS Enabled:       ✅
 ```nginx
 # API → NestJS
 location /api/ {
-    proxy_pass         http://192.168.94.112:3000/;
+    proxy_pass         http://192.168.0.112:3000/;
     proxy_http_version 1.1;
     proxy_set_header   Host              $host;
     proxy_set_header   X-Real-IP         $remote_addr;
@@ -496,7 +503,7 @@ location /api/ {
 
 # Auth — 엄격한 Rate Limit
 location /api/auth/ {
-    proxy_pass         http://192.168.94.112:3000/auth/;
+    proxy_pass         http://192.168.0.112:3000/auth/;
     proxy_http_version 1.1;
     proxy_set_header   Host            $host;
     proxy_set_header   X-Real-IP       $remote_addr;
@@ -506,7 +513,7 @@ location /api/auth/ {
 
 # WebSocket
 location /ws/ {
-    proxy_pass         http://192.168.94.112:3100/;
+    proxy_pass         http://192.168.0.112:3100/;
     proxy_http_version 1.1;
     proxy_set_header   Upgrade    $http_upgrade;
     proxy_set_header   Connection "upgrade";
@@ -516,7 +523,7 @@ location /ws/ {
 
 # 정적 파일 캐시
 location ~* \.(js|css|png|jpg|gif|ico|svg|woff2|webp)$ {
-    proxy_pass http://192.168.94.112:5173;
+    proxy_pass http://192.168.0.112:5173;
     expires 30d;
     add_header Cache-Control "public, immutable";
 }
@@ -525,20 +532,20 @@ add_header X-Frame-Options        SAMEORIGIN;
 add_header X-Content-Type-Options nosniff;
 ```
 
-### 7.5 Proxy Host — supabase.mindmap.ai.kr
+### 7.5 Proxy Host — supabase.example.com
 
 ```
-Domain:   supabase.mindmap.ai.kr
-Forward:  http://192.168.94.113:54323
+Domain:   supabase.example.com
+Forward:  http://192.168.0.113:54323
 SSL:      Let's Encrypt + Force SSL ✅
 Access:   IPSec-VPN-Only  ← Access List 적용
 ```
 
-### 7.6 Proxy Host — dev.mindmap.ai.kr
+### 7.6 Proxy Host — dev.example.com
 
 ```
-Domain:   dev.mindmap.ai.kr
-Forward:  http://192.168.94.110:5173
+Domain:   dev.example.com
+Forward:  http://192.168.0.110:5173
 WS:       ✅
 SSL:      Let's Encrypt + Force SSL ✅
 Access:   IPSec-VPN-Only  ← Access List 적용
@@ -548,28 +555,28 @@ Access:   IPSec-VPN-Only  ← Access List 적용
 
 ## 8. VM-03: Supabase Self-hosted 설치
 
-> **호스트**: ESXi 192.168.94.11 (DL360 Gen9, NVMe 3.8TB)
-> **VM IP**: 192.168.94.113
+> **호스트**: ESXi 192.168.0.11 (DL360 Gen9, NVMe 3.8TB)
+> **VM IP**: 192.168.0.113
 
 ### 8.1 방화벽 설정
 
 ```bash
 # NPM (Proxy)
-sudo ufw allow from 192.168.94.74  to any port 9999    # Auth
-sudo ufw allow from 192.168.94.74  to any port 54323   # Studio
+sudo ufw allow from 192.168.0.74  to any port 9999    # Auth
+sudo ufw allow from 192.168.0.74  to any port 54323   # Studio
 
 # VM-02 App
-sudo ufw allow from 192.168.94.112 to any port 5432
-sudo ufw allow from 192.168.94.112 to any port 9999
-sudo ufw allow from 192.168.94.112 to any port 9000
-sudo ufw allow from 192.168.94.112 to any port 4000
+sudo ufw allow from 192.168.0.112 to any port 5432
+sudo ufw allow from 192.168.0.112 to any port 9999
+sudo ufw allow from 192.168.0.112 to any port 9000
+sudo ufw allow from 192.168.0.112 to any port 4000
 
 # VM-05 Worker
-sudo ufw allow from 192.168.94.115 to any port 5432
-sudo ufw allow from 192.168.94.115 to any port 9000
+sudo ufw allow from 192.168.0.115 to any port 5432
+sudo ufw allow from 192.168.0.115 to any port 9000
 
 # VM-DEV
-sudo ufw allow from 192.168.94.110 to any port 5432
+sudo ufw allow from 192.168.0.110 to any port 5432
 
 sudo ufw reload
 ```
@@ -641,9 +648,9 @@ DASHBOARD_PASSWORD=강력한_대시보드_비밀번호
 ############################################################
 # URL (NPM 도메인)
 ############################################################
-SITE_URL=https://mindmap.ai.kr
-API_EXTERNAL_URL=https://mindmap.ai.kr/api
-SUPABASE_PUBLIC_URL=https://mindmap.ai.kr
+SITE_URL=https://example.com
+API_EXTERNAL_URL=https://example.com/api
+SUPABASE_PUBLIC_URL=https://example.com
 
 ############################################################
 # SMTP — Gmail 또는 Synology MailPlus 선택
@@ -654,7 +661,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-gmail@gmail.com
 SMTP_PASS=Gmail_앱_비밀번호_16자리
-SMTP_ADMIN_EMAIL=admin@mindmap.ai.kr
+SMTP_ADMIN_EMAIL=admin@example.com
 SMTP_SENDER_NAME=easymindmap
 
 # 방법 B: Synology MailPlus Server (사내 SMTP)
@@ -739,13 +746,13 @@ sudo systemctl start supabase
 
 ## 9. VM-04: Redis 설치
 
-> **호스트**: ESXi 192.168.94.80
+> **호스트**: ESXi 192.168.0.80
 
 ```bash
 # 방화벽
-sudo ufw allow from 192.168.94.112 to any port 6379
-sudo ufw allow from 192.168.94.115 to any port 6379
-sudo ufw allow from 192.168.94.110 to any port 6379
+sudo ufw allow from 192.168.0.112 to any port 6379
+sudo ufw allow from 192.168.0.115 to any port 6379
+sudo ufw allow from 192.168.0.110 to any port 6379
 sudo ufw reload
 
 # 설치
@@ -754,7 +761,7 @@ sudo nano /etc/redis/redis.conf
 ```
 
 ```conf
-bind 192.168.94.114 127.0.0.1
+bind 192.168.0.114 127.0.0.1
 requirepass 강력한_Redis_비밀번호
 
 # DAU 100 → 1GB, DAU 300+ → 4GB
@@ -771,7 +778,7 @@ logfile /var/log/redis/redis-server.log
 ```bash
 sudo systemctl enable redis-server
 sudo systemctl restart redis-server
-redis-cli -h 192.168.94.114 -a 강력한_Redis_비밀번호 ping
+redis-cli -h 192.168.0.114 -a 강력한_Redis_비밀번호 ping
 # PONG 확인
 ```
 
@@ -779,14 +786,14 @@ redis-cli -h 192.168.94.114 -a 강력한_Redis_비밀번호 ping
 
 ## 10. VM-02: App 서버 배포
 
-> **호스트**: ESXi 192.168.94.12
+> **호스트**: ESXi 192.168.0.12
 
 ### 10.1 방화벽 및 Node.js 설치
 
 ```bash
-sudo ufw allow from 192.168.94.74 to any port 3000
-sudo ufw allow from 192.168.94.74 to any port 3100
-sudo ufw allow from 192.168.94.74 to any port 5173
+sudo ufw allow from 192.168.0.74 to any port 3000
+sudo ufw allow from 192.168.0.74 to any port 3100
+sudo ufw allow from 192.168.0.74 to any port 5173
 sudo ufw reload
 
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -804,21 +811,21 @@ git clone https://github.com/okpojung/easymindmap.git .
 cat > apps/backend/.env << 'EOF'
 NODE_ENV=production
 PORT=3000
-SUPABASE_URL=http://192.168.94.113:8000
+SUPABASE_URL=http://192.168.0.113:8000
 SUPABASE_SERVICE_KEY=eyJ...SERVICE_ROLE_KEY
-DATABASE_URL=postgresql://postgres:Postgres_비밀번호@192.168.94.113:5432/postgres
-REDIS_URL=redis://:Redis_비밀번호@192.168.94.114:6379
+DATABASE_URL=postgresql://postgres:Postgres_비밀번호@192.168.0.113:5432/postgres
+REDIS_URL=redis://:Redis_비밀번호@192.168.0.114:6379
 JWT_SECRET=반드시-여기에-32자이상-강력한-JWT-시크릿-값을-입력하세요
 JWT_EXPIRY=3600
 OPENAI_API_KEY=sk-...
-APP_URL=https://mindmap.ai.kr
+APP_URL=https://example.com
 EOF
 
 # Frontend 환경변수
 cat > apps/frontend/.env << 'EOF'
-VITE_API_URL=https://mindmap.ai.kr/api
-VITE_WS_URL=wss://mindmap.ai.kr/ws
-VITE_SUPABASE_URL=https://mindmap.ai.kr
+VITE_API_URL=https://example.com/api
+VITE_WS_URL=wss://example.com/ws
+VITE_SUPABASE_URL=https://example.com
 VITE_SUPABASE_ANON_KEY=eyJ...ANON_KEY
 EOF
 
@@ -866,7 +873,7 @@ pm2 save && pm2 startup
 
 ## 11. VM-05: Worker 서버 설치
 
-> **호스트**: ESXi 192.168.94.12
+> **호스트**: ESXi 192.168.0.12
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -877,10 +884,10 @@ git clone https://github.com/okpojung/easymindmap.git .
 
 cat > apps/worker/.env << 'EOF'
 NODE_ENV=production
-REDIS_URL=redis://:Redis_비밀번호@192.168.94.114:6379
-DATABASE_URL=postgresql://postgres:Postgres_비밀번호@192.168.94.113:5432/postgres
+REDIS_URL=redis://:Redis_비밀번호@192.168.0.114:6379
+DATABASE_URL=postgresql://postgres:Postgres_비밀번호@192.168.0.113:5432/postgres
 SUPABASE_SERVICE_KEY=eyJ...SERVICE_ROLE_KEY
-SUPABASE_STORAGE_URL=http://192.168.94.113:9000
+SUPABASE_STORAGE_URL=http://192.168.0.113:9000
 OPENAI_API_KEY=sk-...
 AI_MODEL=gpt-4o
 EOF
@@ -894,20 +901,20 @@ pm2 save && pm2 startup
 
 ## 12. VM-DEV: 개발 서버 구성
 
-> **호스트**: ESXi 192.168.94.11 (DL360 Gen9, NVMe 3.8TB)
-> **VM IP**: 192.168.94.110
+> **호스트**: ESXi 192.168.0.11 (DL360 Gen9, NVMe 3.8TB)
+> **VM IP**: 192.168.0.110
 
 ### 12.1 방화벽 설정
 
 ```bash
 # 개발 PC 접근 허용
-sudo ufw allow from 192.168.94.201 to any port 3000
-sudo ufw allow from 192.168.94.201 to any port 5173
-sudo ufw allow from 192.168.94.201 to any port 54323
-sudo ufw allow from 192.168.94.201 to any port 5432
+sudo ufw allow from 192.168.0.201 to any port 3000
+sudo ufw allow from 192.168.0.201 to any port 5173
+sudo ufw allow from 192.168.0.201 to any port 54323
+sudo ufw allow from 192.168.0.201 to any port 5432
 
-# NPM (dev.mindmap.ai.kr 경유)
-sudo ufw allow from 192.168.94.74 to any port 5173
+# NPM (dev.example.com 경유)
+sudo ufw allow from 192.168.0.74 to any port 5173
 
 # IPSec VPN 클라이언트 대역 (FortiGate 설정 후 실제 대역으로 변경)
 # 예: sudo ufw allow from 10.x.x.0/24 to any port 5173
@@ -947,14 +954,14 @@ SUPABASE_SERVICE_KEY=[supabase start 출력 service_role key]
 DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres
 REDIS_URL=redis://localhost:6379
 JWT_SECRET=dev-jwt-secret-minimum-32-characters-long
-APP_URL=http://192.168.94.110:5173
+APP_URL=http://192.168.0.110:5173
 OPENAI_API_KEY=sk-...
 EOF
 
 cat > apps/frontend/.env.local << 'EOF'
-VITE_API_URL=http://192.168.94.110:3000
-VITE_WS_URL=ws://192.168.94.110:3100
-VITE_SUPABASE_URL=http://192.168.94.110:54321
+VITE_API_URL=http://192.168.0.110:3000
+VITE_WS_URL=ws://192.168.0.110:3100
+VITE_SUPABASE_URL=http://192.168.0.110:54321
 VITE_SUPABASE_ANON_KEY=[supabase start 출력 anon key]
 EOF
 ```
@@ -976,9 +983,9 @@ npx supabase status > /dev/null 2>&1 || npx supabase start
 
 echo ""
 echo "접속 주소 (개발 PC 브라우저):"
-echo "  Frontend  : http://192.168.94.110:5173"
-echo "  API       : http://192.168.94.110:3000"
-echo "  DB Studio : http://192.168.94.110:54323"
+echo "  Frontend  : http://192.168.0.110:5173"
+echo "  API       : http://192.168.0.110:3000"
+echo "  DB Studio : http://192.168.0.110:54323"
 echo ""
 echo "개발 서버 시작 (VS Code 터미널):"
 echo "  터미널 1: cd apps/backend  && npm run start:dev"
@@ -999,17 +1006,17 @@ chmod +x /opt/easymindmap-dev/dev-start.sh
   (RAM 32GB+, GPU 충분)
        │
        ├─[A] RDP 직접 (3389 방화벽 오픈, 사무실/집 IP 허용)
-       │      FortiGate → 192.168.94.201:3389
-       │      개발 PC (Windows 11, 192.168.94.201)
+       │      FortiGate → 192.168.0.201:3389
+       │      개발 PC (Windows 11, 192.168.0.201)
        │          │
        │          │ VS Code Remote SSH
        │          ▼
-       │      VM-DEV (192.168.94.110)
+       │      VM-DEV (192.168.0.110)
        │
        └─[B] IPSec VPN 연결 후 내부망 직접 접속
-              → RDP  → 192.168.94.201 (개발 PC)
-              → SSH  → 192.168.94.110 (VM-DEV 직접)
-              → 브라우저 → http://192.168.94.110:5173
+              → RDP  → 192.168.0.201 (개발 PC)
+              → SSH  → 192.168.0.110 (VM-DEV 직접)
+              → 브라우저 → http://192.168.0.110:5173
 ```
 
 ### 13.2 FortiGate RDP 포트포워딩 (방법 A)
@@ -1020,14 +1027,14 @@ FortiGate 방화벽 정책:
 정책명: RDP-DevPC
 인터페이스: WAN → LAN
 소스 IP: [사무실 공인 IP], [집 공인 IP]
-목적지: 192.168.94.201
+목적지: 192.168.0.201
 포트: TCP 3389
 동작: ALLOW
 ```
 
 RDP 접속:
 ```
-Windows 원격 데스크탑 → 218.232.94.74:3389
+Windows 원격 데스크탑 → 203.0.113.10:3389
 사용자: [Windows 계정]
 ```
 
@@ -1049,7 +1056,7 @@ Phase 1:
 Phase 2:
   암호화: AES-256
   해시: SHA-256
-  내부 네트워크: 192.168.94.0/24
+  내부 네트워크: 192.168.0.0/24
 
 VPN 클라이언트 IP 풀: 예) 10.10.10.0/24
 → 이 대역을 NPM Access List에 등록 필요
@@ -1059,11 +1066,11 @@ VPN 클라이언트:
 ```
 FortiClient 설치 → VPN 설정 추가
 Type: IPSec VPN
-Server: 218.232.94.74
+Server: 203.0.113.10
 Pre-shared Key: [위 설정값]
 ```
 
-### 13.4 개발 PC (Windows 11, 192.168.94.201) 필수 도구
+### 13.4 개발 PC (Windows 11, 192.168.0.201) 필수 도구
 
 ```
 필수 설치:
@@ -1074,8 +1081,8 @@ Pre-shared Key: [위 설정값]
   ✅ Chrome / Edge
 
 권장 설치:
-  ✅ DBeaver        → VM-03 PostgreSQL 접속 (192.168.94.113:5432)
-  ✅ Redis Insight  → VM-04 Redis 모니터링 (192.168.94.114:6379)
+  ✅ DBeaver        → VM-03 PostgreSQL 접속 (192.168.0.113:5432)
+  ✅ Redis Insight  → VM-04 Redis 모니터링 (192.168.0.114:6379)
   ✅ Postman        → API 테스트
   ✅ Windows Terminal
   ✅ Node.js 20 LTS (로컬 빌드 필요 시)
@@ -1106,7 +1113,7 @@ chmod 600 ~/.ssh/authorized_keys
 개발 PC SSH Config (`C:\Users\[사용자]\.ssh\config`):
 ```conf
 Host em-dev
-    HostName 192.168.94.110
+    HostName 192.168.0.110
     Port 2222
     User ubuntu
     IdentityFile C:\Users\[사용자]\.ssh\id_ed25519_em
@@ -1130,16 +1137,16 @@ F1 → Remote-SSH: Connect to Host → em-dev
 ```
 사무실 또는 집
   │
-  ├─ 방법 A: RDP → 개발 PC (192.168.94.201)
+  ├─ 방법 A: RDP → 개발 PC (192.168.0.201)
   │              FortiGate 3389 포트포워딩
   │              → VS Code Remote SSH → VM-DEV
   │              → 개발 서버 시작 (start:dev / vite dev)
-  │              → 브라우저 http://192.168.94.110:5173
+  │              → 브라우저 http://192.168.0.110:5173
   │
   └─ 방법 B: IPSec VPN → 내부망 직접 접속
-              → RDP  192.168.94.201 (개발 PC 경유)
-              → 또는 SSH 192.168.94.110 (VM-DEV 직접)
-              → 브라우저 https://dev.mindmap.ai.kr
+              → RDP  192.168.0.201 (개발 PC 경유)
+              → 또는 SSH 192.168.0.110 (VM-DEV 직접)
+              → 브라우저 https://dev.example.com
 ```
 
 ### 14.2 프로덕션 배포 스크립트
@@ -1262,7 +1269,7 @@ else
   echo "[$DATE] ✅ API OK" >> $LOG
 fi
 
-REDIS=$(redis-cli -h 192.168.94.114 -a Redis_비밀번호 ping 2>/dev/null)
+REDIS=$(redis-cli -h 192.168.0.114 -a Redis_비밀번호 ping 2>/dev/null)
 [ "$REDIS" != "PONG" ] && echo "[$DATE] ❌ Redis DOWN" >> $LOG
 EOF
 
@@ -1316,11 +1323,11 @@ chmod +x /opt/disk-check.sh
 원격 개발:
   ✅ IPSec VPN 접속 확인 (사무실 PC)
   ✅ IPSec VPN 접속 확인 (집 PC)
-  ✅ RDP → 개발 PC (192.168.94.201) 접속 확인
+  ✅ RDP → 개발 PC (192.168.0.201) 접속 확인
   ✅ VS Code Remote SSH → VM-DEV 접속 확인
-  ✅ 브라우저 → http://192.168.94.110:5173 확인
-  ✅ https://dev.mindmap.ai.kr 확인 (VPN 경유)
-  ✅ https://mindmap.ai.kr 프로덕션 확인
+  ✅ 브라우저 → http://192.168.0.110:5173 확인
+  ✅ https://dev.example.com 확인 (VPN 경유)
+  ✅ https://example.com 프로덕션 확인
 ```
 
 ### DAU 300 전환 시
@@ -1329,7 +1336,7 @@ chmod +x /opt/disk-check.sh
   ⬆️ VM-02: PM2 instances 2 → 4, RAM 12GB
   ⬆️ VM-03: max_connections=200, shared_buffers=4GB, RAM 16GB
   ⬆️ VM-04: maxmemory=4gb, RAM 8GB
-  ➕ L4 Nortel AS3408 VIP(192.168.94.2) 부하분산 설정
+  ➕ L4 Nortel AS3408 VIP(192.168.0.2) 부하분산 설정
   ➕ NPM Rate Limit 강화
 ```
 
@@ -1351,30 +1358,30 @@ chmod +x /opt/disk-check.sh
 
 | 서버 | IP | 포트 | 서비스 | 허용 대상 |
 |---|---|---|---|---|
-| FortiGate | 218.232.94.74 | 80, 443 | HTTP/HTTPS | 전체 |
-| FortiGate | 218.232.94.74 | 3389 | RDP → 개발 PC | 사무실/집 공인 IP |
-| FortiGate | 218.232.94.74 | 4500/500 | IPSec VPN | 사무실/집 공인 IP |
-| L4 스위치 | 192.168.94.2 | — | 부하분산 VIP | 내부망 |
-| NPM | 192.168.94.74 | 80, 443 | Reverse Proxy | 전체 (FortiGate 경유) |
-| NPM | 192.168.94.74 | 81 | 관리 UI | 내부망만 |
-| VM-DEV | 192.168.94.110 | 2222 | SSH | 개발 PC, VPN 경유 |
-| VM-DEV | 192.168.94.110 | 3000 | API (개발) | 개발 PC, NPM |
-| VM-DEV | 192.168.94.110 | 5173 | Frontend (개발) | 개발 PC, NPM |
-| VM-DEV | 192.168.94.110 | 54323 | Supabase Studio | 개발 PC, NPM (IP 제한) |
-| VM-02 | 192.168.94.112 | 2222 | SSH | VPN 경유 |
-| VM-02 | 192.168.94.112 | 3000 | NestJS API | NPM만 |
-| VM-02 | 192.168.94.112 | 3100 | WebSocket | NPM만 |
-| VM-02 | 192.168.94.112 | 5173 | Frontend | NPM만 |
-| VM-03 | 192.168.94.113 | 2222 | SSH | VPN 경유 |
-| VM-03 | 192.168.94.113 | 5432 | PostgreSQL | VM-02, VM-05, VM-DEV |
-| VM-03 | 192.168.94.113 | 9999 | Supabase Auth | VM-02, VM-05 |
-| VM-03 | 192.168.94.113 | 9000 | Supabase Storage | VM-02, VM-05 |
-| VM-03 | 192.168.94.113 | 4000 | Supabase Realtime | VM-02 |
-| VM-03 | 192.168.94.113 | 54323 | Supabase Studio | NPM (IP 제한) |
-| VM-04 | 192.168.94.114 | 2222 | SSH | VPN 경유 |
-| VM-04 | 192.168.94.114 | 6379 | Redis | VM-02, VM-05, VM-DEV |
-| VM-05 | 192.168.94.115 | 2222 | SSH | VPN 경유 |
-| 개발 PC | 192.168.94.201 | 3389 | RDP (Windows 11) | FortiGate 경유 (IP 제한) |
+| FortiGate | 203.0.113.10 | 80, 443 | HTTP/HTTPS | 전체 |
+| FortiGate | 203.0.113.10 | 3389 | RDP → 개발 PC | 사무실/집 공인 IP |
+| FortiGate | 203.0.113.10 | 4500/500 | IPSec VPN | 사무실/집 공인 IP |
+| L4 스위치 | 192.168.0.2 | — | 부하분산 VIP | 내부망 |
+| NPM | 192.168.0.74 | 80, 443 | Reverse Proxy | 전체 (FortiGate 경유) |
+| NPM | 192.168.0.74 | 81 | 관리 UI | 내부망만 |
+| VM-DEV | 192.168.0.110 | 2222 | SSH | 개발 PC, VPN 경유 |
+| VM-DEV | 192.168.0.110 | 3000 | API (개발) | 개발 PC, NPM |
+| VM-DEV | 192.168.0.110 | 5173 | Frontend (개발) | 개발 PC, NPM |
+| VM-DEV | 192.168.0.110 | 54323 | Supabase Studio | 개발 PC, NPM (IP 제한) |
+| VM-02 | 192.168.0.112 | 2222 | SSH | VPN 경유 |
+| VM-02 | 192.168.0.112 | 3000 | NestJS API | NPM만 |
+| VM-02 | 192.168.0.112 | 3100 | WebSocket | NPM만 |
+| VM-02 | 192.168.0.112 | 5173 | Frontend | NPM만 |
+| VM-03 | 192.168.0.113 | 2222 | SSH | VPN 경유 |
+| VM-03 | 192.168.0.113 | 5432 | PostgreSQL | VM-02, VM-05, VM-DEV |
+| VM-03 | 192.168.0.113 | 9999 | Supabase Auth | VM-02, VM-05 |
+| VM-03 | 192.168.0.113 | 9000 | Supabase Storage | VM-02, VM-05 |
+| VM-03 | 192.168.0.113 | 4000 | Supabase Realtime | VM-02 |
+| VM-03 | 192.168.0.113 | 54323 | Supabase Studio | NPM (IP 제한) |
+| VM-04 | 192.168.0.114 | 2222 | SSH | VPN 경유 |
+| VM-04 | 192.168.0.114 | 6379 | Redis | VM-02, VM-05, VM-DEV |
+| VM-05 | 192.168.0.115 | 2222 | SSH | VPN 경유 |
+| 개발 PC | 192.168.0.201 | 3389 | RDP (Windows 11) | FortiGate 경유 (IP 제한) |
 
 ---
 
@@ -1382,16 +1389,16 @@ chmod +x /opt/disk-check.sh
 
 | ESXi | CPU (물리코어) | RAM | NVMe | VM 배치 | 남은 NVMe |
 |---|---|---|---|---|---|
-| 192.168.94.11 | 28코어 | 256 GB | 3.8 TB | VM-03(100GB) + VM-DEV(200GB) | ~3.5 TB |
-| 192.168.94.12 | 28코어 | 256 GB | 2.0 TB | VM-02(50GB) + VM-05(50GB) | ~1.9 TB |
-| 192.168.94.80 | 16코어 | 256 GB | 931 GB | VM-04(20GB) | ~911 GB |
-| 192.168.94.81 | 16코어 | 192 GB | 931 GB | **예비** (확장용) | ~931 GB |
-| 192.168.94.82 | 16코어 | 192 GB | 931 GB | **예비** (확장용) | ~931 GB |
+| 192.168.0.11 | 28코어 | 256 GB | 3.8 TB | VM-03(100GB) + VM-DEV(200GB) | ~3.5 TB |
+| 192.168.0.12 | 28코어 | 256 GB | 2.0 TB | VM-02(50GB) + VM-05(50GB) | ~1.9 TB |
+| 192.168.0.80 | 16코어 | 256 GB | 931 GB | VM-04(20GB) | ~911 GB |
+| 192.168.0.81 | 16코어 | 192 GB | 931 GB | **예비** (확장용) | ~931 GB |
+| 192.168.0.82 | 16코어 | 192 GB | 931 GB | **예비** (확장용) | ~931 GB |
 
 > ESXi .81, .82는 DAU 300+ 확장 시 Read Replica, Worker 추가에 활용합니다.
 
 ---
 
 *easymindmap-infra-architecture.md v1.2 (전체 확정)*
-*IDC 환경: FortiGate IPSec VPN(218.232.94.74) / NPM(192.168.94.74) / L4 Nortel AS3408(192.168.94.2)*
-*Cloudflare DNS: mindmap.ai.kr / ESXi 5대 / 192.168.94.0/24*
+*IDC 환경: FortiGate IPSec VPN(203.0.113.10) / NPM(192.168.0.74) / L4 Nortel AS3408(192.168.0.2)*
+*Cloudflare DNS: example.com / ESXi 5대 / 192.168.0.0/24*

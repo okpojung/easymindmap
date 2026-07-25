@@ -650,7 +650,7 @@ npm run test:e2e
 
 ```bash
 # Supabase (기존 DB_* / MINIO_* / AUTH_JWT_* 전부 제거)
-SUPABASE_URL=https://supabase.mindmap.ai.kr
+SUPABASE_URL=https://supabase.example.com
 SUPABASE_SERVICE_ROLE_KEY=eyJ...       # 서버 전용
 
 # Redis (유지)

@@ -78,16 +78,34 @@ npm run smoke             # 기본 API_URL=http://localhost:3000
 > realtime 퍼블리케이션)를 흉내 내 실제 `schema.sql` 을 그대로 로드하기 위한
 > **로컬 전용** 파일이다. 실제 Supabase Self-hosted 배포에는 쓰지 않는다.
 
-### 엔드포인트 (Phase 1)
+### 엔드포인트
+
+**맵 (Phase 1)**
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/v1/health` | 헬스체크(DB 연결 포함) |
 | POST | `/v1/maps` | 맵 생성 |
 | GET | `/v1/maps` | 내 맵 목록(`?deleted=&page=&limit=`) |
-| GET | `/v1/maps/:id` | 맵 단건(+노드, 현재 빈 배열) |
+| GET | `/v1/maps/:id` | 맵 단건(+노드 트리) |
 | PATCH | `/v1/maps/:id` | 메타 수정(title·viewMode·refreshIntervalSeconds·layout) |
 | DELETE | `/v1/maps/:id` | 소프트 삭제(204) |
+
+**노드 · autosave (Phase 2)**
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| POST | `/v1/maps/:mapId/nodes` | 노드 생성(parentId 없으면 루트, ltree path 자동) |
+| PATCH | `/v1/maps/:mapId/nodes` | autosave — 배치 patch(add/update/delete/move) + 버전·멱등성 |
+| PATCH | `/v1/nodes/:id` | 노드 속성 수정(text·style·collapsed·shape·layout·manualPosition) |
+| DELETE | `/v1/nodes/:id` | 노드 삭제(subtree cascade, 204) |
+| PATCH | `/v1/nodes/:id/move` | 노드 이동(`move_node_subtree` — 부모 변경 + subtree path 재작성) |
+| PATCH | `/v1/nodes/:id/layout` | 노드 레이아웃 변경(Edge 타입은 클라이언트 자동 결정) |
+
+> autosave 규칙: `baseVersion` 이 서버 `currentVersion` 과 다르면 `409
+> VERSION_CONFLICT`, 동일 `patchId` 재수신은 `409 DUPLICATE_PATCH`(멱등),
+> 성공 시 `{ newVersion, conflicts:[] }`. 직접 노드 엔드포인트(POST/PATCH/
+> DELETE `/nodes`)는 버전을 올리지 않는다(autosave 가 버전 경로).
 
 ---
 

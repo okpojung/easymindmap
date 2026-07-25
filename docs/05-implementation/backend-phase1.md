@@ -54,13 +54,41 @@ Redis)은 뒤로 미루고 실제로 돌아가는 최소 단위**부터 세웠�
 컨테이너를 띄워 → 스키마 로드 → API 기동 → `npm run smoke`(맵 CRUD 왕복)
 까지 매 PR에서 자동 실행. 즉 백엔드가 **실제 DB와 함께** 검증된다.
 
+## Phase 2 — 노드 CRUD + ltree 이동 + autosave (완료)
+
+맵 안의 **노드 트리**를 서버에 저장·조작한다.
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| POST | `/v1/maps/:mapId/nodes` | 노드 생성 — parentId 없으면 루트(`path='root'`), 있으면 `parent.path || 'n_'+uuid8`, depth=부모+1 |
+| PATCH | `/v1/maps/:mapId/nodes` | **autosave** — 배치 patch(add/update/delete/move), 트랜잭션 |
+| PATCH | `/v1/nodes/:id` | 속성 수정(text·style→style_json·collapsed·shape·layout·manualPosition) |
+| DELETE | `/v1/nodes/:id` | subtree cascade 삭제(204) |
+| PATCH | `/v1/nodes/:id/move` | `move_node_subtree` RPC — 부모 변경 + subtree ltree path 일괄 재작성, 순환 차단 |
+| PATCH | `/v1/nodes/:id/layout` | layout_type 변경(Edge 타입은 클라이언트 자동 결정) |
+
+핵심 설계:
+- **ltree path/​depth**: 앱에서 노드 id 를 먼저 생성해 `n_+uuid8` 레이블로
+  path 계산(`node-path.util.ts`). depth=부모+1. 이동은 DB 함수가 subtree
+  전체 path 를 원자적으로 재작성.
+- **autosave 동시성**: 트랜잭션에서 맵을 `FOR UPDATE` 잠금 →
+  `baseVersion !== currentVersion` 이면 `409 VERSION_CONFLICT` →
+  동일 `patchId` 는 `409 DUPLICATE_PATCH`(멱등, `map_revisions.patch_id`
+  UNIQUE) → 패치 순차 적용 → `current_version+1` + `map_revisions` 기록 →
+  `{ newVersion, conflicts:[] }`.
+- **루트 유일성**: 맵당 parent_id NULL 노드는 1개(중복 생성 시 400).
+- **직접 노드 엔드포인트는 버전 미증가** — autosave 가 버전/이력 경로.
+
+검증(smoke, CI backend 잡에서 매 PR 실행): 루트/자식 생성·중복 루트 거부·
+맵 로드·수정·레이아웃·이동(depth 2·path 재작성)·순환 차단·autosave
+newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
+
 ## 다음 단계
 
 | Phase | 내용 |
 |---|---|
-| **2** | 노드 CRUD + ltree 계층 이동(`move_node_subtree`), autosave(`PATCH /maps/:id/nodes`) |
 | **3** | Supabase Auth(JWT 검증)로 인증 스텁 교체, RLS 실사용 |
-| **4** | 스토리지(사진 별도 저장소), 프론트엔드 연결(로그인·클라우드 저장) |
+| **4** | 노드 부가정보(노트·태그·링크·첨부/사진 스토리지), 프론트엔드 연결(로그인·클라우드 저장) |
 | **5** | 배포(`deploy.yml`) — `ci-cd-github-actions.md` 순서대로 |
 
 관련: `backend-architecture.md`, `api-spec.md`, `../02-domain/schema.sql`,

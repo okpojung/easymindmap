@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
 import type { CreateMapDto } from './dto/create-map.dto';
 import type { UpdateMapDto } from './dto/update-map.dto';
 
@@ -72,18 +73,16 @@ export class MapsService {
   /** GET /maps/:id — 맵 전체(현재 단계: 노드 목록은 빈 배열, 다음 PR에서 채움) */
   async getOne(userId: string, mapId: string) {
     const m = await this.requireOwnedMap(userId, mapId);
-    // 노드 모듈은 다음 단계 — 지금은 존재하는 노드를 그대로(없으면 빈 배열) 반환
-    const nodes = await this.db.query(
-      `SELECT id, parent_id, text, depth, order_index, path::text AS path,
-              layout_type, collapsed, shape_type, style_json, node_type
-         FROM public.nodes WHERE map_id = $1 ORDER BY depth, order_index`,
+    const nodes = await this.db.query<NodeRow>(
+      `SELECT ${NODE_COLUMNS} FROM public.nodes WHERE map_id = $1
+        ORDER BY depth, order_index`,
       [mapId],
     );
     return {
       mapId: m.id,
       title: m.title,
       currentVersion: m.current_version,
-      nodes: nodes.rows,
+      nodes: nodes.rows.map(serializeNode),
       updatedAt: m.updated_at,
     };
   }

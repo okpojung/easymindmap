@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Pool, type QueryResult, type QueryResultRow } from 'pg';
+import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 import type { AppEnv } from '../config/env.validation';
 
 /**
@@ -42,6 +42,26 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     params: readonly unknown[] = [],
   ): Promise<QueryResult<T>> {
     return this.pool.query<T>(text, params as unknown[]);
+  }
+
+  /**
+   * 트랜잭션 실행 — 콜백 안의 모든 쿼리를 하나의 커넥션/트랜잭션으로 묶는다.
+   * 콜백이 예외를 던지면 ROLLBACK, 정상 종료하면 COMMIT.
+   * autosave(여러 패치를 원자적으로)·노드 이동 등에서 사용.
+   */
+  async transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await fn(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   /** 헬스체크용 — 연결 가능 여부만 boolean 으로. */

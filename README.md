@@ -22,7 +22,7 @@ AI mindmap + multilingual collaboration + real-time + export = easymindmap
 
 ```bash
 git pull origin main
-./dev.sh            # macOS/Linux  (Windows: ./dev.ps1)
+./dev.sh            # macOS/Linux   (Windows 명령 프롬프트: dev)
 ```
 → 브라우저에서 **http://localhost:5173** 접속. DB(Docker)+백엔드(:3000)+
 프론트(:5173)가 한 번에 뜬다. 편집만 볼 거면 `cd apps/frontend && npm install

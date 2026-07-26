@@ -9,7 +9,49 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 command -v node >/dev/null 2>&1 || { echo "✗ Node.js 20+ 가 필요합니다 (https://nodejs.org)"; exit 1; }
-command -v docker >/dev/null 2>&1 || { echo "✗ Docker 가 필요합니다 (DB용, https://www.docker.com)"; exit 1; }
+
+ensure_docker() {
+  # 1) Docker 설치 확인 (없으면 OS에 맞춰 설치 안내/자동설치 제안)
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "✗ Docker 가 설치되어 있지 않습니다 (클라우드 저장용 DB에 필요)."
+    if [ "$(uname -s)" = "Linux" ]; then
+      printf "  Docker 를 지금 설치할까요? (Docker 공식 스크립트, sudo 필요) [y/N] "
+      read -r ans
+      if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
+        curl -fsSL https://get.docker.com | sudo sh
+        sudo usermod -aG docker "$USER" 2>/dev/null || true
+        echo "  설치 완료. docker 그룹 적용을 위해 로그아웃/재로그인 후 다시 실행하세요."
+      else
+        echo "  https://docs.docker.com/engine/install/ 를 참고하세요."
+      fi
+    else  # macOS 등
+      if command -v brew >/dev/null 2>&1; then
+        printf "  Docker Desktop 을 지금 설치할까요? (Homebrew) [y/N] "
+        read -r ans
+        if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
+          brew install --cask docker
+          echo "  설치 완료. Docker Desktop 을 실행한 뒤 다시 실행하세요."
+        fi
+      else
+        echo "  Homebrew 가 없습니다. https://www.docker.com/products/docker-desktop 에서 설치하세요."
+      fi
+    fi
+    exit 1
+  fi
+  # 2) Docker 엔진(데몬) 실행 확인
+  if ! docker info >/dev/null 2>&1; then
+    echo "✗ Docker 는 설치돼 있지만 실행 중이 아닙니다."
+    if [ "$(uname -s)" = "Linux" ]; then
+      echo "  sudo systemctl start docker   로 시작한 뒤 다시 실행하세요."
+    else
+      echo "  Docker Desktop 을 실행해 준비될 때까지 기다린 뒤 다시 실행하세요."
+    fi
+    exit 1
+  fi
+  echo "▶ Docker 확인됨."
+}
+
+ensure_docker
 
 COMPOSE="docker compose -f apps/api/docker-compose.dev.yml"
 

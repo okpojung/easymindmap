@@ -1,7 +1,7 @@
 # 🧠 easymindmap
 
 **AI 기반 온라인 마인드맵 플랫폼**  
-서비스 도메인: `mindmap.ai.kr`
+서비스 도메인: `example.com` (실제 도메인은 배포 설정에서 관리)
 
 ---
 
@@ -15,6 +15,20 @@ AI mindmap + multilingual collaboration + real-time + export = easymindmap
 ```
 
 > 👉 목표: **Think faster. Organize smarter.**
+
+---
+
+## ⚡ 빠른 실행 (로컬)
+
+```bash
+git pull origin main
+./dev.sh            # macOS/Linux  (Windows: ./dev.ps1)
+```
+→ 브라우저에서 **http://localhost:5173** 접속. DB(Docker)+백엔드(:3000)+
+프론트(:5173)가 한 번에 뜬다. 편집만 볼 거면 `cd apps/frontend && npm install
+&& npm run dev` 만 해도 된다.
+
+자세한 안내(준비물·문제 해결): **[docs/user-guide/로컬-실행.md](docs/user-guide/로컬-실행.md)**
 
 ---
 

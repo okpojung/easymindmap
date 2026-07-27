@@ -4,6 +4,14 @@
 > 목표: "코드를 푸시하면 GitHub가 알아서 빌드하고, 준비되면 서버까지
 > 자동 배포"하는 파이프라인을, **서버에 상시 원격 접속권을 열지 않고**
 > 안전하게 구성하는 법을 이해한다.
+>
+> **⚡ 배포 방식 확정 (2026-07)**: 이 프로젝트의 **CD(배포)는 Coolify**가
+> 담당한다 — 개발/프로덕션 서버에 Coolify 를 설치하고 GitHub 웹훅으로
+> 자동 배포 ([`dev-server-coolify.md`](dev-server-coolify.md)).
+> **GitHub Actions 는 CI(빌드·타입체크·스모크) 품질 게이트**로 계속
+> 사용한다. 이 문서의 §3~§6(GHCR + SSH `deploy.yml`)은 Coolify 를 쓰지
+> 않을 경우의 **대안 경로**로 보존한다 — 개념(러너·Secrets·잡)은 그대로
+> 유효하다.
 
 ---
 
@@ -294,19 +302,22 @@ docker compose up -d
 
 ---
 
-## 10. 우리 프로젝트 진행 순서
+## 10. 우리 프로젝트 진행 순서 (2026-07 개정 — Coolify 기준)
 
-1. **[지금] CI 가동** — `ci.yml`로 매 PR 빌드·타입체크. Actions 탭에서
-   초록불 체험. (이 문서 §2)
-2. **[백엔드 착수 후] 이미지화** — 프론트/`apps/api`에 `Dockerfile`,
-   루트에 운영용 `docker-compose.yml` 작성.
-3. **[서버 준비] 사전 세팅** — §4 서버 준비 + §5 배포키·Secrets.
-4. **[연결] deploy.yml 추가** — §6 워크플로. 처음엔 `workflow_dispatch`
-   (수동 버튼)로 시작해 몇 번 검증 후 `push: main` 자동으로 전환.
-5. **[안정화] 헬스체크·롤백·모니터링** 보강.
+1. ✅ **CI 가동** — `ci.yml`로 매 PR 빌드·타입체크·백엔드 스모크(DB).
+   품질 게이트로 계속 유지. (이 문서 §2)
+2. ✅ **백엔드·클라우드 저장 구현** — `apps/api` + 프론트 연결 완료.
+3. **[다음] 개발 서버 구축** — Ubuntu 22.04 + **Coolify** 설치, GitHub
+   연동, PostgreSQL 16·api·frontend 리소스 구성. main 푸시 = 자동 배포.
+   → 절차: [`dev-server-coolify.md`](dev-server-coolify.md)
+4. **[검증 후] 프로덕션 복제** — 개발 서버에서 검증된 Coolify 구성을
+   프로덕션 서버에 동일하게 복제(도메인·환경변수·배포 트리거만 변경,
+   프로덕션은 태그/수동 Deploy 권장).
+5. **[안정화] 헬스체크·백업·모니터링** — Coolify 기능(Scheduled Backup·
+   로그) + `infra-architecture.md` §15~16.
 
-> 급하게 공개할 필요 없다는 방침에 맞춰, **1번(CI)만 먼저** 켜고
-> 나머지는 백엔드가 준비되면 단계적으로 얹습니다.
+> §3~§6의 GHCR + SSH `deploy.yml` 방식은 **Coolify 미사용 시의 대안**으로
+> 문서에 보존한다.
 
 ---
 

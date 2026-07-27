@@ -3,7 +3,14 @@
 문서명: `docs/05-implementation/docker-compose-spec.md`  
 기준: **ESXi 7.0.3 환경, Supabase Self-hosted + VM별 분리 배포**  
 결정일: 2026-03-27  
-최종 업데이트: 2026-04-16
+최종 업데이트: 2026-07-27
+
+> **개정 (2026-07)**: 컨테이너 실행·배포의 **운영 주체는 Coolify** 로
+> 확정 — 개발/프로덕션 서버 모두 Coolify 가 앱·DB 컨테이너를 관리하고
+> GitHub 웹훅으로 자동 배포한다([`dev-server-coolify.md`](dev-server-coolify.md)).
+> 이 문서의 compose 정의는 **서비스 구성(이미지·포트·환경변수)의 기준
+> 스펙**으로 유지하며, Supabase Self-hosted 등 다중 컨테이너 스택은
+> Coolify 의 Docker Compose 리소스로 이 정의를 그대로 사용한다.
 
 ---
 

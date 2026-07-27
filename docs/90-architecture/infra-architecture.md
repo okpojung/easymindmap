@@ -8,8 +8,9 @@
 > 절차를 이해하는 데는 지장이 없습니다.
 >
 > **문서 위치**: `docs/90-architecture/infra-architecture.md`
-> **최종 업데이트**: 2026-04-04
-> **버전**: v1.2 (전체 확정)
+> **최종 업데이트**: 2026-07-27
+> **버전**: v1.3 — **배포 표준을 Coolify 로 개정** (dev/prod parity,
+> §10·§12·§14 개정, 기준 문서 [`dev-server-coolify.md`](dev-server-coolify.md))
 > **환경**: IDC / ESXi 5대 / FortiGate IPSec VPN / 192.168.0.0/24
 
 ---
@@ -787,8 +788,14 @@ redis-cli -h 192.168.0.114 -a 강력한_Redis_비밀번호 ping
 ## 10. VM-02: App 서버 배포
 
 > **호스트**: ESXi 192.168.0.12
+>
+> **개정 (2026-07)**: 프로덕션 App 배포도 개발 서버와 동일하게
+> **Coolify** 로 표준화한다(dev/prod parity — [`dev-server-coolify.md`](dev-server-coolify.md) §7).
+> 아래 수동 방식(Node/pm2 직접 설치 + git pull 빌드)은 **레거시 참고용**으로
+> 남겨 둔다. 개발 서버(VM-DEV)에서 Coolify 구성을 검증한 뒤, VM-02 도
+> 같은 방식으로 전환한다.
 
-### 10.1 방화벽 및 Node.js 설치
+### 10.1 방화벽 및 Node.js 설치 (레거시)
 
 ```bash
 sudo ufw allow from 192.168.0.74 to any port 3000
@@ -903,99 +910,54 @@ pm2 save && pm2 startup
 
 > **호스트**: ESXi 192.168.0.11 (DL360 Gen9, NVMe 3.8TB)
 > **VM IP**: 192.168.0.110
+>
+> **개정 (2026-07)**: 개발 서버는 **Ubuntu 22.04 + Coolify** 로
+> **프로덕션과 동일한 방식**으로 구축한다(dev/prod parity). 이전의
+> 수동 방식(Node/pm2 직접 설치 + supabase-cli + dev-start.sh)은 폐기.
+> **상세 구축 절차는 기준 문서 [`dev-server-coolify.md`](dev-server-coolify.md) 참조.**
 
-### 12.1 방화벽 설정
+### 12.1 구성 요약
+
+```
+개발 PC(브라우저만) ──▶ VM-DEV (Ubuntu 22.04)
+                         └─ Coolify (Traefik 80/443, 대시보드 :8000)
+                             ├─ app: frontend  (apps/frontend, 정적 빌드)
+                             ├─ app: api       (apps/api, NestJS :3000)
+                             └─ db : PostgreSQL 16 (+ ltree, 스키마 로드)
+GitHub main 푸시 ─웹훅─▶ Coolify 자동 재빌드·재배포
+```
+
+- 개발 PC에는 **아무것도 설치하지 않는다**(Node/Docker 불필요).
+  Docker는 Coolify 설치 스크립트가 서버 안에 자동 설치·관리한다.
+- 프로덕션도 같은 Coolify 구성을 복제해 값(도메인·환경변수·배포 트리거)만
+  바꾼다 — 개발 서버가 곧 프로덕션 리허설 환경이다.
+
+### 12.2 방화벽 설정
 
 ```bash
-# 개발 PC 접근 허용
-sudo ufw allow from 192.168.0.201 to any port 3000
-sudo ufw allow from 192.168.0.201 to any port 5173
-sudo ufw allow from 192.168.0.201 to any port 54323
-sudo ufw allow from 192.168.0.201 to any port 5432
-
-# NPM (dev.example.com 경유)
-sudo ufw allow from 192.168.0.74 to any port 5173
-
+sudo ufw allow OpenSSH
+sudo ufw allow 80,443/tcp                            # Traefik (앱 접속)
+sudo ufw allow from 192.168.0.201 to any port 8000   # Coolify 대시보드 (개발 PC)
+sudo ufw allow from 192.168.0.74  to any port 80     # NPM (dev.example.com 경유)
 # IPSec VPN 클라이언트 대역 (FortiGate 설정 후 실제 대역으로 변경)
-# 예: sudo ufw allow from 10.x.x.0/24 to any port 5173
-sudo ufw reload
+# 예: sudo ufw allow from 10.x.x.0/24 to any port 8000
+sudo ufw enable && sudo ufw reload
 ```
 
-### 12.2 개발 스택 설치 및 시작
+### 12.3 Coolify 설치·리소스 구성
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-sudo npm install -g @supabase/cli typescript ts-node pm2
-
-mkdir -p /opt/easymindmap-dev && cd /opt/easymindmap-dev
-git clone https://github.com/okpojung/easymindmap.git .
-
-# Supabase 로컬 스택 시작
-npx supabase init
-npx supabase start
-# → 출력값에서 anon key, service_role key 복사
-
-# 스키마 적용
-npx supabase db push
-# 또는
-psql postgresql://postgres:postgres@localhost:54322/postgres \
-  < docs/02-domain/schema.sql
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | sudo bash
+# → http://192.168.0.110:8000 접속, 첫 가입 = 관리자
 ```
 
-### 12.3 개발 환경변수
-
-```bash
-cat > apps/backend/.env.local << 'EOF'
-NODE_ENV=development
-PORT=3000
-SUPABASE_URL=http://localhost:54321
-SUPABASE_SERVICE_KEY=[supabase start 출력 service_role key]
-DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres
-REDIS_URL=redis://localhost:6379
-JWT_SECRET=dev-jwt-secret-minimum-32-characters-long
-APP_URL=http://192.168.0.110:5173
-OPENAI_API_KEY=sk-...
-EOF
-
-cat > apps/frontend/.env.local << 'EOF'
-VITE_API_URL=http://192.168.0.110:3000
-VITE_WS_URL=ws://192.168.0.110:3100
-VITE_SUPABASE_URL=http://192.168.0.110:54321
-VITE_SUPABASE_ANON_KEY=[supabase start 출력 anon key]
-EOF
-```
-
-### 12.4 개발 서버 시작 스크립트
-
-```bash
-cat > /opt/easymindmap-dev/dev-start.sh << 'EOF'
-#!/bin/bash
-echo "=== easymindmap 개발 서버 시작 $(date) ==="
-cd /opt/easymindmap-dev
-
-# Redis
-docker ps | grep em-dev-redis > /dev/null 2>&1 || \
-  docker run -d --name em-dev-redis -p 6379:6379 redis:7-alpine
-
-# Supabase
-npx supabase status > /dev/null 2>&1 || npx supabase start
-
-echo ""
-echo "접속 주소 (개발 PC 브라우저):"
-echo "  Frontend  : http://192.168.0.110:5173"
-echo "  API       : http://192.168.0.110:3000"
-echo "  DB Studio : http://192.168.0.110:54323"
-echo ""
-echo "개발 서버 시작 (VS Code 터미널):"
-echo "  터미널 1: cd apps/backend  && npm run start:dev"
-echo "  터미널 2: cd apps/frontend && npm run dev -- --host 0.0.0.0"
-EOF
-
-chmod +x /opt/easymindmap-dev/dev-start.sh
-```
-
----
+이후 절차(요약 — 상세는 dev-server-coolify.md):
+1. **Sources → GitHub App** 생성 → `okpojung/easymindmap` 연결
+2. 프로젝트 `easymindmap-dev` 에 리소스 3개:
+   PostgreSQL 16(스키마 로드) · api(`apps/api`) · frontend(`apps/frontend`)
+3. 도메인: `dev.example.com`(frontend) / `api-dev.example.com`(api) —
+   NPM 또는 DNS 를 VM-DEV 로 향하게 하면 Traefik 이 SSL 자동 처리
+4. main 푸시 → 자동 배포 확인
 
 ## 13. 원격 접속 환경 (FortiGate IPSec VPN + RDP)
 
@@ -1121,35 +1083,42 @@ Host em-dev
     ServerAliveCountMax 3
 ```
 
-VS Code 접속:
+VS Code 접속(서버 점검·psql 등 필요 시):
 ```
 F1 → Remote-SSH: Connect to Host → em-dev
-→ /opt/easymindmap-dev 폴더 열기
-→ 터미널: bash dev-start.sh
 ```
+
+> 앱 실행은 SSH 로 하지 않는다 — Coolify 가 서비스를 상시 유지하고
+> main 푸시 시 자동 배포한다. 로그·재배포·롤백은 Coolify 대시보드
+> (http://192.168.0.110:8000)에서. (`dev-server-coolify.md`)
 
 ---
 
 ## 14. 개발 워크플로우
 
-### 14.1 일상 개발 흐름
+### 14.1 일상 개발 흐름 (Coolify 기준, 2026-07 개정)
 
 ```
-사무실 또는 집
+사무실 또는 집 (개발 PC — 브라우저·에디터만)
   │
-  ├─ 방법 A: RDP → 개발 PC (192.168.0.201)
-  │              FortiGate 3389 포트포워딩
-  │              → VS Code Remote SSH → VM-DEV
-  │              → 개발 서버 시작 (start:dev / vite dev)
-  │              → 브라우저 http://192.168.0.110:5173
+  ├─ 코드 작업: 로컬에서 수정 → PR → main 병합
+  │      └─ GitHub 웹훅 → VM-DEV Coolify 가 자동 재빌드·재배포
   │
-  └─ 방법 B: IPSec VPN → 내부망 직접 접속
-              → RDP  192.168.0.201 (개발 PC 경유)
-              → 또는 SSH 192.168.0.110 (VM-DEV 직접)
-              → 브라우저 https://dev.example.com
+  ├─ 확인: 브라우저 https://dev.example.com (프론트)
+  │        https://api-dev.example.com/v1/health (API)
+  │
+  └─ 서버 관리(필요 시): IPSec VPN → Coolify 대시보드
+         http://192.168.0.110:8000 (로그·재배포·롤백·DB 백업)
 ```
 
-### 14.2 프로덕션 배포 스크립트
+> 개발 서버를 수동으로 "시작"할 필요가 없다 — Coolify 가 서비스를 상시
+> 유지하고, main 푸시 때마다 자동 배포한다. (`dev-server-coolify.md`)
+
+### 14.2 프로덕션 배포 스크립트 (레거시)
+
+> **개정 (2026-07)**: 배포는 **Coolify** 로 표준화 — 개발은 main 푸시 시
+> 자동, 프로덕션은 태그/수동 Deploy(권장). 아래 deploy.sh 는 레거시 참고용.
+> [`dev-server-coolify.md`](dev-server-coolify.md) 참조.
 
 ```bash
 # VM-02에서: /opt/easymindmap/deploy.sh

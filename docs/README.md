@@ -97,7 +97,8 @@ docs/
 │
 ├─ 90-architecture/       👈 시스템·인프라 아키텍처 문서
 │  ├─ backend-architecture.md
-│  ├─ ci-cd-github-actions.md   👈 GitHub Actions CI/CD 자동배포 가이드
+│  ├─ ci-cd-github-actions.md   👈 CI(품질 게이트) 가이드 — 배포는 Coolify
+│  ├─ dev-server-coolify.md     👈 개발 서버 = Ubuntu 22.04 + Coolify (프로덕션 패리티) 기준 문서
 │  ├─ docker-compose-spec.md
 │  ├─ frontend-architecture.md
 │  ├─ infra-architecture.md
@@ -163,8 +164,9 @@ docs/
 | `docs/05-implementation/state-management.md` | 상태관리 설계 (Zustand 스토어 구조) |
 | `docs/05-implementation/test-catalog.md` | MVS E2E 테스트 카탈로그 — 영역별 검증 항목·회귀 실행 가이드 |
 | `docs/90-architecture/backend-architecture.md` | 백엔드 아키텍처 |
-| `docs/90-architecture/ci-cd-github-actions.md` | GitHub Actions CI/CD 자동배포 가이드 (처음부터) |
-| `docs/90-architecture/docker-compose-spec.md` | Docker Compose 명세 |
+| `docs/90-architecture/ci-cd-github-actions.md` | GitHub Actions CI 가이드 (품질 게이트 — 배포는 Coolify) |
+| `docs/90-architecture/dev-server-coolify.md` | 개발 서버 구축 기준 — Ubuntu 22.04 + Coolify, 프로덕션 패리티 |
+| `docs/90-architecture/docker-compose-spec.md` | Docker Compose 명세 (Coolify 가 실행 주체, 구성 기준 스펙) |
 | `docs/90-architecture/frontend-architecture.md` | 프론트엔드 아키텍처 |
 | `docs/90-architecture/infra-architecture.md` | 인프라 아키텍처 |
 | `docs/90-architecture/system-architecture.md` | 시스템 아키텍처 |

@@ -125,7 +125,7 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
 |---|---|
 | **3** | Supabase Auth(JWT 검증)로 인증 스텁 교체, RLS 실사용 |
 | **4c** | 사진 별도 스토리지(object storage), 스냅샷↔정규화 노드 동기(협업 준비) |
-| **5** | 배포(`deploy.yml`) — `ci-cd-github-actions.md` 순서대로 |
+| **5** | 배포 — **개발 서버(Ubuntu 22.04 + Coolify, 프로덕션 패리티)** 구축 후 프로덕션 복제. `../90-architecture/dev-server-coolify.md` 기준 (CI 품질 게이트는 GitHub Actions 유지) |
 
 관련: `backend-architecture.md`, `api-spec.md`, `../02-domain/schema.sql`,
 `../90-architecture/ci-cd-github-actions.md`.

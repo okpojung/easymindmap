@@ -32,7 +32,8 @@ import {
   type NoteKind,
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from '@/editor/canvas/NoteViewerPopover';
-import { parseInlineMarks, toggleMarkRange, insertCodeBlock } from '@/editor/node-renderer/inlineMarks';
+import { parseInlineMarks, toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
+import { CodeBlockDialog, spliceCodeBlock } from '@/editor/node-renderer/CodeBlockDialog';
 import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import type { LaidOutNode } from '@/layout/types';
@@ -208,15 +209,21 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 
   // 선택 구간에 인라인 마커 토글 (맵 편집창과 동일 — 툴바/Ctrl+B·I·U).
   // 이미 그 마커가 적용돼 있으면 해제한다.
+  const [codeDlgCursor, setCodeDlgCursor] = useState<number | null>(null);
+  // blur 핸들러가 최신 팝업 상태를 보게 하는 미러 (맵 편집창과 동일 경합 방지)
+  const codeDlgRef = useRef<boolean>(false);
+  useEffect(() => { codeDlgRef.current = codeDlgCursor !== null; }, [codeDlgCursor]);
   const wrapSelection = (mark: string) => {
     const ta = inputRef.current;
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
     const e0 = ta.selectionEnd ?? s0;
-    // '코드블록' 버튼 — 마커 토글이 아니라 ``` 블록 삽입
-    const r = mark === '```'
-      ? insertCodeBlock(draft, s0, e0)
-      : toggleMarkRange(draft, s0, e0, mark);
+    // '코드블록' 버튼 — 팝업 편집기에서 언어·코드를 입력받아 삽입
+    if (mark === '```') {
+      setCodeDlgCursor(e0);
+      return;
+    }
+    const r = toggleMarkRange(draft, s0, e0, mark);
     setDraft(r.next);
     window.setTimeout(() => {
       ta.focus();
@@ -365,6 +372,21 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
               onApply={wrapSelection}
               style={{ display: 'inline-flex', marginBottom: 4 }}
             />
+            {codeDlgCursor !== null && (
+              // 코드 블록 팝업 편집기 — { } 버튼 (맵 편집창과 동일)
+              <CodeBlockDialog
+                t={t}
+                onCancel={() => {
+                  setCodeDlgCursor(null);
+                  window.setTimeout(() => inputRef.current?.focus(), 0);
+                }}
+                onSave={(lang, code) => {
+                  setDraft(spliceCodeBlock(draft, codeDlgCursor, lang, code));
+                  setCodeDlgCursor(null);
+                  window.setTimeout(() => inputRef.current?.focus(), 0);
+                }}
+              />
+            )}
           <textarea
             ref={inputRef}
             value={draft}
@@ -390,7 +412,11 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
               );
               if (kind === 'file') e.preventDefault();
             }}
-            onBlur={commitEdit}
+            onBlur={() => {
+              // 코드 블록 팝업이 여는 blur는 커밋이 아니다 (맵 편집창과 동일)
+              if (codeDlgRef.current) return;
+              commitEdit();
+            }}
             onKeyDown={(e) => {
               e.stopPropagation();
               // 부분 강조 단축키 (Ctrl+B/I/U)

@@ -45,6 +45,10 @@ export interface NodeSize {
   // 나머지 텍스트만 남는다. NodeRenderer가 같은 값으로 표를 그린다.
   mdTable?: MdTableLayout;
   mdCode?: MdCodeLayout;
+  // 코드 패널이 끼어드는 래핑 줄 인덱스 — 이 인덱스 "앞"에 패널이 놓이고
+  // 그 이후 줄은 패널 아래로 밀린다 (원문 순서 보존: 펜스 앞 텍스트는
+  // 위, 뒤 텍스트는 아래). 표와 함께 있으면 기존처럼 텍스트 뒤(=lines.length).
+  mdCodeAt?: number;
   // 수동 줄바꿈(\n) 세그먼트가 시작하는 lines 인덱스 — 인라인 마커 상태
   // 이월의 리셋 지점 (자동 줄바꿈 줄에는 상태가 이어진다)
   manualStarts?: number[];
@@ -245,6 +249,16 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   });
   if (!mdTable && !mdCode && wrappedLines.length === 0) wrappedLines.push('');
 
+  // 코드 패널이 끼어드는 래핑 줄 위치 — 펜스 "앞" 텍스트의 래핑 줄 수.
+  // 표가 함께 있으면 줄↔원문 매핑이 어긋나므로 기존처럼 텍스트 뒤에 둔다.
+  let mdCodeAt = wrappedLines.length;
+  if (mdCode && !mdTable) {
+    const beforeCount = mdCode.before === '' ? 0 : mdCode.before.split('\n').length;
+    mdCodeAt = beforeCount < manualStarts.length
+      ? manualStarts[beforeCount]
+      : wrappedLines.length;
+  }
+
   // Width = widest wrapped line + padding (clamped between min and max).
   // 표·코드가 있으면 그 폭만큼은 항상 확보한다 (maxW보다 넓어도 잘리지 않게).
   // 수동 폭이면 그 값 그대로 (표·코드가 더 넓을 때만 예외적으로 확장).
@@ -260,8 +274,11 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
       );
   const textH = wrappedLines.length * lineHeight;
   const tableH = mdTable ? mdTable.h + (wrappedLines.length > 0 ? 6 : 0) : 0;
+  // 패널 위(펜스 앞 텍스트·표)와 아래(펜스 뒤 텍스트)에 각각 여백 6
   const codeH = mdCode
-    ? mdCode.h + (wrappedLines.length > 0 || mdTable ? 6 : 0)
+    ? mdCode.h +
+      (mdCodeAt > 0 || mdTable ? 6 : 0) +
+      (wrappedLines.length > mdCodeAt ? 6 : 0)
     : 0;
   // 붙여넣은 사진 — 노드 폭에 맞춰 축소한 높이만큼 박스가 커진다
   const imgH = opts.image
@@ -279,6 +296,6 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
 
   return {
     w, h, lines: wrappedLines, fontSize, fontWeight, lineHeight,
-    padX, padY, mdTable, mdCode, manualStarts,
+    padX, padY, mdTable, mdCode, mdCodeAt, manualStarts,
   };
 }

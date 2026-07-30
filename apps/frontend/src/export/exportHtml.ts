@@ -371,7 +371,10 @@ const VIEWER_JS = String.raw`
       while (j < lines.length && !isFenceLine(lines[j])) { code.push(lines[j]); j++; }
       if (!code.join('').replace(/\s/g, '')) return null;
       var lang = lines[i].replace(/^\s+/, '').slice(3).replace(/^\s+|\s+$/g, '');
-      return { code: code, lang: lang || undefined };
+      // before = 펜스 앞 일반 텍스트 (에디터 mdCode.ts와 동일 trimEnd) —
+      // 코드 패널을 원문 순서(앞 텍스트 위 / 뒤 텍스트 아래)에 놓기 위함
+      var before = lines.slice(0, i).join('\n').replace(/\s+$/, '');
+      return { code: code, lang: lang || undefined, before: before };
     }
     return null;
   }
@@ -952,14 +955,23 @@ const VIEWER_JS = String.raw`
       tblH = (1 + mdt.rows.length) * rowH2;
     }
     // 코드 패널 크기 — 에디터 mdCode.ts와 동일 (codeFs=fs-2, lineH=fs+6? → codeFs+6)
-    var cFs = 0, cLineH = 0, cGap = 0, cH = 0, cW = 0, CPX = 8, CPY = 6;
+    var cFs = 0, cLineH = 0, cH = 0, cW = 0, CPX = 8, CPY = 6;
     var cHeadFs = 0, cHeadH = 0;
+    // 패널이 끼어드는 래핑 줄 인덱스(cAt)·위/아래 여백 — 에디터
+    // sizeNodeForText.mdCodeAt과 동일 규칙 (표가 있으면 텍스트 뒤)
+    var cAt = node._lines.length, cGapAbove = 0, cGapBelow = 0;
     if (mdc) {
       cFs = Math.max(10, node._fs - 2);
       cLineH = cFs + 6;
       cHeadFs = Math.max(9, cFs - 2);
       cHeadH = cHeadFs + 10;
-      cGap = (node._lines.length || mdt) ? 6 : 0;
+      if (!mdt) {
+        var beforeCnt = mdc.before === '' ? 0 : mdc.before.split('\n').length;
+        var ms3 = (node._manualStarts && node._manualStarts.length) ? node._manualStarts : [0];
+        cAt = beforeCnt < ms3.length ? ms3[beforeCnt] : node._lines.length;
+      }
+      cGapAbove = (cAt > 0 || mdt) ? 6 : 0;
+      cGapBelow = node._lines.length > cAt ? 6 : 0;
       cH = cHeadH + mdc.code.length * cLineH + CPY * 2;
       for (var cwi = 0; cwi < mdc.code.length; cwi++) {
         cW = Math.max(cW, measureReal(mdc.code[cwi], cFs, 500, false, CODE_FONT));
@@ -1006,8 +1018,9 @@ const VIEWER_JS = String.raw`
     }
     var imgGap = img && (node._lines.length || mdt || mdc) ? 6 : 0;
     var stacked = !!(mdt || img || inImgs || mdc); // 표·코드·사진이 있으면 세로 스택
+    var cBlockH = mdc ? cH + cGapAbove + cGapBelow : 0;
     var contentH = flowH +
-      (mdt ? tblH + tGap : 0) + (mdc ? cH + cGap : 0) + (img ? img.h + imgGap : 0);
+      (mdt ? tblH + tGap : 0) + cBlockH + (img ? img.h + imgGap : 0);
     var topY = node._cy - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
     // 인라인 마커 상태를 자동 줄바꿈 사이로 이월 (수동 \n 시작 줄에서 리셋)
@@ -1027,8 +1040,10 @@ const VIEWER_JS = String.raw`
           segs[si].c ? CODE_FONT : node._ff));
         lw2 += segWs[si];
       }
+      // 코드 패널 뒤(cAt 이후) 줄은 패널 높이만큼 아래로 (원문 순서 보존)
       var baseY = stacked
         ? topY + (flowTops ? flowTops[li] : li * node._lineH) +
+          (mdc && li >= cAt ? cBlockH : 0) +
           node._lineH / 2 + node._fs * 0.34
         : y0 + PAD_Y + node._fs * 0.85 + li * node._lineH;
       // 중앙 정렬은 아이콘(왼쪽)·마커(오른쪽) 영역을 뺀 띠의 중앙 —
@@ -1120,7 +1135,13 @@ const VIEWER_JS = String.raw`
     }
     if (mdc) {
       // 노드 속 코드 블록 — 헤더(언어 라벨 + ⧉ 복사) + 모노 줄 (에디터 파리티)
-      var codeY = topY + flowH + (mdt ? tblH + tGap : 0) + cGap;
+      // 패널 상단 — 텍스트 중간이면 그 줄 경계, 끝이면 표 아래 (에디터 동일)
+      var cBoundY = cAt >= node._lines.length
+        ? flowH + (mdt ? tblH + tGap : 0)
+        : (cAt > 0
+            ? (flowTops ? flowTops[cAt - 1] : (cAt - 1) * node._lineH) + node._lineH
+            : 0);
+      var codeY = topY + cBoundY + cGapAbove;
       var codeX = node._cx - cW / 2;
       el('rect', { x: codeX, y: codeY, width: cW, height: cH, rx: 5,
         fill: CODE_BG, stroke: '#D8DDE4', 'stroke-width': 1 }, g);
@@ -1165,8 +1186,7 @@ const VIEWER_JS = String.raw`
     }
     if (img) {
       // 노드 안 사진 — 텍스트(·표) 아래 가운데 정렬
-      var imgY = topY + flowH +
-        (mdt ? tblH + tGap : 0) + (mdc ? cH + cGap : 0) + imgGap;
+      var imgY = topY + contentH - img.h;
       el('image', {
         href: node.image.src,
         x: node._cx - img.w / 2, y: imgY,
@@ -1662,12 +1682,12 @@ const VIEWER_JS = String.raw`
           String(l.url || '').toLowerCase().indexOf(q) >= 0;
       });
       if (inText || inTags || inNotes || inLinks) {
-        var where = [];
-        if (inText) where.push('노드');
-        if (inTags) where.push('태그');
-        if (inNotes) where.push('노트');
-        if (inLinks) where.push('링크');
-        out.push({ id: n.id, title: text, path: path.join(' › '), where: where.join(' · ') });
+        var kinds = [];
+        if (inText) kinds.push('노드');
+        if (inTags) kinds.push('태그');
+        if (inNotes) kinds.push('노트');
+        if (inLinks) kinds.push('링크');
+        out.push({ id: n.id, title: text, path: path.join(' › '), kinds: kinds });
       }
       var kids = n.children || [];
       for (var i = 0; i < kids.length; i++) walk(kids[i], path.concat([text]));
@@ -1735,11 +1755,18 @@ const VIEWER_JS = String.raw`
           escapeHtml2(h.title.slice(idx, idx + q.length)) + '</mark>' +
           escapeHtml2(h.title.slice(idx + q.length));
       }
+      // 일치 위치 배지 — 제목 앞 색 칩 ([태그] [노드] … 에디터와 동일)
+      var kb2 = '';
+      for (var ki = 0; ki < (h.kinds || []).length; ki++) {
+        var kn = h.kinds[ki];
+        var kcls = kn === '노드' ? 'kb-node' : kn === '태그' ? 'kb-tag' :
+          kn === '노트' ? 'kb-note' : 'kb-link';
+        kb2 += '<span class="kb ' + kcls + '">' + escapeHtml2(kn) + '</span>';
+      }
       html += '<div class="hit' + (h.id === SEARCHHIT ? ' on' : '') +
         '" data-hit="' + escapeHtml2(h.id) + '" title="클릭하면 노란 강조로 표시됩니다">' +
-        '<div class="ttl">' + t2 + '</div>' +
-        '<div class="sub">' + escapeHtml2(h.path || '루트') + ' · <b>' +
-        escapeHtml2(h.where) + '</b></div></div>';
+        '<div class="ttl">' + kb2 + t2 + '</div>' +
+        '<div class="sub">' + escapeHtml2(h.path || '루트') + '</div></div>';
     }
     searchResults.innerHTML = html;
     searchResults.style.display = 'block';
@@ -2182,6 +2209,16 @@ const VIEWER_CSS = `
   }
   #mm-search-results .hit .sub { font-size: 11px; color: #958A78; }
   #mm-search-results .hit .sub b { color: #6B6358; }
+  /* 일치 위치 배지 — 제목 앞 색 칩 (라이트/다크 공통 고정색, 에디터 동일) */
+  #mm-search-results .kb {
+    display: inline-block; font-size: 9.5px; font-weight: 700;
+    line-height: 14px; padding: 0 5px; border-radius: 4px;
+    margin-right: 4px; vertical-align: text-bottom; letter-spacing: 0.3px;
+  }
+  #mm-search-results .kb-node { background: #3B82F6; color: #fff; }
+  #mm-search-results .kb-tag  { background: #F59E0B; color: #1F1B16; }
+  #mm-search-results .kb-note { background: #10B981; color: #fff; }
+  #mm-search-results .kb-link { background: #8B5CF6; color: #fff; }
   body.mm-dark #mm-search {
     background: #262A31; color: #D8D4CC; border-color: #3A3E47;
   }

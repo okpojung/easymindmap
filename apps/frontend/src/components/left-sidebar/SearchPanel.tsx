@@ -15,8 +15,17 @@ interface SearchHit {
   id: string;
   title: string;
   path: string; // 상위 노드 경로
-  where: string; // 일치한 위치 (노드/태그/노트/링크)
+  kinds: string[]; // 일치한 위치 (노드/태그/노트/링크)
 }
+
+// 일치 위치 배지 — 제목 "앞"에 붙는 색 칩 (라이트/다크 공통 고정색,
+// 다크에서 흐릿하던 꼬리표 텍스트를 대체한다). HTML 뷰어와 동일 색.
+export const SEARCH_KIND_BADGE: Record<string, { bg: string; fg: string }> = {
+  노드: { bg: '#3B82F6', fg: '#FFFFFF' },
+  태그: { bg: '#F59E0B', fg: '#1F1B16' },
+  노트: { bg: '#10B981', fg: '#FFFFFF' },
+  링크: { bg: '#8B5CF6', fg: '#FFFFFF' },
+};
 
 function searchMap(
   nodes: MindNode[],
@@ -34,13 +43,13 @@ function searchMap(
       (l) => (l.label ?? '').toLowerCase().includes(hay) || l.url.toLowerCase().includes(hay),
     );
     if (inText || inTags || inNotes || inLinks) {
-      const where = [
+      const kinds = [
         inText ? '노드' : '',
         inTags ? '태그' : '',
         inNotes ? '노트' : '',
         inLinks ? '링크' : '',
-      ].filter(Boolean).join(' · ');
-      out.push({ id: n.id, title: n.text, path: path.join(' › '), where });
+      ].filter(Boolean);
+      out.push({ id: n.id, title: n.text, path: path.join(' › '), kinds });
     }
     searchMap(n.children ?? [], q, [...path, n.text], out);
   }
@@ -73,7 +82,7 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
     const out: SearchHit[] = [];
     // 루트 포함
     if ((map.root.text || '').toLowerCase().includes(q.toLowerCase())) {
-      out.push({ id: 'root', title: map.root.text, path: '', where: '노드' });
+      out.push({ id: 'root', title: map.root.text, path: '', kinds: ['노드'] });
     }
     searchMap(map.branches, q, [map.root.text], out);
     return out.slice(0, 50);
@@ -140,10 +149,29 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
             fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 2,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
+            {/* 일치 위치 배지 — 제목 앞 색 칩 ([태그] [노드] …) */}
+            {r.kinds.map((k) => {
+              const b = SEARCH_KIND_BADGE[k] ?? { bg: t.border, fg: t.text };
+              return (
+                <span
+                  key={k}
+                  data-search-kind={k}
+                  style={{
+                    display: 'inline-block',
+                    fontSize: 9.5, fontWeight: 700, lineHeight: '14px',
+                    padding: '0 5px', borderRadius: 4, marginRight: 4,
+                    background: b.bg, color: b.fg,
+                    verticalAlign: 'text-bottom', letterSpacing: 0.3,
+                  }}
+                >
+                  {k}
+                </span>
+              );
+            })}
             {highlight(r.title, query, t.primary)}
           </div>
           <div style={{ fontSize: 11, color: t.textSubtle }}>
-            {r.path || '루트'} · <b>{r.where}</b>
+            {r.path || '루트'}
           </div>
         </div>
       ))}

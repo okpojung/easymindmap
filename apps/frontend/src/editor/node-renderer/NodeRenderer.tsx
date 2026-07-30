@@ -32,13 +32,13 @@ import {
   parseInlineMarks,
   parseInlineMarksWithState,
   toggleMarkRange,
-  insertCodeBlock,
   isInsideOpenFence,
   CODE_BG,
   CODE_TEXT,
   CODE_FONT,
   type MarkState,
 } from './inlineMarks';
+import { CodeBlockDialog, spliceCodeBlock, replaceCodeBlock } from './CodeBlockDialog';
 import { measureTextPx } from './textMeasure';
 import { MarkToolbar } from './MarkToolbar';
 import { useViewportStore } from '@/stores/viewportStore';
@@ -195,6 +195,15 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const [draftText, setDraftText] = useState(n.text);
   // 코드 패널 ⧉ 복사 피드백 (1.5s 후 원복)
   const [codeCopied, setCodeCopied] = useState(false);
+  // 코드 블록 팝업 편집기 — insert: 편집 중 커서 위치에 새 블록 삽입,
+  // edit: 기존 블록(첫 펜스)을 언어·코드째 교체
+  const [codeDlg, setCodeDlg] = useState<
+    { mode: 'insert'; cursor: number } | { mode: 'edit' } | null
+  >(null);
+  // blur 핸들러가 최신 팝업 상태를 보게 하는 미러 — 팝업이 여는 blur로
+  // 편집이 커밋돼 버리는 경합 방지
+  const codeDlgRef = useRef<boolean>(false);
+  useEffect(() => { codeDlgRef.current = !!codeDlg; }, [codeDlg]);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // 편집 오버레이 위치 측정용 — 노드 박스와 정확히 일치하는 투명 rect
@@ -345,10 +354,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
     const e0 = ta.selectionEnd ?? s0;
-    // '코드블록' 버튼 — 마커 토글이 아니라 ``` 블록 삽입
-    const r = mark === '```'
-      ? insertCodeBlock(draftText, s0, e0)
-      : toggleMarkRange(draftText, s0, e0, mark);
+    // '코드블록' 버튼 — 팝업 편집기에서 언어·코드를 입력받아 삽입
+    if (mark === '```') {
+      setCodeDlg({ mode: 'insert', cursor: e0 });
+      return;
+    }
+    const r = toggleMarkRange(draftText, s0, e0, mark);
     setDraftText(r.next);
     window.setTimeout(() => {
       ta.focus();
@@ -477,19 +488,38 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
           ? scaleNodeImage(n.image, n.w, padX)
           : null;
         const tableGap = mdTable && lines.length > 0 ? 6 : 0;
-        const codeGap = mdCode && (lines.length > 0 || mdTable) ? 6 : 0;
+        // 코드 패널이 끼어드는 줄 위치 — 펜스 앞 텍스트는 위, 뒤는 아래
+        // (sizeNodeForText.mdCodeAt과 같은 규칙. 표가 있으면 텍스트 뒤)
+        const codeAt = !mdCode
+          ? lines.length
+          : mdTable
+            ? lines.length
+            : (() => {
+                const beforeCount =
+                  mdCode.before === '' ? 0 : mdCode.before.split('\n').length;
+                const ms = manualStarts && manualStarts.length ? manualStarts : [0];
+                return beforeCount < ms.length ? ms[beforeCount] : lines.length;
+              })();
+        const codeGapAbove = mdCode && (codeAt > 0 || mdTable) ? 6 : 0;
+        const codeGapBelow = mdCode && lines.length > codeAt ? 6 : 0;
+        const codeBlockH = mdCode ? mdCode.h + codeGapAbove + codeGapBelow : 0;
         const imgGap = img && (lines.length > 0 || mdTable || mdCode) ? 6 : 0;
         const contentH =
           flow.totalH +
           (mdTable ? mdTable.h + tableGap : 0) +
-          (mdCode ? mdCode.h + codeGap : 0) +
+          codeBlockH +
           (img ? img.h + imgGap : 0);
         const contentTop = n.y - contentH / 2;
-        const codeTop =
-          contentTop + flow.totalH +
-          (mdTable ? mdTable.h + tableGap : 0) + codeGap;
-        const imgTop =
-          codeTop + (mdCode ? mdCode.h : 0) + imgGap - (mdCode ? 0 : codeGap);
+        // 패널 상단: 패널이 텍스트 중간이면 그 줄 경계, 끝이면 표 아래
+        const codeBoundaryY = codeAt >= lines.length
+          ? flow.totalH + (mdTable ? mdTable.h + tableGap : 0)
+          : codeAt > 0
+            ? flow.lineTops[codeAt - 1] + lineHeight
+            : 0;
+        const codeTop = contentTop + codeBoundaryY + codeGapAbove;
+        // 패널 뒤 줄들이 아래로 밀리는 양
+        const codeShift = codeBlockH;
+        const imgTop = contentTop + contentH - (img ? img.h : 0);
 
         // 인라인 마커 상태를 자동 줄바꿈 사이로 이월한다 — 마커 구간이
         // 줄 경계에 걸치면 다음 줄에서 여는 마커로 재해석되어 강조
@@ -507,7 +537,10 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
           <g>
             {lines.map((line, i) => {
               // 인라인 사진 밴드만큼 아래로 밀린 줄 위치 (flow.lineTops)
-              const lineCenter = contentTop + flow.lineTops[i] + lineHeight / 2;
+              // + 코드 패널 뒤(codeAt 이후) 줄은 패널 높이만큼 아래로
+              const lineCenter =
+                contentTop + flow.lineTops[i] +
+                (i >= codeAt ? codeShift : 0) + lineHeight / 2;
               // 인라인 강조(부분 텍스트) — **굵게** *기울임* ~~취소선~~
               // __밑줄__ ==하이라이트== 마커를 구간(tspan)으로 그린다.
               // 마커 문자는 표시에서 제거되고, 노드 전체 강조(스타일 탭)와
@@ -671,7 +704,15 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               const headBase = codeTop + mdCode.headH / 2 + headFs * 0.34;
               const bodyTop = codeTop + mdCode.headH;
               return (
-                <g data-node-code>
+                <g
+                  data-node-code
+                  onDoubleClick={(e) => {
+                    // 패널 더블클릭 = 팝업 편집기 (노드 텍스트 편집 대신)
+                    e.stopPropagation();
+                    setCodeDlg({ mode: 'edit' });
+                  }}
+                >
+                  <title>더블클릭하면 팝업에서 언어·코드를 편집합니다</title>
                   <rect
                     x={cX}
                     y={codeTop}
@@ -688,7 +729,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     y1={codeTop + mdCode.headH} y2={codeTop + mdCode.headH}
                     stroke="#D8DDE4" strokeWidth={1}
                   />
-                  {/* 언어 라벨 — 클릭하면 언어 변경 (펜스 줄의 ```lang 수정) */}
+                  {/* 언어 라벨 — 클릭하면 팝업 편집기 (언어·코드 함께 수정) */}
                   <text
                     data-code-lang
                     x={cX + MD_CODE_PAD_X}
@@ -699,22 +740,10 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     style={{ fontFamily: CODE_FONT, cursor: 'pointer', userSelect: 'none' }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const next = window.prompt(
-                        '코드 언어 (예: bash, js, python — 비우면 code)',
-                        mdCode.lang || '',
-                      );
-                      if (next === null) return;
-                      const linesArr = String(n.text || '').split('\n');
-                      for (let li3 = 0; li3 < linesArr.length; li3++) {
-                        if (/^\s*```/.test(linesArr[li3])) {
-                          linesArr[li3] = '```' + next.trim();
-                          break;
-                        }
-                      }
-                      updateNodeText(n.id, linesArr.join('\n'));
+                      setCodeDlg({ mode: 'edit' });
                     }}
                   >
-                    {mdCode.lang || 'code'}
+                    {(mdCode.lang || 'code') + ' ✎'}
                   </text>
                   {/* ⧉ 복사 버튼 — 클릭 시 코드 원문 복사 */}
                   <text
@@ -1019,6 +1048,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               }
             }}
             onBlur={() => {
+              // 코드 블록 팝업이 열리며 생기는 blur는 커밋이 아니다 —
+              // 팝업을 닫으면 편집으로 돌아온다 (삽입 흐름 유지)
+              if (codeDlgRef.current) return;
               saveEdit();
             }}
             style={{
@@ -1126,6 +1158,31 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
             {lockedBy.name} 편집 중
           </text>
         </g>
+      )}
+
+      {/* 코드 블록 팝업 편집기 — { } 버튼(삽입) / 패널 더블클릭·언어 라벨(수정) */}
+      {codeDlg && (
+        <CodeBlockDialog
+          t={t}
+          initialLang={codeDlg.mode === 'edit' ? mdCode?.lang : undefined}
+          initialCode={codeDlg.mode === 'edit' ? mdCode?.code.join('\n') : undefined}
+          onCancel={() => {
+            setCodeDlg(null);
+            if (editing) window.setTimeout(() => textareaRef.current?.focus(), 0);
+          }}
+          onSave={(lang, code) => {
+            if (codeDlg.mode === 'insert') {
+              // 편집 중 커서 위치에 새 블록 삽입 — 편집은 계속
+              const next = spliceCodeBlock(draftText, codeDlg.cursor, lang, code);
+              setDraftText(next);
+              window.setTimeout(() => textareaRef.current?.focus(), 0);
+            } else {
+              // 기존 블록(첫 펜스)을 통째로 교체하고 바로 저장
+              updateNodeText(n.id, replaceCodeBlock(String(n.text || ''), lang, code));
+            }
+            setCodeDlg(null);
+          }}
+        />
       )}
 
       <defs>

@@ -688,14 +688,31 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     y1={codeTop + mdCode.headH} y2={codeTop + mdCode.headH}
                     stroke="#D8DDE4" strokeWidth={1}
                   />
-                  {/* 언어 라벨 (노트 코드와 동일 — 없으면 'code') */}
+                  {/* 언어 라벨 — 클릭하면 언어 변경 (펜스 줄의 ```lang 수정) */}
                   <text
+                    data-code-lang
                     x={cX + MD_CODE_PAD_X}
                     y={headBase}
                     textAnchor="start"
                     fontSize={headFs}
                     fill="#64748B"
-                    style={{ fontFamily: CODE_FONT }}
+                    style={{ fontFamily: CODE_FONT, cursor: 'pointer', userSelect: 'none' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = window.prompt(
+                        '코드 언어 (예: bash, js, python — 비우면 code)',
+                        mdCode.lang || '',
+                      );
+                      if (next === null) return;
+                      const linesArr = String(n.text || '').split('\n');
+                      for (let li3 = 0; li3 < linesArr.length; li3++) {
+                        if (/^\s*```/.test(linesArr[li3])) {
+                          linesArr[li3] = '```' + next.trim();
+                          break;
+                        }
+                      }
+                      updateNodeText(n.id, linesArr.join('\n'));
+                    }}
                   >
                     {mdCode.lang || 'code'}
                   </text>

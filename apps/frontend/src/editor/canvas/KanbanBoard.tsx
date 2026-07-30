@@ -47,8 +47,11 @@ function InlineTitle({ text }: { text: string }) {
                 textDecoration:
                   [sg.s ? 'line-through' : '', sg.u ? 'underline' : '']
                     .filter(Boolean).join(' ') || undefined,
-                background: sg.h ? '#FFE066' : undefined,
-                borderRadius: sg.h ? 2 : undefined,
+                background: sg.h ? '#FFE066' : sg.c ? '#ECEFF3' : undefined,
+                // 형광펜/코드 배경 위 글자는 진한 고정색 (다크 모드 가독성)
+                color: sg.h ? '#1F1B16' : sg.c ? '#334155' : undefined,
+                fontFamily: sg.c ? "ui-monospace, 'Consolas', monospace" : undefined,
+                borderRadius: sg.h || sg.c ? 2 : undefined,
               }}
             >
               {sg.text}
@@ -403,7 +406,9 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
               marginBottom: 8,
             }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.color }} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{col.title}</span>
+              <div style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
+                <InlineTitle text={col.title} />
+              </div>
               <span style={{
                 fontSize: 11, color: t.textMuted, marginLeft: 'auto',
                 background: t.surface, padding: '1px 6px', borderRadius: 8,

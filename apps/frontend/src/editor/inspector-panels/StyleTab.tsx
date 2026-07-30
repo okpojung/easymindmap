@@ -141,6 +141,9 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
           <StyleToggle t={t} label="취소선" strike
             active={!!style.strike}
             onClick={() => set({ strike: !style.strike })} />
+          <StyleToggle t={t} label="밑줄" underline
+            active={!!style.underline}
+            onClick={() => set({ underline: !style.underline })} />
           <StyleToggle t={t} label="하이라이트" highlightSwatch
             active={!!style.highlight}
             onClick={() => set({ highlight: !style.highlight })} />
@@ -175,7 +178,7 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
 }
 
 function StyleToggle({
-  t, label, active, onClick, weight, italic, strike, highlightSwatch,
+  t, label, active, onClick, weight, italic, strike, underline, highlightSwatch,
 }: {
   t: ThemeTokens;
   label: string;
@@ -184,6 +187,7 @@ function StyleToggle({
   weight?: number;
   italic?: boolean;
   strike?: boolean;
+  underline?: boolean;
   highlightSwatch?: boolean;
 }) {
   return (
@@ -196,7 +200,7 @@ function StyleToggle({
       fontSize: 11,
       fontWeight: weight || 500,
       fontStyle: italic ? 'italic' : 'normal',
-      textDecoration: strike ? 'line-through' : 'none',
+      textDecoration: strike ? 'line-through' : underline ? 'underline' : 'none',
       whiteSpace: 'nowrap',
     }}>
       {highlightSwatch

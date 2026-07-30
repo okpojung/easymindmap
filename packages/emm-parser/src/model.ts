@@ -72,6 +72,7 @@ export interface NodeStyle {
   fontWeight?: NodeFontWeight;
   fontStyle?: NodeFontStyle;
   strike?: boolean; // 취소선 (텍스트 강조)
+  underline?: boolean; // 밑줄 (텍스트 강조, 2026-07)
   highlight?: boolean; // 형광펜 하이라이트 (텍스트 강조)
   borderWidth?: number;
   borderStyle?: NodeBorderStyle;

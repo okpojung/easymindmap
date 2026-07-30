@@ -1,9 +1,9 @@
 // inlineMarks — 노드 텍스트 "일부"에 적용하는 인라인 강조 (markmap 문법).
 //
-//   **굵게**   *기울임*   ~~취소선~~   __밑줄__   ==하이라이트==
+//   **굵게**   *기울임*   ~~취소선~~   __밑줄__   ==하이라이트==   `코드`
 //
 // 노드 텍스트 안에 이 마커를 직접 입력하거나, 노드 편집 중 텍스트를
-// 선택하고 미니 툴바(B/I/S/U/H) 또는 Ctrl+B/I/U 를 누르면 감싸진다.
+// 선택하고 미니 툴바(B/I/S/U/H/<>) 또는 Ctrl+B/I/U 를 누르면 감싸진다.
 // NodeRenderer가 줄 단위로 파싱해 tspan으로 그리고(마커 문자는 숨김),
 // HTML 내보내기 뷰어도 같은 규칙으로 그린다.
 //
@@ -17,9 +17,16 @@ export interface InlineSeg {
   s?: boolean; // 취소선
   u?: boolean; // 밑줄
   h?: boolean; // 하이라이트
+  c?: boolean; // 인라인 코드 (모노스페이스 + 회색 배경)
 }
 
-const MARK_RE = /(\*\*|~~|==|__|\*)/;
+// 인라인 코드 렌더 색 — 테마 무관 고정 (하이라이트 #FFE066 규칙과 동일 사고)
+export const CODE_BG = '#ECEFF3';
+export const CODE_TEXT = '#334155';
+export const CODE_FONT =
+  "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace";
+
+const MARK_RE = /(\*\*|~~|==|__|\*|`)/;
 
 export function hasInlineMarks(line: string): boolean {
   return MARK_RE.test(line);
@@ -27,7 +34,9 @@ export function hasInlineMarks(line: string): boolean {
 
 // 줄이 끝날 때의 마커 토글 상태 — 자동 줄바꿈으로 감긴 다음 줄에
 // 이월된다 (마커 구간이 줄 경계에 걸쳐도 위치가 밀리지 않게)
-export interface MarkState { b: boolean; i: boolean; s: boolean; u: boolean; h: boolean }
+export interface MarkState {
+  b: boolean; i: boolean; s: boolean; u: boolean; h: boolean; c: boolean;
+}
 
 // 한 줄을 스타일 구간으로 나눈다 (마커 문자는 결과 text에서 제거됨)
 export function parseInlineMarks(line: string): InlineSeg[] {
@@ -42,11 +51,11 @@ export function parseInlineMarksWithState(
 ): { segs: InlineSeg[]; end: MarkState } {
   const segs: InlineSeg[] = [];
   let b = init?.b ?? false, i = init?.i ?? false, s = init?.s ?? false,
-    u = init?.u ?? false, h = init?.h ?? false;
+    u = init?.u ?? false, h = init?.h ?? false, c = init?.c ?? false;
   let buf = '';
   const push = () => {
     if (buf) {
-      segs.push({ text: buf, b, i, s, u, h });
+      segs.push({ text: buf, b, i, s, u, h, c });
       buf = '';
     }
   };
@@ -59,12 +68,13 @@ export function parseInlineMarksWithState(
     if (two === '==') { push(); h = !h; idx += 2; continue; }
     if (two === '__') { push(); u = !u; idx += 2; continue; }
     if (line[idx] === '*') { push(); i = !i; idx += 1; continue; }
+    if (line[idx] === '`') { push(); c = !c; idx += 1; continue; }
     buf += line[idx];
     idx += 1;
   }
   push();
-  if (segs.length === 0) segs.push({ text: '', b, i, s, u, h });
-  return { segs, end: { b, i, s, u, h } };
+  if (segs.length === 0) segs.push({ text: '', b, i, s, u, h, c });
+  return { segs, end: { b, i, s, u, h, c } };
 }
 
 // 선택 구간에 마커 토글 — 이미 그 마커로 감싸져 있으면 해제, 아니면 감싼다.

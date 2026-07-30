@@ -70,7 +70,7 @@ interface ExportNode {
   // 텍스트 강조·정렬 (에디터 스타일 탭과 동일하게 표시)
   textAlign?: string;
   style?: {
-    strike?: boolean; highlight?: boolean;
+    strike?: boolean; underline?: boolean; highlight?: boolean;
     // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용
     fillColor?: string; borderColor?: string; textColor?: string;
   };
@@ -135,10 +135,12 @@ function toExportNode(
     images: node.images?.length ? node.images : undefined,
     // 실효 정렬을 굽는다 — 뷰어는 맵 설정(레벨별 맞춤)을 모른다
     textAlign: node.textAlign ?? levelTextAlign(depth),
-    style: node.style && (node.style.strike || node.style.highlight ||
+    style: node.style && (node.style.strike || node.style.underline ||
+      node.style.highlight ||
       node.style.fillColor || node.style.borderColor || node.style.textColor)
       ? {
         strike: node.style.strike || undefined,
+        underline: node.style.underline || undefined,
         highlight: node.style.highlight || undefined,
         // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용 (원본 색 파리티)
         fillColor: node.style.fillColor || undefined,
@@ -363,8 +365,8 @@ const VIEWER_JS = String.raw`
     var segs = [], buf = '';
     var b = init ? !!init.b : false, it = init ? !!init.i : false,
       st2 = init ? !!init.s : false, u = init ? !!init.u : false,
-      h = init ? !!init.h : false;
-    function push() { if (buf) { segs.push({ t: buf, b: b, i: it, s: st2, u: u, h: h }); buf = ''; } }
+      h = init ? !!init.h : false, c = init ? !!init.c : false;
+    function push() { if (buf) { segs.push({ t: buf, b: b, i: it, s: st2, u: u, h: h, c: c }); buf = ''; } }
     var idx = 0;
     while (idx < line.length) {
       var two = line.substr(idx, 2);
@@ -373,13 +375,17 @@ const VIEWER_JS = String.raw`
       if (two === '==') { push(); h = !h; idx += 2; continue; }
       if (two === '__') { push(); u = !u; idx += 2; continue; }
       if (line.charAt(idx) === '*') { push(); it = !it; idx += 1; continue; }
+      if (line.charCodeAt(idx) === 96) { push(); c = !c; idx += 1; continue; } // 96 = backtick (템플릿 문자열 안이라 문자로 못 씀)
       buf += line.charAt(idx);
       idx += 1;
     }
     push();
     if (!segs.length) segs.push({ t: '' });
-    return { segs: segs, end: { b: b, i: it, s: st2, u: u, h: h } };
+    return { segs: segs, end: { b: b, i: it, s: st2, u: u, h: h, c: c } };
   }
+  // 인라인 코드 렌더 색 — 에디터 inlineMarks.ts CODE_* 와 동일 (테마 무관 고정)
+  var CODE_BG = '#ECEFF3', CODE_TEXT = '#334155';
+  var CODE_FONT = "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace";
   function parseInlineSegs(line) { return parseInlineSegsState(line).segs; }
 
   // ---- measure pass (bottom-up, per-layout block model) ----------------------
@@ -980,7 +986,8 @@ const VIEWER_JS = String.raw`
       var baseW2 = isRoot ? 700 : (depth === 1 ? 600 : 500);
       for (si = 0; si < segs.length; si++) {
         segWs.push(measureReal(segs[si].t, node._fs,
-          segs[si].b ? 700 : baseW2, segs[si].i, node._ff));
+          segs[si].b ? 700 : baseW2, segs[si].i,
+          segs[si].c ? CODE_FONT : node._ff));
         lw2 += segWs[si];
       }
       var baseY = stacked
@@ -1002,6 +1009,11 @@ const VIEWER_JS = String.raw`
           el('rect', { x: segX[si] - 2, y: baseY - node._fs * 1.06,
             width: segWs[si] + 4, height: node._fs * 1.44, rx: 2,
             fill: SKIN.hl, opacity: 0.85 }, g);
+        } else if (segs[si].c && segs[si].t.replace(/\s/g, '')) {
+          // 인라인 코드 — 회색 배경 띠 (에디터와 동일 고정색)
+          el('rect', { x: segX[si] - 2, y: baseY - node._fs * 1.06,
+            width: segWs[si] + 4, height: node._fs * 1.44, rx: 3,
+            fill: CODE_BG, opacity: 0.95 }, g);
         }
       }
       var tEl = el('text', { y: baseY, 'font-size': node._fs, fill: textColor }, g);
@@ -1015,9 +1027,13 @@ const VIEWER_JS = String.raw`
         // 형광펜(노란 띠) 위 글자는 항상 진한 고정색 — 다크 모드에서
         // 밝은 글자가 노란 배경에 묻히던 문제 (에디터와 동일 규칙)
         if (st.highlight || segs[si].h) sp.setAttribute('fill', '#1F1B16');
+        else if (segs[si].c) {
+          sp.setAttribute('fill', CODE_TEXT);
+          sp.setAttribute('font-family', CODE_FONT);
+        }
         var deco = [];
         if (st.strike || segs[si].s) deco.push('line-through');
-        if (segs[si].u) deco.push('underline');
+        if (st.underline || segs[si].u) deco.push('underline');
         if (deco.length) sp.setAttribute('text-decoration', deco.join(' '));
         sp.textContent = segs[si].t;
       }

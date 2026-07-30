@@ -41,13 +41,28 @@
 ```bash
 # OS 업데이트
 sudo apt update && sudo apt upgrade -y
-
-# 방화벽 — 필요한 것만 (내부망/VPN 기준 예시)
-sudo ufw allow OpenSSH
-sudo ufw allow 80,443/tcp          # Traefik (앱 접속)
-sudo ufw allow from <개발PC_IP> to any port 8000   # Coolify 대시보드
-sudo ufw enable
 ```
+
+### ufw(호스트 방화벽)에 대하여 — 내부망 서버는 생략 (2026-07 확정)
+
+**FortiGate 뒷단 내부망 전용 서버에서는 ufw 를 켜지 않는다.** 이유:
+
+- 경계 방어(인터넷→내부)는 FortiGate 가 담당한다.
+- **Docker 는 ufw 를 우회한다** — Docker(=Coolify 기반)가 컨테이너
+  공개 포트의 iptables 규칙을 ufw 보다 앞 단계에 삽입하므로, Coolify 가
+  여는 80/443/8000 은 ufw 로 막아도 열린다. Coolify 서버에서 ufw 는
+  "보호 중"이라는 착각을 주기 쉽다.
+- 내부 세그먼트 격리가 필요하면 ufw 가 아니라 **FortiGate 정책/VLAN**
+  으로 하는 것이 올바른 계층이다.
+
+ufw 대신 지킬 것:
+1. **Coolify 에서 DB 포트를 Publish 하지 않기** — PostgreSQL 은 내부
+   네트워크 전용, api 컨테이너만 내부 URL 로 접속(§5.1 방식).
+2. SSH 는 키 인증 유지.
+3. 프로덕션 공개 시 FortiGate 에서 **80/443 만** 서버로 포워딩.
+
+> 예외: 서버가 공인망에 직접 노출되는 환경(클라우드 VPS 등)이라면
+> 제공자 방화벽/보안그룹으로 22·80·443·(관리IP 한정)8000 만 연다.
 
 ## 3. Coolify 설치 (1회)
 

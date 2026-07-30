@@ -5,6 +5,7 @@ EasyMindMap 문서는 아래와 같은 구조로 구성됩니다.
 ```text
 docs/
 ├─ 00-project-overview/
+│  ├─ backlog.md                          ← 백로그(To Do) — 수식 KaTeX 등
 │  ├─ mvp-scope.md
 │  ├─ roadmap.md
 │  ├─ vision.md
@@ -53,6 +54,7 @@ docs/
 │  ├─ emm-testing-guide.md                ← EMM 테스트 가이드 (IT 초보자용)
 │  ├─ markdown-export.md                  ← MD ↔ 맵 변환 규칙 (EMM 구현 규칙서)
 │  ├─ content-permanence.md               ← 콘텐츠 영구 보존(오프라인 내장) 차별점·홍보 소재
+│  ├─ rich-node-content.md                ← 리치 노드 콘텐츠(노트 4종→노드) 설계 제안
 │  ├─ ai/
 │  │  ├─ 18-ai.md
 │  │  ├─ 19-ai-workflow.md
@@ -135,6 +137,7 @@ docs/
 | 경로 | 설명 |
 |------|------|
 | `docs/README.md` | 문서 목차 및 구조 안내 (이 파일) |
+| `docs/00-project-overview/backlog.md` | 백로그(To Do) — 수식 KaTeX·리치 노드 등 결정-미구현 항목 |
 | `docs/00-project-overview/mvp-scope.md` | MVP 범위 정의 |
 | `docs/00-project-overview/roadmap.md` | 개발 로드맵 |
 | `docs/00-project-overview/vision.md` | 제품 비전 |
@@ -152,6 +155,7 @@ docs/
 | `docs/04-extensions/emm-spec.md` | EasyMindMap Markdown(EMM) 정식 스펙 |
 | `docs/04-extensions/emm-testing-guide.md` | EMM 테스트 가이드 (IT 초보자용 검증 절차) |
 | `docs/04-extensions/content-permanence.md` | 콘텐츠 영구 보존(오프라인 내장) — 차별점·홍보 문구 초안·서버 저장소 계획 |
+| `docs/04-extensions/rich-node-content.md` | 리치 노드 콘텐츠(노트 4종→노드 본문·불러오기 옵션·A4 제한) 설계 제안 |
 | `docs/04-extensions/ai/emm-prompt-templates.md` | AI용 EMM 생성 프롬프트 템플릿 |
 | `docs/04-extensions/ai/ai-project-workspace.md` | AI 프로젝트 워크스페이스 설계 — 맵=프로젝트·노드=질문·경로 맥락(제안, 미구현) |
 | `docs/04-extensions/markdown-export.md` | MD ↔ 맵 변환 규칙 명세 (EMM 구현 규칙서) |

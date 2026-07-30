@@ -1,0 +1,110 @@
+{
+  "nodes": 10,
+  "bodyRoundTripNodes": 12,
+  "map": {
+    "title": "markmap 호환 기능",
+    "root": {
+      "id": "root",
+      "text": "markmap 호환 기능",
+      "colorKey": "root",
+      "side": "center"
+    },
+    "branches": [
+      {
+        "id": "md#0",
+        "text": "Links",
+        "colorKey": "l1A",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#1",
+            "text": "Website",
+            "links": [
+              {
+                "id": "md#2",
+                "url": "https://markmap.js.org/",
+                "label": "Website"
+              }
+            ]
+          },
+          {
+            "id": "md#3",
+            "text": "GitHub",
+            "links": [
+              {
+                "id": "md#4",
+                "url": "https://github.com/gera2ld/markmap",
+                "label": "GitHub"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#5",
+        "text": "Lists",
+        "colorKey": "l1B",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#6",
+            "text": "**strong** ~~del~~ *italic* ==highlight== `inline code`",
+            "notes": [
+              {
+                "id": "md#7",
+                "type": "checklist",
+                "text": "완료된 항목",
+                "checked": true
+              },
+              {
+                "id": "md#8",
+                "type": "checklist",
+                "text": "미완료 항목",
+                "checked": false
+              },
+              {
+                "id": "md#9",
+                "type": "checklist",
+                "text": "대문자 X 체크",
+                "checked": true
+              }
+            ]
+          },
+          {
+            "id": "md#10",
+            "text": "일반 불릿은 자식 노드가 된다",
+            "children": [
+              {
+                "id": "md#11",
+                "text": "자식 항목 하나"
+              },
+              {
+                "id": "md#12",
+                "text": "자식 항목 둘"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#13",
+        "text": "Blocks",
+        "colorKey": "l1C",
+        "side": "left",
+        "notes": [
+          {
+            "id": "md#14",
+            "type": "code_block",
+            "text": "console.log('hello, JavaScript')",
+            "lang": "js"
+          },
+          {
+            "id": "md#15",
+            "type": "table",
+            "text": "Products | Price\nApple | 4\nBanana | 2"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -487,11 +487,12 @@ Phase별 개발 순서:
 
 ### 15. 텍스트 강조·정렬 확장 (MVS 구현 — 2026-07)
 
-- **텍스트 강조**(스타일 탭): 굵게 / 기울임에 **취소선(strike)** 과
-  **하이라이트(highlight)** 토글 추가. `NodeStyle.strike?: boolean`,
-  `NodeStyle.highlight?: boolean`. 취소선은 SVG `text-decoration:
-  line-through`, 하이라이트는 각 텍스트 줄 뒤에 노란(#FFE066) 형광 띠를
-  그린다. HTML 내보내기 뷰어에도 동일하게 재현.
+- **텍스트 강조**(스타일 탭): 굵게 / 기울임에 **취소선(strike)**,
+  **밑줄(underline — 2026-07 추가)**, **하이라이트(highlight)** 토글.
+  `NodeStyle.strike?/underline?/highlight?: boolean`. 취소선·밑줄은 SVG
+  `text-decoration`, 하이라이트는 각 텍스트 줄 뒤에 노란(#FFE066) 형광
+  띠를 그린다. HTML 내보내기 뷰어에도 동일하게 재현(밑줄은 스타일 베이크
+  `st.underline`). 인라인(부분) 밑줄 `__…__`과 결합 가능.
 - **텍스트 정렬**(스타일 탭): 왼쪽(기본) / 중앙 / 오른쪽 버튼 —
   `MindNode.textAlign` 사용 (documentStore.updateNodeTextAlign).
 - **레벨별 폰트는 스타일 탭에서 제거** — 좌측 상단 **맵 설정** 메뉴

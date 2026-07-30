@@ -18,6 +18,7 @@ export const MARK_BUTTONS = [
   { m: '~~', label: 'S', title: '취소선', st: { textDecoration: 'line-through', fontWeight: 600 } },
   { m: '__', label: 'U', title: '밑줄 (Ctrl+U)', st: { textDecoration: 'underline', fontWeight: 600 } },
   { m: '==', label: 'H', title: '하이라이트 (다시 누르면 해제)', st: { background: '#FFE066', borderRadius: 3, padding: '0 4px', fontWeight: 700 } },
+  { m: '`', label: '<>', title: '인라인 코드 (다시 누르면 해제)', st: { fontFamily: "ui-monospace, 'Consolas', monospace", background: '#ECEFF3', color: '#334155', borderRadius: 3, padding: '0 3px', fontWeight: 700, fontSize: 12 } },
 ] as const;
 
 export function MarkToolbar({

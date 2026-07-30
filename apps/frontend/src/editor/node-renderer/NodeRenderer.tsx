@@ -31,6 +31,9 @@ import {
   parseInlineMarks,
   parseInlineMarksWithState,
   toggleMarkRange,
+  CODE_BG,
+  CODE_TEXT,
+  CODE_FONT,
   type MarkState,
 } from './inlineMarks';
 import { measureTextPx } from './textMeasure';
@@ -255,6 +258,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   // 맵 설정(레벨별 폰트)의 글꼴 — 없으면 상위(문서 기본) 글꼴 상속
   const fontFamily = levelFontFamily(n.depth) ?? 'inherit';
   const strike = !!style.strike;
+  const underline = !!style.underline;
   const highlight = !!style.highlight;
 
   // 노드 텍스트 속 Markdown 표 — sizeNodeForText와 같은 측정으로 그린다.
@@ -496,7 +500,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                 measureTextPx(sg.text, fontSize, {
                   weight: sg.b ? 700 : fontWeight,
                   italic: sg.i || fontStyle === 'italic',
-                  family: fontFamily,
+                  family: sg.c ? CODE_FONT : fontFamily,
                 }),
               );
               const lineW = segWs.reduce((a, b) => a + b, 0);
@@ -525,6 +529,18 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                         fill="#FFE066"
                         opacity={0.85}
                       />
+                    ) : sg.c && sg.text.trim() !== '' ? (
+                      // 인라인 코드 — 회색 배경 띠 (모노스페이스와 세트)
+                      <rect
+                        key={`c${k}`}
+                        x={segXs[k] - 2}
+                        y={lineCenter - fontSize * 0.72}
+                        width={segWs[k] + 4}
+                        height={fontSize * 1.44}
+                        rx={3}
+                        fill={CODE_BG}
+                        opacity={0.95}
+                      />
                     ) : null,
                   )}
                   <text
@@ -537,7 +553,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     {segs.map((sg, k) => {
                       const deco = [
                         strike || sg.s ? 'line-through' : '',
-                        sg.u ? 'underline' : '',
+                        underline || sg.u ? 'underline' : '',
                       ].filter(Boolean).join(' ');
                       // 형광펜(노란 띠) 위 글자는 항상 진한 고정색 —
                       // 다크 모드에서 밝은 글자가 노란 배경에 묻혀 안
@@ -550,8 +566,11 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                           x={segXs[k]}
                           fontWeight={sg.b ? 700 : fontWeight}
                           fontStyle={sg.i ? 'italic' : fontStyle}
-                          fill={onHighlight ? '#1F1B16' : undefined}
-                          style={{ textDecoration: deco || undefined }}
+                          fill={onHighlight ? '#1F1B16' : sg.c ? CODE_TEXT : undefined}
+                          style={{
+                            textDecoration: deco || undefined,
+                            fontFamily: sg.c ? CODE_FONT : undefined,
+                          }}
                         >
                           {sg.text}
                         </tspan>

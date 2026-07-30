@@ -72,6 +72,10 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
       lines.push(n.text);
       lines.push('```');
       lines.push('');
+    } else if (n.type === 'checklist' && n.text.trim()) {
+      // 체크리스트 → - [x] / - [ ] (markmap 호환, 불러오기 시 다시 노트로)
+      lines.push(`- [${n.checked ? 'x' : ' '}] ${oneLine(n.text)}`);
+      lines.push('');
     }
   }
 
@@ -123,6 +127,9 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
       } else if (n.type === 'table' && n.text.trim()) {
         lines.push('');
         pushTableNote(lines, n.text);
+      } else if (n.type === 'checklist' && n.text.trim()) {
+        lines.push('');
+        lines.push(`- [${n.checked ? 'x' : ' '}] ${oneLine(n.text)}`);
       }
     }
     lines.push('');

@@ -932,17 +932,14 @@ GitHub main 푸시 ─웹훅─▶ Coolify 자동 재빌드·재배포
 - 프로덕션도 같은 Coolify 구성을 복제해 값(도메인·환경변수·배포 트리거)만
   바꾼다 — 개발 서버가 곧 프로덕션 리허설 환경이다.
 
-### 12.2 방화벽 설정
+### 12.2 방화벽
 
-```bash
-sudo ufw allow OpenSSH
-sudo ufw allow 80,443/tcp                            # Traefik (앱 접속)
-sudo ufw allow from 192.168.0.201 to any port 8000   # Coolify 대시보드 (개발 PC)
-sudo ufw allow from 192.168.0.74  to any port 80     # NPM (dev.example.com 경유)
-# IPSec VPN 클라이언트 대역 (FortiGate 설정 후 실제 대역으로 변경)
-# 예: sudo ufw allow from 10.x.x.0/24 to any port 8000
-sudo ufw enable && sudo ufw reload
-```
+**ufw 는 사용하지 않는다 (2026-07 확정).** 경계 방어는 FortiGate 가
+담당하고, Docker(=Coolify 기반)는 컨테이너 공개 포트의 iptables 규칙을
+ufw 앞 단계에 삽입해 **ufw 를 우회**하므로 Coolify 서버에서 실효가 없다.
+내부 세그먼트 격리가 필요하면 FortiGate 정책/VLAN 으로 처리한다.
+대신: Coolify 에서 DB 포트 미공개(내부 네트워크 전용)·SSH 키 인증·공개
+시 FortiGate 80/443 만 포워딩. (`dev-server-coolify.md` §2 참조)
 
 ### 12.3 Coolify 설치·리소스 구성
 

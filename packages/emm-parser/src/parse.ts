@@ -287,6 +287,21 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
       continue;
     }
 
+    // 체크리스트(- [ ] / - [x]) — 자식 노드가 아니라 현재 노드의
+    // 체크리스트 노트로. 불릿보다 먼저 검사한다 (markmap 호환 왕복).
+    const check = line.match(/^[ \t]*[-*+]\s+\[([ xX])\]\s+(.+)$/);
+    if (check) {
+      flushPara();
+      lastItem = null;
+      addNote({
+        id: nid(),
+        type: 'checklist',
+        text: check[2].trim(),
+        checked: check[1].toLowerCase() === 'x',
+      });
+      continue;
+    }
+
     // 리스트(- * +) 또는 순번(1. / 1)) 항목 — 순번은 번호를 텍스트에 유지
     const bullet = line.match(/^([ \t]*)([-*+]|\d+[.)])\s+(.+)$/);
     if (bullet) {

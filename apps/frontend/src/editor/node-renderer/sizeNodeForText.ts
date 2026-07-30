@@ -10,6 +10,7 @@
 
 import type { LevelFontSetting } from '@/editor/__samples__/types';
 import { layoutMdTable, type MdTableLayout } from './mdTable';
+import { layoutMdCode, type MdCodeLayout } from './mdCode';
 
 export interface SizeOpts {
   minW?: number;
@@ -43,6 +44,7 @@ export interface NodeSize {
   // 노드 텍스트에 Markdown 표가 있으면 그 측정 결과 — lines에는 표를 뺀
   // 나머지 텍스트만 남는다. NodeRenderer가 같은 값으로 표를 그린다.
   mdTable?: MdTableLayout;
+  mdCode?: MdCodeLayout;
   // 수동 줄바꿈(\n) 세그먼트가 시작하는 lines 인덱스 — 인라인 마커 상태
   // 이월의 리셋 지점 (자동 줄바꿈 줄에는 상태가 이어진다)
   manualStarts?: number[];
@@ -178,16 +180,23 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
     ? (opts.indicators ?? 0) * (fontSize + 5) + 4
     : 0;
 
-  // Markdown 표가 있으면 표 부분을 빼고 나머지 텍스트만 줄바꿈한다.
-  // (파이프 원문을 자동 줄바꿈하면 표가 망가지므로)
-  const mdTable = layoutMdTable(String(text || ''), fontSize) ?? undefined;
-  const plainText = mdTable
-    ? [mdTable.before, mdTable.after].filter(Boolean).join('\n')
+  // Markdown 코드 펜스(```)가 있으면 코드 구간을 먼저 떼어 낸다 —
+  // 코드는 자동 줄바꿈·인라인 마크 없이 별도 패널로 그린다 (리치 노드 P1)
+  const mdCode = layoutMdCode(String(text || ''), fontSize) ?? undefined;
+  const baseText = mdCode
+    ? [mdCode.before, mdCode.after].filter(Boolean).join('\n')
     : String(text || '');
 
+  // Markdown 표가 있으면 표 부분을 빼고 나머지 텍스트만 줄바꿈한다.
+  // (파이프 원문을 자동 줄바꿈하면 표가 망가지므로)
+  const mdTable = layoutMdTable(baseText, fontSize) ?? undefined;
+  const plainText = mdTable
+    ? [mdTable.before, mdTable.after].filter(Boolean).join('\n')
+    : baseText;
+
   // Honor manual breaks first, then word-wrap each segment.
-  // (표만 있는 노드는 텍스트 줄이 없다 — 빈 줄 하나를 만들지 않는다)
-  const manualLines = mdTable && plainText === '' ? [] : plainText.split('\n');
+  // (표·코드만 있는 노드는 텍스트 줄이 없다 — 빈 줄 하나를 만들지 않는다)
+  const manualLines = (mdTable || mdCode) && plainText === '' ? [] : plainText.split('\n');
   const wrappedLines: string[] = [];
   const manualStarts: number[] = [];
   const innerMaxW = maxW - padX * 2 - iconReserve;
@@ -234,37 +243,42 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
     }
     if (cur) wrappedLines.push(cur.trimEnd());
   });
-  if (!mdTable && wrappedLines.length === 0) wrappedLines.push('');
+  if (!mdTable && !mdCode && wrappedLines.length === 0) wrappedLines.push('');
 
   // Width = widest wrapped line + padding (clamped between min and max).
-  // 표가 있으면 표 폭만큼은 항상 확보한다 (maxW보다 넓어도 잘리지 않게).
-  // 수동 폭이면 그 값 그대로 (표가 더 넓을 때만 예외적으로 확장).
+  // 표·코드가 있으면 그 폭만큼은 항상 확보한다 (maxW보다 넓어도 잘리지 않게).
+  // 수동 폭이면 그 값 그대로 (표·코드가 더 넓을 때만 예외적으로 확장).
+  const blockW = Math.max(mdTable ? mdTable.w : 0, mdCode ? mdCode.w : 0);
   const widest = wrappedLines.reduce((m, l) => Math.max(m, measure(l)), 0);
-  const contentW = Math.max(widest, mdTable ? mdTable.w : 0);
-  const wCap = Math.max(maxW, mdTable ? mdTable.w + padX * 2 : 0) + indicatorReserve;
+  const contentW = Math.max(widest, blockW);
+  const wCap = Math.max(maxW, blockW ? blockW + padX * 2 : 0) + indicatorReserve;
   const w = manualW
-    ? Math.max(manualW, mdTable ? mdTable.w + padX * 2 : 0)
+    ? Math.max(manualW, blockW ? blockW + padX * 2 : 0)
     : Math.min(
         wCap,
         Math.max(minW, Math.ceil(contentW + padX * 2 + iconReserve + indicatorReserve)),
       );
   const textH = wrappedLines.length * lineHeight;
   const tableH = mdTable ? mdTable.h + (wrappedLines.length > 0 ? 6 : 0) : 0;
+  const codeH = mdCode
+    ? mdCode.h + (wrappedLines.length > 0 || mdTable ? 6 : 0)
+    : 0;
   // 붙여넣은 사진 — 노드 폭에 맞춰 축소한 높이만큼 박스가 커진다
   const imgH = opts.image
-    ? scaleNodeImage(opts.image, w, padX).h + (wrappedLines.length > 0 || mdTable ? 6 : 0)
+    ? scaleNodeImage(opts.image, w, padX).h +
+      (wrappedLines.length > 0 || mdTable || mdCode ? 6 : 0)
     : 0;
   // 텍스트 중간 인라인 사진들 — 각 사진이 (축소 높이 + 위아래 여백)만큼
   const inlineImgsH = (opts.images ?? []).reduce(
     (acc, im) => acc + scaleNodeImage(im, w, padX).h + INLINE_IMG_PAD * 2,
     0,
   );
-  let h = textH + tableH + imgH + inlineImgsH + padY * 2;
+  let h = textH + tableH + codeH + imgH + inlineImgsH + padY * 2;
   // 수동 높이는 최소값 — 내용이 더 크면 내용에 맞춘다
   if (opts.manualH && opts.manualH > h) h = Math.min(1200, Math.round(opts.manualH));
 
   return {
     w, h, lines: wrappedLines, fontSize, fontWeight, lineHeight,
-    padX, padY, mdTable, manualStarts,
+    padX, padY, mdTable, mdCode, manualStarts,
   };
 }

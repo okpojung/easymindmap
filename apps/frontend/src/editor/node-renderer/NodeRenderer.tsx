@@ -27,6 +27,7 @@ import {
   scaleNodeImage,
 } from './sizeNodeForText';
 import { layoutMdTable, MD_TABLE_CELL_PAD_X } from './mdTable';
+import { layoutMdCode, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
 import {
   parseInlineMarks,
   parseInlineMarksWithState,
@@ -261,9 +262,16 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const underline = !!style.underline;
   const highlight = !!style.highlight;
 
-  // 노드 텍스트 속 Markdown 표 — sizeNodeForText와 같은 측정으로 그린다.
-  // (lines에는 표를 제외한 텍스트만 들어 있다)
-  const mdTable = useMemo(() => layoutMdTable(String(n.text || ''), fontSize), [n.text, fontSize]);
+  // 노드 텍스트 속 Markdown 코드 펜스/표 — sizeNodeForText와 같은 측정으로
+  // 그린다. (lines에는 코드·표를 제외한 텍스트만 들어 있다 — 리치 노드 P1)
+  const mdCode = useMemo(() => layoutMdCode(String(n.text || ''), fontSize), [n.text, fontSize]);
+  const mdTable = useMemo(
+    () => layoutMdTable(
+      mdCode ? [mdCode.before, mdCode.after].filter(Boolean).join('\n') : String(n.text || ''),
+      fontSize,
+    ),
+    [n.text, fontSize, mdCode],
+  );
 
   const strokeWidth = searchHit ? 2.6 : (style.borderWidth ?? (isRoot ? 2 : selected ? 1.5 : 1));
   const dash = borderDash(style.borderStyle, strokeWidth);
@@ -462,15 +470,19 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
           ? scaleNodeImage(n.image, n.w, padX)
           : null;
         const tableGap = mdTable && lines.length > 0 ? 6 : 0;
-        const imgGap = img && (lines.length > 0 || mdTable) ? 6 : 0;
+        const codeGap = mdCode && (lines.length > 0 || mdTable) ? 6 : 0;
+        const imgGap = img && (lines.length > 0 || mdTable || mdCode) ? 6 : 0;
         const contentH =
           flow.totalH +
           (mdTable ? mdTable.h + tableGap : 0) +
+          (mdCode ? mdCode.h + codeGap : 0) +
           (img ? img.h + imgGap : 0);
         const contentTop = n.y - contentH / 2;
-        const imgTop =
+        const codeTop =
           contentTop + flow.totalH +
-          (mdTable ? mdTable.h + tableGap : 0) + imgGap;
+          (mdTable ? mdTable.h + tableGap : 0) + codeGap;
+        const imgTop =
+          codeTop + (mdCode ? mdCode.h : 0) + imgGap - (mdCode ? 0 : codeGap);
 
         // 인라인 마커 상태를 자동 줄바꿈 사이로 이월한다 — 마커 구간이
         // 줄 경계에 걸치면 다음 줄에서 여는 마커로 재해석되어 강조
@@ -642,6 +654,40 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                       );
                     }),
                   )}
+                </g>
+              );
+            })()}
+
+            {mdCode && (() => {
+              // 노드 속 코드 블록 — 회색 패널 + 모노스페이스 줄 (P1).
+              // 인라인 마크·자동 줄바꿈 없이 원문 그대로 왼쪽 정렬.
+              const cX = n.x - mdCode.w / 2;
+              return (
+                <g data-node-code>
+                  <rect
+                    x={cX}
+                    y={codeTop}
+                    width={mdCode.w}
+                    height={mdCode.h}
+                    rx={5}
+                    fill={CODE_BG}
+                    stroke="#D8DDE4"
+                    strokeWidth={1}
+                  />
+                  {mdCode.code.map((ln, ci) => (
+                    <text
+                      key={ci}
+                      x={cX + MD_CODE_PAD_X}
+                      y={codeTop + MD_CODE_PAD_Y + ci * mdCode.lineH +
+                        mdCode.lineH / 2 + mdCode.codeFs * 0.34}
+                      textAnchor="start"
+                      fontSize={mdCode.codeFs}
+                      fill={CODE_TEXT}
+                      style={{ fontFamily: CODE_FONT, whiteSpace: 'pre' }}
+                    >
+                      {ln.replace(/ /g, '\u00A0')}
+                    </text>
+                  ))}
                 </g>
               );
             })()}

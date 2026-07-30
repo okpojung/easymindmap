@@ -357,6 +357,24 @@ const VIEWER_JS = String.raw`
     return null;
   }
 
+  // 노드 속 코드 펜스(백틱x3) 파서 — 에디터 mdCode.ts와 동일 규칙 (P1).
+  // 백틱 문자는 템플릿 문자열 안이라 charCode(96)로 검사한다.
+  function isFenceLine(s) {
+    var t2 = s.replace(/^\s+/, '');
+    return t2.charCodeAt(0) === 96 && t2.charCodeAt(1) === 96 && t2.charCodeAt(2) === 96;
+  }
+  function parseMdCode(text) {
+    var lines = String(text || '').split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (!isFenceLine(lines[i])) continue;
+      var code = [], j = i + 1;
+      while (j < lines.length && !isFenceLine(lines[j])) { code.push(lines[j]); j++; }
+      if (!code.join('').replace(/\s/g, '')) return null;
+      return { code: code };
+    }
+    return null;
+  }
+
   // 인라인 강조 파서 — 에디터 inlineMarks.ts와 동일 (마커 토글, 짝이
   // 없으면 줄 끝까지). t=텍스트, b/i/s/u/h=굵게/기울임/취소선/밑줄/형광
   // init 상태에서 시작해 파싱하고 줄 끝 상태를 함께 반환 — 마커 구간이
@@ -924,12 +942,25 @@ const VIEWER_JS = String.raw`
     var st = node.style || {};
     var align = node.textAlign || 'center'; // 기본 정렬 = 중앙 (에디터와 동일)
     var mdt = node._fixed ? parseMdTable(node.text) : null;
+    var mdc = node._fixed ? parseMdCode(node.text) : null;
     var cellFs = 0, rowH2 = 0, tGap = 0, tblH = 0;
     if (mdt) {
       cellFs = Math.max(10, node._fs - 2);
       rowH2 = cellFs + 10;
       tGap = node._lines.length ? 6 : 0;
       tblH = (1 + mdt.rows.length) * rowH2;
+    }
+    // 코드 패널 크기 — 에디터 mdCode.ts와 동일 (codeFs=fs-2, lineH=fs+6? → codeFs+6)
+    var cFs = 0, cLineH = 0, cGap = 0, cH = 0, cW = 0, CPX = 8, CPY = 6;
+    if (mdc) {
+      cFs = Math.max(10, node._fs - 2);
+      cLineH = cFs + 6;
+      cGap = (node._lines.length || mdt) ? 6 : 0;
+      cH = mdc.code.length * cLineH + CPY * 2;
+      for (var cwi = 0; cwi < mdc.code.length; cwi++) {
+        cW = Math.max(cW, measureReal(mdc.code[cwi], cFs, 500, false, CODE_FONT));
+      }
+      cW = Math.ceil(cW) + CPX * 2;
     }
     // 텍스트 중간 인라인 사진(기사 붙여넣기) — 에디터 layoutInlineImages와
     // 동일 규칙: afterLine(논리 줄)을 _manualStarts로 래핑 줄 자리로 바꿔
@@ -967,10 +998,10 @@ const VIEWER_JS = String.raw`
       var isc = Math.min(1, innerW / Math.max(1, node.image.w));
       img = { w: Math.round(node.image.w * isc), h: Math.round(node.image.h * isc) };
     }
-    var imgGap = img && (node._lines.length || mdt) ? 6 : 0;
-    var stacked = !!(mdt || img || inImgs); // 표·사진이 있으면 세로 스택 가운데 정렬
+    var imgGap = img && (node._lines.length || mdt || mdc) ? 6 : 0;
+    var stacked = !!(mdt || img || inImgs || mdc); // 표·코드·사진이 있으면 세로 스택
     var contentH = flowH +
-      (mdt ? tblH + tGap : 0) + (img ? img.h + imgGap : 0);
+      (mdt ? tblH + tGap : 0) + (mdc ? cH + cGap : 0) + (img ? img.h + imgGap : 0);
     var topY = node._cy - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
     // 인라인 마커 상태를 자동 줄바꿈 사이로 이월 (수동 \n 시작 줄에서 리셋)
@@ -1081,6 +1112,23 @@ const VIEWER_JS = String.raw`
         }
       }
     }
+    if (mdc) {
+      // 노드 속 코드 블록 — 회색 패널 + 모노스페이스 줄 (에디터 P1 파리티)
+      var codeY = topY + flowH + (mdt ? tblH + tGap : 0) + cGap;
+      var codeX = node._cx - cW / 2;
+      el('rect', { x: codeX, y: codeY, width: cW, height: cH, rx: 5,
+        fill: CODE_BG, stroke: '#D8DDE4', 'stroke-width': 1 }, g);
+      for (var cli = 0; cli < mdc.code.length; cli++) {
+        var cT = el('text', {
+          x: codeX + CPX,
+          y: codeY + CPY + cli * cLineH + cLineH / 2 + cFs * 0.34,
+          'text-anchor': 'start', 'font-size': cFs, fill: CODE_TEXT,
+          'font-family': CODE_FONT
+        }, g);
+        cT.setAttribute('xml:space', 'preserve');
+        cT.textContent = mdc.code[cli].replace(/ /g, '\u00A0');
+      }
+    }
     if (flowBands) {
       // 텍스트 중간 인라인 사진 — 원문 위치(afterLine) 밴드에 그린다
       for (var bi = 0; bi < flowBands.length; bi++) {
@@ -1096,7 +1144,7 @@ const VIEWER_JS = String.raw`
     if (img) {
       // 노드 안 사진 — 텍스트(·표) 아래 가운데 정렬
       var imgY = topY + flowH +
-        (mdt ? tblH + tGap : 0) + imgGap;
+        (mdt ? tblH + tGap : 0) + (mdc ? cH + cGap : 0) + imgGap;
       el('image', {
         href: node.image.src,
         x: node._cx - img.w / 2, y: imgY,

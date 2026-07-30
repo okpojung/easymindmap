@@ -1,6 +1,13 @@
 # 🧠 easymindmap
 
+> **[Mindmap Markdown](https://mindmapmarkdown.org) 레퍼런스 애플리케이션.**
+> easymindmap이 정의·구현하는 **EMM**(EasyMindMap Markdown)은 그 표준이
+> 정제되어 나오는 원형이다. 표준 자체는 아직 초기 초안이며, 이 애플리케이션을
+> 포함해 어떤 구현도 아직 그것에 적합하지 않다 —
+> [사양 저장소](https://github.com/mindmapmarkdown/spec) 참조.
+
 **AI 기반 온라인 마인드맵 플랫폼**  
+마인드맵을 위한 Markdown 포맷(EMM)을 정의하고, 그것을 편집·렌더링하는 레퍼런스 구현.  
 서비스 도메인: `example.com` (실제 도메인은 배포 설정에서 관리)
 
 ---
@@ -224,6 +231,20 @@ docs/           # 설계 문서 전체 (00~05 체계)
 | [Markmap](https://github.com/markmap/markmap) | Markdown → HTML export 참조 |
 | [Excalidraw](https://github.com/excalidraw/excalidraw) | 실시간 협업 구조 참조 |
 | [Supabase](https://github.com/supabase/supabase) | Self-hosted DB / Auth / Storage / Realtime |
+
+---
+
+## 📄 라이선스
+
+[Apache-2.0](LICENSE).
+
+명시적 **특허 실시권**이 있는 라이선스를 골랐다. 포맷을 구현하는 사람이 그
+구현 때문에 특허 위험에 노출되면 안 되기 때문이며, 같은 이유로
+[Mindmap Markdown 사양 저장소](https://github.com/mindmapmarkdown/spec)도
+코드·테스트 데이터에 Apache-2.0을 쓴다. MIT에는 그 조항이 없다.
+
+`@easymindmap/emm-parser`는 이미 `Apache-2.0`으로 표시되어 배포되고 있었으므로,
+저장소 전체가 그 표시에 맞춰진 것이기도 하다.
 
 ---
 

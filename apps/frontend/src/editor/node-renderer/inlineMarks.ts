@@ -129,6 +129,41 @@ export function toggleMarkRange(
   };
 }
 
+// 코드 펜스(```) 블록 삽입 — 선택이 있으면 감싸고, 없으면 자리표시자.
+// 미니 툴바 '코드블록' 버튼용 (Enter=커밋인 편집창에서 여러 줄 펜스를
+// 타이핑만으로 만들기 어려운 문제의 해법 — 스마트 Enter와 세트).
+export function insertCodeBlock(
+  value: string,
+  s0: number,
+  e0: number,
+): { next: string; selStart: number; selEnd: number } {
+  const sel = value.slice(s0, e0);
+  const before = value.slice(0, s0);
+  const after = value.slice(e0);
+  const nlB = before && !before.endsWith('\n') ? '\n' : '';
+  const nlA = after && !after.startsWith('\n') ? '\n' : '';
+  const inner = sel || '코드';
+  const block = `${nlB}\`\`\`\n${inner}\n\`\`\`${nlA}`;
+  const start = s0 + nlB.length + 4; // ```\n 다음
+  return {
+    next: before + block + after,
+    selStart: start,
+    selEnd: start + inner.length,
+  };
+}
+
+// 커서 위치가 "열린(닫히지 않은) 코드 펜스" 안인지 — 커서 앞 텍스트의
+// 펜스 줄 수가 홀수면 열린 블록 안이다. 편집창의 스마트 Enter 판정용
+// (열린 펜스 안에서는 Enter가 커밋이 아니라 줄바꿈).
+export function isInsideOpenFence(value: string, cursor: number): boolean {
+  const beforeText = value.slice(0, cursor);
+  let fences = 0;
+  for (const ln of beforeText.split('\n')) {
+    if (/^\s*```/.test(ln)) fences += 1;
+  }
+  return fences % 2 === 1;
+}
+
 // 마커를 제거한 표시용 텍스트 (아웃라인 목록 등)
 export function stripInlineMarks(text: string): string {
   return text

@@ -32,7 +32,7 @@ import {
   type NoteKind,
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from '@/editor/canvas/NoteViewerPopover';
-import { parseInlineMarks, toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
+import { parseInlineMarks, toggleMarkRange, insertCodeBlock } from '@/editor/node-renderer/inlineMarks';
 import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import type { LaidOutNode } from '@/layout/types';
@@ -213,7 +213,10 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
     const e0 = ta.selectionEnd ?? s0;
-    const r = toggleMarkRange(draft, s0, e0, mark);
+    // '코드블록' 버튼 — 마커 토글이 아니라 ``` 블록 삽입
+    const r = mark === '```'
+      ? insertCodeBlock(draft, s0, e0)
+      : toggleMarkRange(draft, s0, e0, mark);
     setDraft(r.next);
     window.setTimeout(() => {
       ta.focus();

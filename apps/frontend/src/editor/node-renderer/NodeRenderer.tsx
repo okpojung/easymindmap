@@ -32,6 +32,8 @@ import {
   parseInlineMarks,
   parseInlineMarksWithState,
   toggleMarkRange,
+  insertCodeBlock,
+  isInsideOpenFence,
   CODE_BG,
   CODE_TEXT,
   CODE_FONT,
@@ -343,7 +345,10 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
     const e0 = ta.selectionEnd ?? s0;
-    const r = toggleMarkRange(draftText, s0, e0, mark);
+    // '코드블록' 버튼 — 마커 토글이 아니라 ``` 블록 삽입
+    const r = mark === '```'
+      ? insertCodeBlock(draftText, s0, e0)
+      : toggleMarkRange(draftText, s0, e0, mark);
     setDraftText(r.next);
     window.setTimeout(() => {
       ta.focus();
@@ -982,6 +987,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                 if (k2 === 'u') { e.preventDefault(); wrapSelection('__'); return; }
               }
               if (e.key === 'Enter' && !e.shiftKey) {
+                // 스마트 Enter — 열린(닫히지 않은) 코드 펜스 안에서는
+                // 커밋이 아니라 줄바꿈 (여러 줄 코드를 타이핑으로 입력 가능)
+                const ta2 = e.currentTarget;
+                if (isInsideOpenFence(draftText, ta2.selectionStart ?? draftText.length)) {
+                  return; // 기본 동작(줄바꿈) 허용
+                }
                 e.preventDefault();
                 saveEdit();
               }

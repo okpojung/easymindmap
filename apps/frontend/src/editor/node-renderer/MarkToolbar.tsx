@@ -19,6 +19,7 @@ export const MARK_BUTTONS = [
   { m: '__', label: 'U', title: '밑줄 (Ctrl+U)', st: { textDecoration: 'underline', fontWeight: 600 } },
   { m: '==', label: 'H', title: '하이라이트 (다시 누르면 해제)', st: { background: '#FFE066', borderRadius: 3, padding: '0 4px', fontWeight: 700 } },
   { m: '`', label: '<>', title: '인라인 코드 (다시 누르면 해제)', st: { fontFamily: "ui-monospace, 'Consolas', monospace", background: '#ECEFF3', color: '#334155', borderRadius: 3, padding: '0 3px', fontWeight: 700, fontSize: 12 } },
+  { m: '```', label: '{ }', title: '코드 블록 삽입 (여러 줄 — 언어 라벨·복사 버튼 포함)', st: { fontFamily: "ui-monospace, 'Consolas', monospace", background: '#334155', color: '#ECEFF3', borderRadius: 3, padding: '0 3px', fontWeight: 700, fontSize: 11 } },
 ] as const;
 
 export function MarkToolbar({

@@ -191,6 +191,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
 
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(n.text);
+  // 코드 패널 ⧉ 복사 피드백 (1.5s 후 원복)
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // 편집 오버레이 위치 측정용 — 노드 박스와 정확히 일치하는 투명 rect
@@ -539,7 +541,6 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                         height={fontSize * 1.44}
                         rx={2}
                         fill="#FFE066"
-                        opacity={0.85}
                       />
                     ) : sg.c && sg.text.trim() !== '' ? (
                       // 인라인 코드 — 회색 배경 띠 (모노스페이스와 세트)
@@ -551,7 +552,6 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                         height={fontSize * 1.44}
                         rx={3}
                         fill={CODE_BG}
-                        opacity={0.95}
                       />
                     ) : null,
                   )}
@@ -659,9 +659,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
             })()}
 
             {mdCode && (() => {
-              // 노드 속 코드 블록 — 회색 패널 + 모노스페이스 줄 (P1).
-              // 인라인 마크·자동 줄바꿈 없이 원문 그대로 왼쪽 정렬.
+              // 노드 속 코드 블록 — 노트 코드와 같은 구성: 헤더(언어 라벨 +
+              // ⧉ 복사) + 모노스페이스 코드 줄. 인라인 마크·자동 줄바꿈 없음.
               const cX = n.x - mdCode.w / 2;
+              const headFs = Math.max(9, mdCode.codeFs - 2);
+              const headBase = codeTop + mdCode.headH / 2 + headFs * 0.34;
+              const bodyTop = codeTop + mdCode.headH;
               return (
                 <g data-node-code>
                   <rect
@@ -674,11 +677,51 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     stroke="#D8DDE4"
                     strokeWidth={1}
                   />
+                  {/* 헤더 구분선 */}
+                  <line
+                    x1={cX} x2={cX + mdCode.w}
+                    y1={codeTop + mdCode.headH} y2={codeTop + mdCode.headH}
+                    stroke="#D8DDE4" strokeWidth={1}
+                  />
+                  {/* 언어 라벨 (노트 코드와 동일 — 없으면 'code') */}
+                  <text
+                    x={cX + MD_CODE_PAD_X}
+                    y={headBase}
+                    textAnchor="start"
+                    fontSize={headFs}
+                    fill="#64748B"
+                    style={{ fontFamily: CODE_FONT }}
+                  >
+                    {mdCode.lang || 'code'}
+                  </text>
+                  {/* ⧉ 복사 버튼 — 클릭 시 코드 원문 복사 */}
+                  <text
+                    data-code-copy
+                    x={cX + mdCode.w - MD_CODE_PAD_X}
+                    y={headBase}
+                    textAnchor="end"
+                    fontSize={headFs}
+                    fill={codeCopied ? '#15803D' : '#475569'}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const textToCopy = mdCode.code.join('\n');
+                      const done = () => {
+                        setCodeCopied(true);
+                        window.setTimeout(() => setCodeCopied(false), 1500);
+                      };
+                      if (navigator.clipboard?.writeText) {
+                        navigator.clipboard.writeText(textToCopy).then(done, done);
+                      } else done();
+                    }}
+                  >
+                    {codeCopied ? '복사됨 ✓' : '⧉ 복사'}
+                  </text>
                   {mdCode.code.map((ln, ci) => (
                     <text
                       key={ci}
                       x={cX + MD_CODE_PAD_X}
-                      y={codeTop + MD_CODE_PAD_Y + ci * mdCode.lineH +
+                      y={bodyTop + MD_CODE_PAD_Y + ci * mdCode.lineH +
                         mdCode.lineH / 2 + mdCode.codeFs * 0.34}
                       textAnchor="start"
                       fontSize={mdCode.codeFs}

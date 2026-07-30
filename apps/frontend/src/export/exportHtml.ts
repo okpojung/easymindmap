@@ -370,7 +370,8 @@ const VIEWER_JS = String.raw`
       var code = [], j = i + 1;
       while (j < lines.length && !isFenceLine(lines[j])) { code.push(lines[j]); j++; }
       if (!code.join('').replace(/\s/g, '')) return null;
-      return { code: code };
+      var lang = lines[i].replace(/^\s+/, '').slice(3).replace(/^\s+|\s+$/g, '');
+      return { code: code, lang: lang || undefined };
     }
     return null;
   }
@@ -952,14 +953,19 @@ const VIEWER_JS = String.raw`
     }
     // 코드 패널 크기 — 에디터 mdCode.ts와 동일 (codeFs=fs-2, lineH=fs+6? → codeFs+6)
     var cFs = 0, cLineH = 0, cGap = 0, cH = 0, cW = 0, CPX = 8, CPY = 6;
+    var cHeadFs = 0, cHeadH = 0;
     if (mdc) {
       cFs = Math.max(10, node._fs - 2);
       cLineH = cFs + 6;
+      cHeadFs = Math.max(9, cFs - 2);
+      cHeadH = cHeadFs + 10;
       cGap = (node._lines.length || mdt) ? 6 : 0;
-      cH = mdc.code.length * cLineH + CPY * 2;
+      cH = cHeadH + mdc.code.length * cLineH + CPY * 2;
       for (var cwi = 0; cwi < mdc.code.length; cwi++) {
         cW = Math.max(cW, measureReal(mdc.code[cwi], cFs, 500, false, CODE_FONT));
       }
+      cW = Math.max(cW,
+        measureReal(mdc.lang || 'code', cHeadFs, 500, false, CODE_FONT) + cHeadFs * 7 + 16);
       cW = Math.ceil(cW) + CPX * 2;
     }
     // 텍스트 중간 인라인 사진(기사 붙여넣기) — 에디터 layoutInlineImages와
@@ -1039,12 +1045,12 @@ const VIEWER_JS = String.raw`
         if ((st.highlight || segs[si].h) && segs[si].t.replace(/\s/g, '')) {
           el('rect', { x: segX[si] - 2, y: baseY - node._fs * 1.06,
             width: segWs[si] + 4, height: node._fs * 1.44, rx: 2,
-            fill: SKIN.hl, opacity: 0.85 }, g);
+            fill: SKIN.hl }, g);
         } else if (segs[si].c && segs[si].t.replace(/\s/g, '')) {
           // 인라인 코드 — 회색 배경 띠 (에디터와 동일 고정색)
           el('rect', { x: segX[si] - 2, y: baseY - node._fs * 1.06,
             width: segWs[si] + 4, height: node._fs * 1.44, rx: 3,
-            fill: CODE_BG, opacity: 0.95 }, g);
+            fill: CODE_BG }, g);
         }
       }
       var tEl = el('text', { y: baseY, 'font-size': node._fs, fill: textColor }, g);
@@ -1113,15 +1119,31 @@ const VIEWER_JS = String.raw`
       }
     }
     if (mdc) {
-      // 노드 속 코드 블록 — 회색 패널 + 모노스페이스 줄 (에디터 P1 파리티)
+      // 노드 속 코드 블록 — 헤더(언어 라벨 + ⧉ 복사) + 모노 줄 (에디터 파리티)
       var codeY = topY + flowH + (mdt ? tblH + tGap : 0) + cGap;
       var codeX = node._cx - cW / 2;
       el('rect', { x: codeX, y: codeY, width: cW, height: cH, rx: 5,
         fill: CODE_BG, stroke: '#D8DDE4', 'stroke-width': 1 }, g);
+      el('line', { x1: codeX, x2: codeX + cW, y1: codeY + cHeadH, y2: codeY + cHeadH,
+        stroke: '#D8DDE4', 'stroke-width': 1 }, g);
+      var headBase = codeY + cHeadH / 2 + cHeadFs * 0.34;
+      var langT = el('text', { x: codeX + CPX, y: headBase, 'text-anchor': 'start',
+        'font-size': cHeadFs, fill: '#64748B', 'font-family': CODE_FONT }, g);
+      langT.textContent = mdc.lang || 'code';
+      var copyT = el('text', { x: codeX + cW - CPX, y: headBase, 'text-anchor': 'end',
+        'font-size': cHeadFs, fill: '#475569' }, g);
+      copyT.textContent = '⧉ 복사';
+      copyT.style.cursor = 'pointer';
+      (function (codeJoined, btnEl) {
+        btnEl.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          copyText(codeJoined, btnEl);
+        });
+      })(mdc.code.join('\n'), copyT);
       for (var cli = 0; cli < mdc.code.length; cli++) {
         var cT = el('text', {
           x: codeX + CPX,
-          y: codeY + CPY + cli * cLineH + cLineH / 2 + cFs * 0.34,
+          y: codeY + cHeadH + CPY + cli * cLineH + cLineH / 2 + cFs * 0.34,
           'text-anchor': 'start', 'font-size': cFs, fill: CODE_TEXT,
           'font-family': CODE_FONT
         }, g);

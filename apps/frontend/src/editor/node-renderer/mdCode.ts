@@ -20,12 +20,15 @@ export interface MdCodeParse {
 export interface MdCodeLayout extends MdCodeParse {
   codeFs: number; // 코드 글자 크기
   lineH: number; // 코드 줄 높이
+  headH: number; // 헤더 행(언어 라벨 + 복사 버튼) 높이
   w: number; // 패널 전체 폭 (패딩 포함)
-  h: number; // 패널 전체 높이 (패딩 포함)
+  h: number; // 패널 전체 높이 (헤더 + 코드 + 패딩)
 }
 
 export const MD_CODE_PAD_X = 8;
 export const MD_CODE_PAD_Y = 6;
+// 헤더(노트 코드 블록과 동일 구성: 언어 라벨 왼쪽 + ⧉ 복사 오른쪽)
+export const MD_CODE_HEAD_FS_DELTA = 2; // 헤더 글자 = codeFs - 2 (최소 9)
 
 const FENCE_RE = /^\s*```(.*)$/;
 
@@ -71,13 +74,18 @@ export function layoutMdCode(text: string, fontSize: number): MdCodeLayout | nul
   if (!parsed) return null;
   const codeFs = Math.max(10, fontSize - 2);
   const lineH = codeFs + 6;
+  const headFs = Math.max(9, codeFs - MD_CODE_HEAD_FS_DELTA);
+  const headH = headFs + 10;
   let maxW = 0;
   for (const ln of parsed.code) maxW = Math.max(maxW, monoMeasure(ln, codeFs));
+  // 헤더가 잘리지 않게 최소 폭 확보: 언어 라벨 + '⧉ 복사됨 ✓' 여유
+  const headW = monoMeasure(parsed.lang || 'code', headFs) + headFs * 7 + 16;
   return {
     ...parsed,
     codeFs,
     lineH,
-    w: Math.ceil(maxW) + MD_CODE_PAD_X * 2,
-    h: parsed.code.length * lineH + MD_CODE_PAD_Y * 2,
+    headH,
+    w: Math.ceil(Math.max(maxW, headW)) + MD_CODE_PAD_X * 2,
+    h: headH + parsed.code.length * lineH + MD_CODE_PAD_Y * 2,
   };
 }

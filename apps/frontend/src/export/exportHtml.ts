@@ -1473,12 +1473,16 @@ const VIEWER_JS = String.raw`
     function escH(s) {
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
+    // 인라인 테두리 스타일 — 웹 에디터가 style 블록은 버려도 인라인
+    // 속성은 유지한다 (에디터 copyTable과 동일 규칙)
+    var CELL_ST = 'border:1px solid #999;padding:4px 8px;';
+    var TH_ST = CELL_ST + 'background:#F1F3F5;font-weight:700;text-align:left;';
     var all = [headers].concat(rows);
-    var html = '<table><thead><tr>' +
-      headers.map(function (c) { return '<th>' + escH(c) + '</th>'; }).join('') +
+    var html = '<table style="border-collapse:collapse;border:1px solid #999;"><thead><tr>' +
+      headers.map(function (c) { return '<th style="' + TH_ST + '">' + escH(c) + '</th>'; }).join('') +
       '</tr></thead><tbody>' +
       rows.map(function (r) {
-        return '<tr>' + r.map(function (c) { return '<td>' + escH(c) + '</td>'; }).join('') + '</tr>';
+        return '<tr>' + r.map(function (c) { return '<td style="' + CELL_ST + '">' + escH(c) + '</td>'; }).join('') + '</tr>';
       }).join('') + '</tbody></table>';
     var tsv = all.map(function (r) {
       return r.map(function (c) { return String(c).replace(/\t/g, ' '); }).join('\t');

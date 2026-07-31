@@ -11,15 +11,24 @@ function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// 붙여넣는 웹 에디터가 <style> 블록은 버려도 **인라인 style 속성은
+// 유지**하므로, 테두리·패딩을 셀마다 인라인으로 넣는다 — 메일 편집기
+// 등에 붙였을 때 표 테두리가 보이게 (2026-07-31 사용자 요청)
+const CELL_STYLE = 'border:1px solid #999;padding:4px 8px;';
+const TH_STYLE = CELL_STYLE + 'background:#F1F3F5;font-weight:700;text-align:left;';
+const TABLE_STYLE = 'border-collapse:collapse;border:1px solid #999;';
+
 export function tableClipboardPayload(headers: string[], rows: string[][]) {
   const clean = (s: string) => stripInlineMarks(String(s ?? '')).trim();
   const h = headers.map(clean);
   const rs = rows.map((r) => r.map(clean));
   const html =
-    '<table><thead><tr>' +
-    h.map((c) => `<th>${escHtml(c)}</th>`).join('') +
+    `<table style="${TABLE_STYLE}"><thead><tr>` +
+    h.map((c) => `<th style="${TH_STYLE}">${escHtml(c)}</th>`).join('') +
     '</tr></thead><tbody>' +
-    rs.map((r) => '<tr>' + r.map((c) => `<td>${escHtml(c)}</td>`).join('') + '</tr>').join('') +
+    rs.map((r) =>
+      '<tr>' + r.map((c) => `<td style="${CELL_STYLE}">${escHtml(c)}</td>`).join('') + '</tr>',
+    ).join('') +
     '</tbody></table>';
   const tsv = [h, ...rs]
     .map((r) => r.map((c) => c.replace(/\t/g, ' ')).join('\t'))

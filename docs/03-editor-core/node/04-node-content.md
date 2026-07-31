@@ -322,7 +322,9 @@ AI 생성 → `ai_jobs`/revision 메타와 연계 저장
 * **표 복사**: 노드 SVG 표·아웃라인/칸반(NodeRichText) 표·노트 표
   팝업·**뷰어**(노드 표·노트 표)의 ⧉ — `copyTable`(utils/copyTable.ts)이
   클립보드에 **text/html(`<table>`) + text/plain(TSV) 두 형식을 동시**
-  기록 (ClipboardItem, 미지원 시 TSV 텍스트 폴백). 웹 에디터/워드엔
+  기록 (ClipboardItem, 미지원 시 TSV 텍스트 폴백). HTML 표에는 셀별
+  **인라인 테두리/패딩 스타일** 포함 — 웹 에디터가 style 블록은 버려도
+  인라인 속성은 유지하므로 붙여넣은 표에 테두리가 보인다. 웹 에디터/워드엔
   표로, 엑셀/시트엔 셀 단위로 붙는다. 셀의 인라인 마커는 제거해 복사.
 * **HTML 표 붙여넣기**: `extractArticleContent`(articleContent.ts)가
   `<table>`을 만나면 **파이프 MD 줄로 변환**(htmlTableToMdLines — 셀

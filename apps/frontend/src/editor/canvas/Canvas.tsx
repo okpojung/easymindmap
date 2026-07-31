@@ -41,6 +41,7 @@ import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
+import { ChooserPopover } from './ChooserPopover';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 
@@ -1293,55 +1294,21 @@ export function Canvas({
           )}
 
           {/* Multi-item chooser popover (link/file/media) — TOP overlay so it's
-              never covered by other nodes. (노트는 아래 NoteViewerPopover) */}
+              never covered by other nodes. (노트는 아래 NoteViewerPopover)
+              노드 오른쪽 배치 + 호버 강조 + 첨부 새 탭/다운로드 정책은
+              ChooserPopover.tsx / openAttachment.ts 참조. */}
           {popover && !isNoteKind(popover.kind) && (() => {
             const node = nodes.find((n) => n.id === popover.nodeId);
             if (!node) return null;
             const ind = nodeContentIndicators(node).find((c) => c.kind === popover.kind);
             if (!ind || ind.items.length === 0) return null;
-            const width = Math.max(200, node.w);
-            const height = Math.min(190, 10 + ind.items.length * 26);
             return (
-              <foreignObject
-                x={node.x - node.w / 2}
-                y={node.y + node.h / 2 + 6}
-                width={width}
-                height={height}
-              >
-                <div
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    background: t.surface,
-                    border: `1px solid ${t.border}`,
-                    borderRadius: 6,
-                    boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
-                    padding: 4,
-                    fontFamily: 'inherit',
-                    maxHeight: height,
-                    overflow: 'auto',
-                  }}
-                >
-                  {ind.items.map((it, i) => (
-                    <button
-                      key={i}
-                      title={it.url || it.label}
-                      onClick={() => {
-                        if (it.url) window.open(it.url, '_blank', 'noopener');
-                        setPopover(null);
-                      }}
-                      style={{
-                        display: 'block', width: '100%', textAlign: 'left',
-                        padding: '5px 8px', border: 'none', background: 'transparent',
-                        color: t.text, fontSize: 11.5, cursor: 'pointer', borderRadius: 4,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {ind.icon} {it.label}
-                    </button>
-                  ))}
-                </div>
-              </foreignObject>
+              <ChooserPopover
+                t={t}
+                node={node}
+                ind={ind}
+                onClose={() => setPopover(null)}
+              />
             );
           })()}
         </g>

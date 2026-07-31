@@ -1155,9 +1155,10 @@ const VIEWER_JS = String.raw`
           'font-weight': segs[si].b ? 700 : (isRoot ? 700 : (depth === 1 ? 600 : 500)),
           'font-style': segs[si].i ? 'italic' : 'normal'
         }, tEl);
-        // 형광펜(노란 띠) 위 글자는 항상 진한 고정색 — 다크 모드에서
-        // 밝은 글자가 노란 배경에 묻히던 문제 (에디터와 동일 규칙)
-        if (st.highlight || segs[si].h) sp.setAttribute('fill', '#1F1B16');
+        // 형광펜(노란 띠) 위 글자는 진한 고정색 — 다크 모드에서 밝은
+        // 글자가 노란 배경에 묻히던 문제. 단 지정 글자색이 있으면 그
+        // 색이 우선 (에디터와 동일 규칙)
+        if (st.highlight || segs[si].h) sp.setAttribute('fill', st.textColor || '#1F1B16');
         else if (segs[si].c) {
           sp.setAttribute('fill', CODE_TEXT);
           sp.setAttribute('font-family', CODE_FONT);

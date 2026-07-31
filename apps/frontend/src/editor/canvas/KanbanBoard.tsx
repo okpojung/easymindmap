@@ -46,16 +46,18 @@ interface DropTarget { id: string; pos: DropPos }
 // 카드/헤더 본문 — 인라인 마크 + 노드 블록(코드 패널·체크 글리프·표)을
 // 맵과 같은 규칙으로 표시 (리치 노드 P4, 공용 NodeRichText).
 // nodeId를 주면 체크 글리프 클릭 = 원문 토글.
-function InlineTitle({ text, nodeId, t }: {
+function InlineTitle({ text, nodeId, t, textColor }: {
   text: string;
   nodeId?: string;
   t?: ThemeTokens;
+  textColor?: string; // 노드 지정 글자색 — 형광 띠 위에서도 우선
 }) {
   const updateNodeText = useDocumentStore((s) => s.updateNodeText);
   return (
     <NodeRichText
       text={text}
       t={t}
+      textColor={textColor}
       onToggleCheck={nodeId ? (next) => updateNodeText(nodeId, next) : undefined}
       onUpdateText={nodeId ? (next) => updateNodeText(nodeId, next) : undefined}
     />
@@ -212,7 +214,7 @@ function CardNode({
                 lineHeight: 1.35,
               }}
             >
-              <InlineTitle text={card.title} nodeId={card.id} t={t} />
+              <InlineTitle text={card.title} nodeId={card.id} t={t} textColor={st?.textColor} />
             </div>
             {card.image && (
               // 노드에 붙여넣은 사진 — 카드 안 썸네일
@@ -524,7 +526,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
                 fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0,
                 color: styledText(col.style, t.text),
               }}>
-                <InlineTitle text={col.title} nodeId={col.id} t={t} />
+                <InlineTitle text={col.title} nodeId={col.id} t={t} textColor={col.style?.textColor} />
               </div>
               <span style={{
                 fontSize: 11, color: t.textMuted, marginLeft: 'auto',

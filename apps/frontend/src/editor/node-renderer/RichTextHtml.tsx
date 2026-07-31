@@ -22,7 +22,9 @@ import { CodeBlockDialog, replaceCodeBlock } from './CodeBlockDialog';
 const MONO = "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace";
 
 // 인라인 마크 한 줄 — 아웃라인·칸반 공용 스타일 (다크 고정색 포함)
-export function InlineMarkSpans({ text }: { text: string }) {
+// textColor: 노드에 지정한 글자색 — 형광 띠 위에서도 이 색이 우선한다
+// (맵 SVG와 동일 규칙: 지정 글자색 > 형광 고정색)
+export function InlineMarkSpans({ text, textColor }: { text: string; textColor?: string }) {
   return (
     <>
       {parseInlineMarks(String(text)).map((sg, k) => (
@@ -35,8 +37,9 @@ export function InlineMarkSpans({ text }: { text: string }) {
               [sg.s ? 'line-through' : '', sg.u ? 'underline' : '']
                 .filter(Boolean).join(' ') || undefined,
             background: sg.h ? '#FFE066' : sg.c ? CODE_BG : undefined,
-            // 형광펜/코드 배경 위 글자는 진한 고정색 (다크 모드 가독성)
-            color: sg.h ? '#1F1B16' : sg.c ? CODE_TEXT : undefined,
+            // 형광펜/코드 배경 위 글자는 진한 고정색 (다크 모드 가독성),
+            // 단 지정 글자색이 있으면 그 색이 우선
+            color: sg.h ? (textColor ?? '#1F1B16') : sg.c ? CODE_TEXT : undefined,
             fontFamily: sg.c ? MONO : undefined,
             borderRadius: sg.h || sg.c ? 2 : undefined,
             padding: sg.h ? '0 1px' : undefined,
@@ -105,6 +108,7 @@ export function NodeRichText({
   onUpdateText,
   t,
   style,
+  textColor,
 }: {
   text: string;
   onToggleCheck?: (nextText: string) => void;
@@ -113,6 +117,8 @@ export function NodeRichText({
   onUpdateText?: (nextText: string) => void;
   t?: ThemeTokens;
   style?: CSSProperties;
+  // 노드 지정 글자색 — 형광 띠 구간에도 이 색이 우선 (맵과 동일 규칙)
+  textColor?: string;
 }) {
   const raw = String(text || '');
   const mdc = parseMdCode(raw);
@@ -182,7 +188,7 @@ export function NodeRichText({
                         opacity: ri === 0 ? 1 : 0.92,
                       }}
                     >
-                      <InlineMarkSpans text={cell} />
+                      <InlineMarkSpans text={cell} textColor={textColor} />
                     </td>
                   ))}
                 </tr>
@@ -205,13 +211,13 @@ export function NodeRichText({
                   ? () => onToggleCheck(toggleCheckInText(raw, mySeq))
                   : undefined}
               />
-              <span style={{ minWidth: 0 }}><InlineMarkSpans text={chk.text} /></span>
+              <span style={{ minWidth: 0 }}><InlineMarkSpans text={chk.text} textColor={textColor} /></span>
             </div>
           );
         }
         return (
           <div key={`${key}-${pi}-${li}`}>
-            <InlineMarkSpans text={line} />
+            <InlineMarkSpans text={line} textColor={textColor} />
           </div>
         );
       });

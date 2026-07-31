@@ -688,18 +688,21 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                         strike || sg.s ? 'line-through' : '',
                         underline || sg.u ? 'underline' : '',
                       ].filter(Boolean).join(' ');
-                      // 형광펜(노란 띠) 위 글자는 항상 진한 고정색 —
-                      // 다크 모드에서 밝은 글자가 노란 배경에 묻혀 안
-                      // 보이던 문제 (검색 강조와 동일 규칙). 띠가 없는
-                      // 구간은 노드 글자색(textColor) 상속.
+                      // 형광펜(노란 띠) 위 글자는 진한 고정색 — 다크
+                      // 모드에서 밝은 글자가 노란 배경에 묻혀 안 보이던
+                      // 문제 (검색 강조와 동일 규칙). 단, 사용자가
+                      // 글자색을 직접 지정했으면 그 색이 우선한다 —
+                      // 하이라이트 노드에서 지정 글자색이 무시되던 버그.
+                      // 띠가 없는 구간은 노드 글자색(textColor) 상속.
                       const onHighlight = highlight || sg.h;
+                      const hlColor = style.textColor ?? '#1F1B16';
                       return (
                         <tspan
                           key={k}
                           x={segXs[k]}
                           fontWeight={sg.b ? 700 : fontWeight}
                           fontStyle={sg.i ? 'italic' : fontStyle}
-                          fill={onHighlight ? '#1F1B16' : sg.c ? CODE_TEXT : undefined}
+                          fill={onHighlight ? hlColor : sg.c ? CODE_TEXT : undefined}
                           style={{
                             textDecoration: deco || undefined,
                             fontFamily: sg.c ? CODE_FONT : undefined,
@@ -1190,6 +1193,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
             return (
               <g
                 key={ic.kind}
+                data-node-ind={ic.kind}
                 transform={`translate(${cx}, ${cy})`}
                 style={{ cursor: 'pointer' }}
                 onPointerDown={(e) => e.stopPropagation()}

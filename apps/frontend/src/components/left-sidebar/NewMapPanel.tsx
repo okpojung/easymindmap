@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile } from '@/utils/importMapFile';
+import { resolveRemoteImages } from '@/utils/remoteImages';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -181,12 +182,15 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   //  · EasyMindMap이 내보낸 HTML/MD: 내장 메타데이터로 원본 맵을 복원
   //    (MD는 본문에서 고친 구조·텍스트도 반영 — importMapFile.ts)
   //  · 일반 MD: # 견출/리스트 구조를 맵으로 변환
-  const applyImported = (imported: {
+  const applyImported = async (imported: {
     map: Parameters<typeof loadMap>[0];
     editor?: { layoutType?: Parameters<typeof setLayoutType>[0]; spacingX?: number; spacingY?: number };
     source: string;
   } & { relinked?: number }, movedToNote = 0) => {
-    loadMap(imported.map);
+    // MD의 원격 이미지 URL(![](https://…png))을 다운로드해 내장 —
+    // 실패분은 원격 참조 유지 또는 링크 폴백 (remoteImages.ts)
+    const { map: resolvedMap, stats: img } = await resolveRemoteImages(imported.map);
+    loadMap(resolvedMap);
     if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
     else setLayoutType('radial-right');
     if (imported.editor?.spacingX) setSpacingX(imported.editor.spacingX);
@@ -198,10 +202,16 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     const moved = movedToNote > 0
       ? ` · A4 분량을 넘어 블록 ${movedToNote}개를 노트로 옮겼습니다`
       : '';
+    const imgNote = [
+      img.embedded ? `사진 ${img.embedded}개 내장` : '',
+      img.kept ? `사진 ${img.kept}개 원격 참조` : '',
+      img.linked ? `이미지 ${img.linked}개는 다운로드 실패로 링크로 대체` : '',
+    ].filter(Boolean).join(' · ');
+    const imgMsg = imgNote ? ` · ${imgNote}` : '';
     setChooseTpl({
       msg: imported.source === 'plain-md'
-        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다${moved}`
-        : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다${extra}`,
+        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다${moved}${imgMsg}`
+        : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다${extra}${imgMsg}`,
       mode: 'import',
     });
   };
@@ -221,7 +231,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
             flash('ZIP 안에서 EasyMindMap 맵 파일(.md/.html)을 찾지 못했습니다');
             return;
           }
-          applyImported(imported, stats.movedToNote);
+          await applyImported(imported, stats.movedToNote);
         })();
       };
       reader.readAsArrayBuffer(file);
@@ -244,7 +254,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           : '맵으로 만들 견출(#)·리스트(-) 구조를 찾지 못했습니다');
         return;
       }
-      applyImported(imported, stats.movedToNote);
+      void applyImported(imported, stats.movedToNote);
     };
     reader.readAsText(file);
   };

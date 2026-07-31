@@ -1,6 +1,6 @@
 {
   "nodes": 10,
-  "bodyRoundTripNodes": 12,
+  "bodyRoundTripNodes": 10,
   "map": {
     "title": "markmap 호환 기능",
     "root": {

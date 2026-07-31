@@ -28,6 +28,7 @@ import type {
   SampleBranch,
   MindNode,
   NodeColorKey,
+  NodeInlineImage,
   NodeLink,
   NoteBlock,
 } from './model';
@@ -58,6 +59,28 @@ const MD_LINK_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 // 표 구분선 행 — | --- | :--: | 등
 const TABLE_SEP_RE = /^[\s|:\-]+$/;
+
+// 이미지로 취급할 원격 URL — ![](url) 문법 또는 한 줄 전체가 이미지
+// 확장자 URL이면 노드 텍스트가 아니라 노드 사진(images)으로 담는다.
+// (앱은 불러온 뒤 다운로드해 data URL로 내장 — resolveRemoteImages)
+const BARE_IMAGE_URL_RE =
+  /^https?:\/\/\S+\.(png|jpe?g|gif|webp|svg|avif|bmp)(\?\S*)?(#\S*)?$/i;
+
+// 원격 이미지의 표시 이름 — URL 마지막 경로 조각 (없으면 '이미지')
+function imageFileName(url: string): string {
+  try {
+    const path = url.replace(/[?#].*$/, '');
+    const seg = decodeURIComponent(path.split('/').filter(Boolean).pop() ?? '');
+    return seg || '이미지';
+  } catch {
+    return '이미지';
+  }
+}
+
+// 파서가 담는 원격 이미지의 자리 크기 — 앱이 다운로드하며 실측으로
+// 바꾼다 (실패 시 이미지를 빼고 링크로 폴백하므로 0이 렌더되지 않는다)
+export const REMOTE_IMAGE_PLACEHOLDER_W = 320;
+export const REMOTE_IMAGE_PLACEHOLDER_H = 200;
 
 export function parseMarkdownToMap(
   md: string,
@@ -94,10 +117,19 @@ export function parseMarkdownToMap(
   const nid = () => `md-${Date.now()}-${seq++}`;
 
   // 노드 텍스트에서 [라벨](url)을 라벨로 바꾸고 URL은 링크로 모은다.
-  // 이미지 문법(![..](..))은 대체 텍스트만 남긴다.
-  const stripLinks = (raw: string): { text: string; links: NodeLink[] } => {
+  // 이미지 문법(![..](..))은 대체 텍스트만 남기고, 원격(http) 이미지는
+  // images로 모아 노드 사진이 되게 한다 (경로·URL이 텍스트로 남지 않는다).
+  const stripLinks = (
+    raw: string,
+  ): { text: string; links: NodeLink[]; images: string[] } => {
     const links: NodeLink[] = [];
+    const images: string[] = [];
     let text = String(raw);
+    // 한 줄 전체가 이미지 확장자 URL이면 이미지 문법으로 취급
+    text = text
+      .split('\n')
+      .map((ln) => (BARE_IMAGE_URL_RE.test(ln.trim()) ? `![](${ln.trim()})` : ln))
+      .join('\n');
     // 배지 등 "링크 안의 이미지"([![대체](img)](url)) — 대체 텍스트만 남기고
     // 바깥 링크 URL을 추출한다 (일반 패스는 안쪽 괄호를 잘못 짝지음)
     text = text.replace(
@@ -112,11 +144,15 @@ export function parseMarkdownToMap(
     // 중첩 문법이 남아도 풀리도록 안정될 때까지 반복
     for (let pass = 0; pass < 3; pass++) {
       const next = text.replace(MD_LINK_RE, (_m, bang: string, label: string, url: string) => {
-        const shown = (label || url).trim();
-        if (!bang && /^https?:\/\//i.test(url) && !links.some((l) => l.url === url)) {
+        if (bang) {
+          // 이미지 — 원격 URL은 노드 사진으로, 대체 텍스트만 본문에 남긴다
+          if (/^https?:\/\//i.test(url) && !images.includes(url)) images.push(url);
+          return label.trim();
+        }
+        if (/^https?:\/\//i.test(url) && !links.some((l) => l.url === url)) {
           links.push({ id: nid(), url, label: label.trim() || undefined });
         }
-        return shown;
+        return (label || url).trim();
       });
       if (next === text) break;
       text = next;
@@ -124,7 +160,7 @@ export function parseMarkdownToMap(
     // Markdown 백슬래시 이스케이프 해제 — "1\." "\-" 같은 표기를
     // 원래 문자로 (ChatGPT 내보내기가 자주 씀)
     text = text.replace(/\\([\\`*_{}[\]()#+\-.!|~])/g, '$1');
-    return { text: text.trim(), links };
+    return { text: text.trim(), links, images };
   };
 
   const mergeLinks = (node: MindNode, links: NodeLink[]) => {
@@ -148,20 +184,40 @@ export function parseMarkdownToMap(
   // 마지막 문단 노드의 깊이 — 문단 뒤의 불릿(-,*)은 그 문단의 하위로
   let paraDepth: number | null = null;
 
+  // 원격 이미지 → 노드 사진(images) — 텍스트 끝(모든 줄 뒤)에 붙인다
+  const mergeImages = (node: MindNode, imageUrls: string[]) => {
+    if (!imageUrls.length) return;
+    const afterLine = String(node.text || '').split('\n').length;
+    const cur = node.images ?? [];
+    for (const src of imageUrls) {
+      if (cur.some((im) => im.src === src)) continue;
+      cur.push({
+        src,
+        w: REMOTE_IMAGE_PLACEHOLDER_W,
+        h: REMOTE_IMAGE_PLACEHOLDER_H,
+        afterLine,
+      } satisfies NodeInlineImage);
+    }
+    node.images = cur;
+  };
+
   const attach = (depth: number, rawText: string): MindNode | null => {
     if (depth < 1 || !rawText.trim()) return null;
-    const { text, links } = stripLinks(rawText);
-    if (!text) return null;
+    const { text, links, images } = stripLinks(rawText);
+    if (!text && !images.length) return null;
+    // 이미지뿐인 줄(![](url)) — 파일 이름을 노드 텍스트로 쓴다
+    const nodeText = text || imageFileName(images[0]);
     while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
 
     if (depth === 1 || stack.length === 0) {
       const branch: SampleBranch = {
         id: nid(),
-        text,
+        text: nodeText,
         colorKey: BRANCH_COLORS[branches.length % BRANCH_COLORS.length],
         side: 'right',
       };
       mergeLinks(branch, links);
+      mergeImages(branch, images);
       branches.push(branch);
       // 빈 스택에 깊은 견출(## 등)이 오면 그 깊이 그대로 기억해 둔다 —
       // 같은 레벨의 다음 견출이 자식이 아니라 형제가 되도록.
@@ -169,8 +225,9 @@ export function parseMarkdownToMap(
       return branch;
     }
     const parent = stack[stack.length - 1];
-    const node: MindNode = { id: nid(), text };
+    const node: MindNode = { id: nid(), text: nodeText };
     mergeLinks(node, links);
+    mergeImages(node, images);
     parent.node.children = parent.node.children ?? [];
     parent.node.children.push(node);
     stack.push({ depth, node });
@@ -218,9 +275,10 @@ export function parseMarkdownToMap(
     }
     let body = blockText;
     if (extractLinks) {
-      const { text, links } = stripLinks(blockText);
+      const { text, links, images } = stripLinks(blockText);
       body = text;
       mergeLinks(cur, links);
+      mergeImages(cur, images);
     }
     if (!body) return true; // 링크만 있던 블록 — 링크 첨부로 충분
     cur.text = cur.text ? `${cur.text}\n${body}` : body;
@@ -242,6 +300,32 @@ export function parseMarkdownToMap(
     if (!sawHeading) {
       // 첫 견출 전의 머리말 문단 → 루트 노트
       rootNotes.push({ id: nid(), type: 'paragraph', text });
+      return;
+    }
+    // "🔗 [라벨](url)" 링크 줄 — EasyMindMap 내보내기의 노드 링크 왕복:
+    // 새 자식 노드가 아니라 현재 노드의 링크(🔗)로 되돌린다
+    if (/^🔗\s/.test(text) && stack.length) {
+      const { links } = stripLinks(text);
+      if (links.length) {
+        mergeLinks(stack[stack.length - 1].node, links);
+        return;
+      }
+    }
+    // 이미지뿐인 문단 — 모든 줄이 이미지 문법(![대체](url)) 또는 이미지
+    // 확장자 URL이면 자식 노드가 아니라 현재 노드의 사진으로 붙인다
+    // (내보내기가 견출 바로 아래에 쓰는 ![…](…) 형식의 왕복이자, 기사
+    // 붙여넣기의 "글·사진 원문 순서" 규칙과 동일)
+    const IMG_ONLY_LINE_RE = /^!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\)$/;
+    const paraLines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (
+      stack.length && paraLines.length &&
+      paraLines.every((l) => IMG_ONLY_LINE_RE.test(l) || BARE_IMAGE_URL_RE.test(l))
+    ) {
+      const { links, images } = stripLinks(text);
+      mergeImages(stack[stack.length - 1].node, images);
+      mergeLinks(stack[stack.length - 1].node, links);
+      // 원격이 아닌 이미지(files/ 경로 등)는 메타데이터·ZIP이 실제
+      // 사진을 복원한다 — 대체 텍스트로 노드를 만들지 않는다
       return;
     }
     // 순번 문단 섹션이 열려 있으면 그 하위로 (아니면 견출 하위)
@@ -411,11 +495,12 @@ export function parseMarkdownToMap(
     // 리스트 항목의 들여쓴 연속 줄 — 항목 노드의 추가 줄로 합친다
     // (예: "1. 원본 파일 복사" 아래의 "   예: `견적서.xlsx` → …")
     if (lastItem && /^[ \t]{2,}\S/.test(raw)) {
-      const { text, links } = stripLinks(line.trim());
+      const { text, links, images } = stripLinks(line.trim());
       if (text) {
         lastItem.node.text += `\n${text}`;
         mergeLinks(lastItem.node, links);
       }
+      mergeImages(lastItem.node, images);
       continue;
     }
     if (lastItem && paraBuf.length === 0) lastItem = null;

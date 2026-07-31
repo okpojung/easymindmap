@@ -12,6 +12,8 @@ export {
   parseEmm,
   NODE_A4_CHARS,
   NODE_IMAGE_CHARS,
+  REMOTE_IMAGE_PLACEHOLDER_W,
+  REMOTE_IMAGE_PLACEHOLDER_H,
   type ParseEmmOptions,
 } from './parse';
 export {
@@ -21,7 +23,10 @@ export {
   safeFileName,
   dataUrlToBytes,
   countMapNodes,
+  splitNodeBody,
+  nodeHeadingText,
   type EmmImageFile,
+  type NodeBodyBlock,
   type SerializeEmmOptions,
   type SerializedEmm,
 } from './serialize';

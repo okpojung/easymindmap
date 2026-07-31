@@ -1,6 +1,6 @@
 {
-  "nodes": 14,
-  "bodyRoundTripNodes": 15,
+  "nodes": 13,
+  "bodyRoundTripNodes": 13,
   "map": {
     "title": "Ubuntu Apache + SSL 구축",
     "root": {
@@ -120,17 +120,11 @@
           {
             "id": "md#18",
             "text": "3. http → https 리다이렉트 확인",
-            "children": [
+            "links": [
               {
                 "id": "md#19",
-                "text": "🔗 Certbot 공식 문서",
-                "links": [
-                  {
-                    "id": "md#20",
-                    "url": "https://certbot.eff.org/",
-                    "label": "Certbot 공식 문서"
-                  }
-                ]
+                "url": "https://certbot.eff.org/",
+                "label": "Certbot 공식 문서"
               }
             ]
           }

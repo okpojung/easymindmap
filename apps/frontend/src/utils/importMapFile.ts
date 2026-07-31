@@ -10,6 +10,7 @@
 
 import type { MindNode, SampleMap, SampleBranch } from '@/editor/__samples__/types';
 import { parseMarkdownToMap, type ParseEmmOptions } from './importMarkdown';
+import { nodeHeadingText } from '@emm/serialize';
 import {
   MD_META_RE,
   MD_META_BLOCK_RE,
@@ -35,16 +36,24 @@ export function parseHtmlMapFile(text: string): ImportedMap | null {
   return { map: meta.map, editor: meta.editor, source: 'easymindmap-html' };
 }
 
-// 메타데이터의 노드들을 "텍스트 → 노드" 색인으로 만든다 (한 줄로 합친
-// 텍스트 기준 — MD 본문 견출은 한 줄이므로). 같은 텍스트가 여러 개면
-// 순서대로 소비한다.
+// 메타데이터의 노드들을 "텍스트 → 노드" 색인으로 만든다. MD 본문 견출은
+// 노드의 "견출 제목"(nodeHeadingText — 코드·표 블록을 뺀 첫 일반 줄들)
+// 이므로 그 키가 기본이고, 옛 내보내기(전체를 한 줄로 합침)와의 호환을
+// 위해 한 줄 합침 키도 함께 색인한다. 같은 텍스트가 여러 개면 순서대로
+// 소비한다.
+const flatKey = (t: string) => String(t || '').replace(/\s*\n+\s*/g, ' ').trim();
+
 function indexByText(map: SampleMap): Map<string, MindNode[]> {
   const idx = new Map<string, MindNode[]>();
-  const key = (t: string) => String(t || '').replace(/\s*\n+\s*/g, ' ').trim();
-  const walk = (n: MindNode) => {
-    const k = key(n.text);
+  const put = (k: string, n: MindNode) => {
     if (!idx.has(k)) idx.set(k, []);
     idx.get(k)!.push(n);
+  };
+  const walk = (n: MindNode) => {
+    const heading = nodeHeadingText(n.text);
+    const flat = flatKey(n.text);
+    put(heading, n);
+    if (flat !== heading) put(flat, n);
     (n.children ?? []).forEach(walk);
   };
   map.branches.forEach(walk);
@@ -56,10 +65,13 @@ function indexByText(map: SampleMap): Map<string, MindNode[]> {
 // 사용자가 고친 노드는 새 텍스트 그대로 평문으로 들어간다.
 function enrich(bodyMap: SampleMap, meta: MapFileMeta): SampleMap {
   const idx = indexByText(meta.map);
-  const key = (t: string) => String(t || '').replace(/\s*\n+\s*/g, ' ').trim();
 
   const apply = (n: MindNode): MindNode => {
-    const pool = idx.get(key(n.text));
+    // 본문 노드 텍스트(견출 제목)로 조회 — 견출 키 우선, 옛 한 줄 키 폴백
+    const pool =
+      [nodeHeadingText(n.text), flatKey(n.text)]
+        .map((k) => idx.get(k))
+        .find((p) => p && p.length) ?? undefined;
     const src = pool && pool.length ? pool.shift() : undefined;
     const out: MindNode = {
       ...n,

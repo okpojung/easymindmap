@@ -42,6 +42,147 @@ function oneLine(text: string): string {
   return String(text || '').replace(/\s*\n+\s*/g, ' ').trim();
 }
 
+// ---- 노드 본문 분해 — "견출 제목 + MD 블록" ------------------------------
+//
+// 노드 텍스트에 코드 펜스·파이프 표·체크 줄이 섞여 있으면(리치 노드),
+// 견출 한 줄로 뭉개지 않고 제목과 블록으로 나눠 내보낸다:
+//   제목       = 첫 블록 앞의 일반 줄들 (공백으로 합침)
+//   코드       → ``` 펜스 · 표 → 파이프 표(구분선 포함) · 체크 → - [x]
+//   블록 뒤의 일반 줄 → 인용문(>) — 'node' 배치로 다시 불러오면 원문
+//   순서 그대로 노드 본문에 복원된다 (표 아래 "※ 첨부 …" 등)
+
+export interface NodeBodyBlock {
+  kind: 'code' | 'table' | 'check' | 'plain';
+  lang?: string; // code
+  body?: string; // code — 펜스 안 원문
+  rows?: string[][]; // table — 행별 셀
+  lines?: string[]; // check(정규화된 "- [x] …" 줄) / plain
+}
+
+const NODE_TABLE_SEP_RE = /^[\s|:\-]+$/;
+const NODE_CHECK_RE = /^[-*+]\s+\[([ xX])\]\s+(.+)$/;
+
+function isNodePipeRow(s: string): boolean {
+  const t = s.trim();
+  return t.length > 1 && t.includes('|') && !NODE_TABLE_SEP_RE.test(t);
+}
+
+function nodeRowCells(s: string): string[] {
+  let t = s.trim();
+  if (t.startsWith('|')) t = t.slice(1);
+  if (t.endsWith('|')) t = t.slice(0, -1);
+  return t.split('|').map((c) => c.trim());
+}
+
+export function splitNodeBody(text: string): { title: string; blocks: NodeBodyBlock[] } {
+  const lines = String(text || '').split('\n');
+  const leading: string[] = [];
+  const blocks: NodeBodyBlock[] = [];
+  let plainRun: string[] = [];
+  let sawBlock = false;
+  const flushPlain = () => {
+    if (plainRun.length) blocks.push({ kind: 'plain', lines: plainRun });
+    plainRun = [];
+  };
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    const fence = trimmed.match(/^```(.*)$/);
+    if (fence) {
+      let j = i + 1;
+      const body: string[] = [];
+      while (j < lines.length && !/^```\s*$/.test(lines[j].trim())) { body.push(lines[j]); j++; }
+      flushPlain();
+      sawBlock = true;
+      blocks.push({ kind: 'code', lang: fence[1].trim(), body: body.join('\n') });
+      i = j + 1;
+      continue;
+    }
+
+    // 표 — 파이프 행 2줄+ 연속, 첫 행 셀 2개+ (에디터 mdTable.ts와 동일 규칙)
+    if (
+      isNodePipeRow(line) && nodeRowCells(line).length >= 2 &&
+      i + 1 < lines.length &&
+      (isNodePipeRow(lines[i + 1]) || NODE_TABLE_SEP_RE.test(lines[i + 1].trim()))
+    ) {
+      const rows: string[][] = [];
+      let j = i;
+      while (j < lines.length) {
+        const t = lines[j].trim();
+        if (isNodePipeRow(lines[j])) rows.push(nodeRowCells(lines[j]));
+        else if (t.includes('|') && NODE_TABLE_SEP_RE.test(t)) { /* 구분선 — 건너뜀 */ }
+        else break;
+        j++;
+      }
+      if (rows.length >= 2) {
+        flushPlain();
+        sawBlock = true;
+        blocks.push({ kind: 'table', rows });
+        i = j;
+        continue;
+      }
+    }
+
+    const check = trimmed.match(NODE_CHECK_RE);
+    if (check) {
+      flushPlain();
+      sawBlock = true;
+      blocks.push({
+        kind: 'check',
+        lines: [`- [${check[1].toLowerCase() === 'x' ? 'x' : ' '}] ${check[2].trim()}`],
+      });
+      i++;
+      continue;
+    }
+
+    if (trimmed) (sawBlock ? plainRun : leading).push(trimmed);
+    i++;
+  }
+  flushPlain();
+
+  let title = leading.join(' ').trim();
+  if (!title) {
+    // 블록으로 시작하는 노드(표만 붙여넣은 노드 등) — 종류 라벨로 대신한다
+    const first = blocks[0];
+    title =
+      first?.kind === 'table' ? '표'
+      : first?.kind === 'code' ? '코드'
+      : first?.kind === 'check' ? '체크리스트'
+      : oneLine(text);
+  }
+  return { title, blocks };
+}
+
+// 노드 텍스트의 "견출 제목" — MD 본문의 견출과 메타데이터 노드를 짝짓는
+// 기준 (앱 불러오기의 enrich 텍스트 매칭이 사용)
+export function nodeHeadingText(text: string): string {
+  return splitNodeBody(text).title;
+}
+
+// splitNodeBody의 블록들을 MD 줄로 밀어 넣는다 (견출 바로 아래)
+function pushBodyBlocks(lines: string[], blocks: NodeBodyBlock[]): void {
+  for (const b of blocks) {
+    lines.push('');
+    if (b.kind === 'code') {
+      lines.push('```' + (b.lang || ''));
+      if (b.body) lines.push(b.body);
+      lines.push('```');
+    } else if (b.kind === 'table') {
+      (b.rows ?? []).forEach((cells, ri) => {
+        lines.push(`| ${cells.join(' | ')} |`);
+        if (ri === 0) lines.push(`|${cells.map(() => '---').join('|')}|`);
+      });
+    } else {
+      // check — 그대로 · plain(블록 뒤 일반 줄) — 인용문으로 (불러오기
+      // 'node' 배치가 노드 본문의 원문 순서를 복원한다)
+      for (const ln of b.lines ?? []) lines.push(b.kind === 'check' ? ln : `> ${ln}`);
+    }
+  }
+}
+
 // 표 노트("셀 | 셀" 줄들) → Markdown 파이프 표 (헤더 다음 구분선 포함)
 function pushTableNote(lines: string[], text: string): void {
   const rows = String(text).split('\n').filter((r) => r.trim());
@@ -56,7 +197,9 @@ function pushTableNote(lines: string[], text: string): void {
 // 바이트를 images 배열에 담아 돌려준다 (패키징은 호출자 책임).
 export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
   const lines: string[] = [];
-  lines.push(`# ${oneLine(map.root.text) || map.title}`);
+  const rootBody = splitNodeBody(map.root.text);
+  lines.push(`# ${(map.root.text.trim() ? rootBody.title : '') || map.title}`);
+  pushBodyBlocks(lines, rootBody.blocks);
   lines.push('');
   // 루트의 노트 → 제목 바로 아래 (문단=인용문, 표=파이프 표, 코드=펜스 —
   // 불러오기 시 다시 루트 노트로)
@@ -81,11 +224,15 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
 
   const walk = (node: MindNode, depth: number) => {
     // depth 1(2레벨)=## … depth 5(6레벨)=###### / 그 아래는 리스트 들여쓰기
+    // 노드 안의 코드·표·체크 블록은 한 줄로 뭉개지 않고 견출 아래에
+    // MD 블록(펜스·파이프 표·- [x])으로 내보낸다 — splitNodeBody 참조.
+    const nodeBody = splitNodeBody(node.text);
     if (depth <= 5) {
-      lines.push(`${'#'.repeat(depth + 1)} ${oneLine(node.text)}`);
+      lines.push(`${'#'.repeat(depth + 1)} ${nodeBody.title}`);
     } else {
-      lines.push(`${'  '.repeat(depth - 6)}- ${oneLine(node.text)}`);
+      lines.push(`${'  '.repeat(depth - 6)}- ${nodeBody.title}`);
     }
+    pushBodyBlocks(lines, nodeBody.blocks);
 
     // 사진 — files/로 패키징된 경우 상대 경로, 아니면 원본 URL.
     // 인라인 사진(images — 텍스트 중간)이 있으면 원문 순서대로 모두 내보낸다

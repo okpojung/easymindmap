@@ -153,11 +153,16 @@ export function NodeRichText({
     return parts.map((p, pi) => {
       if (p.kind === 'table' && mdt) {
         return (
-          <table
+          // 스크롤 래퍼 — 넓은 표가 좁은 컨테이너(칸반 카드 260~300px 등)를
+          // 밀어 옆 컬럼까지 침범하지 않도록 표만 가로 스크롤한다.
+          <div
             key={`${key}-t${pi}`}
+            style={{ overflowX: 'auto', maxWidth: '100%', margin: '3px 0' }}
+          >
+          <table
             data-html-table
             style={{
-              borderCollapse: 'collapse', margin: '3px 0',
+              borderCollapse: 'collapse', margin: 0,
               fontSize: '0.92em',
             }}
           >
@@ -181,6 +186,7 @@ export function NodeRichText({
               ))}
             </tbody>
           </table>
+          </div>
         );
       }
       return p.body.split('\n').map((line, li) => {
@@ -210,7 +216,9 @@ export function NodeRichText({
   };
 
   return (
-    <div style={style}>
+    // overflowWrap: 긴 URL·경로 같은 끊김 없는 토큰이 좁은 컨테이너(칸반
+    // 카드 등)를 밀어내지 않도록 필요할 때만 줄바꿈 (상속되는 속성).
+    <div style={{ minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere', ...style }}>
       {plains.map((p) => renderPlain(p.seg, p.key))}
       {mdc && (
         // 코드 패널 — 맵 패널과 같은 색 (컴팩트: 언어 라벨 헤더 + 모노 줄)

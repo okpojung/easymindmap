@@ -485,8 +485,15 @@ export function Canvas({
   // Fit the currently-laid-out nodes when requested. In focus mode the laid-out
   // set is already just the focused subtree, so this fits the subtree; otherwise
   // it fits the whole map. (toolbar / status bar / focus toggle)
+  //
+  // handledFitRef: 마운트 시점의 요청 번호로 초기화 — 아웃라인 전체 모드나
+  // 칸반에 다녀와 Canvas가 다시 마운트될 때, "과거의" 맞추기 요청이 다시
+  // 실행되어 사용자가 그 뒤에 맞춰 둔 줌/이동(예: 100% 보기)을 잃는 것을
+  // 막는다. 뷰포트는 viewportStore에 있으므로 아무것도 안 하면 그대로다.
+  const handledFitRef = useRef(fitRequestId);
   useEffect(() => {
-    if (!fitRequestId) return;
+    if (fitRequestId === handledFitRef.current) return;
+    handledFitRef.current = fitRequestId;
     const list = focusedId ? subtreeOf(focusedId, nodesRef.current) : nodesRef.current;
     fitToNodes(list, focusedId ? 90 : 70);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -494,8 +501,11 @@ export function Canvas({
 
   // 특정 노드를 화면 중앙 + 지정 배율로 보기 (검색 결과 클릭 —
   // requestCenterNode). 접힌 조상 때문에 아직 배치에 없으면 무시.
+  // handledCenterRef: 위 handledFitRef와 같은 재마운트 가드.
+  const handledCenterRef = useRef(centerRequest?.seq ?? 0);
   useEffect(() => {
-    if (!centerRequest) return;
+    if (!centerRequest || centerRequest.seq === handledCenterRef.current) return;
+    handledCenterRef.current = centerRequest.seq;
     const node = nodesRef.current.find((n) => n.id === centerRequest.id);
     if (!node) return;
     const s2 = clampZoom(centerRequest.zoom) / 100;

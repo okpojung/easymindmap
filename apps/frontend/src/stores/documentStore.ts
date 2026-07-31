@@ -30,6 +30,9 @@ import type {
   LevelFontSetting,
 } from '@/editor/__samples__/types';
 import type { TextAlign, LayoutType, EdgeType } from '@/types/mindmap';
+// 히스토리 스냅샷에 전체 레이아웃을 함께 기록/복원하기 위해서만 사용
+// (editorUiStore는 documentStore를 import하지 않으므로 순환 없음).
+import { useEditorUiStore } from './editorUiStore';
 
 type SampleKey = 'roadmap' | 'meta';
 
@@ -40,8 +43,16 @@ const BRANCH_COLOR_KEYS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 
 // Undo/redo history: max snapshots, and a guard so undo/redo themselves aren't
 // recorded as new history entries.
+// 각 스냅샷은 맵과 "그때의 전체 레이아웃"을 함께 담는다 — 레이아웃(칸반 등)은
+// editorUiStore에 있어 맵만 되돌리면 화면이 바뀌지 않는 문제가 있었다
+// (칸반 전환 → Ctrl+Z 시 이전 레이아웃으로 함께 복원).
 const HISTORY_LIMIT = 100;
 let applyingHistory = false;
+
+interface HistoryEntry {
+  map: SampleMap;
+  layout: LayoutType;
+}
 
 // 연속 갱신(노드 크기 핸들 드래그 등) 동안 히스토리 기록을 잠근다 —
 // 첫 변경만 기록해 1회 드래그 = 1개 undo 단계가 되게 한다.
@@ -55,8 +66,8 @@ interface DocumentState {
   kanban: KanbanBoardData;
 
   // Undo / redo history (in-memory — no DB required)
-  past: SampleMap[];
-  future: SampleMap[];
+  past: HistoryEntry[];
+  future: HistoryEntry[];
   undo: () => void;
   redo: () => void;
 
@@ -435,24 +446,35 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   undo: () => {
     const { past, map, future } = get();
     if (past.length === 0) return;
+    const entry = past[past.length - 1];
+    const curLayout = useEditorUiStore.getState().layoutType;
     applyingHistory = true;
     set({
-      map: past[past.length - 1],
+      map: entry.map,
       past: past.slice(0, -1),
-      future: [map, ...future].slice(0, HISTORY_LIMIT),
+      future: [{ map, layout: curLayout }, ...future].slice(0, HISTORY_LIMIT),
     });
+    // 스냅샷의 레이아웃도 함께 복원 (칸반 ↔ 트리 등 전체 레이아웃 전환)
+    if (entry.layout !== curLayout) {
+      useEditorUiStore.getState().setLayoutType(entry.layout);
+    }
     applyingHistory = false;
   },
 
   redo: () => {
     const { future, map, past } = get();
     if (future.length === 0) return;
+    const entry = future[0];
+    const curLayout = useEditorUiStore.getState().layoutType;
     applyingHistory = true;
     set({
-      map: future[0],
+      map: entry.map,
       future: future.slice(1),
-      past: [...past, map].slice(-HISTORY_LIMIT),
+      past: [...past, { map, layout: curLayout }].slice(-HISTORY_LIMIT),
     });
+    if (entry.layout !== curLayout) {
+      useEditorUiStore.getState().setLayoutType(entry.layout);
+    }
     applyingHistory = false;
   },
 
@@ -1233,8 +1255,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 useDocumentStore.subscribe((state, prev) => {
   if (applyingHistory || historyPaused) return;
   if (state.map !== prev.map) {
+    // 스냅샷의 레이아웃 = "prev.map이 화면에 있던 동안"의 레이아웃.
+    // 맵과 레이아웃을 한 동작에서 함께 바꾸는 곳(레이아웃 탭·맵 설정)은
+    // 반드시 맵을 먼저 바꾼 뒤 setLayoutType을 불러야 한다.
+    const layout = useEditorUiStore.getState().layoutType;
     useDocumentStore.setState((s) => ({
-      past: [...s.past, prev.map].slice(-HISTORY_LIMIT),
+      past: [...s.past, { map: prev.map, layout }].slice(-HISTORY_LIMIT),
       future: [],
     }));
   }

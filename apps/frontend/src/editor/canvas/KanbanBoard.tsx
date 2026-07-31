@@ -128,6 +128,9 @@ function CardNode({
           marginBottom: 6,
           cursor: editing ? 'text' : 'grab',
           boxShadow: card.active ? `0 0 0 3px ${t.primary}22` : 'none',
+          // 카드 내용(표·코드·긴 URL)이 컬럼 밖으로 넘치지 않게 가둔다 —
+          // 블록별 가로 스크롤은 NodeRichText가 담당
+          minWidth: 0, maxWidth: '100%', overflow: 'hidden',
         }}
       >
         {editing ? (
@@ -379,7 +382,9 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
             key={col.id}
             data-kanban-col={col.id}
             style={{
-              width: 260, flexShrink: 0,
+              // 300px — 표·코드 블록이 든 카드(리치 노드)를 담기 위해 260에서
+              // 넓힘. 그래도 넘치는 표/코드는 카드 안에서 가로 스크롤된다.
+              width: 300, flexShrink: 0,
               background: t.surfaceAlt,
               border: `1px solid ${dropTarget?.pos === 'col' && dropTarget.id === col.id ? t.success : t.border}`,
               outline: dropTarget?.pos === 'col' && dropTarget.id === col.id
@@ -395,7 +400,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
               marginBottom: 8,
             }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.color }} />
-              <div style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: t.text, flex: 1, minWidth: 0 }}>
                 <InlineTitle text={col.title} nodeId={col.id} t={t} />
               </div>
               <span style={{

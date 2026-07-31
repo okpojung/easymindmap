@@ -214,8 +214,9 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
             value={mapLayoutType}
             onChange={(e) => {
               const lt = e.target.value as LayoutType;
-              setLayoutType(lt);
+              // 맵 먼저 → UI 레이아웃: 히스토리가 이전 레이아웃과 함께 기록됨
               updateNodeLayoutType('root', lt);
+              setLayoutType(lt);
             }}
             title="맵 전체 레이아웃 (레이아웃 탭과 동일)"
             style={{ ...selectStyle, flex: 1, minWidth: 0 }}

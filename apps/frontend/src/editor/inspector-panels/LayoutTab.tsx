@@ -178,8 +178,10 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
     if (option.neverApplies) return;
 
     if (!subtreeScope) {
-      setLayoutType(option.key);
+      // 맵을 먼저 바꾼다 — 히스토리 스냅샷이 "이전 레이아웃"과 함께
+      // 기록되어 Ctrl+Z 한 번으로 레이아웃까지 되돌아간다.
       updateNodeLayoutType('root', option.key);
+      setLayoutType(option.key);
       return;
     }
 

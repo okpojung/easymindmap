@@ -27,6 +27,31 @@ export interface ArticleContent {
   images: ArticleImageRef[];
 }
 
+// HTML <table> → 파이프 MD 표 줄들 (2026-07-31 사용자 요청 — 그룹웨어
+// 결재 화면 등에서 복사한 표를 노드에 붙이면 노드 표 격자로 렌더되고,
+// MD로 내보낼 때도 자연히 MD 표 형식이 된다). 셀 안 | 는 \| 로 이스케이프,
+// 줄바꿈은 공백으로. 유효한 행이 1개뿐이면(헤더만) 표로 만들지 않는다.
+function htmlTableToMdLines(tableEl: Element): string[] {
+  const trs = Array.from(tableEl.querySelectorAll('tr'))
+    .filter((tr) => tr.closest('table') === tableEl); // 중첩 표는 바깥만
+  const cellsOf = (tr: Element) =>
+    Array.from(tr.children)
+      .filter((c) => /^(TD|TH)$/i.test(c.tagName))
+      .map((c) =>
+        (c.textContent || '').replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|'),
+      );
+  const out: string[] = [];
+  let cols = 0;
+  for (const tr of trs) {
+    const cells = cellsOf(tr);
+    if (!cells.length || cells.every((c) => !c)) continue;
+    if (!cols) cols = cells.length;
+    out.push('| ' + cells.join(' | ') + ' |');
+    if (out.length === 1) out.push('|' + Array(cols).fill('---').join('|') + '|');
+  }
+  return out.length >= 3 ? out : []; // 헤더 + 구분선 + 본문 1행 이상
+}
+
 export function extractArticleContent(rawHtml: string): ArticleContent {
   const clean = sanitizeRichHtml(rawHtml);
   if (!clean.html) return { text: '', images: [] };
@@ -62,6 +87,16 @@ export function extractArticleContent(rawHtml: string): ArticleContent {
           images.push({ src, afterLine: lines.length });
         }
         continue;
+      }
+      if (tag === 'TABLE') {
+        // 표는 파이프 MD로 변환해 통째로 삽입 (셀별 순회 대신)
+        const md = htmlTableToMdLines(el);
+        if (md.length) {
+          endLine();
+          lines.push(...md);
+          continue;
+        }
+        // 표로 못 만들면(행 부족 등) 기존처럼 행별 텍스트로
       }
       if (BLOCK_TAGS.has(tag)) {
         endLine();

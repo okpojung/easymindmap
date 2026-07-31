@@ -14,6 +14,7 @@ import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { resolveNodeColors, readableTextOn } from './resolveNodeColors';
+import { copyTable } from '@/utils/copyTable';
 import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, isNoteKind, type ContentKind } from './nodeContent';
@@ -202,6 +203,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const [draftText, setDraftText] = useState(n.text);
   // 코드 패널 ⧉ 복사 피드백 (1.5s 후 원복)
   const [codeCopied, setCodeCopied] = useState(false);
+  // 표 복사(⧉) 피드백 — 코드 패널 '복사됨 ✓'과 동일 (1.5초)
+  const [tableCopied, setTableCopied] = useState(false);
   // 코드 블록 팝업 편집기 — insert: 편집 중 커서 위치에 새 블록 삽입,
   // edit: 기존 블록(첫 펜스)을 언어·코드째 교체
   const [codeDlg, setCodeDlg] = useState<
@@ -745,6 +748,42 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     <line key={`v${c}`} x1={x} y1={tY} x2={x} y2={tY + tH}
                           stroke={gridColor} strokeWidth={0.7} opacity={0.55} />
                   ))}
+                  {/* 표 복사 (⧉) — 엑셀(TSV)·웹 에디터(HTML 표)에 붙여넣기
+                      가능한 두 형식을 동시에 클립보드에 넣는다 */}
+                  <g
+                    data-node-table-copy
+                    transform={`translate(${tX + tW - 3}, ${tY + rowH / 2})`}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void copyTable(headers, rows).then(() => {
+                        setTableCopied(true);
+                        window.setTimeout(() => setTableCopied(false), 1500);
+                      });
+                    }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                  >
+                    <title>표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다</title>
+                    <rect
+                      x={-(tableCopied ? cellFs * 4.6 : cellFs * 1.3)}
+                      y={-rowH / 2 + 1}
+                      width={tableCopied ? cellFs * 4.6 : cellFs * 1.3}
+                      height={rowH - 2}
+                      rx={2}
+                      fill={fill}
+                      opacity={0.92}
+                    />
+                    <text
+                      textAnchor="end"
+                      y={cellFs * 0.34}
+                      fontSize={Math.max(8, cellFs - 1)}
+                      fontWeight={700}
+                      fill={tableCopied ? '#15803D' : '#475569'}
+                    >
+                      {tableCopied ? '복사됨 ✓' : '⧉'}
+                    </text>
+                  </g>
                   {allRows.map((cells, r) =>
                     cells.map((cell, c) => {
                       // 셀 안 인라인 마커(**굵게** 등) — 마커 문자는 숨기고
@@ -1075,6 +1114,17 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               const rawHtml = e.clipboardData?.getData('text/html');
               if (rawHtml) {
                 const art = extractArticleContent(rawHtml);
+                // 표만 있는 리치 붙여넣기(그룹웨어 등) — 파이프 MD 표로
+                // 변환된 art.text를 커서 위치에 삽입 (사진 경로와 분리 —
+                // 사진 대기 목록을 건드리지 않는다)
+                if (!art.images.length && /<table[\s>]/i.test(rawHtml) && art.text) {
+                  e.preventDefault();
+                  const ta2 = e.currentTarget;
+                  const s0 = ta2.selectionStart ?? draftText.length;
+                  const e0 = ta2.selectionEnd ?? s0;
+                  setDraftText(draftText.slice(0, s0) + art.text + draftText.slice(e0));
+                  return;
+                }
                 if (art.images.length) {
                   e.preventDefault();
                   const ta2 = e.currentTarget;

@@ -317,6 +317,20 @@ AI 생성 → `ai_jobs`/revision 메타와 연계 저장
     열기"가 차선책. 서버 저장 연결 후 Office 뷰어(공유 URL 필요) 연동
     검토. (e2e69)
 
+### 14.6 표 복사(⧉) · HTML 표 붙여넣기 (2026-07-31 구현)
+
+* **표 복사**: 노드 SVG 표·아웃라인/칸반(NodeRichText) 표·노트 표
+  팝업·**뷰어**(노드 표·노트 표)의 ⧉ — `copyTable`(utils/copyTable.ts)이
+  클립보드에 **text/html(`<table>`) + text/plain(TSV) 두 형식을 동시**
+  기록 (ClipboardItem, 미지원 시 TSV 텍스트 폴백). 웹 에디터/워드엔
+  표로, 엑셀/시트엔 셀 단위로 붙는다. 셀의 인라인 마커는 제거해 복사.
+* **HTML 표 붙여넣기**: `extractArticleContent`(articleContent.ts)가
+  `<table>`을 만나면 **파이프 MD 줄로 변환**(htmlTableToMdLines — 셀
+  `|`는 `\|` 이스케이프, 중첩 표는 바깥만, 유효 2행 미만이면 기존 행별
+  텍스트 폴백). 선택 노드 Ctrl+V·편집 중 붙여넣기(사진 없는 표 HTML은
+  전용 분기) 모두 적용 — 노드 내부 저장이 파이프 MD이므로 표 격자
+  렌더와 **MD 내보내기 표 형식이 자동으로 성립**한다 (e2e73).
+
 ---
 
 ### 15. 노트 문단 리치 붙여넣기 (MVS 구현 — 2026-07)

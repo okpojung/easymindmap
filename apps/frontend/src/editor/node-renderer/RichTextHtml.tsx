@@ -18,6 +18,7 @@ import { parseMdCode } from './mdCode';
 import { parseMdTable } from './mdTable';
 import { parseCheckLine, toggleCheckInText } from './mdCheck';
 import { CodeBlockDialog, replaceCodeBlock } from './CodeBlockDialog';
+import { copyTable } from '@/utils/copyTable';
 
 const MONO = "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace";
 
@@ -147,6 +148,15 @@ export function NodeRichText({
   // 체크 줄 순번(seq) — toggleCheckInText와 같은 규칙(펜스 밖 순서)
   let seq = 0;
 
+  // 표 복사(⧉) 피드백 — 코드 ⧉ 복사와 동일 (1.5초)
+  const [tableCopied, setTableCopied] = useState(false);
+  const doCopyTable = (headers: string[], rows: string[][]) => {
+    void copyTable(headers, rows).then(() => {
+      setTableCopied(true);
+      window.setTimeout(() => setTableCopied(false), 1500);
+    });
+  };
+
   const renderPlain = (seg: string, key: string) => {
     const mdt = parseMdTable(seg);
     const parts: { kind: 'text' | 'table'; body: string }[] = mdt
@@ -159,12 +169,30 @@ export function NodeRichText({
     return parts.map((p, pi) => {
       if (p.kind === 'table' && mdt) {
         return (
-          // 스크롤 래퍼 — 넓은 표가 좁은 컨테이너(칸반 카드 260~300px 등)를
-          // 밀어 옆 컬럼까지 침범하지 않도록 표만 가로 스크롤한다.
+          // 바깥 래퍼(relative) — 표 복사(⧉) 버튼을 스크롤과 무관하게
+          // 우상단에 고정. 안쪽이 가로 스크롤 컨테이너.
+          <div key={`${key}-t${pi}`} style={{ position: 'relative' }}>
+          <button
+            data-html-table-copy
+            title="표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다"
+            onClick={(e) => { e.stopPropagation(); doCopyTable(mdt.headers, mdt.rows); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute', top: 4, right: 0, zIndex: 1,
+              border: 'none', background: 'rgba(255,255,255,0.85)', borderRadius: 3,
+              padding: '0 3px', cursor: 'pointer', fontSize: '0.78em',
+              fontWeight: 700, color: tableCopied ? '#15803D' : '#475569',
+              lineHeight: 1.4,
+            }}
+          >
+            {tableCopied ? '복사됨 ✓' : '⧉'}
+          </button>
+          {/* 스크롤 래퍼 — 넓은 표가 좁은 컨테이너(칸반 카드 260~300px 등)를
+              밀어 옆 컬럼까지 침범하지 않도록 표만 가로 스크롤한다.
+              data-html-scroll: 칸반 카드 드래그가 이 영역에서는 시작되지
+              않는다 — 가로 스크롤바를 잡으면 카드가 끌려가던 문제 */}
           <div
-            key={`${key}-t${pi}`}
-            // data-html-scroll: 칸반 카드 드래그가 이 영역에서는 시작되지
-            // 않는다 — 가로 스크롤바를 잡으면 카드가 끌려가던 문제
             data-html-scroll
             style={{ overflowX: 'auto', maxWidth: '100%', margin: '3px 0', cursor: 'auto' }}
           >
@@ -195,6 +223,7 @@ export function NodeRichText({
               ))}
             </tbody>
           </table>
+          </div>
           </div>
         );
       }

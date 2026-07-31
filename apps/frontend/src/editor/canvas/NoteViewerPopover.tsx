@@ -9,6 +9,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { parseInlineMarks } from '@/editor/node-renderer/inlineMarks';
+import { copyTable, pipeTextToTable } from '@/utils/copyTable';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
 
@@ -97,6 +98,35 @@ function CopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   );
 }
 
+// 노트 표 우상단 ⧉ 복사 — 엑셀(TSV)·웹 에디터(HTML 표) 두 형식 동시 복사
+function NoteTableCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      data-note-table-copy
+      title="표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다"
+      onClick={(e) => {
+        e.stopPropagation();
+        const tbl = pipeTextToTable(text);
+        if (!tbl) return;
+        void copyTable(tbl.headers, tbl.rows).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      style={{
+        position: 'absolute', top: 2, right: 0, zIndex: 1,
+        border: `1px solid ${t.border}`, background: t.surface, borderRadius: 4,
+        padding: '1px 5px', cursor: 'pointer', fontSize: 10,
+        fontWeight: 700, color: copied ? '#15803D' : t.textMuted,
+      }}
+    >
+      {copied ? '복사됨 ✓' : '⧉ 복사'}
+    </button>
+  );
+}
+
 function NoteBlockView({ t, block, fs, family }: {
   t: ThemeTokens; block: NoteBlock; fs: number; family?: string;
 }) {
@@ -113,6 +143,9 @@ function NoteBlockView({ t, block, fs, family }: {
       .filter((r) => r.trim() && !/^[\s|:\-]+$/.test(r))
       .map((r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, ''));
     return (
+      <div style={{ position: 'relative' }}>
+      {/* 표 복사(⧉) — 엑셀(TSV)·웹 에디터(HTML 표) 동시 형식 */}
+      <NoteTableCopyButton t={t} text={String(block.text || '')} />
       <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 8,
         fontSize: Math.max(9, fs - 1), fontFamily: family }}>
         <tbody>
@@ -134,6 +167,7 @@ function NoteBlockView({ t, block, fs, family }: {
           ))}
         </tbody>
       </table>
+      </div>
     );
   }
 

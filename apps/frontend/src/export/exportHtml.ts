@@ -1212,6 +1212,21 @@ const VIEWER_JS = String.raw`
           cellX += colWs[ci];
         }
       }
+      // 표 복사(⧉) — 헤더 행 우측 (에디터 파리티: 엑셀·웹 에디터 붙여넣기)
+      el('rect', { x: tblX + tblW - cellFs * 1.3 - 1, y: tblY + 1,
+        width: cellFs * 1.3, height: rowH2 - 2, rx: 2,
+        fill: nodeFill2, opacity: 0.92 }, g);
+      var tCopyT = el('text', { x: tblX + tblW - 3, y: tblY + rowH2 / 2 + cellFs * 0.34,
+        'text-anchor': 'end', 'font-size': Math.max(8, cellFs - 1),
+        'font-weight': 700, fill: '#475569' }, g);
+      tCopyT.textContent = '⧉';
+      tCopyT.style.cursor = 'pointer';
+      (function (hdrs, rws, btnEl) {
+        btnEl.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          copyTableData(hdrs, rws, btnEl);
+        });
+      })(mdt.headers, mdt.rows, tCopyT);
     }
     if (mdc) {
       // 노드 속 코드 블록 — 헤더(언어 라벨 + ⧉ 복사) + 모노 줄 (에디터 파리티)
@@ -1448,6 +1463,36 @@ const VIEWER_JS = String.raw`
     h.textContent = title;
     noteBody.appendChild(h);
   }
+  // 표 복사 — 엑셀(TSV)·웹 에디터(HTML 표) 두 형식 동시 (에디터 파리티)
+  function copyTableData(headers, rows, btn) {
+    function done() {
+      var prev = btn.textContent;
+      btn.textContent = '복사됨 ✓';
+      setTimeout(function () { btn.textContent = prev; }, 1200);
+    }
+    function escH(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    var all = [headers].concat(rows);
+    var html = '<table><thead><tr>' +
+      headers.map(function (c) { return '<th>' + escH(c) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr>' + r.map(function (c) { return '<td>' + escH(c) + '</td>'; }).join('') + '</tr>';
+      }).join('') + '</tbody></table>';
+    var tsv = all.map(function (r) {
+      return r.map(function (c) { return String(c).replace(/\t/g, ' '); }).join('\t');
+    }).join('\n');
+    if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+      navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([tsv], { type: 'text/plain' })
+      })]).then(done, function () { fallbackCopy(tsv); done(); });
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(tsv).then(done, function () { fallbackCopy(tsv); done(); });
+    } else { fallbackCopy(tsv); done(); }
+  }
+
   function copyText(text, btn) {
     function done() {
       var prev = btn.textContent;
@@ -1481,22 +1526,42 @@ const VIEWER_JS = String.raw`
     }
 
     if (type === 'table') {
-      // 줄 = 행, '|' = 열. 첫 행은 헤더.
+      // 줄 = 행, '|' = 열. 첫 행은 헤더. 우상단 ⧉ 복사 (엑셀·웹 에디터)
+      var tblWrap = document.createElement('div');
+      tblWrap.style.position = 'relative';
       var tbl = document.createElement('table');
       tbl.className = 'mm-table';
       var rows = String(note.text || '').split('\n');
+      var tblData = [];
       for (var r = 0; r < rows.length; r++) {
         if (!rows[r].trim()) continue;
+        if (/^[\s|:\-]+$/.test(rows[r])) continue; // 구분선 행 제외
         var tr = document.createElement('tr');
-        var cells = rows[r].split('|');
+        var cells = rows[r].replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|');
+        var rowCells = [];
         for (var cIdx = 0; cIdx < cells.length; cIdx++) {
-          var cell = document.createElement(r === 0 ? 'th' : 'td');
+          var cell = document.createElement(tblData.length === 0 ? 'th' : 'td');
           cell.textContent = cells[cIdx].trim();
+          rowCells.push(cells[cIdx].trim());
           tr.appendChild(cell);
         }
+        tblData.push(rowCells);
         tbl.appendChild(tr);
       }
-      return tbl;
+      var tBtn = document.createElement('button');
+      tBtn.className = 'mm-copy';
+      tBtn.textContent = '⧉ 복사';
+      tBtn.style.position = 'absolute';
+      tBtn.style.top = '2px';
+      tBtn.style.right = '0';
+      (function (data, b) {
+        b.addEventListener('click', function () {
+          if (data.length > 1) copyTableData(data[0], data.slice(1), b);
+        });
+      })(tblData, tBtn);
+      tblWrap.appendChild(tBtn);
+      tblWrap.appendChild(tbl);
+      return tblWrap;
     }
 
     if (type === 'code_block') {

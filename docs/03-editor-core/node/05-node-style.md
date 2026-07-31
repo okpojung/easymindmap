@@ -68,6 +68,14 @@
 > 버그의 수정 — 에디터 SVG·칸반(InlineMarkSpans textColor)·뷰어 모두
 > 동일 (e2e69).
 >
+> **색상 피커 드래그 성능 (2026-07-31)**: 네이티브 색상 피커의 슬라이더
+> 드래그는 input 이벤트를 초당 수십 번 발사한다 — 매번 전체 맵 재배치 +
+> undo 스냅샷이 쌓여 슬라이더가 버벅였다. `ColorSwatchInput`
+> (InspectorSection.tsx)이 ① 첫 변경만 undo 기록 후 드래그 동안
+> `setHistoryPaused` (크기 핸들 드래그와 동일 — 1드래그 = 1 undo 단계)
+> ② 반영 100ms 스로틀(마지막 값 보장, 드래그 끝 = change 이벤트 또는
+> 600ms 무입력)로 해결 (e2e71 — 41회 입력 → 반영 ~7회 실측).
+>
 > **템플릿 적용과 지정 색 (2026-07-31)**: `applyTemplateStyles`
 > (userTemplates.ts)는 노드 색(채움·테두리·글자)이 **현재 맵 같은
 > 레벨의 최빈값과 다른 경우**(=사용자 강조) 그 색을 보존하고, 최빈값

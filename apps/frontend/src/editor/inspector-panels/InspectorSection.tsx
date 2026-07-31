@@ -1,5 +1,7 @@
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { setHistoryPaused } from '@/stores/documentStore';
 
 interface SectionProps {
   t: ThemeTokens;
@@ -80,6 +82,64 @@ interface ColorSwatchProps {
 }
 
 export function ColorSwatchInput({ t, value, onChange }: ColorSwatchProps) {
+  // 네이티브 색상 피커의 슬라이더 드래그는 input 이벤트를 초당 수십 번
+  // 발사한다 — 매 이벤트마다 전체 맵 재배치 + undo 스냅샷이 쌓여 슬라이더가
+  // 심하게 버벅였다 (2026-07-31). 두 가지로 해결:
+  //   ① 첫 변경만 undo에 기록하고 드래그 중에는 히스토리를 잠근다
+  //      (크기 핸들 드래그와 동일 — 1회 드래그 = 1개 undo 단계)
+  //   ② 반영은 100ms 스로틀 (마지막 값은 반드시 커밋 — 미리보기는
+  //      초당 ~10회면 충분하고 재배치 비용이 크게 줄어든다)
+  // 드래그 끝 판정: 피커의 change 이벤트 또는 600ms 무입력.
+  const dragRef = useRef<{
+    active: boolean;
+    pending: string | null;
+    throttle: number | null;
+    idle: number | null;
+  }>({ active: false, pending: null, throttle: null, idle: null });
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const finish = () => {
+    const d = dragRef.current;
+    if (d.throttle != null) { window.clearTimeout(d.throttle); d.throttle = null; }
+    if (d.pending != null) { onChangeRef.current?.(d.pending); d.pending = null; }
+    if (d.idle != null) { window.clearTimeout(d.idle); d.idle = null; }
+    if (d.active) { d.active = false; setHistoryPaused(false); }
+  };
+
+  const handleInput = (v: string) => {
+    const d = dragRef.current;
+    if (!d.active) {
+      // 첫 변경 — undo에 기록되게 즉시 커밋한 뒤 히스토리 잠금
+      d.active = true;
+      onChangeRef.current?.(v);
+      setHistoryPaused(true);
+    } else {
+      d.pending = v;
+      if (d.throttle == null) {
+        d.throttle = window.setTimeout(() => {
+          d.throttle = null;
+          if (d.pending != null) { onChangeRef.current?.(d.pending); d.pending = null; }
+        }, 100);
+      }
+    }
+    if (d.idle != null) window.clearTimeout(d.idle);
+    d.idle = window.setTimeout(finish, 600);
+  };
+
+  useEffect(() => {
+    // 피커를 닫으면(확인) 네이티브 change — 즉시 마무리(잠금 해제)
+    const el = inputRef.current;
+    if (!el) return;
+    el.addEventListener('change', finish);
+    return () => {
+      el.removeEventListener('change', finish);
+      finish(); // 언마운트 시 잠금이 남지 않게
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <label style={{
       display: 'flex', alignItems: 'center', gap: 6,
@@ -98,9 +158,10 @@ export function ColorSwatchInput({ t, value, onChange }: ColorSwatchProps) {
       <span style={{ marginLeft: 'auto', color: t.textMuted, fontSize: 10 }}>▾</span>
       {onChange && (
         <input
+          ref={inputRef}
           type="color"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleInput(e.target.value)}
           style={{ width: 0, height: 0, opacity: 0, position: 'absolute', pointerEvents: 'none' }}
         />
       )}

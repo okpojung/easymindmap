@@ -386,6 +386,32 @@ const VIEWER_JS = String.raw`
     return null;
   }
 
+  // 한 줄 요약(검색 결과·아웃라인 행) — 블록 마커 원문 대신 접어 표시:
+  // 코드 펜스 → "⧉코드" · 파이프 표 → "⊞표" · - [x] → ☑/☐ (에디터
+  // flattenNodeText와 동일 규칙 — 리치 노드 P4)
+  function flattenText(text) {
+    var lines = String(text || '').split('\n');
+    var out = [], inFence = false, codeChip = false, tableChip = false;
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i];
+      if (isFenceLine(ln)) {
+        if (!inFence && !codeChip) { out.push('⧉코드'); codeChip = true; }
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) continue;
+      var t2 = ln.replace(/^\s+|\s+$/g, '');
+      if (t2.length > 1 && t2.indexOf('|') >= 0 && t2.split('|').length >= 2) {
+        if (!/^[\s|:\-]+$/.test(t2) && !tableChip) { out.push('⊞표'); tableChip = true; }
+        continue;
+      }
+      var m3 = /^[ \t]*[-*+][ \t]+\[([ xX])\][ \t]?(.*)$/.exec(ln);
+      if (m3) { out.push((m3[1] === ' ' ? '☐ ' : '☑ ') + m3[2]); continue; }
+      if (t2) out.push(t2);
+    }
+    return out.join(' ');
+  }
+
   // 인라인 강조 파서 — 에디터 inlineMarks.ts와 동일 (마커 토글, 짝이
   // 없으면 줄 끝까지). t=텍스트, b/i/s/u/h=굵게/기울임/취소선/밑줄/형광
   // init 상태에서 시작해 파싱하고 줄 끝 상태를 함께 반환 — 마커 구간이
@@ -1726,10 +1752,11 @@ const VIEWER_JS = String.raw`
         if (inTags) kinds.push('태그');
         if (inNotes) kinds.push('노트');
         if (inLinks) kinds.push('링크');
-        out.push({ id: n.id, title: text, path: path.join(' › '), kinds: kinds });
+        // 제목의 블록 마커는 접어 표시 (⧉코드·☑/☐·⊞표 — P4)
+        out.push({ id: n.id, title: flattenText(text), path: path.join(' › '), kinds: kinds });
       }
       var kids = n.children || [];
-      for (var i = 0; i < kids.length; i++) walk(kids[i], path.concat([text]));
+      for (var i = 0; i < kids.length; i++) walk(kids[i], path.concat([flattenText(text)]));
     })(DATA.root, []);
     return out.slice(0, 50);
   }
@@ -2080,7 +2107,8 @@ const VIEWER_JS = String.raw`
         var dot = el2('span', 'mm-ol-caret mm-ol-dot'); dot.textContent = '·';
         row.appendChild(dot);
       }
-      var txt = el2('span', 'mm-ol-txt'); txt.textContent = node.text || '';
+      // 블록 마커(코드 펜스·- [x]·파이프)는 접어 표시 — ⧉코드·☑/☐·⊞표 (P4)
+      var txt = el2('span', 'mm-ol-txt'); txt.textContent = flattenText(node.text || '');
       row.appendChild(txt);
       // 노트 배지
       var notes = node.notes || [];

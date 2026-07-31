@@ -32,7 +32,8 @@ import {
   type NoteKind,
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from '@/editor/canvas/NoteViewerPopover';
-import { parseInlineMarks, toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
+import { toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
+import { NodeRichText } from '@/editor/node-renderer/RichTextHtml';
 import { CodeBlockDialog, spliceCodeBlock } from '@/editor/node-renderer/CodeBlockDialog';
 import { toggleCheckMarker } from '@/editor/node-renderer/mdCheck';
 import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
@@ -500,7 +501,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.45,
-            }}><InlineText text={node.text} /></div>
+            }}><InlineText text={node.text} nodeId={node.id} /></div>
             {(rawNode?.images?.length
               ? rawNode.images // 인라인 사진(기사) — 아웃라인은 목록으로 표시
               : rawNode?.image?.src
@@ -580,37 +581,15 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 }
 
 
-// 인라인 강조 표시 — 노드의 **굵게**/*기울임*/~~취소선~~/__밑줄__/
-// ==하이라이트== 마커를 맵과 동일한 스타일로 렌더링 (마커 문자 숨김)
-function InlineText({ text }: { text: string }) {
-  const lines = String(text || '').split('\n');
+// 행 본문 표시 — 인라인 마크 + 노드 블록(코드 패널·체크 글리프·표)을
+// 맵과 같은 규칙으로 렌더링 (리치 노드 P4, 공용 NodeRichText).
+// nodeId를 주면 체크 글리프 클릭 = 원문 [ ]↔[x] 토글.
+function InlineText({ text, nodeId }: { text: string; nodeId?: string }) {
+  const updateNodeText = useDocumentStore((s) => s.updateNodeText);
   return (
-    <>
-      {lines.map((line, li) => (
-        <span key={li}>
-          {li > 0 && '\n'}
-          {parseInlineMarks(line).map((sg, k) => (
-            <span
-              key={k}
-              style={{
-                fontWeight: sg.b ? 700 : undefined,
-                fontStyle: sg.i ? 'italic' : undefined,
-                textDecoration:
-                  [sg.s ? 'line-through' : '', sg.u ? 'underline' : '']
-                    .filter(Boolean)
-                    .join(' ') || undefined,
-                background: sg.h ? '#FFE066' : undefined,
-                // 형광펜 배경 위 글자는 진한 고정색 (다크 모드 가독성)
-                color: sg.h ? '#1F1B16' : undefined,
-                borderRadius: sg.h ? 2 : undefined,
-                padding: sg.h ? '0 1px' : undefined,
-              }}
-            >
-              {sg.text}
-            </span>
-          ))}
-        </span>
-      ))}
-    </>
+    <NodeRichText
+      text={text}
+      onToggleCheck={nodeId ? (next) => updateNodeText(nodeId, next) : undefined}
+    />
   );
 }

@@ -15,7 +15,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { KanbanBoardData, KanbanCard } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
-import { parseInlineMarks, toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
+import { toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
+import { NodeRichText } from '@/editor/node-renderer/RichTextHtml';
 import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -32,34 +33,16 @@ const CHILD_INDENT = 16; // px per depth level inside a column (tree-right feel)
 type DropPos = 'before' | 'after' | 'child' | 'col';
 interface DropTarget { id: string; pos: DropPos }
 
-// 인라인 강조(**굵게** ==하이라이트== 등)를 카드 제목에 그대로 표시
-function InlineTitle({ text }: { text: string }) {
+// 카드/헤더 본문 — 인라인 마크 + 노드 블록(코드 패널·체크 글리프·표)을
+// 맵과 같은 규칙으로 표시 (리치 노드 P4, 공용 NodeRichText).
+// nodeId를 주면 체크 글리프 클릭 = 원문 토글.
+function InlineTitle({ text, nodeId }: { text: string; nodeId?: string }) {
+  const updateNodeText = useDocumentStore((s) => s.updateNodeText);
   return (
-    <>
-      {String(text).split('\n').map((line, i) => (
-        <div key={i}>
-          {parseInlineMarks(line).map((sg, k) => (
-            <span
-              key={k}
-              style={{
-                fontWeight: sg.b ? 700 : undefined,
-                fontStyle: sg.i ? 'italic' : undefined,
-                textDecoration:
-                  [sg.s ? 'line-through' : '', sg.u ? 'underline' : '']
-                    .filter(Boolean).join(' ') || undefined,
-                background: sg.h ? '#FFE066' : sg.c ? '#ECEFF3' : undefined,
-                // 형광펜/코드 배경 위 글자는 진한 고정색 (다크 모드 가독성)
-                color: sg.h ? '#1F1B16' : sg.c ? '#334155' : undefined,
-                fontFamily: sg.c ? "ui-monospace, 'Consolas', monospace" : undefined,
-                borderRadius: sg.h || sg.c ? 2 : undefined,
-              }}
-            >
-              {sg.text}
-            </span>
-          ))}
-        </div>
-      ))}
-    </>
+    <NodeRichText
+      text={text}
+      onToggleCheck={nodeId ? (next) => updateNodeText(nodeId, next) : undefined}
+    />
   );
 }
 
@@ -199,7 +182,7 @@ function CardNode({
                 lineHeight: 1.35,
               }}
             >
-              <InlineTitle text={card.title} />
+              <InlineTitle text={card.title} nodeId={card.id} />
             </div>
             {card.image && (
               // 노드에 붙여넣은 사진 — 카드 안 썸네일
@@ -407,7 +390,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
             }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.color }} />
               <div style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
-                <InlineTitle text={col.title} />
+                <InlineTitle text={col.title} nodeId={col.id} />
               </div>
               <span style={{
                 fontSize: 11, color: t.textMuted, marginLeft: 'auto',

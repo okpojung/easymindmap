@@ -30,6 +30,7 @@ import { IconTab }    from '@/editor/inspector-panels/IconTab';
 import { ContentTab } from '@/editor/inspector-panels/ContentTab';
 import { NoteTagTab } from '@/editor/inspector-panels/NoteTagTab';
 import { AITab }      from '@/editor/inspector-panels/AITab';
+import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
 
 export type NavTabKey       = 'newMap' | 'search' | 'template' | 'history' | 'mapSettings';
 export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
@@ -353,10 +354,13 @@ function InspectorContent({ t, tab }: {
           <div style={{
             fontSize: 13.5, fontWeight: 600, color: node ? t.text : t.textMuted,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{node ? node.text : '노드를 선택하세요'}</div>
+          }}>{/* 블록 마커는 접어 표시 — ⧉코드·☑/☐·⊞표 (P4) */}
+            {node ? flattenNodeText(node.text) : '노드를 선택하세요'}</div>
         </div>
         {parentNode && parentId !== selectedId && (
-          <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 3 }}>{parentNode.text}</div>
+          <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 3 }}>
+            {flattenNodeText(parentNode.text)}
+          </div>
         )}
       </div>
 

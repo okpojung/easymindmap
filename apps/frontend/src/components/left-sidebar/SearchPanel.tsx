@@ -3,6 +3,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { MindNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
+import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
 import { Toggle } from '@/editor/inspector-panels/InspectorSection';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -51,7 +52,7 @@ function searchMap(
       ].filter(Boolean);
       out.push({ id: n.id, title: n.text, path: path.join(' › '), kinds });
     }
-    searchMap(n.children ?? [], q, [...path, n.text], out);
+    searchMap(n.children ?? [], q, [...path, flattenNodeText(n.text)], out);
   }
 }
 
@@ -168,7 +169,8 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
                 </span>
               );
             })}
-            {highlight(r.title, query, t.primary)}
+            {/* 블록 마커(```·- [x]·파이프)는 접어 표시 — ⧉코드·☑/☐·⊞표 (P4) */}
+            {highlight(flattenNodeText(r.title), query, t.primary)}
           </div>
           <div style={{ fontSize: 11, color: t.textSubtle }}>
             {r.path || '루트'}

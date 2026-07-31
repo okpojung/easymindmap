@@ -13,7 +13,7 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
-import { resolveNodeColors } from './resolveNodeColors';
+import { resolveNodeColors, readableTextOn } from './resolveNodeColors';
 import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, isNoteKind, type ContentKind } from './nodeContent';
@@ -263,7 +263,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const border = searchHit ? '#DC2626' : (style.borderColor ?? colors.border);
   // 검색 강조(노란 채움) 위에서는 항상 진한 글자 — 다크 모드에서 밝은
   // 글자가 노란 배경에 묻혀 안 보이던 문제 (라이트/다크 공통 고정색)
-  const textColor = searchHit ? '#1F1B16' : (style.textColor ?? colors.text);
+  // 사용자 지정 색이 있는 노드는 라이트/다크 전환에도 글자색 불변:
+  // 글자색 지정 = 그대로, 채움색만 지정 = 채움 밝기에 맞는 고정색.
+  const textColor = searchHit
+    ? '#1F1B16'
+    : (style.textColor ??
+       (style.fillColor ? readableTextOn(style.fillColor) : colors.text));
 
   const lines = n._lines || String(n.text || '').split('\n');
   const lineHeight = n._lineHeight ?? (n.depth === 0 ? 24 : 18);

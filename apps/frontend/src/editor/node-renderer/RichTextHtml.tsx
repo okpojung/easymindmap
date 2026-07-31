@@ -157,7 +157,10 @@ export function NodeRichText({
           // 밀어 옆 컬럼까지 침범하지 않도록 표만 가로 스크롤한다.
           <div
             key={`${key}-t${pi}`}
-            style={{ overflowX: 'auto', maxWidth: '100%', margin: '3px 0' }}
+            // data-html-scroll: 칸반 카드 드래그가 이 영역에서는 시작되지
+            // 않는다 — 가로 스크롤바를 잡으면 카드가 끌려가던 문제
+            data-html-scroll
+            style={{ overflowX: 'auto', maxWidth: '100%', margin: '3px 0', cursor: 'auto' }}
           >
           <table
             data-html-table
@@ -265,10 +268,10 @@ export function NodeRichText({
               {codeCopied ? '복사됨 ✓' : '⧉ 복사'}
             </span>
           </div>
-          <pre style={{
+          <pre data-html-scroll style={{
             margin: 0, padding: '3px 7px', overflowX: 'auto',
             fontFamily: MONO, fontSize: '0.92em', lineHeight: 1.45,
-            color: CODE_TEXT, whiteSpace: 'pre',
+            color: CODE_TEXT, whiteSpace: 'pre', cursor: 'auto',
           }}>
             {mdc.code.join('\n')}
           </pre>

@@ -294,6 +294,9 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
     const target = e.target as HTMLElement;
     if (target.closest('[data-kanban-edit]') || target.tagName === 'TEXTAREA') return;
     if (target.closest('button')) return;
+    // 코드/표 가로 스크롤 영역에서는 카드 드래그를 시작하지 않는다 —
+    // 스크롤바(또는 내용)를 잡고 끌면 카드가 끌려가 스크롤을 못 쓰던 문제
+    if (target.closest('[data-html-scroll]')) return;
     const cardEl = target.closest('[data-kanban-card]');
     if (!cardEl) return;
     dragRef.current = {
@@ -353,6 +356,10 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      // 선택된 텍스트(코드 영역을 드래그로 지나가면 생긴다) 위에서 드래그를
+      // 시작하면 브라우저 네이티브 텍스트 드래그가 포인터 이벤트를 가로채
+      // 카드 드래그가 먹통이 된다 — 보드 안에서는 네이티브 드래그 금지
+      onDragStart={(e) => e.preventDefault()}
       style={{
         flex: 1, minWidth: 0, overflow: 'auto', position: 'relative',
         background: `${t.canvas} radial-gradient(circle at center, ${t.border}aa 1px, transparent 1px) 0 0 / 24px 24px repeat`,

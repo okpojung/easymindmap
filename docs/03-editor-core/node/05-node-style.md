@@ -61,6 +61,14 @@
 }
 ```
 
+> **다크/라이트 전환 규칙 (2026-07)**: 사용자가 색을 직접 지정한 노드는
+> 테마 전환에 글자색이 바뀌지 않는다.
+> `textColor` 지정 → 두 모드에서 그대로. `fillColor`만 지정 →
+> `readableTextOn(fill)`(resolveNodeColors.ts)이 채움 밝기(luma 140 기준)로
+> 진한(#1F1B16)/밝은(#F8F5EF) **고정 글자색**을 정한다 — 테마 토큰을
+> 쓰지 않으므로 전환에 불변. HTML 뷰어의 `readableOn()`(exportHtml
+> VIEWER_JS)도 동일 규칙 (e2e67).
+
 ---
 
 ### 5. 동작 방식 (How)

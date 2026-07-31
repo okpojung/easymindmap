@@ -40,6 +40,8 @@ export function TopToolbar({
   const redo = useDocumentStore((s) => s.redo);
   const canUndo = useDocumentStore((s) => s.past.length > 0);
   const canRedo = useDocumentStore((s) => s.future.length > 0);
+  // 되돌린 단계 수 = future 길이 (undo 1회 = +1, redo 1회 = -1, 새 편집 = 0)
+  const undoDepth = useDocumentStore((s) => s.future.length);
 
   // 내보내기 메뉴 — HTML/MD를 하위 항목으로 구분 (바깥 클릭 시 닫힘)
   const [exportOpen, setExportOpen] = useState(false);
@@ -119,10 +121,26 @@ export function TopToolbar({
 
       <div style={{ width: 1, height: 28, background: t.divider }} />
 
-      <div style={{ display: 'flex', gap: 2 }}>
+      <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
         <IconBtn t={t} title="되돌리기 (Ctrl+Z)" disabled={!canUndo} onClick={undo}>
           <I.Undo size={17} />
         </IconBtn>
+        {/* 되돌린 단계 표시 — 원본(최신 상태) = 0, 한 번 되돌릴 때마다
+            -1, -2, … (다시 실행하면 다시 줄어든다. 새 편집 = 0으로 복귀) */}
+        <span
+          data-testid="undo-depth"
+          title={undoDepth === 0
+            ? '되돌린 단계 없음 (최신 상태) · 최대 100단계까지 되돌릴 수 있습니다'
+            : `최신 상태에서 ${undoDepth}단계 되돌린 상태 (다시 실행으로 복귀)`}
+          style={{
+            minWidth: 22, textAlign: 'center', fontSize: 10.5, fontWeight: 700,
+            fontFamily: 'ui-monospace, monospace',
+            color: undoDepth > 0 ? t.warning ?? '#D97706' : t.textSubtle,
+            userSelect: 'none',
+          }}
+        >
+          {undoDepth > 0 ? `-${undoDepth}` : '0'}
+        </span>
         <IconBtn t={t} title="다시 실행 (Ctrl+Y)" disabled={!canRedo} onClick={redo}>
           <I.Redo size={17} />
         </IconBtn>

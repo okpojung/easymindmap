@@ -899,6 +899,19 @@ const VIEWER_JS = String.raw`
     syncOutline(); // 아웃라인 페인이 보이면 함께 갱신 (function 선언 호이스팅)
   }
 
+  // 사용자 지정 채움색 위 글자색 — 에디터 readableTextOn과 동일 규칙.
+  // 커스텀 색 노드는 라이트/다크 전환에도 글자색이 바뀌지 않는다 (고정색).
+  function readableOn(fill) {
+    var hex = String(fill || '').replace(/^#/, '');
+    if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+      hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
+    }
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) return '#1F1B16';
+    var v = parseInt(hex, 16);
+    var lum = 0.299 * ((v >> 16) & 255) + 0.587 * ((v >> 8) & 255) + 0.114 * (v & 255);
+    return lum > 140 ? '#1F1B16' : '#F8F5EF';
+  }
+
   function drawNode(node, depth, parentColor) {
     // 액센트(접기 칩·태그·표 격자) = 브랜치 테두리 색 (에디터와 동일 계열)
     var color = depth === 0 ? SKIN.fam.root.border
@@ -911,7 +924,8 @@ const VIEWER_JS = String.raw`
     // 검색 결과 — 어떤 스타일보다 우선해 또렷하게 (에디터와 동일).
     // 글자도 항상 진한 색 — 다크 모드에서 밝은 글자가 노란 배경에
     // 묻혀 안 보이던 문제 (라이트/다크 공통 고정색)
-    var nodeText2 = stPre.textColor || fam0.text;
+    var nodeText2 = stPre.textColor ||
+      (stPre.fillColor ? readableOn(stPre.fillColor) : fam0.text);
     if (SEARCHHIT === node.id) {
       nodeFill2 = '#FFE066'; nodeStroke2 = '#DC2626'; nodeText2 = '#1F1B16';
     }

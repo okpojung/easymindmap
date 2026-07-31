@@ -406,6 +406,18 @@ preventDefault — 코드 텍스트를 드래그로 선택한 뒤 그 위에서 
 끌면 브라우저 **네이티브 텍스트 드래그가 포인터 이벤트를 가로채**
 카드 드래그가 먹통이 되는 것을 막는다 (e2e67).
 
+**맵과의 조작 파리티 (2026-07, e2e68)**:
+* `Delete` = 선택 카드(서브트리) 삭제, Kanban에서도 동작 — Canvas의
+  키 핸들러가 칸반에서는 언마운트되므로 KanbanBoard가 자체 keydown을
+  단다. 다중 선택이면 `deleteNodesBulk`(set 1회 = undo 1단계). Esc =
+  선택 해제.
+* **러버밴드 다중 선택**: 빈 영역(보드/컬럼 배경) 드래그 = 걸친 카드
+  전체 다중 선택 (`multiSelectedIds` — 맵과 같은 상태 공유, 스타일
+  일괄 적용·일괄 삭제 대상). 카드 클릭 = 단일 선택(다중 해제).
+* **노드 지정 색 반영**: 카드/컬럼에 `style.fillColor·borderColor·
+  textColor` 적용 — 글자색은 맵과 같은 `styledText`(textColor 지정 →
+  그대로, fillColor만 → `readableTextOn`, 없으면 테마색).
+
 ---
 
 ### 8. 예외 / 경계 (Edge Case)

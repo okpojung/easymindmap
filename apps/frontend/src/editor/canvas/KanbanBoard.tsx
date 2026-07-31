@@ -12,20 +12,30 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { KanbanBoardData, KanbanCard } from '@/editor/__samples__/types';
+import type { KanbanBoardData, KanbanCard, NodeStyle } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
 import { NodeRichText } from '@/editor/node-renderer/RichTextHtml';
 import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
+import { readableTextOn } from '@/editor/node-renderer/resolveNodeColors';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useInteractionStore } from '@/stores/interactionStore';
 
 interface Props {
   t: ThemeTokens;
   kanban: KanbanBoardData;
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
+}
+
+// 노드에 지정한 색을 카드/컬럼 헤더에 적용할 때의 글자색 — 맵과 동일 규칙:
+// 글자색 지정 = 그대로, 채움색만 지정 = 채움 밝기 기준 고정색, 없으면 테마색.
+function styledText(style: NodeStyle | undefined, fallback: string): string {
+  if (style?.textColor) return style.textColor;
+  if (style?.fillColor) return readableTextOn(style.fillColor);
+  return fallback;
 }
 
 const CHILD_INDENT = 16; // px per depth level inside a column (tree-right feel)
@@ -54,7 +64,7 @@ function InlineTitle({ text, nodeId, t }: {
 
 // One card box + its descendants, indented tree-right style.
 function CardNode({
-  t, card, depth, selectedId, onSelect, dragId, dropTarget,
+  t, card, depth, selectedId, onSelect, dragId, dropTarget, multiSet,
 }: {
   t: ThemeTokens;
   card: KanbanCard;
@@ -63,6 +73,7 @@ function CardNode({
   onSelect: (id: string) => void;
   dragId: string | null;
   dropTarget: DropTarget | null;
+  multiSet: Set<string>;
 }) {
   const updateNodeText = useDocumentStore((s) => s.updateNodeText);
   const setNodeImage = useDocumentStore((s) => s.setNodeImage);
@@ -108,6 +119,10 @@ function CardNode({
 
   const isDrop = dropTarget?.id === card.id;
   const dropPos = isDrop ? dropTarget!.pos : null;
+  // 노드에 지정한 색 반영 (맵과 동일) + 러버밴드 다중 선택 강조
+  const st = card.style;
+  const isMulti = multiSet.has(card.id);
+  const cardText = styledText(st, t.text);
 
   return (
     <div style={{ position: 'relative', opacity: dragId === card.id ? 0.35 : 1 }}>
@@ -120,14 +135,20 @@ function CardNode({
         onClick={() => onSelect(card.id)}
         onDoubleClick={(e) => { e.stopPropagation(); startEdit(); }}
         style={{
-          background: t.surface,
-          border: `1px solid ${card.active || selectedId === card.id ? t.primary : t.border}`,
+          background: st?.fillColor ?? t.surface,
+          border: `1px solid ${
+            card.active || selectedId === card.id || isMulti
+              ? t.primary
+              : (st?.borderColor ?? t.border)
+          }`,
           outline: dropPos === 'child' ? `2px solid ${t.success}` : undefined,
           borderRadius: 8,
           padding: depth === 0 ? 10 : '7px 9px',
           marginBottom: 6,
           cursor: editing ? 'text' : 'grab',
-          boxShadow: card.active ? `0 0 0 3px ${t.primary}22` : 'none',
+          boxShadow: isMulti
+            ? `0 0 0 2px ${t.primary}55`
+            : card.active ? `0 0 0 3px ${t.primary}22` : 'none',
           // 카드 내용(표·코드·긴 URL)이 컬럼 밖으로 넘치지 않게 가둔다 —
           // 블록별 가로 스크롤은 NodeRichText가 담당
           minWidth: 0, maxWidth: '100%', overflow: 'hidden',
@@ -185,7 +206,7 @@ function CardNode({
             <div
               style={{
                 fontSize: depth === 0 ? 12.5 : 11.5,
-                color: t.text,
+                color: cardText,
                 fontWeight: 500,
                 marginBottom: tc || card.image ? 6 : 0,
                 lineHeight: 1.35,
@@ -246,7 +267,7 @@ function CardNode({
               <CardNode
                 t={t} card={child} depth={depth + 1}
                 selectedId={selectedId} onSelect={onSelect}
-                dragId={dragId} dropTarget={dropTarget}
+                dragId={dragId} dropTarget={dropTarget} multiSet={multiSet}
               />
             </div>
           ))}
@@ -259,6 +280,46 @@ function CardNode({
 export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
   const moveNodeRelative = useDocumentStore((s) => s.moveNodeRelative);
   const addChildNode = useDocumentStore((s) => s.addChildNode);
+  const deleteNode = useDocumentStore((s) => s.deleteNode);
+  const deleteNodesBulk = useDocumentStore((s) => s.deleteNodesBulk);
+  // 러버밴드 다중 선택 — 맵과 같은 상태를 공유 (스타일 일괄 적용 대상)
+  const multiSelectedIds = useInteractionStore((s) => s.multiSelectedIds);
+  const setMultiSelectedIds = useInteractionStore((s) => s.setMultiSelectedIds);
+  const multiSet = new Set(multiSelectedIds);
+  // 카드 클릭 = 단일 선택 (다중 선택 해제 — 맵의 selectOne과 동일 규칙)
+  const selectCard = (id: string) => {
+    if (multiSelectedIds.length) setMultiSelectedIds([]);
+    onSelect(id);
+  };
+
+  // Delete = 선택 카드(서브트리) 삭제 · 다중 선택이면 일괄 삭제(undo 1단계).
+  // 맵 모드의 Delete와 동일 동작 — Canvas가 칸반에서는 마운트되지 않아
+  // 키가 먹지 않던 문제의 수정. Esc = 선택 해제.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'TEXTAREA' || tgt.tagName === 'INPUT' || tgt.isContentEditable)) return;
+      if (e.key === 'Delete') {
+        e.preventDefault();
+        const multi = useInteractionStore.getState().multiSelectedIds;
+        if (multi.length > 1) {
+          deleteNodesBulk(multi);
+          useInteractionStore.getState().setMultiSelectedIds([]);
+          onSelect(null);
+        } else if (selectedId && selectedId !== 'root') {
+          deleteNode(selectedId);
+          onSelect(null);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        useInteractionStore.getState().setMultiSelectedIds([]);
+        onSelect(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedId, onSelect, deleteNode, deleteNodesBulk]);
 
   // 카드 드래그 이동 상태 — 보드 레벨에서 위임 처리 (컬럼을 넘나들므로)
   const dragRef = useRef<{
@@ -268,6 +329,11 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const dropRef = useRef<DropTarget | null>(null);
   const [ghost, setGhost] = useState<{ x: number; y: number; title: string } | null>(null);
+  // 러버밴드(드래그 사각형) — 빈 영역 드래그 = 걸친 카드 전체 다중 선택
+  const marqueeRef = useRef<{
+    pointerId: number; x0: number; y0: number; moved: boolean;
+  } | null>(null);
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
   const findTarget = (clientX: number, clientY: number, dragging: string): DropTarget | null => {
     const el = document.elementFromPoint(clientX, clientY);
@@ -298,7 +364,13 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
     // 스크롤바(또는 내용)를 잡고 끌면 카드가 끌려가 스크롤을 못 쓰던 문제
     if (target.closest('[data-html-scroll]')) return;
     const cardEl = target.closest('[data-kanban-card]');
-    if (!cardEl) return;
+    if (!cardEl) {
+      // 빈 영역(보드 배경·컬럼 배경) 드래그 = 러버밴드 다중 선택 (맵과 동일)
+      marqueeRef.current = {
+        pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false,
+      };
+      return;
+    }
     dragRef.current = {
       pointerId: e.pointerId,
       id: cardEl.getAttribute('data-kanban-card')!,
@@ -307,6 +379,18 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    // 러버밴드 갱신 — 살짝 움직인 뒤부터 사각형을 그린다
+    const mq = marqueeRef.current;
+    if (mq && mq.pointerId === e.pointerId) {
+      if (!mq.moved && Math.abs(e.clientX - mq.x0) + Math.abs(e.clientY - mq.y0) > 5) {
+        mq.moved = true;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }
+      if (mq.moved) {
+        setMarquee({ x0: mq.x0, y0: mq.y0, x1: e.clientX, y1: e.clientY });
+      }
+      return;
+    }
     const d = dragRef.current;
     if (!d || d.pointerId !== e.pointerId) return;
     if (!d.moved && Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) > 5) {
@@ -323,6 +407,30 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    // 러버밴드 확정 — 사각형에 걸친 카드 전체를 다중 선택
+    const mq = marqueeRef.current;
+    if (mq && mq.pointerId === e.pointerId) {
+      marqueeRef.current = null;
+      if (mq.moved) {
+        const minX = Math.min(mq.x0, e.clientX), maxX = Math.max(mq.x0, e.clientX);
+        const minY = Math.min(mq.y0, e.clientY), maxY = Math.max(mq.y0, e.clientY);
+        const hits = Array.from(document.querySelectorAll('[data-kanban-card]'))
+          .filter((el) => {
+            const r = el.getBoundingClientRect();
+            return r.right >= minX && r.left <= maxX && r.bottom >= minY && r.top <= maxY;
+          })
+          .map((el) => el.getAttribute('data-kanban-card')!);
+        setMultiSelectedIds(hits);
+        // 스타일 탭이 열리도록 첫 카드를 대표 선택으로 (맵 러버밴드와 동일)
+        onSelect(hits[0] ?? null);
+      } else {
+        // 빈 곳 클릭 = 선택 해제
+        setMultiSelectedIds([]);
+        onSelect(null);
+      }
+      setMarquee(null);
+      return;
+    }
     const d = dragRef.current;
     if (!d || d.pointerId !== e.pointerId) return;
     dragRef.current = null;
@@ -332,7 +440,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
         const moved = moveNodeRelative(
           d.id, tgt.id, tgt.pos === 'col' ? 'child' : tgt.pos,
         );
-        if (moved) onSelect(d.id);
+        if (moved) selectCard(d.id);
       }
     }
     dropRef.current = null;
@@ -343,11 +451,11 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
 
   const addCard = (colId: string) => {
     const id = addChildNode(colId);
-    if (id) onSelect(id);
+    if (id) selectCard(id);
   };
   const addColumn = () => {
     const id = addChildNode('root');
-    if (id) onSelect(id);
+    if (id) selectCard(id);
   };
 
   return (
@@ -392,8 +500,13 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
               // 300px — 표·코드 블록이 든 카드(리치 노드)를 담기 위해 260에서
               // 넓힘. 그래도 넘치는 표/코드는 카드 안에서 가로 스크롤된다.
               width: 300, flexShrink: 0,
-              background: t.surfaceAlt,
-              border: `1px solid ${dropTarget?.pos === 'col' && dropTarget.id === col.id ? t.success : t.border}`,
+              // 컬럼(1레벨 노드)에 지정한 색 반영
+              background: col.style?.fillColor ?? t.surfaceAlt,
+              border: `1px solid ${
+                dropTarget?.pos === 'col' && dropTarget.id === col.id
+                  ? t.success
+                  : (col.style?.borderColor ?? t.border)
+              }`,
               outline: dropTarget?.pos === 'col' && dropTarget.id === col.id
                 ? `2px solid ${t.success}` : undefined,
               borderRadius: 10,
@@ -407,7 +520,10 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
               marginBottom: 8,
             }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.color }} />
-              <div style={{ fontSize: 13, fontWeight: 600, color: t.text, flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0,
+                color: styledText(col.style, t.text),
+              }}>
                 <InlineTitle text={col.title} nodeId={col.id} t={t} />
               </div>
               <span style={{
@@ -421,8 +537,8 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
               <CardNode
                 key={card.id}
                 t={t} card={card} depth={0}
-                selectedId={selectedId} onSelect={onSelect}
-                dragId={dragId} dropTarget={dropTarget}
+                selectedId={selectedId} onSelect={selectCard}
+                dragId={dragId} dropTarget={dropTarget} multiSet={multiSet}
               />
             ))}
             <button
@@ -451,6 +567,20 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
           <I.Plus size={14} /> 컬럼 추가
         </button>
       </div>
+
+      {/* 러버밴드 사각형 — 걸친 카드 전체가 다중 선택된다 (맵과 동일) */}
+      {marquee && (
+        <div style={{
+          position: 'fixed',
+          left: Math.min(marquee.x0, marquee.x1),
+          top: Math.min(marquee.y0, marquee.y1),
+          width: Math.abs(marquee.x1 - marquee.x0),
+          height: Math.abs(marquee.y1 - marquee.y0),
+          border: `1.5px solid ${t.primary}`,
+          background: `${t.primary}18`,
+          borderRadius: 3, zIndex: 40, pointerEvents: 'none',
+        }} />
+      )}
 
       {/* 드래그 고스트 — 커서를 따라다니는 카드 제목 */}
       {ghost && (

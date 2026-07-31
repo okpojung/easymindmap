@@ -33,7 +33,7 @@ export type {
   EmmNode,
 } from '@emm/model';
 
-import type { NodeImage } from '@emm/model';
+import type { NodeImage, NodeStyle } from '@emm/model';
 
 // --- 앱 전용 표시 타입 ------------------------------------------------------
 
@@ -43,6 +43,8 @@ export interface KanbanCard {
   tag?: string;
   active?: boolean;
   image?: NodeImage; // 노드에 붙여넣은 사진 — 카드 썸네일로 표시
+  // 노드에 지정한 색(채움·테두리·글자) — 카드에도 맵과 같이 반영
+  style?: NodeStyle;
   // depth-3+ descendants of the card node, rendered inside the column as an
   // indented tree-right outline under the card (no depth limit for Kanban).
   children?: KanbanCard[];
@@ -53,6 +55,7 @@ export interface KanbanColumn {
   title: string;
   count: number;
   color: string;
+  style?: NodeStyle; // 컬럼(1레벨 노드)에 지정한 색
   cards: KanbanCard[];
 }
 

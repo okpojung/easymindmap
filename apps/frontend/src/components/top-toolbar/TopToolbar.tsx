@@ -130,7 +130,7 @@ export function TopToolbar({
         <span
           data-testid="undo-depth"
           title={undoDepth === 0
-            ? '되돌린 단계 없음 (최신 상태) · 최대 100단계까지 되돌릴 수 있습니다'
+            ? '되돌린 단계 없음 (최신 상태) · 이 세션 안에서 최대 99단계까지 되돌릴 수 있습니다'
             : `최신 상태에서 ${undoDepth}단계 되돌린 상태 (다시 실행으로 복귀)`}
           style={{
             minWidth: 22, textAlign: 'center', fontSize: 10.5, fontWeight: 700,

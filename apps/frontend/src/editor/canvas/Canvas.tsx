@@ -103,6 +103,7 @@ export function Canvas({
   const addSiblingNode = useDocumentStore((state) => state.addSiblingNode);
   const addParentNode = useDocumentStore((state) => state.addParentNode);
   const deleteNode = useDocumentStore((state) => state.deleteNode);
+  const deleteNodesBulk = useDocumentStore((state) => state.deleteNodesBulk);
   const moveNodeRelative = useDocumentStore((state) => state.moveNodeRelative);
   const toggleCollapse = useDocumentStore((state) => state.toggleCollapse);
   const addNodeLink = useDocumentStore((state) => state.addNodeLink);
@@ -698,6 +699,12 @@ export function Canvas({
       if (e.key === 'Delete') {
         e.preventDefault();
 
+        // 러버밴드 다중 선택 = 일괄 삭제 (한 번의 undo 단계)
+        if (multiSelectedIds.length > 1) {
+          deleteNodesBulk(multiSelectedIds);
+          selectOne(null);
+          return;
+        }
         if (!selectedId || selectedId === 'root') return;
 
         deleteNode(selectedId);

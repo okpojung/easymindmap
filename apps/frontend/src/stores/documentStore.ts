@@ -46,10 +46,15 @@ const BRANCH_COLOR_KEYS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 // 각 스냅샷은 맵과 "그때의 전체 레이아웃"을 함께 담는다 — 레이아웃(칸반 등)은
 // editorUiStore에 있어 맵만 되돌리면 화면이 바뀌지 않는 문제가 있었다
 // (칸반 전환 → Ctrl+Z 시 이전 레이아웃으로 함께 복원).
-const HISTORY_LIMIT = 100;
+//
+// 되돌리기는 "이 편집 세션" 한정이다 (메모리 내 — 새로고침하면 사라짐).
+// 99단계 = 카운터를 두 자리(-99)로 표시하기 위한 상한 (2026-07 사용자 결정).
+// 세션을 닫고 저장할 때마다의 "히스토리"(저장일시별 버전)는 별개 기능으로,
+// 서버 저장과 연결될 때 구현한다 — docs/03-editor-core/history 참조.
+const HISTORY_LIMIT = 99;
 let applyingHistory = false;
 
-interface HistoryEntry {
+export interface HistoryEntry {
   map: SampleMap;
   layout: LayoutType;
 }
@@ -81,6 +86,8 @@ interface DocumentState {
   addSiblingNode: (nodeId: string | null, position?: 'before' | 'after') => string;
   addParentNode: (nodeId: string | null) => string;
   deleteNode: (nodeId: string | null) => void;
+  // 러버밴드 다중 선택 일괄 삭제 — 한 번의 set = undo 1단계
+  deleteNodesBulk: (nodeIds: string[]) => void;
   moveNode: (nodeId: string | null, newParentId: string | null) => boolean;
   // Drag-and-drop move relative to a target node (drop zones).
   moveNodeRelative: (
@@ -701,6 +708,18 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         branches: deleteNodeRecursive(state.map.branches, nodeId) as SampleBranch[],
       },
     }));
+  },
+
+  deleteNodesBulk: (nodeIds) => {
+    const ids = (nodeIds ?? []).filter((id) => id && id !== 'root');
+    if (!ids.length) return;
+    set((state) => {
+      let branches = state.map.branches;
+      for (const id of ids) {
+        branches = deleteNodeRecursive(branches, id) as SampleBranch[];
+      }
+      return { map: { ...state.map, branches } };
+    });
   },
 
   moveNode: (nodeId, newParentId) => {

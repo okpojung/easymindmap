@@ -39,6 +39,7 @@ function buildKanbanCard(node: {
   tag?: string;
   tags?: string[];
   image?: KanbanCard['image'];
+  style?: KanbanCard['style'];
   children?: any[];
 }): KanbanCard {
   return {
@@ -47,6 +48,7 @@ function buildKanbanCard(node: {
     tag: node.tag ?? node.tags?.[0],
     // 카드 썸네일 — 인라인 사진(기사 붙여넣기)이 있으면 첫 장을 쓴다
     image: node.image ?? (node as { images?: KanbanCard['image'][] }).images?.[0],
+    style: node.style, // 노드 지정 색(채움·테두리·글자) — 카드에도 반영
     children: (node.children ?? []).map(buildKanbanCard),
   };
 }
@@ -61,6 +63,7 @@ function buildKanbanFromMap(map: SampleMap): KanbanBoardData {
       title: branch.text,
       count: branch.children?.length ?? 0,
       color: colors[index % colors.length],
+      style: branch.style,
       cards: (branch.children ?? []).map(buildKanbanCard),
     })),
   };

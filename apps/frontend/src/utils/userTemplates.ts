@@ -156,10 +156,63 @@ export function applyTemplateStyles(current: SampleMap, tpl: SampleMap): SampleM
   const maxLevel = levelStyles.length - 1;
   const maxLevelLayout = levelLayouts.length - 1;
 
+  // 사용자가 직접 칠한 색(채움·테두리·글자)은 템플릿 적용에도 유지한다 —
+  // 칸반 등에서 강조하려고 칠한 노드 색이 템플릿 '적용'으로 초기화되던
+  // 문제 (2026-07-31). "직접 칠했다" 판정 = 그 색이 현재 맵에서 **같은
+  // 레벨의 다수(최빈값) 색과 다른** 경우. 레벨 전체가 같은 색(이전
+  // 템플릿의 레벨 스타일)이면 다수색이므로 템플릿 색으로 교체된다 —
+  // 잔재까지 보존하면 템플릿 갈아입히기가 안 되기 때문. ("첫 노드 =
+  // 대표" 방식은 사용자가 처음 칠한 노드 자신이 대표가 되어 보존에서
+  // 빠지는 함정이 있어 최빈값을 쓴다.)
+  type ColorKey = 'fillColor' | 'borderColor' | 'textColor';
+  const COLOR_KEYS: ColorKey[] = ['fillColor', 'borderColor', 'textColor'];
+  const tally: Record<ColorKey, Map<string, number>>[] = [];
+  const count = (nodes: MindNode[], depth: number) => {
+    for (const n of nodes) {
+      if (!tally[depth]) {
+        tally[depth] = {
+          fillColor: new Map(), borderColor: new Map(), textColor: new Map(),
+        };
+      }
+      for (const k of COLOR_KEYS) {
+        const v = n.style?.[k] ?? '';
+        tally[depth][k].set(v, (tally[depth][k].get(v) ?? 0) + 1);
+      }
+      count(n.children ?? [], depth + 1);
+    }
+  };
+  count(current.branches as MindNode[], 1);
+  const majority = (depth: number, k: ColorKey): string => {
+    const m = tally[depth]?.[k];
+    if (!m) return '';
+    let best = ''; let bestN = -1;
+    for (const [v, c] of m) if (c > bestN) { best = v; bestN = c; }
+    return best;
+  };
+
+  const keepUserColors = (
+    n: MindNode,
+    depth: number,
+    base: NodeStyle | undefined,
+  ): NodeStyle | undefined => {
+    const cur = n.style;
+    if (!cur) return base;
+    const kept: Partial<NodeStyle> = {};
+    for (const k of COLOR_KEYS) {
+      const v = cur[k];
+      if (v && v !== majority(depth, k)) kept[k] = v;
+    }
+    if (!Object.keys(kept).length) return base;
+    return { ...base, ...kept };
+  };
+
   const restyle = (n: MindNode, depth: number): MindNode => ({
     ...n,
-    // depth별 대표 스타일 — 템플릿에 그 depth가 없으면 마지막 레벨 스타일
-    style: levelStyles[Math.min(depth, Math.max(1, maxLevel))] ?? undefined,
+    // depth별 대표 스타일 — 템플릿에 그 depth가 없으면 마지막 레벨 스타일.
+    // 단 사용자 지정 색(레벨 대표와 다른 색)은 위 규칙대로 유지.
+    style: keepUserColors(
+      n, depth, levelStyles[Math.min(depth, Math.max(1, maxLevel))] ?? undefined,
+    ),
     // depth별 대표 서브트리 레이아웃 — 템플릿의 그 depth 노드가 레이아웃
     // 오버라이드를 갖고 있으면 같은 depth의 모든 노드에 적용, 없으면 해제
     // (스타일과 동일한 "템플릿이 곧 정답" 규칙 — 2026-07: MD 불러온 맵에

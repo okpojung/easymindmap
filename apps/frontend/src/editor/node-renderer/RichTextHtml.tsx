@@ -10,6 +10,7 @@
 // flattenNodeText는 한 줄 요약이 필요한 곳(검색 결과 목록 등)에서
 // 마커 원문 대신 ☑/☐·⧉코드·⊞표 로 접어 보여주기 위한 도우미다.
 
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { parseInlineMarks, CODE_BG, CODE_TEXT } from './inlineMarks';
 import { parseMdCode } from './mdCode';
@@ -107,6 +108,18 @@ export function NodeRichText({
 }) {
   const raw = String(text || '');
   const mdc = parseMdCode(raw);
+  // 코드 복사 피드백 — 맵 패널의 '⧉ 복사 → 복사됨 ✓'와 동일 (1.5초)
+  const [codeCopied, setCodeCopied] = useState(false);
+  const copyCode = () => {
+    if (!mdc) return;
+    const done = () => {
+      setCodeCopied(true);
+      window.setTimeout(() => setCodeCopied(false), 1500);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(mdc.code.join('\n')).then(done, done);
+    } else done();
+  };
   // 코드 앞/뒤 일반 구간 (원문 순서 보존 — 맵과 동일)
   const plains: { seg: string; key: string }[] = mdc
     ? [
@@ -199,10 +212,26 @@ export function NodeRichText({
           }}
         >
           <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '1px 7px', borderBottom: '1px solid #D8DDE4',
             fontFamily: MONO, fontSize: '0.82em', color: '#64748B',
           }}>
-            {mdc.lang || 'code'}
+            <span>{mdc.lang || 'code'}</span>
+            {/* ⧉ 복사 — 맵 코드 패널 헤더와 동일 구성 */}
+            <span
+              data-html-code-copy
+              onClick={(e) => { e.stopPropagation(); copyCode(); }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              title="코드 복사"
+              style={{
+                cursor: 'pointer', userSelect: 'none', marginLeft: 10,
+                color: codeCopied ? '#15803D' : '#475569', fontWeight: 600,
+                fontFamily: 'inherit',
+              }}
+            >
+              {codeCopied ? '복사됨 ✓' : '⧉ 복사'}
+            </span>
           </div>
           <pre style={{
             margin: 0, padding: '3px 7px', overflowX: 'auto',

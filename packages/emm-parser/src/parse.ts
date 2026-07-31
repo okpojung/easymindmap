@@ -195,8 +195,18 @@ export function parseMarkdownToMap(
     const imgs = (n.images?.length ?? 0) + (n.image ? 1 : 0);
     return String(n.text || '').length + imgs * NODE_IMAGE_CHARS;
   };
-  // 블록을 노드 본문에 넣었으면 true — false면 호출자가 노트로 처리한다
-  const placeBlock = (blockText: string, note: () => NoteBlock): boolean => {
+  // 블록을 노드 본문에 넣었으면 true — false면 호출자가 노트로 처리한다.
+  // extractLinks(기본 true): 노드 "본문"이 되는 텍스트는 일반 노드 텍스트와
+  // 같은 하이퍼링크 규칙을 따른다 — [라벨](url)은 라벨만 남기고 URL은
+  // 노드의 링크(🔗)로 첨부 (2026-07 수정: 인용문·표·체크 블록이 노드에
+  // 들어갈 때 링크 원문이 그대로 노출되던 문제). 코드 블록은 원문 보존.
+  // A4 초과로 "노트로" 가는 경우는 원문 유지 — 노트 뷰어가 클릭 가능한
+  // <a>로 렌더링한다.
+  const placeBlock = (
+    blockText: string,
+    note: () => NoteBlock,
+    extractLinks = true,
+  ): boolean => {
     if (!placeInNode) return false;
     if (!sawHeading || stack.length === 0) return false; // 머리말 → 루트 노트
     const cur = stack[stack.length - 1].node;
@@ -206,7 +216,14 @@ export function parseMarkdownToMap(
       if (opts.stats) opts.stats.movedToNote += 1;
       return true; // 처리 완료 (노트로)
     }
-    cur.text = cur.text ? `${cur.text}\n${blockText}` : blockText;
+    let body = blockText;
+    if (extractLinks) {
+      const { text, links } = stripLinks(blockText);
+      body = text;
+      mergeLinks(cur, links);
+    }
+    if (!body) return true; // 링크만 있던 블록 — 링크 첨부로 충분
+    cur.text = cur.text ? `${cur.text}\n${body}` : body;
     return true;
   };
 
@@ -285,7 +302,7 @@ export function parseMarkdownToMap(
           // 'node'면 노드 본문의 ``` 펜스(코드 패널 렌더)로
           const block = '```' + (fenceLang || '') + '\n' + code + '\n```';
           if (!placeBlock(block, () =>
-            ({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined }))) {
+            ({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined }), false)) {
             addNote({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
           }
         }
@@ -411,7 +428,7 @@ export function parseMarkdownToMap(
     // 닫는 펜스 없이 끝난 코드 — 같은 배치 규칙 적용
     const tail = fenceBuf.join('\n');
     const tailBlock = '```' + (fenceLang || '') + '\n' + tail + '\n```';
-    if (!placeBlock(tailBlock, () => ({ id: nid(), type: 'code_block', text: tail }))) {
+    if (!placeBlock(tailBlock, () => ({ id: nid(), type: 'code_block', text: tail }), false)) {
       addNote({ id: nid(), type: 'code_block', text: tail });
     }
   }

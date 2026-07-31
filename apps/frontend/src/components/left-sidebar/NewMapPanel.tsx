@@ -71,6 +71,10 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const mapTitle = useDocumentStore((s) => s.map.title);
   // 실행 대기 중인 동작 — 확인(현재 맵 닫기 승인) 후에 실행된다
   const [pending, setPending] = useState<{ label: string; run: () => void } | null>(null);
+  // 아코디언 펼침 상태 — 새 맵 만들기는 기본 펼침, Local 파일은 접힘
+  // (선택 시 하위 메뉴가 트리 형태로 펼쳐진다)
+  const [openNew, setOpenNew] = useState(true);
+  const [openLocal, setOpenLocal] = useState(false);
   // 새 맵/불러오기 직후 — 적용할 템플릿 선택 단계.
   //   mode 'new'   : 템플릿 골격+속성으로 새 맵 시작 (templateSkeletonMap)
   //   mode 'import': 불러온 내용은 유지, 속성만 입힘 (applyTemplateStyles)
@@ -239,47 +243,55 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     reader.readAsText(file);
   };
 
-  const sectionLabel = (text: string) => (
-    <div style={{
-      fontSize: 11, color: t.textSubtle, margin: '4px 0 8px',
-      textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
-    }}>{text}</div>
+  // 상위 메뉴 행 (아코디언 헤더) — 아이콘 + 라벨 + 펼침 표시(▸/▾)
+  const menuHeader = (opts: {
+    icon: string; label: string; open?: boolean;
+    onClick?: () => void; disabled?: boolean; badge?: string; tip?: string;
+  }) => (
+    <button
+      onClick={opts.onClick}
+      disabled={opts.disabled}
+      title={opts.tip}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+        fontSize: 12.5, fontWeight: 700, padding: '9px 11px',
+        borderRadius: 8, marginBottom: 6, textAlign: 'left',
+        border: opts.disabled ? `1px dashed ${t.border}` : `1px solid ${t.border}`,
+        background: opts.open ? t.primarySoft : opts.disabled ? 'transparent' : t.surface,
+        color: opts.disabled ? t.textSubtle : opts.open ? t.primary : t.text,
+        cursor: opts.disabled ? 'default' : 'pointer',
+      }}
+    >
+      <span style={{ fontSize: 14, lineHeight: 1 }}>{opts.icon}</span>
+      <span style={{ flex: 1 }}>{opts.label}</span>
+      {opts.badge && (
+        <span style={{
+          fontSize: 9.5, fontWeight: 600, color: t.textSubtle,
+          border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 7px',
+        }}>{opts.badge}</span>
+      )}
+      {opts.onClick && !opts.disabled && (
+        <span style={{ fontSize: 10, color: t.textMuted }}>{opts.open ? '▾' : '▸'}</span>
+      )}
+    </button>
   );
 
+  // 하위(트리) 영역 — 세로 안내선 + 들여쓰기 (아웃라인 느낌)
+  const treeBoxStyle = {
+    margin: '0 0 8px 10px',
+    paddingLeft: 10,
+    borderLeft: `2px solid ${t.border}`,
+  } as const;
+
   const fileBtnStyle = {
-    width: '100%', fontSize: 11.5, padding: '7px 0', borderRadius: 6,
+    width: '100%', fontSize: 11.5, padding: '7px 9px', borderRadius: 6,
     border: `1px solid ${t.border}`, background: t.surfaceAlt,
     color: t.text, cursor: 'pointer', fontWeight: 600, marginBottom: 5,
+    textAlign: 'left',
   } as const;
 
   return (
     <div style={{ padding: 12 }}>
-      {sectionLabel('새 맵 만들기')}
-
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="새 맵 제목 (비우면 자동)"
-        style={{
-          width: '100%', fontSize: 11.5, padding: '6px 9px', borderRadius: 6,
-          border: `1px solid ${t.border}`, background: t.surface, color: t.text,
-          outline: 'none', marginBottom: 8,
-        }}
-      />
-
-      <button onClick={startBlank}
-        title="기본 템플릿 '트리-진행트리맵' 골격(중심 주제 + 주제 1~3 + 하위 주제 + 내용)으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다"
-        style={{
-          width: '100%', fontSize: 12, padding: '9px 0', borderRadius: 7,
-          border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,
-          color: t.primary, cursor: 'pointer', fontWeight: 700, marginBottom: 6,
-        }}>+ 새 맵 만들기</button>
-
-      <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, marginBottom: 10 }}>
-        현재 편집 중인 맵은 교체됩니다 (Ctrl+Z로 되돌리기 가능).
-        만든 뒤 적용할 템플릿을 고를 수 있습니다.
-      </div>
-
       {notice && (
         <div style={{
           fontSize: 10.5, color: t.primary, fontWeight: 600, marginBottom: 8,
@@ -360,21 +372,53 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         </div>
       )}
 
-      {/* ---- 서버 맵 불러오기 ---- */}
-      {sectionLabel('서버 맵 불러오기')}
+      {/* ═══ 1. 새 맵 만들기 ═══ */}
+      {menuHeader({
+        icon: '＋', label: '새 맵 만들기', open: openNew,
+        onClick: () => setOpenNew((v) => !v),
+        tip: "기본 템플릿 '트리-진행트리맵' 골격으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다",
+      })}
+      {openNew && (
+        <div style={treeBoxStyle}>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="새 맵 제목 (비우면 자동)"
+            style={{
+              width: '100%', boxSizing: 'border-box', fontSize: 11.5,
+              padding: '6px 9px', borderRadius: 6,
+              border: `1px solid ${t.border}`, background: t.surface, color: t.text,
+              outline: 'none', marginBottom: 6,
+            }}
+          />
+          <button onClick={startBlank}
+            title="기본 템플릿 '트리-진행트리맵' 골격(중심 주제 + 주제 1~3 + 하위 주제 + 내용)으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다"
+            style={{
+              width: '100%', fontSize: 12, padding: '8px 0', borderRadius: 7,
+              border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,
+              color: t.primary, cursor: 'pointer', fontWeight: 700, marginBottom: 5,
+            }}>+ 새 맵 만들기</button>
+          <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5 }}>
+            현재 편집 중인 맵은 교체됩니다 (Ctrl+Z로 되돌리기 가능).
+            만든 뒤 적용할 템플릿을 고를 수 있습니다.
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 2. 서버 맵 불러오기 ═══ */}
       {/* [서버 연결 예정] 서버에 저장된 맵 목록에서 불러오기 —
           maps 테이블 연동 후 활성화 (docs/02-domain/db-schema.md) */}
-      <button disabled
-        title="서버 연결 후 사용할 수 있습니다"
-        style={{
-          width: '100%', fontSize: 11.5, padding: '7px 0', borderRadius: 6,
-          border: `1px dashed ${t.border}`, background: 'transparent',
-          color: t.textSubtle, cursor: 'default', fontWeight: 600, marginBottom: 10,
-        }}>☁ 서버에 저장된 맵 불러오기 (서버 연결 후)</button>
+      {menuHeader({
+        icon: '☁', label: '서버 맵 불러오기', disabled: true,
+        badge: '서버 연결 후', tip: '서버 연결 후 사용할 수 있습니다',
+      })}
 
-      {/* ---- Local 파일 불러오기 ---- */}
-      {sectionLabel('Local 파일 불러오기')}
-
+      {/* ═══ 3. Local 파일 불러오기 — 선택하면 하위 메뉴가 트리로 ═══ */}
+      {menuHeader({
+        icon: '📂', label: 'Local 파일 불러오기', open: openLocal,
+        onClick: () => setOpenLocal((v) => !v),
+        tip: 'MD·HTML·ZIP 파일을 불러옵니다 (선택하면 하위 메뉴가 펼쳐집니다)',
+      })}
       <input
         ref={fileRef}
         type="file"
@@ -387,40 +431,15 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           e.target.value = '';
         }}
       />
-      {/* 블록 배치 옵션 (일반 MD 전용) — 문단·코드·표·체크를 어디에 둘지 */}
-      <div data-testid="block-placement" style={{
-        border: `1px solid ${t.border}`, borderRadius: 6,
-        padding: '6px 8px', marginBottom: 6, background: t.surface,
-      }}>
-        <div style={{ fontSize: 10, color: t.textSubtle, fontWeight: 600, marginBottom: 4 }}>
-          MD 블록(문단·코드·표·체크) 배치
-        </div>
-        {([
-          ['node', '노드로 (기본)', '블록을 해당 위치의 노드 본문에 넣습니다. 노드가 A4 분량(약 2,500자)을 넘으면 넘치는 블록은 노트로 옮깁니다'],
-          ['note', '노트로', '기존 방식 — 문단·코드·표·체크를 노드의 노트로 넣습니다'],
-        ] as const).map(([v, label, tip]) => (
-          <label key={v} title={tip} style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 11, color: t.text, cursor: 'pointer', padding: '2px 0',
-          }}>
-            <input
-              type="radio"
-              name="block-placement"
-              checked={blockPlacement === v}
-              onChange={() => chooseBlockPlacement(v)}
-              style={{ accentColor: t.primary }}
-            />
-            {label}
-          </label>
-        ))}
-      </div>
+      {openLocal && (
+        <div style={treeBoxStyle}>
       <button onClick={() => startImportFile('md')}
         title="일반 MD 파일과 EasyMindMap에서 생성된 MD 파일을 불러옵니다"
         style={{ ...fileBtnStyle, marginBottom: 3 }}>📄 MD 파일 불러오기</button>
-      {/* MD 블록 배치 옵션 (일반 MD 전용) — MD 버튼 바로 아래 들여쓰기 */}
+      {/* MD 블록 배치 옵션 (일반 MD 전용) — MD 항목의 하위 트리 */}
       <div data-testid="block-placement" style={{
         border: `1px solid ${t.border}`, borderRadius: 6,
-        padding: '5px 8px', margin: '0 0 6px 14px', background: t.surface,
+        padding: '5px 8px', margin: '0 0 6px 12px', background: t.surface,
       }}>
         <div style={{ fontSize: 10, color: t.textSubtle, fontWeight: 600, marginBottom: 3 }}>
           블록(문단·코드·표·체크) 배치
@@ -454,6 +473,8 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         MD는 일반 문서·EasyMindMap 생성 파일 모두, HTML/ZIP은 EasyMindMap이
         생성한 파일만 지원합니다. 불러온 뒤 적용할 템플릿을 고를 수 있습니다.
       </div>
+        </div>
+      )}
     </div>
   );
 }

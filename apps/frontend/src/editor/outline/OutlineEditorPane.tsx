@@ -152,6 +152,24 @@ function OutlineScrollSync() {
     );
     row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [selectedId]);
+
+  // 아웃라인을 "여는 순간" 1회 — 맵에서 보던 위치로 이어서 보여준다
+  // (2026-07 사용성): 열기 액션(editorUiStore)이 캡처해 둔 노드
+  // (선택 노드, 없으면 맵 화면 중앙에 가장 가까운 노드)의 행을
+  // 화면 가운데로 스크롤한다. 큰 맵을 확대해 보다가 아웃라인으로
+  // 전환해도 문서 처음부터 다시 찾아 내려갈 필요가 없다.
+  useEffect(() => {
+    const id = useEditorUiStore.getState().outlineFocusId;
+    if (!id) return;
+    const tmr = window.setTimeout(() => {
+      const row = document.querySelector(
+        `[data-outline-id="${CSS.escape(id)}"]`,
+      );
+      row?.scrollIntoView({ block: 'center' });
+    }, 60); // 행 렌더가 끝난 뒤
+    return () => window.clearTimeout(tmr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return null;
 }
 

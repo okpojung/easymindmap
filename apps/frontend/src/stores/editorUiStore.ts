@@ -5,6 +5,37 @@ import { create } from 'zustand';
 import type { ThemeName } from '@/components/design-tokens/theme';
 import type { LayoutType } from '@/editor/__samples__/types';
 import type { NavTabKey, InspectorTabKey, SidebarSection } from '@/components/unified-sidebar/UnifiedSidebar';
+import { useInteractionStore } from './interactionStore';
+
+// 아웃라인을 여는 순간 처음 보여줄 노드를 캡처한다 (2026-07 사용성):
+//   · 선택한 노드가 있으면 그 노드
+//   · 없으면 맵 화면 중앙에서 가장 가까운 노드 (DOM 실측 — 전체
+//     아웃라인 모드로 바뀌면 맵 DOM이 사라지므로 "토글 시점"에 잰다)
+// 아웃라인 페인이 마운트될 때 이 행으로 스크롤해, 큰 맵을 확대해 보던
+// 위치가 아웃라인에서도 이어진다.
+function captureOutlineFocus(): string | null {
+  const sel = useInteractionStore.getState().selectedId;
+  if (sel) return sel;
+  const rootG = document.querySelector('svg g[data-node-id="root"]');
+  const svg = rootG ? rootG.closest('svg') : null;
+  if (!svg) return null;
+  const r = svg.getBoundingClientRect();
+  const cx = r.x + r.width / 2;
+  const cy = r.y + r.height / 2;
+  let best: string | null = null;
+  let bestD = Infinity;
+  svg.querySelectorAll('g[data-node-id]').forEach((g) => {
+    const b = g.getBoundingClientRect();
+    const dx = b.x + b.width / 2 - cx;
+    const dy = b.y + b.height / 2 - cy;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) {
+      bestD = d;
+      best = g.getAttribute('data-node-id');
+    }
+  });
+  return best;
+}
 
 interface EditorUiState {
   themeName: ThemeName;
@@ -41,6 +72,9 @@ interface EditorUiState {
   // 메인 편집 영역 전체 모드 — 'map'(맵 전체) / 'outline'(아웃라인 전체).
   // 분할 화면(outlineSplit)과 별개: 분할이 켜져 있으면 이 토글은 비활성.
   mainView: 'map' | 'outline';
+  // 아웃라인을 열 때 처음 보여줄 노드 id — 열기 액션이 captureOutlineFocus로
+  // 채우고, 아웃라인 페인이 마운트 시 그 행으로 스크롤한다 (1회성)
+  outlineFocusId: string | null;
 
   setThemeName: (v: ThemeName) => void;
   setLayoutType: (v: LayoutType) => void;
@@ -93,6 +127,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   outlineSplit: false,
   outlineSplitRatio: 0.42,
   mainView: 'map',
+  outlineFocusId: null,
 
   setThemeName: (themeName) => {
     try { localStorage.setItem(THEME_KEY, themeName); } catch { /* 저장 실패 무시 */ }
@@ -110,12 +145,27 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   resetSpacing: () => set({ spacingX: 1, spacingY: 1 }),
   // 폭 220~640px 허용 — 아웃라인을 넓게 놓고 편집할 수 있게
   setSidebarWidth: (v) => set({ sidebarWidth: Math.min(640, Math.max(220, Math.round(v))) }),
-  toggleOutlineSplit: () => set((s) => ({ outlineSplit: !s.outlineSplit })),
-  setOutlineSplit: (outlineSplit) => set({ outlineSplit }),
+  toggleOutlineSplit: () => set((s) => ({
+    outlineSplit: !s.outlineSplit,
+    // 여는 순간(맵 DOM이 아직 있을 때) 시작 위치 캡처
+    outlineFocusId: !s.outlineSplit ? captureOutlineFocus() : s.outlineFocusId,
+  })),
+  setOutlineSplit: (outlineSplit) => set((s) => ({
+    outlineSplit,
+    outlineFocusId: outlineSplit && !s.outlineSplit
+      ? captureOutlineFocus() : s.outlineFocusId,
+  })),
   setOutlineSplitRatio: (v) =>
     set({ outlineSplitRatio: Math.min(0.75, Math.max(0.2, v)) }),
-  setMainView: (mainView) => set({ mainView }),
-  toggleMainView: () => set((s) => ({ mainView: s.mainView === 'map' ? 'outline' : 'map' })),
+  setMainView: (mainView) => set((s) => ({
+    mainView,
+    outlineFocusId: mainView === 'outline' && s.mainView !== 'outline'
+      ? captureOutlineFocus() : s.outlineFocusId,
+  })),
+  toggleMainView: () => set((s) => ({
+    mainView: s.mainView === 'map' ? 'outline' : 'map',
+    outlineFocusId: s.mainView === 'map' ? captureOutlineFocus() : s.outlineFocusId,
+  })),
   setSampleTopic: (sampleTopic) => set({ sampleTopic }),
   setShowTags: (showTags) => set({ showTags }),
   toggleTagHidden: (tag) =>

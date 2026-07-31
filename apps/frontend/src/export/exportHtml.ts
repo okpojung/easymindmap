@@ -1017,7 +1017,8 @@ const VIEWER_JS = String.raw`
       }
       tGapAbove = tAt > 0 ? 6 : 0;
       tGapBelow = node._lines.length > tAt ? 6 : 0;
-      tBlockH = tblH + tGapAbove + tGapBelow;
+      // 13 = 복사(⧉) 스트립 — 표 바깥 위 (에디터 MD_TABLE_COPY_STRIP 동일)
+      tBlockH = 13 + tblH + tGapAbove + tGapBelow;
     }
     // 코드 패널 크기 — 에디터 mdCode.ts와 동일 (codeFs=fs-2, lineH=fs+6? → codeFs+6)
     var cFs = 0, cLineH = 0, cH = 0, cW = 0, CPX = 8, CPY = 6;
@@ -1191,12 +1192,14 @@ const VIEWER_JS = String.raw`
       // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
       var gridC = color || textColor;
       var tblX = x0 + PAD_X;
-      // 원문 위치: 표 앞 텍스트 아래, 표 뒤 텍스트 위 (에디터 파리티)
-      var tblY = topY + (tAt >= node._lines.length
+      // 원문 위치: 표 앞 텍스트 아래, 표 뒤 텍스트 위 (에디터 파리티).
+      // 블록 맨 위 13px = 복사(⧉) 스트립, 격자는 그 아래
+      var tStripY = topY + (tAt >= node._lines.length
         ? flowH
         : (tAt > 0
             ? (flowTops ? flowTops[tAt - 1] : (tAt - 1) * node._lineH) + node._lineH
             : 0)) + tGapAbove;
+      var tblY = tStripY + 13;
       var colWs = [], ci, ri, mmax;
       for (ci = 0; ci < mdt.headers.length; ci++) {
         mmax = measureText(mdt.headers[ci], cellFs);
@@ -1234,21 +1237,25 @@ const VIEWER_JS = String.raw`
           cellX += colWs[ci];
         }
       }
-      // 표 복사(⧉) — 헤더 행 우측 (에디터 파리티: 엑셀·웹 에디터 붙여넣기)
-      el('rect', { x: tblX + tblW - cellFs * 1.3 - 1, y: tblY + 1,
-        width: cellFs * 1.3, height: rowH2 - 2, rx: 2,
-        fill: nodeFill2, opacity: 0.92 }, g);
-      var tCopyT = el('text', { x: tblX + tblW - 3, y: tblY + rowH2 / 2 + cellFs * 0.34,
+      // 표 복사(⧉) — 표 바깥 오른쪽 위 스트립 (머리글과 겹치지 않음,
+      // 에디터 파리티: 엑셀·웹 에디터 붙여넣기)
+      var tCopyHit = el('rect', { x: tblX + tblW - cellFs * 2.2, y: tStripY,
+        width: cellFs * 2.2, height: 13, fill: 'transparent' }, g);
+      var tCopyT = el('text', { x: tblX + tblW, y: tStripY + 6.5 + cellFs * 0.34,
         'text-anchor': 'end', 'font-size': Math.max(8, cellFs - 1),
         'font-weight': 700, fill: '#475569' }, g);
       tCopyT.textContent = '⧉';
+      tCopyT.setAttribute('title', '표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다');
       tCopyT.style.cursor = 'pointer';
-      (function (hdrs, rws, btnEl) {
-        btnEl.addEventListener('click', function (ev) {
+      tCopyHit.style.cursor = 'pointer';
+      (function (hdrs, rws, btnEl, hitEl) {
+        var run = function (ev) {
           ev.stopPropagation();
           copyTableData(hdrs, rws, btnEl);
-        });
-      })(mdt.headers, mdt.rows, tCopyT);
+        };
+        btnEl.addEventListener('click', run);
+        hitEl.addEventListener('click', run);
+      })(mdt.headers, mdt.rows, tCopyT, tCopyHit);
     }
     if (mdc) {
       // 노드 속 코드 블록 — 헤더(언어 라벨 + ⧉ 복사) + 모노 줄 (에디터 파리티)
@@ -1556,6 +1563,8 @@ const VIEWER_JS = String.raw`
       // 줄 = 행, '|' = 열. 첫 행은 헤더. 우상단 ⧉ 복사 (엑셀·웹 에디터)
       var tblWrap = document.createElement('div');
       tblWrap.style.position = 'relative';
+      // 표 바깥 위 복사(⧉) 스트립 예약 — 머리글과 겹치지 않음 (2026-07-31)
+      tblWrap.style.paddingTop = '18px';
       var tbl = document.createElement('table');
       tbl.className = 'mm-table';
       var rows = String(note.text || '').split('\n');
@@ -1580,7 +1589,7 @@ const VIEWER_JS = String.raw`
       tBtn.textContent = '⧉';
       tBtn.setAttribute('title', '표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다');
       tBtn.style.position = 'absolute';
-      tBtn.style.top = '2px';
+      tBtn.style.top = '0';
       tBtn.style.right = '0';
       (function (data, b) {
         b.addEventListener('click', function () {

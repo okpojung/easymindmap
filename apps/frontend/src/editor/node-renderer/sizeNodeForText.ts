@@ -9,7 +9,7 @@
 // 측정과 NodeRenderer의 그리기가 항상 같은 값을 쓴다.
 
 import type { LevelFontSetting } from '@/editor/__samples__/types';
-import { layoutMdTable, type MdTableLayout } from './mdTable';
+import { layoutMdTable, MD_TABLE_COPY_STRIP, type MdTableLayout } from './mdTable';
 import { layoutMdCode, type MdCodeLayout } from './mdCode';
 import { parseCheckLine, checkGlyphW } from './mdCheck';
 
@@ -303,9 +303,10 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
         Math.max(minW, Math.ceil(contentW + padX * 2 + iconReserve + indicatorReserve)),
       );
   const textH = wrappedLines.length * lineHeight;
-  // 표 위(앞 텍스트)와 아래(뒤 텍스트)에 각각 여백 6 — 코드 패널과 동일
+  // 표 위(앞 텍스트)와 아래(뒤 텍스트)에 각각 여백 6 — 코드 패널과 동일.
+  // 복사(⧉) 스트립이 표 바깥 위에 붙는다 (머리글과 겹치지 않게)
   const tableH = mdTable
-    ? mdTable.h +
+    ? MD_TABLE_COPY_STRIP + mdTable.h +
       (mdTableAt > 0 ? 6 : 0) +
       (wrappedLines.length > mdTableAt ? 6 : 0)
     : 0;

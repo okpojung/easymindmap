@@ -27,7 +27,7 @@ import {
   levelTextAlign,
   scaleNodeImage,
 } from './sizeNodeForText';
-import { layoutMdTable, MD_TABLE_CELL_PAD_X } from './mdTable';
+import { layoutMdTable, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
 import { layoutMdCode, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
 import {
   parseInlineMarks,
@@ -547,7 +547,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               })();
         const tableGapAbove = mdTable && tableAt > 0 ? 6 : 0;
         const tableGapBelow = mdTable && lines.length > tableAt ? 6 : 0;
-        const tableBlockH = mdTable ? mdTable.h + tableGapAbove + tableGapBelow : 0;
+        const tableBlockH = mdTable
+          ? MD_TABLE_COPY_STRIP + mdTable.h + tableGapAbove + tableGapBelow
+          : 0;
         // 코드 패널이 끼어드는 줄 위치 — 펜스 앞 텍스트는 위, 뒤는 아래
         // (sizeNodeForText.mdCodeAt과 같은 규칙. 표가 있으면 텍스트 뒤)
         const codeAt = !mdCode
@@ -751,7 +753,10 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
               // (원문 위치: 표 앞 텍스트 아래, 표 뒤 텍스트 위)
               const tX = n.x - n.w / 2 + padX;
-              const tY = contentTop + tableBoundaryY + tableGapAbove;
+              // 블록 맨 위 = 복사(⧉) 스트립, 격자는 그 아래 — 아이콘이
+              // 머리글 셀 내용과 겹치지 않는다 (2026-07-31)
+              const stripY = contentTop + tableBoundaryY + tableGapAbove;
+              const tY = stripY + MD_TABLE_COPY_STRIP;
               const { colWs, rowH, cellFs, headers, rows, w: tW, h: tH } = mdTable;
               const colX: number[] = [];
               let acc = tX;
@@ -773,11 +778,11 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     <line key={`v${c}`} x1={x} y1={tY} x2={x} y2={tY + tH}
                           stroke={gridColor} strokeWidth={0.7} opacity={0.55} />
                   ))}
-                  {/* 표 복사 (⧉) — 엑셀(TSV)·웹 에디터(HTML 표)에 붙여넣기
-                      가능한 두 형식을 동시에 클립보드에 넣는다 */}
+                  {/* 표 복사 (⧉) — 표 바깥 오른쪽 위 스트립 (내용과 겹치지
+                      않음). 엑셀(TSV)·웹 에디터(HTML 표) 두 형식 동시 복사 */}
                   <g
                     data-node-table-copy
-                    transform={`translate(${tX + tW - 3}, ${tY + rowH / 2})`}
+                    transform={`translate(${tX + tW}, ${stripY + MD_TABLE_COPY_STRIP / 2})`}
                     style={{ cursor: 'pointer' }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -791,13 +796,11 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                   >
                     <title>표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다</title>
                     <rect
-                      x={-(tableCopied ? cellFs * 4.6 : cellFs * 1.3)}
-                      y={-rowH / 2 + 1}
-                      width={tableCopied ? cellFs * 4.6 : cellFs * 1.3}
-                      height={rowH - 2}
-                      rx={2}
-                      fill={fill}
-                      opacity={0.92}
+                      x={-(tableCopied ? cellFs * 4.6 : cellFs * 2.2)}
+                      y={-MD_TABLE_COPY_STRIP / 2}
+                      width={tableCopied ? cellFs * 4.6 : cellFs * 2.2}
+                      height={MD_TABLE_COPY_STRIP}
+                      fill="transparent"
                     />
                     <text
                       textAnchor="end"

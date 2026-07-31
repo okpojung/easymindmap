@@ -133,3 +133,7 @@ export function layoutMdTable(text: string, fontSize: number): MdTableLayout | n
 }
 
 export const MD_TABLE_CELL_PAD_X = CELL_PAD_X;
+
+// 표 위 복사(⧉) 전용 줄 높이 — 아이콘이 표 안(머리글 셀)과 겹치지 않게
+// 표 "바깥 오른쪽 위" 스트립에 놓는다 (2026-07-31, 사이징·렌더·뷰어 공용)
+export const MD_TABLE_COPY_STRIP = 13;

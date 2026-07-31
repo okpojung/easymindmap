@@ -170,8 +170,10 @@ export function NodeRichText({
       if (p.kind === 'table' && mdt) {
         return (
           // 바깥 래퍼(relative) — 표 복사(⧉) 버튼을 스크롤과 무관하게
-          // 우상단에 고정. 안쪽이 가로 스크롤 컨테이너.
-          <div key={`${key}-t${pi}`} style={{ position: 'relative' }}>
+          // 표 "바깥 오른쪽 위" 스트립(paddingTop 예약)에 고정 — 표
+          // 머리글 내용과 겹치지 않는다 (2026-07-31). 안쪽이 가로 스크롤
+          // 컨테이너.
+          <div key={`${key}-t${pi}`} style={{ position: 'relative', paddingTop: 15 }}>
           <button
             data-html-table-copy
             title="표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다"
@@ -179,8 +181,8 @@ export function NodeRichText({
             onPointerDown={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
             style={{
-              position: 'absolute', top: 4, right: 0, zIndex: 1,
-              border: 'none', background: 'rgba(255,255,255,0.85)', borderRadius: 3,
+              position: 'absolute', top: 0, right: 0, zIndex: 1,
+              border: 'none', background: 'transparent', borderRadius: 3,
               padding: '0 3px', cursor: 'pointer', fontSize: '0.78em',
               fontWeight: 700, color: tableCopied ? '#15803D' : '#475569',
               lineHeight: 1.4,

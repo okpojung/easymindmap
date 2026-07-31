@@ -173,7 +173,8 @@ function NoteBlockView({ t, block, fs, family }: {
       .filter((r) => r.trim() && !/^[\s|:\-]+$/.test(r))
       .map((r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, ''));
     return (
-      <div style={{ position: 'relative' }}>
+      // paddingTop = 표 바깥 위 복사(⧉) 스트립 — 머리글과 겹치지 않음
+      <div style={{ position: 'relative', paddingTop: 20 }}>
       {/* 표 복사(⧉) — 엑셀(TSV)·웹 에디터(HTML 표) 동시 형식 */}
       <NoteTableCopyButton t={t} text={String(block.text || '')} />
       <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 8,
@@ -229,7 +230,12 @@ function NoteBlockView({ t, block, fs, family }: {
         <NoteParagraphCopyButton t={t} text={String(block.text || '')} />
         <div
           className="mm-rich-note"
-          style={{ marginBottom: 6, fontSize: fs, fontFamily: family, lineHeight: 1.6 }}
+          style={{
+            marginBottom: 6, fontSize: fs, fontFamily: family, lineHeight: 1.6,
+            // ⧉ 버튼 폭만큼 오른쪽 여백 예약 — 첫 줄 글자가 버튼 밑으로
+            // 흐르지 않는다 (2026-07-31)
+            paddingRight: 30,
+          }}
           dangerouslySetInnerHTML={{ __html: block.html }}
         />
       </div>
@@ -247,6 +253,8 @@ function NoteBlockView({ t, block, fs, family }: {
     <div style={{
       marginBottom: 6, lineHeight: 1.55, fontSize: fs, fontFamily: family,
       overflowX: 'auto',
+      // 문단이면 ⧉ 버튼 폭만큼 오른쪽 여백 예약 (글자와 겹침 방지)
+      paddingRight: type === 'paragraph' ? 30 : undefined,
     }}>
       {String(block.text).split('\n').map((line, li) => (
         <div key={li} style={{ whiteSpace: 'pre' }}>

@@ -47,6 +47,7 @@ import {
 } from './mdCheck';
 import { measureTextPx } from './textMeasure';
 import { MarkToolbar } from './MarkToolbar';
+import { EditPreviewBackdrop } from './EditPreviewBackdrop';
 import { useViewportStore } from '@/stores/viewportStore';
 import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
@@ -212,6 +213,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   useEffect(() => { codeDlgRef.current = !!codeDlg; }, [codeDlg]);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // 편집 중 라이브 미리보기 레이어 (B6) — 스크롤 동기화용
+  const previewRef = useRef<HTMLDivElement | null>(null);
   // 편집 오버레이 위치 측정용 — 노드 박스와 정확히 일치하는 투명 rect
   const boxRef = useRef<SVGRectElement | null>(null);
   // 편집창은 SVG(foreignObject) 안이 아니라 문서 최상위 HTML 오버레이로
@@ -1030,10 +1033,39 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
             }}
           />
 
+          {/* 라이브 미리보기 (B6) — textarea 글자는 투명(캐럿만), 뒤의
+              같은 메트릭 레이어가 마커 흐림·형광 띠·코드 띠·가짜 굵게를
+              즉시 보여준다. 폭이 변하는 스타일은 금지 (캐럿 정렬). */}
+          <EditPreviewBackdrop
+            ref={previewRef}
+            text={draftText}
+            hlTextColor={style.textColor ?? '#1F1B16'}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              boxSizing: 'border-box',
+              color: textColor,
+              fontSize: fontSize * ovr.k,
+              fontWeight,
+              fontStyle,
+              lineHeight: `${lineHeight * ovr.k}px`,
+              fontFamily,
+              textAlign,
+              overflow: 'hidden',
+              padding: `${6 * ovr.k}px ${8 * ovr.k}px`,
+              margin: 0,
+            }}
+          />
           <textarea
             ref={textareaRef}
             value={draftText}
             onChange={(e) => setDraftText(e.target.value)}
+            onScroll={(e) => {
+              // 내용이 박스를 넘쳐 내부 스크롤될 때 미리보기 레이어 동기화
+              const ta2 = e.currentTarget;
+              const pv = previewRef.current;
+              if (pv) { pv.scrollTop = ta2.scrollTop; pv.scrollLeft = ta2.scrollLeft; }
+            }}
             onPaste={(e) => {
               // 텍스트 편집 중 붙여넣기도 "모두 노드에" — 기사(text/html에
               // 사진 포함)는 텍스트를 커서 위치에 넣고 사진은 **원문 위치
@@ -1149,7 +1181,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               outline: 'none',
               resize: 'none',
               background: 'transparent',
-              color: textColor,
+              // 글자는 미리보기 레이어가 그린다 — textarea는 캐럿·선택만
+              color: 'transparent',
+              caretColor: textColor,
               fontSize: fontSize * ovr.k,
               fontWeight,
               fontStyle,

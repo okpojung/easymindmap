@@ -77,6 +77,39 @@ export function parseInlineMarksWithState(
   return { segs, end: { b, i, s, u, h, c } };
 }
 
+// 편집 중 라이브 미리보기용 구간 — 마커 문자를 지우지 않고 "마커 구간"
+// 으로 함께 돌려준다 (B6, 2026-07-31). 캐럿/선택 위치가 textarea 원문과
+// 1:1로 맞아야 하므로 글자 수를 절대 바꾸지 않는다. 토글 로직은
+// parseInlineMarksWithState와 동일해야 한다 (커밋 후 렌더와 일치).
+export interface PreviewSeg extends InlineSeg {
+  marker?: boolean; // 마커 문자 자체 (흐리게 표시)
+}
+
+export function parseInlineMarksPreview(line: string): PreviewSeg[] {
+  const segs: PreviewSeg[] = [];
+  let b = false, i = false, s = false, u = false, h = false, c = false;
+  let buf = '';
+  const push = () => {
+    if (buf) { segs.push({ text: buf, b, i, s, u, h, c }); buf = ''; }
+  };
+  const marker = (m: string) => { push(); segs.push({ text: m, marker: true }); };
+
+  let idx = 0;
+  while (idx < line.length) {
+    const two = line.slice(idx, idx + 2);
+    if (two === '**') { marker(two); b = !b; idx += 2; continue; }
+    if (two === '~~') { marker(two); s = !s; idx += 2; continue; }
+    if (two === '==') { marker(two); h = !h; idx += 2; continue; }
+    if (two === '__') { marker(two); u = !u; idx += 2; continue; }
+    if (line[idx] === '*') { marker('*'); i = !i; idx += 1; continue; }
+    if (line[idx] === '`') { marker('`'); c = !c; idx += 1; continue; }
+    buf += line[idx];
+    idx += 1;
+  }
+  push();
+  return segs;
+}
+
 // 선택 구간에 마커 토글 — 이미 그 마커로 감싸져 있으면 해제, 아니면 감싼다.
 // (여러 줄 선택은 줄마다 처리 — 마커는 줄 단위 토글이므로)
 // 반환: 바뀐 전체 문자열 + 새 선택 범위.

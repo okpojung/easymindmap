@@ -948,3 +948,23 @@ levelFontSizes:
 | 2단계 | 노드별 폰트 패밀리 override | ◻ |
 | 2단계 | 노드별 폰트 크기 override | ◻ |
 | 3단계 | subtree 단위 스타일 일괄 적용 | ◻ |
+
+---
+
+### 18. 편집 중 인라인 마크 라이브 미리보기 (B6 — 2026-07-31 구현)
+
+편집 textarea의 글자를 투명(caret만 표시)하게 하고, 뒤에 **같은
+메트릭(글꼴·크기·행높이·패딩·정렬·줄바꿈)의 미리보기 레이어**
+(`EditPreviewBackdrop.tsx`)를 깔아 마커 입력 즉시 강조가 보인다.
+
+* 파서: `parseInlineMarksPreview`(inlineMarks.ts) — 커밋 렌더와 같은
+  토글 로직이되 **마커 문자를 지우지 않고 marker 구간으로 반환**
+  (글자 수 불변 = 캐럿/선택 위치 1:1).
+* **폭을 바꾸는 스타일 금지** 규칙: 마커=흐림(opacity), 형광=노란 띠,
+  인라인 코드=회색 띠(모노 글꼴 미적용), 취소선/밑줄=text-decoration,
+  굵게=**text-shadow 가짜 굵게**(진짜 bold는 폭이 넓어져 캐럿 어긋남),
+  기울임=synthetic oblique. 코드 펜스 줄은 흐림, 블록 안 줄은 회색 띠.
+* 내부 스크롤은 textarea onScroll이 레이어에 동기화.
+* 검증: e2e72 (레이어·즉시 미리보기·메트릭 동일·원문 1:1·커밋 후
+  기존 렌더·스마트 Enter 불변). 이때 e2e14의 낡은 셀렉터(`svg
+  textarea` — 편집창은 오래전부터 body 포털)도 현행화.

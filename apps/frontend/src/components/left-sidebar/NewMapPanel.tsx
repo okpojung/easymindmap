@@ -105,10 +105,16 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     setChooseTpl({ msg: '새 맵을 시작했습니다', mode: 'new' });
   };
 
-  // 확인 게이트 — 현재 맵을 닫는 것을 사용자가 승인한 뒤 실행
+  // 확인 게이트 — 현재 맵을 닫는 것을 사용자가 승인한 뒤 실행.
+  // 편집 이력이 전혀 없는 처음 상태(첫 실행 직후 등 — undo 히스토리가
+  // 비어 있음)면 잃을 것이 없으므로 묻지 않고 바로 실행한다.
   const confirmThen = (label: string, run: () => void) => {
-    setPending({ label, run });
     setChooseTpl(null);
+    if (useDocumentStore.getState().past.length === 0) {
+      run();
+      return;
+    }
+    setPending({ label, run });
   };
 
   const startBlank = () => confirmThen('새 맵 만들기', doStartBlank);

@@ -27,6 +27,7 @@ import {
   useInteractionStore,
   useAutosaveStore,
 } from '@/stores';
+import { setHistoryPaused } from '@/stores/documentStore';
 
 // Maps the live document tree onto the Kanban board WITHOUT a depth limit:
 // depth-1 nodes become columns, depth-2 nodes become cards, and depth-3+
@@ -169,7 +170,12 @@ export function EditorPage() {
   const t = THEMES[themeName];
 
   useEffect(() => {
+    // 초기 샘플 맵 주입은 "편집"이 아니다 — undo 히스토리에 기록하지
+    // 않아 첫 실행 상태에서 되돌리기가 비활성이고, 새 맵/불러오기의
+    // "현재 맵을 닫고 진행할까요?" 확인도 뜨지 않는다 (편집 이력 기준).
+    setHistoryPaused(true);
     setSample(sampleTopic);
+    setHistoryPaused(false);
   }, [sampleTopic, setSample]);
 
   // 커서가 설명 텍스트를 가리지 않는 전역 커스텀 툴팁 (요소 위쪽 표시)

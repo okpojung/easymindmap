@@ -67,7 +67,8 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
 
   // '적용' = 현재 맵의 내용은 그대로 두고 템플릿의 "속성"만 입힌다 —
   // 레벨별 대표 스타일(도형·색·테두리) + 맵 설정(레벨별 폰트·레이아웃)
-  // + 전체 레이아웃·간격. 맵 전체 교체는 '새 맵 > 이 템플릿으로 시작'.
+  // + 전체 레이아웃·간격. 템플릿 골격으로의 새 맵 시작은
+  // '새 맵 > 새 맵 만들기' 직후의 템플릿 선택 단계에서 한다.
   const apply = (tpl: {
     name: string;
     map: SampleMap;
@@ -169,8 +170,8 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
       }}>템플릿 라이브러리</div>
       <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, marginBottom: 8 }}>
         기본 제공 템플릿입니다. '적용'은 현재 맵의 내용은 유지하고
-        레이아웃·스타일만 입힙니다. 새 맵으로 시작하려면 '새 맵' 메뉴에서
-        고르세요.
+        레이아웃·스타일만 입힙니다. 템플릿 골격으로 새 맵을 시작하려면
+        '새 맵 &gt; 새 맵 만들기' 뒤 템플릿 선택 단계에서 고르세요.
       </div>
       {LIBRARY_TEMPLATES.map((tpl) => (
         <div key={tpl.id} style={{

@@ -1,18 +1,19 @@
-// NewMapPanel — 좌측 '새 맵' 메뉴 (2026-07 재편).
+// NewMapPanel — 좌측 '새 맵' 메뉴 (2026-07 2차 재편 — 깔끔한 3단 구성).
 //
-//   · 새 맵 만들기
-//   · 서버 맵 불러오기 (서버 연결 후)
+//   · 새 맵 만들기        → 만든 직후 "적용할 템플릿 선택" 단계가 뜬다.
+//                          여기서 고르면 그 템플릿의 골격(4레벨 자리
+//                          표시)+속성으로 시작 (templateSkeletonMap) —
+//                          별도의 '등록된 템플릿에서 시작' 섹션은 이
+//                          단계로 통합되어 제거됐다.
+//   · 서버 맵 불러오기    (서버 연결 후)
 //   · Local 파일 불러오기
-//       · MD 파일 불러오기   (일반 MD + EasyMindMap이 생성한 MD)
+//       · MD 파일 불러오기   (블록 배치 옵션 — 버튼 바로 아래)
 //       · HTML 파일 불러오기 (EasyMindMap이 생성한 HTML만)
 //       · ZIP 파일 불러오기  (EasyMindMap HTML/MD + files/ 첨부)
 //
-// 새 맵을 만들거나 파일을 불러온 "직후"에는 적용할 템플릿 선택 단계가
-// 나타난다 — 내 템플릿·라이브러리 템플릿 중 골라 속성(레이아웃·스타일·
-// 맵 설정)만 입히거나 '기본 그대로'로 건너뛴다 (applyTemplateStyles).
-//
-// 어느 경우든 실행 전에 "현재 편집 중인 맵을 닫고 진행할까요?" 확인
-// 단계를 거친다 — 사용자가 명시적으로 현재 맵 종료를 승인해야 교체된다.
+// 파일을 불러온 직후의 템플릿 선택은 내용을 유지한 채 속성만 입힌다
+// (applyTemplateStyles). 어느 경우든 실행 전에 "현재 편집 중인 맵을
+// 닫고 진행할까요?" 확인 단계를 거친다.
 // [서버 연결 예정] 서버 연동 시 '닫기 = 자동 저장 후 문서 목록', '새 맵 =
 // 새 maps 레코드 생성'으로 바뀌어 교체·확인 개념이 자연히 사라진다.
 
@@ -70,8 +71,11 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const mapTitle = useDocumentStore((s) => s.map.title);
   // 실행 대기 중인 동작 — 확인(현재 맵 닫기 승인) 후에 실행된다
   const [pending, setPending] = useState<{ label: string; run: () => void } | null>(null);
-  // 새 맵/불러오기 직후 — 적용할 템플릿 선택 단계
-  const [chooseTpl, setChooseTpl] = useState<string | null>(null);
+  // 새 맵/불러오기 직후 — 적용할 템플릿 선택 단계.
+  //   mode 'new'   : 템플릿 골격+속성으로 새 맵 시작 (templateSkeletonMap)
+  //   mode 'import': 불러온 내용은 유지, 속성만 입힘 (applyTemplateStyles)
+  const [chooseTpl, setChooseTpl] =
+    useState<{ msg: string; mode: 'new' | 'import' } | null>(null);
 
   useEffect(() => {
     setUserTpls(loadUserTemplates());
@@ -86,32 +90,15 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     // 기본 맵 = '트리-진행트리맵' 기본 템플릿: 중심 주제 + 주제 1~3 +
     // 하위 주제 + 내용 (4레벨) · 1레벨 트리·오른쪽 → 2레벨 진행트리 →
     // 3레벨 트리 → 4레벨 진행트리 (documentStore.newMap과 한 쌍)
-    newMap(title.trim() || '새 마인드맵');
+    const tt = title.trim();
+    newMap(tt || '새 마인드맵');
+    // 제목을 입력했으면 중심 주제에도 반영 (템플릿 골격 시작과 동일 규칙)
+    if (tt) useDocumentStore.getState().updateNodeText('root', tt);
     setLayoutType('tree-right');
     resetSpacing();
     setSelectedId('root');
     setTitle('');
-    setChooseTpl('새 맵을 시작했습니다');
-  };
-
-  const doStartFromTemplate = (tpl: UserTemplate) => {
-    // 템플릿은 맵의 속성(레이아웃·폰트·도형·스타일)과 뼈대만 물려준다 —
-    // 구조는 4레벨까지, 노드 텍스트는 자리 표시 텍스트(중심 주제/주제 N/
-    // 하위 주제/내용)로 교체 (ThinkWise 방식, templateSkeletonMap).
-    const map = templateSkeletonMap(tpl.map);
-    if (title.trim()) {
-      map.title = title.trim();
-      map.root = { ...map.root, text: title.trim() }; // 제목 = 중심 주제
-    }
-    loadMap(map);
-    // 템플릿 등록 당시의 맵 전체 레이아웃·간격 복원 (템플릿 패널과 동일)
-    const lt = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
-    if (lt) setLayoutType(lt);
-    if (tpl.editor?.spacingX) setSpacingX(tpl.editor.spacingX);
-    if (tpl.editor?.spacingY) setSpacingY(tpl.editor.spacingY);
-    setSelectedId('root');
-    setTitle('');
-    flash(`'${tpl.name}' 템플릿으로 새 맵을 시작했습니다`);
+    setChooseTpl({ msg: '새 맵을 시작했습니다', mode: 'new' });
   };
 
   // 확인 게이트 — 현재 맵을 닫는 것을 사용자가 승인한 뒤 실행
@@ -121,8 +108,6 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   };
 
   const startBlank = () => confirmThen('새 맵 만들기', doStartBlank);
-  const startFromTemplate = (tpl: UserTemplate) =>
-    confirmThen(`'${tpl.name}' 템플릿으로 시작`, () => doStartFromTemplate(tpl));
   const startImportFile = (kind: ImportKind) =>
     confirmThen(
       kind === 'md' ? 'MD 파일 불러오기'
@@ -135,8 +120,26 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       },
     );
 
-  // 새 맵/불러오기 직후 — 선택한 템플릿의 속성만 입힌다 (내용 유지)
+  // 새 맵/불러오기 직후 — 템플릿 선택.
+  //   'new'   : 템플릿 골격(4레벨 자리 표시)+속성으로 시작 — 기존
+  //             '등록된 템플릿에서 시작' 기능이 이 단계로 통합됐다
+  //   'import': 불러온 내용은 유지, 속성(레이아웃·스타일·맵 설정)만
   const applyChosenTpl = (tpl: TplChoice) => {
+    if (chooseTpl?.mode === 'new') {
+      const curTitle = useDocumentStore.getState().map.title;
+      const map = templateSkeletonMap(tpl.map);
+      map.title = curTitle;
+      map.root = { ...map.root, text: curTitle }; // 제목 = 중심 주제
+      loadMap(map);
+      const lt0 = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
+      if (lt0) setLayoutType(lt0);
+      if (tpl.editor?.spacingX) setSpacingX(tpl.editor.spacingX);
+      if (tpl.editor?.spacingY) setSpacingY(tpl.editor.spacingY);
+      setSelectedId('root');
+      setChooseTpl(null);
+      flash(`'${tpl.name}' 템플릿 골격으로 새 맵을 시작했습니다`);
+      return;
+    }
     const cur = useDocumentStore.getState().map;
     loadMap(applyTemplateStyles(cur, tpl.map));
     const lt = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
@@ -185,11 +188,12 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     const moved = movedToNote > 0
       ? ` · A4 분량을 넘어 블록 ${movedToNote}개를 노트로 옮겼습니다`
       : '';
-    setChooseTpl(
-      imported.source === 'plain-md'
+    setChooseTpl({
+      msg: imported.source === 'plain-md'
         ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다${moved}`
         : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다${extra}`,
-    );
+      mode: 'import',
+    });
   };
 
   const importFile = (file: File, kind: ImportKind) => {
@@ -323,14 +327,15 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           background: t.surface, padding: '10px 12px', marginBottom: 10,
         }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: t.primary, marginBottom: 3 }}>
-            {chooseTpl}
+            {chooseTpl.msg}
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 4 }}>
             적용할 템플릿을 선택하세요
           </div>
           <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.55, marginBottom: 8 }}>
-            내용은 그대로 두고 템플릿의 레이아웃·스타일·맵 설정만 입힙니다.
-            건너뛰면 기본 모양 그대로 시작합니다.
+            {chooseTpl.mode === 'new'
+              ? '고른 템플릿의 골격(4레벨 자리 표시 텍스트)과 레이아웃·스타일로 시작합니다. 건너뛰면 기본 골격 그대로 시작합니다.'
+              : '내용은 그대로 두고 템플릿의 레이아웃·스타일·맵 설정만 입힙니다. 건너뛰면 기본 모양 그대로 시작합니다.'}
           </div>
           <div style={{ maxHeight: 210, overflowY: 'auto', marginBottom: 8 }}>
             {tplChoices.map((tpl) => (
@@ -411,77 +416,44 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       </div>
       <button onClick={() => startImportFile('md')}
         title="일반 MD 파일과 EasyMindMap에서 생성된 MD 파일을 불러옵니다"
-        style={fileBtnStyle}>📄 MD 파일 불러오기</button>
+        style={{ ...fileBtnStyle, marginBottom: 3 }}>📄 MD 파일 불러오기</button>
+      {/* MD 블록 배치 옵션 (일반 MD 전용) — MD 버튼 바로 아래 들여쓰기 */}
+      <div data-testid="block-placement" style={{
+        border: `1px solid ${t.border}`, borderRadius: 6,
+        padding: '5px 8px', margin: '0 0 6px 14px', background: t.surface,
+      }}>
+        <div style={{ fontSize: 10, color: t.textSubtle, fontWeight: 600, marginBottom: 3 }}>
+          블록(문단·코드·표·체크) 배치
+        </div>
+        {([
+          ['node', '노드로 (기본)', '블록을 해당 위치의 노드 본문에 넣습니다. 노드가 A4 분량(약 2,500자)을 넘으면 넘치는 블록은 노트로 옮깁니다'],
+          ['note', '노트로', '기존 방식 — 문단·코드·표·체크를 노드의 노트로 넣습니다'],
+        ] as const).map(([v, label, tip]) => (
+          <label key={v} title={tip} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: 11, color: t.text, cursor: 'pointer', padding: '2px 0',
+          }}>
+            <input
+              type="radio"
+              name="block-placement"
+              checked={blockPlacement === v}
+              onChange={() => chooseBlockPlacement(v)}
+              style={{ accentColor: t.primary }}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
       <button onClick={() => startImportFile('html')}
         title="EasyMindMap에서 생성된 HTML 파일만 불러올 수 있습니다"
         style={fileBtnStyle}>🌐 HTML 파일 불러오기</button>
       <button onClick={() => startImportFile('zip')}
         title="EasyMindMap에서 생성된 HTML/MD와 files/ 폴더의 첨부파일을 포함한 ZIP을 불러옵니다"
         style={fileBtnStyle}>🗜 ZIP 파일 불러오기</button>
-      <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, margin: '2px 0 10px' }}>
+      <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, margin: '2px 0 4px' }}>
         MD는 일반 문서·EasyMindMap 생성 파일 모두, HTML/ZIP은 EasyMindMap이
         생성한 파일만 지원합니다. 불러온 뒤 적용할 템플릿을 고를 수 있습니다.
       </div>
-
-      {sectionLabel('등록된 템플릿에서 시작')}
-      <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, marginBottom: 8 }}>
-        템플릿의 레이아웃·폰트·도형·스타일과 뼈대 구조(4레벨까지)만
-        가져오고, 노드 텍스트는 자리 표시 텍스트(중심 주제 · 주제 1~n ·
-        하위 주제 · 내용)로 채워집니다. 원본 맵의 내용은 복사되지 않습니다.
-      </div>
-
-      {userTpls.length === 0 && (
-        <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>
-          등록된 내 템플릿이 없습니다. 템플릿 패널에서 현재 맵을
-          템플릿으로 등록해 두면 여기에서 골라 시작할 수 있습니다.
-        </div>
-      )}
-      {userTpls.map((tpl) => (
-        <div key={tpl.id} style={{
-          padding: '8px 10px', borderRadius: 8,
-          background: t.surface, border: `1px solid ${t.border}`,
-          marginBottom: 6,
-        }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: t.text, marginBottom: 2 }}>
-            {tpl.name}
-          </div>
-          <div style={{ fontSize: 10, color: t.textMuted, marginBottom: 6 }}>
-            노드 {tpl.nodeCount}개 · {tpl.savedAt.slice(0, 10)}
-          </div>
-          <button onClick={() => startFromTemplate(tpl)}
-            title="이 템플릿의 구조로 새 맵을 시작합니다"
-            style={{
-              fontSize: 10.5, padding: '3px 10px', borderRadius: 4, fontWeight: 600,
-              border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,
-              color: t.primary, cursor: 'pointer',
-            }}>이 템플릿으로 시작</button>
-        </div>
-      ))}
-      {LIBRARY_TEMPLATES.map((tpl) => (
-        <div key={tpl.id} style={{
-          padding: '8px 10px', borderRadius: 8,
-          background: t.surface, border: `1px solid ${t.border}`,
-          marginBottom: 6,
-        }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: t.text, marginBottom: 2 }}>
-            {tpl.name}
-          </div>
-          <div style={{ fontSize: 10, color: t.textMuted, marginBottom: 6 }}>
-            라이브러리 · {tpl.desc}
-          </div>
-          <button
-            onClick={() => startFromTemplate({
-              id: tpl.id, name: tpl.name, savedAt: '', nodeCount: 0,
-              map: tpl.map, editor: tpl.editor,
-            })}
-            title="이 라이브러리 템플릿의 구조로 새 맵을 시작합니다"
-            style={{
-              fontSize: 10.5, padding: '3px 10px', borderRadius: 4, fontWeight: 600,
-              border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,
-              color: t.primary, cursor: 'pointer',
-            }}>이 템플릿으로 시작</button>
-        </div>
-      ))}
     </div>
   );
 }

@@ -4,8 +4,9 @@
 // - Left inspector layout tab.
 // - Selection-scope rules (no "맵 전체" toggle — the ROOT node IS the whole
 //   map):
-//   · Root selected (or nothing selected) → every layout is selectable and
-//     applies to the whole map.
+//   · Root selected OR nothing selected → every layout is selectable and
+//     applies to the whole map. (2026-07: 선택 없음도 맵 전체 스코프 —
+//     큰 맵에서 중심 노드를 찾아가지 않아도 전체 레이아웃 변경 가능)
 //   · A depth ≥ 1 node selected → the layout applies to that node's subtree,
 //     and root-only layouts (방사형·양쪽 / 트리·아래 / Kanban / 자유배치) are
 //     shown disabled.
@@ -141,9 +142,10 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
 
   const mapIsKanban = normalizeLayoutType(layoutType) === ('kanban' as LayoutType);
 
-  // No selection (or a stale id) → the layout grid is fully DISABLED: the
-  // user must pick a node first so it is always explicit what the layout
-  // will apply to (main node = whole map, other node = its subtree).
+  // 선택 없음(또는 사라진 id) = "맵 전체" 스코프 (2026-07 사용성 개선):
+  // 큰 맵에서 중심 노드를 찾아 선택하지 않아도, 아무것도 선택하지 않은
+  // 상태에서 레이아웃을 고르면 맵 전체 레이아웃이 바뀐다.
+  // (메인 노드 선택 = 동일하게 맵 전체, 하위 노드 선택 = 그 서브트리)
   const hasSelection =
     !!selectedId &&
     (selectedId === 'root' || !!findNode(map.branches, selectedId));
@@ -158,13 +160,11 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   );
 
   const optionDisabled = (option: LayoutOption): boolean => {
-    if (!hasSelection) return true; // nothing selected: everything disabled
-    if (!subtreeScope) return false; // root scope: everything selectable
+    if (!subtreeScope) return false; // 맵 전체 스코프(선택 없음·메인): 전부 선택 가능
     return !!option.rootOnly; // subtree: root-only layouts are unavailable
   };
 
   const disabledReason = (option: LayoutOption): string | undefined => {
-    if (!hasSelection) return '노드를 먼저 선택하세요.';
     if (subtreeScope && option.rootOnly)
       return '메인 노드에서만 적용할 수 있는 레이아웃입니다.';
     return undefined;
@@ -250,12 +250,12 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
             lineHeight: 1.55,
           }}
         >
-          {!hasSelection
-            ? '노드를 선택하면 레이아웃을 변경할 수 있습니다. 메인 노드 선택 시 맵 전체, 하위 노드 선택 시 해당 서브트리에 적용됩니다.'
-            : subtreeScope
-              ? `선택한 노드(${selectedId}) 하위 서브트리에 레이아웃이 적용됩니다. 흐리게 표시된 레이아웃은 메인 노드 전용입니다.`
-              : mapIsKanban
-                ? 'Kanban 보드에는 하위 노드별 레이아웃이 없습니다. 어떤 노드를 선택해도 선택한 레이아웃이 맵 전체에 적용됩니다.'
+          {subtreeScope
+            ? `선택한 노드(${selectedId}) 하위 서브트리에 레이아웃이 적용됩니다. 흐리게 표시된 레이아웃은 메인 노드 전용입니다.`
+            : mapIsKanban
+              ? 'Kanban 보드에는 하위 노드별 레이아웃이 없습니다. 어떤 노드를 선택해도 선택한 레이아웃이 맵 전체에 적용됩니다.'
+              : !hasSelection
+                ? '선택한 노드가 없어 맵 전체에 적용됩니다. 특정 가지만 바꾸려면 그 하위 노드를 선택하세요.'
                 : '메인 노드 기준 — 선택한 레이아웃이 맵 전체에 적용됩니다.'}
         </div>
       </InspectorSection>

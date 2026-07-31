@@ -1,10 +1,5 @@
 # easymindmap — 인프라 아키텍처 & 설치 가이드
 
-> **문서 위치**: `docs/05-implementation/infra-architecture.md`
-> **최종 업데이트**: 2026-04-04
-> **버전**: v1.2 (전체 확정)
-> **환경**: IDC / ESXi 5대 / FortiGate IPSec VPN / 192.168.94.0/24
-
 ## 목차
 
 ### 1. 전체 인프라 구성도

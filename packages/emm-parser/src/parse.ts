@@ -177,6 +177,9 @@ export function parseMarkdownToMap(
   let sawHeading = false;
   // 마지막 리스트 항목 — 들여쓴 연속 줄을 이 노드의 추가 줄로 합친다
   let lastItem: { node: MindNode; indent: number } | null = null;
+  // 'node' 배치에서 직전에 "자식 노드로 분리"한 블록 — 바로 뒤의
+  // 인용문(표 아래 "※ 첨부 …" 등)은 이 노드의 본문 줄로 이어 붙는다
+  let lastBlockNode: MindNode | null = null;
   // "순번 문단 섹션" — 들여쓰기 없는 순번 항목("1. WEB 서버 …")은 절
   // 머리 역할을 한다: 다음 순번/견출 전까지의 문단이 그 하위로 붙는다
   // (ChatGPT 답변처럼 견출 없이 "1. 제목" + 본문 문단으로 쓰는 문서)
@@ -285,6 +288,32 @@ export function parseMarkdownToMap(
     return true;
   };
 
+  // ---- blockPlacement 'node': 경계가 확실한 블록은 자식 노드로 분리 -----
+  //
+  // 코드 펜스·표·이미지 문단처럼 **독립 블록**으로 놓인 콘텐츠는 현재
+  // 노드의 본문에 합치지 않고 각각의 자식 노드로 만든다 (markmap 등
+  // 다른 마인드맵과 동일한 변환 — 2026-07-31 사용자 결정). 반면 기사
+  // 붙여넣기처럼 "텍스트 중간"에 섞인 사진·표는 한 노드 유지가 원칙 —
+  // MD에서 그 형태는 발생하지 않으므로 여기서는 항상 분리한다.
+  // 블록 바로 뒤의 인용문은 그 블록 노드의 본문 줄로 이어 붙는다
+  // (flushQuote — 표 아래 "※ 첨부 …" 주석이 표와 함께 있도록).
+  const attachBlockChild = (body: string, extractLinks: boolean): MindNode | null => {
+    if (!placeInNode || !sawHeading || stack.length === 0) return null;
+    const parent = stack[stack.length - 1].node;
+    const node: MindNode = { id: nid(), text: body };
+    if (extractLinks) {
+      const { text, links, images } = stripLinks(body);
+      node.text = text || (images.length ? imageFileName(images[0]) : '');
+      mergeLinks(node, links);
+      mergeImages(node, images);
+    }
+    if (!node.text.trim() && !node.images?.length) return null;
+    parent.children = parent.children ?? [];
+    parent.children.push(node);
+    lastBlockNode = node;
+    return node;
+  };
+
   // ---- 누적 버퍼 (문단·표·인용문·코드) ------------------------------------
   let paraBuf: string[] = [];
   let tableBuf: string[] = [];
@@ -321,6 +350,9 @@ export function parseMarkdownToMap(
       stack.length && paraLines.length &&
       paraLines.every((l) => IMG_ONLY_LINE_RE.test(l) || BARE_IMAGE_URL_RE.test(l))
     ) {
+      // 'node' 배치 — 독립 이미지도 각각의 자식 노드로 분리 (markmap
+      // 파리티). 'note'(EMM 메타 왕복)는 현재 노드의 사진으로 폴딩.
+      if (attachBlockChild(text, true)) return;
       const { links, images } = stripLinks(text);
       mergeImages(stack[stack.length - 1].node, images);
       mergeLinks(stack[stack.length - 1].node, links);
@@ -329,6 +361,7 @@ export function parseMarkdownToMap(
       return;
     }
     // 순번 문단 섹션이 열려 있으면 그 하위로 (아니면 견출 하위)
+    lastBlockNode = null;
     const depth = sectionDepth !== null ? sectionDepth + 1 : lastHeadingDepth + 1;
     if (attach(depth, text)) paraDepth = depth;
   };
@@ -345,10 +378,10 @@ export function parseMarkdownToMap(
       .filter((r) => r.trim());
     tableBuf = [];
     if (!rows.length) return;
-    // 표 — 기본(note)은 "표 노트", blockPlacement 'node'면 노드 본문의
-    // 파이프 표(mdTable 렌더)로
+    // 표 — 기본(note)은 "표 노트", blockPlacement 'node'면 **각각의
+    // 자식 노드**로 분리 (격자 렌더 — markmap 파리티, 2026-07-31)
     const tableText = rows.join('\n');
-    if (!placeBlock(tableText, () => ({ id: nid(), type: 'table', text: tableText }))) {
+    if (!attachBlockChild(tableText, true)) {
       addNote({ id: nid(), type: 'table', text: tableText });
     }
   };
@@ -357,7 +390,16 @@ export function parseMarkdownToMap(
     const text = quoteBuf.join('\n').trim();
     quoteBuf = [];
     if (!text) return;
-    // 인용문(문단) — 'node'면 현재 노드 본문에 줄로 합친다
+    // 인용문(문단) — 'node' 배치에서 직전 블록을 자식 노드로 분리했다면
+    // 그 노드의 본문 줄로 이어 붙인다 (표 아래 "※ 첨부 …"가 표와 함께).
+    // 아니면 현재 노드 본문에 줄로 합친다 (A4 초과 시 노트로 — placeBlock)
+    if (placeInNode && lastBlockNode && sawHeading) {
+      const { text: t, links, images } = stripLinks(text);
+      if (t) lastBlockNode.text += `\n${t}`;
+      mergeLinks(lastBlockNode, links);
+      mergeImages(lastBlockNode, images);
+      return;
+    }
     if (!placeBlock(text, () => ({ id: nid(), type: 'paragraph', text }))) {
       addNote({ id: nid(), type: 'paragraph', text });
     }
@@ -383,10 +425,10 @@ export function parseMarkdownToMap(
         const code = fenceBuf.join('\n');
         fenceBuf = null;
         if (code.trim()) {
-          // 'node'면 노드 본문의 ``` 펜스(코드 패널 렌더)로
+          // 'node'면 **각각의 자식 노드**의 ``` 펜스(코드 패널 렌더)로
+          // 분리 (markmap 파리티, 2026-07-31) — 원문 보존(링크 미추출)
           const block = '```' + (fenceLang || '') + '\n' + code + '\n```';
-          if (!placeBlock(block, () =>
-            ({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined }), false)) {
+          if (!attachBlockChild(block, false)) {
             addNote({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
           }
         }
@@ -419,7 +461,8 @@ export function parseMarkdownToMap(
 
     // 수평선
     if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
-      flushPara(); lastItem = null; sectionDepth = null; paraDepth = null;
+      flushPara(); lastItem = null; lastBlockNode = null;
+      sectionDepth = null; paraDepth = null;
       continue;
     }
 
@@ -427,6 +470,7 @@ export function parseMarkdownToMap(
     if (heading) {
       flushAll();
       lastItem = null;
+      lastBlockNode = null;
       sectionDepth = null;
       paraDepth = null;
       const level = heading[1].length; // 1~6
@@ -469,6 +513,7 @@ export function parseMarkdownToMap(
     const bullet = line.match(/^([ \t]*)([-*+]|\d+[.)])\s+(.+)$/);
     if (bullet) {
       flushPara();
+      lastBlockNode = null;
       const indent = bullet[1].replace(/\t/g, '  ').length;
       const indentLevel = Math.floor(indent / 2);
       const marker = bullet[2];
@@ -513,7 +558,7 @@ export function parseMarkdownToMap(
     // 닫는 펜스 없이 끝난 코드 — 같은 배치 규칙 적용
     const tail = fenceBuf.join('\n');
     const tailBlock = '```' + (fenceLang || '') + '\n' + tail + '\n```';
-    if (!placeBlock(tailBlock, () => ({ id: nid(), type: 'code_block', text: tail }), false)) {
+    if (!attachBlockChild(tailBlock, false)) {
       addNote({ id: nid(), type: 'code_block', text: tail });
     }
   }

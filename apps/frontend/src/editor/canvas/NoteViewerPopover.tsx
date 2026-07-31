@@ -8,7 +8,7 @@
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
-import { parseInlineMarks } from '@/editor/node-renderer/inlineMarks';
+import { parseInlineMarks, stripInlineMarks } from '@/editor/node-renderer/inlineMarks';
 import { copyTable, pipeTextToTable } from '@/utils/copyTable';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
@@ -87,13 +87,43 @@ function CopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   return (
     <button
       onClick={copy}
+      title="코드 복사"
       style={{
         border: `1px solid ${t.border}`, borderRadius: 4, background: t.surface,
         fontSize: 10, padding: '1px 7px', cursor: 'pointer', color: t.text,
         fontWeight: 600,
       }}
     >
-      {copied ? '복사됨 ✓' : '⧉ 복사'}
+      {copied ? '복사됨 ✓' : '⧉'}
+    </button>
+  );
+}
+
+// 노트 문단 우상단 ⧉ 복사 — 마커를 뗀 표시 텍스트를 클립보드에
+function NoteParagraphCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      data-note-para-copy
+      title="문단 복사"
+      onClick={(e) => {
+        e.stopPropagation();
+        const clean = stripInlineMarks(text).trim();
+        if (!clean) return;
+        void navigator.clipboard?.writeText(clean).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        }).catch(() => {});
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      style={{
+        position: 'absolute', top: 0, right: 0, zIndex: 1,
+        border: `1px solid ${t.border}`, background: t.surface, borderRadius: 4,
+        padding: '1px 5px', cursor: 'pointer', fontSize: 10,
+        fontWeight: 700, color: copied ? '#15803D' : t.textMuted,
+      }}
+    >
+      {copied ? '복사됨 ✓' : '⧉'}
     </button>
   );
 }
@@ -122,7 +152,7 @@ function NoteTableCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
         fontWeight: 700, color: copied ? '#15803D' : t.textMuted,
       }}
     >
-      {copied ? '복사됨 ✓' : '⧉ 복사'}
+      {copied ? '복사됨 ✓' : '⧉'}
     </button>
   );
 }
@@ -194,11 +224,15 @@ function NoteBlockView({ t, block, fs, family }: {
   // 리치 문단(웹 기사 붙여넣기) — sanitize된 HTML을 사진·서식째 표시
   if (type === 'paragraph' && block.html) {
     return (
-      <div
-        className="mm-rich-note"
-        style={{ marginBottom: 6, fontSize: fs, fontFamily: family, lineHeight: 1.6 }}
-        dangerouslySetInnerHTML={{ __html: block.html }}
-      />
+      <div style={{ position: 'relative' }}>
+        {/* 문단 복사(⧉) — 표시 텍스트를 클립보드에 (2026-07-31) */}
+        <NoteParagraphCopyButton t={t} text={String(block.text || '')} />
+        <div
+          className="mm-rich-note"
+          style={{ marginBottom: 6, fontSize: fs, fontFamily: family, lineHeight: 1.6 }}
+          dangerouslySetInnerHTML={{ __html: block.html }}
+        />
+      </div>
     );
   }
 
@@ -206,6 +240,10 @@ function NoteBlockView({ t, block, fs, family }: {
   // (**굵게** ==하이라이트== 등)는 서식으로, [라벨](url)은 링크로 렌더링
   // — 마커 문자는 숨김.
   return (
+    <div style={{ position: 'relative' }}>
+    {type === 'paragraph' && (
+      <NoteParagraphCopyButton t={t} text={String(block.text || '')} />
+    )}
     <div style={{
       marginBottom: 6, lineHeight: 1.55, fontSize: fs, fontFamily: family,
       overflowX: 'auto',
@@ -216,6 +254,7 @@ function NoteBlockView({ t, block, fs, family }: {
           <InlineText t={t} text={line} />
         </div>
       ))}
+    </div>
     </div>
   );
 }

@@ -300,7 +300,7 @@ export function NodeRichText({
                 fontFamily: 'inherit',
               }}
             >
-              {codeCopied ? '복사됨 ✓' : '⧉ 복사'}
+              {codeCopied ? '복사됨 ✓' : '⧉'}
             </span>
           </div>
           <pre data-html-scroll style={{

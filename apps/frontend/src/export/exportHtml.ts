@@ -359,7 +359,12 @@ const VIEWER_JS = String.raw`
         j++;
       }
       if (!rows.length) continue;
-      return { headers: headers, rows: rows };
+      // before/after — 표 앞·뒤 텍스트 (원문 위치 렌더용, 에디터와 동일)
+      return {
+        headers: headers, rows: rows,
+        before: lines.slice(0, i).join('\n').replace(/\s+$/, ''),
+        after: lines.slice(j).join('\n').replace(/^\s+|\s+$/g, '')
+      };
     }
     return null;
   }
@@ -996,12 +1001,23 @@ const VIEWER_JS = String.raw`
     var align = node.textAlign || 'center'; // 기본 정렬 = 중앙 (에디터와 동일)
     var mdt = node._fixed ? parseMdTable(node.text) : null;
     var mdc = node._fixed ? parseMdCode(node.text) : null;
-    var cellFs = 0, rowH2 = 0, tGap = 0, tblH = 0;
+    var cellFs = 0, rowH2 = 0, tblH = 0;
+    // 표가 끼어드는 래핑 줄 인덱스(tAt)·위/아래 여백 — 에디터
+    // sizeNodeForText.mdTableAt과 동일 규칙 (표 뒤 텍스트가 표 위로
+    // 올라가던 문제 수정. 코드와 함께면 텍스트 뒤)
+    var tAt = node._lines.length, tGapAbove = 0, tGapBelow = 0, tBlockH = 0;
     if (mdt) {
       cellFs = Math.max(10, node._fs - 2);
       rowH2 = cellFs + 10;
-      tGap = node._lines.length ? 6 : 0;
       tblH = (1 + mdt.rows.length) * rowH2;
+      if (!mdc) {
+        var tBeforeCnt = mdt.before === '' ? 0 : mdt.before.split('\n').length;
+        var ms4 = (node._manualStarts && node._manualStarts.length) ? node._manualStarts : [0];
+        tAt = tBeforeCnt < ms4.length ? ms4[tBeforeCnt] : node._lines.length;
+      }
+      tGapAbove = tAt > 0 ? 6 : 0;
+      tGapBelow = node._lines.length > tAt ? 6 : 0;
+      tBlockH = tblH + tGapAbove + tGapBelow;
     }
     // 코드 패널 크기 — 에디터 mdCode.ts와 동일 (codeFs=fs-2, lineH=fs+6? → codeFs+6)
     var cFs = 0, cLineH = 0, cH = 0, cW = 0, CPX = 8, CPY = 6;
@@ -1069,7 +1085,7 @@ const VIEWER_JS = String.raw`
     var stacked = !!(mdt || img || inImgs || mdc); // 표·코드·사진이 있으면 세로 스택
     var cBlockH = mdc ? cH + cGapAbove + cGapBelow : 0;
     var contentH = flowH +
-      (mdt ? tblH + tGap : 0) + cBlockH + (img ? img.h + imgGap : 0);
+      tBlockH + cBlockH + (img ? img.h + imgGap : 0);
     var topY = node._cy - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
     // 체크리스트 항목(- [x] …) — 에디터가 실어 보낸 래핑 줄 범위(_checks).
@@ -1103,9 +1119,10 @@ const VIEWER_JS = String.raw`
       }
       var ckw2 = ck0 ? CKW : 0;
       lw2 += ckw2;
-      // 코드 패널 뒤(cAt 이후) 줄은 패널 높이만큼 아래로 (원문 순서 보존)
+      // 표(tAt)·코드 패널(cAt) 뒤 줄은 그 높이만큼 아래로 (원문 순서 보존)
       var baseY = stacked
         ? topY + (flowTops ? flowTops[li] : li * node._lineH) +
+          (mdt && li >= tAt ? tBlockH : 0) +
           (mdc && li >= cAt ? cBlockH : 0) +
           node._lineH / 2 + node._fs * 0.34
         : y0 + PAD_Y + node._fs * 0.85 + li * node._lineH;
@@ -1174,7 +1191,12 @@ const VIEWER_JS = String.raw`
       // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
       var gridC = color || textColor;
       var tblX = x0 + PAD_X;
-      var tblY = topY + flowH + tGap;
+      // 원문 위치: 표 앞 텍스트 아래, 표 뒤 텍스트 위 (에디터 파리티)
+      var tblY = topY + (tAt >= node._lines.length
+        ? flowH
+        : (tAt > 0
+            ? (flowTops ? flowTops[tAt - 1] : (tAt - 1) * node._lineH) + node._lineH
+            : 0)) + tGapAbove;
       var colWs = [], ci, ri, mmax;
       for (ci = 0; ci < mdt.headers.length; ci++) {
         mmax = measureText(mdt.headers[ci], cellFs);
@@ -1232,7 +1254,7 @@ const VIEWER_JS = String.raw`
       // 노드 속 코드 블록 — 헤더(언어 라벨 + ⧉ 복사) + 모노 줄 (에디터 파리티)
       // 패널 상단 — 텍스트 중간이면 그 줄 경계, 끝이면 표 아래 (에디터 동일)
       var cBoundY = cAt >= node._lines.length
-        ? flowH + (mdt ? tblH + tGap : 0)
+        ? flowH + tBlockH
         : (cAt > 0
             ? (flowTops ? flowTops[cAt - 1] : (cAt - 1) * node._lineH) + node._lineH
             : 0);
@@ -1248,7 +1270,8 @@ const VIEWER_JS = String.raw`
       langT.textContent = mdc.lang || 'code';
       var copyT = el('text', { x: codeX + cW - CPX, y: headBase, 'text-anchor': 'end',
         'font-size': cHeadFs, fill: '#475569' }, g);
-      copyT.textContent = '⧉ 복사';
+      copyT.textContent = '⧉';
+      copyT.setAttribute('title', '코드 복사');
       copyT.style.cursor = 'pointer';
       (function (codeJoined, btnEl) {
         btnEl.addEventListener('click', function (ev) {
@@ -1554,7 +1577,8 @@ const VIEWER_JS = String.raw`
       }
       var tBtn = document.createElement('button');
       tBtn.className = 'mm-copy';
-      tBtn.textContent = '⧉ 복사';
+      tBtn.textContent = '⧉';
+      tBtn.setAttribute('title', '표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다');
       tBtn.style.position = 'absolute';
       tBtn.style.top = '2px';
       tBtn.style.right = '0';
@@ -1577,7 +1601,8 @@ const VIEWER_JS = String.raw`
       langEl.textContent = note.lang || 'code';
       var btn = document.createElement('button');
       btn.className = 'mm-copy';
-      btn.textContent = '⧉ 복사';
+      btn.textContent = '⧉';
+      btn.setAttribute('title', '코드 복사');
       (function (text, b) {
         b.addEventListener('click', function () { copyText(text, b); });
       })(note.text, btn);

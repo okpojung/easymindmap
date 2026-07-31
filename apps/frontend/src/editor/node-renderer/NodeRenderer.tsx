@@ -532,7 +532,22 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
         const img = n.image && inlineImgs.length === 0
           ? scaleNodeImage(n.image, n.w, padX)
           : null;
-        const tableGap = mdTable && lines.length > 0 ? 6 : 0;
+        // 표가 끼어드는 줄 위치 — 표 앞 텍스트는 위, 뒤 텍스트는 아래
+        // (sizeNodeForText.mdTableAt과 같은 규칙 — 표 뒤 텍스트가 표
+        // 위로 올라가던 문제 수정, 2026-07-31. 코드와 함께면 텍스트 뒤)
+        const tableAt = !mdTable
+          ? lines.length
+          : mdCode
+            ? lines.length
+            : (() => {
+                const beforeCount =
+                  mdTable.before === '' ? 0 : mdTable.before.split('\n').length;
+                const ms = manualStarts && manualStarts.length ? manualStarts : [0];
+                return beforeCount < ms.length ? ms[beforeCount] : lines.length;
+              })();
+        const tableGapAbove = mdTable && tableAt > 0 ? 6 : 0;
+        const tableGapBelow = mdTable && lines.length > tableAt ? 6 : 0;
+        const tableBlockH = mdTable ? mdTable.h + tableGapAbove + tableGapBelow : 0;
         // 코드 패널이 끼어드는 줄 위치 — 펜스 앞 텍스트는 위, 뒤는 아래
         // (sizeNodeForText.mdCodeAt과 같은 규칙. 표가 있으면 텍스트 뒤)
         const codeAt = !mdCode
@@ -551,13 +566,21 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
         const imgGap = img && (lines.length > 0 || mdTable || mdCode) ? 6 : 0;
         const contentH =
           flow.totalH +
-          (mdTable ? mdTable.h + tableGap : 0) +
+          tableBlockH +
           codeBlockH +
           (img ? img.h + imgGap : 0);
         const contentTop = n.y - contentH / 2;
+        // 표 상단: 표가 텍스트 중간이면 그 줄 경계, 끝이면 모든 텍스트 아래
+        const tableBoundaryY = tableAt >= lines.length
+          ? flow.totalH
+          : tableAt > 0
+            ? flow.lineTops[tableAt - 1] + lineHeight
+            : 0;
+        // 표 뒤 줄들이 아래로 밀리는 양
+        const tableShift = tableBlockH;
         // 패널 상단: 패널이 텍스트 중간이면 그 줄 경계, 끝이면 표 아래
         const codeBoundaryY = codeAt >= lines.length
-          ? flow.totalH + (mdTable ? mdTable.h + tableGap : 0)
+          ? flow.totalH + tableBlockH
           : codeAt > 0
             ? flow.lineTops[codeAt - 1] + lineHeight
             : 0;
@@ -585,6 +608,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               // + 코드 패널 뒤(codeAt 이후) 줄은 패널 높이만큼 아래로
               const lineCenter =
                 contentTop + flow.lineTops[i] +
+                (i >= tableAt ? tableShift : 0) +
                 (i >= codeAt ? codeShift : 0) + lineHeight / 2;
               // 인라인 강조(부분 텍스트) — **굵게** *기울임* ~~취소선~~
               // __밑줄__ ==하이라이트== 마커를 구간(tspan)으로 그린다.
@@ -725,8 +749,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
 
             {mdTable && (() => {
               // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
+              // (원문 위치: 표 앞 텍스트 아래, 표 뒤 텍스트 위)
               const tX = n.x - n.w / 2 + padX;
-              const tY = contentTop + flow.totalH + tableGap;
+              const tY = contentTop + tableBoundaryY + tableGapAbove;
               const { colWs, rowH, cellFs, headers, rows, w: tW, h: tH } = mdTable;
               const colX: number[] = [];
               let acc = tX;
@@ -894,7 +919,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                       } else done();
                     }}
                   >
-                    {codeCopied ? '복사됨 ✓' : '⧉ 복사'}
+                    <title>코드 복사</title>
+                    {codeCopied ? '복사됨 ✓' : '⧉'}
                   </text>
                   {mdCode.code.map((ln, ci) => (
                     <text

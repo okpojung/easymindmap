@@ -12,10 +12,12 @@
 
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { parseInlineMarks, CODE_BG, CODE_TEXT } from './inlineMarks';
 import { parseMdCode } from './mdCode';
 import { parseMdTable } from './mdTable';
 import { parseCheckLine, toggleCheckInText } from './mdCheck';
+import { CodeBlockDialog, replaceCodeBlock } from './CodeBlockDialog';
 
 const MONO = "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace";
 
@@ -100,14 +102,22 @@ function splitCells(line: string): string[] {
 export function NodeRichText({
   text,
   onToggleCheck,
+  onUpdateText,
+  t,
   style,
 }: {
   text: string;
   onToggleCheck?: (nextText: string) => void;
+  // 코드 블록 ✎ 수정(팝업 편집기) — onUpdateText + t를 주면 언어 라벨
+  // 옆 연필로 맵 코드 패널과 동일하게 언어·코드를 팝업에서 고친다
+  onUpdateText?: (nextText: string) => void;
+  t?: ThemeTokens;
   style?: CSSProperties;
 }) {
   const raw = String(text || '');
   const mdc = parseMdCode(raw);
+  const [codeDlgOpen, setCodeDlgOpen] = useState(false);
+  const codeEditable = !!(onUpdateText && t);
   // 코드 복사 피드백 — 맵 패널의 '⧉ 복사 → 복사됨 ✓'와 동일 (1.5초)
   const [codeCopied, setCodeCopied] = useState(false);
   const copyCode = () => {
@@ -216,7 +226,21 @@ export function NodeRichText({
             padding: '1px 7px', borderBottom: '1px solid #D8DDE4',
             fontFamily: MONO, fontSize: '0.82em', color: '#64748B',
           }}>
-            <span>{mdc.lang || 'code'}</span>
+            {codeEditable ? (
+              // 언어 라벨(✎) 클릭 = 팝업 편집기 — 맵 코드 패널과 동일
+              <span
+                data-html-code-edit
+                onClick={(e) => { e.stopPropagation(); setCodeDlgOpen(true); }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                title="클릭하면 팝업에서 언어·코드를 편집합니다"
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                {(mdc.lang || 'code') + ' ✎'}
+              </span>
+            ) : (
+              <span>{mdc.lang || 'code'}</span>
+            )}
             {/* ⧉ 복사 — 맵 코드 패널 헤더와 동일 구성 */}
             <span
               data-html-code-copy
@@ -243,6 +267,19 @@ export function NodeRichText({
         </div>
       )}
       {after && renderPlain(after.seg, after.key)}
+      {codeDlgOpen && codeEditable && mdc && (
+        // 코드 블록 팝업 편집기 — 확인 시 원문의 첫 펜스 블록을 교체
+        <CodeBlockDialog
+          t={t!}
+          initialLang={mdc.lang}
+          initialCode={mdc.code.join('\n')}
+          onCancel={() => setCodeDlgOpen(false)}
+          onSave={(lang, code) => {
+            onUpdateText!(replaceCodeBlock(raw, lang, code));
+            setCodeDlgOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

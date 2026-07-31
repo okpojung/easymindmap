@@ -519,7 +519,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.45,
-            }}><InlineText text={node.text} nodeId={node.id} /></div>
+            }}><InlineText text={node.text} nodeId={node.id} t={t} /></div>
             {(rawNode?.images?.length
               ? rawNode.images // 인라인 사진(기사) — 아웃라인은 목록으로 표시
               : rawNode?.image?.src
@@ -601,13 +601,20 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 
 // 행 본문 표시 — 인라인 마크 + 노드 블록(코드 패널·체크 글리프·표)을
 // 맵과 같은 규칙으로 렌더링 (리치 노드 P4, 공용 NodeRichText).
-// nodeId를 주면 체크 글리프 클릭 = 원문 [ ]↔[x] 토글.
-function InlineText({ text, nodeId }: { text: string; nodeId?: string }) {
+// nodeId를 주면 체크 글리프 클릭 = 원문 토글, 코드 언어 라벨(✎) 클릭 =
+// 팝업 편집기 (맵 코드 패널과 동일).
+function InlineText({ text, nodeId, t }: {
+  text: string;
+  nodeId?: string;
+  t?: ThemeTokens;
+}) {
   const updateNodeText = useDocumentStore((s) => s.updateNodeText);
   return (
     <NodeRichText
       text={text}
+      t={t}
       onToggleCheck={nodeId ? (next) => updateNodeText(nodeId, next) : undefined}
+      onUpdateText={nodeId ? (next) => updateNodeText(nodeId, next) : undefined}
     />
   );
 }

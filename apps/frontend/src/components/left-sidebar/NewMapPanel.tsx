@@ -55,6 +55,18 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const [notice, setNotice] = useState('');
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [importKind, setImportKind] = useState<ImportKind>('md');
+  // MD 블록 배치 옵션 (리치 노드 P3) — 문단·코드·표·체크를 노드 본문에
+  // 넣을지(기본), 기존처럼 노트로 넣을지. 선택은 기억된다.
+  const [blockPlacement, setBlockPlacement] = useState<'node' | 'note'>(() => {
+    try {
+      return window.localStorage.getItem('emm.import.blockPlacement') === 'note'
+        ? 'note' : 'node';
+    } catch { return 'node'; }
+  });
+  const chooseBlockPlacement = (v: 'node' | 'note') => {
+    setBlockPlacement(v);
+    try { window.localStorage.setItem('emm.import.blockPlacement', v); } catch { /* 무시 */ }
+  };
   const mapTitle = useDocumentStore((s) => s.map.title);
   // 실행 대기 중인 동작 — 확인(현재 맵 닫기 승인) 후에 실행된다
   const [pending, setPending] = useState<{ label: string; run: () => void } | null>(null);
@@ -160,7 +172,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     map: Parameters<typeof loadMap>[0];
     editor?: { layoutType?: Parameters<typeof setLayoutType>[0]; spacingX?: number; spacingY?: number };
     source: string;
-  } & { relinked?: number }) => {
+  } & { relinked?: number }, movedToNote = 0) => {
     loadMap(imported.map);
     if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
     else setLayoutType('radial-right');
@@ -169,26 +181,33 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     if (imported.editor?.spacingY) setSpacingY(imported.editor.spacingY);
     setSelectedId('root');
     const extra = imported.relinked ? ` (첨부 ${imported.relinked}개 연결)` : '';
+    // A4 분량 초과로 노트로 옮긴 블록 안내 (데이터는 잃지 않는다 — P3)
+    const moved = movedToNote > 0
+      ? ` · A4 분량을 넘어 블록 ${movedToNote}개를 노트로 옮겼습니다`
+      : '';
     setChooseTpl(
       imported.source === 'plain-md'
-        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다`
+        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다${moved}`
         : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다${extra}`,
     );
   };
 
   const importFile = (file: File, kind: ImportKind) => {
+    // 블록 배치 옵션 + 이동 통계 (일반 MD에만 적용 — importMapFile.ts)
+    const stats = { movedToNote: 0 };
+    const parseOpts = { blockPlacement, stats };
     // ZIP(맵 + files/) — 안의 맵 파일 + 첨부를 함께 복원
     if (kind === 'zip' || /\.zip$/i.test(file.name)) {
       const reader = new FileReader();
       reader.onload = () => {
         void (async () => {
           const bytes = new Uint8Array(reader.result as ArrayBuffer);
-          const imported = await parseZipMapFile(bytes);
+          const imported = await parseZipMapFile(bytes, parseOpts);
           if (!imported) {
             flash('ZIP 안에서 EasyMindMap 맵 파일(.md/.html)을 찾지 못했습니다');
             return;
           }
-          applyImported(imported);
+          applyImported(imported, stats.movedToNote);
         })();
       };
       reader.readAsArrayBuffer(file);
@@ -204,14 +223,14 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         text.includes('id="easymindmap-map"');
       const imported = isHtml
         ? parseHtmlMapFile(text)
-        : parseMarkdownMapFile(text, name);
+        : parseMarkdownMapFile(text, name, parseOpts);
       if (!imported) {
         flash(isHtml
           ? 'EasyMindMap이 내보낸 HTML이 아닙니다 (맵 메타데이터 없음)'
           : '맵으로 만들 견출(#)·리스트(-) 구조를 찾지 못했습니다');
         return;
       }
-      applyImported(imported);
+      applyImported(imported, stats.movedToNote);
     };
     reader.readAsText(file);
   };
@@ -363,6 +382,33 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           e.target.value = '';
         }}
       />
+      {/* 블록 배치 옵션 (일반 MD 전용) — 문단·코드·표·체크를 어디에 둘지 */}
+      <div data-testid="block-placement" style={{
+        border: `1px solid ${t.border}`, borderRadius: 6,
+        padding: '6px 8px', marginBottom: 6, background: t.surface,
+      }}>
+        <div style={{ fontSize: 10, color: t.textSubtle, fontWeight: 600, marginBottom: 4 }}>
+          MD 블록(문단·코드·표·체크) 배치
+        </div>
+        {([
+          ['node', '노드로 (기본)', '블록을 해당 위치의 노드 본문에 넣습니다. 노드가 A4 분량(약 2,500자)을 넘으면 넘치는 블록은 노트로 옮깁니다'],
+          ['note', '노트로', '기존 방식 — 문단·코드·표·체크를 노드의 노트로 넣습니다'],
+        ] as const).map(([v, label, tip]) => (
+          <label key={v} title={tip} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: 11, color: t.text, cursor: 'pointer', padding: '2px 0',
+          }}>
+            <input
+              type="radio"
+              name="block-placement"
+              checked={blockPlacement === v}
+              onChange={() => chooseBlockPlacement(v)}
+              style={{ accentColor: t.primary }}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
       <button onClick={() => startImportFile('md')}
         title="일반 MD 파일과 EasyMindMap에서 생성된 MD 파일을 불러옵니다"
         style={fileBtnStyle}>📄 MD 파일 불러오기</button>

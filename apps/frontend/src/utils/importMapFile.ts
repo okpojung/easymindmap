@@ -9,7 +9,7 @@
 //   · MD (일반): 기존 parseMarkdownToMap 구조 파싱 그대로.
 
 import type { MindNode, SampleMap, SampleBranch } from '@/editor/__samples__/types';
-import { parseMarkdownToMap } from './importMarkdown';
+import { parseMarkdownToMap, type ParseEmmOptions } from './importMarkdown';
 import {
   MD_META_RE,
   MD_META_BLOCK_RE,
@@ -106,6 +106,10 @@ function enrich(bodyMap: SampleMap, meta: MapFileMeta): SampleMap {
 export function parseMarkdownMapFile(
   text: string,
   fallbackTitle: string,
+  // 블록 배치 옵션(리치 노드 P3) — "일반 MD"에만 적용한다.
+  // EasyMindMap이 내보낸 MD(메타데이터 있음)는 항상 기존 노트 배치로
+  // 파싱해야 enrich의 텍스트 매칭(스타일·노트 복원)이 깨지지 않는다.
+  opts?: ParseEmmOptions,
 ): ImportedMap | null {
   const raw = String(text || '');
   const metaMatch = raw.match(MD_META_RE);
@@ -122,7 +126,7 @@ export function parseMarkdownMapFile(
     }
   }
 
-  const map = parseMarkdownToMap(raw, fallbackTitle);
+  const map = parseMarkdownToMap(raw, fallbackTitle, opts);
   if (!map) return null;
   return { map, source: 'plain-md' };
 }
@@ -187,7 +191,10 @@ export interface ImportedZipMap extends ImportedMap {
   relinked: number; // files/에서 data URL로 재연결한 첨부 수
 }
 
-export async function parseZipMapFile(bytes: Uint8Array): Promise<ImportedZipMap | null> {
+export async function parseZipMapFile(
+  bytes: Uint8Array,
+  opts?: ParseEmmOptions,
+): Promise<ImportedZipMap | null> {
   const entries = await parseZip(bytes);
   if (entries.length === 0) return null;
 
@@ -200,7 +207,8 @@ export async function parseZipMapFile(bytes: Uint8Array): Promise<ImportedZipMap
   const text = new TextDecoder().decode(mapEntry.data);
   const inner = /\.html?$/i.test(mapEntry.path)
     ? parseHtmlMapFile(text)
-    : parseMarkdownMapFile(text, mapEntry.path.replace(/\.(md|markdown|html?)$/i, ''));
+    : parseMarkdownMapFile(
+        text, mapEntry.path.replace(/\.(md|markdown|html?)$/i, ''), opts);
   if (!inner) return null;
 
   const { map, relinked } = relinkAttachments(inner.map, entries);

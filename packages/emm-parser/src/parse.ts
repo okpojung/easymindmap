@@ -34,13 +34,37 @@ import type {
 
 const BRANCH_COLORS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 
+// ---- 블록 배치 옵션 (리치 노드 P3 — rich-node-content.md §2.2~2.3) ----
+//
+// blockPlacement:
+//   'note'(파서 기본) — 기존 동작: 인용문=문단 노트, ```=코드 노트,
+//     표=표 노트, - [x]=체크 노트. (적합성 코퍼스·AI 생성·EasyMindMap
+//     MD 왕복(enrich 텍스트 매칭)과의 호환을 위해 파서 기본은 유지)
+//   'node' — 블록을 해당 위치 노드의 "본문"에 넣는다 (앱 불러오기 UI의
+//     기본값). 노드가 A4 분량(NODE_A4_CHARS)을 넘으면 넘치는 블록부터
+//     노트로 옮기고 stats.movedToNote 를 센다 (데이터는 잃지 않는다).
+export interface ParseEmmOptions {
+  blockPlacement?: 'node' | 'note';
+  // 호출자가 넘긴 객체에 통계를 채워 준다 (반환 타입 호환 유지)
+  stats?: { movedToNote: number };
+}
+
+// "A4 한 장" 근사 — 노드 본문 제한 (텍스트 글자 수, 이미지 1장 = 600자)
+export const NODE_A4_CHARS = 2500;
+export const NODE_IMAGE_CHARS = 600;
+
 // Markdown 링크/이미지 — [라벨](url) / ![대체](경로). 제목("title") 허용.
 const MD_LINK_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 // 표 구분선 행 — | --- | :--: | 등
 const TABLE_SEP_RE = /^[\s|:\-]+$/;
 
-export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap | null {
+export function parseMarkdownToMap(
+  md: string,
+  fallbackTitle: string,
+  opts: ParseEmmOptions = {},
+): SampleMap | null {
+  const placeInNode = opts.blockPlacement === 'node';
   const lines = String(md || '').replace(/\r\n?/g, '\n').split('\n');
 
   // 사전 스캔: 제목(첫 H1) 외에 본문에도 H1(#)을 쓰는 파일인지 확인.
@@ -163,6 +187,29 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
     }
   };
 
+  // ---- blockPlacement 'node': 블록을 현재 노드의 본문에 넣는다 ----------
+  // A4 분량(NODE_A4_CHARS, 이미지 1장=NODE_IMAGE_CHARS 환산)을 넘기는
+  // 블록은 노트로 옮기고 stats.movedToNote 를 센다. 머리말(첫 견출 전)은
+  // 붙일 노드가 없으므로 기존처럼 루트 노트다.
+  const nodeCharCount = (n: MindNode): number => {
+    const imgs = (n.images?.length ?? 0) + (n.image ? 1 : 0);
+    return String(n.text || '').length + imgs * NODE_IMAGE_CHARS;
+  };
+  // 블록을 노드 본문에 넣었으면 true — false면 호출자가 노트로 처리한다
+  const placeBlock = (blockText: string, note: () => NoteBlock): boolean => {
+    if (!placeInNode) return false;
+    if (!sawHeading || stack.length === 0) return false; // 머리말 → 루트 노트
+    const cur = stack[stack.length - 1].node;
+    if (nodeCharCount(cur) + blockText.length + 1 > NODE_A4_CHARS) {
+      // A4 초과 — 이 블록부터 노트로 (데이터는 잃지 않는다)
+      addNote(note());
+      if (opts.stats) opts.stats.movedToNote += 1;
+      return true; // 처리 완료 (노트로)
+    }
+    cur.text = cur.text ? `${cur.text}\n${blockText}` : blockText;
+    return true;
+  };
+
   // ---- 누적 버퍼 (문단·표·인용문·코드) ------------------------------------
   let paraBuf: string[] = [];
   let tableBuf: string[] = [];
@@ -197,14 +244,22 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
       .filter((r) => r.trim());
     tableBuf = [];
     if (!rows.length) return;
-    // 표는 노드 내용이 아니라 "표 노트"로 — 직전 노드(문단/견출)에 붙는다
-    addNote({ id: nid(), type: 'table', text: rows.join('\n') });
+    // 표 — 기본(note)은 "표 노트", blockPlacement 'node'면 노드 본문의
+    // 파이프 표(mdTable 렌더)로
+    const tableText = rows.join('\n');
+    if (!placeBlock(tableText, () => ({ id: nid(), type: 'table', text: tableText }))) {
+      addNote({ id: nid(), type: 'table', text: tableText });
+    }
   };
   const flushQuote = () => {
     if (!quoteBuf.length) return;
     const text = quoteBuf.join('\n').trim();
     quoteBuf = [];
-    if (text) addNote({ id: nid(), type: 'paragraph', text });
+    if (!text) return;
+    // 인용문(문단) — 'node'면 현재 노드 본문에 줄로 합친다
+    if (!placeBlock(text, () => ({ id: nid(), type: 'paragraph', text }))) {
+      addNote({ id: nid(), type: 'paragraph', text });
+    }
   };
   const flushAll = () => {
     flushPara();
@@ -227,7 +282,12 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
         const code = fenceBuf.join('\n');
         fenceBuf = null;
         if (code.trim()) {
-          addNote({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
+          // 'node'면 노드 본문의 ``` 펜스(코드 패널 렌더)로
+          const block = '```' + (fenceLang || '') + '\n' + code + '\n```';
+          if (!placeBlock(block, () =>
+            ({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined }))) {
+            addNote({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
+          }
         }
       }
       continue;
@@ -293,12 +353,14 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
     if (check) {
       flushPara();
       lastItem = null;
-      addNote({
-        id: nid(),
-        type: 'checklist',
-        text: check[2].trim(),
-        checked: check[1].toLowerCase() === 'x',
-      });
+      const checked = check[1].toLowerCase() === 'x';
+      const itemText = check[2].trim();
+      // 'node'면 노드 본문의 체크 줄(- [x] — 체크박스 글리프 렌더)로
+      const chkBlock = `- [${checked ? 'x' : ' '}] ${itemText}`;
+      if (!placeBlock(chkBlock, () =>
+        ({ id: nid(), type: 'checklist', text: itemText, checked }))) {
+        addNote({ id: nid(), type: 'checklist', text: itemText, checked });
+      }
       continue;
     }
 
@@ -346,7 +408,12 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
   }
   flushAll();
   if (fenceBuf !== null && fenceBuf.join('\n').trim()) {
-    addNote({ id: nid(), type: 'code_block', text: fenceBuf.join('\n') });
+    // 닫는 펜스 없이 끝난 코드 — 같은 배치 규칙 적용
+    const tail = fenceBuf.join('\n');
+    const tailBlock = '```' + (fenceLang || '') + '\n' + tail + '\n```';
+    if (!placeBlock(tailBlock, () => ({ id: nid(), type: 'code_block', text: tail }))) {
+      addNote({ id: nid(), type: 'code_block', text: tail });
+    }
   }
 
   if (!rootText && branches.length === 0) return null; // 인식할 구조 없음
@@ -375,6 +442,10 @@ export function parseMarkdownToMap(md: string, fallbackTitle: string): SampleMap
 
 // EMM 공개 API 별칭 — parseEmm(md) : 제목 폴백은 'mindmap'
 import type { EmmMap } from './model';
-export function parseEmm(md: string, fallbackTitle = 'mindmap'): EmmMap | null {
-  return parseMarkdownToMap(md, fallbackTitle);
+export function parseEmm(
+  md: string,
+  fallbackTitle = 'mindmap',
+  opts: ParseEmmOptions = {},
+): EmmMap | null {
+  return parseMarkdownToMap(md, fallbackTitle, opts);
 }

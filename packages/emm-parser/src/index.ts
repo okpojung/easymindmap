@@ -7,7 +7,13 @@
 
 export * from './model';
 export * from './meta';
-export { parseMarkdownToMap, parseEmm } from './parse';
+export {
+  parseMarkdownToMap,
+  parseEmm,
+  NODE_A4_CHARS,
+  NODE_IMAGE_CHARS,
+  type ParseEmmOptions,
+} from './parse';
 export {
   buildEmmBody,
   buildMetaComment,

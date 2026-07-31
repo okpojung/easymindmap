@@ -21,6 +21,8 @@ export const MARK_BUTTONS = [
   // 코드는 { } 하나로 통일 — 팝업에서 언어·코드를 입력해 블록으로 삽입.
   // (한 줄 인라인 코드가 필요하면 백틱 ` 로 직접 감싸는 것은 계속 지원)
   { m: '```', label: '{ }', title: '코드 블록 (팝업에서 언어·코드 입력)', st: { fontFamily: "ui-monospace, 'Consolas', monospace", background: '#334155', color: '#ECEFF3', borderRadius: 3, padding: '0 3px', fontWeight: 700, fontSize: 11 } },
+  // 체크박스 줄 — 커서 줄에 '- [ ] ' 마커 토글 (노드에 체크박스로 렌더)
+  { m: 'check', label: '☑', title: '체크박스 줄 (- [ ] — 다시 누르면 해제)', st: { color: '#22A06B', fontWeight: 700, fontSize: 15 } },
 ] as const;
 
 export function MarkToolbar({

@@ -23,6 +23,9 @@
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import { setLevelFontConfig, levelFontFamily, levelTextAlign } from '@/editor/node-renderer/sizeNodeForText';
+import { parseMdCode as parseMdCodeEditor } from '@/editor/node-renderer/mdCode';
+import { parseMdTable as parseMdTableEditor } from '@/editor/node-renderer/mdTable';
+import { computeNodeChecks } from '@/editor/node-renderer/mdCheck';
 import { buildZip, type ZipEntry } from './zip';
 import {
   buildMapMeta,
@@ -46,6 +49,10 @@ interface ExportPos {
   lh: number;
   // 맵 설정(레벨별 폰트)의 글꼴 — 없으면 뷰어 기본 글꼴
   ff?: string;
+  // 체크리스트 항목(- [x] …) — 래핑 줄 범위 a..e(exclusive)와 체크 여부.
+  // 에디터가 계산한 값을 그대로 실어 뷰어가 같은 자리에 글리프를 그린다
+  // (뷰어는 읽기 전용 — 리치 노드 P2)
+  ck?: { a: number; e: number; c: number }[];
 }
 
 interface ExportAttachment {
@@ -785,6 +792,7 @@ const VIEWER_JS = String.raw`
     node._w = node.pos.w; node._h = node.pos.h;
     node._lines = node.pos.lines; node._lineH = node.pos.lh;
     node._manualStarts = node.pos.ms;
+    node._checks = node.pos.ck; // 체크리스트 항목(래핑 줄 범위 — P2)
     node._fs = node.pos.fs;
     node._ff = node.pos.ff; // 맵 설정(레벨별 폰트)의 글꼴
     // 에디터 좌표 모드 — _lines가 Markdown 표를 제외한 텍스트만 담고
@@ -813,6 +821,7 @@ const VIEWER_JS = String.raw`
       n._w = n.pos.w; n._h = n.pos.h;
       n._lines = n.pos.lines; n._lineH = n.pos.lh;
       n._manualStarts = n.pos.ms;
+      n._checks = n.pos.ck;
       n._fs = n.pos.fs; n._ff = n.pos.ff;
       var tagsH = (n.tags && n.tags.length) ? TAG_H + 7 : 0;
       n._boxH = n._h + tagsH;
@@ -1023,6 +1032,11 @@ const VIEWER_JS = String.raw`
       (mdt ? tblH + tGap : 0) + cBlockH + (img ? img.h + imgGap : 0);
     var topY = node._cy - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
+    // 체크리스트 항목(- [x] …) — 에디터가 실어 보낸 래핑 줄 범위(_checks).
+    // 항목의 모든 줄은 글리프 폭만큼 들여쓰고 첫 줄에 체크박스를 그린다
+    // (읽기 전용 — 리치 노드 P2)
+    var cks = node._checks || null;
+    var CKW = Math.round(node._fs * 0.95) + 7;
     // 인라인 마커 상태를 자동 줄바꿈 사이로 이월 (수동 \n 시작 줄에서 리셋)
     var markCarry;
     for (var li = 0; li < node._lines.length; li++) {
@@ -1040,6 +1054,15 @@ const VIEWER_JS = String.raw`
           segs[si].c ? CODE_FONT : node._ff));
         lw2 += segWs[si];
       }
+      // 이 줄이 체크 항목에 속하면 글리프 폭을 줄 폭에 더한다 (들여쓰기)
+      var ck0 = null;
+      if (cks) {
+        for (var cki = 0; cki < cks.length; cki++) {
+          if (li >= cks[cki].a && li < cks[cki].e) { ck0 = cks[cki]; break; }
+        }
+      }
+      var ckw2 = ck0 ? CKW : 0;
+      lw2 += ckw2;
       // 코드 패널 뒤(cAt 이후) 줄은 패널 높이만큼 아래로 (원문 순서 보존)
       var baseY = stacked
         ? topY + (flowTops ? flowTops[li] : li * node._lineH) +
@@ -1054,7 +1077,23 @@ const VIEWER_JS = String.raw`
       var sx = align === 'center'
         ? x0 + node._w / 2 + (iconW2 - mW2) / 2 - lw2 / 2
         : (align === 'right' ? x0 + node._w - PAD_X - mW2 - lw2 : tx);
-      var segX = [], accX = sx;
+      if (ck0 && li === ck0.a) {
+        // 체크박스 글리프 — 항목 첫 줄 왼쪽 (에디터와 동일 좌표 규칙)
+        var bs = Math.round(node._fs * 0.95);
+        var bx3 = sx, by3 = (baseY - node._fs * 0.34) - bs / 2;
+        el('rect', { x: bx3, y: by3, width: bs, height: bs, rx: 3,
+          fill: ck0.c ? '#22A06B' : 'none',
+          stroke: ck0.c ? '#22A06B' : '#8B94A3', 'stroke-width': 1.5,
+          'data-viewer-check': ck0.c ? '1' : '0' }, g);
+        if (ck0.c) {
+          el('path', { d: 'M ' + (bx3 + bs * 0.24) + ' ' + (by3 + bs * 0.54) +
+            ' L ' + (bx3 + bs * 0.44) + ' ' + (by3 + bs * 0.72) +
+            ' L ' + (bx3 + bs * 0.78) + ' ' + (by3 + bs * 0.3),
+            fill: 'none', stroke: '#fff', 'stroke-width': 1.8,
+            'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, g);
+        }
+      }
+      var segX = [], accX = sx + ckw2;
       for (si = 0; si < segs.length; si++) { segX.push(accX); accX += segWs[si]; }
       for (si = 0; si < segs.length; si++) {
         if ((st.highlight || segs[si].h) && segs[si].t.replace(/\s/g, '')) {
@@ -2415,6 +2454,20 @@ export function buildStandaloneHtml(
   // 맵 설정(레벨별 폰트)도 측정에 반영하고 글꼴(ff)을 노드마다 실어 보낸다.
   setLevelFontConfig(map.settings?.levelFonts);
   const laid = computeLayout(map, layoutType, 700, 400, spacing);
+  // 체크리스트 항목 범위 — 에디터(NodeRenderer)와 같은 재구성 규칙으로
+  // 계산해 노드마다 실어 보낸다 (뷰어는 계산 없이 그대로 그린다)
+  const bakeChecks = (n: (typeof laid)[number]) => {
+    const text = String(n.text ?? '');
+    const mdc = parseMdCodeEditor(text);
+    const baseText = mdc ? [mdc.before, mdc.after].filter(Boolean).join('\n') : text;
+    const mdt = parseMdTableEditor(baseText);
+    const plainText = mdt ? [mdt.before, mdt.after].filter(Boolean).join('\n') : baseText;
+    const manualLines = (mdt || mdc) && plainText === '' ? [] : plainText.split('\n');
+    const checks = computeNodeChecks(manualLines, n._manualStarts, (n._lines ?? []).length);
+    return checks.length
+      ? checks.map((c) => ({ a: c.at, e: c.end, c: c.checked ? 1 : 0 }))
+      : undefined;
+  };
   const posById = new Map<string, ExportPos>(
     laid.map((n) => [
       n.id,
@@ -2428,6 +2481,7 @@ export function buildStandaloneHtml(
         fs: n._fontSize ?? 13,
         lh: n._lineHeight ?? 18,
         ff: levelFontFamily(n.depth),
+        ck: bakeChecks(n),
       },
     ]),
   );

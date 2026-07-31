@@ -39,6 +39,12 @@ import {
   type MarkState,
 } from './inlineMarks';
 import { CodeBlockDialog, spliceCodeBlock, replaceCodeBlock } from './CodeBlockDialog';
+import {
+  computeNodeChecks,
+  checkGlyphW,
+  toggleCheckInText,
+  toggleCheckMarker,
+} from './mdCheck';
 import { measureTextPx } from './textMeasure';
 import { MarkToolbar } from './MarkToolbar';
 import { useViewportStore } from '@/stores/viewportStore';
@@ -285,6 +291,24 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     ),
     [n.text, fontSize, mdCode],
   );
+  // 체크리스트 항목(- [x] …) — sizeNodeForText가 마커를 뗀 것과 같은
+  // 수동 줄 목록을 재구성해 래핑 줄 범위를 얻는다 (리치 노드 P2)
+  const glyphW = checkGlyphW(fontSize);
+  const nodeChecks = useMemo(() => {
+    const baseText = mdCode
+      ? [mdCode.before, mdCode.after].filter(Boolean).join('\n')
+      : String(n.text || '');
+    const plainText = mdTable
+      ? [mdTable.before, mdTable.after].filter(Boolean).join('\n')
+      : baseText;
+    const manualLines =
+      (mdTable || mdCode) && plainText === '' ? [] : plainText.split('\n');
+    return computeNodeChecks(
+      manualLines,
+      n._manualStarts,
+      (n._lines || String(n.text || '').split('\n')).length,
+    );
+  }, [n.text, mdCode, mdTable, n._manualStarts, n._lines]);
 
   const strokeWidth = searchHit ? 2.6 : (style.borderWidth ?? (isRoot ? 2 : selected ? 1.5 : 1));
   const dash = borderDash(style.borderStyle, strokeWidth);
@@ -357,6 +381,16 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     // '코드블록' 버튼 — 팝업 편집기에서 언어·코드를 입력받아 삽입
     if (mark === '```') {
       setCodeDlg({ mode: 'insert', cursor: e0 });
+      return;
+    }
+    // '체크박스' 버튼 — 커서 줄에 '- [ ] ' 마커 토글
+    if (mark === 'check') {
+      const rc = toggleCheckMarker(draftText, e0);
+      setDraftText(rc.next);
+      window.setTimeout(() => {
+        ta.focus();
+        ta.setSelectionRange(rc.selStart, rc.selStart);
+      }, 0);
       return;
     }
     const r = toggleMarkRange(draftText, s0, e0, mark);
@@ -555,7 +589,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                   family: sg.c ? CODE_FONT : fontFamily,
                 }),
               );
-              const lineW = segWs.reduce((a, b) => a + b, 0);
+              // 체크리스트 항목(- [x] …) — 이 줄이 속한 항목과 글리프 폭
+              // (마커는 sizeNodeForText가 떼었고, 항목의 모든 줄이 글리프
+              // 폭만큼 들여쓰기된다. 첫 줄에만 체크박스를 그린다)
+              const chkHere = nodeChecks.find((c) => i >= c.at && i < c.end);
+              const chkW = chkHere ? glyphW : 0;
+              const lineW = segWs.reduce((a, b) => a + b, 0) + chkW;
               const startX =
                 textAlign === 'right'
                   ? textX - lineW
@@ -564,10 +603,49 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     : textX;
               // 구간별 시작 x (하이라이트 띠와 tspan이 같은 좌표를 쓴다)
               const segXs: number[] = [];
-              let acc = startX;
+              let acc = startX + chkW;
               for (const w of segWs) { segXs.push(acc); acc += w; }
               return (
                 <g key={i}>
+                  {chkHere && i === chkHere.at && (() => {
+                    // 체크박스 글리프 — 클릭 = 원문 [ ]/[x] 토글
+                    const s = Math.round(fontSize * 0.95);
+                    const bx = startX;
+                    const by = lineCenter - s / 2;
+                    return (
+                      <g
+                        data-node-check
+                        data-checked={chkHere.checked ? '1' : '0'}
+                        style={{ cursor: 'pointer' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateNodeText(
+                            n.id,
+                            toggleCheckInText(String(n.text || ''), chkHere.seq),
+                          );
+                        }}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <title>
+                          {chkHere.checked ? '클릭하면 미완료([ ])로' : '클릭하면 완료([x])로'}
+                        </title>
+                        <rect
+                          x={bx} y={by} width={s} height={s} rx={3}
+                          fill={chkHere.checked ? '#22A06B' : 'rgba(0,0,0,0.001)'}
+                          stroke={chkHere.checked ? '#22A06B' : '#8B94A3'}
+                          strokeWidth={1.5}
+                        />
+                        {chkHere.checked && (
+                          <path
+                            d={`M ${bx + s * 0.24} ${by + s * 0.54} L ${bx + s * 0.44} ${by + s * 0.72} L ${bx + s * 0.78} ${by + s * 0.3}`}
+                            fill="none" stroke="#fff" strokeWidth={1.8}
+                            strokeLinecap="round" strokeLinejoin="round"
+                          />
+                        )}
+                      </g>
+                    );
+                  })()}
                   {segs.map((sg, k) =>
                     (highlight || sg.h) && sg.text.trim() !== '' ? (
                       // 형광펜 — 해당 구간 뒤에 노란 띠

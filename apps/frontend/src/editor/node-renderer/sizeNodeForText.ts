@@ -11,6 +11,7 @@
 import type { LevelFontSetting } from '@/editor/__samples__/types';
 import { layoutMdTable, type MdTableLayout } from './mdTable';
 import { layoutMdCode, type MdCodeLayout } from './mdCode';
+import { parseCheckLine, checkGlyphW } from './mdCheck';
 
 export interface SizeOpts {
   minW?: number;
@@ -205,18 +206,29 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   const manualStarts: number[] = [];
   const innerMaxW = maxW - padX * 2 - iconReserve;
 
+  // 체크리스트 줄(- [x] …)은 마커를 떼고(글리프로 대체 렌더) 글리프
+  // 폭만큼 좁게 줄바꿈한다 — 어느 래핑 줄이 체크 항목에 속하는지 기록
+  // (폭 계산에 글리프 폭을 더한다. 렌더는 NodeRenderer가 재구성)
+  const glyphW = checkGlyphW(fontSize);
+  const checkRanges: [number, number][] = [];
+
   manualLines.forEach((seg) => {
     manualStarts.push(wrappedLines.length);
-    if (seg === '') {
+    const chk = parseCheckLine(seg);
+    const segText = chk ? chk.text : seg;
+    const segMaxW = chk ? Math.max(40, innerMaxW - glyphW) : innerMaxW;
+    const segStart = wrappedLines.length;
+    if (segText === '') {
       wrappedLines.push('');
+      if (chk) checkRanges.push([segStart, wrappedLines.length]);
       return;
     }
-    const words = seg.split(/(\s+)/); // keep spaces
+    const words = segText.split(/(\s+)/); // keep spaces
     let cur = '';
     let curW = 0;
     for (const w of words) {
       const wLen = measure(w);
-      if (wLen > innerMaxW) {
+      if (wLen > segMaxW) {
         // 한 단어가 줄 폭보다 길다 — 줄 어디에서 나와도(줄 처음뿐 아니라
         // 중간에서도) 지금 줄을 끊고 문자 단위로 분해한다. 그러지 않으면
         // '과기정통부·…·나이스정보통신이' 같은 무공백 토큰이 한 줄로
@@ -226,7 +238,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
         let bufW = 0;
         for (const ch of Array.from(w)) {
           const cw = charW(ch);
-          if (bufW + cw > innerMaxW && buf) {
+          if (bufW + cw > segMaxW && buf) {
             wrappedLines.push(buf);
             buf = ch; bufW = cw;
           } else {
@@ -236,7 +248,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
         cur = buf; curW = bufW;
         continue;
       }
-      if (curW + wLen > innerMaxW) {
+      if (curW + wLen > segMaxW) {
         wrappedLines.push(cur.trimEnd());
         cur = w.replace(/^\s+/, '');
         curW = measure(cur);
@@ -246,6 +258,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
       }
     }
     if (cur) wrappedLines.push(cur.trimEnd());
+    if (chk) checkRanges.push([segStart, wrappedLines.length]);
   });
   if (!mdTable && !mdCode && wrappedLines.length === 0) wrappedLines.push('');
 
@@ -263,7 +276,12 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   // 표·코드가 있으면 그 폭만큼은 항상 확보한다 (maxW보다 넓어도 잘리지 않게).
   // 수동 폭이면 그 값 그대로 (표·코드가 더 넓을 때만 예외적으로 확장).
   const blockW = Math.max(mdTable ? mdTable.w : 0, mdCode ? mdCode.w : 0);
-  const widest = wrappedLines.reduce((m, l) => Math.max(m, measure(l)), 0);
+  const inCheck = (i: number) =>
+    checkRanges.some(([s, e]) => i >= s && i < e);
+  const widest = wrappedLines.reduce(
+    (m, l, i) => Math.max(m, measure(l) + (inCheck(i) ? glyphW : 0)),
+    0,
+  );
   const contentW = Math.max(widest, blockW);
   const wCap = Math.max(maxW, blockW ? blockW + padX * 2 : 0) + indicatorReserve;
   const w = manualW

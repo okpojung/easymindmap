@@ -34,6 +34,7 @@ import {
 import { NoteViewerPopover } from '@/editor/canvas/NoteViewerPopover';
 import { parseInlineMarks, toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
 import { CodeBlockDialog, spliceCodeBlock } from '@/editor/node-renderer/CodeBlockDialog';
+import { toggleCheckMarker } from '@/editor/node-renderer/mdCheck';
 import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import type { LaidOutNode } from '@/layout/types';
@@ -221,6 +222,16 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
     // '코드블록' 버튼 — 팝업 편집기에서 언어·코드를 입력받아 삽입
     if (mark === '```') {
       setCodeDlgCursor(e0);
+      return;
+    }
+    // '체크박스' 버튼 — 커서 줄에 '- [ ] ' 마커 토글 (맵 편집창과 동일)
+    if (mark === 'check') {
+      const rc = toggleCheckMarker(draft, e0);
+      setDraft(rc.next);
+      window.setTimeout(() => {
+        ta.focus();
+        ta.setSelectionRange(rc.selStart, rc.selStart);
+      }, 0);
       return;
     }
     const r = toggleMarkRange(draft, s0, e0, mark);

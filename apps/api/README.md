@@ -40,7 +40,31 @@ apps/api/
 | computedX/Y | 클라이언트 Layout Engine 계산, DB 미저장 |
 | 노드 삭제 | hard-delete + ON DELETE CASCADE |
 | 맵 삭제 | soft-delete (deleted_at) + 30일 후 배치 삭제 |
-| 인증 | Supabase Auth (JWT 검증: `supabase.auth.getUser()`) |
+| 인증 | Supabase Auth(GoTrue) 발급 JWT 를 **로컬 검증**(HS256, `SUPABASE_JWT_SECRET`) — `common/auth/auth.guard.ts` |
+| 모듈 형식 | **CommonJS** (`tsconfig module=commonjs`, package.json 에 `type` 없음) |
+
+### ⚠️ 의존성 규칙 — ESM 전용 패키지 금지 (2026-08-01 배포 실패로 확정)
+
+이 앱은 **CommonJS 로 빌드**된다. ESM 전용 패키지(예: `jose` v5+)를
+top-level `import` 하면 TS 가 `require()` 로 컴파일하고, **낮은 Node
+런타임에서 `ERR_REQUIRE_ESM` 으로 기동 즉시 죽는다**. 빌드는 성공하기
+때문에 배포 단계에서야 드러난다.
+
+| 하지 말 것 | 대신 |
+|---|---|
+| `import { jwtVerify } from 'jose'` (ESM 전용) | `import * as jwt from 'jsonwebtoken'` (CJS 네이티브) |
+
+- 이 사고에서 채택한 수정: **jose 제거 → `jsonwebtoken@9`**.
+  (동적 `await import()` 는 TS 가 commonjs 타겟에서 `require` 로
+  다운레벨링해 같은 문제가 재발할 수 있어 채택하지 않았다.)
+- 개발 환경 Node 22.12+ 는 `require(ESM)` 을 **기본 허용**하므로 로컬
+  에서는 재현되지 않는다. 재현하려면:
+  ```bash
+  npm run build && node --no-experimental-require-module dist/main.js
+  ```
+- CI 가 `AUTH_MODE=supabase` **부팅 스모크**로 상시 검증한다
+  (`.github/workflows/ci.yml` — 빌드 성공만으로는 이 문제가 잡히지
+  않기 때문에 추가됨).
 
 ---
 

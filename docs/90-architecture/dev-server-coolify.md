@@ -338,6 +338,25 @@ curl -s -X POST https://auth-dev.example.com/signup \
 - **Coolify 자체 업데이트**: 대시보드에서 안내에 따라 진행.
 - **백업**: DB 리소스의 Scheduled Backup 기능 사용(S3 호환 대상 지정 가능).
 
+### 트러블슈팅 — "배포는 성공인데 환경변수가 반영되지 않는다" ★
+
+> **증상**: Deploy 가 성공으로 끝났는데 바꾼 환경변수가 먹지 않는다.
+> 예: `AUTH_MODE=supabase` 로 바꿨는데 `/v1/maps` 가 여전히 200.
+>
+> **원인**: 새 컨테이너가 기동에 실패해 헬스체크를 통과하지 못하면
+> Coolify 가 **이전 컨테이너로 자동 롤백**한다. 서비스는 계속 살아
+> 있으므로 "배포는 됐는데 설정이 안 먹는다"로 보이고, 실제로 응답하는
+> 것은 **옛 버전**이다. 환경변수를 계속 의심하게 되어 오래 헤맨다.
+>
+> **확인**: Deployment 로그에서 아래 문구를 찾는다 —
+> `New container is unhealthy` / `rolling back to the old container`.
+> 있으면 새 컨테이너 기동 실패이며, **같은 로그의 `Container logs:`
+> 구간에 실제 원인**이 찍혀 있다.
+>
+> 실제 사례(2026-08-01): `ERR_REQUIRE_ESM` — api 가 CommonJS 빌드인데
+> ESM 전용 패키지를 import 했다. 재발 방지는 `apps/api/README.md`
+> "의존성 규칙" 및 CI 의 supabase 모드 부팅 스모크 참조.
+
 ---
 
 관련: `infra-architecture.md`(네트워크·VM 배치), `docker-compose-spec.md`

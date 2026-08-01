@@ -227,6 +227,12 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
 > 앱 코드는 준비 완료(backend-phase1.md Phase 3) — 아래만 하면 로그인이
 > 켜진다. **전체 Supabase 스택이 아니라 인증 서버(GoTrue) 컨테이너
 > 하나**만 기존 PG16 옆에 얹는 가벼운 구성이다.
+>
+> **처음 배포한다면 단계별 실행 가이드
+> [`gotrue-deploy-walkthrough.md`](gotrue-deploy-walkthrough.md)를
+> 따라 하라** — 어디서 실행하고 각 단계를 무엇으로 확인하는지까지
+> 적혀 있고, 앱 전환을 맨 뒤로 미루는 안전한 순서(0→①→②→NPM→검증→
+> ③)로 재배열되어 있다. 아래는 요약판(설정값 원본)이다.
 
 **① DB 준비 (1회)** — GoTrue 는 **자기 전용 데이터베이스**를 쓴다.
 같은 데이터베이스에 넣으면 schema.sql 의 shim `auth.users` 와 GoTrue

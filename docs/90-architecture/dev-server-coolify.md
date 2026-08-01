@@ -115,14 +115,29 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   CORS_ORIGIN=https://dev.example.com
   ```
 
-### 5.3 frontend (프론트)
+### 5.3 frontend (프론트) — Dockerfile 방식
 
-- **Add Resource → Application → GitHub** → **Base Directory**: `apps/frontend`
-- Build Pack: **Nixpacks(static)** — Build: `npm ci && npm run build`,
-  Publish Directory: `dist`
+> **[2026-08-01 정정]** 이전 서술(Base Directory `apps/frontend` +
+> Nixpacks 정적 빌드)은 **실제로 동작하지 않는다**: vite의 `@emm` 별칭과
+> tsconfig paths가 `../../packages/emm-parser/src`를 참조하는데 Base
+> Directory를 `apps/frontend`로 잡으면 `packages/`가 빌드 컨텍스트
+> 밖이라 `Cannot find module '@emm/model'` 등 TS2307이 쏟아지고, Base
+> Directory를 `/`로 올리면 루트에 package.json이 없어 Nixpacks가 앱
+> 타입을 감지하지 못한다. → **저장소 루트를 컨텍스트로 쓰는
+> Dockerfile**(`apps/frontend/Dockerfile`)로 빌드한다.
+
+- **Add Resource → Application → GitHub** →
+  - **Build Pack**: `Dockerfile`
+  - **Base Directory**: `/` (저장소 루트 — `packages/`를 COPY해야 하므로)
+  - **Dockerfile Location**: `apps/frontend/Dockerfile`
+- Dockerfile은 2단계다: node:22-alpine에서 `npm ci && npm run build` →
+  nginx:alpine이 `dist`를 서빙 (`apps/frontend/nginx.conf` — SPA
+  라우팅 `try_files` + index.html `no-store`). 포트 80.
+- 루트 `.dockerignore`가 `node_modules`·`dist`를 컨텍스트에서 제외한다
+  (없으면 COPY가 로컬 node_modules로 npm ci 결과를 덮을 수 있다).
 - 도메인 예: `dev.example.com`
-- **환경변수(빌드 타임!)** — `VITE_*`는 빌드 시점에 박히므로 반드시
-  빌드 환경변수로 설정:
+- **환경변수(빌드 타임!)** — `VITE_*`는 빌드 시점에 박히므로 Coolify의
+  **Build Variable**(Dockerfile `ARG VITE_API_URL`)로 설정:
   ```
   VITE_API_URL=https://api-dev.example.com
   ```

@@ -1,0 +1,8 @@
+# Dockerfile 빌드 컨텍스트(저장소 루트)에서 제외 — apps/frontend/Dockerfile 참조.
+# node_modules 를 컨텍스트에 실으면 COPY apps/frontend/ 가 npm ci 결과를
+# 호스트 것으로 덮어써 깨질 수 있고, 업로드도 수백 MB 커진다.
+**/node_modules
+**/dist
+**/.vite
+apps/api/database/*.dump
+.git

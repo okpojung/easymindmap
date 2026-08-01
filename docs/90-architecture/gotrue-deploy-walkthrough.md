@@ -369,6 +369,7 @@ echo -n "AUTH_MODE  : "; sudo docker exec -i $API printenv AUTH_MODE
 | 배포는 "성공"인데 환경변수가 반영 안 됨 | 새 컨테이너 기동 실패 후 **롤백** — Deployment 로그의 `New container is unhealthy` / `rolling back` 과 `Container logs:` 구간 확인 |
 | 5단계에서 로그인 폼이 안 보임 | Redeploy 를 안 했거나(빌드 변수), 브라우저 캐시 — Ctrl+Shift+R |
 | 가입 클릭 시 **404** | 경로 접두사 문제 — 개발자도구 Network 에서 요청이 `/signup`(정상) 인지 `/auth/v1/signup`(문제) 인지 확인 → `VITE_SUPABASE_AUTH_PREFIX` |
+| 브라우저에서만 **CORS 오류**(서버 SSH `curl` 로는 정상) | ★ **NPM Access List 가 preflight(OPTIONS)를 차단** — 브라우저는 본 요청 전에 인증 헤더 없는 OPTIONS 를 보내는데, Access List 의 인증/IP 제한에 걸려 401·403 이 되고 브라우저는 이를 CORS 오류로 표시한다. auth-dev Proxy Host 의 Advanced 에 **OPTIONS 예외**를 추가한다 (아래) |
 | 가입 클릭 시 "인증 서버에 연결할 수 없습니다" | VITE_SUPABASE_URL 오타 / VPN 미연결 / 3단계 curl 재확인 |
 | 가입은 되는데 저장이 401 | api 의 SUPABASE_JWT_SECRET ≠ GOTRUE_JWT_SECRET (값 불일치) |
 | 그 외 | `dev-server-runbook.md` §3 증상별 표 |

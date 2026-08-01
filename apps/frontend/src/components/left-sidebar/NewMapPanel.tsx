@@ -22,6 +22,12 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile } from '@/utils/importMapFile';
 import { resolveRemoteImages } from '@/utils/remoteImages';
+import { cloudApi, CloudError } from '@/services/cloud/apiClient';
+import { MapListModal } from '@/components/cloud/MapListModal';
+import { useCloudStore } from '@/stores/cloudStore';
+import { useAutosaveStore } from '@/stores/autosaveStore';
+import { suppressCloudAutosave } from '@/hooks/useCloudAutosave';
+import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -55,6 +61,14 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const [title, setTitle] = useState('');
   const [userTpls, setUserTpls] = useState<UserTemplate[]>([]);
   const [notice, setNotice] = useState('');
+  // B7 — 문서 목록 모달(서버 맵 불러오기 · 맵 닫기 후)
+  const [listOpen, setListOpen] = useState(false);
+  const session = useAuthStore((s) => s.session);
+  const needLogin = authEnabled && !session;
+  const buildSnapshot = () => {
+    const st = useDocumentStore.getState();
+    return { v: 1, map: st.map, kanban: st.kanban };
+  };
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [importKind, setImportKind] = useState<ImportKind>('md');
   // MD 블록 배치 옵션 (리치 노드 P3) — 문단·코드·표·체크를 노드 본문에
@@ -214,6 +228,62 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다${extra}${imgMsg}`,
       mode: 'import',
     });
+  };
+
+  // ── 맵 닫기 (B7) ──────────────────────────────────────────────────
+  // "닫기 = 모든 내용을 자동 저장하고 닫기 → 문서 목록" (2026-07 확정).
+  //  · 클라우드에 연결된 맵     → 그 맵에 저장 후 링크 해제
+  //  · 아직 저장한 적 없는 맵   → 새 맵으로 저장할지 물어보고 저장
+  //  · 인증 켜진 배포 + 비로그인 → 저장 불가이므로 경고 후 선택
+  // 저장이 실패하면 닫지 않는다(내용 유실 방지). 닫은 뒤에는 빈 문서로
+  // 두고 문서 목록을 띄운다.
+  const handleCloseMap = async () => {
+    const doc = useDocumentStore.getState();
+    const cloudMapId = useCloudStore.getState().cloudMapId;
+    const title = doc.map.title || '제목 없는 맵';
+
+    if (needLogin) {
+      if (!window.confirm(
+        '로그인하지 않아 클라우드에 저장할 수 없습니다.\n' +
+        '저장하지 않고 닫을까요? (내용이 사라집니다)',
+      )) return;
+    } else if (!cloudMapId) {
+      const choice = window.confirm(
+        `“${title}”은 아직 클라우드에 저장되지 않았습니다.\n` +
+        '저장하고 닫을까요? (취소하면 저장 없이 닫습니다)',
+      );
+      if (choice) {
+        useCloudStore.getState().setBusy('saving');
+        try {
+          const created = await cloudApi.createMap(title);
+          await cloudApi.saveDocument(created.mapId, buildSnapshot(), title);
+        } catch (err) {
+          flash('⚠ ' + (err instanceof CloudError ? err.message : '저장 실패 — 닫지 않았습니다.'));
+          useCloudStore.getState().setBusy('idle');
+          return; // 저장 실패 시 닫지 않는다
+        } finally {
+          useCloudStore.getState().setBusy('idle');
+        }
+      }
+    } else {
+      // 연결된 맵 — 마지막 내용을 저장하고 닫는다
+      useCloudStore.getState().setBusy('saving');
+      try {
+        await cloudApi.saveDocument(cloudMapId, buildSnapshot(), title);
+      } catch (err) {
+        flash('⚠ ' + (err instanceof CloudError ? err.message : '저장 실패 — 닫지 않았습니다.'));
+        useCloudStore.getState().setBusy('idle');
+        return;
+      } finally {
+        useCloudStore.getState().setBusy('idle');
+      }
+    }
+
+    suppressCloudAutosave(); // 빈 문서가 방금 닫은 맵을 덮어쓰지 않도록
+    useDocumentStore.getState().closeMap();
+    useCloudStore.getState().unlink();
+    useAutosaveStore.getState().setSaveState('saved');
+    setListOpen(true); // 문서 목록으로
   };
 
   const importFile = (file: File, kind: ImportKind) => {
@@ -421,12 +491,18 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         </div>
       )}
 
-      {/* ═══ 2. 서버 맵 불러오기 ═══ */}
-      {/* [서버 연결 예정] 서버에 저장된 맵 목록에서 불러오기 —
-          maps 테이블 연동 후 활성화 (docs/02-domain/db-schema.md) */}
+      {/* ═══ 2. 서버 맵 불러오기 (B7 — 서버·로그인 연결 완료로 활성화) ═══ */}
       {menuHeader({
-        icon: '☁', label: '서버 맵 불러오기', disabled: true,
-        badge: '서버 연결 후', tip: '서버 연결 후 사용할 수 있습니다',
+        icon: '☁', label: '서버 맵 불러오기',
+        onClick: () => setListOpen(true),
+        tip: '클라우드에 저장된 내 맵 목록에서 불러옵니다',
+      })}
+
+      {/* ═══ 2-1. 맵 닫기 — 저장하고 닫은 뒤 문서 목록으로 (B7) ═══ */}
+      {menuHeader({
+        icon: '⏻', label: '맵 닫기',
+        onClick: () => { void handleCloseMap(); },
+        tip: '현재 맵을 클라우드에 저장하고 닫은 뒤, 내 문서 목록을 엽니다',
       })}
 
       {/* ═══ 3. Local 파일 불러오기 — 선택하면 하위 메뉴가 트리로 ═══ */}
@@ -490,6 +566,19 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         생성한 파일만 지원합니다. 불러온 뒤 적용할 템플릿을 고를 수 있습니다.
       </div>
         </div>
+      )}
+
+      {/* 문서 목록 (B7) — '서버 맵 불러오기' 및 '맵 닫기' 직후 */}
+      {listOpen && (
+        <MapListModal
+          t={t}
+          title="내 문서"
+          emptyHint={needLogin
+            ? '로그인하면 저장한 맵이 여기에 표시됩니다.'
+            : '저장된 맵이 없습니다. ☁ 클라우드 → 저장으로 시작해 보세요.'}
+          onClose={() => setListOpen(false)}
+          onFlash={flash}
+        />
       )}
     </div>
   );

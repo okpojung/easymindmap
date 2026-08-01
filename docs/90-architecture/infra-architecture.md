@@ -681,9 +681,32 @@ WS:       ✅
 Cache Assets: ❌
 SSL:      Let's Encrypt + Force SSL ✅
 Access:   IPSec-VPN-Only
+Advanced:
+    # ★ CORS preflight 예외 — 브라우저는 본 요청 전에 인증 헤더 없는
+    # OPTIONS 를 먼저 보낸다. Access List 가 이를 401/403 으로 막으면
+    # 브라우저에는 CORS 오류로만 보이고, 서버에서 curl 로 테스트하면
+    # 정상이라 원인을 찾기 어렵다 (2026-08-02 실제 사고).
+    location / {
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin  $http_origin always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, Content-Type, apikey, x-client-info" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            return 204;
+        }
+        proxy_pass http://192.168.0.110:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 ```
 
 > GoTrue 배포 절차·환경변수: `dev-server-coolify.md` §5.5.
+> 같은 이유로 **api-dev(§7.7)** 도 브라우저에서 CORS 오류가 나면 동일한
+> OPTIONS 예외를 추가한다 (api 는 Nest 의 `enableCors` 가 처리하지만,
+> preflight 가 NPM 에서 먼저 막히면 앱까지 도달하지 못한다).
 
 ---
 

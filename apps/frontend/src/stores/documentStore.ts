@@ -126,6 +126,9 @@ interface DocumentState {
   loadMap: (map: SampleMap) => void;
   // 새 맵 시작 — 루트만 있는 기본 맵 ('새 맵' 메뉴)
   newMap: (title?: string) => void;
+  // 맵 닫기 — 중심 주제만 남은 빈 문서로 되돌린다 (B7 '맵 닫기').
+  // 서버 저장·클라우드 링크 해제는 호출부(NewMapPanel)가 담당한다.
+  closeMap: () => void;
 
   // 노드 박스 수동 크기 (우하단 핸들 드래그, null = 자동 크기로 복귀)
   updateNodeSize: (nodeId: string | null, size: { w?: number; h?: number } | null) => void;
@@ -1049,6 +1052,19 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   loadMap: (map) => {
     set({ map: cloneMap(map) });
+  },
+
+  // 맵 닫기 (B7) — 문서를 비운 상태. 골격(주제 1~3)을 만드는 newMap 과
+  // 달리 중심 주제 하나만 남겨, "지금 열린 문서가 없다"를 화면으로도
+  // 드러낸다. map 이 바뀌므로 실수로 닫아도 Ctrl+Z 로 복구된다.
+  closeMap: () => {
+    set({
+      map: {
+        title: '문서 없음',
+        root: { id: 'root', text: '문서 없음', colorKey: 'root', side: 'center' },
+        branches: [],
+      },
+    });
   },
 
   newMap: (title = '새 마인드맵') => {

@@ -7,7 +7,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
-import { jwtVerify } from 'jose';
+// ⚠️ CJS 전용 패키지만 쓸 것 — 이 앱은 tsconfig module=commonjs 로
+// 빌드되므로 ESM 전용 패키지(jose v5+ 등)를 import 하면 낮은 Node 에서
+// 런타임에 ERR_REQUIRE_ESM 으로 죽는다 (2026-08-01 배포 실패 원인).
+// jsonwebtoken 은 CJS 네이티브라 Node 버전과 무관하게 동작한다.
+import * as jwt from 'jsonwebtoken';
 import type { AppEnv } from '../../config/env.validation';
 import { DatabaseService } from '../../database/database.service';
 import type { AuthUser } from './current-user.decorator';
@@ -30,7 +34,9 @@ export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
   // JIT 프로비저닝을 이미 마친 사용자 id 캐시 (프로세스 생존 동안)
   private readonly knownUsers = new Set<string>();
-  private secretKey: Uint8Array | null = null;
+  // 빈 문자열 = 아직 로드 전 (env 검증이 supabase 모드에서 16자 이상을
+  // 보장하므로, 실제로 빈 값이 남는 경우는 없다)
+  private secretKey = '';
 
   constructor(
     private readonly config: ConfigService<AppEnv, true>,
@@ -59,19 +65,19 @@ export class AuthGuard implements CanActivate {
     }
 
     if (!this.secretKey) {
-      this.secretKey = new TextEncoder().encode(
-        this.config.get('SUPABASE_JWT_SECRET', { infer: true }),
-      );
+      this.secretKey = this.config.get('SUPABASE_JWT_SECRET', { infer: true });
     }
 
     let sub: string;
     let email: string | undefined;
     try {
-      // GoTrue 액세스 토큰: HS256, aud='authenticated' (exp 는 jwtVerify 가 검사)
-      const { payload } = await jwtVerify(token, this.secretKey, {
+      // GoTrue 액세스 토큰: HS256 서명 + aud='authenticated'.
+      // algorithms 를 명시해 알고리즘 혼동(alg=none 등)을 차단하고,
+      // 만료(exp)·audience 는 verify 가 검사한다.
+      const payload = jwt.verify(token, this.secretKey, {
         algorithms: ['HS256'],
         audience: 'authenticated',
-      });
+      }) as jwt.JwtPayload;
       if (typeof payload.sub !== 'string' || !payload.sub) {
         throw new Error('sub 없음');
       }

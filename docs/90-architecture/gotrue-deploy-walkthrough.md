@@ -28,24 +28,31 @@
 
 ## 1단계 — GoTrue 전용 DB 만들기 (Coolify UI, 3분)
 
-- **어디서**: 브라우저 → Coolify → 프로젝트 `easymindmap-dev` →
-  **PostgreSQL 리소스** 클릭 → 왼쪽 **Terminal** 탭 (서버 SSH 불필요)
-  - Terminal 이 안 열리면 서버 SSH 로: `docker ps` 로 DB 컨테이너
-    이름 확인 후 `docker exec -it <db컨테이너> psql -U postgres`
-- **무엇을**: psql 프롬프트(`postgres=#`)에서 한 줄씩:
-  ```sql
-  CREATE DATABASE gotrue;
-  \c gotrue
-  CREATE SCHEMA IF NOT EXISTS auth;
+- **어디서**: 서버 SSH (아무 디렉토리). 먼저 `docker ps` 로 **우리 앱
+  DB 컨테이너 이름**을 확인한다 — `postgres:16` 이미지인 것
+  (`coolify-db` 는 postgres:15-alpine = **Coolify 자체 DB, 건드리지 말
+  것**). 아래 `<DB>` 자리에 그 이름을 넣는다.
+- **무엇을**: 아래 3줄을 **한 줄씩** 실행한다.
+
+  ```bash
+  docker exec -i <DB> psql -U postgres -c "CREATE DATABASE gotrue;"
+  docker exec -i <DB> psql -U postgres -d gotrue -c "CREATE SCHEMA IF NOT EXISTS auth;"
+  docker exec -i <DB> psql -U postgres -d gotrue -c "\dn"
   ```
-- **확인**:
-  ```sql
-  \l    -- 목록에 gotrue 가 보인다
-  \dn   -- 목록에 auth 스키마가 보인다
-  \q    -- 종료
+
+  > ⚠️ **psql 안에서 여러 줄을 한꺼번에 붙여넣지 말 것** (2026-08-01
+  > 실제 사고): `\c gotrue` 같은 메타명령은 **그 줄의 나머지 전부를
+  > 접속 인자로** 받는다. 다음 줄이 딸려 들어가면
+  > `invalid integer value "IF" for connection option "port"` 같은
+  > 엉뚱한 오류가 난다. 위처럼 `-d` 로 DB 를 지정하는 **비대화식 한 줄
+  > 명령**을 쓰면 이 문제가 아예 없다.
+
+- **확인**: 마지막 명령 출력의 스키마 목록에 **auth** 가 보이고,
+  ```bash
+  docker exec -i <DB> psql -U postgres -c "\l" | grep gotrue
   ```
-  둘 다 보이면 다음 단계. (`already exists` 오류 = 이미 만들었던 것 —
-  문제없음, 계속 진행)
+  에 **gotrue** 가 나오면 1단계 완료. (`already exists` 오류는 이미
+  만들었다는 뜻 — 문제없이 다음 단계로)
 
 ## 2단계 — GoTrue 컨테이너 배포 (Coolify UI, 10분)
 

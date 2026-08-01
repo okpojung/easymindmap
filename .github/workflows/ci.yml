@@ -96,3 +96,24 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://localhost:3000/v1/health && break; sleep 1; done
           API_URL=http://localhost:3000 npm run smoke
           kill "$(cat /tmp/api.pid)" || true
+      # AUTH_MODE=supabase 부팅 스모크 (2026-08-01 배포 실패 재발 방지).
+      # dev 모드만 검증하던 탓에 auth.guard 의 ESM 전용 의존성(jose)
+      # require 실패를 CI 가 잡지 못하고 배포에서 터졌다.
+      # --no-experimental-require-module: Node 22+ 에서도 낮은 Node 와
+      # 동일하게 require(ESM) 을 금지해 컨테이너 환경을 재현한다.
+      - name: API supabase 모드 부팅 스모크 (ESM require 금지)
+        env:
+          DATABASE_URL: postgres://emm:emm@localhost:5432/easymindmap
+          AUTH_MODE: supabase
+          SUPABASE_JWT_SECRET: ci-only-dummy-secret-0123456789abcdef
+          PORT: '3010'
+        run: |
+          NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
+          FLAG=""
+          if [ "$NODE_MAJOR" -ge 22 ]; then FLAG="--no-experimental-require-module"; fi
+          node $FLAG dist/main.js & echo $! > /tmp/api-sb.pid
+          for i in $(seq 1 30); do curl -sf http://localhost:3010/v1/health && break; sleep 1; done
+          # 인증이 켜졌는지: 토큰 없는 보호 엔드포인트는 401 이어야 한다
+          code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3010/v1/maps)"
+          kill "$(cat /tmp/api-sb.pid)" || true
+          test "$code" = "401" || { echo "기대 401, 실제 $code"; exit 1; }

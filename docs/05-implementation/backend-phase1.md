@@ -124,6 +124,16 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
 > 앱 코드는 완료 — **활성화는 서버에 Supabase 스택(GoTrue) 배포 후**
 > 환경변수만 켜면 된다 (아래 "활성화 절차").
 
+> ⚠️ **CJS 제약 (2026-08-01 배포 실패에서 확정)** — api 는
+> `tsconfig module=commonjs` 로 빌드된다. **ESM 전용 패키지를
+> import 하면 낮은 Node 에서 런타임에 `ERR_REQUIRE_ESM` 으로 죽는다**
+> (초기 구현이 jose v6 을 썼다가 컨테이너 기동 실패 → 롤백). 인증
+> 라이브러리는 **CJS 네이티브 `jsonwebtoken`** 을 쓴다.
+> 로컬 재현법: `node --no-experimental-require-module dist/main.js`
+> (Node 22.12+ 는 require(ESM) 을 기본 허용하므로, 이 플래그가 없으면
+> 낮은 Node 환경의 결함이 로컬에서 드러나지 않는다.)
+> CI 가 `AUTH_MODE=supabase` 부팅 스모크로 이를 상시 검증한다.
+
 - **API — `AuthGuard`**(`common/auth/auth.guard.ts`, DevAuthGuard 대체):
   - `AUTH_MODE=dev`: 기존 스텁 그대로 (x-user-id / DEV_USER_ID).
   - `AUTH_MODE=supabase`: `Authorization: Bearer <JWT>` 를

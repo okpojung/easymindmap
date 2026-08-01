@@ -222,6 +222,78 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
 > 환경변수만 `https`인 이유: 브라우저가 실제로 접근하는 주소 기준이기
 > 때문이다. NPM Proxy Host 구성은 `infra-architecture.md` §7.6~7.8 참조.
 
+### 5.5 GoTrue(로그인) 배포 — Phase 3 활성화, 경로 A ★
+
+> 앱 코드는 준비 완료(backend-phase1.md Phase 3) — 아래만 하면 로그인이
+> 켜진다. **전체 Supabase 스택이 아니라 인증 서버(GoTrue) 컨테이너
+> 하나**만 기존 PG16 옆에 얹는 가벼운 구성이다.
+
+**① DB 준비 (1회)** — GoTrue 는 **자기 전용 데이터베이스**를 쓴다.
+같은 데이터베이스에 넣으면 schema.sql 의 shim `auth.users` 와 GoTrue
+마이그레이션이 충돌하므로 반드시 분리한다 (API 의 JIT 프로비저닝이
+앱 DB 쪽 사용자 행을 만들어 주므로 분리해도 동작):
+
+```sql
+CREATE DATABASE gotrue;
+\c gotrue
+CREATE SCHEMA IF NOT EXISTS auth;   -- GoTrue 마이그레이션이 이 안에 테이블 생성
+```
+
+**② Coolify 리소스** — Add Resource → **Docker Image**:
+
+| 항목 | 값 |
+|---|---|
+| Image | `supabase/auth` — **v2 최신 태그**를 [Releases](https://github.com/supabase/auth/releases)에서 확인해 고정 (latest 금지) |
+| Ports Exposes | `9999` |
+| Domains | `http://auth-dev.example.com` (§5.4 규칙 — http 스킴) |
+
+환경변수 (전부 Runtime):
+
+```
+GOTRUE_API_HOST=0.0.0.0
+GOTRUE_API_PORT=9999
+API_EXTERNAL_URL=https://auth-dev.example.com
+GOTRUE_DB_DRIVER=postgres
+GOTRUE_DB_DATABASE_URL=postgres://postgres:<PW>@<PG내부호스트>:5432/gotrue?search_path=auth
+GOTRUE_SITE_URL=https://dev.example.com
+GOTRUE_URI_ALLOW_LIST=https://dev.example.com
+GOTRUE_JWT_SECRET=<openssl rand -hex 32 — 영숫자>
+GOTRUE_JWT_EXP=3600
+GOTRUE_JWT_AUD=authenticated
+GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated
+GOTRUE_DISABLE_SIGNUP=false
+GOTRUE_EXTERNAL_EMAIL_ENABLED=true
+GOTRUE_MAILER_AUTOCONFIRM=true
+GOTRUE_PASSWORD_MIN_LENGTH=6
+```
+
+> - `GOTRUE_MAILER_AUTOCONFIRM=true` = **이메일 확인 없이 가입 즉시
+>   로그인** (SMTP 불필요 — dev 용). 정식 오픈 시 SMTP 설정 후 false 로.
+> - DB 비밀번호는 §5.1 규칙(영숫자만) 준수 — GoTrue 도 URL 파싱이다.
+
+**③ 앱 리소스 변수 변경 + 재배포**:
+
+| 리소스 | 변수 | 값 |
+|---|---|---|
+| api | `AUTH_MODE` | `supabase` |
+| api | `SUPABASE_JWT_SECRET` | GOTRUE_JWT_SECRET 과 **동일 값** |
+| frontend (Build) | `VITE_SUPABASE_URL` | `https://auth-dev.example.com` |
+| frontend (Build) | `VITE_SUPABASE_AUTH_PREFIX` | `` (빈 값 — **GoTrue 단독은 루트 경로**. 전체 Supabase(Kong)로 갈 때만 기본 `/auth/v1`) |
+| frontend (Build) | `VITE_SUPABASE_ANON_KEY` | 아무 값 (Kong 없는 단독 구성에선 미사용) |
+
+**④ NPM Proxy Host** — `auth-dev.example.com` → VM:80 (Traefik 경유),
+Cache Assets ❌, IPSec-VPN-Only (infra-architecture.md §7.9).
+
+**⑤ 검증**:
+
+```bash
+curl -s https://auth-dev.example.com/health           # GoTrue health
+curl -s -X POST https://auth-dev.example.com/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"me@example.com","password":"secret1"}'   # access_token 확인
+# 브라우저: dev.example.com → ☁ 클라우드 → 로그인 폼 → 가입 → 저장/열기
+```
+
 ## 6. 동작 확인 체크리스트
 
 - [ ] `https://api-dev.example.com/v1/health` → `{"status":"ok","db":"up"}`

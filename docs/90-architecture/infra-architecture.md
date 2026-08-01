@@ -204,6 +204,7 @@ DNS     : 8.8.8.8, 1.1.1.1
 | dev.example.com | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → frontend) | IPSec VPN IP 허용 | Let's Encrypt |
 | api-dev.example.com | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → api) | IPSec VPN IP 허용 | Let's Encrypt |
 | coolify-dev.example.com | A 203.0.113.10 | 192.168.0.110:8000 (Coolify UI + 웹훅) | IPSec VPN IP 허용 (+`/webhooks/` 예외) | Let's Encrypt |
+| auth-dev.example.com | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → GoTrue) | IPSec VPN IP 허용 | Let's Encrypt |
 
 > **DNS 주의사항**:
 > - A 레코드만 필요하다. 프록시/CDN류 기능이 있는 DNS라면 끈다 —
@@ -439,6 +440,7 @@ A     supabase.example.com        203.0.113.10
 A     dev.example.com             203.0.113.10
 A     api-dev.example.com         203.0.113.10
 A     coolify-dev.example.com     203.0.113.10
+A     auth-dev.example.com        203.0.113.10
 ```
 
 > ⚠️ 프록시/CDN류 부가 기능은 끄고 **A 레코드만** — NPM이 직접 SSL 처리합니다
@@ -669,6 +671,19 @@ Advanced:
 
 > 잠겼을 경우 복구:
 > `docker exec -it coolify php artisan tinker --execute="\App\Models\InstanceSettings::first()->update(['fqdn' => null]);"`
+
+### 7.9 Proxy Host — auth-dev.example.com (GoTrue 로그인)
+
+```
+Domain:   auth-dev.example.com
+Forward:  http://192.168.0.110:80        # Coolify Traefik 경유 (GoTrue :9999 로 분기)
+WS:       ✅
+Cache Assets: ❌
+SSL:      Let's Encrypt + Force SSL ✅
+Access:   IPSec-VPN-Only
+```
+
+> GoTrue 배포 절차·환경변수: `dev-server-coolify.md` §5.5.
 
 ---
 

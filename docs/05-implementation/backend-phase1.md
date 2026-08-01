@@ -146,11 +146,15 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
 - **활성화 절차 (서버)** — 현재 dev 서버는 **순정 PostgreSQL 16**
   (Supabase 미설치)이므로 두 경로가 있다:
   - **경로 A (권장, 가벼움)**: **GoTrue 단독 컨테이너**를 Coolify에
-    추가하고 기존 PG16을 그대로 쓴다 (GoTrue가 자기 `auth` 스키마를
-    관리; API의 JIT 프로비저닝 덕에 DB 분리 여부와 무관하게 동작).
-    로그인 기능만 필요할 때 전체 스택이 필요 없다.
+    추가하고 기존 PG16 인스턴스에 **전용 데이터베이스**(`gotrue`)만
+    만들어 쓴다 — 같은 DB에 넣으면 shim `auth.users`와 GoTrue
+    마이그레이션이 충돌하며, API의 JIT 프로비저닝이 앱 DB 사용자 행을
+    만들어 주므로 분리해도 동작한다. GoTrue 단독은 **루트 경로**로
+    서비스하므로 frontend 빌드 변수 `VITE_SUPABASE_AUTH_PREFIX=`(빈 값)
+    로 지정한다. **단계별 절차: dev-server-coolify.md §5.5**.
   - **경로 B**: 전체 Supabase Self-hosted 스택(Coolify compose,
     docker-compose-spec.md) — Realtime·Storage 등 다른 기능까지 쓸 때.
+    Kong 게이트웨이 경유라 접두사는 기본(`/auth/v1`) 그대로.
   - 공통 마무리: ① api 환경변수 `AUTH_MODE=supabase` +
     `SUPABASE_JWT_SECRET=<GoTrue JWT_SECRET>` ② frontend 빌드 변수
     `VITE_SUPABASE_URL`(GoTrue 주소)/`VITE_SUPABASE_ANON_KEY` ③ 재배포.

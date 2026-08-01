@@ -6,6 +6,13 @@
 
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// 인증 엔드포인트 경로 접두사 — 전체 Supabase(Kong 게이트웨이)는
+// '/auth/v1'(기본), **GoTrue 단독 배포**는 루트로 서비스하므로 ''.
+// (dev-server-coolify.md §5.5 — 경로 A)
+const AUTH_PREFIX =
+  import.meta.env.VITE_SUPABASE_AUTH_PREFIX !== undefined
+    ? String(import.meta.env.VITE_SUPABASE_AUTH_PREFIX).replace(/\/$/, '')
+    : '/auth/v1';
 
 export const authEnabled = SUPABASE_URL !== '';
 
@@ -35,7 +42,7 @@ interface GoTrueTokenResponse {
 async function goTrue<T>(path: string, body: unknown, bearer?: string): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${SUPABASE_URL}/auth/v1${path}`, {
+    res = await fetch(`${SUPABASE_URL}${AUTH_PREFIX}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -154,6 +154,7 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   | `DEV_USER_ID` | `00000000-0000-0000-0000-000000000001` | ✅ | ✅ |
   | `CORS_ORIGIN` | `https://dev.example.com` | ✅ | ✅ |
   | `NODE_ENV` | `production` | ❌ **해제 필수** | ✅ |
+  | `AUTH_MODE` → `supabase` + `SUPABASE_JWT_SECRET` | Phase 3 활성화 시 — **GoTrue 배포 후에만** (현재 dev 서버는 순정 PG16 + `AUTH_MODE=dev`. 활성화 경로: backend-phase1.md Phase 3) | ✅ | ✅ |
 
   > `NODE_ENV=production`이 **Buildtime**에 노출되면 `npm ci`가
   > devDependencies를 생략해 `tsc`/`nest`를 찾지 못하고 빌드가 실패한다
@@ -193,6 +194,7 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   | 변수 | 값 | Buildtime | Runtime |
   |---|---|---|---|
   | `VITE_API_URL` | `https://api-dev.example.com` | ✅ **필수** | 불필요 |
+  | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Phase 3(로그인) 활성화 시 — GoTrue 주소/anon key. 미설정 시 로그인 UI 없이 개발 모드로 동작 | ✅ | 불필요 |
 
   > Vite 환경변수는 빌드 시 번들에 인라인된다. **Buildtime 체크가
   > 없으면 빈 문자열로 박히며, 화면은 뜨지만 API 호출이 실패한다.**

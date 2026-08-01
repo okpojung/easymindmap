@@ -12,7 +12,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../common/auth/dev-auth.guard';
+import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { MapsService } from './maps.service';
 import { CreateMapDto } from './dto/create-map.dto';
@@ -21,10 +21,10 @@ import { SaveDocumentDto } from './dto/save-document.dto';
 
 /**
  * /v1/maps — 맵 CRUD. 모든 엔드포인트는 인증 필요.
- * (현재 DevAuthGuard = 개발 스텁, 다음 단계에서 Supabase 가드로 교체)
+ * (AuthGuard — AUTH_MODE=dev 스텁 / supabase JWT 검증, Phase 3)
  */
 @Controller('maps')
-@UseGuards(DevAuthGuard)
+@UseGuards(AuthGuard)
 export class MapsController {
   constructor(private readonly maps: MapsService) {}
 

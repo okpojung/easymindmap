@@ -8,6 +8,9 @@ export interface AppEnv {
   DATABASE_URL: string;
   AUTH_MODE: 'dev' | 'supabase';
   DEV_USER_ID: string;
+  // AUTH_MODE=supabase 필수 — GoTrue(JWT) 서명 검증 비밀키
+  // (Supabase 스택의 JWT_SECRET 과 동일 값, HS256)
+  SUPABASE_JWT_SECRET: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -26,6 +29,13 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
 
   const DEV_USER_ID = String(raw.DEV_USER_ID ?? '00000000-0000-0000-0000-000000000001');
 
+  const SUPABASE_JWT_SECRET = String(raw.SUPABASE_JWT_SECRET ?? '');
+  if (AUTH_MODE === 'supabase' && SUPABASE_JWT_SECRET.length < 16) {
+    errors.push(
+      'AUTH_MODE=supabase 에는 SUPABASE_JWT_SECRET(16자 이상, Supabase JWT_SECRET 과 동일)이 필수입니다.',
+    );
+  }
+
   if (errors.length) {
     throw new Error('환경변수 오류:\n - ' + errors.join('\n - '));
   }
@@ -36,5 +46,6 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     DATABASE_URL,
     AUTH_MODE: AUTH_MODE as 'dev' | 'supabase',
     DEV_USER_ID,
+    SUPABASE_JWT_SECRET,
   };
 }

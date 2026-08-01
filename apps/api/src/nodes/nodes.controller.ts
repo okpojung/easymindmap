@@ -9,7 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { DevAuthGuard } from '../common/auth/dev-auth.guard';
+import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { NodesService } from './nodes.service';
 import { CreateNodeDto } from './dto/create-node.dto';
@@ -23,7 +23,7 @@ import { AutosaveDto } from './dto/autosave.dto';
  * 를 한 컨트롤러에서 처리. 전역 /v1 프리픽스 적용. 모든 엔드포인트 인증 필요.
  */
 @Controller()
-@UseGuards(DevAuthGuard)
+@UseGuards(AuthGuard)
 export class NodesController {
   constructor(private readonly nodes: NodesService) {}
 

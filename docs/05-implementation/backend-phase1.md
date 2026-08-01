@@ -119,13 +119,54 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
 검증: 풀스택 E2E(e2e-cloud2) — 자동저장이 수동 저장 없이 서버에 반영·
 이름변경 반영·삭제 후 목록 비움·JS 오류 0.
 
+## Phase 3 — Supabase Auth(JWT) 인증 (코드 완료, 2026-08-01)
+
+> 앱 코드는 완료 — **활성화는 서버에 Supabase 스택(GoTrue) 배포 후**
+> 환경변수만 켜면 된다 (아래 "활성화 절차").
+
+- **API — `AuthGuard`**(`common/auth/auth.guard.ts`, DevAuthGuard 대체):
+  - `AUTH_MODE=dev`: 기존 스텁 그대로 (x-user-id / DEV_USER_ID).
+  - `AUTH_MODE=supabase`: `Authorization: Bearer <JWT>` 를
+    `SUPABASE_JWT_SECRET`(HS256, GoTrue 서명·`aud=authenticated`·exp)으로
+    검증(jose), `sub` = 사용자 id. **JIT 프로비저닝** — 첫 요청 시
+    `auth.users`/`public.users` 행을 만들어 FK 성립 (프로세스 캐시로
+    요청당 오버헤드 없음). 미검증/만료/위조/aud 불일치 = 401.
+  - 환경변수 검증: supabase 모드에서 `SUPABASE_JWT_SECRET`(≥16자) 필수.
+- **프런트 — 이메일/비밀번호 로그인** (`VITE_SUPABASE_URL` 설정 시 활성):
+  - `services/cloud/supabaseAuth.ts`: GoTrue REST(가입/로그인/갱신/
+    로그아웃 — SDK 없이 4개 엔드포인트 직접 호출, 번들 절약).
+  - `stores/authStore.ts`: 세션 localStorage 영속(새로고침 유지),
+    만료 60초 전 자동 refresh, 실패 시 세션 해제(재로그인 유도).
+  - `apiClient`: 모든 클라우드 호출에 Bearer 자동 첨부. 비로그인 호출
+    은 즉시 "로그인이 필요합니다".
+  - CloudMenu: 비로그인 → 로그인/가입 폼, 로그인 → 👤 이메일 표시 +
+    로그아웃. `VITE_SUPABASE_URL` 미설정(개발 모드)이면 기존 그대로.
+  - frontend Dockerfile 에 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`
+    빌드 ARG 추가.
+- **활성화 절차 (서버)** — 현재 dev 서버는 **순정 PostgreSQL 16**
+  (Supabase 미설치)이므로 두 경로가 있다:
+  - **경로 A (권장, 가벼움)**: **GoTrue 단독 컨테이너**를 Coolify에
+    추가하고 기존 PG16을 그대로 쓴다 (GoTrue가 자기 `auth` 스키마를
+    관리; API의 JIT 프로비저닝 덕에 DB 분리 여부와 무관하게 동작).
+    로그인 기능만 필요할 때 전체 스택이 필요 없다.
+  - **경로 B**: 전체 Supabase Self-hosted 스택(Coolify compose,
+    docker-compose-spec.md) — Realtime·Storage 등 다른 기능까지 쓸 때.
+  - 공통 마무리: ① api 환경변수 `AUTH_MODE=supabase` +
+    `SUPABASE_JWT_SECRET=<GoTrue JWT_SECRET>` ② frontend 빌드 변수
+    `VITE_SUPABASE_URL`(GoTrue 주소)/`VITE_SUPABASE_ANON_KEY` ③ 재배포.
+- **검증**: API 단위 8단언(무토큰/위조/만료/aud 401 · 유효 토큰 CRUD ·
+  JIT 생성 · 사용자별 목록 분리) + 풀스택 e2e78 9단언(mock GoTrue 가
+  실 HS256 JWT 발급 → 로그인 폼/오류/가입 즉시 로그인/저장/새로고침
+  세션 유지/열기/로그아웃/계정 분리) ALL PASS. dev 모드 회귀
+  e2e-cloud·e2e-cloud2 ALL PASS (기존 동작 불변).
+
 ## 다음 단계
 
 | Phase | 내용 |
 |---|---|
-| **3** | Supabase Auth(JWT 검증)로 인증 스텁 교체, RLS 실사용 |
+| **3 활성화** | 서버에 Supabase 스택 배포 후 위 "활성화 절차" — 이후 RLS 실사용·B7(맵 닫기)·B8(히스토리 버전) 착수 가능 |
 | **4c** | 사진 별도 스토리지(object storage), 스냅샷↔정규화 노드 동기(협업 준비) |
-| **5** | 배포 — **개발 서버(Ubuntu 22.04 + Coolify, 프로덕션 패리티)** 구축 후 프로덕션 복제. `../90-architecture/dev-server-coolify.md` 기준 (CI 품질 게이트는 GitHub Actions 유지) |
+| **5** | 배포 — ✅ 개발 서버(Ubuntu 22.04 + Coolify) 구축 완료(2026-08-01), 프로덕션은 동일 구성 복제. `../90-architecture/dev-server-coolify.md` 기준 |
 
 관련: `backend-architecture.md`, `api-spec.md`, `../02-domain/schema.sql`,
 `../90-architecture/ci-cd-github-actions.md`.

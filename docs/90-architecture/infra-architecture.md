@@ -23,7 +23,7 @@
 4. [DAU 단계별 VM 스펙 계획](#4-dau-단계별-vm-스펙-계획)
 5. [ESXi VM 생성 절차](#5-esxi-vm-생성-절차)
 6. [Ubuntu 22.04 공통 설치 절차](#6-ubuntu-2204-공통-설치-절차)
-7. [NPM 연동 설정 (Cloudflare + Let's Encrypt)](#7-npm-연동-설정-cloudflare--lets-encrypt)
+7. [NPM 연동 설정 (등록대행사 DNS + Let's Encrypt)](#7-npm-연동-설정-등록대행사-dns--lets-encrypt)
 8. [VM-03: Supabase Self-hosted 설치](#8-vm-03-supabase-self-hosted-설치)
 9. [VM-04: Redis 설치](#9-vm-04-redis-설치)
 10. [VM-02: App 서버 배포](#10-vm-02-app-서버-배포)
@@ -45,10 +45,10 @@
 [ 인터넷 ]
      │
      ▼
-[ Cloudflare DNS ]
+[ 도메인 등록대행사 DNS ]
   example.com → 203.0.113.10 (A 레코드)
   Proxy: 오렌지 클라우드 OFF (DNS only) 권장
-  ※ NPM이 SSL 처리하므로 Cloudflare Proxy 불필요
+  ※ NPM이 SSL 처리 — DNS는 A 레코드만 (프록시/CDN 기능 불필요)
      │
      ▼
 [ IDC 방화벽 (FortiGate) ]
@@ -191,16 +191,23 @@ DNS     : 8.8.8.8, 1.1.1.1
 
 ### 3.3 도메인 및 NPM Proxy 연결표
 
-| 도메인 | Cloudflare | NPM Forward | 접근 제한 | SSL |
-|---|---|---|---|---|
-| example.com | A 203.0.113.10 (DNS only) | 192.168.0.112:5173 | 없음 | Let's Encrypt |
-| api.example.com | A 203.0.113.10 (DNS only) | 192.168.0.112:3000 | 없음 | Let's Encrypt |
-| supabase.example.com | A 203.0.113.10 (DNS only) | 192.168.0.113:54323 | IPSec VPN IP 허용 | Let's Encrypt |
-| dev.example.com | A 203.0.113.10 (DNS only) | 192.168.0.110:5173 | IPSec VPN IP 허용 | Let's Encrypt |
+> **[2026-08-01 정정]** 도메인 DNS는 **등록대행사 DNS**에서 관리한다
+> (Cloudflare 콘솔에는 해당 존이 없음 — 신규 서브도메인 추가 시 엉뚱한
+> 콘솔을 열지 말 것). dev 계열 Forward는 Coolify 전환에 맞춰
+> **Traefik(:80)** 으로 정정 (`:5173`은 수동 Vite 시절 값 — 502 발생).
 
-> **Cloudflare 주의사항**:
-> - Proxy (오렌지 클라우드) 를 **OFF (DNS only, 회색 구름)** 으로 설정해야 합니다
-> - Proxy ON 상태에서는 Let's Encrypt 인증이 실패하거나 NPM Rate Limit과 충돌할 수 있습니다
+| 도메인 | DNS (등록대행사) | NPM Forward | 접근 제한 | SSL |
+|---|---|---|---|---|
+| example.com | A 203.0.113.10 | 192.168.0.112:5173 | 없음 | Let's Encrypt |
+| api.example.com | A 203.0.113.10 | 192.168.0.112:3000 | 없음 | Let's Encrypt |
+| supabase.example.com | A 203.0.113.10 | 192.168.0.113:54323 | IPSec VPN IP 허용 | Let's Encrypt |
+| dev.example.com | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → frontend) | IPSec VPN IP 허용 | Let's Encrypt |
+| api-dev.example.com | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → api) | IPSec VPN IP 허용 | Let's Encrypt |
+| coolify-dev.example.com | A 203.0.113.10 | 192.168.0.110:8000 (Coolify UI + 웹훅) | IPSec VPN IP 허용 (+`/webhooks/` 예외) | Let's Encrypt |
+
+> **DNS 주의사항**:
+> - A 레코드만 필요하다. 프록시/CDN류 기능이 있는 DNS라면 끈다 —
+>   Let's Encrypt 인증 실패·NPM Rate Limit 충돌의 원인
 > - SSL/TLS 관리는 NPM이 전담합니다
 
 ---
@@ -412,24 +419,29 @@ sudo systemctl restart ssh
 
 ---
 
-## 7. NPM 연동 설정 (Cloudflare + Let's Encrypt)
+## 7. NPM 연동 설정 (등록대행사 DNS + Let's Encrypt)
 
 > - NPM 관리 UI: `http://192.168.0.74:81`
 > - NPM 서버 SSH: `ssh ubuntu@192.168.0.74 -p 2222`
 
-### 7.1 Cloudflare DNS 설정
+### 7.1 도메인 DNS 설정 (등록대행사)
 
-Cloudflare 대시보드 → DNS 탭:
+> **[2026-08-01 정정]** 도메인 DNS는 **등록대행사 DNS 콘솔**에서
+> 관리한다 (이전 서술의 Cloudflare에는 해당 존이 없다).
+
+등록대행사 DNS 콘솔 → 레코드 관리:
 
 ```
-Type  Name                        Content          Proxy
-A     example.com               203.0.113.10    🔘 DNS only (회색)
-A     api.example.com           203.0.113.10    🔘 DNS only (회색)
-A     supabase.example.com      203.0.113.10    🔘 DNS only (회색)
-A     dev.example.com           203.0.113.10    🔘 DNS only (회색)
+Type  Name                        Content
+A     example.com                 203.0.113.10
+A     api.example.com             203.0.113.10
+A     supabase.example.com        203.0.113.10
+A     dev.example.com             203.0.113.10
+A     api-dev.example.com         203.0.113.10
+A     coolify-dev.example.com     203.0.113.10
 ```
 
-> ⚠️ **Proxy (오렌지 클라우드) 반드시 OFF** — NPM이 직접 SSL 처리합니다
+> ⚠️ 프록시/CDN류 부가 기능은 끄고 **A 레코드만** — NPM이 직접 SSL 처리합니다
 
 ### 7.2 NPM Rate Limit 전역 설정
 
@@ -458,11 +470,28 @@ Satisfy: Any
 
 Allowed IPs:
   192.168.0.201              # 개발 PC (Windows 11)
-  [IPSec VPN 클라이언트 대역]  # FortiGate에서 할당하는 VPN IP 확인 후 추가
-  예) 10.x.x.0/24 또는 172.x.x.0/24
+  [SSL-VPN 클라이언트 풀]      # FortiGate 할당 대역 (아래 확인 완료 표 참조)
 
 Pass Auth: ✅ (Allow)
 ```
+
+> ✅ **[2026-08-01 확인 완료 — Docker 네트워크 대역 충돌 없음]**
+> FortiGate 실제 할당 대역을 전수 확인한 결과, VM-DEV Coolify의 Docker
+> 네트워크와 겹치는 대역이 **없다** (아래는 플레이스홀더 표기 — 실제
+> 값은 비공개 사본에만 기록):
+>
+> | 항목 | 대역 (placeholder) | 판정 |
+> |---|---|---|
+> | Coolify Docker 네트워크 | `10.0.0.0/24`, `10.0.1.0/24` | 기준 |
+> | SSL-VPN 클라이언트 풀 | `10.200.0.200-210` | **충돌 없음** |
+> | IPsec Site-to-Site 로컬 | `192.168.0.0/24` | **충돌 없음** |
+> | IPsec Site-to-Site 리모트 | `192.168.1.0/24` | **충돌 없음** |
+>
+> FortiGate 정책의 나머지 항목은 전부 공인 IP라 무관. 이후 FortiGate에
+> **10.0.0.x/10.0.1.x 대역을 새로 할당하지 않도록** 주의하고, 대역을
+> 추가할 때는 이 표와 대조한다 (겹치면 VPN 클라이언트가 VM-DEV
+> 컨테이너와 통신 불가 — 그 경우 Coolify 측 대역 변경이 영향 범위가
+> 작다).
 
 ### 7.4 Proxy Host — example.com
 
@@ -544,13 +573,102 @@ Access:   IPSec-VPN-Only  ← Access List 적용
 
 ### 7.6 Proxy Host — dev.example.com
 
+> **[2026-08-01 정정]** Forward는 **Coolify Traefik(:80)** — `:5173`은
+> 수동 Vite dev-server 시절 값으로, Coolify 전환 후 열리지 않아 이
+> 값으로 두면 **502**가 난다.
+
 ```
 Domain:   dev.example.com
-Forward:  http://192.168.0.110:5173
+Forward:  http://192.168.0.110:80        # Coolify Traefik
 WS:       ✅
+Cache Assets: ❌ 끄기
 SSL:      Let's Encrypt + Force SSL ✅
 Access:   IPSec-VPN-Only  ← Access List 적용
 ```
+
+> `Cache Assets`를 꺼야 하는 이유: Vite 빌드는 에셋에 해시를 붙이지만
+> `index.html`에는 붙지 않는다. NPM이 이를 캐시하면 재배포 후에도 옛
+> 화면이 계속 보인다.
+
+### 7.7 Proxy Host — api-dev.example.com
+
+```
+Domain:   api-dev.example.com
+Forward:  http://192.168.0.110:80        ← 3000 아님
+WS:       ✅
+Cache Assets: ❌
+SSL:      Let's Encrypt + Force SSL ✅
+Access:   IPSec-VPN-Only
+Advanced:
+    client_max_body_size 50m;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+```
+
+> Forward 포트가 80인 이유: NPM은 Traefik으로 넘기고, Traefik이 Host
+> 헤더를 보고 컨테이너(:3000)로 분기한다. NPM이 3000을 직접 호출하면
+> Traefik을 우회해 Coolify 관리 밖으로 벗어난다.
+>
+> `client_max_body_size` 필수: API가 JSON 본문 한도를 25MB로 설정하고
+> 있는데(문서 스냅샷에 이미지가 data URL로 포함됨) nginx 기본값은
+> 1MB다. 누락 시 이미지가 포함된 맵 저장에서 413이 발생하며, **API
+> 로그에는 아무것도 남지 않아** 원인 추적이 어렵다.
+
+### 7.8 Proxy Host — coolify-dev.example.com
+
+자동 배포(GitHub 웹훅) 및 Coolify UI 외부 접근을 위해 필요하다.
+
+```
+Domain:   coolify-dev.example.com
+Forward:  http://192.168.0.110:8000      ← Coolify UI (Traefik 아님)
+WS:       ✅
+Cache Assets: ❌
+SSL:      Let's Encrypt + Force SSL ✅
+Access:   IPSec-VPN-Only
+Advanced:
+    client_max_body_size 50m;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    # Coolify realtime (웹소켓) — 없으면
+    # "실시간 서비스에 연결할 수 없습니다" 경고가 뜨고
+    # 배포 로그 스트리밍 / 터미널이 동작하지 않는다
+    location /app/ {
+        proxy_pass http://192.168.0.110:6001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+    # GitHub 웹훅 — Access List 예외.
+    # 웹훅은 외부(GitHub) IP에서 오므로 IPSec-VPN-Only 에 차단된다.
+    location /webhooks/ {
+        allow all;
+        proxy_pass http://192.168.0.110:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+```
+
+**Coolify 측 설정** (Proxy Host 생성 후):
+
+1. Settings → Advanced → **DNS Validation 끄기**
+   (도메인이 공인 IP로 해석되는데 인스턴스는 내부 주소라 검증이
+   실패한다. 리버스 프록시 구성을 검증 로직이 고려하지 못하는 것으로,
+   실제 동작에는 문제없다)
+2. Settings → General → URL = `https://coolify-dev.example.com`
+3. Settings → General → Instance Timezone = `Asia/Seoul`
+4. 저장 후 GitHub App 웹훅 URL이 새 도메인 기준으로 갱신됐는지 확인
+5. Registration Allowed는 **비활성 유지** (UI가 공개 도메인에 노출되므로)
+
+> 잠겼을 경우 복구:
+> `docker exec -it coolify php artisan tinker --execute="\App\Models\InstanceSettings::first()->update(['fqdn' => null]);"`
 
 ---
 
@@ -953,8 +1071,11 @@ curl -fsSL https://cdn.coollabs.io/coolify/install.sh | sudo bash
 2. 프로젝트 `easymindmap-dev` 에 리소스 3개:
    PostgreSQL 16(스키마 로드) · api(`apps/api`) · frontend(`apps/frontend`)
 3. 도메인: `dev.example.com`(frontend) / `api-dev.example.com`(api) —
-   NPM 또는 DNS 를 VM-DEV 로 향하게 하면 Traefik 이 SSL 자동 처리
-4. main 푸시 → 자동 배포 확인
+   **NPM 앞단 구성에서는 SSL 종단이 NPM 한 곳**이다. Coolify Domains에는
+   `http://` 스킴으로 등록하고(Traefik LE 발급은 사설 IP라 실패 —
+   dev-server-coolify.md §5.4), NPM Proxy Host는 §7.6~7.8 참조
+4. main 푸시 → 자동 배포 확인 (§7.8 coolify-dev Proxy Host의
+   `/webhooks/` 예외가 선행 조건)
 
 ## 13. 원격 접속 환경 (FortiGate IPSec VPN + RDP)
 
@@ -1268,7 +1389,7 @@ chmod +x /opt/disk-check.sh
 인프라:
   ✅ ESXi 4대에 VM 생성 (.11×2, .12×2, .80×1)
   ✅ 각 VM Ubuntu 22.04 + 고정 IP 설정
-  ✅ Cloudflare DNS A 레코드 설정 (4개 도메인, DNS only)
+  ✅ 등록대행사 DNS A 레코드 설정 (도메인 6개 — §7.1)
   ✅ NPM Proxy Host 4개 + SSL 인증서 발급
   ✅ NPM Access List 설정 (supabase, dev 도메인)
   ✅ Supabase Self-hosted 실행 + 스키마 적용
@@ -1313,7 +1434,7 @@ chmod +x /opt/disk-check.sh
   ⬆️ VM-03: RAM 32GB, NVMe 증설 검토
   ➕ VM-06 PG Read Replica (ESXi .81 또는 .82 배치)
   ➕ VM-07 Worker 추가 (ESXi .81 배치)
-  ➕ Cloudflare CDN Proxy 활성화 검토
+  ➕ CDN 도입 검토 (정식 오픈 시)
   ➕ Loki + Grafana 모니터링 스택 구축
   ➕ Sentry APM 도입
 ```
@@ -1367,4 +1488,4 @@ chmod +x /opt/disk-check.sh
 
 *easymindmap-infra-architecture.md v1.2 (전체 확정)*
 *IDC 환경: FortiGate IPSec VPN(203.0.113.10) / NPM(192.168.0.74) / L4 Nortel AS3408(192.168.0.2)*
-*Cloudflare DNS: example.com / ESXi 5대 / 192.168.0.0/24*
+*등록대행사 DNS: example.com / ESXi 5대 / 192.168.0.0/24*

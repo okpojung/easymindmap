@@ -81,6 +81,21 @@ curl -fsSL https://cdn.coollabs.io/coolify/install.sh | sudo bash
 2. 이후 앱 리소스 생성 시 이 Source를 선택하면 **main 푸시 때마다 자동
    재빌드·재배포**된다(웹훅).
 
+> ⚠️ **[2026-08-01 실구축 확인]** GitHub App 등록 시 `Selected endpoint`
+> 기본값은 Coolify가 아웃바운드로 조회한 **공인 IP**(예:
+> `203.0.113.10:8000`)다. 이 값은 redirect_url로도 쓰이므로, 개발 PC가
+> 접근 가능한 주소가 아니면 App은 생성되지만 브라우저가 Coolify로
+> 돌아오지 못해 **자격증명(client secret, private key)을 받지 못한
+> 반쪽 상태**가 된다 — 복구하려면 GitHub에서 App 삭제 후 재시도해야
+> 한다. **`Use custom webhook endpoint`를 켜고
+> `http://192.168.0.110:8000` (끝 슬래시 없이)을 직접 입력할 것.**
+>
+> - Organization 란은 **비워둔다.** 개인 계정에 값을 넣으면 조직용 생성
+>   URL로 이동해 404가 난다.
+> - Preview Deployments는 **끈다.** 켜두면 열려 있는 PR마다 미리보기
+>   컨테이너가 자동 생성되어 자원을 소모한다.
+> - Install 시 `Only select repositories` → 해당 저장소만 선택한다.
+
 ## 5. 리소스 구성 — 프로젝트 `easymindmap-dev`
 
 Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
@@ -99,21 +114,50 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   apps/api/database/dev/01-seed-dev-user.sql
   ```
 
+> ⚠️ **DB 비밀번호에 특수문자가 있으면 DATABASE_URL 파싱이 깨진다**
+> (2026-08-01 실구축 확인 — 원인 파악에 가장 오래 걸린 문제).
+> Coolify 자동 생성 비밀번호에 `@` `:` `/` `?` `#` `%` 가 포함되면
+> `Postgres URL (internal)`을 그대로 복사해도
+> `new Pool({ connectionString })`이 마지막 `@`를 호스트 구분자로
+> 파싱해 비밀번호가 잘리고 `password authentication failed`로 실패한다
+> (증상: api 기동은 되나 `/v1/health` = `"db":"down"`). Coolify가 URL
+> 조립 시 퍼센트 인코딩을 하지 않는다.
+> **리소스 생성 직후 영숫자 비밀번호로 교체할 것.**
+>
+> ```bash
+> openssl rand -hex 24                       # 새 비밀번호 생성
+> docker exec -i <db> psql -U postgres -d postgres \
+>   -c "ALTER USER postgres WITH PASSWORD '<새값>';"
+> ```
+>
+> **반드시 Coolify General → Password 필드에도 동일 값을 입력하고 Save
+> 한다.** 실제 비밀번호와 Coolify가 아는 값이 어긋나면
+> `Postgres URL (internal)`이 옛 값을 노출하고 백업 자동화가 깨진다.
+> 이후 갱신된 URL을 api의 `DATABASE_URL`에 반영하고 **재배포**한다
+> (환경변수만 바꾸면 기동 시 생성된 커넥션 풀이 갱신되지 않는다).
+
 ### 5.2 api (백엔드)
 
 - **Add Resource → Application → GitHub(위 Source)** → 저장소 선택.
 - **Base Directory**: `apps/api` / Build Pack: **Nixpacks**(Node 자동 감지)
   - Build: `npm ci && npm run build` / Start: `node dist/main.js`
   - (추후 `apps/api/Dockerfile` 추가 시 Dockerfile 빌드로 전환 — Phase 5 예정)
-- **Port**: 3000, 도메인 예: `api-dev.example.com`
-- **환경변수**:
-  ```
-  PORT=3000
-  DATABASE_URL=<5.1의 내부 접속 URL>
-  AUTH_MODE=dev              # Phase 3(Supabase Auth) 전까지
-  DEV_USER_ID=00000000-0000-0000-0000-000000000001
-  CORS_ORIGIN=https://dev.example.com
-  ```
+- **Ports Exposes**: `3000` — **누락 시 Traefik이 대상 포트를 몰라 502**.
+  도메인은 `http://api-dev.example.com` (스킴은 §5.3 아래 HTTPS 주의 참조)
+- **환경변수** — Buildtime/Runtime 체크에 주의:
+
+  | 변수 | 값 | Buildtime | Runtime |
+  |---|---|---|---|
+  | `PORT` | `3000` | ✅ | ✅ |
+  | `DATABASE_URL` | `<5.1의 내부 접속 URL>` | ✅ | ✅ |
+  | `AUTH_MODE` | `dev` (Phase 3 전까지) | ✅ | ✅ |
+  | `DEV_USER_ID` | `00000000-0000-0000-0000-000000000001` | ✅ | ✅ |
+  | `CORS_ORIGIN` | `https://dev.example.com` | ✅ | ✅ |
+  | `NODE_ENV` | `production` | ❌ **해제 필수** | ✅ |
+
+  > `NODE_ENV=production`이 **Buildtime**에 노출되면 `npm ci`가
+  > devDependencies를 생략해 `tsc`/`nest`를 찾지 못하고 빌드가 실패한다
+  > (Coolify UI도 동일 경고를 표시). Runtime만 체크할 것.
 
 ### 5.3 frontend (프론트) — Dockerfile 방식
 
@@ -126,25 +170,55 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
 > 타입을 감지하지 못한다. → **저장소 루트를 컨텍스트로 쓰는
 > Dockerfile**(`apps/frontend/Dockerfile`)로 빌드한다.
 
-- **Add Resource → Application → GitHub** →
-  - **Build Pack**: `Dockerfile`
-  - **Base Directory**: `/` (저장소 루트 — `packages/`를 COPY해야 하므로)
-  - **Dockerfile Location**: `apps/frontend/Dockerfile`
+- **Add Resource → Application → GitHub** — 설정값 (2026-08-01 실구축):
+
+  | 항목 | 값 |
+  |---|---|
+  | Build Pack | `Dockerfile` |
+  | Base Directory | `/` (저장소 루트 — `packages/`를 COPY해야 하므로) |
+  | Dockerfile Location | `/apps/frontend/Dockerfile` |
+  | Ports Exposes | `80` — **누락 시 Traefik이 대상 포트를 몰라 502** |
+  | Is it a static site? | **끄기** (Dockerfile이 nginx를 포함) |
+  | Publish Directory | 비움 |
+  | Install/Build/Start Command | 비움 |
+  | Domains | `http://dev.example.com` (스킴은 아래 HTTPS 주의 참조) |
+
 - Dockerfile은 2단계다: node:22-alpine에서 `npm ci && npm run build` →
   nginx:alpine이 `dist`를 서빙 (`apps/frontend/nginx.conf` — SPA
   라우팅 `try_files` + index.html `no-store`). 포트 80.
 - 루트 `.dockerignore`가 `node_modules`·`dist`를 컨텍스트에서 제외한다
   (없으면 COPY가 로컬 node_modules로 npm ci 결과를 덮을 수 있다).
-- 도메인 예: `dev.example.com`
-- **환경변수(빌드 타임!)** — `VITE_*`는 빌드 시점에 박히므로 Coolify의
-  **Build Variable**(Dockerfile `ARG VITE_API_URL`)로 설정:
-  ```
-  VITE_API_URL=https://api-dev.example.com
-  ```
+- **빌드 환경변수**:
 
-> 도메인/HTTPS: DNS(또는 내부 NPM)를 서버로 향하게 하면 Traefik이
-> Let's Encrypt 인증서를 자동 발급한다. 내부망 전용이면 `http://<서버IP>`
-> 기반 사설 도메인(sslip.io 등)도 가능.
+  | 변수 | 값 | Buildtime | Runtime |
+  |---|---|---|---|
+  | `VITE_API_URL` | `https://api-dev.example.com` | ✅ **필수** | 불필요 |
+
+  > Vite 환경변수는 빌드 시 번들에 인라인된다. **Buildtime 체크가
+  > 없으면 빈 문자열로 박히며, 화면은 뜨지만 API 호출이 실패한다.**
+  > Dockerfile의 `ARG VITE_API_URL`이 이 값을 받는다.
+  > `VITE_API_URL`에 `/v1`을 덧붙이지 말 것 (API가
+  > `setGlobalPrefix('v1')` 사용).
+
+### 5.4 도메인·HTTPS — NPM 앞단 구성에서는 `https://` 금지 ★
+
+> **[2026-08-01 정정]** "DNS(또는 내부 NPM)를 서버로 향하게 하면
+> Traefik이 Let's Encrypt를 자동 발급한다"는 이전 안내는 **NPM이 앞단에
+> 있는 구성에서는 틀린 안내**다. VM-DEV는 사설 IP라 Traefik의 HTTP-01
+> 챌린지가 성공할 수 없고, `https://`로 도메인을 등록하면 발급 재시도
+> 루프에 빠져 LE rate limit만 소모한다.
+>
+> **NPM이 앞단에 있는 구성에서는 SSL 종단이 NPM 한 곳이다.**
+> Coolify Domains 입력란에는 반드시 `http://` 스킴을 쓴다.
+> 인증서는 NPM이 발급·갱신하고, Traefik은 평문 80만 담당한다.
+>
+> | 리소스 | Coolify Domains | 앱 환경변수 |
+> |---|---|---|
+> | api | `http://api-dev.example.com` | `CORS_ORIGIN=https://dev.example.com` |
+> | frontend | `http://dev.example.com` | `VITE_API_URL=https://api-dev.example.com` |
+>
+> 환경변수만 `https`인 이유: 브라우저가 실제로 접근하는 주소 기준이기
+> 때문이다. NPM Proxy Host 구성은 `infra-architecture.md` §7.6~7.8 참조.
 
 ## 6. 동작 확인 체크리스트
 
@@ -152,7 +226,12 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
 - [ ] `https://dev.example.com` 접속 → 에디터 표시
 - [ ] ☁ 클라우드 → 저장 → 토스트 / 편집 → 자동 저장 배지
 - [ ] ☁ → 열기 → 목록·이름변경·삭제
-- [ ] `git push origin main` → Coolify가 자동 재배포(Deployments 로그 확인)
+- [ ] `git push origin main` → Coolify가 자동 재배포(Deployments 로그 확인) *
+
+> \* **자동 배포 선행조건**: GitHub 웹훅이 Coolify UI에 도달할 수 있어야
+> 한다. 사설 IP 상태에서는 GitHub이 웹훅을 보낼 수 없어 이 항목이 영구히
+> 미충족이다 — `infra-architecture.md` §7.8(coolify-dev Proxy Host,
+> `/webhooks/` Access List 예외) 구성이 선행되어야 한다.
 
 ## 7. 프로덕션 전환 (같은 방식 복제)
 

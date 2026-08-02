@@ -25,27 +25,73 @@ curl -s https://api-dev.example.com/v1/health
 #        ↑ 테이블은 있는데 **컬럼만 없는** 경우도 잡는다 (2026-08-02 문서함)
 ```
 
-**② 낡았으면 schema.sql 재적용** — `schema.sql` 이 **단일 기준**이며
-모든 DDL 이 멱등(IF NOT EXISTS)이라 몇 번 적용해도 안전하다:
+**② 낡았으면 스키마 적용** — 아래 세 방법 중 **상황에 맞는 하나**를
+고른다. `schema.sql` 이 단일 기준이고 모든 DDL 이 멱등(IF NOT EXISTS)이라
+몇 번 적용해도 안전하다.
+
+#### 2-A. 서버 SSH + 델타 SQL 붙여넣기 ★ 권장
+
+**dev 서버는 저장소가 없고 DB 도 내부 네트워크에만 열려 있다.** 그래서
+평소에는 이 방법이 가장 빠르고 안전하다 — 파일 전송도, DB 외부 노출도
+필요 없다.
 
 ```bash
-# 저장소가 있는 곳(개발 PC 등)에서
+# ① DB 컨테이너 이름 확인 (NAMES 열)
+docker ps --format 'table {{.Names}}\t{{.Image}}' | grep -i postgres
+
+# ② 이번 배포에서 늘어난 DDL 만 붙여넣기 (<DB> 만 바꾼다)
+docker exec -i <DB> psql -U postgres -d postgres <<'SQL'
+CREATE TABLE IF NOT EXISTS public.<새 테이블> ( … );
+ALTER TABLE public.<기존 테이블> ADD COLUMN IF NOT EXISTS <새 컬럼> …;
+DROP POLICY IF EXISTS "<정책 이름>" ON public.<테이블>;
+CREATE POLICY "<정책 이름>" ON public.<테이블> FOR ALL USING (auth.uid() = owner_id);
+SQL
+```
+
+> ⚠️ 마지막 `SQL` 은 **줄 맨 앞**에 와야 한다(앞 공백 금지). 들여쓰면
+> heredoc 이 끝나지 않아 다음 줄이 SQL 로 딸려 들어간다 —
+> 2026-08-01 GoTrue 세션의 `\c gotrue` 붙여넣기 사고와 같은 계열이다.
+> ⚠️ `CREATE POLICY` 에는 `IF NOT EXISTS` 가 없다. 재실행이 안전하도록
+> **`DROP POLICY IF EXISTS` 를 앞에 붙인다**(첫 실행에서 나오는
+> `does not exist, skipping` NOTICE 는 정상).
+
+#### 2-B. 저장소가 있는 곳에서 `npm run db:apply`
+
+DB 에 **직접 접속할 수 있을 때만** 쓴다(로컬 개발 DB, 또는 포트를 연
+환경). Coolify DB 는 기본이 내부 전용이라 개발 PC 에서는 보통 닿지 않고,
+그것 때문에 외부 포트를 여는 것은 권하지 않는다.
+
+```bash
 cd apps/api
 DATABASE_URL='postgres://postgres:<PW>@<host>:5432/postgres' npm run db:apply
+# → "스키마 적용 완료 — 실행 N건 · 이미 있음 M건"
+```
 
-# 서버에 저장소가 없으면 — DB 컨테이너에 파일을 밀어 넣는다
+#### 2-C. schema.sql 파일을 통째로 밀어 넣기
+
+서버에 파일을 올릴 수 있을 때(scp 등). 전체를 재적용하므로 델타를
+따로 뽑을 필요가 없다.
+
+```bash
 docker exec -i <DB> psql -U postgres -d postgres < apps/api/database/schema.sql
 ```
 
-> `npm run db:apply` 는 문장 단위로 적용하며 "이미 있음" 오류만 건너뛰고
-> 그 외 오류에서는 멈춘다. 출력의 `실행 N건 · 이미 있음 M건` 으로 무엇이
-> 새로 들어갔는지 알 수 있다.
+**적용 후에는 반드시 ① 의 헬스체크로 확인한다** — 개발 PC PowerShell
+에서도 된다:
+
+```powershell
+curl.exe -s https://api-dev.example.com/v1/health
+# {"status":"ok","db":"up","schema":"ok",...}  ← 이게 나와야 끝
+```
 
 **③ 새 테이블·컬럼을 추가한 개발자가 할 일**: `schema.sql` 에 넣고,
 `src/health/health.controller.ts` 의 `REQUIRED_TABLES` (테이블) 또는
 `REQUIRED_COLUMNS` (`테이블.컬럼`) 에도 추가한다 — 그래야 배포 때
 헬스체크가 누락을 잡는다. 기존 테이블에 컬럼을 더할 때는
 `ALTER TABLE … ADD COLUMN IF NOT EXISTS` 로 써서 재적용이 안전하게 한다.
+그리고 **PR 본문에 2-A 에 그대로 붙여넣을 수 있는 델타 SQL 을 실어 준다**
+— 배포하는 사람이 schema.sql 에서 무엇이 늘었는지 다시 찾지 않아도 되게
+(2026-08-02 문서함 배포에서 이 과정을 실제로 손으로 만들었다).
 
 > **마이그레이션 도구는 아직 도입하지 않는다.** 현재는 컬럼 변경 없이
 > 테이블 추가만 있어 멱등 재적용으로 충분하다. **기존 컬럼 변경·삭제가

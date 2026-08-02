@@ -37,6 +37,40 @@ ALTER TABLE public.maps
   `maps.folder_id`·`maps.kind` 를 넣었다. 응답:
   `{"schema":"outdated","missingColumns":["maps.kind"]}`
 
+### dev 서버에 적용한 델타 SQL (2026-08-02, 실측 검증)
+
+저장소가 없는 서버에서 붙여넣기 한 번으로 끝내는 형태. 두 번 실행해도
+안전한 것과, 적용 후 헬스체크가 `outdated → ok` 로 바뀌는 것을 확인했다.
+절차는 [dev-server-runbook §0-2-A](../90-architecture/dev-server-runbook.md).
+
+```bash
+docker exec -i <DB> psql -U postgres -d postgres <<'SQL'
+CREATE TABLE IF NOT EXISTS public.map_folders (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id    UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    parent_id   UUID REFERENCES public.map_folders(id) ON DELETE CASCADE,
+    name        VARCHAR(255) NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_map_folders_owner
+    ON public.map_folders(owner_id, parent_id);
+
+ALTER TABLE public.maps
+    ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES public.map_folders(id) ON DELETE SET NULL;
+ALTER TABLE public.maps
+    ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'solo';
+CREATE INDEX IF NOT EXISTS idx_maps_folder
+    ON public.maps(owner_id, folder_id) WHERE deleted_at IS NULL;
+
+ALTER TABLE public.map_folders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "users can manage own folders" ON public.map_folders;
+CREATE POLICY "users can manage own folders"
+    ON public.map_folders FOR ALL
+    USING (auth.uid() = owner_id);
+SQL
+```
+
 ### 스키마를 적용하지 않고 배포하면 (2026-08-02 실제 발생)
 
 문서함이 **"Internal server error"** 만 띄웠다. 코드는 새 것인데 DB 에

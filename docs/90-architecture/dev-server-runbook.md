@@ -19,7 +19,10 @@
 curl -s https://api-dev.example.com/v1/health
 # 정상   {"status":"ok","db":"up","schema":"ok",...}
 # 낡음   {"status":"degraded","db":"up","schema":"outdated",
-#         "missingTables":["map_document_versions"],...}
+#         "missingTables":["map_folders"],...}
+# 낡음   {"status":"degraded","db":"up","schema":"outdated",
+#         "missingColumns":["maps.folder_id","maps.kind"],...}
+#        ↑ 테이블은 있는데 **컬럼만 없는** 경우도 잡는다 (2026-08-02 문서함)
 ```
 
 **② 낡았으면 schema.sql 재적용** — `schema.sql` 이 **단일 기준**이며
@@ -38,9 +41,11 @@ docker exec -i <DB> psql -U postgres -d postgres < apps/api/database/schema.sql
 > 그 외 오류에서는 멈춘다. 출력의 `실행 N건 · 이미 있음 M건` 으로 무엇이
 > 새로 들어갔는지 알 수 있다.
 
-**③ 새 테이블을 추가한 개발자가 할 일**: `schema.sql` 에 넣고,
-`src/health/health.controller.ts` 의 `REQUIRED_TABLES` 에도 이름을
-추가한다 — 그래야 배포 때 헬스체크가 누락을 잡는다.
+**③ 새 테이블·컬럼을 추가한 개발자가 할 일**: `schema.sql` 에 넣고,
+`src/health/health.controller.ts` 의 `REQUIRED_TABLES` (테이블) 또는
+`REQUIRED_COLUMNS` (`테이블.컬럼`) 에도 추가한다 — 그래야 배포 때
+헬스체크가 누락을 잡는다. 기존 테이블에 컬럼을 더할 때는
+`ALTER TABLE … ADD COLUMN IF NOT EXISTS` 로 써서 재적용이 안전하게 한다.
 
 > **마이그레이션 도구는 아직 도입하지 않는다.** 현재는 컬럼 변경 없이
 > 테이블 추가만 있어 멱등 재적용으로 충분하다. **기존 컬럼 변경·삭제가

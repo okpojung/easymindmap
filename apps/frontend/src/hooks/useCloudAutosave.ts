@@ -42,7 +42,9 @@ async function doSave() {
   saving = true;
   useAutosaveStore.getState().setSaveState('saving');
   try {
-    const title = useDocumentStore.getState().map.title || '제목 없는 맵';
+    // 이름은 **서버에 저장된 그 이름 그대로** — 자동저장이 맵 이름을
+    // 바꿔 버리면 "열었던 이름 그대로 저장" 규칙이 깨진다 (2026-08-02).
+    const title = useCloudStore.getState().cloudTitle ?? undefined;
     const res = await cloudApi.saveDocument(mapId, snapshot(), title);
     useCloudStore.getState().link(mapId, res.updatedAt);
     useAutosaveStore.getState().setSaveState('saved');

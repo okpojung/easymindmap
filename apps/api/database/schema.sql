@@ -69,6 +69,23 @@ CREATE TABLE IF NOT EXISTS public.workspace_members (
 -- ============================================================
 -- 3. 맵
 -- ============================================================
+
+-- map_folders: 사용자별 문서함(폴더) 트리 — 2026-08-02 사용자 요청.
+--   맵을 폴더로 나눠 저장한다. parent_id NULL = 최상위("홈").
+--   폴더 삭제는 API 에서 **비어 있을 때만** 허용한다(내용까지 지우는
+--   실수를 막는다) — CASCADE 는 사용자 삭제 시의 정리 경로다.
+CREATE TABLE IF NOT EXISTS public.map_folders (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id    UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    parent_id   UUID REFERENCES public.map_folders(id) ON DELETE CASCADE,
+    name        VARCHAR(255) NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_map_folders_owner
+    ON public.map_folders(owner_id, parent_id);
+
 CREATE TABLE IF NOT EXISTS public.maps (
     id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     owner_id                  UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -86,6 +103,24 @@ CREATE TABLE IF NOT EXISTS public.maps (
 CREATE INDEX IF NOT EXISTS idx_maps_owner_id    ON public.maps(owner_id);
 CREATE INDEX IF NOT EXISTS idx_maps_workspace_id ON public.maps(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_maps_deleted_at  ON public.maps(deleted_at) WHERE deleted_at IS NULL;
+
+-- 문서함(폴더) + 맵 유형 — 2026-08-02 추가. 이미 쓰고 있는 DB 에도
+-- 그대로 적용되도록 ADD COLUMN IF NOT EXISTS 로 쓴다(멱등).
+--   folder_id : NULL = 최상위("홈")
+--   kind      : 'solo'(단독맵) | 'collab'(협업맵) — 지금은 분류 표식이며
+--               실제 동시 편집은 협업 단계(V1~V2)에서 붙는다
+ALTER TABLE public.maps
+    ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES public.map_folders(id) ON DELETE SET NULL;
+ALTER TABLE public.maps
+    ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'solo';
+
+CREATE INDEX IF NOT EXISTS idx_maps_folder
+    ON public.maps(owner_id, folder_id) WHERE deleted_at IS NULL;
+
+-- ⚠️ 제목 중복(같은 폴더 안 같은 이름) 금지는 **API 에서** 검사한다.
+--    유니크 인덱스를 쓰지 않는 이유: 이미 운영 중인 DB 에 중복 제목이
+--    남아 있으면 인덱스 생성이 실패해 스키마 적용 전체가 멈춘다.
+--    데이터를 정리한 뒤 유니크 인덱스로 승격하는 것이 다음 단계다(B13).
 
 CREATE TABLE IF NOT EXISTS public.map_revisions (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -321,6 +356,13 @@ CREATE TABLE IF NOT EXISTS public.field_registry (
 -- ============================================================
 -- 11. Row Level Security (RLS)
 -- ============================================================
+
+-- map_folders: 내 폴더만 (문서함 — 2026-08-02)
+ALTER TABLE public.map_folders ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users can manage own folders"
+    ON public.map_folders FOR ALL
+    USING (auth.uid() = owner_id);
 
 -- maps
 ALTER TABLE public.maps ENABLE ROW LEVEL SECURITY;

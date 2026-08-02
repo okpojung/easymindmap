@@ -21,6 +21,7 @@ import type {
 } from '@/editor/__samples__/types';
 import { installGlobalTooltip } from '@/utils/globalTooltip';
 import { WelcomeScreen } from '@/components/auth/WelcomeScreen';
+import { MapBrowser } from '@/components/cloud/MapBrowser';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { initialMapId, openMapHere } from '@/services/cloud/mapSession';
 import {
@@ -133,6 +134,9 @@ export function EditorPage() {
   const setOutlineSplitRatio = useEditorUiStore((s) => s.setOutlineSplitRatio);
   const mainView = useEditorUiStore((s) => s.mainView);
   const setMainView = useEditorUiStore((s) => s.setMainView);
+  // 문서함(서버 맵 목록)을 편집 영역에 띄운 상태 (2026-08-02)
+  const browserOpen = useEditorUiStore((s) => s.browserOpen);
+  const setBrowserOpen = useEditorUiStore((s) => s.setBrowserOpen);
   // 아웃라인 전체 모드 = 분할이 아니고 mainView가 'outline'일 때
   const fullOutline = !outlineSplit && mainView === 'outline';
   const tweaksOpen = useEditorUiStore((s) => s.tweaksOpen);
@@ -194,6 +198,12 @@ export function EditorPage() {
   // 부팅될 때 여기서 해당 문서를 불러온다. 로그인 게이트가 걸려 있으면
   // 로그인이 끝난 뒤에 불러온다.
   const [urlMapErr, setUrlMapErr] = useState<string | null>(null);
+  // 문서함 안내(열기·폴더 생성 결과) — 화면 위쪽에 잠깐 표시
+  const [browserMsg, setBrowserMsgRaw] = useState<string | null>(null);
+  const setBrowserMsg = (m: string) => {
+    setBrowserMsgRaw(m);
+    window.setTimeout(() => setBrowserMsgRaw((cur) => (cur === m ? null : cur)), 3500);
+  };
   useEffect(() => {
     if (!initialMapId || gated) return;
     let alive = true;
@@ -305,7 +315,15 @@ export function EditorPage() {
                 />
               </>
             )}
-            {fullOutline ? (
+            {browserOpen ? (
+              // 문서함 — 팝업이 아니라 편집 영역을 그대로 쓴다 (2026-08-02)
+              <MapBrowser
+                t={t}
+                onClose={() => setBrowserOpen(false)}
+                onFlash={(m) => setBrowserMsg(m)}
+                onOpened={() => setBrowserOpen(false)}
+              />
+            ) : fullOutline ? (
               // 아웃라인 전체 모드 — 편집 영역을 아웃라인 하나로 채운다.
               // ✕(또는 상단 토글)로 맵 모드로 돌아간다.
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -357,6 +375,21 @@ export function EditorPage() {
       {/* Hide canvas-only overlays (collapse toggles, +indicators) when printing
           or exporting to image. */}
       <style>{`@media print { .mm-overlay-controls { display: none !important; } }`}</style>
+
+      {browserMsg && (
+        <div
+          data-testid="browser-toast"
+          style={{
+            position: 'fixed', top: 62, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 300, background: t.text, color: t.surface,
+            borderRadius: 9, padding: '8px 14px', fontSize: 12.5,
+            boxShadow: '0 10px 28px rgba(0,0,0,0.2)', whiteSpace: 'nowrap',
+            pointerEvents: 'none', // 아래 요소 클릭을 막지 않는다
+          }}
+        >
+          {browserMsg}
+        </div>
+      )}
 
       {/* `?map=<id>` 로 연 탭에서 문서를 불러오지 못했을 때 */}
       {urlMapErr && (

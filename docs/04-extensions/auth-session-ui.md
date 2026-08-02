@@ -2,7 +2,8 @@
 
 > 2026-08-02 확정·구현. 로그인이 실제로 동작하게 된 뒤(Phase 3, GoTrue)
 > 화면 곳곳에 흩어져 있던 "클라우드" 개념을 정리한 결과다.
-> 관련: [backend-phase1.md](../05-implementation/backend-phase1.md) Phase 3,
+> 관련: [document-library.md](document-library.md)(문서함·저장 규칙),
+> [backend-phase1.md](../05-implementation/backend-phase1.md) Phase 3,
 > [attachment-storage.md](attachment-storage.md)(B9), [i18n.md](i18n.md)(B10)
 
 ## 0. 무엇이 문제였나
@@ -97,14 +98,14 @@ UI(`components/cloud/MapListModal.tsx`)는 그대로 공유한다.
 
 | 버튼 | 하는 일 |
 |---|---|
-| **☁ 저장** | 지금 내용을 서버에 저장하고 **히스토리 버전으로 남긴다**(B8 — 자동저장은 버전을 남기지 않는다) |
-| **✕ 맵 닫기** | **무조건 저장한 뒤** 닫고, 내 문서 목록을 연다 |
+| **☁ 저장** | 지금 내용을 서버에 저장하고 **히스토리 버전으로 남긴다**(B8 — 자동저장은 버전을 남기지 않는다). 첫 저장은 폴더·이름을 묻는다([document-library.md](document-library.md) §3) |
+| **✕ 맵 닫기** | 저장한 뒤 닫고 문서함을 연다. **아직 저장한 적 없는 맵은 경고**한다(같은 문서 §4) |
 
 - 맵 닫기는 저장이 먼저다 — **저장에 실패하면 닫지 않는다**(내용 유실
   방지). 로그인하지 않아 저장할 수 없을 때만 "저장 없이 닫을까요?"를
   묻는다.
-- 아직 서버에 없는 맵도 **확인 없이** 새 맵으로 저장하고 닫는다
-  (2026-08-02 사용자 지시 — "맵 닫기하면 무조건 저장한 다음 닫기").
+- 아직 서버에 없는 맵은 **"저장되지 않았습니다" 경고** 후 사용자가
+  고른다 (2026-08-02 후속 지시로 갱신 — 처음에는 무조건 저장이었다).
 - 실수로 닫아도 **Ctrl+Z** 로 문서가 되돌아온다.
 - 저장·닫기·열기 로직은 `services/cloud/mapSession.ts` 한 곳에 모았다 —
   상단 툴바·좌측 패널·히스토리 패널이 같은 규칙을 따른다.
@@ -118,7 +119,7 @@ UI(`components/cloud/MapListModal.tsx`)는 그대로 공유한다.
 | `components/auth/LoginForm.tsx` | 이메일 로그인/가입 + 제공자 목록 |
 | `components/top-toolbar/MapActions.tsx` | ☁ 저장 · ✕ 맵 닫기 (+ 자동저장 훅) |
 | `components/top-toolbar/UserMenu.tsx` | 우상단 아바타 계정 메뉴 |
-| `components/cloud/MapListModal.tsx` | 문서 목록 (열기·이름변경·삭제) |
+| `components/cloud/MapBrowser.tsx` | 문서함 — 편집 영역의 폴더·목록 (MapListModal 대체) |
 
 ## 7. 검증
 

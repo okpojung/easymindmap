@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
+import { FoldersModule } from './folders/folders.module';
 import { HealthModule } from './health/health.module';
 import { MapsModule } from './maps/maps.module';
 import { NodesModule } from './nodes/nodes.module';
@@ -14,6 +15,7 @@ import { NodesModule } from './nodes/nodes.module';
     }),
     DatabaseModule,
     HealthModule,
+    FoldersModule,
     MapsModule,
     NodesModule,
   ],

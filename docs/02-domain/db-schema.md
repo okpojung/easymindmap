@@ -125,6 +125,10 @@ CREATE TABLE public.maps (
   refresh_interval_seconds  INT          NOT NULL DEFAULT 0,       -- 0: off
   current_version           INT          NOT NULL DEFAULT 0,
 
+  -- 문서함 (2026-08-02) — apps/api/database/schema.sql 이 실제 기준
+  folder_id                 UUID REFERENCES public.map_folders(id) ON DELETE SET NULL, -- NULL = 홈
+  kind                      VARCHAR(20)  NOT NULL DEFAULT 'solo',  -- 'solo'(단독맵) | 'collab'(협업맵)
+
   -- 번역 정책 (V2, 맵 단위 오버라이드)
   -- null: 사용자 기본 설정 따름 / 설정 시 해당 맵의 번역 정책 재정의
   -- 예: {"mode":"off"} | {"allowedTargetLanguages":["ko","ja"]}
@@ -138,7 +142,27 @@ CREATE TABLE public.maps (
 CREATE INDEX idx_maps_owner_id ON public.maps(owner_id);
 CREATE INDEX idx_maps_workspace_id ON public.maps(workspace_id);
 CREATE INDEX idx_maps_deleted_at ON public.maps(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX idx_maps_folder ON public.maps(owner_id, folder_id) WHERE deleted_at IS NULL;
 ```
+
+### 2-0. map_folders (문서함 — 2026-08-02)
+
+```sql
+CREATE TABLE public.map_folders (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id   UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  parent_id  UUID REFERENCES public.map_folders(id) ON DELETE CASCADE,  -- NULL = 최상위(홈)
+  name       VARCHAR(255) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_map_folders_owner ON public.map_folders(owner_id, parent_id);
+```
+
+- 폴더 삭제는 **비어 있을 때만** API 가 허용한다(CASCADE 는 사용자 삭제 시 정리 경로).
+- **같은 폴더 안 맵 제목 중복 금지는 API 검사**다 — 유니크 인덱스는 기존
+  중복 데이터가 있으면 생성이 실패해 스키마 적용을 멈춘다(backlog B13).
+- 설계·규칙: [document-library.md](../04-extensions/document-library.md)
 
 ### [owner_id vs created_by 구분]
 - `owner_id` = 현재 맵 소유자. ownership transfer 후 변경 가능.

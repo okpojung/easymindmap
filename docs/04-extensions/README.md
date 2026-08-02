@@ -35,6 +35,7 @@ AI, 번역, 협업, 퍼블리시, 외부 연동 등 편집기 코어 위에 올�
 |---|---|
 | `rich-node-content.md` | 리치 노드 콘텐츠 (코드·표·체크·문단) — B2, 완료 |
 | `auth-session-ui.md` | 로그인 게이트 · 계정 메뉴 · 맵 세션/브라우저 탭 모델 (2026-08-02) |
+| `document-library.md` | 문서함 — 폴더 · 저장 규칙 · 문서 브라우저 · 맵 유형 (2026-08-02) |
 | `attachment-storage.md` | 이미지·첨부 저장소 provider + 요금제 용량 — B9, 설계 완료 |
 | `i18n.md` | 다국어(한국어+영어) 단계·주의사항 — B10 |
 | `content-permanence.md` | 내용 영속성 규칙 |

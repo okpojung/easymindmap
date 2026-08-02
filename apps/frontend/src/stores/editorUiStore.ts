@@ -75,6 +75,9 @@ interface EditorUiState {
   // 아웃라인을 열 때 처음 보여줄 노드 id — 열기 액션이 captureOutlineFocus로
   // 채우고, 아웃라인 페인이 마운트 시 그 행으로 스크롤한다 (1회성)
   outlineFocusId: string | null;
+  // 문서함(서버 맵 목록)을 편집 영역에 열어 둔 상태 (2026-08-02).
+  // 팝업 모달 대신 편집 영역을 차지한다 — 닫으면 원래 화면으로 돌아온다.
+  browserOpen: boolean;
 
   setThemeName: (v: ThemeName) => void;
   setLayoutType: (v: LayoutType) => void;
@@ -95,6 +98,7 @@ interface EditorUiState {
   setOutlineSplit: (v: boolean) => void;
   setOutlineSplitRatio: (v: number) => void;
   setMainView: (v: 'map' | 'outline') => void;
+  setBrowserOpen: (v: boolean) => void;
   toggleMainView: () => void;
 }
 
@@ -128,6 +132,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   outlineSplitRatio: 0.42,
   mainView: 'map',
   outlineFocusId: null,
+  browserOpen: false,
 
   setThemeName: (themeName) => {
     try { localStorage.setItem(THEME_KEY, themeName); } catch { /* 저장 실패 무시 */ }
@@ -166,6 +171,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
     mainView: s.mainView === 'map' ? 'outline' : 'map',
     outlineFocusId: s.mainView === 'map' ? captureOutlineFocus() : s.outlineFocusId,
   })),
+  setBrowserOpen: (browserOpen) => set({ browserOpen }),
   setSampleTopic: (sampleTopic) => set({ sampleTopic }),
   setShowTags: (showTags) => set({ showTags }),
   toggleTagHidden: (tag) =>

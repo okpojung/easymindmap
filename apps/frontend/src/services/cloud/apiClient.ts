@@ -52,20 +52,74 @@ export interface MapVersionItem {
   bytes: number;
 }
 
+/** 맵 유형 — 단독맵 / 협업맵 (2026-08-02) */
+export type MapKind = 'solo' | 'collab';
+
 export interface MapListItem {
   mapId: string;
   title: string;
+  /** null = 최상위("홈") */
+  folderId: string | null;
+  kind: MapKind;
   deletedAt: string | null;
   updatedAt: string;
 }
 
+export interface FolderItem {
+  folderId: string;
+  parentId: string | null;
+  name: string;
+  /** 그 폴더에 직접 들어 있는 맵 수 */
+  mapCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 문서 브라우저 목록 조회 옵션 (폴더·정렬) */
+export interface MapListQuery {
+  /** 'root' = 최상위만 · <folderId> = 그 폴더만 · 생략 = 전부 */
+  folder?: string;
+  sort?: 'title' | 'updatedAt';
+  order?: 'asc' | 'desc';
+  limit?: number;
+}
+
+function qs(q: MapListQuery = {}): string {
+  const p = new URLSearchParams();
+  if (q.folder) p.set('folder', q.folder);
+  if (q.sort) p.set('sort', q.sort);
+  if (q.order) p.set('order', q.order);
+  p.set('limit', String(q.limit ?? 200));
+  return `?${p.toString()}`;
+}
+
 export const cloudApi = {
   health: () => req<{ status: string; db: string }>('GET', '/health'),
-  listMaps: () => req<{ maps: MapListItem[]; total: number }>('GET', '/maps'),
-  createMap: (title: string) =>
-    req<{ mapId: string; title: string }>('POST', '/maps', { title }),
+  listMaps: (q?: MapListQuery) =>
+    req<{ maps: MapListItem[]; total: number }>('GET', `/maps${qs(q)}`),
+  // 새 맵 생성 — 폴더·유형 지정 가능. 같은 폴더에 같은 이름이 있으면 409
+  createMap: (title: string, opts?: { folderId?: string | null; kind?: MapKind }) =>
+    req<{ mapId: string; title: string; folderId: string | null; kind: MapKind }>(
+      'POST', '/maps',
+      { title, folderId: opts?.folderId ?? null, kind: opts?.kind ?? 'solo' }),
+  // 이름 변경 · 폴더 이동 · 유형 변경 (중복 이름이면 409)
+  updateMap: (
+    mapId: string,
+    patch: { title?: string; folderId?: string | null; kind?: MapKind },
+  ) => req<{ mapId: string; title: string; folderId: string | null; kind: MapKind }>(
+    'PATCH', `/maps/${mapId}`, patch),
   renameMap: (mapId: string, title: string) =>
     req<{ mapId: string; title: string }>('PATCH', `/maps/${mapId}`, { title }),
+
+  // ── 문서함(폴더) ────────────────────────────────────────────
+  listFolders: () => req<{ folders: FolderItem[]; total: number }>('GET', '/folders'),
+  createFolder: (name: string, parentId?: string | null) =>
+    req<FolderItem>('POST', '/folders', { name, parentId: parentId ?? null }),
+  renameFolder: (folderId: string, name: string) =>
+    req<FolderItem>('PATCH', `/folders/${folderId}`, { name }),
+  moveFolder: (folderId: string, parentId: string | null) =>
+    req<FolderItem>('PATCH', `/folders/${folderId}`, { parentId }),
+  deleteFolder: (folderId: string) => req<void>('DELETE', `/folders/${folderId}`),
   // keepVersion: 이 저장을 히스토리 버전으로도 남긴다 (B8 — 명시적
   // 저장·맵 닫기에서만 true. 자동저장은 남기지 않는다)
   saveDocument: (mapId: string, doc: unknown, title?: string, keepVersion?: boolean) =>
@@ -78,7 +132,10 @@ export const cloudApi = {
     req<{ mapId: string; version: number; title: string; doc: unknown; createdAt: string }>(
       'GET', `/maps/${mapId}/versions/${version}`),
   getDocument: (mapId: string) =>
-    req<{ mapId: string; title: string; doc: unknown; updatedAt: string }>(
+    req<{
+      mapId: string; title: string; folderId: string | null;
+      kind: MapKind; doc: unknown; updatedAt: string;
+    }>(
       'GET',
       `/maps/${mapId}/document`,
     ),

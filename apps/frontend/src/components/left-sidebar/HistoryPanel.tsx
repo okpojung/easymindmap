@@ -61,9 +61,23 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
       const snap = await cloudApi.getVersion(cloudMapId, v.version);
       const loadedMap = (snap.doc as { map?: unknown })?.map;
       if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
-      const newTitle = historyTitle(v.title || '맵', v.createdAt);
-      // 새 맵으로 저장 — 제목만 바꾸고 내용은 그 시점 그대로
-      const created = await cloudApi.createMap(newTitle);
+      let newTitle = historyTitle(v.title || '맵', v.createdAt);
+      // 새 맵으로 저장 — 제목만 바꾸고 내용은 그 시점 그대로.
+      // 같은 폴더·유형에 만들고(문서함 규칙), 같은 이름이 이미 있으면
+      // (같은 분에 두 번 복원) 뒤에 번호를 붙여 다시 시도한다.
+      const cloud = useCloudStore.getState();
+      let created: { mapId: string };
+      try {
+        created = await cloudApi.createMap(newTitle, {
+          folderId: cloud.cloudFolderId, kind: cloud.cloudKind,
+        });
+      } catch (e) {
+        if (!(e instanceof CloudError) || e.status !== 409) throw e;
+        newTitle = `${newTitle}_2`;
+        created = await cloudApi.createMap(newTitle, {
+          folderId: cloud.cloudFolderId, kind: cloud.cloudKind,
+        });
+      }
       await cloudApi.saveDocument(
         created.mapId,
         {

@@ -1,4 +1,5 @@
-import { IsIn, IsInt, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min, MaxLength, ValidateIf } from 'class-validator';
+import { MAP_KINDS } from './create-map.dto';
 
 export class UpdateMapDto {
   @IsOptional()
@@ -19,4 +20,14 @@ export class UpdateMapDto {
   @IsOptional()
   @IsString()
   defaultLayoutType?: string;
+
+  /** 폴더 이동 — null = 최상위로 */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  folderId?: string | null;
+
+  @IsOptional()
+  @IsIn(MAP_KINDS as unknown as string[])
+  kind?: string;
 }

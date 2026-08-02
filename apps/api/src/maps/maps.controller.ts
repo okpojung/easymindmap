@@ -40,11 +40,17 @@ export class MapsController {
     @Query('deleted') deleted?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('folder') folder?: string,
+    @Query('sort') sort?: string,
+    @Query('order') order?: string,
   ) {
     return this.maps.list(user.id, {
       deleted: deleted === 'true',
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
+      folder,
+      sort: sort === 'title' ? 'title' : 'updatedAt',
+      order: order === 'asc' ? 'asc' : 'desc',
     });
   }
 

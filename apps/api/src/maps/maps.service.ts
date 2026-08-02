@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { FoldersService } from '../folders/folders.service';
 import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
 import type { CreateMapDto } from './dto/create-map.dto';
 import type { UpdateMapDto } from './dto/update-map.dto';
@@ -8,6 +9,8 @@ import type { UpdateMapDto } from './dto/update-map.dto';
 interface MapRow {
   id: string;
   title: string;
+  folder_id: string | null;
+  kind: string;
   default_layout_type: string;
   view_mode: string;
   refresh_interval_seconds: number;
@@ -19,43 +22,116 @@ interface MapRow {
 
 @Injectable()
 export class MapsService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly folders: FoldersService,
+  ) {}
 
-  /** POST /maps — 새 맵 생성 */
+  /**
+   * POST /maps — 새 맵 생성.
+   * 폴더(folderId)와 유형(kind)을 지정할 수 있고, **같은 폴더 안에 같은
+   * 이름의 맵이 있으면 409** 로 거절한다 (2026-08-02 사용자 규칙 —
+   * "같은 이름의 맵이 존재한다고 알리고 다른 이름/다른 폴더로 안내").
+   */
   async create(userId: string, dto: CreateMapDto) {
+    const title = dto.title ?? 'Untitled';
+    const folderId = dto.folderId ?? null;
+    if (folderId) await this.folders.requireOwned(userId, folderId);
+    await this.assertTitleAvailable(userId, folderId, title);
+
     const { rows } = await this.db.query<MapRow>(
-      `INSERT INTO public.maps (owner_id, title, workspace_id, default_layout_type)
-       VALUES ($1, $2, $3, COALESCE($4, 'radial-bidirectional'))
+      `INSERT INTO public.maps
+         (owner_id, title, workspace_id, default_layout_type, folder_id, kind)
+       VALUES ($1, $2, $3, COALESCE($4, 'radial-bidirectional'), $5, COALESCE($6, 'solo'))
        RETURNING *`,
-      [userId, dto.title ?? 'Untitled', dto.workspaceId ?? null, dto.defaultLayoutType ?? null],
+      [
+        userId, title, dto.workspaceId ?? null, dto.defaultLayoutType ?? null,
+        folderId, dto.kind ?? null,
+      ],
     );
     const m = rows[0];
     return {
       mapId: m.id,
       title: m.title,
+      folderId: m.folder_id,
+      kind: m.kind,
       currentVersion: m.current_version,
       createdAt: m.created_at,
     };
   }
 
-  /** GET /maps — 내 맵 목록 (소유 기준, 소프트삭제 제외 기본) */
-  async list(userId: string, opts: { deleted?: boolean; page?: number; limit?: number }) {
+  /**
+   * 같은 폴더 안 제목 중복 검사 (대소문자·앞뒤 공백 무시).
+   *
+   * ⚠️ DB 유니크 인덱스를 쓰지 않는다 — 이미 운영 중인 DB 에 중복 제목이
+   * 남아 있으면 인덱스 생성이 실패해 스키마 적용 전체가 멈추기 때문이다
+   * (schema.sql 주석 참조). 그래서 여기서 막는다. 동시 요청 경합으로
+   * 아주 드물게 뚫릴 수 있으나, 사용자 한 명이 같은 이름을 동시에 두 번
+   * 만드는 상황이라 실사용 영향은 없다.
+   */
+  private async assertTitleAvailable(
+    userId: string,
+    folderId: string | null,
+    title: string,
+    exceptMapId?: string,
+  ): Promise<void> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `SELECT id FROM public.maps
+        WHERE owner_id = $1
+          AND folder_id IS NOT DISTINCT FROM $2
+          AND deleted_at IS NULL
+          AND lower(btrim(title)) = lower(btrim($3))
+          AND ($4::uuid IS NULL OR id <> $4)
+        LIMIT 1`,
+      [userId, folderId, title, exceptMapId ?? null],
+    );
+    if (rows[0]) {
+      throw new ConflictException(
+        `같은 폴더에 “${title}” 맵이 이미 있습니다. 다른 이름을 쓰거나 다른 폴더에 저장해 주세요.`,
+      );
+    }
+  }
+
+  /**
+   * GET /maps — 내 맵 목록 (소유 기준, 소프트삭제 제외 기본).
+   *  · folder: 'root' = 최상위만 · <uuid> = 그 폴더만 · 생략 = 전부
+   *  · sort/order: 이름·수정일 오름/내림 (문서 브라우저 정렬 — 2026-08-02)
+   */
+  async list(
+    userId: string,
+    opts: {
+      deleted?: boolean; page?: number; limit?: number;
+      folder?: string; sort?: 'title' | 'updatedAt'; order?: 'asc' | 'desc';
+    },
+  ) {
     const page = Math.max(1, opts.page ?? 1);
-    const limit = Math.min(100, Math.max(1, opts.limit ?? 20));
+    const limit = Math.min(500, Math.max(1, opts.limit ?? 20));
     const offset = (page - 1) * limit;
     const wantDeleted = opts.deleted === true;
 
-    const where = `owner_id = $1 AND deleted_at IS ${wantDeleted ? 'NOT NULL' : 'NULL'}`;
+    const params: unknown[] = [userId];
+    let where = `owner_id = $1 AND deleted_at IS ${wantDeleted ? 'NOT NULL' : 'NULL'}`;
+    if (opts.folder === 'root') {
+      where += ' AND folder_id IS NULL';
+    } else if (opts.folder) {
+      params.push(opts.folder);
+      where += ` AND folder_id = $${params.length}`;
+    }
+
+    // 정렬 컬럼은 화이트리스트로만 — 문자열 결합에 사용자 입력을 넣지 않는다
+    const sortCol = opts.sort === 'title' ? 'lower(btrim(title))' : 'updated_at';
+    const dir = opts.order === 'asc' ? 'ASC' : 'DESC';
 
     const [list, count] = await Promise.all([
       this.db.query<MapRow>(
         `SELECT * FROM public.maps WHERE ${where}
-         ORDER BY updated_at DESC LIMIT $2 OFFSET $3`,
-        [userId, limit, offset],
+         ORDER BY ${sortCol} ${dir}, id
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset],
       ),
       this.db.query<{ total: string }>(
         `SELECT COUNT(*)::text AS total FROM public.maps WHERE ${where}`,
-        [userId],
+        params,
       ),
     ]);
 
@@ -63,6 +139,8 @@ export class MapsService {
       maps: list.rows.map((m) => ({
         mapId: m.id,
         title: m.title,
+        folderId: m.folder_id,
+        kind: m.kind,
         deletedAt: m.deleted_at,
         updatedAt: m.updated_at,
       })),
@@ -87,14 +165,26 @@ export class MapsService {
     };
   }
 
-  /** PATCH /maps/:id — 메타 업데이트(변경 필드만) */
+  /** PATCH /maps/:id — 메타 업데이트(변경 필드만). 이름 변경·폴더 이동 포함 */
   async update(userId: string, mapId: string, dto: UpdateMapDto) {
-    await this.requireOwnedMap(userId, mapId);
+    const cur = await this.requireOwnedMap(userId, mapId);
+
+    // 이름 변경·폴더 이동은 "같은 폴더에 같은 이름 금지"를 다시 확인한다
+    const nextFolder = dto.folderId === undefined ? cur.folder_id : dto.folderId;
+    const nextTitle = dto.title === undefined ? cur.title : dto.title;
+    if (dto.folderId !== undefined && dto.folderId) {
+      await this.folders.requireOwned(userId, dto.folderId);
+    }
+    if (nextTitle !== cur.title || nextFolder !== cur.folder_id) {
+      await this.assertTitleAvailable(userId, nextFolder, nextTitle, mapId);
+    }
 
     const sets: string[] = [];
     const params: unknown[] = [];
     let i = 1;
     if (dto.title !== undefined) { sets.push(`title = $${i++}`); params.push(dto.title); }
+    if (dto.folderId !== undefined) { sets.push(`folder_id = $${i++}`); params.push(dto.folderId); }
+    if (dto.kind !== undefined) { sets.push(`kind = $${i++}`); params.push(dto.kind); }
     if (dto.viewMode !== undefined) { sets.push(`view_mode = $${i++}`); params.push(dto.viewMode); }
     if (dto.refreshIntervalSeconds !== undefined) { sets.push(`refresh_interval_seconds = $${i++}`); params.push(dto.refreshIntervalSeconds); }
     if (dto.defaultLayoutType !== undefined) { sets.push(`default_layout_type = $${i++}`); params.push(dto.defaultLayoutType); }
@@ -109,6 +199,8 @@ export class MapsService {
     return {
       mapId: m.id,
       title: m.title,
+      folderId: m.folder_id,
+      kind: m.kind,
       viewMode: m.view_mode,
       refreshIntervalSeconds: m.refresh_interval_seconds,
       defaultLayoutType: m.default_layout_type,
@@ -132,10 +224,19 @@ export class MapsService {
        RETURNING updated_at`,
       [mapId, JSON.stringify(doc)],
     );
-    if (title !== undefined) {
+    // 제목은 **달라졌을 때만** 갱신하고, 그때는 중복 검사도 거친다.
+    // 서버 맵을 열어 편집한 뒤 저장하면 프런트가 "열었던 그 이름"을 그대로
+    // 보내므로(2026-08-02 규칙) 보통 이 분기는 지나간다.
+    if (title !== undefined && title !== map.title) {
+      await this.assertTitleAvailable(userId, map.folder_id, title, mapId);
       await this.db.query(
         `UPDATE public.maps SET title = $2, updated_at = NOW() WHERE id = $1`,
         [mapId, title],
+      );
+    } else {
+      await this.db.query(
+        `UPDATE public.maps SET updated_at = NOW() WHERE id = $1`,
+        [mapId],
       );
     }
 
@@ -218,6 +319,8 @@ export class MapsService {
     return {
       mapId: map.id,
       title: map.title,
+      folderId: map.folder_id,
+      kind: map.kind,
       doc: rows[0].doc,
       updatedAt: rows[0].updated_at,
     };

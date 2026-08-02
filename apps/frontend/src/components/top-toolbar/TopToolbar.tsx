@@ -356,6 +356,8 @@ export function TopToolbar({
             position: 'absolute', top: 46, right: 14, zIndex: 80, whiteSpace: 'nowrap',
             background: t.text, color: t.surface, padding: '6px 12px', borderRadius: 8,
             fontSize: 12, boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
+            // 안내가 그 아래 버튼(문서함 '새 폴더' 등) 클릭을 막지 않도록
+            pointerEvents: 'none',
           }}
         >
           {toast}

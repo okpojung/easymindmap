@@ -44,6 +44,12 @@ const BRANCH_COLOR_KEYS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 /** '맵 닫기' 후의 빈 문서 제목 — "지금 열린 문서가 없다"의 단일 기준 */
 export const EMPTY_MAP_TITLE = '문서 없음';
 
+/**
+ * 새 맵의 기본 제목. 2026-08-02 규칙 3 — 새 맵을 만들 때는 제목을 묻지
+ * 않고 이 이름으로 시작하고, **서버에 저장할 때** 폴더와 이름을 정한다.
+ */
+export const NEW_MAP_TITLE = '새 맵';
+
 /** 지금 열린 문서가 없는 상태인가 (맵 닫기 직후 / 첫 진입) */
 export function isDocumentEmpty(map: { title: string; branches: unknown[] }): boolean {
   return map.title === EMPTY_MAP_TITLE && map.branches.length === 0;
@@ -132,6 +138,8 @@ interface DocumentState {
 
   // 현재 맵 전체 교체 (템플릿 적용 등 — undo 히스토리에 기록됨)
   loadMap: (map: SampleMap) => void;
+  // 문서 제목만 교체 (서버 저장 이름과 맞추기 — 중심 주제는 건드리지 않는다)
+  setMapTitle: (title: string) => void;
   // 새 맵 시작 — 루트만 있는 기본 맵 ('새 맵' 메뉴)
   newMap: (title?: string) => void;
   // 맵 닫기 — 중심 주제만 남은 빈 문서로 되돌린다 (B7 '맵 닫기').
@@ -1062,6 +1070,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set({ map: cloneMap(map) });
   },
 
+  // 서버에 저장한 맵 이름과 문서 제목을 맞춘다 (2026-08-02 문서함).
+  // 내용 변경이 아니므로 undo 히스토리에는 남기지 않는다.
+  setMapTitle: (title) => {
+    set((state) => (state.map.title === title
+      ? state
+      : { map: { ...state.map, title } }));
+  },
+
   // 맵 닫기 (B7) — 문서를 비운 상태. 골격(주제 1~3)을 만드는 newMap 과
   // 달리 중심 주제 하나만 남겨, "지금 열린 문서가 없다"를 화면으로도
   // 드러낸다. map 이 바뀌므로 실수로 닫아도 Ctrl+Z 로 복구된다.
@@ -1075,7 +1091,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     });
   },
 
-  newMap: (title = '새 마인드맵') => {
+  newMap: (title = NEW_MAP_TITLE) => {
     // 기본 맵 골격 = '트리-진행트리맵' 기본 템플릿 (2026-07 지정) —
     // 중심 주제 + 주제 1~3 + 각 하위 주제 2개 + 내용 (4레벨).
     // 레벨별 레이아웃: 1레벨 트리·오른쪽(맵 전체 = NewMapPanel에서 설정) →

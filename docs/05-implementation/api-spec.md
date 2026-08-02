@@ -218,7 +218,9 @@ Access Token 갱신
 {
   "title": "New Mindmap",
   "workspaceId": "uuid-...",
-  "defaultLayoutType": "radial-bidirectional"
+  "defaultLayoutType": "radial-bidirectional",
+  "folderId": "uuid-... | null",
+  "kind": "solo | collab"
 }
 ```
 
@@ -227,10 +229,28 @@ Access Token 갱신
 {
   "mapId": "uuid-...",
   "title": "New Mindmap",
+  "folderId": null,
+  "kind": "solo",
   "currentVersion": 0,
   "createdAt": "2026-03-29T00:00:00Z"
 }
 ```
+
+`409 Conflict` — **같은 폴더에 같은 이름의 맵**이 이미 있을 때
+(대소문자·앞뒤 공백 무시). 메시지에 다른 이름/다른 폴더 안내가 들어 있다.
+`PATCH /maps/:id` 의 이름 변경·폴더 이동도 같은 검사를 거친다.
+설계: [document-library.md](../04-extensions/document-library.md)
+
+---
+
+### /folders — 문서함 (2026-08-02)
+
+| 메서드 | 경로 | 비고 |
+|---|---|---|
+| GET | `/folders` | 내 폴더 전부(평면) + `mapCount`. 트리 구성은 클라이언트 |
+| POST | `/folders` | `{name, parentId}` — 같은 부모에 같은 이름이면 409 |
+| PATCH | `/folders/:id` | `{name?, parentId?}` — 자기 자신/자손으로 이동은 400 |
+| DELETE | `/folders/:id` | **비어 있을 때만** 204, 아니면 409 |
 
 ---
 
@@ -238,6 +258,8 @@ Access Token 갱신
 내 맵 목록 조회 (소유 + 워크스페이스 공유)
 
 **Query** `?workspaceId=uuid&deleted=false&page=1&limit=20`
+`&folder=root|<folderId>` — 폴더별 조회 (`root` = 최상위만)
+`&sort=title|updatedAt&order=asc|desc` — 문서함 정렬 (기본 `updatedAt desc`)
 
 **Response** `200 OK`
 ```json

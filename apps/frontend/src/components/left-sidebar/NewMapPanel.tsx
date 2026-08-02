@@ -22,9 +22,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile } from '@/utils/importMapFile';
 import { resolveRemoteImages } from '@/utils/remoteImages';
-import { MapListModal } from '@/components/cloud/MapListModal';
-import { needLogin } from '@/services/cloud/mapSession';
-import { useDocumentStore } from '@/stores/documentStore';
+import { NEW_MAP_TITLE, useDocumentStore } from '@/stores/documentStore';
+import { detachFromServer } from '@/services/cloud/mapSession';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import {
@@ -54,11 +53,10 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const resetSpacing = useEditorUiStore((s) => s.resetSpacing);
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
 
-  const [title, setTitle] = useState('');
   const [userTpls, setUserTpls] = useState<UserTemplate[]>([]);
   const [notice, setNotice] = useState('');
-  // B7 — 서버 맵 불러오기 목록 모달
-  const [listOpen, setListOpen] = useState(false);
+  // 문서함은 편집 영역에 연다 (2026-08-02 — 팝업 모달에서 이동)
+  const setBrowserOpen = useEditorUiStore((s) => s.setBrowserOpen);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [importKind, setImportKind] = useState<ImportKind>('md');
   // MD 블록 배치 옵션 (리치 노드 P3) — 문단·코드·표·체크를 노드 본문에
@@ -99,14 +97,16 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     // 기본 맵 = '트리-진행트리맵' 기본 템플릿: 중심 주제 + 주제 1~3 +
     // 하위 주제 + 내용 (4레벨) · 1레벨 트리·오른쪽 → 2레벨 진행트리 →
     // 3레벨 트리 → 4레벨 진행트리 (documentStore.newMap과 한 쌍)
-    const tt = title.trim();
-    newMap(tt || '새 마인드맵');
-    // 제목을 입력했으면 중심 주제에도 반영 (템플릿 골격 시작과 동일 규칙)
-    if (tt) useDocumentStore.getState().updateNodeText('root', tt);
+    //
+    // 2026-08-02: **여기서 제목을 묻지 않는다.** 항상 'NEW_MAP_TITLE'로
+    // 시작하고, 편집을 마치고 ☁ 저장할 때 폴더와 이름을 정한다(규칙 3).
+    // 새 문서다 — 조금 전까지 열려 있던 서버 맵과의 연결을 끊는다.
+    // (끊지 않으면 자동저장이 그 서버 맵을 이 새 맵으로 덮어쓴다)
+    detachFromServer();
+    newMap(NEW_MAP_TITLE);
     setLayoutType('tree-right');
     resetSpacing();
     setSelectedId('root');
-    setTitle('');
     setChooseTpl({ msg: '새 맵을 시작했습니다', mode: 'new' });
   };
 
@@ -194,6 +194,8 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     // MD의 원격 이미지 URL(![](https://…png))을 다운로드해 내장 —
     // 실패분은 원격 참조 유지 또는 링크 폴백 (remoteImages.ts)
     const { map: resolvedMap, stats: img } = await resolveRemoteImages(imported.map);
+    // 불러온 파일도 새 문서다 — 서버 맵 연결을 끊는다 (위 doStartBlank 주석)
+    detachFromServer();
     loadMap(resolvedMap);
     if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
     else setLayoutType('radial-right');
@@ -400,17 +402,6 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       })}
       {openNew && (
         <div style={treeBoxStyle}>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="새 맵 제목 (비우면 자동)"
-            style={{
-              width: '100%', boxSizing: 'border-box', fontSize: 11.5,
-              padding: '6px 9px', borderRadius: 6,
-              border: `1px solid ${t.border}`, background: t.surface, color: t.text,
-              outline: 'none', marginBottom: 6,
-            }}
-          />
           <button onClick={startBlank}
             title="기본 템플릿 '트리-진행트리맵' 골격(중심 주제 + 주제 1~3 + 하위 주제 + 내용)으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다"
             style={{
@@ -419,20 +410,21 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
               color: t.primary, cursor: 'pointer', fontWeight: 700, marginBottom: 5,
             }}>+ 새 맵 만들기</button>
           <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5 }}>
-            현재 편집 중인 맵은 교체됩니다 (Ctrl+Z로 되돌리기 가능).
-            만든 뒤 적용할 템플릿을 고를 수 있습니다.
+            제목은 <b>저장할 때</b> 폴더와 함께 정합니다 — 그전까지는
+            '{NEW_MAP_TITLE}'입니다. 현재 편집 중인 맵은 교체됩니다
+            (Ctrl+Z로 되돌리기 가능).
           </div>
         </div>
       )}
 
-      {/* ═══ 2. 서버 맵 불러오기 (B7 — 서버·로그인 연결 완료로 활성화) ═══
+      {/* ═══ 2. 서버 맵 불러오기 — 편집 영역에 문서함을 연다 ═══
           맵을 여는 유일한 통로다. 편집 중인 맵이 있으면 브라우저 새 탭으로
           열어 지금 보던 맵을 밀어내지 않는다 (2026-08-02 결정).
           '맵 닫기'는 상단 툴바의 ✕ 로 옮겼다. */}
       {menuHeader({
         icon: '☁', label: '서버 맵 불러오기',
-        onClick: () => setListOpen(true),
-        tip: '서버에 저장된 내 맵 목록에서 불러옵니다 (편집 중인 맵이 있으면 새 탭에서 열립니다)',
+        onClick: () => setBrowserOpen(true),
+        tip: '서버에 저장된 내 문서함을 편집 영역에 엽니다 (폴더·정렬 지원)',
       })}
 
       {/* ═══ 3. Local 파일 불러오기 — 선택하면 하위 메뉴가 트리로 ═══ */}
@@ -498,18 +490,6 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         </div>
       )}
 
-      {/* 서버 맵 목록 (B7) — '서버 맵 불러오기' */}
-      {listOpen && (
-        <MapListModal
-          t={t}
-          title="서버 맵 불러오기"
-          emptyHint={needLogin()
-            ? '로그인하면 저장한 맵이 여기에 표시됩니다.'
-            : '저장된 맵이 없습니다. 상단 ☁ 저장으로 시작해 보세요.'}
-          onClose={() => setListOpen(false)}
-          onFlash={flash}
-        />
-      )}
     </div>
   );
 }

@@ -41,6 +41,14 @@ export const MAX_DEPTH = 50;
 
 const BRANCH_COLOR_KEYS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 
+/** '맵 닫기' 후의 빈 문서 제목 — "지금 열린 문서가 없다"의 단일 기준 */
+export const EMPTY_MAP_TITLE = '문서 없음';
+
+/** 지금 열린 문서가 없는 상태인가 (맵 닫기 직후 / 첫 진입) */
+export function isDocumentEmpty(map: { title: string; branches: unknown[] }): boolean {
+  return map.title === EMPTY_MAP_TITLE && map.branches.length === 0;
+}
+
 // Undo/redo history: max snapshots, and a guard so undo/redo themselves aren't
 // recorded as new history entries.
 // 각 스냅샷은 맵과 "그때의 전체 레이아웃"을 함께 담는다 — 레이아웃(칸반 등)은
@@ -127,7 +135,7 @@ interface DocumentState {
   // 새 맵 시작 — 루트만 있는 기본 맵 ('새 맵' 메뉴)
   newMap: (title?: string) => void;
   // 맵 닫기 — 중심 주제만 남은 빈 문서로 되돌린다 (B7 '맵 닫기').
-  // 서버 저장·클라우드 링크 해제는 호출부(NewMapPanel)가 담당한다.
+  // 서버 저장·클라우드 링크 해제는 호출부(mapSession.saveAndCloseMap)가 담당한다.
   closeMap: () => void;
 
   // 노드 박스 수동 크기 (우하단 핸들 드래그, null = 자동 크기로 복귀)
@@ -1060,8 +1068,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   closeMap: () => {
     set({
       map: {
-        title: '문서 없음',
-        root: { id: 'root', text: '문서 없음', colorKey: 'root', side: 'center' },
+        title: EMPTY_MAP_TITLE,
+        root: { id: 'root', text: EMPTY_MAP_TITLE, colorKey: 'root', side: 'center' },
         branches: [],
       },
     });

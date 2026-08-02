@@ -29,6 +29,18 @@ AI, 번역, 협업, 퍼블리시, 외부 연동 등 편집기 코어 위에 올�
 | 31 | `integrations/31-redmine-integration.md` | REDMINE | Redmine 이슈 양방향 동기화 | V1 |
 | 32 | `settings/32-settings.md` | SETTINGS | 사용자 설정 (테마 / 언어 / 레이아웃 / API Key) | MVP |
 
+### 번호 없는 설계 문서 (구현 순서대로 추가된 것들)
+
+| 파일 | 설명 |
+|---|---|
+| `rich-node-content.md` | 리치 노드 콘텐츠 (코드·표·체크·문단) — B2, 완료 |
+| `auth-session-ui.md` | 로그인 게이트 · 계정 메뉴 · 맵 세션/브라우저 탭 모델 (2026-08-02) |
+| `attachment-storage.md` | 이미지·첨부 저장소 provider + 요금제 용량 — B9, 설계 완료 |
+| `i18n.md` | 다국어(한국어+영어) 단계·주의사항 — B10 |
+| `content-permanence.md` | 내용 영속성 규칙 |
+| `emm-spec.md`, `emm-testing-guide.md` | EMM Markdown 스펙·검증 |
+| `markdown-export.md` | MD 내보내기 규칙 |
+
 ---
 
 ## 📌 로드맵 단계별 분류

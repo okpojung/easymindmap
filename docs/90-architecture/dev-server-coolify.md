@@ -156,6 +156,11 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   | `NODE_ENV` | `production` | ❌ **해제 필수** | ✅ |
   | `AUTH_MODE` → `supabase` + `SUPABASE_JWT_SECRET` | Phase 3 활성화 시 — **GoTrue 배포 후에만** (현재 dev 서버는 순정 PG16 + `AUTH_MODE=dev`. 활성화 경로: backend-phase1.md Phase 3) | ✅ | ✅ |
 
+  > ⚠️ `CORS_ORIGIN` 은 **출처 하나만** 받는다 — 콤마로 여러 개를 적어도
+  > 매칭되지 않는다(값을 그대로 `enableCors({ origin })` 에 넘긴다).
+  > 여러 프런트(로컬 + dev 등)에서 붙여야 하면 코드 수정이 필요하다
+  > (2026-08-02 e2e 준비 중 실측).
+
   > `NODE_ENV=production`이 **Buildtime**에 노출되면 `npm ci`가
   > devDependencies를 생략해 `tsc`/`nest`를 찾지 못하고 빌드가 실패한다
   > (Coolify UI도 동일 경고를 표시). Runtime만 체크할 것.

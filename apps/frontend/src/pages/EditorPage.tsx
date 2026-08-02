@@ -1,7 +1,7 @@
 // File: src/pages/EditorPage.tsx
 // Version: MVP-Layout-Kanban-Fix-v1
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { THEMES } from '@/components/design-tokens/theme';
 import { TopToolbar } from '@/components/top-toolbar/TopToolbar';
 import { UnifiedSidebar } from '@/components/unified-sidebar/UnifiedSidebar';
@@ -20,6 +20,9 @@ import type {
   OutlineNode,
 } from '@/editor/__samples__/types';
 import { installGlobalTooltip } from '@/utils/globalTooltip';
+import { WelcomeScreen } from '@/components/auth/WelcomeScreen';
+import { authEnabled, useAuthStore } from '@/stores/authStore';
+import { initialMapId, openMapHere } from '@/services/cloud/mapSession';
 import {
   useDocumentStore,
   useEditorUiStore,
@@ -144,6 +147,9 @@ export function EditorPage() {
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
 
   const saveState = useAutosaveStore((s) => s.saveState);
+  const session = useAuthStore((s) => s.session);
+  // 인증이 켜진 배포에서 로그인 전에는 에디터를 열지 않는다 (2026-08-02)
+  const gated = authEnabled && !session;
 
   const kanbanFromMap = buildKanbanFromMap(map);
 
@@ -173,6 +179,8 @@ export function EditorPage() {
   const t = THEMES[themeName];
 
   useEffect(() => {
+    // `?map=<id>` 로 들어온 탭은 서버 문서를 열 자리다 — 샘플로 덮지 않는다
+    if (initialMapId) return;
     // 초기 샘플 맵 주입은 "편집"이 아니다 — undo 히스토리에 기록하지
     // 않아 첫 실행 상태에서 되돌리기가 비활성이고, 새 맵/불러오기의
     // "현재 맵을 닫고 진행할까요?" 확인도 뜨지 않는다 (편집 이력 기준).
@@ -180,6 +188,23 @@ export function EditorPage() {
     setSample(sampleTopic);
     setHistoryPaused(false);
   }, [sampleTopic, setSample]);
+
+  // `?map=<id>` — 다른 맵을 "브라우저 새 탭"으로 여는 경로 (2026-08-02).
+  // 앱 안에서 탭을 관리하는 대신 브라우저 탭을 쓰기로 했고, 그 탭이
+  // 부팅될 때 여기서 해당 문서를 불러온다. 로그인 게이트가 걸려 있으면
+  // 로그인이 끝난 뒤에 불러온다.
+  const [urlMapErr, setUrlMapErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!initialMapId || gated) return;
+    let alive = true;
+    setHistoryPaused(true);
+    // 불러오는 동안 샘플 맵이 잠깐 비치지 않도록 먼저 비운다
+    useDocumentStore.getState().closeMap();
+    openMapHere(initialMapId)
+      .catch(() => { if (alive) setUrlMapErr('이 맵을 열 수 없습니다. 목록에서 다시 선택해 주세요.'); })
+      .finally(() => setHistoryPaused(false));
+    return () => { alive = false; };
+  }, [gated]);
 
   // 커서가 설명 텍스트를 가리지 않는 전역 커스텀 툴팁 (요소 위쪽 표시)
   useEffect(() => {
@@ -208,6 +233,10 @@ export function EditorPage() {
 
     return () => window.removeEventListener('keydown', onKey);
   }, [tweaksOpen, setTweaksOpen]);
+
+  // 로그인 전에는 소개 + 로그인만 (인증이 켜진 배포에서만 — 개발 모드는
+  // authEnabled=false 라 그대로 에디터가 열린다)
+  if (gated) return <WelcomeScreen t={t} />;
 
   return (
     <div
@@ -328,6 +357,21 @@ export function EditorPage() {
       {/* Hide canvas-only overlays (collapse toggles, +indicators) when printing
           or exporting to image. */}
       <style>{`@media print { .mm-overlay-controls { display: none !important; } }`}</style>
+
+      {/* `?map=<id>` 로 연 탭에서 문서를 불러오지 못했을 때 */}
+      {urlMapErr && (
+        <div
+          data-testid="url-map-error"
+          style={{
+            position: 'fixed', top: 62, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 300, background: t.surface, color: t.text,
+            border: `1px solid ${t.border}`, borderRadius: 9, padding: '9px 14px',
+            fontSize: 12.5, boxShadow: '0 10px 28px rgba(0,0,0,0.2)',
+          }}
+        >
+          ⚠ {urlMapErr}
+        </div>
+      )}
 
       <MultiAddDialog t={t} />
 

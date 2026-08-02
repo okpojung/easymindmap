@@ -1,19 +1,22 @@
-// 클라우드 문서 목록 모달 — "클라우드에서 열기"와 "맵 닫기 후 문서
+// 클라우드 문서 목록 모달 — "서버 맵 불러오기"와 "맵 닫기 후 문서
 // 목록"이 같은 UI 를 쓴다 (B7). 목록 로드·열기·이름변경·삭제까지
 // 자족적으로 처리하므로 호출부는 <MapListModal …/> 한 줄이면 된다.
+//
+// 열기 방식(2026-08-02 사용자 결정): 편집 중인 맵이 있으면 **브라우저 새
+// 탭**(`?map=<id>`)으로 연다 — 지금 보던 맵을 밀어내지 않는다. 잃을 것이
+// 없을 때(맵 닫기 직후 / 첫 화면 그대로)만 이 탭에 불러온다.
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { useDocumentStore } from '@/stores/documentStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
-import { suppressCloudAutosave } from '@/hooks/useCloudAutosave';
 import { cloudApi, CloudError, type MapListItem } from '@/services/cloud/apiClient';
+import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
 
 export function MapListModal({
-  t, title, emptyHint, onClose, onFlash, onOpened,
+  t, title, emptyHint, onClose, onFlash, onOpened, openMode = 'auto',
 }: {
   t: ThemeTokens;
-  /** 모달 제목 — 열기 진입은 "클라우드에서 열기", 닫기 후는 "문서 목록" */
+  /** 모달 제목 — 열기 진입은 "서버 맵 불러오기", 닫기 후는 "내 문서" */
   title: string;
   /** 목록이 비었을 때 안내 문구 */
   emptyHint: string;
@@ -21,6 +24,11 @@ export function MapListModal({
   onFlash: (msg: string) => void;
   /** 문서를 실제로 열었을 때 (호출부가 패널을 닫는 등) */
   onOpened?: () => void;
+  /**
+   * 'auto'(기본) = 편집 중이면 새 탭, 잃을 것이 없으면 이 탭 /
+   * 'here' = 항상 이 탭 / 'newTab' = 항상 새 탭
+   */
+  openMode?: 'auto' | 'here' | 'newTab';
 }) {
   const [maps, setMaps] = useState<MapListItem[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -47,22 +55,31 @@ export function MapListModal({
   }, []);
 
   const handleOpen = async (mapId: string) => {
-    useCloudStore.getState().setBusy('opening');
-    try {
-      const { doc, updatedAt } = await cloudApi.getDocument(mapId);
-      const loadedMap = (doc as { map?: unknown }).map;
-      if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
-      suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
-      useDocumentStore.getState().loadMap(loadedMap as never);
-      useCloudStore.getState().link(mapId, updatedAt);
-      useAutosaveStore.getState().setSaveState('saved');
+    // 이미 이 탭에서 편집 중인 맵 — 새 탭을 또 열면 두 탭이 같은 맵을
+    // 자동저장하며 서로 덮어쓴다. 열지 않고 알린다.
+    if (useCloudStore.getState().cloudMapId === mapId) {
+      onClose();
+      onFlash('이미 이 탭에서 편집 중인 맵입니다.');
+      return;
+    }
+    // 편집 중인 맵을 밀어내지 않도록 — 열려 있으면 새 탭
+    const here = openMode === 'here' || (openMode === 'auto' && canReuseThisTab());
+    if (!here) {
+      const ok = openMapInNewTab(mapId);
       onClose();
       onOpened?.();
-      onFlash('☁ 클라우드에서 불러왔습니다.');
+      onFlash(ok
+        ? '↗ 새 탭에서 열었습니다.'
+        : '⚠ 팝업이 차단되어 새 탭을 열지 못했습니다. 브라우저의 팝업 차단을 해제해 주세요.');
+      return;
+    }
+    try {
+      await openMapHere(mapId);
+      onClose();
+      onOpened?.();
+      onFlash('☁ 서버에서 불러왔습니다.');
     } catch (e) {
       onFlash('⚠ ' + (e instanceof CloudError ? e.message : '불러오기 중 오류가 발생했습니다.'));
-    } finally {
-      useCloudStore.getState().setBusy('idle');
     }
   };
 

@@ -4,7 +4,8 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { IconBtn } from './IconBtn';
 import { CollabAvatars } from './CollabAvatars';
-import { CloudMenu } from './CloudMenu';
+import { MapActions } from './MapActions';
+import { UserMenu } from './UserMenu';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
@@ -42,6 +43,13 @@ export function TopToolbar({
   const canRedo = useDocumentStore((s) => s.future.length > 0);
   // 되돌린 단계 수 = future 길이 (undo 1회 = +1, redo 1회 = -1, 새 편집 = 0)
   const undoDepth = useDocumentStore((s) => s.future.length);
+
+  // 상단 툴바 공용 알림 — 맵 저장·닫기, 로그아웃 등 (우측 상단 토스트)
+  const [toast, setToast] = useState<string | null>(null);
+  const flash = (m: string) => {
+    setToast(m);
+    window.setTimeout(() => setToast((cur) => (cur === m ? null : cur)), 3500);
+  };
 
   // 내보내기 메뉴 — HTML/MD를 하위 항목으로 구분 (바깥 클릭 시 닫힘)
   const [exportOpen, setExportOpen] = useState(false);
@@ -262,9 +270,9 @@ export function TopToolbar({
         {themeName === 'dark' ? '☀' : '🌙'}
       </button>
 
-      {/* 클라우드 저장/열기 — 문서 전체 스냅샷을 서버에 저장(임베드 이미지
-          포함 손실 없이). 개발 모드에선 단일 개발 사용자로 저장된다. */}
-      <CloudMenu t={t} />
+      {/* 현재 맵 — 저장(히스토리 버전 남김) · 맵 닫기(저장 후 닫기).
+          여는 것은 좌측 '새 맵 > ☁ 서버 맵 불러오기'로 일원화됐다. */}
+      <MapActions t={t} flash={flash} />
 
       {/* 내보내기 메뉴 — 하위 항목: HTML 파일 / MD 파일. 두 형식 모두
           맵 메타데이터를 내장해 '새 맵 > 불러오기'로 편집 가능하게
@@ -338,24 +346,21 @@ export function TopToolbar({
         )}
       </div>
 
-      <div
-        style={{
-          width: 30,
-          height: 30,
-          borderRadius: '50%',
-          background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 12,
-          fontWeight: 600,
-          border: `2px solid ${t.surface}`,
-          cursor: 'pointer',
-        }}
-      >
-        지
-      </div>
+      {/* 계정 메뉴 — 개인 설정·계정 프로필·구독 상태·로그아웃 */}
+      <UserMenu t={t} onFlash={flash} />
+
+      {toast && (
+        <div
+          data-testid="cloud-toast"
+          style={{
+            position: 'absolute', top: 46, right: 14, zIndex: 80, whiteSpace: 'nowrap',
+            background: t.text, color: t.surface, padding: '6px 12px', borderRadius: 8,
+            fontSize: 12, boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

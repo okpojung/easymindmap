@@ -138,7 +138,8 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
   - `AUTH_MODE=dev`: 기존 스텁 그대로 (x-user-id / DEV_USER_ID).
   - `AUTH_MODE=supabase`: `Authorization: Bearer <JWT>` 를
     `SUPABASE_JWT_SECRET`(HS256, GoTrue 서명·`aud=authenticated`·exp)으로
-    검증(jose), `sub` = 사용자 id. **JIT 프로비저닝** — 첫 요청 시
+    검증(**jsonwebtoken** — 이 앱은 CommonJS 빌드라 ESM 전용
+    패키지 금지, 2026-08-01 배포 실패 원인), `sub` = 사용자 id. **JIT 프로비저닝** — 첫 요청 시
     `auth.users`/`public.users` 행을 만들어 FK 성립 (프로세스 캐시로
     요청당 오버헤드 없음). 미검증/만료/위조/aud 불일치 = 401.
   - 환경변수 검증: supabase 모드에서 `SUPABASE_JWT_SECRET`(≥16자) 필수.
@@ -149,8 +150,12 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
     만료 60초 전 자동 refresh, 실패 시 세션 해제(재로그인 유도).
   - `apiClient`: 모든 클라우드 호출에 Bearer 자동 첨부. 비로그인 호출
     은 즉시 "로그인이 필요합니다".
-  - CloudMenu: 비로그인 → 로그인/가입 폼, 로그인 → 👤 이메일 표시 +
-    로그아웃. `VITE_SUPABASE_URL` 미설정(개발 모드)이면 기존 그대로.
+  - **로그인 UI 정리(2026-08-02)**: 비로그인 → 소개+로그인 화면만
+    (`WelcomeScreen`, 에디터 완전 차단) / 계정 메뉴는 우상단 아바타
+    (`UserMenu`) / 상단은 ☁ 저장 · ✕ 맵 닫기(`MapActions`) / 맵 열기는
+    좌측 '서버 맵 불러오기' 하나 / 다른 맵은 **브라우저 새 탭**
+    (`?map=<id>`). 상세: [auth-session-ui.md](../04-extensions/auth-session-ui.md).
+    `VITE_SUPABASE_URL` 미설정(개발 모드)이면 게이트 없이 기존 그대로.
   - frontend Dockerfile 에 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`
     빌드 ARG 추가.
 - **활성화 절차 (서버)** — 현재 dev 서버는 **순정 PostgreSQL 16**

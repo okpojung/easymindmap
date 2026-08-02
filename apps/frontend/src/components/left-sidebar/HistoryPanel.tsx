@@ -6,16 +6,15 @@
 //   · 히스토리 = **저장할 때마다** 저장일시(날짜·시간)별 버전을 서버에
 //     보관 (☁ 저장·맵 닫기 시점 — 자동저장은 남기지 않는다. 스냅샷에
 //     이미지가 data URL 로 들어가 용량이 크기 때문)
-//   · 특정 시점 복귀는 현재 맵을 덮어쓰지 않고
-//     **새 맵(제목_history_YYMMDD_HHMM)** 으로 연다.
+//   · 특정 시점 복귀는 현재 맵을 덮어쓰지 않고 **새 맵(제목_history_
+//     YYMMDD_HHMM)** 으로 만들어 **브라우저 새 탭**에서 연다
+//     (2026-08-02 — 지금 보던 맵을 밀어내지 않는다).
 
 import { useCallback, useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { useDocumentStore } from '@/stores/documentStore';
 import { useCloudStore } from '@/stores/cloudStore';
-import { useAutosaveStore } from '@/stores/autosaveStore';
-import { suppressCloudAutosave } from '@/hooks/useCloudAutosave';
 import { cloudApi, CloudError, type MapVersionItem } from '@/services/cloud/apiClient';
+import { openMapInNewTab } from '@/services/cloud/mapSession';
 
 // 제목_history_YYMMDD_HHMM — 같은 날 여러 번 복원해도 구분되도록 분까지
 function historyTitle(base: string, iso: string): string {
@@ -53,7 +52,8 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  // 특정 버전 → 새 맵으로 열기 (현재 맵은 그대로 둔다)
+  // 특정 버전 → 새 맵으로 만들어 **브라우저 새 탭**에서 연다.
+  // 현재 탭에서 편집하던 맵은 그대로 남는다 (2026-08-02 사용자 결정).
   const restore = async (v: MapVersionItem) => {
     if (!cloudMapId) return;
     setBusyVer(v.version);
@@ -62,16 +62,21 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
       const loadedMap = (snap.doc as { map?: unknown })?.map;
       if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
       const newTitle = historyTitle(v.title || '맵', v.createdAt);
-      // 새 맵으로 저장 → 그 맵을 연다 (현재 맵 덮어쓰기 없음)
+      // 새 맵으로 저장 — 제목만 바꾸고 내용은 그 시점 그대로
       const created = await cloudApi.createMap(newTitle);
-      await cloudApi.saveDocument(created.mapId, snap.doc, newTitle);
-      suppressCloudAutosave();
-      useDocumentStore.getState().loadMap({
-        ...(loadedMap as Record<string, unknown>), title: newTitle,
-      } as never);
-      useCloudStore.getState().link(created.mapId, new Date().toISOString());
-      useAutosaveStore.getState().setSaveState('saved');
-      flash(`'${newTitle}' 새 맵으로 열었습니다.`);
+      await cloudApi.saveDocument(
+        created.mapId,
+        {
+          ...(snap.doc as Record<string, unknown>),
+          map: { ...(loadedMap as Record<string, unknown>), title: newTitle },
+        },
+        newTitle,
+      );
+      const opened = openMapInNewTab(created.mapId);
+      flash(opened
+        ? `↗ '${newTitle}'을(를) 새 탭에서 열었습니다.`
+        : `'${newTitle}'로 저장했습니다 — 팝업이 차단되어 새 탭은 열지 못했습니다. ` +
+          '새 맵 > ☁ 서버 맵 불러오기에서 열어 주세요.');
       void load();
     } catch (e) {
       flash('⚠ ' + (e instanceof CloudError ? e.message : '복원에 실패했습니다.'));
@@ -101,9 +106,9 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
             fontSize: 12, color: t.textMuted, lineHeight: 1.65,
           }}
         >
-          <b style={{ color: t.text }}>이 맵은 아직 클라우드에 없습니다.</b>
+          <b style={{ color: t.text }}>이 맵은 아직 서버에 없습니다.</b>
           <br />
-          ☁ 클라우드 → 저장을 하면, 그때부터 <b>저장할 때마다</b> 이 자리에
+          상단 <b>☁ 저장</b>을 하면, 그때부터 <b>저장할 때마다</b> 이 자리에
           저장일시별 버전이 쌓입니다.
         </div>
       ) : versions === null ? (
@@ -152,7 +157,7 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
                 data-testid="history-restore"
                 disabled={busyVer !== null}
                 onClick={() => void restore(v)}
-                title="이 시점 내용을 새 맵으로 엽니다 (현재 맵은 그대로 둡니다)"
+                title="이 시점 내용을 새 맵으로 만들어 브라우저 새 탭에서 엽니다 (지금 편집 중인 맵은 그대로 둡니다)"
                 style={{
                   flexShrink: 0, fontSize: 11, padding: '4px 8px', borderRadius: 6,
                   border: `1px solid ${t.border}`, background: t.surface,
@@ -160,7 +165,7 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
                   cursor: busyVer !== null ? 'default' : 'pointer', fontWeight: 600,
                 }}
               >
-                {busyVer === v.version ? '여는 중…' : '새 맵으로'}
+                {busyVer === v.version ? '여는 중…' : '새 탭으로'}
               </button>
             </div>
           ))}

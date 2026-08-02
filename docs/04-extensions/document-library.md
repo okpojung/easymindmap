@@ -73,6 +73,10 @@ SQL
 
 ### 첨부 저장소 + 쿼터 델타 SQL (B9 — 2026-08-02)
 
+> DB 컨테이너 이름을 몰라도 되는 **자동 적용 스크립트**(탐색+적용+검증
+> 일괄)가 [dev-server-runbook §1.5-0](../90-architecture/dev-server-runbook.md)
+> 에 있다 — 아래 수동 SQL 과 같은 내용이다.
+
 ```bash
 docker exec -i <DB> psql -U postgres -d postgres <<'SQL'
 ALTER TABLE public.users

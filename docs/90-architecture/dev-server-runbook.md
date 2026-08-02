@@ -158,6 +158,71 @@ NFS 마운트로 두어 데이터가 NAS 에 쌓이게 한다 (드라이버는 �
 SSD 인지 NFS 인지 구분하지 않는다 — S3 호환 드라이버는 향후 같은
 인터페이스로 추가).
 
+### 1.5-0. 델타 SQL 자동 적용 스크립트 (붙여넣기 한 번)
+
+`<DB컨테이너>` 이름을 몰라도 된다 — 아래 블록 **전체를 서버 SSH 터미널에
+그대로 붙여넣으면**, DB 컨테이너를 자동으로 찾아 델타 SQL 을 적용하고
+결과까지 검증해 준다. (두 번 실행해도 안전 — 전부 IF NOT EXISTS)
+
+```bash
+bash <<'SCRIPT'
+set -e
+
+# ── 1) DB 컨테이너 자동 탐색 ─────────────────────────────────────
+#    supabase/postgres 이미지를 우선, 없으면 아무 postgres 이미지.
+DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
+[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
+if [ -z "$DB" ]; then
+  echo "❌ 실행 중인 postgres 컨테이너를 찾지 못했습니다."
+  echo "   docker ps 로 확인해 주세요. (docker 권한이 없으면 sudo 로 실행)"
+  exit 1
+fi
+echo "✅ DB 컨테이너: $DB"
+
+# ── 2) 첨부 저장소 + 쿼터 델타 SQL (B9) ─────────────────────────
+docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS quota_bytes BIGINT NOT NULL DEFAULT 1073741824;
+
+CREATE TABLE IF NOT EXISTS public.attachments (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    map_id       UUID REFERENCES public.maps(id) ON DELETE SET NULL,
+    name         VARCHAR(255) NOT NULL,
+    mime         VARCHAR(127) NOT NULL DEFAULT 'application/octet-stream',
+    size_bytes   BIGINT NOT NULL,
+    storage_key  TEXT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_attachments_owner
+    ON public.attachments(owner_id);
+ALTER TABLE public.attachments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "users can manage own attachments" ON public.attachments;
+CREATE POLICY "users can manage own attachments"
+    ON public.attachments FOR ALL
+    USING (auth.uid() = owner_id);
+SQL
+
+# ── 3) 적용 결과 검증 ────────────────────────────────────────────
+echo "── 검증 ──"
+docker exec -i "$DB" psql -U postgres -d postgres -tA <<'SQL'
+SELECT 'attachments 테이블: ' ||
+       CASE WHEN to_regclass('public.attachments') IS NOT NULL
+            THEN 'OK' ELSE 'MISSING' END;
+SELECT 'users.quota_bytes: ' ||
+       CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns
+                         WHERE table_schema='public' AND table_name='users'
+                           AND column_name='quota_bytes')
+            THEN 'OK' ELSE 'MISSING' END;
+SQL
+echo "끝 — 두 줄 모두 OK 면 성공입니다."
+echo "다음 단계: NFS 마운트(§1.5-A) → Coolify 볼륨·환경변수(§1.5-B) → 재배포"
+echo "재배포 후 https://<API주소>/v1/health 의 schema 가 ok 인지 확인하세요."
+SCRIPT
+```
+
 ### 1.5-A. Ubuntu 호스트에 NAS NFS 마운트
 
 ```bash

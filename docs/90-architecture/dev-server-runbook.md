@@ -47,13 +47,19 @@ docker exec -i <DB> psql -U postgres -d postgres < apps/api/database/schema.sql
 > 필요해지는 시점**(데이터 보존이 걸리는 순간)에 node-pg-migrate 등을
 > 도입한다 — backlog B11.
 
-## 1. 스키마 재적용 절차
+## 1. 스키마 적용 — **첫 설치와 재적용은 절차가 다르다** ★
 
-**순서 의존성이 있다 — shim 선행 필수.** 실패 시 중단하지 않으면
-절반만 적용된 스키마가 생기므로 반드시 `ON_ERROR_STOP=1`로 실행한다.
+> ⚠️ **첫 설치용 명령을 재적용에 그대로 쓰면 안 된다** (2026-08-02
+> 서버 세션 지적). 첫 설치는 `ON_ERROR_STOP=1` + 실패 시 `break` 로
+> 도는데, **재적용에서는 shim 의 publication 이 이미 존재해**
+> `relation "nodes" is already member of publication "supabase_realtime"`
+> 오류가 나고, 거기서 루프가 끊겨 **뒤의 schema.sql 이 실행되지 않는다**
+> — "적용했다"고 생각했는데 새 테이블이 안 들어가는 사고가 난다.
+
+### 1-A. 첫 설치 (빈 DB — 순서 의존성 있음, shim 선행 필수)
 
 ```bash
-DB=<db 컨테이너 이름>   # docker ps 로 확인
+DB=<db 컨테이너 이름>   # docker ps 로 확인 (postgres:16 이미지)
 for f in \
   apps/api/database/dev/00-supabase-shim.sql \
   apps/api/database/schema.sql \
@@ -65,9 +71,31 @@ do
 done
 ```
 
-- 순서: `00-supabase-shim.sql`(순정 PG용 shim) → `schema.sql` →
-  `functions/move_node_subtree.sql` → `dev/01-seed-dev-user.sql`
-- 완전 초기화가 필요하면 DB 리소스를 지우고 재생성 후 위 절차 —
+### 1-B. 재적용 (이미 쓰고 있는 DB에 새 테이블·인덱스 반영)
+
+**권장 — `npm run db:apply`**: 문장 단위로 적용하며 "이미 있음" 계열
+오류(중복 테이블·중복 객체·publication 중복)만 건너뛰고 **그 외
+오류에서는 멈춘다**. 위 함정이 구조적으로 발생하지 않는다.
+
+```bash
+# 저장소가 있는 곳(개발 PC 등)에서
+cd apps/api
+DATABASE_URL='postgres://postgres:<PW>@<host>:5432/postgres' npm run db:apply
+# → "스키마 적용 완료 — 실행 N건 · 이미 있음 M건"
+```
+
+**서버에 저장소가 없을 때** — `schema.sql` **하나만**, `ON_ERROR_STOP`
+**없이** 실행한다(shim·seed 는 이미 적용돼 있으므로 다시 돌리지 않는다):
+
+```bash
+docker exec -i "$DB" psql -U postgres -d postgres < apps/api/database/schema.sql
+```
+
+> `ON_ERROR_STOP` 을 빼는 이유는 "이미 있음" 오류를 무시하고 끝까지
+> 진행하기 위해서다. 대신 **적용 후 반드시 §0 의 헬스체크로 확인**한다
+> (`"schema":"ok"`). 이것이 "오류를 무시해도 안전한" 근거다.
+
+- 완전 초기화가 필요하면 DB 리소스를 지우고 재생성 후 **1-A** —
   단, **비밀번호 규칙(영숫자만)** 을 다시 지킬 것
   (dev-server-coolify.md §5.1 경고).
 

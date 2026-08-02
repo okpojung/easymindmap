@@ -22,7 +22,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile } from '@/utils/importMapFile';
 import { resolveRemoteImages } from '@/utils/remoteImages';
-import { NEW_MAP_TITLE, useDocumentStore } from '@/stores/documentStore';
+import { isDocumentEmpty, NEW_MAP_TITLE, useDocumentStore } from '@/stores/documentStore';
 import { detachFromServer } from '@/services/cloud/mapSession';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -112,11 +112,16 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   };
 
   // 확인 게이트 — 현재 맵을 닫는 것을 사용자가 승인한 뒤 실행.
-  // 편집 이력이 전혀 없는 처음 상태(첫 실행 직후 등 — undo 히스토리가
-  // 비어 있음)면 잃을 것이 없으므로 묻지 않고 바로 실행한다.
+  // 묻지 않는 경우 (잃을 것이 없다):
+  //  · 편집 이력이 전혀 없는 처음 상태 (undo 히스토리 비어 있음)
+  //  · **문서가 비어 있는 상태** ('문서 없음' — 맵 닫기 직후·로그인 직후).
+  //    undo 에 이전 맵이 남아 있어도, 화면에 닫을 맵이 없는데
+  //    "현재 맵 '문서 없음'을 닫고 진행할까요?" 를 묻는 것은 무의미하다
+  //    (2026-08-02 사용자 보고).
   const confirmThen = (label: string, run: () => void) => {
     setChooseTpl(null);
-    if (useDocumentStore.getState().past.length === 0) {
+    const doc = useDocumentStore.getState();
+    if (doc.past.length === 0 || isDocumentEmpty(doc.map)) {
       run();
       return;
     }

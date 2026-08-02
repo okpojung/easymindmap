@@ -48,6 +48,9 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
     : '아직 서버에 저장하지 않음';
 
   const handleSave = async () => {
+    // 열려 있는 맵이 없으면 저장할 것도 없다 (맵 닫기와 같은 안내 —
+    // 2026-08-02 사용자 보고: 빈 상태에서 저장 대화상자가 떴다)
+    if (isCurrentMapEmpty()) { flash('열려 있는 맵이 없습니다.'); return; }
     if (needLogin()) { flash('⚠ 로그인해야 서버에 저장할 수 있습니다.'); return; }
     if (isUnsavedMap()) { setSaveIntent('save'); return; } // 폴더·이름 묻기
     try {

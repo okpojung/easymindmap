@@ -9,6 +9,7 @@
 //    불필요한 재저장을 막는다.
 import { useEffect } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
@@ -29,9 +30,17 @@ export function suppressCloudAutosave(): void {
   skipNextChange = true;
 }
 
+// mapSession.buildSnapshot 과 같은 v2 형태 — mapSession 이 이 파일의
+// suppressCloudAutosave 를 import 하므로 (순환 방지) 여기서 따로 만든다.
 function snapshot() {
   const st = useDocumentStore.getState();
-  return { v: 1, map: st.map, kanban: st.kanban };
+  const ui = useEditorUiStore.getState();
+  return {
+    v: 2,
+    map: st.map,
+    kanban: st.kanban,
+    editor: { layoutType: ui.layoutType, spacingX: ui.spacingX, spacingY: ui.spacingY },
+  };
 }
 
 async function doSave() {

@@ -96,6 +96,12 @@ export const SOCIAL_PROVIDERS: SocialProvider[] = [
 > 우리 페이지를 여는 것이므로 `noopener` 없이 열고 `w.opener = null` 로
 > 끊는다. (2026-08-02 실측)
 
+## 4-1. 로그인/로그아웃 전환 리셋
+
+세션이 바뀔 때마다 문서·서버 링크·undo 히스토리를 비운다 — 상세와
+근거(재로그인 후 "편집 중" 잠김 사고)는
+[document-library.md](document-library.md) §5-0.
+
 ## 5. 상단 툴바 — ☁ 저장 · ✕ 맵 닫기
 
 | 버튼 | 하는 일 |

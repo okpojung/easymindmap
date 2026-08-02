@@ -23,7 +23,7 @@ import { installGlobalTooltip } from '@/utils/globalTooltip';
 import { WelcomeScreen } from '@/components/auth/WelcomeScreen';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
-import { initialMapId, openMapHere } from '@/services/cloud/mapSession';
+import { clearCurrentMap, initialMapId, openMapHere } from '@/services/cloud/mapSession';
 import {
   useDocumentStore,
   useEditorUiStore,
@@ -183,28 +183,33 @@ export function EditorPage() {
   const t = THEMES[themeName];
 
   useEffect(() => {
-    // `?map=<id>` 로 들어온 탭은 서버 문서를 열 자리다 — 샘플로 덮지 않는다
-    if (initialMapId) return;
-
-    // **인증이 켜진 배포(= 실제 서비스)에서는 아무 맵도 열지 않는다**
-    // (2026-08-02 사용자 지시). 로그인 직후 남의 문서처럼 보이는 샘플
-    // 맵이 떠 있으면 "내 문서"인지 헷갈리고, 거기서 편집을 시작하면
-    // 저장할 곳이 애매해진다. 대신 **문서함**을 열어 다음 행동
-    // (열기 / 새 맵)을 바로 고르게 한다.
-    //   · 샘플 맵은 인증이 꺼진 개발 모드(로컬·E2E)에서만 주입된다 —
-    //     테스트 픽스처로 계속 필요하기 때문이다.
+    // 개발 모드(인증 꺼짐) 전용 — 초기 샘플 맵 주입. "편집"이 아니므로
+    // undo 히스토리에 기록하지 않아 첫 실행 상태에서 되돌리기가 비활성
+    // 이고, 새 맵/불러오기의 확인도 뜨지 않는다 (편집 이력 기준).
+    // `?map=<id>` 탭은 서버 문서를 열 자리라 샘플로 덮지 않는다.
+    if (authEnabled || initialMapId) return;
     setHistoryPaused(true);
-    if (authEnabled) {
-      useDocumentStore.getState().closeMap();
-      useEditorUiStore.getState().setBrowserOpen(true);
-    } else {
-      // 초기 샘플 맵 주입은 "편집"이 아니다 — undo 히스토리에 기록하지
-      // 않아 첫 실행 상태에서 되돌리기가 비활성이고, 새 맵/불러오기의
-      // "현재 맵을 닫고 진행할까요?" 확인도 뜨지 않는다 (편집 이력 기준).
-      setSample(sampleTopic);
-    }
+    setSample(sampleTopic);
     setHistoryPaused(false);
   }, [sampleTopic, setSample]);
+
+  // **로그인/로그아웃 전환 리셋** (인증 켜진 배포 — 2026-08-02).
+  // 세션이 바뀔 때마다 문서·서버 링크·undo 히스토리를 비운다:
+  //  · 로그아웃: 이전 계정의 문서가 화면·Ctrl+Z 에 남으면 안 된다.
+  //    특히 cloudMapId 가 남으면 재로그인 후 문서함이 그 맵을 "편집 중"
+  //    으로 표시하고 열기를 거부했다 (사용자 실사용 보고 #4).
+  //  · 로그인: 아무 맵도 열지 않은 빈 화면 + 문서함으로 시작한다.
+  //    (샘플 맵은 개발 모드 전용 — 위 효과 참조)
+  useEffect(() => {
+    if (!authEnabled) return;
+    setHistoryPaused(true);
+    clearCurrentMap();                              // 문서 비움 + 서버 링크 해제
+    useDocumentStore.getState().clearHistory();     // 계정 경계 — undo 도 비움
+    useInteractionStore.getState().setSelectedId(null);
+    // `?map=<id>` 탭은 아래 URL 로딩 효과가 문서함 대신 그 맵을 연다
+    useEditorUiStore.getState().setBrowserOpen(!!session && !initialMapId);
+    setHistoryPaused(false);
+  }, [session]);
 
   // `?map=<id>` — 다른 맵을 "브라우저 새 탭"으로 여는 경로 (2026-08-02).
   // 앱 안에서 탭을 관리하는 대신 브라우저 탭을 쓰기로 했고, 그 탭이

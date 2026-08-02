@@ -9,18 +9,53 @@
 // 맵마다 메모리가 완전히 격리되고, 동시 편집 개수 제한이 필요 없다.
 
 import { useDocumentStore, isDocumentEmpty } from '@/stores/documentStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useInteractionStore } from '@/stores/interactionStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { suppressCloudAutosave } from '@/hooks/useCloudAutosave';
 import { cloudApi, CloudError, type MapKind } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 
-/** 클라우드 문서 스냅샷 포맷 — 프론트 문서(map) + 칸반을 통째로 담는다 */
-export const SNAPSHOT_VERSION = 1;
+/**
+ * 클라우드 문서 스냅샷 포맷 — 문서(map)·칸반에 **에디터 설정**까지 담는다.
+ *
+ * v2 (2026-08-02): editor(전역 레이아웃·간격) 추가. v1 은 map·kanban 만
+ * 저장해서, 서버에서 다시 열면 **레이아웃이 저장 당시와 달라졌다**
+ * (진행트리로 편집해 저장했는데 방사형으로 열림 — 사용자 실사용 보고).
+ * 레이아웃은 documentStore 가 아니라 editorUiStore 소관이라 스냅샷에
+ * 명시적으로 실어야 한다. 로컬 HTML/MD 내보내기가 editor 를 담는 것과
+ * 같은 이유·같은 형태다.
+ */
+export const SNAPSHOT_VERSION = 2;
 
-export function buildSnapshot(): { v: number; map: unknown; kanban: unknown } {
+export interface SnapshotEditor {
+  layoutType: string;
+  spacingX: number;
+  spacingY: number;
+}
+
+export function buildSnapshot(): {
+  v: number; map: unknown; kanban: unknown; editor: SnapshotEditor;
+} {
   const st = useDocumentStore.getState();
-  return { v: SNAPSHOT_VERSION, map: st.map, kanban: st.kanban };
+  const ui = useEditorUiStore.getState();
+  return {
+    v: SNAPSHOT_VERSION,
+    map: st.map,
+    kanban: st.kanban,
+    editor: { layoutType: ui.layoutType, spacingX: ui.spacingX, spacingY: ui.spacingY },
+  };
+}
+
+/** 스냅샷의 editor 설정을 화면에 복원한다 (v1 스냅샷은 editor 없음 → 무시) */
+export function applySnapshotEditor(doc: unknown): void {
+  const editor = (doc as { editor?: Partial<SnapshotEditor> } | null)?.editor;
+  if (!editor) return;
+  const ui = useEditorUiStore.getState();
+  if (editor.layoutType) ui.setLayoutType(editor.layoutType as never);
+  if (typeof editor.spacingX === 'number') ui.setSpacingX(editor.spacingX);
+  if (typeof editor.spacingY === 'number') ui.setSpacingY(editor.spacingY);
 }
 
 /** 인증이 켜진 배포에서 아직 로그인하지 않은 상태 (= 서버 저장 불가) */
@@ -220,6 +255,9 @@ export async function openMapHere(mapId: string): Promise<void> {
     useDocumentStore.getState().loadMap(loadedMap as never);
     // 서버의 맵 이름을 문서 제목으로도 맞춘다 — 이후 저장은 이 이름 그대로
     useDocumentStore.getState().setMapTitle(title);
+    // 저장 당시의 레이아웃·간격 복원 (v2 스냅샷 — 없으면 그대로 둔다)
+    applySnapshotEditor(doc);
+    useInteractionStore.getState().setSelectedId(null);
     useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
     useAutosaveStore.getState().setSaveState('saved');
   } finally {

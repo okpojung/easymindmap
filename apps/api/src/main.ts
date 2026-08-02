@@ -25,9 +25,16 @@ async function bootstrap() {
     }),
   );
 
-  // 프론트엔드(다른 출처)에서 호출 허용
+  // 프론트엔드(다른 출처)에서 호출 허용.
+  // CORS_ORIGIN 은 **콤마로 여러 출처**를 받을 수 있다 (2026-08-02) —
+  // 로컬 개발 + dev 프런트를 동시에 붙이는 경우가 실제로 있었는데,
+  // 단일 문자열만 넘기면 두 번째 출처가 전부 차단됐다.
+  const corsOrigins = String(config.get('CORS_ORIGIN', { infer: true }))
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: config.get('CORS_ORIGIN', { infer: true }),
+    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
     credentials: true,
   });
 

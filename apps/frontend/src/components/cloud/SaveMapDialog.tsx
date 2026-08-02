@@ -8,9 +8,13 @@
 // 중복 판정은 **서버**가 한다(409) — 목록을 미리 받아 클라이언트에서만
 // 검사하면 다른 탭에서 방금 만든 맵을 놓친다. 여기서는 서버 메시지를
 // 그대로 보여 주고 이름 입력에 포커스를 돌려준다.
+//
+// **맵 유형은 묻지 않는다** (2026-08-02 사용자 확정): 모든 맵은 단독맵
+// 으로 시작하고, 협업맵은 나중에 **협업자를 초대해 승인·참여**하는
+// 순간 전환된다(V1~V2 협업 단계). 저장 시점에 고를 것이 아니다.
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { cloudApi, CloudError, type FolderItem, type MapKind } from '@/services/cloud/apiClient';
+import { cloudApi, CloudError, type FolderItem } from '@/services/cloud/apiClient';
 import { saveNewMap } from '@/services/cloud/mapSession';
 import { flattenFolders } from './folderTree';
 
@@ -28,7 +32,6 @@ export function SaveMapDialog({
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [title, setTitle] = useState(defaultTitle);
-  const [kind, setKind] = useState<MapKind>('solo');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState('');
@@ -65,7 +68,7 @@ export function SaveMapDialog({
     setBusy(true);
     setErr(null);
     try {
-      const { mapId } = await saveNewMap({ title: clean, folderId, kind });
+      const { mapId } = await saveNewMap({ title: clean, folderId, kind: 'solo' });
       onSaved({ mapId, title: clean });
     } catch (e) {
       // 409 = 같은 폴더에 같은 이름 (서버 메시지에 안내가 들어 있다)
@@ -151,29 +154,6 @@ export function SaveMapDialog({
           onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void submit(); }}
           style={{ ...inputStyle, marginBottom: 16 }}
         />
-
-        {/* 유형 */}
-        <label style={label}>맵 유형</label>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {([
-            ['solo', '👤 단독맵', '나만 편집합니다'],
-            ['collab', '👥 협업맵', '여러 사람이 함께 쓸 맵으로 표시합니다'],
-          ] as const).map(([v, text, tip]) => (
-            <button
-              key={v}
-              data-testid={`save-kind-${v}`}
-              title={tip}
-              onClick={() => setKind(v)}
-              style={{
-                flex: 1, height: 34, borderRadius: 7, cursor: 'pointer', fontSize: 12.5,
-                fontWeight: 600,
-                border: `1px solid ${kind === v ? t.primaryBorder : t.border}`,
-                background: kind === v ? t.primarySoft : t.surfaceAlt,
-                color: kind === v ? t.primary : t.text,
-              }}
-            >{text}</button>
-          ))}
-        </div>
 
         {err && (
           <div data-testid="save-error" style={{

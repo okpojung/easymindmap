@@ -17,7 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import {
   cloudApi, CloudError,
-  type FolderItem, type MapKind, type MapListItem,
+  type FolderItem, type MapListItem,
 } from '@/services/cloud/apiClient';
 import { useCloudStore } from '@/stores/cloudStore';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
@@ -79,8 +79,12 @@ export function MapBrowser({
 
   // ── 동작 ────────────────────────────────────────────────────
   const openMap = async (m: MapListItem) => {
+    // 이 탭에서 이미 편집 중인 맵 — 새로 열 것이 없으니 문서함만 닫고
+    // 편집 화면으로 돌아간다. (전에는 "이미 편집 중"이라며 거부만 해서,
+    // 링크가 낡아 있으면 맵으로 돌아갈 길이 없었다 — 사용자 보고 #4)
     if (cloudMapId === m.mapId) {
-      onFlash('이미 이 탭에서 편집 중인 맵입니다.');
+      onClose();
+      onFlash(`'${m.title}' 편집 화면으로 돌아갑니다.`);
       return;
     }
     if (canReuseThisTab()) {
@@ -158,16 +162,6 @@ export function MapBrowser({
     } catch (e) {
       // 옮기려는 폴더에 같은 이름이 있으면 409 — 서버 안내를 그대로
       onFlash('⚠ ' + (e instanceof CloudError ? e.message : '이동 실패'));
-    }
-  };
-
-  const toggleKind = async (m: MapListItem) => {
-    const next: MapKind = m.kind === 'collab' ? 'solo' : 'collab';
-    try {
-      await cloudApi.updateMap(m.mapId, { kind: next });
-      void load();
-    } catch (e) {
-      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '유형 변경 실패'));
     }
   };
 
@@ -395,20 +389,21 @@ export function MapBrowser({
                   <span style={{ fontSize: 10, marginLeft: 6, color: t.textSubtle }}>편집 중</span>
                 )}
               </button>
-              <button
+              {/* 유형은 표시 전용 — 협업맵은 협업자를 초대해 승인·참여하는
+                  순간 전환된다(협업 단계 V1~V2). 여기서 바꾸는 것이 아니다. */}
+              <span
                 data-testid="browser-map-kind"
-                onClick={() => void toggleKind(m)}
                 title={m.kind === 'collab'
-                  ? '협업맵 — 누르면 단독맵으로 바꿉니다'
-                  : '단독맵 — 누르면 협업맵으로 바꿉니다'}
+                  ? '협업맵 — 협업자가 참여 중인 맵'
+                  : '단독맵 — 협업자를 초대해 승인되면 협업맵이 됩니다 (준비 중)'}
                 style={{
-                  justifySelf: 'start', background: 'transparent', cursor: 'pointer',
+                  justifySelf: 'start',
                   border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 7px',
                   color: m.kind === 'collab' ? t.primary : t.textSubtle, fontSize: 10.5, fontWeight: 600,
                 }}
               >
                 {m.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'}
-              </button>
+              </span>
               <span style={{ color: t.textSubtle, fontSize: 11.5 }}>
                 {new Date(m.updatedAt).toLocaleString()}
               </span>

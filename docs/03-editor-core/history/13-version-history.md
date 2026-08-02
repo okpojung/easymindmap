@@ -10,6 +10,24 @@
 
 ---
 
+### 0. 구현 상태 (2026-08-02 — B8 완료)
+
+> **문서 스냅샷 경로로 구현했다.** patch 기반 `map_revisions`(정규화
+> 노드·협업용)와 별개로, 저장 시점의 **전체 문서 스냅샷**을
+> `map_document_versions` 에 쌓는다 — 프런트가 이미지·노트·스타일을
+> 통째로 담은 스냅샷을 저장하는 구조이기 때문이다.
+
+| 항목 | 구현 |
+|---|---|
+| 테이블 | `public.map_document_versions` (map_id, version, title, doc, created_by, created_at · UNIQUE(map_id,version) · RLS 소유자 한정) |
+| 버전 생성 시점 | **명시적 저장에서만** — `PUT /maps/:id/document` 의 `keepVersion: true`. ☁ 저장·맵 닫기가 이 값을 보낸다. **자동저장(디바운스)은 버전을 남기지 않는다** — 스냅샷에 이미지가 data URL 로 들어가 매 저장마다 쌓으면 용량이 급증하기 때문 |
+| 조회 | `GET /maps/:id/versions` (메타만 — version·title·createdAt·bytes) · `GET /maps/:id/versions/:version` (doc 포함) |
+| 복원 | 현재 맵을 덮어쓰지 않는다 — 새 맵 생성 후 그 문서로 저장하고 새 맵을 연다. 제목 = **`원제목_history_YYMMDD_HHMM`** (같은 날 여러 번 복원해도 구분되도록 분까지) |
+| UI | 좌측 **히스토리** 패널 — 저장일시 목록 + 각 항목 "새 맵으로". 클라우드 미연결이면 안내만 표시 |
+| 검증 | API 7단언(version-api-test) + e2e80 7단언 |
+
+VH-04(미리보기)·VH-07(Diff Viewer)는 미구현 — 오픈 후 수요를 보고 결정.
+
 ### 1. 기능 목적
 
 > **확정 설계 (2026-07-31 사용자 결정)**: 좌측 '히스토리' 메뉴가 이

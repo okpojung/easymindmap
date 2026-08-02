@@ -44,6 +44,14 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return res.json() as Promise<T>;
 }
 
+/** 저장 시점별 문서 버전 (히스토리 — B8). 목록은 doc 을 담지 않는다. */
+export interface MapVersionItem {
+  version: number;
+  title: string;
+  createdAt: string;
+  bytes: number;
+}
+
 export interface MapListItem {
   mapId: string;
   title: string;
@@ -58,8 +66,17 @@ export const cloudApi = {
     req<{ mapId: string; title: string }>('POST', '/maps', { title }),
   renameMap: (mapId: string, title: string) =>
     req<{ mapId: string; title: string }>('PATCH', `/maps/${mapId}`, { title }),
-  saveDocument: (mapId: string, doc: unknown, title?: string) =>
-    req<{ mapId: string; updatedAt: string }>('PUT', `/maps/${mapId}/document`, { doc, title }),
+  // keepVersion: 이 저장을 히스토리 버전으로도 남긴다 (B8 — 명시적
+  // 저장·맵 닫기에서만 true. 자동저장은 남기지 않는다)
+  saveDocument: (mapId: string, doc: unknown, title?: string, keepVersion?: boolean) =>
+    req<{ mapId: string; updatedAt: string; version?: number }>(
+      'PUT', `/maps/${mapId}/document`, { doc, title, keepVersion }),
+  listVersions: (mapId: string) =>
+    req<{ mapId: string; versions: MapVersionItem[]; total: number }>(
+      'GET', `/maps/${mapId}/versions`),
+  getVersion: (mapId: string, version: number) =>
+    req<{ mapId: string; version: number; title: string; doc: unknown; createdAt: string }>(
+      'GET', `/maps/${mapId}/versions/${version}`),
   getDocument: (mapId: string) =>
     req<{ mapId: string; title: string; doc: unknown; updatedAt: string }>(
       'GET',

@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -74,11 +75,26 @@ export class MapsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SaveDocumentDto,
   ) {
-    return this.maps.saveDocument(user.id, id, dto.doc, dto.title);
+    return this.maps.saveDocument(user.id, id, dto.doc, dto.title, dto.keepVersion ?? false);
   }
 
   @Get(':id/document')
   getDocument(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.maps.getDocument(user.id, id);
+  }
+
+  // ── 히스토리: 저장 시점별 문서 버전 (B8) ─────────────────────
+  @Get(':id/versions')
+  listVersions(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.maps.listVersions(user.id, id);
+  }
+
+  @Get(':id/versions/:version')
+  getVersion(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('version', ParseIntPipe) version: number,
+  ) {
+    return this.maps.getVersion(user.id, id, version);
   }
 }

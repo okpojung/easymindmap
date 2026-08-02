@@ -117,8 +117,14 @@ export class MapsService {
   }
 
   /** PUT /maps/:id/document — 전체 문서 스냅샷 저장(upsert). title 도 함께 갱신 가능 */
-  async saveDocument(userId: string, mapId: string, doc: unknown, title?: string) {
-    await this.requireOwnedMap(userId, mapId);
+  async saveDocument(
+    userId: string,
+    mapId: string,
+    doc: unknown,
+    title?: string,
+    keepVersion = false,
+  ) {
+    const map = await this.requireOwnedMap(userId, mapId);
     const { rows } = await this.db.query<{ updated_at: Date }>(
       `INSERT INTO public.map_documents (map_id, doc)
        VALUES ($1, $2::jsonb)
@@ -132,7 +138,73 @@ export class MapsService {
         [mapId, title],
       );
     }
-    return { mapId, updatedAt: rows[0].updated_at };
+
+    // 히스토리 버전 (B8) — 명시적 저장·맵 닫기에서만. 자동저장은 남기지
+    // 않는다(스냅샷이 커서 용량 급증). version 은 맵 안에서 1부터 증가.
+    let version: number | undefined;
+    if (keepVersion) {
+      const { rows: vr } = await this.db.query<{ version: number }>(
+        `INSERT INTO public.map_document_versions (map_id, version, title, doc, created_by)
+         SELECT $1,
+                COALESCE(MAX(version), 0) + 1,
+                $2, $3::jsonb, $4
+           FROM public.map_document_versions WHERE map_id = $1
+         RETURNING version`,
+        [mapId, title ?? map.title, JSON.stringify(doc), userId],
+      );
+      version = vr[0]?.version;
+    }
+
+    return { mapId, updatedAt: rows[0].updated_at, ...(version ? { version } : {}) };
+  }
+
+  /**
+   * GET /maps/:id/versions — 저장 시점별 버전 목록 (B8).
+   * doc 은 제외하고 메타만 — 목록이 가벼워야 패널이 빠르게 열린다.
+   */
+  async listVersions(userId: string, mapId: string) {
+    await this.requireOwnedMap(userId, mapId);
+    const { rows } = await this.db.query<{
+      version: number; title: string; created_at: Date; size: string;
+    }>(
+      `SELECT version, title, created_at,
+              pg_column_size(doc)::text AS size
+         FROM public.map_document_versions
+        WHERE map_id = $1
+        ORDER BY version DESC`,
+      [mapId],
+    );
+    return {
+      mapId,
+      versions: rows.map((r) => ({
+        version: r.version,
+        title: r.title,
+        createdAt: r.created_at,
+        bytes: Number(r.size),
+      })),
+      total: rows.length,
+    };
+  }
+
+  /** GET /maps/:id/versions/:version — 특정 버전의 문서 스냅샷 (B8) */
+  async getVersion(userId: string, mapId: string, version: number) {
+    await this.requireOwnedMap(userId, mapId);
+    const { rows } = await this.db.query<{
+      title: string; doc: unknown; created_at: Date;
+    }>(
+      `SELECT title, doc, created_at
+         FROM public.map_document_versions
+        WHERE map_id = $1 AND version = $2`,
+      [mapId, version],
+    );
+    if (!rows[0]) throw new NotFoundException('해당 버전을 찾을 수 없습니다.');
+    return {
+      mapId,
+      version,
+      title: rows[0].title,
+      doc: rows[0].doc,
+      createdAt: rows[0].created_at,
+    };
   }
 
   /** GET /maps/:id/document — 저장된 문서 스냅샷 조회 */

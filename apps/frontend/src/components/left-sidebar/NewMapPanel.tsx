@@ -256,7 +256,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         useCloudStore.getState().setBusy('saving');
         try {
           const created = await cloudApi.createMap(title);
-          await cloudApi.saveDocument(created.mapId, buildSnapshot(), title);
+          await cloudApi.saveDocument(created.mapId, buildSnapshot(), title, true);
         } catch (err) {
           flash('⚠ ' + (err instanceof CloudError ? err.message : '저장 실패 — 닫지 않았습니다.'));
           useCloudStore.getState().setBusy('idle');
@@ -269,7 +269,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       // 연결된 맵 — 마지막 내용을 저장하고 닫는다
       useCloudStore.getState().setBusy('saving');
       try {
-        await cloudApi.saveDocument(cloudMapId, buildSnapshot(), title);
+        await cloudApi.saveDocument(cloudMapId, buildSnapshot(), title, true);
       } catch (err) {
         flash('⚠ ' + (err instanceof CloudError ? err.message : '저장 실패 — 닫지 않았습니다.'));
         useCloudStore.getState().setBusy('idle');

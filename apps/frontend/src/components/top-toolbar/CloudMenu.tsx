@@ -65,7 +65,8 @@ export function CloudMenu({ t }: { t: ThemeTokens }) {
         const created = await cloudApi.createMap(title);
         id = created.mapId;
       }
-      const res = await cloudApi.saveDocument(id, buildSnapshot(), title);
+      // 수동 저장은 히스토리 버전으로도 남긴다 (B8)
+      const res = await cloudApi.saveDocument(id, buildSnapshot(), title, true);
       link(id, res.updatedAt);
       // 수동 저장은 맵을 바꾸지 않으므로 자동저장이 트리거되지 않는다(억제 불필요).
       useAutosaveStore.getState().setSaveState('saved');

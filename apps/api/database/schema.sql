@@ -110,6 +110,26 @@ CREATE TABLE IF NOT EXISTS public.map_documents (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- map_document_versions: 저장 시점별 문서 스냅샷 이력 (히스토리 — B8).
+--   확정 규칙(2026-07-31): **명시적 저장·맵 닫기 때마다** 저장일시별로
+--   1건 쌓는다(자동저장마다가 아니다 — 이미지가 data URL 로 들어가
+--   스냅샷이 크기 때문). 복원은 현재 맵을 덮어쓰지 않고 새 맵으로 연다.
+--   클라이언트 되돌리기(Ctrl+Z, 세션 한정)와는 완전히 별개.
+--   patch 기반 map_revisions(정규화 노드·협업 경로)와도 별개다.
+CREATE TABLE IF NOT EXISTS public.map_document_versions (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id      UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+    version     INT  NOT NULL,              -- 맵 안에서 1부터 증가
+    title       VARCHAR(255) NOT NULL,      -- 저장 시점의 맵 제목
+    doc         JSONB NOT NULL,
+    created_by  UUID REFERENCES public.users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (map_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_map_doc_versions_map
+    ON public.map_document_versions(map_id, version DESC);
+
 -- ============================================================
 -- 4. 노드
 -- ============================================================
@@ -354,6 +374,18 @@ CREATE POLICY "owners can manage own map document"
         EXISTS (
             SELECT 1 FROM public.maps m
             WHERE m.id = map_documents.map_id AND m.owner_id = auth.uid()
+        )
+    );
+
+-- map_document_versions: 소유한 맵의 저장 버전 이력만 접근 (히스토리 — B8)
+ALTER TABLE public.map_document_versions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "owners can manage own map document versions"
+    ON public.map_document_versions FOR ALL
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.maps m
+            WHERE m.id = map_document_versions.map_id AND m.owner_id = auth.uid()
         )
     );
 

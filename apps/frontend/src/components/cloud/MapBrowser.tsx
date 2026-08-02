@@ -21,7 +21,8 @@ import {
 } from '@/services/cloud/apiClient';
 import { useCloudStore } from '@/stores/cloudStore';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
-import { flattenFolders, folderPath } from './folderTree';
+import { folderPath } from './folderTree';
+import { FolderPickerDialog } from './FolderPickerDialog';
 
 type SortKey = 'title' | 'updatedAt';
 type SortOrder = 'asc' | 'desc';
@@ -42,6 +43,8 @@ export function MapBrowser({
   const [order, setOrder] = useState<SortOrder>('desc');
   const [err, setErr] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null); // 입력 중인 이름
+  // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
+  const [moving, setMoving] = useState<MapListItem | null>(null);
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
 
   const load = useCallback(async () => {
@@ -146,26 +149,14 @@ export function MapBrowser({
     }
   };
 
-  const moveMap = async (m: MapListItem) => {
-    const options = [
-      { id: null as string | null, label: '홈 (최상위)' },
-      ...flattenFolders(folders).map((f) => ({
-        id: f.folderId as string | null,
-        label: `${'　'.repeat(f.depth)}${f.name}`,
-      })),
-    ];
-    const answer = window.prompt(
-      '옮길 폴더 번호를 입력하세요\n' +
-      options.map((o, i) => `${i}. ${o.label}`).join('\n'),
-      '0',
-    );
-    if (answer == null) return;
-    const idx = Number(answer);
-    if (!Number.isInteger(idx) || idx < 0 || idx >= options.length) return;
+  const moveMapTo = async (m: MapListItem, folderId: string | null) => {
+    setMoving(null);
     try {
-      await cloudApi.updateMap(m.mapId, { folderId: options[idx].id });
+      await cloudApi.updateMap(m.mapId, { folderId });
+      onFlash(`📂 '${m.title}'을(를) 옮겼습니다.`);
       void load();
     } catch (e) {
+      // 옮기려는 폴더에 같은 이름이 있으면 409 — 서버 안내를 그대로
       onFlash('⚠ ' + (e instanceof CloudError ? e.message : '이동 실패'));
     }
   };
@@ -423,7 +414,8 @@ export function MapBrowser({
               </span>
               <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                 <button style={iconBtn} title="이름 변경" onClick={() => void renameMap(m)}>✏</button>
-                <button style={iconBtn} title="다른 폴더로 이동" onClick={() => void moveMap(m)}>📂</button>
+                <button data-testid="browser-map-move" style={iconBtn}
+                  title="다른 폴더로 이동" onClick={() => setMoving(m)}>📂</button>
                 <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제"
                   onClick={() => void deleteMap(m)}>🗑</button>
               </span>
@@ -431,6 +423,17 @@ export function MapBrowser({
           ))
         )}
       </div>
+
+      {moving && (
+        <FolderPickerDialog
+          t={t}
+          title={`'${moving.title || '제목 없음'}' 옮기기`}
+          folders={folders}
+          currentFolderId={moving.folderId}
+          onPick={(folderId) => void moveMapTo(moving, folderId)}
+          onCancel={() => setMoving(null)}
+        />
+      )}
 
       <div style={{
         padding: '8px 14px', borderTop: `1px solid ${t.border}`,

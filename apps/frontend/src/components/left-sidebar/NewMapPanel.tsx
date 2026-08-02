@@ -103,6 +103,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     // 새 문서다 — 조금 전까지 열려 있던 서버 맵과의 연결을 끊는다.
     // (끊지 않으면 자동저장이 그 서버 맵을 이 새 맵으로 덮어쓴다)
     detachFromServer();
+    setBrowserOpen(false); // 문서함이 열려 있었다면 닫고 편집 화면으로
     newMap(NEW_MAP_TITLE);
     setLayoutType('tree-right');
     resetSpacing();
@@ -196,6 +197,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     const { map: resolvedMap, stats: img } = await resolveRemoteImages(imported.map);
     // 불러온 파일도 새 문서다 — 서버 맵 연결을 끊는다 (위 doStartBlank 주석)
     detachFromServer();
+    setBrowserOpen(false);
     loadMap(resolvedMap);
     if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
     else setLayoutType('radial-right');

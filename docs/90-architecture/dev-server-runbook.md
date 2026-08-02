@@ -7,6 +7,46 @@
 >
 > ⚠️ IP·도메인은 문서용 예시(placeholder)다. 실제 값은 저장소 밖에서 관리.
 
+## 0. 스키마 드리프트 방지 — 배포 후 반드시 확인 ★
+
+> 배포는 **코드는 자동(Coolify), 스키마는 수동**이다. 스키마 변경이
+> 포함된 배포에서 이 단계를 빠뜨리면 저장이 500 으로 실패한다
+> (2026-08-02 B8 배포에서 제기된 위험).
+
+**① 배포 후 헬스체크로 즉시 확인** — 스키마가 낡으면 그렇다고 말해 준다:
+
+```bash
+curl -s https://api-dev.example.com/v1/health
+# 정상   {"status":"ok","db":"up","schema":"ok",...}
+# 낡음   {"status":"degraded","db":"up","schema":"outdated",
+#         "missingTables":["map_document_versions"],...}
+```
+
+**② 낡았으면 schema.sql 재적용** — `schema.sql` 이 **단일 기준**이며
+모든 DDL 이 멱등(IF NOT EXISTS)이라 몇 번 적용해도 안전하다:
+
+```bash
+# 저장소가 있는 곳(개발 PC 등)에서
+cd apps/api
+DATABASE_URL='postgres://postgres:<PW>@<host>:5432/postgres' npm run db:apply
+
+# 서버에 저장소가 없으면 — DB 컨테이너에 파일을 밀어 넣는다
+docker exec -i <DB> psql -U postgres -d postgres < apps/api/database/schema.sql
+```
+
+> `npm run db:apply` 는 문장 단위로 적용하며 "이미 있음" 오류만 건너뛰고
+> 그 외 오류에서는 멈춘다. 출력의 `실행 N건 · 이미 있음 M건` 으로 무엇이
+> 새로 들어갔는지 알 수 있다.
+
+**③ 새 테이블을 추가한 개발자가 할 일**: `schema.sql` 에 넣고,
+`src/health/health.controller.ts` 의 `REQUIRED_TABLES` 에도 이름을
+추가한다 — 그래야 배포 때 헬스체크가 누락을 잡는다.
+
+> **마이그레이션 도구는 아직 도입하지 않는다.** 현재는 컬럼 변경 없이
+> 테이블 추가만 있어 멱등 재적용으로 충분하다. **기존 컬럼 변경·삭제가
+> 필요해지는 시점**(데이터 보존이 걸리는 순간)에 node-pg-migrate 등을
+> 도입한다 — backlog B11.
+
 ## 1. 스키마 재적용 절차
 
 **순서 의존성이 있다 — shim 선행 필수.** 실패 시 중단하지 않으면

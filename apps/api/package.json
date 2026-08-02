@@ -8,7 +8,8 @@
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "type-check": "tsc --noEmit",
-    "smoke": "node test/smoke.mjs"
+    "smoke": "node test/smoke.mjs",
+    "db:apply": "node scripts/apply-schema.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",

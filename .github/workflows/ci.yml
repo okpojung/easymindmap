@@ -94,6 +94,9 @@ jobs:
         run: |
           node dist/main.js & echo $! > /tmp/api.pid
           for i in $(seq 1 30); do curl -sf http://localhost:3000/v1/health && break; sleep 1; done
+          # 헬스체크가 스키마 최신 여부까지 확인한다 (schema:'ok')
+          curl -sf http://localhost:3000/v1/health | grep -q '"schema":"ok"' \
+            || { echo 'schema 가 ok 가 아닙니다 — schema.sql 과 REQUIRED_TABLES 확인'; exit 1; }
           API_URL=http://localhost:3000 npm run smoke
           kill "$(cat /tmp/api.pid)" || true
       # AUTH_MODE=supabase 부팅 스모크 (2026-08-01 배포 실패 재발 방지).

@@ -37,6 +37,22 @@ ALTER TABLE public.maps
   `maps.folder_id`·`maps.kind` 를 넣었다. 응답:
   `{"schema":"outdated","missingColumns":["maps.kind"]}`
 
+### 스키마를 적용하지 않고 배포하면 (2026-08-02 실제 발생)
+
+문서함이 **"Internal server error"** 만 띄웠다. 코드는 새 것인데 DB 에
+`map_folders`·`maps.folder_id/kind` 가 없어 쿼리가 깨진 것인데, 화면에는
+아무 단서가 없었다. 그래서 두 겹으로 고쳤다:
+
+1. **API** — `DatabaseService` 가 PostgreSQL 의 `42P01`(테이블 없음)·
+   `42703`(컬럼 없음)·`42883`(함수 없음)을 잡아 **503 + 조치 안내**로
+   바꾼다: *"서버 데이터베이스 스키마가 최신이 아닙니다 … `npm run
+   db:apply` … 자세한 누락 항목은 /v1/health"*.
+2. **화면** — 문서함 위쪽에 그 메시지를 **빨간 배너**로 그대로 보여 준다.
+
+즉 배포 순서를 빠뜨려도 **무엇을 해야 하는지 화면이 말해 준다**.
+헬스체크(`/v1/health`)는 그대로 `missingTables`·`missingColumns` 로
+정확한 누락 목록을 준다.
+
 > ⚠️ **제목 중복 금지는 유니크 인덱스가 아니라 API 검사다.** 이미 운영
 > 중인 DB 에 중복 제목이 남아 있으면 유니크 인덱스 생성이 실패해 스키마
 > 적용 전체가 멈춘다. 데이터를 정리한 뒤 인덱스로 승격하는 것이 다음

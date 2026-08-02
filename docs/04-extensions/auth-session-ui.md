@@ -63,8 +63,10 @@ export const SOCIAL_PROVIDERS: SocialProvider[] = [
 
 ## 3. 맵을 여는 통로는 하나 — 좌측 '☁ 서버 맵 불러오기'
 
-상단의 ☁ 클라우드 드롭다운에 있던 "클라우드에서 열기"를 없앴다. 목록
-UI(`components/cloud/MapListModal.tsx`)는 그대로 공유한다.
+상단의 ☁ 클라우드 드롭다운에 있던 "클라우드에서 열기"를 없앴다.
+목록 UI 는 2026-08-02 문서함 도입에서 팝업 모달(MapListModal)에서
+**편집 영역의 문서함**(`components/cloud/MapBrowser.tsx`)으로 바뀌었다 —
+[document-library.md](document-library.md) §5.
 
 ## 4. 탭 모델 — 다른 맵은 **브라우저 새 탭**(`?map=<id>`)
 
@@ -124,4 +126,5 @@ UI(`components/cloud/MapListModal.tsx`)는 그대로 공유한다.
 ## 7. 검증
 
 풀스택 E2E **e2e81** 12단언 ALL PASS (test-catalog 참조) + 회귀
-e2e-cloud2 · e2e79 · e2e80 ALL PASS.
+e2e-cloud2 · e2e79 · e2e80 ALL PASS. 문서함 도입 뒤 셀렉터를 갱신해
+같은 단언으로 계속 돈다.

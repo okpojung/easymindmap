@@ -318,6 +318,21 @@ export function MapBrowser({
         </div>
       )}
 
+      {/* 오류 배너 — 서버가 준 이유를 그대로 보여 준다. 스키마 미적용
+          (503)이면 "schema.sql 을 적용하라"는 안내가 여기에 뜬다. */}
+      {err && (
+        <div
+          data-testid="browser-error"
+          style={{
+            margin: '10px 14px 0', padding: '10px 12px', borderRadius: 8,
+            background: '#d9534f11', border: '1px solid #d9534f55',
+            color: '#b33', fontSize: 12.5, lineHeight: 1.65,
+          }}
+        >
+          ⚠ {err}
+        </div>
+      )}
+
       {/* 열 머리글 */}
       <div style={{
         ...rowStyle,
@@ -364,7 +379,7 @@ export function MapBrowser({
         ) : maps.length === 0 && childFolders.length === 0 ? (
           <div data-testid="browser-empty"
             style={{ padding: '32px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
-            {err ?? (
+            {err ? '목록을 표시할 수 없습니다 — 위 안내를 확인해 주세요.' : (
               <>이 위치에 문서가 없습니다.<br />
               맵을 만들어 <b>☁ 저장</b>할 때 이 폴더를 고르면 여기에 쌓입니다.</>
             )}

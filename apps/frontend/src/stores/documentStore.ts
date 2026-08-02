@@ -11,14 +11,13 @@
 // - node content: tags, links, structured notes, attachments
 
 import { create } from 'zustand';
-import { SAMPLE_ROADMAP, SAMPLE_META, SAMPLE_KANBAN } from '@/editor/__samples__';
+import { SAMPLE_ROADMAP } from '@/editor/__samples__';
 import type {
   ShapeType,
   SampleMap,
   SampleRoot,
   SampleBranch,
   MindNode,
-  KanbanBoardData,
   NodeColorKey,
   NodeStyle,
   NodeLink,
@@ -33,8 +32,6 @@ import type { TextAlign, LayoutType, EdgeType } from '@/types/mindmap';
 // 히스토리 스냅샷에 전체 레이아웃을 함께 기록/복원하기 위해서만 사용
 // (editorUiStore는 documentStore를 import하지 않으므로 순환 없음).
 import { useEditorUiStore } from './editorUiStore';
-
-type SampleKey = 'roadmap' | 'meta';
 
 // ltree physical limit operating cap (chk_nodes_depth). Root is depth 0.
 export const MAX_DEPTH = 50;
@@ -82,7 +79,6 @@ export function setHistoryPaused(v: boolean) {
 
 interface DocumentState {
   map: SampleMap;
-  kanban: KanbanBoardData;
 
   // Undo / redo history (in-memory — no DB required)
   past: HistoryEntry[];
@@ -90,7 +86,8 @@ interface DocumentState {
   undo: () => void;
   redo: () => void;
 
-  setSample: (key: SampleKey) => void;
+  // 개발 모드(:인증 꺼짐) 시안 확인용 샘플 맵 주입 — EditorPage 전용
+  setSample: () => void;
 
   // Structure
   addChildNode: (parentId: string | null) => string;
@@ -468,7 +465,6 @@ function makeBranch(node: MindNode, indexForColor: number): SampleBranch {
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   map: cloneMap(SAMPLE_ROADMAP),
-  kanban: SAMPLE_KANBAN,
   past: [],
   future: [],
 
@@ -507,8 +503,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     applyingHistory = false;
   },
 
-  setSample: (key) =>
-    set({ map: cloneMap(key === 'meta' ? SAMPLE_META : SAMPLE_ROADMAP) }),
+  setSample: () => set({ map: cloneMap(SAMPLE_ROADMAP) }),
 
   addChildNode: (parentId) => {
     let newNodeId = '';

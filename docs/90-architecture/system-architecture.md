@@ -176,8 +176,7 @@ src/
  │       ├── RadialStrategy.ts
  │       ├── TreeStrategy.ts
  │       ├── HierarchyStrategy.ts
- │       ├── ProcessStrategy.ts
- │       └── FreeformStrategy.ts
+ │       └── ProcessStrategy.ts
  ├── services/
  │   ├── apiClient.ts
  │   ├── supabaseClient.ts  # Supabase JS Client (Anon Key)

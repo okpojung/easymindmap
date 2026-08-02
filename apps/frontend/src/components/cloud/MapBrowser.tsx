@@ -15,6 +15,7 @@
 // 잃을 것이 없으면 이 탭.
 import { useCallback, useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { I } from '@/components/icons';
 import {
   cloudApi, CloudError,
   type FolderItem, type MapListItem,
@@ -372,7 +373,11 @@ export function MapBrowser({
         ) : (
           maps.map((m) => (
             <div key={m.mapId} data-testid="browser-map" style={rowStyle}>
-              <span style={{ fontSize: 15 }}>🗺</span>
+              {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
+                  (2026-08-02 사용자 보고) — 앱 SVG 아이콘으로 통일 */}
+              <span style={{ display: 'flex', color: t.primary }}>
+                <I.MindMap size={15} />
+              </span>
               <button
                 data-testid="browser-map-open"
                 onClick={() => void openMap(m)}

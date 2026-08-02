@@ -82,11 +82,12 @@ export function UnifiedSidebar({
     { key: 'ai'      as InspectorTabKey, label: 'AI',        icon: <I.Sparkles size={17} /> },
   ];
 
+  // 펼침은 setNavTab/setInspectorTab(store)이 담당한다 — 여기서 토글을
+  // 또 부르면 store 가 이미 펼친 것을 도로 접는다 (2026-08-02 수정).
   function handleRailClick(section: SidebarSection, key: string) {
     if (section === 'nav') onNavTabChange(key as NavTabKey);
     else onInspectorTabChange(key as InspectorTabKey);
     onActiveSectionChange(section);
-    if (collapsed) onToggleCollapsed();
   }
 
   return (

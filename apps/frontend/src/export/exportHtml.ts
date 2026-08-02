@@ -473,6 +473,70 @@ const VIEWER_JS = String.raw`
     return out;
   }
 
+  // 마커 옆 선택 팝업 — 에디터 ChooserPopover와 동일 규격 (2026-08-02
+  // 파리티 수정: 링크·첨부·미디어 복수 항목은 우상단 상세 패널이 아니라
+  // 클릭한 마커 **옆**에 목록을 띄우고, 호버 항목을 강조한다).
+  var chooser = null;
+  function closeChooser() {
+    if (chooser) { chooser.parentNode.removeChild(chooser); chooser = null; }
+  }
+  document.addEventListener('pointerdown', function (e) {
+    if (chooser && !chooser.contains(e.target)) closeChooser();
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeChooser();
+  });
+  // 줌/팬으로 마커가 움직이면 고정 위치 팝업이 어긋난다 — 닫는다.
+  document.addEventListener('wheel', function () { closeChooser(); }, true);
+  // rows: [{ icon, label, title, act }] — act 없는 행은 비활성(파일 없음).
+  function openChooser(markerEl, rows) {
+    closeChooser();
+    var box = document.createElement('div');
+    box.id = 'mm-chooser';
+    for (var i = 0; i < rows.length; i++) {
+      (function (rowDef) {
+        var b = document.createElement('button');
+        b.className = 'mm-chooser-item' + (rowDef.act ? '' : ' off');
+        b.textContent = rowDef.icon + ' ' + rowDef.label;
+        b.setAttribute('title', rowDef.title || rowDef.label);
+        if (rowDef.act) {
+          b.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            rowDef.act();
+            closeChooser();
+          });
+        }
+        box.appendChild(b);
+      })(rows[i]);
+    }
+    document.body.appendChild(box);
+    // 마커 오른쪽 옆, 세로는 마커 중심 정렬 (화면 밖으로 나가면 안쪽으로)
+    var r = markerEl.getBoundingClientRect();
+    var bw = box.offsetWidth, bh = box.offsetHeight;
+    var left = r.right + 10;
+    if (left + bw > window.innerWidth - 8) left = Math.max(8, r.left - 10 - bw);
+    var top = r.top + r.height / 2 - bh / 2;
+    top = Math.max(8, Math.min(top, window.innerHeight - bh - 8));
+    box.style.left = left + 'px';
+    box.style.top = top + 'px';
+    chooser = box;
+  }
+  // 첨부 열기 — 상세 패널의 attachmentRow와 동일 정책: 새 탭에서 열고,
+  // 패키지에 내장된 파일(external 아님)은 download 속성으로 저장 유도.
+  function openAttachmentHref(att) {
+    if (!att.href) return null;
+    return function () {
+      var a = document.createElement('a');
+      a.href = att.href;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      if (!att.external) a.setAttribute('download', att.name);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+  }
+
   // 인디케이터 개수 — 노드 박스 안(텍스트 뒤)에 그려지므로 폭 계산에
   // 포함해 모든 마커가 박스 안에 들어가게 한다. 노트는 종류 수만큼.
   function markerCount(node) {
@@ -1340,7 +1404,10 @@ const VIEWER_JS = String.raw`
 
     // Content markers — one per kind, sized like the node's leading icon
     // (에디터 인디케이터와 동일: 🔗 링크, 📝 노트, 📎 파일, ▶️ 멀티미디어).
-    // Single item → open it directly; multiple → detail-panel list.
+    // 툴팁·클릭 동작 모두 에디터 파리티(nodeContent.ts): 호버 = 복수면
+    // "종류 N개", 단수면 이름/URL. 클릭 = 단수는 바로 열고, 복수는 마커
+    // 옆 선택 팝업(openChooser). 노트만 상세 패널(에디터 노트 뷰어 팝업도
+    // 우상단이라 파리티가 맞다).
     var files = [], media = [], ai;
     if (node.attachments) {
       for (ai = 0; ai < node.attachments.length; ai++) {
@@ -1349,18 +1416,36 @@ const VIEWER_JS = String.raw`
       }
     }
     var markers = [];
-    function urlList(arr, f) {
-      var out = [];
-      for (var i2 = 0; i2 < arr.length; i2++) out.push(f(arr[i2]));
-      return out.join('\n');
+    function attachmentRows(arr, icon) {
+      var rows = [];
+      for (var i2 = 0; i2 < arr.length; i2++) {
+        rows.push({
+          icon: icon,
+          label: arr[i2].name + (arr[i2].href ? (arr[i2].external ? ' ↗' : '') : ' (파일 없음)'),
+          title: arr[i2].name,
+          act: openAttachmentHref(arr[i2])
+        });
+      }
+      return rows;
     }
     if (node.links && node.links.length) {
-      markers.push({ kind: 'link',
-        // 호버 시 링크된 URL 표시 (에디터와 동일)
-        tip: urlList(node.links, function (l) { return l.label ? l.label + ' — ' + l.url : l.url; }),
-        act: (node.links.length === 1
-        ? function () { window.open(node.links[0].url, '_blank'); }
-        : function () { showDetail(node, 'links'); }) });
+      (function (links) {
+        markers.push({ kind: 'link',
+          tip: links.length > 1 ? '링크 ' + links.length + '개'
+            : (links[0].label || links[0].url),
+          act: (links.length === 1
+          ? function () { window.open(links[0].url, '_blank'); }
+          : function (mk) {
+              var rows = [];
+              for (var li = 0; li < links.length; li++) {
+                (function (l) {
+                  rows.push({ icon: '🔗', label: l.label || l.url, title: l.url,
+                    act: function () { window.open(l.url, '_blank'); } });
+                })(links[li]);
+              }
+              openChooser(mk, rows);
+            }) });
+      })(node.links);
     }
     if (node.notes && node.notes.length) {
       // 노트 종류별 개별 마커 — 클릭하면 그 종류의 노트만 상세 패널에 표시
@@ -1379,17 +1464,17 @@ const VIEWER_JS = String.raw`
     }
     if (files.length) {
       markers.push({ kind: 'file',
-        tip: urlList(files, function (a) { return a.name; }),
+        tip: files.length > 1 ? '첨부파일 ' + files.length + '개' : files[0].name,
         act: (files.length === 1 && files[0].href
         ? function () { window.open(files[0].href, '_blank'); }
-        : function () { showDetail(node, 'files'); }) });
+        : function (mk) { openChooser(mk, attachmentRows(files, '📎')); }) });
     }
     if (media.length) {
       markers.push({ kind: 'media',
-        tip: urlList(media, function (a) { return a.name; }),
+        tip: media.length > 1 ? '멀티미디어 ' + media.length + '개' : media[0].name,
         act: (media.length === 1 && media[0].href
         ? function () { window.open(media[0].href, '_blank'); }
-        : function () { showDetail(node, 'media'); }) });
+        : function (mk) { openChooser(mk, attachmentRows(media, '▶️')); }) });
     }
     if (markers.length) {
       var mfs = node._fs + 1; // same size as the node's leading icon
@@ -1402,10 +1487,11 @@ const VIEWER_JS = String.raw`
           var tt = el('title', {}, mk); // SVG 네이티브 툴팁 — 호버 시 URL/이름 표시
           tt.textContent = markers[mi].tip;
         }
-        (function (act) {
-          mk.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
-          mk.addEventListener('click', function (ev) { ev.stopPropagation(); act(); });
-        })(markers[mi].act);
+        (function (act, mkEl) {
+          mkEl.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+          // act는 마커 엘리먼트를 받는다 — 선택 팝업을 마커 옆에 띄운다.
+          mkEl.addEventListener('click', function (ev) { ev.stopPropagation(); act(mkEl); });
+        })(markers[mi].act, mk);
         mx0 += mfs + 3;
       }
     }
@@ -2504,6 +2590,31 @@ const VIEWER_CSS = `
     position: absolute; top: 8px; right: 10px; border: none; background: none;
     font-size: 14px; cursor: pointer; color: #8B7D68;
   }
+  /* 마커 옆 링크/첨부/미디어 선택 팝업 — 에디터 ChooserPopover 파리티 */
+  #mm-chooser {
+    position: fixed; z-index: 60; width: 260px; max-height: 300px;
+    overflow: auto; background: #FFFDF8; border: 1px solid #D8CBB2;
+    border-radius: 6px; padding: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  }
+  .mm-chooser-item {
+    display: block; width: 100%; text-align: left; padding: 5px 8px;
+    border: none; background: transparent; border-radius: 4px;
+    font-size: 11.5px; font-family: inherit; color: #1F1B16; cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* 호버 항목 강조 — 배경 + 왼쪽 바 + 굵게 + ↗ (에디터와 동일) */
+  .mm-chooser-item:not(.off):hover {
+    background: #FEF3C7; box-shadow: inset 3px 0 0 #D97706;
+    color: #B45309; font-weight: 700;
+  }
+  .mm-chooser-item:not(.off):hover::after { content: ' ↗'; }
+  .mm-chooser-item.off { color: #A89B85; cursor: default; }
+  body.mm-dark #mm-chooser { background: #20242B; border-color: #3A3E47; }
+  body.mm-dark .mm-chooser-item { color: #D8D4CC; }
+  body.mm-dark .mm-chooser-item:not(.off):hover {
+    background: #3B2A0A; box-shadow: inset 3px 0 0 #F59E0B; color: #FBBF24;
+  }
+  body.mm-dark .mm-chooser-item.off { color: #6B6E78; }
   /* 문단·코드 글자 크기 10 통일. 문단은 입력한 줄 그대로(pre) 표시하고
      창 폭보다 길면 블록에 가로 스크롤바가 나타난다. */
   .mm-note-block {
@@ -2641,11 +2752,12 @@ export function buildStandaloneHtml(
     // 노트 글꼴·크기 (맵 설정 — 뷰어 노트 패널에 적용, 기본 13pt)
     noteFont: map.settings?.noteFont,
     root: {
+      // 루트도 일반 노드처럼 링크·노트·첨부·태그·아이콘을 가질 수 있다 —
+      // 전체를 넘겨야 뷰어 마커가 에디터와 같게 그려진다 (2026-08-02:
+      // text·style만 넘겨 루트의 링크/첨부 마커가 뷰어에서 사라지던 버그).
       ...toExportNode({
-        id: 'root',
-        text: map.root.text,
+        ...map.root,
         textAlign: map.root.textAlign ?? levelTextAlign(0),
-        style: map.root.style,
       } as MindNode, resolveHref, resolvePos, resolveSide),
       colorKey: 'root',
       layoutType: map.root.layoutType ?? mapLayoutType,
@@ -2755,6 +2867,9 @@ export async function buildExportPackage(
   const title = safeName(map.title, 'mindmap');
 
   const attachments: NodeAttachment[] = [];
+  // 루트 노드의 첨부도 패키징한다 (2026-08-02: branches만 걷어 루트 첨부가
+  // files/ 에 안 들어가고 세션이 끝나면 죽는 blob: URL로 남던 버그)
+  if (map.root.attachments) attachments.push(...map.root.attachments);
   collectAttachments(map.branches, attachments);
 
   if (attachments.length === 0) {

@@ -9,7 +9,6 @@ import { BottomStatusBar } from '@/components/bottom-status-bar/BottomStatusBar'
 import { Canvas } from '@/editor/canvas/Canvas';
 import { OutlineEditorPane } from '@/editor/outline/OutlineEditorPane';
 import { KanbanBoard } from '@/editor/canvas/KanbanBoard';
-import { DesignTweaksPanel } from '@/editor/dialogs/DesignTweaksPanel';
 import { MultiAddDialog } from '@/editor/dialogs/MultiAddDialog';
 import { SAMPLE_COLLABS } from '@/editor/__samples__';
 import type {
@@ -139,10 +138,6 @@ export function EditorPage() {
   const setBrowserOpen = useEditorUiStore((s) => s.setBrowserOpen);
   // 아웃라인 전체 모드 = 분할이 아니고 mainView가 'outline'일 때
   const fullOutline = !outlineSplit && mainView === 'outline';
-  const tweaksOpen = useEditorUiStore((s) => s.tweaksOpen);
-  const setTweaksOpen = useEditorUiStore((s) => s.setTweaksOpen);
-  const sampleTopic = useEditorUiStore((s) => s.sampleTopic);
-  const setSampleTopic = useEditorUiStore((s) => s.setSampleTopic);
 
   const zoom = useViewportStore((s) => s.zoom);
   const setZoom = useViewportStore((s) => s.setZoom);
@@ -189,9 +184,9 @@ export function EditorPage() {
     // `?map=<id>` 탭은 서버 문서를 열 자리라 샘플로 덮지 않는다.
     if (authEnabled || initialMapId) return;
     setHistoryPaused(true);
-    setSample(sampleTopic);
+    setSample();
     setHistoryPaused(false);
-  }, [sampleTopic, setSample]);
+  }, [setSample]);
 
   // **로그인/로그아웃 전환 리셋** (인증 켜진 배포 — 2026-08-02).
   // 세션이 바뀔 때마다 문서·서버 링크·undo 히스토리를 비운다:
@@ -238,29 +233,6 @@ export function EditorPage() {
   useEffect(() => {
     installGlobalTooltip();
   }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 't' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const target = e.target as HTMLElement | null;
-
-        if (
-          target &&
-          (target.tagName === 'INPUT' ||
-            target.tagName === 'TEXTAREA' ||
-            target.isContentEditable)
-        ) {
-          return;
-        }
-
-        setTweaksOpen(!tweaksOpen);
-      }
-    };
-
-    window.addEventListener('keydown', onKey);
-
-    return () => window.removeEventListener('keydown', onKey);
-  }, [tweaksOpen, setTweaksOpen]);
 
   // 로그인 전에는 소개 + 로그인만 (인증이 켜진 배포에서만 — 개발 모드는
   // authEnabled=false 라 그대로 에디터가 열린다)
@@ -425,21 +397,6 @@ export function EditorPage() {
       )}
 
       <MultiAddDialog t={t} />
-
-      {tweaksOpen && (
-        <DesignTweaksPanel
-          t={t}
-          themeName={themeName}
-          setThemeName={setThemeName}
-          layoutType={layoutType}
-          setLayoutType={setLayoutType}
-          inspectorTab={inspectorTab}
-          setInspectorTab={setInspectorTab}
-          sampleTopic={sampleTopic}
-          setSampleTopic={setSampleTopic}
-          onClose={() => setTweaksOpen(false)}
-        />
-      )}
     </div>
   );
 }

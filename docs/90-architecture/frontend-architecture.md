@@ -58,8 +58,7 @@ apps/frontend/
 │   │   │   ├── RadialStrategy.ts
 │   │   │   ├── TreeStrategy.ts
 │   │   │   ├── HierarchyStrategy.ts
-│   │   │   ├── ProcessStrategy.ts
-│   │   │   └── FreeformStrategy.ts
+│   │   │   └── ProcessStrategy.ts
 │   │   ├── MeasureEngine.ts
 │   │   ├── CollisionResolver.ts
 │   │   └── EdgeRouter.ts

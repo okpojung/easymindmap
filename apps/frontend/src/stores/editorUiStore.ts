@@ -44,8 +44,6 @@ interface EditorUiState {
   inspectorTab: InspectorTabKey;
   activeSection: SidebarSection;
   sidebarCollapsed: boolean;
-  tweaksOpen: boolean;
-  sampleTopic: 'roadmap' | 'meta';
 
   // Display toggles (NODE-15 style)
   showTags: boolean;
@@ -85,8 +83,6 @@ interface EditorUiState {
   setInspectorTab: (v: InspectorTabKey) => void;
   setActiveSection: (v: SidebarSection) => void;
   toggleSidebar: () => void;
-  setTweaksOpen: (v: boolean) => void;
-  setSampleTopic: (v: 'roadmap' | 'meta') => void;
   setShowTags: (v: boolean) => void;
   toggleTagHidden: (tag: string) => void;
   setMultiAddOpen: (v: boolean) => void;
@@ -120,8 +116,6 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   inspectorTab: 'style',
   activeSection: 'inspector',
   sidebarCollapsed: false,
-  tweaksOpen: false,
-  sampleTopic: 'roadmap',
   showTags: true,
   hiddenTags: [],
   multiAddOpen: false,
@@ -139,12 +133,15 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
     set({ themeName });
   },
   setLayoutType: (layoutType) => set({ layoutType }),
-  setNavTab: (navTab) => set({ navTab, activeSection: 'nav' }),
+  // 탭 선택은 패널을 **펼친다**(idempotent) — setInspectorTab 과 동일.
+  // 펼침을 토글에 맡기면 두 경로가 겹칠 때 도로 접힌다 (2026-08-02
+  // 실측: 접힌 레일에서 속성 아이콘 클릭 시 setInspectorTab 이 펼치고
+  // handleRailClick 의 토글이 도로 접었다).
+  setNavTab: (navTab) => set({ navTab, activeSection: 'nav', sidebarCollapsed: false }),
   setInspectorTab: (inspectorTab) =>
     set({ inspectorTab, activeSection: 'inspector', sidebarCollapsed: false }),
   setActiveSection: (activeSection) => set({ activeSection }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-  setTweaksOpen: (tweaksOpen) => set({ tweaksOpen }),
   setSpacingX: (spacingX) => set({ spacingX: Math.min(2, Math.max(0.9, spacingX)) }),
   setSpacingY: (spacingY) => set({ spacingY: Math.min(2, Math.max(0.9, spacingY)) }),
   resetSpacing: () => set({ spacingX: 1, spacingY: 1 }),
@@ -172,7 +169,6 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
     outlineFocusId: s.mainView === 'map' ? captureOutlineFocus() : s.outlineFocusId,
   })),
   setBrowserOpen: (browserOpen) => set({ browserOpen }),
-  setSampleTopic: (sampleTopic) => set({ sampleTopic }),
   setShowTags: (showTags) => set({ showTags }),
   toggleTagHidden: (tag) =>
     set((s) => ({

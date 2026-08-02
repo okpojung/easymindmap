@@ -18,9 +18,9 @@ import { cloudApi, CloudError, type MapKind } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 
 /**
- * 클라우드 문서 스냅샷 포맷 — 문서(map)·칸반에 **에디터 설정**까지 담는다.
+ * 클라우드 문서 스냅샷 포맷 — 문서(map)에 **에디터 설정**까지 담는다.
  *
- * v2 (2026-08-02): editor(전역 레이아웃·간격) 추가. v1 은 map·kanban 만
+ * v2 (2026-08-02): editor(전역 레이아웃·간격) 추가. v1 은 map 만
  * 저장해서, 서버에서 다시 열면 **레이아웃이 저장 당시와 달라졌다**
  * (진행트리로 편집해 저장했는데 방사형으로 열림 — 사용자 실사용 보고).
  * 레이아웃은 documentStore 가 아니라 editorUiStore 소관이라 스냅샷에
@@ -36,14 +36,15 @@ export interface SnapshotEditor {
 }
 
 export function buildSnapshot(): {
-  v: number; map: unknown; kanban: unknown; editor: SnapshotEditor;
+  v: number; map: unknown; editor: SnapshotEditor;
 } {
   const st = useDocumentStore.getState();
   const ui = useEditorUiStore.getState();
+  // (예전 스냅샷의 kanban 필드는 초기 개발 목데이터를 싣기만 하고 복원에
+  //  쓰인 적이 없어 제거했다 — 칸반 화면은 map 에서 실시간으로 만든다.)
   return {
     v: SNAPSHOT_VERSION,
     map: st.map,
-    kanban: st.kanban,
     editor: { layoutType: ui.layoutType, spacingX: ui.spacingX, spacingY: ui.spacingY },
   };
 }

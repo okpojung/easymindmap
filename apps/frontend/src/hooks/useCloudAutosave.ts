@@ -38,7 +38,6 @@ function snapshot() {
   return {
     v: 2,
     map: st.map,
-    kanban: st.kanban,
     editor: { layoutType: ui.layoutType, spacingX: ui.spacingX, spacingY: ui.spacingY },
   };
 }

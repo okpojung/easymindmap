@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { cloudApi } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useCloudStore } from '@/stores/cloudStore';
 
@@ -24,8 +25,18 @@ interface MenuEntry {
 const ENTRIES: MenuEntry[] = [
   { id: 'settings', icon: '⚙', label: '개인 설정', soon: '언어(한국어·English)·기본 저장 위치 등 — 다국어(B10) 단계에서 열립니다.' },
   { id: 'profile', icon: '👤', label: '계정 프로필', soon: '표시 이름·비밀번호 변경 — 계정 관리 단계에서 열립니다.' },
-  { id: 'subscription', icon: '💳', label: '구독 상태', soon: '요금제와 사용 중인 저장 용량(문서·첨부 각각) — 첨부 저장소(B9) 단계에서 열립니다.' },
+  { id: 'subscription', icon: '💳', label: '구독 상태', soon: '요금제 변경·용량 상향(유료 10GB) — 결제 단계에서 열립니다. 현재 사용량은 아래에 표시됩니다.' },
 ];
+
+interface QuotaInfo { dbBytes: number; fileBytes: number; usedBytes: number; quotaBytes: number }
+
+function fmtBytes(b: number): string {
+  const gb = b / 1024 ** 3;
+  if (gb >= 1) return `${Math.round(gb * 100) / 100}GB`;
+  const mb = b / 1024 ** 2;
+  if (mb >= 1) return `${Math.round(mb * 10) / 10}MB`;
+  return `${Math.max(1, Math.round(b / 1024))}KB`;
+}
 
 /** 이메일에서 아바타 글자 1자 — 없으면 로컬 모드 표시 */
 function initialOf(email: string | undefined): string {
@@ -38,6 +49,19 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const [soon, setSoon] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const session = useAuthStore((s) => s.session);
+
+  // 저장 용량 (B9) — 메뉴를 열 때마다 조회. DB(문서)+첨부 합산 / 한도.
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    // 인증 켠 배포에서 로그인 전이면 조회하지 않는다
+    if (authEnabled && !session) return;
+    let alive = true;
+    cloudApi.quota()
+      .then((q) => { if (alive) setQuota(q); })
+      .catch(() => { if (alive) setQuota(null); });
+    return () => { alive = false; };
+  }, [open, session]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,6 +128,36 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 : '서버 인증이 꺼진 개발 모드'}
             </div>
           </div>
+
+          {quota && (
+            <div
+              data-testid="user-menu-quota"
+              style={{
+                margin: '0 6px 6px', padding: '7px 9px', borderRadius: 6,
+                background: t.surfaceAlt, border: `1px solid ${t.border}`,
+              }}
+            >
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                fontSize: 10.5, color: t.textMuted, marginBottom: 4,
+              }}>
+                <span>저장 용량 (문서+첨부)</span>
+                <span style={{ fontWeight: 700, color: t.text }}>
+                  {fmtBytes(quota.usedBytes)} / {fmtBytes(quota.quotaBytes)}
+                </span>
+              </div>
+              <div style={{ height: 5, borderRadius: 3, background: t.border, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', borderRadius: 3,
+                  width: `${Math.min(100, Math.round((quota.usedBytes / quota.quotaBytes) * 100))}%`,
+                  background: quota.usedBytes / quota.quotaBytes > 0.9 ? t.danger : t.primary,
+                }} />
+              </div>
+              <div style={{ fontSize: 9.5, color: t.textSubtle, marginTop: 4 }}>
+                문서 {fmtBytes(quota.dbBytes)} · 첨부 {fmtBytes(quota.fileBytes)}
+              </div>
+            </div>
+          )}
 
           {ENTRIES.map((e) => (
             <button

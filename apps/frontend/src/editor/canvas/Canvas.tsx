@@ -424,8 +424,13 @@ export function Canvas({
       void (async () => {
         for (const f of files) {
           const kind = f.type.startsWith('audio') ? 'audio' : f.type.startsWith('video') ? 'video' : 'file';
-          // ≤2MB 는 data URL 로 내장 — 저장·새로고침 후에도 원본 유지
-          addNodeAttachment(target.id, { name: f.name, kind, url: await attachmentUrlForFile(f) });
+          try {
+            // ≤2MB 는 data URL 내장, 초과는 서버 업로드 — 저장 후에도 유지
+            addNodeAttachment(target.id, { name: f.name, kind, url: await attachmentUrlForFile(f) });
+          } catch {
+            // 업로드 실패(쿼터 초과 등) — 이 파일만 건너뛴다. 상세 안내는
+            // 링크·첨부 탭의 첨부 버튼 경로에서 표시된다.
+          }
         }
       })();
     } else if (url) {

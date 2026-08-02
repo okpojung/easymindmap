@@ -8,6 +8,7 @@ import type { AttachmentKind } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { attachmentUrlForFile } from '@/utils/attachmentFile';
+import { cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { InspectorSection } from './InspectorSection';
 
 export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
@@ -19,6 +20,8 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
 
   const [linkUrl, setLinkUrl] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
+  // 첨부 실패(서버 업로드 쿼터 초과 등) 안내 — 첨부 섹션 아래 빨간 줄
+  const [attErr, setAttErr] = useState<string | null>(null);
 
   const node = findNodeInMap(map, selectedId);
   const disabled = !selectedId || !node;
@@ -27,6 +30,31 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   const attachments = node?.attachments ?? [];
   const docs = attachments.filter((a) => a.kind === 'file');
   const media = attachments.filter((a) => a.kind === 'audio' || a.kind === 'video');
+
+  // 파일 첨부 — ≤2MB 내장 / 초과는 서버 업로드(attachmentUrlForFile).
+  // 업로드 실패(쿼터 초과 등)는 그 파일만 건너뛰고 메시지를 보여준다.
+  const addFiles = async (files: File[], kindOf: (f: File) => AttachmentKind) => {
+    if (!selectedId) return;
+    setAttErr(null);
+    for (const f of files) {
+      try {
+        addNodeAttachment(selectedId, {
+          name: f.name, kind: kindOf(f), url: await attachmentUrlForFile(f),
+        });
+      } catch (err) {
+        setAttErr(err instanceof Error ? err.message : '첨부에 실패했습니다.');
+      }
+    }
+  };
+
+  // 첨부 삭제 — 서버 첨부 저장소(B9)에 올라간 파일이면 서버에서도 지운다
+  // (실패해도 노드에서는 빠진다 — 서버 쪽은 쿼터 정리용 best-effort)
+  const removeAttachment = (a: { id: string; url?: string }) => {
+    if (!selectedId) return;
+    removeNodeAttachment(selectedId, a.id);
+    const serverId = serverAttachmentId(a.url);
+    if (serverId) void cloudApi.deleteAttachment(serverId).catch(() => undefined);
+  };
 
   const commitLink = () => {
     const url = linkUrl.trim();
@@ -100,43 +128,36 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {docs.map((a) => (
             <AttachmentRow key={a.id} t={t} icon="📄" name={a.name}
-              onRemove={() => selectedId && removeNodeAttachment(selectedId, a.id)} />
+              onRemove={() => selectedId && removeAttachment(a)} />
           ))}
         </div>
         <FilePickerButton t={t} label="문서 선택" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md"
           disabled={!selectedId}
-          onFiles={async (files) => {
-            if (!selectedId) return;
-            for (const f of files) {
-              addNodeAttachment(selectedId, {
-                name: f.name, kind: 'file', url: await attachmentUrlForFile(f),
-              });
-            }
-          }} />
+          onFiles={(files) => addFiles(files, () => 'file')} />
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
-          2MB 이하 파일은 맵에 내장되어 저장 후 다시 열어도 유지됩니다.
-          초과 파일은 이 창에서만 열 수 있습니다 (서버 첨부 저장소 준비 중).
+          2MB 이하 파일은 맵에 내장되고, 초과 파일은 로그인 상태에서 서버
+          첨부 저장소에 올라갑니다 — 둘 다 저장 후 다시 열어도 유지됩니다.
+          (저장 용량 = 문서+첨부 합산, 무료 1GB)
         </div>
+        {attErr && (
+          <div data-testid="attach-error"
+            style={{ fontSize: 10.5, color: t.danger, marginTop: 5, lineHeight: 1.45 }}>
+            ⚠ {attErr}
+          </div>
+        )}
       </InspectorSection>
 
       <InspectorSection t={t} title="첨부 (멀티미디어)">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {media.map((a) => (
             <AttachmentRow key={a.id} t={t} icon={a.kind === 'audio' ? '🎤' : '🎬'} name={a.name}
-              onRemove={() => selectedId && removeNodeAttachment(selectedId, a.id)} />
+              onRemove={() => selectedId && removeAttachment(a)} />
           ))}
         </div>
         <FilePickerButton t={t} label="미디어 선택" accept="audio/*,video/*,image/*"
           disabled={!selectedId}
-          onFiles={async (files) => {
-            if (!selectedId) return;
-            for (const f of files) {
-              const kind: AttachmentKind = f.type.startsWith('audio') ? 'audio' : 'video';
-              addNodeAttachment(selectedId, {
-                name: f.name, kind, url: await attachmentUrlForFile(f),
-              });
-            }
-          }} />
+          onFiles={(files) => addFiles(
+            files, (f) => (f.type.startsWith('audio') ? 'audio' : 'video'))} />
       </InspectorSection>
 
       <InspectorSection t={t} title="노드 배경 이미지 (IMG-01~05 · V1)">
@@ -220,7 +241,7 @@ function AttachmentRow({ t, icon, name, onRemove }: {
         flex: 1, minWidth: 0, fontSize: 11.5, color: t.text, fontWeight: 500,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{name}</div>
-      <button onClick={onRemove} style={{
+      <button onClick={onRemove} title="첨부 삭제" style={{
         background: 'none', border: 'none', cursor: 'pointer',
         color: t.textMuted, padding: 2, display: 'flex',
       }}>

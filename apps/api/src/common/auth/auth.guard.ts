@@ -59,7 +59,14 @@ export class AuthGuard implements CanActivate {
 
     // ── AUTH_MODE=supabase — Bearer JWT 검증 ────────────────────────
     const authz = req.header('authorization') ?? '';
-    const token = authz.startsWith('Bearer ') ? authz.slice(7).trim() : '';
+    let token = authz.startsWith('Bearer ') ? authz.slice(7).trim() : '';
+    if (!token) {
+      // 다운로드 링크 폴백 — <a href>/window.open 은 헤더를 못 실으므로
+      // 첨부 다운로드(B9) 등에서 `?access_token=<JWT>` 쿼리를 허용한다.
+      // 검증은 아래에서 헤더 토큰과 동일하게 수행된다.
+      const q = req.query.access_token;
+      if (typeof q === 'string' && q.trim()) token = q.trim();
+    }
     if (!token) {
       throw new UnauthorizedException('로그인이 필요합니다. (Authorization: Bearer <token>)');
     }

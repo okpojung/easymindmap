@@ -140,6 +140,67 @@ export const cloudApi = {
       `/maps/${mapId}/document`,
     ),
   deleteMap: (mapId: string) => req<void>('DELETE', `/maps/${mapId}`),
+
+  // ── 첨부 저장소 (B9) ───────────────────────────────────────
+  // 업로드는 multipart 라 req() 대신 직접 fetch — Content-Type 은
+  // 브라우저가 boundary 포함으로 자동 설정한다.
+  uploadAttachment: async (file: File, mapId?: string) => {
+    const headers: Record<string, string> = {};
+    if (authEnabled) {
+      const token = await getFreshAccessToken();
+      if (!token) throw new CloudError(401, '로그인이 필요합니다.');
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const form = new FormData();
+    form.append('file', file);
+    let res: Response;
+    try {
+      res = await fetch(
+        `${BASE}/v1/attachments${mapId ? `?mapId=${encodeURIComponent(mapId)}` : ''}`,
+        { method: 'POST', headers, body: form },
+      );
+    } catch {
+      throw new CloudError(0, '서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.');
+    }
+    if (!res.ok) {
+      let msg = `업로드 실패 (${res.status})`;
+      try { msg = (await res.json()).message || msg; } catch { /* 본문 없음 */ }
+      throw new CloudError(res.status, msg);
+    }
+    return res.json() as Promise<{
+      id: string; name: string; mime: string; sizeBytes: number; url: string;
+    }>;
+  },
+  deleteAttachment: (id: string) => req<void>('DELETE', `/attachments/${id}`),
+  quota: () =>
+    req<{ dbBytes: number; fileBytes: number; usedBytes: number; quotaBytes: number }>(
+      'GET', '/attachments/quota'),
 };
+
+/** 서버 첨부의 절대 URL — 문서에는 이 형태로 저장된다 */
+export function serverAttachmentUrl(id: string): string {
+  return `${BASE}/v1/attachments/${id}`;
+}
+
+/** URL 이 이 서버의 첨부(B9)를 가리키면 그 id, 아니면 null */
+export function serverAttachmentId(url: string | undefined): string | null {
+  if (!url) return null;
+  const prefix = `${BASE}/v1/attachments/`;
+  if (!url.startsWith(prefix)) return null;
+  const id = url.slice(prefix.length).split('?')[0];
+  return id || null;
+}
+
+/**
+ * 첨부를 fetch/<a href> 로 열 때 쓸 URL — 서버 첨부면 인증 토큰을
+ * `?access_token=` 으로 붙인다 (<a href>/window.open 은 헤더를 못 싣고,
+ * 내보내기 패키징의 fetch 도 같은 경로를 쓴다. AUTH_MODE=dev 는 무시).
+ */
+export async function attachmentFetchUrl(url: string): Promise<string> {
+  if (!serverAttachmentId(url) || !authEnabled) return url;
+  const token = await getFreshAccessToken();
+  if (!token) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`;
+}
 
 export const cloudApiBase = BASE;

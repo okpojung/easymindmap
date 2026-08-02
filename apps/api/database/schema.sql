@@ -516,3 +516,37 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.maps;
 --   ('exports',     'exports',     false),
 --   ('published',   'published',   true),   -- 퍼블리시 HTML은 공개
 --   ('media',       'media',       false);
+
+-- ============================================================
+-- 15. 첨부 저장소 + 저장 용량 쿼터 (B9 — 2026-08-02)
+-- ============================================================
+-- 첨부 파일 원본은 API 서버의 저장소 드라이버(로컬 디스크/S3 호환)에
+-- 저장되고, 이 테이블은 메타데이터(소유자·이름·크기·storage key)만 담는다.
+-- 쿼터 = 사용자의 문서(DB: map_documents + versions) + 첨부 합산이
+-- users.quota_bytes(기본 1GB, 유료 10GB) 이하여야 한다.
+
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS quota_bytes BIGINT NOT NULL DEFAULT 1073741824;
+
+CREATE TABLE IF NOT EXISTS public.attachments (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    -- 어느 맵에서 올렸는지 (맵 삭제 시에도 첨부는 남는다 — 다른 맵이
+    -- 같은 URL 을 참조할 수 있어 SET NULL)
+    map_id       UUID REFERENCES public.maps(id) ON DELETE SET NULL,
+    name         VARCHAR(255) NOT NULL,
+    mime         VARCHAR(127) NOT NULL DEFAULT 'application/octet-stream',
+    size_bytes   BIGINT NOT NULL,
+    storage_key  TEXT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_owner
+    ON public.attachments(owner_id);
+
+ALTER TABLE public.attachments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users can manage own attachments" ON public.attachments;
+CREATE POLICY "users can manage own attachments"
+    ON public.attachments FOR ALL
+    USING (auth.uid() = owner_id);

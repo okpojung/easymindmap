@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { AttachmentsService } from '../attachments/attachments.service';
 import { DatabaseService } from '../database/database.service';
 import { FoldersService } from '../folders/folders.service';
 import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
@@ -25,6 +26,7 @@ export class MapsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly folders: FoldersService,
+    private readonly attachments: AttachmentsService, // 저장 용량 쿼터 (B9)
   ) {}
 
   /**
@@ -217,12 +219,26 @@ export class MapsService {
     keepVersion = false,
   ) {
     const map = await this.requireOwnedMap(userId, mapId);
+
+    // 저장 용량 쿼터 (B9) — DB(문서+버전) + 첨부 합산이 한도를 넘으면
+    // 저장을 거부한다. 증가분 = 새 문서 크기 - 이 맵의 기존 문서 크기
+    // (+ 히스토리 버전을 남기면 새 문서 크기만큼 한 번 더).
+    const docJson = JSON.stringify(doc);
+    const newBytes = Buffer.byteLength(docJson);
+    const { rows: cur } = await this.db.query<{ b: string }>(
+      `SELECT COALESCE(octet_length(doc::text), 0) AS b
+         FROM public.map_documents WHERE map_id = $1`,
+      [mapId],
+    );
+    const delta = newBytes - Number(cur[0]?.b ?? 0) + (keepVersion ? newBytes : 0);
+    if (delta > 0) await this.attachments.assertQuota(userId, delta);
+
     const { rows } = await this.db.query<{ updated_at: Date }>(
       `INSERT INTO public.map_documents (map_id, doc)
        VALUES ($1, $2::jsonb)
        ON CONFLICT (map_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = NOW()
        RETURNING updated_at`,
-      [mapId, JSON.stringify(doc)],
+      [mapId, docJson],
     );
     // 제목은 **달라졌을 때만** 갱신하고, 그때는 중복 검사도 거친다.
     // 서버 맵을 열어 편집한 뒤 저장하면 프런트가 "열었던 그 이름"을 그대로

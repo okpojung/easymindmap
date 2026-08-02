@@ -71,6 +71,40 @@ CREATE POLICY "users can manage own folders"
 SQL
 ```
 
+### 첨부 저장소 + 쿼터 델타 SQL (B9 — 2026-08-02)
+
+```bash
+docker exec -i <DB> psql -U postgres -d postgres <<'SQL'
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS quota_bytes BIGINT NOT NULL DEFAULT 1073741824;
+
+CREATE TABLE IF NOT EXISTS public.attachments (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    map_id       UUID REFERENCES public.maps(id) ON DELETE SET NULL,
+    name         VARCHAR(255) NOT NULL,
+    mime         VARCHAR(127) NOT NULL DEFAULT 'application/octet-stream',
+    size_bytes   BIGINT NOT NULL,
+    storage_key  TEXT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_attachments_owner
+    ON public.attachments(owner_id);
+ALTER TABLE public.attachments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "users can manage own attachments" ON public.attachments;
+CREATE POLICY "users can manage own attachments"
+    ON public.attachments FOR ALL
+    USING (auth.uid() = owner_id);
+SQL
+```
+
+쿼터 정책(2026-08-02 결정): **DB(문서+히스토리 버전) + 첨부 합산**이
+`users.quota_bytes` 이하 — 기본(무료) 1GB, 유료는 10GB 로 상향
+(`UPDATE public.users SET quota_bytes = 10737418240 WHERE id = ...`).
+파일 원본은 API 의 저장소 드라이버(STORAGE_LOCAL_DIR — dev 는 NFS 마운트)
+에 저장된다. 서버 설정은 [dev-server-runbook §첨부 저장소]
+(../90-architecture/dev-server-runbook.md) 참조.
+
 ### 스키마를 적용하지 않고 배포하면 (2026-08-02 실제 발생)
 
 문서함이 **"Internal server error"** 만 띄웠다. 코드는 새 것인데 DB 에

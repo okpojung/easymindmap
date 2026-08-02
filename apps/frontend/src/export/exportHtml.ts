@@ -27,6 +27,7 @@ import { parseMdCode as parseMdCodeEditor } from '@/editor/node-renderer/mdCode'
 import { parseMdTable as parseMdTableEditor } from '@/editor/node-renderer/mdTable';
 import { computeNodeChecks } from '@/editor/node-renderer/mdCheck';
 import { buildZip, type ZipEntry } from './zip';
+import { attachmentFetchUrl } from '@/services/cloud/apiClient';
 import {
   buildMapMeta,
   bytesToDataUrl,
@@ -2897,7 +2898,8 @@ export async function buildExportPackage(
   for (const att of attachments) {
     if (!att.url) continue;
     try {
-      const res = await fetch(att.url);
+      // 서버 첨부(B9)는 인증 토큰을 붙여 받아온다 — 그 외 URL 은 그대로
+      const res = await fetch(await attachmentFetchUrl(att.url));
       if (!res.ok) throw new Error(String(res.status));
       const bytes = new Uint8Array(await res.arrayBuffer());
       if (bytes.length <= INLINE_ATTACHMENT_LIMIT) {

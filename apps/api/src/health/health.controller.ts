@@ -15,6 +15,7 @@ const REQUIRED_TABLES = [
   'map_folders', // 문서함(폴더)
   'map_documents',
   'map_document_versions', // B8 히스토리
+  'attachments', // B9 첨부 저장소
   'nodes',
 ] as const;
 
@@ -27,6 +28,7 @@ const REQUIRED_TABLES = [
 const REQUIRED_COLUMNS = [
   'maps.folder_id',
   'maps.kind',
+  'users.quota_bytes', // B9 저장 용량 쿼터
 ] as const;
 
 /**

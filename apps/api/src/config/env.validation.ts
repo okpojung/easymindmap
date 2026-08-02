@@ -11,6 +11,11 @@ export interface AppEnv {
   // AUTH_MODE=supabase 필수 — GoTrue(JWT) 서명 검증 비밀키
   // (Supabase 스택의 JWT_SECRET 과 동일 값, HS256)
   SUPABASE_JWT_SECRET: string;
+  // 첨부 저장소 (B9) — local 드라이버가 파일을 저장할 디렉터리.
+  // dev 서버는 NAS 의 NFS 마운트를 컨테이너 볼륨으로 물려 지정한다.
+  STORAGE_LOCAL_DIR: string;
+  // 첨부 1개의 최대 크기 (MB)
+  ATTACHMENT_MAX_MB: number;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -40,6 +45,11 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     throw new Error('환경변수 오류:\n - ' + errors.join('\n - '));
   }
 
+  const ATTACHMENT_MAX_MB = Number(raw.ATTACHMENT_MAX_MB ?? 20);
+  if (!Number.isFinite(ATTACHMENT_MAX_MB) || ATTACHMENT_MAX_MB <= 0) {
+    errors.push('ATTACHMENT_MAX_MB 는 양수여야 합니다.');
+  }
+
   return {
     PORT,
     CORS_ORIGIN: String(raw.CORS_ORIGIN ?? 'http://localhost:5173'),
@@ -47,5 +57,7 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     AUTH_MODE: AUTH_MODE as 'dev' | 'supabase',
     DEV_USER_ID,
     SUPABASE_JWT_SECRET,
+    STORAGE_LOCAL_DIR: String(raw.STORAGE_LOCAL_DIR ?? './data/attachments'),
+    ATTACHMENT_MAX_MB,
   };
 }

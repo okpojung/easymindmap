@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AttachmentsModule } from './attachments/attachments.module';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { FoldersModule } from './folders/folders.module';
@@ -16,6 +17,7 @@ import { NodesModule } from './nodes/nodes.module';
     DatabaseModule,
     HealthModule,
     FoldersModule,
+    AttachmentsModule,
     MapsModule,
     NodesModule,
   ],

@@ -150,6 +150,56 @@ docker exec -i "$DB" psql -U postgres -d postgres < apps/api/database/schema.sql
   단, **비밀번호 규칙(영숫자만)** 을 다시 지킬 것
   (dev-server-coolify.md §5.1 경고).
 
+## 1.5 첨부 저장소 (B9 — 방식 A: 로컬 디스크 + NFS 마운트)
+
+첨부 파일 원본은 API 컨테이너의 **로컬 디스크 드라이버**가
+`STORAGE_LOCAL_DIR` 디렉터리에 저장한다. dev 서버는 이 디렉터리를 NAS 의
+NFS 마운트로 두어 데이터가 NAS 에 쌓이게 한다 (드라이버는 디렉터리가
+SSD 인지 NFS 인지 구분하지 않는다 — S3 호환 드라이버는 향후 같은
+인터페이스로 추가).
+
+### 1.5-A. Ubuntu 호스트에 NAS NFS 마운트
+
+```bash
+# 1) NFS 클라이언트
+sudo apt install -y nfs-common
+
+# 2) NAS 내보내기 확인 (IP 는 예시 — 실제 값은 서버 관리 문서에만)
+showmount -e 192.168.0.20
+
+# 3) 마운트 지점 + 수동 마운트 테스트
+sudo mkdir -p /mnt/nas/emm-files
+sudo mount -t nfs -o vers=4.1 192.168.0.20:/volume1/emm-files /mnt/nas/emm-files
+sudo touch /mnt/nas/emm-files/test.txt && ls -l /mnt/nas/emm-files
+```
+
+`/etc/fstab` (부팅 자동 마운트 — `_netdev` 로 네트워크 이후, `hard` 로
+쓰기 유실 방지):
+
+```
+192.168.0.20:/volume1/emm-files  /mnt/nas/emm-files  nfs  vers=4.1,_netdev,noatime,hard,timeo=150,retrans=3  0  0
+```
+
+적용: `sudo mount -a` 후 오류 없는지 확인.
+
+### 1.5-B. API 컨테이너 설정 (Coolify)
+
+- **볼륨 매핑**: `/mnt/nas/emm-files` → `/data/emm-attachments`
+- **환경변수**:
+  - `STORAGE_LOCAL_DIR=/data/emm-attachments`
+  - `ATTACHMENT_MAX_MB=20` (첨부 1개 최대 크기, 기본 20)
+
+확인: 배포 후 에디터에서 2MB 초과 파일을 첨부(로그인 상태) →
+`/mnt/nas/emm-files/u/<사용자ID>/` 에 파일이 생기면 정상.
+
+### 1.5-C. 장애 시 동작
+
+- NAS/NFS 가 죽으면 첨부 API 는 **503 + "첨부 저장소에 접근할 수
+  없습니다"** 를 반환한다 (스키마 드리프트 503 과 같은 진단 패턴).
+- 저장 용량 쿼터(DB+첨부 합산, 기본 1GB)를 넘으면 업로드·저장이
+  **413 + 한도 안내** 로 거부된다. 한도 상향(유료 10GB):
+  `UPDATE public.users SET quota_bytes = 10737418240 WHERE id = '<사용자>';`
+
 ## 2. 백업 — `.env` (APP_KEY) 최우선
 
 ```bash

@@ -616,8 +616,10 @@ layoutBlock()을 추출할 때 `depth` 인자를 빠뜨렸는데, `eff ===
     **저장했다 다시 연 맵을 내보내면 fetch 가 전부 실패해 첨부 없는
     html 만 소리 없이 만들어졌다** (dev 실사용 보고). 한도 2MB 는
     메타데이터 인라인 한도(INLINE_ATTACHMENT_LIMIT)와 같은 값.
-  - **2MB 초과 첨부는 여전히 세션 한정**(blob URL) — 서버 첨부
-    저장소(백로그 B9)에서 근본 해결. 저장 후 다시 연 맵에서는:
+  - **2MB 초과 첨부는 로그인 상태면 서버 첨부 저장소(B9)에 업로드** —
+    문서에는 서버 URL 만 남고, 열기/내보내기는 `?access_token=` 을 붙여
+    받아온다 (apiClient.attachmentFetchUrl). 로그인하지 않은 상태만
+    세션 한정(blob URL)으로 남는다. 그 경우 저장 후 다시 연 맵에서는:
     ① 내보내기 후 툴바 토스트로 "첨부 N개의 원본을 찾을 수 없어 …"
     안내(HTML·MD 공통, `ExportPackage.external` 카운트),
     ② 내보낸 뷰어에서 죽은 `blob:` 링크 대신 **href 를 비워

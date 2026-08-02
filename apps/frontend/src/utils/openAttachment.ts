@@ -9,6 +9,8 @@
 //     오피스가 열린다. 서버 저장 연결 후에는 Office 뷰어 연동 예정 —
 //     docs/03-editor-core/node/04-node-content.md)
 
+import { attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClient';
+
 const VIEWABLE_MIME = /^(application\/pdf|image\/|text\/|audio\/|video\/)/;
 
 const EXT_MIME: Record<string, string> = {
@@ -79,6 +81,17 @@ function openTyped(blob: Blob, name: string, preOpened?: Window | null) {
 
 export function openAttachment(name: string, url?: string): void {
   if (!url) return;
+
+  // 서버 첨부 저장소(B9) — 인증 토큰을 붙여 받아온 뒤 MIME 보정해 연다
+  if (serverAttachmentId(url)) {
+    const win = window.open('', '_blank');
+    attachmentFetchUrl(url)
+      .then((u) => fetch(u))
+      .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.blob(); })
+      .then((b) => openTyped(b, name, win))
+      .catch(() => { win?.close(); });
+    return;
+  }
 
   if (url.startsWith('data:')) {
     const blob = dataUrlToBlob(url, EXT_MIME[extOf(name)] || '');

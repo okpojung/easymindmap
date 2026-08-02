@@ -129,11 +129,15 @@ function toExportNode(
     })),
     attachments: node.attachments?.map((a) => {
       const packaged = resolveHref?.(a.id);
+      // blob: 원본은 이 브라우저 세션에서만 유효하다 — 패키징하지 못한
+      // blob: 을 href 로 내보내면 죽은 링크가 되므로 비워서 뷰어가
+      // "(파일 없음)" 으로 표시하게 한다. http(s) 는 외부 링크로 유지.
+      const live = packaged ?? (a.url && !a.url.startsWith('blob:') ? a.url : undefined);
       return {
         name: a.name,
-        href: packaged ?? a.url,
+        href: live,
         kind: a.kind,
-        external: packaged ? undefined : true,
+        external: packaged || !live ? undefined : true,
       };
     }),
     collapsed: node.collapsed || undefined,
@@ -2951,7 +2955,7 @@ export async function downloadMapAsHtml(
   map: SampleMap,
   mapLayoutType?: LayoutType,
   spacing?: LayoutSpacing,
-): Promise<void> {
+): Promise<ExportPackage> {
   const pkg = await buildExportPackage(map, mapLayoutType, spacing);
   const url = URL.createObjectURL(pkg.blob);
 
@@ -2962,4 +2966,8 @@ export async function downloadMapAsHtml(
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  // packaged/external 카운트 — 호출부(툴바)가 "원본 없는 첨부 N개 제외"
+  // 안내를 띄우는 데 쓴다 (2026-08-02: 묵묵한 html 폴백이 사용자를
+  // 놀라게 했다 — 저장 후 다시 연 맵의 blob: 첨부가 그랬다).
+  return pkg;
 }

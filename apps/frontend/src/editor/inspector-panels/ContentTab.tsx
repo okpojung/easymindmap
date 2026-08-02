@@ -7,6 +7,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { AttachmentKind } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
+import { attachmentUrlForFile } from '@/utils/attachmentFile';
 import { InspectorSection } from './InspectorSection';
 
 export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
@@ -104,12 +105,18 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         </div>
         <FilePickerButton t={t} label="문서 선택" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md"
           disabled={!selectedId}
-          onFiles={(files) => {
+          onFiles={async (files) => {
             if (!selectedId) return;
-            files.forEach((f) =>
-              addNodeAttachment(selectedId, { name: f.name, kind: 'file', url: URL.createObjectURL(f) }),
-            );
+            for (const f of files) {
+              addNodeAttachment(selectedId, {
+                name: f.name, kind: 'file', url: await attachmentUrlForFile(f),
+              });
+            }
           }} />
+        <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
+          2MB 이하 파일은 맵에 내장되어 저장 후 다시 열어도 유지됩니다.
+          초과 파일은 이 창에서만 열 수 있습니다 (서버 첨부 저장소 준비 중).
+        </div>
       </InspectorSection>
 
       <InspectorSection t={t} title="첨부 (멀티미디어)">
@@ -121,12 +128,14 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         </div>
         <FilePickerButton t={t} label="미디어 선택" accept="audio/*,video/*,image/*"
           disabled={!selectedId}
-          onFiles={(files) => {
+          onFiles={async (files) => {
             if (!selectedId) return;
-            files.forEach((f) => {
+            for (const f of files) {
               const kind: AttachmentKind = f.type.startsWith('audio') ? 'audio' : 'video';
-              addNodeAttachment(selectedId, { name: f.name, kind, url: URL.createObjectURL(f) });
-            });
+              addNodeAttachment(selectedId, {
+                name: f.name, kind, url: await attachmentUrlForFile(f),
+              });
+            }
           }} />
       </InspectorSection>
 
@@ -144,7 +153,7 @@ function FilePickerButton({ t, label, accept, disabled, onFiles }: {
   label: string;
   accept: string;
   disabled?: boolean;
-  onFiles: (files: File[]) => void;
+  onFiles: (files: File[]) => void | Promise<void>;
 }) {
   return (
     <label

@@ -43,6 +43,7 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 import { ChooserPopover } from './ChooserPopover';
 import { extractClipboardImage } from '@/utils/clipboardImage';
+import { attachmentUrlForFile } from '@/utils/attachmentFile';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 
 const LAYOUT_LABEL: Record<string, string> = {
@@ -420,10 +421,13 @@ export function Canvas({
     if (!target) return;
 
     if (files.length) {
-      files.forEach((f) => {
-        const kind = f.type.startsWith('audio') ? 'audio' : f.type.startsWith('video') ? 'video' : 'file';
-        addNodeAttachment(target.id, { name: f.name, kind, url: URL.createObjectURL(f) });
-      });
+      void (async () => {
+        for (const f of files) {
+          const kind = f.type.startsWith('audio') ? 'audio' : f.type.startsWith('video') ? 'video' : 'file';
+          // ≤2MB 는 data URL 로 내장 — 저장·새로고침 후에도 원본 유지
+          addNodeAttachment(target.id, { name: f.name, kind, url: await attachmentUrlForFile(f) });
+        }
+      })();
     } else if (url) {
       addNodeLink(target.id, url);
     }

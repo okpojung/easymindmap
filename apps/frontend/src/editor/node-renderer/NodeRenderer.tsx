@@ -52,6 +52,7 @@ import { EditPreviewBackdrop } from './EditPreviewBackdrop';
 import { useViewportStore } from '@/stores/viewportStore';
 import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
+import { openAttachment } from '@/utils/openAttachment';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 
 type RenderableNode = LaidOutNode & {
@@ -1319,7 +1320,16 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                   // 팝업을 연다 (Canvas의 NoteViewerPopover).
                   if (isNoteKind(ic.kind)) { onOpenPopover?.(n.id, ic.kind); return; }
                   if (ic.count > 1) { onOpenPopover?.(n.id, ic.kind); return; }
-                  if (single?.url) window.open(single.url, '_blank', 'noopener');
+                  // 링크는 외부 URL 그대로. 첨부(파일/미디어)는 반드시
+                  // openAttachment 로 — 서버 첨부 저장소(B9)의 URL 은 인증
+                  // 토큰을 붙여야 열린다 (2026-08-03 dev 보고: 단수 첨부
+                  // 클릭만 window.open 직행이라 401 로 조회가 안 됐다.
+                  // 복수는 ChooserPopover→openAttachment 라 정상이었다).
+                  if (ic.kind === 'link') {
+                    if (single?.url) window.open(single.url, '_blank', 'noopener');
+                    return;
+                  }
+                  if (single) openAttachment(single.label, single.url);
                 }}
                 onDoubleClick={(e) => e.stopPropagation()}
               >

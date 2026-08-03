@@ -50,6 +50,10 @@ export interface MapVersionItem {
   title: string;
   createdAt: string;
   bytes: number;
+  // 저장 시점 상세 (2026-08-03) — 컬럼 도입 전 버전은 null
+  layoutType: string | null;
+  nodeCount: number | null;
+  attachBytes: number | null;
 }
 
 /** 맵 유형 — 단독맵 / 협업맵 (2026-08-02) */

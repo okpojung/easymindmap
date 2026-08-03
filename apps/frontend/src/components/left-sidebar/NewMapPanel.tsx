@@ -23,6 +23,7 @@ import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile } from '@/utils/importMapFile';
 import { resolveRemoteImages } from '@/utils/remoteImages';
 import { isDocumentEmpty, NEW_MAP_TITLE, useDocumentStore } from '@/stores/documentStore';
+import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { detachFromServer } from '@/services/cloud/mapSession';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -76,8 +77,9 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const [pending, setPending] = useState<{ label: string; run: () => void } | null>(null);
   // 아코디언 펼침 상태 — 새 맵 만들기는 기본 펼침, Local 파일은 접힘
   // (선택 시 하위 메뉴가 트리 형태로 펼쳐진다)
-  const [openNew, setOpenNew] = useState(true);
   const [openLocal, setOpenLocal] = useState(false);
+  // 로그인 상태 — 서버 맵 메뉴 숨김 판단 (2026-08-03)
+  const session = useAuthStore((s) => s.session);
   // 새 맵/불러오기 직후 — 적용할 템플릿 선택 단계.
   //   mode 'new'   : 템플릿 골격+속성으로 새 맵 시작 (templateSkeletonMap)
   //   mode 'import': 불러온 내용은 유지, 속성만 입힘 (applyTemplateStyles)
@@ -401,34 +403,19 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         </div>
       )}
 
-      {/* ═══ 1. 새 맵 만들기 ═══ */}
+      {/* ═══ 1. 새 맵 만들기 — 단일 버튼 (2026-08-03: 트리 하위에 같은
+          버튼이 한 번 더 있던 이중 구조 제거) ═══ */}
       {menuHeader({
-        icon: '＋', label: '새 맵 만들기', open: openNew,
-        onClick: () => setOpenNew((v) => !v),
-        tip: "기본 템플릿 '트리-진행트리맵' 골격으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다",
+        icon: '＋', label: '새 맵 만들기',
+        onClick: startBlank,
+        tip: `기본 템플릿 '트리-진행트리맵' 골격으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다. 제목은 저장할 때 폴더와 함께 정합니다 — 그전까지는 '${NEW_MAP_TITLE}'. 현재 편집 중인 맵은 교체됩니다(Ctrl+Z로 복구).`,
       })}
-      {openNew && (
-        <div style={treeBoxStyle}>
-          <button onClick={startBlank}
-            title="기본 템플릿 '트리-진행트리맵' 골격(중심 주제 + 주제 1~3 + 하위 주제 + 내용)으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다"
-            style={{
-              width: '100%', fontSize: 12, padding: '8px 0', borderRadius: 7,
-              border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,
-              color: t.primary, cursor: 'pointer', fontWeight: 700, marginBottom: 5,
-            }}>+ 새 맵 만들기</button>
-          <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5 }}>
-            제목은 <b>저장할 때</b> 폴더와 함께 정합니다 — 그전까지는
-            '{NEW_MAP_TITLE}'입니다. 현재 편집 중인 맵은 교체됩니다
-            (Ctrl+Z로 되돌리기 가능).
-          </div>
-        </div>
-      )}
 
-      {/* ═══ 2. 서버 맵 불러오기 — 편집 영역에 문서함을 연다 ═══
-          맵을 여는 유일한 통로다. 편집 중인 맵이 있으면 브라우저 새 탭으로
-          열어 지금 보던 맵을 밀어내지 않는다 (2026-08-02 결정).
-          '맵 닫기'는 상단 툴바의 ✕ 로 옮겼다. */}
-      {menuHeader({
+      {/* ═══ 2. 서버 맵 불러오기 ═══
+          로그인 상태에서는 숨긴다 (2026-08-03) — 로그인 직후·맵 닫기 후
+          문서함이 자동으로 열리고, 상단의 '내 문서'를 눌러도 열리므로
+          왼쪽 메뉴는 중복이다. 인증 꺼진 개발 빌드에서만 유지. */}
+      {!(authEnabled && session) && menuHeader({
         icon: '☁', label: '서버 맵 불러오기',
         onClick: () => setBrowserOpen(true),
         tip: '서버에 저장된 내 문서함을 편집 영역에 엽니다 (폴더·정렬 지원)',

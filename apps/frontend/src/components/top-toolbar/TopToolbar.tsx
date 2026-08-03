@@ -101,9 +101,21 @@ export function TopToolbar({
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, minWidth: 0 }}>
-          <div style={{ fontSize: 11, color: t.textSubtle, fontWeight: 500 }}>
-            내 문서 <span style={{ margin: '0 4px', opacity: 0.5 }}>/</span> 제품팀
-          </div>
+          {/* '내 문서' 클릭 = 문서함 열기 (2026-08-03 — 왼쪽 '서버 맵
+              불러오기' 메뉴를 로그인 시 숨기는 대신 여기가 통로.
+              구 '제품팀'은 초기 시안의 하드코딩이라 제거) */}
+          <button
+            data-testid="crumb-docs"
+            title="내 문서(문서함) 열기"
+            onClick={() => useEditorUiStore.getState().setBrowserOpen(true)}
+            style={{
+              fontSize: 11, color: t.textSubtle, fontWeight: 500,
+              background: 'none', border: 'none', padding: 0,
+              cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            내 문서
+          </button>
 
           <div
             style={{

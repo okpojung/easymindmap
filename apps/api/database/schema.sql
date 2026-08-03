@@ -550,3 +550,13 @@ DROP POLICY IF EXISTS "users can manage own attachments" ON public.attachments;
 CREATE POLICY "users can manage own attachments"
     ON public.attachments FOR ALL
     USING (auth.uid() = owner_id);
+
+-- 히스토리 버전 상세 정보 (2026-08-03 — ThinkWise 참고 요청):
+-- 레이아웃·총 노드 수·서버 첨부 합계를 저장 시점에 기록해 목록에 보여준다.
+-- (문서 크기는 pg_column_size(doc) 로 이미 조회 — 내장 첨부 포함)
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS layout_type VARCHAR(50);
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS node_count INTEGER;
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS attach_bytes BIGINT;

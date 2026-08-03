@@ -258,16 +258,38 @@ export class MapsService {
 
     // 히스토리 버전 (B8) — 명시적 저장·맵 닫기에서만. 자동저장은 남기지
     // 않는다(스냅샷이 커서 용량 급증). version 은 맵 안에서 1부터 증가.
+    // 상세 정보(2026-08-03): 레이아웃·총 노드 수·서버 첨부 합계를 저장
+    // 시점에 계산해 함께 기록한다 — 목록 조회가 doc 파싱 없이 가볍다.
     let version: number | undefined;
     if (keepVersion) {
+      const snap = doc as {
+        editor?: { layoutType?: string };
+        map?: { branches?: { children?: unknown[] }[] };
+      };
+      const countNodes = (ns: { children?: unknown[] }[]): number =>
+        ns.reduce((a, n) => a + 1 + countNodes((n.children ?? []) as never), 0);
+      const nodeCount = 1 + countNodes(snap.map?.branches ?? []); // +1 = 중심 주제
+      const layoutType =
+        typeof snap.editor?.layoutType === 'string'
+          ? snap.editor.layoutType.slice(0, 50)
+          : null;
+      const { rows: ab } = await this.db.query<{ b: string }>(
+        `SELECT COALESCE(SUM(size_bytes), 0) AS b
+           FROM public.attachments WHERE map_id = $1`,
+        [mapId],
+      );
+
       const { rows: vr } = await this.db.query<{ version: number }>(
-        `INSERT INTO public.map_document_versions (map_id, version, title, doc, created_by)
+        `INSERT INTO public.map_document_versions
+           (map_id, version, title, doc, created_by,
+            layout_type, node_count, attach_bytes)
          SELECT $1,
                 COALESCE(MAX(version), 0) + 1,
-                $2, $3::jsonb, $4
+                $2, $3::jsonb, $4, $5, $6, $7
            FROM public.map_document_versions WHERE map_id = $1
          RETURNING version`,
-        [mapId, title ?? map.title, JSON.stringify(doc), userId],
+        [mapId, title ?? map.title, docJson, userId,
+         layoutType, nodeCount, Number(ab[0]?.b ?? 0)],
       );
       version = vr[0]?.version;
     }
@@ -283,9 +305,12 @@ export class MapsService {
     await this.requireOwnedMap(userId, mapId);
     const { rows } = await this.db.query<{
       version: number; title: string; created_at: Date; size: string;
+      layout_type: string | null; node_count: number | null;
+      attach_bytes: string | null;
     }>(
       `SELECT version, title, created_at,
-              pg_column_size(doc)::text AS size
+              pg_column_size(doc)::text AS size,
+              layout_type, node_count, attach_bytes
          FROM public.map_document_versions
         WHERE map_id = $1
         ORDER BY version DESC`,
@@ -298,6 +323,10 @@ export class MapsService {
         title: r.title,
         createdAt: r.created_at,
         bytes: Number(r.size),
+        // 상세 정보 — 컬럼 도입(2026-08-03) 이전 버전은 null
+        layoutType: r.layout_type,
+        nodeCount: r.node_count,
+        attachBytes: r.attach_bytes === null ? null : Number(r.attach_bytes),
       })),
       total: rows.length,
     };

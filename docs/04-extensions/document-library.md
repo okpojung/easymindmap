@@ -113,6 +113,19 @@ SQL
 에 저장된다. 서버 설정은 [dev-server-runbook §첨부 저장소]
 (../90-architecture/dev-server-runbook.md) 참조.
 
+### 히스토리 상세 정보 델타 SQL (2026-08-03)
+
+```bash
+docker exec -i <DB> psql -U postgres -d postgres <<'SQL'
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS layout_type VARCHAR(50);
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS node_count INTEGER;
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS attach_bytes BIGINT;
+SQL
+```
+
 ### 스키마를 적용하지 않고 배포하면 (2026-08-02 실제 발생)
 
 문서함이 **"Internal server error"** 만 띄웠다. 코드는 새 것인데 DB 에

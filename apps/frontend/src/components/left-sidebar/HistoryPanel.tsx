@@ -104,6 +104,27 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
     return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   };
 
+  // 저장 시점 상세 줄 (2026-08-03 — ThinkWise 편집 이력 참고 요청):
+  // 레이아웃 · 총 노드 수 · 문서 크기(내장 첨부 포함) · 서버 첨부 용량.
+  // 컬럼 도입 전 버전은 레이아웃·노드 수가 null 이라 있는 것만 보여준다.
+  const LAYOUT_KO: Record<string, string> = {
+    'radial-bidirectional': '방사형 · 양쪽', 'radial-right': '방사형 · 오른쪽',
+    'tree-right': '트리 · 오른쪽', 'tree-down': '트리 · 아래',
+    'hierarchy-right': '계층형', 'process-tree-right': '진행트리',
+    timeline: '시간배치', kanban: 'Kanban', freeform: '자유 배치',
+  };
+  const fmtKB = (b: number) =>
+    b >= 1024 * 1024 ? `${Math.round(b / 1024 / 1024 * 10) / 10}MB`
+      : `${Math.max(1, Math.round(b / 1024))}KB`;
+  const detail = (v: MapVersionItem) => {
+    const parts: string[] = [];
+    if (v.layoutType) parts.push(LAYOUT_KO[v.layoutType] ?? v.layoutType);
+    if (v.nodeCount !== null && v.nodeCount !== undefined) parts.push(`${v.nodeCount}노드`);
+    parts.push(`문서 ${fmtKB(v.bytes)}`);
+    if (v.attachBytes) parts.push(`첨부 ${fmtKB(v.attachBytes)}`);
+    return parts.join(' · ');
+  };
+
   return (
     <div style={{ padding: '12px 12px 16px' }} data-testid="history-panel">
       <div style={{
@@ -164,7 +185,13 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
                   fontSize: 10, color: t.textSubtle, marginTop: 1,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  v{v.version} · {v.title || '(제목 없음)'} · {Math.max(1, Math.round(v.bytes / 1024))}KB
+                  v{v.version} · {v.title || '(제목 없음)'}
+                </div>
+                <div data-testid="history-detail" style={{
+                  fontSize: 10, color: t.textSubtle, marginTop: 1,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {detail(v)}
                 </div>
               </div>
               <button

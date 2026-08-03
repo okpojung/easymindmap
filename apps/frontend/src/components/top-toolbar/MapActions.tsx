@@ -26,7 +26,7 @@ import {
 } from '@/services/cloud/mapSession';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
-type SaveIntent = null | 'save' | 'close';
+type SaveIntent = null | 'save' | 'close' | 'saveAs';
 
 export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) => void }) {
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
@@ -93,6 +93,25 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
       >
         <I.Cloud size={15} /> 저장
       </button>
+
+      {/* 다른 이름으로 저장 (2026-08-03 요청) — 서버 맵과 연결된 상태에서만.
+          현재 내용을 새 폴더·이름의 **새 맵**으로 저장하고, 이 탭은 그
+          새 맵 편집으로 전환된다. 같은 폴더 같은 이름이면 409 안내. */}
+      {cloudMapId && (
+        <button
+          data-testid="map-save-as"
+          title="다른 이름으로 저장 — 현재 내용을 새 폴더·이름의 새 맵으로 저장합니다"
+          disabled={busy !== 'idle'}
+          onClick={() => setSaveIntent('saveAs')}
+          style={{
+            ...btn, padding: '0 7px',
+            background: t.surfaceAlt, color: t.textMuted,
+            border: `1px solid ${t.border}`,
+          }}
+        >
+          <I.Copy size={14} />
+        </button>
+      )}
 
       <button
         data-testid="map-close"
@@ -176,10 +195,14 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
       {saveIntent && (
         <SaveMapDialog
           t={t}
-          defaultTitle={mapTitle && mapTitle !== '새 맵' ? mapTitle : '새 맵'}
+          defaultTitle={saveIntent === 'saveAs'
+            ? `${cloudTitle ?? mapTitle} 사본`
+            : mapTitle && mapTitle !== '새 맵' ? mapTitle : '새 맵'}
           note={saveIntent === 'close'
             ? '닫기 전에 저장합니다. 저장할 폴더와 맵 이름을 정해 주세요.'
-            : undefined}
+            : saveIntent === 'saveAs'
+              ? `'${cloudTitle ?? mapTitle}'의 현재 내용을 새 맵으로 저장합니다. 저장 후 이 탭은 새 맵을 편집합니다.`
+              : undefined}
           onCancel={() => setSaveIntent(null)}
           onSaved={({ title }) => {
             const intent = saveIntent;

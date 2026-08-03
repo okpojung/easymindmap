@@ -113,10 +113,29 @@ SQL
 에 저장된다. 서버 설정은 [dev-server-runbook §첨부 저장소]
 (../90-architecture/dev-server-runbook.md) 참조.
 
-### 히스토리 상세 정보 델타 SQL (2026-08-03)
+### 히스토리 상세 정보 델타 SQL (2026-08-03 · dev 적용 완료)
+
+컨테이너 이름을 몰라도 된다 — 런북 §1.5-0 과 같은 방식으로, 아래 블록
+**전체를 서버 SSH 터미널에 그대로 붙여넣으면** DB 컨테이너를 자동으로
+찾아 적용하고 검증까지 해 준다. (두 번 실행해도 안전 — 전부 IF NOT EXISTS)
 
 ```bash
-docker exec -i <DB> psql -U postgres -d postgres <<'SQL'
+bash <<'SCRIPT'
+set -e
+
+# ── 1) DB 컨테이너 자동 탐색 ─────────────────────────────────────
+DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
+[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
+if [ -z "$DB" ]; then
+  echo "❌ 실행 중인 postgres 컨테이너를 찾지 못했습니다. (docker 권한이 없으면 sudo 로)"
+  exit 1
+fi
+echo "✅ DB 컨테이너: $DB"
+
+# ── 2) 히스토리 상세 델타 SQL ────────────────────────────────────
+docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
 ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS layout_type VARCHAR(50);
 ALTER TABLE public.map_document_versions
@@ -124,7 +143,19 @@ ALTER TABLE public.map_document_versions
 ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS attach_bytes BIGINT;
 SQL
+
+# ── 3) 검증 — 3컬럼이 실제로 생겼는지 확인 ───────────────────────
+echo "── 검증 ──"
+docker exec -i "$DB" psql -U postgres -d postgres -tAc \
+  "SELECT column_name FROM information_schema.columns
+   WHERE table_schema='public' AND table_name='map_document_versions'
+     AND column_name IN ('layout_type','node_count','attach_bytes')" \
+  | sort | sed 's/^/  컬럼 OK: /'
+SCRIPT
 ```
+
+`컬럼 OK: attach_bytes / layout_type / node_count` 3줄이 나오면 완료.
+2026-08-03 dev 서버에 이 스크립트로 적용 완료됨.
 
 ### 스키마를 적용하지 않고 배포하면 (2026-08-02 실제 발생)
 

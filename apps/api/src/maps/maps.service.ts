@@ -225,12 +225,38 @@ export class MapsService {
     // (+ 히스토리 버전을 남기면 새 문서 크기만큼 한 번 더).
     const docJson = JSON.stringify(doc);
     const newBytes = Buffer.byteLength(docJson);
-    const { rows: cur } = await this.db.query<{ b: string }>(
-      `SELECT COALESCE(octet_length(doc::text), 0) AS b
+    const { rows: cur } = await this.db.query<{ b: string; same: boolean }>(
+      `SELECT COALESCE(octet_length(doc::text), 0) AS b,
+              (doc = $2::jsonb) AS same
          FROM public.map_documents WHERE map_id = $1`,
-      [mapId],
+      [mapId, docJson],
     );
-    const delta = newBytes - Number(cur[0]?.b ?? 0) + (keepVersion ? newBytes : 0);
+    const sameDoc = cur[0]?.same === true;
+    const sameTitle = title === undefined || title === map.title;
+
+    // 조회만 하고 닫은 맵 (2026-08-03 보고) — 내용이 마지막 버전과
+    // 그대로면 히스토리 버전을 또 만들지 않는다. jsonb 등가 비교라 키
+    // 순서 차이에 흔들리지 않는다. 버전이 하나도 없으면(레거시 맵)
+    // 첫 버전은 남긴다.
+    let skipVersion = false;
+    if (keepVersion) {
+      const { rows: lv } = await this.db.query<{ same: boolean; title: string }>(
+        `SELECT (doc = $2::jsonb) AS same, title
+           FROM public.map_document_versions
+          WHERE map_id = $1 ORDER BY version DESC LIMIT 1`,
+        [mapId, docJson],
+      );
+      skipVersion =
+        lv.length > 0 && lv[0].same === true && lv[0].title === (title ?? map.title);
+    }
+    // 문서·제목·버전 모두 그대로 → 아무것도 쓰지 않는다 (updated_at 도
+    // 바뀌지 않아 문서함 정렬이 조회만으로 흔들리지 않는다)
+    if (sameDoc && sameTitle && (!keepVersion || skipVersion)) {
+      return { mapId, updatedAt: map.updated_at, unchanged: true as const };
+    }
+
+    const delta =
+      newBytes - Number(cur[0]?.b ?? 0) + (keepVersion && !skipVersion ? newBytes : 0);
     if (delta > 0) await this.attachments.assertQuota(userId, delta);
 
     const { rows } = await this.db.query<{ updated_at: Date }>(
@@ -261,35 +287,58 @@ export class MapsService {
     // 상세 정보(2026-08-03): 레이아웃·총 노드 수·서버 첨부 합계를 저장
     // 시점에 계산해 함께 기록한다 — 목록 조회가 doc 파싱 없이 가볍다.
     let version: number | undefined;
-    if (keepVersion) {
+    if (keepVersion && !skipVersion) {
+      interface SnapNode {
+        children?: SnapNode[];
+        attachments?: { url?: string }[];
+      }
       const snap = doc as {
         editor?: { layoutType?: string };
-        map?: { branches?: { children?: unknown[] }[] };
+        map?: { root?: SnapNode; branches?: SnapNode[] };
       };
-      const countNodes = (ns: { children?: unknown[] }[]): number =>
-        ns.reduce((a, n) => a + 1 + countNodes((n.children ?? []) as never), 0);
+      const countNodes = (ns: SnapNode[]): number =>
+        ns.reduce((a, n) => a + 1 + countNodes(n.children ?? []), 0);
       const nodeCount = 1 + countNodes(snap.map?.branches ?? []); // +1 = 중심 주제
       const layoutType =
         typeof snap.editor?.layoutType === 'string'
           ? snap.editor.layoutType.slice(0, 50)
           : null;
+      // 첨부 개수·용량 (2026-08-03) — 개수는 문서의 attachments 항목
+      // 전부, 용량 = 내장(data URL, base64 → 원본 크기 환산) + 서버
+      // 저장소(attachments 테이블 합). blob:(비로그인 세션 한정)은
+      // 개수에만 잡히고 용량은 알 수 없어 0 이다.
+      let attachCount = 0;
+      let embeddedBytes = 0;
+      const walkAttachments = (n: SnapNode) => {
+        for (const a of n.attachments ?? []) {
+          attachCount += 1;
+          if (a.url?.startsWith('data:')) {
+            const comma = a.url.indexOf(',');
+            embeddedBytes += Math.floor(((a.url.length - comma - 1) * 3) / 4);
+          }
+        }
+        for (const c of n.children ?? []) walkAttachments(c);
+      };
+      if (snap.map?.root) walkAttachments(snap.map.root);
+      for (const b of snap.map?.branches ?? []) walkAttachments(b);
       const { rows: ab } = await this.db.query<{ b: string }>(
         `SELECT COALESCE(SUM(size_bytes), 0) AS b
            FROM public.attachments WHERE map_id = $1`,
         [mapId],
       );
+      const attachBytes = embeddedBytes + Number(ab[0]?.b ?? 0);
 
       const { rows: vr } = await this.db.query<{ version: number }>(
         `INSERT INTO public.map_document_versions
            (map_id, version, title, doc, created_by,
-            layout_type, node_count, attach_bytes)
+            layout_type, node_count, attach_bytes, attach_count)
          SELECT $1,
                 COALESCE(MAX(version), 0) + 1,
-                $2, $3::jsonb, $4, $5, $6, $7
+                $2, $3::jsonb, $4, $5, $6, $7, $8
            FROM public.map_document_versions WHERE map_id = $1
          RETURNING version`,
         [mapId, title ?? map.title, docJson, userId,
-         layoutType, nodeCount, Number(ab[0]?.b ?? 0)],
+         layoutType, nodeCount, attachBytes, attachCount],
       );
       version = vr[0]?.version;
     }
@@ -306,11 +355,11 @@ export class MapsService {
     const { rows } = await this.db.query<{
       version: number; title: string; created_at: Date; size: string;
       layout_type: string | null; node_count: number | null;
-      attach_bytes: string | null;
+      attach_bytes: string | null; attach_count: number | null;
     }>(
       `SELECT version, title, created_at,
               pg_column_size(doc)::text AS size,
-              layout_type, node_count, attach_bytes
+              layout_type, node_count, attach_bytes, attach_count
          FROM public.map_document_versions
         WHERE map_id = $1
         ORDER BY version DESC`,
@@ -327,6 +376,7 @@ export class MapsService {
         layoutType: r.layout_type,
         nodeCount: r.node_count,
         attachBytes: r.attach_bytes === null ? null : Number(r.attach_bytes),
+        attachCount: r.attach_count,
       })),
       total: rows.length,
     };

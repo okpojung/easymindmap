@@ -267,6 +267,15 @@ function normalizeNode<T extends MindNode>(node: T): T {
   } as T;
 }
 
+// 클라우드 스냅샷도 이 정규형으로 저장한다 (2026-08-03) — 새 맵/불러오기
+// 직후의 맵은 edgeType·children 기본값이 빠져 있어, 그대로 저장하면
+// "다시 열기(정규화) → 닫기" 때 내용이 같은데도 문서가 달라 보여
+// 히스토리 버전이 하나 더 생겼다. 저장·로드가 같은 형태면 서버의
+// jsonb 등가 비교가 조회-닫기를 무변경으로 판정할 수 있다.
+export function normalizeMapForSnapshot(map: SampleMap): SampleMap {
+  return cloneMap(map);
+}
+
 function cloneMap(map: SampleMap): SampleMap {
   return {
     ...map,

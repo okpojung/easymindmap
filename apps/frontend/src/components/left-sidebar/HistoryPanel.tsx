@@ -121,7 +121,13 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
     if (v.layoutType) parts.push(LAYOUT_KO[v.layoutType] ?? v.layoutType);
     if (v.nodeCount !== null && v.nodeCount !== undefined) parts.push(`${v.nodeCount}노드`);
     parts.push(`문서 ${fmtKB(v.bytes)}`);
-    if (v.attachBytes) parts.push(`첨부 ${fmtKB(v.attachBytes)}`);
+    // 첨부 개수 + 총 용량(내장 + 서버) — 2026-08-03 2차.
+    // attachCount 도입 전 버전은 용량만(있으면) 표시.
+    if (v.attachCount) {
+      parts.push(`첨부 ${v.attachCount}개 · ${fmtKB(v.attachBytes ?? 0)}`);
+    } else if (v.attachBytes) {
+      parts.push(`첨부 ${fmtKB(v.attachBytes)}`);
+    }
     return parts.join(' · ');
   };
 

@@ -451,6 +451,28 @@ POST /maps/{mapId}/revisions/{version}/restore
 ## 버전 상세 정보 (2026-08-03 — ThinkWise 편집 이력 참고)
 
 저장 시점에 `map_document_versions` 에 **layout_type · node_count ·
-attach_bytes** 를 함께 기록하고, 히스토리 패널이 각 버전 아래에
-"레이아웃 · N노드 · 문서 크기(내장 첨부 포함) · 첨부 크기(서버 첨부)"
-로 보여준다. 컬럼 도입 이전 버전은 상세가 null 이라 있는 항목만 표시.
+attach_bytes · attach_count** 를 함께 기록하고, 히스토리 패널이 각 버전
+아래에 "레이아웃 · N노드 · 문서 크기 · 첨부 N개 · 크기" 로 보여준다.
+
+- **attach_count** = 문서의 attachments 항목 전부(내장·서버·세션 한정 blob)
+- **attach_bytes** = 내장(data URL, base64→원본 환산) + 서버 저장소 합.
+  blob: 첨부는 크기를 알 수 없어 개수에만 잡힌다.
+- 컬럼 도입 이전 버전은 상세가 null 이라 있는 항목만 표시.
+
+## 무변경 저장은 히스토리를 만들지 않는다 (2026-08-03 결정)
+
+서버맵을 **조회만 하고 맵 닫기** 해도 버전이 생기던 문제의 수정.
+`PUT /maps/:id/document` 는 저장 전에
+
+1. 현재 문서와 새 문서를 **jsonb 등가**로 비교하고 (키 순서 무관),
+2. keepVersion 이면 **마지막 버전의 doc·title** 과도 비교해서,
+
+둘 다 같으면 아무것도 쓰지 않고 `unchanged: true` 를 돌려준다 —
+문서·히스토리·`maps.updated_at` 모두 그대로라 문서함 정렬도 흔들리지
+않는다. 명시적 저장 버튼은 이때 "변경된 내용이 없어 그대로 두었습니다"
+안내를 띄운다. 버전이 하나도 없는 레거시 맵은 첫 버전을 남긴다.
+
+전제: 저장 스냅샷과 로드 결과가 **같은 정규형**이어야 한다. 새 맵/불러온
+맵은 edgeType·children 기본값이 빠진 채 저장돼, 다시 열면(로드 정규화)
+같은 내용인데 문서가 달라 보였다 → `buildSnapshot()` 이 로드와 같은
+정규화(normalizeMapForSnapshot = cloneMap)를 거쳐 저장한다.

@@ -560,3 +560,5 @@ ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS node_count INTEGER;
 ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS attach_bytes BIGINT;
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS attach_count INTEGER;

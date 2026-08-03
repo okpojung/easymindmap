@@ -53,7 +53,10 @@ export interface MapVersionItem {
   // 저장 시점 상세 (2026-08-03) — 컬럼 도입 전 버전은 null
   layoutType: string | null;
   nodeCount: number | null;
+  /** 첨부 총 용량 = 내장(data URL) + 서버 저장소 합 */
   attachBytes: number | null;
+  /** 첨부 개수 (내장·서버·세션 한정 blob 전부) */
+  attachCount: number | null;
 }
 
 /** 맵 유형 — 단독맵 / 협업맵 (2026-08-02) */
@@ -126,8 +129,10 @@ export const cloudApi = {
   deleteFolder: (folderId: string) => req<void>('DELETE', `/folders/${folderId}`),
   // keepVersion: 이 저장을 히스토리 버전으로도 남긴다 (B8 — 명시적
   // 저장·맵 닫기에서만 true. 자동저장은 남기지 않는다)
+  // unchanged: 내용·제목이 그대로라 서버가 아무것도 쓰지 않았다
+  // (2026-08-03 — 조회만 하고 닫아도 히스토리가 생기던 문제)
   saveDocument: (mapId: string, doc: unknown, title?: string, keepVersion?: boolean) =>
-    req<{ mapId: string; updatedAt: string; version?: number }>(
+    req<{ mapId: string; updatedAt: string; version?: number; unchanged?: boolean }>(
       'PUT', `/maps/${mapId}/document`, { doc, title, keepVersion }),
   listVersions: (mapId: string) =>
     req<{ mapId: string; versions: MapVersionItem[]; total: number }>(

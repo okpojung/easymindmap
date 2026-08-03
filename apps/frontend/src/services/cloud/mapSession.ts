@@ -8,7 +8,9 @@
 // **새 탭**(`?map=<id>`)이다. 앱 내부 탭 관리 대신 브라우저 탭을 쓰므로
 // 맵마다 메모리가 완전히 격리되고, 동시 편집 개수 제한이 필요 없다.
 
-import { useDocumentStore, isDocumentEmpty } from '@/stores/documentStore';
+import {
+  useDocumentStore, isDocumentEmpty, normalizeMapForSnapshot,
+} from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useCloudStore } from '@/stores/cloudStore';
@@ -44,7 +46,9 @@ export function buildSnapshot(): {
   //  쓰인 적이 없어 제거했다 — 칸반 화면은 map 에서 실시간으로 만든다.)
   return {
     v: SNAPSHOT_VERSION,
-    map: st.map,
+    // 로드 경로와 같은 정규형으로 저장 (2026-08-03) — 그래야 "다시 열기
+    // → 그대로 닫기"가 서버에서 무변경으로 판정된다 (normalizeMapForSnapshot)
+    map: normalizeMapForSnapshot(st.map),
     editor: { layoutType: ui.layoutType, spacingX: ui.spacingX, spacingY: ui.spacingY },
   };
 }
@@ -101,7 +105,7 @@ export function isUnsavedMap(): boolean {
  */
 export async function saveCurrentMap(
   { keepVersion = true }: { keepVersion?: boolean } = {},
-): Promise<{ mapId: string }> {
+): Promise<{ mapId: string; unchanged: boolean }> {
   const cloud = useCloudStore.getState();
   const id = cloud.cloudMapId;
   if (!id) throw new CloudError(0, '저장할 폴더와 이름을 먼저 정해 주세요.');
@@ -111,7 +115,8 @@ export async function saveCurrentMap(
     const res = await cloudApi.saveDocument(id, buildSnapshot(), title, keepVersion);
     useCloudStore.getState().link(id, res.updatedAt);
     useAutosaveStore.getState().setSaveState('saved');
-    return { mapId: id };
+    // unchanged: 내용이 그대로라 서버가 저장·히스토리 생성을 생략했다
+    return { mapId: id, unchanged: res.unchanged === true };
   } finally {
     useCloudStore.getState().setBusy('idle');
   }

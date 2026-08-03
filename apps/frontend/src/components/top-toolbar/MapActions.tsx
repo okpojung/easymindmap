@@ -54,8 +54,10 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
     if (needLogin()) { flash('⚠ 로그인해야 서버에 저장할 수 있습니다.'); return; }
     if (isUnsavedMap()) { setSaveIntent('save'); return; } // 폴더·이름 묻기
     try {
-      await saveCurrentMap({ keepVersion: true });
-      flash(`☁ '${cloudTitle ?? mapTitle}' 저장 완료 (이 시점이 히스토리에 남습니다).`);
+      const r = await saveCurrentMap({ keepVersion: true });
+      flash(r.unchanged
+        ? `☁ '${cloudTitle ?? mapTitle}' — 변경된 내용이 없어 그대로 두었습니다.`
+        : `☁ '${cloudTitle ?? mapTitle}' 저장 완료 (이 시점이 히스토리에 남습니다).`);
     } catch (err) {
       const m = err instanceof CloudError ? err.message : '저장 중 오류가 발생했습니다.';
       useCloudStore.getState().setError(m);

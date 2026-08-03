@@ -142,20 +142,24 @@ ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS node_count INTEGER;
 ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS attach_bytes BIGINT;
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS attach_count INTEGER;
 SQL
 
-# ── 3) 검증 — 3컬럼이 실제로 생겼는지 확인 ───────────────────────
+# ── 3) 검증 — 4컬럼이 실제로 생겼는지 확인 ───────────────────────
 echo "── 검증 ──"
 docker exec -i "$DB" psql -U postgres -d postgres -tAc \
   "SELECT column_name FROM information_schema.columns
    WHERE table_schema='public' AND table_name='map_document_versions'
-     AND column_name IN ('layout_type','node_count','attach_bytes')" \
+     AND column_name IN ('layout_type','node_count','attach_bytes','attach_count')" \
   | sort | sed 's/^/  컬럼 OK: /'
 SCRIPT
 ```
 
-`컬럼 OK: attach_bytes / layout_type / node_count` 3줄이 나오면 완료.
-2026-08-03 dev 서버에 이 스크립트로 적용 완료됨.
+`컬럼 OK: attach_bytes / attach_count / layout_type / node_count` 4줄이
+나오면 완료. 앞의 3컬럼은 2026-08-03 dev 에 적용 완료 — `attach_count`
+(첨부 개수, 같은 날 2차)가 추가됐으므로 **스크립트를 한 번 더 실행**하면
+된다 (전부 IF NOT EXISTS 라 기존 컬럼은 그대로 지나간다).
 
 ### 스키마를 적용하지 않고 배포하면 (2026-08-02 실제 발생)
 

@@ -403,6 +403,11 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         </div>
       )}
 
+      {/* 템플릿 선택·맵 닫기 확인 단계가 떠 있는 동안에는 아래 메뉴를
+          숨긴다 (2026-08-03 보고 — 선택 카드 밑에 '새 맵 만들기'가 또
+          보여 이중으로 오해). 건너뛰기/취소를 누르면 다시 나타난다. */}
+      {!chooseTpl && !pending && (<>
+
       {/* ═══ 1. 새 맵 만들기 — 단일 버튼 (2026-08-03: 트리 하위에 같은
           버튼이 한 번 더 있던 이중 구조 제거) ═══ */}
       {menuHeader({
@@ -427,6 +432,8 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         onClick: () => setOpenLocal((v) => !v),
         tip: 'MD·HTML·ZIP 파일을 불러옵니다 (선택하면 하위 메뉴가 펼쳐집니다)',
       })}
+
+      </>)}
       <input
         ref={fileRef}
         type="file"
@@ -439,7 +446,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           e.target.value = '';
         }}
       />
-      {openLocal && (
+      {!chooseTpl && !pending && openLocal && (
         <div style={treeBoxStyle}>
       <button onClick={() => startImportFile('md')}
         title="일반 MD 파일과 EasyMindMap에서 생성된 MD 파일을 불러옵니다"

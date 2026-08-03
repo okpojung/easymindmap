@@ -102,6 +102,10 @@ CREATE POLICY "users can manage own attachments"
 SQL
 ```
 
+첨부 저장 위치(개당 판정): **2MB 이하 = 문서에 data URL 내장(DB)**,
+초과 = 서버 저장소. 단 **맵당 내장 합계 10MB**(2026-08-03)를 넘으면
+2MB 이하 파일도 로그인 상태에서는 서버로 우회한다.
+
 쿼터 정책(2026-08-02 결정): **DB(문서+히스토리 버전) + 첨부 합산**이
 `users.quota_bytes` 이하 — 기본(무료) 1GB, 유료는 10GB 로 상향
 (`UPDATE public.users SET quota_bytes = 10737418240 WHERE id = ...`).

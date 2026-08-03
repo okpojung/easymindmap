@@ -135,9 +135,9 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
           disabled={!selectedId}
           onFiles={(files) => addFiles(files, () => 'file')} />
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
-          2MB 이하 파일은 맵에 내장되고, 초과 파일은 로그인 상태에서 서버
-          첨부 저장소에 올라갑니다 — 둘 다 저장 후 다시 열어도 유지됩니다.
-          (저장 용량 = 문서+첨부 합산, 무료 1GB)
+          2MB 이하 파일은 맵에 내장되고(맵당 내장 합계 10MB까지), 초과분은
+          로그인 상태에서 서버 첨부 저장소에 올라갑니다 — 둘 다 저장 후
+          다시 열어도 유지됩니다. (저장 용량 = 문서+첨부 합산, 무료 1GB)
         </div>
         {attErr && (
           <div data-testid="attach-error"

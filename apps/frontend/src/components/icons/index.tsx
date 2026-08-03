@@ -36,31 +36,40 @@ const Icon = ({
 type P = Partial<IconProps>;
 
 export const I = {
-  // EasyMindMap 로고 — 주황 그라디언트 배지 + 흰 마인드맵 글리프
-  // (중심 노드에서 오른쪽 세 가지). 뷰어 헤더·파비콘(exportHtml.ts의
-  // LOGO_SVG)과 같은 도안 — 바꿀 때 함께 바꾼다.
+  // EasyMindMap 로고 (2026-08-03 브랜드 로고 교체 — 사용자 제공 도안의
+  // SVG 재현): 흰 바탕 + 주황 그라디언트 'e' 링(MarkDown) + 오른쪽
+  // 마인드맵 트리. 뷰어 헤더·파비콘(exportHtml.ts LOGO_SVG)·index.html
+  // 파비콘과 같은 도안 — 바꿀 때 세 곳을 함께 바꾼다.
   Logo: (p: P = {}) => (
     <svg
       width={p.size || 22}
       height={p.size || 22}
-      viewBox="0 0 24 24"
+      viewBox="0 0 96 96"
       fill="none"
       {...(p as any)}
     >
       <defs>
-        <linearGradient id="emm-logo-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#F7A21B" />
-          <stop offset="1" stopColor="#C2610A" />
+        <linearGradient id="emm-logo-g" x1="0" y1="0" x2="0.35" y2="1">
+          <stop offset="0" stopColor="#F2B01E" />
+          <stop offset="0.55" stopColor="#EC8B10" />
+          <stop offset="1" stopColor="#DF5F0D" />
         </linearGradient>
       </defs>
-      <rect x="1" y="1" width="22" height="22" rx="5.5" fill="url(#emm-logo-g)" />
-      <circle cx="8" cy="12" r="2.7" fill="#FFFFFF" />
-      <path d="M10.4 10.9C12.6 9.6 13.9 8.4 15.9 7.5" stroke="#FFFFFF" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-      <line x1="10.9" y1="12" x2="15.9" y2="12" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M10.4 13.1C12.6 14.4 13.9 15.6 15.9 16.5" stroke="#FFFFFF" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-      <circle cx="17.5" cy="7" r="1.7" fill="#FFFFFF" />
-      <circle cx="17.5" cy="12" r="1.7" fill="#FFFFFF" />
-      <circle cx="17.5" cy="17" r="1.7" fill="#FFFFFF" />
+      <rect width="96" height="96" rx="18" fill="#FFFFFF" />
+      <path d="M 56 48 A 26 26 0 1 0 46.7 67.9" stroke="url(#emm-logo-g)" strokeWidth="10" fill="none" strokeLinecap="round" />
+      <line x1="46" y1="48" x2="56" y2="48" stroke="url(#emm-logo-g)" strokeWidth="10" strokeLinecap="round" />
+      <text x="30" y="44" textAnchor="middle" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="11.5" fill="#5C3B25">Mark</text>
+      <text x="31" y="63" textAnchor="middle" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="11.5" fill="#5C3B25">Down</text>
+      <circle cx="53" cy="60" r="5" fill="url(#emm-logo-g)" />
+      <path d="M 56 60 C 63 60 61 50 68 50" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />
+      <path d="M 56 60 C 63 60 61 70 68 70" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />
+      <path d="M 68 50 L 68 22 M 68 22 L 76 22 M 68 36 L 76 36 M 68 50 L 76 50" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />
+      <path d="M 68 70 L 68 84 M 68 70 L 76 70 M 68 84 L 76 84" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />
+      <circle cx="81" cy="22" r="5" fill="url(#emm-logo-g)" />
+      <circle cx="81" cy="36" r="5" fill="url(#emm-logo-g)" />
+      <circle cx="81" cy="50" r="5" fill="url(#emm-logo-g)" />
+      <circle cx="81" cy="70" r="5" fill="url(#emm-logo-g)" />
+      <circle cx="81" cy="84" r="5" fill="url(#emm-logo-g)" />
     </svg>
   ),
 

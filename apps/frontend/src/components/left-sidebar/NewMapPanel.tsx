@@ -24,6 +24,7 @@ import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile } from '@/utils
 import { resolveRemoteImages } from '@/utils/remoteImages';
 import { isDocumentEmpty, NEW_MAP_TITLE, useDocumentStore } from '@/stores/documentStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
+import { useAiSettingsStore } from '@/stores/aiSettingsStore';
 import { detachFromServer } from '@/services/cloud/mapSession';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -394,6 +395,23 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
               </button>
             ))}
           </div>
+          {/* 웹 AI 진입 (방법 A — web-ai-clipboard.md §3-3): 우측 AI
+              탭을 웹 AI 모드로 연다. 새 맵은 이미 시작된 상태다. */}
+          {chooseTpl.mode === 'new' && (
+            <button
+              data-testid="tpl-ai-start"
+              onClick={() => {
+                setChooseTpl(null);
+                useAiSettingsStore.getState().setGenMode('web');
+                useEditorUiStore.getState().setInspectorTab('ai');
+              }}
+              title="AI 웹 구독(Claude·ChatGPT·Gemini)으로 맵 초안을 만듭니다 — API 키 불필요"
+              style={{
+                width: '100%', fontSize: 11.5, padding: '6px 0', borderRadius: 6,
+                border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
+                color: t.primary, cursor: 'pointer', fontWeight: 700, marginBottom: 5,
+              }}>🌐 AI로 초안 만들기 (웹 AI · 키 불필요)</button>
+          )}
           <button onClick={() => setChooseTpl(null)}
             style={{
               width: '100%', fontSize: 11.5, padding: '6px 0', borderRadius: 6,

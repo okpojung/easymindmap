@@ -1,6 +1,8 @@
 # 웹 AI로 맵 만들기 — 클립보드 왕복 설계 (방법 A)
 
-> 2026-08-03 설계 초안 — 검토·확정 후 구현.
+> 2026-08-03 설계 → 같은 날 **구현 완료** (e2e91 검증).
+> 구현: `utils/webAiExchange.ts`(순수 함수) + `inspector-panels/
+> WebAiPanel.tsx`(UI) + AITab 모드 스위치 + 새 맵 템플릿 카드 진입 버튼.
 > **관련 문서**: `18-ai.md`(현행 API 키 방식), `emm-prompt-templates.md`
 > (AI용 EMM 생성 프롬프트), `../emm-spec.md`(EMM Markdown 규격)
 

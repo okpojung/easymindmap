@@ -28,6 +28,11 @@ export interface AiHistoryEntry {
 // 'auto' = 우선순위 순서에서 키가 등록된 첫 회사를 자동 선택
 export type AiProviderChoice = AiProvider | 'auto';
 
+// 생성 모드 (2026-08-03 방법 A) — 'web' = 클립보드 왕복(키 불필요),
+// 'api' = 기존 API 키 호출. null = 아직 선택 안 함 → 키가 하나라도
+// 등록돼 있으면 'api', 아니면 'web' 이 기본.
+export type AiGenMode = 'web' | 'api';
+
 interface AiSettingsState {
   provider: AiProviderChoice;
   priority: AiProvider[];
@@ -35,7 +40,9 @@ interface AiSettingsState {
   models: Record<AiProvider, string>;
   systemPrompt: string;
   history: AiHistoryEntry[];
+  genMode: AiGenMode | null;
 
+  setGenMode: (m: AiGenMode) => void;
   setProvider: (p: AiProviderChoice) => void;
   movePriority: (p: AiProvider, dir: -1 | 1) => void;
   setKey: (p: AiProvider, key: string) => void;
@@ -64,7 +71,9 @@ export const useAiSettingsStore = create<AiSettingsState>()(
       models: { ...DEFAULT_MODELS },
       systemPrompt: EMM_SYSTEM_PROMPT,
       history: [],
+      genMode: null,
 
+      setGenMode: (genMode) => set({ genMode }),
       setProvider: (p) => set({ provider: p }),
       movePriority: (p, dir) =>
         set((s) => {

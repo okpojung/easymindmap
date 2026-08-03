@@ -36,6 +36,7 @@ import {
 import { GENERATION_TYPES } from '@/utils/emmSystemPrompt';
 import { parseEmm } from '@/utils/importMarkdown';
 import { countMapNodes } from '@/export/mapMeta';
+import { WebAiPanel } from './WebAiPanel';
 
 export function AITab({ t }: { t: ThemeTokens }) {
   const [view, setView] = useState<'generate' | 'settings'>('generate');
@@ -79,6 +80,12 @@ function GenerateView({ t }: { t: ThemeTokens }) {
   const setProvider = useAiSettingsStore((s) => s.setProvider);
   const priority = useAiSettingsStore((s) => s.priority);
   const keys = useAiSettingsStore((s) => s.keys);
+  // 생성 모드 (방법 A — web-ai-clipboard.md): 'web' = 클립보드 왕복,
+  // 'api' = 기존 API 키 호출. 미선택(null)이면 키 등록 여부로 기본 결정
+  const genMode = useAiSettingsStore((s) => s.genMode);
+  const setGenMode = useAiSettingsStore((s) => s.setGenMode);
+  const anyKey = Object.values(keys).some((k) => k?.trim());
+  const mode = genMode ?? (anyKey ? 'api' : 'web');
   const models = useAiSettingsStore((s) => s.models);
   const systemPrompt = useAiSettingsStore((s) => s.systemPrompt);
   const history = useAiSettingsStore((s) => s.history);
@@ -187,8 +194,44 @@ function GenerateView({ t }: { t: ThemeTokens }) {
     }
   };
 
+  // 모드 스위치 — [🌐 웹 AI (키 불필요)] / [🔑 API 키]
+  const modeSwitch = (
+    <div style={{ display: 'flex', gap: 4, padding: '10px 12px 0' }}>
+      {([
+        ['web', '🌐 웹 AI (키 불필요)'],
+        ['api', '🔑 API 키'],
+      ] as const).map(([k, label]) => (
+        <button
+          key={k}
+          data-ai-mode={k}
+          onClick={() => setGenMode(k)}
+          title={k === 'web'
+            ? 'Claude·ChatGPT·Gemini 웹 구독으로 맵 생성 (복사 2번, API 키 불필요)'
+            : '등록한 API 키로 앱 안에서 바로 생성'}
+          style={{
+            flex: 1, padding: '6px 0', borderRadius: 7,
+            border: `1.5px solid ${mode === k ? t.primary : t.border}`,
+            background: mode === k ? t.primarySoft : t.surfaceAlt,
+            color: mode === k ? t.primary : t.textMuted,
+            fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+          }}
+        >{label}</button>
+      ))}
+    </div>
+  );
+
+  if (mode === 'web') {
+    return (
+      <div>
+        {modeSwitch}
+        <WebAiPanel t={t} />
+      </div>
+    );
+  }
+
   return (
     <div>
+      {modeSwitch}
       <InspectorSection t={t} title="AI 마인드맵 생성">
         <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
           <div style={{ flex: 1.4 }}>

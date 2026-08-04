@@ -2,7 +2,11 @@
 //
 //   ① 프롬프트 복사 → AI 웹(Claude·ChatGPT·Gemini…)에 붙여넣고 실행
 //   ② 답변 복사
-//   ③ 여기 붙여넣기 → 맵 생성 (붙여넣는 즉시 자동 생성 옵션)
+//   ③ 여기 붙여넣기 → 미리보기만. **적용은 사용자가 버튼으로** 고른다
+//      ('새 맵 생성' 또는 '선택 노드에 삽입' → 확인 팝오버 → 실행)
+//
+// 2026-08-05 실사용 보고: 붙여넣자마자 자동 실행되고 대상이 미리 골라져
+// 있어 원하지 않은 쪽으로 반영됐다 → 자동 실행·기본 선택을 없앴다.
 //
 // API 키·백엔드 없이 동작한다 — 우리 서버로는 아무것도 전송되지 않는다.
 // 조립·추출·변환 로직은 utils/webAiExchange.ts (순수 함수).
@@ -24,6 +28,7 @@ import { parseEmm } from '@/utils/importMarkdown';
 import { GENERATION_TYPES } from '@/utils/emmSystemPrompt';
 import {
   AI_SHORTCUTS,
+  aiShortcutUrl,
   OUTPUT_DIRECTIVE,
   RETRY_REQUEST_TEXT,
   answerFromPaste,
@@ -31,8 +36,6 @@ import {
   mapSourceCandidates,
   type AnswerMapOk,
 } from '@/utils/webAiExchange';
-
-const AUTOGEN_KEY = 'emm.webai.autogen';
 
 export function WebAiPanel({ t }: { t: ThemeTokens }) {
   const systemPrompt = useAiSettingsStore((s) => s.systemPrompt);
@@ -57,16 +60,6 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   const [preview, setPreview] = useState<AnswerMapOk | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [autoGen, setAutoGen] = useState(() => {
-    try { return window.localStorage.getItem(AUTOGEN_KEY) !== 'off'; } catch { return true; }
-  });
-  // 적용 대상 — 붙여넣은 답변을 어디에 반영할지. 자동 실행(autoGen)과
-  // 버튼 강조가 모두 이 값을 따른다 (2026-08-04 실사용 보고: 삽입을
-  // 원했는데 자동 실행이 항상 새 맵으로 갔고, 새 맵 버튼만 강조돼
-  // 있었다). 선택 노드가 없으면 'insert' 는 고를 수 없다.
-  const [target, setTarget] = useState<'new' | 'insert'>('new');
-  const effTarget: 'new' | 'insert' =
-    target === 'insert' && selectedNode ? 'insert' : 'new';
 
   // 확인 팝오버 — window.confirm 대체 (2026-08-04 보고: 브라우저 기본
   // confirm 은 화면 상단 중앙에 떠서 어느 작업의 확인인지 눈에 안 들어
@@ -103,6 +96,19 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     void copyText(buildWebAiPrompt({ systemPrompt, topic, typeKey: genType }), 'prompt');
   };
 
+  // AI 사이트 열기 — 가능하면 질문까지 자동 입력하고(?q=), 자동 입력이
+  // 막히거나 지원되지 않는 경우를 대비해 클립보드에도 항상 넣어 둔다
+  // (2026-08-05 보고: ChatGPT 를 열어도 질문이 입력되지 않았다).
+  const openAiSite = (s: (typeof AI_SHORTCUTS)[number]) => {
+    const prompt = topic.trim()
+      ? buildWebAiPrompt({ systemPrompt, topic, typeKey: genType })
+      : '';
+    // Copilot GPT 는 규칙 내장 — 주제만, 나머지는 규칙까지 붙은 전체
+    const forClipboard = s.prefill === 'topic' && topic.trim() ? topic : prompt;
+    if (forClipboard) void navigator.clipboard?.writeText(forClipboard).catch(() => {});
+    window.open(aiShortcutUrl(s, { topic, prompt }), '_blank');
+  };
+
   // 선택 노드 확장 프롬프트 — API 모드의 buildExpandContext 를 웹 채팅용
   // 한 덩어리로 합친다 (프로젝트 지침·@소스·상위 경로 포함 규칙 동일)
   const copyExpandPrompt = () => {
@@ -113,37 +119,35 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     void copyText(oneShot, 'expand');
   };
 
-  // 붙여넣은 답변 → 미리보기 (+ 자동 실행 — 선택한 적용 대상을 따른다)
-  const process = (text: string, auto: boolean) => {
+  // 붙여넣은 답변 → **미리보기만**. 적용은 아래 두 버튼 중 하나를
+  // 눌러야 일어난다 (2026-08-05 보고: 자동 실행 제거).
+  const process = (text: string): AnswerMapOk | null => {
     setError('');
     setPreview(null);
-    if (!text.trim()) return;
+    if (!text.trim()) return null;
     const res = answerFromPaste(text);
     // (strict:false 라 진리값 내로잉이 안 된다 — 'in' 내로잉 사용)
     if ('reason' in res) {
       setError(res.reason);
-      return;
+      return null;
     }
     setPreview(res);
-    if (auto && autoGen) {
-      if (effTarget === 'insert') insertToSelected(text);
-      else openAsNewMap(res);
-    }
+    return res;
   };
 
-  // 새 맵으로 열기 — 새 맵 패널과 같은 확인 게이트(잃을 것이 없으면
-  // 묻지 않는다) + 서버 연결 해제(자동저장이 이전 맵을 덮어쓰지 않게)
+  // 새 맵으로 열기 — **항상** 확인 팝오버를 거친다 (2026-08-05 보고:
+  // 눌렀는지 모르는 사이에 맵이 바뀌면 안 된다). 실행 시 서버 연결을
+  // 해제해 자동저장이 이전 맵을 덮어쓰지 않게 한다.
   const openAsNewMap = (res: AnswerMapOk) => {
     const doc = useDocumentStore.getState();
-    if (!(doc.past.length === 0 || isDocumentEmpty(doc.map))) {
-      askConfirm(
-        `현재 맵을 닫고 생성한 맵(${res.nodeCount}개 노드)을 열까요?\n` +
-        '(실행 취소 Ctrl+Z 로 이전 맵으로 되돌릴 수 있습니다)',
-        () => runOpenAsNewMap(res),
-      );
-      return;
-    }
-    runOpenAsNewMap(res);
+    const willLose = !(doc.past.length === 0 || isDocumentEmpty(doc.map));
+    askConfirm(
+      willLose
+        ? `현재 맵을 닫고 생성한 맵(${res.nodeCount}개 노드)을 열까요?\n` +
+          '(실행 취소 Ctrl+Z 로 이전 맵으로 되돌릴 수 있습니다)'
+        : `'${res.map.title}' 맵(${res.nodeCount}개 노드)을 새로 열까요?`,
+      () => runOpenAsNewMap(res),
+    );
   };
 
   const runOpenAsNewMap = (res: AnswerMapOk) => {
@@ -164,7 +168,13 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   // 선택 노드에 하위로 삽입 — API 모드 runExpand 의 답변 처리와 동일:
   // 답변 맨 앞의 # 줄은 제거하고 타깃 제목으로 감싸 자식만 꺼낸다
   const insertToSelected = (text?: string) => {
-    if (!selectedId || !selectedNode) return;
+    // 노드를 안 고르고 눌렀을 때는 조용히 무시하지 않고 이유를 알린다
+    // (2026-08-05 보고 — 버튼은 항상 보이되 안내를 준다)
+    if (!selectedId || !selectedNode) {
+      setPreview(null);
+      setError('먼저 맵에서 삽입할 노드를 클릭해 선택하세요 — 그 노드의 하위로 추가됩니다.');
+      return;
+    }
     setError('');
     const source = text ?? answer;
     // 새 맵 경로와 같은 후보 체인 — 최장 코드블록이 예시 조각인 답변
@@ -192,11 +202,6 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
         flashNotice(`'${selectedNode.text}' 아래에 ${kids.length}개 항목을 추가했습니다`);
       },
     );
-  };
-
-  const chooseAutoGen = (v: boolean) => {
-    setAutoGen(v);
-    try { window.localStorage.setItem(AUTOGEN_KEY, v ? 'on' : 'off'); } catch { /* 무시 */ }
   };
 
   const stepLabel = (n: string, text: string) => (
@@ -326,18 +331,38 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           display: 'flex', gap: 5, marginTop: 6, alignItems: 'center',
         }}>
           <span style={{ fontSize: 10.5, color: t.textSubtle, flexShrink: 0 }}>AI 열기:</span>
-          {AI_SHORTCUTS.map((s) => (
+          {AI_SHORTCUTS.filter((s) => s.kind === 'plain').map((s) => (
             <button
               key={s.key}
               data-webai-open={s.key}
-              onClick={() => window.open(s.url, '_blank')}
-              title={s.tip ?? `${s.label} 을(를) 새 탭으로 엽니다 (자동 입력은 되지 않습니다 — 붙여넣기해 주세요)`}
+              onClick={() => openAiSite(s)}
+              title={s.tip ?? `${s.label} 을(를) 새 탭으로 엽니다`}
               style={{
                 flex: 1, padding: '5px 0', borderRadius: 6,
                 border: `1px solid ${t.border}`, background: t.surface,
                 color: t.text, fontSize: 11, fontWeight: 600, cursor: 'pointer',
               }}>{s.label}</button>
           ))}
+        </div>
+        {/* 전용 GPT 는 위의 일반 채팅과 **다른 것** — ① 프롬프트 없이
+            주제만으로 동작한다 (2026-08-05 지적으로 분리) */}
+        {AI_SHORTCUTS.filter((s) => s.kind === 'gpt').map((s) => (
+          <button
+            key={s.key}
+            data-webai-open={s.key}
+            onClick={() => openAiSite(s)}
+            title={s.tip}
+            style={{
+              width: '100%', marginTop: 5, padding: '6px 8px', borderRadius: 6,
+              border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
+              color: t.primary, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>⚡ {s.label}</button>
+        ))}
+        <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 3, lineHeight: 1.5 }}>
+          {topic.trim()
+            ? '일반 채팅(Claude·ChatGPT)은 ① 프롬프트 전체가, 전용 GPT는 주제만 자동 입력됩니다. Gemini는 자동 입력을 지원하지 않아 붙여넣기(Ctrl+V) — 어느 쪽이든 클립보드에도 복사해 둡니다.'
+            : '먼저 위에 주제를 적으면, 여는 즉시 질문까지 자동 입력됩니다.'}
         </div>
 
         {fallbackText && (
@@ -368,40 +393,6 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
         </div>
 
         {stepLabel('3', '답변 붙여넣기')}
-        {/* 적용 대상 — 자동 실행·버튼 강조가 이 선택을 따른다 */}
-        <div data-webai-target style={{ display: 'flex', gap: 5, marginBottom: 5 }}>
-          {([
-            { key: 'new' as const, label: '새 맵으로', disabled: false },
-            {
-              key: 'insert' as const,
-              label: selectedNode
-                ? `'${(selectedNode.text || '노드').slice(0, 8)}' 하위에 삽입`
-                : '선택 노드 하위에 삽입',
-              disabled: !selectedNode,
-            },
-          ]).map((o) => (
-            <button
-              key={o.key}
-              data-webai-target-opt={o.key}
-              disabled={o.disabled}
-              onClick={() => setTarget(o.key)}
-              title={o.key === 'insert' && !selectedNode
-                ? '맵에서 노드를 먼저 선택하면 하위 삽입을 고를 수 있습니다'
-                : undefined}
-              style={{
-                flex: 1, padding: '5px 6px', borderRadius: 6,
-                fontSize: 10.5, fontWeight: 700,
-                cursor: o.disabled ? 'default' : 'pointer',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                background: effTarget === o.key ? t.primarySoft : t.surfaceAlt,
-                color: o.disabled ? t.textSubtle
-                  : effTarget === o.key ? t.primary : t.textMuted,
-                border: `1.5px solid ${effTarget === o.key ? t.primary : t.border}`,
-              }}>
-              {effTarget === o.key ? '● ' : ''}{o.label}
-            </button>
-          ))}
-        </div>
         <textarea
           value={answer}
           data-webai-answer
@@ -412,8 +403,9 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           onPaste={(e) => {
             const text = e.clipboardData.getData('text/plain');
             if (!text) return;
-            // 기본 붙여넣기(입력창 채움)는 그대로 두고, 내용은 즉시 처리
-            window.setTimeout(() => process(text, true), 0);
+            // 기본 붙여넣기(입력창 채움)는 그대로 두고, 인식 결과만 미리
+            // 보여 준다 — 적용은 아래 두 버튼 중 하나를 눌러야 한다.
+            window.setTimeout(() => process(text), 0);
           }}
           placeholder="AI 답변을 여기에 붙여넣으세요 (Ctrl+V)"
           style={{
@@ -424,19 +416,10 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             border: `1px solid ${t.border}`,
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
           }} />
-        <label style={{
-          display: 'flex', alignItems: 'center', gap: 6, marginTop: 5,
-          fontSize: 11, color: t.textMuted, cursor: 'pointer',
-        }}>
-          <input
-            type="checkbox"
-            data-webai-autogen
-            checked={autoGen}
-            onChange={(e) => chooseAutoGen(e.target.checked)}
-            style={{ accentColor: t.primary }}
-          />
-          붙여넣는 즉시 실행 (위에서 고른 대상에)
-        </label>
+        <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.5 }}>
+          붙여넣으면 <b>인식만</b> 합니다 — 아래에서 <b>새 맵 생성</b> 또는
+          <b> 선택 노드에 삽입</b>을 누르면 확인 후 반영됩니다.
+        </div>
 
         {preview && (
           <div data-webai-preview style={{
@@ -444,9 +427,8 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             background: '#DCFCE7', border: '1px solid #86EFAC',
             color: '#15803D', fontSize: 11.5, lineHeight: 1.5, fontWeight: 600,
           }}>
-            '{preview.map.title}' · {preview.nodeCount}노드 — {effTarget === 'insert'
-              ? `'${selectedNode?.text || '노드'}' 하위 삽입 준비 완료`
-              : '새 맵 생성 준비 완료'}
+            '{preview.map.title}' · {preview.nodeCount}노드 인식됨 — 아래에서
+            반영할 방법을 고르세요
           </div>
         )}
         {error && (
@@ -470,16 +452,13 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           </div>
         )}
 
-        {/* 실행 버튼 — 강조(주황)는 위의 적용 대상 선택을 따른다 */}
+        {/* 실행 버튼 — 미리 골라진 대상은 없다. 어느 쪽을 누르든 확인
+            팝오버를 거친다 (2026-08-05 보고). */}
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
           {(() => {
-            const primaryStyle = {
-              background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
-              color: '#fff', border: 'none',
-            };
-            const secondaryStyle = {
+            const onStyle = {
               background: t.primarySoft, color: t.primary,
-              border: `1px solid ${t.primaryBorder}`,
+              border: `1.5px solid ${t.primaryBorder}`,
             };
             const disabledStyle = {
               background: t.surfaceAlt, color: t.textSubtle,
@@ -495,39 +474,36 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
               <>
                 <button
                   onClick={() => {
-                    setTarget('new');
-                    if (preview) { openAsNewMap(preview); return; }
-                    process(answer, false);
-                    // process 는 상태 갱신 — 즉시 성공분 열기
-                    const res = answerFromPaste(answer);
-                    if (!('reason' in res)) openAsNewMap(res);
+                    // 미리보기가 없으면(직접 타이핑 등) 지금 인식해서 쓴다
+                    const res = preview ?? process(answer);
+                    if (res) openAsNewMap(res);
                   }}
                   disabled={off}
                   data-webai-generate
-                  title="붙여넣은 답변을 새 맵으로 엽니다"
+                  title="붙여넣은 답변을 새 맵으로 엽니다 (확인 후 실행)"
                   style={{
                     ...baseStyle,
-                    ...(off ? disabledStyle
-                      : effTarget === 'new' ? primaryStyle : secondaryStyle),
+                    ...(off ? disabledStyle : onStyle),
                     cursor: off ? 'default' : 'pointer',
                     display: 'flex', alignItems: 'center',
                     justifyContent: 'center', gap: 6,
                   }}>
                   <I.Sparkles size={13} /> ③ 새 맵 생성
                 </button>
-                {selectedNode && (
-                  <button
-                    onClick={() => { setTarget('insert'); insertToSelected(); }}
-                    disabled={off}
-                    data-webai-insert
-                    title={`답변을 '${selectedNode.text}' 노드의 하위로 추가합니다`}
-                    style={{
-                      ...baseStyle,
-                      ...(off ? disabledStyle
-                        : effTarget === 'insert' ? primaryStyle : secondaryStyle),
-                      cursor: off ? 'default' : 'pointer',
-                    }}>선택 노드에 삽입</button>
-                )}
+                {/* 노드를 안 골랐어도 **버튼은 보인다** — 누르면 노드를
+                    먼저 고르라고 알려 준다 (2026-08-05 보고) */}
+                <button
+                  onClick={() => insertToSelected()}
+                  disabled={off}
+                  data-webai-insert
+                  title={selectedNode
+                    ? `답변을 '${selectedNode.text}' 노드의 하위로 추가합니다 (확인 후 실행)`
+                    : '맵에서 노드를 먼저 선택하세요 — 그 노드의 하위로 추가됩니다'}
+                  style={{
+                    ...baseStyle,
+                    ...(off ? disabledStyle : onStyle),
+                    cursor: off ? 'default' : 'pointer',
+                  }}>선택 노드에 삽입</button>
               </>
             );
           })()}

@@ -36,40 +36,42 @@ const Icon = ({
 type P = Partial<IconProps>;
 
 export const I = {
-  // EasyMindMap 로고 (2026-08-03 브랜드 로고 교체 — 사용자 제공 도안의
-  // SVG 재현): 흰 바탕 + 주황 그라디언트 'e' 링(MarkDown) + 오른쪽
-  // 마인드맵 트리. 뷰어 헤더·파비콘(exportHtml.ts LOGO_SVG)·index.html
-  // 파비콘과 같은 도안 — 바꿀 때 세 곳을 함께 바꾼다.
+  // EasyMindMap 로고 (2026-08 v2 — 원본 1024px 도안 실측 재현): 흰 바탕
+  // + 주황 그라디언트 'e' 링(크로스바가 링 안쪽으로 진입) + MarkDown 글자
+  // + 오른쪽 마인드맵 트리. 뷰어·파비콘(exportHtml.ts LOGO_SVG)·index.html
+  // 파비콘·docs/assets/brand/logo.svg와 같은 도안 — 바꿀 때 네 곳을 함께
+  // 바꾼다 (docs/assets/brand/brand-logo.md).
   Logo: (p: P = {}) => (
     <svg
       width={p.size || 22}
       height={p.size || 22}
-      viewBox="0 0 96 96"
+      viewBox="0 0 1024 1024"
       fill="none"
       {...(p as any)}
     >
       <defs>
-        <linearGradient id="emm-logo-g" x1="0" y1="0" x2="0.35" y2="1">
-          <stop offset="0" stopColor="#F2B01E" />
-          <stop offset="0.55" stopColor="#EC8B10" />
-          <stop offset="1" stopColor="#DF5F0D" />
+        <linearGradient id="emm-logo-g" x1="0.35" y1="0" x2="0.25" y2="1">
+          <stop offset="0" stopColor="#F0AC1F" />
+          <stop offset="0.5" stopColor="#EC8B10" />
+          <stop offset="1" stopColor="#E1650D" />
         </linearGradient>
       </defs>
-      <rect width="96" height="96" rx="18" fill="#FFFFFF" />
-      <path d="M 56 48 A 26 26 0 1 0 46.7 67.9" stroke="url(#emm-logo-g)" strokeWidth="10" fill="none" strokeLinecap="round" />
-      <line x1="46" y1="48" x2="56" y2="48" stroke="url(#emm-logo-g)" strokeWidth="10" strokeLinecap="round" />
-      <text x="31" y="45" textAnchor="middle" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="14" fill="#5C3B25">Mark</text>
-      <text x="32" y="64" textAnchor="middle" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="14" fill="#5C3B25">Down</text>
-      <circle cx="53" cy="60" r="5" fill="url(#emm-logo-g)" />
-      <path d="M 56 60 C 63 60 61 50 68 50" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />
-      <path d="M 56 60 C 63 60 61 70 68 70" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />
-      <path d="M 68 50 L 68 22 M 68 22 L 76 22 M 68 36 L 76 36 M 68 50 L 76 50" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />
-      <path d="M 68 70 L 68 84 M 68 70 L 76 70 M 68 84 L 76 84" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />
-      <circle cx="81" cy="22" r="5" fill="url(#emm-logo-g)" />
-      <circle cx="81" cy="36" r="5" fill="url(#emm-logo-g)" />
-      <circle cx="81" cy="50" r="5" fill="url(#emm-logo-g)" />
-      <circle cx="81" cy="70" r="5" fill="url(#emm-logo-g)" />
-      <circle cx="81" cy="84" r="5" fill="url(#emm-logo-g)" />
+      <rect width="1024" height="1024" fill="#FFFFFF" />
+      <path d="M 545 470 A 212 212 0 1 0 445 727" stroke="url(#emm-logo-g)" strokeWidth="56" strokeLinecap="butt" />
+      <path d="M 468 470 L 585 470" stroke="url(#emm-logo-g)" strokeWidth="56" strokeLinecap="butt" />
+      <text x="225" y="506" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="104" fill="#5C3B25">Mark</text>
+      <text x="200" y="631" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="104" fill="#5C3B25">Down</text>
+      <circle cx="515" cy="595" r="36" fill="url(#emm-logo-g)" />
+      <path d="M 549 595 C 645 595 628 470 700 470 L 812 470" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" />
+      <path d="M 549 595 C 645 595 628 700 700 700 L 812 700" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" />
+      <path d="M 735 470 L 735 244 L 812 244" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M 735 356 L 812 356" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" />
+      <path d="M 735 700 L 735 830 L 812 830" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="850" cy="244" r="36" fill="url(#emm-logo-g)" />
+      <circle cx="850" cy="356" r="36" fill="url(#emm-logo-g)" />
+      <circle cx="850" cy="470" r="36" fill="url(#emm-logo-g)" />
+      <circle cx="850" cy="700" r="36" fill="url(#emm-logo-g)" />
+      <circle cx="850" cy="830" r="36" fill="url(#emm-logo-g)" />
     </svg>
   ),
 

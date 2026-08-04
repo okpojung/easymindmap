@@ -168,29 +168,32 @@ function toExportNode(
   };
 }
 
-// EasyMindMap 로고 — 에디터 I.Logo(components/icons)와 같은 도안.
-// 뷰어 헤더 아이콘 + 브라우저 파비콘(data URL)으로 쓰인다.
+// EasyMindMap 로고 (2026-08 v2 — 원본 1024px 도안 실측 재현) — 에디터
+// I.Logo(components/icons)·index.html 파비콘·docs/assets/brand/logo.svg와
+// 같은 도안. 뷰어 헤더 아이콘 + 브라우저 파비콘(data URL)으로 쓰인다.
+// 바꿀 때 네 곳을 함께 바꾼다 (docs/assets/brand/brand-logo.md).
 const LOGO_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">'
-  + '<defs><linearGradient id="emmlg" x1="0" y1="0" x2="0.35" y2="1">'
-  + '<stop offset="0" stop-color="#F2B01E"/><stop offset="0.55" stop-color="#EC8B10"/>'
-  + '<stop offset="1" stop-color="#DF5F0D"/>'
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">'
+  + '<defs><linearGradient id="emmlg" x1="0.35" y1="0" x2="0.25" y2="1">'
+  + '<stop offset="0" stop-color="#F0AC1F"/><stop offset="0.5" stop-color="#EC8B10"/>'
+  + '<stop offset="1" stop-color="#E1650D"/>'
   + '</linearGradient></defs>'
-  + '<rect width="96" height="96" rx="18" fill="#FFFFFF"/>'
-  + '<path d="M 56 48 A 26 26 0 1 0 46.7 67.9" stroke="url(#emmlg)" stroke-width="10" fill="none" stroke-linecap="round"/>'
-  + '<line x1="46" y1="48" x2="56" y2="48" stroke="url(#emmlg)" stroke-width="10" stroke-linecap="round"/>'
-  + '<text x="31" y="45" text-anchor="middle" font-family="Pretendard,sans-serif" font-weight="800" font-size="14" fill="#5C3B25">Mark</text>'
-  + '<text x="32" y="64" text-anchor="middle" font-family="Pretendard,sans-serif" font-weight="800" font-size="14" fill="#5C3B25">Down</text>'
-  + '<circle cx="53" cy="60" r="5" fill="url(#emmlg)"/>'
-  + '<path d="M 56 60 C 63 60 61 50 68 50" stroke="url(#emmlg)" stroke-width="4" fill="none" stroke-linecap="round"/>'
-  + '<path d="M 56 60 C 63 60 61 70 68 70" stroke="url(#emmlg)" stroke-width="4" fill="none" stroke-linecap="round"/>'
-  + '<path d="M 68 50 L 68 22 M 68 22 L 76 22 M 68 36 L 76 36 M 68 50 L 76 50" stroke="url(#emmlg)" stroke-width="4" fill="none" stroke-linecap="round"/>'
-  + '<path d="M 68 70 L 68 84 M 68 70 L 76 70 M 68 84 L 76 84" stroke="url(#emmlg)" stroke-width="4" fill="none" stroke-linecap="round"/>'
-  + '<circle cx="81" cy="22" r="5" fill="url(#emmlg)"/>'
-  + '<circle cx="81" cy="36" r="5" fill="url(#emmlg)"/>'
-  + '<circle cx="81" cy="50" r="5" fill="url(#emmlg)"/>'
-  + '<circle cx="81" cy="70" r="5" fill="url(#emmlg)"/>'
-  + '<circle cx="81" cy="84" r="5" fill="url(#emmlg)"/>'
+  + '<rect width="1024" height="1024" fill="#FFFFFF"/>'
+  + '<path d="M 545 470 A 212 212 0 1 0 445 727" stroke="url(#emmlg)" stroke-width="56" stroke-linecap="butt"/>'
+  + '<path d="M 468 470 L 585 470" stroke="url(#emmlg)" stroke-width="56" stroke-linecap="butt"/>'
+  + '<text x="225" y="506" font-family="Pretendard,sans-serif" font-weight="800" font-size="104" fill="#5C3B25">Mark</text>'
+  + '<text x="200" y="631" font-family="Pretendard,sans-serif" font-weight="800" font-size="104" fill="#5C3B25">Down</text>'
+  + '<circle cx="515" cy="595" r="36" fill="url(#emmlg)"/>'
+  + '<path d="M 549 595 C 645 595 628 470 700 470 L 812 470" stroke="url(#emmlg)" stroke-width="28" stroke-linecap="round"/>'
+  + '<path d="M 549 595 C 645 595 628 700 700 700 L 812 700" stroke="url(#emmlg)" stroke-width="28" stroke-linecap="round"/>'
+  + '<path d="M 735 470 L 735 244 L 812 244" stroke="url(#emmlg)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>'
+  + '<path d="M 735 356 L 812 356" stroke="url(#emmlg)" stroke-width="28" stroke-linecap="round"/>'
+  + '<path d="M 735 700 L 735 830 L 812 830" stroke="url(#emmlg)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>'
+  + '<circle cx="850" cy="244" r="36" fill="url(#emmlg)"/>'
+  + '<circle cx="850" cy="356" r="36" fill="url(#emmlg)"/>'
+  + '<circle cx="850" cy="470" r="36" fill="url(#emmlg)"/>'
+  + '<circle cx="850" cy="700" r="36" fill="url(#emmlg)"/>'
+  + '<circle cx="850" cy="830" r="36" fill="url(#emmlg)"/>'
   + '</svg>';
 
 // The read-only viewer that runs inside the exported file. Plain ES5-ish JS,

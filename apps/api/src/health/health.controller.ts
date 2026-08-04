@@ -32,6 +32,8 @@ const REQUIRED_COLUMNS = [
   'users.quota_bytes', // B9 저장 용량 쿼터
   'map_document_versions.node_count', // 히스토리 상세 정보 (2026-08-03)
   'map_document_versions.attach_count', // 히스토리 첨부 개수 (2026-08-03 2차)
+  'map_documents.node_count', // 문서함 목록 상세 (2026-08-05)
+  'map_documents.attach_bytes', // 문서함 목록 상세 (2026-08-05)
 ] as const;
 
 /**

@@ -103,7 +103,10 @@ export class MapsService {
     userId: string,
     opts: {
       deleted?: boolean; page?: number; limit?: number;
-      folder?: string; sort?: 'title' | 'updatedAt'; order?: 'asc' | 'desc';
+      folder?: string;
+      sort?: 'title' | 'createdAt' | 'updatedAt'
+        | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
+      order?: 'asc' | 'desc';
     },
   ) {
     const page = Math.max(1, opts.page ?? 1);
@@ -112,27 +115,47 @@ export class MapsService {
     const wantDeleted = opts.deleted === true;
 
     const params: unknown[] = [userId];
-    let where = `owner_id = $1 AND deleted_at IS ${wantDeleted ? 'NOT NULL' : 'NULL'}`;
+    let where = `m.owner_id = $1 AND m.deleted_at IS ${wantDeleted ? 'NOT NULL' : 'NULL'}`;
     if (opts.folder === 'root') {
-      where += ' AND folder_id IS NULL';
+      where += ' AND m.folder_id IS NULL';
     } else if (opts.folder) {
       params.push(opts.folder);
-      where += ` AND folder_id = $${params.length}`;
+      where += ` AND m.folder_id = $${params.length}`;
     }
 
     // 정렬 컬럼은 화이트리스트로만 — 문자열 결합에 사용자 입력을 넣지 않는다
-    const sortCol = opts.sort === 'title' ? 'lower(btrim(title))' : 'updated_at';
+    // (2026-08-05 문서함 목록 상세: 생성일·노드 수·문서 크기·첨부 정렬 추가)
+    const SORT_SQL: Record<string, string> = {
+      title: 'lower(btrim(m.title))',
+      createdAt: 'm.created_at',
+      updatedAt: 'm.updated_at',
+      nodeCount: 'd.node_count',
+      docBytes: 'octet_length(d.doc::text)',
+      attachCount: 'd.attach_count',
+      attachBytes: 'd.attach_bytes',
+    };
+    const sortCol = SORT_SQL[opts.sort ?? 'updatedAt'] ?? 'm.updated_at';
     const dir = opts.order === 'asc' ? 'ASC' : 'DESC';
 
     const [list, count] = await Promise.all([
-      this.db.query<MapRow>(
-        `SELECT * FROM public.maps WHERE ${where}
-         ORDER BY ${sortCol} ${dir}, id
-         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      this.db.query<MapRow & {
+        created_at: Date;
+        node_count: number | null;
+        attach_count: number | null;
+        attach_bytes: string | null;
+        doc_bytes: string | null;
+      }>(
+        `SELECT m.*, d.node_count, d.attach_count, d.attach_bytes,
+                octet_length(d.doc::text) AS doc_bytes
+           FROM public.maps m
+           LEFT JOIN public.map_documents d ON d.map_id = m.id
+          WHERE ${where}
+          ORDER BY ${sortCol} ${dir} NULLS LAST, m.id
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset],
       ),
       this.db.query<{ total: string }>(
-        `SELECT COUNT(*)::text AS total FROM public.maps WHERE ${where}`,
+        `SELECT COUNT(*)::text AS total FROM public.maps m WHERE ${where}`,
         params,
       ),
     ]);
@@ -144,7 +167,13 @@ export class MapsService {
         folderId: m.folder_id,
         kind: m.kind,
         deletedAt: m.deleted_at,
+        createdAt: m.created_at,
         updatedAt: m.updated_at,
+        // 스키마 미적용·저장 전 맵은 null — 프런트가 '—' 로 표시
+        nodeCount: m.node_count,
+        docBytes: m.doc_bytes === null ? null : Number(m.doc_bytes),
+        attachCount: m.attach_count,
+        attachBytes: m.attach_bytes === null ? null : Number(m.attach_bytes),
       })),
       total: Number(count.rows[0]?.total ?? 0),
     };
@@ -271,12 +300,55 @@ export class MapsService {
       newBytes - Number(cur[0]?.b ?? 0) + (keepVersion && !skipVersion ? newBytes : 0);
     if (delta > 0) await this.attachments.assertQuota(userId, delta);
 
+    // 문서 통계 (2026-08-05 문서함 목록 상세) — 저장 시점에 계산해
+    // map_documents 에 함께 기록한다. 목록 조회가 doc 파싱 없이 가볍다.
+    // (히스토리 버전(B8)도 같은 값을 쓴다 — 아래 keepVersion 분기)
+    interface SnapNode {
+      children?: SnapNode[];
+      attachments?: { url?: string }[];
+    }
+    const snap = doc as {
+      editor?: { layoutType?: string };
+      map?: { root?: SnapNode; branches?: SnapNode[] };
+    };
+    const countNodes = (ns: SnapNode[]): number =>
+      ns.reduce((a, n) => a + 1 + countNodes(n.children ?? []), 0);
+    const nodeCount = 1 + countNodes(snap.map?.branches ?? []); // +1 = 중심 주제
+    // 첨부 개수·용량 — 개수는 문서의 attachments 항목 전부, 용량 =
+    // 내장(data URL, base64 → 원본 크기 환산) + 서버 저장소 합.
+    // blob:(비로그인 세션 한정)은 개수에만 잡히고 용량은 0 이다.
+    let attachCount = 0;
+    let embeddedBytes = 0;
+    const walkAttachments = (n: SnapNode) => {
+      for (const a of n.attachments ?? []) {
+        attachCount += 1;
+        if (a.url?.startsWith('data:')) {
+          const comma = a.url.indexOf(',');
+          embeddedBytes += Math.floor(((a.url.length - comma - 1) * 3) / 4);
+        }
+      }
+      for (const c of n.children ?? []) walkAttachments(c);
+    };
+    if (snap.map?.root) walkAttachments(snap.map.root);
+    for (const b of snap.map?.branches ?? []) walkAttachments(b);
+    const { rows: ab } = await this.db.query<{ b: string }>(
+      `SELECT COALESCE(SUM(size_bytes), 0) AS b
+         FROM public.attachments WHERE map_id = $1`,
+      [mapId],
+    );
+    const attachBytes = embeddedBytes + Number(ab[0]?.b ?? 0);
+
     const { rows } = await this.db.query<{ updated_at: Date }>(
-      `INSERT INTO public.map_documents (map_id, doc)
-       VALUES ($1, $2::jsonb)
-       ON CONFLICT (map_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = NOW()
+      `INSERT INTO public.map_documents
+         (map_id, doc, node_count, attach_count, attach_bytes)
+       VALUES ($1, $2::jsonb, $3, $4, $5)
+       ON CONFLICT (map_id) DO UPDATE
+         SET doc = EXCLUDED.doc, updated_at = NOW(),
+             node_count = EXCLUDED.node_count,
+             attach_count = EXCLUDED.attach_count,
+             attach_bytes = EXCLUDED.attach_bytes
        RETURNING updated_at`,
-      [mapId, docJson],
+      [mapId, docJson, nodeCount, attachCount, attachBytes],
     );
     // 제목은 **달라졌을 때만** 갱신하고, 그때는 중복 검사도 거친다.
     // 서버 맵을 열어 편집한 뒤 저장하면 프런트가 "열었던 그 이름"을 그대로
@@ -300,46 +372,10 @@ export class MapsService {
     // 시점에 계산해 함께 기록한다 — 목록 조회가 doc 파싱 없이 가볍다.
     let version: number | undefined;
     if (keepVersion && !skipVersion) {
-      interface SnapNode {
-        children?: SnapNode[];
-        attachments?: { url?: string }[];
-      }
-      const snap = doc as {
-        editor?: { layoutType?: string };
-        map?: { root?: SnapNode; branches?: SnapNode[] };
-      };
-      const countNodes = (ns: SnapNode[]): number =>
-        ns.reduce((a, n) => a + 1 + countNodes(n.children ?? []), 0);
-      const nodeCount = 1 + countNodes(snap.map?.branches ?? []); // +1 = 중심 주제
       const layoutType =
         typeof snap.editor?.layoutType === 'string'
           ? snap.editor.layoutType.slice(0, 50)
           : null;
-      // 첨부 개수·용량 (2026-08-03) — 개수는 문서의 attachments 항목
-      // 전부, 용량 = 내장(data URL, base64 → 원본 크기 환산) + 서버
-      // 저장소(attachments 테이블 합). blob:(비로그인 세션 한정)은
-      // 개수에만 잡히고 용량은 알 수 없어 0 이다.
-      let attachCount = 0;
-      let embeddedBytes = 0;
-      const walkAttachments = (n: SnapNode) => {
-        for (const a of n.attachments ?? []) {
-          attachCount += 1;
-          if (a.url?.startsWith('data:')) {
-            const comma = a.url.indexOf(',');
-            embeddedBytes += Math.floor(((a.url.length - comma - 1) * 3) / 4);
-          }
-        }
-        for (const c of n.children ?? []) walkAttachments(c);
-      };
-      if (snap.map?.root) walkAttachments(snap.map.root);
-      for (const b of snap.map?.branches ?? []) walkAttachments(b);
-      const { rows: ab } = await this.db.query<{ b: string }>(
-        `SELECT COALESCE(SUM(size_bytes), 0) AS b
-           FROM public.attachments WHERE map_id = $1`,
-        [mapId],
-      );
-      const attachBytes = embeddedBytes + Number(ab[0]?.b ?? 0);
-
       const { rows: vr } = await this.db.query<{ version: number }>(
         `INSERT INTO public.map_document_versions
            (map_id, version, title, doc, created_by,

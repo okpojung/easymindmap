@@ -8,7 +8,7 @@
 //  - 방금 "열기/저장"으로 문서가 바뀐 직후에는 잠깐 억제(suppress)해
 //    불필요한 재저장을 막는다.
 import { useEffect } from 'react';
-import { useDocumentStore } from '@/stores/documentStore';
+import { useDocumentStore, isDocumentEmpty, EMPTY_MAP_TITLE } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
@@ -22,12 +22,20 @@ let rerun = false;
 let skipNextChange = false;
 
 /**
- * 바로 다음 "맵 변경" 1건만 자동저장에서 제외한다. 열기(loadMap)로 문서를
- * 통째로 교체한 직후, 방금 불러온 그 문서를 곧바로 되쓰지 않기 위함.
- * (수동 저장은 맵을 바꾸지 않으므로 호출할 필요가 없다.)
+ * 바로 다음 "맵 변경" 1건만 자동저장에서 제외하고, **이미 예약된 저장
+ * (디바운스 타이머·재실행 예약)도 모두 취소**한다. 열기(loadMap)·닫기
+ * (closeMap)·연결 해제(detach)처럼 문서를 통째로 바꾸는 전환 지점에서
+ * 부른다.
+ *
+ * 2026-08-04 유실 보고: 이전에는 skip 플래그만 세웠다 — 전환 직전에
+ * 예약돼 있던 타이머·rerun 이 전환 **후의** 문서(예: 맵 닫기의
+ * '문서 없음' 플레이스홀더)를 이전 맵에 저장할 수 있었다.
  */
 export function suppressCloudAutosave(): void {
   skipNextChange = true;
+  window.clearTimeout(timer);
+  timer = undefined;
+  rerun = false;
 }
 
 // mapSession.buildSnapshot 과 같은 v2 형태 — mapSession 이 이 파일의
@@ -46,6 +54,11 @@ async function doSave() {
   const cloud = useCloudStore.getState();
   const mapId = cloud.cloudMapId;
   if (!mapId) return;
+  // 빈 문서·'문서 없음' 플레이스홀더는 자동저장하지 않는다 (최후의
+  // 방어선, 2026-08-04 유실 보고) — 이 상태가 서버 맵에 쓰이면 저장해
+  // 둔 내용이 통째로 사라진다. 맵을 정말 비우고 싶으면 수동 ☁ 저장.
+  const doc = useDocumentStore.getState().map;
+  if (isDocumentEmpty(doc) || doc.title === EMPTY_MAP_TITLE) return;
   if (saving) { rerun = true; return; }
   saving = true;
   useAutosaveStore.getState().setSaveState('saving');
@@ -54,16 +67,28 @@ async function doSave() {
     // 바꿔 버리면 "열었던 이름 그대로 저장" 규칙이 깨진다 (2026-08-02).
     const title = useCloudStore.getState().cloudTitle ?? undefined;
     const res = await cloudApi.saveDocument(mapId, snapshot(), title);
-    useCloudStore.getState().link(mapId, res.updatedAt);
-    useAutosaveStore.getState().setSaveState('saved');
+    // 응답이 오는 사이 맵이 닫혔거나(unlink) 다른 맵으로 바뀌었으면
+    // 링크를 되살리지 않는다 — 이전에는 무조건 link 해서, 닫은 맵의
+    // 연결이 부활한 상태에서 rerun 이 '문서 없음' 플레이스홀더를 그
+    // 맵에 저장하는 유실 경로가 있었다 (2026-08-04 실사용 보고).
+    if (useCloudStore.getState().cloudMapId === mapId) {
+      useCloudStore.getState().link(mapId, res.updatedAt);
+      useAutosaveStore.getState().setSaveState('saved');
+    }
   } catch (err) {
-    useAutosaveStore.getState().setSaveState('error');
-    useCloudStore.getState().setError(
-      err instanceof CloudError ? err.message : '자동 저장 실패',
-    );
+    if (useCloudStore.getState().cloudMapId === mapId) {
+      useAutosaveStore.getState().setSaveState('error');
+      useCloudStore.getState().setError(
+        err instanceof CloudError ? err.message : '자동 저장 실패',
+      );
+    }
   } finally {
     saving = false;
-    if (rerun) { rerun = false; void doSave(); }
+    // rerun 도 같은 맵에 여전히 연결돼 있을 때만 의미가 있다
+    if (rerun) {
+      rerun = false;
+      if (useCloudStore.getState().cloudMapId === mapId) void doSave();
+    }
   }
 }
 
@@ -71,8 +96,12 @@ export function useCloudAutosave(): void {
   useEffect(() => {
     const unsub = useDocumentStore.subscribe((state, prev) => {
       if (state.map === prev.map) return; // 맵 변경일 때만
+      // skip 소모를 연결 여부 검사보다 먼저 — "다음 맵 변경 1건 제외"
+      // 약속과 일치시킨다. 이전 순서(연결 검사 먼저)에서는 미연결 상태의
+      // 변경이 skip 을 소모하지 않아 플래그가 남았고, 그 잔존 플래그가
+      // 나중의 진짜 편집 1건을 조용히 삼켰다 (2026-08-04 점검).
+      if (skipNextChange) { skipNextChange = false; return; }
       if (!useCloudStore.getState().cloudMapId) return; // 미연결이면 무시
-      if (skipNextChange) { skipNextChange = false; return; } // 열기 직후 1건 제외
       useAutosaveStore.getState().setSaveState('dirty');
       window.clearTimeout(timer);
       timer = window.setTimeout(() => void doSave(), DEBOUNCE_MS);

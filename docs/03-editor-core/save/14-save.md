@@ -1,10 +1,11 @@
 # 14. Save
 ## SAVE
 
-* 문서 버전: v2.0
+* 문서 버전: v2.1
 * 작성일: 2026-04-16
 * 최종 업데이트: 2026-08-04
 * 변경 이력:
+  * v2.1 — 자동저장 유실 가드 4중(§7.1) 신설: 실사용 보고(저장한 맵이 재로그인 후 '중심 주제만' 남는 유실)의 원인 = 맵 전환 레이스 수정.
   * v2.0 — 실제 구현 기준 현행화: Patch 저장 → **전체 스냅샷 `PUT /maps/:id/document`**, 800ms 이원화 → **1500ms 단일 디바운스**, patchId/Redis 멱등성·baseVersion 3단계 충돌·재시도/backoff·localStorage 백업 → 미채택/미구현으로 강등, 충돌 = **단일 세션 편집 잠금(map_edit_locks)**, 무변경 스킵 + buildSnapshot 정규화 절 신설, §12 를 실제 서버 7단계로 재작성.
   * v1.1 — NodePatch op 명칭을 api-spec.md v2.3 기준(`add`/`update`/`delete`/`move`)으로 통일 (CON-001 정합성 보정)
 * 참조: `docs/01-product/functional-spec.md § SAVE`, `docs/03-editor-core/history/12-history-undo-redo.md`, `docs/03-editor-core/history/13-version-history.md`
@@ -200,6 +201,32 @@ saveState = 'saved' (실패 시 'error')
 * **오프라인 큐 누적 → 온라인 복귀 순차 전송**: [미구현 — 백로그]
 * **`beforeunload` 즉시 flush**: [미구현 — 백로그] — 디바운스 창(1.5초) 안에 탭을 닫으면 마지막 변경이 유실될 수 있다
 * **localStorage 임시 백업 + 복구 버튼**: [미구현 — 백로그]
+
+#### 7.1 자동저장 유실 가드 4중 (2026-08-04 실사용 보고)
+
+증상: 저장해 둔 맵(예: AI 답변으로 만든 맵)이 재로그인 후 **'문서 없음'
+/중심 주제만** 남는 유실. 재구성한 경로 — ① 편집으로 디바운스 타이머
+예약 → ② 맵 닫기·웹AI 새 맵(detach)으로 문서 전환 → ③ 그 사이 진행
+중이던 doSave 응답이 **무조건 link() 로 이전 맵 연결을 부활**시키고 →
+④ 예약돼 있던 rerun 이 부활한 연결로 **전환 후의 문서(플레이스홀더)를
+이전 맵에 저장**. `useCloudAutosave.ts` 에 4중 가드로 봉쇄:
+
+1. **suppressCloudAutosave 가 예약도 취소** — skip 플래그만 세우던 것을
+   `clearTimeout(timer)` + `rerun=false` 까지. 전환 직전 예약분이 전환
+   후 문서를 쏘지 못한다.
+2. **빈 문서·'문서 없음' 플레이스홀더는 자동저장 거부** (doSave 최후
+   방어선). 맵을 정말 비우려면 수동 ☁ 저장.
+3. **doSave 시작 시 mapId 캡처** — 응답 후 `cloudMapId === mapId` 일
+   때만 link/에러 표시/rerun. 닫은 맵의 연결이 부활하지 않는다.
+4. **subscribe 에서 skip 소모를 연결 검사보다 먼저** — 미연결 상태의
+   변경이 skip 을 소모하지 않아 플래그가 남던 잔존 버그 제거.
+
+검증: e2e96 [3] — 서버 맵 편집(타이머 예약) 직후 웹AI 새 맵 전환,
+이전 맵의 `map_documents` 내용·updated_at 무변화 확인.
+
+복구 안내: 자동저장은 히스토리 버전을 만들지 않으므로, 유실된 맵도
+**명시 저장 시점의 버전이 히스토리에 남아 있을 가능성이 높다** —
+히스토리 패널에서 해당 버전을 "새 탭으로" 열어 복구한다.
 
 ---
 

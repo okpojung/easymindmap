@@ -25,7 +25,26 @@ import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/
 import { folderPath } from './folderTree';
 import { FolderPickerDialog } from './FolderPickerDialog';
 
-type SortKey = 'title' | 'updatedAt';
+type SortKey = 'title' | 'createdAt' | 'updatedAt'
+  | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
+
+// 바이트 → 사람이 읽는 단위 (KB/MB/GB). null(통계 도입 전 저장분)은 '—'
+function fmtBytes(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '—';
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)}MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)}GB`;
+}
+
+// 날짜 — 목록 폭에 맞춘 짧은 표기 (YYYY.M.D HH:mm — 브라우저 로캘과
+// 무관하게 항상 같은 형태)
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} ` +
+    `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 type SortOrder = 'asc' | 'desc';
 
 export function MapBrowser({
@@ -202,7 +221,7 @@ export function MapBrowser({
 
   const rowStyle: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: '28px 1fr 92px 150px 116px',
+    gridTemplateColumns: '24px minmax(120px, 1fr) 76px 106px 106px 44px 64px 40px 68px 104px',
     alignItems: 'center',
     gap: 8,
     padding: '7px 10px',
@@ -330,7 +349,12 @@ export function MapBrowser({
         <span />
         {th('이름', 'title')}
         <span>유형</span>
+        {th('생성일', 'createdAt')}
         {th('수정일', 'updatedAt')}
+        {th('노드', 'nodeCount')}
+        {th('크기', 'docBytes')}
+        {th('첨부', 'attachCount')}
+        {th('첨부 용량', 'attachBytes')}
         <span style={{ textAlign: 'right' }}>관리</span>
       </div>
 
@@ -349,9 +373,10 @@ export function MapBrowser({
               }}
             >{f.name}</button>
             <span style={{ color: t.textSubtle, fontSize: 11 }}>폴더</span>
-            <span style={{ color: t.textSubtle, fontSize: 11.5 }}>
+            <span style={{ color: t.textSubtle, fontSize: 11.5, gridColumn: 'span 2' }}>
               맵 {f.mapCount}개
             </span>
+            <span /><span /><span /><span />
             <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
               <button style={iconBtn} title="이름 변경" onClick={() => void renameFolder(f)}>✏</button>
               <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제 (비어 있을 때만)"
@@ -411,8 +436,24 @@ export function MapBrowser({
               >
                 {m.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'}
               </span>
-              <span style={{ color: t.textSubtle, fontSize: 11.5 }}>
-                {new Date(m.updatedAt).toLocaleString()}
+              <span style={{ color: t.textSubtle, fontSize: 11 }} title="최초 생성일">
+                {fmtDate(m.createdAt)}
+              </span>
+              <span style={{ color: t.textSubtle, fontSize: 11 }} title="마지막 수정일">
+                {fmtDate(m.updatedAt)}
+              </span>
+              <span style={{ color: t.textSubtle, fontSize: 11, textAlign: 'right' }}
+                title="노드 수 ('—'는 통계 도입 전 저장분 — 다음 저장 때 채워집니다)">
+                {m.nodeCount ?? '—'}
+              </span>
+              <span style={{ color: t.textSubtle, fontSize: 11, textAlign: 'right' }} title="문서 크기">
+                {fmtBytes(m.docBytes)}
+              </span>
+              <span style={{ color: t.textSubtle, fontSize: 11, textAlign: 'right' }} title="첨부파일 수">
+                {m.attachCount ?? '—'}
+              </span>
+              <span style={{ color: t.textSubtle, fontSize: 11, textAlign: 'right' }} title="첨부 총 용량">
+                {fmtBytes(m.attachBytes)}
               </span>
               <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                 <button style={iconBtn} title="이름 변경" onClick={() => void renameMap(m)}>✏</button>

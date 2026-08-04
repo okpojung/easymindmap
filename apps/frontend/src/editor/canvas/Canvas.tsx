@@ -43,6 +43,10 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 import { ChooserPopover } from './ChooserPopover';
 import { extractClipboardImage } from '@/utils/clipboardImage';
+import {
+  collectSubtrees, isNodeClipToken, stashNodes, takeStashed,
+} from '@/utils/nodeClipboard';
+import { reassignIds } from '@/utils/aiProjectContext';
 import { attachmentUrlForFile } from '@/utils/attachmentFile';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 
@@ -102,6 +106,7 @@ export function Canvas({
   const CY = H / 2;
 
   const addChildNode = useDocumentStore((state) => state.addChildNode);
+  const appendChildren = useDocumentStore((state) => state.appendChildren);
   const addSiblingNode = useDocumentStore((state) => state.addSiblingNode);
   const addParentNode = useDocumentStore((state) => state.addParentNode);
   const deleteNode = useDocumentStore((state) => state.deleteNode);
@@ -596,6 +601,22 @@ export function Canvas({
       const dt = e.clipboardData;
       if (!dt) return;
 
+      // 노드 복사(Ctrl+C, 아래 keydown) 붙여넣기 — 내부 클립보드의
+      // 서브트리들을 **선택 노드의 하위로** 붙인다 (2026-08-04 보고:
+      // 멀티선택 복사가 텍스트 경로로 빠져 이상한 내용이 붙던 버그).
+      const maybeToken = (dt.getData('text/plain') ?? '').trim();
+      if (isNodeClipToken(maybeToken)) {
+        e.preventDefault();
+        const copied = takeStashed(maybeToken);
+        if (copied?.length) {
+          appendChildren(selectedId, reassignIds(copied as never) as never);
+          selectOne(selectedId);
+        }
+        // 토큰인데 스택이 없으면(새로고침 뒤 등) 조용히 무시 — 토큰
+        // 문자열이 노드 텍스트로 붙는 것을 막는다
+        return;
+      }
+
       const hasImgFile = Array.from(dt.files ?? []).some((f) =>
         f.type.startsWith('image/'),
       );
@@ -648,6 +669,25 @@ export function Canvas({
       if (isEditingText) return;
 
       const mod = e.ctrlKey || e.metaKey;
+
+      // ── 노드 복사 (Ctrl+C) — 러버밴드 다중 선택/단일 선택의 서브트리를
+      // 내부 클립보드에 담고, 시스템 클립보드에는 토큰만 쓴다. 붙여넣기
+      // (Ctrl+V)는 위 handlePaste 가 토큰을 알아보고 선택 노드의 하위로
+      // 붙인다 (2026-08-04 보고 수정).
+      if (mod && (e.key === 'c' || e.key === 'C')) {
+        const ids = multiSelectedIds.length > 1
+          ? multiSelectedIds
+          : selectedId && selectedId !== 'root' ? [selectedId] : [];
+        if (!ids.length) return; // 복사할 노드 없음 — 브라우저 기본 동작
+        // 캔버스에서 텍스트를 드래그 선택한 상태면 텍스트 복사를 우선
+        if ((window.getSelection()?.toString() ?? '').trim()) return;
+        e.preventDefault();
+        const subtrees = collectSubtrees(useDocumentStore.getState().map, ids);
+        if (!subtrees.length) return;
+        const token = stashNodes(subtrees);
+        void navigator.clipboard?.writeText?.(token).catch(() => { /* http 등 */ });
+        return;
+      }
 
       // Undo / redo (in-memory, no DB)
       if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {

@@ -20,6 +20,7 @@ import { NodeRichText } from '@/editor/node-renderer/RichTextHtml';
 import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { readableTextOn } from '@/editor/node-renderer/resolveNodeColors';
 import { extractClipboardImage } from '@/utils/clipboardImage';
+import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 
@@ -460,8 +461,33 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
     if (id) selectCard(id);
   };
 
+  // 우상단 보기 도구 (2026-08-04 보고 — 칸반에는 도구가 하나도 없었다).
+  // 스크롤과 함께 떠내려가지 않게 바깥 래퍼(비스크롤)에 붙이고, 보드는
+  // 안쪽 스크롤 컨테이너로 분리한다.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollToSelected = () => {
+    const id = useInteractionStore.getState().selectedId;
+    if (!id) return;
+    const el =
+      scrollRef.current?.querySelector(`[data-kanban-card="${CSS.escape(id)}"]`) ??
+      scrollRef.current?.querySelector(`[data-kanban-col="${CSS.escape(id)}"]`);
+    el?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+  };
+  const scrollToOrigin = () => {
+    scrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  };
+
   return (
+    <div style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex' }}>
+      <CanvasFloatingToolbar
+        t={t}
+        kanban
+        hasSelection={!!selectedId}
+        onFitView={scrollToOrigin}
+        onFocusSelected={scrollToSelected}
+      />
     <div
+      ref={scrollRef}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -515,12 +541,21 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
               padding: 10,
             }}
           >
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '2px 6px 10px',
-              borderBottom: `1px solid ${t.divider}`,
-              marginBottom: 8,
-            }}>
+            {/* 컬럼 헤더 클릭 = 컬럼(주제) 노드 선택 (2026-08-04 보고 —
+                선택이 안 돼 Del 로 컬럼을 지울 수 없었다) */}
+            <div
+              data-kanban-colhead={col.id}
+              onClick={() => selectCard(col.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '2px 6px 10px',
+                borderBottom: `1px solid ${t.divider}`,
+                marginBottom: 8, cursor: 'pointer', borderRadius: 6,
+                outline: selectedId === col.id ? `2px solid ${t.primary}` : undefined,
+                outlineOffset: 2,
+              }}
+              title="클릭 = 컬럼 선택 (Del 로 삭제 가능) · 더블클릭 = 이름 편집"
+            >
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.color }} />
               <div style={{
                 fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0,
@@ -597,6 +632,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
           {ghost.title}
         </div>
       )}
+    </div>
     </div>
   );
 }

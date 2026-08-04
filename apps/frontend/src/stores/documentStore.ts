@@ -1103,8 +1103,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   newMap: (title = NEW_MAP_TITLE) => {
-    // 기본 맵 골격 = '트리-진행트리맵' 기본 템플릿 (2026-07 지정) —
-    // 중심 주제 + 주제 1~3 + 각 하위 주제 2개 + 내용 (4레벨).
+    // 기본 맵 골격 = '트리-진행트리맵' 기본 템플릿.
+    // 2026-08-04 축소(사용자 지정 이미지 기준, 11노드): 주제 1·2 =
+    // 하위 주제 1개 + 내용 2개, 주제 3 = 하위 주제 1개 — 골격이 너무
+    // 커서 지우는 일부터 하게 되던 문제.
     // 레벨별 레이아웃: 1레벨 트리·오른쪽(맵 전체 = NewMapPanel에서 설정) →
     // 2레벨 진행트리·오른쪽 → 3레벨 트리·오른쪽 → 4레벨 진행트리·오른쪽
     // (노드의 layoutType = 그 노드의 "자식" 배치 방식)
@@ -1116,16 +1118,17 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       colorKey: colorKeys[i],
       side: 'right' as const,
       layoutType: 'process-tree-right' as const,
-      children: [0, 1].map((j) => ({
-        id: `n-${now}-${i}-${j}`,
+      children: [{
+        id: `n-${now}-${i}-0`,
         text: '하위 주제',
         layoutType: 'tree-right' as const,
-        children: [{
-          id: `n-${now}-${i}-${j}-0`,
+        // 주제 3은 하위 주제까지만 (이미지 기준)
+        children: i === 2 ? undefined : [0, 1].map((k) => ({
+          id: `n-${now}-${i}-0-${k}`,
           text: '내용',
           layoutType: 'process-tree-right' as const,
-        }],
-      })),
+        })),
+      }],
     }));
     set({
       map: {

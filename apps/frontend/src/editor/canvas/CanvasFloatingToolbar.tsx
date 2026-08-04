@@ -15,9 +15,17 @@ interface Props {
   focusActive?: boolean;
   onFitView?: () => void;
   onFocusSelected?: () => void;
+  /**
+   * Kanban 보드 모드 (2026-08-04) — 뷰포트(pan·줌)와 접기가 없는 HTML
+   * 보드라 Pan·펼치기/접기 버튼은 숨기고, 중앙 보기/맞추기는 호출부가
+   * 스크롤로 구현한다. 노드 추가·삭제·전체화면은 동일.
+   */
+  kanban?: boolean;
 }
 
-export function CanvasFloatingToolbar({ t, hasSelection, focusActive, onFitView, onFocusSelected }: Props) {
+export function CanvasFloatingToolbar({
+  t, hasSelection, focusActive, onFitView, onFocusSelected, kanban,
+}: Props) {
   const selectedId = useInteractionStore((state) => state.selectedId);
   const setSelectedId = useInteractionStore((state) => state.setSelectedId);
   const addChildNode = useDocumentStore((state) => state.addChildNode);
@@ -88,17 +96,21 @@ export function CanvasFloatingToolbar({ t, hasSelection, focusActive, onFitView,
       <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
 
       <GroupLabel t={t}>보기</GroupLabel>
+      {!kanban && (
+        <ToolbarBtn
+          t={t}
+          title="Pan 모드 — 캔버스 끌기 (H)"
+          highlight={panMode}
+          onClick={togglePanMode}
+        >
+          <I.Hand size={15} />
+        </ToolbarBtn>
+      )}
       <ToolbarBtn
         t={t}
-        title="Pan 모드 — 캔버스 끌기 (H)"
-        highlight={panMode}
-        onClick={togglePanMode}
-      >
-        <I.Hand size={15} />
-      </ToolbarBtn>
-      <ToolbarBtn
-        t={t}
-        title={focusActive ? '선택 노드 보기 취소 — 맵 전체 보기' : '선택 노드 화면 중앙 보기 (Alt+F)'}
+        title={kanban
+          ? '선택 카드가 보이게 스크롤'
+          : focusActive ? '선택 노드 보기 취소 — 맵 전체 보기' : '선택 노드 화면 중앙 보기 (Alt+F)'}
         highlight={focusActive}
         disabled={!focusActive && !hasSelection}
         onClick={onFocusSelected}
@@ -106,22 +118,31 @@ export function CanvasFloatingToolbar({ t, hasSelection, focusActive, onFitView,
         {focusActive ? <I.FocusOff size={15} /> : <I.Focus size={15} />}
       </ToolbarBtn>
       {/* 모두 펼치기/접기 — HTML 뷰어의 +/− 아이콘과 동일 동작
-          (모두 접기 = 자식이 있는 2레벨 이하 노드를 전부 접는다) */}
+          (모두 접기 = 자식이 있는 2레벨 이하 노드를 전부 접는다).
+          칸반은 접기 개념이 없어 숨긴다. */}
+      {!kanban && (
+        <>
+          <ToolbarBtn
+            t={t}
+            title="모두 펼치기"
+            onClick={() => { expandAll(); onFitView?.(); }}
+          >
+            <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>+</span>
+          </ToolbarBtn>
+          <ToolbarBtn
+            t={t}
+            title="모두 접기 — 2레벨만 남기고 전부 접기"
+            onClick={() => { collapseAll(); onFitView?.(); }}
+          >
+            <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>−</span>
+          </ToolbarBtn>
+        </>
+      )}
       <ToolbarBtn
         t={t}
-        title="모두 펼치기"
-        onClick={() => { expandAll(); onFitView?.(); }}
+        title={kanban ? '보드 처음으로 (스크롤 원점)' : '맵 전체를 화면에 맞추기'}
+        onClick={onFitView}
       >
-        <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>+</span>
-      </ToolbarBtn>
-      <ToolbarBtn
-        t={t}
-        title="모두 접기 — 2레벨만 남기고 전부 접기"
-        onClick={() => { collapseAll(); onFitView?.(); }}
-      >
-        <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>−</span>
-      </ToolbarBtn>
-      <ToolbarBtn t={t} title="맵 전체를 화면에 맞추기" onClick={onFitView}>
         <I.Fit size={15} />
       </ToolbarBtn>
       <ToolbarBtn

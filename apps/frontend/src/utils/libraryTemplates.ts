@@ -48,45 +48,38 @@ const rootOf = (text: string): SampleMap['root'] =>
 // 3레벨 트리·오른쪽 → 4레벨 진행트리·오른쪽. (노드의 layoutType = 그 노드의
 // "자식" 배치 — 맵 전체 기본은 editor.layoutType이 1레벨 몫을 맡는다)
 // '새 맵 만들기'의 기본 골격(documentStore.newMap)도 이 구조로 시작한다.
+// 2026-08-04 골격 축소(사용자 지정 이미지 기준, 11노드): 주제 1·2 =
+// 하위 주제 1 + 내용 2, 주제 3 = 하위 주제 1 — documentStore.newMap 과 한 쌍.
 const treeProgressMap = (): SampleMap => ({
   title: '트리-진행트리맵',
   root: rootOf('중심 주제'),
   branches: [
     br('주제 1', 'l1A', 'right', [
       n('하위 주제', [n('내용', undefined, 'process-tree-right'), n('내용', undefined, 'process-tree-right')], 'tree-right'),
-      n('하위 주제', [n('내용', undefined, 'process-tree-right')], 'tree-right'),
     ], 'process-tree-right'),
     br('주제 2', 'l1B', 'right', [
       n('하위 주제', [n('내용', undefined, 'process-tree-right'), n('내용', undefined, 'process-tree-right')], 'tree-right'),
-      n('하위 주제', [n('내용', undefined, 'process-tree-right')], 'tree-right'),
     ], 'process-tree-right'),
     br('주제 3', 'l1C', 'right', [
-      n('하위 주제', [n('내용', undefined, 'process-tree-right')], 'tree-right'),
-      n('하위 주제', [n('내용', undefined, 'process-tree-right')], 'tree-right'),
+      n('하위 주제', undefined, 'tree-right'),
     ], 'process-tree-right'),
   ],
 });
 
 // ── 진행트리-트리맵 — 1레벨 진행트리·오른쪽 + 2레벨 트리·오른쪽 ─────────
 // ('새 맵 > 기본 맵'과 같은 뼈대를 라이브러리에 상시 제공 — 2026-07 요청)
+// 2026-08-04 골격 축소 — 트리-진행트리맵과 같은 11노드 뼈대(레이아웃만 반대)
 const progressTreeMap = (): SampleMap => ({
   title: '진행트리-트리맵',
   root: rootOf('중심 주제'),
   branches: [
     br('주제 1', 'l1A', 'right', [
-      n('하위 주제', [n('내용'), n('내용')]),
-      n('하위 주제', [n('내용'), n('내용')]),
-      n('하위 주제'),
+      n('하위 주제', [n('내용'), n('내용')], 'process-tree-right'),
     ], 'tree-right'),
     br('주제 2', 'l1B', 'right', [
-      n('하위 주제', [n('내용'), n('내용')]),
-      n('하위 주제'),
-      n('하위 주제'),
+      n('하위 주제', [n('내용'), n('내용')], 'process-tree-right'),
     ], 'tree-right'),
-    br('주제 3', 'l1C', 'right', [n('하위 주제'), n('하위 주제')], 'tree-right'),
-    br('주제 4', 'l1D', 'right', [n('하위 주제'), n('하위 주제'), n('하위 주제')], 'tree-right'),
-    br('주제 5', 'l1E', 'right', [n('하위 주제'), n('하위 주제'), n('하위 주제')], 'tree-right'),
-    br('주제 6', 'l1A', 'right', [n('하위 주제'), n('하위 주제')], 'tree-right'),
+    br('주제 3', 'l1C', 'right', [n('하위 주제', undefined, 'process-tree-right')], 'tree-right'),
   ],
 });
 
@@ -128,15 +121,16 @@ const wbsMap = (): SampleMap => ({
   ],
 });
 
-// ── Kanban 보드 — 백로그 → 완료 흐름 ────────────────────────────────────
+// ── Kanban 보드 — 주제 1~4 기본 보드 (2026-08-04 사용자 지정 이미지) ────
+// 각 컬럼(주제)에 하위 주제 카드 1개 + 그 아래 내용 2개.
 const kanbanMap = (): SampleMap => ({
   title: 'Kanban 보드',
   root: rootOf('Kanban 보드'),
   branches: [
-    br('백로그', 'l1E', 'right', [n('카드'), n('카드'), n('카드')]),
-    br('진행 중', 'l1A', 'right', [n('카드'), n('카드')]),
-    br('검토', 'l1B', 'right', [n('카드')]),
-    br('완료', 'l1C', 'right', [n('카드')]),
+    br('주제 1', 'l1A', 'right', [n('하위 주제', [n('내용'), n('내용')])]),
+    br('주제 2', 'l1B', 'right', [n('하위 주제', [n('내용'), n('내용')])]),
+    br('주제 3', 'l1C', 'right', [n('하위 주제', [n('내용'), n('내용')])]),
+    br('주제 4', 'l1D', 'right', [n('하위 주제', [n('내용'), n('내용')])]),
   ],
 });
 
@@ -195,7 +189,7 @@ export const LIBRARY_TEMPLATES: LibraryTemplate[] = [
   {
     id: 'lib-kanban',
     name: 'Kanban 보드',
-    desc: '백로그 → 완료 흐름',
+    desc: '주제 1~4 기본 보드',
     colors: ['#958A78', '#D97706', '#0284C7', '#15803D'],
     map: kanbanMap(),
     editor: { layoutType: 'kanban' },

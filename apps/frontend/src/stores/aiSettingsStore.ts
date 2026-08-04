@@ -95,7 +95,10 @@ export const useAiSettingsStore = create<AiSettingsState>()(
     }),
     {
       name: 'easymindmap-ai-settings',
-      version: 5,
+      version: 6,
+      // v5 → v6: 기본 템플릿 v4.1 승격 (규칙 6에 ASCII 아트 도식 금지 —
+      // AI가 코드 펜스에 상자 문자 계통도를 그려 넣어 노드에서 깨져
+      // 보이던 실사용 보고). v4 기본값 그대로인 사용자만 자동 승격.
       // v4 → v5: 기본 템플릿 v4 승격 (헤딩 6레벨 + 블록=노드 본문·A4
       // 안내 — 4레벨 제한이 정보량 보존과 충돌해 내용을 눌러 담던
       // 문제). v3 기본값을 그대로 쓰던 사용자만 자동 승격.

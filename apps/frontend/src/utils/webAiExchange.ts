@@ -103,10 +103,14 @@ export function answerToMap(source: string): AnswerMapOk | AnswerMapFail {
   const candidate = source.trim();
   if (!candidate) return { ok: false, reason: '붙여넣은 내용이 비어 있습니다.' };
 
-  const emm = parseEmm(candidate, 'AI 생성 맵');
+  // blockPlacement 'node' (2026-08-04) — 문단·코드·표를 숨은 노트가
+  // 아니라 **노드 본문**에 넣는다. MD 파일 불러오기 기본과 동일하고,
+  // 템플릿 v4 규칙 4("블록은 노드 본문에 표시된다")와 한 쌍이다.
+  const emm = parseEmm(candidate, 'AI 생성 맵', { blockPlacement: 'node' });
   if (emm) return { ok: true, map: emm, nodeCount: countMapNodes(emm) };
 
-  const imported = parseMarkdownMapFile(candidate, 'AI 생성 맵');
+  const imported = parseMarkdownMapFile(candidate, 'AI 생성 맵',
+    { blockPlacement: 'node' });
   if (imported) {
     return {
       ok: true,

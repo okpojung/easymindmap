@@ -146,7 +146,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     for (const candidate of mapSourceCandidates(answer)) {
       const body = candidate.replace(/^\s*#\s[^\n]*\n+/, '');
       const wrapped = `# ${selectedNode.text || '노드'}\n\n${body}`;
-      const parsed = parseEmm(wrapped, '확장');
+      const parsed = parseEmm(wrapped, '확장', { blockPlacement: 'node' });
       const found = parsed ? reassignIds(parsed.branches as never) : [];
       if (found.length) { kids = found; break; }
     }

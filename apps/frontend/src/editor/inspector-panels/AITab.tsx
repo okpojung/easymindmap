@@ -123,7 +123,9 @@ function GenerateView({ t }: { t: ThemeTokens }) {
         effective, keys[effective],
         models[effective] || DEFAULT_MODELS[effective], system, q,
       );
-      const map = parseEmm(md, 'AI 생성 맵');
+      // blockPlacement 'node' — 문단·코드·표를 노드 본문에 (웹 AI 모드
+      // answerToMap·MD 불러오기 기본과 동일, 템플릿 v4 규칙 4와 한 쌍)
+      const map = parseEmm(md, 'AI 생성 맵', { blockPlacement: 'node' });
       if (!map) {
         throw new Error('답변에서 마인드맵 구조를 인식하지 못했습니다 — 다시 시도해 보세요');
       }
@@ -169,7 +171,7 @@ function GenerateView({ t }: { t: ThemeTokens }) {
       // 타깃 제목으로 감싼 뒤 파싱해 그 자식(branches)을 꺼낸다.
       const body = md.trim().replace(/^\s*#\s[^\n]*\n+/, '');
       const wrapped = `# ${ctx.targetText}\n\n${body}`;
-      const parsed = parseEmm(wrapped, '확장');
+      const parsed = parseEmm(wrapped, '확장', { blockPlacement: 'node' });
       const kids = parsed ? reassignIds(parsed.branches as never) : [];
       if (!kids.length) {
         throw new Error('확장 결과에서 하위 구조를 인식하지 못했습니다 — 다시 시도해 보세요');

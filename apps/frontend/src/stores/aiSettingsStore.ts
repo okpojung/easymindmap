@@ -95,7 +95,10 @@ export const useAiSettingsStore = create<AiSettingsState>()(
     }),
     {
       name: 'easymindmap-ai-settings',
-      version: 4,
+      version: 5,
+      // v4 → v5: 기본 템플릿 v4 승격 (헤딩 6레벨 + 블록=노드 본문·A4
+      // 안내 — 4레벨 제한이 정보량 보존과 충돌해 내용을 눌러 담던
+      // 문제). v3 기본값을 그대로 쓰던 사용자만 자동 승격.
       // v1 → v2: 우선순위 필드 추가.
       // v2 → v3: 기본 템플릿 v3(2단계 작업 + 정보량 보존 규칙) 승격 +
       // 예전 "기본 모델"(gpt-4o-mini·gemini-2.0-flash)을 그대로 쓰던

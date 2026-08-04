@@ -10,6 +10,8 @@
 //   ```            ← 닫는 펜스 (없으면 텍스트 끝까지)
 // 빈 코드(줄 0)는 블록으로 만들지 않는다.
 
+import { cellWidth, lineCells } from '@/utils/monoGrid';
+
 export interface MdCodeParse {
   before: string; // 코드 앞 일반 텍스트 ('' 가능)
   after: string; // 코드 뒤 일반 텍스트 ('' 가능)
@@ -55,17 +57,11 @@ export function parseMdCode(text: string): MdCodeParse | null {
   return null;
 }
 
-// 모노스페이스 근사 폭 — CJK 1.0em, 그 외 0.62em (sizeNodeForText 근사와
-// 같은 사고. 실측은 뷰어/에디터 렌더 단계에서 같은 폰트로 그리므로
-// 근사 오차는 패널 패딩이 흡수한다)
+// 코드 폭 = **격자 칸 수 × 칸 폭** (utils/monoGrid). 렌더도 같은 격자에
+// 글자를 앉히므로 근사가 아니라 정확한 값이다 — 폰트 폴백 때문에 한글
+// 줄만 길이가 어긋나 도식이 깨지던 문제를 없앤다 (2026-08-05).
 function monoMeasure(s: string, fs: number): number {
-  let w = 0;
-  for (const ch of Array.from(s)) {
-    w += /[ᄀ-ᇿ⺀-꓏가-힣豈-﫿＀-￯]/.test(ch)
-      ? fs * 1.0
-      : fs * 0.62;
-  }
-  return w;
+  return lineCells(s) * cellWidth(fs);
 }
 
 // fontSize = 노드 본문 글자 크기 (코드는 -2, 최소 10 — 노트 코드와 동일 감)

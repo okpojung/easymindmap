@@ -444,6 +444,23 @@ const VIEWER_JS = String.raw`
   // 인라인 코드 렌더 색 — 에디터 inlineMarks.ts CODE_* 와 동일 (테마 무관 고정)
   var CODE_BG = '#ECEFF3', CODE_TEXT = '#334155';
   var CODE_FONT = "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace";
+  // 코드 격자 (utils/monoGrid 와 같은 규칙) — 글자마다 x 를 지정해
+  // 폰트 폴백과 무관하게 칸을 맞춘다. 한글·한자·가나·전각기호 = 2칸.
+  var WIDE_RE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]/;
+  var CELL_RATIO = 0.6;
+  function cellsOf(str) {
+    var n = 0;
+    for (var i = 0; i < str.length; i++) n += WIDE_RE.test(str[i]) ? 2 : 1;
+    return n;
+  }
+  function gridXAttr(str, fs, x0) {
+    var cw = fs * CELL_RATIO, col = 0, out = [];
+    for (var i = 0; i < str.length; i++) {
+      out.push(Math.round((x0 + col * cw) * 100) / 100);
+      col += WIDE_RE.test(str[i]) ? 2 : 1;
+    }
+    return out.join(' ');
+  }
   function parseInlineSegs(line) { return parseInlineSegsState(line).segs; }
 
   // ---- measure pass (bottom-up, per-layout block model) ----------------------
@@ -1102,10 +1119,11 @@ const VIEWER_JS = String.raw`
       cGapBelow = node._lines.length > cAt ? 6 : 0;
       cH = cHeadH + mdc.code.length * cLineH + CPY * 2;
       for (var cwi = 0; cwi < mdc.code.length; cwi++) {
-        cW = Math.max(cW, measureReal(mdc.code[cwi], cFs, 500, false, CODE_FONT));
+        // 격자 폭 — 에디터 mdCode.monoMeasure 와 같은 계산
+        cW = Math.max(cW, cellsOf(mdc.code[cwi]) * cFs * CELL_RATIO);
       }
       cW = Math.max(cW,
-        measureReal(mdc.lang || 'code', cHeadFs, 500, false, CODE_FONT) + cHeadFs * 7 + 16);
+        cellsOf(mdc.lang || 'code') * cHeadFs * CELL_RATIO + cHeadFs * 7 + 16);
       cW = Math.ceil(cW) + CPX * 2;
     }
     // 텍스트 중간 인라인 사진(기사 붙여넣기) — 에디터 layoutInlineImages와
@@ -1349,14 +1367,15 @@ const VIEWER_JS = String.raw`
         });
       })(mdc.code.join('\n'), copyT);
       for (var cli = 0; cli < mdc.code.length; cli++) {
+        var cLine = mdc.code[cli].replace(/ /g, '\u00A0');
         var cT = el('text', {
-          x: codeX + CPX,
+          x: gridXAttr(cLine, cFs, codeX + CPX),
           y: codeY + cHeadH + CPY + cli * cLineH + cLineH / 2 + cFs * 0.34,
           'text-anchor': 'start', 'font-size': cFs, fill: CODE_TEXT,
           'font-family': CODE_FONT
         }, g);
         cT.setAttribute('xml:space', 'preserve');
-        cT.textContent = mdc.code[cli].replace(/ /g, '\u00A0');
+        cT.textContent = cLine;
       }
     }
     if (flowBands) {

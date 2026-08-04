@@ -29,6 +29,7 @@ import {
 } from './sizeNodeForText';
 import { layoutMdTable, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
 import { layoutMdCode, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
+import { gridXAttr } from '@/utils/monoGrid';
 import {
   parseInlineMarks,
   parseInlineMarksWithState,
@@ -926,20 +927,26 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     <title>코드 복사</title>
                     {codeCopied ? '복사됨 ✓' : '⧉'}
                   </text>
-                  {mdCode.code.map((ln, ci) => (
-                    <text
-                      key={ci}
-                      x={cX + MD_CODE_PAD_X}
-                      y={bodyTop + MD_CODE_PAD_Y + ci * mdCode.lineH +
-                        mdCode.lineH / 2 + mdCode.codeFs * 0.34}
-                      textAnchor="start"
-                      fontSize={mdCode.codeFs}
-                      fill={CODE_TEXT}
-                      style={{ fontFamily: CODE_FONT, whiteSpace: 'pre' }}
-                    >
-                      {ln.replace(/ /g, '\u00A0')}
-                    </text>
-                  ))}
+                  {mdCode.code.map((ln, ci) => {
+                    // \uAE00\uC790\uB9C8\uB2E4 x \uB97C \uC9C1\uC811 \uC9C0\uC815\uD574 **\uACA9\uC790\uC5D0 \uC549\uD78C\uB2E4** \u2014 \uD3F0\uD2B8\uAC00
+                    // \uBB34\uC5C7\uC774\uB4E0(\uD55C\uAE00 \uD3F4\uBC31\uC774 \uBB34\uC5C7\uC774\uB4E0) \uCE78\uC774 \uBC00\uB9AC\uC9C0 \uC54A\uC544
+                    // \uC0C1\uC790 \uB3C4\uC2DD\uC774 \uADF8\uB300\uB85C \uC720\uC9C0\uB41C\uB2E4 (2026-08-05, monoGrid).
+                    const line = ln.replace(/ /g, '\u00A0'); // \uACF5\uBC31 \uCD95\uC57D \uBC29\uC9C0
+                    return (
+                      <text
+                        key={ci}
+                        x={gridXAttr(line, mdCode.codeFs, cX + MD_CODE_PAD_X)}
+                        y={bodyTop + MD_CODE_PAD_Y + ci * mdCode.lineH +
+                          mdCode.lineH / 2 + mdCode.codeFs * 0.34}
+                        textAnchor="start"
+                        fontSize={mdCode.codeFs}
+                        fill={CODE_TEXT}
+                        style={{ fontFamily: CODE_FONT, whiteSpace: 'pre' }}
+                      >
+                        {line}
+                      </text>
+                    );
+                  })}
                 </g>
               );
             })()}

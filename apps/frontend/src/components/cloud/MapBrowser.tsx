@@ -199,7 +199,9 @@ export function MapBrowser({
   };
 
   // ── 스타일 ──────────────────────────────────────────────────
-  const th = (label: string, key: SortKey) => (
+  // 머리글은 **그 열 값과 같은 쪽으로** 붙인다 (2026-08-05 보고: 숫자는
+  // 오른쪽 정렬인데 제목만 왼쪽이라 어느 열의 제목인지 헷갈렸다).
+  const th = (label: string, key: SortKey, align: 'left' | 'right' = 'left') => (
     <button
       data-testid={`browser-sort-${key}`}
       onClick={() => {
@@ -209,6 +211,7 @@ export function MapBrowser({
       title={`${label} 기준 정렬 (다시 누르면 오름/내림 전환)`}
       style={{
         display: 'flex', alignItems: 'center', gap: 4,
+        justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
         background: 'transparent', border: 'none', cursor: 'pointer',
         color: sort === key ? t.primary : t.textMuted,
         fontSize: 11.5, fontWeight: 700, padding: 0,
@@ -221,7 +224,7 @@ export function MapBrowser({
 
   const rowStyle: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: '24px minmax(120px, 1fr) 76px 106px 106px 44px 64px 40px 68px 104px',
+    gridTemplateColumns: '24px minmax(120px, 1fr) 76px 106px 106px 44px 64px 40px 68px 106px',
     alignItems: 'center',
     gap: 8,
     padding: '7px 10px',
@@ -229,9 +232,17 @@ export function MapBrowser({
     fontSize: 13,
   };
 
+  // 관리 버튼 — ✏/📂/🗑 이모지는 글꼴에 따라 알아볼 수 없게 작아진다
+  // (2026-08-05 보고). 앱 SVG 아이콘 + 테두리로 눌리는 버튼임을 보인다.
   const iconBtn: React.CSSProperties = {
-    background: 'transparent', border: 'none', cursor: 'pointer',
-    color: t.textSubtle, padding: '3px 5px', borderRadius: 5, fontSize: 13,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: 28, height: 26, borderRadius: 6,
+    background: t.surface, border: `1px solid ${t.border}`,
+    color: t.textMuted, cursor: 'pointer', padding: 0,
+  };
+  // 관리 열 — 버튼 묶음을 가운데로 (머리글 '관리'도 같은 자리)
+  const actionCell: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
   };
 
   return (
@@ -351,11 +362,11 @@ export function MapBrowser({
         <span>유형</span>
         {th('생성일', 'createdAt')}
         {th('수정일', 'updatedAt')}
-        {th('노드', 'nodeCount')}
-        {th('크기', 'docBytes')}
-        {th('첨부', 'attachCount')}
-        {th('첨부 용량', 'attachBytes')}
-        <span style={{ textAlign: 'right' }}>관리</span>
+        {th('노드', 'nodeCount', 'right')}
+        {th('크기', 'docBytes', 'right')}
+        {th('첨부', 'attachCount', 'right')}
+        {th('첨부 용량', 'attachBytes', 'right')}
+        <span style={{ textAlign: 'center' }}>관리</span>
       </div>
 
       {/* 목록 */}
@@ -377,10 +388,12 @@ export function MapBrowser({
               맵 {f.mapCount}개
             </span>
             <span /><span /><span /><span />
-            <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-              <button style={iconBtn} title="이름 변경" onClick={() => void renameFolder(f)}>✏</button>
-              <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제 (비어 있을 때만)"
-                onClick={() => void deleteFolder(f)}>🗑</button>
+            <span style={actionCell}>
+              <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
+                onClick={() => void renameFolder(f)}><I.Pencil size={15} /></button>
+              <button style={{ ...iconBtn, color: '#d9534f' }}
+                title="삭제 (비어 있을 때만)" aria-label="삭제"
+                onClick={() => void deleteFolder(f)}><I.Trash size={15} /></button>
             </span>
           </div>
         ))}
@@ -455,12 +468,14 @@ export function MapBrowser({
               <span style={{ color: t.textSubtle, fontSize: 11, textAlign: 'right' }} title="첨부 총 용량">
                 {fmtBytes(m.attachBytes)}
               </span>
-              <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                <button style={iconBtn} title="이름 변경" onClick={() => void renameMap(m)}>✏</button>
+              <span style={actionCell}>
+                <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
+                  onClick={() => void renameMap(m)}><I.Pencil size={15} /></button>
                 <button data-testid="browser-map-move" style={iconBtn}
-                  title="다른 폴더로 이동" onClick={() => setMoving(m)}>📂</button>
-                <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제"
-                  onClick={() => void deleteMap(m)}>🗑</button>
+                  title="다른 폴더로 이동" aria-label="다른 폴더로 이동"
+                  onClick={() => setMoving(m)}><I.FolderMove size={15} /></button>
+                <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제" aria-label="삭제"
+                  onClick={() => void deleteMap(m)}><I.Trash size={15} /></button>
               </span>
             </div>
           ))

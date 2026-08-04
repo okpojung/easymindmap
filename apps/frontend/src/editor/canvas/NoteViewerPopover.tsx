@@ -12,6 +12,7 @@ import { parseInlineMarks, stripInlineMarks } from '@/editor/node-renderer/inlin
 import { copyTable, pipeTextToTable } from '@/utils/copyTable';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
+import { gridCharSpans } from '@/utils/monoGrid';
 
 // Markdown 링크 — [라벨](url). 노트 원문에 그대로 남아 있는 링크를
 // 클릭 가능한 <a>로 렌더링한다 (MD 불러오기의 인용문 노트 등).
@@ -213,11 +214,23 @@ function NoteBlockView({ t, block, fs, family }: {
           <span>{block.lang || 'code'}</span>
           <CopyButton t={t} text={block.text} />
         </div>
+        {/* 격자 배치 — 맵 캔버스와 같은 규칙 (utils/monoGrid) */}
         <pre style={{
           margin: 0, padding: '7px 9px', fontSize: Math.max(9, fs - 2), lineHeight: 1.5,
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
           whiteSpace: 'pre', overflowX: 'auto', background: t.surface,
-        }}>{block.text}</pre>
+        }}>
+          {String(block.text || '').split('\n').map((ln, li) => (
+            <div key={li}>
+              {gridCharSpans(ln).map((c, ci) => (
+                <span key={ci} style={{ display: 'inline-block', width: `${c.em}em` }}>
+                  {c.ch === ' ' ? '\u00A0' : c.ch}
+                </span>
+              ))}
+              {ln === '' ? '\u00A0' : null}
+            </div>
+          ))}
+        </pre>
       </div>
     );
   }

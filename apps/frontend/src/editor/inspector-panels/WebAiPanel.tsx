@@ -25,7 +25,7 @@ import { GENERATION_TYPES } from '@/utils/emmSystemPrompt';
 import {
   AI_SHORTCUTS,
   RETRY_REQUEST_TEXT,
-  answerToMap,
+  answerFromPaste,
   buildWebAiPrompt,
   extractMapSource,
   type AnswerMapOk,
@@ -102,7 +102,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     setError('');
     setPreview(null);
     if (!text.trim()) return;
-    const res = answerToMap(extractMapSource(text));
+    const res = answerFromPaste(text);
     // (strict:false 라 진리값 내로잉이 안 된다 — 'in' 내로잉 사용)
     if ('reason' in res) {
       setError(res.reason);
@@ -360,7 +360,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
               if (preview) { openAsNewMap(preview); return; }
               process(answer, false);
               // process 는 상태 갱신 — 즉시 성공분 열기
-              const res = answerToMap(extractMapSource(answer));
+              const res = answerFromPaste(answer);
               if (!('reason' in res)) openAsNewMap(res);
             }}
             disabled={!answer.trim()}

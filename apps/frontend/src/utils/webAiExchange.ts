@@ -41,15 +41,34 @@ export function buildWebAiPrompt(opts: {
 
 /**
  * 붙여넣은 AI 답변에서 맵 후보 텍스트를 추출한다.
- * 코드펜스(``` … ```)가 있으면 그중 **가장 긴 블록**의 안쪽만
- * (잡담 혼재가 대부분이라 이 단계가 핵심), 없으면 전체를 그대로.
+ * 코드펜스가 있으면 그중 **가장 긴 블록**의 안쪽만(잡담 혼재가
+ * 대부분이라 이 단계가 핵심), 없으면 전체를 그대로.
+ *
+ * 펜스는 백틱(```)과 **물결(~~~)** 둘 다 지원한다 — EMM 안에 ``` 코드
+ * 펜스가 들어가므로, 커스텀 GPT('EasyMindMap Copilot')는 바깥을 ~~~ 로
+ * 감싸도록 지시한다 (easymindmap-copilot-gpt.md 규칙 B). 닫는 펜스는
+ * 같은 문자·같은 길이 이상·정보 문자열 없음일 때만으로 판정해, 블록
+ * 안의 다른 종류 펜스가 바깥을 조기에 닫지 않게 한다.
  */
 export function extractMapSource(pasted: string): string {
   const text = String(pasted || '');
+  const lines = text.split(/\r?\n/);
   const blocks: string[] = [];
-  const re = /```[a-zA-Z-]*\r?\n([\s\S]*?)```/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) blocks.push(m[1]);
+  let open: { ch: string; len: number; buf: string[] } | null = null;
+  for (const line of lines) {
+    const m = line.match(/^\s*(`{3,}|~{3,})\s*([a-zA-Z-]*)\s*$/);
+    if (m && open && m[1][0] === open.ch && m[1].length >= open.len && !m[2]) {
+      blocks.push(open.buf.join('\n'));
+      open = null;
+      continue;
+    }
+    if (m && !open) {
+      open = { ch: m[1][0], len: m[1].length, buf: [] };
+      continue;
+    }
+    if (open) open.buf.push(line);
+  }
+  if (open && open.buf.length) blocks.push(open.buf.join('\n')); // 닫는 펜스 유실
   if (blocks.length) {
     return blocks.reduce((a, b) => (b.length > a.length ? b : a)).trim();
   }
@@ -92,6 +111,20 @@ export function answerToMap(source: string): AnswerMapOk | AnswerMapFail {
     ok: false,
     reason: '맵 구조(# 견출·- 리스트)를 찾지 못했습니다. AI에게 아래 재요청 문구를 보낸 뒤 새 답변을 다시 붙여넣으세요.',
   };
+}
+
+/**
+ * 붙여넣은 원문 → 맵 (패널 공용 진입점). 코드펜스 추출본이 실패하면
+ * **펜스 줄만 걷어낸 전체 텍스트**로 한 번 더 시도한다 — AI 가 바깥을
+ * ``` 로 감쌌는데 안에 ``` 코드 펜스가 있어 블록이 조기에 잘리는
+ * 마크다운 고질 사례(2026-08-03 실측 대비)를 흡수한다.
+ */
+export function answerFromPaste(pasted: string): AnswerMapOk | AnswerMapFail {
+  const primary = answerToMap(extractMapSource(pasted));
+  if (primary.ok || !/^\s*[`~]{3,}/m.test(pasted)) return primary;
+  const stripped = String(pasted).replace(/^\s*[`~]{3,}[^\n]*$/gm, '').trim();
+  const fallback = answerToMap(stripped);
+  return fallback.ok ? fallback : primary;
 }
 
 /** 파싱 실패 시 AI 채팅창에 다시 보낼 요청 문구 (⧉ 복사 버튼용) */

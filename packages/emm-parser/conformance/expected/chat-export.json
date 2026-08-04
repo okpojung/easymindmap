@@ -1,0 +1,192 @@
+{
+  "nodes": 24,
+  "bodyRoundTripNodes": 24,
+  "map": {
+    "title": "홈서버 백업 전략 정리",
+    "root": {
+      "id": "root",
+      "text": "홈서버 백업 전략 정리",
+      "colorKey": "root",
+      "side": "center",
+      "notes": [
+        {
+          "id": "md#0",
+          "type": "paragraph",
+          "text": "**User:** Anonymous\n**Created:** 1/15/2026 10:00:00\n**Updated:** 1/15/2026 10:40:00\n**Exported:** 1/15/2026 11:00:00\n**Link:** [https://chatgpt.com/c/00000000-0000-0000-0000-000000000000](https://chatgpt.com/c/00000000-0000-0000-0000-000000000000)"
+        },
+        {
+          "id": "md#1",
+          "type": "paragraph",
+          "text": "합성 코퍼스 — ChatGPT 대화 내보내기 **형식**(헤더 블록 + Prompt/Response\n반복 + 인용 응답 + 링크 + 코드)을 재현한 창작 예시입니다."
+        }
+      ]
+    },
+    "branches": [
+      {
+        "id": "md#2",
+        "text": "Prompt:",
+        "colorKey": "l1A",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#3",
+            "text": "2026. 1. 15. 오전 10:00:01",
+            "children": [
+              {
+                "id": "md#4",
+                "text": "집에 있는 미니 PC 한 대로 사진과 문서를 안전하게 백업하는 방법을 초보자 수준으로 자세히 설명해줘"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#5",
+        "text": "Response:",
+        "colorKey": "l1B",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#6",
+            "text": "2026. 1. 15. 오전 10:00:05",
+            "notes": [
+              {
+                "id": "md#7",
+                "type": "paragraph",
+                "text": "**홈서버 백업의 3-2-1 원칙**\n\n데이터 사본을 **3개** 유지하고, 서로 다른 **2가지** 매체에 저장하며, 그중 **1개**는 집 밖(오프사이트)에 둡니다. 이 원칙만 지켜도 화재·도난·디스크 고장 대부분을 견딜 수 있습니다.\n\n**참고 자료**\n\n[3-2-1 backup rule overview](https://example.com/backup-321)\n[Choosing NAS vs external drive](https://example.com/nas-vs-drive)"
+              }
+            ],
+            "children": [
+              {
+                "id": "md#8",
+                "text": "핵심 단계는 다음과 같습니다."
+              },
+              {
+                "id": "md#9",
+                "text": "**1단계 — 로컬 1차 사본**"
+              },
+              {
+                "id": "md#10",
+                "text": "외장 SSD에 주 1회 전체 복사본을 만듭니다.",
+                "notes": [
+                  {
+                    "id": "md#11",
+                    "type": "code_block",
+                    "text": "rsync -a --delete /home/user/photos/ /mnt/backup/photos/\nrsync -a --delete /home/user/docs/   /mnt/backup/docs/",
+                    "lang": "bash"
+                  }
+                ]
+              },
+              {
+                "id": "md#12",
+                "text": "**2단계 — 버전 보존**"
+              },
+              {
+                "id": "md#13",
+                "text": "실수로 지운 파일을 되살리려면 스냅샷 도구를 씁니다.",
+                "notes": [
+                  {
+                    "id": "md#14",
+                    "type": "code_block",
+                    "text": "restic init --repo /mnt/backup/restic\nrestic backup /home/user/photos /home/user/docs\nrestic snapshots",
+                    "lang": "bash"
+                  }
+                ]
+              },
+              {
+                "id": "md#15",
+                "text": "**3단계 — 오프사이트 사본**",
+                "children": [
+                  {
+                    "id": "md#16",
+                    "text": "클라우드 저장소 1곳에 암호화 후 동기화"
+                  },
+                  {
+                    "id": "md#17",
+                    "text": "또는 외장 디스크를 매월 교대로 회사 사물함에 보관"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#18",
+        "text": "Prompt:",
+        "colorKey": "l1C",
+        "side": "left",
+        "children": [
+          {
+            "id": "md#19",
+            "text": "2026. 1. 15. 오전 10:20:11",
+            "children": [
+              {
+                "id": "md#20",
+                "text": "복구 연습은 어떻게 해?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "md#21",
+        "text": "Response:",
+        "colorKey": "l1D",
+        "side": "left",
+        "children": [
+          {
+            "id": "md#22",
+            "text": "2026. 1. 15. 오전 10:20:15",
+            "notes": [
+              {
+                "id": "md#23",
+                "type": "paragraph",
+                "text": "**복구 리허설이 백업의 완성입니다**\n\n백업이 있어도 복구를 해 본 적이 없다면 절반만 준비된 것입니다. 분기마다 임의 파일 3개를 골라 실제로 되살려 보세요."
+              }
+            ],
+            "children": [
+              {
+                "id": "md#24",
+                "text": "절차:"
+              }
+            ]
+          },
+          {
+            "id": "md#25",
+            "text": "1. 스냅샷 목록에서 시점 선택"
+          },
+          {
+            "id": "md#26",
+            "text": "2. 임시 폴더로 복원",
+            "notes": [
+              {
+                "id": "md#27",
+                "type": "code_block",
+                "text": "   restic restore latest --target /tmp/restore-test --include photos/2026-01",
+                "lang": "bash"
+              }
+            ]
+          },
+          {
+            "id": "md#28",
+            "text": "3. 원본과 해시 비교",
+            "notes": [
+              {
+                "id": "md#29",
+                "type": "table",
+                "text": "점검 항목 | 주기\n복구 리허설 | 분기 1회\n디스크 SMART 검사 | 월 1회\n오프사이트 교대 | 월 1회"
+              }
+            ],
+            "children": [
+              {
+                "id": "md#30",
+                "text": "이 정도면 초보자도 안전한 백업 체계를 갖출 수 있습니다."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

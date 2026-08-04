@@ -45,7 +45,7 @@
 | WFLOW-05 | Error Input       | 특정 step에서 오류 내용 입력                           | 오류 텍스트 입력          |
 | WFLOW-06 | AI Resolution     | AI가 해당 step 문맥에서 해결 방법 제시 (반복 가능)           | AI 해결책 표시          |
 | WFLOW-07 | Cleanup           | 중간 시도 제거, 최종 성공 방법만 node에 반영                 | 정리 실행              |
-| WFLOW-08 | Structured Note   | note의 block 기반 구조 (paragraph/code_block/warning/checklist) | Note 편집 |
+| WFLOW-08 | Structured Note   | note의 block 기반 구조 (paragraph/code_block/table/checklist) | Note 편집 |
 | WFLOW-09 | Code Block        | 언어 지정 code block 지원 (bash, sql, json 등)     | 코드 블록 렌더링          |
 | WFLOW-10 | Copy Button       | code block별 Copy 버튼 제공                       | 클립보드 복사            |
 | WFLOW-11 | Solo-only AI      | 단독 편집 모드(접속자 1명)에서만 AI 기능 허용                | 접속자 수 확인           |

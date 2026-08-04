@@ -1,6 +1,6 @@
 # easymindmap — Vision
 
-**최종 업데이트:** 2026-04-16 (cross-ref 갱신)
+**최종 업데이트:** 2026-08-04 (구현 현행화 — 레이아웃 9종·노트 블록 4종·저장 방식 정정)
 
 ## 제품명 및 서비스
 
@@ -8,7 +8,7 @@
 |------|------|
 | 제품명 | easymindmap |
 | 서비스 도메인 | mindmap.ai.kr |
-| 제품 유형 | 웹 기반 AI 실행형 절차 마인드맵 플랫폼 |
+| 제품 유형 | 웹 기반 AI 마인드맵 편집기 (목표: AI 실행형 절차 플랫폼) |
 
 ---
 
@@ -82,7 +82,7 @@ easymindmap은 단순한 아이디어 정리 도구가 아니라,
 - 구조 생성 + **실행 지원**
 - step 기반 진행 + 오류 해결 통합
 - 절차 정제(cleanup) → 재사용 가능한 runbook (SOP)
-- note 내 code block (paragraph/code_block/warning/tip/checklist) + copy 기능
+- note 내 code block (paragraph/code_block/table/checklist) + copy 기능
 - 다국어 자동 번역 (협업 차별화) — DeepL + LLM fallback, 3단계 정책 계층
 - Kanban 보드형 레이아웃 (업무 관리 통합 — 깊은 서브트리는 중첩 카드)
 - WBS 모드 + Redmine 연동 (프로젝트 관리 통합, BullMQ 비동기 + AES-256-GCM)

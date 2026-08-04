@@ -2,7 +2,7 @@
 
 * 문서 버전: v1.0
 * 최초 작성: 2026-07
-* 최종 업데이트: 2026-08-04 — 코퍼스 12케이스·실측 수치(bodyRT=299, 13 nodes) 현행화
+* 최종 업데이트: 2026-08-04 — 코퍼스 전량 합성 교체(실문서 3종 제거) + 실측 수치 현행화
 * 대상 독자: 프로그래밍 경험이 없어도 따라 할 수 있도록 작성
 * 관련: `emm-spec.md`(포맷 스펙), `ai/emm-prompt-templates.md`(프롬프트),
   `../../packages/emm-parser/README.md`(파서 패키지)
@@ -101,8 +101,9 @@ EMM의 본문은 100% 일반 Markdown이다. 그래서 ChatGPT·Claude 같은 AI
 
 ### 2.1 무엇을 하는 기능인가?
 
-**코퍼스(corpus)** = 검증용 실제 문서 모음. 전자영수증 보고서(176노드),
-ChatGPT 대화 내보내기(299노드), 견출 없는 순번 절 문서(96노드) 같은
+**코퍼스(corpus)** = 검증용 문서 모음 — **전량 합성**(실사용·개인 문서는
+저장소에 넣지 않는다, 2026-08-04 교체). 보고서형 report-tables(19노드),
+대화 내보내기 형식 chat-export(24노드), 견출 없는 순번 절(19노드) 같은
 **실문서 8종 + AI 프롬프트 기대 출력 4종 = 12케이스**가
 `packages/emm-parser/conformance/cases/`에 들어 있다.
 
@@ -131,7 +132,7 @@ npm test
 다음과 같은 출력이 나오면 성공:
 
 ```
-PASS chatgpt-export.md — nodes=299 bodyRT=299
+PASS chat-export.md — nodes=24 bodyRT=24
 PASS numbered-sections.md — nodes=96 bodyRT=96
 ...(12줄)...
 

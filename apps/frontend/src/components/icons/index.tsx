@@ -2,6 +2,7 @@
 // Lucide-inspired, custom-tuned for the warm UI of EasyMindMap
 
 import type { CSSProperties, SVGProps, ReactNode } from 'react';
+import brandLogoUrl from '@/assets/brand-logo.svg';
 
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'children'> {
   size?: number;
@@ -36,43 +37,19 @@ const Icon = ({
 type P = Partial<IconProps>;
 
 export const I = {
-  // EasyMindMap 로고 (2026-08 v2 — 원본 1024px 도안 실측 재현): 흰 바탕
-  // + 주황 그라디언트 'e' 링(크로스바가 링 안쪽으로 진입) + MarkDown 글자
-  // + 오른쪽 마인드맵 트리. 뷰어·파비콘(exportHtml.ts LOGO_SVG)·index.html
-  // 파비콘·docs/assets/brand/logo.svg와 같은 도안 — 바꿀 때 네 곳을 함께
-  // 바꾼다 (docs/assets/brand/brand-logo.md).
+  // EasyMindMap 로고 (2026-08 v3 — 사용자 제공 원본 벡터 SVG를 그대로
+  // 표시). 원본 파일 = src/assets/brand-logo.svg (docs/assets/brand/
+  // logo.svg와 동일 바이트). index.html 파비콘·뷰어 LOGO_SVG도 같은
+  // 파일을 쓴다 — 로고 교체 시 SVG 파일만 바꾸면 된다 (brand-logo.md).
   Logo: (p: P = {}) => (
-    <svg
+    <img
+      src={brandLogoUrl}
       width={p.size || 22}
       height={p.size || 22}
-      viewBox="0 0 1024 1024"
-      fill="none"
-      {...(p as any)}
-    >
-      <defs>
-        <linearGradient id="emm-logo-g" x1="0.35" y1="0" x2="0.25" y2="1">
-          <stop offset="0" stopColor="#F0AC1F" />
-          <stop offset="0.5" stopColor="#EC8B10" />
-          <stop offset="1" stopColor="#E1650D" />
-        </linearGradient>
-      </defs>
-      <rect width="1024" height="1024" fill="#FFFFFF" />
-      <path d="M 545 470 A 212 212 0 1 0 445 727" stroke="url(#emm-logo-g)" strokeWidth="56" strokeLinecap="butt" />
-      <path d="M 468 470 L 585 470" stroke="url(#emm-logo-g)" strokeWidth="56" strokeLinecap="butt" />
-      <text x="225" y="506" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="104" fill="#5C3B25">Mark</text>
-      <text x="200" y="631" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="104" fill="#5C3B25">Down</text>
-      <circle cx="515" cy="595" r="36" fill="url(#emm-logo-g)" />
-      <path d="M 549 595 C 645 595 628 470 700 470 L 812 470" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" />
-      <path d="M 549 595 C 645 595 628 700 700 700 L 812 700" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" />
-      <path d="M 735 470 L 735 244 L 812 244" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M 735 356 L 812 356" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" />
-      <path d="M 735 700 L 735 830 L 812 830" stroke="url(#emm-logo-g)" strokeWidth="28" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="850" cy="244" r="36" fill="url(#emm-logo-g)" />
-      <circle cx="850" cy="356" r="36" fill="url(#emm-logo-g)" />
-      <circle cx="850" cy="470" r="36" fill="url(#emm-logo-g)" />
-      <circle cx="850" cy="700" r="36" fill="url(#emm-logo-g)" />
-      <circle cx="850" cy="830" r="36" fill="url(#emm-logo-g)" />
-    </svg>
+      alt="EasyMindMap"
+      style={{ display: 'block', borderRadius: '18%' }}
+      draggable={false}
+    />
   ),
 
   Menu: (p: P = {}) => (

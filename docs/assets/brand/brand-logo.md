@@ -1,55 +1,52 @@
 # EasyMindMap 브랜드 로고
 
-> 2026-08 v2 — 사용자 제공 원본(1024×1024 PNG)을 좌표 실측으로 충실
-> 재현한 SVG. 원본 파일: [`logo.svg`](./logo.svg) — 이 파일이 도안의
-> 단일 원본(source of truth)이다.
+> 2026-08-04 v3 — **사용자 제공 원본 벡터 SVG**를 그대로 채택
+> (1254×1254 뷰박스, 트레이스 벡터 33패스). 원본 파일:
+> [`logo.svg`](./logo.svg) — 이 파일이 도안의 단일 원본(source of truth)이다.
+> 이전 v1·v2(코드로 그린 96/1024 재현본)는 폐기.
 
 <img src="./logo.svg" width="160" alt="EasyMindMap 로고" />
 
-## 도안 구성 (1024×1024 뷰박스)
+## 자산 파일
 
-| 요소 | 설명 |
+| 파일 | 형식 | 용도 |
+|---|---|---|
+| `logo.svg` | 벡터 (1254×1254 viewBox) | 단일 원본 — 문서·README·앱이 모두 이 도안을 사용 |
+| `logo.png` | 래스터 1024×1024 | 외부 홍보·문서 첨부·SVG 미지원 환경 |
+| `logo-256.png` | 래스터 256×256 | 소형 아이콘 용도 |
+
+PNG 는 `logo.svg` 에서 렌더한 사본이다 — SVG 를 바꾸면 PNG 도 다시
+렌더한다.
+
+## 도안 구성
+
+- 흰 정사각 바탕(라운딩 없음), 주황 계열 'e' 링(크로스바가 링 안쪽으로
+  진입, 오른쪽 아래 열림)
+- 링 안 브라운(`#5C3011` 계열) **Mark / Down** 2줄 글자
+- Down 오른쪽 점에서 위·아래로 갈라지는 마인드맵 트리 — 위 3 · 아래 2
+  리프 — "Markdown 이 맵이 된다"
+
+## 사용처 — 단일 파일 import 구조 (v3)
+
+앱은 더 이상 도안을 코드에 복제하지 않는다. **SVG 파일 하나**를 세 곳이
+직접 참조한다:
+
+| 위치 | 참조 방식 |
 |---|---|
-| 흰 정사각 바탕 | 1024×1024, **라운딩 없음** (원본과 동일) |
-| 주황 그라디언트 'e' 링 | 중심 (345,540), 반지름 212, 스트로크 56, **butt 캡**. 시작점은 크로스바 높이(y=470)의 오른쪽이고 반시계로 돌아 오른쪽 아래(약 5시)에서 열린다 |
-| 'e' 크로스바 | `M 468 470 L 585 470` — Mark 줄 높이에서 **링 안쪽으로 들어가는 직선** (소문자 e의 가로획). butt 캡, 오른쪽 끝(585)은 링 바깥 테두리와 플러시 |
-| Mark / Down 글자 | 링 안 2줄, 브라운 `#5C3B25`, 볼드 104. Mark 줄은 크로스바와, Down 줄은 트리 중심 점과 정렬. **링 스트로크와 겹치지 않는다** |
-| 중심 점 + 마인드맵 트리 | 'Down' 오른쪽 점(515,595 r36)에서 위·아래 브레이스로 분기 → 세로 레일 → 리프 5개(위 3 · 아래 2, r36, x=850) — "Markdown 이 맵이 된다" |
+| 앱 원본 | `apps/frontend/src/assets/brand-logo.svg` — `docs/assets/brand/logo.svg` 와 **동일 바이트** |
+| 브라우저 탭 파비콘 | `apps/frontend/index.html` → `<link rel="icon" href="/src/assets/brand-logo.svg">` (Vite 가 빌드 시 해시 URL 로 치환) |
+| 앱 로고 컴포넌트 (툴바·로그인) | `components/icons/index.tsx` `I.Logo` → `<img src={import된 URL}>` |
+| 내보낸 HTML 뷰어 헤더·파비콘 | `export/exportHtml.ts` `LOGO_SVG` → `?raw` import 로 문자열 내장 (고정 width/height 속성만 제거) |
+| GitHub README 헤더 | `/README.md` → `docs/assets/brand/logo.svg` img 참조 |
 
-## 색
-
-| 용도 | 값 |
-|---|---|
-| 그라디언트 시작 (골드) | `#F0AC1F` |
-| 그라디언트 중간 | `#EC8B10` (offset 0.5) |
-| 그라디언트 끝 (딥 오렌지) | `#E1650D` |
-| 그라디언트 방향 | `x1=0.35 y1=0 x2=0.25 y2=1` (위 골드 → 아래 딥 오렌지) |
-| 글자·워드마크 브라운 | `#5C3B25` |
-| 워드마크 다크 테마 대체 | `#E8C9A6` (밝은 탠 — 가독) |
-
-워드마크는 별도 파일이 아니라 **로고 + 텍스트 'EasyMindMap'**
-(Pretendard 계열 900, 브라운) 조합으로 쓴다 — WelcomeScreen 참조.
-
-## 사용처 — 바꿀 때 전부 함께 바꾼다 (동기 규칙)
-
-| 위치 | 파일 |
-|---|---|
-| 도안 원본 | `docs/assets/brand/logo.svg` (이 폴더) |
-| 브라우저 탭 파비콘 | `apps/frontend/index.html` (data URL 인코딩본, `#`→`%23`) |
-| 앱 로고 컴포넌트 (툴바·로그인) | `apps/frontend/src/components/icons/index.tsx` `I.Logo` (JSX — 속성 camelCase) |
-| 내보낸 HTML 뷰어 헤더·파비콘 | `apps/frontend/src/export/exportHtml.ts` `LOGO_SVG` (문자열) |
-| GitHub README 헤더 | `/README.md` (이 SVG 를 img 로 참조) |
-
-네 사본은 인코딩만 다르고 도형·좌표·색이 같아야 한다. 도안을 고치면
-**logo.svg 를 먼저 고치고** 나머지 세 코드 사본에 반영한다.
+**로고 교체 절차**: ① `docs/assets/brand/logo.svg` 교체 → ② 같은 파일을
+`apps/frontend/src/assets/brand-logo.svg` 로 복사 → ③ PNG 2종 재렌더.
+코드는 손댈 필요 없다.
 
 ## 주의
 
-- 링·크로스바는 **butt 캡**이다 — round 로 바꾸면 열림 끝단과 크로스바
-  진입부가 원본과 달라진다. 트리(브레이스·레일)는 round 캡.
-- 파비콘/앱 사본의 글자는 `font-family` 폴백(sans-serif)으로도 형태가
-  유지되도록 위치·크기를 넉넉히 잡았다 — 글자 크기를 줄이지 말 것.
-- 흰 바탕은 도안의 일부다(다크 툴바에서도 흰 배지로 표시) — 투명
-  배경 변형을 만들 때는 별도 파일로 추가한다. 원본은 라운딩 없는
-  정사각이므로 `rx` 를 넣지 않는다(라운드 마스크가 필요한 곳은 CSS
-  `border-radius` 로 감싼다).
+- 흰 바탕은 도안의 일부다(다크 툴바에서도 흰 배지로 표시). `I.Logo` 는
+  CSS `border-radius` 로 모서리만 살짝 둥글게 마스킹한다 — SVG 자체는
+  수정하지 않는다.
+- 원본은 비트맵 트레이스 벡터라 패스를 손으로 수정하기 어렵다 — 도안
+  변경은 새 원본 파일 교체로만 한다.

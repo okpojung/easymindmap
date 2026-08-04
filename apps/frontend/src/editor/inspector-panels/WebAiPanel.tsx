@@ -24,10 +24,11 @@ import { parseEmm } from '@/utils/importMarkdown';
 import { GENERATION_TYPES } from '@/utils/emmSystemPrompt';
 import {
   AI_SHORTCUTS,
+  OUTPUT_DIRECTIVE,
   RETRY_REQUEST_TEXT,
   answerFromPaste,
   buildWebAiPrompt,
-  extractMapSource,
+  mapSourceCandidates,
   type AnswerMapOk,
 } from '@/utils/webAiExchange';
 
@@ -91,9 +92,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     if (!selectedId) return;
     const ctx = buildExpandContext(map, selectedId, systemPrompt);
     if (!ctx) return;
-    const oneShot =
-      `${ctx.system}\n\n${ctx.user}\n\n` +
-      '중요: 다른 말 없이 EMM Markdown 코드블록 하나로만 출력하라.';
+    const oneShot = `${ctx.system}\n\n${ctx.user}\n\n${OUTPUT_DIRECTIVE}`;
     void copyText(oneShot, 'expand');
   };
 
@@ -141,10 +140,16 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   const insertToSelected = () => {
     if (!selectedId || !selectedNode) return;
     setError('');
-    const body = extractMapSource(answer).replace(/^\s*#\s[^\n]*\n+/, '');
-    const wrapped = `# ${selectedNode.text || '노드'}\n\n${body}`;
-    const parsed = parseEmm(wrapped, '확장');
-    const kids = parsed ? reassignIds(parsed.branches as never) : [];
+    // 새 맵 경로와 같은 후보 체인 — 최장 코드블록이 예시 조각인 답변
+    // (2026-08-04 실사용 보고: 삽입만 실패)도 펜스 제거 폴백으로 흡수
+    let kids: unknown[] = [];
+    for (const candidate of mapSourceCandidates(answer)) {
+      const body = candidate.replace(/^\s*#\s[^\n]*\n+/, '');
+      const wrapped = `# ${selectedNode.text || '노드'}\n\n${body}`;
+      const parsed = parseEmm(wrapped, '확장');
+      const found = parsed ? reassignIds(parsed.branches as never) : [];
+      if (found.length) { kids = found; break; }
+    }
     if (!kids.length) {
       setError('답변에서 하위 구조를 인식하지 못했습니다. 확장 프롬프트로 다시 요청해 보세요.');
       return;
@@ -255,7 +260,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
               key={s.key}
               data-webai-open={s.key}
               onClick={() => window.open(s.url, '_blank')}
-              title={`${s.label} 을(를) 새 탭으로 엽니다 (자동 입력은 되지 않습니다 — 붙여넣기해 주세요)`}
+              title={s.tip ?? `${s.label} 을(를) 새 탭으로 엽니다 (자동 입력은 되지 않습니다 — 붙여넣기해 주세요)`}
               style={{
                 flex: 1, padding: '5px 0', borderRadius: 6,
                 border: `1px solid ${t.border}`, background: t.surface,

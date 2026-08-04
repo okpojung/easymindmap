@@ -215,14 +215,17 @@ export const AI_SHORTCUTS: {
   },
   {
     key: 'copilot',
-    label: 'EasyMindMap Copilot GPT',
+    // 화면 이름은 'EasyMindMap ChatGPT 앱' (2026-08-05 지정) — 사용자가
+    // ChatGPT 안에서 쓰는 우리 앱이라는 뜻이 바로 읽힌다. 스토어에
+    // 등록된 GPT 이름('EasyMindMap Copilot')과는 별개다.
+    label: 'EasyMindMap ChatGPT 앱',
     kind: 'gpt',
-    // 'EasyMindMap Copilot' 커스텀 GPT (2026-08-04 등록 —
-    // easymindmap-copilot-gpt.md). EMM 템플릿이 GPT 안에 내장돼 있어
-    // 주제만 보내면 EMM 코드블록이 나온다. ChatGPT 로그인 필요.
+    // 커스텀 GPT (2026-08-04 등록 — easymindmap-copilot-gpt.md).
+    // EMM 템플릿이 GPT 안에 내장돼 있어 주제만 보내면 EMM 코드블록이
+    // 나온다. ChatGPT 로그인 필요.
     url: 'https://chatgpt.com/g/g-6a713796a3a48191b6099a674f0d80d2-easymindmap-copilot',
     prefill: 'topic',
-    tip: 'EasyMindMap 전용 GPT — EMM 규칙이 안에 들어 있어 ① 프롬프트 없이 주제만 자동 입력됩니다 (ChatGPT 로그인 필요)',
+    tip: 'EasyMindMap 전용 ChatGPT 앱 — EMM 규칙이 안에 들어 있어 ① 프롬프트 없이 주제만 자동 입력됩니다 (ChatGPT 로그인 필요)',
   },
 ];
 

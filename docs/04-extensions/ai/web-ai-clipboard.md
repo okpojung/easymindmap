@@ -142,7 +142,7 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
 │ │      📋 ① 프롬프트 복사           │    │
 │ └──────────────────────────────────┘    │
 │ AI 열기: [Claude] [ChatGPT] [Gemini]     │  ← 일반 채팅(?q=프롬프트)
-│ [⚡ EasyMindMap Copilot GPT]              │  ← 전용 GPT(?q=주제만)
+│ [⚡ EasyMindMap ChatGPT 앱]               │  ← 전용 GPT(?q=주제만)
 │                                          │
 │ ② AI 창에 붙여넣고(Ctrl+V) 실행한 뒤,     │
 │    답변을 복사해 오세요.                  │
@@ -169,7 +169,7 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
 
 - **AI 바로가기 버튼**(`AI_SHORTCUTS`): 윗줄은 **일반 채팅** 3종
   (Claude · ChatGPT · Gemini), 아랫줄은 **전용 GPT** 1종
-  (EasyMindMap Copilot GPT). 둘은 보내는 내용이 다르므로 줄을 나눠
+  (화면 이름 `EasyMindMap ChatGPT 앱`). 둘은 보내는 내용이 다르므로 줄을 나눠
   섞이지 않게 한다 — 자세한 규칙은 아래 §"AI 사이트 바로가기".
 - 입력·답변창, 유형 선택, 복사됨 플래시 등 시각 언어는 기존 AITab
   구성요소를 그대로 재사용해 이질감을 없앤다.
@@ -322,7 +322,12 @@ ChatGPT 쪽은 같은 MCP 서버로 **앱(구 플러그인, §8-1)** 과 커스�
 | kind | 항목 | 보내는 것 | 이유 |
 |---|---|---|---|
 | plain | Claude · ChatGPT · Gemini | ① 프롬프트 **전체**(EMM 규칙+주제) | 규칙을 모르는 일반 채팅 |
-| gpt | EasyMindMap Copilot GPT | **주제만** | 규칙이 GPT 안에 들어 있다 |
+| gpt | EasyMindMap ChatGPT 앱 | **주제만** | 규칙이 GPT 안에 들어 있다 |
+
+> 화면 이름은 `EasyMindMap ChatGPT 앱`(2026-08-05 지정) — "ChatGPT
+> 안에서 쓰는 우리 앱"이라는 뜻이 바로 읽히게. ChatGPT 스토어에
+> 등록된 GPT 이름(`EasyMindMap Copilot`)과는 별개이며, 스토어 이름을
+> 바꾸려면 GPT 편집기에서 따로 바꿔야 한다.
 
 `aiShortcutUrl()` 이 `?q=` 로 실어 **채팅창에 자동 입력**한다. 다만
 Gemini 는 자동 입력 파라미터가 없어 열기만 하고, 프롬프트가

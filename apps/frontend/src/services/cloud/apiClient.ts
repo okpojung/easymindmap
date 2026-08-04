@@ -69,7 +69,16 @@ export interface MapListItem {
   folderId: string | null;
   kind: MapKind;
   deletedAt: string | null;
+  createdAt: string;
   updatedAt: string;
+  // 문서함 목록 상세 (2026-08-05) — 저장 시점 통계. 스키마 미적용·
+  // 통계 도입 전에 저장된 맵은 null (프런트가 '—' 표시)
+  nodeCount: number | null;
+  /** 문서(jsonb) 크기 바이트 */
+  docBytes: number | null;
+  attachCount: number | null;
+  /** 첨부 총 용량 = 내장(data URL) + 서버 저장소 합 */
+  attachBytes: number | null;
 }
 
 export interface FolderItem {
@@ -86,7 +95,8 @@ export interface FolderItem {
 export interface MapListQuery {
   /** 'root' = 최상위만 · <folderId> = 그 폴더만 · 생략 = 전부 */
   folder?: string;
-  sort?: 'title' | 'updatedAt';
+  sort?: 'title' | 'createdAt' | 'updatedAt'
+    | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
   order?: 'asc' | 'desc';
   limit?: number;
 }

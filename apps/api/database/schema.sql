@@ -572,3 +572,16 @@ CREATE TABLE IF NOT EXISTS public.map_edit_locks (
     user_id      UUID NOT NULL,
     heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ────────────────────────────────────────────────────────────────────
+-- 문서함 목록 상세 (2026-08-05): 저장 시점 통계를 map_documents 에 기록
+-- — 목록(GET /maps)이 doc 파싱 없이 노드 수·첨부 개수/용량을 보여 준다.
+-- 값은 저장(PUT document)할 때마다 서버가 다시 계산한다. 이전에 저장된
+-- 행은 NULL 로 남고(프런트가 '—' 표시), 다음 저장 때 채워진다.
+
+ALTER TABLE public.map_documents
+    ADD COLUMN IF NOT EXISTS node_count   INTEGER;
+ALTER TABLE public.map_documents
+    ADD COLUMN IF NOT EXISTS attach_count INTEGER;
+ALTER TABLE public.map_documents
+    ADD COLUMN IF NOT EXISTS attach_bytes BIGINT;

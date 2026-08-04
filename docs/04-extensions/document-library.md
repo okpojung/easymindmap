@@ -1,6 +1,6 @@
 # 문서함 — 폴더 · 저장 규칙 · 문서 브라우저 · 맵 유형
 
-> **최종 업데이트**: 2026-08-04 — 읽기 전용(다른 세션 편집 중) 사본 저장 분기 · '다른 이름으로 저장' · 무변경 저장 스킵 추가.
+> **최종 업데이트**: 2026-08-04(2차) — 목록 상세 컬럼(생성일·수정일·노드수·크기·첨부수·첨부용량) + 전 컬럼 오름/내림 정렬. 같은 날 1차: 읽기 전용(다른 세션 편집 중) 사본 저장 분기 · '다른 이름으로 저장' · 무변경 저장 스킵 추가.
 >
 > 2026-08-02 확정·구현 (사용자 요청 7건). 맵이 늘어나면서 "어디에
 > 저장했는지"가 문제가 되기 시작한 시점의 정리다.
@@ -16,7 +16,7 @@
 | 3 | 새 맵은 제목을 묻지 않고 **'새 맵'**으로 시작, **첫 저장 때 폴더·이름**을 묻는다(유형은 묻지 않음). 같은 폴더 같은 이름이면 거절하고 안내 | `SaveMapDialog` + API 409 |
 | 4 | **저장하지 않은 맵을 닫으면 경고** 후 닫는다 | `MapActions` 경고 대화상자 |
 | 5 | 서버 맵 목록은 팝업이 아니라 **편집 영역의 문서함** | `MapBrowser` |
-| 6 | 목록은 **이름·수정일 오름/내림 정렬** | `GET /maps?sort=&order=` |
+| 6 | 목록은 **이름·생성일·수정일·노드수·크기·첨부수·첨부용량** 7컬럼 표시 + 머리글 클릭 오름/내림 정렬 (2026-08-04 확장) | `GET /maps?sort=&order=` |
 | 7 | 맵 유형은 **단독맵 / 협업맵** | `maps.kind` |
 
 ## 1. 데이터 (schema.sql)
@@ -173,6 +173,54 @@ SCRIPT
 (첨부 개수, 같은 날 2차)가 추가됐으므로 **스크립트를 한 번 더 실행**하면
 된다 (전부 IF NOT EXISTS 라 기존 컬럼은 그대로 지나간다).
 
+### 문서함 목록 상세 델타 SQL (2026-08-04 · 서버 적용 필요)
+
+목록 상세 컬럼(노드수·첨부수·첨부용량)을 위해 `map_documents` 에 통계
+3컬럼이 추가됐다. 히스토리 델타와 같은 방식 — 아래 블록 **전체를 서버
+SSH 터미널에 그대로 붙여넣으면** DB 컨테이너를 자동으로 찾아 적용·검증
+한다. (두 번 실행해도 안전 — 전부 IF NOT EXISTS)
+
+```bash
+bash <<'SCRIPT'
+set -e
+
+# ── 1) DB 컨테이너 자동 탐색 ─────────────────────────────────────
+DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
+[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
+if [ -z "$DB" ]; then
+  echo "❌ 실행 중인 postgres 컨테이너를 찾지 못했습니다. (docker 권한이 없으면 sudo 로)"
+  exit 1
+fi
+echo "✅ DB 컨테이너: $DB"
+
+# ── 2) 문서함 목록 상세 델타 SQL ─────────────────────────────────
+docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+ALTER TABLE public.map_documents
+    ADD COLUMN IF NOT EXISTS node_count INTEGER;
+ALTER TABLE public.map_documents
+    ADD COLUMN IF NOT EXISTS attach_count INTEGER;
+ALTER TABLE public.map_documents
+    ADD COLUMN IF NOT EXISTS attach_bytes BIGINT;
+SQL
+
+# ── 3) 검증 — 3컬럼 확인 ─────────────────────────────────────────
+echo "── 검증 ──"
+docker exec -i "$DB" psql -U postgres -d postgres -tAc \
+  "SELECT column_name FROM information_schema.columns
+   WHERE table_schema='public' AND table_name='map_documents'
+     AND column_name IN ('node_count','attach_count','attach_bytes')" \
+  | sort | sed 's/^/  컬럼 OK: /'
+SCRIPT
+```
+
+`컬럼 OK: attach_bytes / attach_count / node_count` 3줄이 나오면 완료.
+저장할 때마다 서버가 재계산해 채우므로 기존 맵은 **한 번 저장하면**
+목록에 값이 나타난다(그 전에는 '—'). `/v1/health` 의 필수 컬럼 검사에도
+`map_documents.node_count`·`map_documents.attach_bytes` 가 추가돼,
+빠뜨리면 헬스체크가 바로 알려 준다.
+
 ### 스키마를 적용하지 않고 배포하면 (2026-08-02 실제 발생)
 
 문서함이 **"Internal server error"** 만 띄웠다. 코드는 새 것인데 DB 에
@@ -202,12 +250,23 @@ SCRIPT
 | POST | `/v1/folders` | 생성 — 같은 부모에 같은 이름이면 **409** |
 | PATCH | `/v1/folders/:id` | 이름 변경 · 이동(자기 자신/자손으로는 **400**) |
 | DELETE | `/v1/folders/:id` | **비어 있을 때만** — 아니면 409(몇 개 남았는지 알려 준다) |
-| GET | `/v1/maps?folder=root\|<id>&sort=title\|updatedAt&order=asc\|desc` | 폴더별 목록 + 정렬 |
+| GET | `/v1/maps?folder=root\|<id>&sort=…&order=asc\|desc` | 폴더별 목록 + 정렬. sort = `title`·`createdAt`·`updatedAt`·`nodeCount`·`docBytes`·`attachCount`·`attachBytes` 7종 (2026-08-04) |
 | POST | `/v1/maps` | `{title, folderId, kind}` — 같은 폴더 같은 이름이면 **409** |
 | PATCH | `/v1/maps/:id` | 이름 변경 · 폴더 이동 · 유형 변경 (중복이면 409) |
 
-정렬 컬럼은 화이트리스트로만 매핑한다(`title` → `lower(btrim(title))`,
-그 외 → `updated_at`) — 사용자 입력이 SQL 문자열에 들어가지 않는다.
+정렬 컬럼은 화이트리스트로만 매핑한다(`title` → `lower(btrim(m.title))`,
+통계 컬럼 → `map_documents` LEFT JOIN, 크기 → `octet_length(d.doc::text)`,
+목록에 없는 값 → `updated_at`) — 사용자 입력이 SQL 문자열에 들어가지
+않는다. 통계 컬럼 정렬은 항상 `NULLS LAST`(통계 도입 전 저장분이 위로
+떠오르지 않게), 동률은 `m.id` 로 안정 정렬.
+
+목록 응답에는 `createdAt`·`nodeCount`·`docBytes`·`attachCount`·
+`attachBytes` 가 추가됐다(2026-08-04). 통계 3종(노드수·첨부수·첨부용량)은
+**저장 시점에 서버가 계산해 `map_documents` 컬럼에 기록**한다 — 목록
+조회가 문서 JSON 을 파싱하지 않아 가볍다. 크기(`docBytes`)만 조회 시
+`octet_length` 로 잰다. 첨부용량 = 내장(data URL, base64→원본 환산) +
+서버 저장소(`attachments.size_bytes` 합). 통계 도입 전에 저장된 맵은
+값이 NULL → 화면에 '—' 로 보이고, **다음 저장 때 자동으로 채워진다**.
 
 ## 3. 저장 규칙 (규칙 2·3)
 

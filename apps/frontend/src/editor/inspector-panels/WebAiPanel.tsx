@@ -8,7 +8,7 @@
 // 조립·추출·변환 로직은 utils/webAiExchange.ts (순수 함수).
 // 설계: docs/04-extensions/ai/web-ai-clipboard.md
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { InspectorSection } from './InspectorSection';
@@ -68,6 +68,16 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   const effTarget: 'new' | 'insert' =
     target === 'insert' && selectedNode ? 'insert' : 'new';
 
+  // 확인 팝오버 — window.confirm 대체 (2026-08-04 보고: 브라우저 기본
+  // confirm 은 화면 상단 중앙에 떠서 어느 작업의 확인인지 눈에 안 들어
+  // 왔다). 패널 오른쪽 옆·화면 세로 중앙에 띄운다.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [confirmReq, setConfirmReq] =
+    useState<{ message: string; onOk: () => void } | null>(null);
+  const askConfirm = (message: string, onOk: () => void) => {
+    setConfirmReq({ message, onOk });
+  };
+
   const flashCopied = (k: 'prompt' | 'expand' | 'retry') => {
     setCopied(k);
     window.setTimeout(() => setCopied(''), 2500);
@@ -126,12 +136,17 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   const openAsNewMap = (res: AnswerMapOk) => {
     const doc = useDocumentStore.getState();
     if (!(doc.past.length === 0 || isDocumentEmpty(doc.map))) {
-      const ok = window.confirm(
+      askConfirm(
         `현재 맵을 닫고 생성한 맵(${res.nodeCount}개 노드)을 열까요?\n` +
         '(실행 취소 Ctrl+Z 로 이전 맵으로 되돌릴 수 있습니다)',
+        () => runOpenAsNewMap(res),
       );
-      if (!ok) return;
+      return;
     }
+    runOpenAsNewMap(res);
+  };
+
+  const runOpenAsNewMap = (res: AnswerMapOk) => {
     detachFromServer();
     setBrowserOpen(false);
     loadMap(res.map);
@@ -166,16 +181,17 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
       setError('답변에서 하위 구조를 인식하지 못했습니다. 확장 프롬프트로 다시 요청해 보세요.');
       return;
     }
-    const ok = window.confirm(
+    askConfirm(
       `'${selectedNode.text || '노드'}' 아래에 ${kids.length}개 항목을 추가할까요?\n` +
       '(실행 취소 Ctrl+Z 로 되돌릴 수 있습니다)',
+      () => {
+        appendChildren(selectedId, kids as never);
+        setSelectedId(selectedId);
+        setAnswer('');
+        setPreview(null);
+        flashNotice(`'${selectedNode.text}' 아래에 ${kids.length}개 항목을 추가했습니다`);
+      },
     );
-    if (!ok) return;
-    appendChildren(selectedId, kids as never);
-    setSelectedId(selectedId);
-    setAnswer('');
-    setPreview(null);
-    flashNotice(`'${selectedNode.text}' 아래에 ${kids.length}개 항목을 추가했습니다`);
   };
 
   const chooseAutoGen = (v: boolean) => {
@@ -199,7 +215,50 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   );
 
   return (
-    <div>
+    <div ref={panelRef}>
+      {/* 확인 팝오버 — 패널 오른쪽 옆·화면 세로 중앙 (window.confirm 대체,
+          2026-08-04 보고: 상단 중앙의 브라우저 confirm 이 눈에 안 들어옴) */}
+      {confirmReq && (
+        <div
+          data-webai-confirm
+          style={{
+            position: 'fixed',
+            left: (panelRef.current?.getBoundingClientRect().right ?? 384) + 14,
+            top: '50%', transform: 'translateY(-50%)',
+            zIndex: 80, width: 280,
+            background: t.surface, color: t.text,
+            border: `1.5px solid ${t.primaryBorder}`, borderRadius: 10,
+            boxShadow: '0 10px 34px rgba(0,0,0,.22)', padding: '13px 14px',
+          }}
+        >
+          <div style={{ whiteSpace: 'pre-line', fontSize: 12.5, lineHeight: 1.65, marginBottom: 11 }}>
+            {confirmReq.message}
+          </div>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+            <button
+              data-webai-confirm-ok
+              autoFocus
+              onClick={() => {
+                const run = confirmReq.onOk;
+                setConfirmReq(null);
+                run();
+              }}
+              style={{
+                padding: '6px 16px', borderRadius: 6, border: 'none',
+                background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
+                color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}>확인</button>
+            <button
+              data-webai-confirm-cancel
+              onClick={() => setConfirmReq(null)}
+              style={{
+                padding: '6px 14px', borderRadius: 6,
+                border: `1px solid ${t.border}`, background: t.surface,
+                color: t.text, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}>취소</button>
+          </div>
+        </div>
+      )}
       <InspectorSection t={t} title="🌐 웹 AI로 만들기 (API 키 불필요)">
         <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.55, marginBottom: 2 }}>
           쓰고 있는 AI 웹 구독(Claude·ChatGPT·Gemini…)으로 맵을 만듭니다 —

@@ -28,7 +28,7 @@
 | `map_folders` | ✅ | 문서함(폴더) 트리 — 2026-08-02 |
 | `maps` | ✅ | + `folder_id`, `kind('solo'\|'collab')`. `translation_policy_json` **없음**, `view_mode` 는 `'edit'\|'dashboard'`(DDL 주석 기준, API 는 `'kanban'` 도 허용) |
 | `map_revisions` | ✅ | patch 기반 autosave 이력 (정규화 노드 경로) |
-| **`map_documents`** | ✅ 실물 전용 | **문서 전체 스냅샷(JSONB, 맵당 1건)** — `map_id PK, doc, updated_at`. 현재 프런트가 실제 사용하는 저장 경로. ⚠️ `maps.doc` 컬럼이 아니라 **별도 테이블**이다 |
+| **`map_documents`** | ✅ 실물 전용 | **문서 전체 스냅샷(JSONB, 맵당 1건)** — `map_id PK, doc, updated_at` + 목록 통계 `node_count`/`attach_count`/`attach_bytes`(2026-08-04, 저장 시 서버 계산 — 구행은 NULL, 다음 저장 때 채워짐). 현재 프런트가 실제 사용하는 저장 경로. ⚠️ `maps.doc` 컬럼이 아니라 **별도 테이블**이다 |
 | **`map_document_versions`** | ✅ 실물 전용 | 저장 시점별 히스토리(B8) + `layout_type`/`node_count`/`attach_bytes`/`attach_count` 상세 컬럼 |
 | `nodes` | ✅ | ltree 정규화 경로 — **현재도 실존·가동 중**(스냅샷 경로와 병행, 프런트는 스냅샷 경로만 사용). `note` 컬럼 **없음**, `layout_type NOT NULL DEFAULT 'radial-bidirectional'`, **CHECK 제약 0건**, 번역 컬럼은 `text_lang`/`text_hash` 만 |
 | `tags` / `node_tags` | ✅ | `tags` 는 **owner_id 기반 개인 태그만** (`UNIQUE(owner_id, name)`) — `workspace_id` 없음 |

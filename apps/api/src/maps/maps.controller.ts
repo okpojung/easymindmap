@@ -50,7 +50,9 @@ export class MapsController {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
       folder,
-      sort: sort === 'title' ? 'title' : 'updatedAt',
+      sort: (['title', 'createdAt', 'updatedAt', 'nodeCount',
+              'docBytes', 'attachCount', 'attachBytes'] as const)
+        .find((k) => k === sort) ?? 'updatedAt',
       order: order === 'asc' ? 'asc' : 'desc',
     });
   }

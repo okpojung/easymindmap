@@ -279,6 +279,19 @@ export function Canvas({
     return m;
   }, [sample, layoutType]);
 
+  // 드롭존·드롭 인디케이터용 — 노드의 "자식이 자라는 방향"을 실효
+  // 레이아웃으로 판정한다. 진행트리·트리 아래는 자식이 아래로(형제는
+  // 좌우 배열), 시간배치는 side(위/아래), 그 외는 side 좌/우. 형제
+  // 배열 축은 "부모의 자식 방향"에 수직이다 — side 만 보던 이전
+  // 판정은 진행트리에서 하위/형제 표시가 실제 이동과 반대로 읽혔다
+  // (2026-08-04 실사용 보고).
+  const childDirOf = (n: { id: string; side?: string }): 'left' | 'right' | 'down' | 'up' => {
+    const eff = effByNode.get(n.id) ?? '';
+    if (eff.startsWith('process-tree') || eff === 'tree-down') return 'down';
+    if (eff === 'timeline') return n.side === 'up' ? 'up' : 'down';
+    return n.side === 'left' ? 'left' : 'right';
+  };
+
   // 노드별 전체 자손 수 — 접힌 노드의 +N 칩에 "숨은 노드 수"를 표시
   // (HTML 뷰어 countDescendants와 동일 의미)
   const descCount = useMemo(() => {
@@ -371,24 +384,27 @@ export function Canvas({
     const dy = wy - hit.y;
     const isRoot = hit.depth === 0;
 
+    // 자식·부모 존은 hit 의 자식 성장 축으로, 형제 존(before/after)은
+    // "부모의 자식 방향"에 수직인 축으로 판정한다. 진행트리처럼 자식이
+    // 아래로 자라는 레이아웃에서는 형제가 좌우로 배열되므로, 좌우가
+    // 이전/다음 형제 존이 된다.
+    const dirC = childDirOf(hit);
+    const parentNode = hit.parent ? byId.get(hit.parent) : undefined;
+    const sibDir = parentNode ? childDirOf(parentNode) : dirC;
+    const vertC = dirC === 'down' || dirC === 'up';
+    const along = vertC
+      ? dy * (dirC === 'down' ? 1 : -1)
+      : dx * (dirC === 'left' ? -1 : 1);
+    const extentC = vertC ? hit.h : hit.w;
+
     let position: DropPosition;
-    if (hit.side === 'down') {
-      // children grow downward
-      if (dy > hit.h * 0.18) position = 'child';
-      else if (dy < -hit.h * 0.18 && !isRoot) position = 'parent';
-      else position = dx < 0 ? 'before' : 'after';
-    } else if (hit.side === 'up') {
-      // children grow upward (시간배치 위쪽 주제)
-      if (dy < -hit.h * 0.18) position = 'child';
-      else if (dy > hit.h * 0.18 && !isRoot) position = 'parent';
-      else position = dx < 0 ? 'before' : 'after';
+    if (along > extentC * 0.18) position = 'child';
+    else if (along < -extentC * 0.18 && !isRoot) position = 'parent';
+    else if (sibDir === 'down' || sibDir === 'up') {
+      // 부모가 세로 성장 → 형제는 가로 배열: 왼쪽 = 이전, 오른쪽 = 다음
+      position = dx < 0 ? 'before' : 'after';
     } else {
-      // children grow left/right
-      const childSign = hit.side === 'left' ? -1 : 1; // right by default
-      const along = dx * childSign;
-      if (along > hit.w * 0.18) position = 'child';
-      else if (along < -hit.w * 0.18 && !isRoot) position = 'parent';
-      else position = dy < 0 ? 'before' : 'after';
+      position = dy < 0 ? 'before' : 'after';
     }
 
     // Root can only accept children; siblings/parent make no sense on root.
@@ -1184,25 +1200,32 @@ export function Canvas({
             const tgt = nodes.find((n) => n.id === dropZone.targetId);
             if (!tgt) return null;
             const BAR = 6;
-            const childSign = tgt.side === 'left' ? -1 : 1;
+            // findDropZone 과 같은 축 규칙: 자식/부모 바 = 자식 성장
+            // 방향의 앞/뒤 변, 형제 바 = 부모의 자식 방향에 수직인 변
+            // (진행트리 = 좌우 세로 바, 가로 레이아웃 = 상하 가로 바)
+            const dirC = childDirOf(tgt);
+            const parentNode = nodes.find((n) => n.id === tgt.parent);
+            const sibDir = parentNode ? childDirOf(parentNode) : dirC;
+            const sibHorizontal = sibDir === 'down' || sibDir === 'up';
+            const topBar = { x: tgt.x - tgt.w / 2, y: tgt.y - tgt.h / 2 - BAR, w: tgt.w, h: BAR };
+            const bottomBar = { x: tgt.x - tgt.w / 2, y: tgt.y + tgt.h / 2, w: tgt.w, h: BAR };
+            const leftBar = { x: tgt.x - tgt.w / 2 - BAR, y: tgt.y - tgt.h / 2, w: BAR, h: tgt.h };
+            const rightBar = { x: tgt.x + tgt.w / 2, y: tgt.y - tgt.h / 2, w: BAR, h: tgt.h };
+            const edgeBar = (dir: 'left' | 'right' | 'down' | 'up') =>
+              dir === 'down' ? bottomBar : dir === 'up' ? topBar
+                : dir === 'left' ? leftBar : rightBar;
+            const opposite = (dir: 'left' | 'right' | 'down' | 'up') =>
+              dir === 'down' ? 'up' as const : dir === 'up' ? 'down' as const
+                : dir === 'left' ? 'right' as const : 'left' as const;
             let bar: { x: number; y: number; w: number; h: number };
             if (dropZone.position === 'before') {
-              bar = { x: tgt.x - tgt.w / 2, y: tgt.y - tgt.h / 2 - BAR, w: tgt.w, h: BAR };
+              bar = sibHorizontal ? leftBar : topBar;
             } else if (dropZone.position === 'after') {
-              bar = { x: tgt.x - tgt.w / 2, y: tgt.y + tgt.h / 2, w: tgt.w, h: BAR };
+              bar = sibHorizontal ? rightBar : bottomBar;
             } else if (dropZone.position === 'parent') {
-              const onLeft = childSign < 0 ? false : true; // parent is opposite child side
-              const px = onLeft ? tgt.x - tgt.w / 2 - BAR : tgt.x + tgt.w / 2;
-              bar = { x: px, y: tgt.y - tgt.h / 2, w: BAR, h: tgt.h };
+              bar = edgeBar(opposite(dirC));
             } else {
-              // child — bar on the children side
-              const cx = childSign < 0 ? tgt.x - tgt.w / 2 - BAR : tgt.x + tgt.w / 2;
-              bar =
-                tgt.side === 'down'
-                  ? { x: tgt.x - tgt.w / 2, y: tgt.y + tgt.h / 2, w: tgt.w, h: BAR }
-                  : tgt.side === 'up'
-                    ? { x: tgt.x - tgt.w / 2, y: tgt.y - tgt.h / 2 - BAR, w: tgt.w, h: BAR }
-                    : { x: cx, y: tgt.y - tgt.h / 2, w: BAR, h: tgt.h };
+              bar = edgeBar(dirC); // child — 자식이 자라는 변
             }
             return (
               <rect x={bar.x} y={bar.y} width={bar.w} height={bar.h} rx={3}

@@ -60,6 +60,13 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   const [autoGen, setAutoGen] = useState(() => {
     try { return window.localStorage.getItem(AUTOGEN_KEY) !== 'off'; } catch { return true; }
   });
+  // 적용 대상 — 붙여넣은 답변을 어디에 반영할지. 자동 실행(autoGen)과
+  // 버튼 강조가 모두 이 값을 따른다 (2026-08-04 실사용 보고: 삽입을
+  // 원했는데 자동 실행이 항상 새 맵으로 갔고, 새 맵 버튼만 강조돼
+  // 있었다). 선택 노드가 없으면 'insert' 는 고를 수 없다.
+  const [target, setTarget] = useState<'new' | 'insert'>('new');
+  const effTarget: 'new' | 'insert' =
+    target === 'insert' && selectedNode ? 'insert' : 'new';
 
   const flashCopied = (k: 'prompt' | 'expand' | 'retry') => {
     setCopied(k);
@@ -96,7 +103,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     void copyText(oneShot, 'expand');
   };
 
-  // 붙여넣은 답변 → 미리보기 (+ 자동 생성)
+  // 붙여넣은 답변 → 미리보기 (+ 자동 실행 — 선택한 적용 대상을 따른다)
   const process = (text: string, auto: boolean) => {
     setError('');
     setPreview(null);
@@ -108,7 +115,10 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
       return;
     }
     setPreview(res);
-    if (auto && autoGen) openAsNewMap(res);
+    if (auto && autoGen) {
+      if (effTarget === 'insert') insertToSelected(text);
+      else openAsNewMap(res);
+    }
   };
 
   // 새 맵으로 열기 — 새 맵 패널과 같은 확인 게이트(잃을 것이 없으면
@@ -132,18 +142,20 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     setSelectedId('root');
     setAnswer('');
     setPreview(null);
-    flashNotice(`🗺 '${res.map.title}' 맵 생성 완료 (${res.nodeCount}개 노드)`);
+    // (🗺 이모지는 윈도에서 우산처럼 깨져 보여 제거 — 2026-08-04 보고)
+    flashNotice(`'${res.map.title}' 맵 생성 완료 (${res.nodeCount}개 노드)`);
   };
 
   // 선택 노드에 하위로 삽입 — API 모드 runExpand 의 답변 처리와 동일:
   // 답변 맨 앞의 # 줄은 제거하고 타깃 제목으로 감싸 자식만 꺼낸다
-  const insertToSelected = () => {
+  const insertToSelected = (text?: string) => {
     if (!selectedId || !selectedNode) return;
     setError('');
+    const source = text ?? answer;
     // 새 맵 경로와 같은 후보 체인 — 최장 코드블록이 예시 조각인 답변
     // (2026-08-04 실사용 보고: 삽입만 실패)도 펜스 제거 폴백으로 흡수
     let kids: unknown[] = [];
-    for (const candidate of mapSourceCandidates(answer)) {
+    for (const candidate of mapSourceCandidates(source)) {
       const body = candidate.replace(/^\s*#\s[^\n]*\n+/, '');
       const wrapped = `# ${selectedNode.text || '노드'}\n\n${body}`;
       const parsed = parseEmm(wrapped, '확장', { blockPlacement: 'node' });
@@ -291,8 +303,46 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
         )}
 
         {stepLabel('2', 'AI 창에 붙여넣고(Ctrl+V) 실행 → 답변을 복사하세요')}
+        <div style={{ fontSize: 10, color: '#B45309', lineHeight: 1.5, margin: '2px 0 0' }}>
+          답변은 반드시 답변 끝의 <b>⧉ 복사 버튼</b>으로 복사하세요 —
+          화면을 드래그해 복사하면 코드·도식 블록의 형식이 사라져 깨집니다.
+        </div>
 
         {stepLabel('3', '답변 붙여넣기')}
+        {/* 적용 대상 — 자동 실행·버튼 강조가 이 선택을 따른다 */}
+        <div data-webai-target style={{ display: 'flex', gap: 5, marginBottom: 5 }}>
+          {([
+            { key: 'new' as const, label: '새 맵으로', disabled: false },
+            {
+              key: 'insert' as const,
+              label: selectedNode
+                ? `'${(selectedNode.text || '노드').slice(0, 8)}' 하위에 삽입`
+                : '선택 노드 하위에 삽입',
+              disabled: !selectedNode,
+            },
+          ]).map((o) => (
+            <button
+              key={o.key}
+              data-webai-target-opt={o.key}
+              disabled={o.disabled}
+              onClick={() => setTarget(o.key)}
+              title={o.key === 'insert' && !selectedNode
+                ? '맵에서 노드를 먼저 선택하면 하위 삽입을 고를 수 있습니다'
+                : undefined}
+              style={{
+                flex: 1, padding: '5px 6px', borderRadius: 6,
+                fontSize: 10.5, fontWeight: 700,
+                cursor: o.disabled ? 'default' : 'pointer',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                background: effTarget === o.key ? t.primarySoft : t.surfaceAlt,
+                color: o.disabled ? t.textSubtle
+                  : effTarget === o.key ? t.primary : t.textMuted,
+                border: `1.5px solid ${effTarget === o.key ? t.primary : t.border}`,
+              }}>
+              {effTarget === o.key ? '● ' : ''}{o.label}
+            </button>
+          ))}
+        </div>
         <textarea
           value={answer}
           data-webai-answer
@@ -326,7 +376,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             onChange={(e) => chooseAutoGen(e.target.checked)}
             style={{ accentColor: t.primary }}
           />
-          붙여넣는 즉시 맵 생성
+          붙여넣는 즉시 실행 (위에서 고른 대상에)
         </label>
 
         {preview && (
@@ -335,7 +385,9 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             background: '#DCFCE7', border: '1px solid #86EFAC',
             color: '#15803D', fontSize: 11.5, lineHeight: 1.5, fontWeight: 600,
           }}>
-            '{preview.map.title}' · {preview.nodeCount}노드 — 맵 생성 준비 완료
+            '{preview.map.title}' · {preview.nodeCount}노드 — {effTarget === 'insert'
+              ? `'${selectedNode?.text || '노드'}' 하위 삽입 준비 완료`
+              : '새 맵 생성 준비 완료'}
           </div>
         )}
         {error && (
@@ -359,46 +411,67 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           </div>
         )}
 
+        {/* 실행 버튼 — 강조(주황)는 위의 적용 대상 선택을 따른다 */}
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-          <button
-            onClick={() => {
-              if (preview) { openAsNewMap(preview); return; }
-              process(answer, false);
-              // process 는 상태 갱신 — 즉시 성공분 열기
-              const res = answerFromPaste(answer);
-              if (!('reason' in res)) openAsNewMap(res);
-            }}
-            disabled={!answer.trim()}
-            data-webai-generate
-            title="붙여넣은 답변을 새 맵으로 엽니다"
-            style={{
-              flex: 1, padding: 9,
-              background: !answer.trim() ? t.surfaceAlt
-                : `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
-              color: !answer.trim() ? t.textSubtle : '#fff',
-              border: !answer.trim() ? `1px solid ${t.border}` : 'none',
-              borderRadius: 7, fontSize: 12.5, fontWeight: 700,
-              cursor: !answer.trim() ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}>
-            <I.Sparkles size={13} /> 🗺 ③ 새 맵 생성
-          </button>
-          {selectedNode && (
-            <button
-              onClick={insertToSelected}
-              disabled={!answer.trim()}
-              data-webai-insert
-              title={`답변을 '${selectedNode.text}' 노드의 하위로 추가합니다`}
-              style={{
-                flex: 1, padding: 9,
-                background: !answer.trim() ? t.surfaceAlt : t.primarySoft,
-                color: !answer.trim() ? t.textSubtle : t.primary,
-                border: `1px solid ${!answer.trim() ? t.border : t.primaryBorder}`,
-                borderRadius: 7, fontSize: 12.5, fontWeight: 700,
-                cursor: !answer.trim() ? 'default' : 'pointer',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>선택 노드에 삽입</button>
-          )}
+          {(() => {
+            const primaryStyle = {
+              background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
+              color: '#fff', border: 'none',
+            };
+            const secondaryStyle = {
+              background: t.primarySoft, color: t.primary,
+              border: `1px solid ${t.primaryBorder}`,
+            };
+            const disabledStyle = {
+              background: t.surfaceAlt, color: t.textSubtle,
+              border: `1px solid ${t.border}`,
+            };
+            const baseStyle = {
+              flex: 1, padding: 9, borderRadius: 7,
+              fontSize: 12.5, fontWeight: 700,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            } as const;
+            const off = !answer.trim();
+            return (
+              <>
+                <button
+                  onClick={() => {
+                    setTarget('new');
+                    if (preview) { openAsNewMap(preview); return; }
+                    process(answer, false);
+                    // process 는 상태 갱신 — 즉시 성공분 열기
+                    const res = answerFromPaste(answer);
+                    if (!('reason' in res)) openAsNewMap(res);
+                  }}
+                  disabled={off}
+                  data-webai-generate
+                  title="붙여넣은 답변을 새 맵으로 엽니다"
+                  style={{
+                    ...baseStyle,
+                    ...(off ? disabledStyle
+                      : effTarget === 'new' ? primaryStyle : secondaryStyle),
+                    cursor: off ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: 6,
+                  }}>
+                  <I.Sparkles size={13} /> ③ 새 맵 생성
+                </button>
+                {selectedNode && (
+                  <button
+                    onClick={() => { setTarget('insert'); insertToSelected(); }}
+                    disabled={off}
+                    data-webai-insert
+                    title={`답변을 '${selectedNode.text}' 노드의 하위로 추가합니다`}
+                    style={{
+                      ...baseStyle,
+                      ...(off ? disabledStyle
+                        : effTarget === 'insert' ? primaryStyle : secondaryStyle),
+                      cursor: off ? 'default' : 'pointer',
+                    }}>선택 노드에 삽입</button>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 8, lineHeight: 1.5 }}>

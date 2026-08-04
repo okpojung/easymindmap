@@ -136,11 +136,33 @@ export function answerToMap(source: string): AnswerMapOk | AnswerMapFail {
  */
 export function mapSourceCandidates(pasted: string): string[] {
   const text = String(pasted || '');
-  const out = [extractMapSource(text)];
+  const out: string[] = [];
+  // 펜스 **밖**에 견출(#)이 있으면 맵은 원문 전체이고, 펜스는 그 안의
+  // 코드 블록이다 → 원문을 **펜스째** 먼저 시도한다. 이게 없으면 ①의
+  // 최장 블록 추출이 도식 코드블록을 맵으로 오인하고, 이어지는 ③
+  // 펜스 제거 폴백이 **코드 펜스를 지워** 도식을 평문으로 만들었다
+  // (2026-08-05 — 노드에서 도식이 깨져 보이던 진짜 원인).
+  if (hasHeadingOutsideFence(text)) out.push(text.trim());
+  out.push(extractMapSource(text));
   if (/^\s*[`~]{3,}/m.test(text)) {
     out.push(text.replace(/^\s*[`~]{3,}[^\n]*$/gm, '').trim());
   }
   return out.filter((s, i, a) => s && a.indexOf(s) === i);
+}
+
+/** 코드 펜스 바깥에 Markdown 견출(`# `~`###### `)이 있는가 */
+export function hasHeadingOutsideFence(pasted: string): boolean {
+  let open: { ch: string; len: number } | null = null;
+  for (const line of String(pasted || '').split(/\r?\n/)) {
+    const m = line.match(/^\s*(`{3,}|~{3,})\s*([a-zA-Z-]*)\s*$/);
+    if (m && open && m[1][0] === open.ch && m[1].length >= open.len && !m[2]) {
+      open = null;
+      continue;
+    }
+    if (m && !open) { open = { ch: m[1][0], len: m[1].length }; continue; }
+    if (!open && /^#{1,6}\s+\S/.test(line)) return true;
+  }
+  return false;
 }
 
 /** 붙여넣은 원문 → 맵 (패널 공용 진입점) — 후보를 차례로 시도 */

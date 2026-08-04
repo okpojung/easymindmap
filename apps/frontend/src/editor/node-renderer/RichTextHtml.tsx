@@ -19,6 +19,7 @@ import { parseMdTable } from './mdTable';
 import { parseCheckLine, toggleCheckInText } from './mdCheck';
 import { CodeBlockDialog, replaceCodeBlock } from './CodeBlockDialog';
 import { copyTable } from '@/utils/copyTable';
+import { gridCharSpans } from '@/utils/monoGrid';
 
 const MONO = "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace";
 
@@ -305,12 +306,24 @@ export function NodeRichText({
               {codeCopied ? '복사됨 ✓' : '⧉'}
             </span>
           </div>
+          {/* 격자 배치 — 맵 캔버스(SVG)와 같은 규칙으로 글자마다 칸을
+              주어, 폰트 폴백과 무관하게 상자 도식이 어긋나지 않는다
+              (2026-08-05, utils/monoGrid) */}
           <pre data-html-scroll style={{
             margin: 0, padding: '3px 7px', overflowX: 'auto',
             fontFamily: MONO, fontSize: '0.92em', lineHeight: 1.45,
             color: CODE_TEXT, whiteSpace: 'pre', cursor: 'auto',
           }}>
-            {mdc.code.join('\n')}
+            {mdc.code.map((ln, li) => (
+              <div key={li}>
+                {gridCharSpans(ln).map((c, ci) => (
+                  <span key={ci} style={{ display: 'inline-block', width: `${c.em}em` }}>
+                    {c.ch === ' ' ? '\u00A0' : c.ch}
+                  </span>
+                ))}
+                {ln === '' ? '\u00A0' : null}
+              </div>
+            ))}
           </pre>
         </div>
       )}

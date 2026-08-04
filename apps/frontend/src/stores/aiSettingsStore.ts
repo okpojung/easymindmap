@@ -95,7 +95,11 @@ export const useAiSettingsStore = create<AiSettingsState>()(
     }),
     {
       name: 'easymindmap-ai-settings',
-      version: 6,
+      version: 7,
+      // v6 → v7: 기본 템플릿 v4.2 승격 — **ASCII 도식 금지 규칙을 도로
+      // 뺐다.** 앱이 코드 블록을 글자 격자에 앉히도록 바뀌어
+      // (utils/monoGrid) 한글이 섞여도 칸이 어긋나지 않으므로, AI 답변을
+      // 제한할 이유가 없어졌다 (금지하면 도식이 필요한 자리에도 안 나온다).
       // v5 → v6: 기본 템플릿 v4.1 승격 (규칙 6에 ASCII 아트 도식 금지 —
       // AI가 코드 펜스에 상자 문자 계통도를 그려 넣어 노드에서 깨져
       // 보이던 실사용 보고). v4 기본값 그대로인 사용자만 자동 승격.

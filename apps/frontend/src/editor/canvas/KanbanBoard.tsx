@@ -21,6 +21,10 @@ import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { readableTextOn } from '@/editor/node-renderer/resolveNodeColors';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
+import {
+  collectSubtrees, isNodeClipToken, stashNodes, takeStashed,
+} from '@/utils/nodeClipboard';
+import { reassignIds } from '@/utils/aiProjectContext';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 
@@ -315,13 +319,48 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
         }
         return;
       }
+      // 노드 복사 (Ctrl+C) — 맵 모드(Canvas)와 동일 동작 (2026-08-04
+      // 보고: 칸반에서는 Canvas 가 마운트되지 않아 복사가 안 됐다)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        const multi = useInteractionStore.getState().multiSelectedIds;
+        const ids = multi.length > 1
+          ? multi
+          : selectedId && selectedId !== 'root' ? [selectedId] : [];
+        if (!ids.length) return;
+        if ((window.getSelection()?.toString() ?? '').trim()) return; // 텍스트 복사 우선
+        e.preventDefault();
+        const subtrees = collectSubtrees(useDocumentStore.getState().map, ids);
+        if (!subtrees.length) return;
+        const token = stashNodes(subtrees);
+        void navigator.clipboard?.writeText?.(token).catch(() => { /* 무시 */ });
+        return;
+      }
       if (e.key === 'Escape') {
         useInteractionStore.getState().setMultiSelectedIds([]);
         onSelect(null);
       }
     };
+    // 붙여넣기 — 내부 클립보드 토큰이면 선택 카드/컬럼의 하위로 삽입
+    const onPaste = (e: ClipboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'TEXTAREA' || tgt.tagName === 'INPUT' || tgt.isContentEditable)) return;
+      const sel = useInteractionStore.getState().selectedId;
+      if (!sel) return;
+      const text = (e.clipboardData?.getData('text/plain') ?? '').trim();
+      if (!isNodeClipToken(text)) return; // 그 외 붙여넣기는 기존 동작(카드 편집 등)
+      e.preventDefault();
+      const copied = takeStashed(text);
+      if (copied?.length) {
+        useDocumentStore.getState().appendChildren(sel, reassignIds(copied as never) as never);
+        onSelect(sel);
+      }
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('paste', onPaste);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('paste', onPaste);
+    };
   }, [selectedId, onSelect, deleteNode, deleteNodesBulk]);
 
   // 카드 드래그 이동 상태 — 보드 레벨에서 위임 처리 (컬럼을 넘나들므로)

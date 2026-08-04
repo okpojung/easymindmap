@@ -1,4 +1,4 @@
-# 🧠 easymindmap
+# <img src="docs/assets/brand/logo.svg" width="34" alt="EasyMindMap 로고" align="top" /> easymindmap
 
 > **[Mindmap Markdown](https://mindmapmarkdown.org) 레퍼런스 애플리케이션.**
 > easymindmap이 정의·구현하는 **EMM**(EasyMindMap Markdown)은 그 표준이

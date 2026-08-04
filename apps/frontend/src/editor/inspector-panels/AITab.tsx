@@ -15,6 +15,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { InspectorSection } from './InspectorSection';
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
+import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -40,6 +41,18 @@ import { WebAiPanel } from './WebAiPanel';
 
 export function AITab({ t }: { t: ThemeTokens }) {
   const [view, setView] = useState<'generate' | 'settings'>('generate');
+  // Guest 체험 (2026-08-04) — API 키 등록·호출 없음: 웹 AI(클립보드
+  // 왕복)만 제공하고 'AI 설정' 탭과 모드 스위치를 숨긴다.
+  const guest = useAuthStore((s) => s.guest);
+  const isGuest = authEnabled && guest;
+
+  if (isGuest) {
+    return (
+      <div>
+        <WebAiPanel t={t} />
+      </div>
+    );
+  }
 
   return (
     <div>

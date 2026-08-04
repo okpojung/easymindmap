@@ -48,11 +48,12 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
       >
         {/* ── 소개 ────────────────────────────────────────── */}
         <div style={{ flex: '1 1 420px', maxWidth: 560, minWidth: 300 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
-            <I.Logo size={44} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
+            {/* 2026-08-04 사용자 요청 — 초기 화면 로고·워드마크 확대 */}
+            <I.Logo size={72} />
             {/* 워드마크 — 브랜드 브라운 (다크 테마는 밝은 탠으로 가독 확보) */}
             <span style={{
-              fontSize: 24, fontWeight: 900, letterSpacing: -0.5,
+              fontSize: 40, fontWeight: 900, letterSpacing: -1,
               color: t.name === 'dark' ? '#E8C9A6' : '#5C3B25',
             }}>
               EasyMindMap

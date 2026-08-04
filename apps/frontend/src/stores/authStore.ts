@@ -15,27 +15,38 @@ import {
 
 interface AuthState {
   session: AuthSession | null;
+  /**
+   * Guest 체험 모드 (2026-08-04) — 가입 없이 로컬 에디터만 쓴다.
+   * 서버 저장·불러오기·첨부·API 키 AI 는 막히고(각 화면이 이 플래그로
+   * 판단), MD/HTML 내보내기와 웹 AI 붙여넣기는 된다. 세션과 배타적 —
+   * 로그인·가입하면 자동 해제된다.
+   */
+  guest: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   /** 가입 — 세션이 곧바로 오면 로그인까지 완료. false = 이메일 확인 필요 */
   signUp: (email: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   setSession: (s: AuthSession | null) => void;
+  enterGuest: () => void;
+  /** Guest 종료 → 로그인 화면으로 (가입 유도 통로) */
+  exitGuest: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       session: null,
+      guest: false,
 
       signIn: async (email, password) => {
         const s = await supabaseAuth.signIn(email, password);
-        set({ session: s });
+        set({ session: s, guest: false });
       },
 
       signUp: async (email, password) => {
         const s = await supabaseAuth.signUp(email, password);
         if (s) {
-          set({ session: s });
+          set({ session: s, guest: false });
           return true;
         }
         return false;
@@ -43,13 +54,18 @@ export const useAuthStore = create<AuthState>()(
 
       signOut: async () => {
         const cur = get().session;
-        set({ session: null });
+        set({ session: null, guest: false });
         if (cur) await supabaseAuth.signOut(cur.accessToken);
       },
 
-      setSession: (s) => set({ session: s }),
+      setSession: (s) => set({ session: s, ...(s ? { guest: false } : {}) }),
+      enterGuest: () => set({ guest: true, session: null }),
+      exitGuest: () => set({ guest: false }),
     }),
-    { name: 'emm.auth', partialize: (s) => ({ session: s.session }) },
+    {
+      name: 'emm.auth',
+      partialize: (s) => ({ session: s.session, guest: s.guest }),
+    },
   ),
 );
 

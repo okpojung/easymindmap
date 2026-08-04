@@ -7,6 +7,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { AttachmentKind } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
+import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { attachmentUrlForFile } from '@/utils/attachmentFile';
 import { cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { InspectorSection } from './InspectorSection';
@@ -22,6 +23,9 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   const [linkLabel, setLinkLabel] = useState('');
   // 첨부 실패(서버 업로드 쿼터 초과 등) 안내 — 첨부 섹션 아래 빨간 줄
   const [attErr, setAttErr] = useState<string | null>(null);
+  // Guest 체험 — 첨부 기능 없음 (2026-08-04)
+  const guest = useAuthStore((s) => s.guest);
+  const isGuest = authEnabled && guest;
 
   const node = findNodeInMap(map, selectedId);
   const disabled = !selectedId || !node;
@@ -124,6 +128,20 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         </div>
       </InspectorSection>
 
+      {isGuest ? (
+        // Guest 체험 (2026-08-04) — 첨부 기능 없음 (가입 유도 안내만)
+        <InspectorSection t={t} title="첨부">
+          <div data-testid="guest-attach-note" style={{
+            fontSize: 11, color: t.textMuted, lineHeight: 1.6,
+            padding: '8px 10px', borderRadius: 6,
+            background: t.surfaceAlt, border: `1px dashed ${t.border}`,
+          }}>
+            Guest 체험 중에는 첨부파일을 쓸 수 없습니다.<br />
+            <b>가입하면</b> 문서·미디어 첨부(2MB 이하 맵 내장 + 초과분
+            서버 저장소)를 쓸 수 있습니다.
+          </div>
+        </InspectorSection>
+      ) : (<>
       <InspectorSection t={t} title="첨부 (문서)">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {docs.map((a) => (
@@ -159,6 +177,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
           onFiles={(files) => addFiles(
             files, (f) => (f.type.startsWith('audio') ? 'audio' : 'video'))} />
       </InspectorSection>
+      </>)}
 
       <InspectorSection t={t} title="노드 배경 이미지 (IMG-01~05 · V1)">
         <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>

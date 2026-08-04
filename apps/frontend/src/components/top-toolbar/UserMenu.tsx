@@ -49,6 +49,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const [soon, setSoon] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const session = useAuthStore((s) => s.session);
+  const guest = useAuthStore((s) => s.guest);
+  const isGuest = authEnabled && guest && !session;
 
   // 저장 용량 (B9) — 메뉴를 열 때마다 조회. DB(문서)+첨부 합산 / 한도.
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
@@ -101,7 +103,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           border: `2px solid ${open ? t.primaryBorder : t.surface}`, cursor: 'pointer',
         }}
       >
-        {initialOf(session?.email)}
+        {isGuest ? 'G' : initialOf(session?.email)}
       </button>
 
       {open && (
@@ -120,11 +122,13 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               fontSize: 12.5, fontWeight: 700, overflow: 'hidden',
               textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              {session?.email ?? '로컬 모드'}
+              {session?.email ?? (isGuest ? 'Guest 체험 중' : '로컬 모드')}
             </div>
             <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 2 }}>
               {authEnabled
-                ? (session ? '로그인됨' : '로그인하지 않음')
+                ? (session ? '로그인됨'
+                  : isGuest ? '가입하면 저장·첨부·히스토리를 쓸 수 있습니다'
+                    : '로그인하지 않음')
                 : '서버 인증이 꺼진 개발 모드'}
             </div>
           </div>
@@ -196,6 +200,28 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             >
               {ENTRIES.find((e) => e.id === soon)?.soon}
             </div>
+          )}
+
+          {isGuest && (
+            <>
+              <div style={{ height: 1, background: t.divider, margin: '5px 0' }} />
+              <button
+                data-testid="user-menu-signup"
+                onClick={() => {
+                  setOpen(false);
+                  useAuthStore.getState().exitGuest(); // → 로그인/가입 화면
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                  textAlign: 'left', padding: '8px 10px', borderRadius: 6,
+                  background: t.primarySoft, border: 'none', color: t.primary,
+                  cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                }}
+              >
+                <span style={{ width: 16, textAlign: 'center' }}>✨</span>
+                <span style={{ flex: 1 }}>가입하고 시작하기</span>
+              </button>
+            </>
           )}
 
           {authEnabled && session && (

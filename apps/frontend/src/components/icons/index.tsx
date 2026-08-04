@@ -58,8 +58,8 @@ export const I = {
       <rect width="96" height="96" rx="18" fill="#FFFFFF" />
       <path d="M 56 48 A 26 26 0 1 0 46.7 67.9" stroke="url(#emm-logo-g)" strokeWidth="10" fill="none" strokeLinecap="round" />
       <line x1="46" y1="48" x2="56" y2="48" stroke="url(#emm-logo-g)" strokeWidth="10" strokeLinecap="round" />
-      <text x="30" y="44" textAnchor="middle" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="11.5" fill="#5C3B25">Mark</text>
-      <text x="31" y="63" textAnchor="middle" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="11.5" fill="#5C3B25">Down</text>
+      <text x="31" y="45" textAnchor="middle" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="14" fill="#5C3B25">Mark</text>
+      <text x="32" y="64" textAnchor="middle" fontFamily="Pretendard,-apple-system,sans-serif" fontWeight="800" fontSize="14" fill="#5C3B25">Down</text>
       <circle cx="53" cy="60" r="5" fill="url(#emm-logo-g)" />
       <path d="M 56 60 C 63 60 61 50 68 50" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />
       <path d="M 56 60 C 63 60 61 70 68 70" stroke="url(#emm-logo-g)" strokeWidth="4" fill="none" strokeLinecap="round" />

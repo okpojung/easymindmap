@@ -20,6 +20,7 @@ import type {
 } from '@/editor/__samples__/types';
 import { installGlobalTooltip } from '@/utils/globalTooltip';
 import { WelcomeScreen } from '@/components/auth/WelcomeScreen';
+import { GuestBrowserNotice } from '@/components/auth/GuestBrowserNotice';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { clearCurrentMap, initialMapId, openMapHere } from '@/services/cloud/mapSession';
@@ -147,8 +148,10 @@ export function EditorPage() {
 
   const saveState = useAutosaveStore((s) => s.saveState);
   const session = useAuthStore((s) => s.session);
-  // 인증이 켜진 배포에서 로그인 전에는 에디터를 열지 않는다 (2026-08-02)
-  const gated = authEnabled && !session;
+  const guest = useAuthStore((s) => s.guest);
+  // 인증이 켜진 배포에서 로그인 전에는 에디터를 열지 않는다 (2026-08-02).
+  // Guest 체험(2026-08-04)은 게이트를 통과한다 — 로컬 편집만 가능.
+  const gated = authEnabled && !session && !guest;
 
   const kanbanFromMap = buildKanbanFromMap(map);
 
@@ -203,8 +206,19 @@ export function EditorPage() {
     useInteractionStore.getState().setSelectedId(null);
     // `?map=<id>` 탭은 아래 URL 로딩 효과가 문서함 대신 그 맵을 연다
     useEditorUiStore.getState().setBrowserOpen(!!session && !initialMapId);
+    // 로그인/Guest 첫 화면의 좌측 패널 = **새 맵 메뉴** 고정 (2026-08-04
+    // 보고 — 시크릿창처럼 저장된 UI 상태가 없으면 '스타일' 탭이 떴다.
+    // 문서함이 메인인 첫 화면에서 노드 속성 패널은 무의미하다)
+    if (session || guest) {
+      useEditorUiStore.getState().setNavTab('newMap');
+    }
+    // Guest 체험 — 빈 화면 대신 곧바로 만져 볼 샘플 맵을 연다
+    if (guest && !session && !initialMapId) {
+      setSample();
+      useInteractionStore.getState().setSelectedId('root');
+    }
     setHistoryPaused(false);
-  }, [session]);
+  }, [session, guest]);
 
   // `?map=<id>` — 다른 맵을 "브라우저 새 탭"으로 여는 경로 (2026-08-02).
   // 앱 안에서 탭을 관리하는 대신 브라우저 탭을 쓰기로 했고, 그 탭이
@@ -306,13 +320,18 @@ export function EditorPage() {
               </>
             )}
             {browserOpen ? (
-              // 문서함 — 팝업이 아니라 편집 영역을 그대로 쓴다 (2026-08-02)
+              // 문서함 — 팝업이 아니라 편집 영역을 그대로 쓴다 (2026-08-02).
+              // Guest 는 서버 문서함이 없다 — 빈 목록 대신 안내 + 가입 유도
+              guest && !session ? (
+                <GuestBrowserNotice t={t} />
+              ) : (
               <MapBrowser
                 t={t}
                 onClose={() => setBrowserOpen(false)}
                 onFlash={(m) => setBrowserMsg(m)}
                 onOpened={() => setBrowserOpen(false)}
               />
+              )
             ) : fullOutline ? (
               // 아웃라인 전체 모드 — 편집 영역을 아웃라인 하나로 채운다.
               // ✕(또는 상단 토글)로 맵 모드로 돌아간다.

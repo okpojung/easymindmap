@@ -24,6 +24,7 @@ import {
   clearCurrentMap, isCurrentMapEmpty, isUnsavedMap, needLogin,
   saveAndCloseMap, saveCurrentMap,
 } from '@/services/cloud/mapSession';
+import { authEnabled, useAuthStore } from '@/stores/authStore';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
 type SaveIntent = null | 'save' | 'close' | 'saveAs';
@@ -51,6 +52,11 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
     // 열려 있는 맵이 없으면 저장할 것도 없다 (맵 닫기와 같은 안내 —
     // 2026-08-02 사용자 보고: 빈 상태에서 저장 대화상자가 떴다)
     if (isCurrentMapEmpty()) { flash('열려 있는 맵이 없습니다.'); return; }
+    // Guest 체험 (2026-08-04) — 서버 저장 없음, 내보내기로 안내
+    if (authEnabled && useAuthStore.getState().guest) {
+      flash('Guest 체험 중 — 서버 저장은 가입 후 가능합니다. 내보내기(MD·HTML)로 파일 보관은 됩니다.');
+      return;
+    }
     if (needLogin()) { flash('⚠ 로그인해야 서버에 저장할 수 있습니다.'); return; }
     if (isUnsavedMap()) { setSaveIntent('save'); return; } // 폴더·이름 묻기
     try {

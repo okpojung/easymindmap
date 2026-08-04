@@ -20,14 +20,13 @@ export interface SocialProvider {
   enabled: boolean;
 }
 
-/** 앞으로 붙일 로그인 방식 — 붙을 때 enabled 만 켜면 된다 */
+/** 앞으로 붙일 로그인 방식 — 붙을 때 enabled 만 켜면 된다.
+ *  순서·구성은 2026-08-04 사용자 결정: 카카오 → 네이버 → Google
+ *  (Apple 은 제외). mark 는 브랜드 로고를 붙이기 전의 임시 글리프. */
 export const SOCIAL_PROVIDERS: SocialProvider[] = [
-  { id: 'google', label: 'Google로 계속하기', mark: 'G', color: '#4285F4', enabled: false },
   { id: 'kakao', label: '카카오로 계속하기', mark: 'K', color: '#FEE500', enabled: false },
-  // mark 는 브랜드 로고를 붙이기 전의 임시 글리프 — 어느 폰트에서나
-  // 보이도록 영문 대문자를 쓴다 (Apple 심볼 는 대부분의 리눅스·안드
-  // 로이드 폰트에 없어 빈칸으로 보인다)
-  { id: 'apple', label: 'Apple로 계속하기', mark: 'A', color: '#111111', enabled: false },
+  { id: 'naver', label: '네이버로 계속하기', mark: 'N', color: '#03C75A', enabled: false },
+  { id: 'google', label: 'Google로 계속하기', mark: 'G', color: '#4285F4', enabled: false },
 ];
 
 export function LoginForm({
@@ -41,6 +40,7 @@ export function LoginForm({
 }) {
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
+  const [showPw, setShowPw] = useState(false); // 👁 비밀번호 표시 (2026-08-04)
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -89,12 +89,38 @@ export function LoginForm({
         onChange={(e) => setEmail(e.target.value)} style={inputStyle}
         onKeyDown={(e) => { if (e.key === 'Enter') void run('in'); }}
       />
-      <input
-        data-testid="login-password"
-        type="password" placeholder="비밀번호" value={pw} autoComplete="current-password"
-        onChange={(e) => setPw(e.target.value)} style={inputStyle}
-        onKeyDown={(e) => { if (e.key === 'Enter') void run('in'); }}
-      />
+      {/* 비밀번호 + 👁 표시 토글 — 아이콘이 입력창 안 오른쪽에 겹친다 */}
+      <div style={{ position: 'relative' }}>
+        <input
+          data-testid="login-password"
+          type={showPw ? 'text' : 'password'}
+          placeholder="비밀번호" value={pw} autoComplete="current-password"
+          onChange={(e) => setPw(e.target.value)}
+          style={{ ...inputStyle, paddingRight: 36 }}
+          onKeyDown={(e) => { if (e.key === 'Enter') void run('in'); }}
+        />
+        <button
+          type="button"
+          data-testid="login-pw-toggle"
+          onClick={() => setShowPw((v) => !v)}
+          title={showPw ? '비밀번호 숨기기' : '비밀번호 표시'}
+          style={{
+            position: 'absolute', right: 4, top: (h - 26) / 2,
+            width: 30, height: 26, padding: 0,
+            border: 'none', background: 'transparent', cursor: 'pointer',
+            color: showPw ? t.primary : t.textSubtle,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+            <circle cx="12" cy="12" r="3" />
+            {!showPw && <line x1="4" y1="4" x2="20" y2="20" />}
+          </svg>
+        </button>
+      </div>
       {err && (
         <div data-testid="login-error"
           style={{ color: '#d9534f', fontSize: compact ? 11 : 12, marginBottom: 7 }}>
@@ -161,6 +187,25 @@ export function LoginForm({
               )}
             </button>
           ))}
+
+          {/* Guest 체험 (2026-08-04) — 가입 없이 로컬 에디터만.
+              서버 저장·불러오기·첨부·API 키 AI 는 막히고, MD/HTML
+              내보내기와 웹 AI 붙여넣기는 된다. */}
+          <button
+            data-testid="login-guest"
+            onClick={() => useAuthStore.getState().enterGuest()}
+            title="가입 없이 에디터를 체험합니다 — 서버 저장·불러오기·첨부는 안 되고, MD/HTML 내보내기는 됩니다"
+            style={{
+              width: '100%', height: 38, marginTop: 4, borderRadius: 7,
+              border: `1px dashed ${t.border}`, background: t.surfaceAlt,
+              color: t.textMuted, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px',
+              fontSize: 13, fontWeight: 600,
+            }}
+          >
+            <span style={{ width: 20, textAlign: 'center', fontWeight: 800 }}>👤</span>
+            <span style={{ flex: 1, textAlign: 'left' }}>Guest로 체험하기 (가입 없이)</span>
+          </button>
         </div>
       )}
     </div>

@@ -79,8 +79,10 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   // 아코디언 펼침 상태 — 새 맵 만들기는 기본 펼침, Local 파일은 접힘
   // (선택 시 하위 메뉴가 트리 형태로 펼쳐진다)
   const [openLocal, setOpenLocal] = useState(false);
-  // 로그인 상태 — 서버 맵 메뉴 숨김 판단 (2026-08-03)
+  // 로그인 상태 — 서버 맵 메뉴 숨김 판단 (2026-08-03).
+  // Guest 체험(2026-08-04)도 서버 맵이 없으므로 함께 숨긴다.
   const session = useAuthStore((s) => s.session);
+  const guest = useAuthStore((s) => s.guest);
   // 새 맵/불러오기 직후 — 적용할 템플릿 선택 단계.
   //   mode 'new'   : 템플릿 골격+속성으로 새 맵 시작 (templateSkeletonMap)
   //   mode 'import': 불러온 내용은 유지, 속성만 입힘 (applyTemplateStyles)
@@ -438,7 +440,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           로그인 상태에서는 숨긴다 (2026-08-03) — 로그인 직후·맵 닫기 후
           문서함이 자동으로 열리고, 상단의 '내 문서'를 눌러도 열리므로
           왼쪽 메뉴는 중복이다. 인증 꺼진 개발 빌드에서만 유지. */}
-      {!(authEnabled && session) && menuHeader({
+      {!(authEnabled && (session || guest)) && menuHeader({
         icon: '☁', label: '서버 맵 불러오기',
         onClick: () => setBrowserOpen(true),
         tip: '서버에 저장된 내 문서함을 편집 영역에 엽니다 (폴더·정렬 지원)',

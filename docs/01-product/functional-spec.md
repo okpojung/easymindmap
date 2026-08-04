@@ -1,7 +1,49 @@
 # easymindmap — Functional Specification
 
-**최종 업데이트:** 2026-04-29
-**버전:** v2.6
+**최종 업데이트:** 2026-08-04
+**버전:** v2.7
+
+> ⚠️ **구현 상태 안내(2026-08-04)**
+> 이 문서의 Master Table은 **전체 기능 마스터 테이블**로, 개별 기능의 구현 여부를 표시하지 않았다.
+> 본 개정(v2.7)에서 아래 "구현 현황 요약" 절에 **그룹 단위 상태 요약**을 추가했다.
+> 개별 항목의 구현 여부는 그룹 요약과 각 상세 문서(01~32)를 함께 참조할 것.
+
+---
+
+## 구현 현황 요약 (2026-08-04)
+
+### 구현 완료
+
+| 그룹 | 현행 요약 |
+|------|-----------|
+| AUTH | 이메일 로그인 + Guest 모드 (Supabase Auth SDK 직접 — 자체 /auth API 없음, SNS 로그인은 준비 중) |
+| MAP | 맵 생성/열기/삭제 + 문서함(MapBrowser)·폴더 관리 |
+| NODE | 노드 편집(추가/이동/복제 등)·노드 추가 인디케이터 |
+| LAYOUT | UI 9종 — 방사형 양쪽/오른쪽·트리 오른쪽/아래·계층형·진행트리·시간배치(타임라인)·Kanban·자유배치 |
+| KANBAN | 깊이 제한 없음(depth 3+ = 중첩 카드)·컬럼 선택/삭제·카드 복사/붙여넣기·플로팅 도구 |
+| NC (노드 콘텐츠) | 구조화 노트 블록 4종(paragraph/code_block/table/checklist)·링크·첨부파일(쿼터) |
+| STYLE | 도형 11종·색상/폰트 + 다크모드 |
+| SAVE | PUT /maps/:id/document 전체 스냅샷 저장 — 1.5초 디바운스 + 무변경 스킵 + 단일 세션 편집 잠금(map_edit_locks) |
+| VH (버전 히스토리) | 저장 시마다 map_document_versions 버전 생성 · 선택 버전을 새 맵으로 만들어 새 탭 복원 |
+| UNDO | 클라이언트 Undo/Redo 99단계 |
+| EXPORT/IMPORT | Markdown/HTML 내보내기(첨부 시 ZIP)·Markdown 가져오기 |
+| AI | 2모드 — API 키 직접 호출 + 웹 AI 클립보드 워크플로우 (선택 노드 확장·프로젝트 지침 포함) |
+| TAG/SEARCH | 태그·텍스트 검색 (클라이언트 처리) |
+| CANVAS | 줌/팬/FitScreen/Fullscreen 등 캔버스 조작 |
+
+### 미구현 (계획 단계)
+
+| 그룹 | 비고 |
+|------|------|
+| DASH (대시보드) | 설계만 — 문서함이 맵 목록 역할을 대신함 |
+| TRANS (번역) | 설계만 |
+| COLLAB (협업) | 설계만 (기능 플래그 off) |
+| CHAT (실시간 채팅) | 설계만 |
+| PUBL (퍼블리시) | 설계만 — 공개 공유는 Standalone HTML 내보내기로 대신함 |
+| WBS / RES (리소스) | 설계만 |
+| OBS (Obsidian 연동) | 설계만 — 일반 Markdown 가져오기/내보내기는 구현됨 |
+| RDMN (Redmine 연동) | 설계만 |
+| SETT (설정) | 테마(다크모드)만 구현 — 나머지 메뉴는 미구현 |
 
 ---
 
@@ -111,13 +153,13 @@
 | 32  | NODE 인디케이터  | WFLOW-03/04 | AI Workflow 상태         | executable step 실행 상태 배지 표시      | 1. stepState 값 조회2. 상태별 색상 배지 표시3. 콘텐츠 인디케이터 좌측 배치                                               |
 | 33  | NODE 인디케이터  | COLLAB-IND  | 협업 인디케이터               | 타인 편집 중 잠금 표시                    | 1. 협업 맵 확인2. scope 밖 노드 dim 처리3. 타인 편집 노드 테두리+이름 표시4. 5초 후 자동 해제                                 |
 | 34  | NODE 콘텐츠    | NC-01       | 콘텐츠 입력                 | markdown 텍스트 입력 및 저장             | 1. 노드 편집 모드 진입2. markdown 입력3. raw 저장 및 autosave 등록                                              |
-| 35  | NODE 콘텐츠    | NC-02       | code node              | 실행형 콘텐츠 표현 (node_type=code)      | 1. node_type=code 지정2. 코드 입력3. 전용 UI 렌더링 (monospace 등)                                           |
-| 36  | NODE 콘텐츠    | NC-03       | note 필드                | 노드 상세 설명 입력                      | 1. note 패널 열기2. 텍스트 입력3. node_notes.content 저장4. 패널에 표시                                          |
+| 35  | NODE 콘텐츠    | NC-02       | 코드 블록                  | 코드 블록(본문 펜스 패널 또는 코드 노트 블록)      | 1. 본문 코드 펜스 입력 또는 code_block 노트 블록 추가2. 코드 입력3. 전용 UI 렌더링 (monospace 등)                                           |
+| 36  | NODE 콘텐츠    | NC-03       | 구조화 노트 블록              | 구조화 노트 블록 4종(paragraph/code_block/table/checklist) → 문서 스냅샷 저장 | 1. note 패널 열기2. 블록 추가/편집3. 문서 스냅샷(PUT /maps/:id/document)에 포함 저장4. 패널에 표시                                          |
 | 37  | NODE 콘텐츠    | NC-04       | autosave               | 편집 후 자동 저장 (debounce)            | 1. 편집 이벤트 발생2. debounce 타이머 시작3. 일정 시간 후 저장 API 호출4. 상태 표시                                       |
 | 38  | NODE 콘텐츠    | NC-05       | 생성 출처 추적               | AI/사용자 생성 구분 메타 기록               | 1. 생성 시 출처 판단2. ai_jobs 또는 revision 메타 기록3. 출처 정보 제공                                             |
 | 39  | NODE 콘텐츠    | NC-06       | 줄바꿈 지원                 | Enter 입력으로 수동 줄바꿈 지원             | 1. Enter 키 입력2. raw text에 줄바꿈 저장3. 렌더링 시 pre-wrap 반영                                             |
 | 40  | NODE 콘텐츠    | NC-07       | 리스트 지원                 | markdown 리스트를 콘텐츠로 유지            | 1. markdown list 입력2. raw 저장3. 렌더링 시 서식 반영                                                       |
-| 41  | NODE 콘텐츠    | NC-08       | 코드 언어 확장               | code_language 컬럼 추가              | 1. 코드 노드 언어 선택2. 컬럼 저장3. syntax highlight 적용                                                     |
+| 41  | NODE 콘텐츠    | NC-08       | 코드 언어 확장               | 코드 블록(본문 펜스 패널 또는 코드 노트 블록) 언어 지정              | 1. 코드 블록 언어 선택2. 언어 정보 저장3. syntax highlight 적용                                                     |
 | 42  | NODE 스타일    | NS-01       | 텍스트 색상                 | 노드 글자 색 변경                       | 1. color picker 열기2. 색상 선택3. style_json.textColor 저장                                             |
 | 43  | NODE 스타일    | NS-02       | 배경 색상                  | 노드 배경 색 변경                       | 1. palette 열기2. 색상 선택3. backgroundColor 저장                                                       |
 | 44  | NODE 스타일    | NS-03       | 폰트 스타일                 | bold·italic·underline·size 변경    | 1. 툴바 스타일 선택2. 스타일 속성 저장3. 즉시 반영                                                                 |
@@ -145,7 +187,7 @@
 | 66  | NODE 스타일    | IMG-19      | 복사/붙여넣기 이미지            | 노드 복사 시 배경 이미지 스타일 포함            | 1. 노드 복사2. 스타일 포함 여부 판단3. 붙여넣기 적용                                                                |
 | 67  | NODE 스타일    | IMG-20      | 신규 노드 상속 정책            | 형제·자식 생성 시 이미지 상속 제어             | 1. 생성 트리거2. 상속 정책 확인 (기본: 미상속)                                                                   |
 | 68  | NODE 렌더링    | NR-01       | markdown 렌더링           | markdown content 화면 렌더링          | 1. node_type 확인2. text 파싱3. 서식 렌더링 및 표시                                                          |
-| 69  | NODE 렌더링    | NR-02       | code 렌더링               | code node 화면 표시                  | 1. node_type 확인2. monospace font 표시3. copy 버튼 제공                                                 |
+| 69  | NODE 렌더링    | NR-02       | code 렌더링               | 코드 블록(본문 펜스 패널 또는 코드 노트 블록) 화면 표시                  | 1. 코드 블록 확인2. monospace font 표시3. copy 버튼 제공                                                 |
 | 70  | NODE 렌더링    | NR-03       | 자동 크기                  | content 기반 자동 크기 계산              | 1. 길이·구조 분석2. 예상 줄 수 반영3. width/height 계산 (max 제한)                                               |
 | 71  | NODE 렌더링    | NR-04       | 줄바꿈 처리                 | 유형별 줄바꿈 정책 적용                    | 1. node_type 확인2. pre-wrap 적용3. 수동 줄바꿈 보존                                                        |
 | 72  | NODE 렌더링    | NR-05       | overflow 제어            | 기준 초과 시 collapse 제공              | 1. overflow 판정2. collapse 상태 표시3. 더보기/expand 제공                                                  |
@@ -156,7 +198,7 @@
 | 77  | MD 포맷       | MDP-02      | List Parse             | Markdown 리스트 유지 정책               | 1. 리스트 감지2. 모드별(document/outline) 변환 처리                                                          |
 | 78  | MD 포맷       | MDP-03      | Document Mode          | 문서형 Markdown import (기본)         | 1. 파일 선택2. heading만 구조화3. 본문은 콘텐츠로 포함                                                            |
 | 79  | MD 포맷       | MDP-04      | Outline Mode           | 아웃라인형 Markdown import            | 1. 모드 선택2. 리스트 항목을 자식 node로 변환                                                                   |
-| 80  | LAYOUT      | LT-01       | 레이아웃 타입 선택             | 15종 레이아웃 중 선택 및 전환               | 1. 툴바 선택2. layoutType 업데이트3. 엔진 재계산 및 애니메이션                                                      |
+| 80  | LAYOUT      | LT-01       | 레이아웃 타입 선택             | 9종 레이아웃 중 선택 및 전환 (+시간배치 LT-11 신설)               | 1. Inspector Layout 탭 선택2. layoutType 업데이트3. 엔진 재계산 및 애니메이션                                                      |
 | 81  | LAYOUT      | LT-02       | Subtree 레이아웃           | 특정 노드 이하 독립 레이아웃 지정              | 1. 우클릭 메뉴2. 해당 node.layoutType 저장3. Subtree만 독립 적용                                               |
 | 82  | LAYOUT      | LT-03       | Auto Layout 엔진         | 2-Pass 알고리즘 좌표 계산                | 1. Measure Pass (Bottom-up)2. Arrange Pass (Top-down)3. 좌표 업데이트                                  |
 | 83  | LAYOUT      | LT-04       | Freeform 수동 배치         | drag & drop으로 위치 수동 지정           | 1. 노드 drag2. manualPosition 저장3. 엔진 개입 차단                                                        |
@@ -166,6 +208,7 @@
 | 87  | LAYOUT      | LT-08       | 레이아웃 상속                | 하위 노드가 부모 타입을 기본 상속              | 1. 새 노드 생성2. 부모 layoutType 복사 및 저장                                                               |
 | 88  | LAYOUT      | LT-09       | 루트 레이아웃 결정             | 루트 타입이 전체 맵 기본값                  | 1. 루트 타입 변경2. 전체 relayout 트리거                                                                    |
 | 89  | LAYOUT      | LT-10       | 간격/방향 설정               | 노드 간격(gap)·방향 설정                 | 1. 값 입력2. maps.layout_config 저장3. 엔진 반영                                                          |
+| 89a | LAYOUT      | LT-11       | 시간배치(타임라인) 레이아웃        | 시간축 기반 노드 배치 레이아웃              | 1. layoutType=timeline 선택2. 시간축 기준 좌표 계산3. 렌더링 반영                                                |
 | 90  | KANBAN      | KB-01       | Kanban 보드 생성           | 새 맵/기존 맵에서 보드 생성                 | 1. layoutType=kanban2. board 노드 생성3. 초기 컬럼 자동 생성                                                 |
 | 91  | KANBAN      | KB-02       | 초기 컬럼 구성               | 기본 컬럼(Todo/Doing/Done) 구성        | 1. 보드 생성 트리거2. depth 1 노드 3개 INSERT                                                              |
 | 92  | KANBAN      | KB-03       | 컬럼 추가                  | 보드에 새 컬럼 추가                      | 1. 버튼 클릭2. 컬럼명 입력3. column node 생성                                                               |
@@ -176,9 +219,10 @@
 | 97  | KANBAN      | KB-08       | 카드 삭제                  | 카드 삭제                            | 1. 우클릭/Delete2. 확인 및 삭제                                                                          |
 | 98  | KANBAN      | KB-09       | 카드 순서 변경               | 컬럼 내 카드 순서 변경                    | 1. 카드 drag2. 위치 drop3. order_index 재계산                                                           |
 | 99  | KANBAN      | KB-10       | 카드 컬럼 간 이동             | 카드를 타 컬럼으로 이동                    | 1. 카드 drag2. 타 컬럼 drop3. parent_id 변경 및 재계산                                                      |
-| 100 | KANBAN      | KB-11       | 3레벨 제한 검증              | depth 3 이상 생성 차단                 | 1. 생성 시도2. depth 계산3. 초과 시 오류 메시지                                                                |
+| 100 | KANBAN      | KB-11       | 중첩 카드 렌더               | depth 3 이상 서브트리를 중첩 카드로 렌더 (깊이 제한 없음)                 | 1. 깊은 서브트리 감지2. 카드 내부 중첩 카드로 렌더링3. 편집·이동 동일 지원                                                                |
 | 101 | KANBAN      | KB-12       | Markdown Export        | 보드 구조를 Markdown 변환               | 1. export 요청2. 구조 파싱(H1, H2, List)3. .md 다운로드                                                    |
 | 102 | KANBAN      | KB-13       | HTML Export            | 보드 UI 유지 standalone HTML         | 1. export 요청2. 레이아웃 유지 HTML 생성                                                                   |
+| 102a | KANBAN     | KB-14       | 카드 복사/붙여넣기·다중 선택        | 카드 복사/붙여넣기 및 다중 선택 지원           | 1. 카드 선택(Ctrl+클릭 다중 선택)2. 복사/붙여넣기 실행3. 대상 컬럼에 삽입                                                 |
 | 103 | CANVAS      | CANVAS-01   | Zoom In/Out            | 캔버스 확대·축소                        | 1. 휠/버튼 조작2. zoom 값 변경3. 커서 기준 pan 보정                                                            |
 | 104 | CANVAS      | CANVAS-02   | Fit Screen             | 전체 맵을 화면에 맞추기                    | 1. world bounds 계산2. zoom/pan 자동 조정                                                              |
 | 105 | CANVAS      | CANVAS-03   | Pan Canvas             | 캔버스 드래그 이동                       | 1. 빈 공간 drag2. panX/panY 변경                                                                      |
@@ -204,18 +248,18 @@
 | 123 | 히스토리        | HISTORY-04  | Coalescing             | 연속 텍스트 입력 합산                     | 1. 입력 이벤트2. debounce 적용3. 통합 항목 기록                                                               |
 | 124 | 히스토리        | HISTORY-05  | Stack 상태 표시            | undo/redo 가능 여부 UI 표시            | 1. 스택 상태 감지2. 버튼 활성/비활성 제어                                                                       |
 | 125 | 히스토리        | HISTORY-06  | 히스토리 초기화               | 히스토리 스택 전체 초기화                   | 1. 특정 이벤트 발생2. stack clear                                                                       |
-| 126 | 버전 히스토리     | VH-01       | 자동 revision 생성         | 편집 중 버전 자동 저장                    | 1. 이벤트 감지2. map_revisions 스냅샷 저장                                                                 |
+| 126 | 버전 히스토리     | VH-01       | 저장 시점 버전 생성            | 저장 시마다 map_document_versions 버전 생성 (자동 아님·무변경 스킵)                    | 1. 문서 저장(PUT /maps/:id/document) 발생2. 변경 있을 때만 map_document_versions 버전 생성                                                                 |
 | 127 | 버전 히스토리     | VH-02       | 버전 히스토리 패널             | 저장된 버전 목록 표시                     | 1. 패널 오픈2. 목록 로딩 및 표시                                                                            |
 | 128 | 버전 히스토리     | VH-03       | 버전 상세 조회               | 버전 변경 내용 조회                      | 1. 버전 선택2. 상세 데이터 로딩                                                                             |
 | 129 | 버전 히스토리     | VH-04       | 버전 미리보기                | 버전 상태 읽기 전용 미리보기                 | 1. 미리보기 클릭2. 임시 렌더링                                                                              |
-| 130 | 버전 히스토리     | VH-05       | 버전 롤백 (Restore)        | 특정 버전으로 맵 전체 복원                  | 1. Restore 클릭2. 확인3. 데이터 덮어쓰기                                                                    |
+| 130 | 버전 히스토리     | VH-05       | 버전 복원 (새 맵)        | 선택 버전을 새 맵으로 만들어 새 탭 열기 (현재 맵 미변경)                  | 1. 복원 클릭2. 선택 버전으로 새 맵 생성3. 새 탭에서 열기 (현재 맵은 변경되지 않음)                                                                    |
 | 131 | 버전 히스토리     | VH-06       | 작성자/시각 표시              | 버전별 작성자·시각 표시                    | 1. 목록 조회2. 메타 정보 표시                                                                              |
 | 132 | 저장          | SAVE-01     | 자동 저장                  | 편집 후 debounce 자동 저장              | 1. 타이머 리셋2. 만료 시 API 호출                                                                          |
 | 133 | 저장          | SAVE-02     | 저장 상태 표시               | 저장 중·완료·실패 UI 표시                 | 1. 상태별 텍스트/아이콘 표시                                                                                |
 | 134 | 저장          | SAVE-03     | 멱등성 보장                 | 중복 저장 방지                         | 1. 상태 비교2. 변경 없을 시 스킵                                                                            |
-| 135 | 저장          | SAVE-04     | 충돌 해소                  | 서버·클라이언트 충돌 처리                   | 1. 버전 비교2. 충돌 정책(LWW 등) 적용                                                                       |
-| 136 | 저장          | SAVE-05     | 자동 재시도                 | 저장 실패 시 지수 백오프 재시도               | 1. 실패 감지2. 지수 백오프 기반 재시도                                                                         |
-| 137 | 저장          | SAVE-06     | localStorage 백업        | 장애 시 로컬 임시 저장                    | 1. 네트워크 오류 감지2. localStorage 저장                                                                  |
+| 135 | 저장          | SAVE-04     | 충돌 해소                  | 단일 세션 편집 잠금(map_edit_locks — 하트비트/해제)으로 동시 편집 자체를 차단                   | 1. 편집 진입 시 잠금 획득2. 하트비트 갱신3. 종료 시 잠금 해제                                                                       |
+| 136 | 저장          | SAVE-05     | 자동 재시도 (미구현)                 | 저장 실패 시 지수 백오프 재시도 (미구현)               | 1. 실패 감지2. 지수 백오프 기반 재시도                                                                         |
+| 137 | 저장          | SAVE-06     | localStorage 백업 (미구현)        | 장애 시 로컬 임시 저장 (미구현)                    | 1. 네트워크 오류 감지2. localStorage 저장                                                                  |
 | 138 | 저장          | SAVE-07     | Undo/Redo 연동           | 히스토리 결과도 autosave                | 1. 히스토리 실행2. 변경 감지 및 저장                                                                          |
 | 139 | 태그          | TAG-01      | 태그 추가                  | 노드에 태그 연결                        | 1. 태그 입력2. node_tags 저장3. 배지 표시                                                                  |
 | 140 | 태그          | TAG-02      | 태그 제거                  | 노드에서 태그 연결 해제                    | 1. 배지 클릭2. 레코드 삭제                                                                                |

@@ -2,6 +2,8 @@
 
 > 상태: 구현·검증 완료 (2026-07). 위치: `apps/api`.
 > 다음 단계 로드맵은 문서 하단 참조.
+> 최종 업데이트: 2026-08-04 — Phase 4c 이후 완료 항목(B8 히스토리·B9
+> 첨부/쿼터·문서함·편집 잠금) 추가, 코드 현행에 맞춰 표·설명 정정.
 
 프론트가 지금까지 100% 클라이언트(localStorage) 전용이었던 것에서, **서버에
 맵을 저장**하는 첫 수직 슬라이스를 붙였다. 스펙(NestJS + Supabase +
@@ -19,16 +21,24 @@ Redis)은 뒤로 미루고 실제로 돌아가는 최소 단위**부터 세웠�
   `AUTH_MODE=dev` 에서 헤더 `x-user-id` 또는 `DEV_USER_ID` 로 사용자 지정
   (로그인 없이 개발). `AUTH_MODE=supabase` 는 명시적으로 막아 둠 → Phase 3
   에서 Supabase JWT 검증 가드로 **국소 교체**.
-- **Health** (`GET /v1/health`): DB 연결까지 확인.
+  **→ Phase 3 에서 실제로 `AuthGuard`(`common/auth/auth.guard.ts`) 로
+  교체됨** — dev 스텁 동작은 `AUTH_MODE=dev` 분기로 그대로 흡수.
+- **Health** (`GET /v1/health`): DB 연결 + **필수 테이블·컬럼(스키마 최신
+  여부)까지 확인** — `map_documents`·`map_document_versions`·`attachments`·
+  `map_edit_locks`·`maps.folder_id`·`users.quota_bytes` 등이 빠지면
+  `status: degraded` 로 알려 준다 (배포 시 스키마 적용 누락 조기 발견).
 - **Maps CRUD** (`maps/`): 아래 표. 응답은 `api-spec.md` 계약(camelCase).
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| POST | `/v1/maps` | 생성 → `{mapId,title,currentVersion,createdAt}` |
-| GET | `/v1/maps` | 목록(소유 기준, `?deleted=&page=&limit=`) |
-| GET | `/v1/maps/:id` | 단건(+`nodes[]`, 현재 빈 배열) |
-| PATCH | `/v1/maps/:id` | 메타 수정(title·viewMode·refreshIntervalSeconds·layout) |
+| POST | `/v1/maps` | 생성 → `{mapId,title,folderId,kind,currentVersion,createdAt}` |
+| GET | `/v1/maps` | 목록(소유 기준, `?deleted=&page=&limit=&folder=&sort=&order=`) |
+| GET | `/v1/maps/:id` | 단건(+`nodes[]` — Phase 2 이후 **실제 노드 배열 반환**, depth·orderIndex 순 정렬) |
+| PATCH | `/v1/maps/:id` | 메타 수정(title·viewMode·refreshIntervalSeconds·layout·folderId·kind) |
 | DELETE | `/v1/maps/:id` | 소프트 삭제(`deleted_at`), 204 |
+
+- `?folder=root|<uuid>` 폴더별 조회, `?sort=title|updatedAt&order=asc|desc`
+  정렬은 문서함(2026-08-02)에서 추가됐다.
 
 - **소유권 격리**: 모든 쿼리가 `owner_id = 현재 사용자`. 다른 사용자
   헤더로는 남의 맵이 보이지 않음(검증됨).
@@ -179,13 +189,23 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
   세션 유지/열기/로그아웃/계정 분리) ALL PASS. dev 모드 회귀
   e2e-cloud·e2e-cloud2 ALL PASS (기존 동작 불변).
 
+## Phase 4c 이후 — 완료 항목 (2026-08-02 ~ 2026-08-04)
+
+| 항목 | 내용 |
+|---|---|
+| **문서함(폴더)** | `map_folders` 테이블 + `/v1/folders` CRUD 4종. 맵에 `folder_id`/`kind`('solo'\|'collab') 추가, 같은 폴더 안 제목 중복은 API 검사(409). `GET /maps` 에 `folder/sort/order` 쿼리 |
+| **B8 히스토리 버전** | `map_document_versions` 테이블(+`layout_type`/`node_count`/`attach_bytes`/`attach_count` 상세 컬럼). `PUT /maps/:id/document` 의 `keepVersion` 으로 명시적 저장·맵 닫기 때만 버전 적재(무변경 시 skip), `GET /maps/:id/versions`·`/versions/:version` 조회 |
+| **B9 첨부/쿼터** | `attachments` 테이블 + `users.quota_bytes`(기본 1GB). `/v1/attachments` 업로드(multipart, 기본 20MB — `ATTACHMENT_MAX_MB`)·다운로드(`?access_token=` 폴백)·삭제·`/quota` 조회. 파일 원본은 `StorageService`(local 드라이버, `STORAGE_LOCAL_DIR`)에 저장. 쿼터 초과는 413 |
+| **편집 잠금(단일 세션)** | `map_edit_locks` 테이블. `GET /document?editSession=` 로 잠금 시도(`editLock: 'acquired'\|'busy'`), 저장 시 다른 세션 잠금이면 409, `POST /maps/:id/edit-heartbeat`(25초 주기, TTL 60초)·`edit-release` |
+
 ## 다음 단계
 
 | Phase | 내용 |
 |---|---|
-| **3 활성화** | 서버에 Supabase 스택 배포 후 위 "활성화 절차" — 이후 RLS 실사용·B7(맵 닫기)·B8(히스토리 버전) 착수 가능 |
-| **4c** | 사진 별도 스토리지(object storage), 스냅샷↔정규화 노드 동기(협업 준비) |
+| **3 활성화** | 서버에 GoTrue(또는 Supabase 스택) 배포 후 위 "활성화 절차" — 이후 RLS 실사용 |
+| **4c 잔여** | 스냅샷↔정규화 노드 동기(협업 준비) — 첨부 오브젝트 스토리지는 B9 로컬 디스크 드라이버로 1차 해결(S3 호환 드라이버는 후속) |
 | **5** | 배포 — ✅ 개발 서버(Ubuntu 22.04 + Coolify) 구축 완료(2026-08-01), 프로덕션은 동일 구성 복제. `../90-architecture/dev-server-coolify.md` 기준 |
+| **기타** | B13(제목 유니크 인덱스 승격), 30일 휴지통 자동 정리 배치(미구현) |
 
 관련: `backend-architecture.md`, `api-spec.md`, `../02-domain/schema.sql`,
 `../90-architecture/ci-cd-github-actions.md`.

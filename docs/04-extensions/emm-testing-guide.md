@@ -2,6 +2,7 @@
 
 * 문서 버전: v1.0
 * 최초 작성: 2026-07
+* 최종 업데이트: 2026-08-04 — 코퍼스 12케이스·실측 수치(bodyRT=299, 13 nodes) 현행화
 * 대상 독자: 프로그래밍 경험이 없어도 따라 할 수 있도록 작성
 * 관련: `emm-spec.md`(포맷 스펙), `ai/emm-prompt-templates.md`(프롬프트),
   `../../packages/emm-parser/README.md`(파서 패키지)
@@ -13,7 +14,7 @@
 | 결과물 | 한 줄 설명 | 난이도 |
 |---|---|---|
 | ① AI 프롬프트 템플릿 | AI(ChatGPT 등)에게 주면 출력이 그대로 마인드맵이 되는 지시문 | ★ (코딩 불필요) |
-| ② 적합성 코퍼스 | 파서가 실문서 11종을 항상 똑같이·무손실로 변환하는지 자동 검사 | ★★ (명령 한 줄) |
+| ② 적합성 코퍼스 | 파서가 실문서 12종을 항상 똑같이·무손실로 변환하는지 자동 검사 | ★★ (명령 한 줄) |
 | ③ emm-parser 패키지 + CLI | 앱 없이도 MD↔맵 변환이 되는 독립 부품 | ★★ (명령 몇 줄) |
 
 ---
@@ -102,7 +103,7 @@ EMM의 본문은 100% 일반 Markdown이다. 그래서 ChatGPT·Claude 같은 AI
 
 **코퍼스(corpus)** = 검증용 실제 문서 모음. 전자영수증 보고서(176노드),
 ChatGPT 대화 내보내기(299노드), 견출 없는 순번 절 문서(96노드) 같은
-**실문서 7종 + AI 프롬프트 기대 출력 4종 = 11케이스**가
+**실문서 8종 + AI 프롬프트 기대 출력 4종 = 12케이스**가
 `packages/emm-parser/conformance/cases/`에 들어 있다.
 
 자동 테스트(러너)는 케이스마다 3가지를 검사한다:
@@ -130,11 +131,11 @@ npm test
 다음과 같은 출력이 나오면 성공:
 
 ```
-PASS chatgpt-export.md — nodes=299 bodyRT=324
+PASS chatgpt-export.md — nodes=299 bodyRT=299
 PASS numbered-sections.md — nodes=96 bodyRT=96
-...(11줄)...
+...(12줄)...
 
-11/11 cases passed
+12/12 cases passed
 ```
 
 - `nodes` = 그 문서가 만든 노드 수, `bodyRT` = 본문만 다시 읽었을 때의
@@ -153,7 +154,7 @@ PASS numbered-sections.md — nodes=96 bodyRT=96
 
 ```bash
 git checkout -- conformance/cases/prompt-tech.md
-npm test        # 다시 11/11
+npm test        # 다시 12/12
 ```
 
 ---
@@ -184,7 +185,7 @@ npm test        # 다시 11/11
 npx tsx cli.ts convert conformance/cases/prompt-tech.md -o test.json
 ```
 
-→ `test.json — 14 nodes` 라고 나오고, `test.json`을 열면 맵 구조(JSON)가
+→ `test.json — 13 nodes` 라고 나오고, `test.json`을 열면 맵 구조(JSON)가
 보인다. **브라우저·앱 없이 변환된 것**이 핵심이다.
 
 **(b) 맵 JSON → MD 역변환**
@@ -207,7 +208,7 @@ npx tsx cli.ts validate test.md
 ```
 VALID (EMM-Basic) — 구조 파싱 성공
   중심 주제: Ubuntu Apache + SSL 구축
-  노드 수(본문): 14
+  노드 수(본문): 13
 VALID (EMM-Full) — 메타데이터로 무손실 복원 가능
 ```
 

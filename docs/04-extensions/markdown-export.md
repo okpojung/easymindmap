@@ -2,14 +2,17 @@
 
 * 문서 버전: v1.2
 * 최초 작성: 2026-07 (MVS)
+* 최종 업데이트: 2026-08-04 — 구현 위치(emm-parser 패키지)·코퍼스 12케이스 현행화
 * **위상**: 이 문서는 **EMM(EasyMindMap Markdown) 스펙의 구현 규칙
   상세서**다 — 포맷의 설계 원칙·적합성·버전 정책은 `emm-spec.md`가
   규범이고, 변환 표 단위의 현행 규칙은 이 문서가 규범이다.
 * **이 문서는 EasyMindMap의 핵심 기능인 "MD 파일 ↔ 맵" 변환의 단일
   기준 명세다. `importMarkdown.ts` / `exportMarkdown.ts`의 변환 규칙이
   바뀔 때마다 반드시 이 문서에 반영한다.**
-* 구현: `apps/frontend/src/utils/importMarkdown.ts` (MD → 맵),
-  `apps/frontend/src/export/exportMarkdown.ts` (맵 → MD)
+* 구현: `packages/emm-parser/src/parse.ts` (MD → 맵) ·
+  `packages/emm-parser/src/serialize.ts` (맵 → MD) — 앱의
+  `importMarkdown.ts`·`exportMarkdown.ts` 는 재수출 + 첨부 fetch/ZIP
+  패키징만 담당
 * 관련: `import-export/20-export.md`(내보내기 UI·패키징),
   `import-export/21-import.md`(불러오기 UI·모드),
   `import-export/22-map-file-meta.md`(메타데이터 왕복)
@@ -173,19 +176,20 @@ MD의 `[라벨](url)`은 **어디에 놓이느냐**에 따라 세 가지로 변�
 ## 3. 검증 코퍼스 (E2E 상시 회귀)
 
 > **[2026-07 자산화]** 아래 코퍼스는 저장소의 정식 자산이 되었다 —
-> `packages/emm-parser/conformance/cases/`(실문서 7종 + AI 프롬프트 예시
-> 4종 = 11케이스)와 기대 스냅숏(`expected/`), 러너(`npm test`). 파싱
+> `packages/emm-parser/conformance/cases/`(실문서 8종 + AI 프롬프트 예시
+> 4종 = 12케이스)와 기대 스냅숏(`expected/`), 러너(`npm test`). 파싱
 > 스냅숏·메타 무손실 왕복·본문 왕복 노드 수를 자동 검증하며, 제3자
 > 구현체의 적합성 판정 기준으로도 쓰인다.
 
 | 파일 | 특징 | 테스트 |
 |---|---|---|
-| 전자영수증 보고서 (194노드) | 견출·표·인용·코드·순번·긴 문단 | e2e29 |
+| 전자영수증 보고서 (176노드) | 견출·표·인용·코드·순번·긴 문단 | e2e29 |
 | ChatGPT 대화 내보내기 (299노드) | 본문 H1·순번 리스트·연속줄·링크 다수 | e2e31 |
 | WEB/WAS 설치 대화 (96노드) | 견출 없는 순번 절 + 문단 + 불릿 + 코드 펜스 | e2e32 |
 | README형 | 중첩 배지 링크·코드·표 | e2e31 |
 | 회의록 | 본문 H1 다수 (h1Mode 계층) | e2e31 |
 | 깊은 견출 / 머리말만 문서 | H5+혼합 리스트 / 루트 노트 엣지 | e2e31 |
+| markmap 호환 기능 (10노드) | markmap 스타일 블록 분리(코드·표) 호환 | npm test |
 
 **변환 규칙을 수정할 때는 위 코퍼스 E2E를 모두 통과시키고, 이 문서의
 해당 표를 갱신한다.**

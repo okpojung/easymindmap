@@ -4,6 +4,8 @@
 -문서 버전: v1.0
 -작성일: 2026-04-05
 
+> **최종 업데이트:** 2026-08-04 — 코드 대조 감사 반영: 맵 생성 흐름(제목 없이 골격+템플릿 선택), `maps.kind('solo'|'collab')`, 실제 maps 스키마·deleted_at 기준 soft delete, 복제/발행 미구현 표기 현행화
+
 ### 1. 기능 목적
 
 * 사용자가 **마인드맵 문서(Map)** 를 생성하고 관리하기 위한 최상위 기능
@@ -20,9 +22,9 @@
 * Map 조회/열기
 * Map 기본 정보 수정
 * Map 삭제
-* Map 유형 관리 (`personal`, `collaborative`)
+* Map 유형 관리 (`maps.kind` — `'solo'`, `'collab'`)
 * Map 기본 설정 관리
-* Map 복제
+* Map 복제 (미구현 — 2차)
 
 #### 제외
 
@@ -39,13 +41,13 @@
 
 | 기능ID   | 기능명       | 설명                     | 주요 동작            |
 | ------ | --------- | ---------------------- | ---------------- |
-| MAP-01 | Map 생성    | 새 마인드맵 생성              | root node 자동 생성  |
+| MAP-01 | Map 생성    | 새 마인드맵 생성              | root + 기본 골격(주제 1~3, 11노드) 자동 생성 후 템플릿 선택 단계  |
 | MAP-02 | Map 조회    | 기존 Map 열기              | 전체 node 로드 및 렌더링 |
 | MAP-03 | Map 수정    | 이름, 설명, 기본 설정 변경       | 즉시 반영            |
-| MAP-04 | Map 삭제    | Map 삭제 처리              | soft delete      |
-| MAP-05 | Map 유형 설정 | 개인 맵/협업 맵 지정           | 권한 구조에 영향        |
-| MAP-06 | Map 복제    | 기존 Map 전체 복사           | 새 map_id 생성      |
-| MAP-07 | Map 기본 설정 | 기본 layout, 기본 스타일 등 설정 | 신규 node 기본값에 영향  |
+| MAP-04 | Map 삭제    | Map 삭제 처리              | soft delete (`deleted_at` 기준) |
+| MAP-05 | Map 유형 설정 | 개인 맵/협업 맵 지정 (`kind`)   | 권한 구조에 영향        |
+| MAP-06 | Map 복제    | 기존 Map 전체 복사 (미구현 — 2차) | 새 map_id 생성      |
+| MAP-07 | Map 기본 설정 | 맵 설정: 레벨별 맞춤 설정 · 레이아웃(1~4레벨) · 도형 · 노트 폰트 13pt | 신규 node 기본값에 영향  |
 
 ---
 
@@ -65,9 +67,9 @@ MAP 기능은 **마인드맵 문서 자체를 생성, 식별, 관리하는 기�
 #### 5.1 Map 생성
 
 1. 사용자가 “새 맵 만들기”를 선택한다
-2. 맵 이름, 설명, 맵 유형을 입력한다
+2. 제목을 묻지 않고 **'새 맵'** 으로 생성하고, 템플릿 선택 단계로 진입한다 (이름 변경은 저장 시)
 3. 시스템은 새 `map_id`를 생성한다
-4. 시스템은 root node를 자동 생성한다
+4. 시스템은 root + 기본 골격(주제 1~3, 11노드)을 자동 생성한다
 5. 기본 layout 및 초기 설정을 적용한다
 6. 생성 완료 후 편집 화면으로 진입한다
 
@@ -98,28 +100,26 @@ MAP 기능은 **마인드맵 문서 자체를 생성, 식별, 관리하는 기�
 ## 6.1 기본 구조 규칙
 
 * Map은 반드시 root node 1개를 포함해야 한다
-* root node는 Map 생성 시 자동 생성된다
+* root node는 Map 생성 시 자동 생성된다 (기본 골격 주제 1~3 포함)
 * root node가 없는 Map은 유효하지 않다
 * 모든 node는 반드시 하나의 `map_id`에 소속되어야 한다
 
 ## 6.2 생성 규칙
 
-* Map 생성 시 기본 `map_type`은 `personal`이다
+* Map 생성 시 기본 `kind`는 `'solo'`이다
 * 기본 화면 표시명은 다음과 같다
 
-  * `personal` → **개인 맵**
-  * `collaborative` → **협업 맵**
-* Map 생성 직후 root node를 자동 생성해야 한다
-* 맵 이름이 비어 있으면 임시 기본 이름을 부여할 수 있다
-
-  * 예: `Untitled Map`
+  * `'solo'` → **개인 맵**
+  * `'collab'` → **협업 맵**
+* Map 생성 직후 root node(+기본 골격)를 자동 생성해야 한다
+* 생성 시 제목을 묻지 않으므로 기본 이름 **'새 맵'** 을 부여한다 (이름 변경은 저장 시)
 
 ## 6.3 수정 규칙
 
 * 제목, 설명, 설정은 권한이 있는 사용자만 수정 가능하다
-* `map_type` 변경은 권한 정책 검증 후 허용한다
-* `personal`에서 다른 사용자를 편집 참여자로 추가하면 `collaborative` 전환이 가능해야 한다
-* `collaborative`는 협업 기능과 권한 기능의 전제가 된다
+* `kind` 변경은 권한 정책 검증 후 허용한다
+* `'solo'`에서 다른 사용자를 편집 참여자로 추가하면 `'collab'` 전환이 가능해야 한다
+* `'collab'`은 협업 기능과 권한 기능의 전제가 된다
 
 ## 6.4 삭제 규칙
 
@@ -128,29 +128,29 @@ MAP 기능은 **마인드맵 문서 자체를 생성, 식별, 관리하는 기�
 * 삭제된 Map에 속한 node 역시 일반 편집 대상에서 제외된다
 * 삭제 복구 가능 여부는 VERSION_HISTORY / 휴지통 정책과 연계하여 별도 정의한다
 
-## 6.5 map_type 규칙
+## 6.5 kind 규칙
 
-| 값             | 화면 표시 | 설명                     |
-| ------------- | ----- | ---------------------- |
-| personal      | 개인 맵  | 기본적으로 한 사용자가 작성/관리하는 맵 |
-| collaborative | 협업 맵  | 여러 사용자가 함께 편집 가능한 맵    |
+| 값        | 화면 표시 | 설명                     |
+| -------- | ----- | ---------------------- |
+| `'solo'`   | 개인 맵  | 기본적으로 한 사용자가 작성/관리하는 맵 |
+| `'collab'` | 협업 맵  | 여러 사용자가 함께 편집 가능한 맵    |
 
 ### 세부 규칙
 
-* `personal`은 기본 생성 유형이다
-* `personal` 맵도 향후 publish 가능하다
-* `collaborative` 맵도 publish 가능하다
-* `map_type`은 “편집 운영 방식”을 의미하며, publish 상태와는 별개이다
-* `collaborative`는 사용자 초대, 권한, 실시간 동기화와 연결된다
-* `personal`이라고 해서 반드시 외부 공개 불가를 의미하지는 않는다
+* `'solo'`는 기본 생성 유형이다
+* `'solo'` 맵도 향후 publish 가능하다
+* `'collab'` 맵도 publish 가능하다
+* `kind`는 “편집 운영 방식”을 의미하며, publish 상태와는 별개이다
+* `'collab'`은 사용자 초대, 권한, 실시간 동기화와 연결된다
+* `'solo'`라고 해서 반드시 외부 공개 불가를 의미하지는 않는다
 
 ## 6.6 Publishing 규칙 (강화 버전)
 
 ### 6.6.1 개념 정의
 
-* Publishing은 Map을 **외부에 읽기 전용으로 공개하는 기능**이다
-* Publishing은 Map의 `map_type`과 **완전히 독립적인 개념**이다
-* `personal` / `collaborative` 맵 모두 publish 가능하다
+* Publishing은 Map을 **외부에 읽기 전용으로 공개하는 기능**이다 (미구현 — 2차)
+* Publishing은 Map의 `kind`와 **완전히 독립적인 개념**이다
+* `'solo'` / `'collab'` 맵 모두 publish 가능하다
 
 ---
 
@@ -179,10 +179,10 @@ MAP 기능은 **마인드맵 문서 자체를 생성, 식별, 관리하는 기�
 
 ---
 
-#### map_type과 관계
+#### kind와 관계
 
-* `personal` 맵도 publish 가능
-* `collaborative` 맵도 publish 가능
+* `'solo'` 맵도 publish 가능
+* `'collab'` 맵도 publish 가능
 * publish 여부는 협업 여부와 무관하다
 
 ---
@@ -250,10 +250,10 @@ Edge Case는 “이 기능이 실패하거나 이상 상황일 때 시스템이 
 
 * 맵 이름 없이 생성
 
-  * 기본 이름 자동 부여 또는 생성 차단
-* map_type 누락
+  * 기본 이름 **'새 맵'** 자동 부여 (정상 흐름 — 생성 시 제목을 묻지 않음)
+* kind 누락
 
-  * 기본값 `personal` 적용
+  * 기본값 `'solo'` 적용
 
 #### 7.2 최소값 / 최대값
 
@@ -310,7 +310,7 @@ Edge Case는 “이 기능이 실패하거나 이상 상황일 때 시스템이 
 #### 7.8 기능상 금지 대상
 
 * root node 없는 Map 저장 금지
-* 잘못된 `map_type` 값 저장 금지
+* 잘못된 `kind` 값 저장 금지
 * 삭제된 Map에 새 node 추가 금지
 
 ## 🔥 7.9 Publishing 관련 Edge Case
@@ -387,9 +387,9 @@ Edge Case는 “이 기능이 실패하거나 이상 상황일 때 시스템이 
 
 #### 추가 규칙
 
-* `collaborative` 맵은 사용자별 역할 관리가 필요하다
-* `personal` 맵은 기본적으로 creator 단독 관리 구조를 가진다
-* `personal` → `collaborative` 전환 시 권한 테이블/초대 정보가 필요할 수 있다
+* `'collab'` 맵은 사용자별 역할 관리가 필요하다
+* `'solo'` 맵은 기본적으로 creator 단독 관리 구조를 가진다
+* `'solo'` → `'collab'` 전환 시 권한 테이블/초대 정보가 필요할 수 있다
 
 ---
 
@@ -405,22 +405,27 @@ Edge Case는 “이 기능이 실패하거나 이상 상황일 때 시스템이 
   * `map_permissions`
   * `map_publish`
 
-#### maps 테이블 예시
+#### maps 테이블 (실제 컬럼)
 
 ```sql
 maps (
-  map_id UUID PRIMARY KEY,
+  id UUID PRIMARY KEY,
   owner_id UUID NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  description TEXT NULL,
-  map_type ENUM('personal','collaborative') NOT NULL DEFAULT 'personal',
-  layout_type VARCHAR(50) NOT NULL,
-  created_at TIMESTAMP NOT NULL,
-  updated_at TIMESTAMP NOT NULL,
-  is_deleted BOOLEAN NOT NULL DEFAULT false
+  workspace_id UUID,
+  title TEXT NOT NULL,
+  default_layout_type VARCHAR(50) NOT NULL,
+  view_mode VARCHAR(20),
+  refresh_interval_seconds INTEGER,
+  current_version INTEGER,
+  deleted_at TIMESTAMP NULL,        -- soft delete 기준 (is_deleted 플래그 아님)
+  folder_id UUID,
+  kind VARCHAR(10) NOT NULL DEFAULT 'solo'  -- 'solo' | 'collab'
 )
 ```
-#### maps 테이블 확장 (추천)
+
+* soft delete는 `deleted_at IS NOT NULL` 기준으로 판정한다
+
+#### maps 테이블 확장 (추천 — 미구현, Publishing 2차)
 
 ```sql
 publish_status ENUM(
@@ -435,7 +440,7 @@ publish_enabled BOOLEAN DEFAULT false,
 publish_allow_iframe BOOLEAN DEFAULT false
 ```
 
-#### restricted용 (필요 시)
+#### restricted용 (필요 시 — 미구현, 2차)
 
 ```sql
 map_publish_permissions
@@ -448,15 +453,15 @@ map_publish_permissions
 #### 생성 시 영향
 
 * `maps` 신규 insert
-* root node 자동 insert
+* root node + 기본 골격 자동 insert
 
 #### 수정 시 영향
 
-* `name`, `description`, `map_type`, `layout_type`, `updated_at` 변경 가능
+* `title`, `kind`, `default_layout_type` 등 변경 가능
 
 #### 삭제 시 영향
 
-* `is_deleted = true`
+* `deleted_at = now()` (soft delete)
 * 관련 node / 협업 / 발행 데이터의 조회 정책도 함께 영향 받음
 
 ---
@@ -469,13 +474,11 @@ map_publish_permissions
 POST /maps
 ```
 
-요청 예시
+요청 예시 (생성 시 제목을 묻지 않으므로 title 생략 가능 — 기본 '새 맵')
 
 ```json
 {
-  "name": "Ubuntu 설치 절차",
-  "description": "초보자용 설치 가이드",
-  "map_type": "personal"
+  "kind": "solo"
 }
 ```
 
@@ -483,10 +486,9 @@ POST /maps
 
 ```json
 {
-  "map_id": "uuid",
-  "name": "Ubuntu 설치 절차",
-  "map_type": "personal",
-  "display_map_type": "개인 맵"
+  "id": "uuid",
+  "title": "새 맵",
+  "kind": "solo"
 }
 ```
 
@@ -504,10 +506,9 @@ PATCH /maps/{map_id}
 
 수정 가능 항목 예시
 
-* `name`
-* `description`
-* `map_type`
-* `layout_type`
+* `title`
+* `kind`
+* `default_layout_type`
 
 #### 10.4 Map 삭제
 
@@ -515,13 +516,13 @@ PATCH /maps/{map_id}
 DELETE /maps/{map_id}
 ```
 
-#### 10.5 Map 복제
+#### 10.5 Map 복제 (미구현 — 2차)
 
 ```http
 POST /maps/{map_id}/duplicate
 ```
 
-# ✅ 10.6. API 영향 (Publishing 최소 정의)
+# ✅ 10.6. API 영향 (Publishing 최소 정의) (미구현 — 2차)
 
 MAP 문서에서는 간단히 연결만
 
@@ -580,23 +581,23 @@ GET /published/{token}
 #### 시나리오 1. 개인 맵 생성
 
 1. 사용자가 새 맵 만들기를 선택한다
-2. 맵 이름을 “Linux 공부”로 입력한다
-3. map_type은 기본값 `personal`로 생성된다
+2. 제목을 묻지 않고 “새 맵”으로 생성되고 템플릿 선택 단계에 진입한다 (이름은 저장 시 “Linux 공부” 등으로 변경)
+3. kind는 기본값 `'solo'`로 생성된다
 4. 화면에는 “개인 맵”으로 표시된다
-5. root node가 자동 생성되어 편집 화면이 열린다
+5. root + 기본 골격(주제 1~3, 11노드)이 자동 생성되어 편집 화면이 열린다
 
 #### 시나리오 2. 협업 맵 생성
 
-1. 사용자가 새 맵 만들기에서 `collaborative`를 선택한다
+1. 사용자가 새 맵 만들기에서 `'collab'`을 선택한다
 2. 맵 생성 후 다른 사용자를 초대한다
 3. 초대된 사용자는 권한에 따라 편집 또는 보기만 가능하다
 4. 화면에는 “협업 맵”으로 표시된다
 
 #### 시나리오 3. 개인 맵을 협업 맵으로 전환
 
-1. 기존 `personal` 맵을 사용 중이다
+1. 기존 `'solo'` 맵을 사용 중이다
 2. 소유자가 팀원 2명을 초대하려고 한다
-3. 시스템은 `map_type`을 `collaborative`로 변경하도록 유도한다
+3. 시스템은 `kind`를 `'collab'`으로 변경하도록 유도한다
 4. 권한 설정 후 협업 편집이 가능해진다
 
 ---
@@ -606,10 +607,10 @@ GET /published/{token}
 | 항목                                | 우선순위 | 비고                |
 | --------------------------------- | ---- | ----------------- |
 | Map 생성/조회/수정/삭제                   | MVP  | 필수                |
-| map_type = personal/collaborative | MVP  | 필수                |
-| root node 자동 생성                   | MVP  | 필수                |
-| Map 복제                            | 2차   | 유용                |
-| personal ↔ collaborative 전환 정책    | 2차   | 협업 기능과 연계         |
-| 발행과의 정합성 연결                       | 2차   | PUBLISH_SHARE와 연계 |
+| kind = 'solo'/'collab'            | MVP  | 필수                |
+| root + 기본 골격 자동 생성                | MVP  | 필수                |
+| Map 복제                            | 2차 (미구현)  | 유용                |
+| 'solo' ↔ 'collab' 전환 정책           | 2차   | 협업 기능과 연계         |
+| 발행과의 정합성 연결                       | 2차 (미구현)  | PUBLISH_SHARE와 연계 |
 
 ---

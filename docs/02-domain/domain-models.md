@@ -1,9 +1,12 @@
 # easymindmap — Domain Models
 
 > `map-model.md` + `node-model.md` 통합 문서  
-> 문서 버전: v3.4  
-> 최종 업데이트: 2026-05-07  
+> 문서 버전: v3.5  
+> 최종 업데이트: 2026-08-04 — 실물 스키마(`apps/api/database/schema.sql`)와
+> 대조해 구현/planned 배지를 현행화. 실물 전용 엔티티(map_documents 등
+> 5종)와 folderId/kind/quotaBytes 실물 필드 추가.  
 > 변경 이력:  
+> - v3.5 — 실물 대조 현행화 (2026-08-04)  
 > - v3.4 — AI Workflow 단계를 V1.5로, WBS/리소스 단계를 V1로 수정 (roadmap.md 동기화)
 
 ---
@@ -42,9 +45,15 @@ User (implemented)
 └── Workspace (implemented)
     └── WorkspaceMember (implemented)      ← workspace 접근 권한 (≠ map 편집 권한)
 
-User (implemented)
-└── Map (implemented)
-    ├── Node (implemented)
+User (implemented)                          ← users.quota_bytes (저장 쿼터, B9) 포함
+├── MapFolder (implemented)                 ← map_folders — 문서함(폴더) 트리 (2026-08-02)
+├── Attachment (implemented)                ← attachments — 첨부 저장소 메타 (B9)
+└── Map (implemented)                       ← maps.folder_id / kind('solo'|'collab') 포함
+    ├── MapDocument (implemented)           ← map_documents — 문서 전체 스냅샷(JSONB, 맵당 1건)
+    │                                          ※ 현재 프런트가 실제 사용하는 저장 경로
+    ├── MapDocumentVersion (implemented)    ← map_document_versions — 저장 시점별 히스토리(B8)
+    ├── MapEditLock (implemented)           ← map_edit_locks — 단일 세션 편집 잠금 (2026-08-04)
+    ├── Node (implemented)                  ← 정규화 flat 경로(협업·세밀 동기화용, 스냅샷과 병행)
     │   ├── NodeNote (separate-schema)     ← node_notes 별도 테이블
     │   ├── NodeLink (implemented)
     │   ├── NodeAttachment (implemented)
@@ -56,14 +65,17 @@ User (implemented)
     ├── MapRevision (implemented)
     ├── PublishedMap (implemented)
     ├── Export (implemented)
-    └── MapCollaborator (separate-schema)  ← map_collaborators 테이블 (map 편집 권한)
+    └── MapCollaborator (planned)          ← map_collaborators 테이블 (map 편집 권한, 협업 단계)
 
 Tag (implemented)
 AIJob (implemented)
 FieldRegistry (implemented)
 ```
 
-> 물리 DB 스키마 전체: `docs/02-domain/db-schema.md`
+> 물리 DB 스키마 전체: `docs/02-domain/db-schema.md` (설계본).
+> **실물 단일 원본: `apps/api/database/schema.sql`** — implemented 표기는
+> 이 실물 스키마에 테이블이 존재함을 뜻하며, 각 타입의 개별 필드에는
+> 실물에 아직 없는 것(planned)이 섞여 있다 (§3~§5, §9 배지 참조).
 
 ---
 
@@ -105,6 +117,19 @@ type LayoutType =
   // 보드형
   | 'kanban';                // BL-KB     Kanban 보드형 레이아웃
 ```
+
+> **⚠️ 실물 API 허용값 병기 (2026-08-04)** — 위 목록은 설계 기준이다.
+> 실물 백엔드 `POST /v1/maps` 의 `defaultLayoutType` 허용값
+> (`apps/api/src/maps/dto/create-map.dto.ts`)은 아래 9종으로, 설계 목록과
+> 이름이 다른 항목(`org-right`·`progressive-right`·`timeline`)이 있다:
+>
+> ```
+> 'radial-bidirectional' | 'radial-right' | 'tree-right' | 'tree-down'
+> | 'org-right' | 'progressive-right' | 'timeline' | 'freeform' | 'kanban'
+> ```
+>
+> 노드 단위 `layout_type` 컬럼에는 DB CHECK 제약이 없어 값 검증은 앱 책임.
+> 두 목록의 통일은 backlog.
 
 #### LayoutType ↔ BL 코드 매핑표
 
@@ -213,10 +238,13 @@ type NodeBackgroundImage = {
 
 ---
 
-## 3. UserObject `(implemented)`
+## 3. UserObject `(implemented — 일부 필드 planned)`
+
+> 실물 `public.users` 컬럼: `id, display_name, preferred_language,
+> default_layout_type, quota_bytes, created_at, updated_at`.
 
 ```typescript
-// UI 환경설정 (users.ui_preferences_json JSONB)
+// (planned — V2) UI 환경설정 (users.ui_preferences_json JSONB — 실물 컬럼 없음)
 type UiPreferences = {
   showTranslationIndicator: boolean;     // 번역 아이콘 표시 (기본: true)
   showTranslationOverrideIcon: boolean;  // Override 아이콘 표시 (기본: true)
@@ -228,15 +256,18 @@ type UserObject = {
   email: string;                          // Supabase Auth에서 관리
   displayName: string | null;
 
+  // 저장 용량 쿼터 (B9 — implemented, users.quota_bytes)
+  quotaBytes: number;                     // 기본 1GB(1073741824), 유료 10GB
+
   // 번역 설정
-  preferredLanguage: SupportedLanguage;   // [V2] 기본 언어
-  secondaryLanguages: SupportedLanguage[]; // [V2] 2차 언어 최대 3개
-  skipEnglishTranslation: boolean;        // [V2] 영어 번역 생략 (기본: true)
+  preferredLanguage: SupportedLanguage;   // [V2] 기본 언어 (implemented)
+  secondaryLanguages: SupportedLanguage[]; // (planned — V2) 2차 언어 최대 3개
+  skipEnglishTranslation: boolean;        // (planned — V2) 영어 번역 생략
 
   // 기본 레이아웃
   defaultLayoutType: LayoutType;
 
-  // UI 환경설정
+  // UI 환경설정 (planned — V2)
   uiPreferences: UiPreferences;
 
   createdAt: string;
@@ -247,12 +278,17 @@ type UserObject = {
 
 ---
 
-## 4. MapObject `(implemented)`
+## 4. MapObject `(implemented — 일부 필드 planned)`
 
-### 4.1 번역 정책 타입
+> 실물 `public.maps` 컬럼: `id, owner_id, workspace_id, title,
+> default_layout_type, view_mode, refresh_interval_seconds,
+> current_version, folder_id, kind, deleted_at, created_at, updated_at`.
+> `translation_policy_json` 컬럼은 **없다** (planned — V2).
+
+### 4.1 번역 정책 타입 `(planned — V2)`
 
 ```typescript
-// 맵별 번역 정책 (V2 신규)
+// (planned — V2) 맵별 번역 정책 — 실물 maps 에 translation_policy_json 없음
 // null = 맵별 정책 없음, UserObject 기본 설정을 그대로 따름
 type MapTranslationPolicy = {
   skipLanguages: SupportedLanguage[];  // 이 맵에서 번역 생략할 언어 목록
@@ -268,22 +304,28 @@ type MapObject = {
   ownerId: string;        // users.id
   workspaceId?: string | null;
   title: string;
-  rootNodeId: string;
+  rootNodeId: string;     // (planned) — 실물 컬럼 없음, 스냅샷 doc 안에서 파생
+
+  // 문서함 (implemented — 2026-08-02)
+  folderId: string | null;   // maps.folder_id — NULL = 최상위("홈")
+  kind: 'solo' | 'collab';   // maps.kind — 단독맵 | 협업맵(분류 표식)
 
   // 설정
   defaultLayoutType: LayoutType;
   viewMode?: 'edit' | 'dashboard' | 'kanban' | 'wbs';
+  // 실물 DDL 주석 기준 'edit' | 'dashboard' (CHECK 제약 없음).
+  //   API(UpdateMapDto)는 'edit' | 'dashboard' | 'kanban' 허용.
   // 'edit'      : 기본 편집 모드
   // 'dashboard' : 읽기 전용 대시보드 모드 (V3)
   // 'kanban'    : Kanban 보드 뷰 (해당 맵 루트가 kanban layoutType일 때)
-  // 'wbs'       : WBS 일정 관리 뷰 (V1)
+  // 'wbs'       : (planned — V1) WBS 일정 관리 뷰 — 아직 미지원
   refreshIntervalSeconds?: number;
   currentVersion?: number;
 
-  // 번역 정책 (V2 신규) — DB: maps.translation_policy_json JSONB
+  // (planned — V2) 번역 정책 — 실물 컬럼 없음
   translationPolicy: MapTranslationPolicy;
 
-  // 협업맵 필드 (V3.3 신규)
+  // (planned — 협업 단계) 협업맵 필드 (V3.3) — 실물 컬럼 없음
   isCollaborative: boolean;        // active editor ≥ 1명이면 true
   collabOwnerId: string | null;    // 현재 creator userId. 이양 시 변경
 
@@ -316,9 +358,15 @@ type MapObject = {
 
 ---
 
-## 5. NodeObject `(implemented)`
+## 5. NodeObject `(implemented — 일부 필드 planned)`
 
-> **스키마 정합 노트**: 주요 콘텐츠 필드는 `nodes.text` (raw markdown/code), `nodes.node_type` (`text`|`data-live`, code는 문서 허용), 확장 설명은 `node_notes` 테이블 `(separate-schema)` 저장.
+> **스키마 정합 노트**: 주요 콘텐츠 필드는 `nodes.text` (raw markdown/code), `nodes.node_type` (`text`|`data-live`, code는 문서 허용), 확장 설명은 `node_notes` 테이블 `(separate-schema)` 저장. **`nodes.note` 컬럼은 없다.**
+>
+> **실물 노트 (2026-08-04)**: 실물 `public.nodes` 는 CHECK 제약 0건이며
+> `layout_type VARCHAR(50) NOT NULL DEFAULT 'radial-bidirectional'` 이다.
+> 아래 필드 중 `created_by`·`backgroundImage`·`translation_mode`·
+> `translation_override`·`author_preferred_language`·`schedule`·`resources`·
+> `redmineIssueId`·`syncStatus` 는 실물 컬럼/테이블이 아직 없다 (planned).
 
 ```typescript
 type NodeObject = {
@@ -339,7 +387,7 @@ type NodeObject = {
   // === 레이아웃 ===
   layoutType: LayoutType;
   collapsed: boolean;
-  created_by: string | null;      // [V3.3] 협업 권한 판단용 최초 생성자
+  created_by: string | null;      // (planned — V3.3) 협업 권한 판단용 최초 생성자
 
   // === 스타일 ===
   shapeType: ShapeType;
@@ -351,7 +399,7 @@ type NodeObject = {
   attachmentIds: string[];
   multimediaId: string | null;
 
-  // === 노드 배경 이미지 ===
+  // === 노드 배경 이미지 (planned — 실물 background_image_* 컬럼 없음) ===
   backgroundImage?: NodeBackgroundImage | null;
 
   // === 자유배치 ===
@@ -360,20 +408,20 @@ type NodeObject = {
   // === 캐시 ===
   size: { width: number; height: number } | null;
 
-  // === 다국어 번역 (V2 신규) ===
-  text_lang: string;
-  text_hash: string;              // SHA-256[:16]
-  translation_mode: 'auto' | 'manual' | 'skip';
-  translation_override: 'force_on' | 'force_off' | null;
-  author_preferred_language: string | null;
+  // === 다국어 번역 (V2) ===
+  text_lang: string;              // implemented (nodes.text_lang)
+  text_hash: string;              // implemented (nodes.text_hash) — SHA-256[:16]
+  translation_mode: 'auto' | 'manual' | 'skip';                  // (planned — V2)
+  translation_override: 'force_on' | 'force_off' | null;         // (planned — V2)
+  author_preferred_language: string | null;                      // (planned — V2)
 
-  // === WBS 일정 (node_schedule 1:1) ===
+  // === WBS 일정 (node_schedule 1:1) (planned — V1) ===
   schedule: NodeSchedule | null;
 
-  // === 리소스 할당 (node_resources 1:N) ===
+  // === 리소스 할당 (node_resources 1:N) (planned — V1) ===
   resources: NodeResource[];
 
-  // === Redmine 연동 ===
+  // === Redmine 연동 (planned — V1) ===
   redmineIssueId: number | null;
   syncStatus: 'synced' | 'pending' | 'error' | 'failed' | null;
 
@@ -401,15 +449,19 @@ function buildChildIds(nodes: NodeObject[]): Map<string, string[]> {
 }
 ```
 
-### 5.2 번역 관련 필드 (V2)
+### 5.2 번역 관련 필드 (planned — V2)
 
-| 필드 | DB 컬럼 | 설명 |
-|------|---------|------|
-| `text_lang` | `nodes.text_lang` | franc 자동 감지 언어 코드 |
-| `text_hash` | `nodes.text_hash` | SHA-256[:16] — 캐시 유효성 검증 |
-| `translation_mode` | `nodes.translation_mode` | `'auto'`\|`'manual'`\|`'skip'` — 저장 시 서버 자동 결정 |
-| `translation_override` | `nodes.translation_override` | `'force_on'`\|`'force_off'`\|`null` — 편집자 수동 설정 |
-| `author_preferred_language` | `nodes.author_preferred_language` | 작성 시점 작성자 언어 스냅샷 |
+> `text_lang`·`text_hash` 두 컬럼만 실물에 존재하고, 나머지 번역 컬럼
+> (`translation_mode`·`translation_override`·`author_preferred_language`)은
+> **planned — V2** 다 (실물 nodes 테이블에 없음).
+
+| 필드 | DB 컬럼 | 상태 | 설명 |
+|------|---------|------|------|
+| `text_lang` | `nodes.text_lang` | implemented | franc 자동 감지 언어 코드 |
+| `text_hash` | `nodes.text_hash` | implemented | SHA-256[:16] — 캐시 유효성 검증 |
+| `translation_mode` | `nodes.translation_mode` | planned — V2 | `'auto'`\|`'manual'`\|`'skip'` — 저장 시 서버 자동 결정 |
+| `translation_override` | `nodes.translation_override` | planned — V2 | `'force_on'`\|`'force_off'`\|`null` — 편집자 수동 설정 |
+| `author_preferred_language` | `nodes.author_preferred_language` | planned — V2 | 작성 시점 작성자 언어 스냅샷 |
 
 `translation_mode` 결정 규칙 (서버 자동 계산):
 
@@ -451,7 +503,11 @@ const rootNode: NodeObject = {
 | 0 | board |
 | 1 | column |
 | 2 | card |
-| 3 이상 | 허용 안 함 (`chk_nodes_kanban_depth` DB 제약) |
+| 3 이상 | 카드 하위 트리로 표시 — **깊이 제한 없음** |
+
+> 구 규칙의 "3 이상 금지"(`chk_nodes_kanban_depth` DB 제약)는 **폐기**됐다.
+> 실물 nodes 테이블에는 kanban depth CHECK 제약이 없다
+> (08-layout.md §6.6, db-schema.md §⑧과 동일).
 
 ### 5.5 freeform ↔ auto layout 전환 정책
 
@@ -595,14 +651,15 @@ type AIJobObject = {
 };
 ```
 
-### 9.4 TagObject `(implemented)`
+### 9.4 TagObject `(implemented — workspaceId 는 planned)`
 
 ```typescript
-// tags 테이블 대응
+// tags 테이블 대응 — 실물 tags 는 owner_id 기반 개인 태그만
+// (UNIQUE(owner_id, name)). workspace_id 컬럼은 없다.
 type TagObject = {
   id: string;
   ownerId: string;             // 개인 태그 소유자 (owner_id)
-  workspaceId: string | null;  // null = 개인 태그, NOT NULL = 워크스페이스 공유 태그
+  workspaceId: string | null;  // (planned — 워크스페이스 공유 태그, 실물 컬럼 없음)
   name: string;
   color: string;               // hex
   createdAt: string;

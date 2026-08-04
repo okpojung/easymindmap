@@ -4,9 +4,10 @@
 * 스펙 버전: **v1.0 (Draft)**
 * 상태: Draft — 구현 검증 완료(레퍼런스 구현 + E2E 적합성 코퍼스 통과)
 * 최초 작성: 2026-07
-* 레퍼런스 구현: `apps/frontend/src/utils/importMarkdown.ts`(MD → 맵),
-  `apps/frontend/src/export/exportMarkdown.ts`(맵 → MD),
-  `apps/frontend/src/export/mapMeta.ts`(메타데이터 왕복)
+* 최종 업데이트: 2026-08-04 — 레퍼런스 구현 위치(emm-parser 패키지)·메타 주석 블록 형식·blockPlacement 기본값·코퍼스 12케이스 현행화
+* 레퍼런스 구현: `packages/emm-parser/src/{parse,serialize,meta}.ts`
+  (MD → 맵 / 맵 → MD / 메타데이터 왕복) — 앱의
+  `importMarkdown.ts`·`exportMarkdown.ts`·`mapMeta.ts` 는 재수출이다
 * 관련 문서: `markdown-export.md`(변환 규칙 상세 — 본 스펙의 구현 규칙서),
   `import-export/22-map-file-meta.md`(메타데이터 계층),
   `import-export/20-export.md` / `21-import.md`(제품 기능 정의)
@@ -163,6 +164,10 @@ EMM 문서는 두 계층으로 구성된다.
 노트는 노드 "본문"이 아니라 노드에 첨부된 구조화 블록이며, 렌더러는
 인디케이터(T/C/⊞/✓)와 뷰어 팝업으로 표시한다.
 
+> **블록 배치(blockPlacement) 기본값**: 파서 API 기본은 `'note'`
+> (하위 호환)지만, **앱의 불러오기 UI 와 AI 생성 경로 기본은
+> `'node'`**(블록=노드 본문)다 — `rich-node-content.md` §2.2 참조.
+
 ### 3.4 링크·사진
 
 | 본문 | 맵 |
@@ -206,7 +211,9 @@ EMM 문서는 두 계층으로 구성된다.
 
 ### 4.1 형식
 
-파일 마지막에 HTML 주석 한 줄:
+파일 마지막에 HTML 주석 블록 — **머리말(제목·노드 수·내보낸 시각)을
+포함한 여러 줄 주석**이며, Base64 는 100자에서 줄바꿈해 기록된다
+(파서는 `easymindmap:v1:` 토큰만 탐색하므로 줄바꿈 형식에 무관하다):
 
 ```
 <!-- easymindmap:v1:eyJ2ZXJzaW9uIjoxLCJtYXAiOnsi... -->
@@ -251,9 +258,9 @@ EMM 문서는 두 계층으로 구성된다.
 ### 5.3 적합성 검증 코퍼스
 
 적합성 코퍼스는 **`packages/emm-parser/conformance/`**의 정식 자산이다:
-실문서 7종(전자영수증 보고서 176노드 · ChatGPT 대화 299노드 · 견출 없는
+실문서 8종(전자영수증 보고서 176노드 · ChatGPT 대화 299노드 · 견출 없는
 순번 절 96노드 · README 배지 링크 · 회의록 h1Mode · 깊은 견출 · 머리말만
-문서) + AI 프롬프트 기대 출력 4종 = 11케이스. 케이스마다 ▸파싱 결과
+문서 · markmap 호환 기능) + AI 프롬프트 기대 출력 4종 = 12케이스. 케이스마다 ▸파싱 결과
 스냅숏 ▸메타데이터 무손실 왕복 ▸본문 왕복 노드 수를 자동 검증한다
 (`npm test`). **제3자 구현체는 이 코퍼스를 통과하면 EMM 호환을 선언할
 수 있으며, 변환 규칙 변경은 코퍼스 전체 통과 + 문서 갱신을 조건으로

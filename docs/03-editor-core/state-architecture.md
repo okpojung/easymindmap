@@ -1,7 +1,8 @@
 # easymindmap — State Architecture
 
-문서 버전: v2.0  
-상태: Final Draft  
+문서 버전: v3.0  
+상태: 현행화 (실제 구현 기준)  
+최종 업데이트: 2026-08-04 — 실제 구현 기준으로 전면 현행화: 5-Store → **코어 5 + 연동 3 = 8개 스토어**, Record/childIds 노드 모델(설계 초안) → 실제 **중첩 children 트리(MindNode)**, 각 스토어 필드를 실제 코드와 일치시킴, 저장 스냅샷 v2 에 editorUi 레이아웃·간격 포함 명시.  
 대상: `docs/03-editor-core/state-architecture.md`
 
 ---
@@ -13,11 +14,11 @@
 이 문서의 목적은 다음과 같다.
 
 1. 에디터 내부 상태를 명확하게 분리한다.
-2. 어떤 상태가 DB 저장 대상이고 어떤 상태가 UI 전용 상태인지 구분한다.
-3. Autosave, Undo/Redo, Layout Engine, Collaboration 기능이 서로 꼬이지 않도록 기반 구조를 만든다.
-4. React + Zustand + React Query 기반 실제 구현 기준 문서로 사용한다.
+2. 어떤 상태가 서버 저장 대상이고 어떤 상태가 UI 전용 상태인지 구분한다.
+3. Autosave, Undo/Redo, Layout Engine, (향후) Collaboration 기능이 서로 꼬이지 않도록 기반 구조를 만든다.
+4. React + Zustand 기반 실제 구현 기준 문서로 사용한다. (서버 상태 캐시 라이브러리는 미도입 — `docs/05-implementation/state-management.md`)
 
-즉, 이 문서는 단순한 “상태관리 개념 설명”이 아니라  
+즉, 이 문서는 단순한 "상태관리 개념 설명"이 아니라  
 **easymindmap Editor 전체 동작의 뼈대**를 정의하는 문서이다.
 
 ---
@@ -29,64 +30,65 @@
 예를 들면 아래가 모두 상태(State)이다.
 
 - 현재 맵 제목
-- 현재 노드 목록
+- 현재 노드 트리
 - 현재 선택된 노드
 - 현재 zoom 배율
-- 현재 drag 중인지 여부
-- 현재 저장 중인지 여부
-- 현재 우측 패널이 열려 있는지 여부
-- 현재 자동저장 대기 patch가 있는지 여부
-- 현재 AI 패널이 열려 있는지 여부
+- 현재 저장 상태 배지
+- 현재 어떤 서버 맵과 연결되어 있는지
+- 현재 로그인 세션
+- 현재 AI 설정
 
 예를 들어 사용자가 노드를 하나 이동하면 실제로는 아래 일이 연쇄적으로 발생한다.
 
 ```text
 node 이동
-→ document 구조 변경
-→ layout 재계산 필요
-→ autosave 필요
-→ undo stack 기록
+→ document 구조 변경 (+ past 스택 push)
+→ layout 재계산
 → 화면 다시 렌더링
+→ 1500ms 후 자동저장
 ```
 
 이걸 하나의 store에 몰아넣으면 다음 문제가 생긴다.
 
 - state 변경 시 전체 rerender
 - drag 중 과도한 업데이트
-- autosave와 UI 상태가 섞임
+- 저장 상태와 UI 상태가 섞임
 - undo/redo 경계가 모호해짐
-- 협업 확장 시 충돌 발생
 
-그래서 easymindmap은 상태를 **5개 Store로 분리**한다.
+그래서 easymindmap은 상태를 여러 Store로 분리한다.
 
 ---
 
-## 3. 최상위 상태 구조
+## 3. 최상위 상태 구조 — 8개 스토어
+
+**코어 5개** (에디터 동작):
 
 ```text
-Editor State
+Editor State (apps/frontend/src/stores/)
 
-├ Document Store
-├ Editor UI Store
-├ Viewport Store
-├ Interaction Store
-└ Autosave Store
+├ documentStore      — 문서 원본 (map) + undo/redo (past/future)
+├ editorUiStore      — 테마·레이아웃·패널·표시 토글
+├ viewportStore      — zoom / pan / 중앙 이동 요청
+├ interactionStore   — 선택 / 검색 강조 / 편집 중 노드
+└ autosaveStore      — 저장 상태 배지 (saveState 1개)
 ```
 
-이 구조는 대형 편집기들이 공통적으로 채택하는 방식과 유사하다.
+**연동 3개** (서버·계정·AI):
 
-예:
+```text
+├ cloudStore         — 현재 문서 ↔ 서버 맵 연결 정보 (cloudMapId·제목·폴더·유형)
+├ authStore          — 로그인 세션
+└ aiSettingsStore    — AI 키·모델·모드 설정
+```
 
-- Figma
-- Miro
-- Excalidraw
-- Notion editor 계열
+이 구조는 대형 편집기들(Figma, Miro, Excalidraw 등)이 공통적으로 채택하는
+방식과 유사하다.
 
 핵심 원칙은 다음과 같다.
 
 > **Document는 문서 그 자체이고,  
 UI/Viewport/Interaction은 문서를 다루기 위한 일시적 상태이며,  
-Autosave는 변경을 저장하기 위한 별도 상태 계층이다.**
+Autosave/Cloud는 저장·연결을 위한 별도 상태 계층이다.**
 
 ---
 
@@ -94,43 +96,45 @@ Autosave는 변경을 저장하기 위한 별도 상태 계층이다.**
 
 ### 4.1 문서 상태와 UI 상태를 분리한다
 
-문서 상태는 DB에 저장되는 원본이다.  
+문서 상태는 서버에 저장되는 원본이다.  
 UI 상태는 사용자가 화면을 어떻게 보고 있고 무엇을 누르고 있는지에 대한 정보이다.
 
 예:
 
-- 문서 상태: 노드 text, parentId, layoutType, tags
+- 문서 상태: 노드 text, children, tags, style
 - UI 상태: 선택된 노드, 패널 열림 여부, 검색창 입력값
 
 ---
 
-### 4.2 Document Store만 저장 대상이다
+### 4.2 저장 대상 — Document 중심 + 레이아웃 예외
 
-아래 규칙은 반드시 지킨다.
+원칙은 여전히 아래다.
 
 ```text
-Document Store만 DB 저장 대상
+documentStore.map 이 저장의 중심
 ```
 
-즉:
+단, **저장 스냅샷 v2 에는 editorUiStore 의 `layoutType`·`spacingX/Y` 도
+함께 포함**된다 — 서버에서 맵을 다시 열 때 보던 레이아웃·간격을 복원하기
+위해서다 (e2e85 [3]. v1 스냅샷에는 이 정보가 없어 현재 값이 유지된다).
 
-- Document Store → 저장 O
-- Editor UI Store → 저장 X
-- Viewport Store → 저장 X
-- Interaction Store → 저장 X
-- Autosave Store → 저장 상태 관리용, 원본 저장 대상 아님
+- documentStore.map → 저장 O
+- editorUiStore → **layoutType·spacingX/Y 만 스냅샷에 포함**, 나머지 저장 X
+- viewportStore → 저장 X
+- interactionStore → 저장 X
+- autosaveStore → 저장 상태 관리용, 원본 저장 대상 아님
+- cloudStore → 세션 한정 연결 정보 (비영속 — 새로고침 시 링크 해제)
 
 ---
 
 ### 4.3 Derived State는 가급적 계산한다
 
-다음 값들은 원본 상태로 저장하기보다 selector / 계산 결과로 다루는 것이 좋다.
+다음 값들은 원본 상태로 저장하기보다 selector / 계산 결과로 다룬다.
 
-- 화면에 현재 보이는 노드 목록
+- 화면에 현재 보이는 노드 목록 (레이아웃 엔진 출력 `LaidOutNode[]`)
 - edge SVG path
 - subtree bounding box
-- filtered result
-- selection bounds
+- 검색 결과 목록
 - zoom/pan 적용 후 screen coordinates
 
 즉, 원본 데이터와 계산 결과를 분리한다.
@@ -141,10 +145,11 @@ Document Store만 DB 저장 대상
 
 예:
 
-- `dragPreviewX`, `dragPreviewY` → 아주 짧게 사는 상태 → Interaction Store
-- `node.parentId`, `node.text` → 오래 유지되는 상태 → Document Store
+- 드래그 중간 좌표 → 컴포넌트 로컬/interaction — 히스토리·저장과 무관
+- `node.text`, `node.children` → 오래 유지되는 상태 → documentStore
 
-이 원칙이 무너지면 drag 중에도 DB 저장 후보가 되고, autosave와 undo/redo가 엉키게 된다.
+이 원칙이 무너지면 drag 중에도 저장 후보가 되고, autosave와 undo/redo가 엉키게 된다.
+(드래그 연속 변경은 `setHistoryPaused` 로 undo 1단계로 합산 — `12-history-undo-redo.md`)
 
 ---
 
@@ -154,426 +159,232 @@ easymindmap의 편집 파이프라인은 아래 흐름을 따른다.
 
 ```text
 사용자 입력
-→ Command
-→ Document Store 변경
+→ documentStore 액션 (set — past 스택 push 포함)
 → Layout 계산
 → Render
-→ Autosave Queue 등록
-→ 서버 저장
+→ 1500ms 디바운스 자동저장 (PUT 스냅샷)
 ```
 
-즉, 진짜 핵심은 항상 Document Store이다.
+즉, 진짜 핵심은 항상 documentStore이다.
 
 ---
 
-## 5. 5개 Store 상세 정의
+## 5. 스토어 상세 정의
 
 ---
 
-## 5.1 Document Store
+## 5.1 documentStore
 
 ### 5.1.1 역할
 
-Document Store는 **Mindmap 데이터 그 자체**를 담는다.
+documentStore는 **Mindmap 데이터 그 자체**와 **undo/redo 스택**을 담는다.
 
-즉 아래가 모두 여기에 들어간다.
-
-- map metadata
-- nodes
-- edges
-- tags
-- subtree layout 정보
-- collapse 상태
-- style 정보
-- export 가능한 원본 데이터
+- `map: SampleMap` — 제목·루트·가지·맵 설정
+- `past` / `future` — undo/redo 스냅샷 스택 (`12-history-undo-redo.md`)
 
 한마디로 정리하면:
 
 ```text
-Document Store = 실제 문서
+documentStore = 실제 문서 + 되돌리기
 ```
 
 ---
 
-### 5.1.2 포함해야 하는 데이터
-
-예시 구조:
+### 5.1.2 실제 문서 모델 — SampleMap (중첩 트리)
 
 ```ts
-type MindmapDocument = {
-  id: string;
+// packages/emm-parser/src/model.ts — 문서 모델의 단일 원본 (EMM 파서와 공유)
+interface SampleMap {
   title: string;
-  ownerId: string | null;
-  version: number;
-  rootNodeId: string;
-
-  nodes: Record<string, MindmapNode>;
-  edges: Record<string, MindmapEdge>;
-  tags: Record<string, TagEntity>;
-
-  // 맵 전체에 적용되는 테마 ID (노드 색상/스타일 프리셋 기준)
-  themeId: string | null;
-  // 레벨별 폰트 크기·굵기 규칙 목록 (depth 0 = root 기준, 오름차순)
-  levelFontRules: LevelFontRule[];
-
-  settings: DocumentSettings;
-  metadata: DocumentMetadata;
-
-  createdAt: string;
-  updatedAt: string;
-};
-```
-
-> `LayoutType` 전체 값 목록은 `docs/03-editor-core/layout/08-layout.md § 4.1`에 정의되어 있다.
-
----
-
-### 5.1.3 왜 nodes를 배열이 아니라 Record로 저장하는가
-
-배열 방식:
-
-```ts
-nodes: [
-  { id: "n1", text: "Root" },
-  { id: "n2", text: "AI" }
-]
-```
-
-Record 방식:
-
-```ts
-nodes: {
-  "n1": { id: "n1", text: "Root" },
-  "n2": { id: "n2", text: "AI" }
+  root: SampleRoot;          // 중심 주제 (MindNode)
+  branches: SampleBranch[];  // 1레벨 가지 목록 (각각 중첩 children 트리)
+  settings?: MapSettings;    // 테마·레벨 폰트 등 맵 설정
 }
 ```
 
-Record 방식을 추천하는 이유는 다음과 같다.
-
-1. 특정 node를 빠르게 찾을 수 있다.
-2. 부분 수정이 쉽다.
-3. 대형 맵에서 성능상 유리하다.
-4. patch 계산과 undo/redo에 적합하다.
-
-즉:
-
-```text
-nodes["n2"]
-```
-
-형태가
-
-```text
-nodes.find(...)
-```
-
-보다 훨씬 안정적이다.
+> 노드를 `Record<string, Node>` + `childIds` 로 정규화하는 원안
+> (§5.1.3 참조)은 **미채택** — 실제 모델은 **중첩 `children` 배열
+> 트리**다. EMM 파일 포맷·내보내기와 같은 모델을 그대로 쓴다.
 
 ---
 
-### 5.1.3-A childIds — 런타임 파생 구조 (DB 저장 안 함)
+### 5.1.3 노드 정규화(Record/childIds) 설계 초안 — 미채택
 
-`NodeObject`와 `MindmapNode`에는 `childIds: string[]` 필드가 존재하지만,  
-**이 필드는 DB에 저장하지 않는다.**
-
-#### 왜 DB에 저장하지 않는가
-
-- `parent_id` 관계만 DB에 저장하면 충분하다.
-- `childIds`를 별도 컬럼으로 두면 parent_id와 이중 관리가 되어 정합성 문제가 생긴다.
-- PostgreSQL에서 `parent_id` 기반 자식 조회는 인덱스로 충분히 빠르다.
-
-#### 어떻게 만들어지는가
-
-DB에서 노드를 로딩하면 아래처럼 `parent_id` 기반으로 클라이언트에서 파생한다.
-
-```ts
-// DB에서 flat 배열로 받은 nodes를 Record + childIds 구조로 조립
-function buildNodeTree(flatNodes: DBNode[]): Record<string, MindmapNode> {
-  const nodeMap: Record<string, MindmapNode> = {}
-
-  // 1단계: Record 생성 (childIds 빈 배열로 초기화)
-  for (const n of flatNodes) {
-    nodeMap[n.id] = { ...n, childIds: [] }
-  }
-
-  // 2단계: parentId 기반으로 childIds 채우기
-  for (const n of flatNodes) {
-    if (n.parentId && nodeMap[n.parentId]) {
-      nodeMap[n.parentId].childIds.push(n.id)
-    }
-  }
-
-  // 3단계: childIds를 orderIndex 기준으로 정렬
-  for (const node of Object.values(nodeMap)) {
-    node.childIds.sort((a, b) => nodeMap[a].orderIndex - nodeMap[b].orderIndex)
-  }
-
-  return nodeMap
-}
-```
-
-#### 동기화 원칙
-
-- 노드 생성/삭제/이동 시 Document Store의 `childIds`를 즉시 갱신
-- DB에는 `parent_id`와 `order_index`만 저장
-- 새로고침 시 위 `buildNodeTree`를 다시 실행하여 재구성
-
-```text
-DB: parent_id (원본)
-클라이언트 Document Store: childIds (파생 캐시)
-```
+> 원안은 "nodes를 배열이 아니라 `Record<string, MindmapNode>` +
+> 파생 `childIds`로 저장"하는 설계였다 (빠른 조회·patch 계산 목적).
+> patch 저장 자체가 미채택되면서 정규화도 도입하지 않았다 — 중첩 트리
+> + 재귀 순회(`mutateNode`)로 충분하고, EMM 모델과 1:1 이라 직렬화
+> 변환이 없다. 협업(CRDT) 도입 시 재검토.
 
 ---
 
-### 5.1.4 Node 모델 예시
-
-> **타입명 통일 규칙 (2026-03-31 확정)**
-> - `MindmapNode` = 이 문서(state-architecture.md) 및 Zustand Store 내부에서 사용하는 타입명
-> - `NodeObject` = `docs/02-domain/domain-models.md § 5`에서 정의하는 도메인 모델 타입명
-> - 두 타입은 **동일한 구조**를 가리키며, 별칭 관계로 이해하면 된다:
->   ```ts
->   type MindmapNode = NodeObject; // 별칭 — 실제 구현 시 한쪽으로 통일 권장
->   ```
-> - 실제 코드 작성 시에는 `NodeObject`를 canonical 타입으로 사용하고,
->   Store 파일 내에서 `import type { NodeObject as MindmapNode }` 형태로 import하는 것을 권장한다.
-> - `NodeObject` 전체 필드 목록 (번역·WBS·협업·Redmine 확장 포함): `docs/02-domain/domain-models.md § 5` 참조
+### 5.1.4 Node 모델 (실제) — MindNode
 
 ```ts
-// MindmapNode = NodeObject 별칭.
-// 아래는 Store에서 직접 참조하는 핵심 필드 목록이다.
-// 번역(text_lang, text_hash 등), WBS(schedule, resources), Redmine(redmineIssueId, syncStatus),
-// 배경 이미지(backgroundImage) 필드는 NodeObject 전체 정의를 참조한다.
-// → docs/02-domain/domain-models.md § 5
-type MindmapNode = {
+// packages/emm-parser/src/model.ts — 앱은 @emm/model 로 재수출해 사용
+interface MindNode {
   id: string;
-  mapId: string;
-
-  parentId: string | null;
-  childIds: string[];          // ⚠ DB 없음 — 런타임 파생 (§ 5.1.3-A)
-
   text: string;
-  note?: string | null;        // 논리 필드 — 물리 저장: node_notes 테이블
 
-  layoutType: LayoutType;      // NULL = 부모 상속 (DB는 NULL 허용)
-  collapsed: boolean;
+  textAlign?: TextAlign;
+  layoutType?: LayoutType;   // 없으면 부모/맵 상속
+  edgeType?: EdgeType;
 
-  // [V3.3] 협업: 노드 최초 생성자 (수정/삭제 권한 판단 기준)
-  // → docs/02-domain/db-schema.md § [v3.3 추가], docs/04-extensions/collaboration/25-map-collaboration.md § 13.3
-  created_by: string | null;
+  colorKey?: NodeColorKey;
+  side?: 'left' | 'right' | 'center';
 
-  shapeType: ShapeType;
-  style: NodeStyle;
+  icon?: string;
+  iconSide?: 'left' | 'right';
 
-  tags: string[];              // Tag ID 목록 (node_tags 정규화 테이블 기반)
-  hyperlinkIds: string[];
-  attachmentIds: string[];
-  multimediaId?: string | null;
+  tag?: string;
+  tags?: string[];           // 태그 = 이름 문자열 목록 (15-tag.md)
 
-  manualPosition: {
-    x: number;
-    y: number;
-  } | null;                    // freeform 전용 — docs/03-editor-core/layout/08-layout.md § 6.5
+  note?: boolean;
+  locked?: boolean;
 
-  size: {
-    width: number;
-    height: number;
-  } | null;                    // size_cache (클라이언트 DOM 측정 후 저장)
+  collapsed?: boolean;
+  style?: NodeStyle;
+  links?: NodeLink[];        // 링크 객체 배열
+  notes?: NoteBlock[];       // 노트 블록 배열
+  attachments?: NodeAttachment[]; // 첨부 객체 배열
+  image?: NodeImage;         // 노드 안 사진 (텍스트 아래)
+  images?: NodeInlineImage[]; // 텍스트 중간 인라인 사진
+  sizeW?: number;            // 우하단 핸들 수동 박스 크기
+  sizeH?: number;
 
-  depth: number;
-  orderIndex: number;          // FLOAT — 중간 삽입 O(1), docs/02-domain/node-hierarchy-storage-strategy.md § order_index
-
-  createdAt: string;
-  updatedAt: string;
-};
+  children?: MindNode[];     // 중첩 트리 — childIds 아님
+}
 ```
+
+> 원안의 `MindmapNode`(parentId/childIds/orderIndex/depth/mapId …)는
+> 정규화 설계 초안의 타입 — 미채택. `NodeObject`(domain-models.md)는
+> 백엔드 정규화 노드 경로용이다.
 
 ---
 
-### 5.1.5 Document Store의 책임
+### 5.1.5 documentStore의 책임 (실제 액션 발췌)
 
-Document Store가 직접 책임지는 대표 작업은 다음과 같다.
+1. 노드 생성 — `addChildNode`, `addChildNodesBulk`, 부모 삽입
+2. 노드 삭제 — `deleteNode`, `deleteNodesBulk`
+3. 텍스트 수정 — `updateNodeText`
+4. 레이아웃 변경 — `updateNodeLayoutType` 등
+5. Collapse / Expand — `expandAncestors` 포함
+6. 태그·스타일·링크·첨부·노트 변경
+7. 맵 교체 — `newMap`, `loadMap`
+8. Undo/Redo — `undo`, `redo` (past/future)
+9. 저장 스냅샷 — `buildSnapshot` (`normalizeMapForSnapshot` 정규화)
 
-1. Node 생성
-2. Node 삭제
-3. Node 이동
-4. Node 텍스트 수정
-5. Layout 변경
-6. Collapse / Expand
-7. Tag 추가/삭제
-8. Style 변경
-9. Manual Position 저장
-10. 다중 가지 추가 결과 반영
-
-예:
-
-```ts
-createNode()
-deleteNode()
-moveNode()
-updateText()
-changeLayout()
-setCollapsed()
-addTag()
-removeTag()
-```
+편집 유틸리티는 재귀 헬퍼 `mutateNode`(스프레드 기반 불변 갱신)를 공유한다.
 
 ---
 
-### 5.1.6 Document Store의 특징
-
-Document Store는 다음 특징을 가진다.
+### 5.1.6 documentStore의 특징
 
 - 가장 중요한 상태
-- DB에 저장되는 데이터
-- Undo / Redo 대상
+- 서버에 저장되는 데이터 (스냅샷)
+- Undo / Redo 대상 (스택도 이 스토어 안에)
 - Autosave 대상
 - Export 원본
-- Collaboration 동기화의 기준 상태
-
-즉, 나중에 협업이 붙어도 중심은 계속 Document Store이다.
+- (향후) Collaboration 동기화의 기준 상태
 
 ---
 
-## 5.2 Editor UI Store
+## 5.2 editorUiStore
 
 ### 5.2.1 역할
 
-Editor UI Store는 **UI 상태만 관리**한다.
-
-즉 문서 데이터와 직접 상관없는 화면 상태를 보관한다.
-
-예:
-
-- 현재 선택된 노드
-- 오른쪽 패널 열림 여부
-- AI 패널 열림 여부
-- Tag Explorer 열림 여부
-- 현재 활성 탭
-- 검색창 문자열
-- export dialog 상태
-- context menu 상태
-- toast 메시지
+editorUiStore는 **화면 구성 상태**를 관리한다 — 테마, 레이아웃, 패널,
+표시 토글. (선택 상태는 여기가 아니라 **interactionStore** 가 담당한다.)
 
 ---
 
-### 5.2.2 예시 구조
+### 5.2.2 실제 구조 (발췌)
 
 ```ts
-type EditorUIState = {
-  selectedNodeId: string | null;
+interface EditorUiState {
+  themeName: ThemeName;            // light / dark (localStorage 지속)
+  layoutType: LayoutType;          // 맵 레이아웃 — 저장 스냅샷 v2 포함
+  navTab: NavTabKey;               // 좌측 레일 탭 (새 맵/검색/히스토리/AI …)
+  inspectorTab: InspectorTabKey;   // 우측 패널 탭 (스타일/레이아웃/노트·태그/링크·첨부)
+  activeSection: SidebarSection;
+  sidebarCollapsed: boolean;
+  sidebarWidth: number;
 
-  panels: {
-    aiPanel: boolean;
-    tagExplorer: boolean;
-    inspector: boolean;
-  };
+  showTags: boolean;               // 태그 배지 표시 토글
+  hiddenTags: string[];            // 태그별 배지 숨김 필터
 
-  activeInspectorTab:
-    | "style"
-    | "layout"
-    | "note"
-    | "tag"
-    | "link"
-    | "attachment";
+  multiAddOpen: boolean;           // Ctrl+Space 다중 추가 팝업
 
-  searchQuery: string;
-  searchPanelOpen: boolean;
+  spacingX: number;                // 간격 배율 (0.9~2.0) — 저장 스냅샷 v2 포함
+  spacingY: number;
 
-  exportDialogOpen: boolean;
+  outlineSplit: boolean;           // 아웃라인 분할 화면
+  outlineSplitRatio: number;
+  mainView: 'map' | 'outline';
+  outlineFocusId: string | null;
 
-  contextMenu: {
-    open: boolean;
-    x: number;
-    y: number;
-    targetType: "node" | "canvas" | "tag" | null;
-    targetId: string | null;
-  };
-};
+  browserOpen: boolean;            // 문서함을 편집 영역에 연 상태
+}
 ```
 
 ---
 
-### 5.2.3 UI Store의 특징
+### 5.2.3 editorUiStore의 특징
 
-- DB 저장 안 함
-- 새로고침 시 복구하지 않아도 됨
-- 문서 원본 진실이 아님
-- 렌더링 편의 상태
-
-즉:
-
-```text
-Editor UI Store = 화면용 상태
-```
+- 대부분 저장 안 함 — 예외: `layoutType`·`spacingX/Y` 는 저장 스냅샷 v2 에 포함, `themeName` 은 localStorage
+- 새로고침 시 복구하지 않아도 됨 (테마 제외)
+- 문서 원본 진실이 아님 — 렌더링 편의 상태
+- 단, **undo 스냅샷 `{map, layout}`** 에 레이아웃이 함께 기록된다 (칸반 전환 복원 — `12-history-undo-redo.md`)
 
 ---
 
-## 5.3 Viewport Store
+## 5.3 viewportStore
 
 ### 5.3.1 역할
 
-Viewport Store는 사용자가 현재 **어느 화면 위치를 보고 있는가**를 나타낸다.
-
+viewportStore는 사용자가 현재 **어느 화면 위치를 보고 있는가**를 나타낸다.
 즉, 캔버스의 카메라 상태이다.
 
-포함 예:
-
-- zoom
-- pan
-- canvas bounds
-- fit screen 여부
-- minimap view box
-- 마지막 center node
-
 ---
 
-### 5.3.2 예시 구조
+### 5.3.2 실제 구조
 
 ```ts
-type ViewportState = {
-  zoom: number;
+interface ViewportState {
+  zoom: number;      // 퍼센트 (UI 표시용, /100 = transform scale)
+  panX: number;      // viewBox 단위
+  panY: number;
+  panMode: boolean;  // Hand tool — H 키 토글
 
-  pan: {
-    x: number;
-    y: number;
-  };
+  fitRequestId: number;  // requestFit() 이 증가 → 캔버스가 반응해 전체 맞춤
+  centerRequest: { id: string; zoom: number; seq: number } | null;
+                     // requestCenterNode() — 검색/아웃라인의 중앙 이동 요청
 
-  canvasSize: {
-    width: number;
-    height: number;
-  };
-
-  worldBounds: {
-    minX: number;
-    minY: number;
-    maxX: number;
-    maxY: number;
-  } | null;
-
-  isPanning: boolean;
-  lastCenterNodeId: string | null;
-};
+  zoomIn: () => void;
+  zoomOut: () => void;
+  requestFit: () => void;
+  requestCenterNode: (id: string, zoom?: number) => void;
+  // ...
+}
 ```
+
+> 원안의 `canvasSize`/`worldBounds`/`isPanning`/`lastCenterNodeId` 는
+> 스토어가 아니라 캔버스 컴포넌트 내부에서 계산·관리한다.
 
 ---
 
-### 5.3.3 Viewport Store가 담당하는 기능
+### 5.3.3 viewportStore가 담당하는 기능
 
-- Zoom In
-- Zoom Out
-- Fit Screen
-- Pan Canvas
-- Center Node
-- 100% View
-- Focus Node View
-
-즉 캔버스 조작 관련 기능은 모두 Viewport Store를 중심으로 동작한다.
+- Zoom In / Out / 직접 입력
+- 전체 맞춤 (fitRequestId 요청 패턴)
+- Pan 모드 (H)
+- 노드 중앙 이동 (centerRequest 요청 패턴 — 검색·아웃라인에서 사용)
 
 ---
 
 ### 5.3.4 중요한 구분
 
-Viewport Store는 **world coordinates** 와 **screen coordinates** 사이의 변환과 관련된다.
+viewportStore는 **world coordinates** 와 **screen coordinates** 사이의 변환과 관련된다.
 
 - world coordinates → 문서/레이아웃 엔진 기준 좌표
 - screen coordinates → zoom/pan 적용 후 화면 좌표
@@ -582,257 +393,161 @@ Viewport Store는 **world coordinates** 와 **screen coordinates** 사이의 변
 
 ---
 
-## 5.4 Interaction Store
+## 5.4 interactionStore
 
 ### 5.4.1 역할
 
-Interaction Store는 **사용자의 현재 행동 상태**를 저장한다.
-
-이 상태는 매우 자주 바뀌고, 짧게 살아있으며, 저장 대상이 아니다.
-
-예:
-
-- drag 중인 노드
-- hover 중인 노드
-- selection box
-- keyboard 입력 중
-- text edit draft
-- drop target 후보
-- marquee selection
-- 다중 가지 입력 팝업의 draft text
+interactionStore는 **사용자의 현재 조작 대상**을 저장한다 — 선택·검색
+강조·편집 중 노드. 저장 대상이 아니고 undo 대상도 아니다.
 
 ---
 
-### 5.4.2 예시 구조
+### 5.4.2 실제 구조 — 필드 4개
 
 ```ts
-type InteractionState = {
-  hoveredNodeId: string | null;
-
-  selectedNodeIds: string[];
-  anchorNodeId: string | null;
-
-  dragging:
-    | {
-        type: "node" | "subtree";
-        nodeIds: string[];
-        origin: { x: number; y: number };
-        current: { x: number; y: number };
-        previewParentId: string | null;
-      }
-    | null;
-
-  marquee:
-    | {
-        start: { x: number; y: number };
-        current: { x: number; y: number };
-      }
-    | null;
-
-  textEditing:
-    | {
-        nodeId: string;
-        draftText: string;
-      }
-    | null;
-
-  bulkInsertDraft: string | null;
-};
+interface InteractionState {
+  selectedId: string | null;       // 단일 선택 노드
+  searchHitId: string | null;      // 검색 강조 노드 (클릭한 1건)
+  multiSelectedIds: string[];      // 러버밴드/Ctrl+클릭 다중 선택
+  editingNodeId: string | null;    // 인라인 편집 중인 노드
+}
 ```
+
+> 원안의 hover/dragging/marquee/draftText 구조는 스토어에 두지 않는다 —
+> 드래그·호버·러버밴드 중간값은 캔버스 컴포넌트 로컬 상태다 (초당 수십
+> 회 변경을 전역 구독에 태우지 않기 위해).
 
 ---
 
-### 5.4.3 Interaction Store의 특징
+### 5.4.3 interactionStore의 특징
 
-- 매우 자주 바뀜
-- drag/hover 중 초당 여러 번 변경 가능
-- DB 저장 안 함
-- undo/redo 대상이 아님
-- 렌더링에 중요하지만 원본은 아님
-
-즉:
-
-```text
-Interaction Store = 사용자 행동의 현재 순간
-```
+- 저장 안 함, undo/redo 대상 아님
+- 계정 경계 전환 시 리셋
+- 렌더링(선택 테두리·강조·편집 오버레이)에 중요하지만 원본은 아님
 
 ---
 
-## 5.5 Autosave Store
+## 5.5 autosaveStore (+ cloudStore)
 
 ### 5.5.1 역할
 
-Autosave Store는 **자동 저장 자체를 관리**한다.
+autosaveStore는 **저장 상태 배지 하나**를 관리한다. 디바운스 타이머와
+실제 PUT 은 저장 서비스(cloud 연동 코드)가 담당하고, 스토어는 그 결과
+상태만 표시용으로 든다.
 
-Document Store가 바뀌면 Autosave Store가 그것을 감지하고 저장 절차를 관리한다.
-
-즉 Autosave Store는 문서 원본을 갖지 않는다.  
-대신 “저장해야 하는지”, “지금 저장 중인지”, “마지막 저장이 언제였는지”를 관리한다.
+서버 연결 정보는 **cloudStore** 가 별도로 담당한다.
 
 ---
 
-### 5.5.2 예시 구조
-
-> 상세 Autosave 명세: `docs/03-editor-core/save/14-save.md`
+### 5.5.2 실제 구조
 
 ```ts
-type AutosaveState = {
-  dirty: boolean;
-  saving: boolean;
-  lastSavedAt: string | null;
+// autosaveStore — 배지 1개
+type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
+interface AutosaveState {
+  saveState: SaveState;
+  setSaveState: (v: SaveState) => void;
+}
 
-  // 전송 대기 중인 patch 목록 (PATCH /maps/{mapId}/nodes 페이로드)
-  // 세부 타입: docs/03-editor-core/save/14-save.md § 4.2 (PatchRequest / NodePatch)
-  pendingPatches: DocumentPatch[];
-  lastError: string | null;
-
-  // debounce 시간 (ms) — 텍스트·스타일 변경 시 800ms, 구조 변경 시 0ms(즉시)
-  // → docs/03-editor-core/save/14-save.md § 4.1 (Debounce 저장 전략)
-  debounceMs: number;
-
-  // 현재 클라이언트가 알고 있는 서버 버전 (충돌 감지용 baseVersion)
-  // → docs/03-editor-core/save/14-save.md § 5.3 (충돌 해소 3단계)
-  baseVersion: number;
-};
+// cloudStore — 현재 문서 ↔ 서버 맵 연결 (세션 한정, 비영속)
+interface CloudState {
+  cloudMapId: string | null;    // 연결된 서버 맵 id (없으면 미저장)
+  cloudTitle: string | null;    // 서버에 저장된 이름 — 재저장 시 이 이름 사용
+  cloudFolderId: string | null;
+  cloudKind: MapKind;
+  // detachFromServer() — 새 맵/불러오기 시 링크 해제 (직전 맵 덮어쓰기 방지)
+}
 ```
+
+> 원안의 dirty/pendingPatches/debounceMs/baseVersion 구조는 patch 저장
+> 설계 초안 — 미채택.
 
 ---
 
 ### 5.5.3 Autosave 트리거
 
-아래 작업이 발생하면 autosave 대상이 된다.
-
-| 변경 유형 | 저장 타이밍 |
-|---|---|
-| node 생성 / 삭제 / 이동 | **0ms 즉시** |
-| layout 변경 | **0ms 즉시** |
-| bulk insert | **0ms 즉시** |
-| text 수정 | **800ms debounce** |
-| style 변경 | **800ms debounce** |
-| tag 변경 | 즉시 |
-| collapse 상태 변경 | 즉시 |
-| AI generated node 삽입 | 즉시 |
-| Undo / Redo 실행 결과 | 즉시 (새 patchId 생성) |
-
-> 세부 debounce 전략: `docs/03-editor-core/save/14-save.md § 4.1`
-
-즉 원칙은:
+**모든 문서 변경 = 1500ms 단일 디바운스** (`14-save.md` §4.1).
+유형별 즉시/디바운스 구분은 없다 — 스냅샷 방식이라 최종 상태 하나만
+보내면 된다.
 
 ```text
-Document Store가 바뀌면 Autosave 후보
+documentStore 변경
+→ saveState = 'dirty'
+→ 1500ms 디바운스
+→ buildSnapshot() → PUT /maps/{cloudMapId}/document
+→ 성공: saveState = 'saved' / 실패: 'error'
 ```
 
 ---
 
-### 5.5.4 Autosave 흐름
+## 5.6 연동 스토어 — authStore · aiSettingsStore
 
-```text
-Document 변경
-→ dirty = true
-→ debounce 시작
-→ PATCH 요청 생성
-→ 서버 저장
-→ 성공 시 dirty = false
-→ lastSavedAt 갱신
-```
-
-예:
-
-```text
-node 이동
-→ Document Store 변경
-→ Autosave Store dirty = true
-→ 1초 후 저장
-→ DB 저장
-→ dirty = false
-```
-
----
-
-### 5.5.5 Autosave Store의 특징
-
-- 문서 원본 데이터는 가지지 않음
-- 저장 상태만 관리
-- version / patchId / clientId 기반 patch 저장과 잘 연결됨
-- collaboration에서도 로컬 optimistic update와 자연스럽게 연결 가능
+- **authStore** — 로그인 세션(사용자·토큰). 계정 경계 전환 시 문서·링크·undo 리셋의 기준 (e2e85 [4]).
+- **aiSettingsStore** — AI 모드(web/api)·키·모델 설정. localStorage 지속.
 
 ---
 
 ## 6. 전체 데이터 흐름
 
-easymindmap Editor의 기본 흐름은 아래와 같다.
-
 ```text
 사용자 입력
    ↓
-Command Dispatcher
+documentStore 액션 (set — past push 포함)
+   ├── interactionStore 정리 (선택 등)
+   └── autosaveStore saveState = 'dirty'
    ↓
-Document Store 갱신
-   ├── Editor UI Store 일부 갱신
-   ├── Interaction Store 정리
-   ├── History Entry 기록
-   └── Autosave Store dirty = true
-   ↓
-Layout Engine
+Layout Engine (computeLayout → LaidOutNode[])
    ↓
 Renderer (SVG + HTML Overlay)
    ↓
-Autosave Worker
+1500ms 디바운스 저장 (cloudStore.cloudMapId 로 PUT)
    ↓
 API / DB
 ```
 
 이 흐름이 중요한 이유는 다음과 같다.
 
-1. 편집은 항상 Document 변경을 중심으로 이뤄진다.
+1. 편집은 항상 documentStore 변경을 중심으로 이뤄진다.
 2. UI 상태는 문서 원본을 직접 바꾸지 않는다.
-3. 저장은 Document와 분리된 Autosave가 담당한다.
-4. Undo/Redo와 Collaboration 확장이 쉬워진다.
+3. 저장은 문서와 분리된 배지/연결 스토어가 보조한다.
+4. Undo/Redo와 (향후) Collaboration 확장이 쉬워진다.
 
 ---
 
-## 7. 실제 코드 구조 예시
-
-React + Zustand 기준으로는 아래처럼 분리하는 것이 좋다.
+## 7. 실제 코드 구조
 
 ```text
-/stores
+apps/frontend/src/stores/
 
-documentStore.ts
+documentStore.ts      # map + past/future + 편집 액션 + buildSnapshot
 editorUiStore.ts
 viewportStore.ts
 interactionStore.ts
 autosaveStore.ts
+cloudStore.ts
+authStore.ts
+aiSettingsStore.ts
+index.ts
 ```
 
-간단한 예시:
+간단한 예시 (실제 액션):
 
 ```ts
-const useDocumentStore = create((set) => ({
-  nodes: {},
+// documentStore 사용 예
+const addChildNode = useDocumentStore((s) => s.addChildNode);
+const undo = useDocumentStore((s) => s.undo);
 
-  createNode: (node) =>
-    set((state) => ({
-      nodes: {
-        ...state.nodes,
-        [node.id]: node
-      }
-    })),
+addChildNode(selectedId);   // 자식 추가 — past push + 자동저장 트리거
 
-  deleteNode: (id) =>
-    set((state) => {
-      const next = { ...state.nodes };
-      delete next[id];
-      return { nodes: next };
-    })
-}));
+// 검색 결과 클릭 흐름
+useDocumentStore.getState().expandAncestors(nodeId);
+useInteractionStore.getState().setSearchHitId(nodeId);
+useViewportStore.getState().requestCenterNode(nodeId, 100);
 ```
 
 ---
 
-## 8. 왜 5개 Store로 나누는가
-
-이유는 매우 중요하다.
+## 8. 왜 Store를 나누는가
 
 만약 하나의 Store에 모든 걸 넣으면 다음 일이 벌어진다.
 
@@ -841,14 +556,14 @@ zoom 변경
 → 전체 state 변경
 → 전체 rerender
 → drag 중 성능 저하
-→ autosave와 UI 상태 혼선
+→ 저장 상태와 UI 상태 혼선
 ```
 
 반대로 분리하면 아래처럼 된다.
 
 ```text
 zoom 변경
-→ viewport만 변경
+→ viewportStore만 변경
 → document rerender 없음
 ```
 
@@ -861,183 +576,150 @@ zoom 변경
 
 대형 에디터들도 본질적으로 비슷한 구조를 가진다.
 
-예:
-
 ### Figma 계열
 
 ```text
-Document
-Viewport
-Selection
-Interaction
-History
+Document / Viewport / Selection / Interaction / History
 ```
 
 ### Excalidraw 계열
 
 ```text
-elements
-appState
-history
+elements / appState / history
 ```
 
-easymindmap도 같은 원칙을 따르지만,  
-마인드맵 특성상 Layout, Autosave, Bulk Insert, Tag, AI 생성 등을 고려해  
-5-Store 분리 구조를 명확히 가져간다.
+easymindmap도 같은 원칙을 따르되, 마인드맵 특성(레이아웃·저장 배지·서버
+연결·AI 설정)을 고려해 **코어 5 + 연동 3 의 8-스토어** 구조를 가져간다.
 
 ---
 
 ## 10. 상태별 저장/복구 기준
 
-| Store | DB 저장 | 새로고침 복구 | Undo/Redo 대상 | 협업 동기화 대상 |
-|---|---|---:|---:|---:|
-| Document Store | O | O | O | O |
-| Editor UI Store | X | 선택 | X | X |
-| Viewport Store | X | 선택 | X | X |
-| Interaction Store | X | X | X | X |
-| Autosave Store | X | 일부 | X | X |
-
-설명:
-
-- Document는 반드시 저장/복구/동기화 대상
-- UI/Viewport는 필요하면 로컬스토리지 정도만 고려 가능
-- Interaction은 순간 상태라 복구 대상 아님
-- Autosave는 앱 내부 제어 상태
+| Store | 서버 저장 | 새로고침 복구 | Undo/Redo 대상 | 비고 |
+|---|---|---:|---:|---|
+| documentStore.map | O (스냅샷) | O (서버 맵 다시 열기) | O | past/future 는 세션 한정 |
+| editorUiStore | layoutType·spacingX/Y 만 스냅샷 포함 | 테마만 localStorage | X (단, undo 엔트리에 layout 동봉) | |
+| viewportStore | X | X | X | |
+| interactionStore | X | X | X | |
+| autosaveStore | X | X | X | 배지 전용 |
+| cloudStore | X (연결 정보) | **X — 의도적 비영속** | X | 새로고침 시 링크 해제 (덮어쓰기 사고 방지) |
+| authStore | 세션 (localStorage) | O | X | |
+| aiSettingsStore | localStorage | O | X | |
 
 ---
 
 ## 11. 다른 핵심 엔진과의 관계
 
-### 11.1 Document Store와 Undo/Redo
+### 11.1 documentStore와 Undo/Redo
 
 Undo/Redo는 사실상 아래 의미다.
 
 ```text
-Document Store 이전 상태로 되돌리기
+documentStore 이전 스냅샷으로 되돌리기 (past/future — 같은 스토어 안)
 ```
 
-즉 History Store는 Document Store 위에 얹힌다.
+별도 History Store 는 없다 — `12-history-undo-redo.md`.
 
 ---
 
-### 11.2 Document Store와 Layout Engine
+### 11.2 documentStore와 Layout Engine
 
-Layout Engine은 문서 원본을 받아  
-노드 위치, bounding box, edge path 같은 계산 결과를 만든다.
-
-즉:
+Layout Engine은 문서 원본(map)을 받아 노드 위치·크기·edge path 계산
+결과(`LaidOutNode[]`)를 만든다.
 
 ```text
-Document Store = 원본
-Layout Engine = 계산기
+documentStore = 원본
+Layout Engine = 계산기 (computeLayout)
 ```
 
 ---
 
-### 11.3 Document Store와 Autosave
-
-Autosave는 아래 구조가 가장 바람직하다.
+### 11.3 documentStore와 Autosave
 
 ```text
-Document Store 변경 감지
-→ patch 생성
-→ debounce
-→ 서버 저장
+documentStore 변경 감지
+→ 1500ms 디바운스
+→ buildSnapshot() (normalizeMapForSnapshot)
+→ PUT /maps/:id/document
 ```
 
-즉 Autosave는 Document를 직접 소유하지 않는다.
+즉 Autosave는 문서를 직접 소유하지 않는다.
 
 ---
 
-### 11.4 Document Store와 AI 기능
+### 11.4 documentStore와 AI 기능
 
 AI mindmap 생성도 결국은 아래와 같다.
 
 ```text
-AI 결과
-→ node tree 변환
-→ Document Store 삽입
-→ Layout 계산
-→ Autosave 저장
+AI 결과 (emm 코드블록)
+→ MindNode 트리 변환
+→ documentStore 삽입 (set 1회 = undo 1단계)
+→ Layout 계산 → 자동저장
 ```
 
-즉 AI도 별도 예외가 아니라 Document Store 파이프라인에 들어오는 입력원 중 하나이다.
+즉 AI도 별도 예외가 아니라 documentStore 파이프라인에 들어오는 입력원 중 하나이다.
 
 ---
 
-## 12. 향후 Collaboration 확장과의 관계
+## 12. 향후 Collaboration 확장과의 관계 (계획 — 협업 V1)
 
-향후 협업 기능이 들어가더라도 5-Store 원칙은 유지한다.
+향후 협업 기능이 들어가더라도 스토어 분리 원칙은 유지한다.
 
-기본 원칙:
+- documentStore → 동기화 대상
+- editorUi/viewport/interaction → 로컬 전용
+- autosave/cloud → 로컬 저장·연결 관리
 
-- Document Store → CRDT/Realtime 동기화 대상
-- Editor UI Store → 로컬 전용
-- Viewport Store → 로컬 전용
-- Interaction Store → 로컬 전용
-- Autosave Store → 로컬 저장 관리
-
-즉, 다른 사용자의 커서나 선택 상태를 별도 collaboration layer로 브로드캐스트할 수는 있지만,  
-기본 store 분리 원칙은 유지해야 한다.
+현재는 **단일 세션 편집 잠금**(`map_edit_locks`)으로 동시 편집 자체를
+차단한다 — `14-save.md` §5.3.
 
 ---
 
 ## 13. 최종 요약
 
-easymindmap 상태 구조는 아래처럼 정리할 수 있다.
-
 ```text
-Document Store
-= Mindmap 데이터 자체
+documentStore
+= Mindmap 문서(map) + 되돌리기(past/future)
 
-Editor UI Store
-= 패널 / 선택 / 모달 / 화면 UI 상태
+editorUiStore
+= 테마 / 레이아웃 / 패널 / 표시 토글 (layoutType·spacing 은 스냅샷 v2 포함)
 
-Viewport Store
-= zoom / pan / 보이는 영역
+viewportStore
+= zoom / pan / fit·center 요청
 
-Interaction Store
-= drag / hover / selection / draft
+interactionStore
+= selectedId / searchHitId / multiSelectedIds / editingNodeId
 
-Autosave Store
-= dirty / pending patch / saving 상태
+autosaveStore + cloudStore
+= 저장 배지 + 서버 맵 연결 정보
+
+authStore / aiSettingsStore
+= 로그인 세션 / AI 설정
 ```
 
 그리고 가장 중요한 원칙은 아래 한 줄이다.
 
 ```text
-Document Store만 DB 저장 대상
+저장의 중심은 documentStore.map (+ 스냅샷 v2 의 레이아웃·간격)
 ```
-
-이 원칙이 지켜져야 다음이 모두 안정적으로 돌아간다.
-
-- Autosave
-- Undo / Redo
-- Layout Engine
-- AI 삽입
-- Collaboration
-- Export
 
 ---
 
-## 14. 구현 시 권장 추가 문서
+## 14. 함께 읽을 문서
 
-이 문서를 기준으로 다음 문서와 함께 읽는 것이 좋다.
-
-1. `command-history.md`
-2. `layout-engine.md`
-3. `layout-coordinate-algorithm.md`
-4. `autosave-engine.md`
-5. `frontend-architecture.md`
-
-즉, 이 문서는 Editor 코어 설계의 입구 문서이고,  
-세부 동작은 위 문서들에서 확장된다.
+1. `docs/03-editor-core/history/12-history-undo-redo.md` — past/future·HISTORY_LIMIT·setHistoryPaused
+2. `docs/03-editor-core/save/14-save.md` — 1500ms 디바운스·무변경 스킵·편집 잠금
+3. `docs/03-editor-core/layout/08-layout.md` — 레이아웃 엔진·간격
+4. `docs/90-architecture/frontend-architecture.md` — 프런트 전체 구조
+5. `docs/05-implementation/state-management.md` — Zustand + 얇은 fetch 래퍼 전략
+6. `docs/04-extensions/emm-spec.md` — MindNode/SampleMap 모델의 단일 원본
 
 ---
 
 ## 15. 한 줄 최종 결론
 
 > easymindmap Editor의 상태관리는  
-> **문서 상태(Document)** 와  
-> **화면/UI 상태(UI, Viewport, Interaction)** 와  
-> **저장 상태(Autosave)** 를 완전히 분리하는 5-Store 구조를 기준으로 설계한다.
+> **문서 상태(document)** 와  
+> **화면/UI 상태(editorUi, viewport, interaction)** 와  
+> **저장·연동 상태(autosave, cloud, auth, aiSettings)** 를 분리하는  
+> **코어 5 + 연동 3 의 8-스토어 구조**를 기준으로 한다.

@@ -1,8 +1,11 @@
 # Node Hierarchy Storage Strategy
 
-문서 버전: v3.0  
+문서 버전: v3.1  
 상태: Final  
-최종 결정: 2026-03-29
+최종 결정: 2026-03-29  
+최종 업데이트: 2026-08-04 — 실물 스키마(`apps/api/database/schema.sql`)와
+대조해 미적용 항목(depth CHECK·격리 수준·size_cache 갱신·30일 배치 등)을
+명시. ltree/`order_index` 전략 자체는 구현되어 가동 중.
 
 ---
 
@@ -65,8 +68,9 @@ CREATE TABLE public.nodes (
     depth            INTEGER NOT NULL DEFAULT 0,
     order_index      FLOAT   NOT NULL DEFAULT 0.0,   -- FLOAT: 중간 삽입 O(1)
     -- path: ltree 계층 경로 (예: 'root.n_abc.n_def')
-    -- NULL 허용 없음, 기본값 'root' (루트 노드용)
-    path             LTREE   NOT NULL DEFAULT 'root',
+    -- NULL 허용 없음. DEFAULT 없음 — 앱이 항상 path 를 계산해 넣는다
+    -- (실물 schema.sql 기준: `path LTREE NOT NULL`)
+    path             LTREE   NOT NULL,
 
     -- 레이아웃
     -- layout_type은 항상 저장 (NOT NULL). 부모 상속은 생성 시 부모 값을 복사 저장
@@ -80,8 +84,9 @@ CREATE TABLE public.nodes (
     -- 노드 타입 (V3 대시보드 대비)
     node_type        VARCHAR(30)  NOT NULL DEFAULT 'text',  -- 'text' | 'data-live'
 
-    -- 협업: 노드 최초 생성자 (수정/삭제 권한 판단 기준) — db-schema.md v3.3
-    created_by       UUID REFERENCES public.users(id),
+    -- (planned) 협업: 노드 최초 생성자 — db-schema.md v3.3.
+    -- ⚠️ 실물 nodes 테이블에는 아직 없는 컬럼이다 (협업 단계에서 추가 예정)
+    -- created_by    UUID REFERENCES public.users(id),
 
     -- 자유배치 좌표 (freeform 전용)
     manual_position  JSONB,   -- { x: number, y: number }
@@ -117,7 +122,9 @@ CREATE INDEX idx_nodes_path_btree ON public.nodes USING BTREE (path);
 
 ### 이유
 
-- `schema.sql`에서 `nodes.layout_type` 는 `NOT NULL` + 허용 enum check로 강제된다.
+- 실물 `schema.sql`에서 `nodes.layout_type` 는 `NOT NULL DEFAULT
+  'radial-bidirectional'` 이다. **허용값 enum CHECK 제약은 없다** —
+  허용값 검증은 앱(DTO/서비스 레이어) 책임이다.
 - 협업/Undo/부분 relayout에서 `NULL 상속 해석`은 서버/클라이언트 복잡도를 높인다.
 - 생성 시 복사 저장 방식이 API/서비스/렌더링 계층에서 가장 단순하고 안정적이다.
 
@@ -203,24 +210,25 @@ PostgreSQL의 ltree extension에는 다음 물리적 제한이 있다.
 
 - 일반적인 마인드맵 사용 패턴에서 depth 10을 초과하는 경우는 드물다.
 - depth 50 제한은 ltree 물리 한계보다 충분히 여유 있으며, 엣지 케이스(무한 중첩 버그 등) 방어를 위한 안전망이다.
-- **Kanban 레이아웃**은 별도 규칙에 의해 depth ≤ 2 로 더 엄격하게 제한된다 (→ `docs/02-domain/domain-models.md § 5.4`, `docs/03-editor-core/layout/08-layout.md § 6.6`).
+- **Kanban 레이아웃**의 depth ≤ 2 제한(구 규칙)은 **폐기**되었다 — depth 3+
+  는 카드 하위 트리로 표시하며 깊이 제한 없음 (→ `docs/02-domain/domain-models.md § 5.4`, `docs/03-editor-core/layout/08-layout.md § 6.6`).
 
-**구현 가이드:**
+**구현 가이드 — ⚠️ 미적용(backlog):**
+
+> 아래 `chk_nodes_depth_limit`·`chk_nodes_kanban_depth` CHECK 제약과
+> `MAX_NODE_DEPTH` 앱 검증은 **현재 실물 스키마·API 코드에 적용되어 있지
+> 않다** (실물 nodes 테이블 CHECK 제약 0건). 설계상 안전망으로 남겨 둔
+> backlog 항목이다. 또한 kanban depth 3+ 금지는 정책적으로 폐기되었다
+> (깊이 제한 없음 — db-schema.md §⑧, 08-layout.md §6.6).
 
 ```sql
--- 앱 레이어 또는 DB CHECK 제약으로 depth 상한 적용
+-- (backlog) 앱 레이어 또는 DB CHECK 제약으로 depth 상한 적용
 ALTER TABLE public.nodes
   ADD CONSTRAINT chk_nodes_depth_limit CHECK (depth <= 50);
-
--- Kanban 전용 depth 제한 (board=0, column=1, card=2, 3+ 금지)
--- → docs/03-editor-core/layout/08-layout.md § 6.6 참조
-ALTER TABLE public.nodes
-  ADD CONSTRAINT chk_nodes_kanban_depth
-    CHECK (layout_type != 'kanban' OR depth BETWEEN 0 AND 2);
 ```
 
 ```typescript
-// 서비스 레이어에서 노드 생성 전 검증
+// (backlog) 서비스 레이어에서 노드 생성 전 검증
 if (parentDepth + 1 > MAX_NODE_DEPTH) {
   throw new AppError('NODE_DEPTH_LIMIT_EXCEEDED', `최대 깊이(${MAX_NODE_DEPTH})를 초과할 수 없습니다.`);
 }
@@ -270,7 +278,12 @@ WHERE map_id = $map_id
 
 노드를 다른 부모 아래로 이동할 때, 해당 노드와 모든 하위 노드의 `path`를 일괄 갱신해야 한다.
 
-### ⚠ 트랜잭션 격리 수준 요구사항
+### ⚠ 트랜잭션 격리 수준 — 요구사항 (현재 미적용)
+
+> **현재 구현 노트 (2026-08-04)**: 아래 격리 수준 명시는 **요구사항이며
+> 아직 코드에 적용되어 있지 않다**. 현행 `move_node_subtree`(DB 함수)와
+> autosave 는 기본 `READ COMMITTED` 에서 `FOR UPDATE` 잠금·순환 차단으로
+> 동작한다. 다중 사용자 동시 편집(협업)을 켤 때 반영해야 한다.
 
 `move_node_subtree` 실행 시 다음 두 가지 동시성 문제가 발생할 수 있다.
 
@@ -383,15 +396,19 @@ VALUES ($map_id, $parent_id, $path, $depth, 1.5, $text);
 | 1 | **인접 간격 임계값 이하** | 새 노드 삽입 직전, `\|prev_order - next_order\| < 0.001` 이면 해당 `parent_id` 전체 재정규화 |
 | 2 | **소수점 깊이 초과** | `order_index`의 소수부 자릿수가 15자리(IEEE 754 float 정밀도 한계)를 초과할 위험이 있을 때 (삽입 시 계산된 `mid` 값이 `prev`와 `next`와 동일한 부동소수점 값이 되는 경우) |
 
-**조건 1 적용 예시 (서버 삽입 로직)**
+**조건 1 적용 예시 (서버 삽입 로직) — (planned)**
+
+> 아래 `nodeOrder.ts` 는 아직 없는 **예시 코드(planned)** 다. 현행 구현은
+> `apps/api/src/nodes/nodes.service.ts` 안에서 orderIndex 를 처리하며,
+> 자동 재정규화 트리거는 미적용이다.
 
 ```typescript
-// apps/api/src/services/nodeOrder.ts
+// (planned) apps/api/src/nodes/nodeOrder.ts
 
 const RENORMALIZE_THRESHOLD = 0.001;
 
 async function getInsertOrderIndex(
-  db: D1Database,
+  db: DatabaseService,
   mapId: string,
   parentId: string,
   prevOrderIndex: number | null,
@@ -470,9 +487,14 @@ WHERE n.id = r.id;
 - 그 외 레이아웃에서는 `null`
 - drag 종료 시 autosave patch로 저장
 
-### size_cache 갱신 주체: 클라이언트 확정
+### size_cache 갱신 주체: 클라이언트 확정 (planned)
 
 `size_cache JSONB` (`{ width: number, height: number }`) 컬럼의 갱신 주체는 **클라이언트(브라우저)**로 확정한다.
+
+> **현재 구현 노트 (2026-08-04)**: 컬럼은 실물 스키마에 존재하지만, 아래
+> autosave patch 를 통한 갱신 흐름은 **아직 미가동(planned)** 이다 — 현행
+> 프런트는 문서 스냅샷 경로(`map_documents`)로 저장하며 정규화 nodes
+> 경로에는 size_cache 를 보내지 않는다.
 
 **이유:**
 
@@ -585,12 +607,13 @@ ORDER BY depth ASC, order_index ASC;
 저장: Flat (parent_id 기반)
 조회: ltree path 기반 prefix-match (GIST 인덱스)
 정렬: FLOAT order_index (중간 삽입 O(1), 주기적 재정규화)
-이동: ltree subpath 치환 + depth 갱신 (REPEATABLE READ 이상 격리 수준 필수)
+이동: ltree subpath 치환 + depth 갱신 (REPEATABLE READ 이상 격리 수준은
+      요구사항 — 현재 미적용, 협업 활성화 시 반영)
 좌표: manual_position JSONB (freeform 전용)
 depth: 앱단 계산 후 저장 (ltree nlevel 기준)
-깊이 제한: 최대 depth 50단계 (ltree 물리 한계 ~181단계 대비 운영 안전망)
-           Kanban 레이아웃은 depth ≤ 2 (chk_nodes_kanban_depth CHECK 제약)
-size_cache: 클라이언트(브라우저)가 DOM 측정 후 autosave patch로 전송
+깊이 제한: 최대 depth 50단계 — 미적용(backlog). Kanban depth 제한은 폐기
+           (깊이 제한 없음, CHECK 제약 없음)
+size_cache: 클라이언트(브라우저)가 DOM 측정 후 autosave patch로 전송 (planned)
 협업 충돌: Server-First (구조 이동) + LWW (텍스트/스타일) + Soft Lock TTL 5초
 node_type: 'text' | 'data-live' (기본값 'text', V3 대시보드 대비)
 ```
@@ -627,7 +650,8 @@ SET deleted_at = NULL
 WHERE id = $map_id AND owner_id = auth.uid()
   AND deleted_at > NOW() - INTERVAL '30 days';
 
--- 30일 경과 맵 자동 삭제 (pg_cron 또는 BullMQ Worker 배치)
+-- 30일 경과 맵 자동 삭제 (배치) — ⚠️ 미구현: 정리 배치는 아직 없다.
+-- soft-delete 된 맵은 현재 수동 정리 전까지 DB 에 남는다.
 DELETE FROM public.maps
 WHERE deleted_at < NOW() - INTERVAL '30 days';
 ```

@@ -5,14 +5,16 @@
 > (구글 드라이브·OneDrive·NAS·로컬 대용량 디스크) 활용, 브라우저의
 > 실제 제약과 그 우회 방법, 단계별 구현 계획을 담는다.
 >
-> 작성: 2026-08-02 (사용자 요구사항 기반 설계) · 상태: **설계 확정,
-> 구현 대기(B9)** · 관련: `content-permanence.md`(현재의 내장 방식),
+> 작성: 2026-08-02 (사용자 요구사항 기반 설계) · 최종 업데이트: 2026-08-04
+> · 상태: **P1 구현 완료(2026-08-02, B9) · P2~P4 설계**
+> · 관련: `content-permanence.md`(현재의 내장 방식),
 > `../02-domain/db-schema.md`, `../05-implementation/api-spec.md`
 
 ---
 
-> 📍 **용량·요금제 표시가 들어갈 곳**은 우상단 아바타 메뉴의
-> **💳 구독 상태**(현재 "준비 중")다.
+> 📍 **사용량 표시는 이미 아바타 메뉴에 구현**되어 있다 — 📊 저장 용량
+> 막대(문서+첨부 합산, 90% 경고). **요금제 변경만** 💳 구독 상태
+> (현재 "준비 중")로 남아 있다.
 > [auth-session-ui.md](auth-session-ui.md) §2 참조.
 
 ## 1. 배경 — 왜 필요한가
@@ -94,6 +96,10 @@
 
 ### 4.1 첨부 참조 (프런트 · EMM 모델)
 
+> **[P2 이후 — 미구현]** `provider`/`locator` 확장은 P2 이후 설계다.
+> 현행(P1)은 `url` 단일 필드: **≤2MB 는 문서 내장(data URL)**, 2MB
+> 초과·맵 내장 합계 10MB 초과분은 **서버 URL** 을 담는다.
+
 ```ts
 export type AttachmentProvider = 'server' | 'folder' | 'embed' | 'gdrive' | 'onedrive' | 'webdav';
 
@@ -127,6 +133,10 @@ export interface NodeAttachment {
 
 ### 4.2 서버 스키마 (초안)
 
+> **(초안)** — `sha256`·`deleted_at` 은 실제 P1 스키마에 없다. 현행
+> DDL 은 `document-library.md` §1 참조. `user_storage` 테이블은
+> **[미구현 — 초안]** — P1 은 `users.quota_bytes`(기본 1GB) 한 컬럼이다.
+
 ```sql
 -- 서버에 저장된 첨부 파일 실물 메타
 CREATE TABLE public.attachments (
@@ -159,6 +169,8 @@ CREATE TABLE public.user_storage (
 > **첨부 사용량은 `server` provider 파일만** 합산한다. 사용자가 자기
 > 드라이브(`folder`·`gdrive`)에 둔 파일은 **쿼터를 쓰지 않는다** — 이것이
 > "용량이 모자라면 내 드라이브를 쓰세요"라는 제품 메시지의 근거다.
+> 단, **문서에 내장(embed)된 첨부는 DB(문서) 용량으로 합산**되므로
+> 같은 쿼터를 소모한다.
 
 ### 4.3 DB 용량(문서·히스토리)은 따로 집계한다 ★
 
@@ -174,8 +186,9 @@ CREATE TABLE public.user_storage (
 | **첨부(파일)** | `attachments` 의 `server` 파일 실물 | 첨부 삭제, **내 드라이브로 옮기기** |
 
 DB 용량은 별도 컬럼에 캐시하지 않고 **조회 시 집계**한다(쓰기 경로마다
-갱신하면 부정확해지기 쉽다). PostgreSQL 의 `pg_column_size` 로 실제
-저장 크기를 잰다:
+갱신하면 부정확해지기 쉽다). **현행(P1) 집계는 `octet_length(doc::text)`
+합산(현재 스냅샷 + 히스토리 버전), 캐시 없음** — 아래 `pg_column_size`
+쿼리는 초안 기록이다:
 
 ```sql
 -- 문서(DB) 사용량 — 현재 스냅샷 + 히스토리 버전, 맵별 내역까지
@@ -223,12 +236,13 @@ interface RegisteredFolder {
 |---|---|---|
 | `POST` | `/v1/attachments` | 업로드(multipart). **쿼터 초과 시 413** + 남은 용량 안내. 응답 `{ id, name, size, mime }` |
 | `GET` | `/v1/attachments/:id` | 다운로드(스트리밍). 소유자만 |
-| `DELETE` | `/v1/attachments/:id` | soft-delete + `used_bytes` 차감 |
-| `GET` | `/v1/storage` | 할당·사용량 **분리 응답**(아래) |
-| `PATCH` | `/v1/storage` | `defaultProvider` 변경 (개인 설정) |
+| `DELETE` | `/v1/attachments/:id` | **즉시 삭제·차감** (soft-delete 유예는 미구현·후속) |
+| `GET` | `/v1/attachments/quota` | **현행 P1** — `{ dbBytes, fileBytes, usedBytes, quotaBytes }` |
+| `GET` | `/v1/storage` | **[P2]** 할당·사용량 **분리 응답**(아래) |
+| `PATCH` | `/v1/storage` | **[P2]** `defaultProvider` 변경 (개인 설정) |
 
 ```jsonc
-// GET /v1/storage — DB 용량과 첨부 용량을 따로 돌려준다
+// [P2] GET /v1/storage — DB 용량과 첨부 용량을 따로 돌려준다
 {
   "plan": "basic",
   "quotaBytes": 10737418240,          // 10GB (첨부 + 문서 합계 기준)
@@ -251,9 +265,9 @@ interface RegisteredFolder {
 에러 규약:
 
 ```jsonc
-// 413 — 쿼터 초과
-{ "statusCode": 413, "message": "저장 용량이 부족합니다 (남은 용량 120MB).",
-  "quotaBytes": 10737418240, "usedBytes": 10617418240 }
+// 413 — 쿼터 초과 (현행 응답은 {statusCode, message} 두 필드 —
+// 수치는 메시지 문자열 안에 담긴다)
+{ "statusCode": 413, "message": "저장 용량이 부족합니다 (남은 용량 120MB)." }
 ```
 
 ---
@@ -319,8 +333,17 @@ interface RegisteredFolder {
 
 ### 7.2 첨부 추가
 
-현재 `URL.createObjectURL(f)`(세션 한정 blob URL — 새로고침하면 깨짐)을
-provider 별 저장으로 교체한다:
+현행(P1) 실제 흐름은 3분기다:
+
+```
+파일 선택
+  ├─ ≤2MB 이고 맵 내장 합계 10MB 이내 → data URL 로 문서에 내장
+  ├─ 로그인 상태 (2MB 초과 또는 합계 초과) → POST /v1/attachments 서버 업로드
+  │     (쿼터 검사 → 초과 시 413 안내)
+  └─ 비로그인 → blob URL (세션 한정 — 새로고침하면 깨짐, 안내 표시)
+```
+
+[P2] provider 별 저장으로 확장 예정:
 
 ```
 파일 선택
@@ -350,14 +373,17 @@ provider 별 저장으로 교체한다:
 | Team | 사용자당 20 GB (워크스페이스 합산) | 200 MB | |
 | 내 드라이브 사용 시 | **무제한(과금 대상 아님)** | 브라우저 한계 | 서버 용량을 쓰지 않음 |
 
+> **현행(P1)**: 파일 1개 상한은 플랜과 무관하게 환경변수
+> `ATTACHMENT_MAX_MB`(기본 **20MB**) 하나로 적용된다 — 플랜별 차등은 초안.
+
 * 쿼터 기준: **첨부 + 문서(DB) 합계**. 화면에는 §7.1처럼 **둘을 나눠**
   보여주고, 초과 시 **어느 쪽이 큰지와 줄이는 방법**을 함께 안내한다.
 * 초과 시: 업로드·저장만 차단(기존 파일 열람·다운로드, 맵 열기는 계속
   가능). 안내에 **"내 드라이브 폴더로 저장하기"** 와 **"오래된 저장
   이력 정리"** 를 함께 제시한다.
 * 용량 회수:
-  * 첨부 — 맵에서 삭제 → soft-delete → 30일 후 실제 삭제·차감
-    (맵 휴지통 정책과 동일 리듬)
+  * 첨부 — 현행은 **즉시 삭제·차감** (30일 soft-delete 유예는
+    미구현·후속 — 맵 휴지통 정책과 동일 리듬으로 예정)
   * 문서(DB) — 히스토리 버전 삭제(맵별 "오래된 버전 정리" 또는 보관
     개수 제한), 맵 삭제
 * 표시: 사용량 막대(전체) + 첨부/문서 내역 + 90% 초과 시 경고 배너.

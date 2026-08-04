@@ -55,7 +55,9 @@
 
 ### 2단계 — 레퍼런스 파서 오픈소스 분리
 
-- `packages/emm-parser` 로 파서/직렬화기를 앱에서 분리해 독립 배포
+- [x] `packages/emm-parser` 로 파서/직렬화기를 앱에서 분리 — CLI·적합성
+  스위트 포함 (완료 2026-07, §7-2 참조)
+- [ ] npm 공개 배포 · 공개 리포 분리
   (npm: `@easymindmap/emm-parser` — MD↔JSON, 의존성 최소)
 - 적합성 테스트 스위트를 패키지에 동봉 (입력 md → 기대 JSON → 왕복)
 - CLI 제공: `emm convert doc.md --to json|html`, `emm validate doc.md`

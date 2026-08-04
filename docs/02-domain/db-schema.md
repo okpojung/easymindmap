@@ -1,5 +1,69 @@
 # easymindmap — DB Schema (Supabase PostgreSQL)
 
+> 최종 업데이트: 2026-08-04 — 실물 스키마(`apps/api/database/schema.sql`)
+> 대조 현행화. 실물 기준 요약은 아래 "현재 구현" 절 참조.
+
+> ### ⚠️ 현행화 안내 (2026-08-04)
+>
+> 이 문서는 **구현 전 설계본**이다. V1~V3 확장(번역·협업·WBS·Redmine·
+> 채팅 등)까지 포함해 미리 그린 스키마이며, 본문 DDL 상당수는 아직 실물
+> DB 에 없다.
+>
+> - **실물 기준(단일 원본)**: `apps/api/database/schema.sql` — 코드와 함께
+>   버전 관리되며 `npm run db:apply` 로 DB 에 적용된다.
+> - 실물과 설계본의 차이·실물 전용 테이블은 **바로 아래 "현재 구현
+>   (2026-08-04 기준)" 절을 먼저 보라.**
+> - 본문에서 실물에 없는 절에는 "(planned)" 를 부기했다.
+
+---
+
+## 현재 구현 (2026-08-04 기준)
+
+### 실물 테이블 목록 (`apps/api/database/schema.sql`)
+
+| 테이블 | 상태 | 비고 |
+|---|---|---|
+| `users` | ✅ | `id, display_name, preferred_language, default_layout_type, quota_bytes(B9), created_at, updated_at` — 설계본의 번역/UI 설정 컬럼 없음 |
+| `workspaces` / `workspace_members` | ✅ | 스키마만 존재, API 미사용 |
+| `map_folders` | ✅ | 문서함(폴더) 트리 — 2026-08-02 |
+| `maps` | ✅ | + `folder_id`, `kind('solo'\|'collab')`. `translation_policy_json` **없음**, `view_mode` 는 `'edit'\|'dashboard'`(DDL 주석 기준, API 는 `'kanban'` 도 허용) |
+| `map_revisions` | ✅ | patch 기반 autosave 이력 (정규화 노드 경로) |
+| **`map_documents`** | ✅ 실물 전용 | **문서 전체 스냅샷(JSONB, 맵당 1건)** — `map_id PK, doc, updated_at`. 현재 프런트가 실제 사용하는 저장 경로. ⚠️ `maps.doc` 컬럼이 아니라 **별도 테이블**이다 |
+| **`map_document_versions`** | ✅ 실물 전용 | 저장 시점별 히스토리(B8) + `layout_type`/`node_count`/`attach_bytes`/`attach_count` 상세 컬럼 |
+| `nodes` | ✅ | ltree 정규화 경로 — **현재도 실존·가동 중**(스냅샷 경로와 병행, 프런트는 스냅샷 경로만 사용). `note` 컬럼 **없음**, `layout_type NOT NULL DEFAULT 'radial-bidirectional'`, **CHECK 제약 0건**, 번역 컬럼은 `text_lang`/`text_hash` 만 |
+| `tags` / `node_tags` | ✅ | `tags` 는 **owner_id 기반 개인 태그만** (`UNIQUE(owner_id, name)`) — `workspace_id` 없음 |
+| `node_notes` / `node_links` / `node_attachments` / `node_media` | ✅ | 노드 부가 정보. `node_media.media_type` 은 `DEFAULT 'image'`(설계본의 audio/video CHECK 없음) |
+| `exports` / `published_maps` | ✅ | 스키마만 존재, API 미사용 |
+| `ai_jobs` / `node_translations` / `field_registry` | ✅ | 스키마만 존재, API 미사용 |
+| **`attachments`** | ✅ 실물 전용 | 첨부 저장소 메타(B9) — 파일 원본은 로컬 디스크 `StorageService` |
+| **`map_edit_locks`** | ✅ 실물 전용 | 단일 세션 편집 잠금 (2026-08-04) — session_key + heartbeat TTL 60초 |
+| **`users.quota_bytes`** | ✅ 실물 전용 컬럼 | 저장 용량 쿼터(B9) — 기본 1GB, 문서(DB)+첨부 합산 |
+
+### 설계본 DDL 과의 주요 차이
+
+- **users**: 설계본의 `secondary_languages`·`skip_english_translation`·
+  `ui_preferences_json` 없음. 실물엔 `quota_bytes` 가 있다.
+- **maps**: `translation_policy_json` 없음. `view_mode` 실물 주석은
+  `'edit' | 'dashboard'` (CHECK 제약 없음).
+- **nodes**: `note` 컬럼 없음(`node_notes` 로 단일화), `layout_type` 은
+  `NOT NULL DEFAULT`(NULL 상속 방식 아님), `path` 는 DEFAULT 없이 앱이
+  계산, **CHECK 제약 0건**(translation_mode·sync_status·depth 제한 등
+  모두 없음). 번역·배경이미지·Redmine 컬럼 없음.
+- **tags**: owner_id 기반 개인 태그만 — workspace 공유 태그는 planned.
+- **저장소**: Supabase Storage 버킷 대신 **로컬 디스크 `StorageService`**
+  (`STORAGE_LOCAL_DIR`, S3 호환 드라이버는 향후) — 첨부 메타는
+  `attachments` 테이블.
+- **연결**: API 는 **`DATABASE_URL` 로 pg Pool 직결**(NestJS, raw SQL).
+  supabase-js·Redis·BullMQ 미사용. Supabase 는 Auth(GoTrue JWT)만.
+- **RLS**: 실물에도 정책이 있으나 **2차 방어선**이다 — API 는 superuser
+  급 직결이라 RLS 를 타지 않으며, 1차 격리는 모든 쿼리의
+  `owner_id = 현재 사용자` 조건이다.
+- **미존재 테이블**: 설계본의 workspace 태그·협업(map_collaborators 등)·
+  채팅·WBS(node_schedule/node_resources)·Redmine·map_ownership_history 등
+  V1~V3 테이블은 실물에 없다.
+
+---
+
 ## Supabase 사용 결정 배경
 
 | 항목 | 별도 PostgreSQL | **Supabase** |
@@ -232,9 +296,8 @@ CREATE TABLE public.nodes (
   map_id           UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
   parent_id        UUID REFERENCES public.nodes(id) ON DELETE CASCADE,
 
-  -- 콘텐츠
+  -- 콘텐츠 (note 컬럼 없음 — node_notes 별도 테이블로 단일화, §3-1 확정)
   text             TEXT NOT NULL DEFAULT '',
-  note             TEXT,
 
   -- 트리 구조
   depth            INTEGER NOT NULL DEFAULT 0,
@@ -313,12 +376,13 @@ CREATE INDEX idx_nodes_sync_status
   WHERE sync_status IS NOT NULL;
 ```
 ### Kanban Layout 사용 시 depth 규칙
-Kanban layout에서는 nodes.depth를 다음처럼 제한적으로 해석한다.
+Kanban layout에서는 nodes.depth를 다음처럼 해석한다.
 
 - depth 0: board
 - depth 1: column
 - depth 2: card
-- depth 3 이상 금지
+- depth 3+: 카드 하위 트리로 표시 — **깊이 제한 없음**
+  (v1.1에서 "3 이상 금지" 폐기 — 본 문서 §⑧, 08-layout.md §6.6 과 동일)
  
 #### style JSONB 구조 예시
 ```json
@@ -602,7 +666,7 @@ CREATE TABLE public.field_registry (
 
 ---
 
-### 11. node_schedule — WBS 일정/마일스톤/진척률
+### 11. node_schedule — WBS 일정/마일스톤/진척률 (planned — V1)
 
 ```sql
 -- WBS 일정 정보 (1:1 optional, node_id = PK)
@@ -636,7 +700,7 @@ CREATE INDEX idx_node_schedule_dates
 
 ---
 
-### 12. node_resources — 리소스(사람) 할당 (WBS · Kanban 공통)
+### 12. node_resources — 리소스(사람) 할당 (WBS · Kanban 공통) (planned — V1)
 
 ```sql
 -- 노드에 사람(리소스)을 할당하는 테이블
@@ -688,7 +752,7 @@ CREATE INDEX idx_node_resources_user_id ON public.node_resources(user_id)
 
 ---
 
-### 13. redmine_project_maps — 맵 ↔ Redmine 프로젝트 연결
+### 13. redmine_project_maps — 맵 ↔ Redmine 프로젝트 연결 (planned — V1)
 
 ```sql
 CREATE TABLE public.redmine_project_maps (
@@ -714,7 +778,7 @@ CREATE TABLE public.redmine_project_maps (
 
 ---
 
-### 14. redmine_sync_log — 동기화 이력
+### 14. redmine_sync_log — 동기화 이력 (planned — V1)
 
 ```sql
 CREATE TABLE public.redmine_sync_log (
@@ -847,9 +911,11 @@ CREATE TABLE templates (
 
 ---
 
-### [v3.3 추가] 협업맵 관련 테이블
+### [v3.3 추가] 협업맵 관련 테이블 (planned — 협업 단계)
 
 > 상세 DDL: `docs/02-domain/collaboration-schema.sql`
+> ⚠️ 아래 컬럼·테이블은 실물 스키마에 없다. 실물 `maps.kind='collab'` 는
+> 현재 분류 표식일 뿐이며, 실제 협업 컬럼은 협업 단계에서 추가된다.
 
 #### maps 컬럼 추가
 | 컬럼 | 타입 | 설명 |
@@ -887,7 +953,18 @@ CREATE TABLE templates (
 
 ## Row Level Security (RLS) 정책
 
-Supabase는 RLS로 사용자별 데이터 격리를 자동으로 처리.
+> **⚠️ 정정 (2026-08-04)**: RLS 는 **2차 방어선**이다. 현행 API 는
+> `DATABASE_URL` 로 pg Pool 직결(superuser 급)이라 RLS 를 타지 않으며,
+> **1차 격리는 모든 쿼리의 `owner_id = 현재 사용자` 조건**이다. 저장
+> 격리·인증(JWT 검증)은 앱 책임이다. RLS 는 향후 PostgREST/Realtime 등
+> Supabase 스택 경유 접근을 열 때를 위한 안전망으로 스키마에 유지한다.
+>
+> 실물 스키마에는 아래 maps/nodes/published_maps 정책 외에 실물 전용
+> 테이블 4종의 정책이 추가로 있다:
+> - `map_folders` — "users can manage own folders"
+> - `map_documents` — "owners can manage own map document"
+> - `map_document_versions` — "owners can manage own map document versions"
+> - `attachments` — "users can manage own attachments"
 
 ```sql
 -- maps 테이블 RLS
@@ -994,35 +1071,38 @@ CREATE POLICY "owners can manage publish"
 
 ---
 
-## Supabase Storage 버킷
+## 첨부 파일 저장소 — 로컬 디스크 (Supabase Storage 미사용)
 
-```
-버킷명: published-maps
-접근: Public (퍼블리시된 HTML 파일은 공개)
+> **정정 (2026-08-04)**: Supabase Storage 버킷은 **사용하지 않는다.**
+> 실물 구현(B9)은 다음과 같다.
 
-버킷명: attachments  
-접근: Private (RLS로 소유자만 접근)
-```
-
-### [변경 주석]
-- 최신 schema.sql/구현 문맥에서는 아래 버킷까지 함께 고려하는 편이 자연스럽다.
-  - uploads
-  - attachments
-  - exports
-  - published
-  - media
-- 위의 본문은 초기 축약 설명으로 두고,
-  실제 구현 시에는 버킷 설계를 env-spec / backend-architecture와 함께 맞춰야 한다.
+- 첨부 원본은 API 서버의 **`StorageService` 추상화 + local 드라이버**
+  (`apps/api/src/storage/storage.service.ts`)가 `STORAGE_LOCAL_DIR`
+  디렉터리에 파일로 저장한다 (dev 서버는 NAS NFS 마운트를 지정).
+- 메타데이터(소유자·이름·MIME·크기·storage key)는 `public.attachments`
+  테이블에 저장한다. storage key 는 서버가 UUID 로만 조립(경로 주입 차단).
+- 업로드는 `POST /v1/attachments?mapId=` (multipart, 1개당 기본 20MB —
+  `ATTACHMENT_MAX_MB`), 다운로드는 `GET /v1/attachments/:id`
+  (`?access_token=` 쿼리 폴백 허용).
+- 쿼터: 사용자의 문서(`map_documents` + `map_document_versions`) + 첨부
+  합산이 `users.quota_bytes`(기본 1GB) 이하 — 초과 시 413.
+- S3 호환 드라이버(MinIO·R2 등)는 향후 인터페이스 구현체 추가로 대응.
+  Supabase Storage 버킷 설계(uploads/attachments/exports/published/media)는
+  **planned 로만 남긴다** (실물 schema.sql 의 버킷 INSERT 도 주석 처리 상태).
 
 ---
 
-## Supabase Realtime (Phase 3 대비)
+## Supabase Realtime (Phase 3 대비 — 스키마에만 존재, 앱 미사용)
 
 ```sql
 -- nodes 테이블에 Realtime 활성화
 ALTER PUBLICATION supabase_realtime ADD TABLE public.nodes;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.maps;
 ```
+
+> **현재 상태 (2026-08-04)**: 위 퍼블리케이션 등록은 실물 schema.sql 에
+> 포함되어 있으나 **스키마에만 존재하며 앱은 사용하지 않는다** — Realtime
+> 서버가 배포되어 있지 않고, API·프런트 어느 쪽도 구독하지 않는다.
 
 Phase 3에서 실시간 협업 구현 시 Supabase Realtime을 활용하면  
 별도 WebSocket 서버 없이 노드 변경 이벤트를 구독/브로드캐스트 가능.

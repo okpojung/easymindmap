@@ -1,4 +1,7 @@
 # 30. Obsidian Integration
+
+> ⚠️ **미구현 — 설계본.** Obsidian Vault 연동은 코드가 없다(2026-08-04). 일반 Markdown 가져오기/내보내기는 EMM 포맷으로 이미 구현되어 있다(별건 — docs/04-extensions/import-export/).
+
 ## OBSIDIAN_INTEGRATION
 
 * 문서 버전: v1.1
@@ -179,7 +182,7 @@ easymindmap > 가져오기 > Markdown 파일 선택
 
 ### 12. 구현 우선순위
 
-#### MVP
+#### 1단계 (V1)
 * OBS-01 파일 가져오기 (IMPORT 기능 확장)
 * OBS-02 Obsidian 호환 Markdown 내보내기
 

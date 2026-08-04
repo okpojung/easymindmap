@@ -1,8 +1,27 @@
-# easymindmap — Frontend UI 설계서 v1.1
+# easymindmap — Frontend UI 설계서 v1.2
 
 > 병합: 전체 화면구조/컴포넌트 설계 + 화면별 상세 명세(라우트/API/상태) 통합  
-> 최종 업데이트: 2026-04-16  
-> 변경 이력: 2026-04-16 — 협업 UI (V1) 섹션 추가, 번역 인디케이터 (V2) 섹션 추가, Kanban 보드 UI 섹션 추가, Dashboard 모드 UI (V3) 섹션 추가, NODE-IND-01~04 인디케이터 UI 명세 보강, 참조 문서 경로 정정
+> 최종 업데이트: 2026-08-04  
+> 변경 이력: 2026-08-04 — 현행화 안내·현재 구현 화면 구조 절 추가, 실물 기준 정정(라우터 없음·Export 드롭다운·AI 패널·8 스토어·다크모드 등) / 2026-04-16 — 협업 UI (V1) 섹션 추가, 번역 인디케이터 (V2) 섹션 추가, Kanban 보드 UI 섹션 추가, Dashboard 모드 UI (V3) 섹션 추가, NODE-IND-01~04 인디케이터 UI 명세 보강, 참조 문서 경로 정정
+
+> ⚠️ **현행화 안내(2026-08-04)**
+> 이 문서는 **구현 전 설계본**으로, 화면 구조가 실물과 다르다.
+> 실제 앱의 화면 구조는 아래 **"현재 구현 화면 구조 (2026-08-04)"** 절을 먼저 참조할 것.
+> 본문의 설계 내용 중 미구현/변경된 부분은 각 절에 부기했다.
+
+---
+
+## 현재 구현 화면 구조 (2026-08-04)
+
+- **라우터 없음** — `EditorPage` 단일 화면. 미로그인 시 로그인 게이트(`WelcomeScreen`), 맵 전환은 `?map=` 쿼리, 다른 맵은 새 탭으로 연다.
+- **로그인** — Supabase Auth SDK 직접 호출(자체 `/auth` API 없음) + Guest 모드. SNS 로그인은 "준비 중".
+- **상단 툴바 (실물 구성)** — 내 문서(문서함) · Undo/Redo(+undo 카운터) · AI · 아웃라인↔맵 모드 토글 · 다크모드 토글 · ☁ 저장 · ⧉ 다른 이름으로 저장 · ✕ 맵 닫기 · 내보내기 드롭다운(HTML/MD — 첨부 시 ZIP) · 계정.
+- **좌측 레일** — 새 맵 · 검색 · 템플릿 · 히스토리 · 맵 설정 패널 · 문서함. (아웃라인은 좌측 탭이 아니라 **편집 영역 분할 모드**로 제공)
+- **Inspector 탭** — Style / Layout / Content / Icon / NoteTag / AI(+WebAiPanel).
+- **문서함이 대시보드 역할** — MapBrowser에서 폴더·이름변경·삭제·다른 이름 저장. 별도 대시보드 화면 없음.
+- **퍼블리시 뷰어** — 별도 화면 없음. 공개 공유는 **Standalone HTML 내보내기 파일**로 대신한다.
+- **상태관리** — Zustand **8 스토어**: document / cloud / auth / aiSettings / autosave / editorUi / interaction / viewport (autosaveStore는 저장 배지용).
+- **다이얼로그 실존 3종** — MultiAddDialog · SaveMapDialog · FolderPickerDialog. (AIModal/ShareDialog/ExportDialog/CommandPalette는 없음)
 
 ---
 
@@ -59,7 +78,7 @@
 #### 사용자 액션 & API
 | 액션 | API | 성공 | 실패 |
 |------|-----|------|------|
-| 로그인 버튼 클릭 | POST /auth/login | → `/dashboard` 이동 | 인라인 오류 표시 |
+| 로그인 버튼 클릭 | Supabase Auth SDK `signInWithPassword` (자체 /auth API 없음) | → 에디터 진입 | 인라인 오류 표시 |
 
 #### 상태
 - **빈 상태**: 입력 필드 비어있음
@@ -94,7 +113,7 @@
 
 ---
 
-### SCR-03 — 대시보드
+### SCR-03 — 대시보드 (계획 — 현행은 문서함이 역할 대행)
 
 **목적**: 내 맵 목록 관리 + 새 맵 생성
 
@@ -169,7 +188,7 @@
 |------|-------------|------|
 | 저장 완료 | "저장됨 · 방금 전" | 회색 |
 | 저장 중 | "저장 중..." | 파란색 |
-| 저장 실패 | "저장 실패 — 재시도 중" | 빨간색 |
+| 저장 실패 | "저장 실패" (자동 재시도 없음) | 빨간색 |
 | 미저장 변경 | "변경사항 있음" | 주황색 |
 
 #### 4.3 Left Sidebar (탐색 영역)
@@ -178,7 +197,7 @@
 - **Outline** — 트리 구조로 전체 맵 탐색
 - **Search** — 노드 텍스트 / 태그 검색
 - **Templates** — 템플릿 선택
-- **History** — 버전 이력 (V1~)
+- **History** — 버전 이력
 
 > 큰 맵에서 탐색 문제 해결. drag로 위치 이동 가능 (향후)
 
@@ -215,11 +234,12 @@
 배경색:  [Color Picker]
 텍스트색:[Color Picker]
 
-레이아웃: [Dropdown]
+레이아웃: [Dropdown] ← Inspector Layout 탭 소속 (Top Toolbar 아님)
   ├ 방사형-양쪽       ├ 트리형-오른쪽
   ├ 방사형-오른쪽     ├ 계층형-오른쪽
-  ├ 트리형-아래쪽     └ 자유배치형
-  └ 진행트리-오른쪽
+  ├ 트리형-아래쪽     ├ 진행트리-오른쪽
+  ├ 시간배치(타임라인) ├ Kanban
+  └ 자유배치형
 
 태그: [Tag1] [Tag2] [+ 추가]
 ```
@@ -340,12 +360,19 @@
 노드 삭제 (Delete)
 ```
 
-#### 4.8 AI 패널 (우측 슬라이드)
+#### 4.8 AI 패널 (실물 기준 — 2026-08-04)
+
+Inspector AI 탭에서 **생성 뷰 / 설정 뷰** 2개 뷰로 구성된다. depth 드롭다운은 없다.
 
 ```
-[AI로 마인드맵 생성]
-질문 입력 → [최대 depth: 3 ▾] → [생성하기]
-[최근 생성 기록]
+[생성 뷰]
+프롬프트 입력 → [생성하기]
+  - 선택 노드가 있으면 해당 노드 기준 확장 생성
+  - 프로젝트 지침(맵 단위 지침) 자동 포함
+[설정 뷰]
+  - AI 제공자·API 키 설정
+[웹 AI 클립보드 (WebAiPanel)]
+  - API 키 없이 웹 AI(ChatGPT 등)에 프롬프트 복사 → 결과 붙여넣기로 맵 생성
 ```
 
 | 상태 | 표시 |
@@ -354,38 +381,27 @@
 | 성공 | 에디터 자동 반영 |
 | 실패 | "AI 생성에 실패했습니다. 다시 시도해주세요" |
 
-#### 4.9 Export 모달
+#### 4.9 내보내기 드롭다운 (실물 기준 — 2026-08-04)
+
+옵션 모달은 없다. Top Toolbar 의 **내보내기 드롭다운 2항목**으로 즉시 다운로드한다.
 
 ```
-[ 내보내기 형식 선택 ]
-─────────────────────────────────────────
-○ Markdown (.md)
-    포맷: ● Basic (기본)  ○ Extended (맵 전체 메타 + YAML Front Matter)
-    옵션: [✓] 태그 포함   [✓] 메모 포함   [✓] 링크 포함
-          이미지: ( 제외 ▾ )
-          접힌 노드: [✓] 포함
-
-○ Standalone HTML (.html) — 단독 실행, 읽기 전용 뷰어 포함
-    이미지: ( 삽입(Base64) ▾ )
-
-─────────────────────────────────────────
-내보낼 범위: ● 전체 맵  ○ 선택한 서브트리
-
-[내보내기]  [취소]
-또는 [퍼블리시 URL 생성] → https://mindmap.ai.kr/p/...
+[내보내기 ▾]
+  ├ Standalone HTML (.html) — 단독 실행, 읽기 전용 뷰어 포함
+  └ Markdown (.md)
+  ※ 첨부파일이 있으면 ZIP 으로 묶어 다운로드
 ```
 
 | 항목 | 설명 |
 |---|---|
-| **Basic** | 노드 텍스트 계층만 포함한 범용 Markdown (Notion, VS Code 등) |
-| **Extended** | YAML Front Matter에 맵 메타(title, owner, layout, node_count 등) 포함 — Obsidian 호환 |
-| **이미지 옵션 (Markdown)** | `제외` / `alt-text` / `URL 링크` |
-| **이미지 옵션 (HTML)** | `삽입(Base64)` / `URL 링크` / `제외` |
-| **내보낼 범위** | 전체 맵 또는 현재 선택된 노드 기준 서브트리 |
+| **Standalone HTML** | 오프라인 단독 실행 가능한 읽기 전용 뷰어 포함 파일 |
+| **Markdown** | EMM 포맷 Markdown |
+| **첨부 시 ZIP** | 노드 첨부파일이 있으면 본문 + 첨부를 ZIP 하나로 묶음 |
+| **퍼블리시 URL** | (미구현) — 공개 공유는 Standalone HTML 파일로 대신 |
 
 ---
 
-### SCR-05 — 퍼블리시 뷰어
+### SCR-05 — 퍼블리시 뷰어 (계획 — 현행은 Standalone HTML 내보내기로 대신)
 
 **목적**: 퍼블리싱된 맵을 외부 사용자가 읽기 전용으로 조회
 
@@ -438,7 +454,6 @@ AI:     AI 버튼 → 프롬프트 입력 → 생성 → [새 맵 or 현재 맵�
 | F11 / Ctrl+Shift+F11 | Fullscreen 전환 |
 | Alt+F | Focus Node View |
 | H | Pan 모드 토글 |
-| / | 명령 팔레트 |
 | Escape | 편집 취소 / 선택 해제 / 모드 종료 |
 
 ---
@@ -479,17 +494,20 @@ Overlays:
 
 ---
 
-## 7. 상태관리 (Zustand 5-Store)
+## 7. 상태관리 (Zustand 8 스토어)
 
-> 상세: `docs/05-implementation/frontend-architecture.md`
+> 상세: `docs/90-architecture/frontend-architecture.md`
 
 | Store | 담당 |
 |-------|------|
 | Document Store | 맵 원본 데이터 (노드 트리) |
+| Cloud Store | 서버 문서(맵 목록·저장) 연동 |
+| Auth Store | 인증 세션 (Supabase Auth SDK) |
+| AI Settings Store | AI 제공자·API 키 설정 |
+| Autosave Store | 저장 상태 배지용 |
 | Editor UI Store | 패널 / 모달 / active tool |
-| Viewport Store | zoom / pan / canvas bounds |
 | Interaction Store | drag / selection / 편집 draft |
-| Autosave Store | dirty flag / patches / 저장 상태 |
+| Viewport Store | zoom / pan / canvas bounds |
 
 ---
 
@@ -508,7 +526,7 @@ Overlays:
 | 로딩 | 300ms 이상 spinner / 스켈레톤 UI 활용 |
 | 오류 | 네트워크 오류 Toast / 인증 만료 → 자동 리다이렉트 |
 | 반응형 | MVP: 데스크톱 우선 (1280px+) / 모바일: V1 이후 |
-| 다크모드 | V1 이후 |
+| 다크모드 | 구현 완료 — 툴바 토글 + localStorage 저장 |
 
 ---
 
@@ -579,14 +597,17 @@ Kanban 레이아웃(`layoutType = 'kanban'`)은 3레벨 보드형 구조로 렌�
 | 0 | board | 보드 전체 제목 헤더 |
 | 1 | column | 세로 컬럼 영역 |
 | 2 | card | 컬럼 내 카드 아이템 |
-| 3+ | — | 생성 불가 (UI 버튼 비활성 + API 제약) |
+| 3+ | 중첩 카드 | 깊은 서브트리를 카드 내부 중첩 카드로 렌더 (깊이 제한 없음) |
 
 ### 11-2. Kanban 인터랙션 규칙
 
 | 동작 | UX |
 |---|---|
-| 카드 드래그 | 다른 컬럼으로 드래그 이동 (KANBAN-04) |
-| depth 3 생성 시도 | "Kanban은 카드(depth 2)까지만 허용됩니다" 토스트 |
+| 카드 드래그 | 다른 컬럼으로 드래그 이동 |
+| 카드 더블클릭 | 인라인 편집 모드 진입 |
+| 다중 선택 | Ctrl+클릭으로 카드 다중 선택 |
+| 복사/붙여넣기 | 카드 복사 → 대상 컬럼에 붙여넣기 |
+| 컬럼 선택/삭제 | 컬럼 헤더 선택·삭제 (플로팅 도구 제공) |
 | 컬럼 추가 | 보드 우측 끝 `+ 컬럼 추가` 버튼 |
 | 카드 추가 | 컬럼 하단 `+ 카드 추가` 버튼 |
 | 일반 단축키 | Space(자식), Delete(삭제) 등 동일 동작 |
@@ -697,7 +718,7 @@ Override:   [없음 ▾] → force_on / force_off / null
 
 ## 14. MVP 구현 범위
 
-**포함**: editor layout 4영역 / 노드 CRUD / 노드 추가 인디케이터 (NODE-IND-01~04) / layout 15종 / Kanban 보드 UI / autosave / undo·redo / style / canvas CANVAS-01~08 / export / AI 생성 / **노드 노트 · 링크 · 첨부파일**
+**포함**: editor layout 4영역 / 노드 CRUD / 노드 추가 인디케이터 (NODE-IND-01~04) / layout 9종 / Kanban 보드 UI / autosave / undo·redo / style / canvas CANVAS-01~08 / export / AI 생성 / **노드 노트 · 링크 · 첨부파일**
 
 **제외 (후순위)**: 협업 채팅(V2) / 다국어 번역 인디케이터(V2) / 대시보드맵(V3) / 모바일(V1) / **노드 배경 이미지(V1)**
 
@@ -713,6 +734,6 @@ Override:   [없음 ▾] → force_on / force_off / null
 4. Canvas skeleton 구현
 5. Node 1개 렌더링
 6. NodeAddIndicator 구현 (NODE-IND-01~04)
-7. Zustand 5-Store 뼈대 구현
+7. Zustand 스토어 뼈대 구현 (현행 8 스토어)
 8. Kanban 보드 레이아웃 렌더러 구현
 9. V1: CollabPanel + Soft Lock 오버레이 구현

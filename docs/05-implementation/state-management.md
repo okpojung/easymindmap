@@ -1,50 +1,61 @@
 # 📂 기술 설계: 상태 관리 전략 (State Management Strategy)
 
-이 문서는 `EasyMindMap` 프로젝트가 왜 **TanStack Query**와 **Zustand**를 선택했는지, 그리고 초보 개발자도 이해할 수 있는 수준의 동작 원리와 실행 환경에 대해 상세히 기술합니다.
+* 최종 업데이트: 2026-08-04 — TanStack Query 전제 설명을 실제 구현(**Zustand + 얇은 fetch 래퍼 `cloudApi`**, 서버 상태 캐시 라이브러리 미도입)으로 전면 교체.
+
+이 문서는 `EasyMindMap` 프로젝트의 상태 관리가 실제로 어떻게 구성되어
+있는지 기술합니다.
 
 ---
 
 ## 1. "상태(State)"란 무엇인가?
+
 웹 개발에서 **상태(State)**는 **"시간이 흐름에 따라 변할 수 있는 모든 데이터"**를 의미합니다.
-* **예시:** 로그인한 사용자의 이름, 현재 열려있는 마인드맵 노드, 화면의 다크모드 여부 등.
+
+* **예시:** 로그인한 사용자, 현재 열려있는 마인드맵 문서, 화면의 다크모드 여부 등.
 * **비유:** 요리(웹 서비스)를 할 때 필요한 **식재료(데이터)**와 같습니다. 식재료가 신선한지, 어디에 보관되어 있는지 관리하는 것이 바로 **상태 관리**입니다.
 
 ---
 
-## 2. 도구별 역할 분담: "배달원"과 "수납장"
+## 2. 실제 구성: Zustand + 얇은 fetch 래퍼
 
-본 프로젝트는 데이터의 출처에 따라 역할을 엄격히 분리합니다.
-
-### 🚚 TanStack Query (서버 상태 관리자)
-**"서버라는 먼 창고에서 데이터를 가져오는 전문 배달원"**
-* **주요 기능:**
-    * **Fetching:** 서버 API를 호출하여 데이터를 가져옵니다.
-    * **Caching:** 한 번 가져온 데이터는 메모리에 임시 저장하여 중복 요청을 방지합니다.
-    * **Synchronization:** 서버의 데이터가 변경되면 화면을 자동으로 최신화합니다.
-    * **Status Tracking:** 로딩 중(`isLoading`), 에러 발생(`isError`) 상태를 자동으로 관리합니다.
-* **대상 데이터:** 마인드맵 노드 구조, 사용자 프로필, 공유 문서 목록 등 (DB 저장 데이터).
+본 프로젝트의 상태 관리는 다음 두 층으로만 구성됩니다.
 
 ### 🗄️ Zustand (클라이언트 상태 관리자)
+
 **"내 방(브라우저) 안의 물건들을 정리하는 가벼운 수납장"**
-* **주요 기능:**
-    * **Global Store:** 컴포넌트 간에 데이터를 직접 주고받지 않고, 공용 수납장에서 누구나 꺼내 쓸 수 있게 합니다.
-    * **Instant Update:** 서버를 거치지 않으므로 즉각적인 UI 반응을 제공합니다.
-    * **Simplicity:** 코드가 매우 직관적이며 설정이 간단합니다.
-* **대상 데이터:** 사이드바 개폐 여부, 현재 선택된 노드 ID, 줌 레벨, 에디터 설정 등 (UI 전용 데이터).
+
+* 문서(map)·되돌리기·UI·뷰포트·선택·저장 배지·서버 연결·세션·AI 설정을
+  **8개 스토어**로 분리해 관리합니다 — `documentStore` / `editorUiStore` /
+  `viewportStore` / `interactionStore` / `autosaveStore` / `cloudStore` /
+  `authStore` / `aiSettingsStore`.
+* 스토어 상세 구조는 `docs/03-editor-core/state-architecture.md` 참조.
+
+### 🚚 cloudApi (얇은 fetch 래퍼)
+
+**"서버 창고를 오가는 단순한 배달 함수 묶음"**
+
+* 위치: `apps/frontend/src/services/cloud/apiClient.ts`
+* 모든 서버 호출(`fetch`)을 `cloudApi` 객체의 함수로 중앙 관리하고,
+  실패는 `CloudError`(상태 코드 + 서버 메시지)로 던집니다.
+* **TanStack Query 같은 서버 상태 캐시 라이브러리는 도입하지 않았습니다.**
+  캐싱·자동 재요청·백그라운드 동기화 계층이 없으며,
+  **로딩·에러 표시는 호출하는 컴포넌트의 로컬 state**(`useState`)로
+  처리합니다.
+* 서버 응답 중 오래 들고 있어야 하는 것(현재 문서, 서버 맵 연결 정보)만
+  Zustand 스토어(`documentStore`, `cloudStore`)에 반영합니다.
+
+이 구성이 충분한 이유: 에디터는 "문서 하나를 메모리에 통째로 올려 편집 →
+디바운스 저장" 모델이라, 쿼리 캐시·무효화가 관리할 서버 상태가 거의
+없습니다. 목록(문서함·히스토리)은 열 때마다 새로 조회하면 충분합니다.
 
 ---
 
 ## 3. 실행 환경 및 기술 스택
 
-### 🌐 실행 환경: 브라우저 메모리 (RAM)
-두 솔루션 모두 **사용자의 브라우저(Client-Side)** 내 메모리 공간에서 실행됩니다.
-* **공통점:** 새로고침 시 기본적으로 초기화되지만, 브라우저의 전용 공간(RAM)을 효율적으로 점유하여 앱의 속도를 높입니다.
-* **차이점:** TanStack Query는 항상 **네트워크(인터넷)** 상태를 주시하며 서버와 소통하는 반면, Zustand는 오직 **사용자의 클릭/입력**에만 반응합니다.
-
-### ⌨️ 사용 언어: JavaScript & TypeScript
-본 프로젝트는 **JavaScript**를 기반으로 하되, 안정성을 위해 **TypeScript** 환경에서 실행됩니다.
-* **JavaScript:** 브라우저의 기본 언어로, 모든 로직의 뼈대를 이룹니다.
-* **TypeScript:** 데이터의 '타입(형태)'을 정의합니다. 예를 들어, 마인드맵 노드가 `string`인지 `number`인지 미리 정의하여 개발자의 실수를 컴파일 단계에서 방지합니다.
+* **실행 환경:** 브라우저 메모리(RAM) — 새로고침 시 스토어는 초기화되고,
+  문서는 서버 맵을 다시 열어 복구합니다 (`cloudStore` 는 의도적 비영속).
+* **언어:** TypeScript (Vite + React). 데이터의 '타입(형태)'을 정의해
+  개발자의 실수를 컴파일 단계에서 줄입니다.
 
 ---
 
@@ -55,34 +66,37 @@ graph TD
     subgraph "Browser (User's Device)"
         direction TB
         subgraph "Memory (RAM)"
-            Z[Zustand: UI State Store]
-            TQ[TanStack Query: Server Data Cache]
+            Z[Zustand: 8 Stores<br/>document · editorUi · viewport · interaction<br/>autosave · cloud · auth · aiSettings]
         end
-        UI[React Components]
+        API[cloudApi<br/>얇은 fetch 래퍼 + CloudError]
+        UI[React Components<br/>로딩·에러는 로컬 state]
     end
 
     subgraph "External World"
-        Server[(Backend Server / DB)]
+        Server[(Backend API / DB)]
     end
 
-    %% 데이터 흐름
-    UI -- "1. UI 조작 (예: 모달 열기)" --> Z
-    Z -- "2. 상태 반영" --> UI
+    UI -- "1. UI 조작 / 편집" --> Z
+    Z -- "2. 상태 반영 (rerender)" --> UI
 
-    UI -- "3. 데이터 요청 (예: 맵 불러오기)" --> TQ
-    TQ <--> |"4. 비동기 통신 (fetch/axios)"| Server
-    TQ -- "5. 캐싱된 데이터 전달" --> UI
+    UI -- "3. 서버 호출 (목록·저장·버전)" --> API
+    API <--> |"4. fetch (JSON)"| Server
+    API -- "5. 결과 → 스토어 반영 or 로컬 state" --> Z
 
     style Z fill:#f9f,stroke:#333,stroke-width:2px
-    style TQ fill:#bbf,stroke:#333,stroke-width:2px
+    style API fill:#bbf,stroke:#333,stroke-width:2px
     style Server fill:#dfd,stroke:#333,stroke-width:2px
 ```
 
 ---
 
 ## 5. 설계의 기대 효과
-1.  **성능 최적화:** TanStack Query의 캐싱 기능을 통해 불필요한 서버 통신을 줄여 비용을 절감하고 속도를 높입니다.
-2.  **개발 생산성:** Zustand의 단순한 구조 덕분에 복잡한 상태 전달 과정(Props Drilling)이 사라져 코드 유지보수가 쉬워집니다.
-3.  **데이터 안전성:** TypeScript를 활용하여 서버 데이터와 UI 상태의 구조를 명확히 정의함으로써 런타임 에러를 사전에 차단합니다.
+
+1. **단순성:** 캐시 계층이 없어 데이터 흐름이 "스토어 → 화면, 호출 → 결과" 두 가지뿐입니다.
+2. **개발 생산성:** Zustand의 단순한 구조 덕분에 복잡한 상태 전달 과정(Props Drilling)이 사라져 코드 유지보수가 쉬워집니다.
+3. **데이터 안전성:** TypeScript로 문서 모델과 API 응답 구조를 정의하고, 오류는 `CloudError` 한 종류로 일관되게 처리합니다.
+
+> (참고) 문서함·히스토리 조회가 훨씬 잦아지거나 협업 V1 에서 실시간
+> 동기화가 붙으면, 그때 서버 상태 캐시 라이브러리 도입을 재검토합니다.
 
 ---

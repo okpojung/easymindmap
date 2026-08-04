@@ -5,29 +5,31 @@
 * 작성일: 2026-04-14
 * 참조: `docs/01-product/functional-spec.md § 6. SELECTION`, `docs/03-editor-core/state-architecture.md § 5.4`
 
+> **최종 업데이트:** 2026-08-04 — 코드 대조 감사 반영: 현재 구현은 단일 선택 + 러버밴드 다중 선택뿐 (Shift/Ctrl 클릭·Ctrl+A·서브트리·방향키 이동은 미구현 — 2단계), 실제 interactionStore 구조로 교정
+
 ---
 
 ### 1. 기능 목적
 
 * 캔버스에서 **하나 또는 여러 노드를 선택**하는 기능
 * 선택된 노드에 대한 편집(삭제, 복사, 이동, 스타일 변경 등) 작업의 전제 조건
-* 단일 선택 / 다중 선택 / Subtree 선택 / 영역 드래그 선택(Marquee) 지원
+* 단일 선택 + 러버밴드 영역 다중 선택 지원 (Subtree·Shift/Ctrl 다중 선택은 미구현 — 2단계)
 * 선택 상태는 Interaction Store에서 관리하며 DB에 저장하지 않음
 
 ---
 
 ### 2. 기능 범위
 
-* 포함:
+* 포함 (구현 기준: **단일 선택 + 러버밴드 영역 다중 선택**):
 
   * 단일 노드 선택 (클릭)
-  * 다중 노드 선택 (Shift+Click, Ctrl+Click, Ctrl+A)
-  * Subtree 전체 선택
-  * 영역 드래그 선택 (Marquee)
+  * 러버밴드 영역 드래그 다중 선택 (Marquee)
   * 선택 해제 (ESC, 빈 영역 클릭)
   * 선택 시 노드 추가 인디케이터 표시
-  * 다중 선택 상태에서 일괄 동작 (삭제, 복사, 이동)
-  * Right Panel Inspector 연동 (선택 기반 속성 표시)
+  * 다중 선택 상태에서 일괄 동작 (삭제, 스타일)
+  * 좌측 Inspector 연동 (선택 기반 속성 표시)
+  * (미구현 — 2단계) Shift/Ctrl 클릭 다중 선택, Ctrl+A 전체 선택,
+    Subtree 전체 선택, 방향키 선택 이동
 
 * 제외:
 
@@ -41,62 +43,42 @@
 
 ### 3. 세부 기능 목록
 
-| 기능ID  | 기능명             | 설명                         | 키보드 단축키               | 마우스               |
-| ----- | --------------- | -------------------------- | ---------------------- | ----------------- |
-| SEL-01 | Single Select  | 노드 단일 선택                   | 방향키 (인접 노드 이동)         | 노드 클릭             |
-| SEL-02 | Multi Select   | 여러 노드 선택                   | `Shift+Click` / `Ctrl+Click` / `Ctrl+A` | Shift+Click       |
-| SEL-03 | Subtree Select | 노드 및 하위 전체 선택              | `Ctrl+Shift+A` (선택 노드 기준) | 컨텍스트 메뉴 > 하위 전체 선택 |
-| SEL-04 | Area Select    | 드래그 영역 내 노드 전체 선택 (Marquee) | —                      | 빈 캔버스 드래그         |
-| SEL-05 | Select All     | 맵 내 전체 노드 선택               | `Ctrl+A`               | —                 |
-| SEL-06 | Deselect All   | 선택 전체 해제                   | `ESC`                  | 빈 영역 클릭           |
-| SEL-07 | Range Select   | 기준 노드부터 클릭 노드까지 범위 선택      | `Shift+Click`          | —                 |
-| SEL-08 | Toggle Select  | 개별 노드 선택 토글 (추가/제거)        | `Ctrl+Click`           | —                 |
+| 기능ID  | 기능명             | 설명                         | 키보드 단축키               | 마우스               | 상태 |
+| ----- | --------------- | -------------------------- | ---------------------- | ----------------- | ---- |
+| SEL-01 | Single Select  | 노드 단일 선택                   | —         | 노드 클릭             | 구현 (방향키 이동은 미구현) |
+| SEL-02 | Multi Select   | 여러 노드 선택                   | `Shift+Click` / `Ctrl+Click` | Shift+Click       | 미구현 (2단계) |
+| SEL-03 | Subtree Select | 노드 및 하위 전체 선택              | `Ctrl+Shift+A` (선택 노드 기준) | 컨텍스트 메뉴 > 하위 전체 선택 | 미구현 (2단계) |
+| SEL-04 | Area Select    | 드래그 영역 내 노드 전체 선택 (러버밴드) | —                      | 빈 캔버스 드래그         | **구현** |
+| SEL-05 | Select All     | 맵 내 전체 노드 선택               | `Ctrl+A`               | —                 | 미구현 (2단계) |
+| SEL-06 | Deselect All   | 선택 전체 해제                   | `ESC`                  | 빈 영역 클릭           | **구현** |
+| SEL-07 | Range Select   | 기준 노드부터 클릭 노드까지 범위 선택      | `Shift+Click`          | —                 | 미구현 (2단계) |
+| SEL-08 | Toggle Select  | 개별 노드 선택 토글 (추가/제거)        | `Ctrl+Click`           | —                 | 미구현 (2단계) |
 
 ---
 
 ### 4. 기능 정의 (What)
 
-#### 4.1 선택 상태 타입 (Interaction Store)
+#### 4.1 선택 상태 타입 (실제 interactionStore)
 
 ```typescript
+// 실제 구현 (interactionStore)
 type InteractionState = {
-  // 선택된 노드 ID 목록 (다중 선택 지원)
-  selectedNodeIds: string[];
-
-  // 범위 선택 기준점 (Shift+Click Range Select 시 시작 노드)
-  anchorNodeId: string | null;
-
-  // 현재 hover 중인 노드
-  hoveredNodeId: string | null;
-
-  // Marquee(영역 드래그) 상태
-  marquee: {
-    start: { x: number; y: number };   // Screen 좌표
-    current: { x: number; y: number }; // Screen 좌표
-  } | null;
-
-  // 드래그 이동 상태
-  dragging: {
-    type: 'node' | 'subtree';
-    nodeIds: string[];
-    origin: { x: number; y: number };
-    current: { x: number; y: number };
-    previewParentId: string | null;
-  } | null;
+  selectedId: string | null;        // 단일 선택 노드
+  multiSelectedIds: string[];       // 러버밴드 다중 선택 결과
+  searchHitId: string | null;       // 검색/아웃라인 이동 강조 노드
+  editingNodeId: string | null;     // 인라인 편집 중 노드
 };
+// anchor / hover / marquee(드래그 사각형) 상태는 스토어가 아니라
+// 캔버스 컴포넌트 로컬 상태로 관리한다.
 ```
 
-#### 4.2 선택 모드 정의
+#### 4.2 선택 모드 정의 (구현 기준)
 
-| 모드             | 조건                       | selectedNodeIds 변화      |
+| 모드             | 조건                       | 상태 변화      |
 | -------------- | ------------------------ | ----------------------- |
-| Single Select  | 노드 클릭                    | `[clickedId]`로 교체       |
-| Toggle Select  | `Ctrl + 노드 클릭`           | 추가 또는 제거               |
-| Range Select   | `Shift + 노드 클릭`          | anchor ~ 클릭 노드 범위 추가   |
-| Area Select    | 빈 캔버스 drag               | 영역 내 노드 ID 목록으로 교체     |
-| Select All     | `Ctrl + A`               | 전체 노드 ID 목록            |
-| Subtree Select | 노드 + 하위 전체               | 노드 + 재귀 하위 ID 목록       |
-| Deselect All   | `ESC` / 빈 영역 클릭           | `[]` (빈 배열)             |
+| Single Select  | 노드 클릭                    | `selectedId = clickedId` (다중 선택 해제)       |
+| Area Select    | 빈 캔버스 drag (러버밴드)        | `multiSelectedIds` = 영역 내 노드 ID 목록     |
+| Deselect       | `ESC` / 빈 영역 클릭           | `selectedId = null`, `multiSelectedIds = []`             |
 
 #### 4.3 선택 상태에 따른 UI 변화
 
@@ -115,21 +97,21 @@ type InteractionState = {
   - Right Panel: 공통 속성만 표시 (일괄 편집)
   - 노드 추가 인디케이터: 미표시
 
-Marquee 드래그 중:
-  - 반투명 직사각형 표시 (선택 영역 시각화)
-  - 영역 내 노드 미리 하이라이트
+러버밴드 드래그 중:
+  - 반투명 직사각형만 표시 (선택 영역 시각화)
+  - 선택 확정은 mouseup 시 일괄 (실시간 미리 하이라이트 없음)
 ```
 
-#### 4.4 다중 선택 시 가능한 일괄 동작
+#### 4.4 선택 후 가능한 동작 (구현 기준)
 
 | 동작       | 단축키          | 설명                     |
 | -------- | ------------ | ---------------------- |
-| 삭제       | `Delete`     | 선택된 노드 전체 삭제           |
-| 복사       | `Ctrl+C`     | 선택된 노드 전체 클립보드에 복사     |
-| 붙여넣기     | `Ctrl+V`     | 클립보드의 노드 붙여넣기          |
-| 복제       | `Ctrl+D`     | 선택된 노드 전체 복제           |
-| 이동       | drag         | 선택된 노드 전체 위치 이동 (freeform) |
-| 스타일 일괄 적용 | Right Panel | 색상/폰트 등 일괄 변경          |
+| 삭제       | `Delete`     | 선택된 노드 전체 삭제 (다중 선택은 일괄, undo 1단계)  |
+| 복사       | `mod+C`      | 선택 노드 서브트리를 클립보드에 `EMM-NODES::` 토큰으로 복사 |
+| 붙여넣기     | `mod+V`      | 클립보드의 `EMM-NODES::` 토큰을 선택 노드 하위에 삽입 |
+| 복제       | `Ctrl+D`     | **미구현**           |
+| 이동       | drag         | 드래그로 부모·순서 변경 (freeform 위치 이동 아님) |
+| 스타일 일괄 적용 | 좌측 스타일 탭 | 도형/색/테두리/강조/정렬 일괄 변경 (undo 1단계)  |
 
 ---
 
@@ -139,28 +121,20 @@ Marquee 드래그 중:
 
 | 입력                    | 결과                                         |
 | --------------------- | ------------------------------------------ |
-| 노드 클릭                 | 단일 선택 (기존 선택 해제)                           |
-| `Shift + 노드 클릭`       | 기준 노드(anchor)~클릭 노드 범위 선택 추가               |
-| `Ctrl + 노드 클릭`        | 해당 노드 선택 토글 (추가 또는 제거)                     |
-| `Ctrl + A`            | 전체 노드 선택                                   |
-| 빈 캔버스 클릭             | 선택 전체 해제                                   |
-| `ESC`                 | 선택 전체 해제 (텍스트 편집 중이면 편집 종료)                 |
-| 빈 캔버스 drag           | Marquee 드래그 → 영역 내 노드 선택                   |
-| 방향키 (`↑↓←→`)         | 인접 노드로 선택 이동 (Single Select)                |
-| 노드 우클릭 > 하위 전체 선택    | Subtree Select                             |
+| 노드 클릭                 | 단일 선택 (기존 선택·다중 선택 해제)                           |
+| 빈 캔버스 drag           | 러버밴드 드래그 → mouseup 시 영역 내 노드 다중 선택                   |
+| 빈 캔버스 클릭 / `ESC`      | 선택 전체 해제 (`ESC`는 텍스트 편집 중이면 편집 종료)                                   |
 | 노드 더블클릭              | 텍스트 편집 모드 진입 (선택 유지)                       |
+| (미구현 — 2단계) `Shift/Ctrl + 클릭` · `Ctrl+A` · 방향키 이동 · 우클릭 하위 전체 선택 | — |
 
 ---
 
-#### 5.2 시스템 처리
+#### 5.2 시스템 처리 (구현 기준)
 
-* 클릭 이벤트 → 노드 hitTest → `selectedNodeIds` 업데이트
-* `Shift+Click`: `anchorNodeId` 기준으로 범위 계산 → 범위 내 노드 ID 수집
-* `Ctrl+Click`: 기존 `selectedNodeIds`에서 toggle
-* `Ctrl+A`: Document Store에서 전체 노드 ID 수집
-* Marquee drag: Screen 좌표 rect → World 좌표 변환 → 범위 내 노드 hitTest → `selectedNodeIds` 업데이트
-* Subtree Select: 선택 노드 ID + 재귀 하위 노드 ID 수집 (LTREE `path <@ target`)
-* 선택 변경 시 Right Panel Inspector 즉시 업데이트
+* 클릭 이벤트 → 노드 hitTest → `selectedId` 업데이트 (다중 선택 해제)
+* 러버밴드 drag: Screen 좌표 rect → World 좌표 변환 → mouseup 시 범위 내 노드 hitTest → `multiSelectedIds` 일괄 업데이트
+* 선택 변경 시 좌측 Inspector 즉시 업데이트
+* (미구현 — 2단계) Shift/Ctrl 클릭 범위·토글, Ctrl+A, Subtree Select
 
 ---
 
@@ -168,7 +142,7 @@ Marquee 드래그 중:
 
 * **선택된 노드**: border 색상 강조 + 그림자 효과
 * **hover 노드**: 연한 하이라이트 (선택 전 미리보기)
-* **Marquee 드래그 중**: 반투명 파란 직사각형 오버레이
+* **러버밴드 드래그 중**: 반투명 파란 직사각형 오버레이 (사각형만 — 선택은 mouseup 시 일괄)
 * **다중 선택**: 모든 선택 노드에 동일한 선택 하이라이트
 * **노드 추가 인디케이터**: 단일 선택 시에만 표시
 
@@ -202,13 +176,13 @@ Marquee 드래그 중:
 
 ---
 
-#### 6.4 Marquee (Area Select) 규칙
+#### 6.4 러버밴드 (Area Select) 규칙
 
 * 빈 캔버스 영역에서만 drag 시작 가능 (노드 위 drag는 노드 이동)
-* drag 중 실시간으로 영역 내 노드 목록 계산
-* mouseup 시 최종 선택 확정
+* **drag 중에는 선택 사각형만 표시**하고, **mouseup 시 일괄 선택**한다
+  (실시간 미리 하이라이트 없음)
 * 기존 선택 교체 방식 (기존 선택 해제 후 새 선택)
-* `Shift + drag`: 기존 선택에 추가 (확장 선택)
+* `Shift + drag` 확장 선택: 미구현 (3단계)
 
 ---
 
@@ -231,8 +205,8 @@ Marquee 드래그 중:
 #### 6.7 Kanban 레이아웃 선택 규칙
 
 * `layoutType = 'kanban'` 모드에서도 동일 선택 규칙 적용
-* board / column / card 노드 모두 선택 가능
-* Marquee drag: Kanban 카드 영역에서도 동작
+* **컬럼·카드 노드 선택 가능** — 보드 제목(root)은 보드에서 선택 불가
+* 러버밴드 drag: Kanban 카드 영역에서도 동작
 
 ---
 
@@ -269,7 +243,7 @@ function getNodesInMarquee(
 
 ---
 
-### 8. 키보드 방향키 선택 이동
+### 8. 키보드 방향키 선택 이동 (미구현 — 2단계)
 
 | 레이아웃 계열      | `↑`      | `↓`      | `←`    | `→`    |
 | ------------ | -------- | -------- | ------ | ------ |
@@ -348,12 +322,12 @@ function getNodesInMarquee(
 3. 사용자: `Delete` 키 입력
 4. 시스템: 3개 노드 일괄 삭제, History에 기록
 
-#### 시나리오 3 — Marquee 드래그 영역 선택
+#### 시나리오 3 — 러버밴드 드래그 영역 선택
 
 1. 사용자: 빈 캔버스에서 drag 시작
-2. 시스템: 반투명 rect 표시, 실시간 영역 내 노드 하이라이트
-3. mouseup 시: 영역 내 노드들 `selectedNodeIds`에 확정
-4. Right Panel: 다중 선택 공통 속성 표시
+2. 시스템: 드래그 중 선택 사각형만 표시 (실시간 하이라이트 없음)
+3. mouseup 시: 영역 내 노드들 `multiSelectedIds`에 일괄 확정
+4. 좌측 Inspector: "N개 노드 선택 · 일괄 편집" 표시
 
 #### 시나리오 4 — Subtree Select 후 복사
 
@@ -373,22 +347,20 @@ function getNodesInMarquee(
 
 ### 15. 구현 우선순위
 
-#### MVP
+#### MVP (구현됨)
 
 * Single Select (클릭)
 * Deselect (ESC, 빈 영역 클릭)
-* `Ctrl+Click` 다중 선택
-* `Ctrl+A` 전체 선택
-* 선택 시 Right Panel Inspector 연동
+* **러버밴드 다중 선택 + 일괄 삭제/스타일**
+* 선택 시 좌측 Inspector 연동
 * 선택 시 노드 추가 인디케이터 표시
 
-#### 2단계
+#### 2단계 (미구현)
 
-* Marquee 드래그 영역 선택 (Area Select)
-* `Shift+Click` Range Select
+* `Ctrl+Click` 토글 / `Shift+Click` Range Select
+* `Ctrl+A` 전체 선택
 * Subtree Select (컨텍스트 메뉴)
 * 방향키 선택 이동
-* 다중 선택 일괄 삭제 / 복사
 
 #### 3단계
 

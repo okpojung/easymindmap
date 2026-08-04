@@ -4,13 +4,15 @@
 * 문서 버전: v1.0
 * 작성일: 2026-04-14
 
+> **최종 업데이트:** 2026-08-04 — 코드 대조 감사 반영: 실사용 레이아웃 9종(엔진 8종 + Kanban 보드 렌더러) 기준으로 교정, timeline 추가, Freeform·애니메이션·DB CHECK 등 미구현/폐기 항목 배지, 엣지 규칙을 실구현(부모 layoutType 기준)에 일치
+
 ---
 
 ### 1. 기능 목적
 
 * 마인드맵의 **노드 배치 방식(레이아웃)**을 정의하고 제어하는 핵심 기능
-* 15가지 레이아웃 타입을 지원하며, 루트 노드 또는 Subtree 단위로 독립 적용 가능
-* 자동 배치(Auto Layout)와 수동 배치(Freeform)를 혼용할 수 있는 구조 제공
+* **실사용 9종(엔진 8종 + Kanban 보드 렌더러)** 을 지원하며 — 타입 유니언은 정식명+레거시명을 포함 — 루트 노드 또는 Subtree 단위로 독립 적용 가능
+* 자동 배치(Auto Layout)와 수동 배치(Freeform — V1+ 예정)를 혼용할 수 있는 구조 제공
 * Kanban 보드형 레이아웃은 depth 제한 없이 전환 가능하며, depth 3+ 노드는
   카드 아래 트리(트리·오른쪽 아웃라인)로 표시한다
 
@@ -20,13 +22,13 @@
 
 * 포함:
 
-  * 15가지 레이아웃 타입 선택 및 전환
+  * 실사용 9종 레이아웃 타입 선택 및 전환 (엔진 8종 + Kanban 보드 렌더러)
   * 루트 레이아웃 / Subtree 레이아웃 독립 적용
   * Auto Layout 엔진에 의한 좌표 자동 계산
-  * Freeform 수동 배치 (drag & drop)
-  * Auto ↔ Freeform 전환 정책
-  * Kanban 보드형 레이아웃 (depth 제한)
-  * 레이아웃 전환 시 애니메이션
+  * Freeform 수동 배치 (drag & drop) (미구현 — V1+ 예정)
+  * Auto ↔ Freeform 전환 정책 (미구현 — V1+ 예정)
+  * Kanban 보드형 레이아웃 (depth 제한 없음)
+  * 레이아웃 전환 시 애니메이션 (미구현 — 즉시 재배치)
 
 * 제외:
 
@@ -41,13 +43,13 @@
 
 | 기능ID  | 기능명                | 설명                          | 주요 동작              |
 | ----- | ------------------ | --------------------------- | ------------------ |
-| LT-01 | 레이아웃 타입 선택         | 15종 레이아웃 선택                 | 툴바 드롭다운            |
-| LT-02 | Subtree 레이아웃 override | 특정 노드 이하 독립 레이아웃 지정         | 노드 컨텍스트 메뉴         |
+| LT-01 | 레이아웃 타입 선택         | 실사용 9종 레이아웃 선택                 | 좌측 인스펙터 레이아웃 탭            |
+| LT-02 | Subtree 레이아웃 override | 특정 노드 이하 독립 레이아웃 지정         | 좌측 인스펙터 레이아웃 탭 — 선택 노드 depth≥1이면 서브트리 적용         |
 | LT-03 | Auto Layout 엔진     | 좌표 자동 계산 및 렌더링              | 노드 추가/삭제/이동 시 재계산  |
-| LT-04 | Freeform 수동 배치     | drag & drop으로 노드 위치 수동 지정   | manualPosition 저장  |
-| LT-05 | Auto ↔ Freeform 전환 | 두 모드 간 전환 정책 및 좌표 보존        | layoutType 변경      |
+| LT-04 | Freeform 수동 배치 (V1+ 예정)     | drag & drop으로 노드 위치 수동 지정   | manualPosition 저장 (미구현 — freeform은 radial-right 폴백)  |
+| LT-05 | Auto ↔ Freeform 전환 (V1+ 예정) | 두 모드 간 전환 정책 및 좌표 보존        | layoutType 변경      |
 | LT-06 | Kanban 레이아웃        | 보드형 구조 (depth 제한 없음, depth 3+는 카드 내 트리) | column/card 관리     |
-| LT-07 | 레이아웃 전환 애니메이션      | 전환 시 부드러운 위치 이동             | CSS transition      |
+| LT-07 | 레이아웃 전환 애니메이션 (미구현 — 즉시 재배치)      | 전환 시 부드러운 위치 이동             | CSS transition      |
 | LT-08 | 레이아웃 상속            | 하위 노드가 부모 layoutType 상속     | 노드 생성 시 자동 적용      |
 | LT-09 | 루트 노드 레이아웃 결정      | 루트의 layoutType이 전체 기본 레이아웃  | 맵 전체 레이아웃 기준       |
 | LT-10 | 레이아웃 간격/방향 설정      | 노드 간격(gap), 방향(direction) 설정 | layout_config JSONB |
@@ -58,44 +60,50 @@
 
 #### 4.1 LayoutType 목록
 
+> 타입 유니언은 정식명+레거시명을 모두 포함하지만, **실사용은 9종**
+> (엔진 8종: 방사형 양쪽/오른쪽/왼쪽, 트리 아래/오른쪽, 계층 오른쪽,
+> 진행트리 오른쪽, timeline + Kanban 보드 렌더러)이다.
+
 ```typescript
 type LayoutType =
   | 'radial-bidirectional'   // BL-RD-BI  방사형 양쪽 (기본값)
   | 'radial-right'           // BL-RD-R   방사형 오른쪽
   | 'radial-left'            // BL-RD-L   방사형 왼쪽
-  | 'tree-up'                // BL-TR-U   트리형 위
+  | 'tree-up'                // BL-TR-U   트리형 위 (미구현)
   | 'tree-down'              // BL-TR-D   트리형 아래
   | 'tree-right'             // BL-TR-R   트리형 오른쪽
-  | 'tree-left'              // BL-TR-L   트리형 왼쪽
+  | 'tree-left'              // BL-TR-L   트리형 왼쪽 (미구현)
   | 'hierarchy-right'        // BL-HR-R   계층형 오른쪽
-  | 'hierarchy-left'         // BL-HR-L   계층형 왼쪽
+  | 'hierarchy-left'         // BL-HR-L   계층형 왼쪽 (미구현)
   | 'process-tree-right'     // BL-PR-R   진행트리 오른쪽
-  | 'process-tree-left'      // BL-PR-L   진행트리 왼쪽
-  | 'process-tree-right-a'   // BL-PR-RA  진행트리 오른쪽A (버블형)
-  | 'process-tree-right-b'   // BL-PR-RB  진행트리 오른쪽B (타임라인형)
-  | 'freeform'               // BL-FR     자유배치
-  | 'kanban';                // BL-KB     Kanban 보드형
+  | 'process-tree-left'      // BL-PR-L   진행트리 왼쪽 (미구현)
+  | 'process-tree-right-a'   // BL-PR-RA  (레거시 — process-tree-right로 정규화)
+  | 'process-tree-right-b'   // BL-PR-RB  (레거시 — process-tree-right로 정규화)
+  | 'timeline'               // BL-TL     시간배치 (타임라인) — §22
+  | 'freeform'               // BL-FR     자유배치 (V1+ 예정 — 현재 radial-right 폴백)
+  | 'kanban';                // BL-KB     Kanban 보드형 (별도 보드 렌더러)
 ```
 
 #### 4.2 LayoutType ↔ BL 코드 매핑표
 
-| BL 코드   | DB 저장값 (layoutType)    | 한국어 명칭             | 기본값 |
-| ------- | ---------------------- | ------------------ | --- |
-| BL-RD-BI | `radial-bidirectional` | 방사형 양쪽             | ✅   |
-| BL-RD-R  | `radial-right`         | 방사형 오른쪽            |     |
-| BL-RD-L  | `radial-left`          | 방사형 왼쪽             |     |
-| BL-TR-U  | `tree-up`              | 트리형 위              |     |
-| BL-TR-D  | `tree-down`            | 트리형 아래             |     |
-| BL-TR-R  | `tree-right`           | 트리형 오른쪽            |     |
-| BL-TR-L  | `tree-left`            | 트리형 왼쪽             |     |
-| BL-HR-R  | `hierarchy-right`      | 계층형 오른쪽            |     |
-| BL-HR-L  | `hierarchy-left`       | 계층형 왼쪽             |     |
-| BL-PR-R  | `process-tree-right`   | 진행트리 오른쪽           |     |
-| BL-PR-L  | `process-tree-left`    | 진행트리 왼쪽            |     |
-| BL-PR-RA | `process-tree-right-a` | 진행트리 오른쪽A (버블형)    |     |
-| BL-PR-RB | `process-tree-right-b` | 진행트리 오른쪽B (타임라인형)  |     |
-| BL-FR    | `freeform`             | 자유배치               |     |
-| BL-KB    | `kanban`               | Kanban 보드형         |     |
+| BL 코드   | DB 저장값 (layoutType)    | 한국어 명칭             | 기본값 | 구현 상태 |
+| ------- | ---------------------- | ------------------ | --- | --- |
+| BL-RD-BI | `radial-bidirectional` | 방사형 양쪽             | ✅   | 구현 |
+| BL-RD-R  | `radial-right`         | 방사형 오른쪽            |     | 구현 |
+| BL-RD-L  | `radial-left`          | 방사형 왼쪽             |     | 구현 |
+| BL-TR-U  | `tree-up`              | 트리형 위              |     | 미구현 |
+| BL-TR-D  | `tree-down`            | 트리형 아래             |     | 구현 |
+| BL-TR-R  | `tree-right`           | 트리형 오른쪽            |     | 구현 |
+| BL-TR-L  | `tree-left`            | 트리형 왼쪽             |     | 미구현 |
+| BL-HR-R  | `hierarchy-right`      | 계층형 오른쪽            |     | 구현 |
+| BL-HR-L  | `hierarchy-left`       | 계층형 왼쪽             |     | 미구현 |
+| BL-PR-R  | `process-tree-right`   | 진행트리 오른쪽           |     | 구현 |
+| BL-PR-L  | `process-tree-left`    | 진행트리 왼쪽            |     | 미구현 |
+| BL-PR-RA | `process-tree-right-a` | (레거시)              |     | `process-tree-right`로 정규화 |
+| BL-PR-RB | `process-tree-right-b` | (레거시)              |     | `process-tree-right`로 정규화 |
+| BL-TL    | `timeline`             | 시간배치 (타임라인)        |     | 구현 (§22) |
+| BL-FR    | `freeform`             | 자유배치               |     | V1+ 예정 (radial-right 폴백) |
+| BL-KB    | `kanban`               | Kanban 보드형         |     | 구현 (보드 렌더러) |
 
 #### 4.3 NodeObject 레이아웃 관련 필드
 
@@ -139,10 +147,10 @@ type NodeObject = {
 
 #### 5.1 사용자 동작
 
-* 툴바 > 레이아웃 드롭다운에서 15종 중 선택
-* 특정 노드 우클릭 > "이 노드부터 레이아웃 변경" → Subtree override
-* Freeform 모드에서 노드 drag & drop → 좌표 수동 저장
-* 레이아웃 전환 시 노드 위치 애니메이션 재배치
+* 좌측 인스펙터 레이아웃 탭에서 실사용 9종 중 선택
+* 선택 노드 depth≥1이면 해당 Subtree에 적용 (Subtree override) — 우클릭 메뉴 없음
+* Freeform 모드 노드 drag & drop 좌표 수동 저장 (미구현 — V1+ 예정)
+* 레이아웃 전환 시 즉시 재배치 (애니메이션 미구현)
 
 ---
 
@@ -150,18 +158,18 @@ type NodeObject = {
 
 * 루트 노드의 `layoutType`이 전체 맵의 기본 레이아웃 기준
 * 하위 노드에서 다른 `layoutType` 지정 시 해당 Subtree만 독립 적용
-* 새 노드 생성 시 별도 override 없으면 **부모 노드의 `layoutType` 상속(복사)**
+* 새 노드는 `layoutType` **미지정** 상태로 생성 — 렌더링 시 상위(부모→루트) 상속으로 해석한다 (값 복사 아님)
 * 레이아웃 변경 시 Layout Engine이 전체 좌표 재계산 → `computedX/Y` 업데이트
-* `freeform`으로 전환 시: 현재 `computedX/Y` → `manualPosition`에 복사 저장
-* auto layout으로 전환 시: `manualPosition = null` → Layout Engine 재계산
+* (V1+ 예정) `freeform` 전환 시: 현재 `computedX/Y` → `manualPosition`에 복사 저장
+* (V1+ 예정) auto layout으로 전환 시: `manualPosition = null` → Layout Engine 재계산
 
 ---
 
 #### 5.3 표시 방식
 
 * Auto Layout: Layout Engine이 계산한 `computedX/Y` 기준으로 렌더링
-* Freeform: `manualPosition` 기준으로 렌더링
-* 레이아웃 전환 시 CSS transition 애니메이션 적용 (기본 200ms)
+* Freeform: `manualPosition` 기준으로 렌더링 (V1+ 예정)
+* 레이아웃 전환 시 애니메이션 미구현 — 즉시 재배치
 
 ---
 
@@ -171,16 +179,15 @@ type NodeObject = {
 
 #### 6.1 레이아웃 타입 규칙
 
-* DB `nodes.layout_type` 컬럼은 `NOT NULL`이며 항상 구체적인 값을 저장한다
-* 허용 값은 `chk_nodes_layout_type` CHECK 제약으로 관리된다
+* **DB CHECK 미적용 — 값 검증은 앱에서 수행한다** (`chk_nodes_layout_type` 제약은 스키마에 없음)
 * 기본값은 `'radial-bidirectional'`이다
 
 ---
 
 #### 6.2 상속 규칙
 
-* 새 노드 생성 시 부모 노드의 `layoutType` 값을 복사하여 저장한다
-* 명시적 override가 없으면 부모의 레이아웃을 따른다
+* 새 노드는 `layoutType` **미지정** 상태로 생성한다 — 값 복사 저장이 아니다
+* 렌더링/계산 시 상위(부모→루트) 상속으로 해석한다; 명시적 override가 있는 노드부터 해당 Subtree에 적용된다
 
 ---
 
@@ -198,7 +205,7 @@ type NodeObject = {
 | 맵 레이아웃이 `kanban`일 때 (어떤 노드를 선택해도) | 모든 레이아웃 선택 가능 · **항상 맵 전체에 적용** (Kanban에는 Subtree 레이아웃이 없음 — Kanban 탈출 경로) |
 
 * **메인노드 전용 레이아웃**: `radial-bidirectional`(방사형·양쪽),
-  `tree-down`(트리·아래), `kanban`, `freeform`.
+  `tree-down`(트리·아래), `timeline`(시간배치), `kanban`, `freeform`.
   루트 양쪽/사방으로 가지를 전개하거나(방사형·양쪽, 트리·아래),
   보드 뷰(kanban)·수동 배치(freeform)라서 한쪽에 매달린 Subtree에는
   적용할 수 없다.
@@ -237,7 +244,7 @@ type NodeObject = {
 
 ---
 
-#### 6.5 Freeform 규칙
+#### 6.5 Freeform 규칙 (V1+ 예정 — 현재 freeform은 radial-right 폴백 렌더링, `neverApplies`)
 
 * `layoutType = 'freeform'`일 때만 `manualPosition`이 유효하다
 * auto layout 모드에서는 `manualPosition = null`이어야 한다
@@ -265,7 +272,7 @@ type NodeObject = {
 
 ---
 
-#### 6.7 Auto ↔ Freeform 전환 정책
+#### 6.7 Auto ↔ Freeform 전환 정책 (V1+ 예정)
 
 | 상황               | 처리                                                |
 | ---------------- | ------------------------------------------------- |
@@ -278,7 +285,7 @@ type NodeObject = {
 
 #### 6.8 레이아웃 간격 설정 규칙
 
-* `maps.layout_config` JSONB 컬럼에 저장된다
+* **간격은 클라이언트 배율로 관리한다** (`editorUiStore`의 spacingX/Y, 90~200%) — `maps.layout_config` DB 저장은 미구현
 * 기본 간격:
 
   | 항목           | 기본값  | 설명      |
@@ -363,11 +370,14 @@ type NodeObject = {
 
 ---
 
-#### 7.5 Freeform (자유배치)
+#### 7.5 Freeform (자유배치) — V1+ 예정
 
-* 노드 위치를 drag & drop으로 자유롭게 지정
-* `manualPosition: { x, y }`에 좌표 저장
-* Layout Engine이 개입하지 않음
+> 현재는 미구현 — `freeform` 선택 시 radial-right 폴백으로 렌더링되며
+> LayoutTab에서 `neverApplies`(선택해도 맵 레이아웃 미변경) 처리된다.
+
+* (예정) 노드 위치를 drag & drop으로 자유롭게 지정
+* (예정) `manualPosition: { x, y }`에 좌표 저장
+* (예정) Layout Engine이 개입하지 않음
 * **메인(루트) 노드에서만 선택 가능** — Subtree 단위 적용 불가
 * **선택해도 맵 레이아웃을 변경하지 않는다** — 자유배치는 마인드맵 외에
   순서도·플로차트 등 자유형 문서 작성을 위한 모드로 향후(V1+) 제공 예정
@@ -446,7 +456,7 @@ preventDefault — 코드 텍스트를 드래그로 선택한 뒤 그 위에서 
 
 ### 10. DB 영향
 
-* `nodes.layout_type` — VARCHAR(50) NOT NULL, CHECK 제약 적용
+* `nodes.layout_type` — VARCHAR(50), **DB CHECK 미적용 — 값 검증은 앱**
 * `nodes.manual_position` — JSONB NULL, Freeform 또는 수동 위치 보정 전용 `{ x, y }` (Auto Layout의 computedX/Y는 DB 저장 안 함)
 * `nodes.collapsed` — BOOLEAN DEFAULT FALSE
 * `maps.default_layout_type` — VARCHAR(50) NOT NULL DEFAULT 'radial-bidirectional'
@@ -456,21 +466,8 @@ preventDefault — 코드 텍스트를 드래그로 선택한 뒤 그 위에서 
 DB 제약:
 
 ```sql
--- 허용된 layoutType 값만 저장
-CONSTRAINT chk_nodes_layout_type
-  CHECK (layout_type IN (
-    'radial-bidirectional','radial-right','radial-left',
-    'tree-up','tree-down','tree-right','tree-left',
-    'hierarchy-right','hierarchy-left',
-    'process-tree-right','process-tree-left',
-    'process-tree-right-a','process-tree-right-b',
-    'freeform','kanban'
-  )),
-
--- Kanban depth 제한: 폐기됨 (v1.1) — Kanban은 depth 제한 없이 전환 가능,
--- depth 3+는 카드 아래 트리로 표시한다. 기존 제약이 남아 있다면 DROP 한다.
--- (구) CONSTRAINT chk_nodes_kanban_depth
---       CHECK (layout_type != 'kanban' OR depth BETWEEN 0 AND 2)
+-- chk_nodes_layout_type: DB CHECK 미적용 — 값 검증은 앱에서 수행
+-- chk_nodes_kanban_depth: 해당 제약은 스키마에 없음 (폐기 — v1.1)
 ```
 
 ---
@@ -541,13 +538,13 @@ CONSTRAINT chk_nodes_layout_type
 #### MVP
 
 * `radial-bidirectional` Auto Layout 구현
-* Freeform drag & drop 및 `manualPosition` 저장
+* Freeform drag & drop 및 `manualPosition` 저장 (V1+로 이월)
 * 레이아웃 타입 전환 (전체 맵)
-* Kanban 기본 구현 (3-depth 제한)
+* Kanban 기본 구현 (depth 제한 없음)
 
 #### 2단계
 
-* 나머지 14종 레이아웃 타입 구현
+* 나머지 레이아웃 타입 구현
 * Subtree override
 * 레이아웃 전환 애니메이션
 * layout_config (간격/방향) 설정 UI
@@ -563,6 +560,8 @@ CONSTRAINT chk_nodes_layout_type
 ## 15. 레이아웃 엔진 아키텍처
 
 ### 15.1 엔진 구성 요소
+
+> **현재는 `computeLayout()` 단일 전체 계산 — 아래는 목표 설계다.**
 
 Layout Engine은 다음 컴포넌트로 분리된다:
 
@@ -795,6 +794,8 @@ Layout Engine의 역할:
 
 ## 17. Partial Relayout
 
+> **현재는 `computeLayout()` 단일 전체 계산 — 아래는 목표 설계다.**
+
 전체 맵을 매번 풀 리레이아웃하면 비효율적이다. 변경이 발생한 subtree만 재계산하는 partial relayout 흐름을 사용한다.
 
 **흐름:**
@@ -842,54 +843,42 @@ function relayout(changedNodeId: string): void {
 
 ---
 
-## 18. 에지 렌더링 정책
+## 18. 에지 렌더링 정책 (실구현 기준)
 
-에지 타입은 루트 노드의 layoutType을 기준으로 결정된다.
+**에지는 부모 노드의 layoutType 기준**으로 결정된다 (루트가 아니라
+Subtree override를 반영한 부모 기준 — 10-canvas.md §27과 일치).
 
-```ts
-function getEdgeType(node: Node): EdgeType {
-  const rootLayout = getRootLayoutType(node)
+레이아웃별 에지 경로 정리:
 
-  if (rootLayout.startsWith('radial-')) {
-    return 'curve-line'   // 방사형(Radial) → Cubic Bezier 곡선
-  }
-  // Tree / Hierarchy / ProcessTree / Freeform / Kanban
-  // → 모두 직각선 (tree-line / Orthogonal Connector)
-  // ⚠ straight-line(대각선) 은 사용하지 않는다
-  return 'tree-line'
-}
-```
-
-레이아웃별 에지 타입 정리:
-
-| 레이아웃 계열            | 에지 타입       | 이유                     |
+| 레이아웃            | 에지 경로       | 비고                     |
 | ------------------ | ----------- | ---------------------- |
-| `radial-*`         | `curve-line` | 방사형 배치에서 **Cubic Bezier 곡선**이 자연스럽다    |
-| `tree-*`           | `tree-line` | **직각선(Orthogonal)** — 계층 구조를 명확히 한다    |
-| `hierarchy-*`      | `tree-line` | **직각선(Orthogonal)** — 들여쓰기 계층 구조에 적합   |
-| `process-tree-*`   | `tree-line` | **직각선(Orthogonal)** — 흐름·단계 강조, 화살표 가능 |
-| `freeform`         | `tree-line` | **직각선(Orthogonal)** — 자유 배치에서도 직각 유지   |
-| `kanban`           | `tree-line` | 정책상 tree-line; UI 렌더러에서 edge 미표시 처리    |
+| `radial-*`         | 곡선 (markmap 식 curveBumpX) | 방사형 배치에 자연스러운 곡선    |
+| `tree-right`       | 부모 좌하단 12px 스파인 (`M (x-w/2+12) (y+h/2) V toY H toX`) | 들여쓰기 아웃라인    |
+| `tree-down`        | 직각 V-H-V | 세로 전개    |
+| `hierarchy-right`  | 중앙 elbow (`M fromX fromY H midX V toY H toX`)  | 직각 가로→세로→가로   |
+| `process-tree-*`   | 왼쪽 14px 스파인 직각선 (화살표 없음) | 흐름·단계 강조 |
+| `timeline`         | 전용 경로 — 루트→주제는 시간축 꺾임, 주제 이하 왼쪽 스파인 (§22) | createTimelinePath |
+| `freeform`         | **곡선 (방사형과 동일)** | 자유배치 V1+ 예정 — 현재 곡선 렌더링   |
+| `kanban`           | edge 미표시 (별도 보드 렌더러)    | — |
 
-> **핵심 규칙**: 방사형(Radial) 계열만 곡선(Cubic Bezier), **나머지 모든 레이아웃은 직각선(tree-line / Orthogonal Connector)**.  
-> 대각선(straight-line)은 사용하지 않는다. (참조: `docs/assets/맵진행방향.pdf`)
-
-EdgeAnchorResolver는 각 node box의 시작점(source)과 끝점(target)을 계산하여 EdgeRouter에 전달한다. 에지 경로 계산은 `curve-line`과 `tree-line` 두 가지 라우팅 알고리즘으로 분기된다.
+EdgeAnchorResolver는 각 node box의 시작점(source)과 끝점(target)을 계산하여 EdgeRouter에 전달한다.
 
 ---
 
-## 19. Edge Style 결정 규칙
+## 19. Edge Style 결정 규칙 (실구현 기준)
 
-Edge Style은 layoutType에 의해 자동 결정된다.
+Edge Style은 **부모 노드의 layoutType**에 의해 자동 결정된다.
 
-| layoutType 계열 | Edge Style |
+| layoutType | Edge Style |
 |---|---|
-| `radial-*` | `curve-line` (Cubic Bezier 곡선) |
-| `tree-*` | `orthogonal-line` (직각선) |
-| `hierarchy-*` | `orthogonal-line` (직각선) |
-| `process-tree-*` | `orthogonal-line` (직각선) |
-| `freeform` | `orthogonal-line` (직각선) |
-| `kanban` | `orthogonal-line`, 단 UI에서는 기본적으로 미표시 |
+| `radial-*` | 곡선 (curveBumpX) |
+| `tree-right` | 좌하단 스파인 직각선 |
+| `tree-down` | V-H-V 직각선 |
+| `hierarchy-right` | 중앙 elbow 직각선 |
+| `process-tree-*` | 왼쪽 14px 스파인 직각선 |
+| `timeline` | timeline 전용 경로 |
+| `freeform` | **곡선 (방사형과 동일)** — tree-line 아님 |
+| `kanban` | UI 미표시 (보드 렌더러) |
 
 MVP에서는 사용자가 Edge Style을 수동으로 변경할 수 없다.
 
@@ -902,7 +891,7 @@ MVP에서는 사용자가 Edge Style을 수동으로 변경할 수 없다.
 
 ---
 
-## 20. Freeform 보조 배치 정책
+## 20. Freeform 보조 배치 정책 (V1+ 예정)
 
 Grid Snapping과 Collision Detection은 freeform layout에서만 선택적으로 적용한다.
 
@@ -917,7 +906,7 @@ Auto Layout 계열에서는 Layout Engine이 좌표를 결정하므로 사용자
 
 ---
 
-## 21. 좌표 저장 정책
+## 21. 좌표 저장 정책 (manualPosition 저장은 V1+ 예정)
 
 좌표는 자동 배치 좌표와 수동 배치 좌표를 분리한다.
 

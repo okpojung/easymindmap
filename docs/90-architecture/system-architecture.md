@@ -137,7 +137,7 @@ VM-04: Redis
 
 ```
 React + TypeScript
-Zustand             상태관리 (5-Store)
+Zustand             상태관리 (8 스토어 — 코어 5 + 연동 3)
 React Query         서버 상태 / API 호출
 React Router        라우팅
 Supabase JS Client  Auth / Realtime 클라이언트
@@ -192,7 +192,7 @@ src/
 ### 4.3 Store 구조 (핵심 원칙)
 
 ```
-[핵심 5-Store]
+[핵심 5-Store + 연동 3(cloud·auth·aiSettings) = 8 스토어]
 Document Store     = 실제 mindmap 원본 (노드 트리, 맵 메타) — DB 저장 유일 대상
 Editor UI Store    = 패널 / 모달 / active tool 상태
 Viewport Store     = zoom / pan / canvas bounds

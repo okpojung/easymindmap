@@ -2,6 +2,7 @@
 
 * 문서 버전: v1.1
 * 작성일: 2026-07-16
+* 최종 업데이트: 2026-08-04 — 인라인 사진 위치 보존(`images[]`) 반영
 * 구현: `src/export/mapMeta.ts` · `src/export/exportMarkdown.ts` ·
   `src/export/exportHtml.ts` · `src/utils/importMapFile.ts`
 * 관련: `20-export.md` (내보내기), `21-import.md` (가져오기)
@@ -49,7 +50,7 @@ interface MapFileMeta {
 | 링크 | `links[] {url, label}` | 하이퍼링크 |
 | 노트 | `notes[] {type, text, checked, lang, html}` | 문단(리치 HTML 포함)/코드/표/체크리스트 |
 | 첨부 | `attachments[] {name, kind, url}` | 파일/오디오/비디오 |
-| 사진 | `image {src, w, h}` | 붙여넣은 사진 (data URL 또는 원본 URL) |
+| 사진 | `image {src, w, h}` · `images[] {src, afterLine…}` | 붙여넣은 사진 (data URL 또는 원본 URL) — `images[]` 는 인라인 사진 위치(afterLine) 보존 |
 | 배치 | `side` (left/right) · `layoutType`(서브트리 오버라이드) · `edgeType` · `collapsed` | 좌/우 배치, 노드별 레이아웃, 접힘 상태 |
 | 색 | `colorKey` | 브랜치 색 계열 |
 | 맵 설정 | `settings.levelFonts` · `settings.levelLayouts` | 레벨별 폰트(크기·글꼴)·레벨별 레이아웃 |

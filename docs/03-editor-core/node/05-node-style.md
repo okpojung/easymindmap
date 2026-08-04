@@ -1,10 +1,11 @@
 # 05. Node Style
 ## NODE_STYLE
 
-* 문서 버전: v1.1
+* 문서 버전: v1.2
 * 작성일: 2026-04-06
-* 최종 업데이트: 2026-05-07
+* 최종 업데이트: 2026-08-04 — 실제 스타일 키(fillColor/borderColor/textColor/fontSize/fontWeight/fontStyle/borderWidth/borderStyle/shapeType/colorKey — backgroundColor·borderRadius 없음) 기준 현행화, 상속=fontSize 재설정+colorKey, 저장=문서 스냅샷, 아이콘=node.icon/iconSide.
 * 변경 이력:
+  * v1.2 — 현행화 (2026-08-04)
   * v1.1 — 노드 배경 이미지 구현 단계를 MVP → V1으로 변경 (roadmap.md v1.6 동기화)
 
 ---
@@ -40,26 +41,35 @@
 | NS-01 | 텍스트 색상 | 글자 색 변경   | color picker |
 | NS-02 | 배경 색상  | 노드 배경     | palette      |
 | NS-03 | 폰트 스타일 | bold/size | toolbar      |
-| NS-04 | border | 테두리 스타일   | radius       |
-| NS-05 | 아이콘    | 상태 아이콘    | emoji/icon   |
+| NS-04 | border | 테두리 스타일 (`borderWidth`/`borderStyle` — borderRadius 없음, 모양은 `shapeType`) | width/style       |
+| NS-05 | 아이콘    | 노드 아이콘 — 스타일 키가 아니라 별도 필드 `node.icon`/`node.iconSide`에 저장    | emoji/icon   |
 | NS-06 | 강조     | highlight | 중요 표시        |
 
 ---
 
 ### 4. 기능 정의 (What)
 
+실제 스타일 키 (현행 — `backgroundColor`·`borderRadius`는 없다):
+
 ```json
 {
   "style": {
+    "fillColor": "#FFE08A",
+    "borderColor": "#ddd",
     "textColor": "#333",
-    "backgroundColor": "#fff",
     "fontSize": 14,
     "fontWeight": "bold",
-    "borderRadius": 8,
-    "borderColor": "#ddd"
-  }
+    "fontStyle": "italic",
+    "borderWidth": 2,
+    "borderStyle": "solid",
+    "shapeType": "rounded"
+  },
+  "colorKey": "amber"
 }
 ```
+
+- `shapeType`: 11종 (둥근/사각/캡슐/원/육각/다이아/평행/화살◀/화살▶/원통/별) — §16.1·§18 참조. 모서리 둥글기는 `shapeType`으로 표현한다 (`borderRadius` 키 없음).
+- `colorKey`: 테마 색상 키 — 노드의 `style` 밖 별도 필드.
 
 > **글자색 우선순위 (2026-07-31)**: `searchHit 고정색 > style.textColor
 > (사용자 지정) > 하이라이트 고정색(#1F1B16) > 채움 지정 시
@@ -116,10 +126,12 @@
 * 콘텐츠 ≠ 스타일
 * markdown에는 색상 포함하지 않음
 
-#### 6.2 상속 규칙
+#### 6.2 상속 규칙 (현행)
 
-* 부모 스타일 → 자식 기본 상속
-* override 가능
+* 생성 시 기준 노드의 `style` 전체 복사
+* 단, `fontSize`는 새 노드의 깊이별 기본값(Root 18 / L1 14 / L2+ 13)으로 재설정
+* `colorKey`(테마 색상 키)는 그대로 상속
+* 생성 후 override 가능
 
 #### 6.3 우선순위
 
@@ -145,15 +157,17 @@
 
 ---
 
-### 9. DB 영향
+### 9. DB 영향 (현행)
 
-* nodes.style (JSON)
+* 노드 스타일(`node.style`·`colorKey`)은 **맵 전체 문서 JSON 스냅샷**(`map_documents.doc`)에 포함되어 저장된다.
+* [서버 연결 예정] `nodes.style_json` 정규화 컬럼은 협업 단계 설계안.
 
 ---
 
-### 10. API 영향
+### 10. API 영향 (현행)
 
-* PATCH /nodes/{id}/style
+* `PUT /maps/:id/document` — 문서 스냅샷 저장에 스타일 포함
+* [서버 연결 예정] `PATCH /nodes/{id}/style` 노드 단위 API는 협업 단계 설계안
 
 ---
 
@@ -174,7 +188,7 @@
 
 ---
 
-### 13. 구현 우선순위
+### 13. 구현 우선순위 (초기 계획 — 현행: 전부 구현 완료)
 
 #### MVP
 
@@ -596,6 +610,7 @@ Phase별 개발 순서:
 | `~~텍스트~~` | 취소선 |
 | `__텍스트__` | 밑줄 |
 | `==텍스트==` | 하이라이트(형광) |
+| `` `텍스트` `` | 인라인 코드(회색 띠·고정폭) |
 
 - 입력 방법 ①: 노드 텍스트에 마커를 직접 입력 (MD 가져오기와 호환)
 - 입력 방법 ②: 노드 편집(더블클릭) 중 텍스트를 드래그 선택하고

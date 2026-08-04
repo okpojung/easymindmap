@@ -1,19 +1,23 @@
 # easymindmap — Edge / Layout / Node Inheritance Policy
 
-문서 버전: v3.3  
+문서 버전: v3.4  
 상태: Final Draft  
+
+> **최종 업데이트:** 2026-08-04 — 코드 대조 감사 반영: Freeform은 현재 곡선(방사형 경로), tree-line은 레이아웃별 실제 4종 경로, Curve Router는 markmap 식 curveBumpX, 폰트 18/14/13, Kanban depth 제한 없음(제약은 스키마에 없음) 등 실구현 기준 현행화
+
 변경 이력:
-- v3.3 (2026-04-16) — 맵진행방향.pdf 시각자료 기반 최종 확인: 방사형=곡선(Cubic Bezier), 나머지 전체=직각선(Orthogonal). `08-layout.md §18` freeform 오류(curve-line→tree-line) 수정. Kanban도 tree-line 정책 명시(UI 미표시 처리). §3 핵심 결론에 시각 예시 참조 추가
+- v3.4 (2026-08-04) — 실구현 대조 현행화 (위 최종 업데이트 참조)
+- v3.3 (2026-04-16) — 맵진행방향.pdf 시각자료 기반 최종 확인: 방사형=곡선(Cubic Bezier), 나머지 전체=직각선(Orthogonal). `08-layout.md §18` freeform을 tree-line으로 수정 *(폐기 — v1.1: Freeform은 현재 곡선(방사형 경로)으로 렌더링 — 자유배치 정식 구현 시 tree-line 정책 재검토)*. Kanban도 tree-line 정책 명시(UI 미표시 처리). §3 핵심 결론에 시각 예시 참조 추가
 - v3.2 (2026-04-16) — MVP 제약 사항 섹션 추가(§4-A), tree-line = 직각선(Orthogonal) 명칭 명시(§10.2, §20.3), Radial CP 방향각 기반 계산 상세 추가(§20.2), getEdgeStyle 팩토리 패턴 섹션 추가(§26-A)
 - v3.1 — 이전 버전
 대상 파일: `docs/03-editor-core/edge-policy.md`  
 관련 문서:
 - `docs/01-product/functional-spec.md`
 - `docs/02-domain/domain-models.md` ← LayoutType 정의 정본 (kebab-case DB 저장값), 스타일 상속 규칙 §6
-- `docs/03-editor-core/layout/08-layout.md` ← Layout Engine 정책 §18 (에지 타입 결정 로직), Kanban depth 규칙 §6.6
+- `docs/03-editor-core/layout/08-layout.md` ← Layout Engine 정책 §18 (에지 타입 결정 로직), Kanban depth 규칙 §6.6 (depth 제한 없음 — 카드 아래 트리)
 - `docs/03-editor-core/state-architecture.md`
 - `docs/03-editor-core/node/02-node-editing.md`
-- `docs/02-domain/db-schema.md` ← nodes 테이블 DDL, chk_nodes_kanban_depth CHECK 제약
+- `docs/02-domain/db-schema.md` ← nodes 테이블 DDL (chk_nodes_kanban_depth 제약은 스키마에 없음 — 폐기)
 
 ---
 
@@ -67,10 +71,13 @@
 easymindmap의 최종 Edge 정책은 아래 한 줄로 정리된다.
 
 ```text
-방사형(Radial)만 curve-line (Cubic Bezier 곡선)
-그 외 모든 Layout은 tree-line (직각선 / Orthogonal Connector)
+방사형(Radial)과 Freeform은 curve-line (곡선)
+그 외 구조형 Layout은 tree-line (직각선 — 레이아웃별 실제 경로는 아래 표)
 대각선(straight-line)은 사용하지 않는다
 ```
+
+> **Freeform 주의**: Freeform은 현재 **곡선(방사형 경로)** 으로 렌더링된다 —
+> 자유배치 정식 구현 시 tree-line 정책을 재검토한다.
 
 > **시각 참조**: `docs/assets/맵진행방향.pdf`  
 > - 방사형(양쪽/왼쪽/오른쪽): 노드 간 **곡선(Bezier)** 연결 확인  
@@ -80,20 +87,27 @@ easymindmap의 최종 Edge 정책은 아래 한 줄로 정리된다.
 
 | Layout 계열 | Edge 타입 | 연결선 형태 |
 |---|---|---|
-| Radial-Bidirectional | `curve-line` | Cubic Bezier 곡선 |
-| Radial-Right | `curve-line` | Cubic Bezier 곡선 |
-| Radial-Left | `curve-line` | Cubic Bezier 곡선 |
-| Tree 계열 (Up/Down/Left/Right) | `tree-line` | **직각선(Orthogonal)** |
-| Hierarchy 계열 (Left/Right) | `tree-line` | **직각선(Orthogonal)** |
-| ProcessTree 계열 (Right/Left/A/B) | `tree-line` | **직각선(Orthogonal)** |
-| Freeform | `tree-line` | **직각선(Orthogonal)** |
-| Kanban | `tree-line` | 정책=직각선, UI에서 edge 미표시 |
+| Radial-Bidirectional | `curve-line` | 곡선 (curveBumpX) |
+| Radial-Right | `curve-line` | 곡선 (curveBumpX) |
+| Radial-Left | `curve-line` | 곡선 (curveBumpX) |
+| Tree 계열 | `tree-line` | **직각선(Orthogonal)** — 레이아웃별 실제 경로 아래 표 |
+| Hierarchy 계열 | `tree-line` | **직각선(Orthogonal)** — 중앙 elbow |
+| ProcessTree 계열 | `tree-line` | **직각선(Orthogonal)** — 왼쪽 스파인 |
+| Freeform | `curve-line` | **곡선 (방사형 경로)** — 자유배치 정식 구현 시 tree-line 재검토 |
+| Kanban | — | UI에서 edge 미표시 (보드 렌더러) |
 
 이 정책은 UX, 구현 단순성, 확장성 측면에서 가장 균형이 좋다.
 
 > **⚠ 주의**: `tree-line`은 대각선(diagonal straight-line)이 **아니다**.  
-> 수평·수직 꺾임으로만 이루어진 **직각 Orthogonal Connector**이다.  
-> SVG 경로: `M x1 y1 L midX y1 L midX y2 L x2 y2` (수평 우선 라우팅)
+> 수평·수직 꺾임으로만 이루어진 **직각 Orthogonal Connector**이며,
+> 단일 표준 경로가 아니라 **레이아웃별로 실제 경로가 다르다**:
+
+| 레이아웃 | 실제 tree-line 경로 |
+|---|---|
+| `tree-right` | 부모 **좌하단 12px 스파인** — `M (x-w/2+12) (y+h/2) V toY H toX` |
+| `hierarchy-right` | **중앙 elbow** — `M fromX fromY H midX V toY H toX` |
+| `tree-down` | **V-H-V** — `M x1 y1 V midY H x2 V y2` |
+| `process-tree-*` | 부모 **왼쪽 14px 스파인** 직각선 (화살표 없음) |
 
 ---
 
@@ -197,7 +211,8 @@ easymindmap은 아래 6개 Layout 그룹을 사용한다.
 # 6. Layout Type 정의
 
 > **LayoutType DB 저장값**: 모두 kebab-case 영문 소문자 (예: `'radial-bidirectional'`).  
-> 전체 15개 LayoutType의 정본 정의는 `docs/02-domain/domain-models.md § 2.2` 참조.  
+> 타입 유니언은 **22개** (timeline 포함, 정식명+레거시명) — **UI 실사용은 9종**.  
+> 정본 정의는 `docs/02-domain/domain-models.md § 2.2` 참조.  
 > Layout Engine에서의 처리 방식은 `docs/03-editor-core/layout/08-layout.md § 4.1` 참조.
 
 ## 6.1 Radial 계열
@@ -212,32 +227,39 @@ easymindmap은 아래 6개 Layout 그룹을 사용한다.
 
 ## 6.2 Tree 계열
 
+> 아래 정의는 유지하되 `tree-up`·`tree-left`는 **현재 미구현** (저장값 정의만 존재).
+
 | 코드 | 영문명 | DB 저장값 | 한글명 | 설명 |
 |---|---|---|---|---|
-| BL-TR-U | Tree-Up | `tree-up` | 트리형-위쪽 | 위 방향 전개 |
+| BL-TR-U | Tree-Up | `tree-up` | 트리형-위쪽 | 위 방향 전개 (미구현) |
 | BL-TR-D | Tree-Down | `tree-down` | 트리형-아래쪽 | 아래 방향 전개 |
 | BL-TR-R | Tree-Right | `tree-right` | 트리형-오른쪽 | 오른쪽 방향 수평 트리 |
-| BL-TR-L | Tree-Left | `tree-left` | 트리형-왼쪽 | 왼쪽 방향 수평 트리 |
+| BL-TR-L | Tree-Left | `tree-left` | 트리형-왼쪽 | 왼쪽 방향 수평 트리 (미구현) |
 
 ---
 
 ## 6.3 Hierarchy 계열
 
+> 아래 정의는 유지하되 `hierarchy-left`는 **현재 미구현** (저장값 정의만 존재).
+
 | 코드 | 영문명 | DB 저장값 | 한글명 | 설명 |
 |---|---|---|---|---|
 | BL-HR-R | Hierarchy-Right | `hierarchy-right` | 계층형-오른쪽 | 좌→우 계층 구조 |
-| BL-HR-L | Hierarchy-Left | `hierarchy-left` | 계층형-왼쪽 | 우→좌 계층 구조 |
+| BL-HR-L | Hierarchy-Left | `hierarchy-left` | 계층형-왼쪽 | 우→좌 계층 구조 (미구현) |
 
 ---
 
 ## 6.4 ProcessTree 계열
 
+> 아래 정의는 유지하되 `process-tree-left`는 **현재 미구현**, `-a`/`-b`는
+> 레거시 저장값으로 **`process-tree-right`로 정규화**된다.
+
 | 코드 | 영문명 | DB 저장값 | 한글명 | 설명 |
 |---|---|---|---|---|
 | BL-PR-R | ProcessTree-Right | `process-tree-right` | 진행트리-오른쪽 | 좌→우 절차형 |
-| BL-PR-L | ProcessTree-Left | `process-tree-left` | 진행트리-왼쪽 | 우→좌 절차형 |
-| BL-PR-RA | ProcessTree-Right-A | `process-tree-right-a` | 진행트리-오른쪽A | 상단 기준선 중심 분기형 |
-| BL-PR-RB | ProcessTree-Right-B | `process-tree-right-b` | 진행트리-오른쪽B | 타임라인/로드맵형 |
+| BL-PR-L | ProcessTree-Left | `process-tree-left` | 진행트리-왼쪽 | 우→좌 절차형 (미구현) |
+| BL-PR-RA | ProcessTree-Right-A | `process-tree-right-a` | 진행트리-오른쪽A | (레거시 — right로 정규화) |
+| BL-PR-RB | ProcessTree-Right-B | `process-tree-right-b` | 진행트리-오른쪽B | (레거시 — right로 정규화) |
 
 ---
 
@@ -274,55 +296,43 @@ easymindmap은 아래 6개 Layout 그룹을 사용한다.
 | Hierarchy | Hierarchy-Left | tree-line |
 | ProcessTree | ProcessTree-Right | tree-line |
 | ProcessTree | ProcessTree-Left | tree-line |
-| ProcessTree | ProcessTree-Right-A | tree-line |
-| ProcessTree | ProcessTree-Right-B | tree-line |
-| Freeform | Freeform | tree-line |
-| Kanban | Kanban | tree-line |
+| ProcessTree | ProcessTree-Right-A | tree-line (레거시 — right로 정규화) |
+| ProcessTree | ProcessTree-Right-B | tree-line (레거시 — right로 정규화) |
+| Freeform | Freeform | **curve-line (현재 곡선 — 방사형 경로)** |
+| Kanban | Kanban | — (UI 미표시, 보드 렌더러) |
 
 ---
 
 ## 7.2 한 줄 정리
 
 ```text
-Radial = curve-line
-Others = tree-line
+Radial + Freeform = curve-line
+구조형(Tree/Hierarchy/ProcessTree) = tree-line
+Kanban = edge 미표시
 ```
 
 ---
 
-## 7.3 왜 Freeform도 tree-line인가
+## 7.3 Freeform의 엣지 — 현재는 곡선 (구 tree-line 정책 폐기)
 
-초기에는 Freeform에서 straight-line을 고려할 수 있으나, 현재 정책 기본값은 orthogonal(tree-line)이다.  
-그러나 easymindmap의 Freeform은 완전한 다이어그램 툴이 아니라  
-“부모-자식 관계를 유지한 채 위치만 자유로운 구조”에 더 가깝다.
+> **Freeform은 현재 곡선(방사형 경로)으로 렌더링된다** — freeform은
+> radial-right 폴백으로 동작하기 때문이다. 자유배치가 정식 구현되는
+> 시점(V1+)에 tree-line 정책을 재검토한다.
 
-따라서 다음 이유로 tree-line이 더 적합하다.
+(구) 설계 논거 — tree-line이 적합하다고 본 이유 (참고용 보존):
 
 ### 1. 관계가 더 잘 보인다
 직선 연결은 노드가 자유롭게 움직일수록 대각선이 많아져 산만해질 수 있다.  
 반면 tree-line은 방향성과 부모-자식 관계를 더 분명히 드러낸다.
 
 ### 2. 전체 제품 정책이 단순해진다
-정책이 아래처럼 매우 단순해진다.
-
-```ts
-if (layoutGroup === "radial") return "curve-line"
-return "tree-line"
-```
 
 ### 3. Freeform의 본질을 해치지 않는다
 Freeform의 자유는 “노드 위치”에 있고,  
 관계선까지 완전 자유 직선으로 가는 것이 필수는 아니다.
 
-### 4. orthogonal-line(직각선) 외 별도 straight-line은 기본 정책에서 제외
-향후 고급 설정에서 아래처럼 override를 둘 수 있다.
-
-- Default
-- Curve
-- Tree
-- Straight
-
-하지만 기본 정책은 tree-line이 더 안정적이다.
+### 4. straight-line은 기본 정책에서 제외
+향후 고급 설정에서 Default / Curve / Tree / Straight override를 둘 수 있다.
 
 ---
 
@@ -390,6 +400,10 @@ export type ExtendedEdgeType =
 # 9. Layout → Edge 자동 매핑 규칙
 
 ## 9.1 기본 함수 예시
+
+> **⚠ 주의**: `resolveEdgeType`은 **정식명 기준 저장용 메타데이터일 뿐**이다.
+> 실제 렌더러(EdgeRenderer)는 이 값을 쓰지 않고 **부모 노드의 layoutType으로
+> 직접 분기**하여 경로를 그린다.
 
 ```ts
 // LayoutType 값은 domain-models.md § 2.2의 kebab-case 정의를 따른다
@@ -487,8 +501,8 @@ C cx1 cy1, cx2 cy2, x2 y2
 - Tree 계열 전체
 - Hierarchy 계열 전체
 - ProcessTree 계열 전체
-- Freeform
-- Kanban
+- (Freeform은 제외 — 현재 곡선(방사형 경로) 렌더링)
+- (Kanban은 edge 미표시 — 보드 렌더러)
 
 ### 의도
 - 구조/흐름/계층 관계 명확화
@@ -501,21 +515,14 @@ C cx1 cy1, cx2 cy2, x2 y2
 | **완전 대각선 (Straight)** | A → B를 대각선으로 직접 연결. 노드가 많으면 산만해짐 | ❌ MVP 미채택 |
 | **직각선 / Orthogonal (tree-line)** | 수평으로 이동 후 수직으로 꺾이는 형태. 트리/조직도에 가장 적합 | ✅ **MVP 채택** |
 
-### SVG 예시 (수평 전개 — Tree-Right 기준)
-```text
-M x1 y1          (부모 우측 anchor)
-L midX y1        (수평 이동)
-L midX y2        (수직 이동)
-L x2 y2          (자식 좌측 anchor)
-```
+### 실제 경로 — 레이아웃별 4종 (실구현 기준)
 
-### SVG 예시 (수직 전개 — Tree-Down 기준)
-```text
-M x1 y1          (부모 하단 anchor)
-L x1 midY        (수직 이동)
-L x2 midY        (수평 이동)
-L x2 y2          (자식 상단 anchor)
-```
+| 레이아웃 | 경로 | SVG |
+|---|---|---|
+| `tree-right` | 부모 좌하단 12px 스파인 | `M (x-w/2+12) (y+h/2) V toY H toX` |
+| `hierarchy-right` | 중앙 elbow | `M fromX fromY H midX V toY H toX` |
+| `tree-down` | V-H-V | `M x1 y1 V midY H x2 V y2` |
+| `process-tree-*` | 부모 왼쪽 14px 스파인 (화살표 없음) | `M (x-w/2+14) (y+h/2) V toY H toX` |
 
 ### 특징
 - 부모-자식 관계가 명확하다
@@ -642,10 +649,12 @@ Edge path 생성이 예측 가능해진다.
 
 ## 13.1 기본 규칙
 
-Node는 기본적으로 부모의 Layout을 상속한다.
+Node는 기본적으로 부모의 Layout을 상속한다 — 단, **값을 복사 저장하지
+않는다**. 새 노드는 `layoutType` **미지정** 상태로 생성되고, 계산 시
+상위(부모→루트) 상속으로 해석된다.
 
 ```text
-child.layoutType = parent.layoutType
+child.layoutType = (미지정) → 렌더링 시 부모의 effective layout으로 해석
 ```
 
 즉:
@@ -708,7 +717,7 @@ Root (Radial-Bidirectional)
 
 ---
 
-## 13.5 노드 이동 시 Edge 재라우팅 보강 규칙 (MVP)
+## 13.5 노드 이동 시 Edge 재라우팅 보강 규칙 (미구현 — 백로그)
 
 직각 연결선(`tree-line`)에서 노드 이동 시 경로가 끊기거나 겹쳐 보이지 않도록 아래 규칙을 적용한다.
 
@@ -717,20 +726,21 @@ Root (Radial-Bidirectional)
 3. **연결점 offset**: 노드 박스 경계에서 최소 8px 바깥 지점부터 선 시작/종료
 4. **겹침 완화**: 동일 축 중복 시 lane offset(4~8px)으로 시각적 분리
 
-> 구현 메모: Jump/Bridge(교차선 브릿지)는 V2 후보, MVP에서는 lane offset 우선 적용.
+> 구현 메모: Jump/Bridge(교차선 브릿지)는 V2 후보.
 
-### 13.5.1 Curve 제어점 보정 (Radial)
+### 13.5.1 Curve 제어점 보정 (Radial) (미구현 — 백로그)
 
-`curve-line`은 부모→자식 방향각(θ)에 비례해 제어점을 계산한다.
+> 실제 곡선은 §20.2의 markmap 식 curveBumpX(수평 중점 제어점)를 사용한다.
+> 아래 방향각 기반 보정은 백로그 설계다.
 
 - `P1 = source + k * dir(θ)`
 - `P2 = target - k * dir(θ)`
 - `k`는 거리 기반 감쇠값(`min(80, distance * 0.35)`) 권장
 
-### 13.5.2 Layout 전환 애니메이션 정책
+### 13.5.2 Layout 전환 애니메이션 정책 (미구현 — 백로그)
 
 - `radial-* ↔ non-radial` 전환 시 edge path는 120~180ms 보간 애니메이션 적용
-- 저사양/대용량 맵에서는 즉시 교체(fallback) 허용
+- 저사양/대용량 맵에서는 즉시 교체(fallback) 허용 (현재 동작: 항상 즉시 교체)
 
 ---
 
@@ -740,7 +750,7 @@ Node 생성 시 아래 속성을 부모 기준으로 상속한다.
 
 | 속성 | 상속 여부 |
 |---|---|
-| layoutType | O |
+| layoutType | O (미지정 저장 + 상속 해석 — 값 복사 아님) |
 | shapeType | O |
 | fillColor | O |
 | borderColor | O |
@@ -760,7 +770,7 @@ Node 생성 시 아래 속성을 부모 기준으로 상속한다.
 생성 시 기본값:
 
 ```ts
-newNode.layoutType = parent.layoutType
+newNode.layoutType = undefined  // 미지정 — 렌더링 시 상위 상속으로 해석 (값 복사 아님)
 newNode.shapeType = parent.shapeType
 newNode.style.fillColor = parent.style.fillColor
 newNode.style.borderColor = parent.style.borderColor
@@ -815,17 +825,15 @@ Ctrl + Space 입력으로 8개 노드 생성
 폰트는 단순 부모 상속만으로 가기보다,  
 Level 기반 기본 규칙을 두는 것이 더 안정적이다.
 
-> **스타일 상속 규칙 정본**: `docs/02-domain/domain-models.md § 6` (스타일 상속 규칙)  
-> 아래 폰트 크기 규칙은 `domain-models.md § 6` 확정값(2026-03-31)과 일치한다.
+> **스타일 상속 규칙 정본**: `docs/02-domain/domain-models.md § 6` (스타일 상속 규칙)
 
-단위는 **px**, 4단계 적용.
+단위는 **px**, 3단계 적용 (실구현 값).
 
 | depth | Font Size |
 |---|---|
-| 0 (Root) | 20px |
-| 1 | 16px |
-| 2 | 14px |
-| 3+ | 12px |
+| 0 (Root) | 18px |
+| 1 | 14px |
+| 2+ | 13px |
 
 즉:
 
@@ -994,12 +1002,12 @@ Edge:
 ## 18.5 Freeform
 
 특징:
-- node 위치는 manualPosition 우선
+- node 위치는 manualPosition 우선 (자유배치 V1+ 예정 — 현재 radial-right 폴백)
 - layout engine은 관계 유지 + 충돌 보조
 - 수동 이동이 주요 인터랙션
 
 Edge:
-- tree-line
+- **curve-line (현재 곡선 — 방사형 경로)** — 자유배치 정식 구현 시 tree-line 재검토
 
 ---
 
@@ -1052,22 +1060,23 @@ type KanbanNodeRole =
 
 ## 19.3 Kanban depth 규칙
 
-권장 규칙:
+**depth 제한 없음** — depth 3+는 카드 아래 들여쓰기 트리로 표시하며,
+depth 제한 CHECK 제약은 스키마에 없다 (구 3레벨 제한 폐기 — v1.1).
 
 - depth 0 = board
 - depth 1 = column
 - depth 2 = card
-- depth 3 이상 = 금지 또는 별도 확장 모드
-
-즉 Kanban은 일반 트리보다 더 제한된 계층 구조를 가진다.
+- depth 3 이상 = 카드 아래 들여쓰기 트리 (제한 없음)
 
 ---
 
 ## 19.4 Kanban 배치 규칙
 
+**Kanban은 레이아웃 엔진을 거치지 않는 별도 보드 렌더러**다
+(flex 기반, 컬럼 300px 고정, gap 14px) — 아래는 시각 규칙이다.
+
 ### 컬럼
-- 가로 배치
-- 동일 폭 또는 최소 폭 보장
+- 가로 배치 (flex), 폭 300px 고정
 - column orderIndex 기준 좌→우 정렬
 
 ### 카드
@@ -1076,21 +1085,10 @@ type KanbanNodeRole =
 
 ---
 
-## 19.5 Kanban 좌표 예시
+## 19.5 Kanban 좌표
 
-컬럼:
-
-```text
-x = boardLeft + columnIndex * (columnWidth + columnGap)
-y = fixedTop
-```
-
-카드:
-
-```text
-x = columnX
-y = columnTop + orderIndex * (cardHeight + cardGap)
-```
+레이아웃 엔진의 좌표 산식이 존재하지 않는다 — 보드 렌더러(flex,
+컬럼 300px 고정, gap 14px)가 DOM 흐름으로 배치한다.
 
 ---
 
@@ -1120,6 +1118,8 @@ Kanban도 데이터 구조상 parent-child 관계를 유지하므로 기본 정�
 - 이동 시 parentId 변경 + orderIndex 재계산
 - autosave patch 발생
 - undo/redo 한 번의 transaction으로 처리
+- 컬럼 순서 변경은 미구현
+
 
 ---
 
@@ -1128,10 +1128,10 @@ Kanban도 데이터 구조상 parent-child 관계를 유지하므로 기본 정�
 | 항목 | 일반 Layout | Kanban |
 |---|---|---|
 | 중심 구조 | 트리/방사형 | 컬럼+카드 |
-| 배치 방식 | subtree 계산 | 컬럼 기준 |
-| edge | curve/tree | 기본 tree |
-| 이동 | subtree 이동 | card/column 이동 |
-| 계층 제한 | 일반적으로 자유 | depth 제한 있음 |
+| 배치 방식 | subtree 계산 | 별도 보드 렌더러 (flex) |
+| edge | curve/tree | 미표시 |
+| 이동 | subtree 이동 | card 이동 (column 순서 변경은 미구현) |
+| 계층 제한 | 자유 | **depth 제한 없음 — 카드 아래 트리 (제약은 스키마에 없음)** |
 
 ---
 
@@ -1147,64 +1147,30 @@ EdgeRouter
 
 ---
 
-## 20.2 Curve Router (Radial 전용 — 방향각 기반 제어점 계산)
+## 20.2 Curve Router (실제 공식 — markmap 식 curveBumpX)
 
 적용:
 - Radial (Radial-Bidirectional / Radial-Right / Radial-Left)
+- Freeform (현재 곡선 렌더링)
 
-> **핵심:** 방사형은 360도 모든 방향으로 가지가 뻗어나가므로, 제어점(CP)이 노드의 **방향각(θ)** 에 따라 가변적으로 계산되어야 한다.  
-> 단순히 고정된 수평 곡선이 아니라 상/하/좌/우 모든 방향에 대응하는 수식이 필요하다.
+실제 곡선은 **markmap 식 curveBumpX** — 수평 중점을 제어점으로 쓰는
+Cubic Bezier이며, **방향각(θ)·curvature 파라미터는 사용하지 않는다**:
 
-입력:
-- parent anchor (x1, y1)
-- child anchor (x2, y2)
-- curvature (곡률, 기본값 0.4)
-
-출력:
-- Cubic Bezier path string (`M ... C ...`)
-
-### 방향각 기반 제어점 계산 방식
+```text
+M fromX fromY
+C midX fromY, midX toY, toX toY
+    (midX = fromX와 toX의 수평 중점)
+```
 
 ```ts
-/**
- * Radial curve-line: 방향각(θ)에 따라 제어점을 동적으로 산출
- * @param x1, y1 - 부모 노드 anchor
- * @param x2, y2 - 자식 노드 anchor
- * @param curvature - 곡률 (0.3 ~ 0.5 권장)
- */
-function curvePathRadial(
-  x1: number, y1: number,
-  x2: number, y2: number,
-  curvature: number = 0.4
-): string {
-  // 두 점 사이의 방향각 계산
-  const angle = Math.atan2(y2 - y1, x2 - x1)  // θ (라디안)
-  const dist  = Math.hypot(x2 - x1, y2 - y1)  // 두 점 사이 거리
-  const cpLen = dist * curvature               // 제어점 거리 (곡률 비례)
-
-  // 부모 쪽 제어점: 부모에서 자식 방향으로 cpLen만큼
-  const c1x = x1 + Math.cos(angle) * cpLen
-  const c1y = y1 + Math.sin(angle) * cpLen
-
-  // 자식 쪽 제어점: 자식에서 부모 방향으로 cpLen만큼
-  const c2x = x2 - Math.cos(angle) * cpLen
-  const c2y = y2 - Math.sin(angle) * cpLen
-
-  return `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`
+function curveBumpX(fromX: number, fromY: number, toX: number, toY: number): string {
+  const midX = (fromX + toX) / 2
+  return `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`
 }
 ```
 
-### 방향각 대응 예시
-
-| 자식 방향 | angle(θ) | 제어점 위치 |
-|---|---|---|
-| 오른쪽 (→) | 0° | 부모 우측, 자식 좌측 |
-| 왼쪽 (←) | 180° | 부모 좌측, 자식 우측 |
-| 아래 (↓) | 90° | 부모 하단, 자식 상단 |
-| 위 (↑) | -90° | 부모 상단, 자식 하단 |
-| 우하 대각선 | 45° | 사선 방향 제어점 |
-
-> 이 방식은 Radial-Bidirectional에서 360도 전 방향에 자연스러운 곡선을 보장한다.
+> (구) 방향각 기반 제어점 계산(`atan2` + curvature)은 사용하지 않는다 —
+> 백로그 설계로만 보존 (§13.5.1).
 
 ---
 
@@ -1216,38 +1182,17 @@ function curvePathRadial(
 - Tree
 - Hierarchy
 - ProcessTree
-- Freeform
-- Kanban
+- (Freeform 제외 — 현재 곡선 렌더링 / Kanban 제외 — edge 미표시)
 
-```ts
-/**
- * 수평 전개 레이아웃용 직각선 (Tree-Right / Hierarchy-Right 등)
- * 부모 우측 → 자식 좌측 방향
- */
-function treePath(x1: number, y1: number, x2: number, y2: number): string {
-  const midX = (x1 + x2) / 2
-  return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`
-}
+### 레이아웃별 직각선 라우팅 (실구현 — tree-right와 hierarchy-right는 서로 다른 경로)
 
-/**
- * 수직 전개 레이아웃용 직각선 (Tree-Down / Tree-Up 등)
- * 부모 하단 → 자식 상단 방향
- */
-function treePathVertical(x1: number, y1: number, x2: number, y2: number): string {
-  const midY = (y1 + y2) / 2
-  return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`
-}
-```
-
-### 레이아웃별 직각선 라우팅 방향
-
-| 레이아웃 | 전개 방향 | 사용 함수 | anchor |
-|---|---|---|---|
-| Tree-Right / Hierarchy-Right | 수평 (→) | `treePath` | 부모 우측 → 자식 좌측 |
-| Tree-Left / Hierarchy-Left | 수평 (←) | `treePath` (x 반전) | 부모 좌측 → 자식 우측 |
-| Tree-Down / ProcessTree-Right | 수직 (↓) | `treePathVertical` | 부모 하단 → 자식 상단 |
-| Tree-Up | 수직 (↑) | `treePathVertical` (y 반전) | 부모 상단 → 자식 하단 |
-| Freeform | anchor 방향 자동 선택 | 두 함수 중 적합한 것 | 두 노드 위치 차에 따라 결정 |
+| 레이아웃 | 경로 | anchor / SVG |
+|---|---|---|
+| **Tree-Right** | 부모 **좌하단 12px 스파인** — 부모 좌측+12px 지점에서 아래로 내려와 자식 좌단으로 수평 연결 | `M (x-w/2+12) (y+h/2) V toY H toX` |
+| **Hierarchy-Right** | **중앙 elbow** — 부모 우측에서 수평→수직→수평 | `M fromX fromY H midX V toY H toX` |
+| Tree-Down | V-H-V — 부모 하단 → 자식 상단 | `M x1 y1 V midY H x2 V y2` |
+| ProcessTree-Right | 부모 **왼쪽 14px 스파인** 직각선 (화살표 없음) | `M (x-w/2+14) (y+h/2) V toY H toX` |
+| Timeline | 루트→주제: 시간축 꺾임 / 주제 이하: 왼쪽 스파인 | `M rootRight rootY H topicX V topicEdge` |
 
 ### 20.3-A. 직각선 교차(Cross) 처리 — Jump / Bridge 가이드라인
 
@@ -1421,7 +1366,7 @@ function getEdgeStyle(
 // 사용 예시
 const edgeType = getEdgeStyle('radial-bidirectional')  // → 'curve-line'
 const edgeType2 = getEdgeStyle('tree-right')           // → 'tree-line'
-const edgeType3 = getEdgeStyle('freeform')             // → 'tree-line'
+const edgeType3 = getEdgeStyle('freeform')             // → 'curve-line' (현재 곡선 — 방사형 경로)
 ```
 
 **이 구조의 장점:**
@@ -1492,8 +1437,9 @@ Kanban
 ## 27.2 Edge 정책
 
 ```text
-Radial → curve-line
-Others → tree-line
+Radial + Freeform → curve-line (곡선 — Freeform은 자유배치 구현 시 재검토)
+구조형(Tree/Hierarchy/ProcessTree) → tree-line (레이아웃별 실제 경로 §20.3)
+Kanban → edge 미표시
 ```
 
 ---
@@ -1512,9 +1458,9 @@ subtree override allowed
 ## 27.4 Kanban 정책
 
 ```text
-Kanban = board/column/card 구조
-정책상 edge = tree-line
-표시는 renderer에서 조절 가능
+Kanban = board/column/card 구조 (depth 제한 없음 — depth 3+는 카드 아래 트리)
+레이아웃 엔진을 거치지 않는 별도 보드 렌더러 (flex, 컬럼 300px, gap 14px)
+edge는 UI 미표시
 ```
 
 ---
@@ -1523,12 +1469,12 @@ Kanban = board/column/card 구조
 
 | 문서 | 관련 내용 |
 |------|---------|
-| `docs/02-domain/domain-models.md § 2.2` | LayoutType 전체 15종 정의 (kebab-case DB 저장값 정본) |
+| `docs/02-domain/domain-models.md § 2.2` | LayoutType 정의 (유니언 22개 — timeline 포함, UI 실사용 9종, kebab-case DB 저장값 정본) |
 | `docs/02-domain/domain-models.md § 6` | 스타일 상속 규칙, depth별 fontSize 확정값 |
 | `docs/03-editor-core/layout/08-layout.md § 4.1` | LayoutType 목록, Layout Engine 기능 정의 |
-| `docs/03-editor-core/layout/08-layout.md § 6.6` | Kanban depth 규칙 (board/column/card, `chk_nodes_kanban_depth`) |
+| `docs/03-editor-core/layout/08-layout.md § 6.6` | Kanban depth 규칙 (board/column/card — depth 제한 없음, 카드 아래 트리, 제약은 스키마에 없음) |
 | `docs/03-editor-core/layout/08-layout.md § 18` | 에지 렌더링 정책 (Kanban = 엣지 미표시) |
-| `docs/02-domain/db-schema.md § 3` | nodes 테이블 DDL, `chk_nodes_layout_type` CHECK 제약 |
+| `docs/02-domain/db-schema.md § 3` | nodes 테이블 DDL (`chk_nodes_layout_type` DB CHECK 미적용 — 값 검증은 앱) |
 | `docs/03-editor-core/state-architecture.md` | MindmapDocument, Document Store, 5-Store 구조 |
 | `docs/03-editor-core/node/02-node-editing.md` | 노드 생성/이동 시 layoutType 상속 적용 |
 
@@ -1537,6 +1483,7 @@ Kanban = board/column/card 구조
 # 29. 한 줄 최종 결론
 
 > easymindmap의 부모-자식 연결선은  
-> **방사형 계열만 curve-line, 나머지 모든 Layout은 tree-line** 을 사용하며,  
-> Node는 기본적으로 부모의 Layout과 Style을 상속하고,  
+> **방사형 계열과 Freeform(현재 곡선)은 curve-line, 구조형 Layout은
+> 레이아웃별 tree-line(§20.3), Kanban은 미표시** 를 사용하며,  
+> Node는 기본적으로 부모의 Layout(미지정+상속 해석)과 Style을 상속하고,  
 > 필요 시 subtree 단위로 Layout을 override 할 수 있다.

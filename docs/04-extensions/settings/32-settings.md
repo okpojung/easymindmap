@@ -1,4 +1,7 @@
 # 32. Settings
+
+> ⚠️ **대부분 미구현 — 설계본.** 구현된 것은 테마(다크모드, SETT-02·툴바 토글)뿐이며 나머지 메뉴는 '준비 중' 안내만 노출된다(2026-08-04).
+
 ## SETTINGS
 
 * 문서 버전: v1.0
@@ -279,7 +282,7 @@ document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
 
 ### 12. 구현 우선순위
 
-#### MVP
+#### 1단계 (V1)
 * SETT-01 프로필 설정 (표시 이름)
 * SETT-02 테마 설정 (라이트/다크/시스템)
 * SETT-04 기본 레이아웃 설정

@@ -34,19 +34,19 @@ easymindmap은 단순한 아이디어 정리 도구가 아니라,
 ## 핵심 가치 제안
 
 1. **웹 기반 Mindmap Editor** — 설치 없이 브라우저에서 즉시 사용
-2. **15종 레이아웃** — 방사형(3종) / 트리(4종) / 계층형(2종) / 진행트리(4종) / 자유배치 / **Kanban 보드형** 지원
+2. **9종 레이아웃** — 방사형(2종) / 트리(2종) / 계층형 / 진행트리 / 시간배치(타임라인) / 자유배치 / **Kanban 보드형** 지원
 3. **노드 배경 이미지** — preset 또는 직접 업로드, fit/position/overlay 설정 (`NodeBackgroundImage` 타입, **V1**)
 4. **AI 기반 자동 생성** — 질문 하나로 마인드맵 초안 생성 (AI-01), 선택 노드 AI 확장 (AI-02); 협업 중(2명 이상)에는 AI 기능 비활성
 5. **AI 실행형 절차 (Workflow)** — step 기반 절차 생성 + 오류 해결 + 최종 정제 → runbook 완성 (V1.5); solo 편집 모드 전용 (WFLOW-01~12)
-6. **Note Code Block** — paragraph / code_block / warning / tip / checklist 블록 구조, 언어별 syntax highlight + Copy 버튼
-7. **실시간 자동 저장** — 편집 중 항상 DB에 보존 (patch 기반, 텍스트/스타일 800ms debounce / 구조 변경 0ms 즉시)
-8. **Standalone HTML Export** — 단일 HTML 파일로 웹서버에 그대로 퍼블리싱 / Publish URL 생성 (`/p/{publishId}`)
+6. **Note Code Block** — paragraph / code_block / table / checklist 블록 구조, 언어별 syntax highlight + Copy 버튼
+7. **자동 저장** — 서버 맵에 연결돼 있으면 편집이 멎고 1.5초 뒤 문서 스냅샷 저장, 저장 시점마다 버전 히스토리 + 단일 세션 편집 잠금
+8. **Standalone HTML Export** — 단일 HTML 파일로 웹서버에 그대로 퍼블리싱 / Publish URL 생성(계획 — V1)
 9. **WBS 모드 + Redmine 연동** — 노드에 시작일·종료일·마일스톤·진척률 설정(WBS-01~05), Redmine 이슈 양방향 동기화 + BullMQ 비동기 처리 + AES-256-GCM 암호화 (RDMN-01~08, V1)
 10. **실시간 협업** — 다중 사용자 동시 편집, Presence·커서 공유·Soft Lock(5초 TTL), scope 기반 편집 범위 제한, 맵 단위 실시간 채팅 (COLLAB-01~17, V1~V3)
 11. **다국어 자동 번역** — 열람자 언어로 노드 텍스트 자동 번역(DeepL 1차 / LLM fallback), 채팅 메시지 실시간 번역, 3단계 번역 정책 계층 (TRANS-01~11, V2)
 12. **대시보드 모드** — 외부 데이터 연동 live 대시보드, Polling → Redis Pub/Sub Push 진화 경로, Flash 하이라이트 (DASH-01~05, V3)
 13. **Obsidian 연동** — Obsidian Vault ↔ easymindmap Markdown 양방향 동기화, Wikilink/callout/태그 처리 (OBS-01~05, V1 이후)
-14. **사용자 설정** — 테마(라이트/다크/시스템), 기본 레이아웃, 번역 언어, UI 표시 환경설정, 대시보드 API Key 관리 (SETT-01~07)
+14. **사용자 설정** — 테마(라이트/다크)는 구현 완료; 기본 레이아웃, 번역 언어, UI 표시 환경설정, 대시보드 API Key 관리는 준비 중 (SETT-01~07, V1~)
 
 ---
 
@@ -84,7 +84,7 @@ easymindmap은 단순한 아이디어 정리 도구가 아니라,
 - 절차 정제(cleanup) → 재사용 가능한 runbook (SOP)
 - note 내 code block (paragraph/code_block/warning/tip/checklist) + copy 기능
 - 다국어 자동 번역 (협업 차별화) — DeepL + LLM fallback, 3단계 정책 계층
-- Kanban 보드형 레이아웃 (업무 관리 통합, 3레벨 제한)
+- Kanban 보드형 레이아웃 (업무 관리 통합 — 깊은 서브트리는 중첩 카드)
 - WBS 모드 + Redmine 연동 (프로젝트 관리 통합, BullMQ 비동기 + AES-256-GCM)
 - Obsidian 연동 (PKM 도구 ↔ Markdown 양방향 동기화, Wikilink/callout 처리)
 - scope 기반 협업 편집 범위 제한 (level / node scope)

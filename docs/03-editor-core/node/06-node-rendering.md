@@ -1,6 +1,7 @@
 ## NODE_RENDERING
-- 문서 버전: v2.0
+- 문서 버전: v2.1
 - 작성일: 2026-04-06
+- 최종 업데이트: 2026-08-04 — 현행화: 노드·엣지 모두 SVG 렌더(HTML은 편집 오버레이·팝오버), heading 강조 없음(# 제거 저장), 코드=노드 폭 확장 패널, 크기 실측값(minW 160/130·maxW 260/320·수동 90~900·높이 상한 없음), NR-05 overflow·NR-06 LOD·컬링 미구현, zoom 퍼센트 2~400.
 - 수정 내용:
   - title/Title 영역 개념 제거
   - node는 단일 content 기반 렌더링으로 정리
@@ -22,11 +23,11 @@
 ### 2. 기능 범위
 - 포함:
   - markdown node 렌더링
-  - code node 렌더링
+  - 코드 펜스(코드 패널) 렌더링
   - node 크기 자동 계산
   - 자동 줄바꿈 및 수동 줄바꿈 반영
-  - overflow 축약/펼침
-  - zoom 기반 정보량 제어(LOD)
+  - overflow 축약/펼침 (미구현 — 후속 과제)
+  - zoom 기반 정보량 제어(LOD) (미구현)
   - 링크, 리스트, 첨부 아이콘 등 보조 요소 렌더링
 - 제외:
   - 콘텐츠 수정 로직 (→ NODE_CONTENT)
@@ -40,38 +41,36 @@
 | 기능ID | 기능명 | 설명 | 주요 동작 |
 |---|---|---|---|
 | NR-01 | markdown 렌더링 | markdown content 표시 | parse → render |
-| NR-02 | code 렌더링 | code node 표시 | code UI |
+| NR-02 | code 렌더링 | 본문 코드 펜스 → 코드 패널 표시 | code UI |
 | NR-03 | 자동 크기 | content 기반 auto size + max-size 제한 | responsive |
 | NR-04 | 줄바꿈 처리 | markdown/code 별도 줄바꿈 정책 | wrap policy |
-| NR-05 | overflow 제어 | 조건 기반 collapse + expand | progressive display |
-| NR-06 | zoom 대응 | scale + LOD 기반 정보량 제어 | adaptive |
+| NR-05 | overflow 제어 (미구현) | [미구현 — 후속 과제] 조건 기반 collapse + expand | progressive display |
+| NR-06 | zoom 대응 (미구현) | [미구현] scale + LOD 기반 정보량 제어 — 현행은 단순 scale | adaptive |
 | NR-07 | 첨부/링크 표시 | 링크/첨부 아이콘 표시 | inline accessory |
 | NR-08 | preview/edit 전환 | view mode / edit mode 전환 | rendered/raw |
 
 ---
 
 ### 4. 기능 정의 (What)
-- node 본문은 **`nodes.text` 단일 필드**를 사용한다.
+- node 본문은 **`node.text` 단일 필드**를 사용한다 (문서 JSON — `MindNode`, 노드 타입 필드 없음).
 - 별도의 title 필드는 존재하지 않는다.
-- 렌더링은 `nodes.text` 전체를 기준으로 수행한다.
-- 다만 본문 내부 구조(예: 첫 heading, 첫 줄, 리스트, 링크, 코드)를 분석하여 시각적으로 강조할 수 있다.
-- 즉, “제목처럼 보이는 부분”이 있을 수는 있으나, 그것은 별도 데이터 필드가 아니라 **렌더링 결과**이다.
+- 렌더링은 `node.text` 전체를 기준으로 수행한다.
+- heading 강조는 없다 — Markdown 불러오기 시 `#` 기호는 제거되어 저장되므로, 렌더 시점에 heading 개념 자체가 없다.
 
-#### 예시 1: markdown node
+#### 예시 1: 일반 노드 (실제 형태)
 ```json
 {
-  "text": "## 에버그린복지재단\n- 산하시설\n- 운영법인",
-  "node_type": "text"
+  "id": "n12",
+  "text": "에버그린복지재단\n- 산하시설\n- 운영법인"
 }
 ````
 
-#### 예시 2: code node
+#### 예시 2: 코드 펜스가 든 노드 (실제 형태 — 별도 code 타입 없음)
 
 ```json
 {
-  "text": "sudo apt install apache2 -y",
-  "node_type": "code",
-  "style_json": { "codeLanguage": "bash" }
+  "id": "n13",
+  "text": "설치 명령\n```bash\nsudo apt install apache2 -y\n```"
 }
 ```
 
@@ -79,26 +78,23 @@
 
 ### 4.1 저장 모델과의 연결 규칙
 
-- 렌더링 입력 원본은 `nodes.text` 이다.
-- note는 본문 렌더 트리와 분리하며, 필요 시 보조 패널/expand UI에서 `node_notes.content`를 표시한다.
+- 렌더링 입력 원본은 `node.text` 이다.
+- note(`node.notes[]`)는 본문 렌더 트리와 분리한다 — 노드에는 종류별 배지(T/C/⊞/✓)만 표시하고, 클릭 시 **노트 팝업 뷰어**(NoteViewerPopover)로 내용을 보여준다.
 - Markdown list는 기본적으로 node 내부 렌더링 대상으로 처리한다.
-- `node_type='code'`인 경우 raw code block 렌더링 정책을 우선 적용한다.
-- 본문(`text`)과 스타일(`style_json`)은 분리한다.
+- 본문의 ``` 코드 펜스는 **본문 펜스 패널**(언어 라벨·⧉ 복사·✎ 편집 팝업)로 렌더한다 — 별도 code 노드 타입은 없다.
+- 본문(`text`)과 스타일(`style`)은 분리한다.
 
 ---
 
 ### 5. 동작 방식 (How)
 
-#### 5.1 렌더링 기본 흐름
+#### 5.1 렌더링 기본 흐름 (현행 5단계)
 
-1. node의 node_type 확인
-2. text 또는 code 렌더러 선택
-3. content 구조 분석
-4. node width/height 계산
-5. 줄바꿈 정책 적용
-6. overflow 여부 판정
-7. zoom level에 맞는 LOD 정책 적용
-8. 최종 렌더링 수행
+1. **펜스·표 분리** — 본문에서 ``` 코드 펜스와 파이프 표를 원문 줄 위치(앵커) 기준으로 분리
+2. **텍스트 파싱** — 남은 텍스트를 줄 단위로 파싱 (인라인 마커 6종 구간 분해 포함)
+3. **인라인 사진 배치** — `images[]`의 afterLine 앵커로 각 사진 밴드 위치 계산
+4. **크기 계산** — `sizeNodeForText()`로 노드 width/height 산출 (줄바꿈·펜스·표·사진 반영)
+5. **그리기** — NodeRenderer가 SVG로 최종 렌더 (HTML 내보내기 뷰어도 동일 규칙)
 
 ---
 
@@ -106,22 +102,20 @@
 
 * node는 단일 content만 렌더링한다.
 * 별도의 title 영역 / body 영역으로 데이터 구조를 나누지 않는다.
-* 단, markdown heading 또는 첫 줄은 시각적으로 강조될 수 있다.
-* 이 강조는 렌더링 규칙일 뿐, 데이터 구조 분리가 아니다.
+* heading 강조는 없다 — MD 불러오기 시 `#` 기호를 제거해 저장하므로 렌더 시 heading 구분이 존재하지 않는다.
 
 ---
 
 #### 5.3 markdown node 렌더링
 
-* CommonMark + 일부 GFM 정책에 따라 렌더링한다.
-* heading, paragraph, list, checklist, inline code, link, table 일부를 표현할 수 있다.
-* 긴 내용은 overflow 정책에 따라 일부만 노출할 수 있다.
+* 문단·리스트·체크 줄·인라인 마커 6종·파이프 표를 표현할 수 있다.
 * 수동 줄바꿈(Enter 입력)과 자동 줄바꿈을 모두 반영한다.
+* heading은 없다 — MD 불러오기에서 `#` 제거 저장.
 
 예:
 
 ```md
-## 에버그린복지재단
+에버그린복지재단
 - 산하시설
 - 운영법인
 - 복지사업
@@ -129,21 +123,17 @@
 
 렌더링 예:
 
-* 첫 heading은 상대적으로 강조
 * 리스트는 bullet로 표시
-* node 크기는 내용에 따라 자동 증가
-* 너무 길면 접힘(collapse)
+* node 크기는 내용에 따라 자동 증가 (축약 없음 — 최대 폭 내 세로 확장)
 
 ---
 
-#### 5.4 code node 렌더링
+#### 5.4 코드 펜스 렌더링 (현행)
 
-* code node는 실행형 또는 명령형 콘텐츠를 표시하기 위한 별도 타입이다.
-* markdown 안의 fenced code block과는 구분된다.
-* code node는 monospace font를 사용한다.
-* 기본적으로 원문 보존을 우선한다.
-* 줄바꿈보다 가로 스크롤 또는 별도 펼침을 우선 고려한다.
-* 향후 copy, 실행, agent/MCP 연계를 고려한 UI 확장 가능성이 있다.
+* 코드는 별도 노드 타입이 아니라 **본문 ``` 코드 펜스** → **코드 패널**로 렌더된다.
+* monospace font, 코드 패널 배경, 언어 라벨, ⧉ 복사 버튼, ✎ 편집 팝업 제공.
+* 기본적으로 원문 보존을 우선한다 (공백·들여쓰기·개행 유지).
+* **가로 스크롤은 없다** — 긴 줄이 있으면 코드 패널 폭만큼 **노드 폭이 확장**된다.
 
 예:
 
@@ -154,10 +144,9 @@ sudo apt install apache2 certbot python3-certbot-apache -y
 렌더링 예:
 
 * monospace
-* code block 배경
-* copy 버튼
-* 긴 한 줄은 기본적으로 자동 줄바꿈하지 않음
-* 필요 시 가로 스크롤 또는 접힘 표시
+* code 패널 배경 + 언어 라벨
+* ⧉ 복사 버튼
+* 긴 한 줄은 자동 줄바꿈하지 않고 노드 폭 확장으로 수용
 
 ---
 
@@ -187,16 +176,13 @@ sudo apt install apache2 certbot python3-certbot-apache -y
 * 최소 크기와 최대 크기를 가진다.
 * 최대 크기를 초과하는 경우 overflow 정책으로 넘긴다.
 
-##### 6.2.3 권장 기준
+##### 6.2.3 크기 기준 (현행 실측값)
 
 ```txt
-min-width: 120px
-default-width-range: 160px ~ 320px
-max-width: 360px ~ 420px
-
-min-height: 40px
-auto-height: content 기반 증가
-max-height: overflow 정책 전환 기준으로 사용
+min-width: 160px (root) / 130px (일반)
+max-width: 260px (root) / 320px (일반) — 코드 패널·표가 더 넓으면 그만큼 확장
+수동 크기(sizeW/sizeH): 90px ~ 900px
+height: content 기반 증가 — 상한 없음 (max-height/overflow 전환 없음)
 ```
 
 ##### 6.2.4 동작 순서
@@ -204,15 +190,14 @@ max-height: overflow 정책 전환 기준으로 사용
 1. content 길이와 구조를 분석한다.
 2. 예상 줄 수와 요소 수(문단, 리스트, 링크, 첨부 등)를 반영한다.
 3. 적절한 width를 계산한다.
-4. 해당 width에서 필요한 height를 계산한다.
-5. max-height를 넘기면 overflow 상태로 전환한다.
+4. 해당 width에서 필요한 height를 계산한다. (높이 상한 없음 — overflow 전환은 [미구현 — 후속 과제])
 
 ##### 6.2.5 상세 규칙
 
 * 짧은 단일 텍스트는 한 줄 또는 두 줄 안에서 보이도록 한다.
 * 긴 단어, 긴 URL, 긴 파일명이 있어도 max-width를 넘지 않도록 한다.
 * markdown node는 읽기 가독성을 위해 width를 어느 정도 넉넉히 허용한다.
-* code node는 한 줄이 길더라도 width를 과도하게 늘리지 않는다.
+* 코드 패널·표는 예외 — 내용 폭만큼 노드 폭이 확장된다 (가로 스크롤 없음).
 * node 확장으로 sibling 간격이 지나치게 벌어지지 않도록 한다.
 
 ##### 6.2.6 사례
@@ -245,8 +230,7 @@ http://tolerance.co.kr/
 ```
 
 * width 자동 증가
-* height도 2~4줄 수준으로 증가
-* 기준 초과 시 overflow 전환
+* height도 2~4줄 수준으로 증가 (상한 없이 세로 확장)
 
 ##### 6.2.7 금지 규칙
 
@@ -267,7 +251,7 @@ http://tolerance.co.kr/
 ##### 6.3.2 기본 정책
 
 * markdown/text node는 가독성 중심 줄바꿈을 적용한다.
-* code node는 원문 보존을 우선하고 자동 줄바꿈은 보조 정책으로만 사용한다.
+* 코드 펜스는 원문 보존을 우선하고 자동 줄바꿈하지 않는다 (노드 폭 확장).
 * 사용자 수동 줄바꿈은 항상 보존한다.
 
 ##### 6.3.3 markdown/text 규칙
@@ -285,18 +269,16 @@ overflow-wrap: break-word
 word-break: normal 또는 필요 시 break-word 보조
 ```
 
-##### 6.3.4 code 규칙
+##### 6.3.4 code 규칙 (현행)
 
 * code는 기본적으로 한 줄 단위를 유지한다.
 * 공백/들여쓰기/개행을 보존한다.
-* 자동 줄바꿈은 기본 비활성 또는 옵션 처리한다.
-* 긴 한 줄은 가로 스크롤 또는 overflow 접기 정책을 우선 적용한다.
-
-권장 CSS 성격:
+* 자동 줄바꿈은 하지 않는다.
+* 긴 한 줄은 **가로 스크롤 없이 코드 패널 폭만큼 노드 폭이 확장**된다.
 
 ```txt
-white-space: pre
-overflow-x: auto
+white-space: pre (원문 보존)
+가로 스크롤 없음 — 노드 폭 확장으로 수용
 ```
 
 ##### 6.3.5 수동 줄바꿈 규칙
@@ -346,14 +328,14 @@ https://egreen.org/very/long/path/to/document/2026/final/report
 
 * 박스 밖으로 튀어나가지 않도록 break-word 허용
 
-사례 C: code node
+사례 C: 코드 펜스
 
 ```bash
 sudo apt install apache2 certbot python3-certbot-apache -y
 ```
 
 * 자동 줄바꿈보다 원문 유지 우선
-* 필요 시 가로 스크롤
+* 코드 패널 폭만큼 노드 폭 확장 (가로 스크롤 없음)
 
 ##### 6.3.8 금지 규칙
 
@@ -363,7 +345,9 @@ sudo apt install apache2 certbot python3-certbot-apache -y
 
 ---
 
-#### 6.4 NR-05 overflow 제어 규칙
+#### 6.4 NR-05 overflow 제어 규칙 [미구현 — 후속 과제]
+
+> **현행**: 본문 축약(collapse)·더보기(expand)·overflow 판정은 구현되어 있지 않다. 노드는 내용만큼 세로로 확장된다(높이 상한 없음). 긴 내용을 다루는 **현행 대체 수단**은 ① 서브트리 **접기**(collapse 토글)와 ② 긴 설명을 **노트로 분리해 노트 팝업 뷰어**로 보는 것이다. 아래 규칙은 설계안으로 보존한다.
 
 ##### 6.4.1 목적
 
@@ -413,7 +397,7 @@ sudo apt install apache2 certbot python3-certbot-apache -y
 * 필요 시 해당 subtree만 부분 relayout 한다.
 * 전체 캔버스를 강제로 다시 layout하지 않고 partial relayout을 우선한다.
 
-##### 6.4.6 node_type별 정책
+##### 6.4.6 콘텐츠 종류별 정책 (설계안 — node_type은 폐기, 종류는 본문 내용으로 구분)
 
 ###### markdown/text node
 
@@ -495,7 +479,9 @@ find /var/log -type f -name "*.log" -mtime -30 -exec grep -H "ERROR" {} \; | sor
 
 ---
 
-#### 6.6 NR-06 zoom 대응 규칙
+#### 6.6 NR-06 zoom 대응 규칙 [미구현]
+
+> **현행**: zoom은 단순 scale만 적용된다(퍼센트 2~400). LOD 기반 정보량 제어는 구현되어 있지 않다. 아래는 설계안이다.
 
 ##### 6.6.1 목적
 
@@ -567,11 +553,11 @@ find /var/log -type f -name "*.log" -mtime -30 -exec grep -H "ERROR" {} \; | sor
 
 ### 8. 성능 규칙
 
-* viewport 밖 노드는 단순화 렌더링 또는 culling 적용
-* 매우 긴 markdown은 lazy render 가능
-* code syntax highlight는 지연 적용 가능
-* expand/collapse는 전체 캔버스 full relayout보다 partial relayout 우선
-* zoom 변경 시 모든 노드를 full render하지 않고 LOD 단계별 최적화 가능
+* viewport 밖 노드 culling — [미구현] (전 노드 SVG 렌더)
+* 매우 긴 markdown은 lazy render 가능 — 설계안
+* code syntax highlight는 지연 적용 가능 — 설계안
+* 접기/펼치기는 전체 캔버스 full relayout보다 partial relayout 우선
+* zoom LOD 단계별 최적화 — [미구현]
 
 ---
 
@@ -591,30 +577,26 @@ find /var/log -type f -name "*.log" -mtime -30 -exec grep -H "ERROR" {} \; | sor
 
 ---
 
-### 10. DB 영향
+### 10. DB 영향 (현행)
 
-직접 저장보다 상태 계산 성격이 강하다. 다만 다음 상태는 저장 여부를 정책으로 선택할 수 있다.
+직접 저장보다 상태 계산 성격이 강하다.
 
-#### 저장 가능 상태
+#### 저장 상태 (현행)
 
-* is_collapsed
-* preferred_render_mode
-* last_expanded_at
-* node_view_state (개인별 상태로 분리 가능)
+* `collapsed` (노드 접힘 상태) — 문서 JSON 스냅샷에 포함되어 저장되는 유일한 렌더 관련 상태
 
 #### 비저장 계산값
 
-* measured_width
-* measured_height
+* measured_width / measured_height
 * visible_line_count
-* overflow_detected
-* lod_level
+
+> preferred_render_mode / last_expanded_at / node_view_state / overflow_detected / lod_level 은 설계 초안 — 미채택 (NR-05·NR-06 미구현).
 
 ---
 
-### 11. API 영향
+### 11. API 영향 [서버 연결 예정]
 
-기본 렌더링 자체는 프론트엔드 책임이 크지만, 다음 상태 동기화 API는 고려 가능하다.
+기본 렌더링 자체는 프론트엔드 책임이다. 현행에서 접힘 상태(`collapsed`)는 문서 스냅샷(`PUT /maps/:id/document`)에 포함되어 저장된다. 아래 노드 단위 API는 협업 단계 설계안이다.
 
 * PATCH /nodes/{id}/view-state
 * PATCH /nodes/{id}/collapse
@@ -685,9 +667,8 @@ https://egreen.org/very/long/path/to/report/final
 
 동작:
 
-* auto height 증가
-* 일정 줄 수 초과 시 collapse
-* 사용자는 더보기로 펼침 가능
+* auto height 증가 (상한 없음 — 세로 확장)
+* [미구현 — 후속 과제] 줄 수 기준 collapse·더보기 (현행 대체: 접기/노트 팝업)
 
 #### 시나리오 4: 리스트 노드
 
@@ -708,7 +689,7 @@ https://egreen.org/very/long/path/to/report/final
 * 너무 길면 일부 축약
 * 전체 구조 가독성 유지
 
-#### 시나리오 5: code node
+#### 시나리오 5: 코드 펜스 노드
 
 내용:
 
@@ -718,19 +699,17 @@ sudo apt install apache2 certbot python3-certbot-apache -y
 
 동작:
 
-* monospace
-* copy 버튼
+* monospace 코드 패널 (언어 라벨·⧉ 복사)
 * 자동 줄바꿈보다 원문 보존 우선
-* 필요 시 가로 스크롤
+* 코드 폭만큼 노드 폭 확장 (가로 스크롤 없음)
 
-#### 시나리오 6: zoom out
+#### 시나리오 6: zoom out [미구현 — LOD 설계안]
 
-동작:
+동작 (현행은 단순 scale, zoom 2~400%):
 
 * 100%에서는 full content
-* 70% 이하에서는 일부 내용 축약
-* 40% 이하에서는 구조 중심 표시
-* 사용자는 맵 구조를 더 쉽게 파악
+* 70% 이하에서는 일부 내용 축약 (설계안)
+* 40% 이하에서는 구조 중심 표시 (설계안)
 
 ---
 
@@ -763,72 +742,61 @@ sudo apt install apache2 certbot python3-certbot-apache -y
 
 ---
 
-## 좌표 시스템 완전 정의
+## 좌표 시스템 완전 정의 (현행)
 
-easymindmap은 세 가지 좌표계를 명확히 구분한다.
+easymindmap은 두 가지 좌표계를 명확히 구분한다.
 
 | 좌표계 | 이름 | 설명 | 저장 여부 |
 |--------|------|------|-----------|
-| World 좌표 | `computedX / computedY` | Layout Engine이 계산한 노드의 논리적 위치 | 런타임만 |
-| Manual 좌표 | `manualPosition.x / .y` | freeform 레이아웃 전용, 사용자가 drag한 위치 | DB 저장 |
+| World 좌표 | `LaidOutNode.x / y` (노드 **중심**) + `w / h` | Layout Engine이 계산한 노드의 논리적 위치·크기 | 런타임만 |
 | Screen 좌표 | `screenX / screenY` | 브라우저 픽셀 좌표 (렌더링에 사용) | 매 프레임 계산 |
+
+> Manual 좌표(`manualPosition`)는 **없다** — 수동 조정은 크기(`sizeW`/`sizeH`)만 지원한다. [서버 연결 예정] 자유배치 좌표 저장은 후속 과제.
 
 **World 원점 (0, 0):** 루트 노드의 중심, 캔버스 중앙이 기본 표시 기준점, Y축 아래 방향이 양수.  
 **Screen 원점 (0, 0):** 브라우저 뷰포트의 좌상단, Y축 아래 방향이 양수.
 
-### World → Screen 변환 (렌더링 시)
+### 변환 방식 (현행 — SVG viewBox + g transform)
+
+노드·엣지는 SVG 안에 그려지고, 뷰포트는 **SVG viewBox + `<g transform>`** 으로 제어한다. 줌은 캔버스 중심 `C`를 기준으로 스케일한다:
 
 ```
-screenX = worldX × zoom + panX
-screenY = worldY × zoom + panY
+screen = (world − C) · s + C + pan
+
+screenX = (worldX − Cx) × s + Cx + panX
+screenY = (worldY − Cy) × s + Cy + panY
+(C = 캔버스 중심, s = zoom scale, pan = 이동량)
 ```
 
 ### Screen → World 역변환 (마우스 → 월드)
 
 ```
-worldX = (screenX - panX) / zoom
-worldY = (screenY - panY) / zoom
+worldX = (screenX − Cx − panX) / s + Cx
+worldY = (screenY − Cy − panY) / s + Cy
 ```
 
-TypeScript 구현:
+TypeScript 개요:
 
 ```typescript
 interface ViewportState {
-  zoom: number;   // 기본값: 1.0, 범위: 0.1 ~ 4.0
+  zoom: number;   // 퍼센트 2 ~ 400 (scale 0.02 ~ 4.0)
   panX: number;   // 뷰포트 X 이동량 (픽셀)
   panY: number;   // 뷰포트 Y 이동량 (픽셀)
   width: number;  // 캔버스 요소의 실제 픽셀 너비
   height: number; // 캔버스 요소의 실제 픽셀 높이
 }
 
-function worldToScreen(worldX: number, worldY: number, viewport: ViewportState) {
+// 캔버스 중심 기준 변환
+function worldToScreen(wx: number, wy: number, v: ViewportState) {
+  const s = v.zoom / 100, cx = v.width / 2, cy = v.height / 2;
   return {
-    x: worldX * viewport.zoom + viewport.panX,
-    y: worldY * viewport.zoom + viewport.panY,
-  };
-}
-
-function screenToWorld(screenX: number, screenY: number, viewport: ViewportState) {
-  return {
-    x: (screenX - viewport.panX) / viewport.zoom,
-    y: (screenY - viewport.panY) / viewport.zoom,
+    x: (wx - cx) * s + cx + v.panX,
+    y: (wy - cy) * s + cy + v.panY,
   };
 }
 ```
 
-### CSS Transform 적용 방법
-
-캔버스 컨테이너에 단일 `transform`을 적용하여 모든 자식 요소가 동일한 변환을 받는다.
-
-```typescript
-const canvasStyle: React.CSSProperties = {
-  transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
-  transformOrigin: '0 0',  // 원점 고정: 좌상단
-};
-```
-
-> `transformOrigin: '0 0'`으로 설정해야 위 공식의 `panX`, `panY`가 정확히 적용된다.  
-> 기본값 `transformOrigin: '50% 50%'`은 공식과 다른 offset이 필요하므로 사용하지 않는다.
+> CSS `transform: translate(...) scale(...)` 방식(HTML 컨테이너)은 설계 초안 — 미채택. 현행은 SVG `viewBox` + `g transform`이다. HTML은 편집 오버레이(textarea 포털)·팝오버에만 사용한다.
 
 ---
 
@@ -899,7 +867,9 @@ function fitToScreen(
 
 ---
 
-## 뷰포트 컬링 (Viewport Culling)
+## 뷰포트 컬링 (Viewport Culling) [미구현]
+
+> 현행은 모든 노드를 SVG로 렌더한다. 아래는 대형 맵 최적화를 위한 설계안이다.
 
 현재 화면(viewport)에 포함된 노드만 렌더링하여 DOM/SVG 요소 수를 최소화한다.
 
@@ -947,12 +917,13 @@ function isNodeVisible(node: LayoutNode, viewport: ViewportState): boolean {
 
 ## 렌더링 방식 비교
 
-| 단계 | 방식 | 이유 |
+| 단계 | 방식 | 비고 |
 |------|------|------|
-| MVP | SVG (edges) + HTML (node content) | 구현 단순, CSS 스타일링 용이 |
+| 현행 | **노드·엣지 모두 SVG** | HTML은 편집 오버레이(textarea 포털)·팝오버에만 사용 |
+| 초안 (미채택) | SVG (edges) + HTML (node content) | 설계 초안 — 미채택 |
 | V2 이후 | Canvas (선택적 확장) | 10,000+ 노드 시 SVG 성능 한계 |
 
-현재 목표: SVG + HTML 방식으로 1,000 노드 / 60fps 달성.
+현재 목표: SVG 방식으로 1,000 노드 / 60fps 달성.
 
 ---
 

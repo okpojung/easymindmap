@@ -4,6 +4,8 @@
 * 문서 버전: v1.1
 * 작성일: 2026-04-14
 * 최종 갱신: 2026-05-28 (§ 21~27 추가 — UI 디자인 시안 v1.1 반영)
+
+> **최종 업데이트:** 2026-08-04 — 코드 대조 감사 반영: 실제 단축키(`+`/`-`/`0`, 휠 줌 Ctrl 불필요), 팬 방식(H 모드/휠클릭/우클릭), Minimap·줌 스냅·Breadcrumb 등 미구현 배지, §27 엣지 경로를 실구현(EdgeRenderer) 기준으로 교정
 * 참조: `docs/01-product/functional-spec.md § 5. CANVAS`, `docs/03-editor-core/state-architecture.md § 5.3`
 
 ---
@@ -28,7 +30,7 @@
   * Center Node (선택 노드를 화면 중앙으로)
   * Focus Node View (선택 노드+하위만 표시)
   * Fullscreen Mode
-  * Minimap (탐색 보조)
+  * Minimap (탐색 보조) (미구현 — 2단계)
   * World ↔ Screen 좌표 변환
   * Bottom Status Bar (zoom % / autosave 상태 / layout type 표시)
 
@@ -46,15 +48,15 @@
 
 | 기능ID     | 기능명           | 설명                        | 키보드 단축키                    | 마우스/터치               |
 | --------- | -------------- | ------------------------- | -------------------------- | --------------------- |
-| CANVAS-01 | Zoom In        | 캔버스 확대                   | `Ctrl + =`                 | `Ctrl + 휠 위`          |
-| CANVAS-02 | Zoom Out       | 캔버스 축소                   | `Ctrl + -`                 | `Ctrl + 휠 아래`         |
-| CANVAS-03 | Fit Screen     | 전체 맵을 화면에 맞춤             | `Ctrl + Shift + F`         | —                     |
-| CANVAS-04 | Pan Canvas     | 손바닥 모드로 캔버스 이동           | `Space + 드래그` / `H`       | `우클릭+드래그` / `미들버튼+드래그` |
-| CANVAS-05 | Center Node    | 선택 노드를 화면 중앙으로 이동 (줌 유지) | `Ctrl + Enter`             | 노드 우클릭 → 컨텍스트 메뉴     |
-| CANVAS-06 | 100% View      | 줌 배율을 100%로 초기화          | `Ctrl + 0`                 | —                     |
+| CANVAS-01 | Zoom In        | 캔버스 확대                   | `+` 키 (수정자 없음)             | 휠 위 (Ctrl 불필요 — Ctrl은 가속)          |
+| CANVAS-02 | Zoom Out       | 캔버스 축소                   | `-` 키 (수정자 없음)             | 휠 아래 (Ctrl 불필요 — Ctrl은 가속)         |
+| CANVAS-03 | Fit Screen     | 전체 맵을 화면에 맞춤             | — (툴바 ⊙ 버튼)         | —                     |
+| CANVAS-04 | Pan Canvas     | 캔버스 이동           | `H` (Pan 모드 토글 — Space는 자식 추가)       | `우클릭+드래그` / `휠클릭(미들버튼)+드래그` |
+| CANVAS-05 | Center Node    | 선택 노드를 화면 중앙으로 이동 (줌 유지) | 검색/아웃라인 클릭 시 자동 — 전용 단축키·메뉴 없음 | —     |
+| CANVAS-06 | 100% View      | 100% + 화면 원위치 (resetView)          | `0` 키                 | —                     |
 | CANVAS-07 | Fullscreen Mode | 브라우저 전체화면 전환             | `F11` / `ESC`로 종료          | —                     |
-| CANVAS-08 | Focus Node View | 선택 노드+하위만 표시, 상위 숨김      | `Alt + F`                  | 노드 우클릭 → 컨텍스트 메뉴     |
-| CANVAS-09 | Minimap        | 전체 맵 축소 탐색 뷰             | —                          | minimap 클릭/drag       |
+| CANVAS-08 | Focus Node View | 선택 노드+하위만 표시, 상위 숨김      | `Alt + F`                  | 툴바 🎯 버튼     |
+| CANVAS-09 | Minimap (미구현 — 2단계) | 전체 맵 축소 탐색 뷰             | —                          | minimap 클릭/drag       |
 | CANVAS-10 | Status Bar     | zoom % / autosave / layout type 표시 | —                | —                     |
 
 ---
@@ -154,19 +156,19 @@ function zoomToPoint(
 
 | 동작                  | 입력                                | 결과                    |
 | ------------------- | --------------------------------- | --------------------- |
-| 확대                  | `Ctrl + =` / `Ctrl + 휠 위`         | zoom 증가               |
-| 축소                  | `Ctrl + -` / `Ctrl + 휠 아래`        | zoom 감소               |
-| 100% 보기             | `Ctrl + 0`                        | zoom = 1.0            |
-| 전체 화면 맞춤            | `Ctrl + Shift + F`                | 전체 노드 영역에 맞게 zoom/pan |
-| 팬 (이동)              | `Space + 드래그` 또는 `우클릭 + 드래그`      | pan 이동                |
-| 선택 노드 중앙 이동         | `Ctrl + Enter`                    | 줌 유지, 선택 노드 화면 중앙     |
+| 확대                  | `+` 키 / 휠 위 (Ctrl 불필요 — Ctrl은 가속)         | zoom 증가               |
+| 축소                  | `-` 키 / 휠 아래 (Ctrl 불필요 — Ctrl은 가속)        | zoom 감소               |
+| 100% 보기 + 원위치       | `0`                        | zoom = 1.0 + resetView            |
+| 전체 화면 맞춤            | 툴바 ⊙ 버튼 (전용 단축키 없음)                | 전체 노드 영역에 맞게 zoom/pan |
+| 팬 (이동)              | `H` 모드 빈 캔버스 드래그 / 휠클릭 드래그 / 우클릭 드래그 (Space는 자식 추가)      | pan 이동                |
+| 선택 노드 중앙 이동         | 검색/아웃라인 행 클릭 시 자동 (전용 단축키·메뉴 없음)                    | 줌 유지, 선택 노드 화면 중앙     |
 | 포커스 뷰               | `Alt + F`                         | 선택 노드+하위만 표시          |
 | 전체화면                | `F11`                             | 브라우저 전체화면             |
 | 전체화면 종료             | `ESC`                             | 일반 화면 복귀              |
 | 빈 영역 클릭             | 마우스 클릭                           | 노드 선택 해제              |
 | 노드 싱글 클릭            | 마우스 클릭                           | 노드 선택 + 추가 인디케이터 표시   |
 | 노드 더블클릭             | 마우스 더블클릭                         | 텍스트 편집 모드 진입          |
-| Minimap 클릭/drag     | minimap 클릭                        | 해당 영역으로 pan 이동        |
+| Minimap 클릭/drag (미구현 — 2단계) | minimap 클릭                        | 해당 영역으로 pan 이동        |
 | 터치 핀치               | 2손가락 핀치                           | zoom 변경               |
 
 ---
@@ -179,7 +181,7 @@ function zoomToPoint(
 * Fit Screen → `worldBounds` 기준으로 zoom/pan 계산 (노드 영역 + 여백 padding)
 * Center Node → 선택 노드의 worldX/Y → screen 중앙 기준 pan 계산 (zoom 불변)
 * Focus Node View → 선택 노드 이외 상위 노드를 UI에서 숨김 처리 (DOM visibility)
-* Minimap → `worldBounds` 기준 축소 뷰, 현재 viewport 영역을 rect로 표시
+* Minimap (미구현 — 2단계) → `worldBounds` 기준 축소 뷰, 현재 viewport 영역을 rect로 표시
 
 ---
 
@@ -188,8 +190,8 @@ function zoomToPoint(
 * 무한 캔버스: SVG 기반 렌더링
 * zoom 범위: 2% ~ 400% (0.02 ~ 4.0)
 * 팬 중: 커서 `grab` → `grabbing` 전환
-* Minimap: 우하단 고정 패널, 현재 보이는 영역 표시
-* Status Bar (하단): zoom % / autosave 상태 / layout type / 커서 좌표
+* Minimap (미구현 — 2단계): 우하단 고정 패널, 현재 보이는 영역 표시
+* Status Bar (하단): zoom % / autosave 상태 / layout type / 커서 좌표(더미)
 
 ---
 
@@ -234,7 +236,7 @@ function zoomToPoint(
 
 * 선택 노드와 그 하위 Subtree 노드만 표시
 * 상위 노드 및 다른 Subtree 노드는 UI에서 숨김
-* Focus 해제: `ESC` 또는 Focus 버튼 재클릭 → 전체 노드 복원
+* Focus 해제: `Alt+F` 재입력 또는 Focus 버튼 재클릭 → 전체 노드 복원 (ESC 아님)
 * Focus 상태에서도 편집 기능은 정상 동작
 
 ---
@@ -285,7 +287,7 @@ function zoomToPoint(
 
 ---
 
-#### 6.8 Minimap 규칙
+#### 6.8 Minimap 규칙 (미구현 — 2단계)
 
 * 전체 `worldBounds` 기준으로 축소 뷰 렌더링
 * 현재 viewport 영역을 반투명 rect로 표시
@@ -326,7 +328,7 @@ function zoomToPoint(
 | zoom %        | 현재 줌 배율 (예: 75%)           | MVP    |
 | autosave 상태   | Saved / Saving... / Error  | MVP    |
 | layout type   | 현재 레이아웃 명칭 (예: 방사형-양쪽)     | MVP    |
-| 커서 좌표         | World 좌표 기준 (예: 124, -32)  | MVP    |
+| 노드 수·커서 좌표    | **더미 표시 (실데이터 연결 예정)**     | MVP    |
 | collaborator 수 | 현재 접속 중인 협업자 수             | V1~    |
 | 새 메시지 dot     | 미확인 협업 메시지 표시              | V2~    |
 
@@ -389,20 +391,20 @@ function zoomToPoint(
 #### 시나리오 1 — Fit Screen으로 전체 맵 복원
 
 1. 사용자: 팬 조작 후 맵 분실
-2. `Ctrl + Shift + F` 입력
+2. 툴바 ⊙ (Fit) 버튼 클릭
 3. 시스템: `worldBounds` 계산 → zoom/pan 재설정
 4. 전체 노드가 화면에 맞게 표시
 
 #### 시나리오 2 — 휠 줌 (커서 기준)
 
-1. 사용자: 특정 노드 위에서 `Ctrl + 휠 위`
+1. 사용자: 특정 노드 위에서 휠 위 (Ctrl 불필요 — Ctrl은 가속)
 2. 시스템: `zoomToPoint()` 계산 → panX/Y 보정
 3. 커서 위치의 노드가 제자리에 유지된 채 확대
 
 #### 시나리오 3 — Center Node
 
-1. 사용자: 노드 선택 후 `Ctrl + Enter`
-2. 시스템: 선택 노드의 worldX/Y → screen 중앙 기준 panX/Y 계산
+1. 사용자: 검색 결과 또는 아웃라인 행 클릭
+2. 시스템: 선택 노드의 worldX/Y → screen 중앙 기준 panX/Y 계산 (자동 — 전용 단축키·메뉴 없음)
 3. zoom 불변, pan만 조정하여 해당 노드 화면 중앙 배치
 
 #### 시나리오 4 — Focus Node View
@@ -410,9 +412,9 @@ function zoomToPoint(
 1. 사용자: `## 기능 정의` 노드 선택 후 `Alt + F`
 2. 시스템: 해당 노드 및 하위 Subtree만 표시, 상위 숨김
 3. 집중 편집 모드로 전환
-4. `ESC` 입력 → 전체 노드 복원
+4. `Alt+F` 재입력 또는 버튼 재클릭 → 전체 노드 복원
 
-#### 시나리오 5 — Minimap으로 빠른 탐색
+#### 시나리오 5 — Minimap으로 빠른 탐색 (미구현 — 2단계)
 
 1. 사용자: 대형 맵에서 특정 영역 탐색
 2. Minimap의 원하는 위치 클릭
@@ -424,10 +426,10 @@ function zoomToPoint(
 
 #### MVP
 
-* Zoom In / Out / 100% View
-* Fit Screen
-* Pan Canvas (Space + 드래그, 우클릭 + 드래그)
-* Center Node (Ctrl + Enter)
+* Zoom In / Out (`+`/`-`, 휠) / 100% View (`0`)
+* Fit Screen (툴바 ⊙ 버튼)
+* Pan Canvas (H 모드 / 휠클릭 / 우클릭 드래그)
+* Center Node (검색/아웃라인 클릭 시 자동)
 * World ↔ Screen 좌표 변환
 * Viewport Store 분리 구현
 * Status Bar (zoom % / autosave / layout type)
@@ -448,7 +450,7 @@ function zoomToPoint(
 
 ---
 
-### 16. Zoom 스냅 포인트 정책
+### 16. Zoom 스냅 포인트 정책 (미구현 — 백로그)
 
 휠로 줌을 조작할 때 자주 쓰이는 배율에서 짧게 멈추는 스냅 동작을 제공한다.
 
@@ -488,13 +490,13 @@ function zoomToPoint(
 | 조작 방식               | 단계 크기 | 기준점                     |
 | ------------------- | ------ | ------------------------ |
 | 툴바 버튼 (`+` / `-`)   | 5% 단위 | 화면 중앙 기준                |
-| 단축키 (`Ctrl + =` / `Ctrl + -`) | 5% 단위 | 화면 중앙 기준 |
-| 마우스 휠 (`Ctrl + 휠`)  | 5% 단위  | 마우스 커서 위치 기준 (`zoomToPoint`) |
-| 트랙패드 핀치             | 5% 단위  | 핀치 중심점 기준               |
+| 단축키 (`+` / `-` — 수정자 없음) | 5% 단위 | 화면 중앙 기준 |
+| 마우스 휠 (Ctrl 불필요 — Ctrl은 가속)  | 연속 배율  | 마우스 커서 위치 기준 (`zoomToPoint`) |
+| 트랙패드 핀치             | 연속 배율  | 핀치 중심점 기준               |
 
 #### 설계 근거
 
-* 모든 조작 방식이 5% 단위로 통일 — 세밀한 제어 제공 (2026-07: 버튼/단축키 10% → 5%)
+* 휠/핀치는 연속 배율, 버튼·단축키는 5% 단위 (2026-07: 버튼/단축키 10% → 5%)
 * 정확한 배율이 필요하면 % 표시를 클릭해 직접 입력한다 (§ 17.1)
 
 #### 17.1 배율 직접 입력 (% 클릭)
@@ -510,7 +512,7 @@ function zoomToPoint(
 
 ---
 
-### 18. Fullscreen 툴바 Auto-hide
+### 18. Fullscreen 툴바 Auto-hide (미구현 — 백로그)
 
 전체화면(Fullscreen) 모드에서 툴바 표시 방식을 별도 정의한다.
 
@@ -539,7 +541,7 @@ const handleMouseMove = (e: MouseEvent) => {
 
 ---
 
-### 19. Focus Node View — Breadcrumb (상위 경로 표시)
+### 19. Focus Node View — Breadcrumb (상위 경로 표시) (미구현 — 백로그)
 
 Focus Node View 활성 시 현재 포커스 위치의 상위 경로를 화면 상단에 표시한다.
 
@@ -580,7 +582,7 @@ Root > 전략 > AI전략 (이 노드부터 보기)
 
 ---
 
-### 20. Freeform 보조 배치 정책
+### 20. Freeform 보조 배치 정책 (자유배치 V1+ 예정)
 
 Grid Snapping과 Collision Detection은 **freeform layout에서만** 선택적으로 적용한다.
 
@@ -660,11 +662,12 @@ Auto Layout 계열에서는 Layout Engine이 좌표를 결정하므로 사용자
 
 | 그룹 | 라벨 | 버튼 | 활성 조건 | 단축키 |
 |---|---|---|---|---|
-| 노드 | **노드** | `+` 다중 자식 추가 | 선택 노드 있을 때 | `Ctrl+Space` |
+| 노드 | **노드** | `+` 자식 1개 추가 | 선택 노드 있을 때 | — (다중 추가는 캔버스 `Ctrl+Space` 팝업) |
 | 노드 | | 🗑 노드 삭제 | 선택 노드 있을 때 | `Del` |
 | 보기 | **보기** | ✋ Pan 모드 | 항상 | `H` |
 | 보기 | | 🎯 선택 Focus | 선택 노드 있을 때 | `Alt+F` |
-| 보기 | | ⊙ Fit Screen | 항상 | `Ctrl+Shift+F` |
+| 보기 | | 모두 펼치기 / 모두 접기 | 항상 | — |
+| 보기 | | ⊙ Fit Screen | 항상 | — (전용 단축키 없음) |
 | 보기 | | ⛶ Fullscreen | 항상 | `F11` |
 
 > 시각 처리: 그룹 사이에 1px divider, 그룹 시작에 9.5px 700 weight `letter-spacing: 0.4` 의 uppercase 라벨.
@@ -881,14 +884,31 @@ Viewport Store 분리 규칙(§ 6.7)을 시각적으로 명확히 한다.
 |---|---|---|
 | `radial-bidirectional` | cubic bezier (S-curve), 부드러운 곡선 | 2.2px (root→branch), 1.6px (branch→leaf) |
 | `radial-right` / `radial-left` | cubic bezier | 동일 |
-| `tree-right` / `tree-left` | orthogonal **H-V-H** (직각 가로→세로→가로) | 2.2 / 1.6 |
+| `tree-right` | **들여쓰기 스파인** (부모 좌하단 12px 위치에서 수직선 + 자식 좌단으로 수평선) | 2.2 / 1.6 |
 | `tree-up` / `tree-down` | orthogonal **V-H-V** | 2.2 / 1.6 |
-| `hierarchy-right` / `hierarchy-left` | **L-shape** (들여쓰기 가이드 라인 — 부모 좌측 12px 위치에서 수직선 + 자식 좌단으로 짧은 수평선) | 1.4 |
-| `process-tree-*` | (V1) 화살표 마커 부착 직선 | 1.8 |
+| `hierarchy-right` | **중앙 elbow** (직각 가로→세로→가로 H-V-H) | 1.4 |
+| `process-tree-*` | 왼쪽 14px 스파인 직각선 (화살표 없음) | 1.8 |
+| `timeline` | 루트→주제: 시간축을 따라가다 꺾임 / 주제 이하: 왼쪽 스파인 | 1.8 |
 | `freeform` | 곡선 (radial과 동일) | 동일 |
 | `kanban` | 엣지 비표시 (보드 컬럼/카드 시각 그룹화로 대체) | — |
 
-#### 27.1 직각 엣지 — Tree-right 예시
+#### 27.1 들여쓰기 스파인 — Tree-right 예시
+
+```text
+└─ Q1 기반 구축          ← 부모 좌하단 12px 지점에서 수직선
+   ├─ 인증 시스템         ← 수평선으로 자식 좌단 연결
+   ├─ 에디터 코어
+   └─ 자동저장 엔진
+```
+
+```ts
+// 부모 좌하단 12px 스파인
+const px = parent.x - parent.w/2 + 12;  // 부모 좌측 + 12px
+const py = parent.y + parent.h/2;       // 부모 하단
+d = `M ${px} ${py} V ${toY} H ${toX}`;
+```
+
+#### 27.2 중앙 elbow — Hierarchy-right 예시
 
 ```text
 parent right edge  ──┐                ┌── child left edge
@@ -898,28 +918,15 @@ parent right edge  ──┐                ┌── child left edge
 ```
 
 ```ts
-const fx = parent.x + parent.w/2;
-const tx = child.x - child.w/2;
-const mx = fx + (tx - fx) * 0.5;
-d = `M ${fx} ${fy} H ${mx} V ${ty} H ${tx}`;
+const midX = fromX + (toX - fromX) * 0.5;
+d = `M ${fromX} ${fromY} H ${midX} V ${toY} H ${toX}`;
 ```
 
-#### 27.2 들여쓰기 L-shape — Hierarchy-right 예시
+#### 27.3 timeline 엣지
 
-```text
-└─ Q1 기반 구축          ← 부모 하단 좌측에서 수직선
-   ├─ 인증 시스템         ← 짧은 수평선으로 자식 좌단 연결
-   ├─ 에디터 코어
-   └─ 자동저장 엔진
-```
-
-```ts
-const px = parent.x - parent.w/2 + 14;  // 부모 좌측 인덴트 가이드
-const py = parent.y + parent.h/2;
-const tx = child.x - child.w/2;
-const ty = child.y;
-d = `M ${px} ${py} V ${ty} H ${tx}`;
-```
+* 루트→주제: 시간축을 따라가다 주제 x에서 꺾여 내려/올라감
+  (`M rootRight rootY H topicX V topicEdge`)
+* 주제 이하: 왼쪽 스파인 세로 아웃라인 (08-layout.md §22 참조)
 
 ---
 

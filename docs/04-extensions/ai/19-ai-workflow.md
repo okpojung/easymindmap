@@ -1,8 +1,11 @@
 # 19. AI Workflow
 ## AI_WORKFLOW
 
+> 상태: **미구현(로드맵 V1.5) — 설계본**
+
 * 문서 버전: v1.0
 * 작성일: 2026-04-16
+* 최종 업데이트: 2026-08-04 — 미구현 설계본임을 명시
 * 참조: `docs/01-product/functional-spec.md § AI_WORKFLOW`, `docs/04-extensions/ai/18-ai.md`
 
 ---

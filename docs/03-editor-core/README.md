@@ -5,7 +5,7 @@
 Canvas, Interaction, Layout, State, History 등  
 실제 사용자가 사용하는 모든 편집 기능이 이 레이어에서 구현됩니다.
 
-> **최종 업데이트:** 2026-05-07  
+> **최종 업데이트:** 2026-08-04 — 코드 대조 감사 반영: Kanban depth 제한 폐기·선택 방식(단일/러버밴드) 등 요약 문구 현행화  
 > **변경 이력:** v1.1 — 구형 파일명 참조를 현재 번호 체계(01~17) 기준으로 전면 교체
 
 ---
@@ -50,12 +50,12 @@ Canvas, Interaction, Layout, State, History 등
 ### 🃏 캔버스 & 선택
 
 - **canvas/09-kanban.md**
-  - Kanban 보드형 레이아웃 (컬럼 / 카드 / depth 제한)
+  - Kanban 보드형 레이아웃 (컬럼 / 카드 / depth 제한 없음 — 깊은 서브트리는 카드 내 트리)
 - **canvas/10-canvas.md**
   - 캔버스 조작 (줌 / 팬 / FitScreen / Fullscreen)
   - 아웃라인 분할 보기 · 아웃라인 모드/맵 모드 전환 (에디터·HTML 뷰어 파리티)
 - **canvas/11-selection.md**
-  - 노드 선택 (단일 / 다중 / 서브트리 / 영역 선택)
+  - 노드 선택 (단일 / 러버밴드 영역 다중 선택)
 
 ---
 

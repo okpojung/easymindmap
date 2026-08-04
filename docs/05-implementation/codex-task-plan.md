@@ -1,5 +1,10 @@
 # easymindmap — Codex Task Plan (AI 개발 작업 분해)
 
+> ⚠️ **역사적 계획 문서 (2026-05 작성).** 이후 구현이 이 계획과 다르게
+> 진행된 부분이 많다 — patch 저장(800ms)→문서 스냅샷 1.5초, 5-Store→8
+> 스토어, Kanban depth 제한→폐기 등. 현행 기준은 각 기능 문서와
+> `docs/01-product/functional-spec.md`의 '구현 현황 요약'을 보라.
+
 > AI(Claude/Codex)에게 개발을 지시할 때 사용하는 작업 단위 목록.  
 > 각 Task는 독립적으로 실행 가능하고 검증 가능한 단위로 쪼개야 한다.
 

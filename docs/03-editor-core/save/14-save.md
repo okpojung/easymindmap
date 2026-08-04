@@ -1,10 +1,11 @@
 # 14. Save
 ## SAVE
 
-* 문서 버전: v1.1
+* 문서 버전: v2.0
 * 작성일: 2026-04-16
-* 최종 업데이트: 2026-05-07
+* 최종 업데이트: 2026-08-04
 * 변경 이력:
+  * v2.0 — 실제 구현 기준 현행화: Patch 저장 → **전체 스냅샷 `PUT /maps/:id/document`**, 800ms 이원화 → **1500ms 단일 디바운스**, patchId/Redis 멱등성·baseVersion 3단계 충돌·재시도/backoff·localStorage 백업 → 미채택/미구현으로 강등, 충돌 = **단일 세션 편집 잠금(map_edit_locks)**, 무변경 스킵 + buildSnapshot 정규화 절 신설, §12 를 실제 서버 7단계로 재작성.
   * v1.1 — NodePatch op 명칭을 api-spec.md v2.3 기준(`add`/`update`/`delete`/`move`)으로 통일 (CON-001 정합성 보정)
 * 참조: `docs/01-product/functional-spec.md § SAVE`, `docs/03-editor-core/history/12-history-undo-redo.md`, `docs/03-editor-core/history/13-version-history.md`
 
@@ -12,85 +13,91 @@
 
 ### 1. 기능 목적
 
-* 사용자 편집 내용을 **Patch 기반으로 자동 저장(Autosave)** 하는 기능
-* 편집 중 브라우저 종료·네트워크 오류 발생 시 데이터 손실 방지
-* 전체 문서 저장이 아닌 변경된 부분만 전송하여 네트워크 효율 최적화
-* Debounce + 즉시 저장 혼용 전략으로 성능과 안전성 동시 확보
+* 사용자 편집 내용을 **전체 문서 스냅샷으로 자동 저장(Autosave)** 하는 기능
+* 편집 중 브라우저 종료·네트워크 오류 발생 시 데이터 손실 최소화
+* 프런트 문서 모델(이미지·노트·스타일을 통째로 담은 스냅샷) 그대로를 `PUT /maps/:id/document` 로 저장 — patch 분해 없이 단순·견고
+* 1500ms 단일 디바운스 + 서버 측 무변경 스킵으로 성능과 안전성 확보
+
+> 원안의 "Patch 기반 변경분 전송" 설계는 **미채택** — 스냅샷 방식이
+> 프런트 모델과 1:1 이라 채택했다. patch 경로는 정규화 노드(협업용)
+> 설계로만 남아 있다.
 
 ---
 
 ### 2. 기능 범위
 
 * 포함:
-  * Patch 기반 자동 저장 (Debounce / 즉시 저장)
-  * 저장 상태 표시 (Saving... / Saved / Error)
-  * patchId 기반 멱등성 보장 (중복 저장 방지)
-  * baseVersion 충돌 감지 및 3단계 해소 전략
-  * 네트워크 오류 시 자동 재시도 (Exponential Backoff)
-  * localStorage 임시 백업 (최후 안전망)
-  * Undo/Redo 실행 후 자동 저장 연동
+  * 스냅샷 자동 저장 (1500ms 디바운스)
+  * **명시적 저장** — ☁ 저장 버튼 · 맵 닫기 · **다른 이름으로 저장**(map-save-as) — `keepVersion: true` 로 버전 이력 생성
+  * 저장 상태 배지 (saved / saving / dirty / error)
+  * 무변경 저장 스킵 (서버 jsonb 등가 비교 → `unchanged: true`)
+  * 단일 세션 편집 잠금 (`map_edit_locks`) 기반 충돌 차단
+  * Undo/Redo 실행 후 자동 저장 연동 (동일 스냅샷 경로)
 
 * 제외:
-  * 수동 저장 버튼 (현재 정책: autosave 전용)
-  * 버전 이력 관리 (→ VERSION_HISTORY)
+  * 버전 이력 관리 (→ VERSION_HISTORY, `13-version-history.md`)
   * Undo/Redo 히스토리 (→ HISTORY)
+  * 자동 재시도 / 오프라인 큐 / localStorage 백업 [미구현 — 백로그]
 
 ---
 
 ### 3. 세부 기능 목록
 
-| 기능ID   | 기능명              | 설명                              | 주요 동작          |
+| 기능ID   | 기능명              | 설명                              | 상태          |
 | ------- | ---------------- | ------------------------------- | -------------- |
-| SAVE-01 | 자동 저장 (Autosave) | 편집 발생 시 자동으로 서버에 patch 저장       | Debounce / 즉시  |
-| SAVE-02 | 저장 상태 표시         | Status Bar에 Saving.../Saved/Error 표시 | UI 상태 반영       |
-| SAVE-03 | 멱등성 보장           | 동일 patchId 중복 저장 차단             | Redis SET NX   |
-| SAVE-04 | 충돌 해소            | baseVersion 불일치 시 3단계 해소        | 409 Conflict 처리 |
-| SAVE-05 | 자동 재시도           | 네트워크 오류 시 Exponential Backoff    | 최대 4회 재시도      |
-| SAVE-06 | localStorage 백업  | 재시도 실패 시 로컬 임시 저장 + 복구 버튼       | 최후 안전망         |
-| SAVE-07 | Undo/Redo 저장 연동  | Undo/Redo 실행 결과도 autosave 트리거   | 새 patchId 생성   |
+| SAVE-01 | 자동 저장 (Autosave) | 문서 변경 1500ms 후 전체 스냅샷 PUT       | 구현됨  |
+| SAVE-02 | 저장 상태 표시         | 툴바 배지 saved/saving/dirty/error | 구현됨       |
+| SAVE-03 | 무변경 스킵           | 서버 jsonb 등가 비교 → 변경 없으면 아무것도 쓰지 않음 (`unchanged`)             | 구현됨   |
+| SAVE-04 | 충돌 차단            | 단일 세션 편집 잠금 — 타 세션 PUT 409, 열람은 읽기 전용        | 구현됨 (e2e93) |
+| SAVE-05 | 명시적 저장           | ☁ 저장·맵 닫기·다른 이름 저장 → `keepVersion: true`    | 구현됨      |
+| SAVE-06 | 자동 재시도 / localStorage 백업  | 네트워크 오류 시 backoff 재시도·로컬 백업       | [미구현 — 백로그]         |
+| SAVE-07 | Undo/Redo 저장 연동  | Undo/Redo 실행 결과도 동일 디바운스 저장   | 구현됨   |
 
 ---
 
 ### 4. 기능 정의 (What)
 
-#### 4.1 Debounce 저장 전략
+#### 4.1 저장 전략
 
-| 변경 유형                | 저장 타이밍        | 이유                  |
-| -------------------- | ------------- | ------------------- |
-| 텍스트 수정 / 스타일 변경      | 800ms debounce | 타이핑 중 매 키마다 저장 방지   |
-| 구조 변경 (생성/삭제/이동)     | 0ms 즉시        | 데이터 손실 위험           |
-| Layout 변경            | 0ms 즉시        | 즉시 반영 필요            |
-| 다중 노드 일괄 변경 (bulk)   | 0ms 즉시        | 트랜잭션 단위로 일괄 처리      |
+| 변경 유형                | 저장 타이밍        |
+| -------------------- | ------------- |
+| **모든 문서 변경** (텍스트·스타일·구조·레이아웃 등 구분 없음) | **1500ms 단일 디바운스** |
 
-#### 4.2 Patch 요청 구조
+> 원안의 "텍스트 800ms / 구조 변경 0ms 즉시" 이원화는 미채택 — 스냅샷
+> 방식에서는 어떤 변경이든 최종 상태 하나만 보내면 되므로 단일
+> 디바운스로 충분하다.
 
-```typescript
-interface PatchRequest {
-  clientId: string;      // 탭별 고유 ID (sessionStorage)
-  patchId: string;       // 멱등성 키: "p_{timestamp}_{counter}"
-  baseVersion: number;   // 클라이언트가 알고 있는 서버 버전
-  timestamp: string;     // ISO 8601
-  patches: NodePatch[];
-}
-
-// ※ op 명칭은 api-spec.md v2.3 §2 PATCH /maps/{mapId}/nodes 기준
-type NodePatch =
-  | { op: 'add';    nodeId: string; data: { parentId: string; text: string; orderIndex: number; layoutType?: string } }
-  | { op: 'update'; nodeId: string; data: Partial<Pick<NodeObject, 'text' | 'collapsed' | 'layoutType' | 'style' | 'backgroundImage' | 'manualPosition'>> }
-  | { op: 'delete'; nodeId: string }
-  | { op: 'move';   nodeId: string; data: { parentId: string; orderIndex: number } };
-```
-
-#### 4.3 patchId 생성 규칙
+#### 4.2 저장 요청 구조 (실제)
 
 ```typescript
-let counter = 0;
-function generatePatchId(type: 'normal' | 'undo' | 'redo' = 'normal'): string {
-  counter++;
-  const suffix = type !== 'normal' ? `_${type}` : '';
-  return `p_${Date.now()}_${counter.toString().padStart(3, '0')}${suffix}`;
+// PUT /maps/{mapId}/document
+interface SaveDocumentRequest {
+  doc: SampleMap;          // buildSnapshot() 결과 — 전체 문서 스냅샷
+  title?: string;          // 맵 제목
+  keepVersion?: boolean;   // true = 명시적 저장 → map_document_versions 에 버전 생성
+  editSession?: string;    // 편집 세션 키 — 편집 잠금(map_edit_locks) 식별자
+}
+
+// 응답
+interface SaveDocumentResponse {
+  unchanged?: boolean;     // 무변경 스킵 시 true (아무것도 쓰지 않았음)
+  // ... 저장 결과 메타
 }
 ```
+
+#### 4.3 buildSnapshot 정규화 (신설)
+
+저장 스냅샷과 로드 결과는 **같은 정규형**이어야 무변경 비교가 성립한다.
+
+* 새 맵/불러온 맵은 `edgeType`·`children` 기본값이 빠진 채 저장돼, 다시
+  열면(로드 정규화) 같은 내용인데 jsonb 가 달라 보이는 문제가 있었다
+* → `buildSnapshot()` 이 로드와 같은 정규화
+  (`normalizeMapForSnapshot` = cloneMap)를 거쳐 저장한다 (e2e90)
+* 스냅샷 v2 에는 문서 외에 **editorUi 의 `layoutType`·`spacingX/Y`** 도
+  포함된다 — 서버에서 다시 열 때 레이아웃 복원 (e2e85 [3])
+
+> 원안의 patchId 생성 규칙(`p_{timestamp}_{counter}`)은 patch 경로 전용
+> 설계로 미사용.
 
 ---
 
@@ -99,8 +106,9 @@ function generatePatchId(type: 'normal' | 'undo' | 'redo' = 'normal'): string {
 #### 5.1 사용자 동작
 
 * 편집 발생 시 자동 저장 (별도 동작 불필요)
-* Status Bar에서 저장 상태 실시간 확인 가능
-* 저장 오류 발생 시 배너 + `[임시저장 복구]` 버튼 표시
+* 툴바 배지에서 저장 상태 실시간 확인
+* ☁ 저장 / 맵 닫기 / 다른 이름으로 저장 = 명시적 저장 (버전 생성)
+* 저장 오류 시 배지가 error 로 — 다음 편집/저장 시 다시 시도
 
 ---
 
@@ -110,103 +118,103 @@ function generatePatchId(type: 'normal' | 'undo' | 'redo' = 'normal'): string {
 사용자 편집
     │
     ▼
-Document Store 즉시 메모리 반영
+documentStore 즉시 메모리 반영 (+ past 스택 push)
     │
     ▼
-autosaveStore.markDirty(patch)
-    ├─ 구조 변경 → 즉시 flush
-    └─ 텍스트/스타일 → 800ms debounce
+saveState = 'dirty' → 1500ms 디바운스
     │
     ▼
-PATCH /maps/{mapId}/nodes
-    ├─ 1. patchId 중복 검사 (Redis SET NX)
-    ├─ 2. baseVersion 비교 → 불일치 시 409
-    ├─ 3. 각 patch 적용 (nodes 테이블)
-    ├─ 4. maps.current_version + 1
-    └─ 5. map_revisions INSERT
+buildSnapshot() (normalizeMapForSnapshot 정규화)
+    │
+    ▼
+PUT /maps/{mapId}/document { doc, title, editSession }   ← 자동저장은 keepVersion 없음
+    ├─ 소유권·편집 잠금 확인
+    ├─ jsonb 등가 비교 → 같으면 unchanged (쓰기 없음)
+    └─ map_documents upsert
+    │
+    ▼
+saveState = 'saved' (실패 시 'error')
 ```
 
 ---
 
-#### 5.3 충돌 해소 3단계 전략
+#### 5.3 충돌 차단 — 단일 세션 편집 잠금
 
-| 단계  | 처리 방식                                         |
-| --- | --------------------------------------------- |
-| 1단계 | 자동 rebase — 최신 버전 pull 후 patch 재적용            |
-| 2단계 | 자동 rebase 실패 → 사용자 선택 (내 변경 유지 / 서버 채택 / 나중에) |
-| 3단계 | 해소 불가 → localStorage 백업 + 복구 버튼              |
+> 원안의 "baseVersion 3단계 해소(rebase → 사용자 선택 → localStorage
+> 백업)"는 미채택. 충돌을 **사후 해소가 아니라 사전 차단**한다.
 
----
-
-#### 5.4 재시도 전략
-
-```
-1차 실패 → 1초 대기 → 재시도
-2차 실패 → 2초 대기 → 재시도
-3차 실패 → 4초 대기 → 재시도
-4차 실패 → 8초 대기 → 재시도
-5차 실패 → Error 상태 + localStorage 백업
-```
+* 저장 시 `map_edit_locks` 에 편집 세션 잠금 1행 (TTL **60초**, 하트비트 **25초** 갱신)
+* 다른 세션(브라우저)이 같은 맵을 열면: 🔒 **읽기 전용** (배너 상시 + 토스트, 서버 링크 없음 → 다른 이름 저장만 유도)
+* 다른 세션 키로 직접 PUT: **409** "다른 세션(브라우저)에서 편집 중"
+* 잠금 세션이 맵을 닫으면 잠금 해제 → 다른 세션이 편집권 획득 (e2e93)
 
 ---
 
-#### 5.5 Status Bar 표시
+#### 5.4 재시도 전략 — 없음 [미구현 — 백로그]
 
-| 상태         | 표시                    |
+* Exponential Backoff 자동 재시도는 구현하지 않았다
+* 저장 실패 시 상태 배지가 **error** 로 표시될 뿐이며, 다음 문서 변경/명시적 저장에서 다시 PUT 을 시도한다
+
+---
+
+#### 5.5 저장 상태 배지 (실제 4종)
+
+| 상태 (`autosaveStore.saveState`) | 의미                    |
 | ---------- | --------------------- |
-| 저장 중       | `Saving...` (spinner) |
-| 저장 완료      | `Saved` ✓             |
-| 재시도 중      | `Retrying...`         |
-| 최종 오류      | `⚠ Save Error`        |
+| `saved`       | 저장 완료 (기본)  |
+| `saving`      | PUT 진행 중             |
+| `dirty`      | 변경 있음 — 디바운스 대기 중         |
+| `error`      | 마지막 저장 실패        |
+
+* 표시는 툴바 배지 하나 — `autosaveStore` 는 이 배지용 `saveState` 1개만 관리한다
 
 ---
 
 ### 6. 규칙 (Rule)
 
-#### 6.1 즉시 저장 대상
-* 노드 생성 / 삭제 / 이동
-* Layout 변경 / Bulk 변경
+#### 6.1 저장 타이밍
+* 모든 문서 변경 = 1500ms 단일 디바운스 (즉시 저장 유형 구분 없음)
+* 명시적 저장(☁·맵 닫기·다른 이름 저장)은 즉시 + `keepVersion: true`
 
-#### 6.2 Debounce 대상
-* 텍스트 수정 (800ms)
-* 스타일 변경 (800ms)
+#### 6.2 무변경 스킵
+* 서버가 현재 문서와 새 문서를 **jsonb 등가**로 비교 (키 순서 무관)
+* keepVersion 이면 **마지막 버전의 doc·title 과도** 비교
+* 둘 다 같으면 아무것도 쓰지 않고 `unchanged: true` — 문서·버전·`maps.updated_at` 모두 그대로
+* 명시적 저장 버튼은 이때 "변경된 내용이 없어 그대로 두었습니다" 안내 (e2e90)
 
-#### 6.3 멱등성 규칙
-* 동일 `patchId` 재전송 시 200 OK 반환 (재처리 없음)
-* Undo/Redo 후 저장 시 반드시 새 `patchId` 생성
+#### 6.3 멱등성
+* patchId/Redis 기반 멱등성은 미사용 — 스냅샷 PUT 은 그 자체로 멱등이고, 무변경 스킵이 중복 쓰기를 막는다
 
 #### 6.4 권한 규칙
 
-| 역할          | Autosave |
-| ----------- | -------- |
-| owner       | ✅        |
-| editor      | ✅        |
-| viewer      | ❌        |
-| public_read | ❌        |
+* 현재: **소유자 단독** — 소유자의 편집 세션만 저장 가능 (타 사용자 404, 타 세션 409/읽기 전용)
+* (계획 — 협업 V1) editor/viewer 역할 구분
 
 ---
 
 ### 7. 예외 / 경계 (Edge Case)
 
-* **오프라인 상태**: 재시도 큐에 patch 누적 → 온라인 복귀 시 순차 전송
-* **다중 탭 동시 편집**: `clientId` + `baseVersion`으로 충돌 감지 후 해소 전략 적용
-* **새로고침 직전 미저장**: `beforeunload` 이벤트에서 즉시 flush 시도
-* **viewer 편집 시도**: 권한 체크로 API 호출 전 차단
-* **대용량 patch (100+ 노드)**: 분할 전송 처리
+* **다른 세션 동시 편집**: 편집 잠금으로 사전 차단 (§5.3) — 읽기 전용 세션의 ☁ 저장은 새 맵(사본) 저장 대화상자
+* **저장 실패**: 배지 error — 자동 재시도 없음
+* **무변경 저장/닫기**: unchanged 스킵 (§6.2)
+* **오프라인 큐 누적 → 온라인 복귀 순차 전송**: [미구현 — 백로그]
+* **`beforeunload` 즉시 flush**: [미구현 — 백로그] — 디바운스 창(1.5초) 안에 탭을 닫으면 마지막 변경이 유실될 수 있다
+* **localStorage 임시 백업 + 복구 버튼**: [미구현 — 백로그]
 
 ---
 
 ### 8. DB 영향
 
-* `nodes` — patch 적용 대상
-* `maps.current_version` — 저장마다 +1 증가
-* `map_revisions` — patch_json 영구 저장
+* `map_documents` — 현재 문서 스냅샷 (upsert 대상)
+* `maps.title` / `maps.updated_at` — 저장 시 갱신 (무변경이면 그대로)
+* `map_document_versions` — keepVersion 저장 시 버전 INSERT (`13-version-history.md`)
+* `map_edit_locks` — 편집 세션 잠금 (TTL 60초)
 
 ---
 
 ### 9. API 영향
 
-* `PATCH /maps/{mapId}/nodes` — autosave 핵심 엔드포인트
+* `PUT /maps/{mapId}/document` — 저장 핵심 엔드포인트 (자동저장·명시적 저장 공통)
 
 ---
 
@@ -215,146 +223,78 @@ PATCH /maps/{mapId}/nodes
 * VERSION_HISTORY (`13-version-history.md`)
 * HISTORY (`12-history-undo-redo.md`)
 * NODE_EDITING (`02-node-editing.md`)
-* COLLABORATION (`25-map-collaboration.md`)
+* 문서함 (`document-library.md` — 첫 저장 대화상자·이름 규칙)
 
 ---
 
-### 11. 구현 우선순위
+### 11. 구현 상태
 
-#### MVP
-* 구조 변경 즉시 저장 / 텍스트 debounce 저장
-* patchId 멱등성 / Status Bar 표시
-* 네트워크 오류 재시도 (4회)
+#### 구현됨
 
-#### 2단계
-* baseVersion 충돌 해소 3단계
-* localStorage 임시 백업 + 복구 버튼
+* 1500ms 디바운스 스냅샷 자동저장 (e2e-cloud2)
+* 명시적 저장 3경로 (☁·맵 닫기·다른 이름 저장) + keepVersion
+* 상태 배지 4종
+* 무변경 스킵 + buildSnapshot 정규화 (e2e90)
+* 단일 세션 편집 잠금 (e2e93)
 
-#### 3단계
-* 오프라인 큐 / 다중 탭 고도화
+#### [미구현 — 백로그]
 
----
-
-### 12. 서버 저장 처리 세부 단계
-
-#### 12.1 전체 처리 순서
-
-`autosave-engine.md`에서 정의된 서버 측 전체 처리 흐름은 다음과 같다.
-
-```
-PATCH /maps/{mapId}/nodes 수신
-        │
-        ▼
-1. patchId 중복 검사 (Redis SET NX로 구현)
-   이미 처리됨 → 200 OK 반환 (멱등성 보장)
-        │
-        ▼
-2. baseVersion vs current_version 비교
-   불일치 → 409 Conflict { currentVersion }
-        │
-        ▼
-3. 트랜잭션 시작
-   - 각 patch 적용 (nodes UPDATE/INSERT/DELETE)
-   - moveNode 패치: orderIndex 삽입 전 gap 검사 → [12.2 참조]
-   - current_version + 1
-   - map_revisions INSERT (patch_json 포함)
-        │
-        ▼
-4. Redis snapshot:{mapId} DEL (캐시 무효화) → [12.3 참조]
-        │
-        ▼
-5. WebSocket broadcast (협업 참가자) → [12.4 참조]
-        │
-        ▼
-6. 200 OK { newVersion }
-```
+* 네트워크 오류 자동 재시도 (backoff)
+* localStorage 임시 백업 + 복구
+* `beforeunload` 즉시 flush / 오프라인 큐
 
 ---
 
-#### 12.2 orderIndex 재정규화 트리거
+### 12. 서버 저장 처리 세부 단계 (실제)
 
-`moveNode` 패치를 적용할 때, 삽입 위치 앞뒤 노드의 `orderIndex` 간격이 너무 좁아지면 재정규화를 수행한 뒤 재삽입한다.
+`PUT /maps/{mapId}/document` 수신 시 서버는 아래 7단계를 수행한다.
 
 ```
-moveNode 패치 처리 시:
-  prev_order = 삽입 위치 직전 노드의 orderIndex
-  next_order = 삽입 위치 직후 노드의 orderIndex
-
-  if |prev_order - next_order| < 0.001:
-    → renormalizeOrderIndex() 실행 (전체 형제 노드 orderIndex 재부여)
-    → 재정규화 완료 후 moveNode 재삽입
-  else:
-    → 일반 삽입
+PUT /maps/{mapId}/document { doc, title, keepVersion, editSession }
+        │
+        ▼
+1. 소유권 확인 — 소유자가 아니면 404
+        │
+        ▼
+2. 편집 잠금 확인 (map_edit_locks)
+   다른 세션이 유효 잠금 보유 → 409 "다른 세션(브라우저)에서 편집 중"
+   내 세션이면 잠금 생성/하트비트 갱신 (TTL 60초)
+        │
+        ▼
+3. jsonb 등가 비교 (키 순서 무관)
+   현재 문서와 동일 + (keepVersion 이면) 마지막 버전과도 동일
+   → 아무것도 쓰지 않고 { unchanged: true } 반환
+        │
+        ▼
+4. 저장 쿼터 확인 — 초과 시 거부 (413 계열 안내)
+        │
+        ▼
+5. map_documents upsert (전체 스냅샷)
+        │
+        ▼
+6. maps.title / updated_at 갱신
+        │
+        ▼
+7. keepVersion: true 이면 map_document_versions INSERT
+   (version = MAX(version)+1, layout_type·node_count·attach_bytes·attach_count 기록)
 ```
 
-* 트리거 조건: `|prev_order - next_order| < 0.001`
-* 재정규화 함수: `renormalizeOrderIndex(parentId)` — 해당 부모의 모든 자식에 균등 간격 부여
-* 세부 정책: `node-hierarchy-storage-strategy.md § 재정규화` 참조
+> 원안의 서버 단계(Redis SET NX 멱등성 → baseVersion 409 → patch 적용 →
+> orderIndex 재정규화 → Redis 스냅샷 캐시 무효화 → WebSocket 협업
+> 브로드캐스트)는 정규화 노드/협업 경로 설계로, 문서 저장 경로에서는
+> 쓰지 않는다. 협업 V1 설계 시 재검토한다.
 
 ---
 
-#### 12.3 Redis 스냅샷 캐시 무효화
-
-서버에 patch가 성공적으로 적용되면, 즉시 Redis에 저장된 맵 스냅샷 캐시를 삭제하여 오래된 스냅샷이 클라이언트에게 제공되는 것을 방지한다.
-
-```
-캐시 키: snapshot:{mapId}
-무효화 시점: map_revisions INSERT 직후
-무효화 방식: Redis DEL snapshot:{mapId}
-```
-
-| 상황                   | 처리 방식                                    |
-| -------------------- | ---------------------------------------- |
-| 정상 저장 완료             | `DEL snapshot:{mapId}` 즉시 실행            |
-| 트랜잭션 롤백 시            | DEL 실행 안 함 (patch 미적용이므로 캐시 유효)          |
-| 공개 맵 (`published_maps`) | 별도 캐시 키 관리 필요 (`snapshot:published:{publishId}`) |
-
-다음 조회 시 캐시 MISS → DB에서 최신 상태 재로드 → Redis에 재캐시.
-
----
-
-#### 12.4 WebSocket 협업 브로드캐스트
-
-patch 저장 완료 후, 같은 맵을 열고 있는 **다른 협업 참가자**에게 변경 사항을 실시간으로 전파한다.
-
-```
-브로드캐스트 대상: 동일 mapId의 WebSocket 연결 중인 모든 클라이언트 (요청자 제외)
-브로드캐스트 시점: Redis DEL 직후 (step 4 완료 후)
-```
-
-브로드캐스트 페이로드 예시:
-
-```typescript
-{
-  type: 'patch',
-  mapId: 'map_xyz',
-  newVersion: 129,
-  patches: [...NodePatch[]],   // op: 'add' | 'update' | 'delete' | 'move'
-  clientId: 'cli_abc123',    // 원본 요청자 clientId (수신자 식별용)
-  patchId: 'p_1710598325_001'
-}
-```
-
-수신 클라이언트 처리:
-1. `clientId`가 자신이면 무시 (자신의 patch 반영은 이미 완료)
-2. `newVersion`과 로컬 `baseVersion` 비교
-3. 정상 → Document Store에 patch 적용 + `baseVersion` 갱신
-4. 버전 불일치 → 전체 맵 재로드
-
-협업 UI 연동:
-* 다른 사용자의 변경이 수신되면 해당 노드에 잠깐 하이라이트 표시
-* 실시간 협업 커서: `CollabCursor` 컴포넌트
-* 협업 참가자 목록: 에디터 우상단 아바타
-
----
-
-### 13. 저장 상태 전체 표시 목록
+### 13. 저장 상태 전체 표시 목록 (실제)
 
 | 상태         | 표시                          |
 | ---------- | --------------------------- |
-| 저장 중       | `● Saving...` (회전 아이콘)      |
-| 저장 완료      | `✓ Saved` (3초 후 사라짐)        |
-| 재시도 중      | `Retrying...`               |
-| 최종 오류      | `⚠ Save failed` (재시도 버튼 포함) |
-| 오프라인       | `⚡ Offline` (로컬 보관 중)       |
-| 충돌 감지      | `⚡ Conflict` (충돌 해소 다이얼로그)  |
+| `saved`       | 저장 완료 배지      |
+| `saving`      | 저장 중 배지               |
+| `dirty`      | 변경 있음 (디바운스 대기) 배지        |
+| `error`      | 저장 실패 배지 |
+
+> 원안의 Retrying / Offline / Conflict 표시는 해당 기능(재시도·오프라인
+> 큐·충돌 해소)이 미채택/미구현이라 존재하지 않는다. 충돌은 읽기 전용
+> 배너(🔒)로 사전에 안내된다.

@@ -1,5 +1,7 @@
 # 로그인·맵 세션 UI (로그인 게이트 · 계정 메뉴 · 탭 모델)
 
+> **최종 업데이트**: 2026-08-04 — SNS 제공자 목록(카카오·네이버·Google, Apple 제외)과 저장 용량 막대 반영.
+>
 > 2026-08-02 확정·구현. 로그인이 실제로 동작하게 된 뒤(Phase 3, GoTrue)
 > 화면 곳곳에 흩어져 있던 "클라우드" 개념을 정리한 결과다.
 > 관련: [document-library.md](document-library.md)(문서함·저장 규칙),
@@ -34,17 +36,17 @@
 ```ts
 // components/auth/LoginForm.tsx
 export const SOCIAL_PROVIDERS: SocialProvider[] = [
-  { id: 'google', label: 'Google로 계속하기', mark: 'G', color: '#4285F4', enabled: false },
   { id: 'kakao',  label: '카카오로 계속하기', mark: 'K', color: '#FEE500', enabled: false },
-  { id: 'apple',  label: 'Apple로 계속하기',  mark: 'A', color: '#111111', enabled: false },
+  { id: 'naver',  label: '네이버로 계속하기', mark: 'N', color: '#03C75A', enabled: false },
+  { id: 'google', label: 'Google로 계속하기', mark: 'G', color: '#4285F4', enabled: false },
 ];
 ```
 
-새 방식이 준비되면 **항목을 추가하고 `enabled: true` 로 바꾸는 것**만으로
-붙는다. 지금은 자리만 보이고 "준비 중" 배지가 붙는다.
+목록은 **카카오 → 네이버 → Google** (Apple 제외 — 2026-08-04 사용자
+결정, §9 와 동일). 새 방식이 준비되면 **항목을 추가하고 `enabled: true`
+로 바꾸는 것**만으로 붙는다. 지금은 자리만 보이고 "준비 중" 배지가 붙는다.
 
-> `mark` 는 브랜드 로고를 붙이기 전의 임시 글리프다. Apple 심볼()처럼
-> 폰트에 없으면 빈칸으로 보이므로 영문 대문자를 쓴다.
+> `mark` 는 브랜드 로고를 붙이기 전의 임시 글리프(K·N·G)다.
 
 ## 2. 계정 메뉴 — 우상단 아바타
 
@@ -56,6 +58,7 @@ export const SOCIAL_PROVIDERS: SocialProvider[] = [
 | ⚙ 개인 설정 | 준비 중 | B10 다국어(언어 선택) |
 | 👤 계정 프로필 | 준비 중 | 계정 관리 |
 | 💳 구독 상태 | 준비 중 | B9 첨부 저장소(요금제·용량) |
+| 📊 저장 용량 막대 | ✅ | 문서 N·첨부 N 합산 표시 — `GET /v1/attachments/quota` |
 | 🚪 로그아웃 | ✅ | — |
 
 **구현 전 항목도 자리를 미리 만든다** — 나중에 메뉴 구조가 흔들리지

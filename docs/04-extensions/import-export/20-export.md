@@ -3,6 +3,7 @@
 
 * 문서 버전: v1.1
 * 작성일: 2026-04-16 (2026-07 EMM 스펙 체계로 개정)
+* 최종 업데이트: 2026-08-04 — 현행(100% 클라이언트, 옵션 없는 단일 규칙, ZIP 첨부 패키징) 기준으로 서버 설계 절에 배지 정리
 * 참조: `docs/01-product/functional-spec.md § EXPORT`, `docs/02-domain/db-schema.md § exports`
 
 > **📐 포맷 정의는 이 문서가 아니라 EMM 스펙이 규범이다.**
@@ -50,6 +51,8 @@
 ### 4. 기능 정의 (What)
 
 #### 4.1 exports 테이블
+
+> **[서버 연결 예정]** — 현행 내보내기는 100% 클라이언트에서 처리된다(노드 제한 없음). 아래는 SaaS 이관 설계.
 
 ```sql
 CREATE TABLE public.exports (
@@ -170,7 +173,7 @@ easymindmap_version: "1.2.0"
 
 * 외부 CDN 의존 없이 단일 HTML 파일로 동작
 * 인라인 CSS + 인라인 JS 포함
-* 노드 트리를 접을 수 있는 아코디언 형태로 렌더링
+* SVG 마인드맵 뷰어로 렌더링 (접기·줌·팬·아웃라인 분할·다크)
 * 태그·메모 등 부가 정보 포함
 
 ---
@@ -179,12 +182,12 @@ easymindmap_version: "1.2.0"
 
 #### 5.1 사용자 동작
 
-* 상단 메뉴 > `내보내기` > `Markdown` 또는 `HTML` 선택
-* 내보내기 옵션 선택 (포함 범위: 전체 맵 / 선택 서브트리)
-* `[내보내기]` 버튼 클릭 → 진행 상태 표시 (`Preparing...`)
-* 완료 후 `[다운로드]` 버튼 표시 → 클릭하여 파일 저장
+* 툴바 `내보내기 ▼` → **HTML / MD** 두 항목 — 옵션 없이 **즉시 저장**된다 (첨부가 있으면 ZIP 패키징).
+* **[서버 연결 예정]** 서브트리 범위 선택·진행 상태 표시는 서버 이관 시 설계.
 
 #### 5.2 시스템 처리 흐름
+
+> **[서버 연결 예정]** — 현행은 100% 클라이언트 처리(노드 제한 없음). 아래(POST /maps/:id/export · exports · BullMQ · Supabase Storage)는 SaaS 이관 설계이며, 옵션 파라미터는 **[미구현 — 초기 설계]** (현행은 옵션 없는 단일 규칙).
 
 ```
 POST /maps/{mapId}/export {
@@ -220,6 +223,8 @@ GET /exports/{exportId}/download → Signed URL 반환 → 파일 다운로드
 
 #### 5.3 소형 맵 즉시 내보내기 (≤ 200 nodes)
 
+> **[서버 연결 예정]** — 현행은 100% 클라이언트라 노드 수 제한이 없다.
+
 * 노드 수가 200 이하인 경우 Background Job 없이 즉시 변환하여 반환
 * Response Body에 파일 내용 직접 포함 (Content-Disposition: attachment)
 
@@ -227,7 +232,7 @@ GET /exports/{exportId}/download → Signed URL 반환 → 파일 다운로드
 
 ### 6. 규칙 (Rule)
 
-* 내보내기 파일은 Supabase Storage에 24시간 보관 후 자동 삭제
+* **[서버 연결 예정]** 내보내기 파일은 Supabase Storage에 24시간 보관 후 자동 삭제 (현행은 클라이언트에서 즉시 다운로드)
 * Kanban 레이아웃 내보내기: 컬럼/카드 구조를 2단계 Markdown으로 변환
 * 태그: Markdown에서 `[tagName]` 인라인 표기
 * Node Note: 해당 헤딩 아래 들여쓰기 paragraph로 포함
@@ -262,6 +267,8 @@ GET /exports/{exportId}/download → Signed URL 반환 → 파일 다운로드
 
 ### 10. API 영향
 
+> **[서버 연결 예정]** — 현행은 100% 클라이언트 처리. 아래는 SaaS 이관 설계.
+
 * `POST /maps/{mapId}/export` — 내보내기 요청 (`exportMode: 'basic' | 'extended'` 파라미터 포함)
 * `GET /exports/{exportId}` — 작업 상태 조회
 * `GET /exports/{exportId}/download` — Signed URL 발급
@@ -290,6 +297,8 @@ GET /exports/{exportId}/download → Signed URL 반환 → 파일 다운로드
 ---
 
 ## Markdown 내보내기 상세 규칙
+
+> **[미구현 — 초기 설계]** 아래 옵션들(`tagFormat`·`includeCollapsed`·`imageHandling` 등)은 초기 설계다 — 현행은 옵션 없는 단일 규칙(§'MD 내보내기 (exportMarkdown.ts)').
 
 ### tagFormat 옵션
 
@@ -364,13 +373,14 @@ Markdown은 이미지 overlay/opacity/fit 스타일을 표현할 수 없으므�
 
 ### 파일명 규칙
 
-* 맵 제목에서 특수문자 제거
-* 공백은 언더스코어(`_`)로 치환
-* 예: `"AI 개념 정리"` → `AI_개념_정리.md`
+* 맵 제목의 `\ / : * ? " < > |` 를 `-` 로 치환하고 60자에서 절단한다 (공백은 유지)
+* 예: `"AI 개념 정리"` → `AI 개념 정리.md`
 
 ---
 
 ## HTML 내보내기 상세 규칙
+
+> **[미구현 — 초기 설계]** 아래 옵션(`imageHandling`·`includeCollapsed`)은 초기 설계다 — 현행은 옵션 없는 단일 규칙.
 
 ### imageHandling 3가지 모드
 
@@ -421,6 +431,8 @@ HTML Export로 생성된 파일은 읽기 전용 뷰어로 동작한다. 편집�
 
 ### Base64 최적화 (embed 모드)
 
+> **[서버 연결 예정]** — 현행은 붙여넣기 시점 내장(≤2.5MB) + ZIP 패키징. 아래 서버 최적화는 이관 설계.
+
 `imageHandling: "embed"` 선택 시 서버에서 다음 과정을 거쳐 이미지를 최적화한다.
 
 ```
@@ -432,6 +444,8 @@ HTML Export로 생성된 파일은 읽기 전용 뷰어로 동작한다. 편집�
 ```
 
 ### 이미지 크기 제한 및 처리 정책
+
+> **[서버 연결 예정]** — 현행은 붙여넣기 시점 내장(≤2.5MB) + ZIP 패키징. 아래 크기 정책은 이관 설계.
 
 | 조건 | 처리 |
 |------|------|
@@ -472,12 +486,13 @@ HTML Export로 생성된 파일은 읽기 전용 뷰어로 동작한다. 편집�
 
 ### MD 파일 불러오기 (MVS 구현 — 2026-07)
 
-'새 맵' 메뉴에 **MD 파일 불러오기** 추가 — 위 Basic 포맷의 로컬 Markdown
-파일을 맵으로 변환한다 (`utils/importMarkdown.ts`): `#`=루트·제목,
-`##`~`######`=2~6레벨, 리스트(`-`)는 마지막 견출 하위(들여쓰기 2칸=한 단계),
-코드 펜스 무시. 일반 문단 텍스트는 현재 무시(후속: 노트로 수용).
-'서버에 저장된 맵 불러오기'는 비활성 스텁 — [서버 연결 예정] maps 테이블
-연동 후 활성화.
+'새 맵' 메뉴에 **MD 파일 불러오기** 추가 — 로컬 Markdown 파일을 맵으로
+변환한다 (`utils/importMarkdown.ts`): `#`=루트·제목,
+`##`~`######`=2~6레벨, 리스트(`-`)는 마지막 견출 하위(들여쓰기 2칸=한 단계).
+**MD 불러오기는 문서의 모든 내용을 변환한다** — 문단·코드·표 등 블록
+규칙은 `markdown-export.md` §1, 블록 배치(blockPlacement)는 §1.0 참조.
+'서버에 저장된 맵 불러오기'는 **구현 완료** — ☁ 서버 맵 불러오기가
+문서함을 연다 (비로그인·Guest 에게는 숨김).
 
 ---
 

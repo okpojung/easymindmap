@@ -1,6 +1,7 @@
 ## NODE_INDICATOR
-- 문서 버전: v1.0
+- 문서 버전: v1.1
 - 작성일: 2026-04-06
+- 최종 업데이트: 2026-08-04 — 현행화(노트 인디케이터=종류별 배지 4종 T/C/⊞/✓, + 버튼=테마 primary+점선 리더선·GAP 26px·side 적응 방향 매핑·루트는 자식 방향만, + 클릭='새 노드' 생성·선택만, 태그 표시=editorUiStore 클라이언트 전용, 저장=문서 스냅샷).
 
 ---
 
@@ -18,7 +19,7 @@
 - NODE-13 : 노드 추가 인디케이터 (+ 버튼 4방향 — 상/하/좌/우)
 - NODE-14 : 번역 상태 인디케이터 (완료 🔤 / 실패 🔴 / 대기 Skeleton / override ⛔🔁)
 - NODE-15 : 인디케이터 표시 ON/OFF 설정 (번역 아이콘, override 아이콘, 태그 badge)
-- NODE-16 : 콘텐츠 존재 인디케이터 (노트 ≡ / Hyperlink 🔗 / 첨부파일 📎 / 멀티미디어 ▶)
+- NODE-16 : 콘텐츠 존재 인디케이터 (노트 종류별 배지 4종 T/C/⊞/✓ / Hyperlink 🔗 / 첨부파일 📎 / 멀티미디어 ▶)
 - NODE-17 : WBS 일정 인디케이터 (날짜 배지·진척률 바·마일스톤 마커·Redmine sync 상태)
 - WFLOW-03/04 : AI Workflow 실행 상태 인디케이터 (not_started / in_progress / blocked / resolved / done)
 - 협업 인디케이터 (V3.3) : scope 밖 노드 dim 처리, 타인 편집 중 잠금 표시
@@ -36,14 +37,14 @@
 
 | 기능ID | 기능명 | 설명 | 주요 동작 |
 |---|---|---|---|
-| NODE-13 | 노드 추가 인디케이터 | 선택 노드 4방향에 + 버튼 표시 | 싱글 클릭 → 방향별 부모/자식/형제 노드 생성 |
-| NODE-IND-01 | 상 (+) 부모 추가 | 선택 노드와 기존 부모 사이에 새 노드 중간 삽입 | 서브트리를 새 노드의 자식으로 재배치 |
-| NODE-IND-02 | 하 (+) 자식 추가 | 선택 노드의 마지막 자식 위치에 새 노드 추가 | Space 단축키 동작과 동일 |
-| NODE-IND-03 | 좌 (+) 형제 이전 추가 | 선택 노드 바로 앞(위쪽)에 형제 노드 삽입 | LShift+Ctrl+Space 단축키와 동일 |
-| NODE-IND-04 | 우 (+) 형제 다음 추가 | 선택 노드 바로 뒤(아래쪽)에 형제 노드 삽입 | LShift+Space 단축키와 동일 |
+| NODE-13 | 노드 추가 인디케이터 | 선택 노드 4방향에 + 버튼 표시 (방향 의미는 `node.side` 적응 매핑 — §6 참조) | 싱글 클릭 → 방향별 부모/자식/형제 노드 생성 |
+| NODE-IND-01 | 형제(앞) 추가 (기본 right: ⬆ 상) | 선택 노드 바로 앞(위쪽)에 형제 노드 삽입 | side 적응 매핑 |
+| NODE-IND-02 | 형제(뒤) 추가 (기본 right: ⬇ 하) | 선택 노드 바로 뒤(아래쪽)에 형제 노드 삽입 | Enter 단축키 동작과 동일 |
+| NODE-IND-03 | 부모 추가 (기본 right: ⬅ 좌) | 선택 노드와 기존 부모 사이에 새 노드 중간 삽입 | Ctrl+← 단축키와 동일, 서브트리 재배치 |
+| NODE-IND-04 | 자식 추가 (기본 right: ➡ 우) | 선택 노드의 마지막 자식 위치에 새 노드 추가 | Space/Tab 단축키 동작과 동일 |
 | NODE-14 | 번역 상태 인디케이터 | 번역 완료/실패/대기 상태를 노드 텍스트 우측에 표시 | 상태별 아이콘 조건부 렌더링, 🔤 클릭 시 원문 팝오버 |
-| NODE-15 | 인디케이터 ON/OFF 설정 | 번역 아이콘·override 아이콘·태그 badge 표시 여부 제어 | users.ui_preferences_json에 토글 값 저장, 전역 적용 |
-| NODE-16 | 콘텐츠 존재 인디케이터 | 노트·Hyperlink·첨부파일·멀티미디어 존재 시 노드 우측 아이콘 표시 | 데이터 존재 여부 기반 항상 표시, ON/OFF 설정 없음 |
+| NODE-15 | 인디케이터 ON/OFF 설정 | 번역 아이콘·override 아이콘·태그 badge 표시 여부 제어 | 태그 표시는 `editorUiStore.showTags/hiddenTags`(클라이언트 전용) — [서버 연결 예정] users.ui_preferences_json 저장 |
+| NODE-16 | 콘텐츠 존재 인디케이터 | 노트(종류별 배지 4종 T/C/⊞/✓)·Hyperlink·첨부파일·멀티미디어 존재 시 노드 우측 아이콘 표시 | 데이터 존재 여부 기반 항상 표시, ON/OFF 설정 없음 |
 | NODE-17 | WBS 일정 인디케이터 | WBS 모드 노드에 날짜·진척률·마일스톤·담당자 표시 | 클릭 시 DatePicker/슬라이더 팝오버, Redmine sync 상태 배지 |
 | WFLOW-03/04 | AI Workflow 상태 인디케이터 | executable step node의 실행 상태 배지 표시 | stepState별 색상/아이콘 표시, 콘텐츠 인디케이터 좌측 우선 배치 |
 | COLLAB-IND | 협업 인디케이터 | scope 밖 노드 반투명 처리, 타인 편집 중 노드 잠금 표시 | opacity/테두리 색/이름 배지, 소프트 잠금 5초 타임아웃 |
@@ -54,10 +55,10 @@
 
 NODE_INDICATOR는 노드에 부착되는 모든 시각적 보조 아이콘·버튼·배지를 총괄한다.
 
-- **노드 추가 인디케이터(NODE-13)**: 노드 싱글 클릭 시 상·하·좌·우 4방향에 황금색(#F0A500) 원형 + 버튼을 표시하여, 클릭만으로 관계 방향에 맞는 새 노드를 즉시 생성한다.
+- **노드 추가 인디케이터(NODE-13)**: 노드 싱글 클릭 시 상·하·좌·우 4방향에 **테마 primary 색** 원형 + 버튼을 노드에서 점선 리더선으로 이어 표시하여, 클릭만으로 관계 방향에 맞는 새 노드를 즉시 생성한다. (방향 의미는 `node.side` 적응 매핑 — §6 참조.)
 - **번역 상태 인디케이터(NODE-14)**: 번역된 노드에 🔤·🔴·⛔·🔁 아이콘을, 번역 대기 노드에 Skeleton 바를 표시하여 번역 진행 상태를 실시간으로 알린다.
-- **인디케이터 ON/OFF(NODE-15)**: 번역 아이콘·override 아이콘·태그 badge의 표시 여부를 사용자가 전역 설정으로 제어한다. (콘텐츠 존재 인디케이터·접기버튼·Skeleton은 항상 표시)
-- **콘텐츠 존재 인디케이터(NODE-16)**: 노드에 노트·하이퍼링크·첨부파일·멀티미디어 데이터가 있을 때 노드 우측에 해당 아이콘을 상시 표시하여 콘텐츠 존재를 직관적으로 알린다.
+- **인디케이터 ON/OFF(NODE-15)**: 번역 아이콘·override 아이콘·태그 badge의 표시 여부를 사용자가 설정으로 제어한다. 현재 태그 표시는 `editorUiStore.showTags/hiddenTags`(클라이언트 전용, 서버 저장 없음 — [서버 연결 예정])로 관리한다. (콘텐츠 존재 인디케이터·Skeleton은 항상 표시. 접기 토글은 접힘 시 항상·펼침 시 호버 표시.)
+- **콘텐츠 존재 인디케이터(NODE-16)**: 노드에 노트(종류별 배지 4종 T/C/⊞/✓)·하이퍼링크·첨부파일·멀티미디어 데이터가 있을 때 노드 우측에 해당 아이콘을 상시 표시하여 콘텐츠 존재를 직관적으로 알린다.
 - **WBS 일정 인디케이터(NODE-17)**: WBS 모드에서 노드 하단에 날짜 배지·진척률 바·마일스톤 마커·담당자 아바타를 표시하고, Redmine 연동 시 동기화 상태 아이콘을 추가한다.
 - **AI Workflow 인디케이터**: executable step node에 실행 상태(not_started / in_progress / blocked / resolved / done)를 색상 배지로 표시한다.
 - **협업 인디케이터**: 협업맵에서 편집 권한 범위 밖 노드를 반투명(opacity: 0.4)으로 dim하고, 타인이 편집 중인 노드에 presence 색상 테두리와 이름 배지를 표시한다.
@@ -77,39 +78,33 @@ NODE_INDICATOR는 노드에 부착되는 모든 시각적 보조 아이콘·버�
 + 버튼 클릭
   │
   ▼
-새 노드 생성 (빈 텍스트)
+새 노드 생성 ('새 노드' 텍스트)
   │
   ▼
-새 노드 즉시 선택
-  │
-  ▼
-텍스트 편집 모드 자동 진입 (커서 활성)
-  │
-  ├─ Enter / blur → 텍스트 확정 → Auto Save 트리거
-  └─ Esc → 텍스트 취소 → 빈 노드 삭제 (Undo 미반영)
+새 노드 즉시 선택 (자동 편집 진입 없음 — 편집은 더블클릭)
 ```
 
-**방향별 처리 규칙:**
+**방향별 처리 규칙 (기본 `side=right` 기준 — side 적응 매핑은 §6 참조):**
 
-| 방향 | 처리 |
+| 방향 (side=right) | 처리 |
 |:---:|---|
-| ⬆ 상 (부모 추가) | 선택 노드의 현재 부모 위치에 새 노드 삽입, 선택 노드+서브트리를 새 노드의 자식으로 재배치 |
-| ⬇ 하 (자식 추가) | 선택 노드의 마지막 자식으로 추가 |
-| ⬅ 좌 (형제 이전) | 선택 노드 바로 앞(이전 순서) 형제 삽입 |
-| ➡ 우 (형제 다음) | 선택 노드 바로 뒤(다음 순서) 형제 삽입 |
+| ⬆ 상 (형제 앞) | 선택 노드 바로 앞(이전 순서) 형제 삽입 |
+| ⬇ 하 (형제 뒤) | 선택 노드 바로 뒤(다음 순서) 형제 삽입 |
+| ⬅ 좌 (부모 추가) | 선택 노드의 현재 부모 위치에 새 노드 삽입, 선택 노드+서브트리를 새 노드의 자식으로 재배치 |
+| ➡ 우 (자식 추가) | 선택 노드의 마지막 자식으로 추가 |
 
 **인디케이터 위치 계산:**
 ```
-상 (+):  (cx, top - offset)
-하 (+):  (cx, bottom + offset)
-좌 (+):  (left - offset, cy)
-우 (+):  (right + offset, cy)
-offset 권장: 12px ~ 16px
+상 (+):  (cx, top - GAP)
+하 (+):  (cx, bottom + GAP)
+좌 (+):  (left - GAP, cy)
+우 (+):  (right + GAP, cy)
+GAP = 26px (노드에서 점선 리더선으로 연결)
 ```
 
 **결과 표시:**
-- 새 노드가 맵에 즉시 렌더링되고 커서가 활성화된다.
-- Root 노드 선택 시 ⬆상·⬅좌·➡우 버튼은 회색(disabled)으로 표시된다.
+- 새 노드가 맵에 즉시 렌더링되고 선택된다.
+- Root 노드 선택 시에는 **자식 방향의 + 버튼만 렌더**한다 (disabled 회색 버튼 없음 — 방사형·양쪽이면 좌·우 양쪽 표시).
 - 다중 선택 상태에서는 인디케이터가 표시되지 않는다.
 
 ---
@@ -149,17 +144,17 @@ translation:ready 이벤트
 
 **사용자 동작:** 없음 (자동 표시)
 
-**시스템 처리:**
+**시스템 처리 (현행 필드 — 문서 JSON):**
 ```typescript
 function getContentIndicatorState(node): {
-  hasNote:       node.note != null && node.note.trim().length > 0,
-  hasHyperlink:  node.hyperlinkIds.length > 0,
-  hasAttachment: node.attachmentIds.length > 0,
-  hasMultimedia: node.multimediaId != null,
+  noteKinds:     collectNoteKinds(node.notes),  // NoteBlock[] → 종류별 배지 (T/C/⊞/✓)
+  hasLink:       (node.links?.length ?? 0) > 0,
+  hasAttachment: (node.attachments ?? []).some(a => a.kind === 'file'),
+  hasMultimedia: (node.attachments ?? []).some(a => a.kind === 'media'),
 }
 ```
 
-**결과 표시:** 데이터 존재 시 노드 우측에 해당 아이콘 자동 렌더링
+**결과 표시:** 데이터 존재 시 노드 우측에 해당 배지/아이콘 자동 렌더링 (노트는 종류별 배지 T/C/⊞/✓ — 같은 종류 다수면 개수 표시)
 
 ---
 
@@ -193,7 +188,7 @@ function getWbsStatus(schedule):
 | 빈 캔버스 클릭 / ESC | 인디케이터 숨김 |
 | 노드 편집 모드 (Double Click) | + 인디케이터 숨김 |
 | 다중 선택 | + 인디케이터 표시 안 함 |
-| Root 노드 선택 | ⬆상·⬅좌·➡우 disabled (회색), ⬇하만 활성 |
+| Root 노드 선택 | **자식 방향의 + 버튼만 렌더** (disabled 회색 버튼 없음 — 방사형·양쪽이면 좌·우 양쪽) |
 
 #### 인디케이터 충돌 방지 규칙
 
@@ -205,32 +200,33 @@ function getWbsStatus(schedule):
 | 🔴 번역 실패 | ✅ 가능 |
 | ⛔ / 🔁 override | ✅ 가능 |
 | Skeleton 바 | ❌ 번역 텍스트+아이콘과 동시 불가 |
-| ≡ / 🔗 / 📎 / ▶ 콘텐츠 아이콘 | ✅ 가능 |
+| 노트 배지(T/C/⊞/✓) / 🔗 / 📎 / ▶ 콘텐츠 아이콘 | ✅ 가능 |
 | workflow 상태 배지 | ✅ 가능 |
 
-**콘텐츠 인디케이터 우선순위 (좌→우 순서):**
+**콘텐츠 인디케이터 우선순위 (좌→우 순서, 현행):**
 ```
-멀티미디어 ▶ > 링크 🔗 > 첨부 📎 > workflow 상태 배지 > note ≡
+노트 배지(T/C/⊞/✓) → 링크 🔗 → 첨부 📎 → 미디어 ▶
 ```
 
 #### ON/OFF 설정 규칙
 
 | 인디케이터 | 설정 여부 | 기본값 | 설정 키 |
 |---|:---:|:---:|---|
-| 노트 ≡ · Hyperlink 🔗 · 첨부파일 📎 · 멀티미디어 ▶ | 항상 표시 | — | — |
-| 접기/펼치기 버튼 | 항상 표시 | — | — |
+| 노트 배지(T/C/⊞/✓) · Hyperlink 🔗 · 첨부파일 📎 · 멀티미디어 ▶ | 항상 표시 | — | — |
+| 접기/펼치기 토글 | 접힘 시 항상 · 펼침 시 호버 | — | — |
 | Skeleton 바 | 항상 표시 | — | — |
 | 번역 아이콘 (🔤 / 🔴) | ON/OFF | ON | `showTranslationIndicator` |
 | override 아이콘 (⛔ / 🔁, 편집자만) | ON/OFF | ON | `showTranslationOverrideIcon` |
-| 태그 badge | ON/OFF | ON | `showTagBadge` |
+| 태그 badge | ON/OFF | ON | `editorUiStore.showTags` / `hiddenTags` (클라이언트 전용 — [서버 연결 예정] 서버 저장 없음) |
 
 #### Undo/Redo 규칙
 
 | 동작 | Undo |
 |---|:---:|
-| + 버튼으로 노드 생성 후 텍스트 확정 | ✅ 가능 |
-| + 버튼 생성 후 Esc 취소 | ❌ 히스토리 미반영 |
-| 부모 노드 삽입 (⬆) | ✅ 가능 (중간 노드 제거 + 원복) |
+| + 버튼으로 노드 생성 ('새 노드' 생성·선택) | ✅ 가능 (노드 삭제) |
+| 부모 노드 삽입 | ✅ 가능 (중간 노드 제거 + 원복) |
+
+> + 클릭 시 자동 편집 진입·Esc 빈 노드 삭제 흐름은 없다 — 노드는 '새 노드' 텍스트로 즉시 확정 생성된다.
 
 #### 방향 매핑 — 레이아웃 적응 (MVS 변경 — 2026-07)
 방향 의미는 **자식이 자라는 방향(node.side)** 에 맞춰 정해진다 — 사용자의
@@ -268,8 +264,8 @@ Root: 자식 추가만 — 자식이 자라는 방향에 표시. **방사형·�
 
 | 케이스 | 처리 방식 |
 |---|---|
-| Root 노드에서 ⬆상·⬅좌·➡우 클릭 | 버튼 비활성화(disabled), 회색 표시, 클릭 무반응 |
-| + 버튼 클릭 후 Esc | 빈 노드 즉시 삭제, Undo 히스토리 미반영 |
+| Root 노드 | 부모·형제 방향 + 버튼은 **렌더하지 않음** (자식 방향만 표시) |
+| + 버튼 클릭 | '새 노드' 텍스트로 생성·선택만 (자동 편집 진입·Esc 삭제 흐름 없음) |
 | 번역 캐시 없고 번역 진행 중 | Skeleton 바 표시, 완료 시 fadeIn으로 자동 교체 |
 | 번역 실패 | 원문 fallback 표시, 🔴 아이콘 표시, 재시도 없음 |
 | 번역 아이콘 OFF 설정 시 | 🔤·🔴 아이콘만 숨김, 번역 텍스트 자체는 유지 |
@@ -299,7 +295,9 @@ Root: 자식 추가만 — 자식이 자라는 방향에 표시. **방사형·�
 
 ### 9. DB 영향
 
-**관련 테이블:**
+> **현행**: 인디케이터가 참조하는 데이터(노드의 `notes`/`links`/`attachments(kind)` 등)는 모두 **맵 전체 문서 JSON 스냅샷**(`PUT /maps/:id/document` → `map_documents.doc`)에 담겨 저장된다. `nodes.hyperlink_ids` 같은 정규화 컬럼 쓰기는 없다. 태그 표시 설정은 `editorUiStore`(클라이언트 전용)로, 서버에 저장되지 않는다.
+
+**[서버 연결 예정] 협업 단계 설계안 테이블:**
 
 | 테이블 | 컬럼 | 용도 |
 |---|---|---|
@@ -311,14 +309,11 @@ Root: 자식 추가만 — 자식이 자라는 방향에 표시. **방사형·�
 | `redmine_sync_status` | `node_id`, `sync_status` | Redmine sync 인디케이터 |
 | `maps` | `is_collaborative` | 협업 인디케이터 활성화 여부 |
 
-**생성/수정/삭제:**
-- 노드 추가 (+ 버튼): `nodes` 레코드 INSERT + `order_index` UPDATE (형제 재정렬)
-- 부모 삽입 (⬆): `nodes` INSERT + 기존 노드 `parent_id` UPDATE + 서브트리 `order_index` 재정렬
-- ui-preferences 토글: `users.ui_preferences_json` PATCH
-
 ---
 
 ### 10. API 영향
+
+> **[서버 연결 예정]** 현재는 노드 단위 API가 없다 — 인디케이터로 만든 변경도 **맵 전체 문서 스냅샷 저장**(`PUT /maps/:id/document`)으로만 반영된다. 아래 API 목록은 협업 단계 설계안이다.
 
 **필요 API:**
 
@@ -359,14 +354,14 @@ Root: 자식 추가만 — 자식이 자라는 방향에 표시. **방사형·�
 
 ### 11. 연관 기능
 
-- `NODE_EDITING` — 노드 생성 후 편집 모드 자동 진입, Undo/Redo 연동
+- `NODE_EDITING` — 노드 생성('새 노드' 생성·선택), Undo/Redo 연동
 - `HISTORY_UNDO_REDO` — + 버튼 생성/부모 삽입 동작 Undo 처리
 - `SAVE` — 텍스트 확정 시 Auto Save 트리거
 - `NODE_TRANSLATION` — 번역 캐시 조회, shouldTranslate 판단, translation:ready 이벤트
 - `TAG` — 태그 badge 데이터 관리, showTagBadge 연동
 - `NODE_CONTENT` — 노트·하이퍼링크·첨부파일·멀티미디어 데이터 관리
-- `KEYBOARD_SHORTCUTS` — Space / LShift+Space / LShift+Ctrl+Space → + 인디케이터와 동일 동작
-- `LAYOUT` — 레이아웃 방향 무관하게 인디케이터 방향 의미 고정
+- `KEYBOARD_SHORTCUTS` — Space·Tab(자식) / Enter(형제) / Ctrl+←(부모) → + 인디케이터와 동일 동작
+- `LAYOUT` — 인디케이터 방향 의미는 `node.side`에 따라 적응 매핑 (§6 "방향 매핑 — 레이아웃 적응" 참조)
 - `WBS` — WBS 모드 활성화 시 NODE-17 인디케이터 렌더링
 - `RESOURCE` — 담당자 아바타 데이터 연동
 - `REDMINE_INTEGRATION` — Redmine sync_status 인디케이터
@@ -381,17 +376,16 @@ Root: 자식 추가만 — 자식이 자라는 방향에 표시. **방사형·�
 **시나리오 1: 자식 노드 빠르게 추가하기**
 
 > 사용자가 "마케팅 전략" 노드를 클릭한다.
-> 노드 4방향에 황금색 + 버튼이 나타난다.
-> 아래쪽(⬇) + 버튼을 클릭하면 "마케팅 전략"의 자식 노드가 빈 상태로 생성되며 커서가 자동으로 활성화된다.
-> "SNS 캠페인"이라고 입력하고 Enter를 누르면 노드가 확정되고 Auto Save가 실행된다.
-> 만약 입력 중 Esc를 누르면 빈 노드는 즉시 삭제되고 Undo 히스토리에도 남지 않는다.
+> 노드 4방향에 테마 primary 색 + 버튼이 점선 리더선과 함께 나타난다.
+> 자식 방향(기본 side=right에서는 오른쪽 ➡)의 + 버튼을 클릭하면 "마케팅 전략"의 자식 노드가 '새 노드' 텍스트로 생성·선택된다.
+> 더블클릭으로 편집에 진입해 "SNS 캠페인"이라고 입력·확정하면 Auto Save가 실행된다.
 
 ---
 
 **시나리오 2: 계층 중간에 부모 노드 삽입하기**
 
 > 사용자가 "세부 실행안" 노드를 클릭한다.
-> 위쪽(⬆) + 버튼을 클릭하면, "세부 실행안"과 기존 부모 "마케팅 전략" 사이에 새 노드가 삽입된다.
+> 부모 방향(기본 side=right에서는 왼쪽 ⬅)의 + 버튼을 클릭하면, "세부 실행안"과 기존 부모 "마케팅 전략" 사이에 새 노드가 삽입된다.
 > "실행 계획" 이라고 입력하면 트리 구조가 `마케팅 전략 → 실행 계획 → 세부 실행안`으로 재배치된다.
 > 실수로 삽입한 경우 Ctrl+Z로 Undo하면 중간 노드가 제거되고 원래 구조로 돌아간다.
 
@@ -422,15 +416,15 @@ Root: 자식 추가만 — 자식이 자라는 방향에 표시. **방사형·�
 
 | 단계 | 내용 | 의존 기능 |
 |---|---|---|
-| Step 1 | `NodeAddIndicator` 컴포넌트 — 4방향 + 버튼 UI (황금색 스타일) | NODE_EDITING |
+| Step 1 | `NodeAddIndicator` 컴포넌트 — 4방향 + 버튼 UI (테마 primary 색 + 점선 리더선) | NODE_EDITING |
 | Step 2 | 노드 클릭 → 인디케이터 표시/숨김 상태 관리 (`editorStore.showAddIndicator`) | — |
-| Step 3 | ⬇ 자식 추가 (Space 단축키와 동일, 가장 간단) | SAVE, HISTORY_UNDO_REDO |
-| Step 4 | ➡ 형제 다음 추가 (LShift+Space 동작과 동일) | — |
-| Step 5 | ⬅ 형제 이전 추가 | — |
-| Step 6 | ⬆ 부모 노드 중간 삽입 (서브트리 재배치 — 가장 복잡) | — |
-| Step 7 | Root 노드 비활성화 처리 (상·좌·우 disabled) | — |
-| Step 8 | 새 노드 생성 후 편집 모드 자동 진입 + Esc 취소 처리 | NODE_EDITING |
-| Step 9 | `NodeContentIndicators` — 콘텐츠 존재 인디케이터 (≡·🔗·📎·▶) | NODE_CONTENT |
+| Step 3 | 자식 추가 (Space/Tab 단축키와 동일, 가장 간단) | SAVE, HISTORY_UNDO_REDO |
+| Step 4 | 형제 뒤 추가 (Enter 동작과 동일) | — |
+| Step 5 | 형제 앞 추가 | — |
+| Step 6 | 부모 노드 중간 삽입 (Ctrl+← — 서브트리 재배치, 가장 복잡) | — |
+| Step 7 | Root 노드 처리 (자식 방향의 + 버튼만 렌더) | — |
+| Step 8 | 새 노드 = '새 노드' 텍스트로 생성·선택 처리 (자동 편집 진입 없음) | NODE_EDITING |
+| Step 9 | `NodeContentIndicators` — 콘텐츠 존재 인디케이터 (노트 배지 T/C/⊞/✓·🔗·📎·▶) | NODE_CONTENT |
 | Step 10 | Undo/Redo 연동 (텍스트 확정 후 Undo, 부모 삽입 Undo) | HISTORY_UNDO_REDO |
 
 #### V2 — 번역·설정 기능 (NODE_TRANSLATION 구현 이후)
@@ -463,6 +457,7 @@ Root: 자식 추가만 — 자식이 자라는 방향에 표시. **방사형·�
 ## [원본 설계 내용 전체]
 
 > 아래 섹션은 첨부된 원본 설계 문서(`node-indicator.md`)의 전체 내용을 보존합니다.
+> **주의(2026-08-04 현행화)**: 원본 설계 중 다음 항목은 실제 구현과 다르다 — ① 방향 의미는 고정이 아니라 **`node.side` 적응 매핑**(§6 "방향 매핑 — 레이아웃 적응" 절이 단일 기준. 기본 right: ⬆형제 앞·⬇형제 뒤·⬅부모·➡자식), ② + 버튼은 황금색이 아니라 **테마 primary 색 + 점선 리더선**, GAP은 **26px**, ③ 루트는 disabled 회색 버튼 대신 **자식 방향 버튼만 렌더**, ④ + 클릭은 **'새 노드' 텍스트로 생성·선택만** (자동 편집 진입·Esc 빈 노드 삭제 없음).
 
 ---
 
@@ -474,13 +469,15 @@ Root: 자식 추가만 — 자식이 자라는 방향에 표시. **방사형·�
 각 방향을 클릭하면 대응하는 관계의 새 노드가 즉시 생성된다.
 
 ```
-                    [ + ]  ← 상 : 부모 노드 추가
+(기본 side=right 기준 — 방향 의미는 node.side 적응 매핑, §6 참조)
+
+                    [ + ]  ← 상 : 형제(앞) 추가
                       │
         [ + ] ─── [선택노드] ─── [ + ]
          ←좌                       우→
-       형제(이전)                형제(다음)
+        부모 추가                자식 추가
                       │
-                    [ + ]  ← 하 : 자식 노드 추가
+                    [ + ]  ← 하 : 형제(뒤) 추가
 ```
 
 **iThinkWise 참고**
@@ -489,14 +486,16 @@ iThinkWise는 "중심가지 클릭 후 상,하,좌,우 + 버튼으로 가지 생
 "상/하 [+] 버튼으로 형제가지를, 좌측 [+] 버튼으로 부모가지를 생성"한다.
 easymindmap은 이보다 직관적인 방향 매핑으로 재설계한다.
 
-### 2. 방향별 동작 정의
+### 2. 방향별 동작 정의 (설계 초안 — 미채택: 현행은 `node.side` 적응 매핑, §6 "방향 매핑 — 레이아웃 적응" 참조)
 
-| 방향 | 기능 | 생성되는 노드 위치 | 대응 기존 단축키 |
+현행(기본 side=right): ⬆ 상=형제 앞, ⬇ 하=형제 뒤, ⬅ 좌=부모 추가, ➡ 우=자식 추가.
+
+| 방향 | 기능 | 생성되는 노드 위치 | 대응 단축키(현행) |
 |:---:|---|---|---|
-| ⬆ 상 | 부모 노드 추가 | 선택 노드의 바로 위 상위 노드로 삽입 | [Ctrl]+ [←] |
-| ⬇ 하 | 자식 노드 추가 | 선택 노드의 마지막 자식으로 추가 | Space |
-| ⬅ 좌 | 형제 노드 추가 (이전) | 선택 노드 바로 앞(위쪽)에 형제 삽입 | LShift + Ctrl + Space |
-| ➡ 우 | 형제 노드 추가 (다음) | 선택 노드 바로 뒤(아래쪽)에 형제 삽입 | LShift + Space |
+| (side별) 부모 방향 | 부모 노드 추가 | 선택 노드의 바로 위 상위 노드로 삽입 | Ctrl + ← |
+| (side별) 자식 방향 | 자식 노드 추가 | 선택 노드의 마지막 자식으로 추가 | Space / Tab |
+| ⬆ 상 | 형제 노드 추가 (앞) | 선택 노드 바로 앞(위쪽)에 형제 삽입 | — |
+| ⬇ 하 | 형제 노드 추가 (뒤) | 선택 노드 바로 뒤(아래쪽)에 형제 삽입 | Enter |
 
 **2-1. 부모 노드 추가 (⬆ 상) — 상세**
 
@@ -563,7 +562,7 @@ Root 노드에서는 ➡ 우 버튼을 비활성화한다.
 | 노드 싱글 클릭 | 4방향 + 아이콘 표시 |
 | 노드 선택 해제 (빈 캔버스 클릭 / ESC) | 인디케이터 숨김 |
 | 노드 편집 모드 진입 (Double Click) | 인디케이터 숨김 |
-| Root 노드 선택 | ⬆상, ⬅좌, ➡우 비활성화 (⬇하만 활성) |
+| Root 노드 선택 | 자식 방향의 + 버튼만 렌더 (현행 — disabled 회색 버튼 없음) |
 | 다중 선택 (SEL-02) | 인디케이터 표시 안 함 |
 
 **3-2. 인디케이터 위치 계산**
@@ -577,80 +576,64 @@ Root 노드에서는 ➡ 우 버튼을 비활성화한다.
 우 (+):  노드 우측 중앙  (right + offset, cy)
 ```
 
-offset 권장: 12px ~ 16px (노드 테두리와 약간의 여백)
+GAP: 26px (현행 — 노드에서 점선 리더선으로 + 버튼까지 연결)
 
-**3-3. 인디케이터 스타일**
+**3-3. 인디케이터 스타일 (현행)**
 
 | 상태 | 스타일 |
 |---|---|
-| 기본(표시) | 원형 버튼, 테두리 색 #F0A500 (황금색), 배경 흰색, + 아이콘 |
-| hover | 배경 #F0A500, + 아이콘 흰색으로 전환 |
-| disabled (Root) | 회색, 클릭 불가 |
-| 클릭(active) | 약한 scale 애니메이션 후 즉시 노드 생성 |
+| 기본(표시) | 원형 버튼, **테마 primary 색**, + 아이콘, 노드와 점선 리더선으로 연결 |
+| hover | 강조 (primary 색 채움) |
+| Root | 부모·형제 방향 버튼은 렌더하지 않음 (자식 방향만) |
+| 클릭(active) | 즉시 노드 생성 |
 
-**3-4. 새 노드 생성 후 동작**
+**3-4. 새 노드 생성 후 동작 (현행)**
 
 ```
 + 버튼 클릭
   │
   ▼
-새 노드 생성 (빈 텍스트)
+새 노드 생성 ('새 노드' 텍스트)
   │
   ▼
-새 노드 즉시 선택
+새 노드 즉시 선택 (자동 편집 진입 없음 — 편집은 더블클릭)
   │
   ▼
-텍스트 편집 모드 자동 진입 (커서 활성)
-  │
-  ▼
-Enter 또는 blur → 텍스트 확정 → Auto Save 트리거
-  │
-Esc → 텍스트 취소 → 빈 노드 삭제 (Undo 히스토리에도 미반영)
+생성 즉시 확정 → Auto Save 트리거 (Undo 1회로 취소 가능)
 ```
 
 ### 4. 레이아웃별 고려사항
 
-인디케이터의 물리적 표시 방향은 고정(상/하/좌/우)이지만,
-의미(동작)는 레이아웃 방향과 무관하게 아래처럼 항상 고정한다.
+(설계 초안 — 미채택) 초기 설계는 "방향 의미를 레이아웃과 무관하게 고정"하는 방식이었으나,
+사용자의 공간 감각과 어긋나는 문제로 폐기했다. **현행 규칙은 §6 "방향 매핑 — 레이아웃 적응"
+절이 단일 기준**이다 — 방향 의미는 자식이 자라는 방향(`node.side`)에 맞춰 정해진다
+(기본 right: ⬆형제 앞·⬇형제 뒤·⬅부모·➡자식).
 
-| 방향 | 어떤 레이아웃에서도 | 이유 |
-|:---:|---|---|
-| ⬆ 상 | 부모 노드 추가 | 위 = 상위 계층이라는 직관에 일치 |
-| ⬇ 하 | 자식 노드 추가 | 아래 = 하위 계층이라는 직관에 일치 |
-| ⬅ 좌 | 형제 노드 이전 추가 | 좌 = 앞 순서라는 일반 UX 관례 |
-| ➡ 우 | 형제 노드 다음 추가 | 우 = 뒤 순서라는 일반 UX 관례 |
-
-설계 노트: 레이아웃마다 방향 의미를 다르게 하면 학습 비용이 높아진다.
-iThinkWise도 레이아웃에 관계없이 고정 방향으로 동작한다.
-
-### 5. 키보드 / 마우스 조작 통합 요약
+### 5. 키보드 / 마우스 조작 통합 요약 (현행 — 기본 side=right 기준)
 
 | 조작 방식 | 동작 |
 |---|---|
-| 노드 클릭 후 ⬆ + 클릭 | 부모 노드 추가 |
-| 노드 클릭 후 ⬇ + 클릭 | 자식 노드 추가 |
-| 노드 클릭 후 ⬅ + 클릭 | 형제 노드 이전 추가 |
-| 노드 클릭 후 ➡ + 클릭 | 형제 노드 다음 추가 |
-| [Ctrl]+ [←] | 부모 노드 추가 (⬆와 동일) |
-| Space | 자식 노드 추가 (⬇와 동일) |
-| LShift + Space | 형제 노드 다음 추가 (➡와 동일) |
-| LShift + Ctrl + Space | 형제 노드 이전 추가 (⬅와 동일) |
+| 노드 클릭 후 ⬆ + 클릭 | 형제 노드 앞 추가 |
+| 노드 클릭 후 ⬇ + 클릭 | 형제 노드 뒤 추가 |
+| 노드 클릭 후 ⬅ + 클릭 | 부모 노드 추가 |
+| 노드 클릭 후 ➡ + 클릭 | 자식 노드 추가 |
+| Ctrl + ← | 부모 노드 추가 |
+| Space / Tab | 자식 노드 추가 |
+| Enter | 형제 노드 뒤 추가 |
 | Ctrl + Space | 자식 노드 다중 생성 (인디케이터 없음, 별도 팝업) |
 
-### 6. 비활성화 규칙 (Root 노드)
+키보드 단축키는 레이아웃·side와 무관하게 동일하고, + 버튼의 방향 의미만 `node.side`에 따라 바뀐다.
 
-Root 노드 선택 시:
+### 6. Root 노드 규칙 (현행)
+
+Root 노드 선택 시 **자식 방향의 + 버튼만 렌더**한다:
 
 ```
-        [ + ]  ← 비활성 (상위 없음)
-          │
-[비활성] ─── [Root] ─── [비활성]
-                │
-              [ + ]  ← 활성 (자식 추가 가능)
+[Root] ─── [ + ]  ← 자식 추가 (자식이 자라는 방향에만 표시)
 ```
 
-비활성 버튼은 회색으로 표시하거나 아예 숨길 수 있다.
-권장: 회색으로 표시 (UI가 더 안정적으로 보임)
+부모·형제 방향 버튼은 그리지 않는다 (disabled 회색 버튼 없음).
+방사형·양쪽 레이아웃이면 좌·우 양쪽에 + 가 표시되고, 누른 쪽으로 새 브랜치가 배치된다.
 
 ### 7. 프론트엔드 구현 힌트
 
@@ -708,15 +691,15 @@ const addParentNode = (selectedNodeId: string) => {
   // 3. 기존 형제 노드들의 orderIndex 재정렬
   reorderSiblings(selectedNode.parentId);
 
-  // 4. 새 노드 선택 + 편집 모드 진입
-  selectNodeAndEdit(newNode.id);
+  // 4. 새 노드 선택 (자동 편집 진입 없음)
+  selectNode(newNode.id);
 };
 ```
 
 **7-4. SVG 레이아웃에서의 인디케이터 위치 계산**
 
 ```typescript
-const INDICATOR_OFFSET = 14; // px
+const INDICATOR_OFFSET = 26; // px — 현행 GAP (노드에서 점선 리더선으로 연결)
 
 const getIndicatorPositions = (nodeBounds: DOMRect) => ({
   top:    { x: nodeBounds.left + nodeBounds.width / 2,  y: nodeBounds.top - INDICATOR_OFFSET },
@@ -730,9 +713,10 @@ const getIndicatorPositions = (nodeBounds: DOMRect) => ({
 
 | 동작 | Undo 처리 |
 |---|---|
-| + 버튼으로 노드 생성 후 텍스트 확정 | Undo 가능 (노드 삭제) |
-| + 버튼으로 노드 생성 후 Esc 취소 | Undo 히스토리에 미반영 |
-| 부모 노드 삽입 (⬆) | Undo 가능 (중간 노드 제거 + 원복) |
+| + 버튼으로 노드 생성 ('새 노드' 즉시 확정) | Undo 가능 (노드 삭제) |
+| 부모 노드 삽입 | Undo 가능 (중간 노드 제거 + 원복) |
+
+(현행에는 자동 편집 진입·Esc 빈 노드 삭제 흐름이 없다.)
 
 ### 9. Auto Save 연동
 
@@ -740,35 +724,37 @@ const getIndicatorPositions = (nodeBounds: DOMRect) => ({
 
 | 트리거 | 조건 |
 |---|---|
-| 텍스트 확정 (Enter / blur) | Auto Save 즉시 실행 |
-| Esc 취소 | Auto Save 미실행 |
+| + 클릭으로 노드 생성 ('새 노드' 즉시 확정) | Auto Save 즉시 실행 |
+| 이후 텍스트 편집 확정 (더블클릭 편집 → 확정) | Auto Save 즉시 실행 |
 
 ### 10. 구현 우선순위
 
 - Step 1: NodeAddIndicator 컴포넌트 — 4방향 + 버튼 UI
 - Step 2: 노드 클릭 → 인디케이터 표시/숨김 상태 관리
-- Step 3: ⬇ 자식 추가 (기존 Space 동작과 동일, 가장 쉬움)
-- Step 4: ➡ 형제 다음 추가 (기존 LShift+Space 동작과 동일)
-- Step 5: ⬅ 형제 이전 추가
-- Step 6: ⬆ 부모 노드 중간 삽입 (가장 복잡 — 서브트리 재배치 필요)
-- Step 7: Root 노드 비활성화 처리
-- Step 8: 새 노드 생성 후 편집 모드 자동 진입
+- Step 3: 자식 추가 (Space/Tab 동작과 동일, 가장 쉬움)
+- Step 4: 형제 뒤 추가 (Enter 동작과 동일)
+- Step 5: 형제 앞 추가
+- Step 6: 부모 노드 중간 삽입 (가장 복잡 — 서브트리 재배치 필요)
+- Step 7: Root 노드 처리 (자식 방향 + 버튼만 렌더)
+- Step 8: 새 노드 '새 노드' 텍스트 생성·선택 처리
 - Step 9: Undo/Redo 연동
 
 ### 11. 와이어프레임 텍스트 표현
 
 ```
+(기본 side=right 기준)
              ┌───────────┐
-             │    [+]    │  ← ⬆ 부모 노드 추가
+             │    [+]    │  ← ⬆ 형제(앞) 추가
              └─────┬─────┘
                    │
 ┌──────┐    ┌──────┴───────┐    ┌──────┐
-│ [+]  │────│  topic1      │────│ [+]  │
+│ [+]  │╌╌╌╌│  topic1      │╌╌╌╌│ [+]  │
 └──────┘    └──────┬───────┘    └──────┘
-⬅ 형제이전         │                ➡ 형제다음
+⬅ 부모 추가        │                ➡ 자식 추가
              ┌─────┴─────┐
-             │    [+]    │  ← ⬇ 자식 노드 추가
+             │    [+]    │  ← ⬇ 형제(뒤) 추가
              └───────────┘
+(╌╌ = 점선 리더선, + 버튼은 테마 primary 색, GAP 26px)
 ```
 
 ---
@@ -1004,11 +990,11 @@ NodeText 리렌더링
 
 ### 21. 배경 — 인디케이터 혼잡 문제
 
-노드에 번역 인디케이터(🔤/🔴/⛔/🔁), 태그 badge, 노트(≡)·하이퍼링크(🔗)·첨부파일(📎)·멀티미디어(▶) 아이콘이
+노드에 번역 인디케이터(🔤/🔴/⛔/🔁), 태그 badge, 노트 배지(T/C/⊞/✓)·하이퍼링크(🔗)·첨부파일(📎)·멀티미디어(▶) 아이콘이
 모두 표시될 경우 노드 텍스트 가독성이 저하된다.
 
 ```
-[딸기 ≡ 📎 🔤]  ← 노트+첨부파일+번역 아이콘 동시 표시 예시
+[딸기 T 📎 🔤]  ← 노트(문단 배지)+첨부파일+번역 아이콘 동시 표시 예시
 ```
 
 노트·Hyperlink·첨부파일·멀티미디어 인디케이터는 콘텐츠 존재 여부를 나타내므로 항상 표시하며 ON/OFF 설정 대상이 아니다.
@@ -1018,17 +1004,21 @@ NodeText 리렌더링
 
 | 인디케이터 | 표시 방식 | 기본값 | 설정 키 |
 |---|---|:---:|---|
-| 노트 아이콘 (≡) | 항상 표시 | — | (설정 없음) |
+| 노트 배지 (종류별 T/C/⊞/✓) | 항상 표시 | — | (설정 없음) |
 | Hyperlink 아이콘 (🔗) | 항상 표시 | — | (설정 없음) |
 | 첨부파일 아이콘 (📎) | 항상 표시 | — | (설정 없음) |
 | 멀티미디어 아이콘 (▶) | 항상 표시 | — | (설정 없음) |
-| 접기/펼치기 버튼 | 항상 표시 | — | (설정 없음) |
+| 접기/펼치기 토글 | 접힘 시 항상 · 펼침 시 호버 | — | (설정 없음) |
 | Skeleton 바 (번역 대기) | 항상 표시 | — | (설정 없음) |
 | 번역 아이콘 (🔤 / 🔴) | ON/OFF 설정 | ON | `showTranslationIndicator` |
 | 편집자 override 아이콘 (⛔ / 🔁) | ON/OFF 설정 | ON | `showTranslationOverrideIcon` |
-| 태그 badge | ON/OFF 설정 | ON | `showTagBadge` |
+| 태그 badge | ON/OFF 설정 | ON | `editorUiStore.showTags` / `hiddenTags` (클라이언트 전용) |
 
 ### 23. 설정 저장 위치
+
+**현행**: 태그 표시 설정은 `editorUiStore.showTags/hiddenTags`(클라이언트 전용, Zustand)로만 관리한다 — 서버 저장 없음.
+
+[서버 연결 예정] 서버 저장 설계안:
 
 ```json
 // users.ui_preferences_json (JSONB)
@@ -1091,7 +1081,8 @@ function shouldShowTagBadge(node: NodeObject, uiPrefs: UiPreferences): boolean {
 
 ```
 항상 표시 (설정 불가)
-  노트(≡) · Hyperlink(🔗) · 첨부파일(📎) · 멀티미디어(▶) · 접기/펼치기 · Skeleton 바
+  노트 배지(T/C/⊞/✓) · Hyperlink(🔗) · 첨부파일(📎) · 멀티미디어(▶) · Skeleton 바
+  (접기/펼치기 토글: 접힘 시 항상 · 펼침 시 호버)
 
 인디케이터 ON/OFF
   번역 아이콘 표시 (🔤/🔴)          [ON ●]
@@ -1099,7 +1090,7 @@ function shouldShowTagBadge(node: NodeObject, uiPrefs: UiPreferences): boolean {
   태그 badge 표시                    [ON ●]
 ```
 
-저장 API: `PATCH /users/me/ui-preferences` (토글 OFF 시 즉시 반영)
+저장: 현행은 `editorUiStore`(클라이언트 전용) — [서버 연결 예정] `PATCH /users/me/ui-preferences`
 
 ### 27. 번역 아이콘 OFF 시 동작 정리
 
@@ -1116,7 +1107,7 @@ function shouldShowTagBadge(node: NodeObject, uiPrefs: UiPreferences): boolean {
 2. Skeleton은 설정에 상관없이 항상 표시.
 3. override 아이콘은 독립 설정.
 
-### 28. 관련 API 엔드포인트 (신규)
+### 28. 관련 API 엔드포인트 [서버 연결 예정]
 
 - `PATCH /users/me/ui-preferences` — Body: `Partial<UiPreferences>`, `users.ui_preferences_json` 업데이트, 응답: 200 OK + 갱신된 UiPreferences
 - `GET /users/me` — 기존 사용자 프로필 API에 `uiPreferences` 필드 포함 반환
@@ -1137,10 +1128,10 @@ function shouldShowTagBadge(node: NodeObject, uiPrefs: UiPreferences): boolean {
 ### 30. 개요
 
 노드에 특정 콘텐츠(노트·하이퍼링크·첨부파일·멀티미디어)가 연결되어 있을 때,
-노드 우측에 작은 아이콘을 표시하여 콘텐츠 존재 여부를 한눈에 알 수 있게 한다.
+노드 우측에 작은 배지/아이콘을 표시하여 콘텐츠 존재 여부를 한눈에 알 수 있게 한다.
 
 ```
-[노트  ≡]         ← 노트(긴 설명)가 작성된 노드
+[노트 T/C/⊞/✓]   ← 노트 종류별 배지 (문단 T / 코드 C / 표 ⊞ / 체크리스트 ✓)
 [Hyperlink 🔗]  ← 하이퍼링크가 1개 이상 연결된 노드
 [첨부파일 📎]      ← 첨부파일이 1개 이상 연결된 노드
 [멀티미디어 ▶]    ← 멀티미디어(영상/음성 등)가 연결된 노드
@@ -1153,30 +1144,33 @@ function shouldShowTagBadge(node: NodeObject, uiPrefs: UiPreferences): boolean {
 
 | 인디케이터 | 아이콘 | 색상 | 표시 조건 | 위치 |
 |---|:---:|---|---|:---:|
-| 노트 | ≡ | 주황/베이지 | `node.note ≠ null` | 노드 우측 |
-| Hyperlink | 🔗 | 파란 계열 | `node.hyperlinkIds.length > 0` | 노드 우측 |
-| 첨부파일 | 📎 | 주황/베이지 | `node.attachmentIds.length > 0` | 노드 우측 |
-| 멀티미디어 | ▶ | 파란 계열 | `node.multimediaId ≠ null` | 노드 우측 |
+| 노트(문단) | T | 회색 `#64748B` | `node.notes`에 paragraph 존재 | 노드 우측 |
+| 노트(코드) | C | 주황 `#B45309` | `node.notes`에 code_block 존재 | 노드 우측 |
+| 노트(표) | ⊞ | 파랑 `#1D4ED8` | `node.notes`에 table 존재 | 노드 우측 |
+| 노트(체크리스트) | ✓ | 초록 `#15803D` | `node.notes`에 checklist 존재 | 노드 우측 |
+| Hyperlink | 🔗 | 지구본 파랑+금색 | `node.links.length > 0` | 노드 우측 |
+| 첨부파일 | 📎 | 보라 배지 `#7C3AED`+흰 클립 | `node.attachments`에 `kind='file'` 존재 | 노드 우측 |
+| 멀티미디어 | ▶ | 파란 계열 | `node.attachments`에 `kind='media'` 존재 | 노드 우측 |
 
-4가지 모두 동시에 표시될 수 있다.
+모두 동시에 표시될 수 있으며, 표시 순서는 **노트 배지 → 링크 → 첨부 → 미디어**다. 같은 종류 노트가 여러 개면 배지 위에 개수를 표시한다.
 
 ### 32. 표시 판단 로직
 
 ```typescript
-// NodeContentIndicators.tsx
+// NodeContentIndicators.tsx — 현행 필드(문서 JSON)
 type ContentIndicatorState = {
-  hasNote: boolean;
-  hasHyperlink: boolean;
-  hasAttachment: boolean;
-  hasMultimedia: boolean;
+  noteKinds: Record<NoteKind, number>;  // paragraph/code_block/table/checklist별 개수
+  hasLink: boolean;
+  hasAttachment: boolean;   // attachments 중 kind='file'
+  hasMultimedia: boolean;   // attachments 중 kind='media'
 };
 
-function getContentIndicatorState(node: NodeObject): ContentIndicatorState {
+function getContentIndicatorState(node: MindNode): ContentIndicatorState {
   return {
-    hasNote:       node.note != null && node.note.trim().length > 0,
-    hasHyperlink:  node.hyperlinkIds.length > 0,
-    hasAttachment: node.attachmentIds.length > 0,
-    hasMultimedia: node.multimediaId != null,
+    noteKinds:     countNoteKinds(node.notes ?? []),
+    hasLink:       (node.links?.length ?? 0) > 0,
+    hasAttachment: (node.attachments ?? []).some(a => a.kind === 'file'),
+    hasMultimedia: (node.attachments ?? []).some(a => a.kind === 'media'),
   };
 }
 ```
@@ -1190,9 +1184,9 @@ function getContentIndicatorState(node: NodeObject): ContentIndicatorState {
 NodeRenderer
   ├── NodeText              (텍스트 + 번역 인디케이터 — PART 2)
   ├── NodeTagBadge          (태그 badge — tag-system.md)
-  ├── NodeContentIndicators ← [NODE-16 신규]
-  │    ├── NoteIcon      (≡)    — hasNote = true 일 때
-  │    ├── HyperlinkIcon (🔗) — hasHyperlink = true 일 때
+  ├── NodeContentIndicators ← [NODE-16]
+  │    ├── NoteTypeGlyph  (T/C/⊞/✓) — 노트 종류별 배지, 종류별 1개씩
+  │    ├── HyperlinkIcon (🔗) — hasLink = true 일 때
   │    ├── AttachmentIcon(📎)   — hasAttachment = true 일 때
   │    └── MultimediaIcon(▶)   — hasMultimedia = true 일 때
   └── NodeAddIndicator      (+ 버튼 4방향 — PART 1)
@@ -1203,24 +1197,24 @@ NodeRenderer
 | 인디케이터 종류 | 표시 조건 | 동시 표시 |
 |---|---|:---:|
 | + 버튼 (4방향) | 싱글 클릭 선택 시 | ✅ 가능 |
-| 접기/펼치기 버튼 | 자식 노드 존재 시 | ✅ 가능 |
+| 접기/펼치기 토글 | 자식 노드 존재 시 — 접힘 시 항상 표시·펼침 시 호버에만 표시 | ✅ 가능 |
 | 🔤 번역 아이콘 | 번역본 표시 중 | ✅ 가능 |
 | 🔴 번역 실패 | 번역 실패 상태 | ✅ 가능 |
 | ⛔ / 🔁 override | 편집자 + override 설정 | ✅ 가능 |
 | Skeleton 바 | 번역 대기 중 | ❌ 불가 |
-| 노트 ≡ | note 존재 | ✅ 가능 |
-| Hyperlink 🔗 | hyperlinkIds 존재 | ✅ 가능 |
-| 첨부파일 📎 | attachmentIds 존재 | ✅ 가능 |
-| 멀티미디어 ▶ | multimediaId 존재 | ✅ 가능 |
+| 노트 배지 T/C/⊞/✓ | notes에 해당 종류 존재 | ✅ 가능 |
+| Hyperlink 🔗 | links 존재 | ✅ 가능 |
+| 첨부파일 📎 | attachments(kind='file') 존재 | ✅ 가능 |
+| 멀티미디어 ▶ | attachments(kind='media') 존재 | ✅ 가능 |
 
 ### 35. 구현 우선순위 (콘텐츠 존재 인디케이터)
 
 - Step 1: getContentIndicatorState() 함수 구현
-- Step 2: NoteIcon — node.note 존재 시 ≡ 아이콘 렌더링
-- Step 3: HyperlinkIcon — hyperlinkIds.length > 0 시 아이콘 렌더링
-- Step 4: AttachmentIcon — attachmentIds.length > 0 시 아이콘 렌더링
-- Step 5: MultimediaIcon — multimediaId 존재 시 ▶ 아이콘 렌더링
-- Step 6: NodeContentIndicators 컨테이너 — 4개 아이콘 배치 및 간격
+- Step 2: NoteTypeGlyph — node.notes 종류별 배지(T/C/⊞/✓) 렌더링
+- Step 3: HyperlinkIcon — links.length > 0 시 아이콘 렌더링
+- Step 4: AttachmentIcon — attachments(kind='file') 존재 시 아이콘 렌더링
+- Step 5: MultimediaIcon — attachments(kind='media') 존재 시 ▶ 아이콘 렌더링
+- Step 6: NodeContentIndicators 컨테이너 — 배지·아이콘 배치(노트 배지→링크→첨부→미디어) 및 간격
 
 ---
 

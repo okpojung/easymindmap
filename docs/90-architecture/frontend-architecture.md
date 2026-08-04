@@ -37,7 +37,7 @@ apps/frontend/
 │   │   ├── autosaveStore.ts           # dirty flag / pending patches / save status
 │   │   ├── collabStore.ts             # [v3.3] 협업 상태
 │   │   └── translationStore.ts        # [V2] 번역 캐시 상태
-│   │   # ⚠️ 5-Store 핵심 원칙 (state-architecture.md 기준):
+│   │   # ⚠️ 코어 5-Store 핵심 원칙 (state-architecture.md 기준; 실제로는 +cloud·auth·aiSettings = 8 스토어):
 │   │   #   Document / EditorUI / Viewport / Interaction / Autosave
 │   │   #   → 협업/번역/대시보드 기능은 위 5개에 통합하거나 별도 독립 store로 추가
 │   │   #   → 절대 5개 핵심 store에 혼재 금지
@@ -90,7 +90,7 @@ apps/frontend/
 
 ---
 
-## 2. 5-Store 상세 명세
+## 2. 코어 5-Store 상세 명세 (연동 3종 cloud·auth·aiSettings 는 state-architecture.md 참조)
 
 ### 2.1 documentStore
 

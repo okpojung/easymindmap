@@ -1,11 +1,12 @@
 # 04. Node Content
 ## NODE_CONTENT
 
-* 문서 버전: v3.1
+* 문서 버전: v3.2
 * 작성일: 2026-04-06
-* 최종 업데이트: 2026-05-07
+* 최종 업데이트: 2026-08-04 — 실제 구현 기준 현행화: 저장은 문서 JSON(node.text/notes[]/links[]/attachments[]), node_type·code_language 폐기(코드=본문 펜스 패널 또는 코드 노트 블록), 편집 진입=더블클릭, 길이 제한 없음.
 * 수정 내용:
 
+  * v3.2 — 현행화 (2026-08-04)
   * v3.1 — 구현 우선순위 수정: note / 링크 / 첨부파일 MVP로 상향 (roadmap.md v1.6 동기화)
   * v3.0 — title 필드 제거 (content 단일 구조로 통합), markdown 정송 반영, 수동 줄바꾸 지원 추가, 리스트 표현 지원 명확화, NODE_RENDERING 문서 참조 추가
 
@@ -24,7 +25,7 @@
 * 포함:
 
   * markdown 기반 텍스트 입력 및 저장
-  * code node (명령/스크립트 표현)
+  * 코드 콘텐츠 (본문 ``` 펜스 패널 / 코드 노트 블록 — 별도 노드 타입 없음)
   * note(확장 설명) 지원
   * AI 생성 콘텐츠 저장
   * 수동 줄바꿈 및 리스트 표현 지원
@@ -42,14 +43,14 @@
 
 | 기능ID  | 기능명         | 설명             | 주요 동작       |
 | ----- | ----------- | -------------- | ----------- |
-| NC-01 | 콘텐츠 입력      | `nodes.text` 기반 입력 | 클릭 → 입력     |
-| NC-02 | code node   | 실행형 콘텐츠        | code UI     |
-| NC-03 | note 필드     | 상세 설명          | expand      |
+| NC-01 | 콘텐츠 입력      | `node.text`(문서 JSON) 기반 입력 | 더블클릭 → 입력     |
+| NC-02 | 코드 콘텐츠   | 본문 ``` 펜스 패널 또는 코드 노트 블록        | code UI     |
+| NC-03 | note 필드     | 상세 설명 (`notes?: NoteBlock[]`)          | expand      |
 | NC-04 | autosave    | 자동 저장          | debounce    |
 | NC-05 | 생성 출처 추적   | AI/사용자 구분(메타)      | ai_jobs/revision 메타    |
 | NC-06 | 줄바꿈 지원      | 수동/자동 줄바꿈      | Enter       |
 | NC-07 | 리스트 지원      | markdown list(node 내부 유지)  | render      |
-| NC-08 | 코드 언어 확장 | V2 `code_language` 확장 검토 | schema 확장 |
+| NC-08 | 코드 언어 지정 | 구현됨 — 언어 목록은 `CODE_LANGUAGES` 하드코딩 | 언어 라벨 선택 |
 
 ---
 
@@ -57,35 +58,36 @@
 
 NODE_CONTENT는 노드의 “본문 데이터” 저장/해석 기준을 정의한다.
 
-#### 4.1 저장 모델 (schema.sql 기준)
+#### 4.1 저장 모델 (현행 — 문서 JSON)
 
-- 기본 본문: `nodes.text`
-- 본문 유형: `nodes.node_type`
-- 확장 설명(note): `node_notes.content` (1:1)
-- 링크: `node_links`
-- 첨부파일: `node_attachments`
-- 오디오/비디오: `node_media`
+노드 콘텐츠는 모두 **맵 전체 문서 JSON**(`PUT /maps/:id/document` → `map_documents.doc`)에 담겨 저장된다. 노드 타입의 단일 원본은 `packages/emm-parser/src/model.ts`의 `MindNode`다 (`node_type` 필드 없음).
+
+- 기본 본문: `node.text`
+- 확장 설명(note): `node.notes?: NoteBlock[]` — 4종 (`paragraph` / `code_block` / `table` / `checklist`. `warning`/`tip`은 v1.1 폐기 — 문단으로 하위호환)
+- 링크: `node.links[]`
+- 첨부파일/미디어: `node.attachments[]` (`kind` 필드로 구분)
+- 사진: `node.image`(단일, 텍스트 아래) / `node.images[]`(인라인 사진 — afterLine 앵커)
+
+> **[서버 연결 예정]** `nodes`/`node_notes`/`node_links`/`node_attachments`/`node_media` 정규화 테이블은 협업 단계 설계안이다. 현재는 노드 단위 API·정규화 컬럼 쓰기가 없다.
 
 #### 4.2 본문 규칙
 
-- `nodes.text`는 Markdown raw text로 저장한다.
+- `node.text`는 Markdown raw text로 저장한다.
 - 렌더링 시 Markdown 파서가 뷰 텍스트/HTML로 해석한다.
 - 리스트는 child node로 강제 변환하지 않고, 기본적으로 node 내부 Markdown list로 유지한다.
 - 수동 줄바꿈은 raw text 그대로 저장한다.
-- note는 `nodes` 컬럼에 넣지 않고 `node_notes` 테이블에 분리 저장한다.
+- note는 노드의 `notes[]` 배열(NoteBlock)에 저장한다 — 문서 JSON 일부.
 
-#### 4.3 node_type 규칙
+#### 4.3 node_type 규칙 (폐기)
 
-- 기본값: `text` (`schema.sql` 기준)
-- 현재 확정 타입: `text`, `data-live`
-- 문서 확장 타입: `code` (MVP 문서 허용)
-- `image-card` 등 추가 타입은 후속 버전에서 확장한다.
+- `node_type` 필드는 **폐기**되었다 — `MindNode`에 타입 필드가 없다.
+- 코드·표 등은 별도 노드 타입이 아니라 **본문 내용**(``` 펜스, 파이프 표)이나 **노트 블록 종류**로 표현한다.
 
-#### 4.4 code node 정책
+#### 4.4 코드 콘텐츠 정책 (현행)
 
-- MVP에서 `node_type='code'`는 문서 설계상 허용한다.
-- 물리 DB에 `code_language` 컬럼이 아직 없으면, 언어 정보는 `style_json`/metadata로 보류한다.
-- V2에서는 `nodes.code_language VARCHAR(30)` 추가를 권장한다.
+- 노드 본문의 ``` 코드 펜스는 **코드 패널**로 렌더된다 — 언어 라벨·복사(⧉)·편집(✎) 팝업 제공.
+- 노트의 코드는 `NoteBlock`(kind=`code_block`)으로 저장하며, 언어는 `NoteBlock.lang`에 기록한다.
+- 별도 `code` 노드 타입·`nodes.code_language` 컬럼은 사용하지 않는다 (설계 초안 — 미채택).
 
 #### 4.5 source 추적 정책
 
@@ -98,18 +100,18 @@ NODE_CONTENT는 노드의 “본문 데이터” 저장/해석 기준을 정의�
 
 #### 5.1 사용자 동작
 
-* 노드 클릭 → 입력
-* Enter → 줄바꿈
+* 노드 **더블클릭** → 편집 진입·입력 (싱글 클릭은 선택, Enter는 형제 추가)
+* Enter(편집 중) → 줄바꿈 (스마트 Enter)
 * markdown 문법 입력
 * 리스트 입력 가능
-* code node 선택 시 코드 입력
+* 코드는 본문 ``` 펜스 또는 코드 노트 블록으로 입력 (별도 노드 타입 없음)
 
 ---
 
 #### 5.2 시스템 처리
 
-* 입력 내용을 `nodes.text`로 저장
-* 타입 정보는 `nodes.node_type`로 관리
+* 입력 내용을 `node.text`(문서 JSON)로 저장
+* 노드 타입 필드는 없다 — 콘텐츠 유형은 본문 내용·노트 블록 종류로 표현
 * markdown 파싱은 렌더링 단계에서 수행
 * autosave debounce 적용
 
@@ -118,7 +120,7 @@ NODE_CONTENT는 노드의 “본문 데이터” 저장/해석 기준을 정의�
 #### 5.3 표시 방식
 
 * View Mode → markdown 렌더링
-* Edit Mode → raw markdown 표시
+* Edit Mode → raw markdown 표시 + **라이브 미리보기 병행** (편집 textarea 뒤 동일 메트릭 미리보기 레이어 — 02-node-editing.md §18 참조)
 
 ※ 렌더링 상세 규칙은 `06-node-rendering.md` 참조
 
@@ -128,19 +130,18 @@ NODE_CONTENT는 노드의 “본문 데이터” 저장/해석 기준을 정의�
 
 ---
 
-#### 6.1 본문/타입 규칙
+#### 6.1 본문 규칙
 
 ```txt
-nodes.text: markdown raw text
-nodes.node_type: 'text' | 'data-live' (현재 DB 기준)
-문서 확장: 'code' (MVP 문서 허용)
+node.text: markdown raw text (문서 JSON — MindNode)
+노드 타입 필드 없음 — 코드/표는 본문 펜스·파이프 표 또는 노트 블록으로 표현
 ```
 
 ---
 
 #### 6.2 콘텐츠 구조 규칙
 
-* node 본문은 `nodes.text` 단일 원문으로 관리한다.
+* node 본문은 `node.text` 단일 원문으로 관리한다.
 * title 별도 컬럼은 사용하지 않는다.
 * heading/첫 줄 강조는 저장 구조가 아니라 렌더링 표현 규칙이다.
 
@@ -176,11 +177,11 @@ nodes.node_type: 'text' | 'data-live' (현재 DB 기준)
 
 ---
 
-#### 6.5 code node 규칙
+#### 6.5 코드 콘텐츠 규칙 (현행)
 
-* 실행형 콘텐츠는 code 타입 사용
-* language 지정 권장
-* markdown 내부 code block과 구분
+* 본문 ``` 코드 펜스 → 코드 패널 렌더 (언어 라벨·⧉ 복사·✎ 편집 팝업)
+* 노트 코드 블록 → `NoteBlock` kind=`code_block`, 언어는 `NoteBlock.lang`
+* 언어 목록은 `CODE_LANGUAGES` 하드코딩 (별도 code 노드 타입 없음)
 
 ---
 
@@ -191,11 +192,10 @@ nodes.node_type: 'text' | 'data-live' (현재 DB 기준)
 
 ---
 
-#### 6.7 길이 제한
+#### 6.7 길이 제한 (현행)
 
-* title 없음
-* content: 10,000자
-* note: 50,000자
+* 길이 제한을 강제하지 않는다 — content·note 모두 상한 없음.
+* 예외: Markdown 불러오기 시 `NODE_A4_CHARS`(2500자) 초과 문단만 별도 규칙 적용 (07-markdown-format-policy.md 참조).
 
 ---
 
@@ -212,11 +212,11 @@ nodes.node_type: 'text' | 'data-live' (현재 DB 기준)
 
 ### 8. 예외 / 경계 (Edge Case)
 
-* `nodes.text` 비어있음 → 최소 노드 표시
+* `node.text` 비어있음 → 최소 노드 표시 (빈 값 편집 종료 시 직전 텍스트 유지)
 * 공백만 입력 → 저장 제한 가능
-* 매우 긴 텍스트 → 렌더링에서 collapse 처리
+* 매우 긴 텍스트 → 축약(collapse) 없음 — 최대 폭 내에서 줄바꿈하며 세로로 확장 (높이 상한 없음)
 * 긴 URL → 줄바꿈 처리
-* code 길이 과다 → scroll 또는 접힘
+* code 길이 과다 → 가로 스크롤 없음 — 코드 패널 폭만큼 노드 폭 확장
 
 ---
 
@@ -230,20 +230,19 @@ nodes.node_type: 'text' | 'data-live' (현재 DB 기준)
 
 ---
 
-### 10. DB 영향
+### 10. DB 영향 (현행)
 
-* `nodes.text`
-* `nodes.node_type`
-* `node_notes.content`
-* `node_links`, `node_attachments`, `node_media`
+* 저장은 **맵 전체 문서 JSON 스냅샷**: `map_documents.doc` (노드의 text/notes/links/attachments/images 전부 포함)
+* [서버 연결 예정] `nodes.text` / `node_notes` / `node_links` / `node_attachments` / `node_media` 정규화 테이블은 협업 단계 설계안
 
 ---
 
-### 11. API 영향
+### 11. API 영향 (현행)
 
-* `PATCH /nodes/{id}` (본문/타입 갱신)
-* `PATCH /nodes/{id}/note` (note 분리 저장)
-* `GET /nodes/{id}` / `GET /maps/{mapId}/document`
+* `PUT /maps/:id/document` — 맵 전체 문서 스냅샷 저장 (본문·노트·링크·첨부 메타 모두 이 경로)
+* `GET /maps/:id/document` — 문서 조회
+* 첨부 **실파일**은 attachments API(스토리지)로 업로드/다운로드
+* [서버 연결 예정] `PATCH /nodes/{id}` 등 노드 단위 API는 협업 단계 설계안
 
 ---
 
@@ -285,10 +284,10 @@ AI 생성 → `ai_jobs`/revision 메타와 연계 저장
 * markdown 입력
 * 줄바꾸 지원
 * 리스트 지원
-* code node 기본
+* 코드 콘텐츠 기본 (본문 펜스 패널 / 코드 노트 블록)
 * **note 확장** (structured note: paragraph / code_block / table / checklist — v1.1에서 warning·tip 폐기, table 추가; code_block은 언어 라벨(lang) 표기)
-* **노드 링크** (URL 첨부, `node_links` 테이블)
-* **노드 첨부파일** (파일 첨부, Supabase Storage, `node_attachments` 테이블)
+* **노드 링크** (URL 첨부 — 메타는 문서 JSON `node.links[]`에 저장)
+* **노드 첨부파일** (메타는 문서 JSON `node.attachments[]`(kind), **실파일**은 attachments API/스토리지에 저장)
 
 #### 2단계
 

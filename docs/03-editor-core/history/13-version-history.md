@@ -1,12 +1,13 @@
 # 13. Version History
 ## VERSION_HISTORY
 
-* 문서 버전: v1.1
+* 문서 버전: v2.0
 * 작성일: 2026-04-15
-* 최종 업데이트: 2026-05-07
+* 최종 업데이트: 2026-08-04
 * 변경 이력:
+  * v2.0 — 실제 구현(`map_document_versions` 문서 스냅샷 · 명시적 저장에서만 버전 생성 · MAX(version)+1 · 새 맵+새 탭 복원 · restore 엔드포인트 없음) 기준으로 본문 현행화. patch/`map_revisions` 기반 원안은 "정규화 노드 경로 전용 — 문서 저장 경로와 무관"으로 강등.
   * v1.1 — NodePatch op 명칭을 api-spec.md v2.3 기준으로 통일; Diff Viewer 기능 ID(VH-07) 및 명세 추가 (CON-001 정합성 보정)
-* 참조: `docs/02-domain/db-schema.md § map_revisions`, `docs/03-editor-core/save/14-save.md`, `docs/03-editor-core/history/12-history-undo-redo.md`
+* 참조: `docs/02-domain/db-schema.md`, `docs/03-editor-core/save/14-save.md`, `docs/03-editor-core/history/12-history-undo-redo.md`
 
 ---
 
@@ -19,29 +20,28 @@
 
 | 항목 | 구현 |
 |---|---|
-| 테이블 | `public.map_document_versions` (map_id, version, title, doc, created_by, created_at · UNIQUE(map_id,version) · RLS 소유자 한정) |
+| 테이블 | `public.map_document_versions` (map_id, version, title, doc, created_by, created_at, layout_type, node_count, attach_bytes, attach_count · UNIQUE(map_id,version) · RLS 소유자 한정) |
 | 버전 생성 시점 | **명시적 저장에서만** — `PUT /maps/:id/document` 의 `keepVersion: true`. ☁ 저장·맵 닫기가 이 값을 보낸다. **자동저장(디바운스)은 버전을 남기지 않는다** — 스냅샷에 이미지가 data URL 로 들어가 매 저장마다 쌓으면 용량이 급증하기 때문 |
-| 조회 | `GET /maps/:id/versions` (메타만 — version·title·createdAt·bytes) · `GET /maps/:id/versions/:version` (doc 포함) |
+| 조회 | `GET /maps/:id/versions` (메타만 — version·title·createdAt·bytes 등) · `GET /maps/:id/versions/:version` (doc 포함) |
 | 복원 | 현재 맵을 덮어쓰지 않는다 — 새 맵 생성 후 그 문서로 저장하고, **브라우저 새 탭**(`?map=<id>`)에서 연다(2026-08-02 탭 모델 — 지금 편집 중인 맵을 밀어내지 않는다). 제목 = **`원제목_history_YYMMDD_HHMM`** (같은 날 여러 번 복원해도 구분되도록 분까지) |
 | UI | 좌측 **히스토리** 패널 — 저장일시 목록 + 각 항목 "새 탭으로". 서버 미연결이면 안내만 표시 |
-| 검증 | API 7단언(version-api-test) + e2e80 7단언 |
+| 검증 | API 7단언(version-api-test) + e2e80 7단언 · e2e89(버전 상세) · e2e90(무변경 스킵) |
 
 VH-04(미리보기)·VH-07(Diff Viewer)는 미구현 — 오픈 후 수요를 보고 결정.
 
 ### 1. 기능 목적
 
-> **확정 설계 (2026-07-31 사용자 결정)**: 좌측 '히스토리' 메뉴가 이
-> 기능의 자리다 — **서버 저장과 연결될 때 구현**한다. 규칙:
-> ① 세션을 닫고 **저장할 때마다 저장일시(날짜·시간)별 버전** 생성
+> **확정 설계 (2026-07-31 사용자 결정 → 2026-08-02 구현 완료)**: 좌측
+> '히스토리' 메뉴가 이 기능의 자리다. 규칙:
+> ① **명시적 저장(☁ 저장·맵 닫기)할 때마다 저장일시별 버전** 생성
 > ② 특정 시점 복원은 현재 맵을 덮어쓰지 않고 **새 맵
-> (제목_history_YYMMDD)** 으로 연다 — 2026-08-02부터 그 새 맵은
-> **브라우저 새 탭**에서 열린다 ③ 클라이언트 되돌리기(Ctrl+Z,
-> 세션 한정 99단계)와는 완전히 별개.
+> (`제목_history_YYMMDD_HHMM`)** 으로 만들어 **브라우저 새 탭**에서 연다
+> ③ 클라이언트 되돌리기(Ctrl+Z, 세션 한정 99단계)와는 완전히 별개.
 
-* 맵의 편집 이력을 **서버에 영구 저장**하여 과거 버전 조회 및 복원을 제공하는 기능
-* autosave가 서버에 patch를 저장할 때마다 `map_revisions`에 1 row씩 자동 누적
-* 버전 히스토리 패널에서 타임라인 형태로 과거 편집 내역 탐색
-* 특정 시점 버전으로 롤백(Restore) 가능
+* 맵의 저장 시점 문서를 **서버에 영구 보관**하여 과거 버전 조회 및 복원을 제공하는 기능
+* **명시적 저장(keepVersion)** 시에만 `map_document_versions`에 1 row 씩 누적 — 자동저장은 버전을 만들지 않는다
+* 히스토리 패널에서 저장일시 목록으로 과거 저장본 탐색
+* 특정 시점 버전을 **새 맵 + 새 탭**으로 복원 가능
 * 클라이언트 Undo/Redo(세션 한정)와 달리 **영구적·서버 기반 버전 관리** 제공
 
 ---
@@ -50,60 +50,63 @@ VH-04(미리보기)·VH-07(Diff Viewer)는 미구현 — 오픈 후 수요를 �
 
 * 포함:
 
-  * autosave 저장 시 자동 revision 생성
-  * 버전 히스토리 패널 (타임라인 목록 조회)
-  * 특정 버전 미리보기 (read-only)
-  * 특정 버전으로 롤백(Restore)
-  * 작성자 / 저장 시각 표시
-  * 버전 번호(version) 기반 순서 관리
+  * 명시적 저장 시 버전 생성 (자동저장 제외)
+  * 히스토리 패널 (저장일시 목록 조회)
+  * 특정 버전을 새 맵으로 복원 ([새 탭으로])
+  * 버전별 상세(레이아웃·노드 수·문서 크기·첨부 개수·용량) 표시
+  * 버전 번호(version, MAX+1) 기반 순서 관리
 
 * 제외:
 
   * 클라이언트 Undo/Redo (→ HISTORY, `12-history-undo-redo.md`)
-  * 협업 충돌 해소 (→ COLLABORATION)
+  * 협업 충돌 해소 (→ COLLABORATION — 계획)
   * 삭제된 맵 복구 (→ MAP 휴지통 정책)
+  * 버전 미리보기·Diff Viewer [미구현 — 백로그]
 
 ---
 
 ### 3. 세부 기능 목록
 
-| 기능ID  | 기능명             | 설명                            | 단계  |
+| 기능ID  | 기능명             | 설명                            | 상태  |
 | ----- | --------------- | ----------------------------- | --- |
-| VH-01 | 자동 revision 생성  | autosave 저장 시마다 map_revisions에 1 row 생성 | MVP |
-| VH-02 | 버전 히스토리 패널     | 타임라인 형태 버전 목록 조회              | V1  |
-| VH-03 | 버전 상세 조회        | 특정 버전의 patch_json 내역 확인       | V1  |
-| VH-04 | 버전 미리보기         | 특정 버전 맵 read-only 렌더링         | V1  |
-| VH-05 | 버전 롤백 (Restore) | 특정 버전으로 현재 맵 상태 복원            | V1  |
-| VH-06 | 작성자 / 시각 표시     | 각 revision의 created_by / created_at 표시 | V1  |
-| VH-07 | Diff Viewer           | 두 버전 간 변경 노드 시각화 (추가/삭제/변경 하이라이트) | V1  |
+| VH-01 | 버전 생성  | **명시적 저장(keepVersion)에서만** map_document_versions에 1 row 생성 — 자동저장 제외, 무변경 저장도 제외 | 구현됨 |
+| VH-02 | 히스토리 패널     | 저장일시 목록 조회 (최신순)              | 구현됨  |
+| VH-03 | 버전 상세 조회        | 버전별 doc 조회 + 레이아웃·노드 수·첨부 상세 표시       | 구현됨  |
+| VH-04 | 버전 미리보기         | 특정 버전 맵 read-only 렌더링         | [미구현 — 백로그]  |
+| VH-05 | 버전 복원 | 특정 버전을 **새 맵 + 새 탭**으로 열기 ([새 탭으로])            | 구현됨  |
+| VH-06 | 저장 시각 표시     | 각 버전의 저장일시·v번호 표시 (단독맵은 작성자 = 소유자) | 구현됨  |
+| VH-07 | Diff Viewer           | 두 버전 간 변경 노드 시각화 (추가/삭제/변경 하이라이트) | [미구현 — 백로그] |
 
 ---
 
 ### 4. 기능 정의 (What)
 
-#### 4.1 map_revisions 테이블
+#### 4.1 map_document_versions 테이블
 
 ```sql
-CREATE TABLE public.map_revisions (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  map_id      UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
-  version     INT  NOT NULL,           -- 맵별 단조 증가 버전 번호
-  patch_json  JSONB NOT NULL,          -- 이 revision에서 변경된 NodePatch[] 목록
-  client_id   VARCHAR(100),            -- 저장을 요청한 클라이언트 탭 ID
-  patch_id    VARCHAR(200) UNIQUE,     -- 멱등성 키 (Undo/Redo 재저장 시 새 ID 필수)
-  created_by  UUID REFERENCES public.users(id),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE public.map_document_versions (
+  map_id       UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  version      INT  NOT NULL,           -- 맵별 MAX(version)+1 채번
+  title        TEXT,                    -- 저장 시점의 맵 제목
+  doc          JSONB NOT NULL,          -- 전체 문서 스냅샷
+  created_by   UUID REFERENCES public.users(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  layout_type  TEXT,                    -- 버전 상세 표시용 (2026-08-03)
+  node_count   INT,
+  attach_bytes BIGINT,
+  attach_count INT,
+  UNIQUE (map_id, version)
 );
-
-CREATE INDEX idx_map_revisions_map_id
-  ON public.map_revisions(map_id, version DESC);
 ```
 
-#### 4.2 NodePatch 종류 (patch_json에 저장되는 단위)
+#### 4.2 NodePatch (설계 초안 — 정규화 노드 경로 전용)
+
+> 아래 patch 체계는 **정규화 노드 경로(`map_revisions`·협업용) 전용
+> 설계로, 현재 문서 저장 경로와 무관하다.** 문서 저장은 patch 가 아니라
+> 전체 스냅샷(doc JSONB)이다.
 
 ```typescript
-// ※ op 명칭은 api-spec.md v2.3 §2 PATCH /maps/{mapId}/nodes 기준
-// patch_json에 저장되는 단위는 동일한 4종 op를 사용한다
+// (설계 초안 — 미사용) op 명칭은 api-spec.md v2.3 기준 4종
 type NodePatch =
   | { op: 'add';    nodeId: string; data: { parentId: string; text: string; orderIndex: number; layoutType?: string } }
   | { op: 'update'; nodeId: string; data: Partial<Pick<NodeObject, 'text' | 'collapsed' | 'layoutType' | 'style' | 'backgroundImage' | 'manualPosition'>> }
@@ -111,95 +114,62 @@ type NodePatch =
   | { op: 'move';   nodeId: string; data: { parentId: string; orderIndex: number } };
 ```
 
-#### 4.3 revision 생성 흐름
+#### 4.3 버전 생성 흐름 (실제)
 
 ```
-사용자 편집
+사용자: ☁ 저장 또는 맵 닫기
     │
     ▼
-Document Store 상태 변경
+buildSnapshot() — 로드와 같은 정규화(normalizeMapForSnapshot)
     │
     ▼
-autosaveStore.markDirty(patch)
+PUT /maps/{mapId}/document { doc, title, keepVersion: true, editSession }
     │
-    ▼
-PATCH /maps/{mapId}/nodes
-    │
-    ├─ patchId 중복 검사 (Redis SET NX)
-    ├─ baseVersion 비교 (409 Conflict 처리)
-    ├─ 각 patch 적용 (nodes UPDATE/INSERT/DELETE)
-    ├─ maps.current_version + 1
-    └─ map_revisions INSERT (version, patch_json, client_id, patch_id, created_by)
+    ├─ 편집 잠금(map_edit_locks) 확인 — 타 세션이면 409
+    ├─ 현재 문서·마지막 버전과 jsonb 등가 비교 → 같으면 unchanged (버전 없음)
+    ├─ map_documents upsert + maps.title 갱신
+    └─ map_document_versions INSERT (version = MAX(version)+1,
+       layout_type·node_count·attach_bytes·attach_count 함께 기록)
 ```
 
-#### 4.4 버전 히스토리 패널 구조
+> 원안의 "autosave 마다 map_revisions INSERT (patchId 중복 검사 ·
+> baseVersion 409)" 흐름은 문서 저장 경로에서 쓰지 않는다.
+
+#### 4.4 히스토리 패널 구조 (실제)
 
 ```text
 ┌──────────────────────────────────────────────┐
-│  버전 이력          [닫기 ✕]                  │
+│  히스토리                                     │
 ├──────────────────────────────────────────────┤
-│  ● v42  2026-04-15 14:32  홍길동              │
-│    └─ 노드 3개 수정, 레이아웃 변경              │
+│  2026-08-03 14:32  · v3                       │
+│  프로젝트 계획 — 트리·오른쪽                    │
+│  42노드 · 380KB · 첨부 2개 · 3.1MB   [새 탭으로] │
 │                                              │
-│  ○ v41  2026-04-15 14:28  홍길동              │
-│    └─ 텍스트 수정                             │
+│  2026-08-03 11:05  · v2                       │
+│  프로젝트 계획 — 방사형·양쪽                    │
+│  40노드 · 355KB                     [새 탭으로] │
 │                                              │
-│  ○ v38  2026-04-15 13:51  김철수              │
-│    └─ 노드 추가                               │
-│                                              │
-│  ○ v35  2026-04-14 09:12  홍길동              │
-│    └─ 초기 생성                               │
-│                           [이 버전으로 복원]   │
+│  2026-08-02 18:20  · v1                       │
+│  프로젝트 계획                                 │
+│  11노드 · 24KB                      [새 탭으로] │
 └──────────────────────────────────────────────┘
 ```
 
-#### 4.5 patch_id 생성 규칙 (Undo/Redo 후 재저장 시)
+* 각 항목: 저장일시 + v번호 · 제목 + 레이아웃 · N노드 · 문서 크기 · 첨부 N개 · 용량 + `[새 탭으로]` 버튼
+* 컬럼 도입 이전 버전은 상세가 null 이라 있는 항목만 표시
+* 서버 미연결이면 목록 없이 안내만 표시 (e2e68 [4], e2e80 [1])
 
-```typescript
-let counter = 0;
-function generatePatchId(type: 'normal' | 'undo' | 'redo' = 'normal'): string {
-  counter++;
-  const suffix = type !== 'normal' ? `_${type}` : '';
-  return `p_${Date.now()}_${counter.toString().padStart(3, '0')}${suffix}`;
-}
+#### 4.5 patch_id 생성 규칙 (설계 초안 — 정규화 노드 경로 전용)
 
-// Undo 실행 후 autosave
-autosaveStore.markDirty({
-  patchId: generatePatchId('undo'),   // p_1744721234567_001_undo
-  patches: inversePatches,
-});
-```
+> `generatePatchId`/`_undo`/`_redo` suffix 규칙은 patch 저장 경로 전용
+> 설계로, 문서 저장 경로와 무관하다. 문서 저장에는 멱등성 키가 없고,
+> 대신 서버가 jsonb 등가 비교로 무변경 저장을 스킵한다.
 
-#### 4.6 Diff Viewer (VH-07)
+#### 4.6 Diff Viewer (VH-07) [미구현 — 백로그]
 
-Diff Viewer는 두 버전(revision) 사이의 노드 변경 내용을 시각적으로 비교하는 기능이다. 버전 히스토리 패널에서 두 버전을 선택하면 캔버스 위에 변경 결과가 색상으로 구분되어 표시된다.
-
-| 변경 유형 | 표시 색상 | 설명 |
-|----------|----------|------|
-| `+` 추가된 노드 | 초록색 테두리 / 배경 | 해당 버전에서 새로 생성된 노드 |
-| `-` 삭제된 노드 | 빨간색 테두리 / 배경 | 해당 버전에서 제거된 노드 |
-| `*` 변경된 노드 | 노란색 테두리 / 배경 | 텍스트·스타일·위치가 변경된 노드 |
-
-**처리 흐름:**
-
-```
-사용자: 버전 A 선택 → 버전 B 선택 → [비교] 클릭
-    │
-    ▼
-GET /maps/{mapId}/revisions/{versionA} → 상태 A 재구성
-GET /maps/{mapId}/revisions/{versionB} → 상태 B 재구성
-    │
-    ▼
-diff(stateA, stateB) → 추가/삭제/변경 노드 목록 산출
-    │
-    ▼
-캔버스에 색상 오버레이 렌더링 (read-only)
-```
-
-**API 영향:**
-
-* `GET /maps/{mapId}/revisions/{version}` — 두 버전 상태 각각 조회
-* 별도 diff 전용 엔드포인트 없음 — 클라이언트에서 두 상태를 비교하여 렌더링
+두 버전 사이의 노드 변경을 색상(추가=초록/삭제=빨강/변경=노랑)으로
+비교하는 기능. 구현 시 `GET /maps/{mapId}/versions/{version}` 2회 조회 후
+클라이언트에서 diff 하는 방향 — 오픈 후 수요를 보고 결정한다.
 
 ---
 
@@ -209,52 +179,35 @@ diff(stateA, stateB) → 추가/삭제/변경 노드 목록 산출
 
 | 동작                        | 결과                               |
 | ------------------------- | -------------------------------- |
-| 맵 편집 후 autosave 발생        | map_revisions에 revision 자동 생성    |
-| 히스토리 패널 열기 (좌측 사이드바)      | 버전 목록 조회 (최신순)                   |
-| 특정 버전 클릭                  | 해당 버전 정보 표시 (작성자/시각/변경 요약)       |
-| `[미리보기]` 버튼                | 해당 버전 맵 read-only 렌더링           |
-| `[이 버전으로 복원]` 버튼           | 해당 버전으로 현재 맵 롤백 (새 revision 생성)  |
-| 미리보기 종료                   | 현재 버전으로 복귀                      |
-
----
+| ☁ 저장 / 맵 닫기        | keepVersion 저장 → 버전 1개 생성 (무변경이면 스킵)    |
+| 편집 후 자동저장(1500ms)만 발생        | **버전 생성 없음** (e2e80 [4])    |
+| 히스토리 패널 열기 (좌측 사이드바)      | 저장일시 목록 조회 (최신순)                   |
+| `[새 탭으로]` 버튼           | 해당 버전으로 **새 맵** 생성 → 브라우저 새 탭에서 열림 (현재 탭 유지)  |
 
 #### 5.2 시스템 처리
 
 **버전 목록 조회:**
 
 ```
-GET /maps/{mapId}/revisions?limit=50&cursor={version}
-  → map_revisions WHERE map_id = ? ORDER BY version DESC
-  → 버전 번호, created_at, created_by, patch_json 요약 반환
+GET /maps/{mapId}/versions
+  → map_document_versions WHERE map_id = ? ORDER BY version DESC
+  → 메타만 반환 (version, title, createdAt, bytes, layoutType, nodeCount, attachBytes, attachCount — doc 미포함)
 ```
 
-**버전 미리보기:**
+**버전 복원 ([새 탭으로]) — 전용 restore 엔드포인트 없음, 클라이언트 조합:**
 
 ```
-GET /maps/{mapId}/revisions/{version}
-  → 해당 version까지의 patch를 순차 적용하여 맵 상태 재구성
-  → read-only Document Store에 주입 → 캔버스 렌더링
+GET /maps/{mapId}/versions/{version}   → doc 포함 응답
+  → 클라이언트: 새 맵 생성 (제목 = 원제목_history_YYMMDD_HHMM)
+  → 그 새 맵에 doc 저장
+  → window.open('?map=<newId>') — 브라우저 새 탭에서 열기
 ```
-
-**버전 롤백(Restore):**
-
-```
-POST /maps/{mapId}/revisions/{version}/restore
-  → 해당 version의 맵 상태 계산
-  → 현재 버전과의 diff → inverse patch 생성
-  → 새 revision으로 저장 (롤백 이력도 기록)
-  → maps.current_version + 1
-```
-
----
 
 #### 5.3 표시 방식
 
-* 히스토리 패널: 좌측 사이드바 또는 별도 슬라이드 패널
-* 버전 목록: 최신순, 작성자 아바타 / 시각 / 변경 요약 표시
-* 현재 버전: `●` 표시, 과거 버전: `○` 표시
-* 미리보기 상태: 상단 배너 "v41 버전 미리보기 중 — 현재 편집 불가"
-* 롤백 후: autosave 트리거, 히스토리 패널 갱신
+* 히스토리 패널: 좌측 사이드바, 최신순 목록 (§4.4)
+* (미래 표기 — VH-04 구현 시) 현재/과거 버전 ●/○ 구분, "미리보기 중 — 편집 불가" 배너
+* 복원 후: 새 탭에 복원본, 현재 탭의 목록에는 원본과 복원본 맵이 각각 존재
 
 ---
 
@@ -262,181 +215,148 @@ POST /maps/{mapId}/revisions/{version}/restore
 
 ---
 
-#### 6.1 revision 생성 규칙
+#### 6.1 버전 생성 규칙
 
-* autosave 1회 = revision 1개 생성
-* version은 맵별로 단조 증가 (1, 2, 3, ...)
-* `patch_id UNIQUE` 제약: 동일 patchId 중복 저장 차단 (멱등성 보장)
-* Undo/Redo 후 저장도 새 revision 생성 (새 patchId 사용)
+* **명시적 저장(keepVersion) 1회 = 버전 1개** — 자동저장은 버전을 만들지 않는다
+* **무변경 저장은 버전을 만들지 않는다** — 서버가 현재 문서·마지막 버전과 jsonb 등가 비교 후 `unchanged: true` 반환 (아래 "무변경 저장" 절)
+* 버전이 하나도 없는 레거시 맵은 첫 버전을 남긴다
 
 ---
 
 #### 6.2 버전 번호 규칙
 
-* `maps.current_version`이 항상 최신 버전 번호를 가진다
-* 신규 편집 저장 시: `current_version + 1`
-* 롤백 저장 시: 역시 `current_version + 1` (롤백도 새 revision)
-* 과거 revision의 version 번호는 불변
+* version 은 맵별 단조 증가 — INSERT 시 **`MAX(version)+1`** 채번
+* `UNIQUE(map_id, version)` 제약
+* 과거 버전의 version 번호는 불변
+* (`maps.current_version` 컬럼 기반 관리는 정규화 노드 경로 설계 — 문서 저장 경로에서는 쓰지 않는다)
 
 ---
 
-#### 6.3 롤백 규칙
+#### 6.3 복원 규칙
 
-* 롤백은 과거 버전을 "덮어쓰기"가 아닌 **새 revision으로 추가**
-* 롤백 후 히스토리는 보존됨 (롤백 전 버전들 삭제 안 함)
-* 롤백 실행도 autosave와 동일하게 `PATCH /maps/{mapId}/nodes`로 처리
+* 복원은 현재 맵 "덮어쓰기"가 아닌 **새 맵 생성** — 원본 맵과 그 버전 이력은 그대로 보존
+* 새 맵 제목 = `원제목_history_YYMMDD_HHMM` (분까지 — 같은 날 여러 번 복원해도 구분)
+* 새 맵은 **브라우저 새 탭**(`?map=<id>`)에서 열린다 — 현재 편집 중인 탭을 밀어내지 않는다
+* 현재 탭의 undo 스택(past/future)도 영향 없음
 
 ---
 
-#### 6.4 미리보기 규칙
+#### 6.4 미리보기 규칙 [미구현 — 백로그]
 
-* 미리보기 중 편집 불가 (read-only 모드)
-* 미리보기 캔버스는 현재 편집 캔버스와 분리된 별도 Document Store 인스턴스 사용
-* 미리보기 종료 시 현재 편집 상태 복귀 (현재 버전 유지)
+* (구현 시) 미리보기 중 편집 불가 (read-only), 별도 상태로 렌더링, 종료 시 현재 편집 상태 복귀
 
 ---
 
 #### 6.5 버전 보존 정책
 
 * 기본: 무제한 보존 (DB 용량 한도 내)
-* 향후 확장: 오래된 revision 자동 압축 정책 (30일 이상 patch → snapshot으로 병합)
+* 향후 확장: 오래된 버전 자동 정리 정책 [미구현 — 백로그]
 
 ---
 
-#### 6.6 History Store와의 역할 구분
+#### 6.6 되돌리기(past/future)와의 역할 구분
 
-* Undo/Redo(History Store): 세션 내 빠른 취소·복원, 클라이언트 전용
-* Version History(map_revisions): 영구 이력, 서버 저장, 장기 롤백
+* Undo/Redo(documentStore past/future): 세션 내 빠른 취소·복원, 클라이언트 전용, 99단계
+* Version History(map_document_versions): 영구 이력, 서버 저장, 새 탭 복원
 * 두 기능은 독립적으로 동작하며 서로 호출하지 않는다
 
 ---
 
-### 7. 협업 시 버전 관리
+### 7. 협업 시 버전 관리 (계획 — 협업 V1)
 
-* 협업 중 여러 사용자의 편집은 각각 별도 revision으로 저장
-* `created_by` 필드로 작성자 구분
-* `baseVersion` 충돌 시 서버가 409 Conflict 반환 → 클라이언트가 최신 버전 재동기화 후 재시도
-* 버전 히스토리 패널에서 협업자별 편집 이력 시각적으로 구분 가능
+* 현재는 단일 세션 편집 잠금(§8)으로 동시 편집 자체가 없다
+* (계획) 협업 V1 에서 `created_by` 로 작성자를 구분하고, 되돌리기·복원은 맵 개설자(owner)만 사용 (문서 말미 정책 참조)
 
 ---
 
 ### 8. 예외 / 경계 (Edge Case)
 
-* **버전 히스토리가 없는 새 맵**: 패널에 "아직 저장된 버전이 없습니다" 표시
-* **revision 수 매우 많음 (1000+)**: 페이지네이션(cursor 기반) 조회
-* **롤백 중 네트워크 오류**: 현재 버전 유지, 오류 메시지 표시 후 재시도
-* **미리보기 중 다른 사용자가 편집**: 미리보기는 고정 스냅샷 — 실시간 갱신 없음
-* **baseVersion 충돌 (409)**: autosave 엔진이 최신 version pull 후 재시도
-* **patch_id 중복**: Redis SET NX로 서버단 차단, 200 OK 반환 (멱등성)
-* **삭제된 맵의 revision**: `maps.id ON DELETE CASCADE`로 자동 삭제
+* **버전이 없는 새 맵**: 패널에 "아직 저장된 버전이 없습니다" 표시
+* **서버 미연결**: 패널에 안내만 표시 (가짜 목록 없음)
+* **동시 편집 시도**: baseVersion 비교·Redis 멱등성이 아니라 **단일 세션 편집 잠금**(`map_edit_locks`, TTL 60초·하트비트 25초)으로 차단 — 타 세션의 PUT 은 **409** "다른 세션(브라우저)에서 편집 중", 잠긴 맵을 열면 **읽기 전용 안내**(🔒 배너 + 사본 저장 유도) (e2e93)
+* **무변경 저장**: jsonb 등가 비교로 스킵 — 버전·`maps.updated_at` 모두 그대로 (e2e90)
+* **삭제된 맵의 버전**: `map_id ON DELETE CASCADE`로 자동 삭제
+* **없는 버전 조회**: 404 · **타 사용자 접근**: 404 (version-api-test)
 
 ---
 
 ### 9. 권한 규칙
 
-| 역할      | 권한                               |
-| ------- | -------------------------------- |
-| creator | 버전 목록 조회 / 미리보기 / 롤백 전체 가능      |
-| editor  | 버전 목록 조회 / 미리보기 가능, 롤백은 정책에 따라  |
-| viewer  | 현재 버전만 읽기 가능, 히스토리 패널 미접근       |
+* 현재: **소유자 단독** — RLS 로 소유자만 목록 조회·버전 조회·복원 가능 (타 사용자는 404)
+* (계획 — 협업 V1) 참여자 조회 허용 여부·복원 owner 한정은 문서 말미 정책 참조
 
 ---
 
 ### 10. DB 영향
 
-* `map_revisions` — 핵심 테이블 (version, patch_json, patch_id, created_by, created_at)
-* `maps.current_version` — 최신 버전 번호 관리
-* 인덱스: `idx_map_revisions_map_id (map_id, version DESC)` — 버전 목록 조회 성능
+* `map_documents` — 현재 문서 (자동저장·명시적 저장 공통 반영 대상)
+* `map_document_versions` — 버전 이력 (version, title, doc, created_by, created_at, layout_type, node_count, attach_bytes, attach_count)
+* 인덱스/제약: `UNIQUE(map_id, version)` — 버전 목록은 version DESC 조회
 
 ---
 
 ### 11. API 영향
 
-* `PATCH /maps/{mapId}/nodes` — autosave 저장 (revision 자동 생성)
-* `GET /maps/{mapId}/revisions` — 버전 목록 조회 (페이지네이션)
-* `GET /maps/{mapId}/revisions/{version}` — 특정 버전 상태 조회
-* `POST /maps/{mapId}/revisions/{version}/restore` — 특정 버전으로 롤백
+* `PUT /maps/{mapId}/document` — 저장 (keepVersion: true 일 때만 버전 생성)
+* `GET /maps/{mapId}/versions` — 버전 목록 조회 (메타만)
+* `GET /maps/{mapId}/versions/{version}` — 특정 버전 doc 조회
+* 전용 restore 엔드포인트는 **없다** — 복원은 클라이언트가 조회+새 맵 생성으로 조합
 
 ---
 
 ### 12. 연관 기능
 
 * HISTORY (`12-history-undo-redo.md` — 클라이언트 Undo/Redo와 역할 구분)
-* SAVE / AUTOSAVE (`14-save.md` — revision 생성 트리거)
-* COLLABORATION (협업자별 revision 구분, 충돌 해소)
-* MAP (`01-map.md` — maps.current_version 필드)
-* NODE_EDITING (`02-node-editing.md` — 편집 → patch → revision 흐름)
+* SAVE (`14-save.md` — keepVersion·무변경 스킵·편집 잠금)
+* MAP / 문서함 (`document-library.md` — 복원본 맵이 문서함에 나타남)
 
 ---
 
 ### 13. 예시 시나리오
 
-#### 시나리오 1 — 자동 revision 생성
+#### 시나리오 1 — 명시적 저장 시 버전 생성
 
-1. 사용자: `기능 정의` 노드 텍스트 수정
-2. autosave debounce 후 `PATCH /maps/{mapId}/nodes` 호출
-3. 서버: patch 적용 → `current_version + 1` → `map_revisions` INSERT
-4. 버전 히스토리 패널에 새 항목 추가
+1. 사용자: 노드 편집 → 1500ms 자동저장 여러 번 발생 (버전 없음)
+2. 사용자: ☁ 저장 클릭
+3. 서버: 잠금 확인 → jsonb 비교(변경 있음) → `map_documents` 갱신 → `map_document_versions`에 v(MAX+1) INSERT
+4. 히스토리 패널에 새 항목이 맨 위에 추가
 
-#### 시나리오 2 — 버전 히스토리 패널 조회
+#### 시나리오 2 — 히스토리 패널 조회
 
-1. 사용자: 좌측 사이드바 > "버전 이력" 클릭
-2. 시스템: `GET /maps/{mapId}/revisions` → 최신 50개 버전 목록 반환
-3. 패널에 버전번호 / 작성자 / 시각 / 변경 요약 표시
+1. 사용자: 좌측 사이드바 > "히스토리" 클릭
+2. 시스템: `GET /maps/{mapId}/versions` → 최신순 목록 (doc 미포함 메타)
+3. 패널에 저장일시 + v번호 · 제목 + 레이아웃 · N노드 · 크기 · 첨부 표시
 
-#### 시나리오 3 — 특정 버전 미리보기
+#### 시나리오 3 — 과거 버전 복원 (새 탭)
 
-1. 사용자: v38 항목 클릭 > `[미리보기]`
-2. 시스템: v38까지의 patch 순차 적용 → read-only Document Store 구성
-3. 캔버스에 "v38 버전 미리보기 중" 배너 표시, 편집 비활성
-4. 사용자: `[닫기]` → 현재 버전(v42)으로 복귀
+1. 사용자: v1 항목의 `[새 탭으로]` 클릭
+2. 시스템: `GET /maps/{mapId}/versions/1` → doc 수신 → 새 맵 생성(`제목_history_YYMMDD_HHMM`) + doc 저장
+3. 브라우저 새 탭(`?map=<newId>`)에서 복원본이 열림 — 현재 탭의 맵은 최신 그대로 (e2e80 [5])
+4. 문서함·히스토리 목록에 원본과 복원본이 각각 존재
 
-#### 시나리오 4 — 3일 전 버전으로 롤백
+#### 시나리오 4 — 조회만 하고 닫기 (무변경 스킵)
 
-1. 사용자: v20 항목 선택 > `[이 버전으로 복원]`
-2. 시스템: v20 상태 재구성 → 현재(v42)와의 diff → inverse patch 생성
-3. `POST /maps/{mapId}/revisions/20/restore` 호출
-4. 서버: inverse patch 적용 → `current_version = 43` → revision 43 생성
-5. 클라이언트: 현재 Document Store 교체, History Store 초기화
-
-#### 시나리오 5 — Undo 후 autosave로 새 revision 생성
-
-1. 사용자: 노드 삭제 → autosave → revision 42 생성
-2. 사용자: `Ctrl+Z` (Undo) → 노드 복원
-3. autosave: 새 patchId `p_xxx_undo` 생성 → `PATCH` 호출
-4. 서버: 복원 patch 적용 → revision 43 생성
+1. 사용자: 서버맵을 열어 **조회만** 하고 맵 닫기 (keepVersion 저장 발생)
+2. 서버: jsonb 등가 비교 — 현재 문서·마지막 버전과 동일 → `unchanged: true`
+3. 버전 생성 없음 + `maps.updated_at` 그대로 (문서함 정렬 불변, e2e90)
 
 ---
 
 ### 14. 구현 우선순위
 
-#### MVP
+#### 구현됨 (B8·2026-08 배치)
 
-* autosave 저장 시 map_revisions 자동 생성 (VH-01)
-* patch_id UNIQUE 멱등성 보장
+* 명시적 저장 시 버전 생성 (VH-01) + 무변경 스킵
+* 히스토리 패널 UI (VH-02)
+* 버전 상세 조회·표시 (VH-03, VH-06)
+* 새 탭 복원 (VH-05)
 
-#### V1
+#### 후순위 [미구현 — 백로그]
 
-* 버전 히스토리 패널 UI (VH-02)
-* 버전 상세 조회 (VH-03)
 * 버전 미리보기 (VH-04)
-* 버전 롤백 (VH-05)
-* 작성자 / 시각 표시 (VH-06)
-
-#### V1
-
-* 버전 히스토리 패널 UI (VH-02)
-* 버전 상세 조회 (VH-03)
-* 버전 미리보기 (VH-04)
-* 버전 롤백 (VH-05)
-* 작성자 / 시각 표시 (VH-06)
-* **Diff Viewer — 두 버전 간 노드 변경 시각화 (VH-07)**
-
-#### 후순위
-
-* 오래된 revision 자동 압축 (snapshot 병합)
-* 버전별 변경 요약 자동 생성 (diff label)
-* 협업자별 버전 필터링
+* Diff Viewer (VH-07)
+* 오래된 버전 자동 정리
+* 협업자별 버전 필터링 (협업 V1)
 
 ---
 

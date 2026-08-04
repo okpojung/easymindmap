@@ -224,7 +224,7 @@ Dashboard Auto Refresh Polling에서 변경 감지 → Flash
 
 | 단계       | 방식                          | 특징                                      |
 | -------- | --------------------------- | --------------------------------------- |
-| V3 MVP   | Polling (`setInterval`)     | 구현 쉬움 / 기존 API 재사용 / 항상 요청 발생           |
+| V3 1단계   | Polling (`setInterval`)     | (설계 — 대상 API 는 문서 스냅샷 GET) 구현 쉬움 / 항상 요청 발생           |
 | V3 확장    | Redis Pub/Sub + WebSocket Push | 변경 시에만 Push → 트래픽 90% 이상 절감           |
 
 ### 트래픽 비교

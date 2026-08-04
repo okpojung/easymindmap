@@ -6,12 +6,14 @@
 * 참조: `docs/01-product/functional-spec.md § KANBAN`, `docs/03-editor-core/canvas/10-canvas.md`
 * 참조: `docs/01-product/functional-spec.md § KANBAN` 또는 `docs/03-editor-core/layout/08-layout.md`
 
+> **최종 업데이트:** 2026-08-04 — 코드 대조 감사 반영: 3레벨 제한 폐기(§6.1)에 맞춰 전 절 일원화 — depth 제한 없는 보드형, 기본 컬럼 자동 생성 없음, 컬럼 헤더 클릭 선택+Del 삭제, 더블클릭 인라인 편집, 컬럼 300px 고정, Export 실동작 기준으로 현행화
+
 ---
 
 ### 1. 기능 목적
 
 * 업무 흐름을 **단계별 보드 형태**로 시각화하는 기능
-* 기존 방사형/트리형 마인드맵과 독립적으로 동작하는 **3레벨 고정 구조형 레이아웃**
+* 기존 방사형/트리형 마인드맵과 독립적으로 동작하는 **depth 제한 없는 보드형 레이아웃** — depth 3+는 카드 아래 들여쓰기 트리로 표시
 * 컬럼(Column)과 카드(Card) 기반으로 activity를 관리하는 보드형 문서 구조 제공
 * `layoutType = 'kanban'`을 통해 기존 Node Tree 구조를 재사용하며 별도 테이블 없이 동작
 
@@ -22,8 +24,8 @@
 * 포함:
 
   * Kanban 보드 생성 (새 맵 생성 시 선택 또는 기존 맵에서 전환)
-  * 3레벨 구조 강제 (board → column → card)
-  * 컬럼 추가 / 삭제 / 순서 변경
+  * depth 제한 없는 보드형 매핑 (board → column → card, depth 3+는 카드 아래 들여쓰기 트리)
+  * 컬럼 추가 / 삭제 (순서 변경은 미구현 — 향후)
   * 카드 추가 / 수정 / 삭제 / 순서 변경
   * 카드 컬럼 간 이동 (drag & drop)
   * Markdown / HTML Export
@@ -32,7 +34,6 @@
 
 * 제외:
 
-  * depth 4 이상 구조
   * 자유배치 drag (→ LAYOUT의 freeform)
   * Subtree layout override
   * swimlane
@@ -47,18 +48,18 @@
 | 기능ID  | 기능명              | 설명                          | 주요 동작           |
 | ----- | ---------------- | --------------------------- | --------------- |
 | KB-01 | Kanban 보드 생성     | 새 맵 생성 또는 기존 맵에서 Kanban 선택  | 맵 생성 시 layoutType 지정 |
-| KB-02 | 초기 컬럼 구성         | 생성 시 기본 컬럼 (Todo/Doing/Done) | 사용자 정의 가능        |
+| KB-02 | 초기 컬럼 구성         | Kanban 전환 시 기존 1레벨 노드가 컬럼이 된다 (기본 컬럼 자동 생성 없음) | `+ 컬럼`으로 추가        |
 | KB-03 | 컬럼 추가            | 보드에 컬럼 추가                   | `+ 컬럼` 버튼       |
-| KB-04 | 컬럼 삭제            | 컬럼 및 하위 카드 일괄 삭제            | 확인 다이얼로그         |
-| KB-05 | 컬럼 순서 변경         | 컬럼 drag & drop으로 순서 변경      | order_index 저장  |
+| KB-04 | 컬럼 삭제            | 컬럼 헤더 클릭 선택 후 `Del` = 하위 포함 즉시 삭제 (Ctrl+Z 복구, 확인 다이얼로그 없음) | 선택 + `Del`         |
+| KB-05 | 컬럼 순서 변경         | 미구현 (향후) — 카드 드래그만 지원      | —  |
 | KB-06 | 카드 추가            | 컬럼 내 카드 추가                  | `+ 카드` 버튼       |
-| KB-07 | 카드 수정            | 카드 content 편집               | 클릭 → 인라인 편집     |
-| KB-08 | 카드 삭제            | 카드 삭제                       | Delete / 메뉴     |
+| KB-07 | 카드 수정            | 카드 content 편집               | 더블클릭 = 인라인 편집 (Enter 저장 · Esc 취소)     |
+| KB-08 | 카드 삭제            | 카드 삭제                       | 선택 + `Delete` (우클릭 메뉴 없음)     |
 | KB-09 | 카드 순서 변경         | 컬럼 내 카드 순서 변경               | drag & drop     |
 | KB-10 | 카드 컬럼 간 이동       | 카드를 다른 컬럼으로 이동              | drag & drop     |
-| KB-11 | 3레벨 제한 검증        | depth 3 이상 생성 차단            | DB CHECK + UI 검증 |
-| KB-12 | Markdown Export  | Kanban 구조를 Markdown으로 export | heading + list  |
-| KB-13 | HTML Export      | 보드 UI 유지 standalone HTML     | 읽기 전용 board 뷰   |
+| KB-11 | ~~3레벨 제한 검증~~    | **폐기 (v1.1)** — depth 제한 없음, depth 3+는 카드 아래 트리 (§6.1) | — |
+| KB-12 | Markdown Export  | board `#` · column `##` · card `###` (리스트는 depth 6+) | heading + list  |
+| KB-13 | HTML Export      | 마인드맵 뷰로 내보내기 (방사형·오른쪽 폴백) — 보드 UI 유지는 미구현     | 읽기 전용 뷰어   |
 
 ---
 
@@ -151,15 +152,17 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
 }
 ```
 
-#### 4.6 초기 생성 구조 (기본 템플릿)
+#### 4.6 초기 구조
 
-새 Kanban 보드 생성 시 시스템이 자동 생성하는 기본 구조:
+Kanban 전환 시 **기존 1레벨 노드가 그대로 컬럼이 된다** — Todo/Doing/Done
+같은 기본 컬럼을 자동 생성하지 않는다. 1레벨 노드가 없는 맵이면 컬럼 0개
+상태로 시작하고 `+ 컬럼`으로 추가한다.
 
 ```text
-새 Kanban 보드        (depth 0 — board)
- ├ Todo              (depth 1 — column)
- ├ Doing             (depth 1 — column)
- └ Done              (depth 1 — column)
+(예) 기존 맵            (depth 0 — board)
+ ├ 분석                (depth 1 — 그대로 column)
+ ├ 설계                (depth 1 — 그대로 column)
+ └ 코딩                (depth 1 — 그대로 column)
 ```
 
 ---
@@ -169,34 +172,34 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
 #### 5.1 사용자 동작
 
 * 새 맵 생성 화면 > 레이아웃 선택 > `Kanban` 선택
-* 보드 제목 클릭 → 제목 수정
-* 컬럼 헤더 클릭 → 컬럼명 수정
+* 보드 제목은 **읽기 전용** (보드에서 제목 편집 없음)
+* 컬럼 헤더 클릭 = **선택** (컬럼명 인라인 편집은 미구현 — 아웃라인/맵에서 수정)
 * `+ 컬럼` 버튼 클릭 → 컬럼 추가
 * `+ 카드` 버튼 클릭 → 해당 컬럼에 카드 추가
-* 카드 클릭 → 인라인 편집
-* 카드 drag → 컬럼 내 순서 변경 또는 다른 컬럼으로 이동
-* 컬럼 drag → 컬럼 순서 변경
-* 카드 우클릭 > 삭제
+* 카드 더블클릭 → 인라인 편집 (Enter 저장 · Esc 취소)
+* 카드 drag → 컬럼 내 순서 변경, 다른 컬럼으로 이동, 또는 다른 카드 하위로 중첩
+* 컬럼 drag 순서 변경: 미구현 (향후) — 카드 드래그만
+* 삭제: 우클릭 메뉴 없음 — 카드/컬럼 선택 후 `Del`
 
 ---
 
 #### 5.2 시스템 처리
 
-* `layoutType = 'kanban'` 설정 시 Layout Engine이 Kanban Strategy 선택
-* 노드 생성 시 depth 검증: depth 3 이상이면 생성 차단
+* `layoutType = 'kanban'` 설정 시 별도 보드 렌더러(KanbanBoard)가 렌더링
+* depth 검증 없음 — 어떤 depth의 노드도 생성 가능 (§6.1 제한 폐기)
 * 카드 이동 시 `parent_id` 변경 + `order_index` 재계산
-* 컬럼 순서 변경 시 형제 노드 `order_index` 재계산
 * autosave debounce 적용 (편집 완료 후 저장)
 
 ---
 
 #### 5.3 표시 방식
 
-* depth 0 (board): 보드 상단 제목 영역으로 고정 표시
+* depth 0 (board): 보드 상단 제목 영역으로 고정 표시 (읽기 전용)
 * depth 1 (column): 가로 방향으로 컬럼 헤더 나열
 * depth 2 (card): 각 컬럼 내부에서 위→아래 세로 배치
+* depth 3+: 카드 아래 들여쓰기 트리 (§6.1)
 * edge 미표시: 컬럼-카드 연결선 없음 (board UI 형태)
-* 컬럼 너비: 균등 분배 또는 사용자 조절
+* 컬럼 너비: **300px 고정** (컬럼이 많으면 가로 스크롤)
 
 ---
 
@@ -216,31 +219,25 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
   (08-layout.md §6.3.1 / §6.6 참조).
 
 ```sql
--- (구) 제약 — 폐기됨. 기존 DB에 남아 있다면 DROP 한다.
--- CONSTRAINT chk_nodes_kanban_depth
---   CHECK (layout_type != 'kanban' OR depth BETWEEN 0 AND 2)
+-- (구) chk_nodes_kanban_depth 제약 폐기 — 스키마에 존재하지 않음
 ```
 
 ---
 
-#### 6.2 생성 허용/금지 규칙
+#### 6.2 생성 규칙
 
-| 위치       | 허용 생성            | 금지 생성           |
-| -------- | ---------------- | --------------- |
-| board(0) | column(1)        | card(2) 직접 생성   |
-| column(1)| card(2)          | column(1) 중첩 생성 |
-| card(2)  | 형제 카드, 하위 노드(3+) |                 |
-| 3+       | 형제·하위 노드         |                 |
+**구조 강제 없음** — 어떤 위치에서든 자식/형제 노드를 자유롭게 생성할 수
+있으며, 렌더러가 depth를 해석해 board/column/card/카드 내 트리로 표시한다.
 
 ---
 
-#### 6.3 이동 허용/금지 규칙
+#### 6.3 이동 규칙
 
-| 대상    | 허용 이동           | 금지 이동        |
+| 대상    | 동작           | 비고        |
 | ----- | --------------- | ------------ |
-| column | 형제 컬럼 간 순서 변경  | board 밖으로 이동  |
-| card  | 컬럼 내 순서 변경      |              |
-| card  | 다른 컬럼으로 이동      | column 레벨로 이동 |
+| column | drag 순서 변경 **미구현** (향후)  | 카드 드래그만 지원  |
+| card  | 컬럼 내 순서 변경 (drag)      |              |
+| card  | 다른 컬럼으로 이동 (drag)      | 다른 카드 하위로 **중첩도 허용** (카드 가운데 drop) |
 
 ---
 
@@ -256,21 +253,21 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
 
 * Kanban 모드에서 Subtree layout override 비활성화
 * 자유배치(freeform) drag 비활성화
-* radial / tree / hierarchy 전환 시 구조 정합성 경고 표시
+* radial / tree / hierarchy 전환은 경고 없이 즉시 적용 (depth 제한이 없으므로 정합성 경고 불필요 — §6.1)
 
 ---
 
 #### 6.6 컬럼 수 규칙
 
-* 최소 1개 이상
-* 최대 컬럼 수는 제한 없음 (UI 가로 스크롤로 대응)
+* 최소 0개 허용 (컬럼 없는 빈 보드 가능 — `+ 컬럼`으로 시작)
+* 최대 컬럼 수는 제한 없음 (컬럼 300px 고정 폭, UI 가로 스크롤로 대응)
 
 ---
 
 #### 6.7 보드 제목 규칙
 
 * depth 0 노드가 1개만 존재해야 한다
-* 보드 제목 편집 가능
+* 보드 제목은 보드 화면에서 **읽기 전용** (수정은 맵/아웃라인에서)
 * 보드(depth 0) 노드 삭제 불가 (루트 노드와 동일 정책)
 
 ---
@@ -290,7 +287,7 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
 
 * 업무 단계 또는 상태를 나타내는 컬럼 헤더
 * 좌→우 순서로 배치 (order_index 기준)
-* 컬럼명 수정 / 추가 / 삭제 / 순서 변경 가능
+* 컬럼 추가 / 삭제(선택+Del) 가능 — 이름 인라인 편집·drag 순서 변경은 미구현
 * 예: `Todo`, `In Progress`, `Done`, `분석`, `설계`, `코딩`
 
 ---
@@ -312,16 +309,22 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
 # 프로젝트 A
 
 ## 분석
-- 요구사항 정리
-- 인터뷰
-- 경쟁사 조사
+
+### 요구사항 정리
+
+### 인터뷰
+
+### 경쟁사 조사
 
 ## 설계
-- 화면 설계
-- DB 설계
+
+### 화면 설계
+
+### DB 설계
 
 ## 코딩
-- API 개발
+
+### API 개발
 ```
 
 변환 규칙:
@@ -330,24 +333,23 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
 | --------- | ------------ |
 | board (0) | `#` (H1)     |
 | column (1)| `##` (H2)    |
-| card (2)  | `-` 리스트 항목  |
+| card (2)  | `###` (H3)   |
+| 3~5       | `####`~`######` (heading 연속) |
+| depth 6+  | `-` 리스트 항목  |
 
 ---
 
 #### 8.2 HTML Export
 
-* standalone HTML로 보드 UI 유지
-* 컬럼 좌→우 표시
-* 카드 세로 표시
-* drag & drop 없는 읽기 전용 보드 뷰
-* CSS 인라인으로 구조 표현
+* **마인드맵 뷰로 내보낸다** — kanban은 뷰어에서 방사형·오른쪽(radial-right)으로 폴백
+* 보드 UI를 유지한 standalone HTML은 **미구현** (향후)
 
 ---
 
 ### 9. AI 생성 연계
 
-* Kanban 생성 요청 시 AI가 3레벨 구조에 맞는 노드 트리 생성
-* AI 생성 시에도 depth 3 이상 생성 금지 규칙 적용
+* Kanban 생성 요청 시 AI가 board → column → card 골격의 노드 트리 생성
+* depth 제한 없음 — 깊은 세부 항목은 카드 아래 트리로 표시된다 (§6.1)
 * 생성 예시:
 
   ```text
@@ -363,12 +365,12 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
 
 ### 10. 예외 / 경계 (Edge Case)
 
-* **depth 3 생성 시도**: DB CHECK 제약 + 프론트 검증으로 이중 차단 → 오류 메시지 표시
-* **컬럼 삭제 시 카드 존재**: 확인 다이얼로그 표시 ("이 컬럼에 카드 N개가 있습니다. 삭제하시겠습니까?")
+* **깊은 depth 노드**: 제한 없음 — depth 3+는 카드 아래 들여쓰기 트리로 표시 (§6.1)
+* **컬럼 삭제 시 카드 존재**: 확인 다이얼로그 없이 하위 포함 즉시 삭제 — `Ctrl+Z`로 복구
 * **컬럼이 0개인 상태**: board만 남은 빈 Kanban → `+ 컬럼 추가` 버튼만 표시
 * **카드 개수 매우 많음 (50+)**: 컬럼 내 가상 스크롤 또는 접힘 처리
 * **컬럼 이름 중복**: 허용 (별도 노드로 관리)
-* **기존 mindmap → Kanban 전환 시**: depth 3+ 노드 존재 시 경고 표시 후 사용자 확인 필요
+* **기존 mindmap → Kanban 전환 시**: 경고 없이 전환 — depth 3+ 노드는 카드 아래 트리로 표시
 * **Kanban → mindmap 전환 시**: `layoutType` 변경 후 auto layout 재계산
 * **board 노드 삭제 시도**: 루트 정책과 동일하게 삭제 불가 처리
 
@@ -387,18 +389,14 @@ type KanbanNodeRole = 'board' | 'column' | 'card';
 ### 12. DB 영향
 
 * `nodes.layout_type` — `'kanban'` 값 사용
-* `nodes.depth` — 0 (board) / 1 (column) / 2 (card)
+* `nodes.depth` — 0 (board) / 1 (column) / 2 (card) / 3+ (카드 하위 트리)
 * `nodes.parent_id` — 기존 Node Tree 구조 그대로 사용
 * `nodes.order_index` — 컬럼/카드 순서 저장
 * `nodes.content` — 보드 제목 / 컬럼명 / 카드 내용
 * `nodes.style_json` — `kanbanRole` 메타데이터 저장 가능
 
-DB 제약:
-
 ```sql
--- Kanban depth 3 이상 금지
-CONSTRAINT chk_nodes_kanban_depth
-  CHECK (layout_type != 'kanban' OR depth BETWEEN 0 AND 2)
+-- (구) chk_nodes_kanban_depth 제약 폐기 — 스키마에 존재하지 않음
 ```
 
 별도 테이블 추가 없음 — 기존 `nodes` 테이블 구조 재사용
@@ -408,7 +406,7 @@ CONSTRAINT chk_nodes_kanban_depth
 ### 13. API 영향
 
 * `POST /maps` — `default_layout_type: 'kanban'`으로 Kanban 보드 생성
-* `POST /nodes` — column / card 생성 (depth 검증 포함)
+* `POST /nodes` — column / card 생성 (depth 검증 없음)
 * `PATCH /nodes/{id}` — 카드 content 수정, 컬럼명 수정
 * `PATCH /nodes/{id}/parent` — 카드 컬럼 간 이동 (`parent_id` + `order_index` 변경)
 * `DELETE /nodes/{id}` — 컬럼 삭제 (하위 카드 cascade) / 카드 삭제
@@ -433,8 +431,8 @@ CONSTRAINT chk_nodes_kanban_depth
 
 #### 시나리오 1 — Kanban 보드 신규 생성
 
-1. 사용자: 새 맵 생성 > `Kanban` 선택 > 보드 제목 입력: "프로젝트 A"
-2. 시스템: depth 0 board 노드 + depth 1 컬럼 3개 (Todo / Doing / Done) 자동 생성
+1. 사용자: 새 맵 생성 > `Kanban` 선택
+2. 시스템: Kanban 전환 시 기존 1레벨 노드가 컬럼이 된다 (기본 컬럼 자동 생성 없음)
 3. 사용자: `+ 컬럼` 클릭 → `분석` 컬럼 추가
 4. 사용자: `분석` 컬럼 내 `+ 카드` → `요구사항 정리` 카드 추가
 
@@ -444,44 +442,42 @@ CONSTRAINT chk_nodes_kanban_depth
 2. `설계` 컬럼으로 drop
 3. 시스템: `parent_id` = 설계 컬럼 ID로 변경, `order_index` 재계산, autosave
 
-#### 시나리오 3 — depth 3 생성 시도 차단
+#### 시나리오 3 — 카드 하위 트리 생성
 
-1. 사용자: 카드(depth 2) 선택 후 자식 노드 추가 시도
-2. 시스템: depth 3 생성 불가 오류 표시
-3. `+ 카드` UI를 card 레벨에서 미표시하여 예방
+1. 사용자: 카드(depth 2) 선택 후 자식 노드 추가
+2. 시스템: 생성 허용 — 카드 아래 들여쓰기 트리로 표시 (§6.1)
 
 #### 시나리오 4 — Markdown Export
 
 1. 사용자: 메뉴 > Export > Markdown
-2. 시스템: board → `#`, column → `##`, card → `-` 변환
+2. 시스템: board → `#`, column → `##`, card → `###` 변환 (depth 6+는 리스트)
 3. 파일 다운로드
 
 #### 시나리오 5 — AI 생성 연계
 
 1. 사용자: AI 입력 "소프트웨어 개발 Kanban 보드 만들어줘"
-2. AI: 3레벨 제한 준수하여 board / column / card 구조 생성
-3. 시스템: depth 검증 후 저장, Kanban 보드 즉시 렌더링
+2. AI: board / column / card 골격으로 구조 생성 (depth 제한 없음)
+3. 시스템: 저장 후 Kanban 보드 즉시 렌더링
 
 ---
 
 ### 16. 구현 우선순위
 
-#### MVP
+#### MVP (구현됨)
 
-* Kanban 보드 생성 (새 맵 생성 시 선택)
-* 기본 컬럼 구조 (Todo / Doing / Done)
-* 컬럼/카드 추가·수정·삭제
-* 카드 순서 변경 (drag & drop)
-* 카드 컬럼 간 이동
-* 3레벨 제한 검증 (DB + 프론트)
-* Markdown Export
+* Kanban 보드 생성 (새 맵 생성 시 선택 / 기존 맵 전환 — 1레벨 노드가 컬럼이 됨)
+* 컬럼/카드 추가·삭제 (컬럼 헤더 클릭 선택 + `Del`, 카드 선택 + `Del`)
+* 카드 더블클릭 인라인 편집 (Enter 저장 · Esc 취소)
+* 카드 drag: 순서 변경 · 컬럼 간 이동 · 다른 카드 하위로 중첩
+* 러버밴드 다중 선택
+* Markdown Export (board `#` / column `##` / card `###`)
 * autosave / undo · redo
 
 #### 2단계
 
-* 컬럼 순서 변경 drag & drop
-* HTML Export (보드 UI 유지)
-* AI 생성 연계
+* 컬럼 순서 변경 drag & drop (미구현)
+* 컬럼명 인라인 편집 (미구현)
+* HTML Export 보드 UI 유지 (미구현 — 현재는 마인드맵 뷰 폴백)
 * 컬럼 색상 지정
 
 #### 3단계
@@ -493,52 +489,38 @@ CONSTRAINT chk_nodes_kanban_depth
 
 ---
 
-### 17. 설계 철학 — 의도적 3레벨 구조
+### 17. 설계 철학 — depth 제한 없는 보드 (구 3레벨 제한 폐기 — v1.1)
 
-Kanban Layout이 3레벨만 허용하는 것은 기능 부재가 아니라 **의도적 설계 결정**이다.
+초기 설계는 "엄격히 3레벨로 제한된 보드 구조"였으나 **v1.1에서 폐기**되었다.
+현재 철학은 다음과 같다:
 
-easymindmap의 기존 layout(방사형, 트리형, 계층형 등)은 무한 계층 전개가 가능하다.
-Kanban Layout은 이와 달리 **업무 흐름을 보드 형태로 다루는 별도 문서 구조**로 정의한다.
-
-이 구조의 핵심 의도:
-
-* **보드 제목(board)** → 맥락 제공 (무엇에 대한 보드인가)
-* **컬럼(column)** → 업무 단계 또는 상태 구분 (가로축)
-* **카드(card)** → 실제 수행 항목 (action item, activity)
-
-3레벨 이상으로 세분화하면 Kanban 보드로서의 가독성과 실용성이 떨어진다.
-세부 구조가 필요한 경우 card 내부의 `note` 또는 `checklist` 기능(후순위)을 활용하도록 유도한다.
-
-즉, Kanban Layout은 일반 마인드맵의 자유로운 다계층 구조가 아니라
-**엄격히 3레벨로 제한된 업무 흐름형 보드 구조**로 설계한다.
+* Kanban은 **별도 문서 구조가 아니라, 같은 노드 트리를 보드 형태로
+  해석하는 렌더러**다 — 어떤 깊이의 맵이든 자유롭게 전환할 수 있어야 한다.
+* **보드 제목(board)** → 맥락 제공 / **컬럼(column)** → 단계·상태 (가로축) /
+  **카드(card)** → 수행 항목 — 이 매핑은 유지된다.
+* 깊은 세부 구조(depth 3+)는 보드 가독성을 해치지 않도록 **카드 안에서
+  들여쓰기 트리**로 접어 표시한다 — 구조를 자르거나 금지하지 않는다.
 
 ```text
 핵심 요약:
-  Level 0 (depth 0) = 보드 제목
-  Level 1 (depth 1) = 좌→우 컬럼
+  Level 0 (depth 0) = 보드 제목 (읽기 전용)
+  Level 1 (depth 1) = 좌→우 컬럼 (헤더 클릭 = 선택)
   Level 2 (depth 2) = 컬럼 내부 activity 카드
-  Level 3 이상       = 금지 (설계 의도)
+  Level 3 이상       = 카드 아래 들여쓰기 트리 (제한 없음)
 ```
 
 ---
 
-### 18. 금지 구조 예시 (Anti-pattern)
+### 18. depth 3+ 구조 표시 예시 (구 Anti-pattern 절 — 폐기 후 허용 구조)
 
-아래는 Kanban Layout에서 허용하지 않는 구조의 예시이다.
+아래 구조는 (구) 3레벨 제한에서는 차단 대상이었으나, 현재는 모두 허용된다.
 
 ```text
-프로젝트 A          (depth 0 — board)     ✔ 허용
- └ 분석             (depth 1 — column)    ✔ 허용
-    └ 요구사항 정리  (depth 2 — card)      ✔ 허용
-       └ 세부항목   (depth 3 — 금지!)     ✗ 차단
+프로젝트 A          (depth 0 — board)          ✔ 허용
+ └ 분석             (depth 1 — column)         ✔ 허용
+    └ 요구사항 정리  (depth 2 — card)           ✔ 허용
+       └ 세부항목   (depth 3 — 카드 내 트리)    ✔ 허용 (카드 아래 들여쓰기 표시)
 ```
-
-`세부항목`은 depth 3이므로 Kanban Layout에서 생성이 불가하다.
-
-이유:
-* Kanban 보드의 card(depth 2)는 더 이상 분해되지 않는 최소 작업 단위로 취급한다
-* 계층 분해가 필요한 경우 card 내부의 note/checklist(후순위 기능)를 사용한다
-* 강제 허용 시 board UI가 mindmap 계층 구조로 퇴행하여 Kanban의 목적을 잃게 된다
 
 ---
 
@@ -565,15 +547,15 @@ Kanban 화면의 전체 레이아웃 구조 기준안이다.
 
 | 영역         | 표시 방식                              |
 | ---------- | ---------------------------------- |
-| 보드 제목      | 상단 전체 너비 고정 — 일반 노드처럼 캔버스 중앙 배치 안 함 |
-| 컬럼 헤더      | 가로 방향 나열, 컬럼 너비 균등 또는 사용자 조절       |
-| 카드         | 컬럼 내부 위→아래 세로 배치, 텍스트 양에 따라 높이 가변  |
+| 보드 제목      | 상단 전체 너비 고정 (읽기 전용) — 일반 노드처럼 캔버스 중앙 배치 안 함 |
+| 컬럼 헤더      | 가로 방향 나열, 컬럼 너비 **300px 고정** (가로 스크롤)       |
+| 카드         | 컬럼 내부 위→아래 세로 배치, 텍스트 양에 따라 높이 가변 (depth 3+는 카드 내 들여쓰기 트리)  |
 | `+ 카드` 버튼  | 각 컬럼 하단 고정                         |
 | `+ 컬럼 추가`  | 마지막 컬럼 우측 고정                       |
 
 ---
 
-### 20. 레벨별 인터랙션 패턴
+### 20. 레벨별 인터랙션 패턴 (실동작 기준)
 
 각 레벨에서 허용되는 사용자 인터랙션을 명시한다.
 
@@ -581,30 +563,31 @@ Kanban 화면의 전체 레이아웃 구조 기준안이다.
 
 | 인터랙션         | 동작                   |
 | ------------ | -------------------- |
-| 제목 클릭        | 인라인 텍스트 편집 진입        |
+| 제목           | 읽기 전용 (보드에서 편집·선택 불가) |
 | 삭제 시도        | 불가 (루트 정책과 동일)       |
-| 자식 생성 (일반)   | 컬럼(depth 1) 추가만 허용   |
-| card 직접 생성   | 차단 (depth 2 직접 삽입 금지) |
+| 자식 생성        | `+ 컬럼 추가` 버튼으로 컬럼(depth 1) 추가   |
 
 #### Level 1 — Column (depth 1)
 
 | 인터랙션         | 동작                   |
 | ------------ | -------------------- |
-| 헤더 클릭        | 컬럼명 인라인 편집           |
-| drag & drop  | 형제 컬럼 간 순서 변경        |
+| 헤더 클릭        | **선택** (이름 인라인 편집 미구현)  |
+| 선택 후 `Del`   | 하위 카드 포함 즉시 삭제 (Ctrl+Z 복구) |
+| drag & drop  | 순서 변경 미구현 (향후)        |
 | `+ 카드` 버튼    | 해당 컬럼 하단에 카드 추가      |
-| 삭제           | 확인 다이얼로그 후 하위 카드 포함 삭제 |
-| 자식으로 column  | 차단 (column 중첩 금지)    |
 
-#### Level 2 — Card (depth 2)
+#### Level 2+ — Card (depth 2, 하위 트리 포함)
 
 | 인터랙션          | 동작                        |
 | ------------- | ------------------------- |
-| 클릭            | 인라인 텍스트 편집                |
+| 클릭            | 선택 (다중 선택 해제)             |
+| 더블클릭          | 인라인 편집 (Enter 저장 · Esc 취소)  |
 | drag (컬럼 내)   | 카드 순서 변경                  |
 | drag (컬럼 간)   | 다른 컬럼으로 이동 (`parent_id` 변경) |
-| 자식 생성 시도      | 차단 (depth 3 금지)           |
-| 우클릭           | 컨텍스트 메뉴 (수정 / 삭제)         |
+| drag (카드 가운데) | 그 카드의 하위로 **중첩** (서브트리 통째 이동) |
+| 자식 생성         | 허용 — 카드 아래 들여쓰기 트리로 표시    |
+| 우클릭           | 메뉴 없음 — 선택 후 `Del`로 삭제     |
+| 빈 영역 drag     | 러버밴드 다중 선택                |
 | 형제 카드 추가      | 허용                        |
 
 ---
@@ -664,3 +647,16 @@ Kanban Layout은 **edge-less board layout**을 기본으로 한다.
 - 칸반 모드에서도 **아웃라인 분할 보기**가 동작한다 — EditorPage가
   칸반을 분할 컨테이너 안(맵 자리)에 렌더링.
 - '카드 추가'(컬럼에 자식 추가)·'컬럼 추가'(루트에 자식 추가) 버튼 동작.
+
+### 선택·복사·툴바 (2026-08 추가)
+
+- **컬럼 헤더 클릭 = 선택**, 선택 후 `Del` = 하위 카드 포함 즉시 삭제
+  (확인 다이얼로그 없음, Ctrl+Z 복구).
+- **mod+C / mod+V 카드 복사·붙여넣기**: 복사 시 클립보드에
+  `EMM-NODES::` 토큰(서브트리 직렬화)으로 기록, 붙여넣기 시 선택 노드
+  하위에 삽입 — 맵 모드와 동일 동작.
+- **러버밴드 다중 선택**: 빈 영역(보드/컬럼 배경) 드래그로 걸친 카드
+  전체 다중 선택 (`multiSelectedIds` 공유 — 일괄 삭제·스타일 대상).
+- **칸반용 플로팅 툴바**: 맵 툴바에서 Pan·펼치기/접기 버튼은 숨긴다
+  (보드에 무의미). `⊙ Fit` = 보드 스크롤을 원점으로, `🎯 Focus` =
+  선택 카드가 보이도록 스크롤.

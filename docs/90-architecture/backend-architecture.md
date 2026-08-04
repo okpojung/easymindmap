@@ -1,9 +1,99 @@
 # easymindmap — Backend 개발 아키텍처
 
-문서 위치: `docs/05-implementation/backend-architecture.md`  
-스택: **NestJS + TypeScript + Supabase Self-hosted + Redis + BullMQ**  
+문서 위치: `docs/90-architecture/backend-architecture.md`  
+스택(설계 시점): **NestJS + TypeScript + Supabase Self-hosted + Redis + BullMQ**  
 변경: 2026-03-27 — PostgreSQL/MinIO/JWT 직접 구현 → Supabase Self-hosted 전환  
-변경: 2026-04-16 — Collaboration 모듈 상세화, Dashboard/Redmine 모듈 추가, BullMQ 워커 모듈 목록 확장
+변경: 2026-04-16 — Collaboration 모듈 상세화, Dashboard/Redmine 모듈 추가, BullMQ 워커 모듈 목록 확장  
+최종 업데이트: 2026-08-04 — 실물 코드(`apps/api`) 대조 현행화. 실물 요약은
+아래 "현재 구현" 절 참조.
+
+> ### ⚠️ 현행화 안내 (2026-08-04)
+>
+> 이 문서는 **구현 전 설계본**이다. 본문의 supabase-js Client·Redis·
+> BullMQ·Supabase Storage·auth/autosave/snapshot/media/ai/translation 등
+> 모듈 구조는 설계 시점의 계획이며, **실물 구현과 다르다.**
+>
+> - **실물 기준**: `apps/api` 코드와 `apps/api/database/schema.sql`.
+> - 실물 API 는 **NestJS + `pg` Pool 직결(raw SQL)** 이다. supabase-js·
+>   Redis·BullMQ·Supabase Storage 는 **사용하지 않는다.** Supabase 는
+>   **Auth(GoTrue JWT)** 만 — 그것도 서버는 `jsonwebtoken` 으로 **로컬
+>   HS256 검증 + JIT 사용자 생성**을 할 뿐 GoTrue 를 호출하지 않는다.
+> - **아래 "현재 구현 (2026-08-04 기준)" 절을 먼저 보라.** 본문은 향후
+>   확장(협업·AI·번역 등) 설계 참고용으로 유지한다.
+
+---
+
+## 현재 구현 (2026-08-04 기준)
+
+### 실제 모듈 구성 (`apps/api/src` — 8개)
+
+```
+apps/api/src/
+ ├── main.ts            # /v1 전역 프리픽스, JSON 바디 25MB, CORS(콤마 다중 출처), ValidationPipe(whitelist)
+ ├── app.module.ts      # ConfigModule(validateEnv) + 아래 모듈 등록
+ ├── config/            # env.validation.ts — 부팅 시 환경변수 검증
+ ├── database/          # DatabaseService — pg Pool 직결, raw SQL (ORM·supabase-js 미사용)
+ ├── health/            # GET /v1/health — 무인증. DB 연결 + 필수 테이블·컬럼 검사
+ ├── folders/           # /v1/folders CRUD 4종 (문서함)
+ ├── attachments/       # /v1/attachments 4종 (B9 — 업로드/다운로드/삭제/쿼터)
+ ├── maps/              # /v1/maps 11종 (CRUD + 문서 스냅샷 + 히스토리 + 편집 잠금)
+ ├── nodes/             # /v1/maps/:id/nodes·/v1/nodes 6종 (정규화 노드 CRUD + autosave + 이동)
+ ├── storage/           # StorageService 추상화 + LocalDiskStorage (STORAGE_LOCAL_DIR)
+ └── common/auth/       # AuthGuard + @CurrentUser() (별도 auth 모듈 없음)
+```
+
+- 엔드포인트 전체 표(26개)는 `docs/05-implementation/api-spec.md` 의
+  "현재 구현" 절 참조.
+- 별도의 auth/users/autosave/snapshot/media/publish/ai/translation 모듈은
+  **없다** — Auth 는 `common/auth` 가드 하나, autosave 는 nodes 모듈 안,
+  문서 스냅샷·잠금·히스토리는 maps 모듈 안에 있다.
+
+### 실제 인증 — AuthGuard (`common/auth/auth.guard.ts`)
+
+- `AUTH_MODE=dev` : 헤더 `x-user-id` 또는 `DEV_USER_ID` 로 사용자 지정
+  (개발 전용 스텁).
+- `AUTH_MODE=supabase` : `Authorization: Bearer <JWT>` 를
+  `SUPABASE_JWT_SECRET` 으로 **로컬 검증** — `jsonwebtoken`(CJS 네이티브,
+  ESM 전용 패키지 금지) HS256 + `aud='authenticated'` + exp. GoTrue 호출
+  없음. `sub` = 사용자 id.
+- **JIT 프로비저닝**: 검증된 사용자가 DB 에 없으면 `auth.users` +
+  `public.users` 행을 만들어 FK 성립 (프로세스 캐시로 요청당 오버헤드 0).
+- 헤더를 실을 수 없는 다운로드 링크(`<a href>`)용으로 **`?access_token=`
+  쿼리 폴백**을 허용한다 (첨부 다운로드 등, 검증은 동일).
+- 로그인/가입/갱신은 **프런트가 GoTrue REST 를 직접 호출**한다
+  (`services/cloud/supabaseAuth.ts`) — API 서버에 /auth 엔드포인트 없음.
+
+### 실제 환경변수 (`config/env.validation.ts`)
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `PORT` | 3000 | 리슨 포트 |
+| `CORS_ORIGIN` | `http://localhost:5173` | 허용 출처 — 콤마로 다중 지정 가능 |
+| `DATABASE_URL` | (필수) | PostgreSQL 접속 문자열 — pg Pool 직결 |
+| `AUTH_MODE` | `dev` | `dev` \| `supabase` |
+| `DEV_USER_ID` | `00000000-…-0001` | dev 모드 기본 사용자 |
+| `SUPABASE_JWT_SECRET` | — | supabase 모드 필수(16자 이상) — GoTrue JWT_SECRET 과 동일, HS256 |
+| `STORAGE_LOCAL_DIR` | `./data/attachments` | 첨부 local 드라이버 저장 디렉터리 (NFS 마운트 가능) |
+| `ATTACHMENT_MAX_MB` | 20 | 첨부 1개 최대 크기(MB) |
+
+> 설계본의 `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`/`REDIS_*`/`AI_*`/
+> `TRANSLATION_*` 는 **사용하지 않는다.**
+
+### 스키마 적용 절차 — `npm run db:apply`
+
+```bash
+cd apps/api
+DATABASE_URL='postgres://user:pw@host:5432/db' npm run db:apply
+# → database/schema.sql + database/functions/move_node_subtree.sql 을
+#   문장 단위로 적용. IF NOT EXISTS/DROP-CREATE 기반이라 몇 번 실행해도
+#   안전(멱등) — "이미 있음" 계열 오류만 건너뛰고 그 외 오류에서 멈춘다.
+```
+
+- 배포는 "코드 자동(Coolify) · 스키마 수동" 구조 — 적용 누락은
+  `GET /v1/health` 의 필수 테이블·컬럼 검사(`schema: outdated`)가 잡는다.
+- 로컬 개발: `docker compose -f apps/api/docker-compose.dev.yml up -d`
+  (순정 Postgres 16 + `dev/00-supabase-shim.sql` 로 auth.users 등 흉내).
+- 상세: `docs/90-architecture/dev-server-runbook.md`.
 
 ---
 

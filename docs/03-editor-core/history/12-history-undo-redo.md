@@ -1,8 +1,9 @@
 # 12. History / Undo-Redo
 ## HISTORY
 
-* 문서 버전: v1.0
+* 문서 버전: v2.0
 * 작성일: 2026-04-15
+* 최종 업데이트: 2026-08-04 — 실제 구현(전체 맵 스냅샷 · documentStore 내부 past/future · HISTORY_LIMIT 99 · setHistoryPaused) 기준으로 현행화. Command/patch·Transaction·Coalescing 설계는 "설계 초안(미채택)"으로 강등, §16 은 스냅샷 PUT + 편집 잠금 흐름으로 재작성.
 * 참조: `docs/01-product/functional-spec.md § HISTORY`, `docs/03-editor-core/save/14-save.md`, `docs/03-editor-core/history/13-version-history.md`
 
 ---
@@ -11,11 +12,11 @@
 
 * 사용자가 수행한 편집 작업을 기록하고, **Undo(취소) / Redo(복원)** 을 제공하는 기능
 * 실수로 수행한 편집을 빠르게 되돌리거나, 취소한 작업을 다시 복원할 수 있게 한다
-* 전체 문서 스냅샷이 아닌 **Command(명령) 기반 patch 저장**으로 메모리 효율 확보
-* Document Store와 분리된 독립 History Store로 관리하여 성능 및 유지보수성 보장
+* **전체 맵 스냅샷 저장** 방식 — 편집이 스프레드 기반 불변 갱신이라 변경된 가지 외에는 이전 스냅샷과 **구조를 공유**하므로 메모리 실비용은 "변경분"에 그친다
+* 별도 History Store 없이 **documentStore 내부의 `past` / `future` 스택**으로 관리한다
 
-> **현재 구현 노트 (2026-07)**: MVP 구현은 아직 스냅샷 방식이다 —
-> `documentStore`의 `past/future`가 `{ map, layout }` 엔트리를 담는다.
+> **현재 구현 노트 (2026-07)**: `documentStore`의 `past/future`가
+> `{ map, layout }` 엔트리를 담는다.
 > `layout`(editorUiStore의 전체 레이아웃)을 맵과 함께 기록/복원하는
 > 이유: 칸반 전환처럼 "맵 + 레이아웃"이 한 동작으로 바뀌는 편집을
 > Ctrl+Z 한 번으로 화면까지 되돌리기 위해서다. **규칙**: 맵과
@@ -33,13 +34,11 @@
 >   다시 실행 버튼 사이의 카운터(`data-testid="undo-depth"`)는
 >   `future.length` — 최신 상태 0, undo마다 -1씩, redo로 복귀, 새 편집
 >   시 0 (future가 비워지는 표준 규칙, e2e67).
-> * **히스토리(저장 버전 이력)** = 세션을 닫고 **저장할 때마다
->   저장일시(날짜·시간)별 버전**을 만들어 보관하는 기능. **서버
->   저장(클라우드)과 연결될 때 구현한다** (백엔드 문서 스냅샷 API,
->   13-version-history.md). 특정 시점 복귀는 현재 맵을 덮어쓰지 않고
->   **새 맵(제목_history_YYMMDD)** 으로 연다는 것까지 확정 설계.
->   그때까지 좌측 히스토리 패널(HistoryPanel)은 가짜 목록 없이 이
->   규칙을 안내만 한다 (e2e68 [4]).
+> * **히스토리(저장 버전 이력)** = 명시적 저장 시점의 문서 스냅샷을
+>   `map_document_versions`에 보관하는 기능 — 구현됨(B8),
+>   `13-version-history.md` 참조. 특정 시점 복귀는 현재 맵을 덮어쓰지
+>   않고 **새 맵(`제목_history_YYMMDD_HHMM`) + 브라우저 새 탭**으로
+>   연다.
 >
 > **메모리**: 스냅샷은 map 객체 참조를 저장하고, 편집은 스프레드 기반
 > 불변 갱신이라 변경된 가지 외에는 **이전 스냅샷과 구조를 공유**한다 —
@@ -54,18 +53,19 @@
 
   * Undo — 가장 최근 작업 취소 (`Ctrl+Z`)
   * Redo — 취소한 작업 복원 (`Ctrl+Y` / `Ctrl+Shift+Z`)
-  * 2-Stack 구조 관리 (undoStack / redoStack)
-  * Transaction 기반 batch 작업 묶음 (다중 가지 추가, paste, duplicate 등)
-  * Coalescing — 텍스트 편집·drag 이동의 연속 작업 하나로 합산
-  * 툴바 Undo/Redo 버튼 활성/비활성 상태 연동
-  * Undo/Redo 실행 후 autosave 자동 트리거
+  * 2-Stack 구조 관리 (`past` / `future`)
+  * **한 번의 `set()` = 1 undo 단계** — 별도 트랜잭션 API 없이, 여러 노드를 한 번의 상태 갱신으로 바꾸면 자연히 1단계가 된다 (다중 가지 추가, 일괄 삭제 등)
+  * `setHistoryPaused` — 드래그·슬라이더 등 연속 변경 중 히스토리 기록을 일시 중지해 1단계로 합산 (e2e71: 색상 드래그 전체 = undo 1단계)
+  * 툴바 Undo/Redo 버튼 활성/비활성 + 단계 카운터(`undo-depth`) 연동
+  * Undo/Redo 실행 후 자동저장(1500ms 디바운스 스냅샷 저장) 자동 트리거
 
 * 제외:
 
   * 서버 버전 이력 (→ VERSION_HISTORY, `13-version-history.md`)
   * 선택/viewport/zoom 상태 변경 (히스토리 제외 대상)
-  * 협업 충돌 해소 (→ COLLABORATION)
+  * 협업 충돌 해소 (→ COLLABORATION — 계획)
   * 영구 저장 (→ SAVE)
+  * ~~Transaction API·Coalescing·entry label~~ — **설계 초안(미채택)**, §4 참조
 
 ---
 
@@ -75,121 +75,50 @@
 | ---------- | -------------- | ------------------------------ | -------------------------------- |
 | HISTORY-01 | Undo           | 가장 최근 편집 작업 취소                 | `Ctrl+Z` / `Cmd+Z`               |
 | HISTORY-02 | Redo           | 취소한 작업 복원                      | `Ctrl+Y` / `Ctrl+Shift+Z` / `Cmd+Shift+Z` |
-| HISTORY-03 | Transaction    | 여러 연산을 1개 Undo 단위로 묶음          | 내부 처리                            |
-| HISTORY-04 | Coalescing     | 연속 텍스트 입력·drag를 1개 항목으로 합산     | 내부 처리                            |
-| HISTORY-05 | Stack 상태 표시   | 툴바 Undo/Redo 버튼 활성/비활성 + 툴팁    | UI 연동                            |
-| HISTORY-06 | 히스토리 초기화      | 맵 재접속 시 History 스택 클리어         | 내부 처리                            |
+| HISTORY-03 | 1-set 1단계     | 한 번의 `set()`으로 묶인 변경 = 1 undo 단계 | 내부 처리                            |
+| HISTORY-04 | 연속 변경 합산     | `setHistoryPaused`로 드래그·슬라이더 연속 변경을 1단계로 | 내부 처리                            |
+| HISTORY-05 | Stack 상태 표시   | 툴바 버튼 활성/비활성 + 고정 툴팁 + 단계 카운터(`undo-depth`) | UI 연동                            |
+| HISTORY-06 | 히스토리 초기화      | **계정 경계 전환 시에만**(로그아웃→재로그인 등 세션 전환 리셋) 스택 클리어 — 맵 닫기/재열기로는 유지 (e2e79 [5], e2e85 [4]) | 내부 처리                            |
 
 ---
 
 ### 4. 기능 정의 (What)
 
-#### 4.1 History Store 구조
+#### 4.1 실제 구조 — documentStore 내부 past/future
 
 ```typescript
-type HistoryStore = {
-  undoStack: HistoryEntry[];
-  redoStack: HistoryEntry[];
+// apps/frontend/src/stores/documentStore.ts (발췌)
+const HISTORY_LIMIT = 99;
 
-  currentTransaction: HistoryTransaction | null;
+type HistoryEntry = {
+  map: SampleMap;          // 편집 직전의 전체 맵 스냅샷 (구조 공유)
+  layout: EditorLayout;    // 당시의 editorUi 레이아웃 (칸반 전환 등 복원용)
+};
 
-  isApplyingHistory: boolean;   // 무한 루프 방지 플래그
-  maxHistorySize: number;       // 기본값: 100
-
-  pushEntry: (entry: HistoryEntry) => void;
-  beginTransaction: (label?: string) => void;
-  addToTransaction: (entry: HistoryEntry) => void;
-  commitTransaction: () => void;
-  cancelTransaction: () => void;
+// documentStore 상태의 일부
+{
+  past: HistoryEntry[];    // undo 스택 (최대 99)
+  future: HistoryEntry[];  // redo 스택
 
   undo: () => void;
   redo: () => void;
-  clearHistory: () => void;
-};
-```
-
-#### 4.2 HistoryEntry — 기록 단위
-
-```typescript
-type HistoryEntry = {
-  id: string;
-  type: HistoryActionType;
-  label: string;           // UI 툴팁 표시용: "노드 생성", "텍스트 수정"
-  timestamp: number;
-
-  undo: HistoryOperation[];   // 되돌릴 연산 목록
-  redo: HistoryOperation[];   // 다시 적용할 연산 목록
-
-  meta?: {
-    nodeId?: string;
-    mapId?: string;
-    source?: 'keyboard' | 'mouse' | 'api' | 'ai';
-  };
-};
-```
-
-#### 4.3 HistoryOperation — 실제 적용 명령
-
-```typescript
-type HistoryOperation =
-  | { op: 'createNode';    node: NodeSnapshot; parentId: string | null; index: number }
-  | { op: 'deleteNode';    nodeId: string }
-  | { op: 'updateNodeText'; nodeId: string; text: string }
-  | { op: 'moveNode';      nodeId: string;
-      fromParentId: string | null; toParentId: string | null;
-      fromIndex: number; toIndex: number;
-      fromPosition?: { x: number; y: number };
-      toPosition?: { x: number; y: number } }
-  | { op: 'changeLayout';  nodeId: string; layoutType: string }
-  | { op: 'updateStyle';   nodeId: string; style: Partial<NodeStyle> }
-  | { op: 'setCollapsed';  nodeId: string; collapsed: boolean }
-  | { op: 'addTag';        nodeId: string; tagId: string }
-  | { op: 'removeTag';     nodeId: string; tagId: string };
-```
-
-#### 4.4 HistoryActionType
-
-```typescript
-type HistoryActionType =
-  | 'createNode'
-  | 'deleteNode'
-  | 'editText'
-  | 'moveNode'
-  | 'changeLayout'
-  | 'changeStyle'
-  | 'collapseNode'
-  | 'expandNode'
-  | 'addTag'
-  | 'removeTag'
-  | 'pasteNodes'
-  | 'duplicateNode'
-  | 'multiCreateNodes'
-  | 'batch';
-```
-
-#### 4.5 HistoryTransaction — batch 묶음
-
-```typescript
-type HistoryTransaction = {
-  id: string;
-  label: string;
-  entries: HistoryEntry[];
-  startedAt: number;
-};
-```
-
-commit 시 내부 entries를 단일 batch HistoryEntry로 병합:
-
-```typescript
-// commitTransaction 결과
-{
-  id: 'tx-001',
-  type: 'batch',
-  label: '다중 가지 추가',
-  undo: [...모든 undo 연산 역순 결합],
-  redo: [...모든 redo 연산 정순 결합]
 }
+
+// 히스토리 일시 중지 — 드래그/슬라이더 연속 변경을 1단계로
+export function setHistoryPaused(v: boolean): void;
 ```
+
+* 엔트리 타입은 이 `{ map, layout }` **1개뿐**이다.
+* label·timestamp·meta·operation 목록은 없다 — 툴바 툴팁은 고정 문구, 단계 표시는 카운터가 담당한다.
+
+#### 4.2 설계 초안 (미채택) — Command/patch 기반 History Store
+
+> 아래 4.2~4.5 의 원안(독립 HistoryStore + HistoryEntry(undo/redo 연산
+> 목록) + HistoryOperation 9종 + HistoryActionType + HistoryTransaction)
+> 은 **채택되지 않았다**. 스냅샷 + 구조 공유 방식이 더 단순하면서
+> 메모리 실비용이 낮아, patch 역연산 체계는 도입하지 않았다.
+> 한 줄 요약: *"역연산 가능한 Command patch를 쌓는 독립 History Store"*
+> 설계였으나, 실제 구현은 documentStore 내부 전체 스냅샷 2-스택이다.
 
 ---
 
@@ -199,9 +128,9 @@ commit 시 내부 entries를 단일 batch HistoryEntry로 병합:
 
 | 입력                            | 결과                                  |
 | ----------------------------- | ----------------------------------- |
-| `Ctrl+Z` / `Cmd+Z`            | undoStack에서 pop → 역방향 연산 적용         |
-| `Ctrl+Y` / `Ctrl+Shift+Z`     | redoStack에서 pop → 정방향 연산 재적용        |
-| 노드 생성/삭제/이동/텍스트 수정 등         | undoStack에 push, redoStack 초기화       |
+| `Ctrl+Z` / `Cmd+Z`            | `past`에서 pop → 스냅샷으로 맵·레이아웃 교체      |
+| `Ctrl+Y` / `Ctrl+Shift+Z`     | `future`에서 shift → 스냅샷 재적용          |
+| 노드 생성/삭제/이동/텍스트 수정 등         | `past`에 현재 스냅샷 push, `future` 초기화     |
 | 툴바 Undo 버튼 클릭                 | `Ctrl+Z`와 동일                        |
 | 툴바 Redo 버튼 클릭                 | `Ctrl+Y`와 동일                        |
 
@@ -210,34 +139,31 @@ commit 시 내부 entries를 단일 batch HistoryEntry로 병합:
 #### 5.2 시스템 처리 — 2-Stack 흐름
 
 ```
-새 작업 발생:
-  undoStack.push(newEntry)
-  redoStack = []              ← 새 작업 시 redo 초기화
+새 편집 발생 (documentStore set):
+  past.push({ map: 이전 map, layout: 이전 layout })  (99 초과분은 앞에서 제거)
+  future = []                      ← 새 작업 시 redo 초기화
 
 Undo 실행:
-  entry = undoStack.pop()
-  isApplyingHistory = true
-  applyOperations(entry.undo)
-  isApplyingHistory = false
-  redoStack.push(entry)
-  autosave.markDirty(inversePatches)  ← Undo 결과도 서버 저장
+  entry = past.pop()
+  현재 {map, layout} 을 future 맨 앞에 push
+  map ← entry.map, layout ← entry.layout   (전체 스냅샷 교체)
+  → 문서가 바뀌었으므로 자동저장(1500ms 디바운스) 트리거
 
 Redo 실행:
-  entry = redoStack.pop()
-  isApplyingHistory = true
-  applyOperations(entry.redo)
-  isApplyingHistory = false
-  undoStack.push(entry)
-  autosave.markDirty(patches)
+  entry = future.shift()
+  현재 {map, layout} 을 past 에 push
+  map ← entry.map, layout ← entry.layout
+  → 자동저장 트리거
 ```
 
 ---
 
 #### 5.3 표시 방식
 
-* 툴바 Undo 버튼: `undoStack.length > 0`이면 활성화
-* 툴바 Redo 버튼: `redoStack.length > 0`이면 활성화
-* 툴팁: 최근 entry의 `label` 표시 (예: "Undo 텍스트 수정", "Redo 노드 이동")
+* 툴바 Undo 버튼: `past.length > 0`이면 활성화
+* 툴바 Redo 버튼: `future.length > 0`이면 활성화
+* 툴팁: **고정 문구**("되돌리기"/"다시 실행") — entry label 은 없다
+* 두 버튼 사이 **단계 카운터**(`data-testid="undo-depth"`) = `-future.length` (최신 0, undo마다 -1, 최대 -99)
 
 ---
 
@@ -245,84 +171,64 @@ Redo 실행:
 
 ---
 
-#### 6.1 Command 기반 저장 원칙
+#### 6.1 스냅샷 저장 원칙
 
-* 전체 문서 스냅샷 저장 ❌
-* 역연산 가능한 **Command/Patch** 저장 ✅
-* 각 HistoryEntry는 `undo`와 `redo`가 모두 완전해야 한다
+* 역연산 Command/Patch 저장 ❌ (설계 초안 — 미채택)
+* **전체 맵 스냅샷 저장** ✅ — 불변 갱신의 구조 공유로 메모리 실비용은 변경분뿐
+* 스냅샷에는 `layout`(editorUi 레이아웃)을 함께 담아 칸반 전환 등도 한 번에 되돌린다
 
 ---
 
 #### 6.2 2-Stack 규칙
 
-| 상황          | undoStack      | redoStack      |
+| 상황          | past           | future         |
 | ----------- | -------------- | -------------- |
 | 새 작업 수행     | push           | 초기화 (`[]`)    |
-| Undo 실행     | pop            | push           |
-| Redo 실행     | push           | pop            |
-| History 초기화 | `[]`           | `[]`           |
+| Undo 실행     | pop            | 앞에 push        |
+| Redo 실행     | push           | shift          |
+| 히스토리 초기화 (계정 경계 전환) | `[]`           | `[]`           |
 
 ---
 
-#### 6.3 Transaction 규칙
+#### 6.3 1-set = 1단계 규칙 (Transaction 대체)
 
-Transaction이 필요한 대표 경우:
+별도 Transaction API 는 없다. **한 번의 `set()` 호출로 반영된 변경이 곧
+1 undo 단계**다. 여러 노드를 한 단계로 묶고 싶으면 하나의 액션에서 한 번에
+갱신한다.
 
-* 다중 가지 추가 (`Ctrl+Space`)
-* Paste 여러 노드
-* Duplicate Subtree
-* Subtree layout 변경 (하위 노드 전체)
-* 여러 노드 일괄 스타일 변경
+대표 예:
 
-```typescript
-beginTransaction('다중 가지 추가')
-addToTransaction(entry1)   // 노드 A 생성
-addToTransaction(entry2)   // 노드 B 생성
-addToTransaction(entry3)   // 노드 C 생성
-commitTransaction()
-// → undoStack에 batch 1개만 push
-```
+* 다중 가지 추가 (`Ctrl+Space`) — 한 번의 set 으로 전부 삽입
+* 러버밴드 다중 선택 후 일괄 삭제 (`deleteNodesBulk`, e2e68)
+* 템플릿 적용 / import 결과 반영
+* 칸반 전환 (맵 + 레이아웃 동시 — `{map, layout}` 엔트리)
 
 ---
 
-#### 6.4 Coalescing 규칙
+#### 6.4 연속 변경 합산 규칙 (Coalescing 대체)
+
+원안의 Coalescing(중간값 병합) 대신 **`setHistoryPaused`** 를 쓴다.
 
 | 작업 유형      | 처리 방식                          |
 | ---------- | ------------------------------ |
-| 텍스트 편집     | 편집 시작 시 `beforeText` 저장, 편집 종료(blur/Enter/debounce) 시 1개 push |
-| drag 이동    | pointermove 중간값 무시, drag end 시 1개 push |
-| 노드 생성/삭제   | 매 작업마다 개별 push                 |
-| paste      | 1개의 transaction으로 push          |
-| layout 변경  | 개별 push                        |
-| tag 추가/삭제  | 개별 push                        |
+| 색상 슬라이더 드래그 | 첫 변경만 기록, 이후 `setHistoryPaused(true)` — 드래그 전체 = 1단계 (e2e71) |
+| 노드 드래그 이동  | 같은 방식으로 드래그 중 기록 억제, 종료 시 1단계   |
+| 텍스트 편집     | 편집 커밋 시점에 1회 반영 (타이핑 중간값은 draft) |
+| 노드 생성/삭제   | 매 set 마다 개별 단계                 |
 
 ---
 
-#### 6.5 isApplyingHistory 플래그 규칙
+#### 6.5 히스토리 일시 중지 규칙
 
-* Undo/Redo 실행 중 Document 변경이 새로운 HistoryEntry를 생성하면 stack이 꼬인다
-* `isApplyingHistory = true` 구간에서는 새 HistoryEntry push 금지
-
-```typescript
-if (historyStore.isApplyingHistory) {
-  // document 변경은 허용하되
-  // 새 history entry는 생성하지 않음
-  return;
-}
-```
+* Undo/Redo 적용 자체와 드래그 중간값이 새 히스토리 단계를 만들면 스택이 꼬인다
+* `setHistoryPaused(true)` 구간에서는 문서 변경은 반영하되 `past` push 를 하지 않는다
 
 ---
 
-#### 6.6 maxHistorySize 규칙
+#### 6.6 HISTORY_LIMIT 규칙
 
-* 기본값: `100`개
-* 초과 시 가장 오래된 항목(undoStack 맨 앞) 제거
-
-```typescript
-if (undoStack.length > maxHistorySize) {
-  undoStack.shift();   // 가장 오래된 항목 제거
-}
-```
+* 상한: **`HISTORY_LIMIT = 99`** — 단계 카운터를 두 자리(-99)로 표시하기 위한 값
+* 초과 시 가장 오래된 항목(`past` 맨 앞) 제거
 
 ---
 
@@ -333,172 +239,129 @@ if (undoStack.length > maxHistorySize) {
 | 노드 생성 / 삭제      | 선택 상태 변경       |
 | 노드 텍스트 수정       | hover 상태       |
 | 노드 이동           | viewport pan   |
-| 레이아웃 변경         | zoom in/out    |
+| 레이아웃 변경 (맵·레이아웃 동시 스냅샷) | zoom in/out    |
 | 스타일 변경          | 패널 열기/닫기       |
 | collapse/expand  | 검색 입력 중간값      |
-| 태그 추가/삭제        | autosave 상태 표시 |
-| paste/duplicate  |                |
+| 태그 추가/삭제        | 저장 상태 배지       |
+| paste / 템플릿 적용 / import |                |
 
 ---
 
-#### 6.8 Undo/Redo 후 Autosave 규칙
+#### 6.8 Undo/Redo 후 자동저장 규칙
 
-* Undo/Redo 실행 결과도 문서 변경이므로 **autosave 대상**
-* Undo 후 저장 시 새 `patchId` 생성 (`_undo` suffix)
-* Redo 후 저장 시 새 `patchId` 생성 (`_redo` suffix)
-* 기존 patchId 재사용 금지 (`map_revisions.patch_id UNIQUE` 제약)
-
-```typescript
-// Undo 실행 후 autosave
-function applyUndo() {
-  const inversePatches = historyStore.undo();
-  autosaveStore.markDirty({
-    patchId: generatePatchId('undo'),   // 항상 새 patchId
-    patches: inversePatches,
-  });
-}
-```
+* Undo/Redo 실행 결과도 문서 변경이므로 **자동저장 대상**
+* 별도 patchId 같은 것은 없다 — 다른 편집과 동일하게 1500ms 디바운스 후
+  `PUT /maps/:id/document` 로 **전체 스냅샷**이 저장된다
+* Undo 로 저장 직전 상태와 같아졌다면 서버의 jsonb 등가 비교로
+  `unchanged` 처리된다 (`14-save.md` 참조)
 
 ---
 
 #### 6.9 삭제 Undo 규칙
 
-* 단일 노드 삭제 Undo: 삭제 전 노드 snapshot 저장 → 복원
-* **Subtree 삭제 Undo**: 루트 노드 + 재귀 하위 노드 전체 snapshot 저장 → 전체 복원
-* `deleteSubtree` op를 별도로 두어 일괄 처리
-
-```typescript
-// Subtree 삭제 undo 연산
-undo: subtreeSnapshot.map(node => ({
-  op: 'createNode',
-  node: node,
-  parentId: node.parentId,
-  index: node.orderIndex,
-}))
-```
+* 삭제 직전의 전체 맵 스냅샷이 `past`에 남아 있으므로, 단일 노드든
+  subtree 전체든 **Ctrl+Z 한 번으로 통째로 복원**된다 (e2e79 [5]:
+  맵 닫기 후에도 Ctrl+Z 로 30노드 완전 복구)
+* 별도 subtree snapshot 로직이 필요 없다 — 스냅샷 방식의 장점
 
 ---
 
 ### 7. 히스토리 동작 예시
 
-#### 7.1 텍스트 수정
-
 ```typescript
-// 편집 전: "AI", 편집 후: "Artificial Intelligence"
-{
-  type: 'editText',
-  label: '텍스트 수정',
-  undo: [{ op: 'updateNodeText', nodeId: 'n1', text: 'AI' }],
-  redo: [{ op: 'updateNodeText', nodeId: 'n1', text: 'Artificial Intelligence' }]
-}
+// 텍스트 수정: "AI" → "Artificial Intelligence"
+// past 에 { map: 수정 전 맵, layout: 현재 레이아웃 } 1개가 push 된다.
+// Ctrl+Z → 그 스냅샷으로 map 전체 교체 → "AI" 복원.
+
+// 칸반 전환:
+// updateNodeLayoutType(맵 변경) → setLayoutType(레이아웃 변경) 순서 —
+// 히스토리 구독이 "이전 레이아웃"을 스냅샷에 담는다.
+// Ctrl+Z 한 번으로 맵과 화면 레이아웃이 함께 복원 (e2e66).
 ```
 
-#### 7.2 노드 이동
-
-```typescript
-{
-  type: 'moveNode',
-  label: '노드 이동',
-  undo: [{ op: 'moveNode', nodeId: 'n5',
-    fromParentId: 'p2', toParentId: 'p1',
-    fromIndex: 0, toIndex: 3 }],
-  redo: [{ op: 'moveNode', nodeId: 'n5',
-    fromParentId: 'p1', toParentId: 'p2',
-    fromIndex: 3, toIndex: 0 }]
-}
-```
-
-#### 7.3 레이아웃 변경
-
-```typescript
-{
-  type: 'changeLayout',
-  label: '레이아웃 변경',
-  undo: [{ op: 'changeLayout', nodeId: 'n10', layoutType: 'radial-right' }],
-  redo: [{ op: 'changeLayout', nodeId: 'n10', layoutType: 'tree-down' }]
-}
-```
+> 원안의 entry 별 `{undo: [...], redo: [...]}` 연산 예시는 미채택 설계라 삭제했다.
 
 ---
 
-### 8. History Store vs map_revisions 구분
+### 8. past/future vs map_document_versions 구분
 
-| 구분          | History Store (클라이언트)      | map_revisions (서버 DB)          |
+| 구분          | past/future (클라이언트)      | map_document_versions (서버 DB)          |
 | ----------- | -------------------------- | ------------------------------ |
-| 저장 위치       | 브라우저 메모리 (Zustand)         | PostgreSQL (`public.map_revisions`) |
+| 저장 위치       | 브라우저 메모리 (documentStore)         | PostgreSQL (`public.map_document_versions`) |
 | 지속성         | 세션 한정 (새로고침 시 초기화)         | 영구 저장                          |
-| 목적          | `Ctrl+Z / Y` 편집 취소·복원      | 버전 이력 조회, 협업 충돌 해소, 히스토리 패널     |
-| 저장 단위       | 사용자 액션 단위 (Command)        | autosave 시마다 `NodePatch[]` 1 row |
-| 최대 보존       | 기본 100개                    | 무제한 (DB 용량 한도)                 |
-| 접근 주체       | 클라이언트 전용 — API 없음          | 서버 API 통해 버전 패널 조회             |
-| 사용 시나리오     | "방금 전 텍스트 편집 취소"           | "3일 전 버전으로 롤백"                |
+| 목적          | `Ctrl+Z / Y` 편집 취소·복원      | 저장 시점 버전 이력 조회·복원 (히스토리 패널)     |
+| 저장 단위       | 한 번의 set() = 스냅샷 1개        | **명시적 저장(keepVersion)** 1회 = 문서 스냅샷 1 row |
+| 최대 보존       | 99개 (HISTORY_LIMIT)                    | 무제한 (DB 용량 한도)                 |
+| 접근 주체       | 클라이언트 전용 — API 없음          | `GET /maps/:id/versions` 로 조회             |
+| 사용 시나리오     | "방금 전 텍스트 편집 취소"           | "3일 전 저장본을 새 탭으로 열기"                |
 
 ---
 
 ### 9. 예외 / 경계 (Edge Case)
 
-* **undoStack 비어있는데 Undo 시도**: 동작 없음 (Undo 버튼 비활성 상태)
-* **redoStack 비어있는데 Redo 시도**: 동작 없음 (Redo 버튼 비활성 상태)
-* **새 작업 후 Redo**: redoStack 초기화 → Redo 불가
-* **maxHistorySize 초과**: 가장 오래된 항목 자동 제거 (Undo 불가 범위 확대)
-* **Transaction 중 오류**: `cancelTransaction()` 호출 → 현재 transaction 폐기
-* **AI 생성 작업**: 사용자 확인 후 반영된 경우 History에 push (AI 미확인 preview는 제외)
-* **협업 중 타인의 편집**: 타인 편집은 로컬 History에 포함하지 않음
-* **루트 노드 삭제 시도 후 Undo**: 루트 노드 삭제 자체가 차단되므로 History 기록 없음
-* **Autosave 실패 후 Undo**: Document Store 역방향 업데이트는 완료, autosave 실패는 별도 처리
+* **past 비어있는데 Undo 시도**: 동작 없음 (Undo 버튼 비활성 상태)
+* **future 비어있는데 Redo 시도**: 동작 없음 (Redo 버튼 비활성 상태)
+* **새 작업 후 Redo**: `future` 초기화 → Redo 불가
+* **HISTORY_LIMIT 초과**: 가장 오래된 항목 자동 제거 (Undo 불가 범위 확대)
+* **드래그/슬라이더 중간값**: `setHistoryPaused` 로 기록 억제 — 마지막 값만 1단계
+* **AI 생성 작업**: 맵에 반영되는 set 이 곧 1단계 — Ctrl+Z 로 통째 취소
+* **맵 닫기/재열기**: 스택 유지 (초기화는 계정 경계 전환 시에만)
+* **저장 실패 후 Undo**: 로컬 스냅샷 복원은 완료, 저장 오류는 상태 배지(error)로 별도 표시
 
 ---
 
 ### 10. 권한 규칙
 
-| 역할      | 권한                        |
-| ------- | ------------------------- |
-| creator | Undo/Redo 전체 사용 가능        |
-| editor  | Undo/Redo 사용 가능 (자신의 편집만) |
-| viewer  | Undo/Redo 불가              |
+현재는 **단독 편집(소유자 단독)** 모델이라 별도 권한 구분이 없다.
+
+* (계획 — 협업 V1) 협업맵에서는 되돌리기·히스토리 복원을 **맵 개설자(owner)만** 사용 (2026-08-03 결정, `13-version-history.md` 참조)
 
 ---
 
 ### 11. DB 영향
 
-* History Store는 **DB에 저장하지 않는다** (클라이언트 전용)
-* Undo/Redo 실행 결과는 autosave를 통해 `map_revisions`에 간접 저장
-* `map_revisions.patch_id`: Undo/Redo 후 재저장 시 새 `patchId` 생성 필수
+* past/future 는 **DB에 저장하지 않는다** (클라이언트 전용)
+* Undo/Redo 실행 결과는 자동저장을 통해 `map_documents`(현재 문서)에 반영되고, 이후 명시적 저장 시 `map_document_versions`에 버전이 남는다
 
 관련 DB 테이블:
 
 ```sql
--- Undo/Redo 결과는 autosave 경유로 이 테이블에 기록됨
-CREATE TABLE public.map_revisions (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  map_id      UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
-  version     INT  NOT NULL,
-  patch_json  JSONB NOT NULL,
-  client_id   VARCHAR(100),
-  patch_id    VARCHAR(200) UNIQUE,    -- Undo/Redo 시 새 ID 필수
-  created_by  UUID REFERENCES public.users(id),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- 명시적 저장(keepVersion) 시에만 쌓이는 문서 스냅샷 버전
+CREATE TABLE public.map_document_versions (
+  map_id       UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+  version      INT  NOT NULL,           -- MAX(version)+1 채번
+  title        TEXT,
+  doc          JSONB NOT NULL,          -- 전체 문서 스냅샷
+  created_by   UUID REFERENCES public.users(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  layout_type  TEXT,
+  node_count   INT,
+  attach_bytes BIGINT,
+  attach_count INT,
+  UNIQUE (map_id, version)
 );
 ```
+
+> 원안의 `map_revisions`(patch_json·patch_id) DDL 은 정규화 노드/협업
+> 경로용 설계로, 문서 저장 경로에서는 쓰지 않는다.
 
 ---
 
 ### 12. API 영향
 
-* History Store 자체는 API 없음 (클라이언트 전용)
-* Undo/Redo 실행 후 autosave가 트리거하는 API:
-  * `PATCH /maps/{mapId}/nodes` — 역방향 patch 서버 반영
+* past/future 자체는 API 없음 (클라이언트 전용)
+* Undo/Redo 실행 후 자동저장이 트리거하는 API:
+  * `PUT /maps/{mapId}/document` — 전체 문서 스냅샷 저장 (`{doc, title, keepVersion, editSession}`) — 다른 편집과 동일한 경로
 
 ---
 
 ### 13. 연관 기능
 
-* NODE_EDITING (`02-node-editing.md` — 편집 작업이 History push 트리거)
-* SAVE / AUTOSAVE (`14-save.md` — Undo/Redo 후 autosave 연동)
+* NODE_EDITING (`02-node-editing.md` — 편집 set 이 히스토리 push 트리거)
+* SAVE / AUTOSAVE (`14-save.md` — Undo/Redo 후 스냅샷 자동저장 연동)
 * VERSION_HISTORY (`13-version-history.md` — 서버 버전 이력과 역할 구분)
-* LAYOUT (`08-layout.md` — 레이아웃 변경 Undo)
-* SELECTION (`11-selection.md` — 선택 상태는 History 제외)
-* COLLABORATION (협업 중 타인 편집과 History 분리)
+* LAYOUT (`08-layout.md` — 레이아웃 변경 Undo, `{map, layout}` 엔트리)
+* SELECTION (`11-selection.md` — 선택 상태는 히스토리 제외)
 
 ---
 
@@ -507,73 +370,59 @@ CREATE TABLE public.map_revisions (
 #### 시나리오 1 — 노드 삭제 후 Undo
 
 1. 사용자: `기능 정의` 노드 `Delete`
-2. 시스템: 노드 snapshot 저장 → `deleteNode` HistoryEntry push
-3. autosave 트리거
+2. 시스템: 삭제 직전 스냅샷을 `past`에 push, 삭제 반영
+3. 1500ms 후 자동저장 (전체 스냅샷 PUT)
 4. 사용자: `Ctrl+Z`
-5. 시스템: `isApplyingHistory = true`, `createNode` 연산 적용, `isApplyingHistory = false`
-6. redoStack에 entry push
-7. autosave 트리거 (복원 결과 서버 저장)
+5. 시스템: `past.pop()` → 스냅샷으로 맵 교체 (subtree 포함 통째 복원)
+6. `future`에 entry push, 카운터 -1 표시
+7. 자동저장 트리거 (복원 결과 저장 — 직전 저장본과 같으면 서버가 unchanged 처리)
 
-#### 시나리오 2 — 다중 가지 추가 Transaction
+#### 시나리오 2 — 다중 가지 추가 = 1단계
 
 1. 사용자: `Ctrl+Space` → 여러 줄 입력
-2. 시스템: `beginTransaction('다중 가지 추가')`
-3. 각 노드 생성마다 `addToTransaction(entry)`
-4. 입력 완료 → `commitTransaction()`
-5. undoStack에 batch entry 1개 push
-6. 사용자: `Ctrl+Z` → 전체 생성 노드 일괄 취소
+2. 시스템: 입력 완료 시 **한 번의 set** 으로 전체 노드 삽입 → `past`에 1개 push
+3. 사용자: `Ctrl+Z` → 전체 생성 노드 일괄 취소
 
-#### 시나리오 3 — 텍스트 수정 Coalescing
+#### 시나리오 3 — 색상 드래그 합산
 
-1. 사용자: `목표` 노드 더블클릭 → `목표 및 방향성` 타이핑
-2. 시스템: 편집 시작 시 `beforeText = '목표'` 저장, 타이핑 중 HistoryEntry push 없음
-3. blur(편집 종료) 시: `editText` HistoryEntry 1개 push
-4. 사용자: `Ctrl+Z` → `목표`로 복원
+1. 사용자: 색상 슬라이더 드래그 (input 이벤트 수십 발)
+2. 시스템: 첫 변경만 `past`에 기록, 이후 `setHistoryPaused(true)`
+3. 드래그 종료 → `setHistoryPaused(false)`
+4. 사용자: `Ctrl+Z` → **드래그 전 색으로 한 번에** 복원 (e2e71)
 
 #### 시나리오 4 — Undo 후 새 작업
 
 1. 사용자: 노드 A 생성 → 노드 B 생성
-2. `Ctrl+Z` → 노드 B 삭제됨 (redoStack에 B 생성 entry)
+2. `Ctrl+Z` → 노드 B 삭제됨 (`future`에 스냅샷)
 3. 사용자: 노드 C 생성
-4. 시스템: redoStack 초기화 → 노드 B Redo 불가
-5. undoStack: [노드 A 생성, 노드 C 생성]
+4. 시스템: `future` 초기화 → 노드 B Redo 불가, 카운터 0
 
 ---
 
-### 15. 구현 우선순위
+### 15. 구현 상태
 
-#### MVP
+#### 구현됨 (MVS)
 
-* `createNode` / `deleteNode` Undo/Redo
-* `editText` Undo/Redo + Coalescing
-* `moveNode` Undo/Redo
-* 툴바 Undo/Redo 버튼 상태 연동
-* `isApplyingHistory` 플래그
-* maxHistorySize 100개 제한
+* 전체 편집에 대한 Undo/Redo (스냅샷 방식이라 연산 종류 구분 불필요)
+* `{map, layout}` 엔트리 — 칸반/레이아웃 전환 복원 (e2e66)
+* 툴바 버튼 상태 + 단계 카운터 (e2e67)
+* `setHistoryPaused` 연속 변경 합산 (e2e71)
+* `HISTORY_LIMIT = 99`
+* 일괄 삭제 1단계 (`deleteNodesBulk`, e2e68)
+* 계정 경계 전환 시 스택 리셋 (e2e85)
 
-#### 2단계
+#### 미구현 — 백로그
 
-* `changeLayout` Undo/Redo
-* `setCollapsed` Undo/Redo
-* `addTag / removeTag` Undo/Redo
-* paste / duplicate Transaction
-* drag 이동 Coalescing
-
-#### 3단계
-
-* Subtree 삭제 전체 복원
-* 다중 가지 추가 Transaction
-* AI 생성 노드 묶음 Transaction
-* Subtree layout 일괄 변경 Transaction
+* entry label 기반 툴팁 ("Undo 텍스트 수정" 등)
+* 협업맵 owner 한정 undo (협업 V1 과 함께)
 
 ---
 
-### 16. Undo → 새 revision 생성 흐름 (13-version-history.md 연동)
+### 16. 되돌리기와 서버 저장의 연동 흐름 (14-save.md · 13-version-history.md 연동)
 
-> **⚠️ 개발 착수 전 반드시 확인해야 하는 정합성 규칙**
->
-> History Store(클라이언트 Undo/Redo)와 map_revisions(서버 버전 이력)은 이름이 비슷하지만
-> 목적·저장 위치·접근 방식이 완전히 다르다. 아래 흐름과 규칙을 숙지해야 한다.
+> **현행 구현 기준.** 원안의 "Command patch → PATCH /nodes →
+> map_revisions 누적, baseVersion 충돌 rebase" 흐름은 미채택 설계다 —
+> 실제는 **저장 = 전체 스냅샷 PUT, 충돌 = 단일 세션 편집 잠금**이다.
 
 #### 16.1 전체 아키텍처 흐름
 
@@ -581,119 +430,71 @@ CREATE TABLE public.map_revisions (
 사용자 편집
     │
     ▼
-① Command 생성
-    ├─── History Store.push(command)       ← 클라이언트 Undo 스택 (세션 한정)
-    └─── Document Store 상태 변경
+documentStore set()
+    ├─── past.push({map, layout})        ← 클라이언트 Undo 스택 (세션 한정, 99)
+    └─── map 상태 변경
               │
               ▼
-          autosaveStore.markDirty(patch)
+          1500ms 디바운스 자동저장
               │
               ▼
-          서버 PATCH /maps/{mapId}/nodes
-              │
+          PUT /maps/{mapId}/document { doc, title, editSession }
+              │  (서버: 편집 잠금 확인 → jsonb 등가 비교 → 변경 시 upsert)
               ▼
-          map_revisions에 1 row 삽입         ← 서버 버전 이력 (영구 저장)
-```
+          map_documents 갱신 (자동저장은 버전을 남기지 않는다)
 
-Undo 실행 시에도 동일한 흐름을 따른다:
-
-```
-Ctrl+Z (Undo) 실행
-    │
-    ▼
-② History Store.undo()
-    ├─── undoStack.pop()
-    ├─── isApplyingHistory = true
-    ├─── applyOperations(entry.undo)       ← Document Store 역방향 업데이트
-    └─── isApplyingHistory = false
-              │
-              ▼
-          autosaveStore.markDirty({
-            patchId: generatePatchId('undo'),  ← 반드시 새 patchId (_undo suffix)
-            patches: inversePatches,
-          })
-              │
-              ▼
-          서버 PATCH /maps/{mapId}/nodes
-              │
-              ▼
-          map_revisions에 새 revision 1 row 삽입  ← Undo 결과도 영구 이력으로 기록
+Ctrl+Z (Undo) 실행 시에도 동일:
+  past.pop() → 스냅샷으로 맵 교체 → 같은 자동저장 경로로 PUT
 ```
 
 #### 16.2 핵심 규칙
 
-1. **History Store는 map_revisions를 직접 조회하거나 쓰지 않는다.**
-   - History Store는 클라이언트 전용 상태 관리 계층이다.
-   - map_revisions 접근은 항상 autosave 파이프라인을 경유한다.
-
-2. **Ctrl+Z는 map_revisions를 rollback하는 것이 아니다.**
-   - History Store의 undoStack을 pop하여 Document Store를 역방향으로 업데이트하는 것이다.
-   - map_revisions는 rollback되지 않고, Undo 결과 patch가 **새 revision으로 추가**된다.
-
-3. **버전 히스토리 패널(13-version-history.md) 롤백과 Undo/Redo는 독립적으로 동작한다.**
-   - 버전 패널에서 과거 버전으로 이동하는 것은 map_revisions를 읽어서 Document Store를 교체하는 별도 작업이다.
-   - 버전 롤백 실행 후에는 로컬 History Store(undoStack/redoStack)를 **초기화**한다.
-   - 이후 사용자의 Ctrl+Z는 롤백 이전 상태가 아닌 롤백 이후 편집부터 취소한다.
-
-4. **Undo 후 autosave 시 반드시 새 patchId를 생성해야 한다.**
-   - `map_revisions.patch_id`에 `UNIQUE` 제약이 있으므로, 기존 patchId 재사용 시 DB 오류 발생.
-   - Undo: `generatePatchId('undo')` → `p_{timestamp}_{counter}_undo`
-   - Redo: `generatePatchId('redo')` → `p_{timestamp}_{counter}_redo`
+1. **Undo/Redo 는 서버를 직접 건드리지 않는다.** 로컬 스냅샷 교체 후
+   일반 자동저장 경로(PUT 스냅샷)를 탈 뿐이다.
+2. **Ctrl+Z 는 서버 버전을 rollback 하지 않는다.** `map_documents` 의
+   현재 문서가 Undo 결과로 덮어써질 뿐이고, `map_document_versions` 의
+   과거 버전은 그대로 남는다.
+3. **버전 복원(히스토리 패널)과 Undo/Redo 는 독립적이다.** 버전 복원은
+   현재 맵을 건드리지 않고 **새 맵(`제목_history_YYMMDD_HHMM`)을 만들어
+   브라우저 새 탭**에서 연다 — 현재 탭의 past/future 는 그대로다.
+4. **충돌은 버전 비교가 아니라 편집 잠금으로 막는다.**
+   `map_edit_locks`(TTL 60초·하트비트 25초) — 다른 세션이 잠근 맵에
+   PUT 하면 409, 열면 읽기 전용 (e2e93, `14-save.md` §5.3).
 
 #### 16.3 두 시스템 비교 — 아키텍처 흐름 요약
 
-| 구분              | History Store (클라이언트)            | map_revisions (서버 DB)                      |
+| 구분              | past/future (클라이언트)            | map_document_versions (서버 DB)                      |
 | --------------- | --------------------------------- | ------------------------------------------ |
-| 저장 위치           | 브라우저 메모리 (Zustand)               | PostgreSQL (`public.map_revisions`)         |
-| 지속성             | 세션 한정 (새로고침 시 초기화)               | 영구 저장 (서버 재시작 후에도 유지)                      |
-| 목적              | `Ctrl+Z / Y` 편집 취소·복원 (즉각 반응)    | 버전 이력 조회, 협업 충돌 해소, 장기 롤백                  |
-| 저장 단위           | 사용자 액션 단위 (Command)              | autosave 시마다 `NodePatch[]` 1 row            |
-| 최대 보존           | 기본 100개 (maxHistorySize)          | 무제한 (DB 용량 한도)                             |
-| 접근 주체           | 클라이언트 전용 — API 없음               | 서버 API 통해 버전 히스토리 패널 조회                    |
-| Undo 발생 시       | undoStack.pop() → 역방향 연산 적용      | 역방향 patch가 새 revision으로 저장됨 (autosave 경유)  |
-| 버전 롤백 발생 시      | History Store 초기화                | inverse patch → 새 revision 추가              |
+| 저장 위치           | 브라우저 메모리 (documentStore)               | PostgreSQL         |
+| 지속성             | 세션 한정 (새로고침 시 초기화)               | 영구 저장                      |
+| 목적              | `Ctrl+Z / Y` 편집 취소·복원 (즉각 반응)    | 저장 시점별 버전 조회·새 탭 복원                  |
+| 저장 단위           | set() 1회 = 스냅샷 1개              | 명시적 저장 1회 = 문서 스냅샷 1 row            |
+| 최대 보존           | 99개 (HISTORY_LIMIT)          | 무제한 (DB 용량 한도)                             |
+| Undo 발생 시       | past.pop() → 스냅샷 교체      | 영향 없음 (다음 명시적 저장 때 새 버전)  |
+| 버전 복원 발생 시      | 영향 없음 (새 탭에서 새 맵으로 열림)                | 새 맵 생성 + 복원본 저장              |
 
-#### 16.4 연동 시나리오 — Undo 후 새 revision 생성
+#### 16.4 연동 시나리오 — Undo 후 저장
 
-아래는 Undo 실행이 어떻게 새 map_revision을 생성하는지 전체 흐름이다.
+1. 사용자: `기능 정의` 노드 삭제 → 자동저장으로 `map_documents` 갱신
+2. 사용자: `Ctrl+Z` → 로컬 스냅샷 복원
+3. 1500ms 후 자동저장 → 서버가 jsonb 등가 비교 — 삭제 전 저장본과 같으면 `unchanged: true`
+4. 이후 ☁ 저장(keepVersion) 시에만 `map_document_versions`에 버전이 남는다
 
-1. 사용자: `기능 정의` 노드 삭제
-2. Document Store: 노드 삭제 반영
-3. autosave: `deleteNode` patch → `PATCH /maps/{mapId}/nodes`
-4. 서버: patch 적용 → `map_revisions` revision 42 생성
-5. 사용자: `Ctrl+Z` (Undo)
-6. History Store: `isApplyingHistory = true` → `createNode` 역방향 연산 적용 → `isApplyingHistory = false`
-7. autosave: `patchId = generatePatchId('undo')` 새 ID 생성 → `PATCH /maps/{mapId}/nodes`
-8. 서버: 복원 patch 적용 → `map_revisions` **revision 43 생성** (`patch_id` = `p_xxx_undo`)
-9. 버전 히스토리 패널(13-version-history.md): revision 43이 목록에 추가됨
+#### 16.5 연동 시나리오 — 버전 복원은 새 맵 + 새 탭
 
-#### 16.5 연동 시나리오 — 버전 롤백 후 History Store 초기화
+1. 사용자: 히스토리 패널에서 v1 `[새 탭으로]` 클릭
+2. 클라이언트: `GET /maps/{mapId}/versions/1` 로 doc 조회 → **새 맵 생성** 후 그 문서로 저장
+3. 새 맵이 브라우저 새 탭(`?map=<id>`)에서 열린다 — 제목 `원제목_history_YYMMDD_HHMM`
+4. **현재 탭의 맵·past/future 는 그대로** — 롤백에 따른 스택 초기화가 필요 없다 (e2e80)
 
-버전 히스토리 패널에서 롤백이 발생하면 로컬 Undo/Redo 스택을 초기화해야 한다.
-
-```typescript
-// POST /maps/{mapId}/revisions/{version}/restore 성공 후
-async function handleVersionRestore(restoredVersion: number) {
-  // 1. Document Store를 복원된 버전 상태로 교체
-  documentStore.applyRestoredState(await fetchMapAtVersion(restoredVersion));
-
-  // 2. History Store 초기화 — 롤백 이전 Undo/Redo 스택 무효화
-  historyStore.clearHistory();
-
-  // 3. autosave baseVersion 갱신
-  autosaveStore.syncVersion(maps.current_version);
-}
-```
-
-- 롤백 후 `undoStack`과 `redoStack`이 비워지므로 Undo/Redo 버튼 비활성화 상태로 전환
-- 이후 사용자의 새 편집은 복원된 상태 기준으로 History에 기록 시작
+> 원안의 "restore 엔드포인트 호출 후 clearHistory + baseVersion 갱신"
+> 코드는 미채택 — restore 엔드포인트 자체가 없다.
 
 #### 16.6 참조 문서
 
-* `docs/03-editor-core/history/13-version-history.md` — 버전 이력 패널, 롤백 규칙, revision 생성 흐름
-* `docs/03-editor-core/save/14-save.md` — autosave 파이프라인, patchId 생성 규칙, IMMEDIATE_SAVE_OPS
-* `docs/02-domain/db-schema.md § map_revisions` — 서버 이력 테이블 DDL
-* `docs/03-editor-core/save/14-save.md` — SAVE 기능 전체 명세
+* `docs/03-editor-core/history/13-version-history.md` — 버전 이력 패널, 새 탭 복원 규칙
+* `docs/03-editor-core/save/14-save.md` — 스냅샷 저장 파이프라인, 무변경 스킵, 편집 잠금
+* `docs/02-domain/db-schema.md` — 서버 테이블 DDL
 
 ---
 
@@ -701,51 +502,38 @@ async function handleVersionRestore(restoredVersion: number) {
 
 #### Undo/Redo 대상
 
-* 노드 생성
-* 노드 삭제 (단일 및 subtree 전체)
-* 노드 텍스트 수정
-* 노드 이동
-* subtree 이동
-* 노드 순서 변경
-* layoutType 변경
+스냅샷 방식이므로 **documentStore set() 을 거치는 모든 문서 변경**이 대상이다.
+
+* 노드 생성 / 삭제 (단일·subtree·일괄)
+* 노드 텍스트 수정, 이동, 순서 변경
+* layoutType 변경 (맵 레이아웃 포함 — `{map, layout}`)
 * 스타일 변경 (색상, 폰트, 테두리, 아이콘 등)
-* 배경 이미지 변경 (추가 / 교체 / 삭제)
-* import 적용
-* AI 생성 결과 적용 (사용자 확인 후 반영된 경우만)
+* 사진/첨부/링크/노트 변경
+* import·템플릿 적용
+* AI 생성 결과 적용
 
 #### Undo/Redo 제외 대상
 
-* 채팅 메시지 전송
-* node thread 댓글 작성
-* presence 상태 (커서 위치, 접속자 목록)
-* 번역 캐시 생성 / 갱신
-* export 파일 생성 이력
-* 선택 상태 변경 (viewport pan, zoom, 패널 열기/닫기 포함)
+* 선택 상태, viewport pan/zoom, 패널 열기/닫기
+* 검색 입력 중간값, 저장 상태 배지
+* (계획) 협업 presence·채팅 등
 
 ---
 
-### 18. Transaction Rule
+### 18. 일괄 변경 규칙 (구 Transaction Rule)
 
-다음 작업은 하나의 Transaction으로 기록한다. Transaction으로 묶인 작업은 Undo 시 전체가 한 번에 취소된다.
+> 원안의 `beginTransaction/commitTransaction` API 는 **미채택**.
+> 같은 목표(여러 연산 = Undo 1단계)를 "한 번의 set() = 1단계" 원칙으로
+> 달성한다.
 
-| 작업 | Transaction 레이블 |
+| 작업 | 1단계 보장 방식 |
 |---|---|
-| subtree 이동 | 'subtree 이동' |
-| layout 변경 (전체 맵 또는 subtree) | 'layoutType 변경' |
-| bulk node update (경로·순서 일괄 갱신) | 'bulk 노드 업데이트' |
-| import 결과 적용 | 'import 적용' |
-| AI generated node tree 적용 | 'AI 노드 생성' |
-| paste 여러 노드 | 'paste' |
-| duplicate subtree | 'subtree 복제' |
-
-```typescript
-// subtree 이동 예시
-beginTransaction('subtree 이동')
-addToTransaction(moveNode(nodeId, newParentId, newIndex))
-addToTransaction(updatePath(nodeId, newPath))
-addToTransaction(updateDepth(nodeId, newDepth))
-commitTransaction()
-// → undoStack에 batch 1개만 push
-```
+| subtree 이동 | 하나의 set 에서 처리 |
+| layout 변경 (전체 맵 또는 subtree) | 하나의 set (+ `{map, layout}` 엔트리) |
+| import / 템플릿 적용 | 결과 맵을 한 번에 교체 |
+| AI 노드 트리 삽입 | 하나의 set |
+| paste (서브트리 붙여넣기) | 하나의 set |
+| 러버밴드 일괄 삭제 | `deleteNodesBulk` 1회 (e2e68) |
+| 드래그·슬라이더 연속 변경 | `setHistoryPaused` (§6.4) |
 
 ---

@@ -1,77 +1,81 @@
 # 15. Tag
 ## TAG
 
-* 문서 버전: v1.0
+* 문서 버전: v2.0
 * 작성일: 2026-04-16
-* 참조: `docs/01-product/functional-spec.md § TAG`, `docs/02-domain/db-schema.md`
+* 최종 업데이트: 2026-08-04 — 실제 구현 기준 현행화: 태그 = 노드의 **문자열 배열**(`tags?: string[]`), 색은 이름→고정 팔레트 자동 매핑, 별도 테이블·전용 API 없음(문서 스냅샷에 포함). 태그 관리 UI·색상 피커·워크스페이스 공유·bulk/merge/자동완성은 미구현/설계 초안으로 강등.
+* 참조: `docs/01-product/functional-spec.md § TAG`, `docs/04-extensions/emm-spec.md`
 
 ---
 
 ### 1. 기능 목적
 
-* 노드에 **색상 태그**를 부착하여 분류·필터·탐색을 용이하게 하는 기능
-* 태그 탐색기(Tag Explorer)로 특정 태그가 붙은 노드 즉시 확인
-* 사용자 개인 태그 및 워크스페이스 공유 태그 관리
+* 노드에 **문자열 태그**를 부착하여 분류·필터·탐색을 용이하게 하는 기능
+* 태그 색은 사용자가 고르지 않는다 — **태그 이름에서 고정 팔레트로 자동 결정** (같은 이름 = 항상 같은 색)
+* 검색 패널의 태그 필터 목록으로 특정 태그가 붙은 노드 탐색
+* (계획 — 협업 V1) 워크스페이스 공유 태그 관리
 
 ---
 
 ### 2. 기능 범위
 
 * 포함:
-  * 태그 생성 / 수정 / 삭제
-  * 노드에 태그 추가 / 제거
-  * 태그 탐색기 (Tag Explorer) — 태그별 노드 목록
-  * 태그 필터 — 특정 태그 노드만 표시
-  * 태그 색상 지정
+  * 노드에 태그 추가 / 제거 (노트·태그 탭)
+  * 태그 배지 표시 + 이름 기반 자동 색
+  * 검색 패널 하단 태그 필터 목록
+  * 태그 배지 표시 토글 / 태그별 배지 표시 필터 (`editorUiStore.showTags` / `hiddenTags`)
 
 * 제외:
-  * 태그 기반 검색 (→ SEARCH, `16-search.md`)
+  * 태그 기반 검색 (→ SEARCH, `16-search.md` — 검색 입력창이 태그도 동시 매칭)
+  * 태그 엔터티 관리(생성/수정/삭제 UI)·색상 지정 [미구현 — 백로그]
 
 ---
 
 ### 3. 세부 기능 목록
 
-| 기능ID  | 기능명     | 설명                    | 주요 동작        |
+| 기능ID  | 기능명     | 설명                    | 상태        |
 | ------ | -------- | --------------------- | ------------ |
-| TAG-01 | 태그 추가    | 노드에 태그 부착             | 컨텍스트 메뉴 / 패널 |
-| TAG-02 | 태그 제거    | 노드에서 태그 제거            | 배지 × 클릭      |
-| TAG-03 | 태그 탐색기   | 태그별 노드 목록 조회          | 사이드바 패널      |
-| TAG-04 | 태그 필터    | 특정 태그 노드만 캔버스 표시      | 필터 토글        |
-| TAG-05 | 태그 생성    | 이름 + 색상으로 태그 신규 생성    | 태그 관리 UI     |
-| TAG-06 | 태그 수정    | 태그 이름 / 색상 변경         | 태그 관리 UI     |
-| TAG-07 | 태그 삭제    | 태그 삭제 (노드에서도 일괄 제거)   | 확인 다이얼로그     |
-| TAG-08 | 태그 색상    | 태그에 색상 지정             | 색상 피커        |
+| TAG-01 | 태그 추가    | 우측 패널 **노트·태그 탭**에서 입력 + Enter             | 구현됨 |
+| TAG-02 | 태그 제거    | 태그 칩의 ✕ 클릭            | 구현됨      |
+| TAG-03 | 태그 필터 목록   | **검색 패널 하단**에 맵의 태그 목록 — 클릭 시 해당 태그 노드 탐색          | 구현됨      |
+| TAG-04 | 태그 배지 표시 필터    | `showTags` 토글 + 태그별 `hiddenTags` — **배지 표시만 제어(노드 숨김 아님)**      | 구현됨        |
+| TAG-05 | 태그 생성 (엔터티) | 이름 + 색상으로 태그 신규 생성    | [미구현 — 백로그] (태그는 엔터티가 아니라 문자열 — 입력 즉시 존재)     |
+| TAG-06 | 태그 수정    | 태그 이름 / 색상 변경         | [미구현 — 백로그]     |
+| TAG-07 | 태그 삭제 (일괄)   | 태그 삭제 (노드에서도 일괄 제거)   | [미구현 — 백로그]     |
+| TAG-08 | 태그 색상 지정    | 색상 피커로 태그 색 지정             | [미구현 — 백로그] (현재: 이름→고정 팔레트 자동)        |
 
 ---
 
 ### 4. 기능 정의 (What)
 
-#### 4.1 tags / node_tags 테이블
+#### 4.1 데이터 모델 — 별도 테이블 없음
 
-```sql
-CREATE TABLE public.tags (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id     UUID REFERENCES public.users(id) ON DELETE CASCADE,
-  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE,
-  name         VARCHAR(50) NOT NULL,
-  color        VARCHAR(7) NOT NULL DEFAULT '#6B7280',
-  created_at   TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (owner_id, name),
-  UNIQUE (workspace_id, name)
-);
+**태그 전용 테이블(`tags`/`node_tags`)·전용 API 는 없다.** 태그는 노드
+객체의 문자열 배열 필드로, **문서 스냅샷(doc JSONB)에 통째로 포함**되어
+저장된다.
 
-CREATE TABLE public.node_tags (
-  node_id UUID REFERENCES public.nodes(id) ON DELETE CASCADE,
-  tag_id  UUID REFERENCES public.tags(id)  ON DELETE CASCADE,
-  PRIMARY KEY (node_id, tag_id)
-);
+```typescript
+// packages/emm-parser/src/model.ts — MindNode (발췌)
+interface MindNode {
+  // ...
+  tag?: string;        // 단수 표기 (레거시/샘플 호환)
+  tags?: string[];     // 태그 이름 문자열 목록
+  // ...
+}
 ```
+
+* 태그 색: 이름을 해시해 **고정 팔레트**에서 자동 선택 — 같은 이름은 어느 노드/어느 맵에서든 같은 색
+* 태그 "생성"이라는 개념이 없다 — 노드에 입력하는 순간 존재하고, 마지막 노드에서 제거되면 사라진다
+
+> 원안의 `tags`/`node_tags` DDL(owner/workspace UNIQUE·HEX color 컬럼)은
+> **설계 초안(미채택)** — 문서 스냅샷 방식에서는 정규화 테이블이 필요
+> 없다. 협업 V1 에서 공유 태그가 필요해지면 재검토.
 
 #### 4.2 태그 표시 예시
 
 ```text
 노드: "Apache 설치"
-태그: [🔴 긴급] [🟢 완료] [🔵 기술]
+태그 배지: [긴급] [완료] [기술]   ← 각 이름의 자동 색으로 렌더링
 ```
 
 ---
@@ -80,339 +84,114 @@ CREATE TABLE public.node_tags (
 
 #### 5.1 사용자 동작
 
-* 노드 우클릭 > `태그 추가` → 태그 팝업에서 선택 또는 신규 입력
-* Right Panel > `태그` 탭 → 태그 추가/제거
-* 태그 배지 `×` 클릭 → 태그 제거
-* 좌측 사이드바 > `태그 탐색기` → 태그 클릭 시 해당 노드 목록 표시
-* 태그 클릭 후 `필터` → 해당 태그 노드만 캔버스에 표시
+* 노드 선택 > 우측 패널 > **노트·태그 탭** → 태그 입력창에 이름 입력 + `Enter` = 추가
+* 태그 칩의 `✕` 클릭 → 제거
+* 좌측 검색 패널 하단 **태그 필터 목록** → 태그 클릭으로 해당 태그 노드 탐색
+* 태그 배지 표시 토글(`showTags`) / 태그별 배지 숨김(`hiddenTags`)
 
 ---
 
 #### 5.2 시스템 처리
 
-* 태그 추가: `POST /nodes/{nodeId}/tags` → `node_tags` INSERT
-* 태그 제거: `DELETE /nodes/{nodeId}/tags/{tagId}`
-* 태그 탐색기: `GET /maps/{mapId}/tags` → 태그별 노드 집계
-* 태그 필터: 클라이언트 사이드 필터링
+* 태그 추가/제거: `documentStore` 의 노드 `tags` 배열 갱신 (undo 1단계) → 문서 스냅샷 자동저장에 포함
+* 태그 목록: 문서의 전체 노드에서 클라이언트가 집계 (API 호출 없음)
+* 배지 필터: `editorUiStore.showTags` / `hiddenTags` — 렌더러가 배지 표시 여부만 결정
 
 ---
 
 #### 5.3 표시 방식
 
-* 노드 아래 / 우측에 색상 배지로 태그 표시
-* 태그 필터 활성 시: 필터 노드 100% 불투명, 나머지 30% 투명도
-* `ui_preferences_json.showTagBadge`로 표시/숨김 제어
+* 노드에 색상 배지로 태그 표시 (이름 자동 색)
+* **배지 표시 필터**: `showTags=false` 이거나 태그가 `hiddenTags`에 있으면 그 태그의 **배지만 숨긴다 — 노드 자체는 그대로 표시** (원안의 "필터 노드 100% / 나머지 30% 투명도" 딤 처리는 미채택)
+* 표시 토글 상태는 `editorUiStore` 가 관리 (원안의 `ui_preferences_json.showTagBadge` 는 미채택)
 
 ---
 
 ### 6. 규칙 (Rule)
 
-* 태그 이름 최대 50자, owner/workspace 내 중복 불가
-* 태그 색상: 7자리 HEX (`#RRGGBB`), 기본값 `#6B7280`
-* 태그 삭제 시 연결된 모든 노드에서 CASCADE 제거
-* 노드당 태그 최대 20개
+* 태그 이름 **길이 제한 없음** · 노드당 **개수 제한 없음**
+* **같은 노드에 같은 이름 중복 추가만 무시**된다 (다른 제약 없음)
+* 태그 색: 이름 → 고정 팔레트 자동 (사용자 지정 불가)
+* 태그는 문자열이므로 "삭제 시 CASCADE" 같은 정합성 처리가 필요 없다
 
 ---
 
 ### 7. 예외 / 경계 (Edge Case)
 
-* **동일 태그 중복 추가**: PRIMARY KEY 제약으로 차단
-* **태그 이름 중복**: UNIQUE 제약 위반 → 오류 메시지
-* **태그 삭제 시 사용 중**: 확인 다이얼로그 (`N개 노드에 사용 중`) 표시 후 삭제
+* **동일 태그 중복 추가**: 같은 노드 내에서만 무시 (조용히 스킵)
+* **모든 노드에서 태그 제거**: 태그가 자연히 목록에서 사라짐
+* **`AI` vs `ai`**: 서로 다른 문자열 = 서로 다른 태그 (정규화 없음 — §15 자동완성/병합은 미구현)
 
 ---
 
 ### 8. 권한 규칙
 
-| 역할      | 태그 생성/수정/삭제 | 노드에 추가/제거 | 태그 조회 |
-| ------- | ---------- | --------- | ----- |
-| creator | ✅          | ✅         | ✅     |
-| editor  | ✅ (개인 태그)  | ✅         | ✅     |
-| viewer  | ❌          | ❌         | ✅     |
+* 현재: 단독 편집 모델 — 소유자가 모든 태그 조작 가능
+* (계획 — 협업 V1) creator/editor/viewer 역할별 권한 구분
 
 ---
 
 ### 9. DB 영향
 
-* `tags` — 태그 정의
-* `node_tags` — 노드-태그 연결
+* **전용 테이블 없음** — 태그는 `map_documents.doc` (및 버전 스냅샷) 안의 노드 `tags` 배열로 저장
 
 ---
 
 ### 10. API 영향
 
-* `GET /tags`, `POST /tags`, `PATCH /tags/{tagId}`, `DELETE /tags/{tagId}`
-* `POST /nodes/{nodeId}/tags`, `DELETE /nodes/{nodeId}/tags/{tagId}`
-* `GET /maps/{mapId}/tags`
+* **전용 API 없음** — `PUT /maps/{mapId}/document` 문서 스냅샷에 포함되어 저장/로드
+* (원안의 `POST /nodes/{nodeId}/tags` 등 태그 CRUD API 는 설계 초안 — 미채택)
 
 ---
 
 ### 11. 연관 기능
 
-* SEARCH (`16-search.md`), NODE_EDITING, HISTORY
+* SEARCH (`16-search.md` — 검색 입력창이 태그 이름도 동시 매칭), NODE_EDITING, HISTORY
 
 ---
 
 ### 12. 구현 우선순위
 
-#### MVP
-* 태그 생성/수정/삭제, 노드에 추가/제거, 색상 지정, 배지 표시
+#### 구현됨 (MVS)
+* 노드 태그 추가/제거 (노트·태그 탭), 이름 자동 색 배지, 검색 패널 태그 필터 목록, 배지 표시 토글/필터
 
-#### 2단계
-* 태그 탐색기, 태그 필터, 워크스페이스 공유 태그
-
----
-
-### 13. Bulk Tagging (일괄 태깅)
-
-여러 노드에 동시에 태그를 추가하거나 제거하는 기능이다.
-
-#### 13.1 지원 대상
-
-| 대상              | 설명                               |
-| --------------- | -------------------------------- |
-| 다중 선택 노드        | 캔버스에서 복수 노드를 선택한 상태에서 태그 일괄 추가/제거 |
-| 선택 Subtree 전체   | 특정 노드를 루트로 하는 하위 트리 전체에 일괄 태깅   |
-| 태그 필터 결과 전체     | 현재 태그 필터로 표시된 노드 전체에 일괄 태깅      |
-
-#### 13.2 동작 흐름
-
-```
-사용자: 다중 노드 선택 (Shift+클릭 또는 드래그 선택)
-    │
-    ▼
-컨텍스트 메뉴 또는 Right Panel > "선택 노드에 태그 추가"
-    │
-    ▼
-태그 팝업 → 태그 선택 또는 신규 입력
-    │
-    ▼
-POST /maps/{mapId}/bulk-tag
-  {
-    "nodeIds": ["node_001", "node_002", "node_003"],
-    "tagId": "tag_ai",
-    "op": "add"   // "add" | "remove"
-  }
-    │
-    ▼
-node_tags 대상 노드 수만큼 INSERT (ON CONFLICT DO NOTHING)
-```
-
-#### 13.3 Subtree 일괄 태깅
-
-```typescript
-// 서버: subtree 노드 ID 재귀 조회 후 일괄 태깅
-POST /nodes/{rootNodeId}/subtree-tag
-{
-  "tagId": "tag_research",
-  "op": "add"
-}
-```
-
-* 루트 노드 포함, 재귀적으로 모든 하위 노드에 태그 적용
-* 이미 태그가 있는 노드는 중복 추가 없이 스킵 (`ON CONFLICT DO NOTHING`)
-
-#### 13.4 필터 결과 일괄 태깅
-
-```typescript
-// 현재 필터 조건을 서버에 전달하여 매칭 노드 전체 태깅
-POST /maps/{mapId}/filter-tag
-{
-  "filterQuery": "tag:AI -tag:done",
-  "tagId": "tag_important",
-  "op": "add"
-}
-```
-
-#### 13.5 Undo/Redo 연동
-
-* Bulk tagging 작업은 **단일 Transaction**으로 History에 기록
-* Undo 시 전체 대상 노드의 태그가 일괄 취소됨
-
-```typescript
-beginTransaction('일괄 태깅')
-nodeIds.forEach(nodeId => addToTransaction({ op: 'addTag', nodeId, tagId }))
-commitTransaction()
-```
-
-#### 13.6 구현 우선순위
-
-* MVP: 제외 (단일 노드 태깅 우선)
-* Phase 3: 다중 노드, Subtree, 필터 결과 순으로 구현
+#### [미구현 — 백로그]
+* 태그 관리 UI (이름 변경·일괄 삭제·색 지정)
+* 워크스페이스 공유 태그 (협업 V1)
 
 ---
 
-### 14. Tag Merge (태그 병합)
+### 13. Bulk Tagging (일괄 태깅) [미구현 — 설계 초안]
 
-유사하거나 중복된 태그를 하나의 태그로 통합하는 기능이다.
-
-#### 14.1 목적
-
-사용자가 `ai`, `AI`, `A.I.` 등 같은 개념을 다양한 표기로 입력한 경우, 하나의 정규 태그(`AI`)로 병합하여 일관성을 확보한다.
-
-#### 14.2 UI 진입 경로
-
-* 태그 탐색기(Tag Explorer) > 태그 우클릭 > `병합(Merge)`
-* 태그 관리 페이지 > 태그 선택 > `병합`
-
-#### 14.3 병합 흐름
-
-```
-1. 사용자: 병합할 소스 태그 선택 (ai, A.I.)
-2. 사용자: 대상(타깃) 태그 선택 (AI)
-3. 확인 다이얼로그: "N개 노드의 태그가 AI로 통합됩니다."
-4. POST /tags/merge
-   {
-     "sourceTagIds": ["tag_ai_lower", "tag_ai_dot"],
-     "targetTagId": "tag_ai"
-   }
-5. 서버 처리:
-   a. node_tags에서 sourceTagId → targetTagId로 교체 (중복 제거)
-   b. source tags 레코드 삭제
-6. Tag Explorer 즉시 갱신
-```
-
-#### 14.4 API
-
-```
-POST /tags/merge
-
-Request:
-{
-  "sourceTagIds": ["tag_ai_old", "tag_ai_legacy"],
-  "targetTagId": "tag_ai"
-}
-
-Response:
-{
-  "mergedCount": 2,          // 병합된 소스 태그 수
-  "affectedNodes": 17        // 태그가 교체된 노드 수
-}
-```
-
-#### 14.5 규칙
-
-* 소스 태그와 타깃 태그가 동일하면 오류 반환
-* 병합 후 소스 태그 레코드는 완전 삭제
-* 노드에 소스·타깃이 모두 있는 경우: 타깃 태그 유지, 소스만 제거 (중복 없음)
-* 병합은 **Undo 불가** (데이터 변환 작업이므로 History 제외) — 사전 확인 다이얼로그 필수
-
-#### 14.6 구현 우선순위
-
-* MVP: 제외
-* Phase 3: Tag Explorer Merge UI + API 구현
+> 여러 노드/서브트리/필터 결과에 태그를 일괄 추가·제거하는 원안.
+> `POST /maps/{mapId}/bulk-tag` 등 서버 API 전제 설계였으나, 현재 태그는
+> 문서 내 문자열이므로 구현한다면 클라이언트에서 한 번의 set 으로
+> 처리하면 된다 (undo 1단계는 자동 충족). 수요 발생 시 재설계.
 
 ---
 
-### 15. 태그 자동완성 UX
+### 14. Tag Merge (태그 병합) [미구현 — 설계 초안]
 
-태그 입력 팝업에서 사용자가 텍스트를 입력할 때 후보 태그를 추천하는 기능이다.
+> `ai`/`AI`/`A.I.` 같은 표기를 하나로 통합하는 원안
+> (`POST /tags/merge`). 태그 엔터티·서버 API 가 없으므로 현재 구조에서는
+> "문서 전체에서 문자열 치환"으로 충분하다. 수요 발생 시 재설계.
 
-#### 15.1 추천 순서
+---
 
-| 우선순위 | 조건                | 설명                     |
-| ---- | ----------------- | ---------------------- |
-| 1    | 정확 일치             | 입력값과 정확히 동일한 태그를 최상단 배치 |
-| 2    | Prefix 일치 (최근 사용) | 입력값으로 시작하는 태그 중 최근 사용 태그 우선 |
-| 3    | Prefix 일치 (사용 빈도) | 나머지 prefix 일치 태그를 사용 빈도 내림차순 |
-| 4    | 신규 태그 생성 옵션      | 입력값으로 신규 태그 생성 선택지 표시  |
+### 15. 태그 자동완성 UX [미구현 — 설계 초안]
 
-```
-사용자 입력: "Res"
-
-자동완성 후보 (순서):
-  1. Research   ← prefix 일치, 최근 사용
-  2. Resources  ← prefix 일치, 빈도 2위
-  3. + "Res" 태그 신규 생성
-```
-
-#### 15.2 자동완성 트리거 조건
-
-* 태그 입력창 포커스 시 최근 사용 태그 즉시 표시 (입력 없어도)
-* 1자 이상 입력 시 prefix 검색 활성화
-* 입력값이 없으면: 최근 사용 태그 최대 5개 표시
-
-#### 15.3 최근 사용 태그 정의
-
-* 현재 편집 세션에서 가장 최근에 추가한 태그
-* 없으면: 워크스페이스 내 가장 많이 사용된 태그 순
-
-#### 15.4 대소문자 처리
-
-* 자동완성 검색은 대소문자 무시 (case-insensitive prefix match)
-* 표시는 원본 `name` 그대로 표시 (예: `AI`, `Research`)
-* 내부 검색 키: `normalizedName` (소문자 변환 필드)
-
-```sql
--- tags 테이블에 normalizedName 필드 필요
-ALTER TABLE public.tags ADD COLUMN normalized_name VARCHAR(50) NOT NULL;
--- 인덱스: (workspace_id, normalized_name)
-```
-
-#### 15.5 클라이언트 구현 참고
-
-```typescript
-function getAutocompleteSuggestions(
-  input: string,
-  allTags: Tag[],
-  recentTagIds: string[]
-): Tag[] {
-  const normalized = input.toLowerCase();
-
-  const exactMatch = allTags.filter(t => t.normalizedName === normalized);
-  const prefixMatch = allTags.filter(
-    t => t.normalizedName.startsWith(normalized) && t.normalizedName !== normalized
-  );
-
-  // 최근 사용 태그 우선 정렬
-  const sortByRecent = (tags: Tag[]) =>
-    [...tags].sort((a, b) => {
-      const aIdx = recentTagIds.indexOf(a.id);
-      const bIdx = recentTagIds.indexOf(b.id);
-      if (aIdx === -1 && bIdx === -1) return b.usageCount - a.usageCount;
-      if (aIdx === -1) return 1;
-      if (bIdx === -1) return -1;
-      return aIdx - bIdx;
-    });
-
-  return [...exactMatch, ...sortByRecent(prefixMatch)];
-}
-```
+> 입력 중 후보 태그 추천(정확 일치 → prefix + 최근 사용 → 빈도) 원안.
+> `normalizedName` 컬럼·서버 인덱스 전제 설계였으나 태그 테이블 자체가
+> 없다. 구현한다면 문서 내 태그 집계로 클라이언트 자동완성이 가능하다.
 
 #### 15.6 구현 우선순위
 
-* MVP: 기본 prefix 자동완성 (사용 빈도 정렬)
-* Phase 2: 최근 사용 태그 우선 + 정확 일치 최상단 배치
+* **미구현** — MVS 범위 밖. 오픈 후 수요를 보고 결정.
 
 ---
 
-### 16. tags 테이블 normalizedName 필드
+### 16. tags 테이블 normalizedName 필드 [설계 초안 — 미채택]
 
-`tag-system.md`에서 정의된 태그 엔터티는 `normalizedName` 필드를 포함한다. 이 필드는 대소문자 구분 없는 중복 방지 및 자동완성 검색에 사용된다.
-
-```sql
-CREATE TABLE public.tags (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id        UUID REFERENCES public.users(id) ON DELETE CASCADE,
-  workspace_id    UUID REFERENCES public.workspaces(id) ON DELETE CASCADE,
-  name            VARCHAR(50) NOT NULL,
-  normalized_name VARCHAR(50) NOT NULL,   -- 소문자 변환 (중복 방지·검색용)
-  color           VARCHAR(7) NOT NULL DEFAULT '#6B7280',
-  description     TEXT,
-  created_by      UUID REFERENCES public.users(id),
-  created_at      TIMESTAMPTZ DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (owner_id, normalized_name),
-  UNIQUE (workspace_id, normalized_name)
-);
-
--- 자동완성 검색용 인덱스
-CREATE INDEX ON public.tags (workspace_id, normalized_name);
-CREATE INDEX ON public.node_tags (tag_id);
-CREATE INDEX ON public.node_tags (node_id);
-```
-
-중복 규칙:
-* `AI`, `ai`, `Ai` 는 모두 `normalized_name = 'ai'` → 동일 태그로 간주
-* 워크스페이스 내에서 `normalized_name` 기준 UNIQUE 제약
-* 태그 생성 시 `normalized_name = name.toLowerCase()` 자동 설정
+> 대소문자 무시 중복 방지·자동완성 검색용 `normalized_name` 컬럼 설계.
+> 태그 정규화 테이블 자체가 미채택이므로 이 절도 함께 보류 — 협업 V1
+> 에서 공유 태그를 도입할 때 재검토한다.

@@ -1,17 +1,18 @@
 # easymindmap — 제품 로드맵
 
-문서 버전: v1.6
-최종 업데이트: 2026-05-07
-인프라 결정: **Supabase Self-hosted on ESXi VM-03**
+문서 버전: v1.7
+최종 업데이트: 2026-08-04 (구현 현행화 — MVP 표를 실제 구현 기준으로 정정)
+인프라: **NestJS + PostgreSQL 직결(pg Pool), Supabase는 Auth(JWT)만 사용**
 
 ---
 
 ## 전체 로드맵 요약
 
 ```
-MVP   ──── 편집기 코어 / Kanban / 자동저장 / AI 생성 / Export / Publish / Settings(기본)
+MVP   ──── 편집기 코어 / Kanban / 자동저장(스냅샷) / AI 생성(2모드) / Export/Import
             / 노드 노트 / 노드 링크(URL 첨부) / 노드 첨부파일(일반파일, 멀티미디어)
-V1    ──── 협업 초대·동기화(COLLAB-01~06) / 접속자 표시 / 공유 링크 / 버전 히스토리 / Diff Viewer
+            / 문서함(폴더) / 버전 히스토리 / 단일 세션 편집 잠금 / Guest 체험
+V1    ──── 협업 초대·동기화(COLLAB-01~06) / 접속자 표시 / 공유 링크 / Publish / Settings / Diff Viewer
             / 노드 배경이미지(IMG-01~20) / WBS 모드(WBS-01~05) / 리소스 할당(RES-01~05)
             / Redmine 연동(RDMN-01~08) / Obsidian 연동(OBS-01~03)
 V1.5  ──── AI 실행형 절차 (AI Executable Workflow, WFLOW-01~12)
@@ -32,43 +33,51 @@ V3    ──── AI 협업 요약·작업 생성(COLLAB-14~15 / AI-03~05) / �
 
 | 기능 | 설명 |
 |------|------|
-| 회원가입 / 로그인 | Supabase Auth (이메일 + 비밀번호) |
-| 맵 CRUD | 생성 / 목록 / 삭제 |
-| 노드 편집 | 생성 / 수정 / 삭제 / 이동 |
+| 회원가입 / 로그인 | Supabase Auth (이메일 + 비밀번호) + **Guest 체험 모드**(가입 없이 로컬 전용). SNS(카카오/네이버/Google)는 버튼 자리만 — '준비 중' |
+| 맵 CRUD + 문서함 | 생성 / 목록 / 이름변경 / 삭제 / 다른 이름 저장 + 폴더(map_folders) |
+| 노드 편집 | 생성 / 수정 / 삭제 / 이동 / 서브트리 복사·붙여넣기(Ctrl+C/V) |
 | 노드 추가 인디케이터 | 4방향 +버튼 UX (NODE-IND-01~04, NODE-13) |
-| 레이아웃 | 방사형 / 트리 / 계층형 / 진행트리 / 자유배치 / **Kanban 보드형** (총 15종) |
-| Kanban 레이아웃 | 3레벨 보드형 (board/column/card), depth 2 이하 제한 (KANBAN-01~05) |
-| 노드 노트 | structured note — paragraph / code_block / warning / tip / checklist |
-| 노드 링크 | URL 첨부 (node_links) |
-| 노드 첨부파일 | 파일 첨부 — 일반 파일 및 멀티미디어 파일 (node_attachments, node_media) |
-| 스타일 | 색상 / 폰트 / 도형 |
-| 자동 저장 | Patch 기반 실시간 DB 저장 (텍스트 800ms, 구조 변경 0ms) |
-| Undo / Redo | 클라이언트 히스토리 |
-| 노드 접기/펼치기 | collapsed |
-| Export | Markdown / Standalone HTML |
-| AI 맵 생성 | 프롬프트 → 자동 맵 생성 (AI-01) |
-| AI 노드 확장 | 선택 노드 기준 AI 자동 확장 (AI-02) |
-| 퍼블리시 | Supabase Storage → 공개 URL 생성 (PUBL-01~04) |
-| Import | Markdown 파일 가져오기 (Obsidian 호환 포함) |
-| Canvas 조작 | Zoom / Pan / Fit / 100% / Fullscreen / Focus (CANVAS-01~08) |
-| Tag | 노드 태그 추가 / 필터 / 검색 |
-| Search | 텍스트 / 태그 기반 검색 |
+| 레이아웃 | **9종** — 방사형(양쪽/오른쪽) / 트리(오른쪽/아래) / 계층형 / 진행트리 / **시간배치(타임라인)** / Kanban 보드 / 자유배치 |
+| Kanban 레이아웃 | 컬럼/카드 보드형 — **깊이 제한 없음**(깊은 서브트리는 컬럼 안 중첩 카드), 카드 드래그 이동·다중 선택·복사/붙여넣기·컬럼 선택/삭제·보기 도구 |
+| 노드 노트 | structured note — paragraph / code_block / **table** / checklist ('warning'·'tip'은 v1.1에서 폐기, 문단으로 하위호환 렌더) |
+| 노드 링크 | URL 첨부 (문서 스냅샷 내 links) |
+| 노드 첨부파일 | 파일 첨부 — 맵 내장(합계 10MB까지) + 초과분 서버 저장소 우회, 사용자 쿼터 |
+| 스타일 | 색상 / 폰트 / 도형(화살표L/R·원통·별 포함) / 테두리 이중선 / 다크 모드 |
+| 자동 저장 | 문서 스냅샷 저장 — 편집 멈춤 1.5초 뒤 `PUT /maps/:id/document` (서버 맵 연결 시에만). 무변경 저장은 스킵 |
+| 버전 히스토리 | 저장 시점마다 영구 스냅샷(map_document_versions) + 히스토리 패널(첨부 개수·용량 표시, 선택 버전 새 탭 열기) |
+| 편집 잠금 | 단일 세션 편집 잠금(map_edit_locks, TTL 60초) — 다른 세션에서 열면 읽기 전용 + 사본 저장 |
+| Undo / Redo | 클라이언트 히스토리 (세션 99단계, 단계 카운터 표시) |
+| 노드 접기/펼치기 | collapsed (+ 접힘 수 칩) |
+| Export | Markdown / Standalone HTML / 첨부 포함 시 ZIP |
+| AI 맵 생성 | 프롬프트 → 자동 맵 생성 (AI-01) — ① 사용자 API 키(OpenAI/Anthropic/Gemini) 브라우저 직접 호출 ② 웹 AI 클립보드 왕복(서버 LLM 없음) |
+| AI 노드 확장 | 선택 노드 기준 AI 자동 확장 (AI-02) — 경로 맥락 + 프로젝트 지침 |
+| Import | Markdown / HTML / ZIP 가져오기 (EMM 메타데이터 왕복) |
+| Canvas 조작 | Zoom(2%~) / Pan / Fit / 100% / Fullscreen / Focus (CANVAS-01~08) |
+| Tag | 노드 태그 추가 / 검색 |
+| Search | 텍스트 / 태그 기반 검색 (결과 목록, 클릭 = 중앙+100%) |
+
+> 퍼블리시(공개 URL)·사용자 설정 화면은 MVP 에서 제외되어 V1 로 이동했다
+> (설정 메뉴는 '준비 중' 안내만 노출).
 
 ### 핵심 기술 결정
 
 ```
-Frontend : React + TypeScript + Zustand (5-store)
-Backend  : NestJS + Supabase JS Client (Service Key)
-Database : Supabase PostgreSQL 16 (Self-hosted, VM-03)
-Auth     : Supabase Auth (NestJS JWT 직접 구현 제거)
-Storage  : Supabase Storage (MinIO 대체)
-Queue    : BullMQ + Redis (VM-04)
-Layout   : 2-pass algorithm, subtree 단위, partial relayout (15종 레이아웃)
-Edge     : 방사형 → curve-line (Cubic Bezier 곡선), 나머지(트리/계층/진행트리/자유배치/Kanban) → tree-line (직각선, Orthogonal Connector)
-Autosave : patch 기반 저장 (텍스트/스타일 800ms, 구조 변경 0ms)
-Export   : Markdown serializer + Markmap 기반 HTML
-노드 깊이 : 최대 depth 50 제한 (ltree 운영 안전망)
-size_cache: 클라이언트(브라우저) DOM 측정 → autosave patch로 서버 전송
+Frontend : React + TypeScript + Zustand (8 store — document/cloud/auth/aiSettings
+           /autosave/editorUi/interaction/viewport)
+Backend  : NestJS + pg Pool (PostgreSQL 직결)
+Database : PostgreSQL 16 — 맵 문서는 maps.doc(jsonb) 스냅샷 + 저장 시점별
+           버전(map_document_versions) + 편집 잠금(map_edit_locks)
+Auth     : Supabase Auth (JWT 검증 가드 + JIT 사용자 생성) + Guest 모드
+Storage  : 첨부 로컬 디스크 드라이버(NFS 마운트 가능) + 사용자 쿼터.
+           맵 내장 첨부 합계 10MB 초과분만 서버 저장소 우회
+Queue    : 없음 (BullMQ/Redis 미사용 — AI 호출은 브라우저에서 직접)
+Layout   : 2-pass algorithm, subtree 단위 (UI 노출 9종 레이아웃)
+Edge     : 방사형 → curve-line (Cubic Bezier 곡선), 나머지 → tree-line (직각선)
+Autosave : 문서 스냅샷 저장 (편집 멈춤 1.5초 디바운스, 무변경 스킵)
+Export   : EMM Markdown serializer (@easymindmap/emm-parser) + 자체 Standalone
+           HTML 뷰어 (+첨부 ZIP)
+파서      : packages/emm-parser — 파일 포맷·타입 유니언의 단일 원본, CLI·적합성
+           스위트 포함
 ```
 
 ---
@@ -353,7 +362,8 @@ IT 인프라 상태  (모니터링 시스템 연동)
 | 자동 저장 | 매우 높음 | 중간 | MVP |
 | AI 맵 생성 | 높음 | 중간 | MVP |
 | Export (MD/HTML) | 높음 | 중간 | MVP |
-| 사용자 설정 (SETT) | 중간 | 낮음 | MVP |
+| 사용자 설정 (SETT) | 중간 | 낮음 | V1 (메뉴는 '준비 중') |
+| 퍼블리시 (공개 URL) | 중간 | 중간 | V1 |
 | 실시간 협업 초대/동기화 | 높음 | 높음 | V1 |
 | 버전 히스토리 | 높음 | 중간 | V1 |
 | Diff Viewer | 높음 | 중간 | V1 |

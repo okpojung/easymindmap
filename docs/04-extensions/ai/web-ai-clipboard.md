@@ -1,5 +1,7 @@
 # 웹 AI로 맵 만들기 — 클립보드 왕복 설계 (방법 A)
 
+> **최종 업데이트**: 2026-08-04 — 구현 계약(함수 시그니처·펜스 추출 규칙·바로가기)을 실제 코드 기준으로 현행화.
+>
 > 2026-08-03 설계 → 같은 날 **구현 완료** (e2e91 검증).
 > 구현: `utils/webAiExchange.ts`(순수 함수) + `inspector-panels/
 > WebAiPanel.tsx`(UI) + AITab 모드 스위치 + 새 맵 템플릿 카드 진입 버튼.
@@ -63,9 +65,10 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
 
 붙여넣은 텍스트에서 맵을 뽑는 순서:
 
-1. **코드펜스 추출** — ```(emm|markdown|md)? … ``` 블록이 있으면 그
-   안쪽만 취한다 (AI가 앞뒤에 "네, 만들어 드릴게요" 같은 잡담을 붙이는
-   경우가 대부분이라 이 단계가 핵심). 블록이 여러 개면 가장 긴 것.
+1. **코드펜스 추출** — 백틱(```)·물결(~~~) **3개 이상** 펜스를 모두
+   인식해(닫는 줄은 같은 문자·같은 길이 이상) 그 안쪽만 취한다 (AI가
+   앞뒤에 "네, 만들어 드릴게요" 같은 잡담을 붙이는 경우가 대부분이라
+   이 단계가 핵심). 블록이 여러 개면 가장 긴 것.
 2. 코드펜스가 없으면 전체 텍스트를 그대로 후보로.
 3. 후보를 **기존 변환기**(`parseEmm` → 실패 시 `parseMarkdownMapFile`
    폴백 — API 모드와 동일 경로)로 맵 변환.
@@ -117,7 +120,8 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
 │ ┌──────────────────────────────────┐    │
 │ │ 예: 신제품 출시 계획을 마인드맵으로│    │
 │ └──────────────────────────────────┘    │
-│ 유형: [자동 ▾]   ← GENERATION_TYPES      │
+│ 유형: [기본 ▾] (기본/기술 절차형/회의록형 │
+│        /WBS·계획형/문서·기사 요약형)      │
 │ ┌──────────────────────────────────┐    │
 │ │      📋 ① 프롬프트 복사           │    │
 │ └──────────────────────────────────┘    │
@@ -148,14 +152,16 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
 
 - **AI 바로가기 버튼**: `window.open('https://claude.ai/new')` 등
   단순 새 탭 — 자동 입력은 하지 않는다(불가능·불필요). 목록:
-  Claude · ChatGPT · Gemini (아이콘 없는 텍스트 버튼, 순서 고정).
+  Claude · ChatGPT · Gemini (아이콘 없는 텍스트 버튼, 순서 고정 —
+  `AI_SHORTCUTS`). **ChatGPT 는 EasyMindMap Copilot 커스텀 GPT 로
+  연결**되어 ① 프롬프트 복사 단계를 생략할 수 있다.
 - 입력·답변창, 유형 선택, 복사됨 플래시 등 시각 언어는 기존 AITab
   구성요소를 그대로 재사용해 이질감을 없앤다.
 
-### 3-3. 진입 유도 (선택 구현 — 검토 대상)
+### 3-3. 진입 유도 (구현 완료)
 
-- 새 맵 패널의 템플릿 선택 카드에 "🌐 AI로 초안 만들기" 진입 버튼
-  (클릭 = 우측 AI 탭 열림 + 웹 AI 모드). — *넣을지 여부 검토 요청*
+- 새 맵 패널의 템플릿 선택 카드에 **"🌐 AI로 초안 만들기"** 진입 버튼
+  (클릭 = 우측 AI 탭 열림 + 웹 AI 모드). — 구현 완료.
 
 ## 4. 인터페이스 정의 (구현 계약)
 
@@ -165,26 +171,34 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
 ```ts
 /** 웹 AI에 붙여넣을 원샷 프롬프트 (시스템+유형+주제+출력 지시) */
 export function buildWebAiPrompt(opts: {
+  systemPrompt: string;         // EMM 시스템 프롬프트 (내장본)
   topic: string;
-  typeKey: string;              // GENERATION_TYPES key ('auto' 포함)
-  expand?: { path: string[]; nodeText: string }; // 확장 모드면 지정
+  typeKey: string;              // GENERATION_TYPES key
 }): string;
+// 확장 모드는 별도 함수 없이 buildExpandContext(aiProjectContext.ts)
+// + OUTPUT_DIRECTIVE 조합으로 프롬프트를 만든다.
 
 /** 붙여넣은 답변에서 맵 후보 텍스트 추출 (코드펜스 우선, 최장 블록) */
-export function extractMapSource(pasted: string): string;
+export function mapSourceCandidates(pasted: string): string[];
 
-/** 후보 → 맵 (기존 parseEmm → parseMarkdownMapFile 폴백 재사용) */
-export function answerToMap(source: string):
+/** 붙여넣기 → 맵 (기존 parseEmm → parseMarkdownMapFile 폴백 재사용) */
+export function answerFromPaste(pasted: string):
   | { ok: true; map: SampleMap; editor?: EditorMeta; nodeCount: number }
   | { ok: false; reason: string };
+
+/** 답변 전체를 ~~~ 펜스 코드블록 하나로 출력하라는 마무리 지시 */
+export const OUTPUT_DIRECTIVE: string;
+
+/** AI 바로가기 목록 (Claude / ChatGPT=Copilot GPT / Gemini) */
+export const AI_SHORTCUTS: { name: string; url: string }[];
 
 /** 파싱 실패 시 AI에 다시 요청할 문구 */
 export const RETRY_REQUEST_TEXT: string;
 ```
 
 **신규 컴포넌트** `editor/inspector-panels/WebAiPanel.tsx` — AITab
-안에서 모드 스위치로 렌더. 맵 열기/삽입은 AITab의 기존 핸들러를 prop
-으로 물려받는다 (로직 중복 금지).
+안에서 모드 스위치로 렌더. prop 은 `{ t }`만 받고 맵 열기/삽입을
+자체 구현한다 (확인 게이트·detach 규칙은 새 맵 패널과 동일).
 
 **변경 없음**: 백엔드 API · DB · 인증 · emm-parser 패키지.
 

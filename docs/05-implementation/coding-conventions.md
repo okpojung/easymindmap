@@ -2,6 +2,8 @@
 
 > AI(Claude/Codex)가 코드를 생성할 때 반드시 따라야 할 규칙.  
 > 이 문서를 프롬프트에 첨부하거나 시스템 프롬프트로 사용한다.
+>
+> * 최종 업데이트: 2026-08-04 — 실제 리포 기준 현행화: pnpm → **npm**(앱별 lock), 디렉토리 트리를 실제 구조로, tsconfig 실제값(frontend strict:false)과 목표 분리, 스토어 8개, immer 미사용, API 클라이언트 = `services/cloud/apiClient.ts`, ESLint·Prettier 설정 파일 아직 없음.
 
 ---
 
@@ -9,45 +11,47 @@
 
 | 항목 | 선택 |
 |------|------|
-| 언어 | TypeScript (strict mode) |
+| 언어 | TypeScript |
 | Node.js | 20 LTS 이상 |
-| 패키지 매니저 | pnpm |
+| 패키지 매니저 | **npm** — pnpm 워크스페이스 아님. 모노레포지만 워크스페이스 설정 없이 **앱별 `package-lock.json`**(`apps/frontend`, `apps/api`, `packages/emm-parser`)로 관리한다 |
 
 ---
 
-## 2. 디렉토리 구조 규칙
+## 2. 디렉토리 구조 규칙 (실제)
 
-### Frontend (`/frontend/src/`)
+### Frontend (`apps/frontend/src/`)
 
 ```
-editor/
-  components/     # React 컴포넌트 (.tsx)
-  engine/         # 순수 로직, React 의존 없음 (.ts)
-  stores/         # Zustand store (.ts)
-  hooks/          # React custom hooks (.ts)
-  commands/       # Command 패턴 (.ts)
-  autosave/       # Autosave 매니저 (.ts)
+components/       # 공용 React 컴포넌트 (아이콘 등)
+editor/           # 에디터 — 캔버스·인스펙터 패널·샘플(__samples__)
+stores/           # Zustand store 8개 (documentStore 등)
+hooks/            # React custom hooks
+services/         # 서버 연동 (cloud/apiClient.ts 등)
+export/           # 내보내기 (exportHtml, exportMarkdown …)
 pages/            # 라우트 페이지 컴포넌트
-api/              # API 클라이언트 함수
-types/            # 공통 TypeScript 타입
+layout/           # 레이아웃 엔진 (순수 로직, React 의존 없음)
 utils/            # 순수 유틸리티 함수
+types/            # 공통 TypeScript 타입 (@emm/model 재수출 포함)
+config/           # 설정
 ```
 
-### Backend (`/backend/src/`)
+### Backend (`apps/api/src/`)
 
 ```
-{module}/
-  {module}.module.ts
-  {module}.controller.ts
-  {module}.service.ts
-  {module}.dto.ts        # Request/Response DTO
-  {module}.entity.ts     # TypeORM Entity (Supabase 사용 시 생략 가능)
-common/
-  guards/
-  filters/
-  interceptors/
-  decorators/
+maps/             # 맵·문서·버전 (dto/ 하위에 DTO)
+nodes/            # 정규화 노드 경로
+folders/          # 문서함 폴더
+attachments/      # 첨부 업로드
+storage/          # 스토리지 드라이버
+health/           # /v1/health (스키마 진단 포함)
+database/         # DB 연결·스키마
+common/           # auth 가드 등 공통
+config/
 ```
+
+NestJS 모듈 내부는 `{module}.module.ts` / `{module}.controller.ts` /
+`{module}.service.ts` 관례를 따른다 (TypeORM Entity 는 사용하지 않음 —
+SQL 직접).
 
 ---
 
@@ -90,7 +94,15 @@ const node = nodeMap.get(id);
 if (!node) return;
 ```
 
-### 필수 설정 (`tsconfig.json`)
+### tsconfig 실제값 (2026-08 현재)
+
+| 앱 | 실제 설정 |
+|---|---|
+| `apps/frontend` | **`strict: false`** — 유니언 내로잉은 `'reason' in res` 같은 방식으로 우회하는 코드가 있다 (e2e91 노트 참조) |
+| `apps/api` | `strictNullChecks: true` + `noImplicitAny: true` (full strict 아님) |
+
+### 목표 설정 (신규 코드 지향 — 아직 미적용)
+
 ```json
 {
   "compilerOptions": {
@@ -100,6 +112,9 @@ if (!node) return;
   }
 }
 ```
+
+> strict 승격은 별도 배치 작업으로 진행한다 — 새 코드는 위 목표 기준으로
+> 작성하되, tsconfig 을 임의로 올리지 않는다 (기존 코드 대량 오류).
 
 ### nullable 필드 처리 규칙
 
@@ -189,25 +204,21 @@ export function useEverything() {
 
 ```typescript
 // ✅ Store는 slice 단위로 분리, 하나의 파일에 하나의 store
-// Store 목록: documentStore, editorUiStore, viewportStore, interactionStore, autosaveStore
-// 참조: docs/05-implementation/system-architecture.md §4.3
+// Store 목록 (8개): documentStore, editorUiStore, viewportStore,
+//   interactionStore, autosaveStore, cloudStore, authStore, aiSettingsStore
+// 참조: docs/90-architecture/system-architecture.md,
+//       docs/03-editor-core/state-architecture.md
 import { create } from 'zustand';
-import { immer } from 'zustand/middleware/immer';
 
-type DocumentStore = {
-  nodes: Record<string, NodeObject>;
-  createNode: (parentId: string, text: string) => void;
-};
-
-export const useDocumentStore = create<DocumentStore>()(
-  immer((set) => ({
-    nodes: {},
-    createNode: (parentId, text) => set((state) => {
-      const newNode: NodeObject = { /* ... */ };
-      state.nodes[newNode.id] = newNode;
-    }),
-  }))
-);
+// ✅ immer 미사용 — 불변 갱신은 스프레드 + 재귀 헬퍼(mutateNode)로 한다.
+//    (구조 공유가 undo 스냅샷 메모리 효율의 전제 — 12-history-undo-redo.md)
+export const useDocumentStore = create<DocumentState>((set, get) => ({
+  map: SAMPLE_ROADMAP,
+  updateNodeText: (nodeId, text) =>
+    set((state) => ({
+      map: mutateNode(state.map, nodeId, (n) => ({ ...n, text })),
+    })),
+}));
 
 // ❌ 금지: Store에서 직접 API 호출
 // Store는 순수 상태 관리만, API 호출은 hook 또는 service에서
@@ -218,37 +229,34 @@ export const useDocumentStore = create<DocumentStore>()(
 ## 7. API 클라이언트 규칙
 
 ```typescript
-// ✅ 모든 API 호출은 /api/ 디렉토리에서 중앙 관리
-// api/mapsApi.ts
-export async function createMap(title: string): Promise<MapObject> {
-  const res = await fetch('/api/v1/maps', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title }),
-  });
-  if (!res.ok) throw new ApiError(res.status, await res.json());
-  return res.json();
-}
+// ✅ 모든 서버 호출은 services/cloud/apiClient.ts 의 cloudApi 로 중앙 관리
+// apps/frontend/src/services/cloud/apiClient.ts
+import { cloudApi, CloudError } from '@/services/cloud/apiClient';
+
+const maps = await cloudApi.listMaps();
+await cloudApi.saveDocument(mapId, { doc, title, keepVersion, editSession });
 
 // ❌ 금지: 컴포넌트 내부에서 직접 fetch 호출
 function MyComponent() {
-  fetch('/api/v1/maps').then(...); // X
+  fetch('/v1/maps').then(...); // X — cloudApi 에 함수를 추가할 것
 }
 ```
 
 ### 에러 처리
 ```typescript
-export class ApiError extends Error {
+// cloudApi 의 모든 함수는 실패 시 CloudError 를 throw 한다
+// (상태 코드 + 서버 메시지 — 409 "이미 있습니다" 안내 등에 그대로 사용)
+export class CloudError extends Error {
   constructor(
-    public statusCode: number,
-    public body: unknown
+    public status: number,
+    message: string
   ) {
-    super(`API Error ${statusCode}`);
+    super(message);
   }
 }
 
-// 모든 API 함수는 ApiError를 throw
-// 컴포넌트에서 try/catch로 처리
+// 컴포넌트에서 try/catch 로 처리 — 로딩·에러 표시는 컴포넌트 로컬 state
+// (서버 상태 캐시 라이브러리 미도입 — docs/05-implementation/state-management.md)
 ```
 
 ---
@@ -305,7 +313,13 @@ const supabase = createClient(url, process.env.SUPABASE_SERVICE_KEY!); // 클라
 
 ## 10. 코드 스타일
 
-### ESLint 설정 (주요 규칙)
+> **ESLint·Prettier 설정 파일은 아직 리포에 없다** — 아래 규칙은 도구
+> 강제가 아니라 **규약으로만 유지**한다 (코드 작성 시 준수, 리뷰에서
+> 확인). 설정 파일 도입은 백로그. 예외적으로 뷰어 JS(exportHtml 템플릿
+> 문자열)는 내보낸 스크립트에 `eslint no-undef` 정적 검사를 수동으로
+> 돌린다 (test-catalog.md §3 참조).
+
+### ESLint 규약 (도입 시 기준)
 ```json
 {
   "rules": {
@@ -318,7 +332,7 @@ const supabase = createClient(url, process.env.SUPABASE_SERVICE_KEY!); // 클라
 }
 ```
 
-### Prettier 설정
+### Prettier 규약 (도입 시 기준)
 ```json
 {
   "semi": true,

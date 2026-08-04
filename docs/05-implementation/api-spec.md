@@ -1,8 +1,108 @@
 # easymindmap — API Specification
 
-문서 버전: v2.3
+문서 버전: v2.4
 결정일: 2026-03-29
-최종 업데이트: 2026-04-16
+최종 업데이트: 2026-08-04 — 실물 API(`apps/api`) 대조 현행화. 실제
+엔드포인트 26종 표·인증/에러 실물 방식은 아래 "현재 구현" 절 참조.
+
+> ### ⚠️ 현행화 안내 (2026-08-04)
+>
+> 이 문서는 **구현 전 설계본**이다. V1~V3 확장(Export·태그·Publish·AI·
+> 번역·협업·Redmine·대시보드·채팅 등)까지 미리 그린 명세이며, 본문
+> 엔드포인트의 상당수는 아직 구현되지 않았다.
+>
+> - **실물 기준**: `apps/api` 코드 (컨트롤러가 곧 계약) 및
+>   `apps/api/database/schema.sql`.
+> - **아래 "현재 구현 (2026-08-04 기준)" 절을 먼저 보라** — 실제
+>   엔드포인트 전체 표(26개)·인증 방식·에러 형식이 정리되어 있다.
+> - 각 섹션 제목에 `[구현됨]` / `[미구현]` 배지를 부기했다. 본문 설계는
+>   향후 구현 참고용으로 유지한다.
+
+---
+
+## 현재 구현 (2026-08-04 기준)
+
+### 전역 규칙 (실물)
+
+- 모든 라우트는 **`/v1` 프리픽스** (NestJS `setGlobalPrefix`).
+- JSON 바디 한도 **25MB** (문서 스냅샷의 임베드 이미지 data URL 대비).
+- 첨부 업로드는 multipart, 1개당 기본 **20MB** (`ATTACHMENT_MAX_MB`).
+- CORS: `CORS_ORIGIN` 콤마 다중 출처 허용, `credentials: true`.
+- DTO 검증: 전역 ValidationPipe(`whitelist` + `forbidNonWhitelisted`) —
+  정의되지 않은 필드는 400.
+
+### 인증 (실물)
+
+- `GET /v1/health` 를 제외한 전 엔드포인트가 `AuthGuard` 를 통과한다.
+- `AUTH_MODE=supabase`: `Authorization: Bearer <GoTrue JWT>` 를 서버가
+  `SUPABASE_JWT_SECRET` 으로 **로컬 HS256 검증**(`jsonwebtoken`,
+  `aud='authenticated'`·exp) + **JIT 사용자 생성**. GoTrue 호출 없음.
+- 헤더를 실을 수 없는 다운로드 링크용 **`?access_token=<JWT>` 쿼리
+  폴백** 허용 (첨부 다운로드 등 — 검증은 동일).
+- `AUTH_MODE=dev`: 헤더 `x-user-id` 또는 `DEV_USER_ID` (개발 전용).
+- 회원가입/로그인/갱신/로그아웃 API 는 **서버에 없다** — 프런트가 GoTrue
+  REST 4종을 직접 호출하고, 세션은 **localStorage 에 영속**(§0.1 정정
+  참조)한다. 쿠키는 사용하지 않는다.
+- 격리: 모든 쿼리가 `owner_id = 현재 사용자` 조건 (RLS 는 2차 방어선 —
+  API 는 pg 직결이라 RLS 를 타지 않는다).
+
+### 실제 엔드포인트 전체 표 — 26개 (maps 11 · folders 4 · attachments 4 · health 1 · nodes 6)
+
+| # | 메서드 | 경로 | 설명 |
+|---|---|---|---|
+| 1 | POST | `/v1/maps` | 맵 생성 `{title?,workspaceId?,defaultLayoutType?,folderId?,kind?}` → `{mapId,title,folderId,kind,currentVersion,createdAt}`. 같은 폴더 안 제목 중복 409 |
+| 2 | GET | `/v1/maps` | 목록 `?deleted=&page=&limit=&folder=root\|<uuid>&sort=title\|updatedAt&order=asc\|desc` → `{maps:[{mapId,title,folderId,kind,deletedAt,updatedAt}],total}` |
+| 3 | GET | `/v1/maps/:id` | 단건 + 정규화 `nodes[]` (depth·orderIndex 순) |
+| 4 | PATCH | `/v1/maps/:id` | 메타 수정 `{title?,viewMode?,refreshIntervalSeconds?,defaultLayoutType?,folderId?,kind?}` |
+| 5 | DELETE | `/v1/maps/:id` | 소프트 삭제(`deleted_at`) → 204 |
+| 6 | PUT | `/v1/maps/:id/document` | **문서 스냅샷 저장(upsert)** `{doc,title?,keepVersion?,editSession?}` — 무변경이면 `{unchanged:true}`, 다른 세션 잠금이면 409, 쿼터 초과 413. `keepVersion` 시 히스토리 버전 적재(B8) |
+| 7 | GET | `/v1/maps/:id/document` | 스냅샷 조회 `?editSession=` → `{mapId,title,folderId,kind,doc,updatedAt,editLock?:'acquired'\|'busy'}` |
+| 8 | POST | `/v1/maps/:id/edit-heartbeat` | 편집 잠금 연장 `{sessionKey}` → `{held}` (TTL 60초, 25초 주기) |
+| 9 | POST | `/v1/maps/:id/edit-release` | 편집 잠금 해제 `{sessionKey}` → `{ok}` |
+| 10 | GET | `/v1/maps/:id/versions` | 히스토리 버전 목록(B8) — `{version,title,createdAt,bytes,layoutType,nodeCount,attachBytes,attachCount}[]` |
+| 11 | GET | `/v1/maps/:id/versions/:version` | 특정 버전의 문서 스냅샷 |
+| 12 | GET | `/v1/folders` | 내 폴더 전부(평면) + `mapCount` |
+| 13 | POST | `/v1/folders` | `{name,parentId?}` — 같은 부모에 같은 이름 409 |
+| 14 | PATCH | `/v1/folders/:id` | `{name?,parentId?}` — 자기 자신/자손으로 이동 400 |
+| 15 | DELETE | `/v1/folders/:id` | 비어 있을 때만 204, 아니면 409 |
+| 16 | POST | `/v1/attachments?mapId=` | 첨부 업로드(multipart `file`) → 메타 + `url`. 크기 초과 400, 쿼터 초과 413 |
+| 17 | GET | `/v1/attachments/quota` | 쿼터 사용량 조회 (문서 DB + 첨부 합산 / `users.quota_bytes`) |
+| 18 | GET | `/v1/attachments/:id` | 다운로드(스트림, `?access_token=` 허용) |
+| 19 | DELETE | `/v1/attachments/:id` | 삭제 → 204 |
+| 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 → `{status,db,schema,missingTables?,missingColumns?,time}` |
+| 21 | POST | `/v1/maps/:mapId/nodes` | 정규화 노드 생성 (ltree path·depth 자동) |
+| 22 | PATCH | `/v1/maps/:mapId/nodes` | **autosave** — 배치 patch(add/update/delete/move), `baseVersion` 충돌 409 `VERSION_CONFLICT`, 중복 `patchId` 409 `DUPLICATE_PATCH` |
+| 23 | PATCH | `/v1/nodes/:id` | 노드 속성 수정 (text·style→style_json·collapsed·shape·layout·manualPosition) |
+| 24 | DELETE | `/v1/nodes/:id` | subtree cascade 삭제 → 204 |
+| 25 | PATCH | `/v1/nodes/:id/move` | `move_node_subtree` — 부모 변경 + subtree path 재작성, 순환 차단 |
+| 26 | PATCH | `/v1/nodes/:id/layout` | layout_type 변경 |
+
+> **nodes 계열(21~26)은 실존·가동 중**이다 — 문서 스냅샷 경로(6·7)와
+> 병행하며, 현재 프런트는 스냅샷 경로만 사용한다(정규화 경로는 협업·세밀
+> 동기화용).
+
+### 에러 형식 (실물 — NestJS 기본)
+
+```json
+{ "statusCode": 404, "message": "맵을 찾을 수 없거나 권한이 없습니다.", "error": "Not Found" }
+```
+
+- 본문 설계의 `{"error":"ERROR_CODE","message",…}` 커스텀 형식이 아니라
+  **NestJS 기본 HttpException 형식**이다. `message` 는 한국어 문장(또는
+  ValidationPipe 의 배열)이고, autosave 충돌 등 일부는 409 응답 body 에
+  `VERSION_CONFLICT`/`DUPLICATE_PATCH` 식별자를 담는다.
+- 주요 상태코드: 400(검증), 401(인증), 404(없음/남의 것 — 403 대신 404 로
+  숨김), 409(제목 중복·편집 잠금·버전 충돌·중복 패치·폴더 비우기),
+  413(쿼터 초과), 503(첨부 저장소 접근 불가).
+
+### 미구현 섹션 목록
+
+§0.3 Rate Limit · §0.4 권한 모델(owner 외 역할) · §1 Auth · §4 Export ·
+§4-1 Import · §5 노드 배경 이미지 · §6 태그 · §7 Node Indicator ·
+§8 Publish · §9 AI Generation · §10 Users · §11 Translation ·
+§12 AI Workflow · §13 Collaboration(실물은 map_edit_locks 단일 세션 잠금만)
+· §14 Chat/Thread/AI Assist · §15 Redmine · §16 Dashboard · §17 Chat ·
+§18 Layout 변경 API · §19 Bulk Node Update — 전부 서버에 없다.
 
 > **[v2.0 주요 추가]**
 > - 이미지(배경 이미지) 엔드포인트 추가 (섹션 5)
@@ -51,12 +151,22 @@ https://api.example.com/v1
 Authorization: Bearer {accessToken}
 ```
 
-| 토큰 종류 | 수명 | 저장 위치 | 용도 |
-|-----------|------|-----------|------|
-| Access Token | **1시간** | 메모리 (변수) | API 요청 인증 |
-| Refresh Token | **7일** | httpOnly Cookie | Access Token 재발급 |
+> **⚠️ 실물 정정 (2026-08-04)** — 아래 표·보안 원칙은 설계 시점 계획이며
+> 실제 구현과 다르다:
+> - **세션(access/refresh 토큰)은 localStorage 에 영속**한다
+>   (`stores/authStore.ts` — 새로고침 유지, 만료 60초 전 자동 refresh).
+> - **쿠키는 사용하지 않는다** (httpOnly Cookie refresh 없음).
+> - 헤더를 실을 수 없는 다운로드 링크용으로 **`?access_token=<JWT>` 쿼리
+>   폴백**을 서버가 허용한다 (AuthGuard — 첨부 다운로드 등).
+> - 서버는 토큰을 `SUPABASE_JWT_SECRET` 으로 로컬 검증(HS256)만 한다.
 
-> **보안 원칙**: Access Token은 localStorage에 저장하지 않는다. XSS 공격 방어를 위해 메모리(Zustand store)에만 보관한다.
+| 토큰 종류 | 수명 | 저장 위치 (설계 → **실물**) | 용도 |
+|-----------|------|-----------|------|
+| Access Token | **1시간** | ~~메모리 (변수)~~ → **localStorage** | API 요청 인증 |
+| Refresh Token | **7일** | ~~httpOnly Cookie~~ → **localStorage** | Access Token 재발급 (프런트→GoTrue 직접) |
+
+> ~~**보안 원칙**: Access Token은 localStorage에 저장하지 않는다. XSS 공격 방어를 위해 메모리(Zustand store)에만 보관한다.~~
+> (설계 원칙이었으나 실물은 localStorage 영속 — 새로고침 세션 유지 우선. XSS 방어 강화는 backlog.)
 
 ### 0.2 토큰 갱신 전략 (Silent Refresh)
 
@@ -83,7 +193,9 @@ axiosInstance.interceptors.response.use(
 );
 ```
 
-### 0.3 Rate Limit 정책
+### 0.3 Rate Limit 정책 `[미구현]`
+
+> 실물 API 에는 rate limit 이 없다 (설계안).
 
 | 엔드포인트 그룹 | 제한 | 초과 시 |
 |----------------|------|---------|
@@ -111,7 +223,10 @@ X-RateLimit-Reset: 1711200000
 Retry-After: 60
 ```
 
-### 0.4 권한 모델 요약
+### 0.4 권한 모델 요약 `[미구현 — 실물은 owner 단독]`
+
+> 실물은 **소유자(owner) 단독 모델**이다 — 모든 쿼리가 `owner_id = 현재
+> 사용자`. workspace editor/viewer·publish 공개 읽기·협업 역할은 설계안.
 
 | 역할 | maps READ | maps WRITE | nodes READ | nodes WRITE |
 |------|-----------|------------|------------|-------------|
@@ -125,9 +240,13 @@ Retry-After: 60
 
 ---
 
-## 1. Auth
+## 1. Auth `[미구현 — 프런트가 GoTrue 직접 호출]`
 
-### POST /auth/signup
+> 서버에 /auth 엔드포인트는 없다. 가입/로그인/갱신/로그아웃은 프런트가
+> **GoTrue REST 를 직접 호출**하고(`services/cloud/supabaseAuth.ts`),
+> API 서버는 Bearer JWT 를 로컬 검증만 한다 ("현재 구현" 절 참조).
+
+### POST /auth/signup `[미구현 — 프런트가 GoTrue 직접 호출]`
 회원가입
 
 **Request Body**
@@ -148,7 +267,7 @@ Retry-After: 60
 
 ---
 
-### POST /auth/login
+### POST /auth/login `[미구현 — 프런트가 GoTrue 직접 호출]`
 로그인
 
 **Request Body**
@@ -170,7 +289,7 @@ Retry-After: 60
 
 ---
 
-### POST /auth/refresh
+### POST /auth/refresh `[미구현 — 프런트가 GoTrue 직접 호출]`
 Access Token 갱신
 
 > **처리 주체 확정 (2026-03-31)**
@@ -200,7 +319,7 @@ Access Token 갱신
 
 ---
 
-### POST /auth/logout
+### POST /auth/logout `[미구현 — 프런트가 GoTrue 직접 호출]`
 로그아웃 (refreshToken 무효화)
 
 **Response** `204 No Content`
@@ -208,7 +327,11 @@ Access Token 갱신
 
 ---
 
-## 2. Maps
+## 2. Maps `[구현됨]`
+
+> 이 섹션 + 문서 스냅샷·히스토리·편집 잠금 엔드포인트(설계본에 없던
+> PUT/GET `/maps/:id/document`, `/versions`, `/edit-heartbeat`,
+> `/edit-release`)는 "현재 구현" 절의 표 1~11 참조.
 
 ### POST /maps
 새 맵 생성
@@ -255,11 +378,13 @@ Access Token 갱신
 ---
 
 ### GET /maps
-내 맵 목록 조회 (소유 + 워크스페이스 공유)
+내 맵 목록 조회 (소유 기준 — 워크스페이스 공유는 미구현)
 
-**Query** `?workspaceId=uuid&deleted=false&page=1&limit=20`
+**Query** `?deleted=false&page=1&limit=20`
 `&folder=root|<folderId>` — 폴더별 조회 (`root` = 최상위만)
 `&sort=title|updatedAt&order=asc|desc` — 문서함 정렬 (기본 `updatedAt desc`)
+
+> ⚠️ `workspaceId` 쿼리는 **미지원** (실물은 소유 맵만 조회).
 
 **Response** `200 OK`
 ```json
@@ -268,6 +393,8 @@ Access Token 갱신
     {
       "mapId": "uuid-...",
       "title": "My Map",
+      "folderId": null,
+      "kind": "solo",
       "deletedAt": null,
       "updatedAt": "2026-03-29T00:00:00Z"
     }
@@ -297,14 +424,21 @@ Access Token 갱신
 ### PATCH /maps/{mapId}
 맵 메타 업데이트
 
-**Request Body** (변경 필드만)
+**Request Body** (변경 필드만 — 실물 `UpdateMapDto` 기준)
 ```json
 {
   "title": "Updated Title",
   "viewMode": "dashboard",
-  "refreshIntervalSeconds": 30
+  "refreshIntervalSeconds": 30,
+  "defaultLayoutType": "radial-bidirectional",
+  "folderId": "uuid-... | null",
+  "kind": "solo | collab"
 }
 ```
+
+> `defaultLayoutType`·`folderId`(폴더 이동, null = 최상위)·`kind` 는 실물
+> DTO 에 추가된 필드다. 이름 변경·폴더 이동 시 같은 폴더 안 제목 중복
+> 검사(409)를 거친다.
 
 > **`viewMode` 허용값**
 > | 값 | 설명 |
@@ -365,7 +499,7 @@ Autosave — 맵 변경 patch 저장
 | `clientId` | string | ✅ | 클라이언트 식별자 |
 | `patchId` | string | ✅ | 멱등성 키 (중복 처리 방지) |
 | `baseVersion` | number | ✅ | 클라이언트가 인지한 마지막 버전 |
-| `timestamp` | string (ISO 8601) | ✅ | 패치 생성 시각 |
+| `timestamp` | string (ISO 8601) | ❌ (optional) | 패치 생성 시각 — 실물 DTO 에서 선택 필드 |
 | `patches` | Array | ✅ | 변경 작업 목록 |
 | `patches[].op` | `"add"` \| `"update"` \| `"delete"` \| `"move"` | ✅ | 작업 종류 |
 | `patches[].nodeId` | string | ✅ | 대상 노드 UUID |
@@ -396,7 +530,10 @@ Autosave — 맵 변경 patch 저장
 
 ---
 
-## 3. Nodes
+## 3. Nodes `[구현됨]`
+
+> 정규화 노드 경로는 **실존·가동 중**이다 (스냅샷 경로와 병행 — 프런트는
+> 현재 스냅샷 경로만 사용). "현재 구현" 절의 표 21~26 참조.
 
 ### POST /maps/{mapId}/nodes
 노드 생성
@@ -478,7 +615,7 @@ Autosave — 맵 변경 patch 저장
 
 ---
 
-## 4. Export
+## 4. Export `[미구현]`
 
 > 상세 동작 정의: `docs/04-extensions/import-export/20-export.md`
 
@@ -543,7 +680,7 @@ Export 작업 상태 조회
 
 ---
 
-## 4-1. Import
+## 4-1. Import `[미구현]`
 
 > 상세 동작 정의: `docs/04-extensions/import-export/21-import.md`
 
@@ -589,7 +726,7 @@ Export 작업 상태 조회
 
 ---
 
-## 5. 노드 배경 이미지 (Node Background Image)
+## 5. 노드 배경 이미지 (Node Background Image) `[미구현]`
 
 ### PATCH /nodes/{nodeId}/background-image
 노드 배경 이미지 설정 (preset 또는 업로드된 이미지 적용)
@@ -692,7 +829,7 @@ file: (binary)
 
 ---
 
-## 6. 태그 (Tags)
+## 6. 태그 (Tags) `[미구현]`
 
 ### GET /tags
 내 태그 목록 조회 (개인 태그 + 멤버인 워크스페이스 공유 태그 포함)
@@ -813,7 +950,7 @@ file: (binary)
 
 ---
 
-## 7. Node Indicator
+## 7. Node Indicator `[미구현]`
 
 Indicator = 노드 하단에 표시되는 요약 배지 (메모/링크/첨부/미디어/태그 수)
 
@@ -943,7 +1080,7 @@ file: (binary)
 
 ---
 
-## 8. Publish
+## 8. Publish `[미구현]`
 
 ### POST /maps/{mapId}/publish
 맵을 공개 URL로 퍼블리싱
@@ -981,7 +1118,7 @@ file: (binary)
 
 ---
 
-## 9. AI Generation
+## 9. AI Generation `[미구현]`
 
 ### POST /ai/generate
 AI 마인드맵 자동 생성
@@ -1041,7 +1178,7 @@ GET  /ai/jobs/{jobId} → { status, nodes }
 
 ---
 
-## 10. Users (사용자 프로필 & UI 환경설정)
+## 10. Users (사용자 프로필 & UI 환경설정) `[미구현]`
 
 ### GET /users/me
 현재 로그인 사용자 프로필 조회
@@ -1093,7 +1230,7 @@ UI 표시 환경설정 업데이트 (인디케이터 ON/OFF 등)
 
 ---
 
-## 11. Translation (다국어 번역, V2)
+## 11. Translation (다국어 번역, V2) `[미구현]`
 
 ### GET /maps/{mapId}/translations
 맵 전체 노드의 번역 캐시 일괄 조회 (맵 오픈 시 배치 번역 TRANS-06)
@@ -1305,7 +1442,7 @@ UI 표시 환경설정 업데이트 (인디케이터 ON/OFF 등)
 
 ---
 
-## 12. AI Workflow
+## 12. AI Workflow `[미구현]`
 
 > 관련 PRD: `docs/04-extensions/ai/19-ai-workflow.md`
 
@@ -1417,7 +1554,13 @@ step 상태 변경
 ---
 
 
-## 13. Collaboration — 협업맵
+## 13. Collaboration — 협업맵 `[미구현]`
+
+> ⚠️ 협업 API(초대·scope·Soft Lock 등)는 전부 미구현이다. **실제 잠금은
+> `map_edit_locks` 기반 단일 세션 편집 잠금 모델**로 구현되어 있다 —
+> `GET /maps/:id/document?editSession=`(`editLock: 'acquired'|'busy'`) +
+> `POST /maps/:id/edit-heartbeat`(TTL 60초) + `edit-release`, 저장 시 다른
+> 세션 잠금이면 409. 노드 단위 Soft Lock(§13-9/13-10)과는 다른 모델이다.
 
 > **Base URL**: `https://api.example.com/v1`  
 > **인증**: 모든 엔드포인트 `Authorization: Bearer {accessToken}` 필수  
@@ -1752,7 +1895,7 @@ DELETE /maps/:mapId/soft-lock
 
 ---
 
-## 14. Collaboration Chat / Node Thread / AI Assist (V2~V3)
+## 14. Collaboration Chat / Node Thread / AI Assist (V2~V3) `[미구현]`
 
 > 상세 엔드포인트는 본 문서 §14를 기준으로 한다.
 
@@ -1838,7 +1981,7 @@ thread action item 추출 preview 생성
 
 ---
 
-## 15. Redmine 연동 (V1 WBS)
+## 15. Redmine 연동 (V1 WBS) `[미구현]`
 
 > 참조: `docs/04-extensions/integrations/31-redmine-integration.md`  
 > BullMQ 'redmine-sync' 큐, Exponential Backoff 재시도 (1s → 2s → 4s, 최대 3회)  
@@ -1980,7 +2123,7 @@ Redmine 동기화 이력 조회 (`redmine_sync_log`)
 
 ---
 
-## 16. Dashboard (V3)
+## 16. Dashboard (V3) `[미구현]`
 
 > 참조: `docs/04-extensions/dashboard/22-dashboard.md`
 
@@ -2137,7 +2280,7 @@ X-API-Key: {apiKey}
 
 ---
 
-## 17. Chat (V2) — 채팅 REST 인터페이스
+## 17. Chat (V2) — 채팅 REST 인터페이스 `[미구현]`
 
 > 협업 맵 내 map-room 채팅 REST 인터페이스.  
 > WebSocket(`chat:message:send`) 미지원 환경용 REST fallback.  
@@ -2286,7 +2429,7 @@ X-API-Key: {apiKey}
 
 ---
 
-## 18. Layout 변경 API
+## 18. Layout 변경 API `[미구현]`
 
 > **[v2.4 신규]** Layout 변경 및 Bulk Node Update Atomic 처리
 
@@ -2328,7 +2471,7 @@ X-API-Key: {apiKey}
 
 ---
 
-## 19. Bulk Node Update API
+## 19. Bulk Node Update API `[미구현]`
 
 ### PATCH /nodes/bulk
 
@@ -2389,6 +2532,24 @@ Bulk Node Update는 반드시 atomic transaction으로 처리한다.
 
 ## 공통 에러 응답
 
+> **⚠️ 실물 정정 (2026-08-04)** — 실물 API 는 아래 커스텀 형식이 아니라
+> **NestJS 기본 HttpException 형식**을 쓴다:
+>
+> ```json
+> { "statusCode": 404, "message": "맵을 찾을 수 없거나 권한이 없습니다.", "error": "Not Found" }
+> ```
+>
+> - `message` 는 한국어 문장 (ValidationPipe 검증 실패 시 문자열 배열).
+> - `error` 는 NestJS 표준 상태 문구(`"Not Found"`, `"Conflict"` 등)이며
+>   아래 표의 커스텀 코드가 아니다. autosave 충돌만 409 body 에
+>   `VERSION_CONFLICT`/`DUPLICATE_PATCH` 식별자를 담는다.
+> - 남의 리소스 접근은 403 대신 **404 로 숨긴다**.
+> - 실물 추가 상태코드: **413**(저장 쿼터 초과 — B9),
+>   **503**(첨부 저장소 접근 불가), 409(제목 중복·편집 잠금·폴더 비우기).
+> - 429 Rate Limit 은 미구현.
+
+(설계본 형식 — 참고용)
+
 ```json
 {
   "error": "ERROR_CODE",
@@ -2401,10 +2562,11 @@ Bulk Node Update는 반드시 atomic transaction으로 처리한다.
 |------|-----------|------|
 | 400 | `BAD_REQUEST` | 입력값 오류 |
 | 401 | `UNAUTHORIZED` | 인증 필요 또는 토큰 만료 |
-| 403 | `FORBIDDEN` | 권한 없음 |
+| 403 | `FORBIDDEN` | 권한 없음 (실물은 404 로 숨김) |
 | 404 | `NOT_FOUND` | 리소스 없음 |
 | 409 | `VERSION_CONFLICT` | Autosave 버전 충돌 (baseVersion != currentVersion) |
 | 409 | `DUPLICATE_PATCH` | 동일 patchId 중복 처리 |
-| 409 | `DUPLICATE_TAG_NAME` | 같은 이름의 태그 이미 존재 |
-| 429 | `RATE_LIMIT_EXCEEDED` | 요청 한도 초과 (Retry-After 헤더 참조) |
+| 409 | `DUPLICATE_TAG_NAME` | 같은 이름의 태그 이미 존재 (태그 API 미구현) |
+| 413 | (쿼터 초과) | 저장 용량 쿼터 초과 — 실물 구현됨 (B9) |
+| 429 | `RATE_LIMIT_EXCEEDED` | 요청 한도 초과 (미구현) |
 | 500 | `INTERNAL_SERVER_ERROR` | 서버 내부 오류 |

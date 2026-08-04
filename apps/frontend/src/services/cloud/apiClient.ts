@@ -131,22 +131,36 @@ export const cloudApi = {
   // 저장·맵 닫기에서만 true. 자동저장은 남기지 않는다)
   // unchanged: 내용·제목이 그대로라 서버가 아무것도 쓰지 않았다
   // (2026-08-03 — 조회만 하고 닫아도 히스토리가 생기던 문제)
-  saveDocument: (mapId: string, doc: unknown, title?: string, keepVersion?: boolean) =>
+  // editSession(탭 고유 키): 단일 세션 편집 잠금 (2026-08-04) — 다른
+  // 살아 있는 세션이 편집 중이면 서버가 409 로 거절한다.
+  saveDocument: (
+    mapId: string, doc: unknown, title?: string,
+    keepVersion?: boolean, editSession?: string,
+  ) =>
     req<{ mapId: string; updatedAt: string; version?: number; unchanged?: boolean }>(
-      'PUT', `/maps/${mapId}/document`, { doc, title, keepVersion }),
+      'PUT', `/maps/${mapId}/document`, { doc, title, keepVersion, editSession }),
+  // 편집 잠금 — 하트비트(25초 주기, held=false 면 잠금을 잃음)·해제
+  editHeartbeat: (mapId: string, sessionKey: string) =>
+    req<{ held: boolean }>('POST', `/maps/${mapId}/edit-heartbeat`, { sessionKey }),
+  editRelease: (mapId: string, sessionKey: string) =>
+    req<{ ok: boolean }>('POST', `/maps/${mapId}/edit-release`, { sessionKey }),
   listVersions: (mapId: string) =>
     req<{ mapId: string; versions: MapVersionItem[]; total: number }>(
       'GET', `/maps/${mapId}/versions`),
   getVersion: (mapId: string, version: number) =>
     req<{ mapId: string; version: number; title: string; doc: unknown; createdAt: string }>(
       'GET', `/maps/${mapId}/versions/${version}`),
-  getDocument: (mapId: string) =>
+  // editSession 을 주면 편집 잠금을 시도한다 — editLock 'acquired' =
+  // 이 탭이 편집권, 'busy' = 다른 세션이 편집 중(읽기 전용으로 열기)
+  getDocument: (mapId: string, editSession?: string) =>
     req<{
       mapId: string; title: string; folderId: string | null;
       kind: MapKind; doc: unknown; updatedAt: string;
+      editLock?: 'acquired' | 'busy';
     }>(
       'GET',
-      `/maps/${mapId}/document`,
+      `/maps/${mapId}/document${
+        editSession ? `?editSession=${encodeURIComponent(editSession)}` : ''}`,
     ),
   deleteMap: (mapId: string) => req<void>('DELETE', `/maps/${mapId}`),
 

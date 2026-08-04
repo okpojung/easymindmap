@@ -16,6 +16,7 @@ const REQUIRED_TABLES = [
   'map_documents',
   'map_document_versions', // B8 히스토리
   'attachments', // B9 첨부 저장소
+  'map_edit_locks', // 단일 세션 편집 잠금 (2026-08-04)
   'nodes',
 ] as const;
 

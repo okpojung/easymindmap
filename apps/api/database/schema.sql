@@ -562,3 +562,13 @@ ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS attach_bytes BIGINT;
 ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS attach_count INTEGER;
+
+-- 맵 단일 세션 편집 잠금 (2026-08-04) — 같은 맵을 여러 브라우저/PC 에서
+-- 동시에 편집해 덮어쓰는 사고 방지. 편집 탭이 하트비트로 유지하고,
+-- 60초 넘게 하트비트가 없으면 죽은 잠금으로 보고 다른 세션이 가져간다.
+CREATE TABLE IF NOT EXISTS public.map_edit_locks (
+    map_id       UUID PRIMARY KEY REFERENCES public.maps(id) ON DELETE CASCADE,
+    session_key  VARCHAR(64) NOT NULL,
+    user_id      UUID NOT NULL,
+    heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

@@ -31,6 +31,8 @@ type SaveIntent = null | 'save' | 'close' | 'saveAs';
 
 export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) => void }) {
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
+  // 읽기 전용으로 연 맵 (단일 세션 편집 잠금 — 2026-08-04)
+  const readOnlyInfo = useCloudStore((s) => s.readOnlyInfo);
   const cloudTitle = useCloudStore((s) => s.cloudTitle);
   const lastSavedAt = useCloudStore((s) => s.lastSavedAt);
   const busy = useCloudStore((s) => s.busy);
@@ -72,10 +74,12 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
   };
 
   const handleClose = async () => {
+    // 읽기 전용으로 보던 맵은 저장 없이 닫힌다 — 안내 문구 구분
+    const wasReadOnly = !!useCloudStore.getState().readOnlyInfo;
     const r = await saveAndCloseMap(flash);
     if (r === 'unsaved') { setWarnUnsaved(true); return; }
     if (r !== 'closed') return;
-    flash('맵을 저장하고 닫았습니다.');
+    flash(wasReadOnly ? '읽기 전용으로 보던 맵을 닫았습니다.' : '맵을 저장하고 닫았습니다.');
     setBrowserOpen(true);
   };
 
@@ -88,6 +92,21 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {/* 읽기 전용 배너 — 다른 세션이 편집 중인 맵을 보는 상태임을
+          화면에 상시 표시 (2026-08-04 사용자 요청) */}
+      {readOnlyInfo && (
+        <span
+          data-testid="readonly-badge"
+          title="다른 세션(브라우저)에서 편집 중인 맵입니다. 여기서의 변경은 이 맵에 저장되지 않으며, ☁ 저장을 누르면 다른 이름의 새 맵으로 저장할 수 있습니다."
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            padding: '5px 10px', borderRadius: 7,
+            background: '#FEF3C7', border: '1px solid #F59E0B',
+            color: '#92400E', fontSize: 11.5, fontWeight: 700,
+            whiteSpace: 'nowrap',
+          }}
+        >🔒 읽기 전용 — 다른 세션에서 편집 중</span>
+      )}
       <button
         data-testid="map-save"
         title={`${savedHint} — 지금 저장하면 이 시점이 히스토리 버전으로 남습니다`}

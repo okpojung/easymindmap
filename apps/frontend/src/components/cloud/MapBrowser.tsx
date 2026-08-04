@@ -90,8 +90,10 @@ export function MapBrowser({
     }
     if (canReuseThisTab()) {
       try {
-        await openMapHere(m.mapId);
-        onFlash(`☁ '${m.title}'을(를) 불러왔습니다.`);
+        const { readOnly } = await openMapHere(m.mapId);
+        onFlash(readOnly
+          ? `🔒 '${m.title}' — 다른 세션(브라우저)에서 편집 중이라 읽기 전용으로 열었습니다. 변경은 이 맵에 저장되지 않으며, 필요하면 다른 이름으로 저장하세요.`
+          : `☁ '${m.title}'을(를) 불러왔습니다.`);
         onOpened?.();
         onClose();
       } catch (e) {

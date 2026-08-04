@@ -144,15 +144,25 @@ ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS attach_bytes BIGINT;
 ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS attach_count INTEGER;
+-- 단일 세션 편집 잠금 (2026-08-04)
+CREATE TABLE IF NOT EXISTS public.map_edit_locks (
+    map_id       UUID PRIMARY KEY REFERENCES public.maps(id) ON DELETE CASCADE,
+    session_key  VARCHAR(64) NOT NULL,
+    user_id      UUID NOT NULL,
+    heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 SQL
 
-# ── 3) 검증 — 4컬럼이 실제로 생겼는지 확인 ───────────────────────
+# ── 3) 검증 — 4컬럼 + 잠금 테이블 확인 ───────────────────────────
 echo "── 검증 ──"
 docker exec -i "$DB" psql -U postgres -d postgres -tAc \
   "SELECT column_name FROM information_schema.columns
    WHERE table_schema='public' AND table_name='map_document_versions'
      AND column_name IN ('layout_type','node_count','attach_bytes','attach_count')" \
   | sort | sed 's/^/  컬럼 OK: /'
+docker exec -i "$DB" psql -U postgres -d postgres -tAc \
+  "SELECT '  테이블 OK: ' || table_name FROM information_schema.tables
+   WHERE table_schema='public' AND table_name='map_edit_locks'"
 SCRIPT
 ```
 

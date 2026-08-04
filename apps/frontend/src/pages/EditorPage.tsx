@@ -23,7 +23,11 @@ import { WelcomeScreen } from '@/components/auth/WelcomeScreen';
 import { GuestBrowserNotice } from '@/components/auth/GuestBrowserNotice';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
-import { clearCurrentMap, initialMapId, openMapHere } from '@/services/cloud/mapSession';
+import {
+  clearCurrentMap, editSessionKey, initialMapId, openMapHere,
+} from '@/services/cloud/mapSession';
+import { useCloudStore } from '@/stores/cloudStore';
+import { cloudApi } from '@/services/cloud/apiClient';
 import {
   useDocumentStore,
   useEditorUiStore,
@@ -238,10 +242,27 @@ export function EditorPage() {
     // 불러오는 동안 샘플 맵이 잠깐 비치지 않도록 먼저 비운다
     useDocumentStore.getState().closeMap();
     openMapHere(initialMapId)
+      .then(({ readOnly }) => {
+        if (alive && readOnly) {
+          setBrowserMsg('🔒 다른 세션(브라우저)에서 편집 중이라 읽기 전용으로 열었습니다 — 변경은 이 맵에 저장되지 않습니다.');
+        }
+      })
       .catch(() => { if (alive) setUrlMapErr('이 맵을 열 수 없습니다. 목록에서 다시 선택해 주세요.'); })
       .finally(() => setHistoryPaused(false));
     return () => { alive = false; };
   }, [gated]);
+
+  // 편집 잠금 하트비트 (2026-08-04) — 편집권을 쥔 탭(cloudMapId 연결)이
+  // 25초마다 갱신한다. 놓치면 TTL(60초) 뒤 다른 세션이 가져간다.
+  const cloudMapIdForLock = useCloudStore((s) => s.cloudMapId);
+  useEffect(() => {
+    if (!cloudMapIdForLock) return;
+    const timer = window.setInterval(() => {
+      void cloudApi.editHeartbeat(cloudMapIdForLock, editSessionKey())
+        .catch(() => { /* 일시 오류 — 다음 주기·저장이 하트비트를 겸한다 */ });
+    }, 25_000);
+    return () => window.clearInterval(timer);
+  }, [cloudMapIdForLock]);
 
   // 커서가 설명 텍스트를 가리지 않는 전역 커스텀 툴팁 (요소 위쪽 표시)
   useEffect(() => {

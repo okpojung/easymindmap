@@ -217,8 +217,20 @@ export class MapsService {
     doc: unknown,
     title?: string,
     keepVersion = false,
+    editSession?: string,
   ) {
     const map = await this.requireOwnedMap(userId, mapId);
+
+    // 단일 세션 편집 잠금 (2026-08-04) — 다른 살아 있는 세션이 이 맵을
+    // 편집 중이면 저장을 거절한다 (읽기 전용으로 연 탭·죽지 않은 옛
+    // 탭의 자동저장이 편집 중인 내용을 덮어쓰는 사고 방지).
+    if (await this.isLockedByOther(mapId, editSession)) {
+      throw new ConflictException(
+        '다른 세션(브라우저)에서 편집 중인 맵입니다 — 그쪽에서 맵을 닫은 뒤 다시 시도하세요.',
+      );
+    }
+    // 내 세션의 저장은 하트비트를 겸한다
+    if (editSession) await this.tryAcquireEditLock(mapId, userId, editSession);
 
     // 저장 용량 쿼터 (B9) — DB(문서+버전) + 첨부 합산이 한도를 넘으면
     // 저장을 거부한다. 증가분 = 새 문서 크기 - 이 맵의 기존 문서 크기
@@ -404,13 +416,24 @@ export class MapsService {
   }
 
   /** GET /maps/:id/document — 저장된 문서 스냅샷 조회 */
-  async getDocument(userId: string, mapId: string) {
+  async getDocument(userId: string, mapId: string, editSession?: string) {
     const map = await this.requireOwnedMap(userId, mapId);
     const { rows } = await this.db.query<{ doc: unknown; updated_at: Date }>(
       `SELECT doc, updated_at FROM public.map_documents WHERE map_id = $1`,
       [mapId],
     );
     if (!rows[0]) throw new NotFoundException('저장된 문서 스냅샷이 없습니다.');
+
+    // 단일 세션 편집 잠금 (2026-08-04) — editSession 을 준 호출은 "편집
+    // 하려고 여는" 것이다. 잠금이 없거나 죽었거나(하트비트 TTL 초과)
+    // 내 세션이면 획득(acquired), 다른 살아 있는 세션이면 busy — 프런트
+    // 는 busy 를 읽기 전용(서버 연결 없이 열기)으로 처리한다.
+    let editLock: 'acquired' | 'busy' | undefined;
+    if (editSession) {
+      editLock = (await this.tryAcquireEditLock(mapId, userId, editSession))
+        ? 'acquired' : 'busy';
+    }
+
     return {
       mapId: map.id,
       title: map.title,
@@ -418,7 +441,69 @@ export class MapsService {
       kind: map.kind,
       doc: rows[0].doc,
       updatedAt: rows[0].updated_at,
+      ...(editLock ? { editLock } : {}),
     };
+  }
+
+  /** 편집 잠금 하트비트 TTL — 이보다 오래 조용하면 죽은 세션으로 본다 */
+  private static readonly EDIT_LOCK_TTL_MS = 60_000;
+
+  /** 잠금 획득 시도 — 없거나 죽었거나 내 것이면 upsert 후 true */
+  private async tryAcquireEditLock(
+    mapId: string, userId: string, sessionKey: string,
+  ): Promise<boolean> {
+    const { rows } = await this.db.query<{ session_key: string; heartbeat_at: Date }>(
+      `SELECT session_key, heartbeat_at FROM public.map_edit_locks WHERE map_id = $1`,
+      [mapId],
+    );
+    const cur = rows[0];
+    const stale = cur &&
+      Date.now() - new Date(cur.heartbeat_at).getTime() > MapsService.EDIT_LOCK_TTL_MS;
+    if (cur && !stale && cur.session_key !== sessionKey) return false;
+    await this.db.query(
+      `INSERT INTO public.map_edit_locks (map_id, session_key, user_id, heartbeat_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (map_id)
+       DO UPDATE SET session_key = $2, user_id = $3, heartbeat_at = NOW()`,
+      [mapId, sessionKey, userId],
+    );
+    return true;
+  }
+
+  /** 다른 살아 있는 세션이 잠금을 쥐고 있으면 true (저장 거절 판단용) */
+  private async isLockedByOther(mapId: string, sessionKey?: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ session_key: string; heartbeat_at: Date }>(
+      `SELECT session_key, heartbeat_at FROM public.map_edit_locks WHERE map_id = $1`,
+      [mapId],
+    );
+    const cur = rows[0];
+    if (!cur) return false;
+    const stale =
+      Date.now() - new Date(cur.heartbeat_at).getTime() > MapsService.EDIT_LOCK_TTL_MS;
+    return !stale && cur.session_key !== (sessionKey ?? '');
+  }
+
+  /** POST /maps/:id/edit-heartbeat — 편집 탭이 25초마다 잠금을 연장 */
+  async editHeartbeat(userId: string, mapId: string, sessionKey: string) {
+    await this.requireOwnedMap(userId, mapId);
+    const { rowCount } = await this.db.query(
+      `UPDATE public.map_edit_locks SET heartbeat_at = NOW()
+        WHERE map_id = $1 AND session_key = $2`,
+      [mapId, sessionKey],
+    );
+    // held=false = 잠금을 잃었다 (TTL 만료 후 다른 세션이 가져감) —
+    // 프런트가 알림을 띄울 수 있게 알려 준다
+    return { held: (rowCount ?? 0) > 0 };
+  }
+
+  /** POST /maps/:id/edit-release — 맵 닫기·페이지 이탈 시 잠금 해제 */
+  async editRelease(userId: string, mapId: string, sessionKey: string) {
+    await this.requireOwnedMap(userId, mapId);
+    await this.db.query(
+      `DELETE FROM public.map_edit_locks WHERE map_id = $1 AND session_key = $2`,
+      [mapId, sessionKey],
+    );
+    return { ok: true };
   }
 
   /** DELETE /maps/:id — 소프트 삭제(deleted_at) */

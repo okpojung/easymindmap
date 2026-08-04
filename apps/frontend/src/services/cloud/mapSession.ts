@@ -31,6 +31,32 @@ import { authEnabled, useAuthStore } from '@/stores/authStore';
  */
 export const SNAPSHOT_VERSION = 2;
 
+// ── 단일 세션 편집 잠금 (2026-08-04) ─────────────────────────────────
+// 탭마다 고유한 세션 키 — sessionStorage 라 같은 브라우저의 다른 탭도
+// "다른 세션"이다. 서버 map_edit_locks 가 이 키로 편집권을 관리한다.
+const EDIT_SESSION_STORAGE = 'emm.editSession';
+
+export function editSessionKey(): string {
+  try {
+    let k = window.sessionStorage.getItem(EDIT_SESSION_STORAGE);
+    if (!k) {
+      k = (window.crypto?.randomUUID?.() ??
+        `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
+      window.sessionStorage.setItem(EDIT_SESSION_STORAGE, k);
+    }
+    return k;
+  } catch {
+    return 'no-session-storage';
+  }
+}
+
+/** 현재 연결된 맵의 편집 잠금을 해제 (닫기·새 문서 전환 시 — 베스트 에포트) */
+function releaseEditLock(): void {
+  const id = useCloudStore.getState().cloudMapId;
+  if (!id) return;
+  void cloudApi.editRelease(id, editSessionKey()).catch(() => { /* 무시 — TTL 이 정리 */ });
+}
+
 export interface SnapshotEditor {
   layoutType: string;
   spacingX: number;
@@ -112,7 +138,8 @@ export async function saveCurrentMap(
   cloud.setBusy('saving');
   try {
     const title = cloud.cloudTitle ?? undefined;
-    const res = await cloudApi.saveDocument(id, buildSnapshot(), title, keepVersion);
+    const res = await cloudApi.saveDocument(
+      id, buildSnapshot(), title, keepVersion, editSessionKey());
     useCloudStore.getState().link(id, res.updatedAt);
     useAutosaveStore.getState().setSaveState('saved');
     // unchanged: 내용이 그대로라 서버가 저장·히스토리 생성을 생략했다
@@ -142,7 +169,7 @@ export async function saveNewMap(opts: {
     // 맵 이름과 문서 제목을 맞춰 둔다 — 내보내기 파일명 등에 쓰인다
     useDocumentStore.getState().setMapTitle(opts.title);
     const res = await cloudApi.saveDocument(
-      created.mapId, buildSnapshot(), opts.title, true,
+      created.mapId, buildSnapshot(), opts.title, true, editSessionKey(),
     );
     useCloudStore.getState().link(created.mapId, res.updatedAt, {
       title: opts.title, folderId: opts.folderId, kind: opts.kind,
@@ -163,6 +190,7 @@ export async function saveNewMap(opts: {
  */
 export function detachFromServer(): void {
   suppressCloudAutosave();
+  releaseEditLock(); // 편집권 반납 — 다른 세션이 곧바로 열 수 있게
   useCloudStore.getState().unlink();
   useAutosaveStore.getState().setSaveState('saved');
 }
@@ -170,6 +198,7 @@ export function detachFromServer(): void {
 /** 문서를 화면에서 비우고 서버 링크를 끊는다 (저장은 호출부 책임) */
 export function clearCurrentMap(): void {
   suppressCloudAutosave(); // 빈 문서가 방금 닫은 맵을 덮어쓰지 않도록
+  releaseEditLock();
   useDocumentStore.getState().closeMap();
   useCloudStore.getState().unlink();
   useAutosaveStore.getState().setSaveState('saved');
@@ -193,6 +222,12 @@ export async function saveAndCloseMap(
   if (isCurrentMapEmpty()) {
     flash('열려 있는 맵이 없습니다.');
     return 'empty';
+  }
+  // 읽기 전용으로 연 맵 (다른 세션이 편집 중) — 저장 없이 그대로 닫는다
+  if (useCloudStore.getState().readOnlyInfo) {
+    clearCurrentMap();
+    flash('읽기 전용으로 보던 맵을 닫았습니다.');
+    return 'closed';
   }
   if (isUnsavedMap()) return 'unsaved';
 
@@ -249,12 +284,22 @@ export function openMapInNewTab(mapId: string): boolean {
   }
 }
 
-/** 서버 맵을 **현재 탭**에 불러온다 (빈 문서 상태에서만 쓴다) */
-export async function openMapHere(mapId: string): Promise<void> {
+/**
+ * 서버 맵을 **현재 탭**에 불러온다 (빈 문서 상태에서만 쓴다).
+ *
+ * 단일 세션 편집 잠금 (2026-08-04): 다른 세션(브라우저·탭·PC)이 이 맵을
+ * 편집 중이면 서버가 editLock='busy' 를 준다 → **읽기 전용으로 연다**:
+ * 서버 링크를 만들지 않아 자동저장·저장이 이 맵에 쓰지 않고(사본 저장은
+ * 가능), readOnlyInfo 배너로 안내한다.
+ *
+ * @returns readOnly — true 면 다른 세션이 편집 중이라 읽기 전용으로 열림
+ */
+export async function openMapHere(mapId: string): Promise<{ readOnly: boolean }> {
   const cloud = useCloudStore.getState();
   cloud.setBusy('opening');
   try {
-    const { doc, updatedAt, title, folderId, kind } = await cloudApi.getDocument(mapId);
+    const { doc, updatedAt, title, folderId, kind, editLock } =
+      await cloudApi.getDocument(mapId, editSessionKey());
     const loadedMap = (doc as { map?: unknown }).map;
     if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
     suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
@@ -264,8 +309,15 @@ export async function openMapHere(mapId: string): Promise<void> {
     // 저장 당시의 레이아웃·간격 복원 (v2 스냅샷 — 없으면 그대로 둔다)
     applySnapshotEditor(doc);
     useInteractionStore.getState().setSelectedId(null);
-    useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
+    if (editLock === 'busy') {
+      // 읽기 전용 — 링크 없음(저장 경로 차단) + 배너 정보만
+      useCloudStore.getState().unlink();
+      useCloudStore.getState().setReadOnlyInfo({ mapId, title });
+    } else {
+      useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
+    }
     useAutosaveStore.getState().setSaveState('saved');
+    return { readOnly: editLock === 'busy' };
   } finally {
     useCloudStore.getState().setBusy('idle');
   }

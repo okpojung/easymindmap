@@ -21,4 +21,13 @@ export class SaveDocumentDto {
   @IsOptional()
   @IsBoolean()
   keepVersion?: boolean;
+
+  /**
+   * 편집 세션 키 (2026-08-04 단일 세션 잠금) — 탭마다 고유. 다른 살아
+   * 있는 세션이 이 맵의 잠금을 쥐고 있으면 저장이 409 로 거절된다.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  editSession?: string;
 }

@@ -32,9 +32,16 @@ interface CloudState {
   lastSavedAt: string | null;
   busy: 'idle' | 'saving' | 'opening';
   error: string | null;
+  /**
+   * 읽기 전용으로 연 서버 맵 (2026-08-04 단일 세션 편집 잠금) — 다른
+   * 세션이 편집 중이라 잠금을 얻지 못했다. 링크(cloudMapId)는 없어
+   * 자동저장·저장이 이 맵에 쓰지 않고, 배너로 안내한다.
+   */
+  readOnlyInfo: { mapId: string; title: string } | null;
 
   link: (mapId: string, savedAt: string, meta?: Partial<CloudMapMeta>) => void;
   unlink: () => void;
+  setReadOnlyInfo: (info: { mapId: string; title: string } | null) => void;
   setBusy: (b: CloudState['busy']) => void;
   setError: (e: string | null) => void;
 }
@@ -47,6 +54,7 @@ export const useCloudStore = create<CloudState>((set) => ({
   lastSavedAt: null,
   busy: 'idle',
   error: null,
+  readOnlyInfo: null,
   // meta 를 주지 않으면 같은 맵을 다시 저장한 것으로 보고 기존 값을 유지,
   // 다른 맵이면 비운다 (옛 이름이 새 맵에 붙는 사고 방지).
   link: (mapId, savedAt, meta) =>
@@ -56,6 +64,7 @@ export const useCloudStore = create<CloudState>((set) => ({
         cloudMapId: mapId,
         lastSavedAt: savedAt,
         error: null,
+        readOnlyInfo: null,
         cloudTitle: meta?.title ?? (same ? s.cloudTitle : null),
         cloudFolderId:
           meta?.folderId !== undefined ? meta.folderId : same ? s.cloudFolderId : null,
@@ -69,7 +78,9 @@ export const useCloudStore = create<CloudState>((set) => ({
       cloudTitle: null,
       cloudFolderId: null,
       cloudKind: 'solo',
+      readOnlyInfo: null,
     }),
+  setReadOnlyInfo: (readOnlyInfo) => set({ readOnlyInfo }),
   setBusy: (busy) => set({ busy }),
   setError: (error) => set({ error }),
 }));

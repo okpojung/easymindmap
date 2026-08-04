@@ -19,6 +19,7 @@ import { MapsService } from './maps.service';
 import { CreateMapDto } from './dto/create-map.dto';
 import { UpdateMapDto } from './dto/update-map.dto';
 import { SaveDocumentDto } from './dto/save-document.dto';
+import { EditSessionDto } from './dto/edit-session.dto';
 
 /**
  * /v1/maps — 맵 CRUD. 모든 엔드포인트는 인증 필요.
@@ -81,12 +82,39 @@ export class MapsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SaveDocumentDto,
   ) {
-    return this.maps.saveDocument(user.id, id, dto.doc, dto.title, dto.keepVersion ?? false);
+    return this.maps.saveDocument(
+      user.id, id, dto.doc, dto.title, dto.keepVersion ?? false, dto.editSession);
   }
 
+  // editSession(탭 고유 키)을 주면 편집 잠금을 시도하고 결과를
+  // editLock: 'acquired' | 'busy' 로 돌려준다 (단일 세션 편집 — 2026-08-04)
   @Get(':id/document')
-  getDocument(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.maps.getDocument(user.id, id);
+  getDocument(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('editSession') editSession?: string,
+  ) {
+    return this.maps.getDocument(user.id, id, editSession?.slice(0, 64));
+  }
+
+  @Post(':id/edit-heartbeat')
+  @HttpCode(200)
+  editHeartbeat(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EditSessionDto,
+  ) {
+    return this.maps.editHeartbeat(user.id, id, dto.sessionKey);
+  }
+
+  @Post(':id/edit-release')
+  @HttpCode(200)
+  editRelease(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EditSessionDto,
+  ) {
+    return this.maps.editRelease(user.id, id, dto.sessionKey);
   }
 
   // ── 히스토리: 저장 시점별 문서 버전 (B8) ─────────────────────

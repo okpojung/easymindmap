@@ -163,7 +163,9 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             </div>
           )}
 
-          {ENTRIES.map((e) => (
+          {/* 개인 설정·계정 프로필·구독 상태 — Guest 에게는 의미가 없어
+              아예 숨긴다 (2026-08-04 사용자 결정) */}
+          {!isGuest && ENTRIES.map((e) => (
             <button
               key={e.id}
               data-testid={`user-menu-${e.id}`}
@@ -202,24 +204,29 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             </div>
           )}
 
+          {/* Guest 도 일반 회원과 같은 '로그아웃' 항목 (2026-08-04 사용자
+              결정 — 동작 = Guest 종료 → 로그인/가입 화면) */}
           {isGuest && (
             <>
               <div style={{ height: 1, background: t.divider, margin: '5px 0' }} />
               <button
-                data-testid="user-menu-signup"
+                data-testid="user-menu-logout"
                 onClick={() => {
                   setOpen(false);
                   useAuthStore.getState().exitGuest(); // → 로그인/가입 화면
+                  onFlash?.('로그아웃했습니다.');
                 }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                   textAlign: 'left', padding: '8px 10px', borderRadius: 6,
-                  background: t.primarySoft, border: 'none', color: t.primary,
-                  cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                  background: 'transparent', border: 'none', color: t.text,
+                  cursor: 'pointer', fontSize: 13,
                 }}
+                onMouseEnter={(ev) => { ev.currentTarget.style.background = t.surfaceAlt; }}
+                onMouseLeave={(ev) => { ev.currentTarget.style.background = 'transparent'; }}
               >
-                <span style={{ width: 16, textAlign: 'center' }}>✨</span>
-                <span style={{ flex: 1 }}>가입하고 시작하기</span>
+                <span style={{ width: 16, textAlign: 'center' }}>🚪</span>
+                <span style={{ flex: 1 }}>로그아웃</span>
               </button>
             </>
           )}

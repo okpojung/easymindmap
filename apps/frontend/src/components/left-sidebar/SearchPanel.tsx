@@ -128,6 +128,14 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
         }}>결과 {results.length}건</div>
       )}
 
+      {/* 처음 쓰는 사람을 위한 안내는 **목록 위 한 줄**로 한 번만 —
+          행마다 따라다니는 툴팁을 대신한다 (2026-08-05 보고) */}
+      {results.length > 0 && (
+        <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 6 }}>
+          누르면 그 노드로 이동합니다 (화면 중앙 · 100%)
+        </div>
+      )}
+
       {results.map((r) => (
         <div key={r.id}
           data-search-hit={r.id}
@@ -140,7 +148,9 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
             expandAncestors(r.id);
             requestCenterNode(r.id, 100);
           }}
-          title="클릭하면 노란 강조 + 화면 중앙 100% 보기로 이동합니다"
+          // 툴팁 없음 — 행 호버 강조로 "이 줄을 고르는 중"이 보이고,
+          // 클릭 결과는 한 번 써 보면 바로 익힌다. 결과를 훑을 때마다
+          // 같은 문장이 따라다니면 오히려 목록을 가린다 (2026-08-05)
           className="mm-list-row"
           aria-selected={selectedId === r.id}
           style={{

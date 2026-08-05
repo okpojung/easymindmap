@@ -59,8 +59,10 @@ export function MapBrowser({
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [maps, setMaps] = useState<MapListItem[] | null>(null);
   const [cwd, setCwd] = useState<string | null>(null); // null = 홈
-  const [sort, setSort] = useState<SortKey>('updatedAt');
-  const [order, setOrder] = useState<SortOrder>('desc');
+  // 기본 정렬 = **이름 오름차순** (2026-08-05 보고 — 폴더에 들어갔을 때
+  // 사람이 찾는 순서는 '최근 고친 것'보다 '이름 가나다순'이다)
+  const [sort, setSort] = useState<SortKey>('title');
+  const [order, setOrder] = useState<SortOrder>('asc');
   const [err, setErr] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null); // 입력 중인 이름
   // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
@@ -384,9 +386,11 @@ export function MapBrowser({
           <div key={f.folderId} data-testid="browser-folder"
             className="mm-list-row" style={rowStyle}>
             <span style={{ fontSize: 15 }}>📁</span>
+            {/* 툴팁 없음 — 행 호버 강조가 "이 줄을 고르는 중"을 이미
+                보여 준다. 글자 그대로 '폴더 이름'인 버튼에 '폴더 열기'
+                툴팁까지 뜨면 화면만 어수선해진다 (2026-08-05 보고) */}
             <button
               onClick={() => setCwd(f.folderId)}
-              title="폴더 열기"
               style={{
                 textAlign: 'left', background: 'transparent', border: 'none',
                 color: t.text, cursor: 'pointer', fontSize: 13, fontWeight: 600,
@@ -433,7 +437,6 @@ export function MapBrowser({
               <button
                 data-testid="browser-map-open"
                 onClick={() => void openMap(m)}
-                title="이 맵 열기"
                 style={{
                   textAlign: 'left', background: 'transparent', border: 'none',
                   color: cloudMapId === m.mapId ? t.primary : t.text, cursor: 'pointer',

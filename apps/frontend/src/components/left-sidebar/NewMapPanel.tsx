@@ -19,6 +19,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { I } from '@/components/icons';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile } from '@/utils/importMapFile';
 import { resolveRemoteImages } from '@/utils/remoteImages';
@@ -110,7 +111,11 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     }
   };
 
-  const doStartBlank = () => {
+  // 실제로 문서를 갈아 끼우는 부분 — **템플릿을 고르거나 건너뛴 뒤에만**
+  // 부른다 (2026-08-05 보고: 선택 단계에서 취소할 수 있어야 한다).
+  // 예전에는 '새 맵 만들기'를 누른 순간 곧바로 갈아 끼우고 나서 템플릿을
+  // 물었기 때문에, 그 단계의 취소는 "이미 지운 맵을 되살리기"가 됐다.
+  const replaceWithBlankDoc = () => {
     // 기본 맵 = '트리-진행트리맵' 기본 템플릿: 중심 주제 + 주제 1~3 +
     // 하위 주제 + 내용 (4레벨) · 1레벨 트리·오른쪽 → 2레벨 진행트리 →
     // 3레벨 트리 → 4레벨 진행트리 (documentStore.newMap과 한 쌍)
@@ -125,7 +130,6 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     setLayoutType('tree-right');
     resetSpacing();
     setSelectedId('root');
-    setChooseTpl({ msg: '새 맵을 시작했습니다', mode: 'new' });
   };
 
   // 확인 게이트 — 현재 맵을 닫는 것을 사용자가 승인한 뒤 실행.
@@ -145,7 +149,11 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     setPending({ label, run });
   };
 
-  const startBlank = () => confirmThen('새 맵 만들기', doStartBlank);
+  // 현재 맵을 닫아도 되는지 확인한 다음 **템플릿 선택 단계만** 연다.
+  // 문서는 아직 그대로다 — 여기서 ✕(취소)를 누르면 아무 일도 없었던
+  // 것이 된다.
+  const startBlank = () => confirmThen('새 맵 만들기', () =>
+    setChooseTpl({ msg: '새 맵을 시작합니다', mode: 'new' }));
   const startImportFile = (kind: ImportKind) =>
     confirmThen(
       kind === 'md' ? 'MD 파일 불러오기'
@@ -164,6 +172,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   //   'import': 불러온 내용은 유지, 속성(레이아웃·스타일·맵 설정)만
   const applyChosenTpl = (tpl: TplChoice) => {
     if (chooseTpl?.mode === 'new') {
+      replaceWithBlankDoc(); // 고른 순간에 비로소 새 문서로 갈아 끼운다
       const curTitle = useDocumentStore.getState().map.title;
       const map = templateSkeletonMap(tpl.map);
       map.title = curTitle;
@@ -401,8 +410,30 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           border: `1px solid ${t.primaryBorder}`, borderRadius: 8,
           background: t.surface, padding: '10px 12px', marginBottom: 10,
         }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: t.primary, marginBottom: 3 }}>
-            {chooseTpl.msg}
+          {/* 머리줄: 안내 + ✕ 취소. 아이콘만 있는 버튼이라 툴팁을 남긴다
+              (글자가 붙은 목록 행과 달리 여기선 툴팁이 유일한 설명) */}
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 3,
+          }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: t.primary, flex: 1 }}>
+              {chooseTpl.msg}
+            </div>
+            <button
+              data-testid="tpl-cancel"
+              onClick={() => {
+                setChooseTpl(null);
+                if (chooseTpl.mode === 'new') flash('새 맵 만들기를 취소했습니다');
+              }}
+              title={chooseTpl.mode === 'new'
+                ? '새 맵 만들기 취소 — 지금 열려 있는 맵을 그대로 둡니다'
+                : '닫기 — 불러온 내용을 그대로 둡니다'}
+              aria-label={chooseTpl.mode === 'new' ? '새 맵 만들기 취소' : '닫기'}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 22, height: 22, flexShrink: 0,
+                borderRadius: 5, border: `1px solid ${t.border}`,
+                background: t.surface, color: t.textMuted, cursor: 'pointer', padding: 0,
+              }}><I.X size={13} /></button>
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 4 }}>
             적용할 템플릿을 선택하세요
@@ -432,6 +463,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
             <button
               data-testid="tpl-ai-start"
               onClick={() => {
+                replaceWithBlankDoc(); // 여기서 새 맵을 시작한다
                 setChooseTpl(null);
                 useAiSettingsStore.getState().setGenMode('web');
                 useEditorUiStore.getState().setInspectorTab('ai');
@@ -443,7 +475,19 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
                 color: t.primary, cursor: 'pointer', fontWeight: 700, marginBottom: 5,
               }}>🌐 AI로 초안 만들기 (웹 AI · 키 불필요)</button>
           )}
-          <button onClick={() => setChooseTpl(null)}
+          {/* 건너뛰기 = "템플릿 없이" 진행. 새 맵 모드에서는 이때
+              기본 골격으로 문서를 갈아 끼운다 (취소 ✕ 와 다른 동작) */}
+          <button
+            data-testid="tpl-skip"
+            onClick={() => {
+              if (chooseTpl.mode === 'new') {
+                replaceWithBlankDoc();
+                setChooseTpl(null);
+                flash('기본 골격으로 새 맵을 시작했습니다');
+                return;
+              }
+              setChooseTpl(null);
+            }}
             style={{
               width: '100%', fontSize: 11.5, padding: '6px 0', borderRadius: 6,
               border: `1px solid ${t.border}`, background: t.surface,

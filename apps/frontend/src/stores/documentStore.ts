@@ -944,8 +944,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   updateNodeText: (nodeId, text) => {
+    // **빈 텍스트도 반영한다.** 예전에는 빈 문자열이면 통째로 무시했다 —
+    // 노드 글자를 전부 선택해 Del/Ctrl+X 로 지우고 Enter 를 쳐도 지운
+    // 글자가 되살아나, 사용자에게는 "지워지지 않는다"로 보였다
+    // (2026-08-05 보고. 편집창 쪽 같은 가드와 한 쌍이었다).
+    // 노드를 없애는 것이 아니라 **내용을 비우는** 조작이다 — 노드 자체는
+    // 선택 상태에서 Del 로 지운다.
     const nextText = text.trim();
-    if (!nodeId || !nextText) return;
+    if (!nodeId) return;
     set((state) => ({ map: mutateNode(state.map, nodeId, (n) => ({ ...n, text: nextText })) }));
   },
 

@@ -365,7 +365,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
 
   const saveEdit = () => {
     const nextText = draftText.trimEnd();
-    if (nextText.trim().length > 0 && nextText !== n.text) {
+    // **빈 텍스트도 그대로 저장한다.** 예전에는 `nextText.trim()` 이 비면
+    // 통째로 무시했다 — 전체 선택 후 Del/Ctrl+X 로 지운 뒤 Enter 를 치면
+    // 지운 글자가 되살아나, 사용자에게는 "지워지지 않는다"로 보였다
+    // (2026-08-05 보고). 노드를 지우려는 게 아니라 **내용을 비우려는**
+    // 조작이므로 그대로 반영한다. 노드 자체를 없애려면 Del(선택 상태).
+    if (nextText !== n.text) {
       updateNodeText(n.id, nextText);
     }
     // 편집 중 기사 붙여넣기로 쌓인 인라인 사진 — 저장 시 함께 반영

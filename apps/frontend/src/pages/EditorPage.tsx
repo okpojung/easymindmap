@@ -19,6 +19,7 @@ import type {
   OutlineNode,
 } from '@/editor/__samples__/types';
 import { installGlobalTooltip } from '@/utils/globalTooltip';
+import { DraftRecoveryBanner } from '@/components/cloud/DraftRecoveryBanner';
 import { WelcomeScreen } from '@/components/auth/WelcomeScreen';
 import { GuestBrowserNotice } from '@/components/auth/GuestBrowserNotice';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
@@ -356,6 +357,8 @@ export function EditorPage() {
             가운데 세로 스플리터로 비율(20~75%) 조절 — 칸반 모드에서도 동작 */}
         {(
           <div style={{ flex: 1, display: 'flex', minWidth: 0, position: 'relative' }}>
+            {/* 저장되지 않은 맵 복구 안내 (감사 R1·R2 — localDraft) */}
+            <DraftRecoveryBanner t={t} />
             {outlineSplit && (
               <>
                 <div style={{

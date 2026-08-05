@@ -7,6 +7,9 @@
 // [서버 연결 예정] Supabase 연동 시 maps.settings_json.levelFonts 로 저장.
 
 import type { CSSProperties } from 'react';
+import {
+  useAppSettingsStore, VERSION_INTERVAL_CHOICES,
+} from '@/stores/appSettingsStore';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LayoutType, ShapeType, TextAlign } from '@/editor/__samples__/types';
 import { useEditorUiStore } from '@/stores/editorUiStore';
@@ -98,6 +101,9 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
     (f) => f && ((f.size && f.size > 0) || (f.family && f.family.trim())),
   );
 
+  const versionIntervalMin = useAppSettingsStore((s) => s.versionIntervalMin);
+  const setVersionIntervalMin = useAppSettingsStore((s) => s.setVersionIntervalMin);
+
   const selectStyle: CSSProperties = {
     fontSize: 10.5, padding: '3px 4px', borderRadius: 4,
     border: `1px solid ${t.border}`, background: t.surface, color: t.text,
@@ -106,6 +112,39 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
 
   return (
     <div style={{ padding: '12px 14px' }}>
+      {/* ── 저장 (개인 설정) ─────────────────────────────────────────
+          맵이 아니라 **이 브라우저**의 설정이다. 자동저장은 원래 히스토리
+          버전을 남기지 않아, 자동저장으로 지워진 내용은 세션 되돌리기
+          말고는 복구할 방법이 없었다 (2026-08-05 감사 R4). 이 간격마다
+          한 번은 버전으로도 남긴다. */}
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: t.textSubtle,
+        textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6,
+      }}>저장 (개인 설정)</div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
+      }}>
+        <span style={{ fontSize: 11.5, color: t.text }}>자동저장 버전 남기기</span>
+        <select
+          data-testid="version-interval"
+          value={versionIntervalMin}
+          onChange={(e) => setVersionIntervalMin(
+            Number(e.target.value) as typeof versionIntervalMin)}
+          style={{ ...selectStyle, marginLeft: 'auto' }}
+        >
+          {VERSION_INTERVAL_CHOICES.map((m) => (
+            <option key={m} value={m}>{m}분마다</option>
+          ))}
+        </select>
+      </div>
+      <div style={{
+        fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5, marginBottom: 14,
+      }}>
+        자동저장은 늘 최신 내용을 서버에 올립니다. 여기서 고른 간격마다
+        <b> 히스토리 버전</b>도 함께 남겨, 실수로 지운 내용을 히스토리
+        패널에서 되살릴 수 있습니다.
+      </div>
+
       <div style={{
         display: 'flex', alignItems: 'center', marginBottom: 6,
       }}>

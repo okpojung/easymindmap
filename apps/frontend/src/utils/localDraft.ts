@@ -1,0 +1,92 @@
+// localDraft — **저장되지 않은 맵을 브라우저에 즉시 보관**한다
+// (2026-08-05 유실 감사 R1·R2·R3 대응).
+//
+// 자동저장은 "손을 멈춘 뒤 1.5초"(디바운스)에 서버로 간다. 그 사이에
+// 브라우저가 죽거나(크래시·전원) 오프라인이면 그 편집은 어디에도 없다.
+// beforeunload 경고는 **정상 종료에서만** 뜨므로 크래시는 못 잡는다.
+//
+// 그래서 편집을 1초 간격으로 **브라우저 안(IndexedDB)** 에 통째로 적어
+// 둔다. 다음에 앱을 열면 "저장되지 않은 맵이 있습니다 — 복구할까요?"
+// 로 되살린다.
+//
+// **왜 localStorage 가 아니라 IndexedDB 인가**
+//   · localStorage 는 **동기**라 쓰는 동안 화면이 멈춘다. 맵에 사진이
+//     내장돼 있으면 스냅샷이 수 MB — 1초마다 화면이 끊긴다.
+//   · localStorage 는 도메인당 **약 5MB** 상한이라 사진 있는 맵은
+//     금방 넘친다(QuotaExceededError → 백업 자체가 실패).
+//   · IndexedDB 는 비동기 + 수백 MB 규모라 이 용도에 맞다.
+
+const DB_NAME = 'emm-drafts';
+const STORE = 'drafts';
+const DB_VERSION = 1;
+
+/** 서버에 저장된 적 없는 문서의 초안 키 (맵 id 가 없으므로 고정) */
+export const UNSAVED_DRAFT_KEY = 'unsaved';
+
+export interface LocalDraft {
+  /** 서버 맵 id, 또는 UNSAVED_DRAFT_KEY */
+  key: string;
+  /** buildSnapshot() 과 같은 v2 스냅샷 */
+  snapshot: unknown;
+  /** 화면에 보여 줄 이름 */
+  title: string;
+  /** 적어 둔 시각 (ISO) */
+  savedAt: string;
+  /** 노드 수 — 복구 안내에 "N개 노드"로 보여 준다 */
+  nodeCount: number;
+}
+
+function openDb(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE, { keyPath: 'key' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null); // 사생활 보호 모드 등 — 조용히 포기
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function withStore<T>(
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T | null> {
+  const db = await openDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE, mode);
+      const req = run(tx.objectStore(STORE));
+      req.onsuccess = () => resolve(req.result as T);
+      req.onerror = () => resolve(null);
+      tx.oncomplete = () => db.close();
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/** 초안 1건 기록 (덮어쓰기) */
+export async function putDraft(draft: LocalDraft): Promise<void> {
+  await withStore('readwrite', (s) => s.put(draft) as IDBRequest<unknown>);
+}
+
+/** 초안 삭제 — 서버 저장에 성공했거나 사용자가 버렸을 때 */
+export async function deleteDraft(key: string): Promise<void> {
+  await withStore('readwrite', (s) => s.delete(key) as IDBRequest<unknown>);
+}
+
+/** 남아 있는 초안 전체 (최근 순) */
+export async function listDrafts(): Promise<LocalDraft[]> {
+  const all = await withStore<LocalDraft[]>('readonly',
+    (s) => s.getAll() as IDBRequest<LocalDraft[]>);
+  if (!all) return [];
+  return all.sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1));
+}

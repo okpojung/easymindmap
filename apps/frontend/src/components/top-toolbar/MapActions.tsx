@@ -18,6 +18,7 @@ import { useCloudStore } from '@/stores/cloudStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudAutosave } from '@/hooks/useCloudAutosave';
+import { useLocalDraft } from '@/hooks/useLocalDraft';
 import { CloudError } from '@/services/cloud/apiClient';
 import { SaveMapDialog } from '@/components/cloud/SaveMapDialog';
 import {
@@ -45,6 +46,9 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
 
   // 문서가 서버 맵에 연결돼 있으면 편집 후 자동 저장(디바운스)
   useCloudAutosave();
+  // 편집을 1초마다 브라우저(IndexedDB)에도 적어 둔다 — 크래시·오프라인
+  // 으로 서버에 못 간 편집을 다음 실행에서 되살리기 위해 (감사 R1·R2)
+  useLocalDraft();
 
   const savedHint = lastSavedAt
     ? `저장됨 · ${new Date(lastSavedAt).toLocaleString()}`

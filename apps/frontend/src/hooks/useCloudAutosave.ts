@@ -84,6 +84,18 @@ async function doSave() {
   // 정말 비우려면 수동 ☁ 저장(버전이 남는다).
   if (isDocumentEmpty(doc) || doc.title === EMPTY_MAP_TITLE) return;
   if (!doc.branches || doc.branches.length === 0) return;
+  // **화면의 문서가 이 맵에서 온 것이 맞는가** (2026-08-05 저장 감사).
+  // 문서를 통째로 바꾸면서 서버 링크를 끊지 않은 경로가 있으면 전혀
+  // 다른 문서가 이 맵에 저장된다 — AI 새 맵 생성(AITab)이 실제로
+  // 그랬고, 열어 두었던 서버 맵이 AI 맵으로 덮어써지는 것을 재현했다.
+  // 호출부를 하나씩 고치는 대신 **여기서 구조로 막는다**: 출처가 다르면
+  // 아예 보내지 않는다. 새 경로가 생겨도 기본값(출처 없음)이라 안전.
+  if (useDocumentStore.getState().docOrigin !== mapId) {
+    // eslint-disable-next-line no-console
+    console.warn('[autosave] 문서 출처가 달라 저장하지 않았습니다',
+      { docOrigin: useDocumentStore.getState().docOrigin, mapId });
+    return;
+  }
   if (saving) { rerun = true; return; }
   saving = true;
   useAutosaveStore.getState().setSaveState('saving');

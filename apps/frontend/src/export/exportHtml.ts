@@ -1522,15 +1522,7 @@ const VIEWER_JS = String.raw`
       // 좌표 평균으로 판단한다. (에디터 CollapseControl과 동일 규칙)
       var effT = node._eff || '';
       var sd = node.side;
-      if (effT === 'tree-right' || effT === 'tree-down' ||
-          effT.indexOf('process-tree') === 0) {
-        sd = 'down';
-      } else if (effT === 'hierarchy-right' || effT === 'radial-right' ||
-                 effT === 'freeform') {
-        sd = 'right';
-      } else if (effT === 'hierarchy-left' || effT === 'radial-left') {
-        sd = 'left';
-      } else if (node._open) {
+      if (node._open) {
         var adx = 0, ady = 0, acnt = 0;
         for (var kg = 0; kg < kids.length; kg++) {
           if (kids[kg]._cx == null) continue;
@@ -1544,13 +1536,39 @@ const VIEWER_JS = String.raw`
             : (adx > 0 ? 'right' : 'left');
         }
       }
-      var leftish = sd === 'left' || (!node._open && (node._eff === 'radial-left' ||
-        (node._eff === 'radial-bidirectional' && sd === 'left' && depth > 0)));
+      // **연결선이 노드를 떠나는 지점**에 아이콘을 놓는다 (2026-08-05).
+      // 트리·진행트리는 변 한가운데가 아니라 왼쪽 스파인에서 선이
+      // 시작한다 — drawEdge 의 경로 시작점과 한 쌍이다.
+      // (에디터 collapseAnchor.ts 와 같은 규칙)
+      var cnt0 = node._open ? '' : String(countDescendants(node));
+      var cr0 = node._open ? 8.5 : (cnt0.length >= 3 ? 13 : cnt0.length === 2 ? 10.5 : 8.5);
+      var OUT = cr0 + 1, OUTLINE_INSET = 12, PROCESS_INSET = 14;
+      var bx0 = x0, bx1 = x0 + node._w;
+      var byTop = node._cy - node._h / 2, byBot = node._cy + node._h / 2;
       var ccx, ccy;
-      if (sd === 'down') { ccx = node._cx; ccy = node._cy + node._h / 2 + 11; }
-      else if (sd === 'up') { ccx = node._cx; ccy = node._cy - node._h / 2 - 11; }
-      else if (leftish) { ccx = x0 - 11; ccy = node._cy; }
-      else { ccx = x0 + node._w + 11; ccy = node._cy; }
+      if (effT.indexOf('process-tree') === 0) {
+        ccx = bx0 + PROCESS_INSET; ccy = byBot + OUT;
+      } else if (effT === 'tree' || effT === 'tree-right') {
+        ccx = bx0 + OUTLINE_INSET; ccy = byBot + OUT;
+      } else if (effT === 'tree-down') {
+        ccx = node._cx; ccy = byBot + OUT;
+      } else if (effT === 'timeline') {
+        if (depth === 0) { ccx = bx1 + OUT; ccy = node._cy; }
+        else if (node.side === 'up') { ccx = bx0 + OUTLINE_INSET; ccy = byTop - OUT; }
+        else { ccx = bx0 + OUTLINE_INSET; ccy = byBot + OUT; }
+      } else if (effT === 'hierarchy-right' || effT === 'radial-right' ||
+                 effT === 'freeform' || effT === 'free') {
+        ccx = bx1 + OUT; ccy = node._cy;
+      } else if (effT === 'hierarchy-left' || effT === 'radial-left') {
+        ccx = bx0 - OUT; ccy = node._cy;
+      } else if (effT === 'radial' || effT === 'both-radial' ||
+                 effT === 'radial-bidirectional') {
+        if (node.side === 'left') { ccx = bx0 - OUT; ccy = node._cy; }
+        else { ccx = bx1 + OUT; ccy = node._cy; }
+      } else if (sd === 'down') { ccx = node._cx; ccy = byBot + OUT; }
+      else if (sd === 'up') { ccx = node._cx; ccy = byTop - OUT; }
+      else if (sd === 'left') { ccx = bx0 - OUT; ccy = node._cy; }
+      else { ccx = bx1 + OUT; ccy = node._cy; }
       // 펼쳐진 노드의 접기(−) 토글은 항상 보이지 않고 노드에 마우스를
       // 올렸을 때만 나타난다 (에디터와 동일). 접힌 노드의 +N 배지는 숨은
       // 서브트리를 알려야 하므로 항상 표시.
@@ -1559,9 +1577,9 @@ const VIEWER_JS = String.raw`
       var chip = el('g', { cursor: 'pointer',
         'class': node._open ? 'mm-toggle mm-toggle-open' : 'mm-toggle' },
         node._open ? g : chipLayer);
-      var cnt = node._open ? '' : String(countDescendants(node));
+      var cnt = cnt0;
       // 숫자 자릿수에 맞춰 칩 크기 확대 (두 자리 10.5, 세 자리+ 13)
-      var cr = node._open ? 8.5 : (cnt.length >= 3 ? 13 : cnt.length === 2 ? 10.5 : 8.5);
+      var cr = cr0;
       el('circle', { cx: ccx, cy: ccy, r: cr, fill: node._open ? SKIN.fam.l2.fill : color,
         stroke: color, 'stroke-width': 1.3 }, chip);
       var chTitle = el('title', {}, chip);

@@ -20,6 +20,7 @@ import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { buildExpandContext, reassignIds } from '@/utils/aiProjectContext';
+import { detachFromServer } from '@/services/cloud/mapSession';
 import {
   DEFAULT_MODELS,
   KEY_HELP,
@@ -147,6 +148,11 @@ function GenerateView({ t }: { t: ThemeTokens }) {
         '(실행 취소 Ctrl+Z 로 이전 맵으로 되돌릴 수 있습니다)',
       );
       if (!ok) return;
+      // **서버 맵 연결을 먼저 끊는다** — 끊지 않으면 자동저장이 조금 전까지
+      // 열어 두었던 서버 맵을 이 AI 맵으로 덮어쓴다 (2026-08-05 저장 감사에서
+      // 재현: '통계B-중간' 문서가 AI 맵으로 바뀌었다). 웹 AI 경로
+      // (WebAiPanel.runOpenAsNewMap)는 처음부터 이렇게 하고 있었다.
+      detachFromServer();
       loadMap(map);
       setLayoutType('radial-right');
       resetSpacing();

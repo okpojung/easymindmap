@@ -80,6 +80,24 @@ export function setHistoryPaused(v: boolean) {
 interface DocumentState {
   map: SampleMap;
 
+  /**
+   * **이 문서가 어느 서버 맵에서 온 것인가** (2026-08-05 유실 감사).
+   *
+   * 자동저장은 `cloudStore.cloudMapId` 만 보고 저장한다. 그런데 문서를
+   * 통째로 바꾸면서(loadMap) 서버 링크를 끊지 않은 경로가 있으면,
+   * **전혀 다른 문서가 그 맵에 저장된다** — 실제로 AI 새 맵 생성
+   * (AITab)이 detachFromServer 없이 loadMap 만 해서, 열어 두었던
+   * 서버 맵이 AI 맵으로 덮어써지는 것을 재현했다.
+   *
+   * 그래서 문서 쪽에도 출처를 적어 두고, 자동저장이 **출처와 저장
+   * 대상이 다르면 아예 보내지 않는다** (useCloudAutosave). 호출부를
+   * 하나씩 고치는 대신 구조로 막는다 — 앞으로 새 경로가 생겨도
+   * 기본값(null)이라 위험한 저장이 일어나지 않는다.
+   */
+  docOrigin: string | null;
+  /** 서버 저장/열기 성공 시 이 문서의 출처를 그 맵으로 표시 */
+  setDocOrigin: (mapId: string | null) => void;
+
   // Undo / redo history (in-memory — no DB required)
   past: HistoryEntry[];
   future: HistoryEntry[];
@@ -139,7 +157,13 @@ interface DocumentState {
   // 가면 안 된다 (2026-08-05 유실 재현: 열자마자 Ctrl+Z 를 몇 번 밀면
   // 이전 문서의 '문서 없음' 자리표시가 현재 문서가 되고, 그 상태로
   // ☁ 저장하면 서버 맵이 통째로 비워졌다).
-  loadMap: (map: SampleMap, opts?: { resetHistory?: boolean }) => void;
+  //  · serverMapId: 이 문서가 그 서버 맵에서 온 것이면 id (openMapHere)
+  //  · keepOrigin : 같은 문서를 바꾸는 것이라 출처를 유지 (템플릿 적용)
+  //  기본값은 **출처 없음** — 서버 맵과 무관한 새 문서로 본다(안전 쪽).
+  loadMap: (
+    map: SampleMap,
+    opts?: { resetHistory?: boolean; serverMapId?: string; keepOrigin?: boolean },
+  ) => void;
   // 문서 제목만 교체 (서버 저장 이름과 맞추기 — 중심 주제는 건드리지 않는다)
   setMapTitle: (title: string) => void;
   // 새 맵 시작 — 루트만 있는 기본 맵 ('새 맵' 메뉴)
@@ -479,6 +503,8 @@ function makeBranch(node: MindNode, indexForColor: number): SampleBranch {
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   map: cloneMap(SAMPLE_ROADMAP),
+  docOrigin: null,
+  setDocOrigin: (docOrigin) => set({ docOrigin }),
   past: [],
   future: [],
 
@@ -517,7 +543,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     applyingHistory = false;
   },
 
-  setSample: () => set({ map: cloneMap(SAMPLE_ROADMAP) }),
+  setSample: () => set({ map: cloneMap(SAMPLE_ROADMAP), docOrigin: null }),
 
   addChildNode: (parentId) => {
     let newNodeId = '';
@@ -1089,6 +1115,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     // 문서 경계를 넘는 되돌리기 금지 — 열기/불러오기는 여기서 끊는다.
     // (템플릿 적용처럼 "같은 문서를 바꾸는" 경우는 그대로 되돌아간다)
     if (opts?.resetHistory) set({ past: [], future: [] });
+    // 출처 갱신 — 기본은 '출처 없음'(서버 맵과 무관한 새 문서)
+    if (!opts?.keepOrigin) set({ docOrigin: opts?.serverMapId ?? null });
   },
 
   // 서버에 저장한 맵 이름과 문서 제목을 맞춘다 (2026-08-02 문서함).
@@ -1108,6 +1136,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   closeMap: () => {
     set({
+      docOrigin: null,
       map: {
         title: EMPTY_MAP_TITLE,
         root: { id: 'root', text: EMPTY_MAP_TITLE, colorKey: 'root', side: 'center' },
@@ -1117,6 +1146,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   newMap: (title = NEW_MAP_TITLE) => {
+    // 새 문서 = 서버 맵 출처 없음 (자동저장이 이전 맵을 덮어쓰지 못한다)
     // 기본 맵 골격 = '트리-진행트리맵' 기본 템플릿.
     // 2026-08-04 축소(사용자 지정 이미지 기준, 11노드): 주제 1·2 =
     // 하위 주제 1개 + 내용 2개, 주제 3 = 하위 주제 1개 — 골격이 너무
@@ -1145,6 +1175,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       }],
     }));
     set({
+      docOrigin: null,
       map: {
         title,
         root: { id: 'root', text: '중심 주제', colorKey: 'root', side: 'center' },

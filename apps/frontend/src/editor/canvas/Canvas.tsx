@@ -35,6 +35,7 @@ import {
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from './NoteViewerPopover';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
+import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -1395,20 +1396,10 @@ export function Canvas({
                   // 달린 레이아웃만 자식 좌표 평균으로 판단한다.
                   // (HTML 뷰어 drawNode와 동일 규칙)
                   const eff = effByNode.get(n.id) ?? '';
-                  let sd: string = n.side ?? 'right';
-                  if (
-                    eff === 'tree-right' || eff === 'tree-down' ||
-                    eff.startsWith('process-tree')
-                  ) {
-                    sd = 'down';
-                  } else if (
-                    eff === 'hierarchy-right' || eff === 'radial-right' ||
-                    eff === 'freeform'
-                  ) {
-                    sd = 'right';
-                  } else if (eff === 'hierarchy-left' || eff === 'radial-left') {
-                    sd = 'left';
-                  } else if (!n.collapsed) {
+                  // 자식 좌표 평균 방향 — collapseAnchor 가 레이아웃으로
+                  // 방향을 못 정할 때만 쓰는 폴백
+                  let sd: FallbackDir = (n.side === 'left' ? 'left' : 'right');
+                  if (!n.collapsed) {
                     let adx = 0; let ady = 0; let acnt = 0;
                     for (const c of visibleNodes) {
                       if (c.parent !== n.id) continue;
@@ -1420,20 +1411,23 @@ export function Canvas({
                         : (adx > 0 ? 'right' : 'left');
                     }
                   }
-                  const pos =
-                    sd === 'left'
-                      ? { x: n.x - n.w / 2 - 11, y: n.y }
-                      : sd === 'down'
-                        ? { x: n.x, y: n.y + n.h / 2 + 11 }
-                        : sd === 'up'
-                          ? { x: n.x, y: n.y - n.h / 2 - 11 }
-                          : { x: n.x + n.w / 2 + 11, y: n.y };
+                  // **연결선이 노드를 떠나는 지점**에 아이콘을 놓는다
+                  // (2026-08-05 — 트리·진행트리는 변 한가운데가 아니라
+                  //  왼쪽 스파인에서 선이 시작한다. collapseAnchor.ts)
+                  // 칩 크기(접힘 +N 은 자릿수만큼 커진다)를 함께 넘겨
+                  // 노드 테두리를 파고들지 않게 한다 (CollapseControl 과 같은 식)
+                  const cnt = descCount.get(n.id) ?? n._childCount ?? 0;
+                  const chipR = !n.collapsed ? 8.5
+                    : String(cnt).length >= 3 ? 13
+                      : String(cnt).length === 2 ? 10.5 : 8.5;
+                  const pos = collapseAnchor(n, eff, sd, chipR);
                   return (
                     <CollapseControl
                       key={`toggle-${n.id}`}
                       t={t}
                       x={pos.x}
                       y={pos.y}
+                      nodeId={n.id}
                       collapsed={!!n.collapsed}
                       count={descCount.get(n.id) ?? n._childCount ?? 0}
                       nodeHovered={hoverNodeId === n.id}
@@ -1548,7 +1542,7 @@ export function Canvas({
 //                 조준해야 해서 제거 — 2026-07. 맵은 여전히 깨끗하다:
 //                 호버 전에는 아무것도 그리지 않는다.)
 function CollapseControl({
-  t, x, y, collapsed, count, nodeHovered, onToggle,
+  t, x, y, collapsed, count, nodeHovered, onToggle, nodeId,
 }: {
   t: ThemeTokens;
   x: number;
@@ -1557,11 +1551,14 @@ function CollapseControl({
   count: number; // 접힘 시 표시할 숨은 노드(전체 자손) 수
   nodeHovered: boolean;
   onToggle: () => void;
+  nodeId: string; // 검증용 — 어느 노드의 토글인지 (e2e106 위치 실측)
 }) {
   const [h, setH] = useState(false);
 
   const wrap = (children: ReactNode, title: string) => (
     <g
+      data-testid="collapse-toggle"
+      data-node-id={nodeId}
       transform={`translate(${x}, ${y})`}
       style={{ cursor: 'pointer' }}
       onPointerDown={(e) => e.stopPropagation()}

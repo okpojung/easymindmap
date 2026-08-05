@@ -44,6 +44,7 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 import { ChooserPopover } from './ChooserPopover';
 import { extractClipboardImage } from '@/utils/clipboardImage';
+import { hasForeignMapMarker, stripForeignMapMarkers } from '@/utils/foreignClipboard';
 import {
   collectSubtrees, isNodeClipToken, stashNodes, takeStashed,
 } from '@/utils/nodeClipboard';
@@ -667,17 +668,23 @@ export function Canvas({
         return;
       }
 
-      // 다른 마인드맵 앱의 **자리표시 텍스트**만 온 경우. ThinkWise 는
-      // 그림을 복사해도 클립보드에 표준 이미지 대신 자기네 형식과
-      // '[--iThinkWise--]' 표시만 넣는다 — 브라우저는 그 형식을 읽을 수
-      // 없다. 그대로 두면 그 글자가 노드로 붙어 버린다 (2026-08-05 보고).
-      if (/^\[--\s*iThinkWise\s*--\]$/i.test(maybeToken)) {
-        e.preventDefault();
-        notifyPaste(
-          'ThinkWise가 클립보드에 그림을 넣지 않았습니다 (자기 형식만 넣습니다). '
-          + '그림은 ThinkWise에서 이미지 파일로 저장하거나 화면을 캡처해 붙여넣어 주세요.',
-        );
-        return;
+      // 다른 마인드맵 앱의 **자기 앱 표시**를 걷어낸다. ThinkWise 는
+      // 노드를 복사하면 text/plain 첫머리에 '[--iThinkWise--]' 를 넣어,
+      // 그대로 붙이면 그 글자가 노드 본문에 남는다 (2026-08-05 보고 —
+      // 하위 노드가 있으면 맨 윗줄에, 없으면 텍스트 앞에).
+      const foreign = hasForeignMapMarker(maybeToken);
+      if (foreign) {
+        const stripped = stripForeignMapMarkers(maybeToken);
+        if (!stripped) {
+          // 표시만 왔다 = 그림을 복사한 경우. ThinkWise 는 클립보드에
+          // 표준 이미지를 넣지 않아 브라우저가 그림을 읽을 수 없다.
+          e.preventDefault();
+          notifyPaste(
+            'ThinkWise가 클립보드에 그림을 넣지 않았습니다 (자기 형식만 넣습니다). '
+            + '그림은 ThinkWise에서 이미지 파일로 저장하거나 화면을 캡처해 붙여넣어 주세요.',
+          );
+          return;
+        }
       }
 
       const hasImgFile = Array.from(dt.files ?? []).some((f) =>
@@ -689,7 +696,9 @@ export function Canvas({
       const art = rawHtml
         ? extractArticleContent(rawHtml)
         : { text: '', images: [] };
-      const plain = (dt.getData('text/plain') ?? '').replace(/\r\n?/g, '\n').trim();
+      const plain = stripForeignMapMarkers(
+        (dt.getData('text/plain') ?? '').replace(/\r\n?/g, '\n'),
+      );
       const text = art.text || plain;
       if (!hasImgFile && !text && art.images.length === 0) return; // 붙일 내용 없음
 

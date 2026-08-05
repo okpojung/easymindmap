@@ -133,8 +133,13 @@ interface DocumentState {
   // 노트 글꼴·크기 (맵 설정 — 기본 13pt)
   setNoteFont: (patch: { size?: number; family?: string }) => void;
 
-  // 현재 맵 전체 교체 (템플릿 적용 등 — undo 히스토리에 기록됨)
-  loadMap: (map: SampleMap) => void;
+  // 현재 맵 전체 교체 (템플릿 적용 등 — undo 히스토리에 기록됨).
+  // opts.resetHistory: **다른 문서를 여는 경우**(서버 맵 열기·파일
+  // 불러오기)는 반드시 true — 되돌리기가 "열기 이전 문서"까지 거슬러
+  // 가면 안 된다 (2026-08-05 유실 재현: 열자마자 Ctrl+Z 를 몇 번 밀면
+  // 이전 문서의 '문서 없음' 자리표시가 현재 문서가 되고, 그 상태로
+  // ☁ 저장하면 서버 맵이 통째로 비워졌다).
+  loadMap: (map: SampleMap, opts?: { resetHistory?: boolean }) => void;
   // 문서 제목만 교체 (서버 저장 이름과 맞추기 — 중심 주제는 건드리지 않는다)
   setMapTitle: (title: string) => void;
   // 새 맵 시작 — 루트만 있는 기본 맵 ('새 맵' 메뉴)
@@ -1079,8 +1084,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     });
   },
 
-  loadMap: (map) => {
+  loadMap: (map, opts) => {
     set({ map: cloneMap(map) });
+    // 문서 경계를 넘는 되돌리기 금지 — 열기/불러오기는 여기서 끊는다.
+    // (템플릿 적용처럼 "같은 문서를 바꾸는" 경우는 그대로 되돌아간다)
+    if (opts?.resetHistory) set({ past: [], future: [] });
   },
 
   // 서버에 저장한 맵 이름과 문서 제목을 맞춘다 (2026-08-02 문서함).

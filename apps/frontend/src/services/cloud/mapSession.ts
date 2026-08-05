@@ -102,6 +102,32 @@ export function canReuseThisTab(): boolean {
   return isDocumentEmpty(doc.map) || doc.past.length === 0;
 }
 
+/**
+ * **맵을 비우는 저장인가**를 사용자에게 묻는다 (2026-08-05 세 번째 유실).
+ *
+ * 재현 경로: 서버 맵을 연 뒤 Ctrl+Z 를 몇 번 더 누르면 '열기 이전'
+ * 문서(문서 없음 자리표시)가 현재 문서가 되는데, 그대로 ☁ 저장을 누르면
+ * 맵이 통째로 비워졌다. 자동저장은 서버 가드가 막고 있었지만 **명시
+ * 저장은 "사용자의 뜻"이라며 통과**시키고 있었다 — 사용자는 비우려던
+ * 것이 아니었다.
+ *
+ * 이제 가지가 0개인 문서를 저장하려 하면 먼저 묻는다.
+ * @returns 'ok' 비우는 저장이 아니다(그냥 진행) · 'yes' 비우겠다고 답함 ·
+ *          'cancel' 취소
+ */
+function confirmEmptyOverwrite(): 'ok' | 'yes' | 'cancel' {
+  const branches = useDocumentStore.getState().map.branches?.length ?? 0;
+  if (branches > 0) return 'ok';
+  const yes = window.confirm(
+    '지금 화면의 문서에는 가지(주제)가 하나도 없습니다.\n'
+    + '이대로 저장하면 서버에 저장돼 있던 내용이 사라집니다.\n\n'
+    + '되돌리기(Ctrl+Z)를 너무 많이 눌렀다면 [취소]를 누르고 '
+    + '다시 실행(Ctrl+Y)으로 되돌아가세요.\n\n'
+    + '정말 비운 채로 저장할까요?',
+  );
+  return yes ? 'yes' : 'cancel';
+}
+
 /** 아직 서버에 저장한 적 없는 맵인가 (= 저장할 폴더·이름을 물어야 한다) */
 export function isUnsavedMap(): boolean {
   return useCloudStore.getState().cloudMapId === null;
@@ -121,11 +147,16 @@ export async function saveCurrentMap(
   const cloud = useCloudStore.getState();
   const id = cloud.cloudMapId;
   if (!id) throw new CloudError(0, '저장할 폴더와 이름을 먼저 정해 주세요.');
+  // 가지 0개 문서로 서버 맵을 덮어쓰려는 저장은 **먼저 묻는다** (§7.4)
+  const allowEmpty = confirmEmptyOverwrite();
+  if (allowEmpty === 'cancel') {
+    throw new CloudError(0, '저장을 취소했습니다 — 내용이 사라지지 않았습니다.');
+  }
   cloud.setBusy('saving');
   try {
     const title = cloud.cloudTitle ?? undefined;
     const res = await cloudApi.saveDocument(
-      id, buildSnapshot(), title, keepVersion, editSessionKey());
+      id, buildSnapshot(), title, keepVersion, editSessionKey(), allowEmpty === 'yes');
     useCloudStore.getState().link(id, res.updatedAt);
     useAutosaveStore.getState().setSaveState('saved');
     // unchanged: 내용이 그대로라 서버가 저장·히스토리 생성을 생략했다
@@ -289,7 +320,9 @@ export async function openMapHere(mapId: string): Promise<{ readOnly: boolean }>
     const loadedMap = (doc as { map?: unknown }).map;
     if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
     suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
-    useDocumentStore.getState().loadMap(loadedMap as never);
+    // 열기는 **문서 경계** — 되돌리기가 '열기 이전' 문서로 넘어가면
+    // 안 된다 (그 상태로 저장하면 이 맵이 비워진다, §7.4)
+    useDocumentStore.getState().loadMap(loadedMap as never, { resetHistory: true });
     // 서버의 맵 이름을 문서 제목으로도 맞춘다 — 이후 저장은 이 이름 그대로
     useDocumentStore.getState().setMapTitle(title);
     // 저장 당시의 레이아웃·간격 복원 (v2 스냅샷 — 없으면 그대로 둔다)

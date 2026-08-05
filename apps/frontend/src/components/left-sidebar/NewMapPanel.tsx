@@ -229,7 +229,8 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     // 불러온 파일도 새 문서다 — 서버 맵 연결을 끊는다 (위 doStartBlank 주석)
     detachFromServer();
     setBrowserOpen(false);
-    loadMap(resolvedMap);
+    // 불러오기도 문서 경계 — 되돌리기가 이전 문서로 넘어가지 않게 한다
+    loadMap(resolvedMap, { resetHistory: true });
     if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
     else setLayoutType('radial-right');
     if (imported.editor?.spacingX) setSpacingX(imported.editor.spacingX);

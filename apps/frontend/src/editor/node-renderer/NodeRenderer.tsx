@@ -53,6 +53,7 @@ import { EditPreviewBackdrop } from './EditPreviewBackdrop';
 import { useViewportStore } from '@/stores/viewportStore';
 import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
+import { hasForeignMapMarker, stripForeignMapMarkers } from '@/utils/foreignClipboard';
 import { openAttachment } from '@/utils/openAttachment';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 
@@ -1153,6 +1154,18 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               // (afterLine)째** 인라인 사진으로 쌓아 두었다가 저장(Enter) 시
               // 반영한다 (Esc 취소 시 폐기). 사진 없는 붙여넣기는 브라우저
               // 기본 동작(텍스트 삽입), 이미지 파일은 노드 사진.
+              // 다른 마인드맵 앱의 자기 앱 표시('[--iThinkWise--]')는
+              // 편집 중 붙여넣기에서도 걷어낸다 (2026-08-05 보고)
+              const rawPlain = e.clipboardData?.getData('text/plain') ?? '';
+              if (hasForeignMapMarker(rawPlain)) {
+                e.preventDefault();
+                const ta2 = e.currentTarget;
+                const s0 = ta2.selectionStart ?? draftText.length;
+                const e0 = ta2.selectionEnd ?? s0;
+                const clean = stripForeignMapMarkers(rawPlain.replace(/\r\n?/g, '\n'));
+                setDraftText(draftText.slice(0, s0) + clean + draftText.slice(e0));
+                return;
+              }
               const rawHtml = e.clipboardData?.getData('text/html');
               if (rawHtml) {
                 const art = extractArticleContent(rawHtml);

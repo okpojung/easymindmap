@@ -85,7 +85,8 @@ export class MapsController {
     @Body() dto: SaveDocumentDto,
   ) {
     return this.maps.saveDocument(
-      user.id, id, dto.doc, dto.title, dto.keepVersion ?? false, dto.editSession);
+      user.id, id, dto.doc, dto.title, dto.keepVersion ?? false, dto.editSession,
+      dto.allowEmpty ?? false);
   }
 
   // editSession(탭 고유 키)을 주면 편집 잠금을 시도하고 결과를

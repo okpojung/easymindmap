@@ -73,13 +73,15 @@ const progressTreeMap = (): SampleMap => ({
   title: '진행트리-트리맵',
   root: rootOf('중심 주제'),
   branches: [
+    // 3레벨('하위 주제')의 자식 배치를 진행트리 → **트리·오른쪽**으로
+    // (2026-08-05 요청) — 내용 노드가 세로로 가지런히 늘어선다.
     br('주제 1', 'l1A', 'right', [
-      n('하위 주제', [n('내용'), n('내용')], 'process-tree-right'),
+      n('하위 주제', [n('내용'), n('내용')], 'tree-right'),
     ], 'tree-right'),
     br('주제 2', 'l1B', 'right', [
-      n('하위 주제', [n('내용'), n('내용')], 'process-tree-right'),
+      n('하위 주제', [n('내용'), n('내용')], 'tree-right'),
     ], 'tree-right'),
-    br('주제 3', 'l1C', 'right', [n('하위 주제', undefined, 'process-tree-right')], 'tree-right'),
+    br('주제 3', 'l1C', 'right', [n('하위 주제', undefined, 'tree-right')], 'tree-right'),
   ],
 });
 

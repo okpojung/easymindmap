@@ -103,8 +103,10 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     const prompt = topic.trim()
       ? buildWebAiPrompt({ systemPrompt, topic, typeKey: genType })
       : '';
-    // Copilot GPT 는 규칙 내장 — 주제만, 나머지는 규칙까지 붙은 전체
-    const forClipboard = s.prefill === 'topic' && topic.trim() ? topic : prompt;
+    // 전용 GPT 는 규칙이 내장돼 있어 **주제만**, 일반 채팅은 규칙까지
+    // 붙은 전체 프롬프트를 클립보드에 넣는다 (자동 입력이 막히는 곳이
+    // 있어 클립보드가 사실상의 주 경로다 — 2026-08-05).
+    const forClipboard = s.kind === 'gpt' && topic.trim() ? topic : prompt;
     if (forClipboard) void navigator.clipboard?.writeText(forClipboard).catch(() => {});
     window.open(aiShortcutUrl(s, { topic, prompt }), '_blank');
   };
@@ -361,8 +363,8 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
         ))}
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 3, lineHeight: 1.5 }}>
           {topic.trim()
-            ? '일반 채팅(Claude·ChatGPT)은 ① 프롬프트 전체가, 전용 GPT는 주제만 자동 입력됩니다. Gemini는 자동 입력을 지원하지 않아 붙여넣기(Ctrl+V) — 어느 쪽이든 클립보드에도 복사해 둡니다.'
-            : '먼저 위에 주제를 적으면, 여는 즉시 질문까지 자동 입력됩니다.'}
+            ? '누르면 질문을 클립보드에 복사하고 창을 엽니다 — 자동 입력이 되는 곳(Claude·일반 ChatGPT)은 바로 들어가고, 안 되는 곳(Gemini·전용 GPT)은 Ctrl+V 로 붙여넣으세요. 전용 GPT에는 주제만, 일반 채팅에는 ① 프롬프트 전체가 담깁니다.'
+            : '먼저 위에 주제를 적으면, 창을 열 때 질문이 클립보드에 함께 담깁니다.'}
         </div>
 
         {fallbackText && (

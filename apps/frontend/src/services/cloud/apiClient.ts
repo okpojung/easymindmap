@@ -26,6 +26,11 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     res = await fetch(`${BASE}/v1${path}`, {
       method,
       headers,
+      // 목록·문서 조회가 **캐시된 옛 응답**으로 돌아오지 않게 한다
+      // (2026-08-05 보고: 저장·맵 닫기 뒤에도 문서함 목록이 그대로여서
+      // 새로고침해야 반영됐다 — 로컬에서는 재현되지 않고 배포 환경의
+      // 중간 캐시에서만 나타났다).
+      cache: 'no-store',
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {

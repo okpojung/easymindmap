@@ -335,6 +335,25 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
         void navigator.clipboard?.writeText?.(token).catch(() => { /* 무시 */ });
         return;
       }
+      // 잘라내기 (Ctrl+X) — 맵 모드와 동일 (2026-08-05 보고)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'x' || e.key === 'X')) {
+        const multi = useInteractionStore.getState().multiSelectedIds;
+        const ids = multi.length > 1
+          ? multi
+          : selectedId && selectedId !== 'root' ? [selectedId] : [];
+        if (!ids.length) return;
+        if ((window.getSelection()?.toString() ?? '').trim()) return;
+        e.preventDefault();
+        const subtrees = collectSubtrees(useDocumentStore.getState().map, ids);
+        if (!subtrees.length) return;
+        const token = stashNodes(subtrees);
+        void navigator.clipboard?.writeText?.(token).catch(() => { /* 무시 */ });
+        const st = useDocumentStore.getState();
+        if (ids.length > 1) st.deleteNodesBulk(ids);
+        else st.deleteNode(ids[0]);
+        onSelect(null);
+        return;
+      }
       if (e.key === 'Escape') {
         useInteractionStore.getState().setMultiSelectedIds([]);
         onSelect(null);

@@ -82,7 +82,11 @@ export function MapBrowser({
     }
   }, [cwd, sort, order]);
 
-  useEffect(() => { void load(); }, [load]);
+  // 저장·맵 닫기가 일어나면(lastSavedAt 변화) 목록을 다시 읽는다 —
+  // 문서함을 연 채로 저장한 경우에도 크기·수정일이 곧바로 반영된다
+  // (2026-08-05 보고: 새로고침해야 반영됐다).
+  const lastSavedAt = useCloudStore((s) => s.lastSavedAt);
+  useEffect(() => { void load(); }, [load, lastSavedAt]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };

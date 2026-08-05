@@ -259,6 +259,18 @@ export function EditorPage() {
     if (!cloudMapIdForLock) return;
     const timer = window.setInterval(() => {
       void cloudApi.editHeartbeat(cloudMapIdForLock, editSessionKey())
+        .then((r) => {
+          // held=false = 편집권을 잃었다 (TTL 만료 후 다른 세션이 가져감).
+          // 이 상태로 계속 편집하면 저장이 409 로 막혀 그 편집분이 사라진다.
+          // 예전에는 응답을 아무도 보지 않았다 (2026-08-05 감사).
+          if (r && r.held === false) {
+            useCloudStore.getState().setError(
+              '다른 창에서 이 맵을 편집 중이라 편집권을 잃었습니다 — '
+              + '[다른 이름으로 저장]으로 지금 내용을 따로 보관하세요.',
+            );
+            useAutosaveStore.getState().setSaveState('error');
+          }
+        })
         .catch(() => { /* 일시 오류 — 다음 주기·저장이 하트비트를 겸한다 */ });
     }, 25_000);
     return () => window.clearInterval(timer);
@@ -273,7 +285,11 @@ export function EditorPage() {
     const risky = saveState === 'dirty'
       || saveState === 'saving'
       || saveState === 'retrying'
-      || saveState === 'error';
+      || saveState === 'error'
+      // 서버에 한 번도 저장되지 않은 문서 — 닫으면 통째로 사라진다.
+      // 손대지 않은 새 맵 골격까지 붙잡지는 않는다(편집 이력이 있을 때만).
+      || (saveState === 'unsaved'
+          && useDocumentStore.getState().past.length > 0);
     if (!risky) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();

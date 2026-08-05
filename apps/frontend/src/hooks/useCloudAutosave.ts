@@ -158,7 +158,22 @@ export function useCloudAutosave(): void {
       // 변경이 skip 을 소모하지 않아 플래그가 남았고, 그 잔존 플래그가
       // 나중의 진짜 편집 1건을 조용히 삼켰다 (2026-08-04 점검).
       if (skipNextChange) { skipNextChange = false; return; }
-      if (!useCloudStore.getState().cloudMapId) return; // 미연결이면 무시
+      if (!useCloudStore.getState().cloudMapId) {
+        // 서버에 연결되지 않은 문서(미저장 새 맵·Local 파일·읽기 전용)를
+        // 편집했다. 자동저장 대상이 아닌 것은 맞지만, 배지가 '저장됨'이라고
+        // 말하면 **거짓말**이다 — 이 편집은 어디에도 저장돼 있지 않고,
+        // 탭을 닫으면 그대로 사라진다. 사실대로 '저장 안 됨'으로 알리고,
+        // 창을 닫을 때 브라우저가 묻게 한다(EditorPage beforeunload).
+        // (2026-08-05 감사에서 실측: 5회 편집 후에도 배지가 '저장됨'이었다)
+        //
+        // 단, **잃을 것이 없는 빈 문서**('문서 없음' 자리표시·가지 0개)는
+        // 그대로 'saved' — 첫 화면부터 경고를 띄우지 않는다.
+        const cur = useDocumentStore.getState().map;
+        const nothingToLose =
+          isDocumentEmpty(cur) || (cur.branches?.length ?? 0) === 0;
+        useAutosaveStore.getState().setSaveState(nothingToLose ? 'saved' : 'unsaved');
+        return;
+      }
       useAutosaveStore.getState().setSaveState('dirty');
       window.clearTimeout(timer);
       timer = window.setTimeout(() => void doSave(), DEBOUNCE_MS);

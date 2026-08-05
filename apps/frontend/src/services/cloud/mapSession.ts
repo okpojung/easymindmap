@@ -17,6 +17,7 @@ import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { suppressCloudAutosave } from '@/hooks/useCloudAutosave';
 import { cloudApi, CloudError, type MapKind } from '@/services/cloud/apiClient';
+import { editSessionKey } from '@/services/cloud/editSession';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 
 /**
@@ -31,24 +32,9 @@ import { authEnabled, useAuthStore } from '@/stores/authStore';
  */
 export const SNAPSHOT_VERSION = 2;
 
-// ── 단일 세션 편집 잠금 (2026-08-04) ─────────────────────────────────
-// 탭마다 고유한 세션 키 — sessionStorage 라 같은 브라우저의 다른 탭도
-// "다른 세션"이다. 서버 map_edit_locks 가 이 키로 편집권을 관리한다.
-const EDIT_SESSION_STORAGE = 'emm.editSession';
-
-export function editSessionKey(): string {
-  try {
-    let k = window.sessionStorage.getItem(EDIT_SESSION_STORAGE);
-    if (!k) {
-      k = (window.crypto?.randomUUID?.() ??
-        `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
-      window.sessionStorage.setItem(EDIT_SESSION_STORAGE, k);
-    }
-    return k;
-  } catch {
-    return 'no-session-storage';
-  }
-}
+// 단일 세션 편집 잠금의 세션 키는 editSession.ts 에 있다 — 자동저장도
+// 같은 키를 써야 하는데 그쪽에서 이 파일을 import 하면 순환이 된다.
+export { editSessionKey };
 
 /** 현재 연결된 맵의 편집 잠금을 해제 (닫기·새 문서 전환 시 — 베스트 에포트) */
 function releaseEditLock(): void {

@@ -11,8 +11,13 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { downloadMapAsHtml } from '@/export/exportHtml';
 import { downloadMapAsMarkdown } from '@/export/exportMarkdown';
+import { useCloudStore } from '@/stores/cloudStore';
 
-export type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
+// 'retrying' = 저장이 실패했고 **실제로 자동 재시도 중**,
+// 'error' = 재시도까지 다 실패해 더는 자동으로 시도하지 않음.
+// (2026-08-05: 예전에는 'error' 문구가 "재시도 중"이라고 말했지만
+//  재시도 기능 자체가 없어, 기다려도 저장되지 않는 상태를 감췄다)
+export type SaveState = 'saved' | 'saving' | 'dirty' | 'retrying' | 'error';
 
 interface Props {
   t: ThemeTokens;
@@ -63,11 +68,14 @@ export function TopToolbar({
     return () => window.removeEventListener('pointerdown', close);
   }, [exportOpen]);
 
+  // 저장 실패 사유 — 배지 툴팁에 그대로 보여 준다 (2026-08-05)
+  const cloudError = useCloudStore((s) => s.error);
   const saveStateInfo = ({
     saved: { text: '저장됨 · 방금 전', color: t.textMuted, dot: t.success },
     saving: { text: '저장 중…', color: t.accent, dot: t.accent },
     dirty: { text: '변경사항 있음', color: t.warning, dot: t.warning },
-    error: { text: '저장 실패 — 재시도 중', color: t.danger, dot: t.danger },
+    retrying: { text: '저장 실패 — 재시도 중…', color: t.warning, dot: t.warning },
+    error: { text: '저장 실패 — ☁ 저장을 눌러 주세요', color: t.danger, dot: t.danger },
   } as const)[saveState];
 
   return (
@@ -169,6 +177,12 @@ export function TopToolbar({
       <div style={{ flex: 1 }} />
 
       <div
+        data-testid="save-badge"
+        data-save-state={saveState}
+        // 실패했을 때는 **왜** 실패했는지 마우스를 올려 볼 수 있게 한다
+        title={saveState === 'error' || saveState === 'retrying'
+          ? (cloudError ?? '서버에 저장하지 못했습니다.')
+          : undefined}
         style={{
           display: 'flex',
           alignItems: 'center',

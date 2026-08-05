@@ -1281,7 +1281,7 @@ export function Canvas({
                     x={tgt.x - tgt.w / 2 - 3} y={tgt.y - tgt.h / 2 - 3}
                     width={tgt.w + 6} height={tgt.h + 6} rx={10}
                     fill={t.success} fillOpacity="0.12"
-                    stroke={t.success} strokeWidth={3} />
+                    stroke={t.success} strokeWidth={2} />
                 )}
                 <rect x={bar.x} y={bar.y} width={bar.w} height={bar.h} rx={3}
                   fill={t.success} opacity="0.95" />

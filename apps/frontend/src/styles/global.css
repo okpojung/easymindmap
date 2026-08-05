@@ -56,3 +56,32 @@ mark { background: transparent; }
   font-size: 1.1em;
   margin: 8px 0 4px;
 }
+
+/* ── 목록 행 공통 강조 (2026-08-05) ─────────────────────────────────
+ * 문서함·검색 결과·첨부 목록 등 **모든 클릭 가능한 목록 행**은 이
+ * 클래스를 쓴다. 마우스를 올린 줄이 어느 것인지 또렷하게 보여 정확한
+ * 항목을 고를 수 있다 (실사용 보고 — 첨부 목록·HTML 뷰어 검색은
+ * 되는데 문서함·에디터 검색은 아무 표시가 없었다).
+ *
+ * 색은 테마에 따라 달라지므로 쓰는 쪽이 CSS 변수로 넘긴다:
+ *   style={{ '--row-hover': t.primarySoft, '--row-hover-bd': t.primaryBorder }}
+ * 선택된 행은 aria-selected="true" 를 주면 항상 강조된 채로 남는다.
+ * 자세한 규칙: docs/05-implementation/coding-conventions.md
+ */
+.mm-list-row {
+  border: 1px solid transparent;
+  border-radius: 7px;
+  transition: background-color .12s ease, border-color .12s ease;
+}
+.mm-list-row:hover {
+  background: var(--row-hover, rgba(120, 110, 90, 0.10));
+  border-color: var(--row-hover-bd, transparent);
+}
+.mm-list-row:focus-visible {
+  outline: 2px solid var(--row-hover-bd, #999);
+  outline-offset: -2px;
+}
+.mm-list-row[aria-selected='true'] {
+  background: var(--row-hover, rgba(120, 110, 90, 0.10));
+  border-color: var(--row-hover-bd, transparent);
+}

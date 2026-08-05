@@ -13,6 +13,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
+import { editSessionKey } from '@/services/cloud/editSession';
 
 const DEBOUNCE_MS = 1500;
 
@@ -20,6 +21,21 @@ let timer: number | undefined;
 let saving = false;
 let rerun = false;
 let skipNextChange = false;
+// 실패 재시도 (2026-08-05) — 배지는 예전부터 "저장 실패 — 재시도 중"
+// 이라고 말했지만 **실제로는 재시도하지 않았다**. 되돌리기(Ctrl+Z)를
+// 여러 번 하다 한 번 실패하면 그 문구가 그대로 굳어, 사용자는 기다려도
+// 저장되지 않는 상태에 놓였다. 문구를 사실로 만든다 — 짧은 backoff 로
+// MAX_RETRY 번까지 자동 재시도하고, 그래도 안 되면 배지를 "저장 실패"
+// 로 바꿔 손으로 ☁ 저장하도록 안내한다.
+const RETRY_DELAYS = [1000, 3000]; // 1초 → 3초
+let retryTimer: number | undefined;
+let retryCount = 0;
+
+function cancelRetry(): void {
+  window.clearTimeout(retryTimer);
+  retryTimer = undefined;
+  retryCount = 0;
+}
 
 /**
  * 바로 다음 "맵 변경" 1건만 자동저장에서 제외하고, **이미 예약된 저장
@@ -36,6 +52,7 @@ export function suppressCloudAutosave(): void {
   window.clearTimeout(timer);
   timer = undefined;
   rerun = false;
+  cancelRetry(); // 맵이 바뀌면 이전 맵의 재시도는 의미가 없다
 }
 
 // mapSession.buildSnapshot 과 같은 v2 형태 — mapSession 이 이 파일의
@@ -74,7 +91,14 @@ async function doSave() {
     // 이름은 **서버에 저장된 그 이름 그대로** — 자동저장이 맵 이름을
     // 바꿔 버리면 "열었던 이름 그대로 저장" 규칙이 깨진다 (2026-08-02).
     const title = useCloudStore.getState().cloudTitle ?? undefined;
-    const res = await cloudApi.saveDocument(mapId, snapshot(), title);
+    // **편집 세션 키를 반드시 실어야 한다.** 맵을 열 때 이 탭이 편집
+    // 잠금을 쥐는데(2026-08-04), 키 없이 보낸 저장은 서버가 "다른 세션이
+    // 편집 중"으로 보고 409 로 거절한다. 즉 자동저장이 자기 자신의 잠금에
+    // 막혀 전부 실패했다 — 되돌리기 중 뜨던 "저장 실패" 배지의 진짜 원인
+    // (2026-08-05 재현·수정). 명시 저장(saveCurrentMap)은 처음부터 키를
+    // 싣고 있었기에 ☁ 저장만은 되던 것이 증상을 가렸다.
+    const res = await cloudApi.saveDocument(
+      mapId, snapshot(), title, false, editSessionKey());
     // 응답이 오는 사이 맵이 닫혔거나(unlink) 다른 맵으로 바뀌었으면
     // 링크를 되살리지 않는다 — 이전에는 무조건 link 해서, 닫은 맵의
     // 연결이 부활한 상태에서 rerun 이 '문서 없음' 플레이스홀더를 그
@@ -82,13 +106,26 @@ async function doSave() {
     if (useCloudStore.getState().cloudMapId === mapId) {
       useCloudStore.getState().link(mapId, res.updatedAt);
       useAutosaveStore.getState().setSaveState('saved');
+      cancelRetry();
     }
   } catch (err) {
     if (useCloudStore.getState().cloudMapId === mapId) {
-      useAutosaveStore.getState().setSaveState('error');
-      useCloudStore.getState().setError(
-        err instanceof CloudError ? err.message : '자동 저장 실패',
-      );
+      const msg = err instanceof CloudError ? err.message : '자동 저장 실패';
+      useCloudStore.getState().setError(msg);
+      const delay = RETRY_DELAYS[retryCount];
+      if (delay !== undefined) {
+        // 아직 재시도가 남았다 — 배지는 'retrying'(= "재시도 중")
+        retryCount += 1;
+        useAutosaveStore.getState().setSaveState('retrying');
+        window.clearTimeout(retryTimer);
+        retryTimer = window.setTimeout(() => {
+          if (useCloudStore.getState().cloudMapId === mapId) void doSave();
+        }, delay);
+      } else {
+        // 다 써 버렸다 — 더 기다려도 소용없으니 사실대로 알린다
+        cancelRetry();
+        useAutosaveStore.getState().setSaveState('error');
+      }
     }
   } finally {
     saving = false;

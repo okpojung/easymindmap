@@ -14,10 +14,24 @@ import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import { editSessionKey } from '@/services/cloud/editSession';
+import { useAppSettingsStore } from '@/stores/appSettingsStore';
+import { clearLocalDraft } from '@/hooks/useLocalDraft';
 
 const DEBOUNCE_MS = 1500;
+/**
+ * **최대 대기 한도** (2026-08-05 감사). 디바운스는 "손을 멈춘 뒤 1.5초"라
+ * 계속 편집하면 타이머가 계속 리셋돼 **저장이 무한정 미뤄진다** — 간격
+ * 슬라이더를 30초 드래그하거나 노드를 쉼 없이 추가하면 그동안 서버에는
+ * 아무것도 가지 않는다. 첫 변경으로부터 이 시간이 지나면 편집 중이어도
+ * 한 번 저장한다.
+ */
+const MAX_WAIT_MS = 5000;
 
 let timer: number | undefined;
+/** 아직 저장되지 않은 첫 변경 시각 (maxWait 판정용) */
+let firstPendingAt = 0;
+/** 마지막으로 히스토리 버전을 남긴 시각 (주기적 버전 — R4) */
+let lastVersionAt = 0;
 let saving = false;
 let rerun = false;
 let skipNextChange = false;
@@ -51,6 +65,7 @@ export function suppressCloudAutosave(): void {
   skipNextChange = true;
   window.clearTimeout(timer);
   timer = undefined;
+  firstPendingAt = 0;
   rerun = false;
   cancelRetry(); // 맵이 바뀌면 이전 맵의 재시도는 의미가 없다
 }
@@ -109,8 +124,16 @@ async function doSave() {
     // 막혀 전부 실패했다 — 되돌리기 중 뜨던 "저장 실패" 배지의 진짜 원인
     // (2026-08-05 재현·수정). 명시 저장(saveCurrentMap)은 처음부터 키를
     // 싣고 있었기에 ☁ 저장만은 되던 것이 증상을 가렸다.
+    // **주기적 버전** (2026-08-05 감사 R4) — 자동저장은 원래 버전을 남기지
+    // 않아서, 자동저장으로 지워진 내용은 세션 undo 말고 복구 수단이 없었다.
+    // 개인 설정 간격(기본 5분)마다 한 번은 버전으로도 남긴다.
+    const intervalMs =
+      useAppSettingsStore.getState().versionIntervalMin * 60_000;
+    const now = Date.now();
+    const keepVersion = lastVersionAt === 0 || now - lastVersionAt >= intervalMs;
     const res = await cloudApi.saveDocument(
-      mapId, snapshot(), title, false, editSessionKey());
+      mapId, snapshot(), title, keepVersion, editSessionKey());
+    if (keepVersion) lastVersionAt = now;
     // 응답이 오는 사이 맵이 닫혔거나(unlink) 다른 맵으로 바뀌었으면
     // 링크를 되살리지 않는다 — 이전에는 무조건 link 해서, 닫은 맵의
     // 연결이 부활한 상태에서 rerun 이 '문서 없음' 플레이스홀더를 그
@@ -119,6 +142,9 @@ async function doSave() {
       useCloudStore.getState().link(mapId, res.updatedAt);
       useAutosaveStore.getState().setSaveState('saved');
       cancelRetry();
+      firstPendingAt = 0;
+      // 서버에 들어갔으니 이 맵의 로컬 초안은 더 필요 없다
+      void clearLocalDraft(mapId);
     }
   } catch (err) {
     if (useCloudStore.getState().cloudMapId === mapId) {
@@ -158,10 +184,31 @@ export function useCloudAutosave(): void {
       // 변경이 skip 을 소모하지 않아 플래그가 남았고, 그 잔존 플래그가
       // 나중의 진짜 편집 1건을 조용히 삼켰다 (2026-08-04 점검).
       if (skipNextChange) { skipNextChange = false; return; }
-      if (!useCloudStore.getState().cloudMapId) return; // 미연결이면 무시
+      if (!useCloudStore.getState().cloudMapId) {
+        // 서버에 연결되지 않은 문서(미저장 새 맵·Local 파일·읽기 전용)를
+        // 편집했다. 자동저장 대상이 아닌 것은 맞지만, 배지가 '저장됨'이라고
+        // 말하면 **거짓말**이다 — 이 편집은 어디에도 저장돼 있지 않고,
+        // 탭을 닫으면 그대로 사라진다. 사실대로 '저장 안 됨'으로 알리고,
+        // 창을 닫을 때 브라우저가 묻게 한다(EditorPage beforeunload).
+        // (2026-08-05 감사에서 실측: 5회 편집 후에도 배지가 '저장됨'이었다)
+        //
+        // 단, **잃을 것이 없는 빈 문서**('문서 없음' 자리표시·가지 0개)는
+        // 그대로 'saved' — 첫 화면부터 경고를 띄우지 않는다.
+        const cur = useDocumentStore.getState().map;
+        const nothingToLose =
+          isDocumentEmpty(cur) || (cur.branches?.length ?? 0) === 0;
+        useAutosaveStore.getState().setSaveState(nothingToLose ? 'saved' : 'unsaved');
+        return;
+      }
       useAutosaveStore.getState().setSaveState('dirty');
+      const now = Date.now();
+      if (firstPendingAt === 0) firstPendingAt = now;
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => void doSave(), DEBOUNCE_MS);
+      // 계속 편집 중이어도 첫 변경으로부터 MAX_WAIT_MS 가 지나면 즉시 저장
+      const wait = Math.max(0, Math.min(
+        DEBOUNCE_MS, firstPendingAt + MAX_WAIT_MS - now,
+      ));
+      timer = window.setTimeout(() => void doSave(), wait);
     });
     return () => {
       unsub();

@@ -17,7 +17,12 @@ import { useCloudStore } from '@/stores/cloudStore';
 // 'error' = 재시도까지 다 실패해 더는 자동으로 시도하지 않음.
 // (2026-08-05: 예전에는 'error' 문구가 "재시도 중"이라고 말했지만
 //  재시도 기능 자체가 없어, 기다려도 저장되지 않는 상태를 감췄다)
-export type SaveState = 'saved' | 'saving' | 'dirty' | 'retrying' | 'error';
+export type SaveState =
+  | 'saved' | 'saving' | 'dirty' | 'retrying' | 'error'
+  // 서버에 연결되지 않은 문서(미저장 새 맵·불러온 파일·읽기 전용)를
+  // 편집한 상태 — 자동저장 대상이 아니라서 **어디에도 저장돼 있지 않다**.
+  // 예전에는 이 상태에서도 배지가 '저장됨'이라고 말했다 (2026-08-05 감사).
+  | 'unsaved';
 
 interface Props {
   t: ThemeTokens;
@@ -74,6 +79,7 @@ export function TopToolbar({
     saved: { text: '저장됨 · 방금 전', color: t.textMuted, dot: t.success },
     saving: { text: '저장 중…', color: t.accent, dot: t.accent },
     dirty: { text: '변경사항 있음', color: t.warning, dot: t.warning },
+    unsaved: { text: '저장 안 됨 — ☁ 저장을 눌러 주세요', color: t.warning, dot: t.warning },
     retrying: { text: '저장 실패 — 재시도 중…', color: t.warning, dot: t.warning },
     error: { text: '저장 실패 — ☁ 저장을 눌러 주세요', color: t.danger, dot: t.danger },
   } as const)[saveState];

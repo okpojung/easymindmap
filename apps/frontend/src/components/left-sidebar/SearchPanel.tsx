@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { MindNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -73,6 +73,7 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
   const map = useDocumentStore((s) => s.map);
   const expandAncestors = useDocumentStore((s) => s.expandAncestors);
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
+  const selectedId = useInteractionStore((s) => s.selectedId);
   const setSearchHitId = useInteractionStore((s) => s.setSearchHitId);
   const requestCenterNode = useViewportStore((s) => s.requestCenterNode);
 
@@ -140,12 +141,15 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
             requestCenterNode(r.id, 100);
           }}
           title="클릭하면 노란 강조 + 화면 중앙 100% 보기로 이동합니다"
+          className="mm-list-row"
+          aria-selected={selectedId === r.id}
           style={{
-            padding: '8px 10px', borderRadius: 7, marginBottom: 4,
-            background: 'transparent',
-            border: '1px solid transparent',
-            cursor: 'pointer',
-          }}>
+            padding: '8px 10px', marginBottom: 4, cursor: 'pointer',
+            // 목록 행 공통 강조 (global.css .mm-list-row) — 올린 줄이
+            // 또렷하게 보이도록 (2026-08-05 보고)
+            ['--row-hover' as string]: t.primarySoft,
+            ['--row-hover-bd' as string]: t.primaryBorder,
+          } as CSSProperties}>
           <div style={{
             fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 2,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

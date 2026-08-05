@@ -234,7 +234,12 @@ export function MapBrowser({
     padding: '7px 10px',
     borderBottom: `1px solid ${t.divider}`,
     fontSize: 13,
-  };
+    // 목록 행 공통 강조 (global.css .mm-list-row) — 마우스를 올린 줄이
+    // 또렷하게 보인다 (2026-08-05 보고: 첨부 목록·뷰어 검색은 되는데
+    // 문서함은 아무 표시가 없어 어느 줄을 고르는지 알기 어려웠다)
+    ['--row-hover' as string]: t.primarySoft,
+    ['--row-hover-bd' as string]: t.primaryBorder,
+  } as React.CSSProperties;
 
   // 관리 버튼 — ✏/📂/🗑 이모지는 글꼴에 따라 알아볼 수 없게 작아진다
   // (2026-08-05 보고). 앱 SVG 아이콘 + 테두리로 눌리는 버튼임을 보인다.
@@ -376,7 +381,8 @@ export function MapBrowser({
       {/* 목록 */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {childFolders.map((f) => (
-          <div key={f.folderId} data-testid="browser-folder" style={rowStyle}>
+          <div key={f.folderId} data-testid="browser-folder"
+            className="mm-list-row" style={rowStyle}>
             <span style={{ fontSize: 15 }}>📁</span>
             <button
               onClick={() => setCwd(f.folderId)}
@@ -416,7 +422,9 @@ export function MapBrowser({
           </div>
         ) : (
           maps.map((m) => (
-            <div key={m.mapId} data-testid="browser-map" style={rowStyle}>
+            <div key={m.mapId} data-testid="browser-map"
+              className="mm-list-row" aria-selected={cloudMapId === m.mapId}
+              style={rowStyle}>
               {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
                   (2026-08-02 사용자 보고) — 앱 SVG 아이콘으로 통일 */}
               <span style={{ display: 'flex', color: t.primary }}>

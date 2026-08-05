@@ -200,6 +200,36 @@ export function useEverything() {
 
 ---
 
+## 5-1. 목록 UI 규칙 — 올린 줄이 보여야 한다 (2026-08-05)
+
+**클릭할 수 있는 목록의 모든 행은 마우스를 올렸을 때 그 줄이 또렷하게
+보여야 한다.** 문서함·검색 결과·첨부 목록·히스토리처럼 "여러 줄 중
+하나를 고르는" 화면에서, 어느 줄을 고르는지 알 수 없으면 엉뚱한 항목을
+누르게 된다 (실사용 보고 — 첨부 목록과 HTML 뷰어 검색은 되는데 문서함과
+에디터 검색은 아무 표시가 없었다).
+
+새 목록을 만들 때는 **직접 스타일을 짜지 말고** 공용 클래스를 쓴다:
+
+```tsx
+<div
+  className="mm-list-row"
+  aria-selected={selected}          // 선택된 줄은 계속 강조된 채로
+  style={{
+    padding: '8px 10px',
+    ['--row-hover' as string]: t.primarySoft,      // 테마 색을 넘긴다
+    ['--row-hover-bd' as string]: t.primaryBorder,
+  } as CSSProperties}
+>
+```
+
+`styles/global.css` 의 `.mm-list-row` 가 hover·focus-visible·
+`aria-selected` 를 한 번에 처리한다. 색만 CSS 변수로 넘기므로 라이트/
+다크 모두 자동으로 맞는다. 키보드 이동(Tab)도 같은 강조를 받는다.
+
+지키는 이유는 일관성이다 — 한 화면에서만 되는 강조는 "이 목록은 왜
+반응이 없지?" 하는 의심을 만든다. 목록이 늘어날 때마다 같은 클래스를
+붙이면 앱 전체가 같은 규칙으로 움직인다.
+
 ## 6. Zustand Store 규칙
 
 ```typescript

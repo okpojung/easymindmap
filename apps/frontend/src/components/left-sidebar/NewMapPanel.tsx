@@ -188,7 +188,8 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       return;
     }
     const cur = useDocumentStore.getState().map;
-    loadMap(applyTemplateStyles(cur, tpl.map));
+    // 불러온 문서에 스타일만 입힌다 — 출처 유지 (보통 출처 없음)
+    loadMap(applyTemplateStyles(cur, tpl.map), { keepOrigin: true });
     const lt = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
     if (lt) setLayoutType(lt);
     if (tpl.editor?.spacingX) setSpacingX(tpl.editor.spacingX);

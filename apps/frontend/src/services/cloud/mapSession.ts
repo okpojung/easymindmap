@@ -158,6 +158,8 @@ export async function saveCurrentMap(
     const res = await cloudApi.saveDocument(
       id, buildSnapshot(), title, keepVersion, editSessionKey(), allowEmpty === 'yes');
     useCloudStore.getState().link(id, res.updatedAt);
+    // 이 문서를 그 맵에 저장했으니 이제 그 맵의 문서다 (자동저장 출처 검사)
+    useDocumentStore.getState().setDocOrigin(id);
     useAutosaveStore.getState().setSaveState('saved');
     // unchanged: 내용이 그대로라 서버가 저장·히스토리 생성을 생략했다
     return { mapId: id, unchanged: res.unchanged === true };
@@ -191,6 +193,7 @@ export async function saveNewMap(opts: {
     useCloudStore.getState().link(created.mapId, res.updatedAt, {
       title: opts.title, folderId: opts.folderId, kind: opts.kind,
     });
+    useDocumentStore.getState().setDocOrigin(created.mapId);
     useAutosaveStore.getState().setSaveState('saved');
     return { mapId: created.mapId };
   } finally {
@@ -207,6 +210,7 @@ export async function saveNewMap(opts: {
  */
 export function detachFromServer(): void {
   suppressCloudAutosave();
+  useDocumentStore.getState().setDocOrigin(null); // 출처도 끊는다
   releaseEditLock(); // 편집권 반납 — 다른 세션이 곧바로 열 수 있게
   useCloudStore.getState().unlink();
   useAutosaveStore.getState().setSaveState('saved');
@@ -322,7 +326,8 @@ export async function openMapHere(mapId: string): Promise<{ readOnly: boolean }>
     suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
     // 열기는 **문서 경계** — 되돌리기가 '열기 이전' 문서로 넘어가면
     // 안 된다 (그 상태로 저장하면 이 맵이 비워진다, §7.4)
-    useDocumentStore.getState().loadMap(loadedMap as never, { resetHistory: true });
+    useDocumentStore.getState().loadMap(loadedMap as never,
+      { resetHistory: true, serverMapId: mapId });
     // 서버의 맵 이름을 문서 제목으로도 맞춘다 — 이후 저장은 이 이름 그대로
     useDocumentStore.getState().setMapTitle(title);
     // 저장 당시의 레이아웃·간격 복원 (v2 스냅샷 — 없으면 그대로 둔다)

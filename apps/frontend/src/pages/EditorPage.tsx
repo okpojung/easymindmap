@@ -264,6 +264,25 @@ export function EditorPage() {
     return () => window.clearInterval(timer);
   }, [cloudMapIdForLock]);
 
+  // **저장되지 않은 채 창을 닫으면 브라우저가 한 번 묻게 한다**
+  // (2026-08-05 저장 감사). 자동저장은 1.5초 디바운스라 그 사이에 탭을
+  // 닫으면 마지막 편집이 사라진다 — 지금까지는 아무 경고도 없었다.
+  // beforeunload 에서 동기 저장은 불가능하므로(비동기 fetch 는 취소된다)
+  // "정말 나가시겠습니까?"로 사용자에게 결정권을 준다.
+  useEffect(() => {
+    const risky = saveState === 'dirty'
+      || saveState === 'saving'
+      || saveState === 'retrying'
+      || saveState === 'error';
+    if (!risky) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ''; // 크롬은 브라우저 기본 문구를 쓴다
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [saveState]);
+
   // 커서가 설명 텍스트를 가리지 않는 전역 커스텀 툴팁 (요소 위쪽 표시)
   useEffect(() => {
     installGlobalTooltip();

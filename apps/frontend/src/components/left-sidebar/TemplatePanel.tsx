@@ -74,7 +74,8 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
     map: SampleMap;
     editor?: { layoutType?: LayoutType; spacingX?: number; spacingY?: number };
   }) => {
-    loadMap(applyTemplateStyles(map, tpl.map));
+    // 같은 문서에 스타일만 입힌다 — 서버 맵 출처를 유지한다
+    loadMap(applyTemplateStyles(map, tpl.map), { keepOrigin: true });
     const lt = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
     if (lt) setLayoutType(lt);
     if (tpl.editor?.spacingX) setSpacingX(tpl.editor.spacingX);

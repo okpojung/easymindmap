@@ -58,7 +58,15 @@ async function doSave() {
   // 방어선, 2026-08-04 유실 보고) — 이 상태가 서버 맵에 쓰이면 저장해
   // 둔 내용이 통째로 사라진다. 맵을 정말 비우고 싶으면 수동 ☁ 저장.
   const doc = useDocumentStore.getState().map;
+  // **가지가 하나도 없으면 자동저장하지 않는다.** 이전 가드는
+  // isDocumentEmpty(제목이 '문서 없음' + 가지 0)와 제목만 봤는데,
+  // 맵 전환 레이스에서 **제목은 남고 가지만 비는** 중간 상태가 생겨
+  // 그 문서가 서버를 덮어썼다 (2026-08-05 두 번째 유실 보고).
+  // 자동저장은 히스토리 버전을 남기지 않아 되돌릴 수단이 없으므로,
+  // "내용이 사라지는 방향"의 자동저장은 아예 보내지 않는다.
+  // 정말 비우려면 수동 ☁ 저장(버전이 남는다).
   if (isDocumentEmpty(doc) || doc.title === EMPTY_MAP_TITLE) return;
+  if (!doc.branches || doc.branches.length === 0) return;
   if (saving) { rerun = true; return; }
   saving = true;
   useAutosaveStore.getState().setSaveState('saving');

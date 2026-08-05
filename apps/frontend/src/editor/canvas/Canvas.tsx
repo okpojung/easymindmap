@@ -705,6 +705,27 @@ export function Canvas({
         return;
       }
 
+      // ── 노드 잘라내기 (Ctrl+X) — 복사와 같은 방식으로 담고 원본을
+      // 지운다. 붙여넣기(Ctrl+V)는 복사와 동일 경로 (2026-08-05 보고:
+      // 복사·붙여넣기는 되는데 잘라내기가 없었다). 중심 주제는 지울 수
+      // 없으므로 복사와 마찬가지로 대상에서 빠진다.
+      if (mod && (e.key === 'x' || e.key === 'X')) {
+        const ids = multiSelectedIds.length > 1
+          ? multiSelectedIds
+          : selectedId && selectedId !== 'root' ? [selectedId] : [];
+        if (!ids.length) return;
+        if ((window.getSelection()?.toString() ?? '').trim()) return;
+        e.preventDefault();
+        const subtrees = collectSubtrees(useDocumentStore.getState().map, ids);
+        if (!subtrees.length) return;
+        const token = stashNodes(subtrees);
+        void navigator.clipboard?.writeText?.(token).catch(() => { /* http 등 */ });
+        // 담은 뒤 원본 삭제 — Ctrl+Z 한 번으로 되돌아온다
+        if (ids.length > 1) deleteNodesBulk(ids);
+        else deleteNode(ids[0]);
+        return;
+      }
+
       // Undo / redo (in-memory, no DB)
       if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
         e.preventDefault();

@@ -187,12 +187,13 @@ export const RETRY_REQUEST_TEXT =
  *
  * `prefill` 이 있으면 주소에 질문을 실어 **채팅창에 자동 입력**된다
  * (2026-08-05 실사용 보고: 눌러도 질문이 안 들어간다):
- *   - 'topic'  = 주제만. Copilot GPT 는 EMM 규칙이 내장돼 있어 주제만
- *                보내면 된다 — 주소가 짧아 가장 확실하다.
+ *   - 'topic'  = 주제만 (규칙이 내장된 전용 GPT 용).
  *   - 'prompt' = 규칙까지 담은 전체 프롬프트. 길면(URL 한계) 실패하므로
  *                PREFILL_MAX_LEN 이하일 때만 싣는다.
- *   - 없음     = 자동 입력 수단이 없는 서비스(Gemini) — 열기만 하고
- *                붙여넣기로 진행한다.
+ *   - 없음     = 자동 입력이 되지 않는 곳 — 열기만 한다.
+ *                Gemini 는 파라미터 자체가 없고, **전용 GPT 페이지
+ *                (chatgpt.com/g/…)는 ?q= 를 무시한다**(2026-08-05 실사용
+ *                확인). 이런 곳은 클립보드 + Ctrl+V 로 진행한다.
  * 어느 경로든 **클립보드 복사는 항상 함께** 하므로, 자동 입력이 막혀도
  * 그 자리에서 Ctrl+V 로 이어갈 수 있다.
  */
@@ -217,7 +218,7 @@ export const AI_SHORTCUTS: {
     kind: 'plain',
     url: 'https://claude.ai/new',
     prefill: 'prompt',
-    tip: 'Claude 새 대화를 열고 ① 프롬프트(EMM 규칙 + 주제)를 자동 입력합니다 — 너무 길면 붙여넣기로 진행하세요 (클립보드에도 복사됩니다)',
+    tip: 'Claude 새 대화를 엽니다 — ① 프롬프트를 자동 입력해 보고, 들어가지 않으면 Ctrl+V 로 붙여넣으세요 (클립보드에 복사해 둡니다)',
   },
   {
     key: 'chatgpt',
@@ -226,7 +227,7 @@ export const AI_SHORTCUTS: {
     // 일반 ChatGPT — EMM 규칙을 모르므로 프롬프트 전체가 필요하다.
     url: 'https://chatgpt.com/',
     prefill: 'prompt',
-    tip: '일반 ChatGPT 새 대화를 열고 ① 프롬프트(EMM 규칙 + 주제)를 자동 입력합니다 — 너무 길면 붙여넣기로 진행하세요',
+    tip: '일반 ChatGPT 새 대화를 엽니다 — ① 프롬프트를 자동 입력해 보고, 들어가지 않으면 Ctrl+V 로 붙여넣으세요 (클립보드에 복사해 둡니다)',
   },
   {
     key: 'gemini',
@@ -246,8 +247,11 @@ export const AI_SHORTCUTS: {
     // EMM 템플릿이 GPT 안에 내장돼 있어 주제만 보내면 EMM 코드블록이
     // 나온다. ChatGPT 로그인 필요.
     url: 'https://chatgpt.com/g/g-6a713796a3a48191b6099a674f0d80d2-easymindmap-copilot',
-    prefill: 'topic',
-    tip: 'EasyMindMap 전용 ChatGPT 앱 — EMM 규칙이 안에 들어 있어 ① 프롬프트 없이 주제만 자동 입력됩니다 (ChatGPT 로그인 필요)',
+    // 전용 GPT 페이지(chatgpt.com/g/…)는 ?q= 를 무시한다 — 실사용에서
+    // 주소로 넘긴 질문이 채팅창에 들어가지 않는 것을 확인했다
+    // (2026-08-05). 그래서 프리필을 걸지 않고 **주제를 클립보드에**
+    // 넣어 준다 (열린 창에서 Ctrl+V 한 번).
+    tip: 'EasyMindMap 전용 ChatGPT 앱을 엽니다 — EMM 규칙이 안에 있어 ① 프롬프트 없이 주제만 붙여넣으면 됩니다. 주제는 클립보드에 복사해 둡니다 (ChatGPT 로그인 필요)',
   },
 ];
 

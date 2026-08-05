@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { DatabaseService } from '../database/database.service';
 import { FoldersService } from '../folders/folders.service';
@@ -23,6 +23,8 @@ interface MapRow {
 
 @Injectable()
 export class MapsService {
+  private readonly log = new Logger(MapsService.name);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly folders: FoldersService,
@@ -266,13 +268,35 @@ export class MapsService {
     // (+ 히스토리 버전을 남기면 새 문서 크기만큼 한 번 더).
     const docJson = JSON.stringify(doc);
     const newBytes = Buffer.byteLength(docJson);
-    const { rows: cur } = await this.db.query<{ b: string; same: boolean }>(
+    const { rows: cur } = await this.db.query<{
+      b: string; same: boolean; branches: number | null;
+    }>(
       `SELECT COALESCE(octet_length(doc::text), 0) AS b,
-              (doc = $2::jsonb) AS same
+              (doc = $2::jsonb) AS same,
+              jsonb_array_length(doc -> 'map' -> 'branches') AS branches
          FROM public.map_documents WHERE map_id = $1`,
       [mapId, docJson],
     );
     const sameDoc = cur[0]?.same === true;
+
+    // ── 마지막 방어선: 자동저장은 **내용을 지울 수 없다** ──────────────
+    // 자동저장(keepVersion=false)이 "가지가 하나도 없는 문서"로 내용이
+    // 있던 문서를 덮어쓰려 하면 거부한다. 프런트에도 같은 취지의 가드가
+    // 있지만(useCloudAutosave) 맵 전환 레이스가 두 번이나 이를 뚫고
+    // 사용자의 맵을 비웠다(2026-08-04·08-05 실사용 보고). 자동저장은
+    // 히스토리 버전을 남기지 않아 되돌릴 수단이 없으므로, 서버가
+    // 마지막으로 막는다. **명시 저장(☁ 저장·맵 닫기)은 사용자의 뜻이고
+    // 히스토리 버전이 남으므로 그대로 통과시킨다.**
+    const snapForGuard = doc as { map?: { branches?: unknown[] } };
+    const newBranches = snapForGuard?.map?.branches?.length ?? 0;
+    const oldBranches = cur[0]?.branches ?? 0;
+    if (!keepVersion && newBranches === 0 && oldBranches > 0) {
+      this.log.warn(
+        `자동저장 거부: 빈 문서가 내용 있는 맵을 덮어쓰려 했다 ` +
+        `(map=${mapId}, 기존 가지=${oldBranches})`,
+      );
+      return { mapId, updatedAt: map.updated_at, unchanged: true as const };
+    }
     const sameTitle = title === undefined || title === map.title;
 
     // 조회만 하고 닫은 맵 (2026-08-03 보고) — 내용이 마지막 버전과

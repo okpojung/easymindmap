@@ -395,12 +395,33 @@ export function Canvas({
     const along = vertC
       ? dy * (dirC === 'down' ? 1 : -1)
       : dx * (dirC === 'left' ? -1 : 1);
-    const extentC = vertC ? hit.h : hit.w;
+    const halfAlong = vertC ? hit.h / 2 : hit.w / 2;
+
+    // ── 노드 **안쪽 = 항상 '하위'** (2026-08-05 실사용 보고) ──────────
+    // 이전에는 하위/상위 판정을 오직 "그 노드의 자식 성장 축"으로만
+    // 했다. 그래서 자식이 가로로 자라는 노드(tree-*)에서는 **아래로
+    // 끌어도 영영 하위가 되지 않고** 좌우 형제 표시만 떴다 — 사용자가
+    // 겪은 "왼쪽·오른쪽만 보이고 하위에 못 넣는다"가 이것이다. 존이
+    // 2개만 보이던 것도 같은 이유(축이 노드마다 달라 나머지 2개에
+    // 닿지 못함)다.
+    //
+    // 이제 판정은 **위치가 아니라 영역**으로 한다:
+    //   · 노드 박스 **안** → 'child'  (레이아웃과 무관, 늘 같다)
+    //   · 박스 **바깥 마진** → 자식 축 쪽이면 'child', 반대쪽이면
+    //     'parent', 그 수직 축이면 'before'/'after'
+    // 어느 레이아웃에서든 "노드 위에 올리면 하위"가 성립하고, 네 존을
+    // 모두 만날 수 있다.
+    const insideBox =
+      Math.abs(dx) <= hit.w / 2 && Math.abs(dy) <= hit.h / 2;
 
     let position: DropPosition;
-    if (along > extentC * 0.18) position = 'child';
-    else if (along < -extentC * 0.18 && !isRoot) position = 'parent';
-    else if (sibDir === 'down' || sibDir === 'up') {
+    if (insideBox) {
+      position = 'child';
+    } else if (along > halfAlong) {
+      position = 'child';
+    } else if (along < -halfAlong && !isRoot) {
+      position = 'parent';
+    } else if (sibDir === 'down' || sibDir === 'up') {
       // 부모가 세로 성장 → 형제는 가로 배열: 왼쪽 = 이전, 오른쪽 = 다음
       position = dx < 0 ? 'before' : 'after';
     } else {
@@ -1248,9 +1269,23 @@ export function Canvas({
             } else {
               bar = edgeBar(dirC); // child — 자식이 자라는 변
             }
+            // 'child' 는 **노드 전체를 초록 테두리로 감싸** "이 노드
+            // 안에 넣는다"를 분명히 한다 (2026-08-05) — 변에 붙은 얇은
+            // 바만으로는 형제 바와 혼동됐다. 자식이 자라는 변의 바도
+            // 함께 그려 어느 쪽에 붙을지 같이 보여 준다.
+            const isChild = dropZone.position === 'child';
             return (
-              <rect x={bar.x} y={bar.y} width={bar.w} height={bar.h} rx={3}
-                fill={t.success} opacity="0.95" pointerEvents="none" />
+              <g pointerEvents="none">
+                {isChild && (
+                  <rect
+                    x={tgt.x - tgt.w / 2 - 3} y={tgt.y - tgt.h / 2 - 3}
+                    width={tgt.w + 6} height={tgt.h + 6} rx={10}
+                    fill={t.success} fillOpacity="0.12"
+                    stroke={t.success} strokeWidth={3} />
+                )}
+                <rect x={bar.x} y={bar.y} width={bar.w} height={bar.h} rx={3}
+                  fill={t.success} opacity="0.95" />
+              </g>
             );
           })()}
 

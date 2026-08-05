@@ -249,6 +249,7 @@ export class MapsService {
     title?: string,
     keepVersion = false,
     editSession?: string,
+    allowEmpty = false,
   ) {
     const map = await this.requireOwnedMap(userId, mapId);
 
@@ -279,21 +280,25 @@ export class MapsService {
     );
     const sameDoc = cur[0]?.same === true;
 
-    // ── 마지막 방어선: 자동저장은 **내용을 지울 수 없다** ──────────────
-    // 자동저장(keepVersion=false)이 "가지가 하나도 없는 문서"로 내용이
-    // 있던 문서를 덮어쓰려 하면 거부한다. 프런트에도 같은 취지의 가드가
-    // 있지만(useCloudAutosave) 맵 전환 레이스가 두 번이나 이를 뚫고
-    // 사용자의 맵을 비웠다(2026-08-04·08-05 실사용 보고). 자동저장은
-    // 히스토리 버전을 남기지 않아 되돌릴 수단이 없으므로, 서버가
-    // 마지막으로 막는다. **명시 저장(☁ 저장·맵 닫기)은 사용자의 뜻이고
-    // 히스토리 버전이 남으므로 그대로 통과시킨다.**
+    // ── 마지막 방어선: **빈 문서는 내용 있는 맵을 덮어쓸 수 없다** ─────
+    // 가지가 하나도 없는 문서로 내용이 있던 맵을 덮어쓰는 저장은
+    // 거부한다. 처음에는 자동저장(keepVersion=false)만 막았지만,
+    // **명시 저장에도 같은 사고가 났다** (2026-08-05 세 번째 유실):
+    // 서버 맵을 연 뒤 Ctrl+Z 를 몇 번 더 누르면 '열기 이전' 문서
+    // (문서 없음 자리표시)가 현재 문서가 되는데, 그 상태로 ☁ 저장을
+    // 누르면 사용자의 맵이 통째로 비워졌다.
+    //
+    // 그래서 이제 **자동저장·명시 저장 모두** 막고, 프런트가 확인
+    // 대화상자에서 사용자의 뜻을 받아 allowEmpty=true 로 보낼 때만
+    // 통과시킨다. 즉 "맵을 비우는 저장"은 언제나 사용자가 그렇게
+    // 답한 경우에만 일어난다.
     const snapForGuard = doc as { map?: { branches?: unknown[] } };
     const newBranches = snapForGuard?.map?.branches?.length ?? 0;
     const oldBranches = cur[0]?.branches ?? 0;
-    if (!keepVersion && newBranches === 0 && oldBranches > 0) {
+    if (!allowEmpty && newBranches === 0 && oldBranches > 0) {
       this.log.warn(
-        `자동저장 거부: 빈 문서가 내용 있는 맵을 덮어쓰려 했다 ` +
-        `(map=${mapId}, 기존 가지=${oldBranches})`,
+        `빈 문서 저장 거부: 내용 있는 맵을 덮어쓰려 했다 ` +
+        `(map=${mapId}, 기존 가지=${oldBranches}, keepVersion=${keepVersion})`,
       );
       return { mapId, updatedAt: map.updated_at, unchanged: true as const };
     }

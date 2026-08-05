@@ -148,12 +148,15 @@ export const cloudApi = {
   // (2026-08-03 — 조회만 하고 닫아도 히스토리가 생기던 문제)
   // editSession(탭 고유 키): 단일 세션 편집 잠금 (2026-08-04) — 다른
   // 살아 있는 세션이 편집 중이면 서버가 409 로 거절한다.
+  // allowEmpty: 가지 0개 문서로 **내용 있는 맵을 덮어쓰는 것**을 사용자가
+  // 확인했다는 표시 (2026-08-05). 서버는 이 값이 없으면 그런 저장을
+  // 거부한다 — 자동저장이든 명시 저장이든.
   saveDocument: (
     mapId: string, doc: unknown, title?: string,
-    keepVersion?: boolean, editSession?: string,
+    keepVersion?: boolean, editSession?: string, allowEmpty?: boolean,
   ) =>
     req<{ mapId: string; updatedAt: string; version?: number; unchanged?: boolean }>(
-      'PUT', `/maps/${mapId}/document`, { doc, title, keepVersion, editSession }),
+      'PUT', `/maps/${mapId}/document`, { doc, title, keepVersion, editSession, allowEmpty }),
   // 편집 잠금 — 하트비트(25초 주기, held=false 면 잠금을 잃음)·해제
   editHeartbeat: (mapId: string, sessionKey: string) =>
     req<{ held: boolean }>('POST', `/maps/${mapId}/edit-heartbeat`, { sessionKey }),

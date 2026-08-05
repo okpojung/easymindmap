@@ -30,4 +30,15 @@ export class SaveDocumentDto {
   @IsString()
   @MaxLength(64)
   editSession?: string;
+
+  /**
+   * **"가지가 하나도 없는 문서로 덮어쓰는 것"을 명시적으로 허용**한다
+   * (2026-08-05 세 번째 유실 보고). 서버는 내용이 있던 맵을 빈 문서로
+   * 덮어쓰는 저장을 기본적으로 거부한다 — 자동저장이든 명시 저장이든.
+   * 사용자가 확인 대화상자에서 "그래도 비우고 저장"을 고른 경우에만
+   * 프런트가 이 값을 true 로 보낸다.
+   */
+  @IsOptional()
+  @IsBoolean()
+  allowEmpty?: boolean;
 }

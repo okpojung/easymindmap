@@ -11,6 +11,12 @@ EMM은 마인드맵을 위한 Markdown 포맷이다 — 본문은 100% CommonMar
 - 변환 규칙 상세: [`docs/04-extensions/markdown-export.md`](../../docs/04-extensions/markdown-export.md)
 - 브라우저/Node.js 공용 — DOM·앱 의존 없음, 런타임 의존성 0
 
+접두어가 `easymindmap:`인 것은 의도된 것이며 바꾸지 않는다 — 그 페이로드
+형식은 EMM이 정한 것이고 Mindmap Markdown 사양이 정의한 적이 없어서,
+사양 이름을 쓰면 다른 도구에게 지킬 수 없는 약속을 하게 된다. 근거와
+바꾸는 조건은 [`emm-spec.md` §4.1](../../docs/04-extensions/emm-spec.md)에
+적어두었다.
+
 ## API
 
 ```ts

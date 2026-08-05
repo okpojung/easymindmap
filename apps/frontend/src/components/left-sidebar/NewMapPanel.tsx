@@ -56,7 +56,13 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
 
   const [userTpls, setUserTpls] = useState<UserTemplate[]>([]);
-  const [notice, setNotice] = useState('');
+  // 안내 문구 — 실패는 **빨간 오류 스타일 + 오래 표시 + 스크롤**로
+  // 구분한다. 이전에는 성공과 같은 작은 주황 글씨였고 패널 맨 위에만
+  // 떠서, 아래쪽 '불러오기' 버튼을 쓴 사용자에게는 화면 밖이라
+  // "아무 반응이 없다"로 보였다 (2026-08-05 보고).
+  const [notice, setNotice] =
+    useState<{ msg: string; error: boolean } | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
   // 문서함은 편집 영역에 연다 (2026-08-02 — 팝업 모달에서 이동)
   const setBrowserOpen = useEditorUiStore((s) => s.setBrowserOpen);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -93,9 +99,15 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     setUserTpls(loadUserTemplates());
   }, []);
 
-  const flash = (msg: string) => {
-    setNotice(msg);
-    window.setTimeout(() => setNotice(''), 2500);
+  const flash = (msg: string, error = false) => {
+    setNotice({ msg, error });
+    window.setTimeout(() => setNotice(null), error ? 8000 : 2500);
+    // 실패 문구는 패널이 스크롤돼 있어도 눈에 들어오게 끌어올린다
+    if (error) {
+      window.setTimeout(() => {
+        noticeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }, 0);
+    }
   };
 
   const doStartBlank = () => {
@@ -246,7 +258,8 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           const bytes = new Uint8Array(reader.result as ArrayBuffer);
           const imported = await parseZipMapFile(bytes, parseOpts);
           if (!imported) {
-            flash('ZIP 안에서 EasyMindMap 맵 파일(.md/.html)을 찾지 못했습니다');
+            flash(`⚠ '${file.name}' 안에서 EasyMindMap 맵 파일(.md/.html)을 ` +
+              '찾지 못했습니다. 이 앱의 [내보내기]로 만든 ZIP만 열 수 있습니다.', true);
             return;
           }
           await applyImported(imported, stats.movedToNote);
@@ -255,6 +268,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       reader.readAsArrayBuffer(file);
       return;
     }
+    setNotice(null); // 새 파일을 고르면 이전 안내(특히 8초 오류)는 치운다
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? '');
@@ -268,8 +282,14 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
         : parseMarkdownMapFile(text, name, parseOpts);
       if (!imported) {
         flash(isHtml
-          ? 'EasyMindMap이 내보낸 HTML이 아닙니다 (맵 메타데이터 없음)'
-          : '맵으로 만들 견출(#)·리스트(-) 구조를 찾지 못했습니다');
+          ? `⚠ '${file.name}' 은(는) EasyMindMap 뷰어 HTML이 아닙니다. ` +
+            '이 앱의 [내보내기 → HTML 파일]로 만든 파일만 열 수 있습니다 ' +
+            '(맵 정보가 들어 있어야 합니다). 일반 웹페이지 HTML은 ' +
+            '지원하지 않습니다 — 웹 문서를 맵으로 만들려면 내용을 복사해 ' +
+            '노드에 붙여넣거나, MD 파일로 저장해 불러오세요.'
+          : `⚠ '${file.name}' 에서 맵으로 만들 구조를 찾지 못했습니다. ` +
+            'Markdown 견출(#)이나 리스트(-)가 있는 파일이어야 합니다.',
+          true);
         return;
       }
       void applyImported(imported, stats.movedToNote);
@@ -327,10 +347,19 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   return (
     <div style={{ padding: 12 }}>
       {notice && (
-        <div data-testid="newmap-notice" style={{
-          fontSize: 10.5, color: t.primary, fontWeight: 600, marginBottom: 8,
-          padding: '5px 8px', borderRadius: 5, background: t.primarySoft,
-        }}>{notice}</div>
+        <div
+          ref={noticeRef}
+          data-testid="newmap-notice"
+          data-notice-kind={notice.error ? 'error' : 'info'}
+          style={notice.error ? {
+            fontSize: 11.5, color: '#B91C1C', fontWeight: 600, marginBottom: 8,
+            padding: '8px 10px', borderRadius: 6, lineHeight: 1.6,
+            background: '#FEF2F2', border: '1px solid #FECACA',
+          } : {
+            fontSize: 10.5, color: t.primary, fontWeight: 600, marginBottom: 8,
+            padding: '5px 8px', borderRadius: 5, background: t.primarySoft,
+          }}
+        >{notice.msg}</div>
       )}
 
       {/* 현재 맵 닫기 확인 — 새 맵/템플릿/파일 불러오기 공통 게이트 */}

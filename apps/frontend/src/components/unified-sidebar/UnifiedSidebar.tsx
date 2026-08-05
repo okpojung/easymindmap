@@ -191,8 +191,9 @@ export function UnifiedSidebar({
           minWidth: 0, overflow: 'hidden',
         }}>
           {activeSection === 'nav'
-            ? <NavContent t={t} tab={navTab} />
-            : <InspectorContent t={t} tab={inspectorTab} collabs={collabs} />}
+            ? <NavContent t={t} tab={navTab} onClose={onToggleCollapsed} />
+            : <InspectorContent t={t} tab={inspectorTab} collabs={collabs}
+                                onClose={onToggleCollapsed} />}
         </div>
       )}
 
@@ -285,7 +286,9 @@ function RailIcon({ t, title, active, expanded, onClick, children }: RailIconPro
   );
 }
 
-function NavContent({ t, tab }: { t: ThemeTokens; tab: NavTabKey }) {
+function NavContent({ t, tab, onClose }: {
+  t: ThemeTokens; tab: NavTabKey; onClose: () => void;
+}) {
   const title = ({
     newMap:      '새 맵',
     search:      '검색',
@@ -301,7 +304,7 @@ function NavContent({ t, tab }: { t: ThemeTokens; tab: NavTabKey }) {
 
   return (
     <>
-      <ContentHeader t={t} title={title} subtitle={subtitle} />
+      <ContentHeader t={t} title={title} subtitle={subtitle} onClose={onClose} />
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {tab === 'newMap'      && <NewMapPanel t={t} />}
         {tab === 'search'      && <SearchPanel t={t} />}
@@ -313,10 +316,11 @@ function NavContent({ t, tab }: { t: ThemeTokens; tab: NavTabKey }) {
   );
 }
 
-function InspectorContent({ t, tab }: {
+function InspectorContent({ t, tab, onClose }: {
   t: ThemeTokens;
   tab: InspectorTabKey;
   collabs: Collaborator[];
+  onClose: () => void;
 }) {
   const selectedId = useInteractionStore((s) => s.selectedId);
   const multiCount = useInteractionStore((s) => s.multiSelectedIds.length);
@@ -365,7 +369,7 @@ function InspectorContent({ t, tab }: {
         )}
       </div>
 
-      <ContentHeader t={t} title={title} compact />
+      <ContentHeader t={t} title={title} compact onClose={onClose} />
 
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0, background: t.surface }}>
         {tab === 'style'   && <StyleTab t={t} selectedId={selectedId} />}
@@ -379,11 +383,12 @@ function InspectorContent({ t, tab }: {
   );
 }
 
-function ContentHeader({ t, title, subtitle, compact }: {
+function ContentHeader({ t, title, subtitle, compact, onClose }: {
   t: ThemeTokens;
   title: string;
   subtitle?: string;
   compact?: boolean;
+  onClose: () => void;
 }) {
   return (
     <div style={{
@@ -401,11 +406,21 @@ function ContentHeader({ t, title, subtitle, compact }: {
           <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 2 }}>{subtitle}</div>
         )}
       </div>
-      <button style={{
-        background: 'none', border: 'none', color: t.textMuted,
-        cursor: 'pointer', display: 'flex', padding: 2,
-      }}>
-        <I.MoreH size={14} />
+      {/* 패널 닫기 — 예전에는 아무 동작도 없는 ⋯ 버튼이었다. 메뉴를 볼
+          만큼 봤으면 왼쪽 레일의 '패널 접기'까지 찾아가야 했다는 보고를
+          받아, 있던 자리를 ✕(닫기 = 패널 접기)로 바꿨다 (2026-08-05).
+          아이콘만 있는 버튼이라 툴팁·aria-label 을 남긴다
+          (coding-conventions §5-1-1 예외). */}
+      <button
+        data-testid="panel-close"
+        onClick={onClose}
+        title="패널 닫기"
+        aria-label="패널 닫기"
+        style={{
+          background: 'none', border: 'none', color: t.textMuted,
+          cursor: 'pointer', display: 'flex', padding: 2,
+        }}>
+        <I.X size={14} />
       </button>
     </div>
   );

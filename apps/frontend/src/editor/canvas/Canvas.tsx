@@ -9,6 +9,7 @@
 //   · Fit button → fit the whole map into the view
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -196,6 +197,15 @@ export function Canvas({
   // Multi-item content chooser popover (link/file/media), rendered on the TOP
   // overlay so other nodes never cover it.
   const [popover, setPopover] = useState<{ nodeId: string; kind: ContentKind } | null>(null);
+  // 붙여넣기 안내 — 붙일 것이 없거나(다른 앱의 자리표시 텍스트) 이 탭에
+  // 원본이 없을 때 "아무 반응 없음"으로 보이지 않게 한 줄 띄운다.
+  const [pasteNotice, setPasteNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<number | undefined>(undefined);
+  const notifyPaste = useCallback((msg: string) => {
+    setPasteNotice(msg);
+    window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setPasteNotice(null), 7000);
+  }, []);
 
   // "Focus selected" mode — when set, the viewport is zoomed to a node's subtree.
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -641,16 +651,32 @@ export function Canvas({
       // 노드 복사(Ctrl+C, 아래 keydown) 붙여넣기 — 내부 클립보드의
       // 서브트리들을 **선택 노드의 하위로** 붙인다 (2026-08-04 보고:
       // 멀티선택 복사가 텍스트 경로로 빠져 이상한 내용이 붙던 버그).
-      const maybeToken = (dt.getData('text/plain') ?? '').trim();
+      const plainRaw = dt.getData('text/plain') ?? '';
+      const maybeToken = plainRaw.trim();
       if (isNodeClipToken(maybeToken)) {
         e.preventDefault();
         const copied = takeStashed(maybeToken);
         if (copied?.length) {
           appendChildren(selectedId, reassignIds(copied as never) as never);
           selectOne(selectedId);
+          return;
         }
-        // 토큰인데 스택이 없으면(새로고침 뒤 등) 조용히 무시 — 토큰
-        // 문자열이 노드 텍스트로 붙는 것을 막는다
+        // 토큰만 오고 내용이 없다 — 다른 탭에서 복사했는데 그 서브트리가
+        // 너무 커서 클립보드에 싣지 못했거나, 복사한 탭을 새로고침한 뒤다.
+        notifyPaste('복사한 노드를 찾지 못했습니다 — 복사한 창에서 다시 Ctrl+C 한 뒤 붙여넣어 주세요.');
+        return;
+      }
+
+      // 다른 마인드맵 앱의 **자리표시 텍스트**만 온 경우. ThinkWise 는
+      // 그림을 복사해도 클립보드에 표준 이미지 대신 자기네 형식과
+      // '[--iThinkWise--]' 표시만 넣는다 — 브라우저는 그 형식을 읽을 수
+      // 없다. 그대로 두면 그 글자가 노드로 붙어 버린다 (2026-08-05 보고).
+      if (/^\[--\s*iThinkWise\s*--\]$/i.test(maybeToken)) {
+        e.preventDefault();
+        notifyPaste(
+          'ThinkWise가 클립보드에 그림을 넣지 않았습니다 (자기 형식만 넣습니다). '
+          + '그림은 ThinkWise에서 이미지 파일로 저장하거나 화면을 캡처해 붙여넣어 주세요.',
+        );
         return;
       }
 
@@ -692,7 +718,7 @@ export function Canvas({
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, setNodeImage, setNodeImages, addChildNode, updateNodeText]);
+  }, [selectedId, setNodeImage, setNodeImages, addChildNode, updateNodeText, notifyPaste]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1138,6 +1164,26 @@ export function Canvas({
             }}
           />
         </>
+      )}
+
+      {/* 붙여넣기 안내 — 붙일 것이 없을 때 "아무 반응 없음"으로 보이지
+          않게 캔버스 위쪽에 잠깐 띄운다 (2026-08-05) */}
+      {pasteNotice && (
+        <div
+          data-testid="canvas-notice"
+          style={{
+            position: 'absolute', top: 14, left: '50%',
+            transform: 'translateX(-50%)', zIndex: 20,
+            maxWidth: 620, padding: '9px 14px', borderRadius: 8,
+            background: t.surface, color: t.text,
+            border: `1px solid ${t.warning}`,
+            borderLeft: `4px solid ${t.warning}`,
+            boxShadow: '0 6px 20px rgba(60,45,15,0.22)',
+            fontSize: 12, lineHeight: 1.5,
+          }}
+        >
+          {pasteNotice}
+        </div>
       )}
 
       <svg

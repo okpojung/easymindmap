@@ -115,7 +115,9 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   // 한 덩어리로 합친다 (프로젝트 지침·@소스·상위 경로 포함 규칙 동일)
   const copyExpandPrompt = () => {
     if (!selectedId) return;
-    const ctx = buildExpandContext(map, selectedId, systemPrompt);
+    // 위 입력창(주제)에 적어 둔 요청이 있으면 함께 보낸다 —
+    // API 키 모드와 같은 규칙이다 (2026-08-06 보고)
+    const ctx = buildExpandContext(map, selectedId, systemPrompt, topic);
     if (!ctx) return;
     const oneShot = `${ctx.system}\n\n${ctx.user}\n\n${OUTPUT_DIRECTIVE}`;
     void copyText(oneShot, 'expand');
@@ -145,8 +147,11 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     const willLose = !(doc.past.length === 0 || isDocumentEmpty(doc.map));
     askConfirm(
       willLose
+        // **되돌릴 수 있다고 하지 않는다** — 새 문서로 열리므로
+        // 되돌리기가 이전 맵으로 넘어가지 않는다 (2026-08-06 3차 보고).
         ? `현재 맵을 닫고 생성한 맵(${res.nodeCount}개 노드)을 열까요?\n` +
-          '(실행 취소 Ctrl+Z 로 이전 맵으로 되돌릴 수 있습니다)'
+          '새 문서로 열리므로 되돌리기(Ctrl+Z)로는 지금 맵으로 돌아올 수 없습니다 —\n'
+          + '저장하지 않은 편집이 있으면 먼저 ☁ 저장하세요.'
         : `'${res.map.title}' 맵(${res.nodeCount}개 노드)을 새로 열까요?`,
       () => runOpenAsNewMap(res),
     );

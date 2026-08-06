@@ -80,7 +80,9 @@ export function AITab({ t }: { t: ThemeTokens }) {
         ))}
       </div>
 
-      {view === 'generate' ? <GenerateView t={t} /> : <SettingsView t={t} />}
+      {view === 'generate'
+        ? <GenerateView t={t} onNeedKey={() => setView('settings')} />
+        : <SettingsView t={t} />}
     </div>
   );
 }
@@ -89,7 +91,11 @@ export function AITab({ t }: { t: ThemeTokens }) {
 // 생성 뷰
 // ---------------------------------------------------------------------------
 
-function GenerateView({ t }: { t: ThemeTokens }) {
+function GenerateView({ t, onNeedKey }: {
+  t: ThemeTokens;
+  /** 키가 없을 때 'AI 설정' 탭으로 데려간다 (2026-08-06 보고) */
+  onNeedKey: () => void;
+}) {
   const provider = useAiSettingsStore((s) => s.provider);
   const setProvider = useAiSettingsStore((s) => s.setProvider);
   const priority = useAiSettingsStore((s) => s.priority);
@@ -143,9 +149,14 @@ function GenerateView({ t }: { t: ThemeTokens }) {
       if (!map) {
         throw new Error('답변에서 마인드맵 구조를 인식하지 못했습니다 — 다시 시도해 보세요');
       }
+      // **"Ctrl+Z 로 되돌릴 수 있다"고 하지 않는다** (2026-08-06 3차 보고).
+      // 2026-08-06 에 AI 생성이 `resetHistory: true` 로 바뀌면서(#210 —
+      // 되돌리기가 이전 맵으로 새는 문제) **그 약속이 사실이 아니게
+      // 됐는데 문구만 남아 있었다.** 지금 사실대로 적는다.
       const ok = window.confirm(
         `현재 맵을 닫고 AI가 생성한 맵(${countMapNodes(map)}개 노드)을 열까요?\n` +
-        '(실행 취소 Ctrl+Z 로 이전 맵으로 되돌릴 수 있습니다)',
+        '새 문서로 열리므로 되돌리기(Ctrl+Z)로는 지금 맵으로 돌아올 수 없습니다 —\n'
+        + '저장하지 않은 편집이 있으면 먼저 ☁ 저장하세요.',
       );
       if (!ok) return;
       // **서버 맵 연결을 먼저 끊는다** — 끊지 않으면 자동저장이 조금 전까지
@@ -180,7 +191,9 @@ function GenerateView({ t }: { t: ThemeTokens }) {
     setError('');
     setExpandBusy(true);
     try {
-      const ctx = buildExpandContext(map, selectedId, systemPrompt);
+      // 입력창에 적어 둔 질문이 있으면 **함께 보낸다** (2026-08-06 보고 —
+      // 적어 둔 질문이 무시돼 맵 문맥대로만 나왔다)
+      const ctx = buildExpandContext(map, selectedId, systemPrompt, prompt);
       if (!ctx) throw new Error('선택한 노드를 찾지 못했습니다');
       const md = await generateWithAi(
         effective, keys[effective],
@@ -316,26 +329,42 @@ function GenerateView({ t }: { t: ThemeTokens }) {
           }}>{error}</div>
         )}
 
+        {/* **키가 없으면 이 버튼이 'AI 설정'으로 데려간다** (2026-08-06 보고).
+            예전에는 `disabled` 라서 눌러도 아무 일이 없었다 — 버튼에
+            "API 키를 등록하세요"라고 적혀 있어도, 누르면 반응이 없으니
+            **고장으로 보인다.** 안내는 길이 있어야 안내다. */}
         <button
-          onClick={run}
-          disabled={busy || !prompt.trim() || !hasKey}
+          onClick={hasKey ? run : onNeedKey}
+          disabled={hasKey && (busy || !prompt.trim())}
           data-ai-generate
-          title={hasKey ? 'AI에게 질문하고 답변을 맵으로 변환' : 'AI 설정에서 API 키를 먼저 등록하세요'}
+          title={hasKey
+            ? 'AI에게 질문하고 답변을 맵으로 변환'
+            : '눌러서 AI 설정으로 이동 — API 키를 먼저 등록하세요'}
           style={{
             width: '100%', marginTop: 8, padding: 9,
             background: busy || !hasKey
               ? t.surfaceAlt
               : `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
-            color: busy || !hasKey ? t.textSubtle : '#fff',
-            border: busy || !hasKey ? `1px solid ${t.border}` : 'none',
+            color: busy ? t.textSubtle : hasKey ? '#fff' : t.primary,
+            border: busy || !hasKey ? `1px solid ${hasKey ? t.border : t.primaryBorder}` : 'none',
             borderRadius: 7,
             fontSize: 13, fontWeight: 600,
-            cursor: busy || !prompt.trim() || !hasKey ? 'default' : 'pointer',
+            cursor: hasKey && (busy || !prompt.trim()) ? 'default' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
           <I.Sparkles size={14} />
-          {busy ? 'AI 답변을 기다리는 중…' : hasKey ? 'AI로 맵 생성' : 'API 키를 등록하세요 (AI 설정)'}
+          {busy ? 'AI 답변을 기다리는 중…'
+            : hasKey ? 'AI로 맵 생성' : '🔑 API 키를 등록하세요 — 눌러서 AI 설정으로'}
         </button>
+        {!hasKey && (
+          <div data-ai-nokey style={{
+            marginTop: 6, fontSize: 10.5, color: t.textSubtle, lineHeight: 1.55,
+          }}>
+            <b>API 키 방식</b>은 내 키로 AI를 직접 부릅니다 (요금은 그 AI 회사에
+            냅니다). 키가 없으면 위 <b>🌐 웹 AI</b> 를 쓰세요 — <b>키 없이</b>
+            ChatGPT·Claude 같은 창에 붙여넣고 답을 되가져오는 방식입니다.
+          </div>
+        )}
       </InspectorSection>
 
       <InspectorSection t={t} title="선택 노드 자세히 확장">
@@ -343,7 +372,11 @@ function GenerateView({ t }: { t: ThemeTokens }) {
           맵에서 노드를 고르고 누르면, <b>중심 주제(프로젝트 지침) + 상위
           경로 + 이 노드</b>를 AI에게 보내 <b>세부 내용을 하위 노드로</b>
           채웁니다. AI가 만든 노드든 직접 만든 노드든 상관없습니다.
-        </div>
+          <br />
+          <b>위 입력창에 적은 요청도 함께 보냅니다</b> — 맵 문맥과 다르면
+          <b>적은 요청을 따릅니다</b>. 맵 문맥만으로 확장하려면 입력창을
+          비우세요. (2026-08-06)
+</div>
         <div data-ai-expand-target style={{
           fontSize: 11.5, padding: '6px 9px', borderRadius: 6, marginBottom: 6,
           background: t.surfaceAlt, border: `1px solid ${t.border}`,
@@ -354,11 +387,12 @@ function GenerateView({ t }: { t: ThemeTokens }) {
             ? `대상: ${selectedNode.text || '(빈 노드)'}`
             : '맵에서 확장할 노드를 선택하세요'}
         </div>
+        {/* 위 버튼과 같은 규칙 — 키가 없으면 눌러서 'AI 설정'으로 간다 */}
         <button
-          onClick={runExpand}
-          disabled={expandBusy || !selectedNode || !hasKey}
+          onClick={hasKey ? runExpand : onNeedKey}
+          disabled={hasKey && (expandBusy || !selectedNode)}
           data-ai-expand
-          title={!hasKey ? 'AI 설정에서 API 키를 먼저 등록하세요'
+          title={!hasKey ? '눌러서 AI 설정으로 이동 — API 키를 먼저 등록하세요'
             : !selectedNode ? '맵에서 노드를 선택하세요'
               : '선택 노드를 AI로 상세 확장 (하위 노드 추가)'}
           style={{
@@ -367,11 +401,12 @@ function GenerateView({ t }: { t: ThemeTokens }) {
             color: expandBusy || !selectedNode || !hasKey ? t.textSubtle : t.primary,
             border: `1px solid ${expandBusy || !selectedNode || !hasKey ? t.border : t.primaryBorder + '40'}`,
             borderRadius: 7, fontSize: 12.5, fontWeight: 700,
-            cursor: expandBusy || !selectedNode || !hasKey ? 'default' : 'pointer',
+            cursor: hasKey && (expandBusy || !selectedNode) ? 'default' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
           <I.Sparkles size={13} />
-          {expandBusy ? 'AI가 확장 중…' : '선택 노드 자세히 확장'}
+          {expandBusy ? 'AI가 확장 중…'
+            : hasKey ? '선택 노드 자세히 확장' : '🔑 API 키를 등록하세요 — 눌러서 AI 설정으로'}
         </button>
         <ExpandHelp t={t} />
       </InspectorSection>

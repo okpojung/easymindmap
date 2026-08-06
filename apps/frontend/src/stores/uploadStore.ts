@@ -17,8 +17,13 @@ export interface UploadItem {
   name: string;
   /** 전체 바이트 */
   size: number;
-  /** 0~1 */
+  /** 0~1 — **보낸 바이트 기준** (조각 수가 아니다, 2026-08-06) */
   ratio: number;
+  /**
+   * 지금 무슨 일이 일어나는지 한 줄 (재시도 중 등). 평소에는 null.
+   * 진행률이 잠깐 멈춰도 **왜 멈췄는지** 보이게 하려는 것이다.
+   */
+  note?: string | null;
   /** 사용자가 [취소]를 누르면 이걸 abort 한다 */
   abort: () => void;
 }
@@ -27,6 +32,7 @@ interface UploadState {
   uploads: UploadItem[];
   begin: (item: UploadItem) => void;
   progress: (key: string, ratio: number) => void;
+  notice: (key: string, note: string | null) => void;
   end: (key: string) => void;
 }
 
@@ -34,7 +40,16 @@ export const useUploadStore = create<UploadState>((set) => ({
   uploads: [],
   begin: (item) => set((s) => ({ uploads: [...s.uploads, item] })),
   progress: (key, ratio) => set((s) => ({
-    uploads: s.uploads.map((u) => (u.key === key ? { ...u, ratio } : u)),
+    // 값이 그대로면 새 배열을 만들지 않는다 — 바이트 단위 진행률은
+    // 초당 수십 번 불려서, 같은 값에도 리렌더가 돌면 낭비다.
+    uploads: s.uploads.some((u) => u.key === key && u.ratio !== ratio)
+      ? s.uploads.map((u) => (u.key === key ? { ...u, ratio } : u))
+      : s.uploads,
+  })),
+  notice: (key, note) => set((s) => ({
+    uploads: s.uploads.some((u) => u.key === key && (u.note ?? null) !== note)
+      ? s.uploads.map((u) => (u.key === key ? { ...u, note } : u))
+      : s.uploads,
   })),
   end: (key) => set((s) => ({ uploads: s.uploads.filter((u) => u.key !== key) })),
 }));

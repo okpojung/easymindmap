@@ -241,7 +241,8 @@ export const cloudApi = {
    * 넘긴다 — 파일을 메모리로 읽지 않는다.
    */
   putUploadPart: async (
-    uploadId: string, index: number, part: Blob, signal?: AbortSignal,
+    uploadId: string, index: number, part: Blob,
+    opts: { signal?: AbortSignal; onBytes?: (loaded: number) => void } = {},
   ): Promise<{ received: number; parts: number }> => {
     const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' };
     if (authEnabled) {
@@ -249,23 +250,46 @@ export const cloudApi = {
       if (!token) throw new CloudError(401, '로그인이 필요합니다.');
       headers.Authorization = `Bearer ${token}`;
     }
-    let res: Response;
-    try {
-      res = await fetch(
-        `${BASE}/v1/attachments/uploads/${uploadId}/parts/${index}`,
-        { method: 'PUT', headers, body: part, signal },
-      );
-    } catch (err) {
-      // 취소는 그대로 올려 보낸다 (재시도 대상이 아니다)
-      if ((err as Error)?.name === 'AbortError') throw err;
-      throw new CloudError(0, '서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.');
-    }
-    if (!res.ok) {
-      let msg = `조각 전송 실패 (${res.status})`;
-      try { msg = (await res.json()).message || msg; } catch { /* 본문 없음 */ }
-      throw new CloudError(res.status, msg);
-    }
-    return res.json() as Promise<{ received: number; parts: number }>;
+    const { signal, onBytes } = opts;
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+
+    // **fetch 가 아니라 XMLHttpRequest 를 쓴다** (2026-08-06 보고).
+    //
+    // fetch 에는 **업로드 진행률이 없다.** 그래서 진행률을 "완료된 조각
+    // 수"로만 셀 수 있었고, 조각이 8MB 라 느린 회선에서는 몇십 초씩
+    // 숫자가 멈춰 있었다 — 사용자에게는 **멈춘 것처럼** 보인다
+    // ("16%에서 한참 있다가 다시 올라감"). XHR 의 `upload.onprogress` 는
+    // 보낸 바이트를 계속 알려 주므로 막대가 끊기지 않는다.
+    return await new Promise<{ received: number; parts: number }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', `${BASE}/v1/attachments/uploads/${uploadId}/parts/${index}`);
+      for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+      xhr.responseType = 'text';
+
+      const onAbort = () => xhr.abort();
+      signal?.addEventListener('abort', onAbort);
+      const done = () => signal?.removeEventListener('abort', onAbort);
+
+      if (onBytes) xhr.upload.onprogress = (e) => onBytes(e.loaded);
+      xhr.onabort = () => { done(); reject(new DOMException('aborted', 'AbortError')); };
+      xhr.onerror = () => {
+        done();
+        reject(new CloudError(0, '서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.'));
+      };
+      xhr.onload = () => {
+        done();
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText) as { received: number; parts: number });
+          } catch { resolve({ received: 0, parts: 0 }); }
+          return;
+        }
+        let msg = `조각 전송 실패 (${xhr.status})`;
+        try { msg = JSON.parse(xhr.responseText).message || msg; } catch { /* 본문 없음 */ }
+        reject(new CloudError(xhr.status, msg));
+      };
+      xhr.send(part);
+    });
   },
 
   deleteAttachment: (id: string) => req<void>('DELETE', `/attachments/${id}`),

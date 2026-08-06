@@ -55,9 +55,21 @@ interface ListPopup {
   items: { label: string; url?: string }[];
 }
 
+/** 헤더의 작은 사각 버튼 — 맵 모드 +/− 와 같은 감각으로 */
+function miniBtn(t: ThemeTokens) {
+  return {
+    width: 22, height: 22, borderRadius: 5, flexShrink: 0,
+    border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted,
+    cursor: 'pointer', fontSize: 13, fontWeight: 700, lineHeight: 1, padding: 0,
+  } as const;
+}
+
 export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps) {
   const setOutlineSplit = useEditorUiStore((s) => s.setOutlineSplit);
   const handleClose = onClose ?? (() => setOutlineSplit(false));
+  // 맵 모드의 모두 접기/펼치기와 **같은 스토어 액션**을 쓴다 (2026-08-06)
+  const expandAll = useDocumentStore((s) => s.expandAll);
+  const collapseAll = useDocumentStore((s) => s.collapseAll);
   const [notePopup, setNotePopup] = useState<{ nodeId: string; kind: NoteKind } | null>(null);
   const [listPopup, setListPopup] = useState<ListPopup | null>(null);
   const map = useDocumentStore((s) => s.map);
@@ -79,6 +91,21 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
         <div style={{ fontSize: 9.5, color: t.textSubtle, flex: 1, minWidth: 0 }}>
           더블클릭: 입력 · Enter: 아래 행 추가 · Tab/Space: 들여쓰기 · Shift+Enter: 줄바꿈
         </div>
+        {/* **모두 펼치기 / 모두 접기** (2026-08-06 요청) — 맵 모드의 +/−
+            와 같은 동작·같은 기호다. 아웃라인은 맵의 `collapsed` 를 그대로
+            보고 그리므로, 여기서 누르면 맵 쪽도 함께 접힌다(한 문서다). */}
+        <button
+          data-testid="outline-expand-all"
+          onClick={expandAll}
+          title="모두 펼치기"
+          style={miniBtn(t)}
+        >＋</button>
+        <button
+          data-testid="outline-collapse-all"
+          onClick={collapseAll}
+          title="모두 접기 — 2레벨만 남기고 전부 접기"
+          style={miniBtn(t)}
+        >−</button>
         <button onClick={handleClose} title={closeTitle ?? '아웃라인 닫기'}
           style={{
             border: 'none', background: 'none', color: t.textMuted,

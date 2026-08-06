@@ -510,6 +510,29 @@ function makeBranch(node: MindNode, indexForColor: number): SampleBranch {
 // store
 // ---------------------------------------------------------------------------
 
+/**
+ * **보기 전용 변경** — 접기/펴기처럼 *내용은 그대로인데 화면만 달라지는*
+ * 변경 (2026-08-06 사용자 결정).
+ *
+ * 이런 변경은
+ *   · 되돌리기(Ctrl+Z) 에 쌓이지 않는다 — 99단계가 접기/펴기로 채워져
+ *     정작 되돌리고 싶은 편집이 밀려나던 문제
+ *   · "미저장 편집" 으로 세지 않는다 — 접기/펴기만으로 서버 저장이
+ *     일어나지 않는다
+ *
+ * 기준 한 줄: **"다시 만들어야 하는 것"은 포함, "다시 보면 되는 것"은 제외.**
+ * (좌우 이동 `side` 는 사용자가 정한 배치라 **내용 쪽**이다 — 제외 아님)
+ */
+let viewOnlyChange = false;
+export function isViewOnlyChange(): boolean {
+  return viewOnlyChange;
+}
+/** 안의 set() 이 일으키는 구독은 보기 전용으로 표시된다 (동기 실행 전제) */
+function asViewOnly(run: () => void): void {
+  viewOnlyChange = true;
+  try { run(); } finally { viewOnlyChange = false; }
+}
+
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   map: cloneMap(SAMPLE_ROADMAP),
   docOrigin: null,
@@ -929,16 +952,16 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   toggleCollapse: (nodeId) => {
     if (!nodeId || nodeId === 'root') return; // root can't collapse
-    set((state) => ({
+    asViewOnly(() => set((state) => ({
       map: mutateNode(state.map, nodeId, (n) => ({ ...n, collapsed: !n.collapsed })),
-    }));
+    })));
   },
 
   setCollapsed: (nodeId, collapsed) => {
     if (!nodeId || nodeId === 'root') return;
-    set((state) => ({
+    asViewOnly(() => set((state) => ({
       map: mutateNode(state.map, nodeId, (n) => ({ ...n, collapsed })),
-    }));
+    })));
   },
 
   collapseAll: () => {
@@ -948,9 +971,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         collapsed: (n.children?.length ?? 0) > 0 ? true : n.collapsed,
         children: walk(n.children ?? []),
       }));
-    set((state) => ({
+    asViewOnly(() => set((state) => ({
       map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
-    }));
+    })));
   },
 
   expandAll: () => {
@@ -960,9 +983,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         collapsed: undefined,
         children: walk(n.children ?? []),
       }));
-    set((state) => ({
+    asViewOnly(() => set((state) => ({
       map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
-    }));
+    })));
   },
 
   // 해당 노드가 화면에 보이도록 접힌 조상들만 펼친다 (검색 결과 이동 —
@@ -980,9 +1003,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       });
       return [next, found];
     };
-    set((state) => ({
+    asViewOnly(() => set((state) => ({
       map: { ...state.map, branches: walk(state.map.branches)[0] as SampleBranch[] },
-    }));
+    })));
   },
 
   updateNodeText: (nodeId, text) => {
@@ -1383,6 +1406,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 // toolbar / Ctrl+Z / Ctrl+Y can step through document states. In-memory only.
 useDocumentStore.subscribe((state, prev) => {
   if (applyingHistory || historyPaused) return;
+  // 접기/펴기 같은 **보기 전용** 변경은 되돌리기에 쌓지 않는다 (2026-08-06)
+  if (viewOnlyChange) return;
   if (state.map !== prev.map) {
     // 스냅샷의 레이아웃 = "prev.map이 화면에 있던 동안"의 레이아웃.
     // 맵과 레이아웃을 한 동작에서 함께 바꾸는 곳(레이아웃 탭·맵 설정)은

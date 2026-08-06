@@ -1,15 +1,18 @@
 // useLocalDraft — 편집을 **브라우저에 즉시 보관**한다 (2026-08-05 R1·R2).
 //
-// 자동저장은 "손을 멈춘 뒤 1.5초"(또는 최대 5초)에 서버로 간다. 그 사이
+// 서버 자동저장은 **주기(기본 5분)와 몇몇 시점**에만 간다 (§7.9). 그 사이
 // 크래시·전원 차단·오프라인이면 그 편집은 어디에도 없다. beforeunload
 // 경고는 정상 종료에서만 뜨므로 크래시는 못 잡는다. 그래서 문서 전체를
-// IndexedDB 에 적어 두고, 다음에 앱을 열 때 되살린다.
+// IndexedDB 에 적어 두고, 다음에 앱을 열 때 되살린다 — **유실 방어는
+// 서버 저장 주기가 아니라 이 초안이 전담한다.**
 //
 // **언제 적는가** (2026-08-06 — "마지막 1초"까지 없애기)
 //   1. **노드 수가 바뀌면 즉시** — 추가·삭제·붙여넣기·이동 같은 구조
 //      변경은 드물게 일어나고 잃으면 가장 아프다. 디바운스하지 않는다.
 //   2. **그 밖의 변경(주로 타이핑)은 1초 디바운스** — 글자마다 수 MB
 //      스냅샷을 직렬화하면 타이핑이 끊긴다.
+//   2-1. **접기/펴기는 아예 적지 않는다** — 내용이 아니라 보기 상태다
+//      (2026-08-06 사용자 결정).
 //   3. **화면에서 벗어나는 순간 즉시**(`visibilitychange` → hidden,
 //      `pagehide`) — 탭 전환·앱 전환·창 닫기·모바일 백그라운드 진입.
 //      이 시점은 페이지가 아직 살아 있어 IndexedDB 쓰기가 끝난다.
@@ -18,7 +21,7 @@
 // 그래서 남는 노출은 **"타이핑 중 예고 없는 전원 차단"** 한 가지뿐이고,
 // 그 경우에도 마지막 글자 몇 개를 제외한 문서 전체는 남는다.
 import { useEffect } from 'react';
-import { useDocumentStore, isDocumentEmpty } from '@/stores/documentStore';
+import { useDocumentStore, isDocumentEmpty, isViewOnlyChange } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
@@ -73,6 +76,7 @@ export function useLocalDraft(): void {
   useEffect(() => {
     const unsub = useDocumentStore.subscribe((state, prev) => {
       if (state.map === prev.map) return;
+      if (isViewOnlyChange()) return; // 접기/펴기는 초안도 다시 쓰지 않는다
       const n = countNodes(state.map.branches as { children?: unknown[] }[]);
       const structural = lastCount >= 0 && n !== lastCount;
       lastCount = n;

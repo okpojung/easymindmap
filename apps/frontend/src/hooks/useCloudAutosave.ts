@@ -25,7 +25,7 @@
 //  - 방금 "열기/저장"으로 문서가 바뀐 직후에는 잠깐 억제(suppress)한다.
 //  - 문서 출처(docOrigin)가 이 맵이 아니면 아예 보내지 않는다.
 import { useEffect } from 'react';
-import { useDocumentStore, isDocumentEmpty, EMPTY_MAP_TITLE } from '@/stores/documentStore';
+import { useDocumentStore, isDocumentEmpty, EMPTY_MAP_TITLE, isViewOnlyChange } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
@@ -184,11 +184,17 @@ async function doSave() {
 /**
  * **편집 1회로 센다.**
  *
- * "편집"의 정의 = **서버에 올라가는 스냅샷을 바꾸는 모든 변경**.
- * 구체적으로 `documentStore.map` 전체(노드 텍스트·노트·첨부·링크·사진·
- * 스타일·색·아이콘·도형·크기·접힘·좌우·노드별 레이아웃·맵 설정·맵 이름)
- * 와, 스냅샷의 `editor` 로 함께 저장되는 **전역 레이아웃·간격**이다.
- * 화면에만 있는 것(선택·줌·패널 열림·검색어)은 세지 않는다.
+ * "편집"의 정의 = **다시 만들어야 하는 것을 바꾸는 변경**.
+ *
+ * | 센다 | 안 센다 |
+ * | --- | --- |
+ * | 노드 구조·텍스트·노트·첨부·링크·사진 | 노드 선택 |
+ * | 스타일·색·아이콘·태그·정렬·크기·**좌우**(`side`) | 확대/축소·이동(Pan) |
+ * | 레이아웃(전역·노드별)·간격 | 패널 열기/접기·검색어 |
+ * | 맵 설정·맵 이름 | **접기/펴기** (2026-08-06) |
+ *
+ * `side`(좌우 이동)는 사용자가 정한 **배치**라 잃으면 맵 모양이 달라진다
+ * → 내용 쪽이다. 반면 접힘은 **다시 보면 되는** 화면 상태다.
  */
 function countEdit(): void {
   setPending(pendingEdits + 1);
@@ -213,6 +219,9 @@ export function useCloudAutosave(): void {
   useEffect(() => {
     const unsub = useDocumentStore.subscribe((state, prev) => {
       if (state.map === prev.map) return; // 맵 변경일 때만
+      // 접기/펴기 같은 **보기 전용** 변경은 미저장 편집으로 세지 않는다
+      // (2026-08-06 사용자 결정 — 내용이 중요하지 접힘 모양은 아니다)
+      if (isViewOnlyChange()) return;
       // skip 소모를 연결 여부 검사보다 먼저 — "다음 맵 변경 1건 제외"
       // 약속과 일치시킨다 (2026-08-04 점검).
       if (skipNextChange) { skipNextChange = false; return; }

@@ -169,7 +169,8 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
           2MB 이하 파일은 맵에 내장되고(맵당 내장 합계 10MB까지), 초과분은
           로그인 상태에서 서버 첨부 저장소에 올라갑니다 — 둘 다 저장 후
-          다시 열어도 유지됩니다. (저장 용량 = 문서+첨부 합산, 무료 1GB)
+          다시 열어도 유지됩니다. (저장 용량 = 문서+첨부 합산 — 남은 용량은
+          <b> 아바타 메뉴 📊 저장 용량</b>에서 확인하세요)
         </div>
         {attErr?.where === 'doc' && (
           <div data-testid="attach-error"
@@ -192,7 +193,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
             files, (f) => (f.type.startsWith('audio') ? 'audio' : 'video'), 'media')} />
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
           오디오·영상·이미지. 문서 첨부와 같은 규칙입니다 (2MB 이하는 맵
-          내장, 초과분은 서버 저장소 — 저장 용량 = 문서+첨부 합산, 무료 1GB).
+          내장, 초과분은 서버 저장소).
           <br />
           <b>큰 파일도 그냥 고르면 됩니다</b> — 8MB를 넘으면 자동으로 나눠
           올리고(최대 1GB) 진행률이 화면 아래에 표시됩니다.

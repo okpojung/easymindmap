@@ -37,7 +37,7 @@
 | `ai_jobs` / `node_translations` / `field_registry` | ✅ | 스키마만 존재, API 미사용 |
 | **`attachments`** | ✅ 실물 전용 | 첨부 저장소 메타(B9) — 파일 원본은 로컬 디스크 `StorageService` |
 | **`map_edit_locks`** | ✅ 실물 전용 | 단일 세션 편집 잠금 (2026-08-04) — session_key + heartbeat TTL 60초 |
-| **`users.quota_bytes`** | ✅ 실물 전용 컬럼 | 저장 용량 쿼터(B9) — 기본 1GB, 문서(DB)+첨부 합산 |
+| **`users.quota_bytes`** | ✅ 실물 전용 컬럼 | 저장 용량 쿼터(B9) — 문서(DB)+첨부 합산. **Free 1GB(기본값) · Basic 10GB.** 요금제 컬럼은 없다 — 상향은 이 값을 직접 UPDATE (`../04-extensions/attachment-storage.md` §8.1) |
 
 ### 설계본 DDL 과의 주요 차이
 
@@ -1091,7 +1091,10 @@ CREATE POLICY "owners can manage publish"
   의 `meta.json` 에 둔다 — 테이블을 더 만들지 않았다
   (`../04-extensions/attachment-storage.md` §12).
 - 쿼터: 사용자의 문서(`map_documents` + `map_document_versions`) + 첨부
-  합산이 `users.quota_bytes`(기본 1GB) 이하 — 초과 시 413.
+  합산이 `users.quota_bytes` 이하 — 초과 시 413. 신규 가입은 컬럼
+  기본값 **1GB(Free)**, **2026-08-06 12:00 UTC 이전 가입 계정은 10GB
+  (Basic)** — `schema.sql` 의 **고정 시각 조건** 일회성 UPDATE 로 올린다
+  (조건이 없으면 재적용마다 신규 무료 사용자까지 올라간다).
 - S3 호환 드라이버(MinIO·R2 등)는 향후 인터페이스 구현체 추가로 대응.
   Supabase Storage 버킷 설계(uploads/attachments/exports/published/media)는
   **planned 로만 남긴다** (실물 schema.sql 의 버킷 INSERT 도 주석 처리 상태).

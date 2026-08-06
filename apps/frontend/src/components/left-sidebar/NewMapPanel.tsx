@@ -27,6 +27,7 @@ import { isDocumentEmpty, NEW_MAP_TITLE, useDocumentStore } from '@/stores/docum
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
 import { detachFromServer } from '@/services/cloud/mapSession';
+import { useCloudStore } from '@/stores/cloudStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import {
@@ -133,16 +134,30 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   };
 
   // 확인 게이트 — 현재 맵을 닫는 것을 사용자가 승인한 뒤 실행.
-  // 묻지 않는 경우 (잃을 것이 없다):
-  //  · 편집 이력이 전혀 없는 처음 상태 (undo 히스토리 비어 있음)
-  //  · **문서가 비어 있는 상태** ('문서 없음' — 맵 닫기 직후·로그인 직후).
-  //    undo 에 이전 맵이 남아 있어도, 화면에 닫을 맵이 없는데
-  //    "현재 맵 '문서 없음'을 닫고 진행할까요?" 를 묻는 것은 무의미하다
+  //
+  // **묻지 않는 경우는 하나뿐이다 — 잃을 것이 정말 없을 때.**
+  //  · **문서가 비어 있다** ('문서 없음' — 맵 닫기 직후·로그인 직후).
+  //    화면에 닫을 맵이 없는데 "현재 맵을 닫고 진행할까요?" 는 무의미하다
   //    (2026-08-02 사용자 보고).
+  //  · 서버 맵과 무관한 문서를 **한 번도 건드리지 않았다**
+  //    (첫 화면의 손대지 않은 샘플·기본 골격이 여기 해당한다).
+  //
+  // **서버 맵을 열어 둔 상태면 편집을 안 했어도 묻는다** (2026-08-06
+  // 사용자 보고). 예전 판정은 `past.length === 0` 하나였는데, 되돌리기
+  // 경계를 고치면서(§6.6-1) 서버 맵을 연 직후 past 가 0 이 되어 **확인
+  // 없이 곧바로 새 맵으로 넘어갔다.** 사용자가 보기엔 열어 둔 맵이 말도
+  // 없이 사라지는 것이라, "편집했는가"가 아니라 **"닫을 맵이 열려
+  // 있는가"** 를 함께 본다.
+  //
+  // `saveState === 'unsaved'` 는 쓰지 않는다 — 문서를 **불러오기만 해도**
+  // 그 상태가 되므로, 손대지 않은 첫 화면에서도 확인창이 떠 버린다.
   const confirmThen = (label: string, run: () => void) => {
     setChooseTpl(null);
     const doc = useDocumentStore.getState();
-    if (doc.past.length === 0 || isDocumentEmpty(doc.map)) {
+    const hasOpenServerMap = !!useCloudStore.getState().cloudMapId;
+    const nothingToLose = isDocumentEmpty(doc.map)
+      || (!hasOpenServerMap && doc.past.length === 0);
+    if (nothingToLose) {
       run();
       return;
     }
@@ -177,7 +192,12 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       const map = templateSkeletonMap(tpl.map);
       map.title = curTitle;
       map.root = { ...map.root, text: curTitle }; // 제목 = 중심 주제
-      loadMap(map);
+      // **되돌리기 경계** — 이 loadMap 은 replaceWithBlankDoc() 의 기본
+      // 골격을 템플릿 골격으로 **갈아 끼우는** 동작이다. resetHistory 를
+      // 빼면 "기본 골격 → 템플릿 골격" 전환이 되돌리기에 한 건 남아,
+      // 새 맵에서 Ctrl+Z 를 하면 **고르지도 않은 기본 골격(트리-진행트리
+      // 11노드)** 이 튀어나온다 (2026-08-06 실사용 보고).
+      loadMap(map, { resetHistory: true });
       const lt0 = tpl.editor?.layoutType ?? tpl.map.root.layoutType;
       if (lt0) setLayoutType(lt0);
       if (tpl.editor?.spacingX) setSpacingX(tpl.editor.spacingX);

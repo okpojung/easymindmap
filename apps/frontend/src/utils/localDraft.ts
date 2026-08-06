@@ -83,6 +83,20 @@ export async function deleteDraft(key: string): Promise<void> {
   await withStore('readwrite', (s) => s.delete(key) as IDBRequest<unknown>);
 }
 
+/**
+ * **이 브라우저에서 초안 보관이 가능한가.**
+ *
+ * 사생활 보호 모드·저장소 차단 설정·용량 없음이면 IndexedDB 를 못 연다.
+ * 그 경우 크래시 대비 보관이 **통째로 없는** 상태인데, 조용히 넘어가면
+ * 사용자는 보호받고 있다고 오해한다 — 화면에 알려 준다 (2026-08-06).
+ */
+export async function isDraftStorageAvailable(): Promise<boolean> {
+  const db = await openDb();
+  if (!db) return false;
+  db.close();
+  return true;
+}
+
 /** 남아 있는 초안 전체 (최근 순) */
 export async function listDrafts(): Promise<LocalDraft[]> {
   const all = await withStore<LocalDraft[]>('readonly',

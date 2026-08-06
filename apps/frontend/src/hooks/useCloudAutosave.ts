@@ -41,7 +41,17 @@ let skipNextChange = false;
 // 저장되지 않는 상태에 놓였다. 문구를 사실로 만든다 — 짧은 backoff 로
 // MAX_RETRY 번까지 자동 재시도하고, 그래도 안 되면 배지를 "저장 실패"
 // 로 바꿔 손으로 ☁ 저장하도록 안내한다.
-const RETRY_DELAYS = [1000, 3000]; // 1초 → 3초
+//
+// **끝까지 재시도한다** (2026-08-06 R2). 예전에는 2회 실패하면 멈추고
+// "손으로 ☁ 저장하세요"로 넘겼다 — 노트북을 덮었다 열거나 와이파이가
+// 잠깐 끊긴 흔한 상황에서, 사용자가 배지를 못 보면 그대로 유실이었다.
+// 이제 마지막 간격(30초)으로 **무기한** 재시도하고, 네트워크가 돌아오면
+// (`online` 이벤트) 기다리지 않고 즉시 한 번 더 시도한다. 배지는 2회
+// 실패 이후 사실대로 'error'("저장 실패")를 유지한다 — 조용히 재시도
+// 중이라고 해서 성공을 약속하지는 않는다.
+const RETRY_DELAYS = [1000, 3000, 10_000, 30_000]; // 마지막 값은 무기한 반복
+/** 이 횟수를 넘으면 배지를 'retrying' 이 아니라 'error' 로 (사실대로) */
+const RETRY_QUIET_LIMIT = 2;
 let retryTimer: number | undefined;
 let retryCount = 0;
 
@@ -49,6 +59,18 @@ function cancelRetry(): void {
   window.clearTimeout(retryTimer);
   retryTimer = undefined;
   retryCount = 0;
+}
+
+/**
+ * 예약된 저장을 기다리지 않고 **지금 보낸다.** 탭이 백그라운드로 가거나
+ * 창을 닫으려 할 때 부른다 (R6 — 백그라운드 탭에서는 타이머가 1분 이상
+ * 지연되거나 아예 멈춘다).
+ */
+export function flushCloudAutosave(): void {
+  window.clearTimeout(timer);
+  timer = undefined;
+  if (!useCloudStore.getState().cloudMapId) return;
+  void doSave();
 }
 
 /**
@@ -150,20 +172,16 @@ async function doSave() {
     if (useCloudStore.getState().cloudMapId === mapId) {
       const msg = err instanceof CloudError ? err.message : '자동 저장 실패';
       useCloudStore.getState().setError(msg);
-      const delay = RETRY_DELAYS[retryCount];
-      if (delay !== undefined) {
-        // 아직 재시도가 남았다 — 배지는 'retrying'(= "재시도 중")
-        retryCount += 1;
-        useAutosaveStore.getState().setSaveState('retrying');
-        window.clearTimeout(retryTimer);
-        retryTimer = window.setTimeout(() => {
-          if (useCloudStore.getState().cloudMapId === mapId) void doSave();
-        }, delay);
-      } else {
-        // 다 써 버렸다 — 더 기다려도 소용없으니 사실대로 알린다
-        cancelRetry();
-        useAutosaveStore.getState().setSaveState('error');
-      }
+      // **포기하지 않는다** — 마지막 간격으로 무기한 재시도한다.
+      // 편집분은 그동안 로컬 초안(IndexedDB)에 남아 있으므로 잃지 않는다.
+      const delay = RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)];
+      retryCount += 1;
+      useAutosaveStore.getState().setSaveState(
+        retryCount <= RETRY_QUIET_LIMIT ? 'retrying' : 'error');
+      window.clearTimeout(retryTimer);
+      retryTimer = window.setTimeout(() => {
+        if (useCloudStore.getState().cloudMapId === mapId) void doSave();
+      }, delay);
     }
   } finally {
     saving = false;
@@ -210,9 +228,31 @@ export function useCloudAutosave(): void {
       ));
       timer = window.setTimeout(() => void doSave(), wait);
     });
+
+    // **탭이 화면에서 사라지면 예약을 기다리지 않고 지금 보낸다** (R6).
+    // 백그라운드 탭에서는 브라우저가 타이머를 1분 이상 늦추거나 아예
+    // 멈춘다 — 모바일에서 앱을 전환하면 예약된 저장이 그대로 밀렸다.
+    // visibilitychange(hidden) 시점에는 페이지가 아직 살아 있어 fetch 가
+    // 정상적으로 나간다.
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') flushCloudAutosave();
+    };
+    // **네트워크가 돌아오면 재시도를 기다리지 않는다** (R2).
+    const onOnline = () => {
+      const s = useAutosaveStore.getState().saveState;
+      if ((s === 'error' || s === 'retrying') && useCloudStore.getState().cloudMapId) {
+        cancelRetry();
+        void doSave();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('online', onOnline);
+
     return () => {
       unsub();
       window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('online', onOnline);
     };
   }, []);
 }

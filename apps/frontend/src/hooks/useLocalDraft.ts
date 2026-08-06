@@ -1,23 +1,34 @@
 // useLocalDraft — 편집을 **브라우저에 즉시 보관**한다 (2026-08-05 R1·R2).
 //
-// 자동저장은 "손을 멈춘 뒤 1.5초"에 서버로 간다. 그 사이 크래시·전원
-// 차단·오프라인이면 그 편집은 어디에도 없다. beforeunload 경고는 정상
-// 종료에서만 뜨므로 크래시는 못 잡는다. 그래서 **1초 간격**으로 문서
-// 전체를 IndexedDB 에 적어 두고, 다음에 앱을 열 때 되살린다.
+// 자동저장은 "손을 멈춘 뒤 1.5초"(또는 최대 5초)에 서버로 간다. 그 사이
+// 크래시·전원 차단·오프라인이면 그 편집은 어디에도 없다. beforeunload
+// 경고는 정상 종료에서만 뜨므로 크래시는 못 잡는다. 그래서 문서 전체를
+// IndexedDB 에 적어 두고, 다음에 앱을 열 때 되살린다.
 //
-// 간격을 1초로 잡은 이유 (0.3초에서 상향 — 사용자 검토):
-//   · 사진이 내장된 맵은 스냅샷이 수 MB다. 직렬화 비용이 있으므로
-//     0.3초는 타이핑 중 프레임을 갉아먹을 수 있다.
-//   · 1초면 최악의 유실이 "마지막 1초"로 제한된다 — 체감 차이가 없다.
+// **언제 적는가** (2026-08-06 — "마지막 1초"까지 없애기)
+//   1. **노드 수가 바뀌면 즉시** — 추가·삭제·붙여넣기·이동 같은 구조
+//      변경은 드물게 일어나고 잃으면 가장 아프다. 디바운스하지 않는다.
+//   2. **그 밖의 변경(주로 타이핑)은 1초 디바운스** — 글자마다 수 MB
+//      스냅샷을 직렬화하면 타이핑이 끊긴다.
+//   3. **화면에서 벗어나는 순간 즉시**(`visibilitychange` → hidden,
+//      `pagehide`) — 탭 전환·앱 전환·창 닫기·모바일 백그라운드 진입.
+//      이 시점은 페이지가 아직 살아 있어 IndexedDB 쓰기가 끝난다.
+//      (R6 — 백그라운드로 밀린 예약 저장 문제도 여기서 함께 해소된다)
+//
+// 그래서 남는 노출은 **"타이핑 중 예고 없는 전원 차단"** 한 가지뿐이고,
+// 그 경우에도 마지막 글자 몇 개를 제외한 문서 전체는 남는다.
 import { useEffect } from 'react';
 import { useDocumentStore, isDocumentEmpty } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
+import { useAutosaveStore } from '@/stores/autosaveStore';
 import { putDraft, deleteDraft, UNSAVED_DRAFT_KEY } from '@/utils/localDraft';
 
 const DRAFT_MS = 1000;
 
 let timer: number | undefined;
+/** 직전에 본 노드 수 — 바뀌면 "구조 변경"으로 보고 즉시 적는다 */
+let lastCount = -1;
 
 function countNodes(list: { children?: unknown[] }[]): number {
   return list.reduce(
@@ -34,6 +45,10 @@ export async function writeLocalDraftNow(): Promise<void> {
   const map = doc.map;
   // 잃을 것이 없는 빈 문서는 적지 않는다 (복구 안내가 헛돌지 않게)
   if (isDocumentEmpty(map) || (map.branches?.length ?? 0) === 0) return;
+  // **이미 서버에 다 들어간 문서는 적지 않는다.** 적어 두면 다음 실행에서
+  // 잃은 것이 없는데도 "저장되지 않은 맵이 있습니다"가 떠서, 진짜 경고와
+  // 구분이 안 된다 (탭 전환마다 배너가 뜨는 문제).
+  if (useAutosaveStore.getState().saveState === 'saved') return;
   await putDraft({
     key: cloud.cloudMapId ?? UNSAVED_DRAFT_KEY,
     snapshot: {
@@ -58,9 +73,35 @@ export function useLocalDraft(): void {
   useEffect(() => {
     const unsub = useDocumentStore.subscribe((state, prev) => {
       if (state.map === prev.map) return;
+      const n = countNodes(state.map.branches as { children?: unknown[] }[]);
+      const structural = lastCount >= 0 && n !== lastCount;
+      lastCount = n;
       window.clearTimeout(timer);
+      if (structural) {
+        // 노드 추가·삭제·붙여넣기 — 기다리지 않는다
+        void writeLocalDraftNow();
+        return;
+      }
       timer = window.setTimeout(() => { void writeLocalDraftNow(); }, DRAFT_MS);
     });
-    return () => { unsub(); window.clearTimeout(timer); };
+
+    // **화면에서 벗어나는 순간 즉시 적는다.**
+    // visibilitychange(hidden) 는 탭 전환·앱 전환·창 닫기 직전에 뜨고,
+    // 이때 페이지는 아직 완전히 살아 있어 IndexedDB 쓰기가 끝난다.
+    // pagehide 는 그 뒤의 마지막 보루다(브라우저에 따라 못 끝낼 수 있다).
+    const flush = () => {
+      window.clearTimeout(timer);
+      void writeLocalDraftNow();
+    };
+    const onVis = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', flush);
+
+    return () => {
+      unsub();
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', flush);
+    };
   }, []);
 }

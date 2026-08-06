@@ -188,7 +188,11 @@ export function TopToolbar({
         // 실패했을 때는 **왜** 실패했는지 마우스를 올려 볼 수 있게 한다
         title={saveState === 'error' || saveState === 'retrying'
           ? (cloudError ?? '서버에 저장하지 못했습니다.')
-          : undefined}
+          // '저장 안 됨'도 이유가 있을 수 있다 — 편집권을 잃어 연결이
+          // 끊긴 경우가 그렇다 (2026-08-06 R3)
+          : saveState === 'unsaved'
+            ? (cloudError ?? '이 문서는 아직 서버에 저장되지 않았습니다 — ☁ 저장을 눌러 주세요.')
+            : undefined}
         style={{
           display: 'flex',
           alignItems: 'center',

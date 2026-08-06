@@ -52,6 +52,21 @@ function htmlTableToMdLines(tableEl: Element): string[] {
   return out.length >= 3 ? out : []; // 헤더 + 구분선 + 본문 1행 이상
 }
 
+/**
+ * 이 표 → 안 되면 **안쪽 표들**을 차례로 시도해 첫 성공을 돌려준다.
+ * (엑셀에서 다시 복사한 표는 바깥 껍데기 표 안에 실제 표가 든 경우가
+ * 있어, 바깥만 보면 변환에 실패한다 — 2026-08-06 보고)
+ */
+function tableToMdDeep(tableEl: Element): string[] {
+  const direct = htmlTableToMdLines(tableEl);
+  if (direct.length) return direct;
+  for (const inner of Array.from(tableEl.querySelectorAll('table'))) {
+    const md = htmlTableToMdLines(inner);
+    if (md.length) return md;
+  }
+  return [];
+}
+
 export function extractArticleContent(rawHtml: string): ArticleContent {
   const clean = sanitizeRichHtml(rawHtml);
   if (!clean.html) return { text: '', images: [] };
@@ -60,6 +75,8 @@ export function extractArticleContent(rawHtml: string): ArticleContent {
   const lines: string[] = [];
   const images: ArticleImageRef[] = [];
   let cur = '';
+  /** 변환 실패한 표 안을 훑는 중 — 그 안의 표를 다시 MD 로 만들지 않는다 */
+  let inFailedTable = false;
 
   const endLine = () => {
     const t = cur.replace(/\s+/g, ' ').trim();
@@ -88,15 +105,32 @@ export function extractArticleContent(rawHtml: string): ArticleContent {
         }
         continue;
       }
-      if (tag === 'TABLE') {
-        // 표는 파이프 MD로 변환해 통째로 삽입 (셀별 순회 대신)
-        const md = htmlTableToMdLines(el);
+      if (tag === 'TABLE' && !inFailedTable) {
+        // 표는 파이프 MD로 변환해 통째로 삽입 (셀별 순회 대신).
+        //
+        // **표 안으로 들어가 텍스트를 또 뱉지 않는다** (2026-08-06 보고:
+        // "엑셀 표를 붙여 넣으면 텍스트도 보이고 표도 보인다").
+        // 예전에는 바깥 표의 변환이 실패하면(중첩 표·병합 셀 등) 아래
+        // walk 로 흘러가 **셀 텍스트가 줄로 쌓이고, 그 안의 중첩 표가
+        // 다시 MD 로 변환**돼 같은 내용이 두 벌 들어갔다.
+        //
+        // 그래서 ① 이 표 ② 안 되면 안쪽 표들 순서대로 시도하고,
+        // 하나라도 되면 **그것만** 넣는다. 전부 실패할 때만 텍스트로
+        // 떨어뜨리되, 그때는 안쪽 표를 다시 MD 로 만들지 않는다.
+        const md = tableToMdDeep(el);
         if (md.length) {
           endLine();
           lines.push(...md);
           continue;
         }
-        // 표로 못 만들면(행 부족 등) 기존처럼 행별 텍스트로
+        // 정말 표로 못 만든다 — 텍스트로만 (중첩 표 재변환 금지)
+        endLine();
+        const prev = inFailedTable;
+        inFailedTable = true;
+        walk(el);
+        inFailedTable = prev;
+        endLine();
+        continue;
       }
       if (BLOCK_TAGS.has(tag)) {
         endLine();

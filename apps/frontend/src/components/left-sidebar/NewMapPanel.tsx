@@ -27,7 +27,6 @@ import { isDocumentEmpty, NEW_MAP_TITLE, useDocumentStore } from '@/stores/docum
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
 import { detachFromServer } from '@/services/cloud/mapSession';
-import { useCloudStore } from '@/stores/cloudStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import {
@@ -139,25 +138,21 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   //  · **문서가 비어 있다** ('문서 없음' — 맵 닫기 직후·로그인 직후).
   //    화면에 닫을 맵이 없는데 "현재 맵을 닫고 진행할까요?" 는 무의미하다
   //    (2026-08-02 사용자 보고).
-  //  · 서버 맵과 무관한 문서를 **한 번도 건드리지 않았다**
-  //    (첫 화면의 손대지 않은 샘플·기본 골격이 여기 해당한다).
   //
-  // **서버 맵을 열어 둔 상태면 편집을 안 했어도 묻는다** (2026-08-06
-  // 사용자 보고). 예전 판정은 `past.length === 0` 하나였는데, 되돌리기
-  // 경계를 고치면서(§6.6-1) 서버 맵을 연 직후 past 가 0 이 되어 **확인
-  // 없이 곧바로 새 맵으로 넘어갔다.** 사용자가 보기엔 열어 둔 맵이 말도
-  // 없이 사라지는 것이라, "편집했는가"가 아니라 **"닫을 맵이 열려
-  // 있는가"** 를 함께 본다.
+  // **그 밖에는 무조건 묻는다** (2026-08-06 사용자 결정) — 편집 여부도,
+  // 서버 맵인지 로컬 파일인지도, 편집 모드인지 읽기 전용인지도 보지
+  // 않는다. *화면에 맵이 열려 있으면* 닫아도 되는지 먼저 묻는다.
   //
-  // `saveState === 'unsaved'` 는 쓰지 않는다 — 문서를 **불러오기만 해도**
-  // 그 상태가 되므로, 손대지 않은 첫 화면에서도 확인창이 떠 버린다.
+  // 여기까지 오는 데 두 번 헛짚었다.
+  //  · `past.length === 0` 만 보던 판정 → 되돌리기 경계를 고치자(§6.6-1)
+  //    서버 맵을 연 직후 past 가 0 이 되어 **확인이 사라졌다.**
+  //  · `cloudMapId` 를 더했더니 **읽기 전용으로 연 맵**(링크 없음)과
+  //    로컬 파일로 불러온 맵이 여전히 빠졌다.
+  // 조건을 하나씩 더하는 방식이 계속 구멍을 남겨, **"닫을 맵이 화면에
+  // 있는가" 하나로** 규칙을 단순화한다.
   const confirmThen = (label: string, run: () => void) => {
     setChooseTpl(null);
-    const doc = useDocumentStore.getState();
-    const hasOpenServerMap = !!useCloudStore.getState().cloudMapId;
-    const nothingToLose = isDocumentEmpty(doc.map)
-      || (!hasOpenServerMap && doc.past.length === 0);
-    if (nothingToLose) {
+    if (isDocumentEmpty(useDocumentStore.getState().map)) {
       run();
       return;
     }

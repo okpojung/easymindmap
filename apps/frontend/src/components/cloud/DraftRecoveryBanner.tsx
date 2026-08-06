@@ -18,7 +18,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { applySnapshotEditor, detachFromServer } from '@/services/cloud/mapSession';
-import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
+import { isDraftFromThisSession, writeLocalDraftNow } from '@/hooks/useLocalDraft';
 
 /** 화면 위쪽 가운데 알림 띠 — 복구 안내와 보관 불가 안내가 함께 쓴다 */
 function bannerStyle(t: ThemeTokens) {
@@ -45,7 +45,12 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
     void isDraftStorageAvailable().then((ok) => {
       if (!alive) return;
       if (!ok) { setStorageOff(true); return; }
-      void listDrafts().then((all) => { if (alive) setQueue(all); });
+      void listDrafts().then((all) => {
+        if (!alive) return;
+        // **이번 세션에서 우리가 적은 초안은 뺀다** — 지금 편집 중인
+        // 문서를 "복구할까요?" 라고 되묻지 않기 위해서다 (2026-08-06).
+        setQueue(all.filter((d) => !isDraftFromThisSession(d.key)));
+      });
     });
     return () => { alive = false; };
   }, []);

@@ -45,7 +45,7 @@ git pull origin main
 |------|------|------|
 | 마인드맵 편집기 | 노드 생성/편집/이동/삭제, 다양한 레이아웃 | MVP |
 | 노드 추가 인디케이터 | 4방향 +버튼으로 직관적 노드 추가 | MVP |
-| 자동 저장 | patch 기반 실시간 DB 자동 저장 | MVP |
+| 자동 저장 | 로컬 초안(IndexedDB) 즉시 보관 + 서버 스냅샷 자동 저장(주기·안전 시점) | MVP |
 | Undo / Redo | 클라이언트 히스토리 + 서버 리비전 | MVP |
 | Export | Markdown, Standalone HTML | MVP |
 | AI 마인드맵 생성 | 프롬프트 → 자동 맵 생성 | MVP |

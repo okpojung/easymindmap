@@ -71,7 +71,7 @@ Canvas, Interaction, Layout, State, History 등
 ### 💾 자동 저장
 
 - **save/14-save.md**
-  - Patch 기반 실시간 자동 저장 전략 (debounce / 즉시 저장)
+  - 로컬 초안(IndexedDB) 즉시 보관 + 서버 스냅샷 저장 (주기·미저장 편집 50개·안전 시점) — 14-save.md §0
 
 ---
 

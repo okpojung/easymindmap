@@ -43,7 +43,7 @@ V3    ──── AI 협업 요약·작업 생성(COLLAB-14~15 / AI-03~05) / �
 | 노드 링크 | URL 첨부 (문서 스냅샷 내 links) |
 | 노드 첨부파일 | 파일 첨부 — 맵 내장(합계 10MB까지) + 초과분 서버 저장소 우회, 사용자 쿼터 |
 | 스타일 | 색상 / 폰트 / 도형(화살표L/R·원통·별 포함) / 테두리 이중선 / 다크 모드 |
-| 자동 저장 | 문서 스냅샷 저장 — 편집 멈춤 1.5초 뒤 `PUT /maps/:id/document` (서버 맵 연결 시에만). 무변경 저장은 스킵 |
+| 자동 저장 | 문서 스냅샷 저장 — **주기(기본 5분)·미저장 편집 50개·탭 전환/창 닫기** 시점에 `PUT /maps/:id/document` (서버 맵 연결 시에만). 무변경 저장은 스킵. 그 사이는 로컬 초안(IndexedDB) |
 | 버전 히스토리 | 저장 시점마다 영구 스냅샷(map_document_versions) + 히스토리 패널(첨부 개수·용량 표시, 선택 버전 새 탭 열기) |
 | 편집 잠금 | 단일 세션 편집 잠금(map_edit_locks, TTL 60초) — 다른 세션에서 열면 읽기 전용 + 사본 저장 |
 | Undo / Redo | 클라이언트 히스토리 (세션 99단계, 단계 카운터 표시) |
@@ -73,7 +73,7 @@ Storage  : 첨부 로컬 디스크 드라이버(NFS 마운트 가능) + 사용�
 Queue    : 없음 (BullMQ/Redis 미사용 — AI 호출은 브라우저에서 직접)
 Layout   : 2-pass algorithm, subtree 단위 (UI 노출 9종 레이아웃)
 Edge     : 방사형 → curve-line (Cubic Bezier 곡선), 나머지 → tree-line (직각선)
-Autosave : 문서 스냅샷 저장 (편집 멈춤 1.5초 디바운스, 무변경 스킵)
+Autosave : 문서 스냅샷 저장 (주기 기본 5분 + 편집 50개 + 안전 시점, 무변경 스킵)
 Export   : EMM Markdown serializer (@easymindmap/emm-parser) + 자체 Standalone
            HTML 뷰어 (+첨부 ZIP)
 파서      : packages/emm-parser — 파일 포맷·타입 유니언의 단일 원본, CLI·적합성

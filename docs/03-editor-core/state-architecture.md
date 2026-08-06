@@ -45,7 +45,7 @@ node 이동
 → document 구조 변경 (+ past 스택 push)
 → layout 재계산
 → 화면 다시 렌더링
-→ 1500ms 후 자동저장
+→ 자동저장 대기 (주기·안전 시점에 발사)
 ```
 
 이걸 하나의 store에 몰아넣으면 다음 문제가 생긴다.
@@ -162,7 +162,7 @@ easymindmap의 편집 파이프라인은 아래 흐름을 따른다.
 → documentStore 액션 (set — past 스택 push 포함)
 → Layout 계산
 → Render
-→ 1500ms 디바운스 자동저장 (PUT 스냅샷)
+→ 자동저장 (주기·안전 시점에 PUT 스냅샷)
 ```
 
 즉, 진짜 핵심은 항상 documentStore이다.
@@ -466,14 +466,14 @@ interface CloudState {
 
 ### 5.5.3 Autosave 트리거
 
-**모든 문서 변경 = 1500ms 단일 디바운스** (`14-save.md` §4.1).
+**모든 문서 변경 = 미저장 편집 +1**, 서버 반영은 **주기(기본 5분)·미저장 편집 50개·탭 전환/창 닫기/온라인 복귀** (`14-save.md` §0.2). 그 사이 편집은 **로컬 초안(IndexedDB)** 이 지킨다.
 유형별 즉시/디바운스 구분은 없다 — 스냅샷 방식이라 최종 상태 하나만
 보내면 된다.
 
 ```text
 documentStore 변경
 → saveState = 'dirty'
-→ 1500ms 디바운스
+→ 자동저장 대기 (주기·안전 시점)
 → buildSnapshot() → PUT /maps/{cloudMapId}/document
 → 성공: saveState = 'saved' / 실패: 'error'
 ```
@@ -500,7 +500,7 @@ Layout Engine (computeLayout → LaidOutNode[])
    ↓
 Renderer (SVG + HTML Overlay)
    ↓
-1500ms 디바운스 저장 (cloudStore.cloudMapId 로 PUT)
+자동저장 (주기 기본 5분·미저장 편집 50개·탭 전환/창 닫기 — cloudStore.cloudMapId 로 PUT)
    ↓
 API / DB
 ```
@@ -638,7 +638,7 @@ Layout Engine = 계산기 (computeLayout)
 
 ```text
 documentStore 변경 감지
-→ 1500ms 디바운스
+→ 자동저장 대기 (주기·안전 시점)
 → buildSnapshot() (normalizeMapForSnapshot)
 → PUT /maps/:id/document
 ```
@@ -708,7 +708,7 @@ authStore / aiSettingsStore
 ## 14. 함께 읽을 문서
 
 1. `docs/03-editor-core/history/12-history-undo-redo.md` — past/future·HISTORY_LIMIT·setHistoryPaused
-2. `docs/03-editor-core/save/14-save.md` — 1500ms 디바운스·무변경 스킵·편집 잠금
+2. `docs/03-editor-core/save/14-save.md` — 주기 자동저장·로컬 초안·무변경 스킵·편집 잠금 (§0 에 결론 정리)
 3. `docs/03-editor-core/layout/08-layout.md` — 레이아웃 엔진·간격
 4. `docs/90-architecture/frontend-architecture.md` — 프런트 전체 구조
 5. `docs/05-implementation/state-management.md` — Zustand + 얇은 fetch 래퍼 전략

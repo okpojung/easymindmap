@@ -23,7 +23,7 @@
 | KANBAN | 깊이 제한 없음(depth 3+ = 중첩 카드)·컬럼 선택/삭제·카드 복사/붙여넣기·플로팅 도구 |
 | NC (노드 콘텐츠) | 구조화 노트 블록 4종(paragraph/code_block/table/checklist)·링크·첨부파일(쿼터) |
 | STYLE | 도형 11종·색상/폰트 + 다크모드 |
-| SAVE | PUT /maps/:id/document 전체 스냅샷 저장 — 1.5초 디바운스 + 무변경 스킵 + 단일 세션 편집 잠금(map_edit_locks) |
+| SAVE | PUT /maps/:id/document 전체 스냅샷 저장 — **주기 자동저장(3·5·10분, 기본 5분) + 미저장 편집 50개 + 탭 전환·창 닫기·온라인 복귀** + 무변경 스킵 + 단일 세션 편집 잠금(map_edit_locks). 그 사이 편집은 **로컬 초안(IndexedDB)** 이 지킨다. 히스토리 버전은 **명시 저장에서만**. (2026-08-06 개편 — 14-save.md §0) |
 | VH (버전 히스토리) | 저장 시마다 map_document_versions 버전 생성 · 선택 버전을 새 맵으로 만들어 새 탭 복원 |
 | UNDO | 클라이언트 Undo/Redo 99단계 |
 | EXPORT/IMPORT | Markdown/HTML 내보내기(첨부 시 ZIP)·Markdown 가져오기 |

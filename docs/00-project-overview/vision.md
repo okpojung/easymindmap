@@ -39,7 +39,7 @@ easymindmap은 단순한 아이디어 정리 도구가 아니라,
 4. **AI 기반 자동 생성** — 질문 하나로 마인드맵 초안 생성 (AI-01), 선택 노드 AI 확장 (AI-02); 협업 중(2명 이상)에는 AI 기능 비활성
 5. **AI 실행형 절차 (Workflow)** — step 기반 절차 생성 + 오류 해결 + 최종 정제 → runbook 완성 (V1.5); solo 편집 모드 전용 (WFLOW-01~12)
 6. **Note Code Block** — paragraph / code_block / table / checklist 블록 구조, 언어별 syntax highlight + Copy 버튼
-7. **자동 저장** — 서버 맵에 연결돼 있으면 편집이 멎고 1.5초 뒤 문서 스냅샷 저장, 저장 시점마다 버전 히스토리 + 단일 세션 편집 잠금
+7. **자동 저장** — 편집은 **브라우저(IndexedDB)에 즉시** 보관되고, 서버에는 **주기(기본 5분)·미저장 편집 50개·탭 전환/창 닫기** 시점에 스냅샷으로 올라간다. 히스토리 버전은 **☁ 저장·맵 닫기에서만** + 단일 세션 편집 잠금 (2026-08-06 개편)
 8. **Standalone HTML Export** — 단일 HTML 파일로 웹서버에 그대로 퍼블리싱 / Publish URL 생성(계획 — V1)
 9. **WBS 모드 + Redmine 연동** — 노드에 시작일·종료일·마일스톤·진척률 설정(WBS-01~05), Redmine 이슈 양방향 동기화 + BullMQ 비동기 처리 + AES-256-GCM 암호화 (RDMN-01~08, V1)
 10. **실시간 협업** — 다중 사용자 동시 편집, Presence·커서 공유·Soft Lock(5초 TTL), scope 기반 편집 범위 제한, 맵 단위 실시간 채팅 (COLLAB-01~17, V1~V3)

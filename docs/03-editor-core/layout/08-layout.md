@@ -80,6 +80,7 @@ type LayoutType =
   | 'process-tree-right-a'   // BL-PR-RA  (레거시 — process-tree-right로 정규화)
   | 'process-tree-right-b'   // BL-PR-RB  (레거시 — process-tree-right로 정규화)
   | 'timeline'               // BL-TL     시간배치 (타임라인) — §22
+  | 'timeline-center'        // BL-TL-C   시간배치 (중앙노드) — §22.1
   | 'freeform'               // BL-FR     자유배치 (V1+ 예정 — 현재 radial-right 폴백)
   | 'kanban';                // BL-KB     Kanban 보드형 (별도 보드 렌더러)
 ```
@@ -102,6 +103,7 @@ type LayoutType =
 | BL-PR-RA | `process-tree-right-a` | (레거시)              |     | `process-tree-right`로 정규화 |
 | BL-PR-RB | `process-tree-right-b` | (레거시)              |     | `process-tree-right`로 정규화 |
 | BL-TL    | `timeline`             | 시간배치 (타임라인)        |     | 구현 (§22) |
+| BL-TL-C  | `timeline-center`      | 시간배치 (중앙노드)        |     | 구현 (§22.1) |
 | BL-FR    | `freeform`             | 자유배치               |     | V1+ 예정 (radial-right 폴백) |
 | BL-KB    | `kanban`               | Kanban 보드형         |     | 구현 (보드 렌더러) |
 
@@ -205,7 +207,8 @@ type NodeObject = {
 | 맵 레이아웃이 `kanban`일 때 (어떤 노드를 선택해도) | 모든 레이아웃 선택 가능 · **항상 맵 전체에 적용** (Kanban에는 Subtree 레이아웃이 없음 — Kanban 탈출 경로) |
 
 * **메인노드 전용 레이아웃**: `radial-bidirectional`(방사형·양쪽),
-  `tree-down`(트리·아래), `timeline`(시간배치), `kanban`, `freeform`.
+  `tree-down`(트리·아래), `timeline`·`timeline-center`(시간배치), `kanban`,
+  `freeform`.
   루트 양쪽/사방으로 가지를 전개하거나(방사형·양쪽, 트리·아래),
   보드 뷰(kanban)·수동 배치(freeform)라서 한쪽에 매달린 Subtree에는
   적용할 수 없다.
@@ -940,3 +943,21 @@ Edge 꺾임점 또는 Bezier control point는 DB에 저장하지 않는다.
 - **HTML 내보내기 파리티**: 내보내기는 에디터 계산 좌표(pos)를 그대로
   쓰므로 배치는 자동 일치 — 뷰어에는 timeline 엣지 스타일과 시간축
   화살표만 추가했다 (exportHtml VIEWER_JS).
+
+### 22.1 시간배치 (중앙노드) — `timeline-center` (2026-08-07)
+
+`timeline` 은 중심 주제가 축의 **왼쪽 끝**이라 주제가 늘어날수록 맵이
+오른쪽으로만 길어졌다. `timeline-center` 는 **시간축이 중심 주제를
+관통**하게 해 화면 폭을 좌·우로 나눠 쓴다 (사용자 요청).
+
+- 주제를 **입력 순서 그대로 왼→오른쪽**으로 늘어놓되, 앞 절반
+  (`floor(n/2)`)은 루트 왼쪽에, 나머지는 루트 오른쪽에 둔다. 전체를
+  왼쪽에서 오른쪽으로 읽으면 그대로 시간 순서다.
+- 주제가 1개뿐이면 왼쪽이 0개 = `timeline` 과 같은 모양이 된다.
+- 위/아래 번갈아 배치·하위 스택·태그 칩 예약은 `timeline` 과 동일
+  (`layoutTimelineCenter` 가 같은 `placeSubtree` 를 쓴다).
+- 시간축은 **루트 상자 안을 비워 두고** 좌·우 두 선분으로 그린다
+  (선이 중심 주제 글자를 가로지르지 않게). 화살촉은 오른쪽 끝에만.
+- 엣지: 루트→주제는 주제가 루트 왼쪽이면 **루트 왼쪽 변**에서 출발한다
+  (`EdgeRenderer.createTimelinePath` · 뷰어 `edgePath`).
+- 접기 앵커·`side`(up/down)·+버튼 방향은 `timeline` 과 같은 규칙.

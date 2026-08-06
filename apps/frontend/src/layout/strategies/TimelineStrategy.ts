@@ -151,3 +151,44 @@ export function layoutTimeline(
     x += m.blockW + STEP_GAP;
   });
 }
+
+/**
+ * 시간배치(중앙노드) — 시간축이 중심 주제를 **관통**한다 (2026-08-07 요청).
+ *
+ * `timeline` 은 중심 주제가 축의 왼쪽 끝이라 주제가 늘어날수록 맵이
+ * 오른쪽으로만 길어졌다. 여기서는 중심 주제를 축 한가운데 두고 **앞
+ * 절반은 왼쪽, 뒤 절반은 오른쪽**에 놓는다 — 시간 순서(왼→오른쪽)는
+ * 그대로 지키면서 화면 폭을 반씩 나눠 쓴다.
+ *
+ * 위/아래 번갈아 배치는 `timeline` 과 같다. 왼쪽 구간도 **왼→오른쪽
+ * 순서**로 채우므로(오른쪽부터 역순으로 채우는 것이 아니다) 전체를
+ * 왼쪽에서 오른쪽으로 읽으면 곧 시간 순서가 된다.
+ */
+export function layoutTimelineCenter(
+  branches: SampleBranch[],
+  CX: number,
+  CY: number,
+  rootW: number,
+  out: LaidOutNode[],
+): void {
+  const measured = branches.map((b) => measureNode(b, 1));
+  // 앞 절반(올림) = 왼쪽. 주제가 1개뿐이면 왼쪽 0개 = 오른쪽에만 —
+  // 중심 주제가 축 왼쪽 끝에 서는 셈이라 `timeline` 과 같아진다.
+  const leftCount = Math.floor(measured.length / 2);
+  const leftPart = measured.slice(0, leftCount);
+  const rightPart = measured.slice(leftCount);
+
+  // 왼쪽 구간의 시작 x — 블록 폭 합계를 미리 재서 왼쪽 끝을 잡는다.
+  const leftSpan = leftPart.reduce((s, m) => s + m.blockW, 0)
+    + Math.max(0, leftPart.length - 1) * STEP_GAP;
+  let x = CX - rootW / 2 - AXIS_GAP - leftSpan;
+
+  measured.forEach((m, i) => {
+    const dir: 'up' | 'down' = i % 2 === 0 ? 'up' : 'down';
+    const edgeY = dir === 'up' ? CY - BRANCH_GAP : CY + BRANCH_GAP;
+    placeSubtree(m, x, edgeY, dir, 1, 'root', out);
+    x += m.blockW + STEP_GAP;
+    // 중심 주제 자리를 건너뛴다 — 왼쪽 마지막 주제를 놓은 직후.
+    if (i === leftCount - 1) x = CX + rootW / 2 + AXIS_GAP;
+  });
+}

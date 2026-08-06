@@ -19,7 +19,7 @@
 | AUTH | 이메일 로그인 + Guest 모드 (Supabase Auth SDK 직접 — 자체 /auth API 없음, SNS 로그인은 준비 중) |
 | MAP | 맵 생성/열기/삭제 + 문서함(MapBrowser)·폴더 관리 |
 | NODE | 노드 편집(추가/이동/복제 등)·노드 추가 인디케이터 |
-| LAYOUT | UI 9종 — 방사형 양쪽/오른쪽·트리 오른쪽/아래·계층형·진행트리·시간배치(타임라인)·Kanban·자유배치 |
+| LAYOUT | UI 10종 — 방사형 양쪽/오른쪽·트리 오른쪽/아래·계층형·진행트리·시간배치(타임라인)·시간배치(중앙노드)·Kanban·자유배치 |
 | KANBAN | 깊이 제한 없음(depth 3+ = 중첩 카드)·컬럼 선택/삭제·카드 복사/붙여넣기·플로팅 도구 |
 | NC (노드 콘텐츠) | 구조화 노트 블록 4종(paragraph/code_block/table/checklist)·링크·첨부파일(쿼터) |
 | STYLE | 도형 11종·색상/폰트 + 다크모드 |
@@ -198,7 +198,7 @@
 | 77  | MD 포맷       | MDP-02      | List Parse             | Markdown 리스트 유지 정책               | 1. 리스트 감지2. 모드별(document/outline) 변환 처리                                                          |
 | 78  | MD 포맷       | MDP-03      | Document Mode          | 문서형 Markdown import (기본)         | 1. 파일 선택2. heading만 구조화3. 본문은 콘텐츠로 포함                                                            |
 | 79  | MD 포맷       | MDP-04      | Outline Mode           | 아웃라인형 Markdown import            | 1. 모드 선택2. 리스트 항목을 자식 node로 변환                                                                   |
-| 80  | LAYOUT      | LT-01       | 레이아웃 타입 선택             | 9종 레이아웃 중 선택 및 전환 (+시간배치 LT-11 신설)               | 1. Inspector Layout 탭 선택2. layoutType 업데이트3. 엔진 재계산 및 애니메이션                                                      |
+| 80  | LAYOUT      | LT-01       | 레이아웃 타입 선택             | 10종 레이아웃 중 선택 및 전환 (+시간배치 LT-11·LT-12 신설)               | 1. Inspector Layout 탭 선택2. layoutType 업데이트3. 엔진 재계산 및 애니메이션                                                      |
 | 81  | LAYOUT      | LT-02       | Subtree 레이아웃           | 특정 노드 이하 독립 레이아웃 지정              | 1. 우클릭 메뉴2. 해당 node.layoutType 저장3. Subtree만 독립 적용                                               |
 | 82  | LAYOUT      | LT-03       | Auto Layout 엔진         | 2-Pass 알고리즘 좌표 계산                | 1. Measure Pass (Bottom-up)2. Arrange Pass (Top-down)3. 좌표 업데이트                                  |
 | 83  | LAYOUT      | LT-04       | Freeform 수동 배치         | drag & drop으로 위치 수동 지정           | 1. 노드 drag2. manualPosition 저장3. 엔진 개입 차단                                                        |
@@ -209,6 +209,7 @@
 | 88  | LAYOUT      | LT-09       | 루트 레이아웃 결정             | 루트 타입이 전체 맵 기본값                  | 1. 루트 타입 변경2. 전체 relayout 트리거                                                                    |
 | 89  | LAYOUT      | LT-10       | 간격/방향 설정               | 노드 간격(gap)·방향 설정                 | 1. 값 입력2. maps.layout_config 저장3. 엔진 반영                                                          |
 | 89a | LAYOUT      | LT-11       | 시간배치(타임라인) 레이아웃        | 시간축 기반 노드 배치 레이아웃              | 1. layoutType=timeline 선택2. 시간축 기준 좌표 계산3. 렌더링 반영                                                |
+| 89b | LAYOUT      | LT-12       | 시간배치(중앙노드) 레이아웃        | 시간축이 중심 주제를 관통 — 주제를 좌·우로 분할 (2026-08-07)              | 1. layoutType=timeline-center 선택2. 앞 절반은 루트 왼쪽·나머지는 오른쪽3. 축은 루트 상자를 비우고 좌·우 두 선분                                                |
 | 90  | KANBAN      | KB-01       | Kanban 보드 생성           | 새 맵/기존 맵에서 보드 생성                 | 1. layoutType=kanban2. board 노드 생성3. 초기 컬럼 자동 생성                                                 |
 | 91  | KANBAN      | KB-02       | 초기 컬럼 구성               | 기본 컬럼(Todo/Doing/Done) 구성        | 1. 보드 생성 트리거2. depth 1 노드 3개 INSERT                                                              |
 | 92  | KANBAN      | KB-03       | 컬럼 추가                  | 보드에 새 컬럼 추가                      | 1. 버튼 클릭2. 컬럼명 입력3. column node 생성                                                               |

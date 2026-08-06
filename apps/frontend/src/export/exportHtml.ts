@@ -247,7 +247,7 @@ const VIEWER_JS = String.raw`
   var KNOWN = {
     'radial-bidirectional': 1, 'radial-right': 1, 'radial-left': 1,
     'tree-right': 1, 'tree-down': 1, 'hierarchy-right': 1,
-    'process-tree-right': 1, 'timeline': 1
+    'process-tree-right': 1, 'timeline': 1, 'timeline-center': 1
   };
   function normalize(lt) {
     if (!lt) return null;
@@ -774,12 +774,14 @@ const VIEWER_JS = String.raw`
   // ---- edges (style follows the PARENT's effective layout, 08-layout §18) ----
   function edgePath(p, c) {
     var eff = p._eff;
-    if (eff === 'timeline') {
+    if (eff === 'timeline' || eff === 'timeline-center') {
       // 시간배치 — 루트→주제: 시간축을 따라가다 주제로 꺾임.
       // 주제 이하: 왼쪽 스파인 세로 아웃라인 (위/아래 방향).
       if (p === DATA.root) {
         var edgeY0 = c._cy < p._cy ? c._cy + c._h / 2 : c._cy - c._h / 2;
-        return 'M ' + (p._cx + p._w / 2) + ' ' + p._cy + ' H ' + c._cx + ' V ' + edgeY0;
+        // 중앙노드 배치는 주제가 루트 왼쪽에도 온다 — 그때는 왼쪽 변에서 출발
+        var fromX0 = c._cx < p._cx ? p._cx - p._w / 2 : p._cx + p._w / 2;
+        return 'M ' + fromX0 + ' ' + p._cy + ' H ' + c._cx + ' V ' + edgeY0;
       }
       var up = c._cy < p._cy;
       var tagPad0 = (!up && p.tags && p.tags.length) ? TAG_H + 7 : 0;
@@ -1015,15 +1017,22 @@ const VIEWER_JS = String.raw`
     }
     var kids = node.children || [];
 
-    if (depth === 0 && node._eff === 'timeline') {
-      // 수평 시간축 화살표 (루트 → 마지막 주제 너머) — 에디터와 동일
+    if (depth === 0 && (node._eff === 'timeline' || node._eff === 'timeline-center')) {
+      // 수평 시간축 화살표 (루트 → 마지막 주제 너머) — 에디터와 동일.
+      // 중앙노드 배치는 루트 **왼쪽**으로도 축이 뻗는다(루트 상자 안은 비움).
       var maxX = node._cx + node._w / 2;
+      var minX = node._cx - node._w / 2;
       (function scan(n2) {
         maxX = Math.max(maxX, n2._cx + n2._w / 2);
+        minX = Math.min(minX, n2._cx - n2._w / 2);
         var ks = n2._open ? (n2.children || []) : [];
         for (var q = 0; q < ks.length; q++) if (ks[q]._cx != null) scan(ks[q]);
       })(node);
       var endX = maxX + 46;
+      if (node._eff === 'timeline-center') {
+        el('line', { x1: minX - 46, y1: node._cy, x2: node._cx - node._w / 2, y2: node._cy,
+          stroke: '#C9BBA4', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, world);
+      }
       el('line', { x1: node._cx + node._w / 2, y1: node._cy, x2: endX, y2: node._cy,
         stroke: '#C9BBA4', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, world);
       el('polygon', { points: (endX + 12) + ',' + node._cy + ' ' + (endX - 2) + ',' +
@@ -1552,7 +1561,7 @@ const VIEWER_JS = String.raw`
         ccx = bx0 + OUTLINE_INSET; ccy = byBot + OUT;
       } else if (effT === 'tree-down') {
         ccx = node._cx; ccy = byBot + OUT;
-      } else if (effT === 'timeline') {
+      } else if (effT === 'timeline' || effT === 'timeline-center') {
         if (depth === 0) { ccx = bx1 + OUT; ccy = node._cy; }
         else if (node.side === 'up') { ccx = bx0 + OUTLINE_INSET; ccy = byTop - OUT; }
         else { ccx = bx0 + OUTLINE_INSET; ccy = byBot + OUT; }
@@ -1951,7 +1960,8 @@ const VIEWER_JS = String.raw`
       'radial-bidirectional': '방사형·양쪽', 'radial-right': '방사형·오른쪽',
       'radial-left': '방사형·왼쪽', 'tree-right': '트리·오른쪽',
       'tree-down': '트리·아래', 'hierarchy-right': '계층형·오른쪽',
-      'process-tree-right': '진행트리·오른쪽', 'timeline': '시간배치'
+      'process-tree-right': '진행트리·오른쪽', 'timeline': '시간배치',
+      'timeline-center': '시간배치·중앙'
     };
     var eff = normalize(DATA.root.layoutType) || 'radial-bidirectional';
     document.getElementById('mm-count').textContent =

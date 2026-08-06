@@ -57,6 +57,7 @@ const ROOT_LAYOUTS: { key: LayoutType; label: string }[] = [
   { key: 'hierarchy-right' as LayoutType,      label: '계층형 · 오른쪽' },
   { key: 'process-tree-right' as LayoutType,   label: '진행트리 · 오른쪽' },
   { key: 'timeline' as LayoutType,             label: '시간배치 (타임라인)' },
+  { key: 'timeline-center' as LayoutType,      label: '시간배치 (중앙노드)' },
 ];
 
 // 텍스트 맞춤 선택지 — '' = 기본(중앙)

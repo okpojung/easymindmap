@@ -85,9 +85,11 @@ const progressTreeMap = (): SampleMap => ({
   ],
 });
 
-// ── 브레인스토밍 — 방사형·양쪽 자유 확장 ─────────────────────────────────
+// ── 방사형 양쪽 — 양쪽으로 자유 확장 ─────────────────────────────────────
+// (2026-08-07 이름 변경: '브레인스토밍' → '방사형 양쪽'. 템플릿 이름이
+//  용도가 아니라 **배치 모양**을 말하도록 통일 — 고를 때 결과가 보인다)
 const brainstormingMap = (): SampleMap => ({
-  title: '브레인스토밍',
+  title: '방사형 양쪽',
   root: rootOf('중심 주제'),
   branches: [
     br('아이디어 1', 'l1A', 'right', [n('하위 주제'), n('하위 주제')]),
@@ -99,10 +101,12 @@ const brainstormingMap = (): SampleMap => ({
   ],
 });
 
-// ── 제품 로드맵 — Q1~Q4 분기별 마일스톤 ─────────────────────────────────
+// ── 시간배치(타임라인) — Q1~Q4 분기별 마일스톤 ──────────────────────────
+// (2026-08-07 이름·레이아웃 변경: '제품 로드맵'/방사형·양쪽 → '시간배치
+//  (타임라인)'/timeline. 분기 골격은 시간축 위에 놓일 때 제 모양이 난다)
 const roadmapMap = (): SampleMap => ({
-  title: '제품 로드맵',
-  root: rootOf('제품 로드맵'),
+  title: '시간배치 (타임라인)',
+  root: rootOf('중심 주제'),
   branches: [
     br('Q1 · 기반', 'l1A', 'right', [n('마일스톤', [n('내용')]), n('마일스톤')]),
     br('Q2 · 확장', 'l1B', 'right', [n('마일스톤', [n('내용')]), n('마일스톤')]),
@@ -111,9 +115,10 @@ const roadmapMap = (): SampleMap => ({
   ],
 });
 
-// ── WBS 프로젝트 — 계층형 작업 분해 구조 ────────────────────────────────
+// ── 계층형 오른쪽 — 작업 분해(WBS) 골격 ─────────────────────────────────
+// (2026-08-07 이름 변경: 'WBS 프로젝트' → '계층형 오른쪽')
 const wbsMap = (): SampleMap => ({
-  title: 'WBS 프로젝트',
+  title: '계층형 오른쪽',
   root: rootOf('프로젝트'),
   branches: [
     br('1.0 기획', 'l1B', 'right', [n('1.1 요구 정의'), n('1.2 일정 수립')]),
@@ -165,25 +170,26 @@ export const LIBRARY_TEMPLATES: LibraryTemplate[] = [
     editor: { layoutType: 'process-tree-right' },
   },
   {
+    // id 는 그대로 둔다 — 저장된 맵·문서가 참조할 수 있다 (이름만 변경)
     id: 'lib-brainstorming',
-    name: '브레인스토밍',
-    desc: '자유 확장 방사형(양쪽) 맵',
+    name: '방사형 양쪽',
+    desc: '중심에서 좌·우로 자유 확장',
     colors: ['#F59E0B', '#FBBF24'],
     map: brainstormingMap(),
     editor: { layoutType: 'radial-bidirectional' },
   },
   {
     id: 'lib-roadmap',
-    name: '제품 로드맵',
-    desc: 'Q1~Q4 분기별 마일스톤',
+    name: '시간배치 (타임라인)',
+    desc: '수평 시간축 · Q1~Q4 분기별 마일스톤',
     colors: ['#D97706', '#0284C7', '#15803D', '#9333EA'],
     map: roadmapMap(),
-    editor: { layoutType: 'radial-bidirectional' },
+    editor: { layoutType: 'timeline' },
   },
   {
     id: 'lib-wbs',
-    name: 'WBS 프로젝트',
-    desc: '계층형 작업 분해 구조',
+    name: '계층형 오른쪽',
+    desc: '작업 분해(WBS) 계층 구조',
     colors: ['#0284C7', '#38BDF8', '#7DD3FC'],
     map: wbsMap(),
     editor: { layoutType: 'hierarchy-right' },

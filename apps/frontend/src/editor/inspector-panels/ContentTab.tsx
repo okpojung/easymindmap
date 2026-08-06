@@ -51,8 +51,11 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
       try {
         // 8MB 초과는 **청크 업로드**로 간다 — 진행률은 화면 아래 줄에
         // 뜨고, 사용자가 고를 것은 없다 (§12.7 — 경로를 나누지 않는다).
+        // **크기를 함께 적어 둔다** (2026-08-07) — 서버 저장소 첨부는
+        // URL 만으로 크기를 알 수 없어 하단 상태바가 셀 수 없었다.
         addNodeAttachment(selectedId, {
-          name: f.name, kind: kindOf(f), url: await attachFileWithProgress(f),
+          name: f.name, kind: kindOf(f), size: f.size,
+          url: await attachFileWithProgress(f),
         });
       } catch (err) {
         // 사용자가 [취소]를 누른 것은 오류가 아니다 — 빨간 줄을 띄우지 않는다.

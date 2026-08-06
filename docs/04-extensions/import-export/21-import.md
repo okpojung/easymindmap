@@ -264,8 +264,8 @@ Document Store 반영 + Auto Save
     "블록 배치" 옵션: markdown-export.md §1.0)
   - HTML 파일 불러오기 (EasyMindMap 생성 HTML만)
   - ZIP 파일 불러오기 (EasyMindMap HTML/MD + files/ 첨부)
-- 템플릿 선택 카드의 **"🌐 AI로 초안 만들기" 버튼** — 우측 AI 탭
-  (웹 AI 모드)으로 바로 진입 (web-ai-clipboard.md §3-3)
+- (템플릿 선택 카드의 "🌐 AI로 초안 만들기" 버튼은 2026-08-07 삭제 —
+  AI 진입점은 우측 `AI` 탭 한 곳으로 모았다. web-ai-clipboard.md §3-3)
 
 새 맵을 만들거나 파일을 불러온 **직후 "적용할 템플릿 선택" 단계**가
 나타난다 (내 템플릿 + 라이브러리):

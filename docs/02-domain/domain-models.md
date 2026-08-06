@@ -257,7 +257,7 @@ type UserObject = {
   displayName: string | null;
 
   // 저장 용량 쿼터 (B9 — implemented, users.quota_bytes)
-  quotaBytes: number;                     // 기본 1GB(1073741824), 유료 10GB
+  quotaBytes: number;                     // 요금제(plan)가 정한다 — Free 10MB / Basic 10GB / Pro 30GB / Team 20GB
 
   // 번역 설정
   preferredLanguage: SupportedLanguage;   // [V2] 기본 언어 (implemented)

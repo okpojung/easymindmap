@@ -481,9 +481,16 @@ export function Canvas({
           try {
             // ≤2MB 는 data URL 내장, 초과는 서버 업로드 — 저장 후에도 유지
             addNodeAttachment(target.id, { name: f.name, kind, url: await attachmentUrlForFile(f) });
-          } catch {
-            // 업로드 실패(쿼터 초과 등) — 이 파일만 건너뛴다. 상세 안내는
-            // 링크·첨부 탭의 첨부 버튼 경로에서 표시된다.
+          } catch (err) {
+            // **실패를 삼키지 않는다** (2026-08-06 보고).
+            //
+            // 예전에는 빈 catch 로 조용히 건너뛰었다 — "상세 안내는 첨부
+            // 탭에서 표시된다"고 적어 두었지만, **노드에 끌어다 놓은
+            // 사용자는 그 탭을 열지 않는다.** 20MB 를 넘는 파일을 노드에
+            // 드롭하면 서버가 거절하는데도 화면에는 아무 일도 일어나지
+            // 않아, 사용자에게는 "무반응"으로 보였다.
+            const why = err instanceof Error ? err.message : '알 수 없는 오류';
+            notifyPaste(`⚠ '${f.name}' 첨부 실패 — ${why}`);
           }
         }
       })();

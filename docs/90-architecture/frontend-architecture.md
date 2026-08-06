@@ -326,12 +326,15 @@ Layout Engine (변경된 subtree만 재계산)
 SVG + HTML Overlay 리렌더링
       │
       ▼
-Autosave debounce 타이머
-(500ms~1500ms 후)
+로컬 초안(IndexedDB) 즉시 기록
       │
       ▼
-PATCH /maps/:id/nodes
-{ clientId, patchId, baseVersion, timestamp, patches }
+자동저장 시점 (주기 기본 5분 · 미저장 편집 50개 ·
+              탭 전환 / 창 닫기 / 온라인 복귀)
+      │
+      ▼
+PUT /maps/:id/document
+{ doc, title, editSession }        ← 전체 스냅샷 (14-save.md §0)
 ```
 
 ---

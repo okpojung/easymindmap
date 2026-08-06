@@ -117,7 +117,7 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
 ### Phase 4b — 클라우드 사용성 (완료)
 
 - **자동 저장**(`hooks/useCloudAutosave.ts`): 문서가 서버 맵에 연결된
-  상태에서 편집이 멈추면 1.5s 디바운스 후 스냅샷을 자동 저장. 상태는
+  상태에서 주기(기본 5분)·미저장 편집 50개·탭 전환/창 닫기 시점에 스냅샷을 자동 저장. 상태는
   상단 툴바 배지(`useAutosaveStore`: dirty→saving→saved/error)로 표시.
 - **안전장치**: `cloudStore` 를 **세션 한정(비영속)** 으로 — cloudMapId 를
   새로고침 후에도 유지하면 인메모리 기본 문서가 서버 맵을 덮어써 유실될

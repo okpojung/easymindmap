@@ -21,7 +21,7 @@
 | 항목 | 구현 |
 |---|---|
 | 테이블 | `public.map_document_versions` (map_id, version, title, doc, created_by, created_at, layout_type, node_count, attach_bytes, attach_count · UNIQUE(map_id,version) · RLS 소유자 한정) |
-| 버전 생성 시점 | **명시적 저장에서만** — `PUT /maps/:id/document` 의 `keepVersion: true`. ☁ 저장·맵 닫기가 이 값을 보낸다. **자동저장(디바운스)은 버전을 남기지 않는다** — 스냅샷에 이미지가 data URL 로 들어가 매 저장마다 쌓으면 용량이 급증하기 때문 |
+| 버전 생성 시점 | **명시적 저장에서만** — `PUT /maps/:id/document` 의 `keepVersion: true`. ☁ 저장·맵 닫기가 이 값을 보낸다. **자동저장은 버전을 남기지 않는다**(2026-08-06 사용자 결정으로 재확인 — 히스토리는 *내가 매듭지은 시점*이라는 뜻을 지킨다) — 스냅샷에 이미지가 data URL 로 들어가 매 저장마다 쌓으면 용량이 급증하기 때문 |
 | 조회 | `GET /maps/:id/versions` (메타만 — version·title·createdAt·bytes 등) · `GET /maps/:id/versions/:version` (doc 포함) |
 | 복원 | 현재 맵을 덮어쓰지 않는다 — 새 맵 생성 후 그 문서로 저장하고, **브라우저 새 탭**(`?map=<id>`)에서 연다(2026-08-02 탭 모델 — 지금 편집 중인 맵을 밀어내지 않는다). 제목 = **`원제목_history_YYMMDD_HHMM`** (같은 날 여러 번 복원해도 구분되도록 분까지) |
 | UI | 좌측 **히스토리** 패널 — 저장일시 목록 + 각 항목 "새 탭으로". 서버 미연결이면 안내만 표시 |
@@ -180,7 +180,7 @@ PUT /maps/{mapId}/document { doc, title, keepVersion: true, editSession }
 | 동작                        | 결과                               |
 | ------------------------- | -------------------------------- |
 | ☁ 저장 / 맵 닫기        | keepVersion 저장 → 버전 1개 생성 (무변경이면 스킵)    |
-| 편집 후 자동저장(1500ms)만 발생        | **버전 생성 없음** (e2e80 [4])    |
+| 편집 후 자동저장(주기·안전 시점)만 발생 | **버전 생성 없음** (e2e80 [4]·e2e110 [5]) |
 | 히스토리 패널 열기 (좌측 사이드바)      | 저장일시 목록 조회 (최신순)                   |
 | `[새 탭으로]` 버튼           | 해당 버전으로 **새 맵** 생성 → 브라우저 새 탭에서 열림 (현재 탭 유지)  |
 
@@ -316,7 +316,7 @@ GET /maps/{mapId}/versions/{version}   → doc 포함 응답
 
 #### 시나리오 1 — 명시적 저장 시 버전 생성
 
-1. 사용자: 노드 편집 → 1500ms 자동저장 여러 번 발생 (버전 없음)
+1. 사용자: 노드 편집 → 주기·안전 시점 자동저장 여러 번 발생 (버전 없음)
 2. 사용자: ☁ 저장 클릭
 3. 서버: 잠금 확인 → jsonb 비교(변경 있음) → `map_documents` 갱신 → `map_document_versions`에 v(MAX+1) INSERT
 4. 히스토리 패널에 새 항목이 맨 위에 추가

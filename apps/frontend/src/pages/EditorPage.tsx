@@ -25,8 +25,9 @@ import { GuestBrowserNotice } from '@/components/auth/GuestBrowserNotice';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import {
-  clearCurrentMap, editSessionKey, initialMapId, openMapHere,
+  clearCurrentMap, detachFromServer, editSessionKey, initialMapId, openMapHere,
 } from '@/services/cloud/mapSession';
+import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { useCloudStore } from '@/stores/cloudStore';
 import { cloudApi } from '@/services/cloud/apiClient';
 import {
@@ -265,11 +266,22 @@ export function EditorPage() {
           // 이 상태로 계속 편집하면 저장이 409 로 막혀 그 편집분이 사라진다.
           // 예전에는 응답을 아무도 보지 않았다 (2026-08-05 감사).
           if (r && r.held === false) {
+            // **① 지금 화면의 내용을 먼저 브라우저에 적는다** — 이 뒤로는
+            //    이 맵에 저장할 수 없으므로, 여기서 놓치면 유실이다.
+            void writeLocalDraftNow();
+            // **② 그 맵과의 연결을 끊는다.** 예전에는 연결을 남겨 둬서
+            //    자동저장이 409 로 계속 튕겼고, 배지만 '저장 실패'로
+            //    굳은 채 사용자는 계속 편집했다 — 그 편집분이 사라졌다.
+            //    끊어 두면 이후 편집은 '저장 안 됨'으로 표시되고 초안에
+            //    쌓이며, ☁ 저장을 누르면 **새 이름의 새 맵**으로 간다.
+            detachFromServer();
             useCloudStore.getState().setError(
               '다른 창에서 이 맵을 편집 중이라 편집권을 잃었습니다 — '
-              + '[다른 이름으로 저장]으로 지금 내용을 따로 보관하세요.',
+              + '지금 내용은 이 브라우저에 보관했습니다. '
+              + '☁ 저장을 누르면 새 이름의 맵으로 저장됩니다.',
             );
-            useAutosaveStore.getState().setSaveState('error');
+            // detachFromServer 가 'saved' 로 되돌리므로 그 뒤에 세운다
+            useAutosaveStore.getState().setSaveState('unsaved');
           }
         })
         .catch(() => { /* 일시 오류 — 다음 주기·저장이 하트비트를 겸한다 */ });

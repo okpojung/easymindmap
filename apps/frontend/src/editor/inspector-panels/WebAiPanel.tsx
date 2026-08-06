@@ -155,7 +155,8 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   const runOpenAsNewMap = (res: AnswerMapOk) => {
     detachFromServer();
     setBrowserOpen(false);
-    loadMap(res.map);
+    // 새 문서다 — 되돌리기가 이전 맵으로 넘어가면 안 된다 (2026-08-06)
+    loadMap(res.map, { resetHistory: true });
     setLayoutType((res.editor?.layoutType as never) ?? 'radial-right');
     if (res.editor?.spacingX) setSpacingX(res.editor.spacingX);
     else resetSpacing();

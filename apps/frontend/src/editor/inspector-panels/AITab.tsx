@@ -153,7 +153,8 @@ function GenerateView({ t }: { t: ThemeTokens }) {
       // 재현: '통계B-중간' 문서가 AI 맵으로 바뀌었다). 웹 AI 경로
       // (WebAiPanel.runOpenAsNewMap)는 처음부터 이렇게 하고 있었다.
       detachFromServer();
-      loadMap(map);
+      // 새 문서다 — 되돌리기가 이전 맵으로 넘어가면 안 된다 (2026-08-06)
+      loadMap(map, { resetHistory: true });
       setLayoutType('radial-right');
       resetSpacing();
       setSelectedId('root');

@@ -26,7 +26,10 @@
 
 - 모든 라우트는 **`/v1` 프리픽스** (NestJS `setGlobalPrefix`).
 - JSON 바디 한도 **25MB** (문서 스냅샷의 임베드 이미지 data URL 대비).
-- 첨부 업로드는 multipart, 1개당 기본 **20MB** (`ATTACHMENT_MAX_MB`).
+- 첨부 업로드는 multipart, 1개당 기본 **200MB** (`ATTACHMENT_MAX_MB`, 2026-08-06 20→200).
+  **1GB 로 더 올리려면 스트리밍 업로드가 먼저다** — 지금은 multer 메모리
+  버퍼(`file.buffer`)라 큰 파일이 그대로 힙에 올라간다(diskStorage 전환 필요).
+  계정 무료 쿼터가 1GB 라 실질 상한은 쿼터가 먼저 걸린다.
 - CORS: `CORS_ORIGIN` 콤마 다중 출처 허용, `credentials: true`.
 - DTO 검증: 전역 ValidationPipe(`whitelist` + `forbidNonWhitelisted`) —
   정의되지 않은 필드는 400.
@@ -76,6 +79,27 @@
 | 24 | DELETE | `/v1/nodes/:id` | subtree cascade 삭제 → 204 |
 | 25 | PATCH | `/v1/nodes/:id/move` | `move_node_subtree` — 부모 변경 + subtree path 재작성, 순환 차단 |
 | 26 | PATCH | `/v1/nodes/:id/layout` | layout_type 변경 |
+
+#### 설계 확정·미구현 — 대용량 첨부 청크 업로드 5개 (2026-08-06)
+
+16번(`POST /v1/attachments`)은 파일 **전체를 한 요청에** 받아 메모리에
+올린다. 그래서 상한이 200MB 로 묶여 있다. 그보다 큰 멀티미디어를 위해
+아래 5개를 신설한다 — 설계는 확정, 구현은 대기(C1~C5).
+**전체 설계·근거·구현 순서는
+[`../04-extensions/attachment-storage.md` §12](../04-extensions/attachment-storage.md)** 에 있다.
+
+| # | 메서드 | 경로 | 설명 |
+|---|---|---|---|
+| 27 | POST | `/v1/attachments/uploads` | 세션 시작 `{mapId,filename,mime,size}` → `{uploadId,partSize,partCount,received:[]}`. 쿼터 **사전 예약**, 상한 초과 413 |
+| 28 | PUT | `/v1/attachments/uploads/:id/parts/:index` | 조각 본문(raw). **멱등** — 같은 index 재전송은 덮어쓰기 → `{received:n}` |
+| 29 | GET | `/v1/attachments/uploads/:id` | 이어받기용 상태 → `{partSize,partCount,received:[0,1,4]}` |
+| 30 | POST | `/v1/attachments/uploads/:id/complete` | 조각 이어붙여 확정 → 16번과 **같은 모양**의 첨부 메타 + `url`. 빠진 조각 있으면 409 |
+| 31 | DELETE | `/v1/attachments/uploads/:id` | 취소 — 조각·예약 정리 → 204 |
+
+> 조각 크기는 **서버가 정한다**(27번 응답의 `partSize`) — 클라이언트가
+> 고르게 두면 프록시 한도·메모리 상한을 서버가 통제할 수 없다.
+> 모든 호출에 소유자 검사를 하고, 불일치는 **404**(존재 여부를 흘리지
+> 않는다). 미완성 세션은 24시간 뒤 GC 가 지운다.
 
 > **nodes 계열(21~26)은 실존·가동 중**이다 — 문서 스냅샷 경로(6·7)와
 > 병행하며, 현재 프런트는 스냅샷 경로만 사용한다(정규화 경로는 협업·세밀

@@ -481,9 +481,16 @@ export function Canvas({
           try {
             // ≤2MB 는 data URL 내장, 초과는 서버 업로드 — 저장 후에도 유지
             addNodeAttachment(target.id, { name: f.name, kind, url: await attachmentUrlForFile(f) });
-          } catch {
-            // 업로드 실패(쿼터 초과 등) — 이 파일만 건너뛴다. 상세 안내는
-            // 링크·첨부 탭의 첨부 버튼 경로에서 표시된다.
+          } catch (err) {
+            // **실패를 삼키지 않는다** (2026-08-06 보고).
+            //
+            // 예전에는 빈 catch 로 조용히 건너뛰었다 — "상세 안내는 첨부
+            // 탭에서 표시된다"고 적어 두었지만, **노드에 끌어다 놓은
+            // 사용자는 그 탭을 열지 않는다.** 20MB 를 넘는 파일을 노드에
+            // 드롭하면 서버가 거절하는데도 화면에는 아무 일도 일어나지
+            // 않아, 사용자에게는 "무반응"으로 보였다.
+            const why = err instanceof Error ? err.message : '알 수 없는 오류';
+            notifyPaste(`⚠ '${f.name}' 첨부 실패 — ${why}`);
           }
         }
       })();
@@ -691,7 +698,18 @@ export function Canvas({
       const hasImgFile = Array.from(dt.files ?? []).some((f) =>
         f.type.startsWith('image/'),
       );
-      const rawHtml = hasImgFile ? '' : dt.getData('text/html');
+      const rawHtmlAll = dt.getData('text/html') ?? '';
+      // **표가 있으면 그림보다 표를 우선한다** (2026-08-06 보고).
+      //
+      // 엑셀·스프레드시트는 표를 복사할 때 클립보드에 **표를 찍은 비트맵**
+      // 도 함께 넣는다. 그림 파일이 있다는 이유만으로 HTML 을 통째로
+      // 버리면(예전 `hasImgFile ? '' : ...`), 편집할 수 있는 표 대신
+      // **노드 텍스트는 탭 구분 문자열 + 표 그림**이 붙는다. 사용자에게는
+      // "표가 보이는데 더블클릭해도 아무 내용이 없고 지울 수도 없는"
+      // 상태로 보인다 — 실제로는 표가 아니라 사진이었다.
+      // (MD 내보내기에서 `![거래일시\t적요 …](files/img-1.png)` 로 확인)
+      const htmlHasTable = /<table[\s>]/i.test(rawHtmlAll);
+      const rawHtml = (hasImgFile && !htmlHasTable) ? '' : rawHtmlAll;
       // 기사(html)는 텍스트와 사진 위치를 "같은 줄 규칙"으로 함께 뽑는다 —
       // text/plain과 줄을 맞추면 사진 앵커가 어긋나기 쉽다
       const art = rawHtml
@@ -700,6 +718,8 @@ export function Canvas({
       const plain = stripForeignMapMarkers(
         (dt.getData('text/plain') ?? '').replace(/\r\n?/g, '\n'),
       );
+      // 표로 변환됐다면 클립보드의 비트맵 사본은 붙이지 않는다 (중복)
+      const usedTable = htmlHasTable && /^\|/m.test(art.text);
       const text = art.text || plain;
       if (!hasImgFile && !text && art.images.length === 0) return; // 붙일 내용 없음
 
@@ -716,8 +736,9 @@ export function Canvas({
           setNodeImages(childId, resolved),
         );
         setNodeImages(childId, initial);
-      } else {
-        // 이미지 파일(스크린샷 등) → 노드 사진
+      } else if (!usedTable) {
+        // 이미지 파일(스크린샷 등) → 노드 사진.
+        // **표를 붙인 경우는 건너뛴다** — 그 그림은 방금 붙인 표의 사본이다.
         extractClipboardImage(dt, (img) => setNodeImage(childId, img), {
           allowHtml: false,
         });

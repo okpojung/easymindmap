@@ -22,7 +22,8 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   const [linkUrl, setLinkUrl] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
   // 첨부 실패(서버 업로드 쿼터 초과 등) 안내 — 첨부 섹션 아래 빨간 줄
-  const [attErr, setAttErr] = useState<string | null>(null);
+  /** 첨부 오류 — **어느 섹션에서 났는지**까지 담는다 (2026-08-06) */
+  const [attErr, setAttErr] = useState<{ where: 'doc' | 'media'; msg: string } | null>(null);
   // Guest 체험 — 첨부 기능 없음 (2026-08-04)
   const guest = useAuthStore((s) => s.guest);
   const isGuest = authEnabled && guest;
@@ -37,7 +38,13 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
 
   // 파일 첨부 — ≤2MB 내장 / 초과는 서버 업로드(attachmentUrlForFile).
   // 업로드 실패(쿼터 초과 등)는 그 파일만 건너뛰고 메시지를 보여준다.
-  const addFiles = async (files: File[], kindOf: (f: File) => AttachmentKind) => {
+  // **오류를 그 오류가 난 섹션에 보여 준다** (2026-08-06 보고).
+  // 예전에는 안내가 '첨부 (문서)' 섹션에만 있어서, **미디어를 고르다 난
+  // 오류가 문서 밑에** 떴다 ("멀티미디어 선택했는데 문서선택 밑에
+  // 메시지가 표시된다").
+  const addFiles = async (
+    files: File[], kindOf: (f: File) => AttachmentKind, where: 'doc' | 'media',
+  ) => {
     if (!selectedId) return;
     setAttErr(null);
     for (const f of files) {
@@ -46,7 +53,10 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
           name: f.name, kind: kindOf(f), url: await attachmentUrlForFile(f),
         });
       } catch (err) {
-        setAttErr(err instanceof Error ? err.message : '첨부에 실패했습니다.');
+        setAttErr({
+          where,
+          msg: err instanceof Error ? err.message : '첨부에 실패했습니다.',
+        });
       }
     }
   };
@@ -151,16 +161,16 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         </div>
         <FilePickerButton t={t} label="문서 선택" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md"
           disabled={!selectedId}
-          onFiles={(files) => addFiles(files, () => 'file')} />
+          onFiles={(files) => addFiles(files, () => 'file', 'doc')} />
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
           2MB 이하 파일은 맵에 내장되고(맵당 내장 합계 10MB까지), 초과분은
           로그인 상태에서 서버 첨부 저장소에 올라갑니다 — 둘 다 저장 후
           다시 열어도 유지됩니다. (저장 용량 = 문서+첨부 합산, 무료 1GB)
         </div>
-        {attErr && (
+        {attErr?.where === 'doc' && (
           <div data-testid="attach-error"
             style={{ fontSize: 10.5, color: t.danger, marginTop: 5, lineHeight: 1.45 }}>
-            ⚠ {attErr}
+            ⚠ {attErr.msg}
           </div>
         )}
       </InspectorSection>
@@ -175,7 +185,17 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         <FilePickerButton t={t} label="미디어 선택" accept="audio/*,video/*,image/*"
           disabled={!selectedId}
           onFiles={(files) => addFiles(
-            files, (f) => (f.type.startsWith('audio') ? 'audio' : 'video'))} />
+            files, (f) => (f.type.startsWith('audio') ? 'audio' : 'video'), 'media')} />
+        <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
+          오디오·영상·이미지. 문서 첨부와 같은 규칙입니다 (2MB 이하는 맵
+          내장, 초과분은 서버 저장소 — 저장 용량 = 문서+첨부 합산, 무료 1GB).
+        </div>
+        {attErr?.where === 'media' && (
+          <div data-testid="attach-error-media"
+            style={{ fontSize: 10.5, color: t.danger, marginTop: 5, lineHeight: 1.45 }}>
+            ⚠ {attErr.msg}
+          </div>
+        )}
       </InspectorSection>
       </>)}
 

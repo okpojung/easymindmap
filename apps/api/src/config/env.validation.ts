@@ -45,7 +45,12 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     throw new Error('환경변수 오류:\n - ' + errors.join('\n - '));
   }
 
-  const ATTACHMENT_MAX_MB = Number(raw.ATTACHMENT_MAX_MB ?? 20);
+  // 첨부 1개 상한 (MB). 2026-08-06 사용자 요청으로 20 → 200 으로 올렸다.
+  // **1GB 는 아직 못 올린다** — 업로드가 multer 메모리 버퍼(`file.buffer`)
+  // 라 큰 파일이 그대로 힙에 올라간다. 1GB 를 허용하려면 diskStorage 로
+  // 바꿔 스트리밍해야 한다(별도 작업). 계정 무료 쿼터가 1GB 라 실질
+  // 상한은 어차피 쿼터가 먼저 걸린다.
+  const ATTACHMENT_MAX_MB = Number(raw.ATTACHMENT_MAX_MB ?? 200);
   if (!Number.isFinite(ATTACHMENT_MAX_MB) || ATTACHMENT_MAX_MB <= 0) {
     errors.push('ATTACHMENT_MAX_MB 는 양수여야 합니다.');
   }

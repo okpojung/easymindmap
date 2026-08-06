@@ -85,6 +85,15 @@ export function useLocalDraft(): void {
       timer = window.setTimeout(() => { void writeLocalDraftNow(); }, DRAFT_MS);
     });
 
+    // 전역 레이아웃·간격도 스냅샷(`editor`)에 들어가므로 함께 지킨다 —
+    // 여기를 빠뜨리면 "간격만 조절하고 껐다" 가 초안에도 안 남는다.
+    const unsubUi = useEditorUiStore.subscribe((s, p) => {
+      if (s.layoutType === p.layoutType
+        && s.spacingX === p.spacingX && s.spacingY === p.spacingY) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { void writeLocalDraftNow(); }, DRAFT_MS);
+    });
+
     // **화면에서 벗어나는 순간 즉시 적는다.**
     // visibilitychange(hidden) 는 탭 전환·앱 전환·창 닫기 직전에 뜨고,
     // 이때 페이지는 아직 완전히 살아 있어 IndexedDB 쓰기가 끝난다.
@@ -99,6 +108,7 @@ export function useLocalDraft(): void {
 
     return () => {
       unsub();
+      unsubUi();
       window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('pagehide', flush);

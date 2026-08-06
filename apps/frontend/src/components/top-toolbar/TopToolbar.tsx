@@ -12,6 +12,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { downloadMapAsHtml } from '@/export/exportHtml';
 import { downloadMapAsMarkdown } from '@/export/exportMarkdown';
 import { useCloudStore } from '@/stores/cloudStore';
+import { useAutosaveStore } from '@/stores/autosaveStore';
 
 // 'retrying' = 저장이 실패했고 **실제로 자동 재시도 중**,
 // 'error' = 재시도까지 다 실패해 더는 자동으로 시도하지 않음.
@@ -53,6 +54,7 @@ export function TopToolbar({
   const canRedo = useDocumentStore((s) => s.future.length > 0);
   // 되돌린 단계 수 = future 길이 (undo 1회 = +1, redo 1회 = -1, 새 편집 = 0)
   const undoDepth = useDocumentStore((s) => s.future.length);
+  const commitCurrentAsLatest = useDocumentStore((s) => s.commitCurrentAsLatest);
 
   // 상단 툴바 공용 알림 — 맵 저장·닫기, 로그아웃 등 (우측 상단 토스트)
   const [toast, setToast] = useState<string | null>(null);
@@ -75,10 +77,23 @@ export function TopToolbar({
 
   // 저장 실패 사유 — 배지 툴팁에 그대로 보여 준다 (2026-08-05)
   const cloudError = useCloudStore((s) => s.error);
+  // **미저장 편집 수 · 마지막 저장 시각** (2026-08-06 저장 모델 개편).
+  // 실시간 저장을 없앴으므로 "지금 몇 개가 서버에 없는가"를 숫자로
+  // 보여 준다 — "저장됨"인지 아닌지 애매한 상태를 남기지 않는다.
+  const pendingEdits = useAutosaveStore((s) => s.pendingEdits);
+  const lastSavedAt = useAutosaveStore((s) => s.lastSavedAt);
+  const agoText = (() => {
+    if (!lastSavedAt) return '';
+    const min = Math.floor((Date.now() - lastSavedAt) / 60_000);
+    return min < 1 ? ' · 방금 전' : ` · ${min}분 전`;
+  })();
   const saveStateInfo = ({
-    saved: { text: '저장됨 · 방금 전', color: t.textMuted, dot: t.success },
+    saved: { text: `저장됨${agoText}`, color: t.textMuted, dot: t.success },
     saving: { text: '저장 중…', color: t.accent, dot: t.accent },
-    dirty: { text: '변경사항 있음', color: t.warning, dot: t.warning },
+    dirty: {
+      text: `미저장 편집 ${pendingEdits}개`,
+      color: t.warning, dot: t.warning,
+    },
     unsaved: { text: '저장 안 됨 — ☁ 저장을 눌러 주세요', color: t.warning, dot: t.warning },
     retrying: { text: '저장 실패 — 재시도 중…', color: t.warning, dot: t.warning },
     error: { text: '저장 실패 — ☁ 저장을 눌러 주세요', color: t.danger, dot: t.danger },
@@ -160,17 +175,25 @@ export function TopToolbar({
           <I.Undo size={17} />
         </IconBtn>
         {/* 되돌린 단계 표시 — 원본(최신 상태) = 0, 한 번 되돌릴 때마다
-            -1, -2, … (다시 실행하면 다시 줄어든다. 새 편집 = 0으로 복귀) */}
+            -1, -2, … (다시 실행하면 다시 줄어든다. 새 편집 = 0으로 복귀)
+            **클릭하면 지금 상태를 최신(0)으로 확정한다** (2026-08-06) —
+            원래는 아무 편집이나 하면 같은 일이 일어나지만, 편집할 것이
+            없는데 확정만 하고 싶을 때 방법이 "맵을 닫았다 열기"뿐이었다. */}
         <span
           data-testid="undo-depth"
+          role={undoDepth > 0 ? 'button' : undefined}
+          onClick={undoDepth > 0 ? commitCurrentAsLatest : undefined}
           title={undoDepth === 0
             ? '되돌린 단계 없음 (최신 상태) · 이 세션 안에서 최대 99단계까지 되돌릴 수 있습니다'
-            : `최신 상태에서 ${undoDepth}단계 되돌린 상태 (다시 실행으로 복귀)`}
+            : `최신 상태에서 ${undoDepth}단계 되돌린 상태`
+              + '\n누르면 지금 이 상태를 최신(0)으로 확정합니다 — 다시 실행'
+              + `할 ${undoDepth}단계는 버려집니다.`}
           style={{
             minWidth: 22, textAlign: 'center', fontSize: 10.5, fontWeight: 700,
             fontFamily: 'ui-monospace, monospace',
             color: undoDepth > 0 ? t.warning ?? '#D97706' : t.textSubtle,
             userSelect: 'none',
+            cursor: undoDepth > 0 ? 'pointer' : 'default',
           }}
         >
           {undoDepth > 0 ? `-${undoDepth}` : '0'}
@@ -192,7 +215,11 @@ export function TopToolbar({
           // 끊긴 경우가 그렇다 (2026-08-06 R3)
           : saveState === 'unsaved'
             ? (cloudError ?? '이 문서는 아직 서버에 저장되지 않았습니다 — ☁ 저장을 눌러 주세요.')
-            : undefined}
+            : saveState === 'dirty'
+              ? `아직 서버에 올라가지 않은 편집이 ${pendingEdits}개 있습니다.\n`
+                + '자동저장 주기(맵 설정 ▸ 저장)와 탭 전환·창 닫기 때 올라갑니다.\n'
+                + '그 사이 편집은 이 브라우저에 보관되지만, PC 가 강제 종료되면 서버에는 반영되지 않습니다.'
+              : undefined}
         style={{
           display: 'flex',
           alignItems: 'center',

@@ -103,6 +103,15 @@ interface DocumentState {
   future: HistoryEntry[];
   undo: () => void;
   redo: () => void;
+  /**
+   * **지금 화면 상태를 "최신"으로 확정한다** — 다시 실행(future) 을 버린다.
+   *
+   * 되돌리기로 -5 까지 간 뒤 "이 상태가 최신이었으면 좋겠다"일 때 쓴다.
+   * 원래는 **아무 편집이나 한 번** 하면 같은 일이 일어나지만(아래 구독의
+   * `future: []`), 편집할 것이 없는데 확정만 하고 싶은 경우가 있어
+   * 되돌리기 단계 배지 클릭으로 부를 수 있게 했다 (2026-08-06 요청).
+   */
+  commitCurrentAsLatest: () => void;
 
   // 개발 모드(:인증 꺼짐) 시안 확인용 샘플 맵 주입 — EditorPage 전용
   setSample: () => void;
@@ -525,6 +534,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }
     applyingHistory = false;
   },
+
+  commitCurrentAsLatest: () => set({ future: [] }),
 
   redo: () => {
     const { future, map, past } = get();

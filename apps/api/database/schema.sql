@@ -523,10 +523,39 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.maps;
 -- 첨부 파일 원본은 API 서버의 저장소 드라이버(로컬 디스크/S3 호환)에
 -- 저장되고, 이 테이블은 메타데이터(소유자·이름·크기·storage key)만 담는다.
 -- 쿼터 = 사용자의 문서(DB: map_documents + versions) + 첨부 합산이
--- users.quota_bytes(기본 1GB, 유료 10GB) 이하여야 한다.
+-- users.quota_bytes(Free 1GB · Basic 10GB) 이하여야 한다.
 
 ALTER TABLE public.users
     ADD COLUMN IF NOT EXISTS quota_bytes BIGINT NOT NULL DEFAULT 1073741824;
+
+COMMENT ON COLUMN public.users.quota_bytes IS
+    '저장 용량 한도(바이트) = 문서(map_documents + map_document_versions) + 첨부 합산. '
+    'Free 1GB(=1073741824, 기본값) · Basic 10GB(=10737418240). '
+    '요금제 컬럼은 아직 없다 — 상향은 이 값을 직접 UPDATE 한다.';
+
+-- ── 초기 사용자 Basic 승격 (2026-08-06 결정) ────────────────────────
+-- **아래 시각 이전에 가입한 계정은 Basic(10GB)** 으로 올린다. 그 뒤에
+-- 가입하는 계정은 컬럼 기본값 그대로 **Free(1GB)** 다.
+--
+-- 기준을 "지금"이 아니라 **고정된 시각**으로 잡은 것이 핵심이다 —
+-- schema.sql 은 배포마다 다시 적용되는데, 조건이 없으면 재적용할 때마다
+-- **그 사이에 가입한 무료 사용자까지 10GB 로 올라간다.** 고정 시각이면
+-- 몇 번을 다시 돌려도 대상이 늘지 않는다(멱등).
+--
+-- `quota_bytes < ...` 조건은 이미 더 큰 한도를 손으로 준 계정을
+-- **끌어내리지 않기** 위한 것이다.
+--
+-- **기준 시각은 반드시 "이미 지난" 때여야 한다.** 미래로 잡으면 그 사이
+-- 가입하는 사람까지 승격된다 — 처음에 13:30 으로 적었다가 e2e119 [4] 가
+-- 실제로 잡아냈다(그때 실제 시각은 13:17 이었다).
+--
+-- 반대로 기준 시각과 배포 사이에 가입한 계정이 있으면 그 사람은 Free 로
+-- 남는다. 승격 대상에서 빠진 사람이 있는지는 배포 후 계정별 한도를
+-- 확인하면 바로 보인다(dev-server-runbook.md §1.5-0-B 의 검증 쿼리).
+UPDATE public.users
+   SET quota_bytes = 10737418240   -- 10GB (Basic)
+ WHERE created_at < TIMESTAMPTZ '2026-08-06 12:00:00+00'
+   AND quota_bytes < 10737418240;
 
 CREATE TABLE IF NOT EXISTS public.attachments (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),

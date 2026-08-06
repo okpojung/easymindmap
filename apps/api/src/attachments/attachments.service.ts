@@ -1,7 +1,9 @@
 // 첨부 저장소 + 저장 용량 쿼터 (B9).
 //
 // 쿼터 정책 (2026-08-02 결정): **DB 용량 + 첨부 용량 합산**이
-// users.quota_bytes(기본 1GB, 유료 10GB) 이하여야 한다.
+// users.quota_bytes(Free 1GB · Basic 10GB) 이하여야 한다.
+// 신규 가입은 컬럼 기본값 1GB, 2026-08-06 12:00 UTC 이전 가입 계정은
+// schema.sql 의 일회성 UPDATE 로 10GB (attachment-storage.md §8.1).
 //   · DB 용량  = 사용자의 map_documents.doc + map_document_versions.doc
 //                (히스토리 버전 포함) 직렬화 크기 합
 //   · 첨부 용량 = attachments.size_bytes 합

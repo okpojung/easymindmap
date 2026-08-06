@@ -223,6 +223,49 @@ echo "재배포 후 https://<API주소>/v1/health 의 schema 가 ok 인지 확�
 SCRIPT
 ```
 
+### 1.5-0-B. 기존 계정 Basic(10GB) 승격 — 2026-08-06
+
+**정책**: 신규 가입은 Free **1GB**(컬럼 기본값), **2026-08-06 12:00 UTC
+이전에 가입한 계정은 Basic 10GB**. `schema.sql` 에 들어 있으므로 스키마를
+재적용(§2-B·§2-C)하면 함께 적용되지만, **스키마를 다시 밀 일이 없다면**
+아래만 붙여넣으면 된다.
+
+```bash
+bash <<'SCRIPT'
+set -e
+DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
+[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
+[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다."; exit 1; }
+echo "✅ DB 컨테이너: $DB"
+
+docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+UPDATE public.users
+   SET quota_bytes = 10737418240
+ WHERE created_at < TIMESTAMPTZ '2026-08-06 12:00:00+00'
+   AND quota_bytes < 10737418240;
+SQL
+
+echo "── 검증 (계정별 한도) ──"
+docker exec -i "$DB" psql -U postgres -d postgres -tA <<'SQL'
+SELECT a.email || ' → ' || pg_size_pretty(u.quota_bytes)
+       || '  (가입 ' || u.created_at::date || ')'
+  FROM public.users u JOIN auth.users a ON a.id = u.id
+ ORDER BY u.created_at;
+SQL
+echo "끝 — 기존 계정이 모두 10GB 로 보이면 성공입니다."
+SCRIPT
+```
+
+> **몇 번을 실행해도 안전하다.** 기준이 `NOW()` 가 아니라 **고정 시각**
+> 이라, 재실행해도 그 뒤에 가입한 무료 사용자는 건드리지 않는다. 반대로
+> 말하면 **이 시각 이후 가입자는 1GB** 다 — 그중 누군가를 올리려면
+> `attachment-storage.md` §8.1 의 개별 UPDATE 를 쓴다.
+
+> 사용자 화면(아바타 메뉴 📊 저장 용량)은 `/v1/attachments/quota` 를
+> 그대로 그리므로 **재배포 없이** 다음 조회부터 10GB 로 보인다.
+
 ### 1.5-A. Ubuntu 호스트에 NAS NFS 마운트
 
 ```bash

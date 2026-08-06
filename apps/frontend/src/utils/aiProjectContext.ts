@@ -74,6 +74,16 @@ export function buildExpandContext(
   map: SampleMap,
   nodeId: string,
   baseSystem: string,
+  /**
+   * 사용자가 입력창에 적어 둔 **추가 지시** (2026-08-06 보고).
+   *
+   * 예전에는 이 값을 아예 쓰지 않았다 — 확장은 맵 문맥(프로젝트 지침 +
+   * 상위 경로 + 이 노드)만 보고 만들었다. 그런데 입력창이 바로 위에
+   * 있어서, 사용자는 **거기 적은 질문이 반영된다고 본다.**
+   * "고흐 작품을 연도별로" 라고 적고 확장을 눌렀는데 맵 문맥(쿠버네티스)
+   * 대로 나와 "엉뚱한 답"이 됐다. 비어 있지 않으면 지시로 함께 보낸다.
+   */
+  extraInstruction?: string,
 ): ExpandContext | null {
   const target = findNodeInMap(map, nodeId);
   if (!target) return null;
@@ -98,6 +108,13 @@ export function buildExpandContext(
     userParts.push('[상위 경로]\n' + middle.map((n) => '↳ ' + nodeContent(n)).join('\n'));
   }
   userParts.push('[확장할 노드]\n' + nodeContent(target));
+  const extra = extraInstruction?.trim();
+  if (extra) {
+    // **사용자 지시를 맵 문맥보다 앞세운다** — 둘이 어긋날 때 사용자가
+    // 방금 적은 말이 이긴다. 어긋나지 않으면 그냥 함께 반영된다.
+    userParts.push('[요청]\n' + extra
+      + '\n\n(위 요청이 맵 문맥과 다르면 **요청을 따른다.**)');
+  }
   userParts.push('위 노드를 더 자세하고 상세하게 확장해줘. 그 노드의 하위 구조만 EMM으로 출력해줘.');
   const user = userParts.join('\n\n');
 

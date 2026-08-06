@@ -85,3 +85,20 @@ mark { background: transparent; }
   background: var(--row-hover, rgba(120, 110, 90, 0.10));
   border-color: var(--row-hover-bd, transparent);
 }
+
+/* 업로드 진행 막대의 **흐르는 줄무늬** (2026-08-06).
+ *
+ * 큰 파일을 올릴 때 몇 초씩 바이트가 안 늘면 화면이 얼어붙은 것처럼
+ * 보인다 — 사용자는 장애로 오해한다("16%에서 한참 멈춤"). 그때만 이
+ * 애니메이션을 켜서 **아직 살아 있다**는 것을 눈으로 보여 준다.
+ * 평소(정상 전송 중)에는 켜지 않는다 — 늘 움직이면 신호가 되지 못한다.
+ */
+@keyframes mm-upload-stripe {
+  from { background-position: 0 0; }
+  to   { background-position: 17px 0; }
+}
+
+/* 움직임을 줄이도록 설정한 사용자에게는 애니메이션을 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  [data-testid='upload-progress-bar'] { animation: none !important; }
+}

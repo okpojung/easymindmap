@@ -13,7 +13,7 @@
 //
 // 여는 방식은 mapSession 규칙을 따른다 — 편집 중이면 브라우저 새 탭,
 // 잃을 것이 없으면 이 탭.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import {
@@ -228,6 +228,36 @@ export function MapBrowser({
     </button>
   );
 
+  /**
+   * **이 목록의 합계** (2026-08-06 요청) — 노드 수·문서 크기·첨부 개수·
+   * 첨부 용량을 열 머리글에 함께 보여 준다. "지금 이 폴더에 얼마나 쌓여
+   * 있나"를 행을 세어 보지 않고 알 수 있다.
+   *
+   * 대상은 **지금 화면에 보이는 맵들**이다 — 하위 폴더 안의 맵은 세지
+   * 않는다(그 폴더로 들어가면 그 폴더의 합계가 나온다). 통계 도입 전에
+   * 저장된 맵은 값이 null 이라 합계에서 빠진다.
+   */
+  const totals = useMemo(() => {
+    const list = maps ?? [];
+    const sum = (pick: (m: MapListItem) => number | null | undefined) =>
+      list.reduce((acc, m) => acc + (pick(m) ?? 0), 0);
+    return {
+      maps: list.length,
+      nodeCount: sum((m) => m.nodeCount),
+      docBytes: sum((m) => m.docBytes),
+      attachCount: sum((m) => m.attachCount),
+      attachBytes: sum((m) => m.attachBytes),
+    };
+  }, [maps]);
+
+  /** 열 머리글의 합계 줄 — 정렬 버튼 아래에 작게 붙인다 */
+  const totalCell = (text: string) => (
+    <span style={{
+      display: 'block', textAlign: 'right', marginTop: 2,
+      fontSize: 10, fontWeight: 700, color: t.text, opacity: 0.75,
+    }}>{text}</span>
+  );
+
   const rowStyle: React.CSSProperties = {
     display: 'grid',
     gridTemplateColumns: '24px minmax(120px, 1fr) 76px 106px 106px 44px 64px 40px 68px 106px',
@@ -280,6 +310,21 @@ export function MapBrowser({
               fontWeight: cwd === null ? 700 : 500, padding: '2px 4px',
             }}
           >홈</button>
+          {/* **[＋ 새 폴더] 는 '홈' 바로 오른쪽** (2026-08-06 요청) —
+              폴더를 만드는 곳은 "지금 보고 있는 위치"이므로, 경로 옆에
+              붙어 있어야 어디에 만들어지는지가 눈에 보인다. 오른쪽 끝에
+              떨어져 있으면 그 연결이 보이지 않는다. */}
+          <button
+            data-testid="browser-new-folder"
+            onClick={() => setNewFolder('')}
+            title="지금 보고 있는 위치에 새 폴더 만들기"
+            style={{
+              height: 24, padding: '0 9px', borderRadius: 6, cursor: 'pointer',
+              marginLeft: 4, marginRight: 2,
+              border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted,
+              fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+            }}
+          >＋ 새 폴더</button>
           {path.map((f, i) => (
             <span key={f.folderId} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: t.textSubtle, fontSize: 11 }}>›</span>
@@ -294,16 +339,6 @@ export function MapBrowser({
             </span>
           ))}
         </div>
-        <button
-          data-testid="browser-new-folder"
-          onClick={() => setNewFolder('')}
-          title="이 위치에 새 폴더 만들기"
-          style={{
-            height: 30, padding: '0 10px', borderRadius: 7, cursor: 'pointer',
-            border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
-            fontSize: 12, fontWeight: 600,
-          }}
-        >＋ 새 폴더</button>
         <button
           data-testid="browser-close"
           onClick={onClose}
@@ -362,21 +397,47 @@ export function MapBrowser({
         </div>
       )}
 
-      {/* 열 머리글 */}
-      <div style={{
-        ...rowStyle,
-        background: t.surfaceAlt, borderBottom: `1px solid ${t.border}`,
-        color: t.textMuted, fontWeight: 700, fontSize: 11.5,
-      }}>
+      {/* 열 머리글 — 숫자 열은 **아래 줄에 이 목록의 합계**를 함께 보여
+          준다 (2026-08-06 요청). 행을 세어 보지 않아도 "이 폴더에 얼마나
+          쌓였나"를 바로 안다. */}
+      <div
+        data-testid="browser-header"
+        style={{
+          ...rowStyle,
+          alignItems: 'start',
+          background: t.surfaceAlt, borderBottom: `1px solid ${t.border}`,
+          color: t.textMuted, fontWeight: 700, fontSize: 11.5,
+        }}
+      >
         <span />
-        {th('이름', 'title')}
+        <span>
+          {th('이름', 'title')}
+          <span style={{
+            display: 'block', marginTop: 2, fontSize: 10, fontWeight: 600,
+            color: t.textSubtle,
+          }}>
+            맵 {totals.maps}개{childFolders.length ? ` · 폴더 ${childFolders.length}개` : ''}
+          </span>
+        </span>
         <span>유형</span>
         {th('생성일', 'createdAt')}
         {th('수정일', 'updatedAt')}
-        {th('노드', 'nodeCount', 'right')}
-        {th('크기', 'docBytes', 'right')}
-        {th('첨부', 'attachCount', 'right')}
-        {th('첨부 용량', 'attachBytes', 'right')}
+        <span data-testid="browser-total-nodes">
+          {th('노드', 'nodeCount', 'right')}
+          {totalCell(totals.nodeCount.toLocaleString())}
+        </span>
+        <span data-testid="browser-total-size">
+          {th('크기', 'docBytes', 'right')}
+          {totalCell(fmtBytes(totals.docBytes))}
+        </span>
+        <span data-testid="browser-total-attach">
+          {th('첨부', 'attachCount', 'right')}
+          {totalCell(totals.attachCount.toLocaleString())}
+        </span>
+        <span data-testid="browser-total-attach-bytes">
+          {th('첨부 용량', 'attachBytes', 'right')}
+          {totalCell(fmtBytes(totals.attachBytes))}
+        </span>
         <span style={{ textAlign: 'center' }}>관리</span>
       </div>
 

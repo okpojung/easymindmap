@@ -49,6 +49,8 @@ export const CHUNK_ROUTE_MIN = 8 * 1024 * 1024;
 export interface AttachOptions {
   /** 0~1 — 청크 경로에서만 불린다 (작은 파일은 진행률이 의미 없다) */
   onProgress?: (ratio: number) => void;
+  /** 재시도 등 "지금 무슨 일이 일어나는지" 한 줄 (평소 null) */
+  onNotice?: (msg: string | null) => void;
   signal?: AbortSignal;
 }
 
@@ -125,6 +127,7 @@ export async function attachFileWithProgress(f: File): Promise<string> {
     return await attachmentUrlForFile(f, {
       signal: ctrl.signal,
       onProgress: (r) => useUploadStore.getState().progress(key, r),
+      onNotice: (msg) => useUploadStore.getState().notice(key, msg),
     });
   } finally {
     useUploadStore.getState().end(key);

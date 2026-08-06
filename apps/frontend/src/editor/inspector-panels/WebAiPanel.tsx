@@ -16,6 +16,7 @@ import { useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { InspectorSection } from './InspectorSection';
+import { AiConfirmPopover, type ConfirmRequest } from './AiConfirmPopover';
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
 import {
   useDocumentStore, findNodeInMap, isDocumentEmpty,
@@ -65,8 +66,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   // confirm 은 화면 상단 중앙에 떠서 어느 작업의 확인인지 눈에 안 들어
   // 왔다). 패널 오른쪽 옆·화면 세로 중앙에 띄운다.
   const panelRef = useRef<HTMLDivElement>(null);
-  const [confirmReq, setConfirmReq] =
-    useState<{ message: string; onOk: () => void } | null>(null);
+  const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null);
   const askConfirm = (message: string, onOk: () => void) => {
     setConfirmReq({ message, onOk });
   };
@@ -115,7 +115,9 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   // 한 덩어리로 합친다 (프로젝트 지침·@소스·상위 경로 포함 규칙 동일)
   const copyExpandPrompt = () => {
     if (!selectedId) return;
-    const ctx = buildExpandContext(map, selectedId, systemPrompt);
+    // 위 입력창(주제)에 적어 둔 요청이 있으면 함께 보낸다 —
+    // API 키 모드와 같은 규칙이다 (2026-08-06 보고)
+    const ctx = buildExpandContext(map, selectedId, systemPrompt, topic);
     if (!ctx) return;
     const oneShot = `${ctx.system}\n\n${ctx.user}\n\n${OUTPUT_DIRECTIVE}`;
     void copyText(oneShot, 'expand');
@@ -145,8 +147,11 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     const willLose = !(doc.past.length === 0 || isDocumentEmpty(doc.map));
     askConfirm(
       willLose
+        // **되돌릴 수 있다고 하지 않는다** — 새 문서로 열리므로
+        // 되돌리기가 이전 맵으로 넘어가지 않는다 (2026-08-06 3차 보고).
         ? `현재 맵을 닫고 생성한 맵(${res.nodeCount}개 노드)을 열까요?\n` +
-          '(실행 취소 Ctrl+Z 로 이전 맵으로 되돌릴 수 있습니다)'
+          '새 문서로 열리므로 되돌리기(Ctrl+Z)로는 지금 맵으로 돌아올 수 없습니다 —\n'
+          + '저장하지 않은 편집이 있으면 먼저 ☁ 저장하세요.'
         : `'${res.map.title}' 맵(${res.nodeCount}개 노드)을 새로 열까요?`,
       () => runOpenAsNewMap(res),
     );
@@ -224,49 +229,11 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
 
   return (
     <div ref={panelRef}>
-      {/* 확인 팝오버 — 패널 오른쪽 옆·화면 세로 중앙 (window.confirm 대체,
-          2026-08-04 보고: 상단 중앙의 브라우저 confirm 이 눈에 안 들어옴) */}
-      {confirmReq && (
-        <div
-          data-webai-confirm
-          style={{
-            position: 'fixed',
-            left: (panelRef.current?.getBoundingClientRect().right ?? 384) + 14,
-            top: '50%', transform: 'translateY(-50%)',
-            zIndex: 80, width: 280,
-            background: t.surface, color: t.text,
-            border: `1.5px solid ${t.primaryBorder}`, borderRadius: 10,
-            boxShadow: '0 10px 34px rgba(0,0,0,.22)', padding: '13px 14px',
-          }}
-        >
-          <div style={{ whiteSpace: 'pre-line', fontSize: 12.5, lineHeight: 1.65, marginBottom: 11 }}>
-            {confirmReq.message}
-          </div>
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-            <button
-              data-webai-confirm-ok
-              autoFocus
-              onClick={() => {
-                const run = confirmReq.onOk;
-                setConfirmReq(null);
-                run();
-              }}
-              style={{
-                padding: '6px 16px', borderRadius: 6, border: 'none',
-                background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
-                color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              }}>확인</button>
-            <button
-              data-webai-confirm-cancel
-              onClick={() => setConfirmReq(null)}
-              style={{
-                padding: '6px 14px', borderRadius: 6,
-                border: `1px solid ${t.border}`, background: t.surface,
-                color: t.text, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              }}>취소</button>
-          </div>
-        </div>
-      )}
+      {/* 확인 팝오버 — API 키 패널과 **같은 컴포넌트**를 쓴다
+          (2026-08-06: 두 모드의 적용 흐름을 하나로 맞추면서 공용화) */}
+      <AiConfirmPopover
+        t={t} panelRef={panelRef} req={confirmReq}
+        onClose={() => setConfirmReq(null)} />
       <InspectorSection t={t} title="🌐 웹 AI로 만들기 (API 키 불필요)">
         <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.55, marginBottom: 2 }}>
           쓰고 있는 AI 웹 구독(Claude·ChatGPT·Gemini…)으로 맵을 만듭니다 —

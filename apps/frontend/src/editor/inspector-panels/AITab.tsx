@@ -10,7 +10,7 @@
 // 관련 문서: docs/04-extensions/ai/18-ai.md,
 //           docs/04-extensions/ai/emm-prompt-templates.md
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { InspectorSection } from './InspectorSection';
@@ -39,6 +39,7 @@ import { GENERATION_TYPES } from '@/utils/emmSystemPrompt';
 import { parseEmm } from '@/utils/importMarkdown';
 import { countMapNodes } from '@/export/mapMeta';
 import { WebAiPanel } from './WebAiPanel';
+import { AiConfirmPopover, type ConfirmRequest } from './AiConfirmPopover';
 
 export function AITab({ t }: { t: ThemeTokens }) {
   const [view, setView] = useState<'generate' | 'settings'>('generate');
@@ -80,7 +81,9 @@ export function AITab({ t }: { t: ThemeTokens }) {
         ))}
       </div>
 
-      {view === 'generate' ? <GenerateView t={t} /> : <SettingsView t={t} />}
+      {view === 'generate'
+        ? <GenerateView t={t} onNeedKey={() => setView('settings')} />
+        : <SettingsView t={t} />}
     </div>
   );
 }
@@ -89,7 +92,24 @@ export function AITab({ t }: { t: ThemeTokens }) {
 // 생성 뷰
 // ---------------------------------------------------------------------------
 
-function GenerateView({ t }: { t: ThemeTokens }) {
+/** 적용 버튼(새 맵 / 삽입) — 웹 AI 모드의 두 버튼과 같은 모양·같은 무게 */
+function applyBtn(t: ThemeTokens, primary: boolean) {
+  return {
+    flex: 1, padding: '8px 0', borderRadius: 7, cursor: 'pointer',
+    fontSize: 12.5, fontWeight: 700,
+    border: primary ? 'none' : `1px solid ${t.primaryBorder}`,
+    background: primary
+      ? `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`
+      : t.primarySoft,
+    color: primary ? '#fff' : t.primary,
+  } as const;
+}
+
+function GenerateView({ t, onNeedKey }: {
+  t: ThemeTokens;
+  /** 키가 없을 때 'AI 설정' 탭으로 데려간다 (2026-08-06 보고) */
+  onNeedKey: () => void;
+}) {
   const provider = useAiSettingsStore((s) => s.provider);
   const setProvider = useAiSettingsStore((s) => s.setProvider);
   const priority = useAiSettingsStore((s) => s.priority);
@@ -118,6 +138,19 @@ function GenerateView({ t }: { t: ThemeTokens }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [expandBusy, setExpandBusy] = useState(false);
+  /**
+   * AI 답변을 **아직 적용하지 않은 상태로** 담아 둔다 (2026-08-06).
+   * 적용은 [새 맵 생성] / [선택 노드에 삽입] 중 하나를 눌러야 일어난다 —
+   * 웹 AI 모드와 같은 규칙이다.
+   */
+  const [result, setResult] = useState<
+    { md: string; map: ReturnType<typeof parseEmm>; nodeCount: number; prompt: string } | null
+  >(null);
+
+  // 확인 팝오버 — 웹 AI 모드와 **같은 컴포넌트·같은 자리**
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null);
+  const askConfirm = (message: string, onOk: () => void) => setConfirmReq({ message, onOk });
 
   const selectedNode = findNodeInMap(map, selectedId);
 
@@ -125,10 +158,21 @@ function GenerateView({ t }: { t: ThemeTokens }) {
   const effective = resolveProvider(provider, priority, keys);
   const hasKey = !!keys[effective]?.trim();
 
+  /**
+   * ① AI 에게 묻는다 — **바로 열지 않는다** (2026-08-06 사용자 결정).
+   *
+   * 예전에는 호출이 끝나면 곧바로 `window.confirm` 하나 띄우고 새 맵으로
+   * 열어 버렸다. 그래서 **"이 답을 노드에 붙일까?"를 고를 기회가 없었다.**
+   * 웹 AI 모드는 진작 두 갈래(새 맵 / 선택 노드에 삽입)를 사용자가 고르게
+   * 다듬어 두었는데(#196·#197·#198), API 키 모드만 그대로 남아 있었다.
+   * 이제 답변을 **미리보기로 잡아 두고**, 적용은 아래 두 버튼 중 하나를
+   * 눌러야 일어난다 — 두 모드의 규칙이 같아졌다.
+   */
   const run = async () => {
     const q = prompt.trim();
     if (!q || busy) return;
     setError('');
+    setResult(null);
     setBusy(true);
     try {
       const addition = GENERATION_TYPES.find((g) => g.key === genType)?.addition ?? '';
@@ -143,33 +187,82 @@ function GenerateView({ t }: { t: ThemeTokens }) {
       if (!map) {
         throw new Error('답변에서 마인드맵 구조를 인식하지 못했습니다 — 다시 시도해 보세요');
       }
-      const ok = window.confirm(
-        `현재 맵을 닫고 AI가 생성한 맵(${countMapNodes(map)}개 노드)을 열까요?\n` +
-        '(실행 취소 Ctrl+Z 로 이전 맵으로 되돌릴 수 있습니다)',
-      );
-      if (!ok) return;
-      // **서버 맵 연결을 먼저 끊는다** — 끊지 않으면 자동저장이 조금 전까지
-      // 열어 두었던 서버 맵을 이 AI 맵으로 덮어쓴다 (2026-08-05 저장 감사에서
-      // 재현: '통계B-중간' 문서가 AI 맵으로 바뀌었다). 웹 AI 경로
-      // (WebAiPanel.runOpenAsNewMap)는 처음부터 이렇게 하고 있었다.
-      detachFromServer();
-      // 새 문서다 — 되돌리기가 이전 맵으로 넘어가면 안 된다 (2026-08-06)
-      loadMap(map, { resetHistory: true });
-      setLayoutType('radial-right');
-      resetSpacing();
-      setSelectedId('root');
-      pushHistory({
-        prompt: q,
-        at: new Date().toISOString(),
-        nodes: countMapNodes(map),
-        provider: effective,
-      });
-      setPrompt('');
+      setResult({ md, map, nodeCount: countMapNodes(map), prompt: q });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
+  };
+
+  /** ②-A 새 맵으로 열기 — 확인 후 실행 */
+  const applyAsNewMap = () => {
+    if (!result) return;
+    // **"Ctrl+Z 로 되돌릴 수 있다"고 하지 않는다** (2026-08-06 3차 보고).
+    // #210 에서 AI 경로가 `resetHistory: true` 가 되면서 그 약속이 사실이
+    // 아니게 됐는데 문구만 남아 있었다.
+    askConfirm(
+      `현재 맵을 닫고 AI가 생성한 맵(${result.nodeCount}개 노드)을 열까요?\n`
+      + '새 문서로 열리므로 되돌리기(Ctrl+Z)로는 지금 맵으로 돌아올 수 없습니다 —\n'
+      + '저장하지 않은 편집이 있으면 먼저 ☁ 저장하세요.',
+      () => {
+        // **서버 맵 연결을 먼저 끊는다** — 끊지 않으면 자동저장이 조금 전까지
+        // 열어 두었던 서버 맵을 이 AI 맵으로 덮어쓴다 (2026-08-05 저장 감사).
+        detachFromServer();
+        // 새 문서다 — 되돌리기가 이전 맵으로 넘어가면 안 된다 (2026-08-06)
+        loadMap(result.map, { resetHistory: true });
+        setLayoutType('radial-right');
+        resetSpacing();
+        setSelectedId('root');
+        pushHistory({
+          prompt: result.prompt,
+          at: new Date().toISOString(),
+          nodes: result.nodeCount,
+          provider: effective,
+        });
+        setPrompt('');
+        setResult(null);
+      },
+    );
+  };
+
+  /**
+   * ②-B 선택 노드 하위로 삽입 — 확인 후 실행.
+   *
+   * 노드를 안 고르고 눌러도 **조용히 무시하지 않는다** — 왜 안 되는지
+   * 말해 준다 (웹 AI 모드와 같은 규칙, 2026-08-05 보고).
+   */
+  const applyToSelected = () => {
+    if (!result) return;
+    if (!selectedId || !selectedNode) {
+      setError('먼저 맵에서 삽입할 노드를 클릭해 선택하세요 — 그 노드의 하위로 추가됩니다.');
+      return;
+    }
+    setError('');
+    // 답변 맨 앞의 # 줄은 제거하고 타깃 제목으로 감싸 자식만 꺼낸다
+    const body = result.md.trim().replace(/^\s*#\s[^\n]*\n+/, '');
+    const wrapped = `# ${selectedNode.text || '노드'}\n\n${body}`;
+    const parsed = parseEmm(wrapped, '삽입', { blockPlacement: 'node' });
+    const kids = parsed ? reassignIds(parsed.branches as never) : [];
+    if (!kids.length) {
+      setError('답변에서 하위 구조를 인식하지 못했습니다 — 다시 생성해 보세요.');
+      return;
+    }
+    askConfirm(
+      `'${selectedNode.text || '노드'}' 아래에 ${kids.length}개 항목을 추가할까요?\n`
+      + '(실행 취소 Ctrl+Z 로 되돌릴 수 있습니다)',
+      () => {
+        appendChildren(selectedId, kids as never);
+        setSelectedId(selectedId);
+        pushHistory({
+          prompt: `[삽입] ${result.prompt}`,
+          at: new Date().toISOString(),
+          nodes: kids.length,
+          provider: effective,
+        });
+        setResult(null);
+      },
+    );
   };
 
   // 선택 노드 확장 — (루트 프로젝트 지침 + 프로젝트 소스 + 직계 조상
@@ -180,7 +273,9 @@ function GenerateView({ t }: { t: ThemeTokens }) {
     setError('');
     setExpandBusy(true);
     try {
-      const ctx = buildExpandContext(map, selectedId, systemPrompt);
+      // 입력창에 적어 둔 질문이 있으면 **함께 보낸다** (2026-08-06 보고 —
+      // 적어 둔 질문이 무시돼 맵 문맥대로만 나왔다)
+      const ctx = buildExpandContext(map, selectedId, systemPrompt, prompt);
       if (!ctx) throw new Error('선택한 노드를 찾지 못했습니다');
       const md = await generateWithAi(
         effective, keys[effective],
@@ -252,7 +347,11 @@ function GenerateView({ t }: { t: ThemeTokens }) {
   }
 
   return (
-    <div>
+    <div ref={panelRef}>
+      {/* 확인 팝오버 — 웹 AI 모드와 **같은 컴포넌트·같은 자리** */}
+      <AiConfirmPopover
+        t={t} panelRef={panelRef} req={confirmReq} testId="aiapi"
+        onClose={() => setConfirmReq(null)} />
       {modeSwitch}
       <InspectorSection t={t} title="AI 마인드맵 생성">
         <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
@@ -316,26 +415,84 @@ function GenerateView({ t }: { t: ThemeTokens }) {
           }}>{error}</div>
         )}
 
+        {/* **키가 없으면 이 버튼이 'AI 설정'으로 데려간다** (2026-08-06 보고).
+            예전에는 `disabled` 라서 눌러도 아무 일이 없었다 — 버튼에
+            "API 키를 등록하세요"라고 적혀 있어도, 누르면 반응이 없으니
+            **고장으로 보인다.** 안내는 길이 있어야 안내다. */}
         <button
-          onClick={run}
-          disabled={busy || !prompt.trim() || !hasKey}
+          onClick={hasKey ? run : onNeedKey}
+          disabled={hasKey && (busy || !prompt.trim())}
           data-ai-generate
-          title={hasKey ? 'AI에게 질문하고 답변을 맵으로 변환' : 'AI 설정에서 API 키를 먼저 등록하세요'}
+          title={hasKey
+            ? 'AI에게 질문하고 답변을 맵으로 변환'
+            : '눌러서 AI 설정으로 이동 — API 키를 먼저 등록하세요'}
           style={{
             width: '100%', marginTop: 8, padding: 9,
             background: busy || !hasKey
               ? t.surfaceAlt
               : `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
-            color: busy || !hasKey ? t.textSubtle : '#fff',
-            border: busy || !hasKey ? `1px solid ${t.border}` : 'none',
+            color: busy ? t.textSubtle : hasKey ? '#fff' : t.primary,
+            border: busy || !hasKey ? `1px solid ${hasKey ? t.border : t.primaryBorder}` : 'none',
             borderRadius: 7,
             fontSize: 13, fontWeight: 600,
-            cursor: busy || !prompt.trim() || !hasKey ? 'default' : 'pointer',
+            cursor: hasKey && (busy || !prompt.trim()) ? 'default' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
           <I.Sparkles size={14} />
-          {busy ? 'AI 답변을 기다리는 중…' : hasKey ? 'AI로 맵 생성' : 'API 키를 등록하세요 (AI 설정)'}
+          {busy ? 'AI 답변을 기다리는 중…'
+            : hasKey ? '① AI에게 물어보기' : '🔑 API 키를 등록하세요 — 눌러서 AI 설정으로'}
         </button>
+
+        {/* ② **답변을 어디에 넣을지 고른다** (2026-08-06 사용자 결정).
+            웹 AI 모드와 같은 두 갈래·같은 확인 절차다. 어느 쪽도 기본
+            선택이 아니다 — 누르는 순간에만 반영된다. */}
+        {result && (
+          <div data-ai-result style={{ marginTop: 9 }}>
+            <div style={{
+              fontSize: 11, color: t.text, background: t.surfaceAlt,
+              border: `1px solid ${t.border}`, borderRadius: 6,
+              padding: '7px 9px', lineHeight: 1.55,
+            }}>
+              ✨ 답변을 받았습니다 — <b>{result.nodeCount}개 노드</b>.
+              아래에서 <b>어디에 넣을지</b> 골라 주세요.
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <button
+                data-ai-apply-newmap
+                onClick={applyAsNewMap}
+                title="현재 맵을 닫고 새 맵으로 엽니다 (확인 후 실행)"
+                style={applyBtn(t, true)}
+              >② 새 맵 생성</button>
+              {/* 노드를 안 골랐어도 **버튼은 보인다** — 누르면 노드를
+                  먼저 고르라고 알려 준다 (웹 AI 모드와 같은 규칙) */}
+              <button
+                data-ai-apply-insert
+                onClick={applyToSelected}
+                title={selectedNode
+                  ? `답변을 '${selectedNode.text}' 노드의 하위로 추가합니다 (확인 후 실행)`
+                  : '맵에서 노드를 먼저 선택하세요 — 그 노드의 하위로 추가됩니다'}
+                style={applyBtn(t, false)}
+              >선택 노드에 삽입</button>
+            </div>
+            <button
+              data-ai-result-discard
+              onClick={() => setResult(null)}
+              style={{
+                marginTop: 5, background: 'none', border: 'none', padding: 0,
+                color: t.textSubtle, fontSize: 10.5, cursor: 'pointer',
+                textDecoration: 'underline',
+              }}>이 답변 버리기</button>
+          </div>
+        )}
+        {!hasKey && (
+          <div data-ai-nokey style={{
+            marginTop: 6, fontSize: 10.5, color: t.textSubtle, lineHeight: 1.55,
+          }}>
+            <b>API 키 방식</b>은 내 키로 AI를 직접 부릅니다 (요금은 그 AI 회사에
+            냅니다). 키가 없으면 위 <b>🌐 웹 AI</b> 를 쓰세요 — <b>키 없이</b>
+            ChatGPT·Claude 같은 창에 붙여넣고 답을 되가져오는 방식입니다.
+          </div>
+        )}
       </InspectorSection>
 
       <InspectorSection t={t} title="선택 노드 자세히 확장">
@@ -343,7 +500,11 @@ function GenerateView({ t }: { t: ThemeTokens }) {
           맵에서 노드를 고르고 누르면, <b>중심 주제(프로젝트 지침) + 상위
           경로 + 이 노드</b>를 AI에게 보내 <b>세부 내용을 하위 노드로</b>
           채웁니다. AI가 만든 노드든 직접 만든 노드든 상관없습니다.
-        </div>
+          <br />
+          <b>위 입력창에 적은 요청도 함께 보냅니다</b> — 맵 문맥과 다르면
+          <b>적은 요청을 따릅니다</b>. 맵 문맥만으로 확장하려면 입력창을
+          비우세요. (2026-08-06)
+</div>
         <div data-ai-expand-target style={{
           fontSize: 11.5, padding: '6px 9px', borderRadius: 6, marginBottom: 6,
           background: t.surfaceAlt, border: `1px solid ${t.border}`,
@@ -354,11 +515,12 @@ function GenerateView({ t }: { t: ThemeTokens }) {
             ? `대상: ${selectedNode.text || '(빈 노드)'}`
             : '맵에서 확장할 노드를 선택하세요'}
         </div>
+        {/* 위 버튼과 같은 규칙 — 키가 없으면 눌러서 'AI 설정'으로 간다 */}
         <button
-          onClick={runExpand}
-          disabled={expandBusy || !selectedNode || !hasKey}
+          onClick={hasKey ? runExpand : onNeedKey}
+          disabled={hasKey && (expandBusy || !selectedNode)}
           data-ai-expand
-          title={!hasKey ? 'AI 설정에서 API 키를 먼저 등록하세요'
+          title={!hasKey ? '눌러서 AI 설정으로 이동 — API 키를 먼저 등록하세요'
             : !selectedNode ? '맵에서 노드를 선택하세요'
               : '선택 노드를 AI로 상세 확장 (하위 노드 추가)'}
           style={{
@@ -367,11 +529,12 @@ function GenerateView({ t }: { t: ThemeTokens }) {
             color: expandBusy || !selectedNode || !hasKey ? t.textSubtle : t.primary,
             border: `1px solid ${expandBusy || !selectedNode || !hasKey ? t.border : t.primaryBorder + '40'}`,
             borderRadius: 7, fontSize: 12.5, fontWeight: 700,
-            cursor: expandBusy || !selectedNode || !hasKey ? 'default' : 'pointer',
+            cursor: hasKey && (expandBusy || !selectedNode) ? 'default' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
           <I.Sparkles size={13} />
-          {expandBusy ? 'AI가 확장 중…' : '선택 노드 자세히 확장'}
+          {expandBusy ? 'AI가 확장 중…'
+            : hasKey ? '선택 노드 자세히 확장' : '🔑 API 키를 등록하세요 — 눌러서 AI 설정으로'}
         </button>
         <ExpandHelp t={t} />
       </InspectorSection>

@@ -33,6 +33,20 @@ let timer: number | undefined;
 /** 직전에 본 노드 수 — 바뀌면 "구조 변경"으로 보고 즉시 적는다 */
 let lastCount = -1;
 
+/**
+ * **이번 세션에서 우리가 적은 초안 키들** (2026-08-06 보고).
+ *
+ * 복구 배너는 "지난번에 못 살린 편집"을 위한 것인데, 지금 화면에서
+ * 편집 중인 문서도 1초 뒤면 초안으로 적힌다. 배너가 그걸 다시 집어
+ * "저장되지 않은 맵이 있습니다 — 복구할까요?" 라고 물으면 **지금 보고
+ * 있는 그 맵을 복구하라는 말**이 되어 혼란스럽다 (간격만 조절하다
+ * 느닷없이 배너가 떴다는 보고). 여기 담긴 키는 배너가 건너뛴다.
+ */
+const writtenThisSession = new Set<string>();
+export function isDraftFromThisSession(key: string): boolean {
+  return writtenThisSession.has(key);
+}
+
 function countNodes(list: { children?: unknown[] }[]): number {
   return list.reduce(
     (n, x) => n + 1 + countNodes((x.children ?? []) as { children?: unknown[] }[]),
@@ -52,8 +66,10 @@ export async function writeLocalDraftNow(): Promise<void> {
   // 잃은 것이 없는데도 "저장되지 않은 맵이 있습니다"가 떠서, 진짜 경고와
   // 구분이 안 된다 (탭 전환마다 배너가 뜨는 문제).
   if (useAutosaveStore.getState().saveState === 'saved') return;
+  const key = cloud.cloudMapId ?? UNSAVED_DRAFT_KEY;
+  writtenThisSession.add(key);
   const ok = await putDraft({
-    key: cloud.cloudMapId ?? UNSAVED_DRAFT_KEY,
+    key,
     snapshot: {
       v: 2,
       map,

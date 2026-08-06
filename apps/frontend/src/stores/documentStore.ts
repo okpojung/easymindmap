@@ -533,6 +533,35 @@ function asViewOnly(run: () => void): void {
   try { run(); } finally { viewOnlyChange = false; }
 }
 
+/**
+ * **문서 교체 — 되돌리기는 문서 경계를 넘지 않는다** (2026-08-06 보고).
+ *
+ * 맵 닫기·새 맵·샘플·열기처럼 문서를 **통째로 바꾸는** 전환에서는
+ * 되돌리기 스택을 끊는다. 안 끊으면 이런 일이 난다 (실사용 재현):
+ *
+ * ```
+ * 서버 맵 열기 → 편집 → 맵 닫기 → 새 맵 → 편집 3회
+ *   → Ctrl+Z ×3 (여기까지 새 맵)
+ *   → Ctrl+Z 더  →  **이전 맵이 튀어나온다**      ← 정체불명의 맵
+ * ```
+ *
+ * 두 가지를 함께 해야 한다 —
+ *   ① 전환 그 자체를 되돌리기에 **쌓지 않는다**(아래 구독의 `swapping`)
+ *   ② 전환 뒤 스택을 **비운다**
+ * ①이 없으면 비운 직후 구독이 이전 문서를 도로 밀어 넣는다(zustand
+ * 구독은 set() 안에서 동기 실행된다).
+ *
+ * 개별 액션마다 `set({past:[],future:[]})` 를 흩뿌리는 대신 여기로 모은다 —
+ * 새 전환 경로가 생겨도 이 헬퍼만 쓰면 규칙이 자동으로 지켜진다
+ * (docOrigin 을 구조로 막은 것과 같은 방식, 14-save.md §7.5).
+ */
+let swappingDocument = false;
+function asDocumentSwap(run: () => void): void {
+  swappingDocument = true;
+  try { run(); } finally { swappingDocument = false; }
+  useDocumentStore.setState({ past: [], future: [] });
+}
+
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   map: cloneMap(SAMPLE_ROADMAP),
   docOrigin: null,
@@ -577,7 +606,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     applyingHistory = false;
   },
 
-  setSample: () => set({ map: cloneMap(SAMPLE_ROADMAP), docOrigin: null }),
+  setSample: () => asDocumentSwap(
+    () => set({ map: cloneMap(SAMPLE_ROADMAP), docOrigin: null })),
 
   addChildNode: (parentId) => {
     let newNodeId = '';
@@ -1145,12 +1175,15 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   loadMap: (map, opts) => {
-    set({ map: cloneMap(map) });
     // 문서 경계를 넘는 되돌리기 금지 — 열기/불러오기는 여기서 끊는다.
     // (템플릿 적용처럼 "같은 문서를 바꾸는" 경우는 그대로 되돌아간다)
-    if (opts?.resetHistory) set({ past: [], future: [] });
-    // 출처 갱신 — 기본은 '출처 없음'(서버 맵과 무관한 새 문서)
-    if (!opts?.keepOrigin) set({ docOrigin: opts?.serverMapId ?? null });
+    const apply = () => {
+      set({ map: cloneMap(map) });
+      // 출처 갱신 — 기본은 '출처 없음'(서버 맵과 무관한 새 문서)
+      if (!opts?.keepOrigin) set({ docOrigin: opts?.serverMapId ?? null });
+    };
+    if (opts?.resetHistory) asDocumentSwap(apply);
+    else apply();
   },
 
   // 서버에 저장한 맵 이름과 문서 제목을 맞춘다 (2026-08-02 문서함).
@@ -1163,12 +1196,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   // 맵 닫기 (B7) — 문서를 비운 상태. 골격(주제 1~3)을 만드는 newMap 과
   // 달리 중심 주제 하나만 남겨, "지금 열린 문서가 없다"를 화면으로도
-  // 드러낸다. map 이 바뀌므로 실수로 닫아도 Ctrl+Z 로 복구된다.
+  // 드러낸다. **되돌리기로는 되살아나지 않는다** (2026-08-06) — 문서
+  // 경계를 넘는 되돌리기가 "정체불명의 맵"을 불러왔기 때문. 닫기 전에
+  // 저장되므로 문서함에서 다시 열면 된다.
   clearHistory: () => {
     set({ past: [], future: [] });
   },
 
-  closeMap: () => {
+  closeMap: () => asDocumentSwap(() => {
     set({
       docOrigin: null,
       map: {
@@ -1177,7 +1212,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         branches: [],
       },
     });
-  },
+  }),
 
   newMap: (title = NEW_MAP_TITLE) => {
     // 새 문서 = 서버 맵 출처 없음 (자동저장이 이전 맵을 덮어쓰지 못한다)
@@ -1208,14 +1243,14 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         })),
       }],
     }));
-    set({
+    asDocumentSwap(() => set({
       docOrigin: null,
       map: {
         title,
         root: { id: 'root', text: '중심 주제', colorKey: 'root', side: 'center' },
         branches,
       },
-    });
+    }));
   },
 
   updateNodeSize: (nodeId, size) => {
@@ -1408,6 +1443,9 @@ useDocumentStore.subscribe((state, prev) => {
   if (applyingHistory || historyPaused) return;
   // 접기/펴기 같은 **보기 전용** 변경은 되돌리기에 쌓지 않는다 (2026-08-06)
   if (viewOnlyChange) return;
+  // 문서를 통째로 바꾸는 전환도 쌓지 않는다 — 되돌리기는 문서 경계를
+  // 넘지 않는다 (asDocumentSwap)
+  if (swappingDocument) return;
   if (state.map !== prev.map) {
     // 스냅샷의 레이아웃 = "prev.map이 화면에 있던 동안"의 레이아웃.
     // 맵과 레이아웃을 한 동작에서 함께 바꾸는 곳(레이아웃 탭·맵 설정)은

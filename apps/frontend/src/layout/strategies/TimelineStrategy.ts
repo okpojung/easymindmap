@@ -153,16 +153,19 @@ export function layoutTimeline(
 }
 
 /**
- * 시간배치(중앙노드) — 시간축이 중심 주제를 **관통**한다 (2026-08-07 요청).
+ * 시간배치(중앙노드) — **노드가 시간축 위에 얹힌다** (2026-08-07 사용자
+ * 정의: "새 맵(중심 주제)가 축 위의 제일 왼쪽에 있고 오른쪽 방향으로
+ * 2레벨 노드들이 축 위에 배치되는 레이아웃").
  *
- * `timeline` 은 중심 주제가 축의 왼쪽 끝이라 주제가 늘어날수록 맵이
- * 오른쪽으로만 길어졌다. 여기서는 중심 주제를 축 한가운데 두고 **앞
- * 절반은 왼쪽, 뒤 절반은 오른쪽**에 놓는다 — 시간 순서(왼→오른쪽)는
- * 그대로 지키면서 화면 폭을 반씩 나눠 쓴다.
+ * `timeline` 과의 차이는 **주제가 축에 놓이는 방식** 하나다.
+ *   · `timeline`        — 주제가 축에서 위/아래로 **떨어져 매달린다**
+ *                         (축과 노드 사이에 BRANCH_GAP 만큼 연결선)
+ *   · `timeline-center` — 주제의 **한가운데를 축이 지난다**. 중심 주제도
+ *                         같은 높이(축 위)에 서고, 축은 왼쪽 끝에서
+ *                         시작해 오른쪽으로 흐른다.
  *
- * 위/아래 번갈아 배치는 `timeline` 과 같다. 왼쪽 구간도 **왼→오른쪽
- * 순서**로 채우므로(오른쪽부터 역순으로 채우는 것이 아니다) 전체를
- * 왼쪽에서 오른쪽으로 읽으면 곧 시간 순서가 된다.
+ * 하위(3레벨+)는 두 레이아웃 모두 위/아래 번갈아 뻗는다. 그래서 축 한
+ * 줄만 눈으로 훑으면 "무엇이 언제"가 바로 읽히고, 세부는 위아래로 빠진다.
  */
 export function layoutTimelineCenter(
   branches: SampleBranch[],
@@ -172,23 +175,17 @@ export function layoutTimelineCenter(
   out: LaidOutNode[],
 ): void {
   const measured = branches.map((b) => measureNode(b, 1));
-  // 앞 절반(올림) = 왼쪽. 주제가 1개뿐이면 왼쪽 0개 = 오른쪽에만 —
-  // 중심 주제가 축 왼쪽 끝에 서는 셈이라 `timeline` 과 같아진다.
-  const leftCount = Math.floor(measured.length / 2);
-  const leftPart = measured.slice(0, leftCount);
-  const rightPart = measured.slice(leftCount);
-
-  // 왼쪽 구간의 시작 x — 블록 폭 합계를 미리 재서 왼쪽 끝을 잡는다.
-  const leftSpan = leftPart.reduce((s, m) => s + m.blockW, 0)
-    + Math.max(0, leftPart.length - 1) * STEP_GAP;
-  let x = CX - rootW / 2 - AXIS_GAP - leftSpan;
+  let x = CX + rootW / 2 + AXIS_GAP;
 
   measured.forEach((m, i) => {
     const dir: 'up' | 'down' = i % 2 === 0 ? 'up' : 'down';
-    const edgeY = dir === 'up' ? CY - BRANCH_GAP : CY + BRANCH_GAP;
+    // placeSubtree 는 edgeY 를 "블록의 축쪽 가장자리"로 본다. 주제 노드의
+    // **중심**이 축(CY)에 오도록 노드 높이 절반만큼 밀어 준다.
+    //   dir 'down' → nodeCenterY = edgeY + h/2
+    //   dir 'up'   → nodeCenterY = edgeY - over - h/2   (over = 태그 칩 자리)
+    const over = nodeOverhang(m.node);
+    const edgeY = dir === 'down' ? CY - m.h / 2 : CY + m.h / 2 + over;
     placeSubtree(m, x, edgeY, dir, 1, 'root', out);
     x += m.blockW + STEP_GAP;
-    // 중심 주제 자리를 건너뛴다 — 왼쪽 마지막 주제를 놓은 직후.
-    if (i === leftCount - 1) x = CX + rootW / 2 + AXIS_GAP;
   });
 }

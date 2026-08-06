@@ -778,10 +778,12 @@ const VIEWER_JS = String.raw`
       // 시간배치 — 루트→주제: 시간축을 따라가다 주제로 꺾임.
       // 주제 이하: 왼쪽 스파인 세로 아웃라인 (위/아래 방향).
       if (p === DATA.root) {
+        // 중앙노드: 중심 주제와 주제가 **모두 축 위**라 시간축 토막이 곧
+        // 연결선이다. 여기서 또 그으면 축과 겹치고, 먼 주제로 가는 선은
+        // 앞 주제들을 관통한다 (에디터 Canvas 와 같은 규칙).
+        if (eff === 'timeline-center') return '';
         var edgeY0 = c._cy < p._cy ? c._cy + c._h / 2 : c._cy - c._h / 2;
-        // 중앙노드 배치는 주제가 루트 왼쪽에도 온다 — 그때는 왼쪽 변에서 출발
-        var fromX0 = c._cx < p._cx ? p._cx - p._w / 2 : p._cx + p._w / 2;
-        return 'M ' + fromX0 + ' ' + p._cy + ' H ' + c._cx + ' V ' + edgeY0;
+        return 'M ' + (p._cx + p._w / 2) + ' ' + p._cy + ' H ' + c._cx + ' V ' + edgeY0;
       }
       var up = c._cy < p._cy;
       var tagPad0 = (!up && p.tags && p.tags.length) ? TAG_H + 7 : 0;
@@ -1018,32 +1020,47 @@ const VIEWER_JS = String.raw`
     var kids = node.children || [];
 
     if (depth === 0 && (node._eff === 'timeline' || node._eff === 'timeline-center')) {
-      // 수평 시간축 화살표 (루트 → 마지막 주제 너머) — 에디터와 동일.
-      // 중앙노드 배치는 루트 **왼쪽**으로도 축이 뻗는다(루트 상자 안은 비움).
+      // 수평 시간축 화살표 — 에디터 Canvas 와 같은 규칙.
+      //  · timeline        : 루트 오른쪽 변 → 마지막 주제 너머 **한 줄**
+      //  · timeline-center : 중심 주제·2레벨 주제가 모두 축 위에 얹히므로
+      //                      **노드 사이 빈 칸에만** 토막으로 긋는다
+      //                      (한 줄로 그으면 선이 노드 글자를 가로지른다)
       var maxX = node._cx + node._w / 2;
-      var minX = node._cx - node._w / 2;
       (function scan(n2) {
         maxX = Math.max(maxX, n2._cx + n2._w / 2);
-        minX = Math.min(minX, n2._cx - n2._w / 2);
         var ks = n2._open ? (n2.children || []) : [];
         for (var q = 0; q < ks.length; q++) if (ks[q]._cx != null) scan(ks[q]);
       })(node);
       var endX = maxX + 46;
+      var onAxis = [node];
       if (node._eff === 'timeline-center') {
-        el('line', { x1: minX - 46, y1: node._cy, x2: node._cx - node._w / 2, y2: node._cy,
+        var kids0 = node._open ? (node.children || []) : [];
+        for (var q2 = 0; q2 < kids0.length; q2++) {
+          if (kids0[q2]._cx != null) onAxis.push(kids0[q2]);
+        }
+        onAxis.sort(function (a, b) { return a._cx - b._cx; });
+      }
+      for (var q3 = 0; q3 < onAxis.length; q3++) {
+        var segFrom = onAxis[q3]._cx + onAxis[q3]._w / 2;
+        var segTo = q3 + 1 < onAxis.length
+          ? onAxis[q3 + 1]._cx - onAxis[q3 + 1]._w / 2 : endX;
+        el('line', { x1: segFrom, y1: node._cy, x2: segTo, y2: node._cy,
           stroke: '#C9BBA4', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, world);
       }
-      el('line', { x1: node._cx + node._w / 2, y1: node._cy, x2: endX, y2: node._cy,
-        stroke: '#C9BBA4', 'stroke-width': 2.2, 'stroke-linecap': 'round' }, world);
       el('polygon', { points: (endX + 12) + ',' + node._cy + ' ' + (endX - 2) + ',' +
         (node._cy - 6) + ' ' + (endX - 2) + ',' + (node._cy + 6), fill: '#C9BBA4' }, world);
     }
 
     if (node._open) {
       for (var i = 0; i < kids.length; i++) {
-        el('path', { d: edgePath(node, kids[i]), fill: 'none',
-          stroke: SKIN.edge, 'stroke-width': depth === 0 ? 2.2 : 1.6,
-          'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, world);
+        // 빈 경로 = "이 엣지는 그리지 않는다" (시간배치 중앙노드의
+        // 루트→주제 — 시간축 토막이 곧 연결선이다)
+        var dPath = edgePath(node, kids[i]);
+        if (dPath) {
+          el('path', { d: dPath, fill: 'none',
+            stroke: SKIN.edge, 'stroke-width': depth === 0 ? 2.2 : 1.6,
+            'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, world);
+        }
         drawNode(kids[i], depth + 1, color);
       }
     }

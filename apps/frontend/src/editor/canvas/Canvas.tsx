@@ -1267,9 +1267,11 @@ export function Canvas({
           transform={`translate(${CX + panX} ${CY + panY}) scale(${scale}) translate(${-CX} ${-CY})`}
         >
           {/* 시간배치 — 수평 시간축 화살표.
-              · 타임라인: 루트 오른쪽 변 → 마지막 주제 너머
-              · 중앙노드: 첫 주제 앞 → 마지막 주제 너머, 루트를 관통하되
-                루트 상자 안은 비워 둔다(선이 글자를 가로지르지 않게). */}
+              · 타임라인: 루트 오른쪽 변 → 마지막 주제 너머 한 줄. 주제는
+                축에서 위/아래로 떨어져 매달리므로 축이 노드를 가리지 않는다.
+              · 중앙노드: **중심 주제와 2레벨 주제가 모두 축 위에 얹힌다**.
+                그래서 한 줄로 그으면 선이 노드 글자를 가로지른다 —
+                축 위 노드들 **사이 빈 칸에만** 토막으로 긋는다. */}
           {(normalizedLayout === 'timeline' || normalizedLayout === 'timeline-center')
             && !focusedId && (() => {
             const root = nodes.find((n) => n.depth === 0);
@@ -1277,16 +1279,25 @@ export function Canvas({
             const centered = normalizedLayout === 'timeline-center';
             const maxX = nodes.reduce((m, n) => Math.max(m, n.x + n.w / 2), root.x + root.w / 2);
             const endX = maxX + 46;
-            const minX = nodes.reduce((m, n) => Math.min(m, n.x - n.w / 2), root.x - root.w / 2);
-            const startX = centered ? minX - 46 : root.x + root.w / 2;
+            // 축 위에 놓인 노드 = 중심 주제 + 2레벨 주제 (중앙노드만 해당)
+            const onAxis = centered
+              ? nodes.filter((n) => n.depth <= 1).sort((a, b) => a.x - b.x)
+              : [root];
+            const segs: { x1: number; x2: number }[] = [];
+            for (let i = 0; i < onAxis.length - 1; i += 1) {
+              segs.push({
+                x1: onAxis[i].x + onAxis[i].w / 2,
+                x2: onAxis[i + 1].x - onAxis[i + 1].w / 2,
+              });
+            }
+            const last = onAxis[onAxis.length - 1];
+            segs.push({ x1: last.x + last.w / 2, x2: endX });
             return (
               <g data-testid="timeline-axis" pointerEvents="none">
-                {centered && (
-                  <line x1={startX} y1={root.y} x2={root.x - root.w / 2} y2={root.y}
+                {segs.map((s, i) => (
+                  <line key={i} x1={s.x1} y1={root.y} x2={s.x2} y2={root.y}
                         stroke={t.edge} strokeWidth={2.3} strokeLinecap="round" />
-                )}
-                <line x1={root.x + root.w / 2} y1={root.y} x2={endX} y2={root.y}
-                      stroke={t.edge} strokeWidth={2.3} strokeLinecap="round" />
+                ))}
                 <polygon
                   points={`${endX + 12},${root.y} ${endX - 2},${root.y - 6} ${endX - 2},${root.y + 6}`}
                   fill={t.edge}
@@ -1301,6 +1312,11 @@ export function Canvas({
               .map((n) => {
                 const p = visibleNodes.find((x) => x.id === n.parent);
                 if (!p) return null;
+                // 시간배치(중앙노드): 중심 주제 → 2레벨 주제는 **시간축
+                // 자체가 연결선**이다(둘 다 축 위에 있다). 여기서 또 그으면
+                // 축과 완전히 겹치고, 3번째 주제로 가는 선은 1·2번 주제를
+                // 관통한다.
+                if (normalizedLayout === 'timeline-center' && n.depth === 1) return null;
 
                 return (
                   <EdgeRenderer

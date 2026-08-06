@@ -65,6 +65,8 @@ export function MapBrowser({
   const [order, setOrder] = useState<SortOrder>('asc');
   const [err, setErr] = useState<string | null>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null); // 입력 중인 이름
+  /** 이름 검색어 — 화면에서만 거른다(서버 재조회 없음, 2026-08-07) */
+  const [query, setQuery] = useState('');
   // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
   const [moving, setMoving] = useState<MapListItem | null>(null);
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
@@ -89,6 +91,9 @@ export function MapBrowser({
   // (2026-08-05 보고: 새로고침해야 반영됐다).
   const lastSavedAt = useCloudStore((s) => s.lastSavedAt);
   useEffect(() => { void load(); }, [load, lastSavedAt]);
+  // 폴더를 옮기면 검색어를 지운다 — 새 폴더에서 "아무것도 없다"로
+  // 보이는 오해를 막는다
+  useEffect(() => { setQuery(''); }, [cwd]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -96,12 +101,17 @@ export function MapBrowser({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const q = query.trim().toLowerCase();
+  const hit = (name: string) => !q || name.toLowerCase().includes(q);
   const childFolders = folders
     .filter((f) => f.parentId === cwd)
+    .filter((f) => hit(f.name))
     .sort((a, b) => (sort === 'title' && order === 'desc'
       ? b.name.localeCompare(a.name, 'ko')
       : a.name.localeCompare(b.name, 'ko')));
   const path = folderPath(folders, cwd);
+  /** 검색으로 걸러진 맵 — 합계도 이 목록 기준이다 */
+  const shownMaps = (maps ?? []).filter((m) => hit(m.title || ''));
 
   // ── 동작 ────────────────────────────────────────────────────
   const openMap = async (m: MapListItem) => {
@@ -238,7 +248,7 @@ export function MapBrowser({
    * 저장된 맵은 값이 null 이라 합계에서 빠진다.
    */
   const totals = useMemo(() => {
-    const list = maps ?? [];
+    const list = shownMaps;
     const sum = (pick: (m: MapListItem) => number | null | undefined) =>
       list.reduce((acc, m) => acc + (pick(m) ?? 0), 0);
     return {
@@ -248,12 +258,15 @@ export function MapBrowser({
       attachCount: sum((m) => m.attachCount),
       attachBytes: sum((m) => m.attachBytes),
     };
-  }, [maps]);
+  }, [shownMaps]);
 
-  /** 열 머리글의 합계 줄 — 정렬 버튼 아래에 작게 붙인다 */
+  /**
+   * 열 머리글의 합계 줄 — **열 이름 위**에 붙인다 (2026-08-07 요청).
+   * 합계가 위, 정렬 버튼이 아래라 "합계 → 그 아래가 그 열" 로 읽힌다.
+   */
   const totalCell = (text: string) => (
     <span style={{
-      display: 'block', textAlign: 'right', marginTop: 2,
+      display: 'block', textAlign: 'right', marginBottom: 2,
       fontSize: 10, fontWeight: 700, color: t.text, opacity: 0.75,
     }}>{text}</span>
   );
@@ -325,6 +338,35 @@ export function MapBrowser({
               fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
             }}
           >＋ 새 폴더</button>
+          {/* **파일 검색** (2026-08-07 요청) — 목록이 길어지면 이름으로
+              좁힌다. 지금 폴더 안의 **폴더·맵 이름**을 대소문자 없이
+              부분 일치로 거른다(서버 재조회 없이 화면에서만). */}
+          <input
+            data-testid="browser-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
+            placeholder="🔍 이름으로 찾기"
+            title="이 폴더 안의 폴더·맵 이름으로 거릅니다 (Esc 로 지움)"
+            style={{
+              height: 24, width: 168, padding: '0 8px', borderRadius: 6,
+              marginRight: 4, fontSize: 11.5,
+              border: `1px solid ${query ? t.primaryBorder : t.border}`,
+              background: t.surfaceAlt, color: t.text, outline: 'none',
+            }}
+          />
+          {query && (
+            <button
+              data-testid="browser-search-clear"
+              onClick={() => setQuery('')}
+              title="검색어 지우기"
+              style={{
+                height: 24, padding: '0 7px', borderRadius: 6, marginRight: 2,
+                border: `1px solid ${t.border}`, background: t.surface,
+                color: t.textMuted, cursor: 'pointer', fontSize: 11,
+              }}
+            >✕</button>
+          )}
           {path.map((f, i) => (
             <span key={f.folderId} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: t.textSubtle, fontSize: 11 }}>›</span>
@@ -397,25 +439,32 @@ export function MapBrowser({
         </div>
       )}
 
-      {/* 열 머리글 — 숫자 열은 **아래 줄에 이 목록의 합계**를 함께 보여
-          준다 (2026-08-06 요청). 행을 세어 보지 않아도 "이 폴더에 얼마나
-          쌓였나"를 바로 안다. */}
+      {/* 열 머리글 (2026-08-07 정리)
+          · 숫자 열은 **열 이름 위**에 이 목록의 합계를 얹는다. 행을 세어
+            보지 않아도 "이 폴더에 얼마나 쌓였나"를 바로 안다.
+          · 이름 열은 **한 줄**이다 — `폴더/파일명` 오른쪽에 맵·폴더 수량을
+            나란히 둔다(예전에는 아래 줄로 내려가 머리글이 2줄이 됐다).
+          · 그래서 모든 열 이름이 같은 높이에 오도록 `alignItems: 'end'` —
+            합계가 있는 열만 위로 한 줄 자란다. */}
       <div
         data-testid="browser-header"
         style={{
           ...rowStyle,
-          alignItems: 'start',
+          alignItems: 'end',
           background: t.surfaceAlt, borderBottom: `1px solid ${t.border}`,
           color: t.textMuted, fontWeight: 700, fontSize: 11.5,
         }}
       >
         <span />
-        <span>
-          {th('이름', 'title')}
-          <span style={{
-            display: 'block', marginTop: 2, fontSize: 10, fontWeight: 600,
-            color: t.textSubtle,
-          }}>
+        <span style={{
+          display: 'flex', alignItems: 'baseline', gap: 8,
+          whiteSpace: 'nowrap', overflow: 'hidden',
+        }}>
+          {th('폴더/파일명', 'title')}
+          <span
+            data-testid="browser-count"
+            style={{ fontSize: 10, fontWeight: 600, color: t.textSubtle }}
+          >
             맵 {totals.maps}개{childFolders.length ? ` · 폴더 ${childFolders.length}개` : ''}
           </span>
         </span>
@@ -423,20 +472,20 @@ export function MapBrowser({
         {th('생성일', 'createdAt')}
         {th('수정일', 'updatedAt')}
         <span data-testid="browser-total-nodes">
-          {th('노드', 'nodeCount', 'right')}
           {totalCell(totals.nodeCount.toLocaleString())}
+          {th('노드', 'nodeCount', 'right')}
         </span>
         <span data-testid="browser-total-size">
-          {th('크기', 'docBytes', 'right')}
           {totalCell(fmtBytes(totals.docBytes))}
+          {th('크기', 'docBytes', 'right')}
         </span>
         <span data-testid="browser-total-attach">
-          {th('첨부', 'attachCount', 'right')}
           {totalCell(totals.attachCount.toLocaleString())}
+          {th('첨부', 'attachCount', 'right')}
         </span>
         <span data-testid="browser-total-attach-bytes">
-          {th('첨부 용량', 'attachBytes', 'right')}
           {totalCell(fmtBytes(totals.attachBytes))}
+          {th('첨부 용량', 'attachBytes', 'right')}
         </span>
         <span style={{ textAlign: 'center' }}>관리</span>
       </div>
@@ -477,16 +526,20 @@ export function MapBrowser({
           <div style={{ padding: '28px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center' }}>
             불러오는 중…
           </div>
-        ) : maps.length === 0 && childFolders.length === 0 ? (
+        ) : shownMaps.length === 0 && childFolders.length === 0 ? (
           <div data-testid="browser-empty"
             style={{ padding: '32px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
-            {err ? '목록을 표시할 수 없습니다 — 위 안내를 확인해 주세요.' : (
-              <>이 위치에 문서가 없습니다.<br />
-              맵을 만들어 <b>☁ 저장</b>할 때 이 폴더를 고르면 여기에 쌓입니다.</>
-            )}
+            {err ? '목록을 표시할 수 없습니다 — 위 안내를 확인해 주세요.'
+              : q ? (
+                <>‘{query}’ 를 이름에 포함한 폴더·맵이 없습니다.<br />
+                검색어를 지우면 전체가 다시 보입니다.</>
+              ) : (
+                <>이 위치에 문서가 없습니다.<br />
+                맵을 만들어 <b>☁ 저장</b>할 때 이 폴더를 고르면 여기에 쌓입니다.</>
+              )}
           </div>
         ) : (
-          maps.map((m) => (
+          shownMaps.map((m) => (
             <div key={m.mapId} data-testid="browser-map"
               className="mm-list-row" aria-selected={cloudMapId === m.mapId}
               style={rowStyle}>

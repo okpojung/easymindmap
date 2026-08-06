@@ -16,7 +16,8 @@ export type LayoutGlyphType =
   | 'process-tree-right'
   | 'kanban'
   | 'freeform'
-  | 'timeline';
+  | 'timeline'
+  | 'timeline-center';
 
 interface LayoutGlyphProps {
   type: LayoutGlyphType;
@@ -84,6 +85,22 @@ export function LayoutGlyph({
         <line x1="14.5" y1="8" x2="14.5" y2="13" {...lineProps} />
         <rect x="23" y="18" width="9" height="5" {...rectProps} />
         <line x1="27.5" y1="13" x2="27.5" y2="18" {...lineProps} />
+      </SvgWrap>
+    );
+  }
+
+  if (type === 'timeline-center') {
+    // 시간배치(중앙노드) — 축이 가운데 상자를 관통하고 주제가 좌·우로 갈린다
+    return (
+      <SvgWrap width={width} height={height}>
+        <line x1="2" y1="13" x2="17" y2="13" {...lineProps} />
+        <rect x="17" y="10.5" width="9" height="5" {...rectProps} />
+        <line x1="26" y1="13" x2="40" y2="13" {...lineProps} />
+        <path d="M38 10.5 L42 13 L38 15.5" {...lineProps} />
+        <rect x="5" y="3" width="8" height="4.5" {...rectProps} />
+        <line x1="9" y1="7.5" x2="9" y2="13" {...lineProps} />
+        <rect x="30" y="18.5" width="8" height="4.5" {...rectProps} />
+        <line x1="34" y1="13" x2="34" y2="18.5" {...lineProps} />
       </SvgWrap>
     );
   }

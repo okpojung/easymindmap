@@ -1,33 +1,91 @@
-// BottomStatusBar — zoom / save / collab / layout / cursor coords.
-// Zoom controls here are the SOLE way to change viewport scale (per § 25 — affects canvas only).
+// BottomStatusBar — **이 맵이 얼마나 무거운가** + 확대/축소.
+//
+// 2026-08-07 정리 (사용자 보고: "정보가 반영되지 않음"):
+//   · `20 노드 · depth 2` 와 `x: 742, y: 358` 은 **하드코딩된 가짜 값**이었다.
+//     화면이 바뀌어도 그대로라 사용자에게는 고장으로 보였다.
+//   · 노드 수·레이아웃은 **상단 맵 정보 줄에 이미 있다** — 중복이라 뺐다.
+//   · 좌표는 지금 쓰는 기능이 없어 뺐다. 필요해지면(자유 배치 수동 좌표
+//     확인 등) **실제 값**으로 되살린다 — 가짜 숫자를 다시 넣지는 않는다.
+//   · `Supabase 동기화됨` 도 뺐다. 저장 상태는 **상단 저장 배지**가
+//     사실대로 말한다("저장됨 · N분 전" / "미저장 편집 N개").
+//
+// 대신 **이 맵의 무게**를 보여 준다 (사용자 요청):
+//   문서 46.1KB · 첨부 3개 · 26.7MB
+// 요금제 쿼터가 문서+첨부 합산이라(§8), 어느 맵이 용량을 먹는지 여기서
+// 바로 보인다.
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { Collaborator, LayoutType } from '@/editor/__samples__/types';
+import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
+import { useDocumentStore } from '@/stores/documentStore';
 
 interface Props {
   t: ThemeTokens;
-  layoutType: LayoutType;
   collabs: Collaborator[];
   zoom: number;
   onZoomChange: (v: number) => void;
 }
 
-const LAYOUT_LABELS: Record<string, string> = {
-  'radial-bidirectional': '방사형 · 양쪽',
-  'radial-right':         '방사형 · 오른쪽',
-  'tree-right':           '트리 · 오른쪽',
-  'tree-down':            '트리 · 아래',
-  'hierarchy-right':      '계층형 · 오른쪽',
-  'process-tree-right':   '진행트리 · 오른쪽',
-  'freeform':             '자유 배치',
-  'kanban':               'Kanban 보드',
-};
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)}MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)}GB`;
+}
 
-export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange }: Props) {
-  const activeCount = collabs.filter(c => c.active).length;
+interface AttachNode {
+  children?: AttachNode[];
+  attachments?: { url?: string; size?: number }[];
+}
+
+/**
+ * 지금 문서의 무게 — **서버가 저장할 때 세는 방식과 같은 규칙**이다
+ * (maps.service.ts `saveDocument`). 그래야 여기 숫자와 문서함 목록의
+ * 숫자가 어긋나지 않는다.
+ *
+ * · 문서 크기 = 스냅샷 JSON 의 **UTF-8 바이트**
+ * · 첨부 개수 = 문서 안 `attachments` 항목 전부
+ * · 첨부 용량 = 내장(data URL)은 base64 를 원본 크기로 환산하고, 서버
+ *   저장소 첨부는 붙일 때 적어 둔 `size` 를 쓴다(2026-08-07).
+ *   **`size` 가 없는 옛 첨부**는 셀 수 없으므로 `unknown` 으로 세어
+ *   "일부는 셀 수 없다"고 화면에 밝힌다 — 0 으로 뭉개지 않는다.
+ */
+function measureDocument(map: unknown): {
+  docBytes: number; attachCount: number; attachBytes: number; unknown: number;
+} {
+  const json = JSON.stringify(map ?? {});
+  const docBytes = new TextEncoder().encode(json).length;
+
+  let attachCount = 0;
+  let attachBytes = 0;
+  let unknown = 0;
+  const walk = (n: AttachNode) => {
+    for (const a of n.attachments ?? []) {
+      attachCount += 1;
+      if (a.url?.startsWith('data:')) {
+        const comma = a.url.indexOf(',');
+        attachBytes += Math.floor(((a.url.length - comma - 1) * 3) / 4);
+      } else if (typeof a.size === 'number') {
+        attachBytes += a.size;
+      } else {
+        unknown += 1;   // 크기를 적어 두기 전(2026-08-07 이전)에 붙은 첨부
+      }
+    }
+    for (const c of n.children ?? []) walk(c);
+  };
+  const m = map as { root?: AttachNode; branches?: AttachNode[] } | undefined;
+  if (m?.root) walk(m.root);
+  for (const b of m?.branches ?? []) walk(b);
+
+  return { docBytes, attachCount, attachBytes, unknown };
+}
+
+export function BottomStatusBar({ t, collabs, zoom, onZoomChange }: Props) {
+  const activeCount = collabs.filter((c) => c.active).length;
+  const map = useDocumentStore((s) => s.map);
+  const m = useMemo(() => measureDocument(map), [map]);
 
   return (
     <div style={{
@@ -38,25 +96,22 @@ export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange }: 
       padding: '0 12px', gap: 14,
       fontSize: 11, color: t.textMuted, fontWeight: 500,
     }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <span
+        data-testid="status-map-weight"
+        title={
+          '이 맵이 저장 용량에서 차지하는 무게입니다 (요금제 한도 = 문서 + 첨부 합산).\n'
+          + '문서 = 지금 화면의 스냅샷 크기 (편집하면 바로 바뀝니다)\n'
+          + '첨부 = 맵 내장분 + 서버 저장소분'
+          + (m.unknown
+            ? `\n※ ${m.unknown}개는 크기를 적어 두기 전에 붙은 첨부라 합계에서 빠져 있습니다.`
+            : '')
+        }
+        style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+      >
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary }} />
-        20 노드 · depth 2
-      </span>
-
-      <span style={{ width: 1, height: 14, background: t.divider }} />
-
-      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <I.Layout size={12} /> {LAYOUT_LABELS[layoutType] || layoutType}
-      </span>
-
-      <span style={{ width: 1, height: 14, background: t.divider }} />
-
-      <span style={{
-        display: 'flex', alignItems: 'center', gap: 5,
-        fontFamily: 'ui-monospace, monospace', fontSize: 10.5,
-      }}>
-        <I.Mouse size={12} />
-        x: 742, y: 358
+        문서 {fmtBytes(m.docBytes)}
+        {' · '}첨부 {m.attachCount}개
+        {m.attachCount > 0 && ` · ${fmtBytes(m.attachBytes)}${m.unknown ? '+' : ''}`}
       </span>
 
       <div style={{ flex: 1 }} />
@@ -75,13 +130,6 @@ export function BottomStatusBar({ t, layoutType, collabs, zoom, onZoomChange }: 
           <span style={{ width: 1, height: 14, background: t.divider }} />
         </>
       )}
-
-      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <I.Cloud size={12} />
-        Supabase 동기화됨
-      </span>
-
-      <span style={{ width: 1, height: 14, background: t.divider }} />
 
       <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} />
     </div>

@@ -449,7 +449,6 @@ export function EditorPage() {
 
       <BottomStatusBar
         t={t}
-        layoutType={layoutType}
         collabs={SAMPLE_COLLABS}
         zoom={zoom}
         onZoomChange={setZoom}

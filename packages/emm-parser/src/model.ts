@@ -33,7 +33,11 @@ export type LayoutType =
   | 'process-tree-right-b'
   | 'freeform'
   | 'kanban'
-  | 'timeline';
+  | 'timeline'
+  // 시간배치(중앙노드) — 시간축이 중심 주제를 **관통**한다. 주제들이
+  // 순서대로 축을 따라 늘어서되 중심 주제 왼쪽/오른쪽으로 나뉜다
+  // (2026-08-07 요청). 'timeline' 은 중심이 축의 **왼쪽 끝**이다.
+  | 'timeline-center';
 
 export type EdgeType = 'tree-line' | 'curve-line';
 
@@ -129,6 +133,18 @@ export interface NodeAttachment {
   name: string;
   url?: string;
   kind: AttachmentKind;
+  /**
+   * 원본 바이트 크기 (2026-08-07).
+   *
+   * **서버 저장소에 올린 첨부는 URL 만으로 크기를 알 수 없다.** 그래서
+   * 붙일 때 파일 크기를 함께 적어 둔다 — 하단 상태바가 "이 맵의 첨부
+   * 용량"을 셀 수 있게 하려는 것이다(내장 첨부는 data URL 길이로
+   * 환산되므로 이 값이 없어도 된다).
+   *
+   * 이 필드가 생기기 전에 붙은 첨부에는 없다(`undefined`) — 세는 쪽이
+   * "일부는 셀 수 없다"고 정직하게 말해야 한다.
+   */
+  size?: number;
 }
 
 export interface MindNode {

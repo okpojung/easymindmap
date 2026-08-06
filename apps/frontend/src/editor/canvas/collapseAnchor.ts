@@ -69,7 +69,7 @@ export function collapseAnchor(
     return { x: n.x, y: bottom + OUTWARD };
   }
   // 시간배치 — 루트만 오른쪽, 그 아래는 왼쪽 스파인(자식 방향으로)
-  if (eff === 'timeline') {
+  if (eff === 'timeline' || eff === 'timeline-center') {
     if (n.depth === 0) return { x: right + OUTWARD, y: n.y };
     return n.side === 'up'
       ? { x: left + OUTLINE_INSET, y: top - OUTWARD }

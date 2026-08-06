@@ -70,6 +70,7 @@ const LAYOUT_LABEL: Record<string, string> = {
   'process-tree-right': '진행트리 · 오른쪽 (직각선)',
   freeform: '자유배치',
   timeline: '시간배치 (타임라인)',
+  'timeline-center': '시간배치 (중앙노드)',
 };
 
 interface Props {
@@ -300,7 +301,7 @@ export function Canvas({
   const childDirOf = (n: { id: string; side?: string }): 'left' | 'right' | 'down' | 'up' => {
     const eff = effByNode.get(n.id) ?? '';
     if (eff.startsWith('process-tree') || eff === 'tree-down') return 'down';
-    if (eff === 'timeline') return n.side === 'up' ? 'up' : 'down';
+    if (eff === 'timeline' || eff === 'timeline-center') return n.side === 'up' ? 'up' : 'down';
     return n.side === 'left' ? 'left' : 'right';
   };
 
@@ -482,7 +483,9 @@ export function Canvas({
             // ≤2MB 는 data URL 내장, 초과는 서버 업로드 — 저장 후에도 유지.
             // 8MB 초과는 **청크 업로드**로 가고 진행률 줄이 뜬다 (§12).
             addNodeAttachment(target.id, {
-              name: f.name, kind, url: await attachFileWithProgress(f),
+              // 크기도 함께 (하단 상태바의 첨부 용량 집계용, 2026-08-07)
+              name: f.name, kind, size: f.size,
+              url: await attachFileWithProgress(f),
             });
           } catch (err) {
             // 사용자가 [취소]를 누른 것은 오류가 아니다 — 조용히 넘어간다.
@@ -1263,14 +1266,25 @@ export function Canvas({
         <g
           transform={`translate(${CX + panX} ${CY + panY}) scale(${scale}) translate(${-CX} ${-CY})`}
         >
-          {/* 시간배치 — 수평 시간축 화살표 (루트 → 마지막 주제 너머) */}
-          {normalizedLayout === 'timeline' && !focusedId && (() => {
+          {/* 시간배치 — 수평 시간축 화살표.
+              · 타임라인: 루트 오른쪽 변 → 마지막 주제 너머
+              · 중앙노드: 첫 주제 앞 → 마지막 주제 너머, 루트를 관통하되
+                루트 상자 안은 비워 둔다(선이 글자를 가로지르지 않게). */}
+          {(normalizedLayout === 'timeline' || normalizedLayout === 'timeline-center')
+            && !focusedId && (() => {
             const root = nodes.find((n) => n.depth === 0);
             if (!root) return null;
+            const centered = normalizedLayout === 'timeline-center';
             const maxX = nodes.reduce((m, n) => Math.max(m, n.x + n.w / 2), root.x + root.w / 2);
             const endX = maxX + 46;
+            const minX = nodes.reduce((m, n) => Math.min(m, n.x - n.w / 2), root.x - root.w / 2);
+            const startX = centered ? minX - 46 : root.x + root.w / 2;
             return (
               <g data-testid="timeline-axis" pointerEvents="none">
+                {centered && (
+                  <line x1={startX} y1={root.y} x2={root.x - root.w / 2} y2={root.y}
+                        stroke={t.edge} strokeWidth={2.3} strokeLinecap="round" />
+                )}
                 <line x1={root.x + root.w / 2} y1={root.y} x2={endX} y2={root.y}
                       stroke={t.edge} strokeWidth={2.3} strokeLinecap="round" />
                 <polygon

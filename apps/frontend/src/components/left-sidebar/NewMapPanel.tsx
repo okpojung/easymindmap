@@ -474,24 +474,10 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
               </button>
             ))}
           </div>
-          {/* 웹 AI 진입 (방법 A — web-ai-clipboard.md §3-3): 우측 AI
-              탭을 웹 AI 모드로 연다. 새 맵은 이미 시작된 상태다. */}
-          {chooseTpl.mode === 'new' && (
-            <button
-              data-testid="tpl-ai-start"
-              onClick={() => {
-                replaceWithBlankDoc(); // 여기서 새 맵을 시작한다
-                setChooseTpl(null);
-                useAiSettingsStore.getState().setGenMode('web');
-                useEditorUiStore.getState().setInspectorTab('ai');
-              }}
-              title="AI 웹 구독(Claude·ChatGPT·Gemini)으로 맵 초안을 만듭니다 — API 키 불필요"
-              style={{
-                width: '100%', fontSize: 11.5, padding: '6px 0', borderRadius: 6,
-                border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
-                color: t.primary, cursor: 'pointer', fontWeight: 700, marginBottom: 5,
-              }}>🌐 AI로 초안 만들기 (웹 AI · 키 불필요)</button>
-          )}
+          {/* **AI 진입점을 여기 두지 않는다** (2026-08-07 사용자 결정).
+              AI 관련 메뉴가 여러 곳에 흩어져 있으면 산만하고 혼란스럽다 —
+              AI 로 만드는 길은 **오른쪽 `AI` 탭 한 곳**으로 모은다.
+              (예전에는 여기에 '🌐 AI로 초안 만들기' 버튼이 있었다) */}
           {/* 건너뛰기 = "템플릿 없이" 진행. 새 맵 모드에서는 이때
               기본 골격으로 문서를 갈아 끼운다 (취소 ✕ 와 다른 동작) */}
           <button

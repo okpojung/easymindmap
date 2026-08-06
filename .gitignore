@@ -23,3 +23,6 @@ pnpm-debug.log*
 
 # private working files
 _private/
+
+# 로컬 실행이 만드는 첨부 저장소 (ATTACHMENT_DIR 기본값)
+apps/api/data/

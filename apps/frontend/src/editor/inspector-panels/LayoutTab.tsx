@@ -80,6 +80,14 @@ const LAYOUTS: LayoutOption[] = [
     rootOnly: true,
   },
   {
+    // 시간배치(중앙노드) — 시간축이 중심 주제를 관통한다.
+    // 주제가 늘어도 맵이 한쪽으로만 길어지지 않는다 (2026-08-07 요청).
+    key: 'timeline-center' as LayoutType,
+    label: '시간배치 (중앙노드)',
+    glyph: 'timeline-center',
+    rootOnly: true,
+  },
+  {
     key: 'kanban' as LayoutType,
     label: 'Kanban 보드',
     glyph: 'kanban',

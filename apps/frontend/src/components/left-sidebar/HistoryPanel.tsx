@@ -111,7 +111,8 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
     'radial-bidirectional': '방사형 · 양쪽', 'radial-right': '방사형 · 오른쪽',
     'tree-right': '트리 · 오른쪽', 'tree-down': '트리 · 아래',
     'hierarchy-right': '계층형', 'process-tree-right': '진행트리',
-    timeline: '시간배치', kanban: 'Kanban', freeform: '자유 배치',
+    timeline: '시간배치', 'timeline-center': '시간배치·중앙',
+    kanban: 'Kanban', freeform: '자유 배치',
   };
   const fmtKB = (b: number) =>
     b >= 1024 * 1024 ? `${Math.round(b / 1024 / 1024 * 10) / 10}MB`

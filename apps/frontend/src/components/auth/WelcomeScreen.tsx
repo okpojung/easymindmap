@@ -107,12 +107,6 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
 
           <LoginForm t={t} />
 
-          <div style={{
-            marginTop: 18, paddingTop: 14, borderTop: `1px solid ${t.divider}`,
-            fontSize: 11, color: t.textSubtle, lineHeight: 1.6,
-          }}>
-            저장한 맵은 계정별로 분리되어 다른 사용자에게 보이지 않습니다.
-          </div>
         </div>
       </div>
     </div>

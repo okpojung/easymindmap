@@ -26,7 +26,10 @@
 
 - 모든 라우트는 **`/v1` 프리픽스** (NestJS `setGlobalPrefix`).
 - JSON 바디 한도 **25MB** (문서 스냅샷의 임베드 이미지 data URL 대비).
-- 첨부 업로드는 multipart, 1개당 기본 **20MB** (`ATTACHMENT_MAX_MB`).
+- 첨부 업로드는 multipart, 1개당 기본 **200MB** (`ATTACHMENT_MAX_MB`, 2026-08-06 20→200).
+  **1GB 로 더 올리려면 스트리밍 업로드가 먼저다** — 지금은 multer 메모리
+  버퍼(`file.buffer`)라 큰 파일이 그대로 힙에 올라간다(diskStorage 전환 필요).
+  계정 무료 쿼터가 1GB 라 실질 상한은 쿼터가 먼저 걸린다.
 - CORS: `CORS_ORIGIN` 콤마 다중 출처 허용, `credentials: true`.
 - DTO 검증: 전역 ValidationPipe(`whitelist` + `forbidNonWhitelisted`) —
   정의되지 않은 필드는 400.

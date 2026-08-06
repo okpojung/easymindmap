@@ -20,6 +20,21 @@ import { useAutosaveStore } from '@/stores/autosaveStore';
 import { applySnapshotEditor, detachFromServer } from '@/services/cloud/mapSession';
 import { isDraftFromThisSession, writeLocalDraftNow } from '@/hooks/useLocalDraft';
 
+/**
+ * **이 세션에서 복구 배너를 이미 한 번 보여 줬는가** (2026-08-06 보고).
+ *
+ * 배너는 마운트할 때 초안을 조회하는데, 이 컴포넌트는 화면 전환(문서함
+ * 열기/닫기, 패널 전환 등)으로 **다시 마운트될 수 있다.** 그때마다 같은
+ * 초안을 다시 집어 "저장되지 않은 맵이 있습니다"를 띄우면, 사용자에게는
+ * 첨부를 지우거나 간격을 만질 때마다 **느닷없이 배너가 뜨는** 것으로
+ * 보인다 (실제 보고: 다른 맵의 오래된 초안이 반복해서 떴다).
+ *
+ * **한 번 보여 준 뒤에는 이 세션에서 다시 띄우지 않는다.** 사용자가
+ * [복구]/[버리기] 를 누르지 않고 넘어갔어도 초안은 그대로 남아 있고,
+ * 다음에 앱을 새로 열면 다시 묻는다.
+ */
+let shownThisSession = false;
+
 /** 화면 위쪽 가운데 알림 띠 — 복구 안내와 보관 불가 안내가 함께 쓴다 */
 function bannerStyle(t: ThemeTokens) {
   return {
@@ -45,11 +60,14 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
     void isDraftStorageAvailable().then((ok) => {
       if (!alive) return;
       if (!ok) { setStorageOff(true); return; }
+      if (shownThisSession) return; // 이 세션에서 이미 물어봤다
       void listDrafts().then((all) => {
         if (!alive) return;
         // **이번 세션에서 우리가 적은 초안은 뺀다** — 지금 편집 중인
         // 문서를 "복구할까요?" 라고 되묻지 않기 위해서다 (2026-08-06).
-        setQueue(all.filter((d) => !isDraftFromThisSession(d.key)));
+        const others = all.filter((d) => !isDraftFromThisSession(d.key));
+        if (others.length) shownThisSession = true;
+        setQueue(others);
       });
     });
     return () => { alive = false; };

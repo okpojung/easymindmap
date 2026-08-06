@@ -64,6 +64,16 @@ export interface MapVersionItem {
   attachCount: number | null;
 }
 
+/** 청크 업로드 세션 상태 (§12.4) — 조각 크기·개수는 서버가 정한다 */
+export interface UploadSession {
+  uploadId: string;
+  partSize: number;
+  parts: number;
+  /** 이미 도착한 조각 번호들 (이어받기용) */
+  received: number[];
+  expiresAt: string;
+}
+
 /** 맵 유형 — 단독맵 / 협업맵 (2026-08-02) */
 export type MapKind = 'solo' | 'collab';
 
@@ -212,6 +222,52 @@ export const cloudApi = {
       id: string; name: string; mime: string; sizeBytes: number; url: string;
     }>;
   },
+  // ── 대용량 첨부 — 청크 업로드 (§12) ─────────────────────────
+  // 조각 크기·개수는 **서버가 정한다** — 프록시 본문 제한과 맞물리므로
+  // 클라이언트가 고르지 않는다.
+  startUpload: (input: { name: string; mime?: string; size: number; mapId?: string }) =>
+    req<UploadSession>('POST', '/attachments/uploads', input),
+  uploadStatus: (uploadId: string) =>
+    req<UploadSession>('GET', `/attachments/uploads/${uploadId}`),
+  completeUpload: (uploadId: string) =>
+    req<{ id: string; name: string; mime: string; sizeBytes: number; url: string }>(
+      'POST', `/attachments/uploads/${uploadId}/complete`),
+  abortUpload: (uploadId: string) =>
+    req<void>('DELETE', `/attachments/uploads/${uploadId}`),
+
+  /**
+   * 조각 하나 전송 — **멱등**이다. 같은 index 를 다시 보내면 서버가
+   * 덮어쓰므로 재시도가 안전하다. 본문은 `Blob`(File.slice 결과)을 그대로
+   * 넘긴다 — 파일을 메모리로 읽지 않는다.
+   */
+  putUploadPart: async (
+    uploadId: string, index: number, part: Blob, signal?: AbortSignal,
+  ): Promise<{ received: number; parts: number }> => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' };
+    if (authEnabled) {
+      const token = await getFreshAccessToken();
+      if (!token) throw new CloudError(401, '로그인이 필요합니다.');
+      headers.Authorization = `Bearer ${token}`;
+    }
+    let res: Response;
+    try {
+      res = await fetch(
+        `${BASE}/v1/attachments/uploads/${uploadId}/parts/${index}`,
+        { method: 'PUT', headers, body: part, signal },
+      );
+    } catch (err) {
+      // 취소는 그대로 올려 보낸다 (재시도 대상이 아니다)
+      if ((err as Error)?.name === 'AbortError') throw err;
+      throw new CloudError(0, '서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.');
+    }
+    if (!res.ok) {
+      let msg = `조각 전송 실패 (${res.status})`;
+      try { msg = (await res.json()).message || msg; } catch { /* 본문 없음 */ }
+      throw new CloudError(res.status, msg);
+    }
+    return res.json() as Promise<{ received: number; parts: number }>;
+  },
+
   deleteAttachment: (id: string) => req<void>('DELETE', `/attachments/${id}`),
   quota: () =>
     req<{ dbBytes: number; fileBytes: number; usedBytes: number; quotaBytes: number }>(

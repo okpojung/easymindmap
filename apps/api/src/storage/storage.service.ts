@@ -13,9 +13,11 @@
 
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createReadStream, type ReadStream } from 'node:fs';
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import type { Readable } from 'node:stream';
 import type { AppEnv } from '../config/env.validation';
 
 const STORAGE_HINT =
@@ -26,6 +28,23 @@ export abstract class StorageService {
   abstract put(key: string, data: Buffer): Promise<void>;
   abstract stream(key: string): Promise<ReadStream>;
   abstract delete(key: string): Promise<void>;
+
+  // ── 청크 업로드가 쓰는 스트림 계열 (2026-08-06, §12) ──────────────
+  // 조각을 **메모리에 담지 않고** 흘려 보내기 위한 최소 집합이다.
+  // S3 호환 드라이버는 이 다섯 개를 멀티파트 업로드로 구현하면 된다.
+
+  /** 읽기 스트림을 그대로 key 에 쓴다 → 실제로 쓴 바이트 수 */
+  abstract putStream(key: string, src: Readable): Promise<number>;
+  /** key 의 크기 (없으면 null) */
+  abstract size(key: string): Promise<number | null>;
+  /** srcKeys 를 **순서대로 이어붙여** destKey 로 → 합친 바이트 수 */
+  abstract concat(destKey: string, srcKeys: string[]): Promise<number>;
+  /** 작은 파일 읽기 (meta.json 전용 — 큰 파일에 쓰지 말 것) */
+  abstract readSmall(key: string): Promise<Buffer | null>;
+  /** prefix 아래의 **바로 다음 단계 이름들** (없으면 빈 배열) */
+  abstract listChildren(prefix: string): Promise<string[]>;
+  /** prefix 아래를 통째로 지운다 (없어도 조용히 성공) */
+  abstract deletePrefix(prefix: string): Promise<void>;
 }
 
 @Injectable()
@@ -72,6 +91,78 @@ export class LocalDiskStorage extends StorageService {
   async delete(key: string): Promise<void> {
     try {
       await rm(this.pathOf(key), { force: true });
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      throw new ServiceUnavailableException(STORAGE_HINT);
+    }
+  }
+
+  // ── 스트림 계열 (청크 업로드) ─────────────────────────────────────
+
+  async putStream(key: string, src: Readable): Promise<number> {
+    const p = this.pathOf(key);
+    try {
+      await mkdir(dirname(p), { recursive: true });
+    } catch {
+      throw new ServiceUnavailableException(STORAGE_HINT);
+    }
+    // **pipeline 으로 흘린다** — 파일 크기와 무관하게 메모리는 상수다.
+    // 중간에 끊기면 반쪽 파일이 남는데, 조각 PUT 은 멱등이라 다시 보내면
+    // 덮어쓴다. 그래도 크기가 안 맞는 채로 남지 않도록 호출부가 검사한다.
+    await pipeline(src, createWriteStream(p));
+    return (await this.size(key)) ?? 0;
+  }
+
+  async size(key: string): Promise<number | null> {
+    try {
+      const s = await stat(this.pathOf(key));
+      return s.isFile() ? s.size : null;
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      return null;
+    }
+  }
+
+  async concat(destKey: string, srcKeys: string[]): Promise<number> {
+    const dest = this.pathOf(destKey);
+    try {
+      await mkdir(dirname(dest), { recursive: true });
+    } catch {
+      throw new ServiceUnavailableException(STORAGE_HINT);
+    }
+    // 'a' 로 열고 조각을 차례로 흘린다 — 조각 하나 크기만 오간다.
+    // 이미 있던 파일에 덧붙지 않도록 먼저 지운다.
+    await rm(dest, { force: true });
+    let total = 0;
+    for (const k of srcKeys) {
+      const src = this.pathOf(k);
+      await pipeline(createReadStream(src), createWriteStream(dest, { flags: 'a' }));
+      total += (await stat(src)).size;
+    }
+    return total;
+  }
+
+  async readSmall(key: string): Promise<Buffer | null> {
+    try {
+      return await readFile(this.pathOf(key));
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      return null;
+    }
+  }
+
+  async listChildren(prefix: string): Promise<string[]> {
+    try {
+      return await readdir(this.pathOf(prefix));
+    } catch (err) {
+      if (err instanceof ServiceUnavailableException) throw err;
+      return [];
+    }
+  }
+
+  async deletePrefix(prefix: string): Promise<void> {
+    try {
+      await rm(this.pathOf(prefix), { recursive: true, force: true });
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;
       throw new ServiceUnavailableException(STORAGE_HINT);

@@ -252,10 +252,23 @@ sudo touch /mnt/nas/emm-files/test.txt && ls -l /mnt/nas/emm-files
 - **볼륨 매핑**: `/mnt/nas/emm-files` → `/data/emm-attachments`
 - **환경변수**:
   - `STORAGE_LOCAL_DIR=/data/emm-attachments`
-  - `ATTACHMENT_MAX_MB=20` (첨부 1개 최대 크기, 기본 20)
+  - `ATTACHMENT_MAX_MB` (단일 요청 업로드 상한, 기본 **200**)
+  - `ATTACHMENT_CHUNK_MAX_MB` (청크 업로드 상한, 기본 **1024** = 1GB)
+  - `ATTACHMENT_PART_KB` (조각 크기, 기본 **8192** = 8MB)
 
 확인: 배포 후 에디터에서 2MB 초과 파일을 첨부(로그인 상태) →
 `/mnt/nas/emm-files/u/<사용자ID>/` 에 파일이 생기면 정상.
+
+> **프록시 본문 제한을 1GB 로 열 필요가 없다.** 8MB 를 넘는 파일은
+> **조각(기본 8MB)으로 나뉘어** 여러 요청으로 올라간다(청크 업로드,
+> `attachment-storage.md` §12). 리버스 프록시가 통과시켜야 하는 것은
+> **조각 하나의 크기**뿐이다. 게이트웨이 타임아웃도 마찬가지 —
+> 요청 하나가 짧아진다.
+>
+> 올리는 도중의 조각은 `/data/emm-attachments/tmp/<사용자ID>/<uploadId>/`
+> 에 쌓이고, 완료·취소 시 지워진다. 끝내 완료되지 않은 세션은 **24시간
+> 뒤 GC**(기동 시 1회 + 6시간 주기)가 정리한다 — 이 디렉터리가 계속
+> 커지면 GC 로그(`ChunkUploadService`)를 확인한다.
 
 ### 1.5-C. 장애 시 동작
 

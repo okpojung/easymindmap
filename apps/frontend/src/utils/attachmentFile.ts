@@ -13,6 +13,13 @@
 //
 // 한도 2MB 는 내보내기 인라인 한도(INLINE_ATTACHMENT_LIMIT)와 같은 값.
 //
+// ⑤ **8MB 초과는 청크(분할) 업로드** (2026-08-06, attachment-storage.md §12):
+//    단일 요청은 파일 전체가 서버 메모리에 올라가 상한이 낮다(200MB).
+//    조각으로 나눠 보내면 서버 메모리가 파일 크기와 무관해져 **1GB** 까지
+//    열린다. 사용자에게는 **경로를 나누지 않는다** — 같은 드롭·같은
+//    메뉴로 올리고, 여기서 크기를 보고 고른다. 진행률·취소가 필요하면
+//    `attachFileWithProgress` 를 쓴다(§12.7).
+//
 // ④ **맵당 내장 합계 상한 10MB** (2026-08-03 결정): 개당 2MB 이하라도
 //    그 맵에 이미 내장된 첨부 합계 + 이 파일이 10MB 를 넘으면, 로그인
 //    상태에서는 서버 저장소로 우회한다 — 작은 파일 다수로 문서(JSON)가
@@ -22,12 +29,28 @@
 
 import { INLINE_ATTACHMENT_LIMIT } from '@/export/mapMeta';
 import { cloudApi, serverAttachmentUrl } from '@/services/cloud/apiClient';
+import { uploadInChunks } from '@/services/cloud/chunkUpload';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useUploadStore } from '@/stores/uploadStore';
 
 /** 맵당 내장(data URL) 첨부 합계 상한 — 원본 바이트 기준 */
 export const EMBED_TOTAL_LIMIT = 10 * 1024 * 1024;
+
+/**
+ * **이보다 크면 청크 업로드**로 간다 (2026-08-06, §12.8).
+ *
+ * 조각 하나로 끝날 크기(서버 기본 조각 = 8MB)라면 왕복이 세 번(세션 시작
+ * ·조각·완료)인 청크보다 **단일 업로드가 빠르다.** 그 경계를 그대로 쓴다.
+ */
+export const CHUNK_ROUTE_MIN = 8 * 1024 * 1024;
+
+export interface AttachOptions {
+  /** 0~1 — 청크 경로에서만 불린다 (작은 파일은 진행률이 의미 없다) */
+  onProgress?: (ratio: number) => void;
+  signal?: AbortSignal;
+}
 
 // 맵에 이미 내장된 첨부(data URL)의 원본 바이트 합계 추정.
 // base64 는 원본의 4/3 배이므로 문자열 길이 × 3/4 로 되돌린다.
@@ -50,7 +73,9 @@ function embeddedAttachmentBytes(): number {
   return total;
 }
 
-export async function attachmentUrlForFile(f: File): Promise<string> {
+export async function attachmentUrlForFile(
+  f: File, opts: AttachOptions = {},
+): Promise<string> {
   const canServer = authEnabled && !!useAuthStore.getState().session;
   const withinPerFile = f.size <= INLINE_ATTACHMENT_LIMIT;
   const withinMapTotal = embeddedAttachmentBytes() + f.size <= EMBED_TOTAL_LIMIT;
@@ -65,8 +90,43 @@ export async function attachmentUrlForFile(f: File): Promise<string> {
   }
   if (canServer) {
     const mapId = useCloudStore.getState().cloudMapId ?? undefined;
+    // ⑤ **큰 파일은 청크로** (2026-08-06) — 단일 요청은 파일 전체가 서버
+    //    메모리에 올라가 상한이 낮다. 사용자에게는 경로를 나누지 않는다:
+    //    같은 드롭·같은 메뉴로 올리고 여기서 알아서 고른다 (§12.7).
+    if (f.size > CHUNK_ROUTE_MIN) {
+      const up = await uploadInChunks(f, { mapId, ...opts });
+      return serverAttachmentUrl(up.id);
+    }
     const up = await cloudApi.uploadAttachment(f, mapId);
     return serverAttachmentUrl(up.id);
   }
   return URL.createObjectURL(f);
+}
+
+/**
+ * `attachmentUrlForFile` 에 **진행률 표시와 취소**를 얹은 것.
+ *
+ * 첨부를 시작하는 곳이 여럿이다(노드에 드롭 · 첨부 탭 문서/미디어). 각자
+ * 진행률 UI 를 만들면 어느 하나는 반드시 빠지므로, 여기서 스토어에 등록만
+ * 하고 **그리는 것은 UploadProgress 한 곳**에서 한다 (§12.7).
+ *
+ * 청크 경로가 아닌 작은 파일은 바로 끝나므로 목록에 넣지 않는다 — 깜빡이는
+ * 줄이 오히려 방해가 된다.
+ */
+export async function attachFileWithProgress(f: File): Promise<string> {
+  const canServer = authEnabled && !!useAuthStore.getState().session;
+  if (!canServer || f.size <= CHUNK_ROUTE_MIN) return attachmentUrlForFile(f);
+
+  const store = useUploadStore.getState();
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const ctrl = new AbortController();
+  store.begin({ key, name: f.name, size: f.size, ratio: 0, abort: () => ctrl.abort() });
+  try {
+    return await attachmentUrlForFile(f, {
+      signal: ctrl.signal,
+      onProgress: (r) => useUploadStore.getState().progress(key, r),
+    });
+  } finally {
+    useUploadStore.getState().end(key);
+  }
 }

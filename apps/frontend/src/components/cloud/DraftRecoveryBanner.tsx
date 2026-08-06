@@ -36,6 +36,7 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
   const [queue, setQueue] = useState<LocalDraft[]>([]);
   /** IndexedDB 를 못 쓰는 브라우저·모드 — 크래시 대비 보관이 통째로 없다 */
   const [storageOff, setStorageOff] = useState(false);
+  const draftWriteFailed = useAutosaveStore((s) => s.draftWriteFailed);
   const loadMap = useDocumentStore((s) => s.loadMap);
   const setBrowserOpen = useEditorUiStore((s) => s.setBrowserOpen);
 
@@ -50,6 +51,32 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
   }, []);
 
   const draft = queue[0];
+
+  // **초안 쓰기가 실패했다** — 저장소가 꽉 찼거나 도중에 막혔다.
+  // 시작 시 검사(storageOff)는 통과하는 경우라 따로 알려야 한다.
+  if (draftWriteFailed) {
+    return (
+      <div data-testid="draft-write-failed"
+           style={{ ...bannerStyle(t), borderColor: t.danger ?? t.warning }}>
+        <span style={{ display: 'flex', color: t.danger ?? t.warning }}><I.History size={16} /></span>
+        <div style={{ flex: 1, lineHeight: 1.5 }}>
+          <b>브라우저 임시 보관에 실패했습니다</b>
+          <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>
+            저장 공간이 부족한 것 같습니다 — <b>지금 편집은 이 브라우저에도
+            남지 않습니다.</b> ☁ 저장을 눌러 서버에 올려 주세요.
+          </div>
+        </div>
+        <button
+          data-testid="draft-write-failed-ok"
+          onClick={() => useAutosaveStore.getState().setDraftWriteFailed(false)}
+          style={{
+            fontSize: 12, padding: '6px 10px', borderRadius: 6,
+            border: `1px solid ${t.border}`, background: t.surface,
+            color: t.textMuted, cursor: 'pointer',
+          }}>알겠습니다</button>
+      </div>
+    );
+  }
 
   if (storageOff) {
     return (

@@ -52,7 +52,7 @@ export async function writeLocalDraftNow(): Promise<void> {
   // 잃은 것이 없는데도 "저장되지 않은 맵이 있습니다"가 떠서, 진짜 경고와
   // 구분이 안 된다 (탭 전환마다 배너가 뜨는 문제).
   if (useAutosaveStore.getState().saveState === 'saved') return;
-  await putDraft({
+  const ok = await putDraft({
     key: cloud.cloudMapId ?? UNSAVED_DRAFT_KEY,
     snapshot: {
       v: 2,
@@ -63,6 +63,11 @@ export async function writeLocalDraftNow(): Promise<void> {
     savedAt: new Date().toISOString(),
     nodeCount: 1 + countNodes(map.branches as { children?: unknown[] }[]),
   });
+  // **실패를 삼키지 않는다** — 저장소가 꽉 차면 초안이 하나도 안 적히는데
+  // 사용자는 보호받는 줄 안다 (2026-08-06). 한 번이라도 실패하면 알린다.
+  const st = useAutosaveStore.getState();
+  if (!ok && !st.draftWriteFailed) st.setDraftWriteFailed(true);
+  else if (ok && st.draftWriteFailed) st.setDraftWriteFailed(false);
 }
 
 /** 서버 저장에 성공했으면 그 맵의 초안은 필요 없다 */

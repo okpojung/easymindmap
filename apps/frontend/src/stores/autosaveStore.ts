@@ -18,6 +18,15 @@ interface AutosaveState {
   /** 마지막으로 서버에 반영된 시각 (ms). 0 = 이 세션에서 아직 없음 */
   lastSavedAt: number;
   setLastSavedAt: (t: number) => void;
+  /**
+   * **브라우저 임시 보관(초안) 쓰기가 실패했다** (2026-08-06).
+   *
+   * 저장소가 꽉 찼거나(QuotaExceeded) 도중에 차단되면 초안이 하나도
+   * 안 적힌다. 첫 열기는 성공하므로 시작 시 검사는 통과한다 — 조용히
+   * 넘어가면 **사용자가 인식하지 못하는 유실**이 된다. 화면에 알린다.
+   */
+  draftWriteFailed: boolean;
+  setDraftWriteFailed: (v: boolean) => void;
 }
 
 export const useAutosaveStore = create<AutosaveState>((set) => ({
@@ -27,4 +36,6 @@ export const useAutosaveStore = create<AutosaveState>((set) => ({
   setPendingEdits: (pendingEdits) => set({ pendingEdits }),
   lastSavedAt: 0,
   setLastSavedAt: (lastSavedAt) => set({ lastSavedAt }),
+  draftWriteFailed: false,
+  setDraftWriteFailed: (draftWriteFailed) => set({ draftWriteFailed }),
 }));

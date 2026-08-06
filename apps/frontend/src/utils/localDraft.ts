@@ -54,28 +54,46 @@ function openDb(): Promise<IDBDatabase | null> {
   });
 }
 
+/**
+ * 실패를 **삼키지 않는다** (2026-08-06).
+ *
+ * 예전에는 어떤 실패든 `null` 로 뭉개서, "저장소가 꽉 참(QuotaExceeded)"
+ * 처럼 **쓰기만 실패하는** 경우를 아무도 몰랐다. 첫 열기는 성공하므로
+ * `isDraftStorageAvailable()` 검사도 통과한다 → 사용자는 보호받는 줄
+ * 알지만 실제로는 초안이 하나도 안 적히는 상태. **사용자가 인식하지
+ * 못하는 유일한 유실 경로**였다.
+ *
+ * 이제 성공/실패를 구분해 돌려주고, 쓰기 실패는 화면에 알린다.
+ */
+type StoreResult<T> = { ok: true; value: T } | { ok: false };
+
 async function withStore<T>(
   mode: IDBTransactionMode,
   run: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T | null> {
+): Promise<StoreResult<T>> {
   const db = await openDb();
-  if (!db) return null;
+  if (!db) return { ok: false };
   return new Promise((resolve) => {
     try {
       const tx = db.transaction(STORE, mode);
       const req = run(tx.objectStore(STORE));
-      req.onsuccess = () => resolve(req.result as T);
-      req.onerror = () => resolve(null);
+      req.onsuccess = () => resolve({ ok: true, value: req.result as T });
+      req.onerror = () => resolve({ ok: false });
+      // 쓰기는 트랜잭션이 끝나야 진짜 디스크에 들어간다 — 쿼터 초과는
+      // 요청이 아니라 **트랜잭션 중단**으로 나타난다.
+      tx.onabort = () => resolve({ ok: false });
+      tx.onerror = () => resolve({ ok: false });
       tx.oncomplete = () => db.close();
     } catch {
-      resolve(null);
+      resolve({ ok: false });
     }
   });
 }
 
-/** 초안 1건 기록 (덮어쓰기) */
-export async function putDraft(draft: LocalDraft): Promise<void> {
-  await withStore('readwrite', (s) => s.put(draft) as IDBRequest<unknown>);
+/** 초안 1건 기록 (덮어쓰기). **성공 여부를 돌려준다** */
+export async function putDraft(draft: LocalDraft): Promise<boolean> {
+  const r = await withStore('readwrite', (s) => s.put(draft) as IDBRequest<unknown>);
+  return r.ok;
 }
 
 /** 초안 삭제 — 서버 저장에 성공했거나 사용자가 버렸을 때 */
@@ -99,8 +117,8 @@ export async function isDraftStorageAvailable(): Promise<boolean> {
 
 /** 남아 있는 초안 전체 (최근 순) */
 export async function listDrafts(): Promise<LocalDraft[]> {
-  const all = await withStore<LocalDraft[]>('readonly',
+  const r = await withStore<LocalDraft[]>('readonly',
     (s) => s.getAll() as IDBRequest<LocalDraft[]>);
-  if (!all) return [];
-  return all.sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1));
+  if (!r.ok || !r.value) return [];
+  return [...r.value].sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1));
 }

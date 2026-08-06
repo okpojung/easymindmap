@@ -20,6 +20,7 @@ import type {
 } from '@/editor/__samples__/types';
 import { installGlobalTooltip } from '@/utils/globalTooltip';
 import { DraftRecoveryBanner } from '@/components/cloud/DraftRecoveryBanner';
+import { UploadProgress } from '@/components/cloud/UploadProgress';
 import { WelcomeScreen } from '@/components/auth/WelcomeScreen';
 import { GuestBrowserNotice } from '@/components/auth/GuestBrowserNotice';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
@@ -371,6 +372,8 @@ export function EditorPage() {
           <div style={{ flex: 1, display: 'flex', minWidth: 0, position: 'relative' }}>
             {/* 저장되지 않은 맵 복구 안내 (감사 R1·R2 — localDraft) */}
             <DraftRecoveryBanner t={t} />
+            {/* 큰 첨부 업로드 진행률 — 어느 경로로 시작했든 여기서만 그린다 */}
+            <UploadProgress t={t} />
             {outlineSplit && (
               <>
                 <div style={{

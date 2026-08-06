@@ -74,7 +74,9 @@ apps/api/src/
 | `DEV_USER_ID` | `00000000-…-0001` | dev 모드 기본 사용자 |
 | `SUPABASE_JWT_SECRET` | — | supabase 모드 필수(16자 이상) — GoTrue JWT_SECRET 과 동일, HS256 |
 | `STORAGE_LOCAL_DIR` | `./data/attachments` | 첨부 local 드라이버 저장 디렉터리 (NFS 마운트 가능) |
-| `ATTACHMENT_MAX_MB` | 20 | 첨부 1개 최대 크기(MB) |
+| `ATTACHMENT_MAX_MB` | 200 | **단일 요청** 업로드의 1개 최대 크기(MB). 이 경로는 multer 메모리 버퍼라 올리지 않는다 |
+| `ATTACHMENT_PART_KB` | 8192 (=8MB) | 청크 업로드 조각 크기 — **서버가 정한다.** 테스트에서 작은 파일로 여러 조각을 만들려고 낮춘다 |
+| `ATTACHMENT_CHUNK_MAX_MB` | 1024 (=1GB) | **청크 업로드**의 1개 최대 크기(MB). 조각 저장이 스트림이라 서버 메모리와 무관 |
 
 > 설계본의 `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`/`REDIS_*`/`AI_*`/
 > `TRANSLATION_*` 는 **사용하지 않는다.**

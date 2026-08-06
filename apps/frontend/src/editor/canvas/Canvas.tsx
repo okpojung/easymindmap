@@ -50,7 +50,7 @@ import {
   collectSubtrees, isNodeClipToken, stashNodes, takeStashed,
 } from '@/utils/nodeClipboard';
 import { reassignIds } from '@/utils/aiProjectContext';
-import { attachmentUrlForFile } from '@/utils/attachmentFile';
+import { attachFileWithProgress } from '@/utils/attachmentFile';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 
 const LAYOUT_LABEL: Record<string, string> = {
@@ -479,9 +479,14 @@ export function Canvas({
         for (const f of files) {
           const kind = f.type.startsWith('audio') ? 'audio' : f.type.startsWith('video') ? 'video' : 'file';
           try {
-            // ≤2MB 는 data URL 내장, 초과는 서버 업로드 — 저장 후에도 유지
-            addNodeAttachment(target.id, { name: f.name, kind, url: await attachmentUrlForFile(f) });
+            // ≤2MB 는 data URL 내장, 초과는 서버 업로드 — 저장 후에도 유지.
+            // 8MB 초과는 **청크 업로드**로 가고 진행률 줄이 뜬다 (§12).
+            addNodeAttachment(target.id, {
+              name: f.name, kind, url: await attachFileWithProgress(f),
+            });
           } catch (err) {
+            // 사용자가 [취소]를 누른 것은 오류가 아니다 — 조용히 넘어간다.
+            if ((err as Error)?.name === 'UploadAborted') continue;
             // **실패를 삼키지 않는다** (2026-08-06 보고).
             //
             // 예전에는 빈 catch 로 조용히 건너뛰었다 — "상세 안내는 첨부

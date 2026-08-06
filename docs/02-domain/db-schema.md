@@ -1081,9 +1081,15 @@ CREATE POLICY "owners can manage publish"
   디렉터리에 파일로 저장한다 (dev 서버는 NAS NFS 마운트를 지정).
 - 메타데이터(소유자·이름·MIME·크기·storage key)는 `public.attachments`
   테이블에 저장한다. storage key 는 서버가 UUID 로만 조립(경로 주입 차단).
-- 업로드는 `POST /v1/attachments?mapId=` (multipart, 1개당 기본 20MB —
+- 업로드는 `POST /v1/attachments?mapId=` (multipart, 1개당 기본 200MB —
   `ATTACHMENT_MAX_MB`), 다운로드는 `GET /v1/attachments/:id`
   (`?access_token=` 쿼리 폴백 허용).
+- **8MB 초과는 청크 업로드**(`/v1/attachments/uploads` 5종, 상한 1GB) —
+  조각을 스트림으로 받아 이어붙인다. **완료 시점에만** `attachments` 에
+  INSERT 하므로 미완성 업로드는 목록·쿼터 집계에 나타나지 않는다.
+  진행 상태는 DB 가 아니라 `STORAGE_LOCAL_DIR/tmp/<userId>/<uploadId>/`
+  의 `meta.json` 에 둔다 — 테이블을 더 만들지 않았다
+  (`../04-extensions/attachment-storage.md` §12).
 - 쿼터: 사용자의 문서(`map_documents` + `map_document_versions`) + 첨부
   합산이 `users.quota_bytes`(기본 1GB) 이하 — 초과 시 413.
 - S3 호환 드라이버(MinIO·R2 등)는 향후 인터페이스 구현체 추가로 대응.

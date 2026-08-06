@@ -8,7 +8,7 @@ import type { AttachmentKind } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
-import { attachmentUrlForFile } from '@/utils/attachmentFile';
+import { attachFileWithProgress } from '@/utils/attachmentFile';
 import { cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { InspectorSection } from './InspectorSection';
 
@@ -49,10 +49,14 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
     setAttErr(null);
     for (const f of files) {
       try {
+        // 8MB 초과는 **청크 업로드**로 간다 — 진행률은 화면 아래 줄에
+        // 뜨고, 사용자가 고를 것은 없다 (§12.7 — 경로를 나누지 않는다).
         addNodeAttachment(selectedId, {
-          name: f.name, kind: kindOf(f), url: await attachmentUrlForFile(f),
+          name: f.name, kind: kindOf(f), url: await attachFileWithProgress(f),
         });
       } catch (err) {
+        // 사용자가 [취소]를 누른 것은 오류가 아니다 — 빨간 줄을 띄우지 않는다.
+        if ((err as Error)?.name === 'UploadAborted') continue;
         setAttErr({
           where,
           msg: err instanceof Error ? err.message : '첨부에 실패했습니다.',
@@ -189,6 +193,9 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
           오디오·영상·이미지. 문서 첨부와 같은 규칙입니다 (2MB 이하는 맵
           내장, 초과분은 서버 저장소 — 저장 용량 = 문서+첨부 합산, 무료 1GB).
+          <br />
+          <b>큰 파일도 그냥 고르면 됩니다</b> — 8MB를 넘으면 자동으로 나눠
+          올리고(최대 1GB) 진행률이 화면 아래에 표시됩니다.
         </div>
         {attErr?.where === 'media' && (
           <div data-testid="attach-error-media"

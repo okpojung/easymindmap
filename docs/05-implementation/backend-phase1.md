@@ -195,7 +195,7 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
 |---|---|
 | **문서함(폴더)** | `map_folders` 테이블 + `/v1/folders` CRUD 4종. 맵에 `folder_id`/`kind`('solo'\|'collab') 추가, 같은 폴더 안 제목 중복은 API 검사(409). `GET /maps` 에 `folder/sort/order` 쿼리 |
 | **B8 히스토리 버전** | `map_document_versions` 테이블(+`layout_type`/`node_count`/`attach_bytes`/`attach_count` 상세 컬럼). `PUT /maps/:id/document` 의 `keepVersion` 으로 명시적 저장·맵 닫기 때만 버전 적재(무변경 시 skip), `GET /maps/:id/versions`·`/versions/:version` 조회 |
-| **B9 첨부/쿼터** | `attachments` 테이블 + `users.quota_bytes`(기본 1GB). `/v1/attachments` 업로드(multipart, 기본 200MB — `ATTACHMENT_MAX_MB`)·다운로드(`?access_token=` 폴백)·삭제·`/quota` 조회. 파일 원본은 `StorageService`(local 드라이버, `STORAGE_LOCAL_DIR`)에 저장. 쿼터 초과는 413 |
+| **B9 첨부/쿼터** | `attachments` 테이블 + `users.quota_bytes`(요금제 `users.plan` 이 정한다 — Free 10MB / Basic 10GB / Pro 30GB / Team 20GB, 2026-08-06). `/v1/attachments` 업로드(multipart, 기본 200MB — `ATTACHMENT_MAX_MB`)·다운로드(`?access_token=` 폴백)·삭제·`/quota` 조회. 파일 원본은 `StorageService`(local 드라이버, `STORAGE_LOCAL_DIR`)에 저장. 쿼터 초과는 413 |
 | **B9-2 청크 업로드** | 8MB 초과 파일용 `/v1/attachments/uploads` 5종(시작·조각 PUT·상태·완료·취소). 조각을 **스트림 그대로** 디스크에 흘려 서버 메모리가 파일 크기와 무관하다 — 상한 **1GB**(`ATTACHMENT_CHUNK_MAX_MB`). 조각 PUT 은 **멱등**, 쿼터는 시작 시점에 **사전 예약**, 미완성 세션은 24시간 뒤 GC. 완료 시에만 `attachments` INSERT (`attachment-storage.md` §12) |
 | **편집 잠금(단일 세션)** | `map_edit_locks` 테이블. `GET /document?editSession=` 로 잠금 시도(`editLock: 'acquired'\|'busy'`), 저장 시 다른 세션 잠금이면 409, `POST /maps/:id/edit-heartbeat`(25초 주기, TTL 60초)·`edit-release` |
 

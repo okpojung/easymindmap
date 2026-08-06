@@ -223,12 +223,15 @@ echo "재배포 후 https://<API주소>/v1/health 의 schema 가 ok 인지 확�
 SCRIPT
 ```
 
-### 1.5-0-B. 기존 계정 Basic(10GB) 승격 — 2026-08-06
+### 1.5-0-B. 요금제 컬럼 + 기존 계정 Basic 승격 — 2026-08-06
 
-**정책**: 신규 가입은 Free **1GB**(컬럼 기본값), **2026-08-06 12:00 UTC
-이전에 가입한 계정은 Basic 10GB**. `schema.sql` 에 들어 있으므로 스키마를
-재적용(§2-B·§2-C)하면 함께 적용되지만, **스키마를 다시 밀 일이 없다면**
-아래만 붙여넣으면 된다.
+**정책**: Free 10MB · Basic 10GB · Pro 30GB · Team 20GB/사용자.
+신규 가입은 **Free**(컬럼 기본값), **2026-08-06 12:00 UTC 이전에 가입한
+계정은 Basic**. 용량은 `users.plan` 이 정하고 트리거가 `quota_bytes` 를
+맞춘다 — **결제가 붙으면 `plan` 만 바꾸면 된다.**
+
+`schema.sql` 에 들어 있으므로 스키마를 재적용(§2-B·§2-C)하면 함께
+적용되지만, **스키마를 다시 밀 일이 없다면** 아래만 붙여넣으면 된다.
 
 ```bash
 bash <<'SCRIPT'
@@ -241,30 +244,75 @@ DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
 echo "✅ DB 컨테이너: $DB"
 
 docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS plan VARCHAR(20) NOT NULL DEFAULT 'free';
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_plan_check;
+ALTER TABLE public.users
+    ADD CONSTRAINT users_plan_check CHECK (plan IN ('free','basic','pro','team'));
+
+CREATE OR REPLACE FUNCTION public.plan_quota_bytes(p TEXT)
+RETURNS BIGINT AS $fn$
+    SELECT CASE lower(COALESCE(p, 'free'))
+        WHEN 'basic' THEN 10737418240::BIGINT
+        WHEN 'pro'   THEN 32212254720::BIGINT
+        WHEN 'team'  THEN 21474836480::BIGINT
+        ELSE             10485760::BIGINT
+    END;
+$fn$ LANGUAGE sql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION public.sync_quota_from_plan()
+RETURNS TRIGGER AS $fn$
+BEGIN
+    IF TG_OP = 'INSERT' OR NEW.plan IS DISTINCT FROM OLD.plan THEN
+        NEW.quota_bytes := public.plan_quota_bytes(NEW.plan);
+    END IF;
+    RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS users_sync_quota ON public.users;
+CREATE TRIGGER users_sync_quota
+    BEFORE INSERT OR UPDATE OF plan ON public.users
+    FOR EACH ROW EXECUTE FUNCTION public.sync_quota_from_plan();
+
+ALTER TABLE public.users ALTER COLUMN quota_bytes SET DEFAULT 10485760;
+
 UPDATE public.users
-   SET quota_bytes = 10737418240
+   SET plan = 'basic'
  WHERE created_at < TIMESTAMPTZ '2026-08-06 12:00:00+00'
-   AND quota_bytes < 10737418240;
+   AND plan = 'free'
+   AND NOT EXISTS (SELECT 1 FROM public.users WHERE plan <> 'free');
 SQL
 
-echo "── 검증 (계정별 한도) ──"
+echo "── 검증 (계정별 요금제·한도) ──"
 docker exec -i "$DB" psql -U postgres -d postgres -tA <<'SQL'
-SELECT a.email || ' → ' || pg_size_pretty(u.quota_bytes)
+SELECT a.email || ' → ' || u.plan || ' ' || pg_size_pretty(u.quota_bytes)
        || '  (가입 ' || u.created_at::date || ')'
   FROM public.users u JOIN auth.users a ON a.id = u.id
  ORDER BY u.created_at;
 SQL
-echo "끝 — 기존 계정이 모두 10GB 로 보이면 성공입니다."
+echo "끝 — 기존 계정이 모두 basic 10GB 로 보이면 성공입니다."
 SCRIPT
 ```
 
-> **몇 번을 실행해도 안전하다.** 기준이 `NOW()` 가 아니라 **고정 시각**
-> 이라, 재실행해도 그 뒤에 가입한 무료 사용자는 건드리지 않는다. 반대로
-> 말하면 **이 시각 이후 가입자는 1GB** 다 — 그중 누군가를 올리려면
-> `attachment-storage.md` §8.1 의 개별 UPDATE 를 쓴다.
+> ⚠️ 함수 본문의 달러 인용을 **`$fn$`** 으로 쓴 것은 일부러다 — 기본
+> `$$` 를 쓰면 bash heredoc 안에서도 문제없지만, 나중에 이 블록을 따옴표
+> 없는 heredoc(`<<SQL`)으로 바꾸면 `$$` 가 **셸 PID 로 치환**돼 함수가
+> 깨진다. `$fn$` 는 어느 쪽이든 안전하다.
+
+> **몇 번을 실행해도 안전하다.** 승격은 **딱 한 번만** 돈다 — 한 명이라도
+> 유료 요금제가 되고 나면 `NOT EXISTS` 조건에 걸려 다시 돌지 않으므로,
+> 나중에 어떤 계정을 일부러 Free 로 내려도 되살아나지 않는다.
+
+> **요금제를 바꾸려면 `plan` 만 바꾼다** — 용량은 트리거가 따라온다.
+> ```sql
+> UPDATE public.users u SET plan = 'pro'
+>   FROM auth.users a WHERE a.id = u.id AND a.email = '<이메일>';
+> ```
 
 > 사용자 화면(아바타 메뉴 📊 저장 용량)은 `/v1/attachments/quota` 를
-> 그대로 그리므로 **재배포 없이** 다음 조회부터 10GB 로 보인다.
+> 그대로 그리므로 다음 조회부터 반영된다. 다만 **요금제 배지(Basic 등)를
+> 보려면 API·프런트 재배포가 필요하다** — 응답에 `plan` 이 추가됐다.
 
 ### 1.5-A. Ubuntu 호스트에 NAS NFS 마운트
 
@@ -317,7 +365,8 @@ sudo touch /mnt/nas/emm-files/test.txt && ls -l /mnt/nas/emm-files
 
 - NAS/NFS 가 죽으면 첨부 API 는 **503 + "첨부 저장소에 접근할 수
   없습니다"** 를 반환한다 (스키마 드리프트 503 과 같은 진단 패턴).
-- 저장 용량 쿼터(DB+첨부 합산, 기본 1GB)를 넘으면 업로드·저장이
+- 저장 용량 쿼터(DB+첨부 합산 — 요금제가 정한다: Free 10MB / Basic 10GB /
+  Pro 30GB / Team 20GB)를 넘으면 업로드·저장이
   **413 + 한도 안내** 로 거부된다. 한도 상향(유료 10GB):
   `UPDATE public.users SET quota_bytes = 10737418240 WHERE id = '<사용자>';`
 

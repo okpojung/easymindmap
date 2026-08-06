@@ -69,7 +69,7 @@
 | 14 | PATCH | `/v1/folders/:id` | `{name?,parentId?}` — 자기 자신/자손으로 이동 400 |
 | 15 | DELETE | `/v1/folders/:id` | 비어 있을 때만 204, 아니면 409 |
 | 16 | POST | `/v1/attachments?mapId=` | 첨부 업로드(multipart `file`) → 메타 + `url`. 크기 초과 400, 쿼터 초과 413 |
-| 17 | GET | `/v1/attachments/quota` | 쿼터 사용량 조회 (문서 DB + 첨부 합산 / `users.quota_bytes`) |
+| 17 | GET | `/v1/attachments/quota` | 쿼터 사용량 조회 → `{dbBytes,fileBytes,usedBytes,quotaBytes,plan}`. 합산 = 문서 DB + 첨부. `plan` 은 `free`\|`basic`\|`pro`\|`team` — **용량 숫자는 DB 가 정하고 API 는 이름만 전달한다** |
 | 18 | GET | `/v1/attachments/:id` | 다운로드(스트림, `?access_token=` 허용) |
 | 19 | DELETE | `/v1/attachments/:id` | 삭제 → 204 |
 | 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 → `{status,db,schema,missingTables?,missingColumns?,time}` |

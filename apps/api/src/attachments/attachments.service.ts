@@ -1,9 +1,13 @@
 // 첨부 저장소 + 저장 용량 쿼터 (B9).
 //
 // 쿼터 정책 (2026-08-02 결정): **DB 용량 + 첨부 용량 합산**이
-// users.quota_bytes(Free 1GB · Basic 10GB) 이하여야 한다.
-// 신규 가입은 컬럼 기본값 1GB, 2026-08-06 12:00 UTC 이전 가입 계정은
-// schema.sql 의 일회성 UPDATE 로 10GB (attachment-storage.md §8.1).
+// users.quota_bytes 이하여야 한다.
+//
+// 그 한도는 **요금제(users.plan)가 정한다** (2026-08-06 확정, 가격 미정):
+//   Free 10MB · Basic 10GB · Pro 30GB · Team 20GB/사용자
+// 용량 숫자는 DB 의 `plan_quota_bytes()` 한 곳에만 있고, `users_sync_quota`
+// 트리거가 plan 이 바뀔 때 quota_bytes 를 맞춘다 — **API 는 계산하지
+// 않는다**(두 곳에 적으면 반드시 어긋난다). attachment-storage.md §8.
 //   · DB 용량  = 사용자의 map_documents.doc + map_document_versions.doc
 //                (히스토리 버전 포함) 직렬화 크기 합
 //   · 첨부 용량 = attachments.size_bytes 합
@@ -19,11 +23,26 @@ import type { ReadStream } from 'node:fs';
 import { DatabaseService } from '../database/database.service';
 import { StorageService } from '../storage/storage.service';
 
+/**
+ * 요금제 — **저장 용량의 단일 기준** (2026-08-06 확정, 가격은 미정).
+ *
+ * 용량 자체는 DB 가 안다 — `public.plan_quota_bytes()` 가 계산하고
+ * `users_sync_quota` 트리거가 `users.quota_bytes` 에 넣어 준다. 여기서는
+ * **화면에 이름을 보여 주기 위해서만** 쓴다(값을 두 곳에 적어 두면 어긋난다).
+ */
+export type UserPlan = 'free' | 'basic' | 'pro' | 'team';
+const PLANS: UserPlan[] = ['free', 'basic', 'pro', 'team'];
+const PLAN_LABEL: Record<UserPlan, string> = {
+  free: 'Free', basic: 'Basic', pro: 'Pro', team: 'Team',
+};
+
 export interface QuotaUsage {
   dbBytes: number;
   fileBytes: number;
   usedBytes: number;
   quotaBytes: number;
+  /** 화면에 "Basic · 10GB" 처럼 보여 주기 위한 값 */
+  plan: UserPlan;
 }
 
 export interface AttachmentMeta {
@@ -50,7 +69,7 @@ export class AttachmentsService {
 
   async usage(userId: string): Promise<QuotaUsage> {
     const { rows } = await this.db.query<{
-      db_bytes: string; file_bytes: string; quota_bytes: string;
+      db_bytes: string; file_bytes: string; quota_bytes: string; plan: string;
     }>(
       `SELECT
          COALESCE((SELECT SUM(octet_length(d.doc::text)) FROM public.map_documents d
@@ -60,8 +79,11 @@ export class AttachmentsService {
          AS db_bytes,
          COALESCE((SELECT SUM(a.size_bytes) FROM public.attachments a
                    WHERE a.owner_id = $1), 0) AS file_bytes,
+         -- 한도는 DB 가 요금제에서 계산해 둔 값을 그대로 쓴다
+         -- (users_sync_quota 트리거가 plan 과 묶어 준다)
          COALESCE((SELECT u.quota_bytes FROM public.users u WHERE u.id = $1),
-                  1073741824) AS quota_bytes`,
+                  10485760) AS quota_bytes,
+         COALESCE((SELECT u.plan FROM public.users u WHERE u.id = $1), 'free') AS plan`,
       [userId],
     );
     const r = rows[0];
@@ -72,6 +94,7 @@ export class AttachmentsService {
       fileBytes,
       usedBytes: dbBytes + fileBytes,
       quotaBytes: Number(r.quota_bytes),
+      plan: (PLANS.includes(r.plan as UserPlan) ? r.plan : 'free') as UserPlan,
     };
   }
 
@@ -79,9 +102,12 @@ export class AttachmentsService {
   async assertQuota(userId: string, addBytes: number): Promise<void> {
     const u = await this.usage(userId);
     if (u.usedBytes + addBytes > u.quotaBytes) {
+      // **어느 요금제의 한도인지 밝힌다** — "왜 이 숫자인가"를 사용자가
+      // 알아야 올릴지 정리할지 판단할 수 있다.
       throw new PayloadTooLargeException(
         `저장 용량 한도를 초과합니다 — 사용 중 ${fmtGB(u.usedBytes)} / ` +
-        `한도 ${fmtGB(u.quotaBytes)}. 첨부나 맵을 정리하거나 용량 상향(유료)을 이용해 주세요.`,
+        `한도 ${fmtGB(u.quotaBytes)} (${PLAN_LABEL[u.plan]} 요금제). ` +
+        '첨부나 맵을 정리하거나 요금제를 올려 주세요.',
       );
     }
   }

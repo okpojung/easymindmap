@@ -23,7 +23,7 @@
 
 | 테이블 | 상태 | 비고 |
 |---|---|---|
-| `users` | ✅ | `id, display_name, preferred_language, default_layout_type, quota_bytes(B9), created_at, updated_at` — 설계본의 번역/UI 설정 컬럼 없음 |
+| `users` | ✅ | `id, display_name, preferred_language, default_layout_type, quota_bytes(B9), plan(요금제, 2026-08-06), created_at, updated_at` — 설계본의 번역/UI 설정 컬럼 없음 |
 | `workspaces` / `workspace_members` | ✅ | 스키마만 존재, API 미사용 |
 | `map_folders` | ✅ | 문서함(폴더) 트리 — 2026-08-02 |
 | `maps` | ✅ | + `folder_id`, `kind('solo'\|'collab')`. `translation_policy_json` **없음**, `view_mode` 는 `'edit'\|'dashboard'`(DDL 주석 기준, API 는 `'kanban'` 도 허용) |
@@ -37,7 +37,8 @@
 | `ai_jobs` / `node_translations` / `field_registry` | ✅ | 스키마만 존재, API 미사용 |
 | **`attachments`** | ✅ 실물 전용 | 첨부 저장소 메타(B9) — 파일 원본은 로컬 디스크 `StorageService` |
 | **`map_edit_locks`** | ✅ 실물 전용 | 단일 세션 편집 잠금 (2026-08-04) — session_key + heartbeat TTL 60초 |
-| **`users.quota_bytes`** | ✅ 실물 전용 컬럼 | 저장 용량 쿼터(B9) — 문서(DB)+첨부 합산. **Free 1GB(기본값) · Basic 10GB.** 요금제 컬럼은 없다 — 상향은 이 값을 직접 UPDATE (`../04-extensions/attachment-storage.md` §8.1) |
+| **`users.plan`** | ✅ 실물 전용 컬럼 | 요금제 — `free`\|`basic`\|`pro`\|`team` (CHECK 제약). **저장 용량의 단일 기준.** 기본 `free` |
+| **`users.quota_bytes`** | ✅ 실물 전용 컬럼 | 저장 용량 쿼터(B9) — 문서(DB)+첨부 합산. **`plan` 이 정하고 `users_sync_quota` 트리거가 동기화한다.** 직접 UPDATE 는 특별 계약용 탈출구 (`../04-extensions/attachment-storage.md` §8.1) |
 
 ### 설계본 DDL 과의 주요 차이
 
@@ -1091,10 +1092,17 @@ CREATE POLICY "owners can manage publish"
   의 `meta.json` 에 둔다 — 테이블을 더 만들지 않았다
   (`../04-extensions/attachment-storage.md` §12).
 - 쿼터: 사용자의 문서(`map_documents` + `map_document_versions`) + 첨부
-  합산이 `users.quota_bytes` 이하 — 초과 시 413. 신규 가입은 컬럼
-  기본값 **1GB(Free)**, **2026-08-06 12:00 UTC 이전 가입 계정은 10GB
-  (Basic)** — `schema.sql` 의 **고정 시각 조건** 일회성 UPDATE 로 올린다
-  (조건이 없으면 재적용마다 신규 무료 사용자까지 올라간다).
+  합산이 `users.quota_bytes` 이하 — 초과 시 413.
+- **요금제(2026-08-06 확정, 가격 미정)**: Free 10MB · Basic 10GB ·
+  Pro 30GB · Team 20GB/사용자. 용량 숫자는 **DB 함수
+  `public.plan_quota_bytes()` 한 곳**에만 있고, `users_sync_quota` 트리거가
+  `plan` → `quota_bytes` 를 맞춘다 — **결제는 `plan` 만 바꾸면 된다.**
+  API·프런트에는 요금제 **이름만** 있고 숫자는 없다(두 곳에 적으면
+  어긋난다).
+- 신규 가입은 컬럼 기본값 **`free`(10MB)**, **2026-08-06 12:00 UTC 이전
+  가입 계정은 `basic`(10GB)** — `schema.sql` 의 일회성 UPDATE.
+  **고정 시각 + `NOT EXISTS(plan <> 'free')`** 두 겹으로 막아 재적용해도
+  다시 돌지 않는다(조건이 없으면 재적용마다 신규 무료 사용자까지 올라간다).
 - S3 호환 드라이버(MinIO·R2 등)는 향후 인터페이스 구현체 추가로 대응.
   Supabase Storage 버킷 설계(uploads/attachments/exports/published/media)는
   **planned 로만 남긴다** (실물 schema.sql 의 버킷 INSERT 도 주석 처리 상태).

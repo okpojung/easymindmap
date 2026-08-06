@@ -270,8 +270,11 @@ export const cloudApi = {
 
   deleteAttachment: (id: string) => req<void>('DELETE', `/attachments/${id}`),
   quota: () =>
-    req<{ dbBytes: number; fileBytes: number; usedBytes: number; quotaBytes: number }>(
-      'GET', '/attachments/quota'),
+    req<{
+      dbBytes: number; fileBytes: number; usedBytes: number; quotaBytes: number;
+      /** 요금제 — 'free' | 'basic' | 'pro' | 'team' (용량은 서버가 정한다) */
+      plan: 'free' | 'basic' | 'pro' | 'team';
+    }>('GET', '/attachments/quota'),
 };
 
 /** 서버 첨부의 절대 URL — 문서에는 이 형태로 저장된다 */

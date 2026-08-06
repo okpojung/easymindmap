@@ -62,7 +62,7 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
   }
 
   // 청크 경로의 파일 1개 상한 (MB). 조각 저장이 스트림이라 서버 메모리와
-  // 무관하다 — 실질 상한은 계정 쿼터(무료 1GB)가 먼저 건다.
+  // 무관하다 — 실질 상한은 계정 쿼터(요금제가 정한다)가 먼저 건다.
   const ATTACHMENT_CHUNK_MAX_MB = Number(raw.ATTACHMENT_CHUNK_MAX_MB ?? 1024);
   if (!Number.isFinite(ATTACHMENT_CHUNK_MAX_MB) || ATTACHMENT_CHUNK_MAX_MB <= 0) {
     errors.push('ATTACHMENT_CHUNK_MAX_MB 는 양수여야 합니다.');

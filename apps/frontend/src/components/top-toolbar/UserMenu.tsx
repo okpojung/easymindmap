@@ -25,10 +25,19 @@ interface MenuEntry {
 const ENTRIES: MenuEntry[] = [
   { id: 'settings', icon: '⚙', label: '개인 설정', soon: '언어(한국어·English)·기본 저장 위치 등 — 다국어(B10) 단계에서 열립니다.' },
   { id: 'profile', icon: '👤', label: '계정 프로필', soon: '표시 이름·비밀번호 변경 — 계정 관리 단계에서 열립니다.' },
-  { id: 'subscription', icon: '💳', label: '구독 상태', soon: '요금제 변경·용량 상향(유료 10GB) — 결제 단계에서 열립니다. 현재 사용량은 아래에 표시됩니다.' },
+  { id: 'subscription', icon: '💳', label: '구독 상태', soon: '요금제 변경 — Free 10MB · Basic 10GB · Pro 30GB · Team 20GB/사용자. 결제 단계에서 열립니다(현재 요금제와 사용량은 위에 표시됩니다).' },
 ];
 
-interface QuotaInfo { dbBytes: number; fileBytes: number; usedBytes: number; quotaBytes: number }
+/** 요금제 이름 — 용량 숫자는 서버가 준다(여기 적어 두면 어긋난다) */
+const PLAN_LABEL: Record<string, string> = {
+  free: 'Free', basic: 'Basic', pro: 'Pro', team: 'Team',
+};
+
+interface QuotaInfo {
+  dbBytes: number; fileBytes: number; usedBytes: number; quotaBytes: number;
+  /** 'free' | 'basic' | 'pro' | 'team' — 서버가 준다 */
+  plan?: string;
+}
 
 function fmtBytes(b: number): string {
   const gb = b / 1024 ** 3;
@@ -145,7 +154,19 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 display: 'flex', justifyContent: 'space-between',
                 fontSize: 10.5, color: t.textMuted, marginBottom: 4,
               }}>
-                <span>저장 용량 (문서+첨부)</span>
+                <span>
+                  저장 용량 (문서+첨부)
+                  {/* **어느 요금제의 한도인지 함께 보여 준다** — 숫자만
+                      보면 "왜 10MB 인가"를 알 수 없다 (2026-08-06) */}
+                  {quota.plan && (
+                    <span data-testid="user-menu-plan" style={{
+                      marginLeft: 5, padding: '1px 5px', borderRadius: 4,
+                      background: quota.plan === 'free' ? t.border : t.primary,
+                      color: quota.plan === 'free' ? t.textMuted : '#fff',
+                      fontSize: 9, fontWeight: 700, letterSpacing: 0.2,
+                    }}>{PLAN_LABEL[quota.plan] ?? quota.plan}</span>
+                  )}
+                </span>
                 <span style={{ fontWeight: 700, color: t.text }}>
                   {fmtBytes(quota.usedBytes)} / {fmtBytes(quota.quotaBytes)}
                 </span>

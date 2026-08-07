@@ -26,7 +26,11 @@ const STORAGE_HINT =
 
 export abstract class StorageService {
   abstract put(key: string, data: Buffer): Promise<void>;
-  abstract stream(key: string): Promise<ReadStream>;
+  /** `range` 를 주면 그 구간만 읽는다 (end 포함 — HTTP Range 와 같다) */
+  abstract stream(
+    key: string,
+    range?: { start: number; end: number },
+  ): Promise<ReadStream>;
   abstract delete(key: string): Promise<void>;
 
   // ── 청크 업로드가 쓰는 스트림 계열 (2026-08-06, §12) ──────────────
@@ -77,11 +81,25 @@ export class LocalDiskStorage extends StorageService {
     }
   }
 
-  async stream(key: string): Promise<ReadStream> {
+  /**
+   * 저장된 파일을 읽는 스트림.
+   *
+   * `range` 를 주면 **그 구간만** 읽는다 (2026-08-07). 동영상·오디오
+   * 재생에는 이게 필수다 — 브라우저는 `<video>` 에 Range 요청을 보내고,
+   * 서버가 부분 응답을 못 하면 구간 이동이 안 되거나 아예 재생을
+   * 시작하지 못한다. `end` 는 **포함**(inclusive)이다 — HTTP Range 와
+   * fs.createReadStream 이 둘 다 그렇다.
+   */
+  async stream(
+    key: string,
+    range?: { start: number; end: number },
+  ): Promise<ReadStream> {
     try {
       const p = this.pathOf(key);
       await stat(p); // 없으면 여기서 throw — createReadStream 은 늦게 터진다
-      return createReadStream(p);
+      return range
+        ? createReadStream(p, { start: range.start, end: range.end })
+        : createReadStream(p);
     } catch (err) {
       if (err instanceof ServiceUnavailableException) throw err;
       throw new ServiceUnavailableException(STORAGE_HINT);

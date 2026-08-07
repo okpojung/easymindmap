@@ -73,19 +73,18 @@ const LAYOUTS: LayoutOption[] = [
     glyph: 'process-tree-right',
   },
   {
-    // 시간배치 — 트리·아래처럼 중심 주제(맵 전체) 전용
+    // 시간배치 — **하위 노드에도 걸 수 있다** (2026-08-07 요청으로 제한
+    // 해제). 고른 노드가 축의 시작점이 되고 그 자식들이 오른쪽으로
+    // 늘어선다 (SubtreeStrategy 'timeline' case).
     key: 'timeline' as LayoutType,
     label: '시간배치 (타임라인)',
     glyph: 'timeline',
-    rootOnly: true,
   },
   {
-    // 시간배치(중앙노드) — 시간축이 중심 주제를 관통한다.
-    // 주제가 늘어도 맵이 한쪽으로만 길어지지 않는다 (2026-08-07 요청).
+    // 시간배치(중앙노드) — 축이 노드들을 관통한다. 위와 같이 서브트리 가능.
     key: 'timeline-center' as LayoutType,
     label: '시간배치 (중앙노드)',
     glyph: 'timeline-center',
-    rootOnly: true,
   },
   {
     key: 'kanban' as LayoutType,

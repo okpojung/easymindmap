@@ -82,14 +82,40 @@ function openTyped(blob: Blob, name: string, preOpened?: Window | null) {
 export function openAttachment(name: string, url?: string): void {
   if (!url) return;
 
-  // 서버 첨부 저장소(B9) — 인증 토큰을 붙여 받아온 뒤 MIME 보정해 연다
+  // ── 서버 첨부 저장소(B9) ────────────────────────────────────────
+  //
+  // **브라우저가 열 수 있는 형식은 URL 을 그대로 넘겨 스트리밍시킨다**
+  // (2026-08-07). 예전에는 `fetch → blob()` 으로 **파일 전체를 메모리에
+  // 받은 뒤** Blob URL 로 열었다. 사진·PDF 는 그래도 됐지만 동영상에서
+  // 무너졌다 — 884MB 를 다 받을 때까지 새 창은 `about:blank` 인 채로
+  // 있고(사용자에게는 "파일이 없고 재생이 안 된다"), 받아도 통짜 Blob
+  // 이라 **구간 이동이 안 된다**. 메모리도 위험하다.
+  //
+  // 서버는 이제 `Accept-Ranges: bytes` 와 206 부분 응답을 지원하고
+  // (attachments.controller), `Content-Type`·`Content-Disposition:
+  // inline` 을 제대로 보낸다. 그러니 토큰만 붙인 URL 을 그대로 열면
+  // 브라우저가 알아서 필요한 구간만 받아 재생한다 — 즉시 시작되고
+  // 구간 이동도 된다.
+  //
+  // 오피스처럼 브라우저가 못 여는 형식만 예전처럼 받아서 다운로드한다
+  // (그쪽은 애초에 통째로 내려받는 것이 목적이다).
   if (serverAttachmentId(url)) {
-    const win = window.open('', '_blank');
+    const extMime = EXT_MIME[extOf(name)] || '';
+    if (VIEWABLE_MIME.test(extMime)) {
+      const win = window.open('', '_blank');
+      attachmentFetchUrl(url)
+        .then((u) => {
+          if (win) win.location.href = u;
+          else window.open(u, '_blank', 'noopener');
+        })
+        .catch(() => { win?.close(); });
+      return;
+    }
     attachmentFetchUrl(url)
       .then((u) => fetch(u))
       .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.blob(); })
-      .then((b) => openTyped(b, name, win))
-      .catch(() => { win?.close(); });
+      .then((b) => download(URL.createObjectURL(b), name))
+      .catch(() => undefined);
     return;
   }
 

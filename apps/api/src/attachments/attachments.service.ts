@@ -138,9 +138,14 @@ export class AttachmentsService {
     return { id, name, mime: file.mimetype, sizeBytes: file.size };
   }
 
+  /**
+   * 첨부 열기 — `range` 를 주면 그 구간만 읽는 스트림을 준다
+   * (2026-08-07 동영상 재생: HTTP Range → 206 Partial Content).
+   */
   async open(
     userId: string,
     id: string,
+    range?: { start: number; end: number },
   ): Promise<AttachmentMeta & { stream: ReadStream }> {
     const { rows } = await this.db.query<{
       name: string; mime: string; size_bytes: string; storage_key: string;
@@ -156,7 +161,7 @@ export class AttachmentsService {
       name: r.name,
       mime: r.mime,
       sizeBytes: Number(r.size_bytes),
-      stream: await this.storage.stream(r.storage_key),
+      stream: await this.storage.stream(r.storage_key, range),
     };
   }
 

@@ -25,6 +25,48 @@ import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorato
 import type { AppEnv } from '../config/env.validation';
 import { AttachmentsService } from './attachments.service';
 import { ChunkUploadService } from './chunk-upload.service';
+
+/**
+ * `Range: bytes=시작-끝` 한 구간만 해석한다 (RFC 9110 §14.1.1).
+ *
+ * 반환값
+ *   · `null`      — Range 헤더가 없거나 bytes 단위가 아니다 → 전체 응답
+ *   · `'invalid'` — 파일 범위를 벗어났다 → 416
+ *   · `{start,end}` — 그 구간만 (end 포함)
+ *
+ * 다중 구간(`bytes=0-10,20-30`)은 지원하지 않는다 — 브라우저의 미디어
+ * 재생은 항상 한 구간만 요청하고, multipart/byteranges 응답은 이 용도에
+ * 필요 없다. 그런 요청이 오면 전체를 보낸다(허용된 동작이다).
+ */
+export function parseByteRange(
+  header: string | string[] | undefined,
+  size: number,
+): { start: number; end: number } | null | 'invalid' {
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (!raw) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(raw.trim());
+  if (!m) return null;                       // 다중 구간·다른 단위 → 전체
+  const [, s1, s2] = m;
+  if (s1 === '' && s2 === '') return null;
+  if (size <= 0) return 'invalid';
+
+  let start: number;
+  let end: number;
+  if (s1 === '') {
+    // `bytes=-500` = 마지막 500바이트
+    const len = Number(s2);
+    if (!Number.isFinite(len) || len <= 0) return 'invalid';
+    start = Math.max(0, size - len);
+    end = size - 1;
+  } else {
+    start = Number(s1);
+    end = s2 === '' ? size - 1 : Number(s2);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return 'invalid';
+    if (end > size - 1) end = size - 1;      // 끝 초과는 잘라 준다(관례)
+  }
+  if (start > end || start >= size) return 'invalid';
+  return { start, end };
+}
 import { StartUploadDto } from './dto/start-upload.dto';
 
 /**
@@ -129,21 +171,56 @@ export class AttachmentsController {
     await this.chunks.abort(user.id, uploadId);
   }
 
+  /**
+   * 첨부 내려받기 — **HTTP Range 를 지원한다** (2026-08-07).
+   *
+   * 왜 필요했나: 브라우저는 `<video>`/`<audio>` 를 재생할 때 Range 로
+   * 앞부분만 먼저 받고, 구간을 옮기면 그 지점부터 다시 받는다. 서버가
+   * 전체를 200 으로만 주면 **구간 이동이 안 되고**, 큰 파일은 재생이
+   * 시작조차 안 되는 것처럼 보인다 (2026-08-07 보고: 884MB 동영상을
+   * 첨부한 뒤 Play 를 눌러도 빈 창만 떴다).
+   *
+   * `Accept-Ranges: bytes` 를 항상 알려 주고, `Range: bytes=시작-끝` 이
+   * 오면 **206 + Content-Range** 로 그 구간만 보낸다. 범위가 파일을
+   * 벗어나면 **416** 이다(RFC 9110).
+   */
   @Get(':id')
   async download(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
-    const att = await this.attachments.open(user.id, id);
-    res.setHeader('Content-Type', att.mime);
-    res.setHeader('Content-Length', String(att.sizeBytes));
-    // RFC 5987 — 한글 파일명 안전 전달
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename*=UTF-8''${encodeURIComponent(att.name)}`,
-    );
-    att.stream.pipe(res);
+    // 크기·이름을 먼저 알아야 범위를 계산할 수 있다 — 스트림은 그다음
+    const head = await this.attachments.open(user.id, id);
+    const size = head.sizeBytes;
+    const disposition =
+      // RFC 5987 — 한글 파일명 안전 전달
+      `inline; filename*=UTF-8''${encodeURIComponent(head.name)}`;
+    res.setHeader('Content-Type', head.mime);
+    res.setHeader('Content-Disposition', disposition);
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    const parsed = parseByteRange(req.headers.range, size);
+    if (parsed === 'invalid') {
+      head.stream.destroy();
+      res.setHeader('Content-Range', `bytes */${size}`);
+      res.status(416).end();
+      return;
+    }
+    if (!parsed) {
+      res.setHeader('Content-Length', String(size));
+      head.stream.pipe(res);
+      return;
+    }
+
+    // 구간 요청 — 앞서 연 전체 스트림은 버리고 그 구간만 다시 연다
+    head.stream.destroy();
+    const part = await this.attachments.open(user.id, id, parsed);
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${parsed.start}-${parsed.end}/${size}`);
+    res.setHeader('Content-Length', String(parsed.end - parsed.start + 1));
+    part.stream.pipe(res);
   }
 
   @Delete(':id')

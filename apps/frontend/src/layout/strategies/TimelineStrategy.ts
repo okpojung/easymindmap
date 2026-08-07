@@ -134,20 +134,40 @@ function placeSubtree(
   }
 }
 
+/**
+ * `anchor` — 축의 시작점이 되는 노드. 맵 전체에 적용할 때는 중심 주제이고,
+ * **서브트리에 적용할 때는 그 노드**다 (2026-08-07 — 시간배치를 하위
+ * 노드에서도 고를 수 있게 하면서 필요해졌다). `depth`/`parentId` 는
+ * 그 아래로 이어지는 값이라 함께 받는다.
+ */
+export interface TimelineAnchor {
+  x: number;
+  y: number;
+  w: number;
+  /** anchor 의 depth — 자식은 depth+1 로 놓인다 */
+  depth: number;
+  /** 자식의 parent 로 기록할 id */
+  id: string;
+  colorKey?: string;
+}
+
 export function layoutTimeline(
   branches: SampleBranch[],
   CX: number,
   CY: number,
   rootW: number,
   out: LaidOutNode[],
+  anchor?: TimelineAnchor,
 ): void {
-  const measured = branches.map((b) => measureNode(b, 1));
+  const depth = (anchor?.depth ?? 0) + 1;
+  const parentId = anchor?.id ?? 'root';
+  const measured = branches.map((b) => measureNode(b, depth));
   let x = CX + rootW / 2 + AXIS_GAP;
 
   measured.forEach((m, i) => {
     const dir: 'up' | 'down' = i % 2 === 0 ? 'up' : 'down';
     const edgeY = dir === 'up' ? CY - BRANCH_GAP : CY + BRANCH_GAP;
-    placeSubtree(m, x, edgeY, dir, 1, 'root', out);
+    placeSubtree(m, x, edgeY, dir, depth, parentId, out, anchor?.colorKey);
     x += m.blockW + STEP_GAP;
   });
 }
@@ -173,8 +193,11 @@ export function layoutTimelineCenter(
   CY: number,
   rootW: number,
   out: LaidOutNode[],
+  anchor?: TimelineAnchor,
 ): void {
-  const measured = branches.map((b) => measureNode(b, 1));
+  const depth = (anchor?.depth ?? 0) + 1;
+  const parentId = anchor?.id ?? 'root';
+  const measured = branches.map((b) => measureNode(b, depth));
   let x = CX + rootW / 2 + AXIS_GAP;
 
   measured.forEach((m, i) => {
@@ -185,7 +208,7 @@ export function layoutTimelineCenter(
     //   dir 'up'   → nodeCenterY = edgeY - over - h/2   (over = 태그 칩 자리)
     const over = nodeOverhang(m.node);
     const edgeY = dir === 'down' ? CY - m.h / 2 : CY + m.h / 2 + over;
-    placeSubtree(m, x, edgeY, dir, 1, 'root', out);
+    placeSubtree(m, x, edgeY, dir, depth, parentId, out, anchor?.colorKey);
     x += m.blockW + STEP_GAP;
   });
 }

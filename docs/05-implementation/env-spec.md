@@ -3,8 +3,8 @@
 문서명: `docs/05-implementation/env-spec.md`  
 변경: **Supabase Self-hosted 기준으로 DB / Storage / Auth 환경변수 전면 교체**
 
-> 🔒 **실제 값은 저장소에 기록하지 않는다. 비밀번호 관리자 또는 Coolify UI
-> 에서만 관리한다.**
+> 🔒 **실제 자격증명은 저장소에 기록하지 않는다.
+> 비밀번호 관리자 또는 Coolify UI 에서만 관리한다.**
 >
 > 이 문서에 나오는 값은 **전부 문서용 플레이스홀더**다. `<PASSWORD>`,
 > `<JWT_SECRET>`, `<ANON_KEY>`, `<HOST>` 처럼 꺾쇠로 감싼 자리는 **그
@@ -49,9 +49,11 @@ DATABASE_URL=postgresql://postgres:<PASSWORD>@<HOST>:5432/postgres
 JWT_SECRET=<JWT_SECRET>
 DASHBOARD_PASSWORD=<PASSWORD>
 
-# 이렇게 쓰지 않는다 — "실제 값처럼" 보이는 순간 스캐너도 사람도 구분 못 한다
-DATABASE_URL=postgresql://postgres:강력한_비밀번호@192.168.0.113:5432/postgres
-JWT_SECRET=반드시-여기에-32자이상-강력한-값을-입력하세요
+# ✗ 이렇게 쓰지 않는다 — "실제 값처럼" 보이는 순간 스캐너도 사람도 구분 못 한다
+#   (아래는 나쁜 예의 *모양*만 보인 것이다. 산문형 안내문·실제 IP 를
+#    값 자리에 넣으면 그 줄은 곧바로 자격증명 유출로 보고된다.)
+#     DATABASE_URL=postgresql://postgres:<한국어 산문 안내문>@<실제 사설 IP>:5432/postgres
+#     JWT_SECRET=<한국어 산문 안내문>
 ```
 
 ### 1.2 재발 방지 — GitHub Secret scanning + Push protection
@@ -75,6 +77,22 @@ Push protection 이 켜져 있으면 실수로 키를 적고 push 할 때 GitHub
 > 이미 커밋된 시크릿은 **삭제 커밋만으로는 사라지지 않는다** (히스토리에
 > 남는다). 발견하면 순서는 언제나 ① **해당 키를 즉시 회전(rotate)** →
 > ② 문서에서 플레이스홀더로 치환 → ③ 필요하면 히스토리 정리. ①이 먼저다.
+
+### 1.3 스캐너 보고를 받았을 때 — 먼저 리비전을 확인한다
+
+"`파일:줄번호` 에 자격증명이 있다"는 보고는 **어느 커밋을 본 것인지**부터
+확인한다. 문서가 개정되면 줄 번호는 통째로 밀리므로, 오래된 스냅숏을 본
+보고는 이미 고쳐진 자리를 계속 가리킨다.
+
+```bash
+# 그 줄이 과거 어느 리비전에서 무엇이었는지 전부 훑는다
+for c in $(git log --all --format=%h -- <파일>); do
+  printf "%s | %s\n" "$c" "$(git show $c:<파일> | sed -n '<줄>p')"
+done
+```
+
+실제로 2026-08-07 보고가 이 경우였다 — 자세한 감사 기록은
+[`SECURITY.md` §4](../../SECURITY.md) 참고.
 
 ## 2. 파일 구성
 

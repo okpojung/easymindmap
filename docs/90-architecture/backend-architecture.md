@@ -85,7 +85,7 @@ apps/api/src/
 
 ```bash
 cd apps/api
-DATABASE_URL='postgres://user:pw@host:5432/db' npm run db:apply
+DATABASE_URL='postgresql://postgres:<PASSWORD>@<HOST>:5432/postgres' npm run db:apply
 # → database/schema.sql + database/functions/move_node_subtree.sql 을
 #   문장 단위로 적용. IF NOT EXISTS/DROP-CREATE 기반이라 몇 번 실행해도
 #   안전(멱등) — "이미 있음" 계열 오류만 건너뛰고 그 외 오류에서 멈춘다.
@@ -743,7 +743,7 @@ npm run test:e2e
 ```bash
 # Supabase (기존 DB_* / MINIO_* / AUTH_JWT_* 전부 제거)
 SUPABASE_URL=https://supabase.example.com
-SUPABASE_SERVICE_ROLE_KEY=eyJ...       # 서버 전용
+SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY>   # 서버 전용
 
 # Redis (유지)
 REDIS_HOST=VM-04-IP

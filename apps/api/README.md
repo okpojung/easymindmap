@@ -151,7 +151,7 @@ DEV_USER_ID=00000000-0000-0000-0000-000000000001
 
 ```bash
 SUPABASE_URL=https://supabase.example.com
-SUPABASE_SERVICE_ROLE_KEY=eyJ...   # 서버 전용, 절대 클라이언트 노출 금지
+SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY>   # 서버 전용, 절대 클라이언트 노출 금지
 REDIS_HOST=<redis-host>
 REDIS_PORT=6379
 REDIS_PASSWORD=...

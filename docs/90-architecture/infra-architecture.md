@@ -1,5 +1,22 @@
 # easymindmap — 인프라 아키텍처 & 설치 가이드
 
+> 🔒 **실제 값은 저장소에 기록하지 않는다. 비밀번호 관리자 또는 Coolify UI
+> 에서만 관리한다.**
+>
+> 아래 설치 절차에 나오는 비밀번호·키·토큰은 **전부 문서용 플레이스홀더**다.
+> `<PASSWORD>`, `<JWT_SECRET>`, `<ANON_KEY>`, `<HOST>` 처럼 꺾쇠로 감싼
+> 자리는 **그 자리에 무엇이 들어가는지만** 알려 준다 — 절차를 실제로 밟을
+> 때 나온 값을 이 파일에 되적어 넣지 말 것. 실제 값의 보관처는 두 곳뿐이다.
+>
+> | 무엇 | 어디에 |
+> |---|---|
+> | 운영/개발 서버가 쓰는 값 | **Coolify UI → 해당 리소스의 Environment Variables** |
+> | 사람이 봐야 하는 값(백업·인수인계) | **비밀번호 관리자** |
+>
+> 서버의 `.env` 파일(예: `/opt/supabase/.env`)은 **서버 위에만 존재한다.**
+> 값을 확인해야 하면 서버에서 직접 읽고, 여기에 붙여넣지 않는다. 환경변수의
+> 자세한 목록은 [`env-spec.md`](../05-implementation/env-spec.md) 참고.
+>
 > ⚠️ **공개 안전을 위해 예시 값으로 치환됨(sanitized)**: 이 문서의
 > 공인 IP·내부 IP·도메인·호스트명·이메일은 **실제 값이 아니라 문서용
 > 예시 플레이스홀더**입니다 (공인 IP=`203.0.113.10` [RFC 5737],
@@ -792,15 +809,15 @@ nano /opt/supabase/supabase/docker/.env
 ############################################################
 # 필수 변경
 ############################################################
-POSTGRES_PASSWORD=강력한_Postgres_비밀번호_여기에_입력
+POSTGRES_PASSWORD=<PASSWORD>
 
-JWT_SECRET=반드시-여기에-32자이상-강력한-JWT-시크릿-값을-입력하세요
+JWT_SECRET=<JWT_SECRET>          # 32자 이상
 
-ANON_KEY=eyJ...          # gen-keys.js 출력값
-SERVICE_ROLE_KEY=eyJ...  # gen-keys.js 출력값
+ANON_KEY=<ANON_KEY>              # gen-keys.js 출력값
+SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY>  # gen-keys.js 출력값
 
 DASHBOARD_USERNAME=admin
-DASHBOARD_PASSWORD=강력한_대시보드_비밀번호
+DASHBOARD_PASSWORD=<PASSWORD>
 
 ############################################################
 # URL (NPM 도메인)
@@ -817,15 +834,15 @@ SUPABASE_PUBLIC_URL=https://example.com
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-gmail@gmail.com
-SMTP_PASS=Gmail_앱_비밀번호_16자리
+SMTP_PASS=<PASSWORD>             # Gmail 앱 비밀번호 16자리
 SMTP_ADMIN_EMAIL=admin@example.com
 SMTP_SENDER_NAME=easymindmap
 
 # 방법 B: Synology MailPlus Server (사내 SMTP)
-# SMTP_HOST=[Synology_NAS_IP]
+# SMTP_HOST=<HOST>                # Synology NAS
 # SMTP_PORT=587
 # SMTP_USER=noreply@yourdomain.com
-# SMTP_PASS=[MailPlus 계정 비밀번호]
+# SMTP_PASS=<PASSWORD>           # MailPlus 계정 비밀번호
 
 ############################################################
 # Storage
@@ -975,12 +992,12 @@ cat > apps/backend/.env << 'EOF'
 NODE_ENV=production
 PORT=3000
 SUPABASE_URL=http://192.168.0.113:8000
-SUPABASE_SERVICE_KEY=eyJ...SERVICE_ROLE_KEY
-DATABASE_URL=postgresql://postgres:Postgres_비밀번호@192.168.0.113:5432/postgres
-REDIS_URL=redis://:Redis_비밀번호@192.168.0.114:6379
-JWT_SECRET=반드시-여기에-32자이상-강력한-JWT-시크릿-값을-입력하세요
+SUPABASE_SERVICE_KEY=<SERVICE_ROLE_KEY>
+DATABASE_URL=postgresql://postgres:<PASSWORD>@<HOST>:5432/postgres
+REDIS_URL=redis://:<PASSWORD>@<HOST>:6379
+JWT_SECRET=<JWT_SECRET>          # 32자 이상
 JWT_EXPIRY=3600
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=<OPENAI_API_KEY>
 APP_URL=https://example.com
 EOF
 
@@ -989,7 +1006,7 @@ cat > apps/frontend/.env << 'EOF'
 VITE_API_URL=https://example.com/api
 VITE_WS_URL=wss://example.com/ws
 VITE_SUPABASE_URL=https://example.com
-VITE_SUPABASE_ANON_KEY=eyJ...ANON_KEY
+VITE_SUPABASE_ANON_KEY=<ANON_KEY>
 EOF
 
 # 빌드
@@ -1047,11 +1064,11 @@ git clone https://github.com/okpojung/easymindmap.git .
 
 cat > apps/worker/.env << 'EOF'
 NODE_ENV=production
-REDIS_URL=redis://:Redis_비밀번호@192.168.0.114:6379
-DATABASE_URL=postgresql://postgres:Postgres_비밀번호@192.168.0.113:5432/postgres
-SUPABASE_SERVICE_KEY=eyJ...SERVICE_ROLE_KEY
+REDIS_URL=redis://:<PASSWORD>@<HOST>:6379
+DATABASE_URL=postgresql://postgres:<PASSWORD>@<HOST>:5432/postgres
+SUPABASE_SERVICE_KEY=<SERVICE_ROLE_KEY>
 SUPABASE_STORAGE_URL=http://192.168.0.113:9000
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=<OPENAI_API_KEY>
 AI_MODEL=gpt-4o
 EOF
 

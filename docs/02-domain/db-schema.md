@@ -115,8 +115,8 @@ Service Key: eyJ...  (서버에서만 사용, 절대 클라이언트 노출 금�
 ```typescript
 // .env
 SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
-SUPABASE_SERVICE_KEY=eyJ...   // 서버 전용
-DATABASE_URL=postgresql://postgres:[password]@db.xxxxxxxxxxxx.supabase.co:5432/postgres
+SUPABASE_SERVICE_KEY=<SERVICE_ROLE_KEY>   // 서버 전용
+DATABASE_URL=postgresql://postgres:<PASSWORD>@<HOST>:5432/postgres
 ```
 
 ---

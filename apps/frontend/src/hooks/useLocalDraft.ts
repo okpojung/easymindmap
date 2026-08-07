@@ -25,7 +25,9 @@ import { useDocumentStore, isDocumentEmpty, isViewOnlyChange } from '@/stores/do
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
-import { putDraft, deleteDraft, UNSAVED_DRAFT_KEY } from '@/utils/localDraft';
+import {
+  putDraft, deleteDraft, clearAllDrafts, UNSAVED_DRAFT_KEY,
+} from '@/utils/localDraft';
 
 const DRAFT_MS = 1000;
 
@@ -47,6 +49,20 @@ export function isDraftFromThisSession(key: string): boolean {
   return writtenThisSession.has(key);
 }
 
+/**
+ * **로그아웃 상태에서는 초안을 적지 않는다** (2026-08-07).
+ *
+ * 로그아웃하면 초안을 전부 지우는데, 그 직후 화면 리셋(이전 계정 문서
+ * 비우기)이 **문서 변경으로 잡혀 초안이 곧바로 다시 적혔다** — 지운
+ * 의미가 없어진다. e2e128 [1] 이 이걸 잡았다.
+ *
+ * 시간(디바운스 몇 초)으로 막으면 경계가 흐리다. 그래서 상태로 막는다 —
+ * **주인이 없는 동안에는 적을 이유 자체가 없다.** 로그인(`setSession`)·
+ * Guest 진입에서 다시 켠다. authStore 가 이 스위치를 쥔다.
+ */
+let paused = false;
+export function pauseLocalDrafts(v: boolean): void { paused = v; }
+
 function countNodes(list: { children?: unknown[] }[]): number {
   return list.reduce(
     (n, x) => n + 1 + countNodes((x.children ?? []) as { children?: unknown[] }[]),
@@ -56,6 +72,7 @@ function countNodes(list: { children?: unknown[] }[]): number {
 
 /** 지금 화면의 문서를 초안으로 적는다 (서버 저장 성공 시 호출부가 지운다) */
 export async function writeLocalDraftNow(): Promise<void> {
+  if (paused) return; // 로그아웃 상태 — 주인 없는 편집은 적지 않는다
   const doc = useDocumentStore.getState();
   const ui = useEditorUiStore.getState();
   const cloud = useCloudStore.getState();
@@ -91,6 +108,26 @@ export async function clearLocalDraft(mapId: string | null): Promise<void> {
   await deleteDraft(mapId ?? UNSAVED_DRAFT_KEY);
   // 미저장 문서가 처음 저장되면 'unsaved' 초안도 함께 정리한다
   if (mapId) await deleteDraft(UNSAVED_DRAFT_KEY);
+}
+
+/**
+ * **로그아웃 — 이 브라우저에 남은 초안을 전부 지운다** (2026-08-07).
+ *
+ * 초안은 계정이 아니라 브라우저에 붙어 있어서, 안 지우면 공용 PC 에서
+ * 다음 사람이 로그인했을 때 앞사람 문서가 복구 배너로 뜬다.
+ *
+ * `writtenThisSession` 도 함께 비운다 — 이 표시는 "지금 화면에서 편집
+ * 중이라 배너가 건너뛸 키"를 뜻하는데, 로그아웃하면 그 화면 자체가
+ * 끝난다. 남겨 두면 다음 사람이 같은 맵 id 를 열었을 때 **진짜 복구가
+ * 필요한 초안을 배너가 건너뛴다.**
+ */
+export async function clearAllLocalDrafts(): Promise<void> {
+  // 지우기 **전에** 멈춘다 — 지운 직후 화면 리셋이 문서 변경으로 잡혀
+  // 곧바로 다시 적히면 지운 의미가 없다 (e2e128 [1]).
+  pauseLocalDrafts(true);
+  await clearAllDrafts();
+  writtenThisSession.clear();
+  lastCount = -1;
 }
 
 export function useLocalDraft(): void {

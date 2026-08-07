@@ -13,6 +13,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { cloudApi } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useCloudStore } from '@/stores/cloudStore';
+import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
+import { listDrafts } from '@/utils/localDraft';
 
 interface MenuEntry {
   id: string;
@@ -90,12 +92,43 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
     };
   }, [open]);
 
-  const logout = () => {
-    setOpen(false);
+  /**
+   * **로그아웃 확인 게이트** (2026-08-07).
+   *
+   * 로그아웃은 이제 이 브라우저의 로컬 초안을 **전부 지운다**(공용 PC 에서
+   * 앞사람 문서가 복구 배너로 뜨지 않도록). 그래서 미저장 편집이 남아
+   * 있으면 그것이 **되돌릴 수 없이 사라진다** — 묻지 않고 지우면 '맵 닫기'
+   * 가 경고하는 것과 같은 유실을 로그아웃이 조용히 저지르는 셈이다.
+   *
+   * 남은 초안이 없으면(= 잃을 것이 없으면) 묻지 않고 바로 로그아웃한다.
+   */
+  const [warnDrafts, setWarnDrafts] = useState<number | null>(null);
+
+  const doLogout = () => {
+    setWarnDrafts(null);
+    if (isGuest) {
+      // Guest 종료 → 로그인/가입 화면. 초안 삭제는 exitGuest 안에서 한다.
+      useAuthStore.getState().exitGuest();
+      onFlash?.('로그아웃했습니다.');
+      return;
+    }
     void useAuthStore.getState().signOut().then(() => {
       useCloudStore.getState().unlink();
       onFlash?.('로그아웃했습니다.');
     });
+  };
+
+  const logout = () => {
+    setOpen(false);
+    // 화면의 최신 편집까지 초안에 반영한 뒤 세어야 정확하다 —
+    // 마지막 1초(디바운스) 안의 편집이 빠지면 "잃을 것 없음"으로 오판한다.
+    void writeLocalDraftNow()
+      .then(() => listDrafts())
+      .then((all) => {
+        if (all.length === 0) { doLogout(); return; }
+        setWarnDrafts(all.length);
+      })
+      .catch(() => doLogout()); // 셀 수 없으면 막지 않는다
   };
 
   return (
@@ -232,11 +265,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               <div style={{ height: 1, background: t.divider, margin: '5px 0' }} />
               <button
                 data-testid="user-menu-logout"
-                onClick={() => {
-                  setOpen(false);
-                  useAuthStore.getState().exitGuest(); // → 로그인/가입 화면
-                  onFlash?.('로그아웃했습니다.');
-                }}
+                onClick={logout}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                   textAlign: 'left', padding: '8px 10px', borderRadius: 6,
@@ -272,6 +301,58 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* 로그아웃 = 이 브라우저의 초안 전체 삭제 → 잃을 것이 있으면 먼저 묻는다 */}
+      {warnDrafts !== null && (
+        <div
+          onClick={() => setWarnDrafts(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 240, background: 'rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            data-testid="logout-draft-warning"
+            style={{
+              width: 'min(430px, 92vw)', background: t.surface, color: t.text,
+              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6 }}>
+              ⚠ 저장되지 않은 편집이 있습니다
+            </div>
+            <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7, marginBottom: 16 }}>
+              아직 서버에 저장되지 않은 맵이 <b>{warnDrafts}개</b> 이 브라우저에
+              남아 있습니다. 로그아웃하면 <b>이 브라우저에서 함께 삭제</b>되어
+              되돌릴 수 없습니다(공용 PC 에서 다음 사람에게 남지 않도록 하는
+              동작입니다).
+              <br />
+              계속 쓰시려면 <b>취소</b> 후 ☁ 저장을 먼저 하세요.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <button
+                data-testid="logout-cancel"
+                onClick={() => setWarnDrafts(null)}
+                style={{
+                  height: 36, borderRadius: 7, border: 'none', cursor: 'pointer',
+                  background: t.primary, color: '#fff', fontSize: 13, fontWeight: 700,
+                }}
+              >취소 — 먼저 저장하기</button>
+              <button
+                data-testid="logout-anyway"
+                onClick={doLogout}
+                style={{
+                  height: 34, borderRadius: 7, cursor: 'pointer',
+                  border: `1px solid ${t.border}`, background: t.surfaceAlt,
+                  color: t.text, fontSize: 12.5, fontWeight: 600,
+                }}
+              >그대로 로그아웃 (초안 삭제)</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -3,6 +3,23 @@
 문서명: `docs/05-implementation/env-spec.md`  
 변경: **Supabase Self-hosted 기준으로 DB / Storage / Auth 환경변수 전면 교체**
 
+> 🔒 **실제 값은 저장소에 기록하지 않는다. 비밀번호 관리자 또는 Coolify UI
+> 에서만 관리한다.**
+>
+> 이 문서에 나오는 값은 **전부 문서용 플레이스홀더**다. `<PASSWORD>`,
+> `<JWT_SECRET>`, `<ANON_KEY>`, `<HOST>` 처럼 꺾쇠로 감싼 자리는 **그
+> 자리에 무엇이 들어가는지만** 알려 준다 — 실제 비밀번호·키·호스트를
+> 이 파일에 적어 넣지 말 것. 실제 값의 보관처는 두 곳뿐이다.
+>
+> | 무엇 | 어디에 |
+> |---|---|
+> | 운영/개발 서버가 쓰는 값 | **Coolify UI → 해당 리소스의 Environment Variables** |
+> | 사람이 봐야 하는 값(백업·인수인계) | **비밀번호 관리자** |
+>
+> 로컬 개발용 `.env.local` 등은 `.gitignore` 로 막혀 있지만, **막혀 있다는
+> 것과 적어도 된다는 것은 다르다** — 커밋 훅이 빠지거나 다른 경로로 파일이
+> 딸려 들어가는 순간 그대로 공개된다. 저장소 안에서는 언제나 플레이스홀더다.
+
 ---
 
 ## 1. 원칙
@@ -11,6 +28,53 @@
 - 기능 토글도 `.env` (`FEATURE_*`)
 - 환경별 차이는 `.env.*` 분리
 - 코드에는 하드코딩 금지
+- **문서·예제에는 언제나 플레이스홀더** — 아래 표기법을 따른다
+
+### 1.1 플레이스홀더 표기법
+
+문서·`.env.example`·README 어디에서든 **같은 모양**으로 쓴다. 모양이
+하나여야 사람도 스캐너도 "이건 실제 값이 아니다"를 한눈에 안다.
+
+| 표기 | 들어갈 값 |
+|---|---|
+| `<PASSWORD>` | 비밀번호 (DB·Redis·SMTP·대시보드 공통) |
+| `<JWT_SECRET>` | JWT 서명 시크릿 (32자 이상) |
+| `<ANON_KEY>` / `<SERVICE_ROLE_KEY>` | Supabase 발급 키 |
+| `<HOST>` | 호스트명 또는 IP |
+| `<OPENAI_API_KEY>` 등 | 각 서비스 API 키 |
+
+```bash
+# 이렇게
+DATABASE_URL=postgresql://postgres:<PASSWORD>@<HOST>:5432/postgres
+JWT_SECRET=<JWT_SECRET>
+DASHBOARD_PASSWORD=<PASSWORD>
+
+# 이렇게 쓰지 않는다 — "실제 값처럼" 보이는 순간 스캐너도 사람도 구분 못 한다
+DATABASE_URL=postgresql://postgres:강력한_비밀번호@192.168.0.113:5432/postgres
+JWT_SECRET=반드시-여기에-32자이상-강력한-값을-입력하세요
+```
+
+### 1.2 재발 방지 — GitHub Secret scanning + Push protection
+
+원칙만으로는 손이 미끄러진 커밋을 못 막는다. **저장소 설정에서 커밋
+단계에 걸리게** 해 둔다.
+
+**GitHub → 저장소 → Settings → Code security**
+
+| 항목 | 설정 | 효과 |
+|---|---|---|
+| **Secret scanning** | Enable | 이미 들어간 시크릿을 찾아 알림 |
+| **Push protection** | Enable | 시크릿이 든 커밋의 **push 자체를 거부** |
+
+Push protection 이 켜져 있으면 실수로 키를 적고 push 할 때 GitHub 이
+막아 세운다 — 되돌리는 것보다 애초에 안 들어가는 쪽이 훨씬 싸다.
+(막혔는데 정말 시크릿이 아니면 사유를 적고 우회할 수 있다. 다만 우회는
+**진짜 오탐일 때만** — 이 저장소는 위 표기법을 쓰므로 오탐이 날 일이
+거의 없다.)
+
+> 이미 커밋된 시크릿은 **삭제 커밋만으로는 사라지지 않는다** (히스토리에
+> 남는다). 발견하면 순서는 언제나 ① **해당 키를 즉시 회전(rotate)** →
+> ② 문서에서 플레이스홀더로 치환 → ③ 필요하면 히스토리 정리. ①이 먼저다.
 
 ## 2. 파일 구성
 
@@ -68,22 +132,22 @@ API_RATE_LIMIT_MAX=300
 # SUPABASE (Self-hosted on ESXi VM-03)
 ########################################
 SUPABASE_URL=https://supabase.example.com
-SUPABASE_ANON_KEY=eyJ...                    # 공개 가능 (RLS로 보호)
-SUPABASE_SERVICE_ROLE_KEY=eyJ...            # 서버 전용, 절대 클라이언트 노출 금지
+SUPABASE_ANON_KEY=<ANON_KEY>                # 공개 가능 (RLS로 보호)
+SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY>  # 서버 전용, 절대 클라이언트 노출 금지
 
 # 프론트엔드용 (VITE_ 접두사로 클라이언트에 노출)
 VITE_SUPABASE_URL=https://supabase.example.com
-VITE_SUPABASE_ANON_KEY=eyJ...              # Anon Key만 클라이언트 노출 허용
+VITE_SUPABASE_ANON_KEY=<ANON_KEY>          # Anon Key만 클라이언트 노출 허용
 
 # Supabase 직접 PostgreSQL 연결 (NestJS → DB 직접 쿼리 필요 시)
-DATABASE_URL=postgresql://postgres:[PASSWORD]@VM-03-IP:5432/postgres
+DATABASE_URL=postgresql://postgres:<PASSWORD>@<HOST>:5432/postgres
 
 ########################################
 # REDIS (VM-04)
 ########################################
-REDIS_HOST=VM-04-IP
+REDIS_HOST=<HOST>
 REDIS_PORT=6379
-REDIS_PASSWORD=change_me_redis_password
+REDIS_PASSWORD=<PASSWORD>
 REDIS_DB=0
 REDIS_TLS=false
 
@@ -111,7 +175,7 @@ SUPABASE_STORAGE_BUCKET_MEDIA=media
 # AI
 ########################################
 AI_PROVIDER=openai                    # openai | anthropic
-AI_API_KEY=change_me_ai_api_key
+AI_API_KEY=<AI_API_KEY>
 AI_MODEL_GENERATE=gpt-4o
 AI_MODEL_EXPAND=gpt-4o-mini
 AI_MODEL_SUMMARIZE=gpt-4o-mini
@@ -128,7 +192,7 @@ TRANSLATION_PROVIDER=deepl
 # openai: OpenAI GPT 사용
 # hybrid: DeepL 1차, LLM 2차 fallback (권장)
 
-TRANSLATION_DEEPL_API_KEY=change_me_deepl_key
+TRANSLATION_DEEPL_API_KEY=<DEEPL_API_KEY>
 # DeepL API 키 (Free 또는 Pro)
 
 TRANSLATION_DEFAULT_TARGETS=ko,en,ja
@@ -205,7 +269,7 @@ SECURITY_ALLOWED_UPLOAD_MIME=image/png,image/jpeg,image/webp,application/pdf,tex
 # REDMINE INTEGRATION (V1 WBS)
 # 참조: docs/04-extensions/integrations/31-redmine-integration.md
 ########################################
-REDMINE_ENCRYPTION_KEY=change_me_redmine_aes256_key_32bytes
+REDMINE_ENCRYPTION_KEY=<ENCRYPTION_KEY>       # AES-256 = 32바이트
 # AES-256-GCM 암호화 키 (redmine_project_maps.api_key_encrypted 복호화용)
 # 반드시 32바이트(256비트) 이상의 랜덤값 사용
 # 저장 형식: base64(iv).base64(authTag).base64(ciphertext)
@@ -252,12 +316,12 @@ Supabase VM-03의 `/opt/supabase/.env`에서 별도 관리:
 # /opt/supabase/.env (VM-03 전용)
 
 # 필수 시크릿 (generate-keys.sh로 자동 생성)
-POSTGRES_PASSWORD=change_me_strong_password
-JWT_SECRET=change_me_jwt_secret_64chars
-ANON_KEY=eyJ...
-SERVICE_ROLE_KEY=eyJ...
+POSTGRES_PASSWORD=<PASSWORD>
+JWT_SECRET=<JWT_SECRET>              # 64자 이상
+ANON_KEY=<ANON_KEY>
+SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY>
 DASHBOARD_USERNAME=admin
-DASHBOARD_PASSWORD=change_me_dashboard_password
+DASHBOARD_PASSWORD=<PASSWORD>
 
 # 외부 접근 URL
 SUPABASE_PUBLIC_URL=https://supabase.example.com
@@ -269,7 +333,7 @@ SMTP_ADMIN_EMAIL=admin@example.com
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your_gmail@gmail.com
-SMTP_PASS=your_app_password
+SMTP_PASS=<PASSWORD>
 SMTP_SENDER_NAME=easymindmap
 ```
 
@@ -291,7 +355,7 @@ LOG_SQL=true
 APP_ENV=production
 SUPABASE_URL=https://supabase.example.com
 VITE_SUPABASE_URL=https://supabase.example.com
-REDIS_HOST=VM-04-IP
+REDIS_HOST=<HOST>
 REDIS_TLS=false                        # 내부망이므로 TLS 불필요
 LOG_SQL=false
 SECURITY_ENABLE_CSP=true
@@ -353,7 +417,7 @@ export const supabase = createClient(
 ########################################
 
 # 초대 토큰 설정
-INVITE_TOKEN_SECRET=change_me_invite_secret   # 초대 토큰 서명 키
+INVITE_TOKEN_SECRET=<INVITE_TOKEN_SECRET>     # 초대 토큰 서명 키
 INVITE_TOKEN_EXPIRES_DAYS=7                    # 초대 링크 유효 기간 (일)
 INVITE_BASE_URL=https://example.com/invite   # 초대 수락 URL 기반 경로
 
@@ -362,7 +426,7 @@ SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=noreply@example.com
-SMTP_PASSWORD=change_me_smtp_password
+SMTP_PASSWORD=<PASSWORD>
 SMTP_FROM_NAME=easymindmap
 SMTP_FROM_EMAIL=noreply@example.com
 
@@ -370,7 +434,7 @@ SMTP_FROM_EMAIL=noreply@example.com
 # 협업 초대/탈퇴/소유권이양 등 푸시 알림용
 FCM_PROJECT_ID=                   # Firebase 프로젝트 ID (V3 구현 시 활성화)
 FCM_CLIENT_EMAIL=                 # Firebase 서비스 계정 이메일
-FCM_PRIVATE_KEY=                  # Firebase 서비스 계정 Private Key
+FCM_PRIVATE_KEY=<PRIVATE_KEY>     # Firebase 서비스 계정 Private Key
 
 # 협업 기능 토글
 FEATURE_COLLABORATION=true        # 협업맵 기능 활성화 여부

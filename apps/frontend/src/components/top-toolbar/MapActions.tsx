@@ -18,7 +18,7 @@ import { useCloudStore } from '@/stores/cloudStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudAutosave } from '@/hooks/useCloudAutosave';
-import { useLocalDraft } from '@/hooks/useLocalDraft';
+import { useLocalDraft, clearLocalDraft } from '@/hooks/useLocalDraft';
 import { CloudError } from '@/services/cloud/apiClient';
 import { SaveMapDialog } from '@/components/cloud/SaveMapDialog';
 import {
@@ -198,6 +198,11 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
                 data-testid="unsaved-close-anyway"
                 onClick={() => {
                   setWarnUnsaved(false);
+                  // **버리기로 한 문서의 로컬 초안도 버린다** (2026-08-07).
+                  // 안 지우면 다음에 앱을 열 때 "저장되지 않은 맵이
+                  // 있습니다 — 복구할까요?" 가 계속 뜬다 — 방금 사용자가
+                  // "저장하지 않는다"고 답한 그 문서를 두고 묻는 셈이다.
+                  void clearLocalDraft(useCloudStore.getState().cloudMapId);
                   clearCurrentMap();
                   flash('저장하지 않고 닫았습니다.');
                   setBrowserOpen(true);

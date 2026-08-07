@@ -1307,7 +1307,24 @@ export function Canvas({
                 (m, n) => (ids.has(n.id) ? Math.max(m, n.x + n.w / 2) : m),
                 anchor.x + anchor.w / 2,
               );
-              const endX = maxX + 46;
+              // **축 끝이 남의 노드를 침범하지 않게 한다** (2026-08-07 보고 2).
+              // 서브트리에 걸면 이 무리 오른쪽에 **다른 가지의 노드**가 서
+              // 있다. 그런데 축 끝은 "이 무리의 최대 x + 46" 이라 화살촉이
+              // 그 노드 위에 얹혔다. 축 높이와 세로로 겹치면서 축 끝보다
+              // 오른쪽에 있는 **가장 가까운 남의 노드** 앞에서 멈춘다.
+              const lastRight = Math.max(
+                ...[anchor, ...sorted].map((n) => n.x + n.w / 2),
+              );
+              const blocker = nodes.reduce((m, n) => {
+                if (ids.has(n.id) || n.id === anchorId) return m;
+                const left = n.x - n.w / 2;
+                if (left <= lastRight) return m;              // 축 끝 방향만
+                const overlapsY =
+                  n.y - n.h / 2 - 6 < anchor.y && anchor.y < n.y + n.h / 2 + 6;
+                return overlapsY ? Math.min(m, left) : m;
+              }, Number.POSITIVE_INFINITY);
+              // 화살촉은 endX 에서 +12 까지 뻗으므로 그만큼 더 물러선다
+              const endX = Math.min(maxX + 46, blocker - 18);
               // 축 위에서 선을 비켜야 할 노드들 (중앙노드는 시작점 + 축 노드)
               const onAxis = centered ? [anchor, ...sorted] : [anchor];
               const segs: { x1: number; x2: number }[] = [];
@@ -1318,7 +1335,11 @@ export function Canvas({
                 });
               }
               const last = onAxis[onAxis.length - 1];
-              segs.push({ x1: last.x + last.w / 2, x2: endX });
+              const lastEdge = last.x + last.w / 2;
+              // 축 끝이 마지막 노드보다 앞서면(자리가 없다) 축도 화살촉도
+              // 그리지 않는다 — 억지로 그리면 노드를 뚫고 나간다.
+              const hasRoom = endX > lastEdge + 8;
+              if (hasRoom) segs.push({ x1: lastEdge, x2: endX });
               out.push(
                 <g key={anchorId} data-testid="timeline-axis" pointerEvents="none">
                   {segs.map((s2, i) => (
@@ -1326,11 +1347,13 @@ export function Canvas({
                           stroke={t.edge} strokeWidth={2.3} strokeLinecap="round" />
                   ))}
                   {/* 축 끝 화살촉 — 시간이 흐르는 방향을 알린다 */}
-                  <polygon
-                    data-testid="timeline-arrow"
-                    points={`${endX + 12},${anchor.y} ${endX - 2},${anchor.y - 6} ${endX - 2},${anchor.y + 6}`}
-                    fill={t.edge}
-                  />
+                  {hasRoom && (
+                    <polygon
+                      data-testid="timeline-arrow"
+                      points={`${endX + 12},${anchor.y} ${endX - 2},${anchor.y - 6} ${endX - 2},${anchor.y + 6}`}
+                      fill={t.edge}
+                    />
+                  )}
                 </g>,
               );
             }

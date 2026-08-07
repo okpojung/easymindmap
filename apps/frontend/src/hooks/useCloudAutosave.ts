@@ -88,11 +88,21 @@ export function suppressCloudAutosave(): void {
 }
 
 /** 명시 저장(☁ 저장·맵 닫기·다른 이름)이 성공했을 때 — 대기분을 턴다 */
-export function notifyExplicitSave(): void {
+/**
+ * ☁ 저장·맵 닫기·다른 이름으로 저장이 **서버에 넣은 뒤** 부른다.
+ *
+ * `mapId` 를 주면 **그 맵의 로컬 초안도 지운다** (2026-08-07 보고).
+ * 예전에는 자동저장 경로만 초안을 지웠다. 그래서 손으로 ☁ 저장을
+ * 눌러 서버에 잘 들어간 뒤에도 초안이 남아, 다음에 앱을 열면
+ * **"저장되지 않은 맵이 있습니다 — 복구할까요?"** 가 떴다. 저장했는데도
+ * 안 했다고 말하는 셈이라 사실과 다르다.
+ */
+export function notifyExplicitSave(mapId?: string | null): void {
   setPending(0);
   lastSaveAt = Date.now();
   useAutosaveStore.getState().setLastSavedAt(lastSaveAt);
   cancelRetry();
+  if (mapId) void clearLocalDraft(mapId);
 }
 
 // mapSession.buildSnapshot 과 같은 v2 형태 — mapSession 이 이 파일의

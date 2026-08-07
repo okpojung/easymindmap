@@ -161,7 +161,9 @@ export async function saveCurrentMap(
     // 이 문서를 그 맵에 저장했으니 이제 그 맵의 문서다 (자동저장 출처 검사)
     useDocumentStore.getState().setDocOrigin(id);
     useAutosaveStore.getState().setSaveState('saved');
-    notifyExplicitSave(); // 대기 중이던 편집 수를 턴다 (2026-08-06)
+    // 대기 중이던 편집 수를 털고, **그 맵의 로컬 초안도 지운다**
+    // (2026-08-07 — 저장했는데 다음에 열면 복구 배너가 뜨던 문제)
+    notifyExplicitSave(id);
     // unchanged: 내용이 그대로라 서버가 저장·히스토리 생성을 생략했다
     return { mapId: id, unchanged: res.unchanged === true };
   } finally {
@@ -196,7 +198,7 @@ export async function saveNewMap(opts: {
     });
     useDocumentStore.getState().setDocOrigin(created.mapId);
     useAutosaveStore.getState().setSaveState('saved');
-    notifyExplicitSave();
+    notifyExplicitSave(res.mapId);
     return { mapId: created.mapId };
   } finally {
     useCloudStore.getState().setBusy('idle');

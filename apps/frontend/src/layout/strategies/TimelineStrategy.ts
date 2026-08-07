@@ -76,6 +76,7 @@ function pushNode(
   depth: number,
   parent: string | null,
   side: 'up' | 'down',
+  role: 'axis' | 'stack',
   parentColorKey?: string,
 ) {
   out.push({
@@ -92,6 +93,7 @@ function pushNode(
     depth,
     parent,
     side,
+    _timelineRole: role,
     parentColorKey: parentColorKey as any,
   });
 }
@@ -107,6 +109,8 @@ function placeSubtree(
   parent: string | null,
   out: LaidOutNode[],
   parentColorKey?: string,
+  /** 이 호출의 노드가 축 위인가 — 첫 단계만 'axis', 그 아래는 전부 'stack' */
+  role: 'axis' | 'stack' = 'axis',
 ) {
   const sign = dir === 'down' ? 1 : -1;
   const over = nodeOverhang(m.node);
@@ -115,7 +119,7 @@ function placeSubtree(
   // 아래 요소와 겹치지 않게 한다.
   const nodeCenterY =
     dir === 'down' ? edgeY + m.h / 2 : edgeY - over - m.h / 2;
-  pushNode(out, m, left + m.w / 2, nodeCenterY, depth, parent, dir, parentColorKey);
+  pushNode(out, m, left + m.w / 2, nodeCenterY, depth, parent, dir, role, parentColorKey);
 
   let cursor = edgeY + sign * (m.h + over + CHILD_TOP);
   for (const child of m.children) {
@@ -129,6 +133,7 @@ function placeSubtree(
       m.node.id,
       out,
       m.node.colorKey,
+      'stack',   // 축 아래로는 전부 세로 스택이다
     );
     cursor += sign * (child.blockH + CHILD_GAP);
   }

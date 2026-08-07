@@ -575,9 +575,19 @@ const VIEWER_JS = String.raw`
     return n;
   }
 
-  function measure(node, depth, inheritedEff) {
+  function measure(node, depth, inheritedEff, parentEff, parentRole) {
     var eff = normalize(node.layoutType) || inheritedEff;
     node._eff = eff;
+
+    // 시간배치에서 이 노드가 맡은 자리 (에디터 _timelineRole 과 같은 뜻).
+    //   'axis'  = 시간축 위에 놓인 노드 (축 시작점 바로 아래 단계)
+    //   'stack' = 그 아래로 세로로 쌓이는 노드
+    // **깊이로 판정하지 않는다** — 시간배치를 서브트리에 걸면 축 노드의
+    // 깊이가 1 이 아니다 (2026-08-07 에디터와 같은 수정).
+    node._tlRole = null;
+    if (parentEff === 'timeline' || parentEff === 'timeline-center') {
+      node._tlRole = parentRole ? 'stack' : 'axis';
+    }
 
     var fontSize = depth === 0 ? 17 : depth === 1 ? 13.5 : 12.5;
     var wrapped = wrapText(node.text, fontSize, depth === 0 ? 240 : 220);
@@ -607,7 +617,7 @@ const VIEWER_JS = String.raw`
     node._open = !node.collapsed;
 
     var kids = node.children || [];
-    for (var i = 0; i < kids.length; i++) measure(kids[i], depth + 1, eff);
+    for (var i = 0; i < kids.length; i++) measure(kids[i], depth + 1, eff, eff, node._tlRole);
     layoutBlock(node, depth);
   }
 
@@ -777,10 +787,13 @@ const VIEWER_JS = String.raw`
     if (eff === 'timeline' || eff === 'timeline-center') {
       // 시간배치 — 루트→주제: 시간축을 따라가다 주제로 꺾임.
       // 주제 이하: 왼쪽 스파인 세로 아웃라인 (위/아래 방향).
-      if (p === DATA.root) {
-        // 중앙노드: 중심 주제와 주제가 **모두 축 위**라 시간축 토막이 곧
-        // 연결선이다. 여기서 또 그으면 축과 겹치고, 먼 주제로 가는 선은
-        // 앞 주제들을 관통한다 (에디터 Canvas 와 같은 규칙).
+      // **축 시작점 → 축 위 노드** — 판정은 역할(_tlRole)이다. 예전에는
+      // p === DATA.root 로 봤는데, 서브트리에 걸면 시작점이 중심 주제가
+      // 아니라 고른 노드라 이 경로를 못 찾았다 (2026-08-07).
+      if (c._tlRole === 'axis') {
+        // 중앙노드: 시작점과 축 노드가 **모두 축 위**라 시간축 토막이 곧
+        // 연결선이다. 여기서 또 그으면 축과 겹치고, 먼 노드로 가는 선은
+        // 앞 노드들을 관통한다 (에디터 Canvas 와 같은 규칙).
         if (eff === 'timeline-center') return '';
         var edgeY0 = c._cy < p._cy ? c._cy + c._h / 2 : c._cy - c._h / 2;
         return 'M ' + (p._cx + p._w / 2) + ' ' + p._cy + ' H ' + c._cx + ' V ' + edgeY0;
@@ -899,9 +912,14 @@ const VIEWER_JS = String.raw`
   // 에디터 계산 좌표(pos)가 있으면 그대로 사용 — 에디터 화면과 동일한
   // 배치를 재현한다. (최초 표시 전용 — 접기를 한 번이라도 조작하면
   // reflowFixed()로 전환해 에디터처럼 간격을 재배치한다)
-  function assignFixed(node, depth, inheritedEff) {
+  function assignFixed(node, depth, inheritedEff, parentEff, parentRole) {
     var eff = normalize(node.layoutType) || inheritedEff;
     node._eff = eff;
+    // 시간배치 역할 — measure() 와 같은 규칙 (2026-08-07)
+    node._tlRole = null;
+    if (parentEff === 'timeline' || parentEff === 'timeline-center') {
+      node._tlRole = parentRole ? 'stack' : 'axis';
+    }
     node._cx = node.pos.x; node._cy = node.pos.y;
     node._w = node.pos.w; node._h = node.pos.h;
     node._lines = node.pos.lines; node._lineH = node.pos.lh;
@@ -915,7 +933,7 @@ const VIEWER_JS = String.raw`
     node._open = !node.collapsed;
     var kids = node.children || [];
     for (var i = 0; i < kids.length; i++) {
-      if (kids[i].pos) assignFixed(kids[i], depth + 1, eff);
+      if (kids[i].pos) assignFixed(kids[i], depth + 1, eff, eff, node._tlRole);
     }
   }
 
@@ -927,9 +945,13 @@ const VIEWER_JS = String.raw`
   // 에디터 좌표 모드에서의 재배치 — 노드 크기·글꼴·줄바꿈은 에디터가
   // 계산한 값(pos)을 그대로 쓰고, 위치만 layoutBlock+arrange로 다시 계산.
   function reflowFixed(rootEff) {
-    (function prep(n, inheritedEff, depth) {
+    (function prep(n, inheritedEff, depth, parentEff, parentRole) {
       var eff = normalize(n.layoutType) || inheritedEff;
       n._eff = eff;
+      n._tlRole = null;
+      if (parentEff === 'timeline' || parentEff === 'timeline-center') {
+        n._tlRole = parentRole ? 'stack' : 'axis';
+      }
       n._open = !n.collapsed;
       n._fixed = true;
       n._w = n.pos.w; n._h = n.pos.h;
@@ -941,7 +963,7 @@ const VIEWER_JS = String.raw`
       n._boxH = n._h + tagsH;
       var kids = n.children || [];
       for (var i = 0; i < kids.length; i++) {
-        if (kids[i].pos) prep(kids[i], eff, depth + 1);
+        if (kids[i].pos) prep(kids[i], eff, depth + 1, eff, n._tlRole);
       }
       layoutBlock(n, depth); // 자식 블록 계산 후 자기 블록 (후위 순회)
     })(DATA.root, rootEff, 0);
@@ -1019,7 +1041,12 @@ const VIEWER_JS = String.raw`
     }
     var kids = node.children || [];
 
-    if (depth === 0 && (node._eff === 'timeline' || node._eff === 'timeline-center')) {
+    // 축 화살표는 **축 시작점마다** 그린다 (2026-08-07) — 예전에는
+    // depth === 0 이라 맵 전체 시간배치에서만 나왔고, 서브트리에 걸면
+    // 축도 화살촉도 없었다. 시작점 = 자식 레이아웃이 시간배치인데
+    // 자기 자신은 축 위 노드가 아닌 노드.
+    if (node._tlRole !== 'axis' && node._tlRole !== 'stack'
+        && (node._eff === 'timeline' || node._eff === 'timeline-center')) {
       // 수평 시간축 화살표 — 에디터 Canvas 와 같은 규칙.
       //  · timeline        : 루트 오른쪽 변 → 마지막 주제 너머 **한 줄**
       //  · timeline-center : 중심 주제·2레벨 주제가 모두 축 위에 얹히므로
@@ -1036,7 +1063,10 @@ const VIEWER_JS = String.raw`
       if (node._eff === 'timeline-center') {
         var kids0 = node._open ? (node.children || []) : [];
         for (var q2 = 0; q2 < kids0.length; q2++) {
-          if (kids0[q2]._cx != null) onAxis.push(kids0[q2]);
+          // 축 위에 얹힌 노드만 — 그 하위(스택)는 축을 가리지 않는다
+          if (kids0[q2]._cx != null && kids0[q2]._tlRole === 'axis') {
+            onAxis.push(kids0[q2]);
+          }
         }
         onAxis.sort(function (a, b) { return a._cx - b._cx; });
       }

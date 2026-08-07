@@ -26,6 +26,7 @@ import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
 import { setLevelFontConfig, setLevelShapeConfig } from '@/editor/node-renderer/sizeNodeForText';
 import { NodeRenderer } from '@/editor/node-renderer/NodeRenderer';
 import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
+import type { LaidOutNode } from '@/layout/types';
 import {
   nodeContentIndicators,
   isNoteKind,
@@ -1267,43 +1268,73 @@ export function Canvas({
           transform={`translate(${CX + panX} ${CY + panY}) scale(${scale}) translate(${-CX} ${-CY})`}
         >
           {/* 시간배치 — 수평 시간축 화살표.
-              · 타임라인: 루트 오른쪽 변 → 마지막 주제 너머 한 줄. 주제는
+              · 타임라인: 시작점 오른쪽 변 → 마지막 주제 너머 한 줄. 주제는
                 축에서 위/아래로 떨어져 매달리므로 축이 노드를 가리지 않는다.
-              · 중앙노드: **중심 주제와 2레벨 주제가 모두 축 위에 얹힌다**.
-                그래서 한 줄로 그으면 선이 노드 글자를 가로지른다 —
-                축 위 노드들 **사이 빈 칸에만** 토막으로 긋는다. */}
-          {(normalizedLayout === 'timeline' || normalizedLayout === 'timeline-center')
-            && !focusedId && (() => {
-            const root = nodes.find((n) => n.depth === 0);
-            if (!root) return null;
-            const centered = normalizedLayout === 'timeline-center';
-            const maxX = nodes.reduce((m, n) => Math.max(m, n.x + n.w / 2), root.x + root.w / 2);
-            const endX = maxX + 46;
-            // 축 위에 놓인 노드 = 중심 주제 + 2레벨 주제 (중앙노드만 해당)
-            const onAxis = centered
-              ? nodes.filter((n) => n.depth <= 1).sort((a, b) => a.x - b.x)
-              : [root];
-            const segs: { x1: number; x2: number }[] = [];
-            for (let i = 0; i < onAxis.length - 1; i += 1) {
-              segs.push({
-                x1: onAxis[i].x + onAxis[i].w / 2,
-                x2: onAxis[i + 1].x - onAxis[i + 1].w / 2,
-              });
+              · 중앙노드: **시작점과 축 노드가 모두 축 위에 얹힌다**. 한 줄로
+                그으면 선이 노드 글자를 가로지르므로 **사이 빈 칸에만** 토막.
+
+              **축을 무리(그룹)마다 그린다** (2026-08-07 보고 1~3번).
+              예전에는 맵 전체 레이아웃이 시간배치일 때만, 그것도 중심
+              주제 하나를 시작점으로 삼아 그렸다. 그래서 시간배치를
+              **서브트리에 걸면 축도 화살표도 아예 없었다.**
+              이제 `_timelineRole === 'axis'` 인 노드를 **부모(=축의 시작점)
+              별로 묶어** 그 무리마다 축 한 줄과 화살촉을 그린다. */}
+          {!focusedId && (() => {
+            const groups = new Map<string, LaidOutNode[]>();
+            for (const n of nodes) {
+              if (n._timelineRole !== 'axis' || !n.parent) continue;
+              const arr = groups.get(n.parent);
+              if (arr) arr.push(n); else groups.set(n.parent, [n]);
             }
-            const last = onAxis[onAxis.length - 1];
-            segs.push({ x1: last.x + last.w / 2, x2: endX });
-            return (
-              <g data-testid="timeline-axis" pointerEvents="none">
-                {segs.map((s, i) => (
-                  <line key={i} x1={s.x1} y1={root.y} x2={s.x2} y2={root.y}
-                        stroke={t.edge} strokeWidth={2.3} strokeLinecap="round" />
-                ))}
-                <polygon
-                  points={`${endX + 12},${root.y} ${endX - 2},${root.y - 6} ${endX - 2},${root.y + 6}`}
-                  fill={t.edge}
-                />
-              </g>
-            );
+            if (groups.size === 0) return null;
+            const byId = new Map(nodes.map((n) => [n.id, n]));
+            const out: React.ReactNode[] = [];
+            for (const [anchorId, axisNodes] of groups) {
+              const anchor = byId.get(anchorId);
+              if (!anchor) continue;
+              // 이 무리의 실제 레이아웃 — 중앙노드면 시작점도 축 위에 있다
+              const eff = effByNode.get(anchorId) ?? normalizedLayout;
+              const centered = eff === 'timeline-center';
+              const sorted = [...axisNodes].sort((a, b) => a.x - b.x);
+              // 축 끝 = 이 무리(하위 포함)에서 가장 오른쪽 + 46
+              const ids = new Set<string>();
+              const collect = (id: string) => {
+                ids.add(id);
+                for (const c of nodes) if (c.parent === id) collect(c.id);
+              };
+              for (const a of sorted) collect(a.id);
+              const maxX = nodes.reduce(
+                (m, n) => (ids.has(n.id) ? Math.max(m, n.x + n.w / 2) : m),
+                anchor.x + anchor.w / 2,
+              );
+              const endX = maxX + 46;
+              // 축 위에서 선을 비켜야 할 노드들 (중앙노드는 시작점 + 축 노드)
+              const onAxis = centered ? [anchor, ...sorted] : [anchor];
+              const segs: { x1: number; x2: number }[] = [];
+              for (let i = 0; i < onAxis.length - 1; i += 1) {
+                segs.push({
+                  x1: onAxis[i].x + onAxis[i].w / 2,
+                  x2: onAxis[i + 1].x - onAxis[i + 1].w / 2,
+                });
+              }
+              const last = onAxis[onAxis.length - 1];
+              segs.push({ x1: last.x + last.w / 2, x2: endX });
+              out.push(
+                <g key={anchorId} data-testid="timeline-axis" pointerEvents="none">
+                  {segs.map((s2, i) => (
+                    <line key={i} x1={s2.x1} y1={anchor.y} x2={s2.x2} y2={anchor.y}
+                          stroke={t.edge} strokeWidth={2.3} strokeLinecap="round" />
+                  ))}
+                  {/* 축 끝 화살촉 — 시간이 흐르는 방향을 알린다 */}
+                  <polygon
+                    data-testid="timeline-arrow"
+                    points={`${endX + 12},${anchor.y} ${endX - 2},${anchor.y - 6} ${endX - 2},${anchor.y + 6}`}
+                    fill={t.edge}
+                  />
+                </g>,
+              );
+            }
+            return <>{out}</>;
           })()}
 
           <g>
@@ -1312,11 +1343,15 @@ export function Canvas({
               .map((n) => {
                 const p = visibleNodes.find((x) => x.id === n.parent);
                 if (!p) return null;
-                // 시간배치(중앙노드): 중심 주제 → 2레벨 주제는 **시간축
-                // 자체가 연결선**이다(둘 다 축 위에 있다). 여기서 또 그으면
-                // 축과 완전히 겹치고, 3번째 주제로 가는 선은 1·2번 주제를
-                // 관통한다.
-                if (normalizedLayout === 'timeline-center' && n.depth === 1) return null;
+                // 시간배치(중앙노드): 축 시작점 → 축 노드는 **시간축 자체가
+                // 연결선**이다(둘 다 축 위에 있다). 여기서 또 그으면 축과
+                // 완전히 겹치고, 먼 노드로 가는 선은 앞 노드들을 관통한다.
+                // depth 가 아니라 **역할**로 본다 — 서브트리에 걸면 축 노드의
+                // depth 가 1 이 아니다 (2026-08-07).
+                if (n._timelineRole === 'axis'
+                    && (effByNode.get(p.id) ?? normalizedLayout) === 'timeline-center') {
+                  return null;
+                }
 
                 return (
                   <EdgeRenderer

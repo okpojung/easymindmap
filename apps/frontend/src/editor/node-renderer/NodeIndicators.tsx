@@ -89,12 +89,20 @@ export function NodeIndicators({
       { dir: 'up', action: 'before' },
       { dir: 'down', action: 'after' },
     ];
-  } else if (effLayout === 'timeline' || effLayout === 'timeline-center') {
+  } else if (node._timelineRole
+      || effLayout === 'timeline' || effLayout === 'timeline-center') {
     // 시간배치 — 축에서 멀어지는 쪽이 '바깥'(outward), 축 쪽이 '안쪽'.
+    //
+    // **`side` 는 노드마다 다르다** — 축 위 노드는 첫째가 'up', 둘째가
+    // 'down' 으로 번갈아 붙고 그 하위는 부모를 따라간다. 그래서 방향은
+    // 그 노드의 side 로 **매번** 계산한다 (2026-08-07 보고 5번:
+    // "1번째 2레벨은 하위가 위로, 2번째는 아래로 붙는데 ＋버튼은 고정").
     const outward: Dir = node.side === 'up' ? 'up' : 'down';
     const inward: Dir = node.side === 'up' ? 'down' : 'up';
-    if (node.depth === 1) {
-      // 2레벨 주제 — 형제(다른 주제)는 **축을 따라 좌우**로 늘어선다.
+    // 축 위 노드인지는 **배치가 남긴 역할**로 본다 — depth 로 보면
+    // 서브트리에 걸었을 때 어긋난다(축 노드의 depth 가 1 이 아니다).
+    if (node._timelineRole === 'axis') {
+      // 축 위 노드 — 옆 노드(형제)는 **축을 따라 좌우**로 늘어선다.
       // 자식만 축 바깥으로 뻗는다.
       mapping = [
         { dir: outward, action: 'child' },
@@ -103,8 +111,9 @@ export function NodeIndicators({
         { dir: 'right', action: 'after' },
       ];
     } else {
-      // 3레벨+ — 아웃라인과 같은 모양이다. 자식은 **들여쓰기(오른쪽)**,
-      // 형제는 축 바깥 방향으로 쌓인다(먼저 온 형제가 축에 가깝다).
+      // 축 아래 스택 — 아웃라인과 같은 모양이다. 자식은 **들여쓰기
+      // (오른쪽)**, 형제는 축 바깥 방향으로 쌓인다(먼저 온 형제가 축에
+      // 가깝다).
       mapping = [
         { dir: 'right', action: 'child' },
         { dir: 'left', action: 'parent' },

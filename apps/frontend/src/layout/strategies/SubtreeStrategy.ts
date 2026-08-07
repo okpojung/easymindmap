@@ -544,9 +544,17 @@ function relayoutSubtree(
   // the process-tree elbow line. Shift only the re-laid-out CHILDREN down so
   // the subtree starts no higher than it did under the base layout; the
   // anchor stays put and edges are re-drawn from the new positions.
+  //
+  // **시간배치는 이 보정에서 뺀다** (2026-08-07). 시간배치는 축을 기준으로
+  // 위·아래로 뻗는 것이 제 모양이라, 위로 넘쳤다고 통째로 내리면 **축이
+  // 무너진다** — 중앙노드에서는 축 위에 얹혀야 할 노드가 시작점보다
+  // 아래로 밀려 내려갔다(보고 2번).
+  const timelineOverride =
+    effective === 'timeline' || effective === 'timeline-center';
   if (
     before && after &&
     after.top < before.top - 0.5 &&
+    !timelineOverride &&
     !RADIAL_PARENTS.has(parentEffective)
   ) {
     const dy = before.top - after.top;

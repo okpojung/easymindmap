@@ -102,6 +102,21 @@ export async function deleteDraft(key: string): Promise<void> {
 }
 
 /**
+ * **초안 전부 삭제** — 로그아웃 시 호출한다 (2026-08-07 사용자 결정).
+ *
+ * 초안은 계정이 아니라 **브라우저**에 붙어 있다. 지우지 않으면 공용 PC
+ * 에서 다음 사람이 로그인했을 때 앞사람의 문서가 "저장되지 않은 맵이
+ * 있습니다 — 복구할까요?" 로 뜬다. 남의 계정 문서를 남의 화면에 되살려
+ * 주는 셈이라, 로그아웃은 이 브라우저에 남은 흔적까지 지우는 것으로 본다.
+ *
+ * 대가: 실수로 로그아웃하면 **미저장 편집을 되찾을 수 없다.** 그래서
+ * 호출부(UserMenu)가 남은 초안이 있으면 먼저 물어본다.
+ */
+export async function clearAllDrafts(): Promise<void> {
+  await withStore('readwrite', (s) => s.clear() as IDBRequest<unknown>);
+}
+
+/**
  * **이 브라우저에서 초안 보관이 가능한가.**
  *
  * 사생활 보호 모드·저장소 차단 설정·용량 없음이면 IndexedDB 를 못 연다.

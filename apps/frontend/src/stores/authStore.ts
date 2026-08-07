@@ -12,6 +12,7 @@ import {
   supabaseAuth,
   type AuthSession,
 } from '@/services/cloud/supabaseAuth';
+import { clearAllLocalDrafts, pauseLocalDrafts } from '@/hooks/useLocalDraft';
 
 interface AuthState {
   session: AuthSession | null;
@@ -41,12 +42,14 @@ export const useAuthStore = create<AuthState>()(
       signIn: async (email, password) => {
         const s = await supabaseAuth.signIn(email, password);
         set({ session: s, guest: false });
+        pauseLocalDrafts(false); // 주인이 생겼다 — 초안 보관 재개
       },
 
       signUp: async (email, password) => {
         const s = await supabaseAuth.signUp(email, password);
         if (s) {
           set({ session: s, guest: false });
+          pauseLocalDrafts(false);
           return true;
         }
         return false;
@@ -55,12 +58,22 @@ export const useAuthStore = create<AuthState>()(
       signOut: async () => {
         const cur = get().session;
         set({ session: null, guest: false });
+        // **이 브라우저에 남은 로컬 초안을 지운다** (2026-08-07 사용자 결정).
+        // 초안은 계정이 아니라 브라우저에 붙어 있어서, 남겨 두면 공용 PC
+        // 에서 다음 사람이 로그인했을 때 앞사람 문서가 복구 배너로 뜬다.
+        // 서버 로그아웃이 실패해도 이건 반드시 해야 하므로 먼저 한다.
+        await clearAllLocalDrafts();
         if (cur) await supabaseAuth.signOut(cur.accessToken);
       },
 
-      setSession: (s) => set({ session: s, ...(s ? { guest: false } : {}) }),
-      enterGuest: () => set({ guest: true, session: null }),
-      exitGuest: () => set({ guest: false }),
+      setSession: (s) => {
+        set({ session: s, ...(s ? { guest: false } : {}) });
+        // 주인이 생겼으면 초안 보관을 다시 켠다 (로그아웃 중엔 꺼 둔다).
+        if (s) pauseLocalDrafts(false);
+      },
+      enterGuest: () => { set({ guest: true, session: null }); pauseLocalDrafts(false); },
+      // Guest 종료도 로그아웃이다 — 같은 이유로 초안을 지운다.
+      exitGuest: () => { set({ guest: false }); void clearAllLocalDrafts(); },
     }),
     {
       name: 'emm.auth',

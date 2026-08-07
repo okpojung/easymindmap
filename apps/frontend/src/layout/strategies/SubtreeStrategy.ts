@@ -17,6 +17,7 @@ import { normalizeLayoutType } from '../normalizeLayoutType';
 import { nodeOverhang } from '../tagOverhang';
 import { layoutHierarchyChildren } from './HierarchyStrategy';
 import { layoutProcessChildren } from './ProcessStrategy';
+import { layoutTimeline, layoutTimelineCenter } from './TimelineStrategy';
 
 const SUBTREE_SUPPORTED = new Set<LayoutType>([
   'radial-right' as LayoutType,
@@ -26,6 +27,11 @@ const SUBTREE_SUPPORTED = new Set<LayoutType>([
   'tree-down' as LayoutType,
   'hierarchy-right' as LayoutType,
   'process-tree-right' as LayoutType,
+  // 시간배치도 서브트리에 걸 수 있다 (2026-08-07 요청 — "중심 주제에서만
+  // 고를 수 있던 제한을 풀어 달라"). 고른 노드가 축의 시작점이 되고,
+  // 그 자식들이 오른쪽으로 시간축을 따라 늘어선다.
+  'timeline' as LayoutType,
+  'timeline-center' as LayoutType,
 ]);
 
 // Layouts whose direct children are arranged left → right (a wider subtree
@@ -504,6 +510,25 @@ function relayoutSubtree(
     case 'tree-right':
       layoutSubtreeOutline(children, anchor, node, out);
       break;
+
+    // 시간배치 — 고른 노드를 축의 시작점(anchor)으로 삼는다. 맵 전체에
+    // 걸 때 중심 주제가 하던 역할을 이 노드가 그대로 한다.
+    case 'timeline':
+    case 'timeline-center': {
+      const at = {
+        x: anchor.x, y: anchor.y, w: anchor.w,
+        depth: anchor.depth, id: node.id, colorKey: node.colorKey as string | undefined,
+      };
+      // children 은 MindNode[] 지만 시간배치는 colorKey 를 읽기만 하고
+      // 없으면 부모 색을 물려받는다 — SampleBranch 로 넘겨도 안전하다.
+      const kids = children as SampleBranch[];
+      if (effective === 'timeline') {
+        layoutTimeline(kids, anchor.x, anchor.y, anchor.w, out, at);
+      } else {
+        layoutTimelineCenter(kids, anchor.x, anchor.y, anchor.w, out, at);
+      }
+      break;
+    }
 
     default:
       break;

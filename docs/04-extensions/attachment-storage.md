@@ -836,3 +836,40 @@ export async function attachmentUrlForFile(f: File, onProgress?: (r: number) => 
 `../00-project-overview/backlog.md` B9,
 `../03-editor-core/history/13-version-history.md`(스냅샷 증폭 이슈),
 `../user-guide/05-노트-링크-첨부-태그.md`(사용자 안내).
+
+
+## 13. 내려받기 — HTTP Range (2026-08-07)
+
+`GET /v1/attachments/:id` 는 **부분 요청을 지원한다.**
+
+왜 필요했나 — 브라우저는 `<video>`/`<audio>` 를 재생할 때 파일 전체를
+받지 않는다. `Range: bytes=0-...` 로 앞부분만 먼저 받아 재생을 시작하고,
+구간을 옮기면 그 지점부터 다시 받는다. 서버가 전체를 200 으로만 주면
+**구간 이동이 안 되고**, 큰 파일은 재생이 시작조차 안 되는 것처럼 보인다.
+2026-08-07 보고가 정확히 이것이었다 — 884MB 동영상을 첨부하고 Play 를
+눌렀더니 빈 창만 떴다.
+
+| 요청 | 응답 |
+| --- | --- |
+| (Range 없음) | `200` + `Content-Length: 크기` + `Accept-Ranges: bytes` |
+| `Range: bytes=0-1023` | `206` + `Content-Range: bytes 0-1023/크기` + 그 1024바이트 |
+| `Range: bytes=N-` | `206` — N 부터 끝까지 |
+| `Range: bytes=-N` | `206` — 마지막 N 바이트 |
+| 파일 밖 범위 | `416` + `Content-Range: bytes */크기` |
+| 다중 구간(`0-10,20-30`)·다른 단위 | 전체(200) — 허용된 동작이다 |
+
+- 헤더는 `Accept-Ranges: bytes` 를 **항상** 보낸다. 이게 있어야 브라우저가
+  구간 이동을 시도한다.
+- `Content-Type` 은 업로드 때 받은 MIME, `Content-Disposition` 은
+  `inline`(다운로드 강제가 아니다) — 그래야 브라우저가 재생한다.
+- 구간 읽기는 `storage.stream(key, { start, end })` → 로컬 드라이버는
+  `fs.createReadStream(path, { start, end })`. **end 는 포함**이다
+  (HTTP Range 와 Node 가 둘 다 그렇다).
+- 범위 계산에 크기가 필요해 메타를 먼저 연다. 그때 열린 전체 스트림은
+  `destroy()` 로 버리고 구간 스트림을 다시 연다 — 안 버리면 파일 핸들이
+  샌다.
+- 파서는 `parseByteRange()` (attachments.controller). 검증: **e2e125 [3]~[3e]**.
+
+프런트는 이 응답을 그대로 쓴다 — 브라우저가 열 수 있는 형식이면 **URL을
+넘기고**(스트리밍), 오피스처럼 못 여는 형식만 받아서 다운로드한다
+(04-node-content.md §14.5).

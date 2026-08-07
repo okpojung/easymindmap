@@ -5,7 +5,17 @@
 //   side='right' (오른쪽으로 자람): ➡ 자식 · ⬅ 부모 · ⬆ 형제(앞) · ⬇ 형제(뒤)
 //   side='left'  (왼쪽으로 자람):   ⬅ 자식 · ➡ 부모 · ⬆ 형제(앞) · ⬇ 형제(뒤)
 //   side='down'  (아래로 자람):     ⬇ 자식 · ⬆ 부모 · ⬅ 형제(앞) · ➡ 형제(뒤)
-//   side='up'    (위로 자람 — 시간배치): ⬆ 자식 · ⬇ 부모 · ⬅/➡ 형제
+//   side='up'    (위로 자람 — 트리·아래 계열): ⬆ 자식 · ⬇ 부모 · ⬅/➡ 형제
+//
+// **시간배치는 예외다** (`timeline` 계열, 2026-08-07 보고 — "설명과 실제
+// 생성 위치가 반대다"). 시간배치의 3레벨+ 는 아웃라인처럼 **세로로 쌓이고
+// 자식만 오른쪽으로 들여쓴다** — 즉 자식과 형제가 같은 세로축에 있다.
+// 그런데 위 규칙은 자식을 세로(⬆), 형제를 가로(⬅➡)에 두어, 실제로는
+//   · [하위 노드 추가](⬆) 와 [형제 뒤에 추가](➡) 가 **같은 자리**에 노드를
+//     만들고,
+//   · 세로로 쌓이는 형제는 가로 버튼에서 나왔다
+// 그래서 어느 버튼이 무엇인지 알 수 없었다. 시간배치에서는 **트리·오른쪽
+// 과 같은 규칙**을 쓴다 — 자식 = 들여쓰기 방향(➡), 형제 = 쌓이는 축.
 //
 // Root: 자식 추가만 — 자식이 자라는 방향에 표시. 방사형·양쪽 레이아웃이면
 // 좌·우 양쪽에 표시되고, 누른 쪽으로 새 브랜치가 배치된다.
@@ -20,6 +30,11 @@ interface Props {
   t: ThemeTokens;
   // 루트에서 자식이 자라는 방향(들) — 레이아웃에서 결정 (양쪽이면 2개)
   rootChildSides?: ('left' | 'right' | 'down')[];
+  /**
+   * 이 노드에 실제로 적용된 레이아웃. 시간배치는 side 만으로는 구분되지
+   * 않아(트리·아래도 side='down' 이다) 방향 규칙을 가를 수 없다.
+   */
+  effLayout?: string;
   onAddChild: (side?: 'left' | 'right') => void;
   onAddParent: () => void;
   onAddSiblingBefore: () => void;
@@ -37,7 +52,8 @@ const LABELS: Record<ActionKey, string> = {
 type Dir = 'up' | 'down' | 'left' | 'right';
 
 export function NodeIndicators({
-  node, t, rootChildSides, onAddChild, onAddParent, onAddSiblingBefore, onAddSiblingAfter,
+  node, t, rootChildSides, effLayout,
+  onAddChild, onAddParent, onAddSiblingBefore, onAddSiblingAfter,
 }: Props) {
   const isRoot = node.depth === 0;
   const GAP = 26;
@@ -73,6 +89,29 @@ export function NodeIndicators({
       { dir: 'up', action: 'before' },
       { dir: 'down', action: 'after' },
     ];
+  } else if (effLayout === 'timeline' || effLayout === 'timeline-center') {
+    // 시간배치 — 축에서 멀어지는 쪽이 '바깥'(outward), 축 쪽이 '안쪽'.
+    const outward: Dir = node.side === 'up' ? 'up' : 'down';
+    const inward: Dir = node.side === 'up' ? 'down' : 'up';
+    if (node.depth === 1) {
+      // 2레벨 주제 — 형제(다른 주제)는 **축을 따라 좌우**로 늘어선다.
+      // 자식만 축 바깥으로 뻗는다.
+      mapping = [
+        { dir: outward, action: 'child' },
+        { dir: inward, action: 'parent' },
+        { dir: 'left', action: 'before' },
+        { dir: 'right', action: 'after' },
+      ];
+    } else {
+      // 3레벨+ — 아웃라인과 같은 모양이다. 자식은 **들여쓰기(오른쪽)**,
+      // 형제는 축 바깥 방향으로 쌓인다(먼저 온 형제가 축에 가깝다).
+      mapping = [
+        { dir: 'right', action: 'child' },
+        { dir: 'left', action: 'parent' },
+        { dir: inward, action: 'before' },
+        { dir: outward, action: 'after' },
+      ];
+    }
   } else if (node.side === 'down') {
     mapping = [
       { dir: 'down', action: 'child' },

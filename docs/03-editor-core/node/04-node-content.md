@@ -307,10 +307,21 @@ AI 생성 → `ai_jobs`/revision 메타와 연계 저장
   아래를 가리던 위치에서 이동). **호버 항목 강조** — 배경(primarySoft)
   + 왼쪽 바 + 굵게 + ↗, 풀 URL은 커스텀 툴팁.
 * **첨부 열기(openAttachment.ts)**:
-  * PDF·사진·텍스트·오디오·비디오 → **새 탭에서 바로 열기**. data URL은
-    Chrome이 탭 이동을 막고 blob URL은 MIME이 비면 다운로드돼 버리므로,
-    **확장자 기반 MIME 보정 Blob URL**로 연다 (blob은 클릭 제스처 안에서
-    빈 창을 먼저 열어 팝업 차단 회피).
+  * PDF·사진·텍스트·오디오·비디오 → **새 탭에서 바로 열기**.
+    * **맵 내장(data URL)·blob** — Chrome은 data URL의 탭 이동을 막고,
+      blob URL은 MIME이 비면 다운로드돼 버린다. **확장자 기반 MIME 보정
+      Blob URL**로 연다 (클릭 제스처 안에서 빈 창을 먼저 열어 팝업 차단
+      회피).
+    * **서버 저장소 첨부 — URL을 그대로 넘긴다** (2026-08-07). 예전에는
+      이쪽도 `fetch → blob()`으로 **파일 전체를 받아** Blob URL로 열었다.
+      사진·PDF는 됐지만 **동영상에서 무너졌다** — 884MB를 다 받을 때까지
+      새 창이 `about:blank`인 채라 사용자에게는 "파일이 없고 재생이 안
+      된다"로 보였고, 받아도 통짜 Blob이라 **구간 이동이 안 됐다**.
+      서버가 `Accept-Ranges: bytes` + 206 부분 응답과 올바른
+      `Content-Type`·`Content-Disposition: inline`을 주므로
+      (attachment-storage.md §13), **토큰만 붙인 URL**을 창에 넘기면
+      브라우저가 필요한 구간만 받아 즉시 재생하고 구간 이동도 된다.
+      (e2e125 [3f])
   * 오피스(docx/xlsx/pptx 등 브라우저 렌더 불가) → **즉시 다운로드**.
     웹앱은 로컬 앱을 직접 실행할 수 없다 — 브라우저 다운로드의 "항상
     열기"가 차선책. 서버 저장 연결 후 Office 뷰어(공유 URL 필요) 연동

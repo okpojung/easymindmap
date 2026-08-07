@@ -1408,6 +1408,7 @@ export function Canvas({
                 node={selectedNode}
                 t={t}
                 rootChildSides={rootChildSides}
+                effLayout={effByNode.get(selectedNode.id)}
                 onAddChild={handleAddChild}
                 onAddParent={handleAddParent}
                 onAddSiblingBefore={() => handleAddSibling('before')}

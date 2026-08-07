@@ -139,10 +139,19 @@ function createProcessPath(from: LaidOutNode, to: LaidOutNode): string {
 // 시간배치: 루트→주제는 시간축(루트 중앙 높이 수평선)을 따라가다 주제로
 // 꺾이고, 주제 이하는 왼쪽 스파인 세로 아웃라인(위/아래 방향)이다.
 function createTimelinePath(from: LaidOutNode, to: LaidOutNode): string {
-  if (from.depth === 0) {
-    // 시간배치(중앙노드)에서는 이 경로를 쓰지 않는다 — 중심 주제와 주제가
-    // 모두 축 위에 있어 **시간축 토막이 곧 연결선**이라, Canvas 가 이
-    // 엣지를 아예 그리지 않는다.
+  // **축의 시작점 → 축 위 노드**: 축을 따라가다 그 노드로 꺾인다.
+  //
+  // 판정은 `to._timelineRole === 'axis'` 다 — `from.depth === 0` 이 아니다.
+  // 시간배치를 **서브트리에 걸면** 축의 시작점이 중심 주제가 아니라 고른
+  // 노드라, depth 로 보면 이 경로를 못 찾고 아래의 세로 스파인이 걸렸다.
+  // 그래서 연결선이 노드 오른쪽이 아니라 위/아래에서 나갔다 (2026-08-07
+  // 보고 1·3·4번).
+  //
+  // 시간배치(중앙노드)에서는 이 경로 자체를 쓰지 않는다 — 시작점과 축
+  // 노드가 모두 축 위에 있어 **시간축 토막이 곧 연결선**이고, Canvas 가
+  // 이 엣지를 그리지 않는다.
+  if (to._timelineRole === 'axis') {
+    // **언제나 시작점의 오른쪽 변에서 출발한다** (사용자 요청 4번).
     const fromX = from.x + from.w / 2;
     const toEdgeY = to.y > from.y ? to.y - to.h / 2 : to.y + to.h / 2;
     return `M ${fromX} ${from.y} H ${to.x} V ${toEdgeY}`;
@@ -161,7 +170,12 @@ export function EdgeRenderer({ from, to, t, layoutType }: Props) {
   // subtrees with their own layoutType render with matching edges.
   const effectiveType = from.layoutType ?? to.layoutType ?? layoutType;
 
-  const d = isTimelineLayout(effectiveType)
+  // **배치가 남긴 사실이 먼저다.** `to._timelineRole` 이 있으면 그 노드는
+  // 시간배치가 놓은 것이므로 시간배치 엣지를 쓴다 — 서브트리에 걸었을 때
+  // 축 노드의 **자식**은 `from.layoutType` 이 비어 있어 맵 레이아웃
+  // (예: 진행트리)이 잡히고, 그래서 연결선이 엉뚱한 데서 나갔다
+  // (2026-08-07 보고 3번).
+  const d = (to._timelineRole !== undefined || isTimelineLayout(effectiveType))
     ? createTimelinePath(from, to)
     : isRadialLayout(effectiveType)
     ? createRadialPath(from, to)

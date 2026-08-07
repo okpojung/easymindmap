@@ -26,7 +26,9 @@ import { resolveRemoteImages } from '@/utils/remoteImages';
 import { isDocumentEmpty, NEW_MAP_TITLE, useDocumentStore } from '@/stores/documentStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
-import { detachFromServer } from '@/services/cloud/mapSession';
+import { detachFromServer, saveCurrentMap } from '@/services/cloud/mapSession';
+import { CloudError } from '@/services/cloud/apiClient';
+import { useCloudStore } from '@/stores/cloudStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import {
@@ -83,6 +85,8 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   const mapTitle = useDocumentStore((s) => s.map.title);
   // 실행 대기 중인 동작 — 확인(현재 맵 닫기 승인) 후에 실행된다
   const [pending, setPending] = useState<{ label: string; run: () => void } | null>(null);
+  /** 확인 게이트에서 '저장하고 계속'을 누른 뒤 저장이 끝나기를 기다리는 중 */
+  const [closing, setClosing] = useState(false);
   // 아코디언 펼침 상태 — 새 맵 만들기는 기본 펼침, Local 파일은 접힘
   // (선택 시 하위 메뉴가 트리 형태로 펼쳐진다)
   const [openLocal, setOpenLocal] = useState(false);
@@ -150,6 +154,48 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
   //    로컬 파일로 불러온 맵이 여전히 빠졌다.
   // 조건을 하나씩 더하는 방식이 계속 구멍을 남겨, **"닫을 맵이 화면에
   // 있는가" 하나로** 규칙을 단순화한다.
+  /**
+   * 지금 열린 맵을 **서버에 저장할 수 있는가** — 서버 맵으로 연결돼 있고
+   * 읽기 전용이 아닐 때만.
+   */
+  const savableServerMap = (): boolean => {
+    const c = useCloudStore.getState();
+    return !!c.cloudMapId && !c.readOnlyInfo;
+  };
+
+  /**
+   * 확인 게이트의 "저장하고 계속" — **닫기 전에 먼저 서버에 저장한다.**
+   *
+   * 2026-08-07 유실 보고: 노드에 대용량 첨부를 올린 직후 `새 맵 만들기 >
+   * 현재 맵 닫고 계속` 을 하면, 다시 열었을 때 **첨부가 없었다**(간헐).
+   * 원인은 여기였다 — 이 게이트는 저장 없이 문서를 갈아 끼웠고,
+   * 자동저장은 **주기(기본 5분)·편집 50건·탭 전환** 에만 올린다
+   * (useCloudAutosave). 첨부를 붙이고 곧바로 새 맵을 만들면 그 사이
+   * 어느 조건도 걸리지 않아 **서버에는 첨부 이전 스냅샷**만 남았다.
+   * "두 번째엔 됐다"는 것도 같은 이야기다 — 그땐 주기가 지났을 뿐이다.
+   *
+   * 상단 `✕ 맵 닫기`(saveAndCloseMap)는 원래 저장하고 닫는다. 이 문을
+   * 그 규칙에 맞춘다.
+   */
+  const closeThenRun = async () => {
+    if (!pending) return;
+    const run = pending.run;
+    if (!savableServerMap()) { setPending(null); run(); return; }
+    setClosing(true);
+    try {
+      await saveCurrentMap({ keepVersion: true });
+    } catch (err) {
+      // **저장에 실패하면 닫지 않는다** — 닫으면 그대로 유실이다.
+      setClosing(false);
+      flash('⚠ ' + (err instanceof CloudError ? err.message
+        : '저장 실패 — 맵을 닫지 않았습니다.'), true);
+      return;
+    }
+    setClosing(false);
+    setPending(null);
+    run();
+  };
+
   const confirmThen = (label: string, run: () => void) => {
     setChooseTpl(null);
     if (isDocumentEmpty(useDocumentStore.getState().map)) {
@@ -398,19 +444,27 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
             현재 맵 '{mapTitle}'을(를) 닫고 진행할까요?
           </div>
           <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.55, marginBottom: 8 }}>
-            {pending.label} — 편집 중인 맵은 화면에서 닫힙니다 (Ctrl+Z로 복구
-            가능). 보존하려면 먼저 <b>템플릿으로 등록</b>하거나 <b>HTML로
-            내보내기</b> 해 두세요.
+            {pending.label} — {savableServerMap() ? (
+              <>이 맵은 <b>서버에 저장한 뒤</b> 화면에서 닫힙니다. 방금 붙인
+                첨부·편집도 함께 저장됩니다.</>
+            ) : (
+              <>편집 중인 맵은 화면에서 닫힙니다 (Ctrl+Z로 복구 가능).
+                아직 서버에 저장한 적이 없는 맵이라, 보존하려면 먼저
+                <b> ☁ 저장</b>하거나 <b>HTML로 내보내기</b> 해 두세요.</>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 5 }}>
             <button
-              onClick={() => { const run = pending.run; setPending(null); run(); }}
+              disabled={closing}
+              onClick={() => { void closeThenRun(); }}
               style={{
                 flex: 1, fontSize: 11.5, padding: '6px 0', borderRadius: 6,
                 border: 'none', background: t.primary, color: '#FFF',
-                cursor: 'pointer', fontWeight: 700,
-              }}>현재 맵 닫고 계속</button>
+                cursor: closing ? 'default' : 'pointer', fontWeight: 700,
+                opacity: closing ? 0.6 : 1,
+              }}>{closing ? '저장 중…' : (savableServerMap() ? '저장하고 계속' : '현재 맵 닫고 계속')}</button>
             <button
+              disabled={closing}
               onClick={() => setPending(null)}
               style={{
                 flex: 1, fontSize: 11.5, padding: '6px 0', borderRadius: 6,

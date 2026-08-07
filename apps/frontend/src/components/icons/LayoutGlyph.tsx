@@ -75,32 +75,43 @@ export function LayoutGlyph({
     vectorEffect: 'non-scaling-stroke' as const,
   };
 
+  // ── 시간배치 2종 ────────────────────────────────────────────────
+  // 두 아이콘 모두 **중심 주제를 축 왼쪽 끝에** 그린다 (2026-08-07 요청 —
+  // 실제 배치와 같아야 고를 때 결과가 보인다). 둘의 차이는 하나뿐:
+  //   timeline        — 2레벨 주제가 축에서 **위/아래로 떨어져 매달린다**
+  //   timeline-center — 2레벨 주제가 **축 위에 얹힌다**(축이 관통)
   if (type === 'timeline') {
-    // 시간배치 — 수평 시간축 화살표 + 위/아래에 매달린 주제 상자
     return (
       <SvgWrap width={width} height={height}>
-        <line x1="4" y1="13" x2="38" y2="13" {...lineProps} />
-        <path d="M36 10.5 L40 13 L36 15.5" {...lineProps} />
-        <rect x="10" y="3" width="9" height="5" {...rectProps} />
-        <line x1="14.5" y1="8" x2="14.5" y2="13" {...lineProps} />
-        <rect x="23" y="18" width="9" height="5" {...rectProps} />
-        <line x1="27.5" y1="13" x2="27.5" y2="18" {...lineProps} />
+        {/* 중심 주제 = 축 왼쪽 끝 */}
+        <rect x="2" y="10.5" width="8" height="5" {...rectProps} />
+        <line x1="10" y1="13" x2="40" y2="13" {...lineProps} />
+        <path d="M38 10.5 L42 13 L38 15.5" {...lineProps} />
+        {/* 주제는 축에서 떨어져 매달린다 */}
+        <rect x="14" y="2.5" width="9" height="5" {...rectProps} />
+        <line x1="18.5" y1="7.5" x2="18.5" y2="13" {...lineProps} />
+        <rect x="27" y="18.5" width="9" height="5" {...rectProps} />
+        <line x1="31.5" y1="13" x2="31.5" y2="18.5" {...lineProps} />
       </SvgWrap>
     );
   }
 
   if (type === 'timeline-center') {
-    // 시간배치(중앙노드) — 축이 가운데 상자를 관통하고 주제가 좌·우로 갈린다
     return (
       <SvgWrap width={width} height={height}>
-        <line x1="2" y1="13" x2="17" y2="13" {...lineProps} />
-        <rect x="17" y="10.5" width="9" height="5" {...rectProps} />
-        <line x1="26" y1="13" x2="40" y2="13" {...lineProps} />
+        {/* 중심 주제 + 주제 2개가 **모두 축 위에** — 축은 상자 사이만 잇는다 */}
+        <rect x="2" y="10.5" width="8" height="5" {...rectProps} />
+        <line x1="10" y1="13" x2="14" y2="13" {...lineProps} />
+        <rect x="14" y="10.5" width="9" height="5" {...rectProps} />
+        <line x1="23" y1="13" x2="27" y2="13" {...lineProps} />
+        <rect x="27" y="10.5" width="9" height="5" {...rectProps} />
+        <line x1="36" y1="13" x2="40" y2="13" {...lineProps} />
         <path d="M38 10.5 L42 13 L38 15.5" {...lineProps} />
-        <rect x="5" y="3" width="8" height="4.5" {...rectProps} />
-        <line x1="9" y1="7.5" x2="9" y2="13" {...lineProps} />
-        <rect x="30" y="18.5" width="8" height="4.5" {...rectProps} />
-        <line x1="34" y1="13" x2="34" y2="18.5" {...lineProps} />
+        {/* 하위는 위/아래로 번갈아 */}
+        <line x1="16.5" y1="10.5" x2="16.5" y2="6" {...lineProps} />
+        <line x1="16.5" y1="6" x2="21" y2="6" {...lineProps} />
+        <line x1="29.5" y1="15.5" x2="29.5" y2="20" {...lineProps} />
+        <line x1="29.5" y1="20" x2="34" y2="20" {...lineProps} />
       </SvgWrap>
     );
   }

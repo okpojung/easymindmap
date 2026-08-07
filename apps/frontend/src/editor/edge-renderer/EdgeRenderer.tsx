@@ -140,9 +140,10 @@ function createProcessPath(from: LaidOutNode, to: LaidOutNode): string {
 // 꺾이고, 주제 이하는 왼쪽 스파인 세로 아웃라인(위/아래 방향)이다.
 function createTimelinePath(from: LaidOutNode, to: LaidOutNode): string {
   if (from.depth === 0) {
-    // 중앙노드 배치에서는 주제가 루트 왼쪽에도 놓인다 — 그때는 루트의
-    // 왼쪽 변에서 출발한다(오른쪽 변에서 시작하면 선이 루트를 가로지른다).
-    const fromX = to.x < from.x ? from.x - from.w / 2 : from.x + from.w / 2;
+    // 시간배치(중앙노드)에서는 이 경로를 쓰지 않는다 — 중심 주제와 주제가
+    // 모두 축 위에 있어 **시간축 토막이 곧 연결선**이라, Canvas 가 이
+    // 엣지를 아예 그리지 않는다.
+    const fromX = from.x + from.w / 2;
     const toEdgeY = to.y > from.y ? to.y - to.h / 2 : to.y + to.h / 2;
     return `M ${fromX} ${from.y} H ${to.x} V ${toEdgeY}`;
   }

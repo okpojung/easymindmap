@@ -4,12 +4,19 @@
 // 편집 화면 영역에 표시하고 선택할 수 있도록". 팝업 모달(MapListModal)을
 // 대체한다 — 목록이 길어도 화면을 다 쓰고, 폴더 이동·정렬이 편하다.
 //
-// 담는 것
-//   · 홈 > 폴더 breadcrumb (폴더 트리 탐색)
-//   · 폴더 먼저, 그다음 맵 (ThinkWise 문서함과 같은 배치)
-//   · **이름·수정일 오름/내림 정렬** (머리글 클릭 — 규칙 6)
-//   · 맵 유형 표시: 👤 단독맵 / 👥 협업맵 (규칙 7)
-//   · 새 폴더 · 이름 변경 · 삭제 · 폴더 이동
+// ## 2026-08-07 — 폴더 들락날락을 없앤 **트리 목록** (사용자 방안 3)
+//
+// 예전에는 폴더를 누르면 그 폴더로 **들어가고**(cwd) 경로(breadcrumb)로
+// 되돌아 나왔다. 그래서
+//   · 파일이 어느 폴더에 있는지 보려면 폴더마다 들어갔다 나와야 했고,
+//   · 검색이 **지금 폴더 안에서만** 되어 "내 문서에서 찾기"가 안 됐다.
+//
+// 지금은 폴더를 누르면 **그 자리에서 하위가 펼쳐진다**. 폴더 위치와
+// 파일 이름을 한 화면에서 같이 보고, 검색은 **문서함 전체**를 훑는다.
+//   · 기본은 **모두 접기** (첫 화면이 조용하다)
+//   · 검색하면 **맞는 파일이 든 폴더만 자동으로 펼쳐지고**, 그 안에서도
+//     **맞는 파일만** 남는다
+//   · `⊞ 모두 펼치기 / ⊟ 모두 접기` 로 한 번에
 //
 // 여는 방식은 mapSession 규칙을 따른다 — 편집 중이면 브라우저 새 탭,
 // 잃을 것이 없으면 이 탭.
@@ -22,11 +29,13 @@ import {
 } from '@/services/cloud/apiClient';
 import { useCloudStore } from '@/stores/cloudStore';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
-import { folderPath } from './folderTree';
 import { FolderPickerDialog } from './FolderPickerDialog';
 
 type SortKey = 'title' | 'createdAt' | 'updatedAt'
   | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
+
+/** 한 번에 받아 오는 맵 수 상한 — 서버 list() 의 limit 최대값과 같다 */
+const MAP_FETCH_LIMIT = 500;
 
 // 바이트 → 사람이 읽는 단위 (KB/MB/GB). null(통계 도입 전 저장분)은 '—'
 function fmtBytes(n: number | null | undefined): string {
@@ -47,6 +56,11 @@ function fmtDate(iso: string | null | undefined): string {
 }
 type SortOrder = 'asc' | 'desc';
 
+/** 화면에 그릴 한 줄 — 폴더 또는 맵, `depth` 는 들여쓰기 단계 */
+type Row =
+  | { kind: 'folder'; depth: number; folder: FolderItem }
+  | { kind: 'map'; depth: number; map: MapListItem };
+
 export function MapBrowser({
   t, onClose, onFlash, onOpened,
 }: {
@@ -58,42 +72,47 @@ export function MapBrowser({
 }) {
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [maps, setMaps] = useState<MapListItem[] | null>(null);
-  const [cwd, setCwd] = useState<string | null>(null); // null = 홈
-  // 기본 정렬 = **이름 오름차순** (2026-08-05 보고 — 폴더에 들어갔을 때
-  // 사람이 찾는 순서는 '최근 고친 것'보다 '이름 가나다순'이다)
+  // 기본 정렬 = **이름 오름차순** (2026-08-05 보고 — 사람이 찾는 순서는
+  // '최근 고친 것'보다 '이름 가나다순'이다)
   const [sort, setSort] = useState<SortKey>('title');
   const [order, setOrder] = useState<SortOrder>('asc');
   const [err, setErr] = useState<string | null>(null);
-  const [newFolder, setNewFolder] = useState<string | null>(null); // 입력 중인 이름
-  /** 이름 검색어 — 화면에서만 거른다(서버 재조회 없음, 2026-08-07) */
+  /** 새 폴더를 만드는 중 — parentId 는 만들 위치(null = 홈) */
+  const [newFolder, setNewFolder] = useState<{ parentId: string | null; name: string } | null>(null);
+  /** 이름 검색어 — **문서함 전체**를 훑는다 (서버 재조회 없음) */
   const [query, setQuery] = useState('');
+  /** 펼쳐 둔 폴더 — 기본은 비어 있다(= 모두 접기) */
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
   const [moving, setMoving] = useState<MapListItem | null>(null);
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
 
+  // **맵을 폴더별로 나눠 받지 않고 한 번에 전부** 받는다 — 트리와 전체
+  // 검색이 모두 "문서함 전부"를 알아야 하기 때문이다. 서버 list() 는
+  // folder 를 주지 않으면 그 사용자의 맵 전부를 준다.
   const load = useCallback(async () => {
     setErr(null);
     try {
       const [f, m] = await Promise.all([
         cloudApi.listFolders(),
-        cloudApi.listMaps({ folder: cwd ?? 'root', sort, order }),
+        cloudApi.listMaps({ sort, order, limit: MAP_FETCH_LIMIT }),
       ]);
       setFolders(f.folders);
       setMaps(m.maps);
+      if (m.total > m.maps.length) {
+        setErr(`맵이 ${m.total}개라 최근 ${m.maps.length}개만 표시합니다 — 검색으로 좁혀 주세요.`);
+      }
     } catch (e) {
       setMaps([]);
       setErr(e instanceof CloudError ? e.message : '문서함을 불러오지 못했습니다.');
     }
-  }, [cwd, sort, order]);
+  }, [sort, order]);
 
   // 저장·맵 닫기가 일어나면(lastSavedAt 변화) 목록을 다시 읽는다 —
   // 문서함을 연 채로 저장한 경우에도 크기·수정일이 곧바로 반영된다
   // (2026-08-05 보고: 새로고침해야 반영됐다).
   const lastSavedAt = useCloudStore((s) => s.lastSavedAt);
   useEffect(() => { void load(); }, [load, lastSavedAt]);
-  // 폴더를 옮기면 검색어를 지운다 — 새 폴더에서 "아무것도 없다"로
-  // 보이는 오해를 막는다
-  useEffect(() => { setQuery(''); }, [cwd]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -101,17 +120,124 @@ export function MapBrowser({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // ── 트리 계산 ───────────────────────────────────────────────
   const q = query.trim().toLowerCase();
-  const hit = (name: string) => !q || name.toLowerCase().includes(q);
-  const childFolders = folders
-    .filter((f) => f.parentId === cwd)
-    .filter((f) => hit(f.name))
-    .sort((a, b) => (sort === 'title' && order === 'desc'
-      ? b.name.localeCompare(a.name, 'ko')
-      : a.name.localeCompare(b.name, 'ko')));
-  const path = folderPath(folders, cwd);
-  /** 검색으로 걸러진 맵 — 합계도 이 목록 기준이다 */
-  const shownMaps = (maps ?? []).filter((m) => hit(m.title || ''));
+  const searching = q.length > 0;
+  const hit = (name: string) => name.toLowerCase().includes(q);
+
+  /** parentId → 그 아래 폴더들 (이름순. 이름 내림차순 정렬 중이면 역순) */
+  const foldersByParent = useMemo(() => {
+    const m = new Map<string, FolderItem[]>();
+    for (const f of folders) {
+      const k = f.parentId ?? '';
+      const arr = m.get(k);
+      if (arr) arr.push(f); else m.set(k, [f]);
+    }
+    const desc = sort === 'title' && order === 'desc';
+    for (const arr of m.values()) {
+      arr.sort((a, b) => (desc
+        ? b.name.localeCompare(a.name, 'ko')
+        : a.name.localeCompare(b.name, 'ko')));
+    }
+    return m;
+  }, [folders, sort, order]);
+
+  /** folderId → 그 폴더에 **직접** 든 맵들 (서버 정렬 순서 그대로) */
+  const mapsByFolder = useMemo(() => {
+    const m = new Map<string, MapListItem[]>();
+    for (const x of maps ?? []) {
+      const k = x.folderId ?? '';
+      const arr = m.get(k);
+      if (arr) arr.push(x); else m.set(k, [x]);
+    }
+    return m;
+  }, [maps]);
+
+  /**
+   * 검색 중일 때 **이 폴더를 화면에 남길지** — 폴더 이름이 맞거나,
+   * 하위 어딘가에 맞는 맵/폴더가 있으면 남긴다. (그래야 "검색된 파일이
+   * 어느 폴더에 있는지"가 경로째 보인다)
+   */
+  const keepFolder = useMemo(() => {
+    const memo = new Map<string, boolean>();
+    const walk = (id: string): boolean => {
+      const cached = memo.get(id);
+      if (cached !== undefined) return cached;
+      memo.set(id, false); // 순환 방어
+      let ok = (mapsByFolder.get(id) ?? []).some((m) => hit(m.title || ''));
+      if (!ok) {
+        for (const c of foldersByParent.get(id) ?? []) {
+          if (hit(c.name) || walk(c.folderId)) { ok = true; break; }
+        }
+      }
+      memo.set(id, ok);
+      return ok;
+    };
+    return (f: FolderItem) => hit(f.name) || walk(f.folderId);
+    // hit 은 q 에서 파생 — q 를 의존성으로 둔다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foldersByParent, mapsByFolder, q]);
+
+  /** 화면에 그릴 줄 목록 (폴더 먼저, 그다음 그 위치의 맵) */
+  const rows = useMemo(() => {
+    const out: Row[] = [];
+    const walk = (parentId: string, depth: number) => {
+      for (const f of foldersByParent.get(parentId) ?? []) {
+        if (searching && !keepFolder(f)) continue;
+        out.push({ kind: 'folder', depth, folder: f });
+        // 검색 중에는 **맞는 것이 든 폴더를 자동으로 펼친다**
+        if (searching || expanded.has(f.folderId)) walk(f.folderId, depth + 1);
+      }
+      for (const m of mapsByFolder.get(parentId) ?? []) {
+        if (searching && !hit(m.title || '')) continue;
+        out.push({ kind: 'map', depth, map: m });
+      }
+    };
+    walk('', 0);
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q]);
+
+  const shownMaps = useMemo(
+    () => rows.filter((r): r is Extract<Row, { kind: 'map' }> => r.kind === 'map').map((r) => r.map),
+    [rows],
+  );
+  // 폴더 수량 — 합계와 기준을 맞춘다. 그냥 볼 때는 **전 폴더**(접혀
+  // 있어도), 검색 중에는 **결과에 남은 폴더**.
+  const folderCount = searching
+    ? rows.filter((r) => r.kind === 'folder').length
+    : folders.length;
+
+  /**
+   * **합계** (2026-08-06 요청) — 노드 수·문서 크기·첨부 개수·첨부 용량.
+   *
+   * 트리로 바뀌면서 기준도 바뀌었다. 예전에는 "지금 들어와 있는 폴더"가
+   * 기준이었지만 이제 들어가는 개념이 없다 —
+   *   · 그냥 볼 때  = **문서함 전체** (접혀 있어도 센다. "내 문서 전부가
+   *     얼마나 쌓였나"가 궁금한 것이지, 펼친 것만 궁금한 게 아니다)
+   *   · 검색 중     = **검색 결과**
+   * 통계 도입 전에 저장된 맵은 값이 null 이라 합계에서 빠진다.
+   */
+  const totals = useMemo(() => {
+    const list = searching ? shownMaps : (maps ?? []);
+    const sum = (pick: (m: MapListItem) => number | null | undefined) =>
+      list.reduce((acc, m) => acc + (pick(m) ?? 0), 0);
+    return {
+      maps: list.length,
+      nodeCount: sum((m) => m.nodeCount),
+      docBytes: sum((m) => m.docBytes),
+      attachCount: sum((m) => m.attachCount),
+      attachBytes: sum((m) => m.attachBytes),
+    };
+  }, [searching, shownMaps, maps]);
+
+  const toggleFolder = (id: string) => setExpanded((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const expandAll = () => setExpanded(new Set(folders.map((f) => f.folderId)));
+  const collapseAll = () => setExpanded(new Set());
 
   // ── 동작 ────────────────────────────────────────────────────
   const openMap = async (m: MapListItem) => {
@@ -142,13 +268,17 @@ export function MapBrowser({
       : '⚠ 팝업이 차단되어 새 탭을 열지 못했습니다. 브라우저의 팝업 차단을 해제해 주세요.');
   };
 
-  const createFolder = async (name: string) => {
-    const clean = name.trim();
+  const createFolder = async () => {
+    if (!newFolder) return;
+    const clean = newFolder.name.trim();
+    const parentId = newFolder.parentId;
     setNewFolder(null);
     if (!clean) return;
     try {
-      await cloudApi.createFolder(clean, cwd);
+      await cloudApi.createFolder(clean, parentId);
       onFlash(`📁 '${clean}' 폴더를 만들었습니다.`);
+      // 하위 폴더를 만들었으면 그 부모를 펼쳐 둔다 — 만든 것이 바로 보인다
+      if (parentId) setExpanded((p) => new Set(p).add(parentId));
       void load();
     } catch (e) {
       onFlash('⚠ ' + (e instanceof CloudError ? e.message : '폴더를 만들지 못했습니다.'));
@@ -196,6 +326,7 @@ export function MapBrowser({
     try {
       await cloudApi.updateMap(m.mapId, { folderId });
       onFlash(`📂 '${m.title}'을(를) 옮겼습니다.`);
+      if (folderId) setExpanded((p) => new Set(p).add(folderId));
       void load();
     } catch (e) {
       // 옮기려는 폴더에 같은 이름이 있으면 409 — 서버 안내를 그대로
@@ -226,11 +357,12 @@ export function MapBrowser({
       }}
       title={`${label} 기준 정렬 (다시 누르면 오름/내림 전환)`}
       style={{
-        display: 'flex', alignItems: 'center', gap: 4,
+        display: 'flex', alignItems: 'center', gap: 3,
         justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+        width: align === 'right' ? '100%' : undefined,
         background: 'transparent', border: 'none', cursor: 'pointer',
         color: sort === key ? t.primary : t.textMuted,
-        fontSize: 11.5, fontWeight: 700, padding: 0,
+        fontSize: 11.5, fontWeight: 700, padding: 0, whiteSpace: 'nowrap',
       }}
     >
       {label}
@@ -239,41 +371,27 @@ export function MapBrowser({
   );
 
   /**
-   * **이 목록의 합계** (2026-08-06 요청) — 노드 수·문서 크기·첨부 개수·
-   * 첨부 용량을 열 머리글에 함께 보여 준다. "지금 이 폴더에 얼마나 쌓여
-   * 있나"를 행을 세어 보지 않고 알 수 있다.
-   *
-   * 대상은 **지금 화면에 보이는 맵들**이다 — 하위 폴더 안의 맵은 세지
-   * 않는다(그 폴더로 들어가면 그 폴더의 합계가 나온다). 통계 도입 전에
-   * 저장된 맵은 값이 null 이라 합계에서 빠진다.
+   * 숫자 열의 값·합계 공통 서식 (2026-08-07 요청 — "보기 좋게 정렬").
+   * **오른쪽 맞춤 + 고정폭 숫자 글꼴**이라 자릿수가 세로로 딱 맞는다.
+   * 머리글·합계·값이 모두 이걸 쓰므로 세 줄이 같은 오른쪽 선에 선다.
    */
-  const totals = useMemo(() => {
-    const list = shownMaps;
-    const sum = (pick: (m: MapListItem) => number | null | undefined) =>
-      list.reduce((acc, m) => acc + (pick(m) ?? 0), 0);
-    return {
-      maps: list.length,
-      nodeCount: sum((m) => m.nodeCount),
-      docBytes: sum((m) => m.docBytes),
-      attachCount: sum((m) => m.attachCount),
-      attachBytes: sum((m) => m.attachBytes),
-    };
-  }, [shownMaps]);
-
-  /**
-   * 열 머리글의 합계 줄 — **열 이름 위**에 붙인다 (2026-08-07 요청).
-   * 합계가 위, 정렬 버튼이 아래라 "합계 → 그 아래가 그 열" 로 읽힌다.
-   */
+  const numCell: React.CSSProperties = {
+    display: 'block', textAlign: 'right',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontVariantNumeric: 'tabular-nums',
+  };
   const totalCell = (text: string) => (
     <span style={{
-      display: 'block', textAlign: 'right', marginBottom: 2,
+      ...numCell, marginBottom: 2,
       fontSize: 10, fontWeight: 700, color: t.text, opacity: 0.75,
     }}>{text}</span>
   );
 
   const rowStyle: React.CSSProperties = {
     display: 'grid',
-    gridTemplateColumns: '24px minmax(120px, 1fr) 76px 106px 106px 44px 64px 40px 68px 106px',
+    // 숫자 4열은 머리글 글자('첨부 용량')가 잘리지 않을 만큼 넓힌다 —
+    // 좁으면 라벨이 넘쳐 값과 어긋나 보인다 (2026-08-07 보고)
+    gridTemplateColumns: '24px minmax(140px, 1fr) 76px 108px 108px 58px 76px 54px 86px 106px',
     alignItems: 'center',
     gap: 8,
     padding: '7px 10px',
@@ -298,6 +416,13 @@ export function MapBrowser({
   const actionCell: React.CSSProperties = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
   };
+  const toolBtn: React.CSSProperties = {
+    height: 24, padding: '0 9px', borderRadius: 6, cursor: 'pointer',
+    border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted,
+    fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+  };
+  /** 들여쓰기 — 트리 단계마다 한 칸 (아이콘 열 다음부터 밀린다) */
+  const indent = (depth: number) => ({ paddingLeft: depth * 16 });
 
   return (
     <div
@@ -307,50 +432,46 @@ export function MapBrowser({
         background: t.surface, color: t.text, overflow: 'hidden',
       }}
     >
-      {/* 헤더 — breadcrumb + 도구 */}
+      {/* 헤더 — 제목 + 도구.
+          트리가 되면서 **경로(breadcrumb)가 사라졌다** — 폴더로 들어가지
+          않으니 돌아 나올 길도 필요 없다. 대신 모두 펼치기/접기가 왔다. */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '12px 14px', borderBottom: `1px solid ${t.border}`,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
-          <strong style={{ fontSize: 15, marginRight: 6 }}>내 문서</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+          <strong style={{ fontSize: 15, marginRight: 4 }}>내 문서</strong>
           <button
-            data-testid="browser-crumb-home"
-            onClick={() => setCwd(null)}
-            style={{
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: cwd === null ? t.text : t.primary, fontSize: 12.5,
-              fontWeight: cwd === null ? 700 : 500, padding: '2px 4px',
-            }}
-          >홈</button>
-          {/* **[＋ 새 폴더] 는 '홈' 바로 오른쪽** (2026-08-06 요청) —
-              폴더를 만드는 곳은 "지금 보고 있는 위치"이므로, 경로 옆에
-              붙어 있어야 어디에 만들어지는지가 눈에 보인다. 오른쪽 끝에
-              떨어져 있으면 그 연결이 보이지 않는다. */}
+            data-testid="browser-expand-all"
+            onClick={expandAll}
+            title="모든 폴더 펼치기"
+            style={toolBtn}
+          >⊞ 모두 펼치기</button>
+          <button
+            data-testid="browser-collapse-all"
+            onClick={collapseAll}
+            title="모든 폴더 접기"
+            style={toolBtn}
+          >⊟ 모두 접기</button>
           <button
             data-testid="browser-new-folder"
-            onClick={() => setNewFolder('')}
-            title="지금 보고 있는 위치에 새 폴더 만들기"
-            style={{
-              height: 24, padding: '0 9px', borderRadius: 6, cursor: 'pointer',
-              marginLeft: 4, marginRight: 2,
-              border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted,
-              fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
-            }}
+            onClick={() => setNewFolder({ parentId: null, name: '' })}
+            title="맨 위(홈)에 새 폴더 만들기 — 폴더 안에 만들려면 그 폴더 줄의 ＋ 를 누르세요"
+            style={{ ...toolBtn, marginLeft: 2 }}
           >＋ 새 폴더</button>
-          {/* **파일 검색** (2026-08-07 요청) — 목록이 길어지면 이름으로
-              좁힌다. 지금 폴더 안의 **폴더·맵 이름**을 대소문자 없이
-              부분 일치로 거른다(서버 재조회 없이 화면에서만). */}
+          {/* **전체 검색** (2026-08-07 요청) — 지금 폴더가 아니라
+              **문서함 전체**를 훑는다. 맞는 파일이 든 폴더는 자동으로
+              펼쳐지고, 그 안에서도 맞는 파일만 남는다. */}
           <input
             data-testid="browser-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
-            placeholder="🔍 이름으로 찾기"
-            title="이 폴더 안의 폴더·맵 이름으로 거릅니다 (Esc 로 지움)"
+            placeholder="🔍 전체에서 이름으로 찾기"
+            title="문서함 전체(하위 폴더 포함)의 폴더·맵 이름으로 찾습니다 (Esc 로 지움)"
             style={{
-              height: 24, width: 168, padding: '0 8px', borderRadius: 6,
-              marginRight: 4, fontSize: 11.5,
+              height: 24, width: 196, padding: '0 8px', borderRadius: 6,
+              marginLeft: 4, fontSize: 11.5,
               border: `1px solid ${query ? t.primaryBorder : t.border}`,
               background: t.surfaceAlt, color: t.text, outline: 'none',
             }}
@@ -360,26 +481,9 @@ export function MapBrowser({
               data-testid="browser-search-clear"
               onClick={() => setQuery('')}
               title="검색어 지우기"
-              style={{
-                height: 24, padding: '0 7px', borderRadius: 6, marginRight: 2,
-                border: `1px solid ${t.border}`, background: t.surface,
-                color: t.textMuted, cursor: 'pointer', fontSize: 11,
-              }}
+              style={{ ...toolBtn, padding: '0 7px' }}
             >✕</button>
           )}
-          {path.map((f, i) => (
-            <span key={f.folderId} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ color: t.textSubtle, fontSize: 11 }}>›</span>
-              <button
-                onClick={() => setCwd(f.folderId)}
-                style={{
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: i === path.length - 1 ? t.text : t.primary, fontSize: 12.5,
-                  fontWeight: i === path.length - 1 ? 700 : 500, padding: '2px 4px',
-                }}
-              >{f.name}</button>
-            </span>
-          ))}
         </div>
         <button
           data-testid="browser-close"
@@ -391,15 +495,20 @@ export function MapBrowser({
 
       {/* 새 폴더 입력 줄 */}
       {newFolder !== null && (
-        <div style={{ padding: '8px 14px', borderBottom: `1px solid ${t.divider}`, display: 'flex', gap: 6 }}>
+        <div style={{ padding: '8px 14px', borderBottom: `1px solid ${t.divider}`, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 11.5, color: t.textMuted, whiteSpace: 'nowrap' }}>
+            {newFolder.parentId
+              ? `📁 ${folders.find((f) => f.folderId === newFolder.parentId)?.name ?? ''} 안에`
+              : '📁 홈에'}
+          </span>
           <input
             data-testid="browser-new-folder-name"
             autoFocus
-            value={newFolder}
+            value={newFolder.name}
             placeholder="폴더 이름"
-            onChange={(e) => setNewFolder(e.target.value)}
+            onChange={(e) => setNewFolder((p) => (p ? { ...p, name: e.target.value } : p))}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void createFolder(newFolder);
+              if (e.key === 'Enter') void createFolder();
               if (e.key === 'Escape') setNewFolder(null);
             }}
             style={{
@@ -408,7 +517,7 @@ export function MapBrowser({
             }}
           />
           <button
-            onClick={() => void createFolder(newFolder)}
+            onClick={() => void createFolder()}
             style={{
               height: 30, padding: '0 12px', borderRadius: 6, border: 'none',
               background: t.primary, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700,
@@ -440,10 +549,9 @@ export function MapBrowser({
       )}
 
       {/* 열 머리글 (2026-08-07 정리)
-          · 숫자 열은 **열 이름 위**에 이 목록의 합계를 얹는다. 행을 세어
-            보지 않아도 "이 폴더에 얼마나 쌓였나"를 바로 안다.
-          · 이름 열은 **한 줄**이다 — `폴더/파일명` 오른쪽에 맵·폴더 수량을
-            나란히 둔다(예전에는 아래 줄로 내려가 머리글이 2줄이 됐다).
+          · 숫자 열은 **열 이름 위**에 합계를 얹는다. 행을 세어 보지 않아도
+            "얼마나 쌓였나"를 바로 안다.
+          · 이름 열은 **한 줄** — `폴더/파일명` 오른쪽에 맵·폴더 수량.
           · 그래서 모든 열 이름이 같은 높이에 오도록 `alignItems: 'end'` —
             합계가 있는 열만 위로 한 줄 자란다. */}
       <div
@@ -465,7 +573,8 @@ export function MapBrowser({
             data-testid="browser-count"
             style={{ fontSize: 10, fontWeight: 600, color: t.textSubtle }}
           >
-            맵 {totals.maps}개{childFolders.length ? ` · 폴더 ${childFolders.length}개` : ''}
+            맵 {totals.maps}개{folderCount ? ` · 폴더 ${folderCount}개` : ''}
+            {searching ? ' (검색 결과)' : ''}
           </span>
         </span>
         <span>유형</span>
@@ -490,125 +599,135 @@ export function MapBrowser({
         <span style={{ textAlign: 'center' }}>관리</span>
       </div>
 
-      {/* 목록 */}
+      {/* 목록 (트리) */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {childFolders.map((f) => (
-          <div key={f.folderId} data-testid="browser-folder"
-            className="mm-list-row" style={rowStyle}>
-            <span style={{ fontSize: 15 }}>📁</span>
-            {/* 툴팁 없음 — 행 호버 강조가 "이 줄을 고르는 중"을 이미
-                보여 준다. 글자 그대로 '폴더 이름'인 버튼에 '폴더 열기'
-                툴팁까지 뜨면 화면만 어수선해진다 (2026-08-05 보고) */}
-            <button
-              onClick={() => setCwd(f.folderId)}
-              style={{
-                textAlign: 'left', background: 'transparent', border: 'none',
-                color: t.text, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: 0,
-              }}
-            >{f.name}</button>
-            <span style={{ color: t.textSubtle, fontSize: 11 }}>폴더</span>
-            <span style={{ color: t.textSubtle, fontSize: 11.5, gridColumn: 'span 2' }}>
-              맵 {f.mapCount}개
-            </span>
-            <span /><span /><span /><span />
-            <span style={actionCell}>
-              <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
-                onClick={() => void renameFolder(f)}><I.Pencil size={15} /></button>
-              <button style={{ ...iconBtn, color: '#d9534f' }}
-                title="삭제 (비어 있을 때만)" aria-label="삭제"
-                onClick={() => void deleteFolder(f)}><I.Trash size={15} /></button>
-            </span>
-          </div>
-        ))}
-
         {maps === null ? (
           <div style={{ padding: '28px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center' }}>
             불러오는 중…
           </div>
-        ) : shownMaps.length === 0 && childFolders.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div data-testid="browser-empty"
             style={{ padding: '32px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
             {err ? '목록을 표시할 수 없습니다 — 위 안내를 확인해 주세요.'
-              : q ? (
-                <>‘{query}’ 를 이름에 포함한 폴더·맵이 없습니다.<br />
+              : searching ? (
+                <>‘{query}’ 를 이름에 포함한 폴더·맵이 <b>문서함 전체에</b> 없습니다.<br />
                 검색어를 지우면 전체가 다시 보입니다.</>
               ) : (
-                <>이 위치에 문서가 없습니다.<br />
-                맵을 만들어 <b>☁ 저장</b>할 때 이 폴더를 고르면 여기에 쌓입니다.</>
+                <>아직 문서가 없습니다.<br />
+                맵을 만들어 <b>☁ 저장</b>하면 여기에 쌓입니다.</>
               )}
           </div>
+        ) : rows.map((r) => (r.kind === 'folder' ? (
+          <div key={`f:${r.folder.folderId}`} data-testid="browser-folder"
+            className="mm-list-row" style={rowStyle}>
+            <span style={{ fontSize: 15, ...indent(r.depth) }}>📁</span>
+            {/* 폴더 이름을 누르면 **그 자리에서 펼쳐진다** (2026-08-07) —
+                예전처럼 그 폴더로 '들어가지' 않는다. 폴더 위치와 파일을
+                한 화면에서 같이 보려는 것이 이 목록의 요점이다. */}
+            {/* 툴팁 없음 — ▶/▼ 삼각형이 이미 상태를 말한다. 이름 버튼에
+                툴팁까지 뜨면 화면만 어수선해진다 (2026-08-05 규칙) */}
+            <button
+              data-testid="browser-folder-toggle"
+              onClick={() => toggleFolder(r.folder.folderId)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                textAlign: 'left', background: 'transparent', border: 'none',
+                color: t.text, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                overflow: 'hidden', padding: 0,
+              }}
+            >
+              <span style={{ fontSize: 9, color: t.textSubtle, width: 9 }}>
+                {expanded.has(r.folder.folderId) || searching ? '▼' : '▶'}
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {r.folder.name}
+              </span>
+            </button>
+            <span style={{ color: t.textSubtle, fontSize: 11 }}>폴더</span>
+            <span style={{ color: t.textSubtle, fontSize: 11.5, gridColumn: 'span 2' }}>
+              맵 {r.folder.mapCount}개
+            </span>
+            <span /><span /><span /><span />
+            <span style={actionCell}>
+              <button style={iconBtn} title="이 폴더 안에 새 폴더" aria-label="하위 폴더 만들기"
+                onClick={() => setNewFolder({ parentId: r.folder.folderId, name: '' })}
+              >＋</button>
+              <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
+                onClick={() => void renameFolder(r.folder)}><I.Pencil size={15} /></button>
+              <button style={{ ...iconBtn, color: '#d9534f' }}
+                title="삭제 (비어 있을 때만)" aria-label="삭제"
+                onClick={() => void deleteFolder(r.folder)}><I.Trash size={15} /></button>
+            </span>
+          </div>
         ) : (
-          shownMaps.map((m) => (
-            <div key={m.mapId} data-testid="browser-map"
-              className="mm-list-row" aria-selected={cloudMapId === m.mapId}
-              style={rowStyle}>
-              {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
-                  (2026-08-02 사용자 보고) — 앱 SVG 아이콘으로 통일 */}
-              <span style={{ display: 'flex', color: t.primary }}>
-                <I.MindMap size={15} />
-              </span>
-              <button
-                data-testid="browser-map-open"
-                onClick={() => void openMap(m)}
-                style={{
-                  textAlign: 'left', background: 'transparent', border: 'none',
-                  color: cloudMapId === m.mapId ? t.primary : t.text, cursor: 'pointer',
-                  fontSize: 13, fontWeight: 500, padding: 0,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}
-              >
-                {m.title || '(제목 없음)'}
-                {cloudMapId === m.mapId && (
-                  <span style={{ fontSize: 10, marginLeft: 6, color: t.textSubtle }}>편집 중</span>
-                )}
-              </button>
-              {/* 유형은 표시 전용 — 협업맵은 협업자를 초대해 승인·참여하는
-                  순간 전환된다(협업 단계 V1~V2). 여기서 바꾸는 것이 아니다. */}
-              <span
-                data-testid="browser-map-kind"
-                title={m.kind === 'collab'
-                  ? '협업맵 — 협업자가 참여 중인 맵'
-                  : '단독맵 — 협업자를 초대해 승인되면 협업맵이 됩니다 (준비 중)'}
-                style={{
-                  justifySelf: 'start',
-                  border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 7px',
-                  color: m.kind === 'collab' ? t.primary : t.textSubtle, fontSize: 10.5, fontWeight: 600,
-                }}
-              >
-                {m.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'}
-              </span>
-              <span style={{ color: t.textSubtle, fontSize: 11 }} title="최초 생성일">
-                {fmtDate(m.createdAt)}
-              </span>
-              <span style={{ color: t.textSubtle, fontSize: 11 }} title="마지막 수정일">
-                {fmtDate(m.updatedAt)}
-              </span>
-              <span style={{ color: t.textSubtle, fontSize: 11, textAlign: 'right' }}
-                title="노드 수 ('—'는 통계 도입 전 저장분 — 다음 저장 때 채워집니다)">
-                {m.nodeCount ?? '—'}
-              </span>
-              <span style={{ color: t.textSubtle, fontSize: 11, textAlign: 'right' }} title="문서 크기">
-                {fmtBytes(m.docBytes)}
-              </span>
-              <span style={{ color: t.textSubtle, fontSize: 11, textAlign: 'right' }} title="첨부파일 수">
-                {m.attachCount ?? '—'}
-              </span>
-              <span style={{ color: t.textSubtle, fontSize: 11, textAlign: 'right' }} title="첨부 총 용량">
-                {fmtBytes(m.attachBytes)}
-              </span>
-              <span style={actionCell}>
-                <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
-                  onClick={() => void renameMap(m)}><I.Pencil size={15} /></button>
-                <button data-testid="browser-map-move" style={iconBtn}
-                  title="다른 폴더로 이동" aria-label="다른 폴더로 이동"
-                  onClick={() => setMoving(m)}><I.FolderMove size={15} /></button>
-                <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제" aria-label="삭제"
-                  onClick={() => void deleteMap(m)}><I.Trash size={15} /></button>
-              </span>
-            </div>
-          ))
-        )}
+          <div key={`m:${r.map.mapId}`} data-testid="browser-map"
+            className="mm-list-row" aria-selected={cloudMapId === r.map.mapId}
+            style={rowStyle}>
+            {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
+                (2026-08-02 사용자 보고) — 앱 SVG 아이콘으로 통일 */}
+            <span style={{ display: 'flex', color: t.primary, ...indent(r.depth) }}>
+              <I.MindMap size={15} />
+            </span>
+            <button
+              data-testid="browser-map-open"
+              onClick={() => void openMap(r.map)}
+              style={{
+                textAlign: 'left', background: 'transparent', border: 'none',
+                color: cloudMapId === r.map.mapId ? t.primary : t.text, cursor: 'pointer',
+                fontSize: 13, fontWeight: 500, padding: 0, paddingLeft: r.depth ? 14 : 0,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}
+            >
+              {r.map.title || '(제목 없음)'}
+              {cloudMapId === r.map.mapId && (
+                <span style={{ fontSize: 10, marginLeft: 6, color: t.textSubtle }}>편집 중</span>
+              )}
+            </button>
+            {/* 유형은 표시 전용 — 협업맵은 협업자를 초대해 승인·참여하는
+                순간 전환된다(협업 단계 V1~V2). 여기서 바꾸는 것이 아니다. */}
+            <span
+              data-testid="browser-map-kind"
+              title={r.map.kind === 'collab'
+                ? '협업맵 — 협업자가 참여 중인 맵'
+                : '단독맵 — 협업자를 초대해 승인되면 협업맵이 됩니다 (준비 중)'}
+              style={{
+                justifySelf: 'start',
+                border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 7px',
+                color: r.map.kind === 'collab' ? t.primary : t.textSubtle, fontSize: 10.5, fontWeight: 600,
+              }}
+            >
+              {r.map.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'}
+            </span>
+            <span style={{ color: t.textSubtle, fontSize: 11 }} title="최초 생성일">
+              {fmtDate(r.map.createdAt)}
+            </span>
+            <span style={{ color: t.textSubtle, fontSize: 11 }} title="마지막 수정일">
+              {fmtDate(r.map.updatedAt)}
+            </span>
+            <span style={{ ...numCell, color: t.textSubtle, fontSize: 11 }}
+              title="노드 수 ('—'는 통계 도입 전 저장분 — 다음 저장 때 채워집니다)">
+              {r.map.nodeCount ?? '—'}
+            </span>
+            <span style={{ ...numCell, color: t.textSubtle, fontSize: 11 }} title="문서 크기">
+              {fmtBytes(r.map.docBytes)}
+            </span>
+            <span style={{ ...numCell, color: t.textSubtle, fontSize: 11 }} title="첨부파일 수">
+              {r.map.attachCount ?? '—'}
+            </span>
+            <span style={{ ...numCell, color: t.textSubtle, fontSize: 11 }} title="첨부 총 용량">
+              {fmtBytes(r.map.attachBytes)}
+            </span>
+            <span style={actionCell}>
+              <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
+                onClick={() => void renameMap(r.map)}><I.Pencil size={15} /></button>
+              <button data-testid="browser-map-move" style={iconBtn}
+                title="다른 폴더로 이동" aria-label="다른 폴더로 이동"
+                onClick={() => setMoving(r.map)}><I.FolderMove size={15} /></button>
+              <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제" aria-label="삭제"
+                onClick={() => void deleteMap(r.map)}><I.Trash size={15} /></button>
+            </span>
+          </div>
+        )))}
       </div>
 
       {moving && (
@@ -626,6 +745,8 @@ export function MapBrowser({
         padding: '8px 14px', borderTop: `1px solid ${t.border}`,
         color: t.textSubtle, fontSize: 11, lineHeight: 1.6,
       }}>
+        폴더 이름을 누르면 <b>그 자리에서 펼쳐집니다</b>. 검색은 문서함
+        <b> 전체</b>를 훑고, 맞는 파일이 든 폴더는 저절로 펼쳐집니다.
         편집 중인 맵이 있으면 다른 맵은 <b>브라우저 새 탭</b>에서 열립니다.
         폴더는 <b>비어 있을 때만</b> 삭제할 수 있습니다.
       </div>

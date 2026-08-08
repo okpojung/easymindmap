@@ -94,6 +94,11 @@ export interface MapListItem {
   attachCount: number | null;
   /** 첨부 총 용량 = 내장(data URL) + 서버 저장소 합 */
   attachBytes: number | null;
+  // 내용 검색(q) 결과에만 실린다 (2026-08-08)
+  /** 맞은 줄 미리보기 — 노드 텍스트·노트·태그 중 하나. 제목만 맞으면 null */
+  snippet?: string | null;
+  /** 어디서 맞았는지 — 제목이 맞으면 'title', 아니면 맵 내용 */
+  matchIn?: 'title' | 'content';
 }
 
 export interface FolderItem {
@@ -114,6 +119,11 @@ export interface MapListQuery {
     | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
   order?: 'asc' | 'desc';
   limit?: number;
+  /**
+   * 내용 검색어 (2026-08-08) — 맵 **제목 + 맵 안(노드 텍스트·노트·태그)**
+   * 을 서버에서 찾는다. 결과에는 맞은 줄 미리보기(snippet)가 함께 온다.
+   */
+  q?: string;
 }
 
 function qs(q: MapListQuery = {}): string {
@@ -121,6 +131,7 @@ function qs(q: MapListQuery = {}): string {
   if (q.folder) p.set('folder', q.folder);
   if (q.sort) p.set('sort', q.sort);
   if (q.order) p.set('order', q.order);
+  if (q.q?.trim()) p.set('q', q.q.trim());
   p.set('limit', String(q.limit ?? 200));
   return `?${p.toString()}`;
 }

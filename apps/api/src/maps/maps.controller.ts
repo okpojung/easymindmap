@@ -44,8 +44,11 @@ export class MapsController {
     @Query('folder') folder?: string,
     @Query('sort') sort?: string,
     @Query('order') order?: string,
+    // 문서함 내용 검색 (2026-08-08) — 제목 + 맵 안(노드·노트·태그)
+    @Query('q') q?: string,
   ) {
     return this.maps.list(user.id, {
+      q: typeof q === 'string' ? q.slice(0, 200) : undefined,
       deleted: deleted === 'true',
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,

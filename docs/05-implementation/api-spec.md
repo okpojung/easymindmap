@@ -415,6 +415,10 @@ Access Token 갱신
 **Query** `?deleted=false&page=1&limit=20`
 `&folder=root|<folderId>` — 폴더별 조회 (`root` = 최상위만)
 `&sort=title|updatedAt&order=asc|desc` — 문서함 정렬 (기본 `updatedAt desc`)
+`&q=<검색어>` — **내용 검색** (2026-08-08). 맵 **제목 + 맵 안(노드 텍스트·
+노트·태그)** 을 찾는다. 대상은 저장 시 DB 트리거가 만드는
+`map_documents.search_text` — 조회 때 doc 을 파싱하지 않는다.
+부분 문자열 검색이며 `%`·`_`·`\` 는 이스케이프된다. 200자에서 자른다.
 
 > ⚠️ `workspaceId` 쿼리는 **미지원** (실물은 소유 맵만 조회).
 
@@ -434,6 +438,21 @@ Access Token 갱신
   "total": 1
 }
 ```
+
+`q` 를 준 경우에만 각 맵에 두 필드가 더 실린다:
+
+| 필드 | 뜻 |
+|---|---|
+| `snippet` | 맞은 **줄 하나**의 미리보기(매치 앞 40자부터 160자). 제목만 맞았으면 `null` |
+| `matchIn` | `'title'`(이름이 맞음) / `'content'`(맵 안에서 맞음) |
+
+```json
+{ "mapId": "uuid-...", "title": "회의록 2026",
+  "matchIn": "content", "snippet": "다음 분기 예산 배정을 논의했다" }
+```
+
+설계 근거(왜 trigram 인지, 하위 질의 안의 소유자 조건이 왜 필요한지)는
+[document-library.md §8](../04-extensions/document-library.md).
 
 ---
 

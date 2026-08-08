@@ -20,7 +20,7 @@
 //
 // 여는 방식은 mapSession 규칙을 따른다 — 편집 중이면 브라우저 새 탭,
 // 잃을 것이 없으면 이 탭.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import {
@@ -79,8 +79,18 @@ export function MapBrowser({
   const [err, setErr] = useState<string | null>(null);
   /** 새 폴더를 만드는 중 — parentId 는 만들 위치(null = 홈) */
   const [newFolder, setNewFolder] = useState<{ parentId: string | null; name: string } | null>(null);
-  /** 이름 검색어 — **문서함 전체**를 훑는다 (서버 재조회 없음) */
+  /**
+   * 검색어 — **문서함 전체**를 훑는다. 2026-08-08 부터 이름뿐 아니라
+   * **맵 안(노드 텍스트·노트·태그)** 까지 서버에서 찾는다.
+   */
   const [query, setQuery] = useState('');
+  /** 서버 내용 검색 결과 — 검색 중일 때 맵 목록을 이걸로 갈아 끼운다 */
+  const [found, setFound] = useState<MapListItem[] | null>(null);
+  /** 검색에 걸린 총 개수 — 상한(500)에 잘렸는지 알린다 */
+  const [foundTotal, setFoundTotal] = useState(0);
+  const [finding, setFinding] = useState(false);
+  /** 서버 검색이 실패하면 받아 둔 목록에서 **이름만** 훑는 폴백 */
+  const [findErr, setFindErr] = useState<string | null>(null);
   /** 펼쳐 둔 폴더 — 기본은 비어 있다(= 모두 접기) */
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
@@ -120,10 +130,45 @@ export function MapBrowser({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // ── 내용 검색 ───────────────────────────────────────────────
+  // 서버가 제목 + 맵 안(노드·노트·태그)을 찾아 **맞은 맵만** 돌려준다.
+  // 받아 둔 목록에서 훑지 않는 이유: 목록은 최근 N개로 잘려 있어 그
+  // 바깥의 맵은 이름조차 못 찾았다. 폴더는 내용이 없으므로 이름 검색
+  // 그대로 (폴더 목록은 잘리지 않고 전부 받는다).
+  const qRaw = query.trim();
+  const searching = qRaw.length > 0;
+  useEffect(() => {
+    if (!searching) {
+      setFound(null); setFoundTotal(0); setFinding(false); setFindErr(null); return;
+    }
+    let alive = true;
+    setFinding(true);
+    // 타자마다 서버를 두드리지 않는다 — 멈칫한 뒤에 한 번
+    const timer = window.setTimeout(() => {
+      cloudApi.listMaps({ q: qRaw, sort, order, limit: MAP_FETCH_LIMIT })
+        .then((r) => {
+          if (!alive) return;
+          setFound(r.maps); setFoundTotal(r.total); setFindErr(null);
+        })
+        .catch((e) => {
+          if (!alive) return;
+          setFound(null);
+          setFindErr(e instanceof CloudError ? e.message : '검색에 실패했습니다.');
+        })
+        .finally(() => { if (alive) setFinding(false); });
+    }, 250);
+    return () => { alive = false; window.clearTimeout(timer); };
+  }, [qRaw, searching, sort, order]);
+
   // ── 트리 계산 ───────────────────────────────────────────────
-  const q = query.trim().toLowerCase();
-  const searching = q.length > 0;
+  const q = qRaw.toLowerCase();
   const hit = (name: string) => name.toLowerCase().includes(q);
+  /** 서버 검색이 살아 있으면 그 결과, 실패했으면 이름 폴백 */
+  const serverFound = searching && found !== null;
+  /** 화면에 그릴 맵 모음 — 검색 중에는 검색 결과 */
+  const mapPool = serverFound ? found : (maps ?? []);
+  /** 이 맵을 검색 결과로 볼지 — 서버 결과는 전부 맞은 것이다 */
+  const mapHit = (m: MapListItem) => (serverFound ? true : hit(m.title || ''));
 
   /** parentId → 그 아래 폴더들 (이름순. 이름 내림차순 정렬 중이면 역순) */
   const foldersByParent = useMemo(() => {
@@ -145,13 +190,13 @@ export function MapBrowser({
   /** folderId → 그 폴더에 **직접** 든 맵들 (서버 정렬 순서 그대로) */
   const mapsByFolder = useMemo(() => {
     const m = new Map<string, MapListItem[]>();
-    for (const x of maps ?? []) {
+    for (const x of mapPool) {
       const k = x.folderId ?? '';
       const arr = m.get(k);
       if (arr) arr.push(x); else m.set(k, [x]);
     }
     return m;
-  }, [maps]);
+  }, [mapPool]);
 
   /**
    * 검색 중일 때 **이 폴더를 화면에 남길지** — 폴더 이름이 맞거나,
@@ -164,7 +209,7 @@ export function MapBrowser({
       const cached = memo.get(id);
       if (cached !== undefined) return cached;
       memo.set(id, false); // 순환 방어
-      let ok = (mapsByFolder.get(id) ?? []).some((m) => hit(m.title || ''));
+      let ok = (mapsByFolder.get(id) ?? []).some((m) => mapHit(m));
       if (!ok) {
         for (const c of foldersByParent.get(id) ?? []) {
           if (hit(c.name) || walk(c.folderId)) { ok = true; break; }
@@ -174,9 +219,9 @@ export function MapBrowser({
       return ok;
     };
     return (f: FolderItem) => hit(f.name) || walk(f.folderId);
-    // hit 은 q 에서 파생 — q 를 의존성으로 둔다
+    // hit/mapHit 은 q·serverFound 에서 파생 — 둘을 의존성으로 둔다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [foldersByParent, mapsByFolder, q]);
+  }, [foldersByParent, mapsByFolder, q, serverFound]);
 
   /** 화면에 그릴 줄 목록 (폴더 먼저, 그다음 그 위치의 맵) */
   const rows = useMemo(() => {
@@ -189,14 +234,14 @@ export function MapBrowser({
         if (searching || expanded.has(f.folderId)) walk(f.folderId, depth + 1);
       }
       for (const m of mapsByFolder.get(parentId) ?? []) {
-        if (searching && !hit(m.title || '')) continue;
+        if (searching && !mapHit(m)) continue;
         out.push({ kind: 'map', depth, map: m });
       }
     };
     walk('', 0);
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q]);
+  }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q, serverFound]);
 
   const shownMaps = useMemo(
     () => rows.filter((r): r is Extract<Row, { kind: 'map' }> => r.kind === 'map').map((r) => r.map),
@@ -467,15 +512,22 @@ export function MapBrowser({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
-            placeholder="🔍 전체에서 이름으로 찾기"
-            title="문서함 전체(하위 폴더 포함)의 폴더·맵 이름으로 찾습니다 (Esc 로 지움)"
+            placeholder="🔍 이름 · 맵 내용으로 찾기"
+            title={'문서함 전체(하위 폴더 포함)에서 찾습니다 — 폴더·맵 이름은 물론'
+              + ' **맵 안의 노드 텍스트·노트·태그**까지 봅니다 (Esc 로 지움)'}
             style={{
-              height: 24, width: 196, padding: '0 8px', borderRadius: 6,
+              height: 24, width: 210, padding: '0 8px', borderRadius: 6,
               marginLeft: 4, fontSize: 11.5,
               border: `1px solid ${query ? t.primaryBorder : t.border}`,
               background: t.surfaceAlt, color: t.text, outline: 'none',
             }}
           />
+          {finding && (
+            <span
+              data-testid="browser-search-busy"
+              style={{ fontSize: 11, color: t.textMuted, marginLeft: 2 }}
+            >찾는 중…</span>
+          )}
           {query && (
             <button
               data-testid="browser-search-clear"
@@ -535,7 +587,22 @@ export function MapBrowser({
 
       {/* 오류 배너 — 서버가 준 이유를 그대로 보여 준다. 스키마 미적용
           (503)이면 "schema.sql 을 적용하라"는 안내가 여기에 뜬다. */}
-      {err && (
+      {/* 목록 상한 안내 — 검색 중에는 "받아 둔 목록"이 아니라 **검색 결과**
+          기준으로 말한다. 서버가 전체를 훑으므로 "검색으로 좁혀 주세요"는
+          이미 한 일이라 맞지 않는다. */}
+      {searching && serverFound && foundTotal > (found?.length ?? 0) && (
+        <div
+          data-testid="browser-search-capped"
+          style={{
+            margin: '10px 14px 0', padding: '10px 12px', borderRadius: 8,
+            background: '#d9534f11', border: '1px solid #d9534f55',
+            color: '#b33', fontSize: 12.5, lineHeight: 1.65,
+          }}
+        >
+          ⚠ 검색 결과가 {foundTotal}개라 {found?.length}개만 표시합니다 — 검색어를 더 구체적으로 적어 주세요.
+        </div>
+      )}
+      {err && !searching && (
         <div
           data-testid="browser-error"
           style={{
@@ -545,6 +612,20 @@ export function MapBrowser({
           }}
         >
           ⚠ {err}
+        </div>
+      )}
+      {/* 내용 검색이 실패하면 **이름 검색으로 물러선다** — 검색창이 통째로
+          먹통이 되는 것보다 낫다. 무엇이 줄었는지는 분명히 말해 준다. */}
+      {findErr && (
+        <div
+          data-testid="browser-search-error"
+          style={{
+            margin: '10px 14px 0', padding: '10px 12px', borderRadius: 8,
+            background: '#d9534f11', border: '1px solid #d9534f55',
+            color: '#b33', fontSize: 12.5, lineHeight: 1.65,
+          }}
+        >
+          ⚠ 내용 검색에 실패했습니다 — 지금은 <b>이름</b>으로만 찾고 있습니다. ({findErr})
         </div>
       )}
 
@@ -610,7 +691,7 @@ export function MapBrowser({
             style={{ padding: '32px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
             {err ? '목록을 표시할 수 없습니다 — 위 안내를 확인해 주세요.'
               : searching ? (
-                <>‘{query}’ 를 이름에 포함한 폴더·맵이 <b>문서함 전체에</b> 없습니다.<br />
+                <>‘{query}’ 가 <b>이름에도 맵 내용(노드·노트·태그)에도</b> 없습니다.<br />
                 검색어를 지우면 전체가 다시 보입니다.</>
               ) : (
                 <>아직 문서가 없습니다.<br />
@@ -660,7 +741,8 @@ export function MapBrowser({
             </span>
           </div>
         ) : (
-          <div key={`m:${r.map.mapId}`} data-testid="browser-map"
+          <Fragment key={`m:${r.map.mapId}`}>
+          <div data-testid="browser-map"
             className="mm-list-row" aria-selected={cloudMapId === r.map.mapId}
             style={rowStyle}>
             {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
@@ -727,6 +809,25 @@ export function MapBrowser({
                 onClick={() => void deleteMap(r.map)}><I.Trash size={15} /></button>
             </span>
           </div>
+          {/* **어디가 맞았는지** 한 줄 미리보기 (2026-08-08) — 이름이
+              아니라 맵 안(노드·노트·태그)에서 맞았을 때 특히 필요하다.
+              "왜 이 맵이 나왔지?" 를 열어 보지 않고 알 수 있다. 서버가
+              맞은 줄만 잘라 보내므로 목록이 무거워지지 않는다. */}
+          {r.map.snippet && (
+            <div data-testid="browser-map-snippet"
+              style={{
+                padding: '0 14px 6px', display: 'flex', gap: 6,
+                alignItems: 'baseline', fontSize: 11.5, color: t.textMuted,
+              }}>
+              <span style={{ paddingLeft: 22 + r.depth * 14, color: t.textSubtle, flexShrink: 0 }}>
+                {r.map.matchIn === 'title' ? '이름 일치 · 내용' : '내용'}
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                …{r.map.snippet}…
+              </span>
+            </div>
+          )}
+          </Fragment>
         )))}
       </div>
 
@@ -746,7 +847,8 @@ export function MapBrowser({
         color: t.textSubtle, fontSize: 11, lineHeight: 1.6,
       }}>
         폴더 이름을 누르면 <b>그 자리에서 펼쳐집니다</b>. 검색은 문서함
-        <b> 전체</b>를 훑고, 맞는 파일이 든 폴더는 저절로 펼쳐집니다.
+        <b> 전체</b>에서 이름과 <b>맵 안의 내용(노드·노트·태그)</b>을 함께
+        찾고, 맞는 파일이 든 폴더는 저절로 펼쳐집니다.
         편집 중인 맵이 있으면 다른 맵은 <b>브라우저 새 탭</b>에서 열립니다.
         폴더는 <b>비어 있을 때만</b> 삭제할 수 있습니다.
       </div>

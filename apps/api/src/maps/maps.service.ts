@@ -100,6 +100,10 @@ export class MapsService {
    * GET /maps — 내 맵 목록 (소유 기준, 소프트삭제 제외 기본).
    *  · folder: 'root' = 최상위만 · <uuid> = 그 폴더만 · 생략 = 전부
    *  · sort/order: 이름·수정일 오름/내림 (문서 브라우저 정렬 — 2026-08-02)
+   *  · q: **내용 검색** (2026-08-08) — 맵 제목뿐 아니라 맵 안(노드 텍스트·
+   *    노트·태그)까지 찾는다. 매칭 대상은 저장할 때 DB 트리거가 만들어 둔
+   *    map_documents.search_text (schema.sql 참조) — 조회 때 doc 을 파싱
+   *    하지 않으므로 맵이 많아도 느려지지 않는다.
    */
   async list(
     userId: string,
@@ -109,6 +113,7 @@ export class MapsService {
       sort?: 'title' | 'createdAt' | 'updatedAt'
         | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
       order?: 'asc' | 'desc';
+      q?: string;
     },
   ) {
     const page = Math.max(1, opts.page ?? 1);
@@ -118,6 +123,28 @@ export class MapsService {
 
     const params: unknown[] = [userId];
     let where = `m.owner_id = $1 AND m.deleted_at IS ${wantDeleted ? 'NOT NULL' : 'NULL'}`;
+
+    // 검색어 — ILIKE 패턴 문자(%, _)와 이스케이프 문자는 그대로 찾도록
+    // 막는다. 안 그러면 '_' 하나로 아무 한 글자나 걸린다.
+    const raw = (opts.q ?? '').trim();
+    const searching = raw.length > 0;
+    let pLike = 0;
+    if (searching) {
+      params.push(`%${raw.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+      pLike = params.length;
+      // 내용 조건은 **하위 질의**로 뺀다. 실측으로 정한 형태다(맵 3,000개):
+      //  · `m.title ILIKE … OR d.search_text ILIKE …` (조인한 두 테이블에
+      //    걸친 OR) → 어느 인덱스도 못 쓰고 통째로 훑는다. 337ms.
+      //  · 하위 질의 + **그 안에서 소유자까지** 좁히기 → 0.25ms.
+      // 하위 질의 안의 소유자 조건이 핵심이다. 없으면 3글자 이상은
+      // trigram 인덱스로 빠르지만, **2글자 검색**(한국어에서 매우 흔하다)
+      // 은 trigram 이 못 도는 패턴이라 **다른 사용자의 문서까지** 전부
+      // 훑는다 — 느린 것도 문제지만 남의 데이터를 훑는 것 자체가 문제다.
+      where += ` AND (m.title ILIKE $${pLike} ESCAPE '\\'`
+        + ` OR m.id IN (SELECT s.map_id FROM public.map_documents s`
+        + ` JOIN public.maps m2 ON m2.id = s.map_id AND m2.owner_id = $1`
+        + ` WHERE s.search_text ILIKE $${pLike} ESCAPE '\\'))`;
+    }
     if (opts.folder === 'root') {
       where += ' AND m.folder_id IS NULL';
     } else if (opts.folder) {
@@ -136,8 +163,47 @@ export class MapsService {
       attachCount: 'd.attach_count',
       attachBytes: 'd.attach_bytes',
     };
+    // CTE 밖에서 다시 정렬할 때 쓸 같은 기준 (컬럼은 p.* 로 노출된다).
+    // ★ CTE 안의 ORDER BY 는 "어느 행을 가져올지"만 정한다 — 바깥 SELECT
+    //   에 ORDER BY 가 없으면 반환 순서는 보장되지 않는다.
+    const SORT_SQL_OUT: Record<string, string> = {
+      title: 'lower(btrim(p.title))',
+      createdAt: 'p.created_at',
+      updatedAt: 'p.updated_at',
+      nodeCount: 'p.node_count',
+      docBytes: 'p.doc_bytes',
+      attachCount: 'p.attach_count',
+      attachBytes: 'p.attach_bytes',
+    };
     const sortCol = SORT_SQL[opts.sort ?? 'updatedAt'] ?? 'm.updated_at';
+    const sortColOut = SORT_SQL_OUT[opts.sort ?? 'updatedAt'] ?? 'p.updated_at';
     const dir = opts.order === 'asc' ? 'ASC' : 'DESC';
+
+    // 검색 결과 **미리보기** — "어디가 맞았는지" 한 줄을 같이 준다.
+    // 서버 부담을 늘리지 않는 것이 조건이라, 두 가지를 지킨다:
+    //  ⑴ 먼저 페이지(LIMIT) 를 CTE 로 확정하고, **그 20~500행에 대해서만**
+    //     미리보기를 계산한다. 목록 SELECT 에 그냥 넣으면 정렬 전에
+    //     매칭된 전체 행에서 돌 수 있다.
+    //  ⑵ search_text 는 CTE 안에서만 쓰고 밖으로 내보내지 않는다 —
+    //     큰 맵의 평문(수십 KB)이 응답에 실려 나가지 않는다.
+    // 미리보기 = 맞은 **줄 하나**(= 노드/노트/태그 하나)에서 매치 앞 40자
+    // 부터 160자. 줄 단위로 저장해 둔 덕에 문장이 중간에서 잘리지 않는다.
+    // ★ search_text 는 **검색할 때만** 고른다 — 늘 참조하면 스키마를
+    //   아직 적용하지 않은 서버에서 문서함 목록이 통째로 죽는다
+    //   (검색만 안 되는 게 아니라 목록 자체가 503).
+    // 검색어 원문(미리보기에서 매치 위치를 잡는 데 쓴다)은 **목록
+    // 질의에만** 붙인다 — 개수 질의에는 쓰이지 않아, 같이 넘기면
+    // "parameter $N 의 타입을 알 수 없다" 로 죽는다.
+    const pRaw = searching ? params.length + 3 : 0;
+    const snippetSql = searching
+      ? `, (SELECT left(substring(ln FROM greatest(1,
+              position(lower($${pRaw}::text) IN lower(ln)) - 40)), 160)
+             FROM unnest(string_to_array(p.search_text, E'\\n')) AS ln
+            WHERE ln ILIKE $${pLike} ESCAPE '\\'
+            LIMIT 1) AS snippet,
+         CASE WHEN p.title ILIKE $${pLike} ESCAPE '\\'
+              THEN 'title' ELSE 'content' END AS match_in`
+      : '';
 
     const [list, count] = await Promise.all([
       this.db.query<MapRow & {
@@ -146,15 +212,26 @@ export class MapsService {
         attach_count: number | null;
         attach_bytes: string | null;
         doc_bytes: string | null;
+        snippet?: string | null;
+        match_in?: 'title' | 'content';
       }>(
-        `SELECT m.*, d.node_count, d.attach_count, d.attach_bytes,
-                octet_length(d.doc::text) AS doc_bytes
-           FROM public.maps m
-           LEFT JOIN public.map_documents d ON d.map_id = m.id
-          WHERE ${where}
-          ORDER BY ${sortCol} ${dir} NULLS LAST, m.id
-          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset],
+        `WITH p AS (
+           SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
+                  m.created_at, m.updated_at,
+                  d.node_count, d.attach_count, d.attach_bytes,
+                  octet_length(d.doc::text) AS doc_bytes${searching ? ',\n                  d.search_text' : ''}
+             FROM public.maps m
+             LEFT JOIN public.map_documents d ON d.map_id = m.id
+            WHERE ${where}
+            ORDER BY ${sortCol} ${dir} NULLS LAST, m.id
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+         )
+         SELECT p.id, p.title, p.folder_id, p.kind, p.deleted_at,
+                p.created_at, p.updated_at, p.node_count, p.attach_count,
+                p.attach_bytes, p.doc_bytes${snippetSql}
+           FROM p
+          ORDER BY ${sortColOut} ${dir} NULLS LAST, p.id`,
+        searching ? [...params, limit, offset, raw] : [...params, limit, offset],
       ),
       this.db.query<{ total: string }>(
         `SELECT COUNT(*)::text AS total FROM public.maps m WHERE ${where}`,
@@ -176,6 +253,10 @@ export class MapsService {
         docBytes: m.doc_bytes === null ? null : Number(m.doc_bytes),
         attachCount: m.attach_count,
         attachBytes: m.attach_bytes === null ? null : Number(m.attach_bytes),
+        // 검색 중에만 채워진다 — 맞은 줄 미리보기와 어디서 맞았는지
+        ...(searching
+          ? { snippet: m.snippet ?? null, matchIn: m.match_in ?? 'content' }
+          : {}),
       })),
       total: Number(count.rows[0]?.total ?? 0),
     };

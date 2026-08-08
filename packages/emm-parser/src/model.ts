@@ -52,6 +52,12 @@ export type NodeColorKey =
 
 // --- Node style (spec NODE_STYLE / NS-01..NS-05) ---------------------------
 export type ShapeType =
+  /**
+   * 도형 없음 — 테두리·채움 없이 **글자만** 놓는다 (2026-08-08 사용자 요청:
+   * "노드에 도형 없이 텍스트만 입력하는 경우도 있다").
+   * 노드는 그대로 있으므로 선택·연결선·＋버튼·접기는 전부 동작한다.
+   */
+  | 'none'
   | 'rounded'
   | 'rectangle'
   | 'pill'

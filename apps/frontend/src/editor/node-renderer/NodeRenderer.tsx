@@ -110,6 +110,10 @@ function NodeShape({
     filter,
   };
 
+  // 도형 없음 — 아무것도 그리지 않는다. 노드 자체는 그대로라 선택
+  // 점선·연결선·＋버튼·접기 칩은 모두 따로 그려지므로 영향이 없다.
+  if (shape === 'none') return null;
+
   if (shape === 'ellipse') {
     return <ellipse cx={n.x} cy={n.y} rx={n.w / 2} ry={n.h / 2} {...common} />;
   }
@@ -264,8 +268,13 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
 
   const style = n.style ?? {};
   // 도형: 노드별 설정 → 레벨 기본 도형(맵 설정) → 둥근
-  const shape: ShapeType =
+  const shapeSetting: ShapeType =
     style.shapeType ?? (levelShape(n.depth) as ShapeType | undefined) ?? 'rounded';
+  // **검색 결과일 때는 '도형 없음'이어도 박스를 그린다** — 검색 강조가
+  // 노란 채움 + 붉은 테두리라, 도형을 안 그리면 강조가 통째로 안 보인다.
+  const shape: ShapeType =
+    searchHit && shapeSetting === 'none' ? 'rounded' : shapeSetting;
+  const noShape = shapeSetting === 'none';
 
   // 검색 결과 표시 — 어떤 스타일보다 우선해 노란 채움 + 붉은 테두리
   const fill = searchHit ? '#FFE066' : (style.fillColor ?? colors.fill);
@@ -274,10 +283,15 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   // 글자가 노란 배경에 묻혀 안 보이던 문제 (라이트/다크 공통 고정색)
   // 사용자 지정 색이 있는 노드는 라이트/다크 전환에도 글자색 불변:
   // 글자색 지정 = 그대로, 채움색만 지정 = 채움 밝기에 맞는 고정색.
+  // **도형이 없으면 글자가 캔버스 배경 위에 놓인다.** 채움색에서 유도한
+  // 색(readableTextOn)이나 도형 위에 맞춘 팔레트 색(colors.text)을 그대로
+  // 쓰면 다크 모드에서 배경에 묻힌다 — 테마 본문색이 두 모드 모두 안전하다.
   const textColor = searchHit
     ? '#1F1B16'
     : (style.textColor ??
-       (style.fillColor ? readableTextOn(style.fillColor) : colors.text));
+       (noShape
+         ? t.text
+         : style.fillColor ? readableTextOn(style.fillColor) : colors.text));
 
   const lines = n._lines || String(n.text || '').split('\n');
   const lineHeight = n._lineHeight ?? (n.depth === 0 ? 24 : 18);

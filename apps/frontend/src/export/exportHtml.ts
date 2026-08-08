@@ -1034,9 +1034,16 @@ const VIEWER_JS = String.raw`
     // 검색 결과 — 어떤 스타일보다 우선해 또렷하게 (에디터와 동일).
     // 글자도 항상 진한 색 — 다크 모드에서 밝은 글자가 노란 배경에
     // 묻혀 안 보이던 문제 (라이트/다크 공통 고정색)
+    // 도형 없음 (2026-08-08) — 테두리·채움 없이 글자만. 글자가 캔버스
+    // 배경 위에 놓이므로 채움색에서 유도한 색이나 패밀리 색을 쓰면
+    // 다크 모드에서 묻힌다. 본문 글자색(l2.text)이 두 모드 모두 안전하다.
+    var noShape = stPre.shapeType === 'none';
     var nodeText2 = stPre.textColor ||
-      (stPre.fillColor ? readableOn(stPre.fillColor) : fam0.text);
+      (noShape ? SKIN.fam.l2.text
+        : (stPre.fillColor ? readableOn(stPre.fillColor) : fam0.text));
     if (SEARCHHIT === node.id) {
+      // 검색 강조는 도형 없음이어도 박스를 그려 보여 준다 (에디터와 동일)
+      noShape = false;
       nodeFill2 = '#FFE066'; nodeStroke2 = '#DC2626'; nodeText2 = '#1F1B16';
     }
     var kids = node.children || [];
@@ -1116,13 +1123,15 @@ const VIEWER_JS = String.raw`
     });
     var isRoot = depth === 0;
     var x0 = node._cx - node._w / 2, y0 = node._cy - node._h / 2;
-    el('rect', {
-      x: x0, y: y0, width: node._w, height: node._h,
-      rx: isRoot ? 13 : 9,
-      fill: nodeFill2,
-      stroke: isRoot ? (stPre.borderColor || SKIN.fam.root.fill) : nodeStroke2,
-      'stroke-width': isRoot ? 0 : 1.4
-    }, g);
+    if (!noShape) {
+      el('rect', {
+        x: x0, y: y0, width: node._w, height: node._h,
+        rx: isRoot ? 13 : 9,
+        fill: nodeFill2,
+        stroke: isRoot ? (stPre.borderColor || SKIN.fam.root.fill) : nodeStroke2,
+        'stroke-width': isRoot ? 0 : 1.4
+      }, g);
+    }
 
     var textColor = nodeText2;
     var tx = x0 + PAD_X;

@@ -71,6 +71,7 @@ const ALIGN_OPTIONS: { key: TextAlign | ''; label: string }[] = [
 // 레벨별 도형 선택지 — '' = 기본(둥근)
 const SHAPE_OPTIONS: { key: ShapeType | ''; label: string }[] = [
   { key: '',              label: '기본 (둥근)' },
+  { key: 'none',          label: '없음 (글자만)' },
   { key: 'rounded',       label: '둥근' },
   { key: 'rectangle',     label: '사각' },
   { key: 'pill',          label: '캡슐' },

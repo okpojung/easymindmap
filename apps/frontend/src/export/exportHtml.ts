@@ -23,7 +23,10 @@
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
 import brandLogoRaw from '@/assets/brand-logo.svg?raw';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
-import { setLevelFontConfig, levelFontFamily, levelTextAlign } from '@/editor/node-renderer/sizeNodeForText';
+import {
+  setLevelFontConfig, levelFontFamily, levelTextAlign,
+  setLevelShapeConfig, levelShape,
+} from '@/editor/node-renderer/sizeNodeForText';
 import { parseMdCode as parseMdCodeEditor } from '@/editor/node-renderer/mdCode';
 import { parseMdTable as parseMdTableEditor } from '@/editor/node-renderer/mdTable';
 import { computeNodeChecks } from '@/editor/node-renderer/mdCheck';
@@ -148,19 +151,30 @@ function toExportNode(
     images: node.images?.length ? node.images : undefined,
     // 실효 정렬을 굽는다 — 뷰어는 맵 설정(레벨별 맞춤)을 모른다
     textAlign: node.textAlign ?? levelTextAlign(depth),
-    style: node.style && (node.style.strike || node.style.underline ||
-      node.style.highlight ||
-      node.style.fillColor || node.style.borderColor || node.style.textColor)
-      ? {
-        strike: node.style.strike || undefined,
-        underline: node.style.underline || undefined,
-        highlight: node.style.highlight || undefined,
-        // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용 (원본 색 파리티)
-        fillColor: node.style.fillColor || undefined,
-        borderColor: node.style.borderColor || undefined,
-        textColor: node.style.textColor || undefined,
-      }
-      : undefined,
+    // 실효 도형을 굽는다 — textAlign 과 같은 이유로 뷰어는 맵 설정
+    // (레벨별 기본 도형)을 모른다. 노드별 지정 → 레벨 기본 순.
+    // ★ 여기에 shapeType 을 안 실어서 뷰어가 '도형 없음'을 통째로
+    //   못 받던 버그가 있었다 (2026-08-08). 아래 style 조건과 필드
+    //   **양쪽 모두**에 있어야 한다 — 조건에서 빠지면 도형만 지정한
+    //   노드는 style 자체가 undefined 가 되어 다시 사라진다.
+    style: (() => {
+      const shapeType = node.style?.shapeType ?? levelShape(depth);
+      const s = node.style;
+      const has = shapeType || (s && (s.strike || s.underline || s.highlight ||
+        s.fillColor || s.borderColor || s.textColor));
+      return has
+        ? {
+          strike: s?.strike || undefined,
+          underline: s?.underline || undefined,
+          highlight: s?.highlight || undefined,
+          // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용 (원본 색 파리티)
+          fillColor: s?.fillColor || undefined,
+          borderColor: s?.borderColor || undefined,
+          textColor: s?.textColor || undefined,
+          shapeType: shapeType || undefined,
+        }
+        : undefined;
+    })(),
     layoutType: node.layoutType,
     side: resolveSide?.(node.id) ?? node.side,
     pos: resolvePos?.(node.id),
@@ -1124,13 +1138,68 @@ const VIEWER_JS = String.raw`
     var isRoot = depth === 0;
     var x0 = node._cx - node._w / 2, y0 = node._cy - node._h / 2;
     if (!noShape) {
-      el('rect', {
-        x: x0, y: y0, width: node._w, height: node._h,
-        rx: isRoot ? 13 : 9,
+      // 도형 — 에디터 NodeShape 와 **같은 좌표 공식**을 쓴다.
+      // (예전에는 무엇을 골라도 사각형만 그려서, 육각형·타원 등이
+      //  뷰어에서 전부 네모로 보였다. 2026-08-08)
+      var sw = isRoot ? 0 : 1.4;
+      var com = {
         fill: nodeFill2,
         stroke: isRoot ? (stPre.borderColor || SKIN.fam.root.fill) : nodeStroke2,
-        'stroke-width': isRoot ? 0 : 1.4
-      }, g);
+        'stroke-width': sw
+      };
+      // class 'mm-box' = **노드 도형** 표식. 코드·표 패널 배경도 같은
+      // 그룹 안의 rect 라, 이게 없으면 "도형이 남았다"고 잘못 읽힌다.
+      var put = function (tag, extra) {
+        var at = { 'class': 'mm-box' }; var k;
+        for (k in extra) at[k] = extra[k];
+        for (k in com) at[k] = com[k];
+        return el(tag, at, g);
+      };
+      var x1 = x0 + node._w, y1 = y0 + node._h;
+      var cx = node._cx, cy = node._cy, W = node._w, H = node._h;
+      var sh = stPre.shapeType;
+      if (sh === 'ellipse') {
+        put('ellipse', { cx: cx, cy: cy, rx: W / 2, ry: H / 2 });
+      } else if (sh === 'diamond') {
+        put('polygon', { points: cx + ',' + y0 + ' ' + x1 + ',' + cy
+          + ' ' + cx + ',' + y1 + ' ' + x0 + ',' + cy });
+      } else if (sh === 'hexagon') {
+        var hi = Math.min(22, W * 0.18);
+        put('polygon', { points: (x0 + hi) + ',' + y0 + ' ' + (x1 - hi) + ',' + y0
+          + ' ' + x1 + ',' + cy + ' ' + (x1 - hi) + ',' + y1
+          + ' ' + (x0 + hi) + ',' + y1 + ' ' + x0 + ',' + cy });
+      } else if (sh === 'parallelogram') {
+        var ps = Math.min(20, W * 0.16);
+        put('polygon', { points: (x0 + ps) + ',' + y0 + ' ' + x1 + ',' + y0
+          + ' ' + (x1 - ps) + ',' + y1 + ' ' + x0 + ',' + y1 });
+      } else if (sh === 'arrow-left') {
+        var al = Math.min(26, W * 0.24);
+        put('polygon', { points: x0 + ',' + cy + ' ' + (x0 + al) + ',' + y0
+          + ' ' + x1 + ',' + y0 + ' ' + x1 + ',' + y1 + ' ' + (x0 + al) + ',' + y1 });
+      } else if (sh === 'arrow-right') {
+        var ar = Math.min(26, W * 0.24);
+        put('polygon', { points: x1 + ',' + cy + ' ' + (x1 - ar) + ',' + y1
+          + ' ' + x0 + ',' + y1 + ' ' + x0 + ',' + y0 + ' ' + (x1 - ar) + ',' + y0 });
+      } else if (sh === 'cylinder') {
+        var cry = Math.min(9, H * 0.18);
+        put('path', { d: 'M ' + x0 + ' ' + (y0 + cry) + ' V ' + (y1 - cry)
+          + ' A ' + (W / 2) + ' ' + cry + ' 0 0 0 ' + x1 + ' ' + (y1 - cry)
+          + ' V ' + (y0 + cry) });
+        put('ellipse', { cx: cx, cy: y0 + cry, rx: W / 2, ry: cry });
+      } else if (sh === 'star') {
+        var pts = [];
+        for (var si2 = 0; si2 < 10; si2++) {
+          var ang = -Math.PI / 2 + (si2 * Math.PI) / 5;
+          var kk = si2 % 2 === 0 ? 1 : 0.45;
+          pts.push((cx + Math.cos(ang) * (W / 2) * kk) + ','
+            + (cy + Math.sin(ang) * (H / 2) * kk));
+        }
+        put('polygon', { points: pts.join(' ') });
+      } else {
+        // 사각형 계열 — 에디터와 같은 모서리 반경
+        var rx2 = sh === 'rectangle' ? 2 : sh === 'pill' ? H / 2 : (isRoot ? 13 : 9);
+        put('rect', { x: x0, y: y0, width: W, height: H, rx: rx2 });
+      }
     }
 
     var textColor = nodeText2;
@@ -2811,6 +2880,10 @@ export function buildStandaloneHtml(
   // 노드마다 실어 보낸다 — 뷰어가 에디터 화면과 똑같이 그린다.
   // 맵 설정(레벨별 폰트)도 측정에 반영하고 글꼴(ff)을 노드마다 실어 보낸다.
   setLevelFontConfig(map.settings?.levelFonts);
+  // 레벨별 기본 도형도 먹여야 levelShape(depth) 가 맵 설정을 안다
+  // (안 먹이면 이전 맵의 설정이 남거나 빈 값이 되어, 맵 설정으로만
+  //  지정한 도형이 뷰어에서 통째로 무시된다)
+  setLevelShapeConfig(map.settings?.levelShapes);
   const laid = computeLayout(map, layoutType, 700, 400, spacing);
   // 체크리스트 항목 범위 — 에디터(NodeRenderer)와 같은 재구성 규칙으로
   // 계산해 노드마다 실어 보낸다 (뷰어는 계산 없이 그대로 그린다)

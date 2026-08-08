@@ -1138,13 +1138,73 @@ const VIEWER_JS = String.raw`
     var isRoot = depth === 0;
     var x0 = node._cx - node._w / 2, y0 = node._cy - node._h / 2;
     if (!noShape) {
-      el('rect', {
-        x: x0, y: y0, width: node._w, height: node._h,
-        rx: isRoot ? 13 : 9,
+      // 도형 — 에디터 NodeShape 와 **같은 좌표 공식**을 쓴다. 예전에는
+      // 무엇을 골라도 사각형만 그려서 육각·타원·별이 뷰어에서 전부
+      // 네모로 보였다 (도형 값 자체가 안 실려 오던 시절엔 드러나지
+      // 않던 문제 — 2026-08-08).
+      // class 'mm-box' = **노드 도형** 표식. 코드·표 패널 배경도 같은
+      // 그룹 안의 rect 라, 이게 없으면 도형을 셀 때 섞인다.
+      var com = {
+        'class': 'mm-box',
         fill: nodeFill2,
         stroke: isRoot ? (stPre.borderColor || SKIN.fam.root.fill) : nodeStroke2,
         'stroke-width': isRoot ? 0 : 1.4
-      }, g);
+      };
+      var put = function (tag, extra) {
+        var at = {}, k;
+        for (k in extra) at[k] = extra[k];
+        for (k in com) at[k] = com[k];
+        return el(tag, at, g);
+      };
+      var x1s = x0 + node._w, y1s = y0 + node._h;
+      var cxs = node._cx, cys = node._cy, W = node._w, H = node._h;
+      var sh = stPre.shapeType;
+      if (sh === 'ellipse') {
+        put('ellipse', { cx: cxs, cy: cys, rx: W / 2, ry: H / 2 });
+      } else if (sh === 'diamond') {
+        put('polygon', { points: cxs + ',' + y0 + ' ' + x1s + ',' + cys
+          + ' ' + cxs + ',' + y1s + ' ' + x0 + ',' + cys });
+      } else if (sh === 'hexagon') {
+        var hi = Math.min(22, W * 0.18);
+        put('polygon', { points: (x0 + hi) + ',' + y0 + ' ' + (x1s - hi) + ',' + y0
+          + ' ' + x1s + ',' + cys + ' ' + (x1s - hi) + ',' + y1s
+          + ' ' + (x0 + hi) + ',' + y1s + ' ' + x0 + ',' + cys });
+      } else if (sh === 'parallelogram') {
+        var ps = Math.min(20, W * 0.16);
+        put('polygon', { points: (x0 + ps) + ',' + y0 + ' ' + x1s + ',' + y0
+          + ' ' + (x1s - ps) + ',' + y1s + ' ' + x0 + ',' + y1s });
+      } else if (sh === 'arrow-left') {
+        // ◀ 촉이 왼쪽 중앙, 몸통은 오른쪽
+        var al = Math.min(26, W * 0.24);
+        put('polygon', { points: x0 + ',' + cys + ' ' + (x0 + al) + ',' + y0
+          + ' ' + x1s + ',' + y0 + ' ' + x1s + ',' + y1s + ' ' + (x0 + al) + ',' + y1s });
+      } else if (sh === 'arrow-right') {
+        // ▶ 촉이 오른쪽 중앙
+        var ar = Math.min(26, W * 0.24);
+        put('polygon', { points: x1s + ',' + cys + ' ' + (x1s - ar) + ',' + y1s
+          + ' ' + x0 + ',' + y1s + ' ' + x0 + ',' + y0 + ' ' + (x1s - ar) + ',' + y0 });
+      } else if (sh === 'cylinder') {
+        // ⛁ 위 뚜껑 타원 + 몸통 + 아래 볼록 바닥
+        var cry = Math.min(9, H * 0.18);
+        put('path', { d: 'M ' + x0 + ' ' + (y0 + cry) + ' V ' + (y1s - cry)
+          + ' A ' + (W / 2) + ' ' + cry + ' 0 0 0 ' + x1s + ' ' + (y1s - cry)
+          + ' V ' + (y0 + cry) });
+        put('ellipse', { cx: cxs, cy: y0 + cry, rx: W / 2, ry: cry });
+      } else if (sh === 'star') {
+        // ★ 박스에 맞춰 늘린 5각 별 (글자는 중앙)
+        var pts = [];
+        for (var sti = 0; sti < 10; sti++) {
+          var ang = -Math.PI / 2 + (sti * Math.PI) / 5;
+          var kk = sti % 2 === 0 ? 1 : 0.45;
+          pts.push((cxs + Math.cos(ang) * (W / 2) * kk) + ','
+            + (cys + Math.sin(ang) * (H / 2) * kk));
+        }
+        put('polygon', { points: pts.join(' ') });
+      } else {
+        // 사각형 계열 — 뷰어의 기존 모서리 반경을 유지 (루트 13 / 그 외 9)
+        put('rect', { x: x0, y: y0, width: W, height: H,
+          rx: sh === 'rectangle' ? 2 : sh === 'pill' ? H / 2 : (isRoot ? 13 : 9) });
+      }
     }
 
     var textColor = nodeText2;

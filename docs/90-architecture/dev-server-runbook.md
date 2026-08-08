@@ -461,9 +461,24 @@ docker network inspect $(docker network ls -q) 2>/dev/null | grep -i subnet
 > 끝낸다. 출처가 허용 목록 밖이어도 `Access-Control-Allow-Origin` 헤더만
 > 빠질 뿐 여전히 204 다. **OPTIONS 에 401 이 보이면 무조건 앞단이다.**
 
-**조치**: NPM → Proxy Hosts → **API 호스트** → Edit → Access List →
-`Publicly Accessible` → Save. (프런트 호스트가 아니다 — 프런트는 화면이
-뜨므로 이미 열려 있다.)
+**조치**: NPM → Proxy Hosts → Edit → Access List → `Publicly Accessible`.
+**대상이 두 곳**이다 (2026-08-07 실측 보강).
+
+| 호스트 | 조치 | 이유 |
+| --- | --- | --- |
+| **API**(`api-dev.…`) | **푼다** | 브라우저 XHR — preflight 401 |
+| **프런트**(`dev.…`) | **푼다** | 안 풀면 **새 사용자는 앱 화면조차 못 본다**(Basic 인증 팝업) |
+| 인증(`auth-dev.…`) | 이미 열려 있음 | 그래서 **로그인만 되는 것처럼 보였다** |
+| Coolify UI(`coolify-dev.…`) | **건드리지 않는다** | 사람이 직접 여는 관리 화면 |
+
+> **"프런트는 뜨는데 API 만 안 된다"에 속지 말 것.** 프런트도 Access List
+> 가 걸려 있었는데, 개발자 브라우저가 **Basic 인증 자격을 캐시**하고
+> 있어 멀쩡해 보였다. **자격 캐시가 없는 새 브라우저(시크릿 창)** 로
+> 확인해야 진짜 상태가 보인다.
+
+> 사내 전용으로 유지할 생각이면 지금 설정이 맞다 — 대신 외부 접속은
+> VPN 으로만 가능하다. 외부 테스트를 열 계획이면 **공개 범위를 넓히기
+> 전에** 레이트 리밋·가입 통제가 필요하다(백로그 B14).
 
 **"그럼 API 가 무방비 아닌가"** — 아니다. Access List 는 JWT 위에 덧씌운
 이중 잠금이었고, 아래가 그대로 남는다.

@@ -12,6 +12,20 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import { InspectorSection, InspectorRow, ColorSwatchInput } from './InspectorSection';
 
 const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
+  // 도형 없음 — 글자만 놓는다 (2026-08-08 사용자 요청). 미리보기는
+  // "박스가 없다"를 보이려고 **점선 윤곽 + 가운데 글자 획**으로 그린다.
+  { key: 'none',          label: '없음',  shape: (
+    <span style={{
+      display: 'inline-block', width: 22, height: 14, position: 'relative',
+      border: '1.5px dashed currentColor', borderRadius: 3, opacity: 0.4,
+    }}>
+      <span style={{
+        position: 'absolute', inset: 0, display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        fontSize: 10, fontWeight: 700, opacity: 2.2,
+      }}>가</span>
+    </span>
+  ) },
   { key: 'rounded',       label: '둥근',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:6}} /> },
   { key: 'rectangle',     label: '사각',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:2}} /> },
   { key: 'pill',          label: '캡슐',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:999}} /> },

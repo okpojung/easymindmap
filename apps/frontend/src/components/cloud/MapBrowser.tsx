@@ -20,7 +20,8 @@
 //
 // 여는 방식은 mapSession 규칙을 따른다 — 편집 중이면 브라우저 새 탭,
 // 잃을 것이 없으면 이 탭.
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import {
@@ -55,6 +56,39 @@ function fmtDate(iso: string | null | undefined): string {
     `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 type SortOrder = 'asc' | 'desc';
+
+/**
+ * 이름 안의 검색어를 **글자 단위로 강조** (2026-08-08 2차 사용자 결정).
+ * 폴더명·파일명이 맞은 경우는 어디가 맞았는지 이름에서 바로 보이면 되고,
+ * 맵 **내용**이 맞은 경우만 건수(`맵(12건)`)로 알린다 — 여러 노드·노트가
+ * 걸렸을 때 무엇을 보여줄지 고민할 필요가 없어진다.
+ * 색은 에디터·뷰어의 검색 강조와 같은 고정색(노랑 + 진한 글자) — 라이트·
+ * 다크 어느 쪽에서도 묻히지 않는다.
+ */
+function Mark({ text, q }: { text: string; q: string }) {
+  if (!q) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const needle = q.toLowerCase();
+  const out: ReactNode[] = [];
+  let from = 0;
+  let key = 0;
+  for (;;) {
+    const at = lower.indexOf(needle, from);
+    if (at < 0) { out.push(text.slice(from)); break; }
+    if (at > from) out.push(text.slice(from, at));
+    out.push(
+      <mark
+        key={key += 1}
+        style={{
+          background: '#FFE066', color: '#1F1B16',
+          borderRadius: 2, padding: '0 1px',
+        }}
+      >{text.slice(at, at + q.length)}</mark>,
+    );
+    from = at + q.length;
+  }
+  return <>{out}</>;
+}
 
 /** 화면에 그릴 한 줄 — 폴더 또는 맵, `depth` 는 들여쓰기 단계 */
 type Row =
@@ -514,7 +548,9 @@ export function MapBrowser({
             onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
             placeholder="🔍 이름 · 맵 내용으로 찾기"
             title={'문서함 전체(하위 폴더 포함)에서 찾습니다 — 폴더·맵 이름은 물론'
-              + ' **맵 안의 노드 텍스트·노트·태그**까지 봅니다 (Esc 로 지움)'}
+              + ' 맵 안의 노드 텍스트·노트·태그·링크·첨부 파일명까지 봅니다.'
+              + ' 이름이 맞으면 글자가 강조되고, 맵 내용이 맞으면 맵(N건)으로'
+              + ' 표시됩니다 (Esc 로 지움)'}
             style={{
               height: 24, width: 210, padding: '0 8px', borderRadius: 6,
               marginLeft: 4, fontSize: 11.5,
@@ -691,7 +727,7 @@ export function MapBrowser({
             style={{ padding: '32px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
             {err ? '목록을 표시할 수 없습니다 — 위 안내를 확인해 주세요.'
               : searching ? (
-                <>‘{query}’ 가 <b>이름에도 맵 내용(노드·노트·태그)에도</b> 없습니다.<br />
+                <>‘{query}’ 가 <b>이름에도 맵 내용에도</b> 없습니다.<br />
                 검색어를 지우면 전체가 다시 보입니다.</>
               ) : (
                 <>아직 문서가 없습니다.<br />
@@ -721,7 +757,7 @@ export function MapBrowser({
                 {expanded.has(r.folder.folderId) || searching ? '▼' : '▶'}
               </span>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {r.folder.name}
+                <Mark text={r.folder.name} q={searching ? qRaw : ''} />
               </span>
             </button>
             <span style={{ color: t.textSubtle, fontSize: 11 }}>폴더</span>
@@ -741,8 +777,7 @@ export function MapBrowser({
             </span>
           </div>
         ) : (
-          <Fragment key={`m:${r.map.mapId}`}>
-          <div data-testid="browser-map"
+          <div key={`m:${r.map.mapId}`} data-testid="browser-map"
             className="mm-list-row" aria-selected={cloudMapId === r.map.mapId}
             style={rowStyle}>
             {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
@@ -760,7 +795,21 @@ export function MapBrowser({
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}
             >
-              {r.map.title || '(제목 없음)'}
+              <Mark text={r.map.title || '(제목 없음)'} q={searching ? qRaw : ''} />
+              {/* 맵 **내용**에서 맞았으면 건수만 — 어느 노드·노트인지까지
+                  보여 주면 목록이 감당이 안 된다. 열어서 같은 말로 다시
+                  검색하면 그 안에서 하나씩 짚을 수 있다. */}
+              {(r.map.matchCount ?? 0) > 0 && (
+                <span
+                  data-testid="browser-map-matches"
+                  title={`이 맵의 내용(노드·노트·태그·링크·첨부 이름)에서 ${r.map.matchCount}건 찾았습니다`}
+                  style={{
+                    marginLeft: 6, padding: '0 6px', borderRadius: 8,
+                    border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
+                    color: t.primary, fontSize: 10.5, fontWeight: 700,
+                  }}
+                >맵({r.map.matchCount}건)</span>
+              )}
               {cloudMapId === r.map.mapId && (
                 <span style={{ fontSize: 10, marginLeft: 6, color: t.textSubtle }}>편집 중</span>
               )}
@@ -809,25 +858,6 @@ export function MapBrowser({
                 onClick={() => void deleteMap(r.map)}><I.Trash size={15} /></button>
             </span>
           </div>
-          {/* **어디가 맞았는지** 한 줄 미리보기 (2026-08-08) — 이름이
-              아니라 맵 안(노드·노트·태그)에서 맞았을 때 특히 필요하다.
-              "왜 이 맵이 나왔지?" 를 열어 보지 않고 알 수 있다. 서버가
-              맞은 줄만 잘라 보내므로 목록이 무거워지지 않는다. */}
-          {r.map.snippet && (
-            <div data-testid="browser-map-snippet"
-              style={{
-                padding: '0 14px 6px', display: 'flex', gap: 6,
-                alignItems: 'baseline', fontSize: 11.5, color: t.textMuted,
-              }}>
-              <span style={{ paddingLeft: 22 + r.depth * 14, color: t.textSubtle, flexShrink: 0 }}>
-                {r.map.matchIn === 'title' ? '이름 일치 · 내용' : '내용'}
-              </span>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                …{r.map.snippet}…
-              </span>
-            </div>
-          )}
-          </Fragment>
         )))}
       </div>
 
@@ -847,8 +877,10 @@ export function MapBrowser({
         color: t.textSubtle, fontSize: 11, lineHeight: 1.6,
       }}>
         폴더 이름을 누르면 <b>그 자리에서 펼쳐집니다</b>. 검색은 문서함
-        <b> 전체</b>에서 이름과 <b>맵 안의 내용(노드·노트·태그)</b>을 함께
-        찾고, 맞는 파일이 든 폴더는 저절로 펼쳐집니다.
+        <b> 전체</b>에서 이름과 <b>맵 안의 내용(노드·노트·태그·링크·첨부
+        이름)</b>을 함께 찾습니다 — 이름이 맞으면 <b>글자가 강조</b>되고,
+        맵 내용이 맞으면 <b>맵(N건)</b>으로 알립니다. 맞는 파일이 든 폴더는
+        저절로 펼쳐집니다.
         편집 중인 맵이 있으면 다른 맵은 <b>브라우저 새 탭</b>에서 열립니다.
         폴더는 <b>비어 있을 때만</b> 삭제할 수 있습니다.
       </div>

@@ -685,7 +685,13 @@ ALTER TABLE public.map_documents
 -- 깊어도, 스키마가 늘어나도 따라간다.
 --   · `.text`  = 노드 텍스트 + 노트 본문 (둘 다 text 키를 쓴다)
 --   · `.tags[*]` / `.tag` = 태그
--- 링크 주소·첨부 파일명은 넣지 않는다 (요청 범위: 노드·노트·태그).
+--   · `.links[*].label` / `.links[*].url` = 링크 이름·주소 (2026-08-08 2차)
+--   · `.attachments[*].name` = 첨부 파일명 (2026-08-08 2차)
+--
+-- ⚠️ 첨부의 `url` 은 **절대 넣지 않는다** — 2MB 이하 첨부는 data URL 로
+--    문서에 내장되므로(base64), 그걸 색인에 넣으면 색인이 문서만큼
+--    커지고 검색이 base64 쓰레기에 걸린다. 노드 사진 `src` 도 같은 이유
+--    로 제외(키 이름이 달라 애초에 안 잡힌다).
 CREATE OR REPLACE FUNCTION public.map_search_text(doc JSONB)
 RETURNS TEXT
 LANGUAGE sql
@@ -701,6 +707,12 @@ AS $$
             SELECT jsonb_path_query(doc, '$.map.**.tags[*]')
              UNION ALL
             SELECT jsonb_path_query(doc, '$.map.**.tag')
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.**.links[*].label')
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.**.links[*].url')
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.**.attachments[*].name')
           ) q
          WHERE jsonb_typeof(v) = 'string'
       ) d
@@ -722,11 +734,15 @@ CREATE TRIGGER map_documents_search_text
     BEFORE INSERT OR UPDATE OF doc ON public.map_documents
     FOR EACH ROW EXECUTE FUNCTION public.map_documents_sync_search_text();
 
--- 이미 저장된 맵 메우기 — 이 스키마를 처음 적용할 때 한 번만 돈다
--- (search_text 가 이미 있는 행은 건너뛴다).
-UPDATE public.map_documents
-   SET search_text = public.map_search_text(doc)
- WHERE search_text IS NULL;
+-- 이미 저장된 맵 메우기. **값이 달라지는 행만** 쓴다 —
+-- 처음 적용할 때는 전부 채우고, 추출 규칙이 바뀌었을 때(예: 링크·첨부명
+-- 추가)는 그 차이만 다시 쓴다. 안 바뀐 행은 건드리지 않아 테이블이
+-- 부풀지 않는다.
+UPDATE public.map_documents d
+   SET search_text = n.v
+  FROM (SELECT map_id, public.map_search_text(doc) AS v
+          FROM public.map_documents) n
+ WHERE n.map_id = d.map_id AND d.search_text IS DISTINCT FROM n.v;
 
 -- 부분 문자열 검색 가속 (ILIKE '%…%') — 제목·내용 둘 다
 CREATE INDEX IF NOT EXISTS idx_map_documents_search_trgm

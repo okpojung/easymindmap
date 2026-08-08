@@ -135,8 +135,11 @@ VITE_APP_NAME=easymindmap
 API_PORT=3000
 API_PREFIX=/api
 API_CORS_ORIGINS=http://localhost:8080
-API_RATE_LIMIT_WINDOW_MS=60000
-API_RATE_LIMIT_MAX=300
+# 레이트 리밋 — **구현된 실제 키는 아래 이름이다** (2026-08-08).
+# 왜 필요한지·한도를 어떻게 정했는지: rate-limit.md
+RATE_LIMIT_WINDOW_MS=60000   # 창 크기 (밀리초)
+RATE_LIMIT_MAX=600           # 그 창 안 최대 횟수 — 정상 사용의 수십 배
+RATE_LIMIT_ENABLED=true      # false = 끔 (부하 테스트 등)
 
 ########################################
 # AUTH — Supabase Auth 사용

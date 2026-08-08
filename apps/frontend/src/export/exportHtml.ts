@@ -2286,20 +2286,28 @@ const VIEWER_JS = String.raw`
     document.body.classList.toggle('mm-panmode', panMode);
     svg.style.cursor = panMode ? 'grab' : 'default';
   });
-  // 다크 모드 — 브라우저에 저장 (다음에 열 때 유지)
+  // 다크 모드 — 처음 열 때는 **내보낼 때의 에디터 모드**(DATA.dark)를 따른다
+  // (2026-08-08 사용자 요청: "내가 본 화면 그대로 보내진다").
+  // 이 파일 안에서 ☀/🌙 로 직접 바꾼 값은 파일별로 기억해 다음에 열 때
+  // 유지한다 — 예전에는 저장 키가 전역이라, 다른 맵에서 한 번 다크로
+  // 바꾸면 그 뒤 내보낸 파일이 전부 다크로 열렸다.
   var darkBtn = document.getElementById('mm-dark');
+  var DARK_KEY = 'easymindmap.viewer.dark:' + (location.pathname || '');
   function setDark(on) {
     document.body.classList.toggle('mm-dark', on);
     darkBtn.textContent = on ? '☀' : '🌙';
     darkBtn.setAttribute('title', on ? '라이트 모드로 전환' : '다크 모드로 전환');
     SKIN = on ? SKIN_DARK : SKIN_LIGHT;
     render(); // 노드 카드·글자·연결선까지 스킨 교체 (에디터 다크와 파리티)
-    try { localStorage.setItem('easymindmap.viewer.dark', on ? '1' : '0'); } catch (e) {}
+    try { localStorage.setItem(DARK_KEY, on ? '1' : '0'); } catch (e) {}
   }
   darkBtn.addEventListener('click', function () {
     setDark(!document.body.classList.contains('mm-dark'));
   });
-  try { if (localStorage.getItem('easymindmap.viewer.dark') === '1') setDark(true); } catch (e) {}
+  var savedDark = null;
+  try { savedDark = localStorage.getItem(DARK_KEY); } catch (e) {}
+  // 이 파일에서 직접 바꾼 적이 있으면 그 값, 없으면 내보낼 때의 에디터 모드
+  if (savedDark === '1' || (savedDark !== '0' && DATA.dark)) setDark(true);
 
   // ── 커스텀 툴팁: 커서가 설명을 가리지 않게 요소 "위쪽 중앙"에 표시 ──
   var tipEl = document.createElement('div');
@@ -2816,6 +2824,8 @@ export function buildStandaloneHtml(
   // 메타데이터에 실을 맵 (작은 첨부가 data URL로 인라인된 사본) —
   // 없으면 map 그대로. 뷰어 표시용 데이터에는 영향 없다.
   metaMap?: SampleMap,
+  // 내보낼 때의 에디터 테마가 다크인지 — 뷰어의 최초 모드가 된다
+  dark?: boolean,
 ): string {
   const layoutType = (mapLayoutType ??
     map.root.layoutType ??
@@ -2867,6 +2877,9 @@ export function buildStandaloneHtml(
   const data = {
     title: map.title,
     mapLayout: layoutType,
+    // 내보낼 때의 에디터 테마 — 뷰어가 이 모드로 열린다 (☀/🌙 로 바꾼
+    // 값이 그 파일에 저장돼 있으면 그쪽이 우선)
+    dark: dark || undefined,
     // 노트 글꼴·크기 (맵 설정 — 뷰어 노트 패널에 적용, 기본 13pt)
     noteFont: map.settings?.noteFont,
     root: {
@@ -2981,6 +2994,8 @@ export async function buildExportPackage(
   map: SampleMap,
   mapLayoutType?: LayoutType,
   spacing?: LayoutSpacing,
+  // 내보낼 때의 에디터 테마가 다크인지 — 뷰어가 이 모드로 열린다
+  dark?: boolean,
 ): Promise<ExportPackage> {
   const title = safeName(map.title, 'mindmap');
 
@@ -2991,7 +3006,7 @@ export async function buildExportPackage(
   collectAttachments(map.branches, attachments);
 
   if (attachments.length === 0) {
-    const html = buildStandaloneHtml(map, mapLayoutType, undefined, spacing);
+    const html = buildStandaloneHtml(map, mapLayoutType, undefined, spacing, undefined, dark);
     return {
       fileName: `${title}.html`,
       blob: new Blob([html], { type: 'text/html;charset=utf-8' }),
@@ -3039,7 +3054,7 @@ export async function buildExportPackage(
 
   const metaMap = withInlinedAttachments(map, (id) => inlineById.get(id));
   const html = buildStandaloneHtml(
-    map, mapLayoutType, (id) => hrefById.get(id), spacing, metaMap);
+    map, mapLayoutType, (id) => hrefById.get(id), spacing, metaMap, dark);
 
   if (files.length === 0) {
     // nothing could be packaged — fall back to the single HTML
@@ -3070,8 +3085,10 @@ export async function downloadMapAsHtml(
   map: SampleMap,
   mapLayoutType?: LayoutType,
   spacing?: LayoutSpacing,
+  // 내보낼 때의 에디터 테마가 다크인지 — 뷰어가 이 모드로 열린다
+  dark?: boolean,
 ): Promise<ExportPackage> {
-  const pkg = await buildExportPackage(map, mapLayoutType, spacing);
+  const pkg = await buildExportPackage(map, mapLayoutType, spacing, dark);
   const url = URL.createObjectURL(pkg.blob);
 
   const a = document.createElement('a');

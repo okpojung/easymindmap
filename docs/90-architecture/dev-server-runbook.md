@@ -435,7 +435,7 @@ docker network inspect $(docker network ls -q) 2>/dev/null | grep -i subnet
 
 ## 6. 트러블슈팅
 
-### 6.1 내부망은 되는데 **외부망에서만** API 실패 (2026-08-07 실사용)
+### 6.1 내부망은 되는데 **외부망에서만** API 실패 (2026-08-07 실사용 · 2026-08-08 해결 확인)
 
 **증상**: 외부망 PC 에서 **로그인은 되는데** 화면에 *"⚠ 서버에 연결할 수
 없습니다. 백엔드가 켜져 있는지 확인하세요."* 가 뜨고 문서함이 비어 있다.
@@ -502,6 +502,28 @@ docker network inspect $(docker network ls -q) 2>/dev/null | grep -i subnet
 | --- | --- |
 | 상태 코드가 **있다**(401 등) | 주소는 정상. **앞단 게이트** 문제 |
 | `(failed)` · `ERR_CONNECTION_*` · DNS 실패 | **`VITE_API_URL`** 이 내부 주소/빈 값으로 구워짐 → Coolify Build Variable 확인 후 재빌드 |
+
+**고쳐졌는지 확인 — preflight 한 줄** (2026-08-08 실측으로 확정한 방법).
+브라우저를 열 것도 없이 **외부망에서** 이 한 줄이면 끝난다.
+
+```bash
+curl -i -X OPTIONS https://<API도메인>/v1/folders \
+  -H "Origin: https://<프런트도메인>" \
+  -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: authorization,content-type"
+```
+
+| 응답 | 뜻 |
+| --- | --- |
+| **`204`** + `Access-Control-Allow-Origin: <프런트도메인>` + `X-Powered-By: Express` | ✅ **해결** — `X-Powered-By` 가 곧 "nginx 가 가로채지 않고 **우리 앱이 답했다**" 는 증거다 |
+| `401` + `www-authenticate: Basic` + `Server: openresty` | ❌ Access List 가 아직 남아 있다 |
+
+> Windows `cmd.exe` 는 줄바꿈이 `\` 가 아니라 `^` 다. 헷갈리면 한 줄로
+> 붙여 쓴다. (같은 함정: §6.1 의 `^{commit}` — cmd 는 `^` 를 먹는다)
+
+**브라우저로 확인할 때는 반드시 시크릿 창.** 평소 창은 Basic 인증 자격을
+캐시하고 있어 이미 고쳐진 것처럼 보인다 — 실제로 그 때문에 "프런트는
+되는데 API 만 안 된다" 로 오해했다.
 
 **구조적 개선(선택)**: preflight 가 생기는 것 자체가 프런트와 API 가
 **다른 출처**이기 때문이다. `VITE_API_URL` 을 같은 출처(`https://<프런트

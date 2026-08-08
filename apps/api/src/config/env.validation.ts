@@ -21,6 +21,13 @@ export interface AppEnv {
   ATTACHMENT_PART_KB: number;
   // 청크 업로드로 올릴 수 있는 파일 1개의 최대 크기 (MB)
   ATTACHMENT_CHUNK_MAX_MB: number;
+  // ── 레이트 리밋 (2026-08-08) ────────────────────────────────────
+  // "한 사람이 정해진 시간 안에 부를 수 있는 최대 횟수".
+  // 자세한 설명은 docs/05-implementation/rate-limit.md
+  RATE_LIMIT_WINDOW_MS: number;
+  RATE_LIMIT_MAX: number;
+  // 0 이면 레이트 리밋을 끈다 (부하 테스트 등 특수한 경우에만)
+  RATE_LIMIT_ENABLED: boolean;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -68,6 +75,23 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     errors.push('ATTACHMENT_CHUNK_MAX_MB 는 양수여야 합니다.');
   }
 
+  // ── 레이트 리밋 ─────────────────────────────────────────────────
+  // 기본값은 **정상 사용의 수십 배**로 잡는다. 우리 앱은 자동저장이
+  // 5분 주기라 평상시 요청이 매우 적다 — 좁게 잡아 봐야 정상 사용자만
+  // 막히고, 남용은 어차피 이 정도 선에서 걸린다.
+  // (근거와 계산은 docs/05-implementation/rate-limit.md §5)
+  const RATE_LIMIT_WINDOW_MS = Number(raw.RATE_LIMIT_WINDOW_MS ?? 60_000);
+  if (!Number.isFinite(RATE_LIMIT_WINDOW_MS) || RATE_LIMIT_WINDOW_MS < 1000) {
+    errors.push('RATE_LIMIT_WINDOW_MS 는 1000 이상이어야 합니다.');
+  }
+  const RATE_LIMIT_MAX = Number(raw.RATE_LIMIT_MAX ?? 600);
+  if (!Number.isInteger(RATE_LIMIT_MAX) || RATE_LIMIT_MAX < 1) {
+    errors.push('RATE_LIMIT_MAX 는 1 이상의 정수여야 합니다.');
+  }
+  // 'false'/'0' 만 끔으로 본다 — 오타로 조용히 꺼지지 않게 기본은 켬
+  const rlRaw = String(raw.RATE_LIMIT_ENABLED ?? 'true').toLowerCase();
+  const RATE_LIMIT_ENABLED = !(rlRaw === 'false' || rlRaw === '0');
+
   if (errors.length) {
     throw new Error('환경변수 오류:\n - ' + errors.join('\n - '));
   }
@@ -83,5 +107,8 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     ATTACHMENT_MAX_MB,
     ATTACHMENT_PART_KB,
     ATTACHMENT_CHUNK_MAX_MB,
+    RATE_LIMIT_WINDOW_MS,
+    RATE_LIMIT_MAX,
+    RATE_LIMIT_ENABLED,
   };
 }

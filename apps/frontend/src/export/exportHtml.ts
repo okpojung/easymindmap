@@ -23,7 +23,10 @@
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
 import brandLogoRaw from '@/assets/brand-logo.svg?raw';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
-import { setLevelFontConfig, levelFontFamily, levelTextAlign } from '@/editor/node-renderer/sizeNodeForText';
+import {
+  setLevelFontConfig, setLevelShapeConfig,
+  levelFontFamily, levelTextAlign, levelShape,
+} from '@/editor/node-renderer/sizeNodeForText';
 import { parseMdCode as parseMdCodeEditor } from '@/editor/node-renderer/mdCode';
 import { parseMdTable as parseMdTableEditor } from '@/editor/node-renderer/mdTable';
 import { computeNodeChecks } from '@/editor/node-renderer/mdCheck';
@@ -82,6 +85,9 @@ interface ExportNode {
     strike?: boolean; underline?: boolean; highlight?: boolean;
     // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용
     fillColor?: string; borderColor?: string; textColor?: string;
+    // 실효 도형 — 노드별 지정이 없으면 맵 설정의 레벨 기본 도형.
+    // 뷰어는 'none'(도형 없음)만 구분해 사각형을 생략한다
+    shapeType?: string;
   };
   // 노드 안 사진 (data URL 또는 원본 URL) — 노드 폭에 맞춰 축소 표시
   image?: { src: string; w: number; h: number };
@@ -118,6 +124,12 @@ function toExportNode(
         ? [node.tag]
         : undefined;
 
+  // 실효 도형을 굽는다 — 뷰어는 맵 설정(레벨별 기본 도형)을 모른다.
+  // 에디터 NodeRenderer 와 같은 우선순위: 노드별 → 레벨 기본 → 둥근.
+  // 뷰어가 그리는 도형은 사각형뿐이라 'none'만 의미가 있지만, 규칙은
+  // 에디터와 동일하게 유지한다.
+  const shapeType = node.style?.shapeType ?? levelShape(depth);
+
   return {
     id: node.id,
     text: node.text,
@@ -148,17 +160,19 @@ function toExportNode(
     images: node.images?.length ? node.images : undefined,
     // 실효 정렬을 굽는다 — 뷰어는 맵 설정(레벨별 맞춤)을 모른다
     textAlign: node.textAlign ?? levelTextAlign(depth),
-    style: node.style && (node.style.strike || node.style.underline ||
+    style: (node.style && (node.style.strike || node.style.underline ||
       node.style.highlight ||
-      node.style.fillColor || node.style.borderColor || node.style.textColor)
+      node.style.fillColor || node.style.borderColor || node.style.textColor)) ||
+      shapeType
       ? {
-        strike: node.style.strike || undefined,
-        underline: node.style.underline || undefined,
-        highlight: node.style.highlight || undefined,
+        strike: node.style?.strike || undefined,
+        underline: node.style?.underline || undefined,
+        highlight: node.style?.highlight || undefined,
         // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용 (원본 색 파리티)
-        fillColor: node.style.fillColor || undefined,
-        borderColor: node.style.borderColor || undefined,
-        textColor: node.style.textColor || undefined,
+        fillColor: node.style?.fillColor || undefined,
+        borderColor: node.style?.borderColor || undefined,
+        textColor: node.style?.textColor || undefined,
+        shapeType,
       }
       : undefined,
     layoutType: node.layoutType,
@@ -2811,6 +2825,9 @@ export function buildStandaloneHtml(
   // 노드마다 실어 보낸다 — 뷰어가 에디터 화면과 똑같이 그린다.
   // 맵 설정(레벨별 폰트)도 측정에 반영하고 글꼴(ff)을 노드마다 실어 보낸다.
   setLevelFontConfig(map.settings?.levelFonts);
+  // 레벨별 기본 도형도 주입해야 toExportNode 가 '도형 없음'을 구울 수 있다
+  // (에디터 Canvas 와 동일 — 없으면 맵 설정 경로의 도형 없음이 누락된다)
+  setLevelShapeConfig(map.settings?.levelShapes);
   const laid = computeLayout(map, layoutType, 700, 400, spacing);
   // 체크리스트 항목 범위 — 에디터(NodeRenderer)와 같은 재구성 규칙으로
   // 계산해 노드마다 실어 보낸다 (뷰어는 계산 없이 그대로 그린다)

@@ -430,3 +430,65 @@ docker network inspect $(docker network ls -q) 2>/dev/null | grep -i subnet
 - 재배포/롤백: 리소스 → Deployments → Redeploy (특정 커밋 선택 = 롤백)
 - Coolify 업데이트: 대시보드 안내에 따라 (업데이트 전 §2 `.env` 백업)
 - 로그: 리소스 → Logs (빌드/런타임 분리)
+
+---
+
+## 6. 트러블슈팅
+
+### 6.1 내부망은 되는데 **외부망에서만** API 실패 (2026-08-07 실사용)
+
+**증상**: 외부망 PC 에서 **로그인은 되는데** 화면에 *"⚠ 서버에 연결할 수
+없습니다. 백엔드가 켜져 있는지 확인하세요."* 가 뜨고 문서함이 비어 있다.
+내부망 PC 에서는 정상.
+
+**원인**: NPM 의 **API 프록시 호스트에 Access List(Basic 인증)** 가 걸려
+있었다. Access List 는 *IP 허용 목록에 없으면 Basic 인증을 요구*하는데,
+**브라우저는 preflight(OPTIONS)에 인증 정보를 절대 싣지 않는다**(규격).
+그래서 외부망에서는 preflight 가 **401** → CORS error → 본 요청이 아예
+나가지 못한다. 내부망 IP 는 허용 목록에 걸려 통과하므로 멀쩡해 보인다.
+
+**진단** — 브라우저 F12 → Network:
+
+| 보이는 것 | 뜻 |
+| --- | --- |
+| `folders` / `maps?...` → **CORS error** | 증상일 뿐, 원인이 아니다 |
+| 같은 이름의 **`preflight` 행 → 401** | ← **여기가 원인** |
+| 그 401 응답 헤더에 `server: openresty` | 우리 앱이 아니라 **NPM 이 낸 응답** |
+| `www-authenticate: Basic realm="Authorization required"` | **Access List 확정** |
+
+> **우리 API 는 OPTIONS 에 401 을 낼 수 없다.** NestJS `app.enableCors()`
+> 는 Express `cors` 미들웨어라 **가드보다 먼저** 돌고 OPTIONS 를 **204** 로
+> 끝낸다. 출처가 허용 목록 밖이어도 `Access-Control-Allow-Origin` 헤더만
+> 빠질 뿐 여전히 204 다. **OPTIONS 에 401 이 보이면 무조건 앞단이다.**
+
+**조치**: NPM → Proxy Hosts → **API 호스트** → Edit → Access List →
+`Publicly Accessible` → Save. (프런트 호스트가 아니다 — 프런트는 화면이
+뜨므로 이미 열려 있다.)
+
+**"그럼 API 가 무방비 아닌가"** — 아니다. Access List 는 JWT 위에 덧씌운
+이중 잠금이었고, 아래가 그대로 남는다.
+
+| 층 | 상태 |
+| --- | --- |
+| ~~NPM Access List~~ | 해제 — **브라우저용 API 에는 원리적으로 쓸 수 없다** |
+| **JWT 인증 가드** | `Authorization: Bearer` 없으면 401 (`auth.guard.ts`) |
+| **소유자 검증** | 남의 맵은 못 읽는다 |
+| **RLS** | 유지 |
+
+> ⚠️ **Coolify 관리 UI(`coolify-dev.…`)의 Access List 는 절대 풀지 말
+> 것.** 그건 사람이 직접 여는 관리 화면이라 VPN 제한이 맞다. 푸는 것은
+> **API 호스트 하나뿐**이다.
+
+**함정 — 비슷하지만 다른 원인**: 같은 화면 증상이 `VITE_API_URL` 오설정
+으로도 난다(빌드 시점에 번들에 구워지는 값이라 **재빌드할 때만** 바뀐다).
+**가르는 법은 하나다** — Network 탭에 **HTTP 상태 코드가 찍혔는가**.
+
+| 상태 | 원인 |
+| --- | --- |
+| 상태 코드가 **있다**(401 등) | 주소는 정상. **앞단 게이트** 문제 |
+| `(failed)` · `ERR_CONNECTION_*` · DNS 실패 | **`VITE_API_URL`** 이 내부 주소/빈 값으로 구워짐 → Coolify Build Variable 확인 후 재빌드 |
+
+**구조적 개선(선택)**: preflight 가 생기는 것 자체가 프런트와 API 가
+**다른 출처**이기 때문이다. `VITE_API_URL` 을 같은 출처(`https://<프런트
+도메인>/api`)로 두고 NPM 에서 `/api` 를 API 컨테이너로 넘기면 preflight 가
+사라지고 `CORS_ORIGIN` 관리도 없어져, 이 부류의 문제가 재발하지 않는다.

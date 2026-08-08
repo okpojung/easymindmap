@@ -25,8 +25,11 @@
 > 절차를 이해하는 데는 지장이 없습니다.
 >
 > **문서 위치**: `docs/90-architecture/infra-architecture.md`
-> **최종 업데이트**: 2026-07-27
-> **버전**: v1.3 — **배포 표준을 Coolify 로 개정** (dev/prod parity,
+> **최종 업데이트**: 2026-08-07
+> **버전**: v1.4 — **`api-dev` 호스트는 Access List 를 걸지 않는다**
+> (2026-08-07 실사용 — 외부망에서 preflight 401 → CORS 로 API 가 통째로
+> 막혔다. §7.3 경고 · §7.7 · 런북 §6.1)
+> v1.3 — **배포 표준을 Coolify 로 개정** (dev/prod parity,
 > §10·§12·§14 개정, 기준 문서 [`dev-server-coolify.md`](dev-server-coolify.md))
 > **환경**: IDC / ESXi 5대 / FortiGate IPSec VPN / 192.168.0.0/24
 
@@ -494,6 +497,13 @@ Allowed IPs:
 Pass Auth: ✅ (Allow)
 ```
 
+> ⚠️ **어디에 걸 것인가 — 브라우저가 XHR 로 부르는 호스트에는 걸지
+> 않는다.** `Satisfy: Any` 는 *IP 가 안 맞으면 Basic 인증*을 요구하는데,
+> 브라우저는 **preflight(OPTIONS)에 인증 정보를 싣지 않으므로** 그 호스트는
+> 외부망에서 **401 → CORS error** 로 통째로 막힌다. 이 저장소 기준으로는
+> **`api-dev.…` 에 걸면 안 된다**(§7.7). 사람이 직접 여는 관리 화면
+> (`coolify-dev.…`·`supabase.…`)에는 그대로 건다.
+
 > ✅ **[2026-08-01 확인 완료 — Docker 네트워크 대역 충돌 없음]**
 > FortiGate 실제 할당 대역을 전수 확인한 결과, VM-DEV Coolify의 Docker
 > 네트워크와 겹치는 대역이 **없다** (아래는 플레이스홀더 표기 — 실제
@@ -617,12 +627,32 @@ Forward:  http://192.168.0.110:80        ← 3000 아님
 WS:       ✅
 Cache Assets: ❌
 SSL:      Let's Encrypt + Force SSL ✅
-Access:   IPSec-VPN-Only
+Access:   Publicly Accessible            ← ★ Access List 를 걸면 안 된다 (아래)
 Advanced:
     client_max_body_size 50m;
     proxy_read_timeout 300s;
     proxy_send_timeout 300s;
 ```
+
+> ### ★ 이 호스트에만 Access List 를 걸지 않는다 (2026-08-07 실사용 수정)
+>
+> 다른 호스트와 달리 **여기는 `Publicly Accessible` 이어야 한다.** 예전
+> 값(`IPSec-VPN-Only`)으로 두면 **외부망에서 API 가 통째로 막힌다.**
+>
+> Access List 는 *IP 허용 목록에 없으면 Basic 인증을 요구*하는데,
+> **브라우저는 preflight(OPTIONS)에 인증 정보를 절대 싣지 않는다**(규격).
+> 그래서 외부망 브라우저는 preflight 가 **401 → CORS error** 로 끝나고
+> 본 요청이 아예 나가지 못한다. 내부망 IP 는 허용 목록에 걸려 통과하므로
+> **내부에서만 멀쩡해 보인다** — 실제로 이 증상으로 한 번 헤맸다.
+> 진단 절차는 [`dev-server-runbook.md` §6.1](dev-server-runbook.md) 참조.
+>
+> **API 를 여는 것이 위험하지 않은 이유**: Access List 는 JWT 위에 덧씌운
+> 이중 잠금이었다. 걷어내도 **JWT 인증 가드**(`Authorization: Bearer`
+> 없으면 401) · **소유자 검증** · **RLS** 가 그대로 남는다.
+>
+> **다른 호스트는 그대로 둔다.** 특히 `coolify-dev.…`(관리 UI)는 사람이
+> 직접 여는 화면이라 VPN 제한이 맞다. 브라우저의 XHR 이 부르는 것은
+> **API 호스트 하나뿐**이다.
 
 > Forward 포트가 80인 이유: NPM은 Traefik으로 넘기고, Traefik이 Host
 > 헤더를 보고 컨테이너(:3000)로 분기한다. NPM이 3000을 직접 호출하면

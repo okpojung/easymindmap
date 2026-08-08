@@ -371,7 +371,9 @@ export function TopToolbar({
                 desc: '읽기 전용 뷰어 · 다시 불러오기 가능',
                 title: '내보내기 (HTML — 읽기 전용 뷰어 + 다시 불러오기 가능)',
                 run: async () => {
-                  const pkg = await downloadMapAsHtml(map, layoutType, { x: spacingX, y: spacingY });
+                  // 뷰어는 지금 에디터 모드(라이트/다크) 그대로 열린다
+                  const pkg = await downloadMapAsHtml(
+                    map, layoutType, { x: spacingX, y: spacingY }, themeName === 'dark');
                   // 원본을 가져오지 못한 첨부가 있으면 묵묵히 넘어가지
                   // 않는다 (2026-08-02: 저장 후 다시 연 맵의 blob: 첨부가
                   // 소리 없이 빠져 "ZIP이 안 나온다" 보고로 이어졌다)

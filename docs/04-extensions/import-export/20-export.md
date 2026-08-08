@@ -533,6 +533,17 @@ base64로 사람이 읽기 좋게 기록된다.
   채움 + 컬러 테두리), depth2+ = L2(흰 채움 + 황갈 테두리), 루트 =
   주황 — 라이트/다크 모두 THEMES와 동일 값. **노드별 지정 색**
   (fillColor/borderColor/textColor)도 내보내 팔레트보다 우선 적용.
+- **'도형 없음'(shapeType `none`)** (2026-08-08): 내보내기가 **실효
+  도형**을 구워 보낸다 — `node.style.shapeType ?? levelShape(depth)`,
+  즉 노드별 지정 → 맵 설정의 레벨 기본 도형 순 (에디터 NodeRenderer와
+  같은 우선순위). `buildStandaloneHtml`은 `setLevelFontConfig` 옆에서
+  `setLevelShapeConfig(map.settings?.levelShapes)`를 함께 주입해야
+  레벨 기본 도형 경로가 살아난다. 뷰어는 `none`이면 사각형을 그리지
+  않고 **글자만** 놓으며, 글자색은 두 모드 모두 안전한 본문색
+  (`SKIN.fam.l2.text`)을 쓴다 — 흰 테두리 사각형으로 우회하면 다크에서
+  흰 박스가 보인다. 검색 강조일 때는 에디터와 동일하게 박스를 그린다.
+  · 뷰어가 그리는 도형은 사각형뿐이라 `none` 외의 값(ellipse 등)은
+    실려 와도 기존대로 사각형으로 그려진다.
 - **선택 표시 = 노드 밖 점선 오버레이** — 도형 테두리 스타일을 바꾸지
   않는다 (원래 점선 테두리로 오해 방지, 에디터와 동일).
 - **⌖ = Focus 토글 (에디터 Alt+F 파리티)**: 켜면 선택 노드(없으면
@@ -598,8 +609,23 @@ layoutBlock()을 추출할 때 `depth` 인자를 빠뜨렸는데, `eff ===
 - **다크 모드**: 🌙 토글 — 에디터(THEMES.dark)와 파리티: 헤더/캔버스/
   노트 패널은 물론 **노드 카드(#1C1F26)·글자(#E8E6E3)·연결선(#4A4E5A)·
   하이라이트 띠까지 스킨(SKIN_DARK) 교체 후 다시 그린다** (루트는 주황
-  유지). localStorage(`easymindmap.viewer.dark`)에 저장되어 다시 열어도
-  유지.
+  유지).
+- **처음 열리는 모드 = 내보낼 때의 에디터 모드** (2026-08-08): 툴바에서
+  HTML로 내보내면 그 순간의 에디터 테마(`editorUiStore.themeName`)를
+  `dark` 플래그로 구워 보내고, 뷰어는 그 모드로 열린다 — "내가 본 화면
+  그대로 보내진다". 파일 안에는 라이트·다크 팔레트가 모두 들어 있어
+  받는 사람이 🌙/☀ 로 언제든 바꿀 수 있다.
+  · 경로: `TopToolbar` → `downloadMapAsHtml(map, layout, spacing, dark)`
+    → `buildExportPackage` → `buildStandaloneHtml(…, dark)` →
+    `window.__MINDMAP__.dark`.
+  · **뷰어에서 직접 바꾼 값이 우선**하며 localStorage에 저장돼 다음에
+    열 때 유지된다. 저장 키는 **파일별**
+    (`easymindmap.viewer.dark:<location.pathname>`) — 예전 전역 키
+    (`easymindmap.viewer.dark`)는 한 맵에서 다크로 바꾸면 그 뒤 내보낸
+    파일이 전부 다크로 열려, 구운 모드를 덮어써 버렸다.
+  · OS/브라우저의 `prefers-color-scheme`은 보지 않는다.
+  · 이미 내보낸 파일은 정적이므로 소급 적용되지 않는다 — **다시 내보내야**
+    바뀐 모드가 반영된다.
 - **⌖ 중앙 보기 폴백**: 선택한 노드가 없거나 접힌 서브트리 안이면
   **중심 주제(루트)를 화면 중앙**으로 — 선택 없이 눌러도 항상 동작.
 - **툴팁 아래 폴백**: 최상단 헤더 아이콘처럼 위 공간이 없으면 마우스

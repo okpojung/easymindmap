@@ -20,7 +20,7 @@
 //
 // 여는 방식은 mapSession 규칙을 따른다 — 편집 중이면 브라우저 새 탭,
 // 잃을 것이 없으면 이 탭.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
@@ -162,6 +162,24 @@ export function MapBrowser({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
   const [moving, setMoving] = useState<MapListItem | null>(null);
+  // 상세 정보 카드 (2026-08-09 요청) — 파일명 위에 마우스를 올리거나
+  // 행 오른쪽 ⓘ 를 누르면 뜬다. pinned=true(ⓘ 클릭)면 마우스를 떼도
+  // 남아 있어 IP 같은 값을 드래그해 복사할 수 있다.
+  const [info, setInfo] = useState<
+    { map: MapListItem; x: number; y: number; pinned: boolean } | null
+  >(null);
+  const infoTimer = useRef<number | null>(null);
+  const showInfoSoon = (map: MapListItem, el: HTMLElement) => {
+    if (info?.pinned) return; // 고정된 카드는 호버로 갈아치우지 않는다
+    if (infoTimer.current) window.clearTimeout(infoTimer.current);
+    const r = el.getBoundingClientRect();
+    infoTimer.current = window.setTimeout(
+      () => setInfo({ map, x: r.left, y: r.bottom + 6, pinned: false }), 350);
+  };
+  const hideInfoSoon = () => {
+    if (infoTimer.current) window.clearTimeout(infoTimer.current);
+    setInfo((cur) => (cur && !cur.pinned ? null : cur));
+  };
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
 
   // **맵을 폴더별로 나눠 받지 않고 한 번에 전부** 받는다 — 트리와 전체
@@ -200,13 +218,14 @@ export function MapBrowser({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (info) { setInfo(null); return; }
       if (newFolder) { setNewFolder(null); return; }
       if (query) { setQuery(''); return; }
       onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, newFolder, query]);
+  }, [onClose, newFolder, query, info]);
 
   // ── 내용 검색 ───────────────────────────────────────────────
   // 서버가 제목 + 맵 안(노드·노트·태그)을 찾아 **맞은 맵만** 돌려준다.
@@ -879,6 +898,11 @@ export function MapBrowser({
             <button
               data-testid="browser-map-open"
               onClick={() => void openMap(r.map)}
+              // 파일명 위에 잠시 머물면 상세 정보 카드 (2026-08-09 요청)
+              onMouseEnter={(e) => showInfoSoon(r.map, e.currentTarget)}
+              onMouseLeave={hideInfoSoon}
+              onFocus={(e) => showInfoSoon(r.map, e.currentTarget)}
+              onBlur={hideInfoSoon}
               style={{
                 textAlign: 'left', background: 'transparent', border: 'none',
                 color: cloudMapId === r.map.mapId ? t.primary : t.text, cursor: 'pointer',
@@ -943,6 +967,18 @@ export function MapBrowser({
               {fmtBytes(r.map.attachBytes)}
             </span>
             <span style={actionCell}>
+              <button
+                data-testid="browser-map-info" style={iconBtn}
+                title="상세 정보 (저장한 기기·브라우저·IP 포함)" aria-label="상세 정보"
+                onClick={(e) => {
+                  const r2 = e.currentTarget.getBoundingClientRect();
+                  if (infoTimer.current) window.clearTimeout(infoTimer.current);
+                  setInfo((cur) =>
+                    cur?.pinned && cur.map.mapId === r.map.mapId
+                      ? null
+                      : { map: r.map, x: r2.right - 300, y: r2.bottom + 6, pinned: true });
+                }}
+              ><I.Info size={15} /></button>
               <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
                 onClick={() => void renameMap(r.map)}><I.Pencil size={15} /></button>
               <button data-testid="browser-map-move" style={iconBtn}
@@ -954,6 +990,71 @@ export function MapBrowser({
           </div>
         )))}
       </div>
+
+      {/* 상세 정보 카드 (2026-08-09 요청) — 목록의 좁은 칸에 다 담을 수
+          없는 값들을 한자리에 보여 준다. 목록 위에 떠야 하므로 fixed +
+          화면 밖으로 나가지 않게 좌표를 접어 넣는다.
+          (겹치는 레이어 순서는 coding-conventions.md §5-1-4) */}
+      {info && (
+        <div
+          data-testid="browser-info-card"
+          onMouseEnter={() => {
+            if (infoTimer.current) window.clearTimeout(infoTimer.current);
+          }}
+          onMouseLeave={hideInfoSoon}
+          style={{
+            position: 'fixed', zIndex: 230,
+            left: Math.max(8, Math.min(info.x, window.innerWidth - 320)),
+            top: Math.min(info.y, window.innerHeight - 250),
+            width: 300, padding: '10px 12px', borderRadius: 10,
+            background: t.surface, border: `1px solid ${t.borderStrong}`,
+            boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+            fontSize: 11.5, color: t.text, lineHeight: 1.7,
+          }}
+        >
+          <div style={{
+            fontWeight: 700, fontSize: 12.5, marginBottom: 4,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{info.map.title || '(제목 없음)'}</div>
+          <InfoRow t={t} k="유형" v={info.map.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'} />
+          <InfoRow t={t} k="생성" v={fmtDate(info.map.createdAt)} />
+          <InfoRow t={t} k="수정" v={fmtDate(info.map.updatedAt)} />
+          <InfoRow t={t} k="노드" v={info.map.nodeCount === null || info.map.nodeCount === undefined
+            ? '—' : `${info.map.nodeCount.toLocaleString()}개`} />
+          <InfoRow t={t} k="문서 크기" v={fmtBytes(info.map.docBytes)} />
+          <InfoRow t={t} k="첨부" v={
+            info.map.attachCount === null || info.map.attachCount === undefined
+              ? '—'
+              : `${info.map.attachCount}개 · ${fmtBytes(info.map.attachBytes)}`} />
+          {/* 마지막 저장 자리 — 접속 정보 도입(2026-08-09) 전에 저장된
+              맵은 값이 없다. 없는 것을 '—' 로 늘어놓지 않고 왜 없는지
+              한 줄로 알려 준다. */}
+          <div style={{
+            marginTop: 6, paddingTop: 6, borderTop: `1px solid ${t.divider}`,
+            fontSize: 10.5, color: t.textSubtle, fontWeight: 700,
+          }}>마지막 저장 자리</div>
+          {info.map.lastPlatform || info.map.lastBrowser || info.map.lastIp ? (
+            <div data-testid="browser-info-origin">
+              <InfoRow t={t} k="기기" v={info.map.lastPlatform ?? '—'} />
+              <InfoRow t={t} k="브라우저" v={info.map.lastBrowser ?? '—'} />
+              <InfoRow t={t} k="IP" v={info.map.lastIp ?? '—'} mono />
+              {info.map.lastSavedAt && (
+                <InfoRow t={t} k="저장 시각" v={fmtDate(info.map.lastSavedAt)} />
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 10.5, color: t.textSubtle }}>
+              아직 기록이 없습니다 — 이 기능이 생기기 전에 저장된 맵입니다.
+              다음 <b>☁ 저장</b> 부터 남습니다.
+            </div>
+          )}
+          {info.pinned && (
+            <div style={{ marginTop: 6, fontSize: 10, color: t.textSubtle }}>
+              Esc 또는 ⓘ 를 다시 누르면 닫힙니다.
+            </div>
+          )}
+        </div>
+      )}
 
       {moving && (
         <FolderPickerDialog
@@ -978,6 +1079,25 @@ export function MapBrowser({
         편집 중인 맵이 있으면 다른 맵은 <b>브라우저 새 탭</b>에서 열립니다.
         폴더는 <b>비어 있을 때만</b> 삭제할 수 있습니다.
       </div>
+    </div>
+  );
+}
+
+
+/** 상세 카드의 한 줄 — 이름(고정 폭) + 값 */
+function InfoRow({ t, k, v, mono }: {
+  t: ThemeTokens; k: string; v: string; mono?: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <span style={{ width: 62, flexShrink: 0, color: t.textSubtle }}>{k}</span>
+      <span style={{
+        flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        // IP 는 골라서 복사하는 값이라 고정폭 글꼴이 읽기 쉽다
+        fontFamily: mono ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined,
+        userSelect: 'text',
+      }}>{v}</span>
     </div>
   );
 }

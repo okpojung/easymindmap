@@ -749,3 +749,24 @@ CREATE INDEX IF NOT EXISTS idx_map_documents_search_trgm
     ON public.map_documents USING GIN (search_text gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_maps_title_trgm
     ON public.maps USING GIN (title gin_trgm_ops);
+
+-- ────────────────────────────────────────────────────────────────────
+-- 히스토리 접속 정보 (2026-08-09 사용자 요청): "히스토리에 실행한
+-- Platform(Windows 11·Android 14·iOS…)·브라우저 종류·IP 도 함께 기록하고
+-- 보여 달라." 저장(버전 생성) 시점의 값을 그 버전 행에 남긴다.
+--   · platform/browser 는 **클라이언트가 알려준 값**을 서버가 다듬어 넣는다
+--     (UA 문자열만으로는 Windows 10 과 11 을 구분할 수 없다 — 둘 다
+--      'Windows NT 10.0' 이다. 브라우저의 User-Agent Client Hints
+--      (navigator.userAgentData) 로만 판별된다). 값이 없으면 서버가
+--     User-Agent 헤더로 추정한다.
+--   · IP 는 **서버가 정한다** — 클라이언트가 보낸 값은 믿지 않는다.
+--     'trust proxy' 로 X-Forwarded-For 의 실제 클라이언트 IP 를 쓴다.
+--   · 개인정보: 본인이 소유한 맵의 이력에만 남고 RLS 로 본인만 조회한다.
+--     맵을 지우면 ON DELETE CASCADE 로 함께 사라진다.
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS client_platform VARCHAR(60);
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS client_browser  VARCHAR(60);
+-- IPv6 최대 45자 (IPv4-mapped 표기 포함)
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS client_ip       VARCHAR(45);

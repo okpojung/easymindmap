@@ -216,6 +216,23 @@ export class MapsService {
             WHERE ln ILIKE $${pLike} ESCAPE '\\')::int AS match_count`
       : '';
 
+    // 마지막 저장 자리(플랫폼·브라우저·IP) — 문서함 상세 카드에 쓴다
+    // (2026-08-09). LATERAL 로 **페이지에 실린 맵만** 최신 버전 1행을
+    // 집어 온다 — (map_id, version DESC) 인덱스를 그대로 타서 가볍다.
+    // 델타 SQL 미적용 서버에서는 컬럼이 없으므로 통째로 뺀다.
+    const withClient = await this.hasVersionClientCols();
+    const lastJoin = withClient
+      ? `LEFT JOIN LATERAL (
+             SELECT client_platform, client_browser, client_ip, created_at AS saved_at
+               FROM public.map_document_versions vv
+              WHERE vv.map_id = p.id
+              ORDER BY vv.version DESC LIMIT 1
+           ) lv ON TRUE`
+      : '';
+    const lastCols = withClient
+      ? ', lv.client_platform, lv.client_browser, lv.client_ip, lv.saved_at'
+      : '';
+
     const [list, count] = await Promise.all([
       this.db.query<MapRow & {
         created_at: Date;
@@ -224,6 +241,10 @@ export class MapsService {
         attach_bytes: string | null;
         doc_bytes: string | null;
         match_count?: number;
+        client_platform?: string | null;
+        client_browser?: string | null;
+        client_ip?: string | null;
+        saved_at?: Date | null;
       }>(
         `${hitsCte}${hitsCte ? ', p AS (' : 'WITH p AS ('}
            SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
@@ -238,8 +259,9 @@ export class MapsService {
          )
          SELECT p.id, p.title, p.folder_id, p.kind, p.deleted_at,
                 p.created_at, p.updated_at, p.node_count, p.attach_count,
-                p.attach_bytes, p.doc_bytes${matchCountSql}
+                p.attach_bytes, p.doc_bytes${matchCountSql}${lastCols}
            FROM p
+           ${lastJoin}
           ORDER BY ${sortColOut} ${dir} NULLS LAST, p.id`,
         [...params, limit, offset],
       ),
@@ -265,6 +287,11 @@ export class MapsService {
         attachBytes: m.attach_bytes === null ? null : Number(m.attach_bytes),
         // 검색 중에만 채워진다 — **맵 내용에서 맞은 건수**(0 = 이름만 맞음)
         ...(searching ? { matchCount: m.match_count ?? 0 } : {}),
+        // 마지막 저장 자리 (2026-08-09) — 그 이전 버전·미적용 서버는 null
+        lastPlatform: m.client_platform ?? null,
+        lastBrowser: m.client_browser ?? null,
+        lastIp: m.client_ip ?? null,
+        lastSavedAt: m.saved_at ?? null,
       })),
       total: Number(count.rows[0]?.total ?? 0),
     };
@@ -339,6 +366,11 @@ export class MapsService {
     keepVersion = false,
     editSession?: string,
     allowEmpty = false,
+    /**
+     * 저장한 자리 (2026-08-09) — 히스토리 버전에만 기록한다.
+     * ip 는 컨트롤러가 요청에서 뽑은 값이다(클라이언트 입력이 아니다).
+     */
+    client?: { platform?: string; browser?: string; ip?: string },
   ) {
     const map = await this.requireOwnedMap(userId, mapId);
 
@@ -494,17 +526,26 @@ export class MapsService {
         typeof snap.editor?.layoutType === 'string'
           ? snap.editor.layoutType.slice(0, 50)
           : null;
+      // 접속 정보 컬럼(2026-08-09)은 델타 SQL 을 적용한 서버에만 있다 —
+      // 아직 안 적용된 서버에서 **저장 자체가 실패하면 안 되므로**
+      // 컬럼이 있을 때만 함께 넣는다 (hasVersionClientCols 참고).
+      const withClient = await this.hasVersionClientCols();
       const { rows: vr } = await this.db.query<{ version: number }>(
         `INSERT INTO public.map_document_versions
            (map_id, version, title, doc, created_by,
-            layout_type, node_count, attach_bytes, attach_count)
+            layout_type, node_count, attach_bytes, attach_count${
+              withClient ? ', client_platform, client_browser, client_ip' : ''})
          SELECT $1,
                 COALESCE(MAX(version), 0) + 1,
-                $2, $3::jsonb, $4, $5, $6, $7, $8
+                $2, $3::jsonb, $4, $5, $6, $7, $8${
+                  withClient ? ', $9, $10, $11' : ''}
            FROM public.map_document_versions WHERE map_id = $1
          RETURNING version`,
         [mapId, title ?? map.title, docJson, userId,
-         layoutType, nodeCount, attachBytes, attachCount],
+         layoutType, nodeCount, attachBytes, attachCount,
+         ...(withClient
+           ? [client?.platform ?? null, client?.browser ?? null, client?.ip ?? null]
+           : [])],
       );
       version = vr[0]?.version;
     }
@@ -518,14 +559,21 @@ export class MapsService {
    */
   async listVersions(userId: string, mapId: string) {
     await this.requireOwnedMap(userId, mapId);
+    // 접속 정보 컬럼은 델타 SQL 을 적용한 서버에만 있다 — 없으면 빼고
+    // 조회한다. (검색 기능 때 겪은 사고와 같은 함정: 새 컬럼을 무조건
+    // SELECT 하면 스키마 미적용 서버에서 목록이 통째로 503 이 된다)
+    const withClient = await this.hasVersionClientCols();
     const { rows } = await this.db.query<{
       version: number; title: string; created_at: Date; size: string;
       layout_type: string | null; node_count: number | null;
       attach_bytes: string | null; attach_count: number | null;
+      client_platform?: string | null; client_browser?: string | null;
+      client_ip?: string | null;
     }>(
       `SELECT version, title, created_at,
               pg_column_size(doc)::text AS size,
-              layout_type, node_count, attach_bytes, attach_count
+              layout_type, node_count, attach_bytes, attach_count${
+                withClient ? ', client_platform, client_browser, client_ip' : ''}
          FROM public.map_document_versions
         WHERE map_id = $1
         ORDER BY version DESC`,
@@ -543,9 +591,40 @@ export class MapsService {
         nodeCount: r.node_count,
         attachBytes: r.attach_bytes === null ? null : Number(r.attach_bytes),
         attachCount: r.attach_count,
+        // 저장한 자리 (2026-08-09) — 그 이전 버전·미적용 서버는 null
+        platform: r.client_platform ?? null,
+        browser: r.client_browser ?? null,
+        ip: r.client_ip ?? null,
       })),
       total: rows.length,
     };
+  }
+
+  /**
+   * map_document_versions 에 접속 정보 컬럼(2026-08-09)이 있는가.
+   * 1분 캐시 — **양쪽으로** 다시 본다. 있다고 영구히 믿으면 컬럼이
+   * 사라진 DB(롤백·복구본)에서 목록·저장이 통째로 503 이 된다.
+   * 없다고 영구히 믿으면 델타 SQL 을 적용해도 재기동 전까지 안 붙는다.
+   */
+  private clientColsAt = 0;
+  private clientColsCache: boolean | null = null;
+  private async hasVersionClientCols(): Promise<boolean> {
+    const now = Date.now();
+    if (this.clientColsCache !== null && now - this.clientColsAt < 60_000) {
+      return this.clientColsCache;
+    }
+    this.clientColsAt = now;
+    try {
+      const { rows } = await this.db.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'map_document_versions'
+            AND column_name IN ('client_platform', 'client_browser', 'client_ip')`,
+      );
+      this.clientColsCache = Number(rows[0]?.n ?? 0) === 3;
+    } catch {
+      this.clientColsCache = false;
+    }
+    return this.clientColsCache;
   }
 
   /** GET /maps/:id/versions/:version — 특정 버전의 문서 스냅샷 (B8) */

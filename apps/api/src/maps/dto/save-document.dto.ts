@@ -1,4 +1,25 @@
-import { IsBoolean, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean, IsObject, IsOptional, IsString, MaxLength, ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+
+/**
+ * 저장한 기기 정보 (2026-08-09 — 히스토리에 표시). **IP 는 받지 않는다**
+ * — 서버가 요청에서 직접 읽는다(위조 방지). 플랫폼·브라우저만 받는 이유는
+ * User-Agent 문자열로는 Windows 10 과 11 을 구분할 수 없기 때문이다
+ * (둘 다 'Windows NT 10.0' — Client Hints 로만 갈린다).
+ */
+export class SaveClientInfoDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  platform?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  browser?: string;
+}
 
 /**
  * 전체 문서 스냅샷 저장. `doc` 는 프론트엔드 문서 트리(임베드 이미지·노트·
@@ -41,4 +62,13 @@ export class SaveDocumentDto {
   @IsOptional()
   @IsBoolean()
   allowEmpty?: boolean;
+
+  /**
+   * 저장한 기기·브라우저 (2026-08-09) — 히스토리 버전에만 기록된다.
+   * 없어도 서버가 User-Agent 로 추정한다.
+   */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SaveClientInfoDto)
+  client?: SaveClientInfoDto;
 }

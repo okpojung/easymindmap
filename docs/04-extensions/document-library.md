@@ -657,3 +657,66 @@ SCRIPT
 ```
 
 `컬럼 OK: search_text` 와 `색인 없는 맵: 0` 이 나오면 완료.
+
+## 9. 파일 상세 정보 카드 (2026-08-09 사용자 요청)
+
+> "내 문서에서도 파일명에 호버링하면 위의 정보들을 상세하게 보여 주도록
+> 해 주면 좋겠다 — 아니면 오른쪽에 상세정보 조회 아이콘을 만들어 주던지"
+
+둘 다 넣었다. 목록의 좁은 칸에는 다 담을 수 없는 값들을 한자리에 모은다.
+
+| 여는 방법 | 동작 |
+|---|---|
+| **파일명 위에 마우스** (0.35초) | 카드가 뜨고, 마우스를 떼면 사라진다 |
+| **행 오른쪽 ⓘ** | 카드가 **고정**된다 — 마우스를 떼도 남아 IP 를 골라 복사할 수 있다. 다시 누르거나 Esc 로 닫는다 |
+
+내용: 제목 · 유형(단독/협업) · 생성 · 수정 · 노드 수 · 문서 크기 ·
+첨부(개수·용량) · **마지막 저장 자리(기기 · 브라우저 · IP · 저장 시각)**.
+
+- **마지막 저장 자리**는 `GET /maps` 가 함께 준다 — `LATERAL` 로 **그
+  페이지에 실린 맵만** 최신 버전 1행을 집어 온다. `(map_id, version DESC)`
+  인덱스를 그대로 타서 목록이 무거워지지 않는다. 값의 출처·판별 규칙은
+  `docs/03-editor-core/history/13-version-history.md` "저장한 자리" 참조.
+- 이 기능이 생기기 전에 저장된 맵은 값이 없다. `—` 를 늘어놓지 않고
+  **왜 없는지**("다음 ☁ 저장부터 남습니다")를 한 줄로 알려 준다.
+- 카드가 떠 있을 때 **Esc 는 카드만** 닫는다 — 문서함은 그대로다
+  (Esc 계층 규칙, coding-conventions.md §5-1-3).
+
+### 9.1 델타 SQL (서버 적용 필요)
+
+접속 정보 컬럼이 없어도 **목록·저장·히스토리는 그대로 동작한다**(서버가
+컬럼 유무를 보고 뺀다). 다만 값이 안 쌓이므로 아래를 적용한다.
+(두 번 실행해도 안전)
+
+```bash
+bash <<'SCRIPT'
+set -e
+DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
+[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
+[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다"; exit 1; }
+echo "✅ DB 컨테이너: $DB"
+
+docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS client_platform VARCHAR(60);
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS client_browser  VARCHAR(60);
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS client_ip       VARCHAR(45);
+SQL
+
+echo "── 검증 ──"
+docker exec -i "$DB" psql -U postgres -d postgres -tAc \
+  "SELECT '  컬럼 OK: ' || string_agg(column_name, ', ' ORDER BY column_name)
+     FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='map_document_versions'
+      AND column_name IN ('client_platform','client_browser','client_ip')"
+SCRIPT
+```
+
+`컬럼 OK: client_browser, client_ip, client_platform` 이 나오면 완료다.
+API 재기동은 필요 없다 — 서버가 1분 안에 스스로 알아챈다.
+
+검증: E2E e2e134

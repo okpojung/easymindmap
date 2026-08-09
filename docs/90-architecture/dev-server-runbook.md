@@ -537,8 +537,21 @@ curl -i -X OPTIONS https://<API도메인>/v1/folders \
 
 #### 먼저 이걸 연다 — `GET /v1/health/ip`
 
-서버가 그 요청의 IP 를 무엇으로 보는지 그대로 돌려준다. 브라우저로 열면
-된다. 실제로 받은 값(2026-08-09):
+서버가 그 요청의 IP 를 무엇으로 보는지 그대로 돌려준다.
+
+**어디서 · 무엇을 입력하나** (막연히 "열어 본다"로 적지 않는다)
+
+| 어디서 | 무엇을 |
+|---|---|
+| **PC 웹 브라우저 주소창** (권장) | `https://<API 도메인>/v1/health/ip` 를 입력하고 Enter. 프런트 도메인(`dev.…`)이 아니라 **API 도메인**(`api-dev.…`)이다 |
+| **휴대폰 브라우저** | 같은 주소 — 기기마다 값이 달라지는지 보려면 PC 와 둘 다 연다 |
+| **em-dev 터미널** | `curl -s https://<API 도메인>/v1/health/ip` — 다만 이건 **서버 자신의 접속**이라 `ip` 는 서버의 공인 IP 다. `xForwardedFor` 항목 수를 보는 데는 충분하다 |
+
+> API 도메인이 헷갈리면: 프런트에서 맵을 연 뒤 **F12 → Network** 탭 →
+> 아무 요청이나 클릭 → `Request URL` 이 `https://…/v1/maps…` 다.
+> 그 `https://…` 부분이 API 도메인이다.
+
+**고치기 전에 실제로 받은 값**(2026-08-09):
 
 ```json
 { "ip": "192.168.94.74",
@@ -548,7 +561,6 @@ curl -i -X OPTIONS https://<API도메인>/v1/folders \
   "remoteAddress": "::ffff:10.0.1.6",
   "trustProxy": ["loopback","linklocal","uniquelocal"] }
 ```
-
 **읽는 법** — 이 네 줄이 사슬을 그대로 말해 준다.
 
 | 값 | 뜻 |
@@ -621,31 +633,57 @@ sudo cat /data/coolify/proxy/docker-compose.yml
 
 `Servers` → **em-dev 서버 선택** → `Proxy` 탭 → **Configuration**(설정
 파일 편집기, 버전에 따라 `Advanced`/`Configuration` 로 표기) → 열린
-YAML 의 `services:` → `traefik:` → **`command:` 목록 맨 아래**에 두 줄을
-붙인다 → `Save` → **`Restart Proxy`**.
+YAML 의 `services:` → `traefik:` → **`command:` 목록**에 두 줄을 더한다
+→ `Save` → **`Restart Proxy`**.
+
+아래는 2026-08-09 em-dev 의 **실제** `command:` 블록에 두 줄(← 표시)을
+넣은 모습이다. **UI 에 넣어야** Coolify 가 프록시를 다시 만들 때도 남는다.
 
 ```yaml
-services:
-  traefik:
-    # …
     command:
+      - '--ping=true'
+      - '--ping.entrypoint=http'
       - '--api.dashboard=true'
       - '--entrypoints.http.address=:80'
       - '--entrypoints.https.address=:443'
-      # ↓ 이 두 줄을 더한다 (들여쓰기는 위 줄들과 똑같이)
-      - '--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24'
-      - '--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24'
+      - '--entrypoints.http.http.encodequerysemicolons=true'
+      - '--entryPoints.http.http2.maxConcurrentStreams=250'
+      - '--entrypoints.https.http.encodequerysemicolons=true'
+      - '--entryPoints.https.http2.maxConcurrentStreams=250'
+      - '--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24'   # ←
+      - '--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24'  # ←
+      - '--entrypoints.https.http3'
+      - '--providers.file.directory=/traefik/dynamic/'
+      # … 나머지는 그대로
 ```
 
-**③ UI 를 못 쓰면 — 파일 직접 편집**
+**③ UI 를 못 쓰면 — 파일에 직접 (백업 + 두 번 실행해도 안전)**
+
+`INSERT_AFTER` 줄 **뒤에** 두 줄을 끼워 넣는다. 이미 있으면 건드리지 않는다.
 
 ```bash
-sudo cp /data/coolify/proxy/docker-compose.yml \
-        /data/coolify/proxy/docker-compose.yml.bak      # 되돌릴 수 있게
-sudo nano /data/coolify/proxy/docker-compose.yml        # command: 아래 두 줄 추가
-cd /data/coolify/proxy && sudo docker compose up -d     # 프록시만 다시 뜬다
+cd /data/coolify/proxy
+sudo cp docker-compose.yml docker-compose.yml.bak
+
+sudo python3 -c '
+p = "/data/coolify/proxy/docker-compose.yml"
+s = open(p).read()
+anchor = "      - \x27--entryPoints.https.http2.maxConcurrentStreams=250\x27\n"
+add = ("      - \x27--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24\x27\n"
+       "      - \x27--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24\x27\n")
+if "forwardedHeaders" in s: print("이미 있음 — 바꾸지 않았습니다")
+elif anchor not in s:      print("기준 줄을 못 찾았습니다 — 손으로 넣어 주세요")
+else:
+    open(p, "w").write(s.replace(anchor, anchor + add, 1)); print("두 줄을 넣었습니다")
+'
+
+diff docker-compose.yml.bak docker-compose.yml   # 무엇이 바뀌었는지 눈으로 확인
+sudo docker compose up -d                        # 프록시만 다시 뜬다
 ```
 
+> 파일을 직접 고쳤다면, 동작을 확인한 뒤 **같은 내용을 Coolify UI 편집기에도
+> 넣어 둔다** — Coolify 가 프록시 설정을 다시 만들 때 파일 쪽 수정은 지워질
+> 수 있다.
 * 대역은 **NPM 이 있는 사설 대역**으로 — 여기서는 `/v1/health/ip` 의
   `xForwardedFor` 에 찍힌 주소(`192.168.94.74`)가 속한 `192.168.94.0/24`.
   여러 곳이면 콤마로 나열한다.
@@ -666,6 +704,27 @@ Advanced 에 아래 헤더를 넣는다.
 
 > **판정 기준 하나**: 사슬의 어느 단계든 **접속자마다 값이 달라져야**
 > 한다. 서로 다른 기기에서 같은 값이 나오면 그 단계에서 이미 잃은 것이다.
+
+#### ✅ 해결 확인 (2026-08-09)
+
+em-dev 의 Coolify 프록시(`traefik:v3.6`)에 두 줄을 넣고 `Save` →
+`Restart Proxy` 한 직후:
+
+```json
+{ "ip": "58.230.60.22",
+  "ips": ["58.230.60.22", "192.168.94.74"],
+  "xForwardedFor": "58.230.60.22, 192.168.94.74",
+  "xRealIp": "58.230.60.22",
+  "remoteAddress": "::ffff:10.0.1.6",
+  "hint": "OK — 공인 IP 입니다. 히스토리에도 이 값이 남습니다." }
+```
+
+`xForwardedFor` 가 **두 항목**(접속자 → NPM)이 되었고, 우리가 기록하는
+`ip` 가 진짜 접속자 주소가 됐다. **원인은 Traefik 이 남의 X-Forwarded-\*
+를 버리는 기본 동작이 맞았다.**
+
+같이 고쳐진 것: 레이트 리밋도 이 값을 쓴다 — 그동안 **모든 사용자가 한
+바구니**에 묶여 있었다(한 사람이 많이 쓰면 전원이 막히는 상태).
 
 #### NPM 에서 헤더를 넘기게 하기 (해당 호스트 → Advanced)
 

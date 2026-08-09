@@ -621,31 +621,57 @@ sudo cat /data/coolify/proxy/docker-compose.yml
 
 `Servers` → **em-dev 서버 선택** → `Proxy` 탭 → **Configuration**(설정
 파일 편집기, 버전에 따라 `Advanced`/`Configuration` 로 표기) → 열린
-YAML 의 `services:` → `traefik:` → **`command:` 목록 맨 아래**에 두 줄을
-붙인다 → `Save` → **`Restart Proxy`**.
+YAML 의 `services:` → `traefik:` → **`command:` 목록**에 두 줄을 더한다
+→ `Save` → **`Restart Proxy`**.
+
+아래는 2026-08-09 em-dev 의 **실제** `command:` 블록에 두 줄(← 표시)을
+넣은 모습이다. **UI 에 넣어야** Coolify 가 프록시를 다시 만들 때도 남는다.
 
 ```yaml
-services:
-  traefik:
-    # …
     command:
+      - '--ping=true'
+      - '--ping.entrypoint=http'
       - '--api.dashboard=true'
       - '--entrypoints.http.address=:80'
       - '--entrypoints.https.address=:443'
-      # ↓ 이 두 줄을 더한다 (들여쓰기는 위 줄들과 똑같이)
-      - '--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24'
-      - '--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24'
+      - '--entrypoints.http.http.encodequerysemicolons=true'
+      - '--entryPoints.http.http2.maxConcurrentStreams=250'
+      - '--entrypoints.https.http.encodequerysemicolons=true'
+      - '--entryPoints.https.http2.maxConcurrentStreams=250'
+      - '--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24'   # ←
+      - '--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24'  # ←
+      - '--entrypoints.https.http3'
+      - '--providers.file.directory=/traefik/dynamic/'
+      # … 나머지는 그대로
 ```
 
-**③ UI 를 못 쓰면 — 파일 직접 편집**
+**③ UI 를 못 쓰면 — 파일에 직접 (백업 + 두 번 실행해도 안전)**
+
+`INSERT_AFTER` 줄 **뒤에** 두 줄을 끼워 넣는다. 이미 있으면 건드리지 않는다.
 
 ```bash
-sudo cp /data/coolify/proxy/docker-compose.yml \
-        /data/coolify/proxy/docker-compose.yml.bak      # 되돌릴 수 있게
-sudo nano /data/coolify/proxy/docker-compose.yml        # command: 아래 두 줄 추가
-cd /data/coolify/proxy && sudo docker compose up -d     # 프록시만 다시 뜬다
+cd /data/coolify/proxy
+sudo cp docker-compose.yml docker-compose.yml.bak
+
+sudo python3 -c '
+p = "/data/coolify/proxy/docker-compose.yml"
+s = open(p).read()
+anchor = "      - \x27--entryPoints.https.http2.maxConcurrentStreams=250\x27\n"
+add = ("      - \x27--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24\x27\n"
+       "      - \x27--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24\x27\n")
+if "forwardedHeaders" in s: print("이미 있음 — 바꾸지 않았습니다")
+elif anchor not in s:      print("기준 줄을 못 찾았습니다 — 손으로 넣어 주세요")
+else:
+    open(p, "w").write(s.replace(anchor, anchor + add, 1)); print("두 줄을 넣었습니다")
+'
+
+diff docker-compose.yml.bak docker-compose.yml   # 무엇이 바뀌었는지 눈으로 확인
+sudo docker compose up -d                        # 프록시만 다시 뜬다
 ```
 
+> 파일을 직접 고쳤다면, 동작을 확인한 뒤 **같은 내용을 Coolify UI 편집기에도
+> 넣어 둔다** — Coolify 가 프록시 설정을 다시 만들 때 파일 쪽 수정은 지워질
+> 수 있다.
 * 대역은 **NPM 이 있는 사설 대역**으로 — 여기서는 `/v1/health/ip` 의
   `xForwardedFor` 에 찍힌 주소(`192.168.94.74`)가 속한 `192.168.94.0/24`.
   여러 곳이면 콤마로 나열한다.

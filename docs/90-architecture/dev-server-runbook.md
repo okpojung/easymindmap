@@ -581,9 +581,42 @@ docker network ls -q | xargs -r -n1 docker network inspect \
 
 | `xForwardedFor` 의 주소가 | 뜻 | 조치 |
 |---|---|---|
-| **NPM(nginx) 컨테이너** | NPM 이 접속자 IP 를 못 받고 있다 — **NPM 앞에 또 하나가 있다** | NPM **접근 로그**를 본다. 거기도 사설이면 그 앞을 고친다 |
+| **어느 컨테이너도 아니다** (위 명령이 아무것도 안 찍는다) | 그 장치는 **도커 밖**이다 — 보통 **다른 장비에서 도는 NPM** 이 Traefik 앞에 있다 | ⇒ 아래 "Traefik 이 헤더를 버린다" 를 먼저 본다 |
 | **Docker 네트워크 게이트웨이** | 포트 공개가 **userland-proxy** 를 거쳐 출발지 주소가 게이트웨이로 바뀐다 | `/etc/docker/daemon.json` 에 `{"userland-proxy": false}` 후 도커 재시작, 또는 에지 프록시를 `network_mode: host` 로 |
-| **다른 리버스 프록시·방화벽** | 그 장치가 X-Forwarded-For 를 안 붙인다 | 그 장치에서 `X-Forwarded-For`/`X-Real-IP` 전달을 켠다 |
+| **NPM(nginx) 컨테이너** | NPM 도 접속자 IP 를 못 받고 있다 — NPM 앞에 또 하나가 있다 | NPM **접근 로그**를 본다. 거기도 사설이면 그 앞을 고친다 |
+
+#### ★ 가장 흔한 함정 — **Traefik 은 남이 붙인 X-Forwarded-\* 를 버린다**
+
+Traefik 은 **신뢰하지 않는 상대가 보낸 `X-Forwarded-*` 헤더를 지우고 자기가
+다시 쓴다**(보안 기본값 — 아무나 헤더를 위조해 IP 를 속이지 못하게).
+그래서 NPM 이 접속자 IP 를 제대로 적어 보내도, Traefik 이 그것을 버리고
+**자기가 본 상대(= NPM 의 주소)** 로 덮어쓴다. 우리 API 에는 사설 주소
+하나만 남는다 — **바로 이 증상이다.**
+
+신뢰 목록에 NPM 이 있는 대역을 넣어 주면 Traefik 이 헤더를 **이어받는다**.
+Coolify 는 프록시 설정을 UI 에서 고칠 수 있다
+(**Server → Proxy → Configuration**, 파일은 `/data/coolify/proxy/docker-compose.yml`).
+`command:` 목록에 두 줄을 더한다.
+
+```yaml
+      - '--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24'
+      - '--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24'
+```
+
+* 대역은 **NPM 이 있는 사설 대역**으로 (여러 개면 콤마로 나열)
+* ⚠️ `forwardedHeaders.insecure=true` (아무나 신뢰)는 쓰지 않는다 —
+  접속자가 헤더를 위조해 IP 를 마음대로 바꿀 수 있다
+* 저장 후 **프록시 재시작**, 그다음 `/v1/health/ip` 를 다시 연다
+
+고쳐졌으면 `xForwardedFor` 가 **두 항목**이 된다.
+
+```
+xForwardedFor: "203.0.113.9, 192.168.94.74"   ← 접속자, NPM
+ip:            "203.0.113.9"                   ← 우리가 기록하는 값
+```
+
+여전히 한 항목이면 이번엔 **NPM 이 안 보내는 것**이다 — NPM 의 해당 호스트
+Advanced 에 아래 헤더를 넣는다.
 
 > **판정 기준 하나**: 사슬의 어느 단계든 **접속자마다 값이 달라져야**
 > 한다. 서로 다른 기기에서 같은 값이 나오면 그 단계에서 이미 잃은 것이다.

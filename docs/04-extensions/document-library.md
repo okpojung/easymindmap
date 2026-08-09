@@ -356,6 +356,7 @@ import 하므로 순환을 피해 스냅샷 함수는 각자 둔다).
   그래서 **맵을 폴더별로 나눠 받지 않고 한 번에 전부 받는다** —
   `listMaps({ limit: 500 })` (서버 `list()` 는 folder 를 주지 않으면
   그 사용자의 맵 전부). 500 을 넘으면 배너로 알리고 검색을 권한다.
+  2026-08-08 부터 **이름뿐 아니라 맵 내용까지** 찾는다 → 아래 §내용 검색.
 - 열 머리글 **폴더/파일명 · 생성일 · 수정일 · 노드 · 크기 · 첨부 ·
   첨부 용량** 클릭 → 오름·내림 전환(같은 열 다시 누르면 반대).
   숫자 4열은 **머리글·합계·값이 모두 오른쪽 맞춤 + 고정폭 숫자**
@@ -419,3 +420,198 @@ import 하므로 순환을 피해 스냅샷 함수는 각자 둔다).
 재로그인 리셋 · 편집 중 맵 복귀 · 배지 표시 전용) ALL PASS + 회귀
 e2e79·e2e80·e2e81·e2e-cloud2 ALL PASS. API 스모크(폴더 중복 409 · 맵
 중복 409 · 다른 폴더 같은 이름 허용 · 비어 있지 않은 폴더 삭제 409) 확인.
+
+## 8. 내용 검색 (2026-08-08 사용자 요청)
+
+> "폴더명과 파일명에서만 검색하는데 파일 안(맵의 노드, 노트) 내용에서도
+> 검색 가능하나?"
+
+가능하지 않았다. `MapBrowser` 의 판정이 `name.toLowerCase().includes(q)`
+한 줄이었고, 서버 `GET /maps` 에는 검색 파라미터 자체가 없었다. (맵을
+**연 상태**의 검색과 내보낸 HTML 뷰어의 검색은 내용까지 찾는다 — 문서함
+검색만 이름 전용이었다.)
+
+### 8.1 어디서 찾나 — 저장 시점에 만든 평문
+
+맵 내용은 `map_documents.doc`(JSONB) 에 통째로 있지만, 조회 때마다 doc 을
+파싱하면 맵 수만큼 느려진다. 그래서 **저장할 때 검색용 평문을 만들어
+둔다**: `map_documents.search_text`.
+
+- 만드는 주체는 **DB 트리거**(`map_documents_search_text`)다. 애플리케
+  이션이 아니라 DB 가 doc 에서 직접 뽑으므로 **doc 과 색인이 어긋날 수
+  없다** — 다른 경로로 doc 을 써도 색인이 따라온다.
+- 추출은 jsonpath 재귀 탐색 — 노드가 아무리 깊어도, 모델이 늘어나도
+  따라간다. 대상은 다음과 같다.
+
+  | 경로 | 무엇 |
+  |---|---|
+  | `$.map.**.text` | **노드 텍스트 + 노트 본문** (둘 다 같은 키를 쓴다) |
+  | `$.map.**.tags[*]` · `$.map.**.tag` | 태그 |
+  | `$.map.**.links[*].label` · `.url` | 링크 이름·주소 (2026-08-08 2차) |
+  | `$.map.**.attachments[*].name` | 첨부 파일명 (2026-08-08 2차) |
+
+  ⚠️ **첨부의 `url` 은 절대 넣지 않는다.** 2MB 이하 첨부는 data URL 로
+  문서에 내장되므로(base64), 색인에 넣으면 색인이 문서만큼 커지고 검색이
+  base64 쓰레기에 걸린다. 노드 사진 `src` 도 같은 이유로 제외(키 이름이
+  달라 애초에 안 잡힌다). 링크·첨부명 추가는 색인 크기에 사실상 영향이
+  없다 — 짧은 문자열 몇 개다.
+- **한 줄 = 한 조각**. 줄 안의 개행·연속 공백은 공백 하나로 접는다.
+  이 형태 덕에 미리보기가 "맞은 줄 하나"로 딱 떨어진다(§8.3).
+- 이미 저장돼 있던 맵은 스키마 적용 시 한 번 메운다
+  (`UPDATE … WHERE search_text IS NULL`).
+
+### 8.2 왜 trigram 인가 — 그리고 질의 형태가 왜 중요한가
+
+한국어는 형태소 분석 사전이 없어 `to_tsvector` 방식이 '검색'과 '검색어'를
+갈라 놓는다. 사람이 기대하는 동작은 부분 문자열(`ILIKE '%…%'`)이고,
+`pg_trgm` GIN 인덱스가 그걸 가속한다.
+
+질의 형태는 **실측으로** 정했다 (맵 3,000개 × 200노드 · 색인 42MB,
+전부 한 사용자 소유 · 3글자 검색):
+
+| 형태 | 시간 |
+|---|---|
+| `m.title ILIKE … OR d.search_text ILIKE …` (조인한 두 테이블에 걸친 OR) | 337ms |
+| 하위 질의 `IN (SELECT … WHERE search_text ILIKE …)` | 276ms |
+| **`WITH hits AS MATERIALIZED (…)`** + `m.id IN (SELECT … FROM hits)` | **1.8ms** |
+
+앞의 둘이 느린 이유는 같다 — **trigram 인덱스를 못 쓴다.** OR 안의 하위
+질의는 hashed SubPlan 이 되는데 플래너가 그 안에서 인덱스를 버리고 통째로
+훑는다. `MATERIALIZED` CTE 는 먼저 독립적으로 계산되므로 인덱스를 탄다
+(같은 조건을 CTE 밖에서 단독 실행하면 0.02ms 다 — 인덱스 자체는 멀쩡했다).
+
+**CTE 안의 소유자 조인**도 그대로 둔다. 없으면 다른 사용자의 문서까지
+훑는다. 조인이 있으면 플래너가 둘 중 작은 쪽부터 돈다 — 내 맵이 몇 개뿐
+이면 내 문서만 보고(0.25ms), 내가 전부 가졌으면 전부 보지만 그건 어차피
+내 데이터다.
+
+남는 비용은 **2글자 검색**이다. trigram 은 3글자 미만 패턴에 인덱스를
+쓸 수 없어(만들 트라이그램이 없다) 자기 문서를 훑는다 — 위 규모에서
+약 0.33초. 한국어에서 2글자 검색은 흔하지만, 자기 데이터 안에서 끝나는
+비용이고 입력은 250ms 디바운스하므로 타자마다 나가지 않는다. 실제
+사용자는 맵 3,000개 × 200노드를 갖지 않는다.
+
+`%`·`_`·`\` 는 이스케이프한다 — 안 그러면 `_` 하나로 아무 한 글자나
+걸린다.
+
+### 8.3 결과 표시 — 미리보기 문장이 아니라 **건수**
+
+처음에는 맞은 줄을 문장으로 실어 보냈으나, 2026-08-08 2차에 사용자
+결정으로 바꿨다:
+
+> "맵 내용에 여러 노드, 노트에 검색이 되면 그걸 다 보여 주려면 복잡해질
+> 텐데 — 폴더명·파일명에 있으면 해당 단어에 하이라이트, 맵 내용에 있으면
+> 찾은 건수만 `맵(12건)` 처럼 표시하는 건 어때"
+
+맞는 판단이다. 맵 하나에서 열 군데가 걸리면 무엇을 대표로 보여줄지가
+끝없이 복잡해지고, 어차피 열어서 같은 말로 다시 검색하면 그 안에서 하나씩
+짚을 수 있다. 그래서 지금은:
+
+- **이름이 맞으면** — 프런트가 그 글자를 강조한다(`<mark>`, 노랑 + 진한
+  글자 고정색 = 에디터·뷰어 검색 강조와 같은 값이라 다크에서도 안전).
+  서버가 할 일이 없다.
+- **맵 내용이 맞으면** — 서버가 `matchCount` 를 준다. **1건 = 맞은 조각
+  하나**(노드 텍스트/노트/태그/링크/첨부명). `search_text` 가 조각당 한
+  줄이라 줄 수가 곧 건수다.
+
+건수 계산도 부담을 만들지 않는다:
+
+1. 먼저 페이지(LIMIT)를 CTE 로 확정하고 **그 행에 대해서만** 센다. 목록
+   SELECT 에 그냥 넣으면 정렬 전에 매칭된 전체 행에서 돈다.
+2. `search_text` 는 CTE 안에서만 쓰고 **밖으로 내보내지 않는다** — 큰
+   맵의 평문(수십 KB)이 응답에 실려 나가지 않는다.
+
+### 8.4 화면
+
+- 검색창 문구 = "🔍 이름 · 맵 내용으로 찾기", 조회 중에는 "찾는 중…".
+- **이름 일치** = 폴더명·파일명에서 그 글자가 노랗게 강조된다(`Mark`).
+- **내용 일치** = 이름 옆에 `맵(N건)` 배지(`browser-map-matches`).
+  이름만 맞은 맵에는 배지가 없다.
+- 검색 중에는 목록을 **서버 결과로 갈아 끼운다**. 받아 둔 목록에서
+  훑지 않는다 — 그 목록은 최근 500개로 잘려 있어 바깥의 맵은 이름조차
+  못 찾았다. 폴더는 내용이 없으므로 이름 검색 그대로다.
+- 검색 결과가 상한(500)을 넘으면 **검색 기준으로** 알린다
+  (`browser-search-capped`). 목록 상한 배너("검색으로 좁혀 주세요")는
+  검색 중에는 맞지 않아 감춘다.
+- 서버 검색이 실패하면 **이름 검색으로 물러서고** 그 사실을 배너로
+  말한다 — 검색창이 통째로 먹통이 되는 것보다 낫다.
+
+**검증: E2E e2e132** (25항목 — 서버 16 + 화면 9).
+
+### 8.5 델타 SQL (서버 적용 필요)
+
+내용 검색은 **DB 스키마 변경이 필요하다** — 적용 전에는 검색이 이름만
+찾는다(서버가 `search_text` 컬럼을 못 찾아 500 이 나므로, 프런트가
+이름 검색으로 물러선다). 히스토리·목록 상세 델타와 같은 방식으로,
+아래 블록 **전체를 서버 SSH 터미널에 붙여넣으면** DB 컨테이너를 자동
+으로 찾아 적용·검증한다. (두 번 실행해도 안전)
+
+```bash
+bash <<'SCRIPT'
+set -e
+DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
+[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
+[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다"; exit 1; }
+echo "✅ DB 컨테이너: $DB"
+
+docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+ALTER TABLE public.map_documents ADD COLUMN IF NOT EXISTS search_text TEXT;
+
+CREATE OR REPLACE FUNCTION public.map_search_text(doc JSONB)
+RETURNS TEXT LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT string_agg(t, E'\n')
+      FROM (
+        SELECT DISTINCT btrim(regexp_replace(v #>> '{}', '\s+', ' ', 'g')) AS t
+          FROM (
+            SELECT jsonb_path_query(doc, '$.map.**.text')    AS v
+             UNION ALL SELECT jsonb_path_query(doc, '$.map.**.tags[*]')
+             UNION ALL SELECT jsonb_path_query(doc, '$.map.**.tag')
+             UNION ALL SELECT jsonb_path_query(doc, '$.map.**.links[*].label')
+             UNION ALL SELECT jsonb_path_query(doc, '$.map.**.links[*].url')
+             UNION ALL SELECT jsonb_path_query(doc, '$.map.**.attachments[*].name')
+          ) q
+         WHERE jsonb_typeof(v) = 'string'
+      ) d
+     WHERE t <> '';
+$$;
+
+CREATE OR REPLACE FUNCTION public.map_documents_sync_search_text()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.search_text := public.map_search_text(NEW.doc);
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS map_documents_search_text ON public.map_documents;
+CREATE TRIGGER map_documents_search_text
+    BEFORE INSERT OR UPDATE OF doc ON public.map_documents
+    FOR EACH ROW EXECUTE FUNCTION public.map_documents_sync_search_text();
+
+-- 값이 달라지는 행만 다시 쓴다 (처음이면 전부 채워진다)
+UPDATE public.map_documents d SET search_text = n.v
+  FROM (SELECT map_id, public.map_search_text(doc) AS v FROM public.map_documents) n
+ WHERE n.map_id = d.map_id AND d.search_text IS DISTINCT FROM n.v;
+
+CREATE INDEX IF NOT EXISTS idx_map_documents_search_trgm
+    ON public.map_documents USING GIN (search_text gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_maps_title_trgm
+    ON public.maps USING GIN (title gin_trgm_ops);
+SQL
+
+echo "── 검증 ──"
+docker exec -i "$DB" psql -U postgres -d postgres -tAc \
+  "SELECT '  컬럼 OK: ' || column_name FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='map_documents'
+      AND column_name='search_text'"
+docker exec -i "$DB" psql -U postgres -d postgres -tAc \
+  "SELECT '  색인 없는 맵: ' || count(*) FROM public.map_documents
+    WHERE search_text IS NULL"
+SCRIPT
+```
+
+`컬럼 OK: search_text` 와 `색인 없는 맵: 0` 이 나오면 완료.

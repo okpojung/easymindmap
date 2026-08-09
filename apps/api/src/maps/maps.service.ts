@@ -100,6 +100,11 @@ export class MapsService {
    * GET /maps — 내 맵 목록 (소유 기준, 소프트삭제 제외 기본).
    *  · folder: 'root' = 최상위만 · <uuid> = 그 폴더만 · 생략 = 전부
    *  · sort/order: 이름·수정일 오름/내림 (문서 브라우저 정렬 — 2026-08-02)
+   *  · q: **내용 검색** (2026-08-08) — 맵 제목뿐 아니라 맵 안(노드 텍스트·
+   *    노트·태그·링크·첨부 파일명)까지 찾고, 내용에서 맞은 **건수**를
+   *    matchCount 로 함께 준다. 매칭 대상은 저장할 때 DB 트리거가 만들어 둔
+   *    map_documents.search_text (schema.sql 참조) — 조회 때 doc 을 파싱
+   *    하지 않으므로 맵이 많아도 느려지지 않는다.
    */
   async list(
     userId: string,
@@ -109,6 +114,7 @@ export class MapsService {
       sort?: 'title' | 'createdAt' | 'updatedAt'
         | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
       order?: 'asc' | 'desc';
+      q?: string;
     },
   ) {
     const page = Math.max(1, opts.page ?? 1);
@@ -118,6 +124,42 @@ export class MapsService {
 
     const params: unknown[] = [userId];
     let where = `m.owner_id = $1 AND m.deleted_at IS ${wantDeleted ? 'NOT NULL' : 'NULL'}`;
+
+    // 검색어 — ILIKE 패턴 문자(%, _)와 이스케이프 문자는 그대로 찾도록
+    // 막는다. 안 그러면 '_' 하나로 아무 한 글자나 걸린다.
+    const raw = (opts.q ?? '').trim();
+    const searching = raw.length > 0;
+    let pLike = 0;
+    /** 검색 중일 때 두 질의(목록·개수) 앞에 붙는 공통 CTE */
+    let hitsCte = '';
+    if (searching) {
+      params.push(`%${raw.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+      pLike = params.length;
+      // 내용 조건은 **MATERIALIZED CTE** 로 뺀다. 실측으로 정한 형태다
+      // (맵 3,000개 · 색인 42MB · 3글자 검색):
+      //  · `m.title ILIKE … OR d.search_text ILIKE …` (조인한 두 테이블에
+      //    걸친 OR)                                   → 337ms
+      //  · 하위 질의(IN)                              → 276ms
+      //      OR 안의 하위 질의는 hashed SubPlan 이 되는데, 그 안에서
+      //      플래너가 trigram 인덱스를 버리고 통째로 훑는다.
+      //  · **MATERIALIZED CTE**                       → 1.8ms
+      //      CTE 를 먼저 독립적으로 계산하므로 trigram 인덱스를 탄다.
+      //
+      // CTE 안의 소유자 조인도 중요하다. 없으면 **2글자 검색**(한국어에서
+      // 매우 흔한데 trigram 이 못 도는 패턴)이 다른 사용자의 문서까지
+      // 훑는다 — 느린 것도 문제지만 남의 데이터를 훑는 것 자체가 문제다.
+      // 조인이 있으면 플래너가 둘 중 작은 쪽부터 돈다: 내 맵이 몇 개뿐이면
+      // 내 문서만 보고(0.25ms), 내가 전부 가졌으면 전부 보지만 그건 어차피
+      // 내 데이터다.
+      hitsCte = `WITH hits AS MATERIALIZED (
+           SELECT s.map_id FROM public.map_documents s
+             JOIN public.maps m2 ON m2.id = s.map_id AND m2.owner_id = $1
+            WHERE s.search_text ILIKE $${pLike} ESCAPE '\\'
+         ) `;
+      where += ` AND (m.title ILIKE $${pLike} ESCAPE '\\'`
+        + ` OR m.id IN (SELECT map_id FROM hits))`;
+    }
+
     if (opts.folder === 'root') {
       where += ' AND m.folder_id IS NULL';
     } else if (opts.folder) {
@@ -136,8 +178,43 @@ export class MapsService {
       attachCount: 'd.attach_count',
       attachBytes: 'd.attach_bytes',
     };
+    // CTE 밖에서 다시 정렬할 때 쓸 같은 기준 (컬럼은 p.* 로 노출된다).
+    // ★ CTE 안의 ORDER BY 는 "어느 행을 가져올지"만 정한다 — 바깥 SELECT
+    //   에 ORDER BY 가 없으면 반환 순서는 보장되지 않는다.
+    const SORT_SQL_OUT: Record<string, string> = {
+      title: 'lower(btrim(p.title))',
+      createdAt: 'p.created_at',
+      updatedAt: 'p.updated_at',
+      nodeCount: 'p.node_count',
+      docBytes: 'p.doc_bytes',
+      attachCount: 'p.attach_count',
+      attachBytes: 'p.attach_bytes',
+    };
     const sortCol = SORT_SQL[opts.sort ?? 'updatedAt'] ?? 'm.updated_at';
+    const sortColOut = SORT_SQL_OUT[opts.sort ?? 'updatedAt'] ?? 'p.updated_at';
     const dir = opts.order === 'asc' ? 'ASC' : 'DESC';
+
+    // 검색 결과 **건수** — "이 맵의 내용에서 몇 군데 맞았나" 하나만 준다.
+    // 미리보기 문장을 실어 보내다가 바꿨다(2026-08-08 2차 사용자 결정):
+    // 맵 하나에서 여러 노드·노트가 걸리면 무엇을 보여줄지가 끝없이
+    // 복잡해진다. 이름 일치는 프런트가 **글자 하이라이트**로 보여 주고,
+    // 내용 일치는 **`맵(12건)`** 처럼 건수만 말한다.
+    // 1건 = 맞은 조각 하나(노드 텍스트/노트/태그/링크/첨부명) — search_text
+    // 가 조각당 한 줄이라 줄 수가 곧 건수다.
+    //
+    // 서버 부담을 늘리지 않는 것이 조건이라 두 가지를 지킨다:
+    //  ⑴ 먼저 페이지(LIMIT) 를 CTE 로 확정하고, **그 행에 대해서만** 센다.
+    //     목록 SELECT 에 그냥 넣으면 정렬 전에 매칭된 전체 행에서 돈다.
+    //  ⑵ search_text 는 CTE 안에서만 쓰고 밖으로 내보내지 않는다 —
+    //     큰 맵의 평문(수십 KB)이 응답에 실려 나가지 않는다.
+    // ★ search_text 는 **검색할 때만** 고른다 — 늘 참조하면 스키마를
+    //   아직 적용하지 않은 서버에서 문서함 목록이 통째로 죽는다
+    //   (검색만 안 되는 게 아니라 목록 자체가 503).
+    const matchCountSql = searching
+      ? `, (SELECT count(*)
+             FROM unnest(string_to_array(p.search_text, E'\\n')) AS ln
+            WHERE ln ILIKE $${pLike} ESCAPE '\\')::int AS match_count`
+      : '';
 
     const [list, count] = await Promise.all([
       this.db.query<MapRow & {
@@ -146,18 +223,28 @@ export class MapsService {
         attach_count: number | null;
         attach_bytes: string | null;
         doc_bytes: string | null;
+        match_count?: number;
       }>(
-        `SELECT m.*, d.node_count, d.attach_count, d.attach_bytes,
-                octet_length(d.doc::text) AS doc_bytes
-           FROM public.maps m
-           LEFT JOIN public.map_documents d ON d.map_id = m.id
-          WHERE ${where}
-          ORDER BY ${sortCol} ${dir} NULLS LAST, m.id
-          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        `${hitsCte}${hitsCte ? ', p AS (' : 'WITH p AS ('}
+           SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
+                  m.created_at, m.updated_at,
+                  d.node_count, d.attach_count, d.attach_bytes,
+                  octet_length(d.doc::text) AS doc_bytes${searching ? ',\n                  d.search_text' : ''}
+             FROM public.maps m
+             LEFT JOIN public.map_documents d ON d.map_id = m.id
+            WHERE ${where}
+            ORDER BY ${sortCol} ${dir} NULLS LAST, m.id
+            LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+         )
+         SELECT p.id, p.title, p.folder_id, p.kind, p.deleted_at,
+                p.created_at, p.updated_at, p.node_count, p.attach_count,
+                p.attach_bytes, p.doc_bytes${matchCountSql}
+           FROM p
+          ORDER BY ${sortColOut} ${dir} NULLS LAST, p.id`,
         [...params, limit, offset],
       ),
       this.db.query<{ total: string }>(
-        `SELECT COUNT(*)::text AS total FROM public.maps m WHERE ${where}`,
+        `${hitsCte}SELECT COUNT(*)::text AS total FROM public.maps m WHERE ${where}`,
         params,
       ),
     ]);
@@ -176,6 +263,8 @@ export class MapsService {
         docBytes: m.doc_bytes === null ? null : Number(m.doc_bytes),
         attachCount: m.attach_count,
         attachBytes: m.attach_bytes === null ? null : Number(m.attach_bytes),
+        // 검색 중에만 채워진다 — **맵 내용에서 맞은 건수**(0 = 이름만 맞음)
+        ...(searching ? { matchCount: m.match_count ?? 0 } : {}),
       })),
       total: Number(count.rows[0]?.total ?? 0),
     };

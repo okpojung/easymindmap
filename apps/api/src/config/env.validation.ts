@@ -28,6 +28,17 @@ export interface AppEnv {
   RATE_LIMIT_MAX: number;
   // 0 이면 레이트 리밋을 끈다 (부하 테스트 등 특수한 경우에만)
   RATE_LIMIT_ENABLED: boolean;
+  /**
+   * **우리 앞에 프록시가 몇 단계 있는가** (2026-08-09).
+   * 이 값이 맞아야 `req.ip` 가 진짜 접속자 IP 가 된다 — 히스토리의
+   * 접속 IP 와 레이트 리밋의 바구니가 모두 여기에 달려 있다.
+   *   · `'loopback, linklocal, uniquelocal'` (기본) = **사설망 주소는
+   *     전부 우리 프록시로 보고 벗겨 낸다**. 단계 수를 몰라도 맞는다.
+   *   · 숫자(`'2'`) = 딱 그만큼만 벗긴다.
+   *   · `'false'` = 프록시 없음(접속 소켓 주소를 그대로 쓴다).
+   * 자세한 설명은 docs/05-implementation/rate-limit.md §프록시.
+   */
+  TRUST_PROXY: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -92,6 +103,14 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
   const rlRaw = String(raw.RATE_LIMIT_ENABLED ?? 'true').toLowerCase();
   const RATE_LIMIT_ENABLED = !(rlRaw === 'false' || rlRaw === '0');
 
+  // 프록시 신뢰 설정 — 기본은 "사설망은 전부 우리 프록시"다.
+  // 예전 기본값(1단계)은 nginx→Traefik→컨테이너처럼 **두 단계**인
+  // 배포에서 진짜 접속자 대신 **프록시의 내부 IP**(192.168.x.x)를
+  // 집어 왔다 (2026-08-09 사용자 보고: 히스토리 IP 가 전부 dev 서버
+  // 내부 주소). 단계 수를 사람이 세어 맞추는 방식은 프록시를 하나
+  // 더 끼우는 순간 조용히 틀리므로 기본을 바꿨다.
+  const TRUST_PROXY = String(raw.TRUST_PROXY ?? 'loopback, linklocal, uniquelocal').trim();
+
   if (errors.length) {
     throw new Error('환경변수 오류:\n - ' + errors.join('\n - '));
   }
@@ -110,5 +129,6 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     RATE_LIMIT_WINDOW_MS,
     RATE_LIMIT_MAX,
     RATE_LIMIT_ENABLED,
+    TRUST_PROXY,
   };
 }

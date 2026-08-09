@@ -1,5 +1,6 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Req } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { clientIpOf } from '../common/client-info';
 
 /**
  * 이 API 가 동작하려면 반드시 있어야 하는 테이블.
@@ -95,6 +96,50 @@ export class HealthController {
       ...(missingTables.length ? { missingTables } : {}),
       ...(missingColumns.length ? { missingColumns } : {}),
       time: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * GET /v1/health/ip — **서버가 당신의 IP 를 무엇으로 보는지** 그대로 보여준다
+   * (2026-08-09). 히스토리에 남는 IP 가 내부 주소로 찍힐 때, 프록시가 몇
+   * 단계인지·헤더를 제대로 붙이는지 추측하지 않고 **눈으로 확인**하려고 둔다.
+   * 브라우저에서 그냥 열면 되고, PC·휴대폰에서 각각 열어 비교하면 된다.
+   *
+   * 자기 요청의 헤더만 되돌려 준다 — 다른 사람의 정보는 나오지 않는다.
+   */
+  @Get('ip')
+  whoami(@Req() req: {
+    ip?: string; ips?: string[];
+    headers?: Record<string, unknown>;
+    socket?: { remoteAddress?: string };
+    app?: { get?: (k: string) => unknown };
+  }) {
+    const h = req.headers ?? {};
+    const ip = clientIpOf(req) ?? null;
+    const xff = (h['x-forwarded-for'] as string) ?? null;
+    // 사설망(RFC1918)·루프백인가 — 이게 참이면 아직 프록시 주소를 보고 있다
+    const isPrivate = (v: string | null) =>
+      !!v && /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|fc|fd)/i.test(v);
+    return {
+      // 우리가 기록에 쓰는 값 — 이게 진짜 접속 IP 여야 한다
+      ip,
+      // 프록시 사슬 (trust proxy 로 벗겨 낸 결과)
+      ips: req.ips ?? [],
+      // 프록시가 붙여 준 원본 헤더
+      xForwardedFor: xff,
+      xRealIp: (h['x-real-ip'] as string) ?? null,
+      // 바로 앞 상대(= 마지막 프록시)의 주소
+      remoteAddress: req.socket?.remoteAddress ?? null,
+      trustProxy: (req.app?.get?.('trust proxy') as unknown) ?? null,
+      userAgent: (h['user-agent'] as string) ?? null,
+      // 무엇을 고쳐야 하는지 바로 알려 준다
+      hint: !isPrivate(ip)
+        ? 'OK — 공인 IP 입니다. 히스토리에도 이 값이 남습니다.'
+        : !xff && /^(127\.|::1)/.test(req.socket?.remoteAddress ?? '')
+          ? '프록시를 거치지 않은 직접 접속입니다 (로컬 개발) — 정상입니다.'
+          : !xff
+            ? '프록시가 X-Forwarded-For 를 붙이지 않습니다 — Nginx Proxy Manager 의 해당 호스트에서 X-Forwarded-For 전달을 켜 주세요.'
+            : 'X-Forwarded-For 는 오는데 아직 사설 IP 입니다 — 접속자가 같은 사설망에 있거나, TRUST_PROXY 조정이 필요합니다(기본 loopback, linklocal, uniquelocal).',
     };
   }
 }

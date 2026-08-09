@@ -44,7 +44,11 @@ export function CodeBlockDialog({
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
       }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 200,
+        // ★ 노드 편집 오버레이(zIndex 1000)보다 **위**여야 한다
+        //   (2026-08-09 보고: 코드 블록 창을 열면 편집 중이던 노드의 글자와
+        //   서식 툴바가 창 위로 비쳐 화면이 겹쳐 보였다). 이 창은 편집 중에
+        //   열리는 유일한 모달이므로 앱에서 가장 위에 둔다.
+        position: 'fixed', inset: 0, zIndex: 1200,
         background: 'rgba(15,14,10,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}

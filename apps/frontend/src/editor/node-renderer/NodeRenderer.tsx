@@ -17,7 +17,7 @@ import { resolveNodeColors, readableTextOn } from './resolveNodeColors';
 import { copyTable } from '@/utils/copyTable';
 import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
-import { nodeContentIndicators, isNoteKind, type ContentKind } from './nodeContent';
+import { nodeContentIndicators, isNoteKind, nodeSizingOpts, type ContentKind } from './nodeContent';
 import { IndicatorGlyph, NoteTypeGlyph } from './IndicatorGlyph';
 import {
   layoutInlineImages,
@@ -26,6 +26,7 @@ import {
   levelShape,
   levelTextAlign,
   scaleNodeImage,
+  sizeNodeForText,
 } from './sizeNodeForText';
 import { layoutMdTable, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
 import { layoutMdCode, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
@@ -254,6 +255,18 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, n.x, n.y, n.w, n.h]);
 
+  /**
+   * 편집 중 **살아 있는 높이** (2026-08-09 요청).
+   *
+   * 예전에는 편집창이 노드 박스 크기에 못 박혀 있어서, 줄이 늘면 내용이
+   * 박스를 넘쳐 잘렸다 — 마지막 줄이 2/3만 보이는 증상이 그것이다
+   * (`overflow: hidden` + 고정 높이라 반 줄에서 잘린다).
+   *
+   * 이제 입력할 때마다 **저장 후 노드가 될 크기**를 같은 측정기
+   * (sizeNodeForText — 레이아웃이 쓰는 그 함수)로 계산해 편집창을 그만큼
+   * 키운다. 폭은 지금 폭으로 고정(manualW)해 글자가 같은 자리에서
+   * 줄바꿈되므로, 저장하면 보이던 그대로 굳는다.
+   */
   const isRoot = n.depth === 0;
   const isBranch = n.depth === 1;
 
@@ -441,6 +454,17 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
       textareaRef.current?.select();
     }, 0);
   }, [editing]);
+
+  // 편집 중 내용 높이 (맵 좌표) — 지금 노드 높이보다 크면 그만큼 키운다.
+  // 화면 픽셀로는 ovr.k(줌 배율)를 곱해 쓴다.
+  const liveH = useMemo(() => {
+    if (!editing) return 0;
+    return sizeNodeForText(draftText, n.depth, {
+      ...nodeSizingOpts(n),
+      manualW: n.w, // 폭 고정 → 같은 자리에서 줄바꿈 (저장 후와 동일)
+    }).h;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, draftText, n.depth, n.w, n.icon, n.notes, n.links, n.attachments]);
 
   return (
     <g
@@ -1107,18 +1131,28 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
         // 재서 문서 최상위에 HTML로 띄운다. 선택·드래그가 네이티브로
         // 완벽하게 동작한다. 크기·글자는 현재 줌 배율(k)로 스케일.
         <div
+          data-testid="node-edit-overlay"
           style={{
             position: 'fixed',
             left: ovr.left,
             top: ovr.top,
             width: ovr.width,
-            height: ovr.height,
+            // 입력이 늘면 **편집창도 늘어난다** — 저장 후 노드가 될 높이를
+            // 그대로 쓴다. 노드 박스보다 커진 부분은 뒤에 SVG 도형이 없으
+            // 므로, 아래 배경/테두리로 노드가 자란 것처럼 이어 그린다.
+            height: Math.max(ovr.height, liveH * ovr.k),
             zIndex: 1000,
+            background: noShape ? 'transparent' : fill,
+            border: noShape ? 'none' : `${1 * ovr.k}px solid ${border}`,
+            borderRadius: (isRoot ? 14 : 10) * ovr.k,
+            boxSizing: 'border-box',
           }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          {/* 부분 강조 툴바 (공용 MarkToolbar) — 선택 구간에 마커 토글 */}
-          <MarkToolbar
+          {/* 부분 강조 툴바 (공용 MarkToolbar) — 선택 구간에 마커 토글.
+              코드 블록 창이 떠 있는 동안에는 감춘다: 창 밖(노드 위)에
+              떠 있어 창을 가리고, 그때는 쓸 수도 없다 (2026-08-09 보고) */}
+          {!codeDlg && <MarkToolbar
             t={t}
             onApply={wrapSelection}
             style={{
@@ -1127,7 +1161,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               transform: 'translateX(-50%)',
               top: -46,
             }}
-          />
+          />}
 
           {/* 라이브 미리보기 (B6) — textarea 글자는 투명(캐럿만), 뒤의
               같은 메트릭 레이어가 마커 흐림·형광 띠·코드 띠·가짜 굵게를

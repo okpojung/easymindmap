@@ -75,7 +75,11 @@ interface ExportNode {
   icon?: string;
   tags?: string[];
   links?: { url: string; label?: string }[];
-  notes?: { type: string; text: string; checked?: boolean; lang?: string; html?: string }[];
+  // id — 뷰어에서 체크리스트를 눌렀을 때 "어느 블록인지" 가리는 열쇠
+  notes?: {
+    id?: string; type: string; text: string;
+    checked?: boolean; lang?: string; html?: string;
+  }[];
   attachments?: ExportAttachment[];
   collapsed?: boolean;
   colorKey?: string;
@@ -137,7 +141,7 @@ function toExportNode(
     tags,
     links: node.links?.map((l) => ({ url: l.url, label: l.label })),
     notes: node.notes?.map((n) => ({
-      type: n.type, text: n.text, checked: n.checked, lang: n.lang,
+      id: n.id, type: n.type, text: n.text, checked: n.checked, lang: n.lang,
       // 리치 붙여넣기(사진+서식) — sanitizeRichHtml을 통과한 HTML만 저장됨
       html: n.html,
     })),
@@ -1355,20 +1359,40 @@ const VIEWER_JS = String.raw`
         ? x0 + node._w / 2 + (iconW2 - mW2) / 2 - lw2 / 2
         : (align === 'right' ? x0 + node._w - PAD_X - mW2 - lw2 : tx);
       if (ck0 && li === ck0.a) {
-        // 체크박스 글리프 — 항목 첫 줄 왼쪽 (에디터와 동일 좌표 규칙)
+        // 체크박스 글리프 — 항목 첫 줄 왼쪽 (에디터와 동일 좌표 규칙).
+        // **누를 수 있다** (2026-08-09 요청) — 예전에는 읽기 전용이라
+        // 뷰어에서 할 일을 표시할 수 없었다. 토글은 이 브라우저에
+        // 저장되어(localStorage) 다시 열어도 남는다 — 원본 맵 파일은
+        // 바뀌지 않으므로, 맵에 남기려면 에디터에서 체크해야 한다.
         var bs = Math.round(node._fs * 0.95);
         var bx3 = sx, by3 = (baseY - node._fs * 0.34) - bs / 2;
+        var ckOn = checkState(node.id, ck0.s, ck0.c);
+        var ckG = el('g', { 'class': 'mm-check', style: 'cursor:pointer' }, g);
+        var ttl = el('title', {}, ckG);
+        ttl.textContent = ckOn ? '클릭하면 미완료로' : '클릭하면 완료로';
         el('rect', { x: bx3, y: by3, width: bs, height: bs, rx: 3,
-          fill: ck0.c ? '#22A06B' : 'none',
-          stroke: ck0.c ? '#22A06B' : '#8B94A3', 'stroke-width': 1.5,
-          'data-viewer-check': ck0.c ? '1' : '0' }, g);
-        if (ck0.c) {
+          fill: ckOn ? '#22A06B' : 'none',
+          stroke: ckOn ? '#22A06B' : '#8B94A3', 'stroke-width': 1.5,
+          'data-viewer-check': ckOn ? '1' : '0' }, ckG);
+        if (ckOn) {
           el('path', { d: 'M ' + (bx3 + bs * 0.24) + ' ' + (by3 + bs * 0.54) +
             ' L ' + (bx3 + bs * 0.44) + ' ' + (by3 + bs * 0.72) +
             ' L ' + (bx3 + bs * 0.78) + ' ' + (by3 + bs * 0.3),
             fill: 'none', stroke: '#fff', 'stroke-width': 1.8,
-            'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, g);
+            'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, ckG);
         }
+        // 누르기 쉬우라고 **글리프보다 넓은 투명 판**을 덮는다 —
+        // 13px 사각형만 판정하면 조금만 빗나가도 노드가 선택된다
+        var pad = 6;
+        var hitR = el('rect', { x: bx3 - pad, y: by3 - pad,
+          width: bs + pad * 2, height: bs + pad * 2,
+          fill: 'transparent' }, ckG);
+        (function (nid, seq2) {
+          hitR.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            toggleCheck(nid, seq2);
+          });
+        })(node.id, ck0.s);
       }
       var segX = [], accX = sx + ckw2;
       for (si = 0; si < segs.length; si++) { segX.push(accX); accX += segWs[si]; }
@@ -1886,8 +1910,37 @@ const VIEWER_JS = String.raw`
 
     var pEl = document.createElement('div');
     pEl.className = 'mm-note-block mm-note-' + type;
-    pEl.textContent = (type === 'checklist'
-      ? (note.checked ? '☑ ' : '☐ ') : '') + note.text;
+    if (type === 'checklist') {
+      // 체크 글리프를 **누를 수 있다** — 맵 노드의 체크와 같은 규칙으로
+      // 이 브라우저(localStorage)에 저장된다. 원본 맵 파일은 그대로다.
+      var on = noteCheckState(note);
+      var gl = document.createElement('span');
+      gl.className = 'mm-note-check';
+      gl.setAttribute('data-viewer-note-check', on ? '1' : '0');
+      gl.textContent = on ? '☑' : '☐';
+      gl.setAttribute('title', on ? '클릭하면 미완료로' : '클릭하면 완료로');
+      var txt = document.createElement('span');
+      txt.textContent = ' ' + note.text;
+      txt.style.textDecoration = on ? 'line-through' : 'none';
+      if (note.id) {
+        gl.style.cursor = 'pointer';
+        (function (nt, span, body) {
+          span.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            var next = !noteCheckState(nt);
+            setNoteCheck(nt, next);
+            span.textContent = next ? '☑' : '☐';
+            span.setAttribute('data-viewer-note-check', next ? '1' : '0');
+            span.setAttribute('title', next ? '클릭하면 미완료로' : '클릭하면 완료로');
+            body.style.textDecoration = next ? 'line-through' : 'none';
+          });
+        })(note, gl, txt);
+      }
+      pEl.appendChild(gl);
+      pEl.appendChild(txt);
+      return pEl;
+    }
+    pEl.textContent = note.text;
     return pEl;
   }
 
@@ -2346,6 +2399,60 @@ const VIEWER_JS = String.raw`
     document.body.classList.toggle('mm-panmode', panMode);
     svg.style.cursor = panMode ? 'grab' : 'default';
   });
+  // ── 체크 상태 (2026-08-09 요청) ──────────────────────────────
+  // 뷰어에서 누른 체크는 **이 브라우저에 저장**된다. 내보낸 HTML 은
+  // 정적 파일이라 파일 자체를 고칠 수 없다 — 대신 파일별 키로
+  // localStorage 에 담아, 같은 파일을 다시 열면 그대로 살아난다.
+  //   · 키    = easymindmap.viewer.checks:<파일 경로>
+  //   · 값    = { "<노드id>:<항목순번>": 1 | 0 }  (원본과 다른 것만)
+  //   · 원본 = 내보낼 때의 맵 상태. 저장된 값이 없으면 원본을 쓴다.
+  // ⚠️ **맵 파일에는 반영되지 않는다.** 맵에 남기려면 에디터에서 체크한
+  //    뒤 다시 내보내야 한다 (뷰어는 읽기 전용 사본이다).
+  var CHECK_KEY = 'easymindmap.viewer.checks:' + (location.pathname || '');
+  var checkOverrides = {};
+  try {
+    var savedChecks = localStorage.getItem(CHECK_KEY);
+    if (savedChecks) checkOverrides = JSON.parse(savedChecks) || {};
+  } catch (e) { checkOverrides = {}; }
+  function checkKey(nodeId, seq) { return nodeId + ':' + seq; }
+  function saveChecks() {
+    try { localStorage.setItem(CHECK_KEY, JSON.stringify(checkOverrides)); } catch (e) {}
+  }
+  // 노트 체크리스트 블록 — 열쇠는 블록 id (같은 저장소를 함께 쓴다)
+  function noteCheckState(note) {
+    var v = note.id ? checkOverrides['note:' + note.id] : undefined;
+    return v === undefined ? !!note.checked : v === 1;
+  }
+  function setNoteCheck(note, on) {
+    if (!note.id) return;
+    checkOverrides['note:' + note.id] = on ? 1 : 0;
+    saveChecks();
+  }
+  function checkState(nodeId, seq, base) {
+    var v = checkOverrides[checkKey(nodeId, seq)];
+    return v === undefined ? !!base : v === 1;
+  }
+  function toggleCheck(nodeId, seq) {
+    var k = checkKey(nodeId, seq);
+    var cur = checkOverrides[k];
+    // 지금 화면 상태를 뒤집는다 — 원본을 모르는 자리에서는 base 를 찾아온다
+    var base = false;
+    (function scan(n) {
+      if (!n) return;
+      if (n.id === nodeId && n._checks) {
+        for (var i = 0; i < n._checks.length; i++) {
+          if (n._checks[i].s === seq) base = !!n._checks[i].c;
+        }
+      }
+      var ks = n.children || [];
+      for (var j = 0; j < ks.length; j++) scan(ks[j]);
+    })(DATA.root);
+    var now = cur === undefined ? base : cur === 1;
+    checkOverrides[k] = now ? 0 : 1;
+    saveChecks();
+    render();
+  }
+
   // 다크 모드 — 처음 열 때는 **내보낼 때의 에디터 모드**(DATA.dark)를 따른다
   // (2026-08-08 사용자 요청: "내가 본 화면 그대로 보내진다").
   // 이 파일 안에서 ☀/🌙 로 직접 바꾼 값은 파일별로 기억해 다음에 열 때
@@ -2806,6 +2913,12 @@ const VIEWER_CSS = `
   }
   .mm-note-block a { color: #1D4ED8; text-decoration: none; word-break: break-all; }
   .mm-note-block a:hover { text-decoration: underline; }
+  /* 체크리스트 글리프 — 누르기 쉬우라고 여백째 클릭 판정 (글자 흐름은 그대로) */
+  .mm-note-check {
+    display: inline-block; padding: 2px 5px; margin: -2px -5px -2px -5px;
+    user-select: none;
+  }
+  .mm-note-check[data-viewer-note-check="1"] { color: #22A06B; }
   .mm-sec {
     font-size: 10px; font-weight: 700; color: #8B7D68; letter-spacing: 0.5px;
     margin: 10px 0 5px; padding-top: 8px; border-top: 1px solid #EFE7D6;
@@ -2910,7 +3023,9 @@ export function buildStandaloneHtml(
     const manualLines = (mdt || mdc) && plainText === '' ? [] : plainText.split('\n');
     const checks = computeNodeChecks(manualLines, n._manualStarts, (n._lines ?? []).length);
     return checks.length
-      ? checks.map((c) => ({ a: c.at, e: c.end, c: c.checked ? 1 : 0 }))
+      // s = 항목 순번 — 뷰어에서 "몇 번째 체크를 눌렀나"를 가리는 열쇠
+      // (줄 번호는 접기·줄바꿈으로 흔들려 열쇠가 될 수 없다)
+      ? checks.map((c) => ({ a: c.at, e: c.end, c: c.checked ? 1 : 0, s: c.seq }))
       : undefined;
   };
   const posById = new Map<string, ExportPos>(

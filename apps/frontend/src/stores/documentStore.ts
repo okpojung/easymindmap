@@ -215,11 +215,14 @@ interface DocumentState {
   removeNodeLink: (nodeId: string | null, linkId: string) => void;
 
   // Notes (structured blocks) — extra: 리치 붙여넣기(html) 등 초기 필드
+  // afterBlockId: 그 블록 "바로 뒤"에 삽입 (체크리스트 Enter로 다음 항목 추가).
+  // 생략하면 맨 뒤에 추가한다.
   addNoteBlock: (
     nodeId: string | null,
     type: NoteBlockType,
     text?: string,
     extra?: Partial<NoteBlock>,
+    afterBlockId?: string,
   ) => void;
   updateNoteBlock: (nodeId: string | null, blockId: string, patch: Partial<NoteBlock>) => void;
   removeNoteBlock: (nodeId: string | null, blockId: string) => void;
@@ -1376,23 +1379,25 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }));
   },
 
-  addNoteBlock: (nodeId, type, text = '', extra) => {
+  addNoteBlock: (nodeId, type, text = '', extra, afterBlockId) => {
     if (!nodeId) return;
     set((state) => ({
-      map: mutateNode(state.map, nodeId, (n) => ({
-        ...n,
-        note: true,
-        notes: [
-          ...(n.notes ?? []),
-          {
-            id: createSubId('note'),
-            type,
-            text,
-            ...(type === 'checklist' ? { checked: false } : {}),
-            ...(extra ?? {}),
-          },
-        ],
-      })),
+      map: mutateNode(state.map, nodeId, (n) => {
+        const prev = n.notes ?? [];
+        const block: NoteBlock = {
+          id: createSubId('note'),
+          type,
+          text,
+          ...(type === 'checklist' ? { checked: false } : {}),
+          ...(extra ?? {}),
+        };
+        // afterBlockId가 있으면 그 바로 뒤에 삽입 — 없으면(또는 못 찾으면) 맨 뒤
+        const at = afterBlockId ? prev.findIndex((b) => b.id === afterBlockId) : -1;
+        const notes = at >= 0
+          ? [...prev.slice(0, at + 1), block, ...prev.slice(at + 1)]
+          : [...prev, block];
+        return { ...n, note: true, notes };
+      }),
     }));
   },
 

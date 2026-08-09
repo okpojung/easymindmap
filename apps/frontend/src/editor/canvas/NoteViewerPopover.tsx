@@ -1,5 +1,7 @@
 // NoteViewerPopover — 노드의 노트 인디케이터(문단 T/코드 C/표 ⊞/체크 ✓)를
-// 클릭하면 뜨는 읽기 전용 노트 뷰어 팝업. 클릭한 종류의 노트만 표시한다.
+// 클릭하면 뜨는 노트 뷰어 팝업. 클릭한 종류의 노트만 표시한다.
+// 글자 편집은 좌측 노트·태그 탭에서 하고, 체크리스트의 ☑/☐만 여기서
+// 바로 토글할 수 있다 (nodeId를 받은 경우).
 // HTML 내보내기 뷰어의 상세 패널과 동일한 규칙으로 문단(리치 포함) /
 // 코드(언어 라벨 + 복사 버튼) / 표 / 체크리스트를 렌더링한다.
 //
@@ -55,6 +57,7 @@ function InlineText({ t, text }: { t: ThemeTokens; text: string }) {
 
 interface Props {
   t: ThemeTokens;
+  nodeId?: string; // 있으면 체크리스트를 팝업에서 바로 토글할 수 있다
   title: string; // 노드 제목
   heading?: string; // 노트 종류 라벨 (문단 노트 / 코드 노트 / 표 노트 / 체크리스트)
   accent?: string; // 노트 종류 색 (인디케이터 배지와 동일)
@@ -158,8 +161,10 @@ function NoteTableCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   );
 }
 
-function NoteBlockView({ t, block, fs, family }: {
+function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
   t: ThemeTokens; block: NoteBlock; fs: number; family?: string;
+  // 체크리스트 블록의 ☑/☐ 클릭 토글 — nodeId를 아는 호출자만 넘긴다
+  onToggleCheck?: () => void;
 }) {
   // 폐기된 옛 타입(warning/tip)은 문단으로 렌더 (하위호환)
   const type =
@@ -271,7 +276,25 @@ function NoteBlockView({ t, block, fs, family }: {
     }}>
       {String(block.text).split('\n').map((line, li) => (
         <div key={li} style={{ whiteSpace: 'pre' }}>
-          {li === 0 && type === 'checklist' ? (block.checked ? '☑ ' : '☐ ') : ''}
+          {li === 0 && type === 'checklist' ? (
+            // 체크 글리프 클릭 = 완료/미완료 토글 (팝업에서 바로 체크).
+            // 클릭 판정은 좌우·상하 5px 여유 — 글리프만 노리면 빗나간다.
+            <span
+              data-note-popup-check
+              data-checked={block.checked ? '1' : '0'}
+              onClick={onToggleCheck ? (e) => { e.stopPropagation(); onToggleCheck(); } : undefined}
+              onPointerDown={(e) => e.stopPropagation()}
+              title={onToggleCheck
+                ? (block.checked ? '클릭하면 미완료로' : '클릭하면 완료로')
+                : undefined}
+              style={{
+                display: 'inline-block', padding: '2px 5px', margin: '-2px -5px',
+                marginRight: 0, cursor: onToggleCheck ? 'pointer' : 'default',
+                color: block.checked ? '#22A06B' : t.textMuted,
+              }}
+            >{block.checked ? '☑' : '☐'}</span>
+          ) : null}
+          {li === 0 && type === 'checklist' ? ' ' : ''}
           <InlineText t={t} text={line} />
         </div>
       ))}
@@ -280,7 +303,7 @@ function NoteBlockView({ t, block, fs, family }: {
   );
 }
 
-export function NoteViewerPopover({ t, title, heading, accent, notes, onClose }: Props) {
+export function NoteViewerPopover({ t, nodeId, title, heading, accent, notes, onClose }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -294,6 +317,7 @@ export function NoteViewerPopover({ t, title, heading, accent, notes, onClose }:
 
   // 노트 글꼴·크기 (맵 설정 — 기본 13pt)
   const noteFont = useDocumentStore((s) => s.map.settings?.noteFont);
+  const updateNoteBlock = useDocumentStore((s) => s.updateNoteBlock);
   const fs = noteFont?.size && noteFont.size > 0 ? noteFont.size : 13;
   const family = noteFont?.family && noteFont.family.trim() ? noteFont.family : undefined;
 
@@ -413,7 +437,12 @@ export function NoteViewerPopover({ t, title, heading, accent, notes, onClose }:
       <div ref={bodyRef}
         style={{ padding: '9px 14px 12px', overflow: 'auto', flex: 1, minHeight: 0 }}>
         {notes.map((block) => (
-          <NoteBlockView key={block.id} t={t} block={block} fs={fs} family={family} />
+          <NoteBlockView
+            key={block.id} t={t} block={block} fs={fs} family={family}
+            onToggleCheck={nodeId && block.type === 'checklist'
+              ? () => updateNoteBlock(nodeId, block.id, { checked: !block.checked })
+              : undefined}
+          />
         ))}
       </div>
     </div>

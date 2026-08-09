@@ -529,3 +529,76 @@ curl -i -X OPTIONS https://<API도메인>/v1/folders \
 **다른 출처**이기 때문이다. `VITE_API_URL` 을 같은 출처(`https://<프런트
 도메인>/api`)로 두고 NPM 에서 `/api` 를 API 컨테이너로 넘기면 preflight 가
 사라지고 `CORS_ORIGIN` 관리도 없어져, 이 부류의 문제가 재발하지 않는다.
+
+### 6.4 히스토리의 접속 IP 가 **내부 주소로만 보인다** (2026-08-09 실사용)
+
+**증상**: 맵 히스토리·문서함 상세의 IP 가 PC 든 휴대폰이든, 내부망이든
+외부망이든 **전부 같은 사설 주소**(예: `192.168.94.74`)로 남는다.
+
+#### 먼저 이걸 연다 — `GET /v1/health/ip`
+
+서버가 그 요청의 IP 를 무엇으로 보는지 그대로 돌려준다. 브라우저로 열면
+된다. 실제로 받은 값(2026-08-09):
+
+```json
+{ "ip": "192.168.94.74",
+  "ips": ["192.168.94.74"],
+  "xForwardedFor": "192.168.94.74",
+  "xRealIp": "192.168.94.74",
+  "remoteAddress": "::ffff:10.0.1.6",
+  "trustProxy": ["loopback","linklocal","uniquelocal"] }
+```
+
+**읽는 법** — 이 네 줄이 사슬을 그대로 말해 준다.
+
+| 값 | 뜻 |
+|---|---|
+| `remoteAddress: 10.0.1.6` | **우리 API 에 직접 연결한 상대** = 우리 앞 프록시(Traefik) |
+| `xForwardedFor: 192.168.94.74` (**항목 1개**) | 그 프록시가 "접속자는 이 주소"라고 적어 보냈다 |
+| 그런데 그 값도 **사설 주소** | 즉 우리 앞 프록시가 본 상대도 진짜 접속자가 아니라 **또 다른 내부 장치**였다 |
+| 서로 다른 기기·외부망에서도 **같은 값** | 접속자별로 달라지지 않는다 = 접속자 주소가 아니다 |
+
+→ **진짜 접속자 IP 는 우리 API 에 닿기 전에 이미 사라졌다.**
+`TRUST_PROXY` 를 어떻게 고쳐도 복구할 수 없다 — 없는 정보를 벗겨 낼 수는
+없다. 고칠 자리는 **`xForwardedFor` 에 찍힌 그 장치**다.
+
+#### 그 장치가 무엇인지부터 찾는다
+
+```bash
+# 1) 그 IP 를 가진 컨테이너 이름
+for c in $(docker ps -q); do
+  ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$c")
+  case "$ip" in *192.168.94.74*) docker inspect -f '{{.Name}}  → '"$ip" "$c";; esac
+done
+
+# 2) 아무 컨테이너도 아니면 호스트/게이트웨이다 (Docker 포트 공개 방식 문제)
+ip -4 addr | grep 192.168.94
+docker network ls -q | xargs -r -n1 docker network inspect \
+  -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}'
+```
+
+#### 원인별 조치
+
+| `xForwardedFor` 의 주소가 | 뜻 | 조치 |
+|---|---|---|
+| **NPM(nginx) 컨테이너** | NPM 이 접속자 IP 를 못 받고 있다 — **NPM 앞에 또 하나가 있다** | NPM **접근 로그**를 본다. 거기도 사설이면 그 앞을 고친다 |
+| **Docker 네트워크 게이트웨이** | 포트 공개가 **userland-proxy** 를 거쳐 출발지 주소가 게이트웨이로 바뀐다 | `/etc/docker/daemon.json` 에 `{"userland-proxy": false}` 후 도커 재시작, 또는 에지 프록시를 `network_mode: host` 로 |
+| **다른 리버스 프록시·방화벽** | 그 장치가 X-Forwarded-For 를 안 붙인다 | 그 장치에서 `X-Forwarded-For`/`X-Real-IP` 전달을 켠다 |
+
+> **판정 기준 하나**: 사슬의 어느 단계든 **접속자마다 값이 달라져야**
+> 한다. 서로 다른 기기에서 같은 값이 나오면 그 단계에서 이미 잃은 것이다.
+
+#### NPM 에서 헤더를 넘기게 하기 (해당 호스트 → Advanced)
+
+```nginx
+proxy_set_header Host              $host;
+proxy_set_header X-Real-IP         $remote_addr;
+proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+`$proxy_add_x_forwarded_for` 는 **기존 값에 이어 붙인다** — 단계가 늘어도
+사슬이 보존된다(`$remote_addr` 로 덮어쓰면 앞 단계가 지워진다).
+
+고치고 나면 `/v1/health/ip` 의 `hint` 가 `OK — 공인 IP 입니다` 로 바뀐다.
+그때부터 저장하는 버전에 진짜 IP 가 남는다(이미 쌓인 기록은 그대로다).

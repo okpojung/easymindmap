@@ -183,7 +183,10 @@ const BLOCK_META: Record<string, { icon: string; label: string }> = {
   paragraph: { icon: '¶', label: '문단' },
   code_block: { icon: '</>', label: '코드' },
   table: { icon: '⊞', label: '표' },
-  checklist: { icon: '☑', label: '체크리스트' },
+  // ★ 아이콘을 ☑ 로 두면 **바로 아래 진짜 체크 상자와 헷갈린다** —
+  //   블록마다 늘 켜져 있는 ☑ 가 머리글에 붙어 있으니 "체크했는데
+  //   왜 위에도 체크가 있지"가 된다 (2026-08-09 보고). 목록 글리프로.
+  checklist: { icon: '☰', label: '체크리스트' },
   // 폐기된 옛 타입(warning/tip) 데이터 하위호환 — 문단으로 취급
   warning: { icon: '¶', label: '문단' },
   tip: { icon: '¶', label: '문단' },
@@ -258,19 +261,29 @@ function NoteBlockEditor({
                 음수 margin으로 겉보기 배치는 그대로. */}
             <span
               data-testid="note-check-toggle"
+              // 다른 세 자리(맵 노드·아웃라인·팝업)와 같은 표식 —
+              // 상태를 **취소선 같은 겉모습으로** 알아내려 하면, 표시
+              // 규칙을 바꿀 때마다 검사가 함께 깨진다 (§5-1-6)
+              data-checked={block.checked ? '1' : '0'}
               onClick={() => onChange({ checked: !block.checked })}
               style={{
                 padding: 6, margin: -6, cursor: 'pointer', flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
+              {/* 체크 표시는 **✓ 자체가 크고 뚜렷해야** 한다 — 예전에는
+                  9px 짜리 ✓ 가 초록 칠 위에 묻혀 "녹색 네모"로만 보였다
+                  (2026-08-09 보고: "체크가 잘 인식이 안 된다").
+                  상자를 키우고(16) ✓ 도 키웠다(13, 굵기 3). */}
               <span style={{
-                width: 14, height: 14, borderRadius: 3,
+                width: 16, height: 16, borderRadius: 4,
                 border: `1.5px solid ${block.checked ? t.success : t.borderStrong}`,
                 background: block.checked ? t.success : 'transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}>
-                {block.checked && <I.Check size={9} style={{ color: '#fff' }} />}
+                {block.checked && (
+                  <I.Check size={13} strokeWidth={3} style={{ color: '#fff' }} />
+                )}
               </span>
             </span>
             <input
@@ -287,10 +300,13 @@ function NoteBlockEditor({
                 if (block.text.trim()) onEnterNext?.();
               }}
               placeholder="할 일"
+              // 완료해도 **취소선을 긋지 않는다** (2026-08-09 사용자 결정).
+              // 맵 노드 안의 체크(- [x])도 긋지 않는데 여기만 그어서
+              // 규칙이 갈렸고, 글자가 지워진 것처럼 보여 읽기도 나빴다.
+              // 완료 표시는 ✓ 하나로 충분하다.
               style={{
                 flex: 1, fontSize: 12, border: 'none', outline: 'none',
                 background: 'transparent', color: t.text, minWidth: 0,
-                textDecoration: block.checked ? 'line-through' : 'none',
               }}
             />
           </div>

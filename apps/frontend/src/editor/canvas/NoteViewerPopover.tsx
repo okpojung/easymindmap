@@ -11,6 +11,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useDocumentStore } from '@/stores/documentStore';
 import { parseInlineMarks, stripInlineMarks } from '@/editor/node-renderer/inlineMarks';
+import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
 import { copyTable, pipeTextToTable } from '@/utils/copyTable';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
@@ -58,8 +59,9 @@ function InlineText({ t, text }: { t: ThemeTokens; text: string }) {
 interface Props {
   t: ThemeTokens;
   nodeId?: string; // 있으면 체크리스트를 팝업에서 바로 토글할 수 있다
-  title: string; // 노드 제목
-  heading?: string; // 노트 종류 라벨 (문단 노트 / 코드 노트 / 표 노트 / 체크리스트)
+  title: string; // 노드 제목 (원문 — 표시용으로 마커를 접어 쓴다)
+  // heading(노트 종류 라벨)은 없앴다 — 2026-08-09. 그 종류의 인디케이터를
+  // 눌러 연 창이라 중복이고, 제목과 한 줄에 겹쳐 읽기 나빴다.
   accent?: string; // 노트 종류 색 (인디케이터 배지와 동일)
   notes: NoteBlock[];
   onClose: () => void;
@@ -307,7 +309,7 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
   );
 }
 
-export function NoteViewerPopover({ t, nodeId, title, heading, accent, notes, onClose }: Props) {
+export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -318,6 +320,9 @@ export function NoteViewerPopover({ t, nodeId, title, heading, accent, notes, on
   } | null>(null);
 
   const accentColor = accent ?? t.primary;
+  // 제목 = 노드 글자에서 블록 마커(- [x]·```·|표|)를 접고 인라인 서식
+  // 문자를 뗀 한 줄 (UnifiedSidebar 선택 노드 표시와 같은 규칙)
+  const cleanTitle = stripInlineMarks(flattenNodeText(title)).trim();
 
   // 노트 글꼴·크기 (맵 설정 — 기본 13pt)
   const noteFont = useDocumentStore((s) => s.map.settings?.noteFont);
@@ -416,14 +421,20 @@ export function NoteViewerPopover({ t, nodeId, title, heading, accent, notes, on
         <span style={{
           width: 9, height: 9, borderRadius: 3, background: accentColor, flexShrink: 0,
         }} />
-        <span style={{
-          fontSize: 10.5, fontWeight: 700, color: t.textSubtle,
-          letterSpacing: 0.4, flexShrink: 0,
-        }}>{heading ?? '메모'}</span>
-        <span style={{
-          fontSize: 12, fontWeight: 700, color: t.text, flex: 1, minWidth: 0,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{title}</span>
+        {/* 종류 라벨(체크리스트/코드 노트…)은 **적지 않는다** — 그 종류의
+            인디케이터를 눌러서 연 창이고, 왼쪽 색 점이 이미 종류를 말한다.
+            제목과 나란히 놓으니 한 줄이 뒤엉켜 읽기 나빴다
+            (2026-08-09 보고: "제목은 불필요, 내용도 틀리고 엉망").
+            제목은 원문 그대로가 아니라 **블록 마커를 접어** 보여 준다 —
+            '- [x] 할링\n- [ ] 할리2' 가 그대로 찍히던 것을 '☑ 할링 ☐ 할리2'
+            로. 아웃라인·검색 결과와 같은 flattenNodeText 규칙이다. */}
+        <span
+          title={cleanTitle}
+          style={{
+            fontSize: 12, fontWeight: 700, color: t.text, flex: 1, minWidth: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+        >{cleanTitle}</span>
         <button
           onClick={onClose}
           onPointerDown={(e) => e.stopPropagation()}

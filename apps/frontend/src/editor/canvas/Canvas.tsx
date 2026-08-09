@@ -1607,7 +1607,8 @@ export function Canvas({
       </svg>
 
       {/* 노트 뷰어 팝업 — 클릭한 인디케이터의 노트 종류(문단/코드/표/체크)만
-          읽기 전용으로 표시 (HTML 오버레이, 내보내기 뷰어와 동일 렌더링).
+          표시 (HTML 오버레이, 내보내기 뷰어와 동일 렌더링). 글자 편집은
+          좌측 노트·태그 탭에서 하고, 체크리스트의 ☑/☐만 여기서 바로 토글한다.
           제목 드래그로 이동, 우하단 모서리 드래그로 크기 조절. */}
       {popover && isNoteKind(popover.kind) && (() => {
         const node = nodes.find((n) => n.id === popover.nodeId);
@@ -1618,6 +1619,7 @@ export function Canvas({
           <NoteViewerPopover
             key={`${popover.nodeId}:${popover.kind}`}
             t={t}
+            nodeId={popover.nodeId}
             title={node.text}
             heading={NOTE_KIND_META[popover.kind].label}
             accent={NOTE_KIND_META[popover.kind].color}

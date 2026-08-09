@@ -167,6 +167,10 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
               block={block}
               onChange={(patch) => selectedId && updateNoteBlock(selectedId, block.id, patch)}
               onRemove={() => selectedId && removeNoteBlock(selectedId, block.id)}
+              // 체크리스트에서 Enter / Shift+Enter → 바로 아래에 다음 체크 항목
+              onEnterNext={() =>
+                selectedId && addNoteBlock(selectedId, 'checklist', '', undefined, block.id)
+              }
             />
           ))}
         </div>
@@ -186,12 +190,14 @@ const BLOCK_META: Record<string, { icon: string; label: string }> = {
 };
 
 function NoteBlockEditor({
-  t, block, onChange, onRemove,
+  t, block, onChange, onRemove, onEnterNext,
 }: {
   t: ThemeTokens;
   block: NoteBlockData;
   onChange: (patch: Partial<NoteBlockData>) => void;
   onRemove: () => void;
+  // 체크리스트 전용 — Enter/Shift+Enter 로 다음 항목 추가
+  onEnterNext?: () => void;
 }) {
   // 노트 글꼴·크기 (맵 설정) — 뷰어 팝업과 동일 규칙 (기본 13pt)
   const noteFont = useDocumentStore((st) => st.map.settings?.noteFont);
@@ -247,24 +253,43 @@ function NoteBlockEditor({
       <div style={{ padding: '6px 8px' }}>
         {block.type === 'checklist' ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            {/* 클릭 판정은 6px 여유를 둔 래퍼가 받는다 — 14px 사각형만 노리면
+                빗나가기 쉽다 (docs/05-implementation/coding-conventions.md §5-1-5).
+                음수 margin으로 겉보기 배치는 그대로. */}
             <span
+              data-testid="note-check-toggle"
               onClick={() => onChange({ checked: !block.checked })}
               style={{
-                width: 14, height: 14, borderRadius: 3, cursor: 'pointer',
+                padding: 6, margin: -6, cursor: 'pointer', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <span style={{
+                width: 14, height: 14, borderRadius: 3,
                 border: `1.5px solid ${block.checked ? t.success : t.borderStrong}`,
                 background: block.checked ? t.success : 'transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}
-            >
-              {block.checked && <I.Check size={9} style={{ color: '#fff' }} />}
+              }}>
+                {block.checked && <I.Check size={9} style={{ color: '#fff' }} />}
+              </span>
             </span>
             <input
+              // 새로 추가된 빈 체크 항목은 바로 입력할 수 있게 자동 포커스
+              // (Enter로 다음 항목을 만들면 그 항목으로 커서가 넘어간다)
+              autoFocus={block.text === ''}
               value={block.text}
               onChange={(e) => onChange({ text: e.target.value })}
+              // Enter / Shift+Enter → 다음 체크 항목 추가. 내용이 비어 있으면
+              // 빈 항목이 쌓이지 않도록 아무 것도 하지 않는다.
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                if (block.text.trim()) onEnterNext?.();
+              }}
               placeholder="할 일"
               style={{
                 flex: 1, fontSize: 12, border: 'none', outline: 'none',
-                background: 'transparent', color: t.text,
+                background: 'transparent', color: t.text, minWidth: 0,
                 textDecoration: block.checked ? 'line-through' : 'none',
               }}
             />

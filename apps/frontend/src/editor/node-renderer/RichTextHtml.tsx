@@ -78,9 +78,16 @@ function CheckGlyph({
         cursor: onClick ? 'pointer' : 'default',
         verticalAlign: 'text-bottom', flexShrink: 0,
         boxSizing: 'border-box',
+        position: 'relative',
       }}
     >
       {checked ? '✓' : ''}
+      {/* 13px 사각형만 노리면 빗나가기 쉬워 클릭 판정을 사방 6px 넓힌다.
+          absolute라 글자 흐름(레이아웃)에는 영향이 없다.
+          (docs/05-implementation/coding-conventions.md §5-1-5) */}
+      {onClick && (
+        <span aria-hidden style={{ position: 'absolute', inset: -6, borderRadius: 5 }} />
+      )}
     </span>
   );
 }

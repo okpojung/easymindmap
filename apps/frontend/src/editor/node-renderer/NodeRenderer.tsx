@@ -713,6 +713,14 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                         <title>
                           {chkHere.checked ? '클릭하면 미완료([ ])로' : '클릭하면 완료([x])로'}
                         </title>
+                        {/* 클릭 판정 영역 — 보이는 사각형(약 13px)만 노리면
+                            빗나가서 노드가 선택돼 버린다. 위·아래·왼쪽 6px,
+                            오른쪽 3px(글자와의 간격 7px 안쪽)까지 넓힌다.
+                            (docs/05-implementation/coding-conventions.md §5-1-5) */}
+                        <rect
+                          x={bx - 6} y={by - 6} width={s + 9} height={s + 12}
+                          fill="rgba(0,0,0,0.001)"
+                        />
                         <rect
                           x={bx} y={by} width={s} height={s} rx={3}
                           fill={chkHere.checked ? '#22A06B' : 'rgba(0,0,0,0.001)'}

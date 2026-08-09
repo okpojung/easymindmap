@@ -326,6 +326,13 @@ const onKey = (e: KeyboardEvent) => {
 옆 글자와의 간격이 6px보다 좁으면 **그 방향만 좁게** 넓힌다 (맵의 체크
 글리프는 오른쪽 간격이 7px이라 오른쪽만 3px).
 
+⚠️ **`overflow-x: auto` 인 블록 안에서는 세로로 넓히지 않는다.** CSS 는
+`overflow-x` 가 `auto` 면 `overflow-y` 도 `auto` 로 계산한다 — 인라인
+요소가 한 줄보다 조금만 높아져도 **줄마다 세로 스크롤바**가 나타난다
+(2026-08-09: 체크 글리프에 위아래 padding 2px 을 줬다가 "체크 오른쪽에
+상하 화살표/회색 바가 생긴다" 보고). 그런 자리에서는 **좌우 padding 만**
+주면 된다 — `inline-block` 의 높이는 이미 줄높이라 세로 판정은 충분하다.
+
 ## 6. Zustand Store 규칙
 
 ```typescript

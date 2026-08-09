@@ -246,13 +246,16 @@ const VIEWER_JS = String.raw`
     l2:  { fill: '#1C1F26', text: '#E8E6E3', border: '#3A3F4B' }
   };
   var SKIN_LIGHT = {
-    fam: FAM_LIGHT, edge: '#B8A888', tagBase: '#FFFDF8', hl: '#FFE066'
+    // accent = 에디터 t.primary — 마커 개수 배지 글자색
+    fam: FAM_LIGHT, edge: '#B8A888', tagBase: '#FFFDF8', hl: '#FFE066',
+    accent: '#D97706'
   };
   var SKIN_DARK = {
     // 형광펜 띠(hl)는 다크에서도 노란색 유지 — 진한 글자(#1F1B16)와
     // 짝을 이뤄 항상 읽힌다 (에디터와 동일). 예전 어두운 갈색 띠는
     // 진한 글자와 대비가 낮아 안 보였다.
-    fam: FAM_DARK, edge: '#4A4E5A', tagBase: '#14171D', hl: '#FFE066'
+    fam: FAM_DARK, edge: '#4A4E5A', tagBase: '#14171D', hl: '#FFE066',
+    accent: '#F59E0B'
   };
   var SKIN = SKIN_LIGHT;
   function famOf(colorKey) { return SKIN.fam[colorKey] || SKIN.fam.l2; }
@@ -1610,7 +1613,7 @@ const VIEWER_JS = String.raw`
     }
     if (node.links && node.links.length) {
       (function (links) {
-        markers.push({ kind: 'link',
+        markers.push({ kind: 'link', n: links.length,
           tip: links.length > 1 ? '링크 ' + links.length + '개'
             : (links[0].label || links[0].url),
           act: (links.length === 1
@@ -1635,7 +1638,7 @@ const VIEWER_JS = String.raw`
           var blocks = notesOf(node, def.type);
           if (!blocks.length) return;
           markers.push({
-            kind: kind,
+            kind: kind, n: blocks.length,
             tip: blocks.length > 1 ? def.label + ' ' + blocks.length + '개' : def.label,
             act: function () { showDetail(node, kind); }
           });
@@ -1643,14 +1646,14 @@ const VIEWER_JS = String.raw`
       }
     }
     if (files.length) {
-      markers.push({ kind: 'file',
+      markers.push({ kind: 'file', n: files.length,
         tip: files.length > 1 ? '첨부파일 ' + files.length + '개' : files[0].name,
         act: (files.length === 1 && files[0].href
         ? function () { window.open(files[0].href, '_blank'); }
         : function (mk) { openChooser(mk, attachmentRows(files, '📎')); }) });
     }
     if (media.length) {
-      markers.push({ kind: 'media',
+      markers.push({ kind: 'media', n: media.length,
         tip: media.length > 1 ? '멀티미디어 ' + media.length + '개' : media[0].name,
         act: (media.length === 1 && media[0].href
         ? function () { window.open(media[0].href, '_blank'); }
@@ -1666,6 +1669,18 @@ const VIEWER_JS = String.raw`
         if (markers[mi].tip) {
           var tt = el('title', {}, mk); // SVG 네이티브 툴팁 — 호버 시 URL/이름 표시
           tt.textContent = markers[mi].tip;
+        }
+        // 개수 배지 — 2개 이상이면 글리프 오른쪽 위에 작은 숫자.
+        // 에디터 NodeRenderer 와 같은 규칙·같은 자리(icSize/2+2, -icSize/2+3).
+        // 없으면 "몇 개가 들어 있는지" 열어 보기 전에는 알 수 없다.
+        if (markers[mi].n > 1) {
+          var icS = mfs + 2;
+          var cnt = el('text', {
+            x: mx0 + mfs / 2 + icS / 2 + 2, y: node._cy - icS / 2 + 3,
+            'font-size': 8, 'font-weight': 700, fill: SKIN.accent,
+            'text-anchor': 'middle', 'data-marker-count': markers[mi].kind
+          }, mk);
+          cnt.textContent = String(markers[mi].n);
         }
         (function (act, mkEl) {
           mkEl.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
@@ -2913,9 +2928,13 @@ const VIEWER_CSS = `
   }
   .mm-note-block a { color: #1D4ED8; text-decoration: none; word-break: break-all; }
   .mm-note-block a:hover { text-decoration: underline; }
-  /* 체크리스트 글리프 — 누르기 쉬우라고 여백째 클릭 판정 (글자 흐름은 그대로) */
+  /* 체크리스트 글리프 — 누르기 쉬우라고 좌우 여백째 클릭 판정.
+     ⚠️ 위아래 padding 은 주면 안 된다 — .mm-note-block 이
+     overflow-x:auto 라 세로가 한 줄보다 커지는 순간 **줄마다 세로
+     스크롤바**가 생긴다 (2026-08-09 보고: "체크 오른쪽 상하 화살표").
+     inline-block 의 높이는 이미 줄높이(1.5)라 세로 판정은 충분하다. */
   .mm-note-check {
-    display: inline-block; padding: 2px 5px; margin: -2px -5px -2px -5px;
+    display: inline-block; padding: 0 5px; margin: 0 -5px;
     user-select: none;
   }
   .mm-note-check[data-viewer-note-check="1"] { color: #22A06B; }

@@ -278,7 +278,11 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
         <div key={li} style={{ whiteSpace: 'pre' }}>
           {li === 0 && type === 'checklist' ? (
             // 체크 글리프 클릭 = 완료/미완료 토글 (팝업에서 바로 체크).
-            // 클릭 판정은 좌우·상하 5px 여유 — 글리프만 노리면 빗나간다.
+            // 클릭 판정은 좌우 5px 여유 — 글리프만 노리면 빗나간다.
+            // ⚠️ 위아래 padding 은 주지 않는다: 이 블록이 overflowX:'auto'
+            // 라 세로가 한 줄보다 커지면 **줄마다 세로 스크롤바(회색 바)**
+            // 가 생긴다 (2026-08-09 보고). inline-block 높이가 이미
+            // 줄높이(1.55)라 세로 판정은 충분하다.
             <span
               data-note-popup-check
               data-checked={block.checked ? '1' : '0'}
@@ -288,7 +292,7 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
                 ? (block.checked ? '클릭하면 미완료로' : '클릭하면 완료로')
                 : undefined}
               style={{
-                display: 'inline-block', padding: '2px 5px', margin: '-2px -5px',
+                display: 'inline-block', padding: '0 5px', margin: '0 -5px',
                 marginRight: 0, cursor: onToggleCheck ? 'pointer' : 'default',
                 color: block.checked ? '#22A06B' : t.textMuted,
               }}

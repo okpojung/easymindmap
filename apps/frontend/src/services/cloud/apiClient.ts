@@ -4,6 +4,7 @@
 //   JWT 를 Authorization 헤더로 첨부한다(만료 시 자동 갱신). 미설정
 //   (개발 모드)이면 헤더 없이 호출 — 백엔드 AUTH_MODE=dev 가 처리.
 import { authEnabled, getFreshAccessToken } from '@/stores/authStore';
+import { getClientInfo } from '@/utils/clientInfo';
 
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -62,6 +63,13 @@ export interface MapVersionItem {
   attachBytes: number | null;
   /** 첨부 개수 (내장·서버·세션 한정 blob 전부) */
   attachCount: number | null;
+  // 저장한 자리 (2026-08-09) — 그 이전 버전은 null
+  /** 'Windows 11' · 'Android 14' · 'iOS 17' … */
+  platform?: string | null;
+  /** 'Chrome 126' · 'Edge 126' · 'Safari 17' … */
+  browser?: string | null;
+  /** 저장 요청이 들어온 IP (서버가 기록) */
+  ip?: string | null;
 }
 
 /** 청크 업로드 세션 상태 (§12.4) — 조각 크기·개수는 서버가 정한다 */
@@ -100,6 +108,16 @@ export interface MapListItem {
    * 링크/첨부 파일명). 0 이면 이름만 맞은 것이다.
    */
   matchCount?: number;
+  // 마지막 저장 자리 (2026-08-09) — 히스토리 최신 버전에서 가져온다.
+  // 접속 정보 도입 전에 저장된 맵은 null.
+  /** 'Windows 11' · 'Android 14' · 'iOS 17' … */
+  lastPlatform?: string | null;
+  /** 'Chrome 126' · 'Edge 126' … */
+  lastBrowser?: string | null;
+  /** 그때 저장 요청이 들어온 IP */
+  lastIp?: string | null;
+  /** 그 버전이 만들어진 시각 */
+  lastSavedAt?: string | null;
 }
 
 export interface FolderItem {
@@ -174,12 +192,16 @@ export const cloudApi = {
   // allowEmpty: 가지 0개 문서로 **내용 있는 맵을 덮어쓰는 것**을 사용자가
   // 확인했다는 표시 (2026-08-05). 서버는 이 값이 없으면 그런 저장을
   // 거부한다 — 자동저장이든 명시 저장이든.
-  saveDocument: (
+  // client(플랫폼·브라우저)는 여기서 붙인다 — 저장 경로가 여러 곳이라
+  // 호출부마다 넘기면 빠뜨리기 쉽다. 서버는 히스토리 버전에만 기록하고,
+  // IP 는 요청에서 직접 읽는다(우리가 보내지 않는다 — 2026-08-09).
+  saveDocument: async (
     mapId: string, doc: unknown, title?: string,
     keepVersion?: boolean, editSession?: string, allowEmpty?: boolean,
   ) =>
     req<{ mapId: string; updatedAt: string; version?: number; unchanged?: boolean }>(
-      'PUT', `/maps/${mapId}/document`, { doc, title, keepVersion, editSession, allowEmpty }),
+      'PUT', `/maps/${mapId}/document`,
+      { doc, title, keepVersion, editSession, allowEmpty, client: await getClientInfo() }),
   // 편집 잠금 — 하트비트(25초 주기, held=false 면 잠금을 잃음)·해제
   editHeartbeat: (mapId: string, sessionKey: string) =>
     req<{ held: boolean }>('POST', `/maps/${mapId}/edit-heartbeat`, { sessionKey }),

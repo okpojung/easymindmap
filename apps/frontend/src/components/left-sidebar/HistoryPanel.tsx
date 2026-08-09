@@ -132,6 +132,11 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
     return parts.join(' · ');
   };
 
+  // 저장한 자리 (2026-08-09 사용자 요청) — 플랫폼 · 브라우저 · IP.
+  // 이 정보 도입 전 버전은 셋 다 null 이라 줄 자체를 그리지 않는다.
+  const origin = (v: MapVersionItem) =>
+    [v.platform, v.browser, v.ip].filter(Boolean).join(' · ');
+
   return (
     <div style={{ padding: '12px 12px 16px' }} data-testid="history-panel">
       <div style={{
@@ -200,6 +205,22 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
                 }}>
                   {detail(v)}
                 </div>
+                {origin(v) && (
+                  // 패널이 좁아 한 줄에 다 안 들어간다 — 말줄임으로 IP 를
+                  // 잘라 먹지 말고 **접어서** 다 보여 준다 (골라 복사도 된다)
+                  <div
+                    data-testid="history-origin"
+                    title={`이 버전을 저장한 기기·브라우저·IP — ${origin(v)}`}
+                    style={{
+                      fontSize: 10, color: t.textSubtle, marginTop: 1,
+                      // break-all 로 하면 IP 한가운데("12 / 7.0.0.1")가
+                      // 갈린다 — 칸에 안 들어가는 낱말만 넘긴다
+                      whiteSpace: 'normal', overflowWrap: 'break-word', lineHeight: 1.45,
+                    }}
+                  >
+                    🖥 {origin(v)}
+                  </div>
+                )}
               </div>
               <button
                 data-testid="history-restore"
@@ -232,6 +253,9 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
         버전은 <b>☁ 저장·맵 닫기</b> 시점마다 쌓입니다(자동저장은 제외).
         지금 편집 중인 내용을 되돌리려면 <b>되돌리기(Ctrl+Z)</b>를 쓰세요 —
         이 세션 안에서 최대 <b>99단계</b>입니다.
+        <br />
+        🖥 줄은 <b>그 버전을 저장한 기기·브라우저·IP</b>입니다 — 내 계정의
+        맵 이력에만 남고 다른 사람에게는 보이지 않습니다.
       </div>
     </div>
   );

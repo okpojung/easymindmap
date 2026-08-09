@@ -36,6 +36,7 @@ const REQUIRED_COLUMNS = [
   'map_documents.node_count', // 문서함 목록 상세 (2026-08-05)
   'map_documents.attach_bytes', // 문서함 목록 상세 (2026-08-05)
   'map_documents.search_text', // 문서함 내용 검색 (2026-08-08)
+  'map_document_versions.client_ip', // 히스토리 접속 정보 (2026-08-09)
 ] as const;
 
 /**

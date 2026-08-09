@@ -396,3 +396,47 @@ attach_bytes · attach_count** 를 함께 기록하고, 히스토리 패널이 �
 맵은 edgeType·children 기본값이 빠진 채 저장돼, 다시 열면(로드 정규화)
 같은 내용인데 문서가 달라 보였다 → `buildSnapshot()` 이 로드와 같은
 정규화(normalizeMapForSnapshot = cloneMap)를 거쳐 저장한다.
+
+## 저장한 자리 — 기기·브라우저·IP (2026-08-09 사용자 요청)
+
+> "맵의 히스토리 정보에 실행한 Platform(Windows 11··, Android V14, iOS…),
+> 브라우저 종류, IP Address 정보도 같이 기록하고 보여 주었으면 한다."
+
+버전을 만들 때 `map_document_versions` 에 **client_platform ·
+client_browser · client_ip** 를 함께 남기고, 히스토리 패널의 각 버전 아래에
+`🖥 Windows 11 · Chrome 126 · 203.0.113.9` 로 보여준다.
+
+### 누가 무엇을 정하는가 (이게 핵심이다)
+
+| 값 | 정하는 쪽 | 이유 |
+|---|---|---|
+| **IP** | **서버만** | 클라이언트가 보낸 값은 위조할 수 있다. `main.ts` 의 `trust proxy: 1` 덕에 `req.ip` 는 **프록시가 붙인 실제 클라이언트 IP** 다. 몸통(body)으로 `client.ip` 를 보내면 전역 `forbidNonWhitelisted` 에 걸려 **400** 이다 |
+| **플랫폼·브라우저** | **클라이언트 우선**, 없으면 서버가 UA 추정 | **User-Agent 문자열로는 Windows 10 과 11 을 구분할 수 없다** — 둘 다 `Windows NT 10.0` 이다(호환성 때문에 고정). 실제 버전은 브라우저의 **User-Agent Client Hints**(`navigator.userAgentData.getHighEntropyValues`)로만 알 수 있고, 이건 스크립트에서만 물어볼 수 있다 |
+
+- 프런트: `utils/clientInfo.ts` — Client Hints 로 `platformVersion` 을 받아
+  **13 이상이면 Windows 11**, 1~12 면 Windows 10 으로 적는다(MS 문서 기준).
+  브랜드 목록에서 위장 항목(`Not)A;Brand`)과 엔진(`Chromium`)을 걷어내
+  사용자가 아는 이름(`Chrome 126` · `Edge 126`)을 고른다.
+  Client Hints 가 없는 브라우저(사파리·파이어폭스)는 UA 로 추정한다.
+- 값은 `apiClient.saveDocument()` 가 **자동으로** 붙인다 — 저장 경로가
+  여러 곳이라 호출부마다 넘기면 빠뜨린다. 세션당 한 번만 조회해 캐시한다.
+- 서버: UA 로 추정할 때도 **파생 브라우저를 먼저** 본다(Edge/Opera/
+  Samsung/Whale 를 Chrome 으로 오독하지 않는다). macOS 의 UA 버전은
+  `10_15_7` 에 얼어 있어 버전을 붙이지 않는다 — 모르는 것을 아는 척하지
+  않는다.
+
+### 스키마가 아직 없는 서버에서도 동작한다
+
+새 컬럼을 **무조건** SELECT/INSERT 하면 델타 SQL 미적용 서버에서 목록도
+저장도 통째로 503 이 된다(2026-08-08 검색 기능에서 실제로 겪었다).
+`hasVersionClientCols()` 가 `information_schema` 로 컬럼 유무를 보고
+**있을 때만** 컬럼을 넣는다. 캐시는 **1분 양방향** — 델타를 적용하면
+재기동 없이 곧 붙고, 컬럼이 사라진 DB(롤백본)에서도 스스로 물러선다.
+
+### 개인정보
+
+본인 소유 맵의 이력에만 남고 RLS 로 본인만 조회한다. 맵을 지우면
+`ON DELETE CASCADE` 로 함께 사라진다. 패널 하단에 "내 계정의 맵
+이력에만 남고 다른 사람에게는 보이지 않습니다"를 항상 적어 둔다.
+
+검증: E2E e2e134

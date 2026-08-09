@@ -11,6 +11,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '../common/auth/auth.guard';
@@ -20,6 +21,9 @@ import { CreateMapDto } from './dto/create-map.dto';
 import { UpdateMapDto } from './dto/update-map.dto';
 import { SaveDocumentDto } from './dto/save-document.dto';
 import { EditSessionDto } from './dto/edit-session.dto';
+import {
+  browserFromUa, clientIpOf, platformFromUa, sanitizeLabel,
+} from '../common/client-info';
 
 /**
  * /v1/maps — 맵 CRUD. 모든 엔드포인트는 인증 필요.
@@ -86,10 +90,21 @@ export class MapsController {
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SaveDocumentDto,
+    @Req() req: { ip?: string; ips?: string[]; headers?: Record<string, unknown> },
   ) {
+    // 저장한 자리(기기·브라우저·IP) — 히스토리 버전에만 기록된다.
+    // IP 는 **서버가 정한다**(클라이언트가 보낸 값은 믿지 않는다).
+    // 플랫폼·브라우저는 클라이언트가 알려준 값이 우선 — UA 문자열로는
+    // Windows 10/11 이 갈리지 않는다. 없으면 UA 로 추정한다.
+    const ua = String(req?.headers?.['user-agent'] ?? '');
     return this.maps.saveDocument(
       user.id, id, dto.doc, dto.title, dto.keepVersion ?? false, dto.editSession,
-      dto.allowEmpty ?? false);
+      dto.allowEmpty ?? false,
+      {
+        platform: sanitizeLabel(dto.client?.platform) ?? platformFromUa(ua),
+        browser: sanitizeLabel(dto.client?.browser) ?? browserFromUa(ua),
+        ip: clientIpOf(req),
+      });
   }
 
   // editSession(탭 고유 키)을 주면 편집 잠금을 시도하고 결과를

@@ -581,9 +581,88 @@ docker network ls -q | xargs -r -n1 docker network inspect \
 
 | `xForwardedFor` 의 주소가 | 뜻 | 조치 |
 |---|---|---|
-| **NPM(nginx) 컨테이너** | NPM 이 접속자 IP 를 못 받고 있다 — **NPM 앞에 또 하나가 있다** | NPM **접근 로그**를 본다. 거기도 사설이면 그 앞을 고친다 |
+| **어느 컨테이너도 아니다** (위 명령이 아무것도 안 찍는다) | 그 장치는 **도커 밖**이다 — 보통 **다른 장비에서 도는 NPM** 이 Traefik 앞에 있다 | ⇒ 아래 "Traefik 이 헤더를 버린다" 를 먼저 본다 |
 | **Docker 네트워크 게이트웨이** | 포트 공개가 **userland-proxy** 를 거쳐 출발지 주소가 게이트웨이로 바뀐다 | `/etc/docker/daemon.json` 에 `{"userland-proxy": false}` 후 도커 재시작, 또는 에지 프록시를 `network_mode: host` 로 |
-| **다른 리버스 프록시·방화벽** | 그 장치가 X-Forwarded-For 를 안 붙인다 | 그 장치에서 `X-Forwarded-For`/`X-Real-IP` 전달을 켠다 |
+| **NPM(nginx) 컨테이너** | NPM 도 접속자 IP 를 못 받고 있다 — NPM 앞에 또 하나가 있다 | NPM **접근 로그**를 본다. 거기도 사설이면 그 앞을 고친다 |
+
+#### ★ 가장 흔한 함정 — **Traefik 은 남이 붙인 X-Forwarded-\* 를 버린다**
+
+Traefik 은 **신뢰하지 않는 상대가 보낸 `X-Forwarded-*` 헤더를 지우고 자기가
+다시 쓴다**(보안 기본값 — 아무나 헤더를 위조해 IP 를 속이지 못하게).
+그래서 NPM 이 접속자 IP 를 제대로 적어 보내도, Traefik 이 그것을 버리고
+**자기가 본 상대(= NPM 의 주소)** 로 덮어쓴다. 우리 API 에는 사설 주소
+하나만 남는다 — **바로 이 증상이다.**
+
+신뢰 목록에 NPM 이 있는 대역을 넣어 주면 Traefik 이 헤더를 **이어받는다**.
+
+##### 어디서 고치나 — **Coolify 가 도는 서버(em-dev)의 프록시 설정**
+
+⚠️ 셸 명령이 아니라 **Traefik 의 설정 파일**이다. 고치는 자리는 두 곳 중
+하나이고, **UI 쪽을 권한다**(Coolify 가 프록시를 다시 만들 때 UI 에 넣은
+값은 유지된다).
+
+**① 확인 — 지금 무엇이 도는지, 이미 설정돼 있는지**
+
+`em-dev` 서버에 SSH 로 들어가서:
+
+```bash
+# Coolify 의 프록시(Traefik) 컨테이너 이름 — 보통 coolify-proxy
+docker ps --format '{{.Names}}\t{{.Image}}' | grep -i traefik
+
+# 지금 걸린 옵션에 forwardedHeaders 가 있는지 (없으면 이번 건이 맞다)
+docker inspect coolify-proxy -f '{{range .Config.Cmd}}{{println .}}{{end}}' \
+  | grep -i forwarded || echo '  → forwardedHeaders 설정 없음'
+
+# 설정 파일 원본
+sudo cat /data/coolify/proxy/docker-compose.yml
+```
+
+**② 고치기 (권장) — Coolify 웹 UI**
+
+`Servers` → **em-dev 서버 선택** → `Proxy` 탭 → **Configuration**(설정
+파일 편집기, 버전에 따라 `Advanced`/`Configuration` 로 표기) → 열린
+YAML 의 `services:` → `traefik:` → **`command:` 목록 맨 아래**에 두 줄을
+붙인다 → `Save` → **`Restart Proxy`**.
+
+```yaml
+services:
+  traefik:
+    # …
+    command:
+      - '--api.dashboard=true'
+      - '--entrypoints.http.address=:80'
+      - '--entrypoints.https.address=:443'
+      # ↓ 이 두 줄을 더한다 (들여쓰기는 위 줄들과 똑같이)
+      - '--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24'
+      - '--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24'
+```
+
+**③ UI 를 못 쓰면 — 파일 직접 편집**
+
+```bash
+sudo cp /data/coolify/proxy/docker-compose.yml \
+        /data/coolify/proxy/docker-compose.yml.bak      # 되돌릴 수 있게
+sudo nano /data/coolify/proxy/docker-compose.yml        # command: 아래 두 줄 추가
+cd /data/coolify/proxy && sudo docker compose up -d     # 프록시만 다시 뜬다
+```
+
+* 대역은 **NPM 이 있는 사설 대역**으로 — 여기서는 `/v1/health/ip` 의
+  `xForwardedFor` 에 찍힌 주소(`192.168.94.74`)가 속한 `192.168.94.0/24`.
+  여러 곳이면 콤마로 나열한다.
+* ⚠️ `forwardedHeaders.insecure=true` (아무나 신뢰)는 쓰지 않는다 —
+  접속자가 헤더를 위조해 IP 를 마음대로 바꿀 수 있다.
+* 재시작하면 **모든 사이트가 잠깐 끊긴다**(수 초). 프록시만 다시 뜨는
+  것이라 애플리케이션 컨테이너는 그대로다.
+
+고쳐졌으면 `xForwardedFor` 가 **두 항목**이 된다.
+
+```
+xForwardedFor: "203.0.113.9, 192.168.94.74"   ← 접속자, NPM
+ip:            "203.0.113.9"                   ← 우리가 기록하는 값
+```
+
+여전히 한 항목이면 이번엔 **NPM 이 안 보내는 것**이다 — NPM 의 해당 호스트
+Advanced 에 아래 헤더를 넣는다.
 
 > **판정 기준 하나**: 사슬의 어느 단계든 **접속자마다 값이 달라져야**
 > 한다. 서로 다른 기기에서 같은 값이 나오면 그 단계에서 이미 잃은 것이다.

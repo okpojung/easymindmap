@@ -1621,7 +1621,6 @@ export function Canvas({
             t={t}
             nodeId={popover.nodeId}
             title={node.text}
-            heading={NOTE_KIND_META[popover.kind].label}
             accent={NOTE_KIND_META[popover.kind].color}
             notes={filtered}
             onClose={() => setPopover(null)}

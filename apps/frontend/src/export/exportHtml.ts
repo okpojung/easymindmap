@@ -1936,10 +1936,11 @@ const VIEWER_JS = String.raw`
       gl.setAttribute('title', on ? '클릭하면 미완료로' : '클릭하면 완료로');
       var txt = document.createElement('span');
       txt.textContent = ' ' + note.text;
-      txt.style.textDecoration = on ? 'line-through' : 'none';
+      // 완료해도 **취소선을 긋지 않는다** (2026-08-09 사용자 결정) —
+      // 맵 노드 안의 체크는 안 긋는데 여기만 그어 규칙이 갈렸다.
       if (note.id) {
         gl.style.cursor = 'pointer';
-        (function (nt, span, body) {
+        (function (nt, span) {
           span.addEventListener('click', function (ev) {
             ev.stopPropagation();
             var next = !noteCheckState(nt);
@@ -1947,9 +1948,8 @@ const VIEWER_JS = String.raw`
             span.textContent = next ? '☑' : '☐';
             span.setAttribute('data-viewer-note-check', next ? '1' : '0');
             span.setAttribute('title', next ? '클릭하면 미완료로' : '클릭하면 완료로');
-            body.style.textDecoration = next ? 'line-through' : 'none';
           });
-        })(note, gl, txt);
+        })(note, gl);
       }
       pEl.appendChild(gl);
       pEl.appendChild(txt);
@@ -1978,7 +1978,10 @@ const VIEWER_JS = String.raw`
 
   // kind: 'links' | 'notes' | 'files' | 'media' — 클릭한 마커의 정보만 표시.
   function showDetail(node, kind) {
-    noteTitle.textContent = node.text;
+    // 제목은 **원문 그대로가 아니라** 블록 마커를 접어 보여 준다 —
+    // 체크 노드는 '- [x] 할링\n- [ ] 할리2' 가 그대로 찍혀 엉망이었다
+    // (2026-08-09 보고). 아웃라인·검색 결과와 같은 flattenText 규칙.
+    noteTitle.textContent = flattenText(node.text);
     noteBody.textContent = '';
     var i, a, row;
 

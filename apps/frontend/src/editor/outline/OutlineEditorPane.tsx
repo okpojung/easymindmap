@@ -128,7 +128,7 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
           key={`${notePopup.nodeId}:${notePopup.kind}`}
           t={t}
           title={noteNode.text}
-          heading={NOTE_KIND_META[notePopup.kind].label}
+          nodeId={notePopup.nodeId}
           accent={NOTE_KIND_META[notePopup.kind].color}
           notes={noteBlocks}
           onClose={() => setNotePopup(null)}

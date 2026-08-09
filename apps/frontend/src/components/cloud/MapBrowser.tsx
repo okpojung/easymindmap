@@ -38,13 +38,32 @@ type SortKey = 'title' | 'createdAt' | 'updatedAt'
 /** 한 번에 받아 오는 맵 수 상한 — 서버 list() 의 limit 최대값과 같다 */
 const MAP_FETCH_LIMIT = 500;
 
-// 바이트 → 사람이 읽는 단위 (KB/MB/GB). null(통계 도입 전 저장분)은 '—'
+// 바이트 → 사람이 읽는 값·단위. null(통계 도입 전 저장분)은 '—'
+function bytesParts(n: number | null | undefined): { v: string; u: string } {
+  if (n === null || n === undefined) return { v: '—', u: '' };
+  if (n < 1024) return { v: String(n), u: 'B' };
+  if (n < 1024 * 1024) return { v: (n / 1024).toFixed(1), u: 'KB' };
+  if (n < 1024 * 1024 * 1024) return { v: (n / 1024 / 1024).toFixed(1), u: 'MB' };
+  return { v: (n / 1024 / 1024 / 1024).toFixed(2), u: 'GB' };
+}
+
+/** 목록 안의 값 — 예전과 같은 붙여 쓰기 ("309.8KB") */
 function fmtBytes(n: number | null | undefined): string {
-  if (n === null || n === undefined) return '—';
-  if (n < 1024) return `${n}B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)}MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)}GB`;
+  const { v, u } = bytesParts(n);
+  return v + u;
+}
+
+/**
+ * 머리글 위 **합계**는 단위를 괄호로 떼어 쓴다 (2026-08-09 요청) —
+ * `309.8 (KB)` · `1,448 (개)`. 숫자와 단위가 붙어 있으면 자릿수를 눈으로
+ * 세기 어렵고, 열마다 단위가 달라 값끼리 비교도 헷갈렸다.
+ */
+function totalBytesText(n: number | null | undefined): string {
+  const { v, u } = bytesParts(n);
+  return u ? `${v} (${u})` : v;
+}
+function totalCountText(n: number): string {
+  return `${n.toLocaleString()} (개)`;
 }
 
 // 날짜 — 목록 폭에 맞춘 짧은 표기 (YYYY.M.D HH:mm — 브라우저 로캘과
@@ -457,7 +476,18 @@ export function MapBrowser({
   // ── 스타일 ──────────────────────────────────────────────────
   // 머리글은 **그 열 값과 같은 쪽으로** 붙인다 (2026-08-05 보고: 숫자는
   // 오른쪽 정렬인데 제목만 왼쪽이라 어느 열의 제목인지 헷갈렸다).
-  const th = (label: string, key: SortKey, align: 'left' | 'right' = 'left') => (
+  /**
+   * 열 머리글 버튼.
+   * 색은 **본문색**이다 (2026-08-09 요청 — "왜 희미한 색상이지").
+   * 예전에는 `textMuted` 라 회색으로 잠겨 이름이 잘 안 읽혔다. 머리글은
+   * 화면을 읽는 기준선이라 흐리면 표 전체가 흐려 보인다. 일부 열만
+   * 진하게 하면 나머지가 더 흐려 보이므로 **전 열을 함께** 올린다.
+   * 정렬 중인 열만 강조색(primary)으로 구분한다.
+   */
+  const th = (
+    label: string, key: SortKey,
+    align: 'left' | 'right' = 'left',
+  ) => (
     <button
       data-testid={`browser-sort-${key}`}
       onClick={() => {
@@ -470,7 +500,7 @@ export function MapBrowser({
         justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
         width: align === 'right' ? '100%' : undefined,
         background: 'transparent', border: 'none', cursor: 'pointer',
-        color: sort === key ? t.primary : t.textMuted,
+        color: sort === key ? t.primary : t.text,
         fontSize: 11.5, fontWeight: 700, padding: 0, whiteSpace: 'nowrap',
       }}
     >
@@ -489,10 +519,12 @@ export function MapBrowser({
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
     fontVariantNumeric: 'tabular-nums',
   };
+  // 합계 — 예전에는 opacity .75 로 흐렸는데 값이 잘 안 읽혔다
+  // (2026-08-09 요청). 본문색 그대로 쓰고 크기만 작게 유지한다.
   const totalCell = (text: string) => (
     <span style={{
       ...numCell, marginBottom: 2,
-      fontSize: 10, fontWeight: 700, color: t.text, opacity: 0.75,
+      fontSize: 10.5, fontWeight: 700, color: t.text,
     }}>{text}</span>
   );
 
@@ -650,7 +682,7 @@ export function MapBrowser({
           ...rowStyle,
           alignItems: 'end',
           background: t.surfaceAlt, borderBottom: `1px solid ${t.border}`,
-          color: t.textMuted, fontWeight: 700, fontSize: 11.5,
+          color: t.text, fontWeight: 700, fontSize: 11.5,
         }}
       >
         <span />
@@ -667,23 +699,26 @@ export function MapBrowser({
             {searching ? ' (검색 결과)' : ''}
           </span>
         </span>
-        <span>유형</span>
-        {th('생성일', 'createdAt')}
-        {th('수정일', 'updatedAt')}
+        {/* 유형·생성일·수정일은 **오른쪽 맞춤** (2026-08-09 요청) —
+            값(단독맵 배지·날짜)이 열 오른쪽 끝에서 끝나므로 머리글도
+            같은 선에 세워야 세로줄이 맞는다. */}
+        <span style={{ textAlign: 'right' }}>유형</span>
+        {th('생성일', 'createdAt', 'right')}
+        {th('수정일', 'updatedAt', 'right')}
         <span data-testid="browser-total-nodes">
-          {totalCell(totals.nodeCount.toLocaleString())}
+          {totalCell(totalCountText(totals.nodeCount))}
           {th('노드', 'nodeCount', 'right')}
         </span>
         <span data-testid="browser-total-size">
-          {totalCell(fmtBytes(totals.docBytes))}
+          {totalCell(totalBytesText(totals.docBytes))}
           {th('크기', 'docBytes', 'right')}
         </span>
         <span data-testid="browser-total-attach">
-          {totalCell(totals.attachCount.toLocaleString())}
+          {totalCell(totalCountText(totals.attachCount))}
           {th('첨부', 'attachCount', 'right')}
         </span>
         <span data-testid="browser-total-attach-bytes">
-          {totalCell(fmtBytes(totals.attachBytes))}
+          {totalCell(totalBytesText(totals.attachBytes))}
           {th('첨부 용량', 'attachBytes', 'right')}
         </span>
         <span style={{ textAlign: 'center' }}>관리</span>
@@ -785,10 +820,16 @@ export function MapBrowser({
                 <Mark text={r.folder.name} q={searching ? qRaw : ''} />
               </span>
             </button>
-            <span style={{ color: t.textSubtle, fontSize: 11 }}>폴더</span>
-            <span style={{ color: t.textSubtle, fontSize: 11.5, gridColumn: 'span 2' }}>
+            {/* 유형·생성일 자리 — 머리글과 같은 오른쪽 선에 세운다
+                (2026-08-09 요청) */}
+            <span style={{ color: t.textMuted, fontSize: 11, textAlign: 'right' }}>폴더</span>
+            {/* '맵 N개' 는 **생성일 칸 하나**만 쓴다 — 예전처럼 두 칸을
+                차지하면(span 2) 오른쪽 맞춤이 수정일 선까지 밀려 머리글과
+                어긋난다 (2026-08-09) */}
+            <span style={{ color: t.textMuted, fontSize: 11.5, textAlign: 'right' }}>
               맵 {r.folder.mapCount}개
             </span>
+            <span />
             <span /><span /><span /><span />
             <span style={actionCell}>
               <button style={iconBtn} title="이 폴더 안에 새 폴더" aria-label="하위 폴더 만들기"
@@ -852,30 +893,33 @@ export function MapBrowser({
                 ? '협업맵 — 협업자가 참여 중인 맵'
                 : '단독맵 — 협업자를 초대해 승인되면 협업맵이 됩니다 (준비 중)'}
               style={{
-                justifySelf: 'start',
+                justifySelf: 'end',
                 border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 7px',
-                color: r.map.kind === 'collab' ? t.primary : t.textSubtle, fontSize: 10.5, fontWeight: 600,
+                color: r.map.kind === 'collab' ? t.primary : t.textMuted,
+                fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap',
               }}
             >
               {r.map.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'}
             </span>
-            <span style={{ color: t.textSubtle, fontSize: 11 }} title="최초 생성일">
+            <span style={{ color: t.textMuted, fontSize: 11, textAlign: 'right' }}
+              title="최초 생성일">
               {fmtDate(r.map.createdAt)}
             </span>
-            <span style={{ color: t.textSubtle, fontSize: 11 }} title="마지막 수정일">
+            <span style={{ color: t.textMuted, fontSize: 11, textAlign: 'right' }}
+              title="마지막 수정일">
               {fmtDate(r.map.updatedAt)}
             </span>
-            <span style={{ ...numCell, color: t.textSubtle, fontSize: 11 }}
+            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }}
               title="노드 수 ('—'는 통계 도입 전 저장분 — 다음 저장 때 채워집니다)">
               {r.map.nodeCount ?? '—'}
             </span>
-            <span style={{ ...numCell, color: t.textSubtle, fontSize: 11 }} title="문서 크기">
+            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }} title="문서 크기">
               {fmtBytes(r.map.docBytes)}
             </span>
-            <span style={{ ...numCell, color: t.textSubtle, fontSize: 11 }} title="첨부파일 수">
+            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }} title="첨부파일 수">
               {r.map.attachCount ?? '—'}
             </span>
-            <span style={{ ...numCell, color: t.textSubtle, fontSize: 11 }} title="첨부 총 용량">
+            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }} title="첨부 총 용량">
               {fmtBytes(r.map.attachBytes)}
             </span>
             <span style={actionCell}>

@@ -55,15 +55,19 @@ function fmtBytes(n: number | null | undefined): string {
 
 /**
  * 머리글 위 **합계**는 단위를 괄호로 떼어 쓴다 (2026-08-09 요청) —
- * `309.8 (KB)` · `1,448 (개)`. 숫자와 단위가 붙어 있으면 자릿수를 눈으로
+ * `309.8(KB)` · `1,448(개)`. 숫자와 단위가 붙어 있으면 자릿수를 눈으로
  * 세기 어렵고, 열마다 단위가 달라 값끼리 비교도 헷갈렸다.
+ *
+ * 숫자와 `(` 사이는 **띄우지 않는다** (같은 날 2차) — 띄우면 좁은 열에서
+ * 그 칸에서 줄이 바뀌어 `1,448` / `(개)` 두 줄로 접힌다. 머리글 줄만
+ * 높아져 표가 어긋나 보였다. (그래도 안전하게 nowrap 을 함께 건다)
  */
 function totalBytesText(n: number | null | undefined): string {
   const { v, u } = bytesParts(n);
-  return u ? `${v} (${u})` : v;
+  return u ? `${v}(${u})` : v;
 }
 function totalCountText(n: number): string {
-  return `${n.toLocaleString()} (개)`;
+  return `${n.toLocaleString()}(개)`;
 }
 
 // 날짜 — 목록 폭에 맞춘 짧은 표기 (YYYY.M.D HH:mm — 브라우저 로캘과
@@ -478,11 +482,12 @@ export function MapBrowser({
   // 오른쪽 정렬인데 제목만 왼쪽이라 어느 열의 제목인지 헷갈렸다).
   /**
    * 열 머리글 버튼.
-   * 색은 **본문색**이다 (2026-08-09 요청 — "왜 희미한 색상이지").
-   * 예전에는 `textMuted` 라 회색으로 잠겨 이름이 잘 안 읽혔다. 머리글은
-   * 화면을 읽는 기준선이라 흐리면 표 전체가 흐려 보인다. 일부 열만
-   * 진하게 하면 나머지가 더 흐려 보이므로 **전 열을 함께** 올린다.
-   * 정렬 중인 열만 강조색(primary)으로 구분한다.
+   *
+   * 색은 **전 열이 같다** (2026-08-09 2차 요청 — "모두 폴더/파일명 글자색과
+   * 동일하게"). 예전에는 정렬 중인 열만 강조색이라, 기본 정렬인
+   * `폴더/파일명` 만 또렷하고 나머지는 상대적으로 죽어 보였다.
+   * 지금 정렬된 열은 **화살표로** 구분한다 — 정렬 중이면 ▲/▼, 아니면 ⇅.
+   * 색까지 다르게 할 필요가 없다.
    */
   const th = (
     label: string, key: SortKey,
@@ -500,7 +505,7 @@ export function MapBrowser({
         justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
         width: align === 'right' ? '100%' : undefined,
         background: 'transparent', border: 'none', cursor: 'pointer',
-        color: sort === key ? t.primary : t.text,
+        color: t.primary,
         fontSize: 11.5, fontWeight: 700, padding: 0, whiteSpace: 'nowrap',
       }}
     >
@@ -525,6 +530,7 @@ export function MapBrowser({
     <span style={{
       ...numCell, marginBottom: 2,
       fontSize: 10.5, fontWeight: 700, color: t.text,
+      whiteSpace: 'nowrap',
     }}>{text}</span>
   );
 
@@ -682,7 +688,8 @@ export function MapBrowser({
           ...rowStyle,
           alignItems: 'end',
           background: t.surfaceAlt, borderBottom: `1px solid ${t.border}`,
-          color: t.text, fontWeight: 700, fontSize: 11.5,
+          // 정렬 버튼이 아닌 머리글('유형'·'관리')도 같은 색을 받는다
+          color: t.primary, fontWeight: 700, fontSize: 11.5,
         }}
       >
         <span />
@@ -822,7 +829,8 @@ export function MapBrowser({
             </button>
             {/* 유형·생성일 자리 — 머리글과 같은 오른쪽 선에 세운다
                 (2026-08-09 요청) */}
-            <span style={{ color: t.textMuted, fontSize: 11, textAlign: 'right' }}>폴더</span>
+            {/* 같은 줄의 **폴더 이름과 같은 색** (2026-08-09 2차 요청) */}
+            <span style={{ color: t.text, fontSize: 11, textAlign: 'right' }}>폴더</span>
             {/* '맵 N개' 는 **생성일 칸 하나**만 쓴다 — 예전처럼 두 칸을
                 차지하면(span 2) 오른쪽 맞춤이 수정일 선까지 밀려 머리글과
                 어긋난다 (2026-08-09) */}

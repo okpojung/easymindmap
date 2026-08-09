@@ -120,6 +120,17 @@ export class HealthController {
     // 사설망(RFC1918)·루프백인가 — 이게 참이면 아직 프록시 주소를 보고 있다
     const isPrivate = (v: string | null) =>
       !!v && /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|fc|fd)/i.test(v);
+    const remote = req.socket?.remoteAddress ?? null;
+    const xffList = (xff ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+    // 앞단(우리 바로 앞이 아니라 **그 앞**)이 원본 IP 를 버렸는가.
+    // 판정: 사슬에 실린 주소가 전부 사설이고, 우리에게 온 XFF 가 딱 하나이며
+    // 그 값이 바로 앞 상대(remoteAddress)와도 다르다 —
+    // "우리 앞 프록시가 그 앞 상대의 주소를 적었는데, 그것도 사설"이라는 뜻.
+    // 이때는 진짜 접속자 IP 가 **우리 서버에 닿기 전에 이미 사라진 것**이라
+    // TRUST_PROXY 를 어떻게 고쳐도 복구할 수 없다.
+    const lostUpstream =
+      xffList.length === 1 && isPrivate(xffList[0])
+      && !!remote && xffList[0] !== remote.replace(/^::ffff:/, '');
     return {
       // 우리가 기록에 쓰는 값 — 이게 진짜 접속 IP 여야 한다
       ip,
@@ -129,7 +140,7 @@ export class HealthController {
       xForwardedFor: xff,
       xRealIp: (h['x-real-ip'] as string) ?? null,
       // 바로 앞 상대(= 마지막 프록시)의 주소
-      remoteAddress: req.socket?.remoteAddress ?? null,
+      remoteAddress: remote,
       trustProxy: (req.app?.get?.('trust proxy') as unknown) ?? null,
       userAgent: (h['user-agent'] as string) ?? null,
       // 무엇을 고쳐야 하는지 바로 알려 준다
@@ -138,8 +149,10 @@ export class HealthController {
         : !xff && /^(127\.|::1)/.test(req.socket?.remoteAddress ?? '')
           ? '프록시를 거치지 않은 직접 접속입니다 (로컬 개발) — 정상입니다.'
           : !xff
-            ? '프록시가 X-Forwarded-For 를 붙이지 않습니다 — Nginx Proxy Manager 의 해당 호스트에서 X-Forwarded-For 전달을 켜 주세요.'
-            : 'X-Forwarded-For 는 오는데 아직 사설 IP 입니다 — 접속자가 같은 사설망에 있거나, TRUST_PROXY 조정이 필요합니다(기본 loopback, linklocal, uniquelocal).',
+            ? '프록시가 X-Forwarded-For 를 붙이지 않습니다 — 리버스 프록시에서 X-Forwarded-For 전달을 켜 주세요.'
+            : lostUpstream
+              ? `접속자 IP 가 **우리 서버에 닿기 전에** 사라졌습니다 — 우리 앞 프록시(${remote})가 그 앞 상대(${xffList[0]})를 접속자로 적었고, 그 값도 사설 IP 입니다. 서버 코드로는 복구할 수 없습니다. ${xffList[0]} 가 무엇인지부터 확인하세요 (dev-server-runbook.md §6.4).`
+              : 'X-Forwarded-For 는 오는데 아직 사설 IP 입니다 — 접속자가 같은 사설망에 있거나, TRUST_PROXY 조정이 필요합니다(기본 loopback, linklocal, uniquelocal).',
     };
   }
 }

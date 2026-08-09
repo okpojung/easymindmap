@@ -524,15 +524,9 @@ export function MapBrowser({
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
     fontVariantNumeric: 'tabular-nums',
   };
-  // 합계 — 예전에는 opacity .75 로 흐렸는데 값이 잘 안 읽혔다
-  // (2026-08-09 요청). 본문색 그대로 쓰고 크기만 작게 유지한다.
-  const totalCell = (text: string) => (
-    <span style={{
-      ...numCell, marginBottom: 2,
-      fontSize: 10.5, fontWeight: 700, color: t.text,
-      whiteSpace: 'nowrap',
-    }}>{text}</span>
-  );
+  // 합계 줄의 값 — 오른쪽 맞춤·고정폭 숫자에 줄바꿈 금지.
+  // (2026-08-09 3차: 머리글 위에 얹던 작은 글씨를 아래 한 줄로 내렸다)
+  const totalNumCell: React.CSSProperties = { ...numCell, whiteSpace: 'nowrap' };
 
   const rowStyle: React.CSSProperties = {
     display: 'grid',
@@ -676,59 +670,77 @@ export function MapBrowser({
         </div>
       )}
 
-      {/* 열 머리글 (2026-08-07 정리)
-          · 숫자 열은 **열 이름 위**에 합계를 얹는다. 행을 세어 보지 않아도
-            "얼마나 쌓였나"를 바로 안다.
-          · 이름 열은 **한 줄** — `폴더/파일명` 오른쪽에 맵·폴더 수량.
-          · 그래서 모든 열 이름이 같은 높이에 오도록 `alignItems: 'end'` —
-            합계가 있는 열만 위로 한 줄 자란다. */}
+      {/* 열 머리글 — **한 줄**. 합계는 아래 별도 줄로 내렸다
+          (2026-08-09 3차 요청). 예전에는 숫자 4열만 이름 위에 합계를
+          얹었는데, 그 열만 두 줄이 되어 머리글 높이가 들쭉날쭉했고
+          합계가 어느 열 것인지도 헷갈렸다. */}
       <div
         data-testid="browser-header"
         style={{
           ...rowStyle,
-          alignItems: 'end',
           background: t.surfaceAlt, borderBottom: `1px solid ${t.border}`,
           // 정렬 버튼이 아닌 머리글('유형'·'관리')도 같은 색을 받는다
           color: t.primary, fontWeight: 700, fontSize: 11.5,
         }}
       >
         <span />
-        <span style={{
-          display: 'flex', alignItems: 'baseline', gap: 8,
-          whiteSpace: 'nowrap', overflow: 'hidden',
-        }}>
-          {th('폴더/파일명', 'title')}
-          <span
-            data-testid="browser-count"
-            style={{ fontSize: 10, fontWeight: 600, color: t.textSubtle }}
-          >
-            맵 {totals.maps}개{folderCount ? ` · 폴더 ${folderCount}개` : ''}
-            {searching ? ' (검색 결과)' : ''}
-          </span>
-        </span>
+        {th('폴더/파일명', 'title')}
         {/* 유형·생성일·수정일은 **오른쪽 맞춤** (2026-08-09 요청) —
             값(단독맵 배지·날짜)이 열 오른쪽 끝에서 끝나므로 머리글도
             같은 선에 세워야 세로줄이 맞는다. */}
         <span style={{ textAlign: 'right' }}>유형</span>
         {th('생성일', 'createdAt', 'right')}
         {th('수정일', 'updatedAt', 'right')}
-        <span data-testid="browser-total-nodes">
-          {totalCell(totalCountText(totals.nodeCount))}
-          {th('노드', 'nodeCount', 'right')}
-        </span>
-        <span data-testid="browser-total-size">
-          {totalCell(totalBytesText(totals.docBytes))}
-          {th('크기', 'docBytes', 'right')}
-        </span>
-        <span data-testid="browser-total-attach">
-          {totalCell(totalCountText(totals.attachCount))}
-          {th('첨부', 'attachCount', 'right')}
-        </span>
-        <span data-testid="browser-total-attach-bytes">
-          {totalCell(totalBytesText(totals.attachBytes))}
-          {th('첨부 용량', 'attachBytes', 'right')}
-        </span>
+        {th('노드', 'nodeCount', 'right')}
+        {th('크기', 'docBytes', 'right')}
+        {th('첨부', 'attachCount', 'right')}
+        {th('첨부 용량', 'attachBytes', 'right')}
         <span style={{ textAlign: 'center' }}>관리</span>
+      </div>
+
+      {/* **합계 줄** — 머리글 바로 아래 고정 (2026-08-09 3차 요청).
+          정렬을 어떻게 바꿔도 이 줄은 자리를 지킨다(목록의 일부가
+          아니다). 각 값은 그 열 아래에 놓여 무엇의 합계인지 열 이름이
+          그대로 설명한다.
+          · 유형   = **폴더 수**(하위 폴더까지 전부)
+          · 생성일 = **맵 수** — 폴더 줄이 '맵 N개'를 쓰는 칸이라 같은 말로
+          · 수정일 = 비움 (합계가 없는 열)
+          검색 중에는 **검색 결과** 기준이다(그때만 라벨에 표시). */}
+      <div
+        data-testid="browser-totals"
+        style={{
+          ...rowStyle,
+          background: t.surfaceAlt,
+          borderBottom: `2px solid ${t.border}`,
+          color: t.text, fontWeight: 700, fontSize: 11.5,
+        }}
+      >
+        <span />
+        <span data-testid="browser-total-label" style={{ whiteSpace: 'nowrap' }}>
+          합계{searching ? ' (검색 결과)' : ''}
+        </span>
+        <span data-testid="browser-total-folders" style={totalNumCell}
+          title="폴더 수 (하위 폴더까지 전부)">
+          {totalCountText(folderCount)}
+        </span>
+        <span data-testid="browser-total-maps" style={totalNumCell} title="맵 수">
+          맵 {totalCountText(totals.maps)}
+        </span>
+        <span />
+        <span data-testid="browser-total-nodes" style={totalNumCell} title="노드 수 합계">
+          {totalCountText(totals.nodeCount)}
+        </span>
+        <span data-testid="browser-total-size" style={totalNumCell} title="문서 크기 합계">
+          {totalBytesText(totals.docBytes)}
+        </span>
+        <span data-testid="browser-total-attach" style={totalNumCell} title="첨부 개수 합계">
+          {totalCountText(totals.attachCount)}
+        </span>
+        <span data-testid="browser-total-attach-bytes" style={totalNumCell}
+          title="첨부 용량 합계">
+          {totalBytesText(totals.attachBytes)}
+        </span>
+        <span />
       </div>
 
       {/* 목록 (트리) — 새 폴더 이름을 입력하는 동안에는 hover 강조를

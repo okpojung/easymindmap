@@ -90,10 +90,20 @@ function Mark({ text, q }: { text: string; q: string }) {
   return <>{out}</>;
 }
 
-/** 화면에 그릴 한 줄 — 폴더 또는 맵, `depth` 는 들여쓰기 단계 */
+/**
+ * 화면에 그릴 한 줄 — 폴더 / 맵 / **새 폴더 입력**, `depth` 는 들여쓰기 단계.
+ *
+ * 새 폴더 입력이 목록의 한 줄인 이유 (2026-08-08 사용자 보고): 예전에는
+ * 목록 **맨 위**에 "TTTT 안에 [폴더 이름]" 막대가 떴다. 그런데 누른 곳은
+ * 목록 한참 아래의 TTTT 줄이라, 커서는 그대로 **다른 폴더 위에** 놓이고
+ * 그 줄이 hover 로 강조된다 — 화면이 "TTTT 안"과 "Guide 선택됨" 두 가지를
+ * 동시에 말한다. 입력창을 **누른 그 자리**(그 폴더 바로 아래, 한 단계
+ * 들여써서)에 놓으면 어디에 만들어지는지 한눈에 보인다.
+ */
 type Row =
   | { kind: 'folder'; depth: number; folder: FolderItem }
-  | { kind: 'map'; depth: number; map: MapListItem };
+  | { kind: 'map'; depth: number; map: MapListItem }
+  | { kind: 'newFolder'; depth: number };
 
 export function MapBrowser({
   t, onClose, onFlash, onOpened,
@@ -158,11 +168,22 @@ export function MapBrowser({
   const lastSavedAt = useCloudStore((s) => s.lastSavedAt);
   useEffect(() => { void load(); }, [load, lastSavedAt]);
 
+  // Esc 는 **안쪽부터** 닫는다 (2026-08-08 사용자 보고에서 함께 발견).
+  // 예전에는 무조건 문서함을 닫아서, 새 폴더 이름을 입력하다 Esc 로
+  // 취소하면 **문서함이 통째로 닫혔다**. 검색어도 마찬가지였다.
+  //   1) 새 폴더 입력 중 → 입력만 취소
+  //   2) 검색 중       → 검색어만 지움
+  //   3) 그 외          → 문서함 닫기
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (newFolder) { setNewFolder(null); return; }
+      if (query) { setQuery(''); return; }
+      onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, newFolder, query]);
 
   // ── 내용 검색 ───────────────────────────────────────────────
   // 서버가 제목 + 맵 안(노드·노트·태그)을 찾아 **맞은 맵만** 돌려준다.
@@ -260,10 +281,19 @@ export function MapBrowser({
   /** 화면에 그릴 줄 목록 (폴더 먼저, 그다음 그 위치의 맵) */
   const rows = useMemo(() => {
     const out: Row[] = [];
+    // 새 폴더 입력은 **만들어질 자리**에 그대로 끼워 넣는다 — 홈이면 맨
+    // 위, 폴더 안이면 그 폴더 바로 아래에 한 단계 들여써서.
+    const newAt = newFolder?.parentId ?? null;
     const walk = (parentId: string, depth: number) => {
+      if (newFolder && parentId === '' && newAt === null) {
+        out.push({ kind: 'newFolder', depth });
+      }
       for (const f of foldersByParent.get(parentId) ?? []) {
         if (searching && !keepFolder(f)) continue;
         out.push({ kind: 'folder', depth, folder: f });
+        if (newFolder && newAt === f.folderId) {
+          out.push({ kind: 'newFolder', depth: depth + 1 });
+        }
         // 검색 중에는 **맞는 것이 든 폴더를 자동으로 펼친다**
         if (searching || expanded.has(f.folderId)) walk(f.folderId, depth + 1);
       }
@@ -275,7 +305,7 @@ export function MapBrowser({
     walk('', 0);
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q, serverFound]);
+  }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q, serverFound, newFolder]);
 
   const shownMaps = useMemo(
     () => rows.filter((r): r is Extract<Row, { kind: 'map' }> => r.kind === 'map').map((r) => r.map),
@@ -545,7 +575,7 @@ export function MapBrowser({
             data-testid="browser-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
+            /* Esc = 검색어 지우기 — window 핸들러가 계층으로 처리한다 */
             placeholder="🔍 이름 · 맵 내용으로 찾기"
             title={'문서함 전체(하위 폴더 포함)에서 찾습니다 — 폴더·맵 이름은 물론'
               + ' 맵 안의 노드 텍스트·노트·태그·링크·첨부 파일명까지 봅니다.'
@@ -581,63 +611,6 @@ export function MapBrowser({
         >✕</button>
       </div>
 
-      {/* 새 폴더 입력 줄 */}
-      {newFolder !== null && (
-        <div style={{ padding: '8px 14px', borderBottom: `1px solid ${t.divider}`, display: 'flex', gap: 6, alignItems: 'center' }}>
-          <span style={{ fontSize: 11.5, color: t.textMuted, whiteSpace: 'nowrap' }}>
-            {newFolder.parentId
-              ? `📁 ${folders.find((f) => f.folderId === newFolder.parentId)?.name ?? ''} 안에`
-              : '📁 홈에'}
-          </span>
-          <input
-            data-testid="browser-new-folder-name"
-            autoFocus
-            value={newFolder.name}
-            placeholder="폴더 이름"
-            onChange={(e) => setNewFolder((p) => (p ? { ...p, name: e.target.value } : p))}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void createFolder();
-              if (e.key === 'Escape') setNewFolder(null);
-            }}
-            style={{
-              flex: 1, height: 30, padding: '0 9px', borderRadius: 6, fontSize: 12.5,
-              border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
-            }}
-          />
-          <button
-            onClick={() => void createFolder()}
-            style={{
-              height: 30, padding: '0 12px', borderRadius: 6, border: 'none',
-              background: t.primary, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-            }}
-          >만들기</button>
-          <button
-            onClick={() => setNewFolder(null)}
-            style={{
-              height: 30, padding: '0 10px', borderRadius: 6, cursor: 'pointer',
-              border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 12,
-            }}
-          >취소</button>
-        </div>
-      )}
-
-      {/* 오류 배너 — 서버가 준 이유를 그대로 보여 준다. 스키마 미적용
-          (503)이면 "schema.sql 을 적용하라"는 안내가 여기에 뜬다. */}
-      {/* 목록 상한 안내 — 검색 중에는 "받아 둔 목록"이 아니라 **검색 결과**
-          기준으로 말한다. 서버가 전체를 훑으므로 "검색으로 좁혀 주세요"는
-          이미 한 일이라 맞지 않는다. */}
-      {searching && serverFound && foundTotal > (found?.length ?? 0) && (
-        <div
-          data-testid="browser-search-capped"
-          style={{
-            margin: '10px 14px 0', padding: '10px 12px', borderRadius: 8,
-            background: '#d9534f11', border: '1px solid #d9534f55',
-            color: '#b33', fontSize: 12.5, lineHeight: 1.65,
-          }}
-        >
-          ⚠ 검색 결과가 {foundTotal}개라 {found?.length}개만 표시합니다 — 검색어를 더 구체적으로 적어 주세요.
-        </div>
-      )}
       {err && !searching && (
         <div
           data-testid="browser-error"
@@ -716,8 +689,11 @@ export function MapBrowser({
         <span style={{ textAlign: 'center' }}>관리</span>
       </div>
 
-      {/* 목록 (트리) */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      {/* 목록 (트리) — 새 폴더 이름을 입력하는 동안에는 hover 강조를
+          끈다(mm-rows-editing). 커서가 다른 줄 위에 남아 그 줄이 강조되면
+          "어디에 만들어지나"를 화면이 두 가지로 말하게 된다. */}
+      <div className={newFolder ? 'mm-rows-editing' : undefined}
+        style={{ flex: 1, overflowY: 'auto' }}>
         {maps === null ? (
           <div style={{ padding: '28px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center' }}>
             불러오는 중…
@@ -734,9 +710,58 @@ export function MapBrowser({
                 맵을 만들어 <b>☁ 저장</b>하면 여기에 쌓입니다.</>
               )}
           </div>
-        ) : rows.map((r) => (r.kind === 'folder' ? (
+        ) : rows.map((r) => (r.kind === 'newFolder' ? (
+          /* 새 폴더 입력 — **만들어질 자리 그대로**. 들여쓰기가 부모를
+             말해 주므로 "어디에 만들어지나"를 글로 설명할 필요가 없다. */
+          <div key="new-folder" data-testid="browser-new-folder-row"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', borderBottom: `1px solid ${t.divider}`,
+              background: t.primarySoft,
+            }}>
+            <span style={{ fontSize: 15, paddingLeft: r.depth * 16 }}>📁</span>
+            <input
+              data-testid="browser-new-folder-name"
+              autoFocus
+              value={newFolder?.name ?? ''}
+              placeholder="새 폴더 이름"
+              onChange={(e) => setNewFolder((p) => (p ? { ...p, name: e.target.value } : p))}
+              // Esc 는 위쪽 window 핸들러가 계층으로 처리한다 (입력 취소)
+              onKeyDown={(e) => { if (e.key === 'Enter') void createFolder(); }}
+              style={{
+                flex: 1, maxWidth: 320, height: 28, padding: '0 9px', borderRadius: 6,
+                fontSize: 12.5, border: `1px solid ${t.primaryBorder}`,
+                background: t.surface, color: t.text, outline: 'none',
+              }}
+            />
+            <button
+              data-testid="browser-new-folder-create"
+              onClick={() => void createFolder()}
+              style={{
+                height: 28, padding: '0 12px', borderRadius: 6, border: 'none',
+                background: t.primary, color: '#fff', cursor: 'pointer',
+                fontSize: 12, fontWeight: 700,
+              }}
+            >만들기</button>
+            <button
+              onClick={() => setNewFolder(null)}
+              style={{
+                height: 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer',
+                border: `1px solid ${t.border}`, background: t.surface,
+                color: t.text, fontSize: 12,
+              }}
+            >취소</button>
+          </div>
+        ) : r.kind === 'folder' ? (
           <div key={`f:${r.folder.folderId}`} data-testid="browser-folder"
-            className="mm-list-row" style={rowStyle}>
+            className="mm-list-row"
+            // 새 폴더를 만드는 중인 **대상 폴더**는 계속 표시해 둔다 —
+            // 마우스가 다른 줄로 옮겨 가 그 줄이 hover 로 강조돼도
+            // 목적지가 헷갈리지 않는다 (2026-08-08 사용자 보고)
+            data-target={newFolder?.parentId === r.folder.folderId ? 'new-folder' : undefined}
+            style={newFolder?.parentId === r.folder.folderId
+              ? { ...rowStyle, background: t.primarySoft }
+              : rowStyle}>
             <span style={{ fontSize: 15, ...indent(r.depth) }}>📁</span>
             {/* 폴더 이름을 누르면 **그 자리에서 펼쳐진다** (2026-08-07) —
                 예전처럼 그 폴더로 '들어가지' 않는다. 폴더 위치와 파일을
@@ -767,7 +792,12 @@ export function MapBrowser({
             <span /><span /><span /><span />
             <span style={actionCell}>
               <button style={iconBtn} title="이 폴더 안에 새 폴더" aria-label="하위 폴더 만들기"
-                onClick={() => setNewFolder({ parentId: r.folder.folderId, name: '' })}
+                onClick={() => {
+                  setNewFolder({ parentId: r.folder.folderId, name: '' });
+                  // 접혀 있으면 펼친다 — 입력창 아래로 기존 하위가 함께
+                  // 보여야 "여기에 만들어진다"가 분명해진다
+                  setExpanded((prev) => new Set(prev).add(r.folder.folderId));
+                }}
               >＋</button>
               <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
                 onClick={() => void renameFolder(r.folder)}><I.Pencil size={15} /></button>

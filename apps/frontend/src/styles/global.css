@@ -86,6 +86,20 @@ mark { background: transparent; }
   border-color: var(--row-hover-bd, transparent);
 }
 
+/* **입력 중에는 hover 강조를 끈다** (2026-08-08 사용자 보고).
+ * 목록 한참 아래의 폴더에서 '＋ 하위 폴더'를 누르면 커서는 그대로 다른
+ * 줄 위에 남는다. 그 줄이 hover 로 강조되면 화면이 "여기에 만든다"고
+ * 잘못 말한다 — 입력 중에는 hover 를 죽이고 **대상 줄만** 강조한다.
+ * (선택 표시 aria-selected 는 상태이므로 그대로 둔다) */
+.mm-rows-editing .mm-list-row:hover {
+  background: transparent;
+  border-color: transparent;
+}
+.mm-rows-editing .mm-list-row[aria-selected='true'] {
+  background: var(--row-hover, rgba(120, 110, 90, 0.10));
+  border-color: var(--row-hover-bd, transparent);
+}
+
 /* 업로드 진행 막대의 **흐르는 줄무늬** (2026-08-06).
  *
  * 큰 파일을 올릴 때 몇 초씩 바이트가 안 늘면 화면이 얼어붙은 것처럼

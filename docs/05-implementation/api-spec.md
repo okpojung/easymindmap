@@ -49,7 +49,7 @@
 - 격리: 모든 쿼리가 `owner_id = 현재 사용자` 조건 (RLS 는 2차 방어선 —
   API 는 pg 직결이라 RLS 를 타지 않는다).
 
-### 실제 엔드포인트 전체 표 — 26개 (maps 11 · folders 4 · attachments 4 · health 1 · nodes 6)
+### 실제 엔드포인트 전체 표 — 27개 (maps 11 · folders 4 · attachments 4 · health 2 · nodes 6)
 
 | # | 메서드 | 경로 | 설명 |
 |---|---|---|---|
@@ -73,6 +73,7 @@
 | 18 | GET | `/v1/attachments/:id` | 다운로드(스트림, `?access_token=` 허용) |
 | 19 | DELETE | `/v1/attachments/:id` | 삭제 → 204 |
 | 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 → `{status,db,schema,missingTables?,missingColumns?,time}` |
+| 20b | GET | `/v1/health/ip` | **무인증.** 서버가 이 요청의 IP 를 무엇으로 보는지 → `{ip,ips,xForwardedFor,xRealIp,remoteAddress,trustProxy,userAgent,hint}` — 프록시 단계 진단용(2026-08-09). **자기 요청의 헤더만** 되돌려 준다 |
 | 21 | POST | `/v1/maps/:mapId/nodes` | 정규화 노드 생성 (ltree path·depth 자동) |
 | 22 | PATCH | `/v1/maps/:mapId/nodes` | **autosave** — 배치 patch(add/update/delete/move), `baseVersion` 충돌 409 `VERSION_CONFLICT`, 중복 `patchId` 409 `DUPLICATE_PATCH` |
 | 23 | PATCH | `/v1/nodes/:id` | 노드 속성 수정 (text·style→style_json·collapsed·shape·layout·manualPosition) |

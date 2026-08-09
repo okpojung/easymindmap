@@ -19,10 +19,24 @@ async function bootstrap() {
   // 레이트 리밋이 모든 사용자를 한 바구니에 담는다 — 한 사람이 많이
   // 쓰면 전원이 막힌다. 이 설정을 켜면 X-Forwarded-For 를 읽어 실제
   // 클라이언트 IP 를 쓴다.
-  //   · 숫자 1 = "내 앞의 프록시 1단계까지는 믿는다"
-  //   · true(무제한 신뢰)로 두면 클라이언트가 헤더를 위조해 IP 를
-  //     바꿔 가며 한도를 무한히 우회할 수 있다 — 쓰지 않는다.
-  app.set('trust proxy', 1);
+  //
+  // **2026-08-09 수정**: 처음에는 `1`(한 단계)이었는데, 실제 배포는
+  // 프록시가 **두 단계**라 히스토리에 남는 IP 가 전부 내부 주소
+  // (192.168.x.x — nginx 의 IP)였다. 단계 수를 사람이 세어 맞추는
+  // 방식은 프록시를 하나 더 끼우거나 빼는 순간 조용히 틀린다.
+  // 그래서 기본을 **"사설망 주소는 전부 우리 프록시"**로 바꿨다
+  // (loopback/linklocal/uniquelocal) — 몇 단계든 벗겨 내고 처음
+  // 만나는 **공인 IP**(= 진짜 접속자)에서 멈춘다.
+  //   · true(무제한 신뢰)는 여전히 쓰지 않는다 — 클라이언트가 헤더를
+  //     위조해 IP 를 바꿔 가며 한도를 무한히 우회할 수 있다.
+  //   · 배포마다 다르면 TRUST_PROXY 로 덮어쓴다(숫자·목록·false).
+  const trustRaw = String(config.get('TRUST_PROXY', { infer: true }) ?? '').trim();
+  const trustProxy: boolean | number | string[] =
+    trustRaw === 'false' ? false
+      : trustRaw === 'true' ? true
+        : /^\d+$/.test(trustRaw) ? Number(trustRaw)
+          : trustRaw.split(',').map((v) => v.trim()).filter(Boolean);
+  app.set('trust proxy', trustProxy);
 
   // 모든 라우트에 /v1 프리픽스 (api-spec.md 기준: https://api.../v1)
   app.setGlobalPrefix('v1');

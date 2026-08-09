@@ -27,12 +27,25 @@ interface UAData {
   }>;
 }
 
-// 브랜드 목록의 위장 항목("Not)A;Brand" 등)과 엔진 이름(Chromium)을 걷어내고
+/**
+ * 위장(GREASE) 브랜드인가 — 크로미움은 "이 목록을 순진하게 파싱하지 마라"고
+ * 일부러 가짜 항목을 하나 끼워 넣는다. **구두점이 실행할 때마다 달라진다**:
+ * `Not)A;Brand` · `Not;A=Brand` · `Not_A Brand` · `;Not A Brand` · `Not/A(Brand` …
+ *
+ * 그래서 구두점을 나열해 걸러내면 언젠가 새는 조합이 나온다 — 실제로
+ * 안드로이드에서 `Not;A=Brand 8` 이 브라우저 이름으로 저장됐다(2026-08-09
+ * 사용자 보고. `=` 가 목록에 없었다). **글자·숫자만 남겨** 비교한다.
+ */
+export function isGreaseBrand(brand: string): boolean {
+  const s = brand.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return s.includes('not') && s.includes('brand');
+}
+
 // 진짜 브라우저 이름을 고른다. 크로미움 계열은 Chromium 도 함께 오는데,
 // Edge·Whale 같은 파생 브라우저가 있으면 그쪽이 사용자가 아는 이름이다.
 function pickBrand(brands: UADataBrand[] | undefined): UADataBrand | undefined {
   if (!brands?.length) return undefined;
-  const real = brands.filter((b) => !/not[\s./)(;:_-]*a[\s./)(;:_-]*brand/i.test(b.brand));
+  const real = brands.filter((b) => !isGreaseBrand(b.brand));
   return real.find((b) => !/^chromium$/i.test(b.brand)) ?? real[0];
 }
 

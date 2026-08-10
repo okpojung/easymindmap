@@ -1,4 +1,7 @@
-// 로그인/가입 폼 — 이메일+비밀번호 (Phase 3).
+// 로그인 폼 — 이메일+비밀번호 (Phase 3).
+//
+// **가입은 여기서 하지 않는다** (2026-08-09) — [가입]은 회원가입 화면
+// (SignupForm)으로 넘긴다. 이메일 인증·성명·휴대폰을 받기 때문이다.
 //
 // 로그인 방식은 앞으로 늘어난다(SNS·SSO). 그래서 **제공자 목록**을
 // 데이터(SOCIAL_PROVIDERS)로 두고, 새 방식은 항목 하나를 추가하고
@@ -30,11 +33,18 @@ export const SOCIAL_PROVIDERS: SocialProvider[] = [
 ];
 
 export function LoginForm({
-  t, onDone, compact = false,
+  t, onDone, onSignup, compact = false,
 }: {
   t: ThemeTokens;
   /** 로그인/가입이 끝났을 때 (안내 문구 전달) */
   onDone?: (msg: string) => void;
+  /**
+   * [가입] — 가입 화면으로 넘긴다 (2026-08-09).
+   * 예전에는 이 자리에서 이메일·비밀번호만으로 곧바로 계정이 만들어졌다.
+   * 이제 이메일 인증·성명·휴대폰을 받아야 해서 화면을 따로 둔다.
+   * 넘길 곳이 없는 좁은 형태(메뉴 팝업)에서는 버튼을 감춘다.
+   */
+  onSignup?: () => void;
   /** 메뉴 팝업 안에 넣는 좁은 형태 */
   compact?: boolean;
 }) {
@@ -44,7 +54,7 @@ export function LoginForm({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const run = async (kind: 'in' | 'up') => {
+  const run = async () => {
     if (!email.trim() || !pw) {
       setErr('이메일과 비밀번호를 입력하세요.');
       return;
@@ -52,15 +62,8 @@ export function LoginForm({
     setBusy(true);
     setErr(null);
     try {
-      if (kind === 'in') {
-        await useAuthStore.getState().signIn(email.trim(), pw);
-        onDone?.('로그인했습니다.');
-      } else {
-        const done = await useAuthStore.getState().signUp(email.trim(), pw);
-        onDone?.(done
-          ? '가입하고 로그인했습니다.'
-          : '가입 확인 메일을 보냈습니다. 메일함을 확인하세요.');
-      }
+      await useAuthStore.getState().signIn(email.trim(), pw);
+      onDone?.('로그인했습니다.');
     } catch (e) {
       setErr(e instanceof AuthError ? e.message : '인증 중 오류가 발생했습니다.');
     } finally {
@@ -87,7 +90,7 @@ export function LoginForm({
         data-testid="login-email"
         type="email" placeholder="이메일" value={email} autoComplete="username"
         onChange={(e) => setEmail(e.target.value)} style={inputStyle}
-        onKeyDown={(e) => { if (e.key === 'Enter') void run('in'); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') void run(); }}
       />
       {/* 비밀번호 + 👁 표시 토글 — 아이콘이 입력창 안 오른쪽에 겹친다 */}
       <div style={{ position: 'relative' }}>
@@ -97,7 +100,7 @@ export function LoginForm({
           placeholder="비밀번호" value={pw} autoComplete="current-password"
           onChange={(e) => setPw(e.target.value)}
           style={{ ...inputStyle, paddingRight: 36 }}
-          onKeyDown={(e) => { if (e.key === 'Enter') void run('in'); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') void run(); }}
         />
         <button
           type="button"
@@ -129,7 +132,7 @@ export function LoginForm({
       )}
       <div style={{ display: 'flex', gap: 6 }}>
         <button
-          data-testid="login-submit" disabled={busy} onClick={() => void run('in')}
+          data-testid="login-submit" disabled={busy} onClick={() => void run()}
           style={{
             flex: 1, height: h, borderRadius: 7, border: 'none', cursor: 'pointer',
             background: t.primary, color: '#fff',
@@ -137,15 +140,17 @@ export function LoginForm({
             opacity: busy ? 0.6 : 1,
           }}
         >{busy ? '처리 중…' : '로그인'}</button>
-        <button
-          data-testid="signup-submit" disabled={busy} onClick={() => void run('up')}
-          style={{
-            flex: 1, height: h, borderRadius: 7, cursor: 'pointer',
-            border: `1px solid ${t.border}`, background: t.surfaceAlt,
-            color: t.text, fontSize: compact ? 12 : 13.5, fontWeight: 600,
-            opacity: busy ? 0.6 : 1,
-          }}
-        >가입</button>
+        {onSignup && (
+          <button
+            data-testid="login-signup" disabled={busy} onClick={onSignup}
+            style={{
+              flex: 1, height: h, borderRadius: 7, cursor: 'pointer',
+              border: `1px solid ${t.border}`, background: t.surfaceAlt,
+              color: t.text, fontSize: compact ? 12 : 13.5, fontWeight: 600,
+              opacity: busy ? 0.6 : 1,
+            }}
+          >가입</button>
+        )}
       </div>
 
       {/* 준비 중인 로그인 방식 — 자리를 미리 보여 준다 (넓은 형태에서만) */}

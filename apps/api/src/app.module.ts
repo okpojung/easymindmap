@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { AccountModule } from './account/account.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { RateLimitGuard } from './common/rate-limit/rate-limit.guard';
 import { validateEnv, type AppEnv } from './config/env.validation';
@@ -9,6 +10,7 @@ import { DatabaseModule } from './database/database.module';
 import { FoldersModule } from './folders/folders.module';
 import { HealthModule } from './health/health.module';
 import { MapsModule } from './maps/maps.module';
+import { MailModule } from './mail/mail.module';
 import { NodesModule } from './nodes/nodes.module';
 
 @Module({
@@ -30,7 +32,9 @@ import { NodesModule } from './nodes/nodes.module';
       ],
     }),
     DatabaseModule,
+    MailModule,
     HealthModule,
+    AccountModule,
     FoldersModule,
     AttachmentsModule,
     MapsModule,

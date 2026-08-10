@@ -39,6 +39,18 @@ export interface AppEnv {
    * 자세한 설명은 docs/05-implementation/rate-limit.md §프록시.
    */
   TRUST_PROXY: string;
+
+  // ── 메일 발송 (2026-08-09 — 가입 이메일 인증) ────────────────────
+  // 비어 있으면 발송 기능이 꺼진다. 앱은 죽지 않고, 인증번호 요청이
+  // "메일 발송이 아직 설정되지 않았습니다"로 안내된다.
+  //   개발/초기 : Google Workspace SMTP (smtp.gmail.com:587 + 앱 비밀번호)
+  //   나중에     : SES·Resend·Postmark 로 호스트/계정만 교체
+  SMTP_HOST: string;
+  SMTP_PORT: number;
+  SMTP_USER: string;
+  SMTP_PASS: string;
+  /** 보내는 사람 표기 — 비우면 'EasyMindMap <SMTP_USER>' */
+  SMTP_FROM: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -111,6 +123,12 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
   // 더 끼우는 순간 조용히 틀리므로 기본을 바꿨다.
   const TRUST_PROXY = String(raw.TRUST_PROXY ?? 'loopback, linklocal, uniquelocal').trim();
 
+  // 메일 — 넷 중 하나라도 비면 발송 기능이 꺼진다(오류가 아니다).
+  const SMTP_PORT = Number(raw.SMTP_PORT ?? 587);
+  if (!Number.isInteger(SMTP_PORT) || SMTP_PORT <= 0) {
+    errors.push('SMTP_PORT 는 양의 정수여야 합니다.');
+  }
+
   if (errors.length) {
     throw new Error('환경변수 오류:\n - ' + errors.join('\n - '));
   }
@@ -130,5 +148,10 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     RATE_LIMIT_MAX,
     RATE_LIMIT_ENABLED,
     TRUST_PROXY,
+    SMTP_HOST: String(raw.SMTP_HOST ?? ''),
+    SMTP_PORT,
+    SMTP_USER: String(raw.SMTP_USER ?? ''),
+    SMTP_PASS: String(raw.SMTP_PASS ?? ''),
+    SMTP_FROM: String(raw.SMTP_FROM ?? ''),
   };
 }

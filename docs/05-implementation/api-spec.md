@@ -49,7 +49,7 @@
 - 격리: 모든 쿼리가 `owner_id = 현재 사용자` 조건 (RLS 는 2차 방어선 —
   API 는 pg 직결이라 RLS 를 타지 않는다).
 
-### 실제 엔드포인트 전체 표 — 27개 (maps 11 · folders 4 · attachments 4 · health 2 · nodes 6)
+### 실제 엔드포인트 전체 표 — 31개 (maps 11 · folders 4 · attachments 4 · account 4 · health 2 · nodes 6)
 
 | # | 메서드 | 경로 | 설명 |
 |---|---|---|---|
@@ -72,6 +72,9 @@
 | 17 | GET | `/v1/attachments/quota` | 쿼터 사용량 조회 → `{dbBytes,fileBytes,usedBytes,quotaBytes,plan}`. 합산 = 문서 DB + 첨부. `plan` 은 `free`\|`basic`\|`pro`\|`team` — **용량 숫자는 DB 가 정하고 API 는 이름만 전달한다** |
 | 18 | GET | `/v1/attachments/:id` | 다운로드(스트림, `?access_token=` 허용) |
 | 19 | DELETE | `/v1/attachments/:id` | 삭제 → 204 |
+| 19b | POST | `/v1/account/email-code` | **무인증.** 가입 이메일 인증번호 발송 `{email}` → `{sent,expiresInMin,devCode?}` — devCode 는 AUTH_MODE=dev + 메일 미설정일 때만 (2026-08-09) |
+| 19c | POST | `/v1/account/email-code/verify` | **무인증.** `{email,code}` → `{verified,emailToken}` (인증표, 유효 30분) |
+| 19d | GET/PUT | `/v1/account/profile` | 회원 프로필 조회·저장 `{fullName,phoneCountry?,phoneNumber?,emailToken?}` → `{fullName,phoneCountry,phoneNumber,plan,emailVerifiedAt,phoneVerifiedAt,complete}` |
 | 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 → `{status,db,schema,missingTables?,missingColumns?,time}` |
 | 20b | GET | `/v1/health/ip` | **무인증.** 서버가 이 요청의 IP 를 무엇으로 보는지 → `{ip,ips,xForwardedFor,xRealIp,remoteAddress,trustProxy,userAgent,hint}` — 프록시 단계 진단용(2026-08-09). **자기 요청의 헤더만** 되돌려 준다 |
 | 21 | POST | `/v1/maps/:mapId/nodes` | 정규화 노드 생성 (ltree path·depth 자동) |

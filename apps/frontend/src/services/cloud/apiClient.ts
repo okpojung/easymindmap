@@ -15,9 +15,17 @@ export class CloudError extends Error {
   }
 }
 
-async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+/**
+ * @param anon **로그인 전에 부르는 요청**은 토큰을 붙이지 않는다
+ *   (2026-08-09 가입 이메일 인증). 이 표시가 없으면 인증이 켜진 배포에서
+ *   토큰이 없다는 이유로 401 을 내며, 가입하려는 사람은 영영 토큰이
+ *   없으므로 가입 자체가 막힌다.
+ */
+async function req<T>(
+  method: string, path: string, body?: unknown, anon = false,
+): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authEnabled) {
+  if (authEnabled && !anon) {
     const token = await getFreshAccessToken();
     if (!token) throw new CloudError(401, '로그인이 필요합니다.');
     headers.Authorization = `Bearer ${token}`;
@@ -118,6 +126,21 @@ export interface MapListItem {
   lastIp?: string | null;
   /** 그 버전이 만들어진 시각 */
   lastSavedAt?: string | null;
+}
+
+/** 회원 프로필 — 가입 시 받은 정보 (요금제는 서버가 정한다) */
+export interface AccountProfile {
+  fullName: string | null;
+  /** '+82' 형태 */
+  phoneCountry: string | null;
+  /** 숫자만 */
+  phoneNumber: string | null;
+  plan: string;
+  emailVerifiedAt: string | null;
+  /** 휴대폰 인증은 아직 없다 — 항상 null */
+  phoneVerifiedAt: string | null;
+  /** 가입 정보를 다 채웠는가 (성명이 기준) */
+  complete: boolean;
 }
 
 export interface FolderItem {
@@ -226,6 +249,23 @@ export const cloudApi = {
         editSession ? `?editSession=${encodeURIComponent(editSession)}` : ''}`,
     ),
   deleteMap: (mapId: string) => req<void>('DELETE', `/maps/${mapId}`),
+
+  // ── 회원가입 (2026-08-09) ──────────────────────────────────
+  // 이메일 인증 두 개는 **로그인 전**에 부르므로 토큰이 없다.
+  /** [이메일 인증] — 6자리 인증번호 발송. devCode 는 개발 모드 + 메일
+   *  미설정일 때만 온다 (화면에 그대로 보여 주고 그 사실을 밝힌다). */
+  sendEmailCode: (email: string) =>
+    req<{ sent: boolean; expiresInMin: number; devCode?: string; message?: string }>(
+      'POST', '/account/email-code', { email }, true),
+  /** 인증번호 확인 → emailToken (가입 마무리에 쓴다, 유효 30분) */
+  verifyEmailCode: (email: string, code: string) =>
+    req<{ verified: boolean; emailToken: string }>(
+      'POST', '/account/email-code/verify', { email, code }, true),
+  getProfile: () => req<AccountProfile>('GET', '/account/profile'),
+  /** 가입 마무리 — 성명·휴대폰 저장 (emailToken 이 있으면 이메일 인증도 기록) */
+  saveProfile: (p: {
+    fullName: string; phoneCountry?: string; phoneNumber?: string; emailToken?: string;
+  }) => req<AccountProfile>('PUT', '/account/profile', p),
 
   // ── 첨부 저장소 (B9) ───────────────────────────────────────
   // 업로드는 multipart 라 req() 대신 직접 fetch — Content-Type 은

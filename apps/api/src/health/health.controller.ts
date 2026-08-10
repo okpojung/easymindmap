@@ -19,6 +19,7 @@ const REQUIRED_TABLES = [
   'attachments', // B9 첨부 저장소
   'map_edit_locks', // 단일 세션 편집 잠금 (2026-08-04)
   'nodes',
+  'email_verifications', // 가입 이메일 인증번호 (2026-08-09)
 ] as const;
 
 /**
@@ -38,6 +39,7 @@ const REQUIRED_COLUMNS = [
   'map_documents.attach_bytes', // 문서함 목록 상세 (2026-08-05)
   'map_documents.search_text', // 문서함 내용 검색 (2026-08-08)
   'map_document_versions.client_ip', // 히스토리 접속 정보 (2026-08-09)
+  'users.full_name', // 회원가입 — 성명·휴대폰 (2026-08-09)
 ] as const;
 
 /**

@@ -8,9 +8,11 @@
 // 인증이 꺼진 개발 모드(VITE_SUPABASE_URL 없음)에서는 이 화면이 뜨지
 // 않고 곧바로 에디터가 열린다 — 로컬 개발·E2E 흐름은 그대로다.
 
+import { useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { LoginForm } from './LoginForm';
+import { SignupForm } from './SignupForm';
 
 // 소개 문구는 docs/01-product/product-highlights.md 의 "한 줄 소개"·
 // "5가지 약속"에서 가져온다 (문서와 화면이 어긋나지 않도록).
@@ -29,6 +31,10 @@ const POINTS: { icon: string; title: string; desc: string }[] = [
 ];
 
 export function WelcomeScreen({ t }: { t: ThemeTokens }) {
+  // 로그인 ↔ 회원가입 (2026-08-09). flash = 가입을 마친 뒤 로그인 화면에
+  // 남기는 안내 (가입 확인 메일이 필요한 서버에서 특히 중요하다).
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [flash, setFlash] = useState<string | null>(null);
   return (
     <div
       data-testid="welcome-screen"
@@ -99,13 +105,32 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
             boxShadow: '0 18px 48px rgba(0,0,0,0.10)',
           }}
         >
-          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>시작하기</div>
-          <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 20 }}>
-            로그인하면 저장한 맵을 어느 기기에서나 이어서 편집할 수 있습니다.
-            계정이 없다면 이메일과 비밀번호를 입력하고 <b>가입</b>을 누르세요.
-          </div>
-
-          <LoginForm t={t} />
+          {/* 로그인 ↔ 회원가입 (2026-08-09) — 가입은 이메일 인증·성명·
+              휴대폰을 받아야 해서 같은 자리에서 화면을 갈아 끼운다.
+              새 창을 띄우면 입력하던 이메일을 다시 쳐야 한다. */}
+          {mode === 'signup' ? (
+            <SignupForm
+              t={t}
+              onCancel={() => setMode('login')}
+              onDone={(m) => { setMode('login'); setFlash(m); }}
+            />
+          ) : (
+            <>
+              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>시작하기</div>
+              <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 20 }}>
+                로그인하면 저장한 맵을 어느 기기에서나 이어서 편집할 수 있습니다.
+                계정이 없다면 <b>가입</b>을 눌러 주세요.
+              </div>
+              {flash && (
+                <div data-testid="welcome-flash" style={{
+                  marginBottom: 12, padding: '8px 10px', borderRadius: 7,
+                  background: t.primarySoft, border: `1px solid ${t.primaryBorder}`,
+                  color: t.primary, fontSize: 12.5, lineHeight: 1.5,
+                }}>{flash}</div>
+              )}
+              <LoginForm t={t} onSignup={() => { setFlash(null); setMode('signup'); }} />
+            </>
+          )}
 
         </div>
       </div>

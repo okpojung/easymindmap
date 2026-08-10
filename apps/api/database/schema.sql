@@ -770,3 +770,58 @@ ALTER TABLE public.map_document_versions
 -- IPv6 최대 45자 (IPv4-mapped 표기 포함)
 ALTER TABLE public.map_document_versions
     ADD COLUMN IF NOT EXISTS client_ip       VARCHAR(45);
+
+-- ────────────────────────────────────────────────────────────────────
+-- 회원가입 (2026-08-09 사용자 요청): 가입 시 **이메일 인증 + 성명 +
+-- 휴대폰번호**를 받는다. 요금제는 free (users.plan 기본값 그대로).
+--
+--   · 휴대폰은 **국가번호와 번호를 따로** 담는다 — 글로벌 서비스를
+--     염두에 둔 결정. '+82' 처럼 앞에 + 를 붙여 저장하고, 번호는
+--     숫자만 남긴다(하이픈·공백 제거). 나라마다 자릿수가 달라
+--     형식 검사는 최소로 한다.
+--   · phone_verified_at 은 **지금은 항상 NULL** 이다 — 휴대폰 인증
+--     시스템은 나중에 붙인다. 자리만 미리 만들어 둔다.
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS full_name          VARCHAR(100);
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS phone_country      VARCHAR(6);
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS phone_number       VARCHAR(20);
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS phone_verified_at  TIMESTAMPTZ;
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS email_verified_at  TIMESTAMPTZ;
+
+COMMENT ON COLUMN public.users.full_name IS
+    '성명 — 가입 시 입력받는다.';
+COMMENT ON COLUMN public.users.phone_country IS
+    '국가번호 (+82 형태) — 글로벌 대비로 번호와 분리해 담는다.';
+COMMENT ON COLUMN public.users.phone_verified_at IS
+    '휴대폰 인증 시각 — 인증 시스템 도입 전까지는 항상 NULL.';
+
+-- 이메일 인증번호 (2026-08-09) — 가입 화면의 [이메일 인증] 버튼.
+--   · 코드는 **평문으로 두지 않는다** — sha256 해시만 담는다.
+--     메일로 이미 보낸 값이라 DB가 새어도 그것만으로는 못 쓰게.
+--   · 이메일당 한 행만 둔다(UPSERT) — 다시 받으면 앞의 것은 무효다.
+--   · attempts 로 무차별 대입을 막고(5회), expires_at 으로 만료(10분).
+--   · consumed_at 이 차면 그 코드는 끝난 것이다. 다만 가입을 마칠
+--     때까지 "이 이메일은 인증됨"을 알아야 하므로 행은 남긴다.
+CREATE TABLE IF NOT EXISTS public.email_verifications (
+    email        VARCHAR(255) PRIMARY KEY,
+    code_hash    VARCHAR(64)  NOT NULL,
+    expires_at   TIMESTAMPTZ  NOT NULL,
+    attempts     INT          NOT NULL DEFAULT 0,
+    -- 재발송 제한용 — 마지막 발송 시각과 최근 1시간 발송 횟수
+    sent_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    sent_count   INT          NOT NULL DEFAULT 1,
+    window_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    consumed_at  TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verifications_expires
+    ON public.email_verifications(expires_at);
+
+COMMENT ON TABLE public.email_verifications IS
+    '가입 이메일 인증번호 — 코드는 sha256 해시로만 담는다. '
+    '이메일당 1행(UPSERT), 만료 10분, 시도 5회, 재발송 60초 간격/시간당 5회.';

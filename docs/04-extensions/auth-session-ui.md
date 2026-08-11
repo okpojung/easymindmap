@@ -552,14 +552,44 @@ JIT 로 만들기 전에 이 표를 보고, 있으면 `401 탈퇴한 계정입�
 토큰을 만들어 쓴다 — **서비스 키를 따로 보관하지 않는다**(보관하지
 않는 비밀이 가장 안전하다).
 
-#### 설정
+#### 설정 — dev 서버는 **공개 주소**를 쓴다 (2026-08-11 실측)
+
+**Coolify → api → Environment Variables**:
 
 ```
-GOTRUE_URL=http://auth-dev:9999      # 컨테이너 내부 주소
+GOTRUE_URL=https://auth-dev.mindmap.ai.kr
+```
+
+> ⚠️ **컨테이너 내부 이름을 쓰지 않는다 — 배포할 때마다 바뀐다.**
+> api 와 GoTrue 는 같은 `coolify` 네트워크에 있지만, Coolify 가 붙이는
+> 네트워크 별칭은 **배포 번호가 붙은 전체 이름 하나뿐**이다:
+>
+> ```
+> gotrue net=coolify aliases=[zb7bmv6fmjktqevdd38xgygn-073356385806 …]
+> ```
+>
+> 짧은 UUID(`zb7bmv6fmjktqevdd38xgygn`)는 **해석되지 않는다**(실측:
+> `FAIL … fetch failed`). 전체 이름은 닿지만 뒤의 `-073356385806` 이
+> **재배포마다 바뀌어** 조용히 끊긴다 — 그때는 탈퇴가 로그인 계정을
+> 못 지우고 그 이메일로 재가입이 막힌다.
+>
+> 공개 주소는 프록시를 한 바퀴 돌지만 **이름이 고정**이다. api 컨테이너
+> 안에서 실제로 닿는 것을 확인했다(http·https 둘 다 `{"version":
+> "v2.194.0","name":"GoTrue",…}`).
+
+**확인 명령** (서버 SSH — GoTrue 주소를 바꿀 때마다 이걸로 먼저 본다):
+
+```bash
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+docker exec -i "$API" node -e "fetch('https://auth-dev.mindmap.ai.kr/health').then(r=>r.text()).then(console.log).catch(e=>console.log('FAIL',e.message))"
 ```
 
 인증을 쓰는 배포(`AUTH_MODE=supabase`)에서 **비어 있으면 기동 로그에
 경고**가 남는다. 탈퇴가 일어난 뒤에 알면 늦기 때문이다.
+
+운영(Supabase 스택)에서는 GoTrue 가 앱과 같은 DB 를 쓰므로 이 값이
+없어도 앱 DB 삭제로 끝난다 — 그래도 **넣는 편이 낫다**(어느 쪽 구성인지
+코드가 알 필요가 없어진다).
 
 #### `loginAccountRemoved` — 모르면 모른다고 답한다
 

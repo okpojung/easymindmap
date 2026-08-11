@@ -76,7 +76,7 @@
 | 19c | POST | `/v1/account/email-code/verify` | **무인증.** `{email,code}` → `{verified,emailToken}` (인증표, 유효 30분) |
 | 19d | GET/PUT | `/v1/account/profile` | 회원 프로필 조회·저장 `{fullName,phoneCountry?,phoneNumber?,emailToken?}` → `{fullName,phoneCountry,phoneNumber,plan,emailVerifiedAt,phoneVerifiedAt,complete}` |
 | 19e | GET | `/v1/account/delete-preview` | 탈퇴하면 무엇이 사라지는지 → `{maps,attachments,fileBytes,docBytes,usedBytes,confirmPhrase}` (2026-08-11) |
-| 19f | DELETE | `/v1/account` | **회원탈퇴 — 되돌릴 수 없다.** 본문 `{confirm}` 이 `confirmPhrase`(=`회원탈퇴`)와 정확히 같아야 한다 → `{deleted,maps,attachments,usedBytes,authRemoved}`. 맵·히스토리·첨부(파일 원본 포함)·계정이 모두 삭제되고, 탈퇴한 id 는 `deleted_accounts` 에 남아 **만료 전 토큰으로 되살아나지 않는다** |
+| 19f | DELETE | `/v1/account` | **회원탈퇴 — 되돌릴 수 없다.** 본문 `{confirm}` 이 `confirmPhrase`(=`회원탈퇴`)와 정확히 같아야 한다 → `{deleted,maps,attachments,usedBytes,loginAccountRemoved}`. 맵·히스토리·첨부(파일 원본 포함)·계정이 모두 삭제되고, 탈퇴한 id 는 `deleted_accounts` 에 남아 **만료 전 토큰으로 되살아나지 않는다**. 로그인 계정은 **GoTrue 관리자 API + 앱 DB 양쪽**에서 지운다 — `loginAccountRemoved: false` 면 **같은 이메일로 재가입이 막힌다**(2026-08-11) |
 | 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 → `{status,db,schema,missingTables?,missingColumns?,time}` |
 | 20b | GET | `/v1/health/ip` | **무인증.** 서버가 이 요청의 IP 를 무엇으로 보는지 → `{ip,ips,xForwardedFor,xRealIp,remoteAddress,trustProxy,userAgent,hint}` — 프록시 단계 진단용(2026-08-09). **자기 요청의 헤더만** 되돌려 준다 |
 | 21 | POST | `/v1/maps/:mapId/nodes` | 정규화 노드 생성 (ltree path·depth 자동) |

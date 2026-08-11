@@ -51,6 +51,19 @@ export interface AppEnv {
   SMTP_PASS: string;
   /** 보내는 사람 표기 — 비우면 'EasyMindMap <SMTP_USER>' */
   SMTP_FROM: string;
+
+  /**
+   * **GoTrue 주소** — 회원탈퇴가 로그인 계정까지 지우기 위해 쓴다
+   * (2026-08-11). 컨테이너끼리 부르므로 **내부 주소**가 맞다
+   * (예: `http://auth-dev:9999`). 관리자 토큰은 SUPABASE_JWT_SECRET 로
+   * 직접 서명하므로 서비스 키를 따로 두지 않는다.
+   *
+   * 비우면 앱 DB 의 `auth.users` 만 지운다 — dev 서버처럼 GoTrue 가
+   * **별도 DB** 를 쓰는 배포에서는 그 자리가 껍데기라, **자료는
+   * 지워지지만 같은 이메일로 재가입이 막힌다.**
+   * 인증을 쓰는 배포(AUTH_MODE=supabase)에서는 반드시 채운다.
+   */
+  GOTRUE_URL: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -153,5 +166,6 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     SMTP_USER: String(raw.SMTP_USER ?? ''),
     SMTP_PASS: String(raw.SMTP_PASS ?? ''),
     SMTP_FROM: String(raw.SMTP_FROM ?? ''),
+    GOTRUE_URL: String(raw.GOTRUE_URL ?? ''),
   };
 }

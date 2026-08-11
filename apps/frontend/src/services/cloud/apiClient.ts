@@ -280,7 +280,8 @@ export const cloudApi = {
   deleteAccount: (confirm: string) =>
     req<{
       deleted: true; maps: number; attachments: number; usedBytes: number;
-      authRemoved: boolean;
+      /** false = 자료는 지워졌지만 **같은 이메일로 재가입이 막힌다** */
+      loginAccountRemoved: boolean;
     }>('DELETE', '/account', { confirm }),
 
   // ── 첨부 저장소 (B9) ───────────────────────────────────────

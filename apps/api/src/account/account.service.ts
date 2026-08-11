@@ -15,6 +15,8 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+// ⚠️ CJS 전용 패키지만 쓸 것 — auth.guard.ts 와 같은 이유(ERR_REQUIRE_ESM)
+import { sign as jwtSign } from 'jsonwebtoken';
 import { DatabaseService } from '../database/database.service';
 import { MailService } from '../mail/mail.service';
 import { StorageService } from '../storage/storage.service';
@@ -49,6 +51,10 @@ export class AccountService {
    * 서버를 재기동하면 발급했던 표가 무효가 되지만 그게 더 안전하다.
    */
   private readonly tokenKey: string;
+  /** GoTrue 주소 (끝 슬래시 제거). 비어 있으면 로그인 계정 삭제를 건너뛴다 */
+  private readonly goTrueUrl: string;
+  /** 로그인 계정이 **우리 DB 밖(GoTrue)** 에 사는가 (AUTH_MODE=supabase) */
+  private readonly authExternal: boolean;
 
   constructor(
     private readonly db: DatabaseService,
@@ -59,6 +65,17 @@ export class AccountService {
     this.tokenKey =
       String(config.get('SUPABASE_JWT_SECRET', { infer: true }) || '')
       || randomBytes(32).toString('hex');
+    this.goTrueUrl =
+      String(config.get('GOTRUE_URL', { infer: true }) || '').trim().replace(/\/+$/, '');
+    this.authExternal = config.get('AUTH_MODE', { infer: true }) === 'supabase';
+    // 기동할 때 한 번 알린다 — 탈퇴가 일어난 뒤에 알면 이미 늦다.
+    if (!this.goTrueUrl && this.authExternal) {
+      this.log.warn(
+        'GOTRUE_URL 이 비어 있다 — 회원탈퇴가 로그인 계정을 지우지 못한다. '
+        + '자료는 지워지지만 같은 이메일로 재가입이 막힌다 '
+        + '(예: GOTRUE_URL=http://auth-dev:9999).',
+      );
+    }
   }
 
   /** 이메일 정규화 — 저장·조회의 단일 기준 (대소문자·공백으로 갈리지 않게) */
@@ -400,18 +417,12 @@ export class AccountService {
     // 계정은 이미 지워졌다. 남는 것은 **주인 없는 찌꺼기**뿐이라,
     // 여기서 예외를 던지면 "탈퇴가 실패했다"는 잘못된 인상을 준다.
 
-    // auth.users — 같은 DB 에 있으면 지운다. 이게 지워져야 **같은
-    // 이메일로 다시 가입**할 수 있다(GoTrue 가 중복으로 막지 않는다).
-    let authRemoved = false;
-    try {
-      const r = await this.db.query(`DELETE FROM auth.users WHERE id = $1`, [userId]);
-      authRemoved = (r.rowCount ?? 0) > 0;
-    } catch (err) {
-      this.log.warn(
-        `auth.users 삭제 실패 (id=${userId}) — 같은 이메일로 재가입이 막힐 수 있다: `
-        + String((err as Error).message),
-      );
-    }
+    // 로그인 계정 자체 — 이게 지워져야 **같은 이메일로 다시 가입**할 수
+    // 있다. 두 자리를 모두 손봐야 한다 (2026-08-11 dev 서버에서 확인):
+    //   ⓐ GoTrue 의 계정 — 별도 DB(`gotrue`)에 산다. 관리자 API 로 지운다.
+    //   ⓑ 앱 DB 의 `auth.users` — 우리 외래키가 걸린 자리. 로컬/CI 에서는
+    //      shim 이고, 운영 Supabase 에서는 ⓐ와 같은 표다.
+    const authRemoved = await this.removeLoginAccount(userId);
 
     // 첨부 파일 원본 — 접두사를 통째로 지운다(업로드 중이던 조각 포함)
     for (const prefix of [`u/${userId}`, `tmp/${userId}`]) {
@@ -442,8 +453,85 @@ export class AccountService {
       maps: before.maps,
       attachments: before.attachments,
       usedBytes: before.usedBytes,
-      /** false 면 같은 이메일로 재가입이 막힐 수 있다 — 운영자가 알아야 한다 */
-      authRemoved,
+      /**
+       * **로그인 계정까지 지웠는가.** false 면 자료는 지워졌지만 같은
+       * 이메일로 **재가입이 막힌다** — 운영자가 알아야 한다.
+       * (예전 이름 `authRemoved` 는 앱 DB 의 껍데기만 보고 true 를 내서
+       *  오해를 줬다 — 2026-08-11.)
+       */
+      loginAccountRemoved: authRemoved,
     };
+  }
+
+  /**
+   * 로그인 계정 삭제 — GoTrue 와 앱 DB **양쪽**을 지운다.
+   *
+   * dev 서버는 GoTrue 가 **별도 DB(`gotrue`)** 에 살고, 앱 DB 의
+   * `auth.users` 는 외래키를 성립시키기 위한 **껍데기(shim)** 다.
+   * 앱 DB 만 지우면 자료는 사라지지만 **로그인 정보가 남아 같은
+   * 이메일로 재가입이 막힌다** (2026-08-11 dev 서버에서 확인 — 그전에는
+   * 껍데기를 지우고 "지웠다"고 답했다).
+   *
+   * 관리자 토큰은 **우리가 직접 만든다.** GoTrue 의 JWT 비밀키를 이미
+   * 갖고 있으므로(`SUPABASE_JWT_SECRET`), 서비스 키를 따로 보관할
+   * 필요가 없다 — 보관하지 않는 비밀이 가장 안전하다.
+   *
+   * @returns 로그인 계정이 실제로 사라졌는가
+   */
+  private async removeLoginAccount(userId: string): Promise<boolean> {
+    let goTrueOk: boolean | null = null; // null = 주소가 없어 시도하지 않음
+
+    if (this.goTrueUrl) {
+      try {
+        const token = jwtSign(
+          { role: 'service_role', aud: 'authenticated', sub: userId },
+          this.tokenKey,
+          { algorithm: 'HS256', expiresIn: '2m' },
+        );
+        const res = await fetch(`${this.goTrueUrl}/admin/users/${userId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}`, apikey: token },
+          signal: AbortSignal.timeout(10_000),
+        });
+        // 404 = 이미 없다 — 우리가 원하는 결과와 같다
+        goTrueOk = res.ok || res.status === 404;
+        if (!goTrueOk) {
+          this.log.warn(
+            `GoTrue 계정 삭제 실패 (id=${userId}, HTTP ${res.status}) — `
+            + '같은 이메일로 재가입이 막힌다. GOTRUE_URL 과 SUPABASE_JWT_SECRET 를 확인한다.',
+          );
+        }
+      } catch (err) {
+        goTrueOk = false;
+        this.log.warn(
+          `GoTrue 계정 삭제 호출 실패 (id=${userId}): ${String((err as Error).message)}`,
+        );
+      }
+    } else {
+      this.log.warn(
+        'GOTRUE_URL 이 없어 로그인 계정을 지우지 못했다 — 자료는 지워졌지만 '
+        + '같은 이메일로 재가입이 막힌다. 인증을 쓰는 배포에서는 반드시 설정한다.',
+      );
+    }
+
+    // 앱 DB 쪽. 운영 Supabase 처럼 같은 표면 위의 삭제는 이미 끝나 0행이
+    // 지워지는데, 그것을 "실패"로 보면 안 된다 — 오류만 실패로 센다.
+    let dbOk = true;
+    try {
+      await this.db.query(`DELETE FROM auth.users WHERE id = $1`, [userId]);
+    } catch (err) {
+      dbOk = false;
+      this.log.warn(
+        `auth.users 삭제 실패 (id=${userId}): ${String((err as Error).message)}`,
+      );
+    }
+
+    if (goTrueOk !== null) return goTrueOk && dbOk;
+    // 주소가 없어 부르지 못했다. 답이 갈린다.
+    //   · 인증을 쓰는 배포(supabase) — 로그인 계정은 **GoTrue 안**에 있고
+    //     방금 지운 것은 껍데기일 수 있다. 지웠다고 답하면 안 된다.
+    //     ("지운 것 같다"를 "지웠다"로 답하면 재가입이 막힌 뒤에야 안다.)
+    //   · 인증이 없는 배포(dev, 로컬/CI) — 앱 DB 의 auth.users 가 곧 계정이다.
+    return this.authExternal ? false : dbOk;
   }
 }

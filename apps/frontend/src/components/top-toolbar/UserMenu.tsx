@@ -154,9 +154,13 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
         useCloudStore.getState().unlink();
         // 계정이 사라졌으니 이 브라우저의 세션·초안도 함께 정리한다
         return useAuthStore.getState().signOut().then(() => {
-          onFlash?.(
-            `회원탈퇴가 완료되었습니다 — 맵 ${r.maps}개 · 첨부 ${r.attachments}개를 삭제했습니다.`,
-          );
+          const base =
+            `회원탈퇴가 완료되었습니다 — 맵 ${r.maps}개 · 첨부 ${r.attachments}개를 삭제했습니다.`;
+          // 로그인 계정이 남았으면 **숨기지 않는다.** 사용자는 그 사실을
+          // 재가입을 시도할 때가 아니라 지금 알아야 한다.
+          onFlash?.(r.loginAccountRemoved
+            ? base
+            : `${base} 다만 로그인 계정 삭제가 끝나지 않아 같은 이메일로 다시 가입하지 못할 수 있습니다 — 관리자에게 문의해 주세요.`);
         });
       })
       .catch((e: unknown) => {

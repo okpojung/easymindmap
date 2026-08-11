@@ -825,3 +825,23 @@ CREATE INDEX IF NOT EXISTS idx_email_verifications_expires
 COMMENT ON TABLE public.email_verifications IS
     '가입 이메일 인증번호 — 코드는 sha256 해시로만 담는다. '
     '이메일당 1행(UPSERT), 만료 10분, 시도 5회, 재발송 60초 간격/시간당 5회.';
+
+-- ────────────────────────────────────────────────────────────────────
+-- 탈퇴한 계정의 묘비 (2026-08-11 — 회원탈퇴)
+--
+-- 탈퇴는 users 행을 **지운다**(ON DELETE CASCADE 로 맵·첨부까지 사라진다).
+-- 그런데 지운 직후에도 그 사람의 **액세스 토큰은 만료 전까지 유효**하다.
+-- AuthGuard 는 토큰이 유효하면 없는 사용자를 만들어 주므로(JIT), 묘비가
+-- 없으면 **탈퇴한 계정이 되살아난다** — 그 이메일이 auth.users 에 다시
+-- 잡혀 같은 주소로 재가입할 수 없게 된다.
+--
+-- 그래서 id 만 남긴다. 이메일·성명은 남기지 않는다(지우는 것이 목적이다).
+-- 재가입하면 GoTrue 가 **새 id** 를 주므로 이 묘비에 걸리지 않는다.
+CREATE TABLE IF NOT EXISTS public.deleted_accounts (
+    user_id     UUID PRIMARY KEY,
+    deleted_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.deleted_accounts IS
+    '탈퇴한 계정 id — 만료 전 토큰으로 계정이 되살아나는 것을 막는다. '
+    '개인정보는 담지 않는다(재가입은 새 id 라 걸리지 않는다).';

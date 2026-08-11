@@ -1,12 +1,12 @@
 import {
-  Body, Controller, Get, HttpCode, Post, Put, UseGuards,
+  Body, Controller, Delete, Get, HttpCode, Post, Put, UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { AccountService } from './account.service';
 import {
-  SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
+  DeleteAccountDto, SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
 } from './dto/account.dto';
 import type { AppEnv } from '../config/env.validation';
 
@@ -47,5 +47,23 @@ export class AccountController {
   @UseGuards(AuthGuard)
   saveProfile(@CurrentUser() user: AuthUser, @Body() dto: SaveProfileDto) {
     return this.account.saveProfile(user.id, user.email ?? '', dto);
+  }
+
+  /** 탈퇴 확인 화면 — 무엇이 사라지는지 숫자로 보여 주기 위한 조회 */
+  @Get('delete-preview')
+  @UseGuards(AuthGuard)
+  deletePreview(@CurrentUser() user: AuthUser) {
+    return this.account.deletePreview(user.id);
+  }
+
+  /**
+   * 회원탈퇴. **되돌릴 수 없다** — 맵·히스토리·첨부가 모두 사라진다.
+   * DELETE 지만 본문(확인 문구)을 받는다 — 확인 없이 지우지 않기 위해서다.
+   */
+  @Delete()
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  deleteAccount(@CurrentUser() user: AuthUser, @Body() dto: DeleteAccountDto) {
+    return this.account.deleteAccount(user.id, dto.confirm);
   }
 }

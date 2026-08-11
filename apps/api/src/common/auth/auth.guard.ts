@@ -14,6 +14,8 @@ import type { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
 import type { AppEnv } from '../../config/env.validation';
 import { DatabaseService } from '../../database/database.service';
+import { isDeletedAccount } from '../deleted-accounts';
+import { knownUsers } from './known-users';
 import type { AuthUser } from './current-user.decorator';
 
 /**
@@ -32,8 +34,9 @@ import type { AuthUser } from './current-user.decorator';
 @Injectable()
 export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
-  // JIT 프로비저닝을 이미 마친 사용자 id 캐시 (프로세스 생존 동안)
-  private readonly knownUsers = new Set<string>();
+  // JIT 프로비저닝을 이미 마친 사용자 id 캐시 (프로세스 생존 동안).
+  // 회원탈퇴가 지울 수 있어야 해서 모듈 밖에 둔다 — known-users.ts 참조.
+  private readonly knownUsers = knownUsers;
   // 빈 문자열 = 아직 로드 전 (env 검증이 supabase 모드에서 16자 이상을
   // 보장하므로, 실제로 빈 값이 남는 경우는 없다)
   private secretKey = '';
@@ -106,6 +109,13 @@ export class AuthGuard implements CanActivate {
    */
   private async ensureUser(id: string, email?: string): Promise<void> {
     if (this.knownUsers.has(id)) return;
+    // **탈퇴한 계정은 되살리지 않는다** (2026-08-11).
+    // 탈퇴 직후에도 그 사람의 액세스 토큰은 만료 전까지 유효하다. 이
+    // 확인이 없으면 아래 INSERT 가 auth.users 를 다시 만들어, 그 이메일이
+    // 다시 잡혀 **같은 주소로 재가입할 수 없게** 된다.
+    if (await isDeletedAccount(this.db, id)) {
+      throw new UnauthorizedException('탈퇴한 계정입니다. 다시 가입해 주세요.');
+    }
     try {
       await this.db.query(
         `INSERT INTO auth.users (id, email) VALUES ($1, $2)

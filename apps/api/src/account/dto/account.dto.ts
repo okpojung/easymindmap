@@ -45,3 +45,13 @@ export class SaveProfileDto {
   @MaxLength(200)
   emailToken?: string;
 }
+
+/**
+ * 회원탈퇴 — 확인 문구('회원탈퇴')를 직접 입력해야 한다.
+ * 버튼 하나로 지워지지 않게 하는 마지막 문턱이다.
+ */
+export class DeleteAccountDto {
+  @IsString()
+  @MaxLength(30)
+  confirm!: string;
+}

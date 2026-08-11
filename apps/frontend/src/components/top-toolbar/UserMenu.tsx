@@ -118,6 +118,53 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
     });
   };
 
+  /**
+   * **회원탈퇴** (2026-08-11 사용자 요청).
+   *
+   * 로그아웃과 달리 **서버의 계정과 자료가 사라진다** — 맵·히스토리·
+   * 첨부까지 전부, 되돌릴 수 없이. 그래서 두 겹을 둔다:
+   *   ① 무엇이 사라지는지 **숫자로 먼저 보여 준다** (맵 n개·첨부 n개)
+   *   ② 확인 문구를 **직접 입력**해야 버튼이 열린다 (서버도 같은 검사)
+   */
+  const [del, setDel] = useState<null | {
+    maps: number; attachments: number; usedBytes: number; confirmPhrase: string;
+  }>(null);
+  const [delText, setDelText] = useState('');
+  const [delBusy, setDelBusy] = useState(false);
+  const [delErr, setDelErr] = useState<string | null>(null);
+
+  const openDelete = () => {
+    setOpen(false);
+    setDelText(''); setDelErr(null);
+    // 숫자를 못 가져와도 탈퇴 자체는 막지 않는다 — 문구는 서버가 정한
+    // 값이 기본이고, 조회가 실패하면 '—' 로 보여 준다.
+    cloudApi.deletePreview()
+      .then((p) => setDel(p))
+      .catch(() => setDel({
+        maps: -1, attachments: -1, usedBytes: -1, confirmPhrase: '회원탈퇴',
+      }));
+  };
+
+  const doDelete = () => {
+    if (!del || delBusy) return;
+    setDelBusy(true); setDelErr(null);
+    cloudApi.deleteAccount(delText.trim())
+      .then((r) => {
+        setDel(null);
+        useCloudStore.getState().unlink();
+        // 계정이 사라졌으니 이 브라우저의 세션·초안도 함께 정리한다
+        return useAuthStore.getState().signOut().then(() => {
+          onFlash?.(
+            `회원탈퇴가 완료되었습니다 — 맵 ${r.maps}개 · 첨부 ${r.attachments}개를 삭제했습니다.`,
+          );
+        });
+      })
+      .catch((e: unknown) => {
+        setDelErr(e instanceof Error ? e.message : '탈퇴에 실패했습니다.');
+      })
+      .finally(() => setDelBusy(false));
+  };
+
   const logout = () => {
     setOpen(false);
     // 화면의 최신 편집까지 초안에 반영한 뒤 세어야 정확하다 —
@@ -299,8 +346,120 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 <span style={{ width: 16, textAlign: 'center' }}>🚪</span>
                 <span style={{ flex: 1 }}>로그아웃</span>
               </button>
+              {/* 회원탈퇴 — 로그아웃 **아래**, 색으로 구분한다. 되돌릴 수
+                  없는 동작이라 실수로 로그아웃 대신 눌리지 않게 한다. */}
+              <button
+                data-testid="user-menu-delete-account"
+                onClick={openDelete}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                  textAlign: 'left', padding: '8px 10px', borderRadius: 6,
+                  background: 'transparent', border: 'none', color: t.danger,
+                  cursor: 'pointer', fontSize: 12.5,
+                }}
+                onMouseEnter={(ev) => { ev.currentTarget.style.background = t.surfaceAlt; }}
+                onMouseLeave={(ev) => { ev.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ width: 16, textAlign: 'center' }}>⚠</span>
+                <span style={{ flex: 1 }}>회원탈퇴</span>
+              </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* 회원탈퇴 확인 — 숫자로 보여 주고, 문구를 직접 입력해야 열린다 */}
+      {del && (
+        <div
+          onClick={() => { if (!delBusy) setDel(null); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            data-testid="delete-account-dialog"
+            style={{
+              width: 'min(460px, 92vw)', background: t.surface, color: t.text,
+              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6, color: t.danger }}>
+              ⚠ 회원탈퇴 — 되돌릴 수 없습니다
+            </div>
+            <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7 }}>
+              <b>{session?.email}</b> 계정과 서버에 저장된 자료가 <b>모두 삭제</b>됩니다.
+              삭제한 뒤에는 복구할 방법이 없습니다.
+            </div>
+
+            <div
+              data-testid="delete-account-summary"
+              style={{
+                margin: '12px 0', padding: '9px 11px', borderRadius: 7,
+                background: t.surfaceAlt, border: `1px solid ${t.border}`,
+                fontSize: 12, lineHeight: 1.9,
+              }}
+            >
+              <div>맵 <b>{del.maps < 0 ? '—' : `${del.maps}개`}</b> (히스토리 포함)</div>
+              <div>첨부 <b>{del.attachments < 0 ? '—' : `${del.attachments}개`}</b>
+                {del.usedBytes >= 0 && <> · <b>{fmtBytes(del.usedBytes)}</b></>}
+              </div>
+              <div style={{ color: t.textSubtle, fontSize: 11 }}>
+                이 브라우저에 남은 임시 초안도 함께 지워집니다.
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, marginBottom: 6 }}>
+              계속하려면 <b style={{ color: t.danger }}>{del.confirmPhrase}</b> 를 입력하세요.
+            </div>
+            <input
+              data-testid="delete-account-confirm"
+              value={delText}
+              autoFocus
+              onChange={(e) => { setDelText(e.target.value); setDelErr(null); }}
+              placeholder={del.confirmPhrase}
+              style={{
+                width: '100%', height: 36, borderRadius: 7, padding: '0 10px',
+                border: `1px solid ${t.border}`, background: t.surfaceAlt,
+                color: t.text, fontSize: 13, boxSizing: 'border-box',
+              }}
+            />
+
+            {delErr && (
+              <div data-testid="delete-account-error" style={{
+                marginTop: 8, fontSize: 12, color: t.danger, lineHeight: 1.6,
+              }}>{delErr}</div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 14 }}>
+              <button
+                data-testid="delete-account-cancel"
+                onClick={() => setDel(null)}
+                disabled={delBusy}
+                style={{
+                  height: 36, borderRadius: 7, border: 'none',
+                  cursor: delBusy ? 'default' : 'pointer',
+                  background: t.primary, color: '#fff', fontSize: 13, fontWeight: 700,
+                }}
+              >취소 — 계정을 유지합니다</button>
+              <button
+                data-testid="delete-account-submit"
+                onClick={doDelete}
+                disabled={delBusy || delText.trim() !== del.confirmPhrase}
+                style={{
+                  height: 34, borderRadius: 7,
+                  cursor: delText.trim() === del.confirmPhrase && !delBusy ? 'pointer' : 'default',
+                  border: `1px solid ${t.border}`,
+                  background: t.surfaceAlt,
+                  color: delText.trim() === del.confirmPhrase ? t.danger : t.textSubtle,
+                  fontSize: 12.5, fontWeight: 700,
+                  opacity: delText.trim() === del.confirmPhrase && !delBusy ? 1 : 0.6,
+                }}
+              >{delBusy ? '삭제하는 중…' : '탈퇴하고 모든 자료 삭제'}</button>
+            </div>
+          </div>
         </div>
       )}
 

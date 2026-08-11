@@ -20,6 +20,7 @@ const REQUIRED_TABLES = [
   'map_edit_locks', // 단일 세션 편집 잠금 (2026-08-04)
   'nodes',
   'email_verifications', // 가입 이메일 인증번호 (2026-08-09)
+  'deleted_accounts', // 회원탈퇴 묘비 (2026-08-11)
 ] as const;
 
 /**

@@ -267,6 +267,22 @@ export const cloudApi = {
     fullName: string; phoneCountry?: string; phoneNumber?: string; emailToken?: string;
   }) => req<AccountProfile>('PUT', '/account/profile', p),
 
+  // ── 회원탈퇴 (2026-08-11) ──────────────────────────────────
+  /** 무엇이 사라지는지 — 확인 화면에 숫자로 보여 준다 */
+  deletePreview: () =>
+    req<{
+      maps: number; attachments: number;
+      fileBytes: number; docBytes: number; usedBytes: number;
+      /** 사용자가 입력해야 하는 확인 문구 — **서버가 정한다** */
+      confirmPhrase: string;
+    }>('GET', '/account/delete-preview'),
+  /** 되돌릴 수 없다. confirm 은 deletePreview 가 준 문구와 정확히 같아야 한다 */
+  deleteAccount: (confirm: string) =>
+    req<{
+      deleted: true; maps: number; attachments: number; usedBytes: number;
+      authRemoved: boolean;
+    }>('DELETE', '/account', { confirm }),
+
   // ── 첨부 저장소 (B9) ───────────────────────────────────────
   // 업로드는 multipart 라 req() 대신 직접 fetch — Content-Type 은
   // 브라우저가 boundary 포함으로 자동 설정한다.

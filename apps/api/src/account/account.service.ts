@@ -17,6 +17,11 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { MailService } from '../mail/mail.service';
+import { StorageService } from '../storage/storage.service';
+import {
+  hasDeletedAccountsTable, resetDeletedAccountsCache,
+} from '../common/deleted-accounts';
+import { forgetKnownUser } from '../common/auth/known-users';
 import type { AppEnv } from '../config/env.validation';
 
 /** 인증번호 규칙 — 한 곳에 모아 둔다 (문서 auth-session-ui.md §11 과 같은 값) */
@@ -26,6 +31,12 @@ const MAX_ATTEMPTS = 5; // 틀릴 수 있는 횟수
 const RESEND_WAIT_SEC = 60; // 재발송 최소 간격
 const MAX_SENDS_PER_HOUR = 5; // 같은 이메일로 시간당 발송 상한
 const TOKEN_TTL_MIN = 30; // 인증표 유효 시간
+
+/**
+ * 회원탈퇴 확인 문구 — **버튼만으로는 지우지 않는다.**
+ * 되돌릴 수 없는 삭제라, 손이 미끄러져서는 일어나지 않게 직접 치게 한다.
+ */
+export const DELETE_CONFIRM_PHRASE = '회원탈퇴';
 
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 
@@ -42,6 +53,7 @@ export class AccountService {
   constructor(
     private readonly db: DatabaseService,
     private readonly mail: MailService,
+    private readonly storage: StorageService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.tokenKey =
@@ -292,5 +304,146 @@ export class AccountService {
       throw new BadRequestException('계정을 찾을 수 없습니다. 다시 로그인해 주세요.');
     }
     return this.getProfile(userId);
+  }
+
+  // ── 회원탈퇴 (2026-08-11) ──────────────────────────────────────
+  //
+  // **정말로 지운다.** users 행을 지우면 ON DELETE CASCADE 로 맵·폴더·
+  // 태그·워크스페이스·첨부 메타가 함께 사라지고, 첨부 파일은 저장소
+  // 접두사(u/<id>, tmp/<id>)를 통째로 지운다.
+  //
+  // 지우기 전에 손봐야 하는 곳이 있다 — users(id) 를 참조하면서
+  // **CASCADE 가 아닌** 컬럼들이다. 그대로 두면 외래키가 삭제를 막는다.
+  //   · map_revisions.created_by / map_document_versions.created_by → NULL
+  //     (남의 맵에 남긴 버전은 맵의 것이지 사람의 것이 아니다 — 맵까지
+  //      지우면 그 맵 주인의 히스토리가 사라진다)
+  //   · exports.user_id → NULL   (기록만 남긴다)
+  //   · ai_jobs.user_id  → NOT NULL 이라 행을 지운다
+
+  /** 탈퇴 화면에 "무엇이 사라지는지" 숫자로 보여 주기 위한 조회 */
+  async deletePreview(userId: string) {
+    const { rows } = await this.db.query<{
+      maps: string; attachments: string; file_bytes: string; doc_bytes: string;
+    }>(
+      `SELECT
+         (SELECT COUNT(*)::text FROM public.maps WHERE owner_id = $1)          AS maps,
+         (SELECT COUNT(*)::text FROM public.attachments WHERE owner_id = $1)   AS attachments,
+         (SELECT COALESCE(SUM(size_bytes), 0)::text FROM public.attachments
+           WHERE owner_id = $1)                                                AS file_bytes,
+         (SELECT COALESCE(SUM(pg_column_size(d.doc)), 0)::text
+            FROM public.map_documents d
+            JOIN public.maps m ON m.id = d.map_id
+           WHERE m.owner_id = $1)                                              AS doc_bytes`,
+      [userId],
+    );
+    const r = rows[0];
+    const fileBytes = Number(r?.file_bytes ?? 0);
+    const docBytes = Number(r?.doc_bytes ?? 0);
+    return {
+      maps: Number(r?.maps ?? 0),
+      attachments: Number(r?.attachments ?? 0),
+      fileBytes,
+      docBytes,
+      usedBytes: fileBytes + docBytes,
+      /** 화면이 그대로 비교해 쓸 수 있게 서버가 문구를 내려 준다 */
+      confirmPhrase: DELETE_CONFIRM_PHRASE,
+    };
+  }
+
+  /**
+   * 회원탈퇴 — 확인 문구가 정확히 맞을 때만 지운다.
+   *
+   * 되돌릴 수 없다. 그래서 **지운 것을 숫자로 돌려준다** — 화면이
+   * "맵 12개·첨부 3개를 삭제했습니다"라고 말할 수 있어야, 사용자가
+   * 자기 계정이 정말 지워졌는지 확인할 수 있다.
+   */
+  async deleteAccount(userId: string, confirmRaw: string) {
+    const confirm = String(confirmRaw || '').trim();
+    if (confirm !== DELETE_CONFIRM_PHRASE) {
+      throw new BadRequestException(
+        `확인을 위해 '${DELETE_CONFIRM_PHRASE}' 를 정확히 입력해 주세요.`,
+      );
+    }
+
+    const before = await this.deletePreview(userId);
+    const hasTomb = await hasDeletedAccountsTable(this.db);
+
+    await this.db.transaction(async (c) => {
+      await c.query(
+        `UPDATE public.map_revisions SET created_by = NULL WHERE created_by = $1`,
+        [userId],
+      );
+      await c.query(
+        `UPDATE public.map_document_versions SET created_by = NULL WHERE created_by = $1`,
+        [userId],
+      );
+      await c.query(`UPDATE public.exports SET user_id = NULL WHERE user_id = $1`, [userId]);
+      await c.query(`DELETE FROM public.ai_jobs WHERE user_id = $1`, [userId]);
+      // 편집 잠금은 외래키가 없어 삭제를 막지는 않지만, 남겨 두면 남의
+      // 공유 맵이 최대 60초 동안 "다른 사람이 편집 중"으로 잠긴다.
+      await c.query(`DELETE FROM public.map_edit_locks WHERE user_id = $1`, [userId]);
+      await c.query(`DELETE FROM public.workspace_members WHERE user_id = $1`, [userId]);
+
+      // 여기서 CASCADE 가 돈다 — 맵·폴더·태그·워크스페이스·첨부 메타
+      await c.query(`DELETE FROM public.users WHERE id = $1`, [userId]);
+
+      if (hasTomb) {
+        await c.query(
+          `INSERT INTO public.deleted_accounts (user_id) VALUES ($1)
+           ON CONFLICT (user_id) DO NOTHING`,
+          [userId],
+        );
+      }
+    });
+
+    // ── 여기서부터는 실패해도 탈퇴를 되돌리지 않는다 ──────────────
+    // 계정은 이미 지워졌다. 남는 것은 **주인 없는 찌꺼기**뿐이라,
+    // 여기서 예외를 던지면 "탈퇴가 실패했다"는 잘못된 인상을 준다.
+
+    // auth.users — 같은 DB 에 있으면 지운다. 이게 지워져야 **같은
+    // 이메일로 다시 가입**할 수 있다(GoTrue 가 중복으로 막지 않는다).
+    let authRemoved = false;
+    try {
+      const r = await this.db.query(`DELETE FROM auth.users WHERE id = $1`, [userId]);
+      authRemoved = (r.rowCount ?? 0) > 0;
+    } catch (err) {
+      this.log.warn(
+        `auth.users 삭제 실패 (id=${userId}) — 같은 이메일로 재가입이 막힐 수 있다: `
+        + String((err as Error).message),
+      );
+    }
+
+    // 첨부 파일 원본 — 접두사를 통째로 지운다(업로드 중이던 조각 포함)
+    for (const prefix of [`u/${userId}`, `tmp/${userId}`]) {
+      try {
+        await this.storage.deletePrefix(prefix);
+      } catch (err) {
+        this.log.warn(`첨부 파일 삭제 실패 (${prefix}): ${String((err as Error).message)}`);
+      }
+    }
+
+    if (!hasTomb) {
+      this.log.warn(
+        'deleted_accounts 표가 없어 묘비를 남기지 못했다 — 델타 SQL 을 적용하기 전까지, '
+        + '만료 전 토큰으로 들어오면 빈 계정이 되살아날 수 있다.',
+      );
+    }
+    // 방금 세운 묘비를 이 프로세스가 곧바로 보게 한다 —
+    // 캐시가 '표 없음'/'아는 사용자'로 남아 있으면 다음 요청이 그대로
+    // 통과해 버린다.
+    resetDeletedAccountsCache();
+    forgetKnownUser(userId);
+
+    this.log.log(
+      `회원탈퇴 완료 (id=${userId}) — 맵 ${before.maps}개 · 첨부 ${before.attachments}개`,
+    );
+    return {
+      deleted: true as const,
+      maps: before.maps,
+      attachments: before.attachments,
+      usedBytes: before.usedBytes,
+      /** false 면 같은 이메일로 재가입이 막힐 수 있다 — 운영자가 알아야 한다 */
+      authRemoved,
+    };
   }
 }

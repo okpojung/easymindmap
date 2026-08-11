@@ -467,16 +467,34 @@ SMTP_FROM=EasyMindMap <noreply@easymindmap.org>  # 받는 사람에게 보이는
 1. **api 로그의 오류 문구** — 인증 실패(535)면 앱 비밀번호 문제다
 2. **스팸함** — 있으면 ④의 SPF/DKIM/DMARC 를 확인한다
 
-**메일은 왔는데 From 이 `noreply@` 가 아니라 계정 주소로 나갔다면**,
-②의 별칭이 아직 그 계정에 붙지 않은 것이다 (2026-08-09 실제로 겪었다).
+### ★ From 이 `noreply@` 가 아니라 계정 주소로 나갔다면
 
-> **판별 신호: 표시 이름은 남고 주소만 바뀐다.**
-> `EasyMindMap <ok@baro.pro>` 처럼 나오면 **우리 코드가 `SMTP_FROM` 을
-> 잘못 읽은 게 아니다** — 그랬다면 표시 이름도 함께 사라진다. 이름이
-> 살아 있는 채 주소만 바뀐 것은 **Google 이 From 을 다시 쓴 것**이다.
-> 이때는 **api 를 다시 배포할 필요가 없다.** 서버 설정은 그대로고
-> Google 쪽 판정만 바뀌면 되므로, 별칭을 확인·추가한 뒤 조금 기다렸다
-> [이메일 인증]을 다시 누르면 된다.
+원인이 **둘**이다. 눈으로는 구분되지 않으니 **환경변수부터 본다.**
+
+| 원인 | 무엇이 일어났나 |
+|---|---|
+| **ⓐ `SMTP_FROM` 이 비어 있다** | 우리 코드가 `EasyMindMap <SMTP_USER>` 를 만들어 쓴다 (`mail.service.ts` 의 `from()`) |
+| ⓑ 별칭이 아직 안 붙었다 | Google 이 From 을 계정 주소로 다시 쓴다 |
+
+> ⚠️ **"표시 이름이 남았으니 Google 이 다시 쓴 것"은 근거가 되지
+> 않는다** (2026-08-11 정정). ⓐ의 기본값이 `EasyMindMap <ok@baro.pro>`
+> 라 **ⓑ의 결과와 글자까지 똑같다.** 2026-08-09 에 이 신호를 근거로
+> 별칭 문제라고 단정했는데, 두 경우를 가르지 못하는 신호였다.
+
+**가르는 법 — 서버 SSH 에서 값을 직접 본다:**
+
+```bash
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+docker exec -i "$API" sh -lc 'echo "SMTP_FROM=[$SMTP_FROM]"; echo "SMTP_USER=[$SMTP_USER]"'
+```
+
+대괄호는 **빈 값과 공백을 눈으로 가르려고** 넣는다.
+
+| 출력 | 원인 | 할 일 |
+|---|---|---|
+| `SMTP_FROM=[]` | **ⓐ** | Coolify 에 `SMTP_FROM` 추가(Runtime 켜기) → **Redeploy** |
+| `SMTP_FROM=[EasyMindMap <noreply@easymindmap.org>]` | **ⓑ** | 별칭을 확인·추가하고 기다린다 (최대 24시간). **api 재배포는 필요 없다** |
+| `SMTP_FROM=[EasyMindMap]` 처럼 잘림 | 설정 저장 | Coolify 에서 `Is Literal?` 을 켜고 다시 저장 — `<` `>` 와 공백이 든 값이다 |
 
 **DKIM 이 실제로 쓰였는지**는 받은 메일의 **원본 보기**에서
 `Authentication-Results` 줄을 본다. `spf=pass` · `dkim=pass` ·

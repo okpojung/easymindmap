@@ -392,15 +392,21 @@ export function SignupForm({
         }}
       >{busy === 'signup' ? '가입하는 중…' : '가입하기'}</button>
 
+      {/* 돌아가는 길 — **버튼으로 보여야 한다** (2026-08-11 사용자 지적).
+          테두리도 배경도 없으면 안내문으로 읽혀, 누를 수 있다는 것을
+          모른다. 문구도 "이미 계정이 있습니다 — 로그인"은 상태 설명에
+          가까웠다. 지금 화면에서 **무엇을 하는 버튼인지**로 바꾼다. */}
       <button
         data-testid="signup-cancel"
         type="button" onClick={onCancel}
         style={{
-          width: '100%', height: 34, marginTop: 8, borderRadius: 8,
-          border: 'none', background: 'transparent', color: t.textMuted,
-          fontSize: 12.5, cursor: 'pointer',
+          width: '100%', height: 38, marginTop: 10, borderRadius: 8,
+          border: `1px solid ${t.border}`, background: t.surfaceAlt,
+          color: t.text, fontSize: 13, fontWeight: 600, cursor: 'pointer',
         }}
-      >이미 계정이 있습니다 — 로그인</button>
+        onMouseEnter={(e) => { e.currentTarget.style.background = t.surface; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = t.surfaceAlt; }}
+      >로그인 화면으로 돌아가기</button>
 
       <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 10, lineHeight: 1.6 }}>
         국가번호는 {COUNTRIES.length}개국을 고를 수 있습니다. 목록에서 나라 이름이나

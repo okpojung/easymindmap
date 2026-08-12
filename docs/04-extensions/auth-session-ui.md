@@ -342,10 +342,27 @@ Postmark 로 호스트/계정만 교체**한다. 반송(bounce)·스팸신고를
 **그 계정의 앱 비밀번호로 로그인해 별칭 주소로 발송**할 수 있다.
 반영에 몇 분에서 최대 24시간이 걸릴 수 있다.
 
-**별칭은 두 개 만든다** — `noreply@` 와 `postmaster@`.
-`postmaster@` 는 ④의 DMARC `rua` 가 보고서를 보내는 주소다. 받는 곳이
-없으면 **보고서가 반송되어 그대로 사라진다** — 설정이 맞는지 확인할
-수단을 잃는다.
+⚠️ **`postmaster@` 는 별칭으로 추가되지 않는다 — "이미 예약된
+이메일입니다"** (2026-08-09 실제 화면에서 확인). `postmaster` 와 `abuse`
+는 RFC 2142 가 요구하는 주소라 Google 이 **미리 잡아 두고, 오는 메일을
+최고 관리자 사서함으로 자동 전달**한다. **주소가 없는 게 아니라 만들
+필요가 없는 것**이므로, ④의 DMARC `rua` 는 `postmaster@` 로 두면 된다
+(MX 가 Google 을 가리키고 있어야 한다).
+
+만들 별칭은 **`noreply@` 하나뿐이다.**
+
+⚠️ **오류가 난 줄은 지우고 저장한다.** 이 폼은 **한 줄이라도 오류면
+[저장]이 폼 전체를 거부**한다 — `postmaster` 줄의 빨간 오류를 그대로 둔
+채 저장하면 **정상이던 `noreply` 줄까지 저장되지 않는다.** 저장한 뒤
+사용자 정보의 **보조 이메일** 항목에 실제로 올라왔는지 눈으로 확인한다.
+
+> 보조 도메인에서도 이 자동 전달이 도는지는 **확인하지 못했다.**
+> 외부 주소에서 `postmaster@easymindmap.org` 로 한 통 보내 최고 관리자
+> 사서함에 들어오는지 본다. 안 들어오면 `_dmarc` TXT 의 `rua` 를
+> `noreply@easymindmap.org` 로 바꾼다 — **같은 도메인 안이라 추가
+> 레코드가 필요 없다.** 다른 도메인(`ok@baro.pro` 등)으로 보내려면
+> 그쪽에 `easymindmap.org._report._dmarc` TXT 승인 레코드를 따로 넣어야
+> 하므로 같은 도메인 안에서 끝내는 편이 낫다.
 
 #### ③ 앱 비밀번호를 발급한다
 
@@ -442,11 +459,49 @@ SMTP_FROM=EasyMindMap <noreply@easymindmap.org>  # 받는 사람에게 보이는
 
 #### ⑥ 확인
 
-가입 화면에서 [이메일 인증]을 눌러 메일이 오는지 본다. 안 오면 순서대로:
+`https://dev.mindmap.ai.kr` → 로그인 화면 → **[회원가입]** → 이메일 입력
+→ **[이메일 인증]** 을 눌러 메일이 오는지 본다.
+
+**메일이 안 오면** 순서대로:
 
 1. **api 로그의 오류 문구** — 인증 실패(535)면 앱 비밀번호 문제다
 2. **스팸함** — 있으면 ④의 SPF/DKIM/DMARC 를 확인한다
-3. **From 주소가 계정 주소로 바뀌었나** — ②의 별칭이 아직 반영되지 않은 것이다
+
+### ★ From 이 `noreply@` 가 아니라 계정 주소로 나갔다면
+
+원인이 **둘**이다. 눈으로는 구분되지 않으니 **환경변수부터 본다.**
+
+| 원인 | 무엇이 일어났나 |
+|---|---|
+| **ⓐ `SMTP_FROM` 이 비어 있다** | 우리 코드가 `EasyMindMap <SMTP_USER>` 를 만들어 쓴다 (`mail.service.ts` 의 `from()`) |
+| ⓑ 별칭이 아직 안 붙었다 | Google 이 From 을 계정 주소로 다시 쓴다 |
+
+> ⚠️ **"표시 이름이 남았으니 Google 이 다시 쓴 것"은 근거가 되지
+> 않는다** (2026-08-11 정정). ⓐ의 기본값이 `EasyMindMap <ok@baro.pro>`
+> 라 **ⓑ의 결과와 글자까지 똑같다.** 2026-08-09 에 이 신호를 근거로
+> 별칭 문제라고 단정했는데, 두 경우를 가르지 못하는 신호였다.
+
+**가르는 법 — 서버 SSH 에서 값을 직접 본다:**
+
+```bash
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+docker exec -i "$API" sh -lc 'echo "SMTP_FROM=[$SMTP_FROM]"; echo "SMTP_USER=[$SMTP_USER]"'
+```
+
+대괄호는 **빈 값과 공백을 눈으로 가르려고** 넣는다.
+
+| 출력 | 원인 | 할 일 |
+|---|---|---|
+| `SMTP_FROM=[]` | **ⓐ** | Coolify 에 `SMTP_FROM` 추가(Runtime 켜기) → **Redeploy** |
+| `SMTP_FROM=[EasyMindMap <noreply@easymindmap.org>]` | **ⓑ** | 별칭을 확인·추가하고 기다린다 (최대 24시간). **api 재배포는 필요 없다** |
+| `SMTP_FROM=[EasyMindMap]` 처럼 잘림 | 설정 저장 | Coolify 에서 `Is Literal?` 을 켜고 다시 저장 — `<` `>` 와 공백이 든 값이다 |
+
+**DKIM 이 실제로 쓰였는지**는 받은 메일의 **원본 보기**에서
+`Authentication-Results` 줄을 본다. `spf=pass` · `dkim=pass` ·
+`dmarc=pass` 이면서 **도메인이 `easymindmap.org`** 여야 한다.
+From 이 계정 도메인으로 덮어써진 동안에는 **계정 도메인 기준으로
+검사되므로**, 이 줄이 통과해도 `easymindmap.org` 의 DKIM 이 검증된 것은
+아니다.
 
 검증: E2E e2e136
 

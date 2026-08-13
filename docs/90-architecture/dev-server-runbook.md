@@ -314,6 +314,148 @@ SCRIPT
 > 그대로 그리므로 다음 조회부터 반영된다. 다만 **요금제 배지(Basic 등)를
 > 보려면 API·프런트 재배포가 필요하다** — 응답에 `plan` 이 추가됐다.
 
+### 1.5-0-C. ★ 특정 계정의 요금제 바꾸기 (2026-08-11)
+
+> **임시 수단이다.** 관리자 홈페이지와 결제가 붙으면 이 절차는 필요
+> 없어진다. 그때까지 "그 사람만 Basic 으로 올려 달라"를 처리하는 길이다.
+
+**어디서 실행하나** — 둘 중 아무 데서나. 명령이 같다.
+
+| 실행 자리 | 가는 길 |
+|---|---|
+| **VM SSH** | `ssh ubuntu@<dev 서버>` 로 붙은 뒤 붙여넣기 |
+| **Coolify Terminal** | Coolify → 왼쪽 **Terminal** → 서버(호스트)를 고른 뒤 붙여넣기 |
+
+> ⚠️ **Coolify 의 DB 리소스 안쪽 Terminal 이 아니다.** 그 안은 이미
+> 컨테이너 내부라 `docker` 명령이 없다. **호스트** 터미널을 고른다.
+> (DB 컨테이너 안에서 직접 할 거라면 `docker exec …` 를 빼고
+> `psql -U postgres -d postgres` 부터 쓰면 된다.)
+
+#### 붙여넣을 것 — **맨 위 두 줄만 고친다**
+
+```bash
+bash <<'SCRIPT'
+set -e
+
+# ── 여기 두 줄만 고친다 ────────────────────────────────────────
+EMAIL='id@example.com'
+PLAN='basic'          # free | basic | pro | team
+# ──────────────────────────────────────────────────────────────
+
+case "$PLAN" in free|basic|pro|team) ;; *)
+  echo "❌ PLAN 은 free·basic·pro·team 중 하나여야 합니다 (받은 값: $PLAN)"; exit 1;; esac
+
+DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
+[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
+
+# 앱 DB 를 추측하지 않는다 — maps 표가 있는 데이터베이스를 찾는다
+APPDB=$(for d in $(docker exec -i "$DB" psql -U postgres -tAc \
+    "SELECT datname FROM pg_database WHERE datname NOT IN ('template0','template1')"); do
+  docker exec -i "$DB" psql -U postgres -d "$d" -tAc \
+    "SELECT '$d' FROM information_schema.tables WHERE table_schema='public' AND table_name='maps' LIMIT 1"
+done | head -1)
+[ -z "$APPDB" ] && { echo "❌ maps 표가 있는 데이터베이스를 찾지 못했습니다."; exit 1; }
+echo "✅ 컨테이너=$DB / 앱DB=$APPDB"
+
+psqlx() { docker exec -i "$DB" psql -U postgres -d "$APPDB" -v ON_ERROR_STOP=1 "$@"; }
+
+# ① 계정이 있는지 먼저 본다 — **조용히 0행 성공하지 않게**
+N=$(psqlx -tA -v email="$EMAIL" <<'SQL'
+SELECT count(*) FROM public.users u JOIN auth.users a ON a.id = u.id
+ WHERE lower(a.email) = lower(:'email');
+SQL
+)
+if [ "$N" = "0" ]; then
+  echo "❌ '$EMAIL' 계정을 찾지 못했습니다."
+  echo "   철자를 확인하거나, 아래 목록에서 실제 주소를 고르세요:"
+  psqlx -tA <<'SQL'
+SELECT '   · ' || a.email || '  (' || u.plan || ')'
+  FROM public.users u JOIN auth.users a ON a.id = u.id ORDER BY a.email;
+SQL
+  exit 1
+fi
+
+echo "── 바꾸기 전 ──"
+psqlx -v email="$EMAIL" <<'SQL'
+SELECT a.email, u.plan AS 요금제, pg_size_pretty(u.quota_bytes) AS 한도
+  FROM public.users u JOIN auth.users a ON a.id = u.id
+ WHERE lower(a.email) = lower(:'email');
+SQL
+
+# ② 변경 — quota_bytes 는 users_sync_quota 트리거가 따라온다
+psqlx -v email="$EMAIL" -v plan="$PLAN" <<'SQL'
+UPDATE public.users u
+   SET plan = :'plan', updated_at = NOW()
+  FROM auth.users a
+ WHERE a.id = u.id AND lower(a.email) = lower(:'email');
+SQL
+
+echo "── 바꾼 뒤 ──"
+psqlx -v email="$EMAIL" <<'SQL'
+SELECT a.email, u.plan AS 요금제, pg_size_pretty(u.quota_bytes) AS 한도
+  FROM public.users u JOIN auth.users a ON a.id = u.id
+ WHERE lower(a.email) = lower(:'email');
+SQL
+echo "끝 — '요금제'와 '한도'가 함께 바뀌었으면 성공입니다 (basic = 10 GB)."
+SCRIPT
+```
+
+#### 성공은 이렇게 보인다
+
+```
+✅ 컨테이너=roxca4xvrujyw8u1jsvxk0ey / 앱DB=postgres
+── 바꾸기 전 ──
+      email       | 요금제 | 한도
+------------------+--------+-------
+ yskim@egtron.com | free   | 10 MB
+UPDATE 1
+── 바꾼 뒤 ──
+      email       | 요금제 | 한도
+------------------+--------+-------
+ yskim@egtron.com | basic  | 10 GB
+```
+
+**`한도`가 함께 바뀌는지를 본다.** `quota_bytes` 는 직접 건드리지 않는다 —
+`users_sync_quota` 트리거가 `plan` 을 보고 맞춘다. 요금제만 바뀌고 한도가
+그대로면 **트리거가 없는 DB** 다(§1.5-0-B 를 먼저 적용한다).
+
+| 요금제 | 한도 |
+|---|---|
+| free | 10 MB |
+| basic | 10 GB |
+| pro | 30 GB |
+| team | 20 GB |
+
+#### 이렇게 만든 이유
+
+- **조용한 0행을 막는다.** `UPDATE … WHERE email = '오타'` 는 아무것도
+  안 바꾸고 성공한다. 바꿨다고 답해 놓고 사용자 화면은 그대로인 상황이
+  가장 나쁘다. 그래서 먼저 세고, 없으면 **실제 주소 목록을 보여 준다.**
+- **대소문자를 가리지 않는다** — `lower(...) = lower(...)`.
+  `Kim@Egtron.com` 으로 가입한 사람을 `kim@egtron.com` 으로 못 찾는 일이
+  없게.
+- **앱 DB 를 추측하지 않는다.** dev 서버에는 GoTrue 의 `gotrue` DB 가
+  따로 있다. `maps` 표가 있는 쪽을 찾아 넣는다.
+- **이메일은 `auth.users` 에 있다** — `public.users` 에는 이메일 컬럼이
+  없어 조인이 필요하다.
+
+#### 확인 방법 (사용자 화면)
+
+그 사용자가 **`https://dev.mindmap.ai.kr` → 우상단 아바타**를 누르면
+저장 용량 막대 위에 **`Basic`** 배지와 `… / 10GB` 가 보인다.
+메뉴를 열 때마다 `/v1/attachments/quota` 를 다시 부르므로 **재로그인도
+재배포도 필요 없다** — 이미 로그인해 있으면 메뉴만 다시 열면 된다.
+
+#### 되돌리기
+
+같은 블록에서 `PLAN='free'` 로 바꿔 다시 실행한다. 한도도 함께 10MB 로
+돌아간다.
+
+> **특별 계약처럼 요금제와 다른 한도를 주려면** `plan` 을 먼저 정한 뒤
+> `quota_bytes` 를 직접 `UPDATE` 한다(트리거는 `plan` 이 바뀔 때만 돈다).
+> 단 그 계정의 `plan` 을 나중에 다시 바꾸면 덮어써진다.
+
 ### 1.5-A. Ubuntu 호스트에 NAS NFS 마운트
 
 ```bash

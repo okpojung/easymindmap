@@ -41,10 +41,10 @@ import { clearLocalDraft } from '@/hooks/useLocalDraft';
  * 반대로 움직인다(문장 한 줄 수정은 용량 변화가 0 이지만 잃으면 아프고,
  * 사진 1장은 +2MB 지만 원본이 PC 에 있어 다시 하면 된다).
  */
-const EDIT_COUNT_TRIGGER = 50;
+export const EDIT_COUNT_TRIGGER = 50;
 
 /** 주기 도달을 확인하는 간격 — 개인 설정을 바꿔도 바로 반영되게 짧게 */
-const TICK_MS = 5000;
+export const TICK_MS = 5000;
 
 let tick: number | undefined;
 /** 아직 서버에 반영되지 않은 편집 수 */

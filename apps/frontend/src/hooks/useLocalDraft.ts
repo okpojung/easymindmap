@@ -29,7 +29,7 @@ import {
   putDraft, deleteDraft, clearAllDrafts, UNSAVED_DRAFT_KEY,
 } from '@/utils/localDraft';
 
-const DRAFT_MS = 1000;
+export const DRAFT_MS = 1000;
 
 let timer: number | undefined;
 /** 직전에 본 노드 수 — 바뀌면 "구조 변경"으로 보고 즉시 적는다 */

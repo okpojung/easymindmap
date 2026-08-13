@@ -9,5 +9,7 @@ import { StorageModule } from '../storage/storage.module';
   imports: [StorageModule],
   controllers: [AccountController],
   providers: [AccountService],
+  // 관리자 콘솔이 인증번호 발송·확인을 그대로 재사용한다 (2026-08-13)
+  exports: [AccountService],
 })
 export class AccountModule {}

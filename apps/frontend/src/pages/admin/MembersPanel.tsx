@@ -1,9 +1,14 @@
 // 회원관리 — 현황 조회 · 요금제 변경 · 사용용량 · 활동 (2026-08-13).
 //
-// ⚠️ **"로그인 정보"라고 부르지 않는다.** GoTrue 는 별도 DB 라 우리에게
-// 로그인 기록이 없다. 우리가 아는 것은 **저장할 때 남는 기록**(시각·
-// 플랫폼·브라우저·IP)뿐이다. 화면도 '마지막 활동'·'최근 30일 저장'으로
-// 적어, 없는 것을 있는 것처럼 보이지 않게 한다.
+// **두 가지를 나란히 보여 준다** (2026-08-13 로그인 이력 추가).
+//   · 마지막 로그인 — **GoTrue** 가 아는 진짜 로그인 시각
+//   · 마지막 활동   — 우리 DB 의 **저장** 기록(플랫폼·브라우저·IP)
+// 둘은 다르다. 로그인만 하고 아무것도 저장하지 않을 수 있고, 반대로
+// 오래 열어 둔 탭이 저장만 계속할 수도 있다. 하나로 합치면 어느 쪽인지
+// 알 수 없어진다.
+//
+// GoTrue 를 못 부르면 **'마지막 로그인' 칸만 비고 목록은 그대로 나온다** —
+// 그리고 화면이 그 이유를 밝힌다(없는 것을 있는 척하지 않는다).
 
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -25,9 +30,18 @@ function fmtDate(v: string | null): string {
   const d = new Date(v);
   return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
 }
+/** 로그인은 **분까지** 본다 — 같은 날 여러 번 들어온 것을 가려야 한다 */
+function fmtDateTime(v: string | null): string {
+  if (!v) return '—';
+  const d = new Date(v);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 export function MembersPanel({ t }: { t: ThemeTokens }) {
   const [rows, setRows] = useState<AdminUserRow[] | null>(null);
+  /** GoTrue 를 불러 왔나 — false 면 '마지막 로그인'이 비어 있는 이유를 밝힌다 */
+  const [loginOk, setLoginOk] = useState(true);
   const [sum, setSum] = useState<Awaited<ReturnType<typeof adminApi.summary>> | null>(null);
   const [q, setQ] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -37,7 +51,7 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
   const load = (query = q) => {
     setErr(null);
     Promise.all([adminApi.users(query), adminApi.summary()])
-      .then(([u, s]) => { setRows(u.users); setSum(s); })
+      .then(([u, s]) => { setRows(u.users); setSum(s); setLoginOk(u.loginHistoryAvailable); })
       .catch((e: unknown) => setErr(e instanceof CloudError ? e.message : '불러오지 못했습니다.'));
   };
   useEffect(() => { load(''); /* 첫 진입 1회 */ }, []);
@@ -125,16 +139,17 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
               <th style={th}>맵</th>
               <th style={th}>첨부</th>
               <th style={th}>최근 30일 저장</th>
-              <th style={th}>마지막 활동</th>
+              <th style={th}>마지막 로그인</th>
+              <th style={th}>마지막 활동(저장)</th>
               <th style={th}>가입</th>
             </tr>
           </thead>
           <tbody>
             {rows === null && (
-              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={9}>불러오는 중…</td></tr>
+              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={10}>불러오는 중…</td></tr>
             )}
             {rows?.length === 0 && (
-              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={9}>해당하는 회원이 없습니다.</td></tr>
+              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={10}>해당하는 회원이 없습니다.</td></tr>
             )}
             {rows?.map((u) => (
               <tr key={u.id} data-testid="admin-user-row" data-email={u.email ?? ''}>
@@ -174,6 +189,16 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
                 <td style={td}>{u.attachments}</td>
                 <td style={td}>{u.saves30d}</td>
                 <td style={td}>
+                  {u.lastSignInAt ? fmtDateTime(u.lastSignInAt)
+                    : <span style={{ color: t.textSubtle }}>—</span>}
+                  {u.bannedUntil && (
+                    <span title={`차단: ${u.bannedUntil}`} style={{
+                      marginLeft: 5, fontSize: 9.5, color: t.danger,
+                      border: `1px solid ${t.danger}`, borderRadius: 7, padding: '1px 5px',
+                    }}>차단</span>
+                  )}
+                </td>
+                <td style={td}>
                   {fmtDate(u.lastSeenAt)}
                   {u.lastSeenAt && (
                     <span style={{ color: t.textSubtle, marginLeft: 5, fontSize: 11 }}>
@@ -188,11 +213,24 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
         </table>
       </div>
 
+      {!loginOk && (
+        <div data-testid="admin-login-unavailable" style={{
+          marginTop: 10, padding: '8px 10px', borderRadius: 7, fontSize: 12,
+          background: t.surfaceAlt, border: `1px solid ${t.border}`, color: t.textMuted,
+          lineHeight: 1.7,
+        }}>
+          <b>‘마지막 로그인’을 가져오지 못했습니다.</b> 인증 서버(GoTrue)를 부르지 못한
+          것이며, 목록의 나머지 값은 정상입니다. api 의 <code>GOTRUE_URL</code> 설정과
+          로그를 확인해 주세요.
+        </div>
+      )}
+
       <div style={{ fontSize: 11, color: t.textSubtle, marginTop: 10, lineHeight: 1.7 }}>
-        <b>‘마지막 활동’과 ‘최근 30일 저장’은 로그인 기록이 아니라 저장 기록입니다.</b>
-        {' '}로그인은 인증 서버(GoTrue)가 별도 DB 에 관리해 우리 쪽에 기록이 남지 않습니다.
-        요금제를 바꾸면 저장 한도는 DB 트리거가 함께 맞춥니다 — 그 사람이 아바타 메뉴를
-        다시 열면 바로 보입니다(재로그인 불필요).
+        <b>‘마지막 로그인’은 인증 서버(GoTrue)가 아는 진짜 로그인 시각</b>이고,
+        <b>‘마지막 활동(저장)’과 ‘최근 30일 저장’은 저장 기록</b>입니다 — 로그인만 하고
+        아무것도 저장하지 않을 수도, 반대로 오래 열어 둔 탭이 저장만 계속할 수도 있어
+        나눠서 보여 줍니다. 요금제를 바꾸면 저장 한도는 DB 트리거가 함께 맞춥니다 —
+        그 사람이 아바타 메뉴를 다시 열면 바로 보입니다(재로그인 불필요).
       </div>
     </div>
   );

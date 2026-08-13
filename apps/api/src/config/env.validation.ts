@@ -64,6 +64,14 @@ export interface AppEnv {
    * 인증을 쓰는 배포(AUTH_MODE=supabase)에서는 반드시 채운다.
    */
   GOTRUE_URL: string;
+
+  /**
+   * **관리자 콘솔에 들어갈 수 있는 이메일** (2026-08-13). 쉼표로 여럿.
+   * DB 컬럼이 아닌 이유: 컬럼이면 DB 를 건드릴 수 있는 사람이 스스로를
+   * 관리자로 올릴 수 있다. 환경변수는 배포 권한이 있어야 바꾼다.
+   * 비어 있으면 아무도 못 들어간다(기동 로그에 경고).
+   */
+  ADMIN_EMAILS: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -167,5 +175,6 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     SMTP_PASS: String(raw.SMTP_PASS ?? ''),
     SMTP_FROM: String(raw.SMTP_FROM ?? ''),
     GOTRUE_URL: String(raw.GOTRUE_URL ?? ''),
+    ADMIN_EMAILS: String(raw.ADMIN_EMAILS ?? ''),
   };
 }

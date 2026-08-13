@@ -62,7 +62,7 @@ export function isDocumentEmpty(map: { title: string; branches: unknown[] }): bo
 // 99단계 = 카운터를 두 자리(-99)로 표시하기 위한 상한 (2026-07 사용자 결정).
 // 세션을 닫고 저장할 때마다의 "히스토리"(저장일시별 버전)는 별개 기능으로,
 // 서버 저장과 연결될 때 구현한다 — docs/03-editor-core/history 참조.
-const HISTORY_LIMIT = 99;
+export const HISTORY_LIMIT = 99;
 let applyingHistory = false;
 
 export interface HistoryEntry {

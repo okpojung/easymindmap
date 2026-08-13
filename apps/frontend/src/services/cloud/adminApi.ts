@@ -70,6 +70,11 @@ export interface AdminUserRow {
   lastPlatform: string | null;
   lastBrowser: string | null;
   lastIp: string | null;
+  /** **마지막 로그인** — GoTrue 가 아는 값(저장 활동과 다르다) */
+  lastSignInAt: string | null;
+  /** GoTrue 기준 이메일 확인 시각 */
+  emailConfirmedAt: string | null;
+  bannedUntil: string | null;
 }
 
 export interface SettingItem {
@@ -96,7 +101,7 @@ export const adminApi = {
     total: number; new7d: number; new30d: number;
   }>('GET', '/admin/summary'),
   users: (q: string) =>
-    req<{ users: AdminUserRow[] }>('GET', `/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    req<{ users: AdminUserRow[]; loginHistoryAvailable: boolean }>('GET', `/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   setPlan: (id: string, plan: string) =>
     req<{ plan: string; quotaBytes: number; email: string | null }>(
       'PATCH', `/admin/users/${id}/plan`, { plan }),

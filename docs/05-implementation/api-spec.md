@@ -84,7 +84,7 @@
 | 22b | POST | `/v1/admin/login/verify` | ② `{code}` → `{adminToken, email, expiresAt}` — 표는 헤더 `X-Admin-Token` 으로 싣는다(유효 8시간) |
 | 22c | GET | `/v1/admin/me` | 표가 살아 있는지 → `{email}` |
 | 22d | GET | `/v1/admin/summary` | 요금제별 인원·최근 7/30일 가입 |
-| 22e | GET | `/v1/admin/users?q=` | 회원 목록 — 요금제·사용량·맵/첨부 수·최근 30일 **저장** 횟수·마지막 활동(플랫폼·브라우저·IP) |
+| 22e | GET | `/v1/admin/users?q=` | 회원 목록 — 요금제·사용량·맵/첨부 수·최근 30일 **저장** 횟수·마지막 활동(플랫폼·브라우저·IP) + **마지막 로그인**(GoTrue). 응답에 `loginHistoryAvailable` — false 면 GoTrue 를 못 불러 그 칸만 비었다는 뜻 (2026-08-13) |
 | 22f | PATCH | `/v1/admin/users/:id/plan` | `{plan}` → 요금제 변경. `quota_bytes` 는 DB 트리거가 따라온다 |
 | 22g | GET | `/v1/admin/settings` | 서버가 **지금 들고 있는** 설정값(env·DB). 화면 상수는 프런트가 자기 것을 합친다 |
 | 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 → `{status,db,schema,missingTables?,missingColumns?,time}` |

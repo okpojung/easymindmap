@@ -24,6 +24,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+// ⚠️ CJS 전용 패키지만 쓸 것 (auth.guard.ts 와 같은 이유)
+import { sign as jwtSign } from 'jsonwebtoken';
 import { DatabaseService } from '../database/database.service';
 import { AccountService } from '../account/account.service';
 import type { AppEnv } from '../config/env.validation';
@@ -40,6 +42,8 @@ export class AdminService {
   private readonly log = new Logger('AdminService');
   private readonly adminEmails: Set<string>;
   private readonly tokenKey: string;
+  /** GoTrue 주소 — **진짜 로그인 이력**은 여기에만 있다 (2026-08-13) */
+  private readonly goTrueUrl: string;
 
   constructor(
     private readonly db: DatabaseService,
@@ -55,6 +59,8 @@ export class AdminService {
     this.tokenKey =
       String(config.get('SUPABASE_JWT_SECRET', { infer: true }) || '')
       || randomBytes(32).toString('hex');
+    this.goTrueUrl =
+      String(config.get('GOTRUE_URL', { infer: true }) || '').trim().replace(/\/+$/, '');
     if (this.adminEmails.size === 0) {
       this.log.warn('ADMIN_EMAILS 가 비어 있다 — 관리자 콘솔에 아무도 들어갈 수 없다.');
     }
@@ -177,7 +183,12 @@ export class AdminService {
       [like, Math.min(Math.max(limit || 200, 1), 1000)],
     );
 
+    // 로그인 이력은 GoTrue 에만 있다 — 못 가져와도 목록은 그대로 낸다
+    const gt = await this.fetchGoTrueUsers();
+
     return {
+      /** false 면 '마지막 로그인' 칸이 비어 있는 이유를 화면이 밝힌다 */
+      loginHistoryAvailable: gt !== null,
       users: rows.map((r) => ({
         id: r.id,
         email: r.email,
@@ -198,8 +209,65 @@ export class AdminService {
         lastPlatform: r.last_platform,
         lastBrowser: r.last_browser,
         lastIp: r.last_ip,
+        // ── GoTrue 가 아는 것 (진짜 로그인) ──
+        /** 마지막 **로그인** 시각 — 저장 활동과 다르다 */
+        lastSignInAt: gt?.get(r.id)?.lastSignInAt ?? null,
+        /** GoTrue 기준 이메일 확인 시각 (우리 쪽 email_verified_at 과 별개) */
+        emailConfirmedAt: gt?.get(r.id)?.emailConfirmedAt ?? null,
+        /** 차단된 계정이면 그 시각까지 */
+        bannedUntil: gt?.get(r.id)?.bannedUntil ?? null,
       })),
     };
+  }
+
+  // ── 진짜 로그인 이력 (2026-08-13 사용자 요청) ────────────────
+  //
+  // **로그인은 GoTrue 가 처리하고 GoTrue 만 안다.** dev 서버는 GoTrue 가
+  // 별도 DB 를 쓰므로 우리 DB 를 아무리 뒤져도 나오지 않는다. 그래서
+  // 관리자 API 로 물어본다 — 회원탈퇴가 계정을 지울 때와 같은 길이라
+  // 새 환경변수도, 서비스 키 보관도 필요 없다.
+  //
+  // 못 가져와도 **회원 목록은 그대로 보여 준다** — 로그인 이력은 덤이지
+  // 목록이 열리지 않을 이유가 아니다. 대신 화면이 그 사실을 밝힌다.
+
+  /** GoTrue 의 사용자들 — id → 로그인 정보. 실패하면 null */
+  private async fetchGoTrueUsers(): Promise<Map<string, {
+    lastSignInAt: string | null; emailConfirmedAt: string | null; bannedUntil: string | null;
+  }> | null> {
+    if (!this.goTrueUrl) return null;
+    try {
+      const token = jwtSign(
+        { role: 'service_role', aud: 'authenticated' },
+        this.tokenKey, { algorithm: 'HS256', expiresIn: '2m' },
+      );
+      const res = await fetch(`${this.goTrueUrl}/admin/users?per_page=1000`, {
+        headers: { Authorization: `Bearer ${token}`, apikey: token },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        this.log.warn(`GoTrue 사용자 조회 실패 (HTTP ${res.status}) — 로그인 이력을 비운다`);
+        return null;
+      }
+      const json = (await res.json()) as { users?: Record<string, unknown>[] };
+      const map = new Map<string, {
+        lastSignInAt: string | null; emailConfirmedAt: string | null; bannedUntil: string | null;
+      }>();
+      for (const u of json.users ?? []) {
+        const id = String(u.id ?? '');
+        if (!id) continue;
+        // 필드 이름은 GoTrue 판에 따라 조금씩 다르다 — 있는 것을 쓴다.
+        map.set(id, {
+          lastSignInAt: (u.last_sign_in_at as string) ?? null,
+          emailConfirmedAt:
+            (u.email_confirmed_at as string) ?? (u.confirmed_at as string) ?? null,
+          bannedUntil: (u.banned_until as string) ?? null,
+        });
+      }
+      return map;
+    } catch (err) {
+      this.log.warn(`GoTrue 사용자 조회 실패: ${String((err as Error).message)}`);
+      return null;
+    }
   }
 
   /** 요금제 변경 — quota_bytes 는 users_sync_quota 트리거가 따라온다 */

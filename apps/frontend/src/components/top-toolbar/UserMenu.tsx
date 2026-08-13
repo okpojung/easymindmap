@@ -15,6 +15,7 @@ import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { listDrafts } from '@/utils/localDraft';
+import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
 
 interface MenuEntry {
   id: string;
@@ -26,6 +27,9 @@ interface MenuEntry {
 
 const ENTRIES: MenuEntry[] = [
   { id: 'settings', icon: '⚙', label: '개인 설정', soon: '언어(한국어·English)·기본 저장 위치 등 — 다국어(B10) 단계에서 열립니다.' },
+  // 비밀번호 변경은 **'준비 중'이 아니라 실제로 동작한다** — soon 이 없으면
+  // 클릭이 안내가 아니라 기능으로 간다 (2026-08-13 사용자 요청).
+  { id: 'password', icon: '🔑', label: '비밀번호 변경' },
   { id: 'profile', icon: '👤', label: '계정 프로필', soon: '표시 이름·비밀번호 변경 — 계정 관리 단계에서 열립니다.' },
   { id: 'subscription', icon: '💳', label: '구독 상태', soon: '요금제 변경 — Free 10MB · Basic 10GB · Pro 30GB · Team 20GB/사용자. 결제 단계에서 열립니다(현재 요금제와 사용량은 위에 표시됩니다).' },
 ];
@@ -103,6 +107,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
    * 남은 초안이 없으면(= 잃을 것이 없으면) 묻지 않고 바로 로그아웃한다.
    */
   const [warnDrafts, setWarnDrafts] = useState<number | null>(null);
+  /** 비밀번호 변경 창 (2026-08-13) */
+  const [pwOpen, setPwOpen] = useState(false);
 
   const doLogout = () => {
     setWarnDrafts(null);
@@ -275,7 +281,10 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               key={e.id}
               data-testid={`user-menu-${e.id}`}
               title={e.soon ?? e.label}
-              onClick={() => setSoon(soon === e.id ? null : e.id)}
+              onClick={() => {
+                if (e.id === 'password') { setOpen(false); setPwOpen(true); return; }
+                setSoon(soon === e.id ? null : e.id);
+              }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, width: '100%',
                 textAlign: 'left', padding: '8px 10px', borderRadius: 6,
@@ -463,6 +472,41 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 }}
               >{delBusy ? '삭제하는 중…' : '탈퇴하고 모든 자료 삭제'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 비밀번호 변경 — 관리자 콘솔과 **같은 폼**을 쓴다 */}
+      {pwOpen && (
+        <div
+          onClick={() => setPwOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            data-testid="password-dialog"
+            style={{
+              width: 'min(430px, 92vw)', background: t.surface, color: t.text,
+              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 12 }}>
+              🔑 비밀번호 변경
+            </div>
+            <ChangePasswordForm t={t} email={session?.email ?? ''} />
+            <button
+              data-testid="password-close"
+              onClick={() => setPwOpen(false)}
+              style={{
+                width: '100%', height: 34, marginTop: 10, borderRadius: 7,
+                border: `1px solid ${t.border}`, background: t.surfaceAlt,
+                color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+              }}
+            >닫기</button>
           </div>
         </div>
       )}

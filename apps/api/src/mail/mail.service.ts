@@ -22,6 +22,17 @@ import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
 import type { AppEnv } from '../config/env.validation';
 
+/**
+ * 인증번호를 **무엇 때문에** 보내는가 — 제목·본문에 그대로 들어간다.
+ * 새 쓰임새가 생기면 여기에 한 줄 더한다(문구가 코드 곳곳에 흩어지지
+ * 않게 한 곳에 모아 둔다).
+ */
+export type CodePurpose = 'signup' | 'adminLogin';
+const CODE_PURPOSE: Record<CodePurpose, string> = {
+  signup: '가입 인증번호',
+  adminLogin: 'Admin 로그인 인증번호',
+};
+
 @Injectable()
 export class MailService {
   private readonly log = new Logger('MailService');
@@ -71,17 +82,26 @@ export class MailService {
     this.log.log(`메일 발송: ${subject} → ${to}`);
   }
 
-  /** 가입 인증번호 — 문구는 짧게, 코드는 크게, 유효시간을 분명히 */
-  async sendSignupCode(to: string, code: string, minutes: number): Promise<void> {
-    const subject = `[EasyMindMap] 가입 인증번호 ${code}`;
+  /**
+   * 인증번호 메일 — **문구만 쓰임새에 따라 갈라진다** (2026-08-13).
+   *
+   * 규칙(자릿수·유효시간·재발송 제한)은 한 곳에서 공유하고, 받는 사람이
+   * 읽는 문구만 다르게 한다. "가입 인증번호"라고 적힌 메일이 관리자
+   * 로그인에도 오면 **무엇 때문에 온 메일인지 알 수 없다**.
+   */
+  async sendCode(
+    to: string, code: string, minutes: number, purpose: CodePurpose = 'signup',
+  ): Promise<void> {
+    const what = CODE_PURPOSE[purpose] ?? CODE_PURPOSE.signup;
+    const subject = `[EasyMindMap] ${what} ${code}`;
     const text =
-      `EasyMindMap 가입 인증번호는 ${code} 입니다.\n`
+      `EasyMindMap ${what}는 ${code} 입니다.\n`
       + `${minutes}분 안에 입력해 주세요.\n\n`
       + '본인이 요청하지 않았다면 이 메일은 무시하셔도 됩니다.';
     const html =
       '<div style="font-family:system-ui,-apple-system,sans-serif;'
       + 'max-width:420px;line-height:1.7;color:#1F1B16">'
-      + '<p style="margin:0 0 14px">EasyMindMap 가입 인증번호입니다.</p>'
+      + `<p style="margin:0 0 14px">EasyMindMap ${what}입니다.</p>`
       + `<div style="font-size:30px;font-weight:800;letter-spacing:6px;`
       + `padding:14px 0;color:#D97706">${code}</div>`
       + `<p style="margin:0 0 14px">${minutes}분 안에 입력해 주세요.</p>`

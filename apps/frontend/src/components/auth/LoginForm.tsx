@@ -77,6 +77,13 @@ export function LoginForm({
     borderRadius: 7, border: `1px solid ${t.border}`, background: t.surfaceAlt,
     color: t.text, fontSize: compact ? 12 : 13.5, marginBottom: 7,
   };
+  // **입력란마다 라벨을 붙인다** (2026-08-13 사용자 지시).
+  // placeholder 만 두면 브라우저 자동완성이 채우는 순간 사라져, 그 칸이
+  // 무엇인지 알 방법이 없어진다. 가입 화면(SignupForm)과 같은 규칙이다.
+  const labelStyle: React.CSSProperties = {
+    fontSize: compact ? 10.5 : 11.5, fontWeight: 700, color: t.textMuted,
+    margin: '0 0 4px', display: 'block',
+  };
 
   return (
     <div
@@ -86,15 +93,19 @@ export function LoginForm({
       {compact && (
         <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>클라우드 로그인</div>
       )}
+      <label style={labelStyle} htmlFor="login-email">아이디 (이메일)</label>
       <input
+        id="login-email"
         data-testid="login-email"
-        type="email" placeholder="이메일" value={email} autoComplete="username"
+        type="email" placeholder="name@example.com" value={email} autoComplete="username"
         onChange={(e) => setEmail(e.target.value)} style={inputStyle}
         onKeyDown={(e) => { if (e.key === 'Enter') void run(); }}
       />
       {/* 비밀번호 + 👁 표시 토글 — 아이콘이 입력창 안 오른쪽에 겹친다 */}
+      <label style={labelStyle} htmlFor="login-password">비밀번호</label>
       <div style={{ position: 'relative' }}>
         <input
+          id="login-password"
           data-testid="login-password"
           type={showPw ? 'text' : 'password'}
           placeholder="비밀번호" value={pw} autoComplete="current-password"

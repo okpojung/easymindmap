@@ -463,6 +463,108 @@ export class AccountService {
     };
   }
 
+  // ── 비밀번호 재설정 (2026-08-13 사용자 요청) ──────────────────
+  //
+  // 로그인하지 못하는 사람이 쓰는 길이라 **액세스 토큰이 없다.** 그래서
+  // 마지막 단계는 서버가 GoTrue **관리자 API** 로 비밀번호를 바꾼다
+  // (회원탈퇴가 계정을 지울 때 쓰는 것과 같은 길).
+  //
+  //   ① start   이메일 → 인증번호 메일
+  //   ② verify  인증번호 → **재설정표**(인증표와 같은 형식, 30분)
+  //   ③ confirm 재설정표 + 새 비밀번호 → GoTrue 에서 교체
+  //
+  // **계정이 있는지 알려 주지 않는다.** ①의 응답이 계정 유무에 따라
+  // 달라지면, 아무나 이메일 목록을 훑어 "가입된 주소"를 알아낼 수 있다.
+
+  /** ① 재설정 인증번호 — 없는 계정에도 **같은 모양**으로 답한다 */
+  async resetStart(emailRaw: string, devMode: boolean) {
+    const email = this.norm(emailRaw);
+    const { rows } = await this.db.query(
+      `SELECT 1 FROM auth.users WHERE lower(email) = lower($1)`, [email],
+    );
+    if (rows.length === 0) {
+      this.log.log(`비밀번호 재설정 요청 — 없는 계정(${email}), 메일을 보내지 않는다`);
+      // 계정이 없어도 **보낸 것처럼** 답한다(계정 열거 방지).
+      return { sent: true as const, expiresInMin: CODE_TTL_MIN };
+    }
+    return this.sendEmailCode(email, devMode, 'passwordReset');
+  }
+
+  /** ② 인증번호 확인 → 재설정표 */
+  async resetVerify(emailRaw: string, code: string) {
+    const r = await this.verifyEmailCode(emailRaw, code);
+    return { verified: true as const, resetToken: r.emailToken };
+  }
+
+  /**
+   * ③ 새 비밀번호로 교체. **GoTrue 가 비밀번호의 주인**이므로 우리 DB 는
+   * 손대지 않는다.
+   */
+  async resetConfirm(resetToken: string, password: string) {
+    const email = this.readToken(resetToken);
+    if (!email) {
+      throw new BadRequestException('인증이 만료되었습니다. 처음부터 다시 해 주세요.');
+    }
+    if (String(password || '').length < 6) {
+      throw new BadRequestException('비밀번호는 6자 이상이어야 합니다.');
+    }
+    if (!this.goTrueUrl) {
+      // 고칠 수 없는 곳을 고치라고 안내하지 않는다 — 서버 설정 문제다.
+      this.log.error('GOTRUE_URL 이 없어 비밀번호를 바꿀 수 없다.');
+      throw new BadRequestException(
+        '비밀번호 재설정이 아직 설정되지 않았습니다. 관리자에게 문의해 주세요.',
+      );
+    }
+
+    const { rows } = await this.db.query<{ id: string }>(
+      `SELECT id::text FROM auth.users WHERE lower(email) = lower($1)`, [email],
+    );
+    if (rows.length === 0) throw new BadRequestException('계정을 찾을 수 없습니다.');
+
+    // ★ **표를 먼저 회수한다 — 한 번만 쓰이게.**
+    // 재설정표는 우리 서명만으로 검증되므로(DB 를 보지 않는다) 그대로 두면
+    // 30분 동안 **몇 번이든 다시 쓸 수 있다**. 인증번호 줄을 지우는 것으로
+    // "이 표는 이미 썼다"를 남긴다.
+    //
+    // GoTrue 호출 **전에** 지운다: 나중에 지우면 두 요청이 동시에 들어올 때
+    // 둘 다 통과한다. 호출이 실패하면 사용자는 처음부터 다시 해야 하는데,
+    // 그게 "몰래 두 번 바뀌는 것"보다 낫다.
+    const claim = await this.db.query(
+      `DELETE FROM public.email_verifications WHERE email = $1`, [email],
+    );
+    if ((claim.rowCount ?? 0) === 0) {
+      throw new BadRequestException('이미 사용한 인증입니다. 처음부터 다시 해 주세요.');
+    }
+
+    const token = jwtSign(
+      { role: 'service_role', aud: 'authenticated', sub: rows[0].id },
+      this.tokenKey, { algorithm: 'HS256', expiresIn: '2m' },
+    );
+    let res: Response;
+    try {
+      res = await fetch(`${this.goTrueUrl}/admin/users/${rows[0].id}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`, apikey: token,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (err) {
+      this.log.error(`GoTrue 호출 실패: ${String((err as Error).message)}`);
+      throw new BadRequestException('비밀번호를 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      this.log.error(`GoTrue 비밀번호 변경 실패 (HTTP ${res.status}) ${body.slice(0, 200)}`);
+      throw new BadRequestException('비밀번호를 바꾸지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+
+    this.log.log(`비밀번호 재설정 완료: ${email}`);
+    return { changed: true as const, email };
+  }
+
   /**
    * 로그인 계정 삭제 — GoTrue 와 앱 DB **양쪽**을 지운다.
    *

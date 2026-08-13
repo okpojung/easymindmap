@@ -27,10 +27,11 @@ import type { AppEnv } from '../config/env.validation';
  * 새 쓰임새가 생기면 여기에 한 줄 더한다(문구가 코드 곳곳에 흩어지지
  * 않게 한 곳에 모아 둔다).
  */
-export type CodePurpose = 'signup' | 'adminLogin';
+export type CodePurpose = 'signup' | 'adminLogin' | 'passwordReset';
 const CODE_PURPOSE: Record<CodePurpose, string> = {
   signup: '가입 인증번호',
   adminLogin: 'Admin 로그인 인증번호',
+  passwordReset: '비밀번호 재설정 인증번호',
 };
 
 @Injectable()

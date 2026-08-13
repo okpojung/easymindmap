@@ -55,3 +55,33 @@ export class DeleteAccountDto {
   @MaxLength(30)
   confirm!: string;
 }
+
+/** 비밀번호 재설정 ① — 이메일만 받는다 (계정 유무는 알려 주지 않는다) */
+export class ResetStartDto {
+  @IsEmail({}, { message: '올바른 이메일 주소를 입력해 주세요.' })
+  @MaxLength(255)
+  email!: string;
+}
+
+/** 비밀번호 재설정 ② — 인증번호 확인 */
+export class ResetVerifyDto {
+  @IsEmail({}, { message: '올바른 이메일 주소를 입력해 주세요.' })
+  @MaxLength(255)
+  email!: string;
+
+  @IsString()
+  @Length(4, 10)
+  code!: string;
+}
+
+/** 비밀번호 재설정 ③ — 재설정표 + 새 비밀번호 */
+export class ResetConfirmDto {
+  @IsString()
+  @MaxLength(200)
+  resetToken!: string;
+
+  @IsString()
+  @MinLength(6, { message: '비밀번호는 6자 이상이어야 합니다.' })
+  @MaxLength(100)
+  password!: string;
+}

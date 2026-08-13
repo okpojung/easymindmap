@@ -267,6 +267,21 @@ export const cloudApi = {
     fullName: string; phoneCountry?: string; phoneNumber?: string; emailToken?: string;
   }) => req<AccountProfile>('PUT', '/account/profile', p),
 
+  // ── 비밀번호 재설정 (2026-08-13) ───────────────────────────
+  // 로그인 전이라 **셋 다 토큰을 붙이지 않는다**(anon).
+  /** ① 인증번호 발송. **계정이 없어도 같은 모양으로 답한다**(계정 열거 방지) */
+  resetStart: (email: string) =>
+    req<{ sent: boolean; expiresInMin: number; devCode?: string; message?: string }>(
+      'POST', '/account/password-reset/start', { email }, true),
+  /** ② 인증번호 확인 → 재설정표(30분) */
+  resetVerify: (email: string, code: string) =>
+    req<{ verified: boolean; resetToken: string }>(
+      'POST', '/account/password-reset/verify', { email, code }, true),
+  /** ③ 새 비밀번호로 교체 — 서버가 GoTrue 에서 바꾼다 */
+  resetConfirm: (resetToken: string, password: string) =>
+    req<{ changed: true; email: string }>(
+      'POST', '/account/password-reset/confirm', { resetToken, password }, true),
+
   // ── 회원탈퇴 (2026-08-11) ──────────────────────────────────
   /** 무엇이 사라지는지 — 확인 화면에 숫자로 보여 준다 */
   deletePreview: () =>

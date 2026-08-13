@@ -13,6 +13,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { LoginForm } from './LoginForm';
 import { SignupForm } from './SignupForm';
+import { ResetPasswordForm } from './ResetPasswordForm';
 
 // 소개 문구는 docs/01-product/product-highlights.md 의 "한 줄 소개"·
 // "5가지 약속"에서 가져온다 (문서와 화면이 어긋나지 않도록).
@@ -33,7 +34,7 @@ const POINTS: { icon: string; title: string; desc: string }[] = [
 export function WelcomeScreen({ t }: { t: ThemeTokens }) {
   // 로그인 ↔ 회원가입 (2026-08-09). flash = 가입을 마친 뒤 로그인 화면에
   // 남기는 안내 (가입 확인 메일이 필요한 서버에서 특히 중요하다).
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [flash, setFlash] = useState<string | null>(null);
   return (
     <div
@@ -114,6 +115,12 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
               onCancel={() => setMode('login')}
               onDone={(m) => { setMode('login'); setFlash(m); }}
             />
+          ) : mode === 'reset' ? (
+            <ResetPasswordForm
+              t={t}
+              onCancel={() => setMode('login')}
+              onDone={(m) => { setMode('login'); setFlash(m); }}
+            />
           ) : (
             <>
               <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>시작하기</div>
@@ -128,7 +135,11 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
                   color: t.primary, fontSize: 12.5, lineHeight: 1.5,
                 }}>{flash}</div>
               )}
-              <LoginForm t={t} onSignup={() => { setFlash(null); setMode('signup'); }} />
+              <LoginForm
+                t={t}
+                onSignup={() => { setFlash(null); setMode('signup'); }}
+                onForgot={() => { setFlash(null); setMode('reset'); }}
+              />
             </>
           )}
 

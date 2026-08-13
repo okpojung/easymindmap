@@ -33,7 +33,7 @@ export const SOCIAL_PROVIDERS: SocialProvider[] = [
 ];
 
 export function LoginForm({
-  t, onDone, onSignup, compact = false,
+  t, onDone, onSignup, onForgot, compact = false,
 }: {
   t: ThemeTokens;
   /** 로그인/가입이 끝났을 때 (안내 문구 전달) */
@@ -45,6 +45,8 @@ export function LoginForm({
    * 넘길 곳이 없는 좁은 형태(메뉴 팝업)에서는 버튼을 감춘다.
    */
   onSignup?: () => void;
+  /** [비밀번호를 잊으셨나요?] — 재설정 화면으로 (2026-08-13) */
+  onForgot?: () => void;
   /** 메뉴 팝업 안에 넣는 좁은 형태 */
   compact?: boolean;
 }) {
@@ -163,6 +165,20 @@ export function LoginForm({
           >가입</button>
         )}
       </div>
+
+      {/* 비밀번호 재설정 통로 — **로그인 버튼 바로 아래**에 둔다.
+          비밀번호가 틀려 막힌 사람이 다음으로 찾는 자리다. */}
+      {onForgot && (
+        <button
+          data-testid="login-forgot" type="button" onClick={onForgot}
+          style={{
+            width: '100%', height: compact ? 26 : 30, marginTop: 8,
+            border: 'none', background: 'transparent', color: t.textMuted,
+            fontSize: compact ? 11 : 12, cursor: 'pointer',
+            textDecoration: 'underline', textUnderlineOffset: 3,
+          }}
+        >비밀번호를 잊으셨나요?</button>
+      )}
 
       {/* 준비 중인 로그인 방식 — 자리를 미리 보여 준다 (넓은 형태에서만) */}
       {!compact && (

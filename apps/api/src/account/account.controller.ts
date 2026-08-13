@@ -6,7 +6,8 @@ import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { AccountService } from './account.service';
 import {
-  DeleteAccountDto, SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
+  DeleteAccountDto, ResetConfirmDto, ResetStartDto, ResetVerifyDto,
+  SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
 } from './dto/account.dto';
 import type { AppEnv } from '../config/env.validation';
 
@@ -47,6 +48,29 @@ export class AccountController {
   @UseGuards(AuthGuard)
   saveProfile(@CurrentUser() user: AuthUser, @Body() dto: SaveProfileDto) {
     return this.account.saveProfile(user.id, user.email ?? '', dto);
+  }
+
+  // ── 비밀번호 재설정 (2026-08-13) ─────────────────────────────
+  // 로그인하지 못하는 사람이 쓰는 길이라 **셋 다 무인증**이다.
+  // 대신 인증번호 규칙(재발송 간격·시간당 횟수·시도 횟수)이 막는다.
+
+  @Post('password-reset/start')
+  @HttpCode(200)
+  resetStart(@Body() dto: ResetStartDto) {
+    const devMode = this.config.get('AUTH_MODE', { infer: true }) === 'dev';
+    return this.account.resetStart(dto.email, devMode);
+  }
+
+  @Post('password-reset/verify')
+  @HttpCode(200)
+  resetVerify(@Body() dto: ResetVerifyDto) {
+    return this.account.resetVerify(dto.email, dto.code);
+  }
+
+  @Post('password-reset/confirm')
+  @HttpCode(200)
+  resetConfirm(@Body() dto: ResetConfirmDto) {
+    return this.account.resetConfirm(dto.resetToken, dto.password);
   }
 
   /** 탈퇴 확인 화면 — 무엇이 사라지는지 숫자로 보여 주기 위한 조회 */

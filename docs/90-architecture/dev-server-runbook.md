@@ -521,6 +521,41 @@ SQL
 이거나, 누군가 **`quota_bytes` 를 직접 바꾼 특별 계약**이다. 후자라면
 정상이므로 그대로 둔다.
 
+#### ⚠️ 터미널이 여러 줄 붙여넣기를 못 받으면 — **한 줄 명령**으로
+
+위 블록들은 `bash <<'SCRIPT'` 로 **여러 줄을 한 덩어리**로 넘긴다.
+터미널(특히 웹 터미널)이 붙여넣기를 줄 단위로 흘려보내면 **섞여서
+아무것도 실행되지 않는다** (2026-08-11 실제로 겪었다).
+
+**증상**: 출력이 하나도 없고, 화면의 글자가 서로 겹쳐 찍힌다
+(`EMAIL='id@example.com'free | basic | pro | team` 처럼). 이어서 실행한
+`docker exec … "$DB"` 가 `invalid container name or ID: value is empty`
+로 죽는다 — `$DB` 는 그 블록 **안에서만** 살아 있기 때문이다.
+
+그럴 때는 **heredoc 없이 한 줄씩** 실행한다. 컨테이너 이름과 앱 DB 는
+위 블록이 한 번이라도 성공했을 때 찍어 준 값을 그대로 쓴다(dev 서버는
+`roxca4xvrujyw8u1jsvxk0ey` · `postgres` — DB 리소스라 재배포로 바뀌지
+않는다).
+
+```bash
+# ① 지금 상태 — 이메일 철자를 여기서 확인한다
+docker exec -i <DB컨테이너> psql -U postgres -d postgres -c "SELECT a.email AS 이메일, u.plan AS 요금제, pg_size_pretty(u.quota_bytes) AS 한도 FROM public.users u JOIN auth.users a ON a.id=u.id ORDER BY a.email;"
+```
+
+```bash
+# ② 변경 — UPDATE 1 이면 성공, UPDATE 0 이면 그 이메일 계정이 없다
+docker exec -i <DB컨테이너> psql -U postgres -d postgres -c "UPDATE public.users u SET plan='basic', updated_at=NOW() FROM auth.users a WHERE a.id=u.id AND lower(a.email)=lower('id@example.com');"
+```
+
+```bash
+# ③ 확인 — 한도와 사용량까지
+docker exec -i <DB컨테이너> psql -U postgres -d postgres -c "SELECT a.email AS 이메일, u.plan AS 요금제, pg_size_pretty(u.quota_bytes) AS 한도, pg_size_pretty(COALESCE((SELECT SUM(pg_column_size(d.doc)) FROM public.map_documents d JOIN public.maps m ON m.id=d.map_id WHERE m.owner_id=u.id),0) + COALESCE((SELECT SUM(pg_column_size(v.doc)) FROM public.map_document_versions v JOIN public.maps m ON m.id=v.map_id WHERE m.owner_id=u.id),0) + COALESCE((SELECT SUM(t.size_bytes) FROM public.attachments t WHERE t.owner_id=u.id),0)) AS 사용량 FROM public.users u JOIN auth.users a ON a.id=u.id WHERE lower(a.email)=lower('id@example.com');"
+```
+
+> **한 줄 명령은 안전망이 없다** — 블록판이 해 주던 "계정을 먼저 세고
+> 없으면 목록을 보여 주는" 일을 사람이 대신해야 한다. 그래서 **①을
+> 먼저 실행해 철자를 확인**하고, ②의 `UPDATE 0` 을 실패 신호로 읽는다.
+
 #### 되돌리기
 
 같은 블록에서 `PLAN='free'` 로 바꿔 다시 실행한다. 한도도 함께 10MB 로

@@ -54,6 +54,19 @@ const isAdmin = window.location.pathname.replace(/\/+$/, '') === '/admin';
   (`account.service.ts`). 재발송 60초·시간당 5회·시도 5회 제한이 이미
   붙어 있고, 두 벌로 나누면 규칙이 갈린다.
 
+### 메일 문구는 갈라 놓는다 (2026-08-13 사용자 지적)
+
+규칙은 공유하되 **받는 사람이 읽는 문구는 다르다.** "가입 인증번호"라고
+적힌 메일이 관리자 로그인에도 오면 **무엇 때문에 온 메일인지 알 수 없다.**
+
+| | 제목 | 본문 첫 줄 |
+|---|---|---|
+| 가입 | `[EasyMindMap] 가입 인증번호 NNNNNN` | `EasyMindMap 가입 인증번호입니다.` |
+| **관리자 로그인** | `[EasyMindMap] Admin 로그인 인증번호 NNNNNN` | `EasyMindMap Admin 로그인 인증번호입니다.` |
+
+문구는 `mail.service.ts` 의 **`CODE_PURPOSE` 한 곳**에 모아 둔다 —
+새 쓰임새(비밀번호 재설정 등)가 생기면 여기에 한 줄만 더한다.
+
 ### 관리자 표
 
 형식은 계정 인증표와 같다 — `<이메일 base64url>.<만료>.<HMAC>`.

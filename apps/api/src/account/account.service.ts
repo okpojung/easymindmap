@@ -18,7 +18,7 @@ import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 
 // ⚠️ CJS 전용 패키지만 쓸 것 — auth.guard.ts 와 같은 이유(ERR_REQUIRE_ESM)
 import { sign as jwtSign } from 'jsonwebtoken';
 import { DatabaseService } from '../database/database.service';
-import { MailService } from '../mail/mail.service';
+import { MailService, type CodePurpose } from '../mail/mail.service';
 import { StorageService } from '../storage/storage.service';
 import {
   hasDeletedAccountsTable, resetDeletedAccountsCache,
@@ -92,7 +92,7 @@ export class AccountService {
    * devCode 는 AUTH_MODE=dev + 메일 미설정일 때만 채워진다 — 메일 없이도
    * 가입 흐름 전체를 시험할 수 있게 (운영에서는 절대 나가지 않는다).
    */
-  async sendEmailCode(emailRaw: string, devMode: boolean) {
+  async sendEmailCode(emailRaw: string, devMode: boolean, purpose: CodePurpose = 'signup') {
     const email = this.norm(emailRaw);
 
     // 재발송 제한 — 남의 메일함을 두드리는 데 쓰이지 않게
@@ -139,7 +139,7 @@ export class AccountService {
     );
 
     if (this.mail.isConfigured()) {
-      await this.mail.sendSignupCode(email, code, CODE_TTL_MIN);
+      await this.mail.sendCode(email, code, CODE_TTL_MIN, purpose);
       return { sent: true as const, expiresInMin: CODE_TTL_MIN };
     }
 

@@ -74,7 +74,9 @@ export class AdminService {
       // 관리자 명단은 알려 주지 않는다 — 같은 문구로 끝낸다.
       throw new ForbiddenException('관리자 계정이 아닙니다.');
     }
-    const r = await this.account.sendEmailCode(email as string, devMode);
+    // 문구를 갈라 놓는다 — '가입 인증번호'라고 적힌 메일이 관리자
+    // 로그인에도 오면 무엇 때문에 온 메일인지 알 수 없다.
+    const r = await this.account.sendEmailCode(email as string, devMode, 'adminLogin');
     return { ...r, step: 'code' as const, email };
   }
 

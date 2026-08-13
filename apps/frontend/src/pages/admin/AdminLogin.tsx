@@ -23,6 +23,7 @@ export function AdminLogin({ t, onDone }: { t: ThemeTokens; onDone: (email: stri
   const [devCode, setDevCode] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const fail = (e: unknown, fallback: string) =>
@@ -58,8 +59,16 @@ export function AdminLogin({ t, onDone }: { t: ThemeTokens; onDone: (email: stri
   const input = {
     width: '100%', boxSizing: 'border-box' as const, height: 38, padding: '0 10px',
     borderRadius: 7, border: `1px solid ${t.border}`, background: t.surfaceAlt,
-    color: t.text, fontSize: 13.5, marginBottom: 10,
+    color: t.text, fontSize: 13.5,
   };
+  // **라벨을 붙인다** (2026-08-13 사용자 지적: "아이디 밑의 란은 무엇인가?").
+  // placeholder 만 두면 브라우저 자동완성이 채우는 순간 사라져, 그 칸이
+  // 무엇인지 알 방법이 없어진다. 가입 화면과 같은 규칙으로 맞춘다.
+  const label = {
+    fontSize: 11.5, fontWeight: 700, color: t.textMuted,
+    margin: '0 0 5px', display: 'block' as const,
+  };
+  const field = { marginBottom: 12 };
 
   return (
     <div style={{
@@ -81,17 +90,39 @@ export function AdminLogin({ t, onDone }: { t: ThemeTokens; onDone: (email: stri
 
         {step === 'password' ? (
           <>
-            <input
-              data-testid="admin-email" style={input} type="email" autoComplete="username"
-              placeholder="관리자 이메일" value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <input
-              data-testid="admin-password" style={input} type="password" autoComplete="current-password"
-              placeholder="비밀번호" value={pw}
-              onChange={(e) => setPw(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void doPassword(); }}
-            />
+            <div style={field}>
+              <label style={label} htmlFor="admin-email">아이디 (이메일)</label>
+              <input
+                id="admin-email" data-testid="admin-email" style={input}
+                type="email" autoComplete="username"
+                placeholder="name@example.com" value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div style={field}>
+              <label style={label} htmlFor="admin-password">비밀번호</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="admin-password" data-testid="admin-password"
+                  style={{ ...input, paddingRight: 36 }}
+                  type={showPw ? 'text' : 'password'} autoComplete="current-password"
+                  placeholder="비밀번호" value={pw}
+                  onChange={(e) => setPw(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void doPassword(); }}
+                />
+                {/* 자동완성이 채운 값이 맞는지 눈으로 확인할 길을 둔다 */}
+                <button
+                  data-testid="admin-pw-toggle" type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  title={showPw ? '숨기기' : '보기'}
+                  style={{
+                    position: 'absolute', right: 6, top: 6, width: 26, height: 26,
+                    borderRadius: 6, border: 'none', background: 'transparent',
+                    color: t.textSubtle, cursor: 'pointer', fontSize: 13,
+                  }}
+                >{showPw ? '🙈' : '👁'}</button>
+              </div>
+            </div>
             <button
               data-testid="admin-next" disabled={busy || !email.trim() || !pw}
               onClick={() => void doPassword()}
@@ -105,12 +136,16 @@ export function AdminLogin({ t, onDone }: { t: ThemeTokens; onDone: (email: stri
           </>
         ) : (
           <>
-            <input
-              data-testid="admin-code" style={{ ...input, letterSpacing: 4, fontSize: 16 }}
-              placeholder="6자리 숫자" inputMode="numeric" autoFocus value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void doCode(); }}
-            />
+            <div style={field}>
+              <label style={label} htmlFor="admin-code">인증번호</label>
+              <input
+                id="admin-code" data-testid="admin-code"
+                style={{ ...input, letterSpacing: 4, fontSize: 16 }}
+                placeholder="6자리 숫자" inputMode="numeric" autoFocus value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void doCode(); }}
+              />
+            </div>
             {devCode && (
               <div data-testid="admin-dev-code" style={{
                 fontSize: 12, color: t.warning, marginBottom: 10,

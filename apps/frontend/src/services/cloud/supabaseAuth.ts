@@ -39,11 +39,13 @@ interface GoTrueTokenResponse {
   user?: { id?: string; email?: string };
 }
 
-async function goTrue<T>(path: string, body: unknown, bearer?: string): Promise<T> {
+async function goTrue<T>(
+  path: string, body: unknown, bearer?: string, method = 'POST',
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${SUPABASE_URL}${AUTH_PREFIX}${path}`, {
-      method: 'POST',
+      method,
       headers: {
         'Content-Type': 'application/json',
         apikey: ANON_KEY,
@@ -100,6 +102,19 @@ export const supabaseAuth = {
   },
 
   /** 서버 측 세션 무효화 — 실패해도 로컬 로그아웃은 진행한다 */
+  /**
+   * 비밀번호 변경 (2026-08-13). **지금 로그인한 사람의 것만** 바꾼다 —
+   * GoTrue 가 액세스 토큰의 주인을 보고 처리하므로, 남의 비밀번호를
+   * 이 길로 바꿀 수는 없다.
+   *
+   * 옛 비밀번호를 함께 묻지 않는 이유: GoTrue 의 `PUT /user` 가 받지
+   * 않는다. 대신 **관리자 콘솔은 이미 2단계 인증을 지난 상태**라
+   * 세션을 훔친 사람이 여기까지 오기 어렵다.
+   */
+  async updatePassword(accessToken: string, password: string): Promise<void> {
+    await goTrue<void>('/user', { password }, accessToken, 'PUT');
+  },
+
   async signOut(accessToken: string): Promise<void> {
     try {
       await goTrue<void>('/logout', {}, accessToken);

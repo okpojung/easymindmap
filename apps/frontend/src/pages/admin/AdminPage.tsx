@@ -16,8 +16,9 @@ import { adminApi, adminToken } from '@/services/cloud/adminApi';
 import { AdminLogin } from './AdminLogin';
 import { MembersPanel } from './MembersPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
 
-type Tab = 'members' | 'billing' | 'settings';
+type Tab = 'members' | 'billing' | 'settings' | 'password';
 
 const TABS: { id: Tab; label: string; soon?: string }[] = [
   { id: 'members', label: '회원관리' },
@@ -28,6 +29,7 @@ const TABS: { id: Tab; label: string; soon?: string }[] = [
       + '회원관리에서 직접 바꿉니다 — 결제 기록이 없어 보여 줄 데이터가 없습니다.',
   },
   { id: 'settings', label: '설정관리' },
+  { id: 'password', label: '비밀번호 변경' },
 ];
 
 export function AdminPage() {
@@ -105,6 +107,16 @@ export function AdminPage() {
       <main style={{ padding: 18, maxWidth: 1280, margin: '0 auto' }}>
         {tab === 'members' && <MembersPanel t={t} />}
         {tab === 'settings' && <SettingsPanel t={t} />}
+        {tab === 'password' && (
+          <ChangePasswordForm
+            t={t} email={email}
+            note={<>
+              관리자 콘솔에는 <b>별도 비밀번호가 없습니다</b> — 이 계정의 앱
+              비밀번호가 곧 관리자 1단계 비밀번호입니다. 바꾸면 <b>앱 로그인도
+              새 비밀번호</b>로 바뀝니다.
+            </>}
+          />
+        )}
         {tab === 'billing' && (
           <div data-testid="admin-billing" style={{
             padding: '16px 18px', borderRadius: 10, lineHeight: 1.8, fontSize: 13,

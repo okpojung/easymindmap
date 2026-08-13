@@ -565,6 +565,54 @@ docker exec -i <DB컨테이너> psql -U postgres -d postgres -c "SELECT a.email 
 > `quota_bytes` 를 직접 `UPDATE` 한다(트리거는 `plan` 이 바뀔 때만 돈다).
 > 단 그 계정의 `plan` 을 나중에 다시 바꾸면 덮어써진다.
 
+### 1.5-0-D. 비밀번호를 잊었을 때 — GoTrue 로 직접 바꾼다 (2026-08-13)
+
+화면에는 **비밀번호 재설정 메일이 아직 없다.** 관리자든 일반 사용자든
+비밀번호를 잊으면 서버에서 바꿔 줘야 한다.
+
+**관리자 콘솔에 초기 비밀번호는 없다** — 1단계 로그인은 그 사람의 앱
+계정(GoTrue)으로 하므로, 관리자 비밀번호 = 그 계정의 앱 비밀번호다.
+
+서버 SSH 에서 **한 줄씩**:
+
+```bash
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1); echo "$API"
+```
+
+```bash
+DB=$(docker ps --format '{{.Names}}|{{.Image}}' | grep -iE 'postgres|supabase-db' | head -1 | cut -d'|' -f1)
+UID=$(docker exec -i "$DB" psql -U postgres -d postgres -tAc "SELECT id FROM auth.users WHERE lower(email)=lower('ok@baro.pro')"); echo "$UID"
+```
+
+> 앱 DB 의 `auth.users.id` 는 **GoTrue 의 사용자 id 와 같은 값**이다
+> (AuthGuard 가 토큰의 `sub` 로 만든다). 그래서 여기서 찾으면 된다.
+
+```bash
+# 관리자 토큰을 **직접 서명한다** — 서비스 키를 따로 두지 않는다
+# (api 가 이미 GoTrue 의 JWT 비밀키를 갖고 있다)
+TOKEN=$(docker exec -i "$API" node -e "console.log(require('jsonwebtoken').sign({role:'service_role',aud:'authenticated',exp:Math.floor(Date.now()/1000)+300}, process.env.SUPABASE_JWT_SECRET))")
+```
+
+```bash
+# 비밀번호 교체 — 새 비밀번호는 6자 이상
+docker exec -i "$API" node -e "
+fetch(process.env.GOTRUE_URL + '/admin/users/$UID', {
+  method: 'PUT',
+  headers: { Authorization: 'Bearer $TOKEN', apikey: '$TOKEN', 'Content-Type': 'application/json' },
+  body: JSON.stringify({ password: '새비밀번호를여기에' }),
+}).then(async r => console.log(r.status, (await r.text()).slice(0, 200)))
+  .catch(e => console.log('FAIL', e.message))"
+```
+
+**200** 과 함께 사용자 정보가 돌아오면 성공이다. 그 뒤 바꾼 비밀번호로
+로그인해 확인한다.
+
+> ⚠️ `GOTRUE_URL` 이 비어 있으면 실패한다 — auth-session-ui.md §12.5 의
+> 설정을 먼저 확인한다.
+>
+> **바꾼 뒤에는 화면에서 스스로 바꾸게 한다** — 앱 우상단 아바타 →
+> 🔑 비밀번호 변경, 관리자는 콘솔의 **비밀번호 변경** 탭.
+
 ### 1.5-A. Ubuntu 호스트에 NAS NFS 마운트
 
 ```bash

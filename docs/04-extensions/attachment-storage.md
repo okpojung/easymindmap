@@ -437,12 +437,33 @@ SELECT a.email, u.plan, pg_size_pretty(u.quota_bytes) AS 한도, u.created_at
  ORDER BY u.created_at;
 ```
 
+### 8.1-1 특정 계정만 요금제를 올리려면 (2026-08-11)
+
+결제가 붙기 전까지는 **손으로 `plan` 을 바꾼다.** 용량은 트리거가
+따라오므로 `quota_bytes` 는 건드리지 않는다.
+
+```sql
+UPDATE public.users u
+   SET plan = 'basic', updated_at = NOW()
+  FROM auth.users a
+ WHERE a.id = u.id AND lower(a.email) = lower('id@example.com');
+```
+
+> ⚠️ **오타는 조용히 성공한다.** 없는 이메일이면 0행이 바뀌고 오류도
+> 나지 않는다 — 바꿨다고 여기는데 사용자 화면은 그대로다. 그래서
+> **계정을 먼저 세고, 없으면 실제 주소 목록을 보여 주는** 실행 스크립트를
+> 쓴다: `dev-server-runbook.md` **§1.5-0-C** (VM SSH·Coolify Terminal
+> 어디서든 붙여넣기 한 번).
+
+사용자 화면(아바타 메뉴)은 메뉴를 열 때마다 `/v1/attachments/quota` 를
+다시 부르므로 **재로그인도 재배포도 필요 없다.**
+
 ### 8.2 아직 안 한 것 (결제 단계로 넘김)
 
 | 항목 | 지금 | 결제 단계에서 |
 |---|---|---|
 | **가격** | 정하지 않음 | 요금제별 금액·주기 |
-| **요금제 변경 UI** | 아바타 메뉴 💳 구독 상태가 "준비 중" | 실제 변경·결제 |
+| **요금제 변경 UI** | 없음 — **DB 에서 손으로 바꾼다**(§8.1-1). 아바타 메뉴 💳 구독 상태는 "준비 중" | 관리자 화면 + 실제 변경·결제 |
 | **Team 워크스페이스 합산** | **1인당 20GB 로만 적용** | 워크스페이스 전체 합산 + 좌석 수 과금 |
 | 결제 실패 시 강등 | 없음 | 유예 기간 → Free 강등 정책 |
 

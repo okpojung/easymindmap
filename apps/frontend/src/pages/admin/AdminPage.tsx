@@ -116,7 +116,9 @@ export function AdminPage() {
         >로그아웃</button>
       </header>
 
-      <main style={{ padding: 18, maxWidth: 1280, margin: '0 auto' }}>
+      {/* 회원관리 표는 칸이 11개다 — 1280 에 맞추면 넓은 화면에서도 가로
+          스크롤이 남는다(2026-08-14 사용자 지적). 화면이 넓으면 넓게 쓴다. */}
+      <main style={{ padding: 18, maxWidth: 1560, margin: '0 auto' }}>
         {tab === 'members' && <MembersPanel t={t} />}
         {tab === 'settings' && <SettingsPanel t={t} />}
         {tab === 'password' && (

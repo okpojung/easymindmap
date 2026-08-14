@@ -17,6 +17,22 @@ import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import type { AppEnv } from '../config/env.validation';
 
+// ── IP 에 대하여 (2026-08-14 사용자 지적: "IP 값이 없다") ──────────────
+//
+// **GoTrue 가 로그인 IP 를 기록하지 않는다.** 우리 쿼리 문제가 아니다.
+// `auth.audit_log_entries.ip_address` 컬럼은 있지만, supabase/auth
+// v2.194.0 의 로그인·로그아웃 경로가 그 자리에 **빈 문자열을 넣는다**:
+//
+//   internal/api/token.go  models.NewAuditLogEntry(…, models.LoginAction,  "", …)
+//   internal/api/logout.go models.NewAuditLogEntry(…, models.LogoutAction, "", …)
+//
+// payload JSON 에도 ip 키가 없다(actor_id·actor_username·action·log_type뿐).
+// 그래서 **우리 코드로는 채울 방법이 없다** — 화면은 그 사실을 밝힌다.
+// 진짜 접속 IP 가 필요하면 우리가 직접 기록해야 한다(로그인 직후 우리 API 를
+// 부르는 방식). 그건 별도 작업이다.
+//
+// 다른 판의 GoTrue 나 다른 사건은 값을 넣을 수 있으므로 **읽기는 그대로 둔다.**
+
 /**
  * 보여 줄 사건만 고른다. `token_refreshed` 는 앱이 자동으로 일으켜
  * 하루에도 수십 건씩 쌓인다 — 섞으면 **사람이 한 일이 묻힌다.**
@@ -42,6 +58,10 @@ export interface LoginHistory {
   /** false 면 화면이 **왜 비어 있는지** 밝힌다 */
   available: boolean;
   events: LoginEvent[];
+  /** 이 목록이 최대 몇 건까지인가 — 화면이 "더 있다"를 말할 수 있게 (2026-08-14).
+   *  이 값을 주지 않으면 화면은 "최근 N건입니다" 밖에 못 쓰는데,
+   *  N 이 전부인지 잘린 것인지 읽는 사람이 알 수 없다. */
+  limit: number;
   /** 최근 30일 로그인 횟수 */
   logins30d: number;
   /** 전체 로그인 횟수 */
@@ -50,7 +70,7 @@ export interface LoginHistory {
 }
 
 const EMPTY: LoginHistory = {
-  available: false, events: [], logins30d: 0, loginsTotal: 0, lastLoginAt: null,
+  available: false, events: [], limit: 0, logins30d: 0, loginsTotal: 0, lastLoginAt: null,
 };
 
 @Injectable()
@@ -90,6 +110,7 @@ export class AuditLogService implements OnModuleDestroy {
     if (!this.pool) return EMPTY;
     try {
       const actions = Object.keys(SHOWN_ACTIONS);
+      const take = Math.min(Math.max(limit, 1), 200);
       const [list, counts] = await Promise.all([
         this.pool.query<{ created_at: Date; ip_address: string | null; action: string }>(
           `SELECT created_at, ip_address, payload->>'action' AS action
@@ -98,7 +119,7 @@ export class AuditLogService implements OnModuleDestroy {
               AND payload->>'action' = ANY($2)
             ORDER BY created_at DESC
             LIMIT $3`,
-          [userId, actions, Math.min(Math.max(limit, 1), 200)],
+          [userId, actions, take],
         ),
         this.pool.query<{ total: string; d30: string; last_at: Date | null }>(
           `SELECT COUNT(*)::text AS total,
@@ -112,11 +133,14 @@ export class AuditLogService implements OnModuleDestroy {
       const c = counts.rows[0];
       return {
         available: true,
+        limit: take,
         events: list.rows.map((r) => ({
           at: r.created_at.toISOString(),
           action: r.action,
           label: SHOWN_ACTIONS[r.action] ?? r.action,
-          ip: r.ip_address || null,
+          // 비어 있으면 null 로 — 화면이 "빈 값"과 "기록 안 함"을 구분한다.
+          // GoTrue v2.194.0 은 로그인·로그아웃에 **빈 문자열**을 넣는다(아래 주석).
+          ip: (r.ip_address ?? '').trim() || null,
         })),
         logins30d: Number(c?.d30 ?? 0),
         loginsTotal: Number(c?.total ?? 0),

@@ -10,6 +10,7 @@ import { DatabaseService } from '../database/database.service';
 import { AdminGuard, type AdminUser } from './admin.guard';
 import { AdminService, PLANS } from './admin.service';
 import { collectServerSettings } from './admin-settings';
+import { AuditLogService } from '../common/audit-log.service';
 import type { AppEnv } from '../config/env.validation';
 
 class VerifyDto {
@@ -36,6 +37,7 @@ export class AdminController {
     private readonly admin: AdminService,
     private readonly db: DatabaseService,
     private readonly config: ConfigService<AppEnv, true>,
+    private readonly audit: AuditLogService,
   ) {}
 
   // ── 2단계 로그인 ─────────────────────────────────────────────
@@ -84,6 +86,16 @@ export class AdminController {
     @Req() req: Request & { admin?: AdminUser },
   ) {
     return this.admin.setPlan(id, dto.plan, req.admin?.email ?? '?');
+  }
+
+  /**
+   * 한 회원의 **로그인 이력** — 횟수·시각·IP (2026-08-13).
+   * GoTrue 감사 로그를 읽는다. 설정이 없으면 `available:false` 로 온다.
+   */
+  @Get('users/:id/logins')
+  @UseGuards(AdminGuard)
+  userLogins(@Param('id') id: string) {
+    return this.audit.forUser(id, 50);
   }
 
   // ── 설정값 조회 (읽기 전용) ──────────────────────────────────

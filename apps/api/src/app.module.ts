@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AccountModule } from './account/account.module';
 import { AdminModule } from './admin/admin.module';
+import { AuditLogModule } from './common/audit-log.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { RateLimitGuard } from './common/rate-limit/rate-limit.guard';
 import { validateEnv, type AppEnv } from './config/env.validation';
@@ -37,6 +38,7 @@ import { NodesModule } from './nodes/nodes.module';
     HealthModule,
     AccountModule,
     AdminModule,
+    AuditLogModule,
     FoldersModule,
     AttachmentsModule,
     MapsModule,

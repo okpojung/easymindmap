@@ -75,6 +75,7 @@
 | 19b | POST | `/v1/account/email-code` | **무인증.** 가입 이메일 인증번호 발송 `{email}` → `{sent,expiresInMin,devCode?}` — devCode 는 AUTH_MODE=dev + 메일 미설정일 때만 (2026-08-09) |
 | 19c | POST | `/v1/account/email-code/verify` | **무인증.** `{email,code}` → `{verified,emailToken}` (인증표, 유효 30분) |
 | 19d | GET/PUT | `/v1/account/profile` | 회원 프로필 조회·저장 `{fullName,phoneCountry?,phoneNumber?,emailToken?}` → `{fullName,phoneCountry,phoneNumber,plan,emailVerifiedAt,phoneVerifiedAt,complete}` |
+| 19j | GET | `/v1/account/logins` | **내 로그인 기록** — 경로에 id 를 받지 않는다(토큰 주인 것만). 응답은 22h 와 같다 (2026-08-13) |
 | 19g | POST | `/v1/account/password-reset/start` | **무인증.** `{email}` → `{sent,expiresInMin,devCode?}`. **계정이 없어도 같은 모양으로 답하고 메일은 보내지 않는다**(계정 열거 방지) (2026-08-13) |
 | 19h | POST | `/v1/account/password-reset/verify` | **무인증.** `{email,code}` → `{verified,resetToken}` (30분) |
 | 19i | POST | `/v1/account/password-reset/confirm` | **무인증.** `{resetToken,password}` → GoTrue 관리자 API 로 교체. **표는 한 번만 쓰인다** — 호출 전에 인증번호 줄을 지워 회수한다 |
@@ -86,6 +87,7 @@
 | 22d | GET | `/v1/admin/summary` | 요금제별 인원·최근 7/30일 가입 |
 | 22e | GET | `/v1/admin/users?q=` | 회원 목록 — 요금제·사용량·맵/첨부 수·최근 30일 **저장** 횟수·마지막 활동(플랫폼·브라우저·IP) + **마지막 로그인**(GoTrue). 응답에 `loginHistoryAvailable` — false 면 GoTrue 를 못 불러 그 칸만 비었다는 뜻 (2026-08-13) |
 | 22f | PATCH | `/v1/admin/users/:id/plan` | `{plan}` → 요금제 변경. `quota_bytes` 는 DB 트리거가 따라온다 |
+| 22h | GET | `/v1/admin/users/:id/logins` | 그 회원의 **로그인 이력** — `{available,events[],logins30d,loginsTotal,lastLoginAt}`. GoTrue 감사 로그(`GOTRUE_DATABASE_URL`)를 읽는다. 설정이 없으면 `available:false` (2026-08-13) |
 | 22g | GET | `/v1/admin/settings` | 서버가 **지금 들고 있는** 설정값(env·DB). 화면 상수는 프런트가 자기 것을 합친다 |
 | 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 → `{status,db,schema,missingTables?,missingColumns?,time}` |
 | 20b | GET | `/v1/health/ip` | **무인증.** 서버가 이 요청의 IP 를 무엇으로 보는지 → `{ip,ips,xForwardedFor,xRealIp,remoteAddress,trustProxy,userAgent,hint}` — 프록시 단계 진단용(2026-08-09). **자기 요청의 헤더만** 되돌려 준다 |

@@ -72,6 +72,16 @@ export interface AppEnv {
    * 비어 있으면 아무도 못 들어간다(기동 로그에 경고).
    */
   ADMIN_EMAILS: string;
+
+  /**
+   * **GoTrue 의 데이터베이스** — 로그인 이력(감사 로그)을 읽는다
+   * (2026-08-13). dev 서버는 GoTrue 가 별도 DB(`gotrue`)를 쓴다.
+   *   예: `postgres://postgres:<pw>@<host>:5432/gotrue`
+   *
+   * 비우면 **이력 기능만** 꺼진다 — 앱은 죽지 않고 화면이 그 사실을
+   * 밝힌다. **읽기만 한다**(쓰기는 GoTrue 의 몫).
+   */
+  GOTRUE_DATABASE_URL: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -176,5 +186,6 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     SMTP_FROM: String(raw.SMTP_FROM ?? ''),
     GOTRUE_URL: String(raw.GOTRUE_URL ?? ''),
     ADMIN_EMAILS: String(raw.ADMIN_EMAILS ?? ''),
+    GOTRUE_DATABASE_URL: String(raw.GOTRUE_DATABASE_URL ?? ''),
   };
 }

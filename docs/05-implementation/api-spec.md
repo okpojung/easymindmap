@@ -76,7 +76,7 @@
 | 19c | POST | `/v1/account/email-code/verify` | **무인증.** `{email,code}` → `{verified,emailToken}` (인증표, 유효 30분) |
 | 19d | GET/PUT | `/v1/account/profile` | 회원 프로필 조회·저장 `{fullName,phoneCountry?,phoneNumber?,emailToken?}` → `{fullName,phoneCountry,phoneNumber,plan,emailVerifiedAt,phoneVerifiedAt,complete}` |
 | 19j | GET | `/v1/account/logins` | **내 로그인 기록** — 경로에 id 를 받지 않는다(토큰 주인 것만). 응답은 22h 와 같다 (2026-08-13). `events[].ip`·`events[].device` 는 **우리 `login_events` 기록에서 로그인 줄에만** 붙는다 (±60초 · 일대일). 못 맺으면 null — 2026-08-14 이전 로그인이 그렇다. `ipSource` 가 **왜 안 보이는지**를 준다 — `ok` · `no-table`(델타 SQL 미적용) · `no-records`(다시 로그인해야 함) |
-| 19k | POST | `/v1/account/login-event` | **로그인 직후 한 번** — 그때의 접속 IP·기기를 남긴다 (2026-08-14). 본문은 `{platform?, browser?}` 뿐이고 **IP 는 받지 않는다**(서버가 요청에서 직접 본다 — 위조 방지, 본문에 `ip` 를 실으면 400). 60초 안 중복은 `{recorded:false}`. 계정당 최근 200건만 남는다 |
+| 19k | POST | `/v1/account/login-event` | **로그인 직후 한 번** — 그때의 접속 IP·기기를 남긴다 (2026-08-14). 본문은 `{platform?, browser?}` 뿐이고 **IP 는 받지 않는다**(서버가 요청에서 직접 본다 — 위조 방지, 본문에 `ip` 를 실으면 400). 5초 안 중복은 `{recorded:false}` — 같은 요청의 중복만 거른다(60초로 두었더니 앱→관리자 콘솔 연속 로그인의 IP 를 잃었다). 계정당 최근 200건만 남는다 |
 | 19g | POST | `/v1/account/password-reset/start` | **무인증.** `{email}` → `{sent,expiresInMin,devCode?}`. **계정이 없어도 같은 모양으로 답하고 메일은 보내지 않는다**(계정 열거 방지) (2026-08-13) |
 | 19h | POST | `/v1/account/password-reset/verify` | **무인증.** `{email,code}` → `{verified,resetToken}` (30분) |
 | 19i | POST | `/v1/account/password-reset/confirm` | **무인증.** `{resetToken,password}` → GoTrue 관리자 API 로 교체. **표는 한 번만 쓰인다** — 호출 전에 인증번호 줄을 지워 회수한다 |

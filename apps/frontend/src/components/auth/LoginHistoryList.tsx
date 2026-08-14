@@ -81,10 +81,16 @@ export function LoginHistoryList({ t, data, compact = false }: {
     borderBottom: `1px solid ${t.divider}`, whiteSpace: 'nowrap' as const,
   };
 
-  // **IP 칸은 값이 있을 때만 만든다** (2026-08-14 사용자 지적).
-  // GoTrue 가 로그인 IP 를 기록하지 않아 칸이 통째로 '—' 로 찬다.
-  // 줄줄이 '—' 를 보여 주는 것은 "기록이 없다"가 아니라 "고장 났다"로 읽힌다 —
-  // 칸을 없애고 **왜 없는지 한 줄로** 말하는 편이 정직하다.
+  // **접속한 곳 칸은 늘 보여 준다** (2026-08-14 사용자 지적).
+  //
+  // 처음에는 값이 하나도 없으면 칸을 숨겼다 — GoTrue 가 IP 를 아예 남기지
+  // 않던 때라 칸이 **영원히** '—' 로 차 있었고, 그건 "기록이 없다"가 아니라
+  // "고장 났다"로 읽혔기 때문이다.
+  //
+  // 이제는 우리가 직접 기록해 값이 실제로 채워진다. 그러면 숨기는 쪽이
+  // 오히려 나쁘다 — **회원마다 표의 칸 수가 달라져** 같은 화면을 보고도
+  // 다른 것으로 읽힌다(관리자가 두 회원을 나란히 볼 때 특히). 빈 값은
+  // '—' 로 두고, **왜 비었는지는 목록 아래 한 줄**이 말한다.
   const hasIp = data.events.some((e) => e.ip || e.device);
 
   return (
@@ -108,7 +114,7 @@ export function LoginHistoryList({ t, data, compact = false }: {
           <table style={{ width: '100%', borderCollapse: 'collapse', background: t.surface }}>
             <thead><tr>
               <th style={th}>시각</th><th style={th}>사건</th>
-              {hasIp && <th style={th}>접속한 곳</th>}
+              <th style={th}>접속한 곳</th>
             </tr></thead>
             <tbody>
               {data.events.map((e, i) => (
@@ -117,17 +123,15 @@ export function LoginHistoryList({ t, data, compact = false }: {
                   <td style={{ ...td, color: actionColor(e.action, t), fontWeight: 700 }}>
                     {e.label}
                   </td>
-                  {hasIp && (
-                    <td style={{ ...td, color: t.textMuted, verticalAlign: 'top' }}>
-                      {e.ip ?? '—'}
-                      {/* 기기는 아래 줄로 — 옆에 붙이면 좁은 창에서 표가 넘친다 */}
-                      {e.device && (
-                        <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 1 }}>
-                          {e.device}
-                        </div>
-                      )}
-                    </td>
-                  )}
+                  <td style={{ ...td, color: t.textMuted, verticalAlign: 'top' }}>
+                    {e.ip ?? '—'}
+                    {/* 기기는 아래 줄로 — 옆에 붙이면 좁은 창에서 표가 넘친다 */}
+                    {e.device && (
+                      <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 1 }}>
+                        {e.device}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -85,3 +85,17 @@ export class ResetConfirmDto {
   @MaxLength(100)
   password!: string;
 }
+
+/**
+ * 로그인 접속 기록 (2026-08-14).
+ *
+ * **IP 는 받지 않는다** — 서버가 요청에서 직접 본다. 클라이언트가 보낸 IP 는
+ * 위조할 수 있고, 그러면 남의 접속인 척 기록을 심을 수 있다.
+ *
+ * 플랫폼·브라우저는 반대로 클라이언트가 더 정확하다(User-Agent Client
+ * Hints). 없으면 서버가 User-Agent 로 추정한다.
+ */
+export class LoginEventDto {
+  @IsOptional() @IsString() @MaxLength(60) platform?: string;
+  @IsOptional() @IsString() @MaxLength(60) browser?: string;
+}

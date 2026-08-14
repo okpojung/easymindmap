@@ -22,6 +22,7 @@ const REQUIRED_TABLES = [
   'email_verifications', // 가입 이메일 인증번호 (2026-08-09)
   'deleted_accounts', // 회원탈퇴 묘비 (2026-08-11)
   'plan_quotas', // 요금제별 용량 — 관리자 콘솔에서 바꾼다 (2026-08-14)
+  'login_events', // 로그인 접속 IP·기기 — GoTrue 가 남기지 않는다 (2026-08-14)
 ] as const;
 
 /**

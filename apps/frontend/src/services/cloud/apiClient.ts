@@ -270,6 +270,10 @@ export const cloudApi = {
 
   /** **내 로그인 기록** (2026-08-13) — 남의 것은 볼 수 없다(서버가 토큰 주인만 본다) */
   myLogins: () => req<LoginHistory>('GET', '/account/logins'),
+  /** 로그인 직후 한 번 — 서버가 **그때의 IP** 를 남긴다 (2026-08-14).
+   *  IP 는 보내지 않는다: 서버가 요청에서 직접 본다(위조 방지). */
+  recordLogin: async () =>
+    req<{ recorded: boolean }>('POST', '/account/login-event', await getClientInfo()),
 
   // ── 비밀번호 재설정 (2026-08-13) ───────────────────────────
   // 로그인 전이라 **셋 다 토큰을 붙이지 않는다**(anon).

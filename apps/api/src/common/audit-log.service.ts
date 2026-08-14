@@ -16,6 +16,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import type { AppEnv } from '../config/env.validation';
+import { LoginEventsService } from './login-events.service';
 
 // ── IP 에 대하여 (2026-08-14 사용자 지적: "IP 값이 없다") ──────────────
 //
@@ -51,7 +52,11 @@ export interface LoginEvent {
   /** 'login' 같은 원래 값 — 화면이 모르는 종류도 그대로 보여 줄 수 있게 */
   action: string;
   label: string;
+  /** 접속 IP. GoTrue 는 남기지 않으므로 **우리 기록에서 붙인다**(로그인 줄만).
+   *  못 붙였으면 null — 이 기능 이전의 로그인이 그렇다. 지어내지 않는다. */
   ip: string | null;
+  /** 'Windows 11 · Chrome 136' — 같은 출처 */
+  device?: string | null;
 }
 
 export interface LoginHistory {
@@ -78,7 +83,10 @@ export class AuditLogService implements OnModuleDestroy {
   private readonly log = new Logger('AuditLogService');
   private readonly pool: Pool | null;
 
-  constructor(config: ConfigService<AppEnv, true>) {
+  constructor(
+    config: ConfigService<AppEnv, true>,
+    private readonly ours: LoginEventsService,
+  ) {
     const url = String(config.get('GOTRUE_DATABASE_URL', { infer: true }) || '').trim();
     if (!url) {
       this.pool = null;
@@ -131,16 +139,28 @@ export class AuditLogService implements OnModuleDestroy {
         ),
       ]);
       const c = counts.rows[0];
+
+      // **로그인 줄에만** 우리 접속 기록을 붙인다. 로그아웃·가입은 우리가
+      // 남기지 않으므로 붙일 것이 없다 — 없는 줄에 IP 를 채우면 거짓이 된다.
+      const loginIdx = list.rows
+        .map((r, i) => (r.action === 'login' ? i : -1))
+        .filter((i) => i >= 0);
+      const details = await this.ours.detailsFor(
+        userId, loginIdx.map((i) => list.rows[i].created_at),
+      );
+      const byIdx = new Map(loginIdx.map((i, k) => [i, details[k]]));
+
       return {
         available: true,
         limit: take,
-        events: list.rows.map((r) => ({
+        events: list.rows.map((r, i) => ({
           at: r.created_at.toISOString(),
           action: r.action,
           label: SHOWN_ACTIONS[r.action] ?? r.action,
-          // 비어 있으면 null 로 — 화면이 "빈 값"과 "기록 안 함"을 구분한다.
-          // GoTrue v2.194.0 은 로그인·로그아웃에 **빈 문자열**을 넣는다(아래 주석).
-          ip: (r.ip_address ?? '').trim() || null,
+          // GoTrue 자체 값이 있으면 그것을 쓰고(다른 판에서는 채울 수 있다),
+          // 없으면 우리 기록에서 붙인 값을 쓴다.
+          ip: (r.ip_address ?? '').trim() || byIdx.get(i)?.ip || null,
+          device: byIdx.get(i)?.device ?? null,
         })),
         logins30d: Number(c?.d30 ?? 0),
         loginsTotal: Number(c?.total ?? 0),

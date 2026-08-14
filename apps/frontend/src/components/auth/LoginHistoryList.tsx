@@ -16,6 +16,8 @@ export interface LoginEvent {
   action: string;
   label: string;
   ip: string | null;
+  /** 'Windows 11 · Chrome 136' — 로그인 줄에만 붙는다 (2026-08-14) */
+  device?: string | null;
 }
 export interface LoginHistory {
   available: boolean;
@@ -81,7 +83,7 @@ export function LoginHistoryList({ t, data, compact = false }: {
   // GoTrue 가 로그인 IP 를 기록하지 않아 칸이 통째로 '—' 로 찬다.
   // 줄줄이 '—' 를 보여 주는 것은 "기록이 없다"가 아니라 "고장 났다"로 읽힌다 —
   // 칸을 없애고 **왜 없는지 한 줄로** 말하는 편이 정직하다.
-  const hasIp = data.events.some((e) => e.ip);
+  const hasIp = data.events.some((e) => e.ip || e.device);
 
   return (
     <div data-testid="login-history">
@@ -104,7 +106,7 @@ export function LoginHistoryList({ t, data, compact = false }: {
           <table style={{ width: '100%', borderCollapse: 'collapse', background: t.surface }}>
             <thead><tr>
               <th style={th}>시각</th><th style={th}>사건</th>
-              {hasIp && <th style={th}>IP</th>}
+              {hasIp && <th style={th}>접속한 곳</th>}
             </tr></thead>
             <tbody>
               {data.events.map((e, i) => (
@@ -113,7 +115,17 @@ export function LoginHistoryList({ t, data, compact = false }: {
                   <td style={{ ...td, color: actionColor(e.action, t), fontWeight: 700 }}>
                     {e.label}
                   </td>
-                  {hasIp && <td style={{ ...td, color: t.textMuted }}>{e.ip ?? '—'}</td>}
+                  {hasIp && (
+                    <td style={{ ...td, color: t.textMuted, verticalAlign: 'top' }}>
+                      {e.ip ?? '—'}
+                      {/* 기기는 아래 줄로 — 옆에 붙이면 좁은 창에서 표가 넘친다 */}
+                      {e.device && (
+                        <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 1 }}>
+                          {e.device}
+                        </div>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -132,13 +144,21 @@ export function LoginHistoryList({ t, data, compact = false }: {
           : <>기록 <b>전체 {data.events.length}건</b>입니다.</>}
         {' '}자동 토큰 갱신은 하루에도 수십 건씩 쌓여 <b>목록에서 뺐습니다</b> —
         사람이 한 일이 묻히지 않도록.
-        {!hasIp && (
+        {/* 접속 정보는 **2026-08-14 이후 로그인부터** 붙는다. 인증 서버(GoTrue)가
+            IP 를 남기지 않아 그때부터 우리가 직접 기록하기 시작했다. 그 전 로그인은
+            비워 둔다 — 없는 접속을 지어내지 않는다. */}
+        {!hasIp ? (
           <div data-testid="login-history-noip" style={{ marginTop: 4 }}>
-            <b>IP 는 보여 드릴 수 없습니다.</b> 로그인을 기록하는 인증 서버(GoTrue)가
-            접속 IP 를 남기지 않습니다(빈 값으로 저장합니다) — 우리 쪽에서 채울 수
-            있는 값이 아닙니다.
+            <b>접속한 곳(IP)은 2026년 8월 14일 이후 로그인부터 보입니다.</b>
+            {' '}인증 서버(GoTrue)가 접속 IP 를 남기지 않아, 그때부터 우리 서버가
+            직접 기록하기 시작했습니다. 그 전 기록은 남아 있지 않습니다.
           </div>
-        )}
+        ) : data.events.some((e) => e.action === 'login' && !e.ip) ? (
+          <div data-testid="login-history-partial-ip" style={{ marginTop: 4 }}>
+            접속한 곳이 <b>비어 있는 줄</b>은 우리 서버가 기록을 시작하기(2026-08-14)
+            전의 로그인입니다.
+          </div>
+        ) : null}
       </div>
     </div>
   );

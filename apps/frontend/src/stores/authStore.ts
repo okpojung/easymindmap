@@ -33,6 +33,21 @@ interface AuthState {
   exitGuest: () => void;
 }
 
+/**
+ * 로그인했다고 서버에 한 번 알린다 — **접속 IP 를 남기려고** (2026-08-14).
+ *
+ * 왜 여기인가: 일반 로그인·관리자 로그인·가입이 전부 이 스토어를 지난다.
+ * 화면마다 부르면 한 곳을 빠뜨린다.
+ *
+ * **실패해도 로그인은 성공이다.** 기록은 곁들이지 로그인의 조건이 아니다 —
+ * 그래서 await 하지 않고, 오류도 삼킨다(서버가 낡아 404 여도 마찬가지).
+ */
+function noteLogin(): void {
+  void import('@/services/cloud/apiClient')
+    .then((m) => m.cloudApi.recordLogin())
+    .catch(() => { /* 기록 실패가 로그인을 막지 않는다 */ });
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -43,6 +58,7 @@ export const useAuthStore = create<AuthState>()(
         const s = await supabaseAuth.signIn(email, password);
         set({ session: s, guest: false });
         pauseLocalDrafts(false); // 주인이 생겼다 — 초안 보관 재개
+        noteLogin();
       },
 
       signUp: async (email, password) => {
@@ -50,6 +66,7 @@ export const useAuthStore = create<AuthState>()(
         if (s) {
           set({ session: s, guest: false });
           pauseLocalDrafts(false);
+          noteLogin();
           return true;
         }
         return false;

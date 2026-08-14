@@ -877,3 +877,41 @@ CREATE TABLE IF NOT EXISTS public.deleted_accounts (
 COMMENT ON TABLE public.deleted_accounts IS
     '탈퇴한 계정 id — 만료 전 토큰으로 계정이 되살아나는 것을 막는다. '
     '개인정보는 담지 않는다(재가입은 새 id 라 걸리지 않는다).';
+
+-- ── 로그인 접속 기록 (2026-08-14 사용자 요청) ────────────────────────
+--
+-- **왜 우리가 따로 남기나**: 로그인은 GoTrue 가 처리하고 그쪽 감사 로그
+-- (`auth.audit_log_entries`)에 남지만, supabase/auth v2.194.0 은 그 표의
+-- `ip_address` 자리에 **빈 문자열**을 넣는다(token.go·logout.go 에서
+-- `NewAuditLogEntry(…, "", …)`). 그래서 **접속 IP 는 GoTrue 쪽에 없다.**
+--
+-- 우리는 프록시 뒤에서도 진짜 IP 를 본다(`TRUST_PROXY` + Express
+-- `trust proxy`, `/v1/health/ip` 로 눈으로 확인할 수 있다). 로그인 직후
+-- 프런트가 API 를 한 번 부르면 그때의 IP 를 여기 남긴다.
+--
+-- **로그인의 기준 목록이 아니다.** 목록·횟수는 여전히 GoTrue 감사 로그가
+-- 기준이고, 이 표는 거기에 IP·기기를 **덧붙이는 용도**다 (시각으로 맞춘다).
+-- 이 표만 보면 이 기능을 넣기 전의 로그인이 통째로 빠진다.
+CREATE TABLE IF NOT EXISTS public.login_events (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- IP 는 **서버만 안다** — 클라이언트가 보낸 값은 위조할 수 있어 쓰지 않는다.
+    -- 타입은 `map_document_versions.client_ip` 와 **같은 VARCHAR(45)** 로 맞춘다.
+    -- INET 을 쓰면 `client_ip::text` 가 `203.0.113.9/32` 처럼 넷마스크를 붙여
+    -- 화면에 그대로 새어 나간다(실제로 겪었다 — host() 를 써야 벗겨진다).
+    -- 한 저장소 안에서 IP 를 두 가지 방식으로 담을 이유가 없다.
+    client_ip   VARCHAR(45),
+    -- 플랫폼·브라우저는 반대로 **클라이언트가 더 정확하다**(Client Hints).
+    -- 없으면 서버가 User-Agent 로 추정한다 — common/client-info.ts
+    platform    VARCHAR(60),
+    browser     VARCHAR(60)
+);
+
+CREATE INDEX IF NOT EXISTS login_events_user_at_idx
+    ON public.login_events (user_id, at DESC);
+
+COMMENT ON TABLE public.login_events IS
+    '로그인 직후 우리 API 가 남기는 접속 기록(IP·기기). '
+    'GoTrue 감사 로그가 IP 를 남기지 않아 그것을 보완한다 — '
+    '로그인 목록·횟수의 기준은 여전히 GoTrue 다. 계정당 최근 200건만 남긴다.';

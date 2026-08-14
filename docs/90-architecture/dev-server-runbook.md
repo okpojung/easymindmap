@@ -693,6 +693,54 @@ SCRIPT
 (콘솔은 옛 한도를 그대로 쓰던 사람만 옮기고, 한도를 따로 올려 둔 특별
 계약 계정은 손대지 않는다).
 
+### 1.5-0-F. 로그인 접속 기록 표 만들기 (2026-08-14)
+
+로그인 이력에 **접속한 곳(IP·기기)** 을 보여 주려면 표가 하나 필요하다.
+인증 서버(GoTrue)가 IP 를 남기지 않아 우리가 직접 기록한다
+(`admin-console.md` §3.1).
+
+**적용 전에도 앱은 그대로 돈다.** 로그인도 되고 이력도 보인다 —
+접속한 곳만 비어 있고, `/v1/health` 가 `degraded` 로 알려 준다.
+
+```bash
+bash <<'SCRIPT'
+set -e
+DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
+[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
+[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다."; exit 1; }
+echo "✅ DB 컨테이너: $DB"
+
+docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+CREATE TABLE IF NOT EXISTS public.login_events (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- VARCHAR 다. INET 을 쓰면 `client_ip::text` 가 '203.0.113.9/32' 처럼
+    -- 넷마스크를 붙여 화면에 그대로 새어 나간다 (실제로 겪었다).
+    client_ip   VARCHAR(45),
+    platform    VARCHAR(60),
+    browser     VARCHAR(60)
+);
+
+CREATE INDEX IF NOT EXISTS login_events_user_at_idx
+    ON public.login_events (user_id, at DESC);
+
+\echo '── 적용 결과 ──'
+SELECT to_regclass('public.login_events') AS 표, count(*) AS 지금건수
+  FROM public.login_events;
+SQL
+SCRIPT
+```
+
+`표 = login_events`, `지금건수 = 0` 이면 끝이다. 그 뒤 **로그인부터**
+기록이 쌓인다 — 이미 지난 로그인은 채워지지 않는다(없는 것을 지어내지
+않는다).
+
+**확인**: 로그아웃했다가 다시 로그인한 뒤, 아바타 → 🕘 로그인 기록에서
+맨 윗줄에 IP 와 기기가 보이면 된다.
+
 ### 1.5-A. Ubuntu 호스트에 NAS NFS 마운트
 
 ```bash

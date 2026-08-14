@@ -117,7 +117,7 @@ for f in \
   apps/api/database/functions/move_node_subtree.sql \
   apps/api/database/dev/01-seed-dev-user.sql
 do
-  docker exec -i "$DB" psql -U postgres -d postgres \
+  docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" \
     -v ON_ERROR_STOP=1 -f - < "$f" || { echo "FAILED: $f"; break; }
 done
 ```
@@ -139,7 +139,7 @@ DATABASE_URL='postgres://postgres:<PW>@<host>:5432/postgres' npm run db:apply
 **없이** 실행한다(shim·seed 는 이미 적용돼 있으므로 다시 돌리지 않는다):
 
 ```bash
-docker exec -i "$DB" psql -U postgres -d postgres < apps/api/database/schema.sql
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" < apps/api/database/schema.sql
 ```
 
 > `ON_ERROR_STOP` 을 빼는 이유는 "이미 있음" 오류를 무시하고 끝까지
@@ -182,7 +182,7 @@ fi
 echo "✅ DB 컨테이너: $DB"
 
 # ── 2) 첨부 저장소 + 쿼터 델타 SQL (B9) ─────────────────────────
-docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" <<'SQL'
 ALTER TABLE public.users
     ADD COLUMN IF NOT EXISTS quota_bytes BIGINT NOT NULL DEFAULT 1073741824;
 
@@ -207,7 +207,7 @@ SQL
 
 # ── 3) 적용 결과 검증 ────────────────────────────────────────────
 echo "── 검증 ──"
-docker exec -i "$DB" psql -U postgres -d postgres -tA <<'SQL'
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" -tA <<'SQL'
 SELECT 'attachments 테이블: ' ||
        CASE WHEN to_regclass('public.attachments') IS NOT NULL
             THEN 'OK' ELSE 'MISSING' END;
@@ -222,6 +222,34 @@ echo "다음 단계: NFS 마운트(§1.5-A) → Coolify 볼륨·환경변수(§1
 echo "재배포 후 https://<API주소>/v1/health 의 schema 가 ok 인지 확인하세요."
 SCRIPT
 ```
+
+### 1.5-0-A. ★ DB 컨테이너·계정을 찾는 법 — **이 방법만 쓴다** (2026-08-14)
+
+아래 스크립트들이 전부 이 방식을 쓴다. **이미지 이름으로 postgres
+컨테이너를 찾지 않는다.**
+
+```bash
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')   # 호스트 = 컨테이너 이름
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+PGDB=$(printf '%s' "$URL"   | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+```
+
+**왜 바꿨나** (2026-08-14 실사용에서 깨졌다):
+
+| 옛 방식 | 이 서버에서 벌어진 일 |
+|---|---|
+| 이미지에 `postgres` 가 든 컨테이너를 찾는다 | 앱 DB 는 **이미지가 ID(`33f923b05f64`)로만** 보여 걸리지 않았다 |
+| 대신 다른 앱의 DB·`coolify-db` 가 잡혔다 | 계정이 달라 `role "postgres" does not exist` 로 끊겼다 |
+| `-U postgres` 를 고정으로 썼다 | 계정 이름은 컨테이너마다 다르다 |
+
+**API 가 실제로 접속하는 곳을 그대로 따라가는 것**이 유일하게 안전하다 —
+추측이 없고, 엉뚱한 DB 를 건드릴 위험도 없다.
+
+> `DB` 가 컨테이너 이름이 아니라 IP·외부 호스트로 나오면 **DB 가 이 서버에
+> 없다는 뜻**이다. 그 서버에서 직접 접속해야 한다. 위 스크립트들은
+> `docker inspect` 로 그것을 확인하고 멈춘다.
 
 ### 1.5-0-B. 요금제 컬럼 + 기존 계정 Basic 승격 — 2026-08-06
 
@@ -242,14 +270,18 @@ SCRIPT
 ```bash
 bash <<'SCRIPT'
 set -e
-DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
-[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
-[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다."; exit 1; }
-echo "✅ DB 컨테이너: $DB"
+# DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+[ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+PGDB=$(printf '%s' "$URL"   | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+docker inspect "$DB" >/dev/null 2>&1 \
+  || { echo "❌ DB 호스트($DB)가 이 서버의 컨테이너가 아닙니다 — 그 서버에서 직접 접속해 주세요."; exit 1; }
+echo "✅ DB=$DB  계정=$PGUSER  데이터베이스=$PGDB"
 
-docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" <<'SQL'
 ALTER TABLE public.users
     ADD COLUMN IF NOT EXISTS plan VARCHAR(20) NOT NULL DEFAULT 'free';
 ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_plan_check;
@@ -291,7 +323,7 @@ UPDATE public.users
 SQL
 
 echo "── 검증 (계정별 요금제·한도) ──"
-docker exec -i "$DB" psql -U postgres -d postgres -tA <<'SQL'
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" -tA <<'SQL'
 SELECT a.email || ' → ' || u.plan || ' ' || pg_size_pretty(u.quota_bytes)
        || '  (가입 ' || u.created_at::date || ')'
   FROM public.users u JOIN auth.users a ON a.id = u.id
@@ -351,20 +383,18 @@ PLAN='basic'          # free | basic | pro | team
 case "$PLAN" in free|basic|pro|team) ;; *)
   echo "❌ PLAN 은 free·basic·pro·team 중 하나여야 합니다 (받은 값: $PLAN)"; exit 1;; esac
 
-DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
-[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
+# DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+[ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+APPDB=$(printf '%s' "$URL"  | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+docker inspect "$DB" >/dev/null 2>&1 \
+  || { echo "❌ DB 호스트($DB)가 이 서버의 컨테이너가 아닙니다 — 그 서버에서 직접 접속해 주세요."; exit 1; }
+echo "✅ DB=$DB  계정=$PGUSER  앱DB=$APPDB"
 
-# 앱 DB 를 추측하지 않는다 — maps 표가 있는 데이터베이스를 찾는다
-APPDB=$(for d in $(docker exec -i "$DB" psql -U postgres -tAc \
-    "SELECT datname FROM pg_database WHERE datname NOT IN ('template0','template1')"); do
-  docker exec -i "$DB" psql -U postgres -d "$d" -tAc \
-    "SELECT '$d' FROM information_schema.tables WHERE table_schema='public' AND table_name='maps' LIMIT 1"
-done | head -1)
-[ -z "$APPDB" ] && { echo "❌ maps 표가 있는 데이터베이스를 찾지 못했습니다."; exit 1; }
-echo "✅ 컨테이너=$DB / 앱DB=$APPDB"
-
-psqlx() { docker exec -i "$DB" psql -U postgres -d "$APPDB" -v ON_ERROR_STOP=1 "$@"; }
+psqlx() { docker exec -i "$DB" psql -U "$PGUSER" -d "$APPDB" -v ON_ERROR_STOP=1 "$@"; }
 
 # ① 계정이 있는지 먼저 본다 — **조용히 0행 성공하지 않게**
 N=$(psqlx -tA -v email="$EMAIL" <<'SQL'
@@ -463,15 +493,18 @@ UPDATE 1
 bash <<'SCRIPT'
 EMAIL='id@example.com'
 
-DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
-APPDB=$(for d in $(docker exec -i "$DB" psql -U postgres -tAc \
-    "SELECT datname FROM pg_database WHERE datname NOT IN ('template0','template1')"); do
-  docker exec -i "$DB" psql -U postgres -d "$d" -tAc \
-    "SELECT '$d' FROM information_schema.tables WHERE table_schema='public' AND table_name='maps' LIMIT 1"
-done | head -1)
+# DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+[ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+APPDB=$(printf '%s' "$URL"  | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+docker inspect "$DB" >/dev/null 2>&1 \
+  || { echo "❌ DB 호스트($DB)가 이 서버의 컨테이너가 아닙니다 — 그 서버에서 직접 접속해 주세요."; exit 1; }
+echo "✅ DB=$DB  계정=$PGUSER  앱DB=$APPDB"
 
-docker exec -i "$DB" psql -U postgres -d "$APPDB" -v email="$EMAIL" <<'SQL'
+docker exec -i "$DB" psql -U "$PGUSER" -d "$APPDB" -v email="$EMAIL" <<'SQL'
 SELECT a.email                       AS 이메일,
        u.plan                        AS 요금제,
        pg_size_pretty(u.quota_bytes) AS 한도,
@@ -502,7 +535,7 @@ SCRIPT
 **② 전체 — 요금제별로 누가 있나**
 
 ```bash
-docker exec -i "$DB" psql -U postgres -d "$APPDB" <<'SQL'
+docker exec -i "$DB" psql -U "$PGUSER" -d "$APPDB" <<'SQL'
 SELECT u.plan AS 요금제, pg_size_pretty(u.quota_bytes) AS 한도,
        count(*) AS 계정수, string_agg(a.email, ', ' ORDER BY a.email) AS 계정
   FROM public.users u JOIN auth.users a ON a.id = u.id
@@ -514,7 +547,7 @@ SQL
 **0행이 정상이다.**
 
 ```bash
-docker exec -i "$DB" psql -U postgres -d "$APPDB" <<'SQL'
+docker exec -i "$DB" psql -U "$PGUSER" -d "$APPDB" <<'SQL'
 SELECT a.email, u.plan,
        pg_size_pretty(u.quota_bytes)                     AS 실제한도,
        pg_size_pretty(public.plan_quota_bytes(u.plan))   AS 있어야할한도
@@ -588,7 +621,7 @@ API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | c
 
 ```bash
 DB=$(docker ps --format '{{.Names}}|{{.Image}}' | grep -iE 'postgres|supabase-db' | head -1 | cut -d'|' -f1)
-UID=$(docker exec -i "$DB" psql -U postgres -d postgres -tAc "SELECT id FROM auth.users WHERE lower(email)=lower('ok@baro.pro')"); echo "$UID"
+UID=$(docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" -tAc "SELECT id FROM auth.users WHERE lower(email)=lower('ok@baro.pro')"); echo "$UID"
 ```
 
 > 앱 DB 의 `auth.users.id` 는 **GoTrue 의 사용자 id 와 같은 값**이다
@@ -636,14 +669,18 @@ fetch(process.env.GOTRUE_URL + '/admin/users/$UID', {
 ```bash
 bash <<'SCRIPT'
 set -e
-DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
-[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
-[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다."; exit 1; }
-echo "✅ DB 컨테이너: $DB"
+# DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+[ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+PGDB=$(printf '%s' "$URL"   | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+docker inspect "$DB" >/dev/null 2>&1 \
+  || { echo "❌ DB 호스트($DB)가 이 서버의 컨테이너가 아닙니다 — 그 서버에서 직접 접속해 주세요."; exit 1; }
+echo "✅ DB=$DB  계정=$PGUSER  데이터베이스=$PGDB"
 
-docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" <<'SQL'
 CREATE TABLE IF NOT EXISTS public.plan_quotas (
     plan        TEXT PRIMARY KEY,
     quota_bytes BIGINT NOT NULL CHECK (quota_bytes > 0),
@@ -705,14 +742,18 @@ SCRIPT
 ```bash
 bash <<'SCRIPT'
 set -e
-DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
-[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
-[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다."; exit 1; }
-echo "✅ DB 컨테이너: $DB"
+# DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+[ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+PGDB=$(printf '%s' "$URL"   | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+docker inspect "$DB" >/dev/null 2>&1 \
+  || { echo "❌ DB 호스트($DB)가 이 서버의 컨테이너가 아닙니다 — 그 서버에서 직접 접속해 주세요."; exit 1; }
+echo "✅ DB=$DB  계정=$PGUSER  데이터베이스=$PGDB"
 
-docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" <<'SQL'
 CREATE TABLE IF NOT EXISTS public.login_events (
     id          BIGSERIAL PRIMARY KEY,
     user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -1167,3 +1208,30 @@ proxy_set_header X-Forwarded-Proto $scheme;
 
 고치고 나면 `/v1/health/ip` 의 `hint` 가 `OK — 공인 IP 입니다` 로 바뀐다.
 그때부터 저장하는 버전에 진짜 IP 가 남는다(이미 쌓인 기록은 그대로다).
+
+#### 사슬이 **전부 사설**일 때 — 판별법 (2026-08-14 실사용)
+
+로그인 기록에 `192.168.94.1` 이 찍혀 물어보셨다. 그때 `/v1/health/ip`:
+
+```
+ip: 192.168.94.1
+xForwardedFor: "192.168.94.1, 192.168.94.74"
+remoteAddress: ::ffff:10.0.1.9        ← Traefik
+trustProxy: [loopback, linklocal, uniquelocal]
+```
+
+사슬이 **둘인데 둘 다 사설**이다. 이 상태에서 `TRUST_PROXY` 를 아무리
+바꿔도 소용없다 — **사슬 안에 공인 IP 가 아예 없기 때문이다.** 남은
+가능성은 둘뿐이다.
+
+| | 뜻 | 할 일 |
+|---|---|---|
+| ⑴ | 지금 **같은 사설망에서** 접속 중이다 | 없음 — 정상이다 |
+| ⑵ | 맨 앞(`192.168.94.1`)이 원본 IP 를 버렸다 | 그 장비의 프록시 설정을 고친다 |
+
+**가르는 법: 휴대폰에서 와이파이를 끄고 LTE 로 `/v1/health/ip` 를 연다.**
+거기서 공인 IP 가 나오면 ⑴이고 고칠 것이 없다. LTE 에서도 사설이면 ⑵이다.
+
+> `hint` 가 이 경우를 알아보고 그대로 안내한다(2026-08-14 추가). 그전에는
+> "TRUST_PROXY 조정이 필요합니다"라고만 말해 **고칠 수 없는 자리를 고치라고
+> 안내하고 있었다.**

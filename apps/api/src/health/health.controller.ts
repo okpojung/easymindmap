@@ -136,6 +136,12 @@ export class HealthController {
     const lostUpstream =
       xffList.length === 1 && isPrivate(xffList[0])
       && !!remote && xffList[0] !== remote.replace(/^::ffff:/, '');
+    // **사슬이 여럿인데 전부 사설**인 경우 (2026-08-14 실사용에서 나왔다:
+    // `192.168.94.1, 192.168.94.74`). 위 lostUpstream 은 사슬이 하나일 때만
+    // 잡아서 이 경우를 놓치고 "TRUST_PROXY 조정이 필요하다"고만 말했는데,
+    // 조정해도 달라지지 않는다 — 사슬에 공인 IP 가 아예 없기 때문이다.
+    // 남은 가능성은 둘뿐이고, **판별법을 알려 주는 것**이 우리가 할 일이다.
+    const allPrivateChain = xffList.length >= 2 && xffList.every((v) => isPrivate(v));
     return {
       // 우리가 기록에 쓰는 값 — 이게 진짜 접속 IP 여야 한다
       ip,
@@ -157,7 +163,15 @@ export class HealthController {
             ? '프록시가 X-Forwarded-For 를 붙이지 않습니다 — 리버스 프록시에서 X-Forwarded-For 전달을 켜 주세요.'
             : lostUpstream
               ? `접속자 IP 가 **우리 서버에 닿기 전에** 사라졌습니다 — 우리 앞 프록시(${remote})가 그 앞 상대(${xffList[0]})를 접속자로 적었고, 그 값도 사설 IP 입니다. 서버 코드로는 복구할 수 없습니다. ${xffList[0]} 가 무엇인지부터 확인하세요 (dev-server-runbook.md §6.4).`
-              : 'X-Forwarded-For 는 오는데 아직 사설 IP 입니다 — 접속자가 같은 사설망에 있거나, TRUST_PROXY 조정이 필요합니다(기본 loopback, linklocal, uniquelocal).',
+              : allPrivateChain
+                ? `프록시 사슬(${xffList.join(' → ')})이 **전부 사설 IP** 입니다. `
+                  + 'TRUST_PROXY 를 바꿔도 달라지지 않습니다 — 사슬 안에 공인 IP 가 아예 없습니다. '
+                  + '둘 중 하나입니다: ⑴ 지금 서버와 **같은 사설망에서** 접속 중이다(정상) '
+                  + `⑵ 맨 앞 프록시(${xffList[0]})가 원본 IP 를 버렸다. `
+                  + '**휴대폰의 LTE(와이파이 끄고)로 이 주소를 다시 열어** 보세요 — '
+                  + '거기서 공인 IP 가 나오면 ⑴이라 고칠 것이 없고, 그때도 사설이면 ⑵입니다 '
+                  + '(dev-server-runbook.md §6.4).'
+                : 'X-Forwarded-For 는 오는데 아직 사설 IP 입니다 — 접속자가 같은 사설망에 있거나, TRUST_PROXY 조정이 필요합니다(기본 loopback, linklocal, uniquelocal).',
     };
   }
 }

@@ -24,6 +24,8 @@ export interface LoginHistory {
   events: LoginEvent[];
   /** 이 목록의 상한 (서버가 준다) — "전부"와 "잘렸다"를 구분하려고 */
   limit: number;
+  /** 접속한 곳이 왜 안 보이는가 — 서버가 정한다 (2026-08-14) */
+  ipSource?: 'ok' | 'no-table' | 'no-records';
   logins30d: number;
   loginsTotal: number;
   lastLoginAt: string | null;
@@ -144,19 +146,26 @@ export function LoginHistoryList({ t, data, compact = false }: {
           : <>기록 <b>전체 {data.events.length}건</b>입니다.</>}
         {' '}자동 토큰 갱신은 하루에도 수십 건씩 쌓여 <b>목록에서 뺐습니다</b> —
         사람이 한 일이 묻히지 않도록.
-        {/* 접속 정보는 **2026-08-14 이후 로그인부터** 붙는다. 인증 서버(GoTrue)가
-            IP 를 남기지 않아 그때부터 우리가 직접 기록하기 시작했다. 그 전 로그인은
-            비워 둔다 — 없는 접속을 지어내지 않는다. */}
-        {!hasIp ? (
-          <div data-testid="login-history-noip" style={{ marginTop: 4 }}>
-            <b>접속한 곳(IP)은 2026년 8월 14일 이후 로그인부터 보입니다.</b>
-            {' '}인증 서버(GoTrue)가 접속 IP 를 남기지 않아, 그때부터 우리 서버가
-            직접 기록하기 시작했습니다. 그 전 기록은 남아 있지 않습니다.
+        {/* 접속한 곳이 안 보일 때, **무엇을 하면 보이는지**까지 말한다
+            (2026-08-14 사용자 지적: "이젠 이력화면에서 IP가 빠졌다").
+            원인이 둘인데 한 문장으로 뭉뚱그리면, 델타 SQL 을 안 넣은 것인지
+            다시 로그인을 안 한 것인지 알 수 없다. 서버가 `ipSource` 로 가른다. */}
+        {!hasIp && data.ipSource === 'no-table' ? (
+          <div data-testid="login-history-noip" data-why="no-table" style={{ marginTop: 4 }}>
+            <b>접속한 곳을 아직 기록하지 않습니다.</b> 서버에 접속 기록 표
+            (<code>login_events</code>)가 없습니다 — 관리자가 델타 SQL
+            (<code>dev-server-runbook.md §1.5-0-F</code>)을 적용해야 합니다.
+          </div>
+        ) : !hasIp ? (
+          <div data-testid="login-history-noip" data-why="no-records" style={{ marginTop: 4 }}>
+            <b>접속한 곳은 다시 로그인하면 그때부터 보입니다.</b> 인증 서버(GoTrue)가
+            접속 IP 를 남기지 않아 우리 서버가 직접 기록하는데, <b>기록을 시작한 뒤의
+            로그인</b>부터 쌓입니다. 지난 로그인의 IP 는 남아 있지 않습니다.
           </div>
         ) : data.events.some((e) => e.action === 'login' && !e.ip) ? (
           <div data-testid="login-history-partial-ip" style={{ marginTop: 4 }}>
-            접속한 곳이 <b>비어 있는 줄</b>은 우리 서버가 기록을 시작하기(2026-08-14)
-            전의 로그인입니다.
+            접속한 곳이 <b>비어 있는 줄</b>은 우리 서버가 기록을 시작하기 전의
+            로그인입니다.
           </div>
         ) : null}
       </div>

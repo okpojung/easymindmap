@@ -9,6 +9,7 @@ import {
   DeleteAccountDto, ResetConfirmDto, ResetStartDto, ResetVerifyDto,
   SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
 } from './dto/account.dto';
+import { AuditLogService } from '../common/audit-log.service';
 import type { AppEnv } from '../config/env.validation';
 
 /**
@@ -23,6 +24,7 @@ export class AccountController {
   constructor(
     private readonly account: AccountService,
     private readonly config: ConfigService<AppEnv, true>,
+    private readonly audit: AuditLogService,
   ) {}
 
   @Post('email-code')
@@ -71,6 +73,16 @@ export class AccountController {
   @HttpCode(200)
   resetConfirm(@Body() dto: ResetConfirmDto) {
     return this.account.resetConfirm(dto.resetToken, dto.password);
+  }
+
+  /**
+   * **내 로그인 기록** (2026-08-13). 남의 것은 볼 수 없다 —
+   * 토큰의 주인 id 로만 조회한다(경로에 id 를 받지 않는 이유다).
+   */
+  @Get('logins')
+  @UseGuards(AuthGuard)
+  myLogins(@CurrentUser() user: AuthUser) {
+    return this.audit.forUser(user.id, 50);
   }
 
   /** 탈퇴 확인 화면 — 무엇이 사라지는지 숫자로 보여 주기 위한 조회 */

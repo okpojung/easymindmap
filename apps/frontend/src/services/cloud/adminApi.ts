@@ -6,6 +6,7 @@
 
 import { authEnabled, getFreshAccessToken } from '@/stores/authStore';
 import { CloudError } from './apiClient';
+import type { LoginHistory } from '@/components/auth/LoginHistoryList';
 
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -102,6 +103,8 @@ export const adminApi = {
   }>('GET', '/admin/summary'),
   users: (q: string) =>
     req<{ users: AdminUserRow[]; loginHistoryAvailable: boolean }>('GET', `/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  /** 한 회원의 로그인 이력 (관리자) */
+  userLogins: (id: string) => req<LoginHistory>('GET', `/admin/users/${id}/logins`),
   setPlan: (id: string, plan: string) =>
     req<{ plan: string; quotaBytes: number; email: string | null }>(
       'PATCH', `/admin/users/${id}/plan`, { plan }),

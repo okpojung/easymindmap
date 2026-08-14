@@ -16,6 +16,7 @@ import { useCloudStore } from '@/stores/cloudStore';
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { listDrafts } from '@/utils/localDraft';
 import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
+import { LoginHistoryList, type LoginHistory } from '@/components/auth/LoginHistoryList';
 
 interface MenuEntry {
   id: string;
@@ -30,6 +31,8 @@ const ENTRIES: MenuEntry[] = [
   // 비밀번호 변경은 **'준비 중'이 아니라 실제로 동작한다** — soon 이 없으면
   // 클릭이 안내가 아니라 기능으로 간다 (2026-08-13 사용자 요청).
   { id: 'password', icon: '🔑', label: '비밀번호 변경' },
+  // 내 로그인 기록 — 남의 것은 볼 수 없다(서버가 토큰 주인만 조회한다)
+  { id: 'logins', icon: '🕘', label: '로그인 기록' },
   { id: 'profile', icon: '👤', label: '계정 프로필', soon: '표시 이름·비밀번호 변경 — 계정 관리 단계에서 열립니다.' },
   { id: 'subscription', icon: '💳', label: '구독 상태', soon: '요금제 변경 — Free 10MB · Basic 10GB · Pro 30GB · Team 20GB/사용자. 결제 단계에서 열립니다(현재 요금제와 사용량은 위에 표시됩니다).' },
 ];
@@ -109,6 +112,18 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const [warnDrafts, setWarnDrafts] = useState<number | null>(null);
   /** 비밀번호 변경 창 (2026-08-13) */
   const [pwOpen, setPwOpen] = useState(false);
+  /** 내 로그인 기록 창 (2026-08-13) */
+  const [logOpen, setLogOpen] = useState(false);
+  const [logs, setLogs] = useState<LoginHistory | null>(null);
+
+  const openLogins = () => {
+    setOpen(false); setLogOpen(true); setLogs(null);
+    cloudApi.myLogins()
+      .then(setLogs)
+      .catch(() => setLogs({
+        available: false, events: [], logins30d: 0, loginsTotal: 0, lastLoginAt: null,
+      }));
+  };
 
   const doLogout = () => {
     setWarnDrafts(null);
@@ -283,6 +298,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               title={e.soon ?? e.label}
               onClick={() => {
                 if (e.id === 'password') { setOpen(false); setPwOpen(true); return; }
+                if (e.id === 'logins') { openLogins(); return; }
                 setSoon(soon === e.id ? null : e.id);
               }}
               style={{
@@ -472,6 +488,43 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 }}
               >{delBusy ? '삭제하는 중…' : '탈퇴하고 모든 자료 삭제'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 로그인 기록 — 관리자 콘솔과 **같은 목록**을 쓴다 */}
+      {logOpen && (
+        <div
+          onClick={() => setLogOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            data-testid="logins-dialog"
+            style={{
+              width: 'min(520px, 94vw)', background: t.surface, color: t.text,
+              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
+              🕘 내 로그인 기록
+            </div>
+            <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 12 }}>
+              {session?.email} — 모르는 접속이 있으면 비밀번호를 바꿔 주세요.
+            </div>
+            <LoginHistoryList t={t} data={logs} compact />
+            <button
+              data-testid="logins-close" onClick={() => setLogOpen(false)}
+              style={{
+                width: '100%', height: 34, marginTop: 12, borderRadius: 7,
+                border: `1px solid ${t.border}`, background: t.surfaceAlt,
+                color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+              }}
+            >닫기</button>
           </div>
         </div>
       )}

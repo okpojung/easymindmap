@@ -10,9 +10,10 @@
 // GoTrue 를 못 부르면 **'마지막 로그인' 칸만 비고 목록은 그대로 나온다** —
 // 그리고 화면이 그 이유를 밝힌다(없는 것을 있는 척하지 않는다).
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { adminApi, type AdminUserRow } from '@/services/cloud/adminApi';
+import { LoginHistoryList, type LoginHistory } from '@/components/auth/LoginHistoryList';
 import { CloudError } from '@/services/cloud/apiClient';
 
 const PLANS = ['free', 'basic', 'pro', 'team'] as const;
@@ -47,6 +48,23 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  /**
+   * 펼쳐 놓은 회원의 **로그인 이력** (2026-08-13).
+   * 목록 조회에 함께 싣지 않는 이유: 회원 200명이면 감사 로그를 200번
+   * 뒤지게 된다. **누른 사람 것만** 그때 가져온다.
+   */
+  const [histFor, setHistFor] = useState<string | null>(null);
+  const [hist, setHist] = useState<LoginHistory | null>(null);
+
+  const toggleHistory = (u: AdminUserRow) => {
+    if (histFor === u.id) { setHistFor(null); return; }
+    setHistFor(u.id); setHist(null);
+    adminApi.userLogins(u.id)
+      .then(setHist)
+      .catch(() => setHist({
+        available: false, events: [], logins30d: 0, loginsTotal: 0, lastLoginAt: null,
+      }));
+  };
 
   const load = (query = q) => {
     setErr(null);
@@ -142,17 +160,20 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
               <th style={th}>마지막 로그인</th>
               <th style={th}>마지막 활동(저장)</th>
               <th style={th}>가입</th>
+              <th style={th}>이력</th>
             </tr>
           </thead>
           <tbody>
             {rows === null && (
-              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={10}>불러오는 중…</td></tr>
+              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={11}>불러오는 중…</td></tr>
             )}
             {rows?.length === 0 && (
-              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={10}>해당하는 회원이 없습니다.</td></tr>
+              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={11}>해당하는 회원이 없습니다.</td></tr>
             )}
             {rows?.map((u) => (
-              <tr key={u.id} data-testid="admin-user-row" data-email={u.email ?? ''}>
+              // 한 회원이 두 줄(본문 + 펼친 이력)이 될 수 있어 묶는다
+              <Fragment key={u.id}>
+              <tr data-testid="admin-user-row" data-email={u.email ?? ''}>
                 <td style={td}>
                   {u.email ?? <span style={{ color: t.textSubtle }}>(이메일 없음)</span>}
                   {!u.emailVerifiedAt && (
@@ -207,7 +228,31 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
                   )}
                 </td>
                 <td style={td}>{fmtDate(u.createdAt)}</td>
+                <td style={td}>
+                  <button
+                    data-testid="admin-history-toggle"
+                    onClick={() => toggleHistory(u)}
+                    style={{
+                      height: 24, padding: '0 8px', borderRadius: 6, cursor: 'pointer',
+                      border: `1px solid ${histFor === u.id ? t.primaryBorder : t.border}`,
+                      background: histFor === u.id ? t.primarySoft : t.surfaceAlt,
+                      color: histFor === u.id ? t.primary : t.text,
+                      fontSize: 11.5, fontWeight: 700,
+                    }}
+                  >{histFor === u.id ? '닫기' : '로그인 이력'}</button>
+                </td>
               </tr>
+              {histFor === u.id && (
+                <tr data-testid="admin-history-panel">
+                  <td colSpan={11} style={{ padding: '10px 12px', background: t.surfaceAlt }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+                      {u.email ?? u.id} 의 로그인 이력
+                    </div>
+                    <LoginHistoryList t={t} data={hist} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>

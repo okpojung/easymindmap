@@ -5,6 +5,7 @@
 //   (개발 모드)이면 헤더 없이 호출 — 백엔드 AUTH_MODE=dev 가 처리.
 import { authEnabled, getFreshAccessToken } from '@/stores/authStore';
 import { getClientInfo } from '@/utils/clientInfo';
+import type { LoginHistory } from '@/components/auth/LoginHistoryList';
 
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -266,6 +267,9 @@ export const cloudApi = {
   saveProfile: (p: {
     fullName: string; phoneCountry?: string; phoneNumber?: string; emailToken?: string;
   }) => req<AccountProfile>('PUT', '/account/profile', p),
+
+  /** **내 로그인 기록** (2026-08-13) — 남의 것은 볼 수 없다(서버가 토큰 주인만 본다) */
+  myLogins: () => req<LoginHistory>('GET', '/account/logins'),
 
   // ── 비밀번호 재설정 (2026-08-13) ───────────────────────────
   // 로그인 전이라 **셋 다 토큰을 붙이지 않는다**(anon).

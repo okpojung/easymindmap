@@ -386,9 +386,15 @@ users.plan  ──(트리거 users_sync_quota)──▶  users.quota_bytes  ─�
    │ 결제가 여기만 바꾼다                            │ 특별 계약이면 여기를 직접 (escape hatch)
 ```
 
-* **용량 숫자는 DB 함수 `public.plan_quota_bytes()` 한 곳**에만 있다.
-  API·프런트에는 **요금제 이름만** 있고 숫자는 없다 — 두 곳에 적으면
-  반드시 어긋난다.
+* **용량 숫자는 DB 표 `public.plan_quotas` 한 곳**에만 있다
+  (2026-08-14: 함수 본문에 박혀 있던 것을 표로 옮겼다 — 관리자 콘솔에서
+  바꾸려면 배포가 필요했기 때문이다). 함수 `plan_quota_bytes()` 는 그 표를
+  읽기만 한다. API·프런트에는 **요금제 이름만** 있고 숫자는 없다 —
+  두 곳에 적으면 반드시 어긋난다.
+* **바꾸는 곳은 관리자 콘솔 → 설정관리**다
+  ([admin-console.md](admin-console.md) §3.3). SQL 로 직접 고쳐도 되지만,
+  그때는 **기존 회원의 `quota_bytes` 가 따라오지 않는다** — 트리거는
+  `plan` 이 바뀔 때만 돈다. 콘솔은 그 뒷정리까지 한다.
 * `users.plan` 이 바뀌면 트리거가 `quota_bytes` 를 맞춘다. 그래서 결제
   연동은 **`UPDATE users SET plan='pro'` 한 줄**이면 끝난다.
 * `quota_bytes` 를 직접 UPDATE 하면 그 값이 남는다(트리거는 plan 이 바뀔

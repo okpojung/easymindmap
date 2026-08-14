@@ -1094,9 +1094,14 @@ CREATE POLICY "owners can manage publish"
 - 쿼터: 사용자의 문서(`map_documents` + `map_document_versions`) + 첨부
   합산이 `users.quota_bytes` 이하 — 초과 시 413.
 - **요금제(2026-08-06 확정, 가격 미정)**: Free 10MB · Basic 10GB ·
-  Pro 30GB · Team 20GB/사용자. 용량 숫자는 **DB 함수
-  `public.plan_quota_bytes()` 한 곳**에만 있고, `users_sync_quota` 트리거가
-  `plan` → `quota_bytes` 를 맞춘다 — **결제는 `plan` 만 바꾸면 된다.**
+  Pro 30GB · Team 20GB/사용자. 용량 숫자는 **DB 표 `public.plan_quotas`
+  한 곳**에만 있고(2026-08-14: 함수 본문에서 표로 옮겼다 — 관리자 콘솔에서
+  바꿀 수 있게), 함수 `public.plan_quota_bytes()` 가 그 표를 읽으며
+  `users_sync_quota` 트리거가 `plan` → `quota_bytes` 를 맞춘다 —
+  **결제는 `plan` 만 바꾸면 된다.**
+  씨앗 INSERT 는 **`ON CONFLICT DO NOTHING`** 이다. `DO UPDATE` 였다면
+  `schema.sql` 을 다시 적용할 때마다 **관리자가 콘솔에서 바꾼 값이 조용히
+  되돌아간다.**
   API·프런트에는 요금제 **이름만** 있고 숫자는 없다(두 곳에 적으면
   어긋난다).
 - 신규 가입은 컬럼 기본값 **`free`(10MB)**, **2026-08-06 12:00 UTC 이전

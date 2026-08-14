@@ -14,6 +14,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { AuthError } from '@/services/cloud/supabaseAuth';
 import { CloudError } from '@/services/cloud/apiClient';
 import { adminApi, adminToken } from '@/services/cloud/adminApi';
+import { EnvBadge } from './EnvBadge';
 
 export function AdminLogin({ t, onDone }: { t: ThemeTokens; onDone: (email: string) => void }) {
   const [step, setStep] = useState<'password' | 'code'>('password');
@@ -79,8 +80,11 @@ export function AdminLogin({ t, onDone }: { t: ThemeTokens; onDone: (email: stri
         width: 'min(380px, 94vw)', background: t.surface, borderRadius: 12,
         border: `1px solid ${t.border}`, padding: 24, boxShadow: t.shadowLg,
       }}>
-        <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 4 }}>
-          EasyMindMap 관리자
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4,
+        }}>
+          <div style={{ fontSize: 19, fontWeight: 800 }}>EasyMindMap 관리자</div>
+          <EnvBadge />
         </div>
         <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 18, lineHeight: 1.6 }}>
           {step === 'password'

@@ -27,6 +27,7 @@
 |---|---|---|
 | **홈페이지**(소개·가격·문의) | `www.easymindmap.org` | **결정** |
 | **앱**(로그인 화면·에디터) | `web.easymindmap.org` | **결정** |
+| **관리자 콘솔** | `admin.easymindmap.org` | **결정** (2026-08-14) |
 | API | `api.easymindmap.org` (제안) | 미정 |
 | 인증(GoTrue) | `auth.easymindmap.org` (제안) | 미정 |
 | 퍼블리시된 맵 | `web.easymindmap.org/p/{publishId}` (제안) | 미정 |
@@ -47,6 +48,12 @@ www.mindmap.ai.kr  →  www.easymindmap.org
 
 **개발 서버는 `mindmap.ai.kr` 을 계속 쓴다.** 운영을 새로 구축할 때
 위 표의 `easymindmap.org` 를 적용한다. 사용자 확정 사항이다.
+
+**관리자 콘솔도 같은 원칙이다** (2026-08-14 확정). 개발은
+`dev.mindmap.ai.kr/admin` **경로 그대로**, 운영만 `admin.easymindmap.org`
+**도메인**으로 나눈다. 운영만 나누는 이유는 그래야 프록시에서 **IP 제한**을
+걸 수 있어서다 — 구축 순서는
+[`admin-console.md`](../04-extensions/admin-console.md) §7.
 
 | 환경 | 앱(로그인·에디터) | API | 인증 |
 |---|---|---|---|

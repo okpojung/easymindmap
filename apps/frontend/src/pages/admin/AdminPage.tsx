@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { THEMES } from '@/components/design-tokens/theme';
 import { adminApi, adminToken } from '@/services/cloud/adminApi';
+import { EnvBadge } from './EnvBadge';
 import { AdminLogin } from './AdminLogin';
 import { MembersPanel } from './MembersPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -69,6 +70,7 @@ export function AdminPage() {
         background: t.surface, borderBottom: `1px solid ${t.border}`,
       }}>
         <div style={{ fontSize: 14.5, fontWeight: 800 }}>EasyMindMap 관리자</div>
+        <EnvBadge />
         <nav style={{ display: 'flex', gap: 4, flex: 1 }}>
           {TABS.map((x) => (
             <button

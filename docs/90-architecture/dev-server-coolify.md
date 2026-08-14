@@ -330,10 +330,17 @@ curl -s -X POST https://auth-dev.example.com/signup \
 | 자동 배포 | main 푸시 즉시 | 태그/릴리스 또는 수동 Deploy 버튼(권장) |
 | AUTH_MODE | dev(Phase 3 전) | supabase (Phase 3 이후) |
 | DB | Coolify PostgreSQL 16 | 동일(백업 정책 강화) + Phase 3에서 Supabase 스택 |
+| **관리자 콘솔** | 프런트엔드 앱의 `/admin` **경로** | **별도 앱** `admin.easymindmap.org` |
 
 > Supabase Self-hosted·Redis 는 해당 Phase(3~) 진행 시 **Coolify의
 > Docker Compose 리소스**로 같은 방식으로 얹는다
 > (`docker-compose-spec.md`의 서비스 정의 참조).
+
+> **관리자 콘솔만 앱을 하나 더 만든다** (2026-08-14 사용자 결정).
+> 같은 저장소·같은 Dockerfile 이고 도메인과 `VITE_API_URL` 만 다르다.
+> 도메인을 하나 더 매다는 대신 앱을 나누는 이유는 **그래야 관리자 쪽에만
+> Traefik IP 제한을 걸 수 있어서**다. 순서는
+> [`admin-console.md`](../04-extensions/admin-console.md) §7.
 
 ## 8. 운영 팁
 

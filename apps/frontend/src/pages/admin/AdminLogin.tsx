@@ -72,10 +72,16 @@ export function AdminLogin({ t, onDone }: { t: ThemeTokens; onDone: (email: stri
   const field = { marginBottom: 12 };
 
   return (
+    // 로그인 카드도 같은 이유로 자기 안에서 구른다 — 창이 낮으면
+    // (노트북 + 브라우저 개발자도구 등) 카드 아래가 잘려 버튼을 못 누른다.
+    // `alignItems: center` 는 넘칠 때 **위쪽을 잘라먹으므로** 쓰지 않고,
+    // 여백으로 가운데에 놓는다.
     <div style={{
-      minHeight: '100vh', background: t.bg, color: t.text,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      height: '100vh', overflowY: 'auto', background: t.bg, color: t.text,
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      padding: '20px 20px 40px',
     }}>
+      <div style={{ margin: 'auto 0' }}>
       <div data-testid="admin-login" style={{
         width: 'min(380px, 94vw)', background: t.surface, borderRadius: 12,
         border: `1px solid ${t.border}`, padding: 24, boxShadow: t.shadowLg,
@@ -185,6 +191,7 @@ export function AdminLogin({ t, onDone }: { t: ThemeTokens; onDone: (email: stri
             marginTop: 12, fontSize: 12, color: t.danger, lineHeight: 1.6,
           }}>{err}</div>
         )}
+      </div>
       </div>
     </div>
   );

@@ -16,7 +16,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import type { AppEnv } from '../config/env.validation';
-import { LoginEventsService } from './login-events.service';
+import { LoginEventsService, type IpSource } from './login-events.service';
 
 // ── IP 에 대하여 (2026-08-14 사용자 지적: "IP 값이 없다") ──────────────
 //
@@ -63,6 +63,8 @@ export interface LoginHistory {
   /** false 면 화면이 **왜 비어 있는지** 밝힌다 */
   available: boolean;
   events: LoginEvent[];
+  /** 접속한 곳(IP·기기)이 왜 안 보이는가 — 화면이 정확히 말하려고 (2026-08-14) */
+  ipSource: IpSource;
   /** 이 목록이 최대 몇 건까지인가 — 화면이 "더 있다"를 말할 수 있게 (2026-08-14).
    *  이 값을 주지 않으면 화면은 "최근 N건입니다" 밖에 못 쓰는데,
    *  N 이 전부인지 잘린 것인지 읽는 사람이 알 수 없다. */
@@ -75,7 +77,8 @@ export interface LoginHistory {
 }
 
 const EMPTY: LoginHistory = {
-  available: false, events: [], limit: 0, logins30d: 0, loginsTotal: 0, lastLoginAt: null,
+  available: false, events: [], limit: 0, ipSource: 'no-records',
+  logins30d: 0, loginsTotal: 0, lastLoginAt: null,
 };
 
 @Injectable()
@@ -145,7 +148,7 @@ export class AuditLogService implements OnModuleDestroy {
       const loginIdx = list.rows
         .map((r, i) => (r.action === 'login' ? i : -1))
         .filter((i) => i >= 0);
-      const details = await this.ours.detailsFor(
+      const { details, source } = await this.ours.detailsFor(
         userId, loginIdx.map((i) => list.rows[i].created_at),
       );
       const byIdx = new Map(loginIdx.map((i, k) => [i, details[k]]));
@@ -153,6 +156,7 @@ export class AuditLogService implements OnModuleDestroy {
       return {
         available: true,
         limit: take,
+        ipSource: source,
         events: list.rows.map((r, i) => ({
           at: r.created_at.toISOString(),
           action: r.action,

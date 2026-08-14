@@ -35,6 +35,26 @@ export interface LoginDetail {
   device: string | null;
 }
 
+/**
+ * 접속한 곳이 왜 안 보이는가 — **화면이 정확히 말할 수 있게** 서버가 구분한다
+ * (2026-08-14 사용자 지적: "이젠 이력화면에서 IP가 빠졌다").
+ *
+ * 셋은 원인도 다르고 **사용자가 할 일도 다르다.** 하나로 뭉뚱그리면
+ * "델타 SQL 을 안 넣었나, 다시 로그인을 안 했나"를 알 수 없다.
+ */
+export type IpSource =
+  /** 붙였다 */
+  | 'ok'
+  /** 표가 없다 — 서버에 델타 SQL(runbook §1.5-0-F)을 넣어야 한다 */
+  | 'no-table'
+  /** 표는 있는데 이 사람 기록이 없다 — **다시 로그인하면** 그때부터 쌓인다 */
+  | 'no-records';
+
+export interface LoginDetails {
+  details: (LoginDetail | null)[];
+  source: IpSource;
+}
+
 @Injectable()
 export class LoginEventsService {
   private readonly log = new Logger('LoginEventsService');
@@ -86,9 +106,14 @@ export class LoginEventsService {
    */
   async detailsFor(
     userId: string, times: Date[], windowSec = 60,
-  ): Promise<(LoginDetail | null)[]> {
+  ): Promise<LoginDetails> {
     const out: (LoginDetail | null)[] = times.map(() => null);
-    if (times.length === 0) return out;
+    // 표가 있는지 먼저 본다 — **"표가 없다"와 "기록이 없다"는 다른 말이다.**
+    // 매번 물어보는 이유: 델타 SQL 은 서버가 돌고 있는 중에도 적용된다.
+    // 캐시하면 적용하고도 재기동 전까지 계속 "표가 없다"고 답하게 된다.
+    const exists = await this.tableExists();
+    if (!exists) return { details: out, source: 'no-table' };
+    if (times.length === 0) return { details: out, source: 'no-records' };
 
     const from = new Date(Math.min(...times.map((t) => t.getTime())) - windowSec * 1000);
     const to = new Date(Math.max(...times.map((t) => t.getTime())) + windowSec * 1000);
@@ -105,10 +130,10 @@ export class LoginEventsService {
       );
       rows = r.rows;
     } catch (err) {
-      // 표가 아직 없는 서버(델타 SQL 적용 전) — 이력은 그대로 보이고 IP 만 없다
       this.log.warn(`접속 기록 조회 실패: ${String((err as Error).message)}`);
-      return out;
+      return { details: out, source: 'no-table' };
     }
+    if (rows.length === 0) return { details: out, source: 'no-records' };
 
     // 가까운 짝부터 맺는다 — 먼저 온 순서가 아니라 **차이가 작은 순서**로
     // 맺어야, 1분 간격 로그인 둘이 서로 바뀌지 않는다.
@@ -131,6 +156,23 @@ export class LoginEventsService {
         device: [r.platform, r.browser].filter(Boolean).join(' · ') || null,
       };
     }
-    return out;
+    // 기록은 있는데 **하나도 못 맺었다** = 이 목록의 로그인들이 전부
+    // 기록 시작 이전 것이다. 그것도 '기록 없음'으로 알린다.
+    return {
+      details: out,
+      source: out.some(Boolean) ? 'ok' : 'no-records',
+    };
+  }
+
+  /** `public.login_events` 표가 있는가 (델타 SQL 적용 여부) */
+  async tableExists(): Promise<boolean> {
+    try {
+      const { rows } = await this.db.query<{ ok: boolean }>(
+        `SELECT to_regclass('public.login_events') IS NOT NULL AS ok`,
+      );
+      return rows[0]?.ok === true;
+    } catch {
+      return false;
+    }
   }
 }

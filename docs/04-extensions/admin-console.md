@@ -7,36 +7,67 @@
 > [attachment-storage.md](attachment-storage.md) §8(요금제),
 > [dev-server-runbook.md](../90-architecture/dev-server-runbook.md) §1.5-0-C
 
-## 1. 어디에 있나 — `/admin`
+## 1. 어디에 있나 — 개발은 경로, 운영은 도메인 ★
 
-`https://dev.mindmap.ai.kr/admin`.
+**2026-08-14 사용자 결정.** 개발은 지금 쓰던 주소를 그대로 두고,
+운영만 도메인을 따로 쓴다.
 
-**라우터를 들이지 않았다.** 이 앱에는 라우터가 없었고(에디터 하나뿐),
-관리자 화면 하나 때문에 넣으면 에디터의 `?map=` 처리와 규칙이 둘로
-갈린다. `main.tsx` 가 경로 하나만 본다.
+| | 개발 | 운영 |
+|---|---|---|
+| 주소 | `dev.mindmap.ai.kr/admin` | **`admin.easymindmap.org`** |
+| 가르는 기준 | **경로** | **도메인 전체** |
+| 프록시 IP 제한 | 어렵다(에디터와 같은 호스트) | **가능** — 사무실 IP 만 허용 |
+
+**라우터는 여전히 들이지 않았다.** 이 앱에는 라우터가 없었고(에디터
+하나뿐), 관리자 화면 하나 때문에 넣으면 에디터의 `?map=` 처리와 규칙이
+둘로 갈린다. `main.tsx` 가 주소만 본다.
 
 ```ts
-const isAdmin = window.location.pathname.replace(/\/+$/, '') === '/admin';
+const host = window.location.hostname;
+const isAdminHost = host === 'admin' || host.startsWith('admin.');
+const isAdminPath = window.location.pathname.replace(/\/+$/, '') === '/admin';
+const isAdmin = isAdminHost || isAdminPath;
 ```
 
 프런트엔드 nginx 가 이미 SPA 폴백(`try_files $uri $uri/ /index.html`)을
-하므로 **서버 설정을 바꾸지 않아도** 이 파일까지 온다.
+하므로 **서버 설정을 바꾸지 않아도** 두 경우 모두 이 파일까지 온다.
 
-### 운영 전환 때 분리한다 (사용자 결정)
+> **관리자 도메인에서는 경로와 무관하게 콘솔만 뜬다.** `admin.…/`,
+> `admin.…/아무거나`, `admin.…/?map=xxx` 가 전부 콘솔이다. 에디터로 새어
+> 나갈 길을 두지 않는다 — 그 도메인에 IP 제한을 걸었는데 에디터가
+> 열린다면 제한을 우회하는 통로가 된다.
+>
+> 반대로 **`/administrator` 나 `web.` 로 시작하는 호스트는 관리자가
+> 아니다.** 앞자리만 같은 주소를 관리자로 착각하지 않는지 확인했다
+> (e2e145).
 
-| | 지금 (개발) | 운영 전환 시 |
-|---|---|---|
-| 주소 | `dev.mindmap.ai.kr/admin` | **`admin.easymindmap.org`** |
-| 인프라 | 없음 | DNS + Coolify 앱 + 인증서 + CORS |
-| 프록시 IP 제한 | 어렵다(같은 호스트) | **가능** — 사무실 IP 만 허용 |
+**왜 도메인을 나누나.** 코드가 번들에 실리는 것이 취약점이어서가
+아니다 — 화면을 열어도 API 가 관리자 표를 요구하면 아무것도 못 하고,
+실제 방어선은 서버에 있다. **실질적 이점은 IP 제한 하나다.** 경로로만
+갈려 있으면 에디터까지 같이 막히므로 걸 수가 없다.
 
 분리를 쉽게 하려고 **관리자 코드는 에디터와 아무것도 공유하지 않는다.**
 `pages/admin/` 과 `services/cloud/adminApi.ts` 만 옮기면 되도록,
 에디터 스토어·테마 설정을 건드리지 않고 자기 상태만 쓴다.
 
-> **"코드가 번들에 실린다"가 곧 취약점은 아니다.** 화면을 열어도 API 가
-> 관리자 표를 요구하면 아무것도 못 한다. 실제 방어선은 서버에 있다.
-> 별도 도메인의 실질적 이점은 **IP 제한**이다.
+### 개발 콘솔과 운영 콘솔은 화면이 똑같다 — 배지로 가른다
+
+같은 코드이므로 **한눈에 구분되지 않는다.** 개발인 줄 알고 운영 회원의
+요금제를 바꾸면 되돌릴 수는 있어도 그 사람에게는 이미 한도가 바뀐 뒤다.
+그래서 제목 옆에 **`로컬` / `개발` / `운영`** 배지를 붙인다.
+
+| 판정 | 근거 |
+|---|---|
+| `로컬` | API 가 `localhost` · `127.0.0.1` |
+| `개발` | API 호스트에 `dev.` 또는 `-dev.` (예: `api-dev.mindmap.ai.kr`) |
+| **`운영`** | **그 밖의 전부** |
+
+- **프런트 주소가 아니라 API 주소로 판정한다** — 실제로 건드리는
+  데이터가 거기 있다. 마우스를 올리면 어느 API 인지 그대로 보여 준다.
+- **모르면 `운영`으로 본다.** 개발을 운영으로 잘못 부르면 조심하게 될
+  뿐이지만, 반대는 사고가 된다.
+- **로그인 화면에도 붙인다.** 들어간 뒤에 아는 것보다 비밀번호를 넣기
+  전에 아는 편이 낫다.
 
 ## 2. 로그인 — 2단계 ★
 
@@ -262,4 +293,64 @@ GOTRUE_DATABASE_URL=postgres://postgres:<pw>@<host>:5432/gotrue
 관리자가 아닌 계정으로 2번을 하면 **"관리자 계정이 아닙니다"** 로 막혀야
 정상이다.
 
-검증: E2E e2e140
+검증: E2E e2e140 · e2e145(주소 분기·환경 배지)
+
+## 7. 운영 콘솔 구축 — `admin.easymindmap.org` ★
+
+> **아직 하지 않았다.** 운영 VM 과 `easymindmap-prod` 프로젝트가 없어서다
+> (`dev-server-coolify.md` §7). 코드는 준비돼 있으니, 운영 서버가 생기면
+> 아래 순서대로 하면 된다. **개발 콘솔은 손대지 않는다** —
+> `dev.mindmap.ai.kr/admin` 은 지금 그대로 계속 쓴다.
+
+### 7.1 순서
+
+**① DNS** — `admin.easymindmap.org` A 레코드를 운영 VM 공인 IP 로.
+
+**② Coolify 앱을 하나 더 만든다** (프런트엔드와 **별도 앱**).
+
+같은 저장소·같은 Dockerfile·같은 브랜치를 쓰고 도메인만 다르다.
+
+| 설정 | 값 |
+|---|---|
+| Domain | `https://admin.easymindmap.org` |
+| `VITE_API_URL` | `https://api.easymindmap.org` |
+| 나머지 빌드 변수 | 운영 프런트엔드와 동일 |
+
+> **왜 도메인만 하나 더 붙이지 않고 앱을 나누나.** 한 앱에 도메인 둘을
+> 매달면 Traefik 설정을 공유하게 되어 **관리자 쪽에만 IP 제한을 걸 수
+> 없다.** IP 제한이 도메인을 나누는 유일한 이유인데 그걸 못 하면 나눈
+> 뜻이 없다. 빌드가 한 번 더 도는 비용은 그보다 싸다.
+
+**③ 운영 api 의 `CORS_ORIGIN` 에 추가한다** — 콤마로 여러 개를 받는다.
+
+```
+CORS_ORIGIN=https://web.easymindmap.org,https://admin.easymindmap.org
+```
+
+빠뜨리면 화면은 뜨는데 **모든 요청이 CORS 로 막힌다.** 로그인 1단계부터
+안 된다.
+
+**④ 운영 api 환경변수** — 개발과 **값이 다르다**. 복사해 오지 않는다.
+
+```
+ADMIN_EMAILS=ok@baro.pro
+GOTRUE_DATABASE_URL=postgres://postgres:<운영 pw>@<운영 host>:5432/gotrue
+```
+
+**⑤ `ok@baro.pro` 로 운영 GoTrue 에 가입한다.**
+1단계 로그인은 **그 환경의 GoTrue** 로 간다 — 개발 계정은 넘어오지
+않는다. 운영 앱에서 정상적으로 회원가입한 뒤 콘솔에 들어간다.
+
+**⑥ IP 제한** (선택이지만 권장) — Coolify 의 관리자 앱에 Traefik
+미들웨어를 붙여 사무실 IP 만 허용한다. **이것이 도메인을 나눈 이유다.**
+
+### 7.2 다 되면 확인할 것
+
+1. `https://admin.easymindmap.org` 를 연다 → 제목 옆 배지가 **빨간 `운영`**
+2. 배지에 마우스를 올리면 `API: api.easymindmap.org`
+3. `ok@baro.pro` 로 2단계 로그인 → 회원관리에 **운영 회원**이 보인다
+4. `https://dev.mindmap.ai.kr/admin` 을 열면 배지가 **파란 `개발`** 이고
+   **회원 목록이 서로 다르다**
+
+배지 색이 예상과 다르면 **`VITE_API_URL` 을 잘못 넣은 것**이다 — 판정은
+API 주소로 한다.

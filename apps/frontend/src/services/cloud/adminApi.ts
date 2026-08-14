@@ -10,6 +10,25 @@ import type { LoginHistory } from '@/components/auth/LoginHistoryList';
 
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
+/** 지금 보고 있는 것이 **누구의 데이터**인가 (2026-08-14).
+ *
+ *  개발과 운영에 콘솔이 하나씩 생기면서(dev.mindmap.ai.kr/admin ·
+ *  admin.easymindmap.org) **화면이 똑같아졌다.** 개발인 줄 알고 운영 회원의
+ *  요금제를 바꾸는 실수를 막으려면 한눈에 갈려 보여야 한다.
+ *
+ *  판정 기준은 **프런트 주소가 아니라 API 주소**다 — 실제로 건드리는 데이터가
+ *  거기 있다. 그리고 **모르면 '운영'으로 본다**: 개발을 운영으로 잘못 부르면
+ *  조심하게 될 뿐이지만, 반대는 사고가 된다. */
+export type ApiEnv = 'local' | 'dev' | 'prod';
+export function apiEnv(base = BASE): ApiEnv {
+  let h: string;
+  try { h = new URL(base).hostname; } catch { return 'prod'; }
+  if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') return 'local';
+  if (/(^|\.)dev\.|-dev\./.test(h)) return 'dev';
+  return 'prod';
+}
+export const apiHost = (() => { try { return new URL(BASE).host; } catch { return BASE; } })();
+
 /** 관리자 표 — 새로고침해도 유지되게 sessionStorage 에 둔다.
  *  localStorage 가 아닌 이유: 공용 PC 에서 탭을 닫으면 끝나야 한다. */
 const KEY = 'emm.adminToken';

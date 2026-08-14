@@ -62,7 +62,7 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
     adminApi.userLogins(u.id)
       .then(setHist)
       .catch(() => setHist({
-        available: false, events: [], logins30d: 0, loginsTotal: 0, lastLoginAt: null,
+        available: false, events: [], limit: 0, logins30d: 0, loginsTotal: 0, lastLoginAt: null,
       }));
   };
 
@@ -98,6 +98,13 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
   const td = {
     padding: '8px 10px', fontSize: 12.5, borderBottom: `1px solid ${t.divider}`,
     whiteSpace: 'nowrap' as const,
+    verticalAlign: 'top' as const,
+  };
+  /** 곁들이 정보 — **같은 줄에 붙이면 표가 화면 밖으로 나간다.**
+   *  아래 줄로 내리고 작게 쓴다 (2026-08-14 사용자 지적: 가로 스크롤) */
+  const sub = {
+    fontSize: 10.5, color: t.textSubtle, marginTop: 2,
+    whiteSpace: 'normal' as const, lineHeight: 1.5,
   };
 
   return (
@@ -146,7 +153,10 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
         }}>{err}</div>
       )}
 
-      <div style={{ overflowX: 'auto', border: `1px solid ${t.border}`, borderRadius: 10 }}>
+      {/* 표가 넘치면 **여기 안에서** 구른다 (페이지째 구르지 않는다).
+          넘치는지 눈이 아니라 숫자로 재려고 손잡이를 붙인다 — e2e148 */}
+      <div data-testid="admin-members-table-wrap"
+        style={{ overflowX: 'auto', border: `1px solid ${t.border}`, borderRadius: 10 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: t.surface }}>
           <thead>
             <tr>
@@ -156,9 +166,9 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
               <th style={th}>사용량 / 한도</th>
               <th style={th}>맵</th>
               <th style={th}>첨부</th>
-              <th style={th}>최근 30일 저장</th>
+              <th style={th}>30일 저장</th>
               <th style={th}>마지막 로그인</th>
-              <th style={th}>마지막 활동(저장)</th>
+              <th style={th}>마지막 활동</th>
               <th style={th}>가입</th>
               <th style={th}>이력</th>
             </tr>
@@ -202,9 +212,9 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
                 </td>
                 <td style={td}>
                   {fmtBytes(u.usedBytes)} / {fmtBytes(u.quotaBytes)}
-                  <span style={{ color: t.textSubtle, marginLeft: 5, fontSize: 11 }}>
-                    (문서 {fmtBytes(u.docBytes)} · 첨부 {fmtBytes(u.fileBytes)})
-                  </span>
+                  <div style={sub}>
+                    문서 {fmtBytes(u.docBytes)} · 첨부 {fmtBytes(u.fileBytes)}
+                  </div>
                 </td>
                 <td style={td}>{u.maps}</td>
                 <td style={td}>{u.attachments}</td>
@@ -219,12 +229,12 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
                     }}>차단</span>
                   )}
                 </td>
-                <td style={td}>
-                  {fmtDate(u.lastSeenAt)}
+                <td style={{ ...td, maxWidth: 180, whiteSpace: 'normal' }}>
+                  <span style={{ whiteSpace: 'nowrap' }}>{fmtDate(u.lastSeenAt)}</span>
                   {u.lastSeenAt && (
-                    <span style={{ color: t.textSubtle, marginLeft: 5, fontSize: 11 }}>
+                    <div style={sub}>
                       {[u.lastPlatform, u.lastBrowser, u.lastIp].filter(Boolean).join(' · ') || ''}
-                    </span>
+                    </div>
                   )}
                 </td>
                 <td style={td}>{fmtDate(u.createdAt)}</td>
@@ -239,7 +249,7 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
                       color: histFor === u.id ? t.primary : t.text,
                       fontSize: 11.5, fontWeight: 700,
                     }}
-                  >{histFor === u.id ? '닫기' : '로그인 이력'}</button>
+                  >{histFor === u.id ? '닫기' : '이력'}</button>
                 </td>
               </tr>
               {histFor === u.id && (

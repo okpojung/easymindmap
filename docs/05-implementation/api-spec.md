@@ -87,7 +87,7 @@
 | 22d | GET | `/v1/admin/summary` | 요금제별 인원·최근 7/30일 가입 |
 | 22e | GET | `/v1/admin/users?q=` | 회원 목록 — 요금제·사용량·맵/첨부 수·최근 30일 **저장** 횟수·마지막 활동(플랫폼·브라우저·IP) + **마지막 로그인**(GoTrue). 응답에 `loginHistoryAvailable` — false 면 GoTrue 를 못 불러 그 칸만 비었다는 뜻 (2026-08-13) |
 | 22f | PATCH | `/v1/admin/users/:id/plan` | `{plan}` → 요금제 변경. `quota_bytes` 는 DB 트리거가 따라온다 |
-| 22h | GET | `/v1/admin/users/:id/logins` | 그 회원의 **로그인 이력** — `{available,events[],logins30d,loginsTotal,lastLoginAt}`. GoTrue 감사 로그(`GOTRUE_DATABASE_URL`)를 읽는다. 설정이 없으면 `available:false` (2026-08-13) |
+| 22h | GET | `/v1/admin/users/:id/logins` | 그 회원의 **로그인 이력** — `{available,limit,events[],logins30d,loginsTotal,lastLoginAt}`. GoTrue 감사 로그(`GOTRUE_DATABASE_URL`)를 읽는다. 설정이 없으면 `available:false` (2026-08-13). **최근 `limit`(50)건까지** — 화면이 "전부인지 잘렸는지" 말할 수 있게 상한을 함께 준다. `events[].ip` 는 GoTrue v2.194.0 이 로그인·로그아웃에 빈 값을 넣어 **대개 null 이다**(2026-08-14) |
 | 22g | GET | `/v1/admin/settings` | 서버가 **지금 들고 있는** 설정값(env·DB). 화면 상수는 프런트가 자기 것을 합친다 |
 | 22i | PATCH | `/v1/admin/settings/plan-quota` | `{plan, mb}` → 요금제 한도 변경. **콘솔에서 고칠 수 있는 유일한 설정**(환경변수·코드 상수는 열지 않는다). 응답 `{plan, mb, previousMb, usersUpdated, usersKept}` — `usersKept` 는 한도를 따로 올려 둔 **특별 계약** 회원 수로, 손대지 않는다. 범위 1~1048576 MB |
 | 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 → `{status,db,schema,missingTables?,missingColumns?,time}` |

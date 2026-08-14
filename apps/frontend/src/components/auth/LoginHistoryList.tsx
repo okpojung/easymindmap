@@ -20,6 +20,8 @@ export interface LoginEvent {
 export interface LoginHistory {
   available: boolean;
   events: LoginEvent[];
+  /** 이 목록의 상한 (서버가 준다) — "전부"와 "잘렸다"를 구분하려고 */
+  limit: number;
   logins30d: number;
   loginsTotal: number;
   lastLoginAt: string | null;
@@ -75,6 +77,12 @@ export function LoginHistoryList({ t, data, compact = false }: {
     borderBottom: `1px solid ${t.divider}`, whiteSpace: 'nowrap' as const,
   };
 
+  // **IP 칸은 값이 있을 때만 만든다** (2026-08-14 사용자 지적).
+  // GoTrue 가 로그인 IP 를 기록하지 않아 칸이 통째로 '—' 로 찬다.
+  // 줄줄이 '—' 를 보여 주는 것은 "기록이 없다"가 아니라 "고장 났다"로 읽힌다 —
+  // 칸을 없애고 **왜 없는지 한 줄로** 말하는 편이 정직하다.
+  const hasIp = data.events.some((e) => e.ip);
+
   return (
     <div data-testid="login-history">
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -95,7 +103,8 @@ export function LoginHistoryList({ t, data, compact = false }: {
         }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', background: t.surface }}>
             <thead><tr>
-              <th style={th}>시각</th><th style={th}>사건</th><th style={th}>IP</th>
+              <th style={th}>시각</th><th style={th}>사건</th>
+              {hasIp && <th style={th}>IP</th>}
             </tr></thead>
             <tbody>
               {data.events.map((e, i) => (
@@ -104,7 +113,7 @@ export function LoginHistoryList({ t, data, compact = false }: {
                   <td style={{ ...td, color: actionColor(e.action, t), fontWeight: 700 }}>
                     {e.label}
                   </td>
-                  <td style={{ ...td, color: t.textMuted }}>{e.ip ?? '—'}</td>
+                  {hasIp && <td style={{ ...td, color: t.textMuted }}>{e.ip ?? '—'}</td>}
                 </tr>
               ))}
             </tbody>
@@ -112,9 +121,24 @@ export function LoginHistoryList({ t, data, compact = false }: {
         </div>
       )}
 
-      <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 8, lineHeight: 1.7 }}>
-        최근 {data.events.length}건입니다. 자동 토큰 갱신은 하루에도 수십 건씩 쌓여
-        <b> 목록에서 뺐습니다</b> — 사람이 한 일이 묻히지 않도록.
+      <div data-testid="login-history-note"
+        style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 8, lineHeight: 1.7 }}>
+        {/* **몇 건까지 보이는지 규칙을 밝힌다** (2026-08-14 사용자 질문:
+            "일부만 나오는데 규칙은 어떤건가?"). 그냥 "최근 N건"이라고만 쓰면
+            그것이 전부인지 잘린 것인지 알 수 없다. */}
+        {data.events.length >= data.limit && data.limit > 0
+          ? <>이 목록은 <b>최근 {data.limit}건까지</b>만 보여 줍니다
+              (전체 로그인 {data.loginsTotal}회).</>
+          : <>기록 <b>전체 {data.events.length}건</b>입니다.</>}
+        {' '}자동 토큰 갱신은 하루에도 수십 건씩 쌓여 <b>목록에서 뺐습니다</b> —
+        사람이 한 일이 묻히지 않도록.
+        {!hasIp && (
+          <div data-testid="login-history-noip" style={{ marginTop: 4 }}>
+            <b>IP 는 보여 드릴 수 없습니다.</b> 로그인을 기록하는 인증 서버(GoTrue)가
+            접속 IP 를 남기지 않습니다(빈 값으로 저장합니다) — 우리 쪽에서 채울 수
+            있는 값이 아닙니다.
+          </div>
+        )}
       </div>
     </div>
   );

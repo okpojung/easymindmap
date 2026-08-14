@@ -121,7 +121,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
     cloudApi.myLogins()
       .then(setLogs)
       .catch(() => setLogs({
-        available: false, events: [], logins30d: 0, loginsTotal: 0, lastLoginAt: null,
+        available: false, events: [], limit: 0, logins30d: 0, loginsTotal: 0, lastLoginAt: null,
       }));
   };
 

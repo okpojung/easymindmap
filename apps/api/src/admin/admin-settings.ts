@@ -25,6 +25,11 @@ export interface SettingItem {
   /** 바꾸려면 어디를 손대나 */
   where: string;
   note?: string;
+  /** 콘솔에서 바로 고칠 수 있는가 (2026-08-14 — DB 값만 연다).
+   *
+   *  **서버가 정한다.** 화면이 `source === 'db'` 로 짐작하면, 나중에 못
+   *  고치는 DB 값이 생겼을 때 입력칸이 먼저 생기고 저장에서 터진다. */
+  editable?: { kind: 'planQuotaMb'; plan: string; min: number; max: number };
 }
 
 export interface SettingGroup {
@@ -37,23 +42,38 @@ export interface SettingGroup {
 
 const MB = 1024 * 1024;
 
+/** 요금제 한도로 넣을 수 있는 범위 (2026-08-14).
+ *
+ *  아래를 막는 이유: **0 이나 음수는 아무도 저장하지 못하게 만든다.**
+ *  위를 막는 이유: 오타로 자릿수를 하나 더 치면(1 TB → 10 TB) 디스크가
+ *  차기 전까지 아무도 모른다. 1 MB ~ 1 TB 면 실제 요금제는 다 담는다. */
+export const PLAN_QUOTA_MIN_MB = 1;
+export const PLAN_QUOTA_MAX_MB = 1024 * 1024; // 1 TB
+
 export async function collectServerSettings(
   config: ConfigService<AppEnv, true>,
   db: DatabaseService,
 ): Promise<SettingGroup[]> {
   const g = <K extends keyof AppEnv>(k: K) => config.get(k, { infer: true });
 
-  // 요금제 용량은 **DB 함수가 유일한 기준**이다 (attachment-storage.md §8).
-  // 여기서 숫자를 적으면 두 곳이 되어 반드시 어긋난다.
+  // 요금제 용량은 **DB 표 plan_quotas 가 유일한 기준**이다
+  // (attachment-storage.md §8). 여기서 숫자를 적으면 두 곳이 되어 어긋난다.
   let planRows: { plan: string; bytes: string }[] = [];
+  // 표가 아직 없는 DB(델타 SQL 적용 전)에서는 **편집을 열지 않는다.**
+  // 입력칸부터 생기고 저장에서 터지면, 관리자는 자기가 뭘 잘못했는지 모른다.
+  let planEditable = false;
   try {
     const r = await db.query<{ plan: string; bytes: string }>(
       `SELECT p AS plan, public.plan_quota_bytes(p)::text AS bytes
          FROM unnest(ARRAY['free','basic','pro','team']) AS p`,
     );
     planRows = r.rows;
+    const t = await db.query<{ ok: boolean }>(
+      `SELECT to_regclass('public.plan_quotas') IS NOT NULL AS ok`,
+    );
+    planEditable = t.rows[0]?.ok === true;
   } catch {
-    planRows = []; // 함수가 없는 DB — 화면이 "조회 실패"로 보여 준다
+    planRows = []; // 함수조차 없는 DB — 화면이 "조회 실패"로 보여 준다
   }
 
   return [
@@ -68,13 +88,28 @@ export async function collectServerSettings(
           value: Math.round(Number(r.bytes) / MB),
           unit: 'MB',
           source: 'db' as const,
-          where: 'DB 함수 public.plan_quota_bytes()',
-          note: '여기 한 곳만 고치면 전부 따라온다',
+          where: planEditable
+            ? '이 화면에서 바꾼다 (DB 표 public.plan_quotas)'
+            // 화면은 이 문자열을 그대로 찍는다 — 마크다운 강조를 쓰지 않는다
+            : 'DB 표 public.plan_quotas 가 아직 없다',
+          note: planEditable
+            ? '여기 한 곳만 고치면 전부 따라온다'
+            : '델타 SQL 을 적용하면 이 화면에서 바꿀 수 있다 — dev-server-runbook.md §1.5-0-E',
+          ...(planEditable
+            ? {
+              editable: {
+                kind: 'planQuotaMb' as const,
+                plan: r.plan,
+                min: PLAN_QUOTA_MIN_MB,
+                max: PLAN_QUOTA_MAX_MB,
+              },
+            }
+            : {}),
         }))
         : [{
           key: 'plan.unknown', label: '요금제 한도', value: '조회 실패',
-          source: 'db' as const, where: 'DB 함수 public.plan_quota_bytes()',
-          note: '함수가 없는 DB 다 — dev-server-runbook.md §1.5-0-B 를 적용한다',
+          source: 'db' as const, where: 'DB 표 public.plan_quotas',
+          note: '표나 함수가 없는 DB 다 — dev-server-runbook.md §1.5-0-B 를 적용한다',
         }],
     },
     {

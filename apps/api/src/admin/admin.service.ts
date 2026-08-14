@@ -29,6 +29,7 @@ import { sign as jwtSign } from 'jsonwebtoken';
 import { DatabaseService } from '../database/database.service';
 import { AccountService } from '../account/account.service';
 import type { AppEnv } from '../config/env.validation';
+import { PLAN_QUOTA_MAX_MB, PLAN_QUOTA_MIN_MB } from './admin-settings';
 
 /** 관리자 표 유효 시간 — 하루 일과보다 길지 않게 */
 const ADMIN_TOKEN_TTL_MIN = 8 * 60;
@@ -290,6 +291,74 @@ export class AdminService {
       quotaBytes: Number(rows[0].quota_bytes),
       email: rows[0].email,
     };
+  }
+
+  /**
+   * 요금제 한도를 바꾼다 — **콘솔에서 고칠 수 있는 유일한 값** (2026-08-14).
+   *
+   * 어려운 부분은 표를 고치는 것이 아니라 **이미 있는 회원을 어떻게 하느냐**다.
+   * `users.quota_bytes` 는 요금제가 *바뀔 때만* 트리거가 따라오므로, 표만
+   * 고치면 **기존 회원은 옛 한도 그대로**다 — 바꿨는데 아무 일도 안 일어난다.
+   *
+   * 그렇다고 그 요금제 전원을 덮으면 **특별 계약(quota_bytes 를 직접 올려 둔
+   * 계정)이 조용히 깎인다** (schema.sql 의 escape hatch).
+   *
+   * 그래서 **옛 한도와 정확히 같은 사람만** 옮긴다. 다른 값을 가진 사람은
+   * 손대지 않고, 몇 명을 그렇게 두었는지 함께 돌려줘 화면이 밝히게 한다.
+   */
+  async setPlanQuota(plan: string, mb: number, byEmail: string) {
+    if (!(PLANS as readonly string[]).includes(plan)) {
+      throw new BadRequestException(`요금제는 ${PLANS.join('·')} 중 하나여야 합니다.`);
+    }
+    if (!Number.isInteger(mb) || mb < PLAN_QUOTA_MIN_MB || mb > PLAN_QUOTA_MAX_MB) {
+      throw new BadRequestException(
+        `한도는 ${PLAN_QUOTA_MIN_MB} ~ ${PLAN_QUOTA_MAX_MB} MB 사이의 정수여야 합니다.`,
+      );
+    }
+    const bytes = BigInt(mb) * 1048576n;
+
+    return this.db.transaction(async (c) => {
+      // 옛 값을 **잠가서** 읽는다 — 두 관리자가 동시에 바꾸면 한쪽의
+      // "옛 한도와 같은 사람" 판정이 이미 틀린 값을 보게 된다
+      const before = await c.query<{ quota_bytes: string }>(
+        `SELECT quota_bytes::text FROM public.plan_quotas WHERE plan = $1 FOR UPDATE`,
+        [plan],
+      );
+      if (before.rows.length === 0) {
+        throw new BadRequestException(
+          'plan_quotas 표에 그 요금제가 없습니다 — schema.sql 을 적용해 주세요.',
+        );
+      }
+      const old = BigInt(before.rows[0].quota_bytes);
+
+      await c.query(
+        `UPDATE public.plan_quotas
+            SET quota_bytes = $2, updated_at = NOW(), updated_by = $3
+          WHERE plan = $1`,
+        [plan, bytes.toString(), byEmail],
+      );
+
+      // 옛 한도를 그대로 쓰던 사람만 옮긴다
+      const moved = await c.query(
+        `UPDATE public.users SET quota_bytes = $2, updated_at = NOW()
+          WHERE plan = $1 AND quota_bytes = $3`,
+        [plan, bytes.toString(), old.toString()],
+      );
+      // 남은 사람 = 특별 계약(직접 올려 둔 값)
+      const kept = await c.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM public.users
+          WHERE plan = $1 AND quota_bytes <> $2`,
+        [plan, bytes.toString()],
+      );
+
+      const usersUpdated = moved.rowCount ?? 0;
+      const usersKept = Number(kept.rows[0]?.n ?? 0);
+      this.log.log(
+        `요금제 한도 변경: ${plan} ${old / 1048576n}MB → ${mb}MB `
+        + `(회원 ${usersUpdated}명 반영 · ${usersKept}명 유지, 관리자 ${byEmail})`,
+      );
+      return { plan, mb, previousMb: Number(old / 1048576n), usersUpdated, usersKept };
+    });
   }
 
   /** 화면 위쪽 요약 — 전체 회원 수와 요금제 분포 */

@@ -225,6 +225,12 @@ SCRIPT
 
 ### 1.5-0-B. 요금제 컬럼 + 기존 계정 Basic 승격 — 2026-08-06
 
+> ⚠️ **2026-08-14 이후로는 이 스크립트를 다시 돌리지 않는다.** 아래 함수는
+> 용량 숫자가 본문에 박힌 **옛 모습**이다. 지금은 `plan_quotas` **표**가
+> 기준이고 함수는 그 표를 읽는다 — 이걸 다시 실행하면 함수가 표를 보지
+> 않는 옛 모습으로 되돌아가, 관리자 콘솔에서 한도를 바꿔도 아무 일이
+> 일어나지 않는다. 복구는 **§1.5-0-E**. (아래는 기록으로 남긴다.)
+
 **정책**: Free 10MB · Basic 10GB · Pro 30GB · Team 20GB/사용자.
 신규 가입은 **Free**(컬럼 기본값), **2026-08-06 12:00 UTC 이전에 가입한
 계정은 Basic**. 용량은 `users.plan` 이 정하고 트리거가 `quota_bytes` 를
@@ -613,6 +619,79 @@ fetch(process.env.GOTRUE_URL + '/admin/users/$UID', {
 >
 > **바꾼 뒤에는 화면에서 스스로 바꾸게 한다** — 앱 우상단 아바타 →
 > 🔑 비밀번호 변경, 관리자는 콘솔의 **비밀번호 변경** 탭.
+
+### 1.5-0-E. ★ 요금제 한도를 **표**로 옮긴다 (2026-08-14)
+
+용량 숫자가 `plan_quota_bytes()` **함수 본문에 박혀 있어** 바꾸려면
+배포가 필요했다. 표로 빼면 관리자 콘솔 → 설정관리에서 바꿀 수 있다.
+
+**적용 전에도 앱은 그대로 돈다.** 함수가 아직 옛 모습이면 한도는 옛 값
+그대로이고, 관리자 콘솔은 요금제 줄을 **조회 전용으로** 보여 준다
+(입력칸이 아예 나오지 않는다 — 서버가 표의 유무를 보고 정한다).
+`/v1/health` 는 `plan_quotas` 를 못 찾아 `degraded` 로 알린다.
+
+서버 SSH 또는 Coolify Terminal 에 **통째로** 붙여 넣는다 (두 번 실행해도
+안전하다):
+
+```bash
+bash <<'SCRIPT'
+set -e
+DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
+[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
+  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
+[ -z "$DB" ] && { echo "❌ postgres 컨테이너를 찾지 못했습니다."; exit 1; }
+echo "✅ DB 컨테이너: $DB"
+
+docker exec -i "$DB" psql -U postgres -d postgres <<'SQL'
+CREATE TABLE IF NOT EXISTS public.plan_quotas (
+    plan        TEXT PRIMARY KEY,
+    quota_bytes BIGINT NOT NULL CHECK (quota_bytes > 0),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by  TEXT
+);
+
+-- ★ DO NOTHING 이다. DO UPDATE 였다면 이 스크립트를 다시 돌릴 때마다
+--   관리자가 콘솔에서 바꾼 값이 조용히 되돌아간다.
+INSERT INTO public.plan_quotas (plan, quota_bytes) VALUES
+    ('free',      10485760),
+    ('basic',  10737418240),
+    ('pro',    32212254720),
+    ('team',   21474836480)
+ON CONFLICT (plan) DO NOTHING;
+
+-- 표를 읽으므로 IMMUTABLE 일 수 없다 → STABLE
+CREATE OR REPLACE FUNCTION public.plan_quota_bytes(p TEXT)
+RETURNS BIGINT AS $fn$
+    SELECT COALESCE(
+        (SELECT quota_bytes FROM public.plan_quotas WHERE plan = lower(COALESCE(p, 'free'))),
+        (SELECT quota_bytes FROM public.plan_quotas WHERE plan = 'free'),
+        10485760::BIGINT
+    );
+$fn$ LANGUAGE sql STABLE;
+
+\echo '── 적용 결과 ──'
+SELECT plan, pg_size_pretty(quota_bytes) AS 한도, COALESCE(updated_by,'(씨앗)') AS 마지막수정
+  FROM public.plan_quotas ORDER BY quota_bytes;
+\echo '── 함수가 표를 읽는가 (위 basic 값과 같아야 한다) ──'
+SELECT pg_size_pretty(public.plan_quota_bytes('basic')) AS 함수가준값;
+SQL
+SCRIPT
+```
+
+네 줄(free/basic/pro/team)과 `함수가준값 = 10 GB` 가 보이면 끝이다.
+그 뒤 관리자 콘솔 → **설정관리** 를 열면 요금제 줄에 입력칸이 생긴다.
+
+> ⚠️ **§1.5-0-B 를 다시 돌리지 않는다.** 그 스크립트에는 옛 함수
+> (`CASE … IMMUTABLE`)가 들어 있어, 실행하면 함수가 **표를 읽지 않는
+> 옛 모습으로 되돌아간다.** 표는 남지만 콘솔에서 바꿔도 아무 일이
+> 일어나지 않게 된다. 그때는 이 §1.5-0-E 를 다시 돌리면 복구된다.
+
+**기존 회원의 한도는 따라오지 않는다.** `users.quota_bytes` 는 `plan` 이
+바뀔 때만 트리거가 맞춘다. SQL 로 표만 고치면 새로 요금제가 바뀌는
+사람부터 적용된다 — **기존 회원까지 옮기려면 관리자 콘솔에서 바꾼다**
+(콘솔은 옛 한도를 그대로 쓰던 사람만 옮기고, 한도를 따로 올려 둔 특별
+계약 계정은 손대지 않는다).
 
 ### 1.5-A. Ubuntu 호스트에 NAS NFS 마운트
 

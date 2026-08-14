@@ -543,16 +543,48 @@ COMMENT ON COLUMN public.users.plan IS
     '요금제 — free | basic | pro | team. 저장 용량의 단일 기준이다. '
     '결제를 붙이면 이 컬럼만 바꾸면 quota_bytes 는 트리거가 따라온다.';
 
--- 요금제 → 용량. **여기 한 곳만 고치면 전부 따라온다.**
+-- ── 요금제 → 용량 (2026-08-14: 함수에서 **표**로 옮겼다) ─────────────
+--
+-- 전에는 이 값들이 함수 본문에 박혀 있어 **바꾸려면 배포가 필요**했다.
+-- 관리자 콘솔에서 고칠 수 있게 표로 뺀다 — 함수는 표를 읽기만 한다.
+--
+-- ★ `ON CONFLICT DO NOTHING` 이 핵심이다. `schema.sql` 은 다시 적용될 수
+--   있는데, 그때 `INSERT … DO UPDATE` 였다면 **관리자가 콘솔에서 바꾼
+--   값을 배포가 조용히 되돌린다.** 씨앗은 처음 한 번만 심는다.
+CREATE TABLE IF NOT EXISTS public.plan_quotas (
+    plan        TEXT PRIMARY KEY,
+    quota_bytes BIGINT NOT NULL CHECK (quota_bytes > 0),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by  TEXT
+);
+
+COMMENT ON TABLE public.plan_quotas IS
+    '요금제별 저장 용량 한도. 관리자 콘솔 → 설정관리에서 바꾼다. '
+    'schema.sql 의 씨앗은 ON CONFLICT DO NOTHING 이라 재적용해도 덮지 않는다.';
+
+INSERT INTO public.plan_quotas (plan, quota_bytes) VALUES
+    ('free',      10485760),   -- 10 MB
+    ('basic',  10737418240),   -- 10 GB
+    ('pro',    32212254720),   -- 30 GB
+    ('team',   21474836480)    -- 20 GB / 사용자
+ON CONFLICT (plan) DO NOTHING;
+
+-- 요금제 → 용량. **표가 유일한 기준이다.**
+--
+-- 표를 읽으므로 IMMUTABLE 일 수 없다 → **STABLE**. (트리거 안에서만 쓰고
+-- 인덱스·생성열에 쓰지 않으므로 안전하다 — 쓰는 곳은 sync_quota_from_plan
+-- 하나뿐이다.)
+--
+-- 모르는 요금제는 free 로, 표가 비었으면 10 MB 로 물러선다 — 표가 어떤
+-- 이유로 비어도 **한도가 0 이 되어 아무도 저장하지 못하는 일**은 없어야 한다.
 CREATE OR REPLACE FUNCTION public.plan_quota_bytes(p TEXT)
 RETURNS BIGINT AS $$
-    SELECT CASE lower(COALESCE(p, 'free'))
-        WHEN 'basic' THEN 10737418240::BIGINT   -- 10 GB
-        WHEN 'pro'   THEN 32212254720::BIGINT   -- 30 GB
-        WHEN 'team'  THEN 21474836480::BIGINT   -- 20 GB / 사용자
-        ELSE             10485760::BIGINT       -- free = 10 MB
-    END;
-$$ LANGUAGE sql IMMUTABLE;
+    SELECT COALESCE(
+        (SELECT quota_bytes FROM public.plan_quotas WHERE plan = lower(COALESCE(p, 'free'))),
+        (SELECT quota_bytes FROM public.plan_quotas WHERE plan = 'free'),
+        10485760::BIGINT
+    );
+$$ LANGUAGE sql STABLE;
 
 -- **plan 이 바뀌면 quota_bytes 가 따라온다.** 두 값이 어긋날 수 없게
 -- 트리거로 묶는다 — 결제 쪽에서 `UPDATE users SET plan='pro'` 한 줄이면

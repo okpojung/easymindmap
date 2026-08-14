@@ -100,6 +100,10 @@ export interface AdminUserRow {
 export interface SettingItem {
   key: string; label: string; value: string | number; unit?: string;
   source: 'env' | 'db' | 'code'; where: string; note?: string;
+  /** 콘솔에서 바로 고칠 수 있는 값인가 — **서버가 정한다** (2026-08-14).
+   *  화면이 source 로 짐작하지 않는다: 못 고치는 DB 값이 생기면
+   *  입력칸이 먼저 생기고 저장에서 터진다. */
+  editable?: { kind: 'planQuotaMb'; plan: string; min: number; max: number };
 }
 export interface SettingGroup {
   id: string; title: string; why: string; items: SettingItem[];
@@ -130,4 +134,13 @@ export const adminApi = {
 
   // ── 설정값 ────────────────────────────────────────────────
   settings: () => req<{ groups: SettingGroup[] }>('GET', '/admin/settings'),
+  /** 요금제 한도 변경 — 콘솔에서 고칠 수 있는 유일한 설정 */
+  setPlanQuota: (plan: string, mb: number) =>
+    req<{
+      plan: string; mb: number; previousMb: number;
+      /** 옛 한도를 그대로 쓰던 회원 — 새 한도로 옮겼다 */
+      usersUpdated: number;
+      /** 한도를 따로 올려 둔 회원(특별 계약) — 손대지 않았다 */
+      usersKept: number;
+    }>('PATCH', '/admin/settings/plan-quota', { plan, mb }),
 };

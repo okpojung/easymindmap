@@ -3,13 +3,13 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
-import { IsIn, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
 import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { DatabaseService } from '../database/database.service';
 import { AdminGuard, type AdminUser } from './admin.guard';
 import { AdminService, PLANS } from './admin.service';
-import { collectServerSettings } from './admin-settings';
+import { collectServerSettings, PLAN_QUOTA_MAX_MB, PLAN_QUOTA_MIN_MB } from './admin-settings';
 import { AuditLogService } from '../common/audit-log.service';
 import type { AppEnv } from '../config/env.validation';
 
@@ -22,6 +22,16 @@ class SetPlanDto {
 }
 class ListQuery {
   @IsOptional() @IsString() @MaxLength(100) q?: string;
+}
+class PlanQuotaDto {
+  @IsIn(PLANS as unknown as string[], { message: '요금제 값이 올바르지 않습니다.' })
+  plan!: string;
+
+  // 소수점·문자열을 여기서 끊는다 — 서비스에서 다시 한 번 본다
+  @IsInt({ message: '한도는 정수(MB)여야 합니다.' })
+  @Min(PLAN_QUOTA_MIN_MB, { message: `한도는 ${PLAN_QUOTA_MIN_MB} MB 이상이어야 합니다.` })
+  @Max(PLAN_QUOTA_MAX_MB, { message: `한도는 ${PLAN_QUOTA_MAX_MB} MB 이하여야 합니다.` })
+  mb!: number;
 }
 
 /**
@@ -98,10 +108,24 @@ export class AdminController {
     return this.audit.forUser(id, 50);
   }
 
-  // ── 설정값 조회 (읽기 전용) ──────────────────────────────────
+  // ── 설정값 ───────────────────────────────────────────────────
   @Get('settings')
   @UseGuards(AdminGuard)
   settings() {
     return collectServerSettings(this.config, this.db).then((groups) => ({ groups }));
+  }
+
+  /**
+   * 요금제 한도 변경 — **콘솔에서 고칠 수 있는 유일한 설정** (2026-08-14).
+   *
+   * 환경변수·코드 상수는 여기로 열지 않는다. 환경변수를 화면에서 바꾸게
+   * 만들면 관리자 콘솔이 **서버를 멈출 수 있는 도구**가 되고(`CORS_ORIGIN`
+   * 하나만 잘못 넣어도 전원이 로그인하지 못한다), 코드 상수는 애초에
+   * 빌드에 박혀 있어 못 바꾼다.
+   */
+  @Patch('settings/plan-quota')
+  @UseGuards(AdminGuard)
+  setPlanQuota(@Body() dto: PlanQuotaDto, @Req() req: Request & { admin?: AdminUser }) {
+    return this.admin.setPlanQuota(dto.plan, dto.mb, req.admin?.email ?? '?');
   }
 }

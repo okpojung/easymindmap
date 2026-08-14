@@ -64,10 +64,20 @@ export function AdminPage() {
   const logout = () => { adminToken.clear(); setEmail(null); };
 
   return (
-    <div data-testid="admin-page" style={{ minHeight: '100vh', background: t.bg, color: t.text }}>
+    // **콘솔이 스스로 스크롤한다** (2026-08-14 사용자 지적 — 설정관리 아래가
+    // 잘려 보이지 않았다). `global.css` 가 `html, body { overflow: hidden }`
+    // 이라 페이지가 구르지 않는다 — 캔버스 에디터가 그래야 하기 때문이고,
+    // 그것을 풀면 에디터 쪽이 깨진다. 그래서 **관리자 화면만** 자기 안에서
+    // 구르게 한다: 높이를 화면에 맞추고 넘치는 만큼 세로 스크롤.
+    <div data-testid="admin-page" style={{
+      height: '100vh', overflowY: 'auto', background: t.bg, color: t.text,
+    }}>
       <header style={{
         display: 'flex', alignItems: 'center', gap: 14, padding: '0 18px', height: 52,
         background: t.surface, borderBottom: `1px solid ${t.border}`,
+        // 내려가도 탭이 보여야 한다 — 긴 설정 목록 아래에서 탭을 찾아
+        // 다시 올라오게 만들지 않는다
+        position: 'sticky', top: 0, zIndex: 5,
       }}>
         <div style={{ fontSize: 14.5, fontWeight: 800 }}>EasyMindMap 관리자</div>
         <EnvBadge />

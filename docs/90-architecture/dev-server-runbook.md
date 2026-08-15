@@ -848,8 +848,116 @@ sudo cp /data/coolify/source/.env ~/coolify-env-backup-$(date +%Y%m%d)
 - **`APP_KEY` 분실 = Coolify에 저장된 전 비밀값(환경변수·DB 비밀번호·
   GitHub App 자격증명) 복호화 불가.** 서버 재설치 시 이 파일만 있으면
   복구된다.
-- DB 데이터는 Coolify DB 리소스의 **Scheduled Backup**(S3 호환 대상
-  지정 가능)으로.
+
+### 2.1 ★ DB 백업 — **2026-08-15 확인 결과: 하나도 없다**
+
+Coolify → `easymindmap-db` → **Backups** 탭이
+`No scheduled backups configured.` 다. **지금 이 서버가 죽으면 맵·계정·
+첨부를 전부 잃는다.** 외부 공개(B14 ④)의 전제이기 전에 지금 당장의 구멍이다.
+
+#### 왜 Coolify 의 Scheduled Backup 만으로는 부족한가 ⚠️
+
+**로그인 계정은 앱 DB 에 없다.** GoTrue 는 **별도 데이터베이스**(`gotrue`)
+를 쓴다. Coolify 의 백업은 기본적으로 **`POSTGRES_DB` 하나만** 담는다
+(Import 화면의 `Backup includes all databases` 체크박스가 그 증거다).
+
+그대로 두면 이렇게 된다.
+
+> 장애 → 복원 → 맵과 문서는 살아났는데 **아무도 로그인할 수 없다**
+
+그래서 **`pg_dumpall` 로 그 인스턴스의 모든 데이터베이스를 담는다.**
+Coolify UI 를 쓴다면 **"모든 데이터베이스 포함"을 반드시 켠다.**
+
+#### 지금 당장 — 1회 백업 (2분)
+
+```bash
+bash <<'SCRIPT'
+set -e
+# DB 찾기는 §1.5-0-A 와 같은 방식 — 이미지 이름으로 찾지 않는다
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+echo "✅ DB=$DB  계정=$PGUSER"
+
+echo "── 이 인스턴스에 담긴 데이터베이스 ──"
+docker exec -i "$DB" psql -U "$PGUSER" -d postgres -tAc \
+  "SELECT datname FROM pg_database WHERE datistemplate = false"
+
+mkdir -p ~/db-backups
+OUT=~/db-backups/all-$(date +%Y%m%d-%H%M).sql.gz
+docker exec -i "$DB" pg_dumpall -U "$PGUSER" | gzip > "$OUT"
+ls -lh "$OUT"
+echo "✅ 위 목록의 데이터베이스가 **전부** 이 파일에 들어 있다"
+SCRIPT
+```
+
+위 목록에 **`gotrue` 가 보이는지 반드시 확인한다.** 안 보이면 GoTrue 가
+**다른 PostgreSQL 인스턴스**를 쓰는 것이므로 그쪽도 따로 담아야 한다
+(`auth` 앱의 `GOTRUE_DB_DATABASE_URL` 로 같은 절차를 반복).
+
+> ⚠️ **`~/db-backups` 는 같은 서버다.** 서버가 통째로 죽으면 백업도 함께
+> 죽는다. **반드시 서버 밖으로 한 벌 더** 옮긴다(개발 PC·NAS·S3).
+> `scp ubuntu@<서버>:~/db-backups/all-*.sql.gz .`
+
+#### 자동 백업 — 호스트 cron (권장)
+
+Coolify UI 대신 이 방법을 권하는 이유: **모든 데이터베이스를 담는 것이
+기본**이고, 보관 정책과 서버 밖 복사를 한 파일에서 볼 수 있다.
+
+`/usr/local/bin/emm-db-backup.sh` 로 저장하고 `chmod +x`:
+
+```bash
+#!/bin/bash
+set -euo pipefail
+KEEP_DAYS=14
+DEST=/var/backups/emm
+mkdir -p "$DEST"
+
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+
+OUT="$DEST/all-$(date +%Y%m%d-%H%M).sql.gz"
+docker exec -i "$DB" pg_dumpall -U "$PGUSER" | gzip > "$OUT.tmp"
+mv "$OUT.tmp" "$OUT"   # 다 받은 뒤에만 정식 이름으로 — 반쪽 파일을 백업으로 착각하지 않게
+
+find "$DEST" -name 'all-*.sql.gz' -mtime +$KEEP_DAYS -delete
+
+# 크기가 0 이면 실패다 — 조용히 넘어가지 않는다
+[ -s "$OUT" ] || { echo "❌ 백업이 비었다: $OUT" >&2; exit 1; }
+echo "✅ $(date '+%F %T') $OUT ($(du -h "$OUT" | cut -f1))"
+```
+
+```bash
+sudo crontab -e
+# 매일 새벽 3시 10분
+10 3 * * * /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1
+```
+
+`DEST` 를 **NAS 마운트(§1.5-A)나 서버 밖 저장소**로 두면 서버가 죽어도
+백업이 남는다.
+
+#### 복원 절차
+
+```bash
+# ① 앱을 멈춘다 (쓰기가 섞이지 않게) — Coolify 에서 api·frontend Stop
+# ② 복원
+gunzip -c /var/backups/emm/all-YYYYMMDD-HHMM.sql.gz \
+  | docker exec -i "$DB" psql -U "$PGUSER" -d postgres
+# ③ 스키마 확인
+curl -s https://api-dev.mindmap.ai.kr/v1/health      # "schema":"ok" 여야 한다
+# ④ 로그인해 본다 — gotrue 가 복원됐는지는 이것으로만 알 수 있다
+```
+
+`pg_dumpall` 결과에는 `CREATE DATABASE` 가 들어 있어 **데이터베이스째**
+되살아난다. 그래서 ②는 `-d postgres` 로 붙어도 된다.
+
+> **★ 복원 리허설을 한 번은 해야 한다.** 백업은 "잡아 뒀다"가 아니라
+> **"되돌려 봤다"** 여야 믿을 수 있다. 운영 인스턴스(B14 ③)를 세울 때
+> dev 백업을 그쪽에 복원해 보는 것이 가장 싼 리허설이다 — 어차피 한 번은
+> 옮겨야 하는 데이터다.
 
 ## 3. 컨테이너 진단 명령 모음
 

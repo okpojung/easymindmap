@@ -196,11 +196,20 @@ Coolify 는 **유료판 배포에서 private 저장소를 Source 로** 쓴다. �
 
 이 문서는 **설계까지**다. 구현은 아래 순서로 한다.
 
-- [ ] `apps/api/src/collab/` — contract · stub · module (스텁이 404 를 주는지 e2e)
+- [x] `apps/api/src/collab/` — contract · stub · module · controller
+      (**완료 2026-08-15** — e2e154, 15항목)
+- [x] 기동 로그 한 줄 (`협업 모듈: 없음(스텁)`) — **완료 2026-08-15**
 - [ ] `apps/frontend/src/collab/` — contract · stub + vite 별칭
 - [ ] 메뉴 자리 + `준비 중` 배지 (관리자 콘솔 결제관리와 같은 방식)
-- [ ] 기동 로그 한 줄 (`협업 모듈: 없음(스텁)`)
-- [ ] private 저장소 `okpojung/easymindmap-collab` 생성
+- [ ] private 저장소 `okpojung/easymindmap-collab` 생성 (**사용자 몫** —
+      AI 의 GitHub 권한은 `okpojung/easymindmap` 하나뿐이다)
+
+> **화면 쪽은 쓸 곳이 생길 때 붙인다** (2026-08-15). 협업 메뉴 자리는
+> 에디터의 탭 레지스트리(타입 + 스토어 + 렌더 분기)를 함께 건드려야 하고,
+> **아무도 쓰지 않는 스텁은 죽은 코드**가 된다. 서버가 이미
+> `GET /v1/collab/status` 로 "켜졌는지 + 왜 꺼졌는지"를 답하므로, 화면은
+> 그때 그것만 물어보면 된다.
+
 
 > **확장점만으로는 검증할 것이 적다** — 스텁이 정직하게 404 를 주는지,
 > 유료 모듈이 없어도 앱이 정상 기동하는지 정도다. 그거면 충분하다.

@@ -959,6 +959,74 @@ curl -s https://api-dev.mindmap.ai.kr/v1/health      # "schema":"ok" 여야 한�
 > dev 백업을 그쪽에 복원해 보는 것이 가장 싼 리허설이다 — 어차피 한 번은
 > 옮겨야 하는 데이터다.
 
+### 2.2 ★ 헬스체크 감시 — 나빠지면 메일 (2026-08-15, B14 ⑤)
+
+지금은 무언가 잘못돼도 **사용자가 말해 줘야** 안다. `/v1/health` 를
+5분마다 보고 **상태가 바뀔 때** 관리자에게 메일을 보낸다.
+
+스크립트: [`scripts/health-watch.sh`](../../scripts/health-watch.sh)
+
+#### 왜 API 안이 아니라 호스트인가 ⚠️
+
+**API 안에 넣으면 API 가 죽었을 때 아무도 알리지 못한다.** 배포 직후
+기동 실패가 정확히 그 경우다.
+
+| 무엇이 잡히나 | API 안 | **호스트(이 방식)** | 외부 서비스 |
+|---|---|---|---|
+| `degraded` (스키마 누락·DB 끊김) | ✅ | ✅ | ⚠️ 상태만 |
+| API 프로세스 정지 | ❌ | ✅ | ✅ |
+| 서버·전원·네트워크 다운 | ❌ | ❌ | ✅ |
+
+마지막 줄은 이 방식도 못 잡는다 — 그건 외부 감시(UptimeRobot 등)가
+필요하다. **쓰지 않기로 했다**(2026-08-15 사용자 결정).
+
+#### 설치
+
+```bash
+sudo curl -fsSL https://raw.githubusercontent.com/okpojung/easymindmap/main/scripts/health-watch.sh \
+  -o /usr/local/bin/health-watch.sh
+sudo chmod +x /usr/local/bin/health-watch.sh
+
+# 먼저 손으로 한 번 (정상이면 **메일이 오지 않는 것이 정상**이다)
+sudo HEALTH_URL=https://api-dev.mindmap.ai.kr/v1/health /usr/local/bin/health-watch.sh
+
+sudo crontab -e
+# 5분마다
+*/5 * * * * HEALTH_URL=https://api-dev.mindmap.ai.kr/v1/health /usr/local/bin/health-watch.sh >> /var/log/emm-health.log 2>&1
+```
+
+#### 설정 — **새로 넣을 것이 없다**
+
+| 무엇 | 어디서 가져오나 |
+|---|---|
+| 받는 사람 | api 컨테이너의 **`ADMIN_EMAILS`** (콘솔에 들어갈 수 있는 사람 = 조치할 사람) |
+| 메일 서버 | api 컨테이너의 `SMTP_*` |
+
+**`docker inspect` 로 읽는다 — 컨테이너가 멈춰 있어도 읽힌다.** API 가
+죽은 상황에서 알려야 하므로 이게 핵심이다. 서버에 비밀값을 두 번 두지
+않는다는 뜻이기도 하다.
+
+받는 사람을 따로 두려면 api 에 `ALERT_EMAILS` 를 더한다(있으면 그게 이긴다).
+
+#### 알림 규칙 — **같은 장애로 5분마다 오지 않는다**
+
+| 언제 | 보내나 |
+|---|---|
+| 처음 도는데 정상 | ❌ 아무 말 없음 |
+| 정상 → 이상 | ✅ `⚠️ 서버 이상` |
+| 이상이 계속됨 | ❌ (하루 한 번만 `⚠️ 서버 이상 계속됨`) |
+| 이상 → 정상 | ✅ `✅ 서버 복구됨` |
+| 처음 도는데 이미 이상 | ✅ (알아야 할 소식이다) |
+
+메일 본문에는 **응답 원문**(`missingTables` 등)과 **무엇을 볼지**가 함께
+들어간다 — `degraded` 면 §0 의 델타 SQL, `down` 이면 Coolify 배포 로그.
+
+> 상태는 `/var/lib/emm-health/state` 에 한 줄로 남는다. 알림이 이상하면
+> 이 파일을 지우고 다시 돌리면 처음부터 시작한다.
+
+검증: **e2e153** — 상태를 마음대로 바꾸는 가짜 헬스 엔드포인트와 가짜
+SMTP 로 18항목(위 표의 다섯 경우 + 제목 MIME 인코딩 + 수신자 여럿).
+
 ## 3. 컨테이너 진단 명령 모음
 
 ```bash

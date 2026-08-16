@@ -31,8 +31,11 @@ import { ContentTab } from '@/editor/inspector-panels/ContentTab';
 import { NoteTagTab } from '@/editor/inspector-panels/NoteTagTab';
 import { AITab }      from '@/editor/inspector-panels/AITab';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
+// 유료 화면 모듈 — vite 별칭. 유료 UI 가 없으면 코어의 스텁으로 간다
+// (docs/04-extensions/open-core-boundary.md §5).
+import { ProFeaturePanel } from '@pro';
 
-export type NavTabKey       = 'newMap' | 'search' | 'template' | 'history' | 'mapSettings';
+export type NavTabKey       = 'newMap' | 'search' | 'template' | 'history' | 'mapSettings' | 'collab';
 export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
 export type SidebarSection  = 'nav' | 'inspector';
 
@@ -163,25 +166,16 @@ export function UnifiedSidebar({
 
         <div style={{ flex: 1 }} />
 
-        {/* Collab indicator */}
-        <button title="협업 채팅"
-          style={{
-            margin: '6px 7px',
-            width: 30, height: 30, borderRadius: 6,
-            background: 'transparent',
-            color: t.textMuted,
-            border: 'none', cursor: 'pointer',
-            position: 'relative',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
+        {/* 협업 — 유료 기능의 **자리**. 알맹이는 유료 모듈이 채운다
+            (open-core-boundary.md §3.1 ③). 눌러야 왜 못 쓰는지 알 수 있다.
+            빨간 점(읽지 않은 메시지 표시)은 뺐다 — 오지도 않은 메시지를
+            왔다고 말하는 표시였다. */}
+        <RailIcon t={t} title="협업"
+                  active={activeSection === 'nav' && navTab === 'collab'}
+                  expanded={!collapsed}
+                  onClick={() => handleRailClick('nav', 'collab')}>
           <I.Users size={16} />
-          <span style={{
-            position: 'absolute', top: 4, right: 4,
-            width: 7, height: 7, borderRadius: '50%',
-            background: t.danger,
-            border: `1.5px solid ${t.surfaceSunken}`,
-          }} />
-        </button>
+        </RailIcon>
       </div>
 
       {/* Content area (only when expanded) */}
@@ -295,11 +289,13 @@ function NavContent({ t, tab, onClose }: {
     template:    '템플릿',
     history:     '히스토리',
     mapSettings: '맵 설정',
+    collab:      '협업',
   } as const)[tab];
 
   const subtitle =
     tab === 'mapSettings' ? '맵 전체에 적용'
     : tab === 'newMap' ? '기본 맵 또는 템플릿에서 시작'
+    : tab === 'collab' ? '함께 편집하기'
     : '전체 맵 탐색';
 
   return (
@@ -311,6 +307,7 @@ function NavContent({ t, tab, onClose }: {
         {tab === 'template'    && <TemplatePanel t={t} />}
         {tab === 'history'     && <HistoryPanel t={t} />}
         {tab === 'mapSettings' && <MapSettingsPanel t={t} />}
+        {tab === 'collab'      && <ProFeaturePanel t={t} featureId="collab" />}
       </div>
     </>
   );

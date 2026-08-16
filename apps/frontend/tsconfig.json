@@ -21,7 +21,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@emm/*": ["../../packages/emm-parser/src/*"]
+      "@emm/*": ["../../packages/emm-parser/src/*"],
+      "@pro": ["./src/pro/stub"]
     }
   },
   "include": ["src"]

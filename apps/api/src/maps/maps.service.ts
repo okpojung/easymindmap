@@ -21,6 +21,22 @@ interface MapRow {
   updated_at: Date;
 }
 
+/**
+ * 협업맵인가 — **단일 세션 편집 잠금을 비켜 줄지**를 이것 하나로 정한다
+ * (2026-08-16, B16 ①. 설계: docs/04-extensions/collaboration/27-sync-model.md §7).
+ *
+ * 판정을 한 자리에 모아 둔 이유: 잠금은 **저장·열기·하트비트·해제** 네
+ * 군데에서 걸린다. 한 군데만 빠뜨려도 협업맵이 조용히 잠긴다 — 특히
+ * 하트비트를 빠뜨리면 25초마다 프런트가 편집권을 잃었다고 판단해
+ * **맵과의 연결을 끊는다.**
+ *
+ * **잠금 자체는 코어가 들고 있는다.** 유료 모듈이 코어의 잠금을 우회하게
+ * 만들면, 모듈이 없는 서버에서 협업맵이 잠긴 채로 남는다.
+ */
+function isCollabMap(map: Pick<MapRow, 'kind'>): boolean {
+  return map.kind === 'collab';
+}
+
 @Injectable()
 export class MapsService {
   private readonly log = new Logger(MapsService.name);
@@ -377,13 +393,20 @@ export class MapsService {
     // 단일 세션 편집 잠금 (2026-08-04) — 다른 살아 있는 세션이 이 맵을
     // 편집 중이면 저장을 거절한다 (읽기 전용으로 연 탭·죽지 않은 옛
     // 탭의 자동저장이 편집 중인 내용을 덮어쓰는 사고 방지).
-    if (await this.isLockedByOther(mapId, editSession)) {
-      throw new ConflictException(
-        '다른 세션(브라우저)에서 편집 중인 맵입니다 — 그쪽에서 맵을 닫은 뒤 다시 시도하세요.',
-      );
+    //
+    // **협업맵은 비켜 준다** (2026-08-16, B16 ①) — 여러 세션이 동시에
+    // 여는 것이 정상이다. 이 줄이 없으면 둘째 사람의 저장이 409 로
+    // 막히고, 프런트는 그것을 "편집권 상실"로 읽어 **맵과의 연결을
+    // 끊는다.** 협업이 첫날 막히는 자리가 여기다.
+    if (!isCollabMap(map)) {
+      if (await this.isLockedByOther(mapId, editSession)) {
+        throw new ConflictException(
+          '다른 세션(브라우저)에서 편집 중인 맵입니다 — 그쪽에서 맵을 닫은 뒤 다시 시도하세요.',
+        );
+      }
+      // 내 세션의 저장은 하트비트를 겸한다
+      if (editSession) await this.tryAcquireEditLock(mapId, userId, editSession);
     }
-    // 내 세션의 저장은 하트비트를 겸한다
-    if (editSession) await this.tryAcquireEditLock(mapId, userId, editSession);
 
     // 저장 용량 쿼터 (B9) — DB(문서+버전) + 첨부 합산이 한도를 넘으면
     // 저장을 거부한다. 증가분 = 새 문서 크기 - 이 맵의 기존 문서 크기
@@ -661,8 +684,12 @@ export class MapsService {
     // 하려고 여는" 것이다. 잠금이 없거나 죽었거나(하트비트 TTL 초과)
     // 내 세션이면 획득(acquired), 다른 살아 있는 세션이면 busy — 프런트
     // 는 busy 를 읽기 전용(서버 연결 없이 열기)으로 처리한다.
+    //
+    // **협업맵은 잠그지 않는다** (2026-08-16, B16 ①). editLock 을 아예
+    // 주지 않으므로 프런트는 읽기 전용으로 열지 않는다 — 'acquired' 라고
+    // 거짓말하지 않기 위해서다(잠근 적이 없다).
     let editLock: 'acquired' | 'busy' | undefined;
-    if (editSession) {
+    if (editSession && !isCollabMap(map)) {
       editLock = (await this.tryAcquireEditLock(mapId, userId, editSession))
         ? 'acquired' : 'busy';
     }
@@ -718,7 +745,12 @@ export class MapsService {
 
   /** POST /maps/:id/edit-heartbeat — 편집 탭이 25초마다 잠금을 연장 */
   async editHeartbeat(userId: string, mapId: string, sessionKey: string) {
-    await this.requireOwnedMap(userId, mapId);
+    const map = await this.requireOwnedMap(userId, mapId);
+    // **협업맵은 잃을 잠금이 없다** (2026-08-16, B16 ①). 표를 그냥 두면
+    // 갱신된 행이 0이라 held=false 가 나가고, 프런트는 그것을 편집권
+    // 상실로 읽어 **맵과의 연결을 끊는다**. 조용히 편집이 로컬 초안으로
+    // 빠지는 사고가 25초마다 일어난다.
+    if (isCollabMap(map)) return { held: true };
     const { rowCount } = await this.db.query(
       `UPDATE public.map_edit_locks SET heartbeat_at = NOW()
         WHERE map_id = $1 AND session_key = $2`,
@@ -731,7 +763,9 @@ export class MapsService {
 
   /** POST /maps/:id/edit-release — 맵 닫기·페이지 이탈 시 잠금 해제 */
   async editRelease(userId: string, mapId: string, sessionKey: string) {
-    await this.requireOwnedMap(userId, mapId);
+    const map = await this.requireOwnedMap(userId, mapId);
+    // 협업맵은 애초에 잠근 적이 없다 — 지울 것이 없다 (B16 ①)
+    if (isCollabMap(map)) return { ok: true };
     await this.db.query(
       `DELETE FROM public.map_edit_locks WHERE map_id = $1 AND session_key = $2`,
       [mapId, sessionKey],

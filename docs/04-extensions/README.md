@@ -23,6 +23,7 @@ AI, 번역, 협업, 퍼블리시, 외부 연동 등 편집기 코어 위에 올�
 | 24 | `translation/24-chat-translation.md` | TRANSLATION | 채팅 메시지 실시간 번역 | V2 |
 | 25 | `collaboration/25-map-collaboration.md` | COLLAB | 협업 초대 / 동기화 / 커서 / Soft Lock / Node Thread | V1~V2 |
 | 26 | `collaboration/26-realtime-chat.md` | CHAT | 실시간 채팅 (맵 채널 / 1:1 DM / @멘션) | V2~V3 |
+| 27 | `collaboration/27-sync-model.md` | COLLAB | **동기화 모델 결정** — CRDT(Yjs) · 무엇을 CRDT 에 담나 · 전송 · 정본 유지 · 오픈코어 경계 (2026-08-16). **25번의 전송·충돌 전제를 대체한다** | 유료 |
 | 27 | `publish/27-publish-share.md` | PUBLISH | 공개 URL 게시 및 읽기 전용 공유 | MVP |
 | 28 | `project/28-wbs.md` | WBS | WBS 모드 (일정 / 마일스톤 / 진척률) | V1 |
 | 29 | `project/29-resource.md` | RESOURCE | 리소스 할당 (담당자 / 역할 / 공수) | V1 |

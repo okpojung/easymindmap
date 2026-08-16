@@ -174,18 +174,21 @@ Export   : EMM Markdown serializer (@easymindmap/emm-parser) + 자체 Standalone
 
 ### 실시간 협업 구조
 
-```
-Phase 1 (V1): Lightweight Realtime
-  ├── Supabase Realtime (DB 변경 이벤트 구독)
-  ├── presence / cursor / patch broadcast
-  └── WebSocket Gateway (VM-02)
+> **2026-08-16 정정.** 아래의 "Supabase Realtime 이 이미 내장" 은 사실이
+> 아니다 — **Supabase 는 Auth(GoTrue) 전용**이고 Realtime 도 Redis 도 쓰지
+> 않는다. 그 전제 위의 단계 구분(V1 LWW → V2 CRDT)도 폐기했다.
+> **처음부터 CRDT(Yjs)로 간다** — 자세한 근거는
+> [`27-sync-model.md`](../04-extensions/collaboration/27-sync-model.md).
 
-Phase 2 (V2+): CRDT
-  ├── Yjs adapter
-  └── optimistic merge
+```
+전송      우리 WebSocket 게이트웨이 (유료 모듈이 들고 온다)
+합치기    Yjs — 구조와 텍스트만. 이미지 바이트는 CRDT 밖
+정본      map_documents.doc 그대로 (편집 중 표현만 CRDT)
+접속자    Yjs awareness — 커서·Soft Lock 표시가 같은 연결로
 ```
 
-> Supabase Realtime이 이미 내장되어 있어 V1 협업 기반 구현 공수가 크게 줄어듦
+**선행 조건 둘이 공개 코어에 있다** — ①`kind='collab'` 이면 편집 잠금을
+비켜 주기(없으면 둘째 사람이 읽기 전용이다) ②이미지를 문서 밖으로.
 
 ---
 

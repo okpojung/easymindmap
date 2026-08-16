@@ -6,7 +6,7 @@ import { AccountModule } from './account/account.module';
 import { AdminModule } from './admin/admin.module';
 import { AuditLogModule } from './common/audit-log.module';
 import { AttachmentsModule } from './attachments/attachments.module';
-import { CollabModule } from './collab/collab.module';
+import { ProModule } from './pro/pro.module';
 import { RateLimitGuard } from './common/rate-limit/rate-limit.guard';
 import { validateEnv, type AppEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
@@ -44,9 +44,10 @@ import { NodesModule } from './nodes/nodes.module';
     AttachmentsModule,
     MapsModule,
     NodesModule,
-    // 협업 — 유료 모듈이 있으면 그것을, 없으면 스텁을 등록한다
-    // (open-core-boundary.md §4). 없는 것이 공개판의 정상 동작이다.
-    CollabModule.register(),
+    // 유료 확장 — 유료 모듈이 있으면 그것을, 없으면 스텁을 등록한다
+    // (open-core-boundary.md §4). **이음매는 이 한 줄뿐이다** — 유료
+    // 기능이 늘어도 여기는 안 바뀐다. 없는 것이 공개판의 정상 동작이다.
+    ProModule.register(),
   ],
   providers: [
     // 전역 가드 — 모든 요청이 여기를 먼저 지난다.

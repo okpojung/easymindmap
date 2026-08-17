@@ -421,13 +421,29 @@ export function serverAttachmentUrl(id: string): string {
   return `${BASE}/v1/attachments/${id}`;
 }
 
-/** URL 이 이 서버의 첨부(B9)를 가리키면 그 id, 아니면 null */
+/**
+ * URL 이 이 서버의 첨부(B9)를 가리키면 그 id, 아니면 null.
+ *
+ * **절대 URL 과 상대 경로를 모두 받는다** (2026-08-16, B16 ②).
+ * 서버가 문서를 고쳐 쓸 때는 **상대 경로**를 넣는다 — 서버는 브라우저가
+ * 어느 주소로 접속했는지 모르고, 도메인이 바뀌면 절대 URL 은 전부
+ * 깨지기 때문이다. 사람이 붙인 첨부는 지금까지처럼 절대 URL 이라
+ * **둘 다 알아봐야 한다.**
+ */
 export function serverAttachmentId(url: string | undefined): string | null {
   if (!url) return null;
-  const prefix = `${BASE}/v1/attachments/`;
-  if (!url.startsWith(prefix)) return null;
-  const id = url.slice(prefix.length).split('?')[0];
+  const path = url.startsWith(`${BASE}/`) ? url.slice(BASE.length) : url;
+  if (!path.startsWith('/v1/attachments/')) return null;
+  const id = path.slice('/v1/attachments/'.length).split('?')[0].split('/')[0];
   return id || null;
+}
+
+/**
+ * 상대 경로면 API 주소를 붙인다 — `<img src>` 를 그대로 두면 **프런트
+ * 주소로 풀려** 404 가 난다. 토큰을 기다리는 동안 보여 줄 임시 주소로도 쓴다.
+ */
+export function absolutizeAttachmentUrl(url: string): string {
+  return url.startsWith('/') ? `${BASE}${url}` : url;
 }
 
 /**
@@ -436,10 +452,12 @@ export function serverAttachmentId(url: string | undefined): string | null {
  * 내보내기 패키징의 fetch 도 같은 경로를 쓴다. AUTH_MODE=dev 는 무시).
  */
 export async function attachmentFetchUrl(url: string): Promise<string> {
-  if (!serverAttachmentId(url) || !authEnabled) return url;
+  if (!serverAttachmentId(url)) return url;
+  const abs = absolutizeAttachmentUrl(url);
+  if (!authEnabled) return abs;
   const token = await getFreshAccessToken();
-  if (!token) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`;
+  if (!token) return abs;
+  return `${abs}${abs.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`;
 }
 
 export const cloudApiBase = BASE;

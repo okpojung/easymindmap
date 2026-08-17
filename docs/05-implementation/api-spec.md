@@ -58,7 +58,7 @@
 | 3 | GET | `/v1/maps/:id` | 단건 + 정규화 `nodes[]` (depth·orderIndex 순) |
 | 4 | PATCH | `/v1/maps/:id` | 메타 수정 `{title?,viewMode?,refreshIntervalSeconds?,defaultLayoutType?,folderId?,kind?}` |
 | 5 | DELETE | `/v1/maps/:id` | 소프트 삭제(`deleted_at`) → 204 |
-| 6 | PUT | `/v1/maps/:id/document` | **문서 스냅샷 저장(upsert)** `{doc,title?,keepVersion?,editSession?,allowEmpty?,client?:{platform?,browser?}}` — 무변경이면 `{unchanged:true}`, 다른 세션 잠금이면 409, 쿼터 초과 413. `keepVersion` 시 히스토리 버전 적재(B8). `client` = 저장한 기기·브라우저(2026-08-09) — **IP 는 받지 않는다**(서버가 요청에서 읽는다. 보내면 400) |
+| 6 | PUT | `/v1/maps/:id/document` | **문서 스냅샷 저장(upsert)** `{doc,title?,keepVersion?,editSession?,allowEmpty?,client?:{platform?,browser?}}` — 무변경이면 `{unchanged:true}`, 다른 세션 잠금이면 409, 쿼터 초과 413. `keepVersion` 시 히스토리 버전 적재(B8). `client` = 저장한 기기·브라우저(2026-08-09) — **IP 는 받지 않는다**(서버가 요청에서 읽는다. 보내면 400) **저장할 때 문서 안의 data URL 사진(8KB 이상)을 첨부 저장소로 옮기고 `/v1/attachments/<id>`(상대 경로) 참조만 남긴다** (2026-08-16, B16 ②). 같은 내용의 사진은 **내용 해시로 알아봐 다시 올리지 않는다**. 옮기다 실패하면 그 사진만 원래대로 두고 저장은 통과시킨다 — **쿼터 초과(413)만 올린다** |
 | 7 | GET | `/v1/maps/:id/document` | 스냅샷 조회 `?editSession=` → `{mapId,title,folderId,kind,doc,updatedAt,editLock?:'acquired'\|'busy'}`. **협업맵(`kind='collab'`)은 잠금을 잡지 않는다** — `editLock` 을 아예 주지 않는다(잠근 적이 없으므로 `acquired` 라고 거짓말하지 않는다) (2026-08-16, B16 ①) |
 | 8 | POST | `/v1/maps/:id/edit-heartbeat` | 편집 잠금 연장 `{sessionKey}` → `{held}` (TTL 60초, 25초 주기). **협업맵은 항상 `held:true`** — 잃을 잠금이 없다. `false` 를 주면 프런트가 편집권 상실로 읽어 **맵과의 연결을 끊는다** |
 | 9 | POST | `/v1/maps/:id/edit-release` | 편집 잠금 해제 `{sessionKey}` → `{ok}`. 협업맵은 잠근 적이 없어 지울 것이 없다 |

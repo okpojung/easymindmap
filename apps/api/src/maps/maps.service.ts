@@ -5,6 +5,7 @@ import { FoldersService } from '../folders/folders.service';
 import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
 import type { CreateMapDto } from './dto/create-map.dto';
 import type { UpdateMapDto } from './dto/update-map.dto';
+import { findDocImages, rewriteDocImages } from './doc-images';
 
 /** DB row → API 응답(camelCase) 매핑용 내부 타입 */
 interface MapRow {
@@ -408,6 +409,11 @@ export class MapsService {
       if (editSession) await this.tryAcquireEditLock(mapId, userId, editSession);
     }
 
+    // 사진을 저장소로 옮긴다 (B16 ②) — **쿼터를 재기 전에** 한다.
+    // 옮기고 나면 문서가 그만큼 작아지므로, 순서를 바꾸면 같은 바이트를
+    // 문서와 첨부에서 **두 번 센다**.
+    doc = await this.extractDocImages(userId, mapId, doc);
+
     // 저장 용량 쿼터 (B9) — DB(문서+버전) + 첨부 합산이 한도를 넘으면
     // 저장을 거부한다. 증가분 = 새 문서 크기 - 이 맵의 기존 문서 크기
     // (+ 히스토리 버전을 남기면 새 문서 크기만큼 한 번 더).
@@ -741,6 +747,60 @@ export class MapsService {
     const stale =
       Date.now() - new Date(cur.heartbeat_at).getTime() > MapsService.EDIT_LOCK_TTL_MS;
     return !stale && cur.session_key !== (sessionKey ?? '');
+  }
+
+  /**
+   * 문서 안의 data URL 사진을 첨부 저장소로 옮기고 **참조만** 남긴다
+   * (2026-08-16, B16 ②. 설계: content-permanence.md §7.1).
+   *
+   * **상대 경로**(`/v1/attachments/<id>`)를 넣는다 — 서버는 브라우저가
+   * 어느 주소로 접속했는지 모르고, 도메인이 바뀌면 절대 URL 은 전부
+   * 깨진다. 프런트의 `serverAttachmentId()` 가 둘 다 알아본다.
+   *
+   * **옮기다 실패하면 그 사진만 원래대로 둔다.** 저장 자체를 실패시키면
+   * 사용자는 사진 한 장 때문에 편집분 전체를 잃는다. 다만 **쿼터 초과
+   * (413)는 그대로 올린다** — 조용히 넘기면 한도를 넘겨 저장하게 된다.
+   */
+  private async extractDocImages(
+    userId: string, mapId: string, doc: unknown,
+  ): Promise<unknown> {
+    const found = findDocImages(doc);
+    if (!found.length) return doc;
+
+    const urlBySrc = new Map<string, string>();
+    let moved = 0;
+    let reused = 0;
+    for (const img of found) {
+      // 같은 내용의 사진이 이 맵에 이미 있으면 그것을 쓴다 — 화면이
+      // 메모리에 data URL 을 들고 있어 자동저장마다 다시 보내기 때문이다.
+      const { rows } = await this.db.query<{ id: string }>(
+        `SELECT id FROM public.attachments
+          WHERE map_id = $1 AND owner_id = $2 AND name = $3 LIMIT 1`,
+        [mapId, userId, img.name],
+      );
+      if (rows[0]) {
+        urlBySrc.set(img.dataUrl, `/v1/attachments/${rows[0].id}`);
+        reused += 1;
+        continue;
+      }
+      try {
+        const meta = await this.attachments.upload(userId, {
+          originalname: Buffer.from(img.name, 'utf8').toString('latin1'),
+          mimetype: img.mime,
+          size: img.bytes.length,
+          buffer: img.bytes,
+        }, mapId);
+        urlBySrc.set(img.dataUrl, `/v1/attachments/${meta.id}`);
+        moved += 1;
+      } catch (err) {
+        // 쿼터 초과는 사용자가 알아야 한다 — 삼키면 한도를 넘겨 저장된다
+        if ((err as { status?: number })?.status === 413) throw err;
+        this.log.warn(`사진 이관 실패(원본 유지): ${(err as Error).message}`);
+      }
+    }
+    if (!urlBySrc.size) return doc;
+    this.log.log(`사진 이관 — 새로 ${moved}장 · 이미 있던 것 ${reused}장 (map=${mapId})`);
+    return rewriteDocImages(doc, urlBySrc);
   }
 
   /** POST /maps/:id/edit-heartbeat — 편집 탭이 25초마다 잠금을 연장 */

@@ -27,6 +27,7 @@ import {
 import { reassignIds } from '@/utils/aiProjectContext';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
+import { useImageSrcResolver } from '@/utils/imageSrc';
 
 interface Props {
   t: ThemeTokens;
@@ -84,6 +85,8 @@ function CardNode({
 }) {
   const updateNodeText = useDocumentStore((s) => s.updateNodeText);
   const setNodeImage = useDocumentStore((s) => s.setNodeImage);
+  // 우리 저장소 사진은 그릴 때 토큰을 붙여야 한다 (B16 ② 슬라이스 2)
+  const resolveImgSrc = useImageSrcResolver();
   const tc = card.tag ? resolveTagColor(card.tag, t) : null;
   const hasChildren = (card.children?.length ?? 0) > 0;
 
@@ -224,7 +227,7 @@ function CardNode({
             {card.image && (
               // 노드에 붙여넣은 사진 — 카드 안 썸네일
               <img
-                src={card.image.src}
+                src={resolveImgSrc(card.image.src)}
                 alt=""
                 draggable={false}
                 style={{

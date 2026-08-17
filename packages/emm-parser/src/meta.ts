@@ -123,6 +123,46 @@ export function bytesToDataUrl(bytes: Uint8Array, fileName: string): string {
   return `data:${mime};base64,${btoa(bin)}`;
 }
 
+// 맵 사본을 만들어 **사진** src 를 resolve 가 주는 값(data URL)으로
+// 교체한다 (2026-08-16, B16 ② 슬라이스 1).
+//
+// **왜 필요한가**: 사진이 서버 저장소로 옮겨가면 src 가 우리 서버 URL 이
+// 된다. 직렬화(serialize.ts)는 `http(s)` src 를 **URL 그대로** 내보내므로,
+// 그대로 두면 내보낸 ZIP·HTML 이 **서버가 살아 있어야 열리는 파일**이
+// 된다 — "파일 하나로 온전히"라는 약속이 깨진다
+// (docs/04-extensions/content-permanence.md §7.1).
+//
+// 그래서 내보내기 **직전에** 되돌린다. resolve 가 undefined 를 주면
+// 원래 src 를 유지한다 — 못 받아 온 사진을 **지우지는 않는다.**
+//
+// 첨부와 달리 **루트 노드도 훑는다.** 루트에 붙인 사진이 흔하다.
+export function withInlinedImages(
+  map: SampleMap,
+  resolve: (src: string) => string | undefined,
+): SampleMap {
+  interface ImgLike { src: string }
+  interface NodeLike {
+    image?: ImgLike;
+    images?: ImgLike[];
+    children?: NodeLike[];
+  }
+  const one = <T extends ImgLike>(im: T): T => {
+    const inlined = resolve(im.src);
+    return inlined ? { ...im, src: inlined } : im;
+  };
+  const walk = <T extends NodeLike>(n: T): T => ({
+    ...n,
+    ...(n.image ? { image: one(n.image) } : {}),
+    ...(n.images ? { images: n.images.map(one) } : {}),
+    children: (n.children ?? []).map(walk),
+  });
+  return {
+    ...map,
+    root: walk(map.root),
+    branches: map.branches.map((b) => walk(b)),
+  };
+}
+
 // 맵 사본을 만들어 첨부 URL을 resolve가 주는 값(data URL)으로 교체한다.
 // resolve가 undefined를 주면 원래 URL 유지.
 export function withInlinedAttachments(

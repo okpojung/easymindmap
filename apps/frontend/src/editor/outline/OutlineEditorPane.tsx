@@ -39,6 +39,7 @@ import { toggleCheckMarker } from '@/editor/node-renderer/mdCheck';
 import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import type { LaidOutNode } from '@/layout/types';
+import { useImageSrcResolver } from '@/utils/imageSrc';
 
 interface PaneProps {
   t: ThemeTokens;
@@ -208,6 +209,8 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 }) {
   const [expanded, setExpanded] = useState(node.expanded !== false);
   const [hover, setHover] = useState(false);
+  // 우리 저장소 사진은 그릴 때 토큰을 붙여야 한다 (B16 ② 슬라이스 2)
+  const resolveImgSrc = useImageSrcResolver();
   const hasChildren = !!node.children && node.children.length > 0;
 
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
@@ -555,7 +558,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             ).map((im, k) => (
               <img
                 key={k}
-                src={im.src}
+                src={resolveImgSrc(im.src)}
                 alt=""
                 style={{
                   display: 'block', maxWidth: '75%', maxHeight: 140,

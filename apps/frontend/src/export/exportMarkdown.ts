@@ -13,8 +13,10 @@ import {
   buildMapMeta,
   bytesToDataUrl,
   withInlinedAttachments,
+  withInlinedImages,
   INLINE_ATTACHMENT_LIMIT,
 } from './mapMeta';
+import { fetchServerImageDataUrls } from './serverImages';
 import {
   buildEmmBody,
   buildMetaComment,
@@ -39,10 +41,16 @@ function collectAttachments(nodes: MindNode[], out: NodeAttachment[]): void {
 }
 
 export async function buildMarkdownExportPackage(
-  map: SampleMap,
+  map0: SampleMap,
   mapLayoutType?: LayoutType,
   spacing?: LayoutSpacing,
 ): Promise<MdExportPackage> {
+  // 우리 저장소에 있는 사진을 **먼저** 되받아 data URL 로 되돌린다
+  // (B16 ② 슬라이스 1). 그러지 않으면 직렬화가 서버 URL 을 그대로
+  // 내보내 **서버가 살아 있어야 열리는 파일**이 된다.
+  const srvImg = await fetchServerImageDataUrls(map0);
+  const map = srvImg.inlined ? withInlinedImages(map0, (s) => srvImg.bySrc.get(s)) : map0;
+
   const title = safeFileName(map.title, 'mindmap');
   const images: EmmImageFile[] = [];
   const body = buildEmmBody(map, images);
@@ -57,7 +65,8 @@ export async function buildMarkdownExportPackage(
   // ≤2MB 첨부는 메타데이터에 data URL로 인라인 (단일 .md만으로 복원)
   const inlineById = new Map<string, string>();
   const attLines: string[] = [];
-  let externalCount = 0;
+  // 사진을 못 받아 온 것도 '외부로 남은 것'에 함께 센다
+  let externalCount = srvImg.failed;
   for (const att of attachments) {
     if (!att.url) continue;
     try {

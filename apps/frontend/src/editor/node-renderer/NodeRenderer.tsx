@@ -57,6 +57,7 @@ import { extractClipboardImage } from '@/utils/clipboardImage';
 import { hasForeignMapMarker, stripForeignMapMarkers } from '@/utils/foreignClipboard';
 import { openAttachment } from '@/utils/openAttachment';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
+import { useImageSrcResolver } from '@/utils/imageSrc';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -191,6 +192,8 @@ function NodeShape({
 }
 
 export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, onHover, onOpenPopover, collabs }: Props) {
+  // 우리 저장소 사진은 그릴 때 토큰을 붙여야 한다 (B16 ② 슬라이스 2)
+  const resolveImgSrc = useImageSrcResolver();
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
@@ -1011,7 +1014,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               return (
                 <g key={`inimg${band.idx}`}>
                   <image
-                    href={im.src}
+                    href={resolveImgSrc(im.src)}
                     x={n.x - sc.w / 2}
                     y={top}
                     width={sc.w}
@@ -1049,7 +1052,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               // 붙여넣은 사진 — 노드 폭에 맞춰 축소, 가운데 정렬
               <g>
                 <image
-                  href={n.image.src}
+                  href={resolveImgSrc(n.image.src)}
                   x={n.x - img.w / 2}
                   y={imgTop}
                   width={img.w}

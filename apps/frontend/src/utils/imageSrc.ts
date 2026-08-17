@@ -12,7 +12,11 @@
 // `images.map(...)` 안에서 그려지는데, 반복문 안에서는 훅을 부를 수 없다.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClient';
+import {
+  absolutizeAttachmentUrl,
+  attachmentFetchUrl,
+  serverAttachmentId,
+} from '@/services/cloud/apiClient';
 
 /** 원본 src → 토큰이 붙은 src. 세션 동안만 유지한다(토큰이 만료되므로) */
 const resolved = new Map<string, string>();
@@ -57,7 +61,9 @@ export function useImageSrcResolver(): (src: string | undefined) => string | und
         .catch(() => { /* 실패하면 원본 주소로 남는다 */ })
         .finally(() => { inflight.delete(src); notify(); });
     }
-    return src;
+    // 토큰이 준비되기 전에는 **절대 주소만이라도** 준다. 상대 경로를
+    // 그대로 두면 `<img>` 가 **프런트 주소로 풀어** 404 가 난다.
+    return absolutizeAttachmentUrl(src);
   }, []);
 }
 

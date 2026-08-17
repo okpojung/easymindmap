@@ -32,10 +32,12 @@ import { parseMdTable as parseMdTableEditor } from '@/editor/node-renderer/mdTab
 import { computeNodeChecks } from '@/editor/node-renderer/mdCheck';
 import { buildZip, type ZipEntry } from './zip';
 import { attachmentFetchUrl } from '@/services/cloud/apiClient';
+import { fetchServerImageDataUrls } from './serverImages';
 import {
   buildMapMeta,
   bytesToDataUrl,
   withInlinedAttachments,
+  withInlinedImages,
   INLINE_ATTACHMENT_LIMIT,
 } from './mapMeta';
 
@@ -3188,12 +3190,18 @@ export interface ExportPackage {
 // inside the zip). Attachments whose bytes cannot be fetched (e.g. CORS or
 // dead URL) stay as external links in the HTML instead of files/ entries.
 export async function buildExportPackage(
-  map: SampleMap,
+  map0: SampleMap,
   mapLayoutType?: LayoutType,
   spacing?: LayoutSpacing,
   // 내보낼 때의 에디터 테마가 다크인지 — 뷰어가 이 모드로 열린다
   dark?: boolean,
 ): Promise<ExportPackage> {
+  // 우리 저장소 사진을 **먼저** 되받아 data URL 로 되돌린다 (B16 ② 슬라이스 1).
+  // **첨부가 하나도 없는 경로(아래 조기 반환)에서도** 사진은 있을 수 있으므로
+  // 여기서 한다 — 그 아래에 두면 사진만 있는 맵이 서버 URL 로 나간다.
+  const srvImg = await fetchServerImageDataUrls(map0);
+  const map = srvImg.inlined ? withInlinedImages(map0, (s) => srvImg.bySrc.get(s)) : map0;
+
   const title = safeName(map.title, 'mindmap');
 
   const attachments: NodeAttachment[] = [];
@@ -3208,7 +3216,7 @@ export async function buildExportPackage(
       fileName: `${title}.html`,
       blob: new Blob([html], { type: 'text/html;charset=utf-8' }),
       packaged: 0,
-      external: 0,
+      external: srvImg.failed,
     };
   }
 
@@ -3259,7 +3267,8 @@ export async function buildExportPackage(
       fileName: `${title}.html`,
       blob: new Blob([html], { type: 'text/html;charset=utf-8' }),
       packaged: 0,
-      external: attachments.length,
+      // 사진을 못 받아 온 것도 함께 센다 (B16 ②)
+      external: attachments.length + srvImg.failed,
     };
   }
 
@@ -3272,7 +3281,7 @@ export async function buildExportPackage(
     fileName: `${title}.zip`,
     blob: new Blob([buildZip(entries) as BlobPart], { type: 'application/zip' }),
     packaged: files.length,
-    external: attachments.length - files.length,
+    external: attachments.length - files.length + srvImg.failed,
   };
 }
 

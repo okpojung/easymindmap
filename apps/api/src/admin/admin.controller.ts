@@ -9,7 +9,11 @@ import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorato
 import { DatabaseService } from '../database/database.service';
 import { AdminGuard, type AdminUser } from './admin.guard';
 import { AdminService, PLANS } from './admin.service';
-import { collectServerSettings, PLAN_QUOTA_MAX_MB, PLAN_QUOTA_MIN_MB } from './admin-settings';
+import {
+  collectServerSettings,
+  PLAN_PRICE_MAX_KRW,
+  PLAN_QUOTA_MAX_MB, PLAN_QUOTA_MIN_MB,
+} from './admin-settings';
 import { AuditLogService } from '../common/audit-log.service';
 import type { AppEnv } from '../config/env.validation';
 
@@ -32,6 +36,19 @@ class PlanQuotaDto {
   @Min(PLAN_QUOTA_MIN_MB, { message: `한도는 ${PLAN_QUOTA_MIN_MB} MB 이상이어야 합니다.` })
   @Max(PLAN_QUOTA_MAX_MB, { message: `한도는 ${PLAN_QUOTA_MAX_MB} MB 이하여야 합니다.` })
   mb!: number;
+}
+
+class PlanPriceDto {
+  @IsIn(PLANS as unknown as string[], { message: '요금제 값이 올바르지 않습니다.' })
+  plan!: string;
+
+  // 0 은 허용한다 — "결제하지 않는 요금제"라는 뜻이다.
+  // **1~999 는 서비스에서 막는다**(PG 최소 결제 금액이 1,000원이라,
+  // 저장은 되는데 결제창에서 거절되는 값이 생긴다).
+  @IsInt({ message: '요금은 정수(원)여야 합니다.' })
+  @Min(0, { message: '요금은 0원 이상이어야 합니다.' })
+  @Max(PLAN_PRICE_MAX_KRW, { message: `요금은 ${PLAN_PRICE_MAX_KRW}원 이하여야 합니다.` })
+  krw!: number;
 }
 
 /**
@@ -127,5 +144,18 @@ export class AdminController {
   @UseGuards(AdminGuard)
   setPlanQuota(@Body() dto: PlanQuotaDto, @Req() req: Request & { admin?: AdminUser }) {
     return this.admin.setPlanQuota(dto.plan, dto.mb, req.admin?.email ?? '?');
+  }
+
+  /**
+   * 요금제 **구독 요금** 변경 (2026-08-18, 사용자 요청).
+   *
+   * 한도와 함께 콘솔에서 고칠 수 있는 두 번째 설정이다. 결제가 **청구액을
+   * 이 값에서 읽으므로**, 화면이 보낸 금액을 그대로 쓰는 길을 아예 만들지
+   * 않는다 — 그러면 1,000원 결제로 상위 요금제를 받아갈 수 있다.
+   */
+  @Patch('settings/plan-price')
+  @UseGuards(AdminGuard)
+  setPlanPrice(@Body() dto: PlanPriceDto, @Req() req: Request & { admin?: AdminUser }) {
+    return this.admin.setPlanPrice(dto.plan, dto.krw, req.admin?.email ?? '?');
   }
 }

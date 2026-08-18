@@ -91,6 +91,7 @@
 | 22h | GET | `/v1/admin/users/:id/logins` | 그 회원의 **로그인 이력** — `{available,limit,events[],logins30d,loginsTotal,lastLoginAt}`. GoTrue 감사 로그(`GOTRUE_DATABASE_URL`)를 읽는다. 설정이 없으면 `available:false` (2026-08-13). **최근 `limit`(50)건까지** — 화면이 "전부인지 잘렸는지" 말할 수 있게 상한을 함께 준다. `events[].ip` 는 GoTrue v2.194.0 이 로그인·로그아웃에 빈 값을 넣어 **대개 null 이다**(2026-08-14) |
 | 22g | GET | `/v1/admin/settings` | 서버가 **지금 들고 있는** 설정값(env·DB). 화면 상수는 프런트가 자기 것을 합친다 |
 | 22i | PATCH | `/v1/admin/settings/plan-quota` | `{plan, mb}` → 요금제 한도 변경. **콘솔에서 고칠 수 있는 유일한 설정**(환경변수·코드 상수는 열지 않는다). 응답 `{plan, mb, previousMb, usersUpdated, usersKept}` — `usersKept` 는 한도를 따로 올려 둔 **특별 계약** 회원 수로, 손대지 않는다. 범위 1~1048576 MB |
+| 22j | PATCH | `/v1/admin/settings/plan-price` | `{plan, krw}` → 요금제 **구독 요금** 변경 (2026-08-18). 결제가 **청구액을 이 값에서 읽는다** — 화면이 보낸 금액을 쓰는 길은 만들지 않는다(그러면 1,000원 결제로 상위 요금제를 받아갈 수 있다). `0` = 결제하지 않는 요금제. **1~999 는 거절**(PG 최소 결제 금액이 1,000원이라, 통과시키면 저장은 되는데 결제창에서 거절된다). 회원 행은 건드리지 않는다 — 이미 결제한 원장은 그때의 청구액을 들고 있어 **과거 결제가 흔들리지 않는다** |
 | 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 → `{status,db,schema,missingTables?,missingColumns?,time}` |
 | 20b | GET | `/v1/health/ip` | **무인증.** 서버가 이 요청의 IP 를 무엇으로 보는지 → `{ip,ips,xForwardedFor,xRealIp,remoteAddress,trustProxy,userAgent,hint}` — 프록시 단계 진단용(2026-08-09). **자기 요청의 헤더만** 되돌려 준다 |
 | 21 | POST | `/v1/maps/:mapId/nodes` | 정규화 노드 생성 (ltree path·depth 자동) |

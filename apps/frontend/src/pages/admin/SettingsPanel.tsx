@@ -96,9 +96,11 @@ export function SettingsPanel({ t }: { t: ThemeTokens }) {
                       <div style={{ fontSize: 10, color: t.textSubtle, fontFamily: 'monospace' }}>{it.key}</div>
                     </td>
                     <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 700 }}>
-                      {it.editable
+                      {it.editable?.kind === 'planQuotaMb'
                         ? <QuotaEditor t={t} item={it} onSaved={load} />
-                        : <>{String(it.value)}{it.unit ? ` ${it.unit}` : ''}</>}
+                        : it.editable?.kind === 'planPriceKrw'
+                          ? <PriceEditor t={t} item={it} onSaved={load} />
+                          : <>{String(it.value)}{it.unit ? ` ${it.unit}` : ''}</>}
                     </td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>
                       <span style={{
@@ -124,6 +126,91 @@ export function SettingsPanel({ t }: { t: ThemeTokens }) {
         레이아웃 치수(노드 간격 같은 픽셀 값)는 일부러 담지 않았습니다 — 디자인이라 코드가
         주인이고, 목록에 섞이면 정작 봐야 할 정책 값이 묻힙니다.
       </div>
+    </div>
+  );
+}
+
+/**
+ * 요금제 **구독 요금** 편집 (2026-08-18).
+ *
+ * 한도와 달리 **이미 결제한 사람에게는 아무 일도 일어나지 않는다** —
+ * 원장이 그때의 청구액을 이미 들고 있다. 그래서 확인 문구도 다르다:
+ * "회원 한도가 바뀝니다"가 아니라 **"앞으로의 결제에 적용된다"**이다.
+ */
+function PriceEditor({ t, item, onSaved }: {
+  t: ThemeTokens; item: SettingItem; onSaved: () => Promise<void> | void;
+}) {
+  const e = item.editable!;
+  const current = Number(item.value) || 0;
+  const [krw, setKrw] = useState(String(current));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { setKrw(String(current)); }, [current]);
+
+  const n = Number(krw);
+  // 0(무료) 이거나 1,000원 이상. **1~999 를 여기서 막는다** — PG 최소
+  // 결제 금액이라, 통과시키면 저장은 되는데 결제창에서 거절된다.
+  const valid = Number.isInteger(n) && n >= 0 && n <= e.max && (n === 0 || n >= 1000);
+  const changed = valid && n !== current;
+  const won = (v: number) => v.toLocaleString('ko-KR') + '원';
+
+  const save = async () => {
+    if (!changed) return;
+    const ok = window.confirm(
+      `${e.plan} 요금제 구독 요금을 ${won(current)} → ${won(n)} 로 바꿉니다.\n\n`
+      + '**앞으로의 결제**에 적용됩니다. 이미 결제한 건은 그대로입니다.\n'
+      + (n === 0 ? '0 원은 "결제하지 않는 요금제"라는 뜻입니다.\n' : '')
+      + '\n계속할까요?',
+    );
+    if (!ok) return;
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await adminApi.setPlanPrice(e.plan, n);
+      setMsg(`${won(current)} → ${won(r.krw)} · 앞으로의 결제에 적용`);
+      await onSaved();
+    } catch (x) {
+      setErr(x instanceof CloudError ? x.message : '바꾸지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <input
+          data-testid="price-input" data-plan={e.plan}
+          type="number" min={0} max={e.max} step={100} value={krw} disabled={busy}
+          onChange={(ev) => setKrw(ev.target.value)}
+          onKeyDown={(ev) => { if (ev.key === 'Enter') void save(); }}
+          style={{
+            width: 110, height: 28, padding: '0 7px', fontSize: 12.5, fontWeight: 700,
+            borderRadius: 6, textAlign: 'right',
+            border: `1px solid ${valid ? t.border : t.danger}`,
+            background: t.surface, color: t.text,
+          }}
+        />
+        <span style={{ fontSize: 11.5, color: t.textMuted, fontWeight: 400 }}>원/월</span>
+        <button
+          data-testid="price-save" data-plan={e.plan}
+          onClick={() => void save()} disabled={!changed || busy}
+          style={{
+            height: 28, padding: '0 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 700,
+            cursor: changed && !busy ? 'pointer' : 'default',
+            border: `1px solid ${changed ? t.primaryBorder : t.border}`,
+            background: changed ? t.primary : t.surfaceAlt,
+            color: changed ? '#fff' : t.textSubtle,
+          }}
+        >{busy ? '저장 중…' : '저장'}</button>
+      </div>
+      <div style={{ fontSize: 10.5, color: t.textSubtle, fontWeight: 400 }}>
+        {valid
+          ? (n === 0 ? '무료 — 결제하지 않습니다' : `= ${won(n)} / 월`)
+          : '0(무료) 이거나 1,000원 이상 — PG 최소 결제 금액입니다'}
+      </div>
+      {msg && <div data-testid="price-result" style={{ fontSize: 10.5, color: t.primary, fontWeight: 400 }}>{msg}</div>}
+      {err && <div data-testid="price-error" style={{ fontSize: 10.5, color: t.danger, fontWeight: 400 }}>{err}</div>}
     </div>
   );
 }

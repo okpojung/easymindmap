@@ -559,8 +559,16 @@ CREATE TABLE IF NOT EXISTS public.plan_quotas (
 );
 
 COMMENT ON TABLE public.plan_quotas IS
-    '요금제별 저장 용량 한도. 관리자 콘솔 → 설정관리에서 바꾼다. '
+    '요금제별 저장 용량 한도와 구독 요금. 관리자 콘솔 → 설정관리에서 바꾼다. '
     'schema.sql 의 씨앗은 ON CONFLICT DO NOTHING 이라 재적용해도 덮지 않는다.';
+
+-- 구독 요금 (2026-08-18) — 결제 연동이 **청구액을 서버에서 계산**할 때 쓴다.
+--   0 = 무료(결제하지 않는다). 그 밖에는 PG 최소 금액 때문에 1,000원 이상.
+--   화면이 보낸 금액을 그대로 쓰면 1,000원 결제로 상위 요금제를 받아갈 수
+--   있으므로, **청구액의 유일한 기준은 이 표**다.
+ALTER TABLE public.plan_quotas
+    ADD COLUMN IF NOT EXISTS price_krw INT NOT NULL DEFAULT 0
+        CHECK (price_krw = 0 OR price_krw >= 1000);
 
 INSERT INTO public.plan_quotas (plan, quota_bytes) VALUES
     ('free',      10485760),   -- 10 MB

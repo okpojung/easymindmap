@@ -103,7 +103,10 @@ export interface SettingItem {
   /** 콘솔에서 바로 고칠 수 있는 값인가 — **서버가 정한다** (2026-08-14).
    *  화면이 source 로 짐작하지 않는다: 못 고치는 DB 값이 생기면
    *  입력칸이 먼저 생기고 저장에서 터진다. */
-  editable?: { kind: 'planQuotaMb'; plan: string; min: number; max: number };
+  editable?: {
+    kind: 'planQuotaMb' | 'planPriceKrw';
+    plan: string; min: number; max: number;
+  };
 }
 export interface SettingGroup {
   id: string; title: string; why: string; items: SettingItem[];
@@ -143,4 +146,7 @@ export const adminApi = {
       /** 한도를 따로 올려 둔 회원(특별 계약) — 손대지 않았다 */
       usersKept: number;
     }>('PATCH', '/admin/settings/plan-quota', { plan, mb }),
+  /** 요금제 구독 요금 변경 — 결제가 이 값을 청구한다 */
+  setPlanPrice: (plan: string, krw: number) =>
+    req<{ plan: string; krw: number }>('PATCH', '/admin/settings/plan-price', { plan, krw }),
 };

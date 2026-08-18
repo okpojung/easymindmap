@@ -43,6 +43,11 @@ const REQUIRED_COLUMNS = [
   'map_documents.search_text', // 문서함 내용 검색 (2026-08-08)
   'map_document_versions.client_ip', // 히스토리 접속 정보 (2026-08-09)
   'users.full_name', // 회원가입 — 성명·휴대폰 (2026-08-09)
+  // 구독 요금 (2026-08-18) — 없으면 관리자 콘솔의 요금 편집이 열리지 않는다.
+  // 여기 넣는 이유: 요금 저장이 실패할 때 서버가 "**/v1/health 의
+  // missingColumns 를 보라**"고 안내하는데, 이 목록에 없으면 그 안내가
+  // **아무것도 알려주지 않는 곳**을 가리킨다.
+  'plan_quotas.price_krw',
 ] as const;
 
 /**

@@ -29,7 +29,10 @@ export interface SettingItem {
    *
    *  **서버가 정한다.** 화면이 `source === 'db'` 로 짐작하면, 나중에 못
    *  고치는 DB 값이 생겼을 때 입력칸이 먼저 생기고 저장에서 터진다. */
-  editable?: { kind: 'planQuotaMb'; plan: string; min: number; max: number };
+  editable?: {
+    kind: 'planQuotaMb' | 'planPriceKrw';
+    plan: string; min: number; max: number;
+  };
 }
 
 export interface SettingGroup {
@@ -49,6 +52,9 @@ const MB = 1024 * 1024;
  *  차기 전까지 아무도 모른다. 1 MB ~ 1 TB 면 실제 요금제는 다 담는다. */
 export const PLAN_QUOTA_MIN_MB = 1;
 export const PLAN_QUOTA_MAX_MB = 1024 * 1024; // 1 TB
+/** 구독 요금 하한 — **PG 최소 결제 금액**이다. 그 아래로 두면 저장은 되는데 결제창에서 거절된다 */
+export const PLAN_PRICE_MIN_KRW = 1000;
+export const PLAN_PRICE_MAX_KRW = 10_000_000;
 
 export async function collectServerSettings(
   config: ConfigService<AppEnv, true>,
@@ -62,6 +68,11 @@ export async function collectServerSettings(
   // 표가 아직 없는 DB(델타 SQL 적용 전)에서는 **편집을 열지 않는다.**
   // 입력칸부터 생기고 저장에서 터지면, 관리자는 자기가 뭘 잘못했는지 모른다.
   let planEditable = false;
+  // 구독 요금은 **따로 읽는다** (2026-08-18). 같은 쿼리에 넣었더니, 컬럼이
+  // 아직 없는 서버(델타 미적용)에서 쿼리 전체가 실패해 **쿼터 편집까지
+  // 사라졌다.** 새로 더한 것 때문에 이미 되던 것이 사라지면 안 된다.
+  const priceByPlan = new Map<string, number>();
+  let priceEditable = false;
   try {
     const r = await db.query<{ plan: string; bytes: string }>(
       `SELECT p AS plan, public.plan_quota_bytes(p)::text AS bytes
@@ -76,13 +87,24 @@ export async function collectServerSettings(
     planRows = []; // 함수조차 없는 DB — 화면이 "조회 실패"로 보여 준다
   }
 
+  // 구독 요금 — **컬럼이 없어도 위(용량)는 그대로 보이게** 따로 감싼다
+  try {
+    const r = await db.query<{ plan: string; price_krw: number }>(
+      `SELECT plan, price_krw FROM public.plan_quotas`,
+    );
+    for (const row of r.rows) priceByPlan.set(row.plan, Number(row.price_krw));
+    priceEditable = true;
+  } catch {
+    priceEditable = false; // 델타 SQL 을 아직 안 적용한 서버
+  }
+
   return [
     {
       id: 'plan',
-      title: '요금제 · 저장 용량',
+      title: '요금제 · 저장 용량 · 구독 요금',
       why: '한 계정이 쓸 수 있는 총량. users.plan 이 정하고 트리거가 quota_bytes 를 맞춘다.',
       items: planRows.length
-        ? planRows.map((r) => ({
+        ? planRows.flatMap((r) => [{
           key: `plan.${r.plan}`,
           label: `${r.plan} 한도`,
           value: Math.round(Number(r.bytes) / MB),
@@ -105,7 +127,32 @@ export async function collectServerSettings(
               },
             }
             : {}),
-        }))
+        },
+        // 구독 요금 — 결제가 **청구액을 여기서 읽는다**(화면이 보낸 금액을
+        // 쓰지 않는다). 0 은 "결제하지 않는 요금제"다.
+        {
+          key: `plan.${r.plan}.price`,
+          label: `${r.plan} 구독 요금`,
+          value: priceEditable ? (priceByPlan.get(r.plan) ?? 0) : '조회 실패',
+          unit: '원/월',
+          source: 'db' as const,
+          where: priceEditable
+            ? '이 화면에서 바꾼다 (DB 표 public.plan_quotas.price_krw)'
+            : 'DB 표에 price_krw 칸이 아직 없다',
+          note: priceEditable
+            ? '결제가 이 값을 청구한다 — 0 은 결제하지 않는 요금제'
+            : '델타 SQL 을 적용하면 이 화면에서 바꿀 수 있다',
+          ...(priceEditable
+            ? {
+              editable: {
+                kind: 'planPriceKrw' as const,
+                plan: r.plan,
+                min: 0,
+                max: PLAN_PRICE_MAX_KRW,
+              },
+            }
+            : {}),
+        }])
         : [{
           key: 'plan.unknown', label: '요금제 한도', value: '조회 실패',
           source: 'db' as const, where: 'DB 표 public.plan_quotas',

@@ -65,6 +65,17 @@ export class RateLimitGuard extends ThrottlerGuard {
     // 그것 때문에 한도가 차면 **정작 장애일 때 상태를 못 본다.**
     if (path.startsWith('/v1/health')) return true;
 
+    // **밖에서 들어오는 통지도 세지 않는다** (2026-08-18).
+    // 결제 PG 의 결제완료 통지가 여기로 온다. IP 로 세는데 PG 재전송이
+    // 몰리면 **429** 가 나가고, PG 는 그것을 실패로 보고 재전송을
+    // 소진한다 — **돈은 빠져나갔는데 원장은 미결제**로 남는다.
+    //
+    // 헬스체크와 같은 이유다: **정작 중요할 때 막히면 안 되는 길**이다.
+    // 이 경로가 열려 있어도 안전한 이유는 레이트 리밋이 아니라
+    // **경로 시크릿·발신 IP·금액 교차검증·멱등성**이 지키기 때문이다
+    // (유료 모듈이 그 경로를 가져온다 — open-core-boundary.md §4).
+    if (path.startsWith('/v1/pg/')) return true;
+
     return super.shouldSkip(context);
   }
 

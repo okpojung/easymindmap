@@ -1660,6 +1660,23 @@ step 상태 변경
 
 ## 13. Collaboration — 협업맵 `[미구현]`
 
+> **2026-08-18 실물 추가 — 맵 참가자(`map_members`)와 접근 판정.**
+> 아래 §13-1 이후의 초대 API 는 여전히 미구현이지만, **참가자로 등록된
+> 사용자는 이제 맵을 실제로 열고 저장할 수 있다.**
+>
+> | | 소유자 | `editor` | `viewer` |
+> |---|---|---|---|
+> | `GET /maps/:id`, `GET /maps/:id/document`, `GET /maps/:id/versions[/:v]` | ✅ | ✅ | ✅ |
+> | `PUT /maps/:id/document`, `POST /maps/:id/edit-heartbeat`·`edit-release` | ✅ | ✅ | **403** |
+> | `GET /v1/attachments/:id` (그 맵에 달린 첨부) | ✅ | ✅ | ✅ |
+> | `PATCH`·`DELETE /maps/:id`, `DELETE /v1/attachments/:id` | ✅ | **404** | **404** |
+>
+> 권한이 없으면 **404**(없는 맵과 구분하지 않는다 — 구분하면 맵 id 의
+> 존재 여부를 알려 주는 셈이다). 열람자의 쓰기만 **403 + "이 맵에는 읽기
+> 권한만 있습니다."** 로 답한다.
+> 참가자 행을 만드는 **초대 API 는 아직 없다**(유료 모듈 몫).
+> 설계: `../04-extensions/collaboration/27-sync-model.md` §14
+>
 > ⚠️ 협업 API(초대·scope·Soft Lock 등)는 전부 미구현이다. **실제 잠금은
 > `map_edit_locks` 기반 단일 세션 편집 잠금 모델**로 구현되어 있다 —
 > `GET /maps/:id/document?editSession=`(`editLock: 'acquired'|'busy'`) +

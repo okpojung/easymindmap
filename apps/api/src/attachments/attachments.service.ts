@@ -22,6 +22,7 @@ import { randomUUID } from 'node:crypto';
 import type { ReadStream } from 'node:fs';
 import { DatabaseService } from '../database/database.service';
 import { StorageService } from '../storage/storage.service';
+import { queryAllowingMissingMembers } from '../maps/map-access';
 
 /**
  * 요금제 — **저장 용량의 단일 기준** (2026-08-06 확정, 가격은 미정).
@@ -147,11 +148,28 @@ export class AttachmentsService {
     id: string,
     range?: { start: number; end: number },
   ): Promise<AttachmentMeta & { stream: ReadStream }> {
-    const { rows } = await this.db.query<{
+    // **맵을 열 수 있으면 그 맵의 첨부도 열 수 있어야 한다** (2026-08-18).
+    // 이게 없으면 공유받은 맵이 **이미지 자리마다 깨진 채로** 열린다 —
+    // 맵은 보이는데 그림이 안 보이는 것은 공유가 반쯤 된 것이고,
+    // 사용자에게는 그냥 고장으로 보인다.
+    // 지우기·목록은 그대로 소유자 전용이다(참가자가 남의 파일을 지우면 안 된다).
+    const rows = await queryAllowingMissingMembers<{
       name: string; mime: string; size_bytes: string; storage_key: string;
     }>(
-      `SELECT name, mime, size_bytes, storage_key
-         FROM public.attachments WHERE id = $1 AND owner_id = $2`,
+      this.db,
+      `SELECT a.name, a.mime, a.size_bytes, a.storage_key
+         FROM public.attachments a
+         LEFT JOIN public.maps m
+           ON m.id = a.map_id AND m.deleted_at IS NULL
+         LEFT JOIN public.map_members mm
+           ON mm.map_id = a.map_id AND mm.user_id = $2
+        WHERE a.id = $1
+          AND (a.owner_id = $2 OR m.owner_id = $2 OR mm.user_id IS NOT NULL)`,
+      `SELECT a.name, a.mime, a.size_bytes, a.storage_key
+         FROM public.attachments a
+         LEFT JOIN public.maps m
+           ON m.id = a.map_id AND m.deleted_at IS NULL
+        WHERE a.id = $1 AND (a.owner_id = $2 OR m.owner_id = $2)`,
       [id, userId],
     );
     if (!rows[0]) throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');

@@ -29,7 +29,10 @@ import { sign as jwtSign } from 'jsonwebtoken';
 import { DatabaseService } from '../database/database.service';
 import { AccountService } from '../account/account.service';
 import type { AppEnv } from '../config/env.validation';
-import { PLAN_QUOTA_MAX_MB, PLAN_QUOTA_MIN_MB } from './admin-settings';
+import {
+  PLAN_PRICE_MAX_KRW, PLAN_PRICE_MIN_KRW,
+  PLAN_QUOTA_MAX_MB, PLAN_QUOTA_MIN_MB,
+} from './admin-settings';
 
 /** 관리자 표 유효 시간 — 하루 일과보다 길지 않게 */
 const ADMIN_TOKEN_TTL_MIN = 8 * 60;
@@ -359,6 +362,48 @@ export class AdminService {
       );
       return { plan, mb, previousMb: Number(old / 1048576n), usersUpdated, usersKept };
     });
+  }
+
+  /**
+   * 요금제 **구독 요금** 변경 (2026-08-18, 사용자 요청).
+   *
+   * 한도와 달리 **회원 행을 건드리지 않는다** — 값은 결제할 때 이 표에서
+   * 읽는다. 이미 결제한 사람의 원장은 그때의 청구액을 이미 들고 있으므로
+   * 가격을 바꿔도 **과거 결제는 흔들리지 않는다.**
+   *
+   * `0` 은 "결제하지 않는 요금제"다. 그 밖에는 **1,000원 이상**만 받는다 —
+   * PG 최소 금액이 1,000원이라, 그 아래로 두면 **저장은 되는데 결제창에서
+   * 거절**되는 값이 생긴다. 저장할 때 막는 편이 낫다.
+   */
+  async setPlanPrice(plan: string, krw: number, byEmail: string) {
+    if (!(PLANS as readonly string[]).includes(plan)) {
+      throw new BadRequestException(`요금제는 ${PLANS.join('·')} 중 하나여야 합니다.`);
+    }
+    if (!Number.isInteger(krw) || krw < 0 || krw > PLAN_PRICE_MAX_KRW) {
+      throw new BadRequestException(
+        `요금은 0 ~ ${PLAN_PRICE_MAX_KRW.toLocaleString('ko-KR')}원 사이의 정수여야 합니다.`,
+      );
+    }
+    if (krw > 0 && krw < PLAN_PRICE_MIN_KRW) {
+      throw new BadRequestException(
+        `결제하는 요금제는 ${PLAN_PRICE_MIN_KRW.toLocaleString('ko-KR')}원 이상이어야 합니다 `
+        + '(PG 최소 결제 금액). 무료로 두려면 0 을 넣으세요.',
+      );
+    }
+
+    const { rows } = await this.db.query<{ price_krw: number }>(
+      `UPDATE public.plan_quotas SET price_krw = $2, updated_at = NOW(), updated_by = $3
+        WHERE plan = $1
+        RETURNING (SELECT price_krw FROM public.plan_quotas WHERE plan = $1) AS price_krw`,
+      [plan, krw, byEmail],
+    );
+    if (!rows.length) {
+      throw new BadRequestException(
+        'plan_quotas 표에 그 요금제가 없습니다 — 델타 SQL 을 적용해 주세요.',
+      );
+    }
+    this.log.log(`요금제 요금 변경: ${plan} → ${krw}원 (관리자 ${byEmail})`);
+    return { plan, krw };
   }
 
   /** 화면 위쪽 요약 — 전체 회원 수와 요금제 분포 */

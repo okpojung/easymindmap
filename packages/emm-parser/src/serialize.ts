@@ -201,6 +201,26 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
   lines.push(`# ${(map.root.text.trim() ? rootBody.title : '') || map.title}`);
   pushBodyBlocks(lines, rootBody.blocks);
   lines.push('');
+  // 루트 노드의 사진 (2026-08-18, B17) — 예전에는 **빠뜨려서 루트에 붙인
+  // 사진이 MD 로 내보내면 사라졌다**(HTML 내보내기는 정상이었다).
+  // 가지 노드와 같은 규칙: files/ 로 담을 수 있으면 상대 경로, 아니면 URL.
+  const rootImgs = map.root.images?.length
+    ? map.root.images
+    : map.root.image?.src
+      ? [map.root.image]
+      : [];
+  for (const im of rootImgs) {
+    const packed = dataUrlToBytes(im.src);
+    if (packed) {
+      const path = `files/img-${images.length + 1}.${packed.ext}`;
+      images.push({ path, data: packed.bytes });
+      lines.push(`![${oneLine(map.root.text).slice(0, 20)}](${path})`);
+      lines.push('');
+    } else if (/^https?:\/\//i.test(im.src)) {
+      lines.push(`![${oneLine(map.root.text).slice(0, 20)}](${im.src})`);
+      lines.push('');
+    }
+  }
   // 루트의 노트 → 제목 바로 아래 (문단=인용문, 표=파이프 표, 코드=펜스 —
   // 불러오기 시 다시 루트 노트로)
   for (const n of map.root.notes ?? []) {

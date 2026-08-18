@@ -26,3 +26,8 @@ _private/
 
 # 로컬 실행이 만드는 첨부 저장소 (ATTACHMENT_DIR 기본값)
 apps/api/data/
+
+# 유료 화면 모듈이 놓이는 자리 (vite 별칭 `@pro` — open-core-boundary.md §5).
+# **공개 저장소에 절대 들어가면 안 된다.** 유료판을 이 작업 사본에서
+# 빌드했을 때 `git add -A` 한 번으로 통째로 공개되는 것을 막는다.
+packages/pro-ui/

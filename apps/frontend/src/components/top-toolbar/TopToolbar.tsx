@@ -7,6 +7,7 @@ import { CollabAvatars } from './CollabAvatars';
 import { MapActions } from './MapActions';
 import { UserMenu } from './UserMenu';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
+import { ProPresenceBar } from '@pro';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { downloadMapAsHtml } from '@/export/exportHtml';
@@ -23,7 +24,10 @@ export type SaveState =
   // 서버에 연결되지 않은 문서(미저장 새 맵·불러온 파일·읽기 전용)를
   // 편집한 상태 — 자동저장 대상이 아니라서 **어디에도 저장돼 있지 않다**.
   // 예전에는 이 상태에서도 배지가 '저장됨'이라고 말했다 (2026-08-05 감사).
-  | 'unsaved';
+  | 'unsaved'
+  // 협업 세션이 이 맵을 몰고 있다 — 스냅샷 자동저장 대신 소켓으로
+  // 합쳐진다 (2026-08-18). 자리는 코어, 켜는 것은 협업 모듈.
+  | 'collab';
 
 interface Props {
   t: ThemeTokens;
@@ -36,7 +40,7 @@ export function TopToolbar({
   t,
   collabs,
   mapTitle,
-  saveState = 'saved',
+  saveState: rawSaveState = 'saved',
 }: Props) {
   const map = useDocumentStore((s) => s.map);
   const layoutType = useEditorUiStore((s) => s.layoutType);
@@ -87,6 +91,12 @@ export function TopToolbar({
     const min = Math.floor((Date.now() - lastSavedAt) / 60_000);
     return min < 1 ? ' · 방금 전' : ` · ${min}분 전`;
   })();
+  // **협업이 몰고 있으면 그것이 우선이다.** 배지는 "지금 무엇이 저장을
+  // 책임지고 있나"를 말해야 한다 — 저장 방식이 바뀐 사실을 숨기면
+  // 사용자는 잠시 뒤 반영되는 것과 이미 반영된 것을 구분할 수 없다.
+  // (검증에서 잡았다: 맵 여는 경로가 뒤늦게 'saved' 로 덮어썼다)
+  const collabDriving = useAutosaveStore((s) => s.collabDrivingMapId);
+  const saveState = collabDriving ? 'collab' : rawSaveState;
   const saveStateInfo = ({
     saved: { text: `저장됨${agoText}`, color: t.textMuted, dot: t.success },
     saving: { text: '저장 중…', color: t.accent, dot: t.accent },
@@ -97,6 +107,10 @@ export function TopToolbar({
     unsaved: { text: '저장 안 됨 — ☁ 저장을 눌러 주세요', color: t.warning, dot: t.warning },
     retrying: { text: '저장 실패 — 재시도 중…', color: t.warning, dot: t.warning },
     error: { text: '저장 실패 — ☁ 저장을 눌러 주세요', color: t.danger, dot: t.danger },
+    // 협업이 몰고 있다 — 통째 저장 대신 **글자 단위로 서버에 합쳐진다**.
+    // '저장됨' 이라고 쓰지 않는 이유: 배지는 저장 방식이 달라졌다는
+    // 사실까지 말해야 한다(잠시 뒤 반영되는 것과 이미 반영된 것은 다르다).
+    collab: { text: '협업 중 — 자동 반영', color: t.textMuted, dot: t.success },
   } as const)[saveState];
 
   return (
@@ -254,6 +268,11 @@ export function TopToolbar({
           <div style={{ width: 1, height: 28, background: t.divider }} />
         </>
       )}
+
+      {/* 진짜 접속자 자리 — 공개판에서는 아무것도 그리지 않는다.
+          위의 가짜 아바타(샘플 데이터)와 달리 **실제로 붙어 있는 사람**만
+          그린다. 둘을 한 화면에 함께 켜지 않는다. */}
+      <ProPresenceBar t={t} />
 
       <button
         onClick={() => setInspectorTab('ai')}

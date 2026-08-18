@@ -229,11 +229,24 @@ SCRIPT
 컨테이너를 찾지 않는다.**
 
 ```bash
-API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
-URL=$(docker exec -i "$API" printenv DATABASE_URL)
-DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')   # 호스트 = 컨테이너 이름
-PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
-PGDB=$(printf '%s' "$URL"   | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB 를 찾는다** (2026-08-18)
+find_emm_db() {
+  for C in $(docker ps --format '{{.Names}}'); do
+    U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+    H=$(printf '%s' "$U"  | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+    US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+    N=$(printf '%s' "$U"  | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+    OK=$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+          "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)
+    if [ "$OK" = "t" ]; then
+      API="$C"; DB="$H"; PGUSER="$US"; PGDB="$N"
+      echo "✅ easymindmap → 앱=$API DB=$DB 계정=$PGUSER DB이름=$PGDB"
+      return 0
+    fi
+  done
+  echo "❌ easymindmap DB 를 찾지 못했습니다."; docker ps --format '{{.Names}}'; return 1
+}
+find_emm_db || exit 1
 ```
 
 **왜 바꿨나** (2026-08-14 실사용에서 깨졌다):
@@ -243,6 +256,12 @@ PGDB=$(printf '%s' "$URL"   | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
 | 이미지에 `postgres` 가 든 컨테이너를 찾는다 | 앱 DB 는 **이미지가 ID(`33f923b05f64`)로만** 보여 걸리지 않았다 |
 | 대신 다른 앱의 DB·`coolify-db` 가 잡혔다 | 계정이 달라 `role "postgres" does not exist` 로 끊겼다 |
 | `-U postgres` 를 고정으로 썼다 | 계정 이름은 컨테이너마다 다르다 |
+| **이름·포트로 API 를 고른다** (2026-08-18 재발) | 이 서버에는 **다른 앱(rbooster)도 있다.** `grep -i api` 가 `rb-api-…` 를 물어 **엉뚱한 DB 에 델타 SQL 을 실행**했다 — `relation "public.plan_quotas" does not exist` 로 끊겨 다행히 아무것도 바뀌지 않았지만, **표 이름이 겹쳤다면 남의 앱 DB 를 고쳤을 것**이다 |
+
+> **2026-08-18 교훈**: `DATABASE_URL` 을 읽는 것만으로는 부족하다 —
+> **어느 컨테이너의** `DATABASE_URL` 인지를 이름·포트로 고르는 순간 같은
+> 구멍이 다시 열린다. 그래서 위 함수는 **우리 표(`map_documents`)가 있는지
+> 직접 확인**한다. 추측이 한 겹도 남지 않는다.
 
 **API 가 실제로 접속하는 곳을 그대로 따라가는 것**이 유일하게 안전하다 —
 추측이 없고, 엉뚱한 DB 를 건드릴 위험도 없다.
@@ -271,7 +290,16 @@ PGDB=$(printf '%s' "$URL"   | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
 bash <<'SCRIPT'
 set -e
 # DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
-API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
 [ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
 URL=$(docker exec -i "$API" printenv DATABASE_URL)
 DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
@@ -384,7 +412,16 @@ case "$PLAN" in free|basic|pro|team) ;; *)
   echo "❌ PLAN 은 free·basic·pro·team 중 하나여야 합니다 (받은 값: $PLAN)"; exit 1;; esac
 
 # DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
-API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
 [ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
 URL=$(docker exec -i "$API" printenv DATABASE_URL)
 DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
@@ -494,7 +531,16 @@ bash <<'SCRIPT'
 EMAIL='id@example.com'
 
 # DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
-API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
 [ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
 URL=$(docker exec -i "$API" printenv DATABASE_URL)
 DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
@@ -616,7 +662,17 @@ docker exec -i <DB컨테이너> psql -U postgres -d postgres -c "SELECT a.email 
 서버 SSH 에서 **한 줄씩**:
 
 ```bash
-API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1); echo "$API"
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
+echo "$API"
 ```
 
 ```bash
@@ -670,7 +726,16 @@ fetch(process.env.GOTRUE_URL + '/admin/users/$UID', {
 bash <<'SCRIPT'
 set -e
 # DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
-API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
 [ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
 URL=$(docker exec -i "$API" printenv DATABASE_URL)
 DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
@@ -743,7 +808,16 @@ SCRIPT
 bash <<'SCRIPT'
 set -e
 # DB 를 **이미지 이름으로 찾지 않는다** — §1.5-0-A 참조.
-API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
 [ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
 URL=$(docker exec -i "$API" printenv DATABASE_URL)
 DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
@@ -874,7 +948,16 @@ Coolify UI 를 쓴다면 **"모든 데이터베이스 포함"을 반드시 켠�
 bash <<'SCRIPT'
 set -e
 # DB 찾기는 §1.5-0-A 와 같은 방식 — 이미지 이름으로 찾지 않는다
-API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
 URL=$(docker exec -i "$API" printenv DATABASE_URL)
 DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
 PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
@@ -914,7 +997,16 @@ KEEP_DAYS=14
 DEST=/var/backups/emm
 mkdir -p "$DEST"
 
-API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
 URL=$(docker exec -i "$API" printenv DATABASE_URL)
 DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
 PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')

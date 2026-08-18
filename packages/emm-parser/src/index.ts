@@ -6,6 +6,8 @@
 // markdown-export.md · 적합성 코퍼스: packages/emm-parser/conformance/
 
 export * from './model';
+// 트리 모양 규칙 — 정규화·협업·화면이 **같은 판정**을 쓰게 한다
+export * from './tree-rules';
 export * from './meta';
 export {
   parseMarkdownToMap,

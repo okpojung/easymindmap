@@ -117,6 +117,15 @@ export interface MapListItem {
    * 링크/첨부 파일명). 0 이면 이름만 맞은 것이다.
    */
   matchCount?: number;
+  /**
+   * **나에게 공유된 맵**인가 (2026-08-18). 내 맵 목록에는 실리지 않는다.
+   * 공유 목록(`listSharedMaps`)의 항목만 이 값을 들고 온다.
+   */
+  shared?: true;
+  /** 공유받은 맵의 **주인** — "이게 왜 여기 있지"를 없앤다 */
+  ownerEmail?: string | null;
+  /** `editor` 는 고칠 수 있고 `viewer` 는 읽기만 */
+  role?: 'editor' | 'viewer';
   // 마지막 저장 자리 (2026-08-09) — 히스토리 최신 버전에서 가져온다.
   // 접속 정보 도입 전에 저장된 맵은 null.
   /** 'Windows 11' · 'Android 14' · 'iOS 17' … */
@@ -184,6 +193,13 @@ export const cloudApi = {
   health: () => req<{ status: string; db: string }>('GET', '/health'),
   listMaps: (q?: MapListQuery) =>
     req<{ maps: MapListItem[]; total: number }>('GET', `/maps${qs(q)}`),
+  /**
+   * **나에게 공유된 맵** (2026-08-18). 내 목록과 따로 부른다 — 공유받은
+   * 맵의 폴더는 **소유자의 폴더**라 내 트리에 끼울 수 없다.
+   * 공유가 없거나 서버가 아직 참가자 표를 안 만들었으면 빈 목록이다.
+   */
+  listSharedMaps: (q?: { q?: string; limit?: number }) =>
+    req<{ maps: MapListItem[]; total: number }>('GET', `/maps/shared${qs(q)}`),
   // 새 맵 생성 — 폴더·유형 지정 가능. 같은 폴더에 같은 이름이 있으면 409
   createMap: (title: string, opts?: { folderId?: string | null; kind?: MapKind }) =>
     req<{ mapId: string; title: string; folderId: string | null; kind: MapKind }>(

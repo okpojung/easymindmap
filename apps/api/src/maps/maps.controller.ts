@@ -64,6 +64,28 @@ export class MapsController {
     });
   }
 
+  /**
+   * GET /maps/shared — **나에게 공유된 맵** (2026-08-18).
+   *
+   * `GET /maps` 와 **합치지 않는다.** 문서함은 폴더 트리인데, 공유받은
+   * 맵의 `folder_id` 는 **소유자의 폴더**다. 남의 폴더 배치를 내 트리에
+   * 섞으면 있지도 않은 폴더 안에 파일이 있는 것처럼 보인다.
+   *
+   * ⚠️ `:id` 보다 **위에** 있어야 한다 — 아래에 두면 `shared` 가 맵 id
+   * 로 잡혀 400(UUID 아님)이 된다.
+   */
+  @Get('shared')
+  listShared(
+    @CurrentUser() user: AuthUser,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.maps.listShared(user.id, {
+      q: typeof q === 'string' ? q.slice(0, 200) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
   @Get(':id')
   getOne(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.maps.getOne(user.id, id);

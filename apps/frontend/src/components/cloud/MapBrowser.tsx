@@ -126,7 +126,11 @@ function Mark({ text, q }: { text: string; q: string }) {
 type Row =
   | { kind: 'folder'; depth: number; folder: FolderItem }
   | { kind: 'map'; depth: number; map: MapListItem }
-  | { kind: 'newFolder'; depth: number };
+  | { kind: 'newFolder'; depth: number }
+  // 공유받은 맵은 **내 폴더 트리 밖**이다 (2026-08-18) — 그 맵의 폴더는
+  // 소유자의 폴더라, 내 트리에 끼우면 있지도 않은 폴더 안에 파일이 있는
+  // 것처럼 보인다. 목록 아래에 제 구역을 두고 거기 모은다.
+  | { kind: 'sharedHead'; depth: 0; count: number };
 
 export function MapBrowser({
   t, onClose, onFlash, onOpened,
@@ -139,6 +143,8 @@ export function MapBrowser({
 }) {
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [maps, setMaps] = useState<MapListItem[] | null>(null);
+  /** 나에게 공유된 맵 — 공유가 없거나 서버가 아직 모르면 빈 배열 */
+  const [shared, setShared] = useState<MapListItem[]>([]);
   // 기본 정렬 = **이름 오름차순** (2026-08-05 보고 — 사람이 찾는 순서는
   // '최근 고친 것'보다 '이름 가나다순'이다)
   const [sort, setSort] = useState<SortKey>('title');
@@ -188,12 +194,16 @@ export function MapBrowser({
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const [f, m] = await Promise.all([
+      // 공유 목록이 실패해도 **내 문서함은 열린다** — 남에게 받은 것
+      // 때문에 내 것을 못 보는 일이 있어서는 안 된다.
+      const [f, m, sh] = await Promise.all([
         cloudApi.listFolders(),
         cloudApi.listMaps({ sort, order, limit: MAP_FETCH_LIMIT }),
+        cloudApi.listSharedMaps({ limit: 100 }).catch(() => ({ maps: [], total: 0 })),
       ]);
       setFolders(f.folders);
       setMaps(m.maps);
+      setShared(sh.maps);
       if (m.total > m.maps.length) {
         setErr(`맵이 ${m.total}개라 최근 ${m.maps.length}개만 표시합니다 — 검색으로 좁혀 주세요.`);
       }
@@ -345,12 +355,25 @@ export function MapBrowser({
       }
     };
     walk('', 0);
+    // 공유받은 맵 — 트리 **아래**에 따로. 검색 중이면 이름으로 거른다.
+    const sharedRows = shared.filter((m) => !searching || hit(m.title));
+    if (sharedRows.length) {
+      out.push({ kind: 'sharedHead', depth: 0, count: sharedRows.length });
+      for (const m of sharedRows) out.push({ kind: 'map', depth: 0, map: m });
+    }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q, serverFound, newFolder]);
+  }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q, serverFound,
+      newFolder, shared]);
 
   const shownMaps = useMemo(
-    () => rows.filter((r): r is Extract<Row, { kind: 'map' }> => r.kind === 'map').map((r) => r.map),
+    // **공유받은 맵은 합계에서 뺀다.** 합계는 "내 문서함이 얼마나 되나"를
+    // 말하는 줄이다 — 남의 맵 용량을 내 숫자에 더하면, 용량 한도를 보고
+    // 정리하려는 사람이 **지울 수 없는 것까지** 세게 된다.
+    () => rows
+      .filter((r): r is Extract<Row, { kind: 'map' }> => r.kind === 'map')
+      .map((r) => r.map)
+      .filter((m) => !m.shared),
     [rows],
   );
   // 폴더 수량 — 합계와 기준을 맞춘다. 그냥 볼 때는 **전 폴더**(접혀
@@ -783,7 +806,22 @@ export function MapBrowser({
                 맵을 만들어 <b>☁ 저장</b>하면 여기에 쌓입니다.</>
               )}
           </div>
-        ) : rows.map((r) => (r.kind === 'newFolder' ? (
+        ) : rows.map((r) => (r.kind === 'sharedHead' ? (
+          /* 공유받은 맵 구역 — **내 문서와 섞지 않는다.** 여기 있는 것은
+             내 용량에도 잡히지 않고(주인의 것이다), 이름 변경·이동·삭제도
+             할 수 없다. 그 사실이 화면에서 바로 보여야 한다. */
+          <div key="shared-head" data-testid="browser-shared-head"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 12px 7px', borderBottom: `1px solid ${t.divider}`,
+              background: t.surfaceAlt, color: t.text, fontSize: 12, fontWeight: 700,
+            }}>
+            <I.Share size={14} /> 공유받은 맵 ({r.count})
+            <span style={{ color: t.textMuted, fontSize: 11, fontWeight: 500 }}>
+              다른 사람이 나를 참가자로 넣은 맵입니다 — 주인의 문서함에 있습니다.
+            </span>
+          </div>
+        ) : r.kind === 'newFolder' ? (
           /* 새 폴더 입력 — **만들어질 자리 그대로**. 들여쓰기가 부모를
              말해 주므로 "어디에 만들어지나"를 글로 설명할 필요가 없다. */
           <div key="new-folder" data-testid="browser-new-folder-row"
@@ -933,9 +971,13 @@ export function MapBrowser({
                 순간 전환된다(협업 단계 V1~V2). 여기서 바꾸는 것이 아니다. */}
             <span
               data-testid="browser-map-kind"
-              title={r.map.kind === 'collab'
-                ? '협업맵 — 협업자가 참여 중인 맵'
-                : '단독맵 — 협업자를 초대해 승인되면 협업맵이 됩니다 (준비 중)'}
+              title={r.map.shared
+                ? (r.map.role === 'viewer'
+                  ? `${r.map.ownerEmail ?? '다른 사람'} 이(가) 공유한 맵 — 읽기만 됩니다`
+                  : `${r.map.ownerEmail ?? '다른 사람'} 이(가) 공유한 맵 — 함께 편집합니다`)
+                : r.map.kind === 'collab'
+                  ? '협업맵 — 협업자가 참여 중인 맵'
+                  : '단독맵 — 협업자를 초대해 승인되면 협업맵이 됩니다 (준비 중)'}
               style={{
                 justifySelf: 'end',
                 border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 7px',
@@ -943,7 +985,9 @@ export function MapBrowser({
                 fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap',
               }}
             >
-              {r.map.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'}
+              {r.map.shared
+                ? (r.map.role === 'viewer' ? '👁 읽기 전용' : '🤝 함께 편집')
+                : r.map.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'}
             </span>
             <span style={{ color: t.textMuted, fontSize: 11, textAlign: 'right' }}
               title="최초 생성일">
@@ -979,13 +1023,21 @@ export function MapBrowser({
                       : { map: r.map, x: r2.right - 300, y: r2.bottom + 6, pinned: true });
                 }}
               ><I.Info size={15} /></button>
-              <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
-                onClick={() => void renameMap(r.map)}><I.Pencil size={15} /></button>
-              <button data-testid="browser-map-move" style={iconBtn}
-                title="다른 폴더로 이동" aria-label="다른 폴더로 이동"
-                onClick={() => setMoving(r.map)}><I.FolderMove size={15} /></button>
-              <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제" aria-label="삭제"
-                onClick={() => void deleteMap(r.map)}><I.Trash size={15} /></button>
+              {/* **공유받은 맵에는 주인만 할 수 있는 것을 보이지 않는다.**
+                  서버는 어차피 막지만(404), 눌리는 버튼을 두면 사용자는
+                  "왜 안 되지"를 겪는다 — 할 수 없는 일은 보이지 않는 편이
+                  친절하다. 지우고 싶으면 주인에게 말해야 한다. */}
+              {!r.map.shared && (
+                <>
+                  <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
+                    onClick={() => void renameMap(r.map)}><I.Pencil size={15} /></button>
+                  <button data-testid="browser-map-move" style={iconBtn}
+                    title="다른 폴더로 이동" aria-label="다른 폴더로 이동"
+                    onClick={() => setMoving(r.map)}><I.FolderMove size={15} /></button>
+                  <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제" aria-label="삭제"
+                    onClick={() => void deleteMap(r.map)}><I.Trash size={15} /></button>
+                </>
+              )}
             </span>
           </div>
         )))}

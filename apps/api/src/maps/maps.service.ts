@@ -5,7 +5,12 @@ import { FoldersService } from '../folders/folders.service';
 import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
 import type { CreateMapDto } from './dto/create-map.dto';
 import type { UpdateMapDto } from './dto/update-map.dto';
-import { findDocImages, rewriteDocImages } from './doc-images';
+import {
+  collectAttachmentRefs,
+  findDocImages,
+  isExtractedImageName,
+  rewriteDocImages,
+} from './doc-images';
 
 /** DB row → API 응답(camelCase) 매핑용 내부 타입 */
 interface MapRow {
@@ -472,6 +477,12 @@ export class MapsService {
     // 문서·제목·버전 모두 그대로 → 아무것도 쓰지 않는다 (updated_at 도
     // 바뀌지 않아 문서함 정렬이 조회만으로 흔들리지 않는다)
     if (sameDoc && sameTitle && (!keepVersion || skipVersion)) {
+      // **여기서도 정리한다** (B16 ② 슬라이스 4). 사진을 지운 저장은
+      // 한 번뿐이고 그때는 유예기간(24시간) 안이라 못 지운다. 이 줄이
+      // 없으면 그 뒤로는 문서가 그대로라 **정리할 기회가 영영 안 온다** —
+      // 사용자는 지운 사진이 용량을 계속 먹는 것을 보게 된다.
+      // 이 시점의 DB 는 이미 최종 상태라 그대로 세면 된다.
+      await this.gcMapImages(userId, mapId);
       return { mapId, updatedAt: map.updated_at, unchanged: true as const };
     }
 
@@ -579,7 +590,68 @@ export class MapsService {
       version = vr[0]?.version;
     }
 
+    // 안 쓰는 사진 정리 (B16 ② 슬라이스 4) — **히스토리 버전을 넣은 뒤**에
+    // 한다. 방금 만든 버전이 참조하는 사진을 지우면 그 버전이 깨진다.
+    await this.gcMapImages(userId, mapId);
+
     return { mapId, updatedAt: rows[0].updated_at, ...(version ? { version } : {}) };
+  }
+
+  /**
+   * 이 맵에서 **더는 쓰지 않는** 사진을 지운다 (2026-08-16, B16 ② 슬라이스 4).
+   *
+   * **사용자 파일을 지우는 코드다.** 안전장치를 셋 둔다.
+   *
+   * ① **우리가 옮긴 사진만** 건드린다(`img-<해시>.<확장자>` 이름).
+   *    사람이 올린 파일은 이 꼴이 될 수 없으므로, 이 코드가 잘못 돌아도
+   *    **직접 올린 파일은 안전하다.**
+   * ② 참조는 **현재 문서 + 이 맵의 모든 히스토리 버전**에서 모은다.
+   *    현재 문서만 보고 지우면 **과거 버전이 깨진다.**
+   * ③ **하루가 지난 것만** 지운다. 사진을 지우고 자동저장이 돈 직후
+   *    되돌리기(Ctrl+Z)를 누르면 그 사진이 다시 필요해지는데, 곧바로
+   *    지우면 **되살릴 수 없다.** 그동안 용량이 안 줄지만, 못 되돌리는
+   *    것보다 낫다.
+   */
+  private async gcMapImages(userId: string, mapId: string): Promise<void> {
+    const { rows: cand } = await this.db.query<{
+      id: string; name: string; size_bytes: string;
+    }>(
+      `SELECT id, name, size_bytes FROM public.attachments
+        WHERE map_id = $1 AND owner_id = $2
+          AND created_at < NOW() - INTERVAL '1 day'`,
+      [mapId, userId],
+    );
+    const ours = cand.filter((a) => isExtractedImageName(a.name));
+    if (!ours.length) return;
+
+    // 현재 문서 + 모든 히스토리 버전
+    const { rows: docs } = await this.db.query<{ doc: unknown }>(
+      `SELECT doc FROM public.map_documents WHERE map_id = $1
+       UNION ALL
+       SELECT doc FROM public.map_document_versions WHERE map_id = $1`,
+      [mapId],
+    );
+    const used = new Set<string>();
+    for (const d of docs) for (const id of collectAttachmentRefs(d.doc)) used.add(id);
+
+    const dead = ours.filter((a) => !used.has(a.id));
+    if (!dead.length) return;
+
+    let freed = 0;
+    for (const a of dead) {
+      try {
+        await this.attachments.remove(userId, a.id);
+        freed += Number(a.size_bytes) || 0;
+      } catch (err) {
+        // 못 지워도 저장은 이미 끝났다 — 다음 저장에서 다시 시도한다
+        this.log.warn(`사진 정리 실패(${a.name}): ${(err as Error).message}`);
+      }
+    }
+    // **지운 것은 반드시 남긴다.** 사용자가 "사진이 없어졌다"고 할 때
+    // 이 줄이 없으면 언제 무엇이 지워졌는지 알 길이 없다.
+    this.log.log(
+      `사진 정리 — ${dead.length}장 삭제 (${Math.round(freed / 1024)}KB) map=${mapId}`,
+    );
   }
 
   /**

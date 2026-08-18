@@ -118,3 +118,54 @@ export function rewriteDocImages(doc: unknown, urlBySrc: Map<string, string>): u
   };
   return walk(doc);
 }
+
+/**
+ * 문서가 **가리키고 있는** 첨부 id 를 모은다 (2026-08-16, B16 ② 슬라이스 4).
+ *
+ * 정리(GC)가 "안 쓰는 것"을 고르는 근거이므로, **하나라도 빠뜨리면 쓰고
+ * 있는 파일을 지운다.** 그래서 사진(`image`·`images`)만이 아니라
+ * **사람이 붙인 첨부(`attachments[].url`)까지** 함께 모은다.
+ *
+ * 절대 URL 과 상대 경로를 모두 알아본다 — 사람이 붙인 첨부는 절대 URL,
+ * 서버가 옮긴 사진은 상대 경로다.
+ */
+export function collectAttachmentRefs(doc: unknown): Set<string> {
+  const ids = new Set<string>();
+  const take = (u: unknown) => {
+    if (typeof u !== 'string') return;
+    const i = u.indexOf('/v1/attachments/');
+    if (i < 0) return;
+    const id = u.slice(i + '/v1/attachments/'.length).split(/[?#/]/)[0];
+    if (id) ids.add(id);
+  };
+  const walk = (v: unknown) => {
+    if (Array.isArray(v)) { for (const x of v) walk(x); return; }
+    if (!v || typeof v !== 'object') return;
+    const o = v as Record<string, unknown>;
+    if (o.image && typeof o.image === 'object') take((o.image as Record<string, unknown>).src);
+    if (Array.isArray(o.images)) {
+      for (const im of o.images) {
+        if (im && typeof im === 'object') take((im as Record<string, unknown>).src);
+      }
+    }
+    if (Array.isArray(o.attachments)) {
+      for (const a of o.attachments) {
+        if (a && typeof a === 'object') take((a as Record<string, unknown>).url);
+      }
+    }
+    for (const val of Object.values(o)) walk(val);
+  };
+  walk(doc);
+  return ids;
+}
+
+/**
+ * 우리가 옮긴 사진인가 — 이름만 보고 판정한다.
+ *
+ * **정리는 우리가 만든 것만 건드린다.** 사람이 올린 파일은 이름이
+ * 제각각이라 이 꼴이 될 수 없고, 그래서 GC 가 잘못 돌아도 **사용자가
+ * 직접 올린 파일은 안전하다.** 위험을 줄이는 가장 값싼 장치다.
+ */
+export function isExtractedImageName(name: string): boolean {
+  return /^img-[0-9a-f]{16}\.(png|jpg|gif|webp)$/.test(name);
+}

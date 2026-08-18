@@ -10,6 +10,9 @@ declare module '@pro' {
   // 공개판에서는 셋 다 아무것도 그리지 않는다(그것이 정상 동작이다).
   export function ProCollabSession(p: { mapId: string | null; kind?: string }): JSX.Element | null;
   export function ProPresenceBar(p: { t: ThemeTokens }): JSX.Element | null;
+  export function ProShareDialog(p: {
+    t: ThemeTokens; mapId: string | null; onClose: () => void;
+  }): JSX.Element | null;
   export function ProCursorLayer(p: {
     t: ThemeTokens; W: number; H: number; nodes: LaidOutNode[];
     scale?: number; CX: number; CY: number; panX?: number; panY?: number;

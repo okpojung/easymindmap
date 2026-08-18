@@ -324,6 +324,86 @@ export class MapsService {
     };
   }
 
+  /**
+   * GET /maps/shared — **나에게 공유된 맵** (2026-08-18).
+   *
+   * 목록을 따로 두는 이유는 컨트롤러 주석에 있다(남의 폴더 배치를 내
+   * 트리에 섞지 않는다).
+   *
+   * **참가자 표가 없는 서버에서는 빈 목록**이다 — 503 이 아니다. 아직
+   * 공유를 켜지 않은 서버에서 문서함이 열리지 않으면 그게 더 큰 사고다.
+   */
+  async listShared(userId: string, opts: { q?: string; limit?: number } = {}) {
+    const limit = Math.min(200, Math.max(1, opts.limit ?? 100));
+    const raw = (opts.q ?? '').trim();
+    const params: unknown[] = [userId, limit];
+    let titleWhere = '';
+    if (raw) {
+      // 내용 검색은 아직 하지 않는다 — **이름만**. (내용 검색은 소유자
+      // 목록의 CTE 를 그대로 태워야 해서 함께 손볼 일이다)
+      params.push(`%${raw.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+      titleWhere = ` AND m.title ILIKE $3 ESCAPE '\\'`;
+    }
+    // **표가 있는지 먼저 묻는다.** 오류를 통째로 삼키면(옛 구현) 컬럼
+    // 이름 하나 틀린 것까지 "공유가 없다"로 보여, **아무도 원인을 못
+    // 찾는다** — 실제로 그렇게 한 번 틀렸다. 없는 것은 표 하나뿐이고,
+    // 그것만 확인하면 나머지 오류는 그대로 드러나야 한다.
+    const { rows: ready } = await this.db.query<{ ok: boolean }>(
+      `SELECT to_regclass('public.map_members') IS NOT NULL AS ok`,
+    );
+    if (ready[0]?.ok !== true) return { maps: [], total: 0 };
+
+    let rows: Array<MapRow & {
+      owner_email: string | null; role: string;
+      node_count: number | null; attach_count: number | null;
+      attach_bytes: string | null; doc_bytes: string | null;
+    }> = [];
+    {
+      const r = await this.db.query<(typeof rows)[number]>(
+        `SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
+                m.created_at, m.updated_at,
+                -- 이메일은 auth.users 에 있다 (public.users 에는 없다).
+                -- 관리자 화면도 같은 자리에서 읽는다 (admin.service.ts).
+                -- 검증에서 잡았다: u.email 로 썼다가 질의가 통째로 실패해
+                -- 공유 목록이 늘 비어 있었다.
+                mm.role,
+                COALESCE(a.email, u.display_name) AS owner_email,
+                d.node_count, d.attach_count, d.attach_bytes,
+                octet_length(d.doc::text) AS doc_bytes
+           FROM public.map_members mm
+           JOIN public.maps m ON m.id = mm.map_id AND m.deleted_at IS NULL
+           LEFT JOIN public.map_documents d ON d.map_id = m.id
+           LEFT JOIN public.users u ON u.id = m.owner_id
+           LEFT JOIN auth.users a ON a.id = m.owner_id
+          WHERE mm.user_id = $1${titleWhere}
+          ORDER BY m.updated_at DESC
+          LIMIT $2`,
+        params,
+      );
+      rows = r.rows;
+    }
+    return {
+      maps: rows.map((m) => ({
+        mapId: m.id,
+        title: m.title,
+        folderId: null,          // 내 폴더가 아니다 — 트리에 끼우지 않는다
+        kind: m.kind,
+        createdAt: m.created_at,
+        updatedAt: m.updated_at,
+        nodeCount: m.node_count,
+        docBytes: m.doc_bytes === null ? null : Number(m.doc_bytes),
+        attachCount: m.attach_count,
+        attachBytes: m.attach_bytes === null ? null : Number(m.attach_bytes),
+        /** 누가 나눠 줬는지 — 이게 없으면 "이게 왜 여기 있지"가 된다 */
+        ownerEmail: m.owner_email,
+        /** `editor` 는 고칠 수 있고 `viewer` 는 읽기만 */
+        role: m.role,
+        shared: true as const,
+      })),
+      total: rows.length,
+    };
+  }
+
   /** GET /maps/:id — 맵 전체(현재 단계: 노드 목록은 빈 배열, 다음 PR에서 채움) */
   async getOne(userId: string, mapId: string) {
     const m = await this.requireAccessibleMap(userId, mapId);

@@ -7,7 +7,7 @@ import { CollabAvatars } from './CollabAvatars';
 import { MapActions } from './MapActions';
 import { UserMenu } from './UserMenu';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
-import { ProPresenceBar } from '@pro';
+import { ProPresenceBar, ProShareDialog } from '@pro';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { downloadMapAsHtml } from '@/export/exportHtml';
@@ -96,6 +96,9 @@ export function TopToolbar({
   // 사용자는 잠시 뒤 반영되는 것과 이미 반영된 것을 구분할 수 없다.
   // (검증에서 잡았다: 맵 여는 경로가 뒤늦게 'saved' 로 덮어썼다)
   const collabDriving = useAutosaveStore((s) => s.collabDrivingMapId);
+  // 공유 대화상자 — 저장된 맵에서만 연다(서버에 없는 맵은 나눌 것이 없다)
+  const shareMapId = useCloudStore((s) => s.cloudMapId);
+  const [shareOpen, setShareOpen] = useState(false);
   const saveState = collabDriving ? 'collab' : rawSaveState;
   const saveStateInfo = ({
     saved: { text: `저장됨${agoText}`, color: t.textMuted, dot: t.success },
@@ -295,7 +298,17 @@ export function TopToolbar({
         <I.Sparkles size={15} /> AI 생성
       </button>
 
+      {/* **눌리는데 아무 일도 없는 버튼은 고장으로 보인다** (2026-08-18).
+          예전에는 onClick 이 없어 정말 아무 일도 일어나지 않았다. 이제
+          공유 대화상자를 연다 — 공개판에서는 그 대화상자가 "왜 못 쓰는지"를
+          서버가 준 문장 그대로 말한다(가짜 빨간 점을 지운 것과 같은 이유). */}
       <button
+        data-testid="map-share"
+        onClick={() => setShareOpen(true)}
+        disabled={!shareMapId}
+        title={shareMapId
+          ? '이 맵을 다른 사람과 함께 편집합니다'
+          : '먼저 맵을 저장해야 공유할 수 있습니다'}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -303,15 +316,18 @@ export function TopToolbar({
           padding: '7px 12px',
           borderRadius: 8,
           background: t.surfaceAlt,
-          color: t.text,
+          color: shareMapId ? t.text : t.textSubtle,
           border: `1px solid ${t.border}`,
-          cursor: 'pointer',
+          cursor: shareMapId ? 'pointer' : 'not-allowed',
           fontSize: 13,
           fontWeight: 500,
         }}
       >
         <I.Share size={15} /> 공유
       </button>
+      {shareOpen && (
+        <ProShareDialog t={t} mapId={shareMapId} onClose={() => setShareOpen(false)} />
+      )}
 
       {/* 아웃라인 모드 / 맵 모드 전환 — 다크 토글과 같은 방식. 편집
           영역 전체를 아웃라인 전용/맵 전용으로 바꾼다. 분할 보기가

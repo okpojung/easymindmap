@@ -87,6 +87,57 @@ export function ProCollabSession(_p: { mapId: string | null; kind?: string }) {
   return null;
 }
 
+/**
+ * 공유 대화상자 — 툴바의 **공유** 버튼이 연다.
+ *
+ * 공개판에서는 **왜 못 쓰는지 서버가 준 문장을 그대로** 보여 준다
+ * (`ProFeaturePanel` 과 같은 규칙). 예전에는 이 버튼이 눌려도 아무 일도
+ * 일어나지 않았다 — 눌리는데 아무 일도 없는 버튼은 고장으로 보인다.
+ */
+export function ProShareDialog(
+  { t, mapId, onClose }: { t: ThemeTokens; mapId: string | null; onClose: () => void },
+) {
+  if (!mapId) return null;
+  return (
+    <div
+      data-testid="share-dialog"
+      role="dialog"
+      aria-label="맵 공유"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60, display: 'grid', placeItems: 'center',
+        background: 'rgba(0,0,0,.35)',
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 380, background: t.surface, color: t.text,
+          border: `1px solid ${t.border}`, borderRadius: 12, overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          padding: '12px 16px', borderBottom: `1px solid ${t.divider}`,
+          fontWeight: 700, fontSize: 14,
+        }}>
+          맵 공유
+        </div>
+        <ProFeaturePanel t={t} featureId="collab" />
+        <div style={{ padding: '10px 16px', textAlign: 'right' }}>
+          <button
+            data-testid="share-close"
+            onClick={onClose}
+            style={{
+              padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
+              border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
+            }}
+          >닫기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** 상단 툴바의 접속자 자리 */
 export function ProPresenceBar(_p: { t: ThemeTokens }) {
   return null;

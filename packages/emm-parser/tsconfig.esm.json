@@ -1,0 +1,10 @@
+{
+  // ESM 산출물 + 타입 — 번들러와 최신 Node 가 읽는다.
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "dist/esm",
+    "declarationDir": "dist/types"
+  }
+}

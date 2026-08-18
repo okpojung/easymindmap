@@ -63,6 +63,18 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // **종료 신호를 받아 정리한다** (2026-08-18).
+  //
+  // 이게 없으면 `onApplicationShutdown` 이 **한 번도 불리지 않는다.**
+  // 재배포·재기동 때 컨테이너는 SIGTERM 을 받는데, Nest 는 이 호출이
+  // 있어야 그것을 생명주기로 연결한다.
+  //
+  // 왜 지금 문제가 되나: 협업(유료 모듈)이 편집을 **메모리의 CRDT** 에
+  // 들고 있다가 몇 초마다 문서로 되돌려 쓴다. 종료 훅이 없으면 **마지막
+  // 몇 초의 편집이 그대로 사라진다** — 배포할 때마다 조용히.
+  // 코어만 놓고 봐도 DB 풀을 닫을 자리가 없어 재배포 때 연결이 남는다.
+  app.enableShutdownHooks();
+
   const port = config.get('PORT', { infer: true });
   await app.listen(port);
   new Logger('Bootstrap').log(`EasyMindMap API 기동 → http://localhost:${port}/v1`);

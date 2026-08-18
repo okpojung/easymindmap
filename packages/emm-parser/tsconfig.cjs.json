@@ -1,0 +1,13 @@
+{
+  // CommonJS 산출물 — NestJS 서버(코어·유료 모듈)가 `require` 로 읽는다.
+  // `dist/cjs/package.json` 이 `{"type":"commonjs"}` 라, 패키지 전체가
+  // `"type":"module"` 이어도 이 폴더만 CJS 로 해석된다.
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "ignoreDeprecations": "5.0",
+    "outDir": "dist/cjs",
+    "declaration": false
+  }
+}

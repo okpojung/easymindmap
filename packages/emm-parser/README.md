@@ -61,3 +61,26 @@ npm run test:update  # 스냅숏 재생성 (규칙 변경 시)
 ## 라이선스
 
 Apache-2.0 (예정 — 공개 리포 분리 시 확정. `docs/00-project-overview/emm-strategy.md` 참조)
+
+## 설치해서 쓰기 (2026-08-18)
+
+이 패키지는 **소스와 산출물을 함께** 담는다. `npm install` 하면
+CommonJS·ESM·타입이 모두 따라온다 — 예전에는 `main` 이 `src/index.ts`
+였고, 그래서 **이 저장소 안(번들러)에서만** 쓸 수 있었다.
+
+```bash
+npm install @easymindmap/emm-parser     # (아직 레지스트리 미공개 — 경로/타르볼 설치)
+npm run build                           # dist/{esm,cjs,types} 생성
+```
+
+```js
+// CommonJS (NestJS 서버 등)
+const { parseEmm, serializeEmm, wouldCreateCycle } = require('@easymindmap/emm-parser');
+
+// ESM / 번들러
+import { parseEmm } from '@easymindmap/emm-parser';
+import { findOrphans } from '@easymindmap/emm-parser/tree-rules';   // 하위 경로도 된다
+```
+
+> 이 저장소의 프런트엔드는 여전히 **소스를 직접** 본다(`@emm` vite 별칭) —
+> 고치는 즉시 반영돼야 하기 때문이다. `dist` 는 **밖에서 쓰는 사람**을 위한 것이다.

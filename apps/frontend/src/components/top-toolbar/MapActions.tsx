@@ -26,12 +26,15 @@ import {
   saveAndCloseMap, saveCurrentMap,
 } from '@/services/cloud/mapSession';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
+import { ProCollabSession } from '@pro';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
 type SaveIntent = null | 'save' | 'close' | 'saveAs';
 
 export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) => void }) {
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
+  // 협업맵인가 — 세션 자리에 그대로 넘긴다(판정은 서버가 내린 kind 다)
+  const cloudKind = useCloudStore((s) => s.cloudKind);
   // 읽기 전용으로 연 맵 (단일 세션 편집 잠금 — 2026-08-04)
   const readOnlyInfo = useCloudStore((s) => s.readOnlyInfo);
   const cloudTitle = useCloudStore((s) => s.cloudTitle);
@@ -96,6 +99,10 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {/* 협업 세션 — 공개판에서는 아무것도 그리지 않는다(정상 동작).
+          자동저장 훅과 **같은 자리**에 둔다: 맵이 열려 있는 동안만 살아
+          있어야 하고, 자동저장과 서로 비켜 줘야 하기 때문이다. */}
+      <ProCollabSession mapId={cloudMapId} kind={cloudKind} />
       {/* 읽기 전용 배너 — 다른 세션이 편집 중인 맵을 보는 상태임을
           화면에 상시 표시 (2026-08-04 사용자 요청) */}
       {readOnlyInfo && (

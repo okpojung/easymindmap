@@ -25,7 +25,9 @@
 //  - 방금 "열기/저장"으로 문서가 바뀐 직후에는 잠깐 억제(suppress)한다.
 //  - 문서 출처(docOrigin)가 이 맵이 아니면 아예 보내지 않는다.
 import { useEffect } from 'react';
-import { useDocumentStore, isDocumentEmpty, EMPTY_MAP_TITLE, isViewOnlyChange } from '@/stores/documentStore';
+import {
+  useDocumentStore, isDocumentEmpty, EMPTY_MAP_TITLE, isViewOnlyChange, isRemoteChange,
+} from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
@@ -80,6 +82,41 @@ function setPending(n: number): void {
  * 취소**한다. 열기(loadMap)·닫기(closeMap)·연결 해제(detach)처럼 문서를
  * 통째로 바꾸는 전환 지점에서 부른다.
  */
+/**
+ * **협업 세션이 이 맵을 몰고 있는가** (2026-08-18).
+ *
+ * 협업맵에서 스냅샷 자동저장을 그대로 두면 **문서 전체를 통째로 덮어써서**
+ * 같은 순간 남이 고친 것을 지운다 — 글자 단위로 합쳐 놓고 그 위에 통째
+ * 저장을 얹는 셈이다. 그래서 협업이 **실제로 붙어 있는 동안만** 자동저장이
+ * 비켜 준다(붙지 못했으면 예전대로 저장해야 한다 — 그래야 유료 모듈이
+ * 없거나 소켓이 끊긴 서버에서 편집이 사라지지 않는다).
+ *
+ * 자리는 코어에 있고, 켜고 끄는 것은 협업 모듈이 한다.
+ */
+let collabDrivingMapId: string | null = null;
+
+export function setCollabDriving(mapId: string | null): void {
+  if (collabDrivingMapId === mapId) return;
+  collabDrivingMapId = mapId;
+  // 배지는 스토어 값에서 파생된다 — 자세한 이유는 autosaveStore 주석.
+  useAutosaveStore.getState().setCollabDrivingMapId(mapId);
+  if (mapId) {
+    // 몰기 시작 — 대기분을 턴다(그 편집은 소켓이 이미 가져갔다)
+    setPending(0);
+    cancelRetry();
+  } else {
+    // 끊겼다 — **예전 방식으로 돌아간다.** 배지를 무조건 'saved' 로 두면
+    // 소켓이 끊긴 뒤의 편집이 저장된 것처럼 보인다.
+    useAutosaveStore.getState().setSaveState(pendingEdits > 0 ? 'dirty' : 'saved');
+  }
+}
+
+/** 지금 이 맵을 협업이 몰고 있나 — 저장 경로가 이것만 본다 */
+export function isCollabDriving(mapId?: string | null): boolean {
+  if (!collabDrivingMapId) return false;
+  return !mapId || collabDrivingMapId === mapId;
+}
+
 export function suppressCloudAutosave(): void {
   skipNextChange = true;
   setPending(0);
@@ -121,6 +158,9 @@ async function doSave() {
   const cloud = useCloudStore.getState();
   const mapId = cloud.cloudMapId;
   if (!mapId) return;
+  // **협업이 몰고 있으면 통째 저장을 하지 않는다** — 같은 순간 남이 고친
+  // 것을 덮어쓴다. 서버가 몇 초마다 물질화하므로 잃는 것도 없다.
+  if (isCollabDriving(mapId)) { setPending(0); return; }
   // 빈 문서·'문서 없음' 플레이스홀더는 자동저장하지 않는다 (최후의
   // 방어선, 2026-08-04 유실 보고) — 이 상태가 서버 맵에 쓰이면 저장해
   // 둔 내용이 통째로 사라진다. 맵을 정말 비우고 싶으면 수동 ☁ 저장.
@@ -207,6 +247,8 @@ async function doSave() {
  * → 내용 쪽이다. 반면 접힘은 **다시 보면 되는** 화면 상태다.
  */
 function countEdit(): void {
+  // 협업이 몰면 이 편집은 소켓이 가져간다 — 미저장으로 세지 않는다
+  if (isCollabDriving(useCloudStore.getState().cloudMapId)) return;
   setPending(pendingEdits + 1);
   useAutosaveStore.getState().setSaveState('dirty');
   // 주기 전이라도 편집이 많이 쌓이면 한 번 올린다
@@ -222,6 +264,7 @@ function countEdit(): void {
 export function flushCloudAutosave(): void {
   if (pendingEdits === 0) return;
   if (!useCloudStore.getState().cloudMapId) return;
+  if (isCollabDriving(useCloudStore.getState().cloudMapId)) return;
   void doSave();
 }
 
@@ -232,6 +275,8 @@ export function useCloudAutosave(): void {
       // 접기/펴기 같은 **보기 전용** 변경은 미저장 편집으로 세지 않는다
       // (2026-08-06 사용자 결정 — 내용이 중요하지 접힘 모양은 아니다)
       if (isViewOnlyChange()) return;
+      // **남이 친 것을 내가 다시 올리지 않는다** (2026-08-18 협업)
+      if (isRemoteChange()) return;
       // skip 소모를 연결 여부 검사보다 먼저 — "다음 맵 변경 1건 제외"
       // 약속과 일치시킨다 (2026-08-04 점검).
       if (skipNextChange) { skipNextChange = false; return; }

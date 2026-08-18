@@ -173,6 +173,18 @@ interface DocumentState {
     map: SampleMap,
     opts?: { resetHistory?: boolean; serverMapId?: string; keepOrigin?: boolean },
   ) => void;
+  /**
+   * **밖에서 온 문서를 화면에 반영한다** (협업 — 2026-08-18).
+   *
+   * `loadMap` 과 다른 점 셋. ⑴**되돌리기에 쌓지 않는다** — 남이 친 글자가
+   * 내 Ctrl+Z 에 섞이면 내가 하지 않은 일이 되돌아간다(설계 §8 "조용히
+   * 남의 것을 되돌리지 않는다"). ⑵**미저장 편집으로 세지 않는다** — 남의
+   * 편집을 내가 다시 서버에 올릴 이유가 없다. ⑶**출처(docOrigin)를
+   * 건드리지 않는다** — 같은 맵의 같은 문서다.
+   *
+   * 자리만 코어에 둔다. 무엇을 언제 넣을지는 협업 모듈이 정한다.
+   */
+  applyRemoteMap: (map: SampleMap) => void;
   // 문서 제목만 교체 (서버 저장 이름과 맞추기 — 중심 주제는 건드리지 않는다)
   setMapTitle: (title: string) => void;
   // 새 맵 시작 — 루트만 있는 기본 맵 ('새 맵' 메뉴)
@@ -529,6 +541,20 @@ function makeBranch(node: MindNode, indexForColor: number): SampleBranch {
 let viewOnlyChange = false;
 export function isViewOnlyChange(): boolean {
   return viewOnlyChange;
+}
+
+/**
+ * **밖(협업)에서 들어온 변경인가** (2026-08-18).
+ * 되돌리기와 자동저장이 이것 하나를 보고 비켜 준다 — 두 곳에 따로
+ * 판정을 두면 한쪽만 고쳐지고 다른 쪽이 남는다.
+ */
+let remoteChange = false;
+export function isRemoteChange(): boolean {
+  return remoteChange;
+}
+function asRemote(run: () => void): void {
+  remoteChange = true;
+  try { run(); } finally { remoteChange = false; }
 }
 /** 안의 set() 이 일으키는 구독은 보기 전용으로 표시된다 (동기 실행 전제) */
 function asViewOnly(run: () => void): void {
@@ -1189,6 +1215,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     else apply();
   },
 
+  applyRemoteMap: (map) => {
+    // `asRemote` 가 두 구독(되돌리기·자동저장)에 "이건 밖에서 온 것"이라고
+    // 알린다. 동기 실행 전제는 viewOnlyChange 와 같다.
+    asRemote(() => set({ map: cloneMap(map) }));
+  },
+
   // 서버에 저장한 맵 이름과 문서 제목을 맞춘다 (2026-08-02 문서함).
   // 내용 변경이 아니므로 undo 히스토리에는 남기지 않는다.
   setMapTitle: (title) => {
@@ -1448,6 +1480,9 @@ useDocumentStore.subscribe((state, prev) => {
   if (applyingHistory || historyPaused) return;
   // 접기/펴기 같은 **보기 전용** 변경은 되돌리기에 쌓지 않는다 (2026-08-06)
   if (viewOnlyChange) return;
+  // **남이 친 것은 내 되돌리기에 쌓지 않는다** (2026-08-18 협업) —
+  // 섞이면 Ctrl+Z 가 내가 하지 않은 일을 되돌린다
+  if (remoteChange) return;
   // 문서를 통째로 바꾸는 전환도 쌓지 않는다 — 되돌리기는 문서 경계를
   // 넘지 않는다 (asDocumentSwap)
   if (swappingDocument) return;

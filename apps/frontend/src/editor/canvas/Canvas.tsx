@@ -39,6 +39,7 @@ import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
+import { ProCursorLayer } from '@pro';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
@@ -1646,6 +1647,21 @@ export function Canvas({
           panY={panY}
         />
       )}
+
+      {/* 진짜 협업 커서 자리 — 공개판에서는 아무것도 그리지 않는다.
+          좌표 변환에 필요한 값을 **그대로** 넘긴다: 유료 모듈이 화면
+          기하를 다시 계산하면 확대·이동할 때 커서만 어긋난다. */}
+      <ProCursorLayer
+        t={t}
+        W={W}
+        H={H}
+        nodes={nodes}
+        scale={scale}
+        CX={CX}
+        CY={CY}
+        panX={panX}
+        panY={panY}
+      />
     </div>
   );
 }

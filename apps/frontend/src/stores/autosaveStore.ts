@@ -27,6 +27,17 @@ interface AutosaveState {
    */
   draftWriteFailed: boolean;
   setDraftWriteFailed: (v: boolean) => void;
+  /**
+   * **협업 세션이 몰고 있는 맵 id** (2026-08-18). 없으면 null.
+   *
+   * 배지를 `saveState` 한 값에 얹지 않고 따로 두는 이유 — 검증에서
+   * 잡았다: 맵을 여는 경로가 끝에서 `saveState='saved'` 를 쓰는데 협업
+   * 세션은 그보다 **먼저** 붙는다. 한 값을 나눠 쓰면 순서에 따라 배지가
+   * "저장됨"으로 덮여, **통째 저장을 안 하고 있는데 저장됐다고 말하는**
+   * 화면이 된다. 배지는 이 값을 우선으로 파생한다.
+   */
+  collabDrivingMapId: string | null;
+  setCollabDrivingMapId: (mapId: string | null) => void;
 }
 
 export const useAutosaveStore = create<AutosaveState>((set) => ({
@@ -38,4 +49,6 @@ export const useAutosaveStore = create<AutosaveState>((set) => ({
   setLastSavedAt: (lastSavedAt) => set({ lastSavedAt }),
   draftWriteFailed: false,
   setDraftWriteFailed: (draftWriteFailed) => set({ draftWriteFailed }),
+  collabDrivingMapId: null,
+  setCollabDrivingMapId: (collabDrivingMapId) => set({ collabDrivingMapId }),
 }));

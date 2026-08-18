@@ -8,6 +8,7 @@
 // 화면에서 같은 말이 된다.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import type { LaidOutNode } from '@/layout/types';
 import { useProFeature } from './contract';
 
 export function ProFeaturePanel({ t, featureId }: { t: ThemeTokens; featureId: string }) {
@@ -63,4 +64,45 @@ export function ProFeaturePanel({ t, featureId }: { t: ThemeTokens; featureId: s
       </div>
     </div>
   );
+}
+
+
+// ── 협업 자리 (2026-08-18) ────────────────────────────────────────────
+//
+// 여기 있는 셋은 **아무것도 그리지 않는다.** 그것이 공개판의 정상
+// 동작이다 — 협업은 파는 기능이고, 없는 기능의 자리에 무엇을 그리면
+// "되는 줄 알았는데 안 되는" 화면이 된다.
+//
+// 유료 UI 가 설치된 빌드에서는 `@pro` 별칭이 그쪽을 가리키므로 이 파일은
+// 쓰이지 않는다 (vite.config.ts).
+//
+// ★ **자리의 모양은 공개다.** 무엇을 넘겨받는지가 공개돼 있어야 유료
+//   모듈이 코어를 고치지 않고 갈아 끼울 수 있다 (open-core-boundary.md §5).
+
+/**
+ * 협업 세션 — 맵을 열 때 함께 뜨고, 닫으면 함께 내려간다.
+ * 실제로 소켓을 열고 문서를 합치는 일은 **유료 모듈**이 한다.
+ */
+export function ProCollabSession(_p: { mapId: string | null; kind?: string }) {
+  return null;
+}
+
+/** 상단 툴바의 접속자 자리 */
+export function ProPresenceBar(_p: { t: ThemeTokens }) {
+  return null;
+}
+
+/** 캔버스 위 남의 커서 자리 — 좌표 변환에 필요한 값을 그대로 넘긴다 */
+export function ProCursorLayer(_p: {
+  t: ThemeTokens;
+  W: number;
+  H: number;
+  nodes: LaidOutNode[];
+  scale?: number;
+  CX: number;
+  CY: number;
+  panX?: number;
+  panY?: number;
+}) {
+  return null;
 }

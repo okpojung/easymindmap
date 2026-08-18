@@ -689,6 +689,32 @@ CREATE TABLE IF NOT EXISTS public.map_edit_locks (
 );
 
 -- ────────────────────────────────────────────────────────────────────
+-- 맵 참가자 (2026-08-18) — 협업의 **권한 판정 자리**.
+--
+-- ★ 왜 이 표가 코어에 있나
+--   협업 자체(동시 편집·커서·초대 화면)는 유료 기능이지만, **"이 사람이
+--   이 맵을 열어도 되는가"** 는 코어가 답해야 한다. 권한 판정이 플러그인
+--   쪽에 흩어지면, 플러그인이 틀렸을 때 **남의 문서가 열린다**. 접근 제어는
+--   한 자리에 있어야 하고, 그 자리는 데이터를 가진 쪽이다.
+--   유료 모듈을 떼면 이 표는 **비어 있는 채로 아무 일도 하지 않는다**
+--   (행을 넣는 초대 흐름이 유료 쪽에 있다) — 코어 동작은 그대로다.
+--
+-- role: 'editor' 는 읽기·쓰기, 'viewer' 는 읽기만. 소유자는 이 표에 넣지
+--   않는다(maps.owner_id 가 이미 답한다 — 두 곳에 같은 사실을 두면 어긋난다).
+CREATE TABLE IF NOT EXISTS public.map_members (
+    map_id      UUID NOT NULL REFERENCES public.maps(id)  ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    role        VARCHAR(20) NOT NULL DEFAULT 'editor',
+    invited_by  UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (map_id, user_id),
+    CONSTRAINT map_members_role_chk CHECK (role IN ('editor', 'viewer'))
+);
+
+-- "나에게 공유된 맵" 을 사용자 기준으로 찾는 경로
+CREATE INDEX IF NOT EXISTS idx_map_members_user ON public.map_members(user_id);
+
+-- ────────────────────────────────────────────────────────────────────
 -- 문서함 목록 상세 (2026-08-05): 저장 시점 통계를 map_documents 에 기록
 -- — 목록(GET /maps)이 doc 파싱 없이 노드 수·첨부 개수/용량을 보여 준다.
 -- 값은 저장(PUT document)할 때마다 서버가 다시 계산한다. 이전에 저장된

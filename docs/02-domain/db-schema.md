@@ -37,6 +37,7 @@
 | `ai_jobs` / `node_translations` / `field_registry` | ✅ | 스키마만 존재, API 미사용 |
 | **`attachments`** | ✅ 실물 전용 | 첨부 저장소 메타(B9) — 파일 원본은 로컬 디스크 `StorageService` |
 | **`map_edit_locks`** | ✅ 실물 전용 | 단일 세션 편집 잠금 (2026-08-04) — session_key + heartbeat TTL 60초 |
+| **`map_members`** | ✅ 실물 전용 | **맵 참가자 — 협업의 권한 판정** (2026-08-18). `(map_id, user_id) PK` + `role 'editor'\|'viewer'` + `invited_by`. **소유자는 넣지 않는다**(`maps.owner_id` 가 이미 답한다 — 같은 사실을 두 곳에 두면 어긋난다). 행을 넣는 초대 흐름은 **유료 모듈** 쪽이고, 표가 비어 있으면 코어는 예전과 똑같이 **소유자 전용**으로 돈다 |
 | **`users.plan`** | ✅ 실물 전용 컬럼 | 요금제 — `free`\|`basic`\|`pro`\|`team` (CHECK 제약). **저장 용량의 단일 기준.** 기본 `free` |
 | **`users.quota_bytes`** | ✅ 실물 전용 컬럼 | 저장 용량 쿼터(B9) — 문서(DB)+첨부 합산. **`plan` 이 정하고 `users_sync_quota` 트리거가 동기화한다.** 직접 UPDATE 는 특별 계약용 탈출구 (`../04-extensions/attachment-storage.md` §8.1) |
 

@@ -1,10 +1,15 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException, ForbiddenException, Injectable, Logger, NotFoundException,
+} from '@nestjs/common';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { DatabaseService } from '../database/database.service';
 import { FoldersService } from '../folders/folders.service';
 import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
 import type { CreateMapDto } from './dto/create-map.dto';
 import type { UpdateMapDto } from './dto/update-map.dto';
+import {
+  canWrite, findAccessibleMap, type MapRole,
+} from './map-access';
 import {
   collectAttachmentRefs,
   findDocImages,
@@ -321,7 +326,7 @@ export class MapsService {
 
   /** GET /maps/:id — 맵 전체(현재 단계: 노드 목록은 빈 배열, 다음 PR에서 채움) */
   async getOne(userId: string, mapId: string) {
-    const m = await this.requireOwnedMap(userId, mapId);
+    const m = await this.requireAccessibleMap(userId, mapId);
     const nodes = await this.db.query<NodeRow>(
       `SELECT ${NODE_COLUMNS} FROM public.nodes WHERE map_id = $1
         ORDER BY depth, order_index`,
@@ -394,7 +399,7 @@ export class MapsService {
      */
     client?: { platform?: string; browser?: string; ip?: string },
   ) {
-    const map = await this.requireOwnedMap(userId, mapId);
+    const map = await this.requireAccessibleMap(userId, mapId, 'write');
 
     // 단일 세션 편집 잠금 (2026-08-04) — 다른 살아 있는 세션이 이 맵을
     // 편집 중이면 저장을 거절한다 (읽기 전용으로 연 탭·죽지 않은 옛
@@ -659,7 +664,7 @@ export class MapsService {
    * doc 은 제외하고 메타만 — 목록이 가벼워야 패널이 빠르게 열린다.
    */
   async listVersions(userId: string, mapId: string) {
-    await this.requireOwnedMap(userId, mapId);
+    await this.requireAccessibleMap(userId, mapId);
     // 접속 정보 컬럼은 델타 SQL 을 적용한 서버에만 있다 — 없으면 빼고
     // 조회한다. (검색 기능 때 겪은 사고와 같은 함정: 새 컬럼을 무조건
     // SELECT 하면 스키마 미적용 서버에서 목록이 통째로 503 이 된다)
@@ -730,7 +735,7 @@ export class MapsService {
 
   /** GET /maps/:id/versions/:version — 특정 버전의 문서 스냅샷 (B8) */
   async getVersion(userId: string, mapId: string, version: number) {
-    await this.requireOwnedMap(userId, mapId);
+    await this.requireAccessibleMap(userId, mapId);
     const { rows } = await this.db.query<{
       title: string; doc: unknown; created_at: Date;
     }>(
@@ -751,7 +756,7 @@ export class MapsService {
 
   /** GET /maps/:id/document — 저장된 문서 스냅샷 조회 */
   async getDocument(userId: string, mapId: string, editSession?: string) {
-    const map = await this.requireOwnedMap(userId, mapId);
+    const map = await this.requireAccessibleMap(userId, mapId);
     const { rows } = await this.db.query<{ doc: unknown; updated_at: Date }>(
       `SELECT doc, updated_at FROM public.map_documents WHERE map_id = $1`,
       [mapId],
@@ -877,7 +882,7 @@ export class MapsService {
 
   /** POST /maps/:id/edit-heartbeat — 편집 탭이 25초마다 잠금을 연장 */
   async editHeartbeat(userId: string, mapId: string, sessionKey: string) {
-    const map = await this.requireOwnedMap(userId, mapId);
+    const map = await this.requireAccessibleMap(userId, mapId, 'write');
     // **협업맵은 잃을 잠금이 없다** (2026-08-16, B16 ①). 표를 그냥 두면
     // 갱신된 행이 0이라 held=false 가 나가고, 프런트는 그것을 편집권
     // 상실로 읽어 **맵과의 연결을 끊는다**. 조용히 편집이 로컬 초안으로
@@ -895,7 +900,7 @@ export class MapsService {
 
   /** POST /maps/:id/edit-release — 맵 닫기·페이지 이탈 시 잠금 해제 */
   async editRelease(userId: string, mapId: string, sessionKey: string) {
-    const map = await this.requireOwnedMap(userId, mapId);
+    const map = await this.requireAccessibleMap(userId, mapId, 'write');
     // 협업맵은 애초에 잠근 적이 없다 — 지울 것이 없다 (B16 ①)
     if (isCollabMap(map)) return { ok: true };
     await this.db.query(
@@ -915,7 +920,10 @@ export class MapsService {
     if (!rowCount) throw new NotFoundException('맵을 찾을 수 없거나 권한이 없습니다.');
   }
 
-  /** 소유한 활성 맵을 조회하고, 없으면 404 */
+  /**
+   * 소유한 활성 맵을 조회하고, 없으면 404.
+   * **소유자만** — 이름 변경·삭제·공유처럼 맵 자체를 좌우하는 일에 쓴다.
+   */
   private async requireOwnedMap(userId: string, mapId: string): Promise<MapRow> {
     const { rows } = await this.db.query<MapRow>(
       `SELECT * FROM public.maps WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL`,
@@ -923,5 +931,24 @@ export class MapsService {
     );
     if (!rows[0]) throw new NotFoundException('맵을 찾을 수 없거나 권한이 없습니다.');
     return rows[0];
+  }
+
+  /**
+   * **볼 수 있는** 맵을 조회한다 — 소유자 또는 참가자(`map_members`).
+   *
+   * `need: 'write'` 면 열람자(viewer)를 막는다. 없는 맵과 권한 없는 맵을
+   * **구분하지 않는다** — 구분하면 남의 맵 id 가 존재하는지 알려 주는 셈이다.
+   * 쓰기 거절만 다른 문장을 준다(들어와 있는 사람에게는 "왜 저장이 안
+   * 되는지"를 말해 줘야 한다).
+   */
+  private async requireAccessibleMap(
+    userId: string, mapId: string, need: 'read' | 'write' = 'read',
+  ): Promise<MapRow & { access_role: MapRole }> {
+    const map = await findAccessibleMap<MapRow>(this.db, mapId, userId);
+    if (!map) throw new NotFoundException('맵을 찾을 수 없거나 권한이 없습니다.');
+    if (need === 'write' && !canWrite(map.access_role)) {
+      throw new ForbiddenException('이 맵에는 읽기 권한만 있습니다. 저장할 수 없습니다.');
+    }
+    return map;
   }
 }

@@ -856,6 +856,81 @@ SCRIPT
 **확인**: 로그아웃했다가 다시 로그인한 뒤, 아바타 → 🕘 로그인 기록에서
 맨 윗줄에 IP 와 기기가 보이면 된다.
 
+### 1.5-0-G. 맵 참가자 표 만들기 — 협업 공유 (2026-08-18)
+
+공유받은 사람이 남의 맵을 열려면 **참가자 표**가 있어야 한다(공개 #298,
+`27-sync-model.md` §14). 협업 자체는 유료 기능이지만, **"이 사람이 이 맵을
+열어도 되는가"는 코어가 답한다** — 판정이 플러그인 쪽에 흩어지면 플러그인이
+틀렸을 때 남의 문서가 열린다.
+
+**적용 전에도 앱은 그대로 돈다.** 다만 **소유자만** 자기 맵을 연다(예전과
+똑같다). `/v1/health` 가 `missingTables` 에 `map_members` 를 넣어 알려 준다.
+적용하면 **재기동 없이 1분 안에** 반영된다(코어가 60초마다 다시 확인한다).
+
+```bash
+bash <<'SCRIPT'
+set -e
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
+[ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+PGDB=$(printf '%s' "$URL"   | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+docker inspect "$DB" >/dev/null 2>&1 \
+  || { echo "❌ DB 호스트($DB)가 이 서버의 컨테이너가 아닙니다 — 그 서버에서 직접 접속해 주세요."; exit 1; }
+echo "✅ DB=$DB  계정=$PGUSER  데이터베이스=$PGDB"
+
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" <<'SQL'
+CREATE TABLE IF NOT EXISTS public.map_members (
+    map_id      UUID NOT NULL REFERENCES public.maps(id)  ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    role        VARCHAR(20) NOT NULL DEFAULT 'editor',
+    invited_by  UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (map_id, user_id),
+    CONSTRAINT map_members_role_chk CHECK (role IN ('editor', 'viewer'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_map_members_user ON public.map_members(user_id);
+
+\echo '── 적용 결과 ──'
+SELECT to_regclass('public.map_members') AS 표, count(*) AS 지금참가자수
+  FROM public.map_members;
+SQL
+SCRIPT
+```
+
+`표 = map_members`, `지금참가자수 = 0` 이면 끝이다. 두 번 실행해도 안전하다
+(`IF NOT EXISTS`).
+
+**확인**: 브라우저에서 `https://api-dev.mindmap.ai.kr/v1/health` 를 열어
+`missingTables` 에 `map_members` 가 **없으면** 적용된 것이다.
+
+**사람을 넣는 것은 아직 SQL 이다** — 초대 화면은 유료 모듈 쪽이고 아직
+없다. 손으로 넣어 보려면(맵 id 와 사용자 id 를 알고 있을 때):
+
+```sql
+INSERT INTO public.map_members (map_id, user_id, role)
+VALUES ('<맵 id>', '<초대할 사용자 id>', 'editor')
+ON CONFLICT (map_id, user_id) DO UPDATE SET role = EXCLUDED.role;
+```
+
+`role` 은 `editor`(읽기·쓰기) 또는 `viewer`(읽기만 — 저장하면 403 과 함께
+"이 맵에는 읽기 권한만 있습니다"가 뜬다). **소유자는 넣지 않는다**
+(`maps.owner_id` 가 이미 답한다).
+
+⚠️ 넣은 사람은 **맵 id 를 알아야** 들어갈 수 있다 — 문서함의 "나에게
+공유된 맵" 목록은 아직 없다(협업 프런트엔드와 함께 만든다).
+
 ### 1.5-A. Ubuntu 호스트에 NAS NFS 마운트
 
 ```bash

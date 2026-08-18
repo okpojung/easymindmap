@@ -113,6 +113,8 @@ export function parseMarkdownToMap(
   let rootText = '';
   const branches: SampleBranch[] = [];
   const rootNotes: NoteBlock[] = [];
+  /** 첫 견출 전에 나온 루트 사진 (2026-08-18, B17) */
+  const rootImages: string[] = [];
   let seq = 0;
   const nid = () => `md-${Date.now()}-${seq++}`;
 
@@ -327,6 +329,17 @@ export function parseMarkdownToMap(
     paraBuf = [];
     if (!text) return;
     if (!sawHeading) {
+      // 첫 견출 전의 **사진만 있는 문단** → 루트 사진 (2026-08-18, B17).
+      // 내보내기가 `# 제목` 바로 아래에 루트 사진을 쓰므로, 이 갈래가
+      // 없으면 돌아올 때 **사진 문법이 그대로 담긴 루트 노트**가 된다.
+      const only = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (only.length && only.every(
+        (l) => /^!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\)$/.test(l) || BARE_IMAGE_URL_RE.test(l),
+      )) {
+        const { images } = stripLinks(text);
+        for (const u of images) if (!rootImages.includes(u)) rootImages.push(u);
+        return;
+      }
       // 첫 견출 전의 머리말 문단 → 루트 노트
       rootNotes.push({ id: nid(), type: 'paragraph', text });
       return;
@@ -582,6 +595,10 @@ export function parseMarkdownToMap(
       colorKey: 'root',
       side: 'center',
       ...(rootNotes.length ? { notes: rootNotes } : {}),
+      // 루트 사진 — 내보낼 때 `# 제목` 아래에 쓴 것을 되돌린다 (B17)
+      ...(rootImages.length
+        ? { images: rootImages.map((src) => ({ src, w: 0, h: 0, afterLine: 0 })) }
+        : {}),
     } as SampleMap['root'],
     branches,
   };

@@ -425,9 +425,14 @@ export function MapBrowser({
     }
     if (canReuseThisTab()) {
       try {
-        const { readOnly } = await openMapHere(m.mapId);
+        const { readOnly, reason } = await openMapHere(m.mapId);
+        // **왜 읽기 전용인지 그대로 말한다.** 전에는 무조건 "다른 세션에서
+        // 편집 중" 이라고 했는데, 읽기만 권한으로 공유받은 경우에는
+        // **거짓말**이 된다(2026-08-19). 사용자가 할 일이 다르다 —
+        // 앞은 기다리면 되고, 뒤는 주인에게 권한을 올려 달라고 해야 한다.
         onFlash(readOnly
-          ? `🔒 '${m.title}' — 다른 세션(브라우저)에서 편집 중이라 읽기 전용으로 열었습니다. 변경은 이 맵에 저장되지 않으며, 필요하면 다른 이름으로 저장하세요.`
+          ? `🔒 '${m.title}' — ${reason ?? '읽기 전용'}이라 읽기 전용으로 열었습니다. `
+            + '변경은 이 맵에 저장되지 않으며, 필요하면 다른 이름으로 저장하세요.'
           : `☁ '${m.title}'을(를) 불러왔습니다.`);
         onOpened?.();
         onClose();

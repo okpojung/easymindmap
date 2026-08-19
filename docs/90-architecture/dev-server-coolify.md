@@ -323,6 +323,53 @@ GOTRUE_PASSWORD_MIN_LENGTH=6
 **④ NPM Proxy Host** — `auth-dev.example.com` → VM:80 (Traefik 경유),
 Cache Assets ❌, IPSec-VPN-Only (infra-architecture.md §7.9).
 
+> ### ⚠️ CORS 허용 주소를 **고정값으로 박지 말 것**
+>
+> preflight(OPTIONS)는 인증 정보 없이 오므로 Access List 앞에서 처리해야
+> 하고, 그래서 이 프록시 호스트의 **Advanced** 에 손으로 CORS 응답을
+> 적어 둔다. 그 자리에 프런트 주소를 **고정값으로** 적으면,
+> **프런트 도메인이 하나 늘어나는 순간 그쪽 로그인이 통째로 막힌다.**
+>
+> 실측(2026-08-19) — 유료판 프런트를 `pro-dev` 로 올리자마자 걸렸다:
+>
+> ```
+> Access to fetch at 'https://auth-dev…/token?grant_type=password'
+> from origin 'https://pro-dev…' has been blocked by CORS policy:
+> The 'Access-Control-Allow-Origin' header has a value 'https://dev…'
+> that is not equal to the supplied origin.
+> ```
+>
+> **허용 목록을 두고 요청한 주소를 그대로 되돌려 준다:**
+>
+> ```nginx
+> location / {
+>     set $cors_origin "";
+>     if ($http_origin ~* "^https://(dev|pro-dev)\.example\.com$") {
+>         set $cors_origin $http_origin;
+>     }
+>
+>     if ($request_method = OPTIONS) {
+>         add_header Access-Control-Allow-Origin $cors_origin always;
+>         add_header Access-Control-Allow-Credentials "true" always;
+>         add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+>         add_header Access-Control-Allow-Headers "authorization, content-type, apikey, x-client-info, x-supabase-api-version" always;
+>         add_header Access-Control-Max-Age 3600 always;
+>         add_header Content-Length 0;
+>         return 204;
+>     }
+>
+>     proxy_pass http://<VM>:80;
+>     proxy_set_header Host $host;
+>     proxy_set_header X-Real-IP $remote_addr;
+>     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+>     proxy_set_header X-Forwarded-Proto $scheme;
+> }
+> ```
+>
+> **실제 응답(POST)에는 헤더를 넣지 않는다.** GoTrue 가 스스로 붙인다 —
+> 실측으로 확인했다(위 설정만 고치니 로그인이 됐다). 여기에 또 넣으면
+> `Access-Control-Allow-Origin` 이 **두 개**가 되어 브라우저가 다시 막는다.
+
 **⑤ 검증**:
 
 ```bash

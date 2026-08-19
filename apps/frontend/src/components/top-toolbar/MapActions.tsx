@@ -116,7 +116,7 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
             color: '#92400E', fontSize: 11.5, fontWeight: 700,
             whiteSpace: 'nowrap',
           }}
-        >🔒 읽기 전용 — 다른 세션에서 편집 중</span>
+        >🔒 읽기 전용 — {readOnlyInfo.reason ?? '다른 세션에서 편집 중'}</span>
       )}
       <button
         data-testid="map-save"

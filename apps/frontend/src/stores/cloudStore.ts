@@ -37,11 +37,11 @@ interface CloudState {
    * 세션이 편집 중이라 잠금을 얻지 못했다. 링크(cloudMapId)는 없어
    * 자동저장·저장이 이 맵에 쓰지 않고, 배너로 안내한다.
    */
-  readOnlyInfo: { mapId: string; title: string } | null;
+  readOnlyInfo: { mapId: string; title: string; reason?: string } | null;
 
   link: (mapId: string, savedAt: string, meta?: Partial<CloudMapMeta>) => void;
   unlink: () => void;
-  setReadOnlyInfo: (info: { mapId: string; title: string } | null) => void;
+  setReadOnlyInfo: (info: { mapId: string; title: string; reason?: string } | null) => void;
   setBusy: (b: CloudState['busy']) => void;
   setError: (e: string | null) => void;
 }

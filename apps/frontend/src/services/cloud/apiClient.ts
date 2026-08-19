@@ -259,6 +259,8 @@ export const cloudApi = {
     req<{
       mapId: string; title: string; folderId: string | null;
       kind: MapKind; doc: unknown; updatedAt: string;
+      /** 이 맵에서 내 역할 — 'viewer' 면 읽기 전용으로 연다 (2026-08-19) */
+      role?: 'owner' | 'editor' | 'viewer';
       editLock?: 'acquired' | 'busy';
     }>(
       'GET',

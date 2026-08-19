@@ -323,7 +323,7 @@ export async function openMapHere(mapId: string): Promise<{ readOnly: boolean }>
   const cloud = useCloudStore.getState();
   cloud.setBusy('opening');
   try {
-    const { doc, updatedAt, title, folderId, kind, editLock } =
+    const { doc, updatedAt, title, folderId, kind, editLock, role } =
       await cloudApi.getDocument(mapId, editSessionKey());
     const loadedMap = (doc as { map?: unknown }).map;
     if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
@@ -337,15 +337,24 @@ export async function openMapHere(mapId: string): Promise<{ readOnly: boolean }>
     // 저장 당시의 레이아웃·간격 복원 (v2 스냅샷 — 없으면 그대로 둔다)
     applySnapshotEditor(doc);
     useInteractionStore.getState().setSelectedId(null);
-    if (editLock === 'busy') {
+    // **읽기 전용으로 여는 두 갈래** — 이유가 다르므로 문장도 다르다.
+    //   ⑴ editLock='busy' : 다른 세션이 편집 중이다(내 권한은 있다)
+    //   ⑵ role='viewer'   : '읽기만' 으로 초대받았다(권한 자체가 없다)
+    // ⑵ 를 안 막으면 화면이 **편집을 허용하는 것처럼** 보이고, 사용자는
+    // 한참 고친 뒤 저장할 때에야 403 을 만난다. 그 편집은 갈 곳이 없다
+    // (2026-08-19 실사용에서 그대로 겪었다).
+    const readOnlyReason = editLock === 'busy'
+      ? '다른 세션에서 편집 중'
+      : role === 'viewer' ? '이 맵은 읽기만 권한으로 공유받았습니다' : null;
+    if (readOnlyReason) {
       // 읽기 전용 — 링크 없음(저장 경로 차단) + 배너 정보만
       useCloudStore.getState().unlink();
-      useCloudStore.getState().setReadOnlyInfo({ mapId, title });
+      useCloudStore.getState().setReadOnlyInfo({ mapId, title, reason: readOnlyReason });
     } else {
       useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
     }
     useAutosaveStore.getState().setSaveState('saved');
-    return { readOnly: editLock === 'busy' };
+    return { readOnly: readOnlyReason !== null };
   } finally {
     useCloudStore.getState().setBusy('idle');
   }

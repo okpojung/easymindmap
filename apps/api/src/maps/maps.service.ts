@@ -862,6 +862,16 @@ export class MapsService {
       title: map.title,
       folderId: map.folder_id,
       kind: map.kind,
+      // **내가 이 맵에서 무엇을 할 수 있는가** (2026-08-19).
+      //
+      // 이게 없으면 화면은 열람자에게도 편집을 **허용하는 것처럼** 보인다.
+      // 실사용에서 그대로 걸렸다 — 읽기만 권한으로 초대받은 사람이 맵을
+      // 고치고 되돌리기까지 했고, **저장할 때에야** 403 을 만났다.
+      // 그때는 이미 한참 작업한 뒤라 그 편집이 갈 곳이 없다.
+      //
+      // 서버는 처음부터 알고 있었다(`requireAccessibleMap` 이 판정한다).
+      // 알면서 말하지 않은 것이 문제였다.
+      role: map.access_role,
       doc: rows[0].doc,
       updatedAt: rows[0].updated_at,
       ...(editLock ? { editLock } : {}),

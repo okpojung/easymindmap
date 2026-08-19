@@ -288,8 +288,37 @@ GOTRUE_PASSWORD_MIN_LENGTH=6
 | api | `AUTH_MODE` | `supabase` |
 | api | `SUPABASE_JWT_SECRET` | GOTRUE_JWT_SECRET 과 **동일 값** |
 | frontend (Build) | `VITE_SUPABASE_URL` | `https://auth-dev.example.com` |
-| frontend (Build) | `VITE_SUPABASE_AUTH_PREFIX` | `` (빈 값 — **GoTrue 단독은 루트 경로**. 전체 Supabase(Kong)로 갈 때만 기본 `/auth/v1`) |
+| frontend (Build) | `VITE_SUPABASE_AUTH_PREFIX` | **`/`** (= 루트 — **GoTrue 단독은 루트 경로**. 전체 Supabase(Kong)로 갈 때만 기본 `/auth/v1`) |
 | frontend (Build) | `VITE_SUPABASE_ANON_KEY` | 아무 값 (Kong 없는 단독 구성에선 미사용) |
+
+> ### ⚠️ `VITE_SUPABASE_AUTH_PREFIX` — **빠뜨리면 로그인만 조용히 안 된다**
+>
+> 이 변수를 **아예 안 넣으면** 코드가 기본값 `/auth/v1` 을 쓴다
+> (`supabaseAuth.ts` — `!== undefined` 로 판정하므로 "없음"과 "빈 값"이
+> 다르다). 그러면 호출 주소가 이렇게 된다:
+>
+> ```
+> ${VITE_SUPABASE_URL}${AUTH_PREFIX}${path}
+>   → https://auth-dev.example.com/auth/v1/token   ← 단독 GoTrue 에는 없다
+> ```
+>
+> **실측 (2026-08-19, dev 서버)** — 이 변수가 빠진 채로 돌고 있었다:
+>
+> | 주소 | 응답 |
+> |---|---|
+> | `https://auth-dev.mindmap.ai.kr/health` | `{"version":"v2.194.0","name":"GoTrue",…}` |
+> | `https://auth-dev.mindmap.ai.kr/auth/v1/health` | **`404 page not found`** |
+>
+> 화면은 멀쩡히 뜨고 **로그인만 안 된다.** 기동 로그에도 안 남는다 —
+> 브라우저에서 404 가 날 뿐이다.
+>
+> **빈 값 대신 `/` 를 넣는다.** 코드가 끝의 슬래시를 떼므로 결과는 같고
+> (`'/'.replace(/\/$/,'') === ''`), Coolify 같은 UI 가 **빈 값을 저장하지
+> 않는** 경우를 피할 수 있다. 값이 화면에 보이므로 "넣었는데 비어 있는
+> 것"과 "안 넣은 것"을 눈으로 구별할 수 있다는 것도 이유다.
+>
+> **바꾼 뒤에는 반드시 재배포한다** — `VITE_*` 는 빌드 시점에 번들에
+> 박히므로, 변수만 고치고 재배포하지 않으면 아무것도 바뀌지 않는다.
 
 **④ NPM Proxy Host** — `auth-dev.example.com` → VM:80 (Traefik 경유),
 Cache Assets ❌, IPSec-VPN-Only (infra-architecture.md §7.9).

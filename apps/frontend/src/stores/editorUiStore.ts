@@ -115,7 +115,10 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   navTab: 'newMap',
   inspectorTab: 'style',
   activeSection: 'inspector',
-  sidebarCollapsed: false,
+  // **처음에는 접어 둔다** (2026-08-19 사용자 요청). 로그인·새로고침 직후에
+  // '새 맵' 패널이 펼쳐져 있으면, 정작 보려던 문서함을 가린다. 아이콘 막대는
+  // 그대로 남으므로 한 번 눌러 열 수 있고, `setNavTab` 이 열어 주기도 한다.
+  sidebarCollapsed: true,
   showTags: true,
   hiddenTags: [],
   multiAddOpen: false,

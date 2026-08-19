@@ -317,9 +317,12 @@ export function openMapInNewTab(mapId: string): boolean {
  * 서버 링크를 만들지 않아 자동저장·저장이 이 맵에 쓰지 않고(사본 저장은
  * 가능), readOnlyInfo 배너로 안내한다.
  *
- * @returns readOnly — true 면 다른 세션이 편집 중이라 읽기 전용으로 열림
+ * @returns readOnly — 읽기 전용으로 열렸는가. `reason` 은 **왜** 그런지
+ *   (다른 세션이 편집 중 / 읽기만 권한) — 부르는 쪽이 안내 문장을 가른다.
  */
-export async function openMapHere(mapId: string): Promise<{ readOnly: boolean }> {
+export async function openMapHere(
+  mapId: string,
+): Promise<{ readOnly: boolean; reason?: string }> {
   const cloud = useCloudStore.getState();
   cloud.setBusy('opening');
   try {
@@ -354,7 +357,7 @@ export async function openMapHere(mapId: string): Promise<{ readOnly: boolean }>
       useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
     }
     useAutosaveStore.getState().setSaveState('saved');
-    return { readOnly: readOnlyReason !== null };
+    return { readOnly: readOnlyReason !== null, reason: readOnlyReason ?? undefined };
   } finally {
     useCloudStore.getState().setBusy('idle');
   }

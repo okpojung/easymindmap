@@ -12,6 +12,7 @@ docs/
 │  ├─ roadmap.md
 │  ├─ vision.md
 │  └─ emm-strategy.md                     ← EMM 표준화·오픈소스·사업화 전략
+│  └─ glossary.md                         ← 용어 사전
 ├─ 01-product/
 │  ├─ functional-spec.md
 │  ├─ product-highlights.md                ← 제품 하이라이트
@@ -81,6 +82,7 @@ docs/
 │  ├─ collaboration/
 │  │  ├─ 25-map-collaboration.md
 │  │  └─ 26-realtime-chat.md
+│  │  └─ 28-sync-prework-plan.md
 │  ├─ publish/
 │  │  └─ 27-publish-share.md
 │  ├─ project/

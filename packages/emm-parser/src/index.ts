@@ -26,6 +26,7 @@ export {
   serializeEmm,
   safeFileName,
   dataUrlToBytes,
+  withPackagedImagePaths,
   countMapNodes,
   splitNodeBody,
   nodeHeadingText,

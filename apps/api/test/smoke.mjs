@@ -110,6 +110,38 @@ ok('문서 스냅샷 조회(손실 없이 왕복)',
 const noDoc = await req('GET', `/v1/maps/11111111-1111-1111-1111-111111111111/document`);
 ok('없는 맵 문서 404', noDoc.status === 404, `status=${noDoc.status}`);
 
+// ═══ 원격 사진 내려받기 — SSRF 방어 (B16 ② D-1) ═══════════
+// 이 경로는 **사용자가 준 주소로 서버가 나간다.** 막는 것이 본체이므로
+// "막히는지"를 CI 가 매번 확인한다. 성공 경로는 바깥 인터넷이 필요해
+// 여기서 재지 않는다 (test-catalog.md 의 수동 e2e 항목).
+const ssrf = [
+  ['루프백',            'http://127.0.0.1:3000/v1/health'],
+  ['localhost 이름',    'http://localhost:3000/v1/health'],
+  ['IPv6 루프백',       'http://[::1]:3000/v1/health'],
+  ['클라우드 메타데이터', 'http://169.254.169.254/latest/meta-data/'],
+  ['사설 10/8',         'http://10.0.0.1/x.png'],
+  ['사설 192.168/16',   'http://192.168.0.1/x.png'],
+  ['사설 172.16/12',    'http://172.16.0.1/x.png'],
+  ['file: 스킴',        'file:///etc/passwd'],
+  ['자격증명 박힌 URL', 'http://user:pw@example.com/x.png'],
+];
+for (const [name, url] of ssrf) {
+  const r = await req('POST', '/v1/attachments/from-url', { url });
+  ok(`from-url 차단(${name})`, r.status === 400, `status=${r.status}`);
+}
+
+// 성공 경로가 **연결까지 갔는지**를 본다 (다운로드 자체는 바깥 인터넷이
+// 필요해 CI 에서 재지 않는다). DNS 없이 통과하도록 공인 IP 를 직접 적고,
+// 실패 문구가 `Invalid IP address` 가 **아닌지**만 확인한다.
+// ★ 그 문구는 우리가 끼운 DNS 해석기가 Node 의 lookup 규약(`{all:true}`
+//   → **배열**)을 어겼을 때만 나오고, **차단 시험으로는 절대 안 걸린다** —
+//   막는 길은 연결 전에 끝나기 때문이다. 실제로 그렇게 새어 나간 적이 있다
+//   (2026-08-20: 성공 경로가 전부 조용히 실패하고 있었다).
+const conn = await req('POST', '/v1/attachments/from-url', { url: 'http://93.184.216.34/x.png' });
+ok('from-url 이 연결까지 간다(lookup 규약)',
+   !String(conn.data?.message ?? '').includes('Invalid IP'),
+   JSON.stringify(conn.data));
+
 // ═══ cascade 삭제 ══════════════════════════════════════════
 const delRoot = await req('DELETE', `/v1/nodes/${root.id}`);
 ok('root 삭제 204', delRoot.status === 204, `status=${delRoot.status}`);

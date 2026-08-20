@@ -877,6 +877,65 @@ export async function attachmentUrlForFile(f: File, onProgress?: (r: number) => 
 `../user-guide/05-노트-링크-첨부-태그.md`(사용자 안내).
 
 
+## 12-A. 원격 사진 대리 다운로드 — `POST /v1/attachments/from-url` (2026-08-20)
+
+웹에서 복사한 사진을 우리 저장소에 넣으려면 **서버가 받아야 한다** —
+브라우저 `fetch` 는 CORS 로 막히는 사이트가 많다 (B16 ② 슬라이스 3,
+`collaboration/28-sync-prework-plan.md` §3.4).
+
+```
+POST /v1/attachments/from-url   { url, mapId?, store? }
+  → { id, name, mime, sizeBytes, reused, url }        (store 생략/true)
+  → { dataUrl, mime, sizeBytes }                      (store:false — 바이트만)
+```
+
+- 저장은 **`upload()` 를 그대로 쓴다** — 쿼터 검사와 고아 파일 방지가 거기
+  들어 있다. 저장 경로를 새로 만들면 그 둘이 빠진다.
+- 이름은 **내용 해시**(`img-<해시16>.<확장자>`)라, 같은 맵에 같은 사진을
+  두 번 붙여도 **다시 올리지 않는다**(`reused: true`).
+- `store:false` 는 **리치 노트 HTML** 용이다 — 노트 HTML 은 내보내기의 사진
+  되돌리기(`export/serverImages.ts`)와 화면의 토큰 붙이기가 훑지 않으므로,
+  거기에 서버 주소를 넣으면 **내보낸 파일이 서버 없이 안 열린다.**
+  받아오는 일만 서버가 대신하고 결과는 data URL 로 둔다.
+
+### ★ 이 기능의 본체는 SSRF 방어다
+
+"임의의 주소를 우리 서버가 대신 부른다"는 기능이다. 이 배포는 Coolify ·
+GoTrue · PostgreSQL 이 같은 도커 네트워크에 있고 NAS 마운트도 붙어 있다 —
+막지 않으면 `http://<컨테이너이름>:5432` 한 줄로 내부망이 열린다.
+`apps/api/src/attachments/remote-image.ts` 가 전부 건다.
+
+| # | 방어 | 왜 |
+|---|---|---|
+| ① | `http`/`https` 만 | `file:`·`gopher:`·`data:` 로 로컬 자원을 읽지 못하게 |
+| ② | **DNS 해석 결과(IP)로** 사설·루프백·링크로컬·멀티캐스트 차단 | 호스트 이름만 보면 공격자가 자기 도메인의 A 레코드를 `127.0.0.1` 로 걸어 우회한다. 해석 결과가 **하나라도** 막힌 대역이면 거절 |
+| ③ | 검사한 **그 IP 로 직접 붙는다**(`lookup` 을 갈아끼운다) | 검사 뒤 다시 해석하면 그 사이에 답이 바뀐다(DNS 리바인딩) |
+| ④ | 리다이렉트 3회 상한 + **매 홉마다 ①②③ 재실행** | 첫 응답이 302 로 내부 주소를 가리키는 것이 전형적인 우회다 |
+| ⑤ | `Content-Type` 이 image/* 이고 **담을 수 있는 형식**인지(png·jpg·gif·webp) | 내보내기가 알아보지 못하는 형식이 문서에 들어가면 조용한 유실이 된다 |
+| ⑥ | 바이트 상한 2.5MB — **스트림을 읽으면서** 넘는 순간 끊는다 | `Content-Length` 는 거짓말할 수 있다. 프런트 폴백(`MAX_EMBED_BYTES`)과 **같은 값**이라 "서버로는 안 되고 브라우저로는 되는" 구간이 없다 |
+| ⑦ | 헤더 8초 · 전체 20초, 시간이 되면 **열려 있는 요청을 부순다** | 플래그만 세우면 slow loris 에 소켓이 잡힌 채 남는다 |
+
+### ★ 막는 쪽만 시험하면 받는 쪽이 죽은 것을 못 본다 (2026-08-20)
+
+병합 직후 **모든 다운로드가 조용히 실패하고 있었다** —
+`pinnedLookup` 이 Node 의 규약을 어겼다. `net` 은 `lookup` 을
+`{ all: true }` 로 부르고 **배열**을 기대하는데 문자열 하나를 돌려주어,
+`addresses[0].address` 가 `undefined` 가 되고
+`Invalid IP address: undefined` 로 죽었다.
+
+**차단 시험 9항목은 전부 통과했다.** 막는 길은 연결 **전에** 끝나기
+때문이다. 그래서 CI 스모크에 **"연결까지 가는가"** 를 함께 둔다 — 공인 IP
+를 직접 적어(DNS 없이) 검사를 통과시킨 뒤, 실패 문구가
+`Invalid IP address` 가 **아닌지**만 본다.
+
+### 검증
+
+CI 스모크(`apps/api/test/smoke.mjs`) 10항목 — 차단 9 + 연결 1. 실제
+다운로드는 바깥 인터넷이 필요해 CI 에서 재지 않는다(수동 e2e:
+`05-implementation/test-catalog.md` e2e173·174).
+
+---
+
 ## 13. 내려받기 — HTTP Range (2026-08-07)
 
 `GET /v1/attachments/:id` 는 **부분 요청을 지원한다.**

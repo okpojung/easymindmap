@@ -21,6 +21,7 @@ import {
   buildEmmBody,
   buildMetaComment,
   safeFileName,
+  withPackagedImagePaths,
   type EmmImageFile,
 } from '@emm/serialize';
 
@@ -92,8 +93,13 @@ export async function buildMarkdownExportPackage(
     }
   }
 
+  // 메타데이터 주석은 **본문과 같은 `files/` 경로**를 가리킨다
+  // (2026-08-20, B16 ② D-5). 예전에는 여기서 사진을 base64 로 한 번 더
+  // 넣어, 사진 한 장짜리 맵의 .md 가 사진 바이트를 두 벌 들고 다녔다.
+  // 지식 저장소(vault)에 미러되는 파일에 그것을 두지 않는다
+  // (docs/04-extensions/collaboration/28-sync-prework-plan.md §3.5).
   const meta = buildMapMeta(
-    withInlinedAttachments(map, (id) => inlineById.get(id)),
+    withPackagedImagePaths(withInlinedAttachments(map, (id) => inlineById.get(id)), images),
     mapLayoutType, spacing);
   const metaComment = buildMetaComment(meta, {
     exportedLocal: new Date().toLocaleString('ko-KR'),

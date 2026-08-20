@@ -1,22 +1,31 @@
 // remoteImages — 불러온 맵의 원격(http) 이미지 URL을 다운로드해 맵에
 // 내장한다 (MD의 ![](https://…png) → 노드 사진).
 //
-//   1) fetch 성공 + ≤2MB → data URL로 내장 (파일에 저장돼 원본이
-//      사라져도 보존 — 기사 붙여넣기와 동일 정책)
+//   1) 가져오기 성공 → 우리가 보관 (로그인=서버 첨부 / 게스트=data URL.
+//      파일에 저장돼 원본이 사라져도 보존 — 기사 붙여넣기와 동일 정책)
 //   2) fetch 실패(CORS 등)여도 <img>로 로드되면 → 원격 URL 참조 유지
 //      (화면에는 보이고, 내보내기에는 URL로 남는다)
 //   3) 둘 다 실패 → 이미지를 빼고 노드 링크(🔗)로 폴백 (데이터 손실 없음)
 //
-// [서버 연결 예정] 서버 저장 도입 시 이미지·첨부는 서버에 올리고 MD
-// 변환 시 서버 경로로 바꾼다 — backlog.md B9.
+// **[서버 연결됨 — 2026-08-20, B16 ② D-3/D-6]** 로그인 상태에서는 ①이
+// data URL 이 아니라 **서버 첨부 주소**로 간다 (importRemoteImage).
+//
+// ★ **우리 저장소 사진(`{API}/v1/attachments/<id>`)은 건드리지 않는다.**
+//   그것도 `http` 로 시작하므로, 거르지 않으면 불러올 때마다 서버에서
+//   되받아 **data URL 로 문서에 도로 집어넣는다** — D-6 으로 잠근 뒷문이
+//   여기로 다시 열린다.
 
 import type { MindNode, SampleMap } from '@/editor/__samples__/types';
+import { serverAttachmentId } from '@/services/cloud/apiClient';
+import { importRemoteImage } from './embedImage';
 
 const FETCH_TIMEOUT_MS = 8000;
-const INLINE_LIMIT = 2 * 1024 * 1024; // ≤2MB만 data URL로 내장
+
+/** 우리 저장소 사진인가 — 그렇다면 손대지 않는다 */
+const isOurs = (src: string) => serverAttachmentId(src) !== null;
 
 export interface RemoteImageStats {
-  embedded: number; // data URL로 내장
+  embedded: number; // 우리 저장소(로그인) 또는 data URL(게스트)로 보관
   kept: number; // 원격 URL 참조 유지 (fetch 불가, 표시만 가능)
   linked: number; // 로드 실패 — 링크로 폴백
 }
@@ -28,15 +37,6 @@ function fileNameOf(url: string): string {
   } catch {
     return '이미지';
   }
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = () => reject(new Error('read'));
-    r.readAsDataURL(blob);
-  });
 }
 
 // <img>로 로드해 실측 크기를 얻는다 (data URL·원격 URL 공용)
@@ -56,22 +56,6 @@ function measureImage(src: string): Promise<{ w: number; h: number }> {
   });
 }
 
-async function fetchAsDataUrl(url: string): Promise<string | null> {
-  const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    if (blob.size > INLINE_LIMIT) return null; // 너무 큼 — 원격 참조 유지 시도
-    return await blobToDataUrl(blob);
-  } catch {
-    return null;
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
 type ImgEntry = { src: string; w: number; h: number; afterLine?: number };
 
 // 노드 하나의 원격 이미지들을 처리 — images 배열을 새로 만들어 돌려주고,
@@ -82,24 +66,21 @@ async function resolveNode(node: MindNode, stats: RemoteImageStats): Promise<voi
     : node.image?.src
       ? [node.image]
       : [];
-  if (!list.some((im) => /^https?:\/\//i.test(im.src))) return;
+  if (!list.some((im) => /^https?:\/\//i.test(im.src) && !isOurs(im.src))) return;
 
   const out: ImgEntry[] = [];
   for (const im of list) {
-    if (!/^https?:\/\//i.test(im.src)) {
+    if (!/^https?:\/\//i.test(im.src) || isOurs(im.src)) {
       out.push(im);
       continue;
     }
-    const dataUrl = await fetchAsDataUrl(im.src);
-    if (dataUrl) {
-      try {
-        const dim = await measureImage(dataUrl);
-        out.push({ ...im, src: dataUrl, w: dim.w, h: dim.h });
-        stats.embedded += 1;
-        continue;
-      } catch {
-        /* 이미지 파일이 아님 — 아래 폴백으로 */
-      }
+    // 남의 사이트 사진 → 우리가 보관하는 사진으로 (로그인이면 서버,
+    // 게스트면 data URL). 판정은 importRemoteImage 한 곳이 한다.
+    const got = await importRemoteImage(im.src);
+    if (got) {
+      out.push({ ...im, src: got.src, w: got.w, h: got.h });
+      stats.embedded += 1;
+      continue;
     }
     // fetch 불가(CORS 등) — 브라우저 <img>로는 로드될 수 있다
     try {
@@ -137,9 +118,12 @@ export async function resolveRemoteImages(
 ): Promise<{ map: SampleMap; stats: RemoteImageStats }> {
   const stats: RemoteImageStats = { embedded: 0, kept: 0, linked: 0 };
 
+  // 우리 저장소 사진은 원격이 아니다 — 세지 않는다(위 isOurs 주석)
+  const remote = (src: string | undefined) =>
+    !!src && /^https?:\/\//i.test(src) && !isOurs(src);
   const hasRemote = (n: MindNode): boolean =>
-    (n.images ?? []).some((im) => /^https?:\/\//i.test(im.src)) ||
-    /^https?:\/\//i.test(n.image?.src ?? '') ||
+    (n.images ?? []).some((im) => remote(im.src)) ||
+    remote(n.image?.src) ||
     (n.children ?? []).some(hasRemote);
   if (!hasRemote(map.root as unknown as MindNode) && !map.branches.some(hasRemote)) {
     return { map, stats };

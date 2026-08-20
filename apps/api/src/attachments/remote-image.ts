@@ -228,7 +228,7 @@ function parseAndCheckUrl(raw: string): URL {
  * 통과할 IP 하나를 섞어 놓기만 하면 되기 때문이다.
  */
 const pinnedLookup: NonNullable<http.RequestOptions['lookup']> = (
-  hostname, _options, callback,
+  hostname, options, callback,
 ) => {
   dnsLookup(hostname, { all: true, verbatim: true }, (err, addresses) => {
     if (err) {
@@ -250,6 +250,18 @@ const pinnedLookup: NonNullable<http.RequestOptions['lookup']> = (
         );
         return;
       }
+    }
+    // ★ **`net` 은 lookup 을 `{ all: true }` 로 부르고 배열을 기대한다.**
+    //   (Node 18+ `lookupAndConnect` 가 `addresses[0].address` 를 읽는다.)
+    //   여기서 문자열 하나만 돌려주면 `addresses[0]` 이 **문자열의 첫 글자**가
+    //   되어 `Invalid IP address: undefined` 로 죽는다 — 차단은 멀쩡히 돌고
+    //   **성공 경로만 조용히 전부 실패**한다. 막는 쪽만 시험하면 안 걸린다.
+    //   여기 담긴 주소는 위에서 **전부** 검사를 통과한 것들이다.
+    if ((options as { all?: boolean }).all) {
+      (callback as (e: null, addrs: { address: string; family: number }[]) => void)(
+        null, list.map((a) => ({ address: a.address, family: a.family })),
+      );
+      return;
     }
     const first = list[0];
     (callback as (e: null, addr: string, fam: number) => void)(

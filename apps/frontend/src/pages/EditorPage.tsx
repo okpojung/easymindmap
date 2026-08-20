@@ -216,8 +216,15 @@ export function EditorPage() {
     // 로그인/Guest 첫 화면의 좌측 패널 = **새 맵 메뉴** 고정 (2026-08-04
     // 보고 — 시크릿창처럼 저장된 UI 상태가 없으면 '스타일' 탭이 떴다.
     // 문서함이 메인인 첫 화면에서 노드 속성 패널은 무의미하다)
+    //
+    // ★ **`setNavTab` 을 쓰지 않는다** (2026-08-20). 그 동작은 탭을 고르는
+    //   김에 **사이드바를 펼치는 부수효과**를 갖고 있다
+    //   (`sidebarCollapsed: false`). 사용자가 아이콘을 눌렀을 때는 그게
+    //   맞지만, 여기는 **아무도 누르지 않았다** — 로그인했을 뿐이다.
+    //   그래서 접어 두기로 한 기본값(#306)이 매번 다시 펼쳐졌다.
+    //   여기서 정할 것은 **"열면 무엇이 보이나"** 지 "열어라" 가 아니다.
     if (session || guest) {
-      useEditorUiStore.getState().setNavTab('newMap');
+      useEditorUiStore.setState({ navTab: 'newMap', activeSection: 'nav' });
     }
     // Guest 체험 — 빈 화면 대신 곧바로 만져 볼 샘플 맵을 연다
     if (guest && !session && !initialMapId) {

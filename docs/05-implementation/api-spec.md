@@ -49,7 +49,7 @@
 - 격리: 모든 쿼리가 `owner_id = 현재 사용자` 조건 (RLS 는 2차 방어선 —
   API 는 pg 직결이라 RLS 를 타지 않는다).
 
-### 실제 엔드포인트 전체 표 — 31개 (maps 11 · folders 4 · attachments 4 · account 4 · health 2 · nodes 6)
+### 실제 엔드포인트 전체 표 — 32개 (maps 11 · folders 4 · attachments 5 · account 4 · health 2 · nodes 6)
 
 | # | 메서드 | 경로 | 설명 |
 |---|---|---|---|
@@ -69,6 +69,7 @@
 | 14 | PATCH | `/v1/folders/:id` | `{name?,parentId?}` — 자기 자신/자손으로 이동 400 |
 | 15 | DELETE | `/v1/folders/:id` | 비어 있을 때만 204, 아니면 409 |
 | 16 | POST | `/v1/attachments?mapId=` | 첨부 업로드(multipart `file`) → 메타 + `url`. 크기 초과 400, 쿼터 초과 413 |
+| 16b | POST | `/v1/attachments/from-url` | **원격 사진 대리 다운로드** (2026-08-20, B16 ② 슬라이스 3) `{url, mapId?, store?}` → 16번과 **같은 모양**의 첨부 메타 + `url` + `reused`. 브라우저 fetch 는 CORS 로 막히므로 **서버가 대신 받아** 저장한다. 이름은 **내용 해시**(`img-<16자>.<확장자>`)라 같은 맵의 같은 사진은 다시 올리지 않는다(`reused: true`). `store: false` 면 저장하지 않고 `{mime,sizeBytes,dataUrl}` 만 준다 — **리치 노트 HTML 처럼 서버 주소를 넣으면 안 되는 자리**가 CORS 만 넘으려고 쓴다. **SSRF 방어**: http/https 만 · 사설/루프백/링크로컬 대역 차단(**DNS 해석 결과 IP 로** 검사하고 **그 IP 로 고정 접속**) · 리다이렉트 3회 상한(**매 홉마다 재검사**) · `image/*` 중 png·jpeg·gif·webp 만 · 2.5MB 상한(**스트림에서 끊는다** — Content-Length 를 믿지 않는다) · 타임아웃. 막히거나 못 받으면 **전부 400** — 프런트는 그 문구를 보여 주고 data URL 폴백으로 넘어간다 |
 | 17 | GET | `/v1/attachments/quota` | 쿼터 사용량 조회 → `{dbBytes,fileBytes,usedBytes,quotaBytes,plan}`. 합산 = 문서 DB + 첨부. `plan` 은 `free`\|`basic`\|`pro`\|`team` — **용량 숫자는 DB 가 정하고 API 는 이름만 전달한다** |
 | 18 | GET | `/v1/attachments/:id` | 다운로드(스트림, `?access_token=` 허용) |
 | 19 | DELETE | `/v1/attachments/:id` | 삭제 → 204 |

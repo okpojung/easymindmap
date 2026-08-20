@@ -30,6 +30,7 @@ import {
 } from '@/services/cloud/mapSession';
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { useCloudStore } from '@/stores/cloudStore';
+import { useNoticeStore } from '@/stores/noticeStore';
 import { cloudApi } from '@/services/cloud/apiClient';
 import {
   useDocumentStore,
@@ -241,6 +242,16 @@ export function EditorPage() {
   const [urlMapErr, setUrlMapErr] = useState<string | null>(null);
   // 문서함 안내(열기·폴더 생성 결과) — 화면 위쪽에 잠깐 표시
   const [browserMsg, setBrowserMsgRaw] = useState<string | null>(null);
+
+  // 사진 붙여넣기 등의 한 줄 안내 (stores/noticeStore.ts) — 잠깐 띄우고 지운다.
+  // `seq` 까지 보는 이유: 같은 문구가 다시 와도 다시 띄워야 한다.
+  const appNotice = useNoticeStore((s) => s.notice);
+  const appNoticeSeq = useNoticeStore((s) => s.seq);
+  useEffect(() => {
+    if (!appNotice) return undefined;
+    const id = window.setTimeout(() => useNoticeStore.getState().clear(), 7000);
+    return () => window.clearTimeout(id);
+  }, [appNotice, appNoticeSeq]);
   const setBrowserMsg = (m: string) => {
     setBrowserMsgRaw(m);
     window.setTimeout(() => setBrowserMsgRaw((cur) => (cur === m ? null : cur)), 3500);
@@ -464,6 +475,25 @@ export function EditorPage() {
       {/* Hide canvas-only overlays (collapse toggles, +indicators) when printing
           or exporting to image. */}
       <style>{`@media print { .mm-overlay-controls { display: none !important; } }`}</style>
+
+      {/* 사진 붙여넣기 안내 — **네 화면(캔버스·노드 편집창·아웃라인·칸반)
+          어디서 붙여넣어도** 같은 자리에 뜬다. 업로드가 실패했는데 아무
+          말이 없으면 사용자는 노드에 빈 자리가 남은 이유를 알 수 없다
+          (stores/noticeStore.ts) */}
+      {appNotice && (
+        <div
+          data-testid="app-notice"
+          style={{
+            position: 'fixed', top: 62, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 320, maxWidth: 620, background: t.surface, color: t.text,
+            border: `1px solid ${t.warning}`, borderLeft: `4px solid ${t.warning}`,
+            borderRadius: 9, padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5,
+            boxShadow: '0 10px 28px rgba(0,0,0,0.2)',
+          }}
+        >
+          {appNotice}
+        </div>
+      )}
 
       {browserMsg && (
         <div

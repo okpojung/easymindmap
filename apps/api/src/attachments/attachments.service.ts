@@ -23,6 +23,7 @@ import type { ReadStream } from 'node:fs';
 import { DatabaseService } from '../database/database.service';
 import { StorageService } from '../storage/storage.service';
 import { queryAllowingMissingMembers } from '../maps/map-access';
+import { fetchRemoteImage } from './remote-image';
 
 /**
  * 요금제 — **저장 용량의 단일 기준** (2026-08-06 확정, 가격은 미정).
@@ -137,6 +138,58 @@ export class AttachmentsService {
       throw err;
     }
     return { id, name, mime: file.mimetype, sizeBytes: file.size };
+  }
+
+  /**
+   * **원격 사진을 서버가 대신 받아 저장한다** (2026-08-20, B16 ② 슬라이스 3).
+   *
+   * 브라우저 fetch 는 CORS 로 막히므로 웹 기사에서 복사한 사진이 문서에
+   * 내장되지 못하고 원본 URL 링크로만 남았다 — 기사가 지워지면 사진도
+   * 사라진다. 서버는 CORS 를 받지 않으므로 여기서 받아 저장한다.
+   *
+   * **저장은 `upload()` 를 그대로 쓴다** — 쿼터 검사와 고아 파일 방지가
+   * 거기 들어 있다. 저장 경로를 새로 만들면 그 둘이 빠진다.
+   *
+   * SSRF 방어는 전부 `remote-image.ts` 에 있다.
+   *
+   * ★ **같은 사진을 두 번 올리지 않는다.** 이름이 내용 해시라, 같은 맵에
+   *   같은 이름이 이미 있으면 그것을 돌려준다 — 같은 기사를 두 노드에
+   *   붙이면 사진이 두 벌 쌓여 사용자 용량을 갉아먹는다
+   *   (`maps.service.ts extractDocImages()` 와 같은 판단이다).
+   */
+  async uploadFromUrl(
+    userId: string, url: string, mapId?: string,
+  ): Promise<AttachmentMeta & { reused: boolean }> {
+    const img = await fetchRemoteImage(url);
+
+    if (mapId) {
+      const { rows } = await this.db.query<{
+        id: string; name: string; mime: string; size_bytes: string;
+      }>(
+        `SELECT id, name, mime, size_bytes FROM public.attachments
+          WHERE map_id = $1 AND owner_id = $2 AND name = $3 LIMIT 1`,
+        [mapId, userId, img.name],
+      );
+      if (rows[0]) {
+        return {
+          id: rows[0].id,
+          name: rows[0].name,
+          mime: rows[0].mime,
+          sizeBytes: Number(rows[0].size_bytes),
+          reused: true,
+        };
+      }
+    }
+
+    // multer 가 넘겨 주는 모양(latin1 파일명)에 맞춘다 — upload() 가
+    // 거기서 utf8 로 되돌린다. 해시 이름은 ASCII 라 왕복이 안전하다.
+    const meta = await this.upload(userId, {
+      originalname: Buffer.from(img.name, 'utf8').toString('latin1'),
+      mimetype: img.mime,
+      size: img.bytes.length,
+      buffer: img.bytes,
+    }, mapId);
+    return { ...meta, reused: false };
   }
 
   /**

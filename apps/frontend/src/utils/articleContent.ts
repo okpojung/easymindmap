@@ -9,7 +9,7 @@
 // 텍스트와 항상 일치한다 (text/plain과 줄을 맞추는 방식은 어긋나기 쉽다).
 
 import { sanitizeRichHtml } from './sanitizeRichHtml';
-import { fetchImageAsDataUrl } from './embedImage';
+import { importRemoteImage } from './embedImage';
 
 const BLOCK_TAGS = new Set([
   'P', 'DIV', 'LI', 'UL', 'OL', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
@@ -148,10 +148,16 @@ export function extractArticleContent(rawHtml: string): ArticleContent {
   return { text: lines.join('\n'), images };
 }
 
-// 사진을 ① 다운로드해 data URL로 맵에 내장(fetchImageAsDataUrl — 기사
-// 삭제·오프라인에도 사진 보존)하고, 차단(CORS 등) 시에만 ② 원본 URL을
-// 유지한 채 실제 픽셀 크기를 재서 done에 전달한다. 실측도 실패하면 기본
-// 크기(400×300) — 위치는 항상 지킨다. 모든 처리가 끝나면 한 번 호출된다.
+// 사진을 ① 서버 저장소로 가져오고(importRemoteImage — 로그인 상태면
+// 서버가 대신 받아 저장하고 **주소만** 남긴다. 막히면 지금까지처럼 data
+// URL 내장 — 기사 삭제·오프라인에도 사진 보존), 둘 다 막혔을 때만
+// ② 원본 URL을 유지한 채 실제 픽셀 크기를 재서 done에 전달한다. 실측도
+// 실패하면 기본 크기(400×300) — 위치는 항상 지킨다. 모든 처리가 끝나면
+// 한 번 호출된다.
+//
+// 여기서 나온 값은 **노드 사진**(`images[]`)이 된다 — 내보내기가 서버
+// 사진을 되돌려 담고(export/serverImages.ts) 화면이 토큰을 붙이는
+// (utils/imageSrc.ts) 자리라, 서버 주소를 남겨도 안전하다.
 export function probeArticleImages(
   images: ArticleImageRef[],
   done: (resolved: { src: string; w: number; h: number; afterLine: number }[]) => void,
@@ -166,9 +172,9 @@ export function probeArticleImages(
   };
   images.forEach((im, i) => {
     (async () => {
-      const emb = await fetchImageAsDataUrl(im.src);
-      if (emb) {
-        resolved[i] = { ...resolved[i], src: emb.dataUrl, w: emb.w, h: emb.h };
+      const got = await importRemoteImage(im.src);
+      if (got) {
+        resolved[i] = { ...resolved[i], src: got.src, w: got.w, h: got.h };
         return;
       }
       await new Promise<void>((res) => {

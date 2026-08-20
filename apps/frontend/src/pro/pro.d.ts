@@ -13,6 +13,14 @@ declare module '@pro' {
   export function ProShareDialog(p: {
     t: ThemeTokens; mapId: string | null; onClose: () => void;
   }): JSX.Element | null;
+  /**
+   * 문서함의 **협업맵 유형 칸**을 감싼다 (2026-08-20).
+   * 공개판은 `children` 을 그대로 돌려준다 — 자리만 있고 내용은 없다.
+   * 유료판은 여기에 대고 참가자 목록을 보여 준다.
+   */
+  export function ProMapMembersTip(p: {
+    t: ThemeTokens; mapId: string; children: JSX.Element;
+  }): JSX.Element;
   export function ProCursorLayer(p: {
     t: ThemeTokens; W: number; H: number; nodes: LaidOutNode[];
     scale?: number; CX: number; CY: number; panX?: number; panY?: number;

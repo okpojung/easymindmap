@@ -157,3 +157,14 @@ export function ProCursorLayer(_p: {
 }) {
   return null;
 }
+
+/**
+ * 협업맵 유형 칸 감싸개 — **공개판은 그대로 돌려준다.**
+ * 참가자 목록은 유료 기능이므로 자리만 열어 두고 내용은 두지 않는다
+ * (open-core-boundary.md §5 — 자리와 규칙은 공개, 알맹이는 비공개).
+ */
+export function ProMapMembersTip(
+  { children }: { t: unknown; mapId: string; children: JSX.Element },
+) {
+  return children;
+}

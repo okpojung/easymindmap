@@ -28,6 +28,7 @@ import {
   cloudApi, CloudError,
   type FolderItem, type MapListItem,
 } from '@/services/cloud/apiClient';
+import { ProMapMembersTip } from '@pro';
 import { useCloudStore } from '@/stores/cloudStore';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
 import { FolderPickerDialog } from './FolderPickerDialog';
@@ -986,7 +987,10 @@ export function MapBrowser({
               )}
             </button>
             {/* 유형은 표시 전용 — 협업맵은 협업자를 초대해 승인·참여하는
-                순간 전환된다(협업 단계 V1~V2). 여기서 바꾸는 것이 아니다. */}
+                순간 전환된다(협업 단계 V1~V2). 여기서 바꾸는 것이 아니다.
+                협업맵이면 **유료 자리**로 감싼다 — 마우스를 올리면 누가
+                참여 중인지 보여 준다(공개판은 그대로 지나간다). */}
+            <ProMapMembersTip t={t} mapId={r.map.mapId}>
             <span
               data-testid="browser-map-kind"
               title={r.map.shared
@@ -1007,6 +1011,7 @@ export function MapBrowser({
                 ? (r.map.role === 'viewer' ? '👁 읽기 전용' : '🤝 함께 편집')
                 : r.map.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'}
             </span>
+            </ProMapMembersTip>
             <span style={{ color: t.textMuted, fontSize: 11, textAlign: 'right' }}
               title="최초 생성일">
               {fmtDate(r.map.createdAt)}

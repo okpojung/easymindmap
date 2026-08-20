@@ -363,8 +363,11 @@ export async function openMapHere(
     if (readOnlyReason) {
       // 읽기 전용 — 링크 없음(저장 경로 차단) + 배너 정보만
       useCloudStore.getState().unlink();
+      // **`kind` 를 함께 들고 간다** — 열람자도 협업맵이면 남의 편집을
+      // 받아야 한다(2026-08-20). 링크(`cloudMapId`)는 저장 경로라서 못
+      // 주지만, "이 맵이 협업맵이다" 는 사실은 알려 줘야 협업 세션이 열린다.
       useCloudStore.getState().setReadOnlyInfo({
-        mapId, title, reason: readOnlyReason, viewer: role === 'viewer',
+        mapId, title, reason: readOnlyReason, viewer: role === 'viewer', kind,
       });
     } else {
       useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });

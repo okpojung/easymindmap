@@ -118,6 +118,11 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
           }}
         >🔒 읽기 전용 — {readOnlyInfo.reason ?? '다른 세션에서 편집 중'}</span>
       )}
+      {/* **열람자에게는 저장 자리를 아예 주지 않는다** (2026-08-19).
+          링크가 없으므로 누르면 **자기 문서함의 새 맵**으로 떨어진다 —
+          주인은 '읽기만' 을 준 것이지 문서를 가져가도 좋다고 한 적이 없다.
+          누를 수 있게 두고 거절하는 것보다, 없는 편이 정직하다. */}
+      {!readOnlyInfo?.viewer && (
       <button
         data-testid="map-save"
         title={`${savedHint} — 지금 저장하면 이 시점이 히스토리 버전으로 남습니다`}
@@ -131,11 +136,12 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
       >
         <I.Cloud size={15} /> 저장
       </button>
+      )}
 
       {/* 다른 이름으로 저장 (2026-08-03 요청) — 서버 맵과 연결된 상태에서만.
           현재 내용을 새 폴더·이름의 **새 맵**으로 저장하고, 이 탭은 그
           새 맵 편집으로 전환된다. 같은 폴더 같은 이름이면 409 안내. */}
-      {cloudMapId && (
+      {cloudMapId && !readOnlyInfo?.viewer && (
         <button
           data-testid="map-save-as"
           title="다른 이름으로 저장 — 현재 내용을 새 폴더·이름의 새 맵으로 저장합니다"

@@ -37,11 +37,16 @@ interface CloudState {
    * 세션이 편집 중이라 잠금을 얻지 못했다. 링크(cloudMapId)는 없어
    * 자동저장·저장이 이 맵에 쓰지 않고, 배너로 안내한다.
    */
-  readOnlyInfo: { mapId: string; title: string; reason?: string } | null;
+  /**
+   * 읽기 전용으로 연 맵. `viewer` 는 **권한 자체가 없다**는 뜻이라
+   * 다른 이름으로 저장(사본)도 막는다 — 주인은 '읽기만' 을 준 것이지
+   * 문서를 가져가도 좋다고 한 적이 없다 (2026-08-19).
+   */
+  readOnlyInfo: { mapId: string; title: string; reason?: string; viewer?: boolean } | null;
 
   link: (mapId: string, savedAt: string, meta?: Partial<CloudMapMeta>) => void;
   unlink: () => void;
-  setReadOnlyInfo: (info: { mapId: string; title: string; reason?: string } | null) => void;
+  setReadOnlyInfo: (info: { mapId: string; title: string; reason?: string; viewer?: boolean } | null) => void;
   setBusy: (b: CloudState['busy']) => void;
   setError: (e: string | null) => void;
 }

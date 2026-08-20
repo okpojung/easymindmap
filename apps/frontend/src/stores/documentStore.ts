@@ -563,6 +563,30 @@ function asViewOnly(run: () => void): void {
 }
 
 /**
+ * **열람자 잠금 — 화면에서도 못 고치게 한다** (2026-08-19 사용자 보고).
+ *
+ * `role='viewer'` 로 공유받은 맵은 서버가 저장을 거절한다(#305). 그런데
+ * 화면은 그대로 고쳐졌다 — 사용자는 한참 편집하고 되돌리기까지 한 뒤에야
+ * 막힌 것을 알았다. **막을 거면 처음부터 막아야 한다.**
+ *
+ * 저장만 막는 것으로는 부족하다는 것도 실사용에서 드러났다. 링크가 없으니
+ * 저장이 **자기 문서함의 새 맵**으로 떨어졌다 — 주인은 "읽기만" 을 준
+ * 것이지 **문서 전체를 가져가도 좋다고 한 적이 없다.**
+ *
+ * 판정은 한 자리에 둔다. 41개 액션마다 검사를 흩뿌리면 하나는 반드시
+ * 빠뜨린다 — `set` 이 문서(`map`)를 건드리는지만 보고 거절한다.
+ * 서버가 정한 변경(불러오기·원격 반영·닫기)은 `asServerDriven` 으로 지난다.
+ */
+let viewerLocked = false;
+let serverDriven = false;
+export function setViewerLocked(locked: boolean): void { viewerLocked = locked; }
+export function isViewerLocked(): boolean { return viewerLocked; }
+function asServerDriven(run: () => void): void {
+  serverDriven = true;
+  try { run(); } finally { serverDriven = false; }
+}
+
+/**
  * **문서 교체 — 되돌리기는 문서 경계를 넘지 않는다** (2026-08-06 보고).
  *
  * 맵 닫기·새 맵·샘플·열기처럼 문서를 **통째로 바꾸는** 전환에서는
@@ -591,7 +615,20 @@ function asDocumentSwap(run: () => void): void {
   useDocumentStore.setState({ past: [], future: [] });
 }
 
-export const useDocumentStore = create<DocumentState>((set, get) => ({
+export const useDocumentStore = create<DocumentState>((rawSet, get) => {
+  // 문서를 바꾸는 set 만 거른다. 함수형 갱신은 **한 번만** 실행해
+  // 그 결과를 넘긴다(두 번 부르면 부수효과가 두 번 난다).
+  const set = ((partial: unknown, replace?: unknown) => {
+    const next = typeof partial === 'function'
+      ? (partial as (s: DocumentState) => Partial<DocumentState>)(get())
+      : partial as Partial<DocumentState>;
+    if (viewerLocked && !serverDriven && next && typeof next === 'object' && 'map' in next) {
+      return undefined;
+    }
+    return (rawSet as (p: unknown, r?: unknown) => void)(next, replace);
+  }) as typeof rawSet;
+
+  return ({
   map: cloneMap(SAMPLE_ROADMAP),
   docOrigin: null,
   setDocOrigin: (docOrigin) => set({ docOrigin }),
@@ -1203,7 +1240,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     });
   },
 
-  loadMap: (map, opts) => {
+  loadMap: (map, opts) => asServerDriven(() => {
     // 문서 경계를 넘는 되돌리기 금지 — 열기/불러오기는 여기서 끊는다.
     // (템플릿 적용처럼 "같은 문서를 바꾸는" 경우는 그대로 되돌아간다)
     const apply = () => {
@@ -1213,13 +1250,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     };
     if (opts?.resetHistory) asDocumentSwap(apply);
     else apply();
-  },
+  }),
 
-  applyRemoteMap: (map) => {
+  applyRemoteMap: (map) => asServerDriven(() => {
     // `asRemote` 가 두 구독(되돌리기·자동저장)에 "이건 밖에서 온 것"이라고
     // 알린다. 동기 실행 전제는 viewOnlyChange 와 같다.
     asRemote(() => set({ map: cloneMap(map) }));
-  },
+  }),
 
   // 서버에 저장한 맵 이름과 문서 제목을 맞춘다 (2026-08-02 문서함).
   // 내용 변경이 아니므로 undo 히스토리에는 남기지 않는다.
@@ -1238,7 +1275,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set({ past: [], future: [] });
   },
 
-  closeMap: () => asDocumentSwap(() => {
+  closeMap: () => asServerDriven(() => asDocumentSwap(() => {
     set({
       docOrigin: null,
       map: {
@@ -1247,7 +1284,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         branches: [],
       },
     });
-  }),
+  })),
 
   newMap: (title = NEW_MAP_TITLE) => {
     // 새 문서 = 서버 맵 출처 없음 (자동저장이 이전 맵을 덮어쓰지 못한다)
@@ -1472,7 +1509,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       })),
     }));
   },
-}));
+  });
+});
 
 // Record every `map` mutation (that isn't an undo/redo) into the history so the
 // toolbar / Ctrl+Z / Ctrl+Y can step through document states. In-memory only.

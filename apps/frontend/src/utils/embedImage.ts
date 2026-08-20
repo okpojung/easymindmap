@@ -12,21 +12,20 @@
 // 막히던 사이트도 성공한다. 프런트 fetch 경로는 **폴백으로 남긴다**
 // (게스트 · 서버 실패 · 인증 꺼진 개발 모드).
 //
-// 두 갈래로 나뉘는 것에 주의:
-//   · `importRemoteImage()` — 노드 사진(`image`·`images`) 용.
-//     **서버 주소를 문서에 남긴다.** 내보내기(`export/serverImages.ts`)와
-//     화면(`utils/imageSrc.ts`)이 그 자리를 이미 되돌려 준다.
-//   · `fetchImageAsDataUrl()` — 리치 노트 HTML 속 `<img>` 용.
-//     **data URL 그대로 둔다.** 되돌리기·토큰 붙이기가 노트 HTML 은
-//     훑지 않아, 서버 주소를 넣으면 내보낸 파일이 서버 없이 안 열린다
-//     (content-permanence.md §7.1 — 이 제품의 핵심 약속). 서버는
-//     **받아오는 일만** 대신한다(`store: false`).
+// [노트 HTML 슬라이스 — 2026-08-20] 예전에는 갈래가 둘이었다: 노드 사진은
+// 서버 주소로, **리치 노트 HTML 속 `<img>` 는 data URL 로**. 되돌리기와
+// 토큰 붙이기가 `image`·`images` 만 훑어서, 노트에 서버 주소를 넣으면
+// 내보낸 파일이 그 사진에서만 깨졌기 때문이다 (28번 §3.5 셋째 줄).
+//
+// 이제 **한 갈래다.** `export/serverImages.ts` 와 `utils/imageSrc.ts` 가
+// 노트 HTML 까지 훑으므로(`@emm/note-images`), 노트 사진도 노드 사진과
+// 똑같이 `importRemoteImage()` 로 서버에 올린다.
 
 // 사진 1장 내장 상한 — 맵(JSON)이 지나치게 커지는 것을 막는다.
 // 기사 사진은 보통 100~500KB라 충분하다. 초과분은 URL 유지.
 export const MAX_EMBED_BYTES = 2_500_000;
 
-import { cloudApi, attachmentFetchUrl } from '@/services/cloud/apiClient';
+import { cloudApi, attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { notifyUser } from '@/stores/noticeStore';
@@ -123,27 +122,30 @@ export async function fetchImageAsDataUrl(
   return null;
 }
 
-// 리치 노트 HTML 속 원격 <img>들을 내장 data URL로 교체한다.
-// 하나라도 교체되면 새 HTML을, 아니면 null을 돌려준다.
-//
-// **여기는 data URL 그대로 둔다** (2026-08-20). 로그인 상태면 받아오는
-// 일만 서버가 대신하지만(CORS 를 넘으려고), 결과는 노트 HTML 안에 들어가는
-// data URL 이다. 서버 주소를 넣으면 내보내기의 사진 되돌리기
-// (`export/serverImages.ts`)와 화면의 토큰 붙이기(`utils/imageSrc.ts`)가
-// **노트 HTML 은 훑지 않아** 내보낸 파일이 서버 없이 안 열린다
-// (content-permanence.md §7.1). 노트 HTML 까지 옮기는 것은 다음 슬라이스다.
+/**
+ * 리치 노트 HTML 속 원격 `<img>` 들을 **우리가 보관하는 주소**로 바꾼다.
+ * 하나라도 바뀌면 새 HTML 을, 아니면 null 을 돌려준다.
+ *
+ * 로그인 상태면 서버 저장소 주소, 아니면 지금까지처럼 data URL 이다
+ * (`importRemoteImage` 가 그 판정을 한다 — 노드 사진과 **같은 길**).
+ *
+ * ★ **우리 저장소 사진은 건드리지 않는다.** 그것도 `http` 로 시작하므로,
+ *   거르지 않으면 노트를 다시 붙여넣을 때마다 서버에서 되받아 사진이
+ *   한 벌씩 더 쌓인다 (`remoteImages.ts` 가 겪은 것과 같은 뒷문이다).
+ */
 export async function embedRichHtmlImages(html: string): Promise<string | null> {
   if (!html || !/<img[\s>]/i.test(html)) return null;
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  const imgs = Array.from(doc.querySelectorAll('img')).filter((im) =>
-    /^https?:\/\//i.test(im.getAttribute('src') ?? ''),
-  );
+  const imgs = Array.from(doc.querySelectorAll('img')).filter((im) => {
+    const src = im.getAttribute('src') ?? '';
+    return /^https?:\/\//i.test(src) && !serverAttachmentId(src);
+  });
   if (imgs.length === 0) return null;
   let changed = false;
   await Promise.all(imgs.map(async (im) => {
-    const emb = await fetchImageAsDataUrl(im.getAttribute('src')!);
-    if (emb) {
-      im.setAttribute('src', emb.dataUrl);
+    const got = await importRemoteImage(im.getAttribute('src')!);
+    if (got) {
+      im.setAttribute('src', got.src);
       changed = true;
     }
   }));

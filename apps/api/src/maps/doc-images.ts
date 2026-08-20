@@ -38,6 +38,29 @@ export interface FoundImage {
 
 const DATA_URL = /^data:([a-z]+\/[a-z0-9.+-]+);base64,(.*)$/is;
 
+/**
+ * 리치 노트 HTML 속 `<img src="data:…">` (2026-08-20, 노트 HTML 슬라이스).
+ *
+ * 노트 사진은 주소가 **HTML 문자열 안**에 있어서 `image`·`images` 만 보는
+ * 위 규칙에 걸리지 않았다 — 그래서 노트에 넣은 사진만 문서에 base64 로
+ * 남았다 (28번 §3.5 셋째 줄). 여기서 같이 꺼낸다.
+ *
+ * DOM 파서를 쓰지 않는 이유: 파싱해서 다시 직렬화하면 우리가 건드리지
+ * 않은 속성까지 모양이 바뀐다. `src` 만 정확히 바꾸는 편이 안전하다.
+ */
+const NOTE_IMG_DATA_URL = /(<img\b[^>]*?\bsrc\s*=\s*")(data:[a-z]+\/[a-z0-9.+-]+;base64,[^"]*)(")/gis;
+
+/** 노트 HTML 안의 data URL 사진을 나온 순서대로 (중복 없이) */
+function noteHtmlDataUrls(html: unknown): string[] {
+  if (typeof html !== 'string' || !html.includes('data:')) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of html.matchAll(NOTE_IMG_DATA_URL)) {
+    if (!seen.has(m[2])) { seen.add(m[2]); out.push(m[2]); }
+  }
+  return out;
+}
+
 function parseDataUrl(src: unknown): { bytes: Buffer; mime: string } | null {
   if (typeof src !== 'string') return null;
   const m = DATA_URL.exec(src);
@@ -86,6 +109,13 @@ export function findDocImages(doc: unknown): FoundImage[] {
         if (im && typeof im === 'object') take((im as Record<string, unknown>).src);
       }
     }
+    // 리치 노트 HTML 속 사진도 같이 옮긴다 (2026-08-20)
+    if (Array.isArray(o.notes)) {
+      for (const n of o.notes) {
+        if (!n || typeof n !== 'object') continue;
+        for (const src of noteHtmlDataUrls((n as Record<string, unknown>).html)) take(src);
+      }
+    }
     for (const val of Object.values(o)) walk(val);
   };
 
@@ -104,6 +134,20 @@ export function rewriteDocImages(doc: unknown, urlBySrc: Map<string, string>): u
     const next = typeof o.src === 'string' ? urlBySrc.get(o.src) : undefined;
     return next ? { ...o, src: next } : im;
   };
+  // 노트 HTML 은 값이 아니라 **문자열 안**을 바꿔야 한다 (2026-08-20)
+  const swapNote = (n: unknown): unknown => {
+    if (!n || typeof n !== 'object') return n;
+    const o = n as Record<string, unknown>;
+    if (typeof o.html !== 'string') return n;
+    const html = o.html.replace(
+      NOTE_IMG_DATA_URL,
+      (whole, head: string, src: string, tail: string) => {
+        const next = urlBySrc.get(src);
+        return next ? `${head}${next}${tail}` : whole;
+      },
+    );
+    return html === o.html ? n : { ...o, html };
+  };
   const walk = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(walk);
     if (!v || typeof v !== 'object') return v;
@@ -112,6 +156,7 @@ export function rewriteDocImages(doc: unknown, urlBySrc: Map<string, string>): u
     for (const [k, val] of Object.entries(o)) {
       if (k === 'image') out[k] = swap(val);
       else if (k === 'images' && Array.isArray(val)) out[k] = val.map(swap);
+      else if (k === 'notes' && Array.isArray(val)) out[k] = val.map(swapNote);
       else out[k] = walk(val);
     }
     return out;
@@ -128,6 +173,9 @@ export function rewriteDocImages(doc: unknown, urlBySrc: Map<string, string>): u
  *
  * 절대 URL 과 상대 경로를 모두 알아본다 — 사람이 붙인 첨부는 절대 URL,
  * 서버가 옮긴 사진은 상대 경로다.
+ *
+ * **리치 노트 HTML 속 `<img>` 도 센다** (2026-08-20). 노트 사진이 서버
+ * 주소가 됐는데 여기서 빠뜨리면 GC 가 쓰는 파일을 지운다.
  */
 export function collectAttachmentRefs(doc: unknown): Set<string> {
   const ids = new Set<string>();
@@ -137,6 +185,17 @@ export function collectAttachmentRefs(doc: unknown): Set<string> {
     if (i < 0) return;
     const id = u.slice(i + '/v1/attachments/'.length).split(/[?#/]/)[0];
     if (id) ids.add(id);
+  };
+  /**
+   * 리치 노트 HTML 은 **주소가 여럿** 들어 있는 문자열이다 (2026-08-20).
+   * `take()` 는 첫 하나만 보므로 그대로 넘기면 **두 번째 사진부터 안 세고**,
+   * 정리(GC)가 쓰고 있는 파일을 지운다. 나온 것을 **전부** 센다.
+   */
+  const takeAll = (html: unknown) => {
+    if (typeof html !== 'string') return;
+    for (const m of html.matchAll(/\/v1\/attachments\/([0-9a-fA-F-]{36})/g)) {
+      ids.add(m[1]);
+    }
   };
   const walk = (v: unknown) => {
     if (Array.isArray(v)) { for (const x of v) walk(x); return; }
@@ -151,6 +210,14 @@ export function collectAttachmentRefs(doc: unknown): Set<string> {
     if (Array.isArray(o.attachments)) {
       for (const a of o.attachments) {
         if (a && typeof a === 'object') take((a as Record<string, unknown>).url);
+      }
+    }
+    // ★ **리치 노트 HTML 속 `<img>`** (2026-08-20, 노트 HTML 슬라이스).
+    //   노트 사진이 서버 주소가 된 뒤로 여기서 세지 않으면, 하루 뒤 GC 가
+    //   **화면에 멀쩡히 보이는 사진을 지운다.** 되돌릴 수 없는 사고다.
+    if (Array.isArray(o.notes)) {
+      for (const n of o.notes) {
+        if (n && typeof n === 'object') takeAll((n as Record<string, unknown>).html);
       }
     }
     for (const val of Object.values(o)) walk(val);

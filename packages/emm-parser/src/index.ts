@@ -8,6 +8,8 @@
 export * from './model';
 // 트리 모양 규칙 — 정규화·협업·화면이 **같은 판정**을 쓰게 한다
 export * from './tree-rules';
+// 평평한 노드 목록 → 중첩 트리. 유료 물질화가 부른다 (28-sync-prework-plan §2.3 A-5)
+export * from './build-tree';
 export * from './meta';
 export {
   parseMarkdownToMap,

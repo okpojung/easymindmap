@@ -330,7 +330,7 @@ export function openMapInNewTab(mapId: string): boolean {
  */
 export async function openMapHere(
   mapId: string,
-): Promise<{ readOnly: boolean; reason?: string }> {
+): Promise<{ readOnly: boolean; reason?: string; viewer?: boolean }> {
   const cloud = useCloudStore.getState();
   cloud.setBusy('opening');
   try {
@@ -373,7 +373,11 @@ export async function openMapHere(
       useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
     }
     useAutosaveStore.getState().setSaveState('saved');
-    return { readOnly: readOnlyReason !== null, reason: readOnlyReason ?? undefined };
+    return {
+      readOnly: readOnlyReason !== null,
+      reason: readOnlyReason ?? undefined,
+      viewer: role === 'viewer',
+    };
   } finally {
     useCloudStore.getState().setBusy('idle');
   }

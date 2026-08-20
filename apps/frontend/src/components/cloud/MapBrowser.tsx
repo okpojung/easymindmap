@@ -187,6 +187,9 @@ export function MapBrowser({
     setInfo((cur) => (cur && !cur.pinned ? null : cur));
   };
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
+  // 돌아갈 맵이 있는가 — 읽기 전용으로 연 맵도 '열려 있는' 것이다
+  const readOnlyOpen = useCloudStore((s) => s.readOnlyInfo);
+  const hasOpenMap = !!cloudMapId || !!readOnlyOpen;
 
   // **맵을 폴더별로 나눠 받지 않고 한 번에 전부** 받는다 — 트리와 전체
   // 검색이 모두 "문서함 전부"를 알아야 하기 때문이다. 서버 list() 는
@@ -425,14 +428,18 @@ export function MapBrowser({
     }
     if (canReuseThisTab()) {
       try {
-        const { readOnly, reason } = await openMapHere(m.mapId);
+        const { readOnly, reason, viewer: viewerOnly } = await openMapHere(m.mapId);
         // **왜 읽기 전용인지 그대로 말한다.** 전에는 무조건 "다른 세션에서
         // 편집 중" 이라고 했는데, 읽기만 권한으로 공유받은 경우에는
         // **거짓말**이 된다(2026-08-19). 사용자가 할 일이 다르다 —
         // 앞은 기다리면 되고, 뒤는 주인에게 권한을 올려 달라고 해야 한다.
+        // **'다른 이름으로 저장하세요' 를 열람자에게 권하지 않는다**
+        // (2026-08-20). 읽기만 권한은 사본 저장도 막혀 있다(#307) —
+        // 안 되는 것을 하라고 안내하면 두 번 실망한다. 다른 세션이
+        // 편집 중이라 읽기 전용인 경우에만 그 길이 열려 있다.
         onFlash(readOnly
-          ? `🔒 '${m.title}' — ${reason ?? '읽기 전용'}이라 읽기 전용으로 열었습니다. `
-            + '변경은 이 맵에 저장되지 않으며, 필요하면 다른 이름으로 저장하세요.'
+          ? `🔒 '${m.title}' — ${reason ?? '읽기 전용'}`
+            + (viewerOnly ? '' : ' · 변경은 이 맵에 저장되지 않습니다. 필요하면 다른 이름으로 저장하세요.')
           : `☁ '${m.title}'을(를) 불러왔습니다.`);
         onOpened?.();
         onClose();
@@ -682,12 +689,18 @@ export function MapBrowser({
             >✕</button>
           )}
         </div>
-        <button
-          data-testid="browser-close"
-          onClick={onClose}
-          title="문서함 닫기 (Esc)"
-          style={{ ...iconBtn, fontSize: 17 }}
-        >✕</button>
+        {/* **열린 맵이 없으면 닫기를 감춘다** (2026-08-20 사용자 지적).
+            닫아 봐야 '문서 없음' 빈 화면만 남는다 — 갈 곳이 없는 문을
+            열어 두면 사용자는 자기가 뭘 잘못 눌렀다고 생각한다.
+            돌아갈 맵이 있을 때만 보여 준다(Esc 는 그대로 동작한다). */}
+        {hasOpenMap && (
+          <button
+            data-testid="browser-close"
+            onClick={onClose}
+            title="문서함 닫기 (Esc)"
+            style={{ ...iconBtn, fontSize: 17 }}
+          >✕</button>
+        )}
       </div>
 
       {err && !searching && (

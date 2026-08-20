@@ -12,9 +12,9 @@ docs/
 │  ├─ roadmap.md
 │  ├─ vision.md
 │  └─ emm-strategy.md                     ← EMM 표준화·오픈소스·사업화 전략
-│  └─ glossary.md                         ← 용어 사전
 ├─ 01-product/
 │  ├─ functional-spec.md
+│  ├─ privacy-policy.md                    ← 개인정보 처리방침
 │  ├─ product-highlights.md                ← 제품 하이라이트
 │  └─ ui-ux-spec.md
 ├─ 02-domain/
@@ -63,6 +63,9 @@ docs/
 │  ├─ attachment-storage.md               ← 노드 첨부파일 저장(쿼터) 설계
 │  ├─ document-library.md                 ← 문서함(MapBrowser·폴더) — 대시보드 역할
 │  ├─ i18n.md                             ← UI 다국어(i18n)
+│  ├─ vault-mirror.md                     ← DB 정본 + 파일 미러(C안). 셀프호스트 vault
+│  ├─ open-core-boundary.md               ← 오픈코어 경계(공개 코어 / 유료 모듈)
+│  ├─ admin-console.md                    ← 관리자 콘솔
 │  ├─ ai/
 │  │  ├─ 18-ai.md
 │  │  ├─ 19-ai-workflow.md
@@ -81,7 +84,8 @@ docs/
 │  │  └─ 24-chat-translation.md
 │  ├─ collaboration/
 │  │  ├─ 25-map-collaboration.md
-│  │  └─ 26-realtime-chat.md
+│  │  ├─ 26-realtime-chat.md
+│  │  ├─ 27-sync-model.md
 │  │  └─ 28-sync-prework-plan.md
 │  ├─ publish/
 │  │  └─ 27-publish-share.md
@@ -100,6 +104,7 @@ docs/
 │  ├─ codex-task-plan.md
 │  ├─ coding-conventions.md
 │  ├─ env-spec.md
+│  ├─ rate-limit.md                       ← 레이트 리밋 한도와 근거
 │  ├─ sprint-plan.md                      ← 스프린트 계획
 │  ├─ sprint-mvp-tasks.md                 ← MVP 스프린트 작업 목록
 │  ├─ state-management.md
@@ -108,6 +113,7 @@ docs/
 ├─ user-guide/            👈 최종 사용자용 사용 설명서 (골격 → 스크린샷 예정)
 │  ├─ README.md                           ← 목차·30초 요약
 │  ├─ 01-시작하기.md ~ 10-자주-묻는-질문.md
+│  ├─ 로컬-실행.md                          ← 내 PC 에서 띄워 보기
 │  └─ assets/                             ← 스크린샷 보관
 │
 ├─ 90-architecture/       👈 시스템·인프라 아키텍처 문서
@@ -130,6 +136,9 @@ docs/
 │  └─ ai-validation-rules.md
 │
 └─ assets/                👈 문서 내 이미지/첨부 파일 리소스
+   ├─ glossary.md                         ← 용어 사전
+   ├─ markdown문법.md                      ← 마크다운 문법 참고
+   └─ brand/brand-logo.md                 ← 브랜드 로고 규정
 ```
 
 ## 빠른 가이드
@@ -158,6 +167,7 @@ docs/
 | `docs/00-project-overview/vision.md` | 제품 비전 |
 | `docs/00-project-overview/emm-strategy.md` | EMM 표준화·오픈소스·사업화 전략 |
 | `docs/01-product/functional-spec.md` | 전체 기능 명세서 |
+| `docs/01-product/privacy-policy.md` | 개인정보 처리방침 |
 | `docs/01-product/product-highlights.md` | 제품 하이라이트 |
 | `docs/01-product/ui-ux-spec.md` | UI/UX 설계 명세 |
 | `docs/02-domain/README.md` | 도메인 모델 개요 |
@@ -176,6 +186,11 @@ docs/
 | `docs/04-extensions/attachment-storage.md` | 노드 첨부파일 저장(쿼터) 설계 |
 | `docs/04-extensions/document-library.md` | 문서함(MapBrowser·폴더·이름변경·삭제·다른 이름 저장) — 대시보드 역할 |
 | `docs/04-extensions/i18n.md` | UI 다국어(i18n) |
+| `docs/04-extensions/vault-mirror.md` | DB 정본 + 파일 미러(C안) — 셀프호스트 vault. 파일 경로·첨부 이름·위키링크·덮어쓰기 안전장치 |
+| `docs/04-extensions/open-core-boundary.md` | 오픈코어 경계 — 공개 코어와 유료 모듈을 가르는 기준 |
+| `docs/04-extensions/admin-console.md` | 관리자 콘솔 |
+| `docs/04-extensions/collaboration/27-sync-model.md` | 동기화 모델 결정 — CRDT(Yjs)·전송·정본 유지·오픈코어 경계 |
+| `docs/04-extensions/collaboration/28-sync-prework-plan.md` | 협업을 켜기 전에 코어에서 끝낼 것 — 실행 계획과 실제 코드 현황 |
 | `docs/04-extensions/ai/emm-prompt-templates.md` | AI용 EMM 생성 프롬프트 템플릿 |
 | `docs/04-extensions/ai/ai-project-workspace.md` | AI 프로젝트 워크스페이스 설계 — 맵=프로젝트·노드=질문·경로 맥락(제안, 미구현) |
 | `docs/04-extensions/ai/web-ai-clipboard.md` | 웹 AI 클립보드 워크플로우(API 키 없이 웹 AI 사용) |
@@ -187,6 +202,7 @@ docs/
 | `docs/05-implementation/codex-task-plan.md` | 개발 작업 계획 |
 | `docs/05-implementation/coding-conventions.md` | 코딩 컨벤션 |
 | `docs/05-implementation/env-spec.md` | 환경변수 명세 |
+| `docs/05-implementation/rate-limit.md` | 레이트 리밋 한도와 그 근거 |
 | `docs/05-implementation/sprint-plan.md` | 스프린트 계획 |
 | `docs/05-implementation/sprint-mvp-tasks.md` | MVP 스프린트 작업 목록 |
 | `docs/05-implementation/state-management.md` | 상태관리 설계 (Zustand 스토어 구조) |
@@ -204,6 +220,9 @@ docs/
 | `docs/91-architecture-검토자료/React, Angular, Vue 비교 분석.md` | 프레임워크 비교 분석 |
 | `docs/91-architecture-검토자료/Zustand와 TanStack Query 상태 관리 비교.md` | 상태관리 라이브러리 비교 |
 | `docs/99-ai-validation/ai-validation-rules.md` | AI 문서 검증 규칙 |
+| `docs/assets/glossary.md` | 용어 사전 |
+| `docs/assets/markdown문법.md` | 마크다운 문법 참고 |
+| `docs/assets/brand/brand-logo.md` | 브랜드 로고 규정 |
 
 > ※ 번호 붙은 문서(01~32) 외의 모든 .md 문서 기준. 개수는 수시로 변하므로 구체 숫자를 표기하지 않는다(실제 개수는 파일 시스템에서 집계).
 

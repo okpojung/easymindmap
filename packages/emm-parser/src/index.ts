@@ -11,6 +11,9 @@ export * from './tree-rules';
 // 평평한 노드 목록 → 중첩 트리. 유료 물질화가 부른다 (28-sync-prework-plan §2.3 A-5)
 export * from './build-tree';
 export * from './meta';
+// 리치 노트 HTML 속 <img> 의 주소를 읽고 바꾼다 — 노드 사진(`image`·`images`)과
+// **같은 자리에서** 다루기 위한 것 (28-sync-prework-plan §3.5 셋째 줄)
+export * from './note-images';
 export {
   parseMarkdownToMap,
   parseEmm,

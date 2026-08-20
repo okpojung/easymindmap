@@ -10,6 +10,7 @@
 //           본문 내용도 주석을 깨뜨릴 수 없다)
 
 import type { EditorSpacing, LayoutType, SampleMap } from './model';
+import { rewriteNotesImages, type NoteHtmlLike } from './note-images';
 
 export const MAP_FILE_FORMAT = 'easymindmap-map';
 export const MAP_FILE_VERSION = 1;
@@ -144,6 +145,7 @@ export function withInlinedImages(
   interface NodeLike {
     image?: ImgLike;
     images?: ImgLike[];
+    notes?: NoteHtmlLike[];
     children?: NodeLike[];
   }
   const one = <T extends ImgLike>(im: T): T => {
@@ -154,6 +156,11 @@ export function withInlinedImages(
     ...n,
     ...(n.image ? { image: one(n.image) } : {}),
     ...(n.images ? { images: n.images.map(one) } : {}),
+    // **리치 노트 HTML 속 `<img>` 도 같이 바꾼다** (2026-08-20).
+    // 여길 빠뜨리면 노트에 넣은 사진만 서버 주소로 내보내져,
+    // 내보낸 파일이 **그 사진에서만** 서버 없이 안 열린다 —
+    // 파일은 정상 생성되므로 사람이 열어 봐야 안다.
+    ...(n.notes ? { notes: rewriteNotesImages(n.notes, resolve) } : {}),
     children: (n.children ?? []).map(walk),
   });
   return {

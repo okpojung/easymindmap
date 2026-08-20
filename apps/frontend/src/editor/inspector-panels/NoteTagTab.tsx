@@ -10,6 +10,7 @@ import { InspectorSection } from './InspectorSection';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
 import { embedRichHtmlImages } from '@/utils/embedImage';
+import { useNoteHtmlResolver } from '@/utils/imageSrc';
 
 // 맵 전체에서 노트 블록을 id로 찾는다 — 사진 내장(비동기) 완료 시점에
 // 블록이 아직 그 서식(html)을 갖고 있는지 확인하는 용도.
@@ -202,6 +203,9 @@ function NoteBlockEditor({
   // 체크리스트 전용 — Enter/Shift+Enter 로 다음 항목 추가
   onEnterNext?: () => void;
 }) {
+  // 노트 사진이 **우리 저장소**에 있으면 그릴 때 토큰을 붙인다 (2026-08-20).
+  // 토큰은 문서에 저장하지 않는다 — 저장하면 만료되는 날 사진이 전부 깨진다.
+  const resolveNoteHtml = useNoteHtmlResolver();
   // 노트 글꼴·크기 (맵 설정) — 뷰어 팝업과 동일 규칙 (기본 13pt)
   const noteFont = useDocumentStore((st) => st.map.settings?.noteFont);
   const noteFs = noteFont?.size && noteFont.size > 0 ? noteFont.size : 13;
@@ -376,7 +380,7 @@ function NoteBlockEditor({
                 background: t.surface, color: t.text, padding: '6px 8px',
               }}
               // sanitizeRichHtml()을 통과한 안전한 HTML만 저장·표시된다
-              dangerouslySetInnerHTML={{ __html: block.html }}
+              dangerouslySetInnerHTML={{ __html: resolveNoteHtml(block.html) ?? '' }}
             />
           </div>
         )}

@@ -16,6 +16,7 @@ import { copyTable, pipeTextToTable } from '@/utils/copyTable';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
 import { gridCharSpans } from '@/utils/monoGrid';
+import { useNoteHtmlResolver } from '@/utils/imageSrc';
 
 // Markdown 링크 — [라벨](url). 노트 원문에 그대로 남아 있는 링크를
 // 클릭 가능한 <a>로 렌더링한다 (MD 불러오기의 인용문 노트 등).
@@ -168,6 +169,9 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
   // 체크리스트 블록의 ☑/☐ 클릭 토글 — nodeId를 아는 호출자만 넘긴다
   onToggleCheck?: () => void;
 }) {
+  // 노트 사진이 **우리 저장소**에 있으면 그릴 때 토큰을 붙인다 (2026-08-20).
+  // 토큰은 문서에 저장하지 않는다 — 저장하면 만료되는 날 사진이 전부 깨진다.
+  const resolveNoteHtml = useNoteHtmlResolver();
   // 폐기된 옛 타입(warning/tip)은 문단으로 렌더 (하위호환)
   const type =
     (block.type as string) === 'warning' || (block.type as string) === 'tip'
@@ -256,7 +260,7 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
             // 흐르지 않는다 (2026-07-31)
             paddingRight: 30,
           }}
-          dangerouslySetInnerHTML={{ __html: block.html }}
+          dangerouslySetInnerHTML={{ __html: resolveNoteHtml(block.html) ?? '' }}
         />
       </div>
     );

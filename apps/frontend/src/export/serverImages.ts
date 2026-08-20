@@ -11,6 +11,7 @@
 // 시작한 그 순간부터 내보내기가 깨진 파일을 만들어 낸다.
 
 import type { MindNode, SampleMap } from '@/editor/__samples__/types';
+import { collectNoteHtmlImageSrcs } from '@emm/note-images';
 import { attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClient';
 
 /**
@@ -49,6 +50,12 @@ function collectSrcs(n: MindNode | undefined, out: Set<string>): void {
   };
   push(n.image?.src);
   for (const im of n.images ?? []) push(im.src);
+  // **리치 노트 HTML 속 `<img>` 도 센다** (2026-08-20, 노트 HTML 슬라이스).
+  // 여길 빠뜨리면 노트 사진만 서버 주소로 내보내져, 내보낸 파일이
+  // **그 사진에서만** 깨진다 — 파일은 정상 생성되므로 눈으로만 알 수 있다.
+  for (const nt of n.notes ?? []) {
+    for (const src of collectNoteHtmlImageSrcs(nt.html)) push(src);
+  }
   for (const c of n.children ?? []) collectSrcs(c, out);
 }
 

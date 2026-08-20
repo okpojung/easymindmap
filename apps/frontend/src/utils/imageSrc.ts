@@ -12,6 +12,7 @@
 // `images.map(...)` 안에서 그려지는데, 반복문 안에서는 훅을 부를 수 없다.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { rewriteNoteHtmlImages } from '@emm/note-images';
 import {
   absolutizeAttachmentUrl,
   attachmentFetchUrl,
@@ -74,4 +75,22 @@ export function useImageSrcResolver(): (src: string | undefined) => string | und
 export function clearResolvedImageSrcs(): void {
   resolved.clear();
   notify();
+}
+
+/**
+ * **리치 노트 HTML** 을 그릴 수 있는 HTML 로 바꿔 주는 함수를 돌려준다
+ * (2026-08-20, 노트 HTML 슬라이스).
+ *
+ * 노트 사진은 주소가 **HTML 문자열 안**에 있어서 `useImageSrcResolver` 로는
+ * 닿지 않는다. 그래서 노트에는 서버 주소를 넣을 수 없었다 (28번 §3.5 셋째 줄).
+ *
+ * 판정·캐시·재렌더는 전부 `useImageSrcResolver` 를 그대로 쓴다 — 토큰을
+ * 붙이는 규칙이 두 벌이 되면 한쪽만 만료 처리되는 날이 온다.
+ */
+export function useNoteHtmlResolver(): (html: string | undefined) => string | undefined {
+  const resolveSrc = useImageSrcResolver();
+  return useCallback(
+    (html: string | undefined) => rewriteNoteHtmlImages(html, (src) => resolveSrc(src)),
+    [resolveSrc],
+  );
 }

@@ -68,6 +68,8 @@ export function parseByteRange(
   return { start, end };
 }
 import { StartUploadDto } from './dto/start-upload.dto';
+import { FromUrlDto } from './dto/from-url.dto';
+import { BlockedUrlError, fetchRemoteImage, RemoteFetchError } from './remote-image';
 
 /**
  * /v1/attachments — 첨부 저장소 (B9).
@@ -102,6 +104,45 @@ export class AttachmentsController {
     }
     const meta = await this.attachments.upload(user.id, file, mapId || undefined);
     return { ...meta, url: `/v1/attachments/${meta.id}` };
+  }
+
+  /**
+   * **원격 사진 대리 다운로드** (2026-08-20, B16 ② 슬라이스 3 · D-1).
+   *
+   * `POST /v1/attachments/from-url  { url, mapId? }` → 단일 업로드와
+   * **같은 모양**의 응답. 호출부(붙여넣기)가 두 경로를 구분하지 않아도 된다.
+   *
+   * 프런트가 직접 받지 못하는 이유는 CORS 다 — 남의 사이트가 우리에게
+   * 사진을 내줄 이유가 없다. 서버는 CORS 를 받지 않는다.
+   *
+   * ★ **`:id` 라우트보다 위**에 둔다. `@Get(':id')` 와는 메서드가 달라
+   *   지금은 겹치지 않지만, 순서를 지켜 두는 편이 나중에 안전하다.
+   *
+   * 실패는 **전부 400** 이다. 서버가 못 받았다는 사실만 중요하고, 프런트는
+   * 그 메시지를 그대로 보여 준 뒤 **data URL 폴백**으로 넘어간다.
+   */
+  @Post('from-url')
+  async fromUrl(@CurrentUser() user: AuthUser, @Body() dto: FromUrlDto) {
+    try {
+      // `store: false` — 저장하지 않고 바이트만 (리치 노트 HTML 용, DTO 참조)
+      if (dto.store === false) {
+        const img = await fetchRemoteImage(dto.url);
+        return {
+          mime: img.mime,
+          sizeBytes: img.bytes.length,
+          dataUrl: `data:${img.mime};base64,${img.bytes.toString('base64')}`,
+        };
+      }
+      const meta = await this.attachments.uploadFromUrl(
+        user.id, dto.url, dto.mapId || undefined,
+      );
+      return { ...meta, url: `/v1/attachments/${meta.id}` };
+    } catch (err) {
+      if (err instanceof BlockedUrlError || err instanceof RemoteFetchError) {
+        throw new BadRequestException(err.message);
+      }
+      throw err; // 쿼터 초과(413) 등은 그대로 올린다 — 삼키면 한도를 넘긴다
+    }
   }
 
   @Get('quota')

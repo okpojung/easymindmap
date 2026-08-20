@@ -355,6 +355,28 @@ export const cloudApi = {
       id: string; name: string; mime: string; sizeBytes: number; url: string;
     }>;
   },
+  /**
+   * **원격 사진을 서버가 대신 받아 온다** (2026-08-20, B16 ② 슬라이스 3).
+   *
+   * 브라우저 fetch 는 CORS 로 막힌다 — 남의 사이트가 우리에게 사진을
+   * 내줄 이유가 없다. 서버는 CORS 를 받지 않으므로 이 경로로 돌린다.
+   *
+   * `store: false` 면 저장하지 않고 **바이트만**(data URL) 돌려준다 —
+   * 리치 노트 HTML 속 `<img>` 처럼 **서버 주소를 넣으면 안 되는 자리**에
+   * 쓴다 (내보내기의 사진 되돌리기가 노트 HTML 은 훑지 않는다).
+   */
+  attachmentFromUrl: (url: string, mapId?: string) =>
+    req<{
+      id: string; name: string; mime: string; sizeBytes: number;
+      url: string; reused: boolean;
+    }>('POST', '/attachments/from-url', { url, mapId }),
+
+  /** 위와 같지만 **저장하지 않는다** — CORS 를 넘기 위한 대리 다운로드 */
+  imageBytesFromUrl: (url: string) =>
+    req<{ mime: string; sizeBytes: number; dataUrl: string }>(
+      'POST', '/attachments/from-url', { url, store: false },
+    ),
+
   // ── 대용량 첨부 — 청크 업로드 (§12) ─────────────────────────
   // 조각 크기·개수는 **서버가 정한다** — 프록시 본문 제한과 맞물리므로
   // 클라이언트가 고르지 않는다.

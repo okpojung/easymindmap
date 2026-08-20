@@ -65,7 +65,13 @@ async function applyImageFile(f: File, apply: (img: NodeImage) => void): Promise
 
   let src: string;
   try {
-    src = await attachmentUrlForFile(f);
+    // `preferServer` — **사진은 크기와 무관하게 서버로** (2026-08-20).
+    // 이게 없으면 2MB 이하 파일이 문서에 data URL 로 내장된다. 그건
+    // **첨부**에 맞는 규칙이고(단일 .md 로 복원되는 것이 이득), 사진은
+    // 정반대다 — 그래서 **스크린샷 대부분이 그대로 문서에 남았다.**
+    // 판정을 두 벌로 만들지 않으려고 저 함수에 옵션으로 넣었다:
+    // 로그인 여부·쿼터·청크 경로는 여전히 저기 한 곳이 정한다.
+    src = await attachmentUrlForFile(f, { preferServer: true });
     // `attachmentUrlForFile` 은 서버를 못 쓰는 큰 파일에 **blob URL** 을
     // 준다. 첨부에는 맞는 답이지만(그 경우 내보내기가 안내를 띄운다)
     // **사진에는 안 된다** — 새로고침하면 그 자리가 통째로 깨지고,

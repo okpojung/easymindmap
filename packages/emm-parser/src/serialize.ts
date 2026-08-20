@@ -11,11 +11,26 @@
 // 담당한다.
 
 import type { EditorSpacing, LayoutType, MindNode, SampleMap } from './model';
-import { buildMapMeta, countMapNodes, encodeMetaBase64, type MapFileMeta } from './meta';
+import {
+  buildMapMeta,
+  countMapNodes,
+  encodeMetaBase64,
+  withInlinedImages,
+  type MapFileMeta,
+} from './meta';
 
 export interface EmmImageFile {
   path: string; // files/img-1.png
   data: Uint8Array;
+  /**
+   * 이 파일이 어느 `image.src` 에서 나왔는가 (보통 data URL).
+   *
+   * **메타데이터 주석이 본문과 같은 경로를 가리키게** 하려고 남긴다
+   * (2026-08-20, B16 ② D-5). 이게 없으면 메타 주석에 사진 바이트가
+   * base64 로 통째로 다시 들어간다 — vault 에 미러되는 .md 가 무거워지고
+   * Git 이 커밋마다 사진을 다시 저장한다.
+   */
+  src?: string;
 }
 
 export function safeFileName(s: string, fallback: string): string {
@@ -197,6 +212,20 @@ function pushTableNote(lines: string[], text: string): void {
 // 바이트를 images 배열에 담아 돌려준다 (패키징은 호출자 책임).
 export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
   const lines: string[] = [];
+  // **같은 사진은 한 번만 담는다** — 같은 사진을 여러 노드가 쓰면 예전에는
+  // files/ 에 똑같은 바이트가 여러 벌 들어갔다. 겸사겸사 `src → path` 가
+  // 1:1 이 되어 메타데이터 주석이 본문과 같은 곳을 가리킬 수 있다 (D-5).
+  const packedPath = new Map<string, string>();
+  const packImage = (src: string): string | null => {
+    const seen = packedPath.get(src);
+    if (seen) return seen;
+    const packed = dataUrlToBytes(src);
+    if (!packed) return null;
+    const path = `files/img-${images.length + 1}.${packed.ext}`;
+    images.push({ path, data: packed.bytes, src });
+    packedPath.set(src, path);
+    return path;
+  };
   const rootBody = splitNodeBody(map.root.text);
   lines.push(`# ${(map.root.text.trim() ? rootBody.title : '') || map.title}`);
   pushBodyBlocks(lines, rootBody.blocks);
@@ -210,10 +239,8 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
       ? [map.root.image]
       : [];
   for (const im of rootImgs) {
-    const packed = dataUrlToBytes(im.src);
-    if (packed) {
-      const path = `files/img-${images.length + 1}.${packed.ext}`;
-      images.push({ path, data: packed.bytes });
+    const path = packImage(im.src);
+    if (path) {
       lines.push(`![${oneLine(map.root.text).slice(0, 20)}](${path})`);
       lines.push('');
     } else if (/^https?:\/\//i.test(im.src)) {
@@ -264,10 +291,8 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
         ? [node.image]
         : [];
     for (const im of nodeImgs) {
-      const packed = dataUrlToBytes(im.src);
-      if (packed) {
-        const path = `files/img-${images.length + 1}.${packed.ext}`;
-        images.push({ path, data: packed.bytes });
+      const path = packImage(im.src);
+      if (path) {
         lines.push('');
         lines.push(`![${oneLine(node.text).slice(0, 20)}](${path})`);
       } else if (/^https?:\/\//i.test(im.src)) {
@@ -337,6 +362,24 @@ export function buildMetaComment(
   ].join('\n');
 }
 
+/**
+ * 메타데이터 주석에 담을 맵 — **사진 src 를 본문과 같은 `files/` 경로로**
+ * 바꾼다 (2026-08-20, B16 ② D-5).
+ *
+ * 예전에는 본문만 `files/img-1.png` 로 내보내고 메타 주석에는 같은 사진을
+ * **base64 로 한 번 더** 넣었다. 그래서 사진 한 장짜리 맵의 .md 가 사진
+ * 바이트를 두 벌 들고 다녔다 — 지식 저장소(vault)에 두기에는 나쁜 형식이다.
+ *
+ * `files/` 로 담지 못한 사진(외부 https URL 등)은 손대지 않는다.
+ * 되읽을 때는 ZIP 의 `files/` 에서 다시 이어 붙인다(importMapFile.ts).
+ */
+export function withPackagedImagePaths(map: SampleMap, images: EmmImageFile[]): SampleMap {
+  const bySrc = new Map<string, string>();
+  for (const im of images) if (im.src) bySrc.set(im.src, im.path);
+  if (bySrc.size === 0) return map;
+  return withInlinedImages(map, (src) => bySrc.get(src));
+}
+
 export interface SerializeEmmOptions {
   layoutType?: LayoutType;
   spacing?: EditorSpacing;
@@ -360,7 +403,7 @@ export function serializeEmm(map: SampleMap, opts: SerializeEmmOptions = {}): Se
   if (opts.includeMeta === false) {
     return { markdown: body, images, meta: null };
   }
-  const meta = buildMapMeta(map, opts.layoutType, opts.spacing);
+  const meta = buildMapMeta(withPackagedImagePaths(map, images), opts.layoutType, opts.spacing);
   if (opts.exportedAt) meta.exportedAt = opts.exportedAt;
   const comment = buildMetaComment(meta, { exportedLocal: opts.exportedLocal });
   return { markdown: body + comment, images, meta };

@@ -47,6 +47,23 @@ export const EMBED_TOTAL_LIMIT = 10 * 1024 * 1024;
 export const CHUNK_ROUTE_MIN = 8 * 1024 * 1024;
 
 export interface AttachOptions {
+  /**
+   * **사진이다 — 문서에 담지 말고 서버로 보낸다** (2026-08-20, B16 ② D-2).
+   *
+   * ①(≤2MB 는 문서에 내장)은 **첨부**에 맞춘 규칙이다. 첨부는 문서 안에
+   * 있어야 단일 .md 하나로 복원되고, 개수도 적다. 사진은 정반대다:
+   *   · 사진은 **내보내기 때 되받아 인라인하는 길이 따로 있다**
+   *     (export/serverImages.ts — B16 ② 슬라이스 1). 문서에 둘 이유가 없다
+   *   · vault 에 미러되는 `.md` 에 사진 바이트가 박히면 Obsidian 이 파일
+   *     하나 여는 데 몇 초 걸리고 Git 이 커밋마다 통째로 다시 저장한다
+   *   · CRDT 업데이트 로그에는 **영원히** 남는다 (27-sync-model.md §3)
+   *
+   * **판정을 두 벌로 나누지 않으려고 플래그로 둔다.** 로그인 여부·쿼터·
+   * 청크 경로는 여전히 이 함수 하나가 정한다 — 부르는 쪽은 "이건 사진"
+   * 이라고만 말한다. 서버가 없으면(게스트) 이 플래그는 아무 일도 하지
+   * 않는다: 그 문서는 브라우저 안에서만 살기 때문이다.
+   */
+  preferServer?: boolean;
   /** 0~1 — 청크 경로에서만 불린다 (작은 파일은 진행률이 의미 없다) */
   onProgress?: (ratio: number) => void;
   /** 재시도 등 "지금 무슨 일이 일어나는지" 한 줄 (평소 null) */
@@ -82,7 +99,11 @@ export async function attachmentUrlForFile(
   const withinPerFile = f.size <= INLINE_ATTACHMENT_LIMIT;
   const withinMapTotal = embeddedAttachmentBytes() + f.size <= EMBED_TOTAL_LIMIT;
 
-  if (withinPerFile && (withinMapTotal || !canServer)) {
+  // 사진(preferServer)은 크기와 무관하게 서버로 — 위 AttachOptions 참조.
+  // 서버가 없으면 이 줄은 지나가고 아래 규칙이 그대로 적용된다.
+  const skipInline = canServer && opts.preferServer === true;
+
+  if (!skipInline && withinPerFile && (withinMapTotal || !canServer)) {
     return await new Promise<string>((resolve, reject) => {
       const r = new FileReader();
       r.onload = () => resolve(String(r.result));

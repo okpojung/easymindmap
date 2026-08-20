@@ -2,7 +2,8 @@
 
 * 문서 버전: v1.1
 * 작성일: 2026-07-16
-* 최종 업데이트: 2026-08-04 — 인라인 사진 위치 보존(`images[]`) 반영
+* 최종 업데이트: 2026-08-20 — **메타 주석의 사진은 `files/` 상대 경로**
+  (사진 바이트를 base64 로 담지 않는다, B16 ② D-5)
 * 구현: `src/export/mapMeta.ts` · `src/export/exportMarkdown.ts` ·
   `src/export/exportHtml.ts` · `src/utils/importMapFile.ts`
 * 관련: `20-export.md` (내보내기), `21-import.md` (가져오기)
@@ -50,7 +51,7 @@ interface MapFileMeta {
 | 링크 | `links[] {url, label}` | 하이퍼링크 |
 | 노트 | `notes[] {type, text, checked, lang, html}` | 문단(리치 HTML 포함)/코드/표/체크리스트 |
 | 첨부 | `attachments[] {name, kind, url}` | 파일/오디오/비디오 |
-| 사진 | `image {src, w, h}` · `images[] {src, afterLine…}` | 붙여넣은 사진 (data URL 또는 원본 URL) — `images[]` 는 인라인 사진 위치(afterLine) 보존 |
+| 사진 | `image {src, w, h}` · `images[] {src, afterLine…}` | 붙여넣은 사진. `src` 는 **본문과 같은 `files/img-N.png` 상대 경로**(ZIP 으로 함께 담긴다) 또는 외부 URL — `images[]` 는 인라인 사진 위치(afterLine) 보존. **사진 바이트를 base64 로 담지 않는다** (2026-08-20, 아래 §3.3) |
 | 배치 | `side` (left/right) · `layoutType`(서브트리 오버라이드) · `edgeType` · `collapsed` | 좌/우 배치, 노드별 레이아웃, 접힘 상태 |
 | 색 | `colorKey` | 브랜치 색 계열 |
 | 맵 설정 | `settings.levelFonts` · `settings.levelLayouts` | 레벨별 폰트(크기·글꼴)·레벨별 레이아웃 |
@@ -105,6 +106,31 @@ eyJmb3JtYXQiOiJlYXN5bWluZG1hcC1tYXAiLCJ2ZXJzaW9uIjoxLCJnZW5lcmF0b3IiOiJFYXN5TWlu
 
 ---
 
+### 3.3 ★ 메타 주석에 사진 바이트를 담지 않는다 (2026-08-20, B16 ② D-5)
+
+예전에는 본문을 `![](files/img-1.png)` 로 내보내면서 **메타 주석에는 같은
+사진을 base64 로 한 번 더** 넣었다. 사진 한 장짜리 맵의 `.md` 가 사진
+바이트를 두 벌 들고 다닌 셈이다.
+
+이 제품은 지식 저장소로 쓰이고 `.md` 는 vault 에 미러된다. 거기에 base64
+가 박히면
+
+* Obsidian 이 파일 하나 여는 데 몇 초 걸리고,
+* Git 이 커밋마다 사진을 통째로 다시 저장하며,
+* CRDT 업데이트 로그에는 **영원히** 남는다 (`27-sync-model.md` §3).
+
+그래서 메타 주석의 사진 `src` 는 **본문이 가리키는 그 경로**를 쓴다
+(`withPackagedImagePaths` — `serialize.ts`). `files/` 로 담지 못하는 사진
+(외부 https URL 등)은 그대로 URL 로 남는다.
+
+**따라오는 결과**: 사진이 있는 맵은 항상 ZIP 으로 나가고, **ZIP 에서 `.md`
+만 꺼내 열면 사진이 복원되지 않는다** — `files/` 가 함께 있어야 한다.
+첨부(≤2MB)의 인라인은 **그대로 둔다**(아래 §4) — 첨부는 개수가 적고,
+단일 `.md` 하나로 복원되는 것이 이득이다.
+
+> 릴리스 전이라 **버전 분기를 두지 않고 `v1` 을 재정의**했다. 지금까지
+> 만들어진 `.md` 는 전부 테스트용이다.
+
 ## 4. 불러오기 동작 (importMapFile.ts)
 
 | 파일 | 판별 | 동작 |
@@ -127,6 +153,16 @@ eyJmb3JtYXQiOiJlYXN5bWluZG1hcC1tYXAiLCJ2ZXJzaW9uIjoxLCJnZW5lcmF0b3IiOiJFYXN5TWlu
   ZIP 불러오기에서 재연결된다.
 - 첨부 URL 우선순위(불러오기): 이미 살아있는 data:/http(s) URL은
   그대로 두고, blob:(원 세션 한정)·빈 URL만 files/에서 재연결한다.
+- **사진(`files/img-N.png`)은 첨부와 다른 문으로 되잇는다** (2026-08-20,
+  B16 ② D-6, `relinkImages`): 바이트를 `File` 로 감싸
+  `attachmentUrlForFile(f, { preferServer: true })` 에 넘긴다 →
+  **로그인이면 서버 첨부 저장소로 올라가고 문서에는 주소만** 남는다.
+  게스트는 서버가 없으므로 지금처럼 data URL 이다.
+  · 이걸 빼면 붙여넣기 쪽 앞문을 잠가도 **불러오기라는 뒷문으로 base64 가
+    계속 문서에 들어온다** — 내보냈다 다시 여는 것만으로 원상복귀된다.
+  · 사진이 여러 장이면 올리는 동안 진행률 한 줄을 띄운다(`uploadStore`).
+  · **한 장이 실패하면 그 장만 data URL 로 남기고 넘어간다** —
+    사진 한 장 때문에 불러오기 전체를 취소하지 않는다.
 
 ### 버전 정책
 

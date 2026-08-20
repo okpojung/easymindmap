@@ -59,6 +59,14 @@ BEGIN
     END IF;
 
     -- 3. 순환 참조 방지 (새 부모가 이동 노드 하위인 경우 차단)
+    --
+    -- ★ **판정 원본은 `packages/emm-parser/src/tree-rules.ts` 의
+    --   `wouldCreateCycle` 이다** (2026-08-20, 28-sync-prework-plan.md §2.3 A-4).
+    --   화면·협업은 그 함수 하나를 쓴다. 여기 ltree 판정은 **지우지 않는다** —
+    --   DB 는 **마지막 방벽**이다. 앱이 틀리거나, 우리를 거치지 않는 경로가
+    --   생겨도 여기서 막아야 한다. 두 벌이지만 **역할이 다르다**:
+    --   앱은 "미리 막아 사용자에게 알려 주는 것", DB 는 "그래도 들어오면
+    --   거절하는 것". 규칙이 갈리면 여기가 이긴다.
     IF v_new_base_path <@ v_old_path THEN
         RAISE EXCEPTION 'Cannot move node into its own descendant';
     END IF;

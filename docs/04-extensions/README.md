@@ -43,6 +43,7 @@ AI, 번역, 협업, 퍼블리시, 외부 연동 등 편집기 코어 위에 올�
 | `attachment-storage.md` | 이미지·첨부 저장소 provider + 요금제 용량 — B9 P1 구현 완료(P2~P4 설계) |
 | `i18n.md` | 다국어(한국어+영어) 단계·주의사항 — B10 |
 | `content-permanence.md` | 내용 영속성 규칙 |
+| `vault-mirror.md` | DB 정본 + 파일 미러(C안). 셀프호스트 vault |
 | `emm-spec.md`, `emm-testing-guide.md` | EMM Markdown 스펙·검증 |
 | `markdown-export.md` | MD 내보내기 규칙 |
 | `ai/emm-prompt-templates.md` | 웹 AI용 EMM 프롬프트 템플릿(현행 v4) |

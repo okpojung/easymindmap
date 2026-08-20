@@ -11,6 +11,9 @@
 // - node content: tags, links, structured notes, attachments
 
 import { create } from 'zustand';
+// 트리 규칙의 **단일 원본** — 화면·협업·DB 가 같은 판정을 써야 한다
+// (docs/04-extensions/collaboration/27-sync-model.md §4)
+import { wouldCreateCycle } from '@emm/tree-rules';
 import { SAMPLE_ROADMAP } from '@/editor/__samples__';
 import type {
   ShapeType,
@@ -402,9 +405,36 @@ function subtreeHeight(node: MindNode): number {
   return 1 + Math.max(...children.map(subtreeHeight));
 }
 
-function isSelfOrDescendant(node: MindNode, targetId: string): boolean {
-  if (node.id === targetId) return true;
-  return (node.children ?? []).some((c) => isSelfOrDescendant(c, targetId));
+/**
+ * **부모 인덱스** — 이동 판정 한 번에 한 벌만 만든다 (2026-08-20).
+ *
+ * 순환 판정은 `packages/emm-parser` 의 `wouldCreateCycle` **한 곳**에서만
+ * 한다(28-sync-prework-plan.md §2.3 A-1). 그 함수는 부모를 물어보는
+ * 방식이라, 물어볼 자리를 여기서 만들어 준다.
+ *
+ * ★ **`findParentId` 를 그대로 넘기면 안 된다.** 그 함수는 부를 때마다
+ *   트리를 통째로 훑는다(O(n)). 사슬을 따라가며 매번 부르면 이동 한 번이
+ *   O(n²) 가 되어, 1만 노드 맵에서 드래그가 눈에 띄게 멈춘다.
+ *
+ * ★ **`null` 과 `undefined` 는 뜻이 다르다.**
+ *     null      = 뿌리에 닿았다 (순환 없음)
+ *     undefined = 모르는 노드   (사슬이 거기서 끊겼다)
+ *   `Map.get()` 은 없는 키에 `undefined` 를 주므로 **그대로 넘기면 맞다.**
+ *   모르는 노드에 `null` 을 돌려주면 판정이 뒤집힌다.
+ *
+ * 규약은 `findParentId` 와 같다 — 뿌리는 `null`, 최상위 브랜치는 `'root'`.
+ */
+export function buildParentIndex(map: SampleMap): Map<string, string | null> {
+  const idx = new Map<string, string | null>();
+  idx.set('root', null);
+  const walk = (nodes: MindNode[], parentId: string) => {
+    for (const node of nodes) {
+      idx.set(node.id, parentId);
+      walk(node.children ?? [], node.id);
+    }
+  };
+  walk(map.branches, 'root');
+  return idx;
 }
 
 // ---------------------------------------------------------------------------
@@ -922,7 +952,13 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       if (!moving) return {};
 
       // Can't drop a node into itself or one of its own descendants.
-      if (isSelfOrDescendant(moving, newParentId)) return {};
+      // **판정 원본은 packages/emm-parser 의 wouldCreateCycle 한 곳이다.**
+      // 인덱스는 반드시 **이동 전에** 만든다 — 옮긴 뒤에 만들면 이미 옮겨진
+      // 트리를 보고 판정해서 순환을 못 막는다.
+      // ⚠️ `idx.get` 을 **그대로 넘기면 안 된다** — `this` 를 잃어 터진다.
+      //    화살표로 감싸 준다(계획서 §2.3 의 표기는 그 점이 빠져 있었다).
+      const idx = buildParentIndex(map);
+      if (wouldCreateCycle((id) => idx.get(id), nodeId, newParentId)) return {};
 
       // No-op if already a direct child of the target.
       if (findParentId(map, nodeId) === newParentId) return {};
@@ -959,7 +995,11 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
       const moving = findNode(map.branches, nodeId);
       if (!moving) return {};
-      if (isSelfOrDescendant(moving, targetId)) return {}; // can't drop into own subtree
+      // 자기 자손 밑으로는 못 간다 — 판정은 emm-parser 한 곳에서 한다.
+      // (형제로 붙는 경우도 `targetId` 로 본다: 대상이 내 자손이면 그
+      //  형제 자리도 내 자손 안이라, 더 좁게 막는 쪽이 맞다.)
+      const idx = buildParentIndex(map);
+      if (wouldCreateCycle((id) => idx.get(id), nodeId, targetId)) return {};
 
       const hMoving = subtreeHeight(moving);
 

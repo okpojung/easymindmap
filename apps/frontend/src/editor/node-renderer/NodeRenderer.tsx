@@ -202,6 +202,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const setNodeImages = useDocumentStore((state) => state.setNodeImages);
   const zoom = useViewportStore((state) => state.zoom);
   const setEditingNodeId = useInteractionStore((state) => state.setEditingNodeId);
+  // 편집창의 초안을 협업이 볼 수 있는 자리에 비춘다 (2026-08-20)
+  const setEditingDraft = useInteractionStore((state) => state.setEditingDraft);
   const showTags = useEditorUiStore((state) => state.showTags);
 
   // 우하단 크기 조절 핸들 드래그 상태
@@ -389,6 +391,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
 
   const startEdit = () => {
     setDraftText(n.text);
+    setEditingDraft(null);
     setEditing(true);
     setEditingNodeId(n.id); // 편집 중 +/− 인디케이터 숨김 (겹침 방지)
     onSelect();
@@ -410,6 +413,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     }
     pendingImgsRef.current = null;
     setEditing(false);
+    // **문서에 들어갔으니 초안은 비운다.** 협업은 이제 문서 쪽 변경을 본다.
+    setEditingDraft(null);
     setEditingNodeId(null);
   };
 
@@ -417,6 +422,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     setDraftText(n.text);
     pendingImgsRef.current = null; // 취소 = 붙여넣은 사진도 폐기
     setEditing(false);
+    // **취소는 상대에게도 취소여야 한다.** 초안을 비우면 협업이 다시
+    // 문서(원래 글자)를 기준으로 보내므로, 흘러갔던 글자가 되돌아간다.
+    setEditingDraft(null);
     setEditingNodeId(null);
   };
 
@@ -1200,7 +1208,18 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
           <textarea
             ref={textareaRef}
             value={draftText}
-            onChange={(e) => setDraftText(e.target.value)}
+            onChange={(e) => {
+              setDraftText(e.target.value);
+              // **한글 조합 중에는 비추지 않는다** — 조합 중인 자모가
+              // 상대 화면에 그대로 가면 글자가 튄다. 조합이 끝나면
+              // 아래 onCompositionEnd 가 그때의 값을 비춘다.
+              if (!(e.nativeEvent as InputEvent).isComposing) {
+                setEditingDraft({ nodeId: n.id, text: e.target.value });
+              }
+            }}
+            onCompositionEnd={(e) => {
+              setEditingDraft({ nodeId: n.id, text: e.currentTarget.value });
+            }}
             onScroll={(e) => {
               // 내용이 박스를 넘쳐 내부 스크롤될 때 미리보기 레이어 동기화
               const ta2 = e.currentTarget;

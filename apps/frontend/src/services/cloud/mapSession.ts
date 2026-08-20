@@ -10,6 +10,7 @@
 
 import {
   useDocumentStore, isDocumentEmpty, normalizeMapForSnapshot,
+  setViewerLocked, isViewerLocked,
 } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -144,6 +145,12 @@ export function isUnsavedMap(): boolean {
 export async function saveCurrentMap(
   { keepVersion = true }: { keepVersion?: boolean } = {},
 ): Promise<{ mapId: string; unchanged: boolean }> {
+  // **열람자는 저장할 수 없다** — 버튼도 안 보이지만(MapActions), 단축키·
+  // 자동저장·다른 경로가 남아 있으므로 여기서도 막는다. 막을 거면 한 곳이
+  // 아니라 **문이 있는 모든 곳**을 막아야 한다 (2026-08-19).
+  if (isViewerLocked()) {
+    throw new CloudError(403, '이 맵은 읽기만 권한으로 공유받았습니다. 저장할 수 없습니다.');
+  }
   const cloud = useCloudStore.getState();
   const id = cloud.cloudMapId;
   if (!id) throw new CloudError(0, '저장할 폴더와 이름을 먼저 정해 주세요.');
@@ -222,6 +229,7 @@ export function detachFromServer(): void {
 
 /** 문서를 화면에서 비우고 서버 링크를 끊는다 (저장은 호출부 책임) */
 export function clearCurrentMap(): void {
+  setViewerLocked(false);  // 잠긴 채로 닫으면 다음 맵도 못 고친다
   suppressCloudAutosave(); // 빈 문서가 방금 닫은 맵을 덮어쓰지 않도록
   releaseEditLock();
   useDocumentStore.getState().closeMap();
@@ -346,13 +354,18 @@ export async function openMapHere(
     // ⑵ 를 안 막으면 화면이 **편집을 허용하는 것처럼** 보이고, 사용자는
     // 한참 고친 뒤 저장할 때에야 403 을 만난다. 그 편집은 갈 곳이 없다
     // (2026-08-19 실사용에서 그대로 겪었다).
+    // 열람자면 **화면 편집 자체를 막는다**(#306 이후). 다른 세션 잠금은
+    // 내 권한은 있는 것이므로 사본 저장을 열어 둔다 — 그 갈래가 다르다.
+    setViewerLocked(role === 'viewer');
     const readOnlyReason = editLock === 'busy'
       ? '다른 세션에서 편집 중'
       : role === 'viewer' ? '이 맵은 읽기만 권한으로 공유받았습니다' : null;
     if (readOnlyReason) {
       // 읽기 전용 — 링크 없음(저장 경로 차단) + 배너 정보만
       useCloudStore.getState().unlink();
-      useCloudStore.getState().setReadOnlyInfo({ mapId, title, reason: readOnlyReason });
+      useCloudStore.getState().setReadOnlyInfo({
+        mapId, title, reason: readOnlyReason, viewer: role === 'viewer',
+      });
     } else {
       useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
     }

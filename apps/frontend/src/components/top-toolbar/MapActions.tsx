@@ -102,7 +102,15 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
       {/* 협업 세션 — 공개판에서는 아무것도 그리지 않는다(정상 동작).
           자동저장 훅과 **같은 자리**에 둔다: 맵이 열려 있는 동안만 살아
           있어야 하고, 자동저장과 서로 비켜 줘야 하기 때문이다. */}
-      <ProCollabSession mapId={cloudMapId} kind={cloudKind} />
+      {/* **열람자도 붙는다 — 받기만 한다** (2026-08-20).
+          읽기 전용으로 연 맵은 링크(`cloudMapId`)가 없다(저장 경로 차단).
+          그렇다고 협업까지 끊으면, 열람자는 **초대받은 시점의 문서**를
+          보게 된다 — 주인이 고쳐도 모른다. 그건 공유가 반쯤 된 것이다.
+          보내지 않는 것은 서버가 막고(유료 게이트웨이), 화면도 잠겨 있다. */}
+      <ProCollabSession
+        mapId={cloudMapId ?? (readOnlyInfo?.viewer ? readOnlyInfo.mapId : null)}
+        kind={cloudMapId ? cloudKind : readOnlyInfo?.kind}
+      />
       {/* 읽기 전용 배너 — 다른 세션이 편집 중인 맵을 보는 상태임을
           화면에 상시 표시 (2026-08-04 사용자 요청) */}
       {readOnlyInfo && (

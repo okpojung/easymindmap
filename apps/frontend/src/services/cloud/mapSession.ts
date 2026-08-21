@@ -16,7 +16,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
-import { notifyExplicitSave, suppressCloudAutosave } from '@/hooks/useCloudAutosave';
+import { notifyExplicitSave, suppressCloudAutosave, isCollabDriving } from '@/hooks/useCloudAutosave';
 import { cloudApi, CloudError, type MapKind } from '@/services/cloud/apiClient';
 import { editSessionKey } from '@/services/cloud/editSession';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
@@ -263,6 +263,27 @@ export async function saveAndCloseMap(
     return 'closed';
   }
   if (isUnsavedMap()) return 'unsaved';
+
+  // ★ **협업으로 붙어 있는 동안에는 저장하지 않고 닫는다** (2026-08-20).
+  //
+  //   협업 중이면 저장은 **협업 방이 책임진다**(5초마다, 그리고 서버가
+  //   내려갈 때 한 번 더). 그 위에 전체 문서를 덮어써 봐야 **이길 수 없다** —
+  //   방이 곧 자기 상태로 다시 쓴다. 재현으로 확인했다(로컬 PG + 실제
+  //   방 코드): 닫는 쪽이 더한 노드는 다음 물질화에서 **사라졌다.**
+  //
+  //   그러면 "저장했다"는 표시만 남고 내용은 없는 셈이라, **거짓 안심**이
+  //   된다. 자동저장은 이미 같은 이유로 비켜서 있다(`isCollabDriving`).
+  //   저장 경로만 그 규칙에서 빠져 있었다.
+  //
+  //   ⚠️ **끊긴 동안에는 건너뛰지 않는다.** 소켓이 닫히면 클라이언트가
+  //   곧바로 `setCollabDriving(null)` 을 부르므로(유료 client.ts), 그때는
+  //   여기가 평소처럼 저장한다. 끊긴 채로도 안 저장하면 **그 편집이
+  //   어디에도 남지 않는다.**
+  if (isCollabDriving(useCloudStore.getState().cloudMapId)) {
+    clearCurrentMap();
+    flash('맵을 닫았습니다 — 협업 중 편집은 서버에 이미 반영돼 있습니다.');
+    return 'closed';
+  }
 
   try {
     await saveCurrentMap({ keepVersion: true });

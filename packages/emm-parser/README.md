@@ -69,8 +69,26 @@ CommonJS·ESM·타입이 모두 따라온다 — 예전에는 `main` 이 `src/in
 였고, 그래서 **이 저장소 안(번들러)에서만** 쓸 수 있었다.
 
 ```bash
-npm install @easymindmap/emm-parser     # (아직 레지스트리 미공개 — 경로/타르볼 설치)
-npm run build                           # dist/{esm,cjs,types} 생성
+npm install @easymindmap/emm-parser
+```
+
+### 퍼블리시하는 법 (2026-08-21 준비 완료)
+
+`apps/api` 가 vault 미러를 위해 이 패키지를 **npm 에서** 물기로 했다
+(`docs/04-extensions/vault-mirror.md` §10.1). 준비는 끝났고 남은 것은 명령
+셋뿐이다 — **스코프 패키지라 `--access public` 이 필요하고**, 그것이
+`publishConfig` 에 박혀 있다(없으면 402 로 거절당한다).
+
+```bash
+cd packages/emm-parser
+npm login                 # 한 번만. @easymindmap 스코프를 쓸 수 있는 계정으로
+npm publish               # prepublishOnly 가 build 를 먼저 돌린다
+```
+
+올리기 전에 무엇이 담기는지 눈으로 보려면:
+
+```bash
+npm pack --dry-run        # 담길 파일 목록 (dist/ + src/ + README + LICENSE)
 ```
 
 ```js

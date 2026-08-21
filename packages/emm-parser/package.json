@@ -3,16 +3,14 @@
   "version": "0.1.0",
   "description": "EasyMindMap Markdown (EMM) reference parser/serializer — Markdown ↔ mindmap JSON with lossless metadata layer",
   "license": "Apache-2.0",
-  "type": "module",
-  "main": "./dist/cjs/index.js",
-  "types": "./dist/types/index.d.ts",
-  "scripts": {
-    "test": "tsx conformance/run.ts",
-    "test:update": "tsx conformance/run.ts --update",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && node scripts/finish-dist.mjs",
-    "prepublishOnly": "npm run build",
-    "test:unit": "tsx test/build-tree.test.ts && tsx test/note-images.test.ts"
+  "homepage": "https://github.com/okpojung/easymindmap/tree/main/packages/emm-parser#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/okpojung/easymindmap.git",
+    "directory": "packages/emm-parser"
+  },
+  "bugs": {
+    "url": "https://github.com/okpojung/easymindmap/issues"
   },
   "keywords": [
     "mindmap",
@@ -21,12 +19,10 @@
     "easymindmap",
     "parser"
   ],
-  "devDependencies": {
-    "@types/node": "^20.14.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.6.3"
-  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
@@ -44,5 +40,24 @@
     "dist",
     "src",
     "README.md"
-  ]
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "tsx conformance/run.ts",
+    "test:update": "tsx conformance/run.ts --update",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && node scripts/finish-dist.mjs",
+    "prepublishOnly": "npm run build",
+    "test:unit": "tsx test/build-tree.test.ts && tsx test/note-images.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3"
+  }
 }

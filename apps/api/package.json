@@ -9,7 +9,8 @@
     "start:dev": "nest start --watch",
     "type-check": "tsc --noEmit",
     "smoke": "node test/smoke.mjs",
-    "db:apply": "node scripts/apply-schema.mjs"
+    "db:apply": "node scripts/apply-schema.mjs",
+    "test:vault": "node test/vault-path.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",

@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit",
     "smoke": "node test/smoke.mjs",
     "db:apply": "node scripts/apply-schema.mjs",
-    "test:vault": "node test/vault-path.test.mjs"
+    "test:vault": "node test/vault-path.test.mjs && node test/vault-writer.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",

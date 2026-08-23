@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import type { AppEnv } from './config/env.validation';
+import { VaultService } from './vault/vault.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
@@ -77,6 +78,9 @@ async function bootstrap() {
 
   const port = config.get('PORT', { infer: true });
   await app.listen(port);
+  // vault 미러가 켜졌는지 **기동 로그에 남긴다.** 조용히 꺼져 있으면
+  // 사용자는 파일이 안 생기는 이유를 알 길이 없다.
+  new Logger('Bootstrap').log(app.get(VaultService).describe());
   new Logger('Bootstrap').log(`EasyMindMap API 기동 → http://localhost:${port}/v1`);
 }
 

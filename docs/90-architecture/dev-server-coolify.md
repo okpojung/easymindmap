@@ -387,6 +387,11 @@ curl -s -X POST https://auth-dev.example.com/signup \
 - [ ] ☁ 클라우드 → 저장 → 토스트 / 편집 → 자동 저장 배지
 - [ ] ☁ → 열기 → 목록·이름변경·삭제
 - [ ] `git push origin main` → Coolify가 자동 재배포(Deployments 로그 확인) *
+- [ ] **재배포 뒤 "붙었는지"를 응답으로 확인** — §8 의 「재배포했는데 옛
+      코드가 그대로다」 30초 확인 3줄. **화면이 뜨는 것은 배포됐다는 뜻이
+      아니다**(옛 컨테이너로 롤백돼도 화면은 뜬다)
+- [ ] 유료판(`pro-dev`)까지 반영해야 하면 **private 저장소의 코어 SHA 를
+      올렸는지** — 공개 저장소 재배포로는 안 바뀐다 (§8 ②)
 
 > \* **자동 배포 선행조건**: GitHub 웹훅이 Coolify UI에 도달할 수 있어야
 > 한다. 사설 IP 상태에서는 GitHub이 웹훅을 보낼 수 없어 이 항목이 영구히
@@ -443,6 +448,73 @@ curl -s -X POST https://auth-dev.example.com/signup \
 > 실제 사례(2026-08-01): `ERR_REQUIRE_ESM` — api 가 CommonJS 빌드인데
 > ESM 전용 패키지를 import 했다. 재발 방지는 `apps/api/README.md`
 > "의존성 규칙" 및 CI 의 supabase 모드 부팅 스모크 참조.
+
+### 트러블슈팅 — "재배포했는데 옛 코드가 그대로다" ★★ (2026-08-21)
+
+> **증상**: main 에 병합하고 Coolify 에서 Redeploy 를 눌렀는데, 배포본이
+> 여전히 옛 코드다. 화면은 멀쩡히 뜨고 API 도 응답하므로 **배포가 된 줄
+> 안다.** 새 기능만 조용히 없다.
+>
+> 실측(2026-08-21) — #316·#317·#319 를 병합하고 재배포한 뒤:
+>
+> | 곳 | 상태 |
+> |---|---|
+> | `api-dev` | `/v1/health` 200 인데 **`POST /v1/attachments/from-url` 만 404** (형제 라우트는 전부 401) → #316 이전 빌드 |
+> | `pro-dev` | 번들 `last-modified` 는 **그날 낮**인데 새 문자열이 하나도 없음 |
+> | `dev` | **404** — 인증서·라우팅은 살아 있는데 컨테이너가 없음 |
+>
+> **원인은 곳마다 다르다. 셋을 한 덩어리로 보면 못 찾는다.**
+
+#### ① 공개판(`dev`·`api-dev`) — 롤백이거나 기동 실패
+
+바로 위 트러블슈팅과 같은 함정이다. Deployment 로그에서
+`New container is unhealthy` / `rolling back to the old container` 를 먼저
+찾는다. `dev` 처럼 **404** 라면 롤백할 옛 컨테이너조차 없는 것이라,
+빌드 로그부터 봐야 한다(빌드 실패인지 기동 실패인지).
+
+#### ② ★ 유료판(`pro-dev`) — **공개 저장소를 재배포해도 절대 안 바뀐다**
+
+`pro-dev` 의 Source 는 이 저장소가 아니라 **private 저장소**
+(`easymindmap-pro`)이고, 그 Dockerfile 이 **코어를 고정 리비전(커밋 SHA)으로
+clone 해서** 그 위에 유료 모듈을 얹어 빌드한다
+(`../04-extensions/open-core-boundary.md` §7).
+
+그래서 `okpojung/easymindmap` 쪽에서 Redeploy 를 아무리 눌러도
+**`pro-dev` 는 영원히 그대로다.** 유료판에 코어 변경을 반영하려면
+
+1. `easymindmap-pro` 의 Dockerfile 에서 **코어 커밋 SHA 를 올리고**
+2. **그 저장소에서** 재배포한다
+
+이 고정이 나쁜 것이 아니다 — 고정하지 않으면 "어제는 되던 게 오늘 안
+된다"의 원인을 못 찾는다(§7 이 그래서 고정을 정했다). **함정은 고정 자체가
+아니라, 공개 저장소만 재배포하고 "배포했다"고 여기는 것**이다.
+
+> 이때 번들의 `last-modified` 가 **오늘**인 것이 사람을 속인다. 새 이미지는
+> 실제로 만들어졌기 때문이다 — **옛 SHA 위에서.** 파일 시각이 새것이라고
+> 코드가 새것인 것은 아니다.
+
+#### 30초 확인 — 재배포 뒤에는 항상 이것부터
+
+배포 뒤 "붙었나"를 눈이 아니라 **응답으로** 가른다. 새 기능이 들어간
+**라우트 하나**와 번들의 **문자열 하나**를 고르면 된다(아래는 B16 ② 예).
+
+```bash
+# ① API — 새 라우트가 있는가 (401 = 있다 / 404 = 옛 빌드)
+curl -s -o /dev/null -w "from-url: %{http_code}\n" -X POST \
+  https://api-dev.example.com/v1/attachments/from-url \
+  -H 'Content-Type: application/json' -d '{"url":"https://example.com/a.png"}'
+
+# ② 프런트 — 컨테이너가 떠 있는가 (200 이어야 한다)
+curl -s -o /dev/null -w "front: %{http_code}\n" https://dev.example.com/
+
+# ③ 프런트 번들 — 새 코드가 실렸는가 (1 이상이어야 한다)
+curl -s https://pro-dev.example.com/ | grep -o 'assets/index-[^"]*\.js' | head -1 \
+  | xargs -I{} curl -s https://pro-dev.example.com/{} | grep -c "attachments/from-url"
+```
+
+**문자열은 그 변경에서 처음 생긴 것으로 고른다.** 예전부터 있던 문자열
+(B16 ② 에서는 `files/img-` 가 그랬다 — #292 에서 들어왔다)을 고르면
+**옛 번들에서도 통과해** 아무것도 증명하지 못한다.
 
 ---
 

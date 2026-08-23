@@ -2,6 +2,7 @@ import {
   ConflictException, ForbiddenException, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
 import { AttachmentsService } from '../attachments/attachments.service';
+import { VaultService } from '../vault/vault.service';
 import { DatabaseService } from '../database/database.service';
 import { FoldersService } from '../folders/folders.service';
 import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
@@ -56,6 +57,7 @@ export class MapsService {
     private readonly db: DatabaseService,
     private readonly folders: FoldersService,
     private readonly attachments: AttachmentsService, // 저장 용량 쿼터 (B9)
+    private readonly vault: VaultService,             // 파일 미러 (셀프호스트)
   ) {}
 
   /**
@@ -568,6 +570,9 @@ export class MapsService {
       // 사용자는 지운 사진이 용량을 계속 먹는 것을 보게 된다.
       // 이 시점의 DB 는 이미 최종 상태라 그대로 세면 된다.
       await this.gcMapImages(userId, mapId);
+      // 문서가 그대로여도 **폴더나 형제 맵의 이름이 바뀌었을 수** 있다 —
+      // 그러면 이 맵의 파일 자리도 달라진다. 예약해 두고 판단은 미러가 한다.
+      this.vault.scheduleMirror(userId, mapId);
       return { mapId, updatedAt: map.updated_at, unchanged: true as const };
     }
 
@@ -678,6 +683,10 @@ export class MapsService {
     // 안 쓰는 사진 정리 (B16 ② 슬라이스 4) — **히스토리 버전을 넣은 뒤**에
     // 한다. 방금 만든 버전이 참조하는 사진을 지우면 그 버전이 깨진다.
     await this.gcMapImages(userId, mapId);
+
+    // vault 미러 — **기다렸다** 쓴다(5초 디바운스). 자동저장마다 쓰면 손을
+    // 멈출 때마다 디스크에 수 MB 를 쓰게 된다. 실패해도 저장은 이미 끝났다.
+    this.vault.scheduleMirror(userId, mapId);
 
     return { mapId, updatedAt: rows[0].updated_at, ...(version ? { version } : {}) };
   }

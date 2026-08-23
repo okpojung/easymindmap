@@ -329,9 +329,15 @@ CREATE INDEX IF NOT EXISTS idx_map_links_dst ON public.map_links(dst_map_id);
 |---|---|---|
 | 1 | **파일 이름과 자리 규칙** (§3.1 · §4) | ✅ `vault-path.ts` · e2e176 (56항목 + 실파일 12/12) |
 | 2 | **안전하게 쓰는 기계** (§7 · §3.2 · §3.3) | ✅ `vault-writer.ts` · e2e177 (49항목, 진짜 파일시스템) |
-| 3 | 언제 부르는가 — 표 · 디바운스 · `doc`→`.md` · 배선 (§6 · §8) | ❌ **파서 퍼블리시를 기다린다**(아래) |
-| 4 | 위키링크 · `map_links` (§5) | ❌ |
-| 5 | `.attachments` 정리 (§4.1) | ❌ (§9 — 이번 범위 밖) |
+| 3 | **언제 부르는가** — 경로 계획 · `vault_files` · 디바운스 · 배선 (§3 · §6 · §8) | ✅ `vault-plan.ts` · `vault.service.ts` · e2e179 (22 + 실물 30항목) |
+| 4 | `doc` → `.md` **직렬화기 연결** | ❌ **파서 퍼블리시를 기다린다**(아래) |
+| 5 | 위키링크 · `map_links` (§5) | ❌ |
+| 6 | `.attachments` 정리 (§4.1) | ❌ (§9 — 이번 범위 밖) |
+
+**슬라이스 3 은 직렬화기만 빼고 다 이어져 있다.** `VaultService` 에 마크다운을
+만들 자를 꽂으면 그 순간 돈다 — 실제로 **파서를 꽂아 진짜 DB·진짜 파일시스템에
+돌려 확인했다**(e2e179 30항목: 폴더 트리 · 제목 변경 · 충돌 · 휴지통).
+꽂히기 전에는 **아무것도 쓰지 않는다** — 폴더조차 건드리지 않는다.
 
 **슬라이스 1 에는 디스크에 손대는 코드가 한 줄도 없다.** 이름 규칙이 틀리면
 유령 파일이 쌓이거나 남의 파일을 덮어쓰는데 **둘 다 되돌릴 수 없어서**,
@@ -363,15 +369,20 @@ vault 의 `.md` 는 `map_documents.doc` 를 EMM 으로 직렬화한 것이다. �
 > `apps/api` 에 의존성을 넣을 수 없다(`npm ci` 가 404 로 깨져 CI 가
 > 빨간불이 된다). 그래서 **슬라이스 3 이 그 뒤에 붙는다.**
 
-### 슬라이스 3 이 할 일 (퍼블리시 뒤)
+### 남은 것 — **명령 하나와 코드 열 줄**
 
 ```
-1. apps/api 에 @easymindmap/emm-parser 의존성 추가
-2. vault_files 표 (§8) + 델타 SQL
-3. doc → EMM 마크다운 (serializeEmm 을 그대로 부른다)
-4. 저장 완료 → 디바운스 5초 → vault-writer 호출 (§6 의 큐 대신, 위 참조)
-5. VAULT_DIR 환경변수 (비어 있으면 꺼짐)
+✅ vault_files 표 (§8) + 델타 SQL
+✅ 저장 완료 → 디바운스 5초 → vault-writer (§6 의 큐 대신)
+✅ VAULT_DIR 환경변수 (비어 있으면 꺼짐)
+❌ apps/api 에 @easymindmap/emm-parser 의존성      ← 퍼블리시를 기다린다
+❌ main.ts 에서 VaultService.setRenderer(...) 한 줄
 ```
+
+**2026-08-23 확인**: `@easymindmap/emm-parser` 가 **아직 레지스트리에 없다.**
+npmjs.org 에 직접 HTTP 로 물어 404, GitHub Packages 도 404, npm 검색에서
+`easymindmap` 0건이다. 퍼블리시가 끝나야 `apps/api` 에 의존성을 넣을 수 있다
+— 넣으면 `npm ci` 가 404 로 깨져 **CI 가 빨간불**이 된다.
 
 ---
 

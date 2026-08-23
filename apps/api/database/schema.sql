@@ -949,3 +949,30 @@ COMMENT ON TABLE public.login_events IS
     '로그인 직후 우리 API 가 남기는 접속 기록(IP·기기). '
     'GoTrue 감사 로그가 IP 를 남기지 않아 그것을 보완한다 — '
     '로그인 목록·횟수의 기준은 여전히 GoTrue 다. 계정당 최근 200건만 남긴다.';
+
+-- ────────────────────────────────────────────────────────────────────
+-- vault 미러 (2026-08-21) — docs/04-extensions/vault-mirror.md §8
+--
+-- `map_documents.doc` 는 그대로 정본이고, 이 표는 **파일 하나의 현재 상태**만
+-- 기억한다. 두 가지를 위해서다.
+--
+--   rel_path      제목·폴더가 바뀌면 **옛 파일을 치워야 한다**(§3.2).
+--                 옛 자리를 기억하지 않으면 제목을 바꿀 때마다 유령 파일이
+--                 쌓인다.
+--   content_hash  **우리가 마지막에 쓴 내용**의 sha256. 쓰기 전에 디스크의
+--                 해시와 비교해, 다르면 사용자가 고친 것이므로 덮어쓰지 않고
+--                 `.conflict.md` 로 비킨다(§7 ②③). 이 한 칸이 "사용자가
+--                 쓴 것을 우리가 지우지 않는다" 의 전부다.
+--
+-- 이 표가 비어 있어도 앱은 정상이다 — vault 는 `VAULT_DIR` 이 있을 때만 돈다.
+CREATE TABLE IF NOT EXISTS public.vault_files (
+    map_id        UUID PRIMARY KEY REFERENCES public.maps(id) ON DELETE CASCADE,
+    rel_path      TEXT NOT NULL,      -- '연구/RAG 증분 인덱싱.md' (항상 / 구분, NFC)
+    content_hash  CHAR(64) NOT NULL,  -- 우리가 마지막에 쓴 내용의 sha256
+    written_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.vault_files IS
+    'vault 미러가 쓴 파일의 현재 상태(경로 + 내용 해시). '
+    '경로는 옛 파일을 치우는 데, 해시는 사용자가 고친 파일을 '
+    '덮어쓰지 않는 데 쓴다 — vault-mirror.md §7.';

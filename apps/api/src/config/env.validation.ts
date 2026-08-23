@@ -14,6 +14,12 @@ export interface AppEnv {
   // 첨부 저장소 (B9) — local 드라이버가 파일을 저장할 디렉터리.
   // dev 서버는 NAS 의 NFS 마운트를 컨테이너 볼륨으로 물려 지정한다.
   STORAGE_LOCAL_DIR: string;
+  /**
+   * vault 미러가 쓸 폴더 (docs/04-extensions/vault-mirror.md).
+   * **비어 있으면 꺼진다** — 클라우드 배포에는 사용자의 디스크가 없다(§2).
+   * 반드시 **빈 폴더**를 준다: 남의 파일이 있는 폴더는 거절한다(§7).
+   */
+  VAULT_DIR: string;
   // 첨부 1개의 최대 크기 (MB) — **단일 요청 업로드** 경로
   ATTACHMENT_MAX_MB: number;
   // 청크 업로드 조각 크기 (KB). 서버가 정하고 클라이언트는 따른다.
@@ -172,6 +178,7 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     DEV_USER_ID,
     SUPABASE_JWT_SECRET,
     STORAGE_LOCAL_DIR: String(raw.STORAGE_LOCAL_DIR ?? './data/attachments'),
+    VAULT_DIR: String(raw.VAULT_DIR ?? '').trim(),
     ATTACHMENT_MAX_MB,
     ATTACHMENT_PART_KB,
     ATTACHMENT_CHUNK_MAX_MB,

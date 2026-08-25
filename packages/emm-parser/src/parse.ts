@@ -32,6 +32,7 @@ import type {
   NodeLink,
   NoteBlock,
 } from './model';
+import { readFrontMatter } from './frontMatter';
 
 const BRANCH_COLORS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 
@@ -88,7 +89,9 @@ export function parseMarkdownToMap(
   opts: ParseEmmOptions = {},
 ): SampleMap | null {
   const placeInNode = opts.blockPlacement === 'node';
-  const lines = String(md || '').replace(/\r\n?/g, '\n').split('\n');
+  // front matter 는 CommonMark 가 아니다 — 걷어내지 않으면 수평선 + setext
+  // 헤딩으로 읽혀 문서 맨 앞에 가짜 노드가 생긴다 (frontMatter.ts 참조)
+  const lines = readFrontMatter(md).body.replace(/\r\n?/g, '\n').split('\n');
 
   // 사전 스캔: 제목(첫 H1) 외에 본문에도 H1(#)을 쓰는 파일인지 확인.
   // (ChatGPT 내보내기 등은 본문 견출에 #, 그 하위에 ##을 쓴다)

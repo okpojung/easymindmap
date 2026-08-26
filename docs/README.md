@@ -11,6 +11,7 @@ docs/
 │  ├─ mvp-scope.md
 │  ├─ roadmap.md
 │  ├─ vision.md
+│  ├─ glossary.md                         ← 용어집(협업·인프라·사업 용어)
 │  └─ emm-strategy.md                     ← EMM 표준화·오픈소스·사업화 전략
 ├─ 01-product/
 │  ├─ functional-spec.md
@@ -136,7 +137,6 @@ docs/
 │  └─ ai-validation-rules.md
 │
 └─ assets/                👈 문서 내 이미지/첨부 파일 리소스
-   ├─ glossary.md                         ← 용어 사전
    ├─ markdown문법.md                      ← 마크다운 문법 참고
    └─ brand/brand-logo.md                 ← 브랜드 로고 규정
 ```
@@ -165,6 +165,7 @@ docs/
 | `docs/00-project-overview/mvp-scope.md` | MVP 범위 정의 |
 | `docs/00-project-overview/roadmap.md` | 개발 로드맵 |
 | `docs/00-project-overview/vision.md` | 제품 비전 |
+| `docs/00-project-overview/glossary.md` | 용어 사전 |
 | `docs/00-project-overview/emm-strategy.md` | EMM 표준화·오픈소스·사업화 전략 |
 | `docs/01-product/functional-spec.md` | 전체 기능 명세서 |
 | `docs/01-product/privacy-policy.md` | 개인정보 처리방침 |
@@ -220,7 +221,6 @@ docs/
 | `docs/91-architecture-검토자료/React, Angular, Vue 비교 분석.md` | 프레임워크 비교 분석 |
 | `docs/91-architecture-검토자료/Zustand와 TanStack Query 상태 관리 비교.md` | 상태관리 라이브러리 비교 |
 | `docs/99-ai-validation/ai-validation-rules.md` | AI 문서 검증 규칙 |
-| `docs/assets/glossary.md` | 용어 사전 |
 | `docs/assets/markdown문법.md` | 마크다운 문법 참고 |
 | `docs/assets/brand/brand-logo.md` | 브랜드 로고 규정 |
 

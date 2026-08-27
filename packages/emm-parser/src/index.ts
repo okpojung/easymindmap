@@ -14,6 +14,18 @@ export * from './meta';
 // 리치 노트 HTML 속 <img> 의 주소를 읽고 바꾼다 — 노드 사진(`image`·`images`)과
 // **같은 자리에서** 다루기 위한 것 (28-sync-prework-plan §3.5 셋째 줄)
 export * from './note-images';
+// 문서 맨 앞 `---` 블록 — 불러오기 힌트(템플릿·레벨 선언). 걷어내지 않으면
+// 표준 파서가 수평선 + setext 헤딩으로 읽어 가짜 노드를 만든다
+export { readFrontMatter, type FrontMatterResult } from './frontMatter';
+
+// 맵 선언 — 문서의 `emm` 코드블록에서 읽는다. front matter 가 아닌 이유는
+// declaration.ts 머리말 참조: 코드블록은 진짜 CommonMark 이므로 표준이
+// 이 선언을 알 필요가 없고, 왕복 보존도 표준이 이미 보장한다.
+export {
+  readDeclaration,
+  type EmmDeclaration,
+  type EmmLevelSpec,
+} from './declaration';
 export {
   parseMarkdownToMap,
   parseEmm,

@@ -11,6 +11,8 @@
 import type { MindNode, SampleMap, SampleBranch } from '@/editor/__samples__/types';
 import { parseMarkdownToMap, type ParseEmmOptions } from './importMarkdown';
 import { nodeHeadingText } from '@emm/serialize';
+import { readDeclaration } from '@emm/declaration';
+import { resolveDeclaration } from './emmDeclaration';
 import {
   MD_META_RE,
   MD_META_BLOCK_RE,
@@ -140,7 +142,15 @@ export function parseMarkdownMapFile(
 
   const map = parseMarkdownToMap(raw, fallbackTitle, opts);
   if (!map) return null;
-  return { map, source: 'plain-md' };
+
+  // 문서의 `emm` 코드블록 선언 — 앱을 한 번도 거치지 않은 문서(손으로
+  // 쓴 것·AI 가 만든 것)가 레이아웃을 스스로 말할 수 있게 한다. 메타데이터가
+  // 있는 문서는 위에서 이미 돌아갔으므로 여기 오지 않는다 — **메타데이터가
+  // 있으면 그것이 이긴다.** 같은 정보를 두 곳에서 읽지 않기 위해서다.
+  const declared = resolveDeclaration(readDeclaration(raw));
+  if (declared.settings) map.settings = { ...(map.settings ?? {}), ...declared.settings };
+
+  return { map, source: 'plain-md', ...(declared.editor ? { editor: declared.editor } : {}) };
 }
 
 // ---------------------------------------------------------------------------

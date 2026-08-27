@@ -1,16 +1,32 @@
 // declaration — 문서가 스스로 밝히는 맵 선언을 ```emm 코드블록에서 읽는다.
 //
+// **템플릿 하나로 간단히**, 또는 **레벨별로 상세히** — 둘 중 하나다.
+//
 //   # 배포 절차
 //
 //   ```emm
 //   map: 7f3a9c
 //   template: tree-progtree
-//   levels:
-//     2:
-//       shape: rounded
 //   ```
 //
 //   ## 준비
+//
+// 또는
+//
+//   ```emm
+//   map: 7f3a9c
+//   levels:
+//     1:
+//       layout: tree-right
+//     2:
+//       shape: rounded
+//       font: 15
+//   ```
+//
+// 흐름 표기(`{ }`)는 쓰지 않는다 — 이 파서는 들여쓰기만 읽는다.
+//
+// 둘 다 적혀 있으면 `levels` 만 읽고 `template` 은 무시한다. 이 파서는
+// 적힌 대로 둘 다 돌려주고, 그 판단은 뜻을 아는 쪽(앱)이 한다.
 //
 // **왜 front matter 가 아니라 코드블록인가.**
 //
@@ -60,7 +76,9 @@ export interface EmmDeclaration {
    * 물려받아서는 안 된다.**
    *
    * 선언하지 않은 더 깊은 레벨은 **가장 깊게 선언된 레벨을 상속**한다.
-   * `template` 과 함께 쓰면 템플릿을 먼저 적용하고 여기 적힌 것으로 덮는다.
+   *
+   * **`template` 과는 둘 중 하나다.** 파서는 적힌 대로 둘 다 돌려주지만,
+   * 뜻을 아는 쪽(앱)이 `levels` 가 있으면 `template` 을 무시한다.
    */
   levels?: Record<number, EmmLevelSpec>;
 }

@@ -8,8 +8,9 @@ markmap:
 
 ```emm
 map: 7f3a9c
-template: tree-progtree
 levels:
+  1:
+    layout: tree-right
   2:
     shape: rounded
     font: 15

@@ -25,5 +25,8 @@
       "@pro": ["./src/pro/stub"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  // 테스트는 tsx 로 돌린다. 브라우저 번들의 일부가 아니므로 앱 타입
+  // 검사에서 뺀다 — 넣으면 node 전역(process)까지 앱이 떠안게 된다.
+  "exclude": ["src/**/*.test.ts"]
 }

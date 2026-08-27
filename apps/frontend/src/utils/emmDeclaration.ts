@@ -84,13 +84,23 @@ function cascade<T>(arr: (T | null | undefined)[], from: number, value: T): void
 /**
  * front matter 의 EMM 선언을 맵 설정으로 옮긴다.
  *
- * `template` 을 먼저 적용하고 `levels` 로 덮는다 — 상세 선언이 이긴다.
+ * **`template` 과 `levels` 는 둘 중 하나다.** 템플릿 하나로 간단히 말하거나,
+ * 레벨별로 상세히 말하거나. 섞지 않는다.
+ *
+ * 둘 다 적혀 있으면 `levels` 만 읽고 `template` 은 **무시한다** — 오류로
+ * 만들지는 않는다(§2.4 관용적 파싱). 더 상세한 쪽이 글쓴이의 뜻일 가능성이
+ * 높고, 무엇보다 **어느 쪽이 이기는지가 한 줄로 정해져 있어야** 한다.
+ *
+ * 섞을 수 있게 두었을 때의 대가를 실제로 치른 적이 있다. 템플릿이 채워 둔
+ * 깊은 레벨을 얕은 레벨 선언 하나가 함께 덮어써서, "progtree-tree 를 쓰되
+ * 2레벨만 kanban" 이 3레벨 이하까지 kanban 으로 만들었다. 규칙이 하나면
+ * 그런 상호작용이 생길 자리가 없다.
  */
 export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
   const out: ResolvedDeclaration = {};
 
-  // ── template ──────────────────────────────────────────────────────
-  const tpl = emm.template?.trim();
+  // ── template — levels 가 없을 때만 ────────────────────────────────
+  const tpl = emm.levels ? undefined : emm.template?.trim();
   if (tpl) {
     const pattern = LEVEL_PATTERNS[tpl];
     if (pattern) {
@@ -107,7 +117,7 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
     // 알려지지 않은 이름은 무시한다
   }
 
-  // ── levels ────────────────────────────────────────────────────────
+  // ── levels — 있으면 이쪽만 읽는다 ─────────────────────────────────
   if (emm.levels) {
     const declared = Object.keys(emm.levels)
       .map(Number)
@@ -119,9 +129,14 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
       const shapes = [...(s.levelShapes ?? [])];
       const fonts = [...(s.levelFonts ?? [])];
 
-      let lastLayout: LayoutType | undefined;
-      let lastShape: ShapeType | undefined;
-      let lastFont: number | undefined;
+      // 상속은 **속성마다 따로** 흐른다. 2레벨에서 도형을 정하고 3레벨에서
+      // 레이아웃만 정했다면, 3레벨의 도형은 2레벨 것을 물려받아야 한다 —
+      // "가장 깊게 선언된 레벨"이 아니라 "그 속성을 가장 깊게 선언한 레벨"이
+      // 기준이다. 한 기준으로 묶으면 3레벨만 도형이 비고 4레벨부터 다시
+      // 채워지는, 설명할 수 없는 결과가 나온다.
+      let lastLayout: { at: number; value: LayoutType } | undefined;
+      let lastShape: { at: number; value: ShapeType } | undefined;
+      let lastFont: { at: number; value: number } | undefined;
 
       for (const lv of declared) {
         const spec = emm.levels[lv];
@@ -131,14 +146,14 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
           // 1레벨 레이아웃은 맵 전체 몫이다 (levelLayouts[0] 은 쓰이지 않는다)
           if (lv === 1) out.editor = { layoutType: layout as LayoutType };
           else put(layouts, lv, layout as LayoutType);
-          lastLayout = layout as LayoutType;
+          lastLayout = { at: lv, value: layout as LayoutType };
         }
 
         const shape = spec.shape;
         if (shape && SHAPES.has(shape)) {
           // levelShapes 는 색인 0 이 1레벨이다 — 여기서 흡수한다
           put(shapes, lv - 1, shape as ShapeType);
-          lastShape = shape as ShapeType;
+          lastShape = { at: lv, value: shape as ShapeType };
         }
 
         const size = Number(spec.font);
@@ -146,17 +161,19 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
           // levelFonts 는 색인 0 이 루트, 1 이 1레벨이다
           while (fonts.length <= Math.min(lv, CAP)) fonts.push({});
           fonts[Math.min(lv, CAP)] = { ...fonts[Math.min(lv, CAP)], size };
-          lastFont = size;
+          lastFont = { at: lv, value: size };
         }
       }
 
-      const deepest = declared[declared.length - 1];
-      if (lastLayout !== undefined) cascade(layouts, deepest + 1, lastLayout);
-      if (lastShape !== undefined) cascade(shapes, deepest, lastShape);
-      if (lastFont !== undefined) {
-        for (let i = Math.min(deepest + 1, CAP); i <= CAP; i++) {
+      // 색인 기준이 배열마다 다르므로(levelLayouts: lv, levelShapes: lv-1,
+      // levelFonts: lv) 시작 칸도 따로 센다. 어느 쪽이든 뜻은 하나다 —
+      // **선언한 레벨보다 깊은 레벨을 채운다.**
+      if (lastLayout) cascade(layouts, lastLayout.at + 1, lastLayout.value);
+      if (lastShape) cascade(shapes, lastShape.at, lastShape.value);
+      if (lastFont) {
+        for (let i = Math.min(lastFont.at + 1, CAP); i <= CAP; i++) {
           while (fonts.length <= i) fonts.push({});
-          if (fonts[i]?.size == null) fonts[i] = { ...fonts[i], size: lastFont };
+          if (fonts[i]?.size == null) fonts[i] = { ...fonts[i], size: lastFont.value };
         }
       }
 

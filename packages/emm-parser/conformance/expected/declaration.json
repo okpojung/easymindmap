@@ -12,7 +12,7 @@
         {
           "id": "md#0",
           "type": "code_block",
-          "text": "map: 7f3a9c\ntemplate: tree-progtree\nlevels:\n  2:\n    shape: rounded\n    font: 15",
+          "text": "map: 7f3a9c\nlevels:\n  1:\n    layout: tree-right\n  2:\n    shape: rounded\n    font: 15",
           "lang": "emm"
         },
         {

@@ -143,7 +143,7 @@ export function parseMarkdownMapFile(
   const map = parseMarkdownToMap(raw, fallbackTitle, opts);
   if (!map) return null;
 
-  // 문서 맨 앞 `---` 블록의 EMM 선언 — 앱을 한 번도 거치지 않은 문서(손으로
+  // 문서의 `emm` 코드블록 선언 — 앱을 한 번도 거치지 않은 문서(손으로
   // 쓴 것·AI 가 만든 것)가 레이아웃을 스스로 말할 수 있게 한다. 메타데이터가
   // 있는 문서는 위에서 이미 돌아갔으므로 여기 오지 않는다 — **메타데이터가
   // 있으면 그것이 이긴다.** 같은 정보를 두 곳에서 읽지 않기 위해서다.

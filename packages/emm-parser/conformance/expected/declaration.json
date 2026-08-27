@@ -11,41 +11,52 @@
       "notes": [
         {
           "id": "md#0",
+          "type": "code_block",
+          "text": "map: 7f3a9c\ntemplate: tree-progtree\nlevels:\n  2:\n    shape: rounded\n    font: 15",
+          "lang": "emm"
+        },
+        {
+          "id": "md#1",
           "type": "paragraph",
           "text": "문서 맨 앞의 `---` 블록은 CommonMark 가 아니다. 걷어내지 않으면 표준\n파서가 수평선 + setext 헤딩으로 읽어 **가짜 노드**를 만든다."
+        },
+        {
+          "id": "md#2",
+          "type": "paragraph",
+          "text": "`emm` 코드블록은 **진짜 CommonMark** 다. 걷어내지 않고 그대로 두면 중심\n노드의 코드 노트가 된다."
         }
       ]
     },
     "branches": [
       {
-        "id": "md#1",
+        "id": "md#3",
         "text": "준비",
         "colorKey": "l1A",
         "side": "right",
         "children": [
           {
-            "id": "md#2",
+            "id": "md#4",
             "text": "저장소 받기"
           },
           {
-            "id": "md#3",
+            "id": "md#5",
             "text": "의존성 설치"
           }
         ]
       },
       {
-        "id": "md#4",
+        "id": "md#6",
         "text": "실행",
         "colorKey": "l1B",
         "side": "right",
         "notes": [
           {
-            "id": "md#5",
+            "id": "md#7",
             "type": "paragraph",
             "text": "순서를 지킨다."
           },
           {
-            "id": "md#6",
+            "id": "md#8",
             "type": "code_block",
             "text": "npm run build\nnpm run deploy",
             "lang": "bash"
@@ -53,13 +64,13 @@
         ]
       },
       {
-        "id": "md#7",
+        "id": "md#9",
         "text": "확인",
         "colorKey": "l1C",
         "side": "left",
         "notes": [
           {
-            "id": "md#8",
+            "id": "md#10",
             "type": "table",
             "text": "항목 | 방법\n상태 | `systemctl status`\n로그 | `journalctl -u app`"
           }

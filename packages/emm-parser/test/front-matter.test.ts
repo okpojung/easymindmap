@@ -1,10 +1,8 @@
-// readFrontMatter 단위 테스트.
+// readFrontMatter 단위 테스트 — 걷어내기 하나만 한다.
 //
-// conformance/ 는 **EMM 파싱 코퍼스**다 — 여기 끼워 넣지 않는다.
-// 이 테스트가 지키는 것은 두 가지다:
-//   ① 문서 맨 앞 `---` 블록을 본문에서 걷어낸다 (걷어내지 않으면 표준
-//      파서가 수평선 + setext 헤딩으로 읽어 **가짜 노드**를 만든다)
-//   ② 그 안의 `emm:` 선언만 알아보고, 나머지는 건드리지 않는다
+// front matter 는 CommonMark 가 아니다. 걷어내지 않으면 표준 파서가 수평선 +
+// setext 헤딩으로 읽어 문서 맨 앞에 **가짜 노드**를 만든다. 이 파일이 지키는
+// 것은 그 하나이며, `emm` 코드블록 선언은 declaration.test.ts 가 맡는다.
 
 import { readFrontMatter } from '../src/frontMatter';
 import { parseEmm } from '../src/parse';
@@ -41,71 +39,15 @@ const md = (...lines: string[]) => lines.join('\n');
   const src = md('# 제목', '', '---', '', '## 다음');
   check('① 첫 줄이 아니면 front matter 가 아니다', readFrontMatter(src).body, src);
 }
-
-// ── ② emm 선언 ───────────────────────────────────────────────────────
 {
-  const r = readFrontMatter(md('---', 'emm:', '  template: wbs', '---', '', '# 제목'));
-  check('② template 을 읽는다', r.emm.template, 'wbs');
-}
-{
-  const r = readFrontMatter(md('---', 'emm:', '  template: "wbs"', '---'));
-  check('② 따옴표를 벗긴다', r.emm.template, 'wbs');
-}
-{
-  // markmap 의 실제 머리말 모양 — 우리 것이 아닌 키는 건드리지 않는다
+  // markmap 의 실제 머리말 모양 — 우리 키가 아니어도 걷어낸다
   const r = readFrontMatter(
     md('---', 'title: markmap', 'markmap:', '  colorFreezeLevel: 2', '---', '', '## Links'),
   );
-  check('② 남의 키만 있으면 emm 은 비어 있다', r.emm, {});
-  check('② 그래도 본문에서는 걷어낸다', r.body, '## Links');
-}
-{
-  const r = readFrontMatter(
-    md('---', 'title: 문서', 'emm:', '  template: kanban', 'markmap:', '  x: 1', '---'),
-  );
-  check('② 남의 키와 섞여 있어도 emm 만 읽는다', r.emm.template, 'kanban');
-}
-{
-  const r = readFrontMatter(md('---', 'emm:', '  colour: red', '---'));
-  check('② 모르는 키는 무시한다 (전방 호환)', r.emm, {});
+  check('① 남의 키만 있어도 걷어낸다', r.body, '## Links');
 }
 
-// ── ③ 레벨 선언 ──────────────────────────────────────────────────────
-{
-  const r = readFrontMatter(
-    md(
-      '---',
-      'emm:',
-      '  template: wbs',
-      '  levels:',
-      '    1:',
-      '      layout: tree-right',
-      '      shape: rounded',
-      '      font: 18',
-      '    2:',
-      '      layout: process-tree-right',
-      '---',
-      '',
-      '# 제목',
-    ),
-  );
-  check('③ template 과 levels 를 함께 읽는다', r.emm.template, 'wbs');
-  check('③ 1레벨', r.emm.levels?.[1], { layout: 'tree-right', shape: 'rounded', font: '18' });
-  check('③ 2레벨', r.emm.levels?.[2], { layout: 'process-tree-right' });
-  check('③ 선언하지 않은 레벨은 없다 (상속은 쓰는 쪽 몫)', r.emm.levels?.[3], undefined);
-}
-{
-  const r = readFrontMatter(
-    md('---', 'emm:', '  levels:', '    0:', '      layout: x', '    7:', '      layout: y', '---'),
-  );
-  check('③ 1~6 밖의 레벨 번호는 버린다', r.emm.levels, undefined);
-}
-{
-  const r = readFrontMatter(md('---', 'emm:', '  levels:', '    2:', '      shape: star', '---'));
-  check('③ 중간 레벨만 선언해도 된다', r.emm.levels, { 2: { shape: 'star' } });
-}
-
-// ── ④ 파서 통합 — 가짜 노드가 생기지 않는다 ──────────────────────────
+// ── ② 파서 통합 — 가짜 노드가 생기지 않는다 ──────────────────────────
 {
   const withFm = md(
     '---',
@@ -125,8 +67,9 @@ const md = (...lines: string[]) => lines.join('\n');
       return { text: n.text, children: (n.children ?? []).map(walk) };
     });
 
-  check('④ front matter 가 있든 없든 같은 맵이 된다', shape(parseEmm(withFm)), shape(parseEmm(without)));
-  check('④ 맨 앞에 가짜 노드가 없다', parseEmm(withFm)?.branches?.[0]?.text, 'Links');
+  check('② front matter 가 있든 없든 같은 맵이 된다', shape(parseEmm(withFm)), shape(parseEmm(without)));
+  check('② 중심 노드는 첫 헤딩이고, 그 앞에 가짜 노드가 없다', parseEmm(withFm)?.root?.text, '제목');
+  check('② 첫 가지도 그대로', parseEmm(withFm)?.branches?.[0]?.text, 'Links');
 }
 
 console.log(failed ? `\n${failed}건 실패` : '\n전부 통과');

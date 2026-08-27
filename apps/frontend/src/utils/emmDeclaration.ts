@@ -1,6 +1,6 @@
-// emmFrontMatter — 문서 맨 앞 `---` 블록의 EMM 선언을 맵 설정으로 옮긴다.
+// emmDeclaration — 문서의 `emm` 코드블록 선언을 맵 설정으로 옮긴다.
 //
-// 파서(`readFrontMatter`)는 값을 **해석하지 않는다** — 문자열로 넘길 뿐이다.
+// 파서(`readDeclaration`)는 값을 **해석하지 않는다** — 문자열로 넘길 뿐이다.
 // 뜻을 아는 것은 이쪽이므로, 알려진 이름인지 판정하고 맵 설정으로 옮기는
 // 일이 여기 있다. 그래서 나중에 속성을 하나 더해도 파서는 건드리지 않는다.
 //
@@ -10,7 +10,7 @@
 // 메타데이터가 있는 문서에서는 메타데이터가 이긴다 (importMapFile 참조).
 
 import type { LayoutType, MapSettings, ShapeType } from '@/editor/__samples__/types';
-import type { EmmFrontMatter } from '@emm/frontMatter';
+import type { EmmDeclaration } from '@emm/declaration';
 
 // ── 알려진 값 ────────────────────────────────────────────────────────
 //
@@ -49,7 +49,7 @@ const LEVEL_PATTERNS: Record<string, LayoutType[]> = {
   'progtree-tree': ['process-tree-right', 'tree-right'],
 };
 
-export interface ResolvedFrontMatter {
+export interface ResolvedDeclaration {
   /** 맵 전체 레이아웃 — 1레벨(중심) 몫 */
   editor?: { layoutType: LayoutType };
   /** 레벨별 정책 */
@@ -86,8 +86,8 @@ function cascade<T>(arr: (T | null | undefined)[], from: number, value: T): void
  *
  * `template` 을 먼저 적용하고 `levels` 로 덮는다 — 상세 선언이 이긴다.
  */
-export function resolveFrontMatter(emm: EmmFrontMatter): ResolvedFrontMatter {
-  const out: ResolvedFrontMatter = {};
+export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
+  const out: ResolvedDeclaration = {};
 
   // ── template ──────────────────────────────────────────────────────
   const tpl = emm.template?.trim();

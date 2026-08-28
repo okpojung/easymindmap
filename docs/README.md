@@ -160,69 +160,69 @@ docs/
 
 | 경로 | 설명 |
 |------|------|
-| `docs/README.md` | 문서 목차 및 구조 안내 (이 파일) |
-| `docs/00-project-overview/backlog.md` | 백로그(To Do) — 수식 KaTeX·리치 노드 등 결정-미구현 항목 |
-| `docs/00-project-overview/mvp-scope.md` | MVP 범위 정의 |
-| `docs/00-project-overview/roadmap.md` | 개발 로드맵 |
-| `docs/00-project-overview/vision.md` | 제품 비전 |
-| `docs/00-project-overview/glossary.md` | 용어 사전 |
-| `docs/00-project-overview/emm-strategy.md` | EMM 표준화·오픈소스·사업화 전략 |
-| `docs/01-product/functional-spec.md` | 전체 기능 명세서 |
-| `docs/01-product/privacy-policy.md` | 개인정보 처리방침 |
-| `docs/01-product/product-highlights.md` | 제품 하이라이트 |
-| `docs/01-product/ui-ux-spec.md` | UI/UX 설계 명세 |
-| `docs/02-domain/README.md` | 도메인 모델 개요 |
-| `docs/02-domain/db-schema.md` | DB 스키마 정의 |
-| `docs/02-domain/domain-models.md` | 도메인 모델 정의 |
-| `docs/02-domain/node-hierarchy-storage-strategy.md` | 노드 계층 저장 전략 |
-| `docs/03-editor-core/README.md` | 에디터 핵심 기능 개요 |
-| `docs/03-editor-core/edge-policy.md` | 에지/레이아웃/노드 상속 정책 |
-| `docs/03-editor-core/state-architecture.md` | 상태관리 아키텍처 |
-| `docs/04-extensions/README.md` | 확장 기능 개요 |
-| `docs/04-extensions/emm-spec.md` | EasyMindMap Markdown(EMM) 정식 스펙 |
-| `docs/04-extensions/emm-testing-guide.md` | EMM 테스트 가이드 (IT 초보자용 검증 절차) |
-| `docs/04-extensions/content-permanence.md` | 콘텐츠 영구 보존(오프라인 내장) — 차별점·홍보 문구 초안·서버 저장소 계획 |
-| `docs/04-extensions/rich-node-content.md` | 리치 노드 콘텐츠(노트 4종→노드 본문·불러오기 옵션·A4 제한) 설계 제안 |
-| `docs/04-extensions/auth-session-ui.md` | 로그인 게이트·세션 UI — Supabase Auth SDK 직접 + Guest 모드 |
-| `docs/04-extensions/attachment-storage.md` | 노드 첨부파일 저장(쿼터) 설계 |
-| `docs/04-extensions/document-library.md` | 문서함(MapBrowser·폴더·이름변경·삭제·다른 이름 저장) — 대시보드 역할 |
-| `docs/04-extensions/i18n.md` | UI 다국어(i18n) |
-| `docs/04-extensions/vault-mirror.md` | DB 정본 + 파일 미러(C안) — 셀프호스트 vault. 파일 경로·첨부 이름·위키링크·덮어쓰기 안전장치 |
-| `docs/04-extensions/open-core-boundary.md` | 오픈코어 경계 — 공개 코어와 유료 모듈을 가르는 기준 |
-| `docs/04-extensions/admin-console.md` | 관리자 콘솔 |
-| `docs/04-extensions/collaboration/27-sync-model.md` | 동기화 모델 결정 — CRDT(Yjs)·전송·정본 유지·오픈코어 경계 |
-| `docs/04-extensions/collaboration/28-sync-prework-plan.md` | 협업을 켜기 전에 코어에서 끝낼 것 — 실행 계획과 실제 코드 현황 |
-| `docs/04-extensions/ai/emm-prompt-templates.md` | AI용 EMM 생성 프롬프트 템플릿 |
-| `docs/04-extensions/ai/ai-project-workspace.md` | AI 프로젝트 워크스페이스 설계 — 맵=프로젝트·노드=질문·경로 맥락(제안, 미구현) |
-| `docs/04-extensions/ai/web-ai-clipboard.md` | 웹 AI 클립보드 워크플로우(API 키 없이 웹 AI 사용) |
-| `docs/04-extensions/ai/easymindmap-copilot-gpt.md` | EasyMindMap Copilot GPT |
-| `docs/04-extensions/markdown-export.md` | MD ↔ 맵 변환 규칙 명세 (EMM 구현 규칙서) |
-| `docs/04-extensions/import-export/22-map-file-meta.md` | 맵 파일 메타데이터 왕복 (easymindmap:v1) |
-| `docs/05-implementation/api-spec.md` | API 명세 |
-| `docs/05-implementation/backend-phase1.md` | 백엔드 Phase 1(걷는 뼈대·맵 저장) 구현·검증·로드맵 |
-| `docs/05-implementation/codex-task-plan.md` | 개발 작업 계획 |
-| `docs/05-implementation/coding-conventions.md` | 코딩 컨벤션 |
-| `docs/05-implementation/env-spec.md` | 환경변수 명세 |
-| `docs/05-implementation/rate-limit.md` | 레이트 리밋 한도와 그 근거 |
-| `docs/05-implementation/sprint-plan.md` | 스프린트 계획 |
-| `docs/05-implementation/sprint-mvp-tasks.md` | MVP 스프린트 작업 목록 |
-| `docs/05-implementation/state-management.md` | 상태관리 설계 (Zustand 스토어 구조) |
-| `docs/05-implementation/test-catalog.md` | MVS E2E 테스트 카탈로그 — 영역별 검증 항목·회귀 실행 가이드 |
-| `docs/90-architecture/backend-architecture.md` | 백엔드 아키텍처 |
-| `docs/90-architecture/ci-cd-github-actions.md` | GitHub Actions CI 가이드 (품질 게이트 — 배포는 Coolify) |
-| `docs/90-architecture/dev-server-coolify.md` | 개발 서버 구축 기준 — Ubuntu 22.04 + Coolify, 프로덕션 패리티 |
-| `docs/90-architecture/dev-server-runbook.md` | 개발 서버 운영 런북 |
-| `docs/90-architecture/docker-compose-spec.md` | Docker Compose 명세 (Coolify 가 실행 주체, 구성 기준 스펙) |
-| `docs/90-architecture/frontend-architecture.md` | 프론트엔드 아키텍처 |
-| `docs/90-architecture/gotrue-deploy-walkthrough.md` | GoTrue(Auth) 배포 절차 |
-| `docs/90-architecture/infra-architecture.md` | 인프라 아키텍처 |
-| `docs/90-architecture/system-architecture.md` | 시스템 아키텍처 |
-| `docs/91-architecture-검토자료/EasyMindMap 5-Store 상세 설명.md` | Zustand 5-Store 상세 설계 |
-| `docs/91-architecture-검토자료/React, Angular, Vue 비교 분석.md` | 프레임워크 비교 분석 |
-| `docs/91-architecture-검토자료/Zustand와 TanStack Query 상태 관리 비교.md` | 상태관리 라이브러리 비교 |
-| `docs/99-ai-validation/ai-validation-rules.md` | AI 문서 검증 규칙 |
-| `docs/assets/markdown문법.md` | 마크다운 문법 참고 |
-| `docs/assets/brand/brand-logo.md` | 브랜드 로고 규정 |
+| [`docs/README.md`](README.md) | 문서 목차 및 구조 안내 (이 파일) |
+| [`docs/00-project-overview/backlog.md`](00-project-overview/backlog.md) | 백로그(To Do) — 수식 KaTeX·리치 노드 등 결정-미구현 항목 |
+| [`docs/00-project-overview/mvp-scope.md`](00-project-overview/mvp-scope.md) | MVP 범위 정의 |
+| [`docs/00-project-overview/roadmap.md`](00-project-overview/roadmap.md) | 개발 로드맵 |
+| [`docs/00-project-overview/vision.md`](00-project-overview/vision.md) | 제품 비전 |
+| [`docs/00-project-overview/glossary.md`](00-project-overview/glossary.md) | 용어 사전 |
+| [`docs/00-project-overview/emm-strategy.md`](00-project-overview/emm-strategy.md) | EMM 표준화·오픈소스·사업화 전략 |
+| [`docs/01-product/functional-spec.md`](01-product/functional-spec.md) | 전체 기능 명세서 |
+| [`docs/01-product/privacy-policy.md`](01-product/privacy-policy.md) | 개인정보 처리방침 |
+| [`docs/01-product/product-highlights.md`](01-product/product-highlights.md) | 제품 하이라이트 |
+| [`docs/01-product/ui-ux-spec.md`](01-product/ui-ux-spec.md) | UI/UX 설계 명세 |
+| [`docs/02-domain/README.md`](02-domain/README.md) | 도메인 모델 개요 |
+| [`docs/02-domain/db-schema.md`](02-domain/db-schema.md) | DB 스키마 정의 |
+| [`docs/02-domain/domain-models.md`](02-domain/domain-models.md) | 도메인 모델 정의 |
+| [`docs/02-domain/node-hierarchy-storage-strategy.md`](02-domain/node-hierarchy-storage-strategy.md) | 노드 계층 저장 전략 |
+| [`docs/03-editor-core/README.md`](03-editor-core/README.md) | 에디터 핵심 기능 개요 |
+| [`docs/03-editor-core/edge-policy.md`](03-editor-core/edge-policy.md) | 에지/레이아웃/노드 상속 정책 |
+| [`docs/03-editor-core/state-architecture.md`](03-editor-core/state-architecture.md) | 상태관리 아키텍처 |
+| [`docs/04-extensions/README.md`](04-extensions/README.md) | 확장 기능 개요 |
+| [`docs/04-extensions/emm-spec.md`](04-extensions/emm-spec.md) | EasyMindMap Markdown(EMM) 정식 스펙 |
+| [`docs/04-extensions/emm-testing-guide.md`](04-extensions/emm-testing-guide.md) | EMM 테스트 가이드 (IT 초보자용 검증 절차) |
+| [`docs/04-extensions/content-permanence.md`](04-extensions/content-permanence.md) | 콘텐츠 영구 보존(오프라인 내장) — 차별점·홍보 문구 초안·서버 저장소 계획 |
+| [`docs/04-extensions/rich-node-content.md`](04-extensions/rich-node-content.md) | 리치 노드 콘텐츠(노트 4종→노드 본문·불러오기 옵션·A4 제한) 설계 제안 |
+| [`docs/04-extensions/auth-session-ui.md`](04-extensions/auth-session-ui.md) | 로그인 게이트·세션 UI — Supabase Auth SDK 직접 + Guest 모드 |
+| [`docs/04-extensions/attachment-storage.md`](04-extensions/attachment-storage.md) | 노드 첨부파일 저장(쿼터) 설계 |
+| [`docs/04-extensions/document-library.md`](04-extensions/document-library.md) | 문서함(MapBrowser·폴더·이름변경·삭제·다른 이름 저장) — 대시보드 역할 |
+| [`docs/04-extensions/i18n.md`](04-extensions/i18n.md) | UI 다국어(i18n) |
+| [`docs/04-extensions/vault-mirror.md`](04-extensions/vault-mirror.md) | DB 정본 + 파일 미러(C안) — 셀프호스트 vault. 파일 경로·첨부 이름·위키링크·덮어쓰기 안전장치 |
+| [`docs/04-extensions/open-core-boundary.md`](04-extensions/open-core-boundary.md) | 오픈코어 경계 — 공개 코어와 유료 모듈을 가르는 기준 |
+| [`docs/04-extensions/admin-console.md`](04-extensions/admin-console.md) | 관리자 콘솔 |
+| [`docs/04-extensions/collaboration/27-sync-model.md`](04-extensions/collaboration/27-sync-model.md) | 동기화 모델 결정 — CRDT(Yjs)·전송·정본 유지·오픈코어 경계 |
+| [`docs/04-extensions/collaboration/28-sync-prework-plan.md`](04-extensions/collaboration/28-sync-prework-plan.md) | 협업을 켜기 전에 코어에서 끝낼 것 — 실행 계획과 실제 코드 현황 |
+| [`docs/04-extensions/ai/emm-prompt-templates.md`](04-extensions/ai/emm-prompt-templates.md) | AI용 EMM 생성 프롬프트 템플릿 |
+| [`docs/04-extensions/ai/ai-project-workspace.md`](04-extensions/ai/ai-project-workspace.md) | AI 프로젝트 워크스페이스 설계 — 맵=프로젝트·노드=질문·경로 맥락(제안, 미구현) |
+| [`docs/04-extensions/ai/web-ai-clipboard.md`](04-extensions/ai/web-ai-clipboard.md) | 웹 AI 클립보드 워크플로우(API 키 없이 웹 AI 사용) |
+| [`docs/04-extensions/ai/easymindmap-copilot-gpt.md`](04-extensions/ai/easymindmap-copilot-gpt.md) | EasyMindMap Copilot GPT |
+| [`docs/04-extensions/markdown-export.md`](04-extensions/markdown-export.md) | MD ↔ 맵 변환 규칙 명세 (EMM 구현 규칙서) |
+| [`docs/04-extensions/import-export/22-map-file-meta.md`](04-extensions/import-export/22-map-file-meta.md) | 맵 파일 메타데이터 왕복 (easymindmap:v1) |
+| [`docs/05-implementation/api-spec.md`](05-implementation/api-spec.md) | API 명세 |
+| [`docs/05-implementation/backend-phase1.md`](05-implementation/backend-phase1.md) | 백엔드 Phase 1(걷는 뼈대·맵 저장) 구현·검증·로드맵 |
+| [`docs/05-implementation/codex-task-plan.md`](05-implementation/codex-task-plan.md) | 개발 작업 계획 |
+| [`docs/05-implementation/coding-conventions.md`](05-implementation/coding-conventions.md) | 코딩 컨벤션 |
+| [`docs/05-implementation/env-spec.md`](05-implementation/env-spec.md) | 환경변수 명세 |
+| [`docs/05-implementation/rate-limit.md`](05-implementation/rate-limit.md) | 레이트 리밋 한도와 그 근거 |
+| [`docs/05-implementation/sprint-plan.md`](05-implementation/sprint-plan.md) | 스프린트 계획 |
+| [`docs/05-implementation/sprint-mvp-tasks.md`](05-implementation/sprint-mvp-tasks.md) | MVP 스프린트 작업 목록 |
+| [`docs/05-implementation/state-management.md`](05-implementation/state-management.md) | 상태관리 설계 (Zustand 스토어 구조) |
+| [`docs/05-implementation/test-catalog.md`](05-implementation/test-catalog.md) | MVS E2E 테스트 카탈로그 — 영역별 검증 항목·회귀 실행 가이드 |
+| [`docs/90-architecture/backend-architecture.md`](90-architecture/backend-architecture.md) | 백엔드 아키텍처 |
+| [`docs/90-architecture/ci-cd-github-actions.md`](90-architecture/ci-cd-github-actions.md) | GitHub Actions CI 가이드 (품질 게이트 — 배포는 Coolify) |
+| [`docs/90-architecture/dev-server-coolify.md`](90-architecture/dev-server-coolify.md) | 개발 서버 구축 기준 — Ubuntu 22.04 + Coolify, 프로덕션 패리티 |
+| [`docs/90-architecture/dev-server-runbook.md`](90-architecture/dev-server-runbook.md) | 개발 서버 운영 런북 |
+| [`docs/90-architecture/docker-compose-spec.md`](90-architecture/docker-compose-spec.md) | Docker Compose 명세 (Coolify 가 실행 주체, 구성 기준 스펙) |
+| [`docs/90-architecture/frontend-architecture.md`](90-architecture/frontend-architecture.md) | 프론트엔드 아키텍처 |
+| [`docs/90-architecture/gotrue-deploy-walkthrough.md`](90-architecture/gotrue-deploy-walkthrough.md) | GoTrue(Auth) 배포 절차 |
+| [`docs/90-architecture/infra-architecture.md`](90-architecture/infra-architecture.md) | 인프라 아키텍처 |
+| [`docs/90-architecture/system-architecture.md`](90-architecture/system-architecture.md) | 시스템 아키텍처 |
+| [`docs/91-architecture-검토자료/EasyMindMap 5-Store 상세 설명.md`](<91-architecture-검토자료/EasyMindMap 5-Store 상세 설명.md>) | Zustand 5-Store 상세 설계 |
+| [`docs/91-architecture-검토자료/React, Angular, Vue 비교 분석.md`](<91-architecture-검토자료/React, Angular, Vue 비교 분석.md>) | 프레임워크 비교 분석 |
+| [`docs/91-architecture-검토자료/Zustand와 TanStack Query 상태 관리 비교.md`](<91-architecture-검토자료/Zustand와 TanStack Query 상태 관리 비교.md>) | 상태관리 라이브러리 비교 |
+| [`docs/99-ai-validation/ai-validation-rules.md`](99-ai-validation/ai-validation-rules.md) | AI 문서 검증 규칙 |
+| [`docs/assets/markdown문법.md`](assets/markdown문법.md) | 마크다운 문법 참고 |
+| [`docs/assets/brand/brand-logo.md`](assets/brand/brand-logo.md) | 브랜드 로고 규정 |
 
 > ※ 번호 붙은 문서(01~32) 외의 모든 .md 문서 기준. 개수는 수시로 변하므로 구체 숫자를 표기하지 않는다(실제 개수는 파일 시스템에서 집계).
 

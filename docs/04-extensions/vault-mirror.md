@@ -390,8 +390,8 @@ npmjs.org 에 직접 HTTP 로 물어 404, GitHub Packages 도 404, npm 검색에
 
 | 무엇 | 문서 |
 |---|---|
-| 사진을 문서 밖으로 (vault 의 전제) | `collaboration/28-sync-prework-plan.md` §3 |
-| 파일 하나로 온전히 | `content-permanence.md` §7.1 |
-| EMM 포맷 | `emm-spec.md` · `markdown-export.md` |
+| 사진을 문서 밖으로 (vault 의 전제) | [`collaboration/28-sync-prework-plan.md`](collaboration/28-sync-prework-plan.md) §3 |
+| 파일 하나로 온전히 | [`content-permanence.md`](content-permanence.md) §7.1 |
+| EMM 포맷 | [`emm-spec.md`](emm-spec.md) · [`markdown-export.md`](markdown-export.md) |
 | 셀프호스트 배포 | `../90-architecture/selfhost-docker.md` (예정) |
-| 용어 | `../00-project-overview/glossary.md` |
+| 용어 | [`../00-project-overview/glossary.md`](../00-project-overview/glossary.md) |

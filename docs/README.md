@@ -126,6 +126,7 @@ docs/
 │  ├─ frontend-architecture.md
 │  ├─ gotrue-deploy-walkthrough.md  👈 GoTrue(Auth) 배포 절차
 │  ├─ infra-architecture.md
+│  ├─ selfhost-docker.md        👈 셀프호스트 Docker 배포 설계(있는 것/없는 것·남은 일)
 │  └─ system-architecture.md
 │
 ├─ 91-architecture-검토자료/  👈 기술 비교 분석 자료
@@ -216,6 +217,7 @@ docs/
 | [`docs/90-architecture/frontend-architecture.md`](90-architecture/frontend-architecture.md) | 프론트엔드 아키텍처 |
 | [`docs/90-architecture/gotrue-deploy-walkthrough.md`](90-architecture/gotrue-deploy-walkthrough.md) | GoTrue(Auth) 배포 절차 |
 | [`docs/90-architecture/infra-architecture.md`](90-architecture/infra-architecture.md) | 인프라 아키텍처 |
+| [`docs/90-architecture/selfhost-docker.md`](90-architecture/selfhost-docker.md) | 셀프호스트 Docker 배포 설계 — 있는 것/없는 것·구성 두 가지·남은 일 |
 | [`docs/90-architecture/system-architecture.md`](90-architecture/system-architecture.md) | 시스템 아키텍처 |
 | [`docs/91-architecture-검토자료/EasyMindMap 5-Store 상세 설명.md`](<91-architecture-검토자료/EasyMindMap 5-Store 상세 설명.md>) | Zustand 5-Store 상세 설계 |
 | [`docs/91-architecture-검토자료/React, Angular, Vue 비교 분석.md`](<91-architecture-검토자료/React, Angular, Vue 비교 분석.md>) | 프레임워크 비교 분석 |

@@ -1014,11 +1014,16 @@ sudo cp /data/coolify/source/.env ~/coolify-env-backup-$(date +%Y%m%d)
   GitHub App 자격증명) 복호화 불가.** 서버 재설치 시 이 파일만 있으면
   복구된다.
 
-### 2.1 ★ DB 백업 — **2026-08-15 확인 결과: 하나도 없다**
+### 2.1 ★ DB 백업 — 스크립트는 있다, **거는 것은 남았다**
 
-Coolify → `easymindmap-db` → **Backups** 탭이
-`No scheduled backups configured.` 다. **지금 이 서버가 죽으면 맵·계정·
-첨부를 전부 잃는다.** 외부 공개(B14 ④)의 전제이기 전에 지금 당장의 구멍이다.
+Coolify → `easymindmap-db` → **Backups** 탭은 여전히
+`No scheduled backups configured.` 다. **이 서버가 죽으면 맵·계정·첨부를
+전부 잃는다.** 외부 공개(B14 ④)의 전제이기 전에 지금 당장의 구멍이다.
+
+2026-08-28 부터 스크립트와 절차가 저장소에 있다 —
+[`scripts/emm-db-backup.sh`](../../scripts/emm-db-backup.sh), 가짜 docker 로
+24항목을 통과한다([`emm-db-backup.test.sh`](../../scripts/emm-db-backup.test.sh)).
+**남은 것은 서버에 거는 일 하나뿐이고, 그것은 저장소에서 할 수 없다.**
 
 #### 왜 Coolify 의 Scheduled Backup 만으로는 부족한가 ⚠️
 
@@ -1035,92 +1040,86 @@ Coolify UI 를 쓴다면 **"모든 데이터베이스 포함"을 반드시 켠�
 
 #### 지금 당장 — 1회 백업 (2분)
 
-```bash
-bash <<'SCRIPT'
-set -e
-# DB 찾기는 §1.5-0-A 와 같은 방식 — 이미지 이름으로 찾지 않는다
-# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
-API=""; for C in $(docker ps --format '{{.Names}}'); do
-  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
-  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
-  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
-  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
-  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
-      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
-    && { API="$C"; break; }
-done
-URL=$(docker exec -i "$API" printenv DATABASE_URL)
-DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
-PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
-echo "✅ DB=$DB  계정=$PGUSER"
+아래 **설치**의 ①②만 하면 된다. cron 을 걸지 않아도 그 자리에서 한 벌이
+남는다.
 
-echo "── 이 인스턴스에 담긴 데이터베이스 ──"
-docker exec -i "$DB" psql -U "$PGUSER" -d postgres -tAc \
-  "SELECT datname FROM pg_database WHERE datistemplate = false"
-
-mkdir -p ~/db-backups
-OUT=~/db-backups/all-$(date +%Y%m%d-%H%M).sql.gz
-docker exec -i "$DB" pg_dumpall -U "$PGUSER" | gzip > "$OUT"
-ls -lh "$OUT"
-echo "✅ 위 목록의 데이터베이스가 **전부** 이 파일에 들어 있다"
-SCRIPT
-```
-
-위 목록에 **`gotrue` 가 보이는지 반드시 확인한다.** 안 보이면 GoTrue 가
-**다른 PostgreSQL 인스턴스**를 쓰는 것이므로 그쪽도 따로 담아야 한다
-(`auth` 앱의 `GOTRUE_DB_DATABASE_URL` 로 같은 절차를 반복).
-
-> ⚠️ **`~/db-backups` 는 같은 서버다.** 서버가 통째로 죽으면 백업도 함께
-> 죽는다. **반드시 서버 밖으로 한 벌 더** 옮긴다(개발 PC·NAS·S3).
-> `scp ubuntu@<서버>:~/db-backups/all-*.sql.gz .`
+손으로 붙여 넣는 긴 판이 여기 있었는데, 그것이 12일 동안 아무도 걸지
+않은 이유였을 가능성이 크다 — 헬스체크 감시(§2.2)는 `curl` 한 줄로
+설치되는데 백업만 문서에서 복사해야 했다.
 
 #### 자동 백업 — 호스트 cron (권장)
 
+스크립트: [`scripts/emm-db-backup.sh`](../../scripts/emm-db-backup.sh)
+
 Coolify UI 대신 이 방법을 권하는 이유: **모든 데이터베이스를 담는 것이
-기본**이고, 보관 정책과 서버 밖 복사를 한 파일에서 볼 수 있다.
+기본**이고, 담은 뒤 **확인까지 한다.** 크기가 0 이 아닌지가 아니라 —
 
-`/usr/local/bin/emm-db-backup.sh` 로 저장하고 `chmod +x`:
+- gzip 이 온전한지
+- `gotrue` 가 **파일 안에 실제로 있는지** (목록에 있었다는 것과 담겼다는
+  것은 다르다)
+- 푼 크기가 껍데기 수준이 아닌지
 
-```bash
-#!/bin/bash
-set -euo pipefail
-KEEP_DAYS=14
-DEST=/var/backups/emm
-mkdir -p "$DEST"
+무엇 하나라도 어긋나면 **파일을 남기지 않고 실패로 끝내고, 관리자에게
+메일을 보낸다.** 확인하지 않는 백업은 백업이 아니라 백업했다는 기분이다.
 
-# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
-API=""; for C in $(docker ps --format '{{.Names}}'); do
-  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
-  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
-  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
-  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
-  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
-      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
-    && { API="$C"; break; }
-done
-URL=$(docker exec -i "$API" printenv DATABASE_URL)
-DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
-PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
-
-OUT="$DEST/all-$(date +%Y%m%d-%H%M).sql.gz"
-docker exec -i "$DB" pg_dumpall -U "$PGUSER" | gzip > "$OUT.tmp"
-mv "$OUT.tmp" "$OUT"   # 다 받은 뒤에만 정식 이름으로 — 반쪽 파일을 백업으로 착각하지 않게
-
-find "$DEST" -name 'all-*.sql.gz' -mtime +$KEEP_DAYS -delete
-
-# 크기가 0 이면 실패다 — 조용히 넘어가지 않는다
-[ -s "$OUT" ] || { echo "❌ 백업이 비었다: $OUT" >&2; exit 1; }
-echo "✅ $(date '+%F %T') $OUT ($(du -h "$OUT" | cut -f1))"
-```
+#### 설치
 
 ```bash
+sudo curl -fsSL https://raw.githubusercontent.com/okpojung/easymindmap/main/scripts/emm-db-backup.sh \
+  -o /usr/local/bin/emm-db-backup.sh
+sudo chmod +x /usr/local/bin/emm-db-backup.sh
+
+# ① 먼저 담지 말고 전제만 본다 — DB 를 찾는지, gotrue 가 있는지
+sudo /usr/local/bin/emm-db-backup.sh --check
+
+# ② 한 번 손으로 돌려 본다
+sudo /usr/local/bin/emm-db-backup.sh
+
 sudo crontab -e
 # 매일 새벽 3시 10분
 10 3 * * * /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1
 ```
 
-`DEST` 를 **NAS 마운트(§1.5-A)나 서버 밖 저장소**로 두면 서버가 죽어도
-백업이 남는다.
+메일 설정은 **새로 넣을 것이 없다** — §2.2 와 같이 api 컨테이너의
+`SMTP_*` 와 `ADMIN_EMAILS` 를 `docker inspect` 로 읽는다.
+
+#### 설정
+
+| 환경변수 | 기본값 | 무엇 |
+|---|---|---|
+| `DEST` | `/var/backups/emm` | 담는 곳 |
+| `KEEP_DAYS` | `14` | 이보다 오래된 백업은 지운다 |
+| `REQUIRE_DBS` | `gotrue` | **이 이름이 파일 안에 없으면 실패.** 쉼표로 여럿 |
+| `OFFSITE_CMD` | (없음) | 서버 밖으로 옮기는 명령. 파일 경로가 `$1` |
+| `MIN_BYTES` | `10240` | 푼 크기의 바닥값 |
+
+#### ★ 서버 밖으로 — 안 하면 백업이 아니다
+
+`DEST` 는 **같은 서버다.** 서버가 통째로 죽으면 백업도 함께 죽는다.
+`OFFSITE_CMD` 를 주지 않으면 스크립트가 매번 경고를 남긴다.
+
+```bash
+# 예 — rclone 으로 원격 저장소에
+10 3 * * * OFFSITE_CMD='rclone copy "$1" remote:emm-backups/' /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1
+```
+
+`DEST` 자체를 NAS 마운트(§1.5-A)로 두는 것도 같은 효과다.
+
+#### 알려진 구멍 — cron 이 조용히 멈추는 경우
+
+스크립트는 **실패하면** 메일을 보내지만, **아예 돌지 않으면** 아무 일도
+일어나지 않는다. 멈춘 cron 은 자기가 멈췄다고 말해 줄 수 없다.
+
+성공할 때마다 `/var/lib/emm-backup/last-success` 에 시각을 남겨 두므로
+확인은 언제든 가능하다:
+
+```bash
+date -d "@$(cat /var/lib/emm-backup/last-success)"
+```
+
+이 파일을 주기적으로 보고 오래됐으면 알리는 감시는 **아직 없다**(백로그
+B18). 근본적으로는 외부 감시가 필요한 종류의 문제이고, 외부 감시는
+쓰지 않기로 했다(2026-08-15 사용자 결정, §2.2).
 
 #### 복원 절차
 

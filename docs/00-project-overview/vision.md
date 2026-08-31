@@ -18,7 +18,7 @@
 받는 사람이 메일·링크만 보고도 어느 서비스인지 알 수 있게 한다.
 
 **적용 시점 = 운영 구축 때다.** 지금 도는 개발 서버는
-`dev.mindmap.ai.kr` 을 그대로 쓴다 (아래 "환경별 도메인").
+`pro-dev.mindmap.ai.kr` 을 그대로 쓴다 (아래 "환경별 도메인").
 
 이 표가 **도메인의 단일 기준**이다. 다른 문서에 적힌 URL 예시가 이 표와
 어긋나면 이 표가 맞다.
@@ -50,15 +50,22 @@ www.mindmap.ai.kr  →  www.easymindmap.org
 위 표의 `easymindmap.org` 를 적용한다. 사용자 확정 사항이다.
 
 **관리자 콘솔도 같은 원칙이다** (2026-08-14 확정). 개발은
-`dev.mindmap.ai.kr/admin` **경로 그대로**, 운영만 `admin.easymindmap.org`
+`pro-dev.mindmap.ai.kr/admin` **경로 그대로**, 운영만 `admin.easymindmap.org`
 **도메인**으로 나눈다. 운영만 나누는 이유는 그래야 프록시에서 **IP 제한**을
 걸 수 있어서다 — 구축 순서는
 [`admin-console.md`](../04-extensions/admin-console.md) §7.
 
 | 환경 | 앱(로그인·에디터) | API | 인증 |
 |---|---|---|---|
-| **개발** (지금) | `dev.mindmap.ai.kr` | `api-dev.mindmap.ai.kr` | `auth-dev.mindmap.ai.kr` |
+| **개발** (지금) | `pro-dev.mindmap.ai.kr` | `api-dev.mindmap.ai.kr` | `auth-dev.mindmap.ai.kr` |
 | **운영** (구축 시) | **`web.easymindmap.org`** | 위 표 참조 | 위 표 참조 |
+
+> ★ **개발 앱 주소가 `dev.` → `pro-dev.` 로 바뀌었다** (2026-08-19).
+> 유료 확장을 포함한 빌드를 dev 에서 함께 보기로 하면서, 그 빌드가
+> 개발 앱의 자리를 가져갔다. **옛 `dev.mindmap.ai.kr` 은 아무 데도
+> 닿지 않는다**(404) — 지워진 것이 아니라 **비워 둔 것**이고, 되돌리는
+> 절차는 배포 담당이 따로 들고 있다.
+> API·인증 주소(`api-dev`·`auth-dev`)는 **그대로다.**
 
 개발 주소를 함께 옮기지 않는 이유: 배포·인증·CORS 를 한꺼번에 갈아야
 해서, 운영 전환에서 무엇이 깨졌는지 가려낼 수 없게 된다. **바뀐 것이

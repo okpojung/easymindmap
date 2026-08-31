@@ -12,7 +12,7 @@ const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/
 
 /** 지금 보고 있는 것이 **누구의 데이터**인가 (2026-08-14).
  *
- *  개발과 운영에 콘솔이 하나씩 생기면서(dev.mindmap.ai.kr/admin ·
+ *  개발과 운영에 콘솔이 하나씩 생기면서(pro-dev.mindmap.ai.kr/admin ·
  *  admin.easymindmap.org) **화면이 똑같아졌다.** 개발인 줄 알고 운영 회원의
  *  요금제를 바꾸는 실수를 막으려면 한눈에 갈려 보여야 한다.
  *

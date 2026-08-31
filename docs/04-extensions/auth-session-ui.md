@@ -480,7 +480,7 @@ SMTP_FROM=EasyMindMap <noreply@easymindmap.org>  # 받는 사람에게 보이는
 
 #### ⑥ 확인
 
-`https://dev.mindmap.ai.kr` → 로그인 화면 → **[회원가입]** → 이메일 입력
+`https://pro-dev.mindmap.ai.kr` → 로그인 화면 → **[회원가입]** → 이메일 입력
 → **[이메일 인증]** 을 눌러 메일이 오는지 본다.
 
 **메일이 안 오면** 순서대로:
@@ -741,7 +741,7 @@ docker exec -i "$API" node -e "fetch('https://auth-dev.mindmap.ai.kr/health').th
 
 ### 12.6 확인 방법
 
-`https://dev.mindmap.ai.kr` → 로그인 → **우상단 아바타 → 회원탈퇴**
+`https://pro-dev.mindmap.ai.kr` → 로그인 → **우상단 아바타 → 회원탈퇴**
 → 숫자 확인 → `회원탈퇴` 입력 → **[탈퇴하고 모든 자료 삭제]**.
 로그인 화면으로 돌아가고 "회원탈퇴가 완료되었습니다 — 맵 n개 · 첨부 n개를
 삭제했습니다" 가 뜬다. 같은 계정으로 다시 로그인하면 실패해야 정상이다.

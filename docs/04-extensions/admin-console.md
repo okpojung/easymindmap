@@ -14,7 +14,7 @@
 
 | | 개발 | 운영 |
 |---|---|---|
-| 주소 | `dev.mindmap.ai.kr/admin` | **`admin.easymindmap.org`** |
+| 주소 | `pro-dev.mindmap.ai.kr/admin` | **`admin.easymindmap.org`** |
 | 가르는 기준 | **경로** | **도메인 전체** |
 | 프록시 IP 제한 | 어렵다(에디터와 같은 호스트) | **가능** — 사무실 IP 만 허용 |
 
@@ -451,7 +451,7 @@ GOTRUE_DATABASE_URL=postgres://postgres:<pw>@<host>:5432/gotrue
 
 ## 6. 확인 방법
 
-1. `https://dev.mindmap.ai.kr/admin` 을 연다
+1. `https://pro-dev.mindmap.ai.kr/admin` 을 연다
 2. `ok@baro.pro` + 비밀번호 → **[다음 — 인증번호 받기]**
 3. 메일함의 6자리를 입력 → **[관리자 콘솔 열기]**
 4. 회원관리에서 요금제를 바꾸고, 그 사람 화면(아바타 메뉴)에서 확인
@@ -466,7 +466,7 @@ GOTRUE_DATABASE_URL=postgres://postgres:<pw>@<host>:5432/gotrue
 > **아직 하지 않았다.** 운영 VM 과 `easymindmap-prod` 프로젝트가 없어서다
 > (`dev-server-coolify.md` §7). 코드는 준비돼 있으니, 운영 서버가 생기면
 > 아래 순서대로 하면 된다. **개발 콘솔은 손대지 않는다** —
-> `dev.mindmap.ai.kr/admin` 은 지금 그대로 계속 쓴다.
+> `pro-dev.mindmap.ai.kr/admin` 은 지금 그대로 계속 쓴다.
 
 ### 7.1 순서
 
@@ -515,7 +515,7 @@ GOTRUE_DATABASE_URL=postgres://postgres:<운영 pw>@<운영 host>:5432/gotrue
 1. `https://admin.easymindmap.org` 를 연다 → 제목 옆 배지가 **빨간 `운영`**
 2. 배지에 마우스를 올리면 `API: api.easymindmap.org`
 3. `ok@baro.pro` 로 2단계 로그인 → 회원관리에 **운영 회원**이 보인다
-4. `https://dev.mindmap.ai.kr/admin` 을 열면 배지가 **파란 `개발`** 이고
+4. `https://pro-dev.mindmap.ai.kr/admin` 을 열면 배지가 **파란 `개발`** 이고
    **회원 목록이 서로 다르다**
 
 배지 색이 예상과 다르면 **`VITE_API_URL` 을 잘못 넣은 것**이다 — 판정은

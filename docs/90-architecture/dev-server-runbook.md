@@ -1091,19 +1091,59 @@ sudo crontab -e
 | `KEEP_DAYS` | `14` | 이보다 오래된 백업은 지운다 |
 | `REQUIRE_DBS` | `gotrue` | **이 이름이 파일 안에 없으면 실패.** 쉼표로 여럿 |
 | `OFFSITE_CMD` | (없음) | 서버 밖으로 옮기는 명령. 파일 경로가 `$1` |
+| `REQUIRE_MOUNT` | (없음) | **이 경로가 진짜 마운트일 때만** 시작한다 |
 | `MIN_BYTES` | `10240` | 푼 크기의 바닥값 |
 
-#### ★ 서버 밖으로 — 안 하면 백업이 아니다
+#### ★ 서버 밖으로 — NAS 로 (2026-08-28 결정)
 
 `DEST` 는 **같은 서버다.** 서버가 통째로 죽으면 백업도 함께 죽는다.
 `OFFSITE_CMD` 를 주지 않으면 스크립트가 매번 경고를 남긴다.
 
+첨부를 이미 NAS 에 두고 있으므로(§1.5-A) 백업도 같은 NAS 로 보낸다.
+**다만 첨부와 같은 공유에 넣지 않는다.**
+
+> ⚠️ **첨부 마운트 안에 두면 안 된다.** `/mnt/nas/emm-files` 는 API
+> 컨테이너에 `/data/emm-attachments` 로 **통째로 매핑**되어 있다(§1.5-B).
+> 그 아래에 덤프를 두면 **모든 사용자 데이터와 로그인 계정이 앱이 읽고
+> 쓰는 디렉터리 안에** 놓인다. 경로 순회 버그 하나, 정적 서빙 설정 실수
+> 하나면 DB 전체가 나간다. **별도 공유로 만들고 컨테이너에는 매핑하지
+> 않는다.**
+
+NAS 에 `db_backup` 공유를 하나 더 만들고(첨부 공유와 별개), 호스트에
+마운트한다:
+
 ```bash
-# 예 — rclone 으로 원격 저장소에
-10 3 * * * OFFSITE_CMD='rclone copy "$1" remote:emm-backups/' /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1
+sudo mkdir -p /mnt/nas/db-backup
+# /etc/fstab — 첨부 마운트와 같은 옵션
+192.168.0.20:/volume1/db_backup  /mnt/nas/db-backup  nfs  vers=4.1,_netdev,noatime,hard,timeo=150,retrans=3  0  0
+sudo mount -a && mountpoint /mnt/nas/db-backup
 ```
 
-`DEST` 자체를 NAS 마운트(§1.5-A)로 두는 것도 같은 효과다.
+cron 은 **로컬에 담고 NAS 로 옮긴다.** NAS 가 잠깐 죽어도 그날 백업이
+통째로 없어지지는 않고, 대신 옮기기에 실패했다는 메일이 온다.
+
+```bash
+10 3 * * * REQUIRE_MOUNT=/mnt/nas/db-backup OFFSITE_CMD='cp "$1" /mnt/nas/db-backup/' /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1
+```
+
+#### `REQUIRE_MOUNT` 를 반드시 준다 ⚠️
+
+**NFS 마운트가 끊기면 `/mnt/nas/db-backup` 은 그냥 빈 로컬 디렉터리가
+된다.** 그대로 두면 스크립트는 거기에 쓰고 성공을 보고하고, 몇 달 동안
+NAS 에 백업이 쌓이고 있다고 믿게 된다 — 정작 필요할 때 **서버와 함께
+죽은 사본만** 남는다.
+
+`REQUIRE_MOUNT` 를 주면 시작 전에 진짜 마운트인지 확인하고, 아니면
+담지 않고 메일을 보낸다. `--check` 로도 확인된다:
+
+```bash
+sudo REQUIRE_MOUNT=/mnt/nas/db-backup /usr/local/bin/emm-db-backup.sh --check
+```
+
+> **NAS 도 한 대의 기계다.** 이것으로 막는 것은 *서버가 죽는 경우*이지
+> *NAS 가 죽는 경우*가 아니다. 첨부와 백업이 같은 NAS 에 있으므로, 그
+> NAS 가 죽으면 둘 다 잃는다. 진짜 3-2-1 이 필요해지면 `OFFSITE_CMD` 를
+> 원격(rclone 등)으로 한 벌 더 늘린다.
 
 #### 알려진 구멍 — cron 이 조용히 멈추는 경우
 

@@ -142,13 +142,27 @@ check '⑦ 설정하면 복사한다'                   '서버 밖으로 복사
 OUT=$(OFFSITE_CMD="false" run)
 check '⑦ 복사가 실패하면 백업도 실패로 본다'  '서버 밖 복사에 실패'        "$OUT"
 
-# ── ⑧ 보관 정책 ───────────────────────────────────────────────────
+# ── ⑧ 마운트 확인 — NAS 가 끊긴 채로 쓰지 않는다 ─────────────────
+rm -rf "$WORK/dest" "$WORK/state"; mkdir -p "$WORK/notmounted"
+OUT=$(REQUIRE_MOUNT="$WORK/notmounted" run)
+check '⑧ 마운트가 아니면 시작하지 않는다'     '마운트되어 있지 않습니다'   "$OUT"
+check '⑧ 왜 문제인지 말해준다'                '서버 안에만 남습니다'       "$OUT"
+ls "$WORK/dest"/all-*.sql.gz >/dev/null 2>&1 \
+  && bad '⑧ 그 경우 담지 않는다' || ok '⑧ 그 경우 담지 않는다'
+check '⑧ 마운트가 없으면 메일을 보낸다'       'curl-called'                "$(cat "$MAIL_LOG")"
+OUT=$(REQUIRE_MOUNT="$WORK/없는경로" run)
+check '⑧ 경로 자체가 없어도 잡는다'           '마운트되어 있지 않습니다'   "$OUT"
+# --check 로도 잡혀야 한다 — cron 을 걸기 전에 알아야 하는 것이다
+OUT=$(REQUIRE_MOUNT="$WORK/notmounted" run --check)
+check '⑧ --check 도 마운트를 본다'            '마운트되어 있지 않습니다'   "$OUT"
+
+# ── ⑨ 보관 정책 ───────────────────────────────────────────────────
 rm -rf "$WORK/dest" "$WORK/state"; mkdir -p "$WORK/dest"
 touch -d '30 days ago' "$WORK/dest/all-20260101-0000.sql.gz" 2>/dev/null \
   || touch -t 202601010000 "$WORK/dest/all-20260101-0000.sql.gz"
 OUT=$(run)
 ls "$WORK/dest/all-20260101-0000.sql.gz" >/dev/null 2>&1 \
-  && bad '⑧ 오래된 백업을 지운다' || ok '⑧ 오래된 백업을 지운다'
+  && bad '⑨ 오래된 백업을 지운다' || ok '⑨ 오래된 백업을 지운다'
 
 echo
 echo "합계: ${pass}건 통과, ${fail}건 실패"

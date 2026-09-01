@@ -26,8 +26,15 @@ MIN_BYTES="${MIN_BYTES:-10240}"
 # 이 파일 전체의 존재 이유다.
 REQUIRE_DBS="${REQUIRE_DBS:-gotrue}"
 # 서버 밖으로 한 벌 더 옮기는 명령. 파일 경로가 $1 로 들어간다.
-#   예) OFFSITE_CMD='rclone copy "$1" remote:emm-backups/'
+#   예) OFFSITE_CMD='cp "$1" /mnt/nas/db-backup/'
 OFFSITE_CMD="${OFFSITE_CMD:-}"
+# 여기가 **실제로 마운트되어 있어야** 시작한다. 비워 두면 확인하지 않는다.
+#
+# 네트워크 마운트가 끊기면 그 자리는 **빈 로컬 디렉터리**가 된다. 그대로
+# 두면 스크립트는 거기에 태연히 쓰고 성공을 보고하고, 몇 달 동안 NAS 에
+# 백업이 쌓이고 있다고 믿게 된다 — 정작 필요할 때 서버와 함께 죽은 로컬
+# 사본만 남는다. 이 스크립트가 막으려는 실패가 바로 그 종류다.
+REQUIRE_MOUNT="${REQUIRE_MOUNT:-}"
 
 CHECK_ONLY=no
 [ "${1:-}" = "--check" ] && CHECK_ONLY=yes
@@ -117,6 +124,27 @@ notify() {
   fi
   rm -f "$mail"
 }
+
+# ── 0) 마운트가 살아 있는지 ───────────────────────────────────────
+#
+# `mountpoint` 가 없는 환경도 있으므로, 그 디렉터리와 부모의 장치 번호를
+# 비교하는 방법으로 물러선다 — 다른 장치면 마운트된 것이다.
+is_mounted() {
+  [ -d "$1" ] || return 1
+  if command -v mountpoint >/dev/null 2>&1; then
+    mountpoint -q "$1" && return 0 || return 1
+  fi
+  local d p
+  d=$(stat -c %d "$1" 2>/dev/null) || return 1
+  p=$(stat -c %d "$1/.." 2>/dev/null) || return 1
+  [ "$d" != "$p" ]
+}
+
+if [ -n "$REQUIRE_MOUNT" ]; then
+  is_mounted "$REQUIRE_MOUNT" \
+    || fail "'$REQUIRE_MOUNT' 이 마운트되어 있지 않습니다 — 여기 쓰면 백업이 서버 안에만 남습니다."
+  echo "마운트 확인: $REQUIRE_MOUNT"
+fi
 
 # ── 1) DB 를 찾는다 ───────────────────────────────────────────────
 #

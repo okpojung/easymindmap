@@ -100,24 +100,53 @@ export function TopToolbar({
   const shareMapId = useCloudStore((s) => s.cloudMapId);
   const [shareOpen, setShareOpen] = useState(false);
   const saveState = collabDriving ? 'collab' : rawSaveState;
+
+  // **좁은 폭 대응** (2026-09-02). 창을 좁히면(DevTools·창 분할) 배지와
+  // 버튼 글자가 세로로 한 글자씩 쌓였다. 재는 것은 **툴바 자신의 폭**
+  // 하나뿐이다 — 미디어쿼리와 섞으면 기준이 둘이 되어 어긋난다.
+  //   compact  배지 문구를 짧게
+  //   iconOnly 배지는 점만, 버튼은 아이콘만 (이름은 title 로 남는다)
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barW, setBarW] = useState(Infinity);
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([e]) => setBarW(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const compact = barW < 1150;
+  const iconOnly = barW < 960;
+
   const saveStateInfo = ({
-    saved: { text: `저장됨${agoText}`, color: t.textMuted, dot: t.success },
-    saving: { text: '저장 중…', color: t.accent, dot: t.accent },
+    saved: { text: `저장됨${agoText}`, short: '저장됨', color: t.textMuted, dot: t.success },
+    saving: { text: '저장 중…', short: '저장 중', color: t.accent, dot: t.accent },
     dirty: {
       text: `미저장 편집 ${pendingEdits}개`,
+      short: `미저장 ${pendingEdits}`,
       color: t.warning, dot: t.warning,
     },
-    unsaved: { text: '저장 안 됨 — ☁ 저장을 눌러 주세요', color: t.warning, dot: t.warning },
-    retrying: { text: '저장 실패 — 재시도 중…', color: t.warning, dot: t.warning },
-    error: { text: '저장 실패 — ☁ 저장을 눌러 주세요', color: t.danger, dot: t.danger },
+    // **'저장 안 됨'은 오해를 샀다** (2026-09-02). unsaved 는 실패가
+    // 아니라 "이 문서가 아직 서버에 없다"는 **정상 초기 상태**다(아래
+    // 툴팁이 처음부터 그렇게 적고 있었다). 새 맵을 만들자마자 경고색
+    // 문구가 뜨니 사용자는 뭔가 실패한 줄 알았다 — 사실형 문구에
+    // 중립색으로 바꾼다. error·retrying 은 진짜 문제라 경고색 그대로다.
+    unsaved: {
+      text: '새 문서 — ☁ 저장을 눌러 서버에 보관하세요',
+      short: '새 문서',
+      color: t.textMuted, dot: t.textMuted,
+    },
+    retrying: { text: '저장 실패 — 재시도 중…', short: '재시도 중', color: t.warning, dot: t.warning },
+    error: { text: '저장 실패 — ☁ 저장을 눌러 주세요', short: '저장 실패', color: t.danger, dot: t.danger },
     // 협업이 몰고 있다 — 통째 저장 대신 **글자 단위로 서버에 합쳐진다**.
     // '저장됨' 이라고 쓰지 않는 이유: 배지는 저장 방식이 달라졌다는
     // 사실까지 말해야 한다(잠시 뒤 반영되는 것과 이미 반영된 것은 다르다).
-    collab: { text: '협업 중 — 자동 반영', color: t.textMuted, dot: t.success },
+    collab: { text: '협업 중 — 자동 반영', short: '협업 중', color: t.textMuted, dot: t.success },
   } as const)[saveState];
 
   return (
     <div
+      ref={barRef}
       style={{
         height: 52,
         background: t.surface,
@@ -130,7 +159,10 @@ export function TopToolbar({
         zIndex: 20,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 280 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        minWidth: iconOnly ? 0 : compact ? 180 : 280,
+      }}>
         {/* EasyMindMap 로고 — 배지형이라 배경 상자 없이 그대로 표시 */}
         <div
           style={{
@@ -171,7 +203,7 @@ export function TopToolbar({
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              maxWidth: 260,
+              maxWidth: iconOnly ? 120 : compact ? 180 : 260,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -236,7 +268,9 @@ export function TopToolbar({
               ? `아직 서버에 올라가지 않은 편집이 ${pendingEdits}개 있습니다.\n`
                 + '자동저장 주기(맵 설정 ▸ 저장)와 탭 전환·창 닫기 때 올라갑니다.\n'
                 + '그 사이 편집은 이 브라우저에 보관되지만, PC 가 강제 종료되면 서버에는 반영되지 않습니다.'
-              : undefined}
+              // 문구를 줄였을 때는 전문을 툴팁으로 남긴다 (위의 안내가
+              // 있는 상태들은 그 안내가 그대로 우선한다)
+              : compact ? saveStateInfo.text : undefined}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -244,9 +278,11 @@ export function TopToolbar({
           fontSize: 12,
           color: saveStateInfo.color,
           fontWeight: 500,
-          padding: '4px 10px',
+          padding: iconOnly ? '4px 7px' : '4px 10px',
           borderRadius: 6,
           background: t.surfaceAlt,
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
         }}
       >
         <span
@@ -258,7 +294,7 @@ export function TopToolbar({
             boxShadow: `0 0 0 3px ${saveStateInfo.dot}22`,
           }}
         />
-        {saveStateInfo.text}
+        {!iconOnly && (compact ? saveStateInfo.short : saveStateInfo.text)}
       </div>
 
       {/* [협업 UI 숨김 — MVP] 협업자 아바타 스택(지/민/J).
@@ -292,10 +328,12 @@ export function TopToolbar({
           cursor: 'pointer',
           fontSize: 13,
           fontWeight: 600,
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
           boxShadow: `0 1px 2px ${t.primary}60, 0 0 0 1px ${t.primary}80`,
         }}
       >
-        <I.Sparkles size={15} /> AI 생성
+        <I.Sparkles size={15} />{!iconOnly && ' AI 생성'}
       </button>
 
       {/* **눌리는데 아무 일도 없는 버튼은 고장으로 보인다** (2026-08-18).
@@ -321,9 +359,11 @@ export function TopToolbar({
           cursor: shareMapId ? 'pointer' : 'not-allowed',
           fontSize: 13,
           fontWeight: 500,
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
         }}
       >
-        <I.Share size={15} /> 공유
+        <I.Share size={15} />{!iconOnly && ' 공유'}
       </button>
       {shareOpen && (
         <ProShareDialog t={t} mapId={shareMapId} onClose={() => setShareOpen(false)} />
@@ -370,7 +410,7 @@ export function TopToolbar({
 
       {/* 현재 맵 — 저장(히스토리 버전 남김) · 맵 닫기(저장 후 닫기).
           여는 것은 좌측 '새 맵 > ☁ 서버 맵 불러오기'로 일원화됐다. */}
-      <MapActions t={t} flash={flash} />
+      <MapActions t={t} flash={flash} iconOnly={iconOnly} />
 
       {/* 내보내기 메뉴 — 하위 항목: HTML 파일 / MD 파일. 두 형식 모두
           맵 메타데이터를 내장해 '새 맵 > 불러오기'로 편집 가능하게
@@ -386,9 +426,11 @@ export function TopToolbar({
             background: exportOpen ? t.primarySoft : t.surface,
             color: exportOpen ? t.primary : t.text,
             cursor: 'pointer', fontSize: 12, fontWeight: 600,
+            whiteSpace: 'nowrap', flexShrink: 0,
           }}
         >
-          <I.Download size={15} /> 내보내기 <span style={{ fontSize: 8 }}>▼</span>
+          <I.Download size={15} />{!iconOnly && ' 내보내기 '}
+          <span style={{ fontSize: 8 }}>▼</span>
         </button>
         {exportOpen && (
           <div

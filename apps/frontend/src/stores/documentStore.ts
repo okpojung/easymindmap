@@ -546,7 +546,11 @@ function makeBranch(node: MindNode, indexForColor: number): SampleBranch {
     ...node,
     colorKey: (node.colorKey as NodeColorKey) ?? BRANCH_COLOR_KEYS[indexForColor % BRANCH_COLOR_KEYS.length],
     side: node.side === 'left' || node.side === 'right' ? node.side : indexForColor % 2 === 0 ? 'right' : 'left',
-    icon: node.icon ?? '•',
+    // **아이콘은 채우지 않는다** (2026-09-02). 예전에는 `node.icon ?? '•'`
+    // 로 기본값을 넣었는데, 정규화 편의로 넣은 값이 화면에 "• 새 노드"
+    // 로 그대로 보였다 — 사용자는 아이콘을 지정한 적이 없다.
+    // MindNode.icon 은 선택 필드이고, 그리는 쪽(NodeRenderer `hasIcon`,
+    // exportHtml `node.icon ?`)이 모두 없는 경우를 이미 다룬다.
     children: node.children ?? [],
   };
 }

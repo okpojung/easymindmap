@@ -31,7 +31,12 @@ import { ProCollabSession } from '@pro';
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
 type SaveIntent = null | 'save' | 'close' | 'saveAs';
 
-export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) => void }) {
+export function MapActions(
+  // iconOnly — 툴바가 좁아지면 라벨을 숨기고 아이콘만 남긴다.
+  // **버튼 자체는 없애지 않는다**. 이름은 title 로 그대로 남는다.
+  { t, flash, iconOnly = false }:
+  { t: ThemeTokens; flash: (m: string) => void; iconOnly?: boolean },
+) {
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
   // 협업맵인가 — 세션 자리에 그대로 넘긴다(판정은 서버가 내린 kind 다)
   const cloudKind = useCloudStore((s) => s.cloudKind);
@@ -95,6 +100,7 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
     height: 32, padding: '0 10px', borderRadius: 8,
     cursor: busy === 'idle' ? 'pointer' : 'default',
     fontSize: 12.5, fontWeight: 600,
+    whiteSpace: 'nowrap', flexShrink: 0,
   } as const;
 
   return (
@@ -142,7 +148,7 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
           border: `1px solid ${cloudMapId ? t.primaryBorder + '66' : t.border}`,
         }}
       >
-        <I.Cloud size={15} /> 저장
+        <I.Cloud size={15} />{!iconOnly && ' 저장'}
       </button>
       )}
 
@@ -178,7 +184,7 @@ export function MapActions({ t, flash }: { t: ThemeTokens; flash: (m: string) =>
           border: `1px solid ${t.border}`,
         }}
       >
-        <I.X size={15} /> 맵 닫기
+        <I.X size={15} />{!iconOnly && ' 맵 닫기'}
       </button>
 
       {/* 미저장 맵 닫기 경고 (규칙 4) */}

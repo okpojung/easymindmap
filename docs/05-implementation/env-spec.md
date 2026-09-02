@@ -219,7 +219,7 @@ AI_TIMEOUT_MS=60000
 AI_MAX_RETRIES=2
 
 ########################################
-# TRANSLATION (V2) — multilingual-translation.md v3.0
+# TRANSLATION (V2) — 23-node-translation.md
 ########################################
 
 # 번역 엔진

@@ -300,7 +300,7 @@ function getNodesInMarquee(
 * CANVAS (`10-canvas.md` — Center Node, Focus Node View 연동)
 * NODE_EDITING (`02-node-editing.md` — 선택 후 편집 동작)
 * NODE_STYLE (다중 선택 스타일 일괄 적용)
-* HISTORY (`12-history.md` — 선택 후 삭제/이동의 undo)
+* HISTORY (`12-history-undo-redo.md` — 선택 후 삭제/이동의 undo)
 * LAYOUT (`08-layout.md` — 선택 노드 기준 Subtree layout override)
 * KANBAN (`09-kanban.md` — Kanban 선택 특수 규칙)
 

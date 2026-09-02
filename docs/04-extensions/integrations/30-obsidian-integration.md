@@ -453,7 +453,7 @@ packages/
 | easymindmap → Obsidian | `MarkdownAdapter.serialize(nodes)` → `string` |
 
 기존 export의 Markdown 출력 포맷과 **완전히 동일한 포맷**을 사용한다.  
-`serialize()`는 `ai-mindmap-generation.md` 의 Markdown 출력 스펙을 그대로 따른다.
+`serialize()`는 `18-ai.md` 의 Markdown 출력 스펙을 그대로 따른다.
 
 ---
 

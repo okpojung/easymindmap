@@ -184,9 +184,9 @@ app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal']); // 기본
 열면 되고, PC·휴대폰에서 각각 열어 비교하면 된다.
 
 ```json
-{ "ip": "203.0.113.9", "ips": ["203.0.113.9", "192.168.94.74"],
-  "xForwardedFor": "203.0.113.9, 192.168.94.74",
-  "remoteAddress": "192.168.94.60", "trustProxy": ["loopback","linklocal","uniquelocal"],
+{ "ip": "203.0.113.9", "ips": ["203.0.113.9", "192.168.0.74"],
+  "xForwardedFor": "203.0.113.9, 192.168.0.74",
+  "remoteAddress": "192.168.0.60", "trustProxy": ["loopback","linklocal","uniquelocal"],
   "hint": "OK — 공인 IP 입니다. 히스토리에도 이 값이 남습니다." }
 ```
 

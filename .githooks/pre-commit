@@ -1,0 +1,32 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────────
+#  실제 IP 유출 방지 — 커밋 직전 검사
+#
+#  문서에는 sanitize 규약값만 적는다 (192.168.0.x / 203.0.113.x /
+#  example.com). 아래 대역이 스테이지에 걸리면 커밋을 막는다.
+#
+#  활성화(저장소마다 한 번):  git config core.hooksPath .githooks
+#  같은 검사가 CI(.github/workflows/ci.yml)에도 있어, 훅을 켜지 않은
+#  사람의 커밋도 PR 에서 잡힌다.
+# ─────────────────────────────────────────────────────────────
+PATTERN='192\.168\.94\.|58\.230\.60\.|218\.232\.94\.'
+
+# 검사기 자신은 제외한다 — 아래 안내 문구가 그 대역을 평문으로 들고
+# 있어서, 빼지 않으면 훅이 자기 자신을 영원히 막는다.
+SELF='^\(\.githooks/pre-commit\|\.github/workflows/ci\.yml\)$'
+
+# --diff-filter=ACM: 지운 파일은 검사하지 않는다(디스크에 없다)
+# -I: 바이너리는 건너뛴다
+FOUND=$(git diff --cached --name-only --diff-filter=ACM -z \
+        | xargs -0 -r grep -lIE "$PATTERN" 2>/dev/null \
+        | grep -v "$SELF")
+
+if [ -n "$FOUND" ]; then
+  echo "❌ 실제 IP 가 감지되었습니다. sanitize 후 커밋하십시오."
+  echo "$FOUND"
+  echo
+  echo "   192.168.94.x  → 192.168.0.x   (끝자리는 그대로 둔다)"
+  echo "   58.230.60.22  → 203.0.113.9   (접속자 예시)"
+  echo "   218.232.94.74 → 203.0.113.10  (FortiGate 공인)"
+  exit 1
+fi

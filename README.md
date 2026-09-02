@@ -37,6 +37,18 @@ git pull origin main
 
 자세한 안내(준비물·문제 해결): **[docs/user-guide/로컬-실행.md](docs/user-guide/로컬-실행.md)**
 
+### 처음 clone 했다면 — 커밋 훅 한 번 켠다
+
+```bash
+git config core.hooksPath .githooks
+```
+
+실제 IP·내부 주소가 문서에 섞여 들어가는 것을 커밋 직전에 막는다
+(`.githooks/pre-commit`). 켜지 않아도 같은 검사가 CI 에서 돌지만,
+**PR 이 빨간불이 된 뒤 고치는 것보다 커밋이 막히는 쪽이 싸다.**
+문서에는 sanitize 규약값만 적는다 — `192.168.0.x` · `203.0.113.x` ·
+`example.com`.
+
 ---
 
 ## ✨ 핵심 기능

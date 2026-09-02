@@ -5,7 +5,10 @@
 > 이 문서는 **운영 중 반복 참조**하는 절차·명령 모음이다 (2026-08-01,
 > 실구축 세션 결과 기반).
 >
-> ⚠️ IP·도메인은 문서용 예시(placeholder)다. 실제 값은 저장소 밖에서 관리.
+> ⚠️ **IP 는 문서용 예시**(사설 `192.168.0.x` · 공인 `203.0.113.x`)이고,
+> **도메인은 실제 값**이다(`*.mindmap.ai.kr`). 남아 있는 `*.example.com` 은
+> 아직 정하지 않은 주소이거나 일반 예시다 — 자세한 근거는
+> [`infra-architecture.md`](infra-architecture.md) 상단.
 
 ## 0. 스키마 드리프트 방지 — 배포 후 반드시 확인 ★
 
@@ -25,7 +28,7 @@
 **① 배포 후 헬스체크로 즉시 확인** — 스키마가 낡으면 그렇다고 말해 준다:
 
 ```bash
-curl -s https://api-dev.example.com/v1/health
+curl -s https://api-dev.mindmap.ai.kr/v1/health
 # 정상   {"status":"ok","db":"up","schema":"ok",...}
 # 낡음   {"status":"degraded","db":"up","schema":"outdated",
 #         "missingTables":["map_folders"],...}
@@ -39,7 +42,7 @@ curl -s https://api-dev.example.com/v1/health
 나온다. 그래서 `commit` 과 `runtime` 을 함께 돌려준다.
 
 ```bash
-curl -s https://api-dev.example.com/v1/health
+curl -s https://api-dev.mindmap.ai.kr/v1/health
 # {"status":"ok","db":"up","schema":"ok",
 #  "commit":"2e92713858e0",                       ← 빌드된 커밋 12자
 #  "runtime":{"node":"20.20.2","nestjs":"11.2.3","express":"5.2.1"},
@@ -114,7 +117,7 @@ docker exec -i <DB> psql -U postgres -d postgres < apps/api/database/schema.sql
 에서도 된다:
 
 ```powershell
-curl.exe -s https://api-dev.example.com/v1/health
+curl.exe -s https://api-dev.mindmap.ai.kr/v1/health
 # {"status":"ok","db":"up","schema":"ok",...}  ← 이게 나와야 끝
 ```
 

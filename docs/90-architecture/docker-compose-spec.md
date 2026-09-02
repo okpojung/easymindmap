@@ -12,7 +12,10 @@
 > 스펙**으로 유지하며, Supabase Self-hosted 등 다중 컨테이너 스택은
 > Coolify 의 Docker Compose 리소스로 이 정의를 그대로 사용한다.
 >
-> ⚠️ IP·도메인은 문서용 예시(placeholder)다. 실제 값은 저장소 밖에서 관리.
+> ⚠️ **IP 는 문서용 예시**(사설 `192.168.0.x` · 공인 `203.0.113.x`)이고,
+> **도메인은 실제 값**이다(`*.mindmap.ai.kr`). 남아 있는 `*.example.com` 은
+> 아직 정하지 않은 주소이거나 일반 예시다 — 자세한 근거는
+> [`infra-architecture.md`](infra-architecture.md) 상단.
 
 ---
 

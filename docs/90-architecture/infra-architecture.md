@@ -17,12 +17,31 @@
 > 값을 확인해야 하면 서버에서 직접 읽고, 여기에 붙여넣지 않는다. 환경변수의
 > 자세한 목록은 [`env-spec.md`](../05-implementation/env-spec.md) 참고.
 >
-> ⚠️ **공개 안전을 위해 예시 값으로 치환됨(sanitized)**: 이 문서의
-> 공인 IP·내부 IP·도메인·호스트명·이메일은 **실제 값이 아니라 문서용
-> 예시 플레이스홀더**입니다 (공인 IP=`203.0.113.10` [RFC 5737],
-> 내부망=`192.168.0.0/24`, 도메인=`example.com`, 프록시=`npm.example.com`).
-> 실제 운영 값은 저장소 밖(로컬)에서 별도 관리합니다. 아키텍처 구조·
-> 절차를 이해하는 데는 지장이 없습니다.
+> ⚠️ **IP 는 예시, 도메인은 실제입니다** (2026-09-02 정정).
+>
+> | 무엇 | 이 문서(및 `docs/` 전체)에 적힌 값 |
+> |---|---|
+> | 공인 IP | **예시** — `203.0.113.x` (RFC 5737 문서 전용 대역) |
+> | 내부 IP | **예시** — `192.168.0.0/24` |
+> | 도메인·호스트명 | **실제 값** — `*.mindmap.ai.kr`, `npm74.baro.me` |
+> | 이메일 | **예시** — `*@example.com` |
+> | 자격증명(비밀번호·키·토큰) | **적지 않습니다** — `<PASSWORD>` 계열 자리표시자 |
+>
+> **왜 도메인은 가리지 않나.** HTTPS 인증서를 발급받는 순간 도메인이
+> Certificate Transparency 로그에 영구 기록되어 누구나 조회할 수 있습니다.
+> 저장소에서 지워도 가려지지 않는 값을, 지운 것처럼 고지하면 **문서만
+> 못 믿게 됩니다.** 반대로 실제 주소를 적어 두면 런북의 명령을 **그대로
+> 복사해 실행**할 수 있습니다 — 예시 주소를 복사해 헛도는 일이 실제로
+> 있었습니다(2026-09-02).
+>
+> **IP 를 계속 가리는 이유는 다릅니다.** 사설 IP 는 외부에서 조회할 길이
+> 없어, 적으면 그때 비로소 내부망 구조가 드러납니다. 그래서 IP 만
+> `.githooks/pre-commit` 과 CI(`실제 IP 유출 검사`)가 계속 막습니다.
+>
+> **남아 있는 `*.example.com` 은 두 종류**입니다 — **아직 정하지 않은
+> 주소**(`supabase.example.com`)와 **일반 예시**(API 응답 샘플의
+> `api.example.com` · 사용자가 각자 넣는 `redmine.example.com` ·
+> `smtp.example.com` 등).
 >
 > **문서 위치**: `docs/90-architecture/infra-architecture.md`
 > **최종 업데이트**: 2026-08-07
@@ -86,7 +105,7 @@
      ▼                                                  ▼
 [ L4 스위치 ]                                   [ NPM 서버 ]
   Nortel Application Switch 3408                  내부: 192.168.0.74
-  VIP : 192.168.0.2                              외부: npm.example.com
+  VIP : 192.168.0.2                              외부: npm74.baro.me
   관리: 192.168.0.160 / 161                      역할: Reverse Proxy + SSL
   역할: 내부 부하분산 (DAU 300+ 활성화)                │
                                                   ├── example.com
@@ -95,7 +114,7 @@
                                                   │     → VM-02 :3000
                                                   ├── supabase.example.com
                                                   │     → VM-03 :54323 [IP제한]
-                                                  └── dev.example.com
+                                                  └── pro-dev.mindmap.ai.kr
                                                         → VM-DEV :5173 [IP제한]
 ```
 
@@ -191,7 +210,7 @@ ESXi 192.168.0.80 데이터스토어:
 | FortiGate | — | 203.0.113.10 (공인) | 80,443,3389,IPSec | 방화벽 / IPSec VPN |
 | L4 스위치 | Nortel AS3408 | 192.168.0.2 (VIP) | — | 부하분산 VIP |
 | L4 스위치 | Nortel AS3408 | 192.168.0.160 / .161 | — | 관리 포트 |
-| NPM | npm.example.com | 192.168.0.74 | 80,443,81 | Nginx Proxy Manager |
+| NPM | npm74.baro.me | 192.168.0.74 | 80,443,81 | Nginx Proxy Manager |
 | ESXi #1 | — | 192.168.0.80 | 443 | HP DL380 Gen9 |
 | ESXi #2 | — | 192.168.0.81 | 443 | HP DL380 Gen8 |
 | ESXi #3 | — | 192.168.0.82 | 443 | HP DL380 Gen8 |
@@ -230,10 +249,10 @@ DNS     : 8.8.8.8, 1.1.1.1
 | example.com | A 203.0.113.10 | 192.168.0.112:5173 | 없음 | Let's Encrypt |
 | api.example.com | A 203.0.113.10 | 192.168.0.112:3000 | 없음 | Let's Encrypt |
 | supabase.example.com | A 203.0.113.10 | 192.168.0.113:54323 | IPSec VPN IP 허용 | Let's Encrypt |
-| dev.example.com | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → frontend) | IPSec VPN IP 허용 | Let's Encrypt |
-| api-dev.example.com | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → api) | IPSec VPN IP 허용 | Let's Encrypt |
-| coolify-dev.example.com | A 203.0.113.10 | 192.168.0.110:8000 (Coolify UI + 웹훅) | IPSec VPN IP 허용 (+`/webhooks/` 예외) | Let's Encrypt |
-| auth-dev.example.com | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → GoTrue) | IPSec VPN IP 허용 | Let's Encrypt |
+| pro-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → frontend) | IPSec VPN IP 허용 | Let's Encrypt |
+| api-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → api) | IPSec VPN IP 허용 | Let's Encrypt |
+| coolify-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:8000 (Coolify UI + 웹훅) | IPSec VPN IP 허용 (+`/webhooks/` 예외) | Let's Encrypt |
+| auth-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → GoTrue) | IPSec VPN IP 허용 | Let's Encrypt |
 
 > **DNS 주의사항**:
 > - A 레코드만 필요하다. 프록시/CDN류 기능이 있는 DNS라면 끈다 —
@@ -466,10 +485,10 @@ Type  Name                        Content
 A     example.com                 203.0.113.10
 A     api.example.com             203.0.113.10
 A     supabase.example.com        203.0.113.10
-A     dev.example.com             203.0.113.10
-A     api-dev.example.com         203.0.113.10
-A     coolify-dev.example.com     203.0.113.10
-A     auth-dev.example.com        203.0.113.10
+A     pro-dev.mindmap.ai.kr             203.0.113.10
+A     api-dev.mindmap.ai.kr         203.0.113.10
+A     coolify-dev.mindmap.ai.kr     203.0.113.10
+A     auth-dev.mindmap.ai.kr        203.0.113.10
 ```
 
 > ⚠️ 프록시/CDN류 부가 기능은 끄고 **A 레코드만** — NPM이 직접 SSL 처리합니다
@@ -628,14 +647,14 @@ SSL:      Let's Encrypt + Force SSL ✅
 Access:   IPSec-VPN-Only  ← Access List 적용
 ```
 
-### 7.6 Proxy Host — dev.example.com
+### 7.6 Proxy Host — pro-dev.mindmap.ai.kr
 
 > **[2026-08-01 정정]** Forward는 **Coolify Traefik(:80)** — `:5173`은
 > 수동 Vite dev-server 시절 값으로, Coolify 전환 후 열리지 않아 이
 > 값으로 두면 **502**가 난다.
 
 ```
-Domain:   dev.example.com
+Domain:   pro-dev.mindmap.ai.kr
 Forward:  http://192.168.0.110:80        # Coolify Traefik
 WS:       ✅
 Cache Assets: ❌ 끄기
@@ -662,10 +681,10 @@ Access:   Publicly Accessible            ← ★ 외부 테스트를 열려면 (
 > `index.html`에는 붙지 않는다. NPM이 이를 캐시하면 재배포 후에도 옛
 > 화면이 계속 보인다.
 
-### 7.7 Proxy Host — api-dev.example.com
+### 7.7 Proxy Host — api-dev.mindmap.ai.kr
 
 ```
-Domain:   api-dev.example.com
+Domain:   api-dev.mindmap.ai.kr
 Forward:  http://192.168.0.110:80        ← 3000 아님
 WS:       ✅
 Cache Assets: ❌
@@ -706,12 +725,12 @@ Advanced:
 > 1MB다. 누락 시 이미지가 포함된 맵 저장에서 413이 발생하며, **API
 > 로그에는 아무것도 남지 않아** 원인 추적이 어렵다.
 
-### 7.8 Proxy Host — coolify-dev.example.com
+### 7.8 Proxy Host — coolify-dev.mindmap.ai.kr
 
 자동 배포(GitHub 웹훅) 및 Coolify UI 외부 접근을 위해 필요하다.
 
 ```
-Domain:   coolify-dev.example.com
+Domain:   coolify-dev.mindmap.ai.kr
 Forward:  http://192.168.0.110:8000      ← Coolify UI (Traefik 아님)
 WS:       ✅
 Cache Assets: ❌
@@ -754,7 +773,7 @@ Advanced:
    (도메인이 공인 IP로 해석되는데 인스턴스는 내부 주소라 검증이
    실패한다. 리버스 프록시 구성을 검증 로직이 고려하지 못하는 것으로,
    실제 동작에는 문제없다)
-2. Settings → General → URL = `https://coolify-dev.example.com`
+2. Settings → General → URL = `https://coolify-dev.mindmap.ai.kr`
 3. Settings → General → Instance Timezone = `Asia/Seoul`
 4. 저장 후 GitHub App 웹훅 URL이 새 도메인 기준으로 갱신됐는지 확인
 5. Registration Allowed는 **비활성 유지** (UI가 공개 도메인에 노출되므로)
@@ -762,10 +781,10 @@ Advanced:
 > 잠겼을 경우 복구:
 > `docker exec -it coolify php artisan tinker --execute="\App\Models\InstanceSettings::first()->update(['fqdn' => null]);"`
 
-### 7.9 Proxy Host — auth-dev.example.com (GoTrue 로그인)
+### 7.9 Proxy Host — auth-dev.mindmap.ai.kr (GoTrue 로그인)
 
 ```
-Domain:   auth-dev.example.com
+Domain:   auth-dev.mindmap.ai.kr
 Forward:  http://192.168.0.110:80        # Coolify Traefik 경유 (GoTrue :9999 로 분기)
 WS:       ✅
 Cache Assets: ❌
@@ -1198,7 +1217,7 @@ curl -fsSL https://cdn.coollabs.io/coolify/install.sh | sudo bash
 1. **Sources → GitHub App** 생성 → `okpojung/easymindmap` 연결
 2. 프로젝트 `easymindmap-dev` 에 리소스 3개:
    PostgreSQL 16(스키마 로드) · api(`apps/api`) · frontend(`apps/frontend`)
-3. 도메인: `dev.example.com`(frontend) / `api-dev.example.com`(api) —
+3. 도메인: `pro-dev.mindmap.ai.kr`(frontend) / `api-dev.mindmap.ai.kr`(api) —
    **NPM 앞단 구성에서는 SSL 종단이 NPM 한 곳**이다. Coolify Domains에는
    `http://` 스킴으로 등록하고(Traefik LE 발급은 사설 IP라 실패 —
    dev-server-coolify.md §5.4), NPM Proxy Host는 §7.6~7.8 참조
@@ -1350,8 +1369,8 @@ F1 → Remote-SSH: Connect to Host → em-dev
   ├─ 코드 작업: 로컬에서 수정 → PR → main 병합
   │      └─ GitHub 웹훅 → VM-DEV Coolify 가 자동 재빌드·재배포
   │
-  ├─ 확인: 브라우저 https://dev.example.com (프론트)
-  │        https://api-dev.example.com/v1/health (API)
+  ├─ 확인: 브라우저 https://pro-dev.mindmap.ai.kr (프론트)
+  │        https://api-dev.mindmap.ai.kr/v1/health (API)
   │
   └─ 서버 관리(필요 시): IPSec VPN → Coolify 대시보드
          http://192.168.0.110:8000 (로그·재배포·롤백·DB 백업)
@@ -1541,7 +1560,7 @@ chmod +x /opt/disk-check.sh
   ✅ RDP → 개발 PC (192.168.0.201) 접속 확인
   ✅ VS Code Remote SSH → VM-DEV 접속 확인
   ✅ 브라우저 → http://192.168.0.110:5173 확인
-  ✅ https://dev.example.com 확인 (VPN 경유)
+  ✅ https://pro-dev.mindmap.ai.kr 확인 (VPN 경유)
   ✅ https://example.com 프로덕션 확인
 ```
 

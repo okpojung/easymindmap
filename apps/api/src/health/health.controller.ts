@@ -3,6 +3,63 @@ import { DatabaseService } from '../database/database.service';
 import { clientIpOf } from '../common/client-info';
 
 /**
+ * 배포가 **실제로 반영됐는지** 헬스체크 한 번으로 알기 위한 값들
+ * (2026-09-02 추가).
+ *
+ * 그전에는 `{status:ok, db:up, schema:ok}` 만 돌려줘서, 옛 코드가 그대로
+ * 돌고 있어도 **똑같은 응답**이 나왔다. NestJS 11 이관(#347) 뒤 "서버에
+ * 반영됐나"를 확인할 방법이 Coolify UI 나 서버 SSH 뿐이었다.
+ *
+ * 새로 노출되는 정보는 **공개 저장소의 커밋 SHA 와 오픈소스 라이브러리
+ * 버전**뿐이다. 저장소가 public 이라 커밋 SHA 만 알면 `package-lock.json`
+ * 에서 같은 값을 읽을 수 있으므로, 이것으로 새로 드러나는 것은 없다.
+ * (자격증명·내부 주소·경로는 넣지 않는다.)
+ */
+function packageVersion(name: string): string | undefined {
+  try {
+    // 정적 import 대신 require 를 쓰는 이유: 없거나 exports 로 막힌
+    // 패키지여도 **헬스체크가 죽지 않아야** 한다. 빌드는 번들 없는
+    // CJS(tsc) 라 동적 require 가 그대로 남는다.
+    return (require(`${name}/package.json`) as { version?: string }).version;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 빌드된 커밋. 배포 플랫폼이 주는 값이라 **앱 설정이 아니다** — 없어도
+ * 앱은 정상 동작해야 하므로 `env.validation` 의 필수 검증에 넣지 않고
+ * 여기서 직접 읽고, 없으면 응답에서 **필드째 생략**한다.
+ *
+ * Coolify 는 `SOURCE_COMMIT` 을 주입한다. 다른 플랫폼·로컬 빌드도
+ * 받아들이도록 흔한 이름을 순서대로 본다.
+ */
+const COMMIT_ENV_KEYS = [
+  'SOURCE_COMMIT',
+  'COOLIFY_SOURCE_COMMIT',
+  'GIT_COMMIT_SHA',
+  'GIT_SHA',
+  'COMMIT_SHA',
+] as const;
+
+function buildCommit(): string | undefined {
+  for (const key of COMMIT_ENV_KEYS) {
+    const value = process.env[key]?.trim();
+    // 40자 전체 SHA 도 12자로 줄인다 — 사람이 눈으로 대조하는 값이다
+    if (value) return value.slice(0, 12);
+  }
+  return undefined;
+}
+
+// 프로세스가 사는 동안 바뀌지 않는다 — 요청마다 다시 읽지 않는다
+const BUILD_COMMIT = buildCommit();
+const RUNTIME = {
+  node: process.versions.node,
+  nestjs: packageVersion('@nestjs/core'),
+  express: packageVersion('express'),
+} as const;
+
+/**
  * 이 API 가 동작하려면 반드시 있어야 하는 테이블.
  *
  * ⚠️ **schema.sql 에 새 테이블을 추가하면 여기에도 추가한다.**
@@ -69,6 +126,8 @@ export class HealthController {
     schema: 'ok' | 'outdated' | 'unknown';
     missingTables?: string[];
     missingColumns?: string[];
+    commit?: string;
+    runtime: { node: string; nestjs?: string; express?: string };
     time: string;
   }> {
     const dbUp = await this.db.ping();
@@ -109,6 +168,9 @@ export class HealthController {
       schema,
       ...(missingTables.length ? { missingTables } : {}),
       ...(missingColumns.length ? { missingColumns } : {}),
+      // 배포 플랫폼이 커밋을 알려 주지 않으면 필드째 생략한다
+      ...(BUILD_COMMIT ? { commit: BUILD_COMMIT } : {}),
+      runtime: RUNTIME,
       time: new Date().toISOString(),
     };
   }

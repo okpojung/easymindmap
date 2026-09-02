@@ -25,6 +25,31 @@ curl -s https://api-dev.example.com/v1/health
 #        ↑ 테이블은 있는데 **컬럼만 없는** 경우도 잡는다 (2026-08-02 문서함)
 ```
 
+**①b 코드가 실제로 반영됐는지도 같은 응답으로 본다** (2026-09-02 추가).
+`schema:"ok"` 는 **DB 이야기**라, 옛 코드가 그대로 돌고 있어도 `ok` 가
+나온다. 그래서 `commit` 과 `runtime` 을 함께 돌려준다.
+
+```bash
+curl -s https://api-dev.example.com/v1/health
+# {"status":"ok","db":"up","schema":"ok",
+#  "commit":"2e92713858e0",                       ← 빌드된 커밋 12자
+#  "runtime":{"node":"20.20.2","nestjs":"11.2.3","express":"5.2.1"},
+#  "time":"..."}
+```
+
+`commit` 을 `git log --oneline -1` 의 SHA 와 **눈으로 대조**한다. 다르면
+배포가 아직 안 온 것이다 — Coolify UI 에서 **Deploy** 를 누른다.
+
+> `commit` 이 **아예 없으면** 배포 플랫폼이 커밋을 알려 주지 않은 것이다.
+> Coolify 는 `SOURCE_COMMIT` 을 주입한다. 비어 있으면 해당 앱의
+> **Environment Variables** 에 `SOURCE_COMMIT` 을 추가한다
+> (`GIT_COMMIT_SHA`·`GIT_SHA`·`COMMIT_SHA` 도 받는다). 없어도 앱은
+> 정상 동작하고 그 필드만 빠진다.
+>
+> **왜 넣었나**: NestJS 11 이관(#347) 뒤 "서버에 반영됐나"를 확인할
+> 방법이 Coolify UI 나 SSH 뿐이었다. 헬스체크만 보고 "반영됐다"고
+> 판단했다가 그것이 근거가 못 된다는 것을 뒤늦게 알았다.
+
 **② 낡았으면 스키마 적용** — 아래 세 방법 중 **상황에 맞는 하나**를
 고른다. `schema.sql` 이 단일 기준이고 모든 DDL 이 멱등(IF NOT EXISTS)이라
 몇 번 적용해도 안전하다.

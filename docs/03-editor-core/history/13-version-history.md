@@ -9,6 +9,9 @@
   * v1.1 — NodePatch op 명칭을 api-spec.md v2.3 기준으로 통일; Diff Viewer 기능 ID(VH-07) 및 명세 추가 (CON-001 정합성 보정)
 * 참조: `docs/02-domain/db-schema.md`, `docs/03-editor-core/save/14-save.md`, `docs/03-editor-core/history/12-history-undo-redo.md`
 
+> 보관 기간·정리 규칙·소유권 이전은
+> [13a-version-retention.md](13a-version-retention.md).
+
 ---
 
 ### 0. 구현 상태 (2026-08-02 — B8 완료)

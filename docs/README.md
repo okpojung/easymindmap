@@ -44,7 +44,8 @@ docs/
 │  │  └─ 11-selection.md
 │  ├─ history/
 │  │  ├─ 12-history-undo-redo.md
-│  │  └─ 13-version-history.md
+│  │  ├─ 13-version-history.md
+│  │  └─ 13a-version-retention.md          ← 버전 보관 정책(자동 정리·영구보관·소유권 이전)
 │  ├─ save/
 │  │  └─ 14-save.md
 │  ├─ search/
@@ -126,6 +127,7 @@ docs/
 │  ├─ frontend-architecture.md
 │  ├─ gotrue-deploy-walkthrough.md  👈 GoTrue(Auth) 배포 절차
 │  ├─ infra-architecture.md
+│  ├─ schema-overhaul-plan.md    👈 스키마 정비 계획 (DB 초기화와 함께 한 번에)
 │  ├─ selfhost-docker.md        👈 셀프호스트 Docker 배포 설계(있는 것/없는 것·남은 일)
 │  └─ system-architecture.md
 │

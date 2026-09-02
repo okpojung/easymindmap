@@ -74,6 +74,21 @@ Push protection 이 켜져 있으면 실수로 키를 적고 push 할 때 GitHub
 **진짜 오탐일 때만** — 이 저장소는 위 표기법을 쓰므로 오탐이 날 일이
 거의 없다.)
 
+> **✅ 적용 확인 — 2026-09-02**
+>
+> | 항목 | 상태 |
+> |---|---|
+> | Secret Protection | 켜짐 |
+> | Push protection | 켜짐 |
+> | Private vulnerability reporting | 켜짐 |
+> | Dependency graph | 켜짐 |
+> | Dependabot alerts / security updates / grouped | 켜짐 |
+> | Dependabot version updates | **끔 (의도적)** — 취약점과 무관한 버전 업 PR 이 쏟아져 1인 운영에 소음이 크다 |
+> | CodeQL analysis | 미설정 — 유료화 전 검토 |
+>
+> 설정 위치: Settings → Advanced Security.
+> 이 표는 설정을 바꿀 때마다 갱신한다.
+
 > 이미 커밋된 시크릿은 **삭제 커밋만으로는 사라지지 않는다** (히스토리에
 > 남는다). 발견하면 순서는 언제나 ① **해당 키를 즉시 회전(rotate)** →
 > ② 문서에서 플레이스홀더로 치환 → ③ 필요하면 히스토리 정리. ①이 먼저다.

@@ -10,8 +10,23 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $MyInvocation.MyCommand.Path)
 
+# Checking that node EXISTS is not enough. Before, a low version like
+# Node 20.10 passed this script and then vite died on startup. The bar is
+# vite 8's requirement (^20.19.0 || >=22.12.0), the strictest in this repo
+# -- 21.x is outside the caret range and is not supported.
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Write-Host "X Node.js 20+ is required (https://nodejs.org)"; exit 1
+  Write-Host "X Node.js not found -- 20.19+ or 22.12+ is required."
+  Write-Host "  Get the LTS build at https://nodejs.org"
+  exit 1
+}
+
+# node -p always exits 0, so this never trips $ErrorActionPreference = Stop
+$nodeOk = & node -p "const v = process.versions.node.split('.').map(Number); ((v[0] === 20 && v[1] >= 19) || (v[0] === 22 && v[1] >= 12) || v[0] > 22) ? 'ok' : 'old'"
+if ($nodeOk -ne "ok") {
+  Write-Host "X Node.js $(& node -v) is too old to run this project."
+  Write-Host "  Need 20.19+ or 22.12+ (vite 8 requirement -- 21.x excluded)"
+  Write-Host "  Get the LTS build at https://nodejs.org"
+  exit 1
 }
 
 function Find-Winget {

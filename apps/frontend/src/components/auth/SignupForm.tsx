@@ -56,6 +56,12 @@ export function SignupForm({
   const [pw2, setPw2] = useState('');
   const [showPw, setShowPw] = useState(false);
 
+  // 만 14세 이상 확인. 개인정보 보호법상 만 14세 미만은 법정대리인 동의
+  // 없이 가입시킬 수 없고, 우리는 그 절차를 두지 않기로 했다(처리방침 §9).
+  // **처리방침에만 적고 화면에 두지 않으면 제품이 지키지 않는 약속이 된다** —
+  // 그래서 [가입하기] 를 막는다. 보여주기만 하는 문구가 아니다.
+  const [ageOk, setAgeOk] = useState(false);
+
   const [busy, setBusy] = useState<'code' | 'verify' | 'signup' | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -66,7 +72,7 @@ export function SignupForm({
   const phoneDigits = phone.replace(/\D/g, '');
   const canSubmit =
     !!emailToken && fullName.trim().length > 0
-    && pw.length >= MIN_PW && pw === pw2 && !busy;
+    && pw.length >= MIN_PW && pw === pw2 && ageOk && !busy;
 
   const fail = (e: unknown, fallback: string) => {
     setErr(e instanceof CloudError || e instanceof AuthError ? e.message : fallback);
@@ -380,11 +386,37 @@ export function SignupForm({
         </div>
       )}
 
+      <label
+        data-testid="signup-age-check"
+        style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          margin: '2px 0 12px', fontSize: 12, lineHeight: 1.5,
+          color: t.text, cursor: 'pointer',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={ageOk}
+          onChange={(e) => setAgeOk(e.target.checked)}
+          style={{ marginTop: 2, cursor: 'pointer' }}
+        />
+        <span>
+          <b>만 14세 이상</b>입니다.{' '}
+          <span style={{ opacity: 0.7 }}>
+            만 14세 미만은 가입할 수 없습니다.
+          </span>
+        </span>
+      </label>
+
       <button
         data-testid="signup-submit"
         onClick={() => void submit()}
         disabled={!canSubmit}
-        title={emailToken ? undefined : '먼저 이메일 인증을 마쳐 주세요'}
+        title={
+          !emailToken ? '먼저 이메일 인증을 마쳐 주세요'
+            : !ageOk ? '만 14세 이상임을 확인해 주세요'
+              : undefined
+        }
         style={{
           width: '100%', height: 42, borderRadius: 8, border: 'none',
           background: t.primary, color: '#fff', fontSize: 14, fontWeight: 800,

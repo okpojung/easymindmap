@@ -9,7 +9,10 @@
 > §12(VM-DEV)의 이전 방식(수동 Node/pm2/supabase-cli)은 이 문서로
 > 대체되었다.
 >
-> ⚠️ IP·도메인은 문서용 예시(placeholder)다. 실제 값은 저장소 밖에서 관리.
+> ⚠️ **IP 는 문서용 예시**(사설 `192.168.0.x` · 공인 `203.0.113.x`)이고,
+> **도메인은 실제 값**이다(`*.mindmap.ai.kr`). 남아 있는 `*.example.com` 은
+> 아직 정하지 않은 주소이거나 일반 예시다 — 자세한 근거는
+> [`infra-architecture.md`](infra-architecture.md) 상단.
 
 ---
 
@@ -153,7 +156,7 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   - Build: `npm ci && npm run build` / Start: `node dist/main.js`
   - (추후 `apps/api/Dockerfile` 추가 시 Dockerfile 빌드로 전환 — Phase 5 예정)
 - **Ports Exposes**: `3000` — **누락 시 Traefik이 대상 포트를 몰라 502**.
-  도메인은 `http://api-dev.example.com` (스킴은 §5.3 아래 HTTPS 주의 참조)
+  도메인은 `http://api-dev.mindmap.ai.kr` (스킴은 §5.3 아래 HTTPS 주의 참조)
 - **환경변수** — Buildtime/Runtime 체크에 주의:
 
   | 변수 | 값 | Buildtime | Runtime |
@@ -162,12 +165,12 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   | `DATABASE_URL` | `<5.1의 내부 접속 URL>` | ✅ | ✅ |
   | `AUTH_MODE` | `dev` (Phase 3 전까지) | ✅ | ✅ |
   | `DEV_USER_ID` | `00000000-0000-0000-0000-000000000001` | ✅ | ✅ |
-  | `CORS_ORIGIN` | `https://dev.example.com` | ✅ | ✅ |
+  | `CORS_ORIGIN` | `https://pro-dev.mindmap.ai.kr` | ✅ | ✅ |
   | `NODE_ENV` | `production` | ❌ **해제 필수** | ✅ |
   | `AUTH_MODE` → `supabase` + `SUPABASE_JWT_SECRET` | Phase 3 활성화 시 — **GoTrue 배포 후에만** (현재 dev 서버는 순정 PG16 + `AUTH_MODE=dev`. 활성화 경로: backend-phase1.md Phase 3) | ✅ | ✅ |
 
   > `CORS_ORIGIN` 은 **콤마로 여러 출처**를 받을 수 있다
-  > (예: `https://dev.example.com,http://localhost:5173` —
+  > (예: `https://pro-dev.mindmap.ai.kr,http://localhost:5173` —
   > 2026-08-02 지원. 그 전에는 단일 출처만 받아 두 번째가 차단됐다).
 
   > `NODE_ENV=production`이 **Buildtime**에 노출되면 `npm ci`가
@@ -196,7 +199,7 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   | Is it a static site? | **끄기** (Dockerfile이 nginx를 포함) |
   | Publish Directory | 비움 |
   | Install/Build/Start Command | 비움 |
-  | Domains | `http://dev.example.com` (스킴은 아래 HTTPS 주의 참조) |
+  | Domains | `http://pro-dev.mindmap.ai.kr` (스킴은 아래 HTTPS 주의 참조) |
 
 - Dockerfile은 2단계다: node:22-alpine에서 `npm ci && npm run build` →
   nginx:alpine이 `dist`를 서빙 (`apps/frontend/nginx.conf` — SPA
@@ -207,7 +210,7 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
 
   | 변수 | 값 | Buildtime | Runtime |
   |---|---|---|---|
-  | `VITE_API_URL` | `https://api-dev.example.com` | ✅ **필수** | 불필요 |
+  | `VITE_API_URL` | `https://api-dev.mindmap.ai.kr` | ✅ **필수** | 불필요 |
   | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Phase 3(로그인) 활성화 시 — GoTrue 주소/anon key. 미설정 시 로그인 UI 없이 개발 모드로 동작 | ✅ | 불필요 |
 
   > Vite 환경변수는 빌드 시 번들에 인라인된다. **Buildtime 체크가
@@ -230,8 +233,8 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
 >
 > | 리소스 | Coolify Domains | 앱 환경변수 |
 > |---|---|---|
-> | api | `http://api-dev.example.com` | `CORS_ORIGIN=https://dev.example.com` |
-> | frontend | `http://dev.example.com` | `VITE_API_URL=https://api-dev.example.com` |
+> | api | `http://api-dev.mindmap.ai.kr` | `CORS_ORIGIN=https://pro-dev.mindmap.ai.kr` |
+> | frontend | `http://pro-dev.mindmap.ai.kr` | `VITE_API_URL=https://api-dev.mindmap.ai.kr` |
 >
 > 환경변수만 `https`인 이유: 브라우저가 실제로 접근하는 주소 기준이기
 > 때문이다. NPM Proxy Host 구성은 `infra-architecture.md` §7.6~7.8 참조.
@@ -265,18 +268,18 @@ CREATE SCHEMA IF NOT EXISTS auth;   -- GoTrue 마이그레이션이 이 안에 �
 |---|---|
 | Image | `supabase/auth` — **v2 최신 태그**를 [Releases](https://github.com/supabase/auth/releases)에서 확인해 고정 (latest 금지) |
 | Ports Exposes | `9999` |
-| Domains | `http://auth-dev.example.com` (§5.4 규칙 — http 스킴) |
+| Domains | `http://auth-dev.mindmap.ai.kr` (§5.4 규칙 — http 스킴) |
 
 환경변수 (전부 Runtime):
 
 ```
 GOTRUE_API_HOST=0.0.0.0
 GOTRUE_API_PORT=9999
-API_EXTERNAL_URL=https://auth-dev.example.com
+API_EXTERNAL_URL=https://auth-dev.mindmap.ai.kr
 GOTRUE_DB_DRIVER=postgres
 GOTRUE_DB_DATABASE_URL=postgres://postgres:<PW>@<PG내부호스트>:5432/gotrue?search_path=auth
-GOTRUE_SITE_URL=https://dev.example.com
-GOTRUE_URI_ALLOW_LIST=https://dev.example.com
+GOTRUE_SITE_URL=https://pro-dev.mindmap.ai.kr
+GOTRUE_URI_ALLOW_LIST=https://pro-dev.mindmap.ai.kr
 GOTRUE_JWT_SECRET=<openssl rand -hex 32 — 영숫자>
 GOTRUE_JWT_EXP=3600
 GOTRUE_JWT_AUD=authenticated
@@ -297,7 +300,7 @@ GOTRUE_PASSWORD_MIN_LENGTH=6
 |---|---|---|
 | api | `AUTH_MODE` | `supabase` |
 | api | `SUPABASE_JWT_SECRET` | GOTRUE_JWT_SECRET 과 **동일 값** |
-| frontend (Build) | `VITE_SUPABASE_URL` | `https://auth-dev.example.com` |
+| frontend (Build) | `VITE_SUPABASE_URL` | `https://auth-dev.mindmap.ai.kr` |
 | frontend (Build) | `VITE_SUPABASE_AUTH_PREFIX` | **`/`** (= 루트 — **GoTrue 단독은 루트 경로**. 전체 Supabase(Kong)로 갈 때만 기본 `/auth/v1`) |
 | frontend (Build) | `VITE_SUPABASE_ANON_KEY` | 아무 값 (Kong 없는 단독 구성에선 미사용) |
 
@@ -309,7 +312,7 @@ GOTRUE_PASSWORD_MIN_LENGTH=6
 >
 > ```
 > ${VITE_SUPABASE_URL}${AUTH_PREFIX}${path}
->   → https://auth-dev.example.com/auth/v1/token   ← 단독 GoTrue 에는 없다
+>   → https://auth-dev.mindmap.ai.kr/auth/v1/token   ← 단독 GoTrue 에는 없다
 > ```
 >
 > **실측 (2026-08-19, dev 서버)** — 이 변수가 빠진 채로 돌고 있었다:
@@ -330,7 +333,7 @@ GOTRUE_PASSWORD_MIN_LENGTH=6
 > **바꾼 뒤에는 반드시 재배포한다** — `VITE_*` 는 빌드 시점에 번들에
 > 박히므로, 변수만 고치고 재배포하지 않으면 아무것도 바뀌지 않는다.
 
-**④ NPM Proxy Host** — `auth-dev.example.com` → VM:80 (Traefik 경유),
+**④ NPM Proxy Host** — `auth-dev.mindmap.ai.kr` → VM:80 (Traefik 경유),
 Cache Assets ❌, IPSec-VPN-Only (infra-architecture.md §7.9).
 
 > ### ⚠️ CORS 허용 주소를 **고정값으로 박지 말 것**
@@ -383,11 +386,11 @@ Cache Assets ❌, IPSec-VPN-Only (infra-architecture.md §7.9).
 **⑤ 검증**:
 
 ```bash
-curl -s https://auth-dev.example.com/health           # GoTrue health
-curl -s -X POST https://auth-dev.example.com/signup \
+curl -s https://auth-dev.mindmap.ai.kr/health           # GoTrue health
+curl -s -X POST https://auth-dev.mindmap.ai.kr/signup \
   -H 'Content-Type: application/json' \
   -d '{"email":"me@example.com","password":"secret1"}'   # access_token 확인
-# 브라우저: dev.example.com → ☁ 클라우드 → 로그인 폼 → 가입 → 저장/열기
+# 브라우저: pro-dev.mindmap.ai.kr → ☁ 클라우드 → 로그인 폼 → 가입 → 저장/열기
 ```
 
 ## 6. 동작 확인 체크리스트
@@ -411,12 +414,13 @@ curl -s -X POST https://auth-dev.example.com/signup \
 > 반영 경로는 §8 ② 하나뿐이다: **private 저장소의 코어 SHA 를 올리고
 > 거기서 재배포한다.**
 >
-> 아래 항목의 `dev.example.com` 은 공개판을 띄웠을 때의 절차다. 지금은
-> **`pro-dev.mindmap.ai.kr` 로 바꿔 읽는다.** (공개판을 다시 띄우기로
-> 하면 이 주의를 지운다.)
+> 아래 항목의 `pro-dev.mindmap.ai.kr` 은 **지금 도는 유료판 앱**의 주소다.
+> 공개판을 다시 띄우면 그 앱은 자기 주소를 따로 받는다 — 옛 공개판 주소
+> `dev.mindmap.ai.kr` 은 지금 아무 데도 닿지 않는다([`vision.md`](../00-project-overview/vision.md)
+> "환경별 도메인").
 
-- [ ] `https://api-dev.example.com/v1/health` → `{"status":"ok","db":"up"}`
-- [ ] `https://dev.example.com` 접속 → 에디터 표시
+- [ ] `https://api-dev.mindmap.ai.kr/v1/health` → `{"status":"ok","db":"up"}`
+- [ ] `https://pro-dev.mindmap.ai.kr` 접속 → 에디터 표시
 - [ ] ☁ 클라우드 → 저장 → 토스트 / 편집 → 자동 저장 배지
 - [ ] ☁ → 열기 → 목록·이름변경·삭제
 - [ ] `git push origin main` → Coolify가 자동 재배포(Deployments 로그 확인) *
@@ -444,7 +448,7 @@ curl -s -X POST https://auth-dev.example.com/signup \
 |---|---|---|
 | 서버 | VM-DEV (예: 192.168.0.110) | VM-02/03 등 운영 VM |
 | 프로젝트 | `easymindmap-dev` | `easymindmap-prod` |
-| 도메인 | dev.example.com / api-dev.example.com | example.com / api.example.com |
+| 도메인 | pro-dev.mindmap.ai.kr / api-dev.mindmap.ai.kr | example.com / api.example.com |
 | 자동 배포 | main 푸시 즉시 | 태그/릴리스 또는 수동 Deploy 버튼(권장) |
 | AUTH_MODE | dev(Phase 3 전) | supabase (Phase 3 이후) |
 | DB | Coolify PostgreSQL 16 | 동일(백업 정책 강화) + Phase 3에서 Supabase 스택 |
@@ -545,15 +549,15 @@ clone 해서** 그 위에 유료 모듈을 얹어 빌드한다
 ```bash
 # ① API — 새 라우트가 있는가 (401 = 있다 / 404 = 옛 빌드)
 curl -s -o /dev/null -w "from-url: %{http_code}\n" -X POST \
-  https://api-dev.example.com/v1/attachments/from-url \
+  https://api-dev.mindmap.ai.kr/v1/attachments/from-url \
   -H 'Content-Type: application/json' -d '{"url":"https://example.com/a.png"}'
 
 # ② 프런트 — 컨테이너가 떠 있는가 (200 이어야 한다)
-curl -s -o /dev/null -w "front: %{http_code}\n" https://dev.example.com/
+curl -s -o /dev/null -w "front: %{http_code}\n" https://pro-dev.mindmap.ai.kr/
 
 # ③ 프런트 번들 — 새 코드가 실렸는가 (1 이상이어야 한다)
-curl -s https://pro-dev.example.com/ | grep -o 'assets/index-[^"]*\.js' | head -1 \
-  | xargs -I{} curl -s https://pro-dev.example.com/{} | grep -c "attachments/from-url"
+curl -s https://pro-dev.mindmap.ai.kr/ | grep -o 'assets/index-[^"]*\.js' | head -1 \
+  | xargs -I{} curl -s https://pro-dev.mindmap.ai.kr/{} | grep -c "attachments/from-url"
 ```
 
 **문자열은 그 변경에서 처음 생긴 것으로 고른다.** 예전부터 있던 문자열

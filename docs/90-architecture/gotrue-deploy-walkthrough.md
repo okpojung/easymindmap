@@ -2,14 +2,18 @@
 
 > `dev-server-coolify.md` §5.5(경로 A)를 **처음 배포하는 사람 기준**으로
 > 풀어 쓴 실행 가이드다. 각 단계마다 "어디서 · 무엇을 · 결과 확인"을
-> 명시한다. ⚠️ IP·도메인은 placeholder — 실제 값으로 바꿔 실행.
+> 명시한다.
+>
+> ⚠️ **IP 는 문서용 예시**(사설 `192.168.0.x` · 공인 `203.0.113.x`)라
+> 실행 전에 실제 값으로 바꾼다. **도메인은 실제 값**이므로
+> (`*.mindmap.ai.kr`) 그대로 쓰면 된다.
 >
 > **실행 순서는 §5.5와 달리 앱 전환(③)을 맨 뒤로 뒀다** — API 를
 > supabase 모드로 바꾸는 순간부터 로그인 없이는 클라우드를 못 쓰므로,
 > GoTrue 가 완전히 검증된 뒤 전환해야 잠기지 않는다.
 >
 > 작업 장소는 두 곳뿐이다:
-> - **브라우저**: Coolify UI(`https://coolify-dev.example.com`), NPM
+> - **브라우저**: Coolify UI(`https://coolify-dev.mindmap.ai.kr`), NPM
 >   UI(`http://192.168.0.74:81`), 도메인 등록대행사 콘솔
 > - **서버 SSH**: `ssh ubuntu@192.168.0.110` — 디렉토리는 어디든 상관
 >   없다(홈 `~` 그대로). 모든 명령이 docker/curl 이라 경로 무관.
@@ -28,7 +32,7 @@
 
 > ⚠️ `http://localhost/...` 을 개발 PC 에서 실행하면 **조용히 아무것도
 > 반환하지 않아** 실패를 오인하기 쉽다 (실제 사고). 반대로
-> `https://auth-dev.example.com/...` 은 개발 PC 에서 실행해야 하며,
+> `https://auth-dev.mindmap.ai.kr/...` 은 개발 PC 에서 실행해야 하며,
 > VPN 에 연결돼 있어야 한다(NPM Access List).
 >
 > **개발 PC 가 Windows 라면** `cmd` 기준으로:
@@ -43,7 +47,7 @@
   (기존 dev/api-dev 와 같은 공인 IP)
 - **확인**: 개발 PC 명령창에서
   ```bash
-  nslookup auth-dev.example.com
+  nslookup auth-dev.mindmap.ai.kr
   ```
   → `203.0.113.10` 이 나오면 다음 단계 (전파에 수 분 걸릴 수 있다 —
   기다리는 동안 1단계 진행해도 된다)
@@ -115,7 +119,7 @@ openssl rand -hex 32
 |---|---|
 | Image | `supabase/auth:v2.NNN.N` (2-2에서 복사한 태그) |
 | **Ports Exposes** | **`9999`** — 기본값 `80` 을 반드시 바꾼다 |
-| Domains | `http://auth-dev.example.com` — 반드시 **http://** (§5.4) |
+| Domains | `http://auth-dev.mindmap.ai.kr` — 반드시 **http://** (§5.4) |
 
 > ⚠️ **`Ports Exposes` 기본값은 `80` 이다. 반드시 `9999` 로 바꾼다.**
 > GoTrue 는 컨테이너 내부에서 9999 를 듣는다(`GOTRUE_API_PORT`).
@@ -124,7 +128,7 @@ openssl rand -hex 32
 >
 > `Domains` 입력 후 반드시 **Save** 를 눌러야 Container Labels 에
 > 반영된다. 저장 후 라벨에 다음 두 줄이 있는지 확인:
-> - ``Host(`auth-dev.example.com`)``
+> - ``Host(`auth-dev.mindmap.ai.kr`)``
 > - `loadbalancer.server.port=9999`
 >
 > 자동 생성된 `...sslip.io` 주소가 그대로 남아 있으면 404 가 난다.
@@ -136,11 +140,11 @@ openssl rand -hex 32
 ```
 GOTRUE_API_HOST=0.0.0.0
 GOTRUE_API_PORT=9999
-API_EXTERNAL_URL=https://auth-dev.example.com
+API_EXTERNAL_URL=https://auth-dev.mindmap.ai.kr
 GOTRUE_DB_DRIVER=postgres
 GOTRUE_DB_DATABASE_URL=postgres://postgres:<PW>@<PG내부호스트>:5432/gotrue?search_path=auth
-GOTRUE_SITE_URL=https://dev.example.com
-GOTRUE_URI_ALLOW_LIST=https://dev.example.com
+GOTRUE_SITE_URL=https://pro-dev.mindmap.ai.kr
+GOTRUE_URI_ALLOW_LIST=https://pro-dev.mindmap.ai.kr
 GOTRUE_JWT_SECRET=<JWT_SECRET>
 GOTRUE_JWT_EXP=3600
 GOTRUE_JWT_AUD=authenticated
@@ -193,7 +197,7 @@ GOTRUE_PASSWORD_MIN_LENGTH=6
 4. **서버 안에서 응답 확인** — `[서버 SSH]` (개발 PC 에서 실행하면
    아무것도 반환하지 않는다 — localhost 가 Traefik 이어야 의미가 있다):
    ```bash
-   curl -s -H "Host: auth-dev.example.com" http://localhost/health
+   curl -s -H "Host: auth-dev.mindmap.ai.kr" http://localhost/health
    ```
    → `{"version":...,"name":"GoTrue"...}` JSON 이 나오면 Traefik →
    GoTrue 라우팅까지 정상. **이게 나와야 3단계 진행.**
@@ -236,18 +240,18 @@ GOTRUE_PASSWORD_MIN_LENGTH=6
 
 - **어디서**: 브라우저 → `http://192.168.0.74:81` (NPM 관리 UI)
 - **무엇을**: Hosts → Proxy Hosts → **Add Proxy Host**:
-  - Details: Domain `auth-dev.example.com` / Scheme `http` /
+  - Details: Domain `auth-dev.mindmap.ai.kr` / Scheme `http` /
     Forward `192.168.0.110` / Port `80` / Websockets ✅ /
     **Cache Assets ❌**
   - SSL 탭: Request a new SSL Certificate + Force SSL ✅
   - Access List: `IPSec-VPN-Only`
 - **확인** — 개발 PC(VPN 연결 상태) 명령창:
   ```bash
-  curl -s https://auth-dev.example.com/health
+  curl -s https://auth-dev.mindmap.ai.kr/health
   ```
   → GoTrue JSON 이 나오면 성공. 다음도 해 본다 (실제 가입 시험):
   ```bash
-  curl -s -X POST https://auth-dev.example.com/signup \
+  curl -s -X POST https://auth-dev.mindmap.ai.kr/signup \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"smoke@example.com\",\"password\":\"secret1\"}"
   ```
@@ -270,10 +274,10 @@ GOTRUE_PASSWORD_MIN_LENGTH=6
 **확인 1 — 인증이 켜졌는가** `[개발 PC]`:
 
 ```bash
-curl -i https://api-dev.example.com/v1/health
+curl -i https://api-dev.mindmap.ai.kr/v1/health
 # → 200 {"status":"ok","db":"up"}   (health 는 인증 불필요)
 
-curl -i https://api-dev.example.com/v1/maps
+curl -i https://api-dev.mindmap.ai.kr/v1/maps
 # → 401 {"message":"로그인이 필요합니다..."}   ← 인증이 켜졌다는 증거
 # → 200 이면 AUTH_MODE 가 아직 dev (재배포 여부 확인)
 ```
@@ -293,11 +297,11 @@ curl -i https://api-dev.example.com/v1/maps
 
 PowerShell:
 ```powershell
-$r = curl.exe -s -X POST "https://auth-dev.example.com/token?grant_type=password" `
+$r = curl.exe -s -X POST "https://auth-dev.mindmap.ai.kr/token?grant_type=password" `
      -H "Content-Type: application/json" `
      -d '{\"email\":\"본인계정\",\"password\":\"비밀번호\"}' | ConvertFrom-Json
 $t = $r.access_token
-curl.exe -i -s https://api-dev.example.com/v1/maps -H "Authorization: Bearer $t"
+curl.exe -i -s https://api-dev.mindmap.ai.kr/v1/maps -H "Authorization: Bearer $t"
 ```
 
 - **200** (`{"maps":[],"total":0}`) → ✅ 5단계 진행
@@ -327,13 +331,13 @@ echo -n "AUTH_MODE  : "; sudo docker exec -i $API printenv AUTH_MODE
 
 - **어디서**: Coolify → **frontend 리소스** → Environment Variables
 - **무엇을** (전부 **Buildtime 체크** — Vite 는 빌드 시점 값):
-  - `VITE_SUPABASE_URL` = `https://auth-dev.example.com`
+  - `VITE_SUPABASE_URL` = `https://auth-dev.mindmap.ai.kr`
   - `VITE_SUPABASE_AUTH_PREFIX` = **빈 값** (변수는 만들되 값을 비움 —
     GoTrue 단독은 루트 경로. 나중에 전체 Supabase(Kong)로 바꿀 때만
     `/auth/v1` 을 넣는다)
   - `VITE_SUPABASE_ANON_KEY` = `not-used` (단독 구성에선 미사용이지만
     아무 값이나 넣어 둔다)
-  - `VITE_API_URL` 은 이미 있어야 한다 — `https://api-dev.example.com`
+  - `VITE_API_URL` 은 이미 있어야 한다 — `https://api-dev.mindmap.ai.kr`
     (**`/v1` 을 붙이면 안 된다** — API 가 자체적으로 `v1` 접두사를
     붙이므로 `.../v1/v1/maps` 가 된다)
   - 저장 후 **Redeploy** (빌드 변수라 재빌드 필수)
@@ -345,7 +349,7 @@ echo -n "AUTH_MODE  : "; sudo docker exec -i $API printenv AUTH_MODE
   > 빈 문자열로 설정하기 때문이다(→ 루트 경로 = GoTrue 단독에 맞음).
   > 다만 **Docker 밖에서 `npm run build` 를 직접 하면** 변수가 없을 때
   > `/auth/v1` 로 폴백하므로, 그 경우엔 명시적으로 빈 값을 지정한다.
-- **확인** — 브라우저에서 `https://dev.example.com` 접속 후 **강력
+- **확인** — 브라우저에서 `https://pro-dev.mindmap.ai.kr` 접속 후 **강력
   새로고침(Ctrl+Shift+R)** — 옛 index.html 캐시 방지:
   1. 우상단 **☁ 클라우드** 클릭 → **"클라우드 로그인" 폼**이 보인다
   2. 이메일/비밀번호(6자+) 입력 → **가입** → "가입하고 로그인했습니다"
@@ -382,7 +386,7 @@ echo -n "AUTH_MODE  : "; sudo docker exec -i $API printenv AUTH_MODE
 | Ports Exposes | `9999` |
 | 헬스체크 | Port `9999`, Path `/health`, 200 |
 | NPM Forward | `80` (Traefik 경유 — 9999 아님) |
-| Coolify Domains | `http://auth-dev.example.com` (SSL 은 NPM 종단) |
+| Coolify Domains | `http://auth-dev.mindmap.ai.kr` (SSL 은 NPM 종단) |
 | DB | 별도 `gotrue` DB + `auth` 스키마, 마이그레이션 후 테이블 23개 |
 
 관련: `dev-server-coolify.md` §5.5(요약판·환경변수 원본),

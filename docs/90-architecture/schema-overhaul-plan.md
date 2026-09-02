@@ -177,7 +177,7 @@ CREATE INDEX IF NOT EXISTS idx_transfer_to_user
 A 에서 문제가 된 것은 `maps.owner_id → users` 였지 이쪽이 아니다.
 
 부분 유니크 인덱스로 **동시에 여러 제안이 열리는 것**을 DB 층에서 막는다
-(13a-version-retention.md §4.5.3 미결 항목 중 하나를 여기서 해소).
+(13a-version-retention.md §8 미결 항목 중 하나를 여기서 해소).
 
 ### 4.1 수락 시 용량 검사
 
@@ -206,7 +206,9 @@ A 에서 문제가 된 것은 `maps.owner_id → users` 였지 이쪽이 아니�
 지금은 첨부가 차면 **API 서버가 통째로 죽는다.** 로그도 못 쓰고 Docker 도
 못 돈다.
 
-절차는 [`esxi-storage-runbook.md`](esxi-storage-runbook.md) §7~§8.
+NFS 마운트 확인 → `STORAGE_LOCAL_DIR` 변경 → 기존 첨부 rsync → 재기동.
+`.11` · `.12` 에도 `HNG1-NFS` 가 마운트돼 있는지 먼저 확인한다
+(vSphere → 각 호스트 → [데이터스토어] 탭).
 
 > `storage.service.ts` 머리 주석이 이미 NFS 마운트를 상정하고 있다 —
 > "드라이버는 디렉터리가 SSD 인지 NFS 인지 구분하지 않는다".

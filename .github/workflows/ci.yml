@@ -17,6 +17,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 실제 IP 가 저장소에 섞여 들어오는 것을 막는다 (2026-09-02).
+  # .githooks/pre-commit 과 같은 검사 — 훅을 켜지 않았거나 --no-verify 로
+  # 우회한 커밋도 여기서 걸린다. 체크아웃만 하므로 20초면 끝난다.
+  sanitize:
+    name: 실제 IP 유출 검사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 실제 IP 대역 검사
+        run: |
+          # 검사기 자신(훅·이 워크플로)은 안내 문구에 대역을 평문으로
+          # 들고 있으므로 제외한다.
+          if git grep -nIE '192\.168\.94\.|58\.230\.60\.|218\.232\.94\.' \
+               -- . ':(exclude).githooks/pre-commit' \
+                    ':(exclude).github/workflows/ci.yml'; then
+            echo
+            echo '❌ 실제 IP 가 저장소에 있습니다. sanitize 규약값으로 바꾸십시오.'
+            echo '   192.168.94.x  -> 192.168.0.x   (끝자리는 그대로 둔다)'
+            echo '   58.230.60.22  -> 203.0.113.9   (접속자 예시)'
+            echo '   218.232.94.74 -> 203.0.113.10  (FortiGate 공인)'
+            exit 1
+          fi
+          echo '✅ 실제 IP 없음'
+
   frontend:
     name: 프론트엔드 빌드 · 타입체크
     runs-on: ubuntu-latest          # GitHub이 빌려주는 리눅스 가상머신

@@ -146,7 +146,7 @@ export class HealthController {
       xffList.length === 1 && isPrivate(xffList[0])
       && !!remote && xffList[0] !== remote.replace(/^::ffff:/, '');
     // **사슬이 여럿인데 전부 사설**인 경우 (2026-08-14 실사용에서 나왔다:
-    // `192.168.94.1, 192.168.94.74`). 위 lostUpstream 은 사슬이 하나일 때만
+    // `192.168.0.1, 192.168.0.74`). 위 lostUpstream 은 사슬이 하나일 때만
     // 잡아서 이 경우를 놓치고 "TRUST_PROXY 조정이 필요하다"고만 말했는데,
     // 조정해도 달라지지 않는다 — 사슬에 공인 IP 가 아예 없기 때문이다.
     // 남은 가능성은 둘뿐이고, **판별법을 알려 주는 것**이 우리가 할 일이다.

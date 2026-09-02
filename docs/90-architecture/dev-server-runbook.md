@@ -1359,7 +1359,7 @@ curl -i -X OPTIONS https://<API도메인>/v1/folders \
 ### 6.4 히스토리의 접속 IP 가 **내부 주소로만 보인다** (2026-08-09 실사용)
 
 **증상**: 맵 히스토리·문서함 상세의 IP 가 PC 든 휴대폰이든, 내부망이든
-외부망이든 **전부 같은 사설 주소**(예: `192.168.94.74`)로 남는다.
+외부망이든 **전부 같은 사설 주소**(예: `192.168.0.74`)로 남는다.
 
 #### 먼저 이걸 연다 — `GET /v1/health/ip`
 
@@ -1380,10 +1380,10 @@ curl -i -X OPTIONS https://<API도메인>/v1/folders \
 **고치기 전에 실제로 받은 값**(2026-08-09):
 
 ```json
-{ "ip": "192.168.94.74",
-  "ips": ["192.168.94.74"],
-  "xForwardedFor": "192.168.94.74",
-  "xRealIp": "192.168.94.74",
+{ "ip": "192.168.0.74",
+  "ips": ["192.168.0.74"],
+  "xForwardedFor": "192.168.0.74",
+  "xRealIp": "192.168.0.74",
   "remoteAddress": "::ffff:10.0.1.6",
   "trustProxy": ["loopback","linklocal","uniquelocal"] }
 ```
@@ -1392,7 +1392,7 @@ curl -i -X OPTIONS https://<API도메인>/v1/folders \
 | 값 | 뜻 |
 |---|---|
 | `remoteAddress: 10.0.1.6` | **우리 API 에 직접 연결한 상대** = 우리 앞 프록시(Traefik) |
-| `xForwardedFor: 192.168.94.74` (**항목 1개**) | 그 프록시가 "접속자는 이 주소"라고 적어 보냈다 |
+| `xForwardedFor: 192.168.0.74` (**항목 1개**) | 그 프록시가 "접속자는 이 주소"라고 적어 보냈다 |
 | 그런데 그 값도 **사설 주소** | 즉 우리 앞 프록시가 본 상대도 진짜 접속자가 아니라 **또 다른 내부 장치**였다 |
 | 서로 다른 기기·외부망에서도 **같은 값** | 접속자별로 달라지지 않는다 = 접속자 주소가 아니다 |
 
@@ -1406,7 +1406,7 @@ curl -i -X OPTIONS https://<API도메인>/v1/folders \
 # 1) 그 IP 를 가진 컨테이너 이름
 for c in $(docker ps -q); do
   ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$c")
-  case "$ip" in *192.168.94.74*) docker inspect -f '{{.Name}}  → '"$ip" "$c";; esac
+  case "$ip" in *192.168.0.74*) docker inspect -f '{{.Name}}  → '"$ip" "$c";; esac
 done
 
 # 2) 아무 컨테이너도 아니면 호스트/게이트웨이다 (Docker 포트 공개 방식 문제)
@@ -1476,8 +1476,8 @@ YAML 의 `services:` → `traefik:` → **`command:` 목록**에 두 줄을 더�
       - '--entryPoints.http.http2.maxConcurrentStreams=250'
       - '--entrypoints.https.http.encodequerysemicolons=true'
       - '--entryPoints.https.http2.maxConcurrentStreams=250'
-      - '--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24'   # ←
-      - '--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24'  # ←
+      - '--entrypoints.http.forwardedHeaders.trustedIPs=192.168.0.0/24'   # ←
+      - '--entrypoints.https.forwardedHeaders.trustedIPs=192.168.0.0/24'  # ←
       - '--entrypoints.https.http3'
       - '--providers.file.directory=/traefik/dynamic/'
       # … 나머지는 그대로
@@ -1495,8 +1495,8 @@ sudo python3 -c '
 p = "/data/coolify/proxy/docker-compose.yml"
 s = open(p).read()
 anchor = "      - \x27--entryPoints.https.http2.maxConcurrentStreams=250\x27\n"
-add = ("      - \x27--entrypoints.http.forwardedHeaders.trustedIPs=192.168.94.0/24\x27\n"
-       "      - \x27--entrypoints.https.forwardedHeaders.trustedIPs=192.168.94.0/24\x27\n")
+add = ("      - \x27--entrypoints.http.forwardedHeaders.trustedIPs=192.168.0.0/24\x27\n"
+       "      - \x27--entrypoints.https.forwardedHeaders.trustedIPs=192.168.0.0/24\x27\n")
 if "forwardedHeaders" in s: print("이미 있음 — 바꾸지 않았습니다")
 elif anchor not in s:      print("기준 줄을 못 찾았습니다 — 손으로 넣어 주세요")
 else:
@@ -1511,7 +1511,7 @@ sudo docker compose up -d                        # 프록시만 다시 뜬다
 > 넣어 둔다** — Coolify 가 프록시 설정을 다시 만들 때 파일 쪽 수정은 지워질
 > 수 있다.
 * 대역은 **NPM 이 있는 사설 대역**으로 — 여기서는 `/v1/health/ip` 의
-  `xForwardedFor` 에 찍힌 주소(`192.168.94.74`)가 속한 `192.168.94.0/24`.
+  `xForwardedFor` 에 찍힌 주소(`192.168.0.74`)가 속한 `192.168.0.0/24`.
   여러 곳이면 콤마로 나열한다.
 * ⚠️ `forwardedHeaders.insecure=true` (아무나 신뢰)는 쓰지 않는다 —
   접속자가 헤더를 위조해 IP 를 마음대로 바꿀 수 있다.
@@ -1521,7 +1521,7 @@ sudo docker compose up -d                        # 프록시만 다시 뜬다
 고쳐졌으면 `xForwardedFor` 가 **두 항목**이 된다.
 
 ```
-xForwardedFor: "203.0.113.9, 192.168.94.74"   ← 접속자, NPM
+xForwardedFor: "203.0.113.9, 192.168.0.74"   ← 접속자, NPM
 ip:            "203.0.113.9"                   ← 우리가 기록하는 값
 ```
 
@@ -1537,10 +1537,10 @@ em-dev 의 Coolify 프록시(`traefik:v3.6`)에 두 줄을 넣고 `Save` →
 `Restart Proxy` 한 직후:
 
 ```json
-{ "ip": "58.230.60.22",
-  "ips": ["58.230.60.22", "192.168.94.74"],
-  "xForwardedFor": "58.230.60.22, 192.168.94.74",
-  "xRealIp": "58.230.60.22",
+{ "ip": "203.0.113.9",
+  "ips": ["203.0.113.9", "192.168.0.74"],
+  "xForwardedFor": "203.0.113.9, 192.168.0.74",
+  "xRealIp": "203.0.113.9",
   "remoteAddress": "::ffff:10.0.1.6",
   "hint": "OK — 공인 IP 입니다. 히스토리에도 이 값이 남습니다." }
 ```
@@ -1569,11 +1569,11 @@ proxy_set_header X-Forwarded-Proto $scheme;
 
 #### 사슬이 **전부 사설**일 때 — 판별법 (2026-08-14 실사용)
 
-로그인 기록에 `192.168.94.1` 이 찍혀 물어보셨다. 그때 `/v1/health/ip`:
+로그인 기록에 `192.168.0.1` 이 찍혀 물어보셨다. 그때 `/v1/health/ip`:
 
 ```
-ip: 192.168.94.1
-xForwardedFor: "192.168.94.1, 192.168.94.74"
+ip: 192.168.0.1
+xForwardedFor: "192.168.0.1, 192.168.0.74"
 remoteAddress: ::ffff:10.0.1.9        ← Traefik
 trustProxy: [loopback, linklocal, uniquelocal]
 ```
@@ -1585,7 +1585,7 @@ trustProxy: [loopback, linklocal, uniquelocal]
 | | 뜻 | 할 일 |
 |---|---|---|
 | ⑴ | 지금 **같은 사설망에서** 접속 중이다 | 없음 — 정상이다 |
-| ⑵ | 맨 앞(`192.168.94.1`)이 원본 IP 를 버렸다 | 그 장비의 프록시 설정을 고친다 |
+| ⑵ | 맨 앞(`192.168.0.1`)이 원본 IP 를 버렸다 | 그 장비의 프록시 설정을 고친다 |
 
 **가르는 법: 휴대폰에서 와이파이를 끄고 LTE 로 `/v1/health/ip` 를 연다.**
 거기서 공인 IP 가 나오면 ⑴이고 고칠 것이 없다. LTE 에서도 사설이면 ⑵이다.

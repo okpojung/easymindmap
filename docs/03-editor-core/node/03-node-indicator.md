@@ -1183,7 +1183,7 @@ function getContentIndicatorState(node: MindNode): ContentIndicatorState {
 ```
 NodeRenderer
   ├── NodeText              (텍스트 + 번역 인디케이터 — PART 2)
-  ├── NodeTagBadge          (태그 badge — tag-system.md)
+  ├── NodeTagBadge          (태그 badge — 15-tag.md)
   ├── NodeContentIndicators ← [NODE-16]
   │    ├── NoteTypeGlyph  (T/C/⊞/✓) — 노트 종류별 배지, 종류별 1개씩
   │    ├── HyperlinkIcon (🔗) — hasLink = true 일 때

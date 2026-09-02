@@ -9,6 +9,15 @@
 
 ## 0. 스키마 드리프트 방지 — 배포 후 반드시 확인 ★
 
+> ★ **먼저 알아 둘 것** (2026-09-02): 개발 서버는 **유료판 한 벌만**
+> 띄운다 — `easymindmap-api-pro`(`api-dev.mindmap.ai.kr`) ·
+> `easymindmap-frontend-pro`(`pro-dev.mindmap.ai.kr`) · `easymindmap-auth`.
+> 공개판 `easymindmap-api` · `easymindmap-frontend` 는 **정지 상태이고
+> 도메인이 없다.** 그래서 아래 "코드는 자동" 은 **공개판을 띄웠을 때의
+> 이야기이고, 지금은 성립하지 않는다** — 코어 변경을 개발 서버에
+> 반영하려면 private 저장소(`easymindmap-pro`)의 **코어 SHA 를 올리고
+> 거기서 재배포**해야 한다(`dev-server-coolify.md` §6 머리말 · §8 ②).
+>
 > 배포는 **코드는 자동(Coolify), 스키마는 수동**이다. 스키마 변경이
 > 포함된 배포에서 이 단계를 빠뜨리면 저장이 500 으로 실패한다
 > (2026-08-02 B8 배포에서 제기된 위험).

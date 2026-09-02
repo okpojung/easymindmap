@@ -8,7 +8,24 @@
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-command -v node >/dev/null 2>&1 || { echo "✗ Node.js 20+ 가 필요합니다 (https://nodejs.org)"; exit 1; }
+# Node 는 **있는지**만 보면 모자란다. 예전엔 존재만 확인해서, Node 20.10
+# 같은 낮은 버전이면 이 스크립트는 통과하고 **vite 가 기동하다 죽었다.**
+# 기준은 이 저장소에서 가장 엄격한 vite 8 의 요구(^20.19.0 || >=22.12.0)다
+# — 21.x 는 caret 범위 밖이라 지원하지 않는다.
+command -v node >/dev/null 2>&1 || {
+  echo "✗ Node.js 가 없습니다 — 20.19 이상 또는 22.12 이상이 필요합니다."
+  echo "  https://nodejs.org 에서 LTS 를 받으세요."
+  exit 1
+}
+
+NODE_OK="$(node -p 'const v = process.versions.node.split(".").map(Number);
+((v[0] === 20 && v[1] >= 19) || (v[0] === 22 && v[1] >= 12) || v[0] > 22) ? "ok" : "old"' 2>/dev/null)"
+if [ "$NODE_OK" != "ok" ]; then
+  echo "✗ Node.js $(node -v) 로는 실행할 수 없습니다."
+  echo "  필요: 20.19 이상 또는 22.12 이상 (vite 8 요구 — 21.x 는 제외)"
+  echo "  https://nodejs.org 에서 LTS 를 받으세요."
+  exit 1
+fi
 
 ensure_docker() {
   # 1) Docker 설치 확인 (없으면 OS에 맞춰 설치 안내/자동설치 제안)

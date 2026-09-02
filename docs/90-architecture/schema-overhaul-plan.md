@@ -223,7 +223,7 @@ NFS 마운트 확인 → `STORAGE_LOCAL_DIR` 변경 → 기존 첨부 rsync → 
 2  [준비]   첨부 디렉터리 현황 기록: 파일 수 · 총 크기
 3  [정지]   Coolify 에서 API 정지
 
-4  [D]      NFS 마운트 + STORAGE_LOCAL_DIR 변경          esxi-storage-runbook §8
+4  [D]      NFS 마운트 + STORAGE_LOCAL_DIR 변경          §5 참조
 5  [초기화] maps · map_documents · map_document_versions ·
             nodes · map_members · attachments · 첨부 파일 삭제
 6  [A]      maps.owner_id → RESTRICT

@@ -12,7 +12,7 @@
 > `account.service.ts` 에서 확인한 실제 동작이다(추정하지 않았다).
 > 확인한 자리는 각 절에 `→ 근거` 로 적어 두었다.
 >
-> 관련: [backlog.md](backlog.md) B14 ⑥ · 외부 공개(오픈 테스트) 준비
+> 관련: [backlog.md](../00-project-overview/backlog.md) B14 ⑥ · 외부 공개(오픈 테스트) 준비
 
 ---
 

@@ -104,11 +104,13 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
   if (tpl) {
     const pattern = LEVEL_PATTERNS[tpl];
     if (pattern) {
-      // 1레벨은 맵 전체 레이아웃이 맡고, 2레벨부터 levelLayouts 가 맡는다
+      // 1레벨은 맵 전체 레이아웃이 맡고, 2레벨부터 levelLayouts 가 맡는다.
+      // 색인은 **branches 기준 depth** 라 레벨 번호에서 1을 뺀다
+      // (`utils/levelLayouts` 의 표 참조 — levelLayouts[1] 이 "2레벨"이다).
       out.editor = { layoutType: pattern[0] };
       const levelLayouts: (LayoutType | null | undefined)[] = [];
-      for (let lv = 2; lv <= pattern.length; lv++) put(levelLayouts, lv, pattern[lv - 1]);
-      cascade(levelLayouts, pattern.length, pattern[pattern.length - 1]);
+      for (let lv = 2; lv <= pattern.length; lv++) put(levelLayouts, lv - 1, pattern[lv - 1]);
+      cascade(levelLayouts, pattern.length - 1, pattern[pattern.length - 1]);
       out.settings = { levelLayouts };
     } else if (LAYOUTS.has(tpl)) {
       // 레이아웃 이름 그대로 — 맵 전체에 그 레이아웃 하나
@@ -145,7 +147,7 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
         if (layout && LAYOUTS.has(layout)) {
           // 1레벨 레이아웃은 맵 전체 몫이다 (levelLayouts[0] 은 쓰이지 않는다)
           if (lv === 1) out.editor = { layoutType: layout as LayoutType };
-          else put(layouts, lv, layout as LayoutType);
+          else put(layouts, lv - 1, layout as LayoutType);
           lastLayout = { at: lv, value: layout as LayoutType };
         }
 
@@ -165,10 +167,11 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
         }
       }
 
-      // 색인 기준이 배열마다 다르므로(levelLayouts: lv, levelShapes: lv-1,
+      // 색인 기준이 배열마다 다르므로(levelLayouts·levelShapes: lv-1,
       // levelFonts: lv) 시작 칸도 따로 센다. 어느 쪽이든 뜻은 하나다 —
-      // **선언한 레벨보다 깊은 레벨을 채운다.**
-      if (lastLayout) cascade(layouts, lastLayout.at + 1, lastLayout.value);
+      // **선언한 레벨보다 깊은 레벨을 채운다.** levelLayouts 는 lv-1 색인이라
+      // "lv 보다 깊은 레벨"의 첫 칸이 곧 `lastLayout.at` 이다.
+      if (lastLayout) cascade(layouts, lastLayout.at, lastLayout.value);
       if (lastShape) cascade(shapes, lastShape.at, lastShape.value);
       if (lastFont) {
         for (let i = Math.min(lastFont.at + 1, CAP); i <= CAP; i++) {

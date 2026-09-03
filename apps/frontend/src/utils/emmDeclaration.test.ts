@@ -25,8 +25,9 @@ function check(name: string, got: unknown, want: unknown): void {
 {
   const r = resolveDeclaration({ template: 'progtree-tree' });
   check('① 패턴 — 1레벨은 맵 전체 레이아웃', r.editor?.layoutType, 'process-tree-right');
+  // 색인은 branches 기준 depth — [1] 이 "2레벨"이다 (utils/levelLayouts)
   check('① 패턴 — 2레벨부터 levelLayouts', r.settings?.levelLayouts, [
-    null, null, 'tree-right', 'tree-right', 'tree-right',
+    null, 'tree-right', 'tree-right', 'tree-right', 'tree-right',
   ]);
 }
 {
@@ -49,7 +50,7 @@ function check(name: string, got: unknown, want: unknown): void {
   });
   check('② template 의 1레벨 레이아웃이 새어 나오지 않는다', r.editor, undefined);
   check('② levels 만 반영된다', r.settings?.levelLayouts, [
-    null, null, 'kanban', 'kanban', 'kanban',
+    null, 'kanban', 'kanban', 'kanban', 'kanban',
   ]);
 }
 
@@ -64,8 +65,13 @@ function check(name: string, got: unknown, want: unknown): void {
     null, 'rounded', 'rounded', 'rounded', 'rounded',
   ]);
   check('③ 레이아웃은 3레벨부터', r.settings?.levelLayouts, [
-    null, null, null, 'kanban', 'kanban',
+    null, null, 'kanban', 'kanban', 'kanban',
   ]);
+  // ★ 두 배열의 같은 칸이 같은 레벨을 뜻한다 — [1]=2레벨, [2]=3레벨.
+  //   levelLayouts 만 레벨 번호로 색인해 한 칸 밀려 있던 것을 맞췄다.
+  check('③ 도형과 레이아웃의 색인 기준이 같다',
+    [r.settings?.levelShapes?.[2], r.settings?.levelLayouts?.[2]],
+    ['rounded', 'kanban']);
 }
 {
   // 1레벨 레이아웃은 맵 전체 몫이다 (levelLayouts[0] 은 쓰이지 않는다)

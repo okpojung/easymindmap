@@ -24,6 +24,12 @@
 //
 // 그래서 **바로 앞 줄이 평범한 문단일 때만** 바꾼다. 표의 구분선(`|---|`),
 // 리스트 항목, 인용문, 코드 펜스 안쪽은 건드리지 않는다.
+//
+// **여기까지 다루지 않는 것** — CommonMark 를 끝까지 따르지는 않는다.
+// HTML 블록(`<div>`)과 링크 참조 정의(`[a]: /x`) 뒤의 `---` 는 표준상
+// 수평선이지만 여기서는 문단으로 본다. `~~~` 로 열고 ```` ``` ```` 로 닫는
+// 짝이 어긋난 펜스도 가리지 않는다. 셋 다 손으로 쓴 문서에서 사실상
+// 나오지 않고, 잘못 바꿔도 헤딩 하나가 더 생길 뿐이라 그대로 둔다.
 
 /** 밑줄 후보 — `=` 또는 `-` 만으로 된 줄 (최대 3칸 들여쓰기 허용). */
 const UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/;
@@ -40,7 +46,9 @@ const FENCE = /^ {0,3}(```|~~~)/;
 function isParagraph(line: string): boolean {
   if (!line.trim()) return false;
   if (UNDERLINE.test(line)) return false;
-  if (/^ {4,}/.test(line)) return false;              // 들여쓴 코드
+  // 탭 하나도 4칸 들여쓰기다 (CommonMark). 공백만 보면 `\tcode` 뒤의
+  // `---` 가 밑줄로 읽혀 **코드가 헤딩이 된다.**
+  if (/^(?: {4,}|\t)/.test(line)) return false;         // 들여쓴 코드
   if (/^ {0,3}#{1,6}(\s|$)/.test(line)) return false; // ATX 헤딩
   if (/^ {0,3}([-*+]|\d+[.)])\s/.test(line)) return false; // 리스트 항목
   if (/^ {0,3}>/.test(line)) return false;            // 인용문
@@ -61,9 +69,13 @@ export function setextToAtx(lines: string[]): string[] {
   const out = lines.slice();
   let inFence = false;
 
-  for (let i = 1; i < out.length; i++) {
+  // **0번 줄부터 돈다.** 밑줄은 2번째 줄부터 가능하지만, 펜스 여닫이는
+  // 첫 줄에도 올 수 있다. i=1 부터 돌면 **첫 줄의 펜스를 놓쳐** 코드블록
+  // 안쪽을 바깥으로 착각하고, 그 안의 `제목`/`===` 을 헤딩으로 바꿔
+  // **원문에서 밑줄 한 줄이 사라진다**(코드가 조용히 훼손된다).
+  for (let i = 0; i < out.length; i++) {
     if (FENCE.test(out[i])) { inFence = !inFence; continue; }
-    if (inFence) continue;
+    if (inFence || i === 0) continue;
 
     const m = UNDERLINE.exec(out[i]);
     if (!m) continue;

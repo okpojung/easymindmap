@@ -13,6 +13,7 @@ import { parseMarkdownToMap, type ParseEmmOptions } from './importMarkdown';
 import { nodeHeadingText } from '@emm/serialize';
 import { readDeclaration } from '@emm/declaration';
 import { resolveDeclaration } from './emmDeclaration';
+import { applyLevelLayouts } from './levelLayouts';
 import {
   MD_META_RE,
   MD_META_BLOCK_RE,
@@ -148,7 +149,21 @@ export function parseMarkdownMapFile(
   // 있는 문서는 위에서 이미 돌아갔으므로 여기 오지 않는다 — **메타데이터가
   // 있으면 그것이 이긴다.** 같은 정보를 두 곳에서 읽지 않기 위해서다.
   const declared = resolveDeclaration(readDeclaration(raw));
-  if (declared.settings) map.settings = { ...(map.settings ?? {}), ...declared.settings };
+  if (declared.settings) {
+    map.settings = { ...(map.settings ?? {}), ...declared.settings };
+    // **설정만 합쳐서는 그림이 바뀌지 않는다** (2026-09-03). 레이아웃 엔진은
+    // `settings` 를 읽지 않는다 — 맵 전체 레이아웃과 **노드별 `layoutType`**
+    // 만 본다. `settings.levelLayouts` 는 설정 패널이 "무엇을 고른 상태인가"를
+    // 기억하는 자리다. 그래서 예전에는 `levels:` 선언이 패널에만 보이고
+    // 그림에는 전혀 반영되지 않았다.
+    //
+    // 설정 패널이 고를 때와 **같은 함수**로 노드에 박는다.
+    if (declared.settings.levelLayouts) {
+      map.branches = applyLevelLayouts(
+        map.branches, declared.settings.levelLayouts,
+      ) as SampleBranch[];
+    }
+  }
 
   return { map, source: 'plain-md', ...(declared.editor ? { editor: declared.editor } : {}) };
 }

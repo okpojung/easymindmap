@@ -32,6 +32,9 @@ import type {
   LevelFontSetting,
 } from '@/editor/__samples__/types';
 import type { TextAlign, LayoutType, EdgeType } from '@/types/mindmap';
+// 레벨별 레이아웃을 노드에 박는 규칙 — 불러오기(importMapFile)와 **같은 것을
+// 쓴다.** 순수 함수라 순환 없음.
+import { applyLevelLayout, resolveEdgeType } from '@/utils/levelLayouts';
 // 히스토리 스냅샷에 전체 레이아웃을 함께 기록/복원하기 위해서만 사용
 // (editorUiStore는 documentStore를 import하지 않으므로 순환 없음).
 import { useEditorUiStore } from './editorUiStore';
@@ -260,13 +263,6 @@ function createNodeId() {
 
 function createSubId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-}
-
-function resolveEdgeType(layoutType: LayoutType): EdgeType {
-  if (layoutType === 'radial' || layoutType === 'both-radial') {
-    return 'curve-line';
-  }
-  return 'tree-line';
 }
 
 // depth 0 = root, 1 = branch, 2+ = deeper
@@ -1255,20 +1251,8 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     set((state) => {
       // 해당 레벨(4는 depth 4 이상 전부)의 모든 노드에 일괄 적용/해제.
       // 개별 노드의 기존 서브트리 오버라이드는 이 레벨에 한해 덮어쓴다.
-      const applyAtDepth = (nodes: MindNode[], depth: number): MindNode[] =>
-        nodes.map((n) => {
-          const match = level === 4 ? depth >= 4 : depth === level;
-          const next: MindNode = {
-            ...n,
-            children: applyAtDepth(n.children ?? [], depth + 1),
-          };
-          if (match) {
-            next.layoutType = layoutType ?? undefined;
-            next.edgeType = layoutType ? resolveEdgeType(layoutType) : undefined;
-          }
-          return next;
-        });
-
+      // 순회 규칙은 `utils/levelLayouts` 한 벌뿐이다 — 불러오기도 같은 것을
+      // 쓴다(그래야 "4레벨 = 그 이상 전부" 같은 세부가 어긋나지 않는다).
       const prev = state.map.settings?.levelLayouts ?? [];
       const nextLayouts: (LayoutType | null | undefined)[] = [...prev];
       while (nextLayouts.length < 5) nextLayouts.push(undefined);
@@ -1277,7 +1261,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       return {
         map: {
           ...state.map,
-          branches: applyAtDepth(state.map.branches, 1) as SampleBranch[],
+          branches: applyLevelLayout(state.map.branches, level, layoutType) as SampleBranch[],
           settings: { ...state.map.settings, levelLayouts: nextLayouts },
         },
       };

@@ -44,19 +44,39 @@ curl -s https://api-dev.mindmap.ai.kr/v1/health
 ```bash
 curl -s https://api-dev.mindmap.ai.kr/v1/health
 # {"status":"ok","db":"up","schema":"ok",
-#  "commit":"2e92713858e0",                       ← 빌드된 커밋 12자
-#  "runtime":{"node":"20.20.2","nestjs":"11.2.3","express":"5.2.1"},
+#  "commit":"44d642ca5537",        ← 빌드한 저장소의 커밋 12자 (아래 ★ 주의)
+#  "runtime":{"node":"22.23.2","nestjs":"11.2.3","express":"5.2.1"},
 #  "time":"..."}
+#        ↑ 2026-09-02 dev 서버 실측값
 ```
 
-`commit` 을 `git log --oneline -1` 의 SHA 와 **눈으로 대조**한다. 다르면
-배포가 아직 안 온 것이다 — Coolify UI 에서 **Deploy** 를 누른다.
+### ★ `commit` 은 **빌드한 저장소**의 SHA 다 — 공개 저장소와 대조하지 마라
+
+**개발 서버에 도는 것은 유료판 한 벌뿐이고, 그것은 private 저장소에서
+빌드된다**(§14). 그래서 `commit` 도 **private 저장소의 SHA** 다.
+`okpojung/easymindmap` 의 `git log` 와 비교하면 **언제나 다르게 나와**
+"배포가 안 왔다"고 잘못 판단하게 된다.
+
+```bash
+# 서버가 보고한 값이 이 저장소 것인지부터 본다
+git cat-file -t <commit 값> 2>/dev/null || echo "이 저장소의 커밋이 아니다"
+```
+
+| 무엇을 확인하나 | 어떻게 |
+|---|---|
+| **코드가 바뀌었나** (일상) | `runtime` 을 본다 — 라이브러리 버전이 올라갔으면 새 빌드다 |
+| **어느 커밋이 도나** | `commit` 을 **private 저장소**의 `git log --oneline -1` 과 대조한다 |
+| 공개판을 띄운 경우 | 그때는 이 저장소의 `git log` 와 대조가 맞다 |
+
+2026-09-02 실측: 서버가 `44d642ca5537` 을 보고했는데 공개 저장소에는
+없는 커밋이었다. 유료판 빌드라 그렇다 — **정상이다.** 같은 응답의
+`runtime.nestjs = 11.2.3` 이 NestJS 11 이관(#347)이 반영됐음을 말해 줬다.
 
 > `commit` 이 **아예 없으면** 배포 플랫폼이 커밋을 알려 주지 않은 것이다.
-> Coolify 는 `SOURCE_COMMIT` 을 주입한다. 비어 있으면 해당 앱의
-> **Environment Variables** 에 `SOURCE_COMMIT` 을 추가한다
-> (`GIT_COMMIT_SHA`·`GIT_SHA`·`COMMIT_SHA` 도 받는다). 없어도 앱은
-> 정상 동작하고 그 필드만 빠진다.
+> Coolify 는 `SOURCE_COMMIT` 을 주입한다(2026-09-02 확인 — 따로 설정하지
+> 않아도 나왔다). 비어 있으면 해당 앱의 **Environment Variables** 에
+> `SOURCE_COMMIT` 을 추가한다 (`GIT_COMMIT_SHA`·`GIT_SHA`·`COMMIT_SHA`
+> 도 받는다). 없어도 앱은 정상 동작하고 그 필드만 빠진다.
 >
 > **왜 넣었나**: NestJS 11 이관(#347) 뒤 "서버에 반영됐나"를 확인할
 > 방법이 Coolify UI 나 SSH 뿐이었다. 헬스체크만 보고 "반영됐다"고

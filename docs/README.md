@@ -90,7 +90,8 @@ docs/
 │  │  ├─ 27-sync-model.md
 │  │  └─ 28-sync-prework-plan.md
 │  ├─ publish/
-│  │  └─ 27-publish-share.md
+│  │  ├─ 27-publish-share.md
+│  │  └─ 27a-paid-publish.md            ← 유료 게시(미리보기·수수료·정산)
 │  ├─ project/
 │  │  ├─ 28-wbs.md
 │  │  └─ 29-resource.md
@@ -265,6 +266,7 @@ docs/
 | 25 | `docs/04-extensions/collaboration/25-map-collaboration.md` | COLLAB | 협업 초대/동기화/커서/Soft Lock/Node Thread |
 | 26 | `docs/04-extensions/collaboration/26-realtime-chat.md` | CHAT | 실시간 채팅 (맵 채널 채팅, 1:1 DM, @멘션) |
 | 27 | `docs/04-extensions/publish/27-publish-share.md` | PUBLISH | 공개 URL 게시 및 읽기 전용 공유 |
+| 27a | `docs/04-extensions/publish/27a-paid-publish.md` | PAID_PUBLISH | 유료 게시 — 실루엣 미리보기·구매=다운로드·수수료·정산 |
 | 28 | `docs/04-extensions/project/28-wbs.md` | WBS | WBS 모드 (일정/마일스톤/진척률) |
 | 29 | `docs/04-extensions/project/29-resource.md` | RESOURCE | 리소스 할당 (담당자/역할/공수) |
 | 30 | `docs/04-extensions/integrations/30-obsidian-integration.md` | OBSIDIAN | Obsidian Vault 양방향 Markdown 동기화 |

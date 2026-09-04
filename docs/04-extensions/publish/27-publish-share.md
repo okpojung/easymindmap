@@ -278,6 +278,7 @@ buildStandaloneHtml(map, …)  — Standalone HTML 내보내기와 **같은 함�
 | 공유 대화상자 | `apps/frontend/src/components/cloud/PublishPanel.tsx` |
 | 공개 화면 | `apps/frontend/src/pages/PublicMapPage.tsx` · 라우팅은 `main.tsx` |
 | 미리보기 실루엣 | `apps/frontend/src/export/silhouette.ts` (27a §2) |
+| 문서함의 공개 표시 | `components/cloud/MapBrowser.tsx` — `🌐 공개 중` 배지 |
 
 남은 제약 — **지금은 이렇게 동작한다**는 사실이지 버그가 아니다.
 
@@ -290,6 +291,11 @@ buildStandaloneHtml(map, …)  — Standalone HTML 내보내기와 **같은 함�
   맵에서 `EasyMindMap · Editor` 다). 네이버는 자바스크립트를 실행해 제목을
   읽어 가지만, 카카오톡·슬랙 등 대부분은 원본 HTML 만 읽는다.
 * **조회수·방문자 통계가 없다.**
+* **유효기간이 없다.** 링크는 저자가 [공개 중단] 을 누를 때까지 산다.
+  기간을 두는 대신 **문서함이 공개 중인 맵을 늘 보여 주는 쪽**을 골랐다
+  (PUBL-05) — "잊고 공개해 둔다" 는 문제는 만료가 아니라 **보이지 않음**
+  에서 왔기 때문이다. 필요해지면 `expires_at` 한 칸을 더하고 조회에
+  조건 하나를 붙이면 된다(워커 없이 된다).
 * **공개 화면에 "이 맵 복제하기" 가 없다.** 보는 것뿐이다.
 * **CDN 캐시를 쓰지 않는다** — 게시 취소가 곧바로 반영된다(§6 의 "최대
   5분" 은 CDN 을 끼웠을 때의 이야기다).

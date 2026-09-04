@@ -30,6 +30,8 @@ import {
 } from '@/services/cloud/apiClient';
 import { ProMapMembersTip } from '@pro';
 import { useCloudStore } from '@/stores/cloudStore';
+import { notifyUser } from '@/stores/noticeStore';
+import { publicMapUrl } from './PublishPanel';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
 import { FolderPickerDialog } from './FolderPickerDialog';
 
@@ -986,6 +988,33 @@ export function MapBrowser({
                 <span style={{ fontSize: 10, marginLeft: 6, color: t.textSubtle }}>편집 중</span>
               )}
             </button>
+            {/* **지금 공개 중인 맵** (2026-09-05 사용자 요청).
+                공개 링크는 만들고 나면 대화상자를 닫는 순간 사라져서, 무엇을
+                공개해 뒀는지도 그 주소가 무엇이었는지도 알 길이 없었다.
+                **잊고 공개해 두는 것**이 이 기능에서 가장 나쁜 실패라,
+                문서함이 늘 말해 주게 한다. 눌러서 주소를 다시 가져간다. */}
+            {r.map.publishId && (
+              <button
+                data-testid="browser-map-published"
+                title={`공개 중 — 누르면 링크를 복사합니다\n${publicMapUrl(r.map.publishId)}`}
+                onClick={(e) => {
+                  e.stopPropagation(); // 행 클릭(맵 열기)과 겹치지 않게
+                  const url = publicMapUrl(r.map.publishId!);
+                  const done = () => notifyUser(`🔗 공개 링크를 복사했습니다 — ${url}`);
+                  if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(url).then(done,
+                      () => notifyUser(`⚠ 복사하지 못했습니다 — ${url}`));
+                  } else {
+                    notifyUser(`공개 링크: ${url}`);
+                  }
+                }}
+                style={{
+                  marginLeft: 6, padding: '0 6px', borderRadius: 8, cursor: 'pointer',
+                  border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
+                  color: t.primary, fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
+                }}
+              >🌐 공개 중</button>
+            )}
             {/* 유형은 표시 전용 — 협업맵은 협업자를 초대해 승인·참여하는
                 순간 전환된다(협업 단계 V1~V2). 여기서 바꾸는 것이 아니다.
                 협업맵이면 **유료 자리**로 감싼다 — 마우스를 올리면 누가
@@ -1097,6 +1126,9 @@ export function MapBrowser({
           <InfoRow t={t} k="노드" v={info.map.nodeCount === null || info.map.nodeCount === undefined
             ? '—' : `${info.map.nodeCount.toLocaleString()}개`} />
           <InfoRow t={t} k="문서 크기" v={fmtBytes(info.map.docBytes)} />
+          {info.map.publishId && (
+            <InfoRow t={t} k="공개 링크" v={publicMapUrl(info.map.publishId)} />
+          )}
           <InfoRow t={t} k="첨부" v={
             info.map.attachCount === null || info.map.attachCount === undefined
               ? '—'

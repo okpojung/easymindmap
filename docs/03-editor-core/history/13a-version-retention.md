@@ -436,9 +436,11 @@ CREATE INDEX IF NOT EXISTS idx_versions_prune
   실제로 이 연쇄를 실행한다, 2026-09-02 확인). 스키마 파괴적 변경이므로
   DB 초기화 시점에 맞춰 처리한다 —
   [`../../90-architecture/schema-overhaul-plan.md`](../../90-architecture/schema-overhaul-plan.md) §2
-- **이전 제안의 만료.** 받는 사람이 응답하지 않으면 언제까지 유효한가
-  (`schema-overhaul-plan.md` §4 는 14일을 제안한다)
-- **한 맵에 동시에 여러 제안이 열릴 수 있는가**
-  (같은 문서 §4 의 부분 유니크 인덱스는 하나만 허용한다)
+- **이전 제안의 만료** — **14일로 확정**(2026-09-04 #380 표 기본값 ·
+  2026-09-05 초대장도 같은 값). 해소됨
+- **한 맵에 동시에 여러 제안이 열릴 수 있는가** — **하나만**(부분 유니크
+  인덱스, #380). 해소됨
+- **§4.5.2 의 자동 버전 ZIP** 은 v1 에서 미룬다 — 버전은 맵과 함께 넘어간다.
+  이유와 순서는 [`../../04-extensions/collaboration/29-invite-and-ownership-transfer.md`](../../04-extensions/collaboration/29-invite-and-ownership-transfer.md) §3.5
 - **협업맵의 영구보관 상한을 누구 요금제로 볼 것인가** — §4.5 에서
   개설자 기준으로 확정했다. 이 항목은 해소됨

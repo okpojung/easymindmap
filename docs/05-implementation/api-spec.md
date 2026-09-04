@@ -1771,8 +1771,12 @@ step 상태 변경
 > 권한이 없으면 **404**(없는 맵과 구분하지 않는다 — 구분하면 맵 id 의
 > 존재 여부를 알려 주는 셈이다). 열람자의 쓰기만 **403 + "이 맵에는 읽기
 > 권한만 있습니다."** 로 답한다.
-> 참가자 행을 만드는 **초대 API 는 아직 없다**(유료 모듈 몫).
+> 참가자 행을 만드는 **초대 API 는 유료 모듈에 있다**(`/v1/collab/maps/:id/members`).
 > 설계: `../04-extensions/collaboration/27-sync-model.md` §14
+>
+> **2026-09-05** — 초대장(미가입자)·나가기·소유권 이전의 정본은
+> [`29-invite-and-ownership-transfer.md`](../04-extensions/collaboration/29-invite-and-ownership-transfer.md)
+> §6 이다. 아래 §13-1·13-5·13-6·13-7 은 그 이전의 설계본이며 경로·응답이 다르다.
 >
 > ⚠️ 협업 API(초대·scope·Soft Lock 등)는 전부 미구현이다. **실제 잠금은
 > `map_edit_locks` 기반 단일 세션 편집 잠금 모델**로 구현되어 있다 —

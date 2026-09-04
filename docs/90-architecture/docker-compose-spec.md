@@ -21,6 +21,15 @@
 
 ## 아키텍처 결정: Supabase Self-hosted
 
+> ⚠️ **이 문서가 그리는 전체 스택은 아직 띄우지 않았다** (2026-09-02 확인).
+> 실제 구축은 다른 길로 갔다 — 로그인은 **GoTrue 단독**
+> (`dev-server-coolify.md` §5.5 경로 A · `auth-dev.mindmap.ai.kr`),
+> 첨부는 **로컬 디스크 + NAS NFS**(`STORAGE_LOCAL_DIR`), DB 는 **API 가
+> `pg` 로 직접**, 협업은 **자체 WebSocket**이다. 그래서 아래
+> `supabase.example.com` 은 **주소가 정해지지 않은 자리표시자**이고,
+> 이 문서는 **전체 스택으로 갈 때의 기준 스펙**으로 보존한다.
+
+
 기존 설계(PostgreSQL + MinIO 직접 설치)에서 **Supabase Self-hosted**로 변경.
 
 | 항목 | 기존 | 변경 후 |

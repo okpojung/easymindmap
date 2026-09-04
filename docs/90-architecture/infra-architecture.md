@@ -38,10 +38,15 @@
 > 없어, 적으면 그때 비로소 내부망 구조가 드러납니다. 그래서 IP 만
 > `.githooks/pre-commit` 과 CI(`실제 IP 유출 검사`)가 계속 막습니다.
 >
-> **남아 있는 `*.example.com` 은 두 종류**입니다 — **아직 정하지 않은
-> 주소**(`supabase.example.com`)와 **일반 예시**(API 응답 샘플의
-> `api.example.com` · 사용자가 각자 넣는 `redmine.example.com` ·
-> `smtp.example.com` 등).
+> **남아 있는 `*.example.com` 은 두 종류**입니다.
+>
+> - **아직 정하지 않은 주소** — `supabase.example.com`. **전체 Supabase
+>   Self-hosted 스택**(Kong 게이트웨이 뒤에 GoTrue·Storage·Realtime·
+>   Studio)을 띄웠을 때의 자리인데, **그 스택을 구축하지 않았습니다.**
+>   로그인은 GoTrue 단독(§7.5 · `dev-server-coolify.md` §5.5 경로 A)이라
+>   `auth-dev.mindmap.ai.kr` 을 씁니다.
+> - **일반 예시** — API 응답 샘플의 `api.example.com`, 사용자가 각자
+>   넣는 `redmine.example.com` · `smtp.example.com` 등.
 >
 > **문서 위치**: `docs/90-architecture/infra-architecture.md`
 > **최종 업데이트**: 2026-08-07
@@ -112,7 +117,7 @@
                                                   │     → VM-02 :5173
                                                   ├── api.example.com
                                                   │     → VM-02 :3000
-                                                  ├── supabase.example.com
+                                                  ├── supabase.example.com  ※미구축
                                                   │     → VM-03 :54323 [IP제한]
                                                   └── pro-dev.mindmap.ai.kr
                                                         → VM-DEV :5173 [IP제한]
@@ -243,6 +248,12 @@ DNS     : 8.8.8.8, 1.1.1.1
 > (Cloudflare 콘솔에는 해당 존이 없음 — 신규 서브도메인 추가 시 엉뚱한
 > 콘솔을 열지 말 것). dev 계열 Forward는 Coolify 전환에 맞춰
 > **Traefik(:80)** 으로 정정 (`:5173`은 수동 Vite 시절 값 — 502 발생).
+
+> ⚠️ **`*.example.com` 행은 아직 만들지 않은 것**이다 (2026-09-02 확인).
+> `supabase.` 는 **전체 Supabase Self-hosted 스택**(Kong 뒤에 GoTrue·
+> Storage·Realtime·Studio)을 띄웠을 때의 자리인데 **그 스택을 구축하지
+> 않았고 주소도 정하지 않았다.** 실제로 도는 것은 `*.mindmap.ai.kr` 행
+> 뿐이다 — 로그인은 GoTrue 단독이라 `auth-dev.` 를 쓴다.
 
 | 도메인 | DNS (등록대행사) | NPM Forward | 접근 제한 | SSL |
 |---|---|---|---|---|
@@ -484,7 +495,7 @@ sudo systemctl restart ssh
 Type  Name                        Content
 A     example.com                 203.0.113.10
 A     api.example.com             203.0.113.10
-A     supabase.example.com        203.0.113.10
+A     supabase.example.com        203.0.113.10   ※ 미등록 — 전체 스택용
 A     pro-dev.mindmap.ai.kr             203.0.113.10
 A     api-dev.mindmap.ai.kr         203.0.113.10
 A     coolify-dev.mindmap.ai.kr     203.0.113.10
@@ -638,7 +649,12 @@ add_header X-Frame-Options        SAMEORIGIN;
 add_header X-Content-Type-Options nosniff;
 ```
 
-### 7.5 Proxy Host — supabase.example.com
+### 7.5 Proxy Host — supabase.example.com (미구축)
+
+> **아직 만들지 않았다.** 전체 Supabase 스택용 자리이고 그 스택을 띄우지
+> 않았다 — 주소도 정하지 않았다. 지금 로그인은 **GoTrue 단독**
+> (§7.7 `auth-dev.mindmap.ai.kr` · `dev-server-coolify.md` §5.5 경로 A).
+> 아래는 **전체 스택으로 갈 때의 기준 설정**으로 남겨 둔다.
 
 ```
 Domain:   supabase.example.com

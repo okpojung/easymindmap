@@ -11,6 +11,8 @@
 
 import type { LayoutType, MapSettings, ShapeType } from '@/editor/__samples__/types';
 import type { EmmDeclaration } from '@emm/declaration';
+import { SUBTREE_SUPPORTED } from '@/layout/strategies/SubtreeStrategy';
+import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
 
 // ── 알려진 값 ────────────────────────────────────────────────────────
 //
@@ -54,6 +56,27 @@ export interface ResolvedDeclaration {
   editor?: { layoutType: LayoutType };
   /** 레벨별 정책 */
   settings?: MapSettings;
+  /**
+   * 알아는 들었지만 **쓸 수 없어 건너뛴 것**. 불러오기 안내에 그대로 붙는다.
+   *
+   * 모르는 이름을 조용히 버리는 것(§2.4 관용적 파싱)과는 다르다 — 이쪽은
+   * **아는 값인데 그 자리에서만 못 쓰는** 경우라, 아무 말도 안 하면 문서를
+   * 쓴 사람이 왜 안 되는지 알 길이 없다. 실제로 `levels: 2: {layout: kanban}`
+   * 이 그렇게 조용히 사라졌다 (2026-09-03).
+   */
+  skipped?: string[];
+}
+
+/**
+ * 2레벨 이상에 걸 수 있는 레이아웃인가.
+ *
+ * 1레벨은 맵 전체 레이아웃이라 무엇이든 된다(칸반·프리폼 포함). 2레벨부터는
+ * **노드 오버라이드**로 들어가므로 엔진이 서브트리로 그릴 줄 아는 것만
+ * 된다 — 판정은 엔진의 집합을 그대로 쓴다. 정규화 뒤에 본다(`tree` 처럼
+ * 정식 이름으로 적어도 통과해야 한다).
+ */
+function usableAtLevel(layout: string): boolean {
+  return SUBTREE_SUPPORTED.has(normalizeLayoutType(layout as LayoutType));
 }
 
 /** 배열의 마지막 칸이 "그 레벨 이상"을 뜻한다 — 맵 설정이 쓰는 규칙. */
@@ -98,6 +121,7 @@ function cascade<T>(arr: (T | null | undefined)[], from: number, value: T): void
  */
 export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
   const out: ResolvedDeclaration = {};
+  const skipped: string[] = [];
 
   // ── template — levels 가 없을 때만 ────────────────────────────────
   const tpl = emm.levels ? undefined : emm.template?.trim();
@@ -109,9 +133,19 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
       // (`utils/levelLayouts` 의 표 참조 — levelLayouts[1] 이 "2레벨"이다).
       out.editor = { layoutType: pattern[0] };
       const levelLayouts: (LayoutType | null | undefined)[] = [];
-      for (let lv = 2; lv <= pattern.length; lv++) put(levelLayouts, lv - 1, pattern[lv - 1]);
-      cascade(levelLayouts, pattern.length - 1, pattern[pattern.length - 1]);
-      out.settings = { levelLayouts };
+      // 2레벨 이상은 서브트리로 그릴 수 있는 것만 (지금 패턴은 전부 그렇다 —
+      // 나중에 패턴을 더할 때 조용히 새는 것을 막는 자리다)
+      let deepest = 0;
+      for (let lv = 2; lv <= pattern.length; lv++) {
+        if (!usableAtLevel(pattern[lv - 1])) {
+          skipped.push(`${lv}레벨의 '${pattern[lv - 1]}'`);
+          continue;
+        }
+        put(levelLayouts, lv - 1, pattern[lv - 1]);
+        deepest = lv;
+      }
+      if (deepest) cascade(levelLayouts, deepest - 1, pattern[deepest - 1]);
+      if (levelLayouts.length) out.settings = { levelLayouts };
     } else if (LAYOUTS.has(tpl)) {
       // 레이아웃 이름 그대로 — 맵 전체에 그 레이아웃 하나
       out.editor = { layoutType: tpl as LayoutType };
@@ -145,10 +179,24 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
 
         const layout = spec.layout;
         if (layout && LAYOUTS.has(layout)) {
-          // 1레벨 레이아웃은 맵 전체 몫이다 (levelLayouts[0] 은 쓰이지 않는다)
-          if (lv === 1) out.editor = { layoutType: layout as LayoutType };
-          else put(layouts, lv - 1, layout as LayoutType);
-          lastLayout = { at: lv, value: layout as LayoutType };
+          // 1레벨 레이아웃은 맵 전체 몫이다 (levelLayouts[0] 은 쓰이지 않는다).
+          // 1레벨은 맵 전체라 무엇이든 되지만, 2레벨부터는 노드 오버라이드라
+          // 엔진이 서브트리로 그릴 줄 아는 것만 된다.
+          if (lv === 1) {
+            out.editor = { layoutType: layout as LayoutType };
+            // 상속은 **더 깊은 레벨로 흐르는 것**이라, 1레벨 값이라도 서브트리로
+            // 못 그리면 물려주지 않는다. `levels: 1: {layout: kanban}` 이 그렇다 —
+            // 맵 전체는 칸반으로 잘 그려지지만, 그 값을 2레벨 이하 노드에까지
+            // 박아 두면 엔진이 무시하는 쓰레기 값만 남는다.
+            if (usableAtLevel(layout)) lastLayout = { at: lv, value: layout as LayoutType };
+          } else if (usableAtLevel(layout)) {
+            put(layouts, lv - 1, layout as LayoutType);
+            lastLayout = { at: lv, value: layout as LayoutType };
+          } else {
+            // **상속도 시키지 않는다** — 못 쓰는 값을 더 깊은 레벨로 퍼뜨리면
+            // 건너뛴 이유가 여러 줄로 불어난다
+            skipped.push(`${lv}레벨의 '${layout}'`);
+          }
         }
 
         const shape = spec.shape;
@@ -187,5 +235,6 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
     }
   }
 
+  if (skipped.length) out.skipped = skipped;
   return out;
 }

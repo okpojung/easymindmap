@@ -284,7 +284,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     map: Parameters<typeof loadMap>[0];
     editor?: { layoutType?: Parameters<typeof setLayoutType>[0]; spacingX?: number; spacingY?: number };
     source: string;
-  } & { relinked?: number }, movedToNote = 0) => {
+  } & { relinked?: number; skipped?: string[] }, movedToNote = 0) => {
     // MD의 원격 이미지 URL(![](https://…png))을 다운로드해 내장 —
     // 실패분은 원격 참조 유지 또는 링크 폴백 (remoteImages.ts)
     const { map: resolvedMap, stats: img } = await resolveRemoteImages(imported.map);
@@ -310,9 +310,15 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       img.linked ? `이미지 ${img.linked}개는 다운로드 실패로 링크로 대체` : '',
     ].filter(Boolean).join(' · ');
     const imgMsg = imgNote ? ` · ${imgNote}` : '';
+    // EMM 선언에서 건너뛴 것 — **아는 값인데 그 자리에서만 못 쓰는** 경우다.
+    // 모르는 이름처럼 조용히 버리면 문서를 쓴 사람이 왜 안 되는지 모른다.
+    const skipMsg = imported.skipped?.length
+      ? ` · ⚠ ${imported.skipped.join(', ')} 은(는) 레벨별로 쓸 수 없어 `
+        + '건너뛰었습니다 (맵 전체 레이아웃으로는 쓸 수 있습니다)'
+      : '';
     setChooseTpl({
       msg: imported.source === 'plain-md'
-        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다${moved}${imgMsg}`
+        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다${moved}${imgMsg}${skipMsg}`
         : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다${extra}${imgMsg}`,
       mode: 'import',
     });

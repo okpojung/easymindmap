@@ -1135,7 +1135,7 @@ ON CONFLICT (map_id, user_id) DO UPDATE SET role = EXCLUDED.role;
 ⚠️ 넣은 사람은 **맵 id 를 알아야** 들어갈 수 있다 — 문서함의 "나에게
 공유된 맵" 목록은 아직 없다(협업 프런트엔드와 함께 만든다).
 
-### 1.5-0-H. ★ 스키마 정비 A·B·C — `maps.owner_id` RESTRICT + 버전 보관 컬럼 + 소유권 이전 표 (2026-09-04)
+### 1.5-0-I. ★ 스키마 정비 A·B·C — `maps.owner_id` RESTRICT + 버전 보관 컬럼 + 소유권 이전 표 (2026-09-04)
 
 공개 #380 ([schema-overhaul-plan.md](schema-overhaul-plan.md)). 세 덩어리를
 한 번에 넣는다 — **A** `maps.owner_id` 의 `ON DELETE CASCADE → RESTRICT`

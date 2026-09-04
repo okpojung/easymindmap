@@ -33,7 +33,8 @@
 | `nodes` | ✅ | ltree 정규화 경로 — **현재도 실존·가동 중**(스냅샷 경로와 병행, 프런트는 스냅샷 경로만 사용). `note` 컬럼 **없음**, `layout_type NOT NULL DEFAULT 'radial-bidirectional'`, **CHECK 제약 0건**, 번역 컬럼은 `text_lang`/`text_hash` 만 |
 | `tags` / `node_tags` | ✅ | `tags` 는 **owner_id 기반 개인 태그만** (`UNIQUE(owner_id, name)`) — `workspace_id` 없음 |
 | `node_notes` / `node_links` / `node_attachments` / `node_media` | ✅ | 노드 부가 정보. `node_media.media_type` 은 `DEFAULT 'image'`(설계본의 audio/video CHECK 없음) |
-| `exports` / `published_maps` | ✅ | 스키마만 존재, API 미사용 |
+| **`published_maps`** | ✅ | **무료 게시** (2026-09-04 구현) — 맵당 활성 링크 1개(`unpublished_at IS NULL`). `storage_path` 는 아직 안 쓴다(공개 화면은 저장 스냅샷을 받아 브라우저가 그린다). `27-publish-share.md` |
+| `exports` | ✅ | 스키마만 존재, API 미사용 |
 | `ai_jobs` / `node_translations` / `field_registry` | ✅ | 스키마만 존재, API 미사용 |
 | **`attachments`** | ✅ 실물 전용 | 첨부 저장소 메타(B9) — 파일 원본은 로컬 디스크 `StorageService` |
 | **`map_edit_locks`** | ✅ 실물 전용 | 단일 세션 편집 잠금 (2026-08-04) — session_key + heartbeat TTL 60초 |
@@ -548,6 +549,21 @@ CREATE TABLE public.published_maps (
 
 CREATE INDEX idx_published_maps_publish_id ON public.published_maps(publish_id);
 ```
+
+**2026-09-04 — 실제로 쓰기 시작했다** (`apps/api/src/publish/`).
+
+* `publish_id` 는 서버가 **소문자·숫자 12자**로 뽑는다. 헷갈리는 글자
+  (`0 o 1 l i`)를 뺀 31자 집합 — 링크를 눈으로 옮겨 적는 사람이 있고,
+  그때 틀리면 404 를 만난다.
+* **활성 링크는 맵당 1개**다(`unpublished_at IS NULL` 인 행). 게시를
+  취소하면 행은 남고 `unpublished_at` 만 채워진다 — 지운 적 없는 기록이다.
+* **조회는 `maps` 와 조인해 `deleted_at IS NULL` 을 직접 본다.** 우리 맵
+  삭제는 soft-delete 라 `ON DELETE CASCADE` 가 돌지 않는다. 이걸 빠뜨리면
+  휴지통에 있는 맵이 계속 공개된다.
+* `storage_path` 는 **아직 쓰지 않는다.** 공개 화면은 저장 스냅샷
+  (`map_documents.doc`)을 받아 브라우저가 그린다.
+* 이 표가 **없는 서버에서도 앱은 산다** — 게시 기능만 꺼진다
+  (`apps/api/src/common/table-ready.ts`).
 
 ---
 

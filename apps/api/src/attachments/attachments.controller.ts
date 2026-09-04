@@ -72,6 +72,54 @@ import { FromUrlDto } from './dto/from-url.dto';
 import { BlockedUrlError, fetchRemoteImage, RemoteFetchError } from './remote-image';
 
 /**
+ * 첨부 하나를 응답으로 흘린다 — **인증 경로와 공개 경로가 같은 코드를
+ * 쓴다** (2026-09-04).
+ *
+ * Range·Content-Disposition·416 처리를 두 벌로 두면 언젠가 한쪽만 고쳐진다.
+ * 다른 것은 **누구에게 열어 주는가** 하나뿐이므로, 그 판정만 `open` 콜백으로
+ * 받는다.
+ */
+export async function sendAttachment(
+  req: Request,
+  res: Response,
+  open: (range?: { start: number; end: number }) => Promise<{
+    name: string; mime: string; sizeBytes: number; stream: NodeJS.ReadableStream & { destroy: () => void };
+  }>,
+): Promise<void> {
+  // 크기·이름을 먼저 알아야 범위를 계산할 수 있다 — 스트림은 그다음
+  const head = await open();
+  const size = head.sizeBytes;
+  res.setHeader('Content-Type', head.mime);
+  // RFC 5987 — 한글 파일명 안전 전달
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename*=UTF-8''${encodeURIComponent(head.name)}`,
+  );
+  res.setHeader('Accept-Ranges', 'bytes');
+
+  const parsed = parseByteRange(req.headers.range, size);
+  if (parsed === 'invalid') {
+    head.stream.destroy();
+    res.setHeader('Content-Range', `bytes */${size}`);
+    res.status(416).end();
+    return;
+  }
+  if (!parsed) {
+    res.setHeader('Content-Length', String(size));
+    head.stream.pipe(res);
+    return;
+  }
+
+  // 구간 요청 — 앞서 연 전체 스트림은 버리고 그 구간만 다시 연다
+  head.stream.destroy();
+  const part = await open(parsed);
+  res.status(206);
+  res.setHeader('Content-Range', `bytes ${parsed.start}-${parsed.end}/${size}`);
+  res.setHeader('Content-Length', String(parsed.end - parsed.start + 1));
+  part.stream.pipe(res);
+}
+
+/**
  * /v1/attachments — 첨부 저장소 (B9).
  * 다운로드(GET)는 <a href>/fetch 로 열리므로 Authorization 헤더 대신
  * `?access_token=` 쿼리도 허용한다 (auth.guard 참조).
@@ -232,36 +280,7 @@ export class AttachmentsController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    // 크기·이름을 먼저 알아야 범위를 계산할 수 있다 — 스트림은 그다음
-    const head = await this.attachments.open(user.id, id);
-    const size = head.sizeBytes;
-    const disposition =
-      // RFC 5987 — 한글 파일명 안전 전달
-      `inline; filename*=UTF-8''${encodeURIComponent(head.name)}`;
-    res.setHeader('Content-Type', head.mime);
-    res.setHeader('Content-Disposition', disposition);
-    res.setHeader('Accept-Ranges', 'bytes');
-
-    const parsed = parseByteRange(req.headers.range, size);
-    if (parsed === 'invalid') {
-      head.stream.destroy();
-      res.setHeader('Content-Range', `bytes */${size}`);
-      res.status(416).end();
-      return;
-    }
-    if (!parsed) {
-      res.setHeader('Content-Length', String(size));
-      head.stream.pipe(res);
-      return;
-    }
-
-    // 구간 요청 — 앞서 연 전체 스트림은 버리고 그 구간만 다시 연다
-    head.stream.destroy();
-    const part = await this.attachments.open(user.id, id, parsed);
-    res.status(206);
-    res.setHeader('Content-Range', `bytes ${parsed.start}-${parsed.end}/${size}`);
-    res.setHeader('Content-Length', String(parsed.end - parsed.start + 1));
-    part.stream.pipe(res);
+    await sendAttachment(req, res, (range) => this.attachments.open(user.id, id, range));
   }
 
   @Delete(':id')

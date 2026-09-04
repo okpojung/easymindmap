@@ -31,7 +31,7 @@ import {
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useNoticeStore } from '@/stores/noticeStore';
-import { cloudApi } from '@/services/cloud/apiClient';
+import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import {
   useDocumentStore,
   useEditorUiStore,
@@ -157,6 +157,13 @@ export function EditorPage() {
   const saveState = useAutosaveStore((s) => s.saveState);
   const session = useAuthStore((s) => s.session);
   const guest = useAuthStore((s) => s.guest);
+  // **계정의 정체** — 아래 "전환 리셋" 효과는 이것만 본다 (2026-09-04).
+  // `session` 객체는 **토큰을 갱신할 때마다 새 객체**가 된다
+  // (`getFreshAccessToken` → `setSession`). 객체를 의존성으로 쓰면 로그인
+  // 1시간 뒤 첫 API 호출(저장·폴더 조회·하트비트…)이 "로그인 전환"으로
+  // 잡혀 **편집 중인 문서를 통째로 지웠다** — '문서 없음' 이 저장·내보내기
+  // 까지 이어진 사고의 원인이다. 계정이 바뀌는 것은 userId 가 바뀔 때뿐이다.
+  const authUserId = session?.userId ?? null;
   // 인증이 켜진 배포에서 로그인 전에는 에디터를 열지 않는다 (2026-08-02).
   // Guest 체험(2026-08-04)은 게이트를 통과한다 — 로컬 편집만 가능.
   const gated = authEnabled && !session && !guest;
@@ -200,12 +207,19 @@ export function EditorPage() {
   }, [setSample]);
 
   // **로그인/로그아웃 전환 리셋** (인증 켜진 배포 — 2026-08-02).
-  // 세션이 바뀔 때마다 문서·서버 링크·undo 히스토리를 비운다:
+  // **계정이** 바뀔 때마다 문서·서버 링크·undo 히스토리를 비운다:
   //  · 로그아웃: 이전 계정의 문서가 화면·Ctrl+Z 에 남으면 안 된다.
   //    특히 cloudMapId 가 남으면 재로그인 후 문서함이 그 맵을 "편집 중"
   //    으로 표시하고 열기를 거부했다 (사용자 실사용 보고 #4).
   //  · 로그인: 아무 맵도 열지 않은 빈 화면 + 문서함으로 시작한다.
   //    (샘플 맵은 개발 모드 전용 — 위 효과 참조)
+  //
+  // ★ **의존성은 `session` 객체가 아니라 `authUserId` 다** (2026-09-04).
+  //   토큰 갱신은 로그인 전환이 아니다 — 같은 사람이 계속 일하고 있다.
+  //   예전에는 `[session, guest]` 라서 갱신 때마다 여기가 돌았고, 사용자는
+  //   저장 대화상자를 여는 순간 뒤에서 문서가 '문서 없음' 으로 바뀐 것을
+  //   모른 채 저장했다(가지 0개 문서가 서버에 남고, HTML 내보내기도
+  //   '문서 없음' 이었다). e2e184 가 이 경로를 되돌려 깨뜨리며 지킨다.
   useEffect(() => {
     if (!authEnabled) return;
     setHistoryPaused(true);
@@ -233,7 +247,9 @@ export function EditorPage() {
       useInteractionStore.getState().setSelectedId('root');
     }
     setHistoryPaused(false);
-  }, [session, guest]);
+    // `session` 을 안에서 읽지만 의존성은 계정 정체뿐이다 — 위 주석 참조.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserId, guest]);
 
   // `?map=<id>` — 다른 맵을 "브라우저 새 탭"으로 여는 경로 (2026-08-02).
   // 앱 안에서 탭을 관리하는 대신 브라우저 탭을 쓰기로 했고, 그 탭이
@@ -268,7 +284,18 @@ export function EditorPage() {
           setBrowserMsg('🔒 다른 세션(브라우저)에서 편집 중이라 읽기 전용으로 열었습니다 — 변경은 이 맵에 저장되지 않습니다.');
         }
       })
-      .catch(() => { if (alive) setUrlMapErr('이 맵을 열 수 없습니다. 목록에서 다시 선택해 주세요.'); })
+      .catch((e: unknown) => {
+        if (!alive) return;
+        // **왜** 못 열었는지 서버의 말을 그대로 붙인다 (2026-09-04) —
+        // "열 수 없습니다" 만으로는 사용자가 무엇을 해야 할지 모른다
+        // (문서가 없는 맵 · 지워진 맵 · 권한 없음이 전부 같은 문장이었다).
+        const why = e instanceof CloudError ? e.message : '';
+        setUrlMapErr(`이 맵을 열 수 없습니다${why ? ` — ${why}` : '.'} 목록에서 다시 선택해 주세요.`);
+        // **갈 곳을 준다.** 예전에는 '문서 없음' 빈 화면에 안내만 떠 있었고,
+        // '맵 닫기' 는 "열려 있는 맵이 없습니다" 만 되풀이해 이 탭에서
+        // 빠져나갈 길이 없었다(2026-09-04 사용자 보고). 문서함을 연다.
+        useEditorUiStore.getState().setBrowserOpen(true);
+      })
       .finally(() => setHistoryPaused(false));
     return () => { alive = false; };
   }, [gated]);
@@ -522,6 +549,16 @@ export function EditorPage() {
           }}
         >
           ⚠ {urlMapErr}
+          <button
+            data-testid="url-map-error-close"
+            title="이 안내 닫기"
+            aria-label="이 안내 닫기"
+            onClick={() => setUrlMapErr(null)}
+            style={{
+              marginLeft: 10, border: 'none', background: 'transparent',
+              color: t.textMuted, cursor: 'pointer', fontSize: 13, padding: 0,
+            }}
+          >✕</button>
         </div>
       )}
 

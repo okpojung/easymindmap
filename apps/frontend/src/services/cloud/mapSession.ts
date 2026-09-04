@@ -188,6 +188,15 @@ export async function saveNewMap(opts: {
   folderId: string | null;
   kind: MapKind;
 }): Promise<{ mapId: string }> {
+  // **'문서 없음' 자리표시는 새 맵이 될 수 없다** (2026-09-04).
+  // 저장 대화상자를 여는 것과 [저장] 을 누르는 것 사이에 문서가 비워질 수
+  // 있었다(토큰 갱신이 로그인 전환으로 오인돼 문서를 지웠다 — EditorPage).
+  // 그러면 사용자가 정한 이름으로 **가지 0개짜리 맵**이 서버에 생기고,
+  // 내보내기도 '문서 없음' 이 된다. 버튼을 누른 순간이 아니라 **보내기
+  // 직전**에 다시 본다 — 그래야 그 사이에 무슨 일이 있었든 막힌다.
+  if (isDocumentEmpty(useDocumentStore.getState().map)) {
+    throw new CloudError(0, '열려 있는 맵이 없어 저장할 내용이 없습니다 — 문서함에서 맵을 열거나 새 맵을 만든 뒤 저장하세요.');
+  }
   const cloud = useCloudStore.getState();
   cloud.setBusy('saving');
   try {
@@ -197,9 +206,21 @@ export async function saveNewMap(opts: {
     });
     // 맵 이름과 문서 제목을 맞춰 둔다 — 내보내기 파일명 등에 쓰인다
     useDocumentStore.getState().setMapTitle(opts.title);
-    const res = await cloudApi.saveDocument(
-      created.mapId, buildSnapshot(), opts.title, true, editSessionKey(),
-    );
+    let res: Awaited<ReturnType<typeof cloudApi.saveDocument>>;
+    try {
+      res = await cloudApi.saveDocument(
+        created.mapId, buildSnapshot(), opts.title, true, editSessionKey(),
+      );
+    } catch (err) {
+      // **반쪽 맵을 남기지 않는다** (2026-09-04). 맵 만들기(POST /maps)는
+      // 됐는데 문서 저장(PUT …/document)이 실패하면, 문서함에는 이름만
+      // 있고 **열면 "저장된 문서 스냅샷이 없습니다"** 로 막히는 맵이
+      // 남는다. 사용자는 "저장했는데 열리지 않는다" 로 겪는다. 방금 만든
+      // 빈 껍데기를 지우고 실패를 그대로 알린다 — 지우기가 실패해도
+      // 원래 오류가 우선이다.
+      await cloudApi.deleteMap(created.mapId).catch(() => { /* 원래 오류를 알린다 */ });
+      throw err;
+    }
     useCloudStore.getState().link(created.mapId, res.updatedAt, {
       title: opts.title, folderId: opts.folderId, kind: opts.kind,
     });

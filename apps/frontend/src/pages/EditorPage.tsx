@@ -39,7 +39,7 @@ import {
   useInteractionStore,
   useAutosaveStore,
 } from '@/stores';
-import { setHistoryPaused } from '@/stores/documentStore';
+import { isDocumentEmpty, setHistoryPaused } from '@/stores/documentStore';
 
 // Maps the live document tree onto the Kanban board WITHOUT a depth limit:
 // depth-1 nodes become columns, depth-2 nodes become cards, and depth-3+
@@ -256,6 +256,13 @@ export function EditorPage() {
   // 부팅될 때 여기서 해당 문서를 불러온다. 로그인 게이트가 걸려 있으면
   // 로그인이 끝난 뒤에 불러온다.
   const [urlMapErr, setUrlMapErr] = useState<string | null>(null);
+  // **맵이 열리면 안내를 거둔다** (2026-09-04 사용자 보고 — "계속 뜬다").
+  // 부팅 때 `?map=` 열기에 실패한 안내가 상태로 남아, 그 뒤 문서함에서
+  // 다른 맵을 열거나 새 맵을 만들어도 화면 위에 계속 떠 있었다. 안내가
+  // 시킨 일("목록에서 다시 선택")을 사용자가 했으면 안내는 할 일을 다한 것이다.
+  useEffect(() => {
+    if (urlMapErr && !isDocumentEmpty(map)) setUrlMapErr(null);
+  }, [map, urlMapErr]);
   // 문서함 안내(열기·폴더 생성 결과) — 화면 위쪽에 잠깐 표시
   const [browserMsg, setBrowserMsgRaw] = useState<string | null>(null);
 

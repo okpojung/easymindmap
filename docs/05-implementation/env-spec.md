@@ -165,14 +165,25 @@ RATE_LIMIT_ENABLED=true      # false = 끔 (부하 테스트 등)
 # 별도 AUTH_JWT_* 변수 불필요
 ```
 
-> ⚠️ **`supabase.example.com` 은 아직 없는 주소다.** 이것은 **전체
-> Supabase Self-hosted 스택**(Kong 게이트웨이 뒤에 GoTrue·Storage·
-> Realtime·Studio·PostgREST 를 모아 하나의 주소로 내보내는 구성)을
-> 띄웠을 때의 값이다. **그 스택은 구축하지 않았고 주소도 정하지 않았다.**
+> ### ⚠️ 아래 블록은 **폐기된 구성**의 값이다 (2026-09-04)
 >
-> 지금 실제로 도는 것은 **GoTrue 하나뿐**(`dev-server-coolify.md` §5.5
-> 경로 A)이고, `VITE_SUPABASE_URL` 에는 **`https://auth-dev.mindmap.ai.kr`**
-> 이 들어간다 — 변수 이름만 `SUPABASE_` 로 남아 있다.
+> **전체 Supabase Self-hosted 스택**(Kong 뒤에 GoTrue·Storage·Realtime·
+> Studio·PostgREST)을 띄웠을 때의 설정이다. **그 구성은 채택하지 않기로
+> 했다** — 근거와 대체 내역은
+> [`docker-compose-spec.md`](../90-architecture/docker-compose-spec.md) 상단.
+>
+> **실제로 쓰는 값은 이렇다.**
+>
+> | 변수 | 실제 | 비고 |
+> |---|---|---|
+> | `VITE_SUPABASE_URL` | `https://auth-dev.mindmap.ai.kr` | **GoTrue 주소**다. 이름만 `SUPABASE_` 로 남았다 |
+> | `VITE_SUPABASE_AUTH_PREFIX` | `/` (빈 값) | GoTrue 단독은 루트 경로. Kong 이 있을 때만 `/auth/v1` |
+> | `VITE_SUPABASE_ANON_KEY` | 아무 값 | Kong 이 없어 **검증되지 않는다** |
+> | `SUPABASE_JWT_SECRET` | GoTrue 의 `JWT_SECRET` | API 가 토큰 서명을 검증한다 |
+> | `SUPABASE_SERVICE_ROLE_KEY` | — | **쓰지 않는다** (코드 참조 0곳) |
+> | `SUPABASE_PUBLIC_URL` · `API_EXTERNAL_URL` | — | **쓰지 않는다** — 전체 스택 전용 |
+>
+> 배포에 실제로 넣는 값은 [`dev-server-coolify.md`](../90-architecture/dev-server-coolify.md) §5.5 표가 기준이다.
 
 ```bash
 
@@ -358,7 +369,15 @@ FEATURE_BILLING=false
 
 ---
 
-## 4. Supabase Self-hosted 전용 설정
+## 4. Supabase Self-hosted 전용 설정 ❌ **폐기 (쓰지 않는다)**
+
+> **2026-09-04 — 전체 Supabase 스택을 띄우지 않기로 했다.** 이 절의
+> `/opt/supabase/.env` 는 그 스택 전용이라 **어디에도 존재하지 않는다.**
+> `SUPABASE_PUBLIC_URL`·`API_EXTERNAL_URL` 은 코드가 참조하지 않는다.
+> 근거는 [`docker-compose-spec.md`](../90-architecture/docker-compose-spec.md) 상단,
+> 실제 배포 값은 [`dev-server-coolify.md`](../90-architecture/dev-server-coolify.md) §5.5.
+> 아래는 되돌아갈 경우의 기준값으로 남긴다.
+
 
 Supabase VM-03의 `/opt/supabase/.env`에서 별도 관리:
 
@@ -401,10 +420,15 @@ LOG_SQL=true
 ```
 
 ### .env.prod (운영)
+
+> `SUPABASE_URL`·`VITE_SUPABASE_URL` 에는 **GoTrue 주소**가 들어간다
+> (개발은 `https://auth-dev.mindmap.ai.kr`). 아래 `supabase.…` 는 폐기된
+> 전체 스택 구성의 값이다 — 운영 주소가 정해지면 그때 채운다.
+
 ```bash
 APP_ENV=production
-SUPABASE_URL=https://supabase.example.com
-VITE_SUPABASE_URL=https://supabase.example.com
+SUPABASE_URL=https://supabase.example.com      # ← 폐기 · 실제로는 GoTrue 주소
+VITE_SUPABASE_URL=https://supabase.example.com # ← 폐기 · 실제로는 GoTrue 주소
 REDIS_HOST=<HOST>
 REDIS_TLS=false                        # 내부망이므로 TLS 불필요
 LOG_SQL=false

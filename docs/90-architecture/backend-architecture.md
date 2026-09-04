@@ -745,12 +745,13 @@ npm run test:e2e
 
 > 전체 명세: `docs/05-implementation/env-spec.md` 참고
 
-> ⚠️ **`supabase.example.com` 은 아직 없는 주소다.** **전체 Supabase
-> Self-hosted 스택**(Kong 게이트웨이 뒤에 GoTrue·Storage·Realtime·Studio)을
-> 띄웠을 때의 값이고, **그 스택은 구축하지 않았다.** 지금 로그인은 GoTrue
-> 단독(`dev-server-coolify.md` §5.5 경로 A)이라 `VITE_SUPABASE_URL` 에는
-> `https://auth-dev.mindmap.ai.kr` 이 들어간다. 자세한 것은
-> [`env-spec.md`](../05-implementation/env-spec.md) 의 SUPABASE 절.
+> ⚠️ **`supabase.example.com` 은 폐기된 주소다** (2026-09-04). 전체
+> Supabase Self-hosted 스택을 띄웠을 때의 값인데 **그 구성을 채택하지
+> 않기로 했다** — 근거는
+> [`docker-compose-spec.md`](docker-compose-spec.md) 상단. 실제
+> `SUPABASE_URL` 에는 GoTrue 주소(`https://auth-dev.mindmap.ai.kr`)가
+> 들어간다. 변수별 실제 값은
+> [`env-spec.md`](../05-implementation/env-spec.md) 의 SUPABASE 절 표.
 
 ```bash
 # Supabase (기존 DB_* / MINIO_* / AUTH_JWT_* 전부 제거)

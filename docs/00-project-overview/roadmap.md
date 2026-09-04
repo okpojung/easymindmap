@@ -71,6 +71,12 @@ V3    ──── AI 협업 요약·작업 생성(COLLAB-14~15 / AI-03~05) / �
 
 ### 핵심 기술 결정
 
+> **Supabase 는 Auth(GoTrue) 하나만 쓴다** (2026-09-04 확정). 설계 초기의
+> **Supabase Self-hosted 전체 스택**(Kong·Storage·Realtime·Studio·PostgREST)
+> 은 **채택하지 않았다** — 인증은 GoTrue 단독, 첨부는 로컬 디스크, DB 는
+> `pg` 직결, 협업은 자체 WebSocket 으로 각각 갈렸다. 근거와 대체 내역은
+> [`docker-compose-spec.md`](../90-architecture/docker-compose-spec.md) 상단.
+
 ```
 Frontend : React + TypeScript + Zustand (8 store — document/cloud/auth/aiSettings
            /autosave/editorUi/interaction/viewport)

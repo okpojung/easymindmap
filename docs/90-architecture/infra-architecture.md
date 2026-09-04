@@ -40,11 +40,11 @@
 >
 > **남아 있는 `*.example.com` 은 두 종류**입니다.
 >
-> - **아직 정하지 않은 주소** — `supabase.example.com`. **전체 Supabase
->   Self-hosted 스택**(Kong 게이트웨이 뒤에 GoTrue·Storage·Realtime·
->   Studio)을 띄웠을 때의 자리인데, **그 스택을 구축하지 않았습니다.**
->   로그인은 GoTrue 단독(§7.5 · `dev-server-coolify.md` §5.5 경로 A)이라
->   `auth-dev.mindmap.ai.kr` 을 씁니다.
+> - **폐기된 주소** — `supabase.example.com`. 전체 Supabase Self-hosted
+>   스택을 띄웠을 때의 자리였으나 **그 구성을 채택하지 않기로 했습니다**
+>   (2026-09-04 · 근거는 [`docker-compose-spec.md`](docker-compose-spec.md)
+>   상단). §7.5·§8 에 폐기 표시로 남아 있을 뿐, 만든 적도 만들 일도
+>   없습니다. 로그인은 GoTrue 단독이라 `auth-dev.mindmap.ai.kr` 을 씁니다.
 > - **일반 예시** — API 응답 샘플의 `api.example.com`, 사용자가 각자
 >   넣는 `redmine.example.com` · `smtp.example.com` 등.
 >
@@ -117,8 +117,6 @@
                                                   │     → VM-02 :5173
                                                   ├── api.example.com
                                                   │     → VM-02 :3000
-                                                  ├── supabase.example.com  ※미구축
-                                                  │     → VM-03 :54323 [IP제한]
                                                   └── pro-dev.mindmap.ai.kr
                                                         → VM-DEV :5173 [IP제한]
 ```
@@ -249,17 +247,18 @@ DNS     : 8.8.8.8, 1.1.1.1
 > 콘솔을 열지 말 것). dev 계열 Forward는 Coolify 전환에 맞춰
 > **Traefik(:80)** 으로 정정 (`:5173`은 수동 Vite 시절 값 — 502 발생).
 
-> ⚠️ **`*.example.com` 행은 아직 만들지 않은 것**이다 (2026-09-02 확인).
-> `supabase.` 는 **전체 Supabase Self-hosted 스택**(Kong 뒤에 GoTrue·
-> Storage·Realtime·Studio)을 띄웠을 때의 자리인데 **그 스택을 구축하지
-> 않았고 주소도 정하지 않았다.** 실제로 도는 것은 `*.mindmap.ai.kr` 행
-> 뿐이다 — 로그인은 GoTrue 단독이라 `auth-dev.` 를 쓴다.
+> ⚠️ **`example.com` · `api.example.com` 행은 운영 도메인 자리**이고 아직
+> 만들지 않았다(운영 서버 미구축). 실제로 도는 것은 `*.mindmap.ai.kr`
+> 행뿐이다.
+>
+> `supabase.` 행은 **없다** — 전체 Supabase 스택을 띄우지 않기로 했다
+> (2026-09-04 · [`docker-compose-spec.md`](docker-compose-spec.md) 상단).
+> 로그인은 GoTrue 단독이라 `auth-dev.mindmap.ai.kr` 이 그 자리를 대신한다.
 
 | 도메인 | DNS (등록대행사) | NPM Forward | 접근 제한 | SSL |
 |---|---|---|---|---|
 | example.com | A 203.0.113.10 | 192.168.0.112:5173 | 없음 | Let's Encrypt |
 | api.example.com | A 203.0.113.10 | 192.168.0.112:3000 | 없음 | Let's Encrypt |
-| supabase.example.com | A 203.0.113.10 | 192.168.0.113:54323 | IPSec VPN IP 허용 | Let's Encrypt |
 | pro-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → frontend) | IPSec VPN IP 허용 | Let's Encrypt |
 | api-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → api) | IPSec VPN IP 허용 | Let's Encrypt |
 | coolify-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:8000 (Coolify UI + 웹훅) | IPSec VPN IP 허용 (+`/webhooks/` 예외) | Let's Encrypt |
@@ -495,7 +494,6 @@ sudo systemctl restart ssh
 Type  Name                        Content
 A     example.com                 203.0.113.10
 A     api.example.com             203.0.113.10
-A     supabase.example.com        203.0.113.10   ※ 미등록 — 전체 스택용
 A     pro-dev.mindmap.ai.kr             203.0.113.10
 A     api-dev.mindmap.ai.kr         203.0.113.10
 A     coolify-dev.mindmap.ai.kr     203.0.113.10
@@ -521,7 +519,7 @@ EOF
 docker restart npm  # 또는 nginx-proxy-manager
 ```
 
-### 7.3 NPM Access List 생성 (supabase, dev 도메인용)
+### 7.3 NPM Access List 생성 (dev 도메인용)
 
 NPM UI → Access Lists → Add:
 
@@ -559,8 +557,8 @@ Pass Auth: ✅ (Allow)
 > 화면에서는 멀쩡해 보인다 — 이 때문에 "프런트는 되는데 API 만 안 된다"
 > 로 오해하기 쉽다. **자격 캐시가 없는 새 브라우저로 확인할 것.**
 >
-> 사람이 직접 여는 관리 화면(`coolify-dev.…`·`supabase.…`)에는 그대로
-> 건다 — 거기는 팝업이 떠도 정상 동작이다.
+> 사람이 직접 여는 관리 화면(`coolify-dev.…`)에는 그대로 건다 — 거기는
+> 팝업이 떠도 정상 동작이다.
 
 > ✅ **[2026-08-01 확인 완료 — Docker 네트워크 대역 충돌 없음]**
 > FortiGate 실제 할당 대역을 전수 확인한 결과, VM-DEV Coolify의 Docker
@@ -649,12 +647,16 @@ add_header X-Frame-Options        SAMEORIGIN;
 add_header X-Content-Type-Options nosniff;
 ```
 
-### 7.5 Proxy Host — supabase.example.com (미구축)
+### 7.5 Proxy Host — supabase.example.com ❌ **폐기 (만들지 않는다)**
 
-> **아직 만들지 않았다.** 전체 Supabase 스택용 자리이고 그 스택을 띄우지
-> 않았다 — 주소도 정하지 않았다. 지금 로그인은 **GoTrue 단독**
-> (§7.7 `auth-dev.mindmap.ai.kr` · `dev-server-coolify.md` §5.5 경로 A).
-> 아래는 **전체 스택으로 갈 때의 기준 설정**으로 남겨 둔다.
+> **2026-09-04 — 전체 Supabase 스택을 띄우지 않기로 했다**
+> ([`docker-compose-spec.md`](docker-compose-spec.md) 상단에 근거와 대체
+> 내역). 이 Proxy Host 는 **만든 적 없고 앞으로도 만들지 않는다.**
+> 인증은 **§7.7 `auth-dev.mindmap.ai.kr`**(GoTrue 단독)이 대신한다.
+>
+> **절 번호는 비워 두지 않고 남긴다** — `backlog.md` 가 §7.3·§7.6·§7.7 을
+> 번호로 참조하고 있어, 지우면 그 참조가 어긋난다. 아래 설정은
+> **되돌아갈 경우의 기준값**이다.
 
 ```
 Domain:   supabase.example.com
@@ -835,7 +837,18 @@ Advanced:
 
 ---
 
-## 8. VM-03: Supabase Self-hosted 설치
+## 8. VM-03: Supabase Self-hosted 설치 ❌ **폐기 (설치하지 않는다)**
+
+> **2026-09-04 — 이 절 전체를 실행하지 않는다.** 전체 Supabase 스택을
+> 채택하지 않기로 했다 — 근거와 대체 내역은
+> [`docker-compose-spec.md`](docker-compose-spec.md) 상단.
+>
+> 실제로 VM-DEV 에 도는 것은 **Coolify + 순정 PostgreSQL 16 + GoTrue
+> 컨테이너 하나**다. 그 절차는
+> [`dev-server-coolify.md`](dev-server-coolify.md) §5.5 에 있다.
+>
+> 아래는 **되돌아갈 경우의 기준 절차**로 남긴다.
+
 
 > **호스트**: ESXi 192.168.0.11 (DL360 Gen9, NVMe 3.8TB)
 > **VM IP**: 192.168.0.113

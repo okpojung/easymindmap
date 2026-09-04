@@ -21,13 +21,30 @@
 
 ## 아키텍처 결정: Supabase Self-hosted
 
-> ⚠️ **이 문서가 그리는 전체 스택은 아직 띄우지 않았다** (2026-09-02 확인).
-> 실제 구축은 다른 길로 갔다 — 로그인은 **GoTrue 단독**
-> (`dev-server-coolify.md` §5.5 경로 A · `auth-dev.mindmap.ai.kr`),
-> 첨부는 **로컬 디스크 + NAS NFS**(`STORAGE_LOCAL_DIR`), DB 는 **API 가
-> `pg` 로 직접**, 협업은 **자체 WebSocket**이다. 그래서 아래
-> `supabase.example.com` 은 **주소가 정해지지 않은 자리표시자**이고,
-> 이 문서는 **전체 스택으로 갈 때의 기준 스펙**으로 보존한다.
+> ### ⚠️ 2026-09-04 — **전체 Supabase 스택은 띄우지 않기로 했다**
+>
+> 이 문서가 그리는 것은 **Supabase Self-hosted 전체 스택**(Kong 게이트웨이
+> 뒤에 GoTrue·Storage·Realtime·Studio·PostgREST)이다. **그 구성은 채택하지
+> 않는다** — Supabase 에 맡기려던 네 가지가 전부 다른 것으로 굴러간다.
+>
+> | 무엇 | 이 문서의 전제 | 실제 | 근거 |
+> |---|---|---|---|
+> | 인증 | Kong + GoTrue | **GoTrue 단독** (`auth-dev.mindmap.ai.kr`) | [`backend-phase1.md`](../05-implementation/backend-phase1.md) Phase 3 "경로 A" |
+> | 첨부 | Supabase Storage | **로컬 디스크 + NAS NFS** (`STORAGE_LOCAL_DIR`) | [`attachment-storage.md`](../04-extensions/attachment-storage.md) |
+> | DB 접근 | PostgREST | **API 가 `pg` 로 직접** (raw SQL·ltree) | [`backend-phase1.md`](../05-implementation/backend-phase1.md) "DatabaseService" |
+> | 협업 | Supabase Realtime + Redis | **자체 WebSocket + CRDT(Yjs)** | [`27-sync-model.md`](../04-extensions/collaboration/27-sync-model.md) |
+>
+> **왜 이렇게 갈렸나.** `backend-phase1.md` 가 처음부터 이렇게 적었다 —
+> *"스펙(NestJS + Supabase + Postgres 16 + ltree)의 구조를 따르되,
+> **무거운 조각(Supabase 전체 스택·Redis)은 뒤로 미루고 실제로 돌아가는
+> 최소 단위**부터 세웠다."* 그 뒤 각 기능이 필요해질 때마다 **더 가벼운
+> 쪽**이 선택됐고(Phase 3 는 "경로 A(권장, 가벼움)"), 미뤄 둔 조각을
+> 꺼낼 이유가 끝내 생기지 않았다.
+>
+> **이 문서는 지우지 않고 남긴다** — 전체 스택으로 돌아갈 일이 생기면
+> 이것이 기준 스펙이다. 다만 **지금 구성의 근거로 읽어서는 안 된다.**
+> 실제 배포 기준은 [`dev-server-coolify.md`](dev-server-coolify.md) 다.
+> 아래 `supabase.example.com` 도 **끝내 만들지 않은 주소**다.
 
 
 기존 설계(PostgreSQL + MinIO 직접 설치)에서 **Supabase Self-hosted**로 변경.

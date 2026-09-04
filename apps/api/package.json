@@ -11,7 +11,10 @@
     "smoke": "node test/smoke.mjs",
     "db:apply": "node scripts/apply-schema.mjs",
     "test:vault": "node test/vault-path.test.mjs && node test/vault-writer.test.mjs && node test/vault-plan.test.mjs",
-    "test:ai-keys": "node test/ai-key-crypto.test.mjs"
+    "test:ai-keys": "node test/ai-key-crypto.test.mjs",
+    "test:mcp": "node test/emm-to-doc.test.mjs && node test/mcp-jsonrpc.test.mjs",
+    "sync:emm": "node scripts/sync-emm-parser.mjs",
+    "check:emm": "node scripts/sync-emm-parser.mjs --check"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

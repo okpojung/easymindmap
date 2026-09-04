@@ -1013,3 +1013,42 @@ COMMENT ON TABLE public.vault_files IS
     'vault 미러가 쓴 파일의 현재 상태(경로 + 내용 해시). '
     '경로는 옛 파일을 치우는 데, 해시는 사용자가 고친 파일을 '
     '덮어쓰지 않는 데 쓴다 — vault-mirror.md §7.';
+
+-- ────────────────────────────────────────────────────────────────────
+-- MCP 개인 액세스 토큰 (2026-09-04) — docs/04-extensions/ai/mcp-connector.md §3
+--
+-- Claude·ChatGPT 대화가 우리 API 를 부르려면 "누구인지"를 밝혀야 한다.
+-- 1단계는 **PAT(개인 액세스 토큰)** 이다(§3 안 B) — 사용자가 계정 화면에서
+-- 발급받아 커넥터 설정에 붙여넣는다. OAuth 2.1(안 A)은 3단계다.
+--
+-- **토큰 원문은 어디에도 남기지 않는다.** 발급 응답에 딱 한 번 보여 주고,
+-- DB 에는 sha256 해시만 넣는다. 그래서 DB 를 통째로 훔쳐도 남의 토큰으로
+-- 로그인할 수 없다(user_ai_keys 가 키를 암호화해 두는 것과 같은 이유).
+-- 해시가 UNIQUE 인 것은 검증이 "해시로 한 행 찾기" 한 번이기 때문이다.
+--
+-- 폐기는 행을 지우지 않고 `revoked_at` 을 채운다 — 언제 무엇을 껐는지
+-- 사용자가 볼 수 있어야 한다(§3 "폐기 수단이 발급과 같은 화면에").
+-- 회원탈퇴는 users 의 CASCADE 로 함께 지워진다.
+CREATE TABLE IF NOT EXISTS public.api_tokens (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    -- 사람이 알아보는 이름 ('집 노트북 Claude' 등) — 여러 개를 구분하려고
+    name         VARCHAR(60) NOT NULL,
+    -- sha256(토큰 원문) 64자 hex. **원문은 저장하지 않는다**
+    token_hash   CHAR(64) NOT NULL UNIQUE,
+    -- 화면에 보여 줄 앞자리 ('emm_a1b2c3d4') — 어느 토큰인지 알아보는 용도
+    prefix       VARCHAR(20) NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- 마지막으로 쓰인 때 — "안 쓰는 토큰"을 사용자가 알아보고 끄게 한다.
+    -- 매 요청마다 쓰면 부하가 크므로 **하루 한 번**만 갱신한다(서비스 참조)
+    last_used_at TIMESTAMPTZ,
+    revoked_at   TIMESTAMPTZ
+);
+
+-- 검증은 해시로 하고(UNIQUE 인덱스가 받는다), 이 인덱스는 **목록 화면**용이다
+CREATE INDEX IF NOT EXISTS api_tokens_user_idx
+    ON public.api_tokens (user_id, created_at DESC);
+
+COMMENT ON TABLE public.api_tokens IS
+    'MCP 커넥터용 개인 액세스 토큰 — 원문은 저장하지 않고 sha256 해시만 둔다. '
+    '폐기는 revoked_at 을 채운다(행을 지우지 않는다). mcp-connector.md §3.';

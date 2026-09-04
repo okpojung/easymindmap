@@ -153,6 +153,19 @@ export interface AccountProfile {
   complete: boolean;
 }
 
+/** MCP 커넥터 토큰 한 개 (2026-09-04) — **원문은 여기 없다**(발급 응답에만 한 번) */
+export interface McpToken {
+  id: string;
+  name: string;
+  /** 화면에서 알아보는 앞자리 ('emm_a1b2c3d4') */
+  prefix: string;
+  createdAt: string;
+  /** 마지막으로 쓰인 때 — 하루 한 번만 갱신된다(서버가 부하를 줄인다) */
+  lastUsedAt: string | null;
+  /** 값이 있으면 **폐기됨** */
+  revokedAt: string | null;
+}
+
 export interface FolderItem {
   folderId: string;
   parentId: string | null;
@@ -307,6 +320,22 @@ export const cloudApi = {
 
   /** **내 로그인 기록** (2026-08-13) — 남의 것은 볼 수 없다(서버가 토큰 주인만 본다) */
   myLogins: () => req<LoginHistory>('GET', '/account/logins'),
+
+  // ── MCP 커넥터 토큰 (2026-09-04) ───────────────────────────
+  // docs/04-extensions/ai/mcp-connector.md §3 — 발급·목록·폐기가 **한 화면**에
+  // 있어야 한다는 요건이 이 셋으로 충족된다(McpTokensView).
+  /**
+   * 내 토큰 목록 + 막힐 이유 두 가지.
+   *   `available:false` — 이 배포는 MCP 를 열지 않는다(`AUTH_MODE=dev`)
+   *   `ready:false`     — 델타 SQL(`api_tokens` 표)이 아직 적용되지 않았다
+   */
+  mcpTokens: () =>
+    req<{ available: boolean; ready: boolean; tokens: McpToken[] }>('GET', '/mcp-tokens'),
+  /** 발급 — 응답의 `token` 이 **원문이고, 이 한 번뿐이다**(서버도 다시 못 본다) */
+  issueMcpToken: (name: string) =>
+    req<McpToken & { token: string }>('POST', '/mcp-tokens', { name }),
+  /** 폐기 — 행을 지우지 않고 revokedAt 을 채운다(언제 껐는지 남긴다) */
+  revokeMcpToken: (id: string) => req<McpToken>('DELETE', `/mcp-tokens/${id}`),
   /** 로그인 직후 한 번 — 서버가 **그때의 IP** 를 남긴다 (2026-08-14).
    *  IP 는 보내지 않는다: 서버가 요청에서 직접 본다(위조 방지). */
   recordLogin: async () =>

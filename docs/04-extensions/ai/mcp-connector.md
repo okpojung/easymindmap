@@ -161,7 +161,7 @@ AI 클라이언트가 액세스 토큰을 받아 보관한다.
 
 ---
 
-## 5. 오픈코어 경계 — **사용자 결정 필요**
+## 5. 오픈코어 경계 — **공개로 정했다** (2026-09-04)
 
 `open-core-boundary.md` §3 표에서 "각종 플러그인 · 외부 연동"은 유료다.
 그런데 §3.1 의 가르는 질문을 대면 답이 갈린다.
@@ -177,9 +177,15 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 | **공개** ★ 권고 | 노출하는 기능이 **전부 MVP**(맵 생성·조회·문서 저장)다. 새 제품 기능이 아니라 **기존 MVP 로 가는 다른 문**이다. 게다가 §9 가 기대한 이득 중 하나가 **스토어를 통한 신규 유입**인데, 유입 장치를 유료로 막으면 목적과 어긋난다. 셀프호스트 사용자가 자기 서버에 세운 EasyMindMap 을 자기 AI 에 연결하지 못하면 §3.1 ① 이 말한 "반쪽"이 된다 |
 | 유료 | §3 표의 "외부 연동"을 글자 그대로 적용 |
 
-**이 결정은 되돌리기 어렵다**(한 번 공개하면 되돌릴 수 없다). 그래서
-여기서 정하지 않고 **결정을 기다린다.** 결정 전까지 구현을 시작하지
-않는다 — 어느 저장소에 코드를 둘지가 그 답에 달려 있다.
+> ★ **결정: 공개** (사용자, 2026-09-04). 코드는 `okpojung/easymindmap`
+> 에 둔다 — `apps/api/src/mcp/` 와 `apps/frontend/.../McpTokensView.tsx`.
+> 위 표의 권고와 같은 이유다: 노출하는 것이 전부 MVP 기능이고, 셀프호스트
+> 사용자가 자기 서버를 자기 AI 에 연결하지 못하면 반쪽이 된다.
+>
+> 되돌리기 어려운 결정이라 여기 남긴다 — 한 번 공개한 것은 되돌릴 수
+> 없다(이미 받아 간 사람의 사본은 사라지지 않는다). 나중에 이 판단이
+> 바뀌더라도 **이미 나간 1단계는 공개판에 남는다**; 그때는 그 위에
+> 얹는 것(팀 공유 도구 등)을 유료로 가른다.
 
 ---
 
@@ -208,16 +214,24 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 
 각 단계가 **끝나면 확인할 수 있는 것**을 함께 적는다.
 
-| 단계 | 무엇 | 끝나면 확인되는 것 |
-|---|---|---|
-| **0** | 오픈코어 경계 결정 (§5) | 코드를 어느 저장소에 둘지 |
-| **1** | PAT 발급/폐기 + `create_map` 하나 | **Claude 대화에서 맵이 하나 생긴다.** 이것으로 방향이 옳은지 판정한다 |
-| **2** | `list_maps` · `get_map` | 기존 맵을 대화에서 이어 쓴다 |
-| **3** | OAuth 2.1 (안 A) | 토큰 복사 없이 연결된다 |
-| **4** | 각 사 스토어 등재 | 신규 유입 채널 |
+| 단계 | 무엇 | 끝나면 확인되는 것 | 상태 |
+|---|---|---|---|
+| **0** | 오픈코어 경계 결정 (§5) | 코드를 어느 저장소에 둘지 | ✅ **공개**(2026-09-04) |
+| **1** | PAT 발급/폐기 + `create_map` 하나 | **Claude 대화에서 맵이 하나 생긴다.** 이것으로 방향이 옳은지 판정한다 | ✅ 구현·서버 검증 완료 (§9) |
+| **2** | `list_maps` · `get_map` | 기존 맵을 대화에서 이어 쓴다 | — |
+| **3** | OAuth 2.1 (안 A) | 토큰 복사 없이 연결된다 | — |
+| **4** | 각 사 스토어 등재 | 신규 유입 채널 | — |
 
 **1단계에서 멈출 수 있어야 한다.** 1이 쓸 만하지 않으면 2~4 를 하지
-않는 것이 맞다.
+않는 것이 맞다. 그래서 코드가 **한 폴더에 모여 있다**(`apps/api/src/mcp/`
++ 프런트 화면 하나 + 표 하나) — 아니라고 판정되면 그 폴더와 메뉴 한 줄을
+지우는 것으로 끝난다. 다른 모듈이 이쪽을 부르지 않는다.
+
+> **아직 남은 판정**: 1단계의 성공 기준은 *"Claude 대화에서 맵이 하나
+> 생긴다"* 인데, **그 마지막 한 칸은 사람이 해야 확인된다** — Claude 에
+> 커스텀 커넥터를 등록하는 것은 계정 소유자만 할 수 있다. 우리 쪽은
+> `curl` 로 같은 JSON-RPC 왕복을 그대로 재현해 확인했다(§9.2 · e2e194).
+> 즉 **서버는 준비됐고, 붙여 보는 것이 남았다.**
 
 ---
 
@@ -241,7 +255,108 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 
 ---
 
-## 9. 관련 문서
+## 9. 1단계 — 실제로 만든 것 (2026-09-04)
+
+### 9.1 어디에 무엇이 있나
+
+| | 자리 |
+|---|---|
+| MCP 본선 (JSON-RPC) | `apps/api/src/mcp/mcp.controller.ts` → `POST /v1/mcp` |
+| JSON-RPC 계층 | `apps/api/src/mcp/jsonrpc.ts` (HTTP 와 무관한 순수 함수) |
+| 도구 정의·실행 | `apps/api/src/mcp/mcp-tools.ts` (`create_map` 하나) |
+| EMM → 문서 스냅샷 | `apps/api/src/mcp/emm-to-doc.ts` |
+| PAT 발급·검증·폐기 | `apps/api/src/mcp/api-token.service.ts` · `public.api_tokens` |
+| PAT 인증 가드 | `apps/api/src/mcp/mcp-auth.guard.ts` |
+| 토큰 화면 API | `apps/api/src/mcp/mcp-tokens.controller.ts` → `/v1/mcp-tokens` |
+| 토큰 화면 | `apps/frontend/src/components/auth/McpTokensView.tsx` (아바타 ▸ 🔌 AI 커넥터(MCP)) |
+
+**공식 SDK(`@modelcontextprotocol/sdk`)를 쓰지 않는다.** 이 앱은
+`module=commonjs` 로 빌드되고, ESM 전용 패키지를 `require` 하면 런타임에
+`ERR_REQUIRE_ESM` 으로 죽는다(2026-08-01 배포 실패 · `@nestjs/config@12`
+되돌린 이유). 우리가 쓰는 메서드는 넷뿐이라 직접 적는 편이 싸다 —
+3단계(OAuth) 때 다시 따진다.
+
+> ★ **EMM 파서가 `apps/api/src/emm/` 에 복사돼 있다.** 원본은 그대로
+> `packages/emm-parser` 다. 복사한 이유는 배포 구조다 — API 는
+> **Nixpacks + Base Directory `apps/api`** 로 빌드돼 `packages/` 가
+> 컨텍스트 밖이고(`dev-server-coolify.md` §5.2), 그 패키지는 아직
+> npm 에 없다(`vault-mirror.md` §8 — `npm publish` 가 남아 있다).
+> 프런트가 Dockerfile + 루트 컨텍스트로 옮겨 간 것이 같은 문제였다(§5.3).
+>
+> 두 벌은 갈라지므로 **CI 가 한 글자라도 다르면 실패시킨다**
+> (`ci.yml` 의 `EMM 파서 복사본 검사`). 원본을 고쳤으면
+> `cd apps/api && npm run sync:emm` 뒤 결과를 커밋한다.
+> 나중에 API 도 루트 컨텍스트 Dockerfile 로 옮기거나 패키지를 배포하면,
+> `src/emm/` 과 그 스크립트를 지우고 별칭 하나로 되돌린다.
+
+### 9.2 붙이는 법
+
+**① 토큰 발급** — 앱 우상단 아바타 ▸ **🔌 AI 커넥터(MCP)** ▸ 이름을 적고
+[발급]. 원문은 **그 자리에서 한 번만** 보인다(서버에도 해시만 남는다).
+같은 화면 아래에 발급한 토큰 목록과 **[폐기]** 가 있다.
+
+**② AI 쪽 커넥터 설정에 넣는 값**
+
+| | 값 |
+|---|---|
+| 주소 | `https://<API 주소>/v1/mcp` (앱 주소가 아니라 **API 주소**다) |
+| 인증 | `Authorization: Bearer emm_…` (①에서 받은 원문) |
+
+**③ 붙었는지 확인** — 커넥터를 등록하기 전에 손으로 먼저 확인할 수 있다.
+
+```bash
+# 도구 목록이 오면 붙은 것이다 (create_map 하나가 보여야 한다)
+curl -s -X POST https://api-dev.mindmap.ai.kr/v1/mcp \
+  -H 'Authorization: Bearer emm_…' -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+**④ 대화에서** — *"지금까지 정리한 걸 EasyMindMap 맵으로 저장해줘"*.
+맵은 언제나 **최상위('홈')** 에 생긴다 — 폴더를 고르려면 폴더 목록 도구가
+있어야 하는데 그것은 2단계다(§2-2).
+
+### 9.3 열리지 않는 경우
+
+| 증상 | 원인 · 할 일 |
+|---|---|
+| `403` "인증을 켠 배포에서만 동작합니다" | 그 서버가 `AUTH_MODE=dev` 다. **의도한 동작이다**(§3) — dev 는 헤더 하나로 아무 사용자나 되는 모드라 열면 안 된다. 토큰 화면에도 같은 안내가 뜬다 |
+| `401` | 토큰이 틀렸거나 **폐기됐다.** 토큰 화면에서 새로 발급 |
+| `405` | `GET` 으로 불렀다. JSON-RPC 는 **POST** 다(우리는 SSE 스트림을 열지 않는다) |
+| 맵은 생겼는데 비어 있다 | 마크다운에 견출(`#`)이 없으면 애초에 거절된다 — 그 문장이 대화에 그대로 돌아온다 |
+| 토큰 화면이 "서버 준비가 아직 끝나지 않았습니다" | 델타 SQL 을 아직 적용하지 않았다(아래). **다른 기능에는 영향이 없다** — 이 화면만 막힌다 |
+
+### 9.4 델타 SQL — 표 하나가 는다
+
+`public.api_tokens` 하나가 늘 뿐이다. **지우거나 바꾸는 것이 없다.**
+두 번 실행해도 안전하다(`IF NOT EXISTS`).
+
+```sql
+CREATE TABLE IF NOT EXISTS public.api_tokens (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    name         VARCHAR(60) NOT NULL,
+    token_hash   CHAR(64) NOT NULL UNIQUE,
+    prefix       VARCHAR(20) NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ,
+    revoked_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS api_tokens_user_idx
+    ON public.api_tokens (user_id, created_at DESC);
+
+-- 적용됐는지 확인 (1 이 나오면 된다)
+SELECT COUNT(*) AS ok FROM information_schema.tables
+ WHERE table_schema='public' AND table_name='api_tokens';
+```
+
+**적용 전에도 앱은 죽지 않는다.** 토큰 화면이 `ready:false` 로 이유를
+말하고, 맵·문서함·AI 생성은 그대로 돈다. 다만 `/v1/health` 는
+`schema:"outdated"` + `missingTables:["api_tokens"]` 로 **적용이 남았음을
+드러낸다** — 조용히 반쪽으로 도는 것보다 낫다.
+
+---
+
+## 10. 관련 문서
 
 - [`web-ai-clipboard.md`](web-ai-clipboard.md) — 방법 A(현행) · §9 가 이 문서의 출처
 - [`18-ai.md`](18-ai.md) — API 키 방식 AI 생성

@@ -87,6 +87,10 @@
 | 19i | POST | `/v1/account/password-reset/confirm` | **무인증.** `{resetToken,password}` → GoTrue 관리자 API 로 교체. **표는 한 번만 쓰인다** — 호출 전에 인증번호 줄을 지워 회수한다 |
 | 19e | GET | `/v1/account/delete-preview` | 탈퇴하면 무엇이 사라지는지 → `{maps,attachments,fileBytes,docBytes,usedBytes,confirmPhrase}` (2026-08-11) |
 | 19f | DELETE | `/v1/account` | **회원탈퇴 — 되돌릴 수 없다.** 본문 `{confirm}` 이 `confirmPhrase`(=`회원탈퇴`)와 정확히 같아야 한다 → `{deleted,maps,attachments,usedBytes,loginAccountRemoved}`. 맵·히스토리·첨부(파일 원본 포함)·계정이 모두 삭제되고, 탈퇴한 id 는 `deleted_accounts` 에 남아 **만료 전 토큰으로 되살아나지 않는다**. 로그인 계정은 **GoTrue 관리자 API + 앱 DB 양쪽**에서 지운다 — `loginAccountRemoved: false` 면 **같은 이메일로 재가입이 막힌다**(2026-08-11) |
+| 40a | POST | `/v1/mcp` | **MCP 커넥터 본선** (2026-09-04) — AI 대화가 부르는 JSON-RPC 2.0 한 자리. 인증은 **PAT 만**(`Authorization: Bearer emm_…`) — GoTrue JWT 로는 열리지 않고, 반대로 PAT 으로는 다른 `/v1` 엔드포인트가 열리지 않는다. ★ **`AUTH_MODE=dev` 면 403** (헤더 하나로 아무 사용자나 되는 모드라 열지 않는다). 메서드: `initialize` · `notifications/initialized` · `ping` · `tools/list` · `tools/call`. 통지(id 없음)에는 **202 + 빈 본문**. `POST` 외에는 **405 + `Allow: POST`**(SSE 스트림은 열지 않는다). 도구는 `create_map` 하나 — mcp-connector.md §2-1 |
+| 40b | GET | `/v1/mcp-tokens` | 내 MCP 토큰 목록 → `{available, ready, tokens:[{id,name,prefix,createdAt,lastUsedAt,revokedAt}]}`. **막힐 이유를 두 가지 다 미리 준다** — `available:false` = 이 배포는 MCP 를 열지 않는다(`AUTH_MODE=dev`), `ready:false` = 델타 SQL(`api_tokens`)이 아직 적용되지 않았다. 화면이 발급 **전에** 그 이유를 보여 준다(눌러서 오류를 받게 하지 않는다) |
+| 40c | POST | `/v1/mcp-tokens` | `{name}` → `{…, token}`. **`token` 은 원문이고 이 응답에만 있다** — DB 에는 sha256 해시만 남으므로 서버도 다시 못 본다. 살아 있는 토큰은 계정당 10개까지 |
+| 40d | DELETE | `/v1/mcp-tokens/{id}` | 폐기 — 행을 지우지 않고 `revokedAt` 을 채운다(언제 껐는지 남는다). 남의 토큰은 **404**(경로의 id 만 믿지 않고 `user_id` 를 함께 본다) |
 | 22a | POST | `/v1/admin/login/start` | **관리자 콘솔 2단계 로그인 ①.** GoTrue 토큰 필요 — 관리자(`ADMIN_EMAILS`)면 인증번호 발송, 아니면 **403**(인증번호도 보내지 않는다) (2026-08-13) |
 | 22b | POST | `/v1/admin/login/verify` | ② `{code}` → `{adminToken, email, expiresAt}` — 표는 헤더 `X-Admin-Token` 으로 싣는다(유효 8시간) |
 | 22c | GET | `/v1/admin/me` | 표가 살아 있는지 → `{email}` |

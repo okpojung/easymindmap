@@ -76,6 +76,22 @@ jobs:
           echo -n '✅ e2e 번호 중복 없음 — 행 '
           grep -c '^| e2e[0-9]\+ |' "$CAT"
 
+  # EMM 파서 복사본이 원본과 어긋나는 것을 막는다 (2026-09-04).
+  #
+  # apps/api/src/emm/ 은 packages/emm-parser/src/ 의 **복사본**이다. API 는
+  # Nixpacks + Base Directory `apps/api` 로 빌드돼 `packages/` 가 컨텍스트
+  # 밖이고(dev-server-coolify.md §5.2), 그 패키지는 아직 npm 에 없다.
+  # 그래서 복사해 두되 **갈라질 수는 없게** 여기서 막는다 — 원본을 고치고
+  # 복사본을 잊으면 MCP 의 `create_map` 만 옛 규칙으로 도는 일이 생긴다.
+  #   고치는 법:  cd apps/api && npm run sync:emm  → 결과를 커밋
+  emm-parser-copy:
+    name: EMM 파서 복사본 검사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: apps/api/src/emm 이 원본과 같은가
+        run: cd apps/api && npm run check:emm
+
   frontend:
     name: 프론트엔드 빌드 · 타입체크
     runs-on: ubuntu-latest          # GitHub이 빌려주는 리눅스 가상머신
@@ -139,6 +155,9 @@ jobs:
         run: npm run build
       - name: AI 키 암호화 단위 테스트 (2026-09-04)
         run: npm run test:ai-keys
+      # MCP 커넥터 단위 테스트 (2026-09-04) — EMM→스냅샷 변환 · JSON-RPC 계층
+      - name: MCP 단위 테스트
+        run: npm run test:mcp
       - name: DB 스키마 로드 (shim → schema → functions → seed)
         env:
           PGPASSWORD: emm

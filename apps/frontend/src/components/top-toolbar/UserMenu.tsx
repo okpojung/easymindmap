@@ -19,6 +19,7 @@ import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
 import { AiSettingsView } from '@/editor/inspector-panels/AiSettingsView';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { LoginHistoryList, type LoginHistory } from '@/components/auth/LoginHistoryList';
+import { McpTokensView } from '@/components/auth/McpTokensView';
 
 interface MenuEntry {
   id: string;
@@ -36,6 +37,9 @@ const ENTRIES: MenuEntry[] = [
   // AI 설정 — 키(암호화)·우선순위·모델·프롬프트 템플릿, 계정에 저장돼 어디서
   // 로그인하든 따라온다 (2026-09-04 — AI 탭의 '설정' 을 여기로 옮겼다)
   { id: 'aisettings', icon: '🤖', label: 'AI 설정' },
+  // AI 커넥터(MCP) — Claude·ChatGPT 대화에서 바로 맵을 만드는 연결.
+  // 토큰 발급과 **폐기가 한 화면**에 있어야 한다 (mcp-connector.md §3)
+  { id: 'mcp', icon: '🔌', label: 'AI 커넥터(MCP)' },
   // 내 로그인 기록 — 남의 것은 볼 수 없다(서버가 토큰 주인만 조회한다)
   { id: 'logins', icon: '🕘', label: '로그인 기록' },
   { id: 'profile', icon: '👤', label: '계정 프로필', soon: '표시 이름·비밀번호 변경 — 계정 관리 단계에서 열립니다.' },
@@ -120,6 +124,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   // AI 설정 대화상자 — AI 탭의 '키 등록' 버튼도 켜므로 스토어에 있다
   const aiSettingsOpen = useEditorUiStore((s) => s.aiSettingsOpen);
   const setAiSettingsOpen = useEditorUiStore((s) => s.setAiSettingsOpen);
+  /** AI 커넥터(MCP) 토큰 창 (2026-09-04) */
+  const [mcpOpen, setMcpOpen] = useState(false);
   /** 내 로그인 기록 창 (2026-08-13) */
   const [logOpen, setLogOpen] = useState(false);
   const [logs, setLogs] = useState<LoginHistory | null>(null);
@@ -307,6 +313,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               onClick={() => {
                 if (e.id === 'password') { setOpen(false); setPwOpen(true); return; }
                 if (e.id === 'aisettings') { setOpen(false); setAiSettingsOpen(true); return; }
+                if (e.id === 'mcp') { setOpen(false); setMcpOpen(true); return; }
                 if (e.id === 'logins') { openLogins(); return; }
                 setSoon(soon === e.id ? null : e.id);
               }}
@@ -497,6 +504,44 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 }}
               >{delBusy ? '삭제하는 중…' : '탈퇴하고 모든 자료 삭제'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI 커넥터(MCP) — 토큰 발급·폐기가 **한 화면**에 있다 (mcp-connector.md §3) */}
+      {mcpOpen && (
+        <div
+          onClick={() => setMcpOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            data-testid="mcp-dialog"
+            style={{
+              width: 'min(560px, 94vw)', maxHeight: '86vh', overflowY: 'auto',
+              background: t.surface, color: t.text,
+              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
+              🔌 AI 커넥터(MCP)
+            </div>
+            <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 12 }}>
+              AI 대화에서 바로 이 문서함에 맵을 만듭니다.
+            </div>
+            <McpTokensView t={t} />
+            <button
+              data-testid="mcp-close" onClick={() => setMcpOpen(false)}
+              style={{
+                width: '100%', height: 34, marginTop: 12, borderRadius: 7,
+                border: `1px solid ${t.border}`, background: t.surfaceAlt,
+                color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+              }}
+            >닫기</button>
           </div>
         </div>
       )}

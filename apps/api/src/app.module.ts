@@ -13,6 +13,7 @@ import { DatabaseModule } from './database/database.module';
 import { FoldersModule } from './folders/folders.module';
 import { HealthModule } from './health/health.module';
 import { MapsModule } from './maps/maps.module';
+import { McpModule } from './mcp/mcp.module';
 import { MailModule } from './mail/mail.module';
 import { NodesModule } from './nodes/nodes.module';
 
@@ -44,6 +45,9 @@ import { NodesModule } from './nodes/nodes.module';
     AttachmentsModule,
     MapsModule,
     NodesModule,
+    // AI 대화에서 바로 맵을 만드는 통로 (docs/04-extensions/ai/mcp-connector.md).
+    // `AUTH_MODE=dev` 배포에서는 라우트는 있어도 가드가 전부 막는다(§3).
+    McpModule,
     // 유료 확장 — 유료 모듈이 있으면 그것을, 없으면 스텁을 등록한다
     // (open-core-boundary.md §4). **이음매는 이 한 줄뿐이다** — 유료
     // 기능이 늘어도 여기는 안 바뀐다. 없는 것이 공개판의 정상 동작이다.

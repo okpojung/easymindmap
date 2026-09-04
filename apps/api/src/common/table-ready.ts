@@ -27,12 +27,34 @@
  *   표가 사라질 일은 없으니 true 는 영구히 기억한다. false 는 그렇지
  *   않다 — 관리자가 델타를 적용했는데 재기동해야 반영된다면, 그 사이
  *   "기능이 안 되는데 이유를 모르는" 시간이 생긴다.
+ *
+ *   **"없다"를 얼마나 기억할지는 부르는 쪽이 정한다**(`missTtlMs`, 2026-09-05).
+ *   기본 1분은 **자주 불리는 자리**를 위한 것이다 — 맵을 열 때마다
+ *   `to_regclass` 를 치지 않으려는 것뿐이다. 반대로 **드물게 불리고
+ *   델타 직후 바로 반영돼야 하는 자리**(로그인 기록 화면 등)는 `0` 을
+ *   주어 매번 묻는다. 1분은 사람이 "적용했는데 왜 그대로지?" 하고
+ *   헤매기에 충분한 시간이고, 그 자리는 어차피 트래픽이 없어 매번 물어도
+ *   비용이 없다.
  */
 
 import type { DatabaseService } from '../database/database.service';
 
-/** 없다고 판정한 표를 다시 물어보기까지의 시간 */
-const RECHECK_MS = 60_000;
+/** "없다"를 기억하는 기본 시간 — 부르는 쪽이 `missTtlMs` 로 덮어쓴다 */
+export const DEFAULT_MISS_TTL_MS = 60_000;
+
+/** 매번 다시 묻는다 — 델타 적용을 곧바로 알아채야 하는 자리 */
+export const ALWAYS_RECHECK = 0;
+
+export interface TableReadyOptions {
+  /** 지금 시각 (테스트에서 시간을 흐르게 하려고 받는다) */
+  now?: number;
+  /**
+   * "없다"를 이만큼 기억한다(ms). `0`(=`ALWAYS_RECHECK`) 이면 기억하지
+   * 않고 매번 묻는다. **"있다"는 언제나 영구히 기억한다** — 표가
+   * 사라지는 일은 없다.
+   */
+  missTtlMs?: number;
+}
 
 interface Memo { ready: boolean; checkedAt: number }
 
@@ -43,11 +65,13 @@ const memo = new Map<string, Memo>();
  * 정규화된 이름(`'public.map_members'`)을 준다.
  */
 export async function tableReady(
-  db: DatabaseService, table: string, now: number = Date.now(),
+  db: DatabaseService, table: string, opts: TableReadyOptions = {},
 ): Promise<boolean> {
+  const now = opts.now ?? Date.now();
+  const missTtl = opts.missTtlMs ?? DEFAULT_MISS_TTL_MS;
   const cur = memo.get(table);
   if (cur?.ready === true) return true;
-  if (cur && !cur.ready && now - cur.checkedAt < RECHECK_MS) return false;
+  if (cur && !cur.ready && missTtl > 0 && now - cur.checkedAt < missTtl) return false;
   const { rows } = await db.query<{ ok: boolean }>(
     `SELECT to_regclass($1) IS NOT NULL AS ok`, [table],
   );

@@ -14,6 +14,9 @@
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import type { AppEnv } from '../config/env.validation';
+import { ALWAYS_RECHECK, tableReady } from '../common/table-ready';
+
+const PLAN_QUOTAS_TABLE = 'public.plan_quotas';
 
 export interface SettingItem {
   key: string;
@@ -79,10 +82,10 @@ export async function collectServerSettings(
          FROM unnest(ARRAY['free','basic','pro','team']) AS p`,
     );
     planRows = r.rows;
-    const t = await db.query<{ ok: boolean }>(
-      `SELECT to_regclass('public.plan_quotas') IS NOT NULL AS ok`,
-    );
-    planEditable = t.rows[0]?.ok === true;
+    // 관리자가 델타 SQL 을 넣고 **곧바로 이 화면을 새로고침해 확인하는
+    // 자리**라 "없다"를 기억하지 않는다(ALWAYS_RECHECK) — 1분을 기억하면
+    // "적용했는데 왜 아직 편집이 안 열리지?" 하고 헤매게 된다.
+    planEditable = await tableReady(db, PLAN_QUOTAS_TABLE, { missTtlMs: ALWAYS_RECHECK });
   } catch {
     planRows = []; // 함수조차 없는 DB — 화면이 "조회 실패"로 보여 준다
   }

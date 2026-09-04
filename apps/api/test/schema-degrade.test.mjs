@@ -26,8 +26,13 @@ if (!DSN) {
 }
 const PORT = Number(process.env.DEGRADE_PORT || 3399);
 const BASE = `http://127.0.0.1:${PORT}/v1`;
-// 치울 표 — 전부 나중에 들어온 표라 "델타 미적용" 서버에 없을 수 있다
-const TABLES = ['user_ai_keys', 'user_ai_settings', 'api_tokens'];
+// 치울 표 — 전부 나중에 들어온 표라 "델타 미적용" 서버에 없을 수 있다.
+// (2026-09-05: login_events·deleted_accounts 를 더했다 — 표 존재 판정을
+//  `common/table-ready.ts` 한 자리로 모으면서 이 둘의 물러남도 여기서 본다)
+const TABLES = [
+  'user_ai_keys', 'user_ai_settings', 'api_tokens',
+  'login_events', 'deleted_accounts',
+];
 
 let failed = 0;
 function check(name, got, want) {
@@ -129,7 +134,16 @@ try {
   check('설정 저장은 503', saveSt.status, 503);
   check('어느 표인지 이름을 준다', /user_ai_settings/.test(saveSt.body?.message ?? ''), true);
 
-  // ── ⑤ **다른 기능은 멀쩡하다** — 이것이 물러남의 목적이다 ────────
+  // ── ⑤ 로그인 기록·탈퇴 화면도 **죽지 않는다** (2026-09-05) ───────
+  // 표 존재 판정을 한 자리로 모으면서 이 둘이 함께 걸린다. 500 이
+  // 아니라는 것이 요점이다 — 없는 표 때문에 화면이 통째로 막히면 안 된다.
+  const logins = await get('/account/logins');
+  check('로그인 기록은 500 이 아니다', logins.status, 200);
+  check('볼 수 없다고 말한다(빈 목록이 아니라)', logins.body?.available, false);
+  const del = await get('/account/delete-preview');
+  check('탈퇴 확인 화면도 200', del.status, 200);
+
+  // ── ⑥ **다른 기능은 멀쩡하다** — 이것이 물러남의 목적이다 ────────
   const maps = await get('/maps');
   check('맵 목록은 그대로 200', maps.status, 200);
   const folders = await get('/folders');

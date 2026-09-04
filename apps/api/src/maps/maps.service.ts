@@ -10,7 +10,7 @@ import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.seriali
 import type { CreateMapDto } from './dto/create-map.dto';
 import type { UpdateMapDto } from './dto/update-map.dto';
 import {
-  canWrite, findAccessibleMap, type MapRole,
+  canWrite, findAccessibleMap, hasMapMembersTable, type MapRole,
 } from './map-access';
 import {
   collectAttachmentRefs,
@@ -373,10 +373,11 @@ export class MapsService {
     // 이름 하나 틀린 것까지 "공유가 없다"로 보여, **아무도 원인을 못
     // 찾는다** — 실제로 그렇게 한 번 틀렸다. 없는 것은 표 하나뿐이고,
     // 그것만 확인하면 나머지 오류는 그대로 드러나야 한다.
-    const { rows: ready } = await this.db.query<{ ok: boolean }>(
-      `SELECT to_regclass('public.map_members') IS NOT NULL AS ok`,
-    );
-    if (ready[0]?.ok !== true) return { maps: [], total: 0 };
+    //
+    // 묻는 자리는 `map-access.ts` 와 **같은 한 곳**이다 (2026-09-05) —
+    // 같은 표를 두 곳에서 따로 물으면 판정이 갈릴 수 있고, 여기는
+    // 문서함을 열 때마다 불리므로 그쪽 기억을 함께 쓰는 편이 싸다.
+    if (!(await hasMapMembersTable(this.db))) return { maps: [], total: 0 };
 
     let rows: Array<MapRow & {
       owner_email: string | null; role: string;

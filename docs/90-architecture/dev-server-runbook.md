@@ -225,18 +225,29 @@ SSD 인지 NFS 인지 구분하지 않는다 — S3 호환 드라이버는 향�
 bash <<'SCRIPT'
 set -e
 
-# ── 1) DB 컨테이너 자동 탐색 ─────────────────────────────────────
-#    supabase/postgres 이미지를 우선, 없으면 아무 postgres 이미지.
-DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /supabase\/postgres/ {print $1; exit}')
-[ -z "$DB" ] && DB=$(docker ps --format '{{.Names}}\t{{.Image}}' \
-  | awk -F'\t' 'tolower($2) ~ /postgres/ {print $1; exit}')
-if [ -z "$DB" ]; then
-  echo "❌ 실행 중인 postgres 컨테이너를 찾지 못했습니다."
-  echo "   docker ps 로 확인해 주세요. (docker 권한이 없으면 sudo 로 실행)"
-  exit 1
-fi
-echo "✅ DB 컨테이너: $DB"
+# ── 1) DB·계정·DB이름 자동 탐색 ─────────────────────────────────
+#
+#    ★ **이미지 이름으로 찾지 않는다** (§1.5-0-A). 이 블록은 예전에
+#      이미지 이름으로 고르고 `$PGUSER`·`$PGDB` 를 **설정하지도 않은 채**
+#      쓰고 있었다 — `psql -U "" -d ""` 라 그대로 붙여넣으면 실패했다
+#      (2026-09-04 수정). §1.5-0-A 의 `find_emm_db` 와 같은 방식으로 바꿨다.
+find_emm_db() {
+  for C in $(docker ps --format '{{.Names}}'); do
+    U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+    H=$(printf '%s' "$U"  | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+    US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+    N=$(printf '%s' "$U"  | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+    OK=$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+          "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)
+    if [ "$OK" = "t" ]; then
+      API="$C"; DB="$H"; PGUSER="$US"; PGDB="$N"
+      echo "✅ easymindmap → 앱=$API DB=$DB 계정=$PGUSER DB이름=$PGDB"
+      return 0
+    fi
+  done
+  echo "❌ easymindmap DB 를 찾지 못했습니다."; docker ps --format '{{.Names}}'; return 1
+}
+find_emm_db || exit 1
 
 # ── 1b) AI API 키·AI 설정 계정 보관 (2026-09-04, 18-ai.md §키 보관) ──
 #    표만 더한다. API 는 표가 없어도 죽지 않고(enabled/available:false) 화면이 밝힌다.
@@ -350,6 +361,118 @@ find_emm_db || exit 1
 > `DB` 가 컨테이너 이름이 아니라 IP·외부 호스트로 나오면 **DB 가 이 서버에
 > 없다는 뜻**이다. 그 서버에서 직접 접속해야 한다. 위 스크립트들은
 > `docker inspect` 로 그것을 확인하고 멈춘다.
+
+### 1.5-0-H. 무료 게시 — `published_maps` 델타 (2026-09-04, PR #382)
+
+공개 링크(`/p/{publishId}`)로 로그인 없이 읽게 하는 기능이다.
+설계는 `docs/04-extensions/publish/27-publish-share.md`.
+
+> **표가 없어도 앱은 죽지 않는다.** 게시 기능만 꺼지고, 에디터의 [공개]
+> 버튼을 누르면 대화상자가 "아직 준비되지 않았습니다" 라고 **미리** 말한다.
+> 그래서 이 델타는 급하지 않다 — 다만 적용 전에는 게시가 안 된다.
+>
+> **적용 뒤 재기동이 필요 없다.** API 가 60초 안에 표를 다시 확인한다
+> (`apps/api/src/common/table-ready.ts`). 실측으로 확인했다.
+
+`published_maps` 는 원래 `schema.sql` 에 있던 표라 **이미 있을 가능성이
+크다.** 아래 블록은 있으면 그냥 넘어가고, 없으면 만든다 — 두 번 실행해도
+안전하다.
+
+```bash
+bash <<'SCRIPT'
+set -e
+
+# ── 1) DB·계정·DB이름 자동 탐색 (§1.5-0-A 와 같은 방식) ──────────
+find_emm_db() {
+  for C in $(docker ps --format '{{.Names}}'); do
+    U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+    H=$(printf '%s' "$U"  | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+    US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+    N=$(printf '%s' "$U"  | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+    OK=$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+          "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)
+    if [ "$OK" = "t" ]; then
+      API="$C"; DB="$H"; PGUSER="$US"; PGDB="$N"
+      echo "✅ easymindmap → 앱=$API DB=$DB 계정=$PGUSER DB이름=$PGDB"
+      return 0
+    fi
+  done
+  echo "❌ easymindmap DB 를 찾지 못했습니다."; docker ps --format '{{.Names}}'; return 1
+}
+find_emm_db || exit 1
+
+# DB 가 이 서버의 컨테이너가 맞는지 — 아니면 외부 호스트다(§1.5-0-A 끝)
+docker inspect "$DB" >/dev/null 2>&1 \
+  || { echo "❌ DB 호스트($DB)가 이 서버의 컨테이너가 아닙니다 — 그 서버에서 실행해 주세요."; exit 1; }
+
+psqlx() { docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" -v ON_ERROR_STOP=1 "$@"; }
+
+# ── 2) 지금 상태 — **바꾸기 전에 먼저 본다** ────────────────────
+BEFORE=$(psqlx -tAc "SELECT to_regclass('public.published_maps') IS NOT NULL")
+if [ "$BEFORE" = "t" ]; then
+  echo "ℹ️  published_maps 가 이미 있습니다 — 아래는 색인·정책만 맞춥니다."
+else
+  echo "ℹ️  published_maps 가 없습니다 — 지금 만듭니다."
+fi
+
+# ── 3) 델타 — 전부 IF NOT EXISTS / DROP-CREATE (두 번 실행해도 안전) ──
+psqlx <<'SQL'
+CREATE TABLE IF NOT EXISTS public.published_maps (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id         UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+    publish_id     VARCHAR(20) UNIQUE NOT NULL,   -- URL slug (/p/{publish_id})
+    storage_path   VARCHAR(500),
+    published_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    unpublished_at TIMESTAMPTZ                    -- NULL = 지금 공개 중
+);
+
+CREATE INDEX IF NOT EXISTS idx_published_maps_publish_id
+    ON public.published_maps(publish_id);
+
+ALTER TABLE public.published_maps ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "published maps are publicly readable" ON public.published_maps;
+CREATE POLICY "published maps are publicly readable"
+    ON public.published_maps FOR SELECT
+    USING (unpublished_at IS NULL);
+
+DROP POLICY IF EXISTS "owners can manage publish" ON public.published_maps;
+CREATE POLICY "owners can manage publish"
+    ON public.published_maps FOR ALL
+    USING (EXISTS (SELECT 1 FROM public.maps
+                    WHERE maps.id = published_maps.map_id
+                      AND maps.owner_id = auth.uid()));
+SQL
+
+# ── 4) 검증 — **숫자로 확인한다** ────────────────────────────────
+echo "── 검증 ──"
+psqlx -tA <<'SQL'
+SELECT '표          : ' || CASE WHEN to_regclass('public.published_maps') IS NOT NULL
+                                THEN 'OK' ELSE 'MISSING' END;
+SELECT '색인        : ' || CASE WHEN count(*) >= 1 THEN 'OK (' || count(*) || '개)'
+                                ELSE 'MISSING' END
+  FROM pg_indexes
+ WHERE schemaname='public' AND tablename='published_maps'
+   AND indexname='idx_published_maps_publish_id';
+SELECT 'RLS 정책    : ' || CASE WHEN count(*) = 2 THEN 'OK (2개)'
+                                ELSE 'NG (' || count(*) || '개 — 2개여야 합니다)' END
+  FROM pg_policies WHERE schemaname='public' AND tablename='published_maps';
+SELECT '지금 공개 중: ' || count(*) || '건'
+  FROM public.published_maps WHERE unpublished_at IS NULL;
+SQL
+echo
+echo "끝 — 표·색인·정책이 모두 OK 면 성공입니다. **재기동은 필요 없습니다**(60초 안에 반영)."
+echo "확인: 에디터에서 맵을 열고 상단 [🌐 공개] → [공개 링크 만들기]"
+SCRIPT
+```
+
+**되돌리려면** (게시 기록까지 지운다 — 공개 중인 링크가 전부 죽는다):
+
+```bash
+# ⚠️ 지운 게시 기록은 돌아오지 않는다. 링크를 죽이기만 하려면 아래 대신
+#    화면에서 [공개 중단] 을 쓰거나 UPDATE 로 unpublished_at 만 채운다.
+psqlx -c "DROP TABLE IF EXISTS public.published_maps;"
+```
 
 ### 1.5-0-B. 요금제 컬럼 + 기존 계정 Basic 승격 — 2026-08-06
 

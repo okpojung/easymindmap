@@ -168,3 +168,19 @@ export function ProMapMembersTip(
 ) {
   return children;
 }
+
+// ── 초대·소유권 이전 자리 (2026-09-05) ─────────────────────────────
+//
+// 받은함과 [나가기]는 유료 모듈이 채운다 (collaboration/29 §8.3).
+// 공개판에서는 협업맵이 생기지 않으므로 이 자리에 올 것이 없다 — 둘 다
+// 아무것도 그리지 않는 것이 정상이다.
+
+/** 문서함 상단 받은함 — 받은 소유권 제안 · 새로 공유된 맵 */
+export function ProInbox(_p: { t: ThemeTokens; onOpenMap: (mapId: string) => void }) {
+  return null;
+}
+
+/** '공유받은 맵' 행의 [나가기] 자리 */
+export function ProSharedMapActions(_p: { t: ThemeTokens; mapId: string; onLeft: () => void }) {
+  return null;
+}

@@ -28,7 +28,7 @@ import {
   cloudApi, CloudError,
   type FolderItem, type MapListItem,
 } from '@/services/cloud/apiClient';
-import { ProMapMembersTip } from '@pro';
+import { ProInbox, ProMapMembersTip, ProSharedMapActions } from '@pro';
 import { useCloudStore } from '@/stores/cloudStore';
 import { notifyUser } from '@/stores/noticeStore';
 import { publicMapUrl } from './PublishPanel';
@@ -811,6 +811,18 @@ export function MapBrowser({
           "어디에 만들어지나"를 화면이 두 가지로 말하게 된다. */}
       <div className={newFolder ? 'mm-rows-editing' : undefined}
         style={{ flex: 1, overflowY: 'auto' }}>
+        {/* 받은함 자리 (2026-09-05, collaboration/29 §4·§8.2) — 받은 소유권
+            제안과 새로 공유된 맵. 유료 모듈이 채우고 공개판은 비어 있다.
+            목록 **위**에 두는 이유: 응답을 기다리는 것이 있으면 문서보다
+            먼저 보여야 한다. 맵을 열 때는 문서함이 여는 길 그대로 간다 —
+            방금 수락해 목록에 아직 없으면 다시 읽는다. */}
+        <ProInbox
+          t={t}
+          onOpenMap={(mapId) => {
+            const m = [...(maps ?? []), ...shared].find((x) => x.mapId === mapId);
+            if (m) void openMap(m); else void load();
+          }}
+        />
         {maps === null ? (
           <div style={{ padding: '28px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center' }}>
             불러오는 중…
@@ -1079,6 +1091,11 @@ export function MapBrowser({
                   서버는 어차피 막지만(404), 눌리는 버튼을 두면 사용자는
                   "왜 안 되지"를 겪는다 — 할 수 없는 일은 보이지 않는 편이
                   친절하다. 지우고 싶으면 주인에게 말해야 한다. */}
+              {/* 공유받은 맵의 유일한 동작 — **[나가기]** 자리 (유료가 채운다,
+                  collaboration/29 §2.1). 나가면 목록을 다시 읽는다. */}
+              {r.map.shared && (
+                <ProSharedMapActions t={t} mapId={r.map.mapId} onLeft={() => void load()} />
+              )}
               {!r.map.shared && (
                 <>
                   <button style={iconBtn} title="이름 변경" aria-label="이름 변경"

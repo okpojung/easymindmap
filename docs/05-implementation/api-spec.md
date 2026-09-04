@@ -499,6 +499,14 @@ Access Token 갱신
 }
 ```
 
+`publishId` 는 **지금 공개 중인 링크**다 (2026-09-05, PUBL-05). 공개하지
+않았으면 `null` 이고, 게시 표가 없는 서버(델타 미적용)에서도 `null` 이다 —
+문서함이 그 값을 보고 `🌐 공개 중` 배지를 그린다.
+
+```json
+{ "mapId": "uuid-...", "title": "My Map", "publishId": "abcdefghjkmn" }
+```
+
 `q` 를 준 경우에만 각 맵에 한 필드가 더 실린다:
 
 | 필드 | 뜻 |

@@ -4,6 +4,7 @@ import {
 import { AttachmentsService } from '../attachments/attachments.service';
 import { VaultService } from '../vault/vault.service';
 import { DatabaseService } from '../database/database.service';
+import { tableReady } from '../common/table-ready';
 import { FoldersService } from '../folders/folders.service';
 import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
 import type { CreateMapDto } from './dto/create-map.dto';
@@ -262,6 +263,24 @@ export class MapsService {
       ? ', lv.client_platform, lv.client_browser, lv.client_ip, lv.saved_at'
       : '';
 
+    // **지금 공개 중인 링크** (2026-09-05) — 문서함에서 "무엇을 공개해 뒀는지"
+    // 를 볼 수 있어야 한다. 링크는 만들고 나면 대화상자를 닫는 순간 사라져
+    // 다시 찾을 방법이 없었고, 그래서 **잊고 공개해 두는 일**이 생긴다.
+    //
+    // `lastJoin` 과 같은 LATERAL 방식이다 — 페이지에 실린 맵만 1행씩 집는다.
+    // 표가 없는 서버(델타 미적용)에서는 통째로 뺀다. 게시가 안 되는 것과
+    // **문서함이 죽는 것**은 전혀 다른 일이다.
+    const withPublish = await tableReady(this.db, 'public.published_maps');
+    const pubJoin = withPublish
+      ? `LEFT JOIN LATERAL (
+             SELECT pm.publish_id
+               FROM public.published_maps pm
+              WHERE pm.map_id = p.id AND pm.unpublished_at IS NULL
+              ORDER BY pm.published_at DESC LIMIT 1
+           ) pub ON TRUE`
+      : '';
+    const pubCols = withPublish ? ', pub.publish_id' : '';
+
     const [list, count] = await Promise.all([
       this.db.query<MapRow & {
         created_at: Date;
@@ -274,6 +293,7 @@ export class MapsService {
         client_browser?: string | null;
         client_ip?: string | null;
         saved_at?: Date | null;
+        publish_id?: string | null;
       }>(
         `${hitsCte}${hitsCte ? ', p AS (' : 'WITH p AS ('}
            SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
@@ -288,9 +308,10 @@ export class MapsService {
          )
          SELECT p.id, p.title, p.folder_id, p.kind, p.deleted_at,
                 p.created_at, p.updated_at, p.node_count, p.attach_count,
-                p.attach_bytes, p.doc_bytes${matchCountSql}${lastCols}
+                p.attach_bytes, p.doc_bytes${matchCountSql}${lastCols}${pubCols}
            FROM p
            ${lastJoin}
+           ${pubJoin}
           ORDER BY ${sortColOut} ${dir} NULLS LAST, p.id`,
         [...params, limit, offset],
       ),
@@ -321,6 +342,8 @@ export class MapsService {
         lastBrowser: m.client_browser ?? null,
         lastIp: m.client_ip ?? null,
         lastSavedAt: m.saved_at ?? null,
+        // 지금 공개 중인 링크 — 없으면 null (표가 없는 서버도 null)
+        publishId: m.publish_id ?? null,
       })),
       total: Number(count.rows[0]?.total ?? 0),
     };

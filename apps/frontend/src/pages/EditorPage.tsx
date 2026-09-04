@@ -29,7 +29,7 @@ import {
   clearCurrentMap, detachFromServer, editSessionKey, initialMapId, openMapHere,
 } from '@/services/cloud/mapSession';
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
-import { pullAiKeys } from '@/services/cloud/aiKeysSync';
+import { pullAiKeys, pullAiSettings } from '@/services/cloud/aiKeysSync';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useNoticeStore } from '@/stores/noticeStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
@@ -244,7 +244,7 @@ export function EditorPage() {
     }
     // 계정에 보관된 AI API 키를 받아 온다 (2026-09-04) — 브라우저에만 있던
     // 키는 계정으로 올린다. 실패해도 예전처럼 브라우저 키로 동작한다.
-    if (session) void pullAiKeys();
+    if (session) { void pullAiKeys(); void pullAiSettings(); }
     // Guest 체험 — 빈 화면 대신 곧바로 만져 볼 샘플 맵을 연다
     if (guest && !session && !initialMapId) {
       setSample();

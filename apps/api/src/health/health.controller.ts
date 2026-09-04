@@ -86,6 +86,9 @@ const REQUIRED_TABLES = [
   'map_members',
   // AI API 키 보관 (2026-09-04). 없으면 키 보관만 꺼진다 — 화면이 밝힌다.
   'user_ai_keys',
+  // AI 설정(우선순위·모델·프롬프트 템플릿) 계정 보관 (2026-09-04). 없으면
+  // 설정만 브라우저에 남는다 — 화면이 밝힌다.
+  'user_ai_settings',
 ] as const;
 
 /**

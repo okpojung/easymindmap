@@ -1,5 +1,6 @@
 import {
-  IsEmail, IsIn, IsOptional, IsString, Length, MaxLength, MinLength,
+  ArrayMaxSize, IsArray, IsEmail, IsIn, IsObject, IsOptional, IsString, Length, MaxLength,
+  MinLength,
 } from 'class-validator';
 
 /** [이메일 인증] 버튼 — 인증번호 발송 */
@@ -98,6 +99,24 @@ export class ResetConfirmDto {
 export class LoginEventDto {
   @IsOptional() @IsString() @MaxLength(60) platform?: string;
   @IsOptional() @IsString() @MaxLength(60) browser?: string;
+}
+
+/** AI 설정 저장 (2026-09-04) — 우선순위·모델·EMM 프롬프트 템플릿 (비밀 아님) */
+export class SaveAiSettingsDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsIn(['anthropic', 'openai', 'gemini'], { each: true, message: '알 수 없는 AI 회사입니다.' })
+  priority?: string[];
+
+  @IsOptional()
+  @IsObject()
+  models?: Record<string, string>;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40000)
+  systemPrompt?: string;
 }
 
 /**

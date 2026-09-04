@@ -27,6 +27,11 @@ import { PROVIDERS, type AiProvider } from '@/utils/aiProviders';
 
 const PUSH_DELAY_MS = 800;
 const timers: Partial<Record<AiProvider, number>> = {};
+let settingsTimer: number | undefined;
+/** 서버 값을 화면에 반영하는 동안 — 그 변경이 다시 서버로 가면 안 된다 */
+let applyingRemote = false;
+/** 설정 표가 없거나(델타 미적용) 낡은 서버 — 설정 push 를 조용히 건너뛴다 */
+let settingsUnavailable = false;
 
 function loggedIn(): boolean {
   return authEnabled && !!useAuthStore.getState().session;
@@ -73,6 +78,73 @@ export async function pullAiKeys(): Promise<void> {
   for (const p of toUpload) await pushAiKeyNow(p, local[p]);
 }
 
+/**
+ * **AI 설정(우선순위·모델·프롬프트 템플릿)도 계정을 따라온다** (2026-09-04).
+ * 프로필의 'AI 설정' 인데 브라우저마다 다르면 반쪽이다. 키와 같은 규칙 —
+ * 계정에 있으면 그것이 이기고, 없으면 지금 브라우저 값을 계정에 올린다.
+ * 비밀이 아니라 AI_KEY_SECRET 과 무관하게 늘 된다(표만 있으면).
+ */
+export async function pullAiSettings(): Promise<void> {
+  if (!loggedIn()) return;
+  let res: Awaited<ReturnType<typeof cloudApi.getAiSettings>>;
+  try {
+    res = await cloudApi.getAiSettings();
+  } catch {
+    settingsUnavailable = true; // 낡은 서버(엔드포인트 없음)·네트워크 — 브라우저 값으로
+    return;
+  }
+  settingsUnavailable = !res.available;
+  if (!res.available) return;
+  const st = useAiSettingsStore.getState();
+  if (res.settings) {
+    applyingRemote = true;
+    try {
+      const s = res.settings;
+      const known = new Set<string>(PROVIDERS);
+      if (Array.isArray(s.priority) && s.priority.every((p) => known.has(p))) {
+        // 빠진 회사가 있으면 뒤에 붙인다 — 새 회사가 추가돼도 목록이 안 깨진다
+        const order = [...s.priority, ...PROVIDERS.filter((p) => !s.priority!.includes(p))] as AiProvider[];
+        useAiSettingsStore.setState({ priority: order });
+      }
+      if (s.models && typeof s.models === 'object') {
+        const models = { ...st.models };
+        for (const p of PROVIDERS) if (typeof s.models[p] === 'string' && s.models[p]) models[p] = s.models[p];
+        useAiSettingsStore.setState({ models });
+      }
+      if (typeof s.systemPrompt === 'string' && s.systemPrompt.trim()) {
+        useAiSettingsStore.setState({ systemPrompt: s.systemPrompt });
+      }
+    } finally { applyingRemote = false; }
+  } else {
+    await pushAiSettingsNow(); // 계정에 아직 없다 — 지금 브라우저 값을 올린다
+  }
+}
+
+function pushAiSettings(): void {
+  if (!loggedIn() || settingsUnavailable || applyingRemote) return;
+  window.clearTimeout(settingsTimer);
+  settingsTimer = window.setTimeout(() => { void pushAiSettingsNow(); }, PUSH_DELAY_MS);
+}
+
+async function pushAiSettingsNow(): Promise<void> {
+  const st = useAiSettingsStore.getState();
+  try {
+    await cloudApi.saveAiSettings({
+      priority: st.priority, models: st.models, systemPrompt: st.systemPrompt,
+    });
+  } catch (e) {
+    if (e instanceof CloudError && e.status === 503) settingsUnavailable = true;
+    // 설정 저장 실패는 조용히 둔다 — 브라우저 값은 그대로라 잃는 것이 없다
+  }
+}
+
+// 우선순위·모델·프롬프트 템플릿이 바뀌면 계정에도 보낸다 (동기 구독 —
+// 서버 값을 반영하는 동안(applyingRemote)은 되돌아가지 않는다)
+useAiSettingsStore.subscribe((s, p) => {
+  if (s.priority === p.priority && s.models === p.models && s.systemPrompt === p.systemPrompt) return;
+  pushAiSettings();
+});
+
 /** 키 입력 — 잠시 뒤 한 번 보낸다. 로그인 전이거나 보관이 꺼져 있으면 아무것도 안 한다 */
 export function pushAiKey(provider: AiProvider, key: string): void {
   const srv = useAiSettingsStore.getState().server;
@@ -108,6 +180,7 @@ async function pushAiKeyNow(provider: AiProvider, key: string): Promise<void> {
 
 /** 로그아웃 — 계정에서 받아 온 키를 이 브라우저에서 지운다 (공용 PC) */
 export function clearAiKeysOnLogout(): void {
+  window.clearTimeout(settingsTimer);
   const st = useAiSettingsStore.getState();
   if (st.server.enabled !== true) return; // 브라우저 키가 유일한 사본이면 둔다
   for (const p of PROVIDERS) {

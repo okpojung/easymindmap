@@ -8,7 +8,7 @@ import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorato
 import { AccountService } from './account.service';
 import {
   DeleteAccountDto, LoginEventDto, ResetConfirmDto, ResetStartDto, ResetVerifyDto,
-  SaveAiKeyDto, SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
+  SaveAiKeyDto, SaveAiSettingsDto, SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
 } from './dto/account.dto';
 import { AuditLogService } from '../common/audit-log.service';
 import { LoginEventsService } from '../common/login-events.service';
@@ -64,6 +64,19 @@ export class AccountController {
   @UseGuards(AuthGuard)
   getAiKeys(@CurrentUser() user: AuthUser) {
     return this.account.getAiKeys(user.id);
+  }
+
+  /** AI 설정(우선순위·모델·프롬프트 템플릿) — 비밀이 아니라 AI_KEY_SECRET 과 무관 */
+  @Get('ai-settings')
+  @UseGuards(AuthGuard)
+  getAiSettings(@CurrentUser() user: AuthUser) {
+    return this.account.getAiSettings(user.id);
+  }
+
+  @Put('ai-settings')
+  @UseGuards(AuthGuard)
+  saveAiSettings(@CurrentUser() user: AuthUser, @Body() dto: SaveAiSettingsDto) {
+    return this.account.saveAiSettings(user.id, dto as unknown as Record<string, unknown>);
   }
 
   /** 키 등록/교체/삭제(빈 문자열) */

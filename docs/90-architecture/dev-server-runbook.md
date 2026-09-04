@@ -238,9 +238,9 @@ if [ -z "$DB" ]; then
 fi
 echo "✅ DB 컨테이너: $DB"
 
-# ── 1b) AI API 키 계정 보관 (2026-09-04, 18-ai.md §키 보관) ─────────
-#    표만 더한다. API 는 표가 없어도 죽지 않고(enabled:false) 화면이 밝힌다.
-#    적용 뒤 Coolify 의 api 앱에 AI_KEY_SECRET(16자 이상)을 넣고 재기동.
+# ── 1b) AI API 키·AI 설정 계정 보관 (2026-09-04, 18-ai.md §키 보관) ──
+#    표만 더한다. API 는 표가 없어도 죽지 않고(enabled/available:false) 화면이 밝힌다.
+#    적용 뒤 Coolify 의 api 앱에 AI_KEY_SECRET(16자 이상)을 넣고 Redeploy.
 docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" <<'SQL'
 CREATE TABLE IF NOT EXISTS public.user_ai_keys (
     user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -251,7 +251,15 @@ CREATE TABLE IF NOT EXISTS public.user_ai_keys (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, provider)
 );
-SELECT 'user_ai_keys' AS tbl, to_regclass('public.user_ai_keys') IS NOT NULL AS ok;
+-- AI 설정(우선순위·모델·EMM 프롬프트 템플릿) — 계정당 1행, 평문 JSON (비밀 아님)
+CREATE TABLE IF NOT EXISTS public.user_ai_settings (
+    user_id     UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+    settings    JSONB NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+SELECT 'user_ai_keys' AS tbl, to_regclass('public.user_ai_keys') IS NOT NULL AS ok
+UNION ALL
+SELECT 'user_ai_settings', to_regclass('public.user_ai_settings') IS NOT NULL;
 SQL
 
 # ── 2) 첨부 저장소 + 쿼터 델타 SQL (B9) ─────────────────────────

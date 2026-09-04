@@ -971,6 +971,18 @@ CREATE TABLE IF NOT EXISTS public.user_ai_keys (
     PRIMARY KEY (user_id, provider)
 );
 
+-- AI 설정(우선순위·모델·EMM 프롬프트 템플릿) — 키와 달리 비밀이 아니라
+-- 평문 JSON 이다. 프로필의 'AI 설정' 이 계정을 따라다니게 한다.
+CREATE TABLE IF NOT EXISTS public.user_ai_settings (
+    user_id     UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+    settings    JSONB NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.user_ai_settings IS
+    'AI 설정(사용 우선순위·모델·EMM 프롬프트 템플릿) — 계정당 1행, 평문 JSON. '
+    '키는 user_ai_keys(암호화)에 따로 있다 (2026-09-04).';
+
 COMMENT ON TABLE public.user_ai_keys IS
     '사용자가 프로필에 등록한 AI 회사 API 키 — AI_KEY_SECRET 으로 암호화(AES-256-GCM). '
     '평문은 어디에도 남지 않으며, 로그인한 본인에게만 복호화해 돌려준다.';

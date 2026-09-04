@@ -286,6 +286,55 @@ export class AccountService {
     return { enabled: true, keys };
   }
 
+  /**
+   * AI 설정(우선순위·모델·프롬프트 템플릿) — 비밀이 아니라 AI_KEY_SECRET 과
+   * 무관하게 늘 된다. 표가 없으면(델타 미적용) available:false 를 주고 앱은 산다.
+   */
+  async getAiSettings(userId: string): Promise<{
+    available: boolean; settings: Record<string, unknown> | null; updatedAt: Date | null;
+  }> {
+    try {
+      const { rows } = await this.db.query<{ settings: Record<string, unknown>; updated_at: Date }>(
+        `SELECT settings, updated_at FROM public.user_ai_settings WHERE user_id = $1`,
+        [userId],
+      );
+      return { available: true, settings: rows[0]?.settings ?? null, updatedAt: rows[0]?.updated_at ?? null };
+    } catch (e) {
+      if ((e as { code?: string }).code === '42P01') return { available: false, settings: null, updatedAt: null };
+      throw e;
+    }
+  }
+
+  async saveAiSettings(userId: string, settings: Record<string, unknown>) {
+    // 모델 이름은 짧은 문자열만 — JSON 에 아무거나 실리지 않게
+    const models = settings.models && typeof settings.models === 'object'
+      ? Object.fromEntries(Object.entries(settings.models as Record<string, unknown>)
+          .filter(([k, v]) => typeof v === 'string' && (v as string).length <= 200 && k.length <= 20)
+          .map(([k, v]) => [k, v as string]))
+      : undefined;
+    const clean: Record<string, unknown> = {
+      ...(Array.isArray(settings.priority) ? { priority: settings.priority } : {}),
+      ...(models ? { models } : {}),
+      ...(typeof settings.systemPrompt === 'string' ? { systemPrompt: settings.systemPrompt } : {}),
+    };
+    try {
+      await this.db.query(
+        `INSERT INTO public.user_ai_settings (user_id, settings)
+         VALUES ($1, $2::jsonb)
+         ON CONFLICT (user_id) DO UPDATE SET settings = EXCLUDED.settings, updated_at = NOW()`,
+        [userId, JSON.stringify(clean)],
+      );
+      return { saved: true as const };
+    } catch (e) {
+      if ((e as { code?: string }).code === '42P01') {
+        throw new ServiceUnavailableException(
+          'AI 설정 보관 표(user_ai_settings)가 아직 없습니다 — 서버 스키마(델타 SQL)를 적용해 주세요.',
+        );
+      }
+      throw e;
+    }
+  }
+
   /** 키 등록(빈 문자열 = 삭제). 보관이 꺼져 있으면 503 — 프런트가 이유를 보여 준다 */
   async saveAiKey(userId: string, provider: string, keyRaw: string) {
     if (!this.aiKeySecret) {

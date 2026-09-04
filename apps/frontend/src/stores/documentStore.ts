@@ -34,7 +34,7 @@ import type {
 import type { TextAlign, LayoutType, EdgeType } from '@/types/mindmap';
 // 레벨별 레이아웃을 노드에 박는 규칙 — 불러오기(importMapFile)와 **같은 것을
 // 쓴다.** 순수 함수라 순환 없음.
-import { applyLevelLayout, resolveEdgeType } from '@/utils/levelLayouts';
+import { applyLevelLayout, resolveEdgeType, LEVEL_LAYOUT_CAP } from '@/utils/levelLayouts';
 // 히스토리 스냅샷에 전체 레이아웃을 함께 기록/복원하기 위해서만 사용
 // (editorUiStore는 documentStore를 import하지 않으므로 순환 없음).
 import { useEditorUiStore } from './editorUiStore';
@@ -273,8 +273,9 @@ function defaultFontSizeForDepth(depth: number): number {
   return depth === 0 ? 18 : depth === 1 ? 14 : 13;
 }
 
-// New nodes intentionally have no layoutType: they inherit the layout of
-// their parent / the map until the user explicitly overrides them.
+// New nodes have no layoutType of their own: they inherit the layout of
+// their parent / the map — **unless the level says otherwise** (아래
+// withLevelLayout). 그 경우에도 여기서는 비워 두고, 만드는 자리에서 채운다.
 function createNewNode(): MindNode {
   return {
     id: createNodeId(),
@@ -282,6 +283,53 @@ function createNewNode(): MindNode {
     textAlign: 'left',
     children: [],
   };
+}
+
+/**
+ * **그 레벨의 서브트리 레이아웃** — 새 노드가 형제와 같은 모양으로 자식을
+ * 펼치게 한다 (2026-09-04 사용자 보고).
+ *
+ * 재현: 템플릿으로 만든 맵은 2레벨 노드마다 `layoutType: 'tree-right'` 가
+ * 박혀 있다(#362). 사용자가 2레벨에 **손으로 노드를 하나 더 만들면**
+ * 그 노드에는 layoutType 이 없어 부모(1레벨 진행트리)를 물려받고, 거기에
+ * AI 답변을 삽입하자 형제들과 달리 **진행트리로** 펼쳐졌다.
+ *
+ * 순서: ⑴ 맵 설정 `settings.levelLayouts` (설정 패널·EMM 선언이 채운다)
+ *      ⑵ 없으면 **같은 깊이에 이미 있는 노드**의 것 (첫 번째) — 설정 없이
+ *         템플릿 노드에만 박힌 맵(#362 이전 저장본)을 위해서다.
+ * 둘 다 없으면 undefined — 예전 규칙(부모·맵을 물려받음) 그대로다.
+ * 색인은 `utils/levelLayouts` 의 표와 같다(depth 1 = branches).
+ */
+function levelLayoutFor(map: SampleMap, depth: number): LayoutType | undefined {
+  if (depth < 1) return undefined;
+  const declared = map.settings?.levelLayouts?.[Math.min(depth, LEVEL_LAYOUT_CAP)];
+  if (declared) return declared;
+  let found: LayoutType | undefined;
+  const walk = (nodes: MindNode[], d: number) => {
+    for (const n of nodes) {
+      if (found) return;
+      if (d === depth) { if (n.layoutType) found = n.layoutType; continue; }
+      walk(n.children ?? [], d + 1);
+    }
+  };
+  walk(map.branches as MindNode[], 1);
+  return found;
+}
+
+/** layoutType 이 없는 노드에 그 레벨의 것을 박는다 — 있으면 그대로 둔다 */
+function withLevelLayout<T extends MindNode>(node: T, map: SampleMap, depth: number): T {
+  if (node.layoutType) return node;
+  const lt = levelLayoutFor(map, depth);
+  return lt ? { ...node, layoutType: lt, edgeType: resolveEdgeType(lt) } : node;
+}
+
+/** 서브트리 전체에 깊이별로 적용 — AI 삽입처럼 여러 층이 한 번에 들어올 때 */
+function withLevelLayoutsDeep(nodes: MindNode[], map: SampleMap, depth: number): MindNode[] {
+  return nodes.map((n) => {
+    const kids = n.children && n.children.length
+      ? withLevelLayoutsDeep(n.children, map, depth + 1) : n.children;
+    return { ...withLevelLayout(n, map, depth), children: kids };
+  });
 }
 
 // Style inheritance (mvp-scope §3): copy the parent's style, but reset the
@@ -726,7 +774,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         const newNode = createNewNode();
         newNodeId = newNode.id;
         const branch = makeBranch(
-          { ...newNode, style: inheritStyle(map.root.style, 1) },
+          withLevelLayout({ ...newNode, style: inheritStyle(map.root.style, 1) }, map, 1),
           map.branches.length,
         );
         return { map: { ...map, branches: [...map.branches, branch] } };
@@ -738,11 +786,11 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       const parentDepth = getNodeDepth(map, parentId);
       if (parentDepth + 1 > MAX_DEPTH) return {}; // depth guard
 
-      const newNode: MindNode = {
+      const newNode: MindNode = withLevelLayout({
         ...createNewNode(),
         colorKey: inheritColorKey(parent),
         style: inheritStyle(parent.style, parentDepth + 1),
-      };
+      }, map, parentDepth + 1);
       newNodeId = newNode.id;
 
       return {
@@ -766,7 +814,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         let branches = map.branches;
         clean.forEach((text) => {
           const branch = makeBranch(
-            { ...createNewNode(), text, style: inheritStyle(map.root.style, 1) },
+            withLevelLayout({ ...createNewNode(), text, style: inheritStyle(map.root.style, 1) }, map, 1),
             branches.length,
           );
           branches = [...branches, branch];
@@ -779,12 +827,12 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       const parentDepth = getNodeDepth(map, pid);
       if (parentDepth + 1 > MAX_DEPTH) return {};
 
-      const newChildren = clean.map((text) => ({
+      const newChildren = clean.map((text) => withLevelLayout({
         ...createNewNode(),
         text,
         colorKey: inheritColorKey(parent),
         style: inheritStyle(parent.style, parentDepth + 1),
-      }));
+      }, map, parentDepth + 1));
 
       const branches = updateNodeById(map.branches, pid, (p) => ({
         ...p,
@@ -804,7 +852,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       // 루트 아래 → 각 최상위 노드를 브랜치로 (색 순환)
       if (pid === 'root') {
         let branches = map.branches as MindNode[];
-        children.forEach((c) => {
+        withLevelLayoutsDeep(children, map, 1).forEach((c) => {
           branches = [
             ...branches,
             makeBranch({ ...c, style: c.style ?? inheritStyle(map.root.style, 1) }, branches.length),
@@ -816,14 +864,19 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       const parent = findNode(map.branches, pid);
       if (!parent) return {};
       const parentDepth = getNodeDepth(map, pid);
-      // 삽입되는 최상위 자식은 부모 색/스타일을 상속(하위는 파싱값 유지)
-      const prepared = children.map((c) => ({
+      // 삽입되는 최상위 자식은 부모 색/스타일을 상속(하위는 파싱값 유지).
+      // **레이아웃은 층마다 그 레벨의 것** — 답변이 여러 층으로 들어와도
+      // 형제 서브트리와 같은 모양으로 펼쳐진다 (2026-09-04).
+      const prepared = withLevelLayoutsDeep(children, map, parentDepth + 1).map((c) => ({
         ...c,
         colorKey: c.colorKey ?? inheritColorKey(parent),
         style: c.style ?? inheritStyle(parent.style, parentDepth + 1),
       }));
       const branches = updateNodeById(map.branches, pid, (p) => ({
-        ...p,
+        // **받는 노드도 그 레벨의 레이아웃으로** — 손으로 만든 노드(layoutType
+        // 없음)에 삽입하면 자식이 형제와 다르게 펼쳐지던 바로 그 자리.
+        // 이미 지정돼 있으면 건드리지 않는다.
+        ...withLevelLayout(p, map, parentDepth),
         collapsed: undefined, // 새 자식이 보이도록 펼침
         children: [...(p.children ?? []), ...prepared],
       })) as SampleBranch[];
@@ -850,7 +903,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         const newNode = createNewNode();
         newNodeId = newNode.id;
         const branch = makeBranch(
-          { ...newNode, colorKey: inheritColorKey(refBranch), style: inheritStyle(refBranch?.style, 1) },
+          withLevelLayout({ ...newNode, colorKey: inheritColorKey(refBranch), style: inheritStyle(refBranch?.style, 1) }, map, 1),
           map.branches.length,
         );
         return {
@@ -861,11 +914,11 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       // Inherit the SELECTED (reference) node's style, not the parent's, so a
       // new sibling looks like the node it was created from (minus level font).
       const reference = findNode(map.branches, nodeId);
-      const newNode: MindNode = {
+      const newNode: MindNode = withLevelLayout({
         ...createNewNode(),
         colorKey: inheritColorKey(reference),
         style: inheritStyle(reference?.style, depth),
-      };
+      }, map, depth);
       newNodeId = newNode.id;
 
       return {
@@ -893,11 +946,11 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       if (depth + 1 + subtreeHeight(target) > MAX_DEPTH) return {};
 
       const parentId = findParentId(map, nodeId);
-      const newNode: MindNode = {
+      const newNode: MindNode = withLevelLayout({
         ...createNewNode(),
         colorKey: inheritColorKey(target),
         style: inheritStyle(target.style, depth),
-      };
+      }, map, depth);
       newNodeId = newNode.id;
 
       // Wrapping a top-level branch: the new node becomes the branch.

@@ -1214,10 +1214,15 @@ file: (binary)
 **Response** `200 OK`
 ```json
 { "available": true, "publishId": "abcdefghjkmn", "publishedAt": "2026-09-04T00:00:00Z",
-  "hasPreview": true }
+  "hasPreview": true, "publishable": true }
 ```
 
 * `hasPreview` — 미리보기 실루엣이 올라와 있는가 (27a §2).
+* `publishable` — 이 맵을 **새로 공개할 수 있는가**. **협업맵이면 `false`**
+  이고 `blockedReason` 에 사람이 읽는 이유가 함께 온다 (2026-09-05 결정,
+  `27-publish-share.md` §6). 규칙과 문장을 서버가 갖는 이유는 화면이 같은
+  판정을 한 벌 더 가지면 언젠가 서버와 다른 말을 하기 때문이다.
+  이미 공개 중인 맵은 이 값이 `false` 여도 **링크는 살아 있다**.
 * `available:false` 는 **오류가 아니라 값**이다 — 이 서버에 `published_maps`
   표가 없다(스키마 델타 미적용). 화면은 이 값을 보고 버튼 대신 안내를 낸다.
 * 게시 중이 아니면 `publishId` · `publishedAt` 이 `null`.
@@ -1227,6 +1232,10 @@ file: (binary)
 ### POST /maps/{mapId}/publish
 맵을 공개 URL로 퍼블리싱. **맵 주인만.** (편집자·열람자는 `403`,
 볼 수 없는 맵은 `404` — 없는 맵과 구분하지 않는다.)
+
+**협업맵은 `403`** — 공개는 단독맵만 된다(2026-09-05 결정). 게시 **취소**와
+**미리보기 올리기**는 협업맵이어도 된다: 이미 열린 것을 닫는 길까지 막으면
+되돌릴 수 없다.
 
 **멱등** — 이미 게시 중이면 **그 링크를 그대로** 돌려준다. 두 번 눌렀다고
 이미 보낸 링크를 죽이지 않는다.

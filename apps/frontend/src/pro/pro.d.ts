@@ -25,4 +25,22 @@ declare module '@pro' {
     t: ThemeTokens; W: number; H: number; nodes: LaidOutNode[];
     scale?: number; CX: number; CY: number; panX?: number; panY?: number;
   }): JSX.Element | null;
+
+  // ── 초대·소유권 이전 자리 (2026-09-05, collaboration/29 §8.3) ──
+  // 공개판에서는 둘 다 아무것도 그리지 않는다.
+  /**
+   * 문서함 상단 **받은함** — 받은 소유권 제안(수락/거절)과 새로 공유된 맵.
+   * 유료 모듈이 `GET /collab/inbox` 로 채운다. `onOpenMap` 은 문서함이
+   * 맵을 여는 길 그대로(`?map=` 새 탭이 아니라 이 탭에서 연다).
+   */
+  export function ProInbox(p: {
+    t: ThemeTokens; onOpenMap: (mapId: string) => void;
+  }): JSX.Element | null;
+  /**
+   * '공유받은 맵' 행의 동작 자리 — **[나가기]** 가 여기 들어간다.
+   * 나간 뒤 `onLeft` 로 목록을 다시 읽게 한다.
+   */
+  export function ProSharedMapActions(p: {
+    t: ThemeTokens; mapId: string; onLeft: () => void;
+  }): JSX.Element | null;
 }

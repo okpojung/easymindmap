@@ -20,6 +20,7 @@ import { AiSettingsView } from '@/editor/inspector-panels/AiSettingsView';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { LoginHistoryList, type LoginHistory } from '@/components/auth/LoginHistoryList';
 import { McpTokensView } from '@/components/auth/McpTokensView';
+import { ProShareDialog } from '@pro';
 
 interface MenuEntry {
   id: string;
@@ -163,7 +164,16 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
    */
   const [del, setDel] = useState<null | {
     maps: number; attachments: number; usedBytes: number; confirmPhrase: string;
+    /** 내가 개설자인 활성 협업맵 — 있으면 탈퇴가 막힌다 (2026-09-04 스키마 정비 A) */
+    collabMaps: { mapId: string; title: string; memberCount: number | null }[];
+    blocked: boolean;
   }>(null);
+  /**
+   * 탈퇴 차단 목록의 **[공유 설정]** — 그 맵의 공유 대화상자를 연다
+   * (2026-09-05, collaboration/29 §8.3). 거기에 [소유권 넘기기]가 있다
+   * (유료). 공개판에서는 협업맵이 생기지 않으므로 이 목록이 비어 있다.
+   */
+  const [shareMap, setShareMap] = useState<string | null>(null);
   const [delText, setDelText] = useState('');
   const [delBusy, setDelBusy] = useState(false);
   const [delErr, setDelErr] = useState<string | null>(null);
@@ -177,6 +187,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
       .then((p) => setDel(p))
       .catch(() => setDel({
         maps: -1, attachments: -1, usedBytes: -1, confirmPhrase: '회원탈퇴',
+        collabMaps: [], blocked: false,
       }));
   };
 
@@ -456,6 +467,50 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               </div>
             </div>
 
+            {/* 협업맵 개설자면 **막힌다** — 서버가 409 로 답하기 전에 여기서
+                미리 보여 준다(확인 문구까지 치고 막히면 헛수고다). 참여자의
+                작업이 걸려 있어서다 — schema-overhaul-plan.md §2.3.
+                [공유 설정] 은 그 맵의 공유 대화상자 — 유료판이면 거기서
+                소유권을 넘긴다(collaboration/29). */}
+            {del.blocked && del.collabMaps.length > 0 && (
+              <div
+                data-testid="delete-account-blocked"
+                style={{
+                  margin: '0 0 12px', padding: '9px 11px', borderRadius: 7,
+                  background: t.surfaceAlt, border: `1px solid ${t.danger}`,
+                  fontSize: 12, lineHeight: 1.7,
+                }}
+              >
+                <div style={{ fontWeight: 700, color: t.danger }}>
+                  함께 쓰는 맵 {del.collabMaps.length}개의 개설자라 아직 탈퇴할 수 없습니다.
+                </div>
+                <div style={{ color: t.textMuted, fontSize: 11.5 }}>
+                  탈퇴하면 참여자의 작업도 함께 사라집니다. 먼저 그 맵을 삭제하거나
+                  소유권을 넘겨 주세요.
+                </div>
+                {del.collabMaps.map((m) => (
+                  <div key={m.mapId} data-testid="delete-account-blocked-map"
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      · {m.title}
+                      <span style={{ color: t.textSubtle, fontSize: 11 }}>
+                        {' '}(참여자 {m.memberCount === null ? '수 알 수 없음' : `${m.memberCount}명`})
+                      </span>
+                    </span>
+                    <button
+                      data-testid="delete-account-share-settings"
+                      onClick={() => setShareMap(m.mapId)}
+                      style={{
+                        height: 24, padding: '0 9px', borderRadius: 6, cursor: 'pointer',
+                        border: `1px solid ${t.border}`, background: t.surface, color: t.text,
+                        fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                      }}
+                    >공유 설정</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div style={{ fontSize: 12, marginBottom: 6 }}>
               계속하려면 <b style={{ color: t.danger }}>{del.confirmPhrase}</b> 를 입력하세요.
             </div>
@@ -492,7 +547,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               <button
                 data-testid="delete-account-submit"
                 onClick={doDelete}
-                disabled={delBusy || delText.trim() !== del.confirmPhrase}
+                disabled={delBusy || del.blocked || delText.trim() !== del.confirmPhrase}
                 style={{
                   height: 34, borderRadius: 7,
                   cursor: delText.trim() === del.confirmPhrase && !delBusy ? 'pointer' : 'default',
@@ -502,9 +557,23 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                   fontSize: 12.5, fontWeight: 700,
                   opacity: delText.trim() === del.confirmPhrase && !delBusy ? 1 : 0.6,
                 }}
-              >{delBusy ? '삭제하는 중…' : '탈퇴하고 모든 자료 삭제'}</button>
+              >{delBusy ? '삭제하는 중…' : del.blocked ? '협업맵을 먼저 정리해 주세요' : '탈퇴하고 모든 자료 삭제'}</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 탈퇴 차단 목록에서 연 공유 대화상자 — 탈퇴 대화상자(z 245) **위**에
+          떠야 하므로 더 높은 층에 감싼다(자리 자체의 z 는 그 안에서 센다). */}
+      {shareMap && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
+          <ProShareDialog t={t} mapId={shareMap} onClose={() => {
+            setShareMap(null);
+            // 소유권을 넘겼거나 맵을 지웠을 수 있다 — 차단 목록을 다시 읽는다
+            if (del) {
+              cloudApi.deletePreview().then((p) => setDel(p)).catch(() => undefined);
+            }
+          }} />
         </div>
       )}
 

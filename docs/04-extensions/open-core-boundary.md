@@ -267,6 +267,8 @@ apps/frontend/src/pro/
 | `ProCollabSession` | 상단 툴바(MapActions) — 자동저장 훅과 같은 자리 | `mapId` · `kind` |
 | `ProPresenceBar` | 상단 툴바 오른쪽 | 테마 토큰 |
 | `ProCursorLayer` | 캔버스 위 | 테마 토큰 + **화면 기하 그대로**(`W·H·nodes·scale·CX·CY·panX·panY`) |
+| `ProInbox` (2026-09-05) | 문서함 목록 **위** | 테마 토큰 + `onOpenMap(mapId)` — 받은 소유권 제안·새로 공유된 맵 ([collaboration/29](collaboration/29-invite-and-ownership-transfer.md) §4·§8.2) |
+| `ProSharedMapActions` (2026-09-05) | '공유받은 맵' 행의 동작 칸 | 테마 토큰 + `mapId` + `onLeft()` — [나가기] 자리 |
 
 공개판에서는 **셋 다 아무것도 그리지 않는다.** 그것이 정상 동작이다 —
 없는 기능의 자리에 무엇을 그리면 "되는 줄 알았는데 안 되는" 화면이 된다.

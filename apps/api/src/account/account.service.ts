@@ -627,6 +627,22 @@ export class AccountService {
     const hasTomb = await hasDeletedAccountsTable(this.db);
     const hasMembers = await hasMapMembersTable(this.db);
 
+    // 지울 파일 — **내 첨부 행**의 키만 (2026-09-05, 29-invite-and-ownership-transfer.md §3.4 B).
+    // 예전에는 `u/<id>` 접두사를 통째로 지웠다. 소유권 이전이 첨부의 주인을
+    // 새 주인으로 바꾸되 키는 그대로 두므로(유료 모듈은 파일을 옮길 손이
+    // 없다), 그 접두사 아래에 **남의 맵 것이 된 파일**이 남아 있을 수 있다.
+    // 접두사로 지우면 이전받은 맵의 그림이 옛 주인 탈퇴와 함께 사라진다.
+    // 행은 아래 트랜잭션에서 CASCADE 로 지워지므로 키는 **그 전에** 읽는다.
+    let fileKeys: string[] = [];
+    try {
+      const { rows } = await this.db.query<{ storage_key: string }>(
+        `SELECT storage_key FROM public.attachments WHERE owner_id = $1`, [userId],
+      );
+      fileKeys = rows.map((r) => r.storage_key);
+    } catch (err) {
+      this.log.warn(`첨부 키 조회 실패 — 파일이 남을 수 있다: ${String((err as Error).message)}`);
+    }
+
     try {
       await this.db.transaction(async (c) => {
         // ① 협업맵 개설자면 여기서 멈춘다 — 트랜잭션 안에서 다시 본다
@@ -712,13 +728,22 @@ export class AccountService {
     //      shim 이고, 운영 Supabase 에서는 ⓐ와 같은 표다.
     const authRemoved = await this.removeLoginAccount(userId);
 
-    // 첨부 파일 원본 — 접두사를 통째로 지운다(업로드 중이던 조각 포함)
-    for (const prefix of [`u/${userId}`, `tmp/${userId}`]) {
+    // 첨부 파일 원본 — **내 행의 키만** 하나씩 지운다(위 fileKeys). 접두사
+    // `u/<id>` 는 통째로 지우지 않는다 — 소유권이 넘어간 맵의 파일이 그
+    // 아래 남아 있을 수 있다. 업로드 중이던 조각(`tmp/<id>`)만 접두사째.
+    let removed = 0;
+    for (const key of fileKeys) {
       try {
-        await this.storage.deletePrefix(prefix);
+        await this.storage.delete(key);
+        removed += 1;
       } catch (err) {
-        this.log.warn(`첨부 파일 삭제 실패 (${prefix}): ${String((err as Error).message)}`);
+        this.log.warn(`첨부 파일 삭제 실패 (${key}): ${String((err as Error).message)}`);
       }
+    }
+    try {
+      await this.storage.deletePrefix(`tmp/${userId}`);
+    } catch (err) {
+      this.log.warn(`업로드 조각 삭제 실패 (tmp/${userId}): ${String((err as Error).message)}`);
     }
 
     if (!hasTomb) {
@@ -734,7 +759,8 @@ export class AccountService {
     forgetKnownUser(userId);
 
     this.log.log(
-      `회원탈퇴 완료 (id=${userId}) — 맵 ${before.maps}개 · 첨부 ${before.attachments}개`,
+      `회원탈퇴 완료 (id=${userId}) — 맵 ${before.maps}개 · 첨부 ${before.attachments}개 `
+      + `· 파일 ${removed}/${fileKeys.length}개 삭제`,
     );
     return {
       deleted: true as const,

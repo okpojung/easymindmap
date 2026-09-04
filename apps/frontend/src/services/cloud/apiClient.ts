@@ -419,6 +419,11 @@ export const cloudApi = {
       fileBytes: number; docBytes: number; usedBytes: number;
       /** 사용자가 입력해야 하는 확인 문구 — **서버가 정한다** */
       confirmPhrase: string;
+      /** 내가 개설자인 활성 협업맵 — 비어 있지 않으면 탈퇴가 409 로 막힌다 (2026-09-04) */
+      collabMaps: { mapId: string; title: string; memberCount: number | null; updatedAt: string }[];
+      /** 그 맵들의 참여자 수(사람 수). 참가자 표가 없는 서버면 null */
+      memberTotal: number | null;
+      blocked: boolean;
     }>('GET', '/account/delete-preview'),
   /** 되돌릴 수 없다. confirm 은 deletePreview 가 준 문구와 정확히 같아야 한다 */
   deleteAccount: (confirm: string) =>

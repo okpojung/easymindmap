@@ -177,9 +177,13 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
     만들어 주므로 분리해도 동작한다. GoTrue 단독은 **루트 경로**로
     서비스하므로 frontend 빌드 변수 `VITE_SUPABASE_AUTH_PREFIX=`(빈 값)
     로 지정한다. **단계별 절차: dev-server-coolify.md §5.5**.
-  - **경로 B**: 전체 Supabase Self-hosted 스택(Coolify compose,
-    docker-compose-spec.md) — Realtime·Storage 등 다른 기능까지 쓸 때.
-    Kong 게이트웨이 경유라 접두사는 기본(`/auth/v1`) 그대로.
+  - **경로 B** ❌ **택하지 않았다 (2026-09-04 폐기)**: 전체 Supabase
+    Self-hosted 스택(Coolify compose, docker-compose-spec.md) —
+    Realtime·Storage 등 다른 기능까지 쓸 때의 길이었다. 그런데 Realtime 은
+    **자체 WebSocket + CRDT(Yjs)** 로, Storage 는 **로컬 디스크 + NAS NFS**
+    로 각각 정해져 **꺼낼 이유가 남지 않았다.** 근거는
+    [`docker-compose-spec.md`](../90-architecture/docker-compose-spec.md) 상단.
+    (기록: Kong 게이트웨이 경유라 접두사는 기본 `/auth/v1` 이었다.)
   - 공통 마무리: ① api 환경변수 `AUTH_MODE=supabase` +
     `SUPABASE_JWT_SECRET=<GoTrue JWT_SECRET>` ② frontend 빌드 변수
     `VITE_SUPABASE_URL`(GoTrue 주소)/`VITE_SUPABASE_ANON_KEY` ③ 재배포.

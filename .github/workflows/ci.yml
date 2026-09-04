@@ -158,6 +158,11 @@ jobs:
       # MCP 커넥터 단위 테스트 (2026-09-04) — EMM→스냅샷 변환 · JSON-RPC 계층
       - name: MCP 단위 테스트
         run: npm run test:mcp
+      # 표 존재 판정의 **캐시 정책** (2026-09-05). "없다"를 얼마나 기억하는지가
+      # 관리자 경험을 바꾼다 — 기억하면 델타를 넣고도 1분간 화면이 그대로다.
+      # 자주 불리는 자리는 기억하고, 델타 직후 확인하는 자리는 매번 묻는다.
+      - name: 표 존재 판정(tableReady) 단위 테스트
+        run: npm run test:table-ready
       - name: DB 스키마 로드 (shim → schema → functions → seed)
         env:
           PGPASSWORD: emm

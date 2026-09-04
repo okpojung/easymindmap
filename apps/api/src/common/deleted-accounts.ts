@@ -5,37 +5,29 @@
 // (배포와 SQL 적용 사이에 반드시 틈이 있다) 있는지 먼저 보고, 없으면
 // "탈퇴한 사람 없음"으로 답한다.
 //
-// 결과는 **양방향으로 1분 캐시**한다 — 없다가 생겼을 때도 재기동 없이
-// 따라잡는다(maps.service.ts 의 컬럼 탐지와 같은 방식).
+// ★ 표가 있는지는 `common/table-ready.ts` 에 묻는다 (2026-09-05).
+//   예전에는 여기에 **자기 전용 캐시와 자기 전용 질의**(information_schema
+//   COUNT)가 따로 있었다. 같은 질문을 하는 방식이 저장소에 넷이나 되면,
+//   새 기능을 만드는 사람이 넷 중 하나를 고르거나 다섯 번째를 만든다 —
+//   실제로 그렇게 만든 다섯 번째가 **죽은 코드**였다(account.service.ts,
+//   2026-09-04). 한 자리로 모아 둔다.
 
 import type { DatabaseService } from '../database/database.service';
+import { resetTableReadyCache, tableReady } from '../common/table-ready';
 
-const CACHE_MS = 60_000;
+const DELETED_TABLE = 'public.deleted_accounts';
 
-let tableCache: boolean | null = null;
-let tableCacheAt = 0;
-
-/** 테스트·재기동 없이 다시 보게 하고 싶을 때 (탈퇴 직후 등) */
+/**
+ * 테스트·재기동 없이 다시 보게 하고 싶을 때 (탈퇴 직후 등).
+ * 방금 세운 묘비를 이 프로세스가 곧바로 보게 한다.
+ */
 export function resetDeletedAccountsCache(): void {
-  tableCache = null;
-  tableCacheAt = 0;
+  resetTableReadyCache(DELETED_TABLE);
 }
 
 /** `public.deleted_accounts` 표가 이 DB 에 있는가 */
-export async function hasDeletedAccountsTable(db: DatabaseService): Promise<boolean> {
-  const now = Date.now();
-  if (tableCache !== null && now - tableCacheAt < CACHE_MS) return tableCache;
-  tableCacheAt = now;
-  try {
-    const { rows } = await db.query<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'deleted_accounts'`,
-    );
-    tableCache = Number(rows[0]?.n ?? 0) > 0;
-  } catch {
-    tableCache = false;
-  }
-  return tableCache;
+export function hasDeletedAccountsTable(db: DatabaseService): Promise<boolean> {
+  return tableReady(db, DELETED_TABLE);
 }
 
 /**

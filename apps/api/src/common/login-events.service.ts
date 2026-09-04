@@ -12,6 +12,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { ALWAYS_RECHECK, tableReady } from './table-ready';
 
 /** 계정당 남기는 최대 건수 — 넘으면 오래된 것부터 지운다.
  *  로그인 목록이 최근 50건까지만 보이므로 200건이면 넉넉하고,
@@ -63,6 +64,8 @@ export interface LoginDetails {
   details: (LoginDetail | null)[];
   source: IpSource;
 }
+
+const LOGIN_EVENTS_TABLE = 'public.login_events';
 
 @Injectable()
 export class LoginEventsService {
@@ -118,8 +121,8 @@ export class LoginEventsService {
   ): Promise<LoginDetails> {
     const out: (LoginDetail | null)[] = times.map(() => null);
     // 표가 있는지 먼저 본다 — **"표가 없다"와 "기록이 없다"는 다른 말이다.**
-    // 매번 물어보는 이유: 델타 SQL 은 서버가 돌고 있는 중에도 적용된다.
-    // 캐시하면 적용하고도 재기동 전까지 계속 "표가 없다"고 답하게 된다.
+    // 매번 물어보는 이유는 tableExists() 주석에 적혀 있다(델타 SQL 은
+    // 서버가 도는 중에도 적용되고, 이 화면은 그것을 곧바로 확인하는 자리다).
     const exists = await this.tableExists();
     if (!exists) return { details: out, source: 'no-table' };
     if (times.length === 0) return { details: out, source: 'no-records' };
@@ -173,15 +176,18 @@ export class LoginEventsService {
     };
   }
 
-  /** `public.login_events` 표가 있는가 (델타 SQL 적용 여부) */
-  async tableExists(): Promise<boolean> {
-    try {
-      const { rows } = await this.db.query<{ ok: boolean }>(
-        `SELECT to_regclass('public.login_events') IS NOT NULL AS ok`,
-      );
-      return rows[0]?.ok === true;
-    } catch {
-      return false;
-    }
+  /**
+   * `public.login_events` 표가 있는가 (델타 SQL 적용 여부).
+   *
+   * ★ **`ALWAYS_RECHECK` — "없다"를 기억하지 않는다** (2026-09-05).
+   *   판정은 `common/table-ready.ts` 한 자리로 옮겼지만, 그 기본값
+   *   (없다를 1분 기억)은 여기에 맞지 않는다. 이 자리는 관리자가 델타
+   *   SQL 을 넣고 **곧바로 화면을 새로고침해 확인하는 자리**다. 1분을
+   *   기억하면 "적용했는데 왜 그대로지?" 하고 헤매게 된다 — 기본값은
+   *   맵 열기처럼 **자주 불리는 자리**의 부담을 줄이려는 것이고, 이
+   *   화면은 사람이 가끔 여는 곳이라 매번 물어도 비용이 없다.
+   */
+  tableExists(): Promise<boolean> {
+    return tableReady(this.db, LOGIN_EVENTS_TABLE, { missTtlMs: ALWAYS_RECHECK });
   }
 }

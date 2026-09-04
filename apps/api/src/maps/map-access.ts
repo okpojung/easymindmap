@@ -65,7 +65,7 @@ export async function queryAllowingMissingMembers<T extends QueryResultRow>(
   db: DatabaseService, withMembers: string, ownerOnly: string, params: unknown[],
   now: number = Date.now(),
 ): Promise<T[]> {
-  const sql = (await tableReady(db, MEMBERS_TABLE, now)) ? withMembers : ownerOnly;
+  const sql = (await tableReady(db, MEMBERS_TABLE, { now })) ? withMembers : ownerOnly;
   // 여기서 나는 오류는 **그대로 올려보낸다.** 삼키면 DB 장애가
   // "권한 없음"으로 둔갑해 원인을 못 찾는다.
   const { rows } = await db.query<T>(sql, params);
@@ -91,7 +91,7 @@ export async function findAccessibleMap<T extends QueryResultRow>(
  * 표가 없으면 호출한 쪽은 **더 적게 들여보내는 쪽**으로 물러나야 한다.
  */
 export function hasMapMembersTable(db: DatabaseService): Promise<boolean> {
-  return tableReady(db, MEMBERS_TABLE, Date.now());
+  return tableReady(db, MEMBERS_TABLE);
 }
 
 /** 운영 점검용 — 마지막으로 확인한 결과(아직 안 물어봤으면 null) */

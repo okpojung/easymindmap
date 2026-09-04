@@ -14,6 +14,7 @@
     "test:ai-keys": "node test/ai-key-crypto.test.mjs",
     "test:mcp": "node test/emm-to-doc.test.mjs && node test/mcp-jsonrpc.test.mjs",
     "test:schema-degrade": "node test/schema-degrade.test.mjs",
+    "test:table-ready": "node test/table-ready.test.mjs",
     "sync:emm": "node scripts/sync-emm-parser.mjs",
     "check:emm": "node scripts/sync-emm-parser.mjs --check"
   },

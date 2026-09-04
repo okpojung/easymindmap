@@ -90,6 +90,11 @@ export function MapActions(
     const wasReadOnly = !!useCloudStore.getState().readOnlyInfo;
     const r = await saveAndCloseMap(flash);
     if (r === 'unsaved') { setWarnUnsaved(true); return; }
+    // **닫을 맵이 없으면 문서함으로 간다** (2026-09-04 사용자 보고).
+    // 예전에는 "열려 있는 맵이 없습니다" 만 띄우고 끝이라, `?map=` 탭에서
+    // 열기에 실패한 사용자는 '문서 없음' 화면에 갇혔다 — 닫기 버튼이
+    // 유일하게 눈에 띄는 출구인데 아무 데도 데려가지 않았다.
+    if (r === 'empty') { setBrowserOpen(true); return; }
     if (r !== 'closed') return;
     flash(wasReadOnly ? '읽기 전용으로 보던 맵을 닫았습니다.' : '맵을 저장하고 닫았습니다.');
     setBrowserOpen(true);

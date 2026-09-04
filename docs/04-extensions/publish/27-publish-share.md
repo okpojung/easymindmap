@@ -2,6 +2,8 @@
 
 > ⚠️ **미구현 — 설계본.** 퍼블리시 기능은 아직 코드가 없다(2026-08-04). 현재 공개 공유는 Standalone HTML 내보내기 파일로 대신한다.
 
+> **유료 게시**(수수료·정산·미리보기)는 [`27a-paid-publish.md`](27a-paid-publish.md) 다. 이 문서의 `published_maps` 와 공개 URL 을 그대로 쓰고 그 위에 값을 매긴다.
+
 ## PUBLISH_SHARE
 
 * 문서 버전: v1.1

@@ -278,7 +278,7 @@ buildStandaloneHtml(map, …)  — Standalone HTML 내보내기와 **같은 함�
 | 공유 대화상자 | `apps/frontend/src/components/cloud/PublishPanel.tsx` |
 | 공개 화면 | `apps/frontend/src/pages/PublicMapPage.tsx` · 라우팅은 `main.tsx` |
 | 미리보기 실루엣 | `apps/frontend/src/export/silhouette.ts` (27a §2) |
-| 문서함의 공개 표시 | `components/cloud/MapBrowser.tsx` — `🌐 공개 중` 배지 |
+| 문서함의 공개 표시 | `components/cloud/MapBrowser.tsx` — `mapType()` |
 
 남은 제약 — **지금은 이렇게 동작한다**는 사실이지 버그가 아니다.
 

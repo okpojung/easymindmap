@@ -91,6 +91,64 @@ type SortOrder = 'asc' | 'desc';
  * 색은 에디터·뷰어의 검색 강조와 같은 고정색(노랑 + 진한 글자) — 라이트·
  * 다크 어느 쪽에서도 묻히지 않는다.
  */
+/**
+ * 맵의 **유형** — 문서함 '유형' 칸이 보여 주는 한 값 (2026-09-05 사용자 결정).
+ *
+ *   단독맵 · 협업맵 · 공개맵 · 대시보드맵
+ *
+ * ★ 왜 한 자리에 모았나
+ *   유형은 원래 `kind`(solo/collab) 하나였는데, 공개 게시가 붙으면서
+ *   **한 맵이 여러 사실을 동시에 갖게** 됐다(협업맵이면서 공개 중일 수
+ *   있다). 표시 규칙이 화면 곳곳에 흩어지면 목록과 상세 카드가 서로 다른
+ *   말을 하게 된다 — 그래서 판정을 여기 한 벌만 둔다.
+ *
+ * ★ 우선순위와 그 이유
+ *   ① 공유받은 맵  — 남의 맵이다. 내 유형 분류와 섞으면 안 된다
+ *   ② 공개맵       — **바깥으로 드러난 사실**이라 가장 먼저 알아야 한다.
+ *                    잊고 공개해 두는 것이 이 기능의 가장 나쁜 실패다.
+ *   ③ 협업맵 / 단독맵
+ *
+ *   ②가 ③을 가리므로, 가려진 값은 **툴팁에 남긴다**(협업맵을 공개하면
+ *   "협업맵 · 공개 중"). 화면에서 사라지되 사실이 사라지지는 않는다.
+ *
+ * ★ 대시보드맵은 아직 없다
+ *   유형이 늘어날 자리는 여기다. `kind === 'dashboard'` 가 생기면 ③ 옆에
+ *   한 줄 더하면 된다 — 배지를 그리는 쪽은 손대지 않는다.
+ */
+function mapType(m: MapListItem): {
+  label: string;
+  title: string;
+  /** 눈에 띄게 그릴 유형인가 (공개맵·협업맵) */
+  strong: boolean;
+  /** 공개맵이면 그 주소 — 배지를 눌러 복사한다 */
+  publishUrl?: string;
+} {
+  if (m.shared) {
+    const who = m.ownerEmail ?? '다른 사람';
+    return m.role === 'viewer'
+      ? { label: '👁 읽기 전용', strong: false, title: `${who} 이(가) 공유한 맵 — 읽기만 됩니다` }
+      : { label: '🤝 함께 편집', strong: false, title: `${who} 이(가) 공유한 맵 — 함께 편집합니다` };
+  }
+  const base = m.kind === 'collab' ? '협업맵' : '단독맵';
+  if (m.publishId) {
+    const url = publicMapUrl(m.publishId);
+    return {
+      label: '🌐 공개맵',
+      strong: true,
+      publishUrl: url,
+      title: `공개 중 — 링크를 가진 사람은 로그인 없이 읽습니다 (${base})\n`
+        + `누르면 링크를 복사합니다\n${url}`,
+    };
+  }
+  return m.kind === 'collab'
+    ? { label: '👥 협업맵', strong: true, title: '협업맵 — 협업자가 참여 중인 맵' }
+    : {
+      label: '👤 단독맵',
+      strong: false,
+      title: '단독맵 — 협업자를 초대해 승인되면 협업맵이 됩니다 (준비 중)',
+    };
+}
+
 function Mark({ text, q }: { text: string; q: string }) {
   if (!q) return <>{text}</>;
   const lower = text.toLowerCase();
@@ -1000,58 +1058,51 @@ export function MapBrowser({
                 <span style={{ fontSize: 10, marginLeft: 6, color: t.textSubtle }}>편집 중</span>
               )}
             </button>
-            {/* **지금 공개 중인 맵** (2026-09-05 사용자 요청).
-                공개 링크는 만들고 나면 대화상자를 닫는 순간 사라져서, 무엇을
-                공개해 뒀는지도 그 주소가 무엇이었는지도 알 길이 없었다.
-                **잊고 공개해 두는 것**이 이 기능에서 가장 나쁜 실패라,
-                문서함이 늘 말해 주게 한다. 눌러서 주소를 다시 가져간다. */}
-            {r.map.publishId && (
-              <button
-                data-testid="browser-map-published"
-                title={`공개 중 — 누르면 링크를 복사합니다\n${publicMapUrl(r.map.publishId)}`}
-                onClick={(e) => {
-                  e.stopPropagation(); // 행 클릭(맵 열기)과 겹치지 않게
-                  const url = publicMapUrl(r.map.publishId!);
-                  const done = () => notifyUser(`🔗 공개 링크를 복사했습니다 — ${url}`);
-                  if (navigator.clipboard?.writeText) {
-                    navigator.clipboard.writeText(url).then(done,
-                      () => notifyUser(`⚠ 복사하지 못했습니다 — ${url}`));
-                  } else {
-                    notifyUser(`공개 링크: ${url}`);
-                  }
-                }}
-                style={{
-                  marginLeft: 6, padding: '0 6px', borderRadius: 8, cursor: 'pointer',
-                  border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
-                  color: t.primary, fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
-                }}
-              >🌐 공개 중</button>
-            )}
             {/* 유형은 표시 전용 — 협업맵은 협업자를 초대해 승인·참여하는
                 순간 전환된다(협업 단계 V1~V2). 여기서 바꾸는 것이 아니다.
                 협업맵이면 **유료 자리**로 감싼다 — 마우스를 올리면 누가
                 참여 중인지 보여 준다(공개판은 그대로 지나간다). */}
             <ProMapMembersTip t={t} mapId={r.map.mapId}>
-            <span
-              data-testid="browser-map-kind"
-              title={r.map.shared
-                ? (r.map.role === 'viewer'
-                  ? `${r.map.ownerEmail ?? '다른 사람'} 이(가) 공유한 맵 — 읽기만 됩니다`
-                  : `${r.map.ownerEmail ?? '다른 사람'} 이(가) 공유한 맵 — 함께 편집합니다`)
-                : r.map.kind === 'collab'
-                  ? '협업맵 — 협업자가 참여 중인 맵'
-                  : '단독맵 — 협업자를 초대해 승인되면 협업맵이 됩니다 (준비 중)'}
-              style={{
-                justifySelf: 'end',
-                border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 7px',
-                color: r.map.kind === 'collab' ? t.primary : t.textMuted,
-                fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap',
-              }}
-            >
-              {r.map.shared
-                ? (r.map.role === 'viewer' ? '👁 읽기 전용' : '🤝 함께 편집')
-                : r.map.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'}
-            </span>
+            {(() => {
+              const ty = mapType(r.map);
+              const common = {
+                justifySelf: 'end' as const,
+                border: `1px solid ${ty.strong ? t.primaryBorder : t.border}`,
+                borderRadius: 8, padding: '1px 7px',
+                background: ty.strong ? t.primarySoft : 'transparent',
+                color: ty.strong ? t.primary : t.textMuted,
+                fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' as const,
+              };
+              // 공개맵이면 **눌러서 링크를 다시 가져간다.** 공개 링크는
+              // 만들고 나면 대화상자를 닫는 순간 사라져서, 그 주소를 다시
+              // 볼 방법이 없었다 — 유형 칸이 그 자리를 겸한다.
+              if (!ty.publishUrl) {
+                return (
+                  <span data-testid="browser-map-kind" title={ty.title} style={common}>
+                    {ty.label}
+                  </span>
+                );
+              }
+              const url = ty.publishUrl;
+              return (
+                <button
+                  data-testid="browser-map-kind"
+                  data-published="1"
+                  title={ty.title}
+                  onClick={(e) => {
+                    e.stopPropagation(); // 행 클릭(맵 열기)과 겹치지 않게
+                    const done = () => notifyUser(`🔗 공개 링크를 복사했습니다 — ${url}`);
+                    if (navigator.clipboard?.writeText) {
+                      navigator.clipboard.writeText(url).then(done,
+                        () => notifyUser(`⚠ 복사하지 못했습니다 — ${url}`));
+                    } else {
+                      notifyUser(`공개 링크: ${url}`);
+                    }
+                  }}
+                  style={{ ...common, cursor: 'pointer', fontWeight: 700 }}
+                >{ty.label}</button>
+              );
+            })()}
             </ProMapMembersTip>
             <span style={{ color: t.textMuted, fontSize: 11, textAlign: 'right' }}
               title="최초 생성일">
@@ -1137,7 +1188,7 @@ export function MapBrowser({
             fontWeight: 700, fontSize: 12.5, marginBottom: 4,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{info.map.title || '(제목 없음)'}</div>
-          <InfoRow t={t} k="유형" v={info.map.kind === 'collab' ? '👥 협업맵' : '👤 단독맵'} />
+          <InfoRow t={t} k="유형" v={mapType(info.map).label} />
           <InfoRow t={t} k="생성" v={fmtDate(info.map.createdAt)} />
           <InfoRow t={t} k="수정" v={fmtDate(info.map.updatedAt)} />
           <InfoRow t={t} k="노드" v={info.map.nodeCount === null || info.map.nodeCount === undefined

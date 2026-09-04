@@ -54,7 +54,7 @@ interface AiSettingsState {
    * **이 브라우저의 키가 계정과 맞춰진 적이 있는가** (영속). 로그인 시
    * 계정에 그 회사 키가 없을 때 — 맞춰진 적이 있으면 "다른 곳에서
    * 지운 것"이라 여기서도 지우고, 없으면 "예전부터 브라우저에만 있던
-   * 키"라 계정으로 올린다. 이 표시가 없으면 지운 키가 되살아난다(e2e190 ⑦).
+   * 키"라 계정으로 올린다. 이 표시가 없으면 지운 키가 되살아난다(e2e192 ⑦).
    */
   synced: Partial<Record<AiProvider, boolean>>;
   setSynced: (p: AiProvider, v: boolean) => void;

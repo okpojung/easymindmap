@@ -1135,6 +1135,152 @@ ON CONFLICT (map_id, user_id) DO UPDATE SET role = EXCLUDED.role;
 ⚠️ 넣은 사람은 **맵 id 를 알아야** 들어갈 수 있다 — 문서함의 "나에게
 공유된 맵" 목록은 아직 없다(협업 프런트엔드와 함께 만든다).
 
+### 1.5-0-H. ★ 스키마 정비 A·B·C — `maps.owner_id` RESTRICT + 버전 보관 컬럼 + 소유권 이전 표 (2026-09-04)
+
+공개 #380 ([schema-overhaul-plan.md](schema-overhaul-plan.md)). 세 덩어리를
+한 번에 넣는다 — **A** `maps.owner_id` 의 `ON DELETE CASCADE → RESTRICT`
+(탈퇴 한 번으로 협업맵 참여자의 작업까지 사라지던 것을 DB 가 막는다),
+**B** `plan_quotas.version_days·max_pinned` + `map_document_versions.pinned·label·pinned_by·pinned_at`
++ 부분 인덱스, **C** `map_ownership_transfers` 표. B·C 는 표·컬럼만이고
+읽는 코드가 아직 없다.
+
+**순서가 중요하다 — 이번만은 코드가 먼저다.** A 의 RESTRICT 는 **새 탈퇴
+코드**(단독맵을 먼저 지우고 users 를 지운다)와 짝이다. 옛 코드가 도는
+서버에 RESTRICT 만 먼저 넣으면 **모든 탈퇴가 500** 이 된다. 반대로 새
+코드는 옛 스키마(CASCADE)에서도 그대로 돈다(e2e197 구 스키마 21/21).
+
+```
+① private 저장소(easymindmap-pro)의 코어 SHA 를 8caa2c3 이상으로 올리고 api-pro 재배포
+     ↳ 개발 서버는 유료판만 돈다(§0 머리말) — 공개 저장소 병합만으로는 코드가 오지 않는다
+② 새 코드가 떴는지 확인: /v1/health 가 schema:"outdated" 와 함께
+     missingTables:["map_ownership_transfers"] · outdatedConstraints:["maps_owner_id_fkey: CASCADE (기대 RESTRICT)"]
+     를 보이면 새 코드다 (옛 코드는 이 키들을 모른다 — 그냥 ok 로 나온다)
+③ 아래 델타 적용 → /v1/health 가 schema:"ok"
+```
+
+①과 ③ 사이에는 탈퇴가 **되기는 된다**(새 코드 + CASCADE). 다만 그 사이
+협업맵 개설자가 탈퇴하면 앱 검사(409)만 막고 DB 방벽은 없다 — 짧게 끝낸다.
+
+```bash
+bash <<'SCRIPT'
+set -e
+# ★ 이름·포트로 고르지 않는다 — **우리 표가 있는 DB** 를 가진 앱을 찾는다 (§1.5-0-A)
+API=""; for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+      "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+    && { API="$C"; break; }
+done
+[ -z "$API" ] && { echo "❌ api 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}\t{{.Image}}'; exit 1; }
+URL=$(docker exec -i "$API" printenv DATABASE_URL)
+DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+PGDB=$(printf '%s' "$URL"   | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+docker inspect "$DB" >/dev/null 2>&1 \
+  || { echo "❌ DB 호스트($DB)가 이 서버의 컨테이너가 아닙니다 — 그 서버에서 직접 접속해 주세요."; exit 1; }
+echo "✅ 앱=$API  DB=$DB  계정=$PGUSER  데이터베이스=$PGDB"
+
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" -v ON_ERROR_STOP=1 <<'SQL'
+BEGIN;
+-- A. maps.owner_id → RESTRICT (제약 이름은 CREATE TABLE 이 자동으로 붙인 것과 같다)
+ALTER TABLE public.maps DROP CONSTRAINT IF EXISTS maps_owner_id_fkey;
+ALTER TABLE public.maps ADD CONSTRAINT maps_owner_id_fkey
+    FOREIGN KEY (owner_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+-- B. 요금제별 보관 — 씨앗은 컬럼을 처음 만드는 순간에만 (그 뒤의 NULL 은 관리자의 "무제한")
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='plan_quotas' AND column_name='version_days') THEN
+    ALTER TABLE public.plan_quotas ADD COLUMN version_days INTEGER CHECK (version_days IS NULL OR version_days > 0);
+    UPDATE public.plan_quotas SET version_days =   7 WHERE plan = 'free';
+    UPDATE public.plan_quotas SET version_days =  90 WHERE plan = 'basic';
+    UPDATE public.plan_quotas SET version_days = 365 WHERE plan IN ('pro', 'team');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='plan_quotas' AND column_name='max_pinned') THEN
+    ALTER TABLE public.plan_quotas ADD COLUMN max_pinned INTEGER CHECK (max_pinned IS NULL OR max_pinned >= 0);
+    UPDATE public.plan_quotas SET max_pinned =   3 WHERE plan = 'free';
+    UPDATE public.plan_quotas SET max_pinned =  20 WHERE plan = 'basic';
+    UPDATE public.plan_quotas SET max_pinned =  50 WHERE plan = 'pro';
+    UPDATE public.plan_quotas SET max_pinned = 100 WHERE plan = 'team';
+  END IF;
+END $$;
+ALTER TABLE public.map_document_versions ADD COLUMN IF NOT EXISTS pinned    BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.map_document_versions ADD COLUMN IF NOT EXISTS label     TEXT;
+ALTER TABLE public.map_document_versions ADD COLUMN IF NOT EXISTS pinned_by UUID REFERENCES public.users(id) ON DELETE SET NULL;
+ALTER TABLE public.map_document_versions ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_versions_prune
+    ON public.map_document_versions(map_id, created_at DESC) WHERE pinned = FALSE;
+-- C. 소유권 이전 제안 표 (API·UI 는 아직 없다)
+CREATE TABLE IF NOT EXISTS public.map_ownership_transfers (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id       UUID NOT NULL REFERENCES public.maps(id)  ON DELETE CASCADE,
+    from_user    UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    to_user      UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    responded_at TIMESTAMPTZ,
+    expires_at   TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '14 days',
+    CONSTRAINT map_ownership_transfers_status_chk
+        CHECK (status IN ('pending', 'accepted', 'declined', 'expired'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transfer_one_open
+    ON public.map_ownership_transfers(map_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_transfer_to_user
+    ON public.map_ownership_transfers(to_user, status);
+COMMIT;
+
+\echo '── 적용 결과 (value 와 expected 가 같으면 정상) ──'
+SELECT 'A maps_owner_id_fkey' AS item, delete_rule AS value, 'RESTRICT' AS expected
+  FROM information_schema.referential_constraints
+ WHERE constraint_schema = 'public' AND constraint_name = 'maps_owner_id_fkey'
+UNION ALL
+SELECT 'B plan_quotas.' || plan,
+       COALESCE(version_days::text, 'NULL') || '일 / ' || COALESCE(max_pinned::text, 'NULL') || '개',
+       CASE plan WHEN 'free' THEN '7일 / 3개' WHEN 'basic' THEN '90일 / 20개'
+                 WHEN 'pro' THEN '365일 / 50개' WHEN 'team' THEN '365일 / 100개' ELSE '(요금제 확인)' END
+  FROM public.plan_quotas
+UNION ALL
+SELECT 'B versions 새 컬럼 수', COUNT(*)::text, '4' FROM information_schema.columns
+ WHERE table_schema = 'public' AND table_name = 'map_document_versions'
+   AND column_name IN ('pinned', 'label', 'pinned_by', 'pinned_at')
+UNION ALL
+SELECT 'B idx_versions_prune', CASE WHEN to_regclass('public.idx_versions_prune') IS NOT NULL THEN 'ok' ELSE 'MISSING' END, 'ok'
+UNION ALL
+SELECT 'C map_ownership_transfers', CASE WHEN to_regclass('public.map_ownership_transfers') IS NOT NULL THEN 'ok' ELSE 'MISSING' END, 'ok'
+UNION ALL
+SELECT 'C idx_transfer_one_open', CASE WHEN to_regclass('public.idx_transfer_one_open') IS NOT NULL THEN 'ok' ELSE 'MISSING' END, 'ok'
+UNION ALL
+SELECT 'C idx_transfer_to_user', CASE WHEN to_regclass('public.idx_transfer_to_user') IS NOT NULL THEN 'ok' ELSE 'MISSING' END, 'ok';
+SQL
+echo "끝 — 10행 모두 value = expected 면 성공입니다. 두 번 실행해도 안전합니다."
+echo "확인: https://api-dev.mindmap.ai.kr/v1/health 의 schema 가 ok 인지 (outdatedConstraints 가 사라졌는지)."
+SCRIPT
+```
+
+`B plan_quotas.*` 의 expected 는 **씨앗값**이다 — 관리자 콘솔에서 바꾼
+값(NULL = 무제한 포함)이면 달라도 정상이다. 정본 스크립트는 저장소의
+`apps/api/database/deltas/2026-09-04-schema-overhaul-abc.sql` 이고 위와 같은
+내용이다.
+
+**확인**: 브라우저에서 `https://api-dev.mindmap.ai.kr/v1/health` 를 열어
+`"schema":"ok"` 이고 `outdatedConstraints` 가 **없으면** 끝이다. 탈퇴
+동작은 아바타 메뉴 → 회원탈퇴 → `회원탈퇴` 입력 → 탈퇴로 본다 — 협업맵
+개설자면 "함께 쓰는 맵 N개의 개설자입니다 …" 안내와 맵 목록이 뜨고 계정이
+남는다. 단독맵만 있는 계정은 예전처럼 탈퇴된다.
+
+**되돌리기** (새 코드가 아직 안 왔는데 이미 적용해 버렸을 때): RESTRICT 만
+CASCADE 로 되돌리면 옛 코드의 탈퇴가 다시 돈다. B·C 는 그대로 둬도 된다.
+
+```sql
+ALTER TABLE public.maps DROP CONSTRAINT IF EXISTS maps_owner_id_fkey;
+ALTER TABLE public.maps ADD CONSTRAINT maps_owner_id_fkey
+    FOREIGN KEY (owner_id) REFERENCES public.users(id) ON DELETE CASCADE;
+```
+
 ### 1.5-H. 재기동·재배포 때 알아야 할 것 (2026-08-18)
 
 **API 는 SIGTERM 을 받으면 정리하고 끝난다.** `main.ts` 의

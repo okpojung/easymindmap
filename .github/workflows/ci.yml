@@ -41,6 +41,41 @@ jobs:
           fi
           echo '✅ 실제 IP 없음'
 
+  # 카탈로그 번호가 겹치는 것을 막는다 (2026-09-04).
+  #
+  # 번호를 PR 작성자가 손으로 잡는데, **동시에 열린 PR 은 서로를 못 본다.**
+  # 병합 순서에 따라 누가 먼저 가져갈지가 정해져서, 실제로 세 번 겹쳤다
+  #   · e2e186  #369 · #371 이 각자 가져가 둘 다 병합됐다
+  #   · e2e188  #372 작업 중 #373 이 먼저 가져갔다
+  #   · e2e189  #372 작업 중 #374 가 먼저 가져갔다
+  # 앞의 둘은 사람이 알아채지 못한 채 main 에 들어갔다 — **눈으로 잡는
+  # 데 기대면 안 된다.** 체크아웃만 하므로 20초면 끝난다.
+  catalog:
+    name: 테스트 카탈로그 번호 중복 검사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: e2e 번호 중복 검사
+        run: |
+          CAT=docs/05-implementation/test-catalog.md
+          # 표의 첫 칸(`| e2eNNN |`)만 본다 — 본문 안의 참조는 겹쳐도 된다
+          DUP=$(grep -o '^| e2e[0-9]\+ |' "$CAT" | sort | uniq -d)
+          if [ -n "$DUP" ]; then
+            echo '❌ 같은 e2e 번호가 여러 표 행에 있습니다:'
+            echo "$DUP"
+            echo
+            echo '   다음 빈 번호로 옮기십시오. 옮길 쪽을 고를 때는'
+            echo '   **다른 문서가 참조하지 않는 쪽**을 옮기면 교차 참조를'
+            echo '   안 건드립니다:'
+            echo '     grep -rn "e2eNNN" docs/ | grep -v test-catalog'
+            echo
+            echo -n '   지금 가장 큰 번호: '
+            grep -o '^| e2e[0-9]\+' "$CAT" | grep -o '[0-9]\+' | sort -n | tail -1
+            exit 1
+          fi
+          echo -n '✅ e2e 번호 중복 없음 — 행 '
+          grep -c '^| e2e[0-9]\+ |' "$CAT"
+
   frontend:
     name: 프론트엔드 빌드 · 타입체크
     runs-on: ubuntu-latest          # GitHub이 빌려주는 리눅스 가상머신

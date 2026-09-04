@@ -988,7 +988,11 @@ const VIEWER_JS = String.raw`
       n._boxH = n._h + tagsH;
       var kids = n.children || [];
       for (var i = 0; i < kids.length; i++) {
+        // pos 가 없는 자식(접힌 채 내보낸 옛 파일의 숨은 노드)은 뷰어가
+        // 스스로 잰다 — 건너뛰면 크기 없는 블록이 더해져 NaN 이 되고
+        // 맵이 통째로 사라진다 (2026-09-04). 새 파일은 전부 pos 를 갖는다.
         if (kids[i].pos) prep(kids[i], eff, depth + 1, eff, n._tlRole);
+        else measure(kids[i], depth + 1, eff, eff, n._tlRole);
       }
       layoutBlock(n, depth); // 자식 블록 계산 후 자기 블록 (후위 순회)
     })(DATA.root, rootEff, 0);
@@ -3201,6 +3205,20 @@ export function buildStandaloneHtml(
   // (에디터 Canvas 와 동일 — 없으면 맵 설정 경로의 도형 없음이 누락된다)
   setLevelShapeConfig(map.settings?.levelShapes);
   const laid = computeLayout(map, layoutType, 700, 400, spacing);
+  // **접힌 노드 아래의 자식들도 크기를 굽는다** (2026-09-04 사용자 보고).
+  // 레이아웃 엔진은 접힌 노드의 자식을 배치에서 뺀다(pruneCollapsed) —
+  // 그래서 접힌 채 내보내면 그 아래 노드에는 `pos` 가 없었고, 뷰어에서
+  // 펼치는 순간 재배치(reflowFixed)가 크기 없는 블록을 더해 **NaN 좌표로
+  // 맵이 통째로 사라졌다**(진행트리에서 '모두 펼치기' → 백지). 전부 펼친
+  // 사본을 한 번 더 배치해 빠진 노드의 크기·줄바꿈·글꼴을 채운다 —
+  // 위치는 뷰어가 다시 계산하므로 여기서는 크기가 전부다.
+  const expandAll = (n: MindNode): MindNode => ({
+    ...n, collapsed: false, children: (n.children ?? []).map(expandAll),
+  });
+  const laidAll = computeLayout(
+    { ...map, branches: map.branches.map(expandAll) as typeof map.branches },
+    layoutType, 700, 400, spacing,
+  );
   // 체크리스트 항목 범위 — 에디터(NodeRenderer)와 같은 재구성 규칙으로
   // 계산해 노드마다 실어 보낸다 (뷰어는 계산 없이 그대로 그린다)
   const bakeChecks = (n: (typeof laid)[number]) => {
@@ -3217,23 +3235,21 @@ export function buildStandaloneHtml(
       ? checks.map((c) => ({ a: c.at, e: c.end, c: c.checked ? 1 : 0, s: c.seq }))
       : undefined;
   };
-  const posById = new Map<string, ExportPos>(
-    laid.map((n) => [
-      n.id,
-      {
-        x: Math.round(n.x * 10) / 10,
-        y: Math.round(n.y * 10) / 10,
-        w: Math.round(n.w * 10) / 10,
-        h: Math.round(n.h * 10) / 10,
-        lines: n._lines ?? [String(n.text ?? '')],
-        ms: n._manualStarts,
-        fs: n._fontSize ?? 13,
-        lh: n._lineHeight ?? 18,
-        ff: levelFontFamily(n.depth),
-        ck: bakeChecks(n),
-      },
-    ]),
-  );
+  const toPos = (n: (typeof laid)[number]): ExportPos => ({
+    x: Math.round(n.x * 10) / 10,
+    y: Math.round(n.y * 10) / 10,
+    w: Math.round(n.w * 10) / 10,
+    h: Math.round(n.h * 10) / 10,
+    lines: n._lines ?? [String(n.text ?? '')],
+    ms: n._manualStarts,
+    fs: n._fontSize ?? 13,
+    lh: n._lineHeight ?? 18,
+    ff: levelFontFamily(n.depth),
+    ck: bakeChecks(n),
+  });
+  const posById = new Map<string, ExportPos>(laid.map((n) => [n.id, toPos(n)]));
+  // 보이는 노드는 실제 배치(laid)의 좌표가 우선 — 접혀서 빠진 노드만 채운다
+  for (const n of laidAll) if (!posById.has(n.id)) posById.set(n.id, toPos(n));
   const resolvePos: PosResolver = (id) => posById.get(id);
   const sideById = new Map<string, string | undefined>(laid.map((n) => [n.id, n.side]));
   const resolveSide: SideResolver = (id) => sideById.get(id);

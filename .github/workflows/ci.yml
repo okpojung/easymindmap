@@ -137,6 +137,8 @@ jobs:
         run: npm run type-check
       - name: 빌드
         run: npm run build
+      - name: AI 키 암호화 단위 테스트 (2026-09-04)
+        run: npm run test:ai-keys
       - name: DB 스키마 로드 (shim → schema → functions → seed)
         env:
           PGPASSWORD: emm
@@ -150,6 +152,8 @@ jobs:
           DATABASE_URL: postgres://emm:emm@localhost:5432/easymindmap
           AUTH_MODE: dev
           PORT: '3000'
+          # AI 키 보관 왕복(스모크)이 켜진 경로를 타도록 — 값은 CI 전용
+          AI_KEY_SECRET: ci-only-ai-key-secret-0123456789
         run: |
           node dist/main.js & echo $! > /tmp/api.pid
           for i in $(seq 1 30); do curl -sf http://localhost:3000/v1/health && break; sleep 1; done

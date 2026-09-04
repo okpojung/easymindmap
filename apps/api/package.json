@@ -10,7 +10,8 @@
     "type-check": "tsc --noEmit",
     "smoke": "node test/smoke.mjs",
     "db:apply": "node scripts/apply-schema.mjs",
-    "test:vault": "node test/vault-path.test.mjs && node test/vault-writer.test.mjs && node test/vault-plan.test.mjs"
+    "test:vault": "node test/vault-path.test.mjs && node test/vault-writer.test.mjs && node test/vault-plan.test.mjs",
+    "test:ai-keys": "node test/ai-key-crypto.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

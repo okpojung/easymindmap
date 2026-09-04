@@ -281,6 +281,17 @@ export const cloudApi = {
     req<{ verified: boolean; emailToken: string }>(
       'POST', '/account/email-code/verify', { email, code }, true),
   getProfile: () => req<AccountProfile>('GET', '/account/profile'),
+  // ── AI API 키 보관 (2026-09-04) — 계정에 암호화 저장, 본인에게만 복호화 ──
+  /** 내 키 전부. `enabled:false` 면 `reason` — 'secret'(서버 미설정) · 'schema'(표 없음) */
+  getAiKeys: () => req<{
+    enabled: boolean;
+    reason?: 'secret' | 'schema';
+    keys: Record<string, { key: string; hint: string; updatedAt: string }>;
+  }>('GET', '/account/ai-keys'),
+  /** 등록/교체(빈 문자열 = 삭제). 보관이 꺼져 있으면 503 + 이유 문장 */
+  saveAiKey: (provider: string, key: string) =>
+    req<{ provider: string; saved: boolean; hint?: string }>(
+      'PUT', '/account/ai-keys', { provider, key }),
   /** 가입 마무리 — 성명·휴대폰 저장 (emailToken 이 있으면 이메일 인증도 기록) */
   saveProfile: (p: {
     fullName: string; phoneCountry?: string; phoneNumber?: string; emailToken?: string;

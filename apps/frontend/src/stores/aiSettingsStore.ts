@@ -33,7 +33,31 @@ export type AiProviderChoice = AiProvider | 'auto';
 // 등록돼 있으면 'api', 아니면 'web' 이 기본.
 export type AiGenMode = 'web' | 'api';
 
+/**
+ * **계정 보관 상태** (2026-09-04) — 서버가 키를 맡아 주는지, 각 회사 키가
+ * 계정에 있는지(끝자리), 지금 저장 중인지. localStorage 에 **적지 않는다**
+ * (partialize) — 로그인할 때마다 서버에서 다시 안다.
+ *   enabled: null = 아직 모름/로그인 전(브라우저 보관만) · true · false(+reason)
+ */
+export interface AiKeyServerState {
+  enabled: boolean | null;
+  reason?: 'secret' | 'schema' | 'offline';
+  hints: Partial<Record<AiProvider, string>>;
+  status: Partial<Record<AiProvider, 'saving' | 'saved' | 'error'>>;
+  error?: string;
+}
+
 interface AiSettingsState {
+  server: AiKeyServerState;
+  setServer: (patch: Partial<AiKeyServerState>) => void;
+  /**
+   * **이 브라우저의 키가 계정과 맞춰진 적이 있는가** (영속). 로그인 시
+   * 계정에 그 회사 키가 없을 때 — 맞춰진 적이 있으면 "다른 곳에서
+   * 지운 것"이라 여기서도 지우고, 없으면 "예전부터 브라우저에만 있던
+   * 키"라 계정으로 올린다. 이 표시가 없으면 지운 키가 되살아난다(e2e192 ⑦).
+   */
+  synced: Partial<Record<AiProvider, boolean>>;
+  setSynced: (p: AiProvider, v: boolean) => void;
   provider: AiProviderChoice;
   priority: AiProvider[];
   keys: Record<AiProvider, string>;
@@ -65,6 +89,10 @@ export function resolveProvider(
 export const useAiSettingsStore = create<AiSettingsState>()(
   persist(
     (set) => ({
+      server: { enabled: null, hints: {}, status: {} },
+      setServer: (patch) => set((s) => ({ server: { ...s.server, ...patch } })),
+      synced: {},
+      setSynced: (p, v) => set((s) => ({ synced: { ...s.synced, [p]: v } })),
       provider: 'auto',
       priority: [...PROVIDERS],
       keys: { anthropic: '', openai: '', gemini: '' },
@@ -96,6 +124,11 @@ export const useAiSettingsStore = create<AiSettingsState>()(
     {
       name: 'easymindmap-ai-settings',
       version: 7,
+      // 계정 보관 상태는 세션마다 서버가 말해 준다 — 브라우저에 남기지 않는다
+      partialize: (s) => {
+        const { server: _server, setServer: _setServer, ...rest } = s as AiSettingsState;
+        return rest as unknown as AiSettingsState;
+      },
       // v6 → v7: 기본 템플릿 v4.2 승격 — **ASCII 도식 금지 규칙을 도로
       // 뺐다.** 앱이 코드 블록을 글자 격자에 앉히도록 바뀌어
       // (utils/monoGrid) 한글이 섞여도 칸이 어긋나지 않으므로, AI 답변을
@@ -119,6 +152,7 @@ export const useAiSettingsStore = create<AiSettingsState>()(
           s.priority = [...PROVIDERS];
         }
         if (!s.provider) s.provider = 'auto';
+        if (!s.synced || typeof s.synced !== 'object') s.synced = {};
         if (
           typeof s.systemPrompt === 'string' &&
           EMM_SYSTEM_PROMPT_PREVIOUS.some((prev) => s.systemPrompt === prev)

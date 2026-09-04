@@ -12,7 +12,9 @@
 // 새로 생긴다. 그 사이를 잇는 증거가 필요한데, DB 를 다시 뒤지지 않고
 // **서명만 검증하면 되는 값**이 가장 단순하다. 유효 30분.
 
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException, Injectable, Logger, ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 // ⚠️ CJS 전용 패키지만 쓸 것 — auth.guard.ts 와 같은 이유(ERR_REQUIRE_ESM)
@@ -24,6 +26,7 @@ import {
   hasDeletedAccountsTable, resetDeletedAccountsCache,
 } from '../common/deleted-accounts';
 import { forgetKnownUser } from '../common/auth/known-users';
+import { aiKeyHint, decryptAiKey, encryptAiKey } from './ai-key-crypto';
 import type { AppEnv } from '../config/env.validation';
 
 /** 인증번호 규칙 — 한 곳에 모아 둔다 (문서 auth-session-ui.md §11 과 같은 값) */
@@ -55,6 +58,8 @@ export class AccountService {
   private readonly goTrueUrl: string;
   /** 로그인 계정이 **우리 DB 밖(GoTrue)** 에 사는가 (AUTH_MODE=supabase) */
   private readonly authExternal: boolean;
+  /** AI API 키 암호화 비밀 — 비어 있으면 키 보관이 꺼진다 (2026-09-04) */
+  private readonly aiKeySecret: string;
 
   constructor(
     private readonly db: DatabaseService,
@@ -68,6 +73,7 @@ export class AccountService {
     this.goTrueUrl =
       String(config.get('GOTRUE_URL', { infer: true }) || '').trim().replace(/\/+$/, '');
     this.authExternal = config.get('AUTH_MODE', { infer: true }) === 'supabase';
+    this.aiKeySecret = String(config.get('AI_KEY_SECRET', { infer: true }) || '').trim();
     // 기동할 때 한 번 알린다 — 탈퇴가 일어난 뒤에 알면 이미 늦다.
     if (!this.goTrueUrl && this.authExternal) {
       this.log.warn(
@@ -233,6 +239,87 @@ export class AccountService {
     const got = Buffer.from(sig, 'utf8');
     if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
     return email;
+  }
+
+  // ── AI API 키 보관 (2026-09-04) ─────────────────────────────
+  // 키는 브라우저에만 있었다 → PC·브라우저·주소가 바뀔 때마다 다시 등록해야
+  // 했다. 계정에 **암호화해서** 붙인다(ai-key-crypto.ts). 로그인한 본인에게만
+  // 복호화해 돌려주고, 목록에는 끝자리(hint)를 함께 준다.
+  //
+  // **꺼지는 두 가지** — 둘 다 앱을 세우지 않고 `enabled:false` 로 말한다.
+  //   secret : AI_KEY_SECRET 미설정 (서버 설정)
+  //   schema : user_ai_keys 표가 아직 없다 (델타 SQL 미적용)
+
+  /** 내 키 전부 — `enabled` 가 false 면 `reason` 이 왜인지 말한다 */
+  async getAiKeys(userId: string): Promise<{
+    enabled: boolean;
+    reason?: 'secret' | 'schema';
+    keys: Record<string, { key: string; hint: string; updatedAt: Date }>;
+  }> {
+    if (!this.aiKeySecret) return { enabled: false, reason: 'secret', keys: {} };
+    let rows: { provider: string; key_enc: string; key_hint: string; updated_at: Date }[];
+    try {
+      ({ rows } = await this.db.query<{
+        provider: string; key_enc: string; key_hint: string; updated_at: Date;
+      }>(
+        `SELECT provider, key_enc, key_hint, updated_at
+           FROM public.user_ai_keys WHERE user_id = $1`,
+        [userId],
+      ));
+    } catch (e) {
+      if ((e as { code?: string }).code === '42P01') {
+        return { enabled: false, reason: 'schema', keys: {} };
+      }
+      throw e;
+    }
+    const keys: Record<string, { key: string; hint: string; updatedAt: Date }> = {};
+    for (const r of rows) {
+      const plain = decryptAiKey(r.key_enc, this.aiKeySecret);
+      // 비밀이 바뀌어 못 푸는 행은 **없는 것으로** 준다 — 화면이 "다시
+      // 등록하세요" 로 이어진다. 예외로 전체를 세우면 다른 회사 키까지 잃는다.
+      if (plain === null) {
+        this.log.warn(`AI 키를 풀지 못했다 (user=${userId}, provider=${r.provider}) — AI_KEY_SECRET 이 바뀌었나?`);
+        continue;
+      }
+      keys[r.provider] = { key: plain, hint: r.key_hint, updatedAt: r.updated_at };
+    }
+    return { enabled: true, keys };
+  }
+
+  /** 키 등록(빈 문자열 = 삭제). 보관이 꺼져 있으면 503 — 프런트가 이유를 보여 준다 */
+  async saveAiKey(userId: string, provider: string, keyRaw: string) {
+    if (!this.aiKeySecret) {
+      throw new ServiceUnavailableException(
+        '서버에 AI 키 보관 비밀(AI_KEY_SECRET)이 설정되지 않아 계정에 저장할 수 없습니다 — 키는 이 브라우저에만 남습니다.',
+      );
+    }
+    const key = String(keyRaw ?? '').trim();
+    try {
+      if (!key) {
+        await this.db.query(
+          `DELETE FROM public.user_ai_keys WHERE user_id = $1 AND provider = $2`,
+          [userId, provider],
+        );
+        return { provider, saved: false as const };
+      }
+      const hint = aiKeyHint(key);
+      await this.db.query(
+        `INSERT INTO public.user_ai_keys (user_id, provider, key_enc, key_hint)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id, provider)
+         DO UPDATE SET key_enc = EXCLUDED.key_enc, key_hint = EXCLUDED.key_hint,
+                       updated_at = NOW()`,
+        [userId, provider, encryptAiKey(key, this.aiKeySecret), hint],
+      );
+      return { provider, saved: true as const, hint };
+    } catch (e) {
+      if ((e as { code?: string }).code === '42P01') {
+        throw new ServiceUnavailableException(
+          'AI 키 보관 표(user_ai_keys)가 아직 없습니다 — 서버 스키마(델타 SQL)를 적용해 주세요.',
+        );
+      }
+      throw e;
+    }
   }
 
   /** 지금 로그인한 사람의 프로필 — 가입을 끝냈는지(성명 유무) 판단에도 쓴다 */

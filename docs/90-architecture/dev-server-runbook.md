@@ -238,6 +238,22 @@ if [ -z "$DB" ]; then
 fi
 echo "✅ DB 컨테이너: $DB"
 
+# ── 1b) AI API 키 계정 보관 (2026-09-04, 18-ai.md §키 보관) ─────────
+#    표만 더한다. API 는 표가 없어도 죽지 않고(enabled:false) 화면이 밝힌다.
+#    적용 뒤 Coolify 의 api 앱에 AI_KEY_SECRET(16자 이상)을 넣고 재기동.
+docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" <<'SQL'
+CREATE TABLE IF NOT EXISTS public.user_ai_keys (
+    user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    provider    VARCHAR(20) NOT NULL,
+    key_enc     TEXT NOT NULL,
+    key_hint    VARCHAR(8) NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, provider)
+);
+SELECT 'user_ai_keys' AS tbl, to_regclass('public.user_ai_keys') IS NOT NULL AS ok;
+SQL
+
 # ── 2) 첨부 저장소 + 쿼터 델타 SQL (B9) ─────────────────────────
 docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" <<'SQL'
 ALTER TABLE public.users

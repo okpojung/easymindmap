@@ -8,7 +8,7 @@ import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorato
 import { AccountService } from './account.service';
 import {
   DeleteAccountDto, LoginEventDto, ResetConfirmDto, ResetStartDto, ResetVerifyDto,
-  SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
+  SaveAiKeyDto, SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
 } from './dto/account.dto';
 import { AuditLogService } from '../common/audit-log.service';
 import { LoginEventsService } from '../common/login-events.service';
@@ -56,6 +56,21 @@ export class AccountController {
   @UseGuards(AuthGuard)
   saveProfile(@CurrentUser() user: AuthUser, @Body() dto: SaveProfileDto) {
     return this.account.saveProfile(user.id, user.email ?? '', dto);
+  }
+
+  // ── AI API 키 보관 (2026-09-04) — 본인 것만, 암호화 저장 ──────────
+  /** 내 키 전부 (복호화해서) — `enabled:false` 면 브라우저 보관으로 되돌아간다 */
+  @Get('ai-keys')
+  @UseGuards(AuthGuard)
+  getAiKeys(@CurrentUser() user: AuthUser) {
+    return this.account.getAiKeys(user.id);
+  }
+
+  /** 키 등록/교체/삭제(빈 문자열) */
+  @Put('ai-keys')
+  @UseGuards(AuthGuard)
+  saveAiKey(@CurrentUser() user: AuthUser, @Body() dto: SaveAiKeyDto) {
+    return this.account.saveAiKey(user.id, dto.provider, dto.key);
   }
 
   // ── 비밀번호 재설정 (2026-08-13) ─────────────────────────────

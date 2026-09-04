@@ -951,6 +951,31 @@ COMMENT ON TABLE public.login_events IS
     '로그인 목록·횟수의 기준은 여전히 GoTrue 다. 계정당 최근 200건만 남긴다.';
 
 -- ────────────────────────────────────────────────────────────────────
+-- AI API 키 보관 (2026-09-04) — docs/04-extensions/ai/18-ai.md §키 보관
+--
+-- 사용자가 등록한 AI 회사 API 키를 **계정에** 붙인다. 브라우저에만 있으면
+-- PC·브라우저·주소가 바뀔 때마다 다시 등록해야 했다. **평문으로 두지
+-- 않는다** — API 가 `AI_KEY_SECRET` 으로 AES-256-GCM 암호화해서 넣고
+-- (`account/ai-key-crypto.ts`), 끝자리 4글자(`key_hint`)만 사람이 읽게 둔다.
+-- 회원탈퇴는 users 의 CASCADE 로 함께 지워진다.
+CREATE TABLE IF NOT EXISTS public.user_ai_keys (
+    user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    -- 'anthropic' | 'openai' | 'gemini' — 프런트 aiProviders.ts 의 PROVIDERS
+    provider    VARCHAR(20) NOT NULL,
+    -- `v1:<iv>:<tag>:<ciphertext>` (base64) — 형식 표식이 앞에 온다
+    key_enc     TEXT NOT NULL,
+    -- 화면 표시용 끝자리 (예: '…Ab3z') — 이것만으로는 키를 복원할 수 없다
+    key_hint    VARCHAR(8) NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, provider)
+);
+
+COMMENT ON TABLE public.user_ai_keys IS
+    '사용자가 프로필에 등록한 AI 회사 API 키 — AI_KEY_SECRET 으로 암호화(AES-256-GCM). '
+    '평문은 어디에도 남지 않으며, 로그인한 본인에게만 복호화해 돌려준다.';
+
+-- ────────────────────────────────────────────────────────────────────
 -- vault 미러 (2026-08-21) — docs/04-extensions/vault-mirror.md §8
 --
 -- `map_documents.doc` 는 그대로 정본이고, 이 표는 **파일 하나의 현재 상태**만

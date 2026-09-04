@@ -49,7 +49,7 @@
 - 격리: 모든 쿼리가 `owner_id = 현재 사용자` 조건 (RLS 는 2차 방어선 —
   API 는 pg 직결이라 RLS 를 타지 않는다).
 
-### 실제 엔드포인트 전체 표 — 32개 (maps 11 · folders 4 · attachments 5 · account 4 · health 2 · nodes 6)
+### 실제 엔드포인트 전체 표 — 34개 (maps 11 · folders 4 · attachments 5 · account 6 · health 2 · nodes 6)
 
 | # | 메서드 | 경로 | 설명 |
 |---|---|---|---|
@@ -76,6 +76,8 @@
 | 19b | POST | `/v1/account/email-code` | **무인증.** 가입 이메일 인증번호 발송 `{email}` → `{sent,expiresInMin,devCode?}` — devCode 는 AUTH_MODE=dev + 메일 미설정일 때만 (2026-08-09) |
 | 19c | POST | `/v1/account/email-code/verify` | **무인증.** `{email,code}` → `{verified,emailToken}` (인증표, 유효 30분) |
 | 19d | GET/PUT | `/v1/account/profile` | 회원 프로필 조회·저장 `{fullName,phoneCountry?,phoneNumber?,emailToken?}` → `{fullName,phoneCountry,phoneNumber,plan,emailVerifiedAt,phoneVerifiedAt,complete}` |
+| 19e | GET | `/v1/account/ai-keys` | **내 AI API 키**(2026-09-04) → `{enabled, reason?:'secret'\|'schema', keys:{[provider]:{key,hint,updatedAt}}}` — 본인 것만 **복호화해서** 준다. `enabled:false` = 서버가 못 맡는다(`AI_KEY_SECRET` 미설정 / `user_ai_keys` 표 없음) → 프런트는 브라우저 보관으로 되돌아간다 |
+| 19f | PUT | `/v1/account/ai-keys` | `{provider:'anthropic'\|'openai'\|'gemini', key}` → `{provider,saved,hint?}`. 빈 `key` = 삭제. 보관이 꺼져 있으면 **503 + 이유 문장**. 저장은 AES-256-GCM(`account/ai-key-crypto.ts`) — 18-ai.md §키 보관 |
 | 19j | GET | `/v1/account/logins` | **내 로그인 기록** — 경로에 id 를 받지 않는다(토큰 주인 것만). 응답은 22h 와 같다 (2026-08-13). `events[].ip`·`events[].device` 는 **우리 `login_events` 기록에서 로그인 줄에만** 붙는다 (±60초 · 일대일). 못 맺으면 null — 2026-08-14 이전 로그인이 그렇다. `ipSource` 가 **왜 안 보이는지**를 준다 — `ok` · `no-table`(델타 SQL 미적용) · `no-records`(다시 로그인해야 함) |
 | 19k | POST | `/v1/account/login-event` | **로그인 직후 한 번** — 그때의 접속 IP·기기를 남긴다 (2026-08-14). 본문은 `{platform?, browser?}` 뿐이고 **IP 는 받지 않는다**(서버가 요청에서 직접 본다 — 위조 방지, 본문에 `ip` 를 실으면 400). 5초 안 중복은 `{recorded:false}` — 같은 요청의 중복만 거른다(60초로 두었더니 앱→관리자 콘솔 연속 로그인의 IP 를 잃었다). 계정당 최근 200건만 남는다 |
 | 19g | POST | `/v1/account/password-reset/start` | **무인증.** `{email}` → `{sent,expiresInMin,devCode?}`. **계정이 없어도 같은 모양으로 답하고 메일은 보내지 않는다**(계정 열거 방지) (2026-08-13) |

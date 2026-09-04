@@ -88,6 +88,18 @@ export interface AppEnv {
    * 밝힌다. **읽기만 한다**(쓰기는 GoTrue 의 몫).
    */
   GOTRUE_DATABASE_URL: string;
+
+  /**
+   * **AI API 키 보관 비밀** (2026-09-04). 사용자가 프로필에 등록한 AI 회사
+   * API 키(Anthropic·OpenAI·Gemini)를 DB 에 **암호화해서** 넣을 때 쓰는
+   * 키다(AES-256-GCM, `account/ai-key-crypto.ts`). 16자 이상.
+   *
+   * 비우면 **보관 기능만 꺼진다** — 앱은 죽지 않고, 키는 예전처럼
+   * 브라우저(localStorage)에만 남으며 화면이 그 사실을 밝힌다.
+   * ⚠️ 한 번 정하면 바꾸지 말 것 — 바꾸면 이미 저장된 키를 못 푼다
+   * (사용자가 다시 등록해야 한다).
+   */
+  AI_KEY_SECRET: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -166,6 +178,11 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     errors.push('SMTP_PORT 는 양의 정수여야 합니다.');
   }
 
+  const AI_KEY_SECRET = String(raw.AI_KEY_SECRET ?? '').trim();
+  if (AI_KEY_SECRET && AI_KEY_SECRET.length < 16) {
+    errors.push('AI_KEY_SECRET 은 16자 이상이어야 합니다 (비우면 AI 키 보관이 꺼집니다).');
+  }
+
   if (errors.length) {
     throw new Error('환경변수 오류:\n - ' + errors.join('\n - '));
   }
@@ -194,5 +211,6 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     GOTRUE_URL: String(raw.GOTRUE_URL ?? ''),
     ADMIN_EMAILS: String(raw.ADMIN_EMAILS ?? ''),
     GOTRUE_DATABASE_URL: String(raw.GOTRUE_DATABASE_URL ?? ''),
+    AI_KEY_SECRET,
   };
 }

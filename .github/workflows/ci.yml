@@ -181,6 +181,16 @@ jobs:
             || { echo 'schema 가 ok 가 아닙니다 — schema.sql 과 REQUIRED_TABLES 확인'; exit 1; }
           API_URL=http://localhost:3000 npm run smoke
           kill "$(cat /tmp/api.pid)" || true
+      # 델타 SQL 미적용 서버에서 **어떻게 물러나는가** (2026-09-04).
+      # 표를 잠깐 치워 두고 응답을 본다 — 코드를 읽어서는 못 잡는 자리다
+      # (`err.code === '42P01'` 검사가 죽은 코드였던 것을 여기서 잡았다).
+      # 표는 rename 으로 치웠다가 반드시 되돌린다 — 지우지 않는다.
+      - name: 스키마 미적용 물러남 테스트
+        env:
+          DATABASE_URL: postgres://emm:emm@localhost:5432/easymindmap
+          DEGRADE_PORT: '3020'
+        run: npm run test:schema-degrade
+
       # AUTH_MODE=supabase 부팅 스모크 (2026-08-01 배포 실패 재발 방지).
       # dev 모드만 검증하던 탓에 auth.guard 의 ESM 전용 의존성(jose)
       # require 실패를 CI 가 잡지 못하고 배포에서 터졌다.

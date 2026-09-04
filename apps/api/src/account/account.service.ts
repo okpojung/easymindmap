@@ -26,8 +26,15 @@ import {
   hasDeletedAccountsTable, resetDeletedAccountsCache,
 } from '../common/deleted-accounts';
 import { forgetKnownUser } from '../common/auth/known-users';
+import { tableReady } from '../common/table-ready';
 import { aiKeyHint, decryptAiKey, encryptAiKey } from './ai-key-crypto';
 import type { AppEnv } from '../config/env.validation';
+
+// AI 보관 표 — 둘 다 2026-09-04 에 들어온 표라, 델타 SQL 을 아직 적용하지
+// 않은 서버에는 없다. 이름을 여기 한 번만 적어 두 자리(조회·저장)가
+// 어긋나지 않게 한다.
+const AI_KEYS_TABLE = 'public.user_ai_keys';
+const AI_SETTINGS_TABLE = 'public.user_ai_settings';
 
 /** 인증번호 규칙 — 한 곳에 모아 둔다 (문서 auth-session-ui.md §11 과 같은 값) */
 const CODE_DIGITS = 6;
@@ -249,6 +256,14 @@ export class AccountService {
   // **꺼지는 두 가지** — 둘 다 앱을 세우지 않고 `enabled:false` 로 말한다.
   //   secret : AI_KEY_SECRET 미설정 (서버 설정)
   //   schema : user_ai_keys 표가 아직 없다 (델타 SQL 미적용)
+  //
+  // ★ 표가 있는지는 **`tableReady` 로 직접 묻는다** (2026-09-04 수정).
+  //   처음에는 쿼리를 try 로 감싸고 `err.code === '42P01'` 을 봤는데,
+  //   `DatabaseService.query` 가 그 코드를 **이미 503 예외로 바꿔서**
+  //   올려 주기 때문에(database.service.ts `translate`) 그 분기는 한 번도
+  //   실행되지 않았다. 그래서 델타를 적용하지 않은 서버에서 화면이
+  //   "서버 스키마가 아직 적용되지 않아" 대신 "서버가 응답하지 않아" 로
+  //   **틀린 진단**을 내놓았다. 오류 코드로 짐작하지 않고 묻는다.
 
   /** 내 키 전부 — `enabled` 가 false 면 `reason` 이 왜인지 말한다 */
   async getAiKeys(userId: string): Promise<{
@@ -257,21 +272,16 @@ export class AccountService {
     keys: Record<string, { key: string; hint: string; updatedAt: Date }>;
   }> {
     if (!this.aiKeySecret) return { enabled: false, reason: 'secret', keys: {} };
-    let rows: { provider: string; key_enc: string; key_hint: string; updated_at: Date }[];
-    try {
-      ({ rows } = await this.db.query<{
-        provider: string; key_enc: string; key_hint: string; updated_at: Date;
-      }>(
-        `SELECT provider, key_enc, key_hint, updated_at
-           FROM public.user_ai_keys WHERE user_id = $1`,
-        [userId],
-      ));
-    } catch (e) {
-      if ((e as { code?: string }).code === '42P01') {
-        return { enabled: false, reason: 'schema', keys: {} };
-      }
-      throw e;
+    if (!(await tableReady(this.db, AI_KEYS_TABLE))) {
+      return { enabled: false, reason: 'schema', keys: {} };
     }
+    const { rows } = await this.db.query<{
+      provider: string; key_enc: string; key_hint: string; updated_at: Date;
+    }>(
+      `SELECT provider, key_enc, key_hint, updated_at
+         FROM public.user_ai_keys WHERE user_id = $1`,
+      [userId],
+    );
     const keys: Record<string, { key: string; hint: string; updatedAt: Date }> = {};
     for (const r of rows) {
       const plain = decryptAiKey(r.key_enc, this.aiKeySecret);
@@ -293,16 +303,18 @@ export class AccountService {
   async getAiSettings(userId: string): Promise<{
     available: boolean; settings: Record<string, unknown> | null; updatedAt: Date | null;
   }> {
-    try {
-      const { rows } = await this.db.query<{ settings: Record<string, unknown>; updated_at: Date }>(
-        `SELECT settings, updated_at FROM public.user_ai_settings WHERE user_id = $1`,
-        [userId],
-      );
-      return { available: true, settings: rows[0]?.settings ?? null, updatedAt: rows[0]?.updated_at ?? null };
-    } catch (e) {
-      if ((e as { code?: string }).code === '42P01') return { available: false, settings: null, updatedAt: null };
-      throw e;
+    if (!(await tableReady(this.db, AI_SETTINGS_TABLE))) {
+      return { available: false, settings: null, updatedAt: null };
     }
+    const { rows } = await this.db.query<{ settings: Record<string, unknown>; updated_at: Date }>(
+      `SELECT settings, updated_at FROM public.user_ai_settings WHERE user_id = $1`,
+      [userId],
+    );
+    return {
+      available: true,
+      settings: rows[0]?.settings ?? null,
+      updatedAt: rows[0]?.updated_at ?? null,
+    };
   }
 
   async saveAiSettings(userId: string, settings: Record<string, unknown>) {
@@ -317,22 +329,18 @@ export class AccountService {
       ...(models ? { models } : {}),
       ...(typeof settings.systemPrompt === 'string' ? { systemPrompt: settings.systemPrompt } : {}),
     };
-    try {
-      await this.db.query(
-        `INSERT INTO public.user_ai_settings (user_id, settings)
-         VALUES ($1, $2::jsonb)
-         ON CONFLICT (user_id) DO UPDATE SET settings = EXCLUDED.settings, updated_at = NOW()`,
-        [userId, JSON.stringify(clean)],
+    if (!(await tableReady(this.db, AI_SETTINGS_TABLE))) {
+      throw new ServiceUnavailableException(
+        'AI 설정 보관 표(user_ai_settings)가 아직 없습니다 — 서버 스키마(델타 SQL)를 적용해 주세요.',
       );
-      return { saved: true as const };
-    } catch (e) {
-      if ((e as { code?: string }).code === '42P01') {
-        throw new ServiceUnavailableException(
-          'AI 설정 보관 표(user_ai_settings)가 아직 없습니다 — 서버 스키마(델타 SQL)를 적용해 주세요.',
-        );
-      }
-      throw e;
     }
+    await this.db.query(
+      `INSERT INTO public.user_ai_settings (user_id, settings)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (user_id) DO UPDATE SET settings = EXCLUDED.settings, updated_at = NOW()`,
+      [userId, JSON.stringify(clean)],
+    );
+    return { saved: true as const };
   }
 
   /** 키 등록(빈 문자열 = 삭제). 보관이 꺼져 있으면 503 — 프런트가 이유를 보여 준다 */
@@ -342,33 +350,29 @@ export class AccountService {
         '서버에 AI 키 보관 비밀(AI_KEY_SECRET)이 설정되지 않아 계정에 저장할 수 없습니다 — 키는 이 브라우저에만 남습니다.',
       );
     }
-    const key = String(keyRaw ?? '').trim();
-    try {
-      if (!key) {
-        await this.db.query(
-          `DELETE FROM public.user_ai_keys WHERE user_id = $1 AND provider = $2`,
-          [userId, provider],
-        );
-        return { provider, saved: false as const };
-      }
-      const hint = aiKeyHint(key);
-      await this.db.query(
-        `INSERT INTO public.user_ai_keys (user_id, provider, key_enc, key_hint)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (user_id, provider)
-         DO UPDATE SET key_enc = EXCLUDED.key_enc, key_hint = EXCLUDED.key_hint,
-                       updated_at = NOW()`,
-        [userId, provider, encryptAiKey(key, this.aiKeySecret), hint],
+    if (!(await tableReady(this.db, AI_KEYS_TABLE))) {
+      throw new ServiceUnavailableException(
+        'AI 키 보관 표(user_ai_keys)가 아직 없습니다 — 서버 스키마(델타 SQL)를 적용해 주세요.',
       );
-      return { provider, saved: true as const, hint };
-    } catch (e) {
-      if ((e as { code?: string }).code === '42P01') {
-        throw new ServiceUnavailableException(
-          'AI 키 보관 표(user_ai_keys)가 아직 없습니다 — 서버 스키마(델타 SQL)를 적용해 주세요.',
-        );
-      }
-      throw e;
     }
+    const key = String(keyRaw ?? '').trim();
+    if (!key) {
+      await this.db.query(
+        `DELETE FROM public.user_ai_keys WHERE user_id = $1 AND provider = $2`,
+        [userId, provider],
+      );
+      return { provider, saved: false as const };
+    }
+    const hint = aiKeyHint(key);
+    await this.db.query(
+      `INSERT INTO public.user_ai_keys (user_id, provider, key_enc, key_hint)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, provider)
+       DO UPDATE SET key_enc = EXCLUDED.key_enc, key_hint = EXCLUDED.key_hint,
+                     updated_at = NOW()`,
+      [userId, provider, encryptAiKey(key, this.aiKeySecret), hint],
+    );
+    return { provider, saved: true as const, hint };
   }
 
   /** 지금 로그인한 사람의 프로필 — 가입을 끝냈는지(성명 유무) 판단에도 쓴다 */

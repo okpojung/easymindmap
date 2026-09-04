@@ -1205,9 +1205,11 @@ file: (binary)
 
 **Response** `200 OK`
 ```json
-{ "available": true, "publishId": "abcdefghjkmn", "publishedAt": "2026-09-04T00:00:00Z" }
+{ "available": true, "publishId": "abcdefghjkmn", "publishedAt": "2026-09-04T00:00:00Z",
+  "hasPreview": true }
 ```
 
+* `hasPreview` — 미리보기 실루엣이 올라와 있는가 (27a §2).
 * `available:false` 는 **오류가 아니라 값**이다 — 이 서버에 `published_maps`
   표가 없다(스키마 델타 미적용). 화면은 이 값을 보고 버튼 대신 안내를 낸다.
 * 게시 중이 아니면 `publishId` · `publishedAt` 이 `null`.
@@ -1259,6 +1261,35 @@ file: (binary)
   따라 바뀐다(판을 박제하는 것은 유료 게시의 규칙이다 — `27a-paid-publish.md` §4).
 * `404` — 없는 링크 · 취소된 링크 · 휴지통에 든 맵을 **구분하지 않는다.**
 * `400` — 슬러그 모양(`[a-z0-9]{6,20}`)이 아니다.
+
+---
+
+### PUT /maps/{mapId}/publish/preview
+미리보기 실루엣 올리기 (`multipart/form-data`, 필드 이름 `file`). **맵 주인만.**
+
+그림은 **저자의 브라우저가 만든다**(`apps/frontend/src/export/silhouette.ts`) —
+서버에는 헤드리스 브라우저도 이미지 라이브러리도 없다. 여기서 하는 일은
+받아서 두는 것뿐이다. 설계: `27a-paid-publish.md` §2.
+
+* **PNG 만** 받는다. 확장자·`Content-Type` 이 아니라 **파일 앞 8바이트**로
+  확인한다 — 그 둘은 보내는 쪽이 정하는 값이다.
+* 최대 2MB. 게시 중이 아니면 `404`(올릴 자리가 없다).
+
+**Response** `200 OK` — `publish-status` 와 같은 모양(`hasPreview: true`)
+
+---
+
+### GET /published/{publishId}/preview.png
+미리보기 실루엣 (**인증 불필요**). 링크 카드(Open Graph)와 목록 썸네일이
+이 주소를 그대로 쓴다.
+
+여는 조건은 맵 본문과 같다 — 지금 그 링크로 공개 중이고, 맵이 휴지통에
+있지 않아야 한다. 게시를 취소하면 파일까지 지워지므로 `404` 가 된다.
+
+`Cache-Control: public, max-age=300` — 저자가 "다시 만들기" 를 누르면 같은
+주소의 내용이 바뀌므로 길게 잡지 않는다.
+
+**Response** `200 OK` — `image/png`
 
 ---
 

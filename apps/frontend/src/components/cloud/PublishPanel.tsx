@@ -10,7 +10,12 @@
 
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { cloudApi, CloudError, type PublishStatus } from '@/services/cloud/apiClient';
+import {
+  cloudApi, CloudError, publishedPreviewUrl, type PublishStatus,
+} from '@/services/cloud/apiClient';
+import { buildSilhouette } from '@/export/silhouette';
+import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 
 /** 공개 주소 — 브라우저 주소는 `/p/{publishId}` 다 (API 경로와 다르다) */
 export function publicMapUrl(publishId: string): string {
@@ -30,6 +35,10 @@ export function PublishPanel(
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  // 미리보기를 다시 받아오게 하는 값 — 같은 주소의 내용이 바뀌므로
+  // 이것이 없으면 브라우저가 낡은 그림을 계속 보여 준다
+  const [previewV, setPreviewV] = useState(() => Date.now());
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -53,10 +62,43 @@ export function PublishPanel(
     }
   };
 
+  /**
+   * 실루엣을 **이 브라우저에서** 만들어 올린다 (27a §2.2).
+   *
+   * 실패해도 게시는 살린다 — 미리보기가 없는 것은 아쉬운 일이고,
+   * 링크가 안 만들어지는 것은 기능이 안 되는 일이다. 둘을 같은 무게로
+   * 다루면 그림 하나 때문에 공유 자체가 막힌다.
+   */
+  const uploadPreview = async (): Promise<boolean> => {
+    try {
+      const st = useDocumentStore.getState();
+      const ui = useEditorUiStore.getState();
+      const { blob } = await buildSilhouette(
+        st.map, ui.layoutType, { x: ui.spacingX, y: ui.spacingY });
+      const s = await cloudApi.putPublishPreview(mapId, blob);
+      setStatus(s);
+      setPreviewV(Date.now());
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const doPublish = () => run(async () => {
     const s = await cloudApi.publishMap(mapId);
     setStatus(s);
     flash('🔗 공개 링크를 만들었습니다.');
+    setPreviewBusy(true);
+    const ok = await uploadPreview();
+    setPreviewBusy(false);
+    if (!ok) flash('링크는 만들었습니다 — 미리보기 이미지만 실패했습니다. [다시 만들기]를 눌러 주세요.');
+  });
+
+  const doRemakePreview = () => run(async () => {
+    setPreviewBusy(true);
+    const ok = await uploadPreview();
+    setPreviewBusy(false);
+    flash(ok ? '미리보기를 다시 만들었습니다.' : '⚠ 미리보기를 만들지 못했습니다.');
   });
 
   const doUnpublish = () => run(async () => {
@@ -158,6 +200,46 @@ export function PublishPanel(
             <div style={{ fontSize: 12.5, color: t.textMuted, marginBottom: 6 }}>
               공개 중 · {status.publishedAt ? new Date(status.publishedAt).toLocaleString() : ''}
             </div>
+
+            {/* 미리보기 실루엣 — 링크 카드·목록 썸네일이 이 그림을 쓴다.
+                **글자가 없는 것이 정상이다**(27a §2.1): 흐리게 만든 것이
+                아니라 글자를 아예 안 그린 것이라, 확대해도 복원되지 않는다.
+                그 사실을 화면이 말해 주지 않으면 "깨진 이미지" 로 보인다. */}
+            <div
+              style={{
+                borderRadius: 8, overflow: 'hidden', marginBottom: 8,
+                border: `1px solid ${t.border}`, background: t.surfaceAlt,
+                aspectRatio: '1200 / 630',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              {status.hasPreview ? (
+                <img
+                  data-testid="publish-preview-img"
+                  src={publishedPreviewUrl(status.publishId, previewV)}
+                  alt="미리보기 실루엣"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                />
+              ) : (
+                <span style={{ fontSize: 12, color: t.textSubtle }}>
+                  {previewBusy ? '미리보기 만드는 중…' : '미리보기 없음'}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginBottom: 10 }}>
+              글자 대신 회색 막대로 그립니다 — 확대해도 내용이 읽히지 않습니다.
+              맵을 고친 뒤에는 [미리보기 다시 만들기]를 눌러 주세요.
+            </div>
+            <button
+              data-testid="publish-preview-remake"
+              disabled={busy || previewBusy}
+              onClick={() => void doRemakePreview()}
+              style={{
+                ...btn, width: '100%', height: 32, marginBottom: 10,
+                border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
+                fontSize: 12.5, fontWeight: 600,
+              }}
+            >{previewBusy ? '만드는 중…' : '미리보기 다시 만들기'}</button>
             <input
               data-testid="publish-url"
               readOnly

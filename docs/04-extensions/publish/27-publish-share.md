@@ -232,6 +232,10 @@ buildStandaloneHtml(map, …)  — Standalone HTML 내보내기와 **같은 함�
 * `DELETE /maps/{mapId}/publish` — 게시 취소 (unpublished_at 설정, 멱등)
 * `GET /maps/{mapId}/publish-status` — 게시 상태 조회
 * `GET /published/{publishId}` — 공개 맵 데이터 조회 (**비인증**)
+* `PUT /maps/{mapId}/publish/preview` — 미리보기 실루엣 올리기 (맵 주인만).
+  그림은 **저자의 브라우저가 만든다** — `27a-paid-publish.md` §2
+* `GET /published/{publishId}/preview.png` — 미리보기 실루엣 (**비인증**).
+  링크 카드·목록 썸네일이 이 주소를 쓴다
 * `GET /published/{publishId}/attachments/{attachmentId}` — 공개된 맵의
   사진·첨부 (**비인증**). 이 문이 없으면 공개된 맵은 **사진 자리마다 깨진
   채로** 열린다 — 사진은 대부분 서버 저장소에 있고 원래 주소는 인증을
@@ -273,12 +277,18 @@ buildStandaloneHtml(map, …)  — Standalone HTML 내보내기와 **같은 함�
 | 표 유무 판정 | `apps/api/src/common/table-ready.ts` (`map-access.ts` 와 **같은 자리**) |
 | 공유 대화상자 | `apps/frontend/src/components/cloud/PublishPanel.tsx` |
 | 공개 화면 | `apps/frontend/src/pages/PublicMapPage.tsx` · 라우팅은 `main.tsx` |
+| 미리보기 실루엣 | `apps/frontend/src/export/silhouette.ts` (27a §2) |
 
 남은 제약 — **지금은 이렇게 동작한다**는 사실이지 버그가 아니다.
 
 * **검색엔진 대비가 없다.** `<meta>` · Open Graph · `robots.txt` 를 넣지
   않았다. 링크를 붙여넣어도 미리보기 카드가 뜨지 않고, 크롤러가 본문을
-  읽지도 못한다(내용은 브라우저가 그린다). 필요해지면 별도 작업이다.
+  읽지도 못한다(내용은 브라우저가 그린다).
+  **카드에 넣을 이미지는 준비됐다**(`preview.png`, 2026-09-05) — 남은 것은
+  `/p/*` 에 맵마다 다른 `<head>` 를 내주는 자리다. 지금은 nginx 가 모든
+  주소에 `index.html` 하나를 준다(실측: 크롤러가 받는 `<title>` 이 모든
+  맵에서 `EasyMindMap · Editor` 다). 네이버는 자바스크립트를 실행해 제목을
+  읽어 가지만, 카카오톡·슬랙 등 대부분은 원본 HTML 만 읽는다.
 * **조회수·방문자 통계가 없다.**
 * **공개 화면에 "이 맵 복제하기" 가 없다.** 보는 것뿐이다.
 * **CDN 캐시를 쓰지 않는다** — 게시 취소가 곧바로 반영된다(§6 의 "최대

@@ -163,9 +163,23 @@ RATE_LIMIT_ENABLED=true      # false = 끔 (부하 테스트 등)
 # Supabase Auth가 JWT를 자동 처리
 # NestJS에서는 Supabase Service Key로 토큰 검증만 수행
 # 별도 AUTH_JWT_* 변수 불필요
+```
+
+> ⚠️ **`supabase.example.com` 은 아직 없는 주소다.** 이것은 **전체
+> Supabase Self-hosted 스택**(Kong 게이트웨이 뒤에 GoTrue·Storage·
+> Realtime·Studio·PostgREST 를 모아 하나의 주소로 내보내는 구성)을
+> 띄웠을 때의 값이다. **그 스택은 구축하지 않았고 주소도 정하지 않았다.**
+>
+> 지금 실제로 도는 것은 **GoTrue 하나뿐**(`dev-server-coolify.md` §5.5
+> 경로 A)이고, `VITE_SUPABASE_URL` 에는 **`https://auth-dev.mindmap.ai.kr`**
+> 이 들어간다 — 변수 이름만 `SUPABASE_` 로 남아 있다.
+
+```bash
 
 ########################################
 # SUPABASE (Self-hosted on ESXi VM-03)
+#  ※ 아래 SUPABASE_URL 은 **전체 스택을 띄웠을 때**의 주소다 —
+#    지금은 GoTrue 단독이라 auth-dev.mindmap.ai.kr 을 쓴다 (이 절 앞 ⚠️)
 ########################################
 SUPABASE_URL=https://supabase.example.com
 SUPABASE_ANON_KEY=<ANON_KEY>                # 공개 가능 (RLS로 보호)

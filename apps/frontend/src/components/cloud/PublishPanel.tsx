@@ -178,7 +178,22 @@ export function PublishPanel(
           </div>
         )}
 
-        {status?.available && !status.publishId && (
+        {/* ★ **단독맵만 공개한다** (2026-09-05 결정). 이유는 권한이 아니라
+            **완성도**다 — 협업 중이라는 것은 아직 완료되지 않은 맵이다.
+            눌러 보고 나서야 거절당하지 않도록 서버가 준 이유를 **미리**
+            보여 준다. 규칙도 문장도 서버가 갖는다 — 화면이 같은 판정을 한 벌
+            더 가지면 언젠가 서버와 다른 말을 한다. */}
+        {status?.available && status.publishable === false && !status.publishId && (
+          <div
+            data-testid="publish-blocked"
+            style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8 }}
+          >
+            {status.blockedReason}
+            <br />지금 내용을 공개하려면 <b>다른 이름으로 저장</b>하세요 — 사본은 단독맵으로 만들어집니다.
+          </div>
+        )}
+
+        {status?.available && status.publishable !== false && !status.publishId && (
           <>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8, marginBottom: 16 }}>
               공개 링크를 만들면 <b>링크를 가진 사람은 로그인 없이</b> 이 맵을 읽을 수 있습니다.

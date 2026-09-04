@@ -245,6 +245,13 @@ export interface PublishStatus {
   publishedAt: string | null;
   /** 미리보기 실루엣이 올라와 있는가 (27a §2) */
   hasPreview?: boolean;
+  /**
+   * 이 맵을 **새로 공개할 수 있는가** — 협업맵이면 false (2026-09-05 결정).
+   * 규칙은 서버가 갖는다. 화면은 이 값을 보고 버튼 대신 이유를 낸다.
+   */
+  publishable?: boolean;
+  /** 공개할 수 없으면 그 이유 (서버가 준 문장) */
+  blockedReason?: string;
 }
 
 /** 공개 맵 — 비인증으로 받는다. doc 은 저장 스냅샷 그대로다 */

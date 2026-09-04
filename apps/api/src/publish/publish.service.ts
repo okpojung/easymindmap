@@ -52,6 +52,13 @@ export interface PublishStatus {
   publishedAt: string | null;
   /** 미리보기 실루엣이 올라와 있는가 (27a §2) */
   hasPreview?: boolean;
+  /**
+   * 이 맵을 **새로 공개할 수 있는가** — 협업맵이면 false.
+   * 이미 공개 중인 맵은 이 값이 false 여도 링크가 살아 있다(위 주석 참조).
+   */
+  publishable?: boolean;
+  /** 공개할 수 없으면 그 이유 (사람이 읽는 문장). 규칙은 서버가 갖는다 */
+  blockedReason?: string;
 }
 
 interface PublishedRow {
@@ -84,12 +91,47 @@ export class PublishService {
   }
 
   /**
-   * 게시할 수 있는 사람인가 — **소유자만** (설계 §8).
-   * 편집자·열람자는 남의 문서를 세상에 여는 결정을 할 수 없다.
+   * ★ **단독맵만 공개한다** (2026-09-05 사용자 결정).
+   *
+   * 이유가 둘이다.
+   *
+   *   ⑴ **완성도** — 협업 중이라는 것은 **아직 완료되지 않은 맵**이라는
+   *      뜻이다. 여럿이 아직 고쳐 가는 문서를 세상에 걸어 두면, 보는
+   *      사람은 완성된 글로 읽는데 실제로는 매 순간 달라진다.
+   *   ⑵ **유료 게시의 수익 배분** — 협업맵을 팔 수 있게 두면 참여자
+   *      여럿의 몫을 어떻게 나눌지부터 정해야 한다(지분·기여도·탈퇴자).
+   *      단독맵만 파는 한 그 문제가 **아예 생기지 않는다**
+   *      (27a-paid-publish.md §5.0).
+   *
+   * 유형을 한 칸에 한 값으로 두기로 한 것도 같은 뜻이다:
+   * 단독맵 · 협업맵 · 공개맵 · 대시보드맵 중 **하나**다.
+   *
+   * 이미 공개 중이던 단독맵이 나중에 협업맵이 되는 길은 남아 있다
+   * (협업자를 초대해 승인되면 전환된다). 그때 **링크를 조용히 죽이지는
+   * 않는다** — 남에게 보낸 링크가 예고 없이 404 가 되는 것은 다른 종류의
+   * 사고다. 새로 공개하는 것만 막는다. 그 상태에서 화면은 `🌐 공개맵` 을
+   * 보여 주고 협업맵이라는 사실은 툴팁에 남긴다.
+   */
+  static readonly COLLAB_BLOCKED =
+    '협업 중인 맵은 공개할 수 없습니다 — 아직 완성된 문서가 아닙니다. 공개는 단독맵만 됩니다.';
+
+  /** 이 맵을 공개할 수 있는가 — 없거나 권한이 없으면 예외 */
+  private async requirePublishable(userId: string, mapId: string): Promise<void> {
+    const map = await findAccessibleMap<{ id: string; kind: string }>(this.db, mapId, userId);
+    // 없는 맵과 권한 없는 맵을 구분하지 않는다 (map-access.ts 와 같은 이유)
+    if (!map) throw new NotFoundException('맵을 찾을 수 없거나 권한이 없습니다.');
+    if (map.access_role !== 'owner') {
+      throw new ForbiddenException('맵을 게시할 수 있는 사람은 맵 주인뿐입니다.');
+    }
+    if (map.kind === 'collab') throw new ForbiddenException(PublishService.COLLAB_BLOCKED);
+  }
+
+  /**
+   * 게시 **취소·미리보기**는 협업맵이어도 된다 — 이미 열린 것을 닫거나
+   * 그림을 고치는 일이라, 막으면 오히려 되돌릴 길이 사라진다.
    */
   private async requireOwner(userId: string, mapId: string): Promise<void> {
     const map = await findAccessibleMap<{ id: string }>(this.db, mapId, userId);
-    // 없는 맵과 권한 없는 맵을 구분하지 않는다 (map-access.ts 와 같은 이유)
     if (!map) throw new NotFoundException('맵을 찾을 수 없거나 권한이 없습니다.');
     if (map.access_role !== 'owner') {
       throw new ForbiddenException('맵을 게시할 수 있는 사람은 맵 주인뿐입니다.');
@@ -107,7 +149,7 @@ export class PublishService {
    */
   async publish(userId: string, mapId: string): Promise<PublishStatus> {
     await this.requireReady();
-    await this.requireOwner(userId, mapId);
+    await this.requirePublishable(userId, mapId);
 
     const cur = await this.activeRow(mapId);
     if (cur) return this.toStatus(cur);
@@ -167,12 +209,19 @@ export class PublishService {
     if (!(await this.ready())) {
       return { available: false, publishId: null, publishedAt: null };
     }
-    const map = await findAccessibleMap<{ id: string }>(this.db, mapId, userId);
+    const map = await findAccessibleMap<{ id: string; kind: string }>(this.db, mapId, userId);
     if (!map) throw new NotFoundException('맵을 찾을 수 없거나 권한이 없습니다.');
+    // **왜 규칙을 상태에 실어 보내나** — 화면이 같은 판정을 한 벌 더 갖게
+    // 두면 언젠가 서버와 다른 말을 한다. 눌러 보고 나서야 거절당하는 것도
+    // 나쁘다. 그래서 "할 수 있는가" 와 "왜 안 되는가" 를 서버가 준다.
+    const collab = map.kind === 'collab';
+    const gate = collab
+      ? { publishable: false, blockedReason: PublishService.COLLAB_BLOCKED }
+      : { publishable: true };
     const cur = await this.activeRow(mapId);
     return cur
-      ? this.toStatus(cur)
-      : { available: true, publishId: null, publishedAt: null };
+      ? { ...this.toStatus(cur), ...gate }
+      : { available: true, publishId: null, publishedAt: null, ...gate };
   }
 
   /**

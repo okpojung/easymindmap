@@ -3,6 +3,7 @@ import {
   BadRequestException, Injectable, NotFoundException, ServiceUnavailableException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { tableReady } from '../common/table-ready';
 
 /**
  * MCP 개인 액세스 토큰(PAT) — 발급 · 검증 · 폐기.
@@ -55,23 +56,14 @@ function hashToken(raw: string): string {
 }
 
 /**
- * **델타 SQL 을 아직 적용하지 않은 서버**인가.
- *
- * 이 확인이 없으면 새 코드를 배포한 순간 토큰 화면이 오류로 막힌다 —
- * 사용자는 "AI 커넥터를 누르면 오류" 로 겪고, 진짜 원인(SQL 한 번)은
- * 어디에도 보이지 않는다.
- *
- * ★ **`err.code === '42P01'` 만 보면 안 된다** (실측 2026-09-04).
- * `DatabaseService.query` 가 스키마 오류(42P01·42703·42883)를 **이미
- * 503 예외로 바꿔서** 던지므로, 여기까지 pg 의 원본 코드가 오지 않는다
- * (database.service.ts `translate`). 이 서비스가 건드리는 표는
- * `api_tokens` 하나뿐이라, 그 503 은 곧 "그 표가 없다"는 뜻이다.
- * 원본 코드 검사도 남겨 둔다 — 나중에 그 변환이 사라져도 계속 맞는다.
+ * 토큰 표 — 델타 SQL 을 아직 적용하지 않은 서버에는 없다. 있는지는
+ * **`tableReady` 로 직접 묻는다**(`common/table-ready.ts`) — 오류를 잡아
+ * 짐작하지 않는다. 처음 구현은 잡은 예외가 "표가 없다"인지 판정하려 했는데,
+ * `DatabaseService.query` 는 표·**컬럼**·함수 없음을 **모두 같은 503 으로**
+ * 바꾸므로(database.service.ts `translate`), 컬럼 하나가 빠진 서버에서도
+ * "표가 없다"고 잘못 말하게 된다.
  */
-function isMissingTable(err: unknown): boolean {
-  if ((err as { code?: string })?.code === '42P01') return true;
-  return err instanceof ServiceUnavailableException;
-}
+const TOKENS_TABLE = 'public.api_tokens';
 
 @Injectable()
 export class ApiTokenService {
@@ -89,19 +81,15 @@ export class ApiTokenService {
 
   /** 표가 아직 없으면 **빈 목록 + ready:false** — 화면이 그 이유를 말한다 */
   async list(userId: string): Promise<{ ready: boolean; tokens: ApiTokenView[] }> {
-    try {
-      const { rows } = await this.db.query<ApiTokenRow>(
-        `SELECT id, name, prefix, created_at, last_used_at, revoked_at
-           FROM public.api_tokens
-          WHERE user_id = $1
-          ORDER BY created_at DESC`,
-        [userId],
-      );
-      return { ready: true, tokens: rows.map(toView) };
-    } catch (err) {
-      if (isMissingTable(err)) return { ready: false, tokens: [] };
-      throw err;
-    }
+    if (!(await tableReady(this.db, TOKENS_TABLE))) return { ready: false, tokens: [] };
+    const { rows } = await this.db.query<ApiTokenRow>(
+      `SELECT id, name, prefix, created_at, last_used_at, revoked_at
+         FROM public.api_tokens
+        WHERE user_id = $1
+        ORDER BY created_at DESC`,
+      [userId],
+    );
+    return { ready: true, tokens: rows.map(toView) };
   }
 
   /**
@@ -111,20 +99,12 @@ export class ApiTokenService {
     const label = name.trim().slice(0, 60);
     if (!label) throw new BadRequestException('토큰 이름을 적어 주세요.');
 
-    try {
-      return await this.insert(userId, label);
-    } catch (err) {
-      if (isMissingTable(err)) {
-        throw new ServiceUnavailableException(
-          '서버에 MCP 토큰 표(api_tokens)가 아직 없습니다 — 델타 SQL 을 적용해 주세요 '
-          + '(docs/04-extensions/ai/mcp-connector.md §9).',
-        );
-      }
-      throw err;
+    if (!(await tableReady(this.db, TOKENS_TABLE))) {
+      throw new ServiceUnavailableException(
+        '서버에 MCP 토큰 표(api_tokens)가 아직 없습니다 — 델타 SQL 을 적용해 주세요 '
+        + '(docs/04-extensions/ai/mcp-connector.md §9.4).',
+      );
     }
-  }
-
-  private async insert(userId: string, label: string): Promise<ApiTokenView & { token: string }> {
     const { rows: live } = await this.db.query<{ n: string }>(
       `SELECT COUNT(*)::text AS n FROM public.api_tokens
         WHERE user_id = $1 AND revoked_at IS NULL`,
@@ -173,19 +153,14 @@ export class ApiTokenService {
    */
   async userIdFor(raw: string): Promise<string | null> {
     if (!hasPrefix(raw)) return null;
-    let rows: { id: string; user_id: string }[];
-    try {
-      ({ rows } = await this.db.query<{ id: string; user_id: string }>(
-        `SELECT id, user_id FROM public.api_tokens
-          WHERE token_hash = $1 AND revoked_at IS NULL`,
-        [hashToken(raw)],
-      ));
-    } catch (err) {
-      // 표가 없는 서버 = 발급한 적도 없는 서버다. 500 이 아니라 **인증
-      // 실패**로 답한다 — 밖에서 부르는 쪽에는 그것이 사실이다
-      if (isMissingTable(err)) return null;
-      throw err;
-    }
+    // 표가 없는 서버 = 발급한 적도 없는 서버다. 500 이 아니라 **인증
+    // 실패**로 답한다 — 밖에서 부르는 쪽에는 그것이 사실이다
+    if (!(await tableReady(this.db, TOKENS_TABLE))) return null;
+    const { rows } = await this.db.query<{ id: string; user_id: string }>(
+      `SELECT id, user_id FROM public.api_tokens
+        WHERE token_hash = $1 AND revoked_at IS NULL`,
+      [hashToken(raw)],
+    );
     if (rows.length === 0) return null;
     void this.touch(rows[0].id);
     return rows[0].user_id;

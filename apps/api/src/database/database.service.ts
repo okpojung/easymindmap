@@ -74,6 +74,17 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   /**
    * 스키마 미적용으로 인한 오류를 **행동 지침이 든 503** 으로 바꾼다.
    * 그 외 오류는 그대로 올려보낸다(500 → 원래 처리 경로 유지).
+   *
+   * ★ **부르는 쪽은 `err.code` 로 이것을 다시 알아낼 수 없다** — 두 번
+   *   물렸다 (2026-08-18 map-access · 2026-09-04 account.service). 여기서
+   *   예외를 갈아 끼우므로 pg 의 원본 코드가 밖으로 나가지 않는다. 그래서
+   *   `catch (e) { if (e.code === '42P01') … }` 는 **말없이 죽은 코드**가
+   *   된다 — 타입도 맞고 린트도 통과하므로 아무도 모른다.
+   *
+   *   표가 없을 때 물러나려면 **오류를 잡지 말고 `common/table-ready.ts`
+   *   로 있는지 먼저 물어라.** 그리고 그 자리는 실제로 표를 치워 보는
+   *   테스트로 지킨다(`test/schema-degrade.test.mjs`) — 코드를 읽어서는
+   *   못 잡는다.
    */
   private translate(err: unknown): unknown {
     const code = (err as { code?: string } | null)?.code;

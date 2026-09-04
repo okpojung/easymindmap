@@ -214,6 +214,13 @@ ADMIN_EMAILS=ok@baro.pro
 GOTRUE_DATABASE_URL=postgres://postgres:<pw>@<host>:5432/gotrue
 ```
 
+> **로컬에서 이 화면을 보려면** (2026-09-05): GoTrue 를 띄우지 않아도 된다.
+> dev shim 이 `auth.audit_log_entries` 를 만들고 시드가 몇 줄 넣어 두므로,
+> `GOTRUE_DATABASE_URL` 을 **앱 DB 그대로** 가리키면 화면이 그대로 뜬다
+> (`apps/api/.env.example` 참조). 그전에는 이 화면이 로컬에서 늘
+> "이력을 볼 수 없다" 였고, 그래서 그 아래 경로(접속 IP 를 붙이는
+> `login_events` 판정)가 **시험되지 않은 채로 있었다.**
+
 **읽기만 한다.** 쓰기는 GoTrue 의 몫이다.
 
 - **목록에 함께 싣지 않는다** — 회원 200명이면 감사 로그를 200번 뒤지게

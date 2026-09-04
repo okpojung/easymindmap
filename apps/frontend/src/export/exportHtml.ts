@@ -2583,6 +2583,7 @@ const VIEWER_JS = String.raw`
   function focusNodeFromOutline(id) {
     // 검색 이동과 동일: 강조 + 접힌 조상 펼침 + 중앙(맵이 보일 때만 이동)
     SEARCHHIT = id;
+    SEL = id; // 아웃라인에서 고른 노드 = 선택 노드 (맵 클릭과 같은 상태)
     if (FOCUS) { FOCUS = null; setCenterIcon(false); }
     expandTo(id);
     render();
@@ -2602,11 +2603,16 @@ const VIEWER_JS = String.raw`
       }
     }
   }
+  // **맵에서 노드를 고르면 아웃라인의 그 행으로 간다** (2026-09-04 사용자
+  // 보고 — 에디터는 양방향인데 뷰어는 아웃라인 → 맵 한쪽만 됐다).
+  // 선택이 **바뀐 때만** 스크롤한다 — 접기/펴기·검색 같은 다른 이유의
+  // 재구축에서 화면을 끌고 다니면 사용자가 보던 자리를 잃는다.
+  var olScrolledTo = null;
   function buildOutline() {
     olBody.textContent = '';
     (function walk(node, depth) {
       var row = el2('div', 'mm-ol-row' + (depth === 0 ? ' root' : '') +
-        (SEARCHHIT === node.id ? ' on' : ''));
+        (SEARCHHIT === node.id ? ' on' : '') + (SEL === node.id ? ' sel' : ''));
       row.setAttribute('data-oid', node.id);
       row.style.paddingLeft = (6 + depth * 16) + 'px';
       var kids = node.children || [];
@@ -2646,6 +2652,12 @@ const VIEWER_JS = String.raw`
       olBody.appendChild(row);
       if (!node.collapsed) for (var i = 0; i < kids.length; i++) walk(kids[i], depth + 1);
     })(DATA.root, 0);
+    if (SEL !== olScrolledTo) {
+      olScrolledTo = SEL;
+      var selRow = SEL ? olBody.querySelector('.mm-ol-row.sel') : null;
+      // 에디터 OutlineScrollSync 와 같은 규칙 — 보이면 그대로, 아니면 가장 가까운 자리로
+      if (selRow && selRow.scrollIntoView) selRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   }
   function el2(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
 
@@ -2853,6 +2865,7 @@ const VIEWER_CSS = `
   }
   .mm-ol-row:hover { background: #F3ECDD; }
   .mm-ol-row.on { background: #FDF0D5; }
+  .mm-ol-row.sel { background: #FDF0D5; box-shadow: inset 3px 0 0 #D97706; }
   .mm-ol-row.root { font-weight: 700; }
   .mm-ol-caret {
     width: 15px; flex-shrink: 0; color: #958A78; text-align: center;
@@ -2899,6 +2912,7 @@ const VIEWER_CSS = `
   body.mm-dark .mm-ol-row { color: #D8D4CC; }
   body.mm-dark .mm-ol-row:hover { background: #262A31; }
   body.mm-dark .mm-ol-row.on { background: #3B2A0A; }
+  body.mm-dark .mm-ol-row.sel { background: #3B2A0A; }
   body.mm-dark .mm-ol-caret, body.mm-dark .mm-ol-dot { color: #6B6E78; }
   header button.icon {
     width: 30px; height: 28px; padding: 0; font-size: 15px; line-height: 1;

@@ -202,6 +202,23 @@ function qs(q: MapListQuery = {}): string {
   return `?${p.toString()}`;
 }
 
+/** 게시 상태 (PUBL). available:false = 이 서버에 게시 기능이 없다 */
+export interface PublishStatus {
+  available: boolean;
+  publishId: string | null;
+  publishedAt: string | null;
+}
+
+/** 공개 맵 — 비인증으로 받는다. doc 은 저장 스냅샷 그대로다 */
+export interface PublishedMap {
+  publishId: string;
+  mapId: string;
+  title: string;
+  doc: unknown;
+  publishedAt: string;
+  updatedAt: string | null;
+}
+
 export const cloudApi = {
   health: () => req<{ status: string; db: string }>('GET', '/health'),
   listMaps: (q?: MapListQuery) =>
@@ -495,6 +512,30 @@ export const cloudApi = {
     });
   },
 
+  // ── 무료 게시 (PUBL-01~04, 2026-09-04) ──────────────────────
+  // 설계: docs/04-extensions/publish/27-publish-share.md
+  //
+  // `available:false` 는 **오류가 아니라 값**이다 — 서버에 published_maps
+  // 표가 없는 상태(델타 미적용). 화면은 이 값을 보고 버튼을 감춘다.
+  /** 게시 상태 — 맵을 볼 수 있는 사람이면 누구나 읽는다 */
+  publishStatus: (mapId: string) =>
+    req<PublishStatus>('GET', `/maps/${mapId}/publish-status`),
+  /**
+   * 게시 — **이미 게시 중이면 그 링크를 그대로 돌려준다**(멱등).
+   * 부를 때마다 새 링크를 뽑으면 이미 남에게 보낸 링크가 조용히 죽는다.
+   */
+  publishMap: (mapId: string) =>
+    req<PublishStatus>('POST', `/maps/${mapId}/publish`),
+  /** 게시 취소 — 링크가 즉시 무효가 된다 */
+  unpublishMap: (mapId: string) => req<void>('DELETE', `/maps/${mapId}/publish`),
+  /**
+   * 공개 맵 조회 — **로그인 없이** 부른다(`anon`).
+   * 토큰을 붙이면 인증이 켜진 배포에서 비로그인 방문자가 401 을 만난다.
+   */
+  getPublished: (publishId: string) =>
+    req<PublishedMap>('GET', `/published/${encodeURIComponent(publishId)}`,
+      undefined, true),
+
   deleteAttachment: (id: string) => req<void>('DELETE', `/attachments/${id}`),
   quota: () =>
     req<{
@@ -524,6 +565,14 @@ export function serverAttachmentId(url: string | undefined): string | null {
   if (!path.startsWith('/v1/attachments/')) return null;
   const id = path.slice('/v1/attachments/'.length).split('?')[0].split('/')[0];
   return id || null;
+}
+
+/**
+ * 공개된 맵의 첨부 주소 — **로그인 없이** 열린다 (PUBL-03).
+ * 공개 화면은 이 주소로 사진을 그린다. 게시를 취소하면 함께 닫힌다.
+ */
+export function publishedAttachmentUrl(publishId: string, attachmentId: string): string {
+  return `${BASE}/v1/published/${encodeURIComponent(publishId)}/attachments/${attachmentId}`;
 }
 
 /**

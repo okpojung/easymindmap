@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { EditorPage } from '@/pages/EditorPage';
 import { AdminPage } from '@/pages/admin/AdminPage';
+import { PublicMapPage, publishIdFromPath } from '@/pages/PublicMapPage';
 import '@/styles/global.css';
 
 // 화면 고르기 — 라우터를 들이지 않고 **주소만** 본다 (2026-08-13 · 08-14).
@@ -25,8 +26,16 @@ const isAdminHost = host === 'admin' || host.startsWith('admin.');
 const isAdminPath = window.location.pathname.replace(/\/+$/, '') === '/admin';
 const isAdmin = isAdminHost || isAdminPath;
 
+// 공개 링크 `/p/{publishId}` — **로그인 없이** 열리는 읽기 전용 화면
+// (docs/04-extensions/publish/27-publish-share.md §4.2). 에디터보다
+// **먼저** 갈라야 한다: 에디터는 뜨는 순간 로그인 화면·문서함을 띄우는데,
+// 링크를 받은 사람은 계정이 없다.
+const publishId = publishIdFromPath(window.location.pathname);
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isAdmin ? <AdminPage /> : <EditorPage />}
+    {publishId
+      ? <PublicMapPage publishId={publishId} />
+      : isAdmin ? <AdminPage /> : <EditorPage />}
   </React.StrictMode>,
 );

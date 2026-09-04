@@ -23,6 +23,7 @@ import type { ReadStream } from 'node:fs';
 import { DatabaseService } from '../database/database.service';
 import { StorageService } from '../storage/storage.service';
 import { queryAllowingMissingMembers } from '../maps/map-access';
+import { tableReady } from '../common/table-ready';
 import { fetchRemoteImage } from './remote-image';
 
 /**
@@ -224,6 +225,53 @@ export class AttachmentsService {
            ON m.id = a.map_id AND m.deleted_at IS NULL
         WHERE a.id = $1 AND (a.owner_id = $2 OR m.owner_id = $2)`,
       [id, userId],
+    );
+    if (!rows[0]) throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');
+    const r = rows[0];
+    return {
+      id,
+      name: r.name,
+      mime: r.mime,
+      sizeBytes: Number(r.size_bytes),
+      stream: await this.storage.stream(r.storage_key, range),
+    };
+  }
+
+  /**
+   * **공개 게시된 맵의 첨부** — 로그인 없이 연다 (2026-09-04, PUBL-03).
+   *
+   * 이게 없으면 공개된 맵은 **사진 자리마다 깨진 채로** 열린다. 사진은
+   * 이제 대부분 서버 저장소에 있고(D-1~D-6 이미지 외부화), 그 주소는
+   * 인증이 필요하기 때문이다. 맵은 보이는데 그림이 안 보이는 것은
+   * 사용자에게 그냥 고장으로 보인다 — `open()` 이 참가자에게 첨부를
+   * 열어 주는 것과 **같은 이유**다.
+   *
+   * 여는 조건이 좁다는 것이 이 함수의 전부다.
+   *   · 그 첨부가 **그 맵의 것**이어야 한다 (`a.map_id`)
+   *   · 그 맵이 **지금 그 링크로 공개 중**이어야 한다
+   *   · 맵이 휴지통에 있으면 안 된다 (`deleted_at`)
+   * 게시를 취소하면 사진도 같이 닫힌다 — 링크 하나가 문 하나다.
+   */
+  async openPublished(
+    publishId: string,
+    id: string,
+    range?: { start: number; end: number },
+  ): Promise<AttachmentMeta & { stream: ReadStream }> {
+    // 게시 표가 없는 서버에서는 공개 자체가 없다 — 물어볼 것도 없다
+    if (!(await tableReady(this.db, 'public.published_maps'))) {
+      throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');
+    }
+    const { rows } = await this.db.query<{
+      name: string; mime: string; size_bytes: string; storage_key: string;
+    }>(
+      `SELECT a.name, a.mime, a.size_bytes, a.storage_key
+         FROM public.attachments a
+         JOIN public.maps m
+           ON m.id = a.map_id AND m.deleted_at IS NULL
+         JOIN public.published_maps p
+           ON p.map_id = a.map_id AND p.unpublished_at IS NULL
+        WHERE a.id = $1 AND p.publish_id = $2`,
+      [id, publishId],
     );
     if (!rows[0]) throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');
     const r = rows[0];

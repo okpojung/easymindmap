@@ -1193,41 +1193,88 @@ file: (binary)
 
 ---
 
-## 8. Publish `[미구현]`
+## 8. Publish (무료 게시 — 2026-09-04 구현)
 
-### POST /maps/{mapId}/publish
-맵을 공개 URL로 퍼블리싱
+설계: `docs/04-extensions/publish/27-publish-share.md`
+
+브라우저 주소는 `/p/{publishId}` 이고 **API 경로는 `/published/{publishId}`** 다.
+`publishId` 는 소문자·숫자 12자(헷갈리는 글자 `0 o 1 l i` 제외).
+
+### GET /maps/{mapId}/publish-status
+게시 상태. 맵을 **볼 수 있는 사람**이면 누구나.
 
 **Response** `200 OK`
 ```json
-{
-  "publishId": "abcd1234efgh5678",
-  "publishUrl": "https://app.example.com/published/abcd1234efgh5678",
-  "publishedAt": "2026-03-29T00:00:00Z"
-}
+{ "available": true, "publishId": "abcdefghjkmn", "publishedAt": "2026-09-04T00:00:00Z" }
 ```
+
+* `available:false` 는 **오류가 아니라 값**이다 — 이 서버에 `published_maps`
+  표가 없다(스키마 델타 미적용). 화면은 이 값을 보고 버튼 대신 안내를 낸다.
+* 게시 중이 아니면 `publishId` · `publishedAt` 이 `null`.
+
+---
+
+### POST /maps/{mapId}/publish
+맵을 공개 URL로 퍼블리싱. **맵 주인만.** (편집자·열람자는 `403`,
+볼 수 없는 맵은 `404` — 없는 맵과 구분하지 않는다.)
+
+**멱등** — 이미 게시 중이면 **그 링크를 그대로** 돌려준다. 두 번 눌렀다고
+이미 보낸 링크를 죽이지 않는다.
+
+**Response** `200 OK` — `publish-status` 와 같은 모양
+```json
+{ "available": true, "publishId": "abcdefghjkmn", "publishedAt": "2026-09-04T00:00:00Z" }
+```
+
+`503` — 이 서버에 게시 표가 없다(이유 문장을 함께 준다).
 
 ---
 
 ### DELETE /maps/{mapId}/publish
-퍼블리싱 취소 (unpublished_at 설정)
+퍼블리싱 취소 (`unpublished_at` 설정). **맵 주인만.**
+이미 취소돼 있어도 성공이다(멱등).
 
 **Response** `204 No Content`
 
 ---
 
 ### GET /published/{publishId}
-공개 맵 데이터 조회 (인증 불필요)
+공개 맵 데이터 조회 (**인증 불필요**)
 
 **Response** `200 OK`
 ```json
 {
+  "publishId": "abcdefghjkmn",
   "mapId": "uuid-...",
   "title": "My Map",
-  "nodes": [ ...NodeObject[] ],
-  "publishedAt": "2026-03-29T00:00:00Z"
+  "doc": { "v": 2, "map": { }, "editor": { } },
+  "publishedAt": "2026-09-04T00:00:00Z",
+  "updatedAt": "2026-09-04T00:00:00Z"
 }
 ```
+
+* `doc` 은 `GET /maps/{mapId}/document` 와 **같은 저장 스냅샷**이다
+  (노드 표를 따로 열지 않는다 — 열어 주는 문은 하나다).
+* 무료 게시는 **지금 저장된 판**을 준다. 저자가 고쳐 저장하면 공개 화면도
+  따라 바뀐다(판을 박제하는 것은 유료 게시의 규칙이다 — `27a-paid-publish.md` §4).
+* `404` — 없는 링크 · 취소된 링크 · 휴지통에 든 맵을 **구분하지 않는다.**
+* `400` — 슬러그 모양(`[a-z0-9]{6,20}`)이 아니다.
+
+---
+
+### GET /published/{publishId}/attachments/{attachmentId}
+공개된 맵의 **사진·첨부** (**인증 불필요**). `Range` 지원.
+
+이 문이 없으면 공개된 맵은 사진 자리마다 깨진 채로 열린다 — 사진은 대부분
+서버 저장소에 있고 `GET /attachments/{id}` 는 인증을 요구한다.
+
+여는 조건 — 셋을 모두 만족해야 한다.
+1. 그 첨부가 **그 맵의 것**(`attachments.map_id`)
+2. 그 맵이 **지금 그 링크로 공개 중**(`unpublished_at IS NULL`)
+3. 맵이 휴지통에 있지 않다(`deleted_at IS NULL`)
+
+**Response** `200 OK` (또는 `206 Partial Content`) — 파일 바이트
+`404` — 위 조건 중 하나라도 아니다.
 
 ---
 

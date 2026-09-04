@@ -15,6 +15,7 @@
 
 import type { QueryResultRow } from 'pg';
 import type { DatabaseService } from '../database/database.service';
+import { resetTableReadyCache, tableReady, tableReadyCached } from '../common/table-ready';
 
 /** 소유자 · 편집자 · 열람자 */
 export type MapRole = 'owner' | 'editor' | 'viewer';
@@ -27,36 +28,15 @@ export function canWrite(role: MapRole): boolean {
 }
 
 /**
- * 참가자 표가 있는가 — **오류 코드가 아니라 존재 여부를 직접 묻는다.**
- *
- * 실측(2026-08-18): `DatabaseService.query` 는 `42P01`(undefined_table)을
- * **503 예외로 바꿔서** 올려 준다. 그래서 오류 코드를 보고 물러나려던
- * 첫 구현은 아무것도 못 잡았고, **델타를 적용하지 않은 서버에서는 맵
- * 열기가 통째로 503** 이 됐다. 검증에서 잡았다.
- *
- * 있으면 그대로 기억한다(표가 사라질 일은 없다). 없으면 **잠시 뒤 다시
- * 묻는다** — 관리자가 델타를 적용했는데 재기동해야 반영된다면, 그 사이
- * "공유가 안 되는데 이유를 모르는" 시간이 생긴다.
+ * 참가자 표가 있는가 — 판정은 `common/table-ready.ts` 한 자리에 있다.
+ * 왜 오류 코드가 아니라 존재 여부를 묻는지, 왜 false 만 다시 묻는지는
+ * 그 파일의 머리 주석에 실측과 함께 적혀 있다.
  */
-let membersReady: boolean | null = null;
-let checkedAt = 0;
-const RECHECK_MS = 60_000;
+const MEMBERS_TABLE = 'public.map_members';
 
 /** 검증용 — 기억한 것을 지운다 */
 export function resetMapAccessCache(): void {
-  membersReady = null;
-  checkedAt = 0;
-}
-
-async function hasMembersTable(db: DatabaseService, now: number): Promise<boolean> {
-  if (membersReady === true) return true;
-  if (membersReady === false && now - checkedAt < RECHECK_MS) return false;
-  const { rows } = await db.query<{ ok: boolean }>(
-    `SELECT to_regclass('public.map_members') IS NOT NULL AS ok`,
-  );
-  membersReady = rows[0]?.ok === true;
-  checkedAt = now;
-  return membersReady;
+  resetTableReadyCache(MEMBERS_TABLE);
 }
 
 const OWNER_ONLY_SQL = `
@@ -85,7 +65,7 @@ export async function queryAllowingMissingMembers<T extends QueryResultRow>(
   db: DatabaseService, withMembers: string, ownerOnly: string, params: unknown[],
   now: number = Date.now(),
 ): Promise<T[]> {
-  const sql = (await hasMembersTable(db, now)) ? withMembers : ownerOnly;
+  const sql = (await tableReady(db, MEMBERS_TABLE, now)) ? withMembers : ownerOnly;
   // 여기서 나는 오류는 **그대로 올려보낸다.** 삼키면 DB 장애가
   // "권한 없음"으로 둔갑해 원인을 못 찾는다.
   const { rows } = await db.query<T>(sql, params);
@@ -108,5 +88,5 @@ export async function findAccessibleMap<T extends QueryResultRow>(
 
 /** 운영 점검용 — 마지막으로 확인한 결과(아직 안 물어봤으면 null) */
 export function membersTableReady(): boolean | null {
-  return membersReady;
+  return tableReadyCached(MEMBERS_TABLE);
 }

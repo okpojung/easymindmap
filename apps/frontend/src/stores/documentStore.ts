@@ -38,6 +38,9 @@ import { applyLevelLayout, resolveEdgeType } from '@/utils/levelLayouts';
 // 히스토리 스냅샷에 전체 레이아웃을 함께 기록/복원하기 위해서만 사용
 // (editorUiStore는 documentStore를 import하지 않으므로 순환 없음).
 import { useEditorUiStore } from './editorUiStore';
+// 문서를 통째로 바꿀 때 뷰포트(확대·이동)를 원위치로 — viewportStore 는
+// 아무것도 import 하지 않으므로 순환 없음.
+import { useViewportStore } from './viewportStore';
 
 // ltree physical limit operating cap (chk_nodes_depth). Root is depth 0.
 export const MAX_DEPTH = 50;
@@ -643,6 +646,13 @@ function asDocumentSwap(run: () => void): void {
   swappingDocument = true;
   try { run(); } finally { swappingDocument = false; }
   useDocumentStore.setState({ past: [], future: [] });
+  // **뷰포트도 문서 경계를 넘지 않는다** (2026-09-04 사용자 보고).
+  // 확대·이동은 viewportStore 에 있어 문서를 바꿔도 그대로 남았다 — 앞
+  // 맵에서 180% 로 구석을 보다가 닫고 다른 맵을 열면, 새 맵의 중심이 그
+  // 화면 밖에 놓여 **아무것도 안 보이고** '맵 전체 맞추기' 를 눌러야 나타났다.
+  // 새 문서는 새로고침한 것과 같은 자리(100% · 원위치, CANVAS-06)에서
+  // 시작한다. 같은 문서 안의 되돌리기·템플릿 적용은 여기를 지나지 않는다.
+  useViewportStore.getState().reset();
 }
 
 export const useDocumentStore = create<DocumentState>((rawSet, get) => {

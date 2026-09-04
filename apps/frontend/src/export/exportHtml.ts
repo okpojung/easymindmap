@@ -407,7 +407,9 @@ const VIEWER_JS = String.raw`
       // before = 펜스 앞 일반 텍스트 (에디터 mdCode.ts와 동일 trimEnd) —
       // 코드 패널을 원문 순서(앞 텍스트 위 / 뒤 텍스트 아래)에 놓기 위함
       var before = lines.slice(0, i).join('\n').replace(/\s+$/, '');
-      return { code: code, lang: lang || undefined, before: before };
+      // after = 닫는 펜스 뒤 일반 텍스트 (아웃라인 행이 원문 순서대로 그린다)
+      var after = j < lines.length ? lines.slice(j + 1).join('\n').replace(/^\s+|\s+$/g, '') : '';
+      return { code: code, lang: lang || undefined, before: before, after: after };
     }
     return null;
   }
@@ -2621,8 +2623,11 @@ const VIEWER_JS = String.raw`
         var dot = el2('span', 'mm-ol-caret mm-ol-dot'); dot.textContent = '·';
         row.appendChild(dot);
       }
-      // 블록 마커(코드 펜스·- [x]·파이프)는 접어 표시 — ⧉코드·☑/☐·⊞표 (P4)
-      var txt = el2('span', 'mm-ol-txt'); txt.textContent = flattenText(node.text || '');
+      // 본문은 **에디터 아웃라인과 같은 규칙으로 블록을 그대로 그린다**
+      // (2026-09-04 사용자 보고 — 에디터는 코드·표가 보이는데 뷰어는
+      // '⧉코드'·'⊞표' 로 접혀 있었다. 접는 규칙(flattenText)은 검색 결과
+      // 한 줄 요약의 것이지 아웃라인 행의 것이 아니다 — RichTextHtml 참조)
+      var txt = el2('div', 'mm-ol-txt'); txt.appendChild(richTextEl(node.text || ''));
       row.appendChild(txt);
       // 노트 배지
       var notes = node.notes || [];
@@ -2643,6 +2648,122 @@ const VIEWER_JS = String.raw`
     })(DATA.root, 0);
   }
   function el2(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
+
+  // ── 아웃라인 행 본문 — 에디터 NodeRichText(RichTextHtml.tsx) 와 같은 규칙 ──
+  //   · 코드 펜스(백틱x3)  → 언어 라벨 헤더 + ⧉ 복사 + 모노 줄 (.mm-code)
+  //   · 파이프 표       → 격자 표 + ⧉ 복사 (.mm-table)
+  //   · - [x] 체크 줄   → 체크 글리프 (뷰어는 표시만)
+  //   · 인라인 마크     → **굵게** 등 (마커 숨김 — 맵과 같은 parseInlineSegs)
+  //   원문 순서(코드 앞 텍스트 → 표 → 코드 → 뒤 텍스트)를 그대로 지킨다.
+  function inlineSpansEl(line) {
+    var frag = document.createDocumentFragment();
+    var segs = parseInlineSegs(line);
+    for (var i = 0; i < segs.length; i++) {
+      var sg = segs[i];
+      var sp = document.createElement('span');
+      if (sg.b) sp.style.fontWeight = '700';
+      if (sg.i) sp.style.fontStyle = 'italic';
+      var deco = [];
+      if (sg.s) deco.push('line-through');
+      if (sg.u) deco.push('underline');
+      if (deco.length) sp.style.textDecoration = deco.join(' ');
+      if (sg.h) { sp.style.background = '#FFE066'; sp.style.color = '#1F1B16'; sp.style.borderRadius = '2px'; sp.style.padding = '0 1px'; }
+      else if (sg.c) { sp.style.background = CODE_BG; sp.style.color = CODE_TEXT; sp.style.fontFamily = CODE_FONT; sp.style.borderRadius = '2px'; }
+      sp.textContent = sg.t;
+      frag.appendChild(sp);
+    }
+    return frag;
+  }
+  function richTextLines(root, seg) {
+    var lines = String(seg || '').split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var d = el2('div', 'mm-ol-line');
+      var m = /^[ \t]*[-*+][ \t]+\[([ xX])\][ \t]?(.*)$/.exec(line);
+      if (m) {
+        var on = m[1] !== ' ';
+        var gl = el2('span', 'mm-ol-check' + (on ? ' on' : ''));
+        gl.textContent = on ? '✓' : '';
+        d.appendChild(gl);
+        d.appendChild(inlineSpansEl(m[2]));
+      } else {
+        d.appendChild(inlineSpansEl(line));
+      }
+      root.appendChild(d);
+    }
+  }
+  function richTextPlain(root, seg) {
+    var mdt = parseMdTable(seg);
+    if (!mdt) { richTextLines(root, seg); return; }
+    if (mdt.before) richTextLines(root, mdt.before);
+    // 표 — 노트 패널의 표와 같은 DOM(.mm-table) + 바깥 위 ⧉ 복사 스트립
+    var tblWrap = el2('div', 'mm-ol-table');
+    var tBtn = el2('button', 'mm-copy');
+    tBtn.textContent = '⧉';
+    tBtn.setAttribute('title', '표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다');
+    (function (hdrs, rws, b) {
+      b.addEventListener('click', function (ev) { ev.stopPropagation(); copyTableData(hdrs, rws, b); });
+    })(mdt.headers, mdt.rows, tBtn);
+    tblWrap.appendChild(tBtn);
+    var scroll = el2('div', 'mm-ol-scroll');
+    var tbl = el2('table', 'mm-table');
+    var allRows = [mdt.headers].concat(mdt.rows);
+    for (var ri = 0; ri < allRows.length; ri++) {
+      var tr = document.createElement('tr');
+      for (var ci = 0; ci < allRows[ri].length; ci++) {
+        var cell = document.createElement(ri === 0 ? 'th' : 'td');
+        cell.appendChild(inlineSpansEl(allRows[ri][ci]));
+        tr.appendChild(cell);
+      }
+      tbl.appendChild(tr);
+    }
+    scroll.appendChild(tbl);
+    tblWrap.appendChild(scroll);
+    root.appendChild(tblWrap);
+    if (mdt.after) richTextLines(root, mdt.after);
+  }
+  function richTextEl(text) {
+    var root = el2('div', 'mm-ol-rich');
+    var raw = String(text || '');
+    var mdc = parseMdCode(raw);
+    if (!mdc) { richTextPlain(root, raw); return root; }
+    if (mdc.before) richTextPlain(root, mdc.before);
+    // 코드 패널 — 노트 패널의 코드 블록과 같은 DOM(.mm-code) (맵 패널과 같은 색)
+    var wrap = el2('div', 'mm-code mm-ol-code');
+    var head = el2('div', 'mm-code-head');
+    var langEl = document.createElement('span');
+    langEl.textContent = mdc.lang || 'code';
+    var btn = el2('button', 'mm-copy');
+    btn.textContent = '⧉';
+    btn.setAttribute('title', '코드 복사');
+    (function (t, b) {
+      b.addEventListener('click', function (ev) { ev.stopPropagation(); copyText(t, b); });
+    })(mdc.code.join('\n'), btn);
+    head.appendChild(langEl);
+    head.appendChild(btn);
+    var pre = document.createElement('pre');
+    // 격자 배치 — 맵·에디터 아웃라인과 같은 규칙(글자마다 칸)이라 폰트
+    // 폴백과 무관하게 상자 도식이 어긋나지 않는다 (utils/monoGrid 동일)
+    for (var li = 0; li < mdc.code.length; li++) {
+      var ln = mdc.code[li];
+      var lineEl = document.createElement('div');
+      for (var k = 0; k < ln.length; k++) {
+        var ch = ln.charAt(k);
+        var cs = document.createElement('span');
+        cs.style.display = 'inline-block';
+        cs.style.width = (cellsOf(ch) * CELL_RATIO) + 'em';
+        cs.textContent = ch === ' ' ? '\u00A0' : ch;
+        lineEl.appendChild(cs);
+      }
+      if (ln === '') lineEl.textContent = '\u00A0';
+      pre.appendChild(lineEl);
+    }
+    wrap.appendChild(head);
+    wrap.appendChild(pre);
+    root.appendChild(wrap);
+    if (mdc.after) richTextPlain(root, mdc.after);
+    return root;
+  }
   // render()가 끝날 때마다 호출됨 (호이스팅) — 보일 때만 재구축
   function syncOutline() { if (outlineVisible()) buildOutline(); }
 
@@ -2738,7 +2859,37 @@ const VIEWER_CSS = `
     user-select: none;
   }
   .mm-ol-dot { color: #B8A888; flex-shrink: 0; }
-  .mm-ol-txt { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+  .mm-ol-txt { flex: 1; min-width: 0; word-break: break-word; overflow-wrap: anywhere; }
+  .mm-ol-line { white-space: pre-wrap; }
+  /* 행 안의 코드·표 — 에디터 아웃라인과 같은 컴팩트 크기 */
+  .mm-ol-check {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 13px; height: 13px; border-radius: 3px; margin-right: 5px;
+    border: 1.5px solid #8B94A3; color: #FFF; font-size: 9px; font-weight: 800;
+    line-height: 1; vertical-align: text-bottom; box-sizing: border-box;
+  }
+  .mm-ol-check.on { background: #22A06B; border-color: #22A06B; }
+  .mm-ol-table { position: relative; padding-top: 15px; margin: 3px 0; }
+  .mm-ol-table .mm-copy {
+    position: absolute; top: 0; right: 0; z-index: 1; border: none; background: transparent;
+    padding: 0 3px; font-size: 0.78em; font-weight: 700; color: #475569; line-height: 1.4;
+  }
+  .mm-ol-scroll { overflow-x: auto; max-width: 100%; }
+  .mm-ol-table .mm-table { width: auto; margin: 0; font-size: 0.92em; }
+  .mm-ol-table .mm-table th, .mm-ol-table .mm-table td { padding: 1px 6px; border-color: currentColor; }
+  .mm-ol-table .mm-table th { background: transparent; }
+  .mm-ol-code { margin: 3px 0; border-color: #D8DDE4; border-radius: 5px; background: #ECEFF3; }
+  .mm-ol-code .mm-code-head {
+    padding: 1px 7px; background: transparent; border-bottom: 1px solid #D8DDE4;
+    font-family: ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace;
+    font-size: 0.82em; font-weight: 400; color: #64748B; text-transform: none; letter-spacing: 0;
+  }
+  .mm-ol-code .mm-copy { border: none; background: transparent; color: #475569; font-weight: 600; font-size: inherit; padding: 0; }
+  .mm-ol-code pre {
+    padding: 3px 7px; background: transparent; color: #334155; font-size: 0.92em; line-height: 1.45;
+    font-family: ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace;
+  }
+  body.mm-dark .mm-ol-table .mm-table td, body.mm-dark .mm-ol-table .mm-table th { color: #D8D4CC; }
   .mm-ol-badge {
     flex-shrink: 0; font-size: 9px; font-weight: 800; color: #FFF;
     border-radius: 3.5px; padding: 1px 4px; margin-left: 3px;

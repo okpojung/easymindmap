@@ -13,7 +13,7 @@
 // **서명만 검증하면 되는 값**이 가장 단순하다. 유효 30분.
 
 import {
-  BadRequestException, Injectable, Logger, ServiceUnavailableException,
+  BadRequestException, ConflictException, Injectable, Logger, ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
@@ -27,6 +27,8 @@ import {
 } from '../common/deleted-accounts';
 import { forgetKnownUser } from '../common/auth/known-users';
 import { tableReady } from '../common/table-ready';
+import { hasMapMembersTable } from '../maps/map-access';
+import type { CollabMapSummary, DeleteBlockedBody } from './dto/account.dto';
 import { aiKeyHint, decryptAiKey, encryptAiKey } from './ai-key-crypto';
 import type { AppEnv } from '../config/env.validation';
 
@@ -463,19 +465,105 @@ export class AccountService {
     return this.getProfile(userId);
   }
 
-  // ── 회원탈퇴 (2026-08-11) ──────────────────────────────────────
+  // ── 회원탈퇴 (2026-08-11 · 2026-09-04 스키마 정비 A) ─────────────
   //
-  // **정말로 지운다.** users 행을 지우면 ON DELETE CASCADE 로 맵·폴더·
-  // 태그·워크스페이스·첨부 메타가 함께 사라지고, 첨부 파일은 저장소
-  // 접두사(u/<id>, tmp/<id>)를 통째로 지운다.
+  // **정말로 지운다.** 다만 `maps.owner_id` 가 이제 ON DELETE RESTRICT 라
+  // (docs/90-architecture/schema-overhaul-plan.md §2) users 행을 지우기
+  // 전에 **앱이 맵을 직접 정리**한다. 순서가 곧 규칙이다 — 계획서 §2.3.
   //
-  // 지우기 전에 손봐야 하는 곳이 있다 — users(id) 를 참조하면서
-  // **CASCADE 가 아닌** 컬럼들이다. 그대로 두면 외래키가 삭제를 막는다.
+  //   ① 내가 개설자인 **활성 협업맵**이 있으면 막는다 — 409 + 맵 목록 +
+  //      참여자 수. 남의 작업이 걸려 있다. "협업맵" 은 kind='collab' **또는
+  //      map_members 행이 있는** 활성 맵이다 — PATCH 로 kind 를 solo 로
+  //      되돌려도 참여자는 남고 map-access 는 kind 를 보지 않으므로,
+  //      kind 만 믿으면 편집 중인 참여자의 문서를 지운다(Codex 리뷰 P1).
+  //   ② 나머지 내 맵(단독맵 · 휴지통에 있는 맵)을 지운다 — 맵의
+  //      CASCADE 로 문서·버전·노드·참가자·잠금·게시가 따라 사라진다.
+  //   ③ 남의 맵의 map_members 에서 나를 뺀다 — 참여는 막을 이유가 없다.
+  //   ④ DELETE FROM users — 폴더·태그·워크스페이스·첨부 메타가 CASCADE.
+  //
+  // 되돌려 깨뜨리면(계획서 §2.4): ②를 빼면 **모든 사용자가 탈퇴 불가**
+  // (RESTRICT 가 막는다), ①을 빼면 협업맵이 참여자 작업과 함께 사라진다
+  // (CASCADE 시절의 사고). ①은 DB 가 아니라 앱이 답하는 층이고, RESTRICT 는
+  // 앱이 틀렸을 때의 마지막 방벽이다 — 그래서 ④가 외래키에 막히면 500 이
+  // 아니라 409 로 바꿔 올린다.
+  //
+  // 휴지통의 협업맵은 막지 않는다 — 참여자는 이미 열 수 없고(map-access 가
+  // deleted_at 을 본다), 개설자가 이미 지우기로 한 맵이다. 막으면 영구
+  // 삭제 API 가 없는 지금 그 사용자는 탈퇴할 길이 없다.
+  //
+  // 지우기 전에 손봐야 하는 곳 — users(id) 를 참조하면서 CASCADE 도
+  // SET NULL 도 아닌 컬럼들 (그대로 두면 외래키가 삭제를 막는다):
   //   · map_revisions.created_by / map_document_versions.created_by → NULL
-  //     (남의 맵에 남긴 버전은 맵의 것이지 사람의 것이 아니다 — 맵까지
-  //      지우면 그 맵 주인의 히스토리가 사라진다)
+  //     (남의 맵에 남긴 버전은 맵의 것이지 사람의 것이 아니다)
   //   · exports.user_id → NULL   (기록만 남긴다)
   //   · ai_jobs.user_id  → NOT NULL 이라 행을 지운다
+  //   (map_document_versions.pinned_by · map_members.invited_by 는 SET NULL,
+  //    map_ownership_transfers 는 CASCADE — 손대지 않는다)
+
+  /**
+   * 내가 개설자인 **활성 협업맵** — 탈퇴를 막는 것들. 참여자 수를 함께 준다.
+   * kind='collab' 이거나 **참여자가 한 명이라도 있으면** 협업맵이다.
+   *
+   * `map_members` 델타를 아직 적용하지 않은 서버에서는 참여자 수를
+   * **모른다(null)** — 그래도 kind 가 협업이면 막는다. 판정에 실패했다고
+   * 열어 주면 장애가 곧 데이터 손실이 된다 (map-access.ts 와 같은 방향).
+   */
+  private async findOwnedCollabMaps(
+    run: <T extends { [k: string]: unknown }>(sql: string, params: unknown[]) => Promise<{ rows: T[] }>,
+    userId: string,
+  ): Promise<{ maps: CollabMapSummary[]; memberTotal: number | null }> {
+    const withMembers = await hasMapMembersTable(this.db);
+    type Row = { id: string; title: string; updated_at: Date; member_count: number | null };
+    const { rows } = await run<Row>(
+      withMembers
+        ? `SELECT m.id, m.title, m.updated_at,
+                  (SELECT COUNT(*)::int FROM public.map_members mm
+                    WHERE mm.map_id = m.id) AS member_count
+             FROM public.maps m
+            WHERE m.owner_id = $1 AND m.deleted_at IS NULL
+              AND (m.kind = 'collab'
+                   OR EXISTS (SELECT 1 FROM public.map_members mm WHERE mm.map_id = m.id))
+            ORDER BY m.updated_at DESC`
+        : `SELECT m.id, m.title, m.updated_at, NULL::int AS member_count
+             FROM public.maps m
+            WHERE m.owner_id = $1 AND m.kind = 'collab' AND m.deleted_at IS NULL
+            ORDER BY m.updated_at DESC`,
+      [userId],
+    );
+    const maps: CollabMapSummary[] = rows.map((r) => ({
+      mapId: r.id,
+      title: r.title,
+      memberCount: r.member_count,
+      updatedAt: r.updated_at,
+    }));
+    let memberTotal: number | null = null;
+    if (maps.length > 0 && withMembers) {
+      // 같은 사람이 여러 맵에 있으면 한 번만 센다 — "참여자 5명" 은 사람 수다
+      const { rows: t } = await run<{ n: number }>(
+        `SELECT COUNT(DISTINCT mm.user_id)::int AS n
+           FROM public.map_members mm
+           JOIN public.maps m ON m.id = mm.map_id
+          WHERE m.owner_id = $1 AND m.deleted_at IS NULL`,
+        [userId],
+      );
+      memberTotal = t[0]?.n ?? 0;
+    }
+    return { maps, memberTotal };
+  }
+
+  /** 막을 때 돌려주는 본문 — 화면이 `message` 만 보여 줘도 목록이 보인다 */
+  private blockedBody(maps: CollabMapSummary[], memberTotal: number | null): DeleteBlockedBody {
+    const who = memberTotal === null
+      ? '참여자의 작업도 함께 사라집니다'
+      : `참여자 ${memberTotal}명의 작업도 함께 사라집니다`;
+    const lines = maps.map((m) =>
+      ` · ${m.title} (참여자 ${m.memberCount === null ? '수 알 수 없음' : m.memberCount + '명'})`);
+    const message =
+      `함께 쓰는 맵 ${maps.length}개의 개설자입니다. 탈퇴하면 ${who}. `
+      + '먼저 그 맵을 삭제해 주세요(소유권 넘기기는 준비 중입니다).\n'
+      + lines.join('\n');
+    return { code: 'OWNS_COLLAB_MAPS', message, collabMaps: maps, memberTotal };
+  }
 
   /** 탈퇴 화면에 "무엇이 사라지는지" 숫자로 보여 주기 위한 조회 */
   async deletePreview(userId: string) {
@@ -496,6 +584,11 @@ export class AccountService {
     const r = rows[0];
     const fileBytes = Number(r?.file_bytes ?? 0);
     const docBytes = Number(r?.doc_bytes ?? 0);
+    // 탈퇴가 막힐지는 **미리** 알려 준다 — 확인 문구까지 입력한 뒤에
+    // 막히면 헛수고다.
+    const blocked = await this.findOwnedCollabMaps(
+      (sql, params) => this.db.query(sql, params), userId,
+    );
     return {
       maps: Number(r?.maps ?? 0),
       attachments: Number(r?.attachments ?? 0),
@@ -504,6 +597,11 @@ export class AccountService {
       usedBytes: fileBytes + docBytes,
       /** 화면이 그대로 비교해 쓸 수 있게 서버가 문구를 내려 준다 */
       confirmPhrase: DELETE_CONFIRM_PHRASE,
+      /** 내가 개설자인 활성 협업맵 — 비어 있지 않으면 탈퇴가 409 로 막힌다 */
+      collabMaps: blocked.maps,
+      /** 그 맵들의 참여자 수(사람 수). 참가자 표가 없는 서버면 null */
+      memberTotal: blocked.memberTotal,
+      blocked: blocked.maps.length > 0,
     };
   }
 
@@ -513,6 +611,9 @@ export class AccountService {
    * 되돌릴 수 없다. 그래서 **지운 것을 숫자로 돌려준다** — 화면이
    * "맵 12개·첨부 3개를 삭제했습니다"라고 말할 수 있어야, 사용자가
    * 자기 계정이 정말 지워졌는지 확인할 수 있다.
+   *
+   * 협업맵 개설자면 **409** 와 함께 맵 목록·참여자 수를 돌려준다
+   * (`DeleteBlockedBody`). 500 이 아니라 안내다 — 계획서 §2.4.
    */
   async deleteAccount(userId: string, confirmRaw: string) {
     const confirm = String(confirmRaw || '').trim();
@@ -524,34 +625,81 @@ export class AccountService {
 
     const before = await this.deletePreview(userId);
     const hasTomb = await hasDeletedAccountsTable(this.db);
+    const hasMembers = await hasMapMembersTable(this.db);
 
-    await this.db.transaction(async (c) => {
-      await c.query(
-        `UPDATE public.map_revisions SET created_by = NULL WHERE created_by = $1`,
-        [userId],
-      );
-      await c.query(
-        `UPDATE public.map_document_versions SET created_by = NULL WHERE created_by = $1`,
-        [userId],
-      );
-      await c.query(`UPDATE public.exports SET user_id = NULL WHERE user_id = $1`, [userId]);
-      await c.query(`DELETE FROM public.ai_jobs WHERE user_id = $1`, [userId]);
-      // 편집 잠금은 외래키가 없어 삭제를 막지는 않지만, 남겨 두면 남의
-      // 공유 맵이 최대 60초 동안 "다른 사람이 편집 중"으로 잠긴다.
-      await c.query(`DELETE FROM public.map_edit_locks WHERE user_id = $1`, [userId]);
-      await c.query(`DELETE FROM public.workspace_members WHERE user_id = $1`, [userId]);
+    try {
+      await this.db.transaction(async (c) => {
+        // ① 협업맵 개설자면 여기서 멈춘다 — 트랜잭션 안에서 다시 본다
+        //    (미리보기와 탈퇴 사이에 협업맵을 만들었을 수 있다)
+        const blocked = await this.findOwnedCollabMaps(
+          (sql, params) => c.query(sql, params), userId,
+        );
+        if (blocked.maps.length > 0) {
+          throw new ConflictException(this.blockedBody(blocked.maps, blocked.memberTotal));
+        }
 
-      // 여기서 CASCADE 가 돈다 — 맵·폴더·태그·워크스페이스·첨부 메타
-      await c.query(`DELETE FROM public.users WHERE id = $1`, [userId]);
-
-      if (hasTomb) {
         await c.query(
-          `INSERT INTO public.deleted_accounts (user_id) VALUES ($1)
-           ON CONFLICT (user_id) DO NOTHING`,
+          `UPDATE public.map_revisions SET created_by = NULL WHERE created_by = $1`,
           [userId],
         );
+        await c.query(
+          `UPDATE public.map_document_versions SET created_by = NULL WHERE created_by = $1`,
+          [userId],
+        );
+        await c.query(`UPDATE public.exports SET user_id = NULL WHERE user_id = $1`, [userId]);
+        await c.query(`DELETE FROM public.ai_jobs WHERE user_id = $1`, [userId]);
+        // 편집 잠금은 외래키가 없어 삭제를 막지는 않지만, 남겨 두면 남의
+        // 공유 맵이 최대 60초 동안 "다른 사람이 편집 중"으로 잠긴다.
+        await c.query(`DELETE FROM public.map_edit_locks WHERE user_id = $1`, [userId]);
+        await c.query(`DELETE FROM public.workspace_members WHERE user_id = $1`, [userId]);
+
+        // ② 내 맵을 **앱이 명시적으로** 지운다 — RESTRICT 가 users 삭제를
+        //    막기 전에. **활성 협업맵(kind 또는 참여자 있음)은 여기서도
+        //    지우지 않는다** — ①이 어떤 이유로 빠져도 그 맵은 남아 ④가
+        //    RESTRICT 에 걸린다(409). `owner_id = $1` 만으로 지우면 ①이 빠진
+        //    날 협업맵을 앱이 손수 지우는 셈이라 DB 층이 방벽 구실을 못 한다
+        //    (검증에서 확인). 판정은 ①과 같은 문장이어야 한다 — 두 곳이
+        //    어긋나면 ①이 통과시킨 맵이 ②에 남아 모두가 탈퇴 불가가 된다.
+        await c.query(
+          hasMembers
+            ? `DELETE FROM public.maps
+                WHERE owner_id = $1
+                  AND (deleted_at IS NOT NULL
+                       OR (kind <> 'collab' AND NOT EXISTS (
+                             SELECT 1 FROM public.map_members mm WHERE mm.map_id = maps.id)))`
+            : `DELETE FROM public.maps
+                WHERE owner_id = $1 AND (deleted_at IS NOT NULL OR kind <> 'collab')`,
+          [userId],
+        );
+
+        // ③ 남의 맵에 참여자로 있던 자리 — 표가 있는 서버에서만
+        if (hasMembers) {
+          await c.query(`DELETE FROM public.map_members WHERE user_id = $1`, [userId]);
+        }
+
+        // ④ 여기서 CASCADE 가 돈다 — 폴더·태그·워크스페이스·첨부 메타
+        await c.query(`DELETE FROM public.users WHERE id = $1`, [userId]);
+
+        if (hasTomb) {
+          await c.query(
+            `INSERT INTO public.deleted_accounts (user_id) VALUES ($1)
+             ON CONFLICT (user_id) DO NOTHING`,
+            [userId],
+          );
+        }
+      });
+    } catch (err) {
+      // 마지막 방벽(RESTRICT)에 걸렸다 — 앱 검사가 놓친 맵이 남아 있다.
+      // 500 으로 두면 사용자는 "탈퇴가 고장났다" 고만 안다.
+      if ((err as { code?: string } | null)?.code === '23503') {
+        this.log.error(`회원탈퇴가 외래키에 막혔다 (id=${userId}): ${String((err as Error).message)}`);
+        throw new ConflictException({
+          code: 'MAPS_REMAIN',
+          message: '아직 남아 있는 맵이 있어 탈퇴할 수 없습니다. 맵을 정리한 뒤 다시 시도해 주세요.',
+        });
       }
-    });
+      throw err;
+    }
 
     // ── 여기서부터는 실패해도 탈퇴를 되돌리지 않는다 ──────────────
     // 계정은 이미 지워졌다. 남는 것은 **주인 없는 찌꺼기**뿐이라,

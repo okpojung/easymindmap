@@ -57,6 +57,30 @@ export class DeleteAccountDto {
   confirm!: string;
 }
 
+/** 탈퇴를 막는 협업맵 하나 — 목록에 제목과 참여자 수를 보여 준다 */
+export interface CollabMapSummary {
+  mapId: string;
+  title: string;
+  /** 참가자 표(`map_members`)가 없는 서버면 null — "모른다" 를 0 으로 꾸미지 않는다 */
+  memberCount: number | null;
+  updatedAt: Date;
+}
+
+/**
+ * `DELETE /account` 가 **409** 로 막을 때의 본문 (2026-09-04 스키마 정비 A).
+ *
+ * `message` 만 보여 줘도 안내가 된다 — 맵 목록이 문장 안에 들어 있다.
+ * 구조화된 `collabMaps` 는 나중에 화면이 [소유권 넘기기] 버튼을 붙일 자리.
+ */
+export interface DeleteBlockedBody {
+  /** OWNS_COLLAB_MAPS = 개설자인 협업맵이 있다 · MAPS_REMAIN = DB 마지막 방벽에 걸렸다 */
+  code: 'OWNS_COLLAB_MAPS' | 'MAPS_REMAIN';
+  message: string;
+  collabMaps?: CollabMapSummary[];
+  /** 그 맵들의 참여자 수(사람 수, 중복 없이). 참가자 표가 없으면 null */
+  memberTotal?: number | null;
+}
+
 /** 비밀번호 재설정 ① — 이메일만 받는다 (계정 유무는 알려 주지 않는다) */
 export class ResetStartDto {
   @IsEmail({}, { message: '올바른 이메일 주소를 입력해 주세요.' })

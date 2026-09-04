@@ -86,6 +86,14 @@ export async function findAccessibleMap<T extends QueryResultRow>(
   return rows[0] ?? null;
 }
 
+/**
+ * 참가자 표가 있는가 — 다른 모듈(회원탈퇴 등)이 같은 캐시를 쓴다.
+ * 표가 없으면 호출한 쪽은 **더 적게 들여보내는 쪽**으로 물러나야 한다.
+ */
+export function hasMapMembersTable(db: DatabaseService): Promise<boolean> {
+  return tableReady(db, MEMBERS_TABLE, Date.now());
+}
+
 /** 운영 점검용 — 마지막으로 확인한 결과(아직 안 물어봤으면 null) */
 export function membersTableReady(): boolean | null {
   return tableReadyCached(MEMBERS_TABLE);

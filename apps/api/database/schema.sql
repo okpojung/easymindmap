@@ -88,7 +88,12 @@ CREATE INDEX IF NOT EXISTS idx_map_folders_owner
 
 CREATE TABLE IF NOT EXISTS public.maps (
     id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id                  UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    -- ★ RESTRICT (2026-09-04 스키마 정비 A — schema-overhaul-plan.md §2).
+    --   CASCADE 였을 때는 **탈퇴 한 번으로 협업맵 참여자들의 작업까지**
+    --   사라졌다. 이제 맵이 남아 있으면 DB 가 users 삭제를 막는다 —
+    --   앱(account.service.ts)이 단독맵을 먼저 지우고 협업맵은 탈퇴를
+    --   막아 안내한다. 이미 있는 DB 의 제약 교체는 파일 끝 §정비 A 참조.
+    owner_id                  UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
     workspace_id              UUID REFERENCES public.workspaces(id) ON DELETE SET NULL,
     title                     VARCHAR(255) NOT NULL DEFAULT 'Untitled',
     default_layout_type       VARCHAR(50)  NOT NULL DEFAULT 'radial-bidirectional',
@@ -1052,3 +1057,120 @@ CREATE INDEX IF NOT EXISTS api_tokens_user_idx
 COMMENT ON TABLE public.api_tokens IS
     'MCP 커넥터용 개인 액세스 토큰 — 원문은 저장하지 않고 sha256 해시만 둔다. '
     '폐기는 revoked_at 을 채운다(행을 지우지 않는다). mcp-connector.md §3.';
+
+-- ════════════════════════════════════════════════════════════════════
+-- 스키마 정비 A·B·C (2026-09-04) — docs/90-architecture/schema-overhaul-plan.md
+--
+-- 세 덩어리를 한 자리에 둔다. 전부 멱등이라 **이미 쓰고 있는 DB 에 다시
+-- 적용해도 안전**하고, 빈 DB 에서는 위쪽 CREATE TABLE 과 겹치는 부분이
+-- 그대로 통과한다(ADD COLUMN IF NOT EXISTS · CREATE … IF NOT EXISTS).
+--
+-- 델타 미적용 서버에서도 앱은 죽지 않는다 — 새 컬럼·표를 읽는 코드가
+-- 아직 없고(B·C 는 표·컬럼만 만든다), A 의 탈퇴 흐름은 CASCADE 든
+-- RESTRICT 든 같은 순서로 돈다(맵을 먼저 지우고 users 를 지운다).
+-- ════════════════════════════════════════════════════════════════════
+
+-- ── A. maps.owner_id → ON DELETE RESTRICT ─────────────────────────────
+--
+-- 두 층으로 막는다(계획서 §2.2). DB 는 **마지막 방벽**(앱이 틀려도 막는다),
+-- 앱은 **이유를 설명하는 층**(협업맵 목록과 참여자 수를 돌려준다).
+--
+-- ⚠️ RESTRICT 만 넣고 앱을 안 고치면 탈퇴가 설명 없는 500 이 된다.
+--    같은 배포에 account.service.ts 가 들어가야 한다.
+-- ⚠️ 제약 이름은 CREATE TABLE 의 인라인 REFERENCES 가 자동으로 붙이는
+--    `maps_owner_id_fkey` 와 같다 — 그래서 빈 DB 에서도 DROP → ADD 가
+--    같은 이름을 다시 만들 뿐이다. DROP 과 ADD 를 **한 문장씩** 두는 이유:
+--    apply-schema.mjs 가 세미콜론 단위로 나눠 돌리기 때문이다.
+ALTER TABLE public.maps
+    DROP CONSTRAINT IF EXISTS maps_owner_id_fkey;
+ALTER TABLE public.maps
+    ADD CONSTRAINT maps_owner_id_fkey
+    FOREIGN KEY (owner_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+
+-- ── B. 버전 보관 컬럼 — 13a-version-retention.md §4.5 ──────────────────
+--
+-- 요금제별 보관 일수·영구보관 상한. **NULL = 무제한.** 수치의 정본은
+-- 13a §4.5 (free 7일/3개 · basic 90일/20개 · pro 365일/50개 · team 365일/100개).
+-- 씨앗은 **컬럼을 처음 만드는 순간에만** 심는다 — 그 뒤로 두 값이 NULL 인
+-- 것은 관리자가 "무제한" 으로 바꾼 설정일 수 있어, 재적용이 조건 없이
+-- UPDATE 하면 그 설정을 조용히 되돌린다(정리 워커가 붙으면 버전이 지워진다).
+-- 그래서 "컬럼이 없었다" 를 초기화의 유일한 신호로 삼는다 — quota_bytes 의
+-- ON CONFLICT DO NOTHING 과 같은 정신이다.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'plan_quotas'
+       AND column_name = 'version_days'
+  ) THEN
+    ALTER TABLE public.plan_quotas
+      ADD COLUMN version_days INTEGER CHECK (version_days IS NULL OR version_days > 0);
+    UPDATE public.plan_quotas SET version_days =   7 WHERE plan = 'free';
+    UPDATE public.plan_quotas SET version_days =  90 WHERE plan = 'basic';
+    UPDATE public.plan_quotas SET version_days = 365 WHERE plan IN ('pro', 'team');
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'plan_quotas'
+       AND column_name = 'max_pinned'
+  ) THEN
+    ALTER TABLE public.plan_quotas
+      ADD COLUMN max_pinned INTEGER CHECK (max_pinned IS NULL OR max_pinned >= 0);
+    UPDATE public.plan_quotas SET max_pinned =   3 WHERE plan = 'free';
+    UPDATE public.plan_quotas SET max_pinned =  20 WHERE plan = 'basic';
+    UPDATE public.plan_quotas SET max_pinned =  50 WHERE plan = 'pro';
+    UPDATE public.plan_quotas SET max_pinned = 100 WHERE plan = 'team';
+  END IF;
+END $$;
+
+-- 영구보관(별표) — 사람이 의미를 부여한 버전은 정리 대상에서 뺀다.
+--   pinned_by 가 SET NULL 인 이유: 별표를 붙인 사람이 탈퇴해도 **그 표시는
+--   남아야 한다.** 누가 붙였는지만 모르게 된다.
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS pinned    BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS label     TEXT;
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS pinned_by UUID REFERENCES public.users(id) ON DELETE SET NULL;
+ALTER TABLE public.map_document_versions
+    ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
+
+-- 부분 인덱스가 핵심이다 — 정리 대상(pinned = FALSE)만 들어가므로
+-- 영구보관이 늘어도 정리 질의가 느려지지 않는다.
+-- (정리 워커 `version-prune` 은 이번 범위 밖 — 컬럼과 인덱스만 만든다.)
+CREATE INDEX IF NOT EXISTS idx_versions_prune
+    ON public.map_document_versions(map_id, created_at DESC)
+    WHERE pinned = FALSE;
+
+-- ── C. 소유권 이전 제안 — 계획서 §4 · 13a §4.5.1 ───────────────────────
+--
+-- 개설자가 다른 참여자에게 소유권을 **제안 → 수락**으로 넘긴다(일방 이양
+-- 없음). A 에서 탈퇴가 막힌 개설자가 쓰는 출구가 이 표다.
+--   map_id CASCADE 가 맞다 — 맵이 사라지면 그 맵의 제안도 의미가 없다.
+--   A 에서 문제였던 것은 maps.owner_id → users 였지 이쪽이 아니다.
+-- (제안·수락 API 와 UI 는 이번 범위 밖 — 표만 만든다.)
+CREATE TABLE IF NOT EXISTS public.map_ownership_transfers (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id       UUID NOT NULL REFERENCES public.maps(id)  ON DELETE CASCADE,
+    from_user    UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    to_user      UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    responded_at TIMESTAMPTZ,
+    expires_at   TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '14 days',
+    CONSTRAINT map_ownership_transfers_status_chk
+        CHECK (status IN ('pending', 'accepted', 'declined', 'expired'))
+);
+
+-- 한 맵에 열린 제안은 하나만 — 동시에 여러 제안이 열리는 것을 DB 층에서 막는다
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transfer_one_open
+    ON public.map_ownership_transfers(map_id)
+    WHERE status = 'pending';
+
+-- "나에게 온 제안" 을 받는 사람 기준으로 찾는 경로
+CREATE INDEX IF NOT EXISTS idx_transfer_to_user
+    ON public.map_ownership_transfers(to_user, status);
+
+COMMENT ON TABLE public.map_ownership_transfers IS
+    '맵 소유권 이전 제안(제안→수락). 개설자가 탈퇴하려면 협업맵을 넘기거나 지워야 한다 '
+    '— schema-overhaul-plan.md §2·§4. 만료 기본 14일.';

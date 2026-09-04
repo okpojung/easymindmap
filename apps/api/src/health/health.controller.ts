@@ -92,6 +92,9 @@ const REQUIRED_TABLES = [
   // MCP 커넥터 토큰 (2026-09-04). 없으면 AI 커넥터만 못 쓴다 — 토큰
   // 화면이 `ready:false` 로 이유를 밝히고, 다른 기능은 그대로 돈다.
   'api_tokens',
+  // 소유권 이전 제안 (2026-09-04 스키마 정비 C). 표만 있고 API 는 아직
+  // 없다 — 없어도 앱은 돈다. 델타 적용을 빠뜨렸는지 여기서 드러낸다.
+  'map_ownership_transfers',
 ] as const;
 
 /**
@@ -117,7 +120,23 @@ const REQUIRED_COLUMNS = [
   // missingColumns 를 보라**"고 안내하는데, 이 목록에 없으면 그 안내가
   // **아무것도 알려주지 않는 곳**을 가리킨다.
   'plan_quotas.price_krw',
+  // 버전 보관 (2026-09-04 스키마 정비 B) — 정리 워커는 아직 없다. 컬럼이
+  // 없어도 앱은 돌지만, 워커가 붙는 날 "왜 안 지워지나" 를 여기서 찾는다.
+  'plan_quotas.version_days',
+  'map_document_versions.pinned',
 ] as const;
+
+/**
+ * 외래키의 **삭제 규칙**까지 본다 (2026-09-04 스키마 정비 A).
+ *
+ * `maps.owner_id` 는 CASCADE 에서 RESTRICT 로 바뀌었다 — 탈퇴 한 번으로
+ * 협업맵 참여자의 작업까지 사라지지 않게 하는 **마지막 방벽**이다. 표와
+ * 컬럼만 보면 이 차이는 보이지 않는다. 델타(DROP → ADD CONSTRAINT)를
+ * 빠뜨리면 앱 검사만 남는데, 그 상태를 운영자가 알 길이 여기뿐이다.
+ */
+const REQUIRED_FK_RULES: ReadonlyArray<{ constraint: string; deleteRule: string }> = [
+  { constraint: 'maps_owner_id_fkey', deleteRule: 'RESTRICT' },
+];
 
 /**
  * GET /v1/health — 로드밸런서·배포 헬스체크용.
@@ -134,6 +153,8 @@ export class HealthController {
     schema: 'ok' | 'outdated' | 'unknown';
     missingTables?: string[];
     missingColumns?: string[];
+    /** 삭제 규칙이 기대와 다른 외래키 — `제약이름: 실제 규칙 (기대 규칙)` */
+    outdatedConstraints?: string[];
     commit?: string;
     runtime: { node: string; nestjs?: string; express?: string };
     time: string;
@@ -142,10 +163,11 @@ export class HealthController {
     let schema: 'ok' | 'outdated' | 'unknown' = 'unknown';
     let missingTables: string[] = [];
     let missingColumns: string[] = [];
+    let outdatedConstraints: string[] = [];
 
     if (dbUp) {
       try {
-        const [tables, columns] = await Promise.all([
+        const [tables, columns, fks] = await Promise.all([
           this.db.query<{ table_name: string }>(
             `SELECT table_name FROM information_schema.tables
               WHERE table_schema = 'public' AND table_name = ANY($1)`,
@@ -158,12 +180,23 @@ export class HealthController {
                 AND table_name || '.' || column_name = ANY($1)`,
             [REQUIRED_COLUMNS as unknown as string[]],
           ),
+          this.db.query<{ constraint_name: string; delete_rule: string }>(
+            `SELECT constraint_name, delete_rule
+               FROM information_schema.referential_constraints
+              WHERE constraint_schema = 'public' AND constraint_name = ANY($1)`,
+            [REQUIRED_FK_RULES.map((f) => f.constraint)],
+          ),
         ]);
         const presentTables = new Set(tables.rows.map((r) => r.table_name));
         const presentColumns = new Set(columns.rows.map((r) => r.ref));
+        const fkRules = new Map(fks.rows.map((r) => [r.constraint_name, r.delete_rule]));
         missingTables = REQUIRED_TABLES.filter((t) => !presentTables.has(t));
         missingColumns = REQUIRED_COLUMNS.filter((c) => !presentColumns.has(c));
-        schema = missingTables.length === 0 && missingColumns.length === 0 ? 'ok' : 'outdated';
+        outdatedConstraints = REQUIRED_FK_RULES
+          .filter((f) => fkRules.get(f.constraint) !== f.deleteRule)
+          .map((f) => `${f.constraint}: ${fkRules.get(f.constraint) ?? '없음'} (기대 ${f.deleteRule})`);
+        schema = missingTables.length === 0 && missingColumns.length === 0
+          && outdatedConstraints.length === 0 ? 'ok' : 'outdated';
       } catch {
         schema = 'unknown';
       }
@@ -176,6 +209,7 @@ export class HealthController {
       schema,
       ...(missingTables.length ? { missingTables } : {}),
       ...(missingColumns.length ? { missingColumns } : {}),
+      ...(outdatedConstraints.length ? { outdatedConstraints } : {}),
       // 배포 플랫폼이 커밋을 알려 주지 않으면 필드째 생략한다
       ...(BUILD_COMMIT ? { commit: BUILD_COMMIT } : {}),
       runtime: RUNTIME,

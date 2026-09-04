@@ -26,10 +26,10 @@
 | `users` | ✅ | `id, display_name, preferred_language, default_layout_type, quota_bytes(B9), plan(요금제, 2026-08-06), created_at, updated_at` — 설계본의 번역/UI 설정 컬럼 없음 |
 | `workspaces` / `workspace_members` | ✅ | 스키마만 존재, API 미사용 |
 | `map_folders` | ✅ | 문서함(폴더) 트리 — 2026-08-02 |
-| `maps` | ✅ | + `folder_id`, `kind('solo'\|'collab')`. `translation_policy_json` **없음**, `view_mode` 는 `'edit'\|'dashboard'`(DDL 주석 기준, API 는 `'kanban'` 도 허용) |
+| `maps` | ✅ | + `folder_id`, `kind('solo'\|'collab')`. `translation_policy_json` **없음**, `view_mode` 는 `'edit'\|'dashboard'`(DDL 주석 기준, API 는 `'kanban'` 도 허용). **`owner_id` 는 `ON DELETE RESTRICT`** (2026-09-04 스키마 정비 A — CASCADE 였을 때는 탈퇴 한 번으로 협업맵 참여자의 작업까지 사라졌다. 탈퇴 흐름은 앱이 단독맵(참여자 없는 맵)을 먼저 지우고, 협업맵(`kind='collab'` 또는 참여자가 있는 맵) 개설자는 409 로 막는다 — [schema-overhaul-plan.md §2](../90-architecture/schema-overhaul-plan.md)) |
 | `map_revisions` | ✅ | patch 기반 autosave 이력 (정규화 노드 경로) |
 | **`map_documents`** | ✅ 실물 전용 | **문서 전체 스냅샷(JSONB, 맵당 1건)** — `map_id PK, doc, updated_at` + 목록 통계 `node_count`/`attach_count`/`attach_bytes`(2026-08-04, 저장 시 서버 계산 — 구행은 NULL, 다음 저장 때 채워짐). 현재 프런트가 실제 사용하는 저장 경로. ⚠️ `maps.doc` 컬럼이 아니라 **별도 테이블**이다 |
-| **`map_document_versions`** | ✅ 실물 전용 | 저장 시점별 히스토리(B8) + `layout_type`/`node_count`/`attach_bytes`/`attach_count` 상세 컬럼 |
+| **`map_document_versions`** | ✅ 실물 전용 | 저장 시점별 히스토리(B8) + `layout_type`/`node_count`/`attach_bytes`/`attach_count` 상세 컬럼 + **영구보관 `pinned`(기본 false)·`label`·`pinned_by`(SET NULL)·`pinned_at`** 과 부분 인덱스 `idx_versions_prune (map_id, created_at DESC) WHERE pinned = FALSE`(2026-09-04 스키마 정비 B — 컬럼만 있고 정리 워커·UI 는 아직 없다. 근거 [13a-version-retention.md §4.5](../03-editor-core/history/13a-version-retention.md)) |
 | `nodes` | ✅ | ltree 정규화 경로 — **현재도 실존·가동 중**(스냅샷 경로와 병행, 프런트는 스냅샷 경로만 사용). `note` 컬럼 **없음**, `layout_type NOT NULL DEFAULT 'radial-bidirectional'`, **CHECK 제약 0건**, 번역 컬럼은 `text_lang`/`text_hash` 만 |
 | `tags` / `node_tags` | ✅ | `tags` 는 **owner_id 기반 개인 태그만** (`UNIQUE(owner_id, name)`) — `workspace_id` 없음 |
 | `node_notes` / `node_links` / `node_attachments` / `node_media` | ✅ | 노드 부가 정보. `node_media.media_type` 은 `DEFAULT 'image'`(설계본의 audio/video CHECK 없음) |
@@ -38,6 +38,8 @@
 | `ai_jobs` / `node_translations` / `field_registry` | ✅ | 스키마만 존재, API 미사용 |
 | **`attachments`** | ✅ 실물 전용 | 첨부 저장소 메타(B9) — 파일 원본은 로컬 디스크 `StorageService` |
 | **`map_edit_locks`** | ✅ 실물 전용 | 단일 세션 편집 잠금 (2026-08-04) — session_key + heartbeat TTL 60초 |
+| **`map_ownership_transfers`** | ✅ 실물 전용 | **맵 소유권 이전 제안**(제안→수락) — `map_id`(CASCADE)·`from_user`·`to_user`·`status pending\|accepted\|declined\|expired`(CHECK)·`expires_at`(기본 14일). 부분 유니크 `idx_transfer_one_open (map_id) WHERE status='pending'` 이 한 맵에 열린 제안을 하나로 묶고, `idx_transfer_to_user (to_user, status)` 가 "나에게 온 제안" 경로다 (2026-09-04 스키마 정비 C — **표만 있고 API·UI 는 아직 없다**). 협업맵 개설자가 탈퇴하려면 이 표로 넘기거나 맵을 지워야 한다 |
+| **`plan_quotas.version_days` · `max_pinned`** | ✅ 실물 전용 컬럼 | 요금제별 버전 보관 일수·영구보관 상한 (2026-09-04 스키마 정비 B). **NULL = 무제한.** 씨앗 free 7/3 · basic 90/20 · pro 365/50 · team 365/100 — **컬럼을 처음 만드는 순간에만** 심는다(DO 블록). 그 뒤의 NULL 은 관리자의 무제한 설정일 수 있어 재적용이 건드리지 않는다. 정본 수치는 13a §4.5 |
 | **`map_members`** | ✅ 실물 전용 | **맵 참가자 — 협업의 권한 판정** (2026-08-18). `(map_id, user_id) PK` + `role 'editor'\|'viewer'` + `invited_by`. **소유자는 넣지 않는다**(`maps.owner_id` 가 이미 답한다 — 같은 사실을 두 곳에 두면 어긋난다). 행을 넣는 초대 흐름은 **유료 모듈** 쪽이고, 표가 비어 있으면 코어는 예전과 똑같이 **소유자 전용**으로 돈다 |
 | **`users.plan`** | ✅ 실물 전용 컬럼 | 요금제 — `free`\|`basic`\|`pro`\|`team` (CHECK 제약). **저장 용량의 단일 기준.** 기본 `free` |
 | **`users.quota_bytes`** | ✅ 실물 전용 컬럼 | 저장 용량 쿼터(B9) — 문서(DB)+첨부 합산. **`plan` 이 정하고 `users_sync_quota` 트리거가 동기화한다.** 직접 UPDATE 는 특별 계약용 탈출구 (`../04-extensions/attachment-storage.md` §8.1) |
@@ -63,7 +65,8 @@
   `owner_id = 현재 사용자` 조건이다.
 - **미존재 테이블**: 설계본의 workspace 태그·협업(map_collaborators 등)·
   채팅·WBS(node_schedule/node_resources)·Redmine·map_ownership_history 등
-  V1~V3 테이블은 실물에 없다.
+  V1~V3 테이블은 실물에 없다. (소유권 이전은 `map_ownership_transfers` 로
+  실물에 들어왔다 — 2026-09-04, 표만.)
 
 ---
 
@@ -179,7 +182,9 @@ CREATE TRIGGER on_auth_user_created
 ```sql
 CREATE TABLE public.maps (
   id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id                  UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  -- RESTRICT (2026-09-04 스키마 정비 A): 맵이 남아 있으면 users 를 지울 수 없다.
+  -- 탈퇴 흐름(account.service.ts)이 단독맵을 먼저 지우고, 협업맵 개설자는 막는다.
+  owner_id                  UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
   workspace_id              UUID REFERENCES public.workspaces(id) ON DELETE SET NULL,
   title                     VARCHAR(255) NOT NULL DEFAULT 'Untitled',
   default_layout_type       VARCHAR(50)  NOT NULL DEFAULT 'radial-bidirectional',
@@ -232,6 +237,9 @@ CREATE INDEX idx_map_folders_owner ON public.map_folders(owner_id, parent_id);
 - 설계·규칙: [document-library.md](../04-extensions/document-library.md)
 
 ### [owner_id vs created_by 구분]
+
+> **실물 (2026-09-04)**: 소유권 이전은 `map_ownership_transfers`(제안→수락, 위 표 목록 참조)로 구현한다. 아래 `map_ownership_history` 는 설계본이며 실물에 없다.
+
 - `owner_id` = 현재 맵 소유자. ownership transfer 후 변경 가능.
 - 원래 creator는 `map_ownership_history` 테이블의 첫 번째 레코드(`transferred_by IS NULL`)로 추적.
 - `maps` 테이블에 `created_by` 컬럼은 없음 — 최초 생성자 추적은 `map_ownership_history` 를 통해서만 조회.

@@ -145,7 +145,11 @@ export class AccountController {
     return this.audit.forUser(user.id, 50);
   }
 
-  /** 탈퇴 확인 화면 — 무엇이 사라지는지 숫자로 보여 주기 위한 조회 */
+  /**
+   * 탈퇴 확인 화면 — 무엇이 사라지는지 숫자로 보여 주기 위한 조회.
+   * `blocked: true` 면 아래 DELETE 가 409 로 막힌다 — 개설자인 협업맵
+   * 목록(`collabMaps`)을 함께 준다 (2026-09-04 스키마 정비 A).
+   */
   @Get('delete-preview')
   @UseGuards(AuthGuard)
   deletePreview(@CurrentUser() user: AuthUser) {
@@ -155,6 +159,10 @@ export class AccountController {
   /**
    * 회원탈퇴. **되돌릴 수 없다** — 맵·히스토리·첨부가 모두 사라진다.
    * DELETE 지만 본문(확인 문구)을 받는다 — 확인 없이 지우지 않기 위해서다.
+   *
+   * **409 Conflict** — 내가 개설자인 협업맵이 있으면 지우지 않고
+   * `DeleteBlockedBody`(맵 목록 + 참여자 수)를 돌려준다. 참여자의 작업이
+   * 걸려 있어서다 — schema-overhaul-plan.md §2.3.
    */
   @Delete()
   @HttpCode(200)

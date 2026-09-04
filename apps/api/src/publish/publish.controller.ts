@@ -1,7 +1,9 @@
 import {
   BadRequestException,
-  Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, Res, UseGuards,
+  Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, Res,
+  UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { sendAttachment } from '../attachments/attachments.controller';
@@ -33,6 +35,22 @@ export class PublishController {
   @Get(':id/publish-status')
   status(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.publish.status(user.id, id);
+  }
+
+  /**
+   * 미리보기 실루엣 올리기 (27a §2) — 저자의 브라우저가 만든 PNG.
+   * 서버는 그림을 만들지 않는다(헤드리스 브라우저도 이미지 라이브러리도
+   * 없다). 여기서 하는 일은 **받아서 두는 것**뿐이다.
+   */
+  @Put(':id/publish/preview')
+  @UseInterceptors(FileInterceptor('file'))
+  putPreview(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    if (!file) throw new BadRequestException('file 필드에 이미지를 첨부해 주세요.');
+    return this.publish.putPreview(user.id, id, file.buffer);
   }
 }
 
@@ -81,6 +99,21 @@ export class PublicPublishController {
     const slug = PublicPublishController.slug(publishId);
     await sendAttachment(req, res,
       (range) => this.attachments.openPublished(slug, attachmentId, range));
+  }
+
+  /**
+   * 미리보기 실루엣 — **비인증**. 링크 카드(Open Graph)와 목록 썸네일이
+   * 이 주소를 그대로 쓴다. `:publishId` 보다 먼저 선언한다.
+   *
+   * 캐시를 길게 잡지 않는다 — 저자가 "다시 만들기" 를 누르면 **같은
+   * 주소의 내용이 바뀐다.** 오래 캐시하면 낡은 그림이 남는다.
+   */
+  @Get(':publishId/preview.png')
+  async preview(@Param('publishId') publishId: string, @Res() res: Response) {
+    const stream = await this.publish.openPreview(PublicPublishController.slug(publishId));
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    stream.pipe(res);
   }
 
   @Get(':publishId')

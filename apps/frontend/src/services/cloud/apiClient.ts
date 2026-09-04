@@ -59,6 +59,36 @@ async function req<T>(
   return res.json() as Promise<T>;
 }
 
+/**
+ * **multipart 요청** — 파일을 보낼 때 쓴다.
+ *
+ * `req()` 를 못 쓰는 이유는 하나다: `Content-Type` 을 우리가 정하면 안
+ * 된다. multipart 는 본문에 경계 문자열(boundary)이 들어가는데 그 값을
+ * 아는 것은 브라우저뿐이라, 헤더를 손으로 붙이면 서버가 본문을 못 읽는다.
+ * 그것 말고 인증·오류 문장 처리는 `req()` 와 같아야 하므로 여기 한 벌만 둔다.
+ */
+async function reqForm<T>(method: string, path: string, form: FormData): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (authEnabled) {
+    const token = await getFreshAccessToken();
+    if (!token) throw new CloudError(401, '로그인이 필요합니다.');
+    headers.Authorization = `Bearer ${token}`;
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/v1${path}`, { method, headers, body: form });
+  } catch {
+    throw new CloudError(0, '서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.');
+  }
+  if (!res.ok) {
+    let msg = `업로드 실패 (${res.status})`;
+    try { msg = (await res.json()).message || msg; } catch { /* 본문 없음 */ }
+    throw new CloudError(res.status, msg);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
 /** 저장 시점별 문서 버전 (히스토리 — B8). 목록은 doc 을 담지 않는다. */
 export interface MapVersionItem {
   version: number;
@@ -207,6 +237,8 @@ export interface PublishStatus {
   available: boolean;
   publishId: string | null;
   publishedAt: string | null;
+  /** 미리보기 실루엣이 올라와 있는가 (27a §2) */
+  hasPreview?: boolean;
 }
 
 /** 공개 맵 — 비인증으로 받는다. doc 은 저장 스냅샷 그대로다 */
@@ -391,34 +423,12 @@ export const cloudApi = {
     }>('DELETE', '/account', { confirm }),
 
   // ── 첨부 저장소 (B9) ───────────────────────────────────────
-  // 업로드는 multipart 라 req() 대신 직접 fetch — Content-Type 은
-  // 브라우저가 boundary 포함으로 자동 설정한다.
   uploadAttachment: async (file: File, mapId?: string) => {
-    const headers: Record<string, string> = {};
-    if (authEnabled) {
-      const token = await getFreshAccessToken();
-      if (!token) throw new CloudError(401, '로그인이 필요합니다.');
-      headers.Authorization = `Bearer ${token}`;
-    }
     const form = new FormData();
     form.append('file', file);
-    let res: Response;
-    try {
-      res = await fetch(
-        `${BASE}/v1/attachments${mapId ? `?mapId=${encodeURIComponent(mapId)}` : ''}`,
-        { method: 'POST', headers, body: form },
-      );
-    } catch {
-      throw new CloudError(0, '서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.');
-    }
-    if (!res.ok) {
-      let msg = `업로드 실패 (${res.status})`;
-      try { msg = (await res.json()).message || msg; } catch { /* 본문 없음 */ }
-      throw new CloudError(res.status, msg);
-    }
-    return res.json() as Promise<{
+    return reqForm<{
       id: string; name: string; mime: string; sizeBytes: number; url: string;
-    }>;
+    }>('POST', `/attachments${mapId ? `?mapId=${encodeURIComponent(mapId)}` : ''}`, form);
   },
   /**
    * **원격 사진을 서버가 대신 받아 온다** (2026-08-20, B16 ② 슬라이스 3).
@@ -529,6 +539,15 @@ export const cloudApi = {
   /** 게시 취소 — 링크가 즉시 무효가 된다 */
   unpublishMap: (mapId: string) => req<void>('DELETE', `/maps/${mapId}/publish`),
   /**
+   * 미리보기 실루엣 올리기 — 그림은 **이 브라우저가** 만든다
+   * (`export/silhouette.ts`). 서버에는 헤드리스 브라우저가 없다.
+   */
+  putPublishPreview: async (mapId: string, png: Blob) => {
+    const form = new FormData();
+    form.append('file', png, 'preview.png');
+    return reqForm<PublishStatus>('PUT', `/maps/${mapId}/publish/preview`, form);
+  },
+  /**
    * 공개 맵 조회 — **로그인 없이** 부른다(`anon`).
    * 토큰을 붙이면 인증이 켜진 배포에서 비로그인 방문자가 401 을 만난다.
    */
@@ -565,6 +584,18 @@ export function serverAttachmentId(url: string | undefined): string | null {
   if (!path.startsWith('/v1/attachments/')) return null;
   const id = path.slice('/v1/attachments/'.length).split('?')[0].split('/')[0];
   return id || null;
+}
+
+/**
+ * 공개된 맵의 **미리보기 실루엣** 주소 — 로그인 없이 열린다 (27a §2).
+ * 링크 카드(Open Graph)와 목록 썸네일이 이 주소를 그대로 쓴다.
+ *
+ * `v` 는 캐시를 깨기 위한 것이다 — 저자가 "다시 만들기" 를 누르면
+ * **같은 주소의 내용이 바뀌므로**, 화면이 낡은 그림을 계속 보여 준다.
+ */
+export function publishedPreviewUrl(publishId: string, v?: string | number): string {
+  const q = v ? `?v=${encodeURIComponent(String(v))}` : '';
+  return `${BASE}/v1/published/${encodeURIComponent(publishId)}/preview.png${q}`;
 }
 
 /**

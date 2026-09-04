@@ -19,10 +19,13 @@
  */
 
 import {
+  BadRequestException,
   ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
+import type { ReadStream } from 'node:fs';
 import { DatabaseService } from '../database/database.service';
+import { StorageService } from '../storage/storage.service';
 import { tableReady } from '../common/table-ready';
 import { findAccessibleMap } from '../maps/map-access';
 
@@ -47,16 +50,25 @@ export interface PublishStatus {
   available: boolean;
   publishId: string | null;
   publishedAt: string | null;
+  /** 미리보기 실루엣이 올라와 있는가 (27a §2) */
+  hasPreview?: boolean;
 }
 
 interface PublishedRow {
   publish_id: string;
   published_at: Date;
+  storage_path: string | null;
 }
+
+/** 미리보기 PNG 한 장의 상한. 1200×630 실루엣은 보통 100KB 안쪽이다 */
+export const PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
 
 @Injectable()
 export class PublishService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly storage: StorageService,
+  ) {}
 
   /** 게시 기능을 쓸 수 있는 서버인가 */
   private async ready(): Promise<boolean> {
@@ -108,7 +120,7 @@ export class PublishService {
         const { rows } = await this.db.query<PublishedRow>(
           `INSERT INTO public.published_maps (map_id, publish_id)
                 VALUES ($1, $2)
-             RETURNING publish_id, published_at`,
+             RETURNING publish_id, published_at, storage_path`,
           [mapId, publishId],
         );
         return this.toStatus(rows[0]);
@@ -127,6 +139,15 @@ export class PublishService {
   async unpublish(userId: string, mapId: string): Promise<void> {
     await this.requireReady();
     await this.requireOwner(userId, mapId);
+    // 미리보기 파일도 지운다 — 다시 게시하면 **새 링크**라 새 키를 쓰므로,
+    // 여기서 안 지우면 아무도 못 여는 그림이 저장소에 영영 남는다.
+    // 행에는 손대지 않는다(게시 기록은 지운 적 없는 사실이다).
+    const cur = await this.activeRow(mapId);
+    if (cur?.storage_path) {
+      // 파일이 없어도 조용히 성공한다. 여기서 실패해도 **게시 취소는
+      // 계속돼야 한다** — 링크를 닫는 것이 이 요청의 목적이다.
+      await this.storage.delete(cur.storage_path).catch(() => { /* 링크 닫기가 우선 */ });
+    }
     await this.db.query(
       `UPDATE public.published_maps
           SET unpublished_at = NOW()
@@ -195,7 +216,7 @@ export class PublishService {
 
   private async activeRow(mapId: string): Promise<PublishedRow | undefined> {
     const { rows } = await this.db.query<PublishedRow>(
-      `SELECT publish_id, published_at
+      `SELECT publish_id, published_at, storage_path
          FROM public.published_maps
         WHERE map_id = $1 AND unpublished_at IS NULL
      ORDER BY published_at DESC
@@ -210,6 +231,75 @@ export class PublishService {
       available: true,
       publishId: row.publish_id,
       publishedAt: row.published_at.toISOString(),
+      hasPreview: !!row.storage_path,
     };
+  }
+
+  // ── 미리보기 실루엣 (27a §2) ─────────────────────────────────────
+  //
+  // ★ 저장 자리는 `published_maps.storage_path` 다 — 처음부터 그러라고
+  //   있던 칸이다(schema.sql). 첨부 표에 넣지 않는 이유: 이 그림은
+  //   **사용자의 파일이 아니라 게시가 만든 부산물**이라, 사용자의 저장
+  //   용량을 깎으면 안 되고 문서함에 보여서도 안 된다.
+
+  /** 키는 게시 링크를 따라간다 — 링크가 죽으면 그림도 갈 곳을 잃는다 */
+  private static previewKey(publishId: string): string {
+    return `p/${publishId}.png`;
+  }
+
+  /**
+   * 미리보기 올리기 — **맵 주인만.** 게시 중이 아니면 올릴 자리가 없다.
+   *
+   * 저자가 내용을 고치면 실루엣이 낡는다. 자동 갱신은 저자가 게시 화면을
+   * 열지 않으면 돌지 않으므로 하지 않는다 — 화면이 "다시 만들기"를
+   * 눌러야 한다고 말해 주는 편이 정직하다(27a §2.2).
+   */
+  async putPreview(userId: string, mapId: string, png: Buffer): Promise<PublishStatus> {
+    await this.requireReady();
+    await this.requireOwner(userId, mapId);
+    if (png.length === 0) throw new BadRequestException('빈 파일입니다.');
+    if (png.length > PREVIEW_MAX_BYTES) {
+      throw new BadRequestException(
+        `미리보기 이미지는 최대 ${Math.round(PREVIEW_MAX_BYTES / 1024 / 1024)}MB 까지입니다.`,
+      );
+    }
+    // **PNG 인지 바이트로 확인한다.** 확장자·Content-Type 은 보내는 쪽이
+    // 정하는 값이라, 그것만 믿으면 아무 파일이나 우리 저장소에 들어온다.
+    const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    if (!png.subarray(0, 8).equals(PNG_MAGIC)) {
+      throw new BadRequestException('PNG 이미지만 올릴 수 있습니다.');
+    }
+
+    const cur = await this.activeRow(mapId);
+    if (!cur) throw new NotFoundException('게시 중인 맵이 아닙니다. 먼저 공개 링크를 만들어 주세요.');
+
+    const key = PublishService.previewKey(cur.publish_id);
+    await this.storage.put(key, png);
+    await this.db.query(
+      `UPDATE public.published_maps SET storage_path = $2
+        WHERE map_id = $1 AND unpublished_at IS NULL`,
+      [mapId, key],
+    );
+    return { ...this.toStatus(cur), hasPreview: true };
+  }
+
+  /**
+   * 미리보기 읽기 — **비인증**. 여는 조건은 맵 본문과 같다:
+   * 지금 그 링크로 공개 중이고, 맵이 휴지통에 있지 않아야 한다.
+   */
+  async openPreview(publishId: string): Promise<ReadStream> {
+    if (!(await this.ready())) throw new NotFoundException('페이지를 찾을 수 없습니다.');
+    const { rows } = await this.db.query<{ storage_path: string | null }>(
+      `SELECT p.storage_path
+         FROM public.published_maps p
+         JOIN public.maps m ON m.id = p.map_id
+        WHERE p.publish_id = $1
+          AND p.unpublished_at IS NULL
+          AND m.deleted_at IS NULL`,
+      [publishId],
+    );
+    const key = rows[0]?.storage_path;
+    if (!key) throw new NotFoundException('미리보기 이미지가 없습니다.');
+    return this.storage.stream(key);
   }
 }

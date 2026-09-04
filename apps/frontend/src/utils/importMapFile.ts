@@ -26,6 +26,11 @@ export interface ImportedMap {
   map: SampleMap;
   editor?: MapFileMeta['editor'];
   source: 'easymindmap-html' | 'easymindmap-md' | 'plain-md';
+  /**
+   * EMM 선언에서 **알아는 들었지만 건너뛴 것**. 불러오기 안내에 붙는다 —
+   * 조용히 사라지면 문서를 쓴 사람이 왜 안 되는지 알 길이 없다.
+   */
+  skipped?: string[];
 }
 
 const HTML_META_RE =
@@ -165,7 +170,12 @@ export function parseMarkdownMapFile(
     }
   }
 
-  return { map, source: 'plain-md', ...(declared.editor ? { editor: declared.editor } : {}) };
+  return {
+    map,
+    source: 'plain-md',
+    ...(declared.editor ? { editor: declared.editor } : {}),
+    ...(declared.skipped ? { skipped: declared.skipped } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -19,7 +19,16 @@ import { layoutHierarchyChildren } from './HierarchyStrategy';
 import { layoutProcessChildren } from './ProcessStrategy';
 import { layoutTimeline, layoutTimelineCenter } from './TimelineStrategy';
 
-const SUBTREE_SUPPORTED = new Set<LayoutType>([
+/**
+ * 서브트리(노드 오버라이드)로 걸 수 있는 레이아웃.
+ *
+ * **여기 없는 값은 노드에 박혀 있어도 그림이 바뀌지 않는다** — `walk` 이
+ * 조용히 지나간다(칸반·프리폼처럼 자기 배치 규칙이 맵 전체를 전제하는
+ * 것들). 그래서 문서 선언을 해석하는 쪽(`utils/emmDeclaration`)이 이 집합을
+ * 그대로 읽어 2레벨 이상의 값을 거른다 — 판정을 두 벌로 만들면 "패널에서는
+ * 고를 수 없는데 문서로는 적히는" 값이 다시 생긴다.
+ */
+export const SUBTREE_SUPPORTED = new Set<LayoutType>([
   'radial-right' as LayoutType,
   'radial-left' as LayoutType,
   'radial-bidirectional' as LayoutType,

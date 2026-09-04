@@ -873,11 +873,26 @@ export function MapBrowser({
             제안과 새로 공유된 맵. 유료 모듈이 채우고 공개판은 비어 있다.
             목록 **위**에 두는 이유: 응답을 기다리는 것이 있으면 문서보다
             먼저 보여야 한다. 맵을 열 때는 문서함이 여는 길 그대로 간다 —
-            방금 수락해 목록에 아직 없으면 다시 읽는다. */}
+            방금 수락·참여해 목록에 아직 없으면 **다시 읽고 나서 연다**
+            (2026-09-05: 전에는 다시 읽기만 하고 열지 않아, 초대 링크로
+            들어온 사람이 "맵을 엽니다" 안내만 보고 문서함에 남았다). */}
         <ProInbox
           t={t}
-          onOpenMap={(mapId) => {
-            const m = [...(maps ?? []), ...shared].find((x) => x.mapId === mapId);
+          onOpenMap={async (mapId) => {
+            const find = (ms: MapListItem[], sh: MapListItem[]) =>
+              [...ms, ...sh].find((x) => x.mapId === mapId);
+            let m = find(maps ?? [], shared);
+            if (!m) {
+              try {
+                const [mm, sh] = await Promise.all([
+                  cloudApi.listMaps({ sort, order, limit: MAP_FETCH_LIMIT }),
+                  cloudApi.listSharedMaps({ limit: 100 }).catch(() => ({ maps: [], total: 0 })),
+                ]);
+                setMaps(mm.maps);
+                setShared(sh.maps);
+                m = find(mm.maps, sh.maps);
+              } catch { /* 아래에서 load() 가 오류 문장을 붙인다 */ }
+            }
             if (m) void openMap(m); else void load();
           }}
         />

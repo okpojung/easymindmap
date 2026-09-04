@@ -15,6 +15,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { InspectorSection } from './InspectorSection';
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
+import { AiKeyInput } from './AiKeyInput';
+import { aiKeyStorageNotice } from '@/services/cloud/aiKeysSync';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
@@ -583,8 +585,9 @@ function SettingsView({ t }: { t: ThemeTokens }) {
   const models = useAiSettingsStore((s) => s.models);
   const priority = useAiSettingsStore((s) => s.priority);
   const movePriority = useAiSettingsStore((s) => s.movePriority);
-  const setKey = useAiSettingsStore((s) => s.setKey);
   const setModel = useAiSettingsStore((s) => s.setModel);
+  // 계정 보관 상태 — 안내 문장이 이것을 따라 바뀐다 (2026-09-04)
+  const keyServer = useAiSettingsStore((s) => s.server);
   const systemPrompt = useAiSettingsStore((s) => s.systemPrompt);
   const setSystemPrompt = useAiSettingsStore((s) => s.setSystemPrompt);
   const resetSystemPrompt = useAiSettingsStore((s) => s.resetSystemPrompt);
@@ -633,44 +636,24 @@ function SettingsView({ t }: { t: ThemeTokens }) {
       </InspectorSection>
 
       <InspectorSection t={t} title="API 키 등록">
-        <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 8, lineHeight: 1.5 }}>
-          키는 이 브라우저(localStorage)에만 저장되며, 질문할 때 해당 AI
-          사에만 전달됩니다.
+        {/* 어디에 보관되는지는 서버 상태가 정한다 — 계정(암호화) / 브라우저만.
+            입력칸은 계정 메뉴의 'AI API 키' 와 같은 컴포넌트다 (2026-09-04) */}
+        <div data-ai-key-notice style={{
+          fontSize: 10.5, color: keyServer.enabled === false ? '#B45309' : t.textSubtle,
+          marginBottom: 8, lineHeight: 1.5,
+        }}>
+          {aiKeyStorageNotice()}
         </div>
+        {keyServer.error && (
+          <div data-ai-key-error style={{
+            fontSize: 10.5, color: '#B91C1C', marginBottom: 8, lineHeight: 1.5,
+          }}>{keyServer.error}</div>
+        )}
         {PROVIDERS.map((p) => (
-          <div key={p} style={{ marginBottom: 12 }}>
-            <div style={{
-              fontSize: 11, fontWeight: 700, color: t.text, marginBottom: 4,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              {PROVIDER_LABELS[p]}
-              {keys[p]?.trim() && (
-                <span style={{
-                  fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3,
-                  background: '#DCFCE7', color: '#15803D',
-                }}>등록됨</span>
-              )}
-            </div>
-            <input
-              type="password"
-              data-ai-key={p}
-              value={keys[p]}
-              onChange={(e) => setKey(p, e.target.value)}
-              placeholder={
-                p === 'anthropic' ? 'sk-ant-…'
-                : p === 'openai' ? 'sk-…'
-                : 'AIza…'
-              }
-              autoComplete="off"
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '7px 9px',
-                borderRadius: 6, border: `1px solid ${t.border}`,
-                background: t.surfaceAlt, color: t.text, fontSize: 12,
-                outline: 'none', fontFamily: 'ui-monospace, monospace',
-              }} />
+          <AiKeyInput key={p} t={t} p={p}>
             <ModelPicker t={t} p={p} value={models[p]} onChange={(m) => setModel(p, m)} />
             <KeyHelp t={t} p={p} />
-          </div>
+          </AiKeyInput>
         ))}
       </InspectorSection>
 

@@ -193,6 +193,7 @@ volumes:
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | 앞에 nginx·Traefik 을 두면 **이 값이 맞아야 접속 IP 가 진짜가 된다** |
 | `SMTP_*` | (빈 값) | 비우면 메일 발송만 꺼진다. 앱은 죽지 않는다 |
 | `ADMIN_EMAILS` | (빈 값) | **비우면 관리자 콘솔에 아무도 못 들어간다**(기동 로그에 경고) |
+| `AI_KEY_SECRET` | (빈 값) | **비우면 AI API 키 계정 보관이 꺼진다**(키는 브라우저에만 남고 화면이 그 사실을 밝힌다). 16자 이상, 한 번 정하면 바꾸지 말 것 — 18-ai.md §키 보관 |
 | `GOTRUE_URL` | (빈 값) | 인증 구성에서 회원탈퇴가 로그인 계정까지 지우려면 필요 |
 
 ---

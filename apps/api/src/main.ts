@@ -81,6 +81,12 @@ async function bootstrap() {
   // vault 미러가 켜졌는지 **기동 로그에 남긴다.** 조용히 꺼져 있으면
   // 사용자는 파일이 안 생기는 이유를 알 길이 없다.
   new Logger('Bootstrap').log(app.get(VaultService).describe());
+  // AI 키 보관이 켜졌는지도 남긴다 — 꺼져 있으면 키가 브라우저에만 남는다
+  new Logger('Bootstrap').log(
+    config.get('AI_KEY_SECRET', { infer: true })
+      ? 'AI API 키 보관: 켜짐 (계정에 암호화 저장)'
+      : 'AI API 키 보관: 꺼짐 (AI_KEY_SECRET 미설정 — 키는 브라우저에만 남는다)',
+  );
   new Logger('Bootstrap').log(`EasyMindMap API 기동 → http://localhost:${port}/v1`);
 }
 

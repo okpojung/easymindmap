@@ -166,6 +166,7 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   | `AUTH_MODE` | `dev` (Phase 3 전까지) | ✅ | ✅ |
   | `DEV_USER_ID` | `00000000-0000-0000-0000-000000000001` | ✅ | ✅ |
   | `CORS_ORIGIN` | `https://pro-dev.mindmap.ai.kr` | ✅ | ✅ |
+  | `AI_KEY_SECRET` | 16자 이상 무작위 문자열 (예: `openssl rand -hex 24`) — **AI API 키를 계정에 암호화 보관**(2026-09-04, 18-ai.md §키 보관). 비우면 보관만 꺼지고 키는 브라우저에만 남는다. **한 번 정하면 바꾸지 말 것** | ❌ | ✅ |
   | `NODE_ENV` | `production` | ❌ **해제 필수** | ✅ |
   | `AUTH_MODE` → `supabase` + `SUPABASE_JWT_SECRET` | Phase 3 활성화 시 — **GoTrue 배포 후에만** (현재 dev 서버는 순정 PG16 + `AUTH_MODE=dev`. 활성화 경로: backend-phase1.md Phase 3) | ✅ | ✅ |
 

@@ -154,5 +154,28 @@ ok('다른 사용자 격리', Array.isArray(other.maps) && !other.maps.some((m) 
 const missing = await req('GET', '/v1/maps/11111111-1111-1111-1111-111111111111');
 ok('없는 맵 404', missing.status === 404, `status=${missing.status}`);
 
+// ═══ AI API 키 보관 (2026-09-04) ═══════════════════════════════
+// AI_KEY_SECRET 이 있으면 등록 → 조회(복호화) → 삭제 왕복, 없으면 enabled:false 로
+// 조용히 꺼져 있는지 본다 (둘 다 500 이 아니어야 한다).
+const ak0 = await req('GET', '/v1/account/ai-keys');
+ok('ai-keys 조회 200 + enabled 불리언', ak0.status === 200 && typeof ak0.data?.enabled === 'boolean', JSON.stringify(ak0.data));
+if (ak0.data?.enabled) {
+  const put = await req('PUT', '/v1/account/ai-keys', { provider: 'anthropic', key: 'sk-ant-smoke-1234' });
+  ok('ai-keys 등록 → hint 끝자리', put.status === 200 && put.data?.saved === true && put.data?.hint === '…1234', JSON.stringify(put.data));
+  const ak1 = (await req('GET', '/v1/account/ai-keys')).data;
+  ok('ai-keys 조회에 복호화된 키가 돌아온다', ak1.keys?.anthropic?.key === 'sk-ant-smoke-1234' && ak1.keys.anthropic.hint === '…1234');
+  const other2 = (await req('GET', '/v1/account/ai-keys', undefined, { 'x-user-id': '00000000-0000-0000-0000-000000000009' })).data;
+  ok('ai-keys 는 남의 것이 안 보인다', !other2.keys?.anthropic);
+  const bad = await req('PUT', '/v1/account/ai-keys', { provider: 'unknown', key: 'x' });
+  ok('알 수 없는 회사는 400', bad.status === 400, `status=${bad.status}`);
+  const del = await req('PUT', '/v1/account/ai-keys', { provider: 'anthropic', key: '' });
+  ok('빈 키 = 삭제', del.status === 200 && del.data?.saved === false);
+  const ak2 = (await req('GET', '/v1/account/ai-keys')).data;
+  ok('삭제 뒤 조회에 없다', !ak2.keys?.anthropic);
+} else {
+  const put = await req('PUT', '/v1/account/ai-keys', { provider: 'anthropic', key: 'sk-ant-smoke-1234' });
+  ok('보관이 꺼져 있으면 등록은 503 + 이유 문장', put.status === 503 && /AI_KEY_SECRET|표/.test(put.data?.message ?? ''), JSON.stringify(put.data));
+}
+
 console.log(failed ? `\n${failed}건 실패` : '\n전체 통과');
 process.exit(failed ? 1 : 0);

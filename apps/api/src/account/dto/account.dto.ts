@@ -1,5 +1,5 @@
 import {
-  IsEmail, IsOptional, IsString, Length, MaxLength, MinLength,
+  IsEmail, IsIn, IsOptional, IsString, Length, MaxLength, MinLength,
 } from 'class-validator';
 
 /** [이메일 인증] 버튼 — 인증번호 발송 */
@@ -98,4 +98,17 @@ export class ResetConfirmDto {
 export class LoginEventDto {
   @IsOptional() @IsString() @MaxLength(60) platform?: string;
   @IsOptional() @IsString() @MaxLength(60) browser?: string;
+}
+
+/**
+ * AI API 키 등록/삭제 (2026-09-04). `key` 를 비우면 그 회사의 키를 지운다.
+ * 회사 이름은 프런트 `aiProviders.ts` 의 PROVIDERS 와 같다.
+ */
+export class SaveAiKeyDto {
+  @IsIn(['anthropic', 'openai', 'gemini'], { message: '알 수 없는 AI 회사입니다.' })
+  provider!: 'anthropic' | 'openai' | 'gemini';
+
+  @IsString()
+  @MaxLength(512)
+  key!: string;
 }

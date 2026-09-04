@@ -80,6 +80,11 @@ export const useAuthStore = create<AuthState>()(
         // 에서 다음 사람이 로그인했을 때 앞사람 문서가 복구 배너로 뜬다.
         // 서버 로그아웃이 실패해도 이건 반드시 해야 하므로 먼저 한다.
         await clearAllLocalDrafts();
+        // 계정에서 받아 온 AI API 키도 지운다 — 공용 PC 에 남기지 않는다
+        // (동적 import: aiKeysSync → apiClient → 이 스토어 순환을 끊는다)
+        await import('@/services/cloud/aiKeysSync')
+          .then((m) => m.clearAiKeysOnLogout())
+          .catch(() => { /* 정리 실패가 로그아웃을 막지 않는다 */ });
         if (cur) await supabaseAuth.signOut(cur.accessToken);
       },
 

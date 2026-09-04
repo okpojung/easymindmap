@@ -52,6 +52,10 @@ interface EditorUiState {
 
   // Multi-node add dialog (Ctrl+Space)
   multiAddOpen: boolean;
+  // 'AI 설정' 대화상자 (아바타 메뉴 — 2026-09-04). AI 탭의 "키 등록" 버튼도
+  // 여기를 켠다 — 대화상자는 UserMenu 가 그리므로 상태는 스토어에 둔다.
+  aiSettingsOpen: boolean;
+  setAiSettingsOpen: (v: boolean) => void;
 
   // 간격·정렬 (08-layout.md §6.8 layout_config의 MVP 구현):
   // 레이아웃 계산 결과에 루트 기준 축별 배율로 적용되는 간격 조정값.
@@ -122,6 +126,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   showTags: true,
   hiddenTags: [],
   multiAddOpen: false,
+  aiSettingsOpen: false,
   spacingX: 1,
   spacingY: 1,
   sidebarWidth: 300,
@@ -180,4 +185,5 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
         : [...s.hiddenTags, tag],
     })),
   setMultiAddOpen: (multiAddOpen) => set({ multiAddOpen }),
+  setAiSettingsOpen: (aiSettingsOpen) => set({ aiSettingsOpen }),
 }));

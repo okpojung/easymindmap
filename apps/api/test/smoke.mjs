@@ -177,5 +177,19 @@ if (ak0.data?.enabled) {
   ok('보관이 꺼져 있으면 등록은 503 + 이유 문장', put.status === 503 && /AI_KEY_SECRET|표/.test(put.data?.message ?? ''), JSON.stringify(put.data));
 }
 
+// ═══ AI 설정(우선순위·모델·프롬프트) 계정 보관 (2026-09-04) — 비밀과 무관 ═══
+const as0 = await req('GET', '/v1/account/ai-settings');
+ok('ai-settings 조회 200 + available', as0.status === 200 && typeof as0.data?.available === 'boolean', JSON.stringify(as0.data));
+if (as0.data?.available) {
+  const put = await req('PUT', '/v1/account/ai-settings', { priority: ['gemini', 'anthropic', 'openai'], models: { gemini: 'gemini-2.5-pro' }, systemPrompt: '스모크 템플릿' });
+  ok('ai-settings 저장', put.status === 200 && put.data?.saved === true, JSON.stringify(put.data));
+  const as1 = (await req('GET', '/v1/account/ai-settings')).data;
+  ok('ai-settings 조회에 그대로', as1.settings?.priority?.[0] === 'gemini' && as1.settings?.models?.gemini === 'gemini-2.5-pro' && as1.settings?.systemPrompt === '스모크 템플릿');
+  const bad = await req('PUT', '/v1/account/ai-settings', { priority: ['nope'] });
+  ok('알 수 없는 회사는 400', bad.status === 400, `status=${bad.status}`);
+  const other3 = (await req('GET', '/v1/account/ai-settings', undefined, { 'x-user-id': '00000000-0000-0000-0000-000000000009' })).data;
+  ok('ai-settings 는 남의 것이 안 보인다', other3.settings === null);
+}
+
 console.log(failed ? `\n${failed}건 실패` : '\n전체 통과');
 process.exit(failed ? 1 : 0);

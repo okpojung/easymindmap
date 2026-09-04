@@ -16,7 +16,8 @@ import { useCloudStore } from '@/stores/cloudStore';
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { listDrafts } from '@/utils/localDraft';
 import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
-import { AiKeysForm } from '@/components/auth/AiKeysForm';
+import { AiSettingsView } from '@/editor/inspector-panels/AiSettingsView';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import { LoginHistoryList, type LoginHistory } from '@/components/auth/LoginHistoryList';
 
 interface MenuEntry {
@@ -32,8 +33,9 @@ const ENTRIES: MenuEntry[] = [
   // 비밀번호 변경은 **'준비 중'이 아니라 실제로 동작한다** — soon 이 없으면
   // 클릭이 안내가 아니라 기능으로 간다 (2026-08-13 사용자 요청).
   { id: 'password', icon: '🔑', label: '비밀번호 변경' },
-  // AI API 키 — 계정에 암호화 보관, 어디서 로그인하든 따라온다 (2026-09-04)
-  { id: 'aikeys', icon: '🤖', label: 'AI API 키' },
+  // AI 설정 — 키(암호화)·우선순위·모델·프롬프트 템플릿, 계정에 저장돼 어디서
+  // 로그인하든 따라온다 (2026-09-04 — AI 탭의 '설정' 을 여기로 옮겼다)
+  { id: 'aisettings', icon: '🤖', label: 'AI 설정' },
   // 내 로그인 기록 — 남의 것은 볼 수 없다(서버가 토큰 주인만 조회한다)
   { id: 'logins', icon: '🕘', label: '로그인 기록' },
   { id: 'profile', icon: '👤', label: '계정 프로필', soon: '표시 이름·비밀번호 변경 — 계정 관리 단계에서 열립니다.' },
@@ -115,7 +117,9 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const [warnDrafts, setWarnDrafts] = useState<number | null>(null);
   /** 비밀번호 변경 창 (2026-08-13) */
   const [pwOpen, setPwOpen] = useState(false);
-  const [aiKeysOpen, setAiKeysOpen] = useState(false);
+  // AI 설정 대화상자 — AI 탭의 '키 등록' 버튼도 켜므로 스토어에 있다
+  const aiSettingsOpen = useEditorUiStore((s) => s.aiSettingsOpen);
+  const setAiSettingsOpen = useEditorUiStore((s) => s.setAiSettingsOpen);
   /** 내 로그인 기록 창 (2026-08-13) */
   const [logOpen, setLogOpen] = useState(false);
   const [logs, setLogs] = useState<LoginHistory | null>(null);
@@ -302,7 +306,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               title={e.soon ?? e.label}
               onClick={() => {
                 if (e.id === 'password') { setOpen(false); setPwOpen(true); return; }
-                if (e.id === 'aikeys') { setOpen(false); setAiKeysOpen(true); return; }
+                if (e.id === 'aisettings') { setOpen(false); setAiSettingsOpen(true); return; }
                 if (e.id === 'logins') { openLogins(); return; }
                 setSoon(soon === e.id ? null : e.id);
               }}
@@ -569,9 +573,9 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
         </div>
       )}
 
-      {aiKeysOpen && (
+      {aiSettingsOpen && (
         <div
-          onClick={() => setAiKeysOpen(false)}
+          onClick={() => setAiSettingsOpen(false)}
           style={{
             position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -579,20 +583,25 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            data-testid="ai-keys-dialog"
+            data-testid="ai-settings-dialog"
             style={{
-              width: 'min(460px, 92vw)', background: t.surface, color: t.text,
+              width: 'min(560px, 94vw)', maxHeight: '88vh', overflowY: 'auto',
+              background: t.surface, color: t.text,
               border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
               boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
             }}
           >
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 12 }}>
-              🤖 AI API 키
+            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
+              🤖 AI 설정
             </div>
-            <AiKeysForm t={t} />
+            <div style={{ fontSize: 11.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 8 }}>
+              API 키 · 사용 우선순위 · 모델 · EMM 프롬프트 템플릿 — 계정에 저장되어
+              다른 PC·브라우저에서 로그인해도 따라옵니다.
+            </div>
+            <AiSettingsView t={t} />
             <button
-              data-testid="ai-keys-close"
-              onClick={() => setAiKeysOpen(false)}
+              data-testid="ai-settings-close"
+              onClick={() => setAiSettingsOpen(false)}
               style={{
                 width: '100%', height: 34, marginTop: 10, borderRadius: 7,
                 border: `1px solid ${t.border}`, background: t.surfaceAlt,

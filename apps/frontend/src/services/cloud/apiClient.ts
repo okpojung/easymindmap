@@ -288,6 +288,14 @@ export const cloudApi = {
     reason?: 'secret' | 'schema';
     keys: Record<string, { key: string; hint: string; updatedAt: string }>;
   }>('GET', '/account/ai-keys'),
+  /** AI 설정(우선순위·모델·프롬프트 템플릿) — 비밀이 아니라 AI_KEY_SECRET 과 무관 */
+  getAiSettings: () => req<{
+    available: boolean;
+    settings: { priority?: string[]; models?: Record<string, string>; systemPrompt?: string } | null;
+    updatedAt: string | null;
+  }>('GET', '/account/ai-settings'),
+  saveAiSettings: (settings: { priority: string[]; models: Record<string, string>; systemPrompt: string }) =>
+    req<{ saved: boolean }>('PUT', '/account/ai-settings', settings),
   /** 등록/교체(빈 문자열 = 삭제). 보관이 꺼져 있으면 503 + 이유 문장 */
   saveAiKey: (provider: string, key: string) =>
     req<{ provider: string; saved: boolean; hint?: string }>(

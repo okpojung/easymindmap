@@ -613,6 +613,26 @@ export const cloudApi = {
    */
   unpublishMap: (mapId: string) => req<void>('DELETE', `/maps/${mapId}/publish`),
   /**
+   * ★ **주인이 보는 미리보기** (2026-09-05) — 비공개(보관)여도 받아진다.
+   *
+   * `<img src>` 로 못 여는 이유: 이 경로는 인증이 필요한데 `<img>` 는
+   * Authorization 헤더를 붙이지 않는다. 그래서 여기서 받아 blob 으로 준다.
+   * 비인증 주소(`publishedPreviewUrl`)는 **무료공개일 때만** 열린다.
+   */
+  getPublishPreview: async (mapId: string): Promise<Blob> => {
+    const headers: Record<string, string> = {};
+    if (authEnabled) {
+      const token = await getFreshAccessToken();
+      if (!token) throw new CloudError(401, '로그인이 필요합니다.');
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const res = await fetch(`${BASE}/v1/maps/${mapId}/publish/preview`, {
+      headers, cache: 'no-store',
+    });
+    if (!res.ok) throw new CloudError(res.status, '미리보기를 받지 못했습니다.');
+    return res.blob();
+  },
+  /**
    * 미리보기 실루엣 올리기 — 그림은 **이 브라우저가** 만든다
    * (`export/silhouette.ts`). 서버에는 헤드리스 브라우저가 없다.
    */

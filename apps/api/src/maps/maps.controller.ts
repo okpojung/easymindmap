@@ -126,7 +126,8 @@ export class MapsController {
         platform: sanitizeLabel(dto.client?.platform) ?? platformFromUa(ua),
         browser: sanitizeLabel(dto.client?.browser) ?? browserFromUa(ua),
         ip: clientIpOf(req),
-      });
+      },
+      { baseUpdatedAt: dto.baseUpdatedAt });
   }
 
   // editSession(탭 고유 키)을 주면 편집 잠금을 시도하고 결과를

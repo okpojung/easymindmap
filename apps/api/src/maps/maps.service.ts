@@ -536,6 +536,23 @@ export class MapsService {
      * ip 는 컨트롤러가 요청에서 뽑은 값이다(클라이언트 입력이 아니다).
      */
     client?: { platform?: string; browser?: string; ip?: string },
+    opts: {
+      /**
+       * **덮어쓰기 방지** (2026-09-05, AI 대화가 열린 맵에 붙이는 일 때문에).
+       * 클라이언트가 마지막으로 받은 문서의 `updatedAt`. 서버 문서가 그보다
+       * 새로우면(다른 곳이 먼저 썼으면) 409 `{code:'STALE'}` 로 거절한다 —
+       * 화면에 없는 내용을 화면의 옛 사본으로 지우지 않기 위해서다.
+       * 주지 않으면 검사하지 않는다(옛 클라이언트·MCP 는 그대로).
+       */
+      baseUpdatedAt?: string;
+      /**
+       * 편집 잠금을 어떻게 볼지. 'same-user-ok' 는 **같은 사용자**의 살아 있는
+       * 잠금은 "다른 세션"으로 치지 않는다 — MCP(AI 대화)가 사용자 자신의
+       * 열린 맵에 붙일 때 쓴다. 그 탭은 `baseUpdatedAt` 검사와 하트비트의
+       * `updatedAt` 으로 덮어쓰기를 피한다(mcp-connector.md §9.8).
+       */
+      lockPolicy?: 'strict' | 'same-user-ok';
+    } = {},
   ) {
     const map = await this.requireAccessibleMap(userId, mapId, 'write');
 
@@ -570,7 +587,8 @@ export class MapsService {
     // 막히고, 프런트는 그것을 "편집권 상실"로 읽어 **맵과의 연결을
     // 끊는다.** 협업이 첫날 막히는 자리가 여기다.
     if (!isCollabMap(map)) {
-      if (await this.isLockedByOther(mapId, editSession)) {
+      const sameUserOk = opts.lockPolicy === 'same-user-ok' ? userId : undefined;
+      if (await this.isLockedByOther(mapId, editSession, sameUserOk)) {
         throw new ConflictException(
           '다른 세션(브라우저)에서 편집 중인 맵입니다 — 그쪽에서 맵을 닫은 뒤 다시 시도하세요.',
         );
@@ -590,15 +608,35 @@ export class MapsService {
     const docJson = JSON.stringify(doc);
     const newBytes = Buffer.byteLength(docJson);
     const { rows: cur } = await this.db.query<{
-      b: string; same: boolean; branches: number | null;
+      b: string; same: boolean; branches: number | null; updated_at: Date;
     }>(
       `SELECT COALESCE(octet_length(doc::text), 0) AS b,
               (doc = $2::jsonb) AS same,
-              jsonb_array_length(doc -> 'map' -> 'branches') AS branches
+              jsonb_array_length(doc -> 'map' -> 'branches') AS branches,
+              updated_at
          FROM public.map_documents WHERE map_id = $1`,
       [mapId, docJson],
     );
     const sameDoc = cur[0]?.same === true;
+
+    // ── 덮어쓰기 방지 (2026-09-05) ─────────────────────────────────────
+    // 클라이언트가 안다고 말한 시각보다 서버 문서가 새로우면, 그 클라이언트는
+    // **보지 못한 내용 위에** 쓰려는 것이다(AI 대화가 붙인 가지 등). 내용이
+    // 같으면(sameDoc) 겹칠 것이 없으니 통과 — 자동저장이 조회만 하고 지나갈 때
+    // 거짓 충돌을 내지 않기 위해서다. 여유는 두지 않는다 — 클라이언트가 보내는
+    // 값은 서버가 준 그 시각(ms)을 그대로 돌려준 것이라, 1ms 라도 앞서면
+    // 그 사이에 누군가 썼다는 뜻이다(AI 가 열기 직후 붙이는 경우가 실제로 그렇다).
+    if (opts.baseUpdatedAt && cur[0] && !sameDoc) {
+      const base = Date.parse(opts.baseUpdatedAt);
+      const now = new Date(cur[0].updated_at).getTime();
+      if (Number.isFinite(base) && now > base) {
+        throw new ConflictException({
+          code: 'STALE',
+          message: '이 맵이 다른 곳(AI 대화 등)에서 먼저 바뀌었습니다 — 맵을 다시 열어 최신 내용을 받은 뒤 편집해 주세요.',
+          updatedAt: cur[0].updated_at,
+        });
+      }
+    }
 
     // ── 마지막 방어선: **빈 문서는 내용 있는 맵을 덮어쓸 수 없다** ─────
     // 가지가 하나도 없는 문서로 내용이 있던 맵을 덮어쓰는 저장은
@@ -651,7 +689,9 @@ export class MapsService {
       // 문서가 그대로여도 **폴더나 형제 맵의 이름이 바뀌었을 수** 있다 —
       // 그러면 이 맵의 파일 자리도 달라진다. 예약해 두고 판단은 미러가 한다.
       this.vault.scheduleMirror(userId, mapId);
-      return { mapId, updatedAt: map.updated_at, unchanged: true as const };
+      // **문서의 시각**을 돌려준다(맵 표의 시각이 아니라). 클라이언트는 이
+      // 값을 다음 저장의 baseUpdatedAt 으로 쓰므로 하트비트와 같은 기준이어야 한다.
+      return { mapId, updatedAt: cur[0]?.updated_at ?? map.updated_at, unchanged: true as const };
     }
 
     const delta =
@@ -998,16 +1038,22 @@ export class MapsService {
   }
 
   /** 다른 살아 있는 세션이 잠금을 쥐고 있으면 true (저장 거절 판단용) */
-  private async isLockedByOther(mapId: string, sessionKey?: string): Promise<boolean> {
-    const { rows } = await this.db.query<{ session_key: string; heartbeat_at: Date }>(
-      `SELECT session_key, heartbeat_at FROM public.map_edit_locks WHERE map_id = $1`,
+  private async isLockedByOther(
+    mapId: string, sessionKey?: string, sameUserOk?: string,
+  ): Promise<boolean> {
+    const { rows } = await this.db.query<{ session_key: string; heartbeat_at: Date; user_id: string }>(
+      `SELECT session_key, heartbeat_at, user_id FROM public.map_edit_locks WHERE map_id = $1`,
       [mapId],
     );
     const cur = rows[0];
     if (!cur) return false;
     const stale =
       Date.now() - new Date(cur.heartbeat_at).getTime() > MapsService.EDIT_LOCK_TTL_MS;
-    return !stale && cur.session_key !== (sessionKey ?? '');
+    if (stale) return false;
+    if (cur.session_key === (sessionKey ?? '')) return false;
+    // 같은 사용자의 잠금을 봐주는 정책(MCP) — 그 탭은 baseUpdatedAt 로 스스로 지킨다
+    if (sameUserOk && cur.user_id === sameUserOk) return false;
+    return true;
   }
 
   /**
@@ -1071,7 +1117,13 @@ export class MapsService {
     // 갱신된 행이 0이라 held=false 가 나가고, 프런트는 그것을 편집권
     // 상실로 읽어 **맵과의 연결을 끊는다**. 조용히 편집이 로컬 초안으로
     // 빠지는 사고가 25초마다 일어난다.
-    if (isCollabMap(map)) return { held: true };
+    // **문서가 언제 마지막으로 바뀌었나**도 함께 준다 (2026-09-05). AI 대화
+    // (MCP)가 열린 맵에 붙이면 이 시각이 앞서 나가고, 탭은 그것을 보고
+    // 화면을 다시 읽는다 — 코어에는 서버가 밀어 주는 통로가 없어 이 하트비트가
+    // 그 역할을 겸한다(mcp-connector.md §9.8). 마지막 버전을 남긴 자리
+    // (platform)도 주어 "누가 바꿨나"를 말할 수 있게 한다.
+    const freshness = await this.docFreshness(mapId);
+    if (isCollabMap(map)) return { held: true, ...freshness };
     const { rowCount } = await this.db.query(
       `UPDATE public.map_edit_locks SET heartbeat_at = NOW()
         WHERE map_id = $1 AND session_key = $2`,
@@ -1079,7 +1131,23 @@ export class MapsService {
     );
     // held=false = 잠금을 잃었다 (TTL 만료 후 다른 세션이 가져감) —
     // 프런트가 알림을 띄울 수 있게 알려 준다
-    return { held: (rowCount ?? 0) > 0 };
+    return { held: (rowCount ?? 0) > 0, ...freshness };
+  }
+
+  /** 문서의 마지막 갱신 시각 + 마지막 히스토리 버전을 남긴 자리 */
+  private async docFreshness(mapId: string): Promise<{ updatedAt: Date | null; lastPlatform: string | null }> {
+    const { rows } = await this.db.query<{ updated_at: Date }>(
+      `SELECT updated_at FROM public.map_documents WHERE map_id = $1`, [mapId],
+    );
+    let lastPlatform: string | null = null;
+    if (await this.hasVersionClientCols()) {
+      const { rows: v } = await this.db.query<{ client_platform: string | null }>(
+        `SELECT client_platform FROM public.map_document_versions
+          WHERE map_id = $1 ORDER BY version DESC LIMIT 1`, [mapId],
+      );
+      lastPlatform = v[0]?.client_platform ?? null;
+    }
+    return { updatedAt: rows[0]?.updated_at ?? null, lastPlatform };
   }
 
   /** POST /maps/:id/edit-release — 맵 닫기·페이지 이탈 시 잠금 해제 */

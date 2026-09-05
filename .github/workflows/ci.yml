@@ -116,6 +116,9 @@ jobs:
       # 4) 타입 검사 — 타입 오류가 있으면 여기서 빨간 X
       - name: 타입 체크
         run: npm run type-check
+      # 프런트 순수 함수 단위 테스트 (2026-09-05) — EMM 선언 해석 · AI 덧붙이기 합치기
+      - name: 단위 테스트 (emmDeclaration · mergeAppends)
+        run: npm run test:unit
 
       # 5) 프로덕션 빌드 — 실제 빌드가 깨지지 않는지 확인
       - name: 프로덕션 빌드

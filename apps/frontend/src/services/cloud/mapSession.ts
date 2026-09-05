@@ -16,7 +16,10 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
-import { notifyExplicitSave, suppressCloudAutosave, isCollabDriving } from '@/hooks/useCloudAutosave';
+import { notifyExplicitSave, suppressCloudAutosave, isCollabDriving, handleStaleConflict } from '@/hooks/useCloudAutosave';
+import { useViewportStore } from '@/stores/viewportStore';
+import type { SampleMap } from '@/editor/__samples__/types';
+import { mergeServerAppends } from '@/utils/mergeAppends';
 import { cloudApi, CloudError, type MapKind } from '@/services/cloud/apiClient';
 import { editSessionKey } from '@/services/cloud/editSession';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
@@ -162,8 +165,20 @@ export async function saveCurrentMap(
   cloud.setBusy('saving');
   try {
     const title = cloud.cloudTitle ?? undefined;
-    const res = await cloudApi.saveDocument(
-      id, buildSnapshot(), title, keepVersion, editSessionKey(), allowEmpty === 'yes');
+    let res: Awaited<ReturnType<typeof cloudApi.saveDocument>>;
+    try {
+      res = await cloudApi.saveDocument(
+        id, buildSnapshot(), title, keepVersion, editSessionKey(), allowEmpty === 'yes',
+        cloud.lastSavedAt ?? undefined);
+    } catch (err) {
+      // 서버가 더 새롭다(AI 대화가 먼저 붙였다) — 편집분을 초안으로 보관하고
+      // 연결을 끊는다. 사용자에게는 무엇이 일어났는지 그대로 말한다.
+      if (err instanceof CloudError && err.code === 'STALE') {
+        await handleStaleConflict(id);
+        throw new CloudError(409, useCloudStore.getState().error ?? err.message, 'STALE');
+      }
+      throw err;
+    }
     useCloudStore.getState().link(id, res.updatedAt);
     // 이 문서를 그 맵에 저장했으니 이제 그 맵의 문서다 (자동저장 출처 검사)
     useDocumentStore.getState().setDocOrigin(id);
@@ -356,6 +371,74 @@ export function openMapInNewTab(mapId: string): boolean {
     return false;
   } catch {
     return false;
+  }
+}
+
+/**
+ * **서버가 바뀐 것을 알아채고 화면을 조용히 다시 읽는다** (2026-09-05).
+ *
+ * AI 대화(MCP `append_to_map`)가 이 탭이 열어 둔 맵에 가지를 붙이면 하트비트의
+ * `updatedAt` 이 앞서 나간다. 이 탭에 **저장되지 않은 편집이 없을 때만**
+ * 부른다 — 있으면 자동저장이 곧 409 STALE 을 받아 그쪽 길(초안 보관)로 간다.
+ *
+ * 열기(openMapHere)와 다른 점: 확대·이동과 선택을 **그대로 둔다.** 문서 경계를
+ * 넘는 것이 아니라 같은 맵의 새 내용이므로, 보던 자리에서 가지가 늘어난
+ * 것처럼 보여야 한다. 되돌리기 이력은 끊는다 — 되돌리기로 AI 가 붙인 가지를
+ * "편집 취소"처럼 지우면 그 저장이 서버의 그것을 덮어쓰기 때문이다.
+ */
+export async function refreshFromServer(
+  mapId: string, who?: string | null,
+): Promise<boolean> {
+  const cloud = useCloudStore.getState();
+  if (cloud.cloudMapId !== mapId || cloud.busy !== 'idle') return false;
+  const wasClean = useAutosaveStore.getState().saveState === 'saved';
+  cloud.setBusy('opening');
+  try {
+    const { doc, updatedAt, title, folderId, kind } =
+      await cloudApi.getDocument(mapId, editSessionKey());
+    const loadedMap = (doc as { map?: unknown }).map as SampleMap | undefined;
+    if (!loadedMap) return false;
+    // 응답을 기다리는 사이에 맵이 바뀌었으면 손대지 않는다
+    if (useCloudStore.getState().cloudMapId !== mapId) return false;
+    const label = who === 'MCP' ? 'AI 대화' : (who ? `다른 곳(${who})` : '다른 곳');
+
+    // **편집 중이면 통째로 바꾸지 않고 합친다** (2026-09-05 사용자 흐름:
+    // "AI 추가 → 내가 편집 → AI 에게 또 요청"). AI(`append_to_map`)는
+    // **덧붙이기만** 하므로, 서버에만 있는 노드를 같은 부모 아래에 끼워
+    // 넣으면 내 편집과 겹치지 않는다. 그다음 저장은 새 base 로 통과하고
+    // 양쪽이 다 실린다. 끼워 넣을 자리를 못 찾으면(덧붙이기가 아닌 변경)
+    // 손대지 않는다 — 저장 때 STALE 을 받아 초안 보관 길로 간다.
+    if (!wasClean || useAutosaveStore.getState().saveState !== 'saved') {
+      const local = useDocumentStore.getState().map;
+      const merged = mergeServerAppends(local, loadedMap);
+      if (!merged) return false;
+      useDocumentStore.getState().applyRemoteMap(merged.map);
+      useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
+      useCloudStore.getState().setNotice(
+        `${label}에서 붙인 가지 ${merged.added}개를 화면에 합쳤습니다 — 편집 중인 내용은 그대로입니다.`,
+      );
+      return true;
+    }
+
+    const vp = useViewportStore.getState();
+    const keepView = { zoom: vp.zoom, panX: vp.panX, panY: vp.panY };
+    const keepSel = useInteractionStore.getState().selectedId;
+
+    suppressCloudAutosave();
+    useDocumentStore.getState().loadMap(loadedMap as never,
+      { resetHistory: true, serverMapId: mapId });
+    useDocumentStore.getState().setMapTitle(title);
+    applySnapshotEditor(doc);
+    useViewportStore.setState(keepView);
+    useInteractionStore.getState().setSelectedId(keepSel);
+    useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
+    useAutosaveStore.getState().setSaveState('saved');
+    useCloudStore.getState().setNotice(`${label}에서 이 맵을 갱신했습니다 — 화면을 새로 읽었습니다.`);
+    return true;
+  } catch {
+    return false; // 다음 하트비트가 다시 시도한다
+  } finally {
+    if (useCloudStore.getState().busy === 'opening') useCloudStore.getState().setBusy('idle');
   }
 }
 

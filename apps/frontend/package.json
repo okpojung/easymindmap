@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "test:unit": "tsx src/utils/emmDeclaration.test.ts"
+    "test:unit": "tsx src/utils/emmDeclaration.test.ts && tsx src/utils/mergeAppends.test.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

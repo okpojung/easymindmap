@@ -60,12 +60,18 @@ check('result 봉투', rpcResult(7, { ok: 1 }), { jsonrpc: '2.0', id: 7, result:
 check('error 봉투', rpcError(null, RPC.METHOD_NOT_FOUND, '없음'),
   { jsonrpc: '2.0', id: null, error: { code: -32601, message: '없음' } });
 
-// ── ⑥ 1단계 도구는 create_map **하나뿐**이다 (§7) ───────────────────
-// 지우기·계정 도구가 실수로 섞여 들어가는 것을 여기서 막는다 (§2-3)
-check('도구는 하나', TOOL_DEFS.map((t) => t.name), ['create_map']);
-check('markdown 은 필수', TOOL_DEFS[0].inputSchema.required, ['markdown']);
-check('받는 인자는 셋', Object.keys(TOOL_DEFS[0].inputSchema.properties).sort(),
+// ── ⑥ 도구는 셋 — create_map(1단계) + list_maps·get_map(2단계, §7) ──
+check('도구는 셋', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map']);
+const byName = Object.fromEntries(TOOL_DEFS.map((t) => [t.name, t]));
+check('create_map: markdown 은 필수', byName.create_map.inputSchema.required, ['markdown']);
+check('create_map: 받는 인자는 셋', Object.keys(byName.create_map.inputSchema.properties).sort(),
   ['block_placement', 'markdown', 'title']);
+check('list_maps: 필수 인자 없음', byName.list_maps.inputSchema.required, undefined);
+check('list_maps: 받는 인자는 셋', Object.keys(byName.list_maps.inputSchema.properties).sort(),
+  ['folder', 'limit', 'query']);
+check('get_map: map_id 만 필수', byName.get_map.inputSchema.required, ['map_id']);
+// **지우거나 고치는 도구가 없다**(§2-3) — 이름으로 못 박는다
+check('삭제·수정 도구 없음', TOOL_DEFS.filter((t) => /delete|remove|update|append/.test(t.name)).length, 0);
 
 console.log(failed ? `\n${failed}개 실패` : '\n전부 통과');
 process.exit(failed ? 1 : 0);

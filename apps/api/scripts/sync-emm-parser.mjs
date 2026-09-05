@@ -32,9 +32,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SRC = join(here, '..', '..', '..', 'packages', 'emm-parser', 'src');
 const DEST = join(here, '..', 'src', 'emm');
 
-// parseMarkdownToMap 의 의존 닫힘 — parse.ts → { model, frontMatter, setext }.
-// 이 넷 말고는 아무것도 필요 없다(런타임 의존도 없다).
-const FILES = ['model.ts', 'frontMatter.ts', 'setext.ts', 'parse.ts'];
+// 의존 닫힘 — parseMarkdownToMap: parse.ts → { model, frontMatter, setext }
+// (1단계 create_map), serializeEmm: serialize.ts → { meta → note-images }
+// (2단계 get_map). 이 일곱 말고는 아무것도 필요 없다(런타임 의존도 없다).
+const FILES = ['model.ts', 'frontMatter.ts', 'setext.ts', 'parse.ts', 'note-images.ts', 'meta.ts', 'serialize.ts'];
 
 const BANNER = (name) =>
   `// ⚠️ 자동 복사본 — 직접 고치지 마세요.\n` +

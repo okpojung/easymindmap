@@ -100,6 +100,17 @@ export interface AppEnv {
    * (사용자가 다시 등록해야 한다).
    */
   AI_KEY_SECRET: string;
+  // ── 버전 정리 워커 (2026-09-06, 13a §2 · src/versions/) ─────────────
+  // 끄면 아무것도 지우지 않는다. 델타(pinned·version_days 칸)가 없어도 안 돈다.
+  VERSION_PRUNE_ENABLED: boolean;
+  // 저장 뒤 얼마 있다가 그 맵을 정리하나 (ms). 사진 GC 보다 뒤여야 한다.
+  VERSION_PRUNE_DEBOUNCE_MS: number;
+  // 전체 훑기 주기 (시간). 0 = 훑지 않는다(저장 뒤 정리만).
+  VERSION_PRUNE_SWEEP_HOURS: number;
+  // 보관 기간이 지난 뒤 실제로 지우기까지 유예 (일) — 13a §3.2 ③
+  VERSION_PRUNE_GRACE_DAYS: number;
+  // 이 시각(ISO) 이전 버전은 건드리지 않는다 — 13a §6 소급 금지. 비우면 전부.
+  VERSION_PRUNE_SINCE: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -183,6 +194,24 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     errors.push('AI_KEY_SECRET 은 16자 이상이어야 합니다 (비우면 AI 키 보관이 꺼집니다).');
   }
 
+  const VERSION_PRUNE_ENABLED = String(raw.VERSION_PRUNE_ENABLED ?? 'true') !== 'false';
+  const VERSION_PRUNE_DEBOUNCE_MS = Number(raw.VERSION_PRUNE_DEBOUNCE_MS ?? 60_000);
+  const VERSION_PRUNE_SWEEP_HOURS = Number(raw.VERSION_PRUNE_SWEEP_HOURS ?? 24);
+  const VERSION_PRUNE_GRACE_DAYS = Number(raw.VERSION_PRUNE_GRACE_DAYS ?? 7);
+  const VERSION_PRUNE_SINCE = String(raw.VERSION_PRUNE_SINCE ?? '2026-09-04T00:00:00Z').trim();
+  if (!Number.isFinite(VERSION_PRUNE_DEBOUNCE_MS) || VERSION_PRUNE_DEBOUNCE_MS < 0) {
+    errors.push('VERSION_PRUNE_DEBOUNCE_MS 는 0 이상이어야 합니다.');
+  }
+  if (!Number.isFinite(VERSION_PRUNE_SWEEP_HOURS) || VERSION_PRUNE_SWEEP_HOURS < 0) {
+    errors.push('VERSION_PRUNE_SWEEP_HOURS 는 0 이상이어야 합니다 (0 = 훑지 않음).');
+  }
+  if (!Number.isFinite(VERSION_PRUNE_GRACE_DAYS) || VERSION_PRUNE_GRACE_DAYS < 0) {
+    errors.push('VERSION_PRUNE_GRACE_DAYS 는 0 이상이어야 합니다.');
+  }
+  if (VERSION_PRUNE_SINCE && Number.isNaN(Date.parse(VERSION_PRUNE_SINCE))) {
+    errors.push('VERSION_PRUNE_SINCE 는 ISO 날짜여야 합니다 (예: 2026-09-04T00:00:00Z).');
+  }
+
   if (errors.length) {
     throw new Error('환경변수 오류:\n - ' + errors.join('\n - '));
   }
@@ -212,5 +241,10 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     ADMIN_EMAILS: String(raw.ADMIN_EMAILS ?? ''),
     GOTRUE_DATABASE_URL: String(raw.GOTRUE_DATABASE_URL ?? ''),
     AI_KEY_SECRET,
+    VERSION_PRUNE_ENABLED,
+    VERSION_PRUNE_DEBOUNCE_MS,
+    VERSION_PRUNE_SWEEP_HOURS,
+    VERSION_PRUNE_GRACE_DAYS,
+    VERSION_PRUNE_SINCE,
   };
 }

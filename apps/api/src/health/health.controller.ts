@@ -1,6 +1,7 @@
 import { Controller, Get, Req } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { clientIpOf } from '../common/client-info';
+import { VersionPruneService, type PruneStatus } from '../versions/version-prune.service';
 
 /**
  * 배포가 **실제로 반영됐는지** 헬스체크 한 번으로 알기 위한 값들
@@ -152,7 +153,10 @@ const REQUIRED_FK_RULES: ReadonlyArray<{ constraint: string; deleteRule: string 
  */
 @Controller('health')
 export class HealthController {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly prune: VersionPruneService,
+  ) {}
 
   @Get()
   async check(): Promise<{
@@ -165,6 +169,8 @@ export class HealthController {
     outdatedConstraints?: string[];
     commit?: string;
     runtime: { node: string; nestjs?: string; express?: string };
+    /** 버전 정리 워커 (13a §2) — 켜졌나·칸이 있나·마지막 훑기 */
+    versionPrune: PruneStatus;
     time: string;
   }> {
     const dbUp = await this.db.ping();
@@ -221,6 +227,7 @@ export class HealthController {
       // 배포 플랫폼이 커밋을 알려 주지 않으면 필드째 생략한다
       ...(BUILD_COMMIT ? { commit: BUILD_COMMIT } : {}),
       runtime: RUNTIME,
+      versionPrune: this.prune.status(),
       time: new Date().toISOString(),
     };
   }

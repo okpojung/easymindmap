@@ -93,6 +93,34 @@ Pro   1년   →                      ≈ 110개
 > `gcMapImages()` 가 하루 지난 것만 지우는 보호 장치가 있지만, 순서를
 > 명시적으로 잡는다.
 
+#### 2.2-1 실물 — 워커가 붙었다 (2026-09-06, e2e212)
+
+`apps/api/src/versions/` 둘: **계획은 순수 함수**(`version-prune-plan.ts`,
+DB 없이 단위 테스트), **실행은 서비스**(`version-prune.service.ts`).
+
+| 결정 | 실물 | 왜 |
+|---|---|---|
+| 언제 도나 (§8 미결이었다) | **둘 다** — 저장 뒤 60초(디바운스, 같은 맵은 합친다) + **하루 한 번 전체 훑기** | 활발한 맵은 저장이 곧 정리다. 저장이 끊긴 맵(Free 7일이 지나도록 안 연 맵)의 만료는 훑기가 아니면 영영 안 온다 |
+| 큐 | BullMQ **아니다** — vault 미러와 같은 `setTimeout` 디바운스 | 이 저장소에 큐가 아직 없다. 생기면 그때 옮긴다 |
+| 유예 | 보관 기간이 지나도 **7일 더** 두었다가 지운다 (`VERSION_PRUNE_GRACE_DAYS`) | §3.2 ③ "7일 유예를 두고 알린다" 의 서버 몫. 알림 화면은 아직 없지만 미리보기 API 가 `expiring[].deleteAt` 을 준다 |
+| 소급 | `VERSION_PRUNE_SINCE`(기본 2026-09-04, DB 를 비운 날) **이전 버전은 건드리지 않는다** | §6 "소급 적용하지 않는다" |
+| 절대 안 지우는 것 | 영구보관 · **맵의 최신 버전**(오래됐어도) · since 이전 것 | 복원의 기준점이 사라지면 안 된다 |
+| 칸에서 남기는 것 | **가장 새것** | Time Machine·borg·restic 과 같다 |
+| 칸이 없는 서버 | `pinned`·`version_days` 칸이 없으면 **아무것도 안 한다** (columnReady, 60초마다 재확인) | 영구보관을 구분 못 한 채 지우면 안 된다 |
+| 끄기 | `VERSION_PRUNE_ENABLED=false` | 정책을 바꿀 때 먼저 끄고 본다 |
+
+- **미리보기** `GET /v1/maps/:id/versions/prune-preview` → 지우지 않고
+  `{versionDays, graceDays, expired[], thinned[], expiring[{version,createdAt,deleteAt}], kept}`.
+  ③의 "곧 정리되는 버전" 카드가 이것을 그린다.
+- **헬스** `GET /v1/health` 의 `versionPrune` — `{enabled, ready, graceDays,
+  since, lastSweepAt, lastSweepMaps, lastSweepDeleted, deletedTotal}`.
+  운영에서 "돌고 있나" 는 `lastSweepAt` 하나로 본다.
+- **밀도 규칙의 칸** — 24시간 안은 칸 없이 최대 20개, 1~7일은 8시간 칸,
+  7~30일은 하루 칸, 그 뒤는 **7일 칸**(`floor(나이/7일)`) — "주 1개" 는
+  달력의 주가 아니라 나이 기준 7일 묶음이다.
+- 아직 없는 것: §3 의 화면(별표·이름·삭제 예고 카드)과 별표 API. 워커는
+  `pinned` 만 본다 — 화면이 붙으면 그대로 작동한다.
+
 ---
 
 ## 3. 영구보관 — 사용자가 어떻게 지정하는가
@@ -428,7 +456,8 @@ CREATE INDEX IF NOT EXISTS idx_versions_prune
 - **시스템 자동 보관 후보.** 내보내기 직전, 공유 링크 발행 시점처럼 "되돌아갈
   값어치가 큰" 순간을 시스템이 제안할 수 있다. 다만 상한을 소모하므로
   자동 지정이 아니라 **제안**이어야 한다. 구현할지 정하지 않았다
-- **`version-prune` 큐의 실행 주기.** 저장마다 큐잉할지, 일 1회 일괄로 돌지
+- ~~**`version-prune` 큐의 실행 주기.**~~ — **둘 다로 확정**(2026-09-06, §2.2-1):
+  저장 뒤 60초 + 하루 한 번 훑기. 해소됨
 - **간격 솎아내기의 구체적 경계값.** §2 의 24시간/7일/30일은 제안이고
   실측 후 조정한다
 - **개설자 탈퇴 시 CASCADE.** `maps.owner_id` 가 `ON DELETE CASCADE` 라

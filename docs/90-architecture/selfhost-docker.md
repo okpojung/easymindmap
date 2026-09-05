@@ -192,6 +192,9 @@ volumes:
 | `RATE_LIMIT_MAX` / `_WINDOW_MS` | 600 / 60000 | 사내망 단독 서버라면 넉넉하다. 근거는 [`../05-implementation/rate-limit.md`](../05-implementation/rate-limit.md) |
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | 앞에 nginx·Traefik 을 두면 **이 값이 맞아야 접속 IP 가 진짜가 된다** |
 | `SMTP_*` | (빈 값) | 비우면 메일 발송만 꺼진다. 앱은 죽지 않는다 |
+| `VERSION_PRUNE_ENABLED` | `true` | 히스토리 버전 정리 워커([13a](../03-editor-core/history/13a-version-retention.md) §2.2-1). `false` 면 아무것도 지우지 않는다 |
+| `VERSION_PRUNE_SINCE` | `2026-09-04T00:00:00Z` | 이 시각 이전 버전은 건드리지 않는다(소급 금지). **운영 중인 DB 에 처음 켤 때는 켜는 날로 맞춘다** |
+| `VERSION_PRUNE_GRACE_DAYS` / `_SWEEP_HOURS` / `_DEBOUNCE_MS` | 7 / 24 / 60000 | 보관 기간 뒤 유예 · 전체 훑기 주기(0 = 없음) · 저장 뒤 정리까지 |
 | `ADMIN_EMAILS` | (빈 값) | **비우면 관리자 콘솔에 아무도 못 들어간다**(기동 로그에 경고) |
 | `AI_KEY_SECRET` | (빈 값) | **비우면 AI API 키 계정 보관이 꺼진다**(키는 브라우저에만 남고 화면이 그 사실을 밝힌다). 16자 이상, 한 번 정하면 바꾸지 말 것 — 18-ai.md §키 보관 |
 | `GOTRUE_URL` | (빈 값) | 인증 구성에서 회원탈퇴가 로그인 계정까지 지우려면 필요 |

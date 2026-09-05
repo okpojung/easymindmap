@@ -167,6 +167,12 @@ export class MapsController {
     return this.maps.listVersions(user.id, id);
   }
 
+  // **`:version` 보다 먼저** — 'prune-preview' 가 정수 파싱에 걸리지 않게
+  @Get(':id/versions/prune-preview')
+  previewVersionPrune(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.maps.previewVersionPrune(user.id, id);
+  }
+
   @Get(':id/versions/:version')
   getVersion(
     @CurrentUser() user: AuthUser,

@@ -15,6 +15,7 @@
     "test:mcp": "node test/emm-to-doc.test.mjs && node test/doc-to-emm.test.mjs && node test/append-to-map.test.mjs && node test/map-template.test.mjs && node test/mcp-jsonrpc.test.mjs",
     "test:schema-degrade": "node test/schema-degrade.test.mjs",
     "test:table-ready": "node test/table-ready.test.mjs",
+    "test:version-prune": "node test/version-prune-plan.test.mjs",
     "sync:emm": "node scripts/sync-emm-parser.mjs",
     "check:emm": "node scripts/sync-emm-parser.mjs --check"
   },

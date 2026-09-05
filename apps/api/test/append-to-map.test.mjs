@@ -69,19 +69,48 @@ const kidsOf = (map, path) => findByPath(map, path).node.children ?? [];
 
 // ── ② 조각 파싱 ──────────────────────────────────────────────────────
 {
-  check('목록 조각', names(parseFragment('- a\n- b\n  - b1')), ['a', 'b']);
-  check('목록 들여쓰기 → 하위', names(parseFragment('- a\n- b\n  - b1')[1].children), ['b1']);
-  check('## 견출 조각', names(parseFragment('## x\n### x1\n## y')), ['x', 'y']);
-  check('# 로 시작해도 같은 깊이', names(parseFragment('# x\n## x1\n# y')), ['x', 'y']);
-  check('견출 아래 목록은 하위', names(parseFragment('## x\n- p\n- q')[0].children), ['p', 'q']);
-  throws('빈 조각 거절', () => parseFragment('   '), '비어');
-  throws('줄글만 있으면 거절', () => parseFragment('그냥 문장입니다.\n둘째 줄.'), '노드가 하나도');
+  check('목록 조각', names(parseFragment('- a\n- b\n  - b1').nodes), ['a', 'b']);
+  check('목록 들여쓰기 → 하위', names(parseFragment('- a\n- b\n  - b1').nodes[1].children), ['b1']);
+  check('## 견출 조각', names(parseFragment('## x\n### x1\n## y').nodes), ['x', 'y']);
+  check('# 로 시작해도 같은 깊이', names(parseFragment('# x\n## x1\n# y').nodes), ['x', 'y']);
+  check('견출 아래 목록은 하위', names(parseFragment('## x\n- p\n- q').nodes[0].children), ['p', 'q']);
+  throws('빈 조각 거절', () => parseFragment('   ').nodes, '비어');
+  check('줄글만 있으면 부모 아래 문단 노드 하나', names(parseFragment('그냥 문장입니다.\n둘째 줄.').nodes).length, 1);
+}
+
+
+// ── ②b 가짜 부모 `## _` — 견출 한 단계 내림 · 코드만 조각 · 종류별 노트 ────
+{
+  check('## 견출 아래 ### 은 그 하위', names(parseFragment('## x\n### x1\n## y').nodes[0].children), ['x1']);
+  check('코드만 있는 조각(기본) → 코드 노드', names(parseFragment('```sh\necho 1\n```').nodes), ['```sh']);
+  check('설명 문단 뒤 불릿 → 문단 노드의 하위(파서 규칙)', [names(parseFragment('설명 문단\n\n- a').nodes), names(parseFragment('설명 문단\n\n- a').nodes[0].children)], [['설명 문단'], ['a']]);
+  check('펜스 안의 # 은 견출이 아니다', names(parseFragment('```sh\n# comment\necho\n```').nodes), ['```sh']);
+  const f = parseFragment('```sh\n./deploy.sh\n```\n\n- 배포 스크립트\n\n```sh\n./x.sh\n```', { codeToNote: true });
+  check('codeToNote: 부모 바로 아래 코드 → parentNotes', f.parentNotes.map((x) => [x.type, x.text]), [['code_block', './deploy.sh']]);
+  check('codeToNote: 불릿 뒤 코드 → 그 불릿의 노트', [names(f.nodes), f.nodes[0].notes.map((x) => x.text)], [['배포 스크립트'], ['./x.sh']]);
+  const g = parseFragment('- 항목\n\n' + '가'.repeat(320), { longParagraphToNote: 300 });
+  check('long: 불릿 뒤 긴 문단 → 그 불릿의 문단 노트', [names(g.nodes), g.nodes[0].notes.map((x) => x.type)], [['항목'], ['paragraph']]);
+  check('노트만 있는 조각도 허용(parentNotes)', parseFragment('```sh\nls\n```', { codeToNote: true }).nodes.length, 0);
+  throws('빈 조각은 여전히 거절', () => parseFragment('  '), '비어');
+}
+
+// ── ③b 부모 노트 — codeToNote 로 부모 바로 아래 코드가 부모 노드의 노트로 ──
+{
+  const m = base();
+  const r = appendSubtree(m, '할 일', parseFragment('```sh\n./deploy.sh\n```\n- 새 항목', { codeToNote: true }));
+  const todo = findByPath(r.map, '할 일').node;
+  check('부모 노드에 코드 노트가 달린다', todo.notes.map((x) => [x.type, x.text]), [['code_block', './deploy.sh']]);
+  check('노트 id 도 mcp- 로 새로', /^mcp-/.test(todo.notes[0].id), true);
+  check('노드는 노드대로 붙는다 · notesAdded', [names(todo.children).slice(-1), r.notesAdded, r.added], [['새 항목'], 1, 1]);
+  const r2 = appendSubtree(m, '', parseFragment('```sh\nls\n```', { codeToNote: true }));
+  check('루트 아래면 루트의 노트', r2.map.root.notes.map((x) => x.type), ['code_block']);
+  check('원본 루트는 그대로', m.root.notes, undefined);
 }
 
 // ── ③ 붙이는 모양 ────────────────────────────────────────────────────
 {
   const m = base();
-  const r = appendSubtree(m, '할 일', parseFragment('- 회의록 공유\n- 일정표 갱신\n  - 담당 배정'));
+  const r = appendSubtree(m, '할 일', parseFragment('- 회의록 공유\n- 일정표 갱신\n  - 담당 배정').nodes);
   check('부모 아래 맨 뒤에 붙는다', names(kidsOf(r.map, '할 일')), ['문서 정리', '배포 점검', '회의록 공유', '일정표 갱신']);
   check('붙인 수(하위 포함)·바로 아래 수', [r.added, r.topCount], [3, 2]);
   check('경로 문장', r.parentPath, '할 일');
@@ -96,7 +125,7 @@ const kidsOf = (map, path) => findByPath(map, path).node.children ?? [];
 {
   // 루트 아래 — 색 순환·방향 번갈아 (기존 가지 3개 뒤라 4번째=l1D/left, 5번째=l1E/right)
   const m = base();
-  const r = appendSubtree(m, '', parseFragment('## 위험\n- 일정 지연\n## 참고'));
+  const r = appendSubtree(m, '', parseFragment('## 위험\n- 일정 지연\n## 참고').nodes);
   const b = r.map.branches;
   check('최상위 가지가 는다', names(b), ['결정 사항', '할 일', '다음 회의', '위험', '참고']);
   check('색은 자리로 순환', b.slice(3).map((x) => x.colorKey), ['l1D', 'l1E']);
@@ -108,19 +137,19 @@ const kidsOf = (map, path) => findByPath(map, path).node.children ?? [];
   // 층별 레이아웃 — settings.levelLayouts 가 있으면 새 노드에 박힌다 (#374 와 같은 규칙)
   const m = base();
   m.settings = { ...(m.settings ?? {}), levelLayouts: [null, 'radial', 'tree-right', 'tree-right'] };
-  const r = appendSubtree(m, '할 일', parseFragment('- x\n  - y'));
+  const r = appendSubtree(m, '할 일', parseFragment('- x\n  - y').nodes);
   const x = kidsOf(r.map, '할 일')[2];
   check('깊이 2 → tree-right + tree-line', [x.layoutType, x.edgeType], ['tree-right', 'tree-line']);
   check('깊이 3 → tree-right', x.children[0].layoutType, 'tree-right');
-  const r2 = appendSubtree(m, '', parseFragment('## z'));
+  const r2 = appendSubtree(m, '', parseFragment('## z').nodes);
   check('깊이 1 → radial + curve-line', [r2.map.branches[3].layoutType, r2.map.branches[3].edgeType], ['radial', 'curve-line']);
   // 선언이 없으면 같은 깊이의 첫 노드를 따른다
   const m2 = base();
   m2.branches[0].children[0].layoutType = 'tree-left';
-  const r3 = appendSubtree(m2, '다음 회의', parseFragment('- w'));
+  const r3 = appendSubtree(m2, '다음 회의', parseFragment('- w').nodes);
   check('선언 없음 → 같은 깊이 첫 노드의 레이아웃', kidsOf(r3.map, '다음 회의')[1].layoutType, 'tree-left');
   const m3 = base();
-  const r4 = appendSubtree(m3, '할 일', parseFragment('- v'));
+  const r4 = appendSubtree(m3, '할 일', parseFragment('- v').nodes);
   check('아무 정보 없으면 layoutType 을 넣지 않는다', 'layoutType' in kidsOf(r4.map, '할 일')[2], false);
 }
 
@@ -129,7 +158,7 @@ const kidsOf = (map, path) => findByPath(map, path).node.children ?? [];
   const m = base();
   const ids = new Set();
   const walk = (ns) => ns.forEach((n) => { ids.add(n.id); walk(n.children ?? []); });
-  const r = appendSubtree(m, '할 일', parseFragment('- a\n- b'));
+  const r = appendSubtree(m, '할 일', parseFragment('- a\n- b').nodes);
   walk(r.map.branches);
   let total = 0; const cnt = (ns) => ns.forEach((n) => { total++; cnt(n.children ?? []); }); cnt(r.map.branches);
   check('id 전부 유일', ids.size, total);
@@ -140,7 +169,7 @@ const kidsOf = (map, path) => findByPath(map, path).node.children ?? [];
   const m = base();
   let deep = '- d1';
   for (let i = 2; i <= MAX_DEPTH; i++) deep += '\n' + '  '.repeat(i - 1) + `- d${i}`;
-  throws('상한을 넘으면 거절', () => appendSubtree(m, '다음 회의 > 안건', parseFragment(deep)), '너무 깊습니다');
+  throws('상한을 넘으면 거절', () => appendSubtree(m, '다음 회의 > 안건', parseFragment(deep).nodes), '너무 깊습니다');
 }
 
 console.log(failed === 0 ? '\n모두 통과' : `\n실패 ${failed}건`);

@@ -16,7 +16,8 @@
  * 규칙이 어긋나면 사용자는 "AI 가 붙인 가지만 색·모양이 다르다" 로 겪는다.
  */
 import { parseMarkdownToMap } from '../emm/parse';
-import type { LayoutType, MindNode, NodeColorKey, SampleBranch, SampleMap } from '../emm/model';
+import { placementOf, type PlacementOptions } from './emm-to-doc';
+import type { LayoutType, MindNode, NodeColorKey, NoteBlock, SampleBranch, SampleMap } from '../emm/model';
 
 export class AppendError extends Error {}
 
@@ -121,26 +122,61 @@ export function findByPath(map: SampleMap, pathArg: string): Found {
   return { node: cands[0].node, depth: cands[0].depth, path: cands[0].path.join(' > ') };
 }
 
+/** 조각을 읽은 결과 — 부모 아래에 붙일 노드들과, **부모 자신에게** 달 노트들 */
+export interface Fragment {
+  nodes: MindNode[];
+  /** 부모 바로 아래(불릿·견출 전)에 놓인 블록 중 노트로 가는 것 — codeToNote 등 */
+  parentNotes: NoteBlock[];
+}
+
 /**
  * EMM 조각 → 붙일 하위 트리. 조각은 견출(`#`/`##` …)이나 목록(`- 항목`)으로
- * 시작하는 마크다운이다. 가짜 루트 `# _` 를 앞에 두고 레퍼런스 파서에
- * 맡긴다 — 파서는 "첫 H1 이후의 H1 은 2레벨" 이라 조각이 `#` 로 시작하든
- * `##` 로 시작하든 **상대 깊이가 보존**된다. 마크다운을 여기서 다시 읽지
- * 않는다(두 벌이 되면 어긋난다).
+ * 시작하는 마크다운이다.
+ *
+ * **가짜 루트 `# _` + 가짜 부모 `## _`** 를 앞에 두고 레퍼런스 파서에 맡긴다.
+ * `## _` 가 **붙일 부모 노드** 노릇을 한다 — 그래야 ⑴ 부모 바로 아래 놓인
+ * 코드·긴 문단이 (`codeToNote` 등으로) 부모의 노트가 되고 ⑵ 불릿 뒤의 블록이
+ * 그 불릿의 노트가 되며 ⑶ 코드만 있는 조각도 버려지지 않는다(예전에는 `# _`
+ * 만 두어 "견출을 본 적 없음" 상태라 루트 노트로 새어 사라졌다).
+ * 조각의 견출은 **두 단계 내린다**(`#`→`###`, `##`→`####`) — 그래야 `## _`
+ * 의 하위가 되고 조각 안의 상대 깊이도 지켜진다(6단계에서 잘린다). 코드 펜스 안은 손대지
+ * 않는다. 마크다운을 여기서 다시 읽지 않는다(두 벌이 되면 어긋난다).
  */
-export function parseFragment(markdown: string, blockPlacement: 'node' | 'note' = 'node'): MindNode[] {
+export function parseFragment(
+  markdown: string,
+  placement: 'node' | 'note' | PlacementOptions = 'node',
+): Fragment {
+  const blockPlacement = placementOf(placement);
   const body = String(markdown ?? '').replace(/^\uFEFF/, '').trim();
   if (!body) throw new AppendError('`markdown` 이 비어 있습니다 — 붙일 내용을 넣어 주세요.');
-  const wrapped = `# _\n\n${body}\n`;
-  const parsed = parseMarkdownToMap(wrapped, '_', { blockPlacement });
-  const kids = (parsed?.branches ?? []) as MindNode[];
-  if (kids.length === 0) {
+  const shifted: string[] = [];
+  let inFence = false;
+  for (const line of body.split('\n')) {
+    if (/^\s*```/.test(line)) { inFence = !inFence; shifted.push(line); continue; }
+    if (!inFence) {
+      const h = line.match(/^(#{1,6})(\s+.*)$/);
+      if (h) {
+        // 두 단계 내린다 — `# x` 뒤의 `## x1` 이 그 하위인 상대 깊이를 지키려면
+        // `#`→`###`, `##`→`####` 이어야 한다(둘 다 `###` 이면 형제가 된다).
+        const level = Math.min(6, h[1].length + 2);
+        shifted.push('#'.repeat(level) + h[2]);
+        continue;
+      }
+    }
+    shifted.push(line);
+  }
+  const wrapped = `# _\n\n## _\n\n${shifted.join('\n')}\n`;
+  const parsed = parseMarkdownToMap(wrapped, '_', blockPlacement);
+  const host = (parsed?.branches ?? [])[0] as MindNode | undefined;
+  const nodes = ((host?.children ?? []) as MindNode[]);
+  const parentNotes = (host?.notes ?? []) as NoteBlock[];
+  if (nodes.length === 0 && parentNotes.length === 0) {
     throw new AppendError(
       '붙일 노드가 하나도 안 나왔습니다 — 조각은 `## 이름` 견출이나 `- 항목` 목록으로 적어 주세요. ' +
       '줄글만 있으면 노드가 되지 않습니다.',
     );
   }
-  return kids;
+  return { nodes, parentNotes };
 }
 
 function subtreeDepth(nodes: MindNode[]): number {
@@ -197,6 +233,7 @@ export interface AppendResult {
   map: SampleMap;
   added: number;          // 붙인 노드 수(하위 포함)
   topCount: number;       // 부모 바로 아래에 생긴 노드 수
+  notesAdded: number;     // 부모 노드에 단 노트 수 (codeToNote 등)
   parentPath: string;
 }
 
@@ -205,7 +242,11 @@ export interface AppendResult {
  * id 는 `mcp-<시각>-<n>` 로 다시 매긴다 — 파서가 준 `md-…` 는 같은 밀리초에
  * 만든 옛 노드와 겹칠 수 있다.
  */
-export function appendSubtree(map: SampleMap, parentPath: string, fragment: MindNode[]): AppendResult {
+export function appendSubtree(
+  map: SampleMap, parentPath: string, fragmentIn: MindNode[] | Fragment,
+): AppendResult {
+  const fragment = Array.isArray(fragmentIn) ? fragmentIn : fragmentIn.nodes;
+  const parentNotes = Array.isArray(fragmentIn) ? [] : fragmentIn.parentNotes;
   const target = findByPath(map, parentPath);
   const newDepth = target.depth + subtreeDepth(fragment);
   if (newDepth > MAX_DEPTH) {
@@ -223,6 +264,10 @@ export function appendSubtree(map: SampleMap, parentPath: string, fragment: Mind
     return id;
   };
 
+  /** 파서가 준 노트 id(`md-…`)도 노드 id 와 같은 이유로 새로 매긴다 */
+  const stampNotes = (notes: NoteBlock[]): NoteBlock[] =>
+    notes.map((n) => ({ ...n, id: freshId() }));
+
   let added = 0;
   const decorate = (nodes: MindNode[], depth: number, color: NodeColorKey | undefined): MindNode[] =>
     nodes.map((n, i) => {
@@ -238,6 +283,7 @@ export function appendSubtree(map: SampleMap, parentPath: string, fragment: Mind
       const out: MindNode = {
         ...rest,
         id: freshId(),
+        ...(rest.notes?.length ? { notes: stampNotes(rest.notes as NoteBlock[]) } : {}),
         ...(myColor ? { colorKey: myColor } : {}),
         ...(isBranch ? { side: (map.branches.length + i) % 2 === 0 ? 'right' : 'left' } : {}),
         ...(lt && !n.layoutType ? { layoutType: lt, edgeType: resolveEdgeType(lt) } : {}),
@@ -248,9 +294,12 @@ export function appendSubtree(map: SampleMap, parentPath: string, fragment: Mind
 
   if (!target.node) {
     const branches = decorate(fragment, 1, undefined) as SampleBranch[];
+    const root = parentNotes.length
+      ? { ...map.root, notes: [...(map.root.notes ?? []), ...stampNotes(parentNotes)] }
+      : map.root;
     return {
-      map: { ...map, branches: [...map.branches, ...branches] },
-      added, topCount: branches.length, parentPath: target.path,
+      map: { ...map, root, branches: [...map.branches, ...branches] },
+      added, topCount: branches.length, notesAdded: parentNotes.length, parentPath: target.path,
     };
   }
 
@@ -258,12 +307,18 @@ export function appendSubtree(map: SampleMap, parentPath: string, fragment: Mind
   const kids = decorate(fragment, target.depth + 1, color);
   const tgt = target.node;
   const replace = (nodes: MindNode[]): MindNode[] => nodes.map((n) => {
-    if (n === tgt) return { ...n, children: [...((n.children ?? []) as MindNode[]), ...kids] };
+    if (n === tgt) {
+      return {
+        ...n,
+        children: [...((n.children ?? []) as MindNode[]), ...kids],
+        ...(parentNotes.length ? { notes: [...(n.notes ?? []), ...stampNotes(parentNotes)] } : {}),
+      };
+    }
     const c = (n.children ?? []) as MindNode[];
     return c.length ? { ...n, children: replace(c) } : n;
   });
   return {
     map: { ...map, branches: replace(map.branches as MindNode[]) as SampleBranch[] },
-    added, topCount: kids.length, parentPath: target.path,
+    added, topCount: kids.length, notesAdded: parentNotes.length, parentPath: target.path,
   };
 }

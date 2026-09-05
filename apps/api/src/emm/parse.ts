@@ -55,6 +55,16 @@ export interface ParseEmmOptions {
   blockPlacement?: 'node' | 'note';
   // 호출자가 넘긴 객체에 통계를 채워 준다 (반환 타입 호환 유지)
   stats?: { movedToNote: number };
+  /**
+   * **종류별 노트 배치** (2026-09-05, MCP "코드는 노트코드로 첨부해줘").
+   * `blockPlacement:'node'` 일 때만 뜻이 있다 — 'note' 면 어차피 전부 노트다.
+   *   · `codeToNote`: 코드 펜스를 자식 노드가 아니라 **현재 노드의 코드 노트**로
+   *   · `longParagraphToNote`: 견출 아래 문단이 이 글자 수 **이상**이면 자식
+   *     노드가 아니라 **현재 노드의 문단 노트**로 ("긴 문장은 노트 문단으로")
+   * 둘 다 없으면 지금까지와 같다(노드 내용으로).
+   */
+  codeToNote?: boolean;
+  longParagraphToNote?: number;
 }
 
 // "A4 한 장" 근사 — 노드 본문 제한 (텍스트 글자 수, 이미지 1장 = 600자)
@@ -254,6 +264,24 @@ export function parseMarkdownToMap(
     return node;
   };
 
+  // 종류별 노트 배치(codeToNote·longParagraphToNote)가 노트를 붙일 **주인** —
+  // 스택 맨 위가 아니라 **문단 노드가 아닌 가장 가까운 조상**(견출·불릿).
+  // 문단이 먼저 자식 노드가 된 뒤 긴 문단·코드가 오면, 그 노트는 방금 생긴
+  // 문단 노드가 아니라 사용자가 말한 "그 노드"(견출)에 달려야 한다.
+  const paraNodes = new WeakSet<MindNode>();
+  const noteHost = (): MindNode | null => {
+    for (let i = stack.length - 1; i >= 0; i--) {
+      if (!paraNodes.has(stack[i].node)) return stack[i].node;
+    }
+    return null;
+  };
+  const addNoteToHost = (note: NoteBlock) => {
+    const host = sawHeading ? noteHost() : null;
+    if (!host) { rootNotes.push(note); return; }
+    host.notes = host.notes ?? [];
+    host.notes.push(note);
+  };
+
   // 노트를 붙일 현재 노드 — 견출 전이면 루트
   const addNote = (note: NoteBlock) => {
     if (!sawHeading || stack.length === 0) rootNotes.push(note);
@@ -388,10 +416,23 @@ export function parseMarkdownToMap(
       // 사진을 복원한다 — 대체 텍스트로 노드를 만들지 않는다
       return;
     }
+    // longParagraphToNote — 긴 문단은 자식 노드가 아니라 현재 노드의 문단 노트
+    // (2026-09-05). 짧은 문단은 지금까지처럼 자식 노드다.
+    if (
+      opts.longParagraphToNote && opts.longParagraphToNote > 0
+      && text.length >= opts.longParagraphToNote && stack.length
+    ) {
+      addNoteToHost({ id: nid(), type: 'paragraph', text });
+      if (opts.stats) opts.stats.movedToNote += 1;
+      return;
+    }
     // 순번 문단 섹션이 열려 있으면 그 하위로 (아니면 견출 하위)
     lastBlockNode = null;
     const depth = sectionDepth !== null ? sectionDepth + 1 : lastHeadingDepth + 1;
-    if (attach(depth, text)) paraDepth = depth;
+    if (attach(depth, text)) {
+      paraDepth = depth;
+      paraNodes.add(stack[stack.length - 1].node); // 문단 노드 — 노트 주인이 되지 않는다
+    }
   };
   const flushTable = () => {
     if (!tableBuf.length) return;
@@ -456,7 +497,10 @@ export function parseMarkdownToMap(
           // 'node'면 **각각의 자식 노드**의 ``` 펜스(코드 패널 렌더)로
           // 분리 (markmap 파리티, 2026-07-31) — 원문 보존(링크 미추출)
           const block = '```' + (fenceLang || '') + '\n' + code + '\n```';
-          if (!attachBlockChild(block, false)) {
+          // codeToNote — 자식 노드 대신 **가장 가까운 견출·불릿 노드**의 코드 노트
+          if (opts.codeToNote) {
+            addNoteToHost({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
+          } else if (!attachBlockChild(block, false)) {
             addNote({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
           }
         }

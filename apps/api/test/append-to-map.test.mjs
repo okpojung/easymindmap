@@ -58,6 +58,13 @@ const kidsOf = (map, path) => findByPath(map, path).node.children ?? [];
   dup.branches[0].children.push({ id: 'x1', text: '회고', children: [] });
   throws('중복 이름 → 후보 경로를 전부', () => findByPath(dup, '회고'), '"결정 사항 > 회고"');
   throws('경로가 중간에서 끊기면 없음', () => findByPath(m, '할 일 > 안건'), '찾지 못했습니다');
+  // `id:` — 앱이 알려 준 선택 노드로 바로 (이름이 겹쳐도 헷갈리지 않는다)
+  const dup2 = base();
+  dup2.branches[0].children.push({ id: 'x2', text: '회고', children: [] });
+  const target = dup2.branches[2].children[0].children[0]; // 다음 회의 > 안건 > 회고
+  check('id: 로 정확한 노드', findByPath(dup2, `id:${target.id}`).path, '다음 회의 > 안건 > 회고');
+  check('id:root 는 루트', findByPath(dup2, 'id:root').node, null);
+  throws('id 가 없으면 "다시 고르라"', () => findByPath(dup2, 'id:없는id'), '다시 고른');
 }
 
 // ── ② 조각 파싱 ──────────────────────────────────────────────────────

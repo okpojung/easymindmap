@@ -50,6 +50,24 @@ export interface Found {
  */
 export function findByPath(map: SampleMap, pathArg: string): Found {
   const raw = (pathArg ?? '').trim();
+  // `id:<노드 id>` — 앱이 알려 준 선택 노드(FocusService)로 바로 간다. 이름이
+  // 겹쳐도 헷갈릴 일이 없다. 대화에서 AI 가 쓰는 형식은 아니다(id 는 본문에 없다).
+  if (/^id:/i.test(raw)) {
+    const id = raw.slice(3).trim();
+    if (!id || id === 'root') return { node: null, depth: 0, path: nodeTitle(map.root) || map.title };
+    let hit: Found | null = null;
+    const dig = (nodes: MindNode[], depth: number, path: string[]) => {
+      for (const n of nodes) {
+        if (hit) return;
+        const p = [...path, nodeTitle(n)];
+        if (n.id === id) { hit = { node: n, depth, path: p.join(' > ') }; return; }
+        dig((n.children ?? []) as MindNode[], depth + 1, p);
+      }
+    };
+    dig(map.branches as MindNode[], 1, []);
+    if (!hit) throw new AppendError('앱에서 선택한 노드가 이 맵에 더는 없습니다 — 앱에서 노드를 다시 고른 뒤 다시 불러 주세요.');
+    return hit;
+  }
   // 루트 — 빈 값, root/루트/중심 주제, 또는 아웃라인의 첫 줄(`# 제목`) 그대로
   if (!raw || /^(root|루트|중심 주제|중심)$/i.test(raw) || /^#\s+/.test(raw)) {
     return { node: null, depth: 0, path: nodeTitle(map.root) || map.title };

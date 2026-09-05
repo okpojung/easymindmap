@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FoldersService } from '../folders/folders.service';
+import { FocusService } from '../maps/focus.service';
 import { MapsService } from '../maps/maps.service';
 import { AppendError, appendSubtree, parseFragment } from './append-to-map';
 import { DocShapeError, docToEmm, mapFromDoc } from './doc-to-emm';
@@ -118,11 +119,21 @@ export const TOOL_DEFS: McpToolDef[] = [
       properties: {
         map_id: {
           type: 'string',
-          description: '`list_maps` 가 돌려준 맵 id (UUID).',
+          description: '`list_maps` 가 돌려준 맵 id (UUID), 또는 `"current"` = 사용자가 앱에서 지금 열어 둔 맵.',
         },
       },
       required: ['map_id'],
     },
+  },
+  {
+    name: 'get_open_map',
+    title: '사용자가 지금 앱에서 열어 둔 맵과 선택한 노드',
+    description:
+      '사용자가 EasyMindMap 앱에서 **지금 열어 둔 맵**과 **선택한 노드**를 알려 준다(맵 id · 이름 · 선택 노드 경로). ' +
+      '사용자가 "지금 열려 있는 맵" · "선택한 노드 아래에" 처럼 말하면 이것으로 확인하거나, ' +
+      '바로 get_map / append_to_map 에 `map_id:"current"`, `parent:"selected"` 를 넣어도 된다. ' +
+      '앱이 1분 넘게 조용하면(닫았거나 로그아웃) "열린 맵이 없다" 고 답한다.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'append_to_map',
@@ -130,16 +141,17 @@ export const TOOL_DEFS: McpToolDef[] = [
     description:
       '기존 맵의 **한 노드 아래에** 마크다운 조각을 하위 가지로 덧붙인다. ' +
       '`parent` 는 노드 이름(`"할 일"`) 또는 경로(`"2분기 > 협업"`)이고, 비우거나 `root` 면 중심 주제 바로 아래 새 가지가 된다. ' +
+      '**사용자가 앱에서 지금 열어 둔 맵의 선택한 노드 아래**에 붙이려면 `map_id:"current"`, `parent:"selected"` 를 쓴다(get_open_map 이 그 자리를 보여 준다). ' +
       '`markdown` 은 `## 이름` 견출이나 `- 항목` 목록으로 시작하는 조각이다 — 그 최상위 항목들이 parent 의 새 하위 노드가 되고 더 깊은 견출·들여쓴 목록은 그 아래로 간다. ' +
       '있는 노드를 바꾸거나 지우지는 않는다(덧붙이기만). 앱에서 그 맵을 열어 둔 채여도 된다 — 앱 화면이 몇 초 안에 갱신된다. ' +
       '저장은 히스토리 버전으로 남으므로 앱의 [히스토리] 에서 되돌릴 수 있다. 노드 이름은 get_map 으로 먼저 확인한다.',
     inputSchema: {
       type: 'object',
       properties: {
-        map_id: { type: 'string', description: '`list_maps` 가 돌려준 맵 id (UUID).' },
+        map_id: { type: 'string', description: '`list_maps` 가 돌려준 맵 id (UUID), 또는 `"current"` = 사용자가 앱에서 지금 열어 둔 맵.' },
         parent: {
           type: 'string',
-          description: '붙일 부모 노드 — 이름 또는 `"가지 > 하위"` 경로. 비우면 중심 주제 아래(새 최상위 가지).',
+          description: '붙일 부모 노드 — 이름 또는 `"가지 > 하위"` 경로, 또는 `"selected"` = 앱에서 지금 선택한 노드. 비우면 중심 주제 아래(새 최상위 가지).',
         },
         markdown: {
           type: 'string',
@@ -176,6 +188,7 @@ export class McpToolsService {
   constructor(
     private readonly maps: MapsService,
     private readonly folders: FoldersService,
+    private readonly focus: FocusService,
   ) {}
 
   list(): McpToolDef[] {
@@ -195,8 +208,57 @@ export class McpToolsService {
       case 'list_maps': return this.listMaps(userId, args);
       case 'get_map': return this.getMap(userId, args);
       case 'append_to_map': return this.appendToMap(userId, args);
+      case 'get_open_map': return this.getOpenMap(userId);
       default: return text(`알 수 없는 도구입니다: ${name}`, true);
     }
+  }
+
+  /** `map_id` 가 "지금 열린 맵" 을 뜻하는 말인가 */
+  private static isCurrentMapWord(v: string): boolean {
+    return /^(current|open|opened|now|active|현재|현재 맵|지금|열린 맵|열려 있는 맵|열려있는 맵)$/i.test(v.trim());
+  }
+  /** `parent` 가 "선택한 노드" 를 뜻하는 말인가 */
+  private static isSelectedWord(v: string): boolean {
+    return /^(selected|selection|selected node|current node|선택|선택 노드|선택한 노드|선택된 노드|지금 선택)$/i.test(v.trim());
+  }
+
+  /**
+   * `map_id` 를 푼다 — UUID 면 그대로, "current" 류면 앱이 알려 준 열린 맵.
+   * 실패는 사람이 읽을 문장(AI 가 사용자에게 전한다).
+   */
+  private resolveMapId(userId: string, raw: unknown): { mapId: string } | { error: string } {
+    const v = typeof raw === 'string' ? raw.trim() : '';
+    if (!v || McpToolsService.isCurrentMapWord(v)) {
+      const f = this.focus.get(userId);
+      if (!f) {
+        return { error: '앱에서 열어 둔 맵이 없습니다 — EasyMindMap 앱에서 맵을 열어 두거나(1분 안에 알려집니다), list_maps 로 맵 id 를 찾아 주세요.' };
+      }
+      return { mapId: f.mapId };
+    }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) {
+      return { error: '`map_id` 가 맵 id(UUID) 모양이 아닙니다 — list_maps 가 돌려준 id 를 그대로 넣거나, 앱에서 열어 둔 맵이면 "current" 라고 적어 주세요.' };
+    }
+    return { mapId: v };
+  }
+
+  /** `get_open_map` — 앱이 지금 보고 있는 자리 */
+  private async getOpenMap(userId: string): Promise<ToolResult> {
+    const f = this.focus.get(userId);
+    if (!f) {
+      return text('앱에서 열어 둔 맵이 없습니다 (닫았거나, 로그아웃했거나, 1분 넘게 조용합니다). 맵을 열어 두면 몇 초 안에 알려집니다.');
+    }
+    let title = '';
+    try { title = (await this.maps.getOne(userId, f.mapId)).title; } catch { /* 지워졌거나 권한이 사라짐 */ }
+    const where = f.nodeId === null
+      ? '선택한 노드 없음 (append_to_map 의 parent 를 이름으로 적거나 앱에서 노드를 고르세요)'
+      : f.nodeId === 'root' || f.path.length === 0
+        ? '중심 주제(루트)가 선택됨 — parent:"selected" 면 새 최상위 가지가 된다'
+        : `선택한 노드: "${f.path.join(' > ')}"`;
+    const age = Math.round((Date.now() - f.at) / 1000);
+    return text(
+      `지금 열린 맵: "${title || '(이름을 읽지 못함)'}" (id: ${f.mapId})\n${where}\n` +
+      `(${age}초 전 앱이 알려 줌. 이 맵에 붙이려면 append_to_map 에 map_id:"current", parent:"selected" 를 넣으면 된다.)`,
+    );
   }
 
   /**
@@ -284,10 +346,9 @@ export class McpToolsService {
    * MapsService 가 한다 — 남의 맵이면 404 가 오고 그 문장을 그대로 전한다.
    */
   private async getMap(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
-    const mapId = typeof args.map_id === 'string' ? args.map_id.trim() : '';
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapId)) {
-      return text('`map_id` 가 맵 id(UUID) 모양이 아닙니다 — list_maps 가 돌려준 id 를 그대로 넣어 주세요.', true);
-    }
+    const rid = this.resolveMapId(userId, args.map_id);
+    if ('error' in rid) return text(rid.error, true);
+    const mapId = rid.mapId;
     let docRes;
     try {
       docRes = await this.maps.getDocument(userId, mapId);
@@ -331,11 +392,20 @@ export class McpToolsService {
    * **되돌리기**: `keepVersion=true` 로 저장해 히스토리 버전이 남는다.
    */
   private async appendToMap(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
-    const mapId = typeof args.map_id === 'string' ? args.map_id.trim() : '';
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapId)) {
-      return text('`map_id` 가 맵 id(UUID) 모양이 아닙니다 — list_maps 가 돌려준 id 를 그대로 넣어 주세요.', true);
+    const rid = this.resolveMapId(userId, args.map_id);
+    if ('error' in rid) return text(rid.error, true);
+    const mapId = rid.mapId;
+    let parent = typeof args.parent === 'string' ? args.parent : '';
+    // "선택한 노드" — 앱이 알려 준 자리로. 그 맵이 지금 열린 맵이어야 뜻이 맞는다.
+    if (parent && McpToolsService.isSelectedWord(parent)) {
+      const f = this.focus.get(userId);
+      if (!f) return text('앱에서 선택한 노드를 알 수 없습니다 — 앱에서 그 맵을 열어 두고 노드를 고른 뒤 다시 불러 주세요(1분 안에 알려집니다).', true);
+      if (f.mapId !== mapId) {
+        return text(`앱에서 지금 열어 둔 맵은 다른 맵(id: ${f.mapId})입니다 — 그 맵에 붙이려면 map_id:"current" 로, 이 맵에 붙이려면 parent 를 노드 이름으로 적어 주세요.`, true);
+      }
+      if (f.nodeId === null) return text('앱에서 선택한 노드가 없습니다 — 앱에서 노드를 고르거나 parent 를 노드 이름으로 적어 주세요.', true);
+      parent = `id:${f.nodeId}`;
     }
-    const parent = typeof args.parent === 'string' ? args.parent : '';
     const placement = args.block_placement === 'note' ? 'note' : 'node';
 
     let fragment;

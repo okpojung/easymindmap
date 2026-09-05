@@ -359,9 +359,15 @@ export const cloudApi = {
   // 편집 잠금 — 하트비트(5초 주기, held=false 면 잠금을 잃음)·해제.
   // `updatedAt`·`lastPlatform` = 서버 문서의 마지막 갱신 시각과 그 자리
   // (2026-09-05) — AI 대화가 붙인 것을 탭이 알아채는 통로다.
-  editHeartbeat: (mapId: string, sessionKey: string) =>
+  // `focus` = 지금 선택한 노드(id·이름 경로) — MCP 의 `parent:"selected"` 가
+  // 읽는다(2026-09-05). nodeId null = 선택 없음.
+  editHeartbeat: (
+    mapId: string, sessionKey: string,
+    focus?: { nodeId: string | null; path: string[] },
+  ) =>
     req<{ held: boolean; updatedAt?: string | null; lastPlatform?: string | null }>(
-      'POST', `/maps/${mapId}/edit-heartbeat`, { sessionKey }),
+      'POST', `/maps/${mapId}/edit-heartbeat`,
+      { sessionKey, ...(focus ? { focusNodeId: focus.nodeId ?? '', focusPath: focus.path } : {}) }),
   editRelease: (mapId: string, sessionKey: string) =>
     req<{ ok: boolean }>('POST', `/maps/${mapId}/edit-release`, { sessionKey }),
   listVersions: (mapId: string) =>

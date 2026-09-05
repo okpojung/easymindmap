@@ -1,3 +1,4 @@
+import { FocusService } from './focus.service';
 import {
   ConflictException, ForbiddenException, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
@@ -61,6 +62,7 @@ export class MapsService {
     private readonly attachments: AttachmentsService, // 저장 용량 쿼터 (B9)
     private readonly vault: VaultService,             // 파일 미러 (셀프호스트)
     private readonly prune: VersionPruneService,      // 버전 정리 워커 (13a §2)
+    private readonly focus: FocusService,             // 열린 맵·선택 노드 (MCP §9.9)
   ) {}
 
   /**
@@ -1136,8 +1138,19 @@ export class MapsService {
   }
 
   /** POST /maps/:id/edit-heartbeat — 편집 탭이 25초마다 잠금을 연장 */
-  async editHeartbeat(userId: string, mapId: string, sessionKey: string) {
+  async editHeartbeat(
+    userId: string, mapId: string, sessionKey: string,
+    focus?: { nodeId?: string | null; path?: string[] },
+  ) {
     const map = await this.requireAccessibleMap(userId, mapId, 'write');
+    // 지금 보고 있는 자리 — MCP 의 `map_id:"current"` · `parent:"selected"` 가 읽는다
+    if (focus) {
+      this.focus.set(userId, {
+        mapId, sessionKey,
+        nodeId: focus.nodeId ?? null,
+        path: (focus.path ?? []).map((s) => String(s).slice(0, 200)).slice(0, 60),
+      });
+    }
     // **협업맵은 잃을 잠금이 없다** (2026-08-16, B16 ①). 표를 그냥 두면
     // 갱신된 행이 0이라 held=false 가 나가고, 프런트는 그것을 편집권
     // 상실로 읽어 **맵과의 연결을 끊는다**. 조용히 편집이 로컬 초안으로
@@ -1178,6 +1191,7 @@ export class MapsService {
   /** POST /maps/:id/edit-release — 맵 닫기·페이지 이탈 시 잠금 해제 */
   async editRelease(userId: string, mapId: string, sessionKey: string) {
     const map = await this.requireAccessibleMap(userId, mapId, 'write');
+    this.focus.clear(userId, mapId, sessionKey); // 닫았으니 "열린 맵" 이 아니다
     // 협업맵은 애초에 잠근 적이 없다 — 지울 것이 없다 (B16 ①)
     if (isCollabMap(map)) return { ok: true };
     await this.db.query(

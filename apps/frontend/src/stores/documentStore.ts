@@ -400,6 +400,26 @@ export function findNodeInMap(map: SampleMap, nodeId: string | null): MindNode |
   return findNode(map.branches, nodeId);
 }
 
+/**
+ * 노드까지의 **이름 경로**(가지 → … → 노드) — 여러 줄 본문이면 첫 줄.
+ * 루트·없음이면 []. MCP 의 "선택한 노드 아래에" 가 사람 말로 그 자리를
+ * 부르는 데 쓴다(하트비트 focusPath, 2026-09-05).
+ */
+export function nodePathInMap(map: SampleMap, nodeId: string | null): string[] {
+  if (!nodeId || nodeId === 'root') return [];
+  const title = (n: MindNode) => String(n.text ?? '').split('\n')[0].trim();
+  const dig = (nodes: MindNode[], path: string[]): string[] | null => {
+    for (const n of nodes) {
+      const p = [...path, title(n)];
+      if (n.id === nodeId) return p;
+      const found = dig(n.children ?? [], p);
+      if (found) return found;
+    }
+    return null;
+  };
+  return dig(map.branches as MindNode[], []) ?? [];
+}
+
 function findNode(nodes: MindNode[], nodeId: string): MindNode | null {
   for (const node of nodes) {
     if (node.id === nodeId) return node;

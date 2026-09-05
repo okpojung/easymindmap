@@ -303,8 +303,12 @@ CREATE TABLE IF NOT EXISTS public.published_maps (
     map_id         UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
     publish_id     VARCHAR(20) UNIQUE NOT NULL,  -- URL slug (/p/{publish_id})
     storage_path   VARCHAR(500),
+    -- 퍼블리싱 문서함 안의 상태 (2026-09-05) — **행이 있는 동안 주소는 그대로다**
+    --   private = 보관(비공개) · public = 무료공개 · paid = 유료공개(27a, 준비 중)
+    visibility     VARCHAR(10) NOT NULL DEFAULT 'public'
+                   CHECK (visibility IN ('private', 'public', 'paid')),
     published_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    unpublished_at TIMESTAMPTZ
+    unpublished_at TIMESTAMPTZ                   -- NOT NULL = 퍼블리싱 등록 취소(주소 소멸)
 );
 
 CREATE INDEX IF NOT EXISTS idx_published_maps_publish_id ON public.published_maps(publish_id);
@@ -481,7 +485,7 @@ ALTER TABLE public.published_maps ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "published maps are publicly readable"
     ON public.published_maps FOR SELECT
-    USING (unpublished_at IS NULL);
+    USING (unpublished_at IS NULL AND visibility = 'public');
 
 CREATE POLICY "owners can manage publish"
     ON public.published_maps FOR ALL

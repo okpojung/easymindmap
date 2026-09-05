@@ -132,12 +132,21 @@ function mapType(m: MapListItem): {
   const base = m.kind === 'collab' ? '협업맵' : '단독맵';
   if (m.publishId) {
     const url = publicMapUrl(m.publishId);
+    // ★ **보관과 공개를 다르게 그린다** (2026-09-05). 둘 다 퍼블리싱
+    //   문서함에 있지만, **남이 지금 보고 있는가**가 다르다 — 그 차이를
+    //   숨기면 "내려 뒀다고 생각했는데 열려 있는" 사고가 그대로 남는다.
+    //   주소는 어느 쪽이든 같으므로 배지를 눌러 복사하는 것은 그대로다.
+    const priv = m.publishVisibility === 'private';
     return {
-      label: '🌐 퍼블리싱맵',
+      label: priv ? '🔒 보관중' : '🌐 퍼블리싱맵',
       strong: true,
       publishUrl: url,
-      title: `퍼블리싱 중 — 링크를 가진 사람은 로그인 없이 읽습니다 (${base})\n`
-        + `퍼블리싱 중에는 편집할 수 없습니다\n누르면 링크를 복사합니다\n${url}`,
+      title: priv
+        ? `퍼블리싱 문서함에 있습니다 — **비공개(보관)** 라 남에게는 열리지 않습니다 (${base})\n`
+          + `이 상태에서는 맵을 고칠 수 있습니다\n누르면 링크를 복사합니다\n${url}`
+        : `무료공개 중 — 링크를 가진 사람은 로그인 없이 읽습니다 (${base})\n`
+          + `공개 중에는 편집할 수 없습니다 (비공개로 바꾸면 고칠 수 있습니다)\n`
+          + `누르면 링크를 복사합니다\n${url}`,
     };
   }
   return m.kind === 'collab'

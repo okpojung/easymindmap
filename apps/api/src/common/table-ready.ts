@@ -80,6 +80,38 @@ export async function tableReady(
   return ready;
 }
 
+/**
+ * "이 **컬럼**이 이 서버에 있는가" (2026-09-05).
+ *
+ * 표는 있는데 칸 하나가 없는 서버가 생긴다 — 표를 만드는 델타는 적용했고
+ * 그 뒤에 칸을 더하는 델타는 아직인 경우다. 위 ⚠️ 가 적어 둔 대로 **503 을
+ * 잡아 판단하면 안 된다**(표 없음·칸 없음·함수 없음이 모두 같은 503 이다).
+ * 그래서 표와 **같은 방식으로** 직접 묻는다.
+ *
+ * 기억 규칙도 같다 — 있으면 영구히, 없으면 `missTtlMs` 동안만.
+ */
+export async function columnReady(
+  db: DatabaseService, table: string, column: string, opts: TableReadyOptions = {},
+): Promise<boolean> {
+  const [schema, name] = table.includes('.') ? table.split('.') : ['public', table];
+  const key = `${schema}.${name}::${column}`;
+  const now = opts.now ?? Date.now();
+  const missTtl = opts.missTtlMs ?? DEFAULT_MISS_TTL_MS;
+  const cur = memo.get(key);
+  if (cur?.ready === true) return true;
+  if (cur && !cur.ready && missTtl > 0 && now - cur.checkedAt < missTtl) return false;
+  const { rows } = await db.query<{ ok: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = $2 AND column_name = $3
+     ) AS ok`,
+    [schema, name, column],
+  );
+  const ready = rows[0]?.ok === true;
+  memo.set(key, { ready, checkedAt: now });
+  return ready;
+}
+
 /** 검증용 — 기억한 것을 지운다 (인자를 주면 그 표만) */
 export function resetTableReadyCache(table?: string): void {
   if (table) memo.delete(table);

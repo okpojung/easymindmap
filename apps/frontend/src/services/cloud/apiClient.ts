@@ -148,6 +148,11 @@ export interface MapListItem {
    */
   publishId?: string | null;
   /**
+   * 그 등록의 **상태** (2026-09-05) — 등록돼 있을 때만 온다.
+   * `visibility` 칸이 없는 서버에서는 등록된 것이 전부 `'public'` 이다.
+   */
+  publishVisibility?: PublishVisibility | null;
+  /**
    * 내용 검색(q) 결과에만 실린다 (2026-08-08).
    * **맵 안에서 맞은 건수** — 1건 = 조각 하나(노드 텍스트/노트/태그/
    * 링크/첨부 파일명). 0 이면 이름만 맞은 것이다.
@@ -238,6 +243,23 @@ function qs(q: MapListQuery = {}): string {
   return `?${p.toString()}`;
 }
 
+/**
+ * 퍼블리싱 문서함 안의 상태 (2026-09-05 사용자 결정).
+ *
+ *   `private` 보관    — 등록만 해 뒀다. 남에게는 404. **고칠 수 있다.**
+ *   `public`  무료공개 — 링크를 가진 누구나 읽는다. **고칠 수 없다.**
+ *   `paid`    유료공개 — 값을 매겨 판다 (27a, **아직 준비 중**).
+ *
+ * ★ 주소는 **등록**에 붙는다 — 상태를 오가도 그대로다.
+ */
+export type PublishVisibility = 'private' | 'public' | 'paid';
+
+export const VISIBILITY_LABEL: Record<PublishVisibility, string> = {
+  private: '비공개(보관)',
+  public: '무료공개',
+  paid: '유료공개',
+};
+
 /** 퍼블리싱 상태 (PUBL). available:false = 이 서버에 퍼블리싱 기능이 없다 */
 export interface PublishStatus {
   available: boolean;
@@ -252,6 +274,14 @@ export interface PublishStatus {
   publishable?: boolean;
   /** 퍼블리싱할 수 없으면 그 이유 (서버가 준 문장) */
   blockedReason?: string;
+  /** 지금 상태 — 등록돼 있을 때만 온다 */
+  visibility?: PublishVisibility;
+  /**
+   * 이 서버가 상태 전환을 할 수 있는가(`visibility` 칸이 있는가).
+   * false 면 화면은 전환 단추를 **아예 그리지 않는다** — 눌러 보고 나서야
+   * 실패를 만나지 않게.
+   */
+  canSetVisibility?: boolean;
 }
 
 /** 퍼블리싱된 맵 — 비인증으로 받는다. doc 은 저장 스냅샷 그대로다 */
@@ -557,9 +587,18 @@ export const cloudApi = {
    * 퍼블리싱 — **이미 퍼블리싱 중이면 그 링크를 그대로 돌려준다**(멱등).
    * 부를 때마다 새 링크를 뽑으면 이미 남에게 보낸 링크가 조용히 죽는다.
    */
-  publishMap: (mapId: string) =>
-    req<PublishStatus>('POST', `/maps/${mapId}/publish`),
-  /** 퍼블리싱 중단 — 그 주소는 즉시, 그리고 영구히 죽는다 */
+  publishMap: (mapId: string, visibility: PublishVisibility = 'public') =>
+    req<PublishStatus>('POST', `/maps/${mapId}/publish`, { visibility }),
+  /**
+   * 상태 전환 (비공개 ↔ 무료공개) — **주소는 그대로다** (2026-09-05).
+   * 고치는 순서가 이것이다: 비공개로 돌린다 → 고친다 → 다시 공개.
+   */
+  setPublishVisibility: (mapId: string, visibility: PublishVisibility) =>
+    req<PublishStatus>('PATCH', `/maps/${mapId}/publish`, { visibility }),
+  /**
+   * 퍼블리싱 **등록 취소** — 그 주소는 즉시, 그리고 **영구히** 죽는다.
+   * 잠시 내리는 것은 이것이 아니라 `setPublishVisibility('private')` 다.
+   */
   unpublishMap: (mapId: string) => req<void>('DELETE', `/maps/${mapId}/publish`),
   /**
    * 미리보기 실루엣 올리기 — 그림은 **이 브라우저가** 만든다

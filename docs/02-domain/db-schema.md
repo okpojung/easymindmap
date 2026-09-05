@@ -33,7 +33,7 @@
 | `nodes` | ✅ | ltree 정규화 경로 — **현재도 실존·가동 중**(스냅샷 경로와 병행, 프런트는 스냅샷 경로만 사용). `note` 컬럼 **없음**, `layout_type NOT NULL DEFAULT 'radial-bidirectional'`, **CHECK 제약 0건**, 번역 컬럼은 `text_lang`/`text_hash` 만 |
 | `tags` / `node_tags` | ✅ | `tags` 는 **owner_id 기반 개인 태그만** (`UNIQUE(owner_id, name)`) — `workspace_id` 없음 |
 | `node_notes` / `node_links` / `node_attachments` / `node_media` | ✅ | 노드 부가 정보. `node_media.media_type` 은 `DEFAULT 'image'`(설계본의 audio/video CHECK 없음) |
-| **`published_maps`** | ✅ | **무료 게시** (2026-09-04 구현) — 맵당 활성 링크 1개(`unpublished_at IS NULL`). `storage_path` 는 아직 안 쓴다(공개 화면은 저장 스냅샷을 받아 브라우저가 그린다). `27-publish-share.md` |
+| **`published_maps`** | ✅ | **퍼블리싱** (2026-09-04 구현 · 2026-09-05 `visibility`) — 맵당 활성 등록 1개(`unpublished_at IS NULL`). `visibility` 가 비공개(보관)·무료공개·유료공개(준비 중)를 가른다 — **주소는 등록에 붙으므로 상태를 오가도 그대로다**. `storage_path` 는 미리보기 실루엣 키다. `27-publish-share.md` |
 | `exports` | ✅ | 스키마만 존재, API 미사용 |
 | `ai_jobs` / `node_translations` / `field_registry` | ✅ | 스키마만 존재, API 미사용 |
 | **`attachments`** | ✅ 실물 전용 | 첨부 저장소 메타(B9) — 파일 원본은 로컬 디스크 `StorageService` |
@@ -549,16 +549,30 @@ CREATE INDEX idx_map_revisions_map_id ON public.map_revisions(map_id, version DE
 CREATE TABLE public.published_maps (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   map_id          UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
-  publish_id      VARCHAR(20) UNIQUE NOT NULL,  -- URL slug (랜덤 8~12자)
-  storage_path    VARCHAR(500),                 -- Supabase Storage 경로
+  publish_id      VARCHAR(20) UNIQUE NOT NULL,  -- URL slug (랜덤 12자)
+  storage_path    VARCHAR(500),                 -- 미리보기 실루엣 키
+  -- 퍼블리싱 문서함 안의 상태 (2026-09-05 델타)
+  visibility      VARCHAR(10) NOT NULL DEFAULT 'public'
+                  CHECK (visibility IN ('private', 'public', 'paid')),
   published_at    TIMESTAMPTZ DEFAULT NOW(),
-  unpublished_at  TIMESTAMPTZ
+  unpublished_at  TIMESTAMPTZ                   -- NOT NULL = 등록 취소(주소 소멸)
 );
 
 CREATE INDEX idx_published_maps_publish_id ON public.published_maps(publish_id);
 ```
 
 **2026-09-04 — 실제로 쓰기 시작했다** (`apps/api/src/publish/`).
+
+**2026-09-05 — `visibility` 를 더했다** (더하는 델타 ·
+`deltas/2026-09-05-publish-visibility.sql`).
+
+* **행이 있는 동안 주소는 산다.** `visibility` 는 그 주소를 **남에게 여는가**
+  만 정한다 — `private`(보관)은 주소를 그대로 두고 404 로 닫는다.
+  주소를 죽이는 것은 `unpublished_at`(등록 취소) 하나뿐이다.
+* 기존 행은 전부 `public` 이 된다 — 지금까지의 동작 그대로다.
+* 칸이 없는 서버에서도 앱은 죽지 않는다: 서버가 **모두 무료공개로 보고**
+  전환 기능만 끈다(`common/table-ready.ts` 의 `columnReady`).
+* RLS 의 익명 읽기 정책도 `visibility = 'public'` 을 함께 본다.
 
 * `publish_id` 는 서버가 **소문자·숫자 12자**로 뽑는다. 헷갈리는 글자
   (`0 o 1 l i`)를 뺀 31자 집합 — 링크를 눈으로 옮겨 적는 사람이 있고,

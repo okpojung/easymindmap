@@ -58,8 +58,8 @@
 | 3 | GET | `/v1/maps/:id` | 단건 + 정규화 `nodes[]` (depth·orderIndex 순) |
 | 4 | PATCH | `/v1/maps/:id` | 메타 수정 `{title?,viewMode?,refreshIntervalSeconds?,defaultLayoutType?,folderId?,kind?}` |
 | 5 | DELETE | `/v1/maps/:id` | 소프트 삭제(`deleted_at`) → 204 |
-| 6 | PUT | `/v1/maps/:id/document` | **문서 스냅샷 저장(upsert)** `{doc,title?,keepVersion?,editSession?,allowEmpty?,client?:{platform?,browser?}}` — 무변경이면 `{unchanged:true}`, 다른 세션 잠금이면 409, 쿼터 초과 413, **퍼블리싱 중이면 403**(2026-09-05 — 퍼블리싱한 맵은 완성본이라 편집이 막힌다). `keepVersion` 시 히스토리 버전 적재(B8). `client` = 저장한 기기·브라우저(2026-08-09) — **IP 는 받지 않는다**(서버가 요청에서 읽는다. 보내면 400) **저장할 때 문서 안의 data URL 사진(8KB 이상)을 첨부 저장소로 옮기고 `/v1/attachments/<id>`(상대 경로) 참조만 남긴다** (2026-08-16, B16 ②). 같은 내용의 사진은 **내용 해시로 알아봐 다시 올리지 않는다**. 옮기다 실패하면 그 사진만 원래대로 두고 저장은 통과시킨다 — **쿼터 초과(413)만 올린다** |
-| 7 | GET | `/v1/maps/:id/document` | 스냅샷 조회 `?editSession=` → `{mapId,title,folderId,kind,doc,updatedAt,published?:boolean,editLock?:'acquired'\|'busy'}`. `published:true` 면 **읽기 전용으로 연다**(2026-09-05). **협업맵(`kind='collab'`)은 잠금을 잡지 않는다** — `editLock` 을 아예 주지 않는다(잠근 적이 없으므로 `acquired` 라고 거짓말하지 않는다) (2026-08-16, B16 ①) |
+| 6 | PUT | `/v1/maps/:id/document` | **문서 스냅샷 저장(upsert)** `{doc,title?,keepVersion?,editSession?,allowEmpty?,client?:{platform?,browser?}}` — 무변경이면 `{unchanged:true}`, 다른 세션 잠금이면 409, 쿼터 초과 413, **무료공개 중이면 403**(2026-09-05 — 공개된 맵은 완성본이라 편집이 막힌다. **보관(비공개)이면 고칠 수 있다**). `keepVersion` 시 히스토리 버전 적재(B8). `client` = 저장한 기기·브라우저(2026-08-09) — **IP 는 받지 않는다**(서버가 요청에서 읽는다. 보내면 400) **저장할 때 문서 안의 data URL 사진(8KB 이상)을 첨부 저장소로 옮기고 `/v1/attachments/<id>`(상대 경로) 참조만 남긴다** (2026-08-16, B16 ②). 같은 내용의 사진은 **내용 해시로 알아봐 다시 올리지 않는다**. 옮기다 실패하면 그 사진만 원래대로 두고 저장은 통과시킨다 — **쿼터 초과(413)만 올린다** |
+| 7 | GET | `/v1/maps/:id/document` | 스냅샷 조회 `?editSession=` → `{mapId,title,folderId,kind,doc,updatedAt,published?:boolean,editLock?:'acquired'\|'busy'}`. `published:true`(= **지금 무료공개 중**) 면 **읽기 전용으로 연다**(2026-09-05 — 보관(비공개)이면 false 라 그대로 편집된다). **협업맵(`kind='collab'`)은 잠금을 잡지 않는다** — `editLock` 을 아예 주지 않는다(잠근 적이 없으므로 `acquired` 라고 거짓말하지 않는다) (2026-08-16, B16 ①) |
 | 8 | POST | `/v1/maps/:id/edit-heartbeat` | 편집 잠금 연장 `{sessionKey}` → `{held}` (TTL 60초, 25초 주기). **협업맵은 항상 `held:true`** — 잃을 잠금이 없다. `false` 를 주면 프런트가 편집권 상실로 읽어 **맵과의 연결을 끊는다** |
 | 9 | POST | `/v1/maps/:id/edit-release` | 편집 잠금 해제 `{sessionKey}` → `{ok}`. 협업맵은 잠근 적이 없어 지울 것이 없다 |
 | 10 | GET | `/v1/maps/:id/versions` | 히스토리 버전 목록(B8) — `{version,title,createdAt,bytes,layoutType,nodeCount,attachBytes,attachCount,platform,browser,ip}[]` · platform/browser/ip = **저장한 자리**(2026-08-09, 그 이전 버전은 null) |
@@ -499,10 +499,13 @@ Access Token 갱신
 }
 ```
 
-`publishId` 는 **지금 퍼블리싱 중인 링크**다 (2026-09-05, PUBL-05).
-퍼블리싱하지 않았으면 `null` 이고, 퍼블리싱 표가 없는 서버(델타 미적용)
-에서도 `null` 이다 — 문서함이 그 값을 보고 **유형** 칸에 `🌐 퍼블리싱맵` 을
-그린다(단독맵 대신).
+`publishId` 는 **지금 퍼블리싱 등록된 링크**다 (2026-09-05, PUBL-05).
+등록하지 않았으면 `null` 이고, 퍼블리싱 표가 없는 서버(델타 미적용)에서도
+`null` 이다. `publishVisibility` 가 그 등록의 **상태**다(`private` ·
+`public` · `paid`; 칸이 없는 서버에서는 전부 `public`).
+
+문서함이 두 값을 보고 **유형** 칸을 그린다 — 공개 중이면 `🌐 퍼블리싱맵`,
+보관 중이면 `🔒 보관중`.
 
 ```json
 { "mapId": "uuid-...", "title": "My Map", "publishId": "abcdefghjkmn" }
@@ -562,11 +565,15 @@ Access Token 갱신
 > DTO 에 추가된 필드다. 이름 변경·폴더 이동 시 같은 폴더 안 제목 중복
 > 검사(409)를 거친다.
 
-> ★ **퍼블리싱 중인 맵은 `kind: "collab"` 으로 바꿀 수 없다 — `403`**
+> ★ **퍼블리싱 등록된 맵은 `kind: "collab"` 으로 바꿀 수 없다 — `403`**
 > (2026-09-05 사용자 결정). 반대 방향(협업맵 → 퍼블리싱)은 `POST …/publish`
 > 가 막는다. **양쪽을 다 막아야 규칙이 닫힌다** — 한쪽만 막으면 "퍼블리싱해
-> 두고 초대" 라는 우회로가 남는다. 되돌릴 길은 열려 있다: 퍼블리싱을
-> 중단하면 협업맵으로 바꿀 수 있다 (`27-publish-share.md` §6.3).
+> 두고 초대" 라는 우회로가 남는다.
+>
+> ★ **보관(비공개) 중이어도 막는다** — 여기가 지키는 것은 "지금 남이 보고
+> 있는가" 가 아니라 **"이것은 상품인가"** 다(수익 배분, 27a §5.0).
+> 되돌릴 길은 열려 있다: **등록을 취소하면** 협업맵으로 바꿀 수 있다
+> (`27-publish-share.md` §6.3).
 
 > **`viewMode` 허용값**
 > | 값 | 설명 |
@@ -1208,11 +1215,16 @@ file: (binary)
 
 ---
 
-## 8. Publish (무료 퍼블리싱 — 2026-09-04 구현 · 2026-09-05 규칙 확정)
+## 8. Publish (퍼블리싱 — 2026-09-04 구현 · 2026-09-05 상태 셋)
 
-> **용어**: 행위·상태는 **퍼블리싱**이다(퍼블리싱한다 · 퍼블리싱 중 ·
-> 퍼블리싱 중단). "공개 URL · 공개 뷰" 는 결과물의 성질을 가리키는 말로만
+> **용어**: 행위·상태는 **퍼블리싱**이다(퍼블리싱 등록 · 퍼블리싱 중 ·
+> 퍼블리싱 취소). "공개 URL · 공개 뷰" 는 결과물의 성질을 가리키는 말로만
 > 남는다 (2026-09-05 사용자 결정, `27-publish-share.md` 머리말).
+>
+> ★ **등록과 노출은 다르다** (2026-09-05). `POST` 는 **등록**이고
+> `PATCH` 는 **상태 전환**(비공개 ↔ 무료공개)이다. **주소는 등록에
+> 붙으므로 상태를 오가도 그대로다.** 주소를 죽이는 것은 `DELETE`
+> (등록 취소) 하나뿐이고, 그 뒤 다시 등록하면 새 주소다.
 
 설계: `docs/04-extensions/publish/27-publish-share.md`
 
@@ -1225,9 +1237,16 @@ file: (binary)
 **Response** `200 OK`
 ```json
 { "available": true, "publishId": "abcdefghjkmn", "publishedAt": "2026-09-04T00:00:00Z",
-  "hasPreview": true, "publishable": true }
+  "hasPreview": true, "publishable": true,
+  "visibility": "public", "canSetVisibility": true }
 ```
 
+* `visibility` — 지금 상태. **등록돼 있을 때만** 온다.
+  `private` 비공개(보관) · `public` 무료공개 · `paid` 유료공개(준비 중).
+* `canSetVisibility` — 이 서버가 상태 전환을 할 수 있는가
+  (`published_maps.visibility` 칸이 있는가). `false` 면 화면은 전환 단추를
+  **아예 그리지 않는다** — 눌러 보고 나서야 실패를 만나지 않게. 칸이 없는
+  서버에서는 등록된 것이 전부 `public` 이다(지금까지의 동작).
 * `hasPreview` — 미리보기 실루엣이 올라와 있는가 (27a §2).
 * `publishable` — 이 맵을 **새로 퍼블리싱할 수 있는가**. **협업맵이면 `false`**
   이고 `blockedReason` 에 사람이 읽는 이유가 함께 온다 (2026-09-05 결정,
@@ -1241,8 +1260,15 @@ file: (binary)
 ---
 
 ### POST /maps/{mapId}/publish
-맵을 공개 URL로 퍼블리싱. **맵 주인만.** (편집자·열람자는 `403`,
+맵을 **퍼블리싱 문서함에 등록**한다. **맵 주인만.** (편집자·열람자는 `403`,
 볼 수 없는 맵은 `404` — 없는 맵과 구분하지 않는다.)
+
+**Request Body** (선택)
+```json
+{ "visibility": "private" }
+```
+기본은 `"public"`(무료공개) — 지금까지의 동작 그대로다.
+`"private"` 이면 **주소만 만들고 남에게는 열지 않는다**(보관).
 
 **협업맵은 `403`** — 퍼블리싱은 단독맵만 된다(2026-09-05 결정).
 **중단**과 **미리보기 올리기**는 협업맵이어도 된다: 이미 열린 것을 닫는
@@ -1251,13 +1277,13 @@ file: (binary)
 **멱등** — 이미 퍼블리싱 중이면 **그 링크를 그대로** 돌려준다. 두 번
 눌렀다고 이미 보낸 링크를 죽이지 않는다.
 
-★ **중단한 뒤 다시 부르면 새 주소다** (2026-09-05 사용자 결정). 옛 주소는
-되살아나지 않는다 — 중단이 "잠시 고치려고" 인지 "이제 그만" 인지 시스템은
-알 수 없기 때문이다 (`27-publish-share.md` §6.4).
+★ **등록을 취소한 뒤 다시 부르면 새 주소다.** 옛 주소는 되살아나지 않는다.
+잠시 내리는 것은 이것이 아니라 아래 `PATCH` 다 (`27-publish-share.md` §6.4).
 
-★ **퍼블리싱하면 그 맵은 읽기 전용이 된다** — `PUT /maps/{id}/document` 가
-`403` 이다. 고치려면 중단해야 한다 (§6.2). `GET …/document` 응답의
-`published: true` 로 화면이 그 사실을 안다.
+★ **무료공개 중이면 그 맵은 읽기 전용이 된다** — `PUT /maps/{id}/document`
+가 `403` 이다. 고치려면 **비공개(보관)로 바꾼다**(§6.2). `GET …/document`
+응답의 `published: true` 가 그 사실을 알려 준다 — 그 값은 "등록됐다" 가
+아니라 **"지금 남에게 열려 있다"** 는 뜻이다.
 
 **Response** `200 OK` — `publish-status` 와 같은 모양
 ```json
@@ -1268,12 +1294,36 @@ file: (binary)
 
 ---
 
-### DELETE /maps/{mapId}/publish
-퍼블리싱 중단 (`unpublished_at` 설정). **맵 주인만.**
-이미 중단돼 있어도 성공이다(멱등).
+### PATCH /maps/{mapId}/publish
+**상태 전환** — 비공개(보관) ↔ 무료공개. **맵 주인만.**
 
-★ **그 주소는 영구히 죽는다.** 다시 퍼블리싱하면 새 주소가 나온다.
+**Request Body**
+```json
+{ "visibility": "private" }
+```
+
+**Response** `200 OK` — `publish-status` 와 같은 모양
+
+* ★ **주소는 그대로다.** 홈페이지에 걸어 둔 링크가 죽지 않는다.
+* `private` 이면 `GET /published/{publishId}` · 미리보기 · 공개 첨부가
+  **모두 404** 가 된다(본문만 닫고 사진을 남기면 내용이 짐작된다).
+  그리고 그 맵을 **다시 고칠 수 있게 된다**.
+* `404` — 등록돼 있지 않다(먼저 `POST` 로 등록해야 한다).
+* `400` — `paid`(유료공개는 준비 중) 또는 모르는 값.
+* `503` — 이 서버에 `published_maps.visibility` 칸이 없다(이유를 말한다).
+
+협업맵 여부는 여기서 보지 않는다 — 이미 등록된 것을 **닫는 쪽**으로
+움직이는 길까지 막으면 되돌릴 수 없다(`DELETE` 와 같은 이유).
+
+---
+
+### DELETE /maps/{mapId}/publish
+퍼블리싱 **등록 취소** (`unpublished_at` 설정). **맵 주인만.**
+이미 취소돼 있어도 성공이다(멱등).
+
+★ **이것만이 주소를 죽인다 — 영구히.** 다시 등록하면 새 주소가 나온다.
 미리보기 실루엣 파일도 링크를 따라가므로 함께 사라진다.
+**잠시 내리는 것은 위의 `PATCH` 다.**
 
 **Response** `204 No Content`
 
@@ -1296,9 +1346,11 @@ file: (binary)
 
 * `doc` 은 `GET /maps/{mapId}/document` 와 **같은 저장 스냅샷**이다
   (노드 표를 따로 열지 않는다 — 열어 주는 문은 하나다).
-* **퍼블리싱하는 동안 이 판은 바뀌지 않는다** (2026-09-05). 퍼블리싱한
-  맵은 편집이 막히기 때문이다 — 저자가 고치려면 중단해야 하고, 중단하면
-  그 주소는 죽는다. 독자가 보는 판은 링크가 사는 동안 **하나**다.
+* **무료공개 중일 때만 열린다** (2026-09-05). 보관(비공개)이면 주소가
+  살아 있어도 `404` 다 — 없는 링크와 **같은 문장**이다.
+* **공개하는 동안 이 판은 바뀌지 않는다.** 공개 중에는 편집이 막히기
+  때문이다 — 저자가 고치려면 비공개로 바꿔야 하고, 그러면 이 주소도 함께
+  닫힌다. 독자가 보는 판은 **열려 있는 동안 하나**다.
 * `404` — 없는 링크 · 취소된 링크 · 휴지통에 든 맵을 **구분하지 않는다.**
 * `400` — 슬러그 모양(`[a-z0-9]{6,20}`)이 아니다.
 
@@ -1341,7 +1393,8 @@ file: (binary)
 
 여는 조건 — 셋을 모두 만족해야 한다.
 1. 그 첨부가 **그 맵의 것**(`attachments.map_id`)
-2. 그 맵이 **지금 그 링크로 퍼블리싱 중**(`unpublished_at IS NULL`)
+2. 그 맵이 **지금 그 링크로 무료공개 중**(`unpublished_at IS NULL`
+   **AND `visibility = 'public'`**)
 3. 맵이 휴지통에 있지 않다(`deleted_at IS NULL`)
 
 **Response** `200 OK` (또는 `206 Partial Content`) — 파일 바이트

@@ -166,6 +166,9 @@ jobs:
       # 자주 불리는 자리는 기억하고, 델타 직후 확인하는 자리는 매번 묻는다.
       - name: 표 존재 판정(tableReady) 단위 테스트
         run: npm run test:table-ready
+      # 버전 정리 계획(13a §2) — 무엇을 지울지 정하는 순수 함수. DB 없이 돈다.
+      - name: 버전 정리 계획(version-prune) 단위 테스트
+        run: npm run test:version-prune
       - name: DB 스키마 로드 (shim → schema → functions → seed)
         env:
           PGPASSWORD: emm

@@ -26,6 +26,7 @@
 
 - 모든 라우트는 **`/v1` 프리픽스** (NestJS `setGlobalPrefix`).
 - JSON 바디 한도 **25MB** (문서 스냅샷의 임베드 이미지 data URL 대비).
+- **히스토리 버전은 정리된다** (2026-09-06, 13a §2): 개설자 요금제의 보관 기간(`plan_quotas.version_days`, Free 7일) + 유예 7일이 지나면 지우고, 그 안에서도 밀도 규칙(24시간 20개 · 하루 3개 · 하루 1개 · 주 1개)으로 솎는다. 영구보관(`pinned`)·최신 버전·`VERSION_PRUNE_SINCE` 이전 것은 절대 안 지운다. 저장 뒤 60초 + 하루 한 번. 환경변수 `VERSION_PRUNE_ENABLED`(true) · `_DEBOUNCE_MS`(60000) · `_SWEEP_HOURS`(24, 0 = 훑기 없음) · `_GRACE_DAYS`(7) · `_SINCE`(2026-09-04T00:00:00Z).
 - 첨부 업로드는 multipart, 1개당 기본 **200MB** (`ATTACHMENT_MAX_MB`, 2026-08-06 20→200).
   **1GB 로 더 올리려면 스트리밍 업로드가 먼저다** — 지금은 multer 메모리
   버퍼(`file.buffer`)라 큰 파일이 그대로 힙에 올라간다(diskStorage 전환 필요).
@@ -63,6 +64,7 @@
 | 8 | POST | `/v1/maps/:id/edit-heartbeat` | 편집 잠금 연장 `{sessionKey}` → `{held, updatedAt, lastPlatform}` (TTL 60초, **5초 주기** — 숨은 탭은 25초). **협업맵은 항상 `held:true`** — 잃을 잠금이 없다. `false` 를 주면 프런트가 편집권 상실로 읽어 **맵과의 연결을 끊는다**. `updatedAt` = 문서의 마지막 갱신 시각, `lastPlatform` = 마지막 히스토리 버전을 남긴 자리(MCP 면 `"MCP"`) — AI 대화가 열린 맵에 붙인 것을 탭이 알아채는 통로 (2026-09-05, mcp-connector.md §9.8) |
 | 9 | POST | `/v1/maps/:id/edit-release` | 편집 잠금 해제 `{sessionKey}` → `{ok}`. 협업맵은 잠근 적이 없어 지울 것이 없다 |
 | 10 | GET | `/v1/maps/:id/versions` | 히스토리 버전 목록(B8) — `{version,title,createdAt,bytes,layoutType,nodeCount,attachBytes,attachCount,platform,browser,ip}[]` · platform/browser/ip = **저장한 자리**(2026-08-09, 그 이전 버전은 null) |
+| 10b | GET | `/v1/maps/:id/versions/prune-preview` | **버전 정리 미리보기** (2026-09-06, [13a](../03-editor-core/history/13a-version-retention.md) §2.2-1) — 지우지 않는다. `{mapId,enabled,ready,versionDays,graceDays,expired[{version,createdAt}],thinned[…],expiring[{version,createdAt,deleteAt}],kept}`. `ready:false` 면 델타(pinned·version_days 칸)가 없는 서버 — 워커도 안 돈다. 읽기 권한이면 된다 |
 | 11 | GET | `/v1/maps/:id/versions/:version` | 특정 버전의 문서 스냅샷 |
 | 12 | GET | `/v1/folders` | 내 폴더 전부(평면) + `mapCount` |
 | 13 | POST | `/v1/folders` | `{name,parentId?}` — 같은 부모에 같은 이름 409 |
@@ -101,7 +103,7 @@
 | 22g | GET | `/v1/admin/settings` | 서버가 **지금 들고 있는** 설정값(env·DB). 화면 상수는 프런트가 자기 것을 합친다 |
 | 22i | PATCH | `/v1/admin/settings/plan-quota` | `{plan, mb}` → 요금제 한도 변경. **콘솔에서 고칠 수 있는 유일한 설정**(환경변수·코드 상수는 열지 않는다). 응답 `{plan, mb, previousMb, usersUpdated, usersKept}` — `usersKept` 는 한도를 따로 올려 둔 **특별 계약** 회원 수로, 손대지 않는다. 범위 1~1048576 MB |
 | 22j | PATCH | `/v1/admin/settings/plan-price` | `{plan, krw}` → 요금제 **구독 요금** 변경 (2026-08-18). 결제가 **청구액을 이 값에서 읽는다** — 화면이 보낸 금액을 쓰는 길은 만들지 않는다(그러면 1,000원 결제로 상위 요금제를 받아갈 수 있다). `0` = 결제하지 않는 요금제. **1~999 는 거절**(PG 최소 결제 금액이 1,000원이라, 통과시키면 저장은 되는데 결제창에서 거절된다). 회원 행은 건드리지 않는다 — 이미 결제한 원장은 그때의 청구액을 들고 있어 **과거 결제가 흔들리지 않는다** |
-| 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 + **빌드 정보** → `{status,db,schema,missingTables?,missingColumns?,commit?,runtime,time}`. `runtime` = `{node,nestjs?,express?}`, `commit` = **빌드한 저장소**의 커밋 12자(개발 서버는 유료판 private 저장소에서 빌드되므로 이 저장소의 SHA 가 아니다 — `dev-server-runbook.md` §0 ①b) — **배포가 실제로 반영됐는지**를 이 한 번으로 확인한다(2026-09-02). 배포 플랫폼이 커밋을 알려 주지 않으면 `commit` 은 생략된다 |
+| 20 | GET | `/v1/health` | **무인증.** DB 연결 + 필수 테이블·컬럼 검사 + **빌드 정보** → `{status,db,schema,missingTables?,missingColumns?,commit?,runtime,versionPrune,time}`. `versionPrune` = 버전 정리 워커 `{enabled,ready,graceDays,since,lastSweepAt,lastSweepMaps,lastSweepDeleted,deletedTotal}` (2026-09-06, 13a §2.2-1 — "돌고 있나" 는 `lastSweepAt`). `runtime` = `{node,nestjs?,express?}`, `commit` = **빌드한 저장소**의 커밋 12자(개발 서버는 유료판 private 저장소에서 빌드되므로 이 저장소의 SHA 가 아니다 — `dev-server-runbook.md` §0 ①b) — **배포가 실제로 반영됐는지**를 이 한 번으로 확인한다(2026-09-02). 배포 플랫폼이 커밋을 알려 주지 않으면 `commit` 은 생략된다 |
 | 20b | GET | `/v1/health/ip` | **무인증.** 서버가 이 요청의 IP 를 무엇으로 보는지 → `{ip,ips,xForwardedFor,xRealIp,remoteAddress,trustProxy,userAgent,hint}` — 프록시 단계 진단용(2026-08-09). **자기 요청의 헤더만** 되돌려 준다 |
 | 21 | POST | `/v1/maps/:mapId/nodes` | 정규화 노드 생성 (ltree path·depth 자동) |
 | 22 | PATCH | `/v1/maps/:mapId/nodes` | **autosave** — 배치 patch(add/update/delete/move), `baseVersion` 충돌 409 `VERSION_CONFLICT`, 중복 `patchId` 409 `DUPLICATE_PATCH` |

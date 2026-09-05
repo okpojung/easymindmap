@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { VaultService } from '../vault/vault.service';
+import { VersionPruneService } from '../versions/version-prune.service';
 import { DatabaseService } from '../database/database.service';
 import { columnReady, tableReady } from '../common/table-ready';
 import { FoldersService } from '../folders/folders.service';
@@ -59,6 +60,7 @@ export class MapsService {
     private readonly folders: FoldersService,
     private readonly attachments: AttachmentsService, // 저장 용량 쿼터 (B9)
     private readonly vault: VaultService,             // 파일 미러 (셀프호스트)
+    private readonly prune: VersionPruneService,      // 버전 정리 워커 (13a §2)
   ) {}
 
   /**
@@ -796,6 +798,9 @@ export class MapsService {
            : [])],
       );
       version = vr[0]?.version;
+      // 버전 정리 (13a §2.2) — 저장 트랜잭션 밖에서, 60초 뒤에. 아래
+      // 사진 GC 가 먼저 끝나도록 디바운스가 그 간격을 맡는다.
+      this.prune.schedule(mapId);
     }
 
     // 안 쓰는 사진 정리 (B16 ② 슬라이스 4) — **히스토리 버전을 넣은 뒤**에
@@ -873,6 +878,26 @@ export class MapsService {
    * GET /maps/:id/versions — 저장 시점별 버전 목록 (B8).
    * doc 은 제외하고 메타만 — 목록이 가벼워야 패널이 빠르게 열린다.
    */
+  /** 정리 계획 미리보기 — 지우지 않는다. 화면의 "곧 정리됩니다" 가 쓴다 (13a §3.2 ③) */
+  async previewVersionPrune(userId: string, mapId: string) {
+    await this.requireAccessibleMap(userId, mapId);
+    const p = await this.prune.preview(mapId);
+    const brief = (v: { version: number; createdAt: Date }) => ({ version: v.version, createdAt: v.createdAt });
+    return {
+      mapId,
+      enabled: this.prune.status().enabled,
+      ready: p.ready,
+      versionDays: p.versionDays,
+      graceDays: p.graceDays,
+      // 지금 정리를 돌리면 사라질 것 — 유예까지 지난 것 + 밀도 규칙에 걸린 것
+      expired: p.expired.map(brief),
+      thinned: p.thinned.map(brief),
+      // 보관 기간은 지났지만 아직 유예 중 — 언제 지워지는지 함께
+      expiring: p.expiring.map((v) => ({ ...brief(v), deleteAt: v.deleteAt })),
+      kept: p.kept.length,
+    };
+  }
+
   async listVersions(userId: string, mapId: string) {
     await this.requireAccessibleMap(userId, mapId);
     // 접속 정보 컬럼은 델타 SQL 을 적용한 서버에만 있다 — 없으면 빼고

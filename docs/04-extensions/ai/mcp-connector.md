@@ -68,13 +68,13 @@ MCP 서버가 AI 에게 주는 것은 **도구(tool) 목록**이다. 각 도구�
 `/v1` 엔드포인트를 얇게 감싼다. **새 비즈니스 로직을 만들지 않는다** —
 쿼터·권한·잠금 같은 규칙이 두 벌이 되면 반드시 어긋난다.
 
-### 2-1. 1단계에 넣을 것 (최소)
+### 2-1. 1·2단계에 넣은 것 (셋 다 있다, 2026-09-05)
 
 | 도구 | 감싸는 API | 하는 일 |
 |---|---|---|
 | `create_map` | `POST /v1/maps` + `PUT /v1/maps/:id/document` | **EMM 마크다운을 받아 새 맵으로 저장.** 이것 하나가 이 기능의 목적 전부다 |
-| `list_maps` | `GET /v1/maps` | 내 맵 목록 (제목·수정일·폴더). AI 가 "어느 맵에 붙일까" 를 물을 수 있게 |
-| `get_map` | `GET /v1/maps/:id/document` | 맵 한 개를 **EMM 마크다운으로** 돌려준다. 대화에서 기존 맵을 이어 쓰기 |
+| `list_maps` | `GET /v1/maps` + `GET /v1/maps/shared` + `GET /v1/folders` | 내 맵 목록 (제목·**맵 id**·폴더 이름·수정일·노드 수) + 공유받은 맵. `query`(이름·본문 검색) · `folder`(폴더 이름, `home`) · `limit`. AI 가 "어느 맵을 읽을까" 를 정할 수 있게 — **2단계, §9.5** |
+| `get_map` | `GET /v1/maps/:id/document` | 맵 한 개를 **EMM 마크다운(본문만, 메타 주석 없음)** 으로 돌려준다. 읽기만 — 편집 잠금을 만들지 않는다. 대화에서 기존 맵을 읽고 이어 쓰기 — **2단계, §9.5** |
 
 **`create_map` 이 받는 것은 EMM 마크다운**이다. `packages/emm-parser` 가
 이미 그 포맷의 단일 원본이고, 프롬프트 템플릿(`emm-prompt-templates.md`)
@@ -218,7 +218,7 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 |---|---|---|---|
 | **0** | 오픈코어 경계 결정 (§5) | 코드를 어느 저장소에 둘지 | ✅ **공개**(2026-09-04) |
 | **1** | PAT 발급/폐기 + `create_map` 하나 | **Claude 대화에서 맵이 하나 생긴다.** 이것으로 방향이 옳은지 판정한다 | ✅ **판정 끝** — 사용자 PC 의 Claude Code(데스크톱 앱 Code 탭)에서 api-dev 에 붙여 맵 생성 확인 (2026-09-05, §7 판정) |
-| **2** | `list_maps` · `get_map` | 기존 맵을 대화에서 이어 쓴다 | — |
+| **2** | `list_maps` · `get_map` | 기존 맵을 대화에서 이어 쓴다 | ✅ 구현·검증 (2026-09-05, §9.5 · e2e209 — Claude Code 대화에서 목록 → 읽기 2회 호출 확인) |
 | **3** | OAuth 2.1 (안 A) | 토큰 복사 없이 연결된다 | — |
 | **4** | 각 사 스토어 등재 | 신규 유입 채널 | — |
 
@@ -261,6 +261,8 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
    올릴지. 같은 MCP 서버를 두 곳에 쓸 수 있는지
 4. **응답 크기 한계** — 큰 맵을 `get_map` 으로 돌려줄 때 잘리는 한계가
    있는지. 있으면 페이지네이션이 필요하다
+   → **우리 쪽에서 먼저 잘랐다** (2026-09-05, §9.5): 본문 12만 자에서 자르고
+   잘랐다는 문장을 붙인다. 각 사의 도구 응답 상한은 3단계 때 다시 본다
 
 > 위 넷 중 **1과 2 는 안 A(OAuth) 착수 전에 반드시 확인**해야 한다.
 > 잘못 만들면 통째로 다시 만든다. 안 B(PAT)로 시작하자는 권고(§3)의
@@ -276,12 +278,13 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 |---|---|
 | MCP 본선 (JSON-RPC) | `apps/api/src/mcp/mcp.controller.ts` → `POST /v1/mcp` |
 | JSON-RPC 계층 | `apps/api/src/mcp/jsonrpc.ts` (HTTP 와 무관한 순수 함수) |
-| 도구 정의·실행 | `apps/api/src/mcp/mcp-tools.ts` (`create_map` 하나) |
+| 도구 정의·실행 | `apps/api/src/mcp/mcp-tools.ts` (`create_map` · `list_maps` · `get_map`) |
 | EMM → 문서 스냅샷 | `apps/api/src/mcp/emm-to-doc.ts` |
 | PAT 발급·검증·폐기 | `apps/api/src/mcp/api-token.service.ts` · `public.api_tokens` |
 | PAT 인증 가드 | `apps/api/src/mcp/mcp-auth.guard.ts` |
 | 토큰 화면 API | `apps/api/src/mcp/mcp-tokens.controller.ts` → `/v1/mcp-tokens` |
 | 토큰 화면 | `apps/frontend/src/components/auth/McpTokensView.tsx` (아바타 ▸ 🔌 AI 커넥터(MCP)) |
+| 문서 스냅샷 → EMM (2단계 `get_map`) | `apps/api/src/mcp/doc-to-emm.ts` — `src/emm/serialize.ts`(직렬화기 복사본, `sync:emm` 이 함께 관리) |
 
 **공식 SDK(`@modelcontextprotocol/sdk`)를 쓰지 않는다.** 이 앱은
 `module=commonjs` 로 빌드되고, ESM 전용 패키지를 `require` 하면 런타임에
@@ -381,6 +384,8 @@ curl -s -X POST https://api-dev.mindmap.ai.kr/v1/mcp \
 ```
 
 **④ 대화에서** — *"지금까지 정리한 걸 EasyMindMap 맵으로 저장해줘"*.
+기존 맵은 *"내 EasyMindMap 맵 목록 보여줘"* → *"'주간 회의 정리' 맵 읽어서
+…"* 처럼 부른다(AI 가 `list_maps` 로 id 를 찾고 `get_map` 으로 읽는다, §9.5).
 Claude Code 는 처음 부를 때 도구 실행을 한 번 묻는다(허용). 답에
 *"…맵을 만들었습니다 (가지 N개 · 노드 M개) · 맵 id …"* 가 오면 성공이고,
 앱의 [☁ 내 문서] 홈에 그 제목의 맵이 보인다.
@@ -430,6 +435,57 @@ SELECT COUNT(*) AS ok FROM information_schema.tables
 드러낸다** — 조용히 반쪽으로 도는 것보다 낫다.
 
 ---
+
+### 9.5 2단계 — `list_maps` · `get_map` (2026-09-05)
+
+**목적**: 대화에서 **기존 맵을 읽는다.** 1단계가 "대화 → 맵" 이었다면
+2단계는 "맵 → 대화" 다. 이것으로 *"지난주 회의 맵 읽어서 이번 주 것과
+합쳐 새 맵으로"* 같은 이어 쓰기가 된다 — 고친 결과는 여전히
+`create_map` 으로 **새 맵**이 된다(제자리 수정은 없다, §2-3).
+
+| 도구 | 감싸는 것 | 돌려주는 것 |
+|---|---|---|
+| `list_maps` `{query?, folder?, limit?}` | `MapsService.list`(내 맵) + `listShared`(공유받은 맵) + `FoldersService.list`(폴더 **이름**) | 줄 목록. `- 이름 — id: … · 폴더: … · 수정: … · 노드 N개`. 머리줄에 건수, 넘치면 "더 있습니다" |
+| `get_map` `{map_id}` | `MapsService.getDocument` — **editSession 없이** | 머리줄(이름·id·수정·노드·사진 수·권한) + 빈 줄 + **EMM 본문** |
+
+**정한 것과 이유**
+
+- **결과는 JSON 이 아니라 글이다.** 읽는 쪽이 AI 라 표·JSON 보다 줄 목록이
+  정확히 읽히고, id 가 줄마다 붙어 있어 `get_map` 에 그대로 넣는다.
+- **폴더는 이름으로.** `folder: '기획'` 처럼 대화에서 쓰는 말 그대로 받고,
+  없으면 **있는 폴더 이름을 나열해 거절**한다(AI 가 고쳐 부를 수 있게).
+  같은 이름이 여러 층에 있으면 전부 잡는다. `home`·`홈`·`root` = 최상위.
+- **공유받은 맵도 목록에** — "공유받음(주인 이메일)" 으로 표시. 폴더로
+  좁힐 때는 뺀다(남의 폴더 배치는 내 트리가 아니다 — `GET /maps/shared`
+  가 목록을 따로 둔 이유와 같다).
+- **`get_map` 은 편집 잠금을 만들지 않는다.** `getDocument` 에 editSession
+  을 주지 않는다 — 읽기가 사람이 편집 중인 맵의 잠금을 가로채면 안 된다
+  (e2e209 ⑦b 가 `map_edit_locks` 0행을 확인한다).
+- **메타 주석을 싣지 않는다.** `<!-- easymindmap:v1:BASE64 -->` 는 앱이
+  되읽을 때 스타일·좌표를 살리는 용도라 AI 에게는 **읽을 수 없는 덩어리**
+  이고, 큰 맵이면 본문보다 길다. `serializeEmm(map, {includeMeta:false})`.
+- **사진 바이트를 주지 않는다.** data URL 은 `files/img-N.png` 경로로
+  바뀌고(직렬화기 규칙) 머리줄에 "사진 N장" 만 센다.
+- **12만 자에서 자른다** (`GET_MAP_MAX_CHARS`). 잘랐으면 그 사실과 앱의
+  [내보내기 ▸ Markdown] 안내를 붙인다. 페이지네이션은 필요해지면 그때.
+- **접근 판정은 `MapsService` 가 한다.** 남의 맵은 404 문장이 그대로
+  `isError` 결과로 돌아가고 내용은 새지 않는다(e2e209 ㉓).
+- **노드 수는 문서함과 같은 셈**(루트 포함 = `map_documents.node_count`).
+  `create_map` 의 안내가 루트를 빼고 세고 있어 같이 맞췄다 — 같은 맵을
+  세 도구가 다른 수로 말하면 AI 도 사용자도 헷갈린다.
+
+**왕복은 "같은 내용"까지다 — "같은 모양"은 아니다.** `get_map` 본문은
+EMM-Basic(메타 없음)이라 직렬화기 규칙대로 모양이 바뀐다: 목록 항목은
+하위 견출로, 여러 줄 노드는 한 줄로, 표만 있는 노드는 `#### 표` 견출
+아래 표로. 앱의 [내보내기 ▸ Markdown] 본문도 같은 규칙이다. 그래서 읽고
+고쳐 `create_map` 으로 되넣으면 **글은 다 남되 표 노드에 `표` 라는 층이
+하나 생길 수 있다**(doc-to-emm.test ①). 제자리 수정 도구를 만들 때는
+이 왕복이 아니라 **노드 id 기준**으로 가야 한다 — 그것이 `append_to_map`
+을 2단계에 넣지 않은 이유이기도 하다.
+
+**검증**: 단위 `test/doc-to-emm.test.mjs`(19항목, `npm run test:mcp`) +
+서버 25항목 + 잠금 0행 + **Claude Code 대화에서 `list_maps`→`get_map` 2회
+호출로 가지 이름 셋을 정확히 읽음**(e2e209).
 
 ## 10. 관련 문서
 

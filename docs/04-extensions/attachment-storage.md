@@ -464,6 +464,45 @@ UPDATE public.users u
 사용자 화면(아바타 메뉴)은 메뉴를 열 때마다 `/v1/attachments/quota` 를
 다시 부르므로 **재로그인도 재배포도 필요 없다.**
 
+### 8.3 협업맵의 첨부는 **맵 주인** 것이다 (2026-09-05, collaboration/29 §3.4 후속 P3)
+
+`mapId` 를 주고 올리면 `attachments.owner_id = maps.owner_id`, 저장 키도
+`u/<맵 주인>/<id>`, 용량도 맵 주인 몫으로 센다 — **누가 올렸든**. 단일
+업로드·청크 업로드(§12)·저장 시 사진 이관(B16 ②) 셋이 같은 자리
+(`AttachmentsService.resolveOwner`)를 지난다.
+
+왜: 전에는 참가자가 붙인 사진이 참가자 것이어서, 참가자가 **탈퇴하면**
+`owner_id` CASCADE 로 행이 지워지고 파일도 함께 지워져 **개설자의 맵에서
+그림이 사라졌다** (29 §1.1). 그리고 "협업맵의 기준은 개설자 요금제" 라고
+정해 놓고 실물은 참가자 요금제를 섞어 세고 있었다.
+
+| | 전 | 후 |
+|---|---|---|
+| 주인·용량 | 올린 사람 | **맵 주인** (맵 없이 올리면 그대로 올린 사람) |
+| 맵 id 검사 | 없음 (아무 id 나) | 그 맵에 **쓸 수 있어야** 한다 — 볼 수 없는 맵 404 · 읽기만 403 |
+| 한도 초과 문장 | "요금제를 올려 주세요" | 참가자에게는 **"개설자의 저장 용량 한도"** 라고 말한다 |
+| 지우기 | 소유자만 | 소유자 + **그 맵에 쓸 수 있는 사람** |
+| 같은 사진 재사용·GC | 올린 사람 기준 | **맵 기준** |
+
+**이미 올라간 행은 옮기지 않았다.** 옛 참가자 소유 행을 맵 주인에게 옮기면
+용량 귀속이 바뀐다(데이터 이동) — 코드와 함께 병합하지 않고 **사용자가
+판단해** 실행한다. 옮기지 않으면 그 행은 예전 규칙대로 남는다(그 참가자가
+탈퇴하면 함께 사라진다). 옮기려면 (두 번 실행해도 안전, 먼저 미리보기):
+
+```sql
+-- 미리보기: 협업맵에서 맵 주인이 아닌 사람 소유의 첨부
+SELECT m.title, a.owner_id AS "지금 주인", m.owner_id AS "맵 주인",
+       count(*) AS n, pg_size_pretty(sum(a.size_bytes)) AS bytes
+  FROM public.attachments a JOIN public.maps m ON m.id = a.map_id
+ WHERE m.kind = 'collab' AND a.owner_id <> m.owner_id
+ GROUP BY 1, 2, 3;
+
+-- 옮기기 (저장 키는 그대로 둔다 — 키는 경로일 뿐, 읽기 판정은 owner_id 와 맵 권한이다)
+UPDATE public.attachments a SET owner_id = m.owner_id
+  FROM public.maps m
+ WHERE m.id = a.map_id AND m.kind = 'collab' AND a.owner_id <> m.owner_id;
+```
+
 ### 8.2 아직 안 한 것 (결제 단계로 넘김)
 
 | 항목 | 지금 | 결제 단계에서 |

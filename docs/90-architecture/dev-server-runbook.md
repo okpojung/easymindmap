@@ -1252,6 +1252,44 @@ sudo touch /mnt/nas/emm-files/test.txt && ls -l /mnt/nas/emm-files
   **413 + 한도 안내** 로 거부된다. 한도 상향(유료 10GB):
   `UPDATE public.users SET quota_bytes = 10737418240 WHERE id = '<사용자>';`
 
+### 1.7. GoTrue DB 를 들여다본다 — 접속 정보를 **추측하지 않는다** (2026-09-05)
+
+로그인 이력은 GoTrue 의 **자기 전용 DB**(`gotrue`)에 있다. 앱 DB 가
+아니므로 §1.5-0-A 의 `find_emm_db` 로는 찾을 수 없다. 대신 **GoTrue
+컨테이너의 환경변수에서 접속 정보를 읽는다** — 그것이 유일한 기준이다.
+
+```bash
+bash <<'SCRIPT'
+set -e
+GT=""
+for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv GOTRUE_DB_DATABASE_URL 2>/dev/null) || continue
+  [ -n "$U" ] && { GT="$C"; GURL="$U"; break; }
+done
+[ -n "$GT" ] || { echo "❌ GoTrue 컨테이너를 찾지 못했습니다."; docker ps --format '{{.Names}}'; exit 1; }
+
+# ?search_path=auth 가 붙어 있어도 잘라 낸다
+PGHOST=$(printf '%s' "$GURL" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+PGUSER=$(printf '%s' "$GURL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+PGDB=$(printf '%s'   "$GURL" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+echo "✅ GoTrue=$GT  DB호스트=$PGHOST  계정=$PGUSER  DB이름=$PGDB"
+
+docker exec -i "$PGHOST" psql -U "$PGUSER" -d "$PGDB" -c '\d auth.audit_log_entries'
+SCRIPT
+```
+
+`docker exec "$PGHOST"` 가 실패하면 URL 의 호스트가 컨테이너 이름이 아니라
+IP 인 경우다 — `docker ps` 로 `postgres:16` 컨테이너를 눈으로 골라 이름만
+바꾼다.
+
+**2026-09-05 실측 결과** — `auth.audit_log_entries` 는 컬럼 다섯
+(`instance_id` uuid · `id` uuid NOT NULL · `payload` json · `created_at`
+timestamptz · `ip_address` varchar(64) NOT NULL `''`), 인덱스 둘
+(`audit_log_entries_pkey` · `audit_logs_instance_id_idx`), **RLS 켜짐 ·
+정책 없음**. dev shim(`database/dev/00-supabase-shim.sql`)이 이 모양을
+그대로 따른다 — 다른 것은 `id` 의 DEFAULT 하나뿐이고 그것은 의도한
+편의다(그 파일 주석 참조).
+
 ## 2. 백업 — `.env` (APP_KEY) 최우선
 
 ```bash

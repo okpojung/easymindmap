@@ -376,7 +376,7 @@ export async function openMapHere(
   const cloud = useCloudStore.getState();
   cloud.setBusy('opening');
   try {
-    const { doc, updatedAt, title, folderId, kind, editLock, role } =
+    const { doc, updatedAt, title, folderId, kind, editLock, role, published } =
       await cloudApi.getDocument(mapId, editSessionKey());
     const loadedMap = (doc as { map?: unknown }).map;
     if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
@@ -399,9 +399,15 @@ export async function openMapHere(
     // 열람자면 **화면 편집 자체를 막는다**(#306 이후). 다른 세션 잠금은
     // 내 권한은 있는 것이므로 사본 저장을 열어 둔다 — 그 갈래가 다르다.
     setViewerLocked(role === 'viewer');
-    const readOnlyReason = editLock === 'busy'
-      ? '다른 세션에서 편집 중'
-      : role === 'viewer' ? '이 맵은 읽기만 권한으로 공유받았습니다' : null;
+    // ★ **퍼블리싱맵은 읽기 전용으로 연다** (2026-09-05). 편집이 끝난
+    //   완성본이라 고칠 수 없다 — 고치려면 퍼블리싱을 중단해야 한다. 세 갈래가
+    //   되었으므로 이유도 셋이다. 이유가 다르면 문장도 달라야 한다:
+    //   무엇을 해야 풀리는지가 각각 다르기 때문이다.
+    const readOnlyReason = published
+      ? '퍼블리싱 중인 맵입니다 — 고치려면 퍼블리싱을 중단하세요'
+      : editLock === 'busy'
+        ? '다른 세션에서 편집 중'
+        : role === 'viewer' ? '이 맵은 읽기만 권한으로 공유받았습니다' : null;
     if (readOnlyReason) {
       // 읽기 전용 — 링크 없음(저장 경로 차단) + 배너 정보만
       useCloudStore.getState().unlink();

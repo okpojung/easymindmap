@@ -99,6 +99,15 @@ export function TopToolbar({
   const collabDriving = useAutosaveStore((s) => s.collabDrivingMapId);
   // 공유 대화상자 — 저장된 맵에서만 연다(서버에 없는 맵은 나눌 것이 없다)
   const shareMapId = useCloudStore((s) => s.cloudMapId);
+  // ★ **퍼블리싱 버튼은 읽기 전용에서도 살아 있어야 한다** (2026-09-05).
+  //
+  // 퍼블리싱하면 그 맵은 읽기 전용이 되고 `cloudMapId` 가 비워진다.
+  // 그 값만 보고 버튼을 잠그면, **퍼블리싱한 순간 중단할 문이 사라진다** —
+  // 켤 수는 있는데 끌 수 없는 스위치가 된다. 그래서 읽기 전용으로 열린
+  // 맵도 **내 맵이면**(공유받은 것이 아니면) 같은 문을 준다.
+  const readOnly = useCloudStore((s) => s.readOnlyInfo);
+  const publishMapId = shareMapId
+    ?? (readOnly && !readOnly.viewer ? readOnly.mapId : null);
   const [shareOpen, setShareOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const saveState = collabDriving ? 'collab' : rawSaveState;
@@ -371,17 +380,17 @@ export function TopToolbar({
         <ProShareDialog t={t} mapId={shareMapId} onClose={() => setShareOpen(false)} />
       )}
 
-      {/* 공개 링크(무료 게시) — 위의 [공유]와 **다른 일**이라 버튼을 나눴다.
+      {/* 퍼블리싱(무료) — 위의 [공유]와 **다른 일**이라 버튼을 나눴다.
           [공유]는 사람을 불러 **함께 편집**하는 것이고(참가자·권한),
-          [공개]는 링크를 가진 누구나 **로그인 없이 읽는** 것이다.
+          [퍼블리싱]은 링크를 가진 누구나 **로그인 없이 읽는** 것이다.
           하나의 버튼에 넣으면 "공유했다"가 둘 중 무엇인지 알 수 없다. */}
       <button
         data-testid="map-publish"
         onClick={() => setPublishOpen(true)}
-        disabled={!shareMapId}
-        title={shareMapId
-          ? '공개 링크를 만들어 로그인 없이 읽을 수 있게 합니다 (읽기 전용)'
-          : '먼저 맵을 저장해야 공개할 수 있습니다'}
+        disabled={!publishMapId}
+        title={publishMapId
+          ? '퍼블리싱 — 링크를 가진 사람이 로그인 없이 읽습니다 (완성본만, 읽기 전용)'
+          : '먼저 맵을 저장해야 퍼블리싱할 수 있습니다'}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -389,21 +398,21 @@ export function TopToolbar({
           padding: '7px 12px',
           borderRadius: 8,
           background: t.surfaceAlt,
-          color: shareMapId ? t.text : t.textSubtle,
+          color: publishMapId ? t.text : t.textSubtle,
           border: `1px solid ${t.border}`,
-          cursor: shareMapId ? 'pointer' : 'not-allowed',
+          cursor: publishMapId ? 'pointer' : 'not-allowed',
           fontSize: 13,
           fontWeight: 500,
           whiteSpace: 'nowrap',
           flexShrink: 0,
         }}
       >
-        <I.Globe size={15} />{!iconOnly && ' 공개'}
+        <I.Globe size={15} />{!iconOnly && ' 퍼블리싱'}
       </button>
-      {publishOpen && shareMapId && (
+      {publishOpen && publishMapId && (
         <PublishPanel
           t={t}
-          mapId={shareMapId}
+          mapId={publishMapId}
           mapTitle={mapTitle}
           flash={flash}
           onClose={() => setPublishOpen(false)}

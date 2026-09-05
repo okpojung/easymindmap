@@ -58,8 +58,8 @@
 | 3 | GET | `/v1/maps/:id` | 단건 + 정규화 `nodes[]` (depth·orderIndex 순) |
 | 4 | PATCH | `/v1/maps/:id` | 메타 수정 `{title?,viewMode?,refreshIntervalSeconds?,defaultLayoutType?,folderId?,kind?}` |
 | 5 | DELETE | `/v1/maps/:id` | 소프트 삭제(`deleted_at`) → 204 |
-| 6 | PUT | `/v1/maps/:id/document` | **문서 스냅샷 저장(upsert)** `{doc,title?,keepVersion?,editSession?,allowEmpty?,client?:{platform?,browser?}}` — 무변경이면 `{unchanged:true}`, 다른 세션 잠금이면 409, 쿼터 초과 413. `keepVersion` 시 히스토리 버전 적재(B8). `client` = 저장한 기기·브라우저(2026-08-09) — **IP 는 받지 않는다**(서버가 요청에서 읽는다. 보내면 400) **저장할 때 문서 안의 data URL 사진(8KB 이상)을 첨부 저장소로 옮기고 `/v1/attachments/<id>`(상대 경로) 참조만 남긴다** (2026-08-16, B16 ②). 같은 내용의 사진은 **내용 해시로 알아봐 다시 올리지 않는다**. 옮기다 실패하면 그 사진만 원래대로 두고 저장은 통과시킨다 — **쿼터 초과(413)만 올린다** |
-| 7 | GET | `/v1/maps/:id/document` | 스냅샷 조회 `?editSession=` → `{mapId,title,folderId,kind,doc,updatedAt,editLock?:'acquired'\|'busy'}`. **협업맵(`kind='collab'`)은 잠금을 잡지 않는다** — `editLock` 을 아예 주지 않는다(잠근 적이 없으므로 `acquired` 라고 거짓말하지 않는다) (2026-08-16, B16 ①) |
+| 6 | PUT | `/v1/maps/:id/document` | **문서 스냅샷 저장(upsert)** `{doc,title?,keepVersion?,editSession?,allowEmpty?,client?:{platform?,browser?}}` — 무변경이면 `{unchanged:true}`, 다른 세션 잠금이면 409, 쿼터 초과 413, **퍼블리싱 중이면 403**(2026-09-05 — 퍼블리싱한 맵은 완성본이라 편집이 막힌다). `keepVersion` 시 히스토리 버전 적재(B8). `client` = 저장한 기기·브라우저(2026-08-09) — **IP 는 받지 않는다**(서버가 요청에서 읽는다. 보내면 400) **저장할 때 문서 안의 data URL 사진(8KB 이상)을 첨부 저장소로 옮기고 `/v1/attachments/<id>`(상대 경로) 참조만 남긴다** (2026-08-16, B16 ②). 같은 내용의 사진은 **내용 해시로 알아봐 다시 올리지 않는다**. 옮기다 실패하면 그 사진만 원래대로 두고 저장은 통과시킨다 — **쿼터 초과(413)만 올린다** |
+| 7 | GET | `/v1/maps/:id/document` | 스냅샷 조회 `?editSession=` → `{mapId,title,folderId,kind,doc,updatedAt,published?:boolean,editLock?:'acquired'\|'busy'}`. `published:true` 면 **읽기 전용으로 연다**(2026-09-05). **협업맵(`kind='collab'`)은 잠금을 잡지 않는다** — `editLock` 을 아예 주지 않는다(잠근 적이 없으므로 `acquired` 라고 거짓말하지 않는다) (2026-08-16, B16 ①) |
 | 8 | POST | `/v1/maps/:id/edit-heartbeat` | 편집 잠금 연장 `{sessionKey}` → `{held}` (TTL 60초, 25초 주기). **협업맵은 항상 `held:true`** — 잃을 잠금이 없다. `false` 를 주면 프런트가 편집권 상실로 읽어 **맵과의 연결을 끊는다** |
 | 9 | POST | `/v1/maps/:id/edit-release` | 편집 잠금 해제 `{sessionKey}` → `{ok}`. 협업맵은 잠근 적이 없어 지울 것이 없다 |
 | 10 | GET | `/v1/maps/:id/versions` | 히스토리 버전 목록(B8) — `{version,title,createdAt,bytes,layoutType,nodeCount,attachBytes,attachCount,platform,browser,ip}[]` · platform/browser/ip = **저장한 자리**(2026-08-09, 그 이전 버전은 null) |
@@ -499,9 +499,10 @@ Access Token 갱신
 }
 ```
 
-`publishId` 는 **지금 공개 중인 링크**다 (2026-09-05, PUBL-05). 공개하지
-않았으면 `null` 이고, 게시 표가 없는 서버(델타 미적용)에서도 `null` 이다 —
-문서함이 그 값을 보고 **유형** 칸에 `🌐 공개맵` 을 그린다(단독맵 대신).
+`publishId` 는 **지금 퍼블리싱 중인 링크**다 (2026-09-05, PUBL-05).
+퍼블리싱하지 않았으면 `null` 이고, 퍼블리싱 표가 없는 서버(델타 미적용)
+에서도 `null` 이다 — 문서함이 그 값을 보고 **유형** 칸에 `🌐 퍼블리싱맵` 을
+그린다(단독맵 대신).
 
 ```json
 { "mapId": "uuid-...", "title": "My Map", "publishId": "abcdefghjkmn" }
@@ -560,6 +561,12 @@ Access Token 갱신
 > `defaultLayoutType`·`folderId`(폴더 이동, null = 최상위)·`kind` 는 실물
 > DTO 에 추가된 필드다. 이름 변경·폴더 이동 시 같은 폴더 안 제목 중복
 > 검사(409)를 거친다.
+
+> ★ **퍼블리싱 중인 맵은 `kind: "collab"` 으로 바꿀 수 없다 — `403`**
+> (2026-09-05 사용자 결정). 반대 방향(협업맵 → 퍼블리싱)은 `POST …/publish`
+> 가 막는다. **양쪽을 다 막아야 규칙이 닫힌다** — 한쪽만 막으면 "퍼블리싱해
+> 두고 초대" 라는 우회로가 남는다. 되돌릴 길은 열려 있다: 퍼블리싱을
+> 중단하면 협업맵으로 바꿀 수 있다 (`27-publish-share.md` §6.3).
 
 > **`viewMode` 허용값**
 > | 값 | 설명 |
@@ -1201,7 +1208,11 @@ file: (binary)
 
 ---
 
-## 8. Publish (무료 게시 — 2026-09-04 구현)
+## 8. Publish (무료 퍼블리싱 — 2026-09-04 구현 · 2026-09-05 규칙 확정)
+
+> **용어**: 행위·상태는 **퍼블리싱**이다(퍼블리싱한다 · 퍼블리싱 중 ·
+> 퍼블리싱 중단). "공개 URL · 공개 뷰" 는 결과물의 성질을 가리키는 말로만
+> 남는다 (2026-09-05 사용자 결정, `27-publish-share.md` 머리말).
 
 설계: `docs/04-extensions/publish/27-publish-share.md`
 
@@ -1209,7 +1220,7 @@ file: (binary)
 `publishId` 는 소문자·숫자 12자(헷갈리는 글자 `0 o 1 l i` 제외).
 
 ### GET /maps/{mapId}/publish-status
-게시 상태. 맵을 **볼 수 있는 사람**이면 누구나.
+퍼블리싱 상태. 맵을 **볼 수 있는 사람**이면 누구나.
 
 **Response** `200 OK`
 ```json
@@ -1218,14 +1229,14 @@ file: (binary)
 ```
 
 * `hasPreview` — 미리보기 실루엣이 올라와 있는가 (27a §2).
-* `publishable` — 이 맵을 **새로 공개할 수 있는가**. **협업맵이면 `false`**
+* `publishable` — 이 맵을 **새로 퍼블리싱할 수 있는가**. **협업맵이면 `false`**
   이고 `blockedReason` 에 사람이 읽는 이유가 함께 온다 (2026-09-05 결정,
   `27-publish-share.md` §6). 규칙과 문장을 서버가 갖는 이유는 화면이 같은
   판정을 한 벌 더 가지면 언젠가 서버와 다른 말을 하기 때문이다.
-  이미 공개 중인 맵은 이 값이 `false` 여도 **링크는 살아 있다**.
+  이미 퍼블리싱 중인 맵은 이 값이 `false` 여도 **링크는 살아 있다**.
 * `available:false` 는 **오류가 아니라 값**이다 — 이 서버에 `published_maps`
   표가 없다(스키마 델타 미적용). 화면은 이 값을 보고 버튼 대신 안내를 낸다.
-* 게시 중이 아니면 `publishId` · `publishedAt` 이 `null`.
+* 퍼블리싱 중이 아니면 `publishId` · `publishedAt` 이 `null`.
 
 ---
 
@@ -1233,25 +1244,36 @@ file: (binary)
 맵을 공개 URL로 퍼블리싱. **맵 주인만.** (편집자·열람자는 `403`,
 볼 수 없는 맵은 `404` — 없는 맵과 구분하지 않는다.)
 
-**협업맵은 `403`** — 공개는 단독맵만 된다(2026-09-05 결정). 게시 **취소**와
-**미리보기 올리기**는 협업맵이어도 된다: 이미 열린 것을 닫는 길까지 막으면
-되돌릴 수 없다.
+**협업맵은 `403`** — 퍼블리싱은 단독맵만 된다(2026-09-05 결정).
+**중단**과 **미리보기 올리기**는 협업맵이어도 된다: 이미 열린 것을 닫는
+길까지 막으면 되돌릴 수 없다.
 
-**멱등** — 이미 게시 중이면 **그 링크를 그대로** 돌려준다. 두 번 눌렀다고
-이미 보낸 링크를 죽이지 않는다.
+**멱등** — 이미 퍼블리싱 중이면 **그 링크를 그대로** 돌려준다. 두 번
+눌렀다고 이미 보낸 링크를 죽이지 않는다.
+
+★ **중단한 뒤 다시 부르면 새 주소다** (2026-09-05 사용자 결정). 옛 주소는
+되살아나지 않는다 — 중단이 "잠시 고치려고" 인지 "이제 그만" 인지 시스템은
+알 수 없기 때문이다 (`27-publish-share.md` §6.4).
+
+★ **퍼블리싱하면 그 맵은 읽기 전용이 된다** — `PUT /maps/{id}/document` 가
+`403` 이다. 고치려면 중단해야 한다 (§6.2). `GET …/document` 응답의
+`published: true` 로 화면이 그 사실을 안다.
 
 **Response** `200 OK` — `publish-status` 와 같은 모양
 ```json
 { "available": true, "publishId": "abcdefghjkmn", "publishedAt": "2026-09-04T00:00:00Z" }
 ```
 
-`503` — 이 서버에 게시 표가 없다(이유 문장을 함께 준다).
+`503` — 이 서버에 퍼블리싱 표가 없다(이유 문장을 함께 준다).
 
 ---
 
 ### DELETE /maps/{mapId}/publish
-퍼블리싱 취소 (`unpublished_at` 설정). **맵 주인만.**
-이미 취소돼 있어도 성공이다(멱등).
+퍼블리싱 중단 (`unpublished_at` 설정). **맵 주인만.**
+이미 중단돼 있어도 성공이다(멱등).
+
+★ **그 주소는 영구히 죽는다.** 다시 퍼블리싱하면 새 주소가 나온다.
+미리보기 실루엣 파일도 링크를 따라가므로 함께 사라진다.
 
 **Response** `204 No Content`
 
@@ -1274,8 +1296,9 @@ file: (binary)
 
 * `doc` 은 `GET /maps/{mapId}/document` 와 **같은 저장 스냅샷**이다
   (노드 표를 따로 열지 않는다 — 열어 주는 문은 하나다).
-* 무료 게시는 **지금 저장된 판**을 준다. 저자가 고쳐 저장하면 공개 화면도
-  따라 바뀐다(판을 박제하는 것은 유료 게시의 규칙이다 — `27a-paid-publish.md` §4).
+* **퍼블리싱하는 동안 이 판은 바뀌지 않는다** (2026-09-05). 퍼블리싱한
+  맵은 편집이 막히기 때문이다 — 저자가 고치려면 중단해야 하고, 중단하면
+  그 주소는 죽는다. 독자가 보는 판은 링크가 사는 동안 **하나**다.
 * `404` — 없는 링크 · 취소된 링크 · 휴지통에 든 맵을 **구분하지 않는다.**
 * `400` — 슬러그 모양(`[a-z0-9]{6,20}`)이 아니다.
 
@@ -1318,7 +1341,7 @@ file: (binary)
 
 여는 조건 — 셋을 모두 만족해야 한다.
 1. 그 첨부가 **그 맵의 것**(`attachments.map_id`)
-2. 그 맵이 **지금 그 링크로 공개 중**(`unpublished_at IS NULL`)
+2. 그 맵이 **지금 그 링크로 퍼블리싱 중**(`unpublished_at IS NULL`)
 3. 맵이 휴지통에 있지 않다(`deleted_at IS NULL`)
 
 **Response** `200 OK` (또는 `206 Partial Content`) — 파일 바이트

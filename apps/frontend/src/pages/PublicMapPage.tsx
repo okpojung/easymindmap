@@ -1,4 +1,4 @@
-// PublicMapPage — 공개 링크(`/p/{publishId}`)로 열리는 **읽기 전용** 화면.
+// PublicMapPage — 퍼블리싱 링크(`/p/{publishId}`)로 열리는 **읽기 전용** 화면.
 // 설계: docs/04-extensions/publish/27-publish-share.md (PUBL-03)
 //
 // ★ 왜 에디터를 재사용하지 않고 **내보내기 뷰어**를 쓰나
@@ -27,7 +27,7 @@ import {
   type PublishedMap,
 } from '@/services/cloud/apiClient';
 
-/** 주소가 공개 링크인가 — 맞으면 publishId */
+/** 주소가 퍼블리싱 링크인가 — 맞으면 publishId */
 export function publishIdFromPath(pathname: string): string | null {
   const m = /^\/p\/([a-z0-9]{6,20})\/?$/.exec(pathname);
   return m ? m[1] : null;
@@ -39,9 +39,9 @@ interface Snapshot {
 }
 
 /**
- * 서버 저장소를 가리키는 사진·첨부 주소를 **공개 주소로 바꾼다.**
+ * 서버 저장소를 가리키는 사진·첨부 주소를 **퍼블리싱 주소로 바꾼다.**
  *
- * 이 한 단계가 없으면 공개된 맵은 사진 자리마다 깨진 채로 열린다 —
+ * 이 한 단계가 없으면 퍼블리싱된 맵은 사진 자리마다 깨진 채로 열린다 —
  * 원래 주소(`/v1/attachments/{id}`)는 로그인을 요구하기 때문이다.
  * 바꾸는 규칙은 `withInlinedImages`·`withInlinedAttachments` 가 이미
  * 알고 있다(노트 HTML 속 `<img>` 까지 포함) — 순회를 새로 쓰지 않는다.
@@ -110,7 +110,7 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
     );
   }
   if (!data) {
-    return <Message title="여는 중…" body="공개된 맵을 불러오고 있습니다." testId="public-map-loading" />;
+    return <Message title="여는 중…" body="퍼블리싱된 맵을 불러오고 있습니다." testId="public-map-loading" />;
   }
   if (!html) {
     return (

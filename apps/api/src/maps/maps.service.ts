@@ -788,10 +788,13 @@ export class MapsService {
     const { rows: cand } = await this.db.query<{
       id: string; name: string; size_bytes: string;
     }>(
+      // **맵 기준** — 협업맵의 이관 사진은 누가 저장했든 맵 주인 것이다
+      // (2026-09-05). 올린 사람으로 좁히면 참가자가 저장할 때 아무것도
+      // 안 지워진다. 여기 온 사람은 이미 이 맵에 쓸 수 있는 사람이다.
       `SELECT id, name, size_bytes FROM public.attachments
-        WHERE map_id = $1 AND owner_id = $2
+        WHERE map_id = $1
           AND created_at < NOW() - INTERVAL '1 day'`,
-      [mapId, userId],
+      [mapId],
     );
     const ours = cand.filter((a) => isExtractedImageName(a.name));
     if (!ours.length) return;
@@ -1033,8 +1036,8 @@ export class MapsService {
       // 메모리에 data URL 을 들고 있어 자동저장마다 다시 보내기 때문이다.
       const { rows } = await this.db.query<{ id: string }>(
         `SELECT id FROM public.attachments
-          WHERE map_id = $1 AND owner_id = $2 AND name = $3 LIMIT 1`,
-        [mapId, userId, img.name],
+          WHERE map_id = $1 AND name = $2 LIMIT 1`,
+        [mapId, img.name],
       );
       if (rows[0]) {
         urlBySrc.set(img.dataUrl, `/v1/attachments/${rows[0].id}`);

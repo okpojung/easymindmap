@@ -162,7 +162,11 @@ export class ChunkUploadService implements OnModuleInit, OnModuleDestroy {
     }
     // **쿼터를 미리 검사한다** — 다 올린 뒤에 거절하면 사용자가 몇 분을
     // 버린다. 동시에 여러 개를 올릴 때 합쳐서 넘지 않도록 예약분도 더한다.
-    await this.attachments.assertQuota(userId, size + (await this.pendingBytes(userId)));
+    // 협업맵이면 주인·용량은 맵 주인 몫 (AttachmentsService.resolveOwner)
+    const owner = await this.attachments.resolveOwner(userId, input.mapId || undefined);
+    await this.attachments.assertQuota(
+      owner.ownerId, size + (await this.pendingBytes(userId)), owner.onBehalf,
+    );
 
     const uploadId = randomUUID();
     const parts = Math.ceil(size / this.partSize);
@@ -260,12 +264,15 @@ export class ChunkUploadService implements OnModuleInit, OnModuleDestroy {
     }
     // 확정 직전에 쿼터를 한 번 더 본다 — 올리는 동안 다른 곳에서 용량을
     // 썼을 수 있다. 이 세션의 예약분은 지금 확정하는 값이므로 뺀다.
+    // 주인은 **확정 시점에** 다시 정한다 — 올리는 동안 소유권이 넘어갔거나
+    // 참가자에서 빠졌을 수 있다.
+    const owner = await this.attachments.resolveOwner(userId, m.mapId ?? undefined);
     await this.attachments.assertQuota(
-      userId, m.size + (await this.pendingBytes(userId, uploadId)),
+      owner.ownerId, m.size + (await this.pendingBytes(userId, uploadId)), owner.onBehalf,
     );
 
     const id = randomUUID();
-    const key = `u/${userId}/${id}`; // 서버가 UUID 로만 조립 (경로 주입 불가)
+    const key = `u/${owner.ownerId}/${id}`; // 서버가 UUID 로만 조립 (경로 주입 불가)
     const total = await this.storage.concat(
       key, Array.from({ length: m.parts }, (_, i) => this.partKey(userId, uploadId, i)),
     );
@@ -280,7 +287,7 @@ export class ChunkUploadService implements OnModuleInit, OnModuleDestroy {
       await this.db.query(
         `INSERT INTO public.attachments (id, owner_id, map_id, name, mime, size_bytes, storage_key)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [id, userId, m.mapId, m.name, m.mime, m.size, key],
+        [id, owner.ownerId, m.mapId, m.name, m.mime, m.size, key],
       );
     } catch (err) {
       await this.storage.delete(key).catch(() => undefined); // 고아 파일 방지

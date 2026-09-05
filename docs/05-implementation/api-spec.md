@@ -68,11 +68,11 @@
 | 13 | POST | `/v1/folders` | `{name,parentId?}` — 같은 부모에 같은 이름 409 |
 | 14 | PATCH | `/v1/folders/:id` | `{name?,parentId?}` — 자기 자신/자손으로 이동 400 |
 | 15 | DELETE | `/v1/folders/:id` | 비어 있을 때만 204, 아니면 409 |
-| 16 | POST | `/v1/attachments?mapId=` | 첨부 업로드(multipart `file`) → 메타 + `url`. 크기 초과 400, 쿼터 초과 413 |
+| 16 | POST | `/v1/attachments?mapId=` | 첨부 업로드(multipart `file`) → 메타 + `url`. 크기 초과 400, 쿼터 초과 413. **`mapId` 를 주면 첨부의 주인은 그 맵의 주인이다** (2026-09-05, [collaboration/29](../04-extensions/collaboration/29-invite-and-ownership-transfer.md) §3.4 후속) — 협업맵에서 참가자가 올려도 `owner_id`·저장 키(`u/<주인>/…`)·용량이 개설자 몫이고, 참가자가 탈퇴해도 맵과 함께 남는다. 그래서 그 맵에 **쓸 수 있는 사람**이어야 한다: 볼 수 없는 맵 404, 읽기만 참가자 403. 개설자 한도를 넘으면 413 문장이 "개설자의 저장 용량 한도" 라고 말한다. 청크 업로드(16-2)와 저장 시 사진 이관도 같은 규칙 |
 | 16b | POST | `/v1/attachments/from-url` | **원격 사진 대리 다운로드** (2026-08-20, B16 ② 슬라이스 3) `{url, mapId?, store?}` → 16번과 **같은 모양**의 첨부 메타 + `url` + `reused`. 브라우저 fetch 는 CORS 로 막히므로 **서버가 대신 받아** 저장한다. 이름은 **내용 해시**(`img-<16자>.<확장자>`)라 같은 맵의 같은 사진은 다시 올리지 않는다(`reused: true`). `store: false` 면 저장하지 않고 `{mime,sizeBytes,dataUrl}` 만 준다 — **리치 노트 HTML 처럼 서버 주소를 넣으면 안 되는 자리**가 CORS 만 넘으려고 쓴다. **SSRF 방어**: http/https 만 · 사설/루프백/링크로컬 대역 차단(**DNS 해석 결과 IP 로** 검사하고 **그 IP 로 고정 접속**) · 리다이렉트 3회 상한(**매 홉마다 재검사**) · `image/*` 중 png·jpeg·gif·webp 만 · 2.5MB 상한(**스트림에서 끊는다** — Content-Length 를 믿지 않는다) · 타임아웃. 막히거나 못 받으면 **전부 400** — 프런트는 그 문구를 보여 주고 data URL 폴백으로 넘어간다 |
 | 17 | GET | `/v1/attachments/quota` | 쿼터 사용량 조회 → `{dbBytes,fileBytes,usedBytes,quotaBytes,plan}`. 합산 = 문서 DB + 첨부. `plan` 은 `free`\|`basic`\|`pro`\|`team` — **용량 숫자는 DB 가 정하고 API 는 이름만 전달한다** |
 | 18 | GET | `/v1/attachments/:id` | 다운로드(스트림, `?access_token=` 허용) |
-| 19 | DELETE | `/v1/attachments/:id` | 삭제 → 204 |
+| 19 | DELETE | `/v1/attachments/:id` | 삭제 → 204. **내 것이거나 그 맵에 쓸 수 있는 사람**이면 된다 (2026-09-05 — 협업맵의 첨부는 맵 주인 것이라, 올린 참가자가 노드에서 뗄 때 파일도 지우려면 편집 권한으로 열어야 한다). 읽기만 참가자·남은 404 |
 | 19b | POST | `/v1/account/email-code` | **무인증.** 가입 이메일 인증번호 발송 `{email}` → `{sent,expiresInMin,devCode?}` — devCode 는 AUTH_MODE=dev + 메일 미설정일 때만 (2026-08-09) |
 | 19c | POST | `/v1/account/email-code/verify` | **무인증.** `{email,code}` → `{verified,emailToken}` (인증표, 유효 30분) |
 | 19d | GET/PUT | `/v1/account/profile` | 회원 프로필 조회·저장 `{fullName,phoneCountry?,phoneNumber?,emailToken?}` → `{fullName,phoneCountry,phoneNumber,plan,emailVerifiedAt,phoneVerifiedAt,complete}` |

@@ -14,6 +14,7 @@
 // 파일 원본은 StorageService 드라이버에, 메타데이터는 attachments 에.
 
 import {
+  ForbiddenException,
   Injectable,
   NotFoundException,
   PayloadTooLargeException,
@@ -22,7 +23,7 @@ import { randomUUID } from 'node:crypto';
 import type { ReadStream } from 'node:fs';
 import { DatabaseService } from '../database/database.service';
 import { StorageService } from '../storage/storage.service';
-import { queryAllowingMissingMembers } from '../maps/map-access';
+import { canWrite, findAccessibleMap, queryAllowingMissingMembers } from '../maps/map-access';
 import { columnReady, tableReady } from '../common/table-ready';
 import { fetchRemoteImage } from './remote-image';
 
@@ -53,6 +54,23 @@ export interface AttachmentMeta {
   name: string;
   mime: string;
   sizeBytes: number;
+}
+
+/**
+ * 첨부의 **주인** — 누구 용량으로 세고 누구 것으로 남길지.
+ *
+ * ★ **협업맵에서는 올린 사람이 아니라 맵의 주인이다** (2026-09-05,
+ *   collaboration/29 §3.4 후속 · 13a §4.5 "협업맵의 기준은 개설자 요금제").
+ *   전에는 참가자가 붙인 사진이 참가자 것이어서, 참가자가 탈퇴하면
+ *   `owner_id` CASCADE 로 행이 지워지고 **개설자의 맵에서 그림이 사라졌다.**
+ *   주인을 맵 주인으로 두면 참가자가 떠나도 맵과 함께 남고, 용량도 개설자
+ *   요금제로 한 번만 센다(참가자 요금제가 섞이지 않는다).
+ */
+export interface AttachmentOwner {
+  /** `attachments.owner_id` 에 들어갈 사람 — 맵이 있으면 맵 주인, 없으면 올린 사람 */
+  ownerId: string;
+  /** 올린 사람과 다른가 — 오류 문장에서 "개설자 용량" 이라고 말하기 위해 */
+  onBehalf: boolean;
 }
 
 function fmtGB(bytes: number): string {
@@ -101,18 +119,43 @@ export class AttachmentsService {
     };
   }
 
-  /** 추가로 addBytes 를 쓰면 쿼터를 넘는지 검사 — 넘으면 413 */
-  async assertQuota(userId: string, addBytes: number): Promise<void> {
+  /**
+   * 추가로 addBytes 를 쓰면 쿼터를 넘는지 검사 — 넘으면 413.
+   * `onBehalf` 면 **개설자의** 한도라고 말한다 — 참가자에게 "요금제를
+   * 올려 주세요" 라고 하면 자기 요금제를 올리고도 안 되는 일을 겪는다.
+   */
+  async assertQuota(userId: string, addBytes: number, onBehalf = false): Promise<void> {
     const u = await this.usage(userId);
     if (u.usedBytes + addBytes > u.quotaBytes) {
       // **어느 요금제의 한도인지 밝힌다** — "왜 이 숫자인가"를 사용자가
       // 알아야 올릴지 정리할지 판단할 수 있다.
-      throw new PayloadTooLargeException(
-        `저장 용량 한도를 초과합니다 — 사용 중 ${fmtGB(u.usedBytes)} / ` +
-        `한도 ${fmtGB(u.quotaBytes)} (${PLAN_LABEL[u.plan]} 요금제). ` +
-        '첨부나 맵을 정리하거나 요금제를 올려 주세요.',
+      throw new PayloadTooLargeException(onBehalf
+        ? `이 협업맵의 첨부는 개설자 용량으로 셉니다 — 개설자의 저장 용량 한도를 초과합니다 ` +
+          `(사용 중 ${fmtGB(u.usedBytes)} / 한도 ${fmtGB(u.quotaBytes)}, ${PLAN_LABEL[u.plan]} 요금제). ` +
+          '개설자에게 첨부를 정리하거나 요금제를 올려 달라고 해 주세요.'
+        : `저장 용량 한도를 초과합니다 — 사용 중 ${fmtGB(u.usedBytes)} / ` +
+          `한도 ${fmtGB(u.quotaBytes)} (${PLAN_LABEL[u.plan]} 요금제). ` +
+          '첨부나 맵을 정리하거나 요금제를 올려 주세요.',
       );
     }
+  }
+
+  /**
+   * 이 맵에 올리는 첨부의 주인을 정한다 (`AttachmentOwner` 참조).
+   *
+   * 맵을 지정했으면 **그 맵에 쓸 수 있는 사람이어야 한다** — 전에는 아무
+   * 맵 id 나 넣을 수 있었는데(주인이 올린 사람이라 해될 것이 없었다),
+   * 이제 주인이 맵 주인이 되므로 남의 맵 id 로 남의 용량을 쓰는 길을
+   * 막아야 한다. 볼 수 없는 맵은 없는 맵과 같이 404, 읽기만 참가자는 403.
+   */
+  async resolveOwner(userId: string, mapId?: string): Promise<AttachmentOwner> {
+    if (!mapId) return { ownerId: userId, onBehalf: false };
+    const map = await findAccessibleMap<{ owner_id: string }>(this.db, mapId, userId);
+    if (!map) throw new NotFoundException('맵을 찾을 수 없습니다.');
+    if (!canWrite(map.access_role)) {
+      throw new ForbiddenException('읽기만 권한으로는 첨부를 올릴 수 없습니다.');
+    }
+    return { ownerId: map.owner_id, onBehalf: map.owner_id !== userId };
   }
 
   async upload(
@@ -120,18 +163,20 @@ export class AttachmentsService {
     file: { originalname: string; mimetype: string; size: number; buffer: Buffer },
     mapId?: string,
   ): Promise<AttachmentMeta> {
-    await this.assertQuota(userId, file.size);
+    // 협업맵이면 주인은 맵 주인, 용량도 맵 주인 몫 (AttachmentOwner 참조)
+    const { ownerId, onBehalf } = await this.resolveOwner(userId, mapId);
+    await this.assertQuota(ownerId, file.size, onBehalf);
 
     // multer 는 파일명을 latin1 로 넘긴다 — 한글 파일명 복원
     const name = Buffer.from(file.originalname, 'latin1').toString('utf8');
     const id = randomUUID();
-    const key = `u/${userId}/${id}`; // 서버가 UUID 로만 조립 (경로 주입 불가)
+    const key = `u/${ownerId}/${id}`; // 서버가 UUID 로만 조립 (경로 주입 불가)
     await this.storage.put(key, file.buffer);
     try {
       await this.db.query(
         `INSERT INTO public.attachments (id, owner_id, map_id, name, mime, size_bytes, storage_key)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [id, userId, mapId ?? null, name.slice(0, 255),
+        [id, ownerId, mapId ?? null, name.slice(0, 255),
          (file.mimetype || 'application/octet-stream').slice(0, 127), file.size, key],
       );
     } catch (err) {
@@ -161,15 +206,19 @@ export class AttachmentsService {
   async uploadFromUrl(
     userId: string, url: string, mapId?: string,
   ): Promise<AttachmentMeta & { reused: boolean }> {
+    // 맵에 쓸 수 없는 사람이면 원격 사진을 받기 전에 거절한다
+    if (mapId) await this.resolveOwner(userId, mapId);
     const img = await fetchRemoteImage(url);
 
     if (mapId) {
+      // **맵 기준으로 찾는다** — 협업맵의 첨부는 누가 올렸든 맵 주인 것이라
+      // 올린 사람으로 좁히면 같은 사진이 참가자마다 한 벌씩 쌓인다.
       const { rows } = await this.db.query<{
         id: string; name: string; mime: string; size_bytes: string;
       }>(
         `SELECT id, name, mime, size_bytes FROM public.attachments
-          WHERE map_id = $1 AND owner_id = $2 AND name = $3 LIMIT 1`,
-        [mapId, userId, img.name],
+          WHERE map_id = $1 AND name = $2 LIMIT 1`,
+        [mapId, img.name],
       );
       if (rows[0]) {
         return {
@@ -206,7 +255,7 @@ export class AttachmentsService {
     // 이게 없으면 공유받은 맵이 **이미지 자리마다 깨진 채로** 열린다 —
     // 맵은 보이는데 그림이 안 보이는 것은 공유가 반쯤 된 것이고,
     // 사용자에게는 그냥 고장으로 보인다.
-    // 지우기·목록은 그대로 소유자 전용이다(참가자가 남의 파일을 지우면 안 된다).
+    // 지우기는 소유자 + **그 맵에 쓸 수 있는 사람**이다(`remove()` 참조, 2026-09-05).
     const rows = await queryAllowingMissingMembers<{
       name: string; mime: string; size_bytes: string; storage_key: string;
     }>(
@@ -290,13 +339,33 @@ export class AttachmentsService {
     };
   }
 
+  /**
+   * 첨부 지우기 — 내 것이거나, **그 맵에 쓸 수 있는 사람**이면 된다
+   * (2026-09-05). 협업맵의 첨부는 맵 주인 것이라, 올린 참가자가 노드에서
+   * 떼어 낼 때 서버 파일도 함께 지우려면 편집 권한으로 열어 줘야 한다 —
+   * 노드에서 뗄 수 있는 사람이 파일은 못 지우면 용량만 남는다.
+   * 읽기만 참가자·남은 여전히 404 (있는지도 알려 주지 않는다).
+   */
   async remove(userId: string, id: string): Promise<void> {
-    const { rows } = await this.db.query<{ storage_key: string }>(
-      `DELETE FROM public.attachments WHERE id = $1 AND owner_id = $2
-       RETURNING storage_key`,
+    const rows = await queryAllowingMissingMembers<{ id: string; storage_key: string }>(
+      this.db,
+      `SELECT a.id, a.storage_key
+         FROM public.attachments a
+         LEFT JOIN public.maps m
+           ON m.id = a.map_id AND m.deleted_at IS NULL
+         LEFT JOIN public.map_members mm
+           ON mm.map_id = a.map_id AND mm.user_id = $2 AND mm.role IN ('owner', 'editor')
+        WHERE a.id = $1
+          AND (a.owner_id = $2 OR m.owner_id = $2 OR mm.user_id IS NOT NULL)`,
+      `SELECT a.id, a.storage_key
+         FROM public.attachments a
+         LEFT JOIN public.maps m
+           ON m.id = a.map_id AND m.deleted_at IS NULL
+        WHERE a.id = $1 AND (a.owner_id = $2 OR m.owner_id = $2)`,
       [id, userId],
     );
     if (!rows[0]) throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');
+    await this.db.query(`DELETE FROM public.attachments WHERE id = $1`, [id]);
     await this.storage.delete(rows[0].storage_key);
   }
 }

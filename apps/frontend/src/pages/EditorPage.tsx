@@ -26,7 +26,7 @@ import { GuestBrowserNotice } from '@/components/auth/GuestBrowserNotice';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import {
-  clearCurrentMap, detachFromServer, editSessionKey, initialMapId, openMapHere,
+  clearCurrentMap, detachFromServer, editSessionKey, initialMapId, openMapHere, refreshFromServer,
 } from '@/services/cloud/mapSession';
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { pullAiKeys, pullAiSettings } from '@/services/cloud/aiKeysSync';
@@ -312,13 +312,31 @@ export function EditorPage() {
   }, [gated]);
 
   // 편집 잠금 하트비트 (2026-08-04) — 편집권을 쥔 탭(cloudMapId 연결)이
-  // 25초마다 갱신한다. 놓치면 TTL(60초) 뒤 다른 세션이 가져간다.
+  // 갱신한다. 놓치면 TTL(60초) 뒤 다른 세션이 가져간다.
+  //
+  // **5초 주기** (2026-09-05, 25초에서). 하트비트가 이제 "서버 문서가
+  // 바뀌었나"도 실어 오기 때문이다 — AI 대화(MCP)가 이 맵에 붙인 것을
+  // 몇 초 안에 화면에 보여야 사용자가 그 위에서 이어 편집한다(25초면
+  // 그 사이에 옛 화면을 고쳐 STALE 로 튕길 확률이 커진다). 탭이 숨어 있으면
+  // 25초마다만 보낸다.
   const cloudMapIdForLock = useCloudStore((s) => s.cloudMapId);
   useEffect(() => {
     if (!cloudMapIdForLock) return;
+    let tick = 0;
     const timer = window.setInterval(() => {
+      tick += 1;
+      if (document.hidden && tick % 5 !== 0) return;
       void cloudApi.editHeartbeat(cloudMapIdForLock, editSessionKey())
         .then((r) => {
+          // **서버 문서가 이 탭이 아는 것보다 새롭다** — AI 대화가 붙였다.
+          // 편집 중이 아니면 조용히 다시 읽고, 편집 중이면 AI 가 붙인 가지만
+          // 화면에 합친다. 합칠 수 없는 변경이면 손대지 않고, 저장 때 STALE
+          // 을 받아 초안 보관 길로 간다(useCloudAutosave.handleStaleConflict).
+          const known = useCloudStore.getState().lastSavedAt;
+          if (r && r.held !== false && r.updatedAt && known
+            && Date.parse(r.updatedAt) > Date.parse(known)) {
+            void refreshFromServer(cloudMapIdForLock, r.lastPlatform);
+          }
           // held=false = 편집권을 잃었다 (TTL 만료 후 다른 세션이 가져감).
           // 이 상태로 계속 편집하면 저장이 409 로 막혀 그 편집분이 사라진다.
           // 예전에는 응답을 아무도 보지 않았다 (2026-08-05 감사).
@@ -342,7 +360,7 @@ export function EditorPage() {
           }
         })
         .catch(() => { /* 일시 오류 — 다음 주기·저장이 하트비트를 겸한다 */ });
-    }, 25_000);
+    }, 5_000);
     return () => window.clearInterval(timer);
   }, [cloudMapIdForLock]);
 

@@ -33,6 +33,11 @@ interface CloudState {
   busy: 'idle' | 'saving' | 'opening';
   error: string | null;
   /**
+   * 오류가 아닌 알림 (2026-09-05) — "AI 대화가 이 맵을 갱신해 화면을 새로
+   * 읽었습니다" 처럼 **잘 됐다**는 소식. 상단 툴바가 토스트로 보여 주고 비운다.
+   */
+  notice: string | null;
+  /**
    * 읽기 전용으로 연 서버 맵 (2026-08-04 단일 세션 편집 잠금) — 다른
    * 세션이 편집 중이라 잠금을 얻지 못했다. 링크(cloudMapId)는 없어
    * 자동저장·저장이 이 맵에 쓰지 않고, 배너로 안내한다.
@@ -52,6 +57,7 @@ interface CloudState {
   ) => void;
   setBusy: (b: CloudState['busy']) => void;
   setError: (e: string | null) => void;
+  setNotice: (n: string | null) => void;
 }
 
 export const useCloudStore = create<CloudState>((set) => ({
@@ -62,6 +68,7 @@ export const useCloudStore = create<CloudState>((set) => ({
   lastSavedAt: null,
   busy: 'idle',
   error: null,
+  notice: null,
   readOnlyInfo: null,
   // meta 를 주지 않으면 같은 맵을 다시 저장한 것으로 보고 기존 값을 유지,
   // 다른 맵이면 비운다 (옛 이름이 새 맵에 붙는 사고 방지).
@@ -91,4 +98,5 @@ export const useCloudStore = create<CloudState>((set) => ({
   setReadOnlyInfo: (readOnlyInfo) => set({ readOnlyInfo }),
   setBusy: (busy) => set({ busy }),
   setError: (error) => set({ error }),
+  setNotice: (notice) => set({ notice }),
 }));

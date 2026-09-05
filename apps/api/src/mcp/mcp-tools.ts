@@ -131,7 +131,7 @@ export const TOOL_DEFS: McpToolDef[] = [
       '기존 맵의 **한 노드 아래에** 마크다운 조각을 하위 가지로 덧붙인다. ' +
       '`parent` 는 노드 이름(`"할 일"`) 또는 경로(`"2분기 > 협업"`)이고, 비우거나 `root` 면 중심 주제 바로 아래 새 가지가 된다. ' +
       '`markdown` 은 `## 이름` 견출이나 `- 항목` 목록으로 시작하는 조각이다 — 그 최상위 항목들이 parent 의 새 하위 노드가 되고 더 깊은 견출·들여쓴 목록은 그 아래로 간다. ' +
-      '있는 노드를 바꾸거나 지우지는 않는다(덧붙이기만). 사람이 앱에서 그 맵을 편집 중이면 거절된다 — 그때는 앱에서 맵을 닫고 다시 부른다. ' +
+      '있는 노드를 바꾸거나 지우지는 않는다(덧붙이기만). 앱에서 그 맵을 열어 둔 채여도 된다 — 앱 화면이 몇 초 안에 갱신된다. ' +
       '저장은 히스토리 버전으로 남으므로 앱의 [히스토리] 에서 되돌릴 수 있다. 노드 이름은 get_map 으로 먼저 확인한다.',
     inputSchema: {
       type: 'object',
@@ -318,17 +318,17 @@ export class McpToolsService {
   }
 
   /**
-   * `append_to_map` — 잠금 → 읽기 → 붙이기 → 저장(버전) → 잠금 해제.
+   * `append_to_map` — 읽기 → 붙이기 → 저장(버전).
    *
-   * **잠금 규칙** (§9.6): `getDocument` 에 편집 세션 키(`mcp:<user>`)를 줘서
-   * 앱과 **같은 잠금**을 탄다. 사람이 앱에서 편집 중(하트비트 살아 있음)이면
-   * `busy` — 거절하고 이유를 말한다. 죽은 잠금(60초 넘게 조용)은 앱과
-   * 같은 규칙으로 넘겨받는다. 협업맵은 앱도 잠그지 않으므로 여기서도
-   * 잠그지 않는다 — 접근 권한(role) 판정은 MapsService 가 한다.
+   * **잠금을 잡지 않는다** (2026-09-05 사용자 결정: "열어 놓고 보고만 있는
+   * 동안에도 AI 가 붙이게"). 앱이 그 맵을 열어 둔 채(잠금 살아 있음)라도
+   * **같은 사용자**면 저장을 통과시킨다(`lockPolicy: 'same-user-ok'`). 덮어쓰기는
+   * 두 겹으로 막는다 — 앱은 저장 때 `baseUpdatedAt` 을 보내 서버가 더 새로우면
+   * 409 STALE 을 받고(편집분은 브라우저 초안으로 보관), 편집 중이 아니면
+   * 하트비트의 `updatedAt` 을 보고 화면을 조용히 다시 읽는다(§9.8).
+   * 다른 사용자의 살아 있는 잠금(공유 편집자)은 여전히 거절된다.
    *
    * **되돌리기**: `keepVersion=true` 로 저장해 히스토리 버전이 남는다.
-   * 앱의 [히스토리] 에서 직전 버전으로 돌아갈 수 있다 — 삭제 도구를 두지
-   * 않는 대신 이것이 되돌리는 길이다.
    */
   private async appendToMap(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
     const mapId = typeof args.map_id === 'string' ? args.map_id.trim() : '';
@@ -338,7 +338,6 @@ export class McpToolsService {
     const parent = typeof args.parent === 'string' ? args.parent : '';
     const placement = args.block_placement === 'note' ? 'note' : 'node';
 
-    // 조각을 먼저 읽는다 — 잘못된 입력이면 잠금을 잡기 전에 끝낸다
     let fragment;
     try {
       fragment = parseFragment(typeof args.markdown === 'string' ? args.markdown : '', placement);
@@ -347,37 +346,23 @@ export class McpToolsService {
       throw err;
     }
 
-    const session = `mcp:${userId}`;
     let docRes;
     try {
-      docRes = await this.maps.getDocument(userId, mapId, session);
+      docRes = await this.maps.getDocument(userId, mapId);
     } catch (err) {
       return text(mapError(err, '맵을 읽지 못했습니다'), true);
     }
-    const release = () => this.maps.editRelease(userId, mapId, session).catch(() => { /* 잠금은 TTL 로도 풀린다 */ });
-
-    if (docRes.editLock === 'busy') {
-      return text(
-        `"${docRes.title}" 맵을 지금 앱(다른 세션)에서 편집 중이라 붙이지 못했습니다 — ` +
-        '앱에서 그 맵을 닫거나 1분쯤 뒤에 다시 시도해 주세요. (편집 중인 내용을 덮어쓰지 않기 위한 규칙입니다)',
-        true,
-      );
-    }
     if (docRes.published) {
-      await release();
       return text(`"${docRes.title}" 맵은 지금 공개(퍼블리싱) 중이라 편집할 수 없습니다 — 앱에서 비공개(보관)로 바꾼 뒤 다시 시도해 주세요.`, true);
     }
     if (docRes.role && !['owner', 'editor', 'collab_creator'].includes(String(docRes.role))) {
-      await release();
       return text(`"${docRes.title}" 맵에는 읽기 권한만 있어 붙일 수 없습니다 (내 권한: ${docRes.role}).`, true);
     }
 
     let result;
     try {
-      const map = mapFromDoc(docRes.doc);
-      result = appendSubtree(map, parent, fragment);
+      result = appendSubtree(mapFromDoc(docRes.doc), parent, fragment);
     } catch (err) {
-      await release();
       if (err instanceof AppendError || err instanceof DocShapeError) return text(err.message, true);
       throw err;
     }
@@ -386,22 +371,21 @@ export class McpToolsService {
     let saved;
     try {
       saved = await this.maps.saveDocument(
-        userId, mapId, doc, undefined, true, session, false,
+        userId, mapId, doc, undefined, true, undefined, false,
         { platform: 'MCP', browser: 'AI 대화' },
+        { lockPolicy: 'same-user-ok' },
       );
     } catch (err) {
-      await release();
       this.log.warn(`MCP append_to_map 저장 실패 (map=${mapId}, user=${userId})`, err as Error);
       return text(mapError(err, '붙인 내용을 저장하지 못했습니다'), true);
     }
-    await release();
 
-    const where = result.parentPath;
     const ver = (saved as { version?: number }).version;
     return text(
-      `"${docRes.title}" 맵의 "${where}" 아래에 노드 ${result.added}개(바로 아래 ${result.topCount}개)를 붙였습니다.` +
+      `"${docRes.title}" 맵의 "${result.parentPath}" 아래에 노드 ${result.added}개(바로 아래 ${result.topCount}개)를 붙였습니다.` +
       (ver ? ` (히스토리 버전 ${ver})` : '') + '\n' +
-      '앱에서 그 맵이 열려 있었다면 다시 열어야 보입니다. 되돌리려면 앱의 [히스토리] 에서 이전 버전을 복원하세요.',
+      '앱에서 이 맵을 열어 두었다면 몇 초 안에 화면이 갱신됩니다(편집 중이던 내용이 있으면 앱이 초안으로 보관하고 안내합니다). ' +
+      '되돌리려면 앱의 [히스토리] 에서 이전 버전을 복원하세요.',
     );
   }
 

@@ -34,7 +34,7 @@ import { useAutosaveStore } from '@/stores/autosaveStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import { editSessionKey } from '@/services/cloud/editSession';
 import { useAppSettingsStore } from '@/stores/appSettingsStore';
-import { clearLocalDraft } from '@/hooks/useLocalDraft';
+import { clearLocalDraft, writeLocalDraftNow } from '@/hooks/useLocalDraft';
 
 /**
  * **미저장 편집이 이만큼 쌓이면 주기 전이라도 한 번 올린다.**
@@ -154,6 +154,35 @@ function snapshot() {
   };
 }
 
+/**
+ * **서버가 내가 모르는 사이 바뀌었다** (2026-09-05, 409 `STALE`).
+ *
+ * AI 대화(MCP `append_to_map`)가 열린 맵에 붙였는데 이 탭에 저장되지 않은
+ * 편집이 있던 경우다. 이 탭의 사본으로 덮어쓰면 AI 가 붙인 가지가 사라지고,
+ * 그냥 버리면 내 편집이 사라진다. 그래서 **편집권 상실과 같은 길**을 간다:
+ *   ① 지금 화면을 브라우저 초안에 적고(잃지 않는다)
+ *   ② 이 맵과의 연결을 끊고(더는 이 사본으로 저장하지 않는다)
+ *   ③ 무엇이 일어났고 어떻게 되살리는지 말한다.
+ * 다시 열면 AI 가 붙인 내용이 보이고, 초안 복구 배너로 편집분을 되살릴 수 있다.
+ *
+ * 편집 중이 아니었다면 여기 오지 않는다 — 하트비트가 먼저 알아채고 화면을
+ * 조용히 다시 읽는다(mapSession.refreshFromServer).
+ */
+export async function handleStaleConflict(mapId: string): Promise<void> {
+  if (useCloudStore.getState().cloudMapId !== mapId) return;
+  await writeLocalDraftNow();
+  suppressCloudAutosave();
+  useDocumentStore.getState().setDocOrigin(null);
+  void cloudApi.editRelease(mapId, editSessionKey()).catch(() => { /* TTL 로도 풀린다 */ });
+  useCloudStore.getState().unlink();
+  useCloudStore.getState().setError(
+    'AI 대화가 이 맵을 먼저 바꿔서 지금 편집분을 그 위에 저장하지 않았습니다 — '
+    + '편집분은 이 브라우저에 보관했습니다. 문서함에서 이 맵을 다시 열면 AI 가 붙인 내용이 보이고, '
+    + '초안 복구 배너로 편집분을 되살릴 수 있습니다.',
+  );
+  useAutosaveStore.getState().setSaveState('unsaved');
+}
+
 async function doSave() {
   const cloud = useCloudStore.getState();
   const mapId = cloud.cloudMapId;
@@ -194,7 +223,8 @@ async function doSave() {
     // 히스토리는 ☁ 저장·맵 닫기·다른 이름으로 저장에서만 생긴다.
     // 그래야 "히스토리 = 내가 매듭지은 시점"이라는 뜻이 흐려지지 않는다.
     const res = await cloudApi.saveDocument(
-      mapId, snapshot(), title, false, editSessionKey());
+      mapId, snapshot(), title, false, editSessionKey(), false,
+      useCloudStore.getState().lastSavedAt ?? undefined);
     // 응답이 오는 사이 맵이 닫혔거나 다른 맵으로 바뀌었으면 링크를
     // 되살리지 않는다 (2026-08-04 실사용 보고).
     if (useCloudStore.getState().cloudMapId === mapId) {
@@ -208,6 +238,12 @@ async function doSave() {
       void clearLocalDraft(mapId);
     }
   } catch (err) {
+    // **서버가 더 새롭다(STALE)** — 재시도해도 같은 답이다. 편집분을 초안으로
+    // 보관하고 연결을 끊는다(편집권 상실과 같은 길). 자세한 이유는 handleStaleConflict.
+    if (err instanceof CloudError && err.code === 'STALE') {
+      await handleStaleConflict(mapId);
+      return;
+    }
     if (useCloudStore.getState().cloudMapId === mapId) {
       const msg = err instanceof CloudError ? err.message : '자동 저장 실패';
       useCloudStore.getState().setError(msg);

@@ -53,6 +53,16 @@ export class SaveDocumentDto {
   editSession?: string;
 
   /**
+   * **덮어쓰기 방지** (2026-09-05) — 이 클라이언트가 마지막으로 받은 문서의
+   * `updatedAt`. 서버 문서가 그보다 새로우면(AI 대화가 먼저 붙였으면) 409
+   * `{code:'STALE'}`. 주지 않으면 검사하지 않는다.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  baseUpdatedAt?: string;
+
+  /**
    * **"가지가 하나도 없는 문서로 덮어쓰는 것"을 명시적으로 허용**한다
    * (2026-08-05 세 번째 유실 보고). 서버는 내용이 있던 맵을 빈 문서로
    * 덮어쓰는 저장을 기본적으로 거부한다 — 자동저장이든 명시 저장이든.

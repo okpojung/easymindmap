@@ -10,7 +10,11 @@ import type { LoginHistory } from '@/components/auth/LoginHistoryList';
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 export class CloudError extends Error {
-  constructor(public status: number, message: string) {
+  /**
+   * 서버가 붙인 기계용 표 (2026-09-05) — 예: `STALE`(내가 모르는 사이 문서가
+   * 바뀌어 저장을 거절). 문장은 사람에게, code 는 코드에게.
+   */
+  constructor(public status: number, message: string, public code?: string) {
     super(message);
     this.name = 'CloudError';
   }
@@ -48,12 +52,14 @@ async function req<T>(
   }
   if (!res.ok) {
     let msg = `요청 실패 (${res.status})`;
+    let code: string | undefined;
     try {
       const j = await res.json();
       msg = j.message || j.error || msg;
+      if (typeof j.code === 'string') code = j.code;
     } catch { /* 본문 없음 */ }
     if (res.status === 401 && authEnabled) msg = '세션이 만료되었습니다. 다시 로그인해 주세요.';
-    throw new CloudError(res.status, msg);
+    throw new CloudError(res.status, msg, code);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -340,16 +346,22 @@ export const cloudApi = {
   // client(플랫폼·브라우저)는 여기서 붙인다 — 저장 경로가 여러 곳이라
   // 호출부마다 넘기면 빠뜨리기 쉽다. 서버는 히스토리 버전에만 기록하고,
   // IP 는 요청에서 직접 읽는다(우리가 보내지 않는다 — 2026-08-09).
+  // `baseUpdatedAt` = 이 탭이 마지막으로 받은 문서 시각 (2026-09-05 덮어쓰기
+  // 방지). 서버 문서가 더 새로우면 409 `STALE` — AI 대화가 먼저 붙인 경우다.
   saveDocument: async (
     mapId: string, doc: unknown, title?: string,
     keepVersion?: boolean, editSession?: string, allowEmpty?: boolean,
+    baseUpdatedAt?: string,
   ) =>
     req<{ mapId: string; updatedAt: string; version?: number; unchanged?: boolean }>(
       'PUT', `/maps/${mapId}/document`,
-      { doc, title, keepVersion, editSession, allowEmpty, client: await getClientInfo() }),
-  // 편집 잠금 — 하트비트(25초 주기, held=false 면 잠금을 잃음)·해제
+      { doc, title, keepVersion, editSession, allowEmpty, baseUpdatedAt, client: await getClientInfo() }),
+  // 편집 잠금 — 하트비트(5초 주기, held=false 면 잠금을 잃음)·해제.
+  // `updatedAt`·`lastPlatform` = 서버 문서의 마지막 갱신 시각과 그 자리
+  // (2026-09-05) — AI 대화가 붙인 것을 탭이 알아채는 통로다.
   editHeartbeat: (mapId: string, sessionKey: string) =>
-    req<{ held: boolean }>('POST', `/maps/${mapId}/edit-heartbeat`, { sessionKey }),
+    req<{ held: boolean; updatedAt?: string | null; lastPlatform?: string | null }>(
+      'POST', `/maps/${mapId}/edit-heartbeat`, { sessionKey }),
   editRelease: (mapId: string, sessionKey: string) =>
     req<{ ok: boolean }>('POST', `/maps/${mapId}/edit-release`, { sessionKey }),
   listVersions: (mapId: string) =>

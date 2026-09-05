@@ -82,6 +82,15 @@ export function TopToolbar({
 
   // 저장 실패 사유 — 배지 툴팁에 그대로 보여 준다 (2026-08-05)
   const cloudError = useCloudStore((s) => s.error);
+  // 오류가 아닌 소식(cloudStore.notice) — 같은 토스트로 보여 주고 비운다
+  // (2026-09-05: "AI 대화가 이 맵을 갱신했습니다 — 화면을 새로 읽었습니다")
+  const cloudNotice = useCloudStore((s) => s.notice);
+  useEffect(() => {
+    if (!cloudNotice) return;
+    flash(cloudNotice);
+    useCloudStore.getState().setNotice(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudNotice]);
   // **미저장 편집 수 · 마지막 저장 시각** (2026-08-06 저장 모델 개편).
   // 실시간 저장을 없앴으므로 "지금 몇 개가 서버에 없는가"를 숫자로
   // 보여 준다 — "저장됨"인지 아닌지 애매한 상태를 남기지 않는다.

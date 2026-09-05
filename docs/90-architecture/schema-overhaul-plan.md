@@ -231,6 +231,14 @@ A 에서 문제가 된 것은 `maps.owner_id → users` 였지 이쪽이 아니�
 목표   HNG1-NFS (47.6TB 여유) 마운트
 ```
 
+> **✅ dev 는 이미 이 구성이다 (2026-09-05 em-dev 에서 실측).** 유료 API
+> 컨테이너가 `STORAGE_LOCAL_DIR=/data/emm-attachments` 로 NFS 마운트
+> (`/mnt/nas/emm-files`, nfs4, 48T 중 1% 사용)를 보고 있고 `u/`·`tmp/`·`p/`
+> 가 거기 있다(1.0G). 위 "현재" 줄은 계획을 쓸 때의 짐작이었고 실제와
+> 달랐다 — 유료 `deploy.md` §2.1 이 2026-08-19 에 화면에서 확인한 값이
+> 맞다. **dev 에서 D 는 할 일이 없다.** 운영 서버를 세울 때 같은 두 칸
+> (Persistent Storage + `STORAGE_LOCAL_DIR`)만 맞추면 된다.
+
 지금은 첨부가 차면 **API 서버가 통째로 죽는다.** 로그도 못 쓰고 Docker 도
 못 돈다.
 

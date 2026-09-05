@@ -23,7 +23,7 @@
  */
 
 import {
-  BadRequestException,
+  BadRequestException, ConflictException,
   ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
@@ -300,10 +300,34 @@ export class PublishService {
     return this.toStatus(rows[0], true);
   }
 
-  /** PUBL-02 — 퍼블리싱 중단. 이미 중단돼 있어도 성공이다(멱등) */
+  /**
+   * PUBL-02 — 퍼블리싱 **등록 취소**. 이미 취소돼 있어도 성공이다(멱등).
+   *
+   * ★ **공개 중에는 취소할 수 없다 — 먼저 비공개(보관)로** (2026-09-05
+   *   사용자 결정). 취소는 **주소를 영구히 죽이는** 일이고, 되돌릴 수
+   *   없다. 그런 일이 버튼 한 번으로 일어나면 안 된다.
+   *
+   *   확인 대화상자로 막는 방법도 있지만, 그건 **화면에만 있는 방벽**이라
+   *   직접 호출·옛 탭에는 없다. 여기서는 "한 단계를 먼저 지나게" 한다 —
+   *   비공개로 바꾸는 순간 이미 남에게는 닫히므로, 급한 일(잘못 공개했다)은
+   *   **그 한 걸음으로 이미 해결돼 있다.** 그러고 나서 천천히 지운다.
+   *
+   *   `visibility` 칸이 없는 서버에서는 이 문을 세우지 않는다 — 그 서버에는
+   *   "비공개로 먼저 바꾸는" 길 자체가 없어서, 막으면 **취소할 방법이
+   *   사라진다.**
+   */
   async unpublish(userId: string, mapId: string): Promise<void> {
     await this.requireReady();
     await this.requireOwner(userId, mapId);
+    if (await this.hasVisibility()) {
+      const cur0 = await this.activeRow(mapId);
+      if (cur0 && PublishService.vis(cur0) !== 'private') {
+        throw new ConflictException(
+          '공개 중에는 퍼블리싱을 취소할 수 없습니다 — 먼저 비공개(보관)로 바꿔 주세요.'
+          + ' 취소하면 이 주소는 영구히 사라집니다.',
+        );
+      }
+    }
     // 미리보기 파일도 지운다 — 다시 퍼블리싱하면 **새 링크**라 새 키를 쓰므로,
     // 여기서 안 지우면 아무도 못 여는 그림이 저장소에 영영 남는다.
     // 행에는 손대지 않는다(퍼블리싱 기록은 지운 적 없는 사실이다).
@@ -468,6 +492,22 @@ export class PublishService {
       [mapId, key],
     );
     return { ...this.toStatus(cur, await this.hasVisibility()), hasPreview: true };
+  }
+
+  /**
+   * ★ **주인이 보는 미리보기** (2026-09-05) — 인증 경로, **상태와 무관**.
+   *
+   * 아래 비인증 경로는 무료공개일 때만 연다. 그런데 저자는 **비공개(보관)
+   * 상태에서 실루엣을 확인하고 다시 만들** 수 있어야 한다 — 공개하기 전에
+   * 어떻게 보이는지 보는 것이 보관 상태의 쓸모다. 그 문이 없으면
+   * 대화상자의 그림이 **깨진 채로** 뜬다(실측 2026-09-05).
+   */
+  async openOwnerPreview(userId: string, mapId: string): Promise<ReadStream> {
+    await this.requireReady();
+    await this.requireOwner(userId, mapId);
+    const cur = await this.activeRow(mapId);
+    if (!cur?.storage_path) throw new NotFoundException('미리보기 이미지가 없습니다.');
+    return this.storage.stream(cur.storage_path);
   }
 
   /**

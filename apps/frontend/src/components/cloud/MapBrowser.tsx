@@ -200,7 +200,10 @@ type Row =
   // 공유받은 맵은 **내 폴더 트리 밖**이다 (2026-08-18) — 그 맵의 폴더는
   // 소유자의 폴더라, 내 트리에 끼우면 있지도 않은 폴더 안에 파일이 있는
   // 것처럼 보인다. 목록 아래에 제 구역을 두고 거기 모은다.
-  | { kind: 'sharedHead'; depth: 0; count: number };
+  | { kind: 'sharedHead'; depth: 0; count: number }
+  // ★ **퍼블리싱 자리** (2026-09-05 사용자 결정) — 등록한 맵은 내 폴더
+  // 트리에서 빠져 여기로 모인다. 쇼핑몰에 상품을 등록해 둔 것과 같다.
+  | { kind: 'publishHead'; depth: 0; count: number; open: number };
 
 export function MapBrowser({
   t, onClose, onFlash, onOpened,
@@ -367,10 +370,37 @@ export function MapBrowser({
     return m;
   }, [folders, sort, order]);
 
-  /** folderId → 그 폴더에 **직접** 든 맵들 (서버 정렬 순서 그대로) */
+  /**
+   * ★ **퍼블리싱 등록된 맵** — 폴더 트리에서 빼고 제 구역에 모은다
+   * (2026-09-05 사용자 결정).
+   *
+   * ★ **진짜 폴더로 만들지 않았다.** "퍼블리싱" 이라는 폴더를 실제로 만들고
+   *   맵의 `folder_id` 를 그리로 옮기는 안을 검토했다가 접었다. 이유가 셋이다.
+   *
+   *   ⑴ **이름이 부딪친다** — 사용자가 이미 "퍼블리싱" 폴더를 갖고 있을 수
+   *      있고, 폴더 안 제목 중복 검사(`assertTitleAvailable`)에 걸리면
+   *      **퍼블리싱과 아무 상관없는 이유로 퍼블리싱이 409 로 실패한다.**
+   *   ⑵ **거짓말할 수 있다** — 사용자가 그 폴더에서 맵을 끌어내거나, 등록
+   *      안 한 맵을 끌어넣으면 폴더가 사실과 달라진다. 막으려면 폴더 이동·
+   *      이름 변경·삭제 금지 규칙이 줄줄이 따라온다.
+   *   ⑶ **되돌릴 자리를 기억해야 한다** — 취소하면 원래 폴더로 가야 하는데,
+   *      진짜로 옮기면 `prev_folder_id` 같은 칸이 필요하고 그게 어긋나면
+   *      맵이 엉뚱한 곳으로 간다.
+   *
+   *   판정을 `publishId != null` **하나**로 두면 어긋날 수가 없다. 취소하면
+   *   맵은 **원래 있던 폴더에 그대로 다시 나타난다** — 옮기는 코드도,
+   *   기억하는 칸도 없다. 보이는 것은 사용자가 말한 그대로다.
+   */
+  const publishedMaps = useMemo(
+    () => mapPool.filter((m) => !!m.publishId),
+    [mapPool],
+  );
+
+  /** folderId → 그 폴더에 **직접** 든 맵들 (등록된 맵은 뺀다) */
   const mapsByFolder = useMemo(() => {
     const m = new Map<string, MapListItem[]>();
     for (const x of mapPool) {
+      if (x.publishId) continue; // 퍼블리싱 자리로 갔다
       const k = x.folderId ?? '';
       const arr = m.get(k);
       if (arr) arr.push(x); else m.set(k, [x]);
@@ -428,6 +458,15 @@ export function MapBrowser({
       }
     };
     walk('', 0);
+    // 퍼블리싱 자리 — 내 트리 **아래**, 공유받은 맵 **위**. 내 것이 먼저다.
+    const pubRows = publishedMaps.filter((m) => !searching || mapHit(m));
+    if (pubRows.length) {
+      out.push({
+        kind: 'publishHead', depth: 0, count: pubRows.length,
+        open: pubRows.filter((m) => m.publishVisibility !== 'private').length,
+      });
+      for (const m of pubRows) out.push({ kind: 'map', depth: 0, map: m });
+    }
     // 공유받은 맵 — 트리 **아래**에 따로. 검색 중이면 이름으로 거른다.
     const sharedRows = shared.filter((m) => !searching || hit(m.title));
     if (sharedRows.length) {
@@ -437,7 +476,7 @@ export function MapBrowser({
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q, serverFound,
-      newFolder, shared]);
+      newFolder, shared, publishedMaps]);
 
   const shownMaps = useMemo(
     // **공유받은 맵은 합계에서 뺀다.** 합계는 "내 문서함이 얼마나 되나"를
@@ -921,7 +960,28 @@ export function MapBrowser({
                 맵을 만들어 <b>☁ 저장</b>하면 여기에 쌓입니다.</>
               )}
           </div>
-        ) : rows.map((r) => (r.kind === 'sharedHead' ? (
+        ) : rows.map((r) => (r.kind === 'publishHead' ? (
+          /* ★ 퍼블리싱 자리 (2026-09-05) — 등록한 맵은 내 폴더에서 빠져
+             여기로 온다. **폴더처럼 보이지만 폴더가 아니다**: 판정이
+             `publishId != null` 하나라 어긋날 수가 없고, 취소하면 원래
+             폴더에 그대로 돌아간다(위 `publishedMaps` 주석).
+             머리글이 **몇 개가 지금 열려 있는지**를 말한다 — 이 기능의
+             가장 나쁜 실패는 "잊고 공개해 두는 것" 이기 때문이다. */
+          <div key="publish-head" data-testid="browser-publish-head"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 12px 7px', borderBottom: `1px solid ${t.divider}`,
+              background: t.surfaceAlt, color: t.text, fontSize: 12, fontWeight: 700,
+            }}>
+            <I.Globe size={14} /> 퍼블리싱 ({r.count})
+            <span style={{ color: t.textMuted, fontSize: 11, fontWeight: 500 }}>
+              {r.open > 0
+                ? `${r.open}개가 지금 공개 중입니다 — 링크를 가진 누구나 읽습니다.`
+                : '전부 비공개(보관)입니다 — 남에게는 보이지 않고, 고칠 수 있습니다.'}
+              {' '}퍼블리싱을 취소하면 원래 폴더로 돌아옵니다.
+            </span>
+          </div>
+        ) : r.kind === 'sharedHead' ? (
           /* 공유받은 맵 구역 — **내 문서와 섞지 않는다.** 여기 있는 것은
              내 용량에도 잡히지 않고(주인의 것이다), 이름 변경·이동·삭제도
              할 수 없다. 그 사실이 화면에서 바로 보여야 한다. */

@@ -2,7 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Req, Res,
-  UploadedFile, UseGuards, UseInterceptors,
+  StreamableFile, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
@@ -61,6 +61,22 @@ export class PublishController {
   @Get(':id/publish-status')
   status(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.publish.status(user.id, id);
+  }
+
+  /**
+   * 주인이 보는 미리보기 — **비공개(보관)여도 열린다.**
+   * 대화상자가 `<img>` 대신 이 응답을 받아 blob 으로 그린다(헤더가 필요해서).
+   */
+  @Get(':id/publish/preview')
+  async ownerPreview(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const stream = await this.publish.openOwnerPreview(user.id, id);
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'no-store');
+    return new StreamableFile(stream);
   }
 
   /**

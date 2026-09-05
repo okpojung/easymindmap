@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import {
-  cloudApi, CloudError, publishedPreviewUrl,
+  cloudApi, CloudError,
   type PublishStatus, type PublishVisibility,
 } from '@/services/cloud/apiClient';
 import { buildSilhouette } from '@/export/silhouette';
@@ -43,6 +43,15 @@ export function PublishPanel(
   // 이것이 없으면 브라우저가 낡은 그림을 계속 보여 준다
   const [previewV, setPreviewV] = useState(() => Date.now());
   const [previewBusy, setPreviewBusy] = useState(false);
+  /**
+   * ★ 미리보기는 **주인 경로로 받아 blob 으로 그린다** (2026-09-05).
+   *
+   * 비인증 주소(`/v1/published/{slug}/preview.png`)는 **무료공개일 때만**
+   * 열린다. 그 주소를 `<img src>` 에 그대로 쓰면 **보관 중에는 깨진 그림**이
+   * 뜬다 — 공개하기 전에 확인하는 것이 보관 상태의 쓸모인데, 정작 그때
+   * 안 보이는 셈이다(실측 2026-09-05).
+   */
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -127,7 +136,7 @@ export function PublishPanel(
       flash('🔗 퍼블리싱했습니다 — 이제 이 맵은 읽기 전용입니다.');
       lockThisTab(true);
     } else {
-      flash('퍼블리싱 문서함에 넣었습니다 — 아직 비공개(보관)라 남에게는 보이지 않습니다.');
+      flash('문서함의 [퍼블리싱] 자리로 옮겼습니다 — 아직 비공개(보관)라 남에게는 보이지 않습니다.');
     }
     setPreviewBusy(true);
     const ok = await uploadPreview();
@@ -171,8 +180,26 @@ export function PublishPanel(
     });
     setCopied(false);
     lockThisTab(false); // 다시 고칠 수 있다
-    flash('퍼블리싱을 취소했습니다 — 그 주소는 영구히 죽습니다. 다시 등록하면 새 주소가 나옵니다.');
+    flash('퍼블리싱을 취소했습니다 — 맵이 원래 폴더로 돌아왔습니다. 그 주소는 영구히 사라졌습니다(다시 등록하면 새 주소).');
   });
+
+  // 미리보기 받아 오기 — 상태가 바뀌거나 다시 만들 때마다.
+  useEffect(() => {
+    if (!status?.hasPreview) { setPreviewSrc(null); return; }
+    let alive = true;
+    let made: string | null = null;
+    cloudApi.getPublishPreview(mapId)
+      .then((b) => {
+        if (!alive) return;
+        made = URL.createObjectURL(b);
+        setPreviewSrc(made);
+      })
+      .catch(() => { if (alive) setPreviewSrc(null); });
+    return () => {
+      alive = false;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [mapId, status?.hasPreview, previewV]);
 
   const url = status?.publishId ? publicMapUrl(status.publishId) : '';
 
@@ -262,31 +289,26 @@ export function PublishPanel(
         {status?.available && status.publishable !== false && !status.publishId && (
           <>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8, marginBottom: 16 }}>
-              퍼블리싱하면 이 맵이 <b>퍼블리싱 문서함</b>으로 들어갑니다 —
-              쇼핑몰에 상품을 등록하는 것과 같습니다.
-              <br />★ <b>무료공개</b>면 링크를 가진 사람이 로그인 없이 읽습니다.
-              공개 중인 맵은 완성본이라 <b>읽기 전용</b>이 되고 협업자를 초대할 수 없습니다.
-              <br />★ <b>비공개(보관)</b>로 넣어 두면 남에게는 보이지 않고
-              <b> 계속 고칠 수 있습니다.</b> 다 되면 공개로 바꾸면 됩니다.
-              <br />★ <b>주소는 등록에 붙습니다</b> — 비공개 ↔ 공개를 오가도 그대로입니다.
+              퍼블리싱하면 이 맵이 문서함의 <b>퍼블리싱 자리</b>로 옮겨집니다 —
+              쇼핑몰에 상품을 등록해 두는 것과 같습니다.
+              <br />★ 처음에는 <b>비공개(보관)</b>입니다 — 남에게는 보이지 않고
+              <b> 계속 고칠 수 있습니다.</b> 다 되면 거기서 <b>무료공개</b>로 바꾸면 됩니다.
+              <br />★ <b>주소는 지금 만들어지고, 그대로 유지됩니다</b> —
+              비공개 ↔ 공개를 오가도 바뀌지 않습니다.
+              <br />★ 취소하면 원래 폴더로 돌아옵니다. 그때 <b>주소는 사라집니다.</b>
             </div>
             <button
               data-testid="publish-create"
               disabled={busy}
-              onClick={() => void doPublish('public')}
+              onClick={() => void doPublish(status.canSetVisibility ? 'private' : 'public')}
               style={{ ...btn, width: '100%', background: t.primary, color: '#fff' }}
-            >{busy ? '만드는 중…' : '퍼블리싱하기 (무료공개)'}</button>
-            {status.canSetVisibility && (
-              <button
-                data-testid="publish-create-private"
-                disabled={busy}
-                onClick={() => void doPublish('private')}
-                style={{
-                  ...btn, width: '100%', marginTop: 8, height: 32,
-                  border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
-                  fontSize: 12.5, fontWeight: 600,
-                }}
-              >비공개(보관)로 등록만 하기</button>
+            >{busy ? '만드는 중…'
+              : status.canSetVisibility ? '퍼블리싱 — 비공개로 등록' : '퍼블리싱하기 (무료공개)'}</button>
+            {!status.canSetVisibility && (
+              <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 8 }}>
+                이 서버에는 아직 <b>비공개(보관)</b> 상태가 준비되지 않았습니다
+                (스키마 델타 미적용) — 지금 누르면 <b>바로 무료공개</b>가 됩니다.
+              </div>
             )}
           </>
         )}
@@ -348,10 +370,10 @@ export function PublishPanel(
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
-              {status.hasPreview ? (
+              {status.hasPreview && previewSrc ? (
                 <img
                   data-testid="publish-preview-img"
-                  src={publishedPreviewUrl(status.publishId, previewV)}
+                  src={previewSrc}
                   alt="미리보기 실루엣"
                   style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                 />
@@ -404,16 +426,40 @@ export function PublishPanel(
                 }}
               >새 탭에서 열기</a>
             </div>
-            <button
-              data-testid="publish-stop"
-              disabled={busy}
-              onClick={() => void doUnpublish()}
-              style={{
-                ...btn, width: '100%', marginTop: 10, height: 34,
-                border: `1px solid ${t.border}`, background: t.surface, color: '#B91C1C',
-                fontWeight: 600, fontSize: 12.5,
-              }}
-            >{busy ? '처리 중…' : '퍼블리싱 취소 (주소가 사라집니다)'}</button>
+            {/* ★ **공개 중에는 취소할 수 없다 — 먼저 비공개로** (2026-09-05
+                사용자 결정). 취소는 주소를 영구히 죽이는 일이고 되돌릴 수
+                없다. 서버도 같은 판정을 하지만(409), 화면이 **누르기 전에**
+                말해 준다 — 눌러 보고 나서야 거절당하지 않게. */}
+            {(() => {
+              const locked = !!status.canSetVisibility
+                && (status.visibility ?? 'public') !== 'private';
+              return (
+                <>
+                  <button
+                    data-testid="publish-stop"
+                    disabled={busy || locked}
+                    title={locked ? '먼저 [🔒 비공개(보관)] 로 바꿔 주세요' : undefined}
+                    onClick={() => void doUnpublish()}
+                    style={{
+                      ...btn, width: '100%', marginTop: 10, height: 34,
+                      border: `1px solid ${t.border}`, background: t.surface,
+                      color: locked ? t.textSubtle : '#B91C1C',
+                      cursor: locked ? 'not-allowed' : (busy ? 'default' : 'pointer'),
+                      fontWeight: 600, fontSize: 12.5,
+                    }}
+                  >{busy ? '처리 중…' : '퍼블리싱 취소 (주소가 사라집니다)'}</button>
+                  {locked && (
+                    <div
+                      data-testid="publish-stop-locked"
+                      style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 6 }}
+                    >
+                      공개 중에는 취소할 수 없습니다 — 먼저 <b>[🔒 비공개(보관)]</b> 로 바꿔 주세요.
+                      취소하면 이 주소는 <b>영구히</b> 사라집니다.
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </>
         )}
 

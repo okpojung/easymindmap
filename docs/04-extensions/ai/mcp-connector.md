@@ -227,11 +227,18 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 + 프런트 화면 하나 + 표 하나) — 아니라고 판정되면 그 폴더와 메뉴 한 줄을
 지우는 것으로 끝난다. 다른 모듈이 이쪽을 부르지 않는다.
 
-> **아직 남은 판정**: 1단계의 성공 기준은 *"Claude 대화에서 맵이 하나
-> 생긴다"* 인데, **그 마지막 한 칸은 사람이 해야 확인된다** — Claude 에
-> 커스텀 커넥터를 등록하는 것은 계정 소유자만 할 수 있다. 우리 쪽은
-> `curl` 로 같은 JSON-RPC 왕복을 그대로 재현해 확인했다(§9.2 · e2e194).
-> 즉 **서버는 준비됐고, 붙여 보는 것이 남았다.**
+> **판정 (2026-09-05)**: 1단계의 성공 기준 *"Claude 대화에서 맵이 하나
+> 생긴다"* 를 **진짜 MCP 클라이언트로 확인했다** — Claude Code(2.1.261)에
+> `claude mcp add` 로 붙이고 헤드리스 대화(`claude -p`)에서 `create_map` 이
+> 불려 문서함에 맵이 생겼다(e2e208 · §9.2 ②-A). `curl` 재현(e2e194)이
+> 못 보던 것 — 클라이언트 쪽 `initialize`·`notifications/initialized`
+> 순서, `Accept: application/json, text/event-stream`, GET SSE 시도에
+> 405 로 답해도 끊지 않는지 — 가 실제로 통과됐다.
+>
+> **아직 남은 것은 claude.ai(웹·데스크톱) 커스텀 커넥터**다. 그 화면은
+> 토큰을 붙여넣는 칸이 없고 **OAuth 로만** 붙는다(§9.2 ②-C) — 3단계(안 A)
+> 몫이다. 1단계 판정에는 필요하지 않다: 방향이 옳은지는 Claude Code 로
+> 이미 알 수 있다.
 
 ---
 
@@ -295,14 +302,70 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 [발급]. 원문은 **그 자리에서 한 번만** 보인다(서버에도 해시만 남는다).
 같은 화면 아래에 발급한 토큰 목록과 **[폐기]** 가 있다.
 
-**② AI 쪽 커넥터 설정에 넣는 값**
+**② 어디에 붙이나 — 클라이언트마다 다르다**
 
 | | 값 |
 |---|---|
 | 주소 | `https://<API 주소>/v1/mcp` (앱 주소가 아니라 **API 주소**다) |
 | 인증 | `Authorization: Bearer emm_…` (①에서 받은 원문) |
 
-**③ 붙었는지 확인** — 커넥터를 등록하기 전에 손으로 먼저 확인할 수 있다.
+위 두 값을 받아 주는 클라이언트와 못 받는 클라이언트가 갈린다. **PAT 는
+"헤더를 직접 적을 수 있는 클라이언트" 에서만 쓸 수 있다.**
+
+| 클라이언트 | PAT(Bearer) | 상태 |
+|---|---|---|
+| **A. Claude Code** (터미널 · VS Code · 데스크톱 앱의 Claude Code) | ✅ `--header` | **검증됨** (e2e208, 2026-09-05) |
+| **B. Claude Desktop** 의 로컬 MCP 설정(`claude_desktop_config.json`) | ✅ `mcp-remote` 다리 + `--header` | 규격상 된다 — 직접 확인은 안 했다 |
+| **C. claude.ai 웹·데스크톱 [커스텀 커넥터 추가]** | ❌ 칸이 없다 — **OAuth 만** | **3단계**(안 A) 뒤에 |
+
+**②-A Claude Code** — 토큰 원문을 헤더로 넘긴다. 한 번 등록하면 그 뒤로는
+`claude` 를 열 때마다 붙는다.
+
+```bash
+# 등록 (--scope user 를 붙이면 어느 폴더에서 열어도 보인다)
+claude mcp add --transport http easymindmap https://api-dev.mindmap.ai.kr/v1/mcp \
+  --header "Authorization: Bearer emm_…" --scope user
+
+# 붙었나 — "✓ Connected" 가 나와야 한다 (401 이면 토큰, 403 이면 dev 배포다: §9.3)
+claude mcp list
+
+# 대화 안에서는 /mcp 로 같은 것을 본다. 지우려면:
+claude mcp remove easymindmap --scope user
+```
+
+> 토큰이 `~/.claude.json` 에 평문으로 남는다. 공용 PC 라면 쓰고 나서
+> `claude mcp remove` 하고 앱에서 [폐기] 한다. 파일에 안 남기려면
+> `--header "Authorization: Bearer ${EMM_TOKEN}"` 처럼 환경변수로 적어도
+> 된다(Claude Code 가 `${VAR}` 를 헤더에서 펼친다).
+
+**②-B Claude Desktop** — 데스크톱 앱의 로컬 MCP 설정은 stdio 명령만
+받으므로 `mcp-remote` 를 다리로 둔다(`설정 ▸ 개발자 ▸ 설정 편집`).
+
+```json
+{
+  "mcpServers": {
+    "easymindmap": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://api-dev.mindmap.ai.kr/v1/mcp",
+               "--header", "Authorization:${EMM_AUTH}", "--transport", "http-only"],
+      "env": { "EMM_AUTH": "Bearer emm_…" }
+    }
+  }
+}
+```
+
+(`Authorization:${EMM_AUTH}` 에 **띄어쓰기를 넣지 않는다** — Windows 의
+Claude Desktop 이 `args` 안의 공백을 깨뜨리는 버그가 있어 값은 `env` 로
+넘긴다. `mcp-remote` README 의 안내다.)
+
+**②-C claude.ai 커스텀 커넥터** — [설정 ▸ 커넥터 ▸ 커스텀 커넥터 추가]
+는 이름·주소와 (고급) OAuth 클라이언트 ID/비밀만 받는다. 헤더 칸이 없어
+**PAT 로는 붙을 수 없다.** 우리 서버가 401 을 주면 그 화면은 OAuth 를
+찾다가 실패한다. 이것이 §3 이 "안 B 는 스토어 등재 요건에 맞지 않을 수
+있다" 고 적어 둔 바로 그 자리이고, 3단계(OAuth 2.1)가 푸는 문제다.
+(2026-09-05 기준 — 이 화면의 규격은 바뀔 수 있으니 3단계 착수 때 다시 본다.)
+
+**③ 붙었는지 확인** — 어느 클라이언트든 등록 전에 손으로 먼저 확인할 수 있다.
 
 ```bash
 # 도구 목록이 오면 붙은 것이다 (create_map 하나가 보여야 한다)
@@ -312,6 +375,9 @@ curl -s -X POST https://api-dev.mindmap.ai.kr/v1/mcp \
 ```
 
 **④ 대화에서** — *"지금까지 정리한 걸 EasyMindMap 맵으로 저장해줘"*.
+Claude Code 는 처음 부를 때 도구 실행을 한 번 묻는다(허용). 답에
+*"…맵을 만들었습니다 (가지 N개 · 노드 M개) · 맵 id …"* 가 오면 성공이고,
+앱의 [☁ 내 문서] 홈에 그 제목의 맵이 보인다.
 맵은 언제나 **최상위('홈')** 에 생긴다 — 폴더를 고르려면 폴더 목록 도구가
 있어야 하는데 그것은 2단계다(§2-2).
 

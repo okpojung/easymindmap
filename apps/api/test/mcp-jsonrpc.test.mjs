@@ -61,8 +61,9 @@ check('error 봉투', rpcError(null, RPC.METHOD_NOT_FOUND, '없음'),
   { jsonrpc: '2.0', id: null, error: { code: -32601, message: '없음' } });
 
 // ── ⑥ 도구는 셋 — create_map(1단계) + list_maps·get_map(2단계, §7) ──
-check('도구는 넷', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'append_to_map']);
+check('도구는 다섯', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map']);
 const byName = Object.fromEntries(TOOL_DEFS.map((t) => [t.name, t]));
+check('get_open_map: 인자 없음', Object.keys(byName.get_open_map.inputSchema.properties), []);
 check('create_map: markdown 은 필수', byName.create_map.inputSchema.required, ['markdown']);
 check('create_map: 받는 인자는 넷', Object.keys(byName.create_map.inputSchema.properties).sort(),
   ['block_placement', 'markdown', 'template', 'title']);

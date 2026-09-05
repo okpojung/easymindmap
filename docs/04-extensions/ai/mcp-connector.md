@@ -282,7 +282,8 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 |---|---|
 | MCP 본선 (JSON-RPC) | `apps/api/src/mcp/mcp.controller.ts` → `POST /v1/mcp` |
 | JSON-RPC 계층 | `apps/api/src/mcp/jsonrpc.ts` (HTTP 와 무관한 순수 함수) |
-| 도구 정의·실행 | `apps/api/src/mcp/mcp-tools.ts` (`create_map` · `list_maps` · `get_map` · `append_to_map`) |
+| 도구 정의·실행 | `apps/api/src/mcp/mcp-tools.ts` (`create_map` · `list_maps` · `get_map` · `get_open_map` · `append_to_map`) |
+| 앱이 지금 보는 자리(열린 맵·선택 노드) | `apps/api/src/maps/focus.service.ts` — 하트비트가 채우고 MCP 가 읽는다(메모리, §9.9) |
 | 덧붙이기의 순수 부분 (경로 찾기 · 조각 파싱 · 색/방향/레이아웃) | `apps/api/src/mcp/append-to-map.ts` |
 | 템플릿 → 맵 설정 (`create_map` 의 `template`) | `apps/api/src/mcp/map-template.ts` — 프런트 `emmDeclaration.ts`·`levelLayouts.ts` 의 이식, `src/emm/declaration.ts` 복사본 |
 | EMM → 문서 스냅샷 | `apps/api/src/mcp/emm-to-doc.ts` |
@@ -393,7 +394,8 @@ curl -s -X POST https://api-dev.mindmap.ai.kr/v1/mcp \
 기존 맵은 *"내 EasyMindMap 맵 목록 보여줘"* → *"'주간 회의 정리' 맵 읽어서
 …"* 처럼 부른다(AI 가 `list_maps` 로 id 를 찾고 `get_map` 으로 읽는다, §9.5).
 답변을 그 맵에 남기려면 *"그 답을 '할 일' 아래에 붙여 줘"* — `append_to_map`
-이 그 노드 아래에 가지로 붙인다(§9.6). 맵 모양은 *"…진행트리-트리맵
+이 그 노드 아래에 가지로 붙인다(§9.6). 앱에서 노드를 골라 두고 *"지금 열려
+있는 맵의 선택한 노드 아래에 붙여 줘"* 라고 해도 된다(§9.9). 맵 모양은 *"…진행트리-트리맵
 템플릿으로 만들어 줘"* 처럼 말하면 `create_map` 의 `template` 으로 간다(§9.7).
 Claude Code 는 처음 부를 때 도구 실행을 한 번 묻는다(허용). 답에
 *"…맵을 만들었습니다 (가지 N개 · 노드 M개) · 맵 id …"* 가 오면 성공이고,
@@ -629,6 +631,32 @@ MCP 로 만들면 방사형" 이 된다. (`declaration.ts` 는 `sync:emm` 복사
 AI 가지 합침·내 편집 그대로·☁ 저장 통과·양쪽 서버에 / 덧붙이기 아닌 변경:
 합치지 않음 → 저장 STALE → 초안 보관·연결 끊김·안내 → 다시 열기에 초안
 복구 배너) + 프런트 단위 8항목(`mergeAppends.test.ts`).
+
+### 9.9 "지금 열려 있는 맵의 선택한 노드 아래에" — `get_open_map` · `map_id:"current"` · `parent:"selected"` (2026-09-05)
+
+**요구**: 노드에 추가할 때 AI 에게 "현재 열려 있는 맵의 선택 노드 하위에"
+라고 말할 수 있게. AI 는 앱 화면을 못 보므로 **앱이 서버에 알려 줘야** 한다.
+
+| 겹 | 어디 | 무엇 |
+|---|---|---|
+| ① 앱이 알린다 | 하트비트 `POST /maps/:id/edit-heartbeat` 의 `focusNodeId`·`focusPath` | 열린(연결된) 맵의 **선택 노드 id 와 이름 경로**를 5초마다 싣고, 선택이 바뀌면 0.4초 뒤 한 번 더 보낸다. 열자마자도 한 번 |
+| ② 서버가 기억한다 | `maps/focus.service.ts` (메모리, 사용자당 하나, TTL 60초) | 표를 만들지 않는다 — 몇 초마다 바뀌고 몇 초 지나면 쓸모없는 값이다. 재시작하면 잃지만 앱이 5초 안에 다시 보낸다. 맵을 닫으면(`edit-release`) 지운다 |
+| ③ MCP 가 쓴다 | `get_open_map` / `map_id:"current"` / `parent:"selected"` | `get_open_map` 은 맵 이름·id·선택 경로를 글로 준다. `get_map`·`append_to_map` 의 `map_id` 에 `current`(또는 "현재 맵"·"열린 맵"), `append_to_map` 의 `parent` 에 `selected`(또는 "선택한 노드")를 받는다. 선택 노드는 **id 로** 찾는다(`id:<노드 id>`) — 이름이 겹쳐도 헷갈리지 않는다 |
+
+**거절하는 경우와 문장** — 열린 맵 없음(1분 넘게 조용·닫음·로그아웃) ·
+선택 없음("이름으로 적거나 앱에서 고르라") · `map_id` 가 열린 맵과 다른데
+`selected` 를 씀("그 맵에 붙이려면 current 로") · 선택 노드가 맵에 더 없음
+("다시 고르라"). 루트를 골랐으면 새 최상위 가지가 된다.
+
+**단일 인스턴스 전제** — API 가 여러 개가 되면 메모리 대신 공유 자리
+(Redis 등)로 옮긴다. 값의 모양(`Focus`)은 그대로다.
+
+**검증**(e2e213): 서버 15항목(열린 맵 없음 · 하트비트 focus · get_open_map ·
+current+selected · 한글 말 · 선택 없음/루트/다른 맵 · 닫음 · 없는 노드) +
+진짜 Chromium 4항목(열자마자 앎 · **노드를 고르면 0.54초 안에 서버가 앎** ·
+current+selected 로 그 아래에 · 화면에 나타나고 선택 유지) + Claude Code
+대화("지금 열려 있는 맵에서 내가 선택한 노드 아래에 …" → `get_open_map` →
+`append_to_map(current, selected)`).
 
 ## 10. 관련 문서
 

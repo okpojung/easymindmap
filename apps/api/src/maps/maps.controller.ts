@@ -148,7 +148,9 @@ export class MapsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: EditSessionDto,
   ) {
-    return this.maps.editHeartbeat(user.id, id, dto.sessionKey);
+    return this.maps.editHeartbeat(user.id, id, dto.sessionKey,
+      dto.focusNodeId !== undefined || dto.focusPath !== undefined
+        ? { nodeId: dto.focusNodeId || null, path: dto.focusPath } : undefined);
   }
 
   @Post(':id/edit-release')

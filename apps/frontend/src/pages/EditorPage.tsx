@@ -31,6 +31,7 @@ import {
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { pullAiKeys, pullAiSettings } from '@/services/cloud/aiKeysSync';
 import { useCloudStore } from '@/stores/cloudStore';
+import { nodePathInMap } from '@/stores/documentStore';
 import { useNoticeStore } from '@/stores/noticeStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import {
@@ -319,14 +320,18 @@ export function EditorPage() {
   // 몇 초 안에 화면에 보여야 사용자가 그 위에서 이어 편집한다(25초면
   // 그 사이에 옛 화면을 고쳐 STALE 로 튕길 확률이 커진다). 탭이 숨어 있으면
   // 25초마다만 보낸다.
+  //
+  // **선택한 노드도 실어 보낸다** (2026-09-05) — MCP 대화의 "지금 열려 있는
+  // 맵의 선택한 노드 아래에 붙여 줘" 가 그 자리를 알 수 있게. 선택이 바뀌면
+  // 다음 주기를 기다리지 않고 0.4초 뒤에 한 번 더 보낸다.
   const cloudMapIdForLock = useCloudStore((s) => s.cloudMapId);
   useEffect(() => {
     if (!cloudMapIdForLock) return;
     let tick = 0;
-    const timer = window.setInterval(() => {
-      tick += 1;
-      if (document.hidden && tick % 5 !== 0) return;
-      void cloudApi.editHeartbeat(cloudMapIdForLock, editSessionKey())
+    const send = () => {
+      const sel = useInteractionStore.getState().selectedId;
+      const focus = { nodeId: sel, path: nodePathInMap(useDocumentStore.getState().map, sel) };
+      void cloudApi.editHeartbeat(cloudMapIdForLock, editSessionKey(), focus)
         .then((r) => {
           // **서버 문서가 이 탭이 아는 것보다 새롭다** — AI 대화가 붙였다.
           // 편집 중이 아니면 조용히 다시 읽고, 편집 중이면 AI 가 붙인 가지만
@@ -360,8 +365,21 @@ export function EditorPage() {
           }
         })
         .catch(() => { /* 일시 오류 — 다음 주기·저장이 하트비트를 겸한다 */ });
+    };
+    const timer = window.setInterval(() => {
+      tick += 1;
+      if (document.hidden && tick % 5 !== 0) return;
+      send();
     }, 5_000);
-    return () => window.clearInterval(timer);
+    // 선택이 바뀌면 곧바로 — 사용자가 노드를 고르고 바로 AI 에게 말하는 흐름
+    let debounce: number | null = null;
+    const unsub = useInteractionStore.subscribe((st, prev) => {
+      if (st.selectedId === prev.selectedId) return;
+      if (debounce) window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => { debounce = null; send(); }, 400);
+    });
+    send(); // 열자마자 한 번 — 1분 안에 알려지는 것이 아니라 바로
+    return () => { window.clearInterval(timer); unsub(); if (debounce) window.clearTimeout(debounce); };
   }, [cloudMapIdForLock]);
 
   // **저장되지 않은 채 창을 닫으면 브라우저가 한 번 묻게 한다**

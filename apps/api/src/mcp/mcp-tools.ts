@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FoldersService } from '../folders/folders.service';
 import { MapsService } from '../maps/maps.service';
-import { DocShapeError, docToEmm } from './doc-to-emm';
+import { AppendError, appendSubtree, parseFragment } from './append-to-map';
+import { DocShapeError, docToEmm, mapFromDoc } from './doc-to-emm';
 import { EmmParseError, emmToSnapshot, titleFromSnapshot } from './emm-to-doc';
+import { TemplateError, applyLevelLayouts, templateFor } from './map-template';
 
 /**
  * MCP 가 AI 에게 주는 **도구 목록**과 그 실행.
@@ -12,8 +14,9 @@ import { EmmParseError, emmToSnapshot, titleFromSnapshot } from './emm-to-doc';
  * 중복 판정 같은 규칙은 전부 `MapsService` 안에 이미 있고, 여기서 다시
  * 만들지 않는다 — 두 벌이 되면 반드시 어긋난다(§2 머리말).
  *
- * 1단계 `create_map`(§7) + 2단계 `list_maps`·`get_map`(2026-09-05).
- * 셋 다 **읽거나 새로 만들 뿐** 기존 맵을 고치거나 지우지 않는다(§2-3).
+ * 1단계 `create_map`(§7) + 2단계 `list_maps`·`get_map` + `append_to_map`
+ * (2026-09-05). **지우는 도구는 없다**(§2-3). 고치는 것은 `append_to_map`
+ * 하나이고 그것도 **덧붙이기만** 한다 — 있는 노드를 바꾸거나 빼지 않는다.
  */
 
 export interface McpToolDef {
@@ -38,7 +41,9 @@ export const TOOL_DEFS: McpToolDef[] = [
       '`# 중심 주제` 한 줄, 그 아래 `## 가지`, `### 하위 가지` … 로 깊이를 만든다. ' +
       '목록(`- 항목`)은 그 견출의 하위 노드가 되고, 표·코드블록·인용문·' +
       '체크리스트(`- [ ] 항목`)는 그 노드의 본문으로 들어간다. ' +
-      '기존 맵을 고치지는 못한다 — 언제나 새 맵이 하나 생긴다.',
+      '언제나 새 맵이 하나 생긴다 — 기존 맵의 노드 아래에 붙이려면 append_to_map 을 쓴다. ' +
+      '`template` 으로 맵 모양(레이아웃)을 고를 수 있다 — 예: "진행트리-트리맵", "트리-진행트리맵", "방사형 양쪽", "시간배치", "계층형", "칸반". ' +
+      '사용자가 모양을 말하지 않으면 비워 둔다(앱 기본 = 방사형 양쪽).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -60,6 +65,13 @@ export const TOOL_DEFS: McpToolDef[] = [
           description:
             "표·코드블록·인용문·체크리스트를 어디에 넣을지. 'node'(기본) = 노드 본문, "
             + "'note' = 노드에 딸린 노트. 사용자가 따로 말하지 않으면 'node' 로 둔다.",
+        },
+        template: {
+          type: 'string',
+          description:
+            '맵 모양 템플릿. 앱 라이브러리 이름("트리-진행트리맵"·"진행트리-트리맵"·"방사형 양쪽"·"방사형 오른쪽"·"시간배치"·"계층형 오른쪽"·"칸반") '
+            + '또는 레이아웃 이름(tree-right, process-tree-right, radial-bidirectional, hierarchy-right, timeline, kanban …). '
+            + '마크다운 안에 ```emm 코드블록으로 `template: progtree-tree` 를 적어도 같다(인자가 있으면 인자가 이긴다).',
         },
       },
       required: ['markdown'],
@@ -112,6 +124,36 @@ export const TOOL_DEFS: McpToolDef[] = [
       required: ['map_id'],
     },
   },
+  {
+    name: 'append_to_map',
+    title: 'EasyMindMap 기존 맵의 노드 아래에 가지 붙이기',
+    description:
+      '기존 맵의 **한 노드 아래에** 마크다운 조각을 하위 가지로 덧붙인다. ' +
+      '`parent` 는 노드 이름(`"할 일"`) 또는 경로(`"2분기 > 협업"`)이고, 비우거나 `root` 면 중심 주제 바로 아래 새 가지가 된다. ' +
+      '`markdown` 은 `## 이름` 견출이나 `- 항목` 목록으로 시작하는 조각이다 — 그 최상위 항목들이 parent 의 새 하위 노드가 되고 더 깊은 견출·들여쓴 목록은 그 아래로 간다. ' +
+      '있는 노드를 바꾸거나 지우지는 않는다(덧붙이기만). 사람이 앱에서 그 맵을 편집 중이면 거절된다 — 그때는 앱에서 맵을 닫고 다시 부른다. ' +
+      '저장은 히스토리 버전으로 남으므로 앱의 [히스토리] 에서 되돌릴 수 있다. 노드 이름은 get_map 으로 먼저 확인한다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        map_id: { type: 'string', description: '`list_maps` 가 돌려준 맵 id (UUID).' },
+        parent: {
+          type: 'string',
+          description: '붙일 부모 노드 — 이름 또는 `"가지 > 하위"` 경로. 비우면 중심 주제 아래(새 최상위 가지).',
+        },
+        markdown: {
+          type: 'string',
+          description: '붙일 조각. `## 이름` 견출 또는 `- 항목` 목록으로 시작. 줄글만 있으면 노드가 되지 않는다.',
+        },
+        block_placement: {
+          type: 'string',
+          enum: ['node', 'note'],
+          description: "표·코드블록·인용문·체크리스트를 노드 본문('node', 기본)에 넣을지 노트('note')로 넣을지.",
+        },
+      },
+      required: ['map_id', 'markdown'],
+    },
+  },
 ];
 
 /** `get_map` 이 한 번에 돌려주는 본문 상한 — 넘으면 자르고 그 사실을 알린다 */
@@ -152,6 +194,7 @@ export class McpToolsService {
       case 'create_map': return this.createMap(userId, args);
       case 'list_maps': return this.listMaps(userId, args);
       case 'get_map': return this.getMap(userId, args);
+      case 'append_to_map': return this.appendToMap(userId, args);
       default: return text(`알 수 없는 도구입니다: ${name}`, true);
     }
   }
@@ -269,8 +312,96 @@ export class McpToolsService {
     const role = docRes.role && docRes.role !== 'owner' ? ` · 내 권한: ${docRes.role}` : '';
     return text(
       `맵 "${docRes.title}" (id: ${docRes.mapId} · 수정: ${fmtDate(docRes.updatedAt)} · 노드 ${emm.nodeCount}개${imgs}${role})\n` +
-      `아래가 EMM 마크다운 본문이다. 고쳐서 새 맵으로 저장하려면 create_map 에 넣는다.\n` +
+      `아래가 EMM 마크다운 본문이다. 고쳐서 새 맵으로 저장하려면 create_map 에, 어느 노드 아래에 덧붙이려면 append_to_map(parent: 노드 이름 또는 "가지 > 하위") 에 넣는다.\n` +
       `\n${body}${cut}`,
+    );
+  }
+
+  /**
+   * `append_to_map` — 잠금 → 읽기 → 붙이기 → 저장(버전) → 잠금 해제.
+   *
+   * **잠금 규칙** (§9.6): `getDocument` 에 편집 세션 키(`mcp:<user>`)를 줘서
+   * 앱과 **같은 잠금**을 탄다. 사람이 앱에서 편집 중(하트비트 살아 있음)이면
+   * `busy` — 거절하고 이유를 말한다. 죽은 잠금(60초 넘게 조용)은 앱과
+   * 같은 규칙으로 넘겨받는다. 협업맵은 앱도 잠그지 않으므로 여기서도
+   * 잠그지 않는다 — 접근 권한(role) 판정은 MapsService 가 한다.
+   *
+   * **되돌리기**: `keepVersion=true` 로 저장해 히스토리 버전이 남는다.
+   * 앱의 [히스토리] 에서 직전 버전으로 돌아갈 수 있다 — 삭제 도구를 두지
+   * 않는 대신 이것이 되돌리는 길이다.
+   */
+  private async appendToMap(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const mapId = typeof args.map_id === 'string' ? args.map_id.trim() : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mapId)) {
+      return text('`map_id` 가 맵 id(UUID) 모양이 아닙니다 — list_maps 가 돌려준 id 를 그대로 넣어 주세요.', true);
+    }
+    const parent = typeof args.parent === 'string' ? args.parent : '';
+    const placement = args.block_placement === 'note' ? 'note' : 'node';
+
+    // 조각을 먼저 읽는다 — 잘못된 입력이면 잠금을 잡기 전에 끝낸다
+    let fragment;
+    try {
+      fragment = parseFragment(typeof args.markdown === 'string' ? args.markdown : '', placement);
+    } catch (err) {
+      if (err instanceof AppendError) return text(err.message, true);
+      throw err;
+    }
+
+    const session = `mcp:${userId}`;
+    let docRes;
+    try {
+      docRes = await this.maps.getDocument(userId, mapId, session);
+    } catch (err) {
+      return text(mapError(err, '맵을 읽지 못했습니다'), true);
+    }
+    const release = () => this.maps.editRelease(userId, mapId, session).catch(() => { /* 잠금은 TTL 로도 풀린다 */ });
+
+    if (docRes.editLock === 'busy') {
+      return text(
+        `"${docRes.title}" 맵을 지금 앱(다른 세션)에서 편집 중이라 붙이지 못했습니다 — ` +
+        '앱에서 그 맵을 닫거나 1분쯤 뒤에 다시 시도해 주세요. (편집 중인 내용을 덮어쓰지 않기 위한 규칙입니다)',
+        true,
+      );
+    }
+    if (docRes.published) {
+      await release();
+      return text(`"${docRes.title}" 맵은 지금 공개(퍼블리싱) 중이라 편집할 수 없습니다 — 앱에서 비공개(보관)로 바꾼 뒤 다시 시도해 주세요.`, true);
+    }
+    if (docRes.role && !['owner', 'editor', 'collab_creator'].includes(String(docRes.role))) {
+      await release();
+      return text(`"${docRes.title}" 맵에는 읽기 권한만 있어 붙일 수 없습니다 (내 권한: ${docRes.role}).`, true);
+    }
+
+    let result;
+    try {
+      const map = mapFromDoc(docRes.doc);
+      result = appendSubtree(map, parent, fragment);
+    } catch (err) {
+      await release();
+      if (err instanceof AppendError || err instanceof DocShapeError) return text(err.message, true);
+      throw err;
+    }
+
+    const doc = { ...(docRes.doc as Record<string, unknown>), map: result.map };
+    let saved;
+    try {
+      saved = await this.maps.saveDocument(
+        userId, mapId, doc, undefined, true, session, false,
+        { platform: 'MCP', browser: 'AI 대화' },
+      );
+    } catch (err) {
+      await release();
+      this.log.warn(`MCP append_to_map 저장 실패 (map=${mapId}, user=${userId})`, err as Error);
+      return text(mapError(err, '붙인 내용을 저장하지 못했습니다'), true);
+    }
+    await release();
+
+    const where = result.parentPath;
+    const ver = (saved as { version?: number }).version;
+    return text(
+      `"${docRes.title}" 맵의 "${where}" 아래에 노드 ${result.added}개(바로 아래 ${result.topCount}개)를 붙였습니다.` +
+      (ver ? ` (히스토리 버전 ${ver})` : '') + '\n' +
+      '앱에서 그 맵이 열려 있었다면 다시 열어야 보입니다. 되돌리려면 앱의 [히스토리] 에서 이전 버전을 복원하세요.',
     );
   }
 
@@ -290,6 +421,28 @@ export class McpToolsService {
       throw err;
     }
     const title = askedTitle || titleFromSnapshot(snapshot, '새 마인드맵');
+
+    // 템플릿 — 앱의 불러오기와 같은 규칙으로 맵 레이아웃 + 레벨별 레이아웃을
+    // 정하고, 선언한 레벨의 노드에 **박는다**(설정만 넣어서는 그림이 안 바뀐다 —
+    // importMapFile.ts 2026-09-03 의 교훈). 모르는 이름은 거절해 AI 가 고쳐 부르게.
+    let templateNote = '';
+    try {
+      const tpl = templateFor(typeof args.template === 'string' ? args.template : undefined, markdown);
+      if (tpl.editor) snapshot.editor = { ...snapshot.editor, layoutType: tpl.editor.layoutType };
+      if (tpl.settings) {
+        snapshot.map.settings = { ...(snapshot.map.settings ?? {}), ...tpl.settings };
+        if (tpl.settings.levelLayouts) {
+          snapshot.map.branches = applyLevelLayouts(
+            snapshot.map.branches as unknown as import('../emm/model').MindNode[], tpl.settings.levelLayouts,
+          ) as unknown as typeof snapshot.map.branches;
+        }
+      }
+      if (tpl.editor) templateNote = ` · 레이아웃: ${tpl.editor.layoutType}` + (tpl.settings?.levelLayouts ? ' + 레벨별' : '');
+      if (tpl.skipped?.length) templateNote += ` (건너뜀: ${tpl.skipped.join(', ')})`;
+    } catch (err) {
+      if (err instanceof TemplateError) return text(err.message, true);
+      throw err;
+    }
 
     // 맵을 만든다 — 폴더는 지정하지 않는다(최상위 '홈'). 대화에서 폴더를
     // 고르려면 폴더 목록 도구가 먼저 있어야 하는데 그것은 2단계다(§2-2).
@@ -318,7 +471,7 @@ export class McpToolsService {
     // list_maps·get_map 이 같은 맵을 다른 수로 말하면 AI 도 사용자도 헷갈린다.
     const nodes = 1 + countNodes(snapshot.map.branches);
     return text(
-      `EasyMindMap 문서함에 "${title}" 맵을 만들었습니다 (가지 ${snapshot.map.branches.length}개 · 노드 ${nodes}개).\n` +
+      `EasyMindMap 문서함에 "${title}" 맵을 만들었습니다 (가지 ${snapshot.map.branches.length}개 · 노드 ${nodes}개${templateNote}).\n` +
       `맵 id: ${mapId}\n` +
       `EasyMindMap 을 열고 [☁ 클라우드 ▸ 열기] 에서 확인할 수 있습니다.`,
     );

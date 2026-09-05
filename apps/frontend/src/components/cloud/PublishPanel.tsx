@@ -1,12 +1,14 @@
-// PublishPanel — 무료 게시(공개 링크) 대화상자.
+// PublishPanel — 무료 퍼블리싱(링크 만들기) 대화상자.
 // 설계: docs/04-extensions/publish/27-publish-share.md (PUBL-01·02·04)
 //
-// 여기서 하는 말이 세 가지다. 게시는 되돌릴 수는 있어도 **이미 본 사람의
-// 기억은 되돌릴 수 없으므로**, 누르기 전에 무엇이 공개되는지 분명히 적는다.
+// 여기서 하는 말이 세 가지다. 퍼블리싱은 되돌릴 수는 있어도 **이미 본 사람의
+// 기억은 되돌릴 수 없으므로**, 누르기 전에 무엇이 나가는지 분명히 적는다.
 //   ① 링크를 가진 사람은 **로그인 없이** 읽는다 (검색 노출은 아니지만
 //      링크가 퍼지면 누구나 본다)
-//   ② 보이는 것은 **지금 저장된 판**이다 — 고쳐 저장하면 공개 화면도 바뀐다
-//   ③ 게시를 취소하면 링크는 **즉시** 죽는다
+//   ② 퍼블리싱한 맵은 **완성본**이다 — 퍼블리싱하는 동안 편집이 막힌다.
+//      고치려면 중단하고 고친 뒤 다시 퍼블리싱한다
+//   ③ 중단하면 링크는 **즉시** 죽고, **다시 살아나지 않는다** —
+//      다시 퍼블리싱하면 **새 주소**가 나온다
 
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -16,8 +18,9 @@ import {
 import { buildSilhouette } from '@/export/silhouette';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useCloudStore } from '@/stores/cloudStore';
 
-/** 공개 주소 — 브라우저 주소는 `/p/{publishId}` 다 (API 경로와 다르다) */
+/** 퍼블리싱 주소 — 브라우저 주소는 `/p/{publishId}` 다 (API 경로와 다르다) */
 export function publicMapUrl(publishId: string): string {
   return `${window.location.origin}/p/${publishId}`;
 }
@@ -45,7 +48,7 @@ export function PublishPanel(
     cloudApi.publishStatus(mapId)
       .then((s) => { if (alive) setStatus(s); })
       .catch((err) => {
-        if (alive) setError(err instanceof CloudError ? err.message : '게시 상태를 읽지 못했습니다.');
+        if (alive) setError(err instanceof CloudError ? err.message : '퍼블리싱 상태를 읽지 못했습니다.');
       });
     return () => { alive = false; };
   }, [mapId]);
@@ -65,7 +68,7 @@ export function PublishPanel(
   /**
    * 실루엣을 **이 브라우저에서** 만들어 올린다 (27a §2.2).
    *
-   * 실패해도 게시는 살린다 — 미리보기가 없는 것은 아쉬운 일이고,
+   * 실패해도 퍼블리싱은 살린다 — 미리보기가 없는 것은 아쉬운 일이고,
    * 링크가 안 만들어지는 것은 기능이 안 되는 일이다. 둘을 같은 무게로
    * 다루면 그림 하나 때문에 공유 자체가 막힌다.
    */
@@ -84,10 +87,37 @@ export function PublishPanel(
     }
   };
 
+  /**
+   * ★ **퍼블리싱하면 이 탭도 곧바로 읽기 전용이 된다** (2026-09-05).
+   *
+   * 퍼블리싱한 맵은 편집이 끝난 완성본이라 서버가 저장을 막는다. 화면이 그것을
+   * 모르면 사용자는 계속 고치다가 **자동저장이 403 을 만날 때에야** 안다 —
+   * 그때는 이미 그 편집이 갈 곳이 없다. 그래서 퍼블리싱한 순간 화면도 같은
+   * 사실을 갖게 한다(다시 열 때와 같은 상태다).
+   */
+  const lockThisTab = (locked: boolean) => {
+    const c = useCloudStore.getState();
+    if (locked) {
+      const meta = { title: c.cloudTitle ?? mapTitle, kind: c.cloudKind };
+      c.unlink();
+      useCloudStore.getState().setReadOnlyInfo({
+        mapId, title: meta.title,
+        reason: '퍼블리싱 중인 맵입니다 — 고치려면 퍼블리싱을 중단하세요',
+        viewer: false, kind: meta.kind,
+      });
+    } else {
+      const ro = c.readOnlyInfo;
+      useCloudStore.getState().link(mapId, c.lastSavedAt ?? new Date().toISOString(), {
+        title: ro?.title ?? c.cloudTitle ?? mapTitle, kind: ro?.kind ?? c.cloudKind,
+      });
+    }
+  };
+
   const doPublish = () => run(async () => {
     const s = await cloudApi.publishMap(mapId);
     setStatus(s);
-    flash('🔗 공개 링크를 만들었습니다.');
+    flash('🔗 퍼블리싱 링크를 만들었습니다 — 이제 이 맵은 읽기 전용입니다.');
+    lockThisTab(true);
     setPreviewBusy(true);
     const ok = await uploadPreview();
     setPreviewBusy(false);
@@ -103,9 +133,10 @@ export function PublishPanel(
 
   const doUnpublish = () => run(async () => {
     await cloudApi.unpublishMap(mapId);
-    setStatus({ available: true, publishId: null, publishedAt: null });
+    setStatus({ available: true, publishId: null, publishedAt: null, publishable: true });
     setCopied(false);
-    flash('공개를 중단했습니다 — 링크는 더 이상 열리지 않습니다.');
+    lockThisTab(false); // 다시 고칠 수 있다
+    flash('퍼블리싱을 중단했습니다 — 그 주소는 영구히 죽습니다. 다시 퍼블리싱하면 새 주소가 나옵니다. 이제 다시 편집할 수 있습니다.');
   });
 
   const url = status?.publishId ? publicMapUrl(status.publishId) : '';
@@ -146,7 +177,7 @@ export function PublishPanel(
         }}
       >
         <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
-          🔗 공개 링크로 공유
+          🔗 퍼블리싱 — 링크로 공유
         </div>
         <div style={{ fontSize: 12, color: t.textSubtle, marginBottom: 14 }}>
           {mapTitle}
@@ -164,21 +195,21 @@ export function PublishPanel(
         )}
 
         {status === null && !error && (
-          <div style={{ fontSize: 12.5, color: t.textMuted }}>게시 상태를 확인하는 중…</div>
+          <div style={{ fontSize: 12.5, color: t.textMuted }}>퍼블리싱 상태를 확인하는 중…</div>
         )}
 
-        {/* 서버에 게시 표가 없는 배포 — 버튼을 주고 실패시키지 않는다 */}
+        {/* 서버에 퍼블리싱 표가 없는 배포 — 버튼을 주고 실패시키지 않는다 */}
         {status?.available === false && (
           <div
             data-testid="publish-unavailable"
             style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7 }}
           >
-            이 서버에는 아직 게시 기능이 준비되지 않았습니다.
+            이 서버에는 아직 퍼블리싱 기능이 준비되지 않았습니다.
             <br />관리자가 <code>published_maps</code> 스키마 델타를 적용하면 바로 쓸 수 있습니다.
           </div>
         )}
 
-        {/* ★ **단독맵만 공개한다** (2026-09-05 결정). 이유는 권한이 아니라
+        {/* ★ **단독맵만 퍼블리싱한다** (2026-09-05 결정). 이유는 권한이 아니라
             **완성도**다 — 협업 중이라는 것은 아직 완료되지 않은 맵이다.
             눌러 보고 나서야 거절당하지 않도록 서버가 준 이유를 **미리**
             보여 준다. 규칙도 문장도 서버가 갖는다 — 화면이 같은 판정을 한 벌
@@ -189,31 +220,31 @@ export function PublishPanel(
             style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8 }}
           >
             {status.blockedReason}
-            <br />지금 내용을 공개하려면 <b>다른 이름으로 저장</b>하세요 — 사본은 단독맵으로 만들어집니다.
+            <br />지금 내용을 퍼블리싱하려면 <b>다른 이름으로 저장</b>하세요 — 사본은 단독맵으로 만들어집니다.
           </div>
         )}
 
         {status?.available && status.publishable !== false && !status.publishId && (
           <>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8, marginBottom: 16 }}>
-              공개 링크를 만들면 <b>링크를 가진 사람은 로그인 없이</b> 이 맵을 읽을 수 있습니다.
-              편집은 되지 않습니다.
-              <br />보이는 것은 <b>지금 서버에 저장된 판</b>입니다 — 이후에 고쳐 저장하면 공개 화면도 함께 바뀝니다.
-              <br />언제든 공개를 중단할 수 있고, 그 순간 링크는 열리지 않습니다.
+              퍼블리싱하면 <b>링크를 가진 사람은 로그인 없이</b> 이 맵을 읽을 수 있습니다.
+              <br />★ 퍼블리싱한 맵은 <b>편집이 끝난 완성본</b>입니다 — 퍼블리싱하는 동안 이 맵은
+              <b> 읽기 전용</b>이 되고, 협업자를 초대할 수도 없습니다.
+              <br />고치려면 <b>퍼블리싱을 중단</b>하면 됩니다. 그때 다시 편집할 수 있습니다.<br />★ 중단하면 그 주소는 <b>영구히 죽습니다</b> — 다시 퍼블리싱하면 <b>새 주소</b>가 나옵니다.
             </div>
             <button
               data-testid="publish-create"
               disabled={busy}
               onClick={() => void doPublish()}
               style={{ ...btn, width: '100%', background: t.primary, color: '#fff' }}
-            >{busy ? '만드는 중…' : '공개 링크 만들기'}</button>
+            >{busy ? '만드는 중…' : '퍼블리싱하기'}</button>
           </>
         )}
 
         {status?.available && status.publishId && (
           <>
             <div style={{ fontSize: 12.5, color: t.textMuted, marginBottom: 6 }}>
-              공개 중 · {status.publishedAt ? new Date(status.publishedAt).toLocaleString() : ''}
+              퍼블리싱 중 · {status.publishedAt ? new Date(status.publishedAt).toLocaleString() : ''}
             </div>
 
             {/* 미리보기 실루엣 — 링크 카드·목록 썸네일이 이 그림을 쓴다.
@@ -293,7 +324,7 @@ export function PublishPanel(
                 border: `1px solid ${t.border}`, background: t.surface, color: '#B91C1C',
                 fontWeight: 600, fontSize: 12.5,
               }}
-            >{busy ? '처리 중…' : '공개 중단'}</button>
+            >{busy ? '처리 중…' : '퍼블리싱 중단'}</button>
           </>
         )}
 

@@ -263,12 +263,12 @@ export class MapsService {
       ? ', lv.client_platform, lv.client_browser, lv.client_ip, lv.saved_at'
       : '';
 
-    // **지금 공개 중인 링크** (2026-09-05) — 문서함에서 "무엇을 공개해 뒀는지"
+    // **지금 퍼블리싱 중인 링크** (2026-09-05) — 문서함에서 "무엇을 퍼블리싱해 뒀는지"
     // 를 볼 수 있어야 한다. 링크는 만들고 나면 대화상자를 닫는 순간 사라져
-    // 다시 찾을 방법이 없었고, 그래서 **잊고 공개해 두는 일**이 생긴다.
+    // 다시 찾을 방법이 없었고, 그래서 **잊고 퍼블리싱해 두는 일**이 생긴다.
     //
     // `lastJoin` 과 같은 LATERAL 방식이다 — 페이지에 실린 맵만 1행씩 집는다.
-    // 표가 없는 서버(델타 미적용)에서는 통째로 뺀다. 게시가 안 되는 것과
+    // 표가 없는 서버(델타 미적용)에서는 통째로 뺀다. 퍼블리싱이 안 되는 것과
     // **문서함이 죽는 것**은 전혀 다른 일이다.
     const withPublish = await tableReady(this.db, 'public.published_maps');
     const pubJoin = withPublish
@@ -342,7 +342,7 @@ export class MapsService {
         lastBrowser: m.client_browser ?? null,
         lastIp: m.client_ip ?? null,
         lastSavedAt: m.saved_at ?? null,
-        // 지금 공개 중인 링크 — 없으면 null (표가 없는 서버도 null)
+        // 지금 퍼블리싱 중인 링크 — 없으면 null (표가 없는 서버도 null)
         publishId: m.publish_id ?? null,
       })),
       total: Number(count.rows[0]?.total ?? 0),
@@ -461,6 +461,22 @@ export class MapsService {
       await this.assertTitleAvailable(userId, nextFolder, nextTitle, mapId);
     }
 
+    // ★ **퍼블리싱 중인 맵은 협업맵으로 만들 수 없다** (2026-09-05 사용자 결정).
+    //
+    // 반대 방향(협업맵 → 퍼블리싱)은 퍼블리싱 쪽이 막는다(`publish.service.ts`).
+    // 양쪽을 다 막아야 규칙이 닫힌다 — 한쪽만 막으면 "퍼블리싱해 두고 초대"
+    // 라는 우회로가 남아, **아직 완성되지 않은 문서가 퍼블리싱된 채로 여럿이
+    // 고치는** 상태가 만들어진다. 그게 이 규칙이 막으려던 바로 그것이다.
+    //
+    // 되돌릴 길은 열어 둔다 — 퍼블리싱을 중단하면 협업맵으로 바꿀 수 있다.
+    // 그래서 안내가 "먼저 퍼블리싱을 중단해 주세요" 로 끝난다.
+    if (dto.kind === 'collab' && cur.kind !== 'collab'
+        && await this.isPublished(mapId)) {
+      throw new ForbiddenException(
+        '퍼블리싱 중인 맵은 협업맵으로 만들 수 없습니다. 먼저 퍼블리싱을 중단해 주세요.',
+      );
+    }
+
     const sets: string[] = [];
     const params: unknown[] = [];
     let i = 1;
@@ -506,6 +522,26 @@ export class MapsService {
     client?: { platform?: string; browser?: string; ip?: string },
   ) {
     const map = await this.requireAccessibleMap(userId, mapId, 'write');
+
+    // ★ **퍼블리싱 중인 맵은 고칠 수 없다** (2026-09-05 사용자 결정).
+    //
+    //   퍼블리싱한 맵은 **편집이 끝난 완성본**이다 — 내 홈페이지에 걸거나 콘텐츠로
+    //   파는 물건이다. 보는 사람은 완성된 글로 읽는데 그 아래에서 계속
+    //   달라지면, 같은 주소가 어제와 오늘 다른 글이 된다. 파는 물건이라면
+    //   더 그렇다: 산 사람과 지금 보는 사람이 다른 것을 갖게 된다.
+    //
+    //   고치려면 **퍼블리싱을 중단하면 된다.** 막는 것이 아니라 순서를 정하는
+    //   것이라, 안내도 그렇게 끝난다.
+    //
+    //   자동저장까지 여기서 막힌다 — 화면은 퍼블리싱맵을 **읽기 전용으로 연다**
+    //   (`getDocument` 의 `published`). 그래도 서버가 다시 막는 이유는,
+    //   막을 거면 **문이 있는 모든 곳**을 막아야 하기 때문이다(옛 탭·다른
+    //   기기·직접 호출).
+    if (await this.isPublished(mapId)) {
+      throw new ForbiddenException(
+        '퍼블리싱 중인 맵은 편집할 수 없습니다. 고치려면 먼저 퍼블리싱을 중단해 주세요.',
+      );
+    }
 
     // 단일 세션 편집 잠금 (2026-08-04) — 다른 살아 있는 세션이 이 맵을
     // 편집 중이면 저장을 거절한다 (읽기 전용으로 연 탭·죽지 않은 옛
@@ -905,6 +941,10 @@ export class MapsService {
       // 서버는 처음부터 알고 있었다(`requireAccessibleMap` 이 판정한다).
       // 알면서 말하지 않은 것이 문제였다.
       role: map.access_role,
+      // **퍼블리싱 중이면 읽기 전용으로 연다** (2026-09-05). 화면이 이것을
+      // 모르면 사용자는 한참 고친 뒤 저장할 때에야 403 을 만난다 — 그때는
+      // 이미 그 편집이 갈 곳이 없다(열람자 문제에서 똑같이 겪었다).
+      published: await this.isPublished(mapId),
       doc: rows[0].doc,
       updatedAt: rows[0].updated_at,
       ...(editLock ? { editLock } : {}),
@@ -1047,6 +1087,23 @@ export class MapsService {
    * 소유한 활성 맵을 조회하고, 없으면 404.
    * **소유자만** — 이름 변경·삭제·공유처럼 맵 자체를 좌우하는 일에 쓴다.
    */
+  /**
+   * 지금 퍼블리싱 중인가 — 표가 없는 서버에서는 **퍼블리싱 중이 아니다**로 본다.
+   * 표가 없으면 퍼블리싱 자체가 안 되므로 퍼블리싱 중일 수가 없고, 여기서 막으면
+   * 델타를 적용하지 않은 서버에서 협업 초대가 통째로 막힌다.
+   */
+  private async isPublished(mapId: string): Promise<boolean> {
+    if (!(await tableReady(this.db, 'public.published_maps'))) return false;
+    const { rows } = await this.db.query<{ ok: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM public.published_maps
+          WHERE map_id = $1 AND unpublished_at IS NULL
+       ) AS ok`,
+      [mapId],
+    );
+    return rows[0]?.ok === true;
+  }
+
   private async requireOwnedMap(userId: string, mapId: string): Promise<MapRow> {
     const { rows } = await this.db.query<MapRow>(
       `SELECT * FROM public.maps WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL`,

@@ -26,7 +26,7 @@ const isAdminHost = host === 'admin' || host.startsWith('admin.');
 const isAdminPath = window.location.pathname.replace(/\/+$/, '') === '/admin';
 const isAdmin = isAdminHost || isAdminPath;
 
-// 공개 링크 `/p/{publishId}` — **로그인 없이** 열리는 읽기 전용 화면
+// 퍼블리싱 링크 `/p/{publishId}` — **로그인 없이** 열리는 읽기 전용 화면
 // (docs/04-extensions/publish/27-publish-share.md §4.2). 에디터보다
 // **먼저** 갈라야 한다: 에디터는 뜨는 순간 로그인 화면·문서함을 띄우는데,
 // 링크를 받은 사람은 계정이 없다.

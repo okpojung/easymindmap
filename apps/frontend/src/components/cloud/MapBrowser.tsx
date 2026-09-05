@@ -94,22 +94,22 @@ type SortOrder = 'asc' | 'desc';
 /**
  * 맵의 **유형** — 문서함 '유형' 칸이 보여 주는 한 값 (2026-09-05 사용자 결정).
  *
- *   단독맵 · 협업맵 · 공개맵 · 대시보드맵
+ *   단독맵 · 협업맵 · 퍼블리싱맵 · 대시보드맵
  *
  * ★ 왜 한 자리에 모았나
- *   유형은 원래 `kind`(solo/collab) 하나였는데, 공개 게시가 붙으면서
- *   **한 맵이 여러 사실을 동시에 갖게** 됐다(협업맵이면서 공개 중일 수
+ *   유형은 원래 `kind`(solo/collab) 하나였는데, 퍼블리싱이 붙으면서
+ *   **한 맵이 여러 사실을 동시에 갖게** 됐다(공유받은 맵이면서 퍼블리싱 중일 수
  *   있다). 표시 규칙이 화면 곳곳에 흩어지면 목록과 상세 카드가 서로 다른
  *   말을 하게 된다 — 그래서 판정을 여기 한 벌만 둔다.
  *
  * ★ 우선순위와 그 이유
  *   ① 공유받은 맵  — 남의 맵이다. 내 유형 분류와 섞으면 안 된다
- *   ② 공개맵       — **바깥으로 드러난 사실**이라 가장 먼저 알아야 한다.
- *                    잊고 공개해 두는 것이 이 기능의 가장 나쁜 실패다.
+ *   ② 퍼블리싱맵      — **바깥으로 드러난 사실**이라 가장 먼저 알아야 한다.
+ *                    잊고 퍼블리싱해 두는 것이 이 기능의 가장 나쁜 실패다.
  *   ③ 협업맵 / 단독맵
  *
- *   ②가 ③을 가리므로, 가려진 값은 **툴팁에 남긴다**(협업맵을 공개하면
- *   "협업맵 · 공개 중"). 화면에서 사라지되 사실이 사라지지는 않는다.
+ *   ②가 ③을 가리므로, 가려진 값은 **툴팁에 남긴다**(협업맵을 퍼블리싱하면
+ *   "협업맵 · 퍼블리싱 중"). 화면에서 사라지되 사실이 사라지지는 않는다.
  *
  * ★ 대시보드맵은 아직 없다
  *   유형이 늘어날 자리는 여기다. `kind === 'dashboard'` 가 생기면 ③ 옆에
@@ -118,9 +118,9 @@ type SortOrder = 'asc' | 'desc';
 function mapType(m: MapListItem): {
   label: string;
   title: string;
-  /** 눈에 띄게 그릴 유형인가 (공개맵·협업맵) */
+  /** 눈에 띄게 그릴 유형인가 (퍼블리싱맵·협업맵) */
   strong: boolean;
-  /** 공개맵이면 그 주소 — 배지를 눌러 복사한다 */
+  /** 퍼블리싱맵이면 그 주소 — 배지를 눌러 복사한다 */
   publishUrl?: string;
 } {
   if (m.shared) {
@@ -133,11 +133,11 @@ function mapType(m: MapListItem): {
   if (m.publishId) {
     const url = publicMapUrl(m.publishId);
     return {
-      label: '🌐 공개맵',
+      label: '🌐 퍼블리싱맵',
       strong: true,
       publishUrl: url,
-      title: `공개 중 — 링크를 가진 사람은 로그인 없이 읽습니다 (${base})\n`
-        + `누르면 링크를 복사합니다\n${url}`,
+      title: `퍼블리싱 중 — 링크를 가진 사람은 로그인 없이 읽습니다 (${base})\n`
+        + `퍼블리싱 중에는 편집할 수 없습니다\n누르면 링크를 복사합니다\n${url}`,
     };
   }
   return m.kind === 'collab'
@@ -1088,7 +1088,7 @@ export function MapBrowser({
                 color: ty.strong ? t.primary : t.textMuted,
                 fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' as const,
               };
-              // 공개맵이면 **눌러서 링크를 다시 가져간다.** 공개 링크는
+              // 퍼블리싱맵이면 **눌러서 링크를 다시 가져간다.** 퍼블리싱 링크는
               // 만들고 나면 대화상자를 닫는 순간 사라져서, 그 주소를 다시
               // 볼 방법이 없었다 — 유형 칸이 그 자리를 겸한다.
               if (!ty.publishUrl) {
@@ -1106,12 +1106,12 @@ export function MapBrowser({
                   title={ty.title}
                   onClick={(e) => {
                     e.stopPropagation(); // 행 클릭(맵 열기)과 겹치지 않게
-                    const done = () => notifyUser(`🔗 공개 링크를 복사했습니다 — ${url}`);
+                    const done = () => notifyUser(`🔗 퍼블리싱 링크를 복사했습니다 — ${url}`);
                     if (navigator.clipboard?.writeText) {
                       navigator.clipboard.writeText(url).then(done,
                         () => notifyUser(`⚠ 복사하지 못했습니다 — ${url}`));
                     } else {
-                      notifyUser(`공개 링크: ${url}`);
+                      notifyUser(`퍼블리싱 링크: ${url}`);
                     }
                   }}
                   style={{ ...common, cursor: 'pointer', fontWeight: 700 }}
@@ -1210,7 +1210,7 @@ export function MapBrowser({
             ? '—' : `${info.map.nodeCount.toLocaleString()}개`} />
           <InfoRow t={t} k="문서 크기" v={fmtBytes(info.map.docBytes)} />
           {info.map.publishId && (
-            <InfoRow t={t} k="공개 링크" v={publicMapUrl(info.map.publishId)} />
+            <InfoRow t={t} k="퍼블리싱 링크" v={publicMapUrl(info.map.publishId)} />
           )}
           <InfoRow t={t} k="첨부" v={
             info.map.attachCount === null || info.map.attachCount === undefined

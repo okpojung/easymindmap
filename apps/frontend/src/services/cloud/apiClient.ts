@@ -142,8 +142,8 @@ export interface MapListItem {
   /** 첨부 총 용량 = 내장(data URL) + 서버 저장소 합 */
   attachBytes: number | null;
   /**
-   * **지금 공개 중인 링크** (2026-09-05) — 없으면 null.
-   * 문서함이 "무엇을 공개해 뒀는지" 를 보여 주는 데 쓴다. 게시 표가 없는
+   * **지금 퍼블리싱 중인 링크** (2026-09-05) — 없으면 null.
+   * 문서함이 "무엇을 퍼블리싱해 뒀는지" 를 보여 주는 데 쓴다. 퍼블리싱 표가 없는
    * 서버(델타 미적용)에서도 null 이라 화면은 그냥 배지를 안 그린다.
    */
   publishId?: string | null;
@@ -238,7 +238,7 @@ function qs(q: MapListQuery = {}): string {
   return `?${p.toString()}`;
 }
 
-/** 게시 상태 (PUBL). available:false = 이 서버에 게시 기능이 없다 */
+/** 퍼블리싱 상태 (PUBL). available:false = 이 서버에 퍼블리싱 기능이 없다 */
 export interface PublishStatus {
   available: boolean;
   publishId: string | null;
@@ -246,15 +246,15 @@ export interface PublishStatus {
   /** 미리보기 실루엣이 올라와 있는가 (27a §2) */
   hasPreview?: boolean;
   /**
-   * 이 맵을 **새로 공개할 수 있는가** — 협업맵이면 false (2026-09-05 결정).
+   * 이 맵을 **새로 퍼블리싱할 수 있는가** — 협업맵이면 false (2026-09-05 결정).
    * 규칙은 서버가 갖는다. 화면은 이 값을 보고 버튼 대신 이유를 낸다.
    */
   publishable?: boolean;
-  /** 공개할 수 없으면 그 이유 (서버가 준 문장) */
+  /** 퍼블리싱할 수 없으면 그 이유 (서버가 준 문장) */
   blockedReason?: string;
 }
 
-/** 공개 맵 — 비인증으로 받는다. doc 은 저장 스냅샷 그대로다 */
+/** 퍼블리싱된 맵 — 비인증으로 받는다. doc 은 저장 스냅샷 그대로다 */
 export interface PublishedMap {
   publishId: string;
   mapId: string;
@@ -336,6 +336,11 @@ export const cloudApi = {
       kind: MapKind; doc: unknown; updatedAt: string;
       /** 이 맵에서 내 역할 — 'viewer' 면 읽기 전용으로 연다 (2026-08-19) */
       role?: 'owner' | 'editor' | 'viewer';
+      /**
+       * **퍼블리싱 중인 맵인가** (2026-09-05). 퍼블리싱한 맵은 편집이 끝난 완성본이라
+       * 고칠 수 없다 — 읽기 전용으로 연다. 서버도 저장을 막는다.
+       */
+      published?: boolean;
       editLock?: 'acquired' | 'busy';
     }>(
       'GET',
@@ -540,21 +545,21 @@ export const cloudApi = {
     });
   },
 
-  // ── 무료 게시 (PUBL-01~04, 2026-09-04) ──────────────────────
+  // ── 무료 퍼블리싱 (PUBL-01~04, 2026-09-04) ──────────────────
   // 설계: docs/04-extensions/publish/27-publish-share.md
   //
   // `available:false` 는 **오류가 아니라 값**이다 — 서버에 published_maps
   // 표가 없는 상태(델타 미적용). 화면은 이 값을 보고 버튼을 감춘다.
-  /** 게시 상태 — 맵을 볼 수 있는 사람이면 누구나 읽는다 */
+  /** 퍼블리싱 상태 — 맵을 볼 수 있는 사람이면 누구나 읽는다 */
   publishStatus: (mapId: string) =>
     req<PublishStatus>('GET', `/maps/${mapId}/publish-status`),
   /**
-   * 게시 — **이미 게시 중이면 그 링크를 그대로 돌려준다**(멱등).
+   * 퍼블리싱 — **이미 퍼블리싱 중이면 그 링크를 그대로 돌려준다**(멱등).
    * 부를 때마다 새 링크를 뽑으면 이미 남에게 보낸 링크가 조용히 죽는다.
    */
   publishMap: (mapId: string) =>
     req<PublishStatus>('POST', `/maps/${mapId}/publish`),
-  /** 게시 취소 — 링크가 즉시 무효가 된다 */
+  /** 퍼블리싱 중단 — 그 주소는 즉시, 그리고 영구히 죽는다 */
   unpublishMap: (mapId: string) => req<void>('DELETE', `/maps/${mapId}/publish`),
   /**
    * 미리보기 실루엣 올리기 — 그림은 **이 브라우저가** 만든다
@@ -566,7 +571,7 @@ export const cloudApi = {
     return reqForm<PublishStatus>('PUT', `/maps/${mapId}/publish/preview`, form);
   },
   /**
-   * 공개 맵 조회 — **로그인 없이** 부른다(`anon`).
+   * 퍼블리싱된 맵 조회 — **로그인 없이** 부른다(`anon`).
    * 토큰을 붙이면 인증이 켜진 배포에서 비로그인 방문자가 401 을 만난다.
    */
   getPublished: (publishId: string) =>
@@ -605,7 +610,7 @@ export function serverAttachmentId(url: string | undefined): string | null {
 }
 
 /**
- * 공개된 맵의 **미리보기 실루엣** 주소 — 로그인 없이 열린다 (27a §2).
+ * 퍼블리싱된 맵의 **미리보기 실루엣** 주소 — 로그인 없이 열린다 (27a §2).
  * 링크 카드(Open Graph)와 목록 썸네일이 이 주소를 그대로 쓴다.
  *
  * `v` 는 캐시를 깨기 위한 것이다 — 저자가 "다시 만들기" 를 누르면
@@ -617,8 +622,8 @@ export function publishedPreviewUrl(publishId: string, v?: string | number): str
 }
 
 /**
- * 공개된 맵의 첨부 주소 — **로그인 없이** 열린다 (PUBL-03).
- * 공개 화면은 이 주소로 사진을 그린다. 게시를 취소하면 함께 닫힌다.
+ * 퍼블리싱된 맵의 첨부 주소 — **로그인 없이** 열린다 (PUBL-03).
+ * 퍼블리싱 화면은 이 주소로 사진을 그린다. 퍼블리싱을 중단하면 함께 닫힌다.
  */
 export function publishedAttachmentUrl(publishId: string, attachmentId: string): string {
   return `${BASE}/v1/published/${encodeURIComponent(publishId)}/attachments/${attachmentId}`;

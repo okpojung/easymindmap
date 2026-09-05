@@ -12,8 +12,8 @@ import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorato
 import { PublishService } from './publish.service';
 
 /**
- * 게시 · 게시 취소 · 상태 — **맵 주인의 조작**이라 인증이 필요하다.
- * 공개 조회는 인증 없는 별도 컨트롤러다 (`public-publish.controller.ts`).
+ * 퍼블리싱 · 중단 · 상태 — **맵 주인의 조작**이라 인증이 필요하다.
+ * 비인증 조회는 별도 컨트롤러다 (`public-publish.controller.ts`).
  */
 @Controller('maps')
 @UseGuards(AuthGuard)
@@ -75,17 +75,17 @@ export class PublicPublishController {
   /** 슬러그 모양이 아니면 DB 에 묻지도 않는다 — 공개 경로라 아무나 두드린다 */
   private static slug(publishId: string): string {
     if (!/^[a-z0-9]{6,20}$/.test(publishId)) {
-      throw new BadRequestException('잘못된 공개 링크입니다.');
+      throw new BadRequestException('잘못된 퍼블리싱 링크입니다.');
     }
     return publishId;
   }
 
   /**
-   * 공개된 맵의 **사진·첨부** — `:publishId` 보다 **먼저** 선언한다.
+   * 퍼블리싱된 맵의 **사진·첨부** — `:publishId` 보다 **먼저** 선언한다.
    * 아래에 두면 `abc/attachments/…` 가 `:publishId` 로 잡히지는 않지만,
    * 순서를 지켜 두는 편이 나중에 안전하다(attachments 컨트롤러와 같은 규칙).
    *
-   * 이 문이 없으면 공개된 맵은 **사진 자리마다 깨진 채로** 열린다 —
+   * 이 문이 없으면 퍼블리싱된 맵은 **사진 자리마다 깨진 채로** 열린다 —
    * 사진은 이제 대부분 서버 저장소에 있고 그 주소는 인증을 요구한다.
    * 여는 조건은 `openPublished` 한 곳에 있다.
    */

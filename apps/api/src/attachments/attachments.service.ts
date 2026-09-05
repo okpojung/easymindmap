@@ -23,7 +23,7 @@ import type { ReadStream } from 'node:fs';
 import { DatabaseService } from '../database/database.service';
 import { StorageService } from '../storage/storage.service';
 import { queryAllowingMissingMembers } from '../maps/map-access';
-import { tableReady } from '../common/table-ready';
+import { columnReady, tableReady } from '../common/table-ready';
 import { fetchRemoteImage } from './remote-image';
 
 /**
@@ -257,10 +257,15 @@ export class AttachmentsService {
     id: string,
     range?: { start: number; end: number },
   ): Promise<AttachmentMeta & { stream: ReadStream }> {
-    // 게시 표가 없는 서버에서는 공개 자체가 없다 — 물어볼 것도 없다
+    // 퍼블리싱 표가 없는 서버에서는 공개 자체가 없다 — 물어볼 것도 없다
     if (!(await tableReady(this.db, 'public.published_maps'))) {
       throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');
     }
+    // ★ **무료공개 중일 때만 연다** (2026-09-05). 보관(비공개)으로 돌리면
+    //   본문과 **같은 순간에** 사진도 닫혀야 한다 — 한쪽만 닫으면 주소를
+    //   아는 사람이 사진으로 내용을 짐작한다.
+    const open = (await columnReady(this.db, 'public.published_maps', 'visibility'))
+      ? `AND p.visibility = 'public'` : '';
     const { rows } = await this.db.query<{
       name: string; mime: string; size_bytes: string; storage_key: string;
     }>(
@@ -270,7 +275,8 @@ export class AttachmentsService {
            ON m.id = a.map_id AND m.deleted_at IS NULL
          JOIN public.published_maps p
            ON p.map_id = a.map_id AND p.unpublished_at IS NULL
-        WHERE a.id = $1 AND p.publish_id = $2`,
+        WHERE a.id = $1 AND p.publish_id = $2
+          ${open}`,
       [id, publishId],
     );
     if (!rows[0]) throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');

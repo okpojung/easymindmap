@@ -1,6 +1,7 @@
 import {
   BadRequestException,
-  Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, Res,
+  Body,
+  Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Req, Res,
   UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -9,7 +10,7 @@ import { AttachmentsService } from '../attachments/attachments.service';
 import { sendAttachment } from '../attachments/attachments.controller';
 import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
-import { PublishService } from './publish.service';
+import { PublishService, type PublishVisibility } from './publish.service';
 
 /**
  * 퍼블리싱 · 중단 · 상태 — **맵 주인의 조작**이라 인증이 필요하다.
@@ -20,12 +21,37 @@ import { PublishService } from './publish.service';
 export class PublishController {
   constructor(private readonly publish: PublishService) {}
 
+  /**
+   * 퍼블리싱 **등록**. `visibility` 를 주면 그 상태로 등록한다
+   * (기본은 `public` = 무료공개 — 지금까지의 동작 그대로다).
+   */
   @Post(':id/publish')
   @HttpCode(200)
-  publishMap(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.publish.publish(user.id, id);
+  publishMap(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body?: { visibility?: string },
+  ) {
+    return this.publish.publish(user.id, id, (body?.visibility ?? 'public') as PublishVisibility);
   }
 
+  /**
+   * 상태 전환 (비공개 ↔ 무료공개) — **주소는 그대로다.**
+   *
+   * `POST` 와 나눈 이유: 등록과 노출은 다른 일이다. 하나로 묶으면
+   * "다시 눌렀더니 주소가 바뀌었다" 같은 사고가 생길 자리가 남는다.
+   */
+  @Patch(':id/publish')
+  setVisibility(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { visibility?: string },
+  ) {
+    if (!body?.visibility) throw new BadRequestException('visibility 를 주세요 (private | public).');
+    return this.publish.setVisibility(user.id, id, body.visibility as PublishVisibility);
+  }
+
+  /** 퍼블리싱 **등록 취소** — 주소가 죽는다(다시 등록하면 새 주소) */
   @Delete(':id/publish')
   @HttpCode(204)
   unpublishMap(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {

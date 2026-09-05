@@ -30,7 +30,7 @@ import { randomInt } from 'node:crypto';
 import type { ReadStream } from 'node:fs';
 import { DatabaseService } from '../database/database.service';
 import { StorageService } from '../storage/storage.service';
-import { tableReady } from '../common/table-ready';
+import { columnReady, tableReady } from '../common/table-ready';
 import { findAccessibleMap } from '../maps/map-access';
 
 const PUBLISHED_TABLE = 'public.published_maps';
@@ -49,6 +49,21 @@ function newPublishId(): string {
   return out;
 }
 
+/**
+ * 퍼블리싱 문서함 안의 상태 (2026-09-05 사용자 결정).
+ *
+ *   `private` 보관    — 등록만 해 뒀다. 남에게는 404. **고칠 수 있다.**
+ *   `public`  무료공개 — 링크를 가진 누구나 읽는다. **고칠 수 없다.**
+ *   `paid`    유료공개 — 값을 매겨 판다 (27a, **아직 준비 중**).
+ */
+export type PublishVisibility = 'private' | 'public' | 'paid';
+
+export const VISIBILITY_LABEL: Record<PublishVisibility, string> = {
+  private: '비공개(보관)',
+  public: '무료공개',
+  paid: '유료공개',
+};
+
 export interface PublishStatus {
   /** 이 서버에 퍼블리싱 기능이 켜져 있는가 (표가 없으면 false) */
   available: boolean;
@@ -63,12 +78,23 @@ export interface PublishStatus {
   publishable?: boolean;
   /** 퍼블리싱할 수 없으면 그 이유 (사람이 읽는 문장). 규칙은 서버가 갖는다 */
   blockedReason?: string;
+  /**
+   * 지금 상태 — 등록돼 있을 때만 온다 (2026-09-05).
+   * `visibility` 칸이 없는 서버(델타 미적용)에서는 **모두 `public`** 이다.
+   */
+  visibility?: PublishVisibility;
+  /**
+   * 이 서버가 상태 전환을 할 수 있는가 — `visibility` 칸이 있는가.
+   * 화면은 이 값이 false 면 전환 단추를 아예 그리지 않는다.
+   */
+  canSetVisibility?: boolean;
 }
 
 interface PublishedRow {
   publish_id: string;
   published_at: Date;
   storage_path: string | null;
+  visibility?: PublishVisibility;
 }
 
 /** 미리보기 PNG 한 장의 상한. 1200×630 실루엣은 보통 100KB 안쪽이다 */
@@ -84,6 +110,23 @@ export class PublishService {
   /** 퍼블리싱 기능을 쓸 수 있는 서버인가 */
   private async ready(): Promise<boolean> {
     return tableReady(this.db, PUBLISHED_TABLE);
+  }
+
+  /**
+   * 이 서버가 **상태 전환**을 할 수 있는가 — `visibility` 칸이 있는가.
+   *
+   * 표는 있는데 이 칸만 없는 서버가 있다(2026-09-04 델타는 적용, 2026-09-05
+   * 델타는 아직). 그때는 **모두 무료공개로 보고** 전환 기능만 끈다 —
+   * 지금까지의 동작 그대로다. 여기서 막으면 퍼블리싱이 통째로 멈춘다.
+   */
+  private async hasVisibility(): Promise<boolean> {
+    return columnReady(this.db, PUBLISHED_TABLE, 'visibility');
+  }
+
+  /** 칸이 없으면 무엇을 읽어도 무료공개다 */
+  private static vis(row: { visibility?: string | null } | undefined): PublishVisibility {
+    const v = row?.visibility;
+    return v === 'private' || v === 'paid' ? v : 'public';
   }
 
   private async requireReady(): Promise<void> {
@@ -143,44 +186,54 @@ export class PublishService {
   }
 
   /**
-   * PUBL-01 — 퍼블리싱. **이미 퍼블리싱 중이면 그 링크를 그대로 돌려준다.**
+   * PUBL-01 — **퍼블리싱 등록.** 이미 등록돼 있으면 그 링크를 그대로 준다.
    *
-   * 1단계 정책은 "맵 1개당 활성 링크 1개"다(설계 §6). 부를 때마다 새
-   * 링크를 만들면 **이미 남에게 보낸 링크가 조용히 죽는다** — 버튼을 두
-   * 번 누른 것만으로. 그래서 이 호출은 멱등으로 둔다. 링크를 새로 뽑는
-   * 것(regenerate)은 "지금 링크를 죽이겠다"는 별개의 결정이라, 필요해질
-   * 때 별도 요청으로 만든다.
+   * ★ **등록과 노출은 다른 일이다** (2026-09-05 사용자 결정).
+   *
+   *   완성된 맵 ──[등록]──▶ 퍼블리싱 문서함 { 비공개 · 무료공개 · 유료공개 }
+   *
+   *   쇼핑몰이 상품을 등록해 두고 아직 노출하지 않을 수 있는 것과 같다.
+   *   유튜브의 비공개/일부공개/공개도 같은 모양이다.
+   *
+   *   **주소(`publish_id`)는 등록에 붙는다 — 상태에 붙지 않는다.** 그래서
+   *   비공개로 돌렸다 다시 공개해도 **같은 주소**다. 홈페이지에 걸어 둔
+   *   링크가 오탈자 하나 고치는 동안 죽지 않는다.
+   *
+   *   앞서 "중단하면 주소가 영구히 죽는다" 로 정했던 이유는 하나였다 —
+   *   **중단이 "잠시 고치려고" 인지 "이제 그만" 인지 시스템은 알 수
+   *   없다.** 상태를 셋으로 나눈 지금은 **사용자가 직접 말해 준다**:
+   *   잠시 내리는 것은 `비공개`, 그만두는 것은 `등록 취소`(DELETE)다.
+   *   알 수 없던 것이 알 수 있게 됐으므로 추측할 일이 없다.
+   *
+   *   등록 취소는 여전히 **주소를 죽인다** — 그때는 사용자가 죽이는 것을
+   *   이미 골랐다.
    */
-  async publish(userId: string, mapId: string): Promise<PublishStatus> {
+  async publish(
+    userId: string, mapId: string, visibility: PublishVisibility = 'public',
+  ): Promise<PublishStatus> {
     await this.requireReady();
     await this.requirePublishable(userId, mapId);
+    const canSet = await this.hasVisibility();
+    PublishService.assertUsable(visibility, canSet);
 
     const cur = await this.activeRow(mapId);
-    if (cur) return this.toStatus(cur);
+    if (cur) return this.toStatus(cur, canSet);
 
-    // ★ **중단하면 그 주소는 끝이다 — 다시 하면 새 주소** (2026-09-05 결정).
-    //
-    //   같은 주소로 되살리는 안을 검토했다가 접었다. 이유는 하나다:
-    //   **중단이 "잠시 수정하려고" 인지 "이제 그만" 인지 시스템은 알 수
-    //   없다.** 추측해서 되살리면, 내리려던 사람의 주소가 어느 날 다시
-    //   살아난다. 알 수 없는 것은 추측하지 않는다.
-    //
-    //   맞바꾼 것: 오탈자를 고치려고 중단하면 **홈페이지에 걸어 둔 링크가
-    //   죽는다.** 그것이 아프면 "수정하려고 잠시 내리기" 를 **별도 버튼**
-    //   으로 만드는 것이 답이다 — 그때는 사용자가 어느 쪽인지 말해 주므로
-    //   추측할 일이 없다. 지금은 만들지 않는다.
     // publish_id 는 UNIQUE 다. 충돌 확률은 무시할 만하지만 0 은 아니므로
     // 몇 번 다시 뽑는다 — 여기서 포기하면 사용자에게는 이유 없는 실패다.
+    const cols = canSet ? '(map_id, publish_id, visibility)' : '(map_id, publish_id)';
+    const vals = canSet ? '($1, $2, $3)' : '($1, $2)';
+    const ret = canSet
+      ? 'publish_id, published_at, storage_path, visibility'
+      : 'publish_id, published_at, storage_path';
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const publishId = newPublishId();
       try {
         const { rows } = await this.db.query<PublishedRow>(
-          `INSERT INTO public.published_maps (map_id, publish_id)
-                VALUES ($1, $2)
-             RETURNING publish_id, published_at, storage_path`,
-          [mapId, publishId],
+          `INSERT INTO public.published_maps ${cols} VALUES ${vals} RETURNING ${ret}`,
+          canSet ? [mapId, publishId, visibility] : [mapId, publishId],
         );
-        return this.toStatus(rows[0]);
+        return this.toStatus(rows[0], canSet);
       } catch (err) {
         // 23505 = unique_violation. 그 외 오류는 그대로 올린다 —
         // 삼키면 DB 장애가 "퍼블리싱 실패"로 둔갑해 원인을 못 찾는다.
@@ -190,6 +243,61 @@ export class PublishService {
       }
     }
     throw new ServiceUnavailableException('퍼블리싱 링크를 만들지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
+  }
+
+  /**
+   * 지금 쓸 수 있는 상태인가 — **거절은 이유와 함께**.
+   *
+   * `paid` 는 칸에는 있지만 아직 팔 수 있는 배관(값·결제·정산)이 없다.
+   * 값을 못 받는데 "유료공개" 라고 표시해 두면 **저자가 팔았다고 믿는**
+   * 상태가 된다. 그래서 지금은 막고, 막는 이유를 말한다 (27a §3·§6).
+   */
+  private static assertUsable(v: PublishVisibility, canSet: boolean): void {
+    if (v === 'paid') {
+      throw new BadRequestException(
+        '유료공개는 아직 준비 중입니다 — 값·결제·정산이 붙은 뒤에 열립니다. 지금은 비공개(보관) 또는 무료공개를 고를 수 있습니다.',
+      );
+    }
+    if (v !== 'private' && v !== 'public') {
+      throw new BadRequestException('상태는 비공개(private) 또는 무료공개(public) 만 고를 수 있습니다.');
+    }
+    if (v === 'private' && !canSet) {
+      throw new ServiceUnavailableException(
+        '이 서버에는 아직 퍼블리싱 상태 전환이 준비되지 않았습니다(published_maps.visibility 칸 없음). 관리자에게 문의해 주세요.',
+      );
+    }
+  }
+
+  /**
+   * PUBL-06 — **상태 전환** (비공개 ↔ 무료공개). 주소는 그대로다.
+   *
+   * 등록돼 있지 않으면 바꿀 것이 없다 — 404 로 답한다(먼저 등록해야 한다).
+   * 협업맵 여부는 여기서 보지 않는다: 이미 등록된 것을 **닫는 쪽**으로
+   * 움직이는 길까지 막으면 되돌릴 수 없다(`unpublish` 와 같은 이유).
+   */
+  async setVisibility(
+    userId: string, mapId: string, visibility: PublishVisibility,
+  ): Promise<PublishStatus> {
+    await this.requireReady();
+    await this.requireOwner(userId, mapId);
+    const canSet = await this.hasVisibility();
+    PublishService.assertUsable(visibility, canSet);
+    if (!canSet) {
+      throw new ServiceUnavailableException(
+        '이 서버에는 아직 퍼블리싱 상태 전환이 준비되지 않았습니다(published_maps.visibility 칸 없음). 관리자에게 문의해 주세요.',
+      );
+    }
+    const { rows } = await this.db.query<PublishedRow>(
+      `UPDATE public.published_maps
+          SET visibility = $2
+        WHERE map_id = $1 AND unpublished_at IS NULL
+    RETURNING publish_id, published_at, storage_path, visibility`,
+      [mapId, visibility],
+    );
+    if (!rows[0]) {
+      throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
+    }
+    return this.toStatus(rows[0], true);
   }
 
   /** PUBL-02 — 퍼블리싱 중단. 이미 중단돼 있어도 성공이다(멱등) */
@@ -233,14 +341,23 @@ export class PublishService {
     const gate = collab
       ? { publishable: false, blockedReason: PublishService.COLLAB_BLOCKED }
       : { publishable: true };
+    const canSet = await this.hasVisibility();
     const cur = await this.activeRow(mapId);
     return cur
-      ? { ...this.toStatus(cur), ...gate }
-      : { available: true, publishId: null, publishedAt: null, ...gate };
+      ? { ...this.toStatus(cur, canSet), ...gate }
+      : {
+        available: true, publishId: null, publishedAt: null,
+        canSetVisibility: canSet, ...gate,
+      };
   }
 
   /**
    * PUBL-03 — **비인증** 조회.
+   *
+   * ★ **무료공개만 연다** (2026-09-05). 보관(비공개)은 주소가 살아 있어도
+   *   남에게는 없는 것과 같다 — 그래야 "등록해 두고 아직 노출하지 않는"
+   *   상태가 뜻을 갖는다. 404 문장은 없는 링크와 **같다**: 구분하면
+   *   "그런 주소가 있긴 하다" 는 사실을 알려 주는 셈이다.
    *
    * 지운 맵은 열지 않는다. `published_maps` 는 맵을 **완전히** 지울 때만
    * CASCADE 로 함께 지워지는데, 우리 삭제는 soft-delete(`deleted_at`)라
@@ -249,6 +366,7 @@ export class PublishService {
    */
   async getPublished(publishId: string) {
     if (!(await this.ready())) throw new NotFoundException('페이지를 찾을 수 없습니다.');
+    const open = (await this.hasVisibility()) ? `AND p.visibility = 'public'` : '';
     const { rows } = await this.db.query<{
       map_id: string; title: string; published_at: Date;
       doc: unknown; updated_at: Date | null;
@@ -259,7 +377,8 @@ export class PublishService {
     LEFT JOIN public.map_documents d ON d.map_id = p.map_id
         WHERE p.publish_id = $1
           AND p.unpublished_at IS NULL
-          AND m.deleted_at IS NULL`,
+          AND m.deleted_at IS NULL
+          ${open}`,
       [publishId],
     );
     const row = rows[0];
@@ -279,8 +398,10 @@ export class PublishService {
   }
 
   private async activeRow(mapId: string): Promise<PublishedRow | undefined> {
+    // 칸이 없는 서버에서는 **고르지 않는다** — 없는 칸을 SELECT 하면 503 이다
+    const col = (await this.hasVisibility()) ? ', visibility' : '';
     const { rows } = await this.db.query<PublishedRow>(
-      `SELECT publish_id, published_at, storage_path
+      `SELECT publish_id, published_at, storage_path${col}
          FROM public.published_maps
         WHERE map_id = $1 AND unpublished_at IS NULL
      ORDER BY published_at DESC
@@ -290,12 +411,14 @@ export class PublishService {
     return rows[0];
   }
 
-  private toStatus(row: PublishedRow): PublishStatus {
+  private toStatus(row: PublishedRow, canSetVisibility: boolean): PublishStatus {
     return {
       available: true,
       publishId: row.publish_id,
       publishedAt: row.published_at.toISOString(),
       hasPreview: !!row.storage_path,
+      visibility: PublishService.vis(row),
+      canSetVisibility,
     };
   }
 
@@ -344,22 +467,24 @@ export class PublishService {
         WHERE map_id = $1 AND unpublished_at IS NULL`,
       [mapId, key],
     );
-    return { ...this.toStatus(cur), hasPreview: true };
+    return { ...this.toStatus(cur, await this.hasVisibility()), hasPreview: true };
   }
 
   /**
    * 미리보기 읽기 — **비인증**. 여는 조건은 맵 본문과 같다:
-   * 지금 그 링크로 퍼블리싱 중이고, 맵이 휴지통에 있지 않아야 한다.
+   * 지금 그 링크로 **무료공개** 중이고, 맵이 휴지통에 있지 않아야 한다.
    */
   async openPreview(publishId: string): Promise<ReadStream> {
     if (!(await this.ready())) throw new NotFoundException('페이지를 찾을 수 없습니다.');
+    const open = (await this.hasVisibility()) ? `AND p.visibility = 'public'` : '';
     const { rows } = await this.db.query<{ storage_path: string | null }>(
       `SELECT p.storage_path
          FROM public.published_maps p
          JOIN public.maps m ON m.id = p.map_id
         WHERE p.publish_id = $1
           AND p.unpublished_at IS NULL
-          AND m.deleted_at IS NULL`,
+          AND m.deleted_at IS NULL
+          ${open}`,
       [publishId],
     );
     const key = rows[0]?.storage_path;

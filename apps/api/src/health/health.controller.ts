@@ -129,6 +129,9 @@ const REQUIRED_COLUMNS = [
   // 없어도 앱은 돌지만, 워커가 붙는 날 "왜 안 지워지나" 를 여기서 찾는다.
   'plan_quotas.version_days',
   'map_document_versions.pinned',
+  // 퍼블리싱 상태 (2026-09-05) — 없으면 **모두 무료공개**로 돌고 비공개(보관)
+  // 전환만 꺼진다. 앱은 죽지 않으므로 운영자가 알아챌 곳이 여기뿐이다.
+  'published_maps.visibility',
 ] as const;
 
 /**

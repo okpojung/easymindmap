@@ -4,7 +4,7 @@ import {
 import { AttachmentsService } from '../attachments/attachments.service';
 import { VaultService } from '../vault/vault.service';
 import { DatabaseService } from '../database/database.service';
-import { tableReady } from '../common/table-ready';
+import { columnReady, tableReady } from '../common/table-ready';
 import { FoldersService } from '../folders/folders.service';
 import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
 import type { CreateMapDto } from './dto/create-map.dto';
@@ -270,16 +270,23 @@ export class MapsService {
     // `lastJoin` 과 같은 LATERAL 방식이다 — 페이지에 실린 맵만 1행씩 집는다.
     // 표가 없는 서버(델타 미적용)에서는 통째로 뺀다. 퍼블리싱이 안 되는 것과
     // **문서함이 죽는 것**은 전혀 다른 일이다.
+    //
+    // 상태(`visibility`)까지 함께 집는다 (2026-09-05) — 문서함이
+    // **보관 중**과 **공개 중**을 다르게 그려야 하기 때문이다. 칸이 없는
+    // 서버에서는 그 칸만 빼고, 화면은 전부 공개로 본다(지금까지와 같다).
     const withPublish = await tableReady(this.db, 'public.published_maps');
+    const withVis = withPublish
+      && await columnReady(this.db, 'public.published_maps', 'visibility');
     const pubJoin = withPublish
       ? `LEFT JOIN LATERAL (
-             SELECT pm.publish_id
+             SELECT pm.publish_id${withVis ? ', pm.visibility' : ''}
                FROM public.published_maps pm
               WHERE pm.map_id = p.id AND pm.unpublished_at IS NULL
               ORDER BY pm.published_at DESC LIMIT 1
            ) pub ON TRUE`
       : '';
-    const pubCols = withPublish ? ', pub.publish_id' : '';
+    const pubCols = withPublish
+      ? `, pub.publish_id${withVis ? ', pub.visibility' : ''}` : '';
 
     const [list, count] = await Promise.all([
       this.db.query<MapRow & {
@@ -294,6 +301,7 @@ export class MapsService {
         client_ip?: string | null;
         saved_at?: Date | null;
         publish_id?: string | null;
+        visibility?: string | null;
       }>(
         `${hitsCte}${hitsCte ? ', p AS (' : 'WITH p AS ('}
            SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
@@ -342,8 +350,10 @@ export class MapsService {
         lastBrowser: m.client_browser ?? null,
         lastIp: m.client_ip ?? null,
         lastSavedAt: m.saved_at ?? null,
-        // 지금 퍼블리싱 중인 링크 — 없으면 null (표가 없는 서버도 null)
+        // 지금 퍼블리싱 등록된 링크 — 없으면 null (표가 없는 서버도 null)
         publishId: m.publish_id ?? null,
+        // 그 등록의 상태 — 칸이 없는 서버에서는 등록된 것이 곧 공개다
+        publishVisibility: m.publish_id ? (m.visibility ?? 'public') : null,
       })),
       total: Number(count.rows[0]?.total ?? 0),
     };
@@ -468,12 +478,18 @@ export class MapsService {
     // 라는 우회로가 남아, **아직 완성되지 않은 문서가 퍼블리싱된 채로 여럿이
     // 고치는** 상태가 만들어진다. 그게 이 규칙이 막으려던 바로 그것이다.
     //
-    // 되돌릴 길은 열어 둔다 — 퍼블리싱을 중단하면 협업맵으로 바꿀 수 있다.
-    // 그래서 안내가 "먼저 퍼블리싱을 중단해 주세요" 로 끝난다.
+    // 되돌릴 길은 열어 둔다 — **퍼블리싱 등록을 취소하면** 협업맵으로 바꿀
+    // 수 있다. 그래서 안내가 "먼저 퍼블리싱을 취소해 주세요" 로 끝난다.
+    //
+    // ★ **보관(비공개) 중이어도 막는다** (2026-09-05). 여기가 지키는 것은
+    //   "지금 남이 보고 있는가" 가 아니라 **"이것은 상품인가"** 다 —
+    //   퍼블리싱 문서함에 든 맵은 저자 한 사람의 것이라야 수익 배분
+    //   문제가 아예 생기지 않는다(27a §5.0). 그래서 상태가 아니라
+    //   **등록 여부**(`isRegistered`)를 본다.
     if (dto.kind === 'collab' && cur.kind !== 'collab'
-        && await this.isPublished(mapId)) {
+        && await this.isRegistered(mapId)) {
       throw new ForbiddenException(
-        '퍼블리싱 중인 맵은 협업맵으로 만들 수 없습니다. 먼저 퍼블리싱을 중단해 주세요.',
+        '퍼블리싱 등록된 맵은 협업맵으로 만들 수 없습니다. 먼저 퍼블리싱을 취소해 주세요.',
       );
     }
 
@@ -523,23 +539,25 @@ export class MapsService {
   ) {
     const map = await this.requireAccessibleMap(userId, mapId, 'write');
 
-    // ★ **퍼블리싱 중인 맵은 고칠 수 없다** (2026-09-05 사용자 결정).
+    // ★ **공개 중인 맵은 고칠 수 없다** (2026-09-05 사용자 결정).
     //
-    //   퍼블리싱한 맵은 **편집이 끝난 완성본**이다 — 내 홈페이지에 걸거나 콘텐츠로
+    //   공개된 맵은 **편집이 끝난 완성본**이다 — 내 홈페이지에 걸거나 콘텐츠로
     //   파는 물건이다. 보는 사람은 완성된 글로 읽는데 그 아래에서 계속
     //   달라지면, 같은 주소가 어제와 오늘 다른 글이 된다. 파는 물건이라면
     //   더 그렇다: 산 사람과 지금 보는 사람이 다른 것을 갖게 된다.
     //
-    //   고치려면 **퍼블리싱을 중단하면 된다.** 막는 것이 아니라 순서를 정하는
-    //   것이라, 안내도 그렇게 끝난다.
+    //   ★ **보관(비공개)이면 고칠 수 있다.** 잠그는 것은 "등록됐다" 가
+    //     아니라 **"지금 남이 보고 있다"** 이기 때문이다. 고치는 순서가
+    //     그래서 이렇게 된다 — **비공개로 돌린다 → 고친다 → 다시 공개.**
+    //     주소는 그동안 그대로다(옛 규칙은 이 자리에서 주소를 죽였다).
     //
-    //   자동저장까지 여기서 막힌다 — 화면은 퍼블리싱맵을 **읽기 전용으로 연다**
-    //   (`getDocument` 의 `published`). 그래도 서버가 다시 막는 이유는,
+    //   자동저장까지 여기서 막힌다 — 화면은 공개 중인 맵을 **읽기 전용으로
+    //   연다**(`getDocument` 의 `published`). 그래도 서버가 다시 막는 이유는,
     //   막을 거면 **문이 있는 모든 곳**을 막아야 하기 때문이다(옛 탭·다른
     //   기기·직접 호출).
-    if (await this.isPublished(mapId)) {
+    if (await this.isPublicallyVisible(mapId)) {
       throw new ForbiddenException(
-        '퍼블리싱 중인 맵은 편집할 수 없습니다. 고치려면 먼저 퍼블리싱을 중단해 주세요.',
+        '공개 중인 맵은 편집할 수 없습니다. 고치려면 먼저 비공개(보관)로 바꿔 주세요.',
       );
     }
 
@@ -944,7 +962,7 @@ export class MapsService {
       // **퍼블리싱 중이면 읽기 전용으로 연다** (2026-09-05). 화면이 이것을
       // 모르면 사용자는 한참 고친 뒤 저장할 때에야 403 을 만난다 — 그때는
       // 이미 그 편집이 갈 곳이 없다(열람자 문제에서 똑같이 겪었다).
-      published: await this.isPublished(mapId),
+      published: await this.isPublicallyVisible(mapId),
       doc: rows[0].doc,
       updatedAt: rows[0].updated_at,
       ...(editLock ? { editLock } : {}),
@@ -1088,16 +1106,45 @@ export class MapsService {
    * **소유자만** — 이름 변경·삭제·공유처럼 맵 자체를 좌우하는 일에 쓴다.
    */
   /**
-   * 지금 퍼블리싱 중인가 — 표가 없는 서버에서는 **퍼블리싱 중이 아니다**로 본다.
-   * 표가 없으면 퍼블리싱 자체가 안 되므로 퍼블리싱 중일 수가 없고, 여기서 막으면
-   * 델타를 적용하지 않은 서버에서 협업 초대가 통째로 막힌다.
+   * **퍼블리싱 문서함에 들어 있는가** (상태와 무관하다).
+   *
+   * 표가 없는 서버에서는 false — 표가 없으면 등록 자체가 안 되고, 여기서
+   * 막으면 델타를 적용하지 않은 서버에서 협업 초대가 통째로 막힌다.
+   *
+   * 이 값이 막는 것은 **협업 전환**이다(`update`). 상품으로 등록해 둔
+   * 맵은 저자 한 사람의 것이라야 한다 — 수익 배분 문제가 아예 생기지
+   * 않게 하는 것이 규칙의 목적이다(27a §5.0). 보관 중이어도 마찬가지다.
    */
-  private async isPublished(mapId: string): Promise<boolean> {
+  private async isRegistered(mapId: string): Promise<boolean> {
     if (!(await tableReady(this.db, 'public.published_maps'))) return false;
     const { rows } = await this.db.query<{ ok: boolean }>(
       `SELECT EXISTS (
          SELECT 1 FROM public.published_maps
           WHERE map_id = $1 AND unpublished_at IS NULL
+       ) AS ok`,
+      [mapId],
+    );
+    return rows[0]?.ok === true;
+  }
+
+  /**
+   * **지금 남에게 열려 있는가** — 편집을 막는 것은 이쪽이다 (2026-09-05).
+   *
+   * ★ 등록만 해 둔 **보관(비공개) 상태에서는 고칠 수 있다.** 그것이
+   *   상태를 셋으로 나눈 이유다 — 쇼핑몰에서 노출을 내리고 상품을
+   *   손보는 것과 같다. 세상에 걸려 있는 동안에만 잠근다.
+   *
+   * `visibility` 칸이 없는 서버(델타 미적용)에서는 등록된 것이 곧 공개다 —
+   * 지금까지의 동작 그대로다.
+   */
+  private async isPublicallyVisible(mapId: string): Promise<boolean> {
+    if (!(await tableReady(this.db, 'public.published_maps'))) return false;
+    const open = (await columnReady(this.db, 'public.published_maps', 'visibility'))
+      ? `AND visibility = 'public'` : '';
+    const { rows } = await this.db.query<{ ok: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM public.published_maps
+          WHERE map_id = $1 AND unpublished_at IS NULL ${open}
        ) AS ok`,
       [mapId],
     );

@@ -65,15 +65,15 @@ check('도구는 다섯', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_map
 const byName = Object.fromEntries(TOOL_DEFS.map((t) => [t.name, t]));
 check('get_open_map: 인자 없음', Object.keys(byName.get_open_map.inputSchema.properties), []);
 check('create_map: markdown 은 필수', byName.create_map.inputSchema.required, ['markdown']);
-check('create_map: 받는 인자는 넷', Object.keys(byName.create_map.inputSchema.properties).sort(),
-  ['block_placement', 'markdown', 'template', 'title']);
+check('create_map: 받는 인자는 여섯', Object.keys(byName.create_map.inputSchema.properties).sort(),
+  ['block_placement', 'code_to_note', 'long_text_to_note', 'markdown', 'template', 'title']);
 check('list_maps: 필수 인자 없음', byName.list_maps.inputSchema.required, undefined);
 check('list_maps: 받는 인자는 셋', Object.keys(byName.list_maps.inputSchema.properties).sort(),
   ['folder', 'limit', 'query']);
 check('get_map: map_id 만 필수', byName.get_map.inputSchema.required, ['map_id']);
 check('append_to_map: map_id·markdown 필수', byName.append_to_map.inputSchema.required, ['map_id', 'markdown']);
-check('append_to_map: 받는 인자는 넷', Object.keys(byName.append_to_map.inputSchema.properties).sort(),
-  ['block_placement', 'map_id', 'markdown', 'parent']);
+check('append_to_map: 받는 인자는 여섯', Object.keys(byName.append_to_map.inputSchema.properties).sort(),
+  ['block_placement', 'code_to_note', 'long_text_to_note', 'map_id', 'markdown', 'parent']);
 // **지우거나 바꾸는 도구가 없다**(§2-3) — 이름으로 못 박는다. append 는 덧붙이기만이라 허용
 check('삭제·수정 도구 없음', TOOL_DEFS.filter((t) => /delete|remove|update|replace|set_/.test(t.name)).length, 0);
 

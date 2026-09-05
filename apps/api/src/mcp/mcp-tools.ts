@@ -67,6 +67,15 @@ export const TOOL_DEFS: McpToolDef[] = [
             "표·코드블록·인용문·체크리스트를 어디에 넣을지. 'node'(기본) = 노드 본문, "
             + "'note' = 노드에 딸린 노트. 사용자가 따로 말하지 않으면 'node' 로 둔다.",
         },
+        code_to_note: {
+          type: 'boolean',
+          description: '코드블록을 노드로 만들지 않고 **그 노드의 노트(코드)** 로 첨부한다 — 사용자가 "코드는 노트코드로 첨부해줘" 라고 하면 true. 말이 없으면 비운다(노드 내용).',
+        },
+        long_text_to_note: {
+          type: 'integer',
+          minimum: 1,
+          description: '이 글자 수 **이상**인 문단은 노드로 만들지 않고 **그 노드의 노트(문단)** 로 넣는다 — "긴 문장(300자 이상)은 노트 문단으로" 면 300. 글자 수를 말하지 않으면 300. 말이 없으면 비운다(노드 내용).',
+        },
         template: {
           type: 'string',
           description:
@@ -161,6 +170,15 @@ export const TOOL_DEFS: McpToolDef[] = [
           type: 'string',
           enum: ['node', 'note'],
           description: "표·코드블록·인용문·체크리스트를 노드 본문('node', 기본)에 넣을지 노트('note')로 넣을지.",
+        },
+        code_to_note: {
+          type: 'boolean',
+          description: '코드블록을 노드로 만들지 않고 **그 노드의 노트(코드)** 로 첨부한다 — 사용자가 "코드는 노트코드로 첨부해줘" 라고 하면 true. 말이 없으면 비운다(노드 내용).',
+        },
+        long_text_to_note: {
+          type: 'integer',
+          minimum: 1,
+          description: '이 글자 수 **이상**인 문단은 노드로 만들지 않고 **그 노드의 노트(문단)** 로 넣는다 — "긴 문장(300자 이상)은 노트 문단으로" 면 300. 글자 수를 말하지 않으면 300. 말이 없으면 비운다(노드 내용).',
         },
       },
       required: ['map_id', 'markdown'],
@@ -406,7 +424,7 @@ export class McpToolsService {
       if (f.nodeId === null) return text('앱에서 선택한 노드가 없습니다 — 앱에서 노드를 고르거나 parent 를 노드 이름으로 적어 주세요.', true);
       parent = `id:${f.nodeId}`;
     }
-    const placement = args.block_placement === 'note' ? 'note' : 'node';
+    const placement = placementArgs(args);
 
     let fragment;
     try {
@@ -464,7 +482,7 @@ export class McpToolsService {
     if (!markdown.trim()) {
       return text('`markdown` 이 비어 있습니다 — 맵으로 만들 내용을 넣어 주세요.', true);
     }
-    const placement = args.block_placement === 'note' ? 'note' : 'node';
+    const placement = placementArgs(args);
     const askedTitle = typeof args.title === 'string' ? args.title.trim() : '';
 
     let snapshot;
@@ -548,6 +566,20 @@ function countNodes(nodes: { children?: unknown[] }[]): number {
     n += 1 + countNodes((node.children ?? []) as { children?: unknown[] }[]);
   }
   return n;
+}
+
+/** create_map · append_to_map 공통 — 노드 내용이 기본, 말이 있을 때만 노트로 */
+function placementArgs(args: Record<string, unknown>): {
+  blockPlacement: 'node' | 'note'; codeToNote?: boolean; longParagraphToNote?: number;
+} {
+  const blockPlacement = args.block_placement === 'note' ? 'note' : 'node';
+  const codeToNote = args.code_to_note === true || args.code_to_note === 'true' ? true : undefined;
+  const raw = args.long_text_to_note;
+  let longParagraphToNote: number | undefined;
+  if (raw === true || raw === 'true') longParagraphToNote = 300;
+  else if (typeof raw === 'number' && raw > 0) longParagraphToNote = Math.trunc(raw);
+  else if (typeof raw === 'string' && /^\d+$/.test(raw)) longParagraphToNote = Number(raw);
+  return { blockPlacement, codeToNote, longParagraphToNote };
 }
 
 function clampInt(v: unknown, min: number, max: number, dflt: number): number {

@@ -88,5 +88,26 @@ throws('빈 문서는 거절', () => emmToSnapshot('', '제목'), '견출');
     titleFromSnapshot({ map: { title: 'ㄱ'.repeat(300) } }, 'x').length, 255);
 }
 
+
+// ── ④ 종류별 노트 배치 (2026-09-05, "코드는 노트코드로" · "긴 문장은 노트 문단으로") ──
+{
+  const LONG = '가'.repeat(320);
+  const md = ['# T', '', '## 설치', '', '```bash', 'npm i', '```', '', '짧은 설명', '', LONG, ''].join('\n');
+  const plain = emmToSnapshot(md, 'x');
+  const kids = (m) => m.map.branches[0].children.map((c) => c.text.split('\n')[0].slice(0, 12));
+  check('기본(말 없음): 코드·문단 전부 자식 노드', kids(plain), ['```bash', '짧은 설명', '가'.repeat(12)]);
+  check('기본: 노트 없음', plain.map.branches[0].notes, undefined);
+  const code = emmToSnapshot(md, 'x', { codeToNote: true });
+  check('code_to_note: 코드는 자식 노드가 아니라', kids(code), ['짧은 설명', '가'.repeat(12)]);
+  check('code_to_note: 그 노드의 코드 노트(lang 포함)', code.map.branches[0].notes.map((n) => [n.type, n.lang, n.text]), [['code_block', 'bash', 'npm i']]);
+  const long = emmToSnapshot(md, 'x', { longParagraphToNote: 300 });
+  check('long 300: 짧은 문단은 자식 노드, 긴 문단은 아니다', kids(long), ['```bash', '짧은 설명']);
+  check('long 300: 긴 문단이 문단 노트로', long.map.branches[0].notes.map((n) => [n.type, n.text.length]), [['paragraph', 320]]);
+  const both = emmToSnapshot(md, 'x', { codeToNote: true, longParagraphToNote: 300 });
+  check('둘 다: 노트 둘, 자식은 짧은 문단만', [kids(both), both.map.branches[0].notes.map((n) => n.type)], [['짧은 설명'], ['code_block', 'paragraph']]);
+  check('long 1000: 320자는 그대로 노드', emmToSnapshot(md, 'x', { longParagraphToNote: 1000 }).map.branches[0].notes, undefined);
+  check("문자열 'node' 호출도 그대로", kids(emmToSnapshot(md, 'x', 'node')), kids(plain));
+}
+
 console.log(failed ? `\n${failed}개 실패` : '\n전부 통과');
 process.exit(failed ? 1 : 0);

@@ -47,12 +47,27 @@ export class EmmParseError extends Error {}
  * 맵을 만들 수 없으므로 그대로 알린다 — 빈 맵을 만들어 두면 사용자는
  * "맵이 생겼는데 비어 있다"로 겪는다.
  */
+export interface PlacementOptions {
+  blockPlacement?: 'node' | 'note';
+  /** 코드 펜스를 노트 코드로 ("코드는 노트코드로 첨부해줘") */
+  codeToNote?: boolean;
+  /** 이 글자 수 이상의 문단은 노트 문단으로 ("긴 문장은 노트 문단으로") */
+  longParagraphToNote?: number;
+}
+
+/** 옛 호출(문자열)과 새 호출(옵션 객체)을 같은 모양으로 */
+export function placementOf(p: 'node' | 'note' | PlacementOptions | undefined): PlacementOptions {
+  if (!p) return { blockPlacement: 'node' };
+  if (typeof p === 'string') return { blockPlacement: p };
+  return { blockPlacement: p.blockPlacement ?? 'node', codeToNote: p.codeToNote, longParagraphToNote: p.longParagraphToNote };
+}
+
 export function emmToSnapshot(
   markdown: string,
   title: string,
-  blockPlacement: 'node' | 'note' = 'node',
+  placement: 'node' | 'note' | PlacementOptions = 'node',
 ): EmmSnapshot {
-  const map = parseMarkdownToMap(markdown, title, { blockPlacement });
+  const map = parseMarkdownToMap(markdown, title, placementOf(placement));
   if (!map) {
     throw new EmmParseError(
       '마크다운에서 맵을 만들지 못했습니다 — 견출(`# 제목`, `## 소제목`)이 하나도 없습니다. ' +

@@ -203,8 +203,11 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   | Domains | `http://pro-dev.mindmap.ai.kr` (스킴은 아래 HTTPS 주의 참조) |
 
 - Dockerfile은 2단계다: node:22-alpine에서 `npm ci && npm run build` →
-  nginx:alpine이 `dist`를 서빙 (`apps/frontend/nginx.conf` — SPA
+  nginx:**1.28**-alpine이 `dist`를 서빙 (`apps/frontend/nginx.conf` — SPA
   라우팅 `try_files` + index.html `no-store`). 포트 80.
+  nginx 태그는 **고정**돼 있다(2026-09-06 — `nginx:alpine` 은 빌드 시점의
+  최신판이라 재배포마다 조용히 바뀐다). 올릴 때는 Dockerfile 의 `FROM`
+  한 줄을 고친다. 실제로 든 판은 `docker exec <frontend 컨테이너> nginx -v`.
 - 루트 `.dockerignore`가 `node_modules`·`dist`를 컨텍스트에서 제외한다
   (없으면 COPY가 로컬 node_modules로 npm ci 결과를 덮을 수 있다).
 - **빌드 환경변수**:

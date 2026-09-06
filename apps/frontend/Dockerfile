@@ -24,7 +24,13 @@ ENV VITE_API_URL=$VITE_API_URL \
     VITE_SUPABASE_AUTH_PREFIX=$VITE_SUPABASE_AUTH_PREFIX
 RUN cd apps/frontend && npm run build
 
-FROM nginx:alpine
+# ★ nginx 는 **버전을 고정**한다 (2026-09-06). `nginx:alpine` 은 빌드할 때마다
+#   그 시점의 최신판을 받아 오므로, 재배포마다 nginx 가 조용히 바뀔 수 있다
+#   (같은 커밋을 다시 빌드해도 다른 이미지가 나온다). 1.28 은 안정(stable)
+#   계열이고 이 태그는 그 계열의 보안 패치만 따라온다. 올릴 때는 여기 한 줄을
+#   고치고 dev 에서 확인한 뒤 올린다 — 실제로 든 판은 서버에서
+#   `docker exec <frontend> nginx -v` 로 본다.
+FROM nginx:1.28-alpine
 COPY --from=build /repo/apps/frontend/dist /usr/share/nginx/html
 
 # ★ **템플릿으로 넣는다** (2026-09-06). nginx.conf 에 `${API_ORIGIN}` 이

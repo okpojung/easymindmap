@@ -333,7 +333,7 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 | **A. Claude Code** (터미널 · VS Code · 데스크톱 앱의 Claude Code) | ✅ `--header` | **검증됨** (e2e208, 2026-09-05) |
 | **B. Claude Desktop** 의 로컬 MCP 설정(`claude_desktop_config.json`) | ✅ `mcp-remote` 다리 + `--header` | 규격상 된다 — 직접 확인은 안 했다 |
 | **C. claude.ai 웹·데스크톱 [커스텀 커넥터 추가]** | ❌ 칸이 없다 — **OAuth 만** | **3단계**(안 A) 뒤에 |
-| **D. Claude Code 웹**(claude.ai/code 클라우드 세션) | ✅ 저장소의 `.mcp.json` + 환경 변수 `EMM_MCP_TOKEN` | **로컬 검증**(e2e217, 2026-09-06) — 실제 claude.ai/code 세션은 사용자 확인 대기 (②-D) |
+| **D. Claude Code 웹**(claude.ai/code 클라우드 세션) | ✅ 저장소의 `.mcp.json` + 환경 변수 `EMM_MCP_TOKEN` | **검증됨** (e2e217, 2026-09-06 — 사용자의 실제 claude.ai/code 세션에서 도구 5개 · `list_maps` 맵 10개, ②-D) |
 
 **②-A Claude Code** — 토큰 원문을 헤더로 넘긴다. 한 번 등록하면 그 뒤로는
 `claude` 를 열 때마다 붙는다.
@@ -445,9 +445,17 @@ Claude Desktop 이 `args` 안의 공백을 깨뜨리는 버그가 있어 값은 
 2.1.261 을 **저장소 루트에서 `.mcp.json` 만으로** 띄웠다. 환경 변수 없이
 `claude mcp list` → `Missing environment variables: EMM_MCP_TOKEN` 경고 ·
 `EMM_MCP_URL`·`EMM_MCP_TOKEN` 을 주고 비대화형 `claude -p` → `list_maps`
-호출 성공(맵 18개, 3턴). **실제 claude.ai/code 세션은 여기서 열 수 없어
-사용자 확인 대기** — 위 순서대로 붙이고 `/mcp` 에 도구 5개가 보이면
-이 표의 D 를 "검증됨" 으로 올린다.
+호출 성공(맵 18개, 3턴). **실제 claude.ai/code 세션**(2026-09-06, 사용자
+실측): 새 환경 `easymindmap-mcp`(네트워크 *사용자 지정* + `api-dev.mindmap.ai.kr`,
+환경 변수 `EMM_MCP_TOKEN`)에서 저장소 `easymindmap` 으로 세션을 열자
+**승인 없이 붙었고 도구 5개 등록**, 첫 메시지에 `list_maps` 로 맵 10개(내 맵
+9 + 공유받은 맵 1)가 표로 나왔다. 토큰 없는 환경에서는 같은 파일로 api-dev
+까지 가서 **401** 을 받는다(이 세션에서 실측) — 즉 파일 읽기·네트워크는
+환경과 무관하고, 토큰만 환경 변수가 정한다.
+
+> `/mcp` 는 **세션 안에서** 친다. 첫 화면(세션 밖)에서 치면 claude.ai 의
+> 커넥터 디렉터리(②-C, OAuth 스토어)가 열린다 — 우리 서버는 거기에 없다.
+> 세션은 첫 메시지를 보내야 만들어진다.
 
 **③ 붙었는지 확인** — 어느 클라이언트든 등록 전에 손으로 먼저 확인할 수 있다.
 

@@ -107,7 +107,7 @@ redis             Redis 7
 ## 3. Supabase VM-03 설치 (docker-compose.yml)
 
 ```bash
-# VM-03 Ubuntu 22.04 에서 실행
+# VM-03 Ubuntu 24.04 에서 실행
 
 # 1. Docker 설치
 apt update && apt install -y docker.io docker-compose-plugin

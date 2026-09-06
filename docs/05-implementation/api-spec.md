@@ -1797,7 +1797,7 @@ step 기반 workflow 생성
 **Request Body**
 ```json
 {
-  "prompt": "Ubuntu 22.04에 Apache 설치 및 Let's Encrypt SSL 발급 절차를 초보자 수준으로 설명해줘",
+  "prompt": "Ubuntu 24.04에 Apache 설치 및 Let's Encrypt SSL 발급 절차를 초보자 수준으로 설명해줘",
   "mapId": "uuid-...",
   "language": "ko"
 }

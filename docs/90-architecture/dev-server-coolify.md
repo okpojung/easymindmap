@@ -1,9 +1,15 @@
-# 개발 서버 — Ubuntu 22.04 + Coolify (프로덕션 패리티)
+# 개발 서버 — Ubuntu 24.04 + Coolify (프로덕션 패리티)
 
 > **결정 (2026-07)**: 개발용 서버는 **프로덕션과 똑같은 방식**으로 구축해
 > 테스트한다. 구축 도구는 **Coolify**(셀프호스팅 PaaS)이며, OS는
-> **Ubuntu 22.04**. 개발 서버에서 검증된 구성을 그대로 프로덕션에
+> **Ubuntu 24.04 LTS** (2026-09-06 사용자 확정 — 그 전 문서는 22.04 였다).
+> 개발 서버에서 검증된 구성을 그대로 프로덕션에
 > 복제하는 것이 원칙이다 (dev/prod parity).
+>
+> ⚠️ **지금 VM-DEV 실물은 22.04 다** (2026-08-01 구축). parity 를 지키려면
+> 운영 VM 을 세우기 전에 dev 를 24.04 로 맞춘다 — `do-release-upgrade`
+> 또는 재설치. Coolify 는 24.04 를 지원하므로 절차(§2)는 그대로다.
+> 이것은 서버에서 할 일이라 코드로 고칠 수 없다.
 >
 > 이 문서가 개발 서버 구축의 **기준 문서**다. `infra-architecture.md`
 > §12(VM-DEV)의 이전 방식(수동 Node/pm2/supabase-cli)은 이 문서로
@@ -26,7 +32,7 @@
 | **배포 흐름 단순화** | GitHub Actions는 CI(빌드·타입체크·스모크) 품질 게이트만 담당, **배포(CD)는 Coolify**가 담당(웹훅 자동) |
 
 ```
-[개발 PC]                      [개발 서버 VM-DEV (Ubuntu 22.04)]
+[개발 PC]                      [개발 서버 VM-DEV (Ubuntu 24.04)]
  브라우저만 ──────────▶  Coolify (Traefik 80/443, UI :8000)
                           ├─ app: frontend  (apps/frontend, 정적 빌드)
  [GitHub]                 ├─ app: api       (apps/api, NestJS :3000)
@@ -47,7 +53,7 @@
 
 ---
 
-## 2. 서버 준비 (Ubuntu 22.04, 1회)
+## 2. 서버 준비 (Ubuntu 24.04, 1회)
 
 최소 사양: 2 vCPU / 2GB RAM (권장 4 vCPU / 8GB+, VM-DEV는 8 vCPU/16GB).
 

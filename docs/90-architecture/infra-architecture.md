@@ -436,7 +436,7 @@ sudo apt install -y \
   ufw fail2ban ca-certificates gnupg \
   lsb-release unzip jq
 
-# Docker 설치 (VM-02, VM-03, VM-05, VM-DEV에만)
+# Docker 설치 (VM-02, VM-05, VM-DEV에만 — VM-03 은 DB 네이티브라 Docker 를 깔지 않는다, 2026-09-06)
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
   sudo gpg --dearmor -o /usr/share/keyrings/docker.gpg
 
@@ -842,6 +842,106 @@ Advanced:
 
 ---
 
+## 8-A. VM-03: 네이티브 PostgreSQL 16 설치 ★ (2026-09-06 사용자 결정)
+
+> **운영 DB 는 컨테이너가 아니라 OS 에 직접 설치한다.** dev 는 Coolify 의
+> `postgres:16` 컨테이너지만 운영은 다르다 — Docker 층을 빼면 튜닝·PITR
+> 도구(pgBackRest)·OS 수준 백업이 단순해지고, DB 호스트에 빌드·컨테이너
+> 정리 같은 일이 아예 없어진다. 앱 컨테이너(VM-02·05)는 `DATABASE_URL` 에
+> **이 VM 의 IP** 를 적어 붙는다. 운영 구조 전체는
+> [`ci-cd-github-actions.md`](ci-cd-github-actions.md) §11.
+>
+> **호스트**: ESXi 192.168.0.11 · **VM IP**: 192.168.0.113 · Ubuntu 24.04.
+> §6 의 공통 절차에서 **Docker 는 건너뛴다.**
+
+### 8-A.1 설치
+
+Ubuntu 24.04 저장소의 PostgreSQL 이 16 이다. 최신 마이너를 빨리 받고
+싶으면 PGDG 저장소를 쓴다(둘 중 하나).
+
+```bash
+# ① Ubuntu 기본 저장소 (간단)
+sudo apt install -y postgresql-16 postgresql-client-16 postgresql-contrib
+
+# ② PGDG 저장소 (마이너 업데이트가 빠르다)
+sudo apt install -y postgresql-common
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+sudo apt install -y postgresql-16 postgresql-client-16
+
+psql --version          # psql (PostgreSQL) 16.x
+sudo systemctl enable --now postgresql
+```
+
+### 8-A.2 접속 허용 — VM-02 · VM-05 에서만
+
+```bash
+# /etc/postgresql/16/main/postgresql.conf
+listen_addresses = '192.168.0.113,127.0.0.1'
+password_encryption = scram-sha-256
+
+# /etc/postgresql/16/main/pg_hba.conf  — 맨 아래에
+host  all  all  192.168.0.112/32  scram-sha-256    # VM-02 App
+host  all  all  192.168.0.115/32  scram-sha-256    # VM-05 Worker
+
+sudo systemctl restart postgresql
+
+# 방화벽 — 이 VM 에는 Docker 가 없으므로 ufw 가 그대로 먹는다
+sudo ufw allow from 192.168.0.112 to any port 5432
+sudo ufw allow from 192.168.0.115 to any port 5432
+sudo ufw enable
+```
+
+> dev(.110)는 **넣지 않는다.** 운영 DB 에 dev 가 닿는 순간 "dev 에서 실험하다
+> 운영 데이터를 건드리는" 길이 생긴다.
+
+### 8-A.3 데이터베이스 둘 — 앱 + 로그인
+
+```bash
+sudo -u postgres psql <<'SQL'
+ALTER USER postgres WITH PASSWORD '<openssl rand -hex 24 — 영숫자만>';   -- dev 함정 6: @ 금지
+CREATE DATABASE gotrue;
+\c gotrue
+CREATE SCHEMA IF NOT EXISTS auth;
+SQL
+```
+
+앱 스키마는 코어 저장소의 `apps/api/database/` 를 **이 VM 에서 psql 로**
+넣는다(dev 가이드 07장과 같은 파일 4개, `-v ON_ERROR_STOP=1`). 이후 델타는
+배포 스크립트의 `apply-schema.mjs` 단계가 맡는다(ci-cd §11.4 ③).
+
+### 8-A.4 튜닝 (RAM 32GB · NVMe)
+
+§8.5 의 8GB 값을 비례 확대한 **출발값**이다 — 실측 뒤 조정한다.
+
+```conf
+shared_buffers = 8GB
+effective_cache_size = 24GB
+work_mem = 64MB
+maintenance_work_mem = 1GB
+max_connections = 200
+random_page_cost = 1.1
+effective_io_concurrency = 200
+checkpoint_completion_target = 0.9
+wal_buffers = 16MB
+log_min_duration_statement = 1000
+```
+
+### 8-A.5 백업 — 스크립트에 네이티브 분기가 필요하다
+
+`scripts/emm-db-backup.sh` 는 지금 **`docker exec <DB컨테이너> pg_dumpall`** 로
+컨테이너를 찾아 들어간다. 네이티브에서는 컨테이너가 없으므로 **로컬
+`pg_dumpall`** 로 가는 분기를 넣어야 한다 — 백로그 **B20 ⑤**. 그 전까지는
+아래 한 줄이 같은 결과를 낸다(검증·메일 없이).
+
+```bash
+sudo -u postgres pg_dumpall | gzip > /var/backups/emm/all-$(date +%F).sql.gz
+```
+
+PITR(pgBackRest · WAL 아카이브)은 '나중' — 유료화 직전. 네이티브라
+`archive_command` 를 그대로 쓸 수 있다(용어집 §4).
+
+---
+
 ## 8. VM-03: Supabase Self-hosted 설치 ❌ **폐기 (설치하지 않는다)**
 
 > **2026-09-04 — 이 절 전체를 실행하지 않는다.** 전체 Supabase 스택을
@@ -1088,11 +1188,14 @@ redis-cli -h 192.168.0.114 -a 강력한_Redis_비밀번호 ping
 
 > **호스트**: ESXi 192.168.0.12
 >
-> **개정 (2026-07)**: 프로덕션 App 배포도 개발 서버와 동일하게
-> **Coolify** 로 표준화한다(dev/prod parity — [`dev-server-coolify.md`](dev-server-coolify.md) §7).
+> **개정 (2026-09-06 사용자 결정)**: 운영 VM-02 에는 **Coolify 를 설치하지
+> 않는다.** Docker + `docker-compose.yml` + `emm-deploy.sh` 로, GitHub Actions
+> 가 GHCR 에 올린 **유료판 이미지 태그**를 당겨 띄운다(B안). 관리 화면은
+> Portainer CE. 구조·절차는 [`ci-cd-github-actions.md`](ci-cd-github-actions.md)
+> **§11** 이 기준이다. (2026-07 의 "프로덕션도 Coolify" 개정은 dev 에만 남는다.)
+>
 > 아래 수동 방식(Node/pm2 직접 설치 + git pull 빌드)은 **레거시 참고용**으로
-> 남겨 둔다. 개발 서버(VM-DEV)에서 Coolify 구성을 검증한 뒤, VM-02 도
-> 같은 방식으로 전환한다.
+> 남겨 둔다 — 운영 서버에는 Node 도 소스도 두지 않는다.
 
 ### 10.1 방화벽 및 Node.js 설치 (레거시)
 
@@ -1180,6 +1283,11 @@ pm2 save && pm2 startup
 ## 11. VM-05: Worker 서버 설치
 
 > **호스트**: ESXi 192.168.0.12
+>
+> **개정 (2026-09-06)**: VM-02 와 같다 — Coolify 없음, Docker + compose,
+> 워커 이미지는 GHCR 에서 당긴다. Portainer 는 VM-02 의 것에 **에이전트**로
+> 붙는다. `apps/worker` 는 아직 저장소에 없으므로 아래는 전부 예정이고,
+> Node/pm2 직접 설치 방식은 레거시다.
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -1461,6 +1569,12 @@ feature/* → 기능 개발 → develop PR → main PR
 ## 15. 백업 전략
 
 ### 15.1 PostgreSQL 자동 백업 (VM-03)
+
+> **개정 (2026-09-06)**: 실제로 쓰는 것은 코어 저장소의
+> `scripts/emm-db-backup.sh`(pg_dumpall + 검증 + 실패 메일, 런북 §2.1)다.
+> 아래 스크립트는 첫 설계이며 `docker exec supabase-db` 가 전제라 **네이티브
+> PostgreSQL(§8-A)에서는 그대로 돌지 않는다** — `sudo -u postgres pg_dumpall`
+> 로 읽는다. 참고용으로 남긴다.
 
 ```bash
 sudo mkdir -p /opt/backup/pg

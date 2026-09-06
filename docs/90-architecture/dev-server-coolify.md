@@ -449,30 +449,40 @@ curl -s -X POST https://auth-dev.mindmap.ai.kr/signup \
 > 미충족이다 — `infra-architecture.md` §7.8(coolify-dev Proxy Host,
 > `/webhooks/` Access List 예외) 구성이 선행되어야 한다.
 
-## 7. 프로덕션 전환 (같은 방식 복제)
+## 7. 프로덕션 — **Coolify 를 쓰지 않는다** (2026-09-06 사용자 결정)
 
-프로덕션도 **동일하게 Coolify로** 구축한다 — 개발 서버에서 검증한 구성을
-그대로 복제하고 값만 바꾼다:
+> **이 절의 이전 내용("프로덕션도 동일하게 Coolify 로 복제")은 폐기됐다.**
+> dev 는 지금처럼 Coolify 가 관리하고, **운영 서버에는 Coolify 를 설치하지
+> 않는다.** 운영 배포는 **B안 — GitHub Actions 가 만든 불변 이미지를 운영
+> 서버가 당겨서 띄운다.** 전체 구조·이유·단계는
+> [`ci-cd-github-actions.md`](ci-cd-github-actions.md) **§11** 이 기준이다.
 
 | 항목 | 개발(dev) | 프로덕션(prod) |
 |---|---|---|
-| 서버 | VM-DEV (예: 192.168.0.110) | VM-02/03 등 운영 VM |
-| 프로젝트 | `easymindmap-dev` | `easymindmap-prod` |
-| 도메인 | pro-dev.mindmap.ai.kr / api-dev.mindmap.ai.kr | example.com / api.example.com |
-| 자동 배포 | main 푸시 즉시 | 태그/릴리스 또는 수동 Deploy 버튼(권장) |
-| AUTH_MODE | dev(Phase 3 전) | supabase (Phase 3 이후) |
-| DB | Coolify PostgreSQL 16 | 동일(백업 정책 강화) + Phase 3에서 Supabase 스택 |
-| **관리자 콘솔** | 프런트엔드 앱의 `/admin` **경로** | **별도 앱** `admin.easymindmap.org` |
+| 서버 | VM-DEV (예: 192.168.0.110) | VM-02(앱) · VM-03(DB) · VM-05(워커, 예정) |
+| OS | Ubuntu 24.04 (실물은 22.04 — §머리말) | Ubuntu 24.04 |
+| 배포 도구 | **Coolify** (소스 빌드 · 웹훅) | **없음** — `docker-compose.yml` + `emm-deploy.sh` (ci-cd §11.4) |
+| 빌드 | dev 서버(Coolify) | **GitHub Actions 러너** → GHCR 태그 (ci-cd §11.3) |
+| 배포 트리거 | main 푸시 즉시 | **태그 `v*` + 사람이 스크립트 실행** |
+| 프록시 | NPM → Traefik(:80) → 컨테이너 | **NPM → 컨테이너 포트 직접** (Traefik 없음) |
+| DB | Coolify `postgres:16` 컨테이너 | **네이티브 PostgreSQL 16** (VM-03, apt·systemd — infra §8-A) |
+| 관리 화면 | Coolify UI | **Portainer CE** (보기·로그·재시작만 — ci-cd §11.5) |
+| AUTH_MODE | supabase | supabase |
+| **관리자 콘솔** | 프런트엔드 앱의 `/admin` **경로** | **별도 컨테이너** `admin.easymindmap.org` (NPM 에서 IP 제한) |
 
-> Supabase Self-hosted·Redis 는 해당 Phase(3~) 진행 시 **Coolify의
-> Docker Compose 리소스**로 같은 방식으로 얹는다
-> (`docker-compose-spec.md`의 서비스 정의 참조).
+> **dev/prod parity 는 어디까지인가.** "같은 OS · 같은 컨테이너 이미지" 까지다.
+> 배포 도구(Coolify vs compose)와 DB 실행 방식(컨테이너 vs 네이티브)은 다르다 —
+> 그 둘은 앱의 동작과 무관하고, 운영 쪽 이유(빌드 부하 · 클라우드 이전 ·
+> PITR)가 더 크다고 판단했다. dev 도 나중에 GHCR 이미지를 띄우면
+> "같은 이미지" 수준의 parity 가 된다(ci-cd §11.6).
 
 > **관리자 콘솔만 앱을 하나 더 만든다** (2026-08-14 사용자 결정).
 > 같은 저장소·같은 Dockerfile 이고 도메인과 `VITE_API_URL` 만 다르다.
 > 도메인을 하나 더 매다는 대신 앱을 나누는 이유는 **그래야 관리자 쪽에만
-> Traefik IP 제한을 걸 수 있어서**다. 순서는
-> [`admin-console.md`](../04-extensions/admin-console.md) §7.
+> IP 제한을 걸 수 있어서**다. 운영에는 Traefik 이 없으므로 그 제한은
+> **NPM 의 Access List** 로 건다. 순서는
+> [`admin-console.md`](../04-extensions/admin-console.md) §7 — 다만 그 절의
+> "Coolify 앱을 하나 더" 는 운영에서는 "compose 서비스를 하나 더" 로 읽는다.
 
 ## 8. 운영 팁
 

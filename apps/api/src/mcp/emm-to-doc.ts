@@ -12,7 +12,8 @@
  * 여기서 마크다운을 다시 해석하지 않는다 — 두 벌이 되면 어긋난다.
  */
 import { parseMarkdownToMap } from '../emm/parse';
-import type { SampleMap } from '../emm/model';
+import type { MindNode, SampleMap } from '../emm/model';
+import { ImageTooLargeError, sizeDataUrlImages } from './image-size';
 
 /** 프런트엔드 `SNAPSHOT_VERSION` 과 **같아야 한다** (mapSession.ts) */
 export const SNAPSHOT_VERSION = 2;
@@ -78,6 +79,13 @@ export function emmToSnapshot(
     throw new EmmParseError(
       '중심 주제만 있고 가지가 없습니다 — `## 가지 이름` 을 하나 이상 적어 주세요.',
     );
+  }
+  // 내장 사진(data URL)의 자리표시 크기 → 실제 크기 (image-size.ts)
+  try {
+    sizeDataUrlImages([map.root as unknown as MindNode, ...(map.branches as unknown as MindNode[])]);
+  } catch (e) {
+    if (e instanceof ImageTooLargeError) throw new EmmParseError(e.message);
+    throw e;
   }
   return { v: SNAPSHOT_VERSION, map, editor: { ...DEFAULT_EDITOR } };
 }

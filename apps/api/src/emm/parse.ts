@@ -77,6 +77,9 @@ const MD_LINK_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 // 표 구분선 행 — | --- | :--: | 등
 const TABLE_SEP_RE = /^[\s|:\-]+$/;
 
+// 노드 사진이 되는 src — 원격 http(s) 또는 내장 data:image/*
+const IMAGE_SRC_RE = /^(https?:\/\/|data:image\/)/i;
+
 // 이미지로 취급할 원격 URL — ![](url) 문법 또는 한 줄 전체가 이미지
 // 확장자 URL이면 노드 텍스트가 아니라 노드 사진(images)으로 담는다.
 // (앱은 불러온 뒤 다운로드해 data URL로 내장 — resolveRemoteImages)
@@ -85,6 +88,7 @@ const BARE_IMAGE_URL_RE =
 
 // 원격 이미지의 표시 이름 — URL 마지막 경로 조각 (없으면 '이미지')
 function imageFileName(url: string): string {
+  if (/^data:image\//i.test(url)) return '사진';
   try {
     const path = url.replace(/[?#].*$/, '');
     const seg = decodeURIComponent(path.split('/').filter(Boolean).pop() ?? '');
@@ -172,8 +176,10 @@ export function parseMarkdownToMap(
     for (let pass = 0; pass < 3; pass++) {
       const next = text.replace(MD_LINK_RE, (_m, bang: string, label: string, url: string) => {
         if (bang) {
-          // 이미지 — 원격 URL은 노드 사진으로, 대체 텍스트만 본문에 남긴다
-          if (/^https?:\/\//i.test(url) && !images.includes(url)) images.push(url);
+          // 이미지 — 원격 URL·내장 data URL(image/*)은 노드 사진으로, 대체
+          // 텍스트만 본문에 남긴다. data URL 은 AI(MCP)가 파일 바이트를 직접
+          // 실어 보낼 때 쓴다(2026-09-06) — 앱 저장 형식이 원래 data URL 이다.
+          if (IMAGE_SRC_RE.test(url) && !images.includes(url)) images.push(url);
           return label.trim();
         }
         if (/^https?:\/\//i.test(url) && !links.some((l) => l.url === url)) {

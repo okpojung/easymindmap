@@ -23,6 +23,8 @@ export { readFrontMatter, type FrontMatterResult } from './frontMatter';
 // 이 선언을 알 필요가 없고, 왕복 보존도 표준이 이미 보장한다.
 export {
   readDeclaration,
+  TEMPLATE_IDS,
+  expandTemplateId,
   type EmmDeclaration,
   type EmmLevelSpec,
 } from './declaration';

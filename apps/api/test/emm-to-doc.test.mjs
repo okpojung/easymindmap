@@ -109,5 +109,55 @@ throws('빈 문서는 거절', () => emmToSnapshot('', '제목'), '견출');
   check("문자열 'node' 호출도 그대로", kids(emmToSnapshot(md, 'x', 'node')), kids(plain));
 }
 
+
+// ── 내장 사진 (data URL) — 노드 사진 + 실제 크기 (2026-09-06, image-size.ts) ──
+{
+  const { dataUrlImageSize, displaySize, MAX_IMAGE_BYTES } = await import('../dist/mcp/image-size.js');
+  const b64 = (buf) => buf.toString('base64');
+  // PNG 머리(IHDR)만 — 디코더가 아니라 머리만 읽는다
+  const pngHead = (w, h) => {
+    const b = Buffer.alloc(33);
+    b.writeUInt32BE(0x89504e47, 0); b.writeUInt32BE(0x0d0a1a0a, 4); b.writeUInt32BE(13, 8);
+    b.write('IHDR', 12, 'ascii'); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20);
+    return `data:image/png;base64,${b64(b)}`;
+  };
+  const gifHead = (w, h) => {
+    const b = Buffer.alloc(13); b.write('GIF89a', 0, 'ascii'); b.writeUInt16LE(w, 6); b.writeUInt16LE(h, 8);
+    return `data:image/gif;base64,${b64(b)}`;
+  };
+  const jpegHead = (w, h) => {
+    // SOI · APP0(짧게) · SOF0(h, w) · EOI
+    const b = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,
+      0xff, 0xc0, 0x00, 0x0b, 0x08, (h >> 8) & 0xff, h & 0xff, (w >> 8) & 0xff, w & 0xff, 0x01, 0x01, 0x11, 0x00,
+      0xff, 0xd9]);
+    return `data:image/jpeg;base64,${b64(b)}`;
+  };
+  const tiny = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  check('크기 읽기: 진짜 1×1 PNG', dataUrlImageSize(tiny), { w: 1, h: 1 });
+  check('크기 읽기: PNG 1920×1080', dataUrlImageSize(pngHead(1920, 1080)), { w: 1920, h: 1080 });
+  check('크기 읽기: GIF 300×120', dataUrlImageSize(gifHead(300, 120)), { w: 300, h: 120 });
+  check('크기 읽기: JPEG 800×600', dataUrlImageSize(jpegHead(800, 600)), { w: 800, h: 600 });
+  check('크기 읽기: 모르는 것 → null', dataUrlImageSize('data:image/png;base64,QUJD'), null);
+  check('표시 폭 640 상한 · 비율 유지', displaySize(1920, 1080), { w: 640, h: 360 });
+  check('작은 것은 그대로', displaySize(300, 120), { w: 300, h: 120 });
+
+  const snap = emmToSnapshot(`# 오류\n\n## 3단계\n\n![오류 화면](${pngHead(1920, 1080)})\n\n- 원인\n`, 'x');
+  const n = snap.map.branches[0];
+  // 'node' 배치: 사진뿐인 문단은 독립 블록이라 **자식 노드**가 된다 (표·코드와 같은 규칙)
+  check('사진 문단 → 자식 노드 (대체 텍스트가 이름) + 뒤의 목록은 형제', n.children.map((c) => c.text), ['오류 화면', '원인']);
+  const pic = n.children[0];
+  check('![](data:) → 그 노드의 사진 src 가 data URL', pic.images?.[0]?.src?.slice(0, 15), 'data:image/png;');
+  check('사진 표시 크기 = 640×360 (자리표시 320×200 이 아니다)', [pic.images[0].w, pic.images[0].h], [640, 360]);
+  check('견출 노드 자체에는 사진이 없다', n.images ?? null, null);
+  const only = emmToSnapshot(`# T\n\n## ![](${tiny})\n`, 'x');
+  check('대체 텍스트 없는 사진만 있는 노드 → 이름 "사진"', only.map.branches[0].text, '사진');
+  check('1×1 은 자연 크기', [only.map.branches[0].images[0].w, only.map.branches[0].images[0].h], [1, 1]);
+  const big = `data:image/png;base64,${'A'.repeat(Math.ceil((MAX_IMAGE_BYTES + 100) / 3) * 4)}`;
+  throws('2.5MB 넘는 사진은 거절', () => emmToSnapshot(`# T\n\n## a\n\n![x](${big})\n`, 'x'), '2.5MB');
+  check('원격 http 사진은 예전과 같다 (자리표시 크기)',
+    (() => { const s = emmToSnapshot('# T\n\n## a\n\n![p](https://x.test/p.png)\n', 'x'); const im = s.map.branches[0].children[0].images[0]; return [im.src, im.w, im.h]; })(),
+    ['https://x.test/p.png', 320, 200]);
+}
+
 console.log(failed ? `\n${failed}개 실패` : '\n전부 통과');
 process.exit(failed ? 1 : 0);

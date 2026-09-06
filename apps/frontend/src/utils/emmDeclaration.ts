@@ -10,7 +10,7 @@
 // 메타데이터가 있는 문서에서는 메타데이터가 이긴다 (importMapFile 참조).
 
 import type { LayoutType, MapSettings, ShapeType } from '@/editor/__samples__/types';
-import type { EmmDeclaration } from '@emm/declaration';
+import { expandTemplateId, type EmmDeclaration } from '@emm/declaration';
 import { SUBTREE_SUPPORTED } from '@/layout/strategies/SubtreeStrategy';
 import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
 
@@ -43,6 +43,9 @@ const SHAPES = new Set<string>([
  * 만들지 않고 레이아웃 이름을 그대로 쓰게 했다(`radial-bidirectional`,
  * `hierarchy-right`, `kanban`, `timeline`, `radial-right`). 새로 만든 어휘는
  * 아래 둘뿐이며, 어느 레이아웃 이름과도 겹치지 않는다.
+ *
+ * 짧은 ID(`TP`·`PT`·`TR`…)는 파서의 `declaration.ts` TEMPLATE_IDS 가 긴 이름으로
+ * 펼친다(2026-09-06) — 표는 그쪽 한 곳에만 있다(API 도 같은 복사본을 쓴다).
  */
 const LEVEL_PATTERNS: Record<string, LayoutType[]> = {
   // 1레벨 트리 → 2레벨 진행트리 → 3레벨 트리 → 4레벨+ 진행트리 (기본 템플릿)
@@ -124,7 +127,8 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
   const skipped: string[] = [];
 
   // ── template — levels 가 없을 때만 ────────────────────────────────
-  const tpl = emm.levels ? undefined : emm.template?.trim();
+  // 짧은 ID(TP·PT·TR…)는 긴 이름으로 펼친 뒤 본다 (declaration.ts TEMPLATE_IDS)
+  const tpl = emm.levels ? undefined : expandTemplateId(emm.template?.trim());
   if (tpl) {
     const pattern = LEVEL_PATTERNS[tpl];
     if (pattern) {
@@ -177,7 +181,7 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
       for (const lv of declared) {
         const spec = emm.levels[lv];
 
-        const layout = spec.layout;
+        const layout = expandTemplateId(spec.layout);
         if (layout && LAYOUTS.has(layout)) {
           // 1레벨 레이아웃은 맵 전체 몫이다 (levelLayouts[0] 은 쓰이지 않는다).
           // 1레벨은 맵 전체라 무엇이든 되지만, 2레벨부터는 노드 오버라이드라

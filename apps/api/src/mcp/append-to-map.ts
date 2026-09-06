@@ -16,6 +16,7 @@
  * 규칙이 어긋나면 사용자는 "AI 가 붙인 가지만 색·모양이 다르다" 로 겪는다.
  */
 import { parseMarkdownToMap } from '../emm/parse';
+import { ImageTooLargeError, sizeDataUrlImages } from './image-size';
 import { placementOf, type PlacementOptions } from './emm-to-doc';
 import type { LayoutType, MindNode, NodeColorKey, NoteBlock, SampleBranch, SampleMap } from '../emm/model';
 
@@ -175,6 +176,13 @@ export function parseFragment(
       '붙일 노드가 하나도 안 나왔습니다 — 조각은 `## 이름` 견출이나 `- 항목` 목록으로 적어 주세요. ' +
       '줄글만 있으면 노드가 되지 않습니다.',
     );
+  }
+  // 내장 사진(data URL)의 자리표시 크기 → 실제 크기 (image-size.ts)
+  try {
+    sizeDataUrlImages(nodes);
+  } catch (e) {
+    if (e instanceof ImageTooLargeError) throw new AppendError(e.message);
+    throw e;
   }
   return { nodes, parentNotes };
 }

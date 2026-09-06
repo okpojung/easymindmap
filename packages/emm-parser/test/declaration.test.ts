@@ -6,7 +6,7 @@
 //   ② 우리 것이 아닌 펜스는 건드리지 않는다
 //   ③ 본문에서 블록을 **걷어내지 않는다** — 그 노드의 코드 노트가 되어야 한다
 
-import { readDeclaration } from '../src/declaration';
+import { TEMPLATE_IDS, expandTemplateId, readDeclaration } from '../src/declaration';
 import { parseEmm } from '../src/parse';
 
 let failed = 0;
@@ -107,6 +107,20 @@ const F = '```';
   check('④ 노트의 언어는 emm', centre?.notes?.[0]?.lang, 'emm');
   check('④ 선언이 노드를 만들지는 않는다', map?.branches?.[0]?.text, '준비');
   check('④ 가지는 하나뿐이다', map?.branches?.length, 1);
+}
+
+// ── ④ 템플릿·레이아웃 ID (2026-09-06) — 어휘 표만, 해석은 앱 몫 ─────────
+{
+  check('④ TP → tree-progtree', expandTemplateId('TP'), 'tree-progtree');
+  check('④ pt (소문자) → progtree-tree', expandTemplateId('pt'), 'progtree-tree');
+  check('④ 공백 허용', expandTemplateId('  hr '), 'hierarchy-right');
+  check('④ 긴 이름은 그대로', expandTemplateId('kanban'), 'kanban');
+  check('④ 모르는 값도 그대로 (판정은 앱)', expandTemplateId('zz'), 'zz');
+  check('④ undefined 는 undefined', expandTemplateId(undefined), undefined);
+  check('④ ID 는 전부 두 글자 대문자', Object.keys(TEMPLATE_IDS).every((k) => /^[A-Z]{2}$/.test(k)), true);
+  check('④ 값은 서로 다르다', new Set(Object.values(TEMPLATE_IDS)).size, Object.keys(TEMPLATE_IDS).length);
+  const r = readDeclaration(md('# 제목', '', F + 'emm', 'template: PT', F));
+  check('④ 파서는 ID 를 해석하지 않고 문자열 그대로', r.template, 'PT');
 }
 
 console.log(failed ? `\n${failed}건 실패` : '\n전부 통과');

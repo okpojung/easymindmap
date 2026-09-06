@@ -223,3 +223,47 @@ export function readDeclaration(md: string): EmmDeclaration {
 
   return out;
 }
+
+// ── 템플릿·레이아웃 ID (2026-09-06) ──────────────────────────────────
+//
+// `template:` 값과 `levels: N: layout:` 값에 **긴 이름 대신 짧은 ID** 를 쓸 수
+// 있다. 사용자가 대화나 MD 파일에 `진행트리-트리맵`·`progtree-tree` 를 매번
+// 적기 번거롭다고 해서 두었다. 첫 글자 규칙 — T=트리(tree) · P=진행트리
+// (process-tree) · R=방사형(radial) · H=계층형(hierarchy) · K=칸반 · TM=시간배치
+// (timeline) · FF=자유배치(freeform); 둘째 글자는 방향(R/L/D/U) 또는
+// 패턴의 두 번째 층. 대소문자는 가리지 않는다.
+//
+// 뜻을 해석하는 것은 여전히 앱(emmDeclaration.ts)과 API(map-template.ts)다 —
+// 이 표는 **어휘**일 뿐이고, 두 곳이 같은 표를 쓰라고 파서에 둔다
+// (apps/api/src/emm/ 은 이 파일의 복사본이라 CI 가 같은지 검사한다).
+export const TEMPLATE_IDS: Readonly<Record<string, string>> = {
+  // 레벨별 패턴 템플릿
+  TP: 'tree-progtree',        // 트리-진행트리맵 (앱 기본)
+  PT: 'progtree-tree',        // 진행트리-트리맵
+  // 레이아웃 하나
+  TR: 'tree-right',           // 트리 오른쪽
+  TL: 'tree-left',            // 트리 왼쪽
+  TD: 'tree-down',            // 트리 아래
+  TU: 'tree-up',              // 트리 위
+  PR: 'process-tree-right',   // 진행트리 오른쪽
+  PL: 'process-tree-left',    // 진행트리 왼쪽
+  RB: 'radial-bidirectional', // 방사형 양쪽
+  RR: 'radial-right',         // 방사형 오른쪽
+  RL: 'radial-left',          // 방사형 왼쪽
+  HR: 'hierarchy-right',      // 계층형 오른쪽
+  HL: 'hierarchy-left',       // 계층형 왼쪽
+  KB: 'kanban',               // 칸반
+  TM: 'timeline',             // 시간배치(타임라인)
+  TC: 'timeline-center',      // 시간배치 가운데
+  FF: 'freeform',             // 자유배치
+};
+
+/**
+ * ID 면 긴 이름으로, 아니면 **그대로** 돌려준다. 모르는 값을 바꾸지 않으므로
+ * 이 함수를 거친 뒤에도 "알려진 이름인가" 판정은 부르는 쪽이 한다.
+ */
+export function expandTemplateId(value: string | undefined): string | undefined {
+  if (value == null) return value;
+  const v = value.trim();
+  return TEMPLATE_IDS[v.toUpperCase()] ?? v;
+}

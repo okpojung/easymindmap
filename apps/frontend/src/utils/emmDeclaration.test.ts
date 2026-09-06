@@ -121,5 +121,16 @@ function check(name: string, got: unknown, want: unknown): void {
   check('④ 통과했으면 알릴 것이 없다', r.skipped, undefined);
 }
 
+// ── ④ 짧은 ID (2026-09-06) — API map-template.test.mjs 와 같은 기대값 ────
+{
+  check('④ template: PT → 진행트리-트리맵', resolveDeclaration({ template: 'PT' }).editor, { layoutType: 'process-tree-right' });
+  check('④ template: tp (소문자) → 기본 템플릿 2레벨부터', resolveDeclaration({ template: 'tp' }).settings?.levelLayouts,
+    [null, 'process-tree-right', 'tree-right', 'process-tree-right', 'process-tree-right']);
+  check('④ template: KB → 맵 전체 칸반', resolveDeclaration({ template: 'KB' }), { editor: { layoutType: 'kanban' } });
+  check('④ levels layout: HR', resolveDeclaration({ levels: { 2: { layout: 'HR' } } }).settings?.levelLayouts,
+    [null, 'hierarchy-right', 'hierarchy-right', 'hierarchy-right', 'hierarchy-right']);
+  check('④ 모르는 ID 는 조용히 무시', resolveDeclaration({ template: 'ZZ' }), {});
+}
+
 console.log(failed ? `\n${failed}건 실패` : '\n전부 통과');
 process.exit(failed ? 1 : 0);

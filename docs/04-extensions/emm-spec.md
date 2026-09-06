@@ -175,6 +175,7 @@ EMM 문서는 두 계층으로 구성된다.
 | `[라벨](url)` (노드 텍스트 내) | 텍스트에는 라벨만, URL은 노드 링크(🔗)로 첨부 |
 | `🔗 [라벨](url)` (export 형식) | 노드 링크 |
 | `![대체](files/img-N.ext)` | 노드 사진 — export 시 사진 바이트는 `files/`로 ZIP 패키징(**같은 사진은 한 벌만**), 텍스트 중간 위치(afterLine)는 메타데이터가 보존. 메타데이터도 **같은 `files/` 경로**를 가리킨다 |
+| `![대체](https://…)` · `![대체](data:image/…;base64,…)` | 노드 사진 — 원격 URL 은 앱이 불러올 때 내려받아 보관, **내장 data URL 은 그대로 사진**(2026-09-06 — AI(MCP)가 파일 바이트를 직접 실을 때. 크기는 API 가 파일 머리에서 읽고 폭 640 상한). 사진뿐인 문단은 `node` 배치에서 자식 노드가 된다(대체 텍스트가 이름) |
 | 노트(인용문) 안 링크 | 원문 유지 — 뷰어가 앵커로 렌더링 |
 
 ### 3.5 인라인 강조
@@ -296,13 +297,37 @@ kanban"* 이 **3레벨 이하까지 kanban** 으로 만들었다. 규칙이 하�
 #### 어휘
 
 값은 **레이아웃 이름을 그대로 쓰거나**, **어떤 레이아웃 이름과도 겹치지 않는
-패턴 이름**이다. 그 사이는 없다 — 별칭을 두지 않는다.
+패턴 이름**이거나, 그 둘의 **짧은 ID**(2026-09-06)다. 한글 별칭은 두지 않는다.
 
-| 값 | 무엇 |
-|---|---|
-| `tree-progtree` | 패턴 — 1레벨 트리 → 2레벨 진행트리 → 3레벨 트리 → 4레벨+ 진행트리 |
-| `progtree-tree` | 패턴 — 1레벨 진행트리 → 2레벨+ 트리 |
-| `radial-bidirectional` · `radial-right` · `hierarchy-right` · `timeline` · `kanban` | 레이아웃 이름 그대로 |
+| 값 | ID | 무엇 |
+|---|---|---|
+| `tree-progtree` | `TP` | 패턴 — 1레벨 트리 → 2레벨 진행트리 → 3레벨 트리 → 4레벨+ 진행트리 (앱 기본 "트리-진행트리맵") |
+| `progtree-tree` | `PT` | 패턴 — 1레벨 진행트리 → 2레벨+ 트리 ("진행트리-트리맵") |
+| `radial-bidirectional` · `radial-right` · `hierarchy-right` · `timeline` · `kanban` … | `RB` · `RR` · `HR` · `TM` · `KB` … | 레이아웃 이름 그대로 |
+
+**ID 표** (`packages/emm-parser/src/declaration.ts` `TEMPLATE_IDS` — 앱과 API 가
+같은 표를 쓴다. 대소문자는 가리지 않는다. `template:` 과 `levels: N: layout:`
+둘 다 받는다):
+
+| ID | 긴 이름 | 한글 |
+|---|---|---|
+| `TP` | `tree-progtree` | 트리-진행트리맵 (기본) |
+| `PT` | `progtree-tree` | 진행트리-트리맵 |
+| `TR` · `TL` · `TD` · `TU` | `tree-right` · `tree-left` · `tree-down` · `tree-up` | 트리 오른쪽·왼쪽·아래·위 |
+| `PR` · `PL` | `process-tree-right` · `process-tree-left` | 진행트리 오른쪽·왼쪽 |
+| `RB` · `RR` · `RL` | `radial-bidirectional` · `radial-right` · `radial-left` | 방사형 양쪽·오른쪽·왼쪽 |
+| `HR` · `HL` | `hierarchy-right` · `hierarchy-left` | 계층형 오른쪽·왼쪽 |
+| `KB` | `kanban` | 칸반 |
+| `TM` · `TC` | `timeline` · `timeline-center` | 시간배치 · 시간배치 가운데 |
+| `FF` | `freeform` | 자유배치 |
+
+첫 글자가 종류(T 트리 · P 진행트리 · R 방사형 · H 계층형 · K 칸반 · TM 시간 ·
+FF 자유), 둘째 글자가 방향(R/L/D/U) 또는 패턴의 두 번째 층이다. 패턴 ID 는
+`TP`/`PT` 처럼 **층의 첫 글자를 순서대로** 이어 붙인 것이다.
+
+```emm
+template: PT
+```
 
 레벨 번호는 **1~6 을 명시**한다. 맵 설정의 세 배열은 색인 기준이 서로 다른데
 (`levelFonts[0]`=루트, `levelShapes[0]`=1레벨, `levelLayouts[0]`=미사용), 그

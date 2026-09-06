@@ -269,8 +269,9 @@ $ curl -s https://pro-dev.mindmap.ai.kr/ | grep '<title>'
 
 ★ **배포가 알려 줘야 하는 것** — 프런트엔드 앱의 `API_ORIGIN`(nginx 가
 조각을 가져올 곳). **안 주면 카드만 안 뜨고 사이트는 그대로 뜬다**(기본값이
-아무 데도 안 가는 주소다). API 쪽은 `PUBLIC_APP_URL`·`PUBLIC_API_URL` 로
-카드에 쓸 주소를 알려 준다(없으면 `X-Forwarded-*` 로 짐작한다).
+아무 데도 안 가는 주소다). API 쪽은 `PUBLIC_APP_URL`(사람이 여는 곳)로 카드 주소를 알려 준다 —
+그림 주소는 **이미 있던 `PUBLIC_API_URL`** 을 그대로 쓴다(같은 뜻의 칸을
+둘로 두지 않는다). 둘 다 없으면 `X-Forwarded-*`·`Host` 로 짐작한다.
 
 ⚠️ **nginx.conf 는 이제 템플릿이다** — `${API_ORIGIN}` 이 들어 있어
 `/etc/nginx/templates/default.conf.template` 로 넣어야 한다. `conf.d/` 에

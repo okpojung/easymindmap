@@ -130,17 +130,18 @@ export interface AppEnv {
   // 이 시각(ISO) 이전 버전은 건드리지 않는다 — 13a §6 소급 금지. 비우면 전부.
   VERSION_PRUNE_SINCE: string;
   /**
-   * ── 링크 카드가 쓸 **바깥에서 보이는 주소** (2026-09-06, 27 §10) ──
+   * **사람이 여는 곳** (`https://app.example.com`) — 링크 카드의 `og:url`
+   * (2026-09-06, `27-publish-share.md` §5.6).
    *
-   * `PUBLIC_APP_URL` 사람이 여는 곳 (`https://app.example.com`) — `og:url`
-   * `PUBLIC_API_URL` 그림을 주는 곳 (`https://api.example.com`) — `og:image`
+   * 그림 주소(`og:image`)는 위의 **`PUBLIC_API_URL`** 을 그대로 쓴다 —
+   * 같은 뜻의 칸을 둘로 두지 않는다(2026-09-06: 실제로 두 벌이 되어
+   * 빌드가 깨졌다).
    *
    * **비워 둬도 된다.** 그때는 프록시가 준 `X-Forwarded-Host`·`Host` 로
    * 짐작한다. 카드가 그림을 못 받으면 글자 카드로 뜰 뿐이라 사이트가
    * 죽지는 않는다 — 그래서 필수로 만들지 않았다.
    */
   PUBLIC_APP_URL: string;
-  PUBLIC_API_URL: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -257,7 +258,6 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     VAULT_DIR: String(raw.VAULT_DIR ?? '').trim(),
     // 끝의 `/` 는 떼어 둔다 — 붙여 쓰는 쪽에서 `//` 가 생기지 않게
     PUBLIC_APP_URL: String(raw.PUBLIC_APP_URL ?? '').trim().replace(/\/+$/, ''),
-    PUBLIC_API_URL: String(raw.PUBLIC_API_URL ?? '').trim().replace(/\/+$/, ''),
     ATTACHMENT_MAX_MB,
     ATTACHMENT_PART_KB,
     ATTACHMENT_CHUNK_MAX_MB,
@@ -272,7 +272,7 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     SMTP_FROM: String(raw.SMTP_FROM ?? ''),
     GOTRUE_URL: String(raw.GOTRUE_URL ?? ''),
     GOTRUE_PUBLIC_URL: String(raw.GOTRUE_PUBLIC_URL ?? ''),
-    PUBLIC_API_URL: String(raw.PUBLIC_API_URL ?? ''),
+    PUBLIC_API_URL: String(raw.PUBLIC_API_URL ?? '').trim().replace(/\/+$/, ''),
     ADMIN_EMAILS: String(raw.ADMIN_EMAILS ?? ''),
     GOTRUE_DATABASE_URL: String(raw.GOTRUE_DATABASE_URL ?? ''),
     AI_KEY_SECRET,

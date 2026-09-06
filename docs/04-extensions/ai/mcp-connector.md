@@ -996,7 +996,8 @@ curl -s https://api-dev.mindmap.ai.kr/.well-known/oauth-protected-resource/v1/mc
 `internal/api/oauthserver/authorize.go:163` — `config.OAuthServer.AuthorizationPath`
 가 비면 이 오류다. 환경변수 **`GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH`**.
 
-**막힌 곳 3. ★ 그 설정을 채워도 끝이 아니다 — 동의 화면이 **없다****
+**막힌 곳 3. ★ 그 설정을 채워도 끝이 아니다 — 동의 화면이 **없다**
+(→ 만들었다, §10.6)**
 
 이것이 이번 실측의 핵심이고, §10.4 의 *"우리 쪽은 끝났다"* 를 뒤집는다.
 
@@ -1046,6 +1047,91 @@ redirect_uri https://claude.ai/api/mcp/auth_callback
 지우려면 `service_role` 키가 필요해 **내가 지우지 못했다.** 사람이 동의해야만
 토큰이 나가므로 그대로 둬도 위험하지는 않지만, 정리하려면 관리자 API 로
 지운다.
+
+### 10.6 4단계 — 동의 화면을 우리가 만들었다 (2026-09-06)
+
+§10.5 의 **막힌 곳 3** 을 푼다. 환경변수로 될 일이 아니라 저장소의 일이다.
+
+#### 무엇을 만들었나
+
+| 파일 | 하는 일 |
+|---|---|
+| `src/services/cloud/oauthConsentRules.ts` | **순수 판정** — 경로 판정 · `authorization_id` 모양 · 범위를 사람 말로 · 이동 주소 안전성 |
+| `src/services/cloud/oauthConsent.ts` | GoTrue 호출 (`GET /oauth/authorizations/{id}` · `POST …/consent`) |
+| `src/pages/OAuthConsentPage.tsx` | 화면 |
+| `src/main.tsx` | `/oauth/consent` 를 **에디터보다 먼저** 가른다 |
+| `src/services/cloud/supabaseAuth.ts` | `authUrl()` · `authHeaders()` 를 밖으로 뺐다 (접두사 규칙을 한 곳에서만 안다) |
+
+> **판정을 왜 따로 갈랐나** — 호출 쪽은 `import.meta.env`(Vite 전용)를 읽는
+> 모듈에 기대므로, 한 파일에 두면 `tsx` 로 단위 시험을 돌릴 수 없다.
+> 실제로 합쳐 두었더니 테스트가 **기동조차 못 했다.**
+
+#### 흐름
+
+```
+claude.ai
+  → GoTrue /oauth/authorize            (요청을 DB 에 적는다)
+  → 우리 /oauth/consent?authorization_id=…
+       로그인 안 했으면 → 로그인부터
+       GET  auth/oauth/authorizations/{id}      무엇을 달라는지 읽는다
+       [허용]/[거부]
+       POST auth/oauth/authorizations/{id}/consent
+  → 돌려준 redirect_url 로 claude.ai 복귀
+```
+
+#### 이 화면이 지키는 것 — 셋
+
+**① 범위 목록에 **없는 것**을 글로 밝힌다.** GoTrue 의 범위는
+openid/email/profile/phone/offline_access 로 고정이라(§10.3) "맵을 읽고
+쓴다"를 범위로 **표현할 수가 없다.** 목록만 보여 주면 *그럼 맵은 못
+보는구나* 로 읽힌다 — 실제로는 볼 수 있다. 그래서 목록 아래에 글로 적는다.
+
+**② 모르는 범위를 감추지 않는다.** 우리 표에 없는 이름이 오면 그 이름을
+그대로 보여 주고 *(우리가 모르는 항목입니다)* 를 붙인다. GoTrue 가 범위를
+늘리면 우리 표는 언제든 뒤처진다 — **무엇을 허락하는지 모르는 채 [허용]**
+이 가장 나쁘다.
+
+**③ [거부]도 그냥 끝내지 않는다.** `error=access_denied` 를 달아 부른 쪽으로
+돌려보낸다(RFC 6749 §4.1.2.1). 그래야 claude.ai 가 "거절당했다"를 안다.
+그냥 화면을 닫으면 저쪽은 **응답을 영영 기다린다.**
+
+#### 조심한 자리
+
+- **전에 허락한 적이 있으면 GoTrue 가 조회 단계에서 이미 승인해 버린다**
+  (`authorize.go:249~271`). 그때는 상세 대신 `redirect_url` 만 온다 — 동의를
+  또 물으면 돌아갈 곳을 잃는다.
+- **이동은 `replace`** 로 한다. `assign` 이면 [뒤로]가 이 화면으로 되돌아오는데
+  그 인가 요청은 이미 처리되어 "찾을 수 없습니다"만 뜬다.
+- **이동 주소를 그대로 믿지 않는다** — `http`/`https` 만 통과시킨다. 그 한 줄이
+  "우리 오리진에서 남의 코드가 도는" 부류 전체를 막는다.
+- **`authorization_id` 는 모양을 보고 나서 서버에 묻는다**(영숫자 등 32자 안팎).
+  아무 글자나 그대로 주소에 실으면 우리가 남의 글을 옮겨 주는 통로가 된다.
+- **`CONSENT_PATH` 는 GoTrue 설정과 같아야 한다.** 단위 테스트가 그 값을 못
+  박아 둔다 — 한쪽만 바꾸면 거기서 걸린다.
+
+#### 검증
+
+**e2e224 — 31항목 PASS** (가짜 GoTrue + 빌드본 프런트엔드 + 콜백 서버 +
+진짜 Chromium), **단위 33항목 PASS**. **되돌려 깨지는 것까지 확인** — 자동
+승인 갈래를 빼면 e2e 2항목, `authorization_id` 모양 검사를 빼면 e2e 1항목과
+단위 4항목이 깨진다. 자세한 항목은
+[`test-catalog.md` e2e224](../../05-implementation/test-catalog.md).
+
+#### 남은 것 — 사람이 하는 일
+
+`easymindmap-auth` 앱에 환경변수 둘을 넣고 재배포한다(§10.5 ②-1·2).
+
+```
+GOTRUE_JWT_ISSUER=https://auth-dev.mindmap.ai.kr
+GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH=/oauth/consent
+```
+
+> **경로는 `CONSENT_PATH` 와 글자까지 같아야 한다.** 화면은
+> `GOTRUE_SITE_URL`(`https://pro-dev.mindmap.ai.kr`) 아래에 뜬다.
+
+**아직 확인하지 못한 것**: claude.ai 커스텀 커넥터가 이 화면을 지나 실제로
+붙는지는 **사람이 눌러 봐야** 안다. 우리가 잰 것은 *가짜 GoTrue 로 흐름이
+맞다*까지다 — 진짜 GoTrue 와는 위 환경변수가 들어간 뒤에야 맞춰 볼 수 있다.
 
 ---
 

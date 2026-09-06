@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client';
 import { EditorPage } from '@/pages/EditorPage';
 import { AdminPage } from '@/pages/admin/AdminPage';
 import { PublicMapPage, publishIdFromPath } from '@/pages/PublicMapPage';
+import { OAuthConsentPage } from '@/pages/OAuthConsentPage';
+import { isConsentPath } from '@/services/cloud/oauthConsentRules';
 import '@/styles/global.css';
 
 // 화면 고르기 — 라우터를 들이지 않고 **주소만** 본다 (2026-08-13 · 08-14).
@@ -32,10 +34,18 @@ const isAdmin = isAdminHost || isAdminPath;
 // 링크를 받은 사람은 계정이 없다.
 const publishId = publishIdFromPath(window.location.pathname);
 
+// OAuth 동의 화면 `/oauth/consent` — claude.ai 커스텀 커넥터가 지나는 자리
+// (MCP 4단계, mcp-connector.md §10.6). GoTrue 가 `/oauth/authorize` 에서
+// 여기로 넘긴다. **에디터보다 먼저** 갈라야 하는 이유는 퍼블리싱 링크와
+// 같다 — 여기 온 사람은 맵을 그리러 온 것이 아니라 허락하러 왔다.
+const isConsent = isConsentPath(window.location.pathname);
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {publishId
-      ? <PublicMapPage publishId={publishId} />
-      : isAdmin ? <AdminPage /> : <EditorPage />}
+    {isConsent
+      ? <OAuthConsentPage />
+      : publishId
+        ? <PublicMapPage publishId={publishId} />
+        : isAdmin ? <AdminPage /> : <EditorPage />}
   </React.StrictMode>,
 );

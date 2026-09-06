@@ -16,6 +16,26 @@ const AUTH_PREFIX =
 
 export const authEnabled = SUPABASE_URL !== '';
 
+/**
+ * 인증 서버의 절대 주소를 만든다 — 접두사 규칙을 한 곳에서만 안다
+ * (2026-09-06, 동의 화면이 두 번째 사용자가 되면서 밖으로 뺐다).
+ *
+ * 전체 Supabase(Kong)는 `/auth/v1`, GoTrue 단독 배포는 루트다. 그 갈림을
+ * 부르는 쪽마다 다시 쓰면 한 곳을 빠뜨린다.
+ */
+export function authUrl(path: string): string {
+  return `${SUPABASE_URL}${AUTH_PREFIX}${path}`;
+}
+
+/** GoTrue 가 요구하는 공통 헤더 (`apikey`) — 동의 화면도 같은 것을 쓴다 */
+export function authHeaders(bearer?: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    apikey: ANON_KEY,
+    ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+  };
+}
+
 export interface AuthSession {
   accessToken: string;
   refreshToken: string;
@@ -44,13 +64,9 @@ async function goTrue<T>(
 ): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${SUPABASE_URL}${AUTH_PREFIX}${path}`, {
+    res = await fetch(authUrl(path), {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: ANON_KEY,
-        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
-      },
+      headers: authHeaders(bearer),
       body: JSON.stringify(body ?? {}),
     });
   } catch {

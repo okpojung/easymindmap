@@ -1416,16 +1416,18 @@ curl -s https://auth-dev.mindmap.ai.kr/.well-known/oauth-authorization-server \
 GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH=/oauth/consent
 ```
 
-**⑧ ★ 그런데 그 화면은 아직 없다 — 환경변수로 끝나지 않는다**
+**⑧ 그 화면은 우리가 만든다 — 2026-09-06 만들었다**
 
 GoTrue 에는 **동의 화면이 들어 있지 않다.** `/oauth/authorize` 는 요청을
 DB 에 적고 `GOTRUE_SITE_URL`(`https://pro-dev.mindmap.ai.kr`) + 위 경로로
-**떠넘길 뿐**이다. 그 화면은 **우리 프런트엔드가 만들어야 한다** —
-저장소에서 할 일이지 서버 설정으로 될 일이 아니다(설계·해야 할 일 목록은
-mcp-connector.md §10.5 ②).
+**떠넘길 뿐**이다. 그 화면은 저장소에서 만들 일이지 서버 설정으로 될 일이
+아니다 — **4단계로 만들어 두었다**(mcp-connector.md §10.6 · e2e224).
 
-즉 지금 순서는 이렇다: **⑥⑦ 환경변수(사람) → 동의 화면 구현(저장소) →
-그다음에야 claude.ai 에서 눌러 볼 수 있다.**
+그래서 `⑦` 의 경로는 아무 값이나 넣으면 안 된다. 프런트엔드의
+`CONSENT_PATH` 와 **글자까지 같아야 한다** — 지금 값은 `/oauth/consent` 다.
+
+즉 남은 순서는 이렇다: **⑥⑦ 환경변수(사람) + 프런트엔드 재배포 →
+claude.ai 에서 눌러 보기.**
 
 ## 2. 백업 — `.env` (APP_KEY) 최우선
 

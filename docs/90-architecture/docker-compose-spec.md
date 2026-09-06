@@ -5,8 +5,16 @@
 결정일: 2026-03-27  
 최종 업데이트: 2026-07-27
 
+> **개정 (2026-09-06 사용자 결정)**: **운영 서버는 Coolify 를 쓰지 않는다.**
+> 운영 VM-02 는 `docker-compose.yml` 을 직접 쓰고, 이미지는 GitHub Actions 가
+> GHCR 에 올린 유료판 태그를 당긴다(B안 —
+> [`ci-cd-github-actions.md`](ci-cd-github-actions.md) §11). **운영 DB 는
+> 네이티브 PostgreSQL 16**([`infra-architecture.md`](infra-architecture.md) §8-A)
+> 이라 이 문서의 `postgres` 서비스는 운영 compose 에 **들어가지 않는다** —
+> dev 와 셀프호스트에만 해당한다. 아래 2026-07 개정은 dev 에만 남는다.
+>
 > **개정 (2026-07)**: 컨테이너 실행·배포의 **운영 주체는 Coolify** 로
-> 확정 — 개발/프로덕션 서버 모두 Coolify 가 앱·DB 컨테이너를 관리하고
+> 확정 — 개발 서버는 Coolify 가 앱·DB 컨테이너를 관리하고
 > GitHub 웹훅으로 자동 배포한다([`dev-server-coolify.md`](dev-server-coolify.md)).
 > 이 문서의 compose 정의는 **서비스 구성(이미지·포트·환경변수)의 기준
 > 스펙**으로 유지하며, Supabase Self-hosted 등 다중 컨테이너 스택은

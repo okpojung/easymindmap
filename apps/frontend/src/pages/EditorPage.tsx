@@ -26,7 +26,8 @@ import { GuestBrowserNotice } from '@/components/auth/GuestBrowserNotice';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import {
-  clearCurrentMap, detachFromServer, editSessionKey, initialMapId, openMapHere, refreshFromServer,
+  clearCurrentMap, detachFromServer, editSessionKey, forgetUrlMapId, initialMapId, openMapHere,
+  refreshFromServer,
 } from '@/services/cloud/mapSession';
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { pullAiKeys, pullAiSettings } from '@/services/cloud/aiKeysSync';
@@ -301,8 +302,18 @@ export function EditorPage() {
         // **왜** 못 열었는지 서버의 말을 그대로 붙인다 (2026-09-04) —
         // "열 수 없습니다" 만으로는 사용자가 무엇을 해야 할지 모른다
         // (문서가 없는 맵 · 지워진 맵 · 권한 없음이 전부 같은 문장이었다).
+        // **서버가 이유를 말했으면 그 말로 끝낸다** (2026-09-06).
+        //   전에는 뒤에 "목록에서 다시 선택해 주세요" 를 늘 붙였는데,
+        //   휴지통에 있는 맵에는 그 말이 **틀린 안내**다(목록에 없다).
+        //   서버가 아무 말도 못 했을 때만 그 꼬리를 붙인다.
         const why = e instanceof CloudError ? e.message : '';
-        setUrlMapErr(`이 맵을 열 수 없습니다${why ? ` — ${why}` : '.'} 목록에서 다시 선택해 주세요.`);
+        setUrlMapErr(why
+          ? `이 맵을 열 수 없습니다 — ${why}`
+          : '이 맵을 열 수 없습니다. 목록에서 다시 선택해 주세요.');
+        // ★ **주소에서 그 id 를 지운다** (2026-09-06 사용자 보고 —
+        //   "새로고침하면 계속 뜬다"). 지우지 않으면 이 탭은 새로고침할
+        //   때마다 같은 맵을 다시 열려다 같은 오류를 낸다.
+        forgetUrlMapId();
         // **갈 곳을 준다.** 예전에는 '문서 없음' 빈 화면에 안내만 떠 있었고,
         // '맵 닫기' 는 "열려 있는 맵이 없습니다" 만 되풀이해 이 탭에서
         // 빠져나갈 길이 없었다(2026-09-04 사용자 보고). 문서함을 연다.

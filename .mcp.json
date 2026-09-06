@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "easymindmap": {
+      "type": "http",
+      "url": "${EMM_MCP_URL:-https://api-dev.mindmap.ai.kr/v1/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${EMM_MCP_TOKEN}"
+      }
+    }
+  }
+}

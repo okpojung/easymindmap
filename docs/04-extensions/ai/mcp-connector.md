@@ -333,6 +333,7 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 | **A. Claude Code** (터미널 · VS Code · 데스크톱 앱의 Claude Code) | ✅ `--header` | **검증됨** (e2e208, 2026-09-05) |
 | **B. Claude Desktop** 의 로컬 MCP 설정(`claude_desktop_config.json`) | ✅ `mcp-remote` 다리 + `--header` | 규격상 된다 — 직접 확인은 안 했다 |
 | **C. claude.ai 웹·데스크톱 [커스텀 커넥터 추가]** | ❌ 칸이 없다 — **OAuth 만** | **3단계**(안 A) 뒤에 |
+| **D. Claude Code 웹**(claude.ai/code 클라우드 세션) | ✅ 저장소의 `.mcp.json` + 환경 변수 `EMM_MCP_TOKEN` | **로컬 검증**(e2e217, 2026-09-06) — 실제 claude.ai/code 세션은 사용자 확인 대기 (②-D) |
 
 **②-A Claude Code** — 토큰 원문을 헤더로 넘긴다. 한 번 등록하면 그 뒤로는
 `claude` 를 열 때마다 붙는다.
@@ -380,6 +381,73 @@ Claude Desktop 이 `args` 안의 공백을 깨뜨리는 버그가 있어 값은 
 찾다가 실패한다. 이것이 §3 이 "안 B 는 스토어 등재 요건에 맞지 않을 수
 있다" 고 적어 둔 바로 그 자리이고, 3단계(OAuth 2.1)가 푸는 문제다.
 (2026-09-05 기준 — 이 화면의 규격은 바뀔 수 있으니 3단계 착수 때 다시 본다.)
+
+**②-D Claude Code 웹(claude.ai/code)** — 클라우드 세션은 PC 의
+`~/.claude.json`(user·local 범위)을 **가져오지 않고, 저장소의 `.mcp.json`
+만 읽는다**(공식 문서 "What carries over from your setup"). 그래서 저장소
+루트에 `.mcp.json` 을 두었다(2026-09-06).
+
+```json
+{
+  "mcpServers": {
+    "easymindmap": {
+      "type": "http",
+      "url": "${EMM_MCP_URL:-https://api-dev.mindmap.ai.kr/v1/mcp}",
+      "headers": { "Authorization": "Bearer ${EMM_MCP_TOKEN}" }
+    }
+  }
+}
+```
+
+토큰은 파일에 없다 — `${EMM_MCP_TOKEN}` 자리를 **클라우드 환경의 환경
+변수**가 채운다(Claude Code 가 `url`·`headers` 안의 `${VAR}` 를 펼친다).
+주소는 `EMM_MCP_URL` 을 주면 그것, 없으면 dev API 다 — 운영 API 로 갈아탈
+때나 로컬 시험(`http://localhost:3401/v1/mcp`)에 쓴다.
+
+설정 순서 (한 번만):
+
+1. 앱에서 토큰 발급(①). 원문을 복사해 둔다.
+2. [claude.ai/code](https://claude.ai/code) 에서 **입력창 바로 위 줄의 구름
+   아이콘(환경 이름, 보통 `Default`)** 을 누른다 → 환경 위에 마우스를 올리면
+   오른쪽에 나오는 **설정(톱니) 아이콘** → *Update cloud environment*
+   대화상자. (설정 페이지나 직접 주소는 없다 — 이 선택기뿐이다.)
+3. **Network access** 를 **Custom** 으로 바꾸고 *Allowed domains* 에
+   `api-dev.mindmap.ai.kr` 한 줄을 적는다. 기본값 *Trusted* 는 패키지
+   저장소·GitHub 만 열려 있어 **우리 API 로 못 나간다** — `.mcp.json` 의
+   HTTP 서버는 세션의 네트워크로 직접 나가므로 이 허용이 필요하다
+   (claude.ai "커넥터"와 달리 Anthropic 서버를 거치지 않는다).
+4. **Environment variables** 칸에 `EMM_MCP_TOKEN=emm_…` 한 줄(따옴표 없이).
+   저장.
+5. **새 세션**을 연다 — 이미 돌고 있던 세션은 환경 값을 다시 읽지 않는다.
+   세션에서 `/mcp` 를 치면 `easymindmap` 이 connected, 도구 5개.
+   클라우드 세션은 비대화형이라 프로젝트 서버를 **묻지 않고 켠다**.
+6. 대화: *"내 EasyMindMap 맵 목록 보여줘"* → `list_maps` 호출이 보이면 끝.
+
+알아 둘 것:
+
+- ★ **PC 에서 이 저장소 폴더 안에서 `claude` 를 열면** 프로젝트 범위가
+  user 범위보다 **우선**이라, ②-A 로 등록한 같은 이름 `easymindmap` 이
+  가려진다. 환경 변수가 없으면 `claude mcp list` 가 `Missing environment
+  variables: EMM_MCP_TOKEN` 을 경고하고 서버는 401 로 못 붙는다. 둘 중
+  하나로 푼다 — ⓐ PC 에도 사용자 환경 변수를 둔다(PowerShell:
+  `[Environment]::SetEnvironmentVariable('EMM_MCP_TOKEN','emm_…','User')`
+  뒤 터미널을 새로 연다 — 그러면 ②-A 등록은 없어도 된다) ⓑ 처음 뜨는
+  승인 프롬프트에서 거절한다(또는 `.claude/settings.local.json` 에
+  `"disabledMcpjsonServers": ["easymindmap"]`). 저장소 **밖** 폴더에서
+  열면 해당 없다.
+- 환경 변수는 "그 환경을 쓰는 사람 누구나 읽을 수 있다"고 화면이 경고한다.
+  개인 환경이면 본인뿐이니 PAT 를 두어도 되지만, **조직 공유 환경에는 넣지
+  않는다.** Pro/Max 의 *API credentials*(프록시가 헤더를 대신 붙이는 방식)로
+  MCP 요청까지 덮이는지는 확인하지 않았다.
+- 토큰을 바꾸면 환경 변수만 고치고 새 세션을 연다. 폐기는 앱에서(①).
+
+**검증**(e2e217, 로컬): 진짜 PostgreSQL + 빌드본 API(:3401) + Claude Code
+2.1.261 을 **저장소 루트에서 `.mcp.json` 만으로** 띄웠다. 환경 변수 없이
+`claude mcp list` → `Missing environment variables: EMM_MCP_TOKEN` 경고 ·
+`EMM_MCP_URL`·`EMM_MCP_TOKEN` 을 주고 비대화형 `claude -p` → `list_maps`
+호출 성공(맵 18개, 3턴). **실제 claude.ai/code 세션은 여기서 열 수 없어
+사용자 확인 대기** — 위 순서대로 붙이고 `/mcp` 에 도구 5개가 보이면
+이 표의 D 를 "검증됨" 으로 올린다.
 
 **③ 붙었는지 확인** — 어느 클라이언트든 등록 전에 손으로 먼저 확인할 수 있다.
 

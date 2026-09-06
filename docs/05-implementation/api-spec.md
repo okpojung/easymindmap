@@ -1396,7 +1396,8 @@ nginx 가 `/p/{id}` 를 낼 때 **SSI 로 이것만 끼워 넣는다** — 페�
 * 미리보기가 없으면 `og:image` 를 빼고 `twitter:card` 는 `summary` 다.
 * `robots` 는 **`noindex`** — 링크 카드는 이것과 무관하게 뜬다. 검색 노출은
   저자가 고를 칸(`listed`)이 생긴 뒤에 연다.
-* 주소는 `PUBLIC_APP_URL`·`PUBLIC_API_URL` 이 알려 준다. 없으면 프록시가 준
+* 주소는 `PUBLIC_APP_URL`(사람이 여는 곳)과 **이미 있던** `PUBLIC_API_URL`
+  (우리 API 의 공개 주소)이 알려 준다. 없으면 프록시가 준
   `X-Forwarded-Host`·`Host` 로 짐작한다.
 
 ---

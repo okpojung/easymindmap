@@ -38,6 +38,20 @@ check('레이아웃 이름 그대로', resolveTemplateName('hierarchy-right'), '
 check('흔한 말', resolveTemplateName('칸반'), 'kanban');
 check('대소문자 무시', resolveTemplateName('Kanban'), 'kanban');
 throws('모르는 이름 → 쓸 수 있는 이름 나열', () => resolveTemplateName('없는템플릿'), '진행트리-트리맵');
+// ── ①-b 짧은 ID (2026-09-06) — declaration.ts TEMPLATE_IDS ────────────
+check('ID: TP', resolveTemplateName('TP'), 'tree-progtree');
+check('ID: pt (소문자)', resolveTemplateName('pt'), 'progtree-tree');
+check('ID: HR', resolveTemplateName('HR'), 'hierarchy-right');
+check('ID: KB', resolveTemplateName('KB'), 'kanban');
+check('ID: TM', resolveTemplateName('TM'), 'timeline');
+check('ID: rb', resolveTemplateName('rb'), 'radial-bidirectional');
+throws('모르는 ID 는 거절 + ID 목록', () => resolveTemplateName('ZZ'), 'TP·PT·TR');
+throws('거절 문장에 한글명 (ID · 영문명)', () => resolveTemplateName('ZZ'), '진행트리-트리맵 (PT · progtree-tree)');
+check('선언의 template: PT', resolveDeclaration({ template: 'PT' }).editor, { layoutType: 'process-tree-right' });
+check('선언의 levels layout: HR', resolveDeclaration({ levels: { 2: { layout: 'hr' } } }).settings.levelLayouts,
+  [null, 'hierarchy-right', 'hierarchy-right', 'hierarchy-right', 'hierarchy-right']);
+check('templateFor 인자 ID', templateFor('pt', '# 제목\n## a\n').editor, { layoutType: 'process-tree-right' });
+check('templateFor 선언 ID', templateFor(undefined, '# 제목\n\n```emm\ntemplate: TP\n```\n\n## a\n').editor, { layoutType: 'tree-right' });
 
 // ── ② resolveDeclaration — 프런트 테스트와 같은 기대값 ───────────────
 {

@@ -646,9 +646,16 @@ Claude Code 대화에서 `"다음 회의 > 안건"` 아래 2개 붙임 + 붙은 
 
 | 부류 | 예 | 결과 |
 |---|---|---|
-| 레벨별 패턴 템플릿 | `진행트리-트리맵`(`progtree-tree`) · `트리-진행트리맵`(`tree-progtree`, 앱 기본) | 맵 레이아웃 + `settings.levelLayouts` + **노드에 박음** |
-| 레이아웃 이름 하나 | `방사형 양쪽` · `시간배치` · `계층형 오른쪽` · `칸반` · `tree-right` … | 맵 레이아웃만 |
-| 문서 안의 선언 | 마크다운에 ```` ```emm ```` 블록 `template: tree-progtree` / `levels: …` | 위와 같다 — 인자가 있으면 인자가 이긴다 |
+| 레벨별 패턴 템플릿 | `진행트리-트리맵` (**PT** · `progtree-tree`) · `트리-진행트리맵` (**TP** · `tree-progtree`, 앱 기본) | 맵 레이아웃 + `settings.levelLayouts` + **노드에 박음** |
+| 레이아웃 이름 하나 | `방사형 양쪽` (**RB**) · `시간배치` (**TM**) · `계층형 오른쪽` (**HR**) · `칸반` (**KB**) · `tree-right` (**TR**) … | 맵 레이아웃만 |
+| 문서 안의 선언 | 마크다운에 ```` ```emm ```` 블록 `template: tree-progtree` / `template: PT` / `levels: …` | 위와 같다 — 인자가 있으면 인자가 이긴다 |
+
+**짧은 ID** (2026-09-06, 사용자 요구 "`진행트리-트리맵`·`progtree-tree` 는 길다 —
+ID 로"): 두 글자 대문자, 대소문자 무관. 표는 파서 `declaration.ts` 의
+`TEMPLATE_IDS` **한 곳**에 있고 앱(`emmDeclaration.ts`)과 API(`map-template.ts`)가
+`expandTemplateId` 로 같은 표를 쓴다 — 전체 표는 emm-spec.md §3.7 "어휘".
+`create_map` 의 `template` 인자, ```emm 선언의 `template:` 과 `levels: N: layout:`
+셋 다 받는다. 거절 문장과 도구 설명은 **한글명 (ID · 영문명)** 으로 나열한다.
 
 **규칙은 앱의 불러오기와 한 벌이다.** `apps/api/src/mcp/map-template.ts` 는
 프런트 `utils/emmDeclaration.ts`(`resolveDeclaration`) + `utils/levelLayouts.ts`
@@ -785,6 +792,47 @@ parentNotes · 노트 id 새로 매김 · 루트 노트) + 서버 7(기본 · �
 둘 다 · append 불릿 노트 · append 기본) + Claude Code 대화("코드는 노트코드로
 첨부해 주고, 300자 이상 긴 문장은 노트 문단으로" → `create_map(code_to_note,
 long_text_to_note:300)`).
+
+### 9.11 "emm 으로 작성해 줘" · 오류 → 절차 노드 아래 해결 방법 · 내장 사진 (2026-09-06)
+
+사용자가 그린 흐름 — 앱에 맵을 열어 둔 채 MCP 세션에서:
+
+1. *"wordpress 설치 절차를 PT 템플릿으로 **emm** 으로 작성해 줘"* → 맵 생성.
+2. 3단계 명령을 실행하다 오류 → 오류 원문(과 화면 캡처)을 붙이고 *"해결
+   방법을 emm 맵의 그 절차 노드 아래에 추가해 줘"* → 그 노드 아래에
+   "오류 → 원인 → 해결" 가지, 사진 포함.
+
+**정한 것**
+
+- **"emm" 은 EasyMindMap 의 준말이다.** 서버 `initialize` 의 instructions 에
+  적었다 — "emm 으로 작성/저장" = `create_map`, "emm 맵에 붙여 줘" =
+  `append_to_map`. 코드가 아니라 지시문이 푸는 일이다(AI 가 읽는 문장).
+- **오류 → 해결 흐름도 지시문으로.** `get_map(current 또는 이름)` 으로 절차
+  노드의 이름을 확인하고 `append_to_map(parent: 그 이름)` 으로 붙이라고
+  적었다. 새 도구는 없다 — 있는 둘로 된다.
+- **내장 사진.** 파서가 `![설명](data:image/*;base64,…)` 을 노드 사진으로
+  받는다(예전엔 http(s) 만). 앱 저장 형식이 원래 data URL 이라 새 형식이
+  아니다. `node` 배치에서 사진뿐인 문단은 **자식 노드**(이름 = 대체 텍스트)
+  가 된다 — 표·코드와 같은 규칙. 브라우저가 없어 크기를 못 재므로
+  `mcp/image-size.ts` 가 파일 머리(PNG IHDR · GIF · JPEG SOF · WebP)에서
+  폭·높이를 읽어 자리표시 320×200 을 실제 크기로 바꾼다 — **폭 640 상한**,
+  비율 유지. 한 장 **2.5MB** 초과는 거절(앱 붙여넣기 상한과 같다).
+- **AI 가 사진 바이트를 얻는 길은 파일뿐이고, 실용 한계가 있다.** 대화창에
+  붙여 넣은 이미지는 모델이 보기만 하고 바이트를 꺼낼 수 없다. 파일 경로를
+  주면 Claude Code 가 `base64` 로 읽어 data URL 로 싣는데, **도구 인자는
+  모델이 글자로 출력**하므로 4KB(5.5K 자)는 6턴에 됐지만 22KB(30K 자)·
+  38KB(51K 자) 캡처는 900초 안에 끝내지 못했다(e2e222). 그래서 지시문에
+  "수십 KB 넘는 캡처는 앱에서 그 노드를 골라 Ctrl+V 로 붙여 넣으라 안내" 를
+  넣었다. 큰 사진의 바른 길은 나중에 "앱이 올리고 AI 는 주소만" 이다.
+
+**검증**(e2e222): 단위 — 파서 `inline-images.test.ts` 10 · `declaration.test.ts`
++9(ID 표) · API `emm-to-doc` +16(크기 읽기 PNG/GIF/JPEG · 640 상한 · 자식 노드 ·
+2.5MB 거절 · http 불변) · `map-template` +12(ID) · 프런트 `emmDeclaration.test.ts`
++5. 대화 — 로컬 API + Claude Code: ① "PT 템플릿으로 emm 으로 작성해 줘" →
+`create_map(template:"PT")` · editor `process-tree-right` ② 오류 원문 →
+`get_map` → `append_to_map(parent:"3단계 MySQL 설치")` v2 ③ 4KB 캡처 파일
+경로 → data URL 사진 노드 240×48 실측 v3. 렌더링 — 그 사진이 SVG `<image>`
+142×28 로 그려짐. 상세는 test-catalog e2e222.
 
 ## 10. 3단계 — OAuth 2.1 (2026-09-06)
 

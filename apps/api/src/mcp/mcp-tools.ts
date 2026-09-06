@@ -79,8 +79,9 @@ export const TOOL_DEFS: McpToolDef[] = [
         template: {
           type: 'string',
           description:
-            '맵 모양 템플릿. 앱 라이브러리 이름("트리-진행트리맵"·"진행트리-트리맵"·"방사형 양쪽"·"방사형 오른쪽"·"시간배치"·"계층형 오른쪽"·"칸반") '
-            + '또는 레이아웃 이름(tree-right, process-tree-right, radial-bidirectional, hierarchy-right, timeline, kanban …). '
+            '맵 모양 템플릿. 짧은 ID(TP=트리-진행트리맵(기본) · PT=진행트리-트리맵 · RB=방사형 양쪽 · RR=방사형 오른쪽 · HR=계층형 오른쪽 · KB=칸반 · TM=시간배치 · TR=트리 오른쪽 · PR=진행트리 오른쪽), '
+            + '앱 라이브러리 이름("트리-진행트리맵"·"진행트리-트리맵"·"방사형 양쪽"·"시간배치"·"계층형 오른쪽"·"칸반") '
+            + '또는 레이아웃 이름(tree-right, process-tree-right, radial-bidirectional, hierarchy-right, timeline, kanban …). 사용자가 "PT 템플릿으로" 라고 하면 그대로 "PT". '
             + '마크다운 안에 ```emm 코드블록으로 `template: progtree-tree` 를 적어도 같다(인자가 있으면 인자가 이긴다).',
         },
       },

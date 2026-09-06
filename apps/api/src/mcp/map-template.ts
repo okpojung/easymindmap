@@ -13,7 +13,7 @@
  *   levelLayouts[k] — k=0 미사용(1레벨은 맵 전체 레이아웃), k=1 이 2레벨 …
  *   k=4 는 "5레벨 이상 전부". levelShapes[0] 은 1레벨. levelFonts[0] 은 루트.
  */
-import { readDeclaration, type EmmDeclaration } from '../emm/declaration';
+import { TEMPLATE_IDS, expandTemplateId, readDeclaration, type EmmDeclaration } from '../emm/declaration';
 import type { LayoutType, MapSettings, MindNode, ShapeType } from '../emm/model';
 
 // ── 알려진 값 — emmDeclaration.ts 와 같다 ─────────────────────────────
@@ -76,9 +76,11 @@ const ALIASES: Record<string, string> = {
 
 /** 사용자에게 보여 줄 이름 목록 — 거절 문장에 쓴다 */
 export const TEMPLATE_NAMES = [
-  '트리-진행트리맵(tree-progtree, 기본)', '진행트리-트리맵(progtree-tree)', '방사형 양쪽(radial-bidirectional)',
-  '방사형 오른쪽(radial-right)', '시간배치(timeline)', '계층형 오른쪽(hierarchy-right)', '칸반(kanban)',
-  '트리 오른쪽(tree-right)', '그 밖의 레이아웃 이름',
+  '트리-진행트리맵 (TP · tree-progtree, 기본)', '진행트리-트리맵 (PT · progtree-tree)',
+  '방사형 양쪽 (RB · radial-bidirectional)', '방사형 오른쪽 (RR · radial-right)',
+  '시간배치 (TM · timeline)', '계층형 오른쪽 (HR · hierarchy-right)', '칸반 (KB · kanban)',
+  '트리 오른쪽 (TR · tree-right)', '진행트리 오른쪽 (PR · process-tree-right)',
+  '그 밖의 레이아웃 이름 또는 ID(' + Object.keys(TEMPLATE_IDS).join('·') + ')',
 ];
 
 export class TemplateError extends Error {}
@@ -88,6 +90,9 @@ export function resolveTemplateName(name: string): string {
   const raw = String(name ?? '').trim();
   if (!raw) throw new TemplateError('템플릿 이름이 비어 있습니다.');
   const key = raw.toLowerCase();
+  // 짧은 ID (TP·PT·TR…, 대소문자 무관) — declaration.ts TEMPLATE_IDS
+  const byId = TEMPLATE_IDS[raw.toUpperCase()];
+  if (byId) return byId;
   const alias = ALIASES[raw] ?? ALIASES[key];
   if (alias) return alias;
   if (LEVEL_PATTERNS[key] || LAYOUTS.has(key)) return key;
@@ -120,7 +125,7 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedTemplate {
   const out: ResolvedTemplate = {};
   const skipped: string[] = [];
 
-  const tpl = emm.levels ? undefined : emm.template?.trim();
+  const tpl = emm.levels ? undefined : expandTemplateId(emm.template?.trim());
   if (tpl) {
     const pattern = LEVEL_PATTERNS[tpl];
     if (pattern) {
@@ -152,7 +157,7 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedTemplate {
 
       for (const lv of declared) {
         const spec = emm.levels[lv];
-        const layout = spec.layout;
+        const layout = expandTemplateId(spec.layout);
         if (layout && LAYOUTS.has(layout)) {
           if (lv === 1) {
             out.editor = { layoutType: layout as LayoutType };

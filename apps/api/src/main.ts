@@ -1,11 +1,12 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import type { AppEnv } from './config/env.validation';
 import { VaultService } from './vault/vault.service';
+import { PRM_SUFFIX } from './mcp/oauth';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
@@ -40,7 +41,18 @@ async function bootstrap() {
   app.set('trust proxy', trustProxy);
 
   // 모든 라우트에 /v1 프리픽스 (api-spec.md 기준: https://api.../v1)
-  app.setGlobalPrefix('v1');
+  //
+  // ★ **well-known 두 자리만 예외다** (2026-09-06, MCP 3단계).
+  //   RFC 9728 의 보호 자원 메타데이터는 규격이 **도메인 뿌리부터** 못 박은
+  //   주소라 `/v1` 을 붙일 수 없다. 빼는 것을 잊으면 AI 클라이언트가 404 를
+  //   받고 **왜인지 모른 채 연결에 실패한다** — 그 화면에는 "연결할 수
+  //   없습니다" 한 줄만 뜬다.
+  app.setGlobalPrefix('v1', {
+    exclude: [
+      { path: `${PRM_SUFFIX}/v1/mcp`, method: RequestMethod.GET },
+      { path: PRM_SUFFIX, method: RequestMethod.GET },
+    ],
+  });
 
   // DTO 검증 전역 적용 — 정의되지 않은 필드는 제거, 타입 자동 변환
   app.useGlobalPipes(

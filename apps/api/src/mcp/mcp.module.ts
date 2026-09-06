@@ -6,6 +6,7 @@ import { McpAuthGuard } from './mcp-auth.guard';
 import { McpController } from './mcp.controller';
 import { McpToolsService } from './mcp-tools';
 import { McpTokensController } from './mcp-tokens.controller';
+import { OAuthMetadataController } from './oauth-metadata.controller';
 
 /**
  * MCP 커넥터 (1단계 create_map · 2단계 list_maps/get_map) — docs/04-extensions/ai/mcp-connector.md
@@ -19,7 +20,7 @@ import { McpTokensController } from './mcp-tokens.controller';
  */
 @Module({
   imports: [MapsModule, FoldersModule], // 폴더는 list_maps 가 이름을 보여 주는 데 쓴다
-  controllers: [McpController, McpTokensController],
+  controllers: [McpController, McpTokensController, OAuthMetadataController],
   providers: [ApiTokenService, McpToolsService, McpAuthGuard],
 })
 export class McpModule {}

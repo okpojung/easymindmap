@@ -80,6 +80,12 @@ interface EditorUiState {
   // 문서함(서버 맵 목록)을 편집 영역에 열어 둔 상태 (2026-08-02).
   // 팝업 모달 대신 편집 영역을 차지한다 — 닫으면 원래 화면으로 돌아온다.
   browserOpen: boolean;
+  /**
+   * 히스토리 패널이 열리면 **이 버전의 이름 입력창을 바로 연다** (2026-09-06,
+   * 13a §3.2 ②) — 툴바의 "☆ 이 버전 보관" 이 넣고, 패널이 읽으면 비운다.
+   */
+  historyPinTarget: number | null;
+  setHistoryPinTarget: (v: number | null) => void;
 
   setThemeName: (v: ThemeName) => void;
   setLayoutType: (v: LayoutType) => void;
@@ -177,6 +183,8 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
     outlineFocusId: s.mainView === 'map' ? captureOutlineFocus() : s.outlineFocusId,
   })),
   setBrowserOpen: (browserOpen) => set({ browserOpen }),
+  historyPinTarget: null,
+  setHistoryPinTarget: (historyPinTarget) => set({ historyPinTarget }),
   setShowTags: (showTags) => set({ showTags }),
   toggleTagHidden: (tag) =>
     set((s) => ({

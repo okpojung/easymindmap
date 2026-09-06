@@ -180,6 +180,8 @@ export async function saveCurrentMap(
       throw err;
     }
     useCloudStore.getState().link(id, res.updatedAt);
+    // 명시적 저장이 만든 버전 번호 — 툴바의 "☆ 이 버전 보관" 이 쓴다 (13a §3.2 ②)
+    if (res.version) useCloudStore.getState().setLastSavedVersion(res.version);
     // 이 문서를 그 맵에 저장했으니 이제 그 맵의 문서다 (자동저장 출처 검사)
     useDocumentStore.getState().setDocOrigin(id);
     useAutosaveStore.getState().setSaveState('saved');

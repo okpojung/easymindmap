@@ -13,8 +13,30 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useCloudStore } from '@/stores/cloudStore';
-import { cloudApi, CloudError, type MapVersionItem } from '@/services/cloud/apiClient';
+import { useEditorUiStore } from '@/stores/editorUiStore';
+import {
+  cloudApi, CloudError,
+  type MapVersionItem, type VersionPinInfo, type VersionPrunePreview,
+} from '@/services/cloud/apiClient';
 import { openMapInNewTab } from '@/services/cloud/mapSession';
+
+// 영구보관(별표) — 13a §3 (2026-09-06).
+//   · **이름을 붙이는 것이 곧 보관하는 것이다.** 버튼은 하나(☆)이고, 누르면
+//     이름 입력창이 그 자리에 뜬다. 기본값은 시각이 든 문구 — 그대로 [보관].
+//   · 상한(개설자 요금제)에 닿으면 저장이 아니라 **별표만** 막힌다 — 어느
+//     것을 해제하고 대신 보관할지 그 자리에서 고른다(§3.3).
+//   · 해제는 경고를 띄운다(§3.4). 보관 기간이 이미 지난 버전이면 다음
+//     정리에서 사라진다고 말한다.
+//   · "곧 정리되는 버전" 카드(§3.2 ③) — 사용자가 "무엇을 남길까" 를
+//     생각하는 유일한 순간. 서버의 정리 미리보기(expiring)로 그린다.
+
+/** 기본 이름 — "2026-09-06 오후 3:25 버전" */
+function defaultLabel(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const time = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${time} 버전`;
+}
 
 // 제목_history_YYMMDD_HHMM — 같은 날 여러 번 복원해도 구분되도록 분까지
 function historyTitle(base: string, iso: string): string {
@@ -29,9 +51,19 @@ function historyTitle(base: string, iso: string): string {
 export function HistoryPanel({ t }: { t: ThemeTokens }) {
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
   const [versions, setVersions] = useState<MapVersionItem[] | null>(null);
+  const [pin, setPin] = useState<VersionPinInfo | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busyVer, setBusyVer] = useState<number | null>(null);
   const [msg, setMsg] = useState('');
+  // 별표 흐름 — 한 번에 하나만 열린다
+  const [naming, setNaming] = useState<{ version: number; label: string; rename: boolean; swap: number | null; full: boolean } | null>(null);
+  const [unpinning, setUnpinning] = useState<number | null>(null);
+  // 곧 정리되는 버전 (13a §3.2 ③)
+  const [preview, setPreview] = useState<VersionPrunePreview | null>(null);
+  const [noticeDismissed, setNoticeDismissed] = useState(false);
+  const [keep, setKeep] = useState<Set<number>>(new Set());
+  const pinTarget = useEditorUiStore((s) => s.historyPinTarget);
+  const setPinTarget = useEditorUiStore((s) => s.setHistoryPinTarget);
 
   const flash = (m: string) => {
     setMsg(m);
@@ -42,15 +74,114 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
     if (!cloudMapId) { setVersions(null); return; }
     setErr(null);
     try {
-      const { versions: list } = await cloudApi.listVersions(cloudMapId);
+      const { versions: list, pin: info } = await cloudApi.listVersions(cloudMapId);
       setVersions(list);
+      setPin(info ?? null);
+      // 곧 정리되는 버전 — 칸이 있는 서버에서만 묻는다. 실패해도 목록은 산다.
+      if (info?.ready) {
+        cloudApi.prunePreview(cloudMapId).then(setPreview).catch(() => setPreview(null));
+      } else {
+        setPreview(null);
+      }
     } catch (e) {
       setVersions([]);
       setErr(e instanceof CloudError ? e.message : '이력을 불러오지 못했습니다.');
     }
   }, [cloudMapId]);
 
-  useEffect(() => { void load(); }, [load]);
+  // 저장이 일어나면(lastSavedAt) 목록을 다시 읽는다 — 패널을 열어 둔 채
+  // 저장해도 방금 생긴 버전이 곧바로 보인다
+  const lastSavedAt = useCloudStore((s) => s.lastSavedAt);
+  useEffect(() => { void load(); }, [load, lastSavedAt]);
+
+  // 툴바의 "☆ 이 버전 보관" — 그 버전이 목록에 오면 이름 입력창을 연다.
+  // 아직 목록에 없으면(방금 저장, 다시 읽는 중) 기다린다 — 비우지 않는다.
+  useEffect(() => {
+    if (pinTarget === null || !versions) return;
+    const v = versions.find((x) => x.version === pinTarget);
+    if (!v) return;
+    setPinTarget(null);
+    if (!v.pinned) setNaming({ version: v.version, label: defaultLabel(v.createdAt), rename: false, swap: null, full: false });
+  }, [pinTarget, versions, setPinTarget]);
+
+  // ── 영구보관 ────────────────────────────────────────────────
+  const startPin = (v: MapVersionItem) => {
+    setUnpinning(null);
+    setNaming({
+      version: v.version,
+      label: v.pinned ? (v.label ?? defaultLabel(v.createdAt)) : defaultLabel(v.createdAt),
+      rename: !!v.pinned, swap: null, full: false,
+    });
+  };
+  const pinned = (versions ?? []).filter((v) => v.pinned);
+  const isFull = pin?.limit !== null && pin?.limit !== undefined && pinned.length >= pin.limit;
+
+  const commitPin = async () => {
+    if (!cloudMapId || !naming) return;
+    setBusyVer(naming.version);
+    try {
+      // 가득 찼으면(§3.3) 고른 것을 먼저 해제하고 보관한다
+      if (!naming.rename && naming.full) {
+        if (naming.swap === null) { flash('해제할 버전을 골라 주세요.'); return; }
+        await cloudApi.unpinVersion(cloudMapId, naming.swap);
+      }
+      const r = await cloudApi.pinVersion(cloudMapId, naming.version, naming.label.trim() || undefined);
+      flash(r.renamed ? `이름을 '${r.label}' 로 바꿨습니다.` : `★ '${r.label ?? `v${naming.version}`}' 로 보관했습니다 — 정리되지 않습니다.`);
+      setNaming(null);
+      // 방금 저장한 버전을 보관했으면 툴바의 링크도 내린다
+      if (useCloudStore.getState().lastSavedVersion === naming.version) useCloudStore.getState().setLastSavedVersion(null);
+      void load();
+    } catch (e) {
+      if (e instanceof CloudError && e.status === 409 && !naming.rename) {
+        // 상한 — 그 자리에서 교체를 묻는다 (저장이 아니라 별표만 막힌 것)
+        setNaming({ ...naming, full: true });
+        return;
+      }
+      flash('⚠ ' + (e instanceof CloudError ? e.message : '보관하지 못했습니다.'));
+    } finally {
+      setBusyVer(null);
+    }
+  };
+
+  const commitUnpin = async (version: number) => {
+    if (!cloudMapId) return;
+    setBusyVer(version);
+    try {
+      await cloudApi.unpinVersion(cloudMapId, version);
+      setUnpinning(null);
+      flash('보관을 해제했습니다 — 이제 자동 정리 대상입니다.');
+      void load();
+    } catch (e) {
+      flash('⚠ ' + (e instanceof CloudError ? e.message : '해제하지 못했습니다.'));
+    } finally {
+      setBusyVer(null);
+    }
+  };
+
+  /** 보관 기간이 이미 지났나 — 해제 경고에 "다음 정리에서 삭제" 를 붙인다 */
+  const pastRetention = (v: MapVersionItem) =>
+    pin?.versionDays !== null && pin?.versionDays !== undefined
+    && Date.now() - new Date(v.createdAt).getTime() > pin.versionDays * 86_400_000;
+
+  // "곧 정리되는 버전" 카드 — 남길 항목에 별표를 한꺼번에
+  const keepChecked = async () => {
+    if (!cloudMapId || !preview) return;
+    const targets = preview.expiring.filter((e) => keep.has(e.version));
+    if (!targets.length) { flash('남길 버전을 골라 주세요.'); return; }
+    let done = 0;
+    for (const e of targets) {
+      try {
+        await cloudApi.pinVersion(cloudMapId, e.version, defaultLabel(e.createdAt));
+        done += 1;
+      } catch (err) {
+        flash('⚠ ' + (err instanceof CloudError ? err.message : '보관하지 못했습니다.'));
+        break;
+      }
+    }
+    if (done) flash(`★ ${done}개를 보관했습니다 — 정리되지 않습니다.`);
+    setKeep(new Set());
+    void load();
+  };
 
   // 특정 버전 → 새 맵으로 만들어 **브라우저 새 탭**에서 연다.
   // 현재 탭에서 편집하던 맵은 그대로 남는다 (2026-08-02 사용자 결정).
@@ -144,6 +275,44 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
         textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
       }}>저장 버전 이력</div>
 
+      {/* 곧 정리되는 버전 (13a §3.2 ③) — 7일 유예 안에 별표로 남길 수 있다 */}
+      {preview && preview.expiring.length > 0 && !noticeDismissed && pin?.canPin && (
+        <div data-testid="history-prune-notice" style={{
+          marginBottom: 10, padding: '9px 10px', borderRadius: 8,
+          background: t.surfaceAlt, border: `1px solid ${t.primary}`,
+          fontSize: 11.5, color: t.text, lineHeight: 1.6,
+        }}>
+          <div style={{ fontWeight: 700 }}>곧 정리되는 버전이 있습니다</div>
+          <div style={{ color: t.textMuted, fontSize: 11 }}>
+            보관 기간 {preview.versionDays}일이 지난 버전 <b>{preview.expiring.length}개</b>가
+            {' '}{new Date(Math.min(...preview.expiring.map((e) => new Date(e.deleteAt).getTime()))).toLocaleDateString()}부터 정리됩니다.
+            남길 것에 표시하고 [남길 항목 보관]을 누르세요.
+          </div>
+          <div style={{ margin: '6px 0' }}>
+            {preview.expiring.map((e) => (
+              <label key={e.version} data-testid="history-prune-item" style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
+                <input type="checkbox" checked={keep.has(e.version)}
+                  onChange={(ev) => setKeep((cur) => { const n = new Set(cur); if (ev.target.checked) n.add(e.version); else n.delete(e.version); return n; })} />
+                <span>v{e.version} · {label({ createdAt: e.createdAt } as MapVersionItem)}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+            <button data-testid="history-prune-dismiss" onClick={() => setNoticeDismissed(true)}
+              style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, cursor: 'pointer' }}>그냥 정리</button>
+            <button data-testid="history-prune-keep" onClick={() => void keepChecked()}
+              style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none', background: t.primary, color: '#fff', cursor: 'pointer', fontWeight: 700 }}>남길 항목 보관</button>
+          </div>
+        </div>
+      )}
+
+      {pin?.ready && pin.limit !== null && versions && versions.length > 0 && (
+        <div data-testid="history-pin-count" style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 6 }}>
+          ★ 보관 {pinned.length} / {pin.limit}
+          {pin.versionDays !== null && <> · 자동 버전은 {pin.versionDays}일 보관</>}
+        </div>
+      )}
+
       {!cloudMapId ? (
         <div
           data-history-placeholder
@@ -177,8 +346,8 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
       ) : (
         <div data-testid="history-list">
           {versions.map((v) => (
+            <div key={v.version}>
             <div
-              key={v.version}
               data-testid="history-item"
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5,
@@ -186,9 +355,36 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
                 background: t.surfaceAlt, border: `1px solid ${t.border}`,
               }}
             >
+              {pin?.ready && (
+                // ☆ 보관 · ★ 해제 — 편집 권한이 없으면(읽기만) 표시만 한다
+                <button
+                  data-testid={v.pinned ? 'history-unpin' : 'history-pin'}
+                  disabled={!pin.canPin || busyVer !== null}
+                  title={!pin.canPin ? (v.pinned ? '보관된 버전' : '읽기만 권한으로는 보관할 수 없습니다')
+                    : v.pinned ? '보관 해제' : '이 버전을 이름 붙여 영구보관합니다 — 정리되지 않습니다'}
+                  onClick={() => (v.pinned ? (setNaming(null), setUnpinning(v.version)) : startPin(v))}
+                  style={{
+                    flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: 'none',
+                    background: 'transparent', cursor: pin.canPin ? 'pointer' : 'default',
+                    color: v.pinned ? '#D97706' : t.textSubtle, fontSize: 15, lineHeight: 1, padding: 0,
+                  }}
+                >{v.pinned ? '★' : '☆'}</button>
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
+                {v.pinned && (
+                  // 붙인 이름 — 개설자 또는 내가 붙인 것이면 눌러서 바꾼다
+                  <div data-testid="history-label"
+                    title={pin?.isOwner || v.pinnedByMe ? '이름 바꾸기' : '다른 사람이 보관한 버전'}
+                    onClick={() => { if (pin?.canPin && (pin.isOwner || v.pinnedByMe)) startPin(v); }}
+                    style={{
+                      fontSize: 11.5, color: '#B45309', fontWeight: 700,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      cursor: pin?.canPin && (pin.isOwner || v.pinnedByMe) ? 'text' : 'default',
+                    }}
+                  >{v.label || '보관된 버전'}</div>
+                )}
                 <div style={{
-                  fontSize: 11.5, color: t.text, fontWeight: 600,
+                  fontSize: 11.5, color: t.text, fontWeight: v.pinned ? 500 : 600,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {label(v)}
@@ -237,6 +433,72 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
                 {busyVer === v.version ? '여는 중…' : '새 탭으로'}
               </button>
             </div>
+            {naming?.version === v.version && (
+              // 이름 입력 = 보관 (§3.2 ①). 가득 찼으면 교체할 것을 고른다(§3.3)
+              <div data-testid="history-pin-dialog" style={{
+                margin: '-2px 0 8px', padding: '8px 10px', borderRadius: 8,
+                border: `1px solid ${t.primary}`, background: t.surface, fontSize: 11.5, lineHeight: 1.6,
+              }}>
+                <div style={{ fontWeight: 700 }}>{naming.rename ? '이름 바꾸기' : '이 버전을 보관합니다'}</div>
+                <input
+                  data-testid="history-pin-label"
+                  autoFocus
+                  value={naming.label}
+                  maxLength={120}
+                  onChange={(e) => setNaming({ ...naming, label: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void commitPin(); if (e.key === 'Escape') setNaming(null); }}
+                  style={{ width: '100%', boxSizing: 'border-box', margin: '4px 0', padding: '4px 6px', fontSize: 12, borderRadius: 6, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text }}
+                />
+                {!naming.rename && !naming.full && (
+                  <div style={{ color: t.textMuted, fontSize: 11 }}>보관한 버전은 정리되지 않습니다.</div>
+                )}
+                {naming.full && (
+                  <div data-testid="history-pin-full" style={{ color: t.textMuted, fontSize: 11 }}>
+                    보관 버전이 <b>{pin?.limit}개</b>로 가득 찼습니다. 하나를 해제하고 이 버전을 보관하시겠습니까?
+                    <select
+                      data-testid="history-pin-swap"
+                      value={naming.swap ?? ''}
+                      onChange={(e) => setNaming({ ...naming, swap: e.target.value ? Number(e.target.value) : null })}
+                      style={{ display: 'block', width: '100%', margin: '4px 0', fontSize: 11.5, padding: 3, borderRadius: 6, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text }}
+                    >
+                      <option value="">해제할 버전 고르기…</option>
+                      {pinned.filter((p) => pin?.isOwner || p.pinnedByMe).map((p) => (
+                        <option key={p.version} value={p.version}>{p.label || `v${p.version}`} ({label(p)})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
+                  <button data-testid="history-pin-cancel" onClick={() => setNaming(null)}
+                    style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, cursor: 'pointer' }}>취소</button>
+                  <button data-testid="history-pin-commit" disabled={busyVer !== null} onClick={() => void commitPin()}
+                    style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none', background: t.primary, color: '#fff', cursor: 'pointer', fontWeight: 700 }}>
+                    {naming.rename ? '바꾸기' : naming.full ? '교체하여 보관' : '보관'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {unpinning === v.version && (
+              // 해제 경고 (§3.4)
+              <div data-testid="history-unpin-dialog" style={{
+                margin: '-2px 0 8px', padding: '8px 10px', borderRadius: 8,
+                border: `1px solid ${t.danger}`, background: t.surface, fontSize: 11.5, lineHeight: 1.6,
+              }}>
+                보관을 해제하면 이 버전은 자동 정리 대상이 됩니다.
+                {pastRetention(v) && (
+                  <div data-testid="history-unpin-past" style={{ color: t.danger }}>
+                    보관 기간({pin?.versionDays}일)이 이미 지난 버전이므로 다음 정리에서 삭제됩니다.
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
+                  <button data-testid="history-unpin-cancel" onClick={() => setUnpinning(null)}
+                    style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, cursor: 'pointer' }}>취소</button>
+                  <button data-testid="history-unpin-commit" disabled={busyVer !== null} onClick={() => void commitUnpin(v.version)}
+                    style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none', background: t.danger, color: '#fff', cursor: 'pointer', fontWeight: 700 }}>해제</button>
+                </div>
+              </div>
+            )}
+            </div>
           ))}
         </div>
       )}
@@ -251,6 +513,7 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
         marginTop: 10, fontSize: 11, color: t.textSubtle, lineHeight: 1.6,
       }}>
         버전은 <b>☁ 저장·맵 닫기</b> 시점마다 쌓입니다(자동저장은 제외).
+        {pin?.ready && <> 오래된 자동 버전은 정리되지만 <b>☆ 로 이름을 붙인 버전은 남습니다.</b></>}
         지금 편집 중인 내용을 되돌리려면 <b>되돌리기(Ctrl+Z)</b>를 쓰세요 —
         이 세션 안에서 최대 <b>99단계</b>입니다.
         <br />

@@ -44,6 +44,9 @@ export function MapActions(
   const readOnlyInfo = useCloudStore((s) => s.readOnlyInfo);
   const cloudTitle = useCloudStore((s) => s.cloudTitle);
   const lastSavedAt = useCloudStore((s) => s.lastSavedAt);
+  const lastSavedVersion = useCloudStore((s) => s.lastSavedVersion);
+  const setNavTab = useEditorUiStore((s) => s.setNavTab);
+  const setHistoryPinTarget = useEditorUiStore((s) => s.setHistoryPinTarget);
   const busy = useCloudStore((s) => s.busy);
   const mapTitle = useDocumentStore((s) => s.map.title);
   const setBrowserOpen = useEditorUiStore((s) => s.setBrowserOpen);
@@ -155,6 +158,21 @@ export function MapActions(
       >
         <I.Cloud size={15} />{!iconOnly && ' 저장'}
       </button>
+      )}
+      {/* 저장 직후 — "이 버전 보관" (13a §3.2 ②). 큰 작업을 마친 순간이 보관
+          의사가 생기는 자리다. 모달을 띄우지 않고 링크 하나만 둔다 — 누르면
+          히스토리 탭이 열리며 그 버전의 이름 입력창이 바로 뜬다. */}
+      {cloudMapId && lastSavedVersion !== null && !readOnlyInfo && (
+        <button
+          data-testid="map-pin-last"
+          title={`방금 저장한 버전(v${lastSavedVersion})에 이름을 붙여 영구보관합니다 — 보관한 버전은 정리되지 않습니다`}
+          onClick={() => { setHistoryPinTarget(lastSavedVersion); setNavTab('history'); }}
+          style={{
+            ...btn, padding: '0 8px', cursor: 'pointer',
+            background: 'transparent', color: t.textMuted,
+            border: `1px dashed ${t.border}`, fontWeight: 500,
+          }}
+        >☆{!iconOnly && ' 이 버전 보관'}</button>
       )}
 
       {/* 다른 이름으로 저장 (2026-08-03 요청) — 서버 맵과 연결된 상태에서만.

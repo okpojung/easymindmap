@@ -1385,6 +1385,36 @@ export class MapsService {
     return rows[0]?.ok === true;
   }
 
+  /**
+   * 못 여는 이유를 **아는 만큼만** 말한다 (2026-09-06 사용자 보고).
+   *
+   * 기본 문장은 "맵을 찾을 수 없거나 권한이 없습니다" 다 — 없는 맵과 남의
+   * 맵을 **일부러 구분하지 않는다**(구분하면 남의 맵 id 가 존재하는지
+   * 알려 주는 셈이다).
+   *
+   * ★ 그런데 **내가 주인인데 지운 맵**은 이야기가 다르다. 그건 내 것이므로
+   *   알려 줘도 새는 것이 없고, 그 한 마디가 없으면 사용자는 **목록에 없는
+   *   맵을 목록에서 찾는다.** 실제로 그렇게 겪었다(2026-09-06 보고): 열어 둔
+   *   탭을 새로고침할 때마다 "목록에서 다시 선택해 주세요" 가 떴는데,
+   *   그 맵은 이미 지운 맵이었다.
+   *
+   * ★ **"휴지통에서 되살리세요" 라고 말하지 않는다.** 삭제는 안에서만
+   *   soft-delete(`deleted_at`)일 뿐, **되살리는 화면도 API 도 없다**(실측).
+   *   있지도 않은 곳을 가리키면 사용자는 그것을 찾느라 한 번 더 헤맨다.
+   *
+   * 실패한 뒤에만 한 번 더 묻는다 — 정상 경로에는 질의가 늘지 않는다.
+   */
+  private async whyNotAccessible(userId: string, mapId: string): Promise<string> {
+    const { rows } = await this.db.query<{ deleted_at: Date | null }>(
+      `SELECT deleted_at FROM public.maps WHERE id = $1 AND owner_id = $2`,
+      [mapId, userId],
+    );
+    if (rows[0]?.deleted_at) {
+      return '이미 삭제한 맵입니다 — 지운 맵을 되살리는 기능은 아직 없습니다.';
+    }
+    return '맵을 찾을 수 없거나 권한이 없습니다.';
+  }
+
   private async requireOwnedMap(userId: string, mapId: string): Promise<MapRow> {
     const { rows } = await this.db.query<MapRow>(
       `SELECT * FROM public.maps WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL`,
@@ -1406,7 +1436,7 @@ export class MapsService {
     userId: string, mapId: string, need: 'read' | 'write' = 'read',
   ): Promise<MapRow & { access_role: MapRole }> {
     const map = await findAccessibleMap<MapRow>(this.db, mapId, userId);
-    if (!map) throw new NotFoundException('맵을 찾을 수 없거나 권한이 없습니다.');
+    if (!map) throw new NotFoundException(await this.whyNotAccessible(userId, mapId));
     if (need === 'write' && !canWrite(map.access_role)) {
       throw new ForbiddenException('이 맵에는 읽기 권한만 있습니다. 저장할 수 없습니다.');
     }

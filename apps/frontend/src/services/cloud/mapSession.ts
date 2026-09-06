@@ -340,6 +340,28 @@ export const MAP_URL_PARAM = 'map';
 /** 부팅 시 URL 에 지정된 맵 id (없으면 null) — 모듈 로드 시 1회 확정 */
 export const initialMapId: string | null = readMapIdFromUrl();
 
+/**
+ * ★ **못 연 맵 id 는 주소에서 지운다** (2026-09-06 사용자 보고).
+ *
+ * `?map=<id>` 는 새로고침해도 그 맵을 다시 여는 통로다. 그래서 그 맵이
+ * 사라지면(휴지통·삭제) **새로고침할 때마다 같은 오류가 뜬다.** 탭을
+ * 닫기 전에는 벗어날 길이 없다 — 실제로 그렇게 보고를 받았다.
+ *
+ * 주소만 지운다. 이번 화면의 안내는 그대로 두고(무슨 일이 있었는지는
+ * 말해 줘야 한다), **다음 새로고침부터** 깨끗한 편집기로 뜬다.
+ *
+ * `initialMapId` 는 모듈 로드 때 이미 확정됐으므로 이 호출이 지금 화면의
+ * 동작을 바꾸지는 않는다 — 그게 의도다.
+ */
+export function forgetUrlMapId(): void {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(MAP_URL_PARAM)) return;
+    url.searchParams.delete(MAP_URL_PARAM);
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+  } catch { /* 주소를 못 고쳐도 안내는 떠 있다 */ }
+}
+
 function readMapIdFromUrl(): string | null {
   try {
     const v = new URLSearchParams(window.location.search).get(MAP_URL_PARAM);

@@ -107,6 +107,19 @@ try {
     check('★ client_id 없는 토큰은 401', r.status, 401);
   }
 
+  // ── ④-b ★★ **자리표시가 그대로 온 경우 — 틀린 진단을 하지 않는다** ──
+  // 실측(2026-09-06): `.mcp.json` 의 `Bearer ${EMM_MCP_TOKEN}` 이 환경
+  // 변수 없이 그대로 나갔는데 서버가 "OAuth 커넥터가 설정되지 않았습니다"
+  // 라고 답했다. 사용자가 할 일은 환경 변수 한 줄인데 서버 설정을 보라고
+  // 가리키는 안내였다.
+  for (const bad of ['${EMM_MCP_TOKEN}', 'emm', 'paste-your-token-here']) {
+    const r = await rpc(bad, { jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    check(`★ ${bad} → 401`, r.status, 401);
+    check('  ★ 서버 탓을 하지 않는다', (r.body?.message ?? '').includes('OAuth 커넥터가 설정되지'), false);
+    check('  ★ 토큰 형식을 짚어 준다', (r.body?.message ?? '').includes('토큰 형식이 아닙니다'), true);
+    check('  자리표시를 의심하라고 말한다', (r.body?.message ?? '').includes('자리표시'), true);
+  }
+
   // ── ⑤ OAuth 토큰은 통한다 + 사용자가 JIT 로 생긴다 ─────────────
   {
     const tok = sign({ client_id: 'cli_test', scope: 'openid email' });
@@ -140,8 +153,15 @@ try {
   await start({ GOTRUE_PUBLIC_URL: '' });
   check('메타데이터는 404 (없는 것을 있는 척하지 않는다)',
     (await fetch(BASE + '/.well-known/oauth-protected-resource/v1/mcp')).status, 404);
-  check('★ OAuth 토큰도 401 (문을 안 열었다)',
-    (await rpc(sign({ client_id: 'c' }), { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status, 401);
+  {
+    const r = await rpc(sign({ client_id: 'c' }), { jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    check('★ OAuth 토큰도 401 (문을 안 열었다)', r.status, 401);
+    // JWT 는 맞으므로 이때는 "서버가 안 열었다" 가 **사실에 맞는 진단**이다
+    check('  이때는 서버 탓이 맞다', (r.body?.message ?? '').includes('OAuth 커넥터가 설정되지'), true);
+    const ph = await rpc('${EMM_MCP_TOKEN}', { jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    check('  ★ 그래도 자리표시에는 토큰 형식을 짚는다',
+      (ph.body?.message ?? '').includes('토큰 형식이 아닙니다'), true);
+  }
   stop();
 
   // ══ AUTH_MODE=dev — 둘 다 열리지 않는다 (§3) ═══════════════════

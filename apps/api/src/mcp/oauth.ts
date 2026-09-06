@@ -111,6 +111,26 @@ export function wwwAuthenticate(
 }
 
 /**
+ * 이 문자열이 **JWT 모양이나 되는가** — 점 두 개로 갈린 세 조각.
+ *
+ * ★ 왜 필요한가 — **틀린 진단을 하지 않기 위해서다** (2026-09-06 실측).
+ *   `emm_` 로 시작하지 않는 토큰을 곧바로 "OAuth 토큰" 으로 보고 다루면,
+ *   **PAT 을 잘못 넣은 사람에게 "서버가 OAuth 를 설정하지 않았다" 고
+ *   말하게 된다.** 원인은 그 사람의 토큰인데 서버를 탓하는 안내다.
+ *
+ *   실제로 그렇게 겪었다: `.mcp.json` 의 `Bearer ${EMM_MCP_TOKEN}` 이
+ *   환경 변수가 없어 **자리표시 그대로** 나갔고, 서버는 "OAuth 커넥터가
+ *   설정되지 않았습니다" 라고 답했다. 사용자가 할 일은 환경 변수 한 줄인데
+ *   그 문장은 서버 설정을 보라고 가리킨다.
+ *
+ *   그래서 **모양부터 가른다.** JWT 도 아니고 `emm_` 도 아니면, 그것은
+ *   OAuth 이야기가 아니라 **토큰이 잘못 들어온 것**이다.
+ */
+export function looksLikeJwt(raw: string): boolean {
+  const parts = raw.split('.');
+  return parts.length === 3 && parts.every((p) => /^[A-Za-z0-9_-]+$/.test(p));
+}
+/**
  * `error_description` 에 넣어도 되는 글자만 남긴다.
  *
  * ★ **한글을 넣으면 서버가 500 으로 죽는다** (실측 2026-09-06).

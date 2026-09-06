@@ -1371,6 +1371,62 @@ curl -s -D- -o /dev/null -X POST https://api-dev.mindmap.ai.kr/v1/mcp \
 `curl` 로는 그 화면의 흐름을 재현할 수 없다(1단계를 Claude Code 로
 판정했던 것과 같다).
 
+### 1.9. ②③ 만으로는 붙지 않는다 — 실측으로 드러난 것 (2026-09-06)
+
+§1.8 의 환경변수를 넣고 재배포한 뒤 끝에서 끝까지 재 봤다. **켜지기는
+켜졌는데 아직 붙지 않는다.** 자세한 근거는
+[`mcp-connector.md` §10.5](../04-extensions/ai/mcp-connector.md).
+
+**⑥ 인가 서버 메타데이터가 상대 경로다 — 환경변수 하나가 더 필요하다**
+
+```bash
+curl -s https://auth-dev.mindmap.ai.kr/.well-known/oauth-authorization-server
+# {"issuer":"","authorization_endpoint":"/oauth/authorize", …}   ← 이러면 못 붙는다
+```
+
+GoTrue 는 모든 주소를 `issuer + "/oauth/…"` 로 만든다(`internal/api/jwks.go:68`).
+`issuer` 가 비면 전부 상대 경로가 된다. **`easymindmap-auth` 앱에 추가**:
+
+```
+GOTRUE_JWT_ISSUER=https://auth-dev.mindmap.ai.kr
+```
+
+> **기존 로그인은 끊기지 않는다.** `iss` 를 검사하는 곳이 우리 API·프런트엔드·
+> GoTrue 어디에도 없다(mcp-connector.md §10.5 ③ 에 근거를 표로 적었다).
+> 새로 발급되는 토큰에만 값이 채워진다.
+
+고쳐졌는지 확인 — `issuer` 가 절대 주소이고 엔드포인트가 `https://` 로
+시작하면 된 것이다.
+
+```bash
+curl -s https://auth-dev.mindmap.ai.kr/.well-known/oauth-authorization-server \
+  | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["issuer"],d["authorization_endpoint"],d["token_endpoint"])'
+```
+
+**⑦ 로그인·동의 화면 자리를 알려 줘야 한다**
+
+```bash
+# 지금은 이렇게 되돌려 보낸다
+# 302 …?error=server_error&error_description=oauth+authorization+path+not+configured
+```
+
+**`easymindmap-auth` 앱에 추가**(경로는 프런트엔드가 그 화면을 놓을 자리):
+
+```
+GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH=/oauth/consent
+```
+
+**⑧ ★ 그런데 그 화면은 아직 없다 — 환경변수로 끝나지 않는다**
+
+GoTrue 에는 **동의 화면이 들어 있지 않다.** `/oauth/authorize` 는 요청을
+DB 에 적고 `GOTRUE_SITE_URL`(`https://pro-dev.mindmap.ai.kr`) + 위 경로로
+**떠넘길 뿐**이다. 그 화면은 **우리 프런트엔드가 만들어야 한다** —
+저장소에서 할 일이지 서버 설정으로 될 일이 아니다(설계·해야 할 일 목록은
+mcp-connector.md §10.5 ②).
+
+즉 지금 순서는 이렇다: **⑥⑦ 환경변수(사람) → 동의 화면 구현(저장소) →
+그다음에야 claude.ai 에서 눌러 볼 수 있다.**
+
 ## 2. 백업 — `.env` (APP_KEY) 최우선
 
 ```bash

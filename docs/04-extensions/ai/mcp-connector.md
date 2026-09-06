@@ -920,7 +920,12 @@ client_id 없음 → 그냥 브라우저 로그인 세션 토큰   → 막는다
 
 ### 10.4 남은 것 — **사람이 하는 일**
 
-우리 쪽은 끝났다. GoTrue 에서 OAuth 서버를 켜야 붙는다.
+> ⚠️ **2026-09-06 실측으로 이 절의 전제가 바뀌었다.** 아래 환경변수를 넣고
+> 재배포한 뒤 실제로 재 봤더니 **환경변수 둘이 더 필요했고, 그중 하나는
+> 환경변수로 끝나지 않는다** — 동의 화면을 우리가 만들어야 한다.
+> 측정 결과는 **§10.5** 에 있다. 이 절은 그 전에 쓴 내용이다.
+
+우리 쪽은 (자원 서버는) 끝났다. GoTrue 에서 OAuth 서버를 켜야 붙는다.
 
 Coolify 의 `easymindmap-auth` 앱에 환경변수를 더하고 재배포한다.
 
@@ -941,6 +946,106 @@ curl -s https://api-dev.mindmap.ai.kr/.well-known/oauth-protected-resource/v1/mc
 **아직 확인하지 못한 것**: claude.ai 커스텀 커넥터가 이 조합으로 실제로
 붙는지는 **사람이 그 화면에서 눌러 봐야** 안다. 1단계를 Claude Code 로
 판정했던 것과 같다 — `curl` 로는 클라이언트 쪽 흐름을 재현할 수 없다.
+
+### 10.5 켜고 나서 실제로 재 봤다 — **아직 붙지 않는다** (2026-09-06)
+
+사용자가 §10.4 의 환경변수를 넣고 재배포한 뒤, 커넥터가 붙는 길을
+**끝에서 끝까지 하나씩 짚었다**. 결과를 그대로 적는다.
+
+#### ① 되는 것 — 여기까지는 확인했다
+
+| 잰 것 | 결과 |
+|---|---|
+| `GET auth/.well-known/oauth-authorization-server` | **200** — OAuth 서버가 켜졌다(그전엔 `feature_disabled` 404) |
+| `GET auth/.well-known/openid-configuration` | 200 |
+| `GET auth/.well-known/jwks.json` | 200 |
+| `GET api/.well-known/oauth-protected-resource/v1/mcp` | **200** — `authorization_servers` 가 auth 를 가리킨다 |
+| `GET api/.well-known/oauth-protected-resource` (뿌리) | 200 |
+| 토큰 없이 `POST /v1/mcp` | **401** + `WWW-Authenticate: Bearer realm="EasyMindMap MCP", resource_metadata="…/v1/mcp", scope="openid email"` |
+| **동적 등록**(DCR) `POST auth/oauth/clients/register` | **201** — `client_id` 를 돌려준다. claude.ai 의 `redirect_uri` 도 그대로 받는다 |
+
+> 사용자가 붙여 준 401(`토큰이 유효하지 않거나 만료되었습니다`)은 **환경변수가
+> 먹혔다는 증거**다. 그 전 메시지는 `이 서버는 OAuth 커넥터가 설정되지
+> 않았습니다` 였다 — 즉 `GOTRUE_PUBLIC_URL` 은 들어갔다.
+
+#### ② 막힌 곳 — 셋
+
+**막힌 곳 1. 인가 서버 메타데이터가 쓸 수 없는 모양이다 — `issuer` 가 빈 값**
+
+```json
+{"issuer":"","authorization_endpoint":"/oauth/authorize",
+ "token_endpoint":"/oauth/token","jwks_uri":"/.well-known/jwks.json", …}
+```
+
+엔드포인트가 **상대 경로**다. 클라이언트는 이것으로 로그인 주소를 만들 수
+없다 — `https://…` 가 어디서 오는지 알 길이 없다.
+
+원인은 GoTrue 소스에서 확인했다. `internal/api/jwks.go:68` 이
+`issuer := config.JWT.Issuer` 로 시작해, 77~80·114 줄이 모든 주소를
+`issuer + "/oauth/…"` 로 잇는다. `issuer` 가 비면 전부 상대 경로가 된다.
+그 설정 항목은 `internal/conf/configuration.go` 의 `JWTConfiguration.Issuer`
+= 환경변수 **`GOTRUE_JWT_ISSUER`** 인데, 우리 배포 문서에는 그 줄이 없다.
+
+**막힌 곳 2. `/oauth/authorize` 가 곧바로 오류로 되돌려 보낸다**
+
+```
+302 Location: https://claude.ai/api/mcp/auth_callback
+    ?error=server_error&error_description=oauth+authorization+path+not+configured
+```
+
+`internal/api/oauthserver/authorize.go:163` — `config.OAuthServer.AuthorizationPath`
+가 비면 이 오류다. 환경변수 **`GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH`**.
+
+**막힌 곳 3. ★ 그 설정을 채워도 끝이 아니다 — 동의 화면이 **없다****
+
+이것이 이번 실측의 핵심이고, §10.4 의 *"우리 쪽은 끝났다"* 를 뒤집는다.
+
+**GoTrue 에는 로그인·동의 화면이 들어 있지 않다.** `/oauth/authorize` 는
+요청을 DB 에 적어 두고 `SiteURL + AuthorizationPath` 로 **떠넘길 뿐**이다
+(`authorize.go:169~171`). 그 자리에 놓일 화면은 **우리 프런트엔드가
+만들어야 한다.**
+
+그 화면이 해야 할 일은 소스에서 이렇게 읽힌다(`api.go:458~461`).
+
+| 순서 | 하는 일 |
+|---|---|
+| 1 | `?authorization_id=…` 를 받는다. 로그인 안 돼 있으면 먼저 로그인시킨다 |
+| 2 | `GET auth/oauth/authorizations/{id}` (사용자 액세스 토큰) — 어느 앱이 · 무슨 범위를 달라는지 읽는다 |
+| 3 | 사람에게 보여 주고 [허용] / [거부] 를 받는다 |
+| 4 | `POST auth/oauth/authorizations/{id}/consent` `{"action":"approve"}` → 돌려주는 `redirect_url` 로 보낸다 |
+
+- 2·4 는 **`Origin` 이 `SiteURL` 허용 목록 안**이어야 한다
+  (`authorize.go:418` `validateRequestOrigin`) — 우리 프런트엔드에서 부르면
+  맞는다.
+- 인가 요청은 **10분**(`AuthorizationTTL` 기본값) 안에 처리해야 한다.
+
+#### ③ `GOTRUE_JWT_ISSUER` 를 넣으면 기존 로그인이 끊기나 — **안 끊긴다**
+
+바꾸기 전에 확인했다. `iss` 를 검사하는 곳이 **어디에도 없다.**
+
+| 검사하는 쪽 | `iss` 를 보나 |
+|---|---|
+| 우리 `AuthGuard` (`auth.guard.ts:84`) | 아니오 — `algorithms:['HS256']` + `audience:'authenticated'` 뿐 |
+| 우리 `McpAuthGuard` (`mcp-auth.guard.ts:113`) | 아니오 — 같음 |
+| GoTrue 자신 (`internal/api/auth.go:88` `parseJWTClaims`) | 아니오 — 서명·알고리즘만 본다 |
+| 프런트엔드 | 아니오 — `iss` 를 쓰는 코드가 없다 |
+
+`iss` 는 **새로 발급되는 토큰에만** 채워지고(`tokens/service.go:719·804`),
+이미 발급된 토큰은 그대로 유효하다.
+
+#### ④ 남긴 것 — 시험용 클라이언트 하나
+
+동적 등록이 되는지 재느라 dev 의 GoTrue 에 클라이언트 하나를 등록했다.
+
+```
+client_name  connector-verify-test
+client_id    1aeba8af-dd42-4102-870d-6b5769ee0bd6
+redirect_uri https://claude.ai/api/mcp/auth_callback
+```
+
+지우려면 `service_role` 키가 필요해 **내가 지우지 못했다.** 사람이 동의해야만
+토큰이 나가므로 그대로 둬도 위험하지는 않지만, 정리하려면 관리자 API 로
+지운다.
 
 ---
 

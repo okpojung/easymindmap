@@ -310,6 +310,7 @@ claude mcp add --transport http easymindmap https://api-dev.mindmap.ai.kr/v1/mcp
 | `403` "인증을 켠 배포에서만 동작합니다" | 로컬 실행(dev 모드) 서버 | 클라우드 주소(`api-dev.mindmap.ai.kr`)로 |
 | `Dynamic Client Registration rejected … Cannot POST /register` | 헤더 없이 등록돼 OAuth 를 찾음 | `--header "Authorization: Bearer emm_…"` 를 넣어 다시 add |
 | `Header 'Authorization' has invalid value` | `emm_…` 같은 **자리표시 글자를 그대로** 넣음 | 실제 토큰 원문으로 |
+| `401` **"토큰 형식이 아닙니다 … 자리표시"** | `.mcp.json` 의 `${EMM_MCP_TOKEN}` 이 **환경 변수 없이 그대로** 전송됨 (그 글자가 서버까지 옵니다) | 환경 변수 `EMM_MCP_TOKEN` 을 실제 토큰(`emm_…`)으로 두고 **새 세션** |
 | PowerShell 에서 명령이 조각남 | `\` 줄 나눔 | 한 줄로 |
 | `Failed to connect` (웹 세션) | 환경의 허용 도메인에 `api-dev.mindmap.ai.kr` 이 없음 | 네트워크 액세스 `사용자 지정` + 도메인 추가 → 새 세션 |
 | `/mcp` 를 쳤는데 커넥터 스토어가 열림 | **세션 밖**에서 침 | 첫 메시지를 보내 세션을 만든 뒤 세션 안에서 |
@@ -320,6 +321,12 @@ claude mcp add --transport http easymindmap https://api-dev.mindmap.ai.kr/v1/mcp
 | "열린 맵이 없습니다" | 앱 탭이 닫혔거나 60초 지남 | 앱에서 맵을 열고 노드를 고른 뒤 다시 |
 | 붙였다는데 화면에 안 보임 | 5초 갱신 전, 또는 다른 맵을 보고 있음 | 잠시 기다리거나 문서함에서 그 맵 열기 |
 
+> **"이 서버는 OAuth 커넥터가 설정되지 않았습니다" 가 떴다면** — 그것은
+> 서버 이야기입니다. 토큰이 아니라 **그 배포에 OAuth 가 아직 안 켜진**
+> 것이니, PAT(`emm_…`)으로 붙이거나 운영자에게 `GOTRUE_PUBLIC_URL` 을
+> 물어보세요. (2026-09-06 이전에는 **자리표시를 넣었을 때도** 이 문장이
+> 떠서 엉뚱한 곳을 보게 했습니다 — 지금은 토큰 형식을 짚어 줍니다.)
+>
 > 개발자용 상세(설계·검증 기록)는
 > [`../04-extensions/ai/mcp-connector.md`](../04-extensions/ai/mcp-connector.md)
-> §9 에 있습니다.
+> §9·§10 에 있습니다.

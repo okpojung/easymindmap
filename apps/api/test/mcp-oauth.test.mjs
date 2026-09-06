@@ -11,7 +11,7 @@
 // 설계: docs/04-extensions/ai/mcp-connector.md §11
 
 import {
-  MCP_SCOPES, MCP_SCOPE_STRING, PRM_SUFFIX,
+  MCP_SCOPES, MCP_SCOPE_STRING, PRM_SUFFIX, looksLikeJwt,
   mcpResourceUri, prmUrl, protectedResourceMetadata, requestOrigin, wwwAuthenticate,
 } from '../dist/mcp/oauth.js';
 
@@ -94,6 +94,24 @@ check('메타데이터 주소는 경로를 끼운 형태',
     'https://forced.example.com');
   check('빈 문자열은 무시한다', requestOrigin(req, '   '), 'https://api-dev.example.com');
   check('host 가 없어도 죽지 않는다', requestOrigin({ protocol: 'http' }), 'http://localhost');
+}
+
+// ── ⑥ ★ JWT 모양 가르기 — **틀린 진단을 막는 자리** ────────────────
+// 실측(2026-09-06): `.mcp.json` 의 `Bearer ${EMM_MCP_TOKEN}` 이 환경 변수
+// 없이 **자리표시 그대로** 나갔는데, 서버가 "OAuth 커넥터가 설정되지
+// 않았습니다" 라고 답했다 — 원인은 토큰인데 서버를 탓하는 안내다.
+{
+  const jwtish = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln';
+  check('진짜 JWT 모양', looksLikeJwt(jwtish), true);
+  check('★ 자리표시가 그대로 온 경우', looksLikeJwt('${EMM_MCP_TOKEN}'), false);
+  check('★ 빈 자리표시', looksLikeJwt('Bearer ${EMM_MCP_TOKEN}'), false);
+  check('점이 없다', looksLikeJwt('emm_abcdefghijklmnop'), false);
+  check('조각이 둘뿐', looksLikeJwt('aaa.bbb'), false);
+  check('조각이 넷', looksLikeJwt('a.b.c.d'), false);
+  check('빈 조각이 있다', looksLikeJwt('a..c'), false);
+  check('base64url 밖 글자(+/=)', looksLikeJwt('a+b.c/d.e=f'), false);
+  check('공백이 섞였다', looksLikeJwt('aaa.bb b.ccc'), false);
+  check('빈 문자열', looksLikeJwt(''), false);
 }
 
 check('scope 는 상수와 문자열이 같다', MCP_SCOPE_STRING, MCP_SCOPES.join(' '));

@@ -11,7 +11,7 @@ import type { AuthUser } from '../common/auth/current-user.decorator';
 import { ensureUserProvisioned } from '../common/auth/ensure-user';
 import { DatabaseService } from '../database/database.service';
 import { ApiTokenService } from './api-token.service';
-import { requestOrigin, wwwAuthenticate } from './oauth';
+import { looksLikeJwt, requestOrigin, wwwAuthenticate } from './oauth';
 
 /**
  * MCP 인증 — **문이 둘이다** (2026-09-06, 3단계).
@@ -75,9 +75,28 @@ export class McpAuthGuard implements CanActivate {
       return true;
     }
 
+    // ── ①-b 둘 중 **어느 것도 아닌** 토큰 ────────────────────────
+    // ★ 여기서 갈라 주지 않으면 **틀린 진단**을 한다(oauth.ts 의
+    //   looksLikeJwt 머리말). `emm_` 도 아니고 JWT 모양도 아니면 그것은
+    //   OAuth 이야기가 아니라 토큰이 잘못 들어온 것이다 — 가장 흔한 원인은
+    //   `.mcp.json` 의 자리표시가 환경 변수 없이 **그대로** 나간 경우다
+    //   (2026-09-06 실측).
+    if (!looksLikeJwt(raw)) {
+      this.challenge(req, wwwAuthenticate(origin, {
+        error: 'invalid_token',
+        description: 'Malformed token: expected a personal access token (emm_...) or a JWT.',
+      }));
+      throw new UnauthorizedException(
+        '토큰 형식이 아닙니다. [계정 ▸ AI 커넥터(MCP)] 에서 발급한 토큰(emm_ 로 시작)을 쓰세요. '
+        + '커넥터 설정의 자리표시(${...})가 그대로 들어가 있지 않은지 확인해 주세요 '
+        + '— 환경 변수가 없으면 그 글자가 그대로 전송됩니다.',
+      );
+    }
+
     // ── ② OAuth 액세스 토큰 (GoTrue 가 발급) ──────────────────────
     if (!this.config.get('GOTRUE_PUBLIC_URL', { infer: true })) {
-      // 이 배포는 OAuth 문을 열지 않았다 — PAT 이 아닌 것은 받지 않는다
+      // 여기까지 왔으면 **JWT 는 맞다** — 그러니 "서버가 OAuth 를 열지
+      // 않았다" 는 이제 사실에 맞는 진단이다.
       this.challenge(req, wwwAuthenticate(origin, {
         error: 'invalid_token', description: 'OAuth is not configured on this server; use a personal access token.',
       }));

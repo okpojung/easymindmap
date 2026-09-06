@@ -29,17 +29,23 @@ CREATE TABLE IF NOT EXISTS auth.users (
 --   **그 아래 경로가 통째로 시험되지 않는다** — 접속 IP 를 붙이는
 --   `login_events` 판정도 거기 있다(#393 에서 확인하지 못했던 자리).
 --
--- 모양은 supabase/auth 의 마이그레이션을 따랐다. **진짜 GoTrue DB 를 열어
--- 대조한 것은 아니다** — 우리 코드가 읽는 네 가지(`created_at`·`ip_address`
--- ·`payload->>'actor_id'`·`payload->>'action'`)가 맞으면 목적은 달성된다.
+-- ★ **dev 서버의 진짜 GoTrue DB 와 대조했다** (2026-09-05, e2e203).
+--   컬럼 다섯이 이름·타입·NULL 여부·기본값까지 같고, 인덱스 두 개도
+--   이름까지 같다. (e2e144 가 "실제 모양은 못 봤다"고 남긴 한계도 이때
+--   함께 풀렸다.) 대조하는 법은 dev-server-runbook.md §1.7.
 --
--- `id` 의 DEFAULT 는 **shim 의 편의**다(진짜 GoTrue 는 값을 직접 넣는다) —
--- 로컬에서 손으로 한 줄 넣어 볼 때 id 를 안 적어도 되게 한다.
+--   대조에서 **다른 것 둘**만 아래에 적어 둔다.
+--
+--   ① `id` 의 DEFAULT — 진짜 GoTrue 에는 **없다**(GoTrue 가 값을 직접
+--      넣는다). 여기 둔 것은 **shim 의 편의**다: 로컬에서 손으로 한 줄
+--      넣어 볼 때 id 를 안 적어도 되게 한다. 읽기에는 영향이 없다.
+--   ② RLS — 진짜 쪽은 **켜져 있고 정책이 하나도 없다**. 아래에서 똑같이
+--      켠다(그 이유는 그 줄의 주석 참조).
 --
 -- **우리는 읽기만 한다.** 쓰기는 GoTrue 의 몫이다 (audit-log.service.ts).
 CREATE TABLE IF NOT EXISTS auth.audit_log_entries (
     instance_id UUID,
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- ① shim 편의
     payload     JSON,
     created_at  TIMESTAMPTZ,
     -- GoTrue v2.194.0 은 로그인·로그아웃에서 여기에 **빈 문자열**을 넣는다
@@ -49,6 +55,15 @@ CREATE TABLE IF NOT EXISTS auth.audit_log_entries (
 
 CREATE INDEX IF NOT EXISTS audit_logs_instance_id_idx
     ON auth.audit_log_entries (instance_id);
+
+-- ② RLS — **정책 없이 켜 둔다**, 진짜 GoTrue DB 와 같게.
+--
+-- 정책이 없으면 이 표는 **표 주인과 슈퍼유저에게만** 보인다. GoTrue 도
+-- 우리 API 도 주인 계정(`postgres`)으로 붙으므로 지금은 아무 차이가 없다.
+-- 그래도 켜 두는 이유: `GOTRUE_DATABASE_URL` 에 **권한이 낮은 계정**을
+-- 넣으면 운영에서는 목록이 조용히 비는데 로컬에서는 멀쩡한, 재현되지 않는
+-- 차이가 생긴다. shim 이 진짜와 다른 만큼 그런 함정이 생긴다.
+ALTER TABLE auth.audit_log_entries ENABLE ROW LEVEL SECURITY;
 
 -- RLS 정책의 auth.uid() 참조가 컴파일되도록 하는 더미 함수.
 -- 개발 세션 GUC 'app.user_id' 를 반환(미설정 시 NULL).

@@ -220,6 +220,10 @@ GOTRUE_DATABASE_URL=postgres://postgres:<pw>@<host>:5432/gotrue
 > (`apps/api/.env.example` 참조). 그전에는 이 화면이 로컬에서 늘
 > "이력을 볼 수 없다" 였고, 그래서 그 아래 경로(접속 IP 를 붙이는
 > `login_events` 판정)가 **시험되지 않은 채로 있었다.**
+>
+> shim 의 표 모양은 **dev 서버의 진짜 GoTrue DB 와 대조했다**(2026-09-05).
+> 대조하는 법은 [`dev-server-runbook.md`](../90-architecture/dev-server-runbook.md) §1.7 —
+> GoTrue 는 **자기 전용 DB** 를 쓰므로 앱 DB 를 찾는 방법으로는 닿지 않는다.
 
 **읽기만 한다.** 쓰기는 GoTrue 의 몫이다.
 

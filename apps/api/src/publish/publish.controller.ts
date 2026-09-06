@@ -11,6 +11,7 @@ import { sendAttachment } from '../attachments/attachments.controller';
 import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { PublishService, type PublishVisibility } from './publish.service';
+import { buildOgFragment } from './og-tags';
 
 /**
  * 퍼블리싱 · 중단 · 상태 — **맵 주인의 조작**이라 인증이 필요하다.
@@ -120,6 +121,51 @@ export class PublicPublishController {
       throw new BadRequestException('잘못된 퍼블리싱 링크입니다.');
     }
     return publishId;
+  }
+
+  /**
+   * ★ **링크 카드·검색이 읽는 `<head>` 조각** (2026-09-06, `og-tags.ts`).
+   *
+   * nginx 가 `/p/{id}` 를 낼 때 **SSI 로 이것만 끼워 넣는다.** 페이지를
+   * 통째로 서버가 만들지 않는 이유는 번들 파일 이름(해시)을 서버가 알
+   * 필요가 없게 하기 위해서다.
+   *
+   * 여는 조건은 본문과 같다 — **무료공개 중**일 때만. 아니면 404 이고,
+   * nginx 는 `ssi_silent_errors` 로 조용히 넘어간다(지금과 같은 화면).
+   *
+   * 주소는 **배포가 알려 준다**(`PUBLIC_APP_URL`·`PUBLIC_API_URL`).
+   * 없으면 프록시가 준 `X-Forwarded-*` 로 짐작한다 — 그 헤더는 우리
+   * nginx 가 붙인다. 둘 다 없으면 상대 경로가 되어 카드가 그림을 못 받는데,
+   * 그때는 **없는 것보다 나쁘지 않다**(글자 카드는 뜬다).
+   */
+  @Get(':publishId/og.html')
+  async og(
+    @Param('publishId') publishId: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const slug = PublicPublishController.slug(publishId);
+    const src = await this.publish.ogSource(slug);
+    const hdr = (n: string) => {
+      const v = req.headers[n];
+      return (Array.isArray(v) ? v[0] : v)?.split(',')[0]?.trim() ?? '';
+    };
+    const proto = hdr('x-forwarded-proto') || 'https';
+    const appOrigin = (process.env.PUBLIC_APP_URL
+      || (hdr('x-forwarded-host') ? `${proto}://${hdr('x-forwarded-host')}` : '')).replace(/\/+$/, '');
+    const apiOrigin = (process.env.PUBLIC_API_URL
+      || (req.headers.host ? `${proto}://${req.headers.host}` : '')).replace(/\/+$/, '');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    // 저자가 이름을 고치면 카드도 따라와야 한다 — 길게 캐시하지 않는다.
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    return buildOgFragment({
+      publishId: slug,
+      title: src.title,
+      doc: src.doc,
+      hasPreview: src.hasPreview,
+      appOrigin,
+      apiOrigin,
+    });
   }
 
   /**

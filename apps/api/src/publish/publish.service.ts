@@ -421,6 +421,35 @@ export class PublishService {
     };
   }
 
+  /**
+   * `<head>` 조각을 만들 재료 — **무료공개 중일 때만** (2026-09-06).
+   *
+   * 여는 조건은 본문 조회(`getPublished`)와 **똑같다.** 하나라도 느슨하면
+   * 보관해 둔 맵의 이름·소개가 카드로 새어 나간다.
+   */
+  async ogSource(publishId: string): Promise<{
+    title: string; doc: unknown; hasPreview: boolean;
+  }> {
+    if (!(await this.ready())) throw new NotFoundException('페이지를 찾을 수 없습니다.');
+    const open = (await this.hasVisibility()) ? `AND p.visibility = 'public'` : '';
+    const { rows } = await this.db.query<{
+      title: string; doc: unknown; storage_path: string | null;
+    }>(
+      `SELECT m.title, d.doc, p.storage_path
+         FROM public.published_maps p
+         JOIN public.maps m ON m.id = p.map_id
+    LEFT JOIN public.map_documents d ON d.map_id = p.map_id
+        WHERE p.publish_id = $1
+          AND p.unpublished_at IS NULL
+          AND m.deleted_at IS NULL
+          ${open}`,
+      [publishId],
+    );
+    const row = rows[0];
+    if (!row || row.doc == null) throw new NotFoundException('페이지를 찾을 수 없습니다.');
+    return { title: row.title, doc: row.doc, hasPreview: !!row.storage_path };
+  }
+
   private async activeRow(mapId: string): Promise<PublishedRow | undefined> {
     // 칸이 없는 서버에서는 **고르지 않는다** — 없는 칸을 SELECT 하면 503 이다
     const col = (await this.hasVisibility()) ? ', visibility' : '';

@@ -1369,6 +1369,36 @@ API 기본은 `"public"`(무료공개) — 하위호환이고, `visibility` 칸�
 
 ---
 
+### GET /published/{publishId}/og.html
+**링크 카드·검색이 읽는 `<head>` 조각** (인증 불필요, `text/html`).
+2026-09-06 · 설계 `27-publish-share.md` §5.6.
+
+nginx 가 `/p/{id}` 를 낼 때 **SSI 로 이것만 끼워 넣는다** — 페이지를 통째로
+서버가 만들지 않으므로 번들 파일 이름(해시)을 서버가 알 필요가 없다.
+
+**Response** `200 OK` (조각, 완전한 문서가 아니다)
+```html
+<title>맵 이름 · EasyMindMap</title>
+<meta name="description" content="중심 주제 — 가지1 · 가지2 · …" />
+<meta name="robots" content="noindex, nofollow" />
+<link rel="canonical" href="https://app.example.com/p/abcdefghjkmn" />
+<meta property="og:type" content="article" /> … og:title · og:description · og:url
+<meta property="og:image" content="https://api.example.com/v1/published/abcdefghjkmn/preview.png" />
+<meta name="twitter:card" content="summary_large_image" /> …
+```
+
+* **여는 조건은 본문과 같다** — 무료공개 중일 때만. 보관(비공개)·등록 취소·
+  휴지통은 **404** 이고, nginx 는 조용히 넘어간다(`ssi_silent_errors`).
+* 소개(`description`)는 **중심 주제와 첫 가지 이름들**까지다 — 맵 속내용은
+  싣지 않는다. 미리보기 그림은 **글자를 한 자도 그리지 않은** 실루엣이다(27a §2.1).
+* 미리보기가 없으면 `og:image` 를 빼고 `twitter:card` 는 `summary` 다.
+* `robots` 는 **`noindex`** — 링크 카드는 이것과 무관하게 뜬다. 검색 노출은
+  저자가 고를 칸(`listed`)이 생긴 뒤에 연다.
+* 주소는 `PUBLIC_APP_URL`·`PUBLIC_API_URL` 이 알려 준다. 없으면 프록시가 준
+  `X-Forwarded-Host`·`Host` 로 짐작한다.
+
+---
+
 ### GET /maps/{mapId}/publish/preview
 **주인이 보는** 미리보기 실루엣 (인증 필요). `image/png`.
 

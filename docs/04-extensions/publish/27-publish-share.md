@@ -16,10 +16,13 @@
 
 ## PUBLISH_SHARE
 
-* 문서 버전: v2.3
+* 문서 버전: v2.4
 * 작성일: 2026-04-16
 * 최종 업데이트: 2026-09-05
 * 변경 이력:
+  * v2.4 — **링크 카드·검색이 읽는 `<head>`**(2026-09-06): nginx 가 `/p/*` 에서만
+    SSI 로 API 의 `og.html` 조각을 끼워 넣는다(§5.6). §13 의 "검색엔진 대비가
+    없다" 제약이 **풀렸다**(검색 노출은 `noindex` 로 일부러 막아 둔다)
   * v2.3 — **퍼블리싱 자리 · 등록은 비공개로 시작**(2026-09-05 사용자 결정):
     등록하면 맵이 문서함의 **퍼블리싱 자리**로 옮겨진다(§5.5) ·
     등록 기본이 **비공개(보관)** · **공개 중에는 취소할 수 없다**(§6.5) ·
@@ -225,6 +228,59 @@ buildStandaloneHtml(map, …)  — Standalone HTML 내보내기와 **같은 함�
 
 **서버는 맵을 옮기지 않는다**(`folder_id` 그대로). 나누는 것은 화면이다
 (`MapBrowser` 의 `publishedMaps`).
+
+#### 5.6 링크 카드·검색이 읽는 `<head>` — **조각만 끼워 넣는다** (2026-09-06)
+
+무엇이 문제였나: `/p/{id}` 는 SPA 라 **내용을 브라우저가 그린다.** 크롤러는
+대부분 자바스크립트를 실행하지 않으므로, 어느 맵을 붙여넣어도 카카오·슬랙에
+**같은 제목 하나**만 잡혔다 — 실측(2026-09-06):
+
+```
+$ curl -s https://pro-dev.mindmap.ai.kr/ | grep '<title>'
+<title>EasyMindMap · Editor</title>      ← 모든 맵이 이것 하나
+```
+
+```
+크롤러 ──▶ nginx  /p/{id}
+              │  ssi on  (이 경로에서만)
+              │  index.html 을 그대로 내보내면서
+              └──▶ API  /v1/published/{id}/og.html   (조각만)
+                     └ <title> · description · og:* · twitter:* · canonical
+```
+
+★ **왜 페이지가 아니라 조각인가** — 서버가 페이지를 통째로 만들면 번들 파일
+이름(해시)을 서버가 알아야 하고, 배포마다 그것을 맞춰야 한다. 조각만 끼우면
+**index.html 은 nginx 가 내던 그대로**다.
+
+★ **끼우는 자리** — `index.html` 의 `<title>` **앞**이다. 조각이 자기
+`<title>` 을 내주고, 브라우저·크롤러는 **처음 것**을 쓴다(실측: 크로미움의
+`document.title` 이 맵 이름). 그래서 다른 경로에서는 조각이 없어 원래 제목이
+그대로 남는다.
+
+★ **실패하면 조용히 넘어간다** — 보관(비공개)·없는 링크·API 장애 모두
+조각이 없을 뿐, 페이지는 지금과 똑같이 뜬다.
+
+| 막은 것 | 어떻게 |
+|---|---|
+| SSI 오류 문구가 페이지에 박히는 것 | `ssi_silent_errors on` |
+| **상류의 오류 '페이지'가 통째로 박히는 것** | `proxy_intercept_errors on` + `error_page … = @og_none`(204). ★ 실측으로 잡았다 — API 가 죽자 nginx 자기 **502 페이지(완전한 HTML)** 가 `<head>` 안으로 들어가 카드 제목이 `502 Bad Gateway` 가 됐다 |
+| 조각 때문에 페이지가 늦어지는 것 | `proxy_connect_timeout 2s` · `proxy_read_timeout 3s` |
+| 바깥에서 조각 경로를 직접 두드리는 것 | `internal` |
+
+★ **배포가 알려 줘야 하는 것** — 프런트엔드 앱의 `API_ORIGIN`(nginx 가
+조각을 가져올 곳). **안 주면 카드만 안 뜨고 사이트는 그대로 뜬다**(기본값이
+아무 데도 안 가는 주소다). API 쪽은 `PUBLIC_APP_URL`·`PUBLIC_API_URL` 로
+카드에 쓸 주소를 알려 준다(없으면 `X-Forwarded-*` 로 짐작한다).
+
+⚠️ **nginx.conf 는 이제 템플릿이다** — `${API_ORIGIN}` 이 들어 있어
+`/etc/nginx/templates/default.conf.template` 로 넣어야 한다. `conf.d/` 에
+그대로 넣으면 그 글자가 남아 **nginx 가 뜨지 않는다**.
+
+★ **검색에는 넣지 않는다 — 아직은** (`robots: noindex, nofollow`).
+링크 카드는 `robots` 와 무관하게 뜬다. 검색 노출만 다른 문제다: 저자가
+"진열대에 올린다" 를 고를 자리(`listed`)가 아직 없어서, **링크로만 나누려던
+맵이 검색 결과에 뜨는 사고**를 막을 방법이 없다. 진열대가 생기면 고른 맵만
+`index` 로 바꾼다 ([`27a`](27a-paid-publish.md) §0.4 ⑶).
 
 ---
 
@@ -453,6 +509,8 @@ buildStandaloneHtml(map, …)  — Standalone HTML 내보내기와 **같은 함�
 * `GET /published/{publishId}` — 공개 맵 데이터 조회 (**비인증**)
 * `PUT /maps/{mapId}/publish/preview` — 미리보기 실루엣 올리기 (맵 주인만).
   그림은 **저자의 브라우저가 만든다** — `27a-paid-publish.md` §2
+* `GET /published/{publishId}/og.html` — **링크 카드·검색이 읽는 `<head>` 조각**
+  (**비인증**, 무료공개만). nginx 가 `/p/*` 에서 SSI 로 끼워 넣는다 (§5.6)
 * `GET /maps/{mapId}/publish/preview` — **주인이 보는** 미리보기 (인증).
   **보관(비공개)여도 열린다** — 공개하기 전에 확인하는 것이 보관 상태의
   쓸모인데, 비인증 주소만 있으면 그때 그림이 **깨진 채로** 뜬다(실측 2026-09-05).
@@ -507,20 +565,20 @@ buildStandaloneHtml(map, …)  — Standalone HTML 내보내기와 **같은 함�
 | 초대 금지 | 유료 저장소 `src/collab/members.service.ts` · `invites.service.ts` |
 | 칸 존재 판정 | `apps/api/src/common/table-ready.ts` — `columnReady()` |
 | 상태 전환 화면 | `PublishPanel` — `publish-vis-private` · `publish-vis-public` |
+| 카드 `<head>` 조각 | `apps/api/src/publish/og-tags.ts` · 컨트롤러 `og()` |
+| 끼워 넣는 자리 | `apps/frontend/nginx.conf` (`/p/` 의 `ssi on`) · `index.html` |
 | 퍼블리싱 자리 | `MapBrowser` — `publishedMaps` · `browser-publish-head` |
 | 취소 잠금 | `publish.service.unpublish` (409) · `publish-stop-locked` |
 | 탭 잠금 | `PublishPanel.lockThisTab()` · `TopToolbar.publishMapId` |
 
 남은 제약 — **지금은 이렇게 동작한다**는 사실이지 버그가 아니다.
 
-* **검색엔진 대비가 없다.** `<meta>` · Open Graph · `robots.txt` 를 넣지
-  않았다. 링크를 붙여넣어도 미리보기 카드가 뜨지 않고, 크롤러가 본문을
-  읽지도 못한다(내용은 브라우저가 그린다).
-  **카드에 넣을 이미지는 준비됐다**(`preview.png`, 2026-09-05) — 남은 것은
-  `/p/*` 에 맵마다 다른 `<head>` 를 내주는 자리다. 지금은 nginx 가 모든
-  주소에 `index.html` 하나를 준다(실측: 크롤러가 받는 `<title>` 이 모든
-  맵에서 `EasyMindMap · Editor` 다). 네이버는 자바스크립트를 실행해 제목을
-  읽어 가지만, 카카오톡·슬랙 등 대부분은 원본 HTML 만 읽는다.
+* ~~**검색엔진 대비가 없다.**~~ → **링크 카드는 뜬다** (2026-09-06, §5.6).
+  `/p/{id}` 의 `<head>` 를 nginx 가 SSI 로 채운다 — 제목·소개·미리보기
+  그림·`og:*`·`twitter:*`·canonical. 카카오톡·슬랙·페이스북에 붙여넣으면
+  그 맵의 카드가 뜬다.
+  **남은 것은 검색 노출이다** — 일부러 `noindex` 로 두었다(§5.6 마지막).
+  저자가 "진열대에 올린다" 를 고를 칸(`listed`)이 생기면 그때 연다.
 * **조회수·방문자 통계가 없다.**
 * **유효기간이 없다.** 링크는 저자가 [퍼블리싱 취소] 를 누를 때까지 산다.
   기간을 두는 대신 **문서함이 퍼블리싱 중인 맵을 늘 보여 주는 쪽**을 골랐다

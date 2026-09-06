@@ -111,6 +111,18 @@ export interface AppEnv {
   VERSION_PRUNE_GRACE_DAYS: number;
   // 이 시각(ISO) 이전 버전은 건드리지 않는다 — 13a §6 소급 금지. 비우면 전부.
   VERSION_PRUNE_SINCE: string;
+  /**
+   * ── 링크 카드가 쓸 **바깥에서 보이는 주소** (2026-09-06, 27 §10) ──
+   *
+   * `PUBLIC_APP_URL` 사람이 여는 곳 (`https://app.example.com`) — `og:url`
+   * `PUBLIC_API_URL` 그림을 주는 곳 (`https://api.example.com`) — `og:image`
+   *
+   * **비워 둬도 된다.** 그때는 프록시가 준 `X-Forwarded-Host`·`Host` 로
+   * 짐작한다. 카드가 그림을 못 받으면 글자 카드로 뜰 뿐이라 사이트가
+   * 죽지는 않는다 — 그래서 필수로 만들지 않았다.
+   */
+  PUBLIC_APP_URL: string;
+  PUBLIC_API_URL: string;
 }
 
 export function validateEnv(raw: Record<string, unknown>): AppEnv {
@@ -225,6 +237,9 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     SUPABASE_JWT_SECRET,
     STORAGE_LOCAL_DIR: String(raw.STORAGE_LOCAL_DIR ?? './data/attachments'),
     VAULT_DIR: String(raw.VAULT_DIR ?? '').trim(),
+    // 끝의 `/` 는 떼어 둔다 — 붙여 쓰는 쪽에서 `//` 가 생기지 않게
+    PUBLIC_APP_URL: String(raw.PUBLIC_APP_URL ?? '').trim().replace(/\/+$/, ''),
+    PUBLIC_API_URL: String(raw.PUBLIC_API_URL ?? '').trim().replace(/\/+$/, ''),
     ATTACHMENT_MAX_MB,
     ATTACHMENT_PART_KB,
     ATTACHMENT_CHUNK_MAX_MB,

@@ -1232,6 +1232,39 @@ sudo touch /mnt/nas/emm-files/test.txt && ls -l /mnt/nas/emm-files
 확인: 배포 후 에디터에서 2MB 초과 파일을 첨부(로그인 상태) →
 `/mnt/nas/emm-files/u/<사용자ID>/` 에 파일이 생기면 정상.
 
+### 1.5-B-1. ★ 퍼블리싱 링크의 **카드**를 켜는 환경변수 (2026-09-06)
+
+퍼블리싱 링크(`/p/{id}`)를 카카오톡·슬랙에 붙였을 때 **그 맵의 카드**가
+뜨게 하는 설정이다. 설계는 `27-publish-share.md` §5.6.
+
+**프런트엔드 앱** (`easymindmap-frontend-pro`)
+
+| 변수 | 값(dev) | 없으면 |
+|---|---|---|
+| `API_ORIGIN` | `https://api-dev.mindmap.ai.kr` | **카드만 안 뜬다.** 사이트는 그대로 뜬다(기본값이 아무 데도 안 가는 주소라 nginx 는 정상 기동한다) |
+
+**API 앱** (`easymindmap-api-pro`)
+
+| 변수 | 값(dev) | 없으면 |
+|---|---|---|
+| `PUBLIC_APP_URL` | `https://pro-dev.mindmap.ai.kr` | `X-Forwarded-Host` 로 짐작한다 |
+| `PUBLIC_API_URL` | `https://api-dev.mindmap.ai.kr` | `Host` 로 짐작한다 |
+
+**확인하는 법** — 무료공개 중인 맵 하나를 골라 그 주소를 `curl` 한다.
+브라우저가 아니라 **원본 HTML** 을 봐야 한다(크롤러가 보는 것이 그것이다).
+
+```bash
+curl -s https://pro-dev.mindmap.ai.kr/p/<슬러그> | grep -E '<title>|og:(title|image|url)'
+```
+
+맵 이름과 `og:image`(실루엣 주소)가 보이면 정상이다. `EasyMindMap · Editor`
+하나만 보이면 `API_ORIGIN` 이 안 들어갔거나 그 맵이 **보관(비공개)** 이다.
+
+⚠️ **nginx.conf 가 템플릿이 됐다** (2026-09-06) — `${API_ORIGIN}` 이 들어
+있어서 이미지가 `/etc/nginx/templates/default.conf.template` 로 넣는다.
+Dockerfile 을 손댈 때 `conf.d/` 로 되돌리면 그 글자가 그대로 남아
+**nginx 가 아예 뜨지 않는다.**
+
 > **프록시 본문 제한을 1GB 로 열 필요가 없다.** 8MB 를 넘는 파일은
 > **조각(기본 8MB)으로 나뉘어** 여러 요청으로 올라간다(청크 업로드,
 > `attachment-storage.md` §12). 리버스 프록시가 통과시켜야 하는 것은

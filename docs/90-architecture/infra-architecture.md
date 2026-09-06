@@ -69,7 +69,7 @@
 3. [네트워크 주소 전체 정의](#3-네트워크-주소-전체-정의)
 4. [DAU 단계별 VM 스펙 계획](#4-dau-단계별-vm-스펙-계획)
 5. [ESXi VM 생성 절차](#5-esxi-vm-생성-절차)
-6. [Ubuntu 22.04 공통 설치 절차](#6-ubuntu-2204-공통-설치-절차)
+6. [Ubuntu 24.04 공통 설치 절차](#6-ubuntu-2404-공통-설치-절차)
 7. [NPM 연동 설정 (등록대행사 DNS + Let's Encrypt)](#7-npm-연동-설정-등록대행사-dns--lets-encrypt)
 8. [VM-03: Supabase Self-hosted 설치](#8-vm-03-supabase-self-hosted-설치)
 9. [VM-04: Redis 설치](#9-vm-04-redis-설치)
@@ -321,7 +321,7 @@ ESXi #1 (VM-04 생성):          https://192.168.0.80/ui
 ```
 각 ESXi 콘솔:
 Storage → datastore-ssd → Datastore browser
-→ Upload → ubuntu-22.04.4-live-server-amd64.iso
+→ Upload → ubuntu-24.04.x-live-server-amd64.iso   # 24.04 LTS 최신 포인트 릴리스
 ```
 
 ### 5.3 VM 생성 파라미터 (VM-03 Supabase 예시)
@@ -341,7 +341,7 @@ Step 4:
   Memory:       8192 MB
   Hard disk 1:  100 GB (Thin provisioned)
   Network:      [192.168.0.0/24 Port Group 선택]
-  CD/DVD:       Datastore ISO → ubuntu-22.04.4-live-server-amd64.iso
+  CD/DVD:       Datastore ISO → ubuntu-24.04.x-live-server-amd64.iso
                 Connect at power on: ✅
 Step 5: Finish → Power On
 ```
@@ -358,7 +358,12 @@ Step 5: Finish → Power On
 
 ---
 
-## 6. Ubuntu 22.04 공통 설치 절차
+## 6. Ubuntu 24.04 공통 설치 절차
+
+> **OS 확정 (2026-09-06 사용자 결정)**: 운영 VM 은 전부 **Ubuntu 24.04 LTS
+> (Noble)**. 아래 절차는 24.04 기준이다. Docker apt 저장소 줄의
+> `$(lsb_release -cs)` 는 `noble` 로 풀린다. 24.04 의 apt `redis-server` 는
+> 7.0 계열이다(22.04 는 6.0 이었다).
 
 ### 6.1 Ubuntu Server 설치
 
@@ -1205,7 +1210,7 @@ pm2 save && pm2 startup
 > **호스트**: ESXi 192.168.0.11 (DL360 Gen9, NVMe 3.8TB)
 > **VM IP**: 192.168.0.110
 >
-> **개정 (2026-07)**: 개발 서버는 **Ubuntu 22.04 + Coolify** 로
+> **개정 (2026-07)**: 개발 서버는 **Ubuntu + Coolify** 로
 > **프로덕션과 동일한 방식**으로 구축한다(dev/prod parity). 이전의
 > 수동 방식(Node/pm2 직접 설치 + supabase-cli + dev-start.sh)은 폐기.
 > **상세 구축 절차는 기준 문서 [`dev-server-coolify.md`](dev-server-coolify.md) 참조.**
@@ -1213,7 +1218,7 @@ pm2 save && pm2 startup
 ### 12.1 구성 요약
 
 ```
-개발 PC(브라우저만) ──▶ VM-DEV (Ubuntu 22.04)
+개발 PC(브라우저만) ──▶ VM-DEV (Ubuntu 24.04 로 확정 · 지금 실물은 22.04)
                          └─ Coolify (Traefik 80/443, 대시보드 :8000)
                              ├─ app: frontend  (apps/frontend, 정적 빌드)
                              ├─ app: api       (apps/api, NestJS :3000)
@@ -1564,7 +1569,7 @@ chmod +x /opt/disk-check.sh
 ```
 인프라:
   ✅ ESXi 4대에 VM 생성 (.11×2, .12×2, .80×1)
-  ✅ 각 VM Ubuntu 22.04 + 고정 IP 설정
+  ✅ 각 VM Ubuntu 24.04 + 고정 IP 설정
   ✅ 등록대행사 DNS A 레코드 설정 (도메인 6개 — §7.1)
   ✅ NPM Proxy Host 4개 + SSL 인증서 발급
   ✅ NPM Access List 설정 (supabase, dev 도메인)

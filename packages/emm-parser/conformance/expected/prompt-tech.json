@@ -19,7 +19,7 @@
           {
             "id": "md#1",
             "type": "paragraph",
-            "text": "Ubuntu 22.04 LTS 기준. sudo 권한과 도메인(A 레코드 연결)이 필요하다."
+            "text": "Ubuntu 24.04 LTS 기준. sudo 권한과 도메인(A 레코드 연결)이 필요하다."
           }
         ],
         "children": [

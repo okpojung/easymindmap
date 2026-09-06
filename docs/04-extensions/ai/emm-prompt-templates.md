@@ -167,7 +167,7 @@ ChatGPT·Claude·Gemini 등 어떤 LLM에게든 아래 시스템 프롬프트를
 ## 4. 사용자 프롬프트 예시 (그대로 복사해 쓰는 문장)
 
 ```text
-Ubuntu 22.04에서 Apache 설치와 Let's Encrypt SSL 발급 절차를
+Ubuntu 24.04에서 Apache 설치와 Let's Encrypt SSL 발급 절차를
 IT 초보자도 이해할 수 있게 위 규칙의 Markdown으로 만들어줘.
 명령어는 코드 펜스로 분리해줘.
 ```

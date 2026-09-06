@@ -209,7 +209,7 @@ newVersion·중복·버전충돌·반영·cascade 삭제 전 항목 통과.
 |---|---|
 | **3 활성화** | 서버에 GoTrue(또는 Supabase 스택) 배포 후 위 "활성화 절차" — 이후 RLS 실사용 |
 | **4c 잔여** | 스냅샷↔정규화 노드 동기(협업 준비) — 첨부 오브젝트 스토리지는 B9 로컬 디스크 드라이버로 1차 해결(S3 호환 드라이버는 후속) |
-| **5** | 배포 — ✅ 개발 서버(Ubuntu 22.04 + Coolify) 구축 완료(2026-08-01), 프로덕션은 동일 구성 복제. `../90-architecture/dev-server-coolify.md` 기준 |
+| **5** | 배포 — ✅ 개발 서버(Ubuntu + Coolify) 구축 완료(2026-08-01 · 당시 22.04), 프로덕션은 동일 구성 복제. **OS 는 24.04 로 확정**(2026-09-06) — dev 도 맞춘다. `../90-architecture/dev-server-coolify.md` 기준 |
 | **기타** | B13(제목 유니크 인덱스 승격), 30일 휴지통 자동 정리 배치(미구현) |
 
 관련: `backend-architecture.md`, `api-spec.md`, `../02-domain/schema.sql`,

@@ -33,7 +33,7 @@
         │  배포 단계에서만, Secrets에 저장된 "배포키"로
         ▼  잠깐 서버에 SSH 접속
  ┌──────────────────────┐
- │  내 Ubuntu 22.04 서버 │   docker compose pull && up -d
+ │  내 Ubuntu 24.04 서버 │   docker compose pull && up -d
  └──────────────────────┘
 ```
 
@@ -125,7 +125,7 @@ flowchart TD
 
 ---
 
-## 4. 서버 사전 준비 (Ubuntu 22.04) — 한 번만
+## 4. 서버 사전 준비 (Ubuntu 24.04) — 한 번만
 
 아래는 **당신이 서버에서 직접** 실행합니다. (저는 이 명령들을 만들어
 드리고, 당신이 붙여넣기 실행 → 출력 공유하면 함께 점검합니다.)
@@ -312,7 +312,7 @@ docker compose up -d
 1. ✅ **CI 가동** — `ci.yml`로 매 PR 빌드·타입체크·백엔드 스모크(DB).
    품질 게이트로 계속 유지. (이 문서 §2)
 2. ✅ **백엔드·클라우드 저장 구현** — `apps/api` + 프론트 연결 완료.
-3. **[다음] 개발 서버 구축** — Ubuntu 22.04 + **Coolify** 설치, GitHub
+3. **[다음] 개발 서버 구축** — Ubuntu 24.04 + **Coolify** 설치, GitHub
    연동, PostgreSQL 16·api·frontend 리소스 구성. main 푸시 = 자동 배포.
    → 절차: [`dev-server-coolify.md`](dev-server-coolify.md)
 4. **[검증 후] 프로덕션 복제** — 개발 서버에서 검증된 Coolify 구성을

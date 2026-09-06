@@ -1290,6 +1290,54 @@ timestamptz · `ip_address` varchar(64) NOT NULL `''`), 인덱스 둘
 그대로 따른다 — 다른 것은 `id` 의 DEFAULT 하나뿐이고 그것은 의도한
 편의다(그 파일 주석 참조).
 
+### 1.8. GoTrue 의 OAuth 서버를 켠다 — MCP 커넥터 3단계 (2026-09-06)
+
+claude.ai 의 커스텀 커넥터는 **헤더를 넣는 칸이 없어** PAT 으로는 붙지
+않는다. OAuth 로만 붙는다. **인가 서버는 GoTrue 가 겸한다** — 따로 세우지
+않는다(설계: `mcp-connector.md` §10).
+
+**① 지금 꺼져 있는지 확인** — `feature_disabled` 가 나오면 꺼진 것이다.
+
+```bash
+curl -s https://auth-dev.mindmap.ai.kr/.well-known/oauth-authorization-server
+# {"code":404,"error_code":"feature_disabled","msg":"OAuth server is disabled"}
+```
+
+**② Coolify → `easymindmap-auth` 앱 → 환경변수 추가 → Redeploy**
+
+```
+GOTRUE_OAUTH_SERVER_ENABLED=true
+GOTRUE_OAUTH_SERVER_ALLOW_DYNAMIC_REGISTRATION=true
+```
+
+**③ Coolify → `easymindmap-api-pro` 앱 → 환경변수 추가 → Redeploy**
+
+```
+GOTRUE_PUBLIC_URL=https://auth-dev.mindmap.ai.kr
+```
+
+> `GOTRUE_URL`(내부 주소)과 **다른 값**이다. 이쪽은 밖의 AI 클라이언트에게
+> 알려 줄 주소라 **밖에서 열려야** 한다. 비워 두면 OAuth 문이 닫히고
+> PAT 만 동작한다 — 앱은 죽지 않는다.
+
+**④ 켜졌는지 확인** — 둘 다 문서가 나오면 된 것이다.
+
+```bash
+# 인가 서버 (GoTrue) — 이제 404 가 아니어야 한다
+curl -s https://auth-dev.mindmap.ai.kr/.well-known/oauth-authorization-server | head -c 200
+# 자원 서버 (우리) — authorization_servers 가 위 주소를 가리켜야 한다
+curl -s https://api-dev.mindmap.ai.kr/.well-known/oauth-protected-resource/v1/mcp
+# 무토큰 401 에 안내가 실리는지
+curl -s -D- -o /dev/null -X POST https://api-dev.mindmap.ai.kr/v1/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -i www-authenticate
+```
+
+**⑤ 그다음은 사람이 눌러 봐야 안다** — claude.ai ▸ 설정 ▸ 커넥터 ▸
+커스텀 커넥터 추가 ▸ 주소 `https://api-dev.mindmap.ai.kr/v1/mcp`.
+`curl` 로는 그 화면의 흐름을 재현할 수 없다(1단계를 Claude Code 로
+판정했던 것과 같다).
+
 ## 2. 백업 — `.env` (APP_KEY) 최우선
 
 ```bash

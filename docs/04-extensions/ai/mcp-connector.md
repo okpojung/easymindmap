@@ -118,9 +118,12 @@ AI 클라이언트가 액세스 토큰을 받아 보관한다.
 
 - **장점**: 사용자가 토큰을 손으로 다룰 일이 없다. 각 사가 기대하는 방식
   이라 스토어 등재에도 유리하다. 권한 범위(scope)를 걸 수 있다
-- **비용**: **OAuth 서버(인가 엔드포인트 + 토큰 발급)를 우리가 세워야
-  한다.** GoTrue 는 사용자 로그인을 처리하지 그 자체가 OAuth 제공자는
-  아니다 — 이 부분이 이번 작업에서 **가장 큰 덩어리**다
+- **비용**: ~~OAuth 서버를 우리가 세워야 한다~~ → **틀렸다** (실측
+  2026-09-06, §10.1). 이 문단은 "GoTrue 는 OAuth 제공자가 아니다"를
+  전제로 가장 큰 덩어리라고 적었는데, **dev 의 GoTrue v2.194.0 에 OAuth
+  서버가 이미 들어 있었다**(꺼져 있었을 뿐). 그래서 3단계의 큰 덩어리는
+  만드는 것이 아니라 **켜는 것**이고, 우리가 만들 것은 자원 서버 쪽
+  (메타데이터 + 토큰 검증)뿐이다
 
 ### 안 B — 개인 액세스 토큰 (PAT)
 
@@ -223,7 +226,7 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 | **1** | PAT 발급/폐기 + `create_map` 하나 | **Claude 대화에서 맵이 하나 생긴다.** 이것으로 방향이 옳은지 판정한다 | ✅ **판정 끝** — 사용자 PC 의 Claude Code(데스크톱 앱 Code 탭)에서 api-dev 에 붙여 맵 생성 확인 (2026-09-05, §7 판정) |
 | **2** | `list_maps` · `get_map` | 기존 맵을 대화에서 이어 쓴다 | ✅ 구현·검증 (2026-09-05, §9.5 · e2e209 — Claude Code 대화에서 목록 → 읽기 2회 호출 확인) |
 | **2+** | `append_to_map` — 기존 맵의 노드 아래에 덧붙이기 | 대화의 답변이 **그 맵의 그 노드 아래**에 가지로 남는다 | ✅ 구현·검증 (2026-09-05, §9.6 · e2e210 — Claude Code 대화에서 `"다음 회의 > 안건"` 아래 2개 확인) |
-| **3** | OAuth 2.1 (안 A) | 토큰 복사 없이 연결된다 | — |
+| **3** | OAuth 2.1 (안 A) | 토큰 복사 없이 연결된다 | 🔧 **자원 서버 쪽 구현·검증 완료** (2026-09-06, §10) — 남은 것은 GoTrue 에서 OAuth 서버를 켜는 일(§10.4)이고 그것은 사람이 한다 |
 | **4** | 각 사 스토어 등재 | 신규 유입 채널 | — |
 
 **1단계에서 멈출 수 있어야 한다.** 1이 쓸 만하지 않으면 2~4 를 하지
@@ -257,10 +260,15 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 정직하게 남긴다. 아래는 **각 사 문서를 봐야** 답이 나온다. 구현 착수
 시점에 확인한다.
 
-1. **원격 MCP 의 인증 규격** — OAuth 2.1 의 어느 프로파일까지 요구하는지
-   (동적 클라이언트 등록 필요 여부 등). 규격이 자주 바뀌었다
+1. ~~원격 MCP 의 인증 규격~~ → **확인함** (2026-09-06, §10.1). 최신
+   released 판은 **2026-07-28**. 우리는 **자원 서버**이고 요구받는 것은
+   셋뿐이다 — RFC 9728 메타데이터(**MUST**) · 401 의 `WWW-Authenticate`
+   · 토큰 검증. **동적 클라이언트 등록은 MAY 이고 이미 deprecated** 다
+   (권장은 Client ID Metadata Documents). 인가 서버는 **규격 범위 밖**
+   이고 자원 서버와 별개여도 된다 — 그래서 GoTrue 에 맡길 수 있다
 2. **Claude 커스텀 커넥터 등록 요건** — 어떤 요금제에서 쓸 수 있는지,
-   심사가 있는지
+   심사가 있는지. 아직 확인하지 못했다 — 4단계(스토어 등재) 몫이고,
+   3단계는 **자기 서버를 자기 계정에 붙이는 것**이라 심사와 무관하다
 3. **ChatGPT 쪽 통로** — 앱(구 플러그인)과 GPT Actions 중 어디에
    올릴지. 같은 MCP 서버를 두 곳에 쓸 수 있는지
 4. **응답 크기 한계** — 큰 맵을 `get_map` 으로 돌려줄 때 잘리는 한계가
@@ -271,6 +279,9 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 > 위 넷 중 **1과 2 는 안 A(OAuth) 착수 전에 반드시 확인**해야 한다.
 > 잘못 만들면 통째로 다시 만든다. 안 B(PAT)로 시작하자는 권고(§3)의
 > 이유이기도 하다.
+>
+> **그 확인을 하고 착수했다** (2026-09-06). 그리고 확인한 값어치가 있었다 —
+> §3 이 "가장 큰 덩어리" 라고 적어 둔 것이 **그냥 없었다**(§10.1).
 
 ---
 
@@ -775,7 +786,117 @@ parentNotes · 노트 id 새로 매김 · 루트 노트) + 서버 7(기본 · �
 첨부해 주고, 300자 이상 긴 문장은 노트 문단으로" → `create_map(code_to_note,
 long_text_to_note:300)`).
 
-## 10. 관련 문서
+## 10. 3단계 — OAuth 2.1 (2026-09-06)
+
+### 10.1 착수 전에 확인한 것 — 그리고 전제 하나가 뒤집혔다
+
+§8 이 "1과 2 는 착수 전에 반드시 확인" 이라고 못 박아 둔 대로 먼저
+확인했다. **확인한 값어치가 있었다.**
+
+**① 규격이 우리에게 요구하는 것** (MCP 인증, 최신 released **2026-07-28**)
+
+규격은 역할을 이렇게 가른다.
+
+| | 하는 일 | 규격이 정하나 |
+|---|---|---|
+| 인가 서버(authorization server) | 로그인시키고 토큰을 발급 | **범위 밖** — 자원 서버와 별개여도 된다 |
+| 자원 서버(resource server) | 그 토큰을 받아 검증 | **여기가 우리다** |
+
+우리가 받는 요구는 셋뿐이다.
+
+- RFC 9728 보호 자원 메타데이터를 낸다 — *"MCP servers **MUST** implement
+  OAuth 2.0 Protected Resource Metadata (RFC9728)"*
+- 401 의 `WWW-Authenticate` 로 그 주소를 알린다 (RFC 9728 §5.1)
+- 토큰을 검증하고 **우리 것으로 발급된 것만** 받는다
+
+> **동적 클라이언트 등록(RFC 7591)은 필수가 아니다.** 규격은 **MAY** 로
+> 두고 *"Dynamic Client Registration is deprecated and retained for
+> backwards compatibility"* 라고 적는다. 권장은 Client ID Metadata
+> Documents 다. §8 이 걱정한 "동적 등록 필요 여부"의 답이다.
+
+**② 인가 서버는 이미 있었다 — GoTrue**
+
+§3 은 *"GoTrue 는 OAuth 제공자가 아니다 → 우리가 세워야 하고 그것이 가장
+큰 덩어리"* 라고 적어 두었다. **dev 에 직접 물어보니 아니었다.**
+
+```
+$ curl https://auth-dev.mindmap.ai.kr/.well-known/oauth-authorization-server
+{"code":404,"error_code":"feature_disabled","msg":"OAuth server is disabled"}
+                                              ↑ 없는 게 아니라 꺼져 있다
+```
+
+소스(`supabase/auth`)를 확인한 결과 v2.194.0 의 OAuth 서버는
+`authorization_code` + `refresh_token` · **PKCE(S256)** · **동적 클라이언트
+등록** · **`resource` 파라미터(RFC 8707)** 를 지원한다.
+
+> **그래서 3단계의 큰 덩어리는 만드는 것이 아니라 켜는 것이다.** 우리가
+> 만든 것은 자원 서버 쪽뿐이고, 그것은 파일 두 개다.
+
+### 10.2 만든 것
+
+| | 자리 |
+|---|---|
+| 보호 자원 메타데이터 (RFC 9728) | `mcp/oauth-metadata.controller.ts` → `/.well-known/oauth-protected-resource[/v1/mcp]` |
+| 메타데이터·헤더 조립 (순수 함수) | `mcp/oauth.ts` |
+| 토큰 검증 (PAT · OAuth 두 문) | `mcp/mcp-auth.guard.ts` |
+| JIT 사용자 생성 — **한 자리** | `common/auth/ensure-user.ts` (AuthGuard 와 공용) |
+
+> ★ **well-known 주소는 `/v1` 밖에 있어야 한다.** 규격이 도메인 뿌리부터
+> 못 박은 자리다. `main.ts` 의 `setGlobalPrefix` 에서 예외로 뺐다 — 빼는
+> 것을 잊으면 클라이언트가 404 를 받고 **왜인지 모른 채 연결에 실패한다**
+> (그 화면에는 "연결할 수 없습니다" 한 줄만 뜬다).
+
+### 10.3 정직하게 — audience 검증을 **엄격히는 못 한다**
+
+규격은 *"MCP servers **MUST** validate that access tokens were issued
+specifically for them as the intended audience"* 라고 한다. 그런데
+**GoTrue 는 `resource` 를 받기만 하고 토큰에 넣지 않는다** — 액세스 토큰의
+`aud` 는 OAuth 로 발급해도 늘 `authenticated` 다(실측: `tokens/service.go`
+의 `Audience: {user.Aud}`).
+
+그래서 우리는 **`client_id` 클레임**으로 경계를 긋는다. GoTrue 는 그 값을
+**OAuth 로 발급한 토큰에만** 넣는다.
+
+```
+client_id 있음 → 커넥터가 OAuth 로 받아 온 토큰   → 연다
+client_id 없음 → 그냥 브라우저 로그인 세션 토큰   → 막는다
+```
+
+이 한 줄이 없으면 **브라우저 세션 토큰이 곧 MCP 열쇠**가 된다. 테스트가
+그 자리를 지킨다(빼면 FAIL 한다 — e2e220 ⑬).
+
+> **완전하지 않다.** 같은 GoTrue 를 쓰는 다른 자원 서버가 생기면 그쪽
+> 토큰과 구분되지 않는다. 지금은 자원 서버가 우리 하나뿐이라 성립한다.
+> 제대로 풀려면 GoTrue 가 `resource` 를 `aud` 에 넣어야 한다 — 우리 쪽
+> 코드로는 못 고친다.
+
+### 10.4 남은 것 — **사람이 하는 일**
+
+우리 쪽은 끝났다. GoTrue 에서 OAuth 서버를 켜야 붙는다.
+
+Coolify 의 `easymindmap-auth` 앱에 환경변수를 더하고 재배포한다.
+
+```
+GOTRUE_OAUTH_SERVER_ENABLED=true
+GOTRUE_OAUTH_SERVER_ALLOW_DYNAMIC_REGISTRATION=true
+```
+
+그리고 api 앱에 `GOTRUE_PUBLIC_URL=https://auth-dev.mindmap.ai.kr`.
+
+**켜졌는지 확인** — 아래가 404 가 아니라 문서를 돌려주면 켜진 것이다.
+
+```bash
+curl -s https://auth-dev.mindmap.ai.kr/.well-known/oauth-authorization-server | head -c 200
+curl -s https://api-dev.mindmap.ai.kr/.well-known/oauth-protected-resource/v1/mcp
+```
+
+**아직 확인하지 못한 것**: claude.ai 커스텀 커넥터가 이 조합으로 실제로
+붙는지는 **사람이 그 화면에서 눌러 봐야** 안다. 1단계를 Claude Code 로
+판정했던 것과 같다 — `curl` 로는 클라이언트 쪽 흐름을 재현할 수 없다.
+
+---
+
+## 11. 관련 문서
 
 - [`web-ai-clipboard.md`](web-ai-clipboard.md) — 방법 A(현행) · §9 가 이 문서의 출처
 - [`18-ai.md`](18-ai.md) — API 키 방식 AI 생성

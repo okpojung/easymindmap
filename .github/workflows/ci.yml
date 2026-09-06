@@ -219,6 +219,16 @@ jobs:
       # 표를 잠깐 치워 두고 응답을 본다 — 코드를 읽어서는 못 잡는 자리다
       # (`err.code === '42P01'` 검사가 죽은 코드였던 것을 여기서 잡았다).
       # 표는 rename 으로 치웠다가 반드시 되돌린다 — 지우지 않는다.
+      # MCP 3단계(OAuth) 자원 서버 — **진짜 HTTP 응답까지** 본다 (2026-09-06).
+      # 함수만 시험하면 놓치는 자리가 있다: 헤더 값에 비 ASCII 를 넣으면
+      # Node 가 던져 **401 이 500 이 된다**(실측으로 잡았다).
+      - name: MCP OAuth 자원 서버 테스트
+        env:
+          DATABASE_URL: postgres://emm:emm@localhost:5432/easymindmap
+          STORAGE_LOCAL_DIR: /tmp/emm-storage
+          OAUTH_PORT: '3030'
+        run: mkdir -p /tmp/emm-storage && npm run test:mcp-http
+
       - name: 스키마 미적용 물러남 테스트
         env:
           DATABASE_URL: postgres://emm:emm@localhost:5432/easymindmap

@@ -72,6 +72,24 @@ export interface AppEnv {
   GOTRUE_URL: string;
 
   /**
+   * **GoTrue 의 공개 주소** — MCP 3단계(OAuth)가 쓴다 (2026-09-06).
+   * `GOTRUE_URL` 은 컨테이너끼리 부르는 **내부** 주소(`http://auth-dev:9999`)
+   * 라, 밖에서 오는 AI 클라이언트에게 알려 줄 수 없다. 보호 자원
+   * 메타데이터의 `authorization_servers` 에 실리는 값이라 **밖에서 열리는
+   * 주소**여야 한다 (예: `https://auth-dev.mindmap.ai.kr`).
+   * 비우면 MCP 의 OAuth 문이 열리지 않는다 — PAT 은 그대로 된다.
+   */
+  GOTRUE_PUBLIC_URL: string;
+
+  /**
+   * **우리 API 의 공개 주소** (예: `https://api-dev.mindmap.ai.kr`).
+   * 비워 두는 것이 기본이다 — 그러면 요청에서 스스로 알아낸다
+   * (`trust proxy` 가 이미 프록시 헤더를 풀어 준다). 프록시 구성이
+   * 미덥지 않은 배포에서만 손으로 못 박는다.
+   */
+  PUBLIC_API_URL: string;
+
+  /**
    * **관리자 콘솔에 들어갈 수 있는 이메일** (2026-08-13). 쉼표로 여럿.
    * DB 컬럼이 아닌 이유: 컬럼이면 DB 를 건드릴 수 있는 사람이 스스로를
    * 관리자로 올릴 수 있다. 환경변수는 배포 권한이 있어야 바꾼다.
@@ -238,6 +256,8 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     SMTP_PASS: String(raw.SMTP_PASS ?? ''),
     SMTP_FROM: String(raw.SMTP_FROM ?? ''),
     GOTRUE_URL: String(raw.GOTRUE_URL ?? ''),
+    GOTRUE_PUBLIC_URL: String(raw.GOTRUE_PUBLIC_URL ?? ''),
+    PUBLIC_API_URL: String(raw.PUBLIC_API_URL ?? ''),
     ADMIN_EMAILS: String(raw.ADMIN_EMAILS ?? ''),
     GOTRUE_DATABASE_URL: String(raw.GOTRUE_DATABASE_URL ?? ''),
     AI_KEY_SECRET,

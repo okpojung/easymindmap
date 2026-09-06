@@ -20,6 +20,7 @@ import { MapsService } from './maps.service';
 import { CreateMapDto } from './dto/create-map.dto';
 import { UpdateMapDto } from './dto/update-map.dto';
 import { SaveDocumentDto } from './dto/save-document.dto';
+import { PinVersionDto } from './dto/pin-version.dto';
 import { EditSessionDto } from './dto/edit-session.dto';
 import {
   browserFromUa, clientIpOf, platformFromUa, sanitizeLabel,
@@ -173,6 +174,26 @@ export class MapsController {
   @Get(':id/versions/prune-preview')
   previewVersionPrune(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.maps.previewVersionPrune(user.id, id);
+  }
+
+  // 영구보관(별표) — 13a §3. PUT = 보관 또는 이름 바꾸기, DELETE = 해제
+  @Put(':id/versions/:version/pin')
+  pinVersion(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('version', ParseIntPipe) version: number,
+    @Body() dto: PinVersionDto,
+  ) {
+    return this.maps.pinVersion(user.id, id, version, dto.label);
+  }
+
+  @Delete(':id/versions/:version/pin')
+  unpinVersion(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('version', ParseIntPipe) version: number,
+  ) {
+    return this.maps.unpinVersion(user.id, id, version);
   }
 
   @Get(':id/versions/:version')

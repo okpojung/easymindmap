@@ -1,6 +1,7 @@
 import { FocusService } from './focus.service';
 import {
   ConflictException, ForbiddenException, Injectable, Logger, NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { VaultService } from '../vault/vault.service';
@@ -901,30 +902,49 @@ export class MapsService {
   }
 
   async listVersions(userId: string, mapId: string) {
-    await this.requireAccessibleMap(userId, mapId);
+    const map = await this.requireAccessibleMap(userId, mapId);
     // 접속 정보 컬럼은 델타 SQL 을 적용한 서버에만 있다 — 없으면 빼고
     // 조회한다. (검색 기능 때 겪은 사고와 같은 함정: 새 컬럼을 무조건
     // SELECT 하면 스키마 미적용 서버에서 목록이 통째로 503 이 된다)
     const withClient = await this.hasVersionClientCols();
+    // 영구보관 칸(2026-09-04 델타 B)도 같은 규칙 — 없으면 빼고 조회하고,
+    // 응답의 `pin.ready` 로 화면이 별표를 그릴지 정한다.
+    const withPin = await this.hasPinCols();
     const { rows } = await this.db.query<{
       version: number; title: string; created_at: Date; size: string;
       layout_type: string | null; node_count: number | null;
       attach_bytes: string | null; attach_count: number | null;
       client_platform?: string | null; client_browser?: string | null;
       client_ip?: string | null;
+      pinned?: boolean; label?: string | null; pinned_by?: string | null; pinned_at?: Date | null;
     }>(
       `SELECT version, title, created_at,
               pg_column_size(doc)::text AS size,
               layout_type, node_count, attach_bytes, attach_count${
-                withClient ? ', client_platform, client_browser, client_ip' : ''}
+                withClient ? ', client_platform, client_browser, client_ip' : ''}${
+                withPin ? ', pinned, label, pinned_by, pinned_at' : ''}
          FROM public.map_document_versions
         WHERE map_id = $1
         ORDER BY version DESC`,
       [mapId],
     );
+    const limits = withPin ? await this.pinLimits(mapId) : null;
     return {
       mapId,
+      // 영구보관 요약 (13a §3) — 화면이 "N/limit" 와 별표 가능 여부를 그린다
+      pin: {
+        ready: withPin,
+        limit: limits?.maxPinned ?? null,
+        count: withPin ? rows.filter((r) => r.pinned).length : 0,
+        versionDays: limits?.versionDays ?? null,
+        canPin: canWrite(map.access_role),
+        isOwner: map.access_role === 'owner',
+      },
       versions: rows.map((r) => ({
+        pinned: withPin ? r.pinned === true : false,
+        label: withPin ? (r.label ?? null) : null,
+        pinnedByMe: withPin ? r.pinned_by === userId : false,
+        pinnedAt: withPin ? (r.pinned_at ?? null) : null,
         version: r.version,
         title: r.title,
         createdAt: r.created_at,
@@ -941,6 +961,110 @@ export class MapsService {
       })),
       total: rows.length,
     };
+  }
+
+  /**
+   * 영구보관 — **이름을 붙이는 것이 곧 보관하는 것이다** (13a §3.1, 2026-09-06).
+   * 이미 보관된 버전이면 이름만 바꾼다. 권한(13a §4.3): 보관은 편집
+   * 권한이면 되고, **남이 붙인 것의 이름은 개설자만** 바꾼다.
+   * 상한(개설자 요금제 `plan_quotas.max_pinned`)에 닿으면 409 — 화면이
+   * "하나를 해제하고 보관" 을 묻는다(§3.3). 저장을 막는 게 아니라 별표를 막는다.
+   */
+  async pinVersion(userId: string, mapId: string, version: number, label?: string) {
+    const map = await this.requirePinAccess(userId, mapId);
+    await this.requirePinCols();
+    const row = await this.versionRow(mapId, version);
+    const name = (label ?? '').trim().slice(0, 120) || null;
+    if (row.pinned) {
+      if (map.access_role !== 'owner' && row.pinned_by !== userId) {
+        throw new ForbiddenException('다른 사람이 보관한 버전의 이름은 개설자만 바꿀 수 있습니다.');
+      }
+      await this.db.query(
+        `UPDATE public.map_document_versions SET label = $3 WHERE map_id = $1 AND version = $2`,
+        [mapId, version, name],
+      );
+      return { version, pinned: true, label: name, renamed: true };
+    }
+    const { maxPinned } = await this.pinLimits(mapId);
+    if (maxPinned !== null) {
+      const { rows } = await this.db.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM public.map_document_versions WHERE map_id = $1 AND pinned = TRUE`,
+        [mapId],
+      );
+      if (Number(rows[0]?.n ?? 0) >= maxPinned) {
+        throw new ConflictException(
+          `보관 버전이 ${maxPinned}개로 가득 찼습니다 — 하나를 해제하고 이 버전을 보관해 주세요.`,
+        );
+      }
+    }
+    await this.db.query(
+      `UPDATE public.map_document_versions
+          SET pinned = TRUE, label = $3, pinned_by = $4, pinned_at = NOW()
+        WHERE map_id = $1 AND version = $2`,
+      [mapId, version, name, userId],
+    );
+    return { version, pinned: true, label: name, renamed: false };
+  }
+
+  /** 보관 해제 — 개설자는 무엇이든, 편집 참가자는 **자기가 붙인 것만** (13a §4.3) */
+  async unpinVersion(userId: string, mapId: string, version: number) {
+    const map = await this.requirePinAccess(userId, mapId);
+    await this.requirePinCols();
+    const row = await this.versionRow(mapId, version);
+    if (!row.pinned) return { version, pinned: false };
+    if (map.access_role !== 'owner' && row.pinned_by !== userId) {
+      throw new ForbiddenException('다른 사람이 보관한 버전은 개설자만 해제할 수 있습니다.');
+    }
+    await this.db.query(
+      `UPDATE public.map_document_versions
+          SET pinned = FALSE, label = NULL, pinned_by = NULL, pinned_at = NULL
+        WHERE map_id = $1 AND version = $2`,
+      [mapId, version],
+    );
+    return { version, pinned: false };
+  }
+
+  /** 별표는 편집 권한 — 읽기만 참가자에게는 "저장할 수 없다" 가 아니라 "보관할 수 없다" 고 말한다 */
+  private async requirePinAccess(userId: string, mapId: string) {
+    const map = await this.requireAccessibleMap(userId, mapId);
+    if (!canWrite(map.access_role)) {
+      throw new ForbiddenException('읽기만 권한으로는 버전을 보관하거나 해제할 수 없습니다.');
+    }
+    return map;
+  }
+
+  private async versionRow(mapId: string, version: number) {
+    const { rows } = await this.db.query<{ pinned: boolean; pinned_by: string | null }>(
+      `SELECT pinned, pinned_by FROM public.map_document_versions WHERE map_id = $1 AND version = $2`,
+      [mapId, version],
+    );
+    if (!rows[0]) throw new NotFoundException('그 버전이 없습니다 — 이미 정리됐을 수 있습니다.');
+    return rows[0];
+  }
+
+  /** 개설자 요금제의 보관 상한·기간 (13a §4.5 — 참가자 요금제는 보지 않는다) */
+  private async pinLimits(mapId: string): Promise<{ maxPinned: number | null; versionDays: number | null }> {
+    const { rows } = await this.db.query<{ max_pinned: number | null; version_days: number | null }>(
+      `SELECT pq.max_pinned, pq.version_days
+         FROM public.maps m
+         JOIN public.users u ON u.id = m.owner_id
+         LEFT JOIN public.plan_quotas pq ON pq.plan = u.plan
+        WHERE m.id = $1`,
+      [mapId],
+    );
+    return { maxPinned: rows[0]?.max_pinned ?? null, versionDays: rows[0]?.version_days ?? null };
+  }
+
+  private hasPinCols(): Promise<boolean> {
+    return columnReady(this.db, 'public.map_document_versions', 'pinned');
+  }
+
+  private async requirePinCols(): Promise<void> {
+    if (!(await this.hasPinCols())) {
+      throw new ServiceUnavailableException(
+        '이 서버에는 영구보관 칸이 아직 없습니다 — 델타 2026-09-04-schema-overhaul-abc.sql 을 적용해 주세요.',
+      );
+    }
   }
 
   /**

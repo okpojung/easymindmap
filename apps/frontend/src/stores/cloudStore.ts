@@ -30,6 +30,12 @@ interface CloudState {
   cloudKind: MapKind;
   /** 마지막으로 서버에 저장한 시각(ISO) */
   lastSavedAt: string | null;
+  /**
+   * 마지막 **명시적 저장**이 만든 히스토리 버전 번호 (2026-09-06, 13a §3.2 ②).
+   * 상단 툴바가 "☆ 이 버전 보관" 을 이 번호로 건다. 자동저장은 버전을
+   * 만들지 않으므로 바꾸지 않고, 다른 맵을 열면 비운다.
+   */
+  lastSavedVersion: number | null;
   busy: 'idle' | 'saving' | 'opening';
   error: string | null;
   /**
@@ -58,6 +64,7 @@ interface CloudState {
   setBusy: (b: CloudState['busy']) => void;
   setError: (e: string | null) => void;
   setNotice: (n: string | null) => void;
+  setLastSavedVersion: (v: number | null) => void;
 }
 
 export const useCloudStore = create<CloudState>((set) => ({
@@ -66,6 +73,7 @@ export const useCloudStore = create<CloudState>((set) => ({
   cloudFolderId: null,
   cloudKind: 'solo',
   lastSavedAt: null,
+  lastSavedVersion: null,
   busy: 'idle',
   error: null,
   notice: null,
@@ -78,6 +86,7 @@ export const useCloudStore = create<CloudState>((set) => ({
       return {
         cloudMapId: mapId,
         lastSavedAt: savedAt,
+        lastSavedVersion: same ? s.lastSavedVersion : null,
         error: null,
         readOnlyInfo: null,
         cloudTitle: meta?.title ?? (same ? s.cloudTitle : null),
@@ -90,6 +99,7 @@ export const useCloudStore = create<CloudState>((set) => ({
     set({
       cloudMapId: null,
       lastSavedAt: null,
+      lastSavedVersion: null,
       cloudTitle: null,
       cloudFolderId: null,
       cloudKind: 'solo',
@@ -99,4 +109,5 @@ export const useCloudStore = create<CloudState>((set) => ({
   setBusy: (busy) => set({ busy }),
   setError: (error) => set({ error }),
   setNotice: (notice) => set({ notice }),
+  setLastSavedVersion: (lastSavedVersion) => set({ lastSavedVersion }),
 }));

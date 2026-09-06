@@ -115,6 +115,41 @@ export interface MapVersionItem {
   browser?: string | null;
   /** 저장 요청이 들어온 IP (서버가 기록) */
   ip?: string | null;
+  // 영구보관 (2026-09-06, 13a §3) — 칸이 없는 서버는 전부 false/null
+  /** 별표 — 정리 대상에서 완전히 빠진다 */
+  pinned?: boolean;
+  /** 이름을 붙이는 것이 곧 보관하는 것 — 붙인 이름 */
+  label?: string | null;
+  /** 내가 붙였나 — 편집 참가자는 자기 것만 해제·이름 변경 */
+  pinnedByMe?: boolean;
+  pinnedAt?: string | null;
+}
+
+/** 영구보관 요약 — 히스토리 목록 응답에 실린다 (13a §3) */
+export interface VersionPinInfo {
+  /** 칸이 있는 서버인가 — false 면 별표를 그리지 않는다 */
+  ready: boolean;
+  /** 개설자 요금제의 보관 상한 (null = 무제한) */
+  limit: number | null;
+  count: number;
+  /** 개설자 요금제의 자동 보관 기간 (null = 무제한) */
+  versionDays: number | null;
+  /** 편집 권한이 있어 별표를 누를 수 있나 */
+  canPin: boolean;
+  isOwner: boolean;
+}
+
+/** 정리 미리보기 — 지우지 않는다 (13a §2.2-1 · §3.2 ③ "곧 정리되는 버전") */
+export interface VersionPrunePreview {
+  mapId: string;
+  enabled: boolean;
+  ready: boolean;
+  versionDays: number | null;
+  graceDays: number;
+  expired: { version: number; createdAt: string }[];
+  thinned: { version: number; createdAt: string }[];
+  expiring: { version: number; createdAt: string; deleteAt: string }[];
+  kept: number;
 }
 
 /** 청크 업로드 세션 상태 (§12.4) — 조각 크기·개수는 서버가 정한다 */
@@ -371,8 +406,18 @@ export const cloudApi = {
   editRelease: (mapId: string, sessionKey: string) =>
     req<{ ok: boolean }>('POST', `/maps/${mapId}/edit-release`, { sessionKey }),
   listVersions: (mapId: string) =>
-    req<{ mapId: string; versions: MapVersionItem[]; total: number }>(
+    req<{ mapId: string; versions: MapVersionItem[]; total: number; pin?: VersionPinInfo }>(
       'GET', `/maps/${mapId}/versions`),
+  // 영구보관 (13a §3) — PUT 은 보관 또는 이름 바꾸기, DELETE 는 해제.
+  // 상한에 닿으면 409 (문장 그대로 보여 주고 "하나를 해제하고" 흐름으로)
+  pinVersion: (mapId: string, version: number, label?: string) =>
+    req<{ version: number; pinned: true; label: string | null; renamed: boolean }>(
+      'PUT', `/maps/${mapId}/versions/${version}/pin`, { label }),
+  unpinVersion: (mapId: string, version: number) =>
+    req<{ version: number; pinned: false }>(
+      'DELETE', `/maps/${mapId}/versions/${version}/pin`),
+  prunePreview: (mapId: string) =>
+    req<VersionPrunePreview>('GET', `/maps/${mapId}/versions/prune-preview`),
   getVersion: (mapId: string, version: number) =>
     req<{ mapId: string; version: number; title: string; doc: unknown; createdAt: string }>(
       'GET', `/maps/${mapId}/versions/${version}`),

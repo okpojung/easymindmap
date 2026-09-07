@@ -485,6 +485,23 @@ export function parseMarkdownToMap(
     flushQuote();
   };
 
+  // 닫는 펜스를 만났을 때 — 모아 둔 코드를 노트/자식 노드로
+  const closeFence = () => {
+    const code = (fenceBuf ?? []).join('\n');
+    fenceBuf = null;
+    if (code.trim()) {
+      // 'node'면 **각각의 자식 노드**의 ``` 펜스(코드 패널 렌더)로
+      // 분리 (markmap 파리티, 2026-07-31) — 원문 보존(링크 미추출)
+      const block = '```' + (fenceLang || '') + '\n' + code + '\n```';
+      // codeToNote — 자식 노드 대신 **가장 가까운 견출·불릿 노드**의 코드 노트
+      if (opts.codeToNote) {
+        addNoteToHost({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
+      } else if (!attachBlockChild(block, false)) {
+        addNote({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
+      }
+    }
+  };
+
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, '');
 
@@ -497,23 +514,27 @@ export function parseMarkdownToMap(
         fenceBuf = [];
         fenceLang = fence[1].trim();
       } else {
-        const code = fenceBuf.join('\n');
-        fenceBuf = null;
-        if (code.trim()) {
-          // 'node'면 **각각의 자식 노드**의 ``` 펜스(코드 패널 렌더)로
-          // 분리 (markmap 파리티, 2026-07-31) — 원문 보존(링크 미추출)
-          const block = '```' + (fenceLang || '') + '\n' + code + '\n```';
-          // codeToNote — 자식 노드 대신 **가장 가까운 견출·불릿 노드**의 코드 노트
-          if (opts.codeToNote) {
-            addNoteToHost({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
-          } else if (!attachBlockChild(block, false)) {
-            addNote({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
-          }
-        }
+        closeFence();
       }
       continue;
     }
-    if (fenceBuf !== null) { fenceBuf.push(raw); continue; }
+    if (fenceBuf !== null) {
+      // ★ 닫지 않은 ```emm 선언 블록은 **첫 견출 앞에서 닫힌 것으로** 본다
+      // (2026-09-07, 관용적 파싱). 선언 줄은 `key: value` 뿐이라 `#` 로
+      // 시작하는 줄이 선언일 수는 없다. 이 한 줄이 없으면 닫는 ``` 을 잊은
+      // 문서는 견출이 전부 코드 안으로 들어가 "구조를 찾지 못했습니다" 가
+      // 되거나, 루트 하나에 나머지 전부가 코드 노트로 들어간다(실제 보고).
+      // 다른 언어의 펜스는 그대로 둔다 — 코드 안의 `# 주석` 을 견출로
+      // 오인하면 안 된다.
+      if (fenceLang.toLowerCase() === 'emm' && /^#{1,6}\s/.test(line)) {
+        while (fenceBuf.length && !fenceBuf[fenceBuf.length - 1].trim()) fenceBuf.pop(); // 견출 앞 빈 줄은 선언이 아니다
+        closeFence();
+        // 이 줄은 견출 — 아래로 흘려보낸다
+      } else {
+        fenceBuf.push(raw);
+        continue;
+      }
+    }
 
     // 표 행 (| … |) — 연속 행을 한 덩어리로
     if (/^\s*\|.*\|\s*$/.test(line)) {

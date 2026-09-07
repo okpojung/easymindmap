@@ -1,6 +1,6 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import {
-  BadRequestException, Injectable, NotFoundException, ServiceUnavailableException,
+  BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { tableReady } from '../common/table-ready';
@@ -141,6 +141,29 @@ export class ApiTokenService {
     );
     if (rows.length === 0) throw new NotFoundException('토큰을 찾을 수 없습니다.');
     return toView(rows[0]);
+  }
+
+  /**
+   * 기록 삭제 — **폐기된 토큰만** 행을 지운다 (2026-09-07 사용자 요청).
+   *
+   * 폐기는 기록을 남기지만(언제 무엇을 껐는지), 목록에 옛 줄이 쌓이는 것은
+   * 사용자가 치우고 싶어 한다. 살아 있는 토큰을 여기서 지우면 "왜 401 이
+   * 나오지" 를 나중에 알 길이 없어지므로 **먼저 폐기하고** 지우게 한다(409).
+   */
+  async deleteRecord(userId: string, tokenId: string): Promise<void> {
+    const { rows } = await this.db.query<{ revoked: boolean }>(
+      `SELECT revoked_at IS NOT NULL AS revoked FROM public.api_tokens
+        WHERE id = $1 AND user_id = $2`,
+      [tokenId, userId],
+    );
+    if (rows.length === 0) throw new NotFoundException('토큰을 찾을 수 없습니다.');
+    if (!rows[0].revoked) {
+      throw new ConflictException('아직 쓸 수 있는 토큰입니다 — 먼저 폐기한 뒤 지워 주세요.');
+    }
+    await this.db.query(
+      `DELETE FROM public.api_tokens WHERE id = $1 AND user_id = $2 AND revoked_at IS NOT NULL`,
+      [tokenId, userId],
+    );
   }
 
   /**

@@ -57,4 +57,11 @@ export class McpTokensController {
   revoke(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.tokens.revoke(user.id, id);
   }
+
+  /** 폐기된 토큰의 **기록**을 지운다 — 살아 있는 토큰은 409 (먼저 폐기) */
+  @Delete(':id/record')
+  @HttpCode(204)
+  async deleteRecord(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    await this.tokens.deleteRecord(user.id, id);
+  }
 }

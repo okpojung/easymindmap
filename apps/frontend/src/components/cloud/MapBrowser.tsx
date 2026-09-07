@@ -743,7 +743,10 @@ export function MapBrowser({
     display: 'grid',
     // 숫자 4열은 머리글 글자('첨부 용량')가 잘리지 않을 만큼 넓힌다 —
     // 좁으면 라벨이 넘쳐 값과 어긋나 보인다 (2026-08-07 보고)
-    gridTemplateColumns: '24px minmax(140px, 1fr) 76px 108px 108px 58px 76px 54px 86px 106px',
+    // 관리 열은 **버튼 여섯 개가 다 들어가는 폭**(28×6 + 4×5 = 188)이어야
+    // 한다. 106 이었을 때는 넘친 버튼이 가운데 정렬로 양쪽에 삐져나와
+    // 첨부 용량 숫자와 붙어 보였다 (2026-09-07 보고). 왼쪽 여백 8 을 더해 196.
+    gridTemplateColumns: '24px minmax(140px, 1fr) 76px 108px 108px 58px 76px 54px 86px 196px',
     alignItems: 'center',
     gap: 8,
     padding: '7px 10px',
@@ -764,10 +767,15 @@ export function MapBrowser({
     background: t.surface, border: `1px solid ${t.border}`,
     color: t.textMuted, cursor: 'pointer', padding: 0,
   };
-  // 관리 열 — 버튼 묶음을 가운데로 (머리글 '관리'도 같은 자리)
+  // 관리 열 — 버튼 묶음을 가운데로 (머리글 '관리'도 같은 자리).
+  // 줄마다 버튼 수가 달라도(협업맵은 퍼블리싱 없음) 같은 자리에 서도록,
+  // 빠진 버튼은 `actionGap` 으로 **자리를 비워 둔다** (2026-09-07 보고:
+  // 협업맵 줄의 아이콘이 다른 줄과 어긋났다).
   const actionCell: React.CSSProperties = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingLeft: 8,
   };
+  const actionGap: React.CSSProperties = { display: 'inline-block', width: 28, height: 26, flex: '0 0 28px' };
   const toolBtn: React.CSSProperties = {
     height: 24, padding: '0 9px', borderRadius: 6, cursor: 'pointer',
     border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted,
@@ -1294,10 +1302,12 @@ export function MapBrowser({
                     title="공유 — 참여자 초대 · 소유권 넘기기 (맵을 열지 않아도 됩니다)" aria-label="공유"
                     onClick={() => setShareMap(r.map)}><I.Share size={15} /></button>
                   {/* 퍼블리싱은 **단독맵만** (e2e202 사용자 결정) — 협업맵에는 버튼을 두지 않는다 */}
-                  {r.map.kind !== 'collab' && (
+                  {r.map.kind !== 'collab' ? (
                     <button data-testid="browser-map-publish" style={iconBtn}
                       title="퍼블리싱 — 링크를 가진 사람이 로그인 없이 읽습니다 (맵을 열지 않아도 됩니다)" aria-label="퍼블리싱"
                       onClick={() => setPublishMap(r.map)}><I.Globe size={15} /></button>
+                  ) : (
+                    <span aria-hidden style={actionGap} />
                   )}
                   <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
                     onClick={() => void renameMap(r.map)}><I.Pencil size={15} /></button>

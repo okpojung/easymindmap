@@ -496,6 +496,8 @@ export const cloudApi = {
     req<McpToken & { token: string }>('POST', '/mcp-tokens', { name }),
   /** 폐기 — 행을 지우지 않고 revokedAt 을 채운다(언제 껐는지 남긴다) */
   revokeMcpToken: (id: string) => req<McpToken>('DELETE', `/mcp-tokens/${id}`),
+  /** 폐기된 토큰의 기록 삭제 — 살아 있는 토큰이면 409 (먼저 폐기) */
+  deleteMcpTokenRecord: (id: string) => req<void>('DELETE', `/mcp-tokens/${id}/record`),
   /** 로그인 직후 한 번 — 서버가 **그때의 IP** 를 남긴다 (2026-08-14).
    *  IP 는 보내지 않는다: 서버가 요청에서 직접 본다(위조 방지). */
   recordLogin: async () =>

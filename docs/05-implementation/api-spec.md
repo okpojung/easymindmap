@@ -97,6 +97,7 @@
 | 40b | GET | `/v1/mcp-tokens` | 내 MCP 토큰 목록 → `{available, ready, tokens:[{id,name,prefix,createdAt,lastUsedAt,revokedAt}]}`. **막힐 이유를 두 가지 다 미리 준다** — `available:false` = 이 배포는 MCP 를 열지 않는다(`AUTH_MODE=dev`), `ready:false` = 델타 SQL(`api_tokens`)이 아직 적용되지 않았다. 화면이 발급 **전에** 그 이유를 보여 준다(눌러서 오류를 받게 하지 않는다) |
 | 40c | POST | `/v1/mcp-tokens` | `{name}` → `{…, token}`. **`token` 은 원문이고 이 응답에만 있다** — DB 에는 sha256 해시만 남으므로 서버도 다시 못 본다. 살아 있는 토큰은 계정당 10개까지 |
 | 40d | DELETE | `/v1/mcp-tokens/{id}` | 폐기 — 행을 지우지 않고 `revokedAt` 을 채운다(언제 껐는지 남는다). 남의 토큰은 **404**(경로의 id 만 믿지 않고 `user_id` 를 함께 본다) |
+| 40e | DELETE | `/v1/mcp-tokens/{id}/record` | **폐기된 토큰의 기록 삭제** → 204 (2026-09-07). 폐기(40d)는 행을 남기지만 목록에 옛 줄이 쌓이는 것은 사용자가 치운다. **살아 있는 토큰은 409** "먼저 폐기한 뒤 지워 주세요" — 살아 있는 것을 지우면 "왜 401 이 나오지" 를 나중에 알 길이 없다. 남의 토큰·없는 id 404 |
 | 22a | POST | `/v1/admin/login/start` | **관리자 콘솔 2단계 로그인 ①.** GoTrue 토큰 필요 — 관리자(`ADMIN_EMAILS`)면 인증번호 발송, 아니면 **403**(인증번호도 보내지 않는다) (2026-08-13) |
 | 22b | POST | `/v1/admin/login/verify` | ② `{code}` → `{adminToken, email, expiresAt}` — 표는 헤더 `X-Admin-Token` 으로 싣는다(유효 8시간) |
 | 22c | GET | `/v1/admin/me` | 표가 살아 있는지 → `{email}` |

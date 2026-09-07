@@ -35,6 +35,8 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
   const [copied, setCopied] = useState(false);
   /** 폐기 확인 대기 중인 토큰 — 한 번 더 묻는다(되돌릴 수 없다) */
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  /** 폐기된 토큰의 기록 삭제 확인 대기 (2026-09-07) */
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const alive = useRef(true);
 
   useEffect(() => {
@@ -82,6 +84,18 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
       await reload();
     } catch (e) {
       if (alive.current) setErr(e instanceof CloudError ? e.message : '폐기하지 못했습니다.');
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
+
+  async function removeRecord(id: string) {
+    setBusy(true); setErr(null); setDeleteId(null);
+    try {
+      await cloudApi.deleteMcpTokenRecord(id);
+      await reload();
+    } catch (e) {
+      if (alive.current) setErr(e instanceof CloudError ? e.message : '지우지 못했습니다.');
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -261,6 +275,32 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
                     >폐기</button>
                   )
                 )}
+                {dead && (
+                  // 폐기된 줄은 기록만 남은 것 — 사용자가 치울 수 있다 (2026-09-07)
+                  deleteId === tok.id ? (
+                    <button
+                      data-testid="mcp-delete-confirm"
+                      onClick={() => void removeRecord(tok.id)}
+                      disabled={busy}
+                      style={{
+                        height: 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer',
+                        border: `1px solid ${t.danger}`, background: 'transparent',
+                        color: t.danger, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
+                      }}
+                    >정말 삭제</button>
+                  ) : (
+                    <button
+                      data-testid="mcp-delete"
+                      onClick={() => setDeleteId(tok.id)}
+                      title="폐기된 토큰의 기록을 목록에서 지웁니다"
+                      style={{
+                        height: 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer',
+                        border: `1px solid ${t.border}`, background: t.surface,
+                        color: t.textMuted, fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                      }}
+                    >삭제</button>
+                  )
+                )}
               </div>
             );
           })}
@@ -268,8 +308,10 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
       )}
 
       <div style={{ fontSize: 11.5, color: t.textSubtle, marginTop: 12, lineHeight: 1.7 }}>
-        토큰으로 할 수 있는 것은 <b>새 맵 만들기 하나</b>입니다 — 맵을 지우거나
-        계정을 건드릴 수는 없습니다. 만든 맵도 평소와 같이 저장 용량을 씁니다.
+        토큰으로 할 수 있는 것은 <b>문서함의 맵을 읽고</b>(목록 · 내용 · 지금 열어 둔 맵),
+        <b> 새 맵을 만들고</b>, <b>기존 맵의 노드 아래에 가지를 덧붙이는</b> 것입니다 —
+        맵을 지우거나 이름을 바꾸거나 계정을 건드릴 수는 없습니다. 만든 내용은 평소와
+        같이 저장 용량을 씁니다. 폐기한 토큰은 기록으로 남고, [삭제]로 목록에서 치울 수 있습니다.
       </div>
     </div>
   );

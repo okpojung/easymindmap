@@ -376,13 +376,31 @@ export class MapsService {
   async listShared(userId: string, opts: { q?: string; limit?: number } = {}) {
     const limit = Math.min(200, Math.max(1, opts.limit ?? 100));
     const raw = (opts.q ?? '').trim();
+    const searching = raw.length > 0;
     const params: unknown[] = [userId, limit];
-    let titleWhere = '';
-    if (raw) {
-      // 내용 검색은 아직 하지 않는다 — **이름만**. (내용 검색은 소유자
-      // 목록의 CTE 를 그대로 태워야 해서 함께 손볼 일이다)
+    let where = '';
+    let hitsCte = '';
+    let matchCountSql = '';
+    if (searching) {
+      // **제목 + 맵 안(노드·노트·태그)** — 내 목록(`list`)과 같은 범위다
+      // (2026-09-07 사용자 요청: "검색 범위를 퍼블리싱·공유받은 맵까지").
+      // 전에는 이름만 찾았다. 형태도 `list()` 와 같다 — 내용 조건은
+      // MATERIALIZED CTE 로 빼서 trigram 인덱스를 타게 하고, CTE 안에서
+      // **참가자 표와 조인**해 남의 문서를 훑지 않는다(`list()` 의 소유자
+      // 조인과 같은 이유 — 2글자 검색이 전체를 훑는 것을 막는다).
       params.push(`%${raw.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-      titleWhere = ` AND m.title ILIKE $3 ESCAPE '\\'`;
+      hitsCte = `WITH hits AS MATERIALIZED (
+           SELECT s.map_id FROM public.map_documents s
+             JOIN public.map_members mm2 ON mm2.map_id = s.map_id AND mm2.user_id = $1
+            WHERE s.search_text ILIKE $3 ESCAPE '\\'
+         ), `;
+      where = ` AND (m.title ILIKE $3 ESCAPE '\\'`
+        + ` OR m.id IN (SELECT map_id FROM hits))`;
+      // 건수는 LIMIT 뒤의 행에 대해서만 센다 (`list()` 와 같다). search_text
+      // 는 **검색할 때만** 고른다 — 스키마 미적용 서버에서 목록이 죽지 않게.
+      matchCountSql = `, (SELECT count(*)
+             FROM unnest(string_to_array(p.search_text, E'\\n')) AS ln
+            WHERE ln ILIKE $3 ESCAPE '\\')::int AS match_count`;
     }
     // **표가 있는지 먼저 묻는다.** 오류를 통째로 삼키면(옛 구현) 컬럼
     // 이름 하나 틀린 것까지 "공유가 없다"로 보여, **아무도 원인을 못
@@ -398,27 +416,35 @@ export class MapsService {
       owner_email: string | null; role: string;
       node_count: number | null; attach_count: number | null;
       attach_bytes: string | null; doc_bytes: string | null;
+      match_count?: number;
     }> = [];
     {
       const r = await this.db.query<(typeof rows)[number]>(
-        `SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
-                m.created_at, m.updated_at,
-                -- 이메일은 auth.users 에 있다 (public.users 에는 없다).
-                -- 관리자 화면도 같은 자리에서 읽는다 (admin.service.ts).
-                -- 검증에서 잡았다: u.email 로 썼다가 질의가 통째로 실패해
-                -- 공유 목록이 늘 비어 있었다.
-                mm.role,
-                COALESCE(a.email, u.display_name) AS owner_email,
-                d.node_count, d.attach_count, d.attach_bytes,
-                octet_length(d.doc::text) AS doc_bytes
-           FROM public.map_members mm
-           JOIN public.maps m ON m.id = mm.map_id AND m.deleted_at IS NULL
-           LEFT JOIN public.map_documents d ON d.map_id = m.id
-           LEFT JOIN public.users u ON u.id = m.owner_id
-           LEFT JOIN auth.users a ON a.id = m.owner_id
-          WHERE mm.user_id = $1${titleWhere}
-          ORDER BY m.updated_at DESC
-          LIMIT $2`,
+        `${hitsCte || 'WITH '}p AS (
+           SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
+                  m.created_at, m.updated_at,
+                  -- 이메일은 auth.users 에 있다 (public.users 에는 없다).
+                  -- 관리자 화면도 같은 자리에서 읽는다 (admin.service.ts).
+                  -- 검증에서 잡았다: u.email 로 썼다가 질의가 통째로 실패해
+                  -- 공유 목록이 늘 비어 있었다.
+                  mm.role,
+                  COALESCE(a.email, u.display_name) AS owner_email,
+                  d.node_count, d.attach_count, d.attach_bytes,
+                  octet_length(d.doc::text) AS doc_bytes${searching ? ',\n                  d.search_text' : ''}
+             FROM public.map_members mm
+             JOIN public.maps m ON m.id = mm.map_id AND m.deleted_at IS NULL
+             LEFT JOIN public.map_documents d ON d.map_id = m.id
+             LEFT JOIN public.users u ON u.id = m.owner_id
+             LEFT JOIN auth.users a ON a.id = m.owner_id
+            WHERE mm.user_id = $1${where}
+            ORDER BY m.updated_at DESC
+            LIMIT $2
+         )
+         SELECT p.id, p.title, p.folder_id, p.kind, p.deleted_at,
+                p.created_at, p.updated_at, p.role, p.owner_email,
+                p.node_count, p.attach_count, p.attach_bytes, p.doc_bytes${matchCountSql}
+           FROM p
+          ORDER BY p.updated_at DESC, p.id`,
         params,
       );
       rows = r.rows;
@@ -440,6 +466,8 @@ export class MapsService {
         /** `editor` 는 고칠 수 있고 `viewer` 는 읽기만 */
         role: m.role,
         shared: true as const,
+        // 내 목록과 같은 모양 — 검색 중에만 실린다 (0 = 이름만 맞음)
+        ...(searching ? { matchCount: m.match_count ?? 0 } : {}),
       })),
       total: rows.length,
     };

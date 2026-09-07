@@ -40,8 +40,36 @@
  * (Protected Resources) **SHOULD NOT** include `offline_access` in
  * `WWW-Authenticate` scope or Protected Resource Metadata
  * `scopes_supported`, as refresh tokens are not a resource requirement."
+ *
+ * ★★ `openid` 도 **뺀다** — 넣으면 **연결이 끊긴다** (2026-09-07 실측).
+ *
+ *   처음에는 `['openid','email']` 이었다. claude.ai 는 이 목록을 그대로
+ *   읽어 `scope=openid email` 로 인가를 요청했고, 사용자가 [허용] 을 누른
+ *   뒤 **토큰 교환에서 500** 이 났다:
+ *
+ *     {"error_code":"unexpected_failure","msg":"Error generating ID token"}
+ *
+ *   GoTrue 는 scope 에 `openid` 가 있으면 **ID 토큰을 함께 만들려 하는데**
+ *   (`api/oauthserver/handlers.go:443` — `HasScope(…, ScopeOpenID)`),
+ *   **HS256 으로는 ID 토큰을 만들지 못한다**:
+ *
+ *     // tokens/service.go:778
+ *     if signingMethod == jwt.SigningMethodHS256 {
+ *         return "", fmt.Errorf("HS256 is not supported for ID token signing")
+ *     }
+ *
+ *   우리 GoTrue 는 대칭키 하나(`GOTRUE_JWT_SECRET`)로 HS256 서명을 한다.
+ *   그래서 `openid` 를 요구하는 순간 **반드시** 실패한다.
+ *
+ *   ★ **왜 GoTrue 를 비대칭키로 바꾸지 않나** — 그러면 **액세스 토큰 서명까지**
+ *     RS256 으로 바뀐다. 우리 API 의 두 가드가 모두 HS256 으로 검증하고
+ *     있으므로 **살아 있는 로그인이 전부 끊긴다.** 고치는 값이 훨씬 크다.
+ *
+ *   ★ **`openid` 가 없어도 아쉬울 것이 없다** — MCP 에 ID 토큰은 필요 없다.
+ *     우리가 쓰는 것은 **액세스 토큰의 `sub`·`email`·`client_id`** 뿐이고
+ *     그 셋은 scope 와 무관하게 늘 들어 있다(`v0hooks.go:100~112`).
  */
-export const MCP_SCOPES = ['openid', 'email'] as const;
+export const MCP_SCOPES = ['email'] as const;
 export const MCP_SCOPE_STRING = MCP_SCOPES.join(' ');
 
 /** RFC 9728 이 정한 well-known 접미사 */

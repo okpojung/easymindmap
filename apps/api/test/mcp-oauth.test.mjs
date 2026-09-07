@@ -37,7 +37,15 @@ check('메타데이터 주소는 경로를 끼운 형태',
   check('★ authorization_servers 가 비면 안 된다', m.authorization_servers.length >= 1, true);
   check('인가 서버 주소 끝의 / 를 없앤다',
     m.authorization_servers, ['https://auth-dev.example.com']);
-  check('scopes_supported', m.scopes_supported, ['openid', 'email']);
+  check('scopes_supported', m.scopes_supported, ['email']);
+  // ★★ `openid` 를 **광고하면 안 된다** — 넣으면 연결이 끊긴다 (2026-09-07 실측).
+  //    claude.ai 는 이 목록을 그대로 읽어 요청하고, GoTrue 는 scope 에
+  //    openid 가 있으면 ID 토큰을 만들려다 **HS256 이라 500** 을 낸다
+  //    (handlers.go:443 · tokens/service.go:778). oauth.ts 머리말 참조.
+  check('★ openid 는 광고하지 않는다 (HS256 + ID 토큰 = 500)',
+    m.scopes_supported.includes('openid'), false);
+  check('★ offline_access 도 광고하지 않는다 (규격 SHOULD NOT)',
+    m.scopes_supported.includes('offline_access'), false);
   // 규격: "MCP Servers SHOULD NOT include `offline_access` in ...
   //        Protected Resource Metadata `scopes_supported`"
   check('★ offline_access 는 넣지 않는다',

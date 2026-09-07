@@ -239,6 +239,15 @@ export function MapBrowser({
   const [finding, setFinding] = useState(false);
   /** 서버 검색이 실패하면 받아 둔 목록에서 **이름만** 훑는 폴백 */
   const [findErr, setFindErr] = useState<string | null>(null);
+  /**
+   * 검색 결과 — **공유받은 맵** (2026-09-07 사용자 요청: 검색 범위에
+   * 퍼블리싱·공유받은 맵까지). 퍼블리싱 맵은 내 맵이라 `found` 에 이미
+   * 들어오지만, 공유받은 맵은 받아 둔 100개 안에서 **이름만** 걸렀다 —
+   * 그 바깥의 맵은 이름조차 못 찾았고 맵 안의 글은 아예 안 봤다. 이제
+   * 서버(`GET /maps/shared?q=`)가 제목 + 맵 안을 찾아 준다.
+   * `null` 이면 서버가 실패한 것 — 받아 둔 목록에서 이름으로 물러선다.
+   */
+  const [foundShared, setFoundShared] = useState<MapListItem[] | null>(null);
   /** 펼쳐 둔 폴더 — 기본은 비어 있다(= 모두 접기) */
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
@@ -352,20 +361,27 @@ export function MapBrowser({
   const searching = qRaw.length > 0;
   useEffect(() => {
     if (!searching) {
-      setFound(null); setFoundTotal(0); setFinding(false); setFindErr(null); return;
+      setFound(null); setFoundShared(null); setFoundTotal(0); setFinding(false); setFindErr(null); return;
     }
     let alive = true;
     setFinding(true);
-    // 타자마다 서버를 두드리지 않는다 — 멈칫한 뒤에 한 번
+    // 타자마다 서버를 두드리지 않는다 — 멈칫한 뒤에 한 번.
+    // 내 맵(퍼블리싱 포함)과 공유받은 맵을 **나란히** 묻는다 — 공유
+    // 검색이 실패해도 내 검색은 살아야 하므로 따로 잡는다(공유 쪽은
+    // 받아 둔 목록에서 이름으로 물러선다).
     const timer = window.setTimeout(() => {
-      cloudApi.listMaps({ q: qRaw, sort, order, limit: MAP_FETCH_LIMIT })
-        .then((r) => {
+      Promise.all([
+        cloudApi.listMaps({ q: qRaw, sort, order, limit: MAP_FETCH_LIMIT }),
+        cloudApi.listSharedMaps({ q: qRaw, limit: 100 }).catch(() => null),
+      ])
+        .then(([r, sh]) => {
           if (!alive) return;
           setFound(r.maps); setFoundTotal(r.total); setFindErr(null);
+          setFoundShared(sh ? sh.maps : null);
         })
         .catch((e) => {
           if (!alive) return;
-          setFound(null);
+          setFound(null); setFoundShared(null);
           setFindErr(e instanceof CloudError ? e.message : '검색에 실패했습니다.');
         })
         .finally(() => { if (alive) setFinding(false); });
@@ -497,8 +513,10 @@ export function MapBrowser({
       });
       for (const m of pubRows) out.push({ kind: 'map', depth: 0, map: m });
     }
-    // 공유받은 맵 — 트리 **아래**에 따로. 검색 중이면 이름으로 거른다.
-    const sharedRows = shared.filter((m) => !searching || hit(m.title));
+    // 공유받은 맵 — 트리 **아래**에 따로. 검색 중이면 **서버 결과**(제목 +
+    // 맵 안, 2026-09-07). 서버가 실패했을 때만 받아 둔 목록에서 이름으로.
+    const sharedRows = !searching ? shared
+      : foundShared ?? shared.filter((m) => hit(m.title));
     if (sharedRows.length) {
       out.push({ kind: 'sharedHead', depth: 0, count: sharedRows.length });
       for (const m of sharedRows) out.push({ kind: 'map', depth: 0, map: m });
@@ -506,7 +524,7 @@ export function MapBrowser({
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q, serverFound,
-      newFolder, shared, publishedMaps]);
+      newFolder, shared, foundShared, publishedMaps]);
 
   const shownMaps = useMemo(
     // **공유받은 맵은 합계에서 뺀다.** 합계는 "내 문서함이 얼마나 되나"를

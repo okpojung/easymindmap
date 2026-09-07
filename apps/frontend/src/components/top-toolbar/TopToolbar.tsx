@@ -37,6 +37,11 @@ interface Props {
   saveState?: SaveState;
 }
 
+/**
+ * 편집 화면의 상단 막대. **문서함이 열려 있을 때는 그리지 않는다** —
+ * EditorPage 가 DocsToolbar 로 바꿔 단다 (2026-09-07). 여기 있는 것은
+ * 전부 "열린 맵" 에 대한 일이다.
+ */
 export function TopToolbar({
   t,
   collabs,

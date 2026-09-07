@@ -28,7 +28,8 @@ import {
   cloudApi, CloudError,
   type FolderItem, type MapListItem,
 } from '@/services/cloud/apiClient';
-import { ProInbox, ProMapMembersTip, ProSharedMapActions } from '@pro';
+import { ProInbox, ProMapMembersTip, ProShareDialog, ProSharedMapActions } from '@pro';
+import { PublishPanel } from '@/components/cloud/PublishPanel';
 import { useCloudStore } from '@/stores/cloudStore';
 import { notifyUser } from '@/stores/noticeStore';
 import { publicMapUrl } from './PublishPanel';
@@ -241,6 +242,15 @@ export function MapBrowser({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
   const [moving, setMoving] = useState<MapListItem | null>(null);
+  /**
+   * 문서함 행에서 연 공유 대화상자 (2026-09-07 사용자 요청 — "소유권을
+   * 넘기려고 꼭 맵을 열어야 하나"). 툴바의 공유와 **같은 대화상자**를 맵 id
+   * 만으로 띄운다(탈퇴 차단 목록의 [공유 설정]과 같은 길). 닫으면 목록을
+   * 다시 읽는다 — 초대로 유형이 협업맵이 됐거나 소유권 제안이 걸렸을 수 있다.
+   */
+  const [shareMap, setShareMap] = useState<MapListItem | null>(null);
+  /** 문서함 행에서 연 퍼블리싱 창 — 같은 요청. 협업맵은 게시할 수 없어 버튼이 없다 */
+  const [publishMap, setPublishMap] = useState<MapListItem | null>(null);
   // 상세 정보 카드 (2026-08-09 요청) — 파일명 위에 마우스를 올리거나
   // 행 오른쪽 ⓘ 를 누르면 뜬다. pinned=true(ⓘ 클릭)면 마우스를 떼도
   // 남아 있어 IP 같은 값을 드래그해 복사할 수 있다.
@@ -1233,6 +1243,15 @@ export function MapBrowser({
               )}
               {!r.map.shared && (
                 <>
+                  <button data-testid="browser-map-share" style={iconBtn}
+                    title="공유 — 참여자 초대 · 소유권 넘기기 (맵을 열지 않아도 됩니다)" aria-label="공유"
+                    onClick={() => setShareMap(r.map)}><I.Share size={15} /></button>
+                  {/* 퍼블리싱은 **단독맵만** (e2e202 사용자 결정) — 협업맵에는 버튼을 두지 않는다 */}
+                  {r.map.kind !== 'collab' && (
+                    <button data-testid="browser-map-publish" style={iconBtn}
+                      title="퍼블리싱 — 링크를 가진 사람이 로그인 없이 읽습니다 (맵을 열지 않아도 됩니다)" aria-label="퍼블리싱"
+                      onClick={() => setPublishMap(r.map)}><I.Globe size={15} /></button>
+                  )}
                   <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
                     onClick={() => void renameMap(r.map)}><I.Pencil size={15} /></button>
                   <button data-testid="browser-map-move" style={iconBtn}
@@ -1312,6 +1331,30 @@ export function MapBrowser({
               Esc 또는 ⓘ 를 다시 누르면 닫힙니다.
             </div>
           )}
+        </div>
+      )}
+
+      {/* 행에서 연 공유 대화상자 — 문서함 위에 떠야 하므로 높은 층에 감싼다
+          (탈퇴 대화상자에서 여는 것과 같은 방식, UserMenu 참조) */}
+      {shareMap && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
+          <ProShareDialog
+            t={t}
+            mapId={shareMap.mapId}
+            onClose={() => { setShareMap(null); void load(); }}
+          />
+        </div>
+      )}
+
+      {publishMap && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
+          <PublishPanel
+            t={t}
+            mapId={publishMap.mapId}
+            mapTitle={publishMap.title}
+            flash={onFlash}
+            onClose={() => { setPublishMap(null); void load(); }}
+          />
         </div>
       )}
 

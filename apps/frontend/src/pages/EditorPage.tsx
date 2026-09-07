@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { THEMES } from '@/components/design-tokens/theme';
 import { TopToolbar } from '@/components/top-toolbar/TopToolbar';
+import { DocsToolbar } from '@/components/top-toolbar/DocsToolbar';
 import { UnifiedSidebar } from '@/components/unified-sidebar/UnifiedSidebar';
 import { BottomStatusBar } from '@/components/bottom-status-bar/BottomStatusBar';
 import { Canvas } from '@/editor/canvas/Canvas';
@@ -438,12 +439,18 @@ export function EditorPage() {
           "'Pretendard Variable','Pretendard','Inter',-apple-system,BlinkMacSystemFont,system-ui,sans-serif",
       }}
     >
-      <TopToolbar
-        t={t}
-        collabs={SAMPLE_COLLABS}
-        mapTitle={map.title}
-        saveState={saveState}
-      />
+      {/* 상단 막대는 화면마다 다르다 (2026-09-07): 문서함이 열려 있으면
+          문서함용(로고·내 문서·다크·계정), 아니면 편집용(TopToolbar). */}
+      {browserOpen ? (
+        <DocsToolbar t={t} />
+      ) : (
+        <TopToolbar
+          t={t}
+          collabs={SAMPLE_COLLABS}
+          mapTitle={map.title}
+          saveState={saveState}
+        />
+      )}
 
       <div
         style={{

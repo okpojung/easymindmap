@@ -1,4 +1,26 @@
 {
+  "//": [
+    "EasyMindMap MCP 커넥터 — Claude Code 가 이 파일을 읽어 서버에 붙는다.",
+    "설명: docs/user-guide/12-AI-커넥터-MCP.md · docs/04-extensions/ai/mcp-connector.md",
+    "",
+    "★ 토큰이 없으면 무슨 일이 생기나 (2026-09-07)",
+    "  환경 변수 EMM_MCP_TOKEN 이 없으면 Claude Code 는 아래 자리표시를",
+    "  글자 그대로 보낸다 — Authorization: Bearer ${EMM_MCP_TOKEN}.",
+    "  서버는 그것을 토큰으로 받아 401 을 주므로 화면에는 '연결 실패' 로만",
+    "  보인다. 서버 문제가 아니라 변수가 비어 있는 것이다.",
+    "  확인: `claude mcp list` 가 이렇게 말해 준다 —",
+    "        [Warning] mcpServers.easymindmap: Missing environment variables: EMM_MCP_TOKEN",
+    "",
+    "★ 고치는 법",
+    "  1) 앱 [계정 ▸ AI 커넥터(MCP)] 에서 토큰 발급 (emm_ 로 시작)",
+    "  2) EMM_MCP_TOKEN 환경 변수에 넣는다",
+    "       claude.ai/code → 환경(Environment) 설정의 환경 변수",
+    "       내 PC          → 셸 환경 변수 (사용자 가이드 참고)",
+    "  3) 세션을 새로 연다",
+    "",
+    "  EMM_MCP_URL 은 비워 두면 dev 서버로 간다 (${VAR:-기본값}).",
+    "  이 \"//\" 항목은 설명일 뿐이다 — Claude Code 는 무시한다(실측 2026-09-07)."
+  ],
   "mcpServers": {
     "easymindmap": {
       "type": "http",

@@ -7,7 +7,7 @@
 //   ③ 본문에서 블록을 **걷어내지 않는다** — 그 노드의 코드 노트가 되어야 한다
 
 import { TEMPLATE_IDS, expandTemplateId, readDeclaration } from '../src/declaration';
-import { parseEmm } from '../src/parse';
+import { parseEmm, parseMarkdownToMap } from '../src/parse';
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
@@ -121,6 +121,35 @@ const F = '```';
   check('④ 값은 서로 다르다', new Set(Object.values(TEMPLATE_IDS)).size, Object.keys(TEMPLATE_IDS).length);
   const r = readDeclaration(md('# 제목', '', F + 'emm', 'template: PT', F));
   check('④ 파서는 ID 를 해석하지 않고 문자열 그대로', r.template, 'PT');
+}
+
+// ── ⑤ 닫지 않은 ```emm 펜스 — 첫 견출 앞에서 닫힌 것으로 (2026-09-07, 사용자 보고) ──
+{
+  // 보고 A: 펜스가 먼저 오고 # 제목까지 펜스 안에 (닫는 ``` 없음)
+  const a = md(F + 'emm', 'template: PT', '# 시험', '## 가지 하나', '### 손자 A', '### 손자 B', '## 가지 둘', '### 손자 C');
+  check('⑤A 선언은 읽힌다', readDeclaration(a).template, 'PT');
+  const ma = parseMarkdownToMap(a, '파일')!;
+  check('⑤A 맵이 만들어진다 — 루트 = # 시험', ma?.root.text, '시험');
+  check('⑤A 가지 둘·손자 셋', ma?.branches.map((b) => `${b.text}(${(b.children ?? []).length})`), ['가지 하나(2)', '가지 둘(1)']);
+  check('⑤A 선언은 루트의 코드 노트로 남는다', ma?.root.notes?.map((n) => (n as { text?: string }).text), ['template: PT']);
+  // 보고 B: # 제목 뒤에 펜스, 닫지 않음 → 예전엔 루트 하나 + 나머지 전부 코드 노트
+  const b = md('# 시험', '', F + 'emm', 'template: PT', '', '## 가지 하나', '### 손자 A', '## 가지 둘');
+  const mb = parseMarkdownToMap(b, '파일')!;
+  check('⑤B 가지가 살아난다', mb?.branches.map((x) => x.text), ['가지 하나', '가지 둘']);
+  check('⑤B 코드 노트에는 선언만', mb?.root.notes?.map((n) => (n as { text?: string }).text), ['template: PT']);
+  // CRLF 파일도 같다 (윈도우 메모장)
+  const mc = parseMarkdownToMap(a.replace(/\n/g, '\r\n'), '파일')!;
+  check('⑤C CRLF 도 같다', mc?.branches.map((x) => x.text), ['가지 하나', '가지 둘']);
+  // 다른 언어의 펜스는 그대로 — 코드 안 `# 주석` 은 견출이 아니다
+  const d = md('# T', '', F + 'bash', '# 주석', 'echo hi', F, '', '## 가지');
+  const mdd = parseMarkdownToMap(d, '파일')!;
+  check('⑤D bash 펜스 안 # 은 견출 아님 — 루트의 코드 노트', mdd?.root.notes?.map((n) => (n as { text?: string }).text), ['# 주석\necho hi']);
+  check('⑤D 가지는 펜스 뒤 견출 하나', mdd?.branches.map((x) => x.text), ['가지']);
+  // 닫지 않은 bash 펜스는 예전대로 문서 끝까지 (CommonMark) — 견출도 코드 안
+  const e = md('# T', '', F + 'bash', 'echo hi', '## 가지');
+  const me = parseMarkdownToMap(e, '파일')!;
+  check('⑤E 닫지 않은 bash 펜스는 끝까지 코드 — 가지 없음', me?.branches.map((x) => x.text), []);
+  check('⑤E 견출이 코드 노트 안에', (me?.root.notes?.[0] as { text?: string } | undefined)?.text, 'echo hi\n## 가지');
 }
 
 console.log(failed ? `\n${failed}건 실패` : '\n전부 통과');

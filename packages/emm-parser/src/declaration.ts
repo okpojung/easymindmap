@@ -155,7 +155,17 @@ function findEmmBlock(lines: string[]): string[] | null {
     }
 
     const close = closingAt(lines, i, fence);
-    const body = lines.slice(i + 1, close === -1 ? lines.length : close);
+    let end = close === -1 ? lines.length : close;
+    if (close === -1) {
+      // 닫지 않은 블록은 **첫 견출 앞에서** 끝난 것으로 본다 (2026-09-07,
+      // parse.ts 와 같은 규칙). 선언 줄은 `key: value` 뿐이라 `#` 로 시작하는
+      // 줄이 선언일 수 없고, 그 뒤를 계속 읽으면 `## 가지: 값` 같은 견출을
+      // 키로 오인할 수 있다.
+      for (let j = i + 1; j < lines.length; j++) {
+        if (/^#{1,6}\s/.test(lines[j])) { end = j; break; }
+      }
+    }
+    const body = lines.slice(i + 1, end);
     return body.map((l) => stripIndent(l, pad.length));
   }
   return null;

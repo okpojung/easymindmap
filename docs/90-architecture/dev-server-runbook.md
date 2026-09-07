@@ -1429,6 +1429,59 @@ DB 에 적고 `GOTRUE_SITE_URL`(`https://pro-dev.mindmap.ai.kr`) + 위 경로로
 즉 남은 순서는 이렇다: **⑥⑦ 환경변수(사람) + 프런트엔드 재배포 →
 claude.ai 에서 눌러 보기.**
 
+**⑨ ★ `GOTRUE_SITE_URL` 이 **살아 있는 주소**인지 확인한다** (2026-09-07 실측)
+
+⑦ 의 경로는 **`GOTRUE_SITE_URL` 뒤에 붙는다**(`authorize.go:169`). 그래서
+그 값이 낡아 있으면 사람은 **아무것도 없는 곳으로 보내진다.** 실제로 그랬다.
+
+```bash
+# 인가 요청을 하나 만들어 **어디로 보내는지** 본다 (client_id 는 등록해 둔 것)
+curl -s -D- -o /dev/null "https://auth-dev.mindmap.ai.kr/oauth/authorize?\
+response_type=code&client_id=<CLIENT_ID>&redirect_uri=<등록된 주소>&\
+scope=openid+email&code_challenge=<S256>&code_challenge_method=S256&state=x" \
+  | grep -i '^location'
+# 2026-09-07 실측: → https://dev.mindmap.ai.kr/oauth/consent?authorization_id=…
+#                     ↑ 이 호스트는 404 다 (아무것도 서비스하지 않는다)
+```
+
+배포 문서(`dev-server-coolify.md` §5.5)는 `GOTRUE_SITE_URL=https://pro-dev.mindmap.ai.kr`
+이라고 적어 두었지만 **실제 배포본은 `https://dev.mindmap.ai.kr`** 이었다.
+지금 프런트엔드가 뜨는 곳은 `pro-dev` 다.
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://dev.mindmap.ai.kr/       # 404
+curl -s -o /dev/null -w '%{http_code}\n' https://pro-dev.mindmap.ai.kr/   # 200
+```
+
+**고치는 법** — `easymindmap-auth` 앱에서 값을 살아 있는 주소로 맞춘다.
+
+```
+GOTRUE_SITE_URL=https://pro-dev.mindmap.ai.kr
+```
+
+> **이 값은 두 가지를 한꺼번에 정한다.** ① 동의 화면으로 보낼 주소
+> ② **어느 오리진에서 온 요청을 받아 줄지**(`validateRequestOrigin` →
+> `IsRedirectURLValid` — SiteURL 과 `GOTRUE_URI_ALLOW_LIST` 를 본다).
+> 동의 화면은 `pro-dev` 에서 도므로, 이 값이 `pro-dev` 가 아니면
+> 화면이 떠도 **GoTrue 가 그 화면의 호출을 거절**할 수 있다
+> (`unauthorized request origin`). 그때는 `GOTRUE_URI_ALLOW_LIST` 에
+> `pro-dev` 를 넣어도 된다.
+>
+> 가입 확인·비밀번호 재설정 메일의 링크도 이 값으로 만들어진다 —
+> 지금은 404 나는 주소로 나가고 있으므로 **고치는 편이 맞다.**
+
+**⑩ 프런트엔드를 재배포했는지 확인한다** (2026-09-07 실측 — 안 돼 있었다)
+
+병합만으로는 dev 에 반영되지 않는다. 화면이 실제로 실려 있는지는
+**번들에서 확인**하는 것이 가장 확실하다(주소를 열어 보면 SPA 라 어느
+경로든 200 이 나와서 구별되지 않는다).
+
+```bash
+JS=$(curl -s https://pro-dev.mindmap.ai.kr/ | grep -o '/assets/index-[^"]*\.js')
+curl -s "https://pro-dev.mindmap.ai.kr$JS" | grep -c '연결 요청이 없습니다'
+# 1 이면 실려 있다 · 0 이면 아직 옛 번들이다
+```
+
 ## 2. 백업 — `.env` (APP_KEY) 최우선
 
 ```bash

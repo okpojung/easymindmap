@@ -1133,6 +1133,57 @@ GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH=/oauth/consent
 붙는지는 **사람이 눌러 봐야** 안다. 우리가 잰 것은 *가짜 GoTrue 로 흐름이
 맞다*까지다 — 진짜 GoTrue 와는 위 환경변수가 들어간 뒤에야 맞춰 볼 수 있다.
 
+### 10.7 환경변수를 넣고 다시 재 봤다 — 둘 풀리고 둘 남았다 (2026-09-07)
+
+#### 풀린 것
+
+| 잰 것 | 그전 | 지금 |
+|---|---|---|
+| 인가 서버 메타데이터 `issuer` | `""` (엔드포인트가 전부 상대 경로) | **`https://auth-dev.mindmap.ai.kr`** — 전부 절대 주소 |
+| `GET /oauth/authorize` | `server_error=oauth authorization path not configured` | **302 로 동의 화면을 가리킨다** |
+
+`GOTRUE_JWT_ISSUER` 와 `GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH` 가 §10.5 의
+막힌 곳 1·2 를 그대로 풀었다.
+
+#### 남은 것 — 둘 다 저장소 밖의 일이다
+
+**① `GOTRUE_SITE_URL` 이 **죽은 주소**를 가리킨다.**
+
+```
+302 Location: https://dev.mindmap.ai.kr/oauth/consent?authorization_id=…
+                    ↑ 이 호스트는 404 다
+```
+
+경로는 `SiteURL` **뒤에** 붙는다(`authorize.go:169`). 배포 문서는
+`pro-dev.mindmap.ai.kr` 이라고 적어 두었지만 **실제 배포본은
+`dev.mindmap.ai.kr`** 이고, 그쪽은 아무것도 서비스하지 않는다
+(`pro-dev` 는 200, `dev` 는 404 — 둘 다 재 봤다).
+
+이 값은 **어느 오리진의 호출을 받아 줄지**도 함께 정한다
+(`validateRequestOrigin` → `IsRedirectURLValid`). 그래서 화면이 뜨더라도
+이 값이 맞지 않으면 GoTrue 가 그 화면의 호출을 `unauthorized request origin`
+으로 거절할 수 있다 — **아직 재 보지는 못했다**(유효한 사용자 토큰이 있어야
+그 검사에 닿는다). 소스를 읽고 말하는 것이다.
+
+**② 프런트엔드가 재배포되지 않았다.** 병합(#430)만으로는 dev 에 반영되지
+않는다. 실제로 번들을 받아 확인했다.
+
+| 문자열 | 배포본 | 지금 `main` 빌드 |
+|---|---|---|
+| `연결 요청이 없습니다` | 0 | 1 |
+| `을(를) 연결할까요` | 0 | 1 |
+| `consent-ask` | 0 | 1 |
+| `모르는 항목` | 0 | 1 |
+
+> **주소를 열어 보는 것으로는 구별되지 않는다** — SPA 라 어느 경로든
+> 200 이 나온다. 번들에서 확인해야 한다(runbook §1.9 ⑩).
+
+#### 다음 순서
+
+1. `easymindmap-auth` → `GOTRUE_SITE_URL=https://pro-dev.mindmap.ai.kr` → 재배포
+2. `easymindmap-frontend-pro` 재배포
+3. 그다음에야 claude.ai 에서 눌러 볼 수 있다
+
 ---
 
 ## 11. 관련 문서

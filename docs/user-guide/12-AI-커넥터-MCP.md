@@ -311,6 +311,15 @@ claude mcp add --transport http easymindmap https://api-dev.mindmap.ai.kr/v1/mcp
 | `Dynamic Client Registration rejected … Cannot POST /register` | 헤더 없이 등록돼 OAuth 를 찾음 | `--header "Authorization: Bearer emm_…"` 를 넣어 다시 add |
 | `Header 'Authorization' has invalid value` | `emm_…` 같은 **자리표시 글자를 그대로** 넣음 | 실제 토큰 원문으로 |
 | `401` **"토큰 형식이 아닙니다 … 자리표시"** | `.mcp.json` 의 `${EMM_MCP_TOKEN}` 이 **환경 변수 없이 그대로** 전송됨 (그 글자가 서버까지 옵니다) | 환경 변수 `EMM_MCP_TOKEN` 을 실제 토큰(`emm_…`)으로 두고 **새 세션** |
+
+> **파일을 열어 보면 적혀 있습니다** (2026-09-07) — 저장소의 `.mcp.json` 맨 위
+> `"//"` 항목에 "토큰이 없으면 무슨 일이 생기나 · 확인하는 법 · 고치는 법" 을
+> 적어 두었습니다. 붙기 전에 확인하려면 이 한 줄이 가장 빠릅니다:
+> ```
+> claude mcp list
+> # └ [Warning] mcpServers.easymindmap: Missing environment variables: EMM_MCP_TOKEN
+> ```
+> 이 경고가 보이면 **서버가 아니라 환경 변수** 문제입니다.
 | PowerShell 에서 명령이 조각남 | `\` 줄 나눔 | 한 줄로 |
 | `Failed to connect` (웹 세션) | 환경의 허용 도메인에 `api-dev.mindmap.ai.kr` 이 없음 | 네트워크 액세스 `사용자 지정` + 도메인 추가 → 새 세션 |
 | `/mcp` 를 쳤는데 커넥터 스토어가 열림 | **세션 밖**에서 침 | 첫 메시지를 보내 세션을 만든 뒤 세션 안에서 |

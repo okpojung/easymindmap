@@ -1234,6 +1234,83 @@ claude.ai ▸ 설정 ▸ 커넥터 ▸ 커스텀 커넥터 추가 ▸
 1~4단계가 끝난 것이다. `curl` 로는 여기까지가 한계다 — 인가 코드를 받으려면
 진짜 로그인을 지나야 한다.
 
+### 10.9 ★ 연결이 끊긴 진짜 원인 — **내가 광고한 `openid`** (2026-09-07)
+
+§10.8 에서 "서버 쪽은 전부 준비됐다"고 적고 사용자가 claude.ai 에서
+[허용] 을 눌렀더니 이렇게 끝났다.
+
+```
+claude.ai/code/…?error_code=mcp_token_exchange_failed
+"emm 인증에 실패했습니다. 자격 증명과 권한을 확인하세요."
+```
+
+#### 무엇이었나 — 한 줄로
+
+**우리 PRM 이 `openid` 를 광고했고, GoTrue 는 그 scope 를 받으면 ID 토큰을
+만들려다 HS256 이라 500 을 낸다.**
+
+```
+POST /oauth/token
+→ 500 {"error_code":"unexpected_failure","msg":"Error generating ID token"}
+```
+
+```go
+// api/oauthserver/handlers.go:443 — openid 가 있을 때만 ID 토큰을 만든다
+if models.HasScope(scopeList, models.ScopeOpenID) { … }
+
+// tokens/service.go:778 — 그런데 HS256 으로는 못 만든다
+if signingMethod == jwt.SigningMethodHS256 {
+    return "", fmt.Errorf("HS256 is not supported for ID token signing")
+}
+```
+
+우리 GoTrue 는 대칭키 하나(`GOTRUE_JWT_SECRET`)로 HS256 서명을 한다.
+그러니 `openid` 를 요구하는 순간 **반드시** 실패한다. claude.ai 는 우리
+PRM 의 `scopes_supported` 를 그대로 읽어 요청했을 뿐이다 — **우리가 만든
+문제다.**
+
+#### 고친 것
+
+`MCP_SCOPES` 에서 `openid` 를 뺐다. 이 상수 하나가 PRM 의
+`scopes_supported` 와 401 의 `WWW-Authenticate` scope 를 **둘 다** 정한다.
+
+```ts
+export const MCP_SCOPES = ['email'] as const;   // 전: ['openid','email']
+```
+
+- **아쉬울 것이 없다** — MCP 에 ID 토큰은 필요 없다. 우리가 쓰는 것은
+  액세스 토큰의 `sub`·`email`·`client_id` 뿐이고, 그 셋은 scope 와 무관하게
+  늘 들어 있다(`v0hooks.go:100~112`).
+- **GoTrue 를 비대칭키로 바꾸는 길은 택하지 않았다** — 그러면 **액세스 토큰
+  서명까지** RS256 이 되어 우리 두 가드(HS256)와 **살아 있는 로그인 전부**가
+  끊긴다. 고치는 값이 훨씬 크다.
+
+#### 이 진단에 이르기까지 — **틀린 답을 두 번 했다**
+
+정직하게 적는다. 둘 다 "그럴듯한데 재 보지 않은" 것이었다.
+
+| 내가 말한 것 | 왜 틀렸나 |
+|---|---|
+| ① "클라이언트 인증 방식이 어긋났을 것이다" (`client_secret_basic` vs `post`) | DB 를 보니 claude.ai 는 **`client_secret_post` 로 등록**돼 있었다. GoTrue 가 그 방식을 그대로 받는다는 것도 curl 로 확인했다 |
+| ② "인가 요청 행이 지워졌으니 **교환은 성공**했다" | 행은 **같은 트랜잭션이 커밋된 뒤** ID 토큰 단계에서 500 이 나므로, 지워진 것은 성공의 증거가 **아니었다**. `tx.Destroy` 다음 줄을 안 읽고 말했다 |
+
+**원인을 짚은 것은 추론이 아니라 실측 하나였다** — 시험용 클라이언트로
+진짜 인가 코드를 받아 토큰 교환을 직접 때려 본 것. 그 500 한 줄이 다섯 번의
+추측보다 빨랐다.
+
+#### 남은 위험 하나
+
+claude.ai 가 **스스로 `openid` 를 덧붙이는** 클라이언트라면 이 수정으로는
+풀리지 않는다. 다만 지금까지 claude.ai 가 보낸 요청의 scope 는 우리
+`MCP_SCOPES` 와 **글자까지 같았다**(`openid email`) — 우리 PRM 을 따른다는
+뜻이다. 재배포 뒤 실제로 눌러 보면 확정된다.
+
+#### 검증
+
+**단위 39 + HTTP 38 PASS** · 회귀(`mcp-jsonrpc` 32 · `table-ready` 17 ·
+`schema-degrade` 21) 전부 통과. **되돌려 깨지는 것까지 확인** — `openid` 를
+다시 넣으면 **단위 2 + HTTP 2 FAIL**.
+
 ---
 
 ## 11. 관련 문서

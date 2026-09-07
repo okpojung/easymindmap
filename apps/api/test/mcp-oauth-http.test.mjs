@@ -87,7 +87,9 @@ try {
     check('무토큰은 401', r.status, 401);
     check('★ resource_metadata 를 알려 준다',
       (r.auth ?? '').includes(`resource_metadata="${BASE}/.well-known/oauth-protected-resource/v1/mcp"`), true);
-    check('  scope 도 알려 준다', (r.auth ?? '').includes('scope="openid email"'), true);
+    check('  scope 도 알려 준다', (r.auth ?? '').includes('scope="email"'), true);
+    // ★ 401 안내에도 openid 가 실리면 안 된다 — 클라이언트는 이 값을 그대로 쓴다
+    check('  ★ openid 를 요구하지 않는다', (r.auth ?? '').includes('openid'), false);
     check('  error 는 붙이지 않는다 (RFC 6750 §3.1)', (r.auth ?? '').includes('error='), false);
   }
 
@@ -122,7 +124,7 @@ try {
 
   // ── ⑤ OAuth 토큰은 통한다 + 사용자가 JIT 로 생긴다 ─────────────
   {
-    const tok = sign({ client_id: 'cli_test', scope: 'openid email' });
+    const tok = sign({ client_id: 'cli_test', scope: 'email' });
     const r = await rpc(tok, { jsonrpc: '2.0', id: 1, method: 'tools/list' });
     check('★ OAuth 토큰은 200', r.status, 200);
     check('  도구 목록이 온다', (r.body?.result?.tools ?? []).length > 0, true);

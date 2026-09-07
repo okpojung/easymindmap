@@ -49,7 +49,14 @@ interface TplChoice {
   editor?: { layoutType?: LayoutType; spacingX?: number; spacingY?: number };
 }
 
-export function NewMapPanel({ t }: { t: ThemeTokens }) {
+/**
+ * @param inBrowser 문서함 상단 [＋ 새 맵 ▾] 에서 열렸다 (2026-09-07). 이때는
+ *   '서버 맵 불러오기' 를 숨기고(이미 문서함이다), 새 맵이 시작되면
+ *   `onDone` 을 불러 팝오버와 문서함을 닫는다. 왼쪽 레일에서는 둘 다 없다.
+ */
+export function NewMapPanel({ t, inBrowser = false, onDone }: {
+  t: ThemeTokens; inBrowser?: boolean; onDone?: () => void;
+}) {
   const newMap = useDocumentStore((s) => s.newMap);
   const loadMap = useDocumentStore((s) => s.loadMap);
   const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
@@ -246,6 +253,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
       setSelectedId('root');
       setChooseTpl(null);
       flash(`'${tpl.name}' 템플릿 골격으로 새 맵을 시작했습니다`);
+      onDone?.();
       return;
     }
     const cur = useDocumentStore.getState().map;
@@ -291,6 +299,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
     // 불러온 파일도 새 문서다 — 서버 맵 연결을 끊는다 (위 doStartBlank 주석)
     detachFromServer();
     setBrowserOpen(false);
+    onDone?.();
     // 불러오기도 문서 경계 — 되돌리기가 이전 문서로 넘어가지 않게 한다
     loadMap(resolvedMap, { resetHistory: true });
     if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
@@ -547,6 +556,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
                 replaceWithBlankDoc();
                 setChooseTpl(null);
                 flash('기본 골격으로 새 맵을 시작했습니다');
+                onDone?.();
                 return;
               }
               setChooseTpl(null);
@@ -576,7 +586,7 @@ export function NewMapPanel({ t }: { t: ThemeTokens }) {
           로그인 상태에서는 숨긴다 (2026-08-03) — 로그인 직후·맵 닫기 후
           문서함이 자동으로 열리고, 상단의 '내 문서'를 눌러도 열리므로
           왼쪽 메뉴는 중복이다. 인증 꺼진 개발 빌드에서만 유지. */}
-      {!(authEnabled && (session || guest)) && menuHeader({
+      {!inBrowser && !(authEnabled && (session || guest)) && menuHeader({
         icon: '☁', label: '서버 맵 불러오기',
         onClick: () => setBrowserOpen(true),
         tip: '서버에 저장된 내 문서함을 편집 영역에 엽니다 (폴더·정렬 지원)',

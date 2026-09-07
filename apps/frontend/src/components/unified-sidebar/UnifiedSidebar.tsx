@@ -11,6 +11,7 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { authEnabled, useAuthStore } from '@/stores/authStore';
 import {
   useDocumentStore,
   findNodeInMap,
@@ -67,9 +68,15 @@ export function UnifiedSidebar({
   const setSidebarWidth = useEditorUiStore((s) => s.setSidebarWidth);
   const splitRef = useRef<{ pointerId: number; x: number; w: number } | null>(null);
   const [resizing, setResizing] = useState(false);
+  // **'새 맵' 은 문서함이 없는 Guest 에게만** (2026-09-07 사용자 결정).
+  // 문서함이 있으면 새 맵은 문서함 상단 [＋ 새 맵 ▾] 에서만 만든다 —
+  // 편집 화면에서 "현재 맵을 닫고 진행할까요?" 를 묻는 문이 사라진다.
+  const guest = useAuthStore((s) => s.guest);
+  const session = useAuthStore((s) => s.session);
+  const railNewMap = authEnabled && guest && !session;
   const navItems = [
-    // 새 맵 만들기 — 기본 맵 또는 등록된 템플릿에서 시작
-    { key: 'newMap'   as NavTabKey, label: '새 맵',    icon: <I.Plus size={17} /> },
+    // 새 맵 만들기 — 기본 맵 또는 등록된 템플릿에서 시작 (Guest 만)
+    ...(railNewMap ? [{ key: 'newMap' as NavTabKey, label: '새 맵', icon: <I.Plus size={17} /> }] : []),
     { key: 'search'   as NavTabKey, label: '검색',     icon: <I.Search size={17} /> },
     { key: 'template' as NavTabKey, label: '템플릿',   icon: <I.Template size={17} /> },
     { key: 'history'  as NavTabKey, label: '히스토리', icon: <I.History size={17} /> },
@@ -185,7 +192,7 @@ export function UnifiedSidebar({
           minWidth: 0, overflow: 'hidden',
         }}>
           {activeSection === 'nav'
-            ? <NavContent t={t} tab={navTab} onClose={onToggleCollapsed} />
+            ? <NavContent t={t} tab={railNewMap || navTab !== 'newMap' ? navTab : 'search'} onClose={onToggleCollapsed} />
             : <InspectorContent t={t} tab={inspectorTab} collabs={collabs}
                                 onClose={onToggleCollapsed} />}
         </div>

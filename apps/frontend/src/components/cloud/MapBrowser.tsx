@@ -30,6 +30,7 @@ import {
 } from '@/services/cloud/apiClient';
 import { ProInbox, ProMapMembersTip, ProShareDialog, ProSharedMapActions } from '@pro';
 import { PublishPanel } from '@/components/cloud/PublishPanel';
+import { NewMapPanel } from '@/components/left-sidebar/NewMapPanel';
 import { useCloudStore } from '@/stores/cloudStore';
 import { notifyUser } from '@/stores/noticeStore';
 import { publicMapUrl } from './PublishPanel';
@@ -251,6 +252,24 @@ export function MapBrowser({
   const [shareMap, setShareMap] = useState<MapListItem | null>(null);
   /** 문서함 행에서 연 퍼블리싱 창 — 같은 요청. 협업맵은 게시할 수 없어 버튼이 없다 */
   const [publishMap, setPublishMap] = useState<MapListItem | null>(null);
+  /**
+   * [＋ 새 맵 ▾] 팝오버 (2026-09-07 사용자 결정) — 새 맵은 **문서함에서만**
+   * 만든다. 왼쪽 레일의 '새 맵' 패널을 그대로 여기 띄운다(기본 맵 · 템플릿 ·
+   * MD/HTML/ZIP 불러오기). 새 맵이 시작되면 팝오버와 문서함이 닫힌다.
+   */
+  const [newMapAt, setNewMapAt] = useState<{ x: number; y: number } | null>(null);
+  const newMapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!newMapAt) return;
+    const close = (e: PointerEvent) => {
+      const el = e.target as Node;
+      if (newMapRef.current?.contains(el)) return;
+      if ((el as HTMLElement).closest?.('[data-testid="browser-new-map"]')) return;
+      setNewMapAt(null);
+    };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [newMapAt]);
   // 상세 정보 카드 (2026-08-09 요청) — 파일명 위에 마우스를 올리거나
   // 행 오른쪽 ⓘ 를 누르면 뜬다. pinned=true(ⓘ 클릭)면 마우스를 떼도
   // 남아 있어 IP 같은 값을 드래그해 복사할 수 있다.
@@ -314,6 +333,7 @@ export function MapBrowser({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (newMapAt) { setNewMapAt(null); return; }
       if (info) { setInfo(null); return; }
       if (newFolder) { setNewFolder(null); return; }
       if (query) { setQuery(''); return; }
@@ -321,7 +341,7 @@ export function MapBrowser({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, newFolder, query, info]);
+  }, [onClose, newFolder, query, info, newMapAt]);
 
   // ── 내용 검색 ───────────────────────────────────────────────
   // 서버가 제목 + 맵 안(노드·노트·태그)을 찾아 **맞은 맵만** 돌려준다.
@@ -767,6 +787,15 @@ export function MapBrowser({
             title="모든 폴더 접기"
             style={toolBtn}
           >⊟ 모두 접기</button>
+          <button
+            data-testid="browser-new-map"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setNewMapAt((cur) => (cur ? null : { x: r.left, y: r.bottom + 6 }));
+            }}
+            title="새 맵 만들기 — 기본 맵 · 템플릿 · MD/HTML/ZIP 파일에서"
+            style={{ ...toolBtn, marginLeft: 2, fontWeight: 700, color: t.primary, borderColor: t.primaryBorder }}
+          >＋ 새 맵 ▾</button>
           <button
             data-testid="browser-new-folder"
             onClick={() => setNewFolder({ parentId: null, name: '' })}
@@ -1342,6 +1371,25 @@ export function MapBrowser({
             t={t}
             mapId={shareMap.mapId}
             onClose={() => { setShareMap(null); void load(); }}
+          />
+        </div>
+      )}
+
+      {newMapAt && (
+        <div
+          ref={newMapRef}
+          data-testid="browser-new-map-menu"
+          style={{
+            position: 'fixed', left: newMapAt.x, top: newMapAt.y, zIndex: 300,
+            width: 340, maxHeight: '70vh', overflow: 'auto',
+            background: t.surface, color: t.text, borderRadius: 10,
+            border: `1px solid ${t.border}`, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+          }}
+        >
+          <NewMapPanel
+            t={t}
+            inBrowser
+            onDone={() => { setNewMapAt(null); onOpened?.(); }}
           />
         </div>
       )}

@@ -461,6 +461,11 @@ export function EditorPage() {
           position: 'relative',
         }}
       >
+        {/* 문서함이 열려 있으면 왼쪽 레일도 뺀다 (2026-09-07 사용자 결정) —
+            검색·템플릿·히스토리·맵 설정·속성은 전부 "열린 맵" 의 것이다.
+            Guest 는 문서함 대신 안내만 보이고 그 화면에 닫는 문이 없어
+            레일(새 맵)을 남겨 둔다. */}
+        {!(browserOpen && !(guest && !session)) && (
         <UnifiedSidebar
           t={t}
           collabs={SAMPLE_COLLABS}
@@ -475,6 +480,7 @@ export function EditorPage() {
           collapsed={sidebarCollapsed}
           onToggleCollapsed={toggleSidebar}
         />
+        )}
 
         {/* 아웃라인 분할 보기: 왼쪽 = 아웃라인 편집, 오른쪽 = 맵/칸반.
             가운데 세로 스플리터로 비율(20~75%) 조절 — 칸반 모드에서도 동작 */}

@@ -2,7 +2,7 @@
 # ════════════════════════════════════════════════════════════════════
 # 델타 SQL 적용 — 붙여넣기 한 번 (2026-09-08 사용자 결정)
 #
-#   서버 SSH 터미널에서:
+#   어디서: docker 가 도는 호스트의 SSH 터미널 — dev 는 `ubuntu@em-dev`.
 #     bash apps/api/database/deltas/apply-delta.sh apps/api/database/deltas/2026-09-08-user-avatar.sql
 #   또는 저장소가 없는 서버에서는 보고서의 "붙여넣기 블록"(이 파일과 같은
 #   find_emm_db + heredoc SQL)을 그대로 붙여넣는다.

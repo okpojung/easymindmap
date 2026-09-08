@@ -197,7 +197,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
-  const updateNodeSize = useDocumentStore((state) => state.updateNodeSize);
+  const updateNodesSize = useDocumentStore((state) => state.updateNodesSize);
+  // 다중 선택 중이면 크기 핸들 하나가 **선택된 노드 전부**를 같은 크기로 만든다
+  // (2026-09-08 요청: 드래그로 여럿을 고른 뒤 모서리를 끌면 하나만 바뀌었다)
+  const multiSelectedIds = useInteractionStore((state) => state.multiSelectedIds);
+  const resizeTargets = () =>
+    multiSelectedIds.length > 1 && multiSelectedIds.includes(n.id) ? multiSelectedIds : [n.id];
   const setNodeImage = useDocumentStore((state) => state.setNodeImage);
   const setNodeImages = useDocumentStore((state) => state.setNodeImages);
   const zoom = useViewportStore((state) => state.zoom);
@@ -1118,10 +1123,10 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               // 첫 이동만 undo 히스토리에 기록하고, 드래그 중 연속 갱신은
               // 히스토리를 잠가 1회 드래그 = 1개 undo 단계로 만든다
               d.moved = true;
-              updateNodeSize(n.id, { w, h });
+              updateNodesSize(resizeTargets(), { w, h });
               setHistoryPaused(true);
             } else {
-              updateNodeSize(n.id, { w, h });
+              updateNodesSize(resizeTargets(), { w, h });
             }
           }}
           onPointerUp={(e) => {
@@ -1133,7 +1138,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => {
             e.stopPropagation();
-            updateNodeSize(n.id, null); // 자동 크기로 복귀
+            updateNodesSize(resizeTargets(), null); // 자동 크기로 복귀 — 다중 선택이면 전부
           }}
         >
           <title>드래그: 크기 조절 · 더블클릭: 자동 크기</title>

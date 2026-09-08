@@ -415,6 +415,12 @@ export async function refreshFromServer(
 ): Promise<boolean> {
   const cloud = useCloudStore.getState();
   if (cloud.cloudMapId !== mapId || cloud.busy !== 'idle') return false;
+  // ★ **협업이 몰고 있으면 다시 읽지 않는다** (2026-09-08). 정본은 협업
+  //   방이 물질화한 **낡은 사본**이고 화면은 소켓으로 더 새롭다. 갈아
+  //   끼우면 협업 클라이언트가 그 차이를 내 편집으로 밀어 넣어 남의
+  //   글자를 지우거나 두 번 넣는다(heartbeatRefresh.ts). 하트비트가
+  //   먼저 거르지만(`heartbeatRefreshPlan`), 여기서 한 번 더 막는다.
+  if (isCollabDriving(mapId)) return false;
   const wasClean = useAutosaveStore.getState().saveState === 'saved';
   cloud.setBusy('opening');
   try {

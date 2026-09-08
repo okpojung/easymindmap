@@ -1522,6 +1522,100 @@ curl -s "https://pro-dev.mindmap.ai.kr$JS" | grep -c '연결 요청이 없습니
 > 확인까지 했다(e2e231 · mcp-connector.md §10.8). **남은 것은 사람이
 > claude.ai 에서 눌러 보는 일 하나뿐이다.**
 
+### 1.10. GoTrue 의 OAuth 클라이언트를 정리한다 (2026-09-08)
+
+**DCR(동적 등록)은 연결을 시도할 때마다 클라이언트 행을 새로 만든다.**
+실패해도 만들어진다 — 그래서 붙이느라 여러 번 시도하면 그만큼 쌓인다.
+실제로 커넥터 하나를 붙이는 동안 **`Claude` 행이 4개** 생겼고
+(11:02 · 11:03 · 13:19 실패분 + 16:03 성공분), 진단하며 만든 시험용
+클라이언트도 5개 남았다.
+
+**지금 붙어 있는 것은 `created_at` 이 가장 최근인 하나뿐**이고, 나머지는
+아무도 쓰지 않는다. 그래도 저절로 사라지지는 않는다.
+
+> ⚠️ **지우면 그 클라이언트의 세션도 함께 사라진다.** 셋 다 CASCADE 다 —
+> `oauth_authorizations.client_id` · `oauth_consents.client_id` ·
+> **`sessions.oauth_client_id`**(`20250904133000_…up.sql`). 그래서 **살아 있는
+> 것을 잘못 지우면 커넥터 연결이 끊긴다.** 비밀번호 로그인 세션은
+> `oauth_client_id` 가 비어 있어 영향받지 않는다.
+
+#### 무엇이 있는지 먼저 본다 — `ubuntu@em-dev` 에서
+
+```bash
+bash <<'SCRIPT'
+for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv GOTRUE_DB_DATABASE_URL 2>/dev/null) || continue
+  [ -n "$U" ] && { GT="$C"; GURL="$U"; break; }
+done
+[ -n "$GURL" ] || { echo "❌ GoTrue 컨테이너를 찾지 못했습니다"; docker ps --format '{{.Names}}'; exit 1; }
+H=$(printf '%s' "$GURL" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+U=$(printf '%s' "$GURL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+D=$(printf '%s' "$GURL" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+echo "✅ GoTrue=$GT · DB=$H/$D"
+docker exec -i "$H" psql -U "$U" -d "$D" -c \
+"SELECT c.client_name, c.id, c.created_at,
+        (SELECT count(*) FROM auth.sessions x WHERE x.oauth_client_id = c.id) AS 세션
+   FROM auth.oauth_clients c ORDER BY c.created_at DESC;"
+SCRIPT
+```
+
+정상 출력 예 — `✅ GoTrue=zb7…` 에 이어 클라이언트 목록이 최신순으로 나온다.
+
+#### 지운다 — **id 를 못 박아서**
+
+`LIKE 'emm-diag%'` 같은 **이름 패턴을 쓰지 않는다.** 나중에 같은 이름이
+생기면 엉뚱한 것을 지운다. 지울 `id` 를 목록에서 골라 `emm_doomed` 에
+넣고, **살아 있는 것이 섞이면 아무것도 지우지 않고 멈추는 안전장치**를
+함께 둔다.
+
+```bash
+bash <<'SCRIPT'
+for C in $(docker ps --format '{{.Names}}'); do
+  U=$(docker exec "$C" printenv GOTRUE_DB_DATABASE_URL 2>/dev/null) || continue
+  [ -n "$U" ] && { GURL="$U"; break; }
+done
+[ -n "$GURL" ] || { echo "❌ GoTrue 컨테이너를 찾지 못했습니다"; exit 1; }
+H=$(printf '%s' "$GURL" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+U=$(printf '%s' "$GURL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+D=$(printf '%s' "$GURL" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+
+docker exec -i "$H" psql -U "$U" -d "$D" <<'SQL'
+\set ON_ERROR_STOP on
+BEGIN;
+CREATE TEMP TABLE emm_doomed(id uuid) ON COMMIT DROP;
+INSERT INTO emm_doomed VALUES
+ ('여기에-지울-id'),          -- 위 목록에서 골라 적는다
+ ('여기에-지울-id2');
+
+-- 안전장치: 살아 있는 것(같은 이름 중 가장 최근)이 섞이면 멈춘다
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM emm_doomed d
+     WHERE d.id IN (SELECT DISTINCT ON (client_name) id
+                      FROM auth.oauth_clients ORDER BY client_name, created_at DESC)
+  ) THEN RAISE EXCEPTION '중단: 살아 있는(가장 최근) 클라이언트가 목록에 있습니다';
+  END IF;
+END $$;
+
+DELETE FROM auth.oauth_clients c USING emm_doomed d WHERE d.id = c.id;
+COMMIT;
+
+\echo '===== 남은 클라이언트 ====='
+SELECT client_name, client_type, created_at FROM auth.oauth_clients ORDER BY created_at DESC;
+\echo '===== 일반 로그인 세션은 그대로인지 ====='
+SELECT count(*) AS 일반로그인세션 FROM auth.sessions WHERE oauth_client_id IS NULL;
+SQL
+SCRIPT
+```
+
+**검증**(2026-09-08) — 같은 표·같은 CASCADE 제약을 로컬 PostgreSQL 16 에
+만들어 돌렸다. 시험용 5개만 지워지고 살아 있는 것은 남았으며, 자식 행
+(동의·인가요청·세션)이 CASCADE 로 함께 정리되고 **일반 로그인 세션은
+손대지 않았다.** **되돌려 깨지는 것까지 확인** — 목록에 살아 있는 id 를
+일부러 넣으니 `ERROR: 중단: …` 으로 **트랜잭션 전체가 롤백**되어 다른 것도
+함께 살아남았다. 실제 dev 에서도 5개 삭제 뒤 `Claude` 4행과 일반 로그인
+세션 143개가 그대로였다.
+
 ## 2. 백업 — `.env` (APP_KEY) 최우선
 
 ```bash

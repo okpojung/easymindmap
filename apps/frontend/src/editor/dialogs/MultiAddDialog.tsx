@@ -8,12 +8,13 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
+import { countOutline, parseOutlineLines } from '@/utils/outlineLines';
 
 export function MultiAddDialog({ t }: { t: ThemeTokens }) {
   const open = useEditorUiStore((s) => s.multiAddOpen);
   const setOpen = useEditorUiStore((s) => s.setMultiAddOpen);
   const map = useDocumentStore((s) => s.map);
-  const addChildNodesBulk = useDocumentStore((s) => s.addChildNodesBulk);
+  const addChildOutlineBulk = useDocumentStore((s) => s.addChildOutlineBulk);
   const selectedId = useInteractionStore((s) => s.selectedId);
 
   const [text, setText] = useState('');
@@ -30,11 +31,12 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
 
   const parentNode = findNodeInMap(map, selectedId);
   const parentLabel = parentNode ? parentNode.text : '루트(맵 전체)';
-  const lineCount = text.split('\n').map((s) => s.trim()).filter(Boolean).length;
+  // 들여쓰기(스페이스·탭)는 하위 노드 — utils/outlineLines (2026-09-08)
+  const outline = parseOutlineLines(text);
+  const lineCount = countOutline(outline);
 
   const submit = () => {
-    const lines = text.split('\n');
-    addChildNodesBulk(selectedId ?? 'root', lines);
+    addChildOutlineBulk(selectedId ?? 'root', outline);
     setOpen(false);
   };
 
@@ -61,6 +63,8 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
         <div style={{ fontSize: 11.5, color: t.textMuted, marginBottom: 10 }}>
           한 줄에 하나씩 입력하면 각 줄이{' '}
           <b style={{ color: t.text }}>{parentLabel}</b>의 자식 노드로 추가됩니다.
+          {' '}<b style={{ color: t.text }}>스페이스·Tab 으로 들여쓴 줄은 바로 위 줄의 하위 노드</b>가 됩니다
+          (앞의 <code>-</code> 불릿은 뗍니다).
         </div>
         <textarea
           ref={taRef}
@@ -69,9 +73,28 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
           onKeyDown={(e) => {
             if (e.key === 'Escape') { e.preventDefault(); setOpen(false); }
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); }
+            // Tab 은 포커스를 옮기지 않고 **들여쓰기 두 칸**을 넣는다(Shift+Tab 은 뺀다)
+            // — "스페이스 또는 탭으로 들여쓰기" (2026-09-08 요청)
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              const ta = e.currentTarget;
+              const { selectionStart: s, selectionEnd: en, value } = ta;
+              const lineStart = value.lastIndexOf('\n', s - 1) + 1;
+              if (e.shiftKey) {
+                const cut = value.slice(lineStart, lineStart + 2) === '  ' ? 2 : value[lineStart] === '\t' ? 1 : 0;
+                if (!cut) return;
+                const next = value.slice(0, lineStart) + value.slice(lineStart + cut);
+                setText(next);
+                window.setTimeout(() => ta.setSelectionRange(Math.max(lineStart, s - cut), Math.max(lineStart, en - cut)), 0);
+              } else {
+                const next = value.slice(0, lineStart) + '  ' + value.slice(lineStart);
+                setText(next);
+                window.setTimeout(() => ta.setSelectionRange(s + 2, en + 2), 0);
+              }
+            }
           }}
-          rows={7}
-          placeholder={'예)\n시장 조사\n경쟁사 분석\n사용자 인터뷰'}
+          rows={9}
+          placeholder={'예)\n- I. 문제정의\n  - 10. 연 128억 건 발급 (1P)\n  - 11. 국가 데이터 공백 (2P)\n- II. 해결구조\n  - 20. 간편인증 한 번으로 통합 (5P)'}
           style={{
             width: '100%', boxSizing: 'border-box',
             resize: 'vertical', borderRadius: 8,

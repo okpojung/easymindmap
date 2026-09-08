@@ -15,6 +15,7 @@ import { create } from 'zustand';
 // (docs/04-extensions/collaboration/27-sync-model.md §4)
 import { wouldCreateCycle } from '@emm/tree-rules';
 import { SAMPLE_ROADMAP } from '@/editor/__samples__';
+import type { OutlineItem } from '@/utils/outlineLines';
 import type {
   ShapeType,
   SampleMap,
@@ -128,6 +129,12 @@ interface DocumentState {
   // Structure
   addChildNode: (parentId: string | null) => string;
   addChildNodesBulk: (parentId: string | null, texts: string[]) => void;
+  /**
+   * 다중 노드 추가(Ctrl+Space)의 **들여쓰기 계층** 버전 (2026-09-08) —
+   * `utils/outlineLines` 가 읽은 트리를 그대로 노드 트리로. 색·스타일·층별
+   * 레이아웃은 `appendChildren` 규칙을 그대로 탄다(붙여넣기 삽입과 같다).
+   */
+  addChildOutlineBulk: (parentId: string | null, items: OutlineItem[]) => void;
   // AI 노드 확장 — 파싱된 하위 트리(children)를 선택 노드 아래에 붙인다.
   appendChildren: (nodeId: string | null, children: MindNode[]) => void;
   addSiblingNode: (nodeId: string | null, position?: 'before' | 'after') => string;
@@ -872,6 +879,18 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
       return { map: { ...map, branches } };
     });
+  },
+
+  addChildOutlineBulk: (parentId, items) => {
+    const toNodes = (list: OutlineItem[]): MindNode[] =>
+      list.map((it) => {
+        const node: MindNode = { ...createNewNode(), text: it.text };
+        if (it.children.length) node.children = toNodes(it.children);
+        return node;
+      });
+    const nodes = toNodes(items.filter((it) => it.text.trim()));
+    if (!nodes.length) return;
+    get().appendChildren(parentId, nodes);
   },
 
   appendChildren: (nodeId, children) => {

@@ -207,6 +207,8 @@ interface DocumentState {
 
   // 노드 박스 수동 크기 (우하단 핸들 드래그, null = 자동 크기로 복귀)
   updateNodeSize: (nodeId: string | null, size: { w?: number; h?: number } | null) => void;
+  /** 여러 노드를 **같은 크기**로 — 다중 선택 뒤 핸들 하나를 끌 때 (2026-09-08). 한 번의 set = undo 한 단계 */
+  updateNodesSize: (nodeIds: string[], size: { w?: number; h?: number } | null) => void;
   // 노드 안 사진 (붙여넣기, undefined = 제거)
   setNodeImage: (nodeId: string | null, image: NodeImage | undefined) => void;
   // 노드 텍스트 중간 인라인 사진들 (기사 붙여넣기 — 원문 위치 보존)
@@ -522,6 +524,15 @@ function updateNodeById(
 }
 
 // Applies `updater` to the matching node anywhere in the map, including root.
+/** 수동 크기(sizeW/sizeH) 적용 — null 이면 자동 크기로 복귀. 범위는 핸들이 만들 수 있는 값 */
+function withManualSize(n: MindNode, size: { w?: number; h?: number } | null): MindNode {
+  return {
+    ...n,
+    sizeW: size?.w ? Math.max(90, Math.min(900, Math.round(size.w))) : undefined,
+    sizeH: size?.h ? Math.max(36, Math.min(1200, Math.round(size.h))) : undefined,
+  };
+}
+
 function mutateNode(
   map: SampleMap,
   nodeId: string,
@@ -1438,12 +1449,14 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
   updateNodeSize: (nodeId, size) => {
     if (!nodeId) return;
+    set((state) => ({ map: mutateNode(state.map, nodeId, (n) => withManualSize(n, size)) }));
+  },
+
+  updateNodesSize: (nodeIds, size) => {
+    const ids = [...new Set(nodeIds.filter(Boolean))];
+    if (!ids.length) return;
     set((state) => ({
-      map: mutateNode(state.map, nodeId, (n) => ({
-        ...n,
-        sizeW: size?.w ? Math.max(90, Math.min(900, Math.round(size.w))) : undefined,
-        sizeH: size?.h ? Math.max(36, Math.min(1200, Math.round(size.h))) : undefined,
-      })),
+      map: ids.reduce((m, id) => mutateNode(m, id, (n) => withManualSize(n, size)), state.map),
     }));
   },
 

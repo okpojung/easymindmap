@@ -23,7 +23,8 @@ import { McpTokensView } from '@/components/auth/McpTokensView';
 import { ProShareDialog } from '@pro';
 import { useProfileStore } from '@/stores/profileStore';
 import { AccountProfileForm } from '@/components/account/AccountProfileForm';
-import { avatarInitialOf, displayNameOf, formatPhone } from '@/utils/profileName';
+import { displayNameOf, formatPhone } from '@/utils/profileName';
+import { AvatarBadge } from '@/components/account/AvatarBadge';
 
 interface MenuEntry {
   id: string;
@@ -249,13 +250,13 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
         onClick={() => setOpen((v) => !v)}
         style={{
           width: 30, height: 30, borderRadius: '50%', padding: 0,
-          background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
+          background: t.surface,
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 12, fontWeight: 700,
           border: `2px solid ${open ? t.primaryBorder : t.surface}`, cursor: 'pointer',
         }}
       >
-        {isGuest ? 'G' : avatarInitialOf(profile?.fullName, session?.email)}
+        <AvatarBadge t={t} avatar={profile?.avatar} fullName={profile?.fullName} email={session?.email} size={26} guest={isGuest} />
       </button>
 
       {open && (
@@ -428,23 +429,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 <span style={{ width: 16, textAlign: 'center' }}>🚪</span>
                 <span style={{ flex: 1 }}>로그아웃</span>
               </button>
-              {/* 회원탈퇴 — 로그아웃 **아래**, 색으로 구분한다. 되돌릴 수
-                  없는 동작이라 실수로 로그아웃 대신 눌리지 않게 한다. */}
-              <button
-                data-testid="user-menu-delete-account"
-                onClick={openDelete}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                  textAlign: 'left', padding: '8px 10px', borderRadius: 6,
-                  background: 'transparent', border: 'none', color: t.danger,
-                  cursor: 'pointer', fontSize: 12.5,
-                }}
-                onMouseEnter={(ev) => { ev.currentTarget.style.background = t.surfaceAlt; }}
-                onMouseLeave={(ev) => { ev.currentTarget.style.background = 'transparent'; }}
-              >
-                <span style={{ width: 16, textAlign: 'center' }}>⚠</span>
-                <span style={{ flex: 1 }}>회원탈퇴</span>
-              </button>
+              {/* 회원탈퇴는 **계정 프로필 창 맨 아래**로 옮겼다 (2026-09-08 사용자
+                  요청 — 로그아웃 바로 밑에 있어 잘못 누를 수 있었다). */}
             </>
           )}
         </div>
@@ -463,11 +449,13 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             onClick={(e) => e.stopPropagation()}
             data-testid="delete-account-dialog"
             style={{
+              position: 'relative',
               width: 'min(460px, 92vw)', background: t.surface, color: t.text,
               border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
               boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
             }}
           >
+            <DialogCloseX t={t} onClick={() => { if (!delBusy) setDel(null); }} testId="delete-account-dialog-x" />
             <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6, color: t.danger }}>
               ⚠ 회원탈퇴 — 되돌릴 수 없습니다
             </div>
@@ -616,12 +604,14 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             onClick={(e) => e.stopPropagation()}
             data-testid="mcp-dialog"
             style={{
+              position: 'relative',
               width: 'min(560px, 94vw)', maxHeight: '86vh', overflowY: 'auto',
               background: t.surface, color: t.text,
               border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
               boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
             }}
           >
+            <DialogCloseX t={t} onClick={() => setMcpOpen(false)} testId="mcp-dialog-x" />
             <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
               🔌 AI 커넥터(MCP)
             </div>
@@ -654,11 +644,13 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             onClick={(e) => e.stopPropagation()}
             data-testid="logins-dialog"
             style={{
+              position: 'relative',
               width: 'min(520px, 94vw)', background: t.surface, color: t.text,
               border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
               boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
             }}
           >
+            <DialogCloseX t={t} onClick={() => setLogOpen(false)} testId="logins-dialog-x" />
             <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
               🕘 내 로그인 기록
             </div>
@@ -691,15 +683,21 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             onClick={(e) => e.stopPropagation()}
             data-testid="profile-dialog"
             style={{
+              position: 'relative',
               width: 'min(430px, 92vw)', background: t.surface, color: t.text,
               border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
               boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
             }}
           >
+            <DialogCloseX t={t} onClick={() => setProfileOpen(false)} testId="profile-dialog-x" />
             <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 12 }}>
               👤 계정 프로필
             </div>
-            <AccountProfileForm t={t} onSaved={(m) => onFlash?.(m)} />
+            <AccountProfileForm
+              t={t}
+              onSaved={(m) => onFlash?.(m)}
+              onDeleteAccount={authEnabled && session ? () => { setProfileOpen(false); openDelete(); } : undefined}
+            />
             <button
               data-testid="profile-close"
               onClick={() => setProfileOpen(false)}
@@ -726,11 +724,13 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             onClick={(e) => e.stopPropagation()}
             data-testid="password-dialog"
             style={{
+              position: 'relative',
               width: 'min(430px, 92vw)', background: t.surface, color: t.text,
               border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
               boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
             }}
           >
+            <DialogCloseX t={t} onClick={() => setPwOpen(false)} testId="password-dialog-x" />
             <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 12 }}>
               🔑 비밀번호 변경
             </div>
@@ -760,12 +760,14 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             onClick={(e) => e.stopPropagation()}
             data-testid="ai-settings-dialog"
             style={{
+              position: 'relative',
               width: 'min(560px, 94vw)', maxHeight: '88vh', overflowY: 'auto',
               background: t.surface, color: t.text,
               border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
               boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
             }}
           >
+            <DialogCloseX t={t} onClick={() => setAiSettingsOpen(false)} testId="ai-settings-dialog-x" />
             <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
               🤖 AI 설정
             </div>
@@ -841,3 +843,26 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
     </div>
   );
 }
+
+/** 팝업 오른쪽 위 닫기(X) — 아래 [닫기] 버튼과 같은 일을 한다 (2026-09-08 사용자 요청) */
+function DialogCloseX({ t, onClick, testId }: { t: ThemeTokens; onClick: () => void; testId: string }) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      title="닫기"
+      aria-label="닫기"
+      onClick={onClick}
+      style={{
+        position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: 7,
+        border: 'none', background: 'transparent', color: t.textMuted, cursor: 'pointer',
+        fontSize: 18, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = t.surfaceAlt; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      ×
+    </button>
+  );
+}
+

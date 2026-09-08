@@ -1178,3 +1178,15 @@ CREATE INDEX IF NOT EXISTS idx_transfer_to_user
 COMMENT ON TABLE public.map_ownership_transfers IS
     '맵 소유권 이전 제안(제안→수락). 개설자가 탈퇴하려면 협업맵을 넘기거나 지워야 한다 '
     '— schema-overhaul-plan.md §2·§4. 만료 기본 14일.';
+
+-- ── 프로필 사진/아바타 (2026-09-08 사용자 요청) ──────────────────────────
+-- 우상단 아바타에 사진이나 이모지 아바타를 쓴다. 없으면 이름 첫 자.
+--   · 사진: 앱이 96×96 으로 줄인 data URL (≤ 64KB, image/jpeg·png·webp)
+--   · 이모지 아바타: 'emoji:😀'
+-- 열이 없는 서버에서도 앱은 죽지 않는다 — 프로필 조회는 열 없이 다시 읽고,
+-- 사진 저장만 "델타 SQL 적용 필요" 로 거절한다 (account.service.ts).
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS avatar TEXT;
+COMMENT ON COLUMN public.users.avatar IS
+    '프로필 사진(data URL, ≤64KB) 또는 이모지 아바타(emoji:😀). NULL = 이름 첫 자.';
+

@@ -233,6 +233,10 @@ export interface AccountProfile {
   phoneVerifiedAt: string | null;
   /** 가입 정보를 다 채웠는가 (성명이 기준) */
   complete: boolean;
+  /** 프로필 사진(data URL) 또는 'emoji:😀' — 없으면 null (2026-09-08) */
+  avatar?: string | null;
+  /** 서버에 사진 열이 있는가(델타 SQL) — false 면 사진 선택을 막고 안내 */
+  avatarReady?: boolean;
 }
 
 /** MCP 커넥터 토큰 한 개 (2026-09-04) — **원문은 여기 없다**(발급 응답에만 한 번) */
@@ -476,6 +480,8 @@ export const cloudApi = {
   /** 가입 마무리 — 성명·휴대폰 저장 (emailToken 이 있으면 이메일 인증도 기록) */
   saveProfile: (p: {
     fullName: string; phoneCountry?: string; phoneNumber?: string; emailToken?: string;
+    /** 생략 = 그대로 · null = 지움 · 문자열 = 바꿈 */
+    avatar?: string | null;
   }) => req<AccountProfile>('PUT', '/account/profile', p),
 
   /** **내 로그인 기록** (2026-08-13) — 남의 것은 볼 수 없다(서버가 토큰 주인만 본다) */

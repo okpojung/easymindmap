@@ -10,8 +10,41 @@
 //   · 다른 계정으로 바뀌면 비운다(앞사람 이름이 남지 않게).
 
 import { create } from 'zustand';
-import { cloudApi, type AccountProfile } from '@/services/cloud/apiClient';
+import { cloudApi, CloudError, type AccountProfile } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
+
+/**
+ * **가입 때 적은 성명·휴대폰을 잃지 않는다** (2026-09-08 실사용 보고: 계정
+ * 프로필에 가입 때 넣은 이름·휴대폰이 비어 있었다).
+ *
+ * 가입 흐름은 "계정 생성 → 세션 → 프로필 저장" 인데, 메일 확인이 켜진
+ * 서버는 계정 생성 뒤 **세션을 주지 않는다.** 그러면 프로필 저장 차례가
+ * 오지 않아 성명·휴대폰이 어디에도 남지 않았다. 그래서 그때는 이 브라우저에
+ * 적어 두고, 그 이메일로 처음 로그인해 프로필을 읽을 때 성명이 비어 있으면
+ * 여기 적어 둔 것을 서버에 넣는다.
+ */
+const PENDING_KEY = 'emm.pendingProfile';
+export interface PendingProfile {
+  email: string;
+  fullName: string;
+  phoneCountry?: string;
+  phoneNumber?: string;
+}
+export function stashPendingProfile(p: PendingProfile): void {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ ...p, email: p.email.trim().toLowerCase() })); } catch { /* 보관 못 해도 가입은 진행 */ }
+}
+export function readPendingProfile(): PendingProfile | null {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as PendingProfile;
+    if (!p || typeof p.email !== 'string' || typeof p.fullName !== 'string') return null;
+    return { ...p, email: p.email.trim().toLowerCase() };
+  } catch { return null; }
+}
+export function clearPendingProfile(): void {
+  try { localStorage.removeItem(PENDING_KEY); } catch { /* 없어도 그만 */ }
+}
 
 interface ProfileState {
   profile: AccountProfile | null;
@@ -19,6 +52,8 @@ interface ProfileState {
   forUser: string | null;
   /** 읽기 시도가 끝났다(실패 포함) */
   loaded: boolean;
+  /** 마지막 읽기가 실패했으면 그 이유 — 화면이 "등록되지 않음"과 구분해 보여 준다 */
+  error: string | null;
   load: (opts?: { force?: boolean }) => Promise<AccountProfile | null>;
   setProfile: (p: AccountProfile | null) => void;
   clear: () => void;
@@ -36,6 +71,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   profile: null,
   forUser: null,
   loaded: false,
+  error: null,
 
   load: async ({ force } = {}) => {
     const uid = currentUserId();
@@ -46,22 +82,40 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     if (!force && get().loaded && get().forUser === uid) return get().profile;
     if (inflight && !force) return inflight;
     inflight = cloudApi.getProfile()
-      .then((p) => {
+      .then(async (p) => {
         // 기다리는 사이 계정이 바뀌었으면 버린다
         if (currentUserId() !== uid) return null;
-        set({ profile: p, forUser: uid, loaded: true });
+        // 가입 때 적어 둔 성명이 있고 서버가 비어 있으면 지금 넣는다
+        const pending = readPendingProfile();
+        const email = (useAuthStore.getState().session?.email ?? '').trim().toLowerCase();
+        if (pending && email && pending.email === email) {
+          if (!p.fullName) {
+            try {
+              p = await cloudApi.saveProfile({
+                fullName: pending.fullName,
+                phoneCountry: pending.phoneCountry,
+                phoneNumber: pending.phoneNumber,
+              });
+              clearPendingProfile();
+            } catch { /* 다음 로그인 때 다시 시도한다 */ }
+          } else {
+            clearPendingProfile();
+          }
+        }
+        set({ profile: p, forUser: uid, loaded: true, error: null });
         return p;
       })
-      .catch(() => {
-        set({ profile: null, forUser: uid, loaded: true });
+      .catch((err: unknown) => {
+        const why = err instanceof CloudError ? err.message : (err instanceof Error ? err.message : '프로필을 읽지 못했습니다.');
+        set({ profile: null, forUser: uid, loaded: true, error: why });
         return null;
       })
       .finally(() => { inflight = null; });
     return inflight;
   },
 
-  setProfile: (profile) => set({ profile }),
-  clear: () => set({ profile: null, forUser: null, loaded: false }),
+  setProfile: (profile) => set({ profile, error: null }),
+  clear: () => set({ profile: null, forUser: null, loaded: false, error: null }),
 }));
 
 // 계정이 바뀌면(로그아웃·다른 계정 로그인) 비운다

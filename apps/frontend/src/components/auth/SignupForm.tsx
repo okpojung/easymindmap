@@ -22,6 +22,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useAuthStore } from '@/stores/authStore';
+import { useProfileStore } from '@/stores/profileStore';
 import { AuthError } from '@/services/cloud/supabaseAuth';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import {
@@ -128,12 +129,15 @@ export function SignupForm({
         return;
       }
       // 프로필 저장 — 여기서 성명·휴대폰이 계정에 붙는다
-      await cloudApi.saveProfile({
+      const saved = await cloudApi.saveProfile({
         fullName: fullName.trim(),
         phoneCountry: phoneDigits ? `+${country.dial}` : undefined,
         phoneNumber: phoneDigits || undefined,
         emailToken,
       });
+      // 아바타 글자·협업 이름표가 곧바로 새 이름을 쓰게 (세션이 먼저 생겨
+      // 프로필 스토어가 빈 성명을 읽어 둔 상태일 수 있다)
+      useProfileStore.getState().setProfile(saved);
       onDone?.('가입했습니다. (무료 요금제로 시작합니다)');
     } catch (e) {
       fail(e, '가입 중 오류가 발생했습니다.');

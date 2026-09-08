@@ -21,6 +21,9 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { LoginHistoryList, type LoginHistory } from '@/components/auth/LoginHistoryList';
 import { McpTokensView } from '@/components/auth/McpTokensView';
 import { ProShareDialog } from '@pro';
+import { useProfileStore } from '@/stores/profileStore';
+import { AccountProfileForm } from '@/components/account/AccountProfileForm';
+import { avatarInitialOf, displayNameOf, formatPhone } from '@/utils/profileName';
 
 interface MenuEntry {
   id: string;
@@ -43,7 +46,8 @@ const ENTRIES: MenuEntry[] = [
   { id: 'mcp', icon: '🔌', label: 'AI 커넥터(MCP)' },
   // 내 로그인 기록 — 남의 것은 볼 수 없다(서버가 토큰 주인만 조회한다)
   { id: 'logins', icon: '🕘', label: '로그인 기록' },
-  { id: 'profile', icon: '👤', label: '계정 프로필', soon: '표시 이름·비밀번호 변경 — 계정 관리 단계에서 열립니다.' },
+  // 계정 프로필 — 이름·이메일·휴대폰, 이름 수정 (2026-09-08 사용자 요청)
+  { id: 'profile', icon: '👤', label: '계정 프로필' },
   { id: 'subscription', icon: '💳', label: '구독 상태', soon: '요금제 변경 — Free 10MB · Basic 10GB · Pro 30GB · Team 20GB/사용자. 결제 단계에서 열립니다(현재 요금제와 사용량은 위에 표시됩니다).' },
 ];
 
@@ -66,12 +70,6 @@ function fmtBytes(b: number): string {
   return `${Math.max(1, Math.round(b / 1024))}KB`;
 }
 
-/** 이메일에서 아바타 글자 1자 — 없으면 로컬 모드 표시 */
-function initialOf(email: string | undefined): string {
-  const c = (email ?? '').trim().charAt(0);
-  return c ? c.toUpperCase() : '·';
-}
-
 export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string) => void }) {
   const [open, setOpen] = useState(false);
   const [soon, setSoon] = useState<string | null>(null);
@@ -79,6 +77,18 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const session = useAuthStore((s) => s.session);
   const guest = useAuthStore((s) => s.guest);
   const isGuest = authEnabled && guest && !session;
+
+  // 계정 프로필(성명·휴대폰) — 아바타 글자와 메뉴 머리, 협업 이름표가 쓴다
+  const profile = useProfileStore((s) => s.profile);
+  const loadProfile = useProfileStore((s) => s.load);
+  useEffect(() => {
+    if (authEnabled && !session) return;
+    void loadProfile();
+  }, [session, loadProfile]);
+  const myName = session ? displayNameOf(profile?.fullName, session.email) : null;
+  const myPhone = formatPhone(profile?.phoneCountry, profile?.phoneNumber);
+  /** 계정 프로필 창 (2026-09-08) */
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // 저장 용량 (B9) — 메뉴를 열 때마다 조회. DB(문서)+첨부 합산 / 한도.
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
@@ -232,7 +242,10 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
     <div ref={ref} style={{ position: 'relative' }}>
       <button
         data-testid="user-menu"
-        title={session?.email ? `${session.email} — 계정 메뉴` : '계정 메뉴'}
+        title={session
+          ? [myName, session.email !== myName ? session.email : null, myPhone, '계정 메뉴']
+            .filter(Boolean).join(' — ')
+          : '계정 메뉴'}
         onClick={() => setOpen((v) => !v)}
         style={{
           width: 30, height: 30, borderRadius: '50%', padding: 0,
@@ -242,7 +255,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           border: `2px solid ${open ? t.primaryBorder : t.surface}`, cursor: 'pointer',
         }}
       >
-        {isGuest ? 'G' : initialOf(session?.email)}
+        {isGuest ? 'G' : avatarInitialOf(profile?.fullName, session?.email)}
       </button>
 
       {open && (
@@ -257,12 +270,24 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           <div style={{
             padding: '8px 10px 9px', borderBottom: `1px solid ${t.divider}`, marginBottom: 5,
           }}>
-            <div style={{
-              fontSize: 12.5, fontWeight: 700, overflow: 'hidden',
-              textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {session?.email ?? (isGuest ? 'Guest 체험 중' : '로컬 모드')}
+            <div
+              data-testid="user-menu-name"
+              title={session ? [session.email, myPhone].filter(Boolean).join(' · ') : undefined}
+              style={{
+                fontSize: 12.5, fontWeight: 700, overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}
+            >
+              {myName ?? (isGuest ? 'Guest 체험 중' : '로컬 모드')}
             </div>
+            {session && profile?.fullName && (
+              <div data-testid="user-menu-email" style={{
+                fontSize: 10.5, color: t.textMuted, marginTop: 1, overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {session.email}{myPhone ? ` · ${myPhone}` : ''}
+              </div>
+            )}
             <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 2 }}>
               {authEnabled
                 ? (session ? '로그인됨'
@@ -326,6 +351,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 if (e.id === 'aisettings') { setOpen(false); setAiSettingsOpen(true); return; }
                 if (e.id === 'mcp') { setOpen(false); setMcpOpen(true); return; }
                 if (e.id === 'logins') { openLogins(); return; }
+                if (e.id === 'profile') { setOpen(false); setProfileOpen(true); return; }
                 setSoon(soon === e.id ? null : e.id);
               }}
               style={{
@@ -644,6 +670,41 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               data-testid="logins-close" onClick={() => setLogOpen(false)}
               style={{
                 width: '100%', height: 34, marginTop: 12, borderRadius: 7,
+                border: `1px solid ${t.border}`, background: t.surfaceAlt,
+                color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+              }}
+            >닫기</button>
+          </div>
+        </div>
+      )}
+
+      {/* 계정 프로필 — 이름·이메일·휴대폰, 이름 수정 (2026-09-08) */}
+      {profileOpen && (
+        <div
+          onClick={() => setProfileOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            data-testid="profile-dialog"
+            style={{
+              width: 'min(430px, 92vw)', background: t.surface, color: t.text,
+              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 12 }}>
+              👤 계정 프로필
+            </div>
+            <AccountProfileForm t={t} onSaved={(m) => onFlash?.(m)} />
+            <button
+              data-testid="profile-close"
+              onClick={() => setProfileOpen(false)}
+              style={{
+                width: '100%', height: 34, marginTop: 10, borderRadius: 7,
                 border: `1px solid ${t.border}`, background: t.surfaceAlt,
                 color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
               }}

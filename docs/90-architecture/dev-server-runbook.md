@@ -217,6 +217,35 @@ SSD 인지 NFS 인지 구분하지 않는다 — S3 호환 드라이버는 향�
 
 ### 1.5-0. 델타 SQL 자동 적용 스크립트 (붙여넣기 한 번)
 
+> **★ 규칙 (2026-09-08 사용자 결정): 델타 SQL 은 언제나 이 형식으로 준다.**
+> SQL 만 주지 않는다 — 컨테이너 찾기 → 접속 → 실행 → 검증이 한 블록에
+> 들어 있어 **그대로 붙여넣으면 끝**이어야 한다. 저장소가 있는 서버에서는
+> `bash apps/api/database/deltas/apply-delta.sh <델타파일>` 이 같은 일을 한다
+> (안에 아래 `find_emm_db` 가 그대로 들어 있다). 새 델타를 쓸 때는 아래
+> **표준 블록**을 복사해 SQL 자리만 바꾼다.
+>
+> ```bash
+> bash <<'SCRIPT'
+> set -e
+> find_emm_db() {
+>   for C in $(docker ps --format '{{.Names}}'); do
+>     U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+>     H=$(printf '%s' "$U"  | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+>     US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+>     N=$(printf '%s' "$U"  | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+>     OK=$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+>           "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null) || continue
+>     [ "$OK" = "t" ] && { DB="$H"; PGUSER="$US"; PGDB="$N"; echo "✅ DB=$DB 계정=$PGUSER DB이름=$PGDB"; return 0; }
+>   done
+>   echo "❌ easymindmap DB 를 찾지 못했습니다."; docker ps --format '{{.Names}}'; return 1
+> }
+> find_emm_db || exit 1
+> docker exec -i "$DB" psql -U "$PGUSER" -d "$PGDB" -v ON_ERROR_STOP=1 <<'SQL'
+> -- 여기에 델타 SQL (멱등: ADD COLUMN IF NOT EXISTS 등) + 끝에 검증 SELECT
+> SQL
+> SCRIPT
+> ```
+
 `<DB컨테이너>` 이름을 몰라도 된다 — 아래 블록 **전체를 서버 SSH 터미널에
 그대로 붙여넣으면**, DB 컨테이너를 자동으로 찾아 델타 SQL 을 적용하고
 결과까지 검증해 준다. (두 번 실행해도 안전 — 전부 IF NOT EXISTS)

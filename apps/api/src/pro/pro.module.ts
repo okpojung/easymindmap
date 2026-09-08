@@ -73,6 +73,10 @@ export class ProModule {
       const impl = paid.ProModule as NonNullable<DynamicModule['imports']>[number];
       return {
         module: ProModule,
+        // **전역이다** (2026-09-09) — `PRO` 를 다른 모듈(MCP)이 주입받는다.
+        // 그 모듈이 `ProModule.register()` 를 다시 부르면 유료 모듈이 **두 번**
+        // 뜬다(협업 게이트웨이가 둘). 한 번 등록해 어디서나 쓰게 한다.
+        global: true,
         imports: [impl],
         controllers: [ProController],
         providers: [{ provide: PRO_INSTALLED, useValue: true }, ProStartupLogger],
@@ -82,6 +86,7 @@ export class ProModule {
 
     return {
       module: ProModule,
+      global: true,
       controllers: [ProController],
       providers: [
         { provide: PRO, useClass: ProStub },

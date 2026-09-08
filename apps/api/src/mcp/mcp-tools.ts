@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { FoldersService } from '../folders/folders.service';
 import { FocusService } from '../maps/focus.service';
 import { MapsService } from '../maps/maps.service';
+import { PRO, type ProContract } from '../pro/pro.contract';
 import { AppendError, appendSubtree, parseFragment } from './append-to-map';
 import { checkItems, listCheckable } from './check-items';
 import { DocShapeError, docToEmm, mapFromDoc } from './doc-to-emm';
@@ -243,6 +244,8 @@ export class McpToolsService {
     private readonly maps: MapsService,
     private readonly folders: FoldersService,
     private readonly focus: FocusService,
+    // 협업 방이 살아 있는지 묻는 데만 쓴다 — 시험은 안 넣어도 된다(그러면 "방 없음")
+    @Optional() @Inject(PRO) private readonly pro?: ProContract,
   ) {}
 
   list(): McpToolDef[] {
@@ -580,7 +583,29 @@ export class McpToolsService {
     if (docRes.role && !['owner', 'editor', 'collab_creator'].includes(String(docRes.role))) {
       return { error: `"${docRes.title}" 맵에는 읽기 권한만 있어 ${what} 수 없습니다 (내 권한: ${docRes.role}).` };
     }
+    // **협업 방이 살아 있으면 거절한다** (2026-09-09 사용자 결정 — B안, §9.13).
+    // 협업맵은 열려 있는 동안 유료 모듈의 방(Y.Doc)이 정본을 되돌려 쓴다.
+    // 지금 정본에 써 봐야 방이 모른 채 곧 덮어쓴다 — 실제로 할 일 맵의 체크
+    // 12개가 히스토리 v10 에만 남고 4분 뒤 사라졌다. 버전으로 남기고 정본에서
+    // 지워지는 것보다, 지금은 안 된다고 **이유와 함께** 말하는 편이 낫다.
+    // A안(방에 직접 반영)은 유료·코어에 걸친 큰 일이라 접었다.
+    if (await this.collabRoomLive(mapId)) {
+      return { error: `"${docRes.title}" 맵은 협업맵이고 지금 협업 방이 열려 있어 ${what} 수 없습니다 — 누군가(나 자신일 수도) 앱에서 열어 두었거나 닫은 지 1분이 안 됐습니다. 이 상태에서 쓰면 방이 곧 덮어씁니다. 앱에서 그 맵을 닫고 1분쯤 뒤에 다시 불러 주세요.` };
+    }
     return { docRes };
+  }
+
+  /** 유료 모듈이 없거나(스텁) 묻는 길이 없으면 **방 없음**으로 본다 */
+  private async collabRoomLive(mapId: string): Promise<boolean> {
+    const ask = this.pro?.collabRoomLive;
+    if (typeof ask !== 'function') return false;
+    try {
+      return Boolean(await ask.call(this.pro, mapId));
+    } catch (err) {
+      // 묻다 실패했으면 **막지 않는다** — 협업 판정이 죽었다고 MCP 까지 죽으면 원인을 못 찾는다
+      this.log.warn(`협업 방 상태 확인 실패 (map=${mapId}) — 방 없음으로 진행`, err as Error);
+      return false;
+    }
   }
 
   /**

@@ -34,6 +34,21 @@ export interface ProContract {
    * 공개 코어에 커밋이 생기지 않는다(open-core-boundary.md §4.1).
    */
   features(): ProFeature[] | Promise<ProFeature[]>;
+
+  /**
+   * **협업 방이 지금 메모리에 살아 있는가** (2026-09-09, 선택).
+   *
+   * 협업맵은 열려 있는 동안 유료 모듈의 방(Y.Doc)이 정본
+   * `map_documents.doc` 를 주기적으로 되돌려 쓴다. 그 사이에 다른 길
+   * (MCP `append_to_map` · `check_items`)이 정본에 쓰면 **방이 모르는 채로
+   * 덮어쓴다** — 실제로 겪었다(할 일 맵의 체크 12개가 히스토리 v10 에만
+   * 남고 4분 뒤 정본에서 사라졌다). 코어는 방을 모르므로 여기서 묻는다.
+   *
+   * 살아 있음 = 사람이 붙어 있거나, 마지막 사람이 나간 뒤 아직 내려가지
+   * 않은 상태(그 방을 다시 쓰면 낡은 상태가 살아난다). 없으면 `false`.
+   * 스텁(공개판)은 구현하지 않는다 — 방이 없으므로 물을 것도 없다.
+   */
+  collabRoomLive?(mapId: string): boolean | Promise<boolean>;
 }
 
 /**

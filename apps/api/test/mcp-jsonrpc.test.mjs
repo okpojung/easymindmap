@@ -60,8 +60,8 @@ check('result 봉투', rpcResult(7, { ok: 1 }), { jsonrpc: '2.0', id: 7, result:
 check('error 봉투', rpcError(null, RPC.METHOD_NOT_FOUND, '없음'),
   { jsonrpc: '2.0', id: null, error: { code: -32601, message: '없음' } });
 
-// ── ⑥ 도구는 셋 — create_map(1단계) + list_maps·get_map(2단계, §7) ──
-check('도구는 다섯', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map']);
+// ── ⑥ 도구는 여섯 — create_map(1단계) + list_maps·get_map(2단계, §7) + get_open_map · append_to_map · check_items ──
+check('도구는 여섯', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map', 'check_items']);
 const byName = Object.fromEntries(TOOL_DEFS.map((t) => [t.name, t]));
 check('get_open_map: 인자 없음', Object.keys(byName.get_open_map.inputSchema.properties), []);
 check('create_map: markdown 은 필수', byName.create_map.inputSchema.required, ['markdown']);
@@ -74,7 +74,12 @@ check('get_map: map_id 만 필수', byName.get_map.inputSchema.required, ['map_i
 check('append_to_map: map_id·markdown 필수', byName.append_to_map.inputSchema.required, ['map_id', 'markdown']);
 check('append_to_map: 받는 인자는 여섯', Object.keys(byName.append_to_map.inputSchema.properties).sort(),
   ['block_placement', 'code_to_note', 'long_text_to_note', 'map_id', 'markdown', 'parent']);
-// **지우거나 바꾸는 도구가 없다**(§2-3) — 이름으로 못 박는다. append 는 덧붙이기만이라 허용
+check('check_items: map_id·nodes 필수', byName.check_items.inputSchema.required, ['map_id', 'nodes']);
+check('check_items: 받는 인자는 넷', Object.keys(byName.check_items.inputSchema.properties).sort(),
+  ['checked', 'item', 'map_id', 'nodes']);
+check('check_items: nodes 는 문자열 배열', [byName.check_items.inputSchema.properties.nodes.type, byName.check_items.inputSchema.properties.nodes.items.type], ['array', 'string']);
+// **지우거나 바꾸는 도구가 없다**(§2-3) — 이름으로 못 박는다. append 는 덧붙이기만,
+// check_items 는 체크박스 한 글자만 바꾸는 예외(§9.12)라 허용
 check('삭제·수정 도구 없음', TOOL_DEFS.filter((t) => /delete|remove|update|replace|set_/.test(t.name)).length, 0);
 
 console.log(failed ? `\n${failed}개 실패` : '\n전부 통과');

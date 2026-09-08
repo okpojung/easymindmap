@@ -1,5 +1,5 @@
 import {
-  ArrayMaxSize, IsArray, IsEmail, IsIn, IsObject, IsOptional, IsString, Length, MaxLength,
+  ArrayMaxSize, IsArray, IsEmail, IsIn, IsObject, IsOptional, IsString, Length, Matches, MaxLength,
   MinLength,
 } from 'class-validator';
 
@@ -23,9 +23,14 @@ export class VerifyEmailCodeDto {
 
 /** 가입 마무리 — 성명·휴대폰 저장 (emailToken 이 있으면 이메일 인증도 기록) */
 export class SaveProfileDto {
+  // 성명 규칙 (2026-09-08 사용자 결정): **한글 또는 영문 대소문자 2자 이상**,
+  // 글자 사이 공백만 허용. 화면(`utils/profileName.nameProblem`)과 같은 규칙.
   @IsString()
   @MinLength(1, { message: '성명을 입력해 주세요.' })
   @MaxLength(100)
+  @Matches(/^(?=(?:[^가-힣A-Za-z]*[가-힣A-Za-z]){2})[가-힣A-Za-z][가-힣A-Za-z ]*$/, {
+    message: '성명은 한글 또는 영문(대소문자) 2자 이상이어야 합니다 (숫자·기호 불가).',
+  })
   fullName!: string;
 
   /** 국가번호 — '+82' 또는 '82' 둘 다 받는다 (서버가 정규화) */

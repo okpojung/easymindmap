@@ -52,3 +52,19 @@ export function formatPhone(
   }
   return `+${cc} ${digits}`;
 }
+
+/**
+ * 성명 규칙 (2026-09-08 사용자 결정): **한글 또는 영문 대소문자 2자 이상**.
+ * 글자 사이 공백은 허용(`홍 길동`, `John Doe`), 숫자·기호는 안 된다.
+ * 서버(`SaveProfileDto`)도 같은 규칙으로 거른다.
+ * @returns 문제가 없으면 null, 있으면 사용자에게 보일 문장
+ */
+export const NAME_LETTER_RE = /[가-힣A-Za-z]/g;
+export function nameProblem(raw: string | null | undefined): string | null {
+  const name = (raw ?? '').trim();
+  if (!name) return '성명을 입력해 주세요.';
+  if (name.length > 100) return '성명은 100자까지입니다.';
+  if (!/^[가-힣A-Za-z][가-힣A-Za-z ]*$/.test(name)) return '성명은 한글 또는 영문(대소문자)만 쓸 수 있습니다.';
+  if ((name.match(NAME_LETTER_RE) ?? []).length < 2) return '성명은 2자 이상 입력해 주세요.';
+  return null;
+}

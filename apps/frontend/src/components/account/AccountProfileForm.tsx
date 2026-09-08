@@ -16,6 +16,7 @@ import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import { useAuthStore } from '@/stores/authStore';
 import { useProfileStore } from '@/stores/profileStore';
 import { COUNTRIES, DEFAULT_COUNTRY, formatPhone as formatPhoneInput } from '@/utils/countryCodes';
+import { nameProblem } from '@/utils/profileName';
 
 export function AccountProfileForm({ t, onSaved }: { t: ThemeTokens; onSaved?: (m: string) => void }) {
   const session = useAuthStore((s) => s.session);
@@ -48,8 +49,7 @@ export function AccountProfileForm({ t, onSaved }: { t: ThemeTokens; onSaved?: (
 
   const save = async () => {
     const fullName = name.trim();
-    if (!fullName) { setError('이름을 입력해 주세요.'); return; }
-    if (fullName.length > 100) { setError('이름은 100자까지입니다.'); return; }
+    { const bad = nameProblem(fullName); if (bad) { setError(bad); return; } }
     if (phoneDigits && phoneDigits.length < 6) { setError('휴대폰 번호가 너무 짧습니다.'); return; }
     setBusy(true); setError(null);
     try {

@@ -2,7 +2,7 @@
 //
 //   npx tsx src/utils/profileName.test.ts
 
-import { avatarInitialOf, displayNameOf, formatPhone } from './profileName';
+import { avatarInitialOf, displayNameOf, formatPhone, nameProblem } from './profileName';
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
@@ -24,6 +24,14 @@ check('⑩ +82 10자리 → 3-3-4', formatPhone('+82', '0212345678'), '021-234-5
 check('⑪ 다른 나라', formatPhone('+1', '2125551234'), '+1 2125551234');
 check('⑫ 번호 없음 → null', formatPhone('+82', null), null);
 check('⑬ 하이픈 섞인 값도 숫자만', formatPhone('+82', '010-1234-5678'), '010-1234-5678');
+
+check('⑭ 성명 규칙: 한글 2자 OK', nameProblem('홍길'), null);
+check('⑮ 영문 공백 OK', nameProblem('John Doe'), null);
+check('⑯ 한 글자는 안 된다', nameProblem('홍'), '성명은 2자 이상 입력해 주세요.');
+check('⑰ 숫자·기호는 안 된다', nameProblem('홍길동1'), '성명은 한글 또는 영문(대소문자)만 쓸 수 있습니다.');
+check('⑱ 빈 값', nameProblem('  '), '성명을 입력해 주세요.');
+check('⑲ 공백만 두 개는 글자 수에 안 든다', nameProblem('a b'), null);
+check('⑳ 자모만은 안 된다', nameProblem('ㅎㄱ'), '성명은 한글 또는 영문(대소문자)만 쓸 수 있습니다.');
 
 console.log(failed ? `\n${failed}건 실패` : '\n전부 통과');
 process.exit(failed ? 1 : 0);

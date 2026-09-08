@@ -118,6 +118,7 @@ export function Canvas({
   const deleteNode = useDocumentStore((state) => state.deleteNode);
   const deleteNodesBulk = useDocumentStore((state) => state.deleteNodesBulk);
   const moveNodeRelative = useDocumentStore((state) => state.moveNodeRelative);
+  const moveNodesRelative = useDocumentStore((state) => state.moveNodesRelative);
   const toggleCollapse = useDocumentStore((state) => state.toggleCollapse);
   const addNodeLink = useDocumentStore((state) => state.addNodeLink);
   const addNodeAttachment = useDocumentStore((state) => state.addNodeAttachment);
@@ -186,8 +187,10 @@ export function Canvas({
 
   // Visible ghost of the node being dragged (world coords).
   // flip: 방사형·양쪽에서 반대쪽 빈 공간 위 — 놓으면 좌/우 이동됨을 안내
+  // count: 다중 선택 드래그면 함께 옮겨지는 노드 수 (2 이상일 때 배지)
   const [dragGhost, setDragGhost] = useState<{
     x: number; y: number; w: number; h: number; flip?: 'left' | 'right' | null;
+    count?: number;
   } | null>(null);
 
   // 러버밴드(드래그 사각형) 다중 선택 — Pan 모드가 아닐 때 빈 캔버스 드래그.
@@ -237,6 +240,11 @@ export function Canvas({
     if (searchHitId && id !== searchHitId) setSearchHitId(null);
     onSelect(id);
   };
+
+  // 드래그로 옮길 노드들 — 다중 선택된 노드 중 하나를 끌면 **고른 전부**가
+  // 함께 간다 (2026-09-08). 아니면 끈 노드 하나.
+  const dragIdsFor = (id: string): string[] =>
+    multiSelectedIds.length > 1 && multiSelectedIds.includes(id) ? multiSelectedIds : [id];
 
   // 레이아웃 방향 — 루트 +버튼 위치와 방사형·양쪽 좌/우 이동에 사용
   const normalizedLayout = normalizeLayoutType(layoutType);
@@ -362,19 +370,20 @@ export function Canvas({
   };
 
   // Finds the drop target (within an expanded hit box) and which of the four
-  // drop zones the cursor is in, excluding the dragged node and its subtree.
+  // drop zones the cursor is in, excluding the dragged nodes and their subtrees.
   const findDropZone = (
     wx: number,
     wy: number,
-    draggingId: string,
+    draggingIds: string[],
   ): { targetId: string; position: DropPosition } | null => {
     const ns = nodesRef.current;
+    const dragSet = new Set(draggingIds);
     const M = 30; // expanded margin so child/parent zones reach outside the box
 
     let hit: (typeof ns)[number] | null = null;
     let bestDist = Infinity;
     for (const node of ns) {
-      if (node.id === draggingId) continue;
+      if (dragSet.has(node.id)) continue;
       const insideX = Math.abs(wx - node.x) <= node.w / 2 + M;
       const insideY = Math.abs(wy - node.y) <= node.h / 2 + M;
       if (insideX && insideY) {
@@ -387,11 +396,11 @@ export function Canvas({
     }
     if (!hit) return null;
 
-    // exclude the dragged node's own subtree
+    // exclude the dragged nodes' own subtrees
     const byId = new Map(ns.map((x) => [x.id, x]));
     let cur: (typeof ns)[number] | undefined = hit;
     while (cur) {
-      if (cur.id === draggingId) return null;
+      if (dragSet.has(cur.id)) return null;
       cur = cur.parent ? byId.get(cur.parent) : undefined;
     }
 
@@ -998,7 +1007,8 @@ export function Canvas({
 
       if (nodeDrag.dragging) {
         const w = clientToWorld(e.clientX, e.clientY);
-        const zone = findDropZone(w.x, w.y, nodeDrag.id);
+        const dragIds = dragIdsFor(nodeDrag.id);
+        const zone = findDropZone(w.x, w.y, dragIds);
         dropZoneRef.current = zone; // 동기 갱신 — 드롭 시 낡은 값 방지
         setDropZone(zone);
         const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
@@ -1008,7 +1018,7 @@ export function Canvas({
           const dropSide = rootN && w.x < rootN.x ? 'left' : 'right';
           const flip =
             bothSided && !zone && rootN && dragged.side !== dropSide ? dropSide : null;
-          setDragGhost({ x: w.x, y: w.y, w: dragged.w, h: dragged.h, flip });
+          setDragGhost({ x: w.x, y: w.y, w: dragged.w, h: dragged.h, flip, count: dragIds.length });
         }
       }
       return;
@@ -1046,10 +1056,38 @@ export function Canvas({
         const w = clientToWorld(e.clientX, e.clientY);
         // 최종 위치에서 새로 계산 — 폴백은 마지막 move에서 동기 저장한 값
         // (같은 좌표이므로 사실상 동일; 좌표가 어긋난 경우만 대비)
-        const zone = findDropZone(w.x, w.y, nodeDrag.id) ?? dropZoneRef.current;
+        const dragIds = dragIdsFor(nodeDrag.id);
+        const zone = findDropZone(w.x, w.y, dragIds) ?? dropZoneRef.current;
         dropZoneRef.current = null;
         const rootN = nodesRef.current.find((nd) => nd.depth === 0);
-        if (zone) {
+        if (zone && dragIds.length > 1) {
+          // 다중 선택 드래그 — 고른 노드 **전부**를 같은 자리로 (2026-09-08).
+          // '하위'·'이전/다음 형제'는 전부 붙이고, '상위(부모)로 붙이기'는
+          // 한 개일 때만이라 안내하고 아무것도 옮기지 않는다.
+          if (zone.position === 'parent') {
+            notifyPaste(
+              `⚠ 상위(부모) 노드로 붙이기는 한 개의 노드만 가능합니다 — 지금 ${dragIds.length}개가 선택되어 있습니다. ` +
+              '노드 하나만 고른 뒤 다시 끌어 주세요. (여러 노드를 한꺼번에 옮길 때는 노드 안쪽=하위, 옆=형제 자리에 놓습니다)',
+            );
+          } else {
+            const r = moveNodesRelative(dragIds, zone.targetId, zone.position);
+            if (r.reason === 'ok') {
+              // 방사형·양쪽: 루트에 떨어뜨리면 놓은 쪽(좌/우)으로 배치
+              if (bothSided && zone.targetId === 'root' && zone.position === 'child' && rootN) {
+                const side = w.x < rootN.x ? 'left' : 'right';
+                for (const id of dragIds) setBranchSide(id, side);
+              }
+              // 옮긴 뒤에도 다중 선택은 그대로 — 이어서 크기·스타일을 같이 손볼 수 있게
+              if (searchHitId) setSearchHitId(null);
+              onSelect(nodeDrag.id);
+              setMultiSelectedIds(dragIds);
+            } else if (r.reason === 'failed') {
+              notifyPaste('⚠ 옮기지 못했습니다 — 깊이 한도(50단계)를 넘거나 옮길 수 없는 자리입니다. 아무것도 바뀌지 않았습니다.');
+            } else if (r.reason === 'into-self') {
+              notifyPaste('⚠ 고른 노드 자신이나 그 아래로는 옮길 수 없습니다.');
+            }
+          }
+        } else if (zone) {
           const moved = moveNodeRelative(nodeDrag.id, zone.targetId, zone.position);
           if (moved) {
             // 방사형·양쪽: 루트에 떨어뜨리면 놓은 쪽(좌/우)으로 배치
@@ -1057,6 +1095,22 @@ export function Canvas({
               setBranchSide(nodeDrag.id, w.x < rootN.x ? 'left' : 'right');
             }
             selectOne(nodeDrag.id);
+          }
+        } else if (bothSided && rootN && dragIds.length > 1) {
+          // 반대쪽 빈 곳에 놓음 — 다중 선택: 고른 것 중 반대쪽에 있는 노드 전부를
+          // 그쪽으로 (2레벨은 side 전환, 3레벨 이하는 루트 자식으로 옮긴 뒤 전환)
+          const dropSide = w.x < rootN.x ? 'left' : 'right';
+          const flipping = dragIds
+            .map((id) => nodesRef.current.find((nd) => nd.id === id))
+            .filter((nd): nd is NonNullable<typeof nd> => !!nd && nd.side !== dropSide);
+          if (flipping.length) {
+            const deep = flipping.filter((nd) => nd.depth >= 2).map((nd) => nd.id);
+            const r = deep.length ? moveNodesRelative(deep, 'root', 'child') : { reason: 'ok' as const };
+            if (r.reason === 'ok') {
+              for (const nd of flipping) setBranchSide(nd.id, dropSide);
+              onSelect(nodeDrag.id);
+              setMultiSelectedIds(dragIds);
+            }
           }
         } else if (bothSided && rootN) {
           // 반대쪽 빈 곳에 놓음 (방사형·양쪽) — 좌/우 이동.
@@ -1445,6 +1499,10 @@ export function Canvas({
             // 바만으로는 형제 바와 혼동됐다. 자식이 자라는 변의 바도
             // 함께 그려 어느 쪽에 붙을지 같이 보여 준다.
             const isChild = dropZone.position === 'child';
+            // 다중 선택 드래그에서 '상위' 존은 **막힌 자리** — 놓아도 안
+            // 옮겨지므로 미리 경고색 바 + 이유를 보여 준다 (2026-09-08)
+            const blocked = dropZone.position === 'parent' && (dragGhost?.count ?? 1) > 1;
+            const barColor = blocked ? t.warning : t.success;
             return (
               <g pointerEvents="none">
                 {isChild && (
@@ -1455,7 +1513,18 @@ export function Canvas({
                     stroke={t.success} strokeWidth={2} />
                 )}
                 <rect x={bar.x} y={bar.y} width={bar.w} height={bar.h} rx={3}
-                  fill={t.success} opacity="0.95" />
+                  fill={barColor} opacity="0.95" />
+                {blocked && (
+                  <g data-testid="drop-parent-blocked"
+                     transform={`translate(${tgt.x}, ${tgt.y - tgt.h / 2 - 22})`}>
+                    <rect x={-92} y={-11} width={184} height={22} rx={11}
+                          fill={t.warning} opacity={0.95} />
+                    <text y={4} fontSize={11.5} fontWeight={700} fill="#FFFFFF"
+                          textAnchor="middle">
+                      상위로 붙이기는 1개만 가능
+                    </text>
+                  </g>
+                )}
               </g>
             );
           })()}
@@ -1569,6 +1638,18 @@ export function Canvas({
                 strokeWidth="1.5"
                 strokeDasharray="4 3"
               />
+              {/* 다중 선택 드래그 — 함께 옮겨지는 노드 수 배지 (2026-09-08) */}
+              {(dragGhost.count ?? 1) > 1 && (
+                <g data-testid="multi-drag-badge"
+                   transform={`translate(${dragGhost.x + dragGhost.w / 2}, ${dragGhost.y - dragGhost.h / 2})`}>
+                  <rect x={-34} y={-11} width={68} height={22} rx={11}
+                        fill={t.primary} opacity={0.95} />
+                  <text y={4} fontSize={11.5} fontWeight={700} fill="#FFFFFF"
+                        textAnchor="middle">
+                    {dragGhost.count}개 이동
+                  </text>
+                </g>
+              )}
               {/* 방사형·양쪽: 반대쪽 빈 공간 — 놓으면 좌/우 이동 안내 */}
               {dragGhost.flip && (
                 <g data-testid="flip-hint"

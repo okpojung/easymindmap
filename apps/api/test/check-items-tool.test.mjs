@@ -60,7 +60,8 @@ function harness(over = {}) {
   // 기반이라 다른 harness 에서 파싱한 id 와는 어긋난다(처음 그렇게 썼다가 실패).
   state.focus = over.focus ?? null;
   const focus = { get: () => state.focus };
-  const svc = new McpToolsService(maps, {}, focus);
+  // 유료 접점 — 협업 방이 살아 있는지 (2026-09-09 B안). 안 주면 공개판(스텁)과 같다
+  const svc = new McpToolsService(maps, {}, focus, over.pro);
   return {
     svc, state,
     textOf: (path) => findByPath(state.doc.map, path).node.text,
@@ -148,6 +149,32 @@ function harness(over = {}) {
   h.state.published = false; h.state.role = 'viewer';
   const r4 = await h.svc.call(USER, 'append_to_map', { map_id: MAP_ID, parent: '', markdown: '- x' });
   check('append: 읽기 권한 문장 그대로("붙일 수 없습니다")', /붙일 수 없습니다/.test(r4.content[0].text), true);
+}
+
+// ── ⑦ 협업 방이 살아 있으면 거절 (2026-09-09 사용자 결정 B안, §9.13) ─────
+// 할 일 맵의 체크 12개가 히스토리 v10 에만 남고 4분 뒤 방의 물질화에 덮여
+// 사라진 사고. 방이 살아 있으면 **저장하지 않고 이유를 말한다**.
+{
+  const asked = [];
+  const h = harness({ pro: { features: () => [], collabRoomLive: (id) => { asked.push(id); return true; } } });
+  const r = await h.svc.call(USER, 'check_items', { map_id: MAP_ID, nodes: ['데이터스토어 구성'] });
+  check('★ 방 살아 있음 → check_items 거절(isError) · 이유 문장', [r.isError, /협업 방이 열려 있어 체크할 수 없습니다/.test(r.content[0].text), /맵을 닫고 1분쯤 뒤에/.test(r.content[0].text)], [true, true, true]);
+  check('★ 저장 0회 · 문서 그대로', [h.state.saves.length, h.textOf('데이터스토어 구성')], [0, '데이터스토어 구성\n- [ ] 완료']);
+  check('맵 id 로 물었다', asked, [MAP_ID]);
+  const r2 = await h.svc.call(USER, 'append_to_map', { map_id: MAP_ID, parent: '1단계 · 스키마', markdown: '- 새 항목' });
+  check('★ append_to_map 도 같은 거절("붙일 수 없습니다")', [r2.isError, /협업 방이 열려 있어 붙일 수 없습니다/.test(r2.content[0].text), h.state.saves.length], [true, true, 0]);
+  // 방이 없으면(닫고 1분 뒤) 그대로 된다 — 거절이 영구가 아니다
+  const h2 = harness({ pro: { features: () => [], collabRoomLive: async () => false } });
+  const r3 = await h2.svc.call(USER, 'check_items', { map_id: MAP_ID, nodes: ['데이터스토어 구성'] });
+  check('방 없음(비동기 false) → 체크·저장 1회', [r3.isError, h2.state.saves.length, h2.textOf('데이터스토어 구성')], [undefined, 1, '데이터스토어 구성\n- [x] 완료']);
+  // 유료 모듈이 묻는 길을 안 주면(옛 유료판·스텁) 막지 않는다
+  const h3 = harness({ pro: { features: () => [] } });
+  const r4 = await h3.svc.call(USER, 'check_items', { map_id: MAP_ID, nodes: ['데이터스토어 구성'] });
+  check('collabRoomLive 없는 계약 → 방 없음으로 진행', [r4.isError, h3.state.saves.length], [undefined, 1]);
+  // 묻다 죽으면 막지 않는다 — 협업 판정이 죽었다고 MCP 까지 죽지 않는다
+  const h4 = harness({ pro: { features: () => [], collabRoomLive: () => { throw new Error('boom'); } } });
+  const r5 = await h4.svc.call(USER, 'check_items', { map_id: MAP_ID, nodes: ['데이터스토어 구성'] });
+  check('묻다 실패 → 방 없음으로 진행(저장 1회)', [r5.isError, h4.state.saves.length], [undefined, 1]);
 }
 
 console.log(failed === 0 ? '\n모두 통과' : `\n실패 ${failed}건`);

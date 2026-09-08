@@ -185,6 +185,9 @@ export interface ProFeature {
 }
 export interface ProContract {
   features(): ProFeature[];
+  // 선택 (2026-09-09) — 협업 방이 살아 있나. MCP 가 정본에 쓰기 전에 묻는다
+  // (mcp-connector.md §9.13). 스텁은 구현하지 않는다
+  collabRoomLive?(mapId: string): boolean | Promise<boolean>;
 }
 ```
 

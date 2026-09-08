@@ -25,6 +25,7 @@ import { useProfileStore } from '@/stores/profileStore';
 import { AccountProfileForm } from '@/components/account/AccountProfileForm';
 import { displayNameOf, formatPhone } from '@/utils/profileName';
 import { AvatarBadge } from '@/components/account/AvatarBadge';
+import { DialogCloseButton, DialogFrame } from '@/components/ui/DialogFrame';
 
 interface MenuEntry {
   id: string;
@@ -438,27 +439,15 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
 
       {/* 회원탈퇴 확인 — 숫자로 보여 주고, 문구를 직접 입력해야 열린다 */}
       {del && (
-        <div
-          onClick={() => { if (!delBusy) setDel(null); }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(0,0,0,0.4)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
+        <DialogFrame
+          t={t}
+          testId="delete-account-dialog"
+          zIndex={250}
+          width="min(460px, 92vw)"
+          closeDisabled={delBusy}
+          onClose={() => setDel(null)}
+          title={<span style={{ color: t.danger }}>⚠ 회원탈퇴 — 되돌릴 수 없습니다</span>}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            data-testid="delete-account-dialog"
-            style={{
-              position: 'relative',
-              width: 'min(460px, 92vw)', background: t.surface, color: t.text,
-              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
-            }}
-          >
-            <DialogCloseX t={t} onClick={() => { if (!delBusy) setDel(null); }} testId="delete-account-dialog-x" />
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6, color: t.danger }}>
-              ⚠ 회원탈퇴 — 되돌릴 수 없습니다
-            </div>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7 }}>
               <b>{session?.email}</b> 계정과 서버에 저장된 자료가 <b>모두 삭제</b>됩니다.
               삭제한 뒤에는 복구할 방법이 없습니다.
@@ -573,8 +562,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 }}
               >{delBusy ? '삭제하는 중…' : del.blocked ? '협업맵을 먼저 정리해 주세요' : '탈퇴하고 모든 자료 삭제'}</button>
             </div>
-          </div>
-        </div>
+        </DialogFrame>
       )}
 
       {/* 탈퇴 차단 목록에서 연 공유 대화상자 — 탈퇴 대화상자(z 245) **위**에
@@ -593,200 +581,78 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
 
       {/* AI 커넥터(MCP) — 토큰 발급·폐기가 **한 화면**에 있다 (mcp-connector.md §3) */}
       {mcpOpen && (
-        <div
-          onClick={() => setMcpOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
+        <DialogFrame
+          t={t}
+          testId="mcp-dialog"
+          width="min(560px, 94vw)"
+          onClose={() => setMcpOpen(false)}
+          title="🔌 AI 커넥터(MCP)"
+          subtitle="AI 대화에서 바로 이 문서함에 맵을 만듭니다."
+          footer={<DialogCloseButton t={t} onClick={() => setMcpOpen(false)} testId="mcp-close" />}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            data-testid="mcp-dialog"
-            style={{
-              position: 'relative',
-              width: 'min(560px, 94vw)', maxHeight: '86vh', overflowY: 'auto',
-              background: t.surface, color: t.text,
-              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
-            }}
-          >
-            <DialogCloseX t={t} onClick={() => setMcpOpen(false)} testId="mcp-dialog-x" />
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
-              🔌 AI 커넥터(MCP)
-            </div>
-            <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 12 }}>
-              AI 대화에서 바로 이 문서함에 맵을 만듭니다.
-            </div>
             <McpTokensView t={t} />
-            <button
-              data-testid="mcp-close" onClick={() => setMcpOpen(false)}
-              style={{
-                width: '100%', height: 34, marginTop: 12, borderRadius: 7,
-                border: `1px solid ${t.border}`, background: t.surfaceAlt,
-                color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              }}
-            >닫기</button>
-          </div>
-        </div>
+        </DialogFrame>
       )}
 
       {/* 로그인 기록 — 관리자 콘솔과 **같은 목록**을 쓴다 */}
       {logOpen && (
-        <div
-          onClick={() => setLogOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
+        <DialogFrame
+          t={t}
+          testId="logins-dialog"
+          width="min(520px, 94vw)"
+          onClose={() => setLogOpen(false)}
+          title="🕘 내 로그인 기록"
+          subtitle={<>{session?.email} — 모르는 접속이 있으면 비밀번호를 바꿔 주세요.</>}
+          footer={<DialogCloseButton t={t} onClick={() => setLogOpen(false)} testId="logins-close" />}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            data-testid="logins-dialog"
-            style={{
-              position: 'relative',
-              width: 'min(520px, 94vw)', background: t.surface, color: t.text,
-              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
-            }}
-          >
-            <DialogCloseX t={t} onClick={() => setLogOpen(false)} testId="logins-dialog-x" />
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
-              🕘 내 로그인 기록
-            </div>
-            <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 12 }}>
-              {session?.email} — 모르는 접속이 있으면 비밀번호를 바꿔 주세요.
-            </div>
             <LoginHistoryList t={t} data={logs} compact />
-            <button
-              data-testid="logins-close" onClick={() => setLogOpen(false)}
-              style={{
-                width: '100%', height: 34, marginTop: 12, borderRadius: 7,
-                border: `1px solid ${t.border}`, background: t.surfaceAlt,
-                color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              }}
-            >닫기</button>
-          </div>
-        </div>
+        </DialogFrame>
       )}
 
       {/* 계정 프로필 — 이름·이메일·휴대폰, 이름 수정 (2026-09-08) */}
       {profileOpen && (
-        <div
-          onClick={() => setProfileOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
+        <DialogFrame
+          t={t}
+          testId="profile-dialog"
+          width="min(430px, 92vw)"
+          onClose={() => setProfileOpen(false)}
+          title="👤 계정 프로필"
+          footer={<DialogCloseButton t={t} onClick={() => setProfileOpen(false)} testId="profile-close" />}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            data-testid="profile-dialog"
-            style={{
-              position: 'relative',
-              width: 'min(430px, 92vw)', background: t.surface, color: t.text,
-              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
-            }}
-          >
-            <DialogCloseX t={t} onClick={() => setProfileOpen(false)} testId="profile-dialog-x" />
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 12 }}>
-              👤 계정 프로필
-            </div>
             <AccountProfileForm
               t={t}
               onSaved={(m) => onFlash?.(m)}
               onDeleteAccount={authEnabled && session ? () => { setProfileOpen(false); openDelete(); } : undefined}
             />
-            <button
-              data-testid="profile-close"
-              onClick={() => setProfileOpen(false)}
-              style={{
-                width: '100%', height: 34, marginTop: 10, borderRadius: 7,
-                border: `1px solid ${t.border}`, background: t.surfaceAlt,
-                color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              }}
-            >닫기</button>
-          </div>
-        </div>
+        </DialogFrame>
       )}
 
       {/* 비밀번호 변경 — 관리자 콘솔과 **같은 폼**을 쓴다 */}
       {pwOpen && (
-        <div
-          onClick={() => setPwOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
+        <DialogFrame
+          t={t}
+          testId="password-dialog"
+          width="min(430px, 92vw)"
+          onClose={() => setPwOpen(false)}
+          title="🔑 비밀번호 변경"
+          footer={<DialogCloseButton t={t} onClick={() => setPwOpen(false)} testId="password-close" />}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            data-testid="password-dialog"
-            style={{
-              position: 'relative',
-              width: 'min(430px, 92vw)', background: t.surface, color: t.text,
-              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
-            }}
-          >
-            <DialogCloseX t={t} onClick={() => setPwOpen(false)} testId="password-dialog-x" />
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 12 }}>
-              🔑 비밀번호 변경
-            </div>
             <ChangePasswordForm t={t} email={session?.email ?? ''} />
-            <button
-              data-testid="password-close"
-              onClick={() => setPwOpen(false)}
-              style={{
-                width: '100%', height: 34, marginTop: 10, borderRadius: 7,
-                border: `1px solid ${t.border}`, background: t.surfaceAlt,
-                color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              }}
-            >닫기</button>
-          </div>
-        </div>
+        </DialogFrame>
       )}
 
       {aiSettingsOpen && (
-        <div
-          onClick={() => setAiSettingsOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 245, background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
+        <DialogFrame
+          t={t}
+          testId="ai-settings-dialog"
+          width="min(560px, 94vw)"
+          onClose={() => setAiSettingsOpen(false)}
+          title="🤖 AI 설정"
+          subtitle="API 키 · 사용 우선순위 · 모델 · EMM 프롬프트 템플릿 — 계정에 저장되어 다른 PC·브라우저에서 로그인해도 따라옵니다."
+          footer={<DialogCloseButton t={t} onClick={() => setAiSettingsOpen(false)} testId="ai-settings-close" />}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            data-testid="ai-settings-dialog"
-            style={{
-              position: 'relative',
-              width: 'min(560px, 94vw)', maxHeight: '88vh', overflowY: 'auto',
-              background: t.surface, color: t.text,
-              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
-            }}
-          >
-            <DialogCloseX t={t} onClick={() => setAiSettingsOpen(false)} testId="ai-settings-dialog-x" />
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
-              🤖 AI 설정
-            </div>
-            <div style={{ fontSize: 11.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 8 }}>
-              API 키 · 사용 우선순위 · 모델 · EMM 프롬프트 템플릿 — 계정에 저장되어
-              다른 PC·브라우저에서 로그인해도 따라옵니다.
-            </div>
             <AiSettingsView t={t} />
-            <button
-              data-testid="ai-settings-close"
-              onClick={() => setAiSettingsOpen(false)}
-              style={{
-                width: '100%', height: 34, marginTop: 10, borderRadius: 7,
-                border: `1px solid ${t.border}`, background: t.surfaceAlt,
-                color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              }}
-            >닫기</button>
-          </div>
-        </div>
+        </DialogFrame>
       )}
 
       {/* 로그아웃 = 이 브라우저의 초안 전체 삭제 → 잃을 것이 있으면 먼저 묻는다 */}
@@ -843,26 +709,3 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
     </div>
   );
 }
-
-/** 팝업 오른쪽 위 닫기(X) — 아래 [닫기] 버튼과 같은 일을 한다 (2026-09-08 사용자 요청) */
-function DialogCloseX({ t, onClick, testId }: { t: ThemeTokens; onClick: () => void; testId: string }) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      title="닫기"
-      aria-label="닫기"
-      onClick={onClick}
-      style={{
-        position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: 7,
-        border: 'none', background: 'transparent', color: t.textMuted, cursor: 'pointer',
-        fontSize: 18, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = t.surfaceAlt; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-    >
-      ×
-    </button>
-  );
-}
-

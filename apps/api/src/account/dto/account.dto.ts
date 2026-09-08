@@ -50,6 +50,18 @@ export class SaveProfileDto {
   @IsString()
   @MaxLength(200)
   emailToken?: string;
+
+  /**
+   * 프로필 사진/아바타 (2026-09-08). 생략 = 그대로, null = 지움,
+   * 문자열 = 바꿈. 사진은 앱이 줄인 data URL(≤64KB), 아바타는 'emoji:😀'.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(90_000, { message: '사진이 너무 큽니다 — 앱이 줄인 사진(64KB 이하)만 받습니다.' })
+  @Matches(/^(data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+|emoji:.{1,8})$/su, {
+    message: '사진(data:image/png·jpeg·webp) 이나 이모지 아바타(emoji:…)만 받습니다.',
+  })
+  avatar?: string | null;
 }
 
 /**

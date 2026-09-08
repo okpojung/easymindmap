@@ -1460,6 +1460,7 @@ CREATE TABLE public.node_thread_ai_previews (
 | v3.2 | 2026-03-31 | `tags.workspace_id` 추가<br>`nodes.layout_type` NULL 허용<br>`nodes.background_image_*` 전용 컬럼 3개 분리<br>`maps.view_mode`에 `'kanban'` 추가<br>RLS: workspace_members 기반 공유 접근 정책 추가 |
 | v3.3 | 2026-04-05 | 협업맵 스키마 반영<br>`maps`: `is_collaborative`, `collab_owner_id` 추가<br>`nodes`: `created_by` 추가<br>`map_collaborators`, `map_ownership_history` 테이블 신규 |
 | v3.4 | 2026-04-16 | 채팅 v1.1 반영<br>`chat_messages`: `recipient_id`, `client_msg_id` 추가, `text` → `content` 필드명 통일<br>`chat_mentions` 테이블 신규 (오프라인 멘션/DM 추적)<br>RLS 정책 추가 (`chat_messages`, `chat_mentions`) |
+| v3.x | 2026-09-08 | `users.avatar` TEXT 추가 — 프로필 사진(data URL ≤64KB) 또는 이모지 아바타(`emoji:😀`). 더하는 델타 `deltas/2026-09-08-user-avatar.sql`; 열이 없어도 앱은 살고 사진 저장만 안내로 거절 |
 
 ---
 

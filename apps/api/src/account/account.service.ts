@@ -26,7 +26,7 @@ import {
   hasDeletedAccountsTable, resetDeletedAccountsCache,
 } from '../common/deleted-accounts';
 import { forgetKnownUser } from '../common/auth/known-users';
-import { tableReady } from '../common/table-ready';
+import { columnReady, tableReady } from '../common/table-ready';
 import { hasMapMembersTable } from '../maps/map-access';
 import type { CollabMapSummary, DeleteBlockedBody } from './dto/account.dto';
 import { aiKeyHint, decryptAiKey, encryptAiKey } from './ai-key-crypto';
@@ -379,14 +379,25 @@ export class AccountService {
 
   /** 지금 로그인한 사람의 프로필 — 가입을 끝냈는지(성명 유무) 판단에도 쓴다 */
   async getProfile(userId: string) {
-    const { rows } = await this.db.query<{
+    type Row = {
       full_name: string | null; phone_country: string | null;
       phone_number: string | null; plan: string;
       email_verified_at: Date | null; phone_verified_at: Date | null;
-    }>(
-      `SELECT full_name, phone_country, phone_number, plan,
-              email_verified_at, phone_verified_at
-         FROM public.users WHERE id = $1`,
+      avatar?: string | null;
+    };
+    // 낡은 표(avatar 열 없음, 2026-09-08 델타 전)에서도 프로필은 산다 —
+    // **오류 코드로 판단하지 않는다**(DatabaseService 가 42703 을 503 으로
+    // 바꿔 올리므로 catch 로는 못 잡는다 — table-ready.ts 머리말). 열이
+    // 있는지 직접 묻고, 없으면 열 없이 읽는다. 없음은 1분만 기억한다.
+    const avatarReady = await columnReady(this.db, 'users', 'avatar');
+    const { rows } = await this.db.query<Row>(
+      avatarReady
+        ? `SELECT full_name, phone_country, phone_number, plan,
+                  email_verified_at, phone_verified_at, avatar
+             FROM public.users WHERE id = $1`
+        : `SELECT full_name, phone_country, phone_number, plan,
+                  email_verified_at, phone_verified_at
+             FROM public.users WHERE id = $1`,
       [userId],
     );
     const r = rows[0];
@@ -400,6 +411,10 @@ export class AccountService {
       phoneVerifiedAt: r?.phone_verified_at ?? null,
       /** 가입 정보를 다 채웠는가 (성명이 기준) */
       complete: !!r?.full_name,
+      /** 프로필 사진(data URL) 또는 'emoji:😀' — 없으면 null (2026-09-08) */
+      avatar: r?.avatar ?? null,
+      /** 서버에 사진 열이 있는가 — 없으면 앱이 사진 선택을 막고 안내한다 */
+      avatarReady,
     };
   }
 
@@ -412,6 +427,7 @@ export class AccountService {
     userEmail: string,
     dto: {
       fullName: string; phoneCountry?: string; phoneNumber?: string;
+      avatar?: string | null;
       emailToken?: string;
     },
   ) {
@@ -461,6 +477,18 @@ export class AccountService {
     // 다음 화면에서 "성명이 비어 있다"로 나타나 원인을 찾기 어렵다.
     if (res.rowCount === 0) {
       throw new BadRequestException('계정을 찾을 수 없습니다. 다시 로그인해 주세요.');
+    }
+    // 프로필 사진/아바타 (2026-09-08) — 생략이면 손대지 않는다
+    if (dto.avatar !== undefined) {
+      if (!(await columnReady(this.db, 'users', 'avatar', { missTtlMs: 0 }))) {
+        throw new BadRequestException(
+          '이 서버에는 아직 프로필 사진 열이 없습니다 — 관리자가 델타 SQL(users.avatar)을 적용해야 합니다. 이름·휴대폰은 저장됐습니다.',
+        );
+      }
+      await this.db.query(
+        `UPDATE public.users SET avatar = $2, updated_at = NOW() WHERE id = $1`,
+        [userId, dto.avatar],
+      );
     }
     return this.getProfile(userId);
   }

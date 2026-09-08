@@ -30,6 +30,22 @@ export function avatarInitialOf(
   return first ? first.toUpperCase() : '·';
 }
 
+/** 아바타 값 해석 — 사진(data URL) · 이모지('emoji:😀') · 없음 (2026-09-08) */
+export type AvatarView = { kind: 'image'; src: string } | { kind: 'emoji'; ch: string } | null;
+export function avatarView(avatar: string | null | undefined): AvatarView {
+  const v = (avatar ?? '').trim();
+  if (!v) return null;
+  if (v.startsWith('emoji:')) {
+    const ch = v.slice(6).trim();
+    return ch ? { kind: 'emoji', ch } : null;
+  }
+  if (/^data:image\/(png|jpeg|webp);base64,/i.test(v)) return { kind: 'image', src: v };
+  return null;
+}
+
+/** 고를 수 있는 이모지 아바타 (네이버 웨일처럼 사진 대신 캐릭터) */
+export const AVATAR_EMOJIS = ['😀', '😎', '🤓', '🥸', '🦊', '🐻', '🐼', '🐯', '🦁', '🐸', '🐧', '🦉', '🌻', '🍀', '🚀', '⭐'];
+
 /**
  * 휴대폰 표시 — 서버는 국가번호(`+82`)와 **숫자만**(`01012345678`) 따로 둔다.
  *   · 한국(+82) 은 `010-1234-5678` 꼴(11자리 3-4-4 · 10자리 3-3-4).

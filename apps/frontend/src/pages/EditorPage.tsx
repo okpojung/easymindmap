@@ -33,6 +33,8 @@ import {
 import { writeLocalDraftNow } from '@/hooks/useLocalDraft';
 import { pullAiKeys, pullAiSettings } from '@/services/cloud/aiKeysSync';
 import { useCloudStore } from '@/stores/cloudStore';
+import { heartbeatRefreshPlan } from '@/services/cloud/heartbeatRefresh';
+import { isCollabDriving } from '@/hooks/useCloudAutosave';
 import { nodePathInMap } from '@/stores/documentStore';
 import { useNoticeStore } from '@/stores/noticeStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
@@ -349,10 +351,18 @@ export function EditorPage() {
           // 편집 중이 아니면 조용히 다시 읽고, 편집 중이면 AI 가 붙인 가지만
           // 화면에 합친다. 합칠 수 없는 변경이면 손대지 않고, 저장 때 STALE
           // 을 받아 초안 보관 길로 간다(useCloudAutosave.handleStaleConflict).
+          //
+          // ★ **협업 중이면 다시 읽지 않는다** (2026-09-08). 새 시각은 협업
+          //   방의 물질화(5초마다)다 — 이 화면은 소켓으로 이미 그 내용을
+          //   받았다. 낡은 정본을 갈아 끼우면 협업 클라이언트가 그것을 내
+          //   편집으로 계산해 남의 글자를 지우거나 두 번 넣는다(글자가
+          //   `III. III. 해결방안` 처럼 불어난 보고). 시각만 따라간다.
           const known = useCloudStore.getState().lastSavedAt;
-          if (r && r.held !== false && r.updatedAt && known
-            && Date.parse(r.updatedAt) > Date.parse(known)) {
-            void refreshFromServer(cloudMapIdForLock, r.lastPlatform);
+          const plan = heartbeatRefreshPlan(r, known, isCollabDriving(cloudMapIdForLock));
+          if (plan === 'refresh') {
+            void refreshFromServer(cloudMapIdForLock, r?.lastPlatform);
+          } else if (plan === 'follow' && r?.updatedAt) {
+            useCloudStore.getState().link(cloudMapIdForLock, r.updatedAt);
           }
           // held=false = 편집권을 잃었다 (TTL 만료 후 다른 세션이 가져감).
           // 이 상태로 계속 편집하면 저장이 409 로 막혀 그 편집분이 사라진다.

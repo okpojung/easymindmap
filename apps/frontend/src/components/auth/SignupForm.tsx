@@ -22,7 +22,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useAuthStore } from '@/stores/authStore';
-import { useProfileStore } from '@/stores/profileStore';
+import { stashPendingProfile, useProfileStore } from '@/stores/profileStore';
 import { AuthError } from '@/services/cloud/supabaseAuth';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import {
@@ -125,7 +125,15 @@ export function SignupForm({
       // 계정 생성 + 로그인 (GoTrue). 메일 확인이 켜진 서버면 세션이 없다.
       const signedIn = await useAuthStore.getState().signUp(email.trim(), pw);
       if (!signedIn) {
-        onDone?.('가입 확인 메일을 보냈습니다. 메일함에서 확인한 뒤 로그인해 주세요.');
+        // 세션이 없으면 프로필을 지금 저장할 수 없다 — 적어 두었다가 첫
+        // 로그인 때 넣는다(profileStore). 예전에는 여기서 성명·휴대폰이 사라졌다.
+        stashPendingProfile({
+          email: email.trim(),
+          fullName: fullName.trim(),
+          phoneCountry: phoneDigits ? `+${country.dial}` : undefined,
+          phoneNumber: phoneDigits || undefined,
+        });
+        onDone?.('가입 확인 메일을 보냈습니다. 메일함에서 확인한 뒤 로그인해 주세요. (적어 주신 성명·휴대폰은 처음 로그인할 때 계정에 저장됩니다)');
         return;
       }
       // 프로필 저장 — 여기서 성명·휴대폰이 계정에 붙는다

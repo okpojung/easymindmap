@@ -40,6 +40,7 @@ import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { ProCursorLayer } from '@pro';
+import { zoneAxesFor, zoneAt } from './dropGeometry';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
@@ -404,57 +405,15 @@ export function Canvas({
       cur = cur.parent ? byId.get(cur.parent) : undefined;
     }
 
-    const dx = wx - hit.x;
-    const dy = wy - hit.y;
-    const isRoot = hit.depth === 0;
-
-    // 자식·부모 존은 hit 의 자식 성장 축으로, 형제 존(before/after)은
-    // "부모의 자식 방향"에 수직인 축으로 판정한다. 진행트리처럼 자식이
-    // 아래로 자라는 레이아웃에서는 형제가 좌우로 배열되므로, 좌우가
-    // 이전/다음 형제 존이 된다.
-    const dirC = childDirOf(hit);
-    const parentNode = hit.parent ? byId.get(hit.parent) : undefined;
-    const sibDir = parentNode ? childDirOf(parentNode) : dirC;
-    const vertC = dirC === 'down' || dirC === 'up';
-    const along = vertC
-      ? dy * (dirC === 'down' ? 1 : -1)
-      : dx * (dirC === 'left' ? -1 : 1);
-    const halfAlong = vertC ? hit.h / 2 : hit.w / 2;
-
-    // ── 노드 **안쪽 = 항상 '하위'** (2026-08-05 실사용 보고) ──────────
-    // 이전에는 하위/상위 판정을 오직 "그 노드의 자식 성장 축"으로만
-    // 했다. 그래서 자식이 가로로 자라는 노드(tree-*)에서는 **아래로
-    // 끌어도 영영 하위가 되지 않고** 좌우 형제 표시만 떴다 — 사용자가
-    // 겪은 "왼쪽·오른쪽만 보이고 하위에 못 넣는다"가 이것이다. 존이
-    // 2개만 보이던 것도 같은 이유(축이 노드마다 달라 나머지 2개에
-    // 닿지 못함)다.
-    //
-    // 이제 판정은 **위치가 아니라 영역**으로 한다:
-    //   · 노드 박스 **안** → 'child'  (레이아웃과 무관, 늘 같다)
-    //   · 박스 **바깥 마진** → 자식 축 쪽이면 'child', 반대쪽이면
-    //     'parent', 그 수직 축이면 'before'/'after'
-    // 어느 레이아웃에서든 "노드 위에 올리면 하위"가 성립하고, 네 존을
-    // 모두 만날 수 있다.
-    const insideBox =
-      Math.abs(dx) <= hit.w / 2 && Math.abs(dy) <= hit.h / 2;
-
-    let position: DropPosition;
-    if (insideBox) {
-      position = 'child';
-    } else if (along > halfAlong) {
-      position = 'child';
-    } else if (along < -halfAlong && !isRoot) {
-      position = 'parent';
-    } else if (sibDir === 'down' || sibDir === 'up') {
-      // 부모가 세로 성장 → 형제는 가로 배열: 왼쪽 = 이전, 오른쪽 = 다음
-      position = dx < 0 ? 'before' : 'after';
-    } else {
-      position = dy < 0 ? 'before' : 'after';
-    }
-
-    // Root can only accept children; siblings/parent make no sense on root.
-    if (isRoot) position = 'child';
-
+    // ── 존 판정은 **실제 배치 기하**로 (2026-09-08, dropGeometry.ts) ──
+    // 형제가 늘어선 축·자식이 놓인 쪽·부모가 있는 쪽을 laid-out 좌표에서
+    // 읽는다. 예전에는 실효 레이아웃 이름 → 축 표 하나로 정해, 개요형
+    // (트리 오른쪽: 자식이 **아래**로 들여쓰기)을 "오른쪽"으로 적고 있었고
+    // 진행트리 줄이 섞인 맵에서 왼쪽에 놓으면 하위로 붙었다(실사용 보고).
+    // 박스 안 = 하위(2026-08-05), 박스 밖 = 가장 많이 벗어난 변의 뜻,
+    // 루트는 어디든 하위.
+    const axes = zoneAxesFor(hit, ns, (id) => effByNode.get(id) ?? '');
+    const position = zoneAt(hit, axes, wx, wy);
     return { targetId: hit.id, position };
   };
 
@@ -1467,13 +1426,8 @@ export function Canvas({
             const tgt = nodes.find((n) => n.id === dropZone.targetId);
             if (!tgt) return null;
             const BAR = 6;
-            // findDropZone 과 같은 축 규칙: 자식/부모 바 = 자식 성장
-            // 방향의 앞/뒤 변, 형제 바 = 부모의 자식 방향에 수직인 변
-            // (진행트리 = 좌우 세로 바, 가로 레이아웃 = 상하 가로 바)
-            const dirC = childDirOf(tgt);
-            const parentNode = nodes.find((n) => n.id === tgt.parent);
-            const sibDir = parentNode ? childDirOf(parentNode) : dirC;
-            const sibHorizontal = sibDir === 'down' || sibDir === 'up';
+            // findDropZone 과 같은 기하(dropGeometry) — 바는 그 존의 변에
+            const axes = zoneAxesFor(tgt, nodes, (id) => effByNode.get(id) ?? '');
             const topBar = { x: tgt.x - tgt.w / 2, y: tgt.y - tgt.h / 2 - BAR, w: tgt.w, h: BAR };
             const bottomBar = { x: tgt.x - tgt.w / 2, y: tgt.y + tgt.h / 2, w: tgt.w, h: BAR };
             const leftBar = { x: tgt.x - tgt.w / 2 - BAR, y: tgt.y - tgt.h / 2, w: BAR, h: tgt.h };
@@ -1481,19 +1435,10 @@ export function Canvas({
             const edgeBar = (dir: 'left' | 'right' | 'down' | 'up') =>
               dir === 'down' ? bottomBar : dir === 'up' ? topBar
                 : dir === 'left' ? leftBar : rightBar;
-            const opposite = (dir: 'left' | 'right' | 'down' | 'up') =>
-              dir === 'down' ? 'up' as const : dir === 'up' ? 'down' as const
-                : dir === 'left' ? 'right' as const : 'left' as const;
-            let bar: { x: number; y: number; w: number; h: number };
-            if (dropZone.position === 'before') {
-              bar = sibHorizontal ? leftBar : topBar;
-            } else if (dropZone.position === 'after') {
-              bar = sibHorizontal ? rightBar : bottomBar;
-            } else if (dropZone.position === 'parent') {
-              bar = edgeBar(opposite(dirC));
-            } else {
-              bar = edgeBar(dirC); // child — 자식이 자라는 변
-            }
+            const bar = dropZone.position === 'before' ? edgeBar(axes.beforeDir)
+              : dropZone.position === 'after' ? edgeBar(axes.afterDir)
+                : dropZone.position === 'parent' ? edgeBar(axes.parentDir)
+                  : edgeBar(axes.childDir); // child — 자식이 놓이는 변
             // 'child' 는 **노드 전체를 초록 테두리로 감싸** "이 노드
             // 안에 넣는다"를 분명히 한다 (2026-08-05) — 변에 붙은 얇은
             // 바만으로는 형제 바와 혼동됐다. 자식이 자라는 변의 바도

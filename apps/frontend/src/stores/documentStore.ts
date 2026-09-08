@@ -149,6 +149,13 @@ interface DocumentState {
     targetId: string | null,
     position: 'child' | 'before' | 'after' | 'parent',
   ) => boolean;
+  // 다중 선택 드래그 이동 — 고른 노드 전부를 같은 자리로 (한 번의 set).
+  // 'parent' 는 한 개일 때만 ('parent-multi' 로 거부).
+  moveNodesRelative: (
+    nodeIds: string[],
+    targetId: string | null,
+    position: 'child' | 'before' | 'after' | 'parent',
+  ) => MoveNodesResult;
 
   // View state
   toggleCollapse: (nodeId: string | null) => void;
@@ -741,6 +748,128 @@ function asDocumentSwap(run: () => void): void {
   useViewportStore.getState().reset();
 }
 
+
+export type MoveNodesResult = {
+  moved: number;
+  reason: 'ok' | 'none' | 'parent-multi' | 'into-self' | 'failed';
+};
+
+/**
+ * 고른 노드 목록에서 **최상위만** 남긴다 — 다른 고른 노드의 자손과 루트,
+ * 없는 노드, 중복은 뺀다. 결과는 문서 순서(앞→뒤).
+ */
+export function topLevelSelection(map: SampleMap, nodeIds: string[]): string[] {
+  const chosen = new Set(nodeIds.filter((id) => id && id !== 'root'));
+  if (!chosen.size) return [];
+  const out: string[] = [];
+  const walk = (list: MindNode[], underChosen: boolean) => {
+    for (const n of list) {
+      const mine = chosen.has(n.id);
+      if (mine && !underChosen) out.push(n.id);
+      if (n.children?.length) walk(n.children as MindNode[], underChosen || mine);
+    }
+  };
+  walk(map.branches as MindNode[], false);
+  return out;
+}
+
+/**
+ * 드래그 이동 한 건의 순수 계산 — `moveNodeRelative` 와 `moveNodesRelative`
+ * 가 같이 쓴다. 못 옮기면 null (자기 자손 밑 · 깊이 초과 · 없는 노드).
+ */
+function applyMoveRelative(
+  map: SampleMap,
+  nodeId: string,
+  targetId: string,
+  position: 'child' | 'before' | 'after' | 'parent',
+): SampleMap | null {
+  if (!nodeId || nodeId === 'root' || !targetId) return null;
+  if (nodeId === targetId) return null;
+
+  const moving = findNode(map.branches, nodeId);
+  if (!moving) return null;
+  // 자기 자손 밑으로는 못 간다 — 판정은 emm-parser 한 곳에서 한다.
+  // (형제로 붙는 경우도 `targetId` 로 본다: 대상이 내 자손이면 그
+  //  형제 자리도 내 자손 안이라, 더 좁게 막는 쪽이 맞다.)
+  const idx = buildParentIndex(map);
+  if (wouldCreateCycle((id) => idx.get(id), nodeId, targetId)) return null;
+
+  const hMoving = subtreeHeight(moving);
+
+  // --- become a CHILD of target ---
+  if (position === 'child') {
+    if (targetId !== 'root') {
+      const tDepth = getNodeDepth(map, targetId);
+      if (tDepth < 0 || tDepth + 1 + hMoving > MAX_DEPTH) return null;
+    }
+    const { nodes: pruned, removed } = extractNode(map.branches, nodeId);
+    if (!removed) return null;
+    if (targetId === 'root') {
+      return { ...map, branches: [...(pruned as SampleBranch[]), makeBranch(removed, pruned.length)] };
+    }
+    return { ...map, branches: appendChild(pruned, targetId, removed) as SampleBranch[] };
+  }
+
+  // --- become a SIBLING before/after target ---
+  if (position === 'before' || position === 'after') {
+    if (targetId === 'root') return null;
+    const tParent = findParentId(map, targetId);
+    if (!tParent) return null;
+    const tDepth = getNodeDepth(map, targetId);
+    if (tDepth + hMoving > MAX_DEPTH) return null;
+
+    const { nodes: pruned, removed } = extractNode(map.branches, nodeId);
+    if (!removed) return null;
+
+    if (tParent === 'root') {
+      const branch = makeBranch(removed, pruned.length);
+      // 형제로 붙는 대상 브랜치의 side를 따라간다 — 방사형·양쪽에서
+      // 왼쪽 브랜치의 상/하 드롭존에 놓으면 왼쪽으로 이동해야 한다.
+      // (side를 그대로 두면 배열 순서만 바뀌고 반대쪽에 그려져
+      // "이동이 안 된 것"처럼 보인다)
+      const tgt = map.branches.find((b) => b.id === targetId);
+      if (tgt && (tgt.side === 'left' || tgt.side === 'right')) {
+        branch.side = tgt.side;
+      }
+      return { ...map, branches: insertSibling(pruned, targetId, branch, position) as SampleBranch[] };
+    }
+    return { ...map, branches: insertSibling(pruned, targetId, removed, position) as SampleBranch[] };
+  }
+
+  // --- become the PARENT of target (target moves under moving) ---
+  if (position === 'parent') {
+    if (targetId === 'root') return null;
+    const target = findNode(map.branches, targetId);
+    if (!target) return null;
+    const tParent = findParentId(map, targetId);
+    if (!tParent) return null;
+    const tDepth = getNodeDepth(map, targetId);
+    const hT = subtreeHeight(target);
+    if (tDepth + 1 + Math.max(hMoving, hT) > MAX_DEPTH) return null;
+
+    // Remove the moving node, then the target, then nest target under moving.
+    const ex1 = extractNode(map.branches, nodeId);
+    if (!ex1.removed) return null;
+    const ex2 = extractNode(ex1.nodes, targetId);
+    if (!ex2.removed) return null;
+
+    const newParent: MindNode = {
+      ...ex1.removed,
+      children: [...(ex1.removed.children ?? []), ex2.removed],
+    };
+
+    if (tParent === 'root') {
+      const branch = makeBranch(newParent, ex2.nodes.length);
+      branch.side = target.side === 'left' || target.side === 'right' ? target.side : branch.side;
+      branch.colorKey = (target.colorKey as NodeColorKey) ?? branch.colorKey;
+      return { ...map, branches: [...(ex2.nodes as SampleBranch[]), branch] };
+    }
+    return { ...map, branches: appendChild(ex2.nodes, tParent, newParent) as SampleBranch[] };
+  }
+
+  return null;
+}
+
 export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   // 문서를 바꾸는 set 만 거른다. 함수형 갱신은 **한 번만** 실행해
   // 그 결과를 넘긴다(두 번 부르면 부수효과가 두 번 난다).
@@ -1100,103 +1229,59 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
   moveNodeRelative: (nodeId, targetId, position) => {
     let ok = false;
+    set((state) => {
+      if (!nodeId || !targetId) return {};
+      const next = applyMoveRelative(state.map, nodeId, targetId, position);
+      if (!next) return {};
+      ok = true;
+      return { map: next };
+    });
+    return ok;
+  },
 
+  // 다중 선택 드래그 이동 (2026-09-08) — 고른 노드 **전부**를 같은 자리에
+  // 붙인다. 한 번의 set = undo 1단계.
+  //   · 고른 것 중 다른 고른 노드의 자손은 뺀다(부모가 옮겨지면 같이 간다).
+  //   · 순서는 문서 순서(위→아래)를 지킨다 — 'after' 는 뒤집어 넣어야
+  //     결과 순서가 같다.
+  //   · 대상이 고른 노드(또는 그 자손)이면 통째로 거부 — 자기 안으로.
+  //   · 'parent'(상위로 붙이기)는 **한 개일 때만** — 여럿이면 거부하고
+  //     호출한 쪽이 안내한다. "여러 노드를 한 노드의 부모로" 는 뜻이 없다.
+  //   · 하나라도 못 옮기면(깊이 초과 등) 전부 안 옮긴다 — 반만 옮겨져
+  //     "몇 개는 갔고 몇 개는 남은" 상태를 만들지 않는다.
+  moveNodesRelative: (nodeIds, targetId, position) => {
+    let result: MoveNodesResult = { moved: 0, reason: 'none' };
     set((state) => {
       const map = state.map;
-      if (!nodeId || nodeId === 'root' || !targetId) return {};
-      if (nodeId === targetId) return {};
-
-      const moving = findNode(map.branches, nodeId);
-      if (!moving) return {};
-      // 자기 자손 밑으로는 못 간다 — 판정은 emm-parser 한 곳에서 한다.
-      // (형제로 붙는 경우도 `targetId` 로 본다: 대상이 내 자손이면 그
-      //  형제 자리도 내 자손 안이라, 더 좁게 막는 쪽이 맞다.)
+      if (!targetId) return {};
+      const ids = topLevelSelection(map, nodeIds);
+      if (!ids.length) return {};
+      if (position === 'parent' && ids.length > 1) {
+        result = { moved: 0, reason: 'parent-multi' };
+        return {};
+      }
+      // 대상이 고른 노드 안에 있으면 거부
       const idx = buildParentIndex(map);
-      if (wouldCreateCycle((id) => idx.get(id), nodeId, targetId)) return {};
-
-      const hMoving = subtreeHeight(moving);
-
-      // --- become a CHILD of target ---
-      if (position === 'child') {
-        if (targetId !== 'root') {
-          const tDepth = getNodeDepth(map, targetId);
-          if (tDepth < 0 || tDepth + 1 + hMoving > MAX_DEPTH) return {};
+      const chosen = new Set(ids);
+      for (let cur: string | undefined = targetId; cur && cur !== 'root'; cur = idx.get(cur)) {
+        if (chosen.has(cur)) {
+          result = { moved: 0, reason: 'into-self' };
+          return {};
         }
-        const { nodes: pruned, removed } = extractNode(map.branches, nodeId);
-        if (!removed) return {};
-        if (targetId === 'root') {
-          ok = true;
-          return { map: { ...map, branches: [...(pruned as SampleBranch[]), makeBranch(removed, pruned.length)] } };
-        }
-        ok = true;
-        return { map: { ...map, branches: appendChild(pruned, targetId, removed) as SampleBranch[] } };
       }
-
-      // --- become a SIBLING before/after target ---
-      if (position === 'before' || position === 'after') {
-        if (targetId === 'root') return {};
-        const tParent = findParentId(map, targetId);
-        if (!tParent) return {};
-        const tDepth = getNodeDepth(map, targetId);
-        if (tDepth + hMoving > MAX_DEPTH) return {};
-
-        const { nodes: pruned, removed } = extractNode(map.branches, nodeId);
-        if (!removed) return {};
-
-        if (tParent === 'root') {
-          const branch = makeBranch(removed, pruned.length);
-          // 형제로 붙는 대상 브랜치의 side를 따라간다 — 방사형·양쪽에서
-          // 왼쪽 브랜치의 상/하 드롭존에 놓으면 왼쪽으로 이동해야 한다.
-          // (side를 그대로 두면 배열 순서만 바뀌고 반대쪽에 그려져
-          // "이동이 안 된 것"처럼 보인다)
-          const tgt = map.branches.find((b) => b.id === targetId);
-          if (tgt && (tgt.side === 'left' || tgt.side === 'right')) {
-            branch.side = tgt.side;
-          }
-          ok = true;
-          return { map: { ...map, branches: insertSibling(pruned, targetId, branch, position) as SampleBranch[] } };
+      let next: SampleMap | null = map;
+      const order = position === 'after' ? [...ids].reverse() : ids;
+      for (const id of order) {
+        next = applyMoveRelative(next, id, targetId, position);
+        if (!next) {
+          result = { moved: 0, reason: 'failed' };
+          return {};
         }
-        ok = true;
-        return { map: { ...map, branches: insertSibling(pruned, targetId, removed, position) as SampleBranch[] } };
       }
-
-      // --- become the PARENT of target (target moves under moving) ---
-      if (position === 'parent') {
-        if (targetId === 'root') return {};
-        const target = findNode(map.branches, targetId);
-        if (!target) return {};
-        const tParent = findParentId(map, targetId);
-        if (!tParent) return {};
-        const tDepth = getNodeDepth(map, targetId);
-        const hT = subtreeHeight(target);
-        if (tDepth + 1 + Math.max(hMoving, hT) > MAX_DEPTH) return {};
-
-        // Remove the moving node, then the target, then nest target under moving.
-        const ex1 = extractNode(map.branches, nodeId);
-        if (!ex1.removed) return {};
-        const ex2 = extractNode(ex1.nodes, targetId);
-        if (!ex2.removed) return {};
-
-        const newParent: MindNode = {
-          ...ex1.removed,
-          children: [...(ex1.removed.children ?? []), ex2.removed],
-        };
-
-        if (tParent === 'root') {
-          const branch = makeBranch(newParent, ex2.nodes.length);
-          branch.side = target.side === 'left' || target.side === 'right' ? target.side : branch.side;
-          branch.colorKey = (target.colorKey as NodeColorKey) ?? branch.colorKey;
-          ok = true;
-          return { map: { ...map, branches: [...(ex2.nodes as SampleBranch[]), branch] } };
-        }
-        ok = true;
-        return { map: { ...map, branches: appendChild(ex2.nodes, tParent, newParent) as SampleBranch[] } };
-      }
-
-      return {};
+      result = { moved: ids.length, reason: 'ok' };
+      return { map: next };
     });
-
-    return ok;
+    return result;
   },
 
   toggleCollapse: (nodeId) => {

@@ -23,6 +23,7 @@ import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useAuthStore } from '@/stores/authStore';
 import { stashPendingProfile, useProfileStore } from '@/stores/profileStore';
+import { nameProblem } from '@/utils/profileName';
 import { AuthError } from '@/services/cloud/supabaseAuth';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import {
@@ -72,7 +73,7 @@ export function SignupForm({
   const countryList = useMemo(() => findCountries(countryQuery), [countryQuery]);
   const phoneDigits = phone.replace(/\D/g, '');
   const canSubmit =
-    !!emailToken && fullName.trim().length > 0
+    !!emailToken && !nameProblem(fullName)
     && pw.length >= MIN_PW && pw === pw2 && ageOk && !busy;
 
   const fail = (e: unknown, fallback: string) => {
@@ -117,7 +118,7 @@ export function SignupForm({
   // ③ 가입
   const submit = async () => {
     if (!emailToken) { setErr('먼저 이메일 인증을 마쳐 주세요.'); return; }
-    if (!fullName.trim()) { setErr('성명을 입력해 주세요.'); return; }
+    { const bad = nameProblem(fullName); if (bad) { setErr(bad); return; } }
     if (pw.length < MIN_PW) { setErr(`비밀번호는 ${MIN_PW}자 이상이어야 합니다.`); return; }
     if (pw !== pw2) { setErr('비밀번호가 서로 다릅니다.'); return; }
     setBusy('signup'); setErr(null);
@@ -250,7 +251,7 @@ export function SignupForm({
         <label style={label}>성명</label>
         <input
           data-testid="signup-name"
-          value={fullName} placeholder="홍길동" autoComplete="name"
+          value={fullName} placeholder="홍길동 (한글 또는 영문 2자 이상)" autoComplete="name"
           onChange={(e) => setFullName(e.target.value)}
           style={input}
         />

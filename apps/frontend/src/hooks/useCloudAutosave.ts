@@ -94,8 +94,11 @@ function setPending(n: number): void {
  * 자리는 코어에 있고, 켜고 끄는 것은 협업 모듈이 한다.
  */
 let collabDrivingMapId: string | null = null;
+/** 협업맵이 끊긴 사이 409 STALE 을 받아 REST 저장을 보류 중인 맵 (handleStaleConflict) */
+let staleCollabHold: string | null = null;
 
 export function setCollabDriving(mapId: string | null): void {
+  if (mapId && staleCollabHold === mapId) staleCollabHold = null; // 다시 붙었다 — 보류 해제
   if (collabDrivingMapId === mapId) return;
   collabDrivingMapId = mapId;
   // 배지는 스토어 값에서 파생된다 — 자세한 이유는 autosaveStore 주석.
@@ -170,6 +173,25 @@ function snapshot() {
  */
 export async function handleStaleConflict(mapId: string): Promise<void> {
   if (useCloudStore.getState().cloudMapId !== mapId) return;
+  // ★ **협업맵은 연결을 끊지 않는다** (2026-09-08 실사용 보고: 서버 재배포로
+  //   협업 소켓이 잠깐 끊긴 사이 친 편집을 자동저장이 REST 로 올리다 409
+  //   STALE — 방이 그 사이 물질화했다 — 을 받고 연결을 끊어, "저장" 이 새
+  //   이름을 묻고 "맵 닫기" 가 "서버에 저장한 적 없음" 이라고 했다). 협업맵의
+  //   정본은 방이다: 끊긴 동안의 편집은 화면에 그대로 있고, 다시 붙을 때
+  //   유료 클라이언트가 방 상태 위에 다시 얹는다(resync). 그러니 초안만
+  //   적어 두고 **REST 저장을 멈춘 채 기다린다** — 다시 붙으면
+  //   `setCollabDriving(mapId)` 가 이 보류를 푼다.
+  if (useCloudStore.getState().cloudKind === 'collab') {
+    await writeLocalDraftNow();
+    staleCollabHold = mapId;
+    cancelRetry();
+    useAutosaveStore.getState().setSaveState('dirty');
+    useCloudStore.getState().setNotice(
+      '협업 연결이 잠시 끊긴 사이 다른 사람이 이 맵을 저장했습니다 — 지금 편집분은 화면에 그대로 있고, '
+      + '다시 연결되면 자동으로 합쳐집니다. 이 맵과의 연결은 끊지 않았습니다.',
+    );
+    return;
+  }
   await writeLocalDraftNow();
   suppressCloudAutosave();
   useDocumentStore.getState().setDocOrigin(null);
@@ -190,6 +212,8 @@ async function doSave() {
   // **협업이 몰고 있으면 통째 저장을 하지 않는다** — 같은 순간 남이 고친
   // 것을 덮어쓴다. 서버가 몇 초마다 물질화하므로 잃는 것도 없다.
   if (isCollabDriving(mapId)) { setPending(0); return; }
+  // 협업맵이 끊긴 사이 STALE 을 받았다 — 다시 붙을 때까지 REST 로 올리지 않는다
+  if (staleCollabHold === mapId) return;
   // 빈 문서·'문서 없음' 플레이스홀더는 자동저장하지 않는다 (최후의
   // 방어선, 2026-08-04 유실 보고) — 이 상태가 서버 맵에 쓰이면 저장해
   // 둔 내용이 통째로 사라진다. 맵을 정말 비우고 싶으면 수동 ☁ 저장.

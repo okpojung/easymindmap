@@ -3,6 +3,7 @@ import { FoldersService } from '../folders/folders.service';
 import { FocusService } from '../maps/focus.service';
 import { MapsService } from '../maps/maps.service';
 import { AppendError, appendSubtree, parseFragment } from './append-to-map';
+import { checkItems, listCheckable } from './check-items';
 import { DocShapeError, docToEmm, mapFromDoc } from './doc-to-emm';
 import { EmmParseError, emmToSnapshot, titleFromSnapshot } from './emm-to-doc';
 import { TemplateError, applyLevelLayouts, templateFor } from './map-template';
@@ -16,8 +17,10 @@ import { TemplateError, applyLevelLayouts, templateFor } from './map-template';
  * 만들지 않는다 — 두 벌이 되면 반드시 어긋난다(§2 머리말).
  *
  * 1단계 `create_map`(§7) + 2단계 `list_maps`·`get_map` + `append_to_map`
- * (2026-09-05). **지우는 도구는 없다**(§2-3). 고치는 것은 `append_to_map`
- * 하나이고 그것도 **덧붙이기만** 한다 — 있는 노드를 바꾸거나 빼지 않는다.
+ * (2026-09-05) + `check_items`(2026-09-09, §9.12). **지우는 도구는 없다**(§2-3).
+ * 고치는 것은 둘 — `append_to_map` 은 **덧붙이기만** 하고, `check_items` 는
+ * 노드의 **체크박스 한 글자(`[ ]`↔`[x]`)만** 바꾼다. 노드의 글·자식·스타일을
+ * 바꾸거나 빼는 도구는 없다.
  */
 
 export interface McpToolDef {
@@ -185,6 +188,38 @@ export const TOOL_DEFS: McpToolDef[] = [
       required: ['map_id', 'markdown'],
     },
   },
+  {
+    name: 'check_items',
+    title: 'EasyMindMap 맵 노드의 체크박스에 체크하기',
+    description:
+      '기존 맵의 노드에 있는 **체크박스**(노드 본문의 `- [ ] 완료` 줄, 체크리스트 노트)를 **체크하거나 해제**한다. ' +
+      '사용자가 "완료된 항목은 완료 체크에 체크해 줘" · "1단계 범위 끝났으니 체크해 줘" 라고 하면 이것을 부른다. ' +
+      '`nodes` 에는 체크박스가 **들어 있는 노드**의 이름(`"1단계 범위"`) 또는 경로(`"3단계 > 1단계 범위"`)를 적는다 — get_map 본문에서 그 노드 아래에 `- [ ] …` 줄이 보인다. ' +
+      '`"selected"` 는 앱에서 지금 선택한 노드, `map_id:"current"` 는 지금 열어 둔 맵이다. ' +
+      '무엇이 끝났는지 대화에 없으면 짐작해서 체크하지 말고, get_map 으로 체크 줄이 있는 노드를 보여 주고 어느 것을 체크할지 묻는다. ' +
+      '바꾸는 것은 `[ ]`↔`[x]` 뿐이다 — 노드의 글·자식·스타일은 그대로다. 되돌리려면 `checked:false` 로 다시 부르거나 앱의 [히스토리] 에서 이전 버전을 복원한다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        map_id: { type: 'string', description: '`list_maps` 가 돌려준 맵 id (UUID), 또는 `"current"` = 사용자가 앱에서 지금 열어 둔 맵.' },
+        nodes: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 1,
+          description: '체크박스를 바꿀 노드들 — 이름 또는 `"가지 > 하위"` 경로, 또는 `"selected"`(앱에서 선택한 노드). 노드 안의 체크박스가 전부 대상이다(`item` 으로 좁힌다).',
+        },
+        checked: {
+          type: 'boolean',
+          description: 'true(기본) = 체크, false = 체크 해제.',
+        },
+        item: {
+          type: 'string',
+          description: '노드에 체크박스가 여럿일 때 이 말이 **들어간** 항목만 — 예: "완료". 비우면 그 노드의 체크박스 전부.',
+        },
+      },
+      required: ['map_id', 'nodes'],
+    },
+  },
 ];
 
 /** `get_map` 이 한 번에 돌려주는 본문 상한 — 넘으면 자르고 그 사실을 알린다 */
@@ -227,6 +262,7 @@ export class McpToolsService {
       case 'list_maps': return this.listMaps(userId, args);
       case 'get_map': return this.getMap(userId, args);
       case 'append_to_map': return this.appendToMap(userId, args);
+      case 'check_items': return this.checkItems(userId, args);
       case 'get_open_map': return this.getOpenMap(userId);
       default: return text(`알 수 없는 도구입니다: ${name}`, true);
     }
@@ -435,18 +471,9 @@ export class McpToolsService {
       throw err;
     }
 
-    let docRes;
-    try {
-      docRes = await this.maps.getDocument(userId, mapId);
-    } catch (err) {
-      return text(mapError(err, '맵을 읽지 못했습니다'), true);
-    }
-    if (docRes.published) {
-      return text(`"${docRes.title}" 맵은 지금 공개(퍼블리싱) 중이라 편집할 수 없습니다 — 앱에서 비공개(보관)로 바꾼 뒤 다시 시도해 주세요.`, true);
-    }
-    if (docRes.role && !['owner', 'editor', 'collab_creator'].includes(String(docRes.role))) {
-      return text(`"${docRes.title}" 맵에는 읽기 권한만 있어 붙일 수 없습니다 (내 권한: ${docRes.role}).`, true);
-    }
+    const opened = await this.openForWrite(userId, mapId, '붙일');
+    if ('error' in opened) return text(opened.error, true);
+    const docRes = opened.docRes;
 
     let result;
     try {
@@ -456,26 +483,128 @@ export class McpToolsService {
       throw err;
     }
 
-    const doc = { ...(docRes.doc as Record<string, unknown>), map: result.map };
+    const saved = await this.saveVersion(userId, mapId, docRes.doc, result.map, 'append_to_map', '붙인 내용을');
+    if ('error' in saved) return text(saved.error, true);
+    return text(
+      `"${docRes.title}" 맵의 "${result.parentPath}" 아래에 노드 ${result.added}개(바로 아래 ${result.topCount}개)를 붙였습니다.` +
+      saved.versionNote + '\n' + LIVE_NOTE,
+    );
+  }
+
+  /**
+   * `check_items` — 읽기 → 체크박스 맞추기 → 저장(버전). 잠금·권한·공개
+   * 판정은 `append_to_map` 과 **같다**(openForWrite · saveVersion). 노드
+   * 하나가 못 찾아져도 나머지는 진행하고, 결과에 노드별로 적는다.
+   * 바뀐 것이 하나도 없으면 저장하지 않는다 — 버전만 늘어난다.
+   */
+  private async checkItems(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const rid = this.resolveMapId(userId, args.map_id);
+    if ('error' in rid) return text(rid.error, true);
+    const mapId = rid.mapId;
+    const checked = !(args.checked === false || args.checked === 'false');
+    const item = typeof args.item === 'string' && args.item.trim() ? args.item.trim() : undefined;
+    const rawNodes = Array.isArray(args.nodes) ? args.nodes
+      : typeof args.nodes === 'string' && args.nodes.trim() ? [args.nodes] : [];
+    let targets = rawNodes.map((n) => String(n ?? '').trim()).filter(Boolean);
+    if (targets.length === 0) {
+      return text('`nodes` 가 비어 있습니다 — 체크할 노드 이름(또는 "가지 > 하위" 경로)을 하나 이상 넣어 주세요.', true);
+    }
+    // "선택한 노드" — 앱이 알려 준 자리로 (append_to_map 과 같은 규칙)
+    if (targets.some((t) => McpToolsService.isSelectedWord(t))) {
+      const f = this.focus.get(userId);
+      if (!f) return text('앱에서 선택한 노드를 알 수 없습니다 — 앱에서 그 맵을 열어 두고 노드를 고른 뒤 다시 불러 주세요(1분 안에 알려집니다).', true);
+      if (f.mapId !== mapId) {
+        return text(`앱에서 지금 열어 둔 맵은 다른 맵(id: ${f.mapId})입니다 — 그 맵이면 map_id:"current" 로, 이 맵이면 nodes 를 노드 이름으로 적어 주세요.`, true);
+      }
+      if (f.nodeId === null) return text('앱에서 선택한 노드가 없습니다 — 앱에서 노드를 고르거나 nodes 를 노드 이름으로 적어 주세요.', true);
+      targets = targets.map((t) => (McpToolsService.isSelectedWord(t) ? `id:${f.nodeId}` : t));
+    }
+
+    const opened = await this.openForWrite(userId, mapId, '체크할');
+    if ('error' in opened) return text(opened.error, true);
+    const docRes = opened.docRes;
+
+    let map;
+    try { map = mapFromDoc(docRes.doc); } catch (err) {
+      if (err instanceof DocShapeError) return text(err.message, true);
+      throw err;
+    }
+    let result;
+    try {
+      result = checkItems(map, targets, checked, item);
+    } catch (err) {
+      if (err instanceof AppendError) return text(err.message, true);
+      throw err;
+    }
+
+    const verb = checked ? '체크' : '체크 해제';
+    const lines = result.outcomes.map((o) => {
+      if (o.error) return `- "${o.asked}": 건너뜀 — ${o.error}`;
+      if (o.total === 0) return `- "${o.path}": 이 노드에는 체크박스가 없습니다(건너뜀)`;
+      if (o.matched === 0) return `- "${o.path}": "${item}" 이 들어간 체크박스가 없습니다(체크박스 ${o.total}개는 다른 항목)`;
+      const parts = [`${verb} ${o.changed}개`];
+      if (o.already) parts.push(`이미 ${verb}된 것 ${o.already}개`);
+      return `- "${o.path}": ${parts.join(' · ')}`;
+    });
+
+    if (result.changed === 0) {
+      const anyFound = result.outcomes.some((o) => !o.error && o.total > 0);
+      const avail = anyFound ? '' : hintCheckable(map);
+      return text(`바뀐 체크박스가 없습니다 — 저장하지 않았습니다.\n${lines.join('\n')}${avail}`, true);
+    }
+
+    const saved = await this.saveVersion(userId, mapId, docRes.doc, result.map, 'check_items', '체크한 내용을');
+    if ('error' in saved) return text(saved.error, true);
+    return text(
+      `"${docRes.title}" 맵에서 체크박스 ${result.changed}개를 ${verb}했습니다.${saved.versionNote}\n${lines.join('\n')}\n` + LIVE_NOTE,
+    );
+  }
+
+  /**
+   * 쓰기용으로 문서를 연다 — `append_to_map` · `check_items` 공통. 공개 중이면
+   * 거절(서버 저장 규칙과 같다), 읽기 권한이면 거절. `what` 은 문장에 들어갈
+   * 동사("붙일"·"체크할").
+   */
+  private async openForWrite(userId: string, mapId: string, what: string): Promise<
+    { docRes: Awaited<ReturnType<MapsService['getDocument']>> } | { error: string }
+  > {
+    let docRes;
+    try {
+      docRes = await this.maps.getDocument(userId, mapId);
+    } catch (err) {
+      return { error: mapError(err, '맵을 읽지 못했습니다') };
+    }
+    if (docRes.published) {
+      return { error: `"${docRes.title}" 맵은 지금 공개(퍼블리싱) 중이라 편집할 수 없습니다 — 앱에서 비공개(보관)로 바꾼 뒤 다시 시도해 주세요.` };
+    }
+    if (docRes.role && !['owner', 'editor', 'collab_creator'].includes(String(docRes.role))) {
+      return { error: `"${docRes.title}" 맵에는 읽기 권한만 있어 ${what} 수 없습니다 (내 권한: ${docRes.role}).` };
+    }
+    return { docRes };
+  }
+
+  /**
+   * 바꾼 맵을 **히스토리 버전으로** 저장한다 — §9.8 의 규칙 그대로: 잠금을
+   * 잡지 않고 같은 사용자의 살아 있는 잠금은 통과(`same-user-ok`), 덮어쓰기는
+   * 앱이 두 겹으로 막는다. 실패는 사람이 읽을 문장으로.
+   */
+  private async saveVersion(
+    userId: string, mapId: string, doc: unknown, map: unknown, tool: string, what: string,
+  ): Promise<{ versionNote: string } | { error: string }> {
+    const next = { ...(doc as Record<string, unknown>), map };
     let saved;
     try {
       saved = await this.maps.saveDocument(
-        userId, mapId, doc, undefined, true, undefined, false,
+        userId, mapId, next, undefined, true, undefined, false,
         { platform: 'MCP', browser: 'AI 대화' },
         { lockPolicy: 'same-user-ok' },
       );
     } catch (err) {
-      this.log.warn(`MCP append_to_map 저장 실패 (map=${mapId}, user=${userId})`, err as Error);
-      return text(mapError(err, '붙인 내용을 저장하지 못했습니다'), true);
+      this.log.warn(`MCP ${tool} 저장 실패 (map=${mapId}, user=${userId})`, err as Error);
+      return { error: mapError(err, `${what} 저장하지 못했습니다`) };
     }
-
     const ver = (saved as { version?: number }).version;
-    return text(
-      `"${docRes.title}" 맵의 "${result.parentPath}" 아래에 노드 ${result.added}개(바로 아래 ${result.topCount}개)를 붙였습니다.` +
-      (ver ? ` (히스토리 버전 ${ver})` : '') + '\n' +
-      '앱에서 이 맵을 열어 두었다면 몇 초 안에 화면이 갱신됩니다(편집 중이던 내용이 있으면 앱이 초안으로 보관하고 안내합니다). ' +
-      '되돌리려면 앱의 [히스토리] 에서 이전 버전을 복원하세요.',
-    );
+    return { versionNote: ver ? ` (히스토리 버전 ${ver})` : '' };
   }
 
   private async createMap(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
@@ -549,6 +678,21 @@ export class McpToolsService {
       `EasyMindMap 을 열고 [☁ 클라우드 ▸ 열기] 에서 확인할 수 있습니다.`,
     );
   }
+}
+
+/** 맵을 바꾼 도구가 끝에 붙이는 안내 — 열어 둔 앱 화면·되돌리기 (§9.8) */
+const LIVE_NOTE =
+  '앱에서 이 맵을 열어 두었다면 몇 초 안에 화면이 갱신됩니다(편집 중이던 내용이 있으면 앱이 초안으로 보관하고 안내합니다). ' +
+  '되돌리려면 앱의 [히스토리] 에서 이전 버전을 복원하세요.';
+
+/** 체크박스가 있는 노드를 보여 준다 — 하나도 못 맞췄을 때 AI 가 사용자에게 고르게 하려고 */
+function hintCheckable(map: import('../emm/model').SampleMap): string {
+  const rows = listCheckable(map);
+  if (rows.length === 0) return '\n이 맵에는 체크박스(`- [ ] …` 줄·체크리스트 노트)가 있는 노드가 없습니다.';
+  const shown = rows.slice(0, 20).map((r) =>
+    `- "${r.path}": ${r.items.map((i) => `[${i.checked ? 'x' : ' '}] ${i.label}`).join(' · ')}`);
+  const more = rows.length > 20 ? `\n… 외 ${rows.length - 20}개 노드` : '';
+  return `\n체크박스가 있는 노드:\n${shown.join('\n')}${more}`;
 }
 
 /** 서비스가 던진 HttpException 의 **사람이 읽을 문장**만 꺼낸다 */

@@ -96,6 +96,7 @@ export function applyLayoutOverrides(
         before: branches.slice(0, i).filter(sameSide),
         after: branches.slice(i + 1).filter(sameSide),
         axis: axisOf(rootEffective),
+        pathNode: branches[i],
       },
     ]);
   }
@@ -122,6 +123,9 @@ interface ChainLevel {
   before: MindNode[]; // earlier siblings — receive TOP/LEFT growth (radial 등 중앙정렬)
   after: MindNode[]; // later siblings — receive BOTTOM/RIGHT growth
   axis: 'x' | 'y' | null;
+  /** 이 레벨에서 오버라이드로 내려가는 길목의 노드 — 그 서브트리 전체의
+   *  크기 변화로 형제를 민다 (2026-09-08, 아래 propagateByLevels) */
+  pathNode: MindNode;
 }
 
 function axisOf(effective: LayoutType): 'x' | 'y' | null {
@@ -165,6 +169,7 @@ function walk(
         before: children.slice(0, i),
         after: children.slice(i + 1),
         axis: axisOf(effective),
+        pathNode: children[i],
       },
     ]);
   }
@@ -213,24 +218,32 @@ function bboxOf(out: LaidOutNode[], ids: Set<string>): BBox | null {
 // the base layout's relative gaps, so it cannot introduce overlaps in either
 // direction. Radial levels (axis null) don't stack linearly and are handled
 // by separateBranchGroups instead.
-function propagateDelta(
-  out: LaidOutNode[],
-  before: BBox,
-  after: BBox,
-  chain: ChainLevel[],
-): void {
-  // growth toward bottom/right → later siblings move down/right;
-  // growth toward top/left (vertically-centered radial subtrees) → earlier
-  // siblings move up/left by the same amount.
-  const dRight = after.right - before.right;
-  const dBottom = after.bottom - before.bottom;
-  const dLeft = before.left - after.left;
-  const dTop = before.top - after.top;
-  if (
-    Math.abs(dRight) <= 0.5 && Math.abs(dBottom) <= 0.5 &&
-    Math.abs(dLeft) <= 0.5 && Math.abs(dTop) <= 0.5
-  ) return;
+function subtreeIdSet(node: MindNode): Set<string> {
+  const ids = new Set<string>([node.id]);
+  collectDescendantIds(node, ids);
+  return ids;
+}
 
+/**
+ * ★ **레벨마다 "길목 노드의 서브트리 전체" 크기 변화로 민다** (2026-09-08).
+ *
+ * 예전에는 오버라이드한 노드 **하나의** 크기 변화(after − before)를 조상
+ * 체인의 모든 레벨에 그대로 적용했다. 그러면 진행트리(형제가 가로로 나란한)
+ * 안에 개요형 자식이 셋 있을 때, 셋이 **각각** 아래로 자란 만큼이 루트
+ * 레벨의 다음 형제에 **세 번 더해진다** — 실제로 늘어난 것은 셋 중 가장
+ * 큰 것 하나뿐인데. 실사용에서 발표순서(진행트리) 밑 목차 여섯 개가 각각
+ * 개요형이라, 다음 가지(발표 슬라이드)가 수천 px 아래로 밀렸다.
+ *
+ * 이제 깊은 레벨부터 올라오며, 그 레벨의 길목 노드(오버라이드를 품은
+ * 조상) 서브트리의 bbox 를 **지금** 다시 재어 이전과 견준다. 아래 레벨에서
+ * 형제를 민 것이 이미 반영돼 있으므로 위 레벨은 "정말 커진 만큼"만 민다.
+ * 줄어들면(개요형 자리에 진행트리를 걸어 납작해짐) 그만큼 당겨 온다.
+ */
+function propagateByLevels(
+  out: LaidOutNode[],
+  chain: ChainLevel[],
+  levelBefore: (BBox | null)[],
+): void {
   const shift = (sibs: MindNode[], axis: 'x' | 'y', delta: number) => {
     if (sibs.length === 0 || Math.abs(delta) <= 0.5) return;
     const ids = new Set<string>();
@@ -245,14 +258,18 @@ function propagateDelta(
     }
   };
 
-  for (const level of chain) {
-    if (!level.axis) continue;
+  for (let i = chain.length - 1; i >= 0; i -= 1) {
+    const level = chain[i];
+    const before = levelBefore[i];
+    if (!level.axis || !before) continue;
+    const after = bboxOf(out, subtreeIdSet(level.pathNode));
+    if (!after) continue;
     if (level.axis === 'x') {
-      shift(level.after, 'x', dRight);
-      shift(level.before, 'x', -dLeft);
+      shift(level.after, 'x', after.right - before.right);
+      shift(level.before, 'x', -(before.left - after.left));
     } else {
-      shift(level.after, 'y', dBottom);
-      shift(level.before, 'y', -dTop);
+      shift(level.after, 'y', after.bottom - before.bottom);
+      shift(level.before, 'y', -(before.top - after.top));
     }
   }
 }
@@ -468,6 +485,8 @@ function relayoutSubtree(
   const subtreeIds = new Set(descendantIds);
   subtreeIds.add(node.id);
   const before = bboxOf(out, subtreeIds);
+  // 조상 체인 각 레벨의 길목 서브트리 크기 — 바꾸기 전에 재 둔다
+  const levelBefore = chain.map((l) => bboxOf(out, subtreeIdSet(l.pathNode)));
 
   for (let i = out.length - 1; i >= 0; i -= 1) {
     if (descendantIds.has(out[i].id)) out.splice(i, 1);
@@ -574,7 +593,7 @@ function relayoutSubtree(
   }
 
   if (before && after) {
-    propagateDelta(out, before, after, chain);
+    propagateByLevels(out, chain, levelBefore);
   }
 
   // Global collision passes run only for TOP-LEVEL overrides — and they run

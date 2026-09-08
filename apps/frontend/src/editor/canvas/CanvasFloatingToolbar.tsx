@@ -32,6 +32,28 @@ export function CanvasFloatingToolbar({
   const deleteNode = useDocumentStore((state) => state.deleteNode);
   const collapseAll = useDocumentStore((state) => state.collapseAll);
   const expandAll = useDocumentStore((state) => state.expandAll);
+  // 선택 노드 하위만 펼치기/접기 (2026-09-08) — 다중 선택이면 전부
+  const expandSubtree = useDocumentStore((state) => state.expandSubtree);
+  const collapseSubtree = useDocumentStore((state) => state.collapseSubtree);
+  const multiSelectedIds = useInteractionStore((state) => state.multiSelectedIds);
+  const subtreeTargets = multiSelectedIds.length > 1
+    ? multiSelectedIds
+    : (selectedId && selectedId !== 'root' ? [selectedId] : []);
+  // 자식이 있는 노드가 하나라도 있어야 뜻이 있다
+  const subtreeHasKids = useDocumentStore((state) => {
+    if (!subtreeTargets.length) return false;
+    const want = new Set(subtreeTargets);
+    let hit = false;
+    const walk = (nodes: { id: string; children?: unknown[] }[]) => {
+      for (const n of nodes) {
+        if (hit) return;
+        if (want.has(n.id) && (n.children?.length ?? 0) > 0) { hit = true; return; }
+        walk((n.children ?? []) as typeof nodes);
+      }
+    };
+    walk(state.map.branches as { id: string; children?: unknown[] }[]);
+    return hit;
+  });
 
   const panMode = useViewportStore((state) => state.panMode);
   const togglePanMode = useViewportStore((state) => state.togglePanMode);
@@ -136,6 +158,26 @@ export function CanvasFloatingToolbar({
           >
             <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>−</span>
           </ToolbarBtn>
+          {/* 선택 노드 하위만 — 큰 맵에서 보던 가지만 펼치고 접는다 (2026-09-08).
+              배치는 펼치는 순간 다시 계산되므로 따로 정리할 것이 없다. */}
+          <ToolbarBtn
+            t={t}
+            title="선택 노드 하위 모두 펼치기 (Alt+=)"
+            disabled={!subtreeHasKids}
+            onClick={() => expandSubtree(subtreeTargets)}
+            testId="expand-subtree"
+          >
+            <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1 }}>⊞</span>
+          </ToolbarBtn>
+          <ToolbarBtn
+            t={t}
+            title="선택 노드 하위 모두 접기 — 직계 자식만 남기고 (Alt+-)"
+            disabled={!subtreeHasKids}
+            onClick={() => collapseSubtree(subtreeTargets)}
+            testId="collapse-subtree"
+          >
+            <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1 }}>⊟</span>
+          </ToolbarBtn>
         </>
       )}
       <ToolbarBtn
@@ -175,9 +217,10 @@ interface ToolbarBtnProps {
   danger?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  testId?: string;
 }
 
-function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick }: ToolbarBtnProps) {
+function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick, testId }: ToolbarBtnProps) {
   const [h, setH] = useState(false);
   let bg = 'transparent';
   let color = t.text;
@@ -196,6 +239,7 @@ function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick }
 
   return (
     <button
+      data-testid={testId}
       title={title}
       disabled={disabled}
       onClick={onClick}

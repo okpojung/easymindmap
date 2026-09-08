@@ -164,6 +164,12 @@ interface DocumentState {
   // 접거나 편다 (HTML 뷰어의 +/− 아이콘과 동일 동작)
   collapseAll: () => void;
   expandAll: () => void;
+  // 선택 노드 **하위만** 모두 펼치기/접기 (2026-09-08 사용자 요청 — 큰 맵에서
+  // 보던 가지만). 펼치기 = 그 노드와 모든 자손을 편다. 접기 = 자손 중
+  // 자식 있는 것을 전부 접되 **그 노드 자체는 편 채** 둔다(직계 자식은
+  // 보인다 — 모두 접기가 2레벨을 남기는 것과 같은 뜻). 여러 노드도 한 번에.
+  expandSubtree: (nodeIds: string[]) => void;
+  collapseSubtree: (nodeIds: string[]) => void;
   expandAncestors: (nodeId: string) => void;
 
   // Text / align / layout
@@ -1317,6 +1323,39 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         collapsed: undefined,
         children: walk(n.children ?? []),
       }));
+    asViewOnly(() => set((state) => ({
+      map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
+    })));
+  },
+
+  expandSubtree: (nodeIds) => {
+    const targets = new Set(nodeIds.filter((id) => id && id !== 'root'));
+    if (!targets.size) return;
+    const open = (nodes: MindNode[]): MindNode[] =>
+      nodes.map((n) => ({ ...n, collapsed: undefined, children: open(n.children ?? []) }));
+    const walk = (nodes: MindNode[]): MindNode[] =>
+      nodes.map((n) => targets.has(n.id)
+        ? { ...n, collapsed: undefined, children: open(n.children ?? []) }
+        : { ...n, children: walk(n.children ?? []) });
+    asViewOnly(() => set((state) => ({
+      map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
+    })));
+  },
+
+  collapseSubtree: (nodeIds) => {
+    const targets = new Set(nodeIds.filter((id) => id && id !== 'root'));
+    if (!targets.size) return;
+    const close = (nodes: MindNode[]): MindNode[] =>
+      nodes.map((n) => ({
+        ...n,
+        collapsed: (n.children?.length ?? 0) > 0 ? true : n.collapsed,
+        children: close(n.children ?? []),
+      }));
+    const walk = (nodes: MindNode[]): MindNode[] =>
+      nodes.map((n) => targets.has(n.id)
+        // 고른 노드 자체는 편 채 — 직계 자식은 보인다
+        ? { ...n, collapsed: undefined, children: close(n.children ?? []) }
+        : { ...n, children: walk(n.children ?? []) });
     asViewOnly(() => set((state) => ({
       map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
     })));

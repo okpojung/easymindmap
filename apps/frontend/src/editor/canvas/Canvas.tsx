@@ -120,6 +120,8 @@ export function Canvas({
   const deleteNodesBulk = useDocumentStore((state) => state.deleteNodesBulk);
   const moveNodeRelative = useDocumentStore((state) => state.moveNodeRelative);
   const moveNodesRelative = useDocumentStore((state) => state.moveNodesRelative);
+  const expandSubtree = useDocumentStore((state) => state.expandSubtree);
+  const collapseSubtree = useDocumentStore((state) => state.collapseSubtree);
   const toggleCollapse = useDocumentStore((state) => state.toggleCollapse);
   const addNodeLink = useDocumentStore((state) => state.addNodeLink);
   const addNodeAttachment = useDocumentStore((state) => state.addNodeAttachment);
@@ -862,13 +864,14 @@ export function Canvas({
         return;
       }
 
-      if (e.key === '+' || e.key === '=') {
+      // Alt 가 함께면 확대/축소가 아니라 선택 노드 하위 펼치기/접기(아래)
+      if (!e.altKey && (e.key === '+' || e.key === '=')) {
         e.preventDefault();
         zoomIn();
         return;
       }
 
-      if (e.key === '-' || e.key === '_') {
+      if (!e.altKey && (e.key === '-' || e.key === '_')) {
         e.preventDefault();
         zoomOut();
         return;
@@ -889,6 +892,16 @@ export function Canvas({
       if (e.key === 'f' && e.altKey) {
         e.preventDefault();
         focusSelected();
+      }
+      // 선택 노드 하위 모두 펼치기/접기 (2026-09-08) — 다중 선택이면 전부
+      if (e.altKey && (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '_')) {
+        const targets = multiSelectedIds.length > 1
+          ? multiSelectedIds
+          : (selectedId && selectedId !== 'root' ? [selectedId] : []);
+        if (!targets.length) return;
+        e.preventDefault();
+        if (e.key === '=' || e.key === '+') expandSubtree(targets);
+        else collapseSubtree(targets);
       }
     };
 

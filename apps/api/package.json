@@ -18,7 +18,8 @@
     "test:table-ready": "node test/table-ready.test.mjs",
     "test:version-prune": "node test/version-prune-plan.test.mjs",
     "sync:emm": "node scripts/sync-emm-parser.mjs",
-    "check:emm": "node scripts/sync-emm-parser.mjs --check"
+    "check:emm": "node scripts/sync-emm-parser.mjs --check",
+    "test:og": "node test/og-tags.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

@@ -193,6 +193,10 @@ jobs:
       # 버전 정리 계획(13a §2) — 무엇을 지울지 정하는 순수 함수. DB 없이 돈다.
       - name: 버전 정리 계획(version-prune) 단위 테스트
         run: npm run test:version-prune
+      # 링크 카드 조각 — og:description 은 사용자가 쓴 마크다운에서 만들어진다.
+      # 줄바꿈·마크다운 기호가 새면 카드 소개가 지저분하거나 아예 안 보인다.
+      - name: 링크 카드 조각(og-tags) 단위 테스트
+        run: npm run test:og
       - name: DB 스키마 로드 (shim → schema → functions → seed)
         env:
           PGPASSWORD: emm

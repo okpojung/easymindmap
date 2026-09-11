@@ -266,12 +266,43 @@ $ curl -s https://pro-dev.mindmap.ai.kr/ | grep '<title>'
 | **상류의 오류 '페이지'가 통째로 박히는 것** | `proxy_intercept_errors on` + `error_page … = @og_none`(204). ★ 실측으로 잡았다 — API 가 죽자 nginx 자기 **502 페이지(완전한 HTML)** 가 `<head>` 안으로 들어가 카드 제목이 `502 Bad Gateway` 가 됐다 |
 | 조각 때문에 페이지가 늦어지는 것 | `proxy_connect_timeout 2s` · `proxy_read_timeout 3s` |
 | 바깥에서 조각 경로를 직접 두드리는 것 | `internal` |
+| **압축된 바이트가 통째로 박히는 것** | `proxy_set_header Accept-Encoding "";` ★ **운영에서 실제로 겪었다**(2026-09-11) — nginx 는 클라이언트의 `Accept-Encoding` 을 **서브요청에도 그대로** 넘기고, 크롤러는 거의 전부 `gzip` 을 보낸다. API 가 조각을 gzip 으로 돌려주면 nginx 는 **풀지 않고** `<head>` 에 끼워 넣는다 |
 
 ★ **배포가 알려 줘야 하는 것** — 프런트엔드 앱의 `API_ORIGIN`(nginx 가
 조각을 가져올 곳). **안 주면 카드만 안 뜨고 사이트는 그대로 뜬다**(기본값이
 아무 데도 안 가는 주소다). API 쪽은 `PUBLIC_APP_URL`(사람이 여는 곳)로 카드 주소를 알려 준다 —
 그림 주소는 **이미 있던 `PUBLIC_API_URL`** 을 그대로 쓴다(같은 뜻의 칸을
 둘로 두지 않는다). 둘 다 없으면 `X-Forwarded-*`·`Host` 로 짐작한다.
+
+#### 5.6.1 ★ **카드가 통째로 깨졌던 일** — 압축 (2026-09-11)
+
+사용자가 퍼블리싱한 주소를 주어 크롤러가 받는 HTML 을 그대로 재 보니,
+`<head>` 안에 **gzip 바이너리**가 박혀 있었다. 제목은 `EasyMindMap · Editor`
+하나뿐이고 `og:*` 는 **0개** — 카드가 뜨지 않는다.
+
+**원인은 우리 쪽이다.** nginx 는 클라이언트의 `Accept-Encoding` 을
+**SSI 서브요청에도 그대로** 넘긴다. 크롤러는 거의 전부 `gzip` 을 보내므로
+API 가 조각을 gzip 으로 돌려주고, nginx 는 그 바이트를 **풀지 않고** 그대로
+끼워 넣는다.
+
+| `Accept-Encoding` | 고치기 전 | 고친 뒤 |
+|---|---|---|
+| 없음 | ✅ | ✅ |
+| `identity` | ✅ | ✅ |
+| **`gzip`** | ❌ `og:title` 0개 | ✅ |
+| **`gzip, deflate, br`** | ❌ `og:title` 0개 | ✅ |
+
+**왜 지금까지 못 봤나** — e2e221 은 조각이 들어가는지를 `curl` 로 쟀는데,
+`curl` 은 `--compressed` 를 주지 않으면 `Accept-Encoding` 을 **아예 보내지
+않는다.** 그래서 ①②만 재고 ③④를 못 쟀다. **시험이 크롤러처럼 굴지 않으면
+크롤러가 겪는 것을 못 본다.**
+
+고치는 것은 한 줄이다 — `proxy_set_header Accept-Encoding "";`. 조각은
+2KB 남짓이라 압축해서 얻을 것도 없다.
+
+**덤으로 확정된 것** — 조각이 (깨진 채로나마) 들어왔다는 것은 **`API_ORIGIN`
+이 제대로 들어가 있다**는 뜻이다. 그동안 "정황상 들어간 것 같다" 고만
+적어 두었던 항목이 이걸로 확정됐다.
 
 ⚠️ **nginx.conf 는 이제 템플릿이다** — `${API_ORIGIN}` 이 들어 있어
 `/etc/nginx/templates/default.conf.template` 로 넣어야 한다. `conf.d/` 에

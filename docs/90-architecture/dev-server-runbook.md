@@ -1288,12 +1288,24 @@ sudo touch /mnt/nas/emm-files/test.txt && ls -l /mnt/nas/emm-files
 **확인하는 법** — 무료공개 중인 맵 하나를 골라 그 주소를 `curl` 한다.
 브라우저가 아니라 **원본 HTML** 을 봐야 한다(크롤러가 보는 것이 그것이다).
 
+★ **`--compressed` 를 반드시 붙인다** (2026-09-11). `curl` 은 그 옵션이
+없으면 `Accept-Encoding` 을 **아예 보내지 않는데**, 크롤러는 거의 전부
+`gzip` 을 보낸다. 압축을 요구하지 않고 재면 **크롤러가 겪는 것을 못 본다**
+— 실제로 그 차이 때문에 카드가 깨진 것을 한동안 놓쳤다
+(`27-publish-share.md` §5.6.1).
+
 ```bash
-curl -s https://pro-dev.mindmap.ai.kr/p/<슬러그> | grep -E '<title>|og:(title|image|url)'
+curl -s --compressed https://pro-dev.mindmap.ai.kr/p/<슬러그> \
+  | grep -E '<title>|og:(title|image|url)'
 ```
 
-맵 이름과 `og:image`(실루엣 주소)가 보이면 정상이다. `EasyMindMap · Editor`
-하나만 보이면 `API_ORIGIN` 이 안 들어갔거나 그 맵이 **보관(비공개)** 이다.
+맵 이름과 `og:image`(실루엣 주소)가 보이면 정상이다.
+
+| 나온 것 | 뜻 |
+|---|---|
+| 맵 이름 + `og:*` | ✅ 정상 |
+| `EasyMindMap · Editor` **하나뿐** | `API_ORIGIN` 이 안 들어갔거나 그 맵이 **보관(비공개)** 이다 |
+| `grep: binary file matches` · 알 수 없는 글자 | **조각이 압축된 채로 박혔다** — `proxy_set_header Accept-Encoding "";` 가 빠진 이미지다 (§5.6.1) |
 
 ⚠️ **nginx.conf 가 템플릿이 됐다** (2026-09-06) — `${API_ORIGIN}` 이 들어
 있어서 이미지가 `/etc/nginx/templates/default.conf.template` 로 넣는다.

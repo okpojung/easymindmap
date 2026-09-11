@@ -15,6 +15,7 @@
 // ②의 JSON 은 시스템 클립보드를 거쳐 오므로 **믿을 수 없는 입력**이다 —
 // sanitizeNodes()가 아는 필드만, 아는 형태로만 통과시킨다.
 
+import { sanitizeRichHtml } from './sanitizeRichHtml';
 import type { MindNode, NodeInlineImage, SampleMap } from '@/editor/__samples__/types';
 
 export const NODE_CLIP_PREFIX = 'EMM-NODES::';
@@ -171,7 +172,9 @@ function sanitizeNode(raw: unknown, depth: number): MindNode | null {
     if (Object.keys(style).length) node.style = style as MindNode['style'];
   }
 
-  // 노트 — 아는 블록 종류만, html 은 제외
+  // 노트 — 아는 블록 종류만. html(리치 붙여넣기)은 **같은 sanitizer 로
+  // 다시 걸러** 통과시킨다 (2026-09-11) — 전에는 버려서, 다른 탭에 붙인
+  // 노드의 노트 문단이 사진 없이 한 줄 평문만 남았다.
   if (Array.isArray(o.notes)) {
     const notes = o.notes.slice(0, 200).map((b) => {
       if (!b || typeof b !== 'object') return null;
@@ -183,12 +186,17 @@ function sanitizeNode(raw: unknown, depth: number): MindNode | null {
       if (!type) return null;
       const lang = str(bo.lang, 40);
       const checked = bool(bo.checked);
+      const html = type === 'paragraph' && typeof bo.html === 'string'
+        && bo.html.length <= 4_000_000 && typeof DOMParser !== 'undefined'
+        ? sanitizeRichHtml(bo.html).html
+        : '';
       return {
         id: str(bo.id, 200) ?? `nb-${budget}`,
         type,
         text: str(bo.text, 200000) ?? '',
         ...(checked !== undefined ? { checked } : {}),
         ...(lang ? { lang } : {}),
+        ...(html ? { html } : {}),
       };
     }).filter(Boolean);
     if (notes.length) node.notes = notes as MindNode['notes'];

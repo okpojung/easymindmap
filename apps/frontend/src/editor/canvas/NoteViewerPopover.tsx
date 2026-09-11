@@ -281,7 +281,9 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
       paddingRight: type === 'paragraph' ? 30 : undefined,
     }}>
       {String(block.text).split('\n').map((line, li) => (
-        <div key={li} style={{ whiteSpace: 'pre' }}>
+        // 문단은 긴 줄을 창 폭에서 접는다 (2026-09-11) — html 없는 붙여넣기
+        // 글이 창 밖으로 한 줄로 흘렀다. 체크는 전처럼 줄 그대로.
+        <div key={li} style={{ whiteSpace: type === 'paragraph' ? 'pre-wrap' : 'pre' }}>
           {li === 0 && type === 'checklist' ? (
             // 체크 글리프 클릭 = 완료/미완료 토글 (팝업에서 바로 체크).
             // 클릭 판정은 좌우 5px 여유 — 글리프만 노리면 빗나간다.

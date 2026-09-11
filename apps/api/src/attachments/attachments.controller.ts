@@ -18,6 +18,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { UPLOAD_LIMITS } from '../common/upload-limits';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { AuthGuard } from '../common/auth/auth.guard';
@@ -138,7 +139,7 @@ export class AttachmentsController {
   }
 
   @Post()
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: UPLOAD_LIMITS }))
   async upload(
     @CurrentUser() user: AuthUser,
     @UploadedFile() file: Express.Multer.File | undefined,

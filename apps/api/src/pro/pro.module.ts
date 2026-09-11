@@ -21,6 +21,7 @@ import {
   Module,
   type DynamicModule,
   type OnModuleInit,
+  type Type,
 } from '@nestjs/common';
 import { PRO, PRO_INSTALLED, type ProContract } from './pro.contract';
 import { ProController } from './pro.controller';
@@ -70,7 +71,8 @@ export class ProModule {
     // 제공하고(문자열 토큰이라 코어 것을 import 하지 않아도 이어진다),
     // 자기 컨트롤러·서비스·표 검사를 스스로 들고 온다.
     if (paid?.ProModule) {
-      const impl = paid.ProModule as NonNullable<DynamicModule['imports']>[number];
+      // 모듈 클래스다 — imports 에도 exports 에도 그대로 들어간다
+      const impl = paid.ProModule as Type<unknown>;
       return {
         module: ProModule,
         // **전역이다** (2026-09-09) — `PRO` 를 다른 모듈(MCP)이 주입받는다.
@@ -80,7 +82,12 @@ export class ProModule {
         imports: [impl],
         controllers: [ProController],
         providers: [{ provide: PRO_INSTALLED, useValue: true }, ProStartupLogger],
-        exports: [PRO_INSTALLED],
+        // ★ **유료 모듈을 다시 내보낸다** (2026-09-11). `PRO` 는 유료 모듈이
+        // 제공하므로 이 모듈이 그것을 **re-export** 해야 밖(MCP)에서 받는다.
+        // 전역(`global: true`)이어도 **export 하지 않은 것은 나가지 않는다** —
+        // 이 줄이 없어 dev 에서 협업 방 거절(§9.13)이 조용히 꺼져 있었다
+        // (`@Optional()` 이라 오류도 없이 undefined). 시험: test/pro-module-di.test.mjs
+        exports: [PRO_INSTALLED, impl],
       };
     }
 

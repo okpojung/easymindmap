@@ -5,6 +5,7 @@ import {
   StreamableFile, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { UPLOAD_LIMITS } from '../common/upload-limits';
 import type { Request, Response } from 'express';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { sendAttachment } from '../attachments/attachments.controller';
@@ -86,7 +87,7 @@ export class PublishController {
    * 없다). 여기서 하는 일은 **받아서 두는 것**뿐이다.
    */
   @Put(':id/publish/preview')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: UPLOAD_LIMITS }))
   putPreview(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,

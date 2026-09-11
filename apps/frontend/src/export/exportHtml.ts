@@ -488,6 +488,48 @@ const VIEWER_JS = String.raw`
   }
   function parseInlineSegs(line) { return parseInlineSegsState(line).segs; }
 
+  // ── 표 셀 전용 도우미 (2026-09-12) ────────────────────────────────
+  //
+  // 표는 **박스 폭을 에디터가 정하고 격자는 뷰어가 그린다.** 그래서 둘이
+  // 같은 규칙으로 재지 않으면 표가 노드 밖으로 삐져나온다 (실제로 그랬다).
+  //
+  //   · 에디터: measureTextApprox(stripInlineMarks(셀), cellFs) + 패딩
+  //   · 뷰어(예전): measureText(셀 원문, cellFs) + 패딩
+  //
+  // 어긋난 곳이 둘이었다. ⑴ 백틱·별표 같은 **마커 문자까지 세었고**
+  // ⑵ 위의 measureText 는 노드 본문용 근사라 **숫자·대문자 계수가 다르다**
+  // (0.56 단일 vs 0.62·0.72). 코드 표시(백틱)가 많은 표에서 특히 크게
+  // 벌어진다.
+  //
+  // measureText 자체를 바꾸지는 않는다 — 노드 본문 폭 계산이 함께 흔들린다.
+  // 표 셀에만 에디터와 같은 공식을 쓴다.
+  // ★ 정규식에 유니코드 이스케이프를 쓰지 않는다 — 이 스크립트는 문자열로
+  // 실려 나가서 백슬래시가 한 겹 더 남는다. 실제로 그렇게 어긋나 한글이
+  // CJK 로 안 잡혔고 열이 45%쯤 좁아졌다(실측). 코드포인트로 직접 본다.
+  // 범위는 에디터 mdTable.CJK_RE 와 같다 (U+3000~U+9FFF · U+AC00~U+D7AF).
+  function isCjkCell(ch) {
+    var c = ch.charCodeAt(0);
+    return (c >= 0x3000 && c <= 0x9FFF) || (c >= 0xAC00 && c <= 0xD7AF);
+  }
+  function cellApproxW(s2, fontSize) {
+    var w = 0, arr = Array.from(String(s2 || ''));
+    for (var i = 0; i < arr.length; i++) {
+      var ch = arr[i];
+      if (isCjkCell(ch)) w += fontSize;
+      else if (ch === ' ') w += fontSize * 0.34;
+      else if (ch >= '0' && ch <= '9') w += fontSize * 0.62;
+      else if (ch >= 'A' && ch <= 'Z') w += fontSize * 0.72;
+      else w += fontSize * 0.55;
+    }
+    return w;
+  }
+  // 마커 문자를 뺀 **보이는 글자**만 남긴다 (에디터 stripInlineMarks 와 같은 뜻)
+  function stripCellMarks(s2) {
+    var segs = parseInlineSegs(String(s2 || '')), out = '', i;
+    for (i = 0; i < segs.length; i++) out += segs[i].t;
+    return out;
+  }
+
   // ---- measure pass (bottom-up, per-layout block model) ----------------------
   // Sets on each node: _w/_h (box), _boxH (box + tag reserve), _lines/_fs/
   // _lineH, _open, _eff (effective layout for ITS children), _bw/_bh (block),
@@ -1456,9 +1498,9 @@ const VIEWER_JS = String.raw`
       var tblY = tStripY + 13;
       var colWs = [], ci, ri, mmax;
       for (ci = 0; ci < mdt.headers.length; ci++) {
-        mmax = measureText(mdt.headers[ci], cellFs);
+        mmax = cellApproxW(stripCellMarks(mdt.headers[ci]), cellFs);
         for (ri = 0; ri < mdt.rows.length; ri++) {
-          mmax = Math.max(mmax, measureText(mdt.rows[ri][ci] || '', cellFs));
+          mmax = Math.max(mmax, cellApproxW(stripCellMarks(mdt.rows[ri][ci] || ''), cellFs));
         }
         colWs.push(Math.max(26, Math.ceil(mmax) + 12));
       }
@@ -1483,11 +1525,33 @@ const VIEWER_JS = String.raw`
         var cellX = tblX;
         for (ci = 0; ci < allRows[ri].length; ci++) {
           var cellT = el('text', {
-            x: cellX + 6, y: tblY + ri * rowH2 + rowH2 / 2 + cellFs * 0.34,
-            'font-size': cellFs, 'font-weight': ri === 0 ? 700 : 400, fill: textColor
+            y: tblY + ri * rowH2 + rowH2 / 2 + cellFs * 0.34,
+            'font-size': cellFs, fill: textColor
           }, g);
           if (node._ff) cellT.setAttribute('font-family', node._ff);
-          cellT.textContent = allRows[ri][ci];
+          // 셀 안 인라인 마커(굵게·코드·기울임 표시) — **마커 문자는
+          // 숨기고 서식만 입힌다** (에디터 NodeRenderer 의 셀 렌더와 같다).
+          // 예전에는 원문을 그대로 넣어 백틱·별표가 글자로 보였다.
+          var cSegs = parseInlineSegs(String(allRows[ri][ci] || ''));
+          var cx2 = cellX + 6;
+          for (var sk = 0; sk < cSegs.length; sk++) {
+            var sg2 = cSegs[sk];
+            var bold2 = (ri === 0 || sg2.b) ? 700 : 400;
+            var csp = el('tspan', {
+              x: cx2, 'font-weight': bold2,
+              'font-style': sg2.i ? 'italic' : 'normal'
+            }, cellT);
+            // ★ 코드 구간이라고 **고정폭 글꼴로 바꾸지 않는다.** 에디터의
+            // 셀 렌더도 굵기·기울임·밑줄만 입힌다(NodeRenderer). 글꼴을
+            // 바꾸면 글자가 넓어져 열 폭(근사 측정)을 넘어선다 — 실측으로
+            // 잡았다(넘침 +22~+82px → 에디터와 같은 -10~+2px).
+            var deco2 = [];
+            if (sg2.s) deco2.push('line-through');
+            if (sg2.u) deco2.push('underline');
+            if (deco2.length) csp.setAttribute('text-decoration', deco2.join(' '));
+            csp.textContent = sg2.t;
+            cx2 += measureReal(sg2.t, cellFs, bold2, sg2.i, node._ff);
+          }
           cellX += colWs[ci];
         }
       }

@@ -416,7 +416,13 @@ const rawHtml = (hasImgFile && !htmlHasTable) ? '' : rawHtmlAll;
 블록에 사진+서식째 붙여넣기**할 수 있다.
 
 - 저장 모델: `NoteBlock.html`(선택 필드)에 정리된 HTML 저장, `NoteBlock.text`
-  에는 같은 내용의 일반 텍스트를 함께 저장 (검색·하위호환용).
+  에는 같은 내용의 일반 텍스트를 함께 저장 (검색·복사·하위호환용).
+  - **`text` 는 문단·줄바꿈이 살아 있다** (2026-09-11, `richHtmlToText`).
+    블록 태그(p/div/h*/li/figure/tr…) 경계와 `<br>` 이 줄바꿈, 표 셀은
+    탭. 전에는 `textContent` 한 덩어리라 기사 한 편이 **한 줄로 이어
+    붙어** 입력창에 보였고, 사용자가 그 줄을 고치려 Enter 를 치는 순간
+    아래 규칙으로 서식·사진이 함께 버려졌다(실사용 보고 — 뷰어에는 한
+    줄짜리 평문만 남았다).
 - 정리 규칙(`sanitizeRichHtml`, 화이트리스트 방식):
   - 허용 태그: p/div/span/br/b/strong/i/em/u/s/mark/a/img/figure/ul/ol/li/
     h1~h6/blockquote/pre/code/table 계열 — 그 외 태그는 벗기고 내용만 유지
@@ -426,8 +432,22 @@ const rawHtml = (hasImgFile && !htmlHasTable) ? '' : rawHtmlAll;
     (`loading=lazy referrerpolicy=no-referrer`)
 - 편집 UX: 붙여넣으면 텍스트영역 아래에 미리보기(사진+서식)만 깔끔하게
   표시한다 — "서식·이미지 포함" 배지·안내 문구·"서식 제거" 버튼은
-  사용자 피드백(2026-07)으로 제거했다. 텍스트영역을 직접 수정하면
-  html은 자연히 버려지고 일반 텍스트로 돌아간다.
+  사용자 피드백(2026-07)으로 제거했다.
+- **글을 고쳐도 사진은 버리지 않는다** (2026-09-11, `richNoteEdit.ts`
+  `rebuildRichHtml`). 전에는 글자 하나(Enter 하나)에 `html` 을 통째로
+  버렸다. 지금은:
+  - 글이 실질적으로 같으면(줄 끝·공백 차이) `html` 을 **그대로** 둔다.
+  - 글이 바뀌면 새 글을 줄마다 `<p>` 로 다시 짜고, 옛 `html` 의 사진을
+    **앞에 있던 줄 수(앵커)** 자리에 다시 끼운다. 굵게·링크·표 같은
+    글자 서식은 새 글과 맞출 수 없어 이때 놓는다.
+  - 사진이 없는 서식은 전처럼 평문으로 돌아간다(`html` 제거).
+  - 사진 내장(서버 보관)이 붙여넣기 뒤 늦게 끝나면, 그 사이 글을 고쳤어도
+    사진 주소만 옮겨 준다(`remapImgSrcs`) — 안 옮기면 기사 원본 주소가
+    남는다.
+- 다른 탭·다른 맵으로 노드를 복사할 때(`nodeClipboard`)도 `html` 을 같은
+  sanitizer 로 다시 걸러 통과시킨다 (2026-09-11 — 전에는 버려서 사진이
+  사라졌다). 뷰어 팝업의 `html` 없는 문단은 창 폭에서 줄을 접는다
+  (`pre-wrap`).
 - 표시: 에디터 노트 뷰어 팝업(NoteViewerPopover)과 HTML 내보내기 뷰어의
   상세 패널 모두 리치 HTML을 렌더링 (`img { max-width:100% }`).
 - [서버 연결 예정] `node_notes.html_json`(또는 blocks JSON의 html 필드)로

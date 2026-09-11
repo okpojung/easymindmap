@@ -9,6 +9,7 @@ import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection } from './InspectorSection';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
+import { rebuildRichHtml, remapImgSrcs } from '@/utils/richNoteEdit';
 import { embedRichHtmlImages } from '@/utils/embedImage';
 import { useNoteHtmlResolver } from '@/utils/imageSrc';
 
@@ -320,9 +321,15 @@ function NoteBlockEditor({
             // (포커스가 없으면 Ctrl+V가 노드 쪽으로 가는 혼동 방지)
             autoFocus={block.text === ''}
             value={block.text}
-            // 리치 붙여넣기 후 텍스트를 직접 수정하면 서식(html)은 버리고
-            // 일반 텍스트 편집으로 돌아간다 (아래 배지에 안내 표시).
-            onChange={(e) => onChange({ text: e.target.value, html: undefined })}
+            // 리치 붙여넣기 뒤 글을 고치면 — **사진은 버리지 않는다**
+            // (2026-09-11). 전에는 글자 하나(Enter 하나)에 html 을 통째로
+            // 버려 사진·서식이 함께 사라졌다. 글은 새 글로, 사진은 원래
+            // 자리에 다시 끼운다(`rebuildRichHtml`). 사진이 없는 서식은
+            // 전처럼 평문으로 돌아간다.
+            onChange={(e) => {
+              const v = e.target.value;
+              onChange({ text: v, html: block.html ? rebuildRichHtml(block.html, v) : undefined });
+            }}
             onPaste={(e) => {
               // 문단 블록: 웹 기사 등에서 복사한 내용(text/html)이 있으면
               // 사진+텍스트를 서식째 살려 붙여넣는다 (sanitize 통과분만).
@@ -341,7 +348,12 @@ function NoteBlockEditor({
                 const cur = findBlockById(
                   useDocumentStore.getState().map, block.id,
                 );
-                if (cur?.html === clean.html) onChange({ html: h2 });
+                if (!cur?.html) return;
+                if (cur.html === clean.html) { onChange({ html: h2 }); return; }
+                // 그 사이 글을 고쳤어도(html 이 다시 짜였어도) 사진 주소는
+                // 옮긴다 — 안 옮기면 기사 원본 주소가 남는다 (2026-09-11)
+                const remapped = remapImgSrcs(cur.html, clean.html, h2);
+                if (remapped !== cur.html) onChange({ html: remapped });
               });
             }}
             rows={NOTE_INPUT_ROWS[block.type] ?? 15}

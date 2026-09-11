@@ -126,7 +126,68 @@ function sanitizeNode(node: Node, out: Node, doc: Document, seenImg: Set<string>
 
 export interface SanitizedRich {
   html: string; // 정리된 안전한 HTML ('' 이면 서식 콘텐츠 없음)
-  text: string; // 같은 내용의 일반 텍스트 (검색·하위호환용)
+  /**
+   * 같은 내용의 일반 텍스트 — **문단·줄바꿈이 살아 있다** (2026-09-11).
+   *
+   * 전에는 `textContent` 한 덩어리였다. 그래서 기사 한 편이 문단 경계
+   * 없이 **한 줄로 이어 붙어**(`…추세개발자 문서…`) 입력창에 보였고,
+   * 사용자는 그 줄을 고치려 Enter 를 쳤다 — 그 순간 서식·사진이 함께
+   * 버려졌다(실사용 보고). 블록 태그 경계와 `<br>` 을 줄바꿈으로 옮긴다.
+   * 검색·복사·내보내기·`html` 없는 뷰어도 이 글을 쓴다.
+   */
+  text: string;
+}
+
+// 줄을 나누는 태그 — 앞뒤에 줄바꿈을 둔다 (표 셀은 탭으로 나눈다)
+const BLOCK_TAGS = new Set([
+  'P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'UL', 'OL',
+  'BLOCKQUOTE', 'PRE', 'FIGURE', 'FIGCAPTION', 'HR',
+  'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'CAPTION',
+]);
+
+/**
+ * 정리된 HTML(DOM)을 **줄바꿈이 있는 평문**으로.
+ *
+ * `onImg` 를 주면 사진마다 "앞에 완성된 줄 수"(앵커)를 알려 준다 —
+ * 글을 고친 뒤 사진을 같은 자리에 다시 끼워 넣는 데 쓴다
+ * (`richNoteEdit.ts`). 앵커 k 는 "k번째 줄 앞"(0 = 맨 앞)이다.
+ */
+export function richHtmlToText(
+  root: Node,
+  onImg?: (img: Element, anchor: number) => void,
+): string {
+  let out = '';
+  const nl = () => { if (out && !out.endsWith('\n')) out += '\n'; };
+  const anchor = () => {
+    if (!out) return 0;
+    const lines = out.split('\n').length;
+    return out.endsWith('\n') ? lines - 1 : lines;
+  };
+  const walk = (node: Node, pre: boolean): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const raw = (child.textContent ?? '').replace(/\u00A0/g, ' ');
+        out += pre ? raw : raw.replace(/\s+/g, ' ');
+        continue;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      const el = child as Element;
+      const tag = el.tagName.toUpperCase();
+      if (tag === 'IMG') { onImg?.(el, anchor()); continue; }
+      if (tag === 'BR') { if (out) out += '\n'; continue; }
+      const block = BLOCK_TAGS.has(tag);
+      if (block) nl();
+      walk(el, pre || tag === 'PRE');
+      if (tag === 'TD' || tag === 'TH') out += '\t';
+      if (block) nl();
+    }
+  };
+  walk(root, false);
+  return out
+    .split('\n')
+    .map((ln) => ln.replace(/^ +| +$|\t+$/g, ''))
+    .join('\n')
+    .replace(/\n+$/, '');
 }
 
 export function sanitizeRichHtml(rawHtml: string): SanitizedRich {
@@ -135,7 +196,7 @@ export function sanitizeRichHtml(rawHtml: string): SanitizedRich {
   sanitizeNode(doc.body, container, doc, new Set<string>());
 
   // 빈 래퍼만 남았으면(텍스트도 이미지도 없음) 서식 없음으로 처리
-  const text = (container.textContent ?? '').replace(/\u00A0/g, ' ').trim();
+  const text = richHtmlToText(container).trim();
   const hasImg = container.querySelector('img') != null;
   if (!text && !hasImg) return { html: '', text: '' };
 

@@ -18,10 +18,12 @@ function check(name, ok, detail = '') {
 const doc = (root, ...branches) => ({ map: { root: { text: root }, branches: branches.map((t) => ({ text: t })) } });
 
 // ── ① 줄바꿈은 한 칸으로 접힌다 (카카오톡에서 소개가 사라졌던 원인)
+//    중심 주제로 잰다 — 가지는 2026-09-12 부터 **이름 한 줄만** 쓰므로
+//    여러 줄 처리를 가지로 재면 ⑤와 뜻이 부딪힌다.
 {
-  const d = describeDoc(doc('중심', '첫 가지\n둘째 줄\n\n셋째 줄'), '맵이름');
+  const d = describeDoc(doc('첫 줄\n둘째 줄\n\n셋째 줄', '가지1'), '맵이름');
   check('① 줄바꿈이 남지 않는다', !/[\r\n]/.test(d), `받음 ${JSON.stringify(d)}`);
-  check('① 줄이 한 칸으로 이어진다', d.includes('첫 가지 둘째 줄 셋째 줄'), `받음 ${JSON.stringify(d)}`);
+  check('① 줄이 한 칸으로 이어진다', d.includes('첫 줄 둘째 줄 셋째 줄'), `받음 ${JSON.stringify(d)}`);
 }
 
 // ── ② 마크다운 기호가 새지 않는다
@@ -32,12 +34,12 @@ const doc = (root, ...branches) => ({ map: { root: { text: root }, branches: bra
   check('② 링크 주소는 안 실린다', !d.includes('https://a.b'), `받음 ${JSON.stringify(d)}`);
 }
 {
-  const d = describeDoc(doc('중심', '### 견출\n- 불릿 하나\n> 인용'), '맵이름');
+  const d = describeDoc(doc('### 견출\n- 불릿 하나\n> 인용', '가지1'), '맵이름');
   check('② 견출·불릿·인용 기호가 없다', !/(^|\s)(###|- |> )/.test(d), `받음 ${JSON.stringify(d)}`);
   check('② 그 글자는 남는다', d.includes('견출') && d.includes('불릿 하나') && d.includes('인용'), `받음 ${JSON.stringify(d)}`);
 }
 {
-  const d = describeDoc(doc('중심', '앞\n```js\nconst a = 1;\n```\n뒤'), '맵이름');
+  const d = describeDoc(doc('앞\n```js\nconst a = 1;\n```\n뒤', '가지1'), '맵이름');
   check('② 코드블록 속은 안 실린다', !d.includes('const a'), `받음 ${JSON.stringify(d)}`);
   check('② 코드블록 앞뒤 글자는 남는다', d.includes('앞') && d.includes('뒤'), `받음 ${JSON.stringify(d)}`);
 }
@@ -54,6 +56,34 @@ const doc = (root, ...branches) => ({ map: { root: { text: root }, branches: bra
   check('③ 빈 문서면 기본 문장', describeDoc({}, '맵이름') === 'EasyMindMap 으로 만든 마인드맵입니다.');
   const long = describeDoc(doc('맵이름', 'ㄱ'.repeat(500)), '맵이름');
   check('③ 180자에서 자르고 말줄임', long.length === 180 && long.endsWith('…'), `길이 ${long.length}`);
+}
+
+// ── ⑤ 소개는 **맵의 목차**다 (2026-09-12)
+{
+  // 첫 가지에 본문이 길게 딸려 있어도 이름만 쓴다 — 예전에는 이 한 노드가 180자를 다 먹었다
+  const d = describeDoc(doc('맵이름', '개요\n' + '가'.repeat(400), '1단계', '2단계'), '맵이름');
+  check('⑤ 가지 본문은 안 실린다', !d.includes('가'.repeat(20)), `받음 ${JSON.stringify(d.slice(0, 60))}`);
+  check('⑤ 뒤 가지들이 보인다', d === '개요 · 1단계 · 2단계', `받음 ${JSON.stringify(d)}`);
+}
+{
+  // 본문이 코드로 시작하는 가지 — 여는 울타리 줄이 이름이 되면 안 된다
+  const d = describeDoc(doc('맵이름', '```markdown\n## 문제\n```\n실제 이름', '뒤 가지'), '맵이름');
+  check('⑤ 울타리 줄이 이름이 되지 않는다', !d.includes('```') && !d.includes('markdown'), `받음 ${JSON.stringify(d)}`);
+  check('⑤ 코드 뒤의 글이 이름이 된다', d === '실제 이름 · 뒤 가지', `받음 ${JSON.stringify(d)}`);
+}
+{
+  // 사진만 있는 줄은 건너뛴다
+  const d = describeDoc(doc('맵이름', '![설명](data:image/png;base64,AAAA)\n진짜 이름'), '맵이름');
+  check('⑤ 사진 줄을 건너뛴다', d === '진짜 이름', `받음 ${JSON.stringify(d)}`);
+}
+{
+  // ★ 맵 이름에 꼬리(-01)가 붙어도 중심 주제를 되풀이하지 않는다
+  const d = describeDoc(doc('설계 문서', '가지1'), '설계 문서-01');
+  check('⑤ 맵 이름이 중심 주제로 시작하면 뺀다', d === '가지1', `받음 ${JSON.stringify(d)}`);
+  const d2 = describeDoc(doc('설계 문서 상세', '가지1'), '설계 문서');
+  check('⑤ 중심 주제가 맵 이름으로 시작해도 뺀다', d2 === '가지1', `받음 ${JSON.stringify(d2)}`);
+  const d3 = describeDoc(doc('전혀 다른 주제', '가지1'), '설계 문서');
+  check('⑤ 정말 다르면 그대로 앞에 붙인다', d3 === '전혀 다른 주제 — 가지1', `받음 ${JSON.stringify(d3)}`);
 }
 
 // ── ④ 조각 전체에도 줄바꿈이 없다 (속성 안이 한 줄이어야 한다)

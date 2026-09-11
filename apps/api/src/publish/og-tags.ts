@@ -29,11 +29,41 @@ export function esc(s: string): string {
 }
 
 /** 문서 스냅샷에서 **소개 문장**을 만든다 — 중심 주제와 첫 가지들 */
+/**
+ * 노드 글을 **카드에 실을 한 줄**로 다듬는다 (2026-09-11).
+ *
+ * 노드 내용은 사용자가 쓴 **마크다운**이고 줄바꿈도 들어 있다. 그대로
+ * `og:description` 에 넣으면 두 가지가 나쁘다.
+ *
+ *   ⑴ **줄바꿈이 속성 안에 그대로 들어간다.** 규격상 틀린 것은 아니지만
+ *      카드에 그대로 쓰기에 알맞지 않다 — 실제로 카카오톡 카드에서 소개가
+ *      보이지 않았다(2026-09-11 사용자 확인).
+ *   ⑵ **마크다운 기호가 새어 나온다.** `**굵게**` 의 별표, `#` 견출,
+ *      불릿이 글자 그대로 카드에 실린다.
+ *
+ * 그래서 기호를 걷어내고 **모든 공백을 하나로** 접는다. 기울임(`*글자*`)은
+ * 건드리지 않는다 — 곱셈 기호나 그냥 별표를 잘못 지울 수 있어서, 얻는 것에
+ * 비해 위험이 크다.
+ */
+function oneLine(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, ' ') // 코드블록은 통째로 버린다
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // 사진
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // 링크는 글자만 남긴다
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '') // 견출
+    .replace(/^\s*[-*+]\s+/gm, '') // 불릿
+    .replace(/^\s*>\s?/gm, '') // 인용
+    .replace(/(\*\*|__)(.*?)\1/g, '$2') // 굵게
+    .replace(/`([^`]*)`/g, '$1') // 인라인 코드
+    .replace(/\s+/g, ' ') // ★ 줄바꿈을 포함한 모든 공백을 하나로
+    .trim();
+}
+
 export function describe(doc: unknown, fallback: string): string {
   const map = (doc as { map?: { root?: { text?: string }; branches?: { text?: string }[] } })?.map;
-  const root = (map?.root?.text ?? '').trim();
+  const root = oneLine(map?.root?.text ?? '');
   const heads = (map?.branches ?? [])
-    .map((b) => (b?.text ?? '').trim())
+    .map((b) => oneLine(b?.text ?? ''))
     .filter(Boolean)
     .slice(0, 6);
   const parts: string[] = [];

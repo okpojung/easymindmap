@@ -59,15 +59,47 @@ function oneLine(s: string): string {
     .trim();
 }
 
+/**
+ * 중심 주제가 **맵 이름을 되풀이하는가** (2026-09-12).
+ *
+ * 예전에는 `root !== fallback` 으로 **정확히 같을 때만** 뺐다. 그런데
+ * 사람들은 맵 이름에 `-01` 같은 꼬리를 붙인다 — 그러면 "다르다"고 판정돼
+ * 카드에 **제목과 소개 첫머리가 똑같이** 실렸다(네이버 카드에서 실제로
+ * 그랬다). 한쪽이 다른 쪽으로 **시작하면** 같은 말로 본다.
+ */
+function echoesTitle(root: string, title: string): boolean {
+  const a = root.trim();
+  const b = title.trim();
+  if (!a || !b) return false;
+  return a.startsWith(b) || b.startsWith(a);
+}
+
+/**
+ * 가지에서 **이름 한 줄**만 뽑는다 (2026-09-12).
+ *
+ * 가지 노드에는 본문이 길게 딸려 있을 수 있다. 그것까지 이어 붙이면
+ * **첫 가지 하나가 180자를 다 먹는다** — 최상위 가지가 13개인 맵에서
+ * 한 개도 제대로 안 보였다. 카드 소개에 필요한 것은 맵의 **목차**이지
+ * 첫 장의 본문이 아니다.
+ *
+ * 코드블록을 **먼저** 걷어낸다 — 그러지 않으면 본문이 코드로 시작하는
+ * 노드에서 여는 울타리 줄(```lang)이 이름으로 잡힌다. 걷어낸 뒤 내용이
+ * 남는 첫 줄을 고른다(사진만 있는 줄은 비므로 자연히 건너뛴다).
+ */
+function headLine(raw: string): string {
+  const noFence = String(raw ?? '').replace(/```[\s\S]*?```/g, '\n');
+  return noFence.split('\n').map((l) => oneLine(l)).find(Boolean) ?? '';
+}
+
 export function describe(doc: unknown, fallback: string): string {
   const map = (doc as { map?: { root?: { text?: string }; branches?: { text?: string }[] } })?.map;
   const root = oneLine(map?.root?.text ?? '');
   const heads = (map?.branches ?? [])
-    .map((b) => oneLine(b?.text ?? ''))
+    .map((b) => headLine(b?.text ?? ''))
     .filter(Boolean)
     .slice(0, 6);
   const parts: string[] = [];
-  if (root && root !== fallback) parts.push(root);
+  if (root && !echoesTitle(root, fallback)) parts.push(root);
   if (heads.length) parts.push(heads.join(' · '));
   const body = parts.join(' — ');
   // 카카오·슬랙은 대략 200자 안쪽만 보여 준다. 자를 때는 말줄임을 남긴다.

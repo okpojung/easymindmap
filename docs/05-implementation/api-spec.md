@@ -1326,6 +1326,32 @@ API 기본은 `"public"`(무료공개) — 하위호환이고, `visibility` 칸�
 
 ---
 
+### PATCH /maps/{mapId}/publish/listed
+**진열대에 올린다 / 내린다** (2026-09-12). **맵 주인만.**
+
+**Request Body**
+```json
+{ "listed": true }
+```
+
+**Response** `200 OK` — `publish-status` 와 같은 모양 (`listed`·`canSetListed` 포함)
+
+★ **공개와 진열은 다른 일이다.** 무료공개는 "링크를 가진 사람이 읽는다",
+진열은 "찾아보는 사람에게 보인다" 다. 그래서 상태 전환(`PATCH …/publish`)과
+**따로 뒀다** — 한 요청으로 묶으면 "공개로 바꿨더니 진열까지 됐다" 가 생길
+자리가 남는다. **넓어지는 쪽은 늘 따로 눌러야 한다.**
+
+* **비공개(보관)인 맵도 켤 수 있다.** 목록은 `visibility='public'` 을 함께
+  보므로 켜 두고 나중에 공개하면 그때부터 뜬다. 여기서 막으면 "공개 → 진열"
+  순서를 강요하게 되는데 그럴 이유가 없다.
+* 켜면 `/p/{id}` 카드의 `robots` 가 **`index, follow`** 로 바뀐다
+  (끄면 `noindex, nofollow`).
+* `400` — `listed` 가 없거나 참/거짓이 아니다.
+* `404` — 등록돼 있지 않다.
+* `503` — 이 서버에 `published_maps.listed` 칸이 없다(이유를 말한다).
+
+---
+
 ### DELETE /maps/{mapId}/publish
 퍼블리싱 **등록 취소** (`unpublished_at` 설정). **맵 주인만.**
 이미 취소돼 있어도 성공이다(멱등).
@@ -1342,6 +1368,38 @@ API 기본은 `"public"`(무료공개) — 하위호환이고, `visibility` 칸�
 **잠시 내리는 것은 위의 `PATCH` 다.**
 
 **Response** `204 No Content`
+
+---
+
+### GET /published
+**진열대 목록** (**인증 불필요**, 2026-09-12).
+
+**Query** `limit`(1~100, 기본 24) · `cursor`(앞 응답의 `nextCursor`)
+
+**Response** `200 OK`
+```json
+{
+  "items": [
+    { "publishId": "9v7tucudzufy", "title": "…", "publishedAt": "2026-09-12T…",
+      "hasPreview": true, "nodeCount": 166 }
+  ],
+  "nextCursor": "2026-09-12T03:44:48.921Z|9v7tucudzufy"
+}
+```
+
+★ **여는 조건이 본문 조회보다 하나 더 좁다** — `listed` 가 켜져 있어야
+한다. 느슨하면 링크로만 나누려던 맵이 목록에 뜬다(이 기능의 가장 나쁜 실패).
+거르는 것 넷: **진열 안 함 · 비공개(보관) · 등록 취소 · 휴지통 맵.**
+
+★ **문서 본문(`doc`)을 주지 않는다.** 카드에 필요한 것만 준다 — 목록 하나로
+남의 맵 내용을 통째로 긁어 가는 길을 만들지 않는다.
+
+* `nodeCount` 는 옛 저장본에서 `null` 이다(화면이 `—` 로 그린다).
+* 커서는 `published_at|publish_id` 다. **같은 시각이 둘일 수 있어** 두 번째
+  열쇠를 둔다 — 아니면 그 경계의 한 줄이 영영 안 나온다.
+* 이 서버에 `listed` 칸이 없으면 **빈 목록**이다(500 이 아니다).
+* 라우트 선언은 `:publishId` **보다 먼저** 와야 한다 — 뒤에 두면 `/published`
+  가 슬러그 하나로 잡혀 404 가 된다.
 
 ---
 

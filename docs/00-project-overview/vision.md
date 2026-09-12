@@ -25,12 +25,12 @@
 
 | 용도 | 운영 도메인 | 상태 |
 |---|---|---|
-| **홈페이지**(소개·가격·문의) | `www.easymindmap.org` | **결정** |
+| **홈페이지**(소개·가격·문의 · **퍼블리싱맵 목록**) | `www.easymindmap.org` | **결정** |
 | **앱**(로그인 화면·에디터) | `web.easymindmap.org` | **결정** |
 | **관리자 콘솔** | `admin.easymindmap.org` | **결정** (2026-08-14) |
 | API | `api.easymindmap.org` (제안) | 미정 |
 | 인증(GoTrue) | `auth.easymindmap.org` (제안) | 미정 |
-| 퍼블리시된 맵 | `web.easymindmap.org/p/{publishId}` (제안) | 미정 |
+| 퍼블리시된 맵 | **`www.easymindmap.org/p/{publishId}`** | **결정** (2026-09-12) — 홈페이지와 **같은 도메인**이다. 손님이 진열대에서 맵으로 갈 때 도메인을 넘나들지 않게 한다 |
 | 메일 발신 | `noreply@easymindmap.org` (제안) | 미정 |
 
 ### 기존 `mindmap.ai.kr` 은 **포워드**한다

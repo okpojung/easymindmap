@@ -307,11 +307,19 @@ CREATE TABLE IF NOT EXISTS public.published_maps (
     --   private = 보관(비공개) · public = 무료공개 · paid = 유료공개(27a, 준비 중)
     visibility     VARCHAR(10) NOT NULL DEFAULT 'public'
                    CHECK (visibility IN ('private', 'public', 'paid')),
+    -- 진열대에 올렸는가 (2026-09-12) — **기본은 FALSE**
+    --   FALSE = 링크를 아는 사람만. TRUE = 진열대 목록에 뜨고 robots 가 index.
+    --   공개 범위가 넓어지는 것은 사람이 한 번 더 눌러야 일어난다.
+    listed         BOOLEAN NOT NULL DEFAULT FALSE,
     published_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     unpublished_at TIMESTAMPTZ                   -- NOT NULL = 퍼블리싱 등록 취소(주소 소멸)
 );
 
 CREATE INDEX IF NOT EXISTS idx_published_maps_publish_id ON public.published_maps(publish_id);
+-- 진열대 목록의 조회 조건 그대로 — 진열된 맵은 전체의 일부라 인덱스가 작다
+CREATE INDEX IF NOT EXISTS idx_published_maps_listed
+    ON public.published_maps (published_at DESC)
+ WHERE listed AND visibility = 'public' AND unpublished_at IS NULL;
 
 -- ============================================================
 -- 8. AI Jobs

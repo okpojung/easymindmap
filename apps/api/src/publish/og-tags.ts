@@ -116,18 +116,25 @@ export interface OgInput {
   appOrigin: string;
   /** 미리보기 그림을 주는 곳 (`https://api.example.com`) */
   apiOrigin: string;
+  /**
+   * 저자가 **진열대에 올렸는가** (2026-09-12). 켠 맵만 검색에 열린다.
+   * 값이 없으면 닫힌 것으로 본다 — 모르면 좁게 여는 쪽이다.
+   */
+  listed?: boolean;
 }
 
 /**
- * ★ **검색에는 넣지 않는다 — 아직은** (2026-09-06 결정).
+ * ★ **검색 노출은 저자가 고른 맵만** (2026-09-12).
  *
  * 링크 카드(카카오·슬랙·페이스북)는 `robots` 와 상관없이 뜬다. 검색 노출만
- * 다른 문제다: 지금은 저자가 "진열대에 올린다" 를 고를 자리가 없어서,
- * **링크로만 나누려던 맵이 검색 결과에 뜨는 사고**를 막을 방법이 없다.
- * 그래서 기본을 `noindex` 로 둔다 — 진열대(`listed` 칸)가 생기면 그때
- * 고른 맵만 `index` 로 바꾼다 (`27a-paid-publish.md` §0.4 ⑶).
+ * 다른 문제였다: 2026-09-06 에는 저자가 "진열대에 올린다" 를 고를 자리가
+ * 없어서 **전부 `noindex`** 로 두었다 — 링크로만 나누려던 맵이 검색에 뜨는
+ * 사고를 막을 방법이 없었기 때문이다.
+ *
+ * 이제 `listed` 칸이 생겼으므로 **켠 맵만** 연다. 기본은 그대로 닫힘이다.
  */
 export const ROBOTS = 'noindex, nofollow';
+export const ROBOTS_LISTED = 'index, follow';
 
 export function buildOgFragment(i: OgInput): string {
   const title = i.title?.trim() || '제목 없는 맵';
@@ -139,7 +146,7 @@ export function buildOgFragment(i: OgInput): string {
   const lines = [
     `<title>${t}</title>`,
     `<meta name="description" content="${d}" />`,
-    `<meta name="robots" content="${ROBOTS}" />`,
+    `<meta name="robots" content="${i.listed ? ROBOTS_LISTED : ROBOTS}" />`,
     `<link rel="canonical" href="${esc(url)}" />`,
     `<meta property="og:type" content="article" />`,
     `<meta property="og:site_name" content="EasyMindMap" />`,

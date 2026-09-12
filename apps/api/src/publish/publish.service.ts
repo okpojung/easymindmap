@@ -88,6 +88,13 @@ export interface PublishStatus {
    * 화면은 이 값이 false 면 전환 단추를 아예 그리지 않는다.
    */
   canSetVisibility?: boolean;
+  /**
+   * **진열대에 올렸는가** (2026-09-12). 등록돼 있을 때만 온다.
+   * `listed` 칸이 없는 서버에서는 **늘 false** 다 — 진열대가 없는 서버다.
+   */
+  listed?: boolean;
+  /** 이 서버가 진열을 할 수 있는가 — `listed` 칸이 있는가 */
+  canSetListed?: boolean;
 }
 
 interface PublishedRow {
@@ -95,6 +102,17 @@ interface PublishedRow {
   published_at: Date;
   storage_path: string | null;
   visibility?: PublishVisibility;
+  listed?: boolean;
+}
+
+/** 진열대 목록의 한 줄 — 카드에 필요한 것만. **문서 본문은 주지 않는다** */
+export interface ListedMap {
+  publishId: string;
+  title: string;
+  publishedAt: string;
+  hasPreview: boolean;
+  /** 노드 수 — 옛 저장본은 null 이라 화면이 '—' 로 그린다 */
+  nodeCount: number | null;
 }
 
 /** 미리보기 PNG 한 장의 상한. 1200×630 실루엣은 보통 100KB 안쪽이다 */
@@ -121,6 +139,16 @@ export class PublishService {
    */
   private async hasVisibility(): Promise<boolean> {
     return columnReady(this.db, PUBLISHED_TABLE, 'visibility');
+  }
+
+  /**
+   * 이 서버가 **진열**을 할 수 있는가 — `listed` 칸이 있는가 (2026-09-12).
+   *
+   * `hasVisibility` 와 같은 이유로 둔다. 칸이 없으면 **아무것도 진열되지
+   * 않은 것으로** 보고 진열 기능만 끈다 — 퍼블리싱 자체는 그대로 돈다.
+   */
+  private async hasListed(): Promise<boolean> {
+    return columnReady(this.db, PUBLISHED_TABLE, 'listed');
   }
 
   /** 칸이 없으면 무엇을 읽어도 무료공개다 */
@@ -214,18 +242,20 @@ export class PublishService {
     await this.requireReady();
     await this.requirePublishable(userId, mapId);
     const canSet = await this.hasVisibility();
+    const canList = await this.hasListed();
     PublishService.assertUsable(visibility, canSet);
 
     const cur = await this.activeRow(mapId);
-    if (cur) return this.toStatus(cur, canSet);
+    if (cur) return this.toStatus(cur, canSet, canList);
 
     // publish_id 는 UNIQUE 다. 충돌 확률은 무시할 만하지만 0 은 아니므로
     // 몇 번 다시 뽑는다 — 여기서 포기하면 사용자에게는 이유 없는 실패다.
     const cols = canSet ? '(map_id, publish_id, visibility)' : '(map_id, publish_id)';
     const vals = canSet ? '($1, $2, $3)' : '($1, $2)';
-    const ret = canSet
-      ? 'publish_id, published_at, storage_path, visibility'
-      : 'publish_id, published_at, storage_path';
+    // ★ 새로 등록하는 맵은 **진열하지 않는다** — 칸의 기본값이 FALSE 다.
+    //   진열은 저자가 한 번 더 눌러야 일어난다(공개 범위가 넓어지는 일).
+    const ret = 'publish_id, published_at, storage_path'
+      + (canSet ? ', visibility' : '') + (canList ? ', listed' : '');
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const publishId = newPublishId();
       try {
@@ -233,7 +263,7 @@ export class PublishService {
           `INSERT INTO public.published_maps ${cols} VALUES ${vals} RETURNING ${ret}`,
           canSet ? [mapId, publishId, visibility] : [mapId, publishId],
         );
-        return this.toStatus(rows[0], canSet);
+        return this.toStatus(rows[0], canSet, canList);
       } catch (err) {
         // 23505 = unique_violation. 그 외 오류는 그대로 올린다 —
         // 삼키면 DB 장애가 "퍼블리싱 실패"로 둔갑해 원인을 못 찾는다.
@@ -281,6 +311,7 @@ export class PublishService {
     await this.requireReady();
     await this.requireOwner(userId, mapId);
     const canSet = await this.hasVisibility();
+    const canList = await this.hasListed();
     PublishService.assertUsable(visibility, canSet);
     if (!canSet) {
       throw new ServiceUnavailableException(
@@ -291,13 +322,111 @@ export class PublishService {
       `UPDATE public.published_maps
           SET visibility = $2
         WHERE map_id = $1 AND unpublished_at IS NULL
-    RETURNING publish_id, published_at, storage_path, visibility`,
+    RETURNING publish_id, published_at, storage_path, visibility${canList ? ', listed' : ''}`,
       [mapId, visibility],
     );
     if (!rows[0]) {
       throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
     }
-    return this.toStatus(rows[0], true);
+    return this.toStatus(rows[0], true, canList);
+  }
+
+  /**
+   * PUBL-07 — **진열대에 올린다 / 내린다** (2026-09-12).
+   *
+   * ★ **공개와 진열은 다른 것이다.** 무료공개는 "링크를 가진 사람이
+   *   읽는다" 이고, 진열은 "찾아보는 사람에게 보인다" 다. 사내 문서를
+   *   링크로만 돌리려던 저자가 검색 결과에서 그것을 발견하면 사고이므로,
+   *   **넓히는 쪽은 반드시 저자가 직접 켠다.**
+   *
+   * ★ **비공개(보관)인 맵도 켤 수 있다.** 진열 목록은 `visibility='public'`
+   *   을 함께 보므로, 켜 두고 나중에 공개해도 그때부터 뜬다. 여기서
+   *   막으면 "공개 → 진열" 순서를 강요하게 되는데, 그럴 이유가 없다.
+   */
+  async setListed(userId: string, mapId: string, listed: boolean): Promise<PublishStatus> {
+    await this.requireReady();
+    await this.requireOwner(userId, mapId);
+    if (!(await this.hasListed())) {
+      throw new ServiceUnavailableException(
+        '이 서버에는 아직 진열대가 준비되지 않았습니다(published_maps.listed 칸 없음). 관리자에게 문의해 주세요.',
+      );
+    }
+    const canSet = await this.hasVisibility();
+    const { rows } = await this.db.query<PublishedRow>(
+      `UPDATE public.published_maps
+          SET listed = $2
+        WHERE map_id = $1 AND unpublished_at IS NULL
+    RETURNING publish_id, published_at, storage_path, listed${canSet ? ', visibility' : ''}`,
+      [mapId, listed],
+    );
+    if (!rows[0]) {
+      throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
+    }
+    return this.toStatus(rows[0], canSet, true);
+  }
+
+  /**
+   * 진열대 목록 — **비인증**이다 (2026-09-12).
+   *
+   * ★ **여는 조건이 본문 조회보다 하나 더 좁다**: `listed` 가 켜져 있어야
+   *   한다. 느슨하면 링크로만 나누려던 맵이 목록에 뜬다 — 이 기능에서
+   *   가장 나쁜 실패다.
+   *
+   * ★ **문서 본문을 주지 않는다.** 카드에 필요한 것만 준다. 목록 하나로
+   *   남의 맵 내용을 통째로 긁어 가는 길을 만들지 않는다.
+   *
+   * 칸이 없는 서버에서는 **빈 목록**이다 — 500 이 아니다. 진열대가 아직
+   * 없는 서버일 뿐이고, 홈페이지는 "아직 진열된 맵이 없습니다" 를 그린다.
+   */
+  async listListed(limit: number, cursor?: string): Promise<{
+    items: ListedMap[]; nextCursor: string | null;
+  }> {
+    if (!(await this.ready()) || !(await this.hasListed())) {
+      return { items: [], nextCursor: null };
+    }
+    const open = (await this.hasVisibility()) ? `AND p.visibility = 'public'` : '';
+    // 커서 = 마지막 줄의 published_at(ISO). 같은 시각이 둘일 수 있으므로
+    // publish_id 를 두 번째 열쇠로 둔다 — 아니면 한 줄이 영영 안 나온다.
+    const params: unknown[] = [limit + 1];
+    let after = '';
+    if (cursor) {
+      const [at, id] = cursor.split('|');
+      if (at && id) {
+        params.push(at, id);
+        after = `AND (p.published_at, p.publish_id) < ($2::timestamptz, $3)`;
+      }
+    }
+    const { rows } = await this.db.query<{
+      publish_id: string; title: string; published_at: Date;
+      storage_path: string | null; node_count: number | null;
+    }>(
+      `SELECT p.publish_id, m.title, p.published_at, p.storage_path, d.node_count
+         FROM public.published_maps p
+         JOIN public.maps m ON m.id = p.map_id
+    LEFT JOIN public.map_documents d ON d.map_id = p.map_id
+        WHERE p.listed
+          AND p.unpublished_at IS NULL
+          AND m.deleted_at IS NULL
+          ${open}
+          ${after}
+     ORDER BY p.published_at DESC, p.publish_id DESC
+        LIMIT $1`,
+      params,
+    );
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      items: page.map((r) => ({
+        publishId: r.publish_id,
+        title: r.title,
+        publishedAt: r.published_at.toISOString(),
+        hasPreview: !!r.storage_path,
+        nodeCount: r.node_count ?? null,
+      })),
+      nextCursor: rows.length > limit && last
+        ? `${last.published_at.toISOString()}|${last.publish_id}`
+        : null,
+    };
   }
 
   /**
@@ -366,12 +495,13 @@ export class PublishService {
       ? { publishable: false, blockedReason: PublishService.COLLAB_BLOCKED }
       : { publishable: true };
     const canSet = await this.hasVisibility();
+    const canList = await this.hasListed();
     const cur = await this.activeRow(mapId);
     return cur
-      ? { ...this.toStatus(cur, canSet), ...gate }
+      ? { ...this.toStatus(cur, canSet, canList), ...gate }
       : {
         available: true, publishId: null, publishedAt: null,
-        canSetVisibility: canSet, ...gate,
+        canSetVisibility: canSet, listed: false, canSetListed: canList, ...gate,
       };
   }
 
@@ -428,14 +558,16 @@ export class PublishService {
    * 보관해 둔 맵의 이름·소개가 카드로 새어 나간다.
    */
   async ogSource(publishId: string): Promise<{
-    title: string; doc: unknown; hasPreview: boolean;
+    title: string; doc: unknown; hasPreview: boolean; listed: boolean;
   }> {
     if (!(await this.ready())) throw new NotFoundException('페이지를 찾을 수 없습니다.');
     const open = (await this.hasVisibility()) ? `AND p.visibility = 'public'` : '';
+    // 칸이 없는 서버에서는 고르지 않는다 — 없는 칸을 SELECT 하면 503 이다
+    const lsel = (await this.hasListed()) ? 'p.listed' : 'FALSE AS listed';
     const { rows } = await this.db.query<{
-      title: string; doc: unknown; storage_path: string | null;
+      title: string; doc: unknown; storage_path: string | null; listed: boolean;
     }>(
-      `SELECT m.title, d.doc, p.storage_path
+      `SELECT m.title, d.doc, p.storage_path, ${lsel}
          FROM public.published_maps p
          JOIN public.maps m ON m.id = p.map_id
     LEFT JOIN public.map_documents d ON d.map_id = p.map_id
@@ -447,14 +579,17 @@ export class PublishService {
     );
     const row = rows[0];
     if (!row || row.doc == null) throw new NotFoundException('페이지를 찾을 수 없습니다.');
-    return { title: row.title, doc: row.doc, hasPreview: !!row.storage_path };
+    return {
+      title: row.title, doc: row.doc, hasPreview: !!row.storage_path, listed: !!row.listed,
+    };
   }
 
   private async activeRow(mapId: string): Promise<PublishedRow | undefined> {
     // 칸이 없는 서버에서는 **고르지 않는다** — 없는 칸을 SELECT 하면 503 이다
     const col = (await this.hasVisibility()) ? ', visibility' : '';
+    const lcol = (await this.hasListed()) ? ', listed' : '';
     const { rows } = await this.db.query<PublishedRow>(
-      `SELECT publish_id, published_at, storage_path${col}
+      `SELECT publish_id, published_at, storage_path${col}${lcol}
          FROM public.published_maps
         WHERE map_id = $1 AND unpublished_at IS NULL
      ORDER BY published_at DESC
@@ -464,7 +599,9 @@ export class PublishService {
     return rows[0];
   }
 
-  private toStatus(row: PublishedRow, canSetVisibility: boolean): PublishStatus {
+  private toStatus(
+    row: PublishedRow, canSetVisibility: boolean, canSetListed = false,
+  ): PublishStatus {
     return {
       available: true,
       publishId: row.publish_id,
@@ -472,6 +609,10 @@ export class PublishService {
       hasPreview: !!row.storage_path,
       visibility: PublishService.vis(row),
       canSetVisibility,
+      // 칸이 없는 서버는 **진열된 것이 없다** — undefined 가 아니라 false 다.
+      // 화면이 "모르겠다" 와 "아니다" 를 구분할 필요가 없다.
+      listed: canSetListed ? !!row.listed : false,
+      canSetListed,
     };
   }
 
@@ -520,7 +661,10 @@ export class PublishService {
         WHERE map_id = $1 AND unpublished_at IS NULL`,
       [mapId, key],
     );
-    return { ...this.toStatus(cur, await this.hasVisibility()), hasPreview: true };
+    return {
+      ...this.toStatus(cur, await this.hasVisibility(), await this.hasListed()),
+      hasPreview: true,
+    };
   }
 
   /**

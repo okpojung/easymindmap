@@ -1,7 +1,7 @@
 import {
   BadRequestException,
   Body,
-  Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Req, Res,
+  Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res,
   StreamableFile, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -51,6 +51,25 @@ export class PublishController {
   ) {
     if (!body?.visibility) throw new BadRequestException('visibility 를 주세요 (private | public).');
     return this.publish.setVisibility(user.id, id, body.visibility as PublishVisibility);
+  }
+
+  /**
+   * **진열대에 올린다 / 내린다** (2026-09-12).
+   *
+   * 상태 전환(`PATCH :id/publish`)과 **따로 둔 이유**: 공개와 진열은
+   * 다른 일이다. 한 요청으로 묶으면 "공개로 바꿨더니 진열까지 됐다" 가
+   * 생길 자리가 남는다 — 넓어지는 쪽은 늘 따로 눌러야 한다.
+   */
+  @Patch(':id/publish/listed')
+  setListed(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { listed?: unknown },
+  ) {
+    if (typeof body?.listed !== 'boolean') {
+      throw new BadRequestException('listed 를 true 또는 false 로 주세요.');
+    }
+    return this.publish.setListed(user.id, id, body.listed);
   }
 
   /** 퍼블리싱 **등록 취소** — 주소가 죽는다(다시 등록하면 새 주소) */
@@ -164,6 +183,7 @@ export class PublicPublishController {
       title: src.title,
       doc: src.doc,
       hasPreview: src.hasPreview,
+      listed: src.listed,
       appOrigin,
       apiOrigin,
     });
@@ -203,6 +223,21 @@ export class PublicPublishController {
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=300');
     stream.pipe(res);
+  }
+
+  /**
+   * **진열대 목록** — 비인증 (2026-09-12).
+   *
+   * ★ `@Get(':publishId')` **보다 먼저** 선언한다. 뒤에 두면 `/published`
+   *   가 슬러그 하나로 잡혀 404 가 된다(Nest 는 선언 순서로 고른다).
+   *
+   * 커서 페이지네이션이다 — `nextCursor` 를 그대로 다시 준다.
+   */
+  @Get()
+  async listed(@Query('limit') limit?: string, @Query('cursor') cursor?: string) {
+    // 한 번에 100줄까지. 넘겨도 잘라 준다 — 거절하면 부르는 쪽만 번거롭다
+    const n = Math.min(100, Math.max(1, Number.parseInt(limit ?? '', 10) || 24));
+    return this.publish.listListed(n, cursor);
   }
 
   @Get(':publishId')

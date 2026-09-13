@@ -1,0 +1,95 @@
+/* EasyMindMap 홈페이지 — 앱의 종이빛 바탕을 이어받되 더 가볍게 */
+:root {
+  --paper: #FBF8F1;
+  --ink: #2B2620;
+  --muted: #6E5F49;
+  --line: #E4DCC9;
+  --card: #FFFFFF;
+  --accent: #B45309;
+  --accent-soft: #FDF3E3;
+  --shadow: 0 1px 2px rgba(43, 38, 32, .06), 0 8px 24px rgba(43, 38, 32, .06);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic',
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.6; -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+/* ── 머리 ─────────────────────────────────────────── */
+.top {
+  position: sticky; top: 0; z-index: 10; background: rgba(251, 248, 241, .92);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+}
+.top .wrap { display: flex; align-items: center; gap: 22px; height: 60px; }
+.brand { font-weight: 800; font-size: 17px; letter-spacing: -.2px; }
+.brand span { color: var(--accent); }
+.nav { display: flex; gap: 18px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.nav a[aria-current='page'] { color: var(--ink); }
+.nav a:hover { color: var(--ink); }
+.spacer { flex: 1; }
+.btn {
+  display: inline-block; padding: 8px 16px; border-radius: 8px; font-size: 14px;
+  font-weight: 700; background: var(--accent); color: #fff; border: 0; cursor: pointer;
+}
+.btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.btn:hover { filter: brightness(1.06); }
+
+/* ── 홈 ───────────────────────────────────────────── */
+.hero { padding: 76px 0 56px; }
+.hero h1 { margin: 0 0 14px; font-size: 40px; line-height: 1.25; letter-spacing: -1px; }
+.hero p { margin: 0 0 26px; font-size: 17px; color: var(--muted); max-width: 44ch; }
+.hero .row { display: flex; gap: 10px; flex-wrap: wrap; }
+.feat { display: grid; gap: 16px; grid-template-columns: repeat(3, 1fr); padding: 8px 0 72px; }
+.feat article {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px;
+}
+.feat h3 { margin: 0 0 6px; font-size: 15px; }
+.feat p { margin: 0; font-size: 14px; color: var(--muted); }
+
+/* ── 진열대 ───────────────────────────────────────── */
+.head { padding: 44px 0 20px; }
+.head h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -.6px; }
+.head p { margin: 0; color: var(--muted); font-size: 15px; }
+.grid { display: grid; gap: 18px; grid-template-columns: repeat(3, 1fr); padding-bottom: 64px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  overflow: hidden; display: flex; flex-direction: column; transition: box-shadow .15s, transform .15s;
+}
+.card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+.thumb { aspect-ratio: 1200 / 630; background: var(--accent-soft); display: block; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb.empty {
+  display: grid; place-items: center; color: var(--muted); font-size: 13px;
+}
+.card .body { padding: 14px 16px 16px; }
+.card h2 { margin: 0 0 6px; font-size: 15px; line-height: 1.45; }
+.card .meta { font-size: 12.5px; color: var(--muted); }
+.more { display: grid; place-items: center; padding: 0 0 72px; }
+
+/* ── 빈 자리 · 오류 ───────────────────────────────── */
+.note {
+  border: 1px dashed var(--line); border-radius: 12px; padding: 40px 24px;
+  text-align: center; color: var(--muted); margin-bottom: 64px;
+}
+.note b { color: var(--ink); }
+.note.err { border-style: solid; border-color: #E3C4C4; background: #FDF5F5; }
+
+/* ── 바닥 ─────────────────────────────────────────── */
+.foot { border-top: 1px solid var(--line); padding: 28px 0 48px; color: var(--muted); font-size: 13px; }
+.foot .wrap { display: flex; gap: 16px; flex-wrap: wrap; }
+
+@media (max-width: 860px) {
+  .feat, .grid { grid-template-columns: repeat(2, 1fr); }
+  .hero { padding: 52px 0 40px; }
+  .hero h1 { font-size: 31px; }
+}
+@media (max-width: 560px) {
+  .feat, .grid { grid-template-columns: 1fr; }
+  .nav { gap: 12px; font-size: 13px; }
+}

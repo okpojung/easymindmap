@@ -229,6 +229,60 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
   > `VITE_API_URL`에 `/v1`을 덧붙이지 말 것 (API가
   > `setGlobalPrefix('v1')` 사용).
 
+### 5.3-A site (홈페이지) — 앱 하나를 **더** 붙인다 (2026-09-13)
+
+`www.easymindmap.org` — 소개와 **퍼블리싱맵 목록**이 사는 곳이다. 앱(에디터)과
+**다른 앱**으로 둔다(`27a-paid-publish.md` §0.5: 새 VM 을 만들지 않고 기존
+Coolify 서버에 앱을 하나 더, 나누는 것은 **도메인**).
+
+- **Add Resource → Application → GitHub** — 설정값
+
+  | 항목 | 값 |
+  |---|---|
+  | Build Pack | `Dockerfile` |
+  | Base Directory | `/` |
+  | Dockerfile Location | `/apps/site/Dockerfile` |
+  | Ports Exposes | `80` — **누락 시 502** |
+  | Is it a static site? | **끄기** (Dockerfile 이 nginx 를 포함) |
+  | Domains | 개발 `http://www-dev.mindmap.ai.kr` · 운영 `http://www.easymindmap.org` |
+
+- **빌드 환경변수** (Vite 라 **Buildtime** 이어야 한다 — 런타임엔 안 읽는다)
+
+  | 변수 | 값(dev) | |
+  |---|---|---|
+  | `VITE_API_URL` | `https://api-dev.mindmap.ai.kr` | 진열대 목록을 읽는 곳 |
+  | `VITE_APP_URL` | `https://pro-dev.mindmap.ai.kr` | [시작하기]·[앱 열기] 가 가는 곳 |
+
+- **런타임 환경변수** (nginx 가 읽는다)
+
+  | 변수 | 값(dev) | 없으면 |
+  |---|---|---|
+  | `APP_ORIGIN` | `https://pro-dev.mindmap.ai.kr` | **기본값이 그 주소다.** 프런트엔드의 `API_ORIGIN` 과 달리 "아무 데도 안 가는 주소" 로 두지 않았다 — `/p/` 가 이 사이트의 주된 길이라 빠뜨렸을 때 통째로 죽는 쪽이 훨씬 나쁘다 |
+
+#### ★ 한 도메인 안에 **두 앱**이 산다 (B안, 2026-09-12 사용자 결정)
+
+```
+www.easymindmap.org
+├ /                → 홈페이지 (이 앱)
+├ /site-assets/…   → 홈페이지 번들
+├ /p/{id}          → **앱으로 프록시** (퍼블리싱 공개 뷰어)
+└ /assets/…        → 그 앱의 번들 (뷰어가 부른다)
+```
+
+손님이 진열대에서 맵으로 갈 때 **도메인이 바뀌지 않게** 하려는 것이다.
+뷰어를 이 앱에 **복제하지 않는다** — 뷰어는 내보내기 HTML 생성기와 레이아웃
+엔진을 통째로 쓰고, 복제하면 두 벌이 갈라진다(e2e255 에서 실제로 겪었다).
+
+**함정 둘** (실측으로 잡았다)
+
+| | |
+|---|---|
+| 번들 주소가 겹친다 | 두 앱이 다 `/assets/` 를 쓰면 한쪽이 가린다 → 홈페이지는 vite `base: '/site-assets/'` 로 **주소만** 옮겼다 |
+| `alias` + `try_files` | vite 는 파일을 dist **뿌리**에 낸다(`assetsDir: '.'`). 그래서 `root` 가 아니라 `alias` 여야 하고, `alias` 와 `try_files` 를 함께 쓰면 `$uri` 를 root 기준으로 푸는 판이 있어 **`try_files` 를 쓰지 않는다** |
+
+`og:url` 은 앱이 `X-Forwarded-Host` 로 만든다 — 이 nginx 가 그 헤더에 **손님이
+보는 도메인**을 실어 보내므로 카드 주소가 `www.easymindmap.org/p/{id}` 가 된다.
+
 ### 5.4 도메인·HTTPS — NPM 앞단 구성에서는 `https://` 금지 ★
 
 > **[2026-08-01 정정]** "DNS(또는 내부 NPM)를 서버로 향하게 하면

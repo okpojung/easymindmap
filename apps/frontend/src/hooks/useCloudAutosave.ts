@@ -32,6 +32,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
+import { outageNoticeFor } from '@/utils/outageNotice';
 import { editSessionKey } from '@/services/cloud/editSession';
 import { useAppSettingsStore } from '@/stores/appSettingsStore';
 import { clearLocalDraft, writeLocalDraftNow } from '@/hooks/useLocalDraft';
@@ -125,6 +126,7 @@ export function suppressCloudAutosave(): void {
   setPending(0);
   rerun = false;
   cancelRetry(); // 맵이 바뀌면 이전 맵의 재시도는 의미가 없다
+  useAutosaveStore.getState().setOutageNotice(null); // 띠도 이전 맵의 것이다
 }
 
 /** 명시 저장(☁ 저장·맵 닫기·다른 이름)이 성공했을 때 — 대기분을 턴다 */
@@ -258,6 +260,8 @@ async function doSave() {
       setPending(0);
       lastSaveAt = Date.now();
       useAutosaveStore.getState().setLastSavedAt(lastSaveAt);
+      // 서버가 돌아왔다 — "배포 중" 띠를 내린다 (B20 ⑧ⓑ)
+      useAutosaveStore.getState().setOutageNotice(null);
       // 서버에 들어갔으니 이 맵의 로컬 초안은 더 필요 없다
       void clearLocalDraft(mapId);
     }
@@ -271,6 +275,10 @@ async function doSave() {
     if (useCloudStore.getState().cloudMapId === mapId) {
       const msg = err instanceof CloudError ? err.message : '자동 저장 실패';
       useCloudStore.getState().setError(msg);
+      // **서버에 닿지 않는 실패**(배포 중 컨테이너 교체 · 점검 응답)면 화면
+      // 위쪽 띠로 알린다 — 재시도·초안 보관은 아래 그대로다 (2026-09-13, B20 ⑧ⓑ).
+      const outage = outageNoticeFor(err);
+      if (outage) useAutosaveStore.getState().setOutageNotice(outage);
       // **포기하지 않는다** — 마지막 간격으로 무기한 재시도한다.
       // 편집분은 그동안 로컬 초안(IndexedDB)에 남아 있으므로 잃지 않는다.
       const delay = RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)];

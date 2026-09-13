@@ -1,8 +1,24 @@
 # 사용자 가이드 스크린샷
 
 이 폴더에 사용자 가이드용 화면 캡처를 넣는다. 각 가이드 문서의
-`TODO(스크린샷)` 표시 위치에 대응하는 이미지를 파일명으로 참조한다
-(예: `01-overview.png`). 기능이 안정화된 뒤 일괄 캡처를 권장한다.
+`TODO(스크린샷)` 표시 위치에 대응하는 이미지를 파일명으로 참조한다.
+
+## ★ 캡처는 사람이 아니라 코드가 만든다 (2026-09-13 사용자 결정)
+
+가이드에 `TODO(스크린샷)` 가 있으면 **AI(Claude Code)가 실제 프런트엔드를
+vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 손으로
+캡처하는 것은 우리 화면이 아닌 것(claude.ai 대화상자 등)뿐이다.
+스크립트와 요령은 [`apps/frontend/scripts/doc-shots/`](../../../apps/frontend/scripts/doc-shots/README.md)
+에 있다. 진짜 컴포넌트를 렌더하므로 **캡처가 곧 동작 확인**이다 — 그림과
+코드가 어긋나면 그 자리에서 드러난다(가이드 03 의 `+` 방향 12장, 201차).
+
+| 그림 | 만든 스크립트 |
+|---|---|
+| `mcp-connector-consent.png` | `mcp-consent.mjs` |
+| `mcp-token.png` | `mcp-token.mjs` |
+| `mcp-cloud-env.png` | (claude.ai 화면 — 사용자 캡처, #475) |
+| `node-add-*.png` (12) | `node-add.mjs` |
+| `mark-toolbar.png` · `node-drag-*.png` (4) · `paste-article.png` | `guide03.mjs` |
 
 ## 넣는 규칙 (2026-09-13)
 

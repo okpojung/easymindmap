@@ -1,0 +1,48 @@
+# doc-shots — 사용자 가이드 스크린샷을 코드에서 만든다
+
+사람이 캡처하지 않는다. **실제 프런트엔드를 vite 로 띄우고 Playwright 로
+조작해** 찍는다. 그래서 그림을 만드는 일이 곧 그 기능의 동작 확인이다
+(가이드 03 의 `+` 방향 12장이 그렇게 검증됐다 — test-catalog 201차).
+
+## 한 번에 돌리기
+
+```bash
+cd apps/frontend && npm ci
+# ① 에디터(개발 모드 · 인증 없음) — 가이드 03 계열
+VITE_API_URL=http://api.local npx vite --port 5199 --strictPort --host 127.0.0.1 &
+export PLAYWRIGHT_MODULE=$(npm root -g)/playwright/index.mjs   # 전역 설치본
+node scripts/doc-shots/node-add.mjs /tmp/doc-shots
+node scripts/doc-shots/guide03.mjs  /tmp/doc-shots /tmp/article-img.b64
+# ② 인증 켠 화면 — 가이드 12 계열 (vite 를 이렇게 다시 띄운다)
+VITE_SUPABASE_URL=http://auth.local VITE_SUPABASE_ANON_KEY=anon VITE_SUPABASE_AUTH_PREFIX= \
+  VITE_API_URL=https://api-dev.mindmap.ai.kr npx vite --port 5199 --strictPort --host 127.0.0.1 &
+node scripts/doc-shots/mcp-consent.mjs /tmp/doc-shots/mcp-connector-consent.png
+node scripts/doc-shots/mcp-token.mjs   /tmp/doc-shots/mcp-token.png
+# ③ 마무리 — 폭 1000 이하 + 연회색 테두리, 그리고 assets 로
+python3 scripts/doc-shots/finish.py /tmp/doc-shots/mark-toolbar.png ../../docs/user-guide/assets/mark-toolbar.png 420
+```
+
+## 새 장면을 추가할 때
+
+- `lib.mjs` 의 `stores.*` 로 상태를 만든다 — 레이아웃 `layout()`, 선택
+  `select()`, 다중 선택 `multi()`, 화면 중앙 `center()`. vite 개발 서버는
+  같은 모듈 URL 을 같은 인스턴스로 주므로 페이지 안에서 `import('/src/stores/…')`
+  하면 앱과 상태가 공유된다.
+- **캔버스는 스크롤이 아니라 pan/scale** 이다 — `scrollIntoView` 는 듣지
+  않는다. `center()`(= `requestCenterNode`)를 쓴다.
+- 드래그는 `page.mouse` 로 누르고 **4px 넘게** 움직여야 시작된다.
+- 붙여넣기는 `ClipboardEvent('paste', { clipboardData: new DataTransfer() })`
+  를 `window` 에 보낸다. 사진은 `data:` URI 로 넣는다(외부 URL 은 프록시로
+  막힌다).
+- 브라우저 네이티브 툴팁(`<title>`)은 안 찍힌다 — 필요하면 `node-add.mjs`
+  처럼 그 문구를 SVG 라벨로 얹고 **문서에 "설명용" 이라고 밝힌다**.
+- 스텁 응답의 모양은 `apiClient.ts` 의 타입을 보고 맞춘다 — `/folders` 를
+  `[]` 로 주면 문서함이 죽어 계정 메뉴까지 못 간다.
+- 토큰·이메일 같은 값은 예시(`you@example.com`, `emm_a1b2c3d4…`)로 넣고
+  문서에 예시라고 적는다.
+- 폰트: CDN(Pretendard)이 막힌 환경이면 `~/.fonts` 에 Pretendard OTF 를
+  넣고 `fc-cache -f` (raw.githubusercontent.com 의 orioncactus/pretendard).
+
+## 문서에 넣는 규칙
+
+`docs/user-guide/assets/README.md` — `<img width>` 로 크기, 테두리는 파일에.

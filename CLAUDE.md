@@ -157,6 +157,11 @@ PR #221 준비 완료 — 병합은 확인 후 해주세요.
 ## 4. 마무리에 항상 하는 것
 
 - 관련 **문서 갱신** (기능 문서 · api-spec · runbook 등)
+- **사용자 가이드에 `TODO(스크린샷)` 가 생기면 내가 만든다** (2026-09-13).
+  실제 프런트엔드를 vite + Playwright 로 띄워 그 장면을 찍는다 —
+  `apps/frontend/scripts/doc-shots/README.md`. 사용자에게 캡처를 부탁하는
+  것은 우리 화면이 아닌 것(claude.ai 대화상자 등)뿐이다. 넣는 규칙(폭·
+  테두리)은 `docs/user-guide/assets/README.md`.
 - **`docs/05-implementation/test-catalog.md`** 에 e2e 항목과 갱신 이력 추가
   (e2e 스크립트 자체는 커밋하지 않는다 — 카탈로그가 산출물이다)
 - **검증 결과를 숫자로** 밝힌다 (예: `e2e135 13항목 PASS`). 고친 것이

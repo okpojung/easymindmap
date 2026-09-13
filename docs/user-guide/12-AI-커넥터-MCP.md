@@ -202,7 +202,12 @@ claude mcp add --transport http easymindmap https://api-dev.mindmap.ai.kr/v1/mcp
 
    ▸ **[환경 추가]**.
 
-   <!-- TODO(스크린샷): assets/mcp-cloud-env.png — 클라우드 환경 추가 대화상자 -->
+   ![클라우드 환경 추가 대화상자 — 이름 · 네트워크 액세스(신뢰됨) · 환경 변수 · 설정 스크립트 · [환경 추가]](assets/mcp-cloud-env.png)
+
+   > 그림은 **아무것도 넣기 전**의 모습입니다. 환경 변수 칸의 회색 글자
+   > (`NODE_ENV=…`)는 예시라서 지우고 `EMM_MCP_TOKEN=…` 한 줄만 넣습니다.
+   > 칸 아래 "이 환경을 사용하는 모든 사람에게 표시됩니다" 경고가 **토큰과
+   > 보안** 절에서 말하는 그 경고입니다 — 개인 환경에만 넣으세요.
 
 4. 첫 화면으로 돌아와 아래 줄이 **☁ easymindmap-mcp · 저장소 easymindmap ·
    브랜치 main** 인지 확인합니다. 저장소는 **`okpojung/easymindmap`** 이어야

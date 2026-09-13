@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  },
+  // vite.config.ts 는 넣지 않는다 — node 전역(`node:path`·`import.meta.dirname`)을
+  // 쓰므로 앱 타입 검사에 넣으면 브라우저 번들이 node 타입을 떠안는다.
+  // 프런트엔드 tsconfig 와 같은 규칙이다.
+  "include": ["src"]
+}

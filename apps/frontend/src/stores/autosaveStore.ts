@@ -38,6 +38,19 @@ interface AutosaveState {
    */
   collabDrivingMapId: string | null;
   setCollabDrivingMapId: (mapId: string | null) => void;
+  /**
+   * **서버에 닿지 않아 자동저장이 대기 중** (2026-09-13, B20 ⑧ⓑ).
+   *
+   * 배포로 API 가 5~15초 비는 동안 자동저장은 끝까지 재시도하고 편집은
+   * 초안에 남는다 — 잃는 것은 없다. 다만 사용자에게는 "요청 실패 (502)"
+   * 만 보였다. 연결이 안 되는 실패(`outageNoticeFor`)면 여기에 문구를 두고
+   * 화면 위쪽 띠(OutageBanner)로 보여 준다. 다음 저장이 성공하면 비운다.
+   */
+  outageNotice: import('@/utils/outageNotice').OutageNotice | null;
+  /** 사용자가 [알겠습니다] 를 눌렀다 — 이 장애가 끝날 때까지 다시 띄우지 않는다 */
+  outageDismissed: boolean;
+  setOutageNotice: (n: import('@/utils/outageNotice').OutageNotice | null) => void;
+  dismissOutage: () => void;
 }
 
 export const useAutosaveStore = create<AutosaveState>((set) => ({
@@ -51,4 +64,11 @@ export const useAutosaveStore = create<AutosaveState>((set) => ({
   setDraftWriteFailed: (draftWriteFailed) => set({ draftWriteFailed }),
   collabDrivingMapId: null,
   setCollabDrivingMapId: (collabDrivingMapId) => set({ collabDrivingMapId }),
+  outageNotice: null,
+  outageDismissed: false,
+  // 비우면 dismissed 도 함께 푼다 — 다음 장애는 다시 알려야 한다
+  setOutageNotice: (outageNotice) => set(outageNotice
+    ? { outageNotice }
+    : { outageNotice: null, outageDismissed: false }),
+  dismissOutage: () => set({ outageDismissed: true }),
 }));

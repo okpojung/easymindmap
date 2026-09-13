@@ -548,7 +548,7 @@ content="10">`)이다. 로고·CSS 는 파일 안에 넣는다 — 프런트 컨
 `apiClient` 가 `j.message` 를 읽어 **"시스템 점검 중입니다…"** 를 그대로
 보여 준다.
 
-**ⓑ 에디터 배너** (프런트 소폭 수정) — `useCloudAutosave` 의 catch 에서
+**ⓑ 에디터 배너 ✅ 2026-09-13 (e2e260)** — `useCloudAutosave` 의 catch 에서
 `err.code === 'MAINTENANCE'`(또는 status 0/502/503) 이면 `cloudStore.notice`
 에 *"버전 업그레이드 배포 중입니다 — 편집은 이 브라우저에 보관되고 있고,
 연결이 돌아오면 자동으로 저장됩니다"* 를 띄우고, 다음 저장이 성공하면

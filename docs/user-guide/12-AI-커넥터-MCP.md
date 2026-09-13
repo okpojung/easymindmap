@@ -101,7 +101,7 @@ Claude 와 나눈 대화를 **복사·붙여넣기 없이** EasyMindMap 맵으�
    > **이 값은 다시 볼 수 없습니다.** 서버에도 남지 않습니다(암호화된
    > 지문만 저장). 잃어버리면 **[폐기]** 하고 새로 발급하면 됩니다.
 
-   ![🔌 AI 커넥터(MCP) — 발급 직후: 주황 상자 안에 emm_ 원문과 [복사], 아래에 토큰 이름 칸과 [발급], 발급한 토큰 목록과 [폐기]](assets/mcp-token.png)
+   <img src="assets/mcp-token.png" width="400" alt="🔌 AI 커넥터(MCP) — 발급 직후: 주황 상자 안에 emm_ 원문과 [복사], 아래에 토큰 이름 칸과 [발급], 발급한 토큰 목록과 [폐기]">
 
    > 주황 상자가 **발급 직후에만** 보이는 원문입니다. 상자 위 **연결 주소**가
    > 2-A·2-B 에 넣을 주소이고, 목록의 `emm_a1b2c3d4…` 처럼 **앞자리만**
@@ -202,7 +202,7 @@ claude mcp add --transport http easymindmap https://api-dev.mindmap.ai.kr/v1/mcp
 
    ▸ **[환경 추가]**.
 
-   ![클라우드 환경 추가 대화상자 — 이름 · 네트워크 액세스(신뢰됨) · 환경 변수 · 설정 스크립트 · [환경 추가]](assets/mcp-cloud-env.png)
+   <img src="assets/mcp-cloud-env.png" width="340" alt="클라우드 환경 추가 대화상자 — 이름 · 네트워크 액세스(신뢰됨) · 환경 변수 · 설정 스크립트 · [환경 추가]">
 
    > 그림은 **아무것도 넣기 전**의 모습입니다. 환경 변수 칸의 회색 글자
    > (`NODE_ENV=…`)는 예시라서 지우고 `EMM_MCP_TOKEN=…` 한 줄만 넣습니다.
@@ -261,7 +261,7 @@ claude mcp add --transport http easymindmap https://api-dev.mindmap.ai.kr/v1/mcp
 6. **"Claude 을(를) 연결할까요?"** 화면에서 무엇을 허락하는지 확인하고
    **[허용]**
 
-   ![Claude 을(를) 연결할까요? — 앱이 요청한 것: 이메일 주소 · [거부] [허용]](assets/mcp-connector-consent.png)
+   <img src="assets/mcp-connector-consent.png" width="480" alt="Claude 을(를) 연결할까요? — 앱이 요청한 것: 이메일 주소 · [거부] [허용]">
 
    > **"앱이 요청한 것"에 `이메일 주소` 하나만 보이면 정상**입니다. 맵을
    > 읽고 쓰는 권한은 이 목록에 나오지 않고 그 아래 문장으로 밝힙니다.

@@ -22,6 +22,10 @@ vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 �
 | `01-overview.png` · `01-theme-toggle.png` · `01-dark.png` · `02-newmap-menu.png` · `02-template-choose.png` · `02-template-register.png` | `guide01-02.mjs` |
 | `04-layout-tab.png` · `04-collapse-badge.png` · `04-outline-split.png` · `04-mainview-toggle.png` · `04-outline-mode.png` | `guide04.mjs` |
 | `05-note-tab.png` · `05-note-popup.png` · `05-tags.png` · `06-search-panel.png` · `06-search-hit.png` | `guide05-06.mjs` |
+| `07-ai-settings.png` · `07-ai-result.png` · `07-ai-expand.png` | `guide07.mjs` (AI 제공사 HTTP 스텁) |
+| `08-export-menu.png` · `08-viewer-header.png` · `08-viewer-full.png` · `08-import-buttons.png` | `guide08.mjs` (뷰어는 실제 내보내기 함수로 만든 HTML) |
+| `11-version-history.png` | `guide11.mjs` (`/versions` 스텁) |
+| `11-transfer-ownership.png` | (유료 모듈 화면 — 운영에서 직접 캡처, 아직 없음) |
 
 ## 넣는 규칙 (2026-09-13)
 

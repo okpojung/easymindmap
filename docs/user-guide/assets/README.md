@@ -25,7 +25,7 @@ vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 �
 | `07-ai-settings.png` · `07-ai-result.png` · `07-ai-expand.png` | `guide07.mjs` (AI 제공사 HTTP 스텁) |
 | `08-export-menu.png` · `08-viewer-header.png` · `08-viewer-full.png` · `08-import-buttons.png` | `guide08.mjs` (뷰어는 실제 내보내기 함수로 만든 HTML) |
 | `11-version-history.png` | `guide11.mjs` (`/versions` 스텁) |
-| `11-transfer-ownership.png` | (유료 모듈 화면 — 운영에서 직접 캡처, 아직 없음) |
+| `11-transfer-ownership.png` | (유료 모듈 화면 — 사용자가 운영에서 캡처, 이름·이메일은 모자이크) |
 
 ## 넣는 규칙 (2026-09-13)
 

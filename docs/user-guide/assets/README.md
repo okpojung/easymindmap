@@ -19,6 +19,7 @@ vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 �
 | `mcp-cloud-env.png` | (claude.ai 화면 — 사용자 캡처, #475) |
 | `node-add-*.png` (12) | `node-add.mjs` |
 | `mark-toolbar.png` · `node-drag-*.png` (4) · `paste-article.png` | `guide03.mjs` |
+| `01-overview.png` · `01-theme-toggle.png` · `01-dark.png` · `02-newmap-menu.png` · `02-template-choose.png` · `02-template-register.png` | `guide01-02.mjs` |
 
 ## 넣는 규칙 (2026-09-13)
 

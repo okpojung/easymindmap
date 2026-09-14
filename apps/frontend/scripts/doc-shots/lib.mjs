@@ -75,3 +75,60 @@ export async function shotUnion(page, size, file, rects, pad = 60) {
   } });
   console.log('shot', file);
 }
+
+/** 인증 켠 화면용 스텁 — 세션은 localStorage, API 는 apiClient.ts 타입에 맞춘 빈 응답 (boot 의 beforeGoto 로 넘긴다) */
+export function authStubs(extra) {
+  return async (page) => {
+    await page.route('https://api-dev.mindmap.ai.kr/**', (route) => {
+      const req = route.request(); const p = new URL(req.url()).pathname.replace(/^\/v1/, ''); const m = req.method();
+      const json = (o) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(o) });
+      const r = extra?.(p, m, req, json); if (r) return r;
+      if (p === '/account/profile') return json({ fullName: '홍길동', email: 'you@example.com', emailVerified: true, avatar: null });
+      if (p === '/maps' || p === '/maps/shared') return json({ maps: [], total: 0 });
+      if (p === '/folders') return json({ folders: [], total: 0 });
+      if (p === '/account/ai-settings') return json({ available: true, settings: null, updatedAt: null });
+      if (p === '/account/ai-keys') return json({ available: true, keys: {} });
+      if (p === '/mcp-tokens') return json({ available: true, ready: true, tokens: [] });
+      return json({});
+    });
+    await page.route('http://auth.local/**', (r) => r.fulfill({ contentType: 'application/json', body: '{}' }));
+    await page.addInitScript(() => localStorage.setItem('emm.auth', JSON.stringify({ state: { session: { accessToken: 'demo', refreshToken: 'demo', expiresAt: Date.now() + 3600e3, userId: 'demo', email: 'you@example.com' }, guest: false }, version: 0 })));
+  };
+}
+
+/** 인증 모드에서 샘플 맵을 열고 문서함을 닫는다 */
+export async function openSample(page) {
+  await page.evaluate(async () => {
+    const d = await import('/src/stores/documentStore.ts');
+    const ui = await import('/src/stores/editorUiStore.ts');
+    const vp = await import('/src/stores/viewportStore.ts');
+    d.setHistoryPaused(true); d.useDocumentStore.getState().setSample(); d.setHistoryPaused(false);
+    ui.useEditorUiStore.getState().setBrowserOpen(false);
+    vp.useViewportStore.getState().requestFit();
+  });
+  await page.waitForSelector('[data-node-id="root"]', { timeout: 15000 });
+  await page.waitForTimeout(500);
+  // 사이드바·툴바가 자리를 잡은 뒤 한 번 더 맞춘다 (첫 fit 은 레이아웃 전에 돈다)
+  await page.evaluate(async () => { const vp = await import('/src/stores/viewportStore.ts'); vp.useViewportStore.getState().requestFit(); });
+  await page.waitForTimeout(500);
+}
+
+/** 화면 위에 번호 배지·강조 링을 얹는다 (설명용 — 문서에 그렇게 밝힌다) */
+export async function overlay(page, items) {
+  await page.evaluate((items) => {
+    document.querySelectorAll('.doc-overlay').forEach((e) => e.remove());
+    for (const it of items) {
+      if (it.kind === 'badge') {
+        const d = document.createElement('div'); d.className = 'doc-overlay';
+        d.textContent = it.text;
+        Object.assign(d.style, { position: 'fixed', left: `${it.x}px`, top: `${it.y}px`, width: '44px', height: '44px', borderRadius: '50%', background: '#D97706', color: '#fff', font: '800 24px/44px Pretendard, sans-serif', border: '3px solid #fff', textAlign: 'center', zIndex: 99999, boxShadow: '0 2px 6px rgba(0,0,0,.35)', pointerEvents: 'none' });
+        document.body.appendChild(d);
+      } else if (it.kind === 'box' || it.kind === 'ring') {
+        const d = document.createElement('div'); d.className = 'doc-overlay';
+        Object.assign(d.style, { position: 'fixed', left: `${it.x}px`, top: `${it.y}px`, width: `${it.width}px`, height: `${it.height}px`, border: `3px ${it.kind === 'box' ? 'dashed' : 'solid'} #D97706`, borderRadius: it.kind === 'ring' ? '999px' : '8px', zIndex: 99998, pointerEvents: 'none', boxSizing: 'border-box' });
+        document.body.appendChild(d);
+      }
+    }
+  }, items);
+}
+export const clearOverlay = (page) => page.evaluate(() => document.querySelectorAll('.doc-overlay').forEach((e) => e.remove()));

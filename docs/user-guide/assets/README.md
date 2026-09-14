@@ -20,6 +20,8 @@ vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 �
 | `node-add-*.png` (12) | `node-add.mjs` |
 | `mark-toolbar.png` · `node-drag-*.png` (4) · `paste-article.png` | `guide03.mjs` |
 | `01-overview.png` · `01-theme-toggle.png` · `01-dark.png` · `02-newmap-menu.png` · `02-template-choose.png` · `02-template-register.png` | `guide01-02.mjs` |
+| `04-layout-tab.png` · `04-collapse-badge.png` · `04-outline-split.png` · `04-mainview-toggle.png` · `04-outline-mode.png` | `guide04.mjs` |
+| `05-note-tab.png` · `05-note-popup.png` · `05-tags.png` · `06-search-panel.png` · `06-search-hit.png` | `guide05-06.mjs` |
 
 ## 넣는 규칙 (2026-09-13)
 

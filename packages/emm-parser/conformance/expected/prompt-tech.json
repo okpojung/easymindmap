@@ -25,15 +25,18 @@
         "children": [
           {
             "id": "md#2",
-            "text": "서버 SSH 접속 확인"
+            "text": "서버 SSH 접속 확인",
+            "mdForm": "list"
           },
           {
             "id": "md#3",
-            "text": "sudo 권한 확인"
+            "text": "sudo 권한 확인",
+            "mdForm": "list"
           },
           {
             "id": "md#4",
-            "text": "도메인 DNS 연결 확인"
+            "text": "도메인 DNS 연결 확인",
+            "mdForm": "list"
           }
         ]
       },
@@ -111,15 +114,18 @@
         "children": [
           {
             "id": "md#16",
-            "text": "1. 브라우저에서 https://도메인 접속"
+            "text": "1. 브라우저에서 https://도메인 접속",
+            "mdForm": "list"
           },
           {
             "id": "md#17",
-            "text": "2. 인증서 발급자(Let's Encrypt) 확인"
+            "text": "2. 인증서 발급자(Let's Encrypt) 확인",
+            "mdForm": "list"
           },
           {
             "id": "md#18",
             "text": "3. http → https 리다이렉트 확인",
+            "mdForm": "list",
             "links": [
               {
                 "id": "md#19",

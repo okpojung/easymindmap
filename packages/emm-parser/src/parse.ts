@@ -644,6 +644,8 @@ export function parseMarkdownToMap(
         const base = paraDepth ?? (sectionDepth !== null ? sectionDepth : lastHeadingDepth);
         node = attach(base + 1 + indentLevel, text, emptyItem);
       }
+      // 리스트 항목 출신 — 내보낼 때 견출이 아니라 `-` 로 되돌린다 (model.ts mdForm)
+      if (node) node.mdForm = 'list';
       lastItem = node ? { node, indent } : null;
       continue;
     }

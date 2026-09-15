@@ -69,23 +69,28 @@
         "children": [
           {
             "id": "md#9",
-            "text": "1. Import the library\n`import awesome from 'awesomelib'`"
+            "text": "1. Import the library\n`import awesome from 'awesomelib'`",
+            "mdForm": "list"
           },
           {
             "id": "md#10",
-            "text": "2. Call parse()"
+            "text": "2. Call parse()",
+            "mdForm": "list"
           },
           {
             "id": "md#11",
             "text": "3. Profit",
+            "mdForm": "list",
             "children": [
               {
                 "id": "md#12",
-                "text": "Supports *streaming*\nwith backpressure"
+                "text": "Supports *streaming*\nwith backpressure",
+                "mdForm": "list"
               },
               {
                 "id": "md#13",
-                "text": "Zero dependencies"
+                "text": "Zero dependencies",
+                "mdForm": "list"
               }
             ]
           }

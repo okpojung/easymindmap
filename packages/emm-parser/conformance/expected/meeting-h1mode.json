@@ -25,11 +25,13 @@
         "children": [
           {
             "id": "md#2",
-            "text": "1. 서버 마이그레이션 완료 확인"
+            "text": "1. 서버 마이그레이션 완료 확인",
+            "mdForm": "list"
           },
           {
             "id": "md#3",
-            "text": "2. 백업 정책 문서화\n담당: 김AA"
+            "text": "2. 백업 정책 문서화\n담당: 김AA",
+            "mdForm": "list"
           }
         ]
       },
@@ -56,15 +58,18 @@
             "children": [
               {
                 "id": "md#8",
-                "text": "7월: 개발"
+                "text": "7월: 개발",
+                "mdForm": "list"
               },
               {
                 "id": "md#9",
                 "text": "8월: QA",
+                "mdForm": "list",
                 "children": [
                   {
                     "id": "md#10",
-                    "text": "8/1 QA 킥오프"
+                    "text": "8/1 QA 킥오프",
+                    "mdForm": "list"
                   }
                 ]
               }

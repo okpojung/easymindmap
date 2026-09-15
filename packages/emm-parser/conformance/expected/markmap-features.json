@@ -25,7 +25,8 @@
                 "url": "https://markmap.js.org/",
                 "label": "Website"
               }
-            ]
+            ],
+            "mdForm": "list"
           },
           {
             "id": "md#3",
@@ -36,7 +37,8 @@
                 "url": "https://github.com/gera2ld/markmap",
                 "label": "GitHub"
               }
-            ]
+            ],
+            "mdForm": "list"
           }
         ]
       },
@@ -76,11 +78,13 @@
             "children": [
               {
                 "id": "md#11",
-                "text": "자식 항목 하나"
+                "text": "자식 항목 하나",
+                "mdForm": "list"
               },
               {
                 "id": "md#12",
-                "text": "자식 항목 둘"
+                "text": "자식 항목 둘",
+                "mdForm": "list"
               }
             ]
           }

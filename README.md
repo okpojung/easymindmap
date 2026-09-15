@@ -1,13 +1,13 @@
 # <img src="docs/assets/brand/logo.svg" width="34" alt="EasyMindMap 로고" align="top" /> easymindmap
 
 > **[Mindmap Markdown](https://mindmapmarkdown.org) 레퍼런스 애플리케이션.**
-> easymindmap이 정의·구현하는 **EMM**(EasyMindMap Markdown)은 그 표준이
+> easymindmap이 정의·구현하는 **mmd**(Mindmap Markdown)은 그 표준이
 > 정제되어 나오는 원형이다. 표준 자체는 아직 초기 초안이며, 이 애플리케이션을
 > 포함해 어떤 구현도 아직 그것에 적합하지 않다 —
 > [사양 저장소](https://github.com/mindmapmarkdown/spec) 참조.
 
 **AI 기반 온라인 마인드맵 플랫폼**  
-마인드맵을 위한 Markdown 포맷(EMM)을 정의하고, 그것을 편집·렌더링하는 레퍼런스 구현.  
+마인드맵을 위한 Markdown 포맷(mmd)을 정의하고, 그것을 편집·렌더링하는 레퍼런스 구현.  
 서비스 도메인: `example.com` (실제 도메인은 배포 설정에서 관리)
 
 ---

@@ -6,7 +6,7 @@
 > 구현: `utils/webAiExchange.ts`(순수 함수) + `inspector-panels/
 > WebAiPanel.tsx`(UI) + AITab 모드 스위치 + 새 맵 템플릿 카드 진입 버튼.
 > **관련 문서**: `18-ai.md`(현행 API 키 방식), `emm-prompt-templates.md`
-> (AI용 EMM 생성 프롬프트), `../emm-spec.md`(EMM Markdown 규격)
+> (AI용 mmd 생성 프롬프트), `../emm-spec.md`(Mindmap Markdown(mmd) 규격)
 
 ## 1. 배경과 목표
 
@@ -51,7 +51,7 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
 > "코드블록 하나로만"만으로는 ChatGPT 가 마크다운을 그대로 렌더해
 > 여러 블록+텍스트로 표시했고, 렌더 화면을 드래그 복사하면 ##·>·표
 > 문법이 사라져 뒷부분이 뭉개졌다. ~~~ 를 명시하면 답변 전체가 복사
-> 버튼 달린 코드블록 하나로 나온다 (백틱이면 EMM 안의 ``` 코드 펜스가
+> 버튼 달린 코드블록 하나로 나온다 (백틱이면 mmd 안의 ``` 코드 펜스가
 > 바깥 블록을 조기에 닫는다). 커스텀 GPT 규칙 B 와 동일.
 
 기존 API 모드가 시스템/유저 메시지로 나눠 보내던 것을 **한 덩어리
@@ -74,7 +74,7 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
    폴백 — API 모드와 동일 경로)로 맵 변환.
 4. 성공 → 미리보기(노드 수·중심 주제) + `[맵으로 열기]`.
    실패 → "맵 구조(# 견출·- 리스트)를 찾지 못했습니다. AI에게
-   **'방금 답변을 EMM Markdown 코드블록 하나로만 다시 출력해줘'**라고
+   **'방금 답변을 Mindmap Markdown(mmd) 코드블록 하나로만 다시 출력해줘'**라고
    요청한 뒤 다시 붙여넣으세요." 안내 (이 요청 문구도 ⧉ 복사 버튼).
 
 **붙여넣기는 인식만 한다 (2026-08-05 변경)** — 자동 실행 옵션과
@@ -95,7 +95,7 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
 
 - **새 맵 생성**: 현행 API 모드와 같은 경로 — 편집 중인 맵이 있으면
   "현재 맵을 닫고 진행할까요?" 확인 게이트, 서버 연결 해제
-  (`detachFromServer`), 레이아웃은 EMM 메타 or 기본.
+  (`detachFromServer`), 레이아웃은 mmd 메타 or 기본.
 - **확인창은 브라우저 confirm 이 아니라 커스텀 팝오버** (2026-08-04
   실사용 보고 — 화면 상단 중앙의 브라우저 confirm 이 눈에 들어오지
   않았다). 왼쪽 패널 **오른쪽 옆 + 화면 세로 중앙**에 뜨며
@@ -188,7 +188,7 @@ EMM_SYSTEM_PROMPT            ← emmSystemPrompt.ts 내장본 그대로
 ```ts
 /** 웹 AI에 붙여넣을 원샷 프롬프트 (시스템+유형+주제+출력 지시) */
 export function buildWebAiPrompt(opts: {
-  systemPrompt: string;         // EMM 시스템 프롬프트 (내장본)
+  systemPrompt: string;         // mmd 시스템 프롬프트 (내장본)
   topic: string;
   typeKey: string;              // GENERATION_TYPES key
 }): string;
@@ -335,7 +335,7 @@ ChatGPT 쪽은 같은 MCP 서버로 **앱(구 플러그인, §8-1)** 과 커스�
 
 | kind | 항목 | 보내는 것 | 이유 |
 |---|---|---|---|
-| plain | Claude · ChatGPT · Gemini | ① 프롬프트 **전체**(EMM 규칙+주제) | 규칙을 모르는 일반 채팅 |
+| plain | Claude · ChatGPT · Gemini | ① 프롬프트 **전체**(mmd 규칙+주제) | 규칙을 모르는 일반 채팅 |
 | gpt | EasyMindMap ChatGPT 앱 | **주제만** | 규칙이 GPT 안에 들어 있다 |
 
 > 화면 이름은 `EasyMindMap ChatGPT 앱`(2026-08-05 지정) — "ChatGPT

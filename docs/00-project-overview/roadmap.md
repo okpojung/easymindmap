@@ -10,7 +10,7 @@
 >
 > **MVP 는 공개(Apache-2.0), V1 이후의 제품 기능은 유료**다 — 구현은 별도
 > private 저장소에서 하고 공개 코어에는 **확장점과 이 설계 문서만** 남는다.
-> 경계와 예외(운영 도구·EMM 포맷·화면 자리)는
+> 경계와 예외(운영 도구·mmd 포맷·화면 자리)는
 > [`docs/04-extensions/open-core-boundary.md`](../04-extensions/open-core-boundary.md)
 > 에 있다. **이 로드맵은 그대로 공개로 둔다** — 로드맵이 보이는 편이 신뢰에 낫다.
 
@@ -61,7 +61,7 @@ V3    ──── AI 협업 요약·작업 생성(COLLAB-14~15 / AI-03~05) / �
 | Export | Markdown / Standalone HTML / 첨부 포함 시 ZIP |
 | AI 맵 생성 | 프롬프트 → 자동 맵 생성 (AI-01) — ① 사용자 API 키(OpenAI/Anthropic/Gemini) 브라우저 직접 호출 ② 웹 AI 클립보드 왕복(서버 LLM 없음) |
 | AI 노드 확장 | 선택 노드 기준 AI 자동 확장 (AI-02) — 경로 맥락 + 프로젝트 지침 |
-| Import | Markdown / HTML / ZIP 가져오기 (EMM 메타데이터 왕복) |
+| Import | Markdown / HTML / ZIP 가져오기 (mmd 메타데이터 왕복) |
 | Canvas 조작 | Zoom(2%~) / Pan / Fit / 100% / Fullscreen / Focus (CANVAS-01~08) |
 | Tag | 노드 태그 추가 / 검색 |
 | Search | 텍스트 / 태그 기반 검색 (결과 목록, 클릭 = 중앙+100%) |
@@ -90,7 +90,7 @@ Queue    : 없음 (BullMQ/Redis 미사용 — AI 호출은 브라우저에서 �
 Layout   : 2-pass algorithm, subtree 단위 (UI 노출 9종 레이아웃)
 Edge     : 방사형 → curve-line (Cubic Bezier 곡선), 나머지 → tree-line (직각선)
 Autosave : 문서 스냅샷 저장 (주기 기본 5분 + 편집 50개 + 안전 시점, 무변경 스킵)
-Export   : EMM Markdown serializer (@easymindmap/emm-parser) + 자체 Standalone
+Export   : Mindmap Markdown(mmd) serializer (@easymindmap/emm-parser) + 자체 Standalone
            HTML 뷰어 (+첨부 ZIP)
 파서      : packages/emm-parser — 파일 포맷·타입 유니언의 단일 원본, CLI·적합성
            스위트 포함

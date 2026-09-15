@@ -72,13 +72,13 @@ MCP 서버가 AI 에게 주는 것은 **도구(tool) 목록**이다. 각 도구�
 
 | 도구 | 감싸는 API | 하는 일 |
 |---|---|---|
-| `create_map` | `POST /v1/maps` + `PUT /v1/maps/:id/document` | **EMM 마크다운을 받아 새 맵으로 저장.** 이것 하나가 이 기능의 목적 전부다 |
+| `create_map` | `POST /v1/maps` + `PUT /v1/maps/:id/document` | **mmd 마크다운을 받아 새 맵으로 저장.** 이것 하나가 이 기능의 목적 전부다 |
 | `list_maps` | `GET /v1/maps` + `GET /v1/maps/shared` + `GET /v1/folders` | 내 맵 목록 (제목·**맵 id**·폴더 이름·수정일·노드 수) + 공유받은 맵. `query`(이름·본문 검색) · `folder`(폴더 이름, `home`) · `limit`. AI 가 "어느 맵을 읽을까" 를 정할 수 있게 — **2단계, §9.5** |
-| `get_map` | `GET /v1/maps/:id/document` | 맵 한 개를 **EMM 마크다운(본문만, 메타 주석 없음)** 으로 돌려준다. 읽기만 — 편집 잠금을 만들지 않는다. 대화에서 기존 맵을 읽고 이어 쓰기 — **2단계, §9.5** |
-| `append_to_map` | `GET` + `PUT /v1/maps/:id/document` | 노드 이름/경로 아래에 EMM 조각을 **덧붙인다** — §9.6 |
+| `get_map` | `GET /v1/maps/:id/document` | 맵 한 개를 **mmd 마크다운(본문만, 메타 주석 없음)** 으로 돌려준다. 읽기만 — 편집 잠금을 만들지 않는다. 대화에서 기존 맵을 읽고 이어 쓰기 — **2단계, §9.5** |
+| `append_to_map` | `GET` + `PUT /v1/maps/:id/document` | 노드 이름/경로 아래에 mmd 조각을 **덧붙인다** — §9.6 |
 | `check_items` | `GET` + `PUT /v1/maps/:id/document` | 노드의 **체크박스만** 체크/해제한다(`- [ ] 완료` 줄 · 체크리스트 노트). "완료된 항목은 완료 체크에 체크해 줘" — §9.12 (2026-09-09) |
 
-**`create_map` 이 받는 것은 EMM 마크다운**이다. `packages/emm-parser` 가
+**`create_map` 이 받는 것은 mmd 마크다운**이다. `packages/emm-parser` 가
 이미 그 포맷의 단일 원본이고, 프롬프트 템플릿(`emm-prompt-templates.md`)
 이 AI 에게 그 포맷을 가르치고 있다. **같은 규격을 그대로 쓴다.**
 
@@ -139,7 +139,7 @@ AI 클라이언트가 액세스 토큰을 받아 보관한다.
   줄이려다 다른 복사를 만드는 셈). 스토어 등재 요건에 맞지 않을 수 있다
 
 > **권고: 안 B 로 시작해 안 A 로 간다.** 안 B 는 며칠이면 붙고 **동작을
-> 실제로 확인**할 수 있다. 도구 정의와 EMM 왕복이 쓸 만한지 먼저 재고,
+> 실제로 확인**할 수 있다. 도구 정의와 mmd 왕복이 쓸 만한지 먼저 재고,
 > 그것이 증명된 뒤에 OAuth 를 세우는 편이 안전하다. 안 A 를 먼저 하면
 > 큰 인증 작업을 끝내고 나서야 "도구가 쓸 만한가"를 알게 된다.
 
@@ -207,8 +207,8 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 |---|---|
 | 맵 생성·문서 저장 API | `POST /v1/maps` · `PUT /v1/maps/:id/document` |
 | JWT 검증 + JIT 사용자 생성 | `common/auth/auth.guard.ts` |
-| EMM 마크다운 ↔ 맵 변환 | `packages/emm-parser` (`parseEmm`/`serializeEmm`) |
-| AI 에게 EMM 을 가르치는 프롬프트 | `emmSystemPrompt.ts` · `emm-prompt-templates.md` |
+| mmd 마크다운 ↔ 맵 변환 | `packages/emm-parser` (`parseEmm`/`serializeEmm`) |
+| AI 에게 mmd 를 가르치는 프롬프트 | `emmSystemPrompt.ts` · `emm-prompt-templates.md` |
 | 쿼터·요금제 판정 | `users.quota_bytes` + `plan_quota_bytes()` |
 
 **새로 만드는 것**
@@ -301,12 +301,12 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 | 앱이 지금 보는 자리(열린 맵·선택 노드) | `apps/api/src/maps/focus.service.ts` — 하트비트가 채우고 MCP 가 읽는다(메모리, §9.9) |
 | 덧붙이기의 순수 부분 (경로 찾기 · 조각 파싱 · 색/방향/레이아웃) | `apps/api/src/mcp/append-to-map.ts` |
 | 템플릿 → 맵 설정 (`create_map` 의 `template`) | `apps/api/src/mcp/map-template.ts` — 프런트 `emmDeclaration.ts`·`levelLayouts.ts` 의 이식, `src/emm/declaration.ts` 복사본 |
-| EMM → 문서 스냅샷 | `apps/api/src/mcp/emm-to-doc.ts` |
+| mmd → 문서 스냅샷 | `apps/api/src/mcp/emm-to-doc.ts` |
 | PAT 발급·검증·폐기 | `apps/api/src/mcp/api-token.service.ts` · `public.api_tokens` |
 | PAT 인증 가드 | `apps/api/src/mcp/mcp-auth.guard.ts` |
 | 토큰 화면 API | `apps/api/src/mcp/mcp-tokens.controller.ts` → `/v1/mcp-tokens` |
 | 토큰 화면 | `apps/frontend/src/components/auth/McpTokensView.tsx` (아바타 ▸ 🔌 AI 커넥터(MCP)) |
-| 문서 스냅샷 → EMM (2단계 `get_map`) | `apps/api/src/mcp/doc-to-emm.ts` — `src/emm/serialize.ts`(직렬화기 복사본, `sync:emm` 이 함께 관리) |
+| 문서 스냅샷 → mmd (2단계 `get_map`) | `apps/api/src/mcp/doc-to-emm.ts` — `src/emm/serialize.ts`(직렬화기 복사본, `sync:emm` 이 함께 관리) |
 
 **공식 SDK(`@modelcontextprotocol/sdk`)를 쓰지 않는다.** 이 앱은
 `module=commonjs` 로 빌드되고, ESM 전용 패키지를 `require` 하면 런타임에
@@ -314,7 +314,7 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 되돌린 이유). 우리가 쓰는 메서드는 넷뿐이라 직접 적는 편이 싸다 —
 3단계(OAuth) 때 다시 따진다.
 
-> ★ **EMM 파서가 `apps/api/src/emm/` 에 복사돼 있다.** 원본은 그대로
+> ★ **mmd 파서가 `apps/api/src/emm/` 에 복사돼 있다.** 원본은 그대로
 > `packages/emm-parser` 다. 복사한 이유는 배포 구조다 — API 는
 > **Nixpacks + Base Directory `apps/api`** 로 빌드돼 `packages/` 가
 > 컨텍스트 밖이고(`dev-server-coolify.md` §5.2), 그 패키지는 아직
@@ -599,7 +599,7 @@ SELECT COUNT(*) AS ok FROM information_schema.tables
 | 도구 | 감싸는 것 | 돌려주는 것 |
 |---|---|---|
 | `list_maps` `{query?, folder?, limit?}` | `MapsService.list`(내 맵) + `listShared`(공유받은 맵) + `FoldersService.list`(폴더 **이름**) | 줄 목록. `- 이름 — id: … · 폴더: … · 수정: … · 노드 N개`. 머리줄에 건수, 넘치면 "더 있습니다" |
-| `get_map` `{map_id}` | `MapsService.getDocument` — **editSession 없이** | 머리줄(이름·id·수정·노드·사진 수·권한) + 빈 줄 + **EMM 본문** |
+| `get_map` `{map_id}` | `MapsService.getDocument` — **editSession 없이** | 머리줄(이름·id·수정·노드·사진 수·권한) + 빈 줄 + **mmd 본문** |
 
 **정한 것과 이유**
 
@@ -627,7 +627,7 @@ SELECT COUNT(*) AS ok FROM information_schema.tables
   세 도구가 다른 수로 말하면 AI 도 사용자도 헷갈린다.
 
 **왕복은 "같은 내용"까지다 — "같은 모양"은 아니다.** `get_map` 본문은
-EMM-Basic(메타 없음)이라 직렬화기 규칙대로 모양이 바뀐다: 목록 항목은
+mmd-Basic(메타 없음)이라 직렬화기 규칙대로 모양이 바뀐다: 목록 항목은
 하위 견출로, 여러 줄 노드는 한 줄로, 표만 있는 노드는 `#### 표` 견출
 아래 표로. 앱의 [내보내기 ▸ Markdown] 본문도 같은 규칙이다. 그래서 읽고
 고쳐 `create_map` 으로 되넣으면 **글은 다 남되 표 노드에 `표` 라는 층이
@@ -650,7 +650,7 @@ EMM-Basic(메타 없음)이라 직렬화기 규칙대로 모양이 바뀐다: �
 | 인자 | 뜻 |
 |---|---|
 | `parent` | 노드 **이름**(`"할 일"`) 또는 **경로**(`"2분기 > 협업"`). 비우거나 `root` 면 중심 주제 아래 새 최상위 가지 |
-| `markdown` | `## 이름` 견출이나 `- 항목` 목록으로 시작하는 EMM 조각. 최상위 항목들이 parent 의 새 하위 노드, 더 깊은 것은 그 아래 |
+| `markdown` | `## 이름` 견출이나 `- 항목` 목록으로 시작하는 mmd 조각. 최상위 항목들이 parent 의 새 하위 노드, 더 깊은 것은 그 아래 |
 
 **정한 규칙과 이유**
 
@@ -1571,6 +1571,6 @@ scope 로 시작할 수 있고, **삭제 후 새로 추가가 PRM 재조회를 �
 
 - [`web-ai-clipboard.md`](web-ai-clipboard.md) — 방법 A(현행) · §9 가 이 문서의 출처
 - [`18-ai.md`](18-ai.md) — API 키 방식 AI 생성
-- [`emm-prompt-templates.md`](emm-prompt-templates.md) — AI 에게 EMM 을 가르치는 프롬프트
+- [`emm-prompt-templates.md`](emm-prompt-templates.md) — AI 에게 mmd 를 가르치는 프롬프트
 - [`../../05-implementation/api-spec.md`](../../05-implementation/api-spec.md) — 감쌀 API 계약
 - [`../open-core-boundary.md`](../open-core-boundary.md) — §5 경계 판단의 기준

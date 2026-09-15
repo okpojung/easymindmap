@@ -12,7 +12,7 @@ docs/
 │  ├─ roadmap.md
 │  ├─ vision.md
 │  ├─ glossary.md                         ← 용어집(협업·인프라·사업 용어)
-│  └─ emm-strategy.md                     ← EMM 표준화·오픈소스·사업화 전략
+│  └─ emm-strategy.md                     ← mmd 표준화·오픈소스·사업화 전략
 ├─ 01-product/
 │  ├─ functional-spec.md
 │  ├─ privacy-policy.md                    ← 개인정보 처리방침
@@ -56,9 +56,9 @@ docs/
 │  └─ state-architecture.md
 │
 ├─ 04-extensions/         👈 확장 기능 (AI / 협업 / 외부 연동)
-│  ├─ emm-spec.md                         ← EasyMindMap Markdown(EMM) 정식 스펙
-│  ├─ emm-testing-guide.md                ← EMM 테스트 가이드 (IT 초보자용)
-│  ├─ markdown-export.md                  ← MD ↔ 맵 변환 규칙 (EMM 구현 규칙서)
+│  ├─ emm-spec.md                         ← Mindmap Markdown(mmd) 정식 스펙
+│  ├─ emm-testing-guide.md                ← mmd 테스트 가이드 (IT 초보자용)
+│  ├─ markdown-export.md                  ← MD ↔ 맵 변환 규칙 (mmd 구현 규칙서)
 │  ├─ content-permanence.md               ← 콘텐츠 영구 보존(오프라인 내장) 차별점·홍보 소재
 │  ├─ rich-node-content.md                ← 리치 노드 콘텐츠(노트 4종→노드) 설계 제안
 │  ├─ auth-session-ui.md                  ← 로그인 게이트·세션 UI (Supabase Auth SDK + Guest)
@@ -71,7 +71,7 @@ docs/
 │  ├─ ai/
 │  │  ├─ 18-ai.md
 │  │  ├─ 19-ai-workflow.md
-│  │  ├─ emm-prompt-templates.md          ← AI용 EMM 생성 프롬프트 템플릿
+│  │  ├─ emm-prompt-templates.md          ← AI용 mmd 생성 프롬프트 템플릿
 │  │  ├─ ai-project-workspace.md          ← AI 프로젝트 워크스페이스 설계(제안)
 │  │  ├─ web-ai-clipboard.md              ← 웹 AI 클립보드 워크플로우
 │  │  └─ easymindmap-copilot-gpt.md       ← EasyMindMap Copilot GPT
@@ -170,7 +170,7 @@ docs/
 | [`docs/00-project-overview/roadmap.md`](00-project-overview/roadmap.md) | 개발 로드맵 |
 | [`docs/00-project-overview/vision.md`](00-project-overview/vision.md) | 제품 비전 |
 | [`docs/00-project-overview/glossary.md`](00-project-overview/glossary.md) | 용어 사전 |
-| [`docs/00-project-overview/emm-strategy.md`](00-project-overview/emm-strategy.md) | EMM 표준화·오픈소스·사업화 전략 |
+| [`docs/00-project-overview/emm-strategy.md`](00-project-overview/emm-strategy.md) | mmd 표준화·오픈소스·사업화 전략 |
 | [`docs/01-product/functional-spec.md`](01-product/functional-spec.md) | 전체 기능 명세서 |
 | [`docs/01-product/privacy-policy.md`](01-product/privacy-policy.md) | 개인정보 처리방침 |
 | [`docs/01-product/product-highlights.md`](01-product/product-highlights.md) | 제품 하이라이트 |
@@ -183,8 +183,8 @@ docs/
 | [`docs/03-editor-core/edge-policy.md`](03-editor-core/edge-policy.md) | 에지/레이아웃/노드 상속 정책 |
 | [`docs/03-editor-core/state-architecture.md`](03-editor-core/state-architecture.md) | 상태관리 아키텍처 |
 | [`docs/04-extensions/README.md`](04-extensions/README.md) | 확장 기능 개요 |
-| [`docs/04-extensions/emm-spec.md`](04-extensions/emm-spec.md) | EasyMindMap Markdown(EMM) 정식 스펙 |
-| [`docs/04-extensions/emm-testing-guide.md`](04-extensions/emm-testing-guide.md) | EMM 테스트 가이드 (IT 초보자용 검증 절차) |
+| [`docs/04-extensions/emm-spec.md`](04-extensions/emm-spec.md) | Mindmap Markdown(mmd) 정식 스펙 |
+| [`docs/04-extensions/emm-testing-guide.md`](04-extensions/emm-testing-guide.md) | mmd 테스트 가이드 (IT 초보자용 검증 절차) |
 | [`docs/04-extensions/content-permanence.md`](04-extensions/content-permanence.md) | 콘텐츠 영구 보존(오프라인 내장) — 차별점·홍보 문구 초안·서버 저장소 계획 |
 | [`docs/04-extensions/rich-node-content.md`](04-extensions/rich-node-content.md) | 리치 노드 콘텐츠(노트 4종→노드 본문·불러오기 옵션·A4 제한) 설계 제안 |
 | [`docs/04-extensions/auth-session-ui.md`](04-extensions/auth-session-ui.md) | 로그인 게이트·세션 UI — Supabase Auth SDK 직접 + Guest 모드 |
@@ -196,11 +196,11 @@ docs/
 | [`docs/04-extensions/admin-console.md`](04-extensions/admin-console.md) | 관리자 콘솔 |
 | [`docs/04-extensions/collaboration/27-sync-model.md`](04-extensions/collaboration/27-sync-model.md) | 동기화 모델 결정 — CRDT(Yjs)·전송·정본 유지·오픈코어 경계 |
 | [`docs/04-extensions/collaboration/28-sync-prework-plan.md`](04-extensions/collaboration/28-sync-prework-plan.md) | 협업을 켜기 전에 코어에서 끝낼 것 — 실행 계획과 실제 코드 현황 |
-| [`docs/04-extensions/ai/emm-prompt-templates.md`](04-extensions/ai/emm-prompt-templates.md) | AI용 EMM 생성 프롬프트 템플릿 |
+| [`docs/04-extensions/ai/emm-prompt-templates.md`](04-extensions/ai/emm-prompt-templates.md) | AI용 mmd 생성 프롬프트 템플릿 |
 | [`docs/04-extensions/ai/ai-project-workspace.md`](04-extensions/ai/ai-project-workspace.md) | AI 프로젝트 워크스페이스 설계 — 맵=프로젝트·노드=질문·경로 맥락(제안, 미구현) |
 | [`docs/04-extensions/ai/web-ai-clipboard.md`](04-extensions/ai/web-ai-clipboard.md) | 웹 AI 클립보드 워크플로우(API 키 없이 웹 AI 사용) |
 | [`docs/04-extensions/ai/easymindmap-copilot-gpt.md`](04-extensions/ai/easymindmap-copilot-gpt.md) | EasyMindMap Copilot GPT |
-| [`docs/04-extensions/markdown-export.md`](04-extensions/markdown-export.md) | MD ↔ 맵 변환 규칙 명세 (EMM 구현 규칙서) |
+| [`docs/04-extensions/markdown-export.md`](04-extensions/markdown-export.md) | MD ↔ 맵 변환 규칙 명세 (mmd 구현 규칙서) |
 | [`docs/04-extensions/import-export/22-map-file-meta.md`](04-extensions/import-export/22-map-file-meta.md) | HTML 내보내기 메타데이터 — MD 의 easymindmap:v1 주석은 2026-09-15 폐기 |
 | [`docs/05-implementation/api-spec.md`](05-implementation/api-spec.md) | API 명세 |
 | [`docs/05-implementation/backend-phase1.md`](05-implementation/backend-phase1.md) | 백엔드 Phase 1(걷는 뼈대·맵 저장) 구현·검증·로드맵 |

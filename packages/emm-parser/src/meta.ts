@@ -161,11 +161,18 @@ export function withInlinedAttachments(
     }),
     children: (n.children ?? []).map(walk),
   });
+  // 루트도 훑는다 — 파서가 첫 견출 전의 `📎` 줄을 루트 첨부로 되돌리므로
+  // (2026-09-15) 루트에도 첨부가 있다. 중심마다 같은 규칙.
   return {
     ...map,
+    root: walk(map.root),
     branches: map.branches.map((b) => walk(b)),
     ...(map.centers
-      ? { centers: map.centers.map((c) => ({ ...c, branches: c.branches.map((b) => walk(b)) })) }
+      ? {
+          centers: map.centers.map((c) => ({
+            ...c, root: walk(c.root), branches: c.branches.map((b) => walk(b)),
+          })),
+        }
       : {}),
   };
 }

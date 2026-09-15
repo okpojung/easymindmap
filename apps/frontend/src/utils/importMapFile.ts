@@ -63,6 +63,14 @@ export function parseMarkdownMapFile(
       map.branches = applyLevelLayouts(
         map.branches, declared.settings.levelLayouts,
       ) as SampleBranch[];
+      // 선언은 맵 전체의 것 — 두 번째 이후의 중심주제 가지에도 같이 박는다
+      // (2026-09-15). 빠뜨리면 그 중심만 선언과 다르게 그려진다.
+      if (map.centers) {
+        map.centers = map.centers.map((c) => ({
+          ...c,
+          branches: applyLevelLayouts(c.branches, declared.settings!.levelLayouts!) as SampleBranch[],
+        }));
+      }
     }
   }
 

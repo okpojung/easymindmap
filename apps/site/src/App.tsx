@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import Home from './pages/Home';
+import FunctionPage from './pages/Function';
+import Ai from './pages/Ai';
 import Emm from './pages/Emm';
 import Library from './pages/Library';
 import { APP_URL } from './config';
@@ -7,8 +9,9 @@ import { APP_URL } from './config';
 /**
  * 길잡이 — **라우터 라이브러리를 쓰지 않는다** (2026-09-13).
  *
- * 길이 셋뿐이고(`/`·`/emm`·`/library`), `/p/{id}` 는 nginx 가 앱으로
- * 넘기므로 이 번들에 오지 않는다. 중첩 경로나 파라미터가 생기면 그때
+ * 길이 몇 개뿐이고(`/`·`/function`·`/ai`·`/emm`·`/library`), `/p/{id}` 는
+ * nginx 가 앱으로 넘기므로 이 번들에 오지 않는다. 중첩 경로나
+ * 파라미터가 생기면 그때
  * 넣는다 — 지금 넣으면 첫 화면에 쓰지도 않을 코드가 실린다.
  */
 function usePath(): string {
@@ -49,6 +52,8 @@ export function Link(
 }
 
 const PAGES: Record<string, () => JSX.Element> = {
+  '/function': FunctionPage,
+  '/ai': Ai,
   '/emm': Emm,
   '/library': Library,
 };
@@ -63,6 +68,8 @@ export default function App() {
           <Link to="/"><span className="brand">Easy<span>MindMap</span></span></Link>
           <nav className="nav">
             <Link to="/">홈</Link>
+            <Link to="/function">기능</Link>
+            <Link to="/ai">AI 연동</Link>
             <Link to="/emm">EMM 표준</Link>
             <Link to="/library">지식창고</Link>
           </nav>
@@ -75,6 +82,8 @@ export default function App() {
         <div className="wrap">
           <span>© EasyMindMap</span>
           <span className="spacer" />
+          <Link to="/function">기능</Link>
+          <Link to="/ai">AI 연동</Link>
           <Link to="/emm">EMM 표준</Link>
           <a href={APP_URL}>앱 열기</a>
         </div>

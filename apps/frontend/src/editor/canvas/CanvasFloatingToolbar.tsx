@@ -5,7 +5,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
-import { useDocumentStore } from '@/stores/documentStore';
+import { findParentId, isCenterRootId, useDocumentStore } from '@/stores/documentStore';
+import { mapCenters } from '@/editor/__samples__/types';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
 
@@ -51,9 +52,32 @@ export function CanvasFloatingToolbar({
         walk((n.children ?? []) as typeof nodes);
       }
     };
-    walk(state.map.branches as { id: string; children?: unknown[] }[]);
+    for (const c of mapCenters(state.map)) walk(c.branches as { id: string; children?: unknown[] }[]);
     return hit;
   });
+
+  // 여러 중심주제 (2026-09-15, 2단계 — emm-spec §3.1 · 10-canvas §21.2)
+  const addCenter = useDocumentStore((state) => state.addCenter);
+  const promoteToCenter = useDocumentStore((state) => state.promoteToCenter);
+  const mergeCentersInto = useDocumentStore((state) => state.mergeCentersInto);
+  const centerCount = useDocumentStore((state) => 1 + (state.map.centers?.length ?? 0));
+  const selectedIsCenter = useDocumentStore((state) => isCenterRootId(state.map, selectedId));
+  // 1레벨 가지(부모가 중심주제 루트)만 중심주제로 올릴 수 있다
+  const selectedIsLevel1 = useDocumentStore((state) =>
+    !!selectedId && !isCenterRootId(state.map, selectedId)
+    && isCenterRootId(state.map, findParentId(state.map, selectedId)));
+
+  const handleAddCenter = () => {
+    const id = addCenter();
+    setSelectedId(id);
+  };
+  const handlePromote = () => {
+    const id = promoteToCenter(selectedId);
+    if (id) setSelectedId(id);
+  };
+  const handleMerge = () => {
+    if (mergeCentersInto(selectedId)) setSelectedId('root');
+  };
 
   const panMode = useViewportStore((state) => state.panMode);
   const togglePanMode = useViewportStore((state) => state.togglePanMode);
@@ -114,6 +138,39 @@ export function CanvasFloatingToolbar({
       >
         <I.Trash size={15} />
       </ToolbarBtn>
+
+      {!kanban && (
+        <>
+          <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
+          <GroupLabel t={t}>중심</GroupLabel>
+          <ToolbarBtn
+            t={t}
+            title="새 중심주제 — 빈 자리에 중심주제를 하나 더 만든다 (끌어서 옮길 수 있다)"
+            onClick={handleAddCenter}
+            testId="center-add"
+          >
+            <I.Center size={15} />
+          </ToolbarBtn>
+          <ToolbarBtn
+            t={t}
+            title="이 가지를 중심주제로 올리기 — 1레벨 가지를 떼어 새 중심주제로 (하위는 그 가지가 된다)"
+            disabled={!selectedIsLevel1}
+            onClick={handlePromote}
+            testId="center-promote"
+          >
+            <I.ArrowUp size={15} />
+          </ToolbarBtn>
+          <ToolbarBtn
+            t={t}
+            title="다른 중심주제를 이 중심의 가지로 묶기 — 중심주제를 하나로 (각 중심이 가지 하나가 된다)"
+            disabled={!selectedIsCenter || centerCount < 2}
+            onClick={handleMerge}
+            testId="center-merge"
+          >
+            <I.FolderMove size={15} />
+          </ToolbarBtn>
+        </>
+      )}
 
       <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
 

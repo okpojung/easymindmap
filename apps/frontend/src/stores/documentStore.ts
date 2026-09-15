@@ -249,6 +249,16 @@ interface DocumentState {
   // 이동, 루트 +버튼의 좌/우 추가에 사용 (다른 레이아웃에서는 무시됨)
   setBranchSide: (branchId: string | null, side: 'left' | 'right') => void;
 
+  // 여러 중심주제 (2026-09-15, 2단계 — emm-spec §3.1 · 08-layout §23)
+  /** 빈 자리에 새 중심주제를 만든다 (맨 뒤 순서 · 자동 배치). 새 루트 id 를 돌려준다 */
+  addCenter: (text?: string) => string;
+  /** 끌어 옮긴 자리 — 첫 중심 루트 기준 상대 좌표. null 이면 자동 배치로 돌아간다 */
+  setCenterPos: (rootId: string | null, pos: { dx: number; dy: number } | null) => void;
+  /** 다른 중심주제를 전부 이 중심의 가지로 묶는다 (각 중심 = 가지 하나, 그 가지들 = 자식) */
+  mergeCentersInto: (rootId: string | null) => boolean;
+  /** 1레벨 가지 하나를 떼어 새 중심주제로 올린다 (자식 = 그 중심의 가지). 새 루트 id */
+  promoteToCenter: (branchId: string | null) => string | null;
+
   // Tags
   addNodeTag: (nodeId: string | null, tag: string) => void;
   removeNodeTag: (nodeId: string | null, tag: string) => void;
@@ -436,6 +446,95 @@ function allBranchLists(map: SampleMap): { rootId: string; branches: SampleBranc
     { rootId: 'root', branches: map.branches },
     ...(map.centers ?? []).map((c) => ({ rootId: c.root.id, branches: c.branches })),
   ];
+}
+
+/** 이 id 가 어느 중심주제의 루트인가 ('root' 포함). */
+export function isCenterRootId(map: SampleMap, nodeId: string | null): boolean {
+  return !!nodeId && centerRootOf(map, nodeId) !== null;
+}
+
+/**
+ * **중심주제 하나를 보는 창** (2026-09-15, 2단계). 추가·삭제·이동 액션은
+ * "루트('root') + 가지(map.branches)" 를 전제로 쓰여 있다. 중심이 여럿이면
+ * 그 전제가 **중심마다** 성립하므로, 노드가 속한 중심을 찾아 그 중심의
+ * (rootId, root, branches) 를 주고 결과를 되돌려 쓰면 같은 코드가 그대로
+ * 돈다. index 0 = 첫 중심(root/branches), i = centers[i-1].
+ */
+interface CenterView {
+  index: number;
+  rootId: string;
+  root: SampleRoot;
+  branches: SampleBranch[];
+}
+function centerViews(map: SampleMap): CenterView[] {
+  return [
+    { index: 0, rootId: 'root', root: map.root, branches: map.branches },
+    ...(map.centers ?? []).map((c, i) => ({
+      index: i + 1, rootId: c.root.id, root: c.root, branches: c.branches,
+    })),
+  ];
+}
+/** 노드(중심 루트이거나 가지 안의 노드)가 속한 중심. 없으면 null. */
+function centerOfNode(map: SampleMap, nodeId: string): CenterView | null {
+  for (const v of centerViews(map)) {
+    if (v.rootId === nodeId || findNode(v.branches, nodeId)) return v;
+  }
+  return null;
+}
+/** 그 중심의 가지 목록(과 루트)을 바꿔 새 맵을 만든다. */
+function withCenter(
+  map: SampleMap,
+  view: CenterView,
+  patch: { branches?: SampleBranch[]; root?: SampleRoot },
+): SampleMap {
+  if (view.index === 0) {
+    return {
+      ...map,
+      ...(patch.root ? { root: { ...patch.root, id: 'root', colorKey: 'root' } } : {}),
+      ...(patch.branches ? { branches: patch.branches } : {}),
+    };
+  }
+  return {
+    ...map,
+    centers: (map.centers ?? []).map((c, i) => (i + 1 === view.index
+      ? {
+          ...c,
+          ...(patch.root ? { root: { ...patch.root, id: c.root.id, colorKey: 'root' } } : {}),
+          ...(patch.branches ? { branches: patch.branches } : {}),
+        }
+      : c)),
+  };
+}
+/** 모든 중심의 가지 목록에 같은 변환을 건다 (접기·삭제처럼 id 로 찾는 것). */
+function mapAllBranches(map: SampleMap, fn: (branches: SampleBranch[]) => SampleBranch[]): SampleMap {
+  return {
+    ...map,
+    branches: fn(map.branches),
+    ...(map.centers
+      ? { centers: map.centers.map((c) => ({ ...c, branches: fn(c.branches) })) }
+      : {}),
+  };
+}
+/** 어느 중심에 있든 노드를 떼어 낸다 — 중심을 건너 옮길 때 쓴다. */
+function extractFromMap(map: SampleMap, nodeId: string): { map: SampleMap; removed: MindNode | null } {
+  let removed: MindNode | null = null;
+  const next = mapAllBranches(map, (branches) => {
+    if (removed) return branches;
+    const res = extractNode(branches, nodeId);
+    if (res.removed) removed = res.removed;
+    return res.nodes as SampleBranch[];
+  });
+  return { map: removed ? next : map, removed };
+}
+/** 새 중심주제의 루트 — 노드 하나를 루트 모양으로 (가지·좌우·색은 뺀다). */
+function toCenterRoot(node: MindNode, id: string): SampleRoot {
+  const { children: _c, side: _s, colorKey: _k, collapsed: _cl, mdForm: _m, ...rest } = node;
+  return { ...(rest as Omit<SampleRoot, 'id' | 'colorKey'>), id, colorKey: 'root', side: 'center' };
+}
+/** 중심주제 루트를 다른 중심의 가지로 — 그 가지들은 자식이 된다. */
+function centerToBranch(root: SampleRoot, branches: SampleBranch[], id: string, index: number): SampleBranch {
+  const { id: _id, colorKey: _k, side: _s, ...rest } = root;
+  return makeBranch({ ...(rest as MindNode), id, children: branches as MindNode[] }, index);
 }
 
 // ---------------------------------------------------------------------------
@@ -832,7 +931,7 @@ export type MoveNodesResult = {
  * 없는 노드, 중복은 뺀다. 결과는 문서 순서(앞→뒤).
  */
 export function topLevelSelection(map: SampleMap, nodeIds: string[]): string[] {
-  const chosen = new Set(nodeIds.filter((id) => id && id !== 'root'));
+  const chosen = new Set(nodeIds.filter((id) => id && !isCenterRootId(map, id)));
   if (!chosen.size) return [];
   const out: string[] = [];
   const walk = (list: MindNode[], underChosen: boolean) => {
@@ -842,7 +941,8 @@ export function topLevelSelection(map: SampleMap, nodeIds: string[]): string[] {
       if (n.children?.length) walk(n.children as MindNode[], underChosen || mine);
     }
   };
-  walk(map.branches as MindNode[], false);
+  // 중심주제 순서 → 그 안의 문서 순서
+  for (const { branches } of allBranchLists(map)) walk(branches as MindNode[], false);
   return out;
 }
 
@@ -856,10 +956,10 @@ function applyMoveRelative(
   targetId: string,
   position: 'child' | 'before' | 'after' | 'parent',
 ): SampleMap | null {
-  if (!nodeId || nodeId === 'root' || !targetId) return null;
+  if (!nodeId || isCenterRootId(map, nodeId) || !targetId) return null;
   if (nodeId === targetId) return null;
 
-  const moving = findNode(map.branches, nodeId);
+  const moving = findNodeInMap(map, nodeId) as MindNode | null;
   if (!moving) return null;
   // 자기 자손 밑으로는 못 간다 — 판정은 emm-parser 한 곳에서 한다.
   // (형제로 붙는 경우도 `targetId` 로 본다: 대상이 내 자손이면 그
@@ -868,51 +968,66 @@ function applyMoveRelative(
   if (wouldCreateCycle((id) => idx.get(id), nodeId, targetId)) return null;
 
   const hMoving = subtreeHeight(moving);
+  // 대상이 있는 중심주제 — 옮기는 노드가 다른 중심에 있어도 된다 (2026-09-15).
+  // 떼어 내는 것은 전체(extractFromMap), 붙이는 것은 대상 중심의 창(view).
+  const targetIsCenterRoot = isCenterRootId(map, targetId);
 
   // --- become a CHILD of target ---
   if (position === 'child') {
-    if (targetId !== 'root') {
+    if (!targetIsCenterRoot) {
       const tDepth = getNodeDepth(map, targetId);
       if (tDepth < 0 || tDepth + 1 + hMoving > MAX_DEPTH) return null;
     }
-    const { nodes: pruned, removed } = extractNode(map.branches, nodeId);
-    if (!removed) return null;
-    if (targetId === 'root') {
-      return { ...map, branches: [...(pruned as SampleBranch[]), makeBranch(removed, pruned.length)] };
+    const ex = extractFromMap(map, nodeId);
+    if (!ex.removed) return null;
+    const tv = centerOfNode(ex.map, targetId);
+    if (!tv) return null;
+    if (targetId === tv.rootId) {
+      return withCenter(ex.map, tv, {
+        branches: [...tv.branches, makeBranch(ex.removed, tv.branches.length)],
+      });
     }
-    return { ...map, branches: appendChild(pruned, targetId, removed) as SampleBranch[] };
+    return withCenter(ex.map, tv, {
+      branches: appendChild(tv.branches, targetId, ex.removed) as SampleBranch[],
+    });
   }
 
   // --- become a SIBLING before/after target ---
   if (position === 'before' || position === 'after') {
-    if (targetId === 'root') return null;
+    if (targetIsCenterRoot) return null;
     const tParent = findParentId(map, targetId);
     if (!tParent) return null;
     const tDepth = getNodeDepth(map, targetId);
     if (tDepth + hMoving > MAX_DEPTH) return null;
 
-    const { nodes: pruned, removed } = extractNode(map.branches, nodeId);
-    if (!removed) return null;
+    const ex = extractFromMap(map, nodeId);
+    if (!ex.removed) return null;
+    const tv = centerOfNode(ex.map, targetId);
+    if (!tv) return null;
 
-    if (tParent === 'root') {
-      const branch = makeBranch(removed, pruned.length);
+    if (tParent === tv.rootId) {
+      const branch = makeBranch(ex.removed, tv.branches.length);
       // 형제로 붙는 대상 브랜치의 side를 따라간다 — 방사형·양쪽에서
       // 왼쪽 브랜치의 상/하 드롭존에 놓으면 왼쪽으로 이동해야 한다.
       // (side를 그대로 두면 배열 순서만 바뀌고 반대쪽에 그려져
       // "이동이 안 된 것"처럼 보인다)
-      const tgt = map.branches.find((b) => b.id === targetId);
+      const tgt = tv.branches.find((b) => b.id === targetId);
       if (tgt && (tgt.side === 'left' || tgt.side === 'right')) {
         branch.side = tgt.side;
       }
-      return { ...map, branches: insertSibling(pruned, targetId, branch, position) as SampleBranch[] };
+      return withCenter(ex.map, tv, {
+        branches: insertSibling(tv.branches, targetId, branch, position) as SampleBranch[],
+      });
     }
-    return { ...map, branches: insertSibling(pruned, targetId, removed, position) as SampleBranch[] };
+    return withCenter(ex.map, tv, {
+      branches: insertSibling(tv.branches, targetId, ex.removed, position) as SampleBranch[],
+    });
   }
 
   // --- become the PARENT of target (target moves under moving) ---
   if (position === 'parent') {
-    if (targetId === 'root') return null;
-    const target = findNode(map.branches, targetId);
+    if (targetIsCenterRoot) return null;
+    const target = findNodeInMap(map, targetId) as MindNode | null;
     if (!target) return null;
     const tParent = findParentId(map, targetId);
     if (!tParent) return null;
@@ -921,23 +1036,27 @@ function applyMoveRelative(
     if (tDepth + 1 + Math.max(hMoving, hT) > MAX_DEPTH) return null;
 
     // Remove the moving node, then the target, then nest target under moving.
-    const ex1 = extractNode(map.branches, nodeId);
+    const ex1 = extractFromMap(map, nodeId);
     if (!ex1.removed) return null;
-    const ex2 = extractNode(ex1.nodes, targetId);
+    const ex2 = extractFromMap(ex1.map, targetId);
     if (!ex2.removed) return null;
+    const tv = centerOfNode(ex2.map, tParent);
+    if (!tv) return null;
 
     const newParent: MindNode = {
       ...ex1.removed,
       children: [...(ex1.removed.children ?? []), ex2.removed],
     };
 
-    if (tParent === 'root') {
-      const branch = makeBranch(newParent, ex2.nodes.length);
+    if (tParent === tv.rootId) {
+      const branch = makeBranch(newParent, tv.branches.length);
       branch.side = target.side === 'left' || target.side === 'right' ? target.side : branch.side;
       branch.colorKey = (target.colorKey as NodeColorKey) ?? branch.colorKey;
-      return { ...map, branches: [...(ex2.nodes as SampleBranch[]), branch] };
+      return withCenter(ex2.map, tv, { branches: [...tv.branches, branch] });
     }
-    return { ...map, branches: appendChild(ex2.nodes, tParent, newParent) as SampleBranch[] };
+    return withCenter(ex2.map, tv, {
+      branches: appendChild(tv.branches, tParent, newParent) as SampleBranch[],
+    });
   }
 
   return null;
@@ -1008,22 +1127,26 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
     set((state) => {
       const map = state.map;
+      const pid = parentId || 'root';
+      // 어느 중심주제의 노드인가 — 그 중심 안에서 예전 규칙 그대로 (2026-09-15)
+      const view = centerOfNode(map, pid);
+      if (!view) return {};
 
-      // Add a top-level branch.
-      if (!parentId || parentId === 'root') {
+      // Add a top-level branch (of that center).
+      if (pid === view.rootId) {
         const newNode = createNewNode();
         newNodeId = newNode.id;
         const branch = makeBranch(
-          withLevelLayout({ ...newNode, style: inheritStyle(map.root.style, 1) }, map, 1),
-          map.branches.length,
+          withLevelLayout({ ...newNode, style: inheritStyle(view.root.style, 1) }, map, 1),
+          view.branches.length,
         );
-        return { map: { ...map, branches: [...map.branches, branch] } };
+        return { map: withCenter(map, view, { branches: [...view.branches, branch] }) };
       }
 
-      const parent = findNode(map.branches, parentId);
+      const parent = findNode(view.branches, pid);
       if (!parent) return {};
 
-      const parentDepth = getNodeDepth(map, parentId);
+      const parentDepth = getNodeDepth(map, pid);
       if (parentDepth + 1 > MAX_DEPTH) return {}; // depth guard
 
       const newNode: MindNode = withLevelLayout({
@@ -1034,7 +1157,9 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       newNodeId = newNode.id;
 
       return {
-        map: { ...map, branches: appendChild(map.branches, parentId, newNode) as SampleBranch[] },
+        map: withCenter(map, view, {
+          branches: appendChild(view.branches, pid, newNode) as SampleBranch[],
+        }),
       };
     });
 
@@ -1047,22 +1172,24 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
     set((state) => {
       const map = state.map;
-      const pid = !parentId || parentId === 'root' ? 'root' : parentId;
+      const pid = parentId || 'root';
+      const view = centerOfNode(map, pid);
+      if (!view) return {};
 
-      // Add under root → each becomes a branch.
-      if (pid === 'root') {
-        let branches = map.branches;
+      // Add under a center root → each becomes a branch of that center.
+      if (pid === view.rootId) {
+        let branches = view.branches;
         clean.forEach((text) => {
           const branch = makeBranch(
-            withLevelLayout({ ...createNewNode(), text, style: inheritStyle(map.root.style, 1) }, map, 1),
+            withLevelLayout({ ...createNewNode(), text, style: inheritStyle(view.root.style, 1) }, map, 1),
             branches.length,
           );
           branches = [...branches, branch];
         });
-        return { map: { ...map, branches: branches as SampleBranch[] } };
+        return { map: withCenter(map, view, { branches: branches as SampleBranch[] }) };
       }
 
-      const parent = findNode(map.branches, pid);
+      const parent = findNode(view.branches, pid);
       if (!parent) return {};
       const parentDepth = getNodeDepth(map, pid);
       if (parentDepth + 1 > MAX_DEPTH) return {};
@@ -1074,12 +1201,12 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         style: inheritStyle(parent.style, parentDepth + 1),
       }, map, parentDepth + 1));
 
-      const branches = updateNodeById(map.branches, pid, (p) => ({
+      const branches = updateNodeById(view.branches, pid, (p) => ({
         ...p,
         children: [...(p.children ?? []), ...newChildren],
       })) as SampleBranch[];
 
-      return { map: { ...map, branches } };
+      return { map: withCenter(map, view, { branches }) };
     });
   },
 
@@ -1099,21 +1226,23 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     if (!children.length) return;
     set((state) => {
       const map = state.map;
-      const pid = !nodeId || nodeId === 'root' ? 'root' : nodeId;
+      const pid = nodeId || 'root';
+      const view = centerOfNode(map, pid);
+      if (!view) return {};
 
-      // 루트 아래 → 각 최상위 노드를 브랜치로 (색 순환)
-      if (pid === 'root') {
-        let branches = map.branches as MindNode[];
+      // 중심 루트 아래 → 각 최상위 노드를 그 중심의 브랜치로 (색 순환)
+      if (pid === view.rootId) {
+        let branches = view.branches as MindNode[];
         withLevelLayoutsDeep(children, map, 1).forEach((c) => {
           branches = [
             ...branches,
-            makeBranch({ ...c, style: c.style ?? inheritStyle(map.root.style, 1) }, branches.length),
+            makeBranch({ ...c, style: c.style ?? inheritStyle(view.root.style, 1) }, branches.length),
           ];
         });
-        return { map: { ...map, branches: branches as SampleBranch[] } };
+        return { map: withCenter(map, view, { branches: branches as SampleBranch[] }) };
       }
 
-      const parent = findNode(map.branches, pid);
+      const parent = findNode(view.branches, pid);
       if (!parent) return {};
       const parentDepth = getNodeDepth(map, pid);
       // 삽입되는 최상위 자식은 부모 색/스타일을 상속(하위는 파싱값 유지).
@@ -1124,7 +1253,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         colorKey: c.colorKey ?? inheritColorKey(parent),
         style: c.style ?? inheritStyle(parent.style, parentDepth + 1),
       }));
-      const branches = updateNodeById(map.branches, pid, (p) => ({
+      const branches = updateNodeById(view.branches, pid, (p) => ({
         // **받는 노드도 그 레벨의 레이아웃으로** — 손으로 만든 노드(layoutType
         // 없음)에 삽입하면 자식이 형제와 다르게 펼쳐지던 바로 그 자리.
         // 이미 지정돼 있으면 건드리지 않는다.
@@ -1132,7 +1261,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         collapsed: undefined, // 새 자식이 보이도록 펼침
         children: [...(p.children ?? []), ...prepared],
       })) as SampleBranch[];
-      return { map: { ...map, branches } };
+      return { map: withCenter(map, view, { branches }) };
     });
   },
 
@@ -1141,7 +1270,9 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
     set((state) => {
       const map = state.map;
-      if (!nodeId || nodeId === 'root') return {};
+      if (!nodeId || isCenterRootId(map, nodeId)) return {}; // 중심주제는 형제가 없다
+      const view = centerOfNode(map, nodeId);
+      if (!view) return {};
 
       const parentId = findParentId(map, nodeId);
       if (!parentId) return {};
@@ -1150,22 +1281,24 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       if (depth > MAX_DEPTH) return {};
 
       // Sibling of a branch → another branch (inherit the reference branch's style).
-      if (parentId === 'root') {
-        const refBranch = findNode(map.branches, nodeId);
+      if (parentId === view.rootId) {
+        const refBranch = findNode(view.branches, nodeId);
         const newNode = createNewNode();
         newNodeId = newNode.id;
         const branch = makeBranch(
           withLevelLayout({ ...newNode, colorKey: inheritColorKey(refBranch), style: inheritStyle(refBranch?.style, 1) }, map, 1),
-          map.branches.length,
+          view.branches.length,
         );
         return {
-          map: { ...map, branches: insertSibling(map.branches, nodeId, branch, position) as SampleBranch[] },
+          map: withCenter(map, view, {
+            branches: insertSibling(view.branches, nodeId, branch, position) as SampleBranch[],
+          }),
         };
       }
 
       // Inherit the SELECTED (reference) node's style, not the parent's, so a
       // new sibling looks like the node it was created from (minus level font).
-      const reference = findNode(map.branches, nodeId);
+      const reference = findNode(view.branches, nodeId);
       const newNode: MindNode = withLevelLayout({
         ...createNewNode(),
         colorKey: inheritColorKey(reference),
@@ -1174,7 +1307,9 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       newNodeId = newNode.id;
 
       return {
-        map: { ...map, branches: insertSibling(map.branches, nodeId, newNode, position) as SampleBranch[] },
+        map: withCenter(map, view, {
+          branches: insertSibling(view.branches, nodeId, newNode, position) as SampleBranch[],
+        }),
       };
     });
 
@@ -1188,9 +1323,11 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
     set((state) => {
       const map = state.map;
-      if (!nodeId || nodeId === 'root') return {};
+      if (!nodeId || isCenterRootId(map, nodeId)) return {};
+      const view = centerOfNode(map, nodeId);
+      if (!view) return {};
 
-      const target = findNode(map.branches, nodeId);
+      const target = findNode(view.branches, nodeId);
       if (!target) return {};
 
       const depth = getNodeDepth(map, nodeId);
@@ -1206,51 +1343,60 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       newNodeId = newNode.id;
 
       // Wrapping a top-level branch: the new node becomes the branch.
-      if (parentId === 'root') {
-        const idx = map.branches.findIndex((b) => b.id === nodeId);
+      if (parentId === view.rootId) {
+        const idx = view.branches.findIndex((b) => b.id === nodeId);
         const wrapped = makeBranch({ ...newNode, children: [target] }, idx);
         wrapped.side = target.side === 'left' || target.side === 'right' ? target.side : wrapped.side;
         wrapped.colorKey = (target.colorKey as NodeColorKey) ?? wrapped.colorKey;
         return {
-          map: {
-            ...map,
-            branches: map.branches.map((b) => (b.id === nodeId ? wrapped : b)) as SampleBranch[],
-          },
+          map: withCenter(map, view, {
+            branches: view.branches.map((b) => (b.id === nodeId ? wrapped : b)) as SampleBranch[],
+          }),
         };
       }
 
-      const branches = updateNodeById(map.branches, parentId!, (p) => ({
+      const branches = updateNodeById(view.branches, parentId!, (p) => ({
         ...p,
         children: (p.children ?? []).map((c) =>
           c.id === nodeId ? { ...newNode, children: [c] } : c,
         ),
       })) as SampleBranch[];
 
-      return { map: { ...map, branches } };
+      return { map: withCenter(map, view, { branches }) };
     });
 
     return newNodeId;
   },
 
   deleteNode: (nodeId) => {
-    if (!nodeId || nodeId === 'root') return; // root is protected
-    set((state) => ({
-      map: {
-        ...state.map,
-        branches: deleteNodeRecursive(state.map.branches, nodeId) as SampleBranch[],
-      },
-    }));
+    if (!nodeId || nodeId === 'root') return; // 첫 중심의 루트는 지울 수 없다
+    set((state) => {
+      const map = state.map;
+      // 두 번째 이후의 중심주제 루트 → 그 중심을 가지째 지운다 (2026-09-15).
+      // 노드를 지우면 하위가 함께 가는 것과 같은 규칙. 히스토리로 되돌린다.
+      if (map.centers?.some((c) => c.root.id === nodeId)) {
+        const centers = map.centers.filter((c) => c.root.id !== nodeId);
+        return { map: { ...map, centers: centers.length ? centers : undefined } };
+      }
+      return { map: mapAllBranches(map, (b) => deleteNodeRecursive(b, nodeId) as SampleBranch[]) };
+    });
   },
 
   deleteNodesBulk: (nodeIds) => {
     const ids = (nodeIds ?? []).filter((id) => id && id !== 'root');
     if (!ids.length) return;
     set((state) => {
-      let branches = state.map.branches;
-      for (const id of ids) {
-        branches = deleteNodeRecursive(branches, id) as SampleBranch[];
+      let map = state.map;
+      const centerIds = new Set(ids.filter((id) => map.centers?.some((c) => c.root.id === id)));
+      if (centerIds.size) {
+        const centers = (map.centers ?? []).filter((c) => !centerIds.has(c.root.id));
+        map = { ...map, centers: centers.length ? centers : undefined };
       }
-      return { map: { ...state.map, branches } };
+      for (const id of ids) {
+        if (centerIds.has(id)) continue;
+        map = mapAllBranches(map, (b) => deleteNodeRecursive(b, id) as SampleBranch[]);
+      }
+      return { map };
     });
   },
 
@@ -1259,12 +1405,14 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
     set((state) => {
       const map = state.map;
-      if (!nodeId || nodeId === 'root') return {}; // root can't move
+      if (!nodeId || isCenterRootId(map, nodeId)) return {}; // 중심주제 루트는 이렇게 옮기지 않는다
       if (!newParentId) return {};
       if (nodeId === newParentId) return {};
 
-      const moving = findNode(map.branches, nodeId);
+      const moving = findNodeInMap(map, nodeId) as MindNode | null;
       if (!moving) return {};
+      const target = centerOfNode(map, newParentId);
+      if (!target) return {};
 
       // Can't drop a node into itself or one of its own descendants.
       // **판정 원본은 packages/emm-parser 의 wouldCreateCycle 한 곳이다.**
@@ -1282,18 +1430,22 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       const newParentDepth = getNodeDepth(map, newParentId);
       if (newParentDepth + 1 + subtreeHeight(moving) > MAX_DEPTH) return {};
 
-      const { nodes: pruned, removed } = extractNode(map.branches, nodeId);
-      if (!removed) return {};
+      // 어느 중심에 있든 떼어 낸 뒤, 대상 중심에 붙인다 (중심을 건너도 된다)
+      const ex = extractFromMap(map, nodeId);
+      if (!ex.removed) return {};
+      const tv = centerOfNode(ex.map, newParentId)!; // 떼어 낸 뒤의 창
 
-      if (newParentId === 'root') {
-        const branch = makeBranch(removed, pruned.length);
+      if (newParentId === tv.rootId) {
+        const branch = makeBranch(ex.removed, tv.branches.length);
         ok = true;
-        return { map: { ...map, branches: [...(pruned as SampleBranch[]), branch] } };
+        return { map: withCenter(ex.map, tv, { branches: [...tv.branches, branch] }) };
       }
 
       ok = true;
       return {
-        map: { ...map, branches: appendChild(pruned, newParentId, removed) as SampleBranch[] },
+        map: withCenter(ex.map, tv, {
+          branches: appendChild(tv.branches, newParentId, ex.removed) as SampleBranch[],
+        }),
       };
     });
 
@@ -1358,15 +1510,15 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   },
 
   toggleCollapse: (nodeId) => {
-    if (!nodeId || nodeId === 'root') return; // root can't collapse
-    asViewOnly(() => set((state) => ({
+    if (!nodeId) return;
+    asViewOnly(() => set((state) => (isCenterRootId(state.map, nodeId) ? {} : { // 중심주제는 접지 않는다
       map: mutateNode(state.map, nodeId, (n) => ({ ...n, collapsed: !n.collapsed })),
     })));
   },
 
   setCollapsed: (nodeId, collapsed) => {
-    if (!nodeId || nodeId === 'root') return;
-    asViewOnly(() => set((state) => ({
+    if (!nodeId) return;
+    asViewOnly(() => set((state) => (isCenterRootId(state.map, nodeId) ? {} : {
       map: mutateNode(state.map, nodeId, (n) => ({ ...n, collapsed })),
     })));
   },
@@ -1379,7 +1531,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         children: walk(n.children ?? []),
       }));
     asViewOnly(() => set((state) => ({
-      map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
+      map: mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
     })));
   },
 
@@ -1391,7 +1543,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         children: walk(n.children ?? []),
       }));
     asViewOnly(() => set((state) => ({
-      map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
+      map: mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
     })));
   },
 
@@ -1405,7 +1557,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         ? { ...n, collapsed: undefined, children: open(n.children ?? []) }
         : { ...n, children: walk(n.children ?? []) });
     asViewOnly(() => set((state) => ({
-      map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
+      map: mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
     })));
   },
 
@@ -1424,7 +1576,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         ? { ...n, collapsed: undefined, children: close(n.children ?? []) }
         : { ...n, children: walk(n.children ?? []) });
     asViewOnly(() => set((state) => ({
-      map: { ...state.map, branches: walk(state.map.branches) as SampleBranch[] },
+      map: mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
     })));
   },
 
@@ -1444,7 +1596,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       return [next, found];
     };
     asViewOnly(() => set((state) => ({
-      map: { ...state.map, branches: walk(state.map.branches)[0] as SampleBranch[] },
+      map: mapAllBranches(state.map, (b) => walk(b)[0] as SampleBranch[]),
     })));
   },
 
@@ -1483,6 +1635,16 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
               ? { ...map.settings, levelLayouts: undefined }
               : map.settings,
           },
+        };
+      }
+      // 두 번째 이후의 중심주제 루트 — 그 중심의 레이아웃 (가지 오버라이드 초기화)
+      const cv = centerOfNode(map, nodeId);
+      if (cv && cv.rootId === nodeId) {
+        return {
+          map: withCenter(map, cv, {
+            root: { ...cv.root, layoutType },
+            branches: clearLayoutTypeRecursive(cv.branches) as SampleBranch[],
+          }),
         };
       }
 
@@ -1564,8 +1726,8 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
       return {
         map: {
-          ...state.map,
-          branches: applyLevelLayout(state.map.branches, level, layoutType) as SampleBranch[],
+          // 레벨별 레이아웃은 맵 전체의 것 — 모든 중심주제의 가지에 건다
+          ...mapAllBranches(state.map, (b) => applyLevelLayout(b, level, layoutType) as SampleBranch[]),
           settings: { ...state.map.settings, levelLayouts: nextLayouts },
         },
       };
@@ -1719,14 +1881,102 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     if (!branchId) return;
     set((state) => {
       const map = state.map;
-      if (!map.branches.some((b) => b.id === branchId)) return {}; // 루트 직계만
+      // 어느 중심이든 그 루트의 직계만
+      const view = centerViews(map).find((v) => v.branches.some((b) => b.id === branchId));
+      if (!view) return {};
+      return {
+        map: withCenter(map, view, {
+          branches: view.branches.map((b) => (b.id === branchId ? { ...b, side } : b)),
+        }),
+      };
+    });
+  },
+
+  // ---- 여러 중심주제 (2026-09-15, 2단계) ----------------------------------
+
+  addCenter: (text = '중심 주제') => {
+    const id = createNodeId();
+    set((state) => ({
+      map: {
+        ...state.map,
+        centers: [
+          ...(state.map.centers ?? []),
+          { root: { id, text, colorKey: 'root', side: 'center' }, branches: [] },
+        ],
+      },
+    }));
+    return id;
+  },
+
+  setCenterPos: (rootId, pos) => {
+    if (!rootId || rootId === 'root') return; // 첫 중심은 원점 — 옮기지 않는다
+    set((state) => {
+      const map = state.map;
+      if (!map.centers?.some((c) => c.root.id === rootId)) return {};
       return {
         map: {
           ...map,
-          branches: map.branches.map((b) => (b.id === branchId ? { ...b, side } : b)),
+          centers: map.centers.map((c) => (c.root.id === rootId
+            ? { ...c, pos: pos ? { dx: Math.round(pos.dx), dy: Math.round(pos.dy) } : undefined }
+            : c)),
         },
       };
     });
+  },
+
+  mergeCentersInto: (rootId) => {
+    let ok = false;
+    set((state) => {
+      const map = state.map;
+      if (!rootId || !map.centers?.length) return {};
+      const views = centerViews(map);
+      const keep = views.find((v) => v.rootId === rootId);
+      if (!keep) return {};
+      // 다른 중심들 → 남는 중심의 가지 (문서 순서 그대로). 첫 중심이 남지
+      // 않으면 남는 중심이 첫 중심('root') 자리로 오고, 옛 첫 중심은 새 id 를
+      // 받아 가지가 된다 — 'root' 라는 id 는 가지 안에 있을 수 없다.
+      const others = views.filter((v) => v.rootId !== rootId);
+      const merged: SampleBranch[] = [...keep.branches];
+      for (const v of others) {
+        const id = v.rootId === 'root' ? createNodeId() : v.rootId;
+        merged.push(centerToBranch(v.root, v.branches, id, merged.length));
+      }
+      ok = true;
+      return {
+        map: {
+          ...map,
+          root: { ...keep.root, id: 'root', colorKey: 'root', side: 'center' },
+          branches: merged,
+          centers: undefined,
+        },
+      };
+    });
+    return ok;
+  },
+
+  promoteToCenter: (branchId) => {
+    let newId: string | null = null;
+    set((state) => {
+      const map = state.map;
+      if (!branchId || isCenterRootId(map, branchId)) return {};
+      const view = centerViews(map).find((v) => v.branches.some((b) => b.id === branchId));
+      if (!view) return {}; // 1레벨 가지만 올린다
+      const branch = view.branches.find((b) => b.id === branchId)!;
+      const rest = view.branches.filter((b) => b.id !== branchId);
+      const kids = (branch.children ?? []).map((c, i) => makeBranch(c, i));
+      newId = branch.id;
+      const next = withCenter(map, view, { branches: rest });
+      return {
+        map: {
+          ...next,
+          centers: [
+            ...(next.centers ?? []),
+            { root: toCenterRoot(branch, branch.id), branches: kids },
+          ],
+        },
+      };
+    });
+    return newId;
   },
 
   setNodeIcon: (nodeId, icon) => {

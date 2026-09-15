@@ -131,6 +131,7 @@ export function Canvas({
   const undo = useDocumentStore((state) => state.undo);
   const redo = useDocumentStore((state) => state.redo);
   const setBranchSide = useDocumentStore((state) => state.setBranchSide);
+  const setCenterPos = useDocumentStore((state) => state.setCenterPos);
   const setMultiAddOpen = useEditorUiStore((state) => state.setMultiAddOpen);
 
   const zoom = useViewportStore((s) => s.zoom);
@@ -180,6 +181,13 @@ export function Canvas({
     startY: number;
     id: string;
     dragging: boolean;
+    /**
+     * 두 번째 이후의 **중심주제 루트**를 끄는 중 (2026-09-15). 다른 노드처럼
+     * 부모를 바꾸는 것이 아니라 **자리를 옮긴다** — 드롭존 없이 놓은 자리를
+     * 첫 중심 루트 기준 상대 좌표로 저장한다(setCenterPos). 첫 중심('root')
+     * 은 원점이라 끌 수 없다.
+     */
+    center?: boolean;
   } | null>(null);
   type DropPosition = 'child' | 'parent' | 'before' | 'after';
   const [dropZone, setDropZone] = useState<{ targetId: string; position: DropPosition } | null>(null);
@@ -941,6 +949,8 @@ export function Canvas({
           startY: e.clientY,
           id,
           dragging: false,
+          // depth 0 이면서 'root' 가 아니다 = 두 번째 이후의 중심주제 루트
+          center: nodesRef.current.find((nd) => nd.id === id)?.depth === 0,
         };
         return;
       }
@@ -983,6 +993,15 @@ export function Canvas({
         e.currentTarget.setPointerCapture(e.pointerId);
       }
 
+      if (nodeDrag.dragging && nodeDrag.center) {
+        // 중심주제 옮기기 — 드롭존 없이 그림자만 따라간다
+        const w = clientToWorld(e.clientX, e.clientY);
+        const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
+        if (dragged) {
+          setDragGhost({ x: w.x, y: w.y, w: dragged.w, h: dragged.h, flip: null, count: 1 });
+        }
+        return;
+      }
       if (nodeDrag.dragging) {
         const w = clientToWorld(e.clientX, e.clientY);
         const dragIds = dragIdsFor(nodeDrag.id);
@@ -1028,6 +1047,24 @@ export function Canvas({
     if (nodeDrag && nodeDrag.pointerId === e.pointerId) {
       nodeDragRef.current = null;
 
+      if (nodeDrag.dragging && nodeDrag.center) {
+        // 중심주제를 놓았다 — 끈 만큼 옮긴 자리를 첫 중심 루트(CX, CY) 기준
+        // 상대 좌표로 저장한다. 레이아웃 엔진이 다음 그리기에서 그 자리에 놓는다.
+        const w = clientToWorld(e.clientX, e.clientY);
+        const s = clientToWorld(nodeDrag.startX, nodeDrag.startY);
+        const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
+        if (dragged) {
+          setCenterPos(nodeDrag.id, {
+            dx: dragged.x + (w.x - s.x) - CX,
+            dy: dragged.y + (w.y - s.y) - CY,
+          });
+          selectOne(nodeDrag.id);
+        }
+        suppressClickRef.current = true;
+        setDropZone(null);
+        setDragGhost(null);
+        return;
+      }
       if (nodeDrag.dragging) {
         // Compute the drop zone from the final pointer position directly so we
         // don't depend on render timing of state.

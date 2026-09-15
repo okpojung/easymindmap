@@ -26,6 +26,8 @@ import { LayoutGlyph, type LayoutGlyphType } from '@/components/icons/LayoutGlyp
 import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
 import { InspectorSection } from './InspectorSection';
 import { useDocumentStore, useEditorUiStore, useInteractionStore } from '@/stores';
+import { findNodeInMap, isCenterRootId } from '@/stores/documentStore';
+import { mapCenters } from '@/editor/__samples__/types';
 
 interface LayoutOption {
   key: LayoutType;
@@ -101,17 +103,6 @@ const LAYOUTS: LayoutOption[] = [
   },
 ];
 
-function findNode(nodes: MindNode[], nodeId: string): MindNode | null {
-  for (const node of nodes) {
-    if (node.id === nodeId) return node;
-
-    const found = findNode(node.children ?? [], nodeId);
-    if (found) return found;
-  }
-
-  return null;
-}
-
 // Effective layout of a node = its own layoutType, or the nearest ancestor's.
 function effectiveLayoutOf(
   map: SampleMap,
@@ -130,7 +121,12 @@ function effectiveLayoutOf(
     return null;
   };
 
-  return walk(map.branches, map.root.layoutType ?? fallback) ?? fallback;
+  // 중심주제마다 — 그 중심 루트의 레이아웃(없으면 맵 전역)에서 출발 (2026-09-15)
+  for (const c of mapCenters(map)) {
+    const found = walk(c.branches, c.root.layoutType ?? fallback);
+    if (found) return found;
+  }
+  return fallback;
 }
 
 export function LayoutTab({ t }: { t: ThemeTokens }) {
@@ -153,17 +149,26 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   // 큰 맵에서 중심 노드를 찾아 선택하지 않아도, 아무것도 선택하지 않은
   // 상태에서 레이아웃을 고르면 맵 전체 레이아웃이 바뀐다.
   // (메인 노드 선택 = 동일하게 맵 전체, 하위 노드 선택 = 그 서브트리)
-  const hasSelection =
-    !!selectedId &&
-    (selectedId === 'root' || !!findNode(map.branches, selectedId));
+  const hasSelection = !!selectedId && !!findNodeInMap(map, selectedId);
+
+  // 둘째 이후의 **중심주제 루트** 선택 = 그 중심의 레이아웃 (2026-09-15).
+  // 맵 전체(첫 중심·전역)가 아니라 그 중심의 루트 layoutType 만 바꾼다 —
+  // 첫 중심의 오버라이드를 지우지 않는다 (PR #493 Codex 지적).
+  const centerScope =
+    hasSelection && !mapIsKanban && selectedId !== 'root' && isCenterRootId(map, selectedId);
+  const centerRoot = centerScope
+    ? mapCenters(map).find((c) => c.root.id === selectedId)?.root
+    : undefined;
 
   // Kanban has no per-subtree layout, so while the board is active EVERY
   // selection acts as root scope: clicking a layout changes the whole map.
   const subtreeScope =
-    hasSelection && !mapIsKanban && selectedId !== 'root';
+    hasSelection && !mapIsKanban && selectedId !== 'root' && !centerScope;
 
   const activeLayoutType = normalizeLayoutType(
-    subtreeScope ? effectiveLayoutOf(map, selectedId!, layoutType) : layoutType,
+    centerScope
+      ? (centerRoot?.layoutType ?? layoutType)
+      : subtreeScope ? effectiveLayoutOf(map, selectedId!, layoutType) : layoutType,
   );
 
   const optionDisabled = (option: LayoutOption): boolean => {
@@ -184,7 +189,7 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
     // 않는다 (순서도·플로차트 등 향후 용도 — 아래 안내 참조).
     if (option.neverApplies) return;
 
-    if (!subtreeScope) {
+    if (!subtreeScope && !centerScope) {
       // 맵을 먼저 바꾼다 — 히스토리 스냅샷이 "이전 레이아웃"과 함께
       // 기록되어 Ctrl+Z 한 번으로 레이아웃까지 되돌아간다.
       updateNodeLayoutType('root', option.key);
@@ -192,6 +197,7 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
       return;
     }
 
+    // 서브트리 또는 둘째 이후의 중심주제 — 그 노드/중심만
     updateNodeLayoutType(selectedId, option.key);
   };
 

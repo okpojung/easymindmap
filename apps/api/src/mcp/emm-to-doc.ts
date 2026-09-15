@@ -12,6 +12,7 @@
  * 여기서 마크다운을 다시 해석하지 않는다 — 두 벌이 되면 어긋난다.
  */
 import { parseMarkdownToMap } from '../emm/parse';
+import { mapCenters } from '../emm/model';
 import type { MindNode, SampleMap } from '../emm/model';
 import { ImageTooLargeError, sizeDataUrlImages } from './image-size';
 
@@ -75,14 +76,19 @@ export function emmToSnapshot(
       '맨 앞에 `# 중심 주제`, 그 아래 `## 가지` 형태로 적어 주세요.',
     );
   }
-  if (map.branches.length === 0) {
+  // 여러 중심주제(2026-09-15): 두 번째 `#` 부터는 `map.centers` 에 온다.
+  // 첫 중심에 가지가 없어도 다른 중심이 있으면 맵이다.
+  const centers = mapCenters(map);
+  if (centers.every((c) => c.branches.length === 0) && centers.length < 2) {
     throw new EmmParseError(
       '중심 주제만 있고 가지가 없습니다 — `## 가지 이름` 을 하나 이상 적어 주세요.',
     );
   }
-  // 내장 사진(data URL)의 자리표시 크기 → 실제 크기 (image-size.ts)
+  // 내장 사진(data URL)의 자리표시 크기 → 실제 크기 (image-size.ts) — 중심 전부
   try {
-    sizeDataUrlImages([map.root as unknown as MindNode, ...(map.branches as unknown as MindNode[])]);
+    sizeDataUrlImages(
+      centers.flatMap((c) => [c.root as unknown as MindNode, ...(c.branches as unknown as MindNode[])]),
+    );
   } catch (e) {
     if (e instanceof ImageTooLargeError) throw new EmmParseError(e.message);
     throw e;

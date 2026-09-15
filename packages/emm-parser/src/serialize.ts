@@ -89,8 +89,12 @@ function nodeRowCells(s: string): string[] {
   return t.split('|').map((c) => c.trim());
 }
 
-export function splitNodeBody(text: string): { title: string; blocks: NodeBodyBlock[] } {
+export function splitNodeBody(
+  text: string,
+  opts?: { singleLine?: boolean },
+): { title: string; blocks: NodeBodyBlock[]; labelTitle: boolean } {
   const lines = String(text || '').split('\n');
+  // 첫 블록 앞의 일반 줄들 — 빈 줄도 '' 로 남긴다(줄바꿈 보존)
   const leading: string[] = [];
   const blocks: NodeBodyBlock[] = [];
   let plainRun: string[] = [];
@@ -153,13 +157,35 @@ export function splitNodeBody(text: string): { title: string; blocks: NodeBodyBl
       continue;
     }
 
-    if (trimmed) (sawBlock ? plainRun : leading).push(trimmed);
+    if (sawBlock) {
+      if (trimmed) plainRun.push(trimmed);
+    } else {
+      leading.push(trimmed);
+    }
     i++;
   }
   flushPlain();
 
-  let title = leading.join(' ').trim();
+  // 제목 = 첫 줄. 나머지 줄은 인용문(`>`)으로 제목 아래에 쓴다 — 예전엔
+  // 모든 줄을 공백으로 이어 한 줄 견출로 뭉갰다(2026-09-15 사용자 지적:
+  // "줄바꿈이 사라지고 인용문 표시도 사라졌다"). 불러오기 'node' 배치는
+  // 견출·리스트 항목 바로 아래 인용문을 그 노드의 본문 줄로 이어 붙이므로
+  // 원문 줄바꿈(빈 줄 포함)이 그대로 돌아온다. singleLine 은 루트(`# 제목`)
+  // 처럼 예전대로 한 줄로 이어야 하는 자리.
+  let title: string;
+  if (opts?.singleLine) {
+    title = leading.filter(Boolean).join(' ').trim();
+  } else {
+    const firstIdx = leading.findIndex(Boolean);
+    title = firstIdx >= 0 ? leading[firstIdx] : '';
+    const rest = firstIdx >= 0 ? leading.slice(firstIdx + 1) : [];
+    while (rest.length && !rest[0]) rest.shift();
+    while (rest.length && !rest[rest.length - 1]) rest.pop();
+    if (rest.some(Boolean)) blocks.unshift({ kind: 'plain', lines: rest });
+  }
+  let labelTitle = false;
   if (!title) {
+    labelTitle = true;
     // 블록으로 시작하는 노드(표만 붙여넣은 노드 등) — 종류 라벨로 대신한다
     const first = blocks[0];
     title =
@@ -167,8 +193,9 @@ export function splitNodeBody(text: string): { title: string; blocks: NodeBodyBl
       : first?.kind === 'code' ? '코드'
       : first?.kind === 'check' ? '체크리스트'
       : oneLine(text);
+    if (!first) labelTitle = false;
   }
-  return { title, blocks };
+  return { title, blocks, labelTitle };
 }
 
 // 노드 텍스트의 "견출 제목" — MD 본문의 견출과 메타데이터 노드를 짝짓는
@@ -193,7 +220,7 @@ function pushBodyBlocks(lines: string[], blocks: NodeBodyBlock[]): void {
     } else {
       // check — 그대로 · plain(블록 뒤 일반 줄) — 인용문으로 (불러오기
       // 'node' 배치가 노드 본문의 원문 순서를 복원한다)
-      for (const ln of b.lines ?? []) lines.push(b.kind === 'check' ? ln : `> ${ln}`);
+      for (const ln of b.lines ?? []) lines.push(b.kind === 'check' ? ln : ln ? `> ${ln}` : '>');
     }
   }
 }
@@ -226,7 +253,7 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
     packedPath.set(src, path);
     return path;
   };
-  const rootBody = splitNodeBody(map.root.text);
+  const rootBody = splitNodeBody(map.root.text, { singleLine: true });
   lines.push(`# ${(map.root.text.trim() ? rootBody.title : '') || map.title}`);
   pushBodyBlocks(lines, rootBody.blocks);
   lines.push('');
@@ -295,7 +322,23 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
     const asList =
       listIndent !== null || depth > 5 || (node.mdForm === 'list' && !group.headingSeen);
     const indent = listIndent ?? 0;
-    if (asList) {
+    // 블록(코드·표·체크)으로 시작하는 노드는 제목이 없어 종류 라벨(`### 코드`)
+    // 을 견출로 썼는데, 다시 읽으면 "코드" 노드가 끼어들어 왕복마다 한 단계
+    // 깊어졌다 (2026-09-15). 하위·노트·링크·사진이 없는 잎 노드면 라벨 없이
+    // 블록만 쓴다 — 'node' 배치가 블록을 상위의 자식 노드로 읽어 구조가
+    // 그대로 돌아온다. 가지(depth 1)는 첫 견출 전 블록이 머리말로 읽히므로
+    // 제외. 하위가 있으면 라벨을 남긴다(라벨 없이는 하위를 붙일 자리가 없다).
+    const bare =
+      nodeBody.labelTitle &&
+      depth > 1 &&
+      !(node.children?.length) &&
+      !(node.notes?.length) &&
+      !(node.links?.length) &&
+      !(node.images?.length) &&
+      !node.image?.src;
+    if (bare) {
+      // 제목 줄 없음 — 블록만
+    } else if (asList) {
       const dash = `${'  '.repeat(indent)}-`;
       lines.push(nodeBody.title ? `${dash} ${nodeBody.title}` : dash);
     } else {

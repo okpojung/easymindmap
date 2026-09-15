@@ -2,7 +2,8 @@
 //
 //   ① 원격 http(s) → 노드 사진(images), 본문에는 대체 텍스트만 (예전 그대로)
 //   ② 내장 data:image/* → 노드 사진 (새로 — AI(MCP)가 바이트를 직접 싣는다)
-//   ③ 그 밖의 경로(files/img-1.png 같은 상대 경로)는 예전처럼 사진이 아니다
+//   ③ files/ 상대 경로(우리 내보내기의 ZIP 사진)는 노드 사진이 된다 (2026-09-15,
+//      메타데이터 주석 폐기 뒤 본문이 사진의 유일한 출처) — 그 밖의 상대 경로는 사진이 아니다
 //      (ZIP 불러오기가 따로 처리한다)
 //
 //   npx tsx test/inline-images.test.ts
@@ -40,8 +41,10 @@ const TINY = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ
 }
 {
   const m = parseMarkdownToMap('# T\n\n## 가지\n\n![p](files/img-1.png)\n', 'T')!;
-  check('③ 상대 경로는 사진이 아니다 (대체 텍스트만)', m.branches[0].images ?? [], []);
+  check('③ files/ 상대 경로는 노드 사진 (ZIP 이 바이트를 잇는다)', (m.branches[0].images ?? []).map((i) => i.src), ['files/img-1.png']);
   check('③ 본문은 견출 그대로', m.branches[0].text, '가지');
+  const o = parseMarkdownToMap('# T\n\n## 가지\n\n![p](assets/x.png)\n', 'T')!;
+  check('③ 그 밖의 상대 경로는 사진이 아니다 (대체 텍스트만)', o.branches[0].images ?? [], []);
 }
 {
   const m = parseMarkdownToMap('# T\n\n## 가지\n\n![p](data:text/plain;base64,QUJD)\n', 'T')!;

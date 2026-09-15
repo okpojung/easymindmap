@@ -195,8 +195,8 @@ npx tsx cli.ts convert conformance/cases/prompt-tech.md -o test.json
 npx tsx cli.ts convert test.json -o test.md
 ```
 
-→ `test.md`를 열면 Markdown 본문 + 파일 끝에 `easymindmap:v1:...`
-메타데이터 주석이 보인다.
+→ `test.md`를 열면 Markdown 본문이 보인다 (파일 끝 메타데이터 주석은
+2026-09-15 폐기 — CLI 는 본문만 쓴다).
 
 **(c) 유효성 검사**
 

@@ -1,10 +1,11 @@
 # 22. 맵 파일 메타데이터 (Map File Metadata)
 
-* 문서 버전: v1.1
+* 문서 버전: v2.0
 * 작성일: 2026-07-16
-* 최종 업데이트: 2026-08-20 — **메타 주석의 사진은 `files/` 상대 경로**
-  (사진 바이트를 base64 로 담지 않는다, B16 ② D-5)
-* 구현: `src/export/mapMeta.ts` · `src/export/exportMarkdown.ts` ·
+* 최종 업데이트: 2026-09-15 — **MD 의 파일 끝 메타데이터 주석 폐기.** 이
+  메타데이터는 이제 **HTML 내보내기에만** 실린다. MD 는 본문 + ```emm
+  선언(`emm-spec.md` §3.7)뿐이다.
+* 구현: `packages/emm-parser/src/meta.ts`(재수출 `src/export/mapMeta.ts`) ·
   `src/export/exportHtml.ts` · `src/utils/importMapFile.ts`
 * 관련: `20-export.md` (내보내기), `21-import.md` (가져오기)
 
@@ -12,12 +13,18 @@
 
 ## 1. 목적
 
-내보낸 HTML/MD 파일이 **EasyMindMap 생성 파일임을 표시**하고, 본문
-(뷰어/Markdown)만으로는 담을 수 없는 **원본 맵 전체**를 함께 실어
-'새 맵 > MD/HTML 파일 불러오기'에서 **편집 가능한 맵으로 복원**할 수
-있게 한다.
+내보낸 **HTML** 파일이 EasyMindMap 생성 파일임을 표시하고, 뷰어 본문만으로는
+담을 수 없는 **원본 맵 전체**를 함께 실어 '새 맵 > HTML 파일 불러오기'에서
+**편집 가능한 맵으로 복원**할 수 있게 한다.
 
----
+> **MD 에는 싣지 않는다 (2026-09-15).** 2026-09-15 까지는 MD 파일 끝에도
+> 같은 JSON 을 base64 주석(`easymindmap:v1:`)으로 실었다. 노드 수에 비례해
+> 본문의 2~3배로 커지고, 사람이 읽을 수 없으며, diff 가 무의미하고, 본문과
+> 노드를 텍스트로 짝짓는 복원이 취약해 **폐기**했다. 공개 전이라 옛 파일의
+> 주석은 읽지 않는다 — 본문만 읽힌다. MD 가 맵에 대해 말하는 것은 첫 헤딩
+> 아래 ```emm 선언(맵 ID · 레벨별 레이아웃·도형·글자 크기)뿐이고, 노드별
+> 스타일이 필요하면 HTML 로 내보낸다. 나중에 노드별 오버라이드가 필요해지면
+> 같은 `emm` 블록에 성긴 `overrides:` 를 더하는 쪽으로 넓힌다 (2안).
 
 ## 2. 메타데이터가 담는 정보 (MapFileMeta)
 
@@ -75,38 +82,13 @@ interface MapFileMeta {
 - 뷰어 데이터(`window.__MINDMAP__`)와 별개 — 뷰어 데이터는 표시용으로
   일부 속성이 빠져 있어, 복원은 반드시 이 메타데이터를 쓴다.
 
-### 3.2 MD
+### 3.2 MD — 없음 (2026-09-15 폐기)
 
-파일 끝에 HTML 주석 블록 — 일반 에디터/뷰어에서는 접혀 보이고,
-머리말은 디코드 없이 읽을 수 있다:
+MD 에는 메타데이터를 싣지 않는다. 예전 형식(파일 끝 `<!-- … easymindmap:v1:
+BASE64 … -->` 주석)은 쓰지도 읽지도 않는다. MD 의 맵 정책은 `emm` 선언
+블록 — `emm-spec.md` §3.7, 내보내기 규칙은 `markdown-export.md` §2.
 
-```markdown
-<!--
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EasyMindMap 맵 파일 메타데이터
-제목: 2026 제품 로드맵
-노드 수: 32
-내보낸 시각: 2026. 7. 16. 오후 3:24:00 (2026-07-16T06:24:00.000Z)
-형식: easymindmap-map v1 · 생성기: EasyMindMap
-
-이 주석은 EasyMindMap이 다시 불러올 때 스타일·노트·사진·태그·맵
-설정을 복원하는 데 씁니다 — 지우면 구조·텍스트만 불러와집니다.
-위 본문(견출·리스트)은 자유롭게 수정해도 됩니다.
-
-easymindmap:v1:
-eyJmb3JtYXQiOiJlYXN5bWluZG1hcC1tYXAiLCJ2ZXJzaW9uIjoxLCJnZW5lcmF0b3IiOiJFYXN5TWluZE1hcCIsImV4cG9y…
-(100자마다 줄바꿈)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
--->
-```
-
-- 데이터부는 **UTF-8 JSON의 base64** — 본문의 어떤 내용도 주석을 깨뜨릴
-  수 없고, `easymindmap:v1:` 토큰만 찾으므로 줄바꿈 형식은 자유
-  (v1 초기의 한 줄 형식 파일도 그대로 불러와진다).
-
----
-
-### 3.3 ★ 메타 주석에 사진 바이트를 담지 않는다 (2026-08-20, B16 ② D-5)
+### 3.3 ★ 메타데이터에 사진 바이트를 담지 않는다 (2026-08-20, B16 ② D-5 — 지금은 HTML 에만 해당)
 
 예전에는 본문을 `![](files/img-1.png)` 로 내보내면서 **메타 주석에는 같은
 사진을 base64 로 한 번 더** 넣었다. 사진 한 장짜리 맵의 `.md` 가 사진
@@ -136,8 +118,7 @@ eyJmb3JtYXQiOiJlYXN5bWluZG1hcC1tYXAiLCJ2ZXJzaW9uIjoxLCJnZW5lcmF0b3IiOiJFYXN5TWlu
 | 파일 | 판별 | 동작 |
 |---|---|---|
 | EasyMindMap HTML | `#easymindmap-map` 스크립트 존재 (확장자 + 내용 감지) | 메타데이터의 원본 맵·레이아웃·간격 그대로 복원 |
-| EasyMindMap MD | `easymindmap:v1:` 토큰 존재 | **본문 파싱 결과가 구조·텍스트의 기준** (에디터에서 고친 것 반영) + 텍스트(한 줄 기준)가 같은 노드는 메타데이터의 속성 복원 · 맵 설정은 항상 메타데이터 |
-| 일반 MD | 토큰 없음 | 구조 파싱만 (`importMarkdown.ts`) |
+| MD (우리가 내보낸 것도, 손으로 쓴 것도) | 확장자 | 본문 구조 파싱(`importMarkdown.ts`) + ```emm 선언을 맵 설정으로 (`emmDeclaration.ts`). 메타데이터 판별은 없다 (2026-09-15) |
 | 일반 HTML | 메타데이터 없음 | 거부 (안내 메시지) |
 
 ### ZIP 불러오기 · 첨부 복원 (2026-07 추가)
@@ -147,12 +128,16 @@ eyJmb3JtYXQiOiJlYXN5bWluZG1hcC1tYXAiLCJ2ZXJzaW9uIjoxLCJnZW5lcmF0b3IiOiJFYXN5TWlu
   **data URL로 재연결**한다 (`parseZipMapFile` / zip.ts `parseZip` —
   STORE는 물론 다른 도구로 재압축된 deflate도 DecompressionStream으로
   해제).
-- **작은 첨부(≤2MB)는 내보낼 때 메타데이터에 data URL로 인라인**
-  (`INLINE_ATTACHMENT_LIMIT`) — ZIP 없이 단일 .md/.html 파일만
-  불러와도 첨부까지 복원된다. 큰 첨부는 ZIP의 files/로만 담기며
-  ZIP 불러오기에서 재연결된다.
+- **HTML**: 작은 첨부(≤2MB)는 내보낼 때 메타데이터에 data URL로 인라인
+  (`INLINE_ATTACHMENT_LIMIT`) — ZIP 없이 단일 .html 파일만 불러와도
+  첨부까지 복원된다. 큰 첨부는 ZIP의 files/로만 담기며 ZIP 불러오기에서
+  재연결된다.
+- **MD** (2026-09-15): 첨부는 그 노드 아래 `📎 [이름](files/이름)` 줄로
+  나가고(파서가 같은 줄을 노드의 첨부로 되돌린다 — 자식 노드가 아니다),
+  바이트는 ZIP 의 files/ 에서 잇는다. 단일 .md 로는 첨부가 오지 않는다.
 - 첨부 URL 우선순위(불러오기): 이미 살아있는 data:/http(s) URL은
-  그대로 두고, blob:(원 세션 한정)·빈 URL만 files/에서 재연결한다.
+  그대로 두고, `files/…`·blob:(원 세션 한정)·빈 URL만 files/에서
+  재연결한다.
 - **사진(`files/img-N.png`)은 첨부와 다른 문으로 되잇는다** (2026-08-20,
   B16 ② D-6, `relinkImages`): 바이트를 `File` 로 감싸
   `attachmentUrlForFile(f, { preferServer: true })` 에 넘긴다 →

@@ -36,6 +36,7 @@ import type {
   NodeInlineImage,
   NodeLink,
   NoteBlock,
+  AttachmentKind,
 } from './model';
 import { readFrontMatter } from './frontMatter';
 import { setextToAtx } from './setext';
@@ -72,13 +73,24 @@ export const NODE_A4_CHARS = 2500;
 export const NODE_IMAGE_CHARS = 600;
 
 // Markdown 링크/이미지 — [라벨](url) / ![대체](경로). 제목("title") 허용.
+// 첨부 줄(📎)의 파일 이름으로 종류를 짐작한다 — 앱의 첨부 패널이 쓰는 값
+function attachmentKindOf(name: string): AttachmentKind {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  if (/^(mp3|wav|ogg|m4a|flac|aac)$/.test(ext)) return 'audio';
+  if (/^(mp4|webm|mov|mkv|avi)$/.test(ext)) return 'video';
+  return 'file';
+}
+
 const MD_LINK_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 // 표 구분선 행 — | --- | :--: | 등
 const TABLE_SEP_RE = /^[\s|:\-]+$/;
 
 // 노드 사진이 되는 src — 원격 http(s) 또는 내장 data:image/*
-const IMAGE_SRC_RE = /^(https?:\/\/|data:image\/)/i;
+// 원격(http) · 내장(data:image) · **ZIP 의 files/ 상대 경로**(우리 내보내기 —
+// 2026-09-15, 메타데이터 주석 폐기 뒤 본문이 사진의 유일한 출처다. 앱의
+// ZIP 불러오기가 files/ 에서 바이트를 잇는다: importMapFile.relinkImages)
+const IMAGE_SRC_RE = /^(https?:\/\/|data:image\/|files\/)/i;
 
 // 이미지로 취급할 원격 URL — ![](url) 문법 또는 한 줄 전체가 이미지
 // 확장자 URL이면 노드 텍스트가 아니라 노드 사진(images)으로 담는다.
@@ -146,6 +158,29 @@ export function parseMarkdownToMap(
   const rootNotes: NoteBlock[] = [];
   /** 첫 견출 전에 나온 루트 사진 (2026-08-18, B17) */
   const rootImages: string[] = [];
+  const rootAttachments: NonNullable<MindNode['attachments']> = [];
+  // "📎 [이름](files/이름)" 첨부 줄 — 내보내기의 첨부 왕복 (2026-09-15).
+  // 문단의 모든 줄이 첨부 줄이면 첨부 목록으로 돌려주고, 아니면 null.
+  // url 이 `files/…` 이면 앱이 ZIP 의 파일을 이어 붙이고
+  // (importMapFile.relinkAttachments), http(s) 면 외부 링크 그대로.
+  const attachmentLines = (text: string): NonNullable<MindNode['attachments']> | null => {
+    if (!/^📎\s*\[/.test(text)) return null;
+    const ls = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    const found = ls
+      .map((l) => l.match(/^📎\s*\[([^\]]*)\]\(([^)\s]+)\)/))
+      .filter((m): m is RegExpMatchArray => !!m);
+    if (found.length !== ls.length) return null;
+    return found.map((m) => {
+      const name = m[1].trim() || m[2].split('/').pop() || '첨부';
+      return { id: nid(), name, url: m[2], kind: attachmentKindOf(name) };
+    });
+  };
+  const mergeAttachments = (
+    into: NonNullable<MindNode['attachments']>,
+    found: NonNullable<MindNode['attachments']>,
+  ) => {
+    for (const a of found) if (!into.some((x) => x.url === a.url)) into.push(a);
+  };
   let seq = 0;
   const nid = () => `md-${Date.now()}-${seq++}`;
 
@@ -386,6 +421,9 @@ export function parseMarkdownToMap(
     paraBuf = [];
     if (!text) return;
     if (!sawHeading) {
+      // 첫 견출 전의 첨부 줄 → 루트 첨부
+      const rootAtt = attachmentLines(text);
+      if (rootAtt) { mergeAttachments(rootAttachments, rootAtt); return; }
       // 첫 견출 전의 **사진만 있는 문단** → 루트 사진 (2026-08-18, B17).
       // 내보내기가 `# 제목` 바로 아래에 루트 사진을 쓰므로, 이 갈래가
       // 없으면 돌아올 때 **사진 문법이 그대로 담긴 루트 노트**가 된다.
@@ -410,6 +448,16 @@ export function parseMarkdownToMap(
         return;
       }
     }
+    // 첨부 줄(📎) → 현재 노드의 첨부 (자식 노드가 아니다)
+    if (stack.length) {
+      const att = attachmentLines(text);
+      if (att) {
+        const cur = stack[stack.length - 1].node;
+        cur.attachments = cur.attachments ?? [];
+        mergeAttachments(cur.attachments, att);
+        return;
+      }
+    }
     // 이미지뿐인 문단 — 모든 줄이 이미지 문법(![대체](url)) 또는 이미지
     // 확장자 URL이면 자식 노드가 아니라 현재 노드의 사진으로 붙인다
     // (내보내기가 견출 바로 아래에 쓰는 ![…](…) 형식의 왕복이자, 기사
@@ -421,13 +469,15 @@ export function parseMarkdownToMap(
       paraLines.every((l) => IMG_ONLY_LINE_RE.test(l) || BARE_IMAGE_URL_RE.test(l))
     ) {
       // 'node' 배치 — 독립 이미지도 각각의 자식 노드로 분리 (markmap
-      // 파리티). 'note'(EMM 메타 왕복)는 현재 노드의 사진으로 폴딩.
-      if (attachBlockChild(text, true)) return;
+      // 파리티). 'note' 배치는 현재 노드의 사진으로 폴딩.
+      // 예외: **files/ 상대 경로**(우리 내보내기가 견출 바로 아래에 쓰는
+      // 노드 사진)는 배치와 무관하게 현재 노드의 사진으로 되돌린다 —
+      // 내보내기 → 불러오기 왕복이 "사진 노드"를 만들지 않게 (2026-09-15).
       const { links, images } = stripLinks(text);
+      const ours = images.length > 0 && images.every((u) => /^files\//i.test(u));
+      if (!ours && attachBlockChild(text, true)) return;
       mergeImages(stack[stack.length - 1].node, images);
       mergeLinks(stack[stack.length - 1].node, links);
-      // 원격이 아닌 이미지(files/ 경로 등)는 메타데이터·ZIP이 실제
-      // 사진을 복원한다 — 대체 텍스트로 노드를 만들지 않는다
       return;
     }
     // longParagraphToNote — 긴 문단은 자식 노드가 아니라 현재 노드의 문단 노트
@@ -700,6 +750,7 @@ export function parseMarkdownToMap(
       colorKey: 'root',
       side: 'center',
       ...(rootNotes.length ? { notes: rootNotes } : {}),
+      ...(rootAttachments.length ? { attachments: rootAttachments } : {}),
       // 루트 사진 — 내보낼 때 `# 제목` 아래에 쓴 것을 되돌린다 (B17)
       ...(rootImages.length
         ? { images: rootImages.map((src) => ({ src, w: 0, h: 0, afterLine: 0 })) }

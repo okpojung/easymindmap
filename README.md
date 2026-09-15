@@ -137,7 +137,7 @@ docs/
 │   ├── markdown-export.md            # ★ MD ↔ 맵 변환 규칙 단일 명세 (핵심)
 │   ├── import-export/20-export.md    # MD/HTML 내보내기 UI · 패키징 · 뷰어
 │   ├── import-export/21-import.md    # 불러오기 UI · 새 맵 메뉴 · 템플릿 선택
-│   ├── import-export/22-map-file-meta.md # 맵 파일 메타데이터 왕복
+│   ├── import-export/22-map-file-meta.md # HTML 내보내기 메타데이터 (MD 주석은 폐기)
 │   ├── ai/18-ai.md · 19-ai-workflow.md   # AI 생성 (V1+)
 │   ├── dashboard/22-dashboard.md     # 대시보드 (V3)
 │   ├── translation/23-node-translation.md · 24-chat-translation.md

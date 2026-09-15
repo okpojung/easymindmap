@@ -8,33 +8,22 @@
 // 본문은 일반 에디터에서 보고 고칠 수 있는 표준 Markdown(GFM)이다:
 //   # 중심 주제 → ## 2레벨 → ### 3레벨 … ###### 6레벨, 7레벨+는 리스트
 //   (parse.ts의 파서와 정확히 왕복되는 형식)
-// 파일 끝에 맵 메타데이터 주석(<!-- easymindmap:v1:BASE64 -->)을 실어
-// 원본 맵 전체(스타일·노트·사진·설정)를 보존한다.
+// 맵 단위 정책(맵 ID · 레벨별 레이아웃·도형·글자 크기)은 제목 바로 아래
+// ```emm 선언 블록(declaration.ts)으로 쓴다. **파일 끝 메타데이터 주석은
+// 2026-09-15 에 폐기했다** — 노드별 스타일·아이콘 같은 충실도는 HTML
+// 내보내기와 서버가 맡고, MD 는 내용 교환 형식이다 (emm-spec.md §2.1).
 //
 // 이 모듈은 순수 함수만 담는다 — ZIP 패키징·첨부 fetch·다운로드 등
 // 브라우저 의존 작업은 앱(apps/frontend/src/export/exportMarkdown.ts)이
 // 담당한다.
 
-import type { EditorSpacing, LayoutType, MindNode, SampleMap } from './model';
-import {
-  buildMapMeta,
-  countMapNodes,
-  encodeMetaBase64,
-  withInlinedImages,
-  type MapFileMeta,
-} from './meta';
+import type { MindNode, SampleMap } from './model';
+import { buildDeclaration, type EmmDeclaration } from './declaration';
 
 export interface EmmImageFile {
   path: string; // files/img-1.png
   data: Uint8Array;
-  /**
-   * 이 파일이 어느 `image.src` 에서 나왔는가 (보통 data URL).
-   *
-   * **메타데이터 주석이 본문과 같은 경로를 가리키게** 하려고 남긴다
-   * (2026-08-20, B16 ② D-5). 이게 없으면 메타 주석에 사진 바이트가
-   * base64 로 통째로 다시 들어간다 — vault 에 미러되는 .md 가 무거워지고
-   * Git 이 커밋마다 사진을 다시 저장한다.
-   */
+  /** 이 파일이 어느 `image.src` 에서 나왔는가 (보통 data URL) — 같은 사진을 한 번만 담기 위한 키 */
   src?: string;
 }
 
@@ -203,12 +192,6 @@ export function splitNodeBody(
   return { title, blocks, labelTitle };
 }
 
-// 노드 텍스트의 "견출 제목" — MD 본문의 견출과 메타데이터 노드를 짝짓는
-// 기준 (앱 불러오기의 enrich 텍스트 매칭이 사용)
-export function nodeHeadingText(text: string): string {
-  return splitNodeBody(text).title;
-}
-
 // splitNodeBody의 블록들을 MD 줄로 밀어 넣는다 (견출 바로 아래)
 function pushBodyBlocks(lines: string[], blocks: NodeBodyBlock[]): void {
   for (const b of blocks) {
@@ -240,13 +223,38 @@ function pushTableNote(lines: string[], text: string): void {
   });
 }
 
+export interface BuildEmmBodyOptions {
+  /** 제목 바로 아래 쓸 ```emm 선언 — 맵 ID · 템플릿/레벨별 정책 (declaration.ts) */
+  declaration?: EmmDeclaration;
+  /**
+   * 첨부 id → 본문에 적을 경로(`files/이름`) 또는 URL. 있으면 그 노드 아래에
+   * `📎 [이름](경로)` 줄로 쓴다 — 불러오기가 같은 줄을 첨부로 되돌리고 ZIP 의
+   * files/ 에서 바이트를 잇는다. 없는 첨부는 http(s) URL 이면 그 URL, 아니면
+   * 건너뛴다(blob: 은 이 세션에서만 산다).
+   */
+  attachmentPaths?: Map<string, string>;
+}
+
 // EMM 본문(순수 GFM) 생성 — 사진(data URL)은 files/ 경로로 치환하고
 // 바이트를 images 배열에 담아 돌려준다 (패키징은 호출자 책임).
-export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
+export function buildEmmBody(
+  map: SampleMap,
+  images: EmmImageFile[],
+  opts: BuildEmmBodyOptions = {},
+): string {
   const lines: string[] = [];
+  // 첨부 줄 — 노드 링크(🔗)와 같은 자리·같은 모양
+  const pushAttachments = (node: { attachments?: { id: string; name: string; url?: string }[] }) => {
+    for (const a of node.attachments ?? []) {
+      const path = opts.attachmentPaths?.get(a.id)
+        ?? (a.url && /^https?:\/\//i.test(a.url) ? a.url : undefined);
+      if (!path) continue;
+      lines.push('');
+      lines.push(`📎 [${oneLine(a.name) || a.id}](${path})`);
+    }
+  };
   // **같은 사진은 한 번만 담는다** — 같은 사진을 여러 노드가 쓰면 예전에는
-  // files/ 에 똑같은 바이트가 여러 벌 들어갔다. 겸사겸사 `src → path` 가
-  // 1:1 이 되어 메타데이터 주석이 본문과 같은 곳을 가리킬 수 있다 (D-5).
+  // files/ 에 똑같은 바이트가 여러 벌 들어갔다.
   const packedPath = new Map<string, string>();
   const packImage = (src: string): string | null => {
     const seen = packedPath.get(src);
@@ -262,6 +270,15 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
   lines.push(`# ${(map.root.text.trim() ? rootBody.title : '') || map.title}`);
   pushBodyBlocks(lines, rootBody.blocks);
   lines.push('');
+  // 맵 선언 — 제목 바로 아래. 불러오면 루트의 `emm` 코드 노트로 보이고
+  // (declaration.ts: 숨은 마법이 아니라 앱 안에서 보이는 노트), 다시 내보낼
+  // 때는 아래에서 그 노트를 건너뛰고 **맵 설정에서 새로** 쓴다 — 두 곳에
+  // 같은 정보를 두면 반드시 어긋난다.
+  const declaration = opts.declaration ? buildDeclaration(opts.declaration) : '';
+  if (declaration) {
+    lines.push(declaration);
+    lines.push('');
+  }
   // 루트 노드의 사진 (2026-08-18, B17) — 예전에는 **빠뜨려서 루트에 붙인
   // 사진이 MD 로 내보내면 사라졌다**(HTML 내보내기는 정상이었다).
   // 가지 노드와 같은 규칙: files/ 로 담을 수 있으면 상대 경로, 아니면 URL.
@@ -290,6 +307,8 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
       pushTableNote(lines, n.text);
       lines.push('');
     } else if (n.type === 'code_block' && n.text.trim()) {
+      // 불러오기가 남긴 `emm` 선언 노트는 건너뛴다 — 위에서 맵 설정으로 새로 썼다
+      if ((n.lang ?? '').toLowerCase() === 'emm') continue;
       lines.push('```' + (n.lang ?? ''));
       lines.push(n.text);
       lines.push('```');
@@ -300,6 +319,8 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
       lines.push('');
     }
   }
+  pushAttachments(map.root);
+  lines.push('');
 
   // listIndent: null 이면 견출(#) 모드, 숫자면 리스트(-) 모드의 들여쓰기 단.
   // group.headingSeen: 같은 형제 묶음에서 이미 견출을 냈는지 — 견출 뒤에
@@ -382,6 +403,7 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
       lines.push('');
       lines.push(`🔗 [${oneLine(l.label ?? '') || l.url}](${l.url})`);
     }
+    pushAttachments(node);
     // 문단 노트 → 인용문(>) · 코드 노트 → 펜스 · 표 노트 → 파이프 표
     // (불러오기 시 다시 노트로)
     for (const n of node.notes ?? []) {
@@ -412,82 +434,3 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
   for (const b of map.branches) walk(b, 1, null, topGroup);
   return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }
-
-// 메타데이터 주석 블록 — 일반 에디터에서 한눈에 알아볼 수 있게 머리말 +
-// 100자 줄바꿈 base64 (파서는 easymindmap:v1: 토큰만 찾으므로 형식 자유)
-export function buildMetaComment(
-  meta: MapFileMeta,
-  opts?: { exportedLocal?: string },
-): string {
-  const b64 = encodeMetaBase64(meta).replace(/(.{100})/g, '$1\n');
-  const exportedLocal = opts?.exportedLocal ?? new Date(meta.exportedAt).toISOString();
-  return [
-    '',
-    '<!--',
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-    'EasyMindMap 맵 파일 메타데이터',
-    `제목: ${meta.title}`,
-    `노드 수: ${meta.nodeCount}`,
-    `내보낸 시각: ${exportedLocal} (${meta.exportedAt})`,
-    `형식: ${meta.format} v${meta.version} · 생성기: ${meta.generator}`,
-    '',
-    '이 주석은 EasyMindMap이 다시 불러올 때 스타일·노트·사진·태그·맵',
-    '설정을 복원하는 데 씁니다 — 지우면 구조·텍스트만 불러와집니다.',
-    '위 본문(견출·리스트)은 자유롭게 수정해도 됩니다.',
-    '',
-    'easymindmap:v1:',
-    b64,
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-    '-->',
-    '',
-  ].join('\n');
-}
-
-/**
- * 메타데이터 주석에 담을 맵 — **사진 src 를 본문과 같은 `files/` 경로로**
- * 바꾼다 (2026-08-20, B16 ② D-5).
- *
- * 예전에는 본문만 `files/img-1.png` 로 내보내고 메타 주석에는 같은 사진을
- * **base64 로 한 번 더** 넣었다. 그래서 사진 한 장짜리 맵의 .md 가 사진
- * 바이트를 두 벌 들고 다녔다 — 지식 저장소(vault)에 두기에는 나쁜 형식이다.
- *
- * `files/` 로 담지 못한 사진(외부 https URL 등)은 손대지 않는다.
- * 되읽을 때는 ZIP 의 `files/` 에서 다시 이어 붙인다(importMapFile.ts).
- */
-export function withPackagedImagePaths(map: SampleMap, images: EmmImageFile[]): SampleMap {
-  const bySrc = new Map<string, string>();
-  for (const im of images) if (im.src) bySrc.set(im.src, im.path);
-  if (bySrc.size === 0) return map;
-  return withInlinedImages(map, (src) => bySrc.get(src));
-}
-
-export interface SerializeEmmOptions {
-  layoutType?: LayoutType;
-  spacing?: EditorSpacing;
-  // 결정적 출력이 필요할 때(테스트 등) 내보낸 시각을 고정
-  exportedAt?: string;
-  exportedLocal?: string;
-  // false면 메타데이터 주석 생략 (EMM-Basic 본문만)
-  includeMeta?: boolean;
-}
-
-export interface SerializedEmm {
-  markdown: string;
-  images: EmmImageFile[]; // files/… 로 참조된 사진 바이트 (없으면 [])
-  meta: MapFileMeta | null;
-}
-
-// 맵 → EMM 문서 (본문 + 메타데이터 주석). ZIP 패키징은 호출자 몫.
-export function serializeEmm(map: SampleMap, opts: SerializeEmmOptions = {}): SerializedEmm {
-  const images: EmmImageFile[] = [];
-  const body = buildEmmBody(map, images);
-  if (opts.includeMeta === false) {
-    return { markdown: body, images, meta: null };
-  }
-  const meta = buildMapMeta(withPackagedImagePaths(map, images), opts.layoutType, opts.spacing);
-  if (opts.exportedAt) meta.exportedAt = opts.exportedAt;
-  const comment = buildMetaComment(meta, { exportedLocal: opts.exportedLocal });
-  return { markdown: body + comment, images, meta };
-}
-
-export { countMapNodes };

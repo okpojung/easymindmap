@@ -12,7 +12,7 @@
  * 만들지 않는다 — 앱의 [내보내기 ▸ Markdown] 과 **같은 본문**이 나와야
  * AI 가 그것을 고쳐 `create_map` 으로 되돌려도 어긋나지 않는다.
  */
-import { serializeEmm } from '../emm/serialize';
+import { buildEmmBody, type EmmImageFile } from '../emm/serialize';
 import type { SampleMap } from '../emm/model';
 
 export class DocShapeError extends Error {}
@@ -38,7 +38,8 @@ export function mapFromDoc(doc: unknown): SampleMap {
  */
 export function docToEmm(doc: unknown): { markdown: string; nodeCount: number; imageCount: number } {
   const map = mapFromDoc(doc);
-  const out = serializeEmm(map, { includeMeta: false });
+  const images: EmmImageFile[] = [];
+  const out = { markdown: buildEmmBody(map, images), images };
   return {
     markdown: out.markdown.replace(/\s+$/, '') + '\n',
     nodeCount: countNodes(map),

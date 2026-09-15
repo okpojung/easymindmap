@@ -2,30 +2,22 @@
 //
 //   · HTML: EasyMindMap이 내보낸 HTML에서 메타데이터(#easymindmap-map)를
 //     읽어 원본 맵 전체를 복원한다 (메타데이터 없는 일반 HTML은 거부).
-//   · MD (EasyMindMap 내보내기): 파일 끝 메타데이터 주석에서 원본 맵을
-//     읽고, 본문(견출·리스트)을 파싱해 사용자가 일반 에디터에서 고친
-//     구조·텍스트를 반영한다 — 텍스트가 그대로인 노드는 메타데이터의
-//     스타일·노트·링크·사진·태그를 되살린다.
-//   · MD (일반): 기존 parseMarkdownToMap 구조 파싱 그대로.
+//   · MD: 본문(견출·리스트)을 파싱하고, 제목 아래 ```emm 선언(맵 ID ·
+//     레벨별 레이아웃·도형·글자 크기)을 맵 설정으로 옮긴다. 우리가 내보낸
+//     MD 도 손으로 쓴 MD 도 **같은 길**이다 — 파일 끝 메타데이터 주석은
+//     2026-09-15 폐기했다 (노드별 충실도는 HTML·서버 몫).
 
-import type { MindNode, SampleMap, SampleBranch } from '@/editor/__samples__/types';
+import type { SampleMap, SampleBranch } from '@/editor/__samples__/types';
 import { parseMarkdownToMap, type ParseEmmOptions } from './importMarkdown';
-import { nodeHeadingText } from '@emm/serialize';
 import { readDeclaration } from '@emm/declaration';
 import { resolveDeclaration } from './emmDeclaration';
 import { applyLevelLayouts } from './levelLayouts';
-import {
-  MD_META_RE,
-  MD_META_BLOCK_RE,
-  decodeMetaBase64,
-  parseMetaJson,
-  type MapFileMeta,
-} from '@/export/mapMeta';
+import { parseMetaJson, type MapFileMeta } from '@/export/mapMeta';
 
 export interface ImportedMap {
   map: SampleMap;
   editor?: MapFileMeta['editor'];
-  source: 'easymindmap-html' | 'easymindmap-md' | 'plain-md';
+  source: 'easymindmap-html' | 'plain-md';
   /**
    * EMM 선언에서 **알아는 들었지만 건너뛴 것**. 불러오기 안내에 붙는다 —
    * 조용히 사라지면 문서를 쓴 사람이 왜 안 되는지 알 길이 없다.
@@ -44,115 +36,19 @@ export function parseHtmlMapFile(text: string): ImportedMap | null {
   return { map: meta.map, editor: meta.editor, source: 'easymindmap-html' };
 }
 
-// 메타데이터의 노드들을 "텍스트 → 노드" 색인으로 만든다. MD 본문 견출은
-// 노드의 "견출 제목"(nodeHeadingText — 코드·표 블록을 뺀 첫 일반 줄들)
-// 이므로 그 키가 기본이고, 옛 내보내기(전체를 한 줄로 합침)와의 호환을
-// 위해 한 줄 합침 키도 함께 색인한다. 같은 텍스트가 여러 개면 순서대로
-// 소비한다.
-const flatKey = (t: string) => String(t || '').replace(/\s*\n+\s*/g, ' ').trim();
-
-function indexByText(map: SampleMap): Map<string, MindNode[]> {
-  const idx = new Map<string, MindNode[]>();
-  const put = (k: string, n: MindNode) => {
-    if (!idx.has(k)) idx.set(k, []);
-    idx.get(k)!.push(n);
-  };
-  const walk = (n: MindNode) => {
-    const heading = nodeHeadingText(n.text);
-    const flat = flatKey(n.text);
-    put(heading, n);
-    if (flat !== heading) put(flat, n);
-    (n.children ?? []).forEach(walk);
-  };
-  map.branches.forEach(walk);
-  return idx;
-}
-
-// 본문에서 파싱한 노드에 메타데이터 원본 노드의 속성(스타일·노트·링크·
-// 사진·태그·레이아웃)을 입힌다. 텍스트(한 줄 기준)가 같은 노드만 —
-// 사용자가 고친 노드는 새 텍스트 그대로 평문으로 들어간다.
-function enrich(bodyMap: SampleMap, meta: MapFileMeta): SampleMap {
-  const idx = indexByText(meta.map);
-
-  const apply = (n: MindNode): MindNode => {
-    // 본문 노드 텍스트(견출 제목)로 조회 — 견출 키 우선, 옛 한 줄 키 폴백
-    const pool =
-      [nodeHeadingText(n.text), flatKey(n.text)]
-        .map((k) => idx.get(k))
-        .find((p) => p && p.length) ?? undefined;
-    const src = pool && pool.length ? pool.shift() : undefined;
-    const out: MindNode = {
-      ...n,
-      children: (n.children ?? []).map(apply),
-    };
-    if (src) {
-      out.text = src.text; // 원본 여러 줄 텍스트 복원
-      out.style = src.style;
-      out.icon = src.icon;
-      out.iconSide = src.iconSide;
-      out.tag = src.tag;
-      out.tags = src.tags;
-      out.links = src.links;
-      out.notes = src.notes;
-      out.attachments = src.attachments;
-      out.image = src.image;
-      out.images = src.images;
-      out.textAlign = src.textAlign;
-      out.layoutType = src.layoutType;
-      out.edgeType = src.edgeType;
-      out.collapsed = src.collapsed;
-      // 수동 크기 (우하단 핸들) — documentStore.updateNodeSize의 필드명
-      (out as MindNode & { sizeW?: number }).sizeW =
-        (src as MindNode & { sizeW?: number }).sizeW;
-      (out as MindNode & { sizeH?: number }).sizeH =
-        (src as MindNode & { sizeH?: number }).sizeH;
-      if (src.colorKey) out.colorKey = src.colorKey;
-      if (src.side === 'left' || src.side === 'right') out.side = src.side;
-    }
-    return out;
-  };
-
-  return {
-    ...meta.map, // settings(레벨별 폰트·레이아웃) 등 맵 단위 속성은 메타데이터
-    title: bodyMap.title,
-    root: {
-      ...meta.map.root,
-      text: bodyMap.root.text || meta.map.root.text,
-    },
-    branches: bodyMap.branches.map(apply) as SampleBranch[],
-  };
-}
-
 export function parseMarkdownMapFile(
   text: string,
   fallbackTitle: string,
-  // 블록 배치 옵션(리치 노드 P3) — "일반 MD"에만 적용한다.
-  // EasyMindMap이 내보낸 MD(메타데이터 있음)는 항상 기존 노트 배치로
-  // 파싱해야 enrich의 텍스트 매칭(스타일·노트 복원)이 깨지지 않는다.
   opts?: ParseEmmOptions,
 ): ImportedMap | null {
   const raw = String(text || '');
-  const metaMatch = raw.match(MD_META_RE);
-
-  if (metaMatch) {
-    // base64는 가독성을 위해 줄바꿈되어 있을 수 있다 — 공백 제거 후 디코드
-    const meta = decodeMetaBase64(metaMatch[2].replace(/\s+/g, ''));
-    if (meta) {
-      const body = raw.replace(MD_META_BLOCK_RE, '');
-      const bodyMap = parseMarkdownToMap(body, meta.map.title || fallbackTitle);
-      // 본문이 파싱 불가능하게 바뀌었으면 메타데이터의 원본 맵으로 복원
-      const map = bodyMap ? enrich(bodyMap, meta) : meta.map;
-      return { map, editor: meta.editor, source: 'easymindmap-md' };
-    }
-  }
-
   const map = parseMarkdownToMap(raw, fallbackTitle, opts);
   if (!map) return null;
 
-  // 문서의 `emm` 코드블록 선언 — 앱을 한 번도 거치지 않은 문서(손으로
-  // 쓴 것·AI 가 만든 것)가 레이아웃을 스스로 말할 수 있게 한다. 메타데이터가
-  // 있는 문서는 위에서 이미 돌아갔으므로 여기 오지 않는다 — **메타데이터가
-  // 있으면 그것이 이긴다.** 같은 정보를 두 곳에서 읽지 않기 위해서다.
+  // 문서의 `emm` 코드블록 선언 — 우리가 내보낸 MD 도, 손으로 쓴 것·AI 가
+  // 만든 것도 여기서 레이아웃을 말한다. 블록은 루트의 `emm` 코드 노트로도
+  // 남는다(declaration.ts — 숨은 마법이 아니라 보이는 노트). 다시 내보낼
+  // 때는 직렬화가 그 노트를 건너뛰고 맵 설정에서 새로 쓴다.
   const declared = resolveDeclaration(readDeclaration(raw));
   if (declared.settings) {
     map.settings = { ...(map.settings ?? {}), ...declared.settings };
@@ -220,7 +116,8 @@ function relinkAttachments(
   const walk = <T extends NodeLike>(n: T): T => ({
     ...n,
     attachments: n.attachments?.map((a) => {
-      // 이미 살아있는 URL(data:/http)은 그대로 — blob:/빈 URL만 재연결
+      // 이미 살아있는 URL(data:/http)은 그대로 — `files/…`(본문의 📎 줄)·
+      // blob:·빈 URL 만 재연결
       if (a.url && (/^data:/.test(a.url) || /^https?:\/\//i.test(a.url))) return a;
       const want = safe(a.name || a.id);
       let data = byName.get(want);
@@ -239,7 +136,11 @@ function relinkAttachments(
   });
 
   return {
-    map: { ...map, branches: map.branches.map((b) => walk(b)) as SampleBranch[] },
+    map: {
+      ...map,
+      root: walk(map.root as unknown as NodeLike) as unknown as SampleMap['root'],
+      branches: map.branches.map((b) => walk(b)) as SampleBranch[],
+    },
     relinked,
   };
 }

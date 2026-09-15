@@ -9,7 +9,7 @@
 //    → 하위·노트·링크·사진 없는 잎 노드면 라벨 없이 블록만.
 
 import { parseEmm } from '../src/parse';
-import { buildEmmBody, nodeHeadingText, splitNodeBody } from '../src/serialize';
+import { buildEmmBody, splitNodeBody } from '../src/serialize';
 import type { MindNode, SampleMap } from '../src/model';
 
 let failed = 0;
@@ -89,7 +89,7 @@ const lines = (m: SampleMap): string[] => buildEmmBody(m, []).split('\n');
 
 // ── ⑦ 짝짓기 키 — 첫 줄이 제목, 루트는 예전처럼 한 줄 ────────────────
 {
-  check('⑦ nodeHeadingText 는 첫 줄', nodeHeadingText('첫 줄\n둘째 줄'), '첫 줄');
+  check('⑦ 제목은 첫 줄', splitNodeBody('첫 줄\n둘째 줄').title, '첫 줄');
   check('⑦ 루트(singleLine)는 이어 붙인다', splitNodeBody('첫 줄\n둘째 줄', { singleLine: true }).title, '첫 줄 둘째 줄');
   const m = base('# 제목\n\n## 절\n');
   m.root.text = '제목\n부제';

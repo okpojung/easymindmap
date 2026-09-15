@@ -610,9 +610,8 @@ SELECT COUNT(*) AS ok FROM information_schema.tables
 - **`get_map` 은 편집 잠금을 만들지 않는다.** `getDocument` 에 editSession
   을 주지 않는다 — 읽기가 사람이 편집 중인 맵의 잠금을 가로채면 안 된다
   (e2e209 ⑦b 가 `map_edit_locks` 0행을 확인한다).
-- **메타 주석을 싣지 않는다.** `<!-- easymindmap:v1:BASE64 -->` 는 앱이
-  되읽을 때 스타일·좌표를 살리는 용도라 AI 에게는 **읽을 수 없는 덩어리**
-  이고, 큰 맵이면 본문보다 길다. `serializeEmm(map, {includeMeta:false})`.
+- **본문만 준다.** `buildEmmBody(map, images)` — 파일 끝 메타 주석은
+  2026-09-15 앱 전체에서 폐기됐다(AI 에게는 애초에 읽을 수 없는 덩어리였다).
 - **사진 바이트를 주지 않는다.** data URL 은 `files/img-N.png` 경로로
   바뀌고(직렬화기 규칙) 머리줄에 "사진 N장" 만 센다.
 - **12만 자에서 자른다** (`GET_MAP_MAX_CHARS`). 잘랐으면 그 사실과 앱의

@@ -10,6 +10,7 @@ import {
   buildParentIndex, findNodeInMap, findParentId, getNodeDepth, isCenterRootId,
   nodePathInMap, topLevelSelection, useDocumentStore,
 } from './documentStore';
+import { useEditorUiStore } from './editorUiStore';
 import type { MindNode, SampleMap } from '@emm/model';
 import { mapCenters } from '@emm/model';
 
@@ -180,6 +181,33 @@ load();
   st().updateNodeLayoutType('c2', 'hierarchy-right');
   check('둘째 중심 루트의 레이아웃 + 가지 오버라이드 초기화', [m().centers![0].root.layoutType, m().centers![0].branches[0].layoutType], ['hierarchy-right', undefined]);
   check('첫 중심은 건드리지 않았다', m().branches[0].layoutType, 'tree-right');
+}
+
+console.log('--- 레벨 레이아웃 폴백은 그 중심의 가지에서 · 묶기 후 전역 레이아웃 (PR #493 Codex) ---');
+{
+  const withLayouts = sample();
+  withLayouts.branches[0].layoutType = 'tree-right';
+  withLayouts.centers![0].branches[0].layoutType = 'hierarchy-right';
+  st().loadMap(withLayouts, { resetHistory: true });
+  const a = st().addChildNode('root');
+  const b = st().addChildNode('c2');
+  check('첫 중심의 새 가지는 첫 중심 형제의 레이아웃', (findNodeInMap(m(), a) as MindNode).layoutType, 'tree-right');
+  check('둘째 중심의 새 가지는 둘째 중심 형제의 레이아웃', (findNodeInMap(m(), b) as MindNode).layoutType, 'hierarchy-right');
+  const sib = st().addSiblingNode('X', 'after');
+  check('둘째 중심의 형제도 그 중심의 것', (findNodeInMap(m(), sib) as MindNode).layoutType, 'hierarchy-right');
+  st().appendChildren('c2', [N('Q')]);
+  check('appendChildren 도 그 중심의 것', (findNodeInMap(m(), 'Q') as MindNode).layoutType, 'hierarchy-right');
+
+  const merged = sample();
+  merged.centers![0].root.layoutType = 'tree-down';
+  st().loadMap(merged, { resetHistory: true });
+  useEditorUiStore.getState().setLayoutType('radial-right');
+  check('묶기(둘째 중심으로) → 전역 레이아웃이 그 중심의 것으로', [st().mergeCentersInto('c2'), useEditorUiStore.getState().layoutType, m().root.layoutType], [true, 'tree-down', 'tree-down']);
+  st().undo();
+  check('되돌리기 → 전역 레이아웃도 돌아온다', useEditorUiStore.getState().layoutType, 'radial-right');
+  st().loadMap(sample(), { resetHistory: true });
+  useEditorUiStore.getState().setLayoutType('radial-right');
+  check('남는 중심에 레이아웃이 없으면 전역은 그대로', [st().mergeCentersInto('c2'), useEditorUiStore.getState().layoutType], [true, 'radial-right']);
 }
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }

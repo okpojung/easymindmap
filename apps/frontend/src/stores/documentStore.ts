@@ -332,7 +332,14 @@ function createNewNode(): MindNode {
  * 둘 다 없으면 undefined — 예전 규칙(부모·맵을 물려받음) 그대로다.
  * 색인은 `utils/levelLayouts` 의 표와 같다(depth 1 = branches).
  */
-function levelLayoutFor(map: SampleMap, depth: number): LayoutType | undefined {
+function levelLayoutFor(
+  map: SampleMap,
+  depth: number,
+  // ⑵ 의 탐색 범위 — **노드가 들어갈 중심주제의 가지들** (2026-09-15, PR #493
+  // Codex 지적). 첫 중심의 가지만 보면 둘째 중심에 만든 노드가 첫 중심의
+  // 레이아웃을 받는다. 생략하면 첫 중심.
+  branches: MindNode[] = map.branches as MindNode[],
+): LayoutType | undefined {
   if (depth < 1) return undefined;
   const declared = map.settings?.levelLayouts?.[Math.min(depth, LEVEL_LAYOUT_CAP)];
   if (declared) return declared;
@@ -344,23 +351,27 @@ function levelLayoutFor(map: SampleMap, depth: number): LayoutType | undefined {
       walk(n.children ?? [], d + 1);
     }
   };
-  walk(map.branches as MindNode[], 1);
+  walk(branches, 1);
   return found;
 }
 
 /** layoutType 이 없는 노드에 그 레벨의 것을 박는다 — 있으면 그대로 둔다 */
-function withLevelLayout<T extends MindNode>(node: T, map: SampleMap, depth: number): T {
+function withLevelLayout<T extends MindNode>(
+  node: T, map: SampleMap, depth: number, branches?: MindNode[],
+): T {
   if (node.layoutType) return node;
-  const lt = levelLayoutFor(map, depth);
+  const lt = levelLayoutFor(map, depth, branches);
   return lt ? { ...node, layoutType: lt, edgeType: resolveEdgeType(lt) } : node;
 }
 
 /** 서브트리 전체에 깊이별로 적용 — AI 삽입처럼 여러 층이 한 번에 들어올 때 */
-function withLevelLayoutsDeep(nodes: MindNode[], map: SampleMap, depth: number): MindNode[] {
+function withLevelLayoutsDeep(
+  nodes: MindNode[], map: SampleMap, depth: number, branches?: MindNode[],
+): MindNode[] {
   return nodes.map((n) => {
     const kids = n.children && n.children.length
-      ? withLevelLayoutsDeep(n.children, map, depth + 1) : n.children;
-    return { ...withLevelLayout(n, map, depth), children: kids };
+      ? withLevelLayoutsDeep(n.children, map, depth + 1, branches) : n.children;
+    return { ...withLevelLayout(n, map, depth, branches), children: kids };
   });
 }
 
@@ -1137,7 +1148,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         const newNode = createNewNode();
         newNodeId = newNode.id;
         const branch = makeBranch(
-          withLevelLayout({ ...newNode, style: inheritStyle(view.root.style, 1) }, map, 1),
+          withLevelLayout({ ...newNode, style: inheritStyle(view.root.style, 1) }, map, 1, view.branches),
           view.branches.length,
         );
         return { map: withCenter(map, view, { branches: [...view.branches, branch] }) };
@@ -1153,7 +1164,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         ...createNewNode(),
         colorKey: inheritColorKey(parent),
         style: inheritStyle(parent.style, parentDepth + 1),
-      }, map, parentDepth + 1);
+      }, map, parentDepth + 1, view.branches);
       newNodeId = newNode.id;
 
       return {
@@ -1181,7 +1192,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         let branches = view.branches;
         clean.forEach((text) => {
           const branch = makeBranch(
-            withLevelLayout({ ...createNewNode(), text, style: inheritStyle(view.root.style, 1) }, map, 1),
+            withLevelLayout({ ...createNewNode(), text, style: inheritStyle(view.root.style, 1) }, map, 1, view.branches),
             branches.length,
           );
           branches = [...branches, branch];
@@ -1199,7 +1210,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         text,
         colorKey: inheritColorKey(parent),
         style: inheritStyle(parent.style, parentDepth + 1),
-      }, map, parentDepth + 1));
+      }, map, parentDepth + 1, view.branches));
 
       const branches = updateNodeById(view.branches, pid, (p) => ({
         ...p,
@@ -1233,7 +1244,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       // 중심 루트 아래 → 각 최상위 노드를 그 중심의 브랜치로 (색 순환)
       if (pid === view.rootId) {
         let branches = view.branches as MindNode[];
-        withLevelLayoutsDeep(children, map, 1).forEach((c) => {
+        withLevelLayoutsDeep(children, map, 1, view.branches).forEach((c) => {
           branches = [
             ...branches,
             makeBranch({ ...c, style: c.style ?? inheritStyle(view.root.style, 1) }, branches.length),
@@ -1248,7 +1259,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       // 삽입되는 최상위 자식은 부모 색/스타일을 상속(하위는 파싱값 유지).
       // **레이아웃은 층마다 그 레벨의 것** — 답변이 여러 층으로 들어와도
       // 형제 서브트리와 같은 모양으로 펼쳐진다 (2026-09-04).
-      const prepared = withLevelLayoutsDeep(children, map, parentDepth + 1).map((c) => ({
+      const prepared = withLevelLayoutsDeep(children, map, parentDepth + 1, view.branches).map((c) => ({
         ...c,
         colorKey: c.colorKey ?? inheritColorKey(parent),
         style: c.style ?? inheritStyle(parent.style, parentDepth + 1),
@@ -1257,7 +1268,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         // **받는 노드도 그 레벨의 레이아웃으로** — 손으로 만든 노드(layoutType
         // 없음)에 삽입하면 자식이 형제와 다르게 펼쳐지던 바로 그 자리.
         // 이미 지정돼 있으면 건드리지 않는다.
-        ...withLevelLayout(p, map, parentDepth),
+        ...withLevelLayout(p, map, parentDepth, view.branches),
         collapsed: undefined, // 새 자식이 보이도록 펼침
         children: [...(p.children ?? []), ...prepared],
       })) as SampleBranch[];
@@ -1286,7 +1297,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         const newNode = createNewNode();
         newNodeId = newNode.id;
         const branch = makeBranch(
-          withLevelLayout({ ...newNode, colorKey: inheritColorKey(refBranch), style: inheritStyle(refBranch?.style, 1) }, map, 1),
+          withLevelLayout({ ...newNode, colorKey: inheritColorKey(refBranch), style: inheritStyle(refBranch?.style, 1) }, map, 1, view.branches),
           view.branches.length,
         );
         return {
@@ -1303,7 +1314,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         ...createNewNode(),
         colorKey: inheritColorKey(reference),
         style: inheritStyle(reference?.style, depth),
-      }, map, depth);
+      }, map, depth, view.branches);
       newNodeId = newNode.id;
 
       return {
@@ -1339,7 +1350,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         ...createNewNode(),
         colorKey: inheritColorKey(target),
         style: inheritStyle(target.style, depth),
-      }, map, depth);
+      }, map, depth, view.branches);
       newNodeId = newNode.id;
 
       // Wrapping a top-level branch: the new node becomes the branch.
@@ -1926,6 +1937,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
   mergeCentersInto: (rootId) => {
     let ok = false;
+    let keepLayout: LayoutType | undefined;
     set((state) => {
       const map = state.map;
       if (!rootId || !map.centers?.length) return {};
@@ -1942,6 +1954,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         merged.push(centerToBranch(v.root, v.branches, id, merged.length));
       }
       ok = true;
+      keepLayout = keep.root.layoutType;
       return {
         map: {
           ...map,
@@ -1951,6 +1964,13 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         },
       };
     });
+    // 남는 중심이 둘째 이후였으면 그 루트의 레이아웃이 **맵 전체 레이아웃**이
+    // 된다 — 레이아웃 엔진은 첫 중심을 전역(editorUiStore) 레이아웃으로 그리므로
+    // 맞춰 준다 (PR #493 Codex 지적). 히스토리 스냅샷은 set 시점의 옛 전역
+    // 레이아웃을 들고 있어 되돌리기가 함께 돌아온다.
+    if (ok && keepLayout && keepLayout !== useEditorUiStore.getState().layoutType) {
+      useEditorUiStore.getState().setLayoutType(keepLayout);
+    }
     return ok;
   },
 

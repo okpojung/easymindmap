@@ -279,10 +279,15 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
     // 노드 안의 코드·표·체크 블록은 한 줄로 뭉개지 않고 견출 아래에
     // MD 블록(펜스·파이프 표·- [x])으로 내보낸다 — splitNodeBody 참조.
     const nodeBody = splitNodeBody(node.text);
+    // 빈 제목(글자를 모두 지운 노드)은 `##` / `-` 만 쓴다 — 행 끝 공백을
+    // 남기면 파서·다른 앱이 견출로 안 읽거나 `###` 이름의 노드로 읽는다
+    // (2026-09-15). 다시 읽으면 **이름 없는 노드**로 돌아온다.
+    const hashes = '#'.repeat(depth + 1);
     if (depth <= 5) {
-      lines.push(`${'#'.repeat(depth + 1)} ${nodeBody.title}`);
+      lines.push(nodeBody.title ? `${hashes} ${nodeBody.title}` : hashes);
     } else {
-      lines.push(`${'  '.repeat(depth - 6)}- ${nodeBody.title}`);
+      const dash = `${'  '.repeat(depth - 6)}-`;
+      lines.push(nodeBody.title ? `${dash} ${nodeBody.title}` : dash);
     }
     pushBodyBlocks(lines, nodeBody.blocks);
 

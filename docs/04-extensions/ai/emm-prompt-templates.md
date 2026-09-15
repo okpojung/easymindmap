@@ -2,7 +2,7 @@
 
 * 문서 버전: v1.2
 * 최초 작성: 2026-07
-* 최종 업데이트: 2026-08-04 — 공통 코어 프롬프트 v4 반영, 웹 AI 붙여넣기 경로 안내 현행화
+* 최종 업데이트: 2026-09-15 — §2.5 맵 선언(```emm) 블록 안내 프롬프트 추가 (MD 메타데이터 주석 폐기에 맞춤)
 * 관련: `docs/04-extensions/emm-spec.md`(포맷 스펙),
   `docs/04-extensions/markdown-export.md`(변환 규칙),
   `packages/emm-parser/conformance/cases/prompt-*.md`(예시 출력 —
@@ -114,6 +114,89 @@ ChatGPT·Claude·Gemini 등 어떤 LLM에게든 아래 시스템 프롬프트를
 > 템플릿은 앱이 자동 마이그레이션, 직접 수정한 템플릿은 보존).
 
 ---
+
+## 2.5 맵 선언 블록(```emm) 안내 — 코어 프롬프트에 덧붙이는 조각 (2026-09-15)
+
+EMM 이 맵에 대해 말하는 것은 첫 헤딩 아래 **```emm 코드블록** 하나뿐이다
+(`emm-spec.md` §3.7). 파일 끝 메타데이터 주석은 폐기됐다. AI(또는 mmd 표준을
+따르는 다른 도구)가 이 블록까지 써 주면, 불러올 때 레이아웃·도형·글자 크기가
+함께 정해진다. 아래 조각을 §2 코어 프롬프트 **뒤에** 붙인다. 필요 없으면
+빼도 된다 — 블록이 없어도 유효한 EMM 문서다.
+
+````text
+[맵 선언 블록 — 선택]
+문서의 첫 줄 `# 중심주제` 바로 아래에, 정보 문자열이 `emm` 인 펜스
+코드블록 하나로 맵의 모양을 선언할 수 있다. 이 블록은 표준 마크다운
+코드블록이라 다른 뷰어에서는 코드로 보일 뿐 문서를 깨뜨리지 않는다.
+블록 안은 YAML 이 아니라 "키: 값" 줄과 2칸 들여쓰기만 쓴다 — 목록(-),
+따옴표, 흐름 표기({ })는 쓰지 마라.
+
+형식 A — 템플릿 하나로 (간단):
+```emm
+template: TP
+```
+
+형식 B — 레벨별로 (상세):
+```emm
+levels:
+  1:
+    layout: tree-right
+    shape: rounded
+    font: 16
+  2:
+    layout: process-tree-right
+    shape: rectangle
+    font: 14
+```
+
+규칙:
+1. 블록은 문서에 하나만, 첫 헤딩(`#`) 바로 다음에 둔다.
+2. `template` 과 `levels` 는 둘 중 하나만 쓴다. 둘 다 있으면 `levels` 만
+   읽힌다.
+3. 레벨 번호는 1 이 중심 주제(`#`), 2 가 `##`, 3 이 `###` … 이다.
+   적지 않은 더 깊은 레벨은 가장 깊게 적은 레벨의 값을 물려받는다.
+   그래서 같은 값이 이어지면 한 번만 적으면 된다.
+4. 레벨마다 쓸 수 있는 키는 셋뿐이다.
+   - layout: 그 레벨 노드들의 배치.
+     1레벨(맵 전체)에는 무엇이든 된다: tree-right · tree-left · tree-down ·
+     tree-up · process-tree-right · process-tree-left · radial-bidirectional ·
+     radial-right · radial-left · hierarchy-right · hierarchy-left · kanban ·
+     timeline · timeline-center · freeform.
+     2레벨부터는 하위 트리로 그릴 수 있는 것만 된다: tree-right · tree-down ·
+     process-tree-right · radial-right · radial-left · radial-bidirectional ·
+     hierarchy-right · timeline · timeline-center. 다른 값은 건너뛴다.
+   - shape: 노드 도형. none · rounded · rectangle · pill · ellipse ·
+     diamond · hexagon · parallelogram · arrow-left · arrow-right ·
+     cylinder · star.
+   - font: 글자 크기(pt, 정수). 예: 14.
+5. `template` 값은 짧은 ID 또는 긴 이름이다.
+   - TP = tree-progtree (1레벨 트리 → 2레벨 진행트리 → 3레벨 트리 →
+     4레벨+ 진행트리, 앱 기본)
+   - PT = progtree-tree (1레벨 진행트리 → 2레벨+ 트리)
+   - 레이아웃 하나짜리: TR tree-right · TL tree-left · TD tree-down ·
+     TU tree-up · PR process-tree-right · PL process-tree-left ·
+     RB radial-bidirectional · RR radial-right · RL radial-left ·
+     HR hierarchy-right · HL hierarchy-left · KB kanban · TM timeline ·
+     TC timeline-center · FF freeform
+6. `map: <id>` 줄은 앱이 내보낼 때만 쓴다(서버 맵 ID). 새로 쓰는 문서에는
+   넣지 마라.
+7. 모르는 키·값은 무시된다 — 오류가 나지는 않지만 효과도 없다. 위 목록에
+   없는 값을 지어내지 마라.
+8. 노드별 색·아이콘·스타일은 이 블록으로 지정할 수 없다. 그런 것은
+   문서에 쓰지 말고, 사용자가 앱에서 정한다.
+
+예 — 절차 문서를 진행트리로:
+# 배포 절차
+
+```emm
+template: PT
+```
+
+## 준비
+- 서버 접속 정보 확인
+## 실행
+…
+````
 
 ## 3. 용도별 추가 지시
 

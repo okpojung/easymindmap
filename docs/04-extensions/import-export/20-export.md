@@ -70,11 +70,12 @@ CREATE TABLE public.exports (
 #### 4.2 Markdown 내보내기 모드 — 단일 모드 (EMM 2계층)
 
 > **[개정 — 2026-07] 초기 설계의 Basic/Extended(simple/full) 이원화는
-> 폐기되었다.** EMM의 2계층 구조(본문 = 순수 GFM, 파일 끝 1줄 메타데이터
-> 주석 `easymindmap:v1:BASE64`)가 두 목적을 동시에 달성하기 때문이다:
+> 폐기되었다.** 단일 EMM 직렬화 하나다.
 >
-> - 본문만 보면 = 사람 읽기용(구 Basic) — 어떤 MD 뷰어에서도 정상 문서
-> - 메타데이터까지 읽으면 = 무손실 복원용(구 Extended)
+> **[개정 — 2026-09-15] 파일 끝 메타데이터 주석(`easymindmap:v1:BASE64`)도
+> 폐기되었다.** MD = 본문(순수 GFM) + 첫 헤딩 아래 ```emm 선언(맵 ID ·
+> 레벨별 레이아웃·도형·글자 크기). 노드별 스타일·아이콘까지 되살리는
+> 무손실 형식은 **HTML 내보내기**다 (`22-map-file-meta.md`).
 >
 > 따라서 export는 **단일 모드**이며 항상 메타데이터를 포함한다.
 > 근거·상세: `emm-spec.md` §2.1, 메타 스키마: `22-map-file-meta.md`.
@@ -534,8 +535,7 @@ HTML Export로 생성된 파일은 읽기 전용 뷰어로 동작한다. 편집�
 | 형식 | 내용 | 메타데이터 위치 |
 |---|---|---|
 | **HTML** | 오프라인 읽기 전용 뷰어 (기존) | `<script type="application/json" id="easymindmap-map">` + `<!-- EasyMindMap 생성 파일 -->` 주석 |
-| **MD (EasyMindMap 내보내기)** | 일반 에디터에서 보고 고칠 수 있는 표준 Markdown 본문 | 파일 끝 `<!-- easymindmap:v1:BASE64(JSON) -->` 주석 |
-| **MD (일반)** | 외부에서 작성된 Markdown | 없음 — 구조 파싱만 (importMarkdown.ts) |
+| **MD** (우리가 내보낸 것도, 외부에서 쓴 것도) | 일반 에디터에서 보고 고칠 수 있는 표준 Markdown 본문 | 없음 — 구조 파싱 + ```emm 선언(맵 정책)만 (importMarkdown.ts · emmDeclaration.ts). 2026-09-15 메타 주석 폐기 |
 
 메타데이터의 전체 필드·형식·불러오기 규칙은 **`22-map-file-meta.md`**
 참조 — `{ format, version, generator, exportedAt(내보낸 시각), title,

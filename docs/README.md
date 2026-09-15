@@ -201,7 +201,7 @@ docs/
 | [`docs/04-extensions/ai/web-ai-clipboard.md`](04-extensions/ai/web-ai-clipboard.md) | 웹 AI 클립보드 워크플로우(API 키 없이 웹 AI 사용) |
 | [`docs/04-extensions/ai/easymindmap-copilot-gpt.md`](04-extensions/ai/easymindmap-copilot-gpt.md) | EasyMindMap Copilot GPT |
 | [`docs/04-extensions/markdown-export.md`](04-extensions/markdown-export.md) | MD ↔ 맵 변환 규칙 명세 (EMM 구현 규칙서) |
-| [`docs/04-extensions/import-export/22-map-file-meta.md`](04-extensions/import-export/22-map-file-meta.md) | 맵 파일 메타데이터 왕복 (easymindmap:v1) |
+| [`docs/04-extensions/import-export/22-map-file-meta.md`](04-extensions/import-export/22-map-file-meta.md) | HTML 내보내기 메타데이터 — MD 의 easymindmap:v1 주석은 2026-09-15 폐기 |
 | [`docs/05-implementation/api-spec.md`](05-implementation/api-spec.md) | API 명세 |
 | [`docs/05-implementation/backend-phase1.md`](05-implementation/backend-phase1.md) | 백엔드 Phase 1(걷는 뼈대·맵 저장) 구현·검증·로드맵 |
 | [`docs/05-implementation/codex-task-plan.md`](05-implementation/codex-task-plan.md) | 개발 작업 계획 |

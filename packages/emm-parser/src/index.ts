@@ -1,7 +1,8 @@
 // @easymindmap/emm-parser — EasyMindMap Markdown(EMM) 레퍼런스 파서.
 //
-// EMM = 본문 100% CommonMark/GFM + 파일 끝 메타데이터 주석 1줄
-//       (<!-- easymindmap:v1:BASE64(JSON) -->)
+// EMM = 본문 100% CommonMark/GFM + 제목 아래 ```emm 선언 블록(맵 정책).
+//       파일 끝 메타데이터 주석(easymindmap:v1)은 2026-09-15 폐기 — meta.ts 는
+//       HTML 내보내기(#easymindmap-map)만 담당한다.
 // 스펙: docs/04-extensions/emm-spec.md · 변환 규칙: docs/04-extensions/
 // markdown-export.md · 적합성 코퍼스: packages/emm-parser/conformance/
 
@@ -23,6 +24,7 @@ export { readFrontMatter, type FrontMatterResult } from './frontMatter';
 // 이 선언을 알 필요가 없고, 왕복 보존도 표준이 이미 보장한다.
 export {
   readDeclaration,
+  buildDeclaration,
   TEMPLATE_IDS,
   expandTemplateId,
   type EmmDeclaration,
@@ -39,16 +41,10 @@ export {
 } from './parse';
 export {
   buildEmmBody,
-  buildMetaComment,
-  serializeEmm,
   safeFileName,
   dataUrlToBytes,
-  withPackagedImagePaths,
-  countMapNodes,
   splitNodeBody,
-  nodeHeadingText,
+  type BuildEmmBodyOptions,
   type EmmImageFile,
   type NodeBodyBlock,
-  type SerializeEmmOptions,
-  type SerializedEmm,
 } from './serialize';

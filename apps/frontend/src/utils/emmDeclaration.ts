@@ -4,12 +4,13 @@
 // 뜻을 아는 것은 이쪽이므로, 알려진 이름인지 판정하고 맵 설정으로 옮기는
 // 일이 여기 있다. 그래서 나중에 속성을 하나 더해도 파서는 건드리지 않는다.
 //
-// 선언은 **불러오기 힌트**다. 내보낼 때 쓰지 않는다 — 맵 상태는 파일 끝
-// 메타데이터가 이미 온전히 담고 있고, 같은 정보를 두 곳에 두면 반드시
-// 어긋난다. 이 블록의 쓸모는 **앱을 한 번도 거치지 않은 문서**에 있다.
-// 메타데이터가 있는 문서에서는 메타데이터가 이긴다 (importMapFile 참조).
+// 선언은 양방향이다 (2026-09-15). 불러올 때는 `resolveDeclaration` 이 맵
+// 설정으로 옮기고, 내보낼 때는 `declareFromMap` 이 맵 설정을 선언으로 되돌려
+// 제목 아래 ```emm 블록으로 쓴다. MD 가 맵에 대해 말하는 것은 **이 블록이
+// 전부**다 — 파일 끝 메타데이터 주석은 폐기했다. 노드별 스타일·아이콘 같은
+// 충실도는 HTML 내보내기와 서버가 맡는다 (emm-spec.md §2.1).
 
-import type { LayoutType, MapSettings, ShapeType } from '@/editor/__samples__/types';
+import type { LayoutType, MapSettings, SampleMap, ShapeType } from '@/editor/__samples__/types';
 import { expandTemplateId, type EmmDeclaration } from '@emm/declaration';
 import { SUBTREE_SUPPORTED } from '@/layout/strategies/SubtreeStrategy';
 import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
@@ -240,5 +241,45 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
   }
 
   if (skipped.length) out.skipped = skipped;
+  return out;
+}
+
+/**
+ * 맵 설정 → ```emm 선언 (`resolveDeclaration` 의 역).
+ *
+ * `levels:` 로만 쓴다 — 템플릿 이름은 불러올 때 편의일 뿐이고, 맵이 지금
+ * 실제로 갖는 값은 레벨별 레이아웃·도형·글자 크기다. 1레벨 레이아웃은 맵
+ * 전체 레이아웃(`layoutType`). 색인 기준이 배열마다 다른 것은 여기서 흡수한다
+ * (levelLayouts[lv-1] · levelShapes[lv-1] · levelFonts[lv]).
+ * 뒤 레벨이 앞 레벨과 같은 값이면 적지 않는다 — 읽는 쪽이 "가장 깊게 선언된
+ * 레벨을 상속"하므로 같은 뜻이고, 블록이 짧아진다.
+ */
+export function declareFromMap(
+  map: Pick<SampleMap, 'settings'>,
+  layoutType?: LayoutType,
+  mapId?: string | null,
+): EmmDeclaration {
+  const levels: Record<number, Record<string, string>> = {};
+  const set = (lv: number, key: string, value: string | undefined) => {
+    if (!value) return;
+    levels[lv] = levels[lv] ?? {};
+    levels[lv][key] = value;
+  };
+  if (layoutType) set(1, 'layout', layoutType);
+  const s = map.settings ?? {};
+  let prevLayout: string | undefined = layoutType;
+  let prevShape: string | undefined;
+  let prevFont: number | undefined;
+  for (let lv = 1; lv <= CAP + 1; lv++) {
+    const layout = lv === 1 ? undefined : (s.levelLayouts?.[lv - 1] ?? undefined);
+    const shape = s.levelShapes?.[lv - 1] ?? undefined;
+    const font = s.levelFonts?.[lv]?.size;
+    if (layout && layout !== prevLayout) { set(lv, 'layout', layout); prevLayout = layout; }
+    if (shape && shape !== prevShape) { set(lv, 'shape', shape); prevShape = shape; }
+    if (font && font !== prevFont) { set(lv, 'font', String(font)); prevFont = font; }
+  }
+  const out: EmmDeclaration = {};
+  if (mapId) out.map = mapId;
+  if (Object.keys(levels).length) out.levels = levels;
   return out;
 }

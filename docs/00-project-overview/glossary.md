@@ -138,11 +138,18 @@ PWA·Electron·Tauri 가 **같은 코드 경로**를 쓸 수 있다.
 
 ### EMM (EasyMindMap Markdown)
 
-본문 100% CommonMark/GFM + 파일 끝 메타데이터 주석 1줄.
+본문 100% CommonMark/GFM + 첫 헤딩 아래 ```emm 선언 블록(맵 ID · 레벨별
+레이아웃·도형·글자 크기). 파일 끝 메타데이터 주석(`easymindmap:v1`)은
+2026-09-15 폐기 — 노드별 스타일까지 담는 무손실 형식은 HTML 내보내기다.
 
+````
+```emm
+map: 7f3a9c
+levels:
+  1:
+    layout: tree-right
 ```
-<!-- easymindmap:v1:BASE64(JSON) -->
-```
+````
 
 스펙은 [`emm-spec.md`](../04-extensions/emm-spec.md), 변환 규칙은
 [`markdown-export.md`](../04-extensions/markdown-export.md).

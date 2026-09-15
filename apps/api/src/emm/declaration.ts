@@ -277,3 +277,32 @@ export function expandTemplateId(value: string | undefined): string | undefined 
   const v = value.trim();
   return TEMPLATE_IDS[v.toUpperCase()] ?? v;
 }
+
+// ── 선언 쓰기 — 내보내기 (2026-09-15) ────────────────────────────────
+//
+// MD 내보내기는 파일 끝 메타데이터 주석(easymindmap:v1:BASE64) 을 **더 이상
+// 쓰지 않는다.** 맵 단위 정책(맵 ID · 템플릿 또는 레벨별 레이아웃·도형·글자
+// 크기)만 이 블록으로 남기고, 노드별 스타일·아이콘 같은 충실도는 HTML
+// 내보내기와 서버가 맡는다 (emm-spec.md §2.1). 읽는 쪽은 readDeclaration —
+// 같은 키를 같은 모양으로 쓴다.
+
+/** EmmDeclaration → ```emm 블록 문자열 (끝에 빈 줄 없음). 적을 것이 없으면 ''. */
+export function buildDeclaration(decl: EmmDeclaration): string {
+  const lines: string[] = [];
+  if (decl.map) lines.push(`map: ${decl.map}`);
+  if (decl.levels && Object.keys(decl.levels).length) {
+    lines.push('levels:');
+    const levels = Object.keys(decl.levels).map(Number).filter(Number.isInteger).sort((a, b) => a - b);
+    for (const lv of levels) {
+      const spec = decl.levels[lv];
+      const keys = Object.keys(spec).filter((k) => spec[k] != null && String(spec[k]).trim() !== '');
+      if (!keys.length) continue;
+      lines.push(`  ${lv}:`);
+      for (const k of keys) lines.push(`    ${k}: ${String(spec[k]).trim()}`);
+    }
+  } else if (decl.template) {
+    lines.push(`template: ${decl.template}`);
+  }
+  if (!lines.length) return '';
+  return ['```emm', ...lines, '```'].join('\n');
+}

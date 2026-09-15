@@ -50,7 +50,7 @@ AI, 번역, 협업, 퍼블리시, 외부 연동 등 편집기 코어 위에 올�
 | `ai/web-ai-clipboard.md` | 웹 AI 클립보드 연동(방법 A — 2026-08-03 구현) |
 | `ai/easymindmap-copilot-gpt.md` | EasyMindMap Copilot 커스텀 GPT |
 | `ai/ai-project-workspace.md` | AI 프로젝트 워크스페이스 (MVP 완료) |
-| `import-export/22-map-file-meta.md` | 맵 파일 메타데이터(.md 내장 메타) |
+| `import-export/22-map-file-meta.md` | HTML 내보내기 메타데이터 (.md 내장 메타는 2026-09-15 폐기) |
 
 ---
 

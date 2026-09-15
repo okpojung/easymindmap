@@ -1,7 +1,7 @@
 # 07. Markdown Format Policy
 - 문서 버전: v1.1
 - 작성일: 2026-04-08
-- 최종 업데이트: 2026-08-04 — 실제 파서 기준 현행화(# 제거 저장, 불릿·순번=자식 노드 분해, 체크박스=본문 체크 줄, blockPlacement 단일 옵션, 줄 단위 스캔 파서, 단일 EMM 직렬화 Export).
+- 최종 업데이트: 2026-08-04 — 실제 파서 기준 현행화(# 제거 저장, 불릿·순번=자식 노드 분해, 체크박스=본문 체크 줄, blockPlacement 단일 옵션, 줄 단위 스캔 파서, 단일 mmd 직렬화 Export).
 
 > **구현 단일 원본**: 파서·직렬화는 `packages/emm-parser`(`src/model.ts`의 `MindNode`가 노드 타입 단일 원본), 포맷 스펙은 `docs/04-extensions/emm-spec.md` 참조.
 
@@ -503,9 +503,9 @@ Markdown 입력
 
 ---
 
-## 13. Export 정책 (현행 — 단일 EMM 직렬화)
+## 13. Export 정책 (현행 — 단일 mmd 직렬화)
 
-* Simple/Full 2모드는 설계 초안 — 미채택. Export는 **단일 EMM 직렬화** 하나다.
+* Simple/Full 2모드는 설계 초안 — 미채택. Export는 **단일 mmd 직렬화** 하나다.
 * 구조는 Markdown(heading `#` 재부여·리스트 역변환)으로, 맵 단위 레이아웃 정책은 첫 헤딩 아래 **```emm 선언 블록**으로 쓴다 (2026-09-15 — 파일 끝 메타데이터 주석은 폐기).
 * 노드별 스타일·아이콘 같은 충실도는 MD 에 담지 않는다 — HTML 내보내기·서버 몫. MD 라운드트립은 구조·내용·리스트 형태·레이아웃 정책까지다.
 
@@ -522,7 +522,7 @@ Markdown 입력
 ## 15. 연관 기능
 
 * **`packages/emm-parser`** — 파서·직렬화 구현 단일 원본 (`src/model.ts` MindNode)
-* **`docs/04-extensions/emm-spec.md`** — EMM 포맷 스펙
+* **`docs/04-extensions/emm-spec.md`** — mmd 포맷 스펙
 * NODE_CONTENT
 * NODE_STYLE
 * LAYOUT

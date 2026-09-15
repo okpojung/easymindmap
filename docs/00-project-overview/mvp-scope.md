@@ -70,7 +70,7 @@
 - 단일 세션 편집 잠금 — 다른 세션에서 편집 중이면 읽기 전용 + 사본 저장
 
 ### 5. Export
-- Markdown Export (EMM 메타데이터 포함, 헤더 계층 구조)
+- Markdown Export (mmd 메타데이터 포함, 헤더 계층 구조)
 - Standalone HTML Export (단독 실행 가능 뷰어 파일)
 - 첨부/사진 포함 시 자동 ZIP (파일 + files/)
 - Import: Markdown / HTML / ZIP
@@ -80,7 +80,7 @@
   직접 호출 — 모델 선택, 실시간 모델 목록
 - ② 웹 AI 클립보드 모드: 프롬프트 복사 → 웹 AI(ChatGPT 등)에 붙여넣기 →
   답변 붙여넣기 → 맵 변환 (EasyMindMap Copilot GPT 바로가기 제공)
-- EMM 프롬프트 템플릿 v4 (헤딩 6레벨, 블록=노드 본문)
+- mmd 프롬프트 템플릿 v4 (헤딩 6레벨, 블록=노드 본문)
 - 새 맵 생성 + 선택 노드 자세히 확장 (경로 맥락·프로젝트 지침)
 
 ### 7. Tag / Search

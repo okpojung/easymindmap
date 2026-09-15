@@ -44,10 +44,10 @@ AI, 번역, 협업, 퍼블리시, 외부 연동 등 편집기 코어 위에 올�
 | `i18n.md` | 다국어(한국어+영어) 단계·주의사항 — B10 |
 | `content-permanence.md` | 내용 영속성 규칙 |
 | `vault-mirror.md` | DB 정본 + 파일 미러(C안). 셀프호스트 vault |
-| `emm-spec.md`, `emm-testing-guide.md` | EMM Markdown 스펙·검증 |
+| `emm-spec.md`, `emm-testing-guide.md` | Mindmap Markdown(mmd) 스펙·검증 |
 | `markdown-export.md` | MD 내보내기 규칙 |
 | `mindmap-markdown-alignment.md` | Mindmap Markdown 표준 정렬 — 불러오기·표시·내보내기 항목별 결정 (2026-09-16, 구현 전) |
-| `ai/emm-prompt-templates.md` | 웹 AI용 EMM 프롬프트 템플릿(현행 v4) |
+| `ai/emm-prompt-templates.md` | 웹 AI용 mmd 프롬프트 템플릿(현행 v4) |
 | `ai/web-ai-clipboard.md` | 웹 AI 클립보드 연동(방법 A — 2026-08-03 구현) |
 | `ai/easymindmap-copilot-gpt.md` | EasyMindMap Copilot 커스텀 GPT |
 | `ai/ai-project-workspace.md` | AI 프로젝트 워크스페이스 (MVP 완료) |

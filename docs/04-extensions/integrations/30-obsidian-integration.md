@@ -1,6 +1,6 @@
 # 30. Obsidian Integration
 
-> ⚠️ **미구현 — 설계본.** Obsidian Vault 연동은 코드가 없다(2026-08-04). 일반 Markdown 가져오기/내보내기는 EMM 포맷으로 이미 구현되어 있다(별건 — docs/04-extensions/import-export/).
+> ⚠️ **미구현 — 설계본.** Obsidian Vault 연동은 코드가 없다(2026-08-04). 일반 Markdown 가져오기/내보내기는 mmd 포맷으로 이미 구현되어 있다(별건 — docs/04-extensions/import-export/).
 
 ## OBSIDIAN_INTEGRATION
 

@@ -6,7 +6,7 @@ const fmt = (iso: string) => {
   return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`;
 };
 
-export default function Maps() {
+export default function Library() {
   const [items, setItems] = useState<ListedMap[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,8 +40,8 @@ export default function Maps() {
   return (
     <>
       <section className="wrap head">
-        <h1>퍼블리싱맵</h1>
-        <p>저자가 진열대에 올린 맵입니다. 로그인 없이 바로 열립니다.</p>
+        <h1>지식창고</h1>
+        <p>저자가 공개한 맵을 둘러보세요. 로그인 없이 바로 열립니다.</p>
       </section>
 
       <section className="wrap">
@@ -60,7 +60,7 @@ export default function Maps() {
           <div className="note">
             <b>아직 진열된 맵이 없습니다.</b>
             <div style={{ marginTop: 6 }}>
-              맵을 퍼블리싱한 뒤 <b>[진열대에 올린다]</b> 를 켜면 여기에 나타납니다.
+              맵을 퍼블리싱한 뒤 <b>[지식창고에 올린다]</b> 를 켜면 여기에 나타납니다.
             </div>
           </div>
         )}

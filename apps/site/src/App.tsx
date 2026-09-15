@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import Home from './pages/Home';
-import Maps from './pages/Maps';
+import Emm from './pages/Emm';
+import Library from './pages/Library';
 import { APP_URL } from './config';
 
 /**
  * 길잡이 — **라우터 라이브러리를 쓰지 않는다** (2026-09-13).
  *
- * 길이 둘뿐이고(`/`·`/maps`), `/p/{id}` 는 nginx 가 앱으로 넘기므로 이
- * 번들에 오지 않는다. 셋 이상으로 늘거나 중첩이 생기면 그때 넣는다 —
- * 지금 넣으면 홈페이지 첫 화면에 쓰지도 않을 코드가 실린다.
+ * 길이 셋뿐이고(`/`·`/emm`·`/library`), `/p/{id}` 는 nginx 가 앱으로
+ * 넘기므로 이 번들에 오지 않는다. 중첩 경로나 파라미터가 생기면 그때
+ * 넣는다 — 지금 넣으면 첫 화면에 쓰지도 않을 코드가 실린다.
  */
 function usePath(): string {
   const [path, setPath] = useState(() => window.location.pathname);
@@ -24,13 +25,17 @@ function usePath(): string {
 export function go(to: string) {
   window.history.pushState({}, '', to);
   window.dispatchEvent(new PopStateEvent('popstate'));
+  window.scrollTo(0, 0);
 }
 
-function Link({ to, children }: { to: string; children: React.ReactNode }) {
+export function Link(
+  { to, className, children }: { to: string; className?: string; children: React.ReactNode },
+) {
   const here = window.location.pathname === to;
   return (
     <a
       href={to}
+      className={className}
       aria-current={here ? 'page' : undefined}
       onClick={(e) => {
         // 새 탭·가운데 클릭은 브라우저에 맡긴다 — 가로채면 사용자가
@@ -43,9 +48,14 @@ function Link({ to, children }: { to: string; children: React.ReactNode }) {
   );
 }
 
+const PAGES: Record<string, () => JSX.Element> = {
+  '/emm': Emm,
+  '/library': Library,
+};
+
 export default function App() {
   const path = usePath();
-  const page = path === '/maps' ? <Maps /> : <Home />;
+  const Page = PAGES[path] ?? Home;
   return (
     <>
       <header className="top">
@@ -53,17 +63,19 @@ export default function App() {
           <Link to="/"><span className="brand">Easy<span>MindMap</span></span></Link>
           <nav className="nav">
             <Link to="/">홈</Link>
-            <Link to="/maps">퍼블리싱맵</Link>
+            <Link to="/emm">EMM 표준</Link>
+            <Link to="/library">지식창고</Link>
           </nav>
           <span className="spacer" />
           <a className="btn" href={APP_URL}>시작하기</a>
         </div>
       </header>
-      <main>{page}</main>
+      <main><Page /></main>
       <footer className="foot">
         <div className="wrap">
           <span>© EasyMindMap</span>
           <span className="spacer" />
+          <Link to="/emm">EMM 표준</Link>
           <a href={APP_URL}>앱 열기</a>
         </div>
       </footer>

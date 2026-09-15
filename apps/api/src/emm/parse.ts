@@ -130,7 +130,8 @@ export function parseMarkdownToMap(
     for (const raw of lines) {
       if (/^\s*```/.test(raw)) { inFence = !inFence; continue; }
       if (inFence) continue;
-      const h = raw.match(/^(#{1,6})\s+\S/);
+      // 빈 견출(`##` · `## #`)도 견출이다 (2026-09-15 — 이름 없는 노드)
+      const h = raw.match(/^(#{1,6})(?:[ \t]+\S|[ \t]*$)/);
       if (!h) continue;
       if (!firstHeadingLevel) firstHeadingLevel = h[1].length;
       if (h[1].length === 1) h1Count++;
@@ -140,6 +141,7 @@ export function parseMarkdownToMap(
 
   let title = fallbackTitle;
   let rootText = '';
+  let rootSeen = false; // 첫 H1 을 봤나 — 빈 `#` 도 제목 자리를 차지한다
   const branches: SampleBranch[] = [];
   const rootNotes: NoteBlock[] = [];
   /** 첫 견출 전에 나온 루트 사진 (2026-08-18, B17) */
@@ -237,12 +239,18 @@ export function parseMarkdownToMap(
     node.images = cur;
   };
 
-  const attach = (depth: number, rawText: string): MindNode | null => {
-    if (depth < 1 || !rawText.trim()) return null;
+  // allowEmpty: 빈 견출(`##`)·빈 리스트 항목(`-`)은 **이름 없는 노드**다
+  // (2026-09-15). 앱은 글자를 모두 지운 노드를 정상 상태로 저장하므로,
+  // 내보냈다 다시 읽을 때 그 노드가 사라지거나 하위가 한 단계 올라가면
+  // 구조가 망가진다. 문단·인용 등 다른 자리에서는 예전처럼 빈 글자를
+  // 무시한다.
+  const attach = (depth: number, rawText: string, allowEmpty = false): MindNode | null => {
+    if (depth < 1) return null;
+    if (!allowEmpty && !rawText.trim()) return null;
     const { text, links, images } = stripLinks(rawText);
-    if (!text && !images.length) return null;
+    if (!text && !images.length && !allowEmpty) return null;
     // 이미지뿐인 줄(![](url)) — 파일 이름을 노드 텍스트로 쓴다
-    const nodeText = text || imageFileName(images[0]);
+    const nodeText = text || (images.length ? imageFileName(images[0]) : '');
     while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
 
     if (depth === 1 || stack.length === 0) {
@@ -526,7 +534,7 @@ export function parseMarkdownToMap(
       // 되거나, 루트 하나에 나머지 전부가 코드 노트로 들어간다(실제 보고).
       // 다른 언어의 펜스는 그대로 둔다 — 코드 안의 `# 주석` 을 견출로
       // 오인하면 안 된다.
-      if (fenceLang.toLowerCase() === 'emm' && /^#{1,6}\s/.test(line)) {
+      if (fenceLang.toLowerCase() === 'emm' && /^#{1,6}(\s|$)/.test(line)) {
         while (fenceBuf.length && !fenceBuf[fenceBuf.length - 1].trim()) fenceBuf.pop(); // 견출 앞 빈 줄은 선언이 아니다
         closeFence();
         // 이 줄은 견출 — 아래로 흘려보낸다
@@ -565,7 +573,10 @@ export function parseMarkdownToMap(
       continue;
     }
 
-    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    // `## 제목` 외에 **빈 견출**도 견출이다: `##`(뒤에 아무것도 없음) ·
+    // `## `(행 끝 공백 — 옛 내보내기가 이렇게 썼다) · `## #`(닫는 `#` 만,
+    // CommonMark 의 빈 견출). 코드 펜스 안은 위에서 이미 걸러졌다.
+    const heading = line.match(/^(#{1,6})(?:[ \t]+(.*))?$/);
     if (heading) {
       flushAll();
       lastItem = null;
@@ -573,8 +584,10 @@ export function parseMarkdownToMap(
       sectionDepth = null;
       paraDepth = null;
       const level = heading[1].length; // 1~6
-      const text = heading[2].trim();
-      if (level === 1 && !rootText && !sawHeading) {
+      let text = (heading[2] ?? '').trim();
+      if (/^#+$/.test(text)) text = ''; // `## #` — 닫는 기호뿐이면 빈 견출
+      if (level === 1 && !rootSeen && !sawHeading) {
+        rootSeen = true;
         // 파일 첫 H1만 제목(루트) — 이후의 H1은 아래에서 2레벨 견출로
         rootText = stripLinks(text).text;
         title = rootText;
@@ -585,7 +598,7 @@ export function parseMarkdownToMap(
       // 본문에 H1을 쓰는 파일(h1Mode)은 # = 2레벨, ## = 3레벨 …로 한
       // 단계씩 내려 계층을 보존한다. 일반 파일은 ## = 2레벨 (기존과 동일).
       const depth = h1Mode ? Math.min(level, 6) : Math.max(1, level - 1);
-      attach(depth, text);
+      attach(depth, text, true);
       lastHeadingDepth = depth;
       sawHeading = true;
       continue;
@@ -609,7 +622,9 @@ export function parseMarkdownToMap(
     }
 
     // 리스트(- * +) 또는 순번(1. / 1)) 항목 — 순번은 번호를 텍스트에 유지
-    const bullet = line.match(/^([ \t]*)([-*+]|\d+[.)])\s+(.+)$/);
+    // `- 항목` 외에 `-` 만 있는 줄도 항목이다 — 7레벨 이상의 빈 노드가
+    // 이렇게 내보내진다 (2026-09-15). `---` 는 위의 수평선에서 먼저 걸러진다.
+    const bullet = line.match(/^([ \t]*)([-*+]|\d+[.)])(?:[ \t]+(.*))?$/);
     if (bullet) {
       flushPara();
       lastBlockNode = null;
@@ -617,12 +632,14 @@ export function parseMarkdownToMap(
       const indentLevel = Math.floor(indent / 2);
       const marker = bullet[2];
       const ordered = /^\d/.test(marker);
-      const text = ordered ? `${marker} ${bullet[3].trim()}` : bullet[3].trim();
+      const itemText = (bullet[3] ?? '').trim();
+      const text = ordered ? `${marker} ${itemText}` : itemText;
+      const emptyItem = !ordered && !itemText;
       let node: MindNode | null;
       if (ordered && indentLevel === 0) {
         // 들여쓰기 없는 순번 항목 = 절 머리 (다음 문단들이 이 하위로)
         const depth = lastHeadingDepth + 1;
-        node = attach(depth, text);
+        node = attach(depth, text, emptyItem);
         sectionDepth = node ? depth : null;
         paraDepth = null;
       } else {
@@ -630,7 +647,7 @@ export function parseMarkdownToMap(
         // 기준에 상대적으로 붙는다 ("Apache 설정 파일 수정" 문단 아래의
         // "- DocumentRoot: …" 불릿이 그 문단의 하위가 되도록)
         const base = paraDepth ?? (sectionDepth !== null ? sectionDepth : lastHeadingDepth);
-        node = attach(base + 1 + indentLevel, text);
+        node = attach(base + 1 + indentLevel, text, emptyItem);
       }
       lastItem = node ? { node, indent } : null;
       continue;

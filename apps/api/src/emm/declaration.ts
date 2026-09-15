@@ -167,7 +167,7 @@ function findEmmBlock(lines: string[]): string[] | null {
       // 줄이 선언일 수 없고, 그 뒤를 계속 읽으면 `## 가지: 값` 같은 견출을
       // 키로 오인할 수 있다.
       for (let j = i + 1; j < lines.length; j++) {
-        if (/^#{1,6}\s/.test(lines[j])) { end = j; break; }
+        if (/^#{1,6}(\s|$)/.test(lines[j])) { end = j; break; } // 빈 견출(`##`)도 끊는다
       }
     }
     const body = lines.slice(i + 1, end);

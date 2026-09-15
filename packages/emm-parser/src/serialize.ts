@@ -269,7 +269,16 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
     }
   }
 
-  const walk = (node: MindNode, depth: number) => {
+  // listIndent: null 이면 견출(#) 모드, 숫자면 리스트(-) 모드의 들여쓰기 단.
+  // group.headingSeen: 같은 형제 묶음에서 이미 견출을 냈는지 — 견출 뒤에
+  // 오는 `-` 는 파서가 그 견출의 **자식**으로 읽으므로, 형제 묶음 안에서
+  // 견출이 한 번 나오면 그 뒤 형제는 리스트 표시가 있어도 견출로 쓴다.
+  const walk = (
+    node: MindNode,
+    depth: number,
+    listIndent: number | null,
+    group: { headingSeen: boolean },
+  ) => {
     // depth 1(2레벨)=## … depth 5(6레벨)=###### / 그 아래는 리스트 들여쓰기
     // 노드 안의 코드·표·체크 블록은 한 줄로 뭉개지 않고 견출 아래에
     // MD 블록(펜스·파이프 표·- [x])으로 내보낸다 — splitNodeBody 참조.
@@ -277,13 +286,28 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
     // 빈 제목(글자를 모두 지운 노드)은 `##` / `-` 만 쓴다 — 행 끝 공백을
     // 남기면 파서·다른 앱이 견출로 안 읽거나 `###` 이름의 노드로 읽는다
     // (2026-09-15). 다시 읽으면 **이름 없는 노드**로 돌아온다.
-    const hashes = '#'.repeat(depth + 1);
-    if (depth <= 5) {
-      lines.push(nodeBody.title ? `${hashes} ${nodeBody.title}` : hashes);
-    } else {
-      const dash = `${'  '.repeat(depth - 6)}-`;
+    //
+    // 리스트 항목(`- 항목`)으로 읽어 온 노드(mdForm='list')는 다시 리스트로
+    // 쓴다 — 견출로 바꾸면 왕복 뒤 `- 항목` 이 `### 항목` 이 된다
+    // (2026-09-15). 리스트 노드의 하위는 표시가 없어도 전부 리스트로 나간다
+    // (리스트 아래에 견출을 쓰면 파서가 상위 견출의 자식으로 읽어 구조가
+    // 깨진다). 7레벨(depth>5) 아래는 견출이 없으므로 예전처럼 리스트.
+    const asList =
+      listIndent !== null || depth > 5 || (node.mdForm === 'list' && !group.headingSeen);
+    const indent = listIndent ?? 0;
+    if (asList) {
+      const dash = `${'  '.repeat(indent)}-`;
       lines.push(nodeBody.title ? `${dash} ${nodeBody.title}` : dash);
+    } else {
+      group.headingSeen = true;
+      // 리스트 항목 바로 뒤에 오는 견출은 빈 줄로 띄운다 (읽기 좋게)
+      if (lines.length && lines[lines.length - 1] !== '') lines.push('');
+      const hashes = '#'.repeat(depth + 1);
+      lines.push(nodeBody.title ? `${hashes} ${nodeBody.title}` : hashes);
     }
+    // 리스트 항목은 제목 한 줄뿐이면 빈 줄 없이 붙여 쓴다 (`- a` / `- b`) —
+    // 사진·링크·노트·블록이 딸리면 예전처럼 빈 줄로 띄운다.
+    const before = lines.length;
     pushBodyBlocks(lines, nodeBody.blocks);
 
     // 사진 — files/로 패키징된 경우 상대 경로, 아니면 원본 URL.
@@ -329,11 +353,15 @@ export function buildEmmBody(map: SampleMap, images: EmmImageFile[]): string {
         lines.push(`- [${n.checked ? 'x' : ' '}] ${oneLine(n.text)}`);
       }
     }
-    lines.push('');
-    for (const c of node.children ?? []) walk(c, depth + 1);
+    if (!asList || lines.length !== before) lines.push('');
+    const childGroup = { headingSeen: false };
+    for (const c of node.children ?? []) {
+      walk(c, depth + 1, asList ? indent + 1 : null, childGroup);
+    }
   };
 
-  for (const b of map.branches) walk(b, 1);
+  const topGroup = { headingSeen: false };
+  for (const b of map.branches) walk(b, 1, null, topGroup);
   return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 

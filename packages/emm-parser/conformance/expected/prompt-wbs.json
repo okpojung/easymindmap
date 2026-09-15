@@ -29,11 +29,13 @@
             "children": [
               {
                 "id": "md#3",
-                "text": "이해관계자 인터뷰"
+                "text": "이해관계자 인터뷰",
+                "mdForm": "list"
               },
               {
                 "id": "md#4",
-                "text": "기능 목록 확정"
+                "text": "기능 목록 확정",
+                "mdForm": "list"
               }
             ]
           },
@@ -43,11 +45,13 @@
             "children": [
               {
                 "id": "md#6",
-                "text": "사이트맵"
+                "text": "사이트맵",
+                "mdForm": "list"
               },
               {
                 "id": "md#7",
-                "text": "화면 흐름도"
+                "text": "화면 흐름도",
+                "mdForm": "list"
               }
             ]
           }
@@ -72,11 +76,13 @@
             "children": [
               {
                 "id": "md#11",
-                "text": "컬러/타이포 토큰"
+                "text": "컬러/타이포 토큰",
+                "mdForm": "list"
               },
               {
                 "id": "md#12",
-                "text": "컴포넌트 라이브러리"
+                "text": "컴포넌트 라이브러리",
+                "mdForm": "list"
               }
             ]
           }
@@ -101,11 +107,13 @@
             "children": [
               {
                 "id": "md#16",
-                "text": "상품 목록/상세"
+                "text": "상품 목록/상세",
+                "mdForm": "list"
               },
               {
                 "id": "md#17",
-                "text": "장바구니/결제 흐름"
+                "text": "장바구니/결제 흐름",
+                "mdForm": "list"
               }
             ]
           },
@@ -115,11 +123,13 @@
             "children": [
               {
                 "id": "md#19",
-                "text": "상품/주문 API"
+                "text": "상품/주문 API",
+                "mdForm": "list"
               },
               {
                 "id": "md#20",
-                "text": "결제 연동"
+                "text": "결제 연동",
+                "mdForm": "list"
               }
             ]
           }

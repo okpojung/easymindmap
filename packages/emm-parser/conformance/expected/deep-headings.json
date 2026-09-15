@@ -31,18 +31,22 @@
                       {
                         "id": "md#4",
                         "text": "불릿1",
+                        "mdForm": "list",
                         "children": [
                           {
                             "id": "md#5",
                             "text": "불릿1-1",
+                            "mdForm": "list",
                             "children": [
                               {
                                 "id": "md#6",
-                                "text": "1. 순번 a"
+                                "text": "1. 순번 a",
+                                "mdForm": "list"
                               },
                               {
                                 "id": "md#7",
-                                "text": "2. 순번 b"
+                                "text": "2. 순번 b",
+                                "mdForm": "list"
                               }
                             ]
                           }
@@ -50,7 +54,8 @@
                       },
                       {
                         "id": "md#8",
-                        "text": "불릿2"
+                        "text": "불릿2",
+                        "mdForm": "list"
                       }
                     ]
                   }
@@ -78,11 +83,13 @@
         "children": [
           {
             "id": "md#12",
-            "text": "1) 괄호 순번 항목"
+            "text": "1) 괄호 순번 항목",
+            "mdForm": "list"
           },
           {
             "id": "md#13",
-            "text": "2) 두번째 항목"
+            "text": "2) 두번째 항목",
+            "mdForm": "list"
           }
         ]
       }

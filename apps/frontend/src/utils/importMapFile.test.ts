@@ -53,5 +53,22 @@ check('둘째 빈 노드의 스타일 (뒤바뀌지 않는다)', (kids[2] as { s
 check('첫 빈 노드의 노트', (kids[0].notes ?? []).map((n) => n.text), ['첫 빈 노드의 노트']);
 check('둘째 빈 노드에는 노트가 없다', (kids[2].notes ?? []).length, 0);
 
+// ── 리스트 항목(`- 항목`)으로 불러온 노드는 다시 리스트로 나간다 (2026-09-15) ──
+// 파서가 남긴 mdForm 표시가 enrich(메타데이터 합치기)를 지나도 살아남아야
+// 두 번째 내보내기에서도 `- 항목` 이 `### 항목` 으로 바뀌지 않는다.
+{
+  const first = parseMarkdownMapFile('# 목록\n\n## 절\n- a\n- b\n  - b1\n\n### 소절\n', '목록')!;
+  const kids = first.map.branches[0].children!;
+  check('리스트 출신 노드에 mdForm 이 있다', kids.map((k) => (k as { mdForm?: string }).mdForm ?? '-'), ['list', 'list', '-']);
+  const out1 = serializeEmm(first.map, { layoutType: 'radial-bidirectional' as never }).markdown;
+  const bodyOf = (md: string) => md.split('\n').filter((l) => l && !l.startsWith('<!--') && !/^[A-Za-z0-9+/=]+$/.test(l) && l !== '-->');
+  check('첫 내보내기 — 리스트 그대로', bodyOf(out1).slice(0, 6), ['# 목록', '## 절', '- a', '- b', '  - b1', '### 소절']);
+  const second = parseMarkdownMapFile(out1, '목록')!;
+  check('메타데이터 있는 파일로 다시 읽어도 mdForm 이 남는다',
+    second.map.branches[0].children!.map((k) => (k as { mdForm?: string }).mdForm ?? '-'), ['list', 'list', '-']);
+  const out2 = serializeEmm(second.map, { layoutType: 'radial-bidirectional' as never }).markdown;
+  check('두 번째 내보내기도 리스트', bodyOf(out2).slice(0, 6), bodyOf(out1).slice(0, 6));
+}
+
 if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }
 console.log('\n모두 통과');

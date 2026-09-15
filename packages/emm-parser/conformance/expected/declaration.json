@@ -36,11 +36,13 @@
         "children": [
           {
             "id": "md#4",
-            "text": "저장소 받기"
+            "text": "저장소 받기",
+            "mdForm": "list"
           },
           {
             "id": "md#5",
-            "text": "의존성 설치"
+            "text": "의존성 설치",
+            "mdForm": "list"
           }
         ]
       },

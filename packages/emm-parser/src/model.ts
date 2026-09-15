@@ -174,6 +174,14 @@ export interface MindNode {
   note?: boolean;
   locked?: boolean;
 
+  /**
+   * MD 에서 **리스트 항목**(`- 항목`)으로 읽은 노드 (2026-09-15). 내보낼 때
+   * 견출(`###`)이 아니라 다시 `-` 리스트로 쓴다 — 왕복에서 문서의 꼴이
+   * 바뀌지 않게. 이 노드의 하위는 표시가 없어도 전부 리스트로 나간다
+   * (리스트 항목 아래에 견출을 둘 수 없다). 없으면 견출.
+   */
+  mdForm?: 'list';
+
   // Editor-core node metadata
   collapsed?: boolean;
   style?: NodeStyle;

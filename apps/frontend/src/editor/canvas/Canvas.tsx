@@ -302,6 +302,12 @@ export function Canvas({
       }
     };
     walk(sample.branches, base);
+    // 두 번째 이후의 중심주제 — 자기 루트의 레이아웃(없으면 맵 레이아웃)
+    for (const c of sample.centers ?? []) {
+      const cbase = normalizeLayoutType(c.root.layoutType ?? layoutType) as string;
+      m.set(c.root.id, cbase);
+      walk(c.branches, cbase);
+    }
     return m;
   }, [sample, layoutType]);
 

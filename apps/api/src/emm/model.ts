@@ -218,7 +218,12 @@ export interface SampleBranch extends MindNode {
 }
 
 export interface SampleRoot {
-  id: 'root';
+  /**
+   * 첫 중심주제는 언제나 `'root'` 다. **두 번째 이후의 중심주제**
+   * (`SampleMap.centers`)는 다른 노드처럼 고유 id 를 가진다 — 한 맵 안에서
+   * 노드 id 는 중심을 가리지 않고 유일하다 (2026-09-15).
+   */
+  id: string;
   text: string;
   colorKey: 'root';
   side?: 'center';
@@ -267,11 +272,48 @@ export interface MapSettings {
   noteFont?: { size?: number; family?: string };
 }
 
+/**
+ * **중심주제 하나** — 표준 트리의 뿌리(이름도 글자도 없는 보이지 않는
+ * 노드, emm-spec §3.1 L-4)의 **자식 하나**와 그 아래 가지들 (2026-09-15,
+ * mmd 표준 세션 결정 "여러 중심주제").
+ *
+ * 문서에 `# 제목` 이 둘이면 뿌리 아래 형제가 둘인 트리다. 뿌리는 그리지
+ * 않고 뿌리의 자식을 **각각 중심주제**로 그린다 — 화면은 ThinkWise 의
+ * 플로팅 노드처럼 중심이 여럿인 한 장의 맵이다.
+ *
+ * `SampleMap.root`/`branches` 가 **첫 번째** 중심이고 (예전 데이터와
+ * 그대로 호환), 두 번째 이후가 `SampleMap.centers` 에 온다.
+ */
+export interface SampleCenter {
+  root: SampleRoot;
+  branches: SampleBranch[];
+  /**
+   * 첫 중심의 루트를 원점으로 한 **상대 위치** (px). 앱이 사용자가 끌어
+   * 옮긴 자리를 저장한다 — md 에는 좌표가 없으므로(순서만 있다) 이 값은
+   * 앱 저장본·HTML 내보내기에만 남는다. 없으면 자동 배치(앞 중심의 오른쪽).
+   */
+  pos?: { dx: number; dy: number };
+}
+
 export interface SampleMap {
   title: string;
   root: SampleRoot;
   branches: SampleBranch[];
   settings?: MapSettings;
+  /**
+   * **두 번째 이후의 중심주제** (없거나 빈 배열이면 예전과 같은 중심 하나).
+   * 순서는 문서의 `#` 순서다 — 화면에서 옮겨도 이 순서는 바뀌지 않는다
+   * (표준은 형제 순서를 지키라 한다). 전체 순회는 `mapCenters()` 로.
+   */
+  centers?: SampleCenter[];
+}
+
+/** 첫 중심(root/branches)을 포함한 **모든 중심주제**를 문서 순서대로. */
+export function mapCenters(map: SampleMap): SampleCenter[] {
+  return [
+    { root: map.root, branches: map.branches },
+    ...(map.centers ?? []),
+  ];
 }
 
 // --- EMM 별칭 (패키지 공개 API 이름) ---------------------------------------

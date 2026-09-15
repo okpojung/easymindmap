@@ -26,12 +26,15 @@ export type {
   SampleLeaf,
   SampleBranch,
   SampleRoot,
+  SampleCenter,
   LevelFontSetting,
   MapSettings,
   SampleMap,
   EmmMap,
   EmmNode,
 } from '@emm/model';
+// 여러 중심주제 순회 — 첫 중심(root/branches) + 두 번째 이후(centers)
+export { mapCenters } from '@emm/model';
 
 import type { NodeImage, NodeStyle } from '@emm/model';
 

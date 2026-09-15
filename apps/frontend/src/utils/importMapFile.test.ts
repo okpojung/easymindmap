@@ -70,5 +70,28 @@ check('둘째 빈 노드에는 노트가 없다', (kids[2].notes ?? []).length, 
   check('두 번째 내보내기도 리스트', bodyOf(out2).slice(0, 6), bodyOf(out1).slice(0, 6));
 }
 
+// ── 여러 줄 노드 — 본문에 `>` 로 나가고, 옛 한 줄 파일도 메타데이터와 짝지어진다 (2026-09-15) ──
+{
+  const multi: SampleMap = {
+    title: '여러 줄',
+    root: { id: 'root', text: '여러 줄', colorKey: 'root', side: 'center' },
+    branches: [
+      { id: 'b1', text: '8. 기대 결과\n첫 줄\n\n둘째 줄', colorKey: 'l1A', side: 'right', style: { fill: '#00FF00' } as never, children: [] },
+    ],
+  } as SampleMap;
+  const out = serializeEmm(multi, { layoutType: 'radial-bidirectional' as never }).markdown;
+  const body = out.split('<!--')[0].split('\n').filter(Boolean);
+  check('여러 줄 노드 — 제목 첫 줄 + `>` 인용문', body, ['# 여러 줄', '## 8. 기대 결과', '> 첫 줄', '>', '> 둘째 줄']);
+  const back = parseMarkdownMapFile(out, '여러 줄')!;
+  check('다시 읽으면 줄바꿈 그대로 + 스타일 복원', [back.map.branches[0].text, (back.map.branches[0] as { style?: { fill?: string } }).style?.fill],
+    ['8. 기대 결과\n첫 줄\n\n둘째 줄', '#00FF00']);
+  // 예전 내보내기(한 줄 견출 `## 8. 기대 결과 첫 줄 둘째 줄`)로 된 파일도 flatKey 폴백으로 짝지어진다
+  const oldStyle = out.replace(/## 8\. 기대 결과\n\n> 첫 줄\n>\n> 둘째 줄/, '## 8. 기대 결과 첫 줄 둘째 줄');
+  check('옛 파일 형식이 실제로 한 줄이다', oldStyle.split('<!--')[0].split('\n').filter(Boolean), ['# 여러 줄', '## 8. 기대 결과 첫 줄 둘째 줄']);
+  const backOld = parseMarkdownMapFile(oldStyle, '여러 줄')!;
+  check('옛 한 줄 파일도 메타데이터로 원문·스타일 복원', [backOld.map.branches[0].text, (backOld.map.branches[0] as { style?: { fill?: string } }).style?.fill],
+    ['8. 기대 결과\n첫 줄\n\n둘째 줄', '#00FF00']);
+}
+
 if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }
 console.log('\n모두 통과');

@@ -13,7 +13,7 @@
  * AI 가 그것을 고쳐 `create_map` 으로 되돌려도 어긋나지 않는다.
  */
 import { buildEmmBody, type EmmImageFile } from '../emm/serialize';
-import type { SampleMap } from '../emm/model';
+import { mapCenters, type SampleMap } from '../emm/model';
 
 export class DocShapeError extends Error {}
 
@@ -50,5 +50,8 @@ export function docToEmm(doc: unknown): { markdown: string; nodeCount: number; i
 function countNodes(map: SampleMap): number {
   const walk = (nodes: { children?: unknown[] }[]): number =>
     nodes.reduce((n, node) => n + 1 + walk((node.children ?? []) as { children?: unknown[] }[]), 0);
-  return 1 + walk(map.branches as unknown as { children?: unknown[] }[]);
+  // 중심주제마다 루트 1 + 가지 (2026-09-15 — 두 번째 `#` 부터 `map.centers`)
+  return mapCenters(map).reduce(
+    (n, c) => n + 1 + walk(c.branches as unknown as { children?: unknown[] }[]), 0,
+  );
 }

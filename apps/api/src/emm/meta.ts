@@ -11,7 +11,7 @@
 //     `<!-- easymindmap:v1:BASE64(JSON) -->` 는 쓰지도 읽지도 않는다 —
 //     MD 는 본문(순수 GFM) + ```emm 선언 블록(declaration.ts)뿐이다.
 
-import type { EditorSpacing, LayoutType, SampleMap } from './model';
+import { mapCenters, type EditorSpacing, type LayoutType, type SampleMap } from './model';
 import { rewriteNotesImages, type NoteHtmlLike } from './note-images';
 
 export const MAP_FILE_FORMAT = 'easymindmap-map';
@@ -37,7 +37,8 @@ export interface MapFileMeta {
 export function countMapNodes(map: SampleMap): number {
   const walk = (nodes: { children?: unknown[] }[]): number =>
     nodes.reduce((s2, n) => s2 + 1 + walk((n.children ?? []) as { children?: unknown[] }[]), 0);
-  return 1 + walk(map.branches);
+  // 중심주제마다 루트 1 + 가지들 (2026-09-15 — 중심이 여럿일 수 있다)
+  return mapCenters(map).reduce((s, c) => s + 1 + walk(c.branches), 0);
 }
 
 export function buildMapMeta(
@@ -140,6 +141,10 @@ export function withInlinedImages(
     ...map,
     root: walk(map.root),
     branches: map.branches.map((b) => walk(b)),
+    // 두 번째 이후의 중심주제도 같은 규칙으로 (2026-09-15)
+    ...(map.centers
+      ? { centers: map.centers.map((c) => ({ ...c, root: walk(c.root), branches: c.branches.map((b) => walk(b)) })) }
+      : {}),
   };
 }
 
@@ -161,8 +166,18 @@ export function withInlinedAttachments(
     }),
     children: (n.children ?? []).map(walk),
   });
+  // 루트도 훑는다 — 파서가 첫 견출 전의 `📎` 줄을 루트 첨부로 되돌리므로
+  // (2026-09-15) 루트에도 첨부가 있다. 중심마다 같은 규칙.
   return {
     ...map,
+    root: walk(map.root),
     branches: map.branches.map((b) => walk(b)),
+    ...(map.centers
+      ? {
+          centers: map.centers.map((c) => ({
+            ...c, root: walk(c.root), branches: c.branches.map((b) => walk(b)),
+          })),
+        }
+      : {}),
   };
 }

@@ -266,61 +266,72 @@ export function buildEmmBody(
     packedPath.set(src, path);
     return path;
   };
-  const rootBody = splitNodeBody(map.root.text, { singleLine: true });
-  lines.push(`# ${(map.root.text.trim() ? rootBody.title : '') || map.title}`);
-  pushBodyBlocks(lines, rootBody.blocks);
-  lines.push('');
-  // 맵 선언 — 제목 바로 아래. 불러오면 루트의 `emm` 코드 노트로 보이고
-  // (declaration.ts: 숨은 마법이 아니라 앱 안에서 보이는 노트), 다시 내보낼
-  // 때는 아래에서 그 노트를 건너뛰고 **맵 설정에서 새로** 쓴다 — 두 곳에
-  // 같은 정보를 두면 반드시 어긋난다.
-  const declaration = opts.declaration ? buildDeclaration(opts.declaration) : '';
-  if (declaration) {
-    lines.push(declaration);
+  // 중심주제의 머리 — `# 제목` + 본문 블록 + (첫 중심만) 선언 + 사진 + 노트
+  // + 첨부. 첫 중심(map.root)과 두 번째 이후(map.centers[i].root)가 같은
+  // 규칙으로 나간다 (2026-09-15) — 파서가 두 번째 `#` 를 새 중심으로 읽으므로
+  // 왕복 뒤 중심 수가 그대로다.
+  const pushCenterHead = (root: SampleMap['root'], isFirst: boolean) => {
+    const rootBody = splitNodeBody(root.text, { singleLine: true });
+    // 첫 중심은 제목이 비면 맵 이름을 쓴다. 두 번째 이후는 **빈 `#`** 로
+    // 남긴다(이름 없는 노드) — 맵 이름을 넣으면 다시 읽을 때 이름이 생긴다.
+    const fallback = isFirst ? map.title : '';
+    const headText = (root.text.trim() ? rootBody.title : '') || fallback;
+    lines.push(headText ? `# ${headText}` : '#');
+    pushBodyBlocks(lines, rootBody.blocks);
     lines.push('');
-  }
-  // 루트 노드의 사진 (2026-08-18, B17) — 예전에는 **빠뜨려서 루트에 붙인
-  // 사진이 MD 로 내보내면 사라졌다**(HTML 내보내기는 정상이었다).
-  // 가지 노드와 같은 규칙: files/ 로 담을 수 있으면 상대 경로, 아니면 URL.
-  const rootImgs = map.root.images?.length
-    ? map.root.images
-    : map.root.image?.src
-      ? [map.root.image]
-      : [];
-  for (const im of rootImgs) {
-    const path = packImage(im.src);
-    if (path) {
-      lines.push(`![${oneLine(map.root.text).slice(0, 20)}](${path})`);
-      lines.push('');
-    } else if (/^https?:\/\//i.test(im.src)) {
-      lines.push(`![${oneLine(map.root.text).slice(0, 20)}](${im.src})`);
+    // 맵 선언 — 제목 바로 아래. 불러오면 루트의 `emm` 코드 노트로 보이고
+    // (declaration.ts: 숨은 마법이 아니라 앱 안에서 보이는 노트), 다시 내보낼
+    // 때는 아래에서 그 노트를 건너뛰고 **맵 설정에서 새로** 쓴다 — 두 곳에
+    // 같은 정보를 두면 반드시 어긋난다. 맵에 하나뿐이므로 첫 중심 아래에만.
+    const declaration = isFirst && opts.declaration ? buildDeclaration(opts.declaration) : '';
+    if (declaration) {
+      lines.push(declaration);
       lines.push('');
     }
-  }
-  // 루트의 노트 → 제목 바로 아래 (문단=인용문, 표=파이프 표, 코드=펜스 —
-  // 불러오기 시 다시 루트 노트로)
-  for (const n of map.root.notes ?? []) {
-    if (n.type === 'paragraph' && n.text.trim()) {
-      for (const ln of n.text.split('\n')) lines.push(`> ${ln}`);
-      lines.push('');
-    } else if (n.type === 'table' && n.text.trim()) {
-      pushTableNote(lines, n.text);
-      lines.push('');
-    } else if (n.type === 'code_block' && n.text.trim()) {
-      // 불러오기가 남긴 `emm` 선언 노트는 건너뛴다 — 위에서 맵 설정으로 새로 썼다
-      if ((n.lang ?? '').toLowerCase() === 'emm') continue;
-      lines.push('```' + (n.lang ?? ''));
-      lines.push(n.text);
-      lines.push('```');
-      lines.push('');
-    } else if (n.type === 'checklist' && n.text.trim()) {
-      // 체크리스트 → - [x] / - [ ] (markmap 호환, 불러오기 시 다시 노트로)
-      lines.push(`- [${n.checked ? 'x' : ' '}] ${oneLine(n.text)}`);
-      lines.push('');
+    // 루트 노드의 사진 (2026-08-18, B17) — 예전에는 **빠뜨려서 루트에 붙인
+    // 사진이 MD 로 내보내면 사라졌다**(HTML 내보내기는 정상이었다).
+    // 가지 노드와 같은 규칙: files/ 로 담을 수 있으면 상대 경로, 아니면 URL.
+    const rootImgs = root.images?.length
+      ? root.images
+      : root.image?.src
+        ? [root.image]
+        : [];
+    for (const im of rootImgs) {
+      const path = packImage(im.src);
+      if (path) {
+        lines.push(`![${oneLine(root.text).slice(0, 20)}](${path})`);
+        lines.push('');
+      } else if (/^https?:\/\//i.test(im.src)) {
+        lines.push(`![${oneLine(root.text).slice(0, 20)}](${im.src})`);
+        lines.push('');
+      }
     }
-  }
-  pushAttachments(map.root);
-  lines.push('');
+    // 루트의 노트 → 제목 바로 아래 (문단=인용문, 표=파이프 표, 코드=펜스 —
+    // 불러오기 시 다시 루트 노트로)
+    for (const n of root.notes ?? []) {
+      if (n.type === 'paragraph' && n.text.trim()) {
+        for (const ln of n.text.split('\n')) lines.push(`> ${ln}`);
+        lines.push('');
+      } else if (n.type === 'table' && n.text.trim()) {
+        pushTableNote(lines, n.text);
+        lines.push('');
+      } else if (n.type === 'code_block' && n.text.trim()) {
+        // 불러오기가 남긴 `emm` 선언 노트는 건너뛴다 — 위에서 맵 설정으로 새로 썼다
+        if ((n.lang ?? '').toLowerCase() === 'emm') continue;
+        lines.push('```' + (n.lang ?? ''));
+        lines.push(n.text);
+        lines.push('```');
+        lines.push('');
+      } else if (n.type === 'checklist' && n.text.trim()) {
+        // 체크리스트 → - [x] / - [ ] (markmap 호환, 불러오기 시 다시 노트로)
+        lines.push(`- [${n.checked ? 'x' : ' '}] ${oneLine(n.text)}`);
+        lines.push('');
+      }
+    }
+    pushAttachments(root);
+    lines.push('');
+  };
+  pushCenterHead(map.root, true);
 
   // listIndent: null 이면 견출(#) 모드, 숫자면 리스트(-) 모드의 들여쓰기 단.
   // group.headingSeen: 같은 형제 묶음에서 이미 견출을 냈는지 — 견출 뒤에
@@ -432,5 +443,13 @@ export function buildEmmBody(
 
   const topGroup = { headingSeen: false };
   for (const b of map.branches) walk(b, 1, null, topGroup);
+  // 두 번째 이후의 중심주제 — 각각 `# 제목` 으로 (2026-09-15). 파서는 두 번째
+  // `#` 부터를 새 중심으로 읽는다. 순서는 모델의 순서 그대로(형제 순서 보존).
+  for (const c of map.centers ?? []) {
+    if (lines.length && lines[lines.length - 1] !== '') lines.push('');
+    pushCenterHead(c.root, false);
+    const group = { headingSeen: false };
+    for (const b of c.branches) walk(b, 1, null, group);
+  }
   return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }

@@ -1,0 +1,118 @@
+{
+  "nodes": 14,
+  "bodyRoundTripNodes": 14,
+  "map": {
+    "title": "중심주제1",
+    "root": {
+      "id": "root",
+      "text": "중심주제1",
+      "colorKey": "root",
+      "side": "center",
+      "notes": [
+        {
+          "id": "md#0",
+          "type": "paragraph",
+          "text": "첫 중심의 머리말이다."
+        }
+      ]
+    },
+    "branches": [
+      {
+        "id": "md#1",
+        "text": "하위노드1",
+        "colorKey": "l1A",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#2",
+            "text": "잎 a",
+            "mdForm": "list"
+          },
+          {
+            "id": "md#3",
+            "text": "잎 b",
+            "mdForm": "list"
+          }
+        ]
+      },
+      {
+        "id": "md#4",
+        "text": "하위노드2",
+        "colorKey": "l1B",
+        "side": "right"
+      },
+      {
+        "id": "md#5",
+        "text": "하위노드3",
+        "colorKey": "l1C",
+        "side": "left"
+      }
+    ],
+    "centers": [
+      {
+        "root": {
+          "id": "md#6",
+          "text": "중심주제2",
+          "colorKey": "root",
+          "side": "center",
+          "notes": [
+            {
+              "id": "md#7",
+              "type": "paragraph",
+              "text": "두 번째 중심의 머리말 문단."
+            }
+          ]
+        },
+        "branches": [
+          {
+            "id": "md#8",
+            "text": "하위노드4",
+            "colorKey": "l1A",
+            "side": "right",
+            "children": [
+              {
+                "id": "md#9",
+                "text": "손자 4-1"
+              }
+            ]
+          },
+          {
+            "id": "md#10",
+            "text": "하위노드5",
+            "colorKey": "l1B",
+            "side": "right",
+            "children": [
+              {
+                "id": "md#11",
+                "text": "잎 c",
+                "mdForm": "list"
+              }
+            ]
+          },
+          {
+            "id": "md#12",
+            "text": "하위노드6",
+            "colorKey": "l1C",
+            "side": "left"
+          }
+        ]
+      },
+      {
+        "root": {
+          "id": "md#13",
+          "text": "",
+          "colorKey": "root",
+          "side": "center"
+        },
+        "branches": [
+          {
+            "id": "md#14",
+            "text": "이름 없는 중심의 가지",
+            "colorKey": "l1A",
+            "side": "right"
+          }
+        ]
+      }
+    ]
+  }
+}

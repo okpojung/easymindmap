@@ -14,7 +14,13 @@
 
 import { sizeNodeForText } from '@/editor/node-renderer/sizeNodeForText';
 import { nodeSizingOpts } from '@/editor/node-renderer/nodeContent';
-import type { LayoutType, SampleMap, SampleBranch, MindNode } from '@/editor/__samples__/types';
+import type {
+  LayoutType,
+  SampleMap,
+  SampleBranch,
+  SampleRoot,
+  MindNode,
+} from '@/editor/__samples__/types';
 import type { LaidOutNode } from './types';
 import { normalizeLayoutType } from './normalizeLayoutType';
 
@@ -62,8 +68,85 @@ function applySpacing(out: LaidOutNode[], spacing: LayoutSpacing): void {
   }
 }
 
+// 여러 중심주제 (2026-09-15, mmd 표준 세션 결정) — 두 번째 이후의 중심은
+// 앞 중심들의 오른쪽에, 이 간격을 두고 놓는다 (사용자가 옮긴 자리
+// `pos` 가 있으면 그 자리). 중심마다 자기 레이아웃으로 따로 배치하므로
+// 전략 코드는 중심이 여럿인 것을 모른다.
+export const CENTER_GAP = 160;
+
+interface Box { minX: number; maxX: number; minY: number; maxY: number }
+
+function boxOf(nodes: LaidOutNode[]): Box {
+  const b: Box = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+  for (const n of nodes) {
+    b.minX = Math.min(b.minX, n.x - n.w / 2);
+    b.maxX = Math.max(b.maxX, n.x + n.w / 2);
+    b.minY = Math.min(b.minY, n.y - n.h / 2);
+    b.maxY = Math.max(b.maxY, n.y + n.h / 2);
+  }
+  return b;
+}
+
+/**
+ * 맵 전체 배치 — 첫 중심(root/branches)은 (CX, CY) 에, 두 번째 이후의
+ * 중심(`sample.centers`)은 각각 자기 자리에. 돌려주는 배열은 중심 순서대로
+ * 이어 붙인 것이고, 중심 루트는 모두 `depth 0 · parent null` 이다.
+ */
 export function computeLayout(
   sample: SampleMap,
+  layoutType: LayoutType,
+  CX: number,
+  CY: number,
+  spacing?: LayoutSpacing,
+): LaidOutNode[] {
+  if (normalizeLayoutType(layoutType) === 'kanban') {
+    return [];
+  }
+
+  const out = computeCenterLayout(sample.root, sample.branches, layoutType, CX, CY, spacing);
+  const extra = sample.centers ?? [];
+  if (extra.length === 0) return out;
+
+  // 지금까지 놓인 것의 테두리 — 다음 자동 배치 중심은 그 오른쪽에
+  let box = boxOf(out);
+  for (const c of extra) {
+    // 중심마다 자기 루트의 레이아웃(없으면 맵 레이아웃). 원점(0,0)에
+    // 배치한 뒤 통째로 옮긴다 — 간격 배율도 그 안에서 루트 기준으로 적용됐다.
+    const part = computeCenterLayout(
+      c.root, c.branches, c.root.layoutType ?? layoutType, 0, 0, spacing,
+    );
+    if (part.length === 0) continue;
+    let dx: number;
+    let dy: number;
+    if (c.pos) {
+      // 사용자가 옮긴 자리 — 첫 중심 루트 기준 상대 좌표
+      dx = CX + c.pos.dx;
+      dy = CY + c.pos.dy;
+    } else {
+      const pb = boxOf(part);
+      dx = box.maxX + CENTER_GAP - pb.minX; // 왼쪽 끝이 앞 테두리 + 간격
+      dy = CY; // 루트 높이는 첫 중심과 나란히
+    }
+    for (const n of part) {
+      n.x += dx;
+      n.y += dy;
+    }
+    out.push(...part);
+    const pb = boxOf(part);
+    box = {
+      minX: Math.min(box.minX, pb.minX),
+      maxX: Math.max(box.maxX, pb.maxX),
+      minY: Math.min(box.minY, pb.minY),
+      maxY: Math.max(box.maxY, pb.maxY),
+    };
+  }
+  return out;
+}
+
+/** 중심주제 하나(루트 + 가지들)의 배치 — 루트를 (CX, CY) 에 놓는다. */
+function computeCenterLayout(
+  root: SampleRoot,
+  rawBranches: SampleBranch[],
   layoutType: LayoutType,
   CX: number,
   CY: number,
@@ -75,15 +158,15 @@ export function computeLayout(
     return [];
   }
 
-  const rootSize = sizeNodeForText(sample.root.text, 0, {
-    ...nodeSizingOpts(sample.root),
+  const rootSize = sizeNodeForText(root.text, 0, {
+    ...nodeSizingOpts(root),
     minW: 170,
     maxW: 260,
   });
 
   const out: LaidOutNode[] = [
     {
-      ...sample.root,
+      ...root,
       layoutType: activeLayoutType,
       x: CX,
       y: CY,
@@ -101,7 +184,7 @@ export function computeLayout(
   ];
 
   const rootW = rootSize.w;
-  const branches = pruneCollapsed(sample.branches) as SampleBranch[];
+  const branches = pruneCollapsed(rawBranches) as SampleBranch[];
 
   switch (activeLayoutType) {
     case 'tree-right':
@@ -152,6 +235,15 @@ export function computeLayout(
 
   // 사용자 간격 조정 — 항상 마지막에, 최종 좌표 기준으로.
   if (spacing) applySpacing(out, spacing);
+
+  // ★ 전략들은 최상위 가지의 부모를 글자 그대로 `'root'` 로 박는다
+  //   (Radial·Tree·Hierarchy·Process·Timeline). 두 번째 이후의 중심은 루트
+  //   id 가 다르므로 여기서 바꿔 준다 — 안 바꾸면 캔버스가 그 가지의
+  //   연결선을 **첫 중심에서** 긋고, 포커스·서브트리 순회가 중심을 넘나든다
+  //   (PR #490 Codex 지적). 전략 코드는 중심이 여럿인 것을 몰라도 된다.
+  if (root.id !== 'root') {
+    for (const n of out) if (n.parent === 'root') n.parent = root.id;
+  }
 
   return out;
 }

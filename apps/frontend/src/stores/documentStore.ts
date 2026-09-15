@@ -409,7 +409,33 @@ function cloneMap(map: SampleMap): SampleMap {
       textAlign: map.root.textAlign,
     },
     branches: map.branches.map((branch) => normalizeNode(branch)),
+    // 두 번째 이후의 중심주제도 같은 정규형으로 (2026-09-15) — 빠뜨리면
+    // 그 가지들만 edgeType·children 기본값이 없어 저장본이 흔들린다
+    ...(map.centers
+      ? {
+          centers: map.centers.map((c) => ({
+            ...c,
+            root: { ...c.root, textAlign: c.root.textAlign },
+            branches: c.branches.map((branch) => normalizeNode(branch)),
+          })),
+        }
+      : {}),
   };
+}
+
+// 여러 중심주제 (2026-09-15): 노드 탐색은 첫 중심(root/branches)뿐 아니라
+// `map.centers` 도 본다. 규약은 하나다 — 중심 루트의 부모는 null, 그 가지의
+// 부모는 그 중심 루트의 id ('root' 또는 centers[i].root.id).
+function centerRootOf(map: SampleMap, nodeId: string): SampleRoot | null {
+  if (nodeId === 'root') return map.root;
+  for (const c of map.centers ?? []) if (c.root.id === nodeId) return c.root;
+  return null;
+}
+function allBranchLists(map: SampleMap): { rootId: string; branches: SampleBranch[] }[] {
+  return [
+    { rootId: 'root', branches: map.branches },
+    ...(map.centers ?? []).map((c) => ({ rootId: c.root.id, branches: c.branches })),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -418,8 +444,13 @@ function cloneMap(map: SampleMap): SampleMap {
 
 export function findNodeInMap(map: SampleMap, nodeId: string | null): MindNode | SampleRoot | null {
   if (!nodeId) return null;
-  if (nodeId === 'root') return map.root;
-  return findNode(map.branches, nodeId);
+  const center = centerRootOf(map, nodeId);
+  if (center) return center;
+  for (const { branches } of allBranchLists(map)) {
+    const found = findNode(branches, nodeId);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**
@@ -428,7 +459,7 @@ export function findNodeInMap(map: SampleMap, nodeId: string | null): MindNode |
  * 부르는 데 쓴다(하트비트 focusPath, 2026-09-05).
  */
 export function nodePathInMap(map: SampleMap, nodeId: string | null): string[] {
-  if (!nodeId || nodeId === 'root') return [];
+  if (!nodeId || centerRootOf(map, nodeId)) return [];
   const title = (n: MindNode) => String(n.text ?? '').split('\n')[0].trim();
   const dig = (nodes: MindNode[], path: string[]): string[] | null => {
     for (const n of nodes) {
@@ -439,7 +470,11 @@ export function nodePathInMap(map: SampleMap, nodeId: string | null): string[] {
     }
     return null;
   };
-  return dig(map.branches as MindNode[], []) ?? [];
+  for (const { branches } of allBranchLists(map)) {
+    const found = dig(branches as MindNode[], []);
+    if (found) return found;
+  }
+  return [];
 }
 
 function findNode(nodes: MindNode[], nodeId: string): MindNode | null {
@@ -452,7 +487,7 @@ function findNode(nodes: MindNode[], nodeId: string): MindNode | null {
 }
 
 export function getNodeDepth(map: SampleMap, nodeId: string | null): number {
-  if (!nodeId || nodeId === 'root') return 0;
+  if (!nodeId || centerRootOf(map, nodeId)) return 0;
 
   let depth = -1;
   const walk = (nodes: MindNode[], d: number) => {
@@ -465,13 +500,18 @@ export function getNodeDepth(map: SampleMap, nodeId: string | null): number {
       walk(node.children ?? [], d + 1);
     }
   };
-  walk(map.branches, 1);
+  for (const { branches } of allBranchLists(map)) {
+    walk(branches, 1);
+    if (depth !== -1) break;
+  }
   return depth;
 }
 
 export function findParentId(map: SampleMap, nodeId: string | null): string | null {
-  if (!nodeId || nodeId === 'root') return null;
-  if (map.branches.some((b) => b.id === nodeId)) return 'root';
+  if (!nodeId || centerRootOf(map, nodeId)) return null;
+  for (const { rootId, branches } of allBranchLists(map)) {
+    if (branches.some((b) => b.id === nodeId)) return rootId;
+  }
 
   let parentId: string | null = null;
   const walk = (nodes: MindNode[]) => {
@@ -484,7 +524,10 @@ export function findParentId(map: SampleMap, nodeId: string | null): string | nu
       walk(node.children ?? []);
     }
   };
-  walk(map.branches);
+  for (const { branches } of allBranchLists(map)) {
+    walk(branches);
+    if (parentId) break;
+  }
   return parentId;
 }
 
@@ -515,14 +558,17 @@ function subtreeHeight(node: MindNode): number {
  */
 export function buildParentIndex(map: SampleMap): Map<string, string | null> {
   const idx = new Map<string, string | null>();
-  idx.set('root', null);
   const walk = (nodes: MindNode[], parentId: string) => {
     for (const node of nodes) {
       idx.set(node.id, parentId);
       walk(node.children ?? [], node.id);
     }
   };
-  walk(map.branches, 'root');
+  // 중심주제마다 — 중심 루트는 부모 없음(null), 그 가지는 중심 루트가 부모
+  for (const { rootId, branches } of allBranchLists(map)) {
+    idx.set(rootId, null);
+    walk(branches, rootId);
+  }
   return idx;
 }
 
@@ -564,6 +610,27 @@ function mutateNode(
       ...map,
       root: { ...(updated as unknown as SampleRoot), id: 'root', colorKey: 'root' },
     };
+  }
+  // 두 번째 이후의 중심주제 — 그 루트이거나 그 가지 안의 노드 (2026-09-15).
+  // 텍스트·스타일·노트 같은 "노드 하나 고치기"는 여기로 오므로 중심을 가리지
+  // 않고 동작한다 (추가·삭제·이동은 2단계).
+  if (map.centers?.length) {
+    const hit = map.centers.some((c) => c.root.id === nodeId || findNode(c.branches, nodeId));
+    if (hit) {
+      return {
+        ...map,
+        centers: map.centers.map((c) => {
+          if (c.root.id === nodeId) {
+            const updated = updater(c.root as unknown as MindNode);
+            return {
+              ...c,
+              root: { ...(updated as unknown as SampleRoot), id: c.root.id, colorKey: 'root' },
+            };
+          }
+          return { ...c, branches: updateNodeById(c.branches, nodeId, updater) as SampleBranch[] };
+        }),
+      };
+    }
   }
   return {
     ...map,

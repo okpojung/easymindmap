@@ -63,6 +63,14 @@ export function parseMarkdownMapFile(
       map.branches = applyLevelLayouts(
         map.branches, declared.settings.levelLayouts,
       ) as SampleBranch[];
+      // 선언은 맵 전체의 것 — 두 번째 이후의 중심주제 가지에도 같이 박는다
+      // (2026-09-15). 빠뜨리면 그 중심만 선언과 다르게 그려진다.
+      if (map.centers) {
+        map.centers = map.centers.map((c) => ({
+          ...c,
+          branches: applyLevelLayouts(c.branches, declared.settings!.levelLayouts!) as SampleBranch[],
+        }));
+      }
     }
   }
 
@@ -140,6 +148,16 @@ function relinkAttachments(
       ...map,
       root: walk(map.root as unknown as NodeLike) as unknown as SampleMap['root'],
       branches: map.branches.map((b) => walk(b)) as SampleBranch[],
+      // 두 번째 이후의 중심주제도 되잇는다 (2026-09-15)
+      ...(map.centers
+        ? {
+            centers: map.centers.map((c) => ({
+              ...c,
+              root: walk(c.root as unknown as NodeLike) as unknown as SampleMap['root'],
+              branches: c.branches.map((b) => walk(b)) as SampleBranch[],
+            })),
+          }
+        : {}),
     },
     relinked,
   };
@@ -173,6 +191,10 @@ function collectFileImageSrcs(map: SampleMap): Set<string> {
   };
   walk(map.root as unknown as ImgNodeLike);
   for (const b of map.branches) walk(b as unknown as ImgNodeLike);
+  for (const c of map.centers ?? []) {
+    walk(c.root as unknown as ImgNodeLike);
+    for (const b of c.branches) walk(b as unknown as ImgNodeLike);
+  }
   return out;
 }
 
@@ -270,6 +292,15 @@ export async function relinkImages(
       ...map,
       root: walk(map.root as unknown as ImgNodeLike) as unknown as SampleMap['root'],
       branches: map.branches.map((b) => walk(b as unknown as ImgNodeLike)) as unknown as SampleBranch[],
+      ...(map.centers
+        ? {
+            centers: map.centers.map((c) => ({
+              ...c,
+              root: walk(c.root as unknown as ImgNodeLike) as unknown as SampleMap['root'],
+              branches: c.branches.map((b) => walk(b as unknown as ImgNodeLike)) as unknown as SampleBranch[],
+            })),
+          }
+        : {}),
     },
     relinkedImages: bySrc.size,
     fellBackToData,

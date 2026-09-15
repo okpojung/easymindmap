@@ -2,9 +2,12 @@
 // (EasyMindMap 앱의 importMarkdown이 이 모듈을 재수출해 사용한다)
 // docs/04-extensions/import-export/20-export.md의 Basic 포맷 + 완전 변환:
 //
-//   # 제목             → 루트(중심 주제) · 맵 제목 (파일의 첫 H1만)
-//   # 이후의 H1        → 2레벨 견출 (ChatGPT 내보내기처럼 본문에 #을
-//                        쓰는 파일에서 견출이 사라지지 않게 — ## 과 동급)
+//   # 제목             → 루트(중심 주제) · 맵 제목 (파일의 첫 H1)
+//   # 이후의 H1        → **새 중심주제** (2026-09-15, mmd 표준 세션 결정).
+//                        표준 트리의 뿌리는 보이지 않는 노드이고 `#` 이
+//                        둘이면 뿌리 아래 형제가 둘이다 — 화면은 중심이
+//                        여럿인 한 장의 맵. 예전의 h1Mode(본문 `#` 를
+//                        2레벨로 내림)는 이 결정으로 폐기했다.
 //   (첫 견출 전의 인용문·문단) → 루트의 문단 노트 (머리말 처리)
 //   ## 견출            → 2레벨, ### → 3레벨 … (###### → 6레벨)
 //   - 리스트           → 마지막 견출의 하위 (들여쓰기 2칸/탭 = 한 단계)
@@ -26,6 +29,8 @@
 import type {
   SampleMap,
   SampleBranch,
+  SampleCenter,
+  SampleRoot,
   MindNode,
   NodeColorKey,
   NodeInlineImage,
@@ -126,34 +131,44 @@ export function parseMarkdownToMap(
     readFrontMatter(md).body.replace(/\r\n?/g, '\n').split('\n'),
   );
 
-  // 사전 스캔: 제목(첫 H1) 외에 본문에도 H1(#)을 쓰는 파일인지 확인.
-  // (ChatGPT 내보내기 등은 본문 견출에 #, 그 하위에 ##을 쓴다)
-  //  - 본문 H1 있음(h1Mode): # → 2레벨, ## → 3레벨 … (한 단계씩 내림)
-  //  - 없음(일반 파일):      ## → 2레벨, ### → 3레벨 … (기존과 동일)
-  let h1Count = 0;
-  let firstHeadingLevel = 0;
-  {
-    let inFence = false;
-    for (const raw of lines) {
-      if (/^\s*```/.test(raw)) { inFence = !inFence; continue; }
-      if (inFence) continue;
-      // 빈 견출(`##` · `## #`)도 견출이다 (2026-09-15 — 이름 없는 노드)
-      const h = raw.match(/^(#{1,6})(?:[ \t]+\S|[ \t]*$)/);
-      if (!h) continue;
-      if (!firstHeadingLevel) firstHeadingLevel = h[1].length;
-      if (h[1].length === 1) h1Count++;
-    }
-  }
-  const h1Mode = h1Count - (firstHeadingLevel === 1 ? 1 : 0) > 0;
-
   let title = fallbackTitle;
   let rootText = '';
   let rootSeen = false; // 첫 H1 을 봤나 — 빈 `#` 도 제목 자리를 차지한다
-  const branches: SampleBranch[] = [];
-  const rootNotes: NoteBlock[] = [];
+  // ★ 아래 넷은 **지금 채우고 있는 중심주제**의 것이다. 두 번째 `#` 를
+  //   만나면 startCenter() 가 새 배열로 갈아 끼운다 — 클로저들은 변수
+  //   이름으로 읽으므로 그대로 새 중심에 쓰게 된다. 첫 중심의 배열은
+  //   `first` 에 따로 붙들어 둔다.
+  let branches: SampleBranch[] = [];
+  let rootNotes: NoteBlock[] = [];
   /** 첫 견출 전에 나온 루트 사진 (2026-08-18, B17) */
-  const rootImages: string[] = [];
-  const rootAttachments: NonNullable<MindNode['attachments']> = [];
+  let rootImages: string[] = [];
+  let rootAttachments: NonNullable<MindNode['attachments']> = [];
+  const first = { branches, rootNotes, rootImages, rootAttachments };
+  /** 두 번째 이후의 중심주제 (model.ts SampleCenter) */
+  const centers: SampleCenter[] = [];
+  let curCenter: SampleRoot | null = null; // null = 첫 중심을 채우는 중
+  // 지금 중심의 머리말(노트·사진·첨부)을 그 중심의 루트에 붙인다
+  const finishCenter = () => {
+    if (!curCenter) return;
+    if (rootNotes.length) curCenter.notes = rootNotes;
+    if (rootAttachments.length) curCenter.attachments = rootAttachments;
+    if (rootImages.length) {
+      curCenter.images = rootImages.map((src) => ({ src, w: 0, h: 0, afterLine: 0 }));
+    }
+  };
+  const startCenter = (text: string) => {
+    finishCenter();
+    const c: SampleCenter = {
+      root: { id: nid(), text, colorKey: 'root', side: 'center' },
+      branches: [],
+    };
+    centers.push(c);
+    curCenter = c.root;
+    branches = c.branches;
+    rootNotes = [];
+    rootImages = [];
+    rootAttachments = [];
+  };
   // "📎 [이름](files/이름)" 첨부 줄 — 내보내기의 첨부 왕복 (2026-09-15).
   // 문단의 모든 줄이 첨부 줄이면 첨부 목록으로 돌려주고, 아니면 null.
   // url 이 `files/…` 이면 앱이 ZIP 의 파일을 이어 붙이고
@@ -631,18 +646,26 @@ export function parseMarkdownToMap(
       const level = heading[1].length; // 1~6
       let text = (heading[2] ?? '').trim();
       if (/^#+$/.test(text)) text = ''; // `## #` — 닫는 기호뿐이면 빈 견출
-      if (level === 1 && !rootSeen && !sawHeading) {
-        rootSeen = true;
-        // 파일 첫 H1만 제목(루트) — 이후의 H1은 아래에서 2레벨 견출로
-        rootText = stripLinks(text).text;
-        title = rootText;
+      if (level === 1) {
+        if (!rootSeen && !sawHeading) {
+          rootSeen = true;
+          // 파일 첫 H1 = 제목(첫 중심주제)
+          rootText = stripLinks(text).text;
+          title = rootText;
+        } else {
+          // 두 번째 이후의 `#` = **새 중심주제** (2026-09-15). 그 아래
+          // `##`·문단·리스트는 새 중심의 가지가 되고, 첫 `##` 전의
+          // 문단·인용문은 새 중심의 머리말(루트 노트)이다 — 첫 중심과 같은
+          // 규칙. `##` 로 시작한 문서 뒤의 `#` 도 새 중심이다(첫 중심은
+          // 파일 이름을 제목으로 가진다).
+          startCenter(stripLinks(text).text);
+          sawHeading = false;
+        }
         stack.length = 0;
         lastHeadingDepth = 0;
         continue;
       }
-      // 본문에 H1을 쓰는 파일(h1Mode)은 # = 2레벨, ## = 3레벨 …로 한
-      // 단계씩 내려 계층을 보존한다. 일반 파일은 ## = 2레벨 (기존과 동일).
-      const depth = h1Mode ? Math.min(level, 6) : Math.max(1, level - 1);
+      const depth = Math.max(1, level - 1); // ## = 2레벨 … ###### = 6레벨
       attach(depth, text, true);
       lastHeadingDepth = depth;
       sawHeading = true;
@@ -726,16 +749,22 @@ export function parseMarkdownToMap(
     }
   }
 
-  if (!rootText && branches.length === 0) return null; // 인식할 구조 없음
+  finishCenter(); // 마지막 중심의 머리말을 그 루트에
+
+  // 인식할 구조 없음 — 첫 중심에 제목도 가지도 없고 다른 중심도 없다
+  if (!rootText && first.branches.length === 0 && centers.length === 0) return null;
 
   // 1레벨 가지 좌/우 배분 — 문서 순서대로 앞 절반 오른쪽, 뒤 절반 왼쪽.
   // 전부 'right'로 두면 '방사형·양쪽' 레이아웃이 좌우로 나눌 가지가 없어
   // 방사형·오른쪽과 똑같이 보인다 (2026-07 버그). 트리·계층형 등 다른
-  // 레이아웃은 side를 무시하므로 영향이 없다.
-  if (branches.length >= 2) {
-    const half = Math.ceil(branches.length / 2);
-    branches.forEach((b, i) => { b.side = i < half ? 'right' : 'left'; });
-  }
+  // 레이아웃은 side를 무시하므로 영향이 없다. 중심마다 따로 나눈다.
+  const splitSides = (list: SampleBranch[]) => {
+    if (list.length < 2) return;
+    const half = Math.ceil(list.length / 2);
+    list.forEach((b, i) => { b.side = i < half ? 'right' : 'left'; });
+  };
+  splitSides(first.branches);
+  for (const c of centers) splitSides(c.branches);
 
   return {
     title,
@@ -744,14 +773,15 @@ export function parseMarkdownToMap(
       text: rootText || title,
       colorKey: 'root',
       side: 'center',
-      ...(rootNotes.length ? { notes: rootNotes } : {}),
-      ...(rootAttachments.length ? { attachments: rootAttachments } : {}),
+      ...(first.rootNotes.length ? { notes: first.rootNotes } : {}),
+      ...(first.rootAttachments.length ? { attachments: first.rootAttachments } : {}),
       // 루트 사진 — 내보낼 때 `# 제목` 아래에 쓴 것을 되돌린다 (B17)
-      ...(rootImages.length
-        ? { images: rootImages.map((src) => ({ src, w: 0, h: 0, afterLine: 0 })) }
+      ...(first.rootImages.length
+        ? { images: first.rootImages.map((src) => ({ src, w: 0, h: 0, afterLine: 0 })) }
         : {}),
     } as SampleMap['root'],
-    branches,
+    branches: first.branches,
+    ...(centers.length ? { centers } : {}),
   };
 }
 

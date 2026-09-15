@@ -395,7 +395,7 @@ Inspector AI 탭에서 **생성 뷰 / 설정 뷰** 2개 뷰로 구성된다. dep
 | 항목 | 설명 |
 |---|---|
 | **Standalone HTML** | 오프라인 단독 실행 가능한 읽기 전용 뷰어 포함 파일 |
-| **Markdown** | EMM 포맷 Markdown |
+| **Markdown** | mmd 포맷 Markdown |
 | **첨부 시 ZIP** | 노드 첨부파일이 있으면 본문 + 첨부를 ZIP 하나로 묶음 |
 | **퍼블리시 URL** | (미구현) — 공개 공유는 Standalone HTML 파일로 대신 |
 

@@ -193,7 +193,7 @@ documentStore = 실제 문서 + 되돌리기
 ### 5.1.2 실제 문서 모델 — SampleMap (중첩 트리)
 
 ```ts
-// packages/emm-parser/src/model.ts — 문서 모델의 단일 원본 (EMM 파서와 공유)
+// packages/emm-parser/src/model.ts — 문서 모델의 단일 원본 (mmd 파서와 공유)
 interface SampleMap {
   title: string;
   root: SampleRoot;          // 중심 주제 (MindNode)
@@ -204,7 +204,7 @@ interface SampleMap {
 
 > 노드를 `Record<string, Node>` + `childIds` 로 정규화하는 원안
 > (§5.1.3 참조)은 **미채택** — 실제 모델은 **중첩 `children` 배열
-> 트리**다. EMM 파일 포맷·내보내기와 같은 모델을 그대로 쓴다.
+> 트리**다. mmd 파일 포맷·내보내기와 같은 모델을 그대로 쓴다.
 
 ---
 
@@ -213,7 +213,7 @@ interface SampleMap {
 > 원안은 "nodes를 배열이 아니라 `Record<string, MindmapNode>` +
 > 파생 `childIds`로 저장"하는 설계였다 (빠른 조회·patch 계산 목적).
 > patch 저장 자체가 미채택되면서 정규화도 도입하지 않았다 — 중첩 트리
-> + 재귀 순회(`mutateNode`)로 충분하고, EMM 모델과 1:1 이라 직렬화
+> + 재귀 순회(`mutateNode`)로 충분하고, mmd 모델과 1:1 이라 직렬화
 > 변환이 없다. 협업(CRDT) 도입 시 재검토.
 
 ---

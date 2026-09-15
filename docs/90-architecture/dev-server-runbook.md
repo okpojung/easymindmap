@@ -297,7 +297,7 @@ CREATE TABLE IF NOT EXISTS public.user_ai_keys (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, provider)
 );
--- AI 설정(우선순위·모델·EMM 프롬프트 템플릿) — 계정당 1행, 평문 JSON (비밀 아님)
+-- AI 설정(우선순위·모델·mmd 프롬프트 템플릿) — 계정당 1행, 평문 JSON (비밀 아님)
 CREATE TABLE IF NOT EXISTS public.user_ai_settings (
     user_id     UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
     settings    JSONB NOT NULL,

@@ -2,12 +2,12 @@
 ## EXPORT
 
 * 문서 버전: v1.1
-* 작성일: 2026-04-16 (2026-07 EMM 스펙 체계로 개정)
+* 작성일: 2026-04-16 (2026-07 mmd 스펙 체계로 개정)
 * 최종 업데이트: 2026-08-04 — 현행(100% 클라이언트, 옵션 없는 단일 규칙, ZIP 첨부 패키징) 기준으로 서버 설계 절에 배지 정리
 * 참조: `docs/01-product/functional-spec.md § EXPORT`, `docs/02-domain/db-schema.md § exports`
 
-> **📐 포맷 정의는 이 문서가 아니라 EMM 스펙이 규범이다.**
-> Markdown 내보내기가 만드는 파일은 **EasyMindMap Markdown(EMM)** 문서다.
+> **📐 포맷 정의는 이 문서가 아니라 mmd 스펙이 규범이다.**
+> Markdown 내보내기가 만드는 파일은 **Mindmap Markdown(mmd)** 문서다.
 > - 포맷 명세(설계 원칙·문법·적합성): `docs/04-extensions/emm-spec.md`
 > - 변환 규칙 상세(구현 규칙서): `docs/04-extensions/markdown-export.md`
 > - 메타데이터 계층: `22-map-file-meta.md`
@@ -67,10 +67,10 @@ CREATE TABLE public.exports (
 );
 ```
 
-#### 4.2 Markdown 내보내기 모드 — 단일 모드 (EMM 2계층)
+#### 4.2 Markdown 내보내기 모드 — 단일 모드 (mmd 2계층)
 
 > **[개정 — 2026-07] 초기 설계의 Basic/Extended(simple/full) 이원화는
-> 폐기되었다.** 단일 EMM 직렬화 하나다.
+> 폐기되었다.** 단일 mmd 직렬화 하나다.
 >
 > **[개정 — 2026-09-15] 파일 끝 메타데이터 주석(`easymindmap:v1:BASE64`)도
 > 폐기되었다.** MD = 본문(순수 GFM) + 첫 헤딩 아래 ```emm 선언(맵 ID ·

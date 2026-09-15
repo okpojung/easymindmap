@@ -13,7 +13,7 @@
 > `editor/inspector-panels/AITab.tsx`(UI). 검증: E2E e2e52.
 >
 > **관련 문서**: `18-ai.md`(현행 AI 생성 기능), `emm-prompt-templates.md`
-> (EMM 프롬프트), `05-implementation/test-catalog.md`(구현 시 E2E 등록).
+> (mmd 프롬프트), `05-implementation/test-catalog.md`(구현 시 E2E 등록).
 
 ---
 
@@ -85,7 +85,7 @@ Ubuntu·Apache는 이 질문과 직접 관계가 없고 토큰만 늘리므로 �
 
 ### 3.2 답변 위치
 
-- **기본(권장)**: 답변 EMM을 **질문 노드의 하위 노드로 삽입**(구조화).
+- **기본(권장)**: 답변 mmd를 **질문 노드의 하위 노드로 삽입**(구조화).
 - 대안: 노트 한 덩어리로. (구현 시 옵션으로 둘 수 있음)
 
 ---
@@ -171,7 +171,7 @@ EasyMindMap은 백엔드 없이 **브라우저에서 3사 API를 직접 호출**
 - [ ] `@소스` 노드 식별 규칙 (SOURCE_MARKER 상수, 이름 포함 매칭)
 - [ ] 질문 노드 → 직계 조상 경로 수집 유틸 (documentStore)
 - [ ] 맥락 조립 + Anthropic `cache_control` 마킹(OpenAI/Gemini는 자동/명시)
-- [ ] 답변 EMM → 질문 노드 하위로 삽입 (parseEmm + 부분 삽입)
+- [ ] 답변 mmd → 질문 노드 하위로 삽입 (parseEmm + 부분 삽입)
 - [ ] UI: 노드 선택 시 "AI로 답하기" (속성 AI 탭 or 우클릭)
 - [ ] E2E: 경로 맥락 조립 검증(모킹 요청 바디에 루트+부모 포함, 옆가지
       제외), 답변 하위 삽입 — `test-catalog.md` 2.9 AI에 등록

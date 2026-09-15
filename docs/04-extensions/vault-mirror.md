@@ -147,7 +147,7 @@ delete + write). rename 을 쓰면 대소문자만 바뀐 경우 일부 파일�
 [[RAG 증분 인덱싱#병합 전략]]     그 맵의 노드를 가리킨다
 ```
 
-Obsidian 문법 그대로다. **EMM 은 노드를 헤딩으로 내보내므로 `#노드제목` 이
+Obsidian 문법 그대로다. **mmd 는 노드를 헤딩으로 내보내므로 `#노드제목` 이
 그대로 Obsidian 의 헤딩 링크와 맞는다.** 별도 변환이 필요 없다.
 
 ### 5.2 표기는 제목, 해석은 UUID
@@ -347,7 +347,7 @@ CREATE INDEX IF NOT EXISTS idx_map_links_dst ON public.map_links(dst_map_id);
 
 ### `.md` 를 어디서 만드나 — **npm 퍼블리시로 정했다** (2026-08-21)
 
-vault 의 `.md` 는 `map_documents.doc` 를 EMM 으로 직렬화한 것이다. 그런데
+vault 의 `.md` 는 `map_documents.doc` 를 mmd 로 직렬화한 것이다. 그런데
 **`apps/api` 는 `packages/emm-parser` 를 못 쓴다** — 의존성이 없다.
 직렬화기를 서버에 다시 만드는 것은 답이 아니다. 규칙이 두 벌이 되면
 어긋나고, 어긋나면 **vault 파일과 내보내기 파일이 다른 문서**가 된다.
@@ -393,6 +393,6 @@ npmjs.org 에 직접 HTTP 로 물어 404, GitHub Packages 도 404, npm 검색에
 |---|---|
 | 사진을 문서 밖으로 (vault 의 전제) | [`collaboration/28-sync-prework-plan.md`](collaboration/28-sync-prework-plan.md) §3 |
 | 파일 하나로 온전히 | [`content-permanence.md`](content-permanence.md) §7.1 |
-| EMM 포맷 | [`emm-spec.md`](emm-spec.md) · [`markdown-export.md`](markdown-export.md) |
+| mmd 포맷 | [`emm-spec.md`](emm-spec.md) · [`markdown-export.md`](markdown-export.md) |
 | 셀프호스트 배포 | [`../90-architecture/selfhost-docker.md`](../90-architecture/selfhost-docker.md) |
 | 용어 | [`../00-project-overview/glossary.md`](../00-project-overview/glossary.md) |

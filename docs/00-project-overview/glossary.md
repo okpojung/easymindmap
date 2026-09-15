@@ -136,10 +136,21 @@ PWA·Electron·Tauri 가 **같은 코드 경로**를 쓸 수 있다.
 
 ## 3. 이 프로젝트 고유어
 
-### EMM (EasyMindMap Markdown)
+### mmd(Mindmap Markdown) · emm(EasyMindMap) — 용어 규칙 (2026-09-15)
 
-본문 100% CommonMark/GFM + 첫 헤딩 아래 ```emm 선언 블록(맵 ID · 레벨별
-레이아웃·도형·글자 크기). 파일 끝 메타데이터 주석(`easymindmap:v1`)은
+앞으로 두 낱말을 이렇게 나눠 쓴다 (사용자 결정).
+
+| 낱말 | 뜻 | 쓰는 자리 |
+|---|---|---|
+| **mmd** | **Mindmap Markdown** — 마인드맵을 담는 마크다운 **형식**(표준) | 형식·스펙·문서·파일·프롬프트를 가리킬 때: "mmd 문서", "mmd 스펙", "mmd-Basic" |
+| **emm** | **EasyMindMap** — 이 **제품**의 준말 | 앱·커넥터·토큰·코드 식별자: `emm` 커넥터, `emm_…` 토큰, `packages/emm-parser`, `@emm/*`, ```` ```emm ```` 선언 블록(앱의 맵 정책), `emm-spec.md` 같은 파일 이름 |
+
+예전에는 형식도 "EMM(EasyMindMap Markdown)" 이라 불렀다. 2026-09-15 문서
+전체에서 형식 이름을 mmd 로 바꿨고, 파일 이름·코드 식별자의 `emm` 은
+"easymindmap 의 것"이라는 뜻이라 그대로 둔다.
+
+**mmd** = 본문 100% CommonMark/GFM + 첫 헤딩 아래 ```emm 선언 블록(맵 ID ·
+레벨별 레이아웃·도형·글자 크기). 파일 끝 메타데이터 주석(`easymindmap:v1`)은
 2026-09-15 폐기 — 노드별 스타일까지 담는 무손실 형식은 HTML 내보내기다.
 
 ````
@@ -150,10 +161,6 @@ levels:
     layout: tree-right
 ```
 ````
-
-스펙은 [`emm-spec.md`](../04-extensions/emm-spec.md), 변환 규칙은
-[`markdown-export.md`](../04-extensions/markdown-export.md).
-레퍼런스 파서는 `packages/emm-parser` — **공개다.**
 
 ### open-core (오픈 코어)
 
@@ -645,6 +652,6 @@ NIPA 평가의 '활용성' 항목과 투자 협상에서 실제로 값어치가 
 | 그 전에 코어에서 뭘 끝내야 하나 | [`../04-extensions/collaboration/28-sync-prework-plan.md`](../04-extensions/collaboration/28-sync-prework-plan.md) |
 | 무엇이 공개이고 무엇이 유료인가 | [`../04-extensions/open-core-boundary.md`](../04-extensions/open-core-boundary.md) |
 | 상태를 왜 여러 스토어로 나눴나 | [`../03-editor-core/state-architecture.md`](../03-editor-core/state-architecture.md) |
-| EMM 이 정확히 무엇인가 | [`../04-extensions/emm-spec.md`](../04-extensions/emm-spec.md) |
+| mmd 가 정확히 무엇인가 | [`../04-extensions/emm-spec.md`](../04-extensions/emm-spec.md) |
 | 사업화·오픈소스 전략 전체 | [`emm-strategy.md`](emm-strategy.md) |
 | 유료 사용자를 몇 명까지 받을 수 있나 | [`../90-architecture/infra-architecture.md`](../90-architecture/infra-architecture.md) §18 |

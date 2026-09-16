@@ -85,10 +85,46 @@ console.log('centers: 이름 없는 중심(빈 #)');
 console.log('centers: ## 로 시작한 문서 뒤의 #');
 {
   const map = parseEmm('## 먼저\n\n# 나중\n\n## 나중의 가지\n', 'file-name')!;
-  check('첫 중심은 파일 이름', map.root.text, 'file-name');
-  check('첫 중심 가지', map.branches.map((b) => b.text), ['먼저']);
+  check('첫 ## 이 첫 중심 (A-1 ② — 파일 이름 중심을 지어내지 않는다)', map.root.text, '먼저');
+  check('맵 이름은 파일 이름', map.title, 'file-name');
   check('# 나중 은 새 중심', map.centers?.[0].root.text, '나중');
   check('그 가지', map.centers?.[0].branches.map((b) => b.text), ['나중의 가지']);
+}
+
+console.log('centers: `#` 없는 문서의 최상위 항목은 각각 중심 (A-1 ②, 2026-09-16)');
+{
+  const map = parseEmm('## A\n\n### a1\n\n#### a1x\n\n### a2\n\n## B\n\n- b1\n', 'file-name')!;
+  check('## 만 있는 문서 — 첫 ## 이 첫 중심', map.root.text, 'A');
+  check('맵 이름은 파일 이름 그대로', map.title, 'file-name');
+  check('첫 중심의 가지 = ### (한 단계 위로)', map.branches.map((b) => b.text), ['a1', 'a2']);
+  check('#### 는 가지의 자식', map.branches[0].children?.map((n) => n.text), ['a1x']);
+  check('둘째 ## 은 새 중심', map.centers?.map((c) => c.root.text), ['B']);
+  check('그 아래 리스트는 가지', map.centers![0].branches.map((b) => b.text), ['b1']);
+  check('centers 루트에 mdForm 없음', 'mdForm' in map.centers![0].root, false);
+  const back = parseEmm(buildEmmBody(map, []), 'file-name')!;
+  check('왕복 — 중심 수·노드 수 보존', [mapCenters(back).length, countMapNodes(back)], [2, countMapNodes(map)]);
+}
+{
+  const map = parseEmm('- 가\n  - 가1\n- 나\n- 다\n', 'list')!;
+  check('목록만 있는 문서 — 항목마다 중심', [map.root.text, ...(map.centers ?? []).map((c) => c.root.text)], ['가', '나', '다']);
+  check('들여쓴 항목은 그 중심의 가지', map.branches.map((b) => b.text), ['가1']);
+  check('첫 중심 루트에 mdForm 없음', 'mdForm' in map.root, false);
+}
+{
+  const map = parseEmm('1. 첫 절\n\n첫 절의 문단\n\n2. 둘째 절\n\n- 항목\n', 'num')!;
+  check('순번 절도 중심', [map.root.text, map.centers?.[0].root.text], ['1. 첫 절', '2. 둘째 절']);
+  check('견출 없는 문서의 문단은 그 중심의 머리말 노트 (기존 규칙)', map.root.notes?.map((n) => n.text), ['첫 절의 문단']);
+  check('둘째 절의 항목은 가지', map.centers![0].branches.map((b) => b.text), ['항목']);
+}
+{
+  const map = parseEmm('- 가\n\n# T\n\n## t1\n', 'mix')!;
+  check('항목 뒤의 # 는 첫 중심을 덮지 않고 새 중심', [map.root.text, map.centers?.[0].root.text], ['가', 'T']);
+  check('# 아래 ## 은 그 중심의 가지', map.centers![0].branches.map((b) => b.text), ['t1']);
+}
+{
+  const map = parseEmm('머리말 문단\n\n## A\n\n## B\n', 'pre')!;
+  check('첫 ## 앞 머리말은 첫 중심의 노트', map.root.notes?.map((n) => n.text), ['머리말 문단']);
+  check('중심 둘', mapCenters(map).length, 2);
 }
 
 console.log('centers: 중심 하나인 문서는 예전 그대로');

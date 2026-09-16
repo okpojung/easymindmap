@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { MindNode } from '@/editor/__samples__/types';
+import { mapCenters } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
@@ -82,18 +83,22 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
     const q = query.trim();
     if (!q) return [];
     const out: SearchHit[] = [];
-    // 루트 포함
-    if ((map.root.text || '').toLowerCase().includes(q.toLowerCase())) {
-      out.push({ id: 'root', title: map.root.text, path: '', kinds: ['노드'] });
+    // 중심주제마다 — 루트 포함, 경로는 그 중심의 이름에서 (2026-09-16, 3단계)
+    for (const c of mapCenters(map)) {
+      if ((c.root.text || '').toLowerCase().includes(q.toLowerCase())) {
+        out.push({ id: c.root.id, title: c.root.text, path: '', kinds: ['노드'] });
+      }
+      searchMap(c.branches, q, [c.root.text], out);
     }
-    searchMap(map.branches, q, [map.root.text], out);
     return out.slice(0, 50);
   }, [map, query]);
 
   const tagSet = new Set<string>();
-  if (map.root.tag) tagSet.add(map.root.tag);
-  (map.root.tags ?? []).forEach((tg) => tagSet.add(tg));
-  collectTags(map.branches, tagSet);
+  for (const c of mapCenters(map)) {
+    if (c.root.tag) tagSet.add(c.root.tag);
+    (c.root.tags ?? []).forEach((tg) => tagSet.add(tg));
+    collectTags(c.branches, tagSet);
+  }
   const mapTags = Array.from(tagSet);
 
   return (

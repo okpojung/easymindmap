@@ -21,7 +21,8 @@ import { useViewportStore } from '@/stores/viewportStore';
 // Enter로 형제를 추가하면 새 행이 곧바로 입력 모드가 된다 (노트패드처럼).
 let editRequestId: string | null = null;
 export function requestOutlineEdit(id: string | null) { editRequestId = id; }
-import { useDocumentStore, findNodeInMap, findParentId } from '@/stores/documentStore';
+import { useDocumentStore, findNodeInMap, findParentId, isCenterRootId } from '@/stores/documentStore';
+import { mapCenters } from '@/editor/__samples__/types';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import {
   nodeContentIndicators,
@@ -242,7 +243,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   }, [node.id]);
 
   // 인디케이터 — 맵과 동일한 규칙 (nodeContentIndicators)
-  const rawNode = (node.id === 'root' ? map.root : findNodeInMap(map, node.id)) as MindNode | null;
+  const rawNode = findNodeInMap(map, node.id) as MindNode | null; // 중심 루트도 찾는다
   const indicators = rawNode ? nodeContentIndicators(rawNode as unknown as LaidOutNode) : [];
 
   const startEdit = () => {
@@ -293,13 +294,18 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 
   const siblingsOf = (): MindNode[] => {
     const parentId = findParentId(map, node.id);
-    if (!parentId || parentId === 'root') return map.branches;
+    if (!parentId) return [];
+    // 부모가 중심주제 루트면 그 중심의 가지들 (둘째 이후의 중심도, 2026-09-16)
+    if (isCenterRootId(map, parentId)) {
+      return (mapCenters(map).find((c) => c.root.id === parentId)?.branches ?? []) as MindNode[];
+    }
     const parent = findNodeInMap(map, parentId) as MindNode | null;
     return parent?.children ?? [];
   };
 
+  const isCenter = isCenterRootId(map, node.id); // 어느 중심주제의 루트든
   const indent = () => {
-    if (node.id === 'root') return;
+    if (isCenter) return;
     const sibs = siblingsOf();
     const idx = sibs.findIndex((s) => s.id === node.id);
     if (idx <= 0) return;
@@ -308,9 +314,9 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   };
 
   const outdent = () => {
-    if (node.id === 'root' || node.depth <= 1) return;
+    if (isCenter || node.depth <= 1) return;
     const parentId = findParentId(map, node.id);
-    if (!parentId || parentId === 'root') return;
+    if (!parentId || isCenterRootId(map, parentId)) return;
     moveNodeRelative(node.id, parentId, 'after');
     setSelectedId(node.id);
   };
@@ -331,7 +337,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
       return;
     }
     if (!editing && (e.key === 'Delete' || e.key === 'Backspace')) {
-      if (node.id === 'root') return;
+      if (node.id === 'root') return; // 첫 중심은 못 지운다 (둘째 이후는 중심째 지운다)
       e.preventDefault();
       e.stopPropagation();
       deleteNode(node.id);
@@ -496,8 +502,8 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 commitEdit();
-                const newId = node.id === 'root'
-                  ? addChildNode('root')
+                const newId = isCenter
+                  ? addChildNode(node.id)
                   : addSiblingNode(node.id, 'after');
                 if (newId) {
                   setSelectedId(newId);
@@ -607,7 +613,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             display: 'inline-flex', gap: 3, marginLeft: 'auto', flexShrink: 0,
             visibility: hover ? 'visible' : 'hidden',
           }}>
-            {node.id !== 'root' && btn('＋형제', '아래에 형제 노드 추가', () => {
+            {!isCenter && btn('＋형제', '아래에 형제 노드 추가', () => {
               const id = addSiblingNode(node.id, 'after');
               if (id) setSelectedId(id);
             })}

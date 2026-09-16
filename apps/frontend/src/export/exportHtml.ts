@@ -1045,6 +1045,36 @@ const VIEWER_JS = String.raw`
   // 그려지며 칩 숫자를 덮던 문제 수정 (항상 노드들 위에 보인다)
   var chipLayer = null;
 
+  // ── 여러 중심주제 (2026-09-16, 3단계) — DATA.root 가 첫 중심, DATA.centers 가
+  //    둘째 이후. 뿌리를 훑는 곳은 전부 ROOTS() 로 돈다.
+  function ROOTS() { return [DATA.root].concat(DATA.centers || []); }
+  function countAllNodes() {
+    var rs = ROOTS(), c = 0;
+    for (var i = 0; i < rs.length; i++) c += 1 + countDescendants(rs[i]);
+    return c;
+  }
+  function subtreeRight(n) {
+    var r = (n._cx || 0) + (n._w || 0) / 2;
+    var ks = n.children || [];
+    if (n._open !== false) for (var i = 0; i < ks.length; i++) r = Math.max(r, subtreeRight(ks[i]));
+    return r;
+  }
+  // 둘째 이후의 중심 배치 — 에디터가 구운 좌표(pos)가 있고 동적 재배치가 아니면
+  // 그 자리에, 아니면(접기·펼치기 뒤) 앞 중심의 오른쪽 160px 에 새로 잰다
+  function placeCenters(dynamic) {
+    var cs = DATA.centers || [];
+    if (!cs.length) return;
+    var x = subtreeRight(DATA.root) + 160;
+    for (var i = 0; i < cs.length; i++) {
+      var c = cs[i];
+      var eff = normalize(c.layoutType) || normalize(DATA.mapLayout) || 'radial-bidirectional';
+      c.layoutType = c.layoutType || eff;
+      if (c.pos && !dynamic) assignFixed(c, 0, eff);
+      else { measure(c, 0, eff); arrange(c, x, 40); }
+      x = subtreeRight(c) + 160;
+    }
+  }
+
   function render() {
     while (world.firstChild) world.removeChild(world.firstChild);
     chipLayer = el('g', { 'class': 'mm-chip-layer' });
@@ -1058,11 +1088,13 @@ const VIEWER_JS = String.raw`
       measure(DATA.root, 0, rootEff);
       arrange(DATA.root, 40, 40);
     }
+    placeCenters(DYN);
     // Focus 모드(에디터 Alt+F 파리티) — 배치는 전체 기준 그대로 두고,
     // 선택 노드의 서브트리만 그린다 (fit이 곧 서브트리 맞춤이 된다)
     var start = DATA.root, sd = 0, scol = null;
+    var roots = ROOTS();
     if (FOCUS && FOCUS !== DATA.root.id) {
-      (function walk(n, depth, color) {
+      for (var ri = 0; ri < roots.length && start === DATA.root; ri++) (function walk(n, depth, color) {
         var c2 = depth === 0 ? null
           : (depth === 1 ? famOf(n.colorKey).border : (color || SKIN.fam.l2.border));
         if (n.id === FOCUS) { start = n; sd = depth; scol = color; return true; }
@@ -1071,10 +1103,14 @@ const VIEWER_JS = String.raw`
           if (walk(kids[i], depth + 1, c2)) return true;
         }
         return false;
-      })(DATA.root, 0, null);
+      })(roots[ri], 0, null);
       if (start._cx == null) { start = DATA.root; sd = 0; scol = null; }
     }
-    drawNode(start, sd, scol);
+    if (start === DATA.root) {
+      for (var di = 0; di < roots.length; di++) drawNode(roots[di], 0, null);
+    } else {
+      drawNode(start, sd, scol);
+    }
     world.appendChild(chipLayer); // 접힘 칩을 마지막에 올려 항상 위에
     updateCount();
     syncOutline(); // 아웃라인 페인이 보이면 함께 갱신 (function 선언 호이스팅)
@@ -2238,7 +2274,7 @@ const VIEWER_JS = String.raw`
     };
     var eff = normalize(DATA.root.layoutType) || 'radial-bidirectional';
     document.getElementById('mm-count').textContent =
-      (1 + countDescendants(DATA.root)) + ' 노드 · ' + (layoutLabels[eff] || eff);
+      countAllNodes() + ' 노드 · ' + (layoutLabels[eff] || eff);
   }
 
   document.getElementById('mm-fit').addEventListener('click', fit);
@@ -2255,7 +2291,7 @@ const VIEWER_JS = String.raw`
   }
   function collectHits(q) {
     var out = [];
-    (function walk(n, path) {
+    var __walkF = function walk(n, path) {
       var text = (n.text || '');
       var inText = text.toLowerCase().indexOf(q) >= 0;
       var inTags = (n.tags || []).some(function (tg) {
@@ -2279,19 +2315,19 @@ const VIEWER_JS = String.raw`
       }
       var kids = n.children || [];
       for (var i = 0; i < kids.length; i++) walk(kids[i], path.concat([flattenText(text)]));
-    })(DATA.root, []);
+    }; ROOTS().forEach(function (r) { __walkF(r, []); });
     return out.slice(0, 50);
   }
   function expandTo(id) {
     var path = [];
-    (function walk(n, anc) {
+    var __walkF = function walk(n, anc) {
       if (n.id === id) { path = anc.slice(); return true; }
       var kids = n.children || [];
       for (var i = 0; i < kids.length; i++) {
         if (walk(kids[i], anc.concat([n]))) return true;
       }
       return false;
-    })(DATA.root, []);
+    }; (function () { var rs = ROOTS(); for (var ri = 0; ri < rs.length; ri++) if (__walkF(rs[ri], [])) break; })();
     for (var i = 0; i < path.length; i++) path[i].collapsed = false;
   }
   function jumpToHit(id) {
@@ -2307,11 +2343,11 @@ const VIEWER_JS = String.raw`
     expandTo(id);
     render();
     var found = null;
-    (function walk(n) {
+    var __walkF = function walk(n) {
       if (n.id === id) { found = n; return; }
       var kids = n.children || [];
       for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
-    })(DATA.root);
+    }; ROOTS().forEach(function (r) { if (!found) __walkF(r); });
     if (found && found._cx != null) {
       // 결과 클릭 = 해당 노드를 화면 중앙 + 100% 보기 (에디터와 동일)
       var rect = svg.getBoundingClientRect();
@@ -2527,7 +2563,7 @@ const VIEWER_JS = String.raw`
     var cur = checkOverrides[k];
     // 지금 화면 상태를 뒤집는다 — 원본을 모르는 자리에서는 base 를 찾아온다
     var base = false;
-    (function scan(n) {
+    var __scanF = function scan(n) {
       if (!n) return;
       if (n.id === nodeId && n._checks) {
         for (var i = 0; i < n._checks.length; i++) {
@@ -2536,7 +2572,7 @@ const VIEWER_JS = String.raw`
       }
       var ks = n.children || [];
       for (var j = 0; j < ks.length; j++) scan(ks[j]);
-    })(DATA.root);
+    }; ROOTS().forEach(__scanF);
     var now = cur === undefined ? base : cur === 1;
     checkOverrides[k] = now ? 0 : 1;
     saveChecks();
@@ -2630,10 +2666,10 @@ const VIEWER_JS = String.raw`
   });
   document.addEventListener('pointerdown', tipRestore, true);
   document.getElementById('mm-expand').addEventListener('click', function () {
-    setAll(DATA.root, false); DATA.root.collapsed = false; DYN = true; render(); fit();
+    ROOTS().forEach(function (r) { setAll(r, false); r.collapsed = false; }); DYN = true; render(); fit();
   });
   document.getElementById('mm-collapse').addEventListener('click', function () {
-    setAll(DATA.root, true); DATA.root.collapsed = false; DYN = true; render(); fit();
+    ROOTS().forEach(function (r) { setAll(r, true); r.collapsed = false; }); DYN = true; render(); fit();
   });
 
   // ── 아웃라인 페인 (읽기 전용 네비게이션) — 에디터의 아웃라인과 짝 ──
@@ -2657,11 +2693,11 @@ const VIEWER_JS = String.raw`
     render();
     if (!document.body.classList.contains('mm-outline-full')) {
       var found = null;
-      (function walk(n) {
+      var __walkF = function walk(n) {
         if (n.id === id) { found = n; return; }
         var kids = n.children || [];
         for (var i = 0; i < kids.length && !found; i++) walk(kids[i]);
-      })(DATA.root);
+      }; ROOTS().forEach(function (r) { if (!found) __walkF(r); });
       if (found && found._cx != null) {
         var rect = svg.getBoundingClientRect();
         view.k = 1;
@@ -2678,7 +2714,7 @@ const VIEWER_JS = String.raw`
   var olScrolledTo = null;
   function buildOutline() {
     olBody.textContent = '';
-    (function walk(node, depth) {
+    var __walkF = function walk(node, depth) {
       var row = el2('div', 'mm-ol-row' + (depth === 0 ? ' root' : '') +
         (SEARCHHIT === node.id ? ' on' : '') + (SEL === node.id ? ' sel' : ''));
       row.setAttribute('data-oid', node.id);
@@ -2719,7 +2755,7 @@ const VIEWER_JS = String.raw`
       row.addEventListener('click', function () { focusNodeFromOutline(node.id); });
       olBody.appendChild(row);
       if (!node.collapsed) for (var i = 0; i < kids.length; i++) walk(kids[i], depth + 1);
-    })(DATA.root, 0);
+    }; ROOTS().forEach(function (r) { __walkF(r, 0); });
     if (SEL !== olScrolledTo) {
       olScrolledTo = SEL;
       var selRow = SEL ? olBody.querySelector('.mm-ol-row.sel') : null;
@@ -3280,7 +3316,13 @@ export function buildStandaloneHtml(
     ...n, collapsed: false, children: (n.children ?? []).map(expandAll),
   });
   const laidAll = computeLayout(
-    { ...map, branches: map.branches.map(expandAll) as typeof map.branches },
+    {
+      ...map,
+      branches: map.branches.map(expandAll) as typeof map.branches,
+      ...(map.centers
+        ? { centers: map.centers.map((c) => ({ ...c, branches: c.branches.map(expandAll) as typeof c.branches })) }
+        : {}),
+    },
     layoutType, 700, 400, spacing,
   );
   // 체크리스트 항목 범위 — 에디터(NodeRenderer)와 같은 재구성 규칙으로
@@ -3339,6 +3381,18 @@ export function buildStandaloneHtml(
       children: map.branches.map((b) =>
         toExportNode(b, resolveHref, resolvePos, resolveSide, 1)),
     },
+    // 두 번째 이후의 중심주제 (2026-09-16, 3단계) — 루트와 같은 모양의 뿌리를
+    // 하나씩. 좌표(pos)는 에디터 배치(laid)에서 구워 뷰어가 그대로 놓는다.
+    centers: (map.centers ?? []).map((c) => ({
+      ...toExportNode({
+        ...c.root,
+        textAlign: c.root.textAlign ?? levelTextAlign(0),
+      } as MindNode, resolveHref, resolvePos, resolveSide),
+      colorKey: 'root',
+      layoutType: c.root.layoutType ?? mapLayoutType,
+      children: c.branches.map((b) =>
+        toExportNode(b, resolveHref, resolvePos, resolveSide, 1)),
+    })),
   };
 
   // <-escape so node text like "</script>" cannot terminate the block.
@@ -3454,6 +3508,10 @@ export async function buildExportPackage(
   // files/ 에 안 들어가고 세션이 끝나면 죽는 blob: URL로 남던 버그)
   if (map.root.attachments) attachments.push(...map.root.attachments);
   collectAttachments(map.branches, attachments);
+  for (const c of map.centers ?? []) {
+    if (c.root.attachments) attachments.push(...c.root.attachments);
+    collectAttachments(c.branches, attachments);
+  }
 
   if (attachments.length === 0) {
     const html = buildStandaloneHtml(map, mapLayoutType, undefined, spacing, undefined, dark);

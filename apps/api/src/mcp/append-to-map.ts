@@ -18,7 +18,8 @@
 import { parseMarkdownToMap } from '../emm/parse';
 import { ImageTooLargeError, sizeDataUrlImages } from './image-size';
 import { placementOf, type PlacementOptions } from './emm-to-doc';
-import type { LayoutType, MindNode, NodeColorKey, NoteBlock, SampleBranch, SampleMap } from '../emm/model';
+import type { LayoutType, MindNode, NodeColorKey, NoteBlock, SampleBranch, SampleMap, SampleRoot } from '../emm/model';
+import { mapCenters } from '../emm/model';
 
 export class AppendError extends Error {}
 
@@ -35,8 +36,10 @@ export function nodeTitle(n: { text?: string }): string {
 }
 
 export interface Found {
-  /** null = 루트(중심 주제) */
+  /** null = 루트(중심 주제) — 어느 중심인지는 centerRootId */
   node: MindNode | null;
+  /** node 가 null 일 때 그 중심 루트의 id ('root' = 첫 중심, 아니면 centers[i].root.id). 2026-09-16 */
+  centerRootId?: string;
   /** 루트=0, 가지=1 … */
   depth: number;
   /** 사람이 읽는 경로 — "2분기 > 협업" */
@@ -56,7 +59,11 @@ export function findByPath(map: SampleMap, pathArg: string): Found {
   // 겹쳐도 헷갈릴 일이 없다. 대화에서 AI 가 쓰는 형식은 아니다(id 는 본문에 없다).
   if (/^id:/i.test(raw)) {
     const id = raw.slice(3).trim();
-    if (!id || id === 'root') return { node: null, depth: 0, path: nodeTitle(map.root) || map.title };
+    if (!id || id === 'root') return { node: null, depth: 0, path: nodeTitle(map.root) || map.title, centerRootId: 'root' };
+    // 둘째 이후의 중심주제 루트를 골랐다 (2026-09-16)
+    for (const c of mapCenters(map)) {
+      if (c.root.id === id) return { node: null, depth: 0, path: nodeTitle(c.root) || '(이름 없는 중심주제)', centerRootId: c.root.id };
+    }
     let hit: Found | null = null;
     const dig = (nodes: MindNode[], depth: number, path: string[]) => {
       for (const n of nodes) {
@@ -66,13 +73,13 @@ export function findByPath(map: SampleMap, pathArg: string): Found {
         dig((n.children ?? []) as MindNode[], depth + 1, p);
       }
     };
-    dig(map.branches as MindNode[], 1, []);
+    for (const c of mapCenters(map)) dig(c.branches as MindNode[], 1, []);
     if (!hit) throw new AppendError('앱에서 선택한 노드가 이 맵에 더는 없습니다 — 앱에서 노드를 다시 고른 뒤 다시 불러 주세요.');
     return hit;
   }
   // 루트 — 빈 값, root/루트/중심 주제, 또는 아웃라인의 첫 줄(`# 제목`) 그대로
   if (!raw || /^(root|루트|중심 주제|중심)$/i.test(raw) || /^#\s+/.test(raw)) {
-    return { node: null, depth: 0, path: nodeTitle(map.root) || map.title };
+    return { node: null, depth: 0, path: nodeTitle(map.root) || map.title, centerRootId: 'root' };
   }
   const segs = raw.split(/\s*>\s*/)
     .map((s) => s.trim().replace(/^#{1,6}\s+/, '').replace(/^[-*+]\s+(\[[ xX]\]\s+)?/, '').trim())
@@ -89,9 +96,34 @@ export function findByPath(map: SampleMap, pathArg: string): Found {
       walk((n.children ?? []) as MindNode[], depth + 1, p);
     }
   };
-  walk(map.branches as MindNode[], 1, []);
+  // 모든 중심주제의 가지를 훑는다 (2026-09-16 — 둘째 이후의 중심도)
+  const centers = mapCenters(map);
+  for (const c of centers) walk(c.branches as MindNode[], 1, []);
 
   const eq = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  // 첫 세그먼트가 **중심주제 이름**이면 그 중심이 대상이다 — 이름 하나뿐이면
+  // 그 중심 루트, "중심 > 가지" 면 그 중심의 가지에서 이어서 찾는다
+  const centerHits = centers.filter((c) => eq(nodeTitle(c.root), segs[0]));
+  if (centerHits.length === 1) {
+    const c = centerHits[0];
+    if (segs.length === 1) {
+      return { node: null, depth: 0, path: nodeTitle(c.root) || map.title, centerRootId: c.root.id };
+    }
+    let cs: Cand[] = (c.branches as MindNode[])
+      .filter((b) => eq(nodeTitle(b), segs[1]))
+      .map((b) => ({ node: b, depth: 1, path: [nodeTitle(c.root), nodeTitle(b)] }));
+    for (let i = 2; i < segs.length && cs.length > 0; i++) {
+      const next: Cand[] = [];
+      for (const cc of cs) {
+        for (const k of (cc.node.children ?? []) as MindNode[]) {
+          if (eq(nodeTitle(k), segs[i])) next.push({ node: k, depth: cc.depth + 1, path: [...cc.path, nodeTitle(k)] });
+        }
+      }
+      cs = next;
+    }
+    if (cs.length === 1) return { node: cs[0].node, depth: cs[0].depth, path: cs[0].path.join(' > ') };
+    // 못 찾았으면 아래 일반 탐색으로 흘려보낸다(가지 이름이 다른 중심에 있을 수 있다)
+  }
   let cands = all.filter((c) => eq(nodeTitle(c.node), segs[0]));
   if (cands.length === 0) {
     // 정확히 같은 이름이 없으면 **포함**으로 한 번 더 — "회의" 로 "다음 회의" 를
@@ -108,7 +140,7 @@ export function findByPath(map: SampleMap, pathArg: string): Found {
   }
 
   if (cands.length === 0) {
-    const top = (map.branches as MindNode[]).map(nodeTitle).filter(Boolean);
+    const top = centers.flatMap((c) => (c.branches as MindNode[]).map(nodeTitle)).filter(Boolean);
     throw new AppendError(
       `"${raw}" 노드를 찾지 못했습니다. 최상위 가지: ${top.join(' · ') || '(없음)'}. ` +
       `이름이 정확한지 get_map 으로 확인하거나, "가지 > 하위" 처럼 경로로 적어 주세요.`,
@@ -213,7 +245,7 @@ function levelLayoutFor(map: SampleMap, depth: number): LayoutType | undefined {
       walk((n.children ?? []) as MindNode[], d + 1);
     }
   };
-  walk(map.branches as MindNode[], 1);
+  for (const c of mapCenters(map)) { if (found) break; walk(c.branches as MindNode[], 1); }
   return found;
 }
 
@@ -233,8 +265,34 @@ function effectiveColor(map: SampleMap, target: MindNode): NodeColorKey | undefi
     }
     return false;
   };
-  walk(map.branches as MindNode[], undefined);
+  for (const c of mapCenters(map)) { if (walk(c.branches as MindNode[], undefined)) break; }
   return found;
+}
+
+/** 모든 중심주제의 가지 목록에 같은 변환을 건다 (documentStore `mapAllBranches` 와 같은 규칙) */
+function mapAllBranches(map: SampleMap, fn: (branches: MindNode[]) => MindNode[]): SampleMap {
+  return {
+    ...map,
+    branches: fn(map.branches as MindNode[]) as SampleBranch[],
+    ...(map.centers
+      ? { centers: map.centers.map((c) => ({ ...c, branches: fn(c.branches as MindNode[]) as SampleBranch[] })) }
+      : {}),
+  };
+}
+
+/** 어느 중심의 루트·가지를 바꿔 새 맵을 만든다 — 'root' 는 첫 중심 */
+function withCenter(
+  map: SampleMap, rootId: string, patch: { root?: SampleRoot; branches?: SampleBranch[] },
+): SampleMap {
+  if (rootId === 'root') {
+    return { ...map, ...(patch.root ? { root: patch.root } : {}), ...(patch.branches ? { branches: patch.branches } : {}) };
+  }
+  return {
+    ...map,
+    centers: (map.centers ?? []).map((c) => (c.root.id === rootId
+      ? { ...c, ...(patch.root ? { root: patch.root } : {}), ...(patch.branches ? { branches: patch.branches } : {}) }
+      : c)),
+  };
 }
 
 export interface AppendResult {
@@ -262,7 +320,10 @@ export function appendSubtree(
   }
 
   const used = new Set<string>();
-  collectIds(map.branches as MindNode[], used);
+  for (const c of mapCenters(map)) collectIds(c.branches as MindNode[], used);
+  // 루트(중심)에 붙을 때 색·좌우 순환의 기준은 **그 중심**의 가지 수
+  const targetCenter = mapCenters(map).find((c) => c.root.id === (target.centerRootId ?? 'root'));
+  const baseCount = targetCenter ? targetCenter.branches.length : map.branches.length;
   const stamp = Date.now();
   let seq = 0;
   const freshId = (): string => {
@@ -282,7 +343,7 @@ export function appendSubtree(
       added++;
       const isBranch = depth === 1;
       const myColor: NodeColorKey | undefined = isBranch
-        ? BRANCH_COLOR_KEYS[(map.branches.length + i) % BRANCH_COLOR_KEYS.length]
+        ? BRANCH_COLOR_KEYS[(baseCount + i) % BRANCH_COLOR_KEYS.length]
         : color;
       const lt = levelLayoutFor(map, depth);
       // 파서가 최상위에 준 colorKey/side 는 가짜 루트 기준이라 버린다
@@ -293,7 +354,7 @@ export function appendSubtree(
         id: freshId(),
         ...(rest.notes?.length ? { notes: stampNotes(rest.notes as NoteBlock[]) } : {}),
         ...(myColor ? { colorKey: myColor } : {}),
-        ...(isBranch ? { side: (map.branches.length + i) % 2 === 0 ? 'right' : 'left' } : {}),
+        ...(isBranch ? { side: (baseCount + i) % 2 === 0 ? 'right' : 'left' } : {}),
         ...(lt && !n.layoutType ? { layoutType: lt, edgeType: resolveEdgeType(lt) } : {}),
         children: decorate((n.children ?? []) as MindNode[], depth + 1, myColor),
       };
@@ -301,12 +362,15 @@ export function appendSubtree(
     });
 
   if (!target.node) {
+    // 중심주제 루트 아래 — 그 중심의 가지로 (첫 중심이든 둘째 이후든)
+    const rootId = target.centerRootId ?? 'root';
+    const cur = targetCenter ?? { root: map.root, branches: map.branches };
     const branches = decorate(fragment, 1, undefined) as SampleBranch[];
     const root = parentNotes.length
-      ? { ...map.root, notes: [...(map.root.notes ?? []), ...stampNotes(parentNotes)] }
-      : map.root;
+      ? { ...cur.root, notes: [...(cur.root.notes ?? []), ...stampNotes(parentNotes)] }
+      : cur.root;
     return {
-      map: { ...map, root, branches: [...map.branches, ...branches] },
+      map: withCenter(map, rootId, { root, branches: [...cur.branches, ...branches] }),
       added, topCount: branches.length, notesAdded: parentNotes.length, parentPath: target.path,
     };
   }
@@ -326,7 +390,7 @@ export function appendSubtree(
     return c.length ? { ...n, children: replace(c) } : n;
   });
   return {
-    map: { ...map, branches: replace(map.branches as MindNode[]) as SampleBranch[] },
+    map: mapAllBranches(map, replace),
     added, topCount: kids.length, notesAdded: parentNotes.length, parentPath: target.path,
   };
 }

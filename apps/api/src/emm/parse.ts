@@ -152,9 +152,15 @@ export function parseMarkdownToMap(
   /** 두 번째 이후의 중심주제 (model.ts SampleCenter) */
   const centers: SampleCenter[] = [];
   let curCenter: SampleRoot | null = null; // null = 첫 중심을 채우는 중
+  // `#` 없는 문서의 첫 최상위 항목이 첫 중심이 됐나 (A-1 ②) — 그 뒤의 `#` 는
+  // 첫 중심을 덮지 않고 새 중심이 된다. 그 항목의 글·링크·사진은 firstRoot 에.
+  let firstClaimed = false;
+  const firstRoot: MindNode = { id: 'root', text: '' };
   // 지금 중심의 머리말(노트·사진·첨부)을 그 중심의 루트에 붙인다
   const finishCenter = () => {
     if (!curCenter) return;
+    // 목록 항목 출신 중심(A-1 ②)에 붙은 표시는 뜻이 없다 — 중심은 언제나 `#` 로 나간다
+    delete (curCenter as unknown as { mdForm?: unknown }).mdForm;
     if (rootNotes.length) curCenter.notes = rootNotes;
     if (rootAttachments.length) curCenter.attachments = rootAttachments;
     if (rootImages.length) {
@@ -302,6 +308,28 @@ export function parseMarkdownToMap(
     // 이미지뿐인 줄(![](url)) — 파일 이름을 노드 텍스트로 쓴다
     const nodeText = text || (images.length ? imageFileName(images[0]) : '');
     while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
+
+    // ★ `#` 를 아직 못 본 문서의 최상위 항목(`##` · `- 항목` · `1. 절`)은 뿌리의
+    //   자식이다 — 뿌리의 자식은 **각각 중심주제**다 (2026-09-16, mmd 정렬
+    //   A-1 ②: "`#` 제목이 아니라 목록 항목이어도 같다"). 예전에는 파일 이름을
+    //   중심으로 지어내고 이것들을 그 가지로 삼았다. 흩어진 중심은 앱의
+    //   "하나의 중심주제로 묶기"로 모은다. 첫 항목이 첫 중심(root)이 되고
+    //   나머지는 centers 로 — 하위(더 깊은 견출·들여쓴 항목)는 그 중심의 가지.
+    if (depth === 1 && !rootSeen) {
+      stack.length = 0;
+      let host: MindNode;
+      if (!firstClaimed) {
+        firstClaimed = true;
+        firstRoot.text = nodeText;
+        host = firstRoot;
+      } else {
+        startCenter(nodeText);
+        host = curCenter as unknown as MindNode;
+      }
+      mergeLinks(host, links);
+      mergeImages(host, images);
+      return host;
+    }
 
     if (depth === 1 || stack.length === 0) {
       const branch: SampleBranch = {
@@ -652,8 +680,9 @@ export function parseMarkdownToMap(
       let text = (heading[2] ?? '').trim();
       if (/^#+$/.test(text)) text = ''; // `## #` — 닫는 기호뿐이면 빈 견출
       if (level === 1) {
-        if (!rootSeen && !sawHeading) {
-          rootSeen = true;
+        const firstH1 = !rootSeen && !sawHeading && !firstClaimed;
+        rootSeen = true; // 어느 `#` 든 봤으면 그 뒤의 최상위 항목은 가지다 (A-1 ② 종료)
+        if (firstH1) {
           // 파일 첫 H1 = 제목(첫 중심주제)
           rootText = stripLinks(text).text;
           title = rootText;
@@ -757,7 +786,9 @@ export function parseMarkdownToMap(
   finishCenter(); // 마지막 중심의 머리말을 그 루트에
 
   // 인식할 구조 없음 — 첫 중심에 제목도 가지도 없고 다른 중심도 없다
-  if (!rootText && first.branches.length === 0 && centers.length === 0) return null;
+  if (!rootText && !firstClaimed && first.branches.length === 0 && centers.length === 0) return null;
+  // `#` 없는 문서: 첫 최상위 항목이 첫 중심 — 제목(맵 이름)은 파일 이름 그대로
+  if (firstClaimed) rootText = firstRoot.text;
 
   // 1레벨 가지 좌/우 배분 — 문서 순서대로 앞 절반 오른쪽, 뒤 절반 왼쪽.
   // 전부 'right'로 두면 '방사형·양쪽' 레이아웃이 좌우로 나눌 가지가 없어
@@ -778,6 +809,8 @@ export function parseMarkdownToMap(
       text: rootText || title,
       colorKey: 'root',
       side: 'center',
+      ...(firstRoot.links?.length ? { links: firstRoot.links } : {}),
+      ...(firstRoot.images?.length ? { images: firstRoot.images } : {}),
       ...(first.rootNotes.length ? { notes: first.rootNotes } : {}),
       ...(first.rootAttachments.length ? { attachments: first.rootAttachments } : {}),
       // 루트 사진 — 내보낼 때 `# 제목` 아래에 쓴 것을 되돌린다 (B17)

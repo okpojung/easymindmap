@@ -20,6 +20,7 @@
  * 쉽고(반대로 한 번 더 부르면 된다), 히스토리 버전으로도 남는다.
  */
 import type { MindNode, NoteBlock, SampleMap } from '../emm/model';
+import { mapCenters } from '../emm/model';
 import { AppendError, findByPath, nodeTitle } from './append-to-map';
 
 /** 프런트 `mdCheck.ts` CHECK_LINE_RE 와 **같아야 한다** — 앱이 체크박스로 그리는 줄이 곧 이 도구가 바꾸는 줄이다 */
@@ -142,15 +143,21 @@ export function checkItems(
     }
 
     if (!found.node) {
-      // 중심 주제 — 본문·노트 둘 다 (append 와 같이 root.notes 를 허용한다)
-      const root = work.root as SampleMap['root'] & { notes?: NoteBlock[] };
+      // 중심 주제 — 본문·노트 둘 다 (append 와 같이 root.notes 를 허용한다).
+      // 어느 중심인지는 centerRootId (2026-09-16 — 둘째 이후의 중심도)
+      const rootId = found.centerRootId ?? 'root';
+      const center = mapCenters(work).find((c) => c.root.id === rootId);
+      const root = (center?.root ?? work.root) as SampleMap['root'] & { notes?: NoteBlock[] };
       const t = setChecksInText(root.text, checked, filter);
       const n = setChecksInNotes(root.notes, checked, filter);
       const o = merge(asked, found.path, t, n);
       outcomes.push(o);
       if (o.changed) {
         changedAll += o.changed;
-        work = { ...work, root: { ...root, text: t.value, ...(n.changed ? { notes: n.value } : {}) } };
+        const nextRoot = { ...root, text: t.value, ...(n.changed ? { notes: n.value } : {}) };
+        work = rootId === 'root'
+          ? { ...work, root: nextRoot }
+          : { ...work, centers: (work.centers ?? []).map((c) => (c.root.id === rootId ? { ...c, root: nextRoot } : c)) };
       }
       continue;
     }
@@ -167,7 +174,13 @@ export function checkItems(
       const c = (x.children ?? []) as MindNode[];
       return c.length ? { ...x, children: replace(c) } : x;
     });
-    work = { ...work, branches: replace(work.branches as MindNode[]) as SampleMap['branches'] };
+    work = {
+      ...work,
+      branches: replace(work.branches as MindNode[]) as SampleMap['branches'],
+      ...(work.centers
+        ? { centers: work.centers.map((c) => ({ ...c, branches: replace(c.branches as MindNode[]) as SampleMap['branches'] })) }
+        : {}),
+    };
   }
 
   return { map: work, outcomes, changed: changedAll };

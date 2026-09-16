@@ -1,0 +1,76 @@
+{
+  "nodes": 8,
+  "bodyRoundTripNodes": 8,
+  "map": {
+    "title": "headingless-centers",
+    "root": {
+      "id": "root",
+      "text": "첫 절",
+      "colorKey": "root",
+      "side": "center",
+      "notes": [
+        {
+          "id": "md#0",
+          "type": "paragraph",
+          "text": "머리말 문단 — 첫 중심의 노트가 된다."
+        }
+      ]
+    },
+    "branches": [
+      {
+        "id": "md#1",
+        "text": "첫 절의 하위",
+        "colorKey": "l1A",
+        "side": "right",
+        "children": [
+          {
+            "id": "md#2",
+            "text": "문단 하나."
+          }
+        ]
+      }
+    ],
+    "centers": [
+      {
+        "root": {
+          "id": "md#3",
+          "text": "둘째 절",
+          "colorKey": "root",
+          "side": "center"
+        },
+        "branches": [
+          {
+            "id": "md#4",
+            "text": "항목 A",
+            "colorKey": "l1A",
+            "side": "right",
+            "mdForm": "list",
+            "children": [
+              {
+                "id": "md#5",
+                "text": "항목 A-1",
+                "mdForm": "list"
+              }
+            ]
+          },
+          {
+            "id": "md#6",
+            "text": "항목 B",
+            "colorKey": "l1B",
+            "side": "left",
+            "mdForm": "list"
+          }
+        ]
+      },
+      {
+        "root": {
+          "id": "md#7",
+          "text": "셋째 절",
+          "colorKey": "root",
+          "side": "center"
+        },
+        "branches": []
+      }
+    ]
+  }
+}

@@ -8,6 +8,7 @@ import { checkItems, listCheckable } from './check-items';
 import { DocShapeError, docToEmm, mapFromDoc } from './doc-to-emm';
 import { EmmParseError, emmToSnapshot, titleFromSnapshot } from './emm-to-doc';
 import { TemplateError, applyLevelLayouts, templateFor } from './map-template';
+import { mapCenters } from '../emm/model';
 
 /**
  * MCP 가 AI 에게 주는 **도구 목록**과 그 실행.
@@ -662,6 +663,15 @@ export class McpToolsService {
           snapshot.map.branches = applyLevelLayouts(
             snapshot.map.branches as unknown as import('../emm/model').MindNode[], tpl.settings.levelLayouts,
           ) as unknown as typeof snapshot.map.branches;
+          // 둘째 이후의 중심주제 가지에도 (2026-09-16) — 선언은 맵 전체의 것
+          if (snapshot.map.centers) {
+            snapshot.map.centers = snapshot.map.centers.map((c) => ({
+              ...c,
+              branches: applyLevelLayouts(
+                c.branches as unknown as import('../emm/model').MindNode[], tpl.settings!.levelLayouts!,
+              ) as unknown as typeof c.branches,
+            }));
+          }
         }
       }
       if (tpl.editor) templateNote = ` · 레이아웃: ${tpl.editor.layoutType}` + (tpl.settings?.levelLayouts ? ' + 레벨별' : '');
@@ -696,9 +706,12 @@ export class McpToolsService {
 
     // 노드 수는 **문서함과 같은 셈**(루트 포함 = map_documents.node_count) —
     // list_maps·get_map 이 같은 맵을 다른 수로 말하면 AI 도 사용자도 헷갈린다.
-    const nodes = 1 + countNodes(snapshot.map.branches);
+    const allCenters = mapCenters(snapshot.map);
+    const nodes = allCenters.reduce((n, c) => n + 1 + countNodes(c.branches), 0);
+    const branchCount = allCenters.reduce((n, c) => n + c.branches.length, 0);
+    const centerNote = allCenters.length > 1 ? ` · 중심주제 ${allCenters.length}개` : '';
     return text(
-      `EasyMindMap 문서함에 "${title}" 맵을 만들었습니다 (가지 ${snapshot.map.branches.length}개 · 노드 ${nodes}개${templateNote}).\n` +
+      `EasyMindMap 문서함에 "${title}" 맵을 만들었습니다 (가지 ${branchCount}개 · 노드 ${nodes}개${centerNote}${templateNote}).\n` +
       `맵 id: ${mapId}\n` +
       `EasyMindMap 을 열고 [☁ 클라우드 ▸ 열기] 에서 확인할 수 있습니다.`,
     );

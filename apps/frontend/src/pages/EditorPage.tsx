@@ -12,6 +12,7 @@ import { OutlineEditorPane } from '@/editor/outline/OutlineEditorPane';
 import { KanbanBoard } from '@/editor/canvas/KanbanBoard';
 import { MultiAddDialog } from '@/editor/dialogs/MultiAddDialog';
 import { SAMPLE_COLLABS } from '@/editor/__samples__';
+import { mapCenters } from '@/editor/__samples__/types';
 import type {
   KanbanBoardData,
   KanbanCard,
@@ -75,9 +76,13 @@ function buildKanbanCard(node: {
 function buildKanbanFromMap(map: SampleMap): KanbanBoardData {
   const colors = ['#d97706', '#0284c7', '#16a34a', '#9333ea', '#dc2626'];
 
+  // 칸반 컬럼 = 모든 중심주제의 1레벨 가지, 중심 순서 → 문서 순서 (2026-09-16,
+  // 3단계). 컬럼 id 는 가지 id 그대로라 카드 이동(moveNodeRelative)이 중심을
+  // 건너도 된다. 보드 제목은 첫 중심의 것.
+  const allBranches = mapCenters(map).flatMap((c) => c.branches);
   return {
     title: map.root.text,
-    columns: map.branches.map((branch, index) => ({
+    columns: allBranches.map((branch, index) => ({
       id: branch.id,
       title: branch.text,
       count: branch.children?.length ?? 0,
@@ -188,16 +193,15 @@ export function EditorPage() {
       selected: n.id === selectedId,
       children: (n.children ?? []).map((c) => walk(c, depth + 1)),
     });
-    return [
-      {
-        id: 'root',
-        text: map.root.text,
-        depth: 0,
-        expanded: true,
-        selected: selectedId === 'root',
-        children: map.branches.map((b) => walk(b, 1)),
-      },
-    ];
+    // 중심주제마다 최상위 행 하나 — 둘째 이후의 중심도 아웃라인에 (2026-09-16, 3단계)
+    return mapCenters(map).map((c) => ({
+      id: c.root.id,
+      text: c.root.text,
+      depth: 0,
+      expanded: true,
+      selected: selectedId === c.root.id,
+      children: c.branches.map((b) => walk(b, 1)),
+    }));
   }, [map, selectedId]);
 
   const t = THEMES[themeName];

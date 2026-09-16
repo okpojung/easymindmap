@@ -127,6 +127,17 @@ console.log('centers: `#` 없는 문서의 최상위 항목은 각각 중심 (A-
   check('중심 둘', mapCenters(map).length, 2);
 }
 
+console.log('centers: 항목 줄 인라인 사진 + 머리말 사진 문단이 첫 중심 루트에서 합쳐진다 (#495 Codex)');
+{
+  const md = '- 가 ![](https://x.test/a.png)\n\n![b](https://x.test/b.png)\n\n## 가지\n';
+  const map = parseEmm(md, 'img')!;
+  check('첫 중심은 항목 줄', map.root.text, '가');
+  check('루트 사진 둘 다 남는다', map.root.images?.map((im) => im.src),
+    ['https://x.test/a.png', 'https://x.test/b.png']);
+  const dup = parseEmm('- 가 ![](https://x.test/a.png)\n\n![a](https://x.test/a.png)\n', 'img2')!;
+  check('같은 사진은 한 번만', dup.root.images?.map((im) => im.src), ['https://x.test/a.png']);
+}
+
 console.log('centers: 중심 하나인 문서는 예전 그대로');
 {
   const map = parseEmm('# 하나\n\n## a\n\n### b\n', 'f')!;

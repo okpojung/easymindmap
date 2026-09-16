@@ -10,7 +10,7 @@
 // **읽는 쪽(여기)을 쓰는 쪽보다 먼저 깐다.** 순서를 바꾸면 사진을 옮기기
 // 시작한 그 순간부터 내보내기가 깨진 파일을 만들어 낸다.
 
-import type { MindNode, SampleMap } from '@/editor/__samples__/types';
+import { mapCenters, type MindNode, type SampleMap } from '@/editor/__samples__/types';
 import { collectNoteHtmlImageSrcs } from '@emm/note-images';
 import { attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClient';
 
@@ -67,8 +67,12 @@ function collectSrcs(n: MindNode | undefined, out: Set<string>): void {
  */
 export async function fetchServerImageDataUrls(map: SampleMap): Promise<ServerImageResult> {
   const srcs = new Set<string>();
-  collectSrcs(map.root, srcs);
-  for (const b of map.branches) collectSrcs(b, srcs);
+  // **둘째 이후 중심주제도 훑는다** (2026-09-16, 3단계). 첫 중심만 보면
+  // 둘째 중심의 사진은 서버 주소로 남아 내보낸 파일에서 그 사진만 깨진다.
+  for (const c of mapCenters(map)) {
+    collectSrcs(c.root, srcs);
+    for (const b of c.branches) collectSrcs(b, srcs);
+  }
 
   const bySrc = new Map<string, string>();
   let failed = 0;

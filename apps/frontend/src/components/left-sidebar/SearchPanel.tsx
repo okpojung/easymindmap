@@ -29,6 +29,23 @@ export const SEARCH_KIND_BADGE: Record<string, { bg: string; fg: string }> = {
   링크: { bg: '#8B5CF6', fg: '#FFFFFF' },
 };
 
+/** 노드 하나가 검색어와 맞는 자리(노드/태그/노트/링크). 없으면 빈 배열. */
+function matchKinds(n: MindNode, hay: string): string[] {
+  const inText = (n.text || '').toLowerCase().includes(hay);
+  const inTags = [...(n.tags ?? []), ...(n.tag ? [n.tag] : [])]
+    .some((tg) => tg.toLowerCase().includes(hay));
+  const inNotes = (n.notes ?? []).some((b) => (b.text || '').toLowerCase().includes(hay));
+  const inLinks = (n.links ?? []).some(
+    (l) => (l.label ?? '').toLowerCase().includes(hay) || l.url.toLowerCase().includes(hay),
+  );
+  return [
+    inText ? '노드' : '',
+    inTags ? '태그' : '',
+    inNotes ? '노트' : '',
+    inLinks ? '링크' : '',
+  ].filter(Boolean);
+}
+
 function searchMap(
   nodes: MindNode[],
   q: string,
@@ -36,21 +53,8 @@ function searchMap(
   out: SearchHit[],
 ): void {
   for (const n of nodes) {
-    const hay = q.toLowerCase();
-    const inText = (n.text || '').toLowerCase().includes(hay);
-    const inTags = [...(n.tags ?? []), ...(n.tag ? [n.tag] : [])]
-      .some((tg) => tg.toLowerCase().includes(hay));
-    const inNotes = (n.notes ?? []).some((b) => (b.text || '').toLowerCase().includes(hay));
-    const inLinks = (n.links ?? []).some(
-      (l) => (l.label ?? '').toLowerCase().includes(hay) || l.url.toLowerCase().includes(hay),
-    );
-    if (inText || inTags || inNotes || inLinks) {
-      const kinds = [
-        inText ? '노드' : '',
-        inTags ? '태그' : '',
-        inNotes ? '노트' : '',
-        inLinks ? '링크' : '',
-      ].filter(Boolean);
+    const kinds = matchKinds(n, q.toLowerCase());
+    if (kinds.length) {
       out.push({ id: n.id, title: n.text, path: path.join(' › '), kinds });
     }
     searchMap(n.children ?? [], q, [...path, flattenNodeText(n.text)], out);
@@ -84,10 +88,10 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
     if (!q) return [];
     const out: SearchHit[] = [];
     // 중심주제마다 — 루트 포함, 경로는 그 중심의 이름에서 (2026-09-16, 3단계)
+    // 중심 루트도 가지와 같은 기준(노드·태그·노트·링크)으로 맞춘다
     for (const c of mapCenters(map)) {
-      if ((c.root.text || '').toLowerCase().includes(q.toLowerCase())) {
-        out.push({ id: c.root.id, title: c.root.text, path: '', kinds: ['노드'] });
-      }
+      const kinds = matchKinds(c.root as MindNode, q.toLowerCase());
+      if (kinds.length) out.push({ id: c.root.id, title: c.root.text, path: '', kinds });
       searchMap(c.branches, q, [c.root.text], out);
     }
     return out.slice(0, 50);

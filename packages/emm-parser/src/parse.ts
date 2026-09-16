@@ -797,6 +797,13 @@ export function parseMarkdownToMap(
   splitSides(first.branches);
   for (const c of centers) splitSides(c.branches);
 
+  const rootImagesMerged = [
+    ...(firstRoot.images ?? []),
+    ...first.rootImages
+      .filter((src) => !(firstRoot.images ?? []).some((im) => im.src === src))
+      .map((src) => ({ src, w: 0, h: 0, afterLine: 0 })),
+  ];
+
   return {
     title,
     root: {
@@ -805,13 +812,12 @@ export function parseMarkdownToMap(
       colorKey: 'root',
       side: 'center',
       ...(firstRoot.links?.length ? { links: firstRoot.links } : {}),
-      ...(firstRoot.images?.length ? { images: firstRoot.images } : {}),
       ...(first.rootNotes.length ? { notes: first.rootNotes } : {}),
       ...(first.rootAttachments.length ? { attachments: first.rootAttachments } : {}),
-      // 루트 사진 — 내보낼 때 `# 제목` 아래에 쓴 것을 되돌린다 (B17)
-      ...(first.rootImages.length
-        ? { images: first.rootImages.map((src) => ({ src, w: 0, h: 0, afterLine: 0 })) }
-        : {}),
+      // 루트 사진 — 항목 줄의 인라인 사진(A-1②, firstRoot.images)과 `# 제목`
+      // 아래 머리말 사진(B17, rootImages)을 **합친다**. 따로 spread 하면
+      // 뒤가 앞을 덮어 한쪽이 사라진다 (#495 Codex 지적).
+      ...(rootImagesMerged.length ? { images: rootImagesMerged } : {}),
     } as SampleMap['root'],
     branches: first.branches,
     ...(centers.length ? { centers } : {}),

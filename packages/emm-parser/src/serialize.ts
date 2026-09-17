@@ -60,10 +60,21 @@ export interface NodeBodyBlock {
   lang?: string; // code
   body?: string; // code — 펜스 안 원문
   rows?: string[][]; // table — 행별 셀
+  /** table — 열별 GFM 정렬(구분선 콜론). 구분선이 없거나 콜론이 없으면 '' (2026-09-17) */
+  aligns?: string[];
   lines?: string[]; // check(정규화된 "- [x] …" 줄) / plain
 }
 
 const NODE_TABLE_SEP_RE = /^[\s|:\-]+$/;
+// 구분선 행 → 열별 정렬 셀 (`---` · `:---` · `:---:` · `---:`) — 콜론이 없으면 ''
+function sepAligns(sepLine: string, cols: number): string[] {
+  const cells = nodeRowCells(sepLine);
+  return Array.from({ length: cols }, (_, c) => {
+    const v = (cells[c] ?? '').trim();
+    const l = v.startsWith(':'), r = v.endsWith(':');
+    return l && r ? ':---:' : r ? '---:' : l ? ':---' : '';
+  });
+}
 const NODE_CHECK_RE = /^[-*+]\s+\[([ xX])\]\s+(.+)$/;
 
 function isNodePipeRow(s: string): boolean {
@@ -117,18 +128,22 @@ export function splitNodeBody(
       (isNodePipeRow(lines[i + 1]) || NODE_TABLE_SEP_RE.test(lines[i + 1].trim()))
     ) {
       const rows: string[][] = [];
+      let aligns: string[] | undefined;
       let j = i;
       while (j < lines.length) {
         const t = lines[j].trim();
         if (isNodePipeRow(lines[j])) rows.push(nodeRowCells(lines[j]));
-        else if (t.includes('|') && NODE_TABLE_SEP_RE.test(t)) { /* 구분선 — 건너뜀 */ }
+        else if (t.includes('|') && NODE_TABLE_SEP_RE.test(t)) {
+          // 구분선 — 셀로는 안 세지만 GFM 정렬 콜론은 기억한다
+          if (!aligns && rows.length) aligns = sepAligns(t, rows[0].length);
+        }
         else break;
         j++;
       }
       if (rows.length >= 2) {
         flushPlain();
         sawBlock = true;
-        blocks.push({ kind: 'table', rows });
+        blocks.push({ kind: 'table', rows, ...(aligns && aligns.some(Boolean) ? { aligns } : {}) });
         i = j;
         continue;
       }
@@ -198,7 +213,8 @@ function pushBodyBlocks(lines: string[], blocks: NodeBodyBlock[]): void {
     } else if (b.kind === 'table') {
       (b.rows ?? []).forEach((cells, ri) => {
         lines.push(`| ${cells.join(' | ')} |`);
-        if (ri === 0) lines.push(`|${cells.map(() => '---').join('|')}|`);
+        // 구분선 — GFM 정렬 콜론 유지 (2026-09-17)
+        if (ri === 0) lines.push(`|${cells.map((_, c) => b.aligns?.[c] || '---').join('|')}|`);
       });
     } else {
       // check — 그대로 · plain(블록 뒤 일반 줄) — 인용문으로 (불러오기
@@ -210,11 +226,15 @@ function pushBodyBlocks(lines: string[], blocks: NodeBodyBlock[]): void {
 
 // 표 노트("셀 | 셀" 줄들) → Markdown 파이프 표 (헤더 다음 구분선 포함)
 function pushTableNote(lines: string[], text: string): void {
-  const rows = String(text).split('\n').filter((r) => r.trim());
+  const all = String(text).split('\n').filter((r) => r.trim());
+  // 노트 표 원문에 남은 구분선 행(정렬 콜론 포함)은 셀 행이 아니다 — 정렬만 읽는다
+  const sepRow = all.find((r) => NODE_TABLE_SEP_RE.test(r.trim()) && r.includes('|'));
+  const rows = all.filter((r) => !(NODE_TABLE_SEP_RE.test(r.trim()) && r.includes('|')));
+  const aligns = sepRow && rows.length ? sepAligns(sepRow, rows[0].split('|').length) : undefined;
   rows.forEach((row, i) => {
     const cells = row.split('|').map((c) => c.trim());
     lines.push(`| ${cells.join(' | ')} |`);
-    if (i === 0) lines.push(`|${cells.map(() => '---').join('|')}|`);
+    if (i === 0) lines.push(`|${cells.map((_, c) => aligns?.[c] || '---').join('|')}|`);
   });
 }
 

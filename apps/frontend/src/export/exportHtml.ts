@@ -372,7 +372,18 @@ const VIEWER_JS = String.raw`
       var headers = cells(lines[i]);
       if (headers.length < 2) continue;
       var rows = [], j = i + 1;
-      if (isSep(lines[j])) j++;
+      // GFM 열 정렬 — 구분선 셀의 콜론 (:--- 왼쪽 · :---: 가운데 · ---: 오른쪽)
+      var aligns = [], ai;
+      for (ai = 0; ai < headers.length; ai++) aligns.push(null);
+      if (isSep(lines[j])) {
+        var sepc = cells(lines[j]);
+        for (ai = 0; ai < headers.length; ai++) {
+          var sc = sepc[ai] || '';
+          var sl = sc.charAt(0) === ':', sr = sc.charAt(sc.length - 1) === ':';
+          aligns[ai] = sl && sr ? 'center' : sr ? 'right' : sl ? 'left' : null;
+        }
+        j++;
+      }
       while (j < lines.length && isPipe(lines[j]) && !isSep(lines[j])) {
         var c2 = cells(lines[j]);
         while (c2.length < headers.length) c2.push('');
@@ -382,7 +393,7 @@ const VIEWER_JS = String.raw`
       if (!rows.length) continue;
       // before/after — 표 앞·뒤 텍스트 (원문 위치 렌더용, 에디터와 동일)
       return {
-        headers: headers, rows: rows,
+        headers: headers, rows: rows, aligns: aligns,
         before: lines.slice(0, i).join('\n').replace(/\s+$/, ''),
         after: lines.slice(j).join('\n').replace(/^\s+|\s+$/g, '')
       };
@@ -1569,7 +1580,16 @@ const VIEWER_JS = String.raw`
           // 숨기고 서식만 입힌다** (에디터 NodeRenderer 의 셀 렌더와 같다).
           // 예전에는 원문을 그대로 넣어 백틱·별표가 글자로 보였다.
           var cSegs = parseInlineSegs(String(allRows[ri][ci] || ''));
-          var cx2 = cellX + 6;
+          // GFM 열 정렬 — 구간 폭을 먼저 재고 시작 x 를 정한다 (에디터와 동일)
+          var segWs2 = [], textW2 = 0, sk0;
+          for (sk0 = 0; sk0 < cSegs.length; sk0++) {
+            var w0 = measureReal(cSegs[sk0].t, cellFs, (ri === 0 || cSegs[sk0].b) ? 700 : 400, cSegs[sk0].i, node._ff);
+            segWs2.push(w0); textW2 += w0;
+          }
+          var al2 = (mdt.aligns && mdt.aligns[ci]) || 'left';
+          var cx2 = al2 === 'center' ? cellX + colWs[ci] / 2 - textW2 / 2
+            : al2 === 'right' ? cellX + colWs[ci] - 6 - textW2
+            : cellX + 6;
           for (var sk = 0; sk < cSegs.length; sk++) {
             var sg2 = cSegs[sk];
             var bold2 = (ri === 0 || sg2.b) ? 700 : 400;
@@ -1586,7 +1606,7 @@ const VIEWER_JS = String.raw`
             if (sg2.u) deco2.push('underline');
             if (deco2.length) csp.setAttribute('text-decoration', deco2.join(' '));
             csp.textContent = sg2.t;
-            cx2 += measureReal(sg2.t, cellFs, bold2, sg2.i, node._ff);
+            cx2 += segWs2[sk];
           }
           cellX += colWs[ci];
         }
@@ -2828,6 +2848,7 @@ const VIEWER_JS = String.raw`
       var tr = document.createElement('tr');
       for (var ci = 0; ci < allRows[ri].length; ci++) {
         var cell = document.createElement(ri === 0 ? 'th' : 'td');
+        if (mdt.aligns && mdt.aligns[ci]) cell.style.textAlign = mdt.aligns[ci]; // GFM 열 정렬
         cell.appendChild(inlineSpansEl(allRows[ri][ci]));
         tr.appendChild(cell);
       }

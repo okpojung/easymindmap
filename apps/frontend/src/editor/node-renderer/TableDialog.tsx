@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { parseMdTable } from './mdTable';
+import { parseMdTable, sepCellOfAlign, type MdTableAlign } from './mdTable';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 
 export const TABLE_MIN_ROWS = 2; // 헤더 + 데이터 1행
@@ -30,8 +30,8 @@ function cleanCell(s: string): string {
   return String(s ?? '').replace(/\r?\n/g, ' ').replace(/\|/g, '¦').trim();
 }
 
-/** 헤더·행 → `| a | b |\n|---|---|\n| 1 | 2 |` */
-export function buildMdTable(headers: string[], rows: string[][]): string {
+/** 헤더·행(·열 정렬) → `| a | b |\n|:---|---:|\n| 1 | 2 |` — 정렬은 GFM 구분선 콜론 */
+export function buildMdTable(headers: string[], rows: string[][], aligns?: MdTableAlign[]): string {
   const cols = Math.max(TABLE_MIN_COLS, headers.length);
   const line = (cells: string[]) => {
     const out: string[] = [];
@@ -39,16 +39,18 @@ export function buildMdTable(headers: string[], rows: string[][]): string {
     return `| ${out.join(' | ')} |`;
   };
   const body = rows.length ? rows : [[]];
-  return [line(headers), `|${Array(cols).fill('---').join('|')}|`, ...body.map(line)].join('\n');
+  const sep = Array.from({ length: cols }, (_, c) => sepCellOfAlign(aligns?.[c] ?? null));
+  return [line(headers), `|${sep.join('|')}|`, ...body.map(line)].join('\n');
 }
 
 /** rows×cols 빈 표 (헤더는 "열1, 열2 …" 로 채워 어디가 머리글인지 보이게) */
-export function emptyTable(rows: number, cols: number): { headers: string[]; rows: string[][] } {
+export function emptyTable(rows: number, cols: number): { headers: string[]; rows: string[][]; aligns: MdTableAlign[] } {
   const r = Math.max(TABLE_MIN_ROWS, rows);
   const c = Math.max(TABLE_MIN_COLS, cols);
   return {
     headers: Array.from({ length: c }, (_, i) => `열${i + 1}`),
     rows: Array.from({ length: r - 1 }, () => Array(c).fill('')),
+    aligns: Array(c).fill(null),
   };
 }
 
@@ -197,11 +199,14 @@ export function TableDialog({
 }) {
   const init = useMemo(() => {
     const parsed = initialMd ? parseMdTable(initialMd) : null;
-    if (parsed) return { headers: parsed.headers, rows: parsed.rows };
+    if (parsed) return { headers: parsed.headers, rows: parsed.rows, aligns: parsed.aligns };
     return emptyTable(initialSize?.rows ?? TABLE_MIN_ROWS, initialSize?.cols ?? TABLE_MIN_COLS);
   }, [initialMd, initialSize]);
   const [headers, setHeaders] = useState<string[]>(init.headers);
   const [rows, setRows] = useState<string[][]>(init.rows);
+  // 열별 GFM 정렬 (구분선 콜론) — 커서 열에 정렬 버튼으로 지정 (2026-09-17)
+  const [aligns, setAligns] = useState<MdTableAlign[]>(init.aligns);
+  const setAlign = (a: MdTableAlign) => setAligns(aligns.map((x, i) => (i === cursor.c ? a : x)));
   const [view, setView] = useState<'grid' | 'md'>('grid');
   const [mdText, setMdText] = useState('');
   const [mdError, setMdError] = useState<string | null>(null);
@@ -244,6 +249,7 @@ export function TableDialog({
     const at = Math.min(cols, cursor.c + 1);
     setHeaders([...headers.slice(0, at), `열${cols + 1}`, ...headers.slice(at)]);
     setRows(rows.map((r) => [...r.slice(0, at), '', ...r.slice(at)]));
+    setAligns([...aligns.slice(0, at), null, ...aligns.slice(at)]);
     setCursor({ r: cursor.r, c: at }); focusCell(cursor.r, at);
   };
   // 커서 열 삭제 (2열은 남긴다)
@@ -252,26 +258,27 @@ export function TableDialog({
     if (!canDelCol) return;
     setHeaders(headers.filter((_, i) => i !== cursor.c));
     setRows(rows.map((r) => r.filter((_, i) => i !== cursor.c)));
+    setAligns(aligns.filter((_, i) => i !== cursor.c));
     const nc = Math.min(cursor.c, cols - 2);
     setCursor({ r: cursor.r, c: nc }); focusCell(cursor.r, nc);
   };
 
   // 격자 → MD (원문 보기로 전환)
-  const toMd = () => { setMdText(buildMdTable(headers, rows)); setMdError(null); setView('md'); window.setTimeout(() => mdRef.current?.focus(), 0); };
+  const toMd = () => { setMdText(buildMdTable(headers, rows, aligns)); setMdError(null); setView('md'); window.setTimeout(() => mdRef.current?.focus(), 0); };
   // MD → 격자 (원문을 읽어 셀로) — 표로 못 읽으면 전환하지 않고 알린다
   const toGrid = () => {
     const parsed = parseMdTable(mdText);
     if (!parsed) { setMdError('표로 읽을 수 없습니다 — 헤더 행과 데이터 행이 각각 한 줄 이상, 열이 2개 이상이어야 합니다.'); return; }
-    setHeaders(parsed.headers); setRows(parsed.rows); setMdError(null); setView('grid');
+    setHeaders(parsed.headers); setRows(parsed.rows); setAligns(parsed.aligns); setMdError(null); setView('grid');
   };
   const save = () => {
     if (view === 'md') {
       const parsed = parseMdTable(mdText);
       if (!parsed) { setMdError('표로 읽을 수 없습니다 — 헤더 행과 데이터 행이 각각 한 줄 이상, 열이 2개 이상이어야 합니다.'); return; }
-      onSave(buildMdTable(parsed.headers, parsed.rows));
+      onSave(buildMdTable(parsed.headers, parsed.rows, parsed.aligns));
       return;
     }
-    onSave(buildMdTable(headers, rows));
+    onSave(buildMdTable(headers, rows, aligns));
   };
 
   const smallBtn = (label: string, onClick: () => void, title: string, disabled = false) => (
@@ -286,6 +293,22 @@ export function TableDialog({
       {label}
     </button>
   );
+  const alignBtn = (a: Exclude<MdTableAlign, null>, label: string, title: string) => {
+    const on = (aligns[cursor.c] ?? 'left') === a;
+    return (
+      <button
+        type="button" title={title} data-testid={`table-align-${a}`} aria-pressed={on}
+        onClick={() => { setAlign(on && a !== 'left' ? null : a); focusCell(cursor.r, cursor.c); }}
+        style={{
+          width: 30, height: 26, borderRadius: 6, border: `1px solid ${on ? `${t.primaryBorder ?? t.primary}55` : t.border}`,
+          background: on ? (t.primarySoft ?? 'rgba(200,120,20,0.18)') : 'transparent',
+          color: on ? t.primary : t.text, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
   const viewBtn = (which: 'grid' | 'md', label: string, title: string, onClick: () => void) => {
     const on = view === which;
     return (
@@ -318,6 +341,7 @@ export function TableDialog({
         width: '100%', minWidth: 72, boxSizing: 'border-box', padding: '5px 8px',
         border: 'none', background: 'transparent', outline: 'none',
         color: t.text, fontSize: 12.5, fontWeight: isHead ? 700 : 400,
+        textAlign: aligns[c] ?? 'left',
       }}
     />
   );
@@ -397,8 +421,12 @@ export function TableDialog({
               {smallBtn('− 행', delRow, canDelRow ? '커서가 있는 행 삭제' : '머리글 행과 마지막 데이터 행은 지울 수 없습니다', !canDelRow)}
               {smallBtn('+ 열', addCol, '커서가 있는 열 오른쪽에 열 추가')}
               {smallBtn('− 열', delCol, canDelCol ? '커서가 있는 열 삭제' : '열은 2개 이상이어야 합니다', !canDelCol)}
+              <span style={{ width: 1, height: 18, background: t.border, margin: '0 4px' }} />
+              {alignBtn('left', '⇤', '커서 열 왼쪽 맞춤 (GFM `:---`)')}
+              {alignBtn('center', '↔', '커서 열 가운데 맞춤 (GFM `:---:`)')}
+              {alignBtn('right', '⇥', '커서 열 오른쪽 맞춤 (GFM `---:`)')}
               <span style={{ fontSize: 11.5, color: t.textMuted, marginLeft: 6 }}>
-                커서 셀 기준 · 셀 안의 | 는 ¦ 로 바뀝니다 · Tab 으로 다음 칸
+                커서 셀 기준 · 정렬은 열 단위(GFM) · 셀 안의 | 는 ¦ 로 · Tab 으로 다음 칸
               </span>
             </div>
           </>

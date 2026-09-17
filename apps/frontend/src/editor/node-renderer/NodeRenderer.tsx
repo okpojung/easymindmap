@@ -843,7 +843,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               // 머리글 셀 내용과 겹치지 않는다 (2026-07-31)
               const stripY = contentTop + tableBoundaryY + tableGapAbove;
               const tY = stripY + MD_TABLE_COPY_STRIP;
-              const { colWs, rowH, cellFs, headers, rows, w: tW, h: tH } = mdTable;
+              const { colWs, rowH, cellFs, headers, rows, aligns, w: tW, h: tH } = mdTable;
               const colX: number[] = [];
               let acc = tX;
               for (const cw of colWs) { colX.push(acc); acc += cw; }
@@ -914,7 +914,19 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                       // 셀 안 인라인 마커(**굵게** 등) — 마커 문자는 숨기고
                       // 서식만 적용 (tspan 구간, 실측 오프셋)
                       const cSegs = parseInlineMarks(cell);
-                      let cx2 = colX[c] + MD_TABLE_CELL_PAD_X;
+                      // GFM 열 정렬(구분선 콜론) — 구간 폭을 먼저 재고 시작 x 를 정한다
+                      const segWs = cSegs.map((sg) => measureTextPx(sg.text, cellFs, {
+                        weight: r === 0 || sg.b ? 700 : 400,
+                        italic: sg.i,
+                        family: fontFamily,
+                      }));
+                      const textW = segWs.reduce((a, b) => a + b, 0);
+                      const al = aligns[c] ?? 'left';
+                      let cx2 = al === 'center'
+                        ? colX[c] + colWs[c] / 2 - textW / 2
+                        : al === 'right'
+                          ? colX[c] + colWs[c] - MD_TABLE_CELL_PAD_X - textW
+                          : colX[c] + MD_TABLE_CELL_PAD_X;
                       return (
                         <text key={`c${r}-${c}`}
                               y={tY + r * rowH + rowH / 2 + cellFs * 0.34}
@@ -923,11 +935,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                               style={{ fontFamily }}>
                           {cSegs.map((sg, k) => {
                             const x2 = cx2;
-                            cx2 += measureTextPx(sg.text, cellFs, {
-                              weight: r === 0 || sg.b ? 700 : 400,
-                              italic: sg.i,
-                              family: fontFamily,
-                            });
+                            cx2 += segWs[k];
                             const deco = [
                               sg.s ? 'line-through' : '',
                               sg.u ? 'underline' : '',
@@ -1534,7 +1542,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
       {tableDlg && (() => {
         const src = tableDlg.mode === 'edit' ? (tableDlg.inDraft ? draftText : String(n.text || '')) : '';
         const parsed = tableDlg.mode === 'edit' ? parseMdTable(src) : null;
-        const initialMd = parsed ? buildMdTable(parsed.headers, parsed.rows) : undefined;
+        const initialMd = parsed ? buildMdTable(parsed.headers, parsed.rows, parsed.aligns) : undefined;
         const size = tableDlg.mode === 'insert' ? { rows: tableDlg.rows, cols: tableDlg.cols } : undefined;
         return (
           <TableDialog

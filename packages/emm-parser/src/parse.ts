@@ -539,9 +539,12 @@ export function parseMarkdownToMap(
   const flushTable = () => {
     if (!tableBuf.length) return;
     // 구분선(|---|) 제거 + 앞뒤 파이프 제거 — 노트 뷰어의 표 형식
-    // ("셀 | 셀" 줄들)로 정규화한다.
+    // ("셀 | 셀" 줄들)로 정규화한다. 단 **GFM 정렬 콜론이 있는 구분선**
+    // (`:---` · `:---:` · `---:`)은 정렬 정보라 남긴다 (2026-09-17) — 앱의
+    // 표 파서(mdTable.ts)와 노트 뷰어는 구분선 행을 셀로 세지 않고, 직렬화는
+    // 그 콜론을 다시 구분선에 쓴다.
     const rows = tableBuf
-      .filter((r) => !TABLE_SEP_RE.test(r))
+      .filter((r) => !TABLE_SEP_RE.test(r) || r.includes(':'))
       .map((r) =>
         r.replace(/^\s*\|/, '').replace(/\|\s*$/, '')
           .split('|').map((c) => c.trim()).join(' | '),

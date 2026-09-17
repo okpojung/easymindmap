@@ -32,11 +32,29 @@ export function measureTextApprox(s: string, fontSize: number): number {
   return w;
 }
 
+/** GFM 열 정렬 — 구분선 행의 콜론(`:---` 왼쪽 · `:---:` 가운데 · `---:` 오른쪽). null = 지정 없음(왼쪽) */
+export type MdTableAlign = 'left' | 'center' | 'right' | null;
+
+/** 구분선 셀 하나 → 정렬. 구분선이 아니면 null */
+export function alignOfSepCell(cell: string): MdTableAlign {
+  const c = cell.trim();
+  if (!/^:?-{2,}:?$/.test(c)) return null;
+  const l = c.startsWith(':'), r = c.endsWith(':');
+  return l && r ? 'center' : r ? 'right' : l ? 'left' : null;
+}
+
+/** 정렬 → 구분선 셀 (`---` · `:---` · `:---:` · `---:`) */
+export function sepCellOfAlign(a: MdTableAlign): string {
+  return a === 'center' ? ':---:' : a === 'right' ? '---:' : a === 'left' ? ':---' : '---';
+}
+
 export interface MdTableParse {
   before: string; // 표 앞의 일반 텍스트 (없으면 '')
   after: string; // 표 뒤의 일반 텍스트 (없으면 '')
   headers: string[];
   rows: string[][];
+  /** 열별 GFM 정렬 (구분선 행에서 읽음, 2026-09-17). 길이 = headers.length */
+  aligns: MdTableAlign[];
 }
 
 export interface MdTableLayout extends MdTableParse {
@@ -83,7 +101,13 @@ export function parseMdTable(text: string): MdTableParse | null {
     if (headers.length < 2) continue;
 
     let j = i + 1;
-    if (isSeparatorRow(lines[j])) j++; // MD 구분선 행은 건너뛴다 (선택 사항)
+    let aligns: MdTableAlign[] = headers.map(() => null);
+    if (isSeparatorRow(lines[j])) {
+      // MD 구분선 행 — 건너뛰되 GFM 정렬 콜론은 읽는다
+      const sep = splitCells(lines[j]);
+      aligns = headers.map((_, c) => alignOfSepCell(sep[c] ?? ''));
+      j++;
+    }
 
     const rows: string[][] = [];
     while (j < lines.length && isPipeRow(lines[j]) && !isSeparatorRow(lines[j])) {
@@ -100,6 +124,7 @@ export function parseMdTable(text: string): MdTableParse | null {
       after: lines.slice(j).join('\n').trim(),
       headers,
       rows,
+      aligns,
     };
   }
   return null;

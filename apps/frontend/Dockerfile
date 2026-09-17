@@ -48,3 +48,13 @@ ENV NGINX_ENVSUBST_FILTER="API_ORIGIN"
 #   아예 기동하지 못한다 — 그쪽이 훨씬 나쁘다.
 ENV API_ORIGIN="http://127.0.0.1:9"
 EXPOSE 80
+
+# ★ **컨테이너가 스스로 건강 상태를 보고한다** (2026-09-17, 유료판 #129 와 같은
+#   조치). 헬스체크가 없으면 배포 도구가 새 컨테이너가 살아 있는지 모른 채
+#   교체하고, 기동 실패 시 자동 롤백도 없다(Coolify 는 "Running (no healthcheck)"
+#   로 보인다). nginx 가 `/`(index.html)를 200 으로 내주는지 10초마다 본다.
+#   `wget` 은 alpine 의 busybox 에 들어 있어 따로 깔 것이 없다. 셀프호스트
+#   compose 에서도 그대로 `healthy` 판정이 된다. dev 실측(2026-09-17, 유료판):
+#   `docker inspect … .State.Health.Status` = healthy.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -qO /dev/null http://127.0.0.1:80/ || exit 1

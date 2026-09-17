@@ -27,14 +27,29 @@ BODY=$(curl -sS --max-time "$TIMEOUT" -w '\n%{http_code}' "$URL" 2>/dev/null)
 CODE=$(printf '%s' "$BODY" | tail -1)
 JSON=$(printf '%s' "$BODY" | sed '$d')
 
+# 본문의 status 값을 꺼낸다. /v1/health 는 **항상 200** 을 주고 좋고 나쁨은
+# JSON 의 `status`('ok' | 'degraded')로만 말하므로 HTTP 코드만 봐서는
+# degraded 를 놓친다. jq 가 있으면 jq 로 읽고(공백·순서·중첩에 흔들리지
+# 않는다), 없으면 공백을 허용하는 grep 으로 읽는다 — 호스트에 jq 를
+# **깔지 않아도 감시가 멈추지 않게** 한다(런북 §2.2).
+health_status() {
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$1" | jq -r '.status // empty' 2>/dev/null
+  elif printf '%s' "$1" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+    echo ok
+  fi
+}
+
 if [ "$CODE" != "200" ]; then
   # 응답이 없거나 200 이 아니다 = API 가 떠 있지 않다
   STATE="down"
   DETAIL="HTTP ${CODE:-응답없음} — API 가 응답하지 않습니다."
-elif printf '%s' "$JSON" | grep -q '"status":"ok"'; then
+elif [ "$(health_status "$JSON")" = "ok" ]; then
   STATE="ok"
   DETAIL="$JSON"
 else
+  # status 가 'degraded' 이거나, JSON 이 아니거나(예: 프록시의 HTML 200),
+  # status 가 아예 없다 — 모두 "정상이 아님" 으로 본다.
   STATE="degraded"
   DETAIL="$JSON"
 fi

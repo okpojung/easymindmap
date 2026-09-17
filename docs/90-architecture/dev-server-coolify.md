@@ -231,9 +231,138 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
 
 ### 5.3-A site (홈페이지) — 앱 하나를 **더** 붙인다 (2026-09-13)
 
-`www.easymindmap.org` — 소개와 **퍼블리싱맵 목록**이 사는 곳이다. 앱(에디터)과
-**다른 앱**으로 둔다(`27a-paid-publish.md` §0.5: 새 VM 을 만들지 않고 기존
-Coolify 서버에 앱을 하나 더, 나누는 것은 **도메인**).
+`www.easymindmap.org` — 소개와 **지식창고**(공개된 맵 목록)가 사는 곳이다.
+앱(에디터)과 **다른 앱**으로 둔다(`27a-paid-publish.md` §0.5: 새 VM 을 만들지
+않고 기존 Coolify 서버에 앱을 하나 더, 나누는 것은 **도메인**).
+
+#### 5.3-A-1 처음 세울 때 — **순서대로** (2026-09-17)
+
+> **먼저 정할 것 하나: 어느 도메인으로 시작하나.**
+> `easymindmap.org` 가 아직 등록되지 않았다면 **`www-dev.mindmap.ai.kr`
+> 로 먼저 세운다.** 이미 가진 도메인이라 DNS 를 바로 넣을 수 있고,
+> 나중에 운영 도메인을 **덧붙이는** 것은 A 레코드 한 줄 + Proxy Host
+> 하나 + Coolify Domains 칸에 콤마로 추가하는 것뿐이다(§7.10 끝).
+> 아래 절차는 `www-dev.mindmap.ai.kr` 기준으로 적는다.
+
+**① DNS — 등록대행사 콘솔에서 A 레코드 한 줄** (`infra-architecture.md` §7.1)
+
+```
+Type  Name                     Content
+A     www-dev.mindmap.ai.kr    203.0.113.10     ← 다른 호스트와 같은 공인 IP
+```
+
+프록시·CDN 기능이 있으면 **끈다**(DNS only). SSL 은 NPM 이 전담한다.
+
+들어갔는지 확인 — 내 PC 어디서든:
+
+```bash
+nslookup www-dev.mindmap.ai.kr
+# 또는
+dig +short www-dev.mindmap.ai.kr
+```
+
+**공인 IP 하나가 나오면** 다음 단계로 간다. 안 나오면 전파를 기다린다
+(보통 몇 분, 길면 한 시간). **여기서 IP 가 안 나오면 뒤 단계는 전부
+헛수고다** — Let's Encrypt 발급도 실패한다.
+
+**② Coolify 에 앱 만들기**
+
+`coolify-dev.mindmap.ai.kr` 접속 → 프로젝트 열기 →
+**+ New / Add Resource → Application → Public Repository**(또는 GitHub App).
+
+| 칸 | 넣을 값 | 틀리면 |
+|---|---|---|
+| Repository | `https://github.com/okpojung/easymindmap` | — |
+| Branch | `main` | — |
+| Build Pack | **`Dockerfile`** | Nixpacks 로 두면 루트에 package.json 이 없어 앱 타입을 못 잡는다 |
+| Base Directory | **`/`** | `apps/site` 로 잡으면 빌드 컨텍스트가 좁아진다 |
+| Dockerfile Location | **`/apps/site/Dockerfile`** | 프런트엔드 것이 빌드된다 |
+| Ports Exposes | **`80`** | **누락 시 502** — Traefik 이 대상 포트를 모른다 |
+| Is it a static site? | **끄기** | 우리 `nginx.conf` 가 안 쓰인다 → `/p/` 프록시와 `/site-assets/` 가 죽는다 |
+| Publish Directory · Install/Build/Start Command | **비움** | Dockerfile 이 다 한다 |
+| Domains | **`http://www-dev.mindmap.ai.kr`** | ★ **`https://` 를 쓰지 않는다** (§5.4 — SSL 종단은 NPM 한 곳) |
+
+**③ 환경변수 — 빌드용 2개 · 런타임용 1개**
+
+Environment Variables 탭. **체크박스를 정확히** 맞춘다.
+
+| 변수 | 값(dev) | Build | Runtime | 무엇 |
+|---|---|---|---|---|
+| `VITE_API_URL` | `https://api-dev.mindmap.ai.kr` | ✅ | — | 지식창고 목록을 읽는 곳 |
+| `VITE_APP_URL` | `https://pro-dev.mindmap.ai.kr` | ✅ | — | [시작하기]·[앱 열기] 가 가는 곳 |
+| `APP_ORIGIN` | `https://pro-dev.mindmap.ai.kr` | — | ✅ | nginx 가 `/p/` 를 넘길 곳 |
+
+> **`VITE_*` 는 반드시 Buildtime 이다.** 정적 파일에는 런타임 설정이
+> 없다 — 값은 번들에 **박힌다**. Runtime 에만 체크하면 빈 문자열이 박혀
+> **화면은 뜨는데 지식창고가 영영 비어 있다.**
+> `VITE_API_URL` 에 `/v1` 을 덧붙이지 않는다(API 가 `setGlobalPrefix`).
+>
+> `APP_ORIGIN` 은 Dockerfile 에 **기본값이 있다**(`pro-dev`). 프런트엔드의
+> `API_ORIGIN` 과 달리 "아무 데도 안 가는 주소" 로 두지 않았다 — `/p/` 가
+> 이 사이트의 주된 길이라, 빠뜨렸을 때 통째로 죽는 쪽이 훨씬 나쁘다.
+
+**④ 배포 — [Deploy]**
+
+로그에 `npm ci` → `vite build` → `COPY … /usr/share/nginx/html` 가 지나가고
+컨테이너가 뜨면 끝이다. 이 시점에는 **아직 도메인으로 안 열린다** — NPM 을
+아직 안 걸었다. 서버에서 먼저 확인한다(`ubuntu@em-dev` SSH):
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: www-dev.mindmap.ai.kr' http://127.0.0.1/
+# 200 이면 Traefik → site 컨테이너까지 길이 뚫린 것이다
+```
+
+**⑤ NPM Proxy Host** (`infra-architecture.md` §7.10)
+
+```
+Domain:   www-dev.mindmap.ai.kr
+Forward:  http://192.168.0.110:80        ← Traefik. 컨테이너 포트를 직접 부르지 않는다
+Cache Assets: ❌ 끄기
+SSL:      Let's Encrypt + Force SSL ✅
+Access:   Publicly Accessible            ← ★ 반드시
+```
+
+★ **Access List 를 걸면 안 된다.** 손님에게 보여 주는 홈페이지라, 걸면
+처음 오는 사람에게 **Basic 인증 팝업**이 먼저 뜬다. 본인 브라우저는 자격을
+캐시하고 있어 멀쩡해 보이므로 **시크릿 창으로 확인**한다.
+
+**⑥ API 에 이 주소를 허용한다 — 빠뜨리기 쉬운 곳** ★
+
+지식창고 목록은 **손님의 브라우저가 API 를 직접 부른다.** api 앱의
+`CORS_ORIGIN` 에 이 도메인이 없으면 목록이 통째로 막힌다(화면에는
+"목록을 불러오지 못했습니다" 만 뜬다).
+
+Coolify → **api 앱** → Environment Variables → `CORS_ORIGIN` 에 **콤마로
+덧붙이고** api 를 재배포한다.
+
+```
+CORS_ORIGIN=https://pro-dev.mindmap.ai.kr,https://www-dev.mindmap.ai.kr
+```
+
+확인:
+
+```bash
+curl -s -o /dev/null -D- -H 'Origin: https://www-dev.mindmap.ai.kr' \
+  https://api-dev.mindmap.ai.kr/v1/published | grep -i access-control-allow-origin
+# access-control-allow-origin: https://www-dev.mindmap.ai.kr  ← 이 줄이 나와야 한다
+```
+
+**⑦ 확인** — 브라우저로 `https://www-dev.mindmap.ai.kr`
+
+| 보이는 것 | 정상 |
+|---|---|
+| 상단 메뉴 | 홈 · 기능 · AI 연동 · mmd 표준 · 지식창고 |
+| [지식창고] | 검색창이 있고, 진열된 맵이 없으면 *"아직 진열된 맵이 없습니다"* (오류 문구가 아니어야 한다) |
+| 맵 카드 클릭 | 주소가 **같은 도메인**의 `/p/{id}` 로 가고 맵이 그려진다 |
+| 개발자도구 Console | 오류 없음 (특히 CORS) |
+
+**⑧ 운영 도메인을 붙일 때** (`easymindmap.org` 등록 뒤)
+
+①(A 레코드 `www.easymindmap.org`) → ⑤(Proxy Host 하나 더) → Coolify
+Domains 칸에 **콤마로 덧붙이기**(`http://www-dev.mindmap.ai.kr,http://www.easymindmap.org`)
+→ ⑥(`CORS_ORIGIN` 에도 덧붙이기) → 재배포. 컨테이너는 하나 그대로다.
+
+#### 5.3-A-2 설정값 요약
 
 - **Add Resource → Application → GitHub** — 설정값
 
@@ -250,7 +379,7 @@ Coolify 서버에 앱을 하나 더, 나누는 것은 **도메인**).
 
   | 변수 | 값(dev) | |
   |---|---|---|
-  | `VITE_API_URL` | `https://api-dev.mindmap.ai.kr` | 진열대 목록을 읽는 곳 |
+  | `VITE_API_URL` | `https://api-dev.mindmap.ai.kr` | 지식창고 목록을 읽는 곳 |
   | `VITE_APP_URL` | `https://pro-dev.mindmap.ai.kr` | [시작하기]·[앱 열기] 가 가는 곳 |
 
 - **런타임 환경변수** (nginx 가 읽는다)
@@ -258,6 +387,21 @@ Coolify 서버에 앱을 하나 더, 나누는 것은 **도메인**).
   | 변수 | 값(dev) | 없으면 |
   |---|---|---|
   | `APP_ORIGIN` | `https://pro-dev.mindmap.ai.kr` | **기본값이 그 주소다.** 프런트엔드의 `API_ORIGIN` 과 달리 "아무 데도 안 가는 주소" 로 두지 않았다 — `/p/` 가 이 사이트의 주된 길이라 빠뜨렸을 때 통째로 죽는 쪽이 훨씬 나쁘다 |
+
+- **api 앱의 `CORS_ORIGIN` 에 이 도메인을 더한다** — 빠뜨리면 지식창고
+  목록만 빈다(⑥).
+
+#### 5.3-A-3 안 열릴 때 — 증상으로 찾기
+
+| 증상 | 어디를 본다 |
+|---|---|
+| 도메인이 아예 안 뜬다 | ① DNS (`dig +short`) → ⑤ Proxy Host 가 있는가 |
+| **502** | ② `Ports Exposes=80` 이 비었다. 또는 ⑤ Forward 를 컨테이너 포트로 잡았다(Traefik `:80` 이어야 한다) |
+| Basic 인증 팝업이 뜬다 | ⑤ Access List 가 걸렸다 → `Publicly Accessible` |
+| 화면은 뜨는데 **지식창고만 비었다 / "불러오지 못했습니다"** | ⑥ api 의 `CORS_ORIGIN`. 그다음 ③ `VITE_API_URL` 이 **Buildtime** 인가 |
+| 지식창고는 되는데 **맵을 열면 502·빈 화면** | ③ `APP_ORIGIN` (런타임) — 앱 주소가 맞는가 |
+| **번들만 404** (`/site-assets/…`) | "Is it a static site?" 가 켜져 우리 `nginx.conf` 가 안 쓰였다 |
+| 재배포했는데 **옛 화면** | ⑤ `Cache Assets` 를 껐는가 + 브라우저 강력 새로고침 |
 
 #### ★ 한 도메인 안에 **두 앱**이 산다 (B안, 2026-09-12 사용자 결정)
 

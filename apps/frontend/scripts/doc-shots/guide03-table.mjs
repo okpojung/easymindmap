@@ -40,6 +40,22 @@ await cell(0, 1).fill('항목'); await cell(0, 2).fill('값'); await cell(0, 3).
 await cell(1, 1).fill('메모리'); await cell(1, 2).fill('32'); await cell(1, 3).fill('GB'); await cell(1, 4).fill('DDR5');
 await cell(2, 1).fill('디스크'); await cell(2, 2).fill('1'); await cell(2, 3).fill('TB'); await cell(2, 4).fill('NVMe');
 await page.waitForTimeout(200);
+// ②-b 행·열 버튼은 커서 셀 기준 (2026-09-17 사용자 요청)
+const btn = (label) => page.locator('[data-testid="table-dialog"] button', { hasText: label }).first();
+await cell(1, 2).focus();                       // 1행(메모리) 2열(값)
+await btn('+ 행').click(); await page.waitForTimeout(100);
+ok('②-b +행 = 커서 행 아래 (2행이 빈 행, 디스크는 3행으로)', (await cell(2, 1).inputValue()) === '' && (await cell(3, 1).inputValue()) === '디스크');
+ok('②-b 새 행의 같은 열에 포커스', await page.evaluate(() => document.activeElement?.getAttribute('data-table-cell')) === '2x2');
+await btn('− 행').click(); await page.waitForTimeout(100);
+ok('②-b −행 = 커서 행(빈 행) 삭제', (await cell(2, 1).inputValue()) === '디스크' && (await grid.locator('tr').count()) === 3);
+await cell(0, 2).focus();                       // 머리글 2열(값)
+await btn('+ 열').click(); await page.waitForTimeout(100);
+ok('②-b +열 = 커서 열 오른쪽 (3열이 새 열, 단위는 4열로)', (await cell(0, 3).inputValue()).startsWith('열') && (await cell(0, 4).inputValue()) === '단위');
+await btn('− 열').click(); await page.waitForTimeout(100);
+ok('②-b −열 = 커서 열(새 열) 삭제', (await cell(0, 3).inputValue()) === '단위' && (await grid.locator('th').count()) === 4);
+await cell(0, 1).focus();
+await btn('− 행').isDisabled().then((d) => ok('②-b 머리글에 커서면 −행 비활성', d));
+await cell(1, 1).focus();
 const card = page.locator('[data-testid="table-dialog"] > div');
 await card.screenshot({ path: `${OUT}/table-dialog.png` }); console.log('shot table-dialog');
 

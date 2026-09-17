@@ -9,7 +9,7 @@ www.easymindmap.org
 ├ /function        → 이 앱 (기능 — 무엇이 있는가)
 ├ /ai              → 이 앱 (AI 연동 — 사상 · 도구 · 붙이는 두 갈래)
 ├ /mmd             → 이 앱 (mmd 표준 소개 · 옛 /emm 도 같은 곳)
-├ /library         → 이 앱 (지식창고 — 공개된 맵 목록)
+├ /library         → 이 앱 (지식창고 — 공개된 맵 목록 · `?q=` 로 검색)
 ├ /site-assets/…   → 이 앱의 번들
 ├ /p/{id}          → **앱으로 프록시** (퍼블리싱 공개 뷰어)
 └ /assets/…        → 그 앱의 번들

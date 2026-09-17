@@ -41,7 +41,11 @@ a { color: inherit; text-decoration: none; }
 .btn:hover { filter: brightness(1.06); }
 
 /* ── 홈 ───────────────────────────────────────────── */
-.hero { padding: 76px 0 56px; }
+/* ★ `.wrap` 과 겹쳐 쓰는 칸(hero·head·band·cta)은 **위아래만** 준다
+   (2026-09-17). `padding: 44px 0 20px` 같은 한 줄 지정은 `.wrap` 의
+   좌우 20px 를 함께 지워, 휴대폰 폭에서 글이 화면 끝에 붙었다 —
+   데스크톱에서는 max-width 로 가운데 정렬돼 눈에 띄지 않았다. */
+.hero { padding-top: 76px; padding-bottom: 56px; }
 .hero h1 { margin: 0 0 14px; font-size: 40px; line-height: 1.25; letter-spacing: -1px; }
 .hero p { margin: 0 0 26px; font-size: 17px; color: var(--muted); max-width: 44ch; }
 .hero .row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -53,7 +57,7 @@ a { color: inherit; text-decoration: none; }
 .feat p { margin: 0; font-size: 14px; color: var(--muted); }
 
 /* ── 진열대 ───────────────────────────────────────── */
-.head { padding: 44px 0 20px; }
+.head { padding-top: 44px; padding-bottom: 20px; }
 .head h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -.6px; }
 .head p { margin: 0; color: var(--muted); font-size: 15px; }
 .grid { display: grid; gap: 18px; grid-template-columns: repeat(3, 1fr); padding-bottom: 64px; }
@@ -92,7 +96,7 @@ a { color: inherit; text-decoration: none; }
 .lead { margin: 0 0 26px; font-size: 17px; color: var(--muted); max-width: 56ch; }
 .lead b, .feat p b, .promo p b { color: var(--ink); font-weight: 700; }
 .sec { margin: 0 0 20px; font-size: 22px; letter-spacing: -.4px; }
-.band { padding: 8px 0 56px; }
+.band { padding-top: 8px; padding-bottom: 56px; }
 .feat article .ico, .func article .ico {
   display: inline-grid; place-items: center; width: 34px; height: 34px; margin-bottom: 10px;
   border-radius: 9px; background: var(--accent-soft); font-size: 16px; font-weight: 700;
@@ -149,7 +153,38 @@ a { color: inherit; text-decoration: none; }
   font-size: 12.5px; background: var(--accent-soft); padding: 1px 5px; border-radius: 5px;
 }
 
-.cta { text-align: center; padding: 56px 0 80px; border-top: 1px solid var(--line); }
+/* ── 지식창고 검색 ────────────────────────────────── */
+.search { margin: 18px 0 4px; }
+.searchbox {
+  display: flex; align-items: center; gap: 8px; max-width: 480px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 0 12px; height: 42px;
+}
+.searchbox:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.searchbox .ico { font-size: 14px; opacity: .55; }
+.searchbox input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+  font: inherit; font-size: 14.5px; color: var(--ink); height: 100%;
+}
+/* 브라우저가 붙이는 X 는 숨긴다 — 우리 것과 두 개가 나란히 보인다 */
+.searchbox input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.searchbox .clear {
+  border: 0; background: transparent; cursor: pointer; padding: 4px;
+  color: var(--muted); font-size: 13px; line-height: 1;
+}
+.searchbox .clear:hover { color: var(--ink); }
+.search .small { margin: 8px 0 0; color: var(--muted); }
+.search .small b { color: var(--ink); }
+
+/* 이름 안의 맞은 글자 — 에디터·뷰어의 검색 강조와 같은 고정색 */
+.card h2 mark { background: #FDE68A; color: #2B2620; border-radius: 2px; padding: 0 1px; }
+/* 내용이 맞은 건수 — 이름에는 없는데 왜 걸렸는지를 말해 준다 */
+.card .hits {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); font-size: 11.5px; font-weight: 700;
+}
+
+.cta { text-align: center; padding-top: 56px; padding-bottom: 80px; border-top: 1px solid var(--line); }
 .cta h2 { margin: 0 0 8px; font-size: 22px; letter-spacing: -.4px; }
 .cta p { margin: 0 0 20px; color: var(--muted); }
 .cta .row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -160,7 +195,7 @@ a { color: inherit; text-decoration: none; }
 
 @media (max-width: 860px) {
   .feat, .grid, .func { grid-template-columns: repeat(2, 1fr); }
-  .hero { padding: 52px 0 40px; }
+  .hero { padding-top: 52px; padding-bottom: 40px; }
   .hero h1 { font-size: 31px; }
 }
 @media (max-width: 560px) {

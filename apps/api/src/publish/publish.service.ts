@@ -339,26 +339,51 @@ export class PublishService {
   }
 
   /**
-   * PUBL-07 — **진열대에 올린다 / 내린다** (2026-09-12).
+   * PUBL-07 — **지식창고에 올린다 / 내린다** (2026-09-12 · 뜻 정리 2026-09-18).
    *
-   * ★ **공개와 진열은 다른 것이다.** 무료공개는 "링크를 가진 사람이
-   *   읽는다" 이고, 진열은 "찾아보는 사람에게 보인다" 다. 사내 문서를
-   *   링크로만 돌리려던 저자가 검색 결과에서 그것을 발견하면 사고이므로,
-   *   **넓히는 쪽은 반드시 저자가 직접 켠다.**
+   * ★ **퍼블리싱과 지식창고는 목적이 다른 두 기능이다** (2026-09-18 사용자
+   *   정리). 퍼블리싱은 *"내 블로그에 붙이거나 특정인에게 메일로 보낼
+   *   **주소를 만드는** 것"* 이고, 지식창고는 *"**불특정 다수**에게 내 맵을
+   *   공개하는 것"* 이다. 지식창고가 주소를 따로 만들지는 않는다 — 같은
+   *   `/p/{id}` 를 쓴다.
    *
-   * ★ **비공개(보관)인 맵도 켤 수 있다.** 진열 목록은 `visibility='public'`
-   *   을 함께 보므로, 켜 두고 나중에 공개해도 그때부터 뜬다. 여기서
-   *   막으면 "공개 → 진열" 순서를 강요하게 되는데, 그럴 이유가 없다.
+   * ★ **그래서 켤 때는 앞 단계를 여기서 해 준다** (2026-09-18).
+   *   지식창고에 올리려면 주소가 있어야 하고(등록) 남이 열 수 있어야
+   *   한다(공개). 전에는 등록이 없으면 404 로 *"먼저 퍼블리싱해 주세요"*
+   *   라고 돌려보냈는데, 그건 **우리 내부 순서를 사용자에게 외우게 하는**
+   *   것이다. 올리기를 누른 뜻이 이미 "손님에게 보여 달라" 이므로 등록·
+   *   공개를 함께 처리한다.
+   *
+   *   넓히는 쪽이라 조심스러운 동작이지만, **저자가 직접 누른 경우에만**
+   *   일어난다. 협업맵처럼 퍼블리싱이 막힌 맵은 `publish()` 가 그대로
+   *   거절한다 — 규칙은 여전히 한 곳에 있다.
+   *
+   * ★ **내릴 때는 아무것도 되돌리지 않는다.** 지식창고에서 내려도 주소는
+   *   살아 있고 링크를 가진 사람은 그대로 읽는다. 내린 것은 "목록에서
+   *   빼 달라" 이지 "주소를 죽여 달라" 가 아니다 — 그건 [퍼블리싱 취소] 다.
    */
   async setListed(userId: string, mapId: string, listed: boolean): Promise<PublishStatus> {
     await this.requireReady();
     await this.requireOwner(userId, mapId);
     if (!(await this.hasListed())) {
       throw new ServiceUnavailableException(
-        '이 서버에는 아직 진열대가 준비되지 않았습니다(published_maps.listed 칸 없음). 관리자에게 문의해 주세요.',
+        '이 서버에는 아직 지식창고가 준비되지 않았습니다(published_maps.listed 칸 없음). 관리자에게 문의해 주세요.',
       );
     }
     const canSet = await this.hasVisibility();
+
+    if (listed) {
+      // ① 주소가 없으면 만든다 — 규칙(협업맵 거절 등)은 publish() 가 본다
+      let cur = await this.activeRow(mapId);
+      if (!cur) {
+        await this.publish(userId, mapId, 'public');
+        cur = await this.activeRow(mapId);
+      } else if (canSet && PublishService.vis(cur) !== 'public') {
+        // ② 보관 중이면 연다 — 닫힌 채로 목록에 올리면 손님에게 404 다
+        await this.setVisibility(userId, mapId, 'public');
+      }
+    }
+
     const { rows } = await this.db.query<PublishedRow>(
       `UPDATE public.published_maps
           SET listed = $2
@@ -367,7 +392,8 @@ export class PublishService {
       [mapId, listed],
     );
     if (!rows[0]) {
-      throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
+      // 끄는 쪽에서만 올 수 있다 — 켜는 쪽은 위에서 등록을 만들었다
+      throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다.');
     }
     return this.toStatus(rows[0], canSet, true);
   }

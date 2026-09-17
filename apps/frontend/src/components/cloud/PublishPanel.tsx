@@ -161,6 +161,22 @@ export function PublishPanel(
       : '비공개(보관)로 바꿨습니다 — 주소는 그대로 두고 남에게만 닫혔습니다. 이제 다시 편집할 수 있습니다.');
   });
 
+  /**
+   * **지식창고에 올린다 / 내린다** (2026-09-18).
+   *
+   * 켤 때 등록·공개가 아직이면 **서버가 함께 처리한다**(setListed) — 여기
+   * 화면에서 순서를 안내하지 않는 이유다. 켜면 공개 상태가 되므로
+   * `lockThisTab(true)` 로 편집 잠금도 따라간다.
+   */
+  const doSetListed = (on: boolean) => run(async () => {
+    const s = await cloudApi.setMapListed(mapId, on);
+    setStatus(s);
+    if (on) lockThisTab(true);
+    flash(on
+      ? '📚 지식창고에 올렸습니다 — 홈페이지 [지식창고]에서 누구나 찾을 수 있습니다.'
+      : '지식창고에서 내렸습니다 — 목록에서만 빠집니다. 링크는 그대로 열립니다.');
+  });
+
   const doRemakePreview = () => run(async () => {
     setPreviewBusy(true);
     const ok = await uploadPreview();
@@ -295,7 +311,7 @@ export function PublishPanel(
               퍼블리싱하면 이 맵이 문서함의 <b>퍼블리싱 자리</b>로 옮겨집니다 —
               쇼핑몰에 상품을 등록해 두는 것과 같습니다.
               <br />★ 처음에는 <b>비공개(보관)</b>입니다 — 남에게는 보이지 않고
-              <b> 계속 고칠 수 있습니다.</b> 다 되면 거기서 <b>무료공개</b>로 바꾸면 됩니다.
+              <b> 계속 고칠 수 있습니다.</b> 다 되면 거기서 <b>링크 공개</b>로 바꾸면 됩니다.
               <br />★ <b>주소는 지금 만들어지고, 그대로 유지됩니다</b> —
               비공개 ↔ 공개를 오가도 바뀌지 않습니다.
               <br />★ 취소하면 원래 폴더로 돌아옵니다. 그때 <b>주소는 사라집니다.</b>
@@ -306,11 +322,11 @@ export function PublishPanel(
               onClick={() => void doPublish(status.canSetVisibility ? 'private' : 'public')}
               style={{ ...btn, width: '100%', background: t.primary, color: '#fff' }}
             >{busy ? '만드는 중…'
-              : status.canSetVisibility ? '퍼블리싱 — 비공개로 등록' : '퍼블리싱하기 (무료공개)'}</button>
+              : status.canSetVisibility ? '퍼블리싱 — 비공개로 등록' : '퍼블리싱하기 (링크 공개)'}</button>
             {!status.canSetVisibility && (
               <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 8 }}>
                 이 서버에는 아직 <b>비공개(보관)</b> 상태가 준비되지 않았습니다
-                (스키마 델타 미적용) — 지금 누르면 <b>바로 무료공개</b>가 됩니다.
+                (스키마 델타 미적용) — 지금 누르면 <b>바로 링크 공개</b>가 됩니다.
               </div>
             )}
           </>
@@ -331,7 +347,7 @@ export function PublishPanel(
                 <div style={{ display: 'flex', gap: 6 }}>
                   {([
                     ['private', '🔒 비공개(보관)'],
-                    ['public', '🌐 무료공개'],
+                    ['public', '🔗 링크 공개'],
                   ] as const).map(([v, label]) => {
                     const on = (status.visibility ?? 'public') === v;
                     return (
@@ -356,8 +372,44 @@ export function PublishPanel(
                   {(status.visibility ?? 'public') === 'private'
                     ? '지금은 남에게 보이지 않습니다 (주소를 열면 404). 이 상태에서는 맵을 고칠 수 있습니다.'
                     : '링크를 가진 누구나 읽습니다. 고치려면 [비공개(보관)]로 바꾸세요 — 주소는 그대로입니다.'}
-                  <br />유료공개는 아직 준비 중입니다 (값·결제·정산이 붙은 뒤에 열립니다).
+                  <br />★ <b>목록에는 뜨지 않습니다</b> — 주소를 아는 사람만 봅니다.
+                  둘러보는 사람에게도 보이게 하려면 아래 <b>[지식창고]</b> 를 켜세요.
                 </div>
+              </div>
+            )}
+
+            {/* ★ **지식창고** — 퍼블리싱과 **목적이 다른 기능**이다
+                (2026-09-18 사용자 정리). 퍼블리싱은 *"블로그에 붙이거나
+                특정인에게 보낼 주소를 만드는"* 것이고, 지식창고는
+                *"불특정 다수에게 공개하는"* 것이다. 주소를 따로 만들지는
+                않는다 — 같은 `/p/{id}` 를 쓴다.
+                칸이 없는 서버(델타 미적용)에서는 그리지 않는다. */}
+            {status.canSetListed && (
+              <div data-testid="publish-listed" style={{
+                marginBottom: 10, padding: '10px 12px', borderRadius: 8,
+                border: `1px solid ${status.listed ? t.primary : t.border}`,
+                background: status.listed ? t.primarySoft ?? t.surfaceAlt : t.surfaceAlt,
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    data-testid="publish-listed-check"
+                    type="checkbox"
+                    checked={!!status.listed}
+                    disabled={busy}
+                    onChange={(e) => void doSetListed(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <b style={{ fontSize: 12.5 }}>📚 지식창고에 올린다</b>
+                    <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 2 }}>
+                      {status.listed
+                        ? '둘러보는 누구나 찾을 수 있습니다. 내려도 링크는 그대로 열립니다.'
+                        : '켜면 홈페이지 [지식창고] 목록에 올라가 불특정 다수가 찾을 수 있습니다.'}
+                      <br />무료공개만 지금 됩니다 — <b>유료공개</b>는 준비 중입니다
+                      (값·결제·정산이 붙은 뒤에 열립니다).
+                    </div>
+                  </span>
+                </label>
               </div>
             )}
 

@@ -194,6 +194,12 @@ export interface MapListItem {
    */
   publishVisibility?: PublishVisibility | null;
   /**
+   * **지식창고에 올라가 있는가** (2026-09-18). 등록돼 있을 때만 온다.
+   * `undefined` = 이 서버는 지식창고를 모른다(`listed` 칸 없음) — 그때는
+   * 화면이 토글을 **아예 그리지 않는다.** false(내려가 있다)와 다른 사실이다.
+   */
+  listed?: boolean;
+  /**
    * 내용 검색(q) 결과에만 실린다 (2026-08-08).
    * **맵 안에서 맞은 건수** — 1건 = 조각 하나(노드 텍스트/노트/태그/
    * 링크/첨부 파일명). 0 이면 이름만 맞은 것이다.
@@ -291,17 +297,23 @@ function qs(q: MapListQuery = {}): string {
 /**
  * 퍼블리싱 문서함 안의 상태 (2026-09-05 사용자 결정).
  *
- *   `private` 보관    — 등록만 해 뒀다. 남에게는 404. **고칠 수 있다.**
- *   `public`  무료공개 — 링크를 가진 누구나 읽는다. **고칠 수 없다.**
- *   `paid`    유료공개 — 값을 매겨 판다 (27a, **아직 준비 중**).
+ *   `private` 보관     — 등록만 해 뒀다. 남에게는 404. **고칠 수 있다.**
+ *   `public`  링크 공개 — 링크를 가진 누구나 읽는다. **고칠 수 없다.**
+ *   `paid`    유료공개  — 값을 매겨 판다 (27a, **아직 준비 중**).
  *
  * ★ 주소는 **등록**에 붙는다 — 상태를 오가도 그대로다.
+ *
+ * ★ **"무료공개" 라고 부르지 않는다** (2026-09-18 사용자 정리). 무료/유료는
+ *   **지식창고**의 구분이고, 이쪽은 *"링크를 아는 사람만 읽는다"* 는
+ *   범위 이야기다. 둘 다 "공개" 라고 부르면 저자는 무엇이 다른지 알 수
+ *   없다 — 실제로 "같은 개념 아니냐" 는 물음을 받았다.
+ *   DB 값(`'public'`)은 그대로다. 바꾼 것은 **사람에게 보이는 말**뿐이다.
  */
 export type PublishVisibility = 'private' | 'public' | 'paid';
 
 export const VISIBILITY_LABEL: Record<PublishVisibility, string> = {
   private: '비공개(보관)',
-  public: '무료공개',
+  public: '링크 공개',
   paid: '유료공개',
 };
 
@@ -327,6 +339,18 @@ export interface PublishStatus {
    * 실패를 만나지 않게.
    */
   canSetVisibility?: boolean;
+  /**
+   * **지식창고에 올라가 있는가** (2026-09-18). 등록돼 있을 때만 온다.
+   * 퍼블리싱(주소를 만든다)과 **다른 기능**이다 — 지식창고는 불특정
+   * 다수에게 공개하는 쪽이다.
+   */
+  listed?: boolean;
+  /**
+   * 이 서버가 지식창고를 할 수 있는가(`listed` 칸이 있는가).
+   * false 면 화면은 그 줄을 **아예 그리지 않는다** — `canSetVisibility`
+   * 와 같은 이유다.
+   */
+  canSetListed?: boolean;
 }
 
 /** 퍼블리싱된 맵 — 비인증으로 받는다. doc 은 저장 스냅샷 그대로다 */
@@ -671,6 +695,14 @@ export const cloudApi = {
    * 잠시 내리는 것은 이것이 아니라 `setPublishVisibility('private')` 다.
    */
   unpublishMap: (mapId: string) => req<void>('DELETE', `/maps/${mapId}/publish`),
+  /**
+   * **지식창고에 올린다 / 내린다** (2026-09-18).
+   *
+   * 올릴 때 퍼블리싱 등록·공개가 아직이면 **서버가 함께 처리한다** — 화면이
+   * "먼저 퍼블리싱하세요" 를 안내할 필요가 없다(`publish.service` setListed).
+   */
+  setMapListed: (mapId: string, listed: boolean) =>
+    req<PublishStatus>('PATCH', `/maps/${mapId}/publish/listed`, { listed }),
   /**
    * ★ **주인이 보는 미리보기** (2026-09-05) — 비공개(보관)여도 받아진다.
    *

@@ -148,7 +148,10 @@ function mapType(m: MapListItem): {
       title: priv
         ? `퍼블리싱 문서함에 있습니다 — **비공개(보관)** 라 남에게는 열리지 않습니다 (${base})\n`
           + `이 상태에서는 맵을 고칠 수 있습니다\n누르면 링크를 복사합니다\n${url}`
-        : `무료공개 중 — 링크를 가진 사람은 로그인 없이 읽습니다 (${base})\n`
+        : `링크 공개 중 — 링크를 가진 사람은 로그인 없이 읽습니다 (${base})\n`
+          + (m.listed
+            ? '지식창고에도 올라가 있습니다 — 둘러보는 누구나 찾을 수 있습니다\n'
+            : '지식창고에는 올라가 있지 않습니다 — 주소를 아는 사람만 봅니다\n')
           + `공개 중에는 편집할 수 없습니다 (비공개로 바꾸면 고칠 수 있습니다)\n`
           + `누르면 링크를 복사합니다\n${url}`,
     };
@@ -678,6 +681,35 @@ export function MapBrowser({
       void load();
     } catch (e) {
       onFlash('⚠ ' + (e instanceof CloudError ? e.message : '이름 변경 실패'));
+    }
+  };
+
+  /**
+   * **지식창고에 올리기 / 내리기** (2026-09-18).
+   *
+   * 올릴 때 퍼블리싱 등록·공개가 아직이면 **서버가 함께 처리한다**
+   * (`publish.service` setListed) — 화면이 "먼저 퍼블리싱하세요" 를
+   * 안내하지 않는 이유다. 사용자가 우리 내부 순서를 외울 이유가 없다.
+   *
+   * ★ **올리기에는 확인을 받는다.** 공개 범위가 넓어지는 쪽이고, 게다가
+   *   비공개(보관)였다면 여기서 열린다 — 누른 사람이 그 사실을 알아야 한다.
+   *   내리기는 목록에서 빠질 뿐이라(링크는 살아 있다) 묻지 않는다.
+   */
+  const toggleListed = async (m: MapListItem) => {
+    const on = !m.listed;
+    if (on && !window.confirm(
+      `“${m.title || '제목 없음'}” 을 지식창고에 올릴까요?\n\n`
+      + '둘러보는 누구나 이 맵을 찾을 수 있게 됩니다.\n'
+      + '아직 퍼블리싱하지 않았다면 주소를 만들어 함께 공개합니다.',
+    )) return;
+    try {
+      await cloudApi.setMapListed(m.mapId, on);
+      onFlash(on
+        ? '📚 지식창고에 올렸습니다 — 홈페이지 [지식창고]에서 보입니다.'
+        : '지식창고에서 내렸습니다 — 목록에서만 빠집니다. 링크는 그대로 열립니다.');
+      void load();
+    } catch (e) {
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '지식창고 설정을 바꾸지 못했습니다'));
     }
   };
 
@@ -1315,9 +1347,36 @@ export function MapBrowser({
               )}
               {!r.map.shared && (
                 <>
-                  <button data-testid="browser-map-share" style={iconBtn}
-                    title="공유 — 참여자 초대 · 소유권 넘기기 (맵을 열지 않아도 됩니다)" aria-label="공유"
-                    onClick={() => setShareMap(r.map)}><I.Share size={15} /></button>
+                  {/* ★ **퍼블리싱된 맵에는 공유·폴더 이동을 두지 않는다**
+                      (2026-09-18 사용자 지적).
+                      · 공유 — 퍼블리싱은 단독맵만인데(e2e202) 참여자를 넣으면
+                        협업맵이 된다. 게다가 공개 중에는 편집이 잠겨 있어
+                        함께 고칠 것이 없다.
+                      · 폴더 이동 — 등록된 맵은 어느 폴더에도 안 보이고
+                        [퍼블리싱] 자리에 있다. 눌러도 화면이 그대로라
+                        "안 먹었나" 를 겪는다. 취소하면 원래 폴더로 돌아간다.
+                      그 자리에는 **지식창고 토글**이 선다. */}
+                  {r.map.publishId ? (
+                    r.map.listed === undefined ? (
+                      // 이 서버는 지식창고를 모른다(칸 없음) — 그리지 않는다
+                      <span aria-hidden style={actionGap} />
+                    ) : (
+                      <button
+                        data-testid="browser-map-listed"
+                        aria-pressed={r.map.listed}
+                        style={{ ...iconBtn, color: r.map.listed ? t.primary : undefined }}
+                        title={r.map.listed
+                          ? '지식창고에서 내리기 — 목록에서만 빠집니다. 링크는 그대로 살아 있습니다'
+                          : '지식창고에 올리기 — 둘러보는 누구나 찾을 수 있게 됩니다'}
+                        aria-label={r.map.listed ? '지식창고에서 내리기' : '지식창고에 올리기'}
+                        onClick={() => void toggleListed(r.map)}
+                      ><I.Library size={15} /></button>
+                    )
+                  ) : (
+                    <button data-testid="browser-map-share" style={iconBtn}
+                      title="공유 — 참여자 초대 · 소유권 넘기기 (맵을 열지 않아도 됩니다)" aria-label="공유"
+                      onClick={() => setShareMap(r.map)}><I.Share size={15} /></button>
+                  )}
                   {/* 퍼블리싱은 **단독맵만** (e2e202 사용자 결정) — 협업맵에는 버튼을 두지 않는다 */}
                   {r.map.kind !== 'collab' ? (
                     <button data-testid="browser-map-publish" style={iconBtn}
@@ -1328,9 +1387,13 @@ export function MapBrowser({
                   )}
                   <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
                     onClick={() => void renameMap(r.map)}><I.Pencil size={15} /></button>
-                  <button data-testid="browser-map-move" style={iconBtn}
-                    title="다른 폴더로 이동" aria-label="다른 폴더로 이동"
-                    onClick={() => setMoving(r.map)}><I.FolderMove size={15} /></button>
+                  {r.map.publishId ? (
+                    <span aria-hidden style={actionGap} />
+                  ) : (
+                    <button data-testid="browser-map-move" style={iconBtn}
+                      title="다른 폴더로 이동" aria-label="다른 폴더로 이동"
+                      onClick={() => setMoving(r.map)}><I.FolderMove size={15} /></button>
+                  )}
                   <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제" aria-label="삭제"
                     onClick={() => void deleteMap(r.map)}><I.Trash size={15} /></button>
                 </>

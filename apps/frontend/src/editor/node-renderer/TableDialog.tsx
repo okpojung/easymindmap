@@ -206,6 +206,16 @@ export function TableDialog({
   const [mdError, setMdError] = useState<string | null>(null);
   const firstRef = useRef<HTMLInputElement | null>(null);
   const mdRef = useRef<HTMLTextAreaElement | null>(null);
+  // 커서가 있는 셀 — 행·열 추가/삭제의 기준 (r=-1 은 머리글). 2026-09-17
+  // 사용자 요청: +행 = 커서 행 아래, −행 = 커서 행, +열 = 커서 열 오른쪽, −열 = 커서 열
+  const [cursor, setCursor] = useState<{ r: number; c: number }>({ r: -1, c: 0 });
+  const gridRef = useRef<HTMLTableElement | null>(null);
+  const focusCell = (r: number, c: number) => {
+    window.setTimeout(() => {
+      const el = gridRef.current?.querySelector<HTMLInputElement>(`[data-table-cell="${r + 1}x${c + 1}"]`);
+      el?.focus();
+    }, 0);
+  };
 
   useEffect(() => { window.setTimeout(() => firstRef.current?.focus(), 0); }, []);
 
@@ -214,12 +224,35 @@ export function TableDialog({
     if (r < 0) setHeaders(headers.map((h, i) => (i === c ? v : h)));
     else setRows(rows.map((row, i) => (i === r ? row.map((x, j) => (j === c ? v : x)) : row)));
   };
-  const addRow = () => setRows([...rows, Array(cols).fill('')]);
-  const delRow = () => { if (rows.length > 1) setRows(rows.slice(0, -1)); };
-  const addCol = () => { setHeaders([...headers, `열${cols + 1}`]); setRows(rows.map((r) => [...r, ''])); };
+  // 커서 행 아래에 행 추가 (머리글에 있으면 맨 위 데이터 행으로)
+  const addRow = () => {
+    const at = Math.min(rows.length, cursor.r + 1);
+    setRows([...rows.slice(0, at), Array(cols).fill(''), ...rows.slice(at)]);
+    focusCell(at, cursor.c);
+  };
+  // 커서 행 삭제 (머리글·마지막 남은 데이터 행은 지우지 않는다)
+  const canDelRow = cursor.r >= 0 && rows.length > 1;
+  const delRow = () => {
+    if (!canDelRow) return;
+    setRows(rows.filter((_, i) => i !== cursor.r));
+    const nr = Math.min(cursor.r, rows.length - 2);
+    setCursor({ r: nr, c: cursor.c }); focusCell(nr, cursor.c);
+  };
+  // 커서 열 오른쪽에 열 추가
+  const addCol = () => {
+    const at = Math.min(cols, cursor.c + 1);
+    setHeaders([...headers.slice(0, at), `열${cols + 1}`, ...headers.slice(at)]);
+    setRows(rows.map((r) => [...r.slice(0, at), '', ...r.slice(at)]));
+    setCursor({ r: cursor.r, c: at }); focusCell(cursor.r, at);
+  };
+  // 커서 열 삭제 (2열은 남긴다)
+  const canDelCol = cols > TABLE_MIN_COLS;
   const delCol = () => {
-    if (cols <= TABLE_MIN_COLS) return;
-    setHeaders(headers.slice(0, -1)); setRows(rows.map((r) => r.slice(0, -1)));
+    if (!canDelCol) return;
+    setHeaders(headers.filter((_, i) => i !== cursor.c));
+    setRows(rows.map((r) => r.filter((_, i) => i !== cursor.c)));
+    const nc = Math.min(cursor.c, cols - 2);
+    setCursor({ r: cursor.r, c: nc }); focusCell(cursor.r, nc);
   };
 
   // 격자 → MD (원문 보기로 전환)
@@ -278,6 +311,7 @@ export function TableDialog({
       data-table-cell={`${r + 1}x${c + 1}`}
       value={value}
       onChange={(e) => setCell(r, c, e.target.value)}
+      onFocus={() => setCursor({ r, c })}
       placeholder={isHead ? '머리글' : ''}
       style={{
         width: '100%', minWidth: 72, boxSizing: 'border-box', padding: '5px 8px',
@@ -331,7 +365,7 @@ export function TableDialog({
         {view === 'grid' ? (
           <>
             <div style={{ overflow: 'auto', maxHeight: '55vh', border: `1px solid ${t.border}`, borderRadius: 8 }}>
-              <table data-testid="table-dialog-grid" style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <table ref={gridRef} data-testid="table-dialog-grid" style={{ borderCollapse: 'collapse', width: '100%' }}>
                 <thead>
                   <tr style={{ background: t.surfaceAlt ?? 'rgba(0,0,0,0.05)' }}>
                     {headers.map((h, c) => (
@@ -355,12 +389,12 @@ export function TableDialog({
               </table>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              {smallBtn('+ 행', addRow, '맨 아래에 행 추가')}
-              {smallBtn('− 행', delRow, '맨 아래 행 삭제', rows.length <= 1)}
-              {smallBtn('+ 열', addCol, '맨 오른쪽에 열 추가')}
-              {smallBtn('− 열', delCol, '맨 오른쪽 열 삭제', cols <= TABLE_MIN_COLS)}
+              {smallBtn('+ 행', addRow, '커서가 있는 행 아래에 행 추가')}
+              {smallBtn('− 행', delRow, canDelRow ? '커서가 있는 행 삭제' : '머리글 행과 마지막 데이터 행은 지울 수 없습니다', !canDelRow)}
+              {smallBtn('+ 열', addCol, '커서가 있는 열 오른쪽에 열 추가')}
+              {smallBtn('− 열', delCol, canDelCol ? '커서가 있는 열 삭제' : '열은 2개 이상이어야 합니다', !canDelCol)}
               <span style={{ fontSize: 11.5, color: t.textMuted, marginLeft: 6 }}>
-                셀 안의 | 는 ¦ 로 바뀝니다 · Tab 으로 다음 칸
+                커서 셀 기준 · 셀 안의 | 는 ¦ 로 바뀝니다 · Tab 으로 다음 칸
               </span>
             </div>
           </>

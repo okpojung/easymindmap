@@ -284,16 +284,20 @@ export class MapsService {
     const withPublish = await tableReady(this.db, 'public.published_maps');
     const withVis = withPublish
       && await columnReady(this.db, 'public.published_maps', 'visibility');
+    // 지식창고에 올라가 있는가 (2026-09-18) — 문서함 행이 그 상태를 그린다.
+    // 칸이 없는 서버에서는 통째로 빼고, 화면은 토글을 그리지 않는다.
+    const withListed = withPublish
+      && await columnReady(this.db, 'public.published_maps', 'listed');
     const pubJoin = withPublish
       ? `LEFT JOIN LATERAL (
-             SELECT pm.publish_id${withVis ? ', pm.visibility' : ''}
+             SELECT pm.publish_id${withVis ? ', pm.visibility' : ''}${withListed ? ', pm.listed' : ''}
                FROM public.published_maps pm
               WHERE pm.map_id = p.id AND pm.unpublished_at IS NULL
               ORDER BY pm.published_at DESC LIMIT 1
            ) pub ON TRUE`
       : '';
     const pubCols = withPublish
-      ? `, pub.publish_id${withVis ? ', pub.visibility' : ''}` : '';
+      ? `, pub.publish_id${withVis ? ', pub.visibility' : ''}${withListed ? ', pub.listed' : ''}` : '';
 
     const [list, count] = await Promise.all([
       this.db.query<MapRow & {
@@ -309,6 +313,7 @@ export class MapsService {
         saved_at?: Date | null;
         publish_id?: string | null;
         visibility?: string | null;
+        listed?: boolean | null;
       }>(
         `${hitsCte}${hitsCte ? ', p AS (' : 'WITH p AS ('}
            SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
@@ -361,6 +366,10 @@ export class MapsService {
         publishId: m.publish_id ?? null,
         // 그 등록의 상태 — 칸이 없는 서버에서는 등록된 것이 곧 공개다
         publishVisibility: m.publish_id ? (m.visibility ?? 'public') : null,
+        // 지식창고에 올라가 있는가 (2026-09-18). **칸이 없는 서버에서는
+        // `undefined`** 로 둔다 — false(내려가 있다)와 "이 서버는 지식창고를
+        // 모른다"는 다른 사실이고, 화면은 뒤쪽이면 토글을 아예 안 그린다.
+        listed: m.publish_id ? (m.listed ?? undefined) : undefined,
       })),
       total: Number(count.rows[0]?.total ?? 0),
     };

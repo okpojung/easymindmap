@@ -57,24 +57,7 @@ export function DialogFrame({
             <div style={{ fontSize: 11.5, color: t.textMuted, lineHeight: 1.6, marginTop: 4 }}>{subtitle}</div>
           )}
         </div>
-        <button
-          type="button"
-          data-testid={`${testId}-x`}
-          title="닫기"
-          aria-label="닫기"
-          onClick={close}
-          disabled={closeDisabled}
-          style={{
-            position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: 7,
-            border: 'none', background: 'transparent', color: t.textMuted,
-            cursor: closeDisabled ? 'default' : 'pointer', opacity: closeDisabled ? 0.4 : 1,
-            fontSize: 18, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = t.surfaceAlt; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          ×
-        </button>
+        <DialogXButton t={t} testId={`${testId}-x`} onClose={close} disabled={closeDisabled} />
         {/* 본문 — 여기만 스크롤 */}
         <div data-testid={`${testId}-body`} style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: '4px 20px 12px' }}>
           {children}
@@ -99,5 +82,49 @@ export function DialogCloseButton({ t, onClick, testId, label = '닫기' }: { t:
         color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
       }}
     >{label}</button>
+  );
+}
+
+/**
+ * 팝업 오른쪽 위의 **닫기 ×** (coding-conventions §5-1-7).
+ *
+ * `DialogFrame` 이 쓰는 그 버튼을 **따로 내보낸다** (2026-09-18). 아직
+ * `DialogFrame` 으로 옮기지 못한 팝업들(퍼블리싱·저장·폴더 고르기·표·
+ * 코드·다중 추가…)이 **같은 × 를 같은 자리에** 두게 하려는 것이다 —
+ * 손으로 그리면 팝업마다 크기·색·위치가 조금씩 달라지고, 그것이
+ * §5-1-6("같은 개념은 어디서나 같은 모습") 위반이다.
+ *
+ * ★ 두는 쪽이 지킬 것: **감싸는 패널에 `position: 'relative'`** 가 있어야
+ *   하고, 제목 줄의 오른쪽 여백을 40px 쯤 비워야 글자가 × 밑으로
+ *   들어가지 않는다.
+ */
+export function DialogXButton({
+  t, testId, onClose, disabled,
+}: {
+  t: ThemeTokens;
+  /** `{대화상자 testId}-x` 로 준다 */
+  testId: string;
+  onClose: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      title="닫기"
+      aria-label="닫기"
+      onClick={() => { if (!disabled) onClose(); }}
+      disabled={disabled}
+      style={{
+        position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: 7,
+        border: 'none', background: 'transparent', color: t.textMuted,
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
+        fontSize: 18, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = t.surfaceAlt; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      ×
+    </button>
   );
 }

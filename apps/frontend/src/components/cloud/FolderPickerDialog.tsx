@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { FolderItem } from '@/services/cloud/apiClient';
 import { flattenFolders } from './folderTree';
+import { DialogXButton } from '@/components/ui/DialogFrame';
 
 export function FolderPickerDialog({
   t, title, folders, currentFolderId, disabledIds, onPick, onCancel,
@@ -53,12 +54,14 @@ export function FolderPickerDialog({
         onClick={(e) => e.stopPropagation()}
         data-testid="folder-picker"
         style={{
+          position: 'relative',
           width: 'min(420px, 92vw)', maxHeight: '70vh', display: 'flex', flexDirection: 'column',
           background: t.surface, color: t.text, border: `1px solid ${t.border}`,
           borderRadius: 12, padding: 18, boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
         }}
       >
-        <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>{title}</div>
+        <DialogXButton t={t} testId="folder-picker-x" onClose={onCancel} />
+        <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4, paddingRight: 34 }}>{title}</div>
         <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 12 }}>
           옮길 폴더를 고르세요.
         </div>

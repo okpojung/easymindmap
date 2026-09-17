@@ -17,6 +17,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { cloudApi, CloudError, type FolderItem } from '@/services/cloud/apiClient';
 import { saveNewMap } from '@/services/cloud/mapSession';
 import { flattenFolders } from './folderTree';
+import { DialogXButton } from '@/components/ui/DialogFrame';
 
 export function SaveMapDialog({
   t, defaultTitle, onSaved, onCancel, note,
@@ -99,12 +100,14 @@ export function SaveMapDialog({
         onClick={(e) => e.stopPropagation()}
         data-testid="save-map-dialog"
         style={{
+          position: 'relative',
           width: 'min(460px, 92vw)', background: t.surface, color: t.text,
           border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
           boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>맵 저장</div>
+        <DialogXButton t={t} testId="save-map-dialog-x" onClose={onCancel} />
+        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4, paddingRight: 34 }}>맵 저장</div>
         <div style={{ fontSize: 12, color: t.textMuted, lineHeight: 1.6, marginBottom: 16 }}>
           {note ?? '저장할 폴더와 맵 이름을 정해 주세요. 다음부터는 묻지 않고 이 이름으로 저장됩니다.'}
         </div>

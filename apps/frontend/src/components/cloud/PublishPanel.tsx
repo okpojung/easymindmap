@@ -20,6 +20,7 @@ import { buildSilhouette } from '@/export/silhouette';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
+import { DialogXButton } from '@/components/ui/DialogFrame';
 
 /** 퍼블리싱 주소 — 브라우저 주소는 `/p/{publishId}` 다 (API 경로와 다르다) */
 export function publicMapUrl(publishId: string): string {
@@ -233,12 +234,14 @@ export function PublishPanel(
         onClick={(e) => e.stopPropagation()}
         data-testid="publish-panel"
         style={{
+          position: 'relative',
           width: 'min(500px, 94vw)', background: t.surface, color: t.text,
           border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
           boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
         }}
       >
-        <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>
+        <DialogXButton t={t} testId="publish-panel-x" onClose={onClose} />
+        <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4, paddingRight: 34 }}>
           🔗 퍼블리싱 — 링크로 공유
         </div>
         <div style={{ fontSize: 12, color: t.textSubtle, marginBottom: 14 }}>

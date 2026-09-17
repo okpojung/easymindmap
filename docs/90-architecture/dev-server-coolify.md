@@ -248,6 +248,10 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
 > **그래서 지금은 이 공개 도메인이 dev 백엔드를 본다**(`api-dev`·
 > `pro-dev`). 운영 백엔드가 생기면 바꾸는 것은 **환경변수 세 줄**
 > (③)과 api 의 `CORS_ORIGIN`(⑥)뿐이고, 도메인·컨테이너는 그대로다.
+>
+> ✅ **2026-09-17 배포 완료** — Coolify 앱 이름 `easymindmap-www`
+> (프로젝트 `easymindmap-dev` ▸ `development`, 서버 `localhost`).
+> 사용자가 `https://www.easymindmap.org` 가 열리는 것을 확인했다.
 
 **① DNS — 등록대행사 콘솔에서 A 레코드** (`infra-architecture.md` §7.1)
 
@@ -311,6 +315,27 @@ dig +short www.easymindmap.org
 | Ports Exposes | **`80`** | **누락 시 502** — Traefik 이 대상 포트를 모른다 |
 | Is it a static site? | **끄기** | 우리 `nginx.conf` 가 안 쓰인다 → `/p/` 프록시와 `/site-assets/` 가 죽는다 |
 | Publish Directory · Install/Build/Start Command | **비움** | Dockerfile 이 다 한다 |
+
+> ### ★ 만들고 나면 **기본값 둘을 반드시 고친다** (2026-09-17 실제 설치)
+>
+> 앱을 만드는 화면에는 저장소·브랜치·Build Pack·Base directory 만 있고,
+> 나머지는 **만든 뒤** 설정 화면에서 고친다. 기본값이 우리와 다르다.
+>
+> | 자리 | 기본값 | 고칠 값 |
+> |---|---|---|
+> | Build pipeline ▸ **Dockerfile location** | `/Dockerfile` | **`/apps/site/Dockerfile`** — 저장소 루트에 Dockerfile 이 **없어서** 그대로 두면 빌드가 실패한다 |
+> | Networking ▸ **Ports exposes** | `3000` | **`80`** — 우리 컨테이너는 nginx 다 |
+> | Access ▸ Public access | `…sslip.io` 자동 도메인 | **`http://www.easymindmap.org`** ([Manage Domains]) |
+>
+> ★★ **그리고 Domains 화면의 `Internal port` 를 다시 본다.** 도메인을
+> 추가할 때의 Ports exposes 값(`3000`)이 **도메인별 덮어쓰기로 굳는다** —
+> Ports exposes 를 80 으로 고쳐도 그 칸은 3000 인 채로 남아 **502** 가
+> 난다. 도메인 줄의 톱니바퀴에서 **80 으로 바꾸거나 비운다**(비우면 앱의
+> Ports exposes 를 따른다). 이번 설치에서 실제로 걸렸다.
+>
+> 저장하면 아래 **Active labels** 의 `loadbalancer.server.port` 와
+> `caddy_0…{{upstreams …}}` 가 80 으로 따라 바뀐다. 그대로면
+> **[Reset To Defaults]** 로 다시 생성한다 — 라벨이 진짜 라우팅이다.
 | Domains | **`http://www.easymindmap.org`** | ★ **`https://` 를 쓰지 않는다** (§5.4 — SSL 종단은 NPM 한 곳). apex 는 여기 적지 않는다 — ⑤에서 리디렉트한다 |
 
 **③ 환경변수 — 빌드용 2개 · 런타임용 1개**
@@ -459,7 +484,8 @@ curl -s -o /dev/null -D- -H 'Origin: https://www.easymindmap.org' \
 | 증상 | 어디를 본다 |
 |---|---|
 | 도메인이 아예 안 뜬다 | ① DNS (`dig +short`) → ⑤ Proxy Host 가 있는가 |
-| **502** | ② `Ports Exposes=80` 이 비었다. 또는 ⑤ Forward 를 컨테이너 포트로 잡았다(Traefik `:80` 이어야 한다) |
+| **502** | ② `Ports exposes` 가 80 이 아니다(기본 `3000`). **그리고 Domains 화면의 `Internal port` 도 따로 본다** — 도메인 추가 시점 값이 굳어 있다. 또는 ⑤ Forward 를 컨테이너 포트로 잡았다(Traefik `:80` 이어야 한다) |
+| **빌드가 "Dockerfile not found"** | ② Dockerfile location 이 기본값 `/Dockerfile` 이다 — 저장소 루트에는 없다. `/apps/site/Dockerfile` |
 | Basic 인증 팝업이 뜬다 | ⑤ Access List 가 걸렸다 → `Publicly Accessible` |
 | 화면은 뜨는데 **지식창고만 비었다 / "불러오지 못했습니다"** | ⑥ api 의 `CORS_ORIGIN`. 그다음 ③ `VITE_API_URL` 이 **Buildtime** 인가 |
 | 지식창고는 되는데 **맵을 열면 502·빈 화면** | ③ `APP_ORIGIN` (런타임) — 앱 주소가 맞는가 |

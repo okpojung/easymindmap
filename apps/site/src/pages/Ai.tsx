@@ -39,8 +39,8 @@ export default function Ai() {
           <article>
             <h3>② AI 가 다루는 것은 표준 텍스트다</h3>
             <p>
-              AI 에게 전용 포맷을 가르치지 않습니다. 주고받는 것은 <b>EMM
-              Markdown</b> — 견출로 계층을 만드는 보통의 GFM 입니다. 선언이 없어도
+              AI 에게 전용 포맷을 가르치지 않습니다. 주고받는 것은 <b>mmd
+              (Mindmap Markdown)</b> — 견출로 계층을 만드는 보통의 GFM 입니다. 선언이 없어도
               유효하므로, LLM 이 <b>평범한 Markdown 만 내놓아도</b> 맵이 됩니다.
             </p>
           </article>
@@ -73,7 +73,7 @@ export default function Ai() {
             <tbody>
               <tr><td>create_map</td><td>“지금 내용 맵으로 저장해 줘”</td><td>대화 내용을 <b>새 맵</b>으로 문서함에 저장</td></tr>
               <tr><td>append_to_map</td><td>“‘다음 회의 &gt; 안건’ 아래에 붙여 줘”</td><td>그 노드 아래에 <b>가지를 덧붙임</b></td></tr>
-              <tr><td>get_map</td><td>“지난주 회의 맵 읽어 줘”</td><td>맵 한 개를 EMM Markdown 으로 읽음 (편집 잠금 안 만듦)</td></tr>
+              <tr><td>get_map</td><td>“지난주 회의 맵 읽어 줘”</td><td>맵 한 개를 mmd 로 읽음 (편집 잠금 안 만듦)</td></tr>
               <tr><td>list_maps</td><td>“기획 폴더에 뭐 있어?”</td><td>내 맵·공유받은 맵 목록 (이름·폴더·수정일·노드 수)</td></tr>
               <tr><td>get_open_map</td><td>“지금 열려 있는 맵에”</td><td>앱에서 보고 있는 맵과 고른 노드의 자리를 알려 줌</td></tr>
               <tr><td>check_items</td><td>“끝난 항목 체크해 줘”</td><td>체크박스만 체크/해제 (<code>[ ]</code> ↔ <code>[x]</code>)</td></tr>

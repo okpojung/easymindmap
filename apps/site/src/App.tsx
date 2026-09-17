@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import Home from './pages/Home';
 import FunctionPage from './pages/Function';
 import Ai from './pages/Ai';
-import Emm from './pages/Emm';
+import Mmd from './pages/Mmd';
 import Library from './pages/Library';
 import { APP_URL } from './config';
 
 /**
  * 길잡이 — **라우터 라이브러리를 쓰지 않는다** (2026-09-13).
  *
- * 길이 몇 개뿐이고(`/`·`/function`·`/ai`·`/emm`·`/library`), `/p/{id}` 는
+ * 길이 몇 개뿐이고(`/`·`/function`·`/ai`·`/mmd`(옛 `/emm` 도 같은 곳)·`/library`), `/p/{id}` 는
  * nginx 가 앱으로 넘기므로 이 번들에 오지 않는다. 중첩 경로나
  * 파라미터가 생기면 그때
  * 넣는다 — 지금 넣으면 첫 화면에 쓰지도 않을 코드가 실린다.
@@ -54,7 +54,8 @@ export function Link(
 const PAGES: Record<string, () => JSX.Element> = {
   '/function': FunctionPage,
   '/ai': Ai,
-  '/emm': Emm,
+  '/mmd': Mmd,
+  '/emm': Mmd, // 옛 주소 — 2026-09-17 용어 통일(mmd) 전 링크 호환
   '/library': Library,
 };
 
@@ -70,7 +71,7 @@ export default function App() {
             <Link to="/">홈</Link>
             <Link to="/function">기능</Link>
             <Link to="/ai">AI 연동</Link>
-            <Link to="/emm">EMM 표준</Link>
+            <Link to="/mmd">mmd 표준</Link>
             <Link to="/library">지식창고</Link>
           </nav>
           <span className="spacer" />
@@ -84,7 +85,7 @@ export default function App() {
           <span className="spacer" />
           <Link to="/function">기능</Link>
           <Link to="/ai">AI 연동</Link>
-          <Link to="/emm">EMM 표준</Link>
+          <Link to="/mmd">mmd 표준</Link>
           <a href={APP_URL}>앱 열기</a>
         </div>
       </footer>

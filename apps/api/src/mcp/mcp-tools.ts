@@ -125,7 +125,7 @@ export const TOOL_DEFS: McpToolDef[] = [
     name: 'get_map',
     title: 'EasyMindMap 맵 한 개를 마크다운으로 읽기',
     description:
-      '맵 한 개의 내용을 **EMM 마크다운**(`# 중심 주제` · `## 가지` · `### 하위 가지` … 견출 구조)으로 ' +
+      '맵 한 개의 내용을 **mmd 마크다운**(Mindmap Markdown — `# 중심 주제` · `## 가지` · `### 하위 가지` … 견출 구조)으로 ' +
       '돌려준다. 대화에서 기존 맵을 읽거나, 이어 쓰거나, 고친 결과를 `create_map` 으로 ' +
       '새 맵으로 저장할 때 쓴다. `map_id` 는 `list_maps` 가 준 값이다. ' +
       '이 도구는 읽기만 한다 — 맵을 바꾸지 않는다.',
@@ -432,7 +432,7 @@ export class McpToolsService {
     const role = docRes.role && docRes.role !== 'owner' ? ` · 내 권한: ${docRes.role}` : '';
     return text(
       `맵 "${docRes.title}" (id: ${docRes.mapId} · 수정: ${fmtDate(docRes.updatedAt)} · 노드 ${emm.nodeCount}개${imgs}${role})\n` +
-      `아래가 EMM 마크다운 본문이다. 고쳐서 새 맵으로 저장하려면 create_map 에, 어느 노드 아래에 덧붙이려면 append_to_map(parent: 노드 이름 또는 "가지 > 하위") 에 넣는다.\n` +
+      `아래가 mmd 마크다운 본문이다. 고쳐서 새 맵으로 저장하려면 create_map 에, 어느 노드 아래에 덧붙이려면 append_to_map(parent: 노드 이름 또는 "가지 > 하위") 에 넣는다.\n` +
       `\n${body}${cut}`,
     );
   }

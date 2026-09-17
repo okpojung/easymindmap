@@ -27,7 +27,7 @@ import { countMapNodes } from '@/export/mapMeta';
 export const OUTPUT_DIRECTIVE =
   '중요: 답변 전체를 반드시 ~~~ 로 시작해 ~~~ 로 끝나는 **코드블록 ' +
   '하나** 안에 출력하라 (물결 3개 펜스 — 백틱 ``` 이 아니라 ~~~ 다. ' +
-  'EMM 안의 ``` 코드 펜스와 충돌하지 않기 위함). 코드블록 앞뒤에 ' +
+  'mmd 안의 ``` 코드 펜스와 충돌하지 않기 위함). 코드블록 앞뒤에 ' +
   '설명·인사 등 다른 말은 쓰지 마라.';
 
 export function buildWebAiPrompt(opts: {
@@ -179,7 +179,7 @@ export function answerFromPaste(pasted: string): AnswerMapOk | AnswerMapFail {
 /** 파싱 실패 시 AI 채팅창에 다시 보낼 요청 문구 (⧉ 복사 버튼용) */
 export const RETRY_REQUEST_TEXT =
   '방금 답변 전체를 다른 말 없이, ~~~ 로 시작해 ~~~ 로 끝나는 코드블록 ' +
-  '하나 안에 EMM Markdown 으로 다시 출력해줘 (물결 3개 펜스 — 백틱 아님). ' +
+  '하나 안에 mmd(Mindmap Markdown)로 다시 출력해줘 (물결 3개 펜스 — 백틱 아님). ' +
   '중심 주제는 "# 제목" 한 줄, 하위 항목은 "##/###" 또는 "-" 목록으로.';
 
 /**
@@ -251,7 +251,7 @@ export const AI_SHORTCUTS: {
     // 주소로 넘긴 질문이 채팅창에 들어가지 않는 것을 확인했다
     // (2026-08-05). 그래서 프리필을 걸지 않고 **주제를 클립보드에**
     // 넣어 준다 (열린 창에서 Ctrl+V 한 번).
-    tip: 'EasyMindMap 전용 ChatGPT 앱을 엽니다 — EMM 규칙이 안에 있어 ① 프롬프트 없이 주제만 붙여넣으면 됩니다. 주제는 클립보드에 복사해 둡니다 (ChatGPT 로그인 필요)',
+    tip: 'EasyMindMap 전용 ChatGPT 앱을 엽니다 — mmd 규칙이 안에 있어 ① 프롬프트 없이 주제만 붙여넣으면 됩니다. 주제는 클립보드에 복사해 둡니다 (ChatGPT 로그인 필요)',
   },
 ];
 

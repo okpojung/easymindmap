@@ -84,7 +84,7 @@ export const FUNCTIONS: FunctionGroup[] = [
     lead: '갇히지 않습니다. 파일은 언제나 표준 Markdown 입니다.',
     items: [
       'Markdown 불러오기 — 견출·표·코드·체크리스트째',
-      'Markdown 내보내기 (EMM) — 무손실 왕복',
+      'Markdown 내보내기 (mmd) — 구조·내용·레이아웃 정책 왕복',
       'HTML 내보내기 — 인터넷 없이 열리는 뷰어 (접기·줌·검색 됨)',
       '클라우드 문서함 — 로그인하면 어디서나 이어서',
       '버전 기록과 되돌리기 · 오래 보관(별표)',

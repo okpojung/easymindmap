@@ -6,6 +6,7 @@
 // 셀의 인라인 마커(**굵게** 등)는 제거한 표시 텍스트로 복사한다.
 
 import { stripInlineMarks } from '@/editor/node-renderer/inlineMarks';
+import { splitPipeCells } from '@/editor/node-renderer/mdTable';
 
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -66,6 +67,6 @@ export function pipeTextToTable(text: string): { headers: string[]; rows: string
     .filter((r) => r.trim() && !/^[\s|:\-]+$/.test(r))
     .map((r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, ''));
   if (!lines.length) return null;
-  const cells = (r: string) => r.split('|').map((c) => c.trim());
+  const cells = (r: string) => splitPipeCells(r); // GFM `\\|` 이스케이프 존중
   return { headers: cells(lines[0]), rows: lines.slice(1).map(cells) };
 }

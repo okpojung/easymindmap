@@ -86,6 +86,24 @@ const MD_LINK_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 // 표 구분선 행 — | --- | :--: | 등
 const TABLE_SEP_RE = /^[\s|:\-]+$/;
 
+// 파이프 행 → 셀. GFM 대로 `\\|` 는 열 구분이 아니라 셀 안의 `|` 이며, 원문
+// 그대로(`\\|`) 남긴다 — 앱의 표 파서가 표시할 때 `|` 로 되돌린다 (2026-09-17)
+function pipeCellsKeepEscape(line: string): string[] {
+  let t = line.trim();
+  if (t.startsWith('|')) t = t.slice(1);
+  if (t.endsWith('|') && !t.endsWith('\\|')) t = t.slice(0, -1);
+  const out: string[] = [];
+  let cur = '';
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (ch === '\\' && t[i + 1] === '|') { cur += '\\|'; i++; continue; }
+    if (ch === '|') { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
 // 노드 사진이 되는 src — 원격 http(s) 또는 내장 data:image/*
 // 원격(http) · 내장(data:image) · **ZIP 의 files/ 상대 경로**(우리 내보내기 —
 // 2026-09-15, 메타데이터 주석 폐기 뒤 본문이 사진의 유일한 출처다. 앱의
@@ -545,17 +563,20 @@ export function parseMarkdownToMap(
     // 그 콜론을 다시 구분선에 쓴다.
     const rows = tableBuf
       .filter((r) => !TABLE_SEP_RE.test(r) || r.includes(':'))
-      .map((r) =>
-        r.replace(/^\s*\|/, '').replace(/\|\s*$/, '')
-          .split('|').map((c) => c.trim()).join(' | '),
-      )
+      .map((r) => pipeCellsKeepEscape(r).join(' | '))
       .filter((r) => r.trim());
     tableBuf = [];
     if (!rows.length) return;
     // 표 — 기본(note)은 "표 노트", blockPlacement 'node'면 **각각의
     // 자식 노드**로 분리 (격자 렌더 — markmap 파리티, 2026-07-31)
     const tableText = rows.join('\n');
-    if (!attachBlockChild(tableText, true)) {
+    // 셀 안의 `\|`(GFM 이스케이프)는 stripLinks 의 일반 백슬래시 해제(`\.`·`\-`)에
+    // 풀리면 열이 늘어난다 — 자리표시로 감싸 링크 추출을 지나게 한 뒤 되돌린다
+    const PIPE = '\u0000PIPE\u0000';
+    const child = attachBlockChild(tableText.replace(/\\\|/g, PIPE), true);
+    if (child) {
+      child.text = child.text.split(PIPE).join('\\|');
+    } else {
       addNote({ id: nid(), type: 'table', text: tableText });
     }
   };

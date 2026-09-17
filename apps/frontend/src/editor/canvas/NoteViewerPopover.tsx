@@ -9,6 +9,7 @@
 // 조절. (편집은 좌측 노트·태그 탭에서)
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { splitPipeCells } from '@/editor/node-renderer/mdTable';
 import { useDocumentStore } from '@/stores/documentStore';
 import { parseInlineMarks, stripInlineMarks } from '@/editor/node-renderer/inlineMarks';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
@@ -194,7 +195,7 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
         <tbody>
           {rows.map((row, r) => (
             <tr key={r}>
-              {row.split('|').map((cell, c) =>
+              {splitPipeCells(row).map((cell, c) =>
                 r === 0 ? (
                   <th key={c} style={{
                     border: `1px solid ${t.border}`, padding: '4px 7px',

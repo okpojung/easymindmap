@@ -15,7 +15,7 @@ import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { parseInlineMarks, CODE_BG, CODE_TEXT } from './inlineMarks';
 import { parseMdCode } from './mdCode';
-import { parseMdTable } from './mdTable';
+import { parseMdTable, splitPipeCells } from './mdTable';
 import { parseCheckLine, toggleCheckInText } from './mdCheck';
 import { CodeBlockDialog, replaceCodeBlock } from './CodeBlockDialog';
 import { TableDialog, replaceMdTable, buildMdTable } from './TableDialog';
@@ -104,10 +104,7 @@ function isSepRow(line: string): boolean {
   return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c));
 }
 function splitCells(line: string): string[] {
-  let s = line.trim();
-  if (s.startsWith('|')) s = s.slice(1);
-  if (s.endsWith('|')) s = s.slice(0, -1);
-  return s.split('|').map((c) => c.trim());
+  return splitPipeCells(line); // GFM `\\|` 이스케이프 존중
 }
 
 // 노드 본문 리치 렌더 — 아웃라인 행·칸반 카드/헤더 공용.

@@ -2,7 +2,7 @@
 // 왕복하는지 (2026-09-17).   npx tsx src/editor/node-renderer/tableDialog.test.ts
 
 import { buildMdTable, emptyTable, spliceMdTable, replaceMdTable, hasMdTable } from './TableDialog';
-import { parseMdTable } from './mdTable';
+import { parseMdTable, splitPipeCells } from './mdTable';
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
@@ -27,8 +27,11 @@ function check(name: string, got: unknown, want: unknown): void {
 // ② 셀 정리 — '|' 와 줄바꿈은 셀 안에 둘 수 없다
 {
   const md = buildMdTable(['a|b', 'c'], [['x\ny', ' z ']]);
-  check('② | → ¦, 줄바꿈 → 공백, 앞뒤 공백 제거', parseMdTable(md)!.rows[0], ['x y', 'z']);
-  check('② 헤더도 같은 규칙', parseMdTable(md)!.headers, ['a¦b', 'c']);
+  check('② 줄바꿈 → 공백, 앞뒤 공백 제거', parseMdTable(md)!.rows[0], ['x y', 'z']);
+  check('② 셀 안 | 는 원문에 \\| 로 (GFM)', md.split('\n')[0], '| a\\|b | c |');
+  check('② 파서는 \\| 를 | 로 되돌린다', parseMdTable(md)!.headers, ['a|b', 'c']);
+  check('② keepEscape 면 원문 그대로', splitPipeCells('| a\\|b | c |', { keepEscape: true }), ['a\\|b', 'c']);
+  check('② 왕복: build → parse → build 동일', buildMdTable(parseMdTable(md)!.headers, parseMdTable(md)!.rows), md);
 }
 
 // ③ 끼워 넣기 — 줄 경계 보충

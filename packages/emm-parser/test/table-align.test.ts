@@ -55,5 +55,20 @@ const md = '# 제목\n\n## 절\n\n| 항목 | 값 | 비고 |\n|:---|:---:|---:|\n
   check('④ 오른쪽 정렬 한 열만', out.split('\n').filter((l) => /^\|-/.test(l)), ['|---|---:|']);
 }
 
+// ⑤ 셀 안의 `|` — GFM `\|` 이스케이프가 불러오기·내보내기를 지나 그대로 남는다
+{
+  const src = '# 제목\n\n## 절\n\n| 식 | 뜻 |\n|---|---|\n| a \\| b | 또는 |\n';
+  const m = parseEmm(src, 'x', { blockPlacement: 'node' })!;
+  const node = m.branches[0].children![0];
+  check('⑤ 노드 글자에 \\| 유지 (열 2개)', node.text.split('\n'), ['식 | 뜻', 'a \\| b | 또는']);
+  const body = splitNodeBody(node.text);
+  check('⑤ splitNodeBody 도 열 2개·원문 유지', body.blocks[0].rows, [['식', '뜻'], ['a \\| b', '또는']]);
+  const out = buildEmmBody(m, []);
+  check('⑤ 내보내기 원문에 \\|', out.includes('| a \\| b | 또는 |'), true);
+  check('⑤ 두 번 왕복 동일', buildEmmBody(parseEmm(out, 'x', { blockPlacement: 'node' })!, []), out);
+  const n = parseEmm(src, 'x', { blockPlacement: 'note' })!;
+  check('⑤ 표 노트도 같은 규칙', buildEmmBody(n, []).includes('| a \\| b | 또는 |'), true);
+}
+
 if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }
 console.log('\n모두 통과');

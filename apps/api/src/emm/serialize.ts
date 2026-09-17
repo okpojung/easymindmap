@@ -87,11 +87,23 @@ function isNodePipeRow(s: string): boolean {
   return t.length > 1 && t.includes('|') && !NODE_TABLE_SEP_RE.test(t);
 }
 
+// GFM: 셀 안의 `|` 는 `\\|` 로 이스케이프한다 (2026-09-17). 이스케이프를 존중해
+// 셀을 나누되 **원문(`\\|`)은 그대로** 둔다 — 노드 글자·노트 원문은 늘 이스케이프된
+// 형태이고, 화면 쪽(mdTable.ts splitPipeCells)이 표시할 때 `|` 로 되돌린다.
 function nodeRowCells(s: string): string[] {
   let t = s.trim();
   if (t.startsWith('|')) t = t.slice(1);
-  if (t.endsWith('|')) t = t.slice(0, -1);
-  return t.split('|').map((c) => c.trim());
+  if (t.endsWith('|') && !t.endsWith('\\|')) t = t.slice(0, -1);
+  const out: string[] = [];
+  let cur = '';
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (ch === '\\' && t[i + 1] === '|') { cur += '\\|'; i++; continue; }
+    if (ch === '|') { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
 }
 
 export function splitNodeBody(
@@ -235,9 +247,9 @@ function pushTableNote(lines: string[], text: string): void {
   // 노트 표 원문에 남은 구분선 행(정렬 콜론 포함)은 셀 행이 아니다 — 정렬만 읽는다
   const sepRow = all.find((r) => NODE_TABLE_SEP_RE.test(r.trim()) && r.includes('|'));
   const rows = all.filter((r) => !(NODE_TABLE_SEP_RE.test(r.trim()) && r.includes('|')));
-  const aligns = sepRow && rows.length ? sepAligns(sepRow, rows[0].split('|').length) : undefined;
+  const aligns = sepRow && rows.length ? sepAligns(sepRow, nodeRowCells(rows[0]).length) : undefined;
   rows.forEach((row, i) => {
-    const cells = row.split('|').map((c) => c.trim());
+    const cells = nodeRowCells(row);
     lines.push(`| ${cells.join(' | ')} |`);
     if (i === 0) lines.push(`|${cells.map((_, c) => aligns?.[c] || '---').join('|')}|`);
   });

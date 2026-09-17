@@ -345,18 +345,27 @@ const VIEWER_JS = String.raw`
 
   // 노드 텍스트 속 Markdown 표 감지 — 에디터(mdTable.ts)와 같은 규칙.
   // 파이프 행 + 바로 다음 줄이 구분선(:?--:?)이면 표. 첫 표 하나만.
+  // GFM: 셀 안의 '|' 는 '\|' 로 이스케이프 — 이스케이프를 존중해 셀을 나누고
+  // 표시용으로 '\|' → '|' (에디터 mdTable.ts splitPipeCells 와 같은 규칙)
+  function splitPipeCells(line) {
+    var s = String(line || '').replace(/^\s+|\s+$/g, '');
+    if (s.charAt(0) === '|') s = s.slice(1);
+    if (s.charAt(s.length - 1) === '|' && s.charAt(s.length - 2) !== '\\') s = s.slice(0, -1);
+    var out = [], cur = '', i;
+    for (i = 0; i < s.length; i++) {
+      var ch = s.charAt(i);
+      if (ch === '\\' && s.charAt(i + 1) === '|') { cur += '|'; i++; continue; }
+      if (ch === '|') { out.push(cur.replace(/^\s+|\s+$/g, '')); cur = ''; continue; }
+      cur += ch;
+    }
+    out.push(cur.replace(/^\s+|\s+$/g, ''));
+    return out;
+  }
   function parseMdTable(text) {
     var lines = String(text || '').split('\n');
     function trimS(s) { return s.replace(/^\s+|\s+$/g, ''); }
     function isPipe(s) { s = trimS(s); return s.length > 1 && s.indexOf('|') >= 0; }
-    function cells(s) {
-      s = trimS(s);
-      if (s.charAt(0) === '|') s = s.slice(1);
-      if (s.charAt(s.length - 1) === '|') s = s.slice(0, -1);
-      var a = s.split('|'), o = [], i2;
-      for (i2 = 0; i2 < a.length; i2++) o.push(trimS(a[i2]));
-      return o;
-    }
+    function cells(s) { return splitPipeCells(s); }
     function isSep(s) {
       if (!isPipe(s)) return false;
       var c = cells(s), i2;
@@ -2000,12 +2009,12 @@ const VIEWER_JS = String.raw`
         if (!rows[r].trim()) continue;
         if (/^[\s|:\-]+$/.test(rows[r])) continue; // 구분선 행 제외
         var tr = document.createElement('tr');
-        var cells = rows[r].replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|');
+        var cells = splitPipeCells(rows[r]); // GFM '\|' 이스케이프 존중
         var rowCells = [];
         for (var cIdx = 0; cIdx < cells.length; cIdx++) {
           var cell = document.createElement(tblData.length === 0 ? 'th' : 'td');
-          cell.textContent = cells[cIdx].trim();
-          rowCells.push(cells[cIdx].trim());
+          cell.textContent = cells[cIdx];
+          rowCells.push(cells[cIdx]);
           tr.appendChild(cell);
         }
         tblData.push(rowCells);

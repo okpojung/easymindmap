@@ -73,11 +73,34 @@ function isPipeRow(line: string): boolean {
   return s.length > 1 && s.includes('|');
 }
 
-function splitCells(line: string): string[] {
+/**
+ * GFM 규칙: 셀 안의 `|` 는 `\\|` 로 이스케이프한다 (2026-09-17 — 예전엔 `¦` 로
+ * 바꿨다). 이스케이프를 존중해 셀을 나눈다. 기본은 표시용으로 `\\|` → `|`,
+ * keepEscape 면 원문 그대로(노드 글자에 되쓸 때).
+ */
+export function splitPipeCells(line: string, opts?: { keepEscape?: boolean }): string[] {
   let s = line.trim();
   if (s.startsWith('|')) s = s.slice(1);
-  if (s.endsWith('|')) s = s.slice(0, -1);
-  return s.split('|').map((c) => c.trim());
+  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+  const out: string[] = [];
+  let cur = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '\\' && s[i + 1] === '|') { cur += opts?.keepEscape ? '\\|' : '|'; i++; continue; }
+    if (ch === '|') { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
+/** 셀 글자 → 표 원문용 (`|` → `\\|`) */
+export function escapePipe(s: string): string {
+  return String(s ?? '').replace(/\|/g, '\\|');
+}
+
+function splitCells(line: string): string[] {
+  return splitPipeCells(line);
 }
 
 function isSeparatorRow(line: string): boolean {

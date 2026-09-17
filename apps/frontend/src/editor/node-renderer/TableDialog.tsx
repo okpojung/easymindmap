@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { parseMdTable, sepCellOfAlign, type MdTableAlign } from './mdTable';
+import { parseMdTable, sepCellOfAlign, splitPipeCells, escapePipe, type MdTableAlign } from './mdTable';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 
 export const TABLE_MIN_ROWS = 2; // 헤더 + 데이터 1행
@@ -24,10 +24,10 @@ export const TABLE_GRID_MAX = 10; // 격자 선택기 크기 (10×10)
 
 // ── Markdown 표 만들기·끼워 넣기·바꾸기 ─────────────────────────────
 
-// 셀 글자 정리 — 파서가 '|' 로 열을 나누고 줄로 행을 나누므로 둘 다 셀 안에
-// 둘 수 없다. '|' 는 닮은 글자(¦)로, 줄바꿈은 공백으로.
+// 셀 글자 정리 — 줄바꿈은 공백으로, '|' 는 GFM 대로 `\\|` 로 이스케이프
+// (2026-09-17 — 예전엔 `¦` 로 바꿨다).
 function cleanCell(s: string): string {
-  return String(s ?? '').replace(/\r?\n/g, ' ').replace(/\|/g, '¦').trim();
+  return escapePipe(String(s ?? '').replace(/\r?\n/g, ' ').trim());
 }
 
 /** 헤더·행(·열 정렬) → `| a | b |\n|:---|---:|\n| 1 | 2 |` — 정렬은 GFM 구분선 콜론 */
@@ -71,18 +71,10 @@ export function replaceMdTable(value: string, md: string): string {
   const isPipe = (l: string) => { const s = l.trim(); return s.length > 1 && s.includes('|'); };
   const isSep = (l: string) => {
     if (!isPipe(l)) return false;
-    let s = l.trim();
-    if (s.startsWith('|')) s = s.slice(1);
-    if (s.endsWith('|')) s = s.slice(0, -1);
-    const cells = s.split('|').map((c) => c.trim());
+    const cells = splitPipeCells(l);
     return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c));
   };
-  const cellCount = (l: string) => {
-    let s = l.trim();
-    if (s.startsWith('|')) s = s.slice(1);
-    if (s.endsWith('|')) s = s.slice(0, -1);
-    return s.split('|').length;
-  };
+  const cellCount = (l: string) => splitPipeCells(l).length;
   let inFence = false;
   for (let i = 0; i < lines.length - 1; i++) {
     if (/^\s*```/.test(lines[i])) { inFence = !inFence; continue; }
@@ -426,7 +418,7 @@ export function TableDialog({
               {alignBtn('center', '↔', '커서 열 가운데 맞춤 (GFM `:---:`)')}
               {alignBtn('right', '⇥', '커서 열 오른쪽 맞춤 (GFM `---:`)')}
               <span style={{ fontSize: 11.5, color: t.textMuted, marginLeft: 6 }}>
-                커서 셀 기준 · 정렬은 열 단위(GFM) · 셀 안의 | 는 ¦ 로 · Tab 으로 다음 칸
+                커서 셀 기준 · 정렬은 열 단위(GFM) · 셀 안의 | 는 \| 로 저장 · Tab 으로 다음 칸
               </span>
             </div>
           </>

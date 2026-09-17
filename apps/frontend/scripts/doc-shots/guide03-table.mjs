@@ -99,10 +99,20 @@ await page.waitForSelector('[data-testid="table-dialog"]', { timeout: 3000 }).ca
 ok('⑤ 수정 팝업에 기존 값', (await cell(1, 1).inputValue()) === '메모리');
 ok('⑤ 제목이 "표 수정"', (await page.locator('[data-testid="table-dialog"]').innerText()).includes('표 수정'));
 await cell(1, 2).fill('64');
+await cell(2, 4).fill('NVMe|SATA');                // 셀 안의 | — GFM `\|` 로 저장
 await page.locator('[data-testid="table-dialog-save"]').click();
 await page.waitForTimeout(400);
 const svgText = await page.locator('[data-node-id="b1-1"]').first().evaluate((el) => el.textContent || '');
 ok('⑤ 저장 뒤 노드 표에 64', svgText.includes('64'));
+ok('⑤ 셀 안 | 는 화면에 | 로, 열 수는 그대로', svgText.includes('NVMe|SATA') && !svgText.includes('\\|'));
+// 노드 원문(편집창)에는 GFM 이스케이프 `\|`
+{
+  const nb3 = await nodeBox(page, 'b1-1');
+  await page.mouse.dblclick(nb3.x + nb3.width / 2, nb3.y + 12);
+  await page.waitForSelector('[data-testid="mark-toolbar"]', { timeout: 5000 });
+  ok('⑤ 원문에는 \\| 로 저장', (await page.locator('textarea').inputValue()).includes('NVMe\\|SATA'));
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+}
 
 // ⑥ 편집 중 ⊞ 를 다시 누르면 (표가 이미 있음) 삽입이 아니라 수정 팝업
 await page.mouse.dblclick(nb2.x + nb2.width / 2, nb2.y + 12);

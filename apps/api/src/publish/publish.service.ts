@@ -31,6 +31,7 @@ import type { ReadStream } from 'node:fs';
 import { DatabaseService } from '../database/database.service';
 import { StorageService } from '../storage/storage.service';
 import { columnReady, tableReady } from '../common/table-ready';
+import { likePattern, searchTerm } from '../common/search-term';
 import { findAccessibleMap } from '../maps/map-access';
 
 const PUBLISHED_TABLE = 'public.published_maps';
@@ -113,6 +114,12 @@ export interface ListedMap {
   hasPreview: boolean;
   /** 노드 수 — 옛 저장본은 null 이라 화면이 '—' 로 그린다 */
   nodeCount: number | null;
+  /**
+   * 검색 중일 때만 채운다 — **맵 내용에서 몇 군데 맞았나** (2026-09-17).
+   * 문서함과 같은 규칙이다: 이름이 맞은 것은 화면이 글자를 강조해 보여
+   * 주고, **내용이 맞은 것만** 건수로 알린다.
+   */
+  matchCount?: number;
 }
 
 /** 미리보기 PNG 한 장의 상한. 1200×630 실루엣은 보통 100KB 안쪽이다 */
@@ -377,8 +384,20 @@ export class PublishService {
    *
    * 칸이 없는 서버에서는 **빈 목록**이다 — 500 이 아니다. 진열대가 아직
    * 없는 서버일 뿐이고, 홈페이지는 "아직 진열된 맵이 없습니다" 를 그린다.
+   *
+   * ★ **검색(`q`)은 이름 + 맵 내용이다** (2026-09-17 사용자 요청: "내
+   *   문서함의 검색처럼, 맵 이름뿐 아니라 맵 내용에도 있으면 포함").
+   *   문서함(`MapsService.list`)과 **같은 색인**(`map_documents.search_text`,
+   *   저장할 때 트리거가 만든다)과 같은 이스케이프를 쓴다 — 두 검색이
+   *   다른 결과를 내면 사용자는 어느 쪽이 맞는지 알 수 없다.
+   *
+   * ★ **검색이 진열 조건을 넓히지 않는다.** 내용 CTE 안에서도
+   *   `published_maps` 로 조인해 **진열된 맵만** 훑는다. 바깥 WHERE 가
+   *   한 번 더 거르므로 새는 길은 없지만, 안 걸러진 색인을 통째로
+   *   훑는 것 자체를 하지 않는다 — 비인증 엔드포인트에서 "어차피 밖에서
+   *   거른다" 는 기대에 기대면 안 된다.
    */
-  async listListed(limit: number, cursor?: string): Promise<{
+  async listListed(limit: number, cursor?: string, q?: string): Promise<{
     items: ListedMap[]; nextCursor: string | null;
   }> {
     if (!(await this.ready()) || !(await this.hasListed())) {
@@ -396,21 +415,73 @@ export class PublishService {
         after = `AND (p.published_at, p.publish_id) < ($2::timestamptz, $3)`;
       }
     }
+
+    // ── 검색어 ────────────────────────────────────────────────
+    // 다듬는 규칙은 문서함과 **같은 한 벌**을 쓴다 (`common/search-term`):
+    // 제어문자를 지우고(NUL 하나로 500 이 났다), 길이를 자르고,
+    // ILIKE 패턴 문자를 막는다.
+    const raw = searchTerm(q);
+    const searching = raw.length > 0;
+    let where = '';
+    let hitsCte = '';
+    let matchCountSql = '';
+    /** 건수를 세려면 CTE 안에서만 색인 평문을 꺼내 둔다 */
+    let textCol = '';
+    if (searching) {
+      params.push(likePattern(raw));
+      const pLike = params.length;
+      // 내용 색인이 아직 없는 서버(델타 미적용)에서는 **이름만** 찾는다 —
+      // 검색이 통째로 죽는 것보다 반쪽이라도 도는 쪽이 낫다.
+      const withText = await columnReady(this.db, 'public.map_documents', 'search_text');
+      if (withText) {
+        // MATERIALIZED 인 이유는 문서함과 같다 — 조인 너머의 OR 안에서는
+        // 플래너가 trigram 인덱스를 버리고 색인을 통째로 훑는다.
+        hitsCte = `WITH hits AS MATERIALIZED (
+             SELECT s.map_id FROM public.map_documents s
+               JOIN public.published_maps p2
+                 ON p2.map_id = s.map_id AND p2.listed AND p2.unpublished_at IS NULL
+              WHERE s.search_text ILIKE $${pLike} ESCAPE '\\'
+           ) `;
+        where = ` AND (m.title ILIKE $${pLike} ESCAPE '\\'`
+          + ` OR p.map_id IN (SELECT map_id FROM hits))`;
+        // 건수는 **이 페이지에 실린 줄에 대해서만** 센다 — 그래서 페이지를
+        // CTE(`pg`)로 먼저 확정한다. 바깥 SELECT 에 그냥 넣으면 플래너가
+        // 정렬 전에 계산해 **맞은 행 전부**에서 돌 수 있다(문서함과 같은
+        // 이유). search_text 는 CTE 안에서만 쓰고 밖으로 내보내지 않는다 —
+        // 큰 맵의 평문(수십 KB)이 응답에 실려 나가지 않게.
+        textCol = ', d.search_text';
+        matchCountSql = `, (SELECT count(*)
+               FROM unnest(string_to_array(pg.search_text, E'\\n')) AS ln
+              WHERE ln ILIKE $${pLike} ESCAPE '\\')::int AS match_count`;
+      } else {
+        where = ` AND m.title ILIKE $${pLike} ESCAPE '\\'`;
+      }
+    }
+
     const { rows } = await this.db.query<{
       publish_id: string; title: string; published_at: Date;
       storage_path: string | null; node_count: number | null;
+      match_count?: number;
     }>(
-      `SELECT p.publish_id, m.title, p.published_at, p.storage_path, d.node_count
-         FROM public.published_maps p
-         JOIN public.maps m ON m.id = p.map_id
-    LEFT JOIN public.map_documents d ON d.map_id = p.map_id
-        WHERE p.listed
-          AND p.unpublished_at IS NULL
-          AND m.deleted_at IS NULL
-          ${open}
-          ${after}
-     ORDER BY p.published_at DESC, p.publish_id DESC
-        LIMIT $1`,
+      `${hitsCte}${hitsCte ? ', pg AS (' : 'WITH pg AS ('}
+           SELECT p.publish_id, m.title, p.published_at, p.storage_path,
+                  d.node_count${textCol}
+             FROM public.published_maps p
+             JOIN public.maps m ON m.id = p.map_id
+        LEFT JOIN public.map_documents d ON d.map_id = p.map_id
+            WHERE p.listed
+              AND p.unpublished_at IS NULL
+              AND m.deleted_at IS NULL
+              ${open}
+              ${after}
+              ${where}
+         ORDER BY p.published_at DESC, p.publish_id DESC
+            LIMIT $1
+         )
+       SELECT pg.publish_id, pg.title, pg.published_at, pg.storage_path,
+              pg.node_count${matchCountSql}
+         FROM pg
+     ORDER BY pg.published_at DESC, pg.publish_id DESC`,
       params,
     );
     const page = rows.slice(0, limit);
@@ -422,6 +493,7 @@ export class PublishService {
         publishedAt: r.published_at.toISOString(),
         hasPreview: !!r.storage_path,
         nodeCount: r.node_count ?? null,
+        ...(searching ? { matchCount: r.match_count ?? 0 } : {}),
       })),
       nextCursor: rows.length > limit && last
         ? `${last.published_at.toISOString()}|${last.publish_id}`

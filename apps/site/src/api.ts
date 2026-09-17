@@ -7,6 +7,8 @@ export interface ListedMap {
   publishedAt: string;
   hasPreview: boolean;
   nodeCount: number | null;
+  /** 검색 중일 때만 온다 — 맵 **내용**에서 맞은 건수 */
+  matchCount?: number;
 }
 
 export interface ListedPage {
@@ -21,9 +23,17 @@ export interface ListedPage {
  * 그 판정을 **한 벌 더 갖지 않는다** — 두 곳에서 판정하면 언젠가 다른
  * 말을 하고, 그 차이가 곧 "보이면 안 되는 맵이 보이는" 사고다.
  */
-export async function fetchListed(cursor?: string | null, limit = 24): Promise<ListedPage> {
+export async function fetchListed(
+  cursor?: string | null,
+  limit = 24,
+  term?: string,
+): Promise<ListedPage> {
   const q = new URLSearchParams({ limit: String(limit) });
   if (cursor) q.set('cursor', cursor);
+  // ★ 검색도 **서버가 한다** (2026-09-17). 받아 둔 목록에서 훑지 않는
+  //   이유는 문서함과 같다: 목록은 한 페이지로 잘려 있어 그 바깥의 맵은
+  //   이름조차 못 찾는다. 게다가 **맵 내용**은 애초에 여기 오지 않는다.
+  if (term) q.set('q', term);
   const res = await fetch(`${API_URL}/v1/published?${q}`, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`목록을 불러오지 못했습니다 (HTTP ${res.status})`);
   return (await res.json()) as ListedPage;

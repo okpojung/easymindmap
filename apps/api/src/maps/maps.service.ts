@@ -8,6 +8,7 @@ import { VaultService } from '../vault/vault.service';
 import { VersionPruneService } from '../versions/version-prune.service';
 import { DatabaseService } from '../database/database.service';
 import { columnReady, tableReady } from '../common/table-ready';
+import { likePattern, searchTerm } from '../common/search-term';
 import { FoldersService } from '../folders/folders.service';
 import { NODE_COLUMNS, serializeNode, type NodeRow } from '../nodes/node.serializer';
 import type { CreateMapDto } from './dto/create-map.dto';
@@ -160,15 +161,16 @@ export class MapsService {
     const params: unknown[] = [userId];
     let where = `m.owner_id = $1 AND m.deleted_at IS ${wantDeleted ? 'NOT NULL' : 'NULL'}`;
 
-    // 검색어 — ILIKE 패턴 문자(%, _)와 이스케이프 문자는 그대로 찾도록
-    // 막는다. 안 그러면 '_' 하나로 아무 한 글자나 걸린다.
-    const raw = (opts.q ?? '').trim();
+    // 검색어 — 다듬는 규칙은 `common/search-term` 한 벌이다(지식창고
+    // 검색도 같은 것을 쓴다). 제어문자를 지우고(NUL 하나로 500 이 났다,
+    // 2026-09-17 실측), 길이를 자르고, ILIKE 패턴 문자를 막는다.
+    const raw = searchTerm(opts.q);
     const searching = raw.length > 0;
     let pLike = 0;
     /** 검색 중일 때 두 질의(목록·개수) 앞에 붙는 공통 CTE */
     let hitsCte = '';
     if (searching) {
-      params.push(`%${raw.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+      params.push(likePattern(raw));
       pLike = params.length;
       // 내용 조건은 **MATERIALIZED CTE** 로 뺀다. 실측으로 정한 형태다
       // (맵 3,000개 · 색인 42MB · 3글자 검색):
@@ -375,7 +377,8 @@ export class MapsService {
    */
   async listShared(userId: string, opts: { q?: string; limit?: number } = {}) {
     const limit = Math.min(200, Math.max(1, opts.limit ?? 100));
-    const raw = (opts.q ?? '').trim();
+    // 다듬는 규칙은 `list()`·지식창고와 **같은 한 벌**이다
+    const raw = searchTerm(opts.q);
     const searching = raw.length > 0;
     const params: unknown[] = [userId, limit];
     let where = '';
@@ -388,7 +391,7 @@ export class MapsService {
       // MATERIALIZED CTE 로 빼서 trigram 인덱스를 타게 하고, CTE 안에서
       // **참가자 표와 조인**해 남의 문서를 훑지 않는다(`list()` 의 소유자
       // 조인과 같은 이유 — 2글자 검색이 전체를 훑는 것을 막는다).
-      params.push(`%${raw.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+      params.push(likePattern(raw));
       hitsCte = `WITH hits AS MATERIALIZED (
            SELECT s.map_id FROM public.map_documents s
              JOIN public.map_members mm2 ON mm2.map_id = s.map_id AND mm2.user_id = $1

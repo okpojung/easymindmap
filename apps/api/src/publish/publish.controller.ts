@@ -232,12 +232,23 @@ export class PublicPublishController {
    *   가 슬러그 하나로 잡혀 404 가 된다(Nest 는 선언 순서로 고른다).
    *
    * 커서 페이지네이션이다 — `nextCursor` 를 그대로 다시 준다.
+   *
+   * `q` 는 **이름 + 맵 내용**을 찾는다 (2026-09-17). 문서함 검색과 같은
+   * 색인을 쓰고, 맞은 줄은 `matchCount` 로 건수만 알린다.
    */
   @Get()
-  async listed(@Query('limit') limit?: string, @Query('cursor') cursor?: string) {
+  async listed(
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+    @Query('q') q?: string,
+  ) {
     // 한 번에 100줄까지. 넘겨도 잘라 준다 — 거절하면 부르는 쪽만 번거롭다
     const n = Math.min(100, Math.max(1, Number.parseInt(limit ?? '', 10) || 24));
-    return this.publish.listListed(n, cursor);
+    // 검색어는 **100자에서 자른다.** 이 문은 비인증이라 누구나 두드릴 수
+    // 있는데, 긴 패턴은 ILIKE 비용만 키우고 찾는 데는 쓸모가 없다.
+    // 거절하지 않고 자르는 이유는 limit 과 같다 — 부르는 쪽만 번거롭다.
+    const term = typeof q === 'string' ? q.slice(0, 100) : undefined;
+    return this.publish.listListed(n, cursor, term);
   }
 
   @Get(':publishId')

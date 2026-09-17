@@ -220,6 +220,10 @@ jobs:
       # 줄바꿈·마크다운 기호가 새면 카드 소개가 지저분하거나 아예 안 보인다.
       - name: 링크 카드 조각(og-tags) 단위 테스트
         run: npm run test:og
+      # 검색어 다듬기 — 문서함 검색과 지식창고 검색이 **같은 한 벌**을 쓴다.
+      # NUL 한 글자로 두 검색이 함께 500 이 났다(2026-09-17, PostgreSQL 22021).
+      - name: 검색어 다듬기(search-term) 단위 테스트
+        run: npm run test:search-term
       - name: DB 스키마 로드 (shim → schema → functions → seed)
         env:
           PGPASSWORD: emm

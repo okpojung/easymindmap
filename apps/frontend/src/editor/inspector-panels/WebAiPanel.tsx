@@ -267,7 +267,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             value={genType}
             data-webai-type
             onChange={(e) => setGenType(e.target.value)}
-            title="EMM 템플릿에 덧붙일 용도별 추가 지시"
+            title="mmd 템플릿에 덧붙일 용도별 추가 지시"
             style={{
               flex: 1, padding: '5px 8px', borderRadius: 5,
               border: `1px solid ${t.border}`,
@@ -284,7 +284,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           onClick={copyPrompt}
           disabled={!topic.trim()}
           data-webai-copy
-          title="EMM 프롬프트 템플릿 + 주제를 클립보드에 복사 — AI 채팅창에 붙여넣으세요"
+          title="mmd 프롬프트 템플릿 + 주제를 클립보드에 복사 — AI 채팅창에 붙여넣으세요"
           style={{
             width: '100%', marginTop: 8, padding: 9,
             background: !topic.trim() ? t.surfaceAlt

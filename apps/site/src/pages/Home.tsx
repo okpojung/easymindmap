@@ -51,18 +51,18 @@ export default function Home() {
             <h2 className="sec">마인드맵에도 <b>표준 텍스트 형식</b>이 필요합니다</h2>
             <p>
               마인드맵을 담는 텍스트 포맷의 사실상 표준은 아직 없습니다.
-              <b> EMM</b>(EasyMindMap Markdown)은 본문을 <b>순수 GFM</b> 으로 두고,
-              레이아웃·스타일·사진 위치 같은 충실도 정보만 본문 밖 메타데이터에
+              <b> mmd</b>(Mindmap Markdown)는 본문을 <b>순수 GFM</b> 으로 두고,
+              레이아웃·도형·글자 크기 같은 맵의 모양만 제목 아래 선언 블록 하나에
               둡니다. 그래서 같은 파일이 GitHub·Obsidian·VS Code 에서 <b>그냥 문서로</b>
-              읽히고, 우리 앱에서는 <b>무손실로</b> 맵이 됩니다.
+              읽히고, 우리 앱에서는 <b>그대로</b> 맵이 됩니다.
             </p>
             <p>
               <b>AI 에게도 좋습니다</b> — LLM 이 일반 Markdown 만 내놓아도
-              유효한 EMM 문서입니다. 메타데이터는 선택 사항이니까요.
+              유효한 mmd 문서입니다. 선언은 선택 사항이니까요.
             </p>
-            <Link className="btn ghost" to="/emm">EMM 표준 보기</Link>
+            <Link className="btn ghost" to="/mmd">mmd 표준 보기</Link>
           </div>
-          <pre className="code" aria-label="EMM 예시">{`# 배포 절차
+          <pre className="code" aria-label="mmd 예시">{`# 배포 절차
 
 ## 준비
 - [x] 서버 접속 확인

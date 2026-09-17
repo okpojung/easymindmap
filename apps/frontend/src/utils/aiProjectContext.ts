@@ -115,7 +115,7 @@ export function buildExpandContext(
     userParts.push('[요청]\n' + extra
       + '\n\n(위 요청이 맵 문맥과 다르면 **요청을 따른다.**)');
   }
-  userParts.push('위 노드를 더 자세하고 상세하게 확장해줘. 그 노드의 하위 구조만 EMM으로 출력해줘.');
+  userParts.push('위 노드를 더 자세하고 상세하게 확장해줘. 그 노드의 하위 구조만 mmd로 출력해줘.');
   const user = userParts.join('\n\n');
 
   return { system, user, targetText: target.text || '노드' };

@@ -446,6 +446,13 @@
   08-layout §23.1 · 10-canvas §21.2 · emm-spec §3.1. (처음 e2e267·213차로
   적었으나 #492 가 먼저 가져가 268·214차로 옮김 — 커밋 5f2dc7c 메시지의
   e2e267 은 이 항목이다.)
+- 2026-09-17 (215차): **용어 통일 2 — 화면 문구·AI 지시문·홈페이지도 mmd**
+  (사용자 요청). 프런트 AI 탭·AI 설정·웹 AI 패널·계정 메뉴 문구, 기본 시스템
+  프롬프트(v4.3 — 옛 기본값은 `EMM_SYSTEM_PROMPT_PREVIOUS` 에 넣어 저장된 기본값을
+  자동 승격)·확장 지시·웹 AI 붙여넣기 지시, API MCP 도구 설명, 홈페이지
+  `/emm` → `/mmd`(옛 주소 유지)와 선언 블록 설명(메타데이터 폐기 반영). 가이드 07
+  캡처 2장 재생성. 검증: 프런트 tsc·test:unit, API build·test:mcp, 사이트 tsc·vite
+  build 통과. 코드 주석·`EMM_*` 상수·`EMM-NODES`·이전 기본 프롬프트 본문은 그대로.
 - 2026-09-15 (214차): **용어 통일 — 형식 이름 EMM → mmd(Mindmap Markdown), emm 은
   EasyMindMap 의 준말** (사용자 결정, 문서만). docs·README·CLAUDE.md 의 대문자
   EMM 236곳 중 형식을 뜻하는 것을 mmd 로(조사 은/을/이/으로 → 는/를/가/로),

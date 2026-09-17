@@ -648,7 +648,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           width="min(560px, 94vw)"
           onClose={() => setAiSettingsOpen(false)}
           title="🤖 AI 설정"
-          subtitle="API 키 · 사용 우선순위 · 모델 · EMM 프롬프트 템플릿 — 계정에 저장되어 다른 PC·브라우저에서 로그인해도 따라옵니다."
+          subtitle="API 키 · 사용 우선순위 · 모델 · mmd 프롬프트 템플릿 — 계정에 저장되어 다른 PC·브라우저에서 로그인해도 따라옵니다."
           footer={<DialogCloseButton t={t} onClick={() => setAiSettingsOpen(false)} testId="ai-settings-close" />}
         >
             <AiSettingsView t={t} />

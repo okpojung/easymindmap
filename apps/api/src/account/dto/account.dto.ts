@@ -142,7 +142,7 @@ export class LoginEventDto {
   @IsOptional() @IsString() @MaxLength(60) browser?: string;
 }
 
-/** AI 설정 저장 (2026-09-04) — 우선순위·모델·EMM 프롬프트 템플릿 (비밀 아님) */
+/** AI 설정 저장 (2026-09-04) — 우선순위·모델·mmd 프롬프트 템플릿 (비밀 아님) */
 export class SaveAiSettingsDto {
   @IsOptional()
   @IsArray()

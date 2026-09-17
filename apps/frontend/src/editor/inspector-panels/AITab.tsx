@@ -353,7 +353,7 @@ function GenerateView({ t, onNeedKey }: {
             <select
               value={genType}
               onChange={(e) => setGenType(e.target.value)}
-              title="EMM 템플릿에 덧붙일 용도별 추가 지시"
+              title="mmd 템플릿에 덧붙일 용도별 추가 지시"
               style={selectStyle(t)}
             >
               {GENERATION_TYPES.map((g) => (
@@ -377,7 +377,7 @@ function GenerateView({ t, onNeedKey }: {
           }} />
 
         <div style={{ fontSize: 10.5, color: t.textSubtle, margin: '4px 0 0', lineHeight: 1.5 }}>
-          질문에는 항상 <b>EMM 프롬프트 템플릿</b>이 함께 전달됩니다
+          질문에는 항상 <b>mmd 프롬프트 템플릿</b>이 함께 전달됩니다
           (아바타 메뉴 → AI 설정에서 열람·수정).
         </div>
 

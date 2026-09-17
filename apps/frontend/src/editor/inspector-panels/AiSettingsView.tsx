@@ -99,7 +99,7 @@ export function AiSettingsView({ t }: { t: ThemeTokens }) {
         ))}
       </InspectorSection>
 
-      <InspectorSection t={t} title="EMM 프롬프트 템플릿 (시스템 프롬프트)">
+      <InspectorSection t={t} title="mmd 프롬프트 템플릿 (시스템 프롬프트)">
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 6, lineHeight: 1.5 }}>
           질문할 때 <b>항상 기본으로</b> AI에게 함께 전달되는 규칙입니다 —
           답변이 그대로 맵으로 변환되게 합니다. 필요하면 수정할 수
@@ -120,7 +120,7 @@ export function AiSettingsView({ t }: { t: ThemeTokens }) {
           }} />
         <button
           onClick={() => {
-            if (window.confirm('시스템 프롬프트를 기본 EMM 템플릿으로 되돌릴까요?')) {
+            if (window.confirm('시스템 프롬프트를 기본 mmd 템플릿으로 되돌릴까요?')) {
               resetSystemPrompt();
             }
           }}

@@ -287,14 +287,25 @@ dig +short www.easymindmap.org
 
 **② Coolify 에 앱 만들기**
 
-`coolify-dev.mindmap.ai.kr` 접속 → 프로젝트 열기 →
-**+ New / Add Resource → Application → Public Repository**(또는 GitHub App).
+`coolify-dev.mindmap.ai.kr` 접속 → 프로젝트 열기 → **+ New**.
+`Choose a resource` 카드 목록에서 **`Git Repository (with GitHub App)`** 을
+고른다 — `main` 에 푸시하면 **자동 배포**된다(웹훅). api·frontend 와 같은
+방식이다.
+
+> ★ **가운데 `Dockerfile` 카드가 아니다.** 그 카드는 *"Git 저장소 없이
+>   Dockerfile 만으로"* 라는 뜻이다. 우리는 저장소를 받아 **그 안의**
+>   `apps/site/Dockerfile` 로 빌드해야 하므로, **Git source 를 고르고
+>   → 앱 설정에서 Build Pack 을 `Dockerfile` 로 바꾼다.**
+>
+> GitHub App 연결이 없으면 **`Public Git Repository`** 로도 된다 —
+> `okpojung/easymindmap` 는 **공개 저장소**다. 다만 그 경로는 푸시 자동
+> 배포가 붙지 않아 코드가 바뀔 때마다 [Deploy] 를 직접 눌러야 한다.
 
 | 칸 | 넣을 값 | 틀리면 |
 |---|---|---|
-| Repository | `https://github.com/okpojung/easymindmap` | — |
+| Repository | `okpojung/easymindmap` (URL 로 넣을 때는 `https://github.com/okpojung/easymindmap`) | — |
 | Branch | `main` | — |
-| Build Pack | **`Dockerfile`** | Nixpacks 로 두면 루트에 package.json 이 없어 앱 타입을 못 잡는다 |
+| Build Pack | **`Dockerfile`** | Nixpacks 로 두면 루트에 package.json 이 없어 앱 타입을 못 잡는다. **이걸 바꿔야 아래 두 칸이 나타난다** |
 | Base Directory | **`/`** | `apps/site` 로 잡으면 빌드 컨텍스트가 좁아진다 |
 | Dockerfile Location | **`/apps/site/Dockerfile`** | 프런트엔드 것이 빌드된다 |
 | Ports Exposes | **`80`** | **누락 시 502** — Traefik 이 대상 포트를 모른다 |

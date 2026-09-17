@@ -263,6 +263,7 @@ DNS     : 8.8.8.8, 1.1.1.1
 | api-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → api) | IPSec VPN IP 허용 | Let's Encrypt |
 | coolify-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:8000 (Coolify UI + 웹훅) | IPSec VPN IP 허용 (+`/webhooks/` 예외) | Let's Encrypt |
 | auth-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → GoTrue) | IPSec VPN IP 허용 | Let's Encrypt |
+| www-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → site) | **없음 — 공개** | Let's Encrypt |
 
 > **DNS 주의사항**:
 > - A 레코드만 필요하다. 프록시/CDN류 기능이 있는 DNS라면 끈다 —
@@ -503,6 +504,7 @@ A     pro-dev.mindmap.ai.kr             203.0.113.10
 A     api-dev.mindmap.ai.kr         203.0.113.10
 A     coolify-dev.mindmap.ai.kr     203.0.113.10
 A     auth-dev.mindmap.ai.kr        203.0.113.10
+A     www-dev.mindmap.ai.kr         203.0.113.10
 ```
 
 > ⚠️ 프록시/CDN류 부가 기능은 끄고 **A 레코드만** — NPM이 직접 SSL 처리합니다
@@ -839,6 +841,40 @@ Advanced:
 > 같은 이유로 **api-dev(§7.7)** 도 브라우저에서 CORS 오류가 나면 동일한
 > OPTIONS 예외를 추가한다 (api 는 Nest 의 `enableCors` 가 처리하지만,
 > preflight 가 NPM 에서 먼저 막히면 앱까지 도달하지 못한다).
+
+### 7.10 Proxy Host — www-dev.mindmap.ai.kr (홈페이지) (2026-09-17)
+
+```
+Domain:   www-dev.mindmap.ai.kr
+Forward:  http://192.168.0.110:80        # Coolify Traefik 경유 (site 컨테이너 :80 으로 분기)
+WS:       ❌ (정적 사이트다 — 켜 두어도 해롭지는 않다)
+Cache Assets: ❌ 끄기
+SSL:      Let's Encrypt + Force SSL ✅
+Access:   Publicly Accessible            ← ★ 반드시 (아래)
+```
+
+> ### ★ 여기는 **Access List 를 걸면 안 된다**
+>
+> 이 호스트는 **손님에게 보여 주는 홈페이지**다. Access List 를 걸면
+> 처음 오는 사람에게 **브라우저 Basic 인증 팝업**이 먼저 뜬다 — 소개
+> 화면조차 못 본다(§7.6 의 프런트 사례와 같은 증상이고, 개발자 본인
+> 브라우저는 자격을 캐시하고 있어 멀쩡해 보인다).
+>
+> 여는 것이 위험하지 않은 이유: 이 사이트가 읽는 것은 **비인증 공개
+> API 하나**(`GET /v1/published`)뿐이고, 그 문은 진열을 켠 맵만
+> 돌려준다(진열 안 함·비공개·취소·휴지통 넷을 거른다 — e2e270).
+>
+> **`api-dev`(§7.7)도 함께 공개여야 한다.** 지식창고 목록은 손님의
+> 브라우저가 직접 API 를 부른다 — 이미 `Publicly Accessible` 이라
+> 추가로 할 일은 없지만, 잠그면 목록이 통째로 빈다.
+
+> `Cache Assets` 를 꺼야 하는 이유는 §7.6 과 같다 — `index.html` 에는
+> 해시가 붙지 않아, NPM 이 캐시하면 재배포 후에도 옛 화면이 보인다.
+
+> **운영 도메인(`www.easymindmap.org`)을 붙일 때**도 같은 값이다.
+> 도메인 한 줄(A 레코드)과 이 Proxy Host 한 개를 더 만들고, Coolify 의
+> Domains 칸에 `http://www.easymindmap.org` 를 **콤마로 덧붙이면** 두
+> 주소가 같은 컨테이너로 간다(Traefik 이 Host 헤더로 분기한다).
 
 ---
 

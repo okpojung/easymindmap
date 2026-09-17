@@ -36,6 +36,8 @@ import { NoteViewerPopover } from '@/editor/canvas/NoteViewerPopover';
 import { toggleMarkRange } from '@/editor/node-renderer/inlineMarks';
 import { NodeRichText } from '@/editor/node-renderer/RichTextHtml';
 import { CodeBlockDialog, spliceCodeBlock } from '@/editor/node-renderer/CodeBlockDialog';
+import { TableDialog, spliceMdTable, replaceMdTable, buildMdTable } from '@/editor/node-renderer/TableDialog';
+import { parseMdTable } from '@/editor/node-renderer/mdTable';
 import { toggleCheckMarker } from '@/editor/node-renderer/mdCheck';
 import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
@@ -264,7 +266,13 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   // blur 핸들러가 최신 팝업 상태를 보게 하는 미러 (맵 편집창과 동일 경합 방지)
   const codeDlgRef = useRef<boolean>(false);
   useEffect(() => { codeDlgRef.current = codeDlgCursor !== null; }, [codeDlgCursor]);
-  const wrapSelection = (mark: string) => {
+  // 표 팝업 편집기 — ⊞ 버튼 (맵 편집창과 동일, 2026-09-17)
+  const [tableDlg, setTableDlg] = useState<
+    { mode: 'insert'; cursor: number; rows: number; cols: number } | { mode: 'edit' } | null
+  >(null);
+  const tableDlgRef = useRef<boolean>(false);
+  useEffect(() => { tableDlgRef.current = tableDlg !== null; }, [tableDlg]);
+  const wrapSelection = (mark: string, size?: { rows: number; cols: number }) => {
     const ta = inputRef.current;
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
@@ -272,6 +280,12 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
     // '코드블록' 버튼 — 팝업 편집기에서 언어·코드를 입력받아 삽입
     if (mark === '```') {
       setCodeDlgCursor(e0);
+      return;
+    }
+    // '표' 버튼 — 격자 크기의 빈 표 삽입, 이미 있으면 그 표 수정 (맵 편집창과 동일)
+    if (mark === 'table') {
+      if (parseMdTable(draft)) setTableDlg({ mode: 'edit' });
+      else setTableDlg({ mode: 'insert', cursor: e0, rows: size?.rows ?? 2, cols: size?.cols ?? 2 });
       return;
     }
     // '체크박스' 버튼 — 커서 줄에 '- [ ] ' 마커 토글 (맵 편집창과 동일)
@@ -453,6 +467,26 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
                 }}
               />
             )}
+            {tableDlg && (() => {
+              // 표 팝업 편집기 — ⊞ 버튼 (맵 편집창과 동일)
+              const parsed = tableDlg.mode === 'edit' ? parseMdTable(draft) : null;
+              return (
+                <TableDialog
+                  t={t}
+                  initialMd={parsed ? buildMdTable(parsed.headers, parsed.rows) : undefined}
+                  initialSize={tableDlg.mode === 'insert' ? { rows: tableDlg.rows, cols: tableDlg.cols } : undefined}
+                  onCancel={() => {
+                    setTableDlg(null);
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                  onSave={(md) => {
+                    setDraft(tableDlg.mode === 'insert' ? spliceMdTable(draft, tableDlg.cursor, md) : replaceMdTable(draft, md));
+                    setTableDlg(null);
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                />
+              );
+            })()}
           <textarea
             ref={inputRef}
             value={draft}
@@ -480,7 +514,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             }}
             onBlur={() => {
               // 코드 블록 팝업이 여는 blur는 커밋이 아니다 (맵 편집창과 동일)
-              if (codeDlgRef.current) return;
+              if (codeDlgRef.current || tableDlgRef.current) return;
               commitEdit();
             }}
             onKeyDown={(e) => {

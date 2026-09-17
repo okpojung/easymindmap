@@ -18,6 +18,7 @@ import { parseMdCode } from './mdCode';
 import { parseMdTable } from './mdTable';
 import { parseCheckLine, toggleCheckInText } from './mdCheck';
 import { CodeBlockDialog, replaceCodeBlock } from './CodeBlockDialog';
+import { TableDialog, replaceMdTable, buildMdTable } from './TableDialog';
 import { copyTable } from '@/utils/copyTable';
 import { gridCharSpans } from '@/utils/monoGrid';
 
@@ -133,6 +134,8 @@ export function NodeRichText({
   const mdc = parseMdCode(raw);
   const [codeDlgOpen, setCodeDlgOpen] = useState(false);
   const codeEditable = !!(onUpdateText && t);
+  // 표 ✎ 수정(팝업 편집기) — 코드 블록과 같은 조건 (2026-09-17)
+  const [tableDlgOpen, setTableDlgOpen] = useState(false);
   // 코드 복사 피드백 — 맵 패널의 '⧉ 복사 → 복사됨 ✓'와 동일 (1.5초)
   const [codeCopied, setCodeCopied] = useState(false);
   const copyCode = () => {
@@ -198,6 +201,24 @@ export function NodeRichText({
           >
             {tableCopied ? '복사됨 ✓' : '⧉'}
           </button>
+          {codeEditable && (
+            // ✎ = 팝업 편집기 — 맵의 표 더블클릭과 동일
+            <button
+              data-html-table-edit
+              title="표 편집 — 팝업에서 셀을 고칩니다"
+              onClick={(e) => { e.stopPropagation(); setTableDlgOpen(true); }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute', top: 0, right: 22, zIndex: 1,
+                border: 'none', background: 'transparent', borderRadius: 3,
+                padding: '0 3px', cursor: 'pointer', fontSize: '0.78em',
+                fontWeight: 700, color: '#475569', lineHeight: 1.4,
+              }}
+            >
+              ✎
+            </button>
+          )}
           {/* 스크롤 래퍼 — 넓은 표가 좁은 컨테이너(칸반 카드 260~300px 등)를
               밀어 옆 컬럼까지 침범하지 않도록 표만 가로 스크롤한다.
               data-html-scroll: 칸반 카드 드래그가 이 영역에서는 시작되지
@@ -335,6 +356,22 @@ export function NodeRichText({
         </div>
       )}
       {after && renderPlain(after.seg, after.key)}
+      {tableDlgOpen && codeEditable && (() => {
+        // 표 팝업 편집기 — 확인 시 원문의 첫 표를 교체
+        const parsed = parseMdTable(mdc ? [mdc.before, mdc.after].filter(Boolean).join('\n') : raw);
+        if (!parsed) return null;
+        return (
+          <TableDialog
+            t={t!}
+            initialMd={buildMdTable(parsed.headers, parsed.rows)}
+            onCancel={() => setTableDlgOpen(false)}
+            onSave={(md) => {
+              onUpdateText!(replaceMdTable(raw, md));
+              setTableDlgOpen(false);
+            }}
+          />
+        );
+      })()}
       {codeDlgOpen && codeEditable && mdc && (
         // 코드 블록 팝업 편집기 — 확인 시 원문의 첫 펜스 블록을 교체
         <CodeBlockDialog

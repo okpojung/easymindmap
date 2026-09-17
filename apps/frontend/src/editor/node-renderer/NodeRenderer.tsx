@@ -28,7 +28,7 @@ import {
   scaleNodeImage,
   sizeNodeForText,
 } from './sizeNodeForText';
-import { layoutMdTable, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
+import { layoutMdTable, parseMdTable, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
 import { layoutMdCode, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
 import { gridXAttr } from '@/utils/monoGrid';
 import {
@@ -42,6 +42,7 @@ import {
   type MarkState,
 } from './inlineMarks';
 import { CodeBlockDialog, spliceCodeBlock, replaceCodeBlock } from './CodeBlockDialog';
+import { TableDialog, spliceMdTable, replaceMdTable, buildMdTable } from './TableDialog';
 import {
   computeNodeChecks,
   checkGlyphW,
@@ -232,6 +233,14 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   // 편집이 커밋돼 버리는 경합 방지
   const codeDlgRef = useRef<boolean>(false);
   useEffect(() => { codeDlgRef.current = !!codeDlg; }, [codeDlg]);
+  // 표 팝업 편집기 (2026-09-17) — insert: 격자에서 고른 크기의 빈 표를 커서
+  // 위치에 넣고 팝업에서 채운다 · edit: 기존 표를 교체. inDraft = 편집 중인
+  // 초안(draftText)의 표인지(툴바 ⊞), 저장된 텍스트의 표인지(캔버스 더블클릭)
+  const [tableDlg, setTableDlg] = useState<
+    { mode: 'insert'; cursor: number; rows: number; cols: number } | { mode: 'edit'; inDraft: boolean } | null
+  >(null);
+  const tableDlgRef = useRef<boolean>(false);
+  useEffect(() => { tableDlgRef.current = !!tableDlg; }, [tableDlg]);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // 편집 중 라이브 미리보기 레이어 (B6) — 스크롤 동기화용
@@ -435,7 +444,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
 
   // 편집 중 선택한 텍스트에 인라인 마커 토글 (부분 강조 — 미니 툴바/
   // Ctrl+B·I·U). 이미 그 마커가 적용돼 있으면 해제한다. inlineMarks.ts 참조.
-  const wrapSelection = (mark: string) => {
+  const wrapSelection = (mark: string, size?: { rows: number; cols: number }) => {
     const ta = textareaRef.current;
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
@@ -443,6 +452,13 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     // '코드블록' 버튼 — 팝업 편집기에서 언어·코드를 입력받아 삽입
     if (mark === '```') {
       setCodeDlg({ mode: 'insert', cursor: e0 });
+      return;
+    }
+    // '표' 버튼 — 격자에서 고른 크기의 빈 표를 넣고 팝업에서 채운다.
+    // 노드는 표를 하나만 그리므로, 이미 있으면 그 표를 팝업에서 수정한다.
+    if (mark === 'table') {
+      if (parseMdTable(draftText)) setTableDlg({ mode: 'edit', inDraft: true });
+      else setTableDlg({ mode: 'insert', cursor: e0, rows: size?.rows ?? 2, cols: size?.cols ?? 2 });
       return;
     }
     // '체크박스' 버튼 — 커서 줄에 '- [ ] ' 마커 토글
@@ -834,7 +850,18 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               const gridColor = border;
               const allRows = [headers, ...rows];
               return (
-                <g>
+                <g
+                  data-node-table
+                  onDoubleClick={(e) => {
+                    // 표 더블클릭 = 팝업 편집기 (코드 패널과 같은 규칙)
+                    e.stopPropagation();
+                    setTableDlg({ mode: 'edit', inDraft: false });
+                  }}
+                >
+                  <title>더블클릭하면 팝업에서 표를 편집합니다</title>
+                  {/* 히트 영역 — 격자선·글자 사이 빈 곳도 더블클릭이 표에 닿게
+                      (없으면 아래 노드 박스가 받아 텍스트 편집으로 들어간다) */}
+                  <rect x={tX} y={tY} width={tW} height={tH} fill="transparent" />
                   <rect x={tX} y={tY} width={tW} height={rowH}
                         fill={border} opacity={0.16} />
                   <rect x={tX} y={tY} width={tW} height={tH}
@@ -1176,7 +1203,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
           {/* 부분 강조 툴바 (공용 MarkToolbar) — 선택 구간에 마커 토글.
               코드 블록 창이 떠 있는 동안에는 감춘다: 창 밖(노드 위)에
               떠 있어 창을 가리고, 그때는 쓸 수도 없다 (2026-08-09 보고) */}
-          {!codeDlg && <MarkToolbar
+          {!codeDlg && !tableDlg && <MarkToolbar
             t={t}
             onApply={wrapSelection}
             style={{
@@ -1356,7 +1383,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
             onBlur={() => {
               // 코드 블록 팝업이 열리며 생기는 blur는 커밋이 아니다 —
               // 팝업을 닫으면 편집으로 돌아온다 (삽입 흐름 유지)
-              if (codeDlgRef.current) return;
+              if (codeDlgRef.current || tableDlgRef.current) return;
               saveEdit();
             }}
             style={{
@@ -1502,6 +1529,37 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
           }}
         />
       )}
+
+      {/* 표 팝업 편집기 — ⊞ 버튼(격자 크기 → 삽입) / 표 더블클릭(수정) */}
+      {tableDlg && (() => {
+        const src = tableDlg.mode === 'edit' ? (tableDlg.inDraft ? draftText : String(n.text || '')) : '';
+        const parsed = tableDlg.mode === 'edit' ? parseMdTable(src) : null;
+        const initialMd = parsed ? buildMdTable(parsed.headers, parsed.rows) : undefined;
+        const size = tableDlg.mode === 'insert' ? { rows: tableDlg.rows, cols: tableDlg.cols } : undefined;
+        return (
+          <TableDialog
+            t={t}
+            initialMd={initialMd}
+            initialSize={size}
+            onCancel={() => {
+              setTableDlg(null);
+              if (editing) window.setTimeout(() => textareaRef.current?.focus(), 0);
+            }}
+            onSave={(md) => {
+              if (tableDlg.mode === 'insert') {
+                setDraftText(spliceMdTable(draftText, tableDlg.cursor, md));
+                window.setTimeout(() => textareaRef.current?.focus(), 0);
+              } else if (tableDlg.inDraft) {
+                setDraftText(replaceMdTable(draftText, md));
+                window.setTimeout(() => textareaRef.current?.focus(), 0);
+              } else {
+                updateNodeText(n.id, replaceMdTable(String(n.text || ''), md));
+              }
+              setTableDlg(null);
+            }}
+          />
+        );
+      })()}
 
       <defs>
         <filter id="nodeShadow" x="-20%" y="-20%" width="140%" height="140%">

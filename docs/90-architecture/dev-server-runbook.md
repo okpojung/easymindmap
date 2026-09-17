@@ -1794,6 +1794,11 @@ sudo curl -fsSL https://raw.githubusercontent.com/okpojung/easymindmap/main/scri
   -o /usr/local/bin/health-watch.sh
 sudo chmod +x /usr/local/bin/health-watch.sh
 
+# jq 를 권한다 (2026-09-17) — 응답 JSON 의 `status` 를 jq 로 읽는다.
+# 없어도 돈다(공백을 허용하는 grep 으로 대신 읽는다). 다만 그 폴백은
+# 중첩된 `"status":"ok"` 까지 정상으로 볼 수 있으니 서버에는 깔아 둔다.
+sudo apt-get install -y jq
+
 # 먼저 손으로 한 번 (정상이면 **메일이 오지 않는 것이 정상**이다)
 sudo HEALTH_URL=https://api-dev.mindmap.ai.kr/v1/health /usr/local/bin/health-watch.sh
 

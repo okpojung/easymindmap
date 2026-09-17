@@ -175,10 +175,17 @@ SIZE=$(gzip -cd "$OUT.tmp" 2>/dev/null | wc -c | tr -d ' ')
 
 # 이름이 파일 안에 실제로 있는지 본다. pg_dumpall 은 데이터베이스마다
 # `\connect <이름>` 을 적는다 — 목록에 있었다는 것과 담겼다는 것은 다르다.
+#
+# ★ `grep -q` 를 쓰면 안 된다 (2026-09-18 dev 에서 실제로 겪었다). -q 는
+# 첫 일치에서 바로 끝나는데, 뒤에 아직 풀 내용이 많으면 gzip 이 SIGPIPE(141)
+# 로 죽고 `pipefail` 이 그것을 실패로 본다 — 그래서 gotrue 가 **있는데도**
+# "없습니다" 로 끝났다. 가짜 docker 시험은 덤프가 40KB 라 걸리지 않았고,
+# 진짜 DB(수 MB)에서만 났다. `grep -c` 는 끝까지 읽으므로 안전하다.
 for n in "${NEED[@]}"; do
   n=$(printf '%s' "$n" | tr -d ' ')
   [ -n "$n" ] || continue
-  gzip -cd "$OUT.tmp" 2>/dev/null | grep -qE "^\\\\connect ($n|\"$n\")" \
+  HITS=$(gzip -cd "$OUT.tmp" 2>/dev/null | grep -cE "^\\\\connect ($n|\"$n\")")
+  [ "${HITS:-0}" -gt 0 ] \
     || { rm -f "$OUT.tmp"; fail "'$n' 이 백업 파일 안에 없습니다 — 복원해도 로그인할 수 없게 됩니다."; }
 done
 

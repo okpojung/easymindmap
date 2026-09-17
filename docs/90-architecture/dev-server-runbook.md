@@ -1647,8 +1647,13 @@ Coolify → `easymindmap-db` → **Backups** 탭은 여전히
 
 2026-08-28 부터 스크립트와 절차가 저장소에 있다 —
 [`scripts/emm-db-backup.sh`](../../scripts/emm-db-backup.sh), 가짜 docker 로
-24항목을 통과한다([`emm-db-backup.test.sh`](../../scripts/emm-db-backup.test.sh)).
-**남은 것은 서버에 거는 일 하나뿐이고, 그것은 저장소에서 할 수 없다.**
+27항목을 통과한다([`emm-db-backup.test.sh`](../../scripts/emm-db-backup.test.sh)).
+**2026-09-18 에 dev 에 걸었다** (root cron `10 3 * * *`). 그날 손으로 돌린
+첫 실행이 "'gotrue' 이 백업 파일 안에 없습니다" 로 **거짓 실패**했다 —
+확인 단계의 `grep -q` 가 첫 일치에서 끝나 gzip 이 SIGPIPE 로 죽고
+`pipefail` 이 실패로 본 것. 진짜 DB 크기에서만 나는 문제라 가짜 시험이
+못 잡았다. `grep -c` 로 고쳤다(e2e275). **첫 실행에서 이 문구가 나오면
+스크립트를 다시 받으라** — 아래 설치의 `curl` 한 줄이다.
 
 #### 왜 Coolify 의 Scheduled Backup 만으로는 부족한가 ⚠️
 

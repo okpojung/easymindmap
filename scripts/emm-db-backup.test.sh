@@ -150,6 +150,16 @@ OUT=$(run)
 ls "$WORK/dest/all-20260101-0000.sql.gz" >/dev/null 2>&1 \
   && bad '⑧ 오래된 백업을 지운다' || ok '⑧ 오래된 백업을 지운다'
 
+# ── ⑨ 큰 덤프 — gotrue 가 앞에 있고 뒤가 길다 (2026-09-18 dev 실제 장애) ──
+# `\connect gotrue` 는 덤프 앞쪽에 오고(이름순) 그 뒤에 수 MB 가 이어진다.
+# 확인 단계가 `grep -q` 였을 때 첫 일치에서 끝나 gzip 이 SIGPIPE 로 죽고
+# pipefail 이 실패로 봐서, gotrue 가 있는데도 "없습니다" 로 끝났다.
+rm -rf "$WORK/dest" "$WORK/state"
+OUT=$(FAKE_DUMP_PAD=3000000 run)
+check '⑨ 큰 덤프에서도 gotrue 를 찾는다'      '✅.*sql\.gz'                "$OUT"
+check_not '⑨ 있는데 없다고 하지 않는다'       '백업 파일 안에 없습니다'     "$OUT"
+[ -f "$WORK/state/last-success" ] && ok '⑨ 성공으로 기록한다' || bad '⑨ 성공으로 기록한다'
+
 echo
 echo "합계: ${pass}건 통과, ${fail}건 실패"
 [ "$fail" = "0" ] || exit 1

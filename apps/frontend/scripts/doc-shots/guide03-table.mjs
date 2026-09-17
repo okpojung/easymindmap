@@ -55,6 +55,13 @@ await btn('− 열').click(); await page.waitForTimeout(100);
 ok('②-b −열 = 커서 열(새 열) 삭제', (await cell(0, 3).inputValue()) === '단위' && (await grid.locator('th').count()) === 4);
 await cell(0, 1).focus();
 await btn('− 행').isDisabled().then((d) => ok('②-b 머리글에 커서면 −행 비활성', d));
+// ②-c 열 정렬 버튼 — 커서 열에 GFM 정렬 (값 열 가운데, 단위 열 오른쪽)
+await cell(0, 2).focus();
+await page.locator('[data-testid="table-align-center"]').click(); await page.waitForTimeout(80);
+ok('②-c 가운데 버튼이 눌린 상태', (await page.locator('[data-testid="table-align-center"]').getAttribute('aria-pressed')) === 'true');
+ok('②-c 값 열 입력칸이 가운데 정렬', (await cell(1, 2).evaluate((el) => getComputedStyle(el).textAlign)) === 'center');
+await cell(2, 3).focus();
+await page.locator('[data-testid="table-align-right"]').click(); await page.waitForTimeout(80);
 await cell(1, 1).focus();
 const card = page.locator('[data-testid="table-dialog"] > div');
 await card.screenshot({ path: `${OUT}/table-dialog.png` }); console.log('shot table-dialog');
@@ -63,7 +70,7 @@ await card.screenshot({ path: `${OUT}/table-dialog.png` }); console.log('shot ta
 await page.locator('[data-testid="table-view-md"]').click();
 await page.waitForSelector('[data-testid="table-md-input"]', { timeout: 3000 });
 const mdv = await page.locator('[data-testid="table-md-input"]').inputValue();
-ok('③ MD 원문에 머리글·구분선·데이터 행', mdv.startsWith('| 항목 | 값 | 단위 | 비고 |\n|---|---|---|---|\n| 메모리 | 32 | GB | DDR5 |'));
+ok('③ MD 원문에 머리글·정렬 구분선(:---: · ---:)·데이터 행', mdv.startsWith('| 항목 | 값 | 단위 | 비고 |\n|---|:---:|---:|---|\n| 메모리 | 32 | GB | DDR5 |'));
 await card.screenshot({ path: `${OUT}/table-dialog-md.png` }); console.log('shot table-dialog-md');
 // MD 에서 셀 하나 고치고 격자로 돌아오면 반영
 await page.locator('[data-testid="table-md-input"]').fill(mdv.replace('NVMe', 'SATA'));
@@ -75,7 +82,7 @@ ok('③ MD → 격자 전환에 수정이 반영', (await cell(2, 4).inputValue(
 await page.locator('[data-testid="table-dialog-save"]').click();
 await page.waitForTimeout(200);
 const taVal = await page.locator('textarea').inputValue();
-ok('④ 편집창 원문에 표', taVal.includes('| 항목 | 값 | 단위 | 비고 |') && taVal.includes('| 디스크 | 1 | TB | SATA |'));
+ok('④ 편집창 원문에 표(정렬 구분선 포함)', taVal.includes('| 항목 | 값 | 단위 | 비고 |\n|---|:---:|---:|---|') && taVal.includes('| 디스크 | 1 | TB | SATA |'));
 ok('④ 팝업이 닫힌 뒤 툴바가 다시 보인다', (await page.locator('[data-testid="mark-toolbar"]').count()) === 1);
 // 커밋 — 캔버스 빈 곳 클릭
 await page.mouse.click(nb.x + nb.width / 2, nb.y + nb.height + 260);
@@ -120,6 +127,10 @@ await cell(2, 2).fill('2');
 await page.locator('[data-testid="table-dialog-save"]').click();
 await page.waitForTimeout(500);
 ok('⑦ 저장 뒤 아웃라인 표에 2 TB', (await page.locator('[data-html-table]').first().innerText()).includes('2'));
+ok('⑦ 아웃라인 표의 값 열이 가운데·단위 열이 오른쪽 정렬', await page.locator('[data-html-table] tr').first().evaluate((tr) => {
+  const tds = Array.from(tr.querySelectorAll('td')).map((td) => getComputedStyle(td).textAlign);
+  return tds[1] === 'center' && tds[2] === 'right';
+}));
 await page.locator('[data-testid="mainview-toggle"]').click();
 await page.waitForTimeout(400);
 

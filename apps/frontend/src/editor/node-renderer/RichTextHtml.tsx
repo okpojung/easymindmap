@@ -245,6 +245,7 @@ export function NodeRichText({
                         padding: '1px 6px',
                         fontWeight: ri === 0 ? 700 : 400,
                         opacity: ri === 0 ? 1 : 0.92,
+                        textAlign: mdt.aligns[ci] ?? 'left', // GFM 열 정렬
                       }}
                     >
                       <InlineMarkSpans text={cell} textColor={textColor} />
@@ -363,7 +364,7 @@ export function NodeRichText({
         return (
           <TableDialog
             t={t!}
-            initialMd={buildMdTable(parsed.headers, parsed.rows)}
+            initialMd={buildMdTable(parsed.headers, parsed.rows, parsed.aligns)}
             onCancel={() => setTableDlgOpen(false)}
             onSave={(md) => {
               onUpdateText!(replaceMdTable(raw, md));

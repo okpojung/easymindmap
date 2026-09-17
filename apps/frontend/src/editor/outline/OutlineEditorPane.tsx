@@ -473,7 +473,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
               return (
                 <TableDialog
                   t={t}
-                  initialMd={parsed ? buildMdTable(parsed.headers, parsed.rows) : undefined}
+                  initialMd={parsed ? buildMdTable(parsed.headers, parsed.rows, parsed.aligns) : undefined}
                   initialSize={tableDlg.mode === 'insert' ? { rows: tableDlg.rows, cols: tableDlg.cols } : undefined}
                   onCancel={() => {
                     setTableDlg(null);

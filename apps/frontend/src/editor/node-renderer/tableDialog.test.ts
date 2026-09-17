@@ -63,5 +63,17 @@ function check(name: string, got: unknown, want: unknown): void {
   check('⑤ build → parse → build 동일', buildMdTable(p.headers, p.rows), md);
 }
 
+// ⑥ GFM 열 정렬 — 구분선 콜론으로 쓰고 읽는다
+{
+  const md = buildMdTable(['이름', '점수', '메모'], [['김', '90', 'x']], ['left', 'center', 'right']);
+  check('⑥ 구분선에 :--- / :---: / ---:', md.split('\n')[1], '|:---|:---:|---:|');
+  const p = parseMdTable(md)!;
+  check('⑥ 파서가 정렬을 읽는다', p.aligns, ['left', 'center', 'right']);
+  check('⑥ 정렬 없음(null)은 ---', buildMdTable(['a', 'b'], [['1', '2']], [null, 'right']).split('\n')[1], '|---|---:|');
+  check('⑥ 구분선 없는 단순 파이프 표는 모두 null', parseMdTable('a | b\n1 | 2')!.aligns, [null, null]);
+  check('⑥ 빈 표의 정렬', emptyTable(2, 3).aligns, [null, null, null]);
+  check('⑥ build → parse → build 에서 정렬 유지', buildMdTable(p.headers, p.rows, p.aligns), md);
+}
+
 if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }
 console.log('\n모두 통과');

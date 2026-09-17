@@ -237,33 +237,53 @@ Coolify에서 **Project**를 만들고 아래 3개 리소스를 추가한다.
 
 #### 5.3-A-1 처음 세울 때 — **순서대로** (2026-09-17)
 
-> **먼저 정할 것 하나: 어느 도메인으로 시작하나.**
-> `easymindmap.org` 가 아직 등록되지 않았다면 **`www-dev.mindmap.ai.kr`
-> 로 먼저 세운다.** 이미 가진 도메인이라 DNS 를 바로 넣을 수 있고,
-> 나중에 운영 도메인을 **덧붙이는** 것은 A 레코드 한 줄 + Proxy Host
-> 하나 + Coolify Domains 칸에 콤마로 추가하는 것뿐이다(§7.10 끝).
-> 아래 절차는 `www-dev.mindmap.ai.kr` 기준으로 적는다.
+> ### ★ 홈페이지는 **운영 도메인 하나뿐이다** (2026-09-17 사용자 결정)
+>
+> `www.easymindmap.org` **하나**로 세운다. `www-dev` 같은 개발 도메인을
+> 따로 두지 않는다 — 사용자의 말 그대로 *"웹페이지는 dev 환경과 운영환경
+> 구분이 없다"* 이고, `27a-paid-publish.md` §0.5 가 이미 같은 결론을
+> 적어 두었다(**홈페이지 전용 dev 서버는 두지 않는다** — 홈페이지가 읽는
+> 것은 공개 API 뿐이라, 개발은 내 컴퓨터에서 `npm run dev` 로 한다).
+>
+> **그래서 지금은 이 공개 도메인이 dev 백엔드를 본다**(`api-dev`·
+> `pro-dev`). 운영 백엔드가 생기면 바꾸는 것은 **환경변수 세 줄**
+> (③)과 api 의 `CORS_ORIGIN`(⑥)뿐이고, 도메인·컨테이너는 그대로다.
 
-**① DNS — 등록대행사 콘솔에서 A 레코드 한 줄** (`infra-architecture.md` §7.1)
+**① DNS — 등록대행사 콘솔에서 A 레코드** (`infra-architecture.md` §7.1)
+
+`easymindmap.org` 는 **이미 등록돼 있다**(2026-09-17 확인). 다만 등록 직후의
+A 레코드는 **등록대행사 파킹 주소**를 가리키고 있으므로, 우리 서버로
+**바꿔야 한다**(확인 당시 `www.easymindmap.org` → `99.83.196.71` — 우리
+공인 IP 가 아니다).
 
 ```
 Type  Name                     Content
-A     www-dev.mindmap.ai.kr    203.0.113.10     ← 다른 호스트와 같은 공인 IP
+A     www.easymindmap.org      203.0.113.10     ← 다른 호스트와 같은 공인 IP
+A     easymindmap.org          203.0.113.10     ← www 없이 들어오는 사람용(권장)
 ```
 
 프록시·CDN 기능이 있으면 **끈다**(DNS only). SSL 은 NPM 이 전담한다.
 
+> **apex(`www` 없는 주소)도 넣는 이유** — 손님은 `easymindmap.org` 라고
+> 칠 수도 있다. 다만 **두 주소가 같은 내용을 내놓게 두지는 않는다** —
+> ⑤에서 apex 를 `www` 로 **리디렉트**한다. 그래야 링크 카드의 `og:url`
+> 과 CORS 출처가 **한 주소로 고정**된다(둘 다 서빙하면 같은 맵이 두
+> 주소를 갖고, `CORS_ORIGIN` 에도 둘 다 적어야 한다).
+> 등록대행사가 apex 에 A 레코드를 못 넣는 곳(CNAME 만 되는 곳)이면
+> apex 를 포기하고 `www` 만 쓴다 — 없다고 사이트가 안 열리지는 않는다.
+
 들어갔는지 확인 — 내 PC 어디서든:
 
 ```bash
-nslookup www-dev.mindmap.ai.kr
+nslookup www.easymindmap.org
 # 또는
-dig +short www-dev.mindmap.ai.kr
+dig +short www.easymindmap.org
 ```
 
-**공인 IP 하나가 나오면** 다음 단계로 간다. 안 나오면 전파를 기다린다
-(보통 몇 분, 길면 한 시간). **여기서 IP 가 안 나오면 뒤 단계는 전부
-헛수고다** — Let's Encrypt 발급도 실패한다.
+**우리 공인 IP 가 나오면** 다음 단계로 간다. **파킹 주소가 그대로 나오면
+아직 안 바뀐 것이다** — 전파를 기다린다(보통 몇 분, 길면 한 시간).
+**여기서 IP 가 안 바뀌면 뒤 단계는 전부 헛수고다** — Let's Encrypt 발급도
+실패한다.
 
 **② Coolify 에 앱 만들기**
 
@@ -280,7 +300,7 @@ dig +short www-dev.mindmap.ai.kr
 | Ports Exposes | **`80`** | **누락 시 502** — Traefik 이 대상 포트를 모른다 |
 | Is it a static site? | **끄기** | 우리 `nginx.conf` 가 안 쓰인다 → `/p/` 프록시와 `/site-assets/` 가 죽는다 |
 | Publish Directory · Install/Build/Start Command | **비움** | Dockerfile 이 다 한다 |
-| Domains | **`http://www-dev.mindmap.ai.kr`** | ★ **`https://` 를 쓰지 않는다** (§5.4 — SSL 종단은 NPM 한 곳) |
+| Domains | **`http://www.easymindmap.org`** | ★ **`https://` 를 쓰지 않는다** (§5.4 — SSL 종단은 NPM 한 곳). apex 는 여기 적지 않는다 — ⑤에서 리디렉트한다 |
 
 **③ 환경변수 — 빌드용 2개 · 런타임용 1개**
 
@@ -308,19 +328,40 @@ Environment Variables 탭. **체크박스를 정확히** 맞춘다.
 아직 안 걸었다. 서버에서 먼저 확인한다(`ubuntu@em-dev` SSH):
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: www-dev.mindmap.ai.kr' http://127.0.0.1/
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: www.easymindmap.org' http://127.0.0.1/
 # 200 이면 Traefik → site 컨테이너까지 길이 뚫린 것이다
 ```
 
 **⑤ NPM Proxy Host** (`infra-architecture.md` §7.10)
 
+**⑤-1 Proxy Host** (Proxy Hosts → Add)
+
 ```
-Domain:   www-dev.mindmap.ai.kr
-Forward:  http://192.168.0.110:80        ← Traefik. 컨테이너 포트를 직접 부르지 않는다
-Cache Assets: ❌ 끄기
-SSL:      Let's Encrypt + Force SSL ✅
-Access:   Publicly Accessible            ← ★ 반드시
+Domain Names:  www.easymindmap.org
+Forward:       http://192.168.0.110:80   ← Traefik. 컨테이너 포트를 직접 부르지 않는다
+Cache Assets:  ❌ 끄기
+SSL:           Let's Encrypt + Force SSL ✅
+Access:        Publicly Accessible       ← ★ 반드시
 ```
+
+**⑤-2 Redirection Host** — apex 를 `www` 로 (Redirection Hosts → Add)
+
+```
+Domain Names:   easymindmap.org
+Forward Domain: www.easymindmap.org
+Scheme: https · HTTP Code: 301 · Preserve Path ✅
+SSL:            Let's Encrypt + Force SSL ✅
+```
+
+> **왜 둘 다 서빙하지 않고 리디렉트인가** — 같은 맵이 두 주소를 갖게
+> 되면 링크 카드의 `og:url`(손님이 들어온 주소로 만들어진다)이 갈리고,
+> `CORS_ORIGIN` 에도 두 출처를 적어야 한다. **주소를 하나로 고정**하는
+> 편이 나중에 셀 자리가 적다.
+>
+> apex 에도 **인증서가 필요하다** — 리디렉트도 `https://easymindmap.org`
+> 로 들어온 요청을 받아야 하고, 그러려면 그 이름의 인증서가 있어야 한다.
+> ①에서 apex A 레코드를 넣지 않았다면 ⑤-2 를 통째로 건너뛴다(없는
+> 도메인으로는 발급이 실패한다).
 
 ★ **Access List 를 걸면 안 된다.** 손님에게 보여 주는 홈페이지라, 걸면
 처음 오는 사람에게 **Basic 인증 팝업**이 먼저 뜬다. 본인 브라우저는 자격을
@@ -336,18 +377,24 @@ Coolify → **api 앱** → Environment Variables → `CORS_ORIGIN` 에 **콤마
 덧붙이고** api 를 재배포한다.
 
 ```
-CORS_ORIGIN=https://pro-dev.mindmap.ai.kr,https://www-dev.mindmap.ai.kr
+CORS_ORIGIN=https://pro-dev.mindmap.ai.kr,https://www.easymindmap.org
 ```
 
 확인:
 
 ```bash
-curl -s -o /dev/null -D- -H 'Origin: https://www-dev.mindmap.ai.kr' \
+curl -s -o /dev/null -D- -H 'Origin: https://www.easymindmap.org' \
   https://api-dev.mindmap.ai.kr/v1/published | grep -i access-control-allow-origin
-# access-control-allow-origin: https://www-dev.mindmap.ai.kr  ← 이 줄이 나와야 한다
+# access-control-allow-origin: https://www.easymindmap.org  ← 이 줄이 나와야 한다
 ```
 
-**⑦ 확인** — 브라우저로 `https://www-dev.mindmap.ai.kr`
+> **apex 는 적지 않아도 된다** — ⑤-2 가 `www` 로 리디렉트하므로 브라우저가
+> 실제로 API 를 부를 때의 `Origin` 은 언제나 `https://www.easymindmap.org`
+> 다. (리디렉트를 두지 않고 둘 다 서빙하기로 했다면 **여기에 apex 도
+> 반드시 적는다** — 안 적으면 apex 로 들어온 손님에게만 지식창고가 빈다.
+> "www 로 들어오면 되던데" 로 놓치기 딱 좋은 자리다.)
+
+**⑦ 확인** — 브라우저로 `https://www.easymindmap.org` (**시크릿 창**)
 
 | 보이는 것 | 정상 |
 |---|---|
@@ -356,11 +403,16 @@ curl -s -o /dev/null -D- -H 'Origin: https://www-dev.mindmap.ai.kr' \
 | 맵 카드 클릭 | 주소가 **같은 도메인**의 `/p/{id}` 로 가고 맵이 그려진다 |
 | 개발자도구 Console | 오류 없음 (특히 CORS) |
 
-**⑧ 운영 도메인을 붙일 때** (`easymindmap.org` 등록 뒤)
+**⑧ 나중에 — 운영 백엔드가 생기면**
 
-①(A 레코드 `www.easymindmap.org`) → ⑤(Proxy Host 하나 더) → Coolify
-Domains 칸에 **콤마로 덧붙이기**(`http://www-dev.mindmap.ai.kr,http://www.easymindmap.org`)
-→ ⑥(`CORS_ORIGIN` 에도 덧붙이기) → 재배포. 컨테이너는 하나 그대로다.
+도메인도 컨테이너도 그대로 두고 **바라보는 곳만** 바꾼다.
+
+1. ③ 의 `VITE_API_URL`·`VITE_APP_URL`·`APP_ORIGIN` 을 운영 주소로
+2. 운영 api 의 `CORS_ORIGIN` 에 `https://www.easymindmap.org` (+apex)
+3. 홈페이지 앱 **재배포** — `VITE_*` 는 빌드 때 박히므로 재배포해야 바뀐다
+
+그 전까지 이 공개 도메인은 **dev 백엔드를 본다**(위 ★ 상자). 지식창고에
+뜨는 맵이 dev DB 의 맵이라는 뜻이다.
 
 #### 5.3-A-2 설정값 요약
 
@@ -373,7 +425,7 @@ Domains 칸에 **콤마로 덧붙이기**(`http://www-dev.mindmap.ai.kr,http://w
   | Dockerfile Location | `/apps/site/Dockerfile` |
   | Ports Exposes | `80` — **누락 시 502** |
   | Is it a static site? | **끄기** (Dockerfile 이 nginx 를 포함) |
-  | Domains | 개발 `http://www-dev.mindmap.ai.kr` · 운영 `http://www.easymindmap.org` |
+  | Domains | `http://www.easymindmap.org` (**운영 도메인 하나뿐** — 개발용 도메인을 두지 않고, apex 는 NPM 에서 리디렉트한다) |
 
 - **빌드 환경변수** (Vite 라 **Buildtime** 이어야 한다 — 런타임엔 안 읽는다)
 
@@ -402,6 +454,8 @@ Domains 칸에 **콤마로 덧붙이기**(`http://www-dev.mindmap.ai.kr,http://w
 | 지식창고는 되는데 **맵을 열면 502·빈 화면** | ③ `APP_ORIGIN` (런타임) — 앱 주소가 맞는가 |
 | **번들만 404** (`/site-assets/…`) | "Is it a static site?" 가 켜져 우리 `nginx.conf` 가 안 쓰였다 |
 | 재배포했는데 **옛 화면** | ⑤ `Cache Assets` 를 껐는가 + 브라우저 강력 새로고침 |
+| `www` 는 되는데 **`easymindmap.org` 만 안 된다** | ①에 apex A 레코드가 있는가 → ⑤-2 Redirection Host 가 있는가 |
+| **인증서 발급이 실패한다** | ①의 A 레코드가 아직 파킹 주소다. 또는 ⑤ 에 **A 레코드가 없는 도메인**을 적었다(되는 쪽까지 같이 실패한다) |
 
 #### ★ 한 도메인 안에 **두 앱**이 산다 (B안, 2026-09-12 사용자 결정)
 

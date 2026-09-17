@@ -263,7 +263,8 @@ DNS     : 8.8.8.8, 1.1.1.1
 | api-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → api) | IPSec VPN IP 허용 | Let's Encrypt |
 | coolify-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:8000 (Coolify UI + 웹훅) | IPSec VPN IP 허용 (+`/webhooks/` 예외) | Let's Encrypt |
 | auth-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → GoTrue) | IPSec VPN IP 허용 | Let's Encrypt |
-| www-dev.mindmap.ai.kr | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → site) | **없음 — 공개** | Let's Encrypt |
+| www.easymindmap.org | A 203.0.113.10 | 192.168.0.110:80 (Traefik 경유 → site) | **없음 — 공개** | Let's Encrypt |
+| easymindmap.org (apex) | A 203.0.113.10 | **Redirection Host → www** (301) | 없음 | Let's Encrypt |
 
 > **DNS 주의사항**:
 > - A 레코드만 필요하다. 프록시/CDN류 기능이 있는 DNS라면 끈다 —
@@ -504,7 +505,8 @@ A     pro-dev.mindmap.ai.kr             203.0.113.10
 A     api-dev.mindmap.ai.kr         203.0.113.10
 A     coolify-dev.mindmap.ai.kr     203.0.113.10
 A     auth-dev.mindmap.ai.kr        203.0.113.10
-A     www-dev.mindmap.ai.kr         203.0.113.10
+A     www.easymindmap.org           203.0.113.10
+A     easymindmap.org               203.0.113.10
 ```
 
 > ⚠️ 프록시/CDN류 부가 기능은 끄고 **A 레코드만** — NPM이 직접 SSL 처리합니다
@@ -842,16 +844,40 @@ Advanced:
 > OPTIONS 예외를 추가한다 (api 는 Nest 의 `enableCors` 가 처리하지만,
 > preflight 가 NPM 에서 먼저 막히면 앱까지 도달하지 못한다).
 
-### 7.10 Proxy Host — www-dev.mindmap.ai.kr (홈페이지) (2026-09-17)
+### 7.10 Proxy Host — www.easymindmap.org (홈페이지) (2026-09-17)
 
 ```
-Domain:   www-dev.mindmap.ai.kr
-Forward:  http://192.168.0.110:80        # Coolify Traefik 경유 (site 컨테이너 :80 으로 분기)
-WS:       ❌ (정적 사이트다 — 켜 두어도 해롭지는 않다)
-Cache Assets: ❌ 끄기
-SSL:      Let's Encrypt + Force SSL ✅
-Access:   Publicly Accessible            ← ★ 반드시 (아래)
+# ① Proxy Host
+Domain Names:  www.easymindmap.org
+Forward:       http://192.168.0.110:80   # Coolify Traefik 경유 (site 컨테이너 :80 으로 분기)
+WS:            ❌ (정적 사이트다 — 켜 두어도 해롭지는 않다)
+Cache Assets:  ❌ 끄기
+SSL:           Let's Encrypt + Force SSL ✅
+Access:        Publicly Accessible       ← ★ 반드시 (아래)
+
+# ② Redirection Host — apex 를 www 로
+Domain Names:   easymindmap.org
+Forward Domain: www.easymindmap.org      # https · 301 · Preserve Path
+SSL:            Let's Encrypt + Force SSL ✅
 ```
+
+> **apex 는 서빙하지 않고 리디렉트한다.** 둘 다 서빙하면 같은 맵이 두
+> 주소를 갖게 돼 링크 카드의 `og:url`(손님이 들어온 주소로 만든다)이
+> 갈리고, `CORS_ORIGIN` 에도 두 출처를 적어야 한다. 주소를 하나로
+> 고정하는 편이 셀 자리가 적다. 리디렉트도 `https://easymindmap.org` 를
+> 받아야 하므로 **apex 에도 인증서가 필요하다.**
+
+> **홈페이지는 운영 도메인 하나뿐이다** (2026-09-17 사용자 결정) —
+> `www-dev` 같은 개발 도메인을 두지 않는다. *"웹페이지는 dev 환경과
+> 운영환경 구분이 없다"* 는 것이고, `27a-paid-publish.md` §0.5 의
+> **홈페이지 전용 dev 서버는 두지 않는다**(개발은 내 컴퓨터에서)와 같은
+> 결론이다. 그래서 지금은 이 공개 도메인이 **dev 백엔드**(`api-dev`·
+> `pro-dev`)를 본다 — 바꾸는 것은 환경변수뿐이다
+> (`dev-server-coolify.md` §5.3-A-1 ⑧).
+
+> A 레코드를 넣지 않은 도메인은 **어디에도 적지 말 것** — 그 이름의
+> HTTP-01 챌린지가 못 돌아서 **발급이 통째로** 실패한다(되는 쪽까지
+> 같이 못 받는다).
 
 > ### ★ 여기는 **Access List 를 걸면 안 된다**
 >
@@ -871,10 +897,10 @@ Access:   Publicly Accessible            ← ★ 반드시 (아래)
 > `Cache Assets` 를 꺼야 하는 이유는 §7.6 과 같다 — `index.html` 에는
 > 해시가 붙지 않아, NPM 이 캐시하면 재배포 후에도 옛 화면이 보인다.
 
-> **운영 도메인(`www.easymindmap.org`)을 붙일 때**도 같은 값이다.
-> 도메인 한 줄(A 레코드)과 이 Proxy Host 한 개를 더 만들고, Coolify 의
-> Domains 칸에 `http://www.easymindmap.org` 를 **콤마로 덧붙이면** 두
-> 주소가 같은 컨테이너로 간다(Traefik 이 Host 헤더로 분기한다).
+> **도메인을 더 붙일 때**(예: 나중에 다른 이름을 하나 더) — A 레코드
+> 한 줄을 넣고, 이 Proxy Host 의 Domain Names 와 Coolify 의 Domains 칸에
+> **콤마로 덧붙이면** 같은 컨테이너로 간다(Traefik 이 Host 헤더로 분기).
+> `api` 의 `CORS_ORIGIN` 에도 같이 넣는 것을 잊지 않는다.
 
 ---
 

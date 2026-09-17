@@ -1700,10 +1700,14 @@ sudo /usr/local/bin/emm-db-backup.sh --check
 # ② 한 번 손으로 돌려 본다
 sudo /usr/local/bin/emm-db-backup.sh
 
-sudo crontab -e
-# 매일 새벽 3시 10분
-10 3 * * * /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1
+# cron 등록 — **붙여넣기 한 줄** (두 번 실행해도 같은 줄이 겹치지 않는다) — 매일 새벽 3시 10분
+sudo bash -c '( crontab -l 2>/dev/null | grep -v emm-db-backup.sh; echo "10 3 * * * /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1" ) | crontab -'
+sudo crontab -l          # 백업 줄이 보여야 한다 (헬스 감시 줄과 함께)
 ```
+
+> 2026-09-18: 헬스 감시 cron 이 `crontab -e` 단계에서 빠진 채 한 달을
+> 지낸 것을 보고(§2.2), 이 절도 붙여넣기 한 줄로 바꿨다. **`sudo crontab -l`
+> 에 줄이 보이기 전까지는 걸린 것이 아니다.**
 
 메일 설정은 **새로 넣을 것이 없다** — §2.2 와 같이 api 컨테이너의
 `SMTP_*` 와 `ADMIN_EMAILS` 를 `docker inspect` 로 읽는다.
@@ -1802,10 +1806,21 @@ sudo apt-get install -y jq
 # 먼저 손으로 한 번 (정상이면 **메일이 오지 않는 것이 정상**이다)
 sudo HEALTH_URL=https://api-dev.mindmap.ai.kr/v1/health /usr/local/bin/health-watch.sh
 
-sudo crontab -e
-# 5분마다
-*/5 * * * * HEALTH_URL=https://api-dev.mindmap.ai.kr/v1/health /usr/local/bin/health-watch.sh >> /var/log/emm-health.log 2>&1
+# cron 등록 — **붙여넣기 한 줄** (두 번 실행해도 같은 줄이 겹치지 않는다)
+sudo bash -c '( crontab -l 2>/dev/null | grep -v health-watch.sh; echo "*/5 * * * * HEALTH_URL=https://api-dev.mindmap.ai.kr/v1/health /usr/local/bin/health-watch.sh >> /var/log/emm-health.log 2>&1" ) | crontab -'
+sudo crontab -l          # 위 줄 하나가 보여야 한다
 ```
+
+5분쯤 뒤 `tail -2 /var/log/emm-health.log` 에 `state=ok prev=ok send=no`
+가 5분 간격으로 쌓이면 걸린 것이다.
+
+> ⚠️ **2026-09-18 확인 — 한 달 동안 등록돼 있지 않았다.** 이 절이
+> `sudo crontab -e`(손으로 편집)였고 그 단계가 빠진 채 "완료" 로 적혀
+> 있었다. `sudo crontab -l` 이 `no crontab for root`, 로그 파일도 없었다.
+> 손으로 돌린 첫 실행이 `prev=없음` 을 찍어서 알아챘다 — **`prev=없음`
+> 은 상태 파일이 없다는 뜻이고, cron 이 돌고 있었다면 나올 수 없다.**
+> 그래서 등록을 붙여넣기 한 줄로 바꿨고, 확인 줄(`sudo crontab -l`)을
+> 절차에 넣었다. 백업 cron(§2.1)도 같은 이유로 같은 방식이다.
 
 #### 설정 — **새로 넣을 것이 없다**
 

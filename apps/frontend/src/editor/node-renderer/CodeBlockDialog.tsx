@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { DialogXButton } from '@/components/ui/DialogFrame';
 
 export function CodeBlockDialog({
   t,
@@ -56,7 +57,9 @@ export function CodeBlockDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        data-testid="code-block-panel"
         style={{
+          position: 'relative',
           width: 'min(640px, calc(100vw - 48px))',
           background: t.surface,
           border: `1.5px solid ${t.border}`,
@@ -66,7 +69,8 @@ export function CodeBlockDialog({
           display: 'flex', flexDirection: 'column', gap: 10,
         }}
       >
-        <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>
+        <DialogXButton t={t} testId="code-block-dialog-x" onClose={onCancel} />
+        <div style={{ fontSize: 14, fontWeight: 700, color: t.text, paddingRight: 34 }}>
           코드 블록 {initialCode ? '수정' : '삽입'}
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

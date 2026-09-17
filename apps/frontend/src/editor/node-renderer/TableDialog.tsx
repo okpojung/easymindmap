@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { parseMdTable } from './mdTable';
+import { DialogXButton } from '@/components/ui/DialogFrame';
 
 export const TABLE_MIN_ROWS = 2; // 헤더 + 데이터 1행
 export const TABLE_MIN_COLS = 2;
@@ -339,7 +340,9 @@ export function TableDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        data-testid="table-panel"
         style={{
+          position: 'relative',
           width: 'min(760px, calc(100vw - 48px))',
           maxHeight: 'calc(100vh - 48px)',
           background: t.surface,
@@ -350,7 +353,8 @@ export function TableDialog({
           display: 'flex', flexDirection: 'column', gap: 10,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <DialogXButton t={t} testId="table-dialog-x" onClose={onCancel} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 34 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: t.text, flex: 1 }}>
             표 {initialMd ? '수정' : '삽입'}
             <span style={{ fontSize: 12, color: t.textMuted, fontWeight: 400, marginLeft: 8 }}>

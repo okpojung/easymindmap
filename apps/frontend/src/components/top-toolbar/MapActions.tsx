@@ -27,6 +27,7 @@ import {
 } from '@/services/cloud/mapSession';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { ProCollabSession } from '@pro';
+import { DialogXButton } from '@/components/ui/DialogFrame';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
 type SaveIntent = null | 'save' | 'close' | 'saveAs';
@@ -223,12 +224,14 @@ export function MapActions(
             onClick={(e) => e.stopPropagation()}
             data-testid="unsaved-warning"
             style={{
+              position: 'relative',
               width: 'min(420px, 92vw)', background: t.surface, color: t.text,
               border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
               boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
             }}
           >
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6 }}>
+            <DialogXButton t={t} testId="unsaved-warning-x" onClose={() => setWarnUnsaved(false)} />
+            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6, paddingRight: 34 }}>
               ⚠ 맵이 저장되지 않았습니다
             </div>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7, marginBottom: 16 }}>

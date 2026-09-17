@@ -20,7 +20,7 @@
 //
 // 여는 방식은 mapSession 규칙을 따른다 — 편집 중이면 브라우저 새 탭,
 // 잃을 것이 없으면 이 탭.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
@@ -36,6 +36,8 @@ import { notifyUser } from '@/stores/noticeStore';
 import { publicMapUrl } from './PublishPanel';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
 import { FolderPickerDialog } from './FolderPickerDialog';
+import { DialogXButton } from '@/components/ui/DialogFrame';
+import { clampLeft, clampTop } from '@/utils/popupPosition';
 
 type SortKey = 'title' | 'createdAt' | 'updatedAt'
   | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
@@ -286,6 +288,21 @@ export function MapBrowser({
     { map: MapListItem; x: number; y: number; pinned: boolean } | null
   >(null);
   const infoTimer = useRef<number | null>(null);
+  /**
+   * 카드의 **실제 높이** — 화면 밖으로 나가지 않게 접으려면 높이를 알아야
+   * 한다 (2026-09-18 사용자 지적: 퍼블리싱 맵의 카드가 아래로 잘렸다).
+   *
+   * 전에는 `window.innerHeight - 250` 처럼 **높이를 추측**했다. 카드는
+   * 줄 수가 내용에 따라 달라진다 — 퍼블리싱 링크 줄이 붙고 마지막 저장
+   * 자리까지 채워지면 250 을 훌쩍 넘어서, 그만큼 아래가 잘렸다.
+   * `useLayoutEffect` 는 **그려지기 전에** 돌므로 깜빡임이 없다.
+   */
+  const infoRef = useRef<HTMLDivElement | null>(null);
+  const [infoH, setInfoH] = useState(0);
+  useLayoutEffect(() => {
+    if (!info) { setInfoH(0); return; }
+    if (infoRef.current) setInfoH(infoRef.current.offsetHeight);
+  }, [info]);
   const showInfoSoon = (map: MapListItem, el: HTMLElement) => {
     if (info?.pinned) return; // 고정된 카드는 호버로 갈아치우지 않는다
     if (infoTimer.current) window.clearTimeout(infoTimer.current);
@@ -1329,6 +1346,7 @@ export function MapBrowser({
           (겹치는 레이어 순서는 coding-conventions.md §5-1-4) */}
       {info && (
         <div
+          ref={infoRef}
           data-testid="browser-info-card"
           onMouseEnter={() => {
             if (infoTimer.current) window.clearTimeout(infoTimer.current);
@@ -1336,16 +1354,28 @@ export function MapBrowser({
           onMouseLeave={hideInfoSoon}
           style={{
             position: 'fixed', zIndex: 230,
-            left: Math.max(8, Math.min(info.x, window.innerWidth - 320)),
-            top: Math.min(info.y, window.innerHeight - 250),
+            // 셈은 `utils/popupPosition` 한 곳에 있다 — 눈으로 확인하기
+            // 어려운 자리라 따로 시험한다(popupPosition.test.ts).
+            left: clampLeft(info.x, 300, window.innerWidth),
+            // 실제 높이로 접는다. 아직 못 쟀으면(첫 판) 어림값을 쓰고
+            // useLayoutEffect 가 그려지기 전에 바로잡는다.
+            top: clampTop(info.y, infoH, window.innerHeight),
+            // 창이 카드보다도 낮으면(짧은 노트북 화면) 그때는 카드 안에서
+            // 굴린다 — 어떤 경우에도 잘리지 않게 하는 마지막 빗장이다.
+            maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
             width: 300, padding: '10px 12px', borderRadius: 10,
             background: t.surface, border: `1px solid ${t.borderStrong}`,
             boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
             fontSize: 11.5, color: t.text, lineHeight: 1.7,
           }}
         >
+          {/* 고정된 카드에만 × — 호버로 뜬 카드는 마우스를 떼면 사라진다 */}
+          {info.pinned && (
+            <DialogXButton t={t} testId="browser-info-card-x" onClose={() => setInfo(null)} />
+          )}
           <div style={{
             fontWeight: 700, fontSize: 12.5, marginBottom: 4,
+            paddingRight: info.pinned ? 30 : 0,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{info.map.title || '(제목 없음)'}</div>
           <InfoRow t={t} k="유형" v={mapType(info.map).label} />
@@ -1385,7 +1415,7 @@ export function MapBrowser({
           )}
           {info.pinned && (
             <div style={{ marginTop: 6, fontSize: 10, color: t.textSubtle }}>
-              Esc 또는 ⓘ 를 다시 누르면 닫힙니다.
+              오른쪽 위 × · Esc · ⓘ 를 다시 누르면 닫힙니다.
             </div>
           )}
         </div>

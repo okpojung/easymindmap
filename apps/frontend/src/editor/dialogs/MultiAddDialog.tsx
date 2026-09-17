@@ -9,6 +9,7 @@ import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { countOutline, parseOutlineLines } from '@/utils/outlineLines';
+import { DialogXButton } from '@/components/ui/DialogFrame';
 
 export function MultiAddDialog({ t }: { t: ThemeTokens }) {
   const open = useEditorUiStore((s) => s.multiAddOpen);
@@ -51,7 +52,9 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        data-testid="multi-add-dialog"
         style={{
+          position: 'relative',
           width: 440, maxWidth: '92vw',
           background: t.surface, color: t.text,
           borderRadius: 12, border: `1px solid ${t.border}`,
@@ -59,7 +62,8 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
           padding: 18, fontFamily: 'inherit',
         }}
       >
-        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>다중 노드 추가</div>
+        <DialogXButton t={t} testId="multi-add-dialog-x" onClose={() => setOpen(false)} />
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, paddingRight: 34 }}>다중 노드 추가</div>
         <div style={{ fontSize: 11.5, color: t.textMuted, marginBottom: 10 }}>
           한 줄에 하나씩 입력하면 각 줄이{' '}
           <b style={{ color: t.text }}>{parentLabel}</b>의 자식 노드로 추가됩니다.

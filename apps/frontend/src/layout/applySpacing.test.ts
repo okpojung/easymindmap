@@ -97,5 +97,23 @@ console.log('── 트리·오른쪽(세로 쌓기): 예전 그대로 중심점
   check('세로 순서 유지', b.map((n) => n.id), a.map((n) => n.id));
 }
 
+console.log('── 둘째 중심(루트 id 가 root 가 아님)의 1레벨 행도 윗변 하나 (#513 Codex)');
+{
+  const base = sample();
+  const map: SampleMap = {
+    ...base,
+    centers: [{
+      root: { id: 'c2', text: '둘째 중심', colorKey: 'root', side: 'center' },
+      branches: base.branches.map((b) => ({ ...b, id: `c2-${b.id}`, children: [] })),
+    }],
+  };
+  const out = computeLayout(map, 'process-tree-right', 1000, 500, { x: 1.1, y: 1.15 });
+  const second = out.filter((n) => n.parent === 'c2');
+  check('둘째 중심 가지 넷의 부모가 c2', second.length, 4);
+  check('둘째 중심 1레벨 윗변 종류 1 (높이 종류 3개)', [uniq(second.map((n) => n.y - n.h / 2)).length, uniq(second.map((n) => n.h)).length], [1, 3]);
+  const c2 = out.find((n) => n.id === 'c2')!;
+  check('둘째 중심 줄기 높이 종류 1', uniq(second.map((n) => (c2.y + c2.h / 2 + n.y - n.h / 2) / 2)).length, 1);
+}
+
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
 console.log('\nall passed');

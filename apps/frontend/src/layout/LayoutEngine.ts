@@ -253,17 +253,20 @@ function computeCenterLayout(
   // different layout than the map).
   applyLayoutOverrides(branches, activeLayoutType, out);
 
-  // 사용자 간격 조정 — 항상 마지막에, 최종 좌표 기준으로.
-  if (spacing) applySpacing(out, spacing);
-
   // ★ 전략들은 최상위 가지의 부모를 글자 그대로 `'root'` 로 박는다
   //   (Radial·Tree·Hierarchy·Process·Timeline). 두 번째 이후의 중심은 루트
   //   id 가 다르므로 여기서 바꿔 준다 — 안 바꾸면 캔버스가 그 가지의
   //   연결선을 **첫 중심에서** 긋고, 포커스·서브트리 순회가 중심을 넘나든다
   //   (PR #490 Codex 지적). 전략 코드는 중심이 여럿인 것을 몰라도 된다.
+  //   간격 조정 **앞에** 한다 — applySpacing 이 부모의 배치를 보고 윗변/
+  //   중심점을 고르므로, 부모 id 가 아직 'root' 면 둘째 중심의 가지는
+  //   부모를 못 찾는다 (PR #513 Codex 지적).
   if (root.id !== 'root') {
     for (const n of out) if (n.parent === 'root') n.parent = root.id;
   }
+
+  // 사용자 간격 조정 — 항상 마지막에, 최종 좌표 기준으로.
+  if (spacing) applySpacing(out, spacing);
 
   return out;
 }

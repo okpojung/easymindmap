@@ -1028,6 +1028,24 @@ const VIEWER_JS = String.raw`
   // 이후에는 에디터 좌표의 "크기"만 유지한 채 위치를 다시 계산한다
   // (에디터처럼 접으면 간격이 줄고, 펴면 다시 늘어난다).
   var DYN = false;
+  // ★ 재배치는 "접힘 상태가 **내보낼 때와 달라진 동안**"만 (2026-09-18, 사용자
+  //   보고: 중심을 접었다 펴면 배치가 바뀌어 있다). 예전에는 한 번 접으면 DYN 이
+  //   영영 켜져, 모두 다시 펼쳐도 에디터가 구운 좌표로 돌아오지 않고 뷰어 자체
+  //   배치(간격 배율·오버라이드 밀기를 모르는)로 그렸다. 내보낼 때의 접힘 상태를
+  //   기억해 두고, 그 상태로 돌아오면 구운 좌표(assignFixed)를 다시 쓴다.
+  var C0_DONE = false;
+  function rememberCollapsed0() {
+    ROOTS().forEach(function walk(n) { n._c0 = !!n.collapsed; (n.children || []).forEach(walk); });
+  }
+  function collapsedChanged() {
+    var changed = false;
+    ROOTS().forEach(function walk(n) {
+      if (changed) return;
+      if ((n.children || []).length && !!n.collapsed !== !!n._c0) { changed = true; return; }
+      (n.children || []).forEach(walk);
+    });
+    return changed;
+  }
 
   // 에디터 좌표 모드에서의 재배치 — 노드 크기·글꼴·줄바꿈은 에디터가
   // 계산한 값(pos)을 그대로 쓰고, 위치만 layoutBlock+arrange로 다시 계산.
@@ -1098,8 +1116,13 @@ const VIEWER_JS = String.raw`
   function render() {
     while (world.firstChild) world.removeChild(world.firstChild);
     chipLayer = el('g', { 'class': 'mm-chip-layer' });
-    var rootEff = normalize(DATA.root.layoutType) || normalize(DATA.mapLayout) || 'radial-bidirectional';
-    DATA.root.layoutType = DATA.root.layoutType || rootEff;
+    if (!C0_DONE) { rememberCollapsed0(); C0_DONE = true; }
+    DYN = collapsedChanged();
+    // 첫 중심의 배치는 **에디터의 맵 레이아웃**(mapLayout)이다 — 엔진이 첫 중심을
+    // 그것으로 놓았고 pos 도 그 좌표다. root.layoutType 은 옛 값이 남을 수 있어
+    // (2026-09-18 사용자 파일: root=tree-right · 편집기=진행트리) 뒤로 미룬다.
+    var rootEff = normalize(DATA.mapLayout) || normalize(DATA.root.layoutType) || 'radial-bidirectional';
+    DATA.root.layoutType = rootEff;
     if (DATA.root.pos && !DYN) {
       assignFixed(DATA.root, 0, rootEff);
     } else if (DATA.root.pos) {
@@ -1907,8 +1930,7 @@ const VIEWER_JS = String.raw`
         chip.addEventListener('click', function (ev) {
           ev.stopPropagation();
           n.collapsed = !n.collapsed;
-          DYN = true; // 이후로는 에디터처럼 접기/펴기 시 간격 재배치
-          render();
+          render(); // 내보낼 때와 접힘이 다르면 render 가 재배치로, 같으면 구운 좌표로
         });
       })(node);
     }
@@ -2301,7 +2323,7 @@ const VIEWER_JS = String.raw`
       'process-tree-right': '진행트리·오른쪽', 'timeline': '시간배치',
       'timeline-center': '시간배치·중앙'
     };
-    var eff = normalize(DATA.root.layoutType) || 'radial-bidirectional';
+    var eff = normalize(DATA.mapLayout) || normalize(DATA.root.layoutType) || 'radial-bidirectional';
     document.getElementById('mm-count').textContent =
       countAllNodes() + ' 노드 · ' + (layoutLabels[eff] || eff);
   }
@@ -2695,10 +2717,10 @@ const VIEWER_JS = String.raw`
   });
   document.addEventListener('pointerdown', tipRestore, true);
   document.getElementById('mm-expand').addEventListener('click', function () {
-    ROOTS().forEach(function (r) { setAll(r, false); r.collapsed = false; }); DYN = true; render(); fit();
+    ROOTS().forEach(function (r) { setAll(r, false); r.collapsed = false; }); render(); fit();
   });
   document.getElementById('mm-collapse').addEventListener('click', function () {
-    ROOTS().forEach(function (r) { setAll(r, true); r.collapsed = false; }); DYN = true; render(); fit();
+    ROOTS().forEach(function (r) { setAll(r, true); r.collapsed = false; }); render(); fit();
   });
 
   // ── 아웃라인 페인 (읽기 전용 네비게이션) — 에디터의 아웃라인과 짝 ──
@@ -2755,7 +2777,7 @@ const VIEWER_JS = String.raw`
         car.textContent = node.collapsed ? '▸' : '▾';
         car.addEventListener('click', function (e) {
           e.stopPropagation();
-          node.collapsed = !node.collapsed; DYN = true; render();
+          node.collapsed = !node.collapsed; render();
         });
         row.appendChild(car);
       } else {

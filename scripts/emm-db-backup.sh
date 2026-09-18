@@ -33,7 +33,7 @@ CHECK_ONLY=no
 [ "${1:-}" = "--check" ] && CHECK_ONLY=yes
 
 fail() {
-  echo "❌ $*" >&2
+  echo "❌ $(date '+%F %T') $*" >&2
   notify "$*"
   exit 1
 }
@@ -138,7 +138,10 @@ done
 URL=$(docker exec -i "$API" printenv DATABASE_URL)
 DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
 PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
-echo "DB=$DB  계정=$PGUSER  (api=$API)"
+# 시각을 먼저 찍는다 — cron 로그(`>> emm-backup.log`)에 여러 실행이 쌓이면
+# 어느 실행의 결과인지 이것으로 가른다 (2026-09-18: 옛 스크립트의 03:10
+# 실패와 새 스크립트의 손 실행이 구분되지 않아 겪었다).
+echo "── $(date '+%F %T') 시작  DB=$DB  계정=$PGUSER  (api=$API)"
 
 DBS=$(docker exec -i "$DB" psql -U "$PGUSER" -d postgres -tAc \
         "SELECT datname FROM pg_database WHERE datistemplate = false" 2>/dev/null | tr -d '\r')

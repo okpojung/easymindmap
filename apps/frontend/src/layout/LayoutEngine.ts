@@ -55,16 +55,36 @@ export interface LayoutSpacing {
   y: number; // 세로 간격 배율
 }
 
+// 자식 행을 **윗변 기준으로 나란히** 놓는 배치 — 진행트리(모든 레벨)와
+// 트리·아래의 1레벨. 이 행의 노드들은 높이가 달라도 윗변이 같다.
+function isTopAlignedRowLayout(t: LayoutType | undefined): boolean {
+  const n = t ? (normalizeLayoutType(t) as string) : '';
+  return n === 'process-tree-right' || n === 'process-tree-right-a'
+    || n === 'process-tree-right-b' || n === 'tree-down';
+}
+
 function applySpacing(out: LaidOutNode[], spacing: LayoutSpacing): void {
   if (out.length === 0) return;
   if (Math.abs(spacing.x - 1) < 0.01 && Math.abs(spacing.y - 1) < 0.01) return;
 
   const rootX = out[0].x;
   const rootY = out[0].y;
+  const byId = new Map(out.map((n) => [n.id, n]));
 
   for (const n of out) {
     n.x = rootX + (n.x - rootX) * spacing.x;
-    n.y = rootY + (n.y - rootY) * spacing.y;
+    // ★ 부모가 자식들을 **윗변 기준**으로 나란히 놓았으면(진행트리·트리아래)
+    //   윗변을 늘린다 — 중심점을 늘리면 높이가 다른 형제의 윗변이 제각각
+    //   벌어져, 부모에서 내려오는 가로 줄기가 높이 종류만큼 여러 줄로
+    //   갈라진다 (2026-09-18 사용자 보고: 세로 간격 115% 진행트리에서
+    //   중심의 연결선이 6줄). 형제를 세로로 쌓는 배치는 예전대로 중심점.
+    const parent = n.parent ? byId.get(n.parent) : undefined;
+    if (parent && isTopAlignedRowLayout(parent.layoutType)) {
+      const top = n.y - n.h / 2;
+      n.y = rootY + (top - rootY) * spacing.y + n.h / 2;
+    } else {
+      n.y = rootY + (n.y - rootY) * spacing.y;
+    }
   }
 }
 
@@ -233,17 +253,20 @@ function computeCenterLayout(
   // different layout than the map).
   applyLayoutOverrides(branches, activeLayoutType, out);
 
-  // 사용자 간격 조정 — 항상 마지막에, 최종 좌표 기준으로.
-  if (spacing) applySpacing(out, spacing);
-
   // ★ 전략들은 최상위 가지의 부모를 글자 그대로 `'root'` 로 박는다
   //   (Radial·Tree·Hierarchy·Process·Timeline). 두 번째 이후의 중심은 루트
   //   id 가 다르므로 여기서 바꿔 준다 — 안 바꾸면 캔버스가 그 가지의
   //   연결선을 **첫 중심에서** 긋고, 포커스·서브트리 순회가 중심을 넘나든다
   //   (PR #490 Codex 지적). 전략 코드는 중심이 여럿인 것을 몰라도 된다.
+  //   간격 조정 **앞에** 한다 — applySpacing 이 부모의 배치를 보고 윗변/
+  //   중심점을 고르므로, 부모 id 가 아직 'root' 면 둘째 중심의 가지는
+  //   부모를 못 찾는다 (PR #513 Codex 지적).
   if (root.id !== 'root') {
     for (const n of out) if (n.parent === 'root') n.parent = root.id;
   }
+
+  // 사용자 간격 조정 — 항상 마지막에, 최종 좌표 기준으로.
+  if (spacing) applySpacing(out, spacing);
 
   return out;
 }

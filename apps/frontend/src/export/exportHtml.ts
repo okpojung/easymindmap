@@ -3407,7 +3407,12 @@ export function buildStandaloneHtml(
         textAlign: map.root.textAlign ?? levelTextAlign(0),
       } as MindNode, resolveHref, resolvePos, resolveSide),
       colorKey: 'root',
-      layoutType: map.root.layoutType ?? mapLayoutType,
+      // 첫 중심의 레이아웃은 **에디터의 맵 레이아웃**이다 — 엔진이 첫 중심을
+      // 그것으로 놓았고 pos 도 그 좌표다. `map.root.layoutType` 은 다른 길로
+      // 맵 레이아웃을 바꾸면 옛 값이 남을 수 있어(2026-09-18 사용자 파일:
+      // root=tree-right · 편집기=진행트리), 뷰어가 그걸 믿으면 진행트리
+      // 자리에 트리 연결선을 그렸다. 둘째 이후 중심은 자기 루트의 값.
+      layoutType,
       children: map.branches.map((b) =>
         toExportNode(b, resolveHref, resolvePos, resolveSide, 1)),
     },

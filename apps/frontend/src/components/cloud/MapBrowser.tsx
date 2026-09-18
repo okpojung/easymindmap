@@ -96,6 +96,25 @@ type SortOrder = 'asc' | 'desc';
  * 다크 어느 쪽에서도 묻히지 않는다.
  */
 /**
+ * 이 행에 **지식창고 토글을 세울 수 있는가** (2026-09-18).
+ *
+ * 조건 둘을 **한 곳에서** 본다 — 행의 아이콘 셋이 서로 어긋나면 빈 칸이
+ * 생기기 때문이다.
+ *   ① 퍼블리싱 등록돼 있어야 한다 (주소가 있어야 진열이 뜻을 갖는다)
+ *   ② **서버가 `listed` 를 알려 줘야 한다**
+ *
+ * ★ ②가 중요한 이유 — **프런트엔드와 API 는 따로 배포된다.** 화면만 먼저
+ *   올라가면 `listed` 가 `undefined` 로 오는데, 그때 토글을 그리려다 말면
+ *   공유·폴더 이동까지 함께 사라져 **아이콘이 빈 칸**이 된다(실제로 그런
+ *   코드를 쓸 뻔했다). 그럴 때는 **옛 아이콘 그대로** 둔다 — 이 저장소가
+ *   `tableReady`·`columnReady` 에서 지키는 것과 같은 규칙이다: 모르는
+ *   서버를 만나면 기능만 빠지고 화면은 멀쩡해야 한다.
+ */
+function knowsListed(m: MapListItem): boolean {
+  return !!m.publishId && m.listed !== undefined;
+}
+
+/**
  * 맵의 **유형** — 문서함 '유형' 칸이 보여 주는 한 값 (2026-09-05 사용자 결정).
  *
  *   단독맵 · 협업맵 · 퍼블리싱맵 · 대시보드맵
@@ -1356,22 +1375,17 @@ export function MapBrowser({
                         [퍼블리싱] 자리에 있다. 눌러도 화면이 그대로라
                         "안 먹었나" 를 겪는다. 취소하면 원래 폴더로 돌아간다.
                       그 자리에는 **지식창고 토글**이 선다. */}
-                  {r.map.publishId ? (
-                    r.map.listed === undefined ? (
-                      // 이 서버는 지식창고를 모른다(칸 없음) — 그리지 않는다
-                      <span aria-hidden style={actionGap} />
-                    ) : (
-                      <button
-                        data-testid="browser-map-listed"
-                        aria-pressed={r.map.listed}
-                        style={{ ...iconBtn, color: r.map.listed ? t.primary : undefined }}
-                        title={r.map.listed
-                          ? '지식창고에서 내리기 — 목록에서만 빠집니다. 링크는 그대로 살아 있습니다'
-                          : '지식창고에 올리기 — 둘러보는 누구나 찾을 수 있게 됩니다'}
-                        aria-label={r.map.listed ? '지식창고에서 내리기' : '지식창고에 올리기'}
-                        onClick={() => void toggleListed(r.map)}
-                      ><I.Library size={15} /></button>
-                    )
+                  {knowsListed(r.map) ? (
+                    <button
+                      data-testid="browser-map-listed"
+                      aria-pressed={r.map.listed}
+                      style={{ ...iconBtn, color: r.map.listed ? t.primary : undefined }}
+                      title={r.map.listed
+                        ? '지식창고에서 내리기 — 목록에서만 빠집니다. 링크는 그대로 살아 있습니다'
+                        : '지식창고에 올리기 — 둘러보는 누구나 찾을 수 있게 됩니다'}
+                      aria-label={r.map.listed ? '지식창고에서 내리기' : '지식창고에 올리기'}
+                      onClick={() => void toggleListed(r.map)}
+                    ><I.Library size={15} /></button>
                   ) : (
                     <button data-testid="browser-map-share" style={iconBtn}
                       title="공유 — 참여자 초대 · 소유권 넘기기 (맵을 열지 않아도 됩니다)" aria-label="공유"
@@ -1387,7 +1401,7 @@ export function MapBrowser({
                   )}
                   <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
                     onClick={() => void renameMap(r.map)}><I.Pencil size={15} /></button>
-                  {r.map.publishId ? (
+                  {knowsListed(r.map) ? (
                     <span aria-hidden style={actionGap} />
                   ) : (
                     <button data-testid="browser-map-move" style={iconBtn}

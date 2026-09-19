@@ -1,4 +1,4 @@
-// 가이드 03 — 스타일 복사(붓) 2장면 + 동작 검증 (2026-09-19).
+// 가이드 03 — 스타일 복사(붓) 3장면 + 동작 검증 (2026-09-19 · 흰 노드 보고 수정 포함).
 //   node scripts/doc-shots/guide03-style-copy.mjs <출력폴더>
 // 붓 버튼 → 커서 옆 붓 → 노드 클릭/러버밴드로 칠하기 → ESC·빈 곳 클릭 해제.
 import { boot, forceFont, stores, nodeBox, shotUnion } from './lib.mjs';
@@ -109,5 +109,21 @@ ok('⑧ Ctrl+Z 두 번 → 러버밴드로 칠한 둘이 함께 돌아온다 (b2
   (await node('b3-1')).style === undefined && (await node('b3-2')).style === undefined && (await node('b2')).style?.shapeType === 'hexagon');
 await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
 ok('⑧ 한 번 더 → b2 도 원래대로', (await node('b2')).style === undefined && (await node('b2')).textAlign === undefined);
+
+// ⑨ 흰 노드(2레벨 · colorKey 없음)를 떠서 색 가지에 칠하면 정말 흰색이 된다 (2026-09-19 보고 수정)
+const fillOf = (id) => page.evaluate(({ id }) => {
+  const g = document.querySelector(`[data-node-id="${id}"]`);
+  const f = [...g.querySelectorAll('path,rect,ellipse,polygon')].map((e) => e.getAttribute('fill')).filter((v) => v && v !== 'none' && v !== 'transparent');
+  return f[0] ?? null;
+}, { id });
+const b4Before = await fillOf('b4'); const whiteFill = await fillOf('b1-1');
+ok('⑨ 전제: b1-1 은 흰 바탕, 색 가지 b4 는 다른 색', whiteFill?.toUpperCase() === '#FFFFFF' && b4Before !== whiteFill);
+await clickNode('b1-1'); await btn.click(); await page.waitForTimeout(100);
+ok('⑨ 흰 노드에서 뜬 붓에는 l2 계열이 담긴다', (await page.evaluate(async () => (await import('/src/stores/interactionStore.ts')).useInteractionStore.getState().stylePainter?.snap.colorKey)) === 'l2');
+await clickNode('b4');
+ok('⑨ 색 가지 b4 가 흰 바탕이 됐다 (colorKey l2 · 그려진 채움 #FFFFFF)', (await node('b4')).colorKey === 'l2' && (await fillOf('b4')) === whiteFill);
+await page.keyboard.press('Escape');
+await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+ok('⑨ Ctrl+Z → b4 원래 색', (await fillOf('b4')) === b4Before);
 
 await browser.close();

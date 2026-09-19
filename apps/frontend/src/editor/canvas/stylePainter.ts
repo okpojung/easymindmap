@@ -15,6 +15,12 @@
 //   · `colorKey`   가지 색 계열 — 명시 색이 없는 노드의 채움/테두리/글자색은
 //                  여기서 나온다(`resolveNodeColors`). 원본이 중심주제
 //                  (`'root'`)면 옮기지 않고, 대상이 중심주제면 덮지 않는다.
+//                  ★ 원본에 colorKey 가 **없으면 레벨 기본 계열을 채워 넣는다**
+//                  (1레벨 `l1A`, 2레벨 이하 `l2` = 흰 바탕) — 그래야 "흰
+//                  노드"를 떠서 색 가지에 칠했을 때 정말 흰색이 된다
+//                  (2026-09-19 사용자 보고: "배경색이 흰색은 적용이 안 된다").
+//                  기본 흰색은 명시 색이 아니라 colorKey 부재 + 깊이에서 나오는
+//                  값이라, 그대로 두면 대상의 가지 색이 남았다.
 // 옮기지 않는 것 — 글(`text`)·노트·링크·첨부·사진·태그·아이콘·체크·크기
 // (`sizeW/H`)·배치(`layoutType`)·접힘·잠금. 아이콘은 "내용"에 가깝고,
 // 크기는 글 길이에 딸린 것이라 뺐다.
@@ -29,8 +35,12 @@ export interface StyleSnapshot {
 
 type Styled = Pick<MindNode, 'style' | 'textAlign' | 'colorKey'> | Pick<SampleRoot, 'style' | 'textAlign' | 'colorKey'>;
 
-/** 원본 노드에서 옮길 겉모습만 떠 둔다 (버튼을 누른 순간의 값 — 그 뒤 원본이 바뀌어도 붓은 그대로). */
-export function snapshotNodeStyle(n: Styled): StyleSnapshot {
+/**
+ * 원본 노드에서 옮길 겉모습만 떠 둔다 (버튼을 누른 순간의 값 — 그 뒤 원본이
+ * 바뀌어도 붓은 그대로). `depth` 는 원본의 깊이(0 = 중심주제, 1 = 가지, …):
+ * colorKey 가 없는 노드의 **보이는** 색 계열을 채우는 데 쓴다.
+ */
+export function snapshotNodeStyle(n: Styled, depth?: number): StyleSnapshot {
   const snap: StyleSnapshot = {};
   if (n.style) {
     const { fontSize: _fontSize, ...rest } = n.style;
@@ -39,6 +49,7 @@ export function snapshotNodeStyle(n: Styled): StyleSnapshot {
   }
   if (n.textAlign) snap.textAlign = n.textAlign;
   if (n.colorKey && n.colorKey !== 'root') snap.colorKey = n.colorKey;
+  else if (!n.colorKey && depth !== undefined && depth >= 1) snap.colorKey = depth === 1 ? 'l1A' : 'l2';
   return snap;
 }
 

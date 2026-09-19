@@ -161,7 +161,23 @@ export default function Library() {
         {items.length > 0 && (
           <div className="grid">
             {items.map((m) => (
-              <a className="card" key={m.publishId} href={mapUrl(m.publishId)}>
+              <a
+                className="card"
+                key={m.publishId}
+                href={mapUrl(m.publishId)}
+                /* ★ **새 탭**으로 연다 (2026-09-19 사용자 요청). 둘러보는
+                   자리라 한 맵을 보고 목록으로 돌아오는 일이 잦다 — 같은
+                   탭에서 열면 찾던 말(`?q=`)과 '더 보기' 로 불러 둔 줄이
+                   모두 사라지고, 뒤로가기로 되살아나는지는 브라우저 마음이다.
+                   새 탭은 목록을 **그대로 남겨 둔다**. 맵 쪽에는 그 탭을
+                   닫는 자리가 선다(`PublicMapPage` 의 `viewer-bar`). */
+                target="_blank"
+                /* opener 는 끊고(남의 맵 안의 스크립트가 이 창을 못 만지게)
+                   referrer 는 남긴다 — 맵 화면이 "지식창고에서 왔다" 를
+                   그것으로 안다. `noreferrer` 를 쓰면 돌아갈 자리가 사라진다. */
+                rel="noopener"
+                aria-label={`${m.title} — 새 탭에서 열기`}
+              >
                 {m.hasPreview
                   ? (
                     <span className="thumb">

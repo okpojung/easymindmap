@@ -18,7 +18,7 @@
 //   설령 그 글에서 무언가 새어 나가더라도 **우리 오리진에 닿지 못한다**
 //   (allow-same-origin 을 주지 않는다 — 이 한 줄이 격리의 전부다).
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { buildStandaloneHtml } from '@/export/exportHtml';
 import { withInlinedImages, withInlinedAttachments } from '@/export/mapMeta';
@@ -26,6 +26,7 @@ import {
   cloudApi, CloudError, publishedAttachmentUrl, serverAttachmentId,
   type PublishedMap,
 } from '@/services/cloud/apiClient';
+import { isFreshTab, libraryBackHref } from '@/utils/viewerChrome';
 
 /** 주소가 퍼블리싱 링크인가 — 맞으면 publishId */
 export function publishIdFromPath(pathname: string): string | null {
@@ -123,17 +124,104 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   }
 
   return (
-    <iframe
-      data-testid="public-map-frame"
-      title={data.title}
-      srcDoc={html}
-      // allow-same-origin 은 주지 않는다 — 이 한 줄이 격리의 전부다.
-      // 스크립트는 뷰어(확대·접기)에 필요하고, 팝업은 노드 링크가 쓴다.
-      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
-      style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', border: 'none' }}
-    />
+    <>
+      <ViewerBar title={data.title} />
+      <iframe
+        data-testid="public-map-frame"
+        title={data.title}
+        srcDoc={html}
+        // allow-same-origin 은 주지 않는다 — 이 한 줄이 격리의 전부다.
+        // 스크립트는 뷰어(확대·접기)에 필요하고, 팝업은 노드 링크가 쓴다.
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+        style={{
+          position: 'fixed', left: 0, right: 0, bottom: 0,
+          // 막대가 있을 때만 그만큼 내린다 — 없으면 예전 그대로 화면 전체다
+          top: 'var(--viewer-bar, 0px)', width: '100%',
+          height: 'calc(100% - var(--viewer-bar, 0px))', border: 'none',
+        }}
+      />
+    </>
   );
 }
+
+/** 막대 높이 — iframe 이 이만큼 내려간다 */
+const BAR_H = 38;
+
+/**
+ * 뷰어 위의 **돌아갈 자리** (2026-09-19 사용자 지적).
+ *
+ * ★ **뒤로 갈 곳이 없는 탭에만 그린다** (`viewerChrome.ts`). 지식창고는
+ *   맵을 새 탭으로 열므로 브라우저 뒤로가기 버튼이 회색이다 — 그 사람에게는
+ *   길이 필요하다. 반대로 남의 블로그에서 같은 탭으로 따라온 사람에게는
+ *   브라우저가 이미 길을 주고 있으니 **아무것도 얹지 않는다**(화면이
+ *   예전 그대로 전체가 된다).
+ *
+ * ★ 색은 뷰어 머리말(`exportHtml` 의 `<header>`)과 같은 `#FFFDF8` /
+ *   `#E4D9C3` 다 — 두 줄이 **한 덩어리**로 읽히게.
+ */
+function ViewerBar({ title }: { title: string }) {
+  const [back] = useState(() => libraryBackHref(document.referrer, window.location.origin));
+  const [fresh] = useState(() => isFreshTab(window.history.length));
+
+  // 막대가 있을 때만 iframe 을 내린다 — CSS 변수 하나로 전한다
+  useEffect(() => {
+    if (!fresh) return undefined;
+    document.documentElement.style.setProperty('--viewer-bar', `${BAR_H}px`);
+    return () => { document.documentElement.style.removeProperty('--viewer-bar'); };
+  }, [fresh]);
+
+  if (!fresh) return null;
+
+  /**
+   * 이 탭을 닫는다.
+   *
+   * ★ `window.close()` 는 **거부될 수 있다** — 브라우저는 "스크립트가 연
+   *   창" 이나 "기록이 한 장뿐인 탭" 만 닫게 해 준다. 규칙상 여기는 닫히는
+   *   자리지만(새 탭이라 기록이 한 장이다), 거부되면 **아무 일도 일어나지
+   *   않은 것처럼 보인다** — 누른 사람은 버튼이 고장 났다고 여긴다.
+   *   그래서 닫히지 않으면 지식창고로 **데려다준다**.
+   */
+  const closeTab = () => {
+    window.close();
+    window.setTimeout(() => {
+      if (window.closed) return;
+      window.location.href = back ?? '/';
+    }, 200);
+  };
+
+  return (
+    <div
+      data-testid="viewer-bar"
+      style={{
+        position: 'fixed', top: 0, left: 0, right: 0, height: BAR_H, zIndex: 10,
+        display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px',
+        background: '#FFFDF8', borderBottom: '1px solid #E4D9C3',
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+        boxSizing: 'border-box',
+      }}
+    >
+      {back && (
+        <a data-testid="viewer-back" href={back} style={barBtn}>← 지식창고</a>
+      )}
+      <span
+        style={{
+          flex: 1, minWidth: 0, fontSize: 12, color: '#8B7D68',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}
+      >{title}</span>
+      <button data-testid="viewer-close" type="button" onClick={closeTab} style={barBtn}>
+        ✕ 닫기
+      </button>
+    </div>
+  );
+}
+
+const barBtn: CSSProperties = {
+  padding: '5px 11px', border: '1px solid #D8CBB2', borderRadius: 6,
+  background: '#FFF', color: '#3F3428', fontSize: 11.5, fontWeight: 600,
+  cursor: 'pointer', textDecoration: 'none', lineHeight: 1.4, whiteSpace: 'nowrap',
+  fontFamily: 'inherit',
+};
 
 function Message({ title, body, testId }: { title: string; body: string; testId: string }) {
   return (

@@ -5,7 +5,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
-import { findNodeInMap, findParentId, isCenterRootId, useDocumentStore } from '@/stores/documentStore';
+import { findNodeInMap, findParentId, getNodeDepth, isCenterRootId, useDocumentStore } from '@/stores/documentStore';
 import { snapshotNodeStyle } from './stylePainter';
 import { mapCenters } from '@/editor/__samples__/types';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -111,9 +111,11 @@ export function CanvasFloatingToolbar({
   const handleStyleCopy = () => {
     if (stylePainter) { setStylePainter(null); return; }
     if (!selectedId) return;
-    const src = findNodeInMap(useDocumentStore.getState().map, selectedId);
+    const map = useDocumentStore.getState().map;
+    const src = findNodeInMap(map, selectedId);
     if (!src) return;
-    setStylePainter({ sourceId: selectedId, snap: snapshotNodeStyle(src) });
+    // 깊이를 함께 준다 — colorKey 없는 흰 노드의 "보이는" 계열까지 뜨도록
+    setStylePainter({ sourceId: selectedId, snap: snapshotNodeStyle(src, getNodeDepth(map, selectedId)) });
   };
 
   const handleFullscreen = () => {

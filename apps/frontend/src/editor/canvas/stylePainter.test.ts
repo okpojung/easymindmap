@@ -4,7 +4,7 @@
 //   npx tsx src/editor/canvas/stylePainter.test.ts
 
 import { applyStyleSnapshot, snapshotIsEmpty, snapshotNodeStyle } from './stylePainter';
-import { findNodeInMap, useDocumentStore } from '@/stores/documentStore';
+import { findNodeInMap, getNodeDepth, useDocumentStore } from '@/stores/documentStore';
 import type { MindNode, SampleMap } from '@emm/emm-parser';
 
 let failed = 0;
@@ -29,6 +29,13 @@ check('① 중심주제(root) 의 colorKey 는 뜨지 않는다',
   snapshotNodeStyle({ colorKey: 'root', style: { fillColor: '#123' } }), { style: { fillColor: '#123' } });
 check('① 기본 모습 노드는 빈 붓', snapshotIsEmpty(snapshotNodeStyle({ text: 'x', id: 'x' } as MindNode)), true);
 check('① style 에 fontSize 만 있으면 style 은 뜨지 않는다', snapshotNodeStyle({ style: { fontSize: 14 } }), {});
+// ①-b colorKey 없는 노드 = 레벨 기본 계열이 "보이는" 색 — 깊이를 주면 그 계열을 채운다 (흰 노드 보고 수정)
+check('①-b 2레벨 흰 노드(colorKey 없음) → l2 계열을 뜬다', snapshotNodeStyle({ text: 'x', id: 'x' } as MindNode, 2), { colorKey: 'l2' });
+check('①-b 3레벨도 l2', snapshotNodeStyle({ id: 'y', text: 'y' } as MindNode, 3), { colorKey: 'l2' });
+check('①-b 1레벨 가지(colorKey 없음) → l1A', snapshotNodeStyle({ id: 'z', text: 'z' } as MindNode, 1), { colorKey: 'l1A' });
+check('①-b 중심주제(깊이 0) 는 계열을 뜨지 않는다', snapshotNodeStyle({ colorKey: 'root', text: 'R' } as unknown as MindNode, 0), {});
+check('①-b 깊이를 모르면 예전처럼 비워 둔다', snapshotNodeStyle({ id: 'w', text: 'w' } as MindNode), {});
+check('①-b colorKey 가 있으면 깊이와 무관하게 그것', snapshotNodeStyle({ id: 'v', text: 'v', colorKey: 'l1C' } as MindNode, 2), { colorKey: 'l1C' });
 
 // ② 입히기 — 통째로 바꾼다(대상의 borderColor 는 사라진다), 내용은 그대로
 const dst: MindNode = {
@@ -72,6 +79,11 @@ check('③ undo 한 단계만 쌓인다', st().past.length - pastBefore, 1);
 st().undo();
 check('③ undo 로 셋 다 되돌아간다', ['A1', 'B1'].map((id) => [g(id).style, g(id).textAlign]), [[undefined, undefined], [undefined, 'right']]);
 check('③ 빈 목록은 아무 것도 하지 않는다 (undo 안 쌓임)', (st().applyStyleSnapshot([], brush), st().past.length - pastBefore), 0);
+// ③-b 흰 2레벨 노드(A1) 를 떠서 색 가지(B, l1B) 에 칠하면 B 가 흰 계열(l2) 이 된다
+const white = snapshotNodeStyle(g('A1'), getNodeDepth(st().map, 'A1'));
+check('③-b A1 의 깊이는 2 · 붓에는 l2 계열', [getNodeDepth(st().map, 'A1'), white], [2, { colorKey: 'l2' }]);
+st().applyStyleSnapshot(['B'], white);
+check('③-b 색 가지 B 가 흰 계열(l2) 로 — 글은 그대로', [g('B').colorKey, g('B').style, g('B').text], ['l2', undefined, 'B']);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 if (failed) process.exit(1);

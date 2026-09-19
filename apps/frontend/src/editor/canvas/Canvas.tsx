@@ -25,6 +25,7 @@ import { computeLayout } from '@/layout/LayoutEngine';
 import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
 import { setLevelFontConfig, setLevelShapeConfig } from '@/editor/node-renderer/sizeNodeForText';
 import { NodeRenderer } from '@/editor/node-renderer/NodeRenderer';
+import { I } from '@/components/icons';
 import { NodeIndicators } from '@/editor/node-renderer/NodeIndicators';
 import type { LaidOutNode } from '@/layout/types';
 import {
@@ -118,6 +119,7 @@ export function Canvas({
   const addParentNode = useDocumentStore((state) => state.addParentNode);
   const deleteNode = useDocumentStore((state) => state.deleteNode);
   const deleteNodesBulk = useDocumentStore((state) => state.deleteNodesBulk);
+  const applyStyleSnapshot = useDocumentStore((state) => state.applyStyleSnapshot);
   const moveNodeRelative = useDocumentStore((state) => state.moveNodeRelative);
   const moveNodesRelative = useDocumentStore((state) => state.moveNodesRelative);
   const expandSubtree = useDocumentStore((state) => state.expandSubtree);
@@ -241,6 +243,25 @@ export function Canvas({
   const multiSelectedIds = useInteractionStore((s) => s.multiSelectedIds);
   const searchHitId = useInteractionStore((s) => s.searchHitId);
   const setSearchHitId = useInteractionStore((s) => s.setSearchHitId);
+  // 스타일 복사(붓) 모드 (2026-09-19) — 우상단 툴바 붓 버튼이 켠다.
+  // 켜져 있는 동안 커서 오른쪽 아래에 붓 아이콘이 따라다닌다(brushPos 는
+  // 캔버스 컨테이너 기준 px). 노드 클릭·러버밴드 = 칠하기, ESC·빈 캔버스
+  // 클릭·버튼 재클릭 = 해제. 규칙: docs/03-editor-core/node/05-node-style.md §20
+  const stylePainter = useInteractionStore((s) => s.stylePainter);
+  const setStylePainter = useInteractionStore((s) => s.setStylePainter);
+  const [brushPos, setBrushPos] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!stylePainter) { setBrushPos(null); return; }
+    const onMove = (e: PointerEvent) => {
+      const el = containerRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      setBrushPos(inside ? { x: e.clientX - r.left, y: e.clientY - r.top } : null);
+    };
+    window.addEventListener('pointermove', onMove);
+    return () => window.removeEventListener('pointermove', onMove);
+  }, [stylePainter]);
   const setMultiSelectedIds = useInteractionStore((s) => s.setMultiSelectedIds);
   const multiSet = useMemo(() => new Set(multiSelectedIds), [multiSelectedIds]);
 
@@ -249,6 +270,13 @@ export function Canvas({
     if (multiSelectedIds.length) setMultiSelectedIds([]);
     // 캔버스에서 직접 조작하면 검색 강조는 해제
     if (searchHitId && id !== searchHitId) setSearchHitId(null);
+    // 스타일 복사(붓) 모드 — 노드를 누르면 선택과 함께 붓에 든 겉모습을
+    // 입힌다. 모드는 그대로 남아 다음 노드도 이어서 칠할 수 있다
+    // (2026-09-19). 빈 곳 클릭(id=null)은 모드 해제.
+    if (stylePainter) {
+      if (id) applyStyleSnapshot([id], stylePainter.snap);
+      else setStylePainter(null);
+    }
     onSelect(id);
   };
 
@@ -873,6 +901,8 @@ export function Canvas({
 
       if (e.key === 'Escape') {
         e.preventDefault();
+        // 스타일 복사(붓) 모드면 붓만 내려놓는다 — 선택은 그대로
+        if (stylePainter) { setStylePainter(null); return; }
         selectOne(null);
         setPopover(null);
         return;
@@ -1168,6 +1198,9 @@ export function Canvas({
             n.y + n.h / 2 >= minY && n.y - n.h / 2 <= maxY,
         );
         setMultiSelectedIds(hits.map((n) => n.id));
+        // 스타일 복사(붓) 모드 — 사각형에 걸린 노드 전부에 한 번에 칠한다
+        // (undo 한 단계)
+        if (stylePainter && hits.length) applyStyleSnapshot(hits.map((n) => n.id), stylePainter.snap);
         // 스타일 탭이 열리도록 첫 노드를 대표 선택으로 지정
         onSelect(hits[0]?.id ?? null);
         suppressClickRef.current = true;
@@ -1278,6 +1311,26 @@ export function Canvas({
 
       {/* 붙여넣기 안내 — 붙일 것이 없을 때 "아무 반응 없음"으로 보이지
           않게 캔버스 위쪽에 잠깐 띄운다 (2026-08-05) */}
+      {/* 스타일 복사(붓) — 커서 오른쪽 아래에 따라다니는 붓 (2026-09-19).
+          클릭을 가로채지 않도록 pointer-events 없음. */}
+      {stylePainter && brushPos && (
+        <div
+          data-testid="style-brush-cursor"
+          style={{
+            position: 'absolute', left: brushPos.x + 14, top: brushPos.y + 10,
+            zIndex: 25, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '3px 7px 3px 5px', borderRadius: 12,
+            background: t.primary, color: '#fff',
+            fontSize: 11, fontWeight: 700, lineHeight: 1,
+            boxShadow: '0 3px 10px rgba(60,45,15,0.3)',
+          }}
+        >
+          <I.Brush size={13} strokeWidth={2} />
+          스타일 복사
+        </div>
+      )}
+
       {pasteNotice && (
         <div
           data-testid="canvas-notice"

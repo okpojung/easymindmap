@@ -5,7 +5,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
-import { findParentId, isCenterRootId, useDocumentStore } from '@/stores/documentStore';
+import { findNodeInMap, findParentId, isCenterRootId, useDocumentStore } from '@/stores/documentStore';
+import { snapshotNodeStyle } from './stylePainter';
 import { mapCenters } from '@/editor/__samples__/types';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
@@ -102,6 +103,19 @@ export function CanvasFloatingToolbar({
     setSelectedId(null);
   };
 
+  // 스타일 복사(붓) (2026-09-19) — 선택 노드의 겉모습을 떠서 붓에 담는다.
+  // 켜진 상태에서 다시 누르면 끈다. 실제 칠하기·ESC·빈 캔버스 클릭 해제는
+  // Canvas 가 맡는다 (docs/03-editor-core/node/05-node-style.md §20).
+  const stylePainter = useInteractionStore((state) => state.stylePainter);
+  const setStylePainter = useInteractionStore((state) => state.setStylePainter);
+  const handleStyleCopy = () => {
+    if (stylePainter) { setStylePainter(null); return; }
+    if (!selectedId) return;
+    const src = findNodeInMap(useDocumentStore.getState().map, selectedId);
+    if (!src) return;
+    setStylePainter({ sourceId: selectedId, snap: snapshotNodeStyle(src) });
+  };
+
   const handleFullscreen = () => {
     if (document.fullscreenElement) {
       void document.exitFullscreen();
@@ -138,6 +152,20 @@ export function CanvasFloatingToolbar({
       >
         <I.Trash size={15} />
       </ToolbarBtn>
+      {!kanban && (
+      <ToolbarBtn
+        t={t}
+        title={stylePainter
+          ? '스타일 복사 끄기 (ESC · 빈 곳 클릭)'
+          : '스타일 복사 — 선택 노드의 도형·색·글자맞춤을 붓에 담아 다른 노드에 클릭/드래그로 칠하기'}
+        highlight={!!stylePainter}
+        disabled={!stylePainter && !hasSelection}
+        onClick={handleStyleCopy}
+        testId="style-copy"
+      >
+        <I.Brush size={15} />
+      </ToolbarBtn>
+      )}
 
       {!kanban && (
         <>

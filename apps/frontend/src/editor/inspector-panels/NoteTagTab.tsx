@@ -12,6 +12,8 @@ import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
 import { rebuildRichHtml, remapImgSrcs } from '@/utils/richNoteEdit';
 import { embedRichHtmlImages } from '@/utils/embedImage';
 import { useNoteHtmlResolver } from '@/utils/imageSrc';
+import { TableDialog, TableGridPicker } from '@/editor/node-renderer/TableDialog';
+import { noteTableCells, noteTableFromMd, noteTableToMd } from './noteTable';
 
 // 맵 전체에서 노트 블록을 id로 찾는다 — 사진 내장(비동기) 완료 시점에
 // 블록이 아직 그 서식(html)을 갖고 있는지 확인하는 용도.
@@ -52,7 +54,6 @@ const CODE_LANGUAGES = [
 const NOTE_INPUT_ROWS: Record<string, number> = {
   paragraph: 15,
   code_block: 15,
-  table: 15,
 };
 
 const BLOCK_TYPES: { type: NoteBlockType; label: string }[] = [
@@ -68,6 +69,13 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   const removeNodeTag = useDocumentStore((s) => s.removeNodeTag);
   const addNoteBlock = useDocumentStore((s) => s.addNoteBlock);
   const updateNoteBlock = useDocumentStore((s) => s.updateNoteBlock);
+  // 표 블록은 노드 내용의 표와 같은 흐름 (2026-09-19 사용자 요청) —
+  // `+표` → 10×10 격자에서 크기 → 표 팝업(격자/MD)에서 채워 넣기. 기존 표
+  // 블록은 그려 보이고 ✎(또는 더블클릭)으로 같은 팝업에서 고친다.
+  const [tablePick, setTablePick] = useState(false);
+  const [tableDlg, setTableDlg] = useState<
+    { blockId?: string; md?: string; size?: { rows: number; cols: number } } | null
+  >(null);
   const removeNoteBlock = useDocumentStore((s) => s.removeNoteBlock);
 
   const [tagDraft, setTagDraft] = useState('');
@@ -137,11 +145,18 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
               // 체크리스트만 여러 개 허용.
               const exists =
                 b.type !== 'checklist' && notes.some((n) => n.type === b.type);
+              const isTable = b.type === 'table';
               return (
-                <button key={b.type}
-                  onClick={() => !exists && selectedId && addNoteBlock(selectedId, b.type)}
+                <span key={b.type} style={{ position: 'relative', display: 'inline-flex' }}>
+                <button
+                  data-testid={isTable ? 'note-add-table' : undefined}
+                  onClick={() => {
+                    if (exists || !selectedId) return;
+                    if (isTable) setTablePick(true); else addNoteBlock(selectedId, b.type);
+                  }}
                   disabled={exists}
-                  title={exists ? `${b.label} 블록은 노드당 1개만 추가할 수 있습니다` : `${b.label} 블록 추가`}
+                  title={exists ? `${b.label} 블록은 노드당 1개만 추가할 수 있습니다`
+                    : isTable ? '표 블록 추가 — 격자에서 크기를 고르면 팝업에서 채웁니다' : `${b.label} 블록 추가`}
                   style={{
                     padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
                     background: exists ? t.surfaceAlt : t.primarySoft,
@@ -150,6 +165,15 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
                     cursor: exists ? 'default' : 'pointer',
                     opacity: exists ? 0.6 : 1,
                   }}>+{b.label}</button>
+                {isTable && tablePick && (
+                  <TableGridPicker
+                    t={t}
+                    anchor="right"
+                    onClose={() => setTablePick(false)}
+                    onPick={(rows, cols) => { setTablePick(false); setTableDlg({ size: { rows, cols } }); }}
+                  />
+                )}
+                </span>
               );
             })}
           </div>
@@ -173,10 +197,28 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
               onEnterNext={() =>
                 selectedId && addNoteBlock(selectedId, 'checklist', '', undefined, block.id)
               }
+              onEditTable={() => setTableDlg({ blockId: block.id, md: noteTableToMd(block.text) })}
             />
           ))}
         </div>
       </InspectorSection>
+
+      {tableDlg && (
+        <TableDialog
+          t={t}
+          initialMd={tableDlg.md}
+          initialSize={tableDlg.size}
+          onCancel={() => setTableDlg(null)}
+          onSave={(md) => {
+            const text = noteTableFromMd(md);
+            if (selectedId) {
+              if (tableDlg.blockId) updateNoteBlock(selectedId, tableDlg.blockId, { text });
+              else addNoteBlock(selectedId, 'table', text);
+            }
+            setTableDlg(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -195,7 +237,7 @@ const BLOCK_META: Record<string, { icon: string; label: string }> = {
 };
 
 function NoteBlockEditor({
-  t, block, onChange, onRemove, onEnterNext,
+  t, block, onChange, onRemove, onEnterNext, onEditTable,
 }: {
   t: ThemeTokens;
   block: NoteBlockData;
@@ -203,6 +245,8 @@ function NoteBlockEditor({
   onRemove: () => void;
   // 체크리스트 전용 — Enter/Shift+Enter 로 다음 항목 추가
   onEnterNext?: () => void;
+  // 표 전용 — 표 팝업(격자/MD)으로 고치기
+  onEditTable?: () => void;
 }) {
   // 노트 사진이 **우리 저장소**에 있으면 그릴 때 토큰을 붙인다 (2026-08-20).
   // 토큰은 문서에 저장하지 않는다 — 저장하면 만료되는 날 사진이 전부 깨진다.
@@ -252,14 +296,27 @@ function NoteBlockEditor({
             ))}
           </select>
         )}
+        {block.type === 'table' && (
+          <button
+            data-testid="note-table-edit"
+            onClick={onEditTable}
+            title="표 편집 — 팝업(격자 / MD)"
+            style={{
+              marginLeft: 'auto', background: 'transparent', border: 'none',
+              color: accent, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 4px',
+            }}
+          >✎</button>
+        )}
         <button onClick={onRemove} title="블록 삭제" style={{
-          marginLeft: 'auto', background: 'transparent', border: 'none',
+          marginLeft: block.type === 'table' ? 0 : 'auto', background: 'transparent', border: 'none',
           color: t.textMuted, cursor: 'pointer', fontSize: 13, lineHeight: 1,
         }}>×</button>
       </div>
 
       <div style={{ padding: '6px 8px' }}>
-        {block.type === 'checklist' ? (
+        {block.type === 'table' ? (
+          <NoteTableView t={t} text={block.text} fs={noteFs} family={noteFamily} onEdit={onEditTable} />
+        ) : block.type === 'checklist' ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             {/* 클릭 판정은 6px 여유를 둔 래퍼가 받는다 — 14px 사각형만 노리면
                 빗나가기 쉽다 (docs/05-implementation/coding-conventions.md §5-1-5).
@@ -360,9 +417,7 @@ function NoteBlockEditor({
             placeholder={
               block.type === 'code_block'
                 ? '코드를 입력하세요'
-                : block.type === 'table'
-                  ? '항목 | 값\n행1 | 내용1  (줄=행, |=열 구분)'
-                  : '내용을 입력하세요 — 웹 기사 붙여넣기 시 사진·서식 유지'
+                : '내용을 입력하세요 — 웹 기사 붙여넣기 시 사진·서식 유지'
             }
             style={{
               width: '100%', resize: 'vertical', border: 'none', outline: 'none',
@@ -370,7 +425,7 @@ function NoteBlockEditor({
               // 노트 글꼴·크기 (맵 설정 — 기본 13pt, 코드/표는 고정폭 유지)
               fontSize: block.type === 'code_block' ? Math.max(9, noteFs - 2) : noteFs,
               lineHeight: 1.5,
-              fontFamily: block.type === 'code_block' || block.type === 'table'
+              fontFamily: block.type === 'code_block'
                 ? 'ui-monospace, SFMono-Regular, Menlo, monospace'
                 : (noteFamily ?? 'inherit'),
               padding: 0,
@@ -397,6 +452,50 @@ function NoteBlockEditor({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 노트 표 블록 — 그려 보이는 표 (2026-09-19). 원문 textarea 대신 노트 뷰어와
+ * 같은 모양으로 보여 주고, 더블클릭 또는 머리글 ✎ 로 표 팝업을 연다.
+ * 표로 읽히지 않는 원문(옛 데이터의 한 줄 등)은 그대로 글로 보인다.
+ */
+function NoteTableView({
+  t, text, fs, family, onEdit,
+}: {
+  t: ThemeTokens; text: string; fs: number; family?: string; onEdit?: () => void;
+}) {
+  const cells = noteTableCells(text);
+  const cellStyle = (align: string | null, head: boolean) => ({
+    border: `1px solid ${t.border}`, padding: '3px 6px',
+    textAlign: (align ?? 'left') as 'left' | 'center' | 'right',
+    background: head ? t.surface : 'transparent', fontWeight: head ? 700 : 400,
+    whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const,
+  });
+  return (
+    <div
+      data-testid="note-table-view"
+      onDoubleClick={onEdit}
+      title="더블클릭 — 표 편집"
+      style={{ cursor: 'pointer', fontSize: Math.max(9, fs - 1), fontFamily: family ?? 'inherit', color: t.text }}
+    >
+      {cells ? (
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>{cells.headers.map((h, c) => <th key={c} style={cellStyle(cells.aligns[c], true)}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {cells.rows.map((r, i) => (
+              <tr key={i}>{r.map((v, c) => <td key={c} style={cellStyle(cells.aligns[c], false)}>{v}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      ) : text.trim() ? (
+        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{text}</pre>
+      ) : (
+        <div style={{ fontSize: 10.5, color: t.textSubtle }}>빈 표 — ✎ 를 눌러 채우세요</div>
+      )}
     </div>
   );
 }

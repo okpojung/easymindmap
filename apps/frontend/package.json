@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "test:unit": "tsx src/utils/emmDeclaration.test.ts && tsx src/utils/mergeAppends.test.ts && tsx src/services/cloud/oauthConsent.test.ts && tsx src/utils/outlineLines.test.ts && tsx src/stores/moveNodesRelative.test.ts && tsx src/services/cloud/heartbeatRefresh.test.ts && tsx src/utils/profileName.test.ts && tsx src/editor/canvas/dropGeometry.test.ts && tsx src/stores/subtreeCollapse.test.ts && tsx src/stores/centers.test.ts && tsx src/utils/outageNotice.test.ts && tsx src/utils/popupPosition.test.ts && tsx src/utils/viewerChrome.test.ts && node scripts/run-vite-test.mjs src/utils/importMapFile.test.ts && tsx src/editor/node-renderer/tableDialog.test.ts && tsx src/layout/applySpacing.test.ts && tsx src/editor/canvas/stylePainter.test.ts"
+    "test:unit": "tsx src/utils/emmDeclaration.test.ts && tsx src/utils/mergeAppends.test.ts && tsx src/services/cloud/oauthConsent.test.ts && tsx src/utils/outlineLines.test.ts && tsx src/stores/moveNodesRelative.test.ts && tsx src/services/cloud/heartbeatRefresh.test.ts && tsx src/utils/profileName.test.ts && tsx src/editor/canvas/dropGeometry.test.ts && tsx src/stores/subtreeCollapse.test.ts && tsx src/stores/centers.test.ts && tsx src/utils/outageNotice.test.ts && tsx src/utils/popupPosition.test.ts && tsx src/utils/viewerChrome.test.ts && node scripts/run-vite-test.mjs src/utils/importMapFile.test.ts && tsx src/editor/node-renderer/tableDialog.test.ts && tsx src/layout/applySpacing.test.ts && tsx src/editor/canvas/stylePainter.test.ts && tsx src/editor/inspector-panels/noteTable.test.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

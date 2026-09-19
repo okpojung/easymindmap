@@ -39,6 +39,7 @@ import { applyLevelLayout, resolveEdgeType, LEVEL_LAYOUT_CAP } from '@/utils/lev
 // 히스토리 스냅샷에 전체 레이아웃을 함께 기록/복원하기 위해서만 사용
 // (editorUiStore는 documentStore를 import하지 않으므로 순환 없음).
 import { useEditorUiStore } from './editorUiStore';
+import { applyStyleSnapshot, type StyleSnapshot } from '@/editor/canvas/stylePainter';
 // 문서를 통째로 바꿀 때 뷰포트(확대·이동)를 원위치로 — viewportStore 는
 // 아무것도 import 하지 않으므로 순환 없음.
 import { useViewportStore } from './viewportStore';
@@ -241,6 +242,12 @@ interface DocumentState {
   updateNodeStyle: (nodeId: string | null, style: Partial<NodeStyle>) => void;
   // 여러 노드에 일괄 적용 (러버밴드 다중 선택) — 한 번의 undo 단계
   updateNodesStyle: (nodeIds: string[], style: Partial<NodeStyle>) => void;
+  /**
+   * 스타일 복사(붓) — 떠 둔 겉모습(`snapshotNodeStyle`)을 여러 노드에 한 번에
+   * 입힌다 (2026-09-19). set() 한 번 = undo 한 단계. 규칙은
+   * `editor/canvas/stylePainter.ts` 의 `applyStyleSnapshot`.
+   */
+  applyStyleSnapshot: (nodeIds: string[], snap: StyleSnapshot) => void;
   updateNodesTextAlign: (nodeIds: string[], textAlign: TextAlign) => void;
   setNodeIcon: (nodeId: string | null, icon: string | undefined) => void;
   setNodeIconSide: (nodeId: string | null, iconSide: 'left' | 'right') => void;
@@ -1876,6 +1883,16 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     set((state) => ({
       map: nodeIds.reduce(
         (m, id) => mutateNode(m, id, (n) => ({ ...n, style: { ...n.style, ...style } })),
+        state.map,
+      ),
+    }));
+  },
+
+  applyStyleSnapshot: (nodeIds, snap) => {
+    if (!nodeIds.length) return;
+    set((state) => ({
+      map: nodeIds.reduce(
+        (m, id) => mutateNode(m, id, (n) => applyStyleSnapshot(n, snap)),
         state.map,
       ),
     }));

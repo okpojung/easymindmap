@@ -2,6 +2,7 @@
 // Stub for the design demo — only tracks the currently selected node id.
 
 import { create } from 'zustand';
+import type { StyleSnapshot } from '@/editor/canvas/stylePainter';
 
 interface InteractionState {
   selectedId: string | null;
@@ -37,6 +38,14 @@ interface InteractionState {
   editingDraft: { nodeId: string; text: string } | null;
   setEditingNodeId: (id: string | null) => void;
   setEditingDraft: (d: { nodeId: string; text: string } | null) => void;
+  /**
+   * 스타일 복사(붓) 모드 (2026-09-19) — 우상단 툴바의 붓 버튼으로 켠다.
+   * 켜져 있는 동안 커서 옆에 붓이 따라다니고, 노드를 클릭하거나 러버밴드로
+   * 고르면 `snap` 이 그 노드들에 입혀진다. ESC·빈 캔버스 클릭·붓 버튼 재클릭
+   * 으로 끈다. `sourceId` 는 표시용(어느 노드에서 떴는지).
+   */
+  stylePainter: { sourceId: string; snap: StyleSnapshot } | null;
+  setStylePainter: (p: { sourceId: string; snap: StyleSnapshot } | null) => void;
 }
 
 export const useInteractionStore = create<InteractionState>((set) => ({
@@ -50,4 +59,6 @@ export const useInteractionStore = create<InteractionState>((set) => ({
   setEditingNodeId: (editingNodeId) => set({ editingNodeId }),
   editingDraft: null,
   setEditingDraft: (editingDraft) => set({ editingDraft }),
+  stylePainter: null,
+  setStylePainter: (stylePainter) => set({ stylePainter }),
 }));

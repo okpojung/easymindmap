@@ -410,6 +410,31 @@ const rawHtml = (hasImgFile && !htmlHasTable) ? '' : rawHtmlAll;
 
 ---
 
+### 14.7 노트 표 블록 — 격자 선택 + 표 팝업 (2026-09-19 사용자 요청)
+
+> *"노드 노트의 표 삽입 메뉴도 노드 내용의 표처럼 n×n 설정 및 렌더링된
+> 표 편집 화면과 MD 편집 화면으로 수정해 줘."*
+
+노트·태그 탭의 `+표` 가 **원문 textarea 를 만드는 대신** 노드 내용의 표와
+같은 흐름을 탄다 — `TableGridPicker`(10×10, 사이드바 오른쪽 끝에 `anchor="right"`)
+→ `TableDialog`(격자/MD 보기, 커서 기준 행·열, 열 정렬) → `addNoteBlock(…, 'table', text)`.
+기존 표 블록은 `NoteTableView` 로 **그려 보이고** 머리글 ✎ 또는 더블클릭으로
+같은 팝업(`initialMd = noteTableToMd(block.text)`)에서 고친다
+(`updateNoteBlock`). 표 블록의 textarea 는 없어졌다.
+
+**저장 형식은 바뀌지 않는다** — `apps/frontend/src/editor/inspector-panels/noteTable.ts`.
+
+| 방향 | 함수 | 규칙 |
+|---|---|---|
+| 팝업 GFM → 노트 원문 | `noteTableFromMd` | 줄 = 행 · ` \| ` = 열 · **바깥 파이프 없음** · 첫 행 = 머리글. 장식 구분선(`\|---\|`)은 버리고 **정렬 콜론이 있는 구분선**(`:--- \| ---:`)만 남긴다 — 불러오기 `flushTable` 의 정규화와 같다. 셀 안 `\|` 는 `\\|` 그대로 |
+| 노트 원문 → 팝업 GFM | `noteTableToMd` | `parseMdTable`(단순 파이프 표도 읽는다) → `buildMdTable`. 표로 읽히지 않으면(빈 블록·한 줄) `undefined` → 팝업은 빈 표 |
+| 노트 원문 → 그리기 | `noteTableCells` | 머리글·행·정렬. 열 수는 머리글에 맞춘다(옛 데이터의 들쭉날쭉한 행) |
+
+노트 뷰어 팝업·HTML 뷰어·MD 내보내기(`pushTableNote`)·복사(⧉)는 전부
+이 원문을 그대로 읽으므로 손댈 것이 없었다 — e2e282 ⑤⑥ 이 그것을 확인한다.
+
+검증: 단위 `noteTable.test.ts` 12항목 · 브라우저 e2e282 16항목.
+
 ### 15. 노트 문단 리치 붙여넣기 (MVS 구현 — 2026-07)
 
 웹 기사 등에서 복사한 내용(클립보드 `text/html`)을 **문단(paragraph) 노트

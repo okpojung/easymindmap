@@ -102,10 +102,13 @@ export function TableGridPicker({
   t,
   onPick,
   onClose,
+  anchor = 'left',
 }: {
   t: ThemeTokens;
   onPick: (rows: number, cols: number) => void;
   onClose: () => void;
+  /** 어느 쪽 모서리에 붙일지 — 사이드바 오른쪽 끝 버튼(노트 +표)은 'right' (2026-09-19) */
+  anchor?: 'left' | 'right';
 }) {
   const [hover, setHover] = useState<{ r: number; c: number }>({ r: TABLE_MIN_ROWS, c: TABLE_MIN_COLS });
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -129,7 +132,7 @@ export function TableGridPicker({
       data-testid="table-grid-picker"
       onMouseDown={(e) => e.preventDefault()}
       style={{
-        position: 'absolute', top: 34, left: 0, zIndex: 5,
+        position: 'absolute', top: 34, ...(anchor === 'right' ? { right: 0 } : { left: 0 }), zIndex: 5,
         background: t.surface, border: `1.5px solid ${t.border}`, borderRadius: 9,
         padding: 8, boxShadow: '0 6px 18px rgba(60,45,15,0.28)',
         display: 'flex', flexDirection: 'column', gap: 6, whiteSpace: 'nowrap',

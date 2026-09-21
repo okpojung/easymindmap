@@ -132,6 +132,10 @@ function effectiveLayoutOf(
 export function LayoutTab({ t }: { t: ThemeTokens }) {
   const map = useDocumentStore((s) => s.map);
   const updateNodeLayoutType = useDocumentStore((s) => s.updateNodeLayoutType);
+  const updateNodesLayoutType = useDocumentStore((s) => s.updateNodesLayoutType);
+  // 러버밴드 다중 선택 — 고른 노드 **전부**의 하위에 적용 (2026-09-21).
+  // 스타일 탭과 같은 규칙. 'root'·중심주제 루트는 빼고 센다.
+  const multiSelectedIds = useInteractionStore((s) => s.multiSelectedIds);
 
   const selectedId = useInteractionStore((s) => s.selectedId);
 
@@ -164,6 +168,10 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   // selection acts as root scope: clicking a layout changes the whole map.
   const subtreeScope =
     hasSelection && !mapIsKanban && selectedId !== 'root' && !centerScope;
+  const bulkTargets =
+    subtreeScope && multiSelectedIds.length > 1
+      ? multiSelectedIds.filter((id) => id !== 'root' && !isCenterRootId(map, id))
+      : [];
 
   const activeLayoutType = normalizeLayoutType(
     centerScope
@@ -197,6 +205,11 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
       return;
     }
 
+    // 러버밴드로 여럿을 골랐으면 전부 (undo 한 단계)
+    if (bulkTargets.length > 1) {
+      updateNodesLayoutType(bulkTargets, option.key);
+      return;
+    }
     // 서브트리 또는 둘째 이후의 중심주제 — 그 노드/중심만
     updateNodeLayoutType(selectedId, option.key);
   };
@@ -265,7 +278,9 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
             lineHeight: 1.55,
           }}
         >
-          {subtreeScope
+          {bulkTargets.length > 1
+            ? `${bulkTargets.length}개 노드 선택 — 각 노드의 하위 서브트리에 레이아웃이 한 번에 적용됩니다 (되돌리기 1단계). 흐리게 표시된 레이아웃은 메인 노드 전용입니다.`
+            : subtreeScope
             ? `선택한 노드(${selectedId}) 하위 서브트리에 레이아웃이 적용됩니다. 흐리게 표시된 레이아웃은 메인 노드 전용입니다.`
             : mapIsKanban
               ? 'Kanban 보드에는 하위 노드별 레이아웃이 없습니다. 어떤 노드를 선택해도 선택한 레이아웃이 맵 전체에 적용됩니다.'

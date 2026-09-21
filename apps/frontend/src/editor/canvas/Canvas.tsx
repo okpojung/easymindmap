@@ -964,12 +964,21 @@ export function Canvas({
     const onEmptyCanvas = (e.target as Element).tagName === 'svg';
 
     // Start a node drag (reparent) when pressing on a non-root node body.
-    // Pan 모드여도 노드 위에서 시작한 드래그는 "노드 이동"이다 — Pan(화면
-    // 이동)은 빈 캔버스 드래그/휠 클릭에서만. (Pan 모드가 노드 드래그를
-    // 통째로 막아 좌/우 이동이 안 되는 것처럼 보이던 문제 수정)
+    //
+    // ★ **Pan 모드에서는 노드가 움직이지 않는다** (2026-09-21 사용자 결정:
+    //   "Pan 모드일 때는 노드 이동이 안 되도록 해줘").
+    //
+    //   2026-07 에는 **반대로** 정했었다 — "Pan 모드가 노드 드래그를 막으면
+    //   좌/우 이동 등 노드 조작이 전부 안 되는 것처럼 보인다"는 이유였다.
+    //   그때는 Pan 모드에 든 것을 알려 주는 표시가 없어서 **모드를 켠 줄
+    //   모르고** 노드를 끌다가 "고장났다"고 여겼던 것이다. 지금은 상단
+    //   배지·테두리 하이라이트·`grab` 커서가 모드를 분명히 말해 주므로,
+    //   **모드가 하나의 일만 하는 쪽**이 맞다 — 화면을 옮기려고 켠 모드에서
+    //   노드가 딸려 오면 맵이 조용히 망가진다(되돌리기로만 복구된다).
+    //
     // Capture happens later, only once it actually moves, so a plain tap
     // still selects via the node's onClick.
-    if (!isMiddleButton && nodeEl) {
+    if (!isMiddleButton && !panMode && nodeEl) {
       const id = nodeEl.getAttribute('data-node-id');
       if (e.button === 0 && id && id !== 'root') {
         dropZoneRef.current = null; // 이전 드래그의 드롭존 잔류 방지
@@ -1297,7 +1306,7 @@ export function Canvas({
             }}
           >
             <span style={{ fontSize: 15 }}>✋</span>
-            Pan 모드 — 빈 곳 드래그로 화면 이동 (노드 드래그는 노드 이동) · H 키로 해제
+            Pan 모드 — 드래그로 화면 이동 (노드는 움직이지 않습니다) · H 키로 해제
           </div>
           <div
             style={{

@@ -23,6 +23,7 @@ let editRequestId: string | null = null;
 export function requestOutlineEdit(id: string | null) { editRequestId = id; }
 import { useDocumentStore, findNodeInMap, findParentId, isCenterRootId } from '@/stores/documentStore';
 import { mapCenters } from '@/editor/__samples__/types';
+import { expandScope } from '@/utils/expandScope';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import {
   nodeContentIndicators,
@@ -74,6 +75,15 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
   // 맵 모드의 모두 접기/펼치기와 **같은 스토어 액션**을 쓴다 (2026-08-06)
   const expandAll = useDocumentStore((s) => s.expandAll);
   const collapseAll = useDocumentStore((s) => s.collapseAll);
+  // 선택이 있으면 **그 노드의 하위만** — 맵 툴바와 같은 판정을 쓴다
+  // (2026-09-21 사용자 결정, `utils/expandScope.ts`). 같은 기호가 두 화면에
+  // 있으므로 판정을 나눠 두면 언젠가 한쪽만 고쳐진다 (§5-1-6).
+  const expandSubtree = useDocumentStore((s) => s.expandSubtree);
+  const collapseSubtree = useDocumentStore((s) => s.collapseSubtree);
+  const outlineRootIds = useDocumentStore((s) => mapCenters(s.map).map((c) => c.root.id));
+  const outlineSelectedId = useInteractionStore((s) => s.selectedId);
+  const outlineMultiIds = useInteractionStore((s) => s.multiSelectedIds);
+  const outlineScope = expandScope(outlineSelectedId, outlineMultiIds, outlineRootIds);
   const [notePopup, setNotePopup] = useState<{ nodeId: string; kind: NoteKind } | null>(null);
   const [listPopup, setListPopup] = useState<ListPopup | null>(null);
   const map = useDocumentStore((s) => s.map);
@@ -100,14 +110,22 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
             보고 그리므로, 여기서 누르면 맵 쪽도 함께 접힌다(한 문서다). */}
         <button
           data-testid="outline-expand-all"
-          onClick={expandAll}
-          title="모두 펼치기"
+          onClick={() => {
+            if (outlineScope === 'all') expandAll(); else expandSubtree(outlineScope);
+          }}
+          title={outlineScope === 'all'
+            ? '모두 펼치기 — 맵 전체 (노드를 고르면 그 아래만)'
+            : '선택한 노드의 하위 모두 펼치기 (선택을 풀면 맵 전체)'}
           style={miniBtn(t)}
         >＋</button>
         <button
           data-testid="outline-collapse-all"
-          onClick={collapseAll}
-          title="모두 접기 — 2레벨만 남기고 전부 접기"
+          onClick={() => {
+            if (outlineScope === 'all') collapseAll(); else collapseSubtree(outlineScope);
+          }}
+          title={outlineScope === 'all'
+            ? '모두 접기 — 2레벨만 남기고 전부 (노드를 고르면 그 아래만)'
+            : '선택한 노드의 하위 모두 접기 — 직계 자식만 남기고'}
           style={miniBtn(t)}
         >−</button>
         <button onClick={handleClose} title={closeTitle ?? '아웃라인 닫기'}

@@ -6,18 +6,29 @@
 //               viewBox = (world − C) × s + C + pan   (s = zoom/100, C = (CX, CY))
 //   · mini    — 미니맵 패널 px. mini = (world − bounds.x) × scale
 //
+// ★ 2026-09-21 사용자 보고 "미니맵 창과 표시창 크기가 너무 작다" 뒤의 규칙:
+//   · 패널은 **항상 같은 큰 크기**(창의 24%×36%, 200~360 × 150~320). 맵
+//     비율대로 줄이면 세로로 긴 맵(2,808 노드 진행트리)에서 폭 30px 띠가 됐다.
+//   · 표시창(지금 보이는 영역)은 **최소 60×45 px 를 보장**한다. 그 배율로
+//     맵 전체가 패널에 안 들어가면 미니맵은 **화면 주변만** 보여 주는 창이
+//     된다(`fits = false`) — 창은 표시창이 가장자리에 닿을 때만 따라 움직인다.
 // 사양: docs/03-editor-core/canvas/10-canvas.md §6.8.
 
 export interface Rect { x: number; y: number; w: number; h: number } // 왼쪽 위 기준
 
 export interface MinimapGeom {
-  /** 미니맵이 덮는 world 영역 (노드 경계 + 여백) */
+  /** 미니맵이 덮는 world 영역 (= 패널 크기 ÷ scale). 맵이 다 들어가면 맵을 가운데 둔 영역 */
   bounds: Rect;
   /** world → mini 배율 */
   scale: number;
   panelW: number;
   panelH: number;
+  /** 맵 전체가 패널에 들어가는가. false = 화면 주변만 보이는 창 모드 */
+  fits: boolean;
 }
+
+/** 표시창(보이는 영역 사각형)의 최소 크기 (px) */
+export const MINIMAP_MIN_VIEW = { w: 60, h: 45 };
 
 /** 노드(중심 좌표) 전체의 world 경계. 노드가 없으면 null */
 export function worldBounds(nodes: { x: number; y: number; w: number; h: number }[]): Rect | null {
@@ -49,29 +60,62 @@ export function viewportWorldRect(
   };
 }
 
-/**
- * 미니맵 기하 — 노드 경계에 여백(각 변 12%, 최소 80 world)을 두고 패널
- * 최대 크기(maxW×maxH)에 **비율을 지키며** 맞춘다. 화면 영역은 경계에
- * 넣지 않는다: 넣으면 화면을 옮길 때마다 배율이 흔들려 노드가 춤춘다.
- * 밖으로 나간 화면 사각형은 패널이 잘라 보인다.
- */
-export function minimapGeometry(
-  nodeBounds: Rect | null, maxW: number, maxH: number,
-): MinimapGeom {
+/** 노드 경계 + 여백(각 변 12%, 최소 80 world). 노드가 없으면 400×300 상자 */
+export function paddedBounds(nodeBounds: Rect | null): Rect {
   const nb = nodeBounds ?? { x: 0, y: 0, w: 400, h: 300 };
   const padX = Math.max(80, nb.w * 0.12);
   const padY = Math.max(80, nb.h * 0.12);
-  const bounds = { x: nb.x - padX, y: nb.y - padY, w: nb.w + padX * 2, h: nb.h + padY * 2 };
-  const scale = Math.min(maxW / bounds.w, maxH / bounds.h);
-  return { bounds, scale, panelW: Math.round(bounds.w * scale), panelH: Math.round(bounds.h * scale) };
+  return { x: nb.x - padX, y: nb.y - padY, w: nb.w + padX * 2, h: nb.h + padY * 2 };
 }
 
-/** 패널 최대 크기 — 캔버스 창의 22% × 28%, 160~300 × 110~220 px */
-export function minimapPanelMax(W: number, H: number): { maxW: number; maxH: number } {
+/** 패널 크기 — 캔버스 창의 24% × 36%, 200~360 × 150~320 px. 맵 모양과 무관하게 **항상 이 크기** */
+export function minimapPanelSize(W: number, H: number): { panelW: number; panelH: number } {
   return {
-    maxW: Math.round(Math.min(300, Math.max(160, W * 0.22))),
-    maxH: Math.round(Math.min(220, Math.max(110, H * 0.28))),
+    panelW: Math.round(Math.min(360, Math.max(200, W * 0.24))),
+    panelH: Math.round(Math.min(320, Math.max(150, H * 0.36))),
   };
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/**
+ * 미니맵 기하.
+ *   · scale = max(맵 전체가 들어가는 배율, 표시창이 60×45 가 되는 배율)
+ *   · 영역(bounds) = 패널 ÷ scale. 축마다: 맵이 그 안에 들어가면 **맵을 가운데**,
+ *     안 들어가면 **표시창 중심을 가운데**로 두되 맵 경계 밖으로는 나가지 않는다.
+ *   · `prev`(직전 영역)가 있으면 **표시창이 가장자리(6% 여백) 안에 있는 동안은
+ *     그대로 둔다** — 끌 때마다 창이 따라 움직이면 사각형이 제자리에 서고 맵이
+ *     흐르는 조이스틱이 된다. `freeze` 는 끄는 중(포인터 잡고 있는 동안) 무조건 유지.
+ */
+export function minimapGeometry(
+  nodeBounds: Rect | null,
+  view: Rect,
+  panelW: number,
+  panelH: number,
+  prev?: { x: number; y: number; scale: number } | null,
+  freeze = false,
+): MinimapGeom {
+  const pb = paddedBounds(nodeBounds);
+  const fitScale = Math.min(panelW / pb.w, panelH / pb.h);
+  const minScale = Math.max(MINIMAP_MIN_VIEW.w / Math.max(1, view.w), MINIMAP_MIN_VIEW.h / Math.max(1, view.h));
+  const scale = Math.max(fitScale, minScale);
+  const fits = fitScale >= minScale;
+  const winW = panelW / scale, winH = panelH / scale;
+
+  const axis = (mapLo: number, mapLen: number, viewLo: number, viewLen: number, winLen: number, prevLo: number | undefined) => {
+    if (mapLen <= winLen) return mapLo + mapLen / 2 - winLen / 2; // 맵이 들어간다 → 가운데
+    const lo = mapLo, hi = mapLo + mapLen - winLen;
+    if (prevLo !== undefined) {
+      const m = winLen * 0.06;
+      const inside = viewLo >= prevLo + m && viewLo + viewLen <= prevLo + winLen - m;
+      if (freeze || inside) return prevLo;
+    }
+    return clamp(viewLo + viewLen / 2 - winLen / 2, lo, hi);
+  };
+  const usePrev = prev && prev.scale === scale ? prev : null;
+  const x = axis(pb.x, pb.w, view.x, view.w, winW, usePrev?.x);
+  const y = axis(pb.y, pb.h, view.y, view.h, winH, usePrev?.y);
+  return { bounds: { x, y, w: winW, h: winH }, scale, panelW, panelH, fits };
 }
 
 export function worldToMini(g: MinimapGeom, r: Rect): Rect {

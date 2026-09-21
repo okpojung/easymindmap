@@ -1741,63 +1741,70 @@ sudo crontab -l          # 백업 줄이 보여야 한다 (헬스 감시 줄과 
 `DEST` 는 **같은 서버다.** 서버가 통째로 죽으면 백업도 함께 죽는다.
 `OFFSITE_DIR`/`OFFSITE_CMD` 를 주지 않으면 스크립트가 매번 경고를 남긴다.
 
-**결정 (2026-09-21 사용자):** NAS 의 기존 공유 폴더 **`hng2`** 아래에
-하위 폴더 **`EasyMindmap_DB_Backup`** 을 만들어 거기로 보낸다 (별도 공유
-폴더를 만들지 않는다 — 2026-09-21 정정). 지금은 dev DB 를 보내지만,
-**운영이 서면 dev 는 보내지 않고 운영 DB 만** 이곳에 둔다. 그래서 그 아래를
-환경별로 나눈다 — `dev/` · `prod/`. 운영이 서면 dev 의 cron 에서
-`OFFSITE_DIR` 을 빼고 `dev/` 는 지운다.
+**결정 (2026-09-21 사용자):** 첨부 파일이 있는 NAS(hng1)가 **아니라
+다른 NAS(hng2)** 의 공유 폴더 `hng2` 아래 하위 폴더
+**`easymindmap_db_backup`** 으로 보낸다. 별도 공유 폴더를 만들지 않는다.
+다른 장비라서 오프사이트로서의 의미가 있다 — 첨부 NAS 가 죽어도 DB 백업은
+남는다. 지금은 dev DB 를 보내지만, **운영이 서면 dev 는 보내지 않고 운영
+DB 만** 이곳에 둔다. 그래서 그 아래를 환경별로 나눈다 — `dev/` · `prod/`.
+운영이 서면 dev 의 cron 에서 `OFFSITE_DIR` 을 빼고 `dev/` 는 지운다.
+
+| | NAS | 내보내기 | 서버 마운트 | 옵션 |
+|---|---|---|---|---|
+| 첨부 파일 (§1.5-A) | hng1 `192.168.0.210` | `/volume2/hng1/easymindmap/dev` | `/mnt/nas/emm-files` | `hard` |
+| **DB 백업** | **hng2 `192.168.0.220`** | **`/volume2/hng2/easymindmap_db_backup`** | **`/mnt/nas/emm-db-backup`** | **`soft`** |
+
+(주소는 sanitize 규약값이다 — 실제 값은 서버의 `/etc/fstab` 과 서버 관리
+문서에만 둔다.)
 
 ```
-hng2/                          ← 기존 공유 폴더 (NFS 권한은 이미 있다)
-└── EasyMindmap_DB_Backup/
+hng2/                          ← NAS hng2 의 기존 공유 폴더
+└── easymindmap_db_backup/
     ├── dev/   .emm-offsite  all-YYYYMMDD-HHMM.sql.gz …   ← 지금
     └── prod/  .emm-offsite  …                             ← 운영이 서면
 ```
 
-##### ① NAS 쪽 — `hng2` 의 NFS 권한만 확인한다 (DSM)
+##### ① NAS hng2 쪽 — `hng2` 공유 폴더의 NFS 권한 (DSM)
 
-새로 만들 것은 없다. **제어판 ▸ 공유 폴더 ▸ `hng2` ▸ 편집 ▸ NFS 권한**
-에서 dev 서버 IP 줄이 이렇게 돼 있는지만 본다 — 권한 **읽기/쓰기**,
-Squash **매핑 없음**(cron 이 root 로 쓴다), **"마운트된 하위 폴더 접근
-허용"** 체크(하위 폴더만 따로 마운트하려면 이것이 켜져 있어야 한다).
-운영이 서면 VM-03 IP 줄을 하나 더한다. 같은 화면 아래 **마운트 경로**
-(`/volume1/hng2` 꼴)를 적어 둔다.
+**제어판 ▸ 공유 폴더 ▸ `hng2` ▸ 편집 ▸ NFS 권한** 에 dev 서버 IP 줄이
+있어야 한다(없으면 생성) — 권한 **읽기/쓰기**, Squash **매핑 없음**(cron 이
+root 로 쓴다), **"마운트된 하위 폴더 접근 허용"** 체크(하위 폴더만 따로
+마운트하려면 이것이 켜져 있어야 한다). 운영이 서면 VM-03 IP 줄을 하나
+더한다.
 
-하위 폴더 `EasyMindmap_DB_Backup` 은 ②에서 서버가 만든다 (DSM File Station
+하위 폴더 `easymindmap_db_backup` 은 ②에서 서버가 만든다 (DSM File Station
 에서 만들어도 된다).
 
-##### ② 서버 쪽 — 하위 폴더만 따로 마운트 (첨부 마운트 §1.5-A 와 같은 NAS, 옵션은 다르다)
+##### ② 서버 쪽 — 하위 폴더만 따로 마운트
 
-`hng2` 전체가 아니라 **그 아래 `EasyMindmap_DB_Backup` 만** `/mnt/nas/emm-db-backup`
+`hng2` 전체가 아니라 **그 아래 `easymindmap_db_backup` 만** `/mnt/nas/emm-db-backup`
 에 마운트한다. 백업용 옵션(`soft`)을 첨부 마운트(`hard`)와 따로 줄 수 있고,
 스크립트가 보는 경로에 백업 말고 다른 것이 섞이지 않는다.
 
 ```bash
-NAS=$(grep -m1 ' nfs ' /etc/fstab | cut -d: -f1)   # §1.5-A 에서 이미 쓰는 NAS 주소
-echo "NAS=$NAS"; showmount -e "$NAS"                 # hng2 내보내기 줄이 보여야 한다
-HNG2=$(showmount -e "$NAS" | awk '/\/hng2( |$)/{print $1; exit}'); echo "hng2 경로=$HNG2"
+NAS2=192.168.0.220                                  # hng2 NAS (실제 주소로)
+showmount -e "$NAS2"                                # /volume2/hng2 줄이 보여야 한다
 
 # 하위 폴더를 만든다 — hng2 를 잠깐 붙여서
-sudo mkdir -p /mnt/nas/hng2-tmp && sudo mount -t nfs -o vers=4.1 "$NAS:$HNG2" /mnt/nas/hng2-tmp
-sudo mkdir -p /mnt/nas/hng2-tmp/EasyMindmap_DB_Backup/dev /mnt/nas/hng2-tmp/EasyMindmap_DB_Backup/prod
-sudo touch /mnt/nas/hng2-tmp/EasyMindmap_DB_Backup/dev/.emm-offsite /mnt/nas/hng2-tmp/EasyMindmap_DB_Backup/prod/.emm-offsite
+sudo mkdir -p /mnt/nas/hng2-tmp && sudo mount -t nfs -o vers=4.1 "$NAS2:/volume2/hng2" /mnt/nas/hng2-tmp
+sudo mkdir -p /mnt/nas/hng2-tmp/easymindmap_db_backup/dev /mnt/nas/hng2-tmp/easymindmap_db_backup/prod
+sudo touch /mnt/nas/hng2-tmp/easymindmap_db_backup/dev/.emm-offsite /mnt/nas/hng2-tmp/easymindmap_db_backup/prod/.emm-offsite
 sudo umount /mnt/nas/hng2-tmp && sudo rmdir /mnt/nas/hng2-tmp
 
 # 하위 폴더만 백업용 옵션으로 마운트
 sudo mkdir -p /mnt/nas/emm-db-backup
-sudo mount -t nfs -o vers=4.1,soft,timeo=150,retrans=3 "$NAS:$HNG2/EasyMindmap_DB_Backup" /mnt/nas/emm-db-backup
+sudo mount -t nfs -o vers=4.1,soft,timeo=150,retrans=3 "$NAS2:/volume2/hng2/easymindmap_db_backup" /mnt/nas/emm-db-backup
 ls -la /mnt/nas/emm-db-backup/dev/        # .emm-offsite 가 보여야 한다
 ```
 
 `mkdir` 에서 `Permission denied` 가 나오면 ①의 Squash 가 "매핑 없음"이
-아닌 것이다. 하위 폴더 마운트에서 `access denied by server` 가 나오면
-"마운트된 하위 폴더 접근 허용"이 꺼져 있는 것이다.
+아닌 것이다. 마운트에서 `access denied by server` 가 나오면 ①에 dev 서버
+IP 줄이 없거나 "마운트된 하위 폴더 접근 허용"이 꺼져 있는 것이다.
 
 `/etc/fstab` 에 한 줄 (부팅 뒤 자동 마운트):
 
 ```
-<NAS주소>:/volume1/hng2/EasyMindmap_DB_Backup  /mnt/nas/emm-db-backup  nfs  vers=4.1,_netdev,noatime,soft,timeo=150,retrans=3  0  0
+192.168.0.220:/volume2/hng2/easymindmap_db_backup  /mnt/nas/emm-db-backup  nfs  vers=4.1,_netdev,noatime,soft,timeo=150,retrans=3  0  0
 ```
 
 > **왜 `soft` 인가** — 첨부 파일(§1.5-A)은 `hard` 다: 쓰다 끊기면
@@ -1805,8 +1812,7 @@ ls -la /mnt/nas/emm-db-backup/dev/        # .emm-offsite 가 보여야 한다
 > **빨리 실패해서 메일이 와야** 하고, 서버 안 사본은 어차피 남아 있다.
 > `hard` 로 두면 cron 이 영원히 매달려 다음 날 백업까지 못 돈다. 복사
 > 결과는 `cmp` 로 바이트까지 비교하므로 `soft` 의 위험(조용한 부분 쓰기)은
-> 없다. **그래서 `hng2` 첨부 마운트를 그대로 쓰지 않고 하위 폴더를 따로
-> 마운트한다.**
+> 없다.
 
 ##### ③ 표식 파일 — 마운트가 빠졌을 때를 위해
 

@@ -1772,6 +1772,11 @@ root 로 쓴다), **"마운트된 하위 폴더 접근 허용"** 체크(하위 �
 마운트하려면 이것이 켜져 있어야 한다). 운영이 서면 VM-03 IP 줄을 하나
 더한다.
 
+**그리고 제어판 ▸ 파일 서비스 ▸ NFS 탭 ▸ 최대 NFS 프로토콜: NFSv4.1.**
+DSM 기본값은 NFSv3 까지라, 켜지 않으면 서버의 `mount -o vers=4.1` 이
+`mount.nfs: Protocol not supported` 로 끝난다 (2026-09-21 hng2 에서
+실제로 그랬다 — hng1 은 이미 켜져 있었다).
+
 하위 폴더 `easymindmap_db_backup` 은 ②에서 서버가 만든다 (DSM File Station
 에서 만들어도 된다).
 
@@ -1785,21 +1790,33 @@ root 로 쓴다), **"마운트된 하위 폴더 접근 허용"** 체크(하위 �
 NAS2=192.168.0.220                                  # hng2 NAS (실제 주소로)
 showmount -e "$NAS2"                                # /volume2/hng2 줄이 보여야 한다
 
-# 하위 폴더를 만든다 — hng2 를 잠깐 붙여서
-sudo mkdir -p /mnt/nas/hng2-tmp && sudo mount -t nfs -o vers=4.1 "$NAS2:/volume2/hng2" /mnt/nas/hng2-tmp
-sudo mkdir -p /mnt/nas/hng2-tmp/easymindmap_db_backup/dev /mnt/nas/hng2-tmp/easymindmap_db_backup/prod
-sudo touch /mnt/nas/hng2-tmp/easymindmap_db_backup/dev/.emm-offsite /mnt/nas/hng2-tmp/easymindmap_db_backup/prod/.emm-offsite
-sudo umount /mnt/nas/hng2-tmp && sudo rmdir /mnt/nas/hng2-tmp
+# 하위 폴더를 만든다 — hng2 를 잠깐 붙여서. ★ 마운트가 됐을 때만 다음으로
+# (mountpoint 확인) — 마운트가 실패한 채 mkdir 이 돌면 로컬 디스크에
+# 같은 이름의 폴더·표식이 생겨 나중에 헷갈린다 (2026-09-21 실제로 그랬다)
+sudo mkdir -p /mnt/nas/hng2-tmp \
+ && sudo mount -t nfs -o vers=4.1 "$NAS2:/volume2/hng2" /mnt/nas/hng2-tmp \
+ && mountpoint -q /mnt/nas/hng2-tmp \
+ && sudo mkdir -p /mnt/nas/hng2-tmp/easymindmap_db_backup/dev /mnt/nas/hng2-tmp/easymindmap_db_backup/prod \
+ && sudo touch /mnt/nas/hng2-tmp/easymindmap_db_backup/dev/.emm-offsite /mnt/nas/hng2-tmp/easymindmap_db_backup/prod/.emm-offsite \
+ && sudo umount /mnt/nas/hng2-tmp && sudo rmdir /mnt/nas/hng2-tmp && echo "하위 폴더·표식 OK"
 
 # 하위 폴더만 백업용 옵션으로 마운트
 sudo mkdir -p /mnt/nas/emm-db-backup
 sudo mount -t nfs -o vers=4.1,soft,timeo=150,retrans=3 "$NAS2:/volume2/hng2/easymindmap_db_backup" /mnt/nas/emm-db-backup
-ls -la /mnt/nas/emm-db-backup/dev/        # .emm-offsite 가 보여야 한다
+sudo ls -la /mnt/nas/emm-db-backup/dev/   # .emm-offsite 가 보여야 한다 — ★ sudo 로 본다
 ```
 
-`mkdir` 에서 `Permission denied` 가 나오면 ①의 Squash 가 "매핑 없음"이
-아닌 것이다. 마운트에서 `access denied by server` 가 나오면 ①에 dev 서버
-IP 줄이 없거나 "마운트된 하위 폴더 접근 허용"이 꺼져 있는 것이다.
+- `mount.nfs: Protocol not supported` → ①의 NFSv4.1 이 꺼져 있다.
+- 마운트에서 `access denied by server` → ①에 dev 서버 IP 줄이 없거나
+  "마운트된 하위 폴더 접근 허용"이 꺼져 있다.
+- `mkdir`/`touch` 에서 `Permission denied` → ①의 Squash 가 "매핑 없음"이
+  아니다.
+- `ls` 에서 `Permission denied` 인데 **`sudo ls` 는 된다** → 정상이다. NAS
+  공유 폴더 최상위는 "다른 사용자"에게 열려 있지 않아 ubuntu 계정은 못
+  들어간다. 백업은 root(cron)가 하므로 문제없다.
+- `rmdir: Directory not empty` → 앞선 실패한 시도가 로컬에 남긴 찌꺼기다.
+  `sudo rm -rf /mnt/nas/hng2-tmp` 로 지운다 (그 시점엔 마운트가 내려가
+  있으니 NAS 는 건드리지 않는다 — `mountpoint -q` 로 확인하고 지운다).
 
 `/etc/fstab` 에 한 줄 (부팅 뒤 자동 마운트):
 
@@ -1829,8 +1846,9 @@ ls -la /mnt/nas/emm-db-backup/dev/
 ```
 
 `✅ 서버 밖으로 복사했습니다 → /mnt/nas/emm-db-backup/dev/all-….sql.gz (60일 보관)`
-가 나오고 NAS 폴더에 파일이 보이면 된다. 그다음 cron 줄을 바꾼다(붙여넣기
-한 줄, 두 번 실행해도 겹치지 않는다):
+가 나오고 NAS 폴더에 파일이 보이면 된다 (2026-09-21 dev 에서 확인 —
+2.1MB, `cmp` 통과). 그다음 cron 줄을 바꾼다(붙여넣기 한 줄, 두 번 실행해도
+겹치지 않는다):
 
 ```bash
 sudo bash -c '( crontab -l 2>/dev/null | grep -v emm-db-backup.sh; echo "10 3 * * * OFFSITE_DIR=/mnt/nas/emm-db-backup/dev /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1" ) | crontab -'

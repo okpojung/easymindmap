@@ -244,6 +244,24 @@ export function Canvas({
   const minimapOpen = useEditorUiStore((s) => s.minimapOpen);
   const toggleMinimap = useEditorUiStore((s) => s.toggleMinimap);
   const setMinimapOpen = useEditorUiStore((s) => s.setMinimapOpen);
+  // 미니맵을 **여는 순간 배율을 100% 로** 맞춘다 (2026-09-21 사용자 요청:
+  // "열 때는 기본적으로 100% 로 맞추어 열어 달라"). 화면 중앙의 world 점은
+  // 그대로 두고 배율만 바꾼다 — pan 을 그대로 두면 중심이 밀린다
+  // (viewBox = (w − C)·s + C + pan). 열린 뒤 배율 조정은 자유.
+  const minimapWasOpen = useRef(minimapOpen);
+  useEffect(() => {
+    const was = minimapWasOpen.current;
+    minimapWasOpen.current = minimapOpen;
+    if (!minimapOpen || was) return;
+    const vp = useViewportStore.getState();
+    if (vp.zoom === 100) return;
+    const s = vp.zoom / 100;
+    const wx = CX - vp.panX / s; // viewBox 중앙의 world 점 (clientToWorld 와 같은 식)
+    const wy = CY - vp.panY / s;
+    setZoom(100);
+    setPan(-(wx - CX), -(wy - CY)); // panForCenter(wx, wy, 100)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minimapOpen]);
   const spacingY = useEditorUiStore((s) => s.spacingY);
   // 편집 중인 노드 — +/− 추가 인디케이터를 숨겨 편집창·미니 툴바와
   // 겹치지 않게 한다.

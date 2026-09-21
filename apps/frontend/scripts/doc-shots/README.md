@@ -16,7 +16,7 @@ node scripts/doc-shots/guide03.mjs  /tmp/doc-shots /tmp/article-img.b64
 node scripts/doc-shots/guide03-table.mjs /tmp/doc-shots   # 표 ⊞ 격자·팝업·코드 팝업 (+ 검증 13항목)
 node scripts/doc-shots/guide03-style-copy.mjs /tmp/doc-shots   # 스타일 복사(붓) 버튼·커서·칠한 뒤 (+ 검증 27항목)
 node scripts/doc-shots/guide05-note-table.mjs /tmp/doc-shots   # 노트 표: +표 격자 · 그려진 표 + ✎ (+ 검증 16항목)
-node scripts/doc-shots/guide04-minimap.mjs /tmp/doc-shots   # 미니맵 (+ 검증 15항목)
+node scripts/doc-shots/guide04-minimap.mjs /tmp/doc-shots   # 미니맵 (+ 검증 26항목)
 # ② 인증 켠 화면 — 가이드 12 계열 (vite 를 이렇게 다시 띄운다)
 VITE_SUPABASE_URL=http://auth.local VITE_SUPABASE_ANON_KEY=anon VITE_SUPABASE_AUTH_PREFIX= \
   VITE_API_URL=https://api-dev.mindmap.ai.kr npx vite --port 5199 --strictPort --host 127.0.0.1 &

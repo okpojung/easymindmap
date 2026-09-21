@@ -17,6 +17,7 @@ import {
   type PublishStatus, type PublishVisibility,
 } from '@/services/cloud/apiClient';
 import { buildSilhouette } from '@/export/silhouette';
+import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
@@ -25,6 +26,49 @@ import { DialogXButton } from '@/components/ui/DialogFrame';
 /** 퍼블리싱 주소 — 브라우저 주소는 `/p/{publishId}` 다 (API 경로와 다르다) */
 export function publicMapUrl(publishId: string): string {
   return `${window.location.origin}/p/${publishId}`;
+}
+
+interface PreviewSource {
+  map: SampleMap;
+  layoutType?: LayoutType;
+  spacing: { x: number; y: number };
+}
+
+/**
+ * 실루엣을 그릴 **그 맵**을 가져온다 (2026-09-21).
+ *
+ * ★ 편집기에 열려 있는 맵과 **퍼블리싱하는 맵이 다를 수 있다.** 문서함
+ *   행의 🌐 에서 이 창을 열면 `mapId` 는 **그 행의 맵**인데, 문서 스토어에는
+ *   지금 편집 중인 맵(또는 방금 만든 빈 맵)이 들어 있다. 그대로 그리면
+ *   **엉뚱한 맵의 그림**이 올라간다.
+ *
+ *   사용자 보고(2026-09-21): 111노드짜리 맵의 미리보기에 **중심 하나만**
+ *   나왔다 — 편집기에 빈 맵이 있었기 때문이다. 카드에는 서버가 센 `111노드`
+ *   가 함께 적히므로 그림과 숫자가 대놓고 어긋났다.
+ *
+ * 그래서 **편집기에 열린 맵일 때만** 스토어를 쓴다(저장 안 한 마지막 손질까지
+ * 반영된다). 아니면 서버에서 그 맵의 문서를 받아 온다 — 배치·간격도 그
+ * 문서에 저장된 값을 쓴다(`PublicMapPage` 가 뷰어를 그릴 때와 같은 재료다).
+ */
+async function previewSource(mapId: string): Promise<PreviewSource> {
+  if (useCloudStore.getState().cloudMapId === mapId) {
+    const st = useDocumentStore.getState();
+    const ui = useEditorUiStore.getState();
+    return { map: st.map, layoutType: ui.layoutType, spacing: { x: ui.spacingX, y: ui.spacingY } };
+  }
+  // ★ `editSession` 을 주지 않는다 — 주면 **편집 잠금을 집어** 남이 그 맵을
+  //   못 고치게 된다. 여기서는 읽기만 한다.
+  const d = await cloudApi.getDocument(mapId);
+  const snap = d.doc as {
+    map?: SampleMap;
+    editor?: { layoutType?: LayoutType; spacingX?: number; spacingY?: number };
+  } | null;
+  if (!snap?.map) throw new Error('이 맵의 내용을 읽지 못했습니다.');
+  return {
+    map: snap.map,
+    layoutType: snap.editor?.layoutType,
+    spacing: { x: snap.editor?.spacingX ?? 1, y: snap.editor?.spacingY ?? 1 },
+  };
 }
 
 export function PublishPanel(
@@ -85,10 +129,8 @@ export function PublishPanel(
    */
   const uploadPreview = async (): Promise<boolean> => {
     try {
-      const st = useDocumentStore.getState();
-      const ui = useEditorUiStore.getState();
-      const { blob } = await buildSilhouette(
-        st.map, ui.layoutType, { x: ui.spacingX, y: ui.spacingY });
+      const src = await previewSource(mapId);
+      const { blob } = await buildSilhouette(src.map, src.layoutType, src.spacing);
       const s = await cloudApi.putPublishPreview(mapId, blob);
       setStatus(s);
       setPreviewV(Date.now());
@@ -399,14 +441,24 @@ export function PublishPanel(
                     onChange={(e) => void doSetListed(e.target.checked)}
                     style={{ marginTop: 2 }}
                   />
+                  {/* ★ 켜져 있을 때는 **지시문이 아니라 상태**로 적는다
+                      (2026-09-21 사용자 물음: "저 상태에서 닫기를 하면
+                      지식창고에 올라가는 건가?"). "올린다" 라고만 적혀
+                      있으면 체크가 **앞으로 할 일의 예약**처럼 읽혀, 아래
+                      [닫기] 가 확인 단추인지 아닌지를 알 수 없다. */}
                   <span>
-                    <b style={{ fontSize: 12.5 }}>📚 지식창고에 올린다</b>
+                    <b style={{ fontSize: 12.5 }}>
+                      {status.listed ? '📚 지식창고에 올라가 있습니다' : '📚 지식창고에 올린다'}
+                    </b>
                     <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 2 }}>
                       {status.listed
-                        ? '둘러보는 누구나 찾을 수 있습니다. 내려도 링크는 그대로 열립니다.'
+                        ? '지금 홈페이지 [지식창고] 목록에서 누구나 찾을 수 있습니다. 체크를 풀면 목록에서만 빠지고 링크는 그대로 열립니다.'
                         : '켜면 홈페이지 [지식창고] 목록에 올라가 불특정 다수가 찾을 수 있습니다.'}
                       <br />무료공개만 지금 됩니다 — <b>유료공개</b>는 준비 중입니다
                       (값·결제·정산이 붙은 뒤에 열립니다).
+                      {/* 체크가 곧 적용이다 — [닫기] 는 창만 닫는다 */}
+                      <br /><b data-testid="publish-listed-instant">체크하면 바로 반영됩니다</b>
+                      {' '}— 아래 [닫기] 는 이 창만 닫습니다.
                     </div>
                   </span>
                 </label>

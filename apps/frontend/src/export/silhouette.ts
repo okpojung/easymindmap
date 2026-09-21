@@ -20,7 +20,7 @@
 //   한 장을 위해 그 인프라를 들이는 것은 과하다. 퍼블리싱은 자주 하는 일이
 //   아니므로 저자가 퍼블리싱할 때 그 브라우저에서 한 번 만들어 올린다.
 
-import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
+import type { LayoutType, MindNode, SampleMap } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import { setLevelFontConfig, setLevelShapeConfig } from '@/editor/node-renderer/sizeNodeForText';
@@ -221,6 +221,36 @@ export interface SilhouetteResult {
  * `mapLayoutType`·`spacing` 은 저자가 보던 화면과 같은 배치를 만들기 위해
  * 그대로 넘긴다(스냅샷의 `editor` 값). 없으면 맵의 기본값을 쓴다.
  */
+/** 접힘만 풀어 준다 — 다른 값은 그대로 (`expandAll` 참고) */
+function expandNodes<T extends MindNode>(nodes: T[]): T[] {
+  return nodes.map((n) => ({
+    ...n,
+    collapsed: false,
+    children: n.children ? expandNodes(n.children) : n.children,
+  }));
+}
+
+/**
+ * ★ 실루엣은 **접힘 상태를 따르지 않는다** (2026-09-21).
+ *
+ * 배치 엔진은 접힌 가지의 자식을 쳐낸다(`LayoutEngine` 의 `pruneCollapsed`).
+ * 화면에서는 당연한 동작이지만 **카드 그림에서는 맵을 작아 보이게** 만든다 —
+ * 가지 넷을 접어 둔 111노드 맵이 노드 다섯 개짜리 그림이 된다(실측).
+ * 카드는 그 옆에 서버가 센 `111노드` 를 적으므로 **그림과 숫자가 어긋나고**,
+ * 카드가 전하려던 것(규모·구조·밀도)이 통째로 사라진다.
+ *
+ * 접기는 **화면 상태이지 내용이 아니다**(27a §3 — "접는 것은 숨기는 것이
+ * 아니다"). 그래서 여기서는 편 채로 그린다. 글자를 그리지 않는다는 규칙은
+ * 그대로이므로 펴도 새어 나가는 것이 없다.
+ */
+function expandAll(map: SampleMap): SampleMap {
+  return {
+    ...map,
+    branches: expandNodes(map.branches),
+    centers: map.centers?.map((c) => ({ ...c, branches: expandNodes(c.branches) })),
+  };
+}
+
 export async function buildSilhouette(
   map: SampleMap,
   mapLayoutType?: LayoutType,
@@ -231,7 +261,7 @@ export async function buildSilhouette(
   // 에디터와 달라져 실루엣의 밀도가 실제와 어긋난다 (exportHtml 과 같다).
   setLevelFontConfig(map.settings?.levelFonts);
   setLevelShapeConfig(map.settings?.levelShapes);
-  const laid = computeLayout(map, layoutType, 700, 400, spacing);
+  const laid = computeLayout(expandAll(map), layoutType, 700, 400, spacing);
 
   const canvas = document.createElement('canvas');
   canvas.width = SILHOUETTE_W;

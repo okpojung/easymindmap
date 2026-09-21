@@ -344,8 +344,12 @@ export function MapBrowser({
   // **맵을 폴더별로 나눠 받지 않고 한 번에 전부** 받는다 — 트리와 전체
   // 검색이 모두 "문서함 전부"를 알아야 하기 때문이다. 서버 list() 는
   // folder 를 주지 않으면 그 사용자의 맵 전부를 준다.
+  // 새로고침 버튼(2026-09-21 사용자 요청: "공유받은 문서를 보려고 Ctrl+F5 를
+  // 눌렀다") — 같은 load() 를 다시 부른다. 읽는 동안 버튼을 잠근다.
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     setErr(null);
+    setRefreshing(true);
     try {
       // 공유 목록이 실패해도 **내 문서함은 열린다** — 남에게 받은 것
       // 때문에 내 것을 못 보는 일이 있어서는 안 된다.
@@ -363,6 +367,8 @@ export function MapBrowser({
     } catch (e) {
       setMaps([]);
       setErr(e instanceof CloudError ? e.message : '문서함을 불러오지 못했습니다.');
+    } finally {
+      setRefreshing(false);
     }
   }, [sort, order]);
 
@@ -874,6 +880,13 @@ export function MapBrowser({
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
           <strong style={{ fontSize: 15, marginRight: 4 }}>내 문서</strong>
+          <button
+            data-testid="browser-refresh"
+            onClick={() => { void load(); }}
+            disabled={refreshing}
+            title="목록 새로고침 — 남이 공유해 준 맵·다른 탭에서 저장한 맵을 다시 읽습니다 (브라우저 새로고침 대신)"
+            style={{ ...toolBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? 'default' : 'pointer' }}
+          >{refreshing ? '↻ 읽는 중…' : '↻ 새로고침'}</button>
           <button
             data-testid="browser-expand-all"
             onClick={expandAll}

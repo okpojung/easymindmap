@@ -22,6 +22,7 @@ VITE_SUPABASE_URL=http://auth.local VITE_SUPABASE_ANON_KEY=anon VITE_SUPABASE_AU
   VITE_API_URL=https://api-dev.mindmap.ai.kr npx vite --port 5199 --strictPort --host 127.0.0.1 &
 node scripts/doc-shots/mcp-consent.mjs /tmp/doc-shots/mcp-connector-consent.png
 node scripts/doc-shots/mcp-token.mjs   /tmp/doc-shots/mcp-token.png
+node scripts/doc-shots/guide01-browser-refresh.mjs /tmp/doc-shots   # 문서함 ↻ 새로고침 (+ 검증 9항목)
 # ③ 마무리 — 폭 1000 이하 + 연회색 테두리, 그리고 assets 로
 python3 scripts/doc-shots/finish.py /tmp/doc-shots/mark-toolbar.png ../../docs/user-guide/assets/mark-toolbar.png 420
 ```

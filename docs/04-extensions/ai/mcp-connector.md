@@ -281,8 +281,11 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 2. **Claude 커스텀 커넥터 등록 요건** — 어떤 요금제에서 쓸 수 있는지,
    심사가 있는지. 아직 확인하지 못했다 — 4단계(스토어 등재) 몫이고,
    3단계는 **자기 서버를 자기 계정에 붙이는 것**이라 심사와 무관하다
-3. **ChatGPT 쪽 통로** — 앱(구 플러그인)과 GPT Actions 중 어디에
-   올릴지. 같은 MCP 서버를 두 곳에 쓸 수 있는지
+3. ~~**ChatGPT 쪽 통로** — 앱(구 플러그인)과 GPT Actions 중 어디에
+   올릴지. 같은 MCP 서버를 두 곳에 쓸 수 있는지~~ → **확인함** (2026-09-21,
+   §12). GPT Actions(OpenAPI)가 아니라 **개발자 모드의 커스텀 MCP 커넥터**
+   다 — 같은 `/v1/mcp` 를 그대로 붙인다. 요건(Streamable HTTP · OAuth ·
+   동적 등록)은 이미 갖춰져 있었고, 부족한 것은 `readOnlyHint` 하나였다
 4. **응답 크기 한계** — 큰 맵을 `get_map` 으로 돌려줄 때 잘리는 한계가
    있는지. 있으면 페이지네이션이 필요하다
    → **우리 쪽에서 먼저 잘랐다** (2026-09-05, §9.5): 본문 12만 자에서 자르고
@@ -359,6 +362,7 @@ MCP 를 빼도 공개판은 돌아간다(맵 저장·문서함 다 된다). 그�
 | **B. Claude Desktop** 의 로컬 MCP 설정(`claude_desktop_config.json`) | ✅ `mcp-remote` 다리 + `--header` | 규격상 된다 — 직접 확인은 안 했다 |
 | **C. claude.ai 웹·데스크톱 [커스텀 커넥터 추가]** | ❌ 칸이 없다 — **OAuth 로 붙는다** | **검증됨** (e2e248, 2026-09-08 — 사용자의 실제 claude.ai 커넥터에서 도구 5개, §10.10) |
 | **D. Claude Code 웹**(claude.ai/code 클라우드 세션) | ✅ 저장소의 `.mcp.json` + 환경 변수 `EMM_MCP_TOKEN` | **검증됨** (e2e217, 2026-09-06 — 사용자의 실제 claude.ai/code 세션에서 도구 5개 · `list_maps` 맵 10개, ②-D) |
+| **E. ChatGPT** 개발자 모드의 [커넥터 만들기] | ❌ 칸이 없다 — **OAuth 로 붙는다**(claude.ai 와 같은 길) | **서버 요건은 갖춤** (2026-09-21, §12) — 실제로 눌러 보는 것은 사용자 몫(ChatGPT 유료 요금제가 필요하다) |
 
 > **표의 "도구 5개" 는 그날의 실측이다.** 2026-09-09 에 `check_items` 가
 > 늘어 지금은 **6개**다(`mcp-tools.ts` 의 배열이 그대로 `tools/list` 로
@@ -1682,3 +1686,106 @@ scope 로 시작할 수 있고, **삭제 후 새로 추가가 PRM 재조회를 �
 - [`emm-prompt-templates.md`](emm-prompt-templates.md) — AI 에게 mmd 를 가르치는 프롬프트
 - [`../../05-implementation/api-spec.md`](../../05-implementation/api-spec.md) — 감쌀 API 계약
 - [`../open-core-boundary.md`](../open-core-boundary.md) — §5 경계 판단의 기준
+
+## 12. ChatGPT 에서 쓰기 — 같은 서버를 그대로 붙인다 (2026-09-21)
+
+> 사용자 질문: *"Claude Code 와 claude.ai 채팅창이 아닌 ChatGPT 채팅창으로도
+> MCP 맵 도구를 쓸 수 있나? 어떻게 설정하나?"*
+
+### 12.1 답 — 된다. 새로 만들 것은 없었다
+
+ChatGPT 는 **개발자 모드(Developer mode)** 에서 원격 MCP 서버를 **커스텀
+커넥터**로 붙인다. GPT Actions(OpenAPI 명세) 쪽이 아니다 — §8-3 이 남겨 둔
+갈림길은 이걸로 닫혔다. ChatGPT 가 요구하는 것과 우리가 가진 것을 맞대 본다.
+
+| ChatGPT 가 요구하는 것 | 우리 서버 | 근거 |
+|---|---|---|
+| 전송: **Streamable HTTP** 또는 SSE | Streamable HTTP(`POST /v1/mcp`). `GET` 은 405 — 규격이 허용하는 답이고 claude.ai 도 이걸 견뎠다 | §9.2 · `mcp.controller.ts` |
+| 인증: **OAuth** 또는 없음 (헤더 칸 없음) | OAuth 2.1 — PRM(RFC 9728) · GoTrue 인가 서버 · PKCE | §10 |
+| OAuth 클라이언트를 **동적 등록(DCR)** 으로 스스로 만든다 | GoTrue 가 `POST /oauth/clients/register` 로 받는다(`ALLOW_DYNAMIC_REGISTRATION=true`) — claude.ai 가 이미 이 길로 붙었다 | §10.5 ②-표 |
+| 도구는 읽기·쓰기 **모두** 노출된다. `readOnlyHint` 가 없는 도구는 전부 **쓰기**로 보고 부를 때마다 사용자 확인을 받는다 | **여기가 비어 있었다.** 맵 목록·읽기까지 매번 확인 창이 뜬다 → 이번에 `annotations` 를 달았다(§12.2) | `mcp-tools.ts` |
+| 응답은 JSON-RPC `tools/call` 결과의 `content[].text` | 같다 | §9.1 |
+
+> **정직하게** — 이 컨테이너에서는 OpenAI 문서 사이트(platform/developers/
+> help.openai.com)가 프록시에 막혀 **원문을 직접 읽지 못했다.** 위 요건은
+> 검색 결과 요약과 여러 안내 글이 일치하는 부분만 적었다. **ChatGPT 화면을
+> 실제로 눌러 본 것은 아니다** — claude.ai 때(§10.8→§10.10)와 같이, 확정은
+> 사용자가 한 번 붙여 보는 것으로 난다. 아래 §12.3 이 그 절차다.
+
+### 12.2 고친 것 — 도구 힌트(`annotations`)
+
+MCP 도구 정의의 `annotations` 는 클라이언트가 **확인 창을 띄울지** 정하는
+힌트다. ChatGPT 는 `readOnlyHint:true` 가 아닌 도구를 전부 쓰기 동작으로
+다룬다(문서: *"tools without this hint are treated as write actions"*).
+그래서 목록·읽기 셋에 `readOnlyHint`, 덧붙이기만 하는 것에
+`destructiveHint:false`, GitHub 로 나가는 둘에 `openWorldHint` 를 달았다.
+
+| 도구 | readOnly | destructive | idempotent | openWorld |
+|---|---|---|---|---|
+| `list_maps` · `get_map` · `get_open_map` | **true** | — | — | false |
+| `create_map` · `append_to_map` · `import_github_docs` | false | **false** | false | (import 만 true) |
+| `check_items` | false | false | **true** | false |
+| `update_map_from_github` | false | **true**(노드를 지운다) | true | true |
+
+Claude 쪽에는 영향이 없다 — claude.ai 는 힌트를 참고만 하고 확인 정책은
+자기 설정을 따른다. `tools/list` 응답에 필드 하나가 늘 뿐이라 **커넥터를
+다시 등록할 필요는 없다**(붙을 때마다 다시 읽는다, §9.2 ② 아래 주석).
+시험: `mcp-jsonrpc.test.mjs` 5항목(읽기 전용 셋 · 쓰기 다섯 · 파괴 하나 ·
+GitHub 둘 · 빠진 도구 없음).
+
+### 12.3 붙이는 법 — 사용자가 하는 일
+
+**요금제** — 커스텀 MCP 커넥터는 개발자 모드 뒤에 있고, 개발자 모드는
+**Plus · Pro · Business(Team) · Enterprise · Edu** 에서 열린다. **Free 는 안
+된다.** Business·Enterprise 는 관리자가 먼저 허용해야 한다(Workspace
+Settings ▸ Permissions ▸ Connected Data ▸ *Create custom MCP connectors*).
+"메뉴가 아예 없다" 의 가장 흔한 원인이 이것이다.
+
+1. ChatGPT(웹) ▸ 프로필 ▸ **설정** ▸ **앱 및 커넥터(Apps & Connectors)** ▸
+   **고급 설정(Advanced settings)** ▸ **개발자 모드** 켜기
+2. 같은 화면(또는 설정 ▸ **커넥터**)에서 **[만들기(Create)]**
+3. 채우는 칸
+
+   | 칸 | 값 |
+   |---|---|
+   | 이름 | `emm` (아무거나) |
+   | 설명 | 비워도 된다 |
+   | MCP 서버 URL | `https://api-dev.mindmap.ai.kr/v1/mcp` (운영은 운영 API 주소) |
+   | 인증 | **OAuth** |
+   | OAuth 클라이언트 ID / 시크릿 | **비워 둔다** — ChatGPT 가 우리 PRM → GoTrue 메타데이터를 읽고 동적 등록으로 스스로 만든다 |
+
+   > ChatGPT 화면이 클라이언트 ID 를 **반드시** 요구하는 판이면(커뮤니티에
+   > 그런 보고가 있었다), GoTrue 에 클라이언트를 하나 미리 만들어 그 값을
+   > 넣는다. §10.5 에서 시험용으로 한 번 한 그 호출이다 — 화면이 알려 주는
+   > ChatGPT 의 redirect URI 를 `redirect_uris` 에 넣는다:
+   >
+   > ```bash
+   > curl -sS -X POST https://auth-dev.mindmap.ai.kr/oauth/clients/register \
+   >   -H 'Content-Type: application/json' \
+   >   -d '{"client_name":"ChatGPT","redirect_uris":["<ChatGPT 화면의 redirect URI>"],
+   >        "grant_types":["authorization_code","refresh_token"],"token_endpoint_auth_method":"none"}'
+   > ```
+   > 응답의 `client_id` 를 넣고 시크릿은 비운다(공개 클라이언트·PKCE).
+
+4. [만들기] → EasyMindMap **로그인 화면** → 로그인 → **"ChatGPT 을(를)
+   연결할까요?"** 동의 화면(앱이 요청한 것: `이메일 주소` 하나) → [허용]
+5. 커넥터가 **연결됨**이 되고 도구 **8개**가 보이면 끝
+
+**대화에서 쓰기** — 새 대화 입력창의 **[+] ▸ 더 보기(More)** 에서 `emm`
+커넥터를 켜고(개발자 모드 커넥터는 대화마다 골라 켠다) 평소처럼 말한다 —
+*"이 내용을 emm 맵으로 저장해줘"* · *"OOO 저장소 문서를 emm 새 맵으로
+만들어줘"* · *"OOO 맵을 업데이트 해줘"*. 쓰기 도구(`create_map` 등)는
+ChatGPT 가 **부르기 전에 확인 창**을 띄운다 — 승인하지 않으면 모델은 조용히
+기다린다. 읽기 셋은 §12.2 덕에 묻지 않는다(클라이언트 설정으로 "항상 허용"
+도 고를 수 있다).
+
+### 12.4 아직 모르는 것 — 눌러 봐야 안다
+
+| 무엇 | 왜 못 잰 것인가 | 잘못이면 어디를 고치나 |
+|---|---|---|
+| ChatGPT 가 `GET /v1/mcp` 405 를 견디는가 | 규격상 클라이언트 MUST 지만 실제 구현은 사이트에 막혀 못 봤다 | 견디지 못하면 `GET` 에 빈 SSE 스트림을 여는 한 줄(`mcp.controller.ts`) |
+| 동의 화면의 앱 이름 | DCR 의 `client_name` 을 그대로 쓴다 — ChatGPT 가 무엇을 보내는지 모른다 | 이름이 이상해도 동작에는 영향 없다 |
+| Pro 요금제의 쓰기 도구 제한 | 안내 글마다 말이 다르다(Business·Enterprise 는 읽기·쓰기 전부, Pro 는 읽기·가져오기만이라는 글이 있다) | 우리 쪽에서 고칠 것이 없다 — 화면이 말해 준다 |
+| 도구 응답 상한 | `get_map` 은 12만 자에서 우리가 먼저 자른다(§9.5) — ChatGPT 상한이 더 낮은지 모른다 | 잘리면 `limit` 을 낮춘다 |
+
+붙어서 도구가 잡히면 이 표를 §10.10 처럼 실측으로 바꾼다.

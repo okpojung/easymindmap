@@ -18,6 +18,7 @@ import {
   folderNodePath, mergeNode, parseRepoRef, planUpdate, readFileMeta, readSource, resolveScope,
   sectionize, selectDocFiles, settleByCommit, GithubDocsError,
 } from '../dist/mcp/github-docs.js';
+import { GithubClient, GithubError } from '../dist/mcp/github-client.js';
 
 let failed = 0;
 function check(name, got, want) {
@@ -147,6 +148,37 @@ const ids = [];
 (function walk(ns) { for (const n of ns) { ids.push(n.id); (n.notes ?? []).forEach((x) => ids.push(x.id)); (n.links ?? []).forEach((x) => ids.push(x.id)); walk(n.children ?? []); } })(map.branches);
 check('id 전부 유일', new Set(ids).size, ids.length);
 check('문서 노드 모으기 (절 노드 안으로는 안 내려감)', collectFileNodes(src, map.branches).map((r) => r.path), ['docs/guide/a.md', 'docs/guide/b.md', 'docs/README.md', 'docs/z.md']);
+
+{
+  // 경로에 공백 — 출처 노트 되읽기 · 링크 왕복 (#531 Codex 지적)
+  const sp = { owner: 'o', repo: 'r', ref: 'main', path: 'my docs/v 2' };
+  const m2 = buildDocsMap(sp, [{ file: { path: 'my docs/v 2/a b.md', blobSha: 's1' }, markdown: '# 공백', commit: null }], 't', '2026-09-21T00:00:00.000Z', new IdGen());
+  check('공백 경로 출처 되읽기', (({ owner, repo, ref, path, fetchedAt }) => ({ owner, repo, ref, path, fetchedAt }))(readSource(m2)), { ...sp, fetchedAt: '2026-09-21T00:00:00.000Z' });
+  check('공백 경로 문서 링크 왕복', [m2.branches[0].links[0].url, fileNodePath(sp, m2.branches[0])], ['https://github.com/o/r/blob/main/my%20docs/v%202/a%20b.md', 'my docs/v 2/a b.md']);
+  check('옛 형식(가져옴 없음)도 읽힌다', readSource({ root: { notes: [{ id: 'x', text: '출처: github:o/r@main:docs' }] } }).path, 'docs');
+  check('뿌리(/)는 빈 경로', readSource({ root: { notes: [{ id: 'x', text: '출처: github:o/r@main:/ (가져옴 t)' }] } }).path, '');
+}
+
+console.log('── ④-b GitHub 클라이언트: 문서 폴더 아래만 재귀 (가짜 fetch)');
+{
+  const calls = [];
+  const fake = async (url) => {
+    calls.push(url);
+    const json = (obj) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => obj, text: async () => JSON.stringify(obj) });
+    if (url.endsWith('/git/trees/main')) return json({ tree: [{ path: 'docs', type: 'tree', sha: 'T1' }, { path: 'src', type: 'tree', sha: 'T9' }] });
+    if (url.endsWith('/git/trees/T1')) return json({ tree: [{ path: 'guide', type: 'tree', sha: 'T2' }, { path: 'README.md', type: 'blob', sha: 'B0' }] });
+    if (url.endsWith('/git/trees/T2?recursive=1')) return json({ tree: [{ path: 'a.md', type: 'blob', sha: 'B1' }, { path: 'deep/b.md', type: 'blob', sha: 'B2' }], truncated: false });
+    return { ok: false, status: 404, headers: { get: () => null }, json: async () => ({}), text: async () => '' };
+  };
+  const gh = new GithubClient(undefined, fake);
+  const t = await gh.treeUnder('o', 'r', 'main', 'docs/guide');
+  check('폴더를 한 층씩 내려가 그 아래만 재귀', t.entries.map((e) => e.path), ['docs/guide/a.md', 'docs/guide/deep/b.md']);
+  check('호출 셋: 뿌리 → docs → guide(재귀)', calls.map((u) => u.split('/git/trees/')[1]), ['main', 'T1', 'T2?recursive=1']);
+  let msg = null;
+  try { await gh.treeUnder('o', 'r', 'main', 'docs/nope'); } catch (e) { msg = e instanceof GithubError ? e.message : String(e); }
+  check('없는 폴더는 404 문장', msg.includes('"docs/nope" 폴더가 없습니다'), true);
+  check('빈 경로면 뿌리 재귀', (await (new GithubClient(undefined, async (url) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({}), text: async () => JSON.stringify({ tree: [{ path: 'x.md', type: 'blob', sha: '1' }], truncated: true }) }))).treeUnder('o', 'r', 'main', '')), { entries: [{ path: 'x.md', type: 'blob', sha: '1' }], truncated: true });
+}
 
 console.log('── ⑤ 계획');
 const remote1 = [

@@ -797,12 +797,15 @@ export class McpToolsService {
 
     let src: DocsSource;
     let files: RemoteFile[];
-    let truncatedTree = false;
     try {
       const branch = (typeof args.ref === 'string' && args.ref.trim()) || ref.ref || await gh.defaultBranch(ref.owner, ref.repo);
-      const tree = await gh.tree(ref.owner, ref.repo, branch);
-      truncatedTree = tree.truncated;
-      const dir = askedPath || ref.path || detectDocsDir(tree.entries);
+      // 문서 폴더 판정은 뿌리 한 층만 보면 된다 — 그 다음 **그 폴더 아래만** 재귀로
+      let dir = askedPath || ref.path || '';
+      if (!dir) dir = detectDocsDir((await gh.tree(ref.owner, ref.repo, branch, false)).entries);
+      const tree = await gh.treeUnder(ref.owner, ref.repo, branch, dir);
+      if (tree.truncated) {
+        return text(`${ref.owner}/${ref.repo}@${branch} 의 "${dir || '/'}" 아래가 너무 커서 GitHub 이 목록을 잘랐습니다 — \`path\` 로 더 좁혀 주세요.`, true);
+      }
       src = { owner: ref.owner, repo: ref.repo, ref: branch, path: dir };
       files = selectDocFiles(tree.entries, dir);
     } catch (err) {
@@ -878,7 +881,6 @@ export class McpToolsService {
       `EasyMindMap 문서함에 "${title}" 맵을 만들었습니다 — ${src.owner}/${src.repo}@${src.ref} 의 "${src.path || '/'}" 아래 문서 ${docs.length}개 · 노드 ${nodes}개${templateNote}.\n` +
       `맵 id: ${mapId}\n` +
       (noCommit ? `(문서 ${noCommit}개는 커밋 시각을 읽지 못해 "(알 수 없음)" 으로 적었습니다.)\n` : '') +
-      (truncatedTree ? '(저장소가 커서 GitHub 이 트리 목록을 잘랐습니다 — 일부 문서가 빠졌을 수 있습니다.)\n' : '') +
       limitNote +
       '나중에 "이 맵을 업데이트 해줘" 라고 하면 update_map_from_github 이 저장소 변경을 반영합니다.',
     );
@@ -934,7 +936,12 @@ export class McpToolsService {
     const gh = new GithubClient();
     let remote: RemoteFile[];
     try {
-      const tree = await gh.tree(src.owner, src.repo, src.ref);
+      const tree = await gh.treeUnder(src.owner, src.repo, src.ref, src.path);
+      // ★ 잘린 목록으로는 계획하지 않는다 — 빠진 문서가 전부 "사라진 것" 이 되어
+      //   노드를 지운다(#531 Codex 지적). 문서 폴더 아래만 받으므로 드문 일이다.
+      if (tree.truncated) {
+        return text(`${src.owner}/${src.repo}@${src.ref} 의 "${src.path || '/'}" 아래가 너무 커서 GitHub 이 목록을 잘랐습니다 — 잘린 목록으로 갱신하면 멀쩡한 문서 노드가 지워질 수 있어 멈췄습니다. 폴더를 나눠 별도 맵으로 가져오는 것을 권합니다.`, true);
+      }
       remote = selectDocFiles(tree.entries, src.path);
     } catch (err) {
       if (err instanceof GithubError) return text(err.message, true);

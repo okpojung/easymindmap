@@ -118,7 +118,9 @@ export function treeUrl(src: DocsSource, dir: string): string {
   return dir ? `${base}/${dir.split('/').map(encodeURIComponent).join('/')}` : base;
 }
 
-const SOURCE_RE = /^출처:\s*github:([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)@(\S+?):(\S*?)(?:\s+\(가져옴\s+(\S+)\))?\s*$/;
+// ref 는 git 규칙상 공백·':' 이 없다. **경로는 공백이 있을 수 있다**(#531 Codex 지적) —
+// 그래서 경로는 고정 접미 ` (가져옴 …)` 앞까지 통째로 받는다.
+const SOURCE_RE = /^출처:\s*github:([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)@([^\s:]+):(.*?)(?:\s+\(가져옴\s+(\S+)\))?\s*$/;
 
 export function sourceNoteText(src: DocsSource, fetchedAt: string): string {
   return `출처: github:${src.owner}/${src.repo}@${src.ref}:${src.path || '/'} (가져옴 ${fetchedAt})`;

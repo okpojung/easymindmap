@@ -82,14 +82,46 @@ export class GithubClient {
     return b;
   }
 
-  /** 트리 전체(재귀). `truncated` 면 GitHub 이 목록을 잘랐다(아주 큰 저장소) */
-  async tree(owner: string, repo: string, ref: string): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
+  /**
+   * 트리 — `recursive` 면 그 아래 전부, 아니면 바로 아래 한 층. `truncated` 면
+   * GitHub 이 목록을 잘랐다(항목 10만 개·7MB 상한). `refOrSha` 는 브랜치·태그·
+   * 커밋 또는 트리 sha.
+   */
+  async tree(
+    owner: string, repo: string, refOrSha: string, recursive = true,
+  ): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
     const { body } = await this.request(
-      `${API}/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`, `트리 ${owner}/${repo}@${ref}`,
+      `${API}/repos/${owner}/${repo}/git/trees/${encodeURIComponent(refOrSha)}${recursive ? '?recursive=1' : ''}`,
+      `트리 ${owner}/${repo}@${refOrSha}`,
     );
     const b = body as { tree?: TreeEntry[]; truncated?: boolean };
-    if (!Array.isArray(b.tree)) throw new GithubError(`저장소 ${owner}/${repo}@${ref} 의 트리를 읽지 못했습니다.`);
+    if (!Array.isArray(b.tree)) throw new GithubError(`저장소 ${owner}/${repo}@${refOrSha} 의 트리를 읽지 못했습니다.`);
     return { entries: b.tree.map((e) => ({ path: e.path, type: e.type, sha: e.sha })), truncated: Boolean(b.truncated) };
+  }
+
+  /**
+   * **문서 폴더 아래만** 재귀로 — 저장소 전체를 재귀로 받으면 큰 저장소에서
+   * 잘리고(truncated), 잘린 목록으로 갱신을 계획하면 빠진 문서를 "사라진 것"
+   * 으로 보아 노드를 지운다(#531 Codex 지적). 폴더를 한 층씩 내려가 그 폴더의
+   * 트리 sha 를 찾은 뒤 그 아래만 재귀로 받는다. 돌려주는 경로는 저장소 뿌리
+   * 기준(`dir/…`). `dir` 이 '' 이면 뿌리 전체.
+   */
+  async treeUnder(owner: string, repo: string, ref: string, dir: string): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
+    const clean = dir.replace(/^\/+|\/+$/g, '');
+    if (!clean) return this.tree(owner, repo, ref, true);
+    let sha = ref;
+    let walked = '';
+    for (const seg of clean.split('/')) {
+      const level = await this.tree(owner, repo, sha, false);
+      const hit = level.entries.find((e) => e.type === 'tree' && e.path === seg);
+      if (!hit) {
+        throw new GithubError(`${owner}/${repo}@${ref} 에 "${walked ? walked + '/' : ''}${seg}" 폴더가 없습니다 — \`path\` 를 확인해 주세요.`, 404);
+      }
+      sha = hit.sha;
+      walked = walked ? `${walked}/${seg}` : seg;
+    }
+    const sub = await this.tree(owner, repo, sha, true);
+    return { entries: sub.entries.map((e) => ({ ...e, path: `${clean}/${e.path}` })), truncated: sub.truncated };
   }
 
   /** 파일의 마지막 커밋 — 없으면(기록이 없는 파일) null */

@@ -61,7 +61,7 @@ check('error 봉투', rpcError(null, RPC.METHOD_NOT_FOUND, '없음'),
   { jsonrpc: '2.0', id: null, error: { code: -32601, message: '없음' } });
 
 // ── ⑥ 도구는 여섯 — create_map(1단계) + list_maps·get_map(2단계, §7) + get_open_map · append_to_map · check_items ──
-check('도구는 여섯', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map', 'check_items']);
+check('도구는 여덟', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github']);
 const byName = Object.fromEntries(TOOL_DEFS.map((t) => [t.name, t]));
 check('get_open_map: 인자 없음', Object.keys(byName.get_open_map.inputSchema.properties), []);
 check('create_map: markdown 은 필수', byName.create_map.inputSchema.required, ['markdown']);
@@ -80,7 +80,10 @@ check('check_items: 받는 인자는 넷', Object.keys(byName.check_items.inputS
 check('check_items: nodes 는 문자열 배열', [byName.check_items.inputSchema.properties.nodes.type, byName.check_items.inputSchema.properties.nodes.items.type], ['array', 'string']);
 // **지우거나 바꾸는 도구가 없다**(§2-3) — 이름으로 못 박는다. append 는 덧붙이기만,
 // check_items 는 체크박스 한 글자만 바꾸는 예외(§9.12)라 허용
-check('삭제·수정 도구 없음', TOOL_DEFS.filter((t) => /delete|remove|update|replace|set_/.test(t.name)).length, 0);
+// 삭제·수정 도구는 두지 않는다(§2-3) — 예외는 `update_map_from_github` 하나(2026-09-21
+// 사용자 결정, §9.14): 이 도구가 **스스로 만든** 노드(GitHub 링크·생성 id)만 저장소에
+// 맞춰 더하고·바꾸고·지우며, 사용자가 손으로 붙인 노드·노트는 남기고, 히스토리 버전으로 남는다.
+check('삭제·수정 도구 없음 (github 갱신 하나만 예외)', TOOL_DEFS.filter((t) => /delete|remove|update|replace|set_/.test(t.name)).map((t) => t.name), ['update_map_from_github']);
 
 console.log(failed ? `\n${failed}개 실패` : '\n전부 통과');
 process.exit(failed ? 1 : 0);

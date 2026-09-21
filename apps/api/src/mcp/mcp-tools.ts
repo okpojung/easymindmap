@@ -33,11 +33,30 @@ import {
  * 폴더 노드와 그 아래 절 노드)만이고 사용자가 손으로 붙인 것은 남긴다(§9.14).
  */
 
+/**
+ * 도구 힌트(MCP `annotations`) — 클라이언트가 **확인 창을 띄울지** 정하는 데 쓴다
+ * (2026-09-21, ChatGPT 연결 §12). ChatGPT 는 `readOnlyHint` 가 없는 도구를 전부
+ * "쓰기" 로 보고 부를 때마다 사용자 확인을 받는다 — 맵 목록·읽기까지 매번 묻게
+ * 된다. 읽기만 하는 셋에 `readOnlyHint:true`, 덧붙이기만 하는 것에
+ * `destructiveHint:false` 를 단다. 규격에서 `destructiveHint:false` 는 "덧붙이기만
+ * 한다" 는 약속이라, **있는 내용을 바꾸는** `check_items`(`[ ]`↔`[x]`)와
+ * `update_map_from_github`(노드 삭제)는 파괴적(기본값 true)으로 둔다 — 되돌릴 수
+ * 있어도 고치는 것은 고치는 것이다(#534 Codex). GitHub 로 나가는 둘은
+ * `openWorldHint:true`.
+ */
+export interface McpToolAnnotations {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
 export interface McpToolDef {
   name: string;
   title: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations?: McpToolAnnotations;
 }
 
 /**
@@ -48,6 +67,7 @@ export interface McpToolDef {
 export const TOOL_DEFS: McpToolDef[] = [
   {
     name: 'create_map',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     title: 'EasyMindMap 에 새 마인드맵 만들기',
     description:
       '대화 내용을 EasyMindMap 문서함에 **새 마인드맵으로 저장한다.** ' +
@@ -103,6 +123,7 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'list_maps',
+    annotations: { readOnlyHint: true, openWorldHint: false },
     title: 'EasyMindMap 문서함의 맵 목록',
     description:
       '사용자의 EasyMindMap 문서함에 있는 맵 목록을 돌려준다 — 이름 · 맵 id · 폴더 · ' +
@@ -131,6 +152,7 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'get_map',
+    annotations: { readOnlyHint: true, openWorldHint: false },
     title: 'EasyMindMap 맵 한 개를 마크다운으로 읽기',
     description:
       '맵 한 개의 내용을 **mmd 마크다운**(Mindmap Markdown — `# 중심 주제` · `## 가지` · `### 하위 가지` … 견출 구조)으로 ' +
@@ -150,6 +172,7 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'get_open_map',
+    annotations: { readOnlyHint: true, openWorldHint: false },
     title: '사용자가 지금 앱에서 열어 둔 맵과 선택한 노드',
     description:
       '사용자가 EasyMindMap 앱에서 **지금 열어 둔 맵**과 **선택한 노드**를 알려 준다(맵 id · 이름 · 선택 노드 경로). ' +
@@ -160,6 +183,7 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'append_to_map',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     title: 'EasyMindMap 기존 맵의 노드 아래에 가지 붙이기',
     description:
       '기존 맵의 **한 노드 아래에** 마크다운 조각을 하위 가지로 덧붙인다. ' +
@@ -200,6 +224,7 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'check_items',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     title: 'EasyMindMap 맵 노드의 체크박스에 체크하기',
     description:
       '기존 맵의 노드에 있는 **체크박스**(노드 본문의 `- [ ] 완료` 줄, 체크리스트 노트)를 **체크하거나 해제**한다. ' +
@@ -232,6 +257,7 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'import_github_docs',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     title: 'GitHub 저장소의 문서 폴더를 EasyMindMap 새 맵으로',
     description:
       'GitHub 저장소를 지정하면 그 저장소의 **문서 폴더**(`docs/`·`doc/` 를 자동으로 찾는다, `path` 로 지정 가능)에 있는 마크다운 문서들을 **새 맵 하나**로 만든다. ' +
@@ -255,6 +281,7 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'update_map_from_github',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     title: 'GitHub 문서로 만든 맵을 저장소의 지금 상태에 맞춰 갱신',
     description:
       'import_github_docs 로 만든 맵을 저장소의 **지금 상태**에 맞춘다. 사용자가 "OOO 맵을 업데이트 해줘" · "OOO 맵을 github 수정사항 반영해서 수정해줘" 라고 하면 이것을 부른다(맵 id 는 list_maps 로). ' +

@@ -7,6 +7,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { findNodeInMap, findParentId, getNodeDepth, isCenterRootId, useDocumentStore } from '@/stores/documentStore';
 import { snapshotNodeStyle } from './stylePainter';
+import { expandScope } from '@/utils/expandScope';
 import { mapCenters } from '@/editor/__samples__/types';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
@@ -38,24 +39,15 @@ export function CanvasFloatingToolbar({
   const expandSubtree = useDocumentStore((state) => state.expandSubtree);
   const collapseSubtree = useDocumentStore((state) => state.collapseSubtree);
   const multiSelectedIds = useInteractionStore((state) => state.multiSelectedIds);
-  const subtreeTargets = multiSelectedIds.length > 1
-    ? multiSelectedIds
-    : (selectedId && selectedId !== 'root' ? [selectedId] : []);
-  // 자식이 있는 노드가 하나라도 있어야 뜻이 있다
-  const subtreeHasKids = useDocumentStore((state) => {
-    if (!subtreeTargets.length) return false;
-    const want = new Set(subtreeTargets);
-    let hit = false;
-    const walk = (nodes: { id: string; children?: unknown[] }[]) => {
-      for (const n of nodes) {
-        if (hit) return;
-        if (want.has(n.id) && (n.children?.length ?? 0) > 0) { hit = true; return; }
-        walk((n.children ?? []) as typeof nodes);
-      }
-    };
-    for (const c of mapCenters(state.map)) walk(c.branches as { id: string; children?: unknown[] }[]);
-    return hit;
-  });
+  /**
+   * ★ [모두 펼치기]·[모두 접기]가 **어디에 걸리나** (2026-09-21 사용자 결정).
+   *
+   *   아무것도 안 골랐으면 맵 전체, 노드를 골랐으면 **그 노드의 하위만**.
+   *   중심을 고른 것은 전체와 같다 — 셈은 `utils/expandScope.ts` 한 곳에
+   *   있고 아웃라인 머리말의 같은 단추도 그것을 쓴다.
+   */
+  const rootIds = useDocumentStore((state) => mapCenters(state.map).map((c) => c.root.id));
+  const scope = expandScope(selectedId, multiSelectedIds, rootIds);
 
   // 여러 중심주제 (2026-09-15, 2단계 — emm-spec §3.1 · 10-canvas §21.2)
   const addCenter = useDocumentStore((state) => state.addCenter);
@@ -233,38 +225,34 @@ export function CanvasFloatingToolbar({
         <>
           <ToolbarBtn
             t={t}
-            title="모두 펼치기"
-            onClick={() => { expandAll(); onFitView?.(); }}
+            title={scope === 'all'
+              ? '모두 펼치기 — 맵 전체 (노드를 고르면 그 아래만)'
+              : '선택한 노드의 하위 모두 펼치기 (선택을 풀면 맵 전체)'}
+            testId="expand-all"
+            onClick={() => {
+              if (scope === 'all') expandAll(); else expandSubtree(scope);
+              onFitView?.();
+            }}
           >
             <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>+</span>
           </ToolbarBtn>
           <ToolbarBtn
             t={t}
-            title="모두 접기 — 2레벨만 남기고 전부 접기"
-            onClick={() => { collapseAll(); onFitView?.(); }}
+            title={scope === 'all'
+              ? '모두 접기 — 2레벨만 남기고 전부 (노드를 고르면 그 아래만)'
+              : '선택한 노드의 하위 모두 접기 — 직계 자식만 남기고'}
+            testId="collapse-all"
+            onClick={() => {
+              if (scope === 'all') collapseAll(); else collapseSubtree(scope);
+              onFitView?.();
+            }}
           >
             <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>−</span>
           </ToolbarBtn>
-          {/* 선택 노드 하위만 — 큰 맵에서 보던 가지만 펼치고 접는다 (2026-09-08).
-              배치는 펼치는 순간 다시 계산되므로 따로 정리할 것이 없다. */}
-          <ToolbarBtn
-            t={t}
-            title="선택 노드 하위 모두 펼치기 (Alt+=)"
-            disabled={!subtreeHasKids}
-            onClick={() => expandSubtree(subtreeTargets)}
-            testId="expand-subtree"
-          >
-            <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1 }}>⊞</span>
-          </ToolbarBtn>
-          <ToolbarBtn
-            t={t}
-            title="선택 노드 하위 모두 접기 — 직계 자식만 남기고 (Alt+-)"
-            disabled={!subtreeHasKids}
-            onClick={() => collapseSubtree(subtreeTargets)}
-            testId="collapse-subtree"
-          >
-            <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1 }}>⊟</span>
-          </ToolbarBtn>
+          {/* ★ 전용 단추 ⊞/⊟ 는 **없앴다** (2026-09-21). 위의 +/− 가
+              선택에 따라 같은 일을 하므로, 두면 **같은 기호가 둘**이 된다
+              (§5-1-6). 단축키 `Alt+=`·`Alt+-` 는 그대로 둔다 — 선택이
+              있을 때만 도는 것도 그대로다. */}
         </>
       )}
       <ToolbarBtn

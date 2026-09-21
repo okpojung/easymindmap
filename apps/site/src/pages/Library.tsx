@@ -187,6 +187,16 @@ export default function Library() {
                   : <span className="thumb empty">미리보기 없음</span>}
                 <span className="body">
                   <h2>{highlight(m.title, applied)}</h2>
+                  {/* ★ 값은 **카드에서 바로** 보인다 (2026-09-21, 27b §2.1) —
+                      가격은 비밀이 아니라 손님에게 보여 줘야 하는 숫자라
+                      코어가 목록에 실어 준다. 값이 없으면 아무것도 그리지
+                      않는다(무료 맵에 "무료" 를 붙이면 유료가 기본처럼
+                      읽힌다). */}
+                  {m.priceKrw != null && (
+                    <span className="price" title="유료 맵 — 미리보기는 2단계까지 보입니다">
+                      {m.priceKrw.toLocaleString('ko-KR')}원
+                    </span>
+                  )}
                   <span className="meta">
                     {m.nodeCount != null ? `${m.nodeCount}노드 · ` : ''}{fmt(m.publishedAt)}
                     {(m.matchCount ?? 0) > 0 && (

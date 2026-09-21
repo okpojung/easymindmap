@@ -7,8 +7,14 @@ export interface ListedMap {
   publishedAt: string;
   hasPreview: boolean;
   nodeCount: number | null;
-  /** 검색 중일 때만 온다 — 맵 **내용**에서 맞은 건수 */
+  /**
+   * 검색 중일 때만 온다 — 맵 **내용**에서 맞은 건수.
+   * 유료 맵에서는 **2단계까지만** 센다 (27b §5.3) — 건수 자체가 잘라 낸
+   * 부분을 일러 주는 신호가 되기 때문이다.
+   */
   matchCount?: number;
+  /** **값** — `null` 이면 무료 (2026-09-21, 27b §3.1) */
+  priceKrw?: number | null;
 }
 
 export interface ListedPage {

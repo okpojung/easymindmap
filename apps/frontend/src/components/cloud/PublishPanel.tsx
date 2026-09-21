@@ -22,6 +22,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { useProFeature } from '@/pro/contract';
 
 /** 퍼블리싱 주소 — 브라우저 주소는 `/p/{publishId}` 다 (API 경로와 다르다) */
 export function publicMapUrl(publishId: string): string {
@@ -250,6 +251,21 @@ export function PublishPanel(
     flash(on
       ? '📚 지식창고에 올렸습니다 — 홈페이지 [지식창고]에서 누구나 찾을 수 있습니다.'
       : '지식창고에서 내렸습니다 — 목록에서만 빠집니다. 링크는 그대로 열립니다.');
+  });
+
+  /**
+   * 값 매기기 · 값 내리기 (2026-09-21, 27b §4.1).
+   *
+   * 값과 상태가 **함께** 움직인다 — 서버의 `setPrice` 한 문이 둘 다 한다.
+   * 화면에서 "유료로 바꾸고" "값을 넣는" 두 단계로 두면 그 사이에 창을
+   * 닫은 맵이 **값 없는 유료 맵**으로 남는다.
+   */
+  const doSetPrice = (priceKrw: number | null) => run(async () => {
+    const st = await cloudApi.setMapPrice(mapId, priceKrw);
+    setStatus(st);
+    flash(priceKrw === null
+      ? '값을 내렸습니다 — 무료공개로 돌아갔습니다.'
+      : `${priceKrw.toLocaleString('ko-KR')}원으로 값을 매겼습니다.`);
   });
 
   const doRemakePreview = () => run(async () => {
@@ -516,8 +532,6 @@ export function PublishPanel(
                       {on
                         ? '지금 홈페이지 [지식창고] 목록에서 누구나 찾을 수 있습니다. 내려도 링크는 그대로 열립니다.'
                         : '올리면 홈페이지 [지식창고] 목록에서 불특정 다수가 찾을 수 있습니다.'}
-                      <br />무료공개만 지금 됩니다 — <b>유료공개</b>는 준비 중입니다
-                      (값·결제·정산이 붙은 뒤에 열립니다).
                     </div>
                   </span>
                 </label>
@@ -558,6 +572,20 @@ export function PublishPanel(
               </div>
               );
             })()}
+
+            {/* ★ **유료공개의 값** (2026-09-21, 27b §8.1).
+                칸이 없는 서버에서는 그리지 않고(`canSetPrice`), **판매가
+                켜지지 않은 서버에서도** 값 칸 대신 이유를 적는다 — 값만
+                매겨 두면 **저자는 팔린다고 믿는데 살 길이 없는** 상태가
+                된다(27a §3 이 경고한 바로 그 자리). */}
+            {status.canSetPrice && (
+              <PriceRow
+                t={t}
+                status={status}
+                busy={busy}
+                onApply={(v) => void doSetPrice(v)}
+              />
+            )}
 
             {/* 미리보기 실루엣 — 링크 카드·목록 썸네일이 이 그림을 쓴다.
                 **글자가 없는 것이 정상이다**(27a §2.1): 흐리게 만든 것이
@@ -687,6 +715,113 @@ export function PublishPanel(
           }}
         >닫기</button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * ★ **유료공개의 값** (2026-09-21, 27b §8.1).
+ *
+ * ★ **값을 매길 수 있는 것과 팔 수 있는 것은 다르다.** 자르기(미리보기
+ *   경계·검색 경계)는 코어가 하지만, 결제·정산은 유료 모듈(pro)의 일이다.
+ *   그 모듈이 없는 서버에서 값 칸만 열어 두면, 저자는 **팔린다고 믿는데
+ *   손님에게는 살 길이 없는** 맵이 생긴다 — 27a §3 이 경고한 자리다.
+ *   그래서 `GET /v1/features` 의 `map-sales` 가 켜져 있을 때만 값 칸을
+ *   그리고, 아니면 **왜 아직인지**를 적는다.
+ *
+ * ★ **수수료·원천징수는 여기서 적지 않는다.** 요율은 유료 모듈의 설정값
+ *   (`sale_settings`)이라 코어가 모른다. 아는 척 10% 를 적어 두면 실제와
+ *   다를 때 저자가 "10%라며 왜 13%를 뗐냐" 고 묻게 되고, 그 물음은
+ *   정당하다 (27a §6.4). 모르는 숫자는 적지 않는다.
+ */
+function PriceRow({ t, status, busy, onApply }: {
+  t: ThemeTokens;
+  status: PublishStatus;
+  busy: boolean;
+  onApply: (priceKrw: number | null) => void;
+}) {
+  const sales = useProFeature('map-sales');
+  const cur = status.priceKrw ?? null;
+  const [draft, setDraft] = useState<string>(cur === null ? '' : String(cur));
+
+  // 서버가 준 값이 바뀌면(다른 곳에서 고쳤다) 칸도 따라간다
+  useEffect(() => { setDraft(cur === null ? '' : String(cur)); }, [cur]);
+
+  const box = {
+    marginBottom: 10, padding: '10px 12px', borderRadius: 8,
+    border: `1px solid ${t.border}`, background: t.surfaceAlt,
+  } as const;
+
+  if (sales.status !== 'on') {
+    return (
+      <div data-testid="publish-price-off" style={box}>
+        <b style={{ fontSize: 12.5 }}>💰 유료공개</b>
+        {/* ★ 서버가 준 `reason` 을 그대로 보이지 않는다 — 그 문장은 운영자
+            를 위한 것이라("모듈이 코어보다 오래된 판") 저자에게는 뜻이 없다.
+            저자가 알아야 할 것은 **지금 팔 수 있나 없나**와 **왜**다. */}
+        <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 2 }}>
+          아직 값을 매길 수 없습니다 — 결제·정산이 붙은 뒤에 열립니다.
+          지금은 무료공개만 됩니다.
+        </div>
+      </div>
+    );
+  }
+
+  const n = Number.parseInt(draft.replace(/[^0-9]/g, ''), 10);
+  const valid = Number.isInteger(n) && n > 0;
+  const changed = (valid ? n : null) !== cur;
+
+  return (
+    <div data-testid="publish-price" style={{ ...box, border: `1px solid ${cur === null ? t.border : t.primary}` }}>
+      <b style={{ fontSize: 12.5 }}>
+        {cur === null ? '💰 유료공개 — 값을 매기면 팝니다' : `💰 유료공개 중 — ${cur.toLocaleString('ko-KR')}원`}
+      </b>
+      <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, margin: '2px 0 8px' }}>
+        값을 매기면 손님에게는 <b>2단계까지만</b> 보입니다 — 노트·첨부·링크는
+        미리보기에 들어가지 않습니다. 값을 내리면 다시 전부 공개됩니다.
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input
+          data-testid="publish-price-input"
+          type="text"
+          inputMode="numeric"
+          value={draft}
+          disabled={busy}
+          placeholder="4900"
+          onChange={(e) => setDraft(e.target.value)}
+          style={{
+            flex: 1, minWidth: 0, height: 30, padding: '0 8px', fontSize: 12.5,
+            border: `1px solid ${t.border}`, borderRadius: 6,
+            background: t.surface, color: t.text, fontFamily: 'inherit',
+          }}
+        />
+        <span style={{ fontSize: 12.5, color: t.textSubtle }}>원</span>
+        <button
+          data-testid="publish-price-apply"
+          disabled={busy || !changed || !valid}
+          onClick={() => onApply(n)}
+          style={{
+            height: 30, padding: '0 12px', fontSize: 12, fontWeight: 700, borderRadius: 6,
+            border: `1px solid ${changed && valid ? t.primary : t.border}`,
+            background: changed && valid ? t.primary : t.surfaceAlt,
+            color: changed && valid ? '#fff' : t.textSubtle,
+            cursor: changed && valid && !busy ? 'pointer' : 'default',
+            fontFamily: 'inherit', whiteSpace: 'nowrap',
+          }}
+        >값 매기기</button>
+      </div>
+      {cur !== null && (
+        <button
+          data-testid="publish-price-clear"
+          disabled={busy}
+          onClick={() => onApply(null)}
+          style={{
+            marginTop: 6, width: '100%', height: 28, fontSize: 11.5, borderRadius: 6,
+            border: `1px solid ${t.border}`, background: t.surface, color: t.textSubtle,
+            cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit',
+          }}
+        >값을 내리고 무료공개로 되돌리기</button>
+      )}
     </div>
   );
 }

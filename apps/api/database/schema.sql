@@ -311,15 +311,23 @@ CREATE TABLE IF NOT EXISTS public.published_maps (
     --   FALSE = 링크를 아는 사람만. TRUE = 진열대 목록에 뜨고 robots 가 index.
     --   공개 범위가 넓어지는 것은 사람이 한 번 더 눌러야 일어난다.
     listed         BOOLEAN NOT NULL DEFAULT FALSE,
+    -- 유료공개의 **값** (2026-09-21, 27b §3.1) — NULL = 무료.
+    --   값만 코어에 둔다. 수수료율·저자 몫·판매 기록은 거래라서 유료
+    --   모듈(pro)의 `map_sales` 에만 있다. 값은 비밀이 아니라 **손님에게
+    --   보여 줘야 하는 숫자**다 (지식창고 목록·미리보기 화면이 그린다).
+    price_krw      INT CONSTRAINT published_maps_price_krw_positive
+                       CHECK (price_krw IS NULL OR price_krw > 0),
+    paid_at        TIMESTAMPTZ,                  -- 언제부터 유료였나
     published_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     unpublished_at TIMESTAMPTZ                   -- NOT NULL = 퍼블리싱 등록 취소(주소 소멸)
 );
 
 CREATE INDEX IF NOT EXISTS idx_published_maps_publish_id ON public.published_maps(publish_id);
 -- 진열대 목록의 조회 조건 그대로 — 진열된 맵은 전체의 일부라 인덱스가 작다
+-- 유료공개도 목록에 뜬다 (2026-09-21) — 잘린 미리보기와 값이 카드에 실린다
 CREATE INDEX IF NOT EXISTS idx_published_maps_listed
     ON public.published_maps (published_at DESC)
- WHERE listed AND visibility = 'public' AND unpublished_at IS NULL;
+ WHERE listed AND visibility IN ('public', 'paid') AND unpublished_at IS NULL;
 
 -- ============================================================
 -- 8. AI Jobs
@@ -802,12 +810,71 @@ AS $$
      WHERE t <> '';
 $$;
 
+-- ────────────────────────────────────────────────────────────────────
+-- 유료 맵의 **검색 경계** (2026-09-21, 27b §5.3)
+--
+-- 유료 맵을 통째로 색인하면 내용 자체는 안 나가도 **"이 맵 안에 그 말이
+-- 있다"는 사실**이 `내용 12건` 으로 샌다. 사지 않은 사람이 검색어를 바꿔
+-- 가며 두드리면 잘라 낸 부분을 **스무고개로 확인**할 수 있다.
+--
+-- ★ **"유료로 바꿀 때 색인을 다시 만든다" 로 하지 않는다** (설계 27b §5.3
+--   에서 바꾼 자리). 그 방식은 **상태를 바꾸는 절차 하나**에 기대는데,
+--   그 절차가 한 번 빠지면(배포 중 오류·직접 UPDATE·복원) 색인은 전문인
+--   채로 남고 **아무도 모른다.** 대신 두 색인을 **트리거가 늘 함께** 만들고,
+--   조회하는 쪽이 유료 여부를 보고 고른다 — 어긋날 수 있는 순간이 없다.
+--
+-- `preview_text` 는 `trimForPreview` 와 **같은 경계**다: 중심(깊이 1) +
+-- 1레벨 가지(깊이 2)의 **노드 글자와 태그만**. 노트·링크·첨부명은
+-- 깊이와 무관하게 들어가지 않는다 (그 안에 본문이 통째로 있을 수 있다).
+-- 여기도 **남길 것만 적는다** — 새 칸이 늘어도 기본이 '안 넣는다' 다.
+ALTER TABLE public.map_documents
+    ADD COLUMN IF NOT EXISTS preview_text TEXT;
+
+CREATE OR REPLACE FUNCTION public.map_preview_text(doc JSONB)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+    SELECT string_agg(t, E'\n')
+      FROM (
+        SELECT DISTINCT btrim(regexp_replace(v #>> '{}', '\s+', ' ', 'g')) AS t
+          FROM (
+            -- 중심 (깊이 1)
+            SELECT jsonb_path_query(doc, '$.map.root.text')               AS v
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.root.tags[*]')
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.root.tag')
+             UNION ALL
+            -- 1레벨 가지 (깊이 2)
+            SELECT jsonb_path_query(doc, '$.map.branches[*].text')
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.branches[*].tags[*]')
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.branches[*].tag')
+             UNION ALL
+            -- 둘째 이후의 중심주제와 그 1레벨 (2026-09-15)
+            SELECT jsonb_path_query(doc, '$.map.centers[*].root.text')
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.centers[*].root.tags[*]')
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.centers[*].branches[*].text')
+             UNION ALL
+            SELECT jsonb_path_query(doc, '$.map.centers[*].branches[*].tags[*]')
+          ) q
+         WHERE jsonb_typeof(v) = 'string'
+      ) d
+     WHERE t <> '';
+$$;
+
 CREATE OR REPLACE FUNCTION public.map_documents_sync_search_text()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    NEW.search_text := public.map_search_text(NEW.doc);
+    NEW.search_text  := public.map_search_text(NEW.doc);
+    NEW.preview_text := public.map_preview_text(NEW.doc);
     RETURN NEW;
 END;
 $$;
@@ -822,14 +889,20 @@ CREATE TRIGGER map_documents_search_text
 -- 추가)는 그 차이만 다시 쓴다. 안 바뀐 행은 건드리지 않아 테이블이
 -- 부풀지 않는다.
 UPDATE public.map_documents d
-   SET search_text = n.v
-  FROM (SELECT map_id, public.map_search_text(doc) AS v
+   SET search_text  = n.v,
+       preview_text = n.p
+  FROM (SELECT map_id, public.map_search_text(doc) AS v,
+               public.map_preview_text(doc) AS p
           FROM public.map_documents) n
- WHERE n.map_id = d.map_id AND d.search_text IS DISTINCT FROM n.v;
+ WHERE n.map_id = d.map_id
+   AND (d.search_text IS DISTINCT FROM n.v OR d.preview_text IS DISTINCT FROM n.p);
 
 -- 부분 문자열 검색 가속 (ILIKE '%…%') — 제목·내용 둘 다
 CREATE INDEX IF NOT EXISTS idx_map_documents_search_trgm
     ON public.map_documents USING GIN (search_text gin_trgm_ops);
+-- 유료 맵의 검색은 이쪽을 훑는다 (27b §5.3)
+CREATE INDEX IF NOT EXISTS idx_map_documents_preview_trgm
+    ON public.map_documents USING GIN (preview_text gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_maps_title_trgm
     ON public.maps USING GIN (title gin_trgm_ops);
 

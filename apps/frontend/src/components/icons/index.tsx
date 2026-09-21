@@ -326,6 +326,15 @@ export const I = {
     </Icon>
   ),
 
+  // 미니맵 — 하단 상태바 토글 (2026-09-21): 큰 틀 안의 작은 화면 사각형
+  Minimap: (p: P = {}) => (
+    <Icon {...p}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <rect x="12" y="11" width="6" height="5" rx="1" fill="currentColor" stroke="none" />
+      <path d="M7 8h4M7 12h3" />
+    </Icon>
+  ),
+
   Fit: (p: P = {}) => (
     <Icon {...p}>
       <path d="M8 3H5a2 2 0 0 0-2 2v3" />

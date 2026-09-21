@@ -20,6 +20,7 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 
 interface Props {
   t: ThemeTokens;
@@ -140,6 +141,9 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
   // % 클릭 = 배율 직접 입력 (2~400, Enter 적용 / Esc 취소)
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState('');
+  // 미니맵 토글 (2026-09-21) — 100% 보기 다음 자리. Alt+M / Alt+H 도 같다
+  const minimapOpen = useEditorUiStore((s) => s.minimapOpen);
+  const toggleMinimap = useEditorUiStore((s) => s.toggleMinimap);
 
   const commit = (apply: boolean) => {
     setEditing(false);
@@ -189,6 +193,17 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
       )}
       {stepBtn(<I.Plus size={12} />, () => onZoomChange(Math.min(400, zoom + 5)), '확대 (5% 단위)')}
       <span style={{ marginLeft: 3 }}>{stepBtn(<I.Zoom100 size={13} />, () => onZoomChange(100), '100%로 보기')}</span>
+      <button
+        data-testid="minimap-toggle"
+        onClick={toggleMinimap}
+        title={minimapOpen ? '미니맵 닫기 (Alt+M · Alt+H)' : '미니맵 — 전체 맵을 작게 보고 끌어서 이동 (Alt+M · Alt+H)'}
+        style={{
+          width: 22, height: 20, border: 'none', borderRadius: 3, cursor: 'pointer',
+          background: minimapOpen ? t.primarySoft : 'transparent',
+          color: minimapOpen ? t.primary : t.text,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      ><I.Minimap size={13} /></button>
     </div>
   );
 }

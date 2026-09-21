@@ -39,6 +39,7 @@ import { NoteViewerPopover } from './NoteViewerPopover';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
+import { Minimap } from './Minimap';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { ProCursorLayer } from '@pro';
 import { zoneAxesFor, zoneAt } from './dropGeometry';
@@ -239,6 +240,10 @@ export function Canvas({
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
 
   const spacingX = useEditorUiStore((s) => s.spacingX);
+  // 미니맵 (2026-09-21) — 상태바 버튼 · Alt+M / Alt+H
+  const minimapOpen = useEditorUiStore((s) => s.minimapOpen);
+  const toggleMinimap = useEditorUiStore((s) => s.toggleMinimap);
+  const setMinimapOpen = useEditorUiStore((s) => s.setMinimapOpen);
   const spacingY = useEditorUiStore((s) => s.spacingY);
   // 편집 중인 노드 — +/− 추가 인디케이터를 숨겨 편집창·미니 툴바와
   // 겹치지 않게 한다.
@@ -930,7 +935,15 @@ export function Canvas({
         return;
       }
 
-      if (e.key === 'h' || e.key === 'H' || e.key === 'ㅗ') {
+      // 미니맵 토글 — Alt+M 또는 Alt+H (2026-09-21 사용자 요청). 한글 자판
+      // 상태의 같은 키(ㅡ · ㅗ)도 받는다. Alt 없는 H 는 아래 Pan 모드.
+      if (e.altKey && ['m', 'M', 'ㅡ', 'h', 'H', 'ㅗ'].includes(e.key)) {
+        e.preventDefault();
+        toggleMinimap();
+        return;
+      }
+
+      if (!e.altKey && (e.key === 'h' || e.key === 'H' || e.key === 'ㅗ')) {
         e.preventDefault();
         togglePanMode();
         return;
@@ -1348,6 +1361,12 @@ export function Canvas({
 
       {/* 붙여넣기 안내 — 붙일 것이 없을 때 "아무 반응 없음"으로 보이지
           않게 캔버스 위쪽에 잠깐 띄운다 (2026-08-05) */}
+      {/* 미니맵 — 우하단 (2026-09-21). 배치된 노드(visibleNodes: 포커스 모드면
+          그 하위만)를 작은 사각형으로, 지금 보이는 영역을 끌 수 있는 틀로. */}
+      {minimapOpen && (
+        <Minimap t={t} nodes={visibleNodes} W={W} H={H} CX={CX} CY={CY} onClose={() => setMinimapOpen(false)} />
+      )}
+
       {/* 스타일 복사(붓) — 커서 오른쪽 아래에 따라다니는 붓 (2026-09-19).
           클릭을 가로채지 않도록 pointer-events 없음. */}
       {stylePainter && brushPos && (

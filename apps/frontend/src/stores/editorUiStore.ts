@@ -47,6 +47,8 @@ interface EditorUiState {
 
   // Display toggles (NODE-15 style)
   showTags: boolean;
+  // 미니맵 (2026-09-21) — 캔버스 우하단. 상태바 버튼 · Alt+M / Alt+H 로 토글
+  minimapOpen: boolean;
   // Tags hidden from the canvas when showTags is on (per-tag filter).
   hiddenTags: string[];
 
@@ -94,6 +96,8 @@ interface EditorUiState {
   setActiveSection: (v: SidebarSection) => void;
   toggleSidebar: () => void;
   setShowTags: (v: boolean) => void;
+  setMinimapOpen: (v: boolean) => void;
+  toggleMinimap: () => void;
   toggleTagHidden: (tag: string) => void;
   setMultiAddOpen: (v: boolean) => void;
   setSpacingX: (v: number) => void;
@@ -130,6 +134,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   // 그대로 남으므로 한 번 눌러 열 수 있고, `setNavTab` 이 열어 주기도 한다.
   sidebarCollapsed: true,
   showTags: true,
+  minimapOpen: false,
   hiddenTags: [],
   multiAddOpen: false,
   aiSettingsOpen: false,
@@ -186,6 +191,8 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   historyPinTarget: null,
   setHistoryPinTarget: (historyPinTarget) => set({ historyPinTarget }),
   setShowTags: (showTags) => set({ showTags }),
+  setMinimapOpen: (minimapOpen) => set({ minimapOpen }),
+  toggleMinimap: () => set((s) => ({ minimapOpen: !s.minimapOpen })),
   toggleTagHidden: (tag) =>
     set((s) => ({
       hiddenTags: s.hiddenTags.includes(tag)

@@ -30,7 +30,7 @@
   * Center Node (선택 노드를 화면 중앙으로)
   * Focus Node View (선택 노드+하위만 표시)
   * Fullscreen Mode
-  * Minimap (탐색 보조) (미구현 — 2단계)
+  * Minimap (탐색 보조) — 2026-09-21 구현, §6.8
   * World ↔ Screen 좌표 변환
   * Bottom Status Bar (zoom % / autosave 상태 / layout type 표시)
 
@@ -56,7 +56,7 @@
 | CANVAS-06 | 100% View      | 100% + 화면 원위치 (resetView)          | `0` 키                 | —                     |
 | CANVAS-07 | Fullscreen Mode | 브라우저 전체화면 전환             | `F11` / `ESC`로 종료          | —                     |
 | CANVAS-08 | Focus Node View | 선택 노드+하위만 표시, 상위 숨김      | `Alt + F`                  | 툴바 🎯 버튼     |
-| CANVAS-09 | Minimap (미구현 — 2단계) | 전체 맵 축소 탐색 뷰             | —                          | minimap 클릭/drag       |
+| CANVAS-09 | Minimap (2026-09-21 구현) | 전체 맵 축소 탐색 뷰 — 상태바 버튼 · `Alt+M` / `Alt+H` | `Alt+M` · `Alt+H` | minimap 클릭/drag       |
 | CANVAS-10 | Status Bar     | zoom % / autosave / layout type 표시 | —                | —                     |
 
 ---
@@ -169,7 +169,7 @@ function zoomToPoint(
 | 빈 영역 클릭             | 마우스 클릭                           | 노드 선택 해제              |
 | 노드 싱글 클릭            | 마우스 클릭                           | 노드 선택 + 추가 인디케이터 표시   |
 | 노드 더블클릭             | 마우스 더블클릭                         | 텍스트 편집 모드 진입          |
-| Minimap 클릭/drag (미구현 — 2단계) | minimap 클릭                        | 해당 영역으로 pan 이동        |
+| Minimap 클릭/drag (2026-09-21 구현) | minimap 클릭 · 화면 사각형 drag       | 클릭한 자리가 화면 중앙 · drag 는 실시간 pan |
 | 터치 핀치               | 2손가락 핀치                           | zoom 변경               |
 
 ---
@@ -182,7 +182,7 @@ function zoomToPoint(
 * Fit Screen → `worldBounds` 기준으로 zoom/pan 계산 (노드 영역 + 여백 padding)
 * Center Node → 선택 노드의 worldX/Y → screen 중앙 기준 pan 계산 (zoom 불변)
 * Focus Node View → 선택 노드 이외 상위 노드를 UI에서 숨김 처리 (DOM visibility)
-* Minimap (미구현 — 2단계) → `worldBounds` 기준 축소 뷰, 현재 viewport 영역을 rect로 표시
+* Minimap (2026-09-21 구현) → `worldBounds` 기준 축소 뷰, 현재 viewport 영역을 rect로 표시 (`minimapMath.ts`)
 
 ---
 
@@ -191,7 +191,7 @@ function zoomToPoint(
 * 무한 캔버스: SVG 기반 렌더링
 * zoom 범위: 2% ~ 400% (0.02 ~ 4.0)
 * 팬 중: 커서 `grab` → `grabbing` 전환
-* Minimap (미구현 — 2단계): 우하단 고정 패널, 현재 보이는 영역 표시
+* Minimap (2026-09-21 구현): 우하단 고정 패널, 현재 보이는 영역 표시
 * Status Bar (하단): zoom % / autosave 상태 / layout type / 커서 좌표(더미)
 
 ---
@@ -314,13 +314,29 @@ function zoomToPoint(
 
 ---
 
-#### 6.8 Minimap 규칙 (미구현 — 2단계)
+#### 6.8 Minimap 규칙 (2026-09-21 구현 — 사용자 요청)
 
-* 전체 `worldBounds` 기준으로 축소 뷰 렌더링
-* 현재 viewport 영역을 반투명 rect로 표시
-* minimap 클릭 → 해당 world 좌표로 pan 이동
-* minimap drag → 실시간 pan 이동
-* 노드 수가 많을 때도 minimap은 별도 저해상도 렌더링
+> *"오른쪽 하단에 미니맵. 100% 보기 아이콘 다음에 미니맵 아이콘, 클릭하면
+> 열리고, 화면 해상도에 맞춘 보기 창을 드래그해 그 부분을 표시. 창 크기는
+> 현재 에디트 화면의 해상도로. 토글 키는 Alt+M 또는 Alt+H."*
+
+구현: `apps/frontend/src/editor/canvas/Minimap.tsx` (그리기·포인터) +
+`minimapMath.ts` (순수 계산, 단위 테스트 18항목). 켜고 끄기는
+`editorUiStore.minimapOpen` — 하단 상태바 `100%` 아이콘 다음의 미니맵
+버튼(`minimap-toggle`) · 패널의 × · `Alt+M` / `Alt+H`(한글 자판 `ㅡ`·`ㅗ` 포함).
+`Alt` 없는 `H` 는 예전처럼 Pan 모드.
+
+| 항목 | 규칙 |
+|---|---|
+| 그리는 것 | 배치된 노드(`visibleNodes` — 포커스 모드면 그 하위만)를 **자리·크기·색**만 작은 사각형으로. 연결선·글자는 없다 (노드가 많아도 가볍게) |
+| 덮는 영역 | 노드 경계 + 각 변 12%(최소 80 world) 여백. **화면 영역은 경계에 넣지 않는다** — 넣으면 화면을 옮길 때마다 배율이 흔들려 노드가 춤춘다. 밖으로 나간 화면 사각형은 패널이 잘라 보인다 |
+| 패널 크기 | 캔버스 창의 22% × 28% 를 상한(160~300 × 110~220 px)으로, **맵 비율을 지켜** 맞춘다 (`minimapPanelMax` · `minimapGeometry`) |
+| 화면 사각형 | 지금 보이는 world 영역 = **캔버스 창 px(W×H) ÷ 배율** (`viewportWorldRect`). 창을 키우거나 배율을 바꾸면 그대로 따라 커지고 작아진다 — "현재 에디트 창의 해상도" 가 곧 이 크기다 |
+| 끌기 | 사각형 안에서 누르면 포인터와 사각형 중심의 간격을 유지하며 **실시간 pan** (`panForCenter`, 포인터 캡처). 빈 곳을 누르면 **그 자리가 화면 중앙**이 되고 이어서 끌 수 있다 |
+| 좌표 | world → viewBox: `(w − C)·s + C + pan`. mini = `(w − bounds.x)·scale`. 중심 (wx, wy) 로 가는 pan = `−(w − C)·s` (fitToNodes 와 같은 식) |
+| 저장 | 열림 상태는 저장하지 않는다(세션 안에서만). 문서에도 아무것도 쓰지 않는다 |
+
+검증: 단위 `minimapMath.test.ts` 18항목 · 브라우저 e2e291 15항목.
 
 ---
 

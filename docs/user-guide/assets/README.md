@@ -22,9 +22,9 @@ vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 �
 | `mark-toolbar.png`(⊞ 포함, 2026-09-17 재촬영) · `03-table-grid.png` · `03-table-dialog.png` · `03-table-dialog-md.png` · `03-table-node.png` · `03-code-dialog.png` · `03-code-node.png` | `guide03-table.mjs` (동작 검증 13항목도 함께 돈다) |
 | `03-style-copy-button.png` · `03-style-copy-brush.png` · `03-style-copy-after.png` (2026-09-19) | `guide03-style-copy.mjs` (붓 동작 검증 27항목도 함께 돈다) |
 | `05-note-table-picker.png` · `05-note-table.png` (2026-09-19) | `guide05-note-table.mjs` (노트 표 격자·팝업·✎ 검증 16항목도 함께 돈다) |
-| `04-minimap.png` · `04-minimap-window.png` (2026-09-21) | `guide04-minimap.mjs` (미니맵 토글·사각형 크기·끌기·클릭·창 모드·열 때 100% 검증 26항목도 함께 돈다) |
+| `04-minimap.png` · `04-minimap-window.png` (2026-09-21) | `guide04-minimap.mjs` (미니맵 토글·사각형 크기·끌기·클릭·창 모드·따라오기·휠·대비·열 때 100% 검증 35항목도 함께 돈다) |
 | `01-browser-refresh.png` (2026-09-21) | `guide01-browser-refresh.mjs` — 인증 모드 vite (문서함 새로고침 검증 9항목도 함께 돈다) |
-| `04-layout-multi.png` · `04-layout-multi-collapsed.png` (2026-09-21) | `guide04-layout-multi.mjs` (다중 선택 레이아웃·접힘 배지 검증 11항목도 함께 돈다) |
+| `04-layout-multi.png` · `04-layout-multi-collapsed.png` (2026-09-21) | `guide04-layout-multi.mjs` (다중 선택 레이아웃·접힘 배지·다크 칩 검증 13항목도 함께 돈다) |
 | `01-overview.png` · `01-theme-toggle.png` · `01-dark.png` · `02-newmap-menu.png` · `02-template-choose.png` · `02-template-register.png` | `guide01-02.mjs` |
 | `04-layout-tab.png` · `04-collapse-badge.png` · `04-outline-split.png` · `04-mainview-toggle.png` · `04-outline-mode.png` | `guide04.mjs` |
 | `05-note-tab.png` · `05-note-popup.png` · `05-tags.png` · `06-search-panel.png` · `06-search-hit.png` | `guide05-06.mjs` |

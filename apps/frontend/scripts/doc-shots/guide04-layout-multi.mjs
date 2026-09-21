@@ -56,4 +56,11 @@ ok(`③ b1 배지에 숨은 노드 수가 보인다 (${b1chip})`, /\d/.test(b1ch
 ok('③ 다중 선택 중엔 +/− 인디케이터가 없다 (겹칠 것이 없다)', (await page.locator('[title^="자식"], [title^="형제"]').count()) === 0);
 await shotUnion(page, size, `${OUT}/04-layout-multi-collapsed.png`, [await nodeBox(page, 'b1'), await nodeBox(page, 'b3')], 60);
 
+// ③-b 다크 테마에서 접힘 숫자 시인성 — 칩(primary #F59E0B) 위 글자는 어두운 색, 라이트는 흰 글자 (2026-09-21 보고)
+const chipText = (id) => chip(id).locator('text').first().getAttribute('fill');
+ok(`③-b 라이트: 칩 글자 = 밝은 색 (${await chipText('b2')})`, /^#f/i.test(await chipText('b2')));
+await ui({ themeName: 'dark' }); await page.waitForTimeout(300);
+ok(`③-b 다크: 칩 글자 = 어두운 색 (${await chipText('b2')})`, /^#1/i.test(await chipText('b2')));
+await ui({ themeName: 'light' }); await page.waitForTimeout(200);
+
 await browser.close();

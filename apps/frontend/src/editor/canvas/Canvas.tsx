@@ -40,6 +40,7 @@ import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
 import { Minimap } from './Minimap';
+import { readableTextOn } from '@/editor/node-renderer/resolveNodeColors';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { ProCursorLayer } from '@pro';
 import { zoneAxesFor, zoneAt } from './dropGeometry';
@@ -1926,12 +1927,15 @@ function CollapseControl({
     return wrap(
       <>
         <circle r={r} fill={t.primary} stroke={t.primary} strokeWidth="1.4" />
+        {/* 숫자 색은 칩 밝기에 맞춘다 — 다크 테마의 primary(#F59E0B)는 밝은
+            주황이라 흰 글자가 묻혔다 (2026-09-21 보고 "다크모드에서 접기
+            숫자 시인성이 떨어진다"). 라이트(#D97706)는 그대로 흰 글자. */}
         <text
           y={3.4}
           textAnchor="middle"
           fontSize="9.5"
           fontWeight={700}
-          fill="#fff"
+          fill={readableTextOn(t.primary)}
         >{label}</text>
       </>,
       `펼치기 — 숨은 노드 ${count}개`,

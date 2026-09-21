@@ -114,6 +114,33 @@ const v4 = await vp(); const rb4 = await rectBox();
 ok('⑧ 30px 아래로 끌기 → pan 이 −30/배율 (배율 100%)', near(v4.panY - v.panY, -30 / sc, 2) && near(v4.panX, v.panX, 1));
 ok('⑧ 놓은 뒤에도 표시창은 패널 안', rb4.y >= -1 && rb4.y + rb4.h <= rb4.sh + 1);
 await page.mouse.click(60, 60); await page.waitForTimeout(100); // 빈 캔버스 — 미니맵은 그대로
+// ⑧-b 끄는 중 사각형을 아래 끝으로 밀면 창이 따라 흐른다 (2026-09-21 "끝으로 옮기면 빨리 안 보인다")
+const modeOf = () => panel.locator('svg').getAttribute('data-minimap-mode');
+let [, oy0] = await origin(); rb = await rectBox();
+const px = rb.sx + rb.x + rb.w / 2, py = rb.sy + rb.y + rb.h / 2;
+await page.mouse.move(px, py); await page.mouse.down();
+for (let i = 1; i <= 4; i++) { await page.mouse.move(px, py + i * 50, { steps: 2 }); await page.waitForTimeout(30); } // 맵 아래 끝(여백 포함)까지는 안 간다
+ok('⑧-b 끄는 중 모드 = follow', (await modeOf()) === 'follow');
+let [, oy1] = await origin(); const rbEdge = await rectBox();
+ok('⑧-b 아래로 밀자 창 원점이 내려갔다 (창이 흐른다)', oy1 > oy0 + 10);
+ok('⑧-b 사각형은 패널 아래 끝에 붙어 있다', near(rbEdge.y + rbEdge.h, rbEdge.sh, 2));
+await page.mouse.up(); await page.waitForTimeout(150);
+ok('⑧-b 놓으면 모드 auto', (await modeOf()) === 'auto');
+// ⑧-c 휠 = 창만 옮긴다 (hold), 클릭하면 풀린다
+[, oy0] = await origin();
+await page.mouse.move(rb.sx + 30, rb.sy + 30); await page.mouse.wheel(0, -200); await page.waitForTimeout(150);
+[, oy1] = await origin();
+// boot() 의 deviceScaleFactor 가 2 라 wheel(0, −200) 은 CSS 로 deltaY −100 이다
+ok(`⑧-c 휠 −200(CSS −100) → 창 원점 −100/배율 (${Math.round(oy1 - oy0)} vs ${Math.round(-100 / sc)}), 모드 hold`, near(oy1 - oy0, -100 / sc, 2) && (await modeOf()) === 'hold');
+const vBeforeWheel = await vp();
+ok('⑧-c 휠은 화면(pan·배율)은 건드리지 않는다', vBeforeWheel.zoom === 100 && near(vBeforeWheel.panY, (await vp()).panY, 0.01));
+await page.mouse.click(rb.sx + 30, rb.sy + 30); await page.waitForTimeout(150);
+ok('⑧-c 클릭하면 hold 가 풀린다 (auto)', (await modeOf()) !== 'hold');
+// ⑧-d 대비 — 노드 사각형은 배경과 다른 진한 색 (팔레트 테두리색), 배경은 surfaceAlt
+const bg = await panel.locator('svg').evaluate((el) => getComputedStyle(el).backgroundColor);
+const fills = await panel.locator('svg rect:not([data-testid])').evaluateAll((els) => els.slice(0, 40).map((e) => e.getAttribute('fill')));
+ok(`⑧-d 노드 색이 배경과 다르다 (배경 ${bg}, 노드 ${fills[0]})`, fills.length > 0 && fills.every((f) => f && f.toLowerCase() !== '#ffffff' && f.toLowerCase() !== '#fbf8f3' && f.toLowerCase() !== '#f5f0e8'));
+ok('⑧-d 색 계열 가지(l1B)는 진한 파랑 테두리색으로', fills.includes('#3B82F6'));
 
 // ⑨ 여는 순간 배율 100% (화면 중앙 world 점은 그대로)
 await toggle.click(); await page.waitForTimeout(150);            // 닫기

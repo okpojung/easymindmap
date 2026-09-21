@@ -36,7 +36,18 @@ st().expandSubtree(['A']);
 check('① A 하위 모두 펼치기 — B 는 그대로', collapsedIds(), ['B', 'B1']);
 
 st().collapseSubtree(['A']);
-check('② A 하위 모두 접기 — A 자체는 편 채, 자손만 접힘', collapsedIds(), ['A1', 'A1a', 'A2', 'B', 'B1']);
+// ★ 2026-09-21 바뀜 — 고른 노드 **자신도** 접는다(가지를 통째로 닫는다).
+//   전에는 A 를 편 채 두어 직계 자식 A1·A2 가 보였다.
+check('② A 하위 모두 접기 — A 자신까지 접힌다(가지가 통째로 닫힌다)',
+  collapsedIds(), ['A', 'A1', 'A1a', 'A2', 'B', 'B1']);
+
+// 잎만 골라 접으면 아무 일도 없다 (자식이 없으니 접을 것이 없다)
+load(); st().expandSubtree(['A']); st().collapseSubtree(['A2a']);
+check('②-b 잎을 골라 접기 — 그대로', collapsedIds(), ['B', 'B1']);
+
+// 여럿을 골라 접으면 그 가지들이 각각 통째로 닫힌다
+load(); st().expandSubtree(['A', 'B']); st().collapseSubtree(['A1', 'B']);
+check('②-c 여럿 접기 — 고른 것들이 각각 닫힌다', collapsedIds(), ['A1', 'A1a', 'B', 'B1']);
 
 load(); st().expandSubtree(['A1', 'B']);
 check('③ 여러 노드 한 번에', collapsedIds(), ['A', 'A2']);

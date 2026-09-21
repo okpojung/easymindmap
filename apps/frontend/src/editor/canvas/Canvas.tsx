@@ -173,6 +173,9 @@ export function Canvas({
     panX0: number;
     panY0: number;
     moved: boolean;
+    /** 아직 포인터를 잡지 않았다 — 움직이기 시작하면 그때 잡는다 (Pan 모드에서
+     *  노드를 눌렀을 때. 바로 잡으면 click 이 노드가 아니라 svg 로 간다) */
+    needsCapture: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
 
@@ -966,7 +969,10 @@ export function Canvas({
     // Start a node drag (reparent) when pressing on a non-root node body.
     //
     // ★ **Pan 모드에서는 노드가 움직이지 않는다** (2026-09-21 사용자 결정:
-    //   "Pan 모드일 때는 노드 이동이 안 되도록 해줘").
+    //   "Pan 모드일 때는 노드 이동이 안 되도록 해줘"). 막는 것은 **끌어
+    //   옮기는 것 하나**다 — 고르는 것은 그대로 된다(같은 날 후속 보고:
+    //   "노드를 선택하여 이동하여 다른 노드에 붙여넣기만 막아줘").
+    //   누르는 즉시 포인터를 잡지 않는 것이 그 열쇠다 (아래 `deferCapture`).
     //
     //   2026-07 에는 **반대로** 정했었다 — "Pan 모드가 노드 드래그를 막으면
     //   좌/우 이동 등 노드 조작이 전부 안 되는 것처럼 보인다"는 이유였다.
@@ -1008,7 +1014,21 @@ export function Canvas({
       return;
     }
 
-    e.currentTarget.setPointerCapture(e.pointerId);
+    // ★ **Pan 모드에서 노드를 누르면 포인터를 바로 잡지 않는다**
+    //   (2026-09-21 사용자 보고: "Pan 모드에서 노드 선택이 안 된다").
+    //
+    //   `setPointerCapture` 를 누르는 즉시 걸면, 그 뒤의 `click` 이 눌린
+    //   노드가 아니라 **캡처한 svg 로 배달된다.** 그러면 노드의 onClick
+    //   (선택)은 뜨지 않고 svg 의 onClick(빈 곳 = 선택 해제)이 떠서, Pan
+    //   모드에서는 노드를 고를 수도 없고 이미 고른 것도 풀려 버렸다.
+    //   그래서 [모두 펼치기]·[모두 접기]의 "선택한 노드만" 도 안 먹었다.
+    //
+    //   노드 드래그와 같은 방법으로 **움직이기 시작한 뒤에만** 잡는다 —
+    //   톡 누른 것은 캡처가 없으니 그대로 노드 선택(→ 아웃라인 동기화)이
+    //   되고, 끌면 예전처럼 화면이 따라온다. 막는 것은 **노드를 끌어
+    //   옮기는 것** 하나뿐이다 (위 분기).
+    const deferCapture = !isMiddleButton && panMode && !!nodeEl;
+    if (!deferCapture) e.currentTarget.setPointerCapture(e.pointerId);
     setPanning(true);
 
     dragRef.current = {
@@ -1018,6 +1038,7 @@ export function Canvas({
       panX0: panX,
       panY0: panY,
       moved: false,
+      needsCapture: deferCapture,
     };
   };
 
@@ -1076,7 +1097,14 @@ export function Canvas({
     const dx = (e.clientX - drag.startX) / k;
     const dy = (e.clientY - drag.startY) / k;
 
-    if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    if (Math.abs(dx) + Math.abs(dy) > 3) {
+      drag.moved = true;
+      // 진짜 끌기 시작했다 — 이제 잡는다 (노드 밖으로 나가도 놓치지 않게)
+      if (drag.needsCapture) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.needsCapture = false;
+      }
+    }
 
     setPan(drag.panX0 + dx, drag.panY0 + dy);
   };
@@ -1306,7 +1334,7 @@ export function Canvas({
             }}
           >
             <span style={{ fontSize: 15 }}>✋</span>
-            Pan 모드 — 드래그로 화면 이동 (노드는 움직이지 않습니다) · H 키로 해제
+            Pan 모드 — 드래그로 화면 이동 (노드는 고를 수 있고, 옮겨지지 않습니다) · H 키로 해제
           </div>
           <div
             style={{

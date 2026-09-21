@@ -1588,10 +1588,17 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         collapsed: (n.children?.length ?? 0) > 0 ? true : n.collapsed,
         children: close(n.children ?? []),
       }));
+    // ★ **고른 노드 자신도 접는다** (2026-09-21 사용자 결정:
+    //   "노드를 선택하고 모두 접기를 클릭하면 해당 노드 하위의 모든 노드를
+    //    모두 접어 줘, 지금은 해당 노드의 2레벨 이하의 노드만 접힌다").
+    //
+    //   그 전(2026-09-08)에는 고른 노드를 편 채 두어 **직계 자식이 남았다.**
+    //   전체 접기가 1레벨을 남기는 것과 맞춘 것이었는데, 가지 하나를 골라
+    //   접을 때는 "그 가지를 통째로 닫는 것"이 기대였다 — 한 번 더 클릭
+    //   (노드의 ⊖ 토글)해야 닫히니 "안 접힌다"로 보였다.
     const walk = (nodes: MindNode[]): MindNode[] =>
       nodes.map((n) => targets.has(n.id)
-        // 고른 노드 자체는 편 채 — 직계 자식은 보인다
-        ? { ...n, collapsed: undefined, children: close(n.children ?? []) }
+        ? close([n])[0]
         : { ...n, children: walk(n.children ?? []) });
     asViewOnly(() => set((state) => ({
       map: mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),

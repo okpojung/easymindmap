@@ -25,8 +25,17 @@ MIN_BYTES="${MIN_BYTES:-10240}"
 # 이 이름들이 덤프 안에 없으면 **실패로 친다.** gotrue 가 여기 있는 이유가
 # 이 파일 전체의 존재 이유다.
 REQUIRE_DBS="${REQUIRE_DBS:-gotrue}"
-# 서버 밖으로 한 벌 더 옮기는 명령. 파일 경로가 $1 로 들어간다.
-#   예) OFFSITE_CMD='rclone copy "$1" remote:emm-backups/'
+# 서버 밖으로 한 벌 더 — 둘 중 하나.
+#   OFFSITE_DIR  NAS 마운트 같은 **디렉터리**. 복사 뒤 바이트를 비교하고,
+#                그 안의 오래된 것은 OFFSITE_KEEP_DAYS 로 따로 정리한다.
+#                ★ 그 디렉터리에 `.emm-offsite` 표식 파일이 있어야 한다 —
+#                마운트가 빠지면 같은 경로가 **로컬 디스크의 빈 디렉터리**가
+#                되는데, 그 위에 쓰면 "밖으로 보냈다"고 착각하기 때문이다.
+#   OFFSITE_CMD  명령. 파일 경로가 $1 로 들어간다.
+#                예) OFFSITE_CMD='rclone copy "$1" remote:emm-backups/'
+OFFSITE_DIR="${OFFSITE_DIR:-}"
+OFFSITE_KEEP_DAYS="${OFFSITE_KEEP_DAYS:-60}"
+OFFSITE_TIMEOUT="${OFFSITE_TIMEOUT:-600}"   # NAS 가 응답하지 않을 때 이만큼만 기다린다(초)
 OFFSITE_CMD="${OFFSITE_CMD:-}"
 
 CHECK_ONLY=no
@@ -198,11 +207,26 @@ echo "✅ $(date '+%F %T') $OUT ($(du -h "$OUT" 2>/dev/null | cut -f1))"
 # ── 4) 서버 밖으로 ────────────────────────────────────────────────
 #
 # `$DEST` 는 **같은 서버다.** 서버가 통째로 죽으면 백업도 함께 죽는다.
-if [ -n "$OFFSITE_CMD" ]; then
+if [ -n "$OFFSITE_DIR" ]; then
+  # 표식이 없으면 NAS 가 아니다(마운트가 빠졌거나 경로가 틀렸다). 로컬에는
+  # 이미 한 벌 남았으니 그것은 지우지 않고, 밖으로는 못 보냈다고 알린다.
+  [ -f "$OFFSITE_DIR/.emm-offsite" ] \
+    || fail "OFFSITE_DIR($OFFSITE_DIR)에 .emm-offsite 표식이 없습니다 — NAS 가 마운트되지 않았을 수 있습니다. 서버 안 백업($OUT)은 남아 있습니다(런북 §2.1)."
+  OFF="$OFFSITE_DIR/$(basename "$OUT")"
+  if timeout "$OFFSITE_TIMEOUT" cp "$OUT" "$OFF.tmp" 2>/dev/null \
+     && timeout "$OFFSITE_TIMEOUT" cmp -s "$OUT" "$OFF.tmp" 2>/dev/null \
+     && mv "$OFF.tmp" "$OFF" 2>/dev/null; then
+    find "$OFFSITE_DIR" -maxdepth 1 -name 'all-*.sql.gz' -mtime +"$OFFSITE_KEEP_DAYS" -delete 2>/dev/null
+    echo "✅ 서버 밖으로 복사했습니다 → $OFF (${OFFSITE_KEEP_DAYS}일 보관)"
+  else
+    rm -f "$OFF.tmp" 2>/dev/null
+    fail "서버 밖 복사가 실패했거나 내용이 다릅니다: $OFFSITE_DIR. 서버 안 백업($OUT)은 남아 있습니다."
+  fi
+elif [ -n "$OFFSITE_CMD" ]; then
   bash -c "$OFFSITE_CMD" _ "$OUT" || fail "서버 밖 복사에 실패했습니다: $OFFSITE_CMD"
   echo "✅ 서버 밖으로 복사했습니다"
 else
-  echo "⚠️  OFFSITE_CMD 가 없습니다 — 이 백업은 서버와 함께 죽습니다(런북 §2.1)." >&2
+  echo "⚠️  OFFSITE_DIR/OFFSITE_CMD 가 없습니다 — 이 백업은 서버와 함께 죽습니다(런북 §2.1)." >&2
 fi
 
 # ── 5) 보관 정책과 흔적 ───────────────────────────────────────────

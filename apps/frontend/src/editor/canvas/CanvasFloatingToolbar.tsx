@@ -74,6 +74,16 @@ export function CanvasFloatingToolbar({
 
   const panMode = useViewportStore((state) => state.panMode);
   const togglePanMode = useViewportStore((state) => state.togglePanMode);
+  const requestCenterNode = useViewportStore((state) => state.requestCenterNode);
+  // 선택이 있을 때의 +/− 뒤 화면: **맵 전체 맞추기가 아니라** 고른 노드를
+  // 100% 로 화면 중앙에 (2026-09-21 사용자 보고: "노드를 선택하고 모두 펼치기
+  // 하면 100% 로 보여야 하는데 전체 맵이 보이도록 아주 작아진다"). 선택이
+  // 없으면(맵 전체) 예전처럼 전체 맞추기.
+  const afterFold = (scopeIds: string[] | 'all') => {
+    if (scopeIds === 'all') { onFitView?.(); return; }
+    const focus = selectedId && scopeIds.includes(selectedId) ? selectedId : scopeIds[0];
+    if (focus) requestCenterNode(focus, 100); else onFitView?.();
+  };
 
   const [isFullscreen, setIsFullscreen] = useState(
     typeof document !== 'undefined' && !!document.fullscreenElement,
@@ -231,7 +241,7 @@ export function CanvasFloatingToolbar({
             testId="expand-all"
             onClick={() => {
               if (scope === 'all') expandAll(); else expandSubtree(scope);
-              onFitView?.();
+              afterFold(scope);
             }}
           >
             <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>+</span>
@@ -244,7 +254,7 @@ export function CanvasFloatingToolbar({
             testId="collapse-all"
             onClick={() => {
               if (scope === 'all') collapseAll(); else collapseSubtree(scope);
-              onFitView?.();
+              afterFold(scope);
             }}
           >
             <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>−</span>

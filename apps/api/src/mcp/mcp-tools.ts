@@ -3,12 +3,18 @@ import { FoldersService } from '../folders/folders.service';
 import { FocusService } from '../maps/focus.service';
 import { MapsService } from '../maps/maps.service';
 import { PRO, type ProContract } from '../pro/pro.contract';
-import { AppendError, appendSubtree, parseFragment } from './append-to-map';
+import { AppendError, appendSubtree, findByPath, parseFragment } from './append-to-map';
 import { checkItems, listCheckable } from './check-items';
 import { DocShapeError, docToEmm, mapFromDoc } from './doc-to-emm';
 import { EmmParseError, emmToSnapshot, titleFromSnapshot } from './emm-to-doc';
 import { TemplateError, applyLevelLayouts, templateFor } from './map-template';
-import { mapCenters } from '../emm/model';
+import { mapCenters, type MindNode } from '../emm/model';
+import { GithubClient, GithubError, mapLimit } from './github-client';
+import {
+  GithubDocsError, IdGen, applyUpdate, buildDocsMap, detectDocsDir, listSome, parseRepoRef, planUpdate,
+  readSource, resolveScope, selectDocFiles, settleByCommit, type DocInput, type DocsSource, type FileCommit,
+  type RemoteFile, type UpdateScope,
+} from './github-docs';
 
 /**
  * MCP 가 AI 에게 주는 **도구 목록**과 그 실행.
@@ -19,10 +25,12 @@ import { mapCenters } from '../emm/model';
  * 만들지 않는다 — 두 벌이 되면 반드시 어긋난다(§2 머리말).
  *
  * 1단계 `create_map`(§7) + 2단계 `list_maps`·`get_map` + `append_to_map`
- * (2026-09-05) + `check_items`(2026-09-09, §9.12). **지우는 도구는 없다**(§2-3).
- * 고치는 것은 둘 — `append_to_map` 은 **덧붙이기만** 하고, `check_items` 는
- * 노드의 **체크박스 한 글자(`[ ]`↔`[x]`)만** 바꾼다. 노드의 글·자식·스타일을
- * 바꾸거나 빼는 도구는 없다.
+ * (2026-09-05) + `check_items`(2026-09-09, §9.12) + GitHub 문서 `import_github_docs`·
+ * `update_map_from_github`(2026-09-21, §9.14). **맵을 지우는 도구는 없다**(§2-3).
+ * 고치는 것은 셋 — `append_to_map` 은 **덧붙이기만** 하고, `check_items` 는
+ * 노드의 **체크박스 한 글자(`[ ]`↔`[x]`)만** 바꾼다. `update_map_from_github` 만
+ * 노드를 더하고·바꾸고·지우는데, **자기가 만든 노드**(GitHub 링크가 달린 문서·
+ * 폴더 노드와 그 아래 절 노드)만이고 사용자가 손으로 붙인 것은 남긴다(§9.14).
  */
 
 export interface McpToolDef {
@@ -222,6 +230,48 @@ export const TOOL_DEFS: McpToolDef[] = [
       required: ['map_id', 'nodes'],
     },
   },
+  {
+    name: 'import_github_docs',
+    title: 'GitHub 저장소의 문서 폴더를 EasyMindMap 새 맵으로',
+    description:
+      'GitHub 저장소를 지정하면 그 저장소의 **문서 폴더**(`docs/`·`doc/` 를 자동으로 찾는다, `path` 로 지정 가능)에 있는 마크다운 문서들을 **새 맵 하나**로 만든다. ' +
+      '사용자가 "OOO 저장소 문서를 emm 새 맵으로 만들어 줘" · "github 문서를 맵으로" 라고 하면 이것을 부른다. ' +
+      '폴더 트리가 그대로 가지가 되고(폴더 노드는 GitHub 폴더 링크), 문서 하나는 노드 하나다 — 제목은 문서의 첫 `#`, GitHub 주소가 그 노드의 링크로 붙고, ' +
+      '문서 안의 `##`·`###` 제목이 그 아래 노드가 되며 표·문단·코드는 그 노드의 노트로 들어간다. 문서 노드에는 마지막 커밋 시각이 노트로 붙는다. ' +
+      '이 맵은 나중에 update_map_from_github 으로 저장소 변경에 맞춰 갱신할 수 있다. ' +
+      '익명으로는 GitHub 이 시간당 60회만 허용해 문서 50개까지만 된다 — 더 크면 API 서버에 GITHUB_TOKEN 을 넣거나 `path` 로 좁힌다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string', description: '저장소 — "owner/repo" 또는 GitHub 주소("https://github.com/owner/repo", ".../tree/main/docs" 도 됨).' },
+        path: { type: 'string', description: '문서 폴더 경로(예: "docs", "docs/guide"). 비우면 저장소 뿌리의 docs/doc/documentation 을 찾고, 없으면 저장소 전체의 마크다운.' },
+        ref: { type: 'string', description: '브랜치·태그·커밋. 비우면 기본 브랜치.' },
+        title: { type: 'string', description: '맵 이름. 비우면 "저장소이름 문서".' },
+        template: { type: 'string', description: '맵 모양 — create_map 과 같다. 비우면 트리·오른쪽(TR).' },
+        max_files: { type: 'integer', minimum: 1, maximum: 500, description: '가져올 문서 수 상한(기본 200). 넘으면 경로순 앞부분만 가져오고 그 사실을 알린다.' },
+      },
+      required: ['repo'],
+    },
+  },
+  {
+    name: 'update_map_from_github',
+    title: 'GitHub 문서로 만든 맵을 저장소의 지금 상태에 맞춰 갱신',
+    description:
+      'import_github_docs 로 만든 맵을 저장소의 **지금 상태**에 맞춘다. 사용자가 "OOO 맵을 업데이트 해줘" · "OOO 맵을 github 수정사항 반영해서 수정해줘" 라고 하면 이것을 부른다(맵 id 는 list_maps 로). ' +
+      '문서 노드의 갱신 시각·파일 sha 를 GitHub 과 비교해 **사라진 문서의 노드는 지우고, 새 문서는 노드를 더하고, 내용이 바뀐 문서는 그 노드(제목·하위 절·노트)를 다시 만든다.** ' +
+      '절 노드는 제목으로 짝지어 id 를 유지하고, 사용자가 손으로 붙인 노드·노트는 남긴다. ' +
+      '`node` 로 범위를 좁힐 수 있다 — "OOO 맵의 OOO 노드를 업데이트 해줘" 면 그 노드 이름(폴더 노드면 그 폴더 아래 문서들, 문서 노드면 그 문서, 문서 안의 절 노드면 **그 절만**), ' +
+      '"현재 선택한 노드의 내용을 업데이트 해줘" 면 map_id:"current", node:"selected". 비우면 맵 전체. ' +
+      '저장은 히스토리 버전으로 남아 앱의 [히스토리] 에서 되돌릴 수 있다. 이 도구로 만들지 않은 맵(루트 노트에 `출처: github:…` 가 없는 맵)은 거절한다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        map_id: { type: 'string', description: '`list_maps` 가 돌려준 맵 id (UUID), 또는 `"current"` = 사용자가 앱에서 지금 열어 둔 맵.' },
+        node: { type: 'string', description: '갱신 범위 — 노드 이름 또는 `"폴더 > 문서"` 경로, 또는 `"selected"`(앱에서 지금 선택한 노드). 비우면 맵 전체.' },
+      },
+      required: ['map_id'],
+    },
+  },
 ];
 
 /** `get_map` 이 한 번에 돌려주는 본문 상한 — 넘으면 자르고 그 사실을 알린다 */
@@ -268,6 +318,8 @@ export class McpToolsService {
       case 'append_to_map': return this.appendToMap(userId, args);
       case 'check_items': return this.checkItems(userId, args);
       case 'get_open_map': return this.getOpenMap(userId);
+      case 'import_github_docs': return this.importGithubDocs(userId, args);
+      case 'update_map_from_github': return this.updateMapFromGithub(userId, args);
       default: return text(`알 수 없는 도구입니다: ${name}`, true);
     }
   }
@@ -716,6 +768,233 @@ export class McpToolsService {
       `EasyMindMap 을 열고 [☁ 클라우드 ▸ 열기] 에서 확인할 수 있습니다.`,
     );
   }
+
+  // ── GitHub 문서 → 맵 (2026-09-21, §9.14) ─────────────────────────────
+
+  /** 익명 호출은 시간당 60회 — 트리·저장소 정보에 2회를 쓰고 나머지가 커밋 조회다 */
+  private static readonly ANON_FILE_LIMIT = 50;
+  private static readonly DEFAULT_MAX_FILES = 200;
+  private static readonly FETCH_CONCURRENCY = 6;
+
+  /** 문서 하나를 읽는다 — 원문 + 마지막 커밋 (둘은 서로 독립이라 같이 기다린다) */
+  private async loadDoc(gh: GithubClient, src: DocsSource, file: RemoteFile): Promise<DocInput> {
+    const [markdown, commit] = await Promise.all([
+      gh.raw(src.owner, src.repo, src.ref, file.path),
+      gh.lastCommit(src.owner, src.repo, src.ref, file.path).catch(() => null as FileCommit | null),
+    ]);
+    return { file, markdown, commit };
+  }
+
+  private async importGithubDocs(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    let ref;
+    try { ref = parseRepoRef(typeof args.repo === 'string' ? args.repo : ''); } catch (err) {
+      if (err instanceof GithubDocsError) return text(err.message, true);
+      throw err;
+    }
+    const gh = new GithubClient();
+    const askedPath = typeof args.path === 'string' ? args.path.trim().replace(/^\/+|\/+$/g, '') : '';
+    const maxFiles = Math.max(1, Math.min(500, Number(args.max_files) || McpToolsService.DEFAULT_MAX_FILES));
+
+    let src: DocsSource;
+    let files: RemoteFile[];
+    try {
+      const branch = (typeof args.ref === 'string' && args.ref.trim()) || ref.ref || await gh.defaultBranch(ref.owner, ref.repo);
+      // 문서 폴더 판정은 뿌리 한 층만 보면 된다 — 그 다음 **그 폴더 아래만** 재귀로
+      let dir = askedPath || ref.path || '';
+      if (!dir) dir = detectDocsDir((await gh.tree(ref.owner, ref.repo, branch, false)).entries);
+      const tree = await gh.treeUnder(ref.owner, ref.repo, branch, dir);
+      if (tree.truncated) {
+        return text(`${ref.owner}/${ref.repo}@${branch} 의 "${dir || '/'}" 아래가 너무 커서 GitHub 이 목록을 잘랐습니다 — \`path\` 로 더 좁혀 주세요.`, true);
+      }
+      src = { owner: ref.owner, repo: ref.repo, ref: branch, path: dir };
+      files = selectDocFiles(tree.entries, dir);
+    } catch (err) {
+      if (err instanceof GithubError) return text(err.message, true);
+      throw err;
+    }
+    if (files.length === 0) {
+      return text(
+        `${src.owner}/${src.repo}@${src.ref} 의 "${src.path || '/'}" 아래에 마크다운 문서(.md)가 없습니다 — \`path\` 로 문서 폴더를 지정해 주세요.`, true,
+      );
+    }
+    let limitNote = '';
+    if (files.length > maxFiles) {
+      limitNote = `\n(문서가 ${files.length}개라 경로순 앞 ${maxFiles}개만 가져왔습니다 — \`max_files\` 를 늘리거나 \`path\` 로 좁혀 주세요.)`;
+      files = files.slice(0, maxFiles);
+    }
+    if (!gh.authenticated && files.length > McpToolsService.ANON_FILE_LIMIT) {
+      return text(
+        `문서가 ${files.length}개인데 익명 GitHub 호출은 시간당 60회라 ${McpToolsService.ANON_FILE_LIMIT}개까지만 가져올 수 있습니다 — ` +
+        'API 서버에 GITHUB_TOKEN 을 넣거나(시간당 5,000회), `path` 로 폴더를 좁히거나, `max_files` 를 50 이하로 주세요.', true,
+      );
+    }
+
+    let docs: DocInput[];
+    try {
+      docs = await mapLimit(files, McpToolsService.FETCH_CONCURRENCY, (f) => this.loadDoc(gh, src, f));
+    } catch (err) {
+      if (err instanceof GithubError) return text(err.message, true);
+      throw err;
+    }
+
+    const askedTitle = typeof args.title === 'string' ? args.title.trim() : '';
+    const title = (askedTitle || `${src.repo} 문서`).slice(0, 255);
+    const fetchedAt = new Date().toISOString();
+    const map = buildDocsMap(src, docs, title, fetchedAt);
+    const snapshot = { v: 2, map, editor: { layoutType: 'radial-bidirectional', spacingX: 1, spacingY: 1 } };
+
+    // 템플릿 — create_map 과 같은 길. 비우면 트리·오른쪽(문서 트리는 개요처럼 읽힌다)
+    let templateNote = '';
+    try {
+      const tpl = templateFor((typeof args.template === 'string' && args.template.trim()) || 'TR', '');
+      if (tpl.editor) snapshot.editor = { ...snapshot.editor, layoutType: tpl.editor.layoutType };
+      if (tpl.settings) {
+        snapshot.map.settings = { ...(snapshot.map.settings ?? {}), ...tpl.settings };
+        if (tpl.settings.levelLayouts) {
+          snapshot.map.branches = applyLevelLayouts(
+            snapshot.map.branches as unknown as MindNode[], tpl.settings.levelLayouts,
+          ) as unknown as typeof snapshot.map.branches;
+        }
+      }
+      if (tpl.editor) templateNote = ` · 레이아웃: ${tpl.editor.layoutType}`;
+    } catch (err) {
+      if (err instanceof TemplateError) return text(err.message, true);
+      throw err;
+    }
+
+    let mapId: string;
+    try {
+      mapId = (await this.maps.create(userId, { title })).mapId;
+    } catch (err) {
+      return text(mapError(err, '맵을 만들지 못했습니다'), true);
+    }
+    try {
+      await this.maps.saveDocument(userId, mapId, snapshot, title, true);
+    } catch (err) {
+      await this.maps.remove(userId, mapId).catch(() => { /* 원래 오류가 우선 */ });
+      this.log.warn(`MCP import_github_docs 문서 저장 실패 (user=${userId})`, err as Error);
+      return text(mapError(err, '맵 내용을 저장하지 못했습니다'), true);
+    }
+    const nodes = 1 + countNodes(map.branches);
+    const noCommit = docs.filter((d) => !d.commit).length;
+    return text(
+      `EasyMindMap 문서함에 "${title}" 맵을 만들었습니다 — ${src.owner}/${src.repo}@${src.ref} 의 "${src.path || '/'}" 아래 문서 ${docs.length}개 · 노드 ${nodes}개${templateNote}.\n` +
+      `맵 id: ${mapId}\n` +
+      (noCommit ? `(문서 ${noCommit}개는 커밋 시각을 읽지 못해 "(알 수 없음)" 으로 적었습니다.)\n` : '') +
+      limitNote +
+      '나중에 "이 맵을 업데이트 해줘" 라고 하면 update_map_from_github 이 저장소 변경을 반영합니다.',
+    );
+  }
+
+  private async updateMapFromGithub(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const rid = this.resolveMapId(userId, args.map_id);
+    if ('error' in rid) return text(rid.error, true);
+    const mapId = rid.mapId;
+    let nodeArg = typeof args.node === 'string' ? args.node.trim() : '';
+    if (nodeArg && McpToolsService.isSelectedWord(nodeArg)) {
+      const f = this.focus.get(userId);
+      if (!f) return text('앱에서 선택한 노드를 알 수 없습니다 — 앱에서 그 맵을 열어 두고 노드를 고른 뒤 다시 불러 주세요(1분 안에 알려집니다).', true);
+      if (f.mapId !== mapId) {
+        return text(`앱에서 지금 열어 둔 맵은 다른 맵(id: ${f.mapId})입니다 — 그 맵이면 map_id:"current" 로, 이 맵이면 node 를 노드 이름으로 적어 주세요.`, true);
+      }
+      nodeArg = f.nodeId === null || f.nodeId === 'root' ? '' : `id:${f.nodeId}`;
+    }
+
+    const opened = await this.openForWrite(userId, mapId, '갱신할');
+    if ('error' in opened) return text(opened.error, true);
+    const docRes = opened.docRes;
+    let map;
+    try { map = mapFromDoc(docRes.doc); } catch (err) {
+      if (err instanceof DocShapeError) return text(err.message, true);
+      throw err;
+    }
+    const src = readSource(map);
+    if (!src) {
+      return text(`"${docRes.title}" 맵은 import_github_docs 로 만든 맵이 아닙니다(루트 노트에 \`출처: github:…\` 가 없습니다) — 갱신할 저장소를 모릅니다. 새로 만들려면 import_github_docs 를 쓰세요.`, true);
+    }
+
+    let scope: UpdateScope | null;
+    let scopeLabel = '맵 전체';
+    if (!nodeArg || /^root$/i.test(nodeArg)) {
+      scope = { kind: 'all' };
+    } else {
+      let found;
+      try { found = findByPath(map, nodeArg); } catch (err) {
+        if (err instanceof AppendError) return text(err.message, true);
+        throw err;
+      }
+      scope = resolveScope(src, map, found.node);
+      if (!scope) {
+        return text(`"${found.path}" 노드는 GitHub 문서에서 온 노드가 아닙니다(폴더·문서·문서 안의 절 노드만 갱신할 수 있습니다). 노드 이름을 다시 확인하거나 node 를 비워 맵 전체를 갱신해 주세요.`, true);
+      }
+      scopeLabel = scope.kind === 'all' ? '맵 전체'
+        : scope.kind === 'folder' ? `폴더 "${found.path}"`
+          : scope.kind === 'file' ? `문서 "${found.path}"`
+            : `절 "${found.path}"`;
+    }
+
+    const gh = new GithubClient();
+    let remote: RemoteFile[];
+    try {
+      const tree = await gh.treeUnder(src.owner, src.repo, src.ref, src.path);
+      // ★ 잘린 목록으로는 계획하지 않는다 — 빠진 문서가 전부 "사라진 것" 이 되어
+      //   노드를 지운다(#531 Codex 지적). 문서 폴더 아래만 받으므로 드문 일이다.
+      if (tree.truncated) {
+        return text(`${src.owner}/${src.repo}@${src.ref} 의 "${src.path || '/'}" 아래가 너무 커서 GitHub 이 목록을 잘랐습니다 — 잘린 목록으로 갱신하면 멀쩡한 문서 노드가 지워질 수 있어 멈췄습니다. 폴더를 나눠 별도 맵으로 가져오는 것을 권합니다.`, true);
+      }
+      remote = selectDocFiles(tree.entries, src.path);
+    } catch (err) {
+      if (err instanceof GithubError) return text(err.message, true);
+      throw err;
+    }
+    const pre = planUpdate(map, src, scope, remote);
+    let plan;
+    try {
+      // 옛 맵(파일 sha 없음)만 커밋 시각으로 판정 — 익명 한도 안에서
+      const commits = new Map<string, FileCommit | null>();
+      const checks = pre.needsCommitCheck.map((c) => c.file);
+      if (!gh.authenticated && checks.length + pre.added.length + pre.updated.length > McpToolsService.ANON_FILE_LIMIT) {
+        return text(`비교·갱신할 문서가 ${checks.length + pre.added.length + pre.updated.length}개인데 익명 GitHub 호출은 시간당 60회입니다 — API 서버에 GITHUB_TOKEN 을 넣거나 node 로 범위를 좁혀 주세요.`, true);
+      }
+      const got = await mapLimit(checks, McpToolsService.FETCH_CONCURRENCY, (f) => gh.lastCommit(src.owner, src.repo, src.ref, f.path).catch(() => null));
+      checks.forEach((f, i) => commits.set(f.path, got[i]));
+      plan = settleByCommit(pre, commits);
+    } catch (err) {
+      if (err instanceof GithubError) return text(err.message, true);
+      throw err;
+    }
+
+    if (plan.added.length === 0 && plan.updated.length === 0 && plan.removed.length === 0) {
+      return text(`"${docRes.title}" 맵(${scopeLabel})은 이미 저장소와 같습니다 — 바뀐 문서가 없어 저장하지 않았습니다 (문서 ${plan.unchanged}개 그대로).`);
+    }
+
+    let applied;
+    try {
+      applied = await applyUpdate(
+        map, src, scope, plan,
+        async (f) => { const d = await this.loadDoc(gh, src, f); return { markdown: d.markdown, commit: d.commit }; },
+        new Date().toISOString(), new IdGen(),
+      );
+    } catch (err) {
+      if (err instanceof GithubError) return text(err.message, true);
+      throw err;
+    }
+    if (applied.sectionGone && applied.updated.length === 0 && applied.added.length === 0 && applied.removed.length === 0) {
+      return text(`저장소의 문서에 "${applied.sectionGone}" 절이 더 이상 없습니다 — 이 절 노드는 그대로 두었습니다. 문서 노드 전체를 갱신하면(node 에 문서 이름) 이 절 노드가 지워집니다.`, true);
+    }
+
+    const saved = await this.saveVersion(userId, mapId, docRes.doc, applied.map, 'update_map_from_github', '갱신한 내용을');
+    if ('error' in saved) return text(saved.error, true);
+    const lines: string[] = [];
+    if (applied.added.length) lines.push(`추가 ${applied.added.length}개:\n${listSome(applied.added)}`);
+    if (applied.updated.length) lines.push(`수정 ${applied.updated.length}개:\n${listSome(applied.updated)}`);
+    if (applied.removed.length) lines.push(`삭제 ${applied.removed.length}개${applied.removedFolders ? ` (빈 폴더 ${applied.removedFolders}개 함께)` : ''}:\n${listSome(applied.removed)}`);
+    if (plan.unchanged) lines.push(`그대로 ${plan.unchanged}개`);
+    return text(
+      `"${docRes.title}" 맵(${scopeLabel})을 ${src.owner}/${src.repo}@${src.ref} 에 맞췄습니다.${saved.versionNote}\n${lines.join('\n')}\n` + LIVE_NOTE,
+    );
+  }
+
 }
 
 /** 맵을 바꾼 도구가 끝에 붙이는 안내 — 열어 둔 앱 화면·되돌리기 (§9.8) */

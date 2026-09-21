@@ -33,6 +33,7 @@ import { StorageService } from '../storage/storage.service';
 import { columnReady, tableReady } from '../common/table-ready';
 import { likePattern, searchTerm } from '../common/search-term';
 import { findAccessibleMap } from '../maps/map-access';
+import { trimForPreview, type PreviewStats } from './trim-for-preview';
 
 const PUBLISHED_TABLE = 'public.published_maps';
 
@@ -96,6 +97,13 @@ export interface PublishStatus {
   listed?: boolean;
   /** 이 서버가 진열을 할 수 있는가 — `listed` 칸이 있는가 */
   canSetListed?: boolean;
+  /**
+   * **유료공개의 값** (2026-09-21, 27b §3.1). `null` = 무료.
+   * 등록돼 있을 때만 온다. `price_krw` 칸이 없는 서버에서는 **늘 null**.
+   */
+  priceKrw?: number | null;
+  /** 이 서버가 값을 매길 수 있는가 — `price_krw` 칸이 있는가 */
+  canSetPrice?: boolean;
 }
 
 interface PublishedRow {
@@ -104,6 +112,7 @@ interface PublishedRow {
   storage_path: string | null;
   visibility?: PublishVisibility;
   listed?: boolean;
+  price_krw?: number | null;
 }
 
 /** 진열대 목록의 한 줄 — 카드에 필요한 것만. **문서 본문은 주지 않는다** */
@@ -118,8 +127,13 @@ export interface ListedMap {
    * 검색 중일 때만 채운다 — **맵 내용에서 몇 군데 맞았나** (2026-09-17).
    * 문서함과 같은 규칙이다: 이름이 맞은 것은 화면이 글자를 강조해 보여
    * 주고, **내용이 맞은 것만** 건수로 알린다.
+   *
+   * ★ 유료 맵에서는 **2레벨까지만** 센다 (27b §5.3) — 건수 자체가
+   *   잘라 낸 부분을 일러 주는 신호가 되기 때문이다.
    */
   matchCount?: number;
+  /** **값** — `null` 이면 무료 (2026-09-21). 카드가 그린다 */
+  priceKrw: number | null;
 }
 
 /** 미리보기 PNG 한 장의 상한. 1200×630 실루엣은 보통 100KB 안쪽이다 */
@@ -156,6 +170,44 @@ export class PublishService {
    */
   private async hasListed(): Promise<boolean> {
     return columnReady(this.db, PUBLISHED_TABLE, 'listed');
+  }
+
+  /**
+   * 이 서버가 **값을 매길** 수 있는가 — `price_krw` 칸이 있는가 (2026-09-21).
+   *
+   * 없으면 **유료공개만** 꺼진다 — 무료 퍼블리싱은 그대로 돈다
+   * (`hasVisibility`·`hasListed` 와 같은 이유).
+   */
+  private async hasPrice(): Promise<boolean> {
+    return columnReady(this.db, PUBLISHED_TABLE, 'price_krw');
+  }
+
+  /**
+   * 유료 맵 전용 **2레벨 색인**이 있는가 (27b §5.3).
+   *
+   * ★ 없으면 유료 맵을 **내용 검색에서 아예 뺀다** — `search_text` 로
+   *   되돌리지 않는다. 되돌리면 잘라 낸 부분이 건수로 새고, 그것이 바로
+   *   이 색인을 만든 이유다. **틀렸을 때 손해가 작은 쪽**으로 기운다.
+   */
+  private async hasPreviewText(): Promise<boolean> {
+    return columnReady(this.db, 'public.map_documents', 'preview_text');
+  }
+
+  /**
+   * ★ **손님에게 열리는 조건** — 네 길이 같은 한 줄을 쓴다 (27b §5.2).
+   *
+   *   `GET /published/{id}` · `og.html` · `preview.png` · 지식창고 목록
+   *
+   * 유료(`paid`)도 **열린다** — 다만 본문은 잘려서 나간다(`trimForPreview`).
+   * 닫아 버리면 손님이 살 물건을 볼 수 없고, 열어만 두면 공짜가 된다.
+   *
+   * 네 길이 각자 조건을 적던 것을 여기로 모은 이유는 하나다 — **하나만
+   * 느슨해도 전부 새고**, 그 하나가 어디인지 찾을 방법이 없다.
+   */
+  private async openWhere(alias = 'p'): Promise<string> {
+    return (await this.hasVisibility())
+      ? `AND ${alias}.visibility IN ('public', 'paid')`
+      : '';
   }
 
   /** 칸이 없으면 무엇을 읽어도 무료공개다 */
@@ -253,7 +305,7 @@ export class PublishService {
     PublishService.assertUsable(visibility, canSet);
 
     const cur = await this.activeRow(mapId);
-    if (cur) return this.toStatus(cur, canSet, canList);
+    if (cur) return this.toStatus(cur, canSet, canList, await this.hasPrice());
 
     // publish_id 는 UNIQUE 다. 충돌 확률은 무시할 만하지만 0 은 아니므로
     // 몇 번 다시 뽑는다 — 여기서 포기하면 사용자에게는 이유 없는 실패다.
@@ -262,7 +314,8 @@ export class PublishService {
     // ★ 새로 등록하는 맵은 **진열하지 않는다** — 칸의 기본값이 FALSE 다.
     //   진열은 저자가 한 번 더 눌러야 일어난다(공개 범위가 넓어지는 일).
     const ret = 'publish_id, published_at, storage_path'
-      + (canSet ? ', visibility' : '') + (canList ? ', listed' : '');
+      + (canSet ? ', visibility' : '') + (canList ? ', listed' : '')
+      + ((await this.hasPrice()) ? ', price_krw' : '');
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const publishId = newPublishId();
       try {
@@ -270,7 +323,7 @@ export class PublishService {
           `INSERT INTO public.published_maps ${cols} VALUES ${vals} RETURNING ${ret}`,
           canSet ? [mapId, publishId, visibility] : [mapId, publishId],
         );
-        return this.toStatus(rows[0], canSet, canList);
+        return this.toStatus(rows[0], canSet, canList, await this.hasPrice());
       } catch (err) {
         // 23505 = unique_violation. 그 외 오류는 그대로 올린다 —
         // 삼키면 DB 장애가 "퍼블리싱 실패"로 둔갑해 원인을 못 찾는다.
@@ -291,8 +344,12 @@ export class PublishService {
    */
   private static assertUsable(v: PublishVisibility, canSet: boolean): void {
     if (v === 'paid') {
+      // ★ **값을 매기는 것이 곧 유료공개다** (2026-09-21).
+      //   상태만 `paid` 로 바꿀 수 있게 두면 **값이 없는 유료 맵**이 생긴다 —
+      //   손님에게는 "판다" 고 하면서 살 수는 없는 상태다. 값과 상태를 한
+      //   번에 움직이는 문(`setPrice`) 하나만 둔다.
       throw new BadRequestException(
-        '유료공개는 아직 준비 중입니다 — 값·결제·정산이 붙은 뒤에 열립니다. 지금은 비공개(보관) 또는 무료공개를 고를 수 있습니다.',
+        '유료공개는 값을 매겨서 바꿉니다 — 값 매기기(PATCH …/publish/price)를 써 주세요. 여기서는 비공개(보관)와 무료공개만 고를 수 있습니다.',
       );
     }
     if (v !== 'private' && v !== 'public') {
@@ -329,13 +386,14 @@ export class PublishService {
       `UPDATE public.published_maps
           SET visibility = $2
         WHERE map_id = $1 AND unpublished_at IS NULL
-    RETURNING publish_id, published_at, storage_path, visibility${canList ? ', listed' : ''}`,
+    RETURNING publish_id, published_at, storage_path, visibility${canList ? ', listed' : ''}`
+      + `${(await this.hasPrice()) ? ', price_krw' : ''}`,
       [mapId, visibility],
     );
     if (!rows[0]) {
       throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
     }
-    return this.toStatus(rows[0], true, canList);
+    return this.toStatus(rows[0], true, canList, await this.hasPrice());
   }
 
   /**
@@ -378,8 +436,12 @@ export class PublishService {
       if (!cur) {
         await this.publish(userId, mapId, 'public');
         cur = await this.activeRow(mapId);
-      } else if (canSet && PublishService.vis(cur) !== 'public') {
-        // ② 보관 중이면 연다 — 닫힌 채로 목록에 올리면 손님에게 404 다
+      } else if (canSet && PublishService.vis(cur) === 'private') {
+        // ② 보관 중이면 연다 — 닫힌 채로 목록에 올리면 손님에게 404 다.
+        //   ★ **유료(`paid`)는 건드리지 않는다** (2026-09-21) — 여기서
+        //   `!== 'public'` 으로 두면 유료 맵을 지식창고에 올리는 순간
+        //   **값이 조용히 내려간다.** 판다고 올린 것이 공짜가 되는 실패라
+        //   되돌릴 수도 없다(그 사이에 받아 간 사람이 있다).
         await this.setVisibility(userId, mapId, 'public');
       }
     }
@@ -388,14 +450,87 @@ export class PublishService {
       `UPDATE public.published_maps
           SET listed = $2
         WHERE map_id = $1 AND unpublished_at IS NULL
-    RETURNING publish_id, published_at, storage_path, listed${canSet ? ', visibility' : ''}`,
+    RETURNING publish_id, published_at, storage_path, listed${canSet ? ', visibility' : ''}`
+      + `${(await this.hasPrice()) ? ', price_krw' : ''}`,
       [mapId, listed],
     );
     if (!rows[0]) {
       // 끄는 쪽에서만 올 수 있다 — 켜는 쪽은 위에서 등록을 만들었다
       throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다.');
     }
-    return this.toStatus(rows[0], canSet, true);
+    return this.toStatus(rows[0], canSet, true, await this.hasPrice());
+  }
+
+  /** 값의 상·하한 — 27b §8.3 권고. 넘으면 이유를 말하고 거절한다 */
+  static readonly PRICE_MIN_KRW = 1_000;
+  static readonly PRICE_MAX_KRW = 100_000;
+
+  /**
+   * PUBL-07 — **값 매기기 · 값 내리기** (2026-09-21, 27b §4.1).
+   *
+   * ★ **값과 상태를 한 번에 움직인다.** 값을 매기면 `paid`, 내리면
+   *   `public` 이다. 둘을 따로 두면 "값이 없는 유료 맵" 과 "값이 남은 무료
+   *   맵" 이라는 두 가지 어정쩡한 상태가 생기고, 화면은 그 둘을 어떻게
+   *   그려야 할지 답이 없다.
+   *
+   * ★ **상한이 왜 있나** — 없으면 자릿수를 하나 더 쳐서 `49,000,000원`
+   *   짜리 맵이 지식창고 첫 줄에 걸린다 (27b §8.3).
+   *
+   * ★ `paid_at` 은 **처음 유료가 된 시각**이다. 무료로 내렸다가 다시
+   *   올려도 덮어쓰지 않는다 — "언제부터 팔았나" 는 이력이라, 값을 한 번
+   *   내렸다는 이유로 지워질 것이 아니다.
+   *
+   * 값을 내리는 것은 **되돌리는 쪽**이라 서버 준비 상태를 따지지 않는다.
+   * 매기는 쪽만 `price_krw` 칸을 요구한다.
+   */
+  async setPrice(userId: string, mapId: string, priceKrw: number | null): Promise<PublishStatus> {
+    await this.requireReady();
+    await this.requireOwner(userId, mapId);
+    const canSet = await this.hasVisibility();
+    const canList = await this.hasListed();
+    const canPrice = await this.hasPrice();
+
+    if (priceKrw !== null) {
+      if (!canPrice || !canSet) {
+        throw new ServiceUnavailableException(
+          '이 서버에는 아직 유료공개가 준비되지 않았습니다(published_maps.price_krw 칸 없음). 관리자에게 문의해 주세요.',
+        );
+      }
+      if (!Number.isInteger(priceKrw)) {
+        throw new BadRequestException('값은 원 단위 정수로 적어 주세요 (소수점 없이).');
+      }
+      if (priceKrw < PublishService.PRICE_MIN_KRW || priceKrw > PublishService.PRICE_MAX_KRW) {
+        throw new BadRequestException(
+          `값은 ${PublishService.PRICE_MIN_KRW.toLocaleString('ko-KR')}원 ~ `
+          + `${PublishService.PRICE_MAX_KRW.toLocaleString('ko-KR')}원 사이로 정해 주세요.`,
+        );
+      }
+      // 협업맵은 팔지 않는다 (27a §5.0 — 여럿의 몫을 나누는 문제를 만들지
+      // 않는다). `publish()` 와 같은 규칙을 같은 곳에서 본다.
+      await this.requirePublishable(userId, mapId);
+    }
+    if (!canPrice) {
+      // 칸이 없는 서버에서 "값을 내린다" 는 이미 이루어진 일이다 — 멱등
+      const cur = await this.activeRow(mapId);
+      if (!cur) throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
+      return this.toStatus(cur, canSet, canList, canPrice);
+    }
+
+    const { rows } = await this.db.query<PublishedRow>(
+      `UPDATE public.published_maps
+          SET price_krw  = $2,
+              visibility = ${canSet ? `CASE WHEN $2::int IS NULL THEN 'public' ELSE 'paid' END` : 'visibility'},
+              paid_at    = CASE WHEN $2::int IS NULL THEN paid_at
+                                WHEN paid_at IS NULL THEN NOW() ELSE paid_at END
+        WHERE map_id = $1 AND unpublished_at IS NULL
+    RETURNING publish_id, published_at, storage_path, price_krw`
+      + `${canSet ? ', visibility' : ''}${canList ? ', listed' : ''}`,
+      [mapId, priceKrw],
+    );
+    if (!rows[0]) {
+      throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
+    }
+    return this.toStatus(rows[0], canSet, canList, canPrice);
   }
 
   /**
@@ -429,7 +564,7 @@ export class PublishService {
     if (!(await this.ready()) || !(await this.hasListed())) {
       return { items: [], nextCursor: null };
     }
-    const open = (await this.hasVisibility()) ? `AND p.visibility = 'public'` : '';
+    const open = await this.openWhere();
     // 커서 = 마지막 줄의 published_at(ISO). 같은 시각이 둘일 수 있으므로
     // publish_id 를 두 번째 열쇠로 둔다 — 아니면 한 줄이 영영 안 나온다.
     const params: unknown[] = [limit + 1];
@@ -460,13 +595,35 @@ export class PublishService {
       // 검색이 통째로 죽는 것보다 반쪽이라도 도는 쪽이 낫다.
       const withText = await columnReady(this.db, 'public.map_documents', 'search_text');
       if (withText) {
+        // ★ **유료 맵은 2레벨 색인만 훑는다** (27b §5.3, 2026-09-21).
+        //
+        //   전문을 색인해 두면 내용 자체는 안 나가도 **"이 맵 안에 그 말이
+        //   있다"는 사실**이 `내용 12건` 으로 샌다. 사지 않은 사람이
+        //   검색어를 바꿔 가며 두드리면 잘라 낸 부분을 **스무고개로
+        //   확인**할 수 있다.
+        //
+        //   CASE 로 한 줄에 합치지 않는다 — 조건 안에 CASE 가 들어가면
+        //   플래너가 **무료 맵의 trigram 인덱스까지** 버린다. OR 로 나누면
+        //   두 GIN 인덱스를 각각 쓴다.
+        //
+        //   ★ `preview_text` 칸이 없는 서버에서는 유료 맵을 내용 검색에서
+        //     **아예 뺀다** — `search_text` 로 되돌리지 않는다. 되돌리면
+        //     바로 그 '스무고개' 가 열린다. 제목으로는 여전히 찾힌다.
+        const previewOk = await this.hasPreviewText();
+        const canSee = await this.hasVisibility();
+        const hitCond = !canSee
+          ? `s.search_text ILIKE $${pLike} ESCAPE '\\'`
+          : previewOk
+            ? `((p2.visibility <> 'paid' AND s.search_text ILIKE $${pLike} ESCAPE '\\')`
+              + ` OR (p2.visibility = 'paid' AND s.preview_text ILIKE $${pLike} ESCAPE '\\'))`
+            : `(p2.visibility <> 'paid' AND s.search_text ILIKE $${pLike} ESCAPE '\\')`;
         // MATERIALIZED 인 이유는 문서함과 같다 — 조인 너머의 OR 안에서는
         // 플래너가 trigram 인덱스를 버리고 색인을 통째로 훑는다.
         hitsCte = `WITH hits AS MATERIALIZED (
              SELECT s.map_id FROM public.map_documents s
                JOIN public.published_maps p2
                  ON p2.map_id = s.map_id AND p2.listed AND p2.unpublished_at IS NULL
-              WHERE s.search_text ILIKE $${pLike} ESCAPE '\\'
+              WHERE ${hitCond}
            ) `;
         where = ` AND (m.title ILIKE $${pLike} ESCAPE '\\'`
           + ` OR p.map_id IN (SELECT map_id FROM hits))`;
@@ -475,23 +632,33 @@ export class PublishService {
         // 정렬 전에 계산해 **맞은 행 전부**에서 돌 수 있다(문서함과 같은
         // 이유). search_text 는 CTE 안에서만 쓰고 밖으로 내보내지 않는다 —
         // 큰 맵의 평문(수십 KB)이 응답에 실려 나가지 않게.
-        textCol = ', d.search_text';
+        //
+        // ★ 건수도 같은 색인을 본다 — 건수만 전문에서 세면 **숫자가 곧
+        //   잘라 낸 부분의 정보**가 된다 (27b §5.3 의 그 '스무고개').
+        const countCol = !canSee
+          ? 'd.search_text'
+          : previewOk
+            ? `CASE WHEN p.visibility = 'paid' THEN d.preview_text ELSE d.search_text END`
+            : `CASE WHEN p.visibility = 'paid' THEN NULL ELSE d.search_text END`;
+        textCol = `, ${countCol} AS search_text`;
         matchCountSql = `, (SELECT count(*)
-               FROM unnest(string_to_array(pg.search_text, E'\\n')) AS ln
+               FROM unnest(string_to_array(coalesce(pg.search_text, ''), E'\\n')) AS ln
               WHERE ln ILIKE $${pLike} ESCAPE '\\')::int AS match_count`;
       } else {
         where = ` AND m.title ILIKE $${pLike} ESCAPE '\\'`;
       }
     }
 
+    const priced = await this.hasPrice();
+    const psel = priced ? ', p.price_krw' : '';
     const { rows } = await this.db.query<{
       publish_id: string; title: string; published_at: Date;
       storage_path: string | null; node_count: number | null;
-      match_count?: number;
+      match_count?: number; price_krw?: number | null;
     }>(
       `${hitsCte}${hitsCte ? ', pg AS (' : 'WITH pg AS ('}
            SELECT p.publish_id, m.title, p.published_at, p.storage_path,
-                  d.node_count${textCol}
+                  d.node_count${psel}${textCol}
              FROM public.published_maps p
              JOIN public.maps m ON m.id = p.map_id
         LEFT JOIN public.map_documents d ON d.map_id = p.map_id
@@ -505,7 +672,7 @@ export class PublishService {
             LIMIT $1
          )
        SELECT pg.publish_id, pg.title, pg.published_at, pg.storage_path,
-              pg.node_count${matchCountSql}
+              pg.node_count${priced ? ', pg.price_krw' : ''}${matchCountSql}
          FROM pg
      ORDER BY pg.published_at DESC, pg.publish_id DESC`,
       params,
@@ -519,6 +686,7 @@ export class PublishService {
         publishedAt: r.published_at.toISOString(),
         hasPreview: !!r.storage_path,
         nodeCount: r.node_count ?? null,
+        priceKrw: priced ? (r.price_krw ?? null) : null,
         ...(searching ? { matchCount: r.match_count ?? 0 } : {}),
       })),
       nextCursor: rows.length > limit && last
@@ -594,12 +762,14 @@ export class PublishService {
       : { publishable: true };
     const canSet = await this.hasVisibility();
     const canList = await this.hasListed();
+    const canPrice = await this.hasPrice();
     const cur = await this.activeRow(mapId);
     return cur
-      ? { ...this.toStatus(cur, canSet, canList), ...gate }
+      ? { ...this.toStatus(cur, canSet, canList, canPrice), ...gate }
       : {
         available: true, publishId: null, publishedAt: null,
-        canSetVisibility: canSet, listed: false, canSetListed: canList, ...gate,
+        canSetVisibility: canSet, listed: false, canSetListed: canList,
+        priceKrw: null, canSetPrice: canPrice, ...gate,
       };
   }
 
@@ -618,12 +788,16 @@ export class PublishService {
    */
   async getPublished(publishId: string) {
     if (!(await this.ready())) throw new NotFoundException('페이지를 찾을 수 없습니다.');
-    const open = (await this.hasVisibility()) ? `AND p.visibility = 'public'` : '';
+    const open = await this.openWhere();
+    const canPrice = await this.hasPrice();
+    const psel = canPrice ? ', p.price_krw' : '';
+    const vsel = (await this.hasVisibility()) ? ', p.visibility' : '';
     const { rows } = await this.db.query<{
       map_id: string; title: string; published_at: Date;
       doc: unknown; updated_at: Date | null;
+      price_krw?: number | null; visibility?: string;
     }>(
-      `SELECT p.map_id, m.title, p.published_at, d.doc, d.updated_at
+      `SELECT p.map_id, m.title, p.published_at, d.doc, d.updated_at${psel}${vsel}
          FROM public.published_maps p
          JOIN public.maps m ON m.id = p.map_id
     LEFT JOIN public.map_documents d ON d.map_id = p.map_id
@@ -639,13 +813,39 @@ export class PublishService {
     if (!row || row.doc == null) {
       throw new NotFoundException('페이지를 찾을 수 없습니다. 링크가 만료되었거나 퍼블리싱이 중단되었습니다.');
     }
+
+    // ★ **유료면 서버가 자른다** (27b §5.1). 화면에서 가리는 것으로는 안
+    //   된다 — 개발자 도구를 열면 그만이다. 여기가 이 기능의 **유일한**
+    //   본문 출구이므로, 자르기도 여기 한 번만 있으면 된다.
+    //
+    //   ★ 판정은 `visibility === 'paid'` **하나**다. "값이 있으면" 으로
+    //     두지 않는다 — 값이 남은 채 무료로 돌린 맵이 잘려 나가고, 그건
+    //     저자가 공짜로 풀기로 한 맵을 우리가 잠그는 셈이다.
+    const paid = row.visibility === 'paid';
+    if (!paid) {
+      return {
+        publishId,
+        mapId: row.map_id,
+        title: row.title,
+        doc: row.doc,
+        publishedAt: row.published_at,
+        updatedAt: row.updated_at,
+        locked: false as const,
+        priceKrw: null,
+      };
+    }
+    const { doc, stats } = trimForPreview(row.doc);
     return {
       publishId,
       mapId: row.map_id,
       title: row.title,
-      doc: row.doc,
+      doc,
       publishedAt: row.published_at,
       updatedAt: row.updated_at,
+      /** 잘린 미리보기다 — 전문은 결제한 사람에게만 (pro) */
+      locked: true as const,
+      priceKrw: canPrice ? (row.price_krw ?? null) : null,
+      stats,
     };
   }
 
@@ -659,13 +859,15 @@ export class PublishService {
     title: string; doc: unknown; hasPreview: boolean; listed: boolean;
   }> {
     if (!(await this.ready())) throw new NotFoundException('페이지를 찾을 수 없습니다.');
-    const open = (await this.hasVisibility()) ? `AND p.visibility = 'public'` : '';
+    const open = await this.openWhere();
     // 칸이 없는 서버에서는 고르지 않는다 — 없는 칸을 SELECT 하면 503 이다
     const lsel = (await this.hasListed()) ? 'p.listed' : 'FALSE AS listed';
+    const vsel = (await this.hasVisibility()) ? ', p.visibility' : '';
     const { rows } = await this.db.query<{
       title: string; doc: unknown; storage_path: string | null; listed: boolean;
+      visibility?: string;
     }>(
-      `SELECT m.title, d.doc, p.storage_path, ${lsel}
+      `SELECT m.title, d.doc, p.storage_path, ${lsel}${vsel}
          FROM public.published_maps p
          JOIN public.maps m ON m.id = p.map_id
     LEFT JOIN public.map_documents d ON d.map_id = p.map_id
@@ -677,8 +879,14 @@ export class PublishService {
     );
     const row = rows[0];
     if (!row || row.doc == null) throw new NotFoundException('페이지를 찾을 수 없습니다.');
+    // ★ 유료면 여기서도 **자른 문서**를 넘긴다 (27b §5.2).
+    //   `describe()` 는 지금 중심·1레벨만 읽으므로 자르지 않아도 새지
+    //   않는다. 그래도 자른다 — 언젠가 소개 문구를 "노트 첫 문단" 으로
+    //   바꾸는 날, 그 한 줄이 유료 맵의 본문을 카드에 싣게 된다.
+    //   **여기서 자르면 그 실수가 아예 불가능해진다.**
+    const doc = row.visibility === 'paid' ? trimForPreview(row.doc).doc : row.doc;
     return {
-      title: row.title, doc: row.doc, hasPreview: !!row.storage_path, listed: !!row.listed,
+      title: row.title, doc, hasPreview: !!row.storage_path, listed: !!row.listed,
     };
   }
 
@@ -686,8 +894,9 @@ export class PublishService {
     // 칸이 없는 서버에서는 **고르지 않는다** — 없는 칸을 SELECT 하면 503 이다
     const col = (await this.hasVisibility()) ? ', visibility' : '';
     const lcol = (await this.hasListed()) ? ', listed' : '';
+    const pcol = (await this.hasPrice()) ? ', price_krw' : '';
     const { rows } = await this.db.query<PublishedRow>(
-      `SELECT publish_id, published_at, storage_path${col}${lcol}
+      `SELECT publish_id, published_at, storage_path${col}${lcol}${pcol}
          FROM public.published_maps
         WHERE map_id = $1 AND unpublished_at IS NULL
      ORDER BY published_at DESC
@@ -699,6 +908,7 @@ export class PublishService {
 
   private toStatus(
     row: PublishedRow, canSetVisibility: boolean, canSetListed = false,
+    canSetPrice = false,
   ): PublishStatus {
     return {
       available: true,
@@ -711,6 +921,9 @@ export class PublishService {
       // 화면이 "모르겠다" 와 "아니다" 를 구분할 필요가 없다.
       listed: canSetListed ? !!row.listed : false,
       canSetListed,
+      // 값을 못 매기는 서버는 **무료뿐인 서버**다 — undefined 가 아니라 null
+      priceKrw: canSetPrice ? (row.price_krw ?? null) : null,
+      canSetPrice,
     };
   }
 
@@ -760,7 +973,7 @@ export class PublishService {
       [mapId, key],
     );
     return {
-      ...this.toStatus(cur, await this.hasVisibility(), await this.hasListed()),
+      ...this.toStatus(cur, await this.hasVisibility(), await this.hasListed(), await this.hasPrice()),
       hasPreview: true,
     };
   }
@@ -787,7 +1000,7 @@ export class PublishService {
    */
   async openPreview(publishId: string): Promise<ReadStream> {
     if (!(await this.ready())) throw new NotFoundException('페이지를 찾을 수 없습니다.');
-    const open = (await this.hasVisibility()) ? `AND p.visibility = 'public'` : '';
+    const open = await this.openWhere();
     const { rows } = await this.db.query<{ storage_path: string | null }>(
       `SELECT p.storage_path
          FROM public.published_maps p

@@ -351,9 +351,35 @@ export interface PublishStatus {
    * 와 같은 이유다.
    */
   canSetListed?: boolean;
+  /**
+   * **유료공개의 값** (2026-09-21, 27b §3.1). `null` = 무료.
+   * 등록돼 있을 때만 온다.
+   */
+  priceKrw?: number | null;
+  /**
+   * 이 서버가 값을 매길 수 있는가(`price_krw` 칸이 있는가).
+   * false 면 화면은 값 줄을 **아예 그리지 않는다** — 위 둘과 같은 이유다.
+   */
+  canSetPrice?: boolean;
 }
 
-/** 퍼블리싱된 맵 — 비인증으로 받는다. doc 은 저장 스냅샷 그대로다 */
+/** 잘린 미리보기와 함께 오는 **숫자** (27b §8.2) */
+export interface PreviewStats {
+  nodeCount: number;
+  maxDepth: number;
+  attachmentCount: number;
+  noteCount: number;
+  imageCount: number;
+  hiddenCount: number;
+}
+
+/**
+ * 퍼블리싱된 맵 — 비인증으로 받는다. doc 은 저장 스냅샷 그대로다.
+ *
+ * ★ **유료 맵이면 `locked: true` 이고 `doc` 은 2레벨까지 잘려 온다**
+ *   (2026-09-21, 27b §5.1). 서버가 자른 것이라 화면이 다시 가릴 것은
+ *   없다 — 여기 온 것이 곧 보여 줘도 되는 전부다.
+ */
 export interface PublishedMap {
   publishId: string;
   mapId: string;
@@ -361,6 +387,12 @@ export interface PublishedMap {
   doc: unknown;
   publishedAt: string;
   updatedAt: string | null;
+  /** 유료라 잘려 온 미리보기인가 */
+  locked?: boolean;
+  /** 값 (원). 유료일 때만 숫자다 */
+  priceKrw?: number | null;
+  /** 잘리기 **전**의 규모 — 손님이 살지 정하는 근거다 */
+  stats?: PreviewStats;
 }
 
 export const cloudApi = {
@@ -703,6 +735,17 @@ export const cloudApi = {
    */
   setMapListed: (mapId: string, listed: boolean) =>
     req<PublishStatus>('PATCH', `/maps/${mapId}/publish/listed`, { listed }),
+  /**
+   * **값 매기기 · 값 내리기** (2026-09-21, 27b §4.1).
+   *
+   *   `setMapPrice(id, 4900)`  값을 매긴다 → 유료공개
+   *   `setMapPrice(id, null)`  값을 내린다 → 무료공개
+   *
+   * 상태 전환(`setPublishVisibility`)과 **다른 문**이다 — 값과 상태가 함께
+   * 움직여야 "값 없는 유료 맵" 이 생기지 않는다.
+   */
+  setMapPrice: (mapId: string, priceKrw: number | null) =>
+    req<PublishStatus>('PATCH', `/maps/${mapId}/publish/price`, { priceKrw }),
   /**
    * ★ **주인이 보는 미리보기** (2026-09-05) — 비공개(보관)여도 받아진다.
    *

@@ -224,6 +224,11 @@ jobs:
       # NUL 한 글자로 두 검색이 함께 500 이 났다(2026-09-17, PostgreSQL 22021).
       - name: 검색어 다듬기(search-term) 단위 테스트
         run: npm run test:search-term
+      # ★ 유료 맵 미리보기 자르기 — **이것이 새면 파는 물건이 공짜가 된다.**
+      #   화면으로는 확인할 수 없는 종류의 실수라(노트 한 칸이 딸려 나가도
+      #   맵은 멀쩡해 보인다) 여기서 막는다 (27b §5.1).
+      - name: 유료 미리보기 자르기(trim-for-preview) 단위 테스트
+        run: npm run test:trim
       - name: DB 스키마 로드 (shim → schema → functions → seed)
         env:
           PGPASSWORD: emm

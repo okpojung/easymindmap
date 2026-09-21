@@ -183,6 +183,12 @@ a { color: inherit; text-decoration: none; }
   display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent); font-size: 11.5px; font-weight: 700;
 }
+/* 유료 맵의 값 — 제목 바로 아래. 무료 맵에는 이 줄이 아예 없다 */
+.card .price {
+  display: inline-block; margin: 2px 0 4px; padding: 2px 9px; border-radius: 999px;
+  background: #FFF3D6; color: #8A6410; font-size: 12px; font-weight: 800;
+  border: 1px solid #F0D9A8;
+}
 
 .cta { text-align: center; padding-top: 56px; padding-bottom: 80px; border-top: 1px solid var(--line); }
 .cta h2 { margin: 0 0 8px; font-size: 22px; letter-spacing: -.4px; }

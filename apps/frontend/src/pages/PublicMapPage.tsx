@@ -24,8 +24,9 @@ import { buildStandaloneHtml } from '@/export/exportHtml';
 import { withInlinedImages, withInlinedAttachments } from '@/export/mapMeta';
 import {
   cloudApi, CloudError, publishedAttachmentUrl, serverAttachmentId,
-  type PublishedMap,
+  type PreviewStats, type PublishedMap,
 } from '@/services/cloud/apiClient';
+import { useProFeature } from '@/pro/contract';
 import { isFreshTab, libraryBackHref } from '@/utils/viewerChrome';
 
 /** 주소가 퍼블리싱 링크인가 — 맞으면 publishId */
@@ -126,6 +127,7 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   return (
     <>
       <ViewerBar title={data.title} />
+      {data.locked && <PaidBanner priceKrw={data.priceKrw ?? null} stats={data.stats} />}
       <iframe
         data-testid="public-map-frame"
         title={data.title}
@@ -136,8 +138,10 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
         style={{
           position: 'fixed', left: 0, right: 0, bottom: 0,
           // 막대가 있을 때만 그만큼 내린다 — 없으면 예전 그대로 화면 전체다
-          top: 'var(--viewer-bar, 0px)', width: '100%',
-          height: 'calc(100% - var(--viewer-bar, 0px))', border: 'none',
+          // 막대 + (유료면) 잠김 띠만큼 내려간다
+          top: 'calc(var(--viewer-bar, 0px) + var(--viewer-paid, 0px))', width: '100%',
+          height: 'calc(100% - var(--viewer-bar, 0px) - var(--viewer-paid, 0px))',
+          border: 'none',
         }}
       />
     </>
@@ -146,6 +150,8 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
 
 /** 막대 높이 — iframe 이 이만큼 내려간다 */
 const BAR_H = 38;
+/** 유료 띠까지 있을 때의 높이 */
+const PAID_H = 86;
 
 /**
  * 뷰어 위의 **돌아갈 자리** (2026-09-19 사용자 지적).
@@ -212,6 +218,87 @@ function ViewerBar({ title }: { title: string }) {
       <button data-testid="viewer-close" type="button" onClick={closeTab} style={barBtn}>
         ✕ 닫기
       </button>
+    </div>
+  );
+}
+
+/**
+ * ★ **유료 맵의 잠김 띠** (2026-09-21, 27b §8.2).
+ *
+ * 아래 뷰어에 그려진 것은 **2레벨까지 잘린 미리보기**다 — 서버가 자른
+ * 것이라(`trimForPreview`) 여기서 무엇을 더 가릴 일은 없다. 이 띠가 하는
+ * 일은 **그것이 전부가 아니라는 사실을 말해 주는 것**이다. 말해 주지
+ * 않으면 손님은 "내용이 빈약한 맵" 으로 읽고 떠난다.
+ *
+ * ★ **[구매하기] 는 살 수 있을 때만 그린다.** 판매는 유료 모듈(pro)의
+ *   일이라, 이 서버에 그것이 없으면 단추 대신 **왜 없는지**를 적는다
+ *   (`GET /v1/features` 의 `map-sales`). 누르고 나서야 실패를 만나는 것이
+ *   가장 나쁘다 — `canSetVisibility` 를 다루는 방식과 같다.
+ */
+function PaidBanner({ priceKrw, stats }: { priceKrw: number | null; stats?: PreviewStats }) {
+  const sales = useProFeature('map-sales');
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--viewer-paid', `${PAID_H}px`);
+    return () => { document.documentElement.style.removeProperty('--viewer-paid'); };
+  }, []);
+
+  const num = (n: number) => n.toLocaleString('ko-KR');
+  const facts = stats ? [
+    `${num(stats.nodeCount)}개 노드`,
+    `최대 ${stats.maxDepth}단계`,
+    ...(stats.attachmentCount ? [`첨부 ${num(stats.attachmentCount)}개`] : []),
+    ...(stats.noteCount ? [`노트 ${num(stats.noteCount)}개`] : []),
+  ].join(' · ') : null;
+
+  return (
+    <div
+      data-testid="paid-banner"
+      style={{
+        position: 'fixed', left: 0, right: 0, zIndex: 9,
+        top: 'var(--viewer-bar, 0px)', height: PAID_H, boxSizing: 'border-box',
+        display: 'flex', alignItems: 'center', gap: 14, padding: '0 14px',
+        background: '#FFF7E6', borderBottom: '1px solid #F0D9A8',
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#7A5A12' }}>
+          🔒 유료 맵의 미리보기입니다 — 2단계까지만 보입니다
+        </div>
+        <div style={{ fontSize: 11.5, color: '#8B7346', marginTop: 3, lineHeight: 1.6 }}>
+          {facts ? `전체 ${facts}` : '전체 내용은 구매하면 볼 수 있습니다'}
+          {stats && stats.hiddenCount > 0 && ` · 가려진 노드 ${num(stats.hiddenCount)}개`}
+        </div>
+        <div style={{ fontSize: 11, color: '#A08B5E', marginTop: 2 }}>
+          노트 · 첨부 · 링크는 미리보기에 들어 있지 않습니다.
+        </div>
+      </div>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        {priceKrw !== null && (
+          <div
+            data-testid="paid-price"
+            style={{ fontSize: 17, fontWeight: 800, color: '#7A5A12' }}
+          >{num(priceKrw)}원</div>
+        )}
+        {sales.status === 'on' ? (
+          // 판매가 켜진 서버에서는 유료 모듈이 자기 화면을 얹는다.
+          // 코어에는 결제 단추의 **자리**만 있다 (open-core-boundary §3.1 ③).
+          <div data-testid="paid-buy-slot" style={{ marginTop: 4 }} />
+        ) : (
+          // ★ **서버가 준 `reason` 을 손님에게 그대로 보이지 않는다.**
+          //   그 문장은 운영자를 위한 것이다("모듈이 코어보다 오래된 판일
+          //   수 있습니다") — 맵을 사러 온 사람에게는 뜻도 없고, 우리
+          //   서버의 속사정을 밖으로 흘리는 일이기도 하다. 손님에게는
+          //   **지금 살 수 있나 없나**만 있으면 된다.
+          <div
+            data-testid="paid-unavailable"
+            style={{ fontSize: 11, color: '#A08B5E', marginTop: 4, maxWidth: 260 }}
+          >
+            아직 구매할 수 없습니다 — 판매 준비가 끝나면 열립니다.
+          </div>
+        )}
+      </div>
     </div>
   );
 }

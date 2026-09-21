@@ -72,6 +72,29 @@ export class PublishController {
     return this.publish.setListed(user.id, id, body.listed);
   }
 
+  /**
+   * **값 매기기 · 값 내리기** (2026-09-21, 27b §4.1).
+   *
+   *   `{ "priceKrw": 4900 }`  값을 매긴다 → 유료공개
+   *   `{ "priceKrw": null }`  값을 내린다 → 무료공개
+   *
+   * 상태 전환(`PATCH …/publish`)과 **다른 문**이다. 값과 상태를 한 번에
+   * 움직이는 일이라, 상태만 바꾸는 문에 섞으면 "값이 없는 유료 맵" 이
+   * 생긴다 (`publish.service.ts` 의 `setPrice`).
+   */
+  @Patch(':id/publish/price')
+  setPrice(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { priceKrw?: unknown },
+  ) {
+    const v = body?.priceKrw;
+    if (v !== null && typeof v !== 'number') {
+      throw new BadRequestException('priceKrw 를 숫자(원) 또는 null(무료로 내리기)로 주세요.');
+    }
+    return this.publish.setPrice(user.id, id, v);
+  }
+
   /** 퍼블리싱 **등록 취소** — 주소가 죽는다(다시 등록하면 새 주소) */
   @Delete(':id/publish')
   @HttpCode(204)

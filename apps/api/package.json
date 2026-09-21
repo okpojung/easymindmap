@@ -20,7 +20,8 @@
     "sync:emm": "node scripts/sync-emm-parser.mjs",
     "check:emm": "node scripts/sync-emm-parser.mjs --check",
     "test:og": "node test/og-tags.test.mjs",
-    "test:search-term": "node test/search-term.test.mjs"
+    "test:search-term": "node test/search-term.test.mjs",
+    "test:trim": "node test/trim-for-preview.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

@@ -1699,8 +1699,11 @@ export function Canvas({
               {visibleNodes
                 .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)
                 // Hide on the selected node and its parent so it doesn't overlap
-                // the selected node's +/- add indicators.
-                .filter((n) => n.id !== selectedId && n.id !== (selectedNode?.parent ?? ''))
+                // the selected node's +/- add indicators. **러버밴드 다중 선택
+                // 중에는 +/- 가 없으므로 숨기지 않는다** (2026-09-21 보고: 접힌
+                // 노드 여럿을 고르면 대표(첫) 노드의 접힘 숫자만 사라졌다).
+                .filter((n) => multiSelectedIds.length > 1
+                  || (n.id !== selectedId && n.id !== (selectedNode?.parent ?? '')))
                 .map((n) => {
                   // 접기 토글 위치 — 레이아웃 종류로 "결정론적으로" 정한다.
                   // 예전의 자식 좌표 평균 방향 방식은 같은 레이아웃에서도

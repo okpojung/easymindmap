@@ -177,6 +177,13 @@ interface DocumentState {
   updateNodeText: (nodeId: string | null, text: string) => void;
   updateNodeTextAlign: (nodeId: string | null, textAlign: TextAlign) => void;
   updateNodeLayoutType: (nodeId: string | null, layoutType: LayoutType) => void;
+  /**
+   * 러버밴드로 고른 여러 노드의 **하위 서브트리 레이아웃**을 한 번에 (2026-09-21
+   * 사용자 보고: "3개를 드래그해 골라 레이아웃을 바꾸면 첫 노드만 바뀐다").
+   * set() 한 번 = undo 한 단계. 'root'·중심주제 루트는 건너뛴다 — 그건 맵/중심
+   * 전체 레이아웃이라 단일 선택 경로(updateNodeLayoutType)로만 바꾼다.
+   */
+  updateNodesLayoutType: (nodeIds: string[], layoutType: LayoutType) => void;
 
   // 맵 전체 설정 — 레벨(깊이)별 기본 폰트 (좌측 '맵 설정' 메뉴)
   // level: 0=Root, 1~3=Level1~3, 4=Level4+ / patch에 size·family 부분 갱신
@@ -1682,6 +1689,22 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         })),
       };
     });
+  },
+
+  updateNodesLayoutType: (nodeIds, layoutType) => {
+    const ids = nodeIds.filter((id) => id && id !== 'root');
+    if (!ids.length) return;
+    set((state) => ({
+      map: ids.reduce((m, id) => {
+        if (isCenterRootId(m, id)) return m;
+        return mutateNode(m, id, (n) => ({
+          ...n,
+          layoutType,
+          edgeType: resolveEdgeType(layoutType),
+          children: clearLayoutTypeRecursive(n.children ?? []),
+        }));
+      }, state.map),
+    }));
   },
 
   setLevelShape: (level, shape) => {

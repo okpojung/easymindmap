@@ -332,15 +332,38 @@ export function PublishPanel(
           width: 'min(500px, 94vw)', background: t.surface, color: t.text,
           border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
           boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+          // ★ **화면 안에 가둔다** (2026-09-21 사용자 지적: "퍼블리싱 팝업창
+          //   오른쪽에 X 가 없다").
+          //
+          //   X 는 처음부터 있었다 — **보이지 않았을 뿐이다.** 이 창은
+          //   미리보기 그림까지 담아 974px 이나 되는데, 바깥이 세로 가운데
+          //   정렬(`alignItems: center`)이라 창이 화면보다 길면 **위아래로
+          //   똑같이 넘친다.** 넘친 위쪽에 제목과 X 가 있고, 바깥이
+          //   `position: fixed` 라 **스크롤해서 닿을 수도 없다.**
+          //   실측: 화면 900px 에서 패널 top 이 **-37px** (X 는 -26px).
+          //
+          //   그래서 높이를 화면 안으로 묶고 **본문만 구른다.** X 는 패널에
+          //   `absolute` 로 붙어 있으므로 굴러도 제자리에 남는다.
+          //   ★ `boxSizing` 이 없으면 **패딩 40px 과 테두리가 그 위에 더해져**
+          //     화면을 5px 넘긴다(실측 — 화면 900 에 패널 910). maxHeight 는
+          //     content-box 에 걸리기 때문이다.
+          maxHeight: 'calc(100vh - 32px)', boxSizing: 'border-box',
+          display: 'flex', flexDirection: 'column',
         }}
       >
         <DialogXButton t={t} testId="publish-panel-x" onClose={onClose} />
-        <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4, paddingRight: 34 }}>
+        <div style={{
+          fontSize: 15.5, fontWeight: 800, marginBottom: 4, paddingRight: 34, flexShrink: 0,
+        }}>
           🔗 퍼블리싱 — 링크로 공유
         </div>
-        <div style={{ fontSize: 12, color: t.textSubtle, marginBottom: 14 }}>
+        <div style={{ fontSize: 12, color: t.textSubtle, marginBottom: 14, flexShrink: 0 }}>
           {mapTitle}
         </div>
+
+        {/* 구르는 칸 — `minHeight: 0` 이 없으면 flex 자식이 **줄지 않아**
+            maxHeight 가 무시된다(flexbox 의 오래된 함정). */}
+        <div data-testid="publish-scroll" style={{ overflowY: 'auto', minHeight: 0 }}>
 
         {error && (
           <div
@@ -653,11 +676,13 @@ export function PublishPanel(
           </>
         )}
 
+        </div>{/* 구르는 칸 끝 */}
+
         <button
           data-testid="publish-close"
           onClick={onClose}
           style={{
-            ...btn, width: '100%', marginTop: 12, height: 32,
+            ...btn, width: '100%', marginTop: 12, height: 32, flexShrink: 0,
             background: 'transparent', color: t.textSubtle, fontWeight: 600, fontSize: 12.5,
           }}
         >닫기</button>

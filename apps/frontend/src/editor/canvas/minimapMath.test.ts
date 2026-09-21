@@ -3,7 +3,7 @@
 
 import {
   MINIMAP_MIN_VIEW, minimapGeometry, minimapPanelSize, miniToWorld, paddedBounds, panForCenter,
-  viewportWorldRect, worldBounds, worldToMini,
+  shiftOrigin, viewportWorldRect, worldBounds, worldToMini,
 } from './minimapMath';
 
 let failed = 0;
@@ -72,12 +72,25 @@ check('⑦ 창 안에서 움직이면 창은 그대로', g2.bounds.y, prev.y);
 const far = { ...view, y: view.y + 6000 };                // 창 밖으로
 const g3 = minimapGeometry(tall, far, 288, 288, prev);
 check('⑦ 창 밖으로 나가면 창이 따라온다 (표시창 중심으로)', r2(g3.bounds.y + g3.bounds.h / 2), r2(far.y + far.h / 2));
-const g4 = minimapGeometry(tall, far, 288, 288, prev, true);
-check('⑦ 끄는 동안은 밖으로 나가도 창 고정', g4.bounds.y, prev.y);
+// 끄는 중(follow): 표시창이 창 밖으로 나간 **만큼만** 창이 따라온다 — 사각형이 가장자리에 붙는다
+const g4 = minimapGeometry(tall, far, 288, 288, prev, 'follow');
+check('⑦ 끄는 중 밖으로 나가면 창이 그만큼만 따라온다 (아래 끝이 표시창 아래 끝)', r2(g4.bounds.y + g4.bounds.h), r2(far.y + far.h));
+check('⑦ 끄는 중 창 안이면 그대로', minimapGeometry(tall, moved, 288, 288, prev, 'follow').bounds.y, prev.y);
+const up = { ...view, y: prev.y - 300 };                  // 위로 조금 넘김
+check('⑦ 위로 넘기면 위 끝이 표시창 위 끝', r2(minimapGeometry(tall, up, 288, 288, prev, 'follow').bounds.y), r2(up.y));
+// 휠 뒤(hold): 표시창이 어디 있든 직전 창 그대로
+check('⑦ hold 는 밖으로 나가도 창 그대로', minimapGeometry(tall, far, 288, 288, prev, 'hold').bounds.y, prev.y);
 const top = { ...view, y: -20000 };                       // 맵 위 끝(−7200) 너머
 const g5 = minimapGeometry(tall, top, 288, 288);
 check('⑦ 창은 맵 경계 밖으로 나가지 않는다 (위 끝에서 멈춤)', r2(g5.bounds.y), r2(paddedBounds(tall).y));
 check('⑦ 배율이 바뀌면 직전 창은 버린다', minimapGeometry(tall, moved, 288, 288, { ...prev, scale: prev.scale * 2 }).bounds.y !== prev.y, true);
+
+// ⑦-b 휠로 창 옮기기 — mini px ÷ 배율만큼, 맵 경계 안에서, 맵이 들어가는 축(가로)은 그대로
+const o1 = shiftOrigin(gt, tall, 50, 120);
+check('⑦-b 세로로 120px ÷ 배율', r2(o1.y - gt.bounds.y), r2(120 / gt.scale));
+check('⑦-b 가로는 맵이 창에 들어가니 안 움직인다', o1.x, gt.bounds.x);
+const o2 = shiftOrigin(gt, tall, 0, -1e9);
+check('⑦-b 위로 아무리 굴려도 맵 위 끝(여백 포함)에서 멈춘다', r2(o2.y), r2(paddedBounds(tall).y));
 
 // ⑧ 왕복 — world ↔ mini
 const wr = { x: 500, y: 100, w: 300, h: 200 };

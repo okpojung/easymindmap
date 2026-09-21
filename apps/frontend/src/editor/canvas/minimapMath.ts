@@ -78,14 +78,23 @@ export function minimapPanelSize(W: number, H: number): { panelW: number; panelH
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+/** 창(영역) 원점을 어떻게 정하나 — Minimap 컴포넌트의 상태에서 온다 */
+export type MinimapOriginMode =
+  /** 가만히 있을 때: 표시창이 가장자리(6%) 안에 있으면 직전 창 유지, 아니면 표시창 중심으로 */
+  | 'auto'
+  /** 끄는 중: 직전 창을 두되 표시창이 밖으로 나가면 **그만큼만** 따라온다(가장자리에 붙는다) —
+   *  이렇게 하면 사각형을 가장자리로 밀고 있는 동안 맵이 계속 흐른다 (2026-09-21 "끝으로
+   *  옮기면 전체 맵이 빨리 안 보인다" 보고) */
+  | 'follow'
+  /** 휠로 창을 옮긴 뒤: 표시창과 무관하게 직전 창 그대로 (다음 클릭·끌기 전까지) */
+  | 'hold';
+
 /**
  * 미니맵 기하.
  *   · scale = max(맵 전체가 들어가는 배율, 표시창이 60×45 가 되는 배율)
  *   · 영역(bounds) = 패널 ÷ scale. 축마다: 맵이 그 안에 들어가면 **맵을 가운데**,
- *     안 들어가면 **표시창 중심을 가운데**로 두되 맵 경계 밖으로는 나가지 않는다.
- *   · `prev`(직전 영역)가 있으면 **표시창이 가장자리(6% 여백) 안에 있는 동안은
- *     그대로 둔다** — 끌 때마다 창이 따라 움직이면 사각형이 제자리에 서고 맵이
- *     흐르는 조이스틱이 된다. `freeze` 는 끄는 중(포인터 잡고 있는 동안) 무조건 유지.
+ *     안 들어가면 mode 대로 (`MinimapOriginMode`) — 어느 경우든 맵 경계 밖으로는 안 나간다.
+ *   · 배율이 바뀌면 직전 창은 버린다.
  */
 export function minimapGeometry(
   nodeBounds: Rect | null,
@@ -93,7 +102,7 @@ export function minimapGeometry(
   panelW: number,
   panelH: number,
   prev?: { x: number; y: number; scale: number } | null,
-  freeze = false,
+  mode: MinimapOriginMode = 'auto',
 ): MinimapGeom {
   const pb = paddedBounds(nodeBounds);
   const fitScale = Math.min(panelW / pb.w, panelH / pb.h);
@@ -106,9 +115,17 @@ export function minimapGeometry(
     if (mapLen <= winLen) return mapLo + mapLen / 2 - winLen / 2; // 맵이 들어간다 → 가운데
     const lo = mapLo, hi = mapLo + mapLen - winLen;
     if (prevLo !== undefined) {
+      if (mode === 'hold') return clamp(prevLo, lo, hi);
+      if (mode === 'follow') {
+        // 표시창이 창 밖으로 나간 만큼만 민다 — 사각형은 가장자리에 붙고 창이 흐른다
+        let next = prevLo;
+        if (viewLo < next) next = viewLo;
+        else if (viewLo + viewLen > next + winLen) next = viewLo + viewLen - winLen;
+        return clamp(next, lo, hi);
+      }
       const m = winLen * 0.06;
       const inside = viewLo >= prevLo + m && viewLo + viewLen <= prevLo + winLen - m;
-      if (freeze || inside) return prevLo;
+      if (inside) return prevLo;
     }
     return clamp(viewLo + viewLen / 2 - winLen / 2, lo, hi);
   };
@@ -116,6 +133,19 @@ export function minimapGeometry(
   const x = axis(pb.x, pb.w, view.x, view.w, winW, usePrev?.x);
   const y = axis(pb.y, pb.h, view.y, view.h, winH, usePrev?.y);
   return { bounds: { x, y, w: winW, h: winH }, scale, panelW, panelH, fits };
+}
+
+/** 휠로 창을 옮긴다 — mini px 만큼, 맵 경계 안에서. 맵이 창에 들어가는 축은 움직이지 않는다 */
+export function shiftOrigin(
+  g: MinimapGeom, nodeBounds: Rect | null, dxMini: number, dyMini: number,
+): { x: number; y: number } {
+  const pb = paddedBounds(nodeBounds);
+  const one = (mapLo: number, mapLen: number, winLen: number, cur: number, d: number) =>
+    mapLen <= winLen ? cur : clamp(cur + d / g.scale, mapLo, mapLo + mapLen - winLen);
+  return {
+    x: one(pb.x, pb.w, g.bounds.w, g.bounds.x, dxMini),
+    y: one(pb.y, pb.h, g.bounds.h, g.bounds.y, dyMini),
+  };
 }
 
 export function worldToMini(g: MinimapGeom, r: Rect): Rect {

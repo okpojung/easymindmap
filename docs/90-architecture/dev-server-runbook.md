@@ -1730,20 +1730,92 @@ sudo crontab -l          # 백업 줄이 보여야 한다 (헬스 감시 줄과 
 | `DEST` | `/var/backups/emm` | 담는 곳 |
 | `KEEP_DAYS` | `14` | 이보다 오래된 백업은 지운다 |
 | `REQUIRE_DBS` | `gotrue` | **이 이름이 파일 안에 없으면 실패.** 쉼표로 여럿 |
-| `OFFSITE_CMD` | (없음) | 서버 밖으로 옮기는 명령. 파일 경로가 `$1` |
+| `OFFSITE_DIR` | (없음) | **NAS 마운트 디렉터리**. 복사 뒤 바이트 비교, 안에 `.emm-offsite` 표식이 있어야 쓴다 (2026-09-21) |
+| `OFFSITE_KEEP_DAYS` | `60` | `OFFSITE_DIR` 안에서 이보다 오래된 백업은 지운다 (NAS 는 서버보다 오래 둔다) |
+| `OFFSITE_TIMEOUT` | `600` | NAS 가 응답하지 않을 때 복사를 기다리는 상한(초) |
+| `OFFSITE_CMD` | (없음) | 디렉터리가 아니라 명령으로 보낼 때. 파일 경로가 `$1`. `OFFSITE_DIR` 이 있으면 무시 |
 | `MIN_BYTES` | `10240` | 푼 크기의 바닥값 |
 
 #### ★ 서버 밖으로 — 안 하면 백업이 아니다
 
 `DEST` 는 **같은 서버다.** 서버가 통째로 죽으면 백업도 함께 죽는다.
-`OFFSITE_CMD` 를 주지 않으면 스크립트가 매번 경고를 남긴다.
+`OFFSITE_DIR`/`OFFSITE_CMD` 를 주지 않으면 스크립트가 매번 경고를 남긴다.
+
+**결정 (2026-09-21 사용자):** NAS(hng2)에 공유 폴더 **`EasyMindmap_DB_Backup`**
+을 만들어 거기로 보낸다. 지금은 dev DB 를 보내지만, **운영이 서면 dev 는
+보내지 않고 운영 DB 만** 이곳에 둔다. 그래서 폴더를 환경별로 나눈다 —
+`dev/` · `prod/`. 운영이 서면 dev 의 cron 에서 `OFFSITE_DIR` 을 빼고
+`dev/` 는 지운다.
+
+##### ① NAS 쪽 — 공유 폴더와 NFS 권한 (DSM)
+
+1. **제어판 ▸ 공유 폴더 ▸ 생성** — 이름 `EasyMindmap_DB_Backup`. 휴지통은
+   꺼도 된다(스크립트가 60일 보관을 스스로 한다).
+2. 그 폴더 **▸ 편집 ▸ NFS 권한 ▸ 생성** — 호스트: dev 서버 IP(운영이 서면
+   VM-03 IP 를 하나 더), 권한 **읽기/쓰기**, Squash **매핑 없음**(cron 이
+   root 로 쓴다), 보안 `sys`, **"마운트된 하위 폴더 접근 허용"** 체크.
+3. 같은 화면 아래의 **마운트 경로**(`/volume1/EasyMindmap_DB_Backup` 꼴)를
+   적어 둔다 — ②에서 쓴다.
+
+##### ② 서버 쪽 — 마운트 (첨부 파일 마운트 §1.5-A 와 같은 NAS, 옵션은 다르다)
 
 ```bash
-# 예 — rclone 으로 원격 저장소에
-10 3 * * * OFFSITE_CMD='rclone copy "$1" remote:emm-backups/' /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1
+NAS=$(grep -m1 ' nfs ' /etc/fstab | cut -d: -f1)   # §1.5-A 에서 이미 쓰는 NAS 주소
+echo "NAS=$NAS"; showmount -e "$NAS" | grep -i EasyMindmap_DB_Backup   # 내보내기가 보여야 한다
+
+sudo mkdir -p /mnt/nas/emm-db-backup
+sudo mount -t nfs -o vers=4.1,soft,timeo=150,retrans=3 "$NAS:/volume1/EasyMindmap_DB_Backup" /mnt/nas/emm-db-backup
+sudo mkdir -p /mnt/nas/emm-db-backup/dev /mnt/nas/emm-db-backup/prod
+sudo touch /mnt/nas/emm-db-backup/dev/.emm-offsite /mnt/nas/emm-db-backup/prod/.emm-offsite
+ls -la /mnt/nas/emm-db-backup/dev/        # .emm-offsite 가 보여야 한다
 ```
 
-`DEST` 자체를 NAS 마운트(§1.5-A)로 두는 것도 같은 효과다.
+`/etc/fstab` 에 한 줄 (부팅 뒤 자동 마운트):
+
+```
+<NAS주소>:/volume1/EasyMindmap_DB_Backup  /mnt/nas/emm-db-backup  nfs  vers=4.1,_netdev,noatime,soft,timeo=150,retrans=3  0  0
+```
+
+> **왜 `soft` 인가** — 첨부 파일(§1.5-A)은 `hard` 다: 쓰다 끊기면
+> 기다려야 데이터가 안 깨진다. 백업 복사는 반대다. NAS 가 죽어 있으면
+> **빨리 실패해서 메일이 와야** 하고, 서버 안 사본은 어차피 남아 있다.
+> `hard` 로 두면 cron 이 영원히 매달려 다음 날 백업까지 못 돈다. 복사
+> 결과는 `cmp` 로 바이트까지 비교하므로 `soft` 의 위험(조용한 부분 쓰기)은
+> 없다.
+
+##### ③ 표식 파일 — 마운트가 빠졌을 때를 위해
+
+`.emm-offsite` 는 스크립트가 **"여기가 정말 NAS 인가"** 를 확인하는 표식이다.
+NFS 마운트가 빠지면 `/mnt/nas/emm-db-backup/dev` 는 **로컬 디스크의 빈
+디렉터리**가 되고, 거기에 쓰면 "밖으로 보냈다" 고 착각한다. 표식은 NAS
+쪽 파일이라 마운트가 빠지면 함께 사라진다 → 스크립트가 실패로 알린다.
+
+##### ④ 손으로 한 번, 그리고 cron
+
+```bash
+sudo OFFSITE_DIR=/mnt/nas/emm-db-backup/dev /usr/local/bin/emm-db-backup.sh
+ls -la /mnt/nas/emm-db-backup/dev/
+```
+
+`✅ 서버 밖으로 복사했습니다 → /mnt/nas/emm-db-backup/dev/all-….sql.gz (60일 보관)`
+가 나오고 NAS 폴더에 파일이 보이면 된다. 그다음 cron 줄을 바꾼다(붙여넣기
+한 줄, 두 번 실행해도 겹치지 않는다):
+
+```bash
+sudo bash -c '( crontab -l 2>/dev/null | grep -v emm-db-backup.sh; echo "10 3 * * * OFFSITE_DIR=/mnt/nas/emm-db-backup/dev /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1" ) | crontab -'
+sudo crontab -l
+```
+
+##### ⑤ 운영으로 갈 때 (B20 ⑤ 와 함께)
+
+- 운영 DB 는 **VM-03 네이티브 PostgreSQL** 이라 백업 cron 도 **VM-03** 에서
+  돈다. 스크립트는 `docker exec` 대신 로컬 `pg_dumpall` 분기가 필요하고
+  (B20 ⑤), 메일 설정은 api 컨테이너가 없으니 `/etc/emm-backup.env` 에서
+  읽는다. NAS NFS 권한에 VM-03 IP 를 더하고 ②를 VM-03 에서 반복한다.
+- 운영 cron: `OFFSITE_DIR=/mnt/nas/emm-db-backup/prod`. **dev 의 cron 에서는
+  `OFFSITE_DIR` 을 뺀다** — 사용자 결정: 운영이 서면 dev 는 NAS 에 두지 않는다.
+- 다른 명령으로 보내야 하면 `OFFSITE_CMD` 가 그대로 있다:
+  `OFFSITE_CMD='rclone copy "$1" remote:emm-backups/'`.
 
 #### 알려진 구멍 — cron 이 조용히 멈추는 경우
 
@@ -1780,6 +1852,109 @@ curl -s https://api-dev.mindmap.ai.kr/v1/health      # "schema":"ok" 여야 한�
 > **"되돌려 봤다"** 여야 믿을 수 있다. 운영 인스턴스(B14 ③)를 세울 때
 > dev 백업을 그쪽에 복원해 보는 것이 가장 싼 리허설이다 — 어차피 한 번은
 > 옮겨야 하는 데이터다.
+
+#### ★ 복원 리허설 — 빈 PostgreSQL 에 풀어 **로그인까지** (2026-09-21)
+
+"파일이 있다" 와 "되돌아온다" 는 다르다. 아래는 **진짜 DB 를 건드리지 않고**
+격리된 컨테이너 둘(빈 PostgreSQL + 그것만 바라보는 GoTrue)로 백업 한 벌을
+되살려, 표 개수가 같고 **비밀번호 로그인이 되는지**까지 보는 절차다.
+dev 에서 분기에 한 번, 그리고 PostgreSQL·GoTrue 이미지를 올린 뒤에 한다.
+`ubuntu@em-dev` 터미널에서 블록을 **순서대로** 붙여 넣는다. 각 블록 끝의
+"정상이면" 이 안 나오면 다음으로 가지 않는다.
+
+```bash
+# ── 0) 재료 — 최신 백업, 진짜 DB 의 이미지·비밀번호, gotrue 의 이미지·접속 문자열
+umask 077
+F=$(ls -t /var/backups/emm/all-*.sql.gz | head -1)
+API=$(docker ps --format '{{.Names}}|{{.Ports}}' | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+URL=$(docker exec "$API" printenv DATABASE_URL)
+DBC=$(printf '%s' "$URL" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+DBN=$(printf '%s' "$URL" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+IMG=$(docker inspect "$DBC" --format '{{.Config.Image}}')
+PW=$(docker inspect "$DBC" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_PASSWORD=//p' | head -1)
+AUTHC=$(docker ps --format '{{.Names}}|{{.Image}}' | grep -iE 'gotrue|supabase/auth' | head -1 | cut -d'|' -f1)
+AUTH_IMG=$(docker inspect "$AUTHC" --format '{{.Config.Image}}')
+AUTH_URL=$(docker exec "$AUTHC" sh -c 'printenv GOTRUE_DB_DATABASE_URL || printenv DATABASE_URL')
+NS=$(docker exec "$AUTHC" printenv GOTRUE_DB_NAMESPACE 2>/dev/null); NS=${NS:-auth}
+echo "파일=$F"; echo "DB=$DBC ($IMG) 앱DB=$DBN"; echo "gotrue=$AUTHC ($AUTH_IMG) 스키마=$NS"
+[ -n "$F" ] && [ -n "$DBC" ] && [ -n "$PW" ] && [ -n "$AUTHC" ] && [ -n "$AUTH_URL" ] && echo "정상이면: 위 세 줄이 모두 채워져 있다"
+```
+
+```bash
+# ── 1) 격리된 망 + 빈 PostgreSQL (진짜와 같은 이미지, 같은 postgres 비밀번호)
+docker network create emm-rehearsal >/dev/null 2>&1 || true
+docker run -d --name emm-rehearsal-db --network emm-rehearsal -e POSTGRES_PASSWORD="$PW" "$IMG" >/dev/null
+until docker exec emm-rehearsal-db pg_isready -U postgres -q 2>/dev/null; do sleep 1; done
+docker exec emm-rehearsal-db psql -U postgres -tAc "SELECT datname FROM pg_database WHERE NOT datistemplate"
+echo "정상이면: postgres 하나뿐이다 (아직 비어 있다)"
+```
+
+```bash
+# ── 2) 복원 — pg_dumpall 결과를 통째로 붓는다 (역할·데이터베이스·데이터 전부)
+gzip -cd "$F" | docker exec -i emm-rehearsal-db psql -U postgres -d postgres -q \
+  >/dev/null 2>"$HOME/rehearsal-errors.txt"
+echo "오류 종류:"; grep ERROR "$HOME/rehearsal-errors.txt" | sed 's/^psql:[^:]*:[0-9]*: //' | sort | uniq -c
+docker exec emm-rehearsal-db psql -U postgres -tAc "SELECT datname FROM pg_database WHERE NOT datistemplate"
+echo "정상이면: 오류는 'role \"postgres\" already exists' 한 종류뿐이고, 데이터베이스에 gotrue 가 있다"
+```
+
+> 그 오류는 정상이다 — 빈 컨테이너에도 `postgres` 역할은 이미 있고,
+> `pg_dumpall` 은 그것을 다시 만들려 한다. **다른 종류의 오류가 있으면
+> 여기서 멈추고** `~/rehearsal-errors.txt` 를 통째로 붙여 온다.
+
+```bash
+# ── 3) 안에 뭐가 들어왔나 — 진짜 DB 와 나란히 센다
+cmp_q() { a=$(docker exec "$DBC" psql -U postgres -d "$1" -tAc "$2" 2>&1 | tr -d '\r')
+          b=$(docker exec emm-rehearsal-db psql -U postgres -d "$1" -tAc "$2" 2>&1 | tr -d '\r')
+          [ "$a" = "$b" ] && echo "✅ $1 · $2 → $a" || echo "❌ $1 · $2 → 진짜=$a 복원=$b"; }
+cmp_q "$DBN" "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
+cmp_q "$DBN" "SELECT count(*) FROM map_documents"
+cmp_q "$DBN" "SELECT count(*) FROM map_versions"
+cmp_q gotrue "SELECT count(*) FROM $NS.users"
+cmp_q gotrue "SELECT count(*) FROM $NS.identities"
+echo "정상이면: 전부 ✅ (백업 뒤에 누가 저장했으면 map_* 만 진짜가 1~2 크다 — 그건 정상)"
+```
+
+```bash
+# ── 4) 진짜 로그인 — 복원된 DB 만 바라보는 GoTrue 를 하나 더 띄워 토큰을 받아 본다
+docker inspect "$AUTHC" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+  | grep -vE '^(GOTRUE_DB_DATABASE_URL|DATABASE_URL|GOTRUE_API_HOST|GOTRUE_API_PORT|PORT)=' > "$HOME/rehearsal-auth.env"
+REH_URL=$(printf '%s' "$AUTH_URL" | sed -E 's#@[^/]+/#@emm-rehearsal-db:5432/#')
+docker run -d --name emm-rehearsal-auth --network emm-rehearsal --env-file "$HOME/rehearsal-auth.env" \
+  -e GOTRUE_DB_DATABASE_URL="$REH_URL" -e DATABASE_URL="$REH_URL" -e GOTRUE_API_HOST=0.0.0.0 \
+  -p 127.0.0.1:9998:9999 "$AUTH_IMG" >/dev/null
+sleep 8; curl -s http://127.0.0.1:9998/health; echo
+read -rp "시험할 계정 이메일: " EM; read -rsp "비밀번호: " PWD_; echo
+curl -s -X POST 'http://127.0.0.1:9998/token?grant_type=password' -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EM\",\"password\":\"$PWD_\"}" | grep -o '"access_token":"[^"]\{0,12\}' \
+  && echo "✅ 복원된 DB 로 로그인됐다 — gotrue 가 살아났다" || { echo "❌ 로그인 실패"; docker logs --tail 20 emm-rehearsal-auth; }
+```
+
+> 이 GoTrue 는 진짜 DB 를 모른다(격리된 망에서 `emm-rehearsal-db` 만
+> 본다). `127.0.0.1` 에만 열었으니 밖에서는 못 붙는다. 비밀번호 로그인은
+> 메일을 보내지 않는다.
+
+```bash
+# ── 5) 치운다 — 비밀값이 든 env 파일까지
+docker rm -f emm-rehearsal-auth emm-rehearsal-db >/dev/null; docker network rm emm-rehearsal >/dev/null
+rm -f "$HOME/rehearsal-auth.env" "$HOME/rehearsal-errors.txt"; unset PW PWD_ AUTH_URL REH_URL
+docker ps -a --format '{{.Names}}' | grep rehearsal || echo "정상이면: 이 줄만 보인다 (남은 것 없음)"
+```
+
+**운영으로 갈 때 — 같은 리허설을 어떻게 하나**
+
+| | dev (지금) | 운영 (VM-03 네이티브 PG 16) |
+|---|---|---|
+| 빈 PG | 같은 이미지의 컨테이너 | **같은 호스트에 둘째 클러스터** — `sudo pg_createcluster 16 rehearsal -p 5499 --start`, 끝나면 `sudo pg_dropcluster 16 rehearsal --stop` |
+| 복원 | `docker exec -i … psql` | `gzip -cd 파일 \| sudo -u postgres psql -p 5499 -d postgres -q` |
+| 세기(③) | `docker exec` 둘 | `psql -p 5432` 와 `psql -p 5499` 를 나란히 |
+| 로그인(④) | 격리된 GoTrue 컨테이너 | GoTrue 는 VM-02 의 docker 다. `pg_hba.conf` 에 VM-02 → `:5499` 를 **잠깐** 열고 같은 방식으로 띄우거나, **운영 구축 때 dev 백업을 운영에 복원하는 것 자체를 로그인 리허설로 삼는다**(어차피 한 번은 옮기는 데이터다) |
+| 서버가 통째로 죽었을 때 | NAS `dev/` 에서 파일을 새 서버로 복사한 뒤 위 "복원 절차" | NAS `prod/` 에서 새 VM-03 으로 복사한 뒤 같은 절차. **네이티브 PG 는 `pg_hba`·`postgresql.conf` 가 덤프에 없다** — infra-architecture §8-A 대로 먼저 설치·설정하고 붓는다 |
+
+리허설 결과(날짜 · 파일 이름 · ③ 결과 · ④ 결과)는 이 절 아래에 한 줄씩 남긴다.
+
+- 2026-09-21: 절차 작성. **아직 dev 에서 한 번도 돌리지 않았다** — 첫 실행
+  결과를 보고 다듬는다.
 
 ### 2.2 ★ 헬스체크 감시 — 나빠지면 메일 (2026-08-15, B14 ⑤)
 

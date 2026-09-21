@@ -160,6 +160,28 @@ check '⑨ 큰 덤프에서도 gotrue 를 찾는다'      '✅.*sql\.gz'        
 check_not '⑨ 있는데 없다고 하지 않는다'       '백업 파일 안에 없습니다'     "$OUT"
 [ -f "$WORK/state/last-success" ] && ok '⑨ 성공으로 기록한다' || bad '⑨ 성공으로 기록한다'
 
+# ── ⑩ OFFSITE_DIR — NAS 마운트로 한 벌 더 (2026-09-21) ─────────────
+rm -rf "$WORK/dest" "$WORK/state" "$WORK/nas"; mkdir -p "$WORK/nas"
+OUT=$(OFFSITE_DIR="$WORK/nas" run)
+check '⑩ 표식이 없으면 실패한다(마운트 빠짐)'   '\.emm-offsite 표식이 없습니다' "$OUT"
+check '⑩ 그래도 서버 안 백업은 남았다고 말한다' '서버 안 백업.*남아 있습니다' "$OUT"
+ls "$WORK/dest"/all-*.sql.gz >/dev/null 2>&1 && ok '⑩ 로컬 파일은 지우지 않는다' || bad '⑩ 로컬 파일은 지우지 않는다'
+[ -f "$WORK/state/last-success" ] && bad '⑩ 밖으로 못 보냈으면 성공이 아니다' || ok '⑩ 밖으로 못 보냈으면 성공이 아니다'
+check '⑩ 실패하면 메일을 보낸다'               'curl-called'                "$(cat "$MAIL_LOG")"
+[ "$(ls "$WORK/nas" | wc -l)" = "0" ] && ok '⑩ 표식 없는 곳에는 아무것도 쓰지 않는다' || bad '⑩ 표식 없는 곳에는 아무것도 쓰지 않는다'
+
+rm -rf "$WORK/dest" "$WORK/state"; touch "$WORK/nas/.emm-offsite"
+touch -d '90 days ago' "$WORK/nas/all-20260101-0000.sql.gz" 2>/dev/null \
+  || touch -t 202601010000 "$WORK/nas/all-20260101-0000.sql.gz"
+touch "$WORK/nas/all-20260901-0000.sql.gz"
+OUT=$(OFFSITE_DIR="$WORK/nas" run)
+check '⑩ 표식이 있으면 복사한다'              '서버 밖으로 복사했습니다 → .*nas/all-.*60일 보관' "$OUT"
+[ "$(ls "$WORK/nas"/all-*.sql.gz | wc -l)" = "2" ] && ok '⑩ 사본이 생기고 60일 지난 것은 지운다' || bad '⑩ 사본이 생기고 60일 지난 것은 지운다'
+ls "$WORK/nas/all-20260901-0000.sql.gz" >/dev/null 2>&1 && ok '⑩ 60일 안 된 것은 둔다' || bad '⑩ 60일 안 된 것은 둔다'
+ls "$WORK/nas"/*.tmp >/dev/null 2>&1 && bad '⑩ NAS 에 임시 파일을 남기지 않는다' || ok '⑩ NAS 에 임시 파일을 남기지 않는다'
+L=$(ls "$WORK/dest"/all-*.sql.gz); cmp -s "$L" "$WORK/nas/$(basename "$L")" && ok '⑩ 사본이 원본과 같다' || bad '⑩ 사본이 원본과 같다'
+[ -f "$WORK/state/last-success" ] && ok '⑩ 성공으로 기록한다' || bad '⑩ 성공으로 기록한다'
+
 echo
 echo "합계: ${pass}건 통과, ${fail}건 실패"
 [ "$fail" = "0" ] || exit 1

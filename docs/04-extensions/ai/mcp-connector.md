@@ -1724,14 +1724,19 @@ MCP 도구 정의의 `annotations` 는 클라이언트가 **확인 창을 띄울
 |---|---|---|---|---|
 | `list_maps` · `get_map` · `get_open_map` | **true** | — | — | false |
 | `create_map` · `append_to_map` · `import_github_docs` | false | **false** | false | (import 만 true) |
-| `check_items` | false | false | **true** | false |
+| `check_items` | false | **true**(`[ ]`↔`[x]` 로 있는 글을 바꾼다) | **true** | false |
 | `update_map_from_github` | false | **true**(노드를 지운다) | true | true |
+
+> `destructiveHint:false` 는 규격에서 **"덧붙이기만 한다"** 는 약속이다. 처음엔
+> `check_items` 를 false 로 뒀는데 Codex 가 짚었다(#534 P2) — 체크 한 글자라도
+> 있는 내용을 고치는 것이므로 클라이언트가 확인을 늦추면 안 된다. 되돌릴 수
+> 있느냐와는 다른 축이다(그건 `idempotentHint`).
 
 Claude 쪽에는 영향이 없다 — claude.ai 는 힌트를 참고만 하고 확인 정책은
 자기 설정을 따른다. `tools/list` 응답에 필드 하나가 늘 뿐이라 **커넥터를
 다시 등록할 필요는 없다**(붙을 때마다 다시 읽는다, §9.2 ② 아래 주석).
-시험: `mcp-jsonrpc.test.mjs` 5항목(읽기 전용 셋 · 쓰기 다섯 · 파괴 하나 ·
-GitHub 둘 · 빠진 도구 없음).
+시험: `mcp-jsonrpc.test.mjs` 6항목(읽기 전용 셋 · 쓰기 다섯 · 파괴 둘 ·
+덧붙이기만 셋 · GitHub 둘 · 빠진 도구 없음).
 
 ### 12.3 붙이는 법 — 사용자가 하는 일
 

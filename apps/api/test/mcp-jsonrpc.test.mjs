@@ -82,7 +82,8 @@ check('check_items: nodes 는 문자열 배열', [byName.check_items.inputSchema
 check('읽기 전용 셋만 readOnlyHint', TOOL_DEFS.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name), ['list_maps', 'get_map', 'get_open_map']);
 check('쓰는 도구는 전부 readOnlyHint:false', TOOL_DEFS.filter((t) => t.annotations?.readOnlyHint === false).map((t) => t.name),
   ['create_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github']);
-check('노드를 지우는 것은 update_map_from_github 하나', TOOL_DEFS.filter((t) => t.annotations?.destructiveHint === true).map((t) => t.name), ['update_map_from_github']);
+check('있는 내용을 바꾸는 둘만 destructiveHint — 체크박스·GitHub 갱신 (#534 Codex: false 는 "덧붙이기만" 약속)', TOOL_DEFS.filter((t) => t.annotations?.destructiveHint === true).map((t) => t.name), ['check_items', 'update_map_from_github']);
+check('덧붙이기만 하는 셋은 destructiveHint:false', TOOL_DEFS.filter((t) => t.annotations?.destructiveHint === false).map((t) => t.name), ['create_map', 'append_to_map', 'import_github_docs']);
 check('GitHub 로 나가는 둘만 openWorldHint', TOOL_DEFS.filter((t) => t.annotations?.openWorldHint === true).map((t) => t.name), ['import_github_docs', 'update_map_from_github']);
 check('힌트 없는 도구는 없다', TOOL_DEFS.filter((t) => !t.annotations).map((t) => t.name), []);
 // **지우거나 바꾸는 도구가 없다**(§2-3) — 이름으로 못 박는다. append 는 덧붙이기만,

@@ -38,8 +38,11 @@ import {
  * (2026-09-21, ChatGPT 연결 §12). ChatGPT 는 `readOnlyHint` 가 없는 도구를 전부
  * "쓰기" 로 보고 부를 때마다 사용자 확인을 받는다 — 맵 목록·읽기까지 매번 묻게
  * 된다. 읽기만 하는 셋에 `readOnlyHint:true`, 덧붙이기만 하는 것에
- * `destructiveHint:false` 를 단다. `update_map_from_github` 만 노드를 지우므로
- * 파괴적(기본값)으로 둔다. GitHub 로 나가는 둘은 `openWorldHint:true`.
+ * `destructiveHint:false` 를 단다. 규격에서 `destructiveHint:false` 는 "덧붙이기만
+ * 한다" 는 약속이라, **있는 내용을 바꾸는** `check_items`(`[ ]`↔`[x]`)와
+ * `update_map_from_github`(노드 삭제)는 파괴적(기본값 true)으로 둔다 — 되돌릴 수
+ * 있어도 고치는 것은 고치는 것이다(#534 Codex). GitHub 로 나가는 둘은
+ * `openWorldHint:true`.
  */
 export interface McpToolAnnotations {
   readOnlyHint?: boolean;
@@ -221,7 +224,7 @@ export const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'check_items',
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     title: 'EasyMindMap 맵 노드의 체크박스에 체크하기',
     description:
       '기존 맵의 노드에 있는 **체크박스**(노드 본문의 `- [ ] 완료` 줄, 체크리스트 노트)를 **체크하거나 해제**한다. ' +

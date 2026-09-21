@@ -88,6 +88,8 @@ export function PublishPanel(
   // 이것이 없으면 브라우저가 낡은 그림을 계속 보여 준다
   const [previewV, setPreviewV] = useState(() => Date.now());
   const [previewBusy, setPreviewBusy] = useState(false);
+  /** 미리보기가 **왜** 안 만들어졌나 — 화면에도 남긴다(안내는 사라진다) */
+  const [previewError, setPreviewError] = useState<string | null>(null);
   /**
    * ★ **지식창고는 체크만으로 반영하지 않는다** (2026-09-21 사용자 결정).
    *
@@ -142,16 +144,28 @@ export function PublishPanel(
    * 링크가 안 만들어지는 것은 기능이 안 되는 일이다. 둘을 같은 무게로
    * 다루면 그림 하나 때문에 공유 자체가 막힌다.
    */
-  const uploadPreview = async (): Promise<boolean> => {
+  const uploadPreview = async (): Promise<string | null> => {
     try {
       const src = await previewSource(mapId);
       const { blob } = await buildSilhouette(src.map, src.layoutType, src.spacing);
       const s = await cloudApi.putPublishPreview(mapId, blob);
       setStatus(s);
       setPreviewV(Date.now());
-      return true;
-    } catch {
-      return false;
+      return null;
+    } catch (err) {
+      // ★ **왜 안 됐는지를 삼키지 않는다** (2026-09-21).
+      //
+      //   전에는 `catch {}` 로 이유를 버리고 화면에 "만들지 못했습니다" 만
+      //   적었다. 그러면 안 되는 이유가 **문서를 못 읽어서**인지, 캔버스가
+      //   막혀서인지, 업로드가 거절당해서인지 아무도 모른다 — 사용자도,
+      //   보고를 받는 우리도. 실제로 "여전히 안 된다" 는 보고를 받고도
+      //   원인을 좁힐 근거가 화면에 하나도 없었다.
+      //
+      //   퍼블리싱 자체는 그대로 살린다(27a §2.2) — 바뀐 것은 **말해 주는
+      //   것뿐**이다.
+      return err instanceof CloudError ? err.message
+        : err instanceof Error && err.message ? err.message
+          : '알 수 없는 오류';
     }
   };
 
@@ -197,9 +211,12 @@ export function PublishPanel(
       flash('문서함의 [퍼블리싱] 자리로 옮겼습니다 — 아직 비공개(보관)라 남에게는 보이지 않습니다.');
     }
     setPreviewBusy(true);
-    const ok = await uploadPreview();
+    const why = await uploadPreview();
     setPreviewBusy(false);
-    if (!ok) flash('등록은 됐습니다 — 미리보기 이미지만 실패했습니다. [다시 만들기]를 눌러 주세요.');
+    setPreviewError(why);
+    if (why !== null) {
+      flash(`등록은 됐습니다 — 미리보기 이미지만 실패했습니다 (${why}). [다시 만들기]를 눌러 주세요.`);
+    }
   });
 
   /**
@@ -237,9 +254,12 @@ export function PublishPanel(
 
   const doRemakePreview = () => run(async () => {
     setPreviewBusy(true);
-    const ok = await uploadPreview();
+    const why = await uploadPreview();
     setPreviewBusy(false);
-    flash(ok ? '미리보기를 다시 만들었습니다.' : '⚠ 미리보기를 만들지 못했습니다.');
+    setPreviewError(why);
+    flash(why === null
+      ? '미리보기를 다시 만들었습니다.'
+      : `⚠ 미리보기를 만들지 못했습니다 — ${why}`);
   });
 
   /**
@@ -541,6 +561,18 @@ export function PublishPanel(
                 </span>
               )}
             </div>
+            {previewError && (
+              <div
+                data-testid="publish-preview-error"
+                style={{
+                  fontSize: 11.5, lineHeight: 1.6, marginBottom: 8, padding: '8px 10px',
+                  borderRadius: 7, border: `1px solid ${t.danger}`, color: t.danger,
+                }}
+              >
+                ⚠ 미리보기를 만들지 못했습니다 — {previewError}
+                <br />퍼블리싱과 지식창고는 그대로입니다. 그림만 없는 상태입니다.
+              </div>
+            )}
             <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginBottom: 10 }}>
               글자 대신 회색 막대로 그립니다 — 확대해도 내용이 읽히지 않습니다.
               맵을 고친 뒤에는 [미리보기 다시 만들기]를 눌러 주세요.

@@ -89,6 +89,21 @@ export function PublishPanel(
   const [previewV, setPreviewV] = useState(() => Date.now());
   const [previewBusy, setPreviewBusy] = useState(false);
   /**
+   * ★ **지식창고는 체크만으로 반영하지 않는다** (2026-09-21 사용자 결정).
+   *
+   * 전에는 체크하는 순간 서버로 갔다. 그런데 이 대화상자의 다른 것들은
+   * *누르면 곧 일어나는 단추*(비공개/링크 공개)인데 체크만 **예약처럼**
+   * 보여, 사용자가 *"저 상태에서 닫기를 하면 올라가는 건가?"* 를 물어야
+   * 했다. 규칙이 둘이면 어느 쪽도 못 믿는다.
+   *
+   * 더 중요한 이유가 있다 — **미리보기를 보고 나서 올리고 싶다.** 진열은
+   * 남들에게 그림이 함께 나가는 일이라, 그림이 맞는지 확인한 뒤 누르는
+   * 단추가 있어야 한다(2026-09-21 에 엉뚱한 그림이 올라간 일도 있었다).
+   *
+   * `null` 이면 서버 상태 그대로, 아니면 **아직 반영 안 된 내 뜻**이다.
+   */
+  const [listedWant, setListedWant] = useState<boolean | null>(null);
+  /**
    * ★ 미리보기는 **주인 경로로 받아 blob 으로 그린다** (2026-09-05).
    *
    * 비인증 주소(`/v1/published/{slug}/preview.png`)는 **무료공개일 때만**
@@ -213,6 +228,7 @@ export function PublishPanel(
   const doSetListed = (on: boolean) => run(async () => {
     const s = await cloudApi.setMapListed(mapId, on);
     setStatus(s);
+    setListedWant(null);          // 반영됐으니 "아직 안 된 뜻" 은 없다
     if (on) lockThisTab(true);
     flash(on
       ? '📚 지식창고에 올렸습니다 — 홈페이지 [지식창고]에서 누구나 찾을 수 있습니다.'
@@ -426,44 +442,79 @@ export function PublishPanel(
                 *"불특정 다수에게 공개하는"* 것이다. 주소를 따로 만들지는
                 않는다 — 같은 `/p/{id}` 를 쓴다.
                 칸이 없는 서버(델타 미적용)에서는 그리지 않는다. */}
-            {status.canSetListed && (
+            {status.canSetListed && (() => {
+              const on = !!status.listed;                 // 서버가 아는 상태
+              const want = listedWant ?? on;              // 내가 고른 상태
+              const pending = want !== on;                // 아직 반영 안 됐다
+              return (
               <div data-testid="publish-listed" style={{
                 marginBottom: 10, padding: '10px 12px', borderRadius: 8,
-                border: `1px solid ${status.listed ? t.primary : t.border}`,
-                background: status.listed ? t.primarySoft ?? t.surfaceAlt : t.surfaceAlt,
+                border: `1px solid ${pending ? t.warning : on ? t.primary : t.border}`,
+                background: on ? t.primarySoft ?? t.surfaceAlt : t.surfaceAlt,
               }}>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
                   <input
                     data-testid="publish-listed-check"
                     type="checkbox"
-                    checked={!!status.listed}
+                    checked={want}
                     disabled={busy}
-                    onChange={(e) => void doSetListed(e.target.checked)}
+                    onChange={(e) => setListedWant(e.target.checked)}
                     style={{ marginTop: 2 }}
                   />
                   {/* ★ 켜져 있을 때는 **지시문이 아니라 상태**로 적는다
                       (2026-09-21 사용자 물음: "저 상태에서 닫기를 하면
                       지식창고에 올라가는 건가?"). "올린다" 라고만 적혀
-                      있으면 체크가 **앞으로 할 일의 예약**처럼 읽혀, 아래
-                      [닫기] 가 확인 단추인지 아닌지를 알 수 없다. */}
+                      있으면 지금 어떤 상태인지 읽어 낼 수가 없다. */}
                   <span>
                     <b style={{ fontSize: 12.5 }}>
-                      {status.listed ? '📚 지식창고에 올라가 있습니다' : '📚 지식창고에 올린다'}
+                      {on ? '📚 지식창고에 올라가 있습니다' : '📚 지식창고에 올린다'}
                     </b>
                     <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 2 }}>
-                      {status.listed
-                        ? '지금 홈페이지 [지식창고] 목록에서 누구나 찾을 수 있습니다. 체크를 풀면 목록에서만 빠지고 링크는 그대로 열립니다.'
-                        : '켜면 홈페이지 [지식창고] 목록에 올라가 불특정 다수가 찾을 수 있습니다.'}
+                      {on
+                        ? '지금 홈페이지 [지식창고] 목록에서 누구나 찾을 수 있습니다. 내려도 링크는 그대로 열립니다.'
+                        : '올리면 홈페이지 [지식창고] 목록에서 불특정 다수가 찾을 수 있습니다.'}
                       <br />무료공개만 지금 됩니다 — <b>유료공개</b>는 준비 중입니다
                       (값·결제·정산이 붙은 뒤에 열립니다).
-                      {/* 체크가 곧 적용이다 — [닫기] 는 창만 닫는다 */}
-                      <br /><b data-testid="publish-listed-instant">체크하면 바로 반영됩니다</b>
-                      {' '}— 아래 [닫기] 는 이 창만 닫습니다.
                     </div>
                   </span>
                 </label>
+
+                {/* ★ **체크는 뜻이고, 반영은 이 단추다** (2026-09-21 사용자 결정:
+                    "체크하고 미리보기가 다 만들어진 것을 확인하고 지식창고
+                    저장하기 버튼을 별도로"). 진열은 그림이 함께 나가는 일이라,
+                    아래 미리보기를 **보고 나서** 누를 자리가 있어야 한다. */}
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    data-testid="publish-listed-apply"
+                    disabled={!pending || busy}
+                    onClick={() => void doSetListed(want)}
+                    style={{
+                      ...btn, width: '100%', height: 32, fontSize: 12.5, fontWeight: 700,
+                      border: `1px solid ${pending ? t.primary : t.border}`,
+                      background: pending ? t.primary : t.surfaceAlt,
+                      color: pending ? '#fff' : t.textSubtle,
+                      cursor: pending && !busy ? 'pointer' : 'default',
+                    }}
+                  >
+                    {pending
+                      ? (want ? '📚 지식창고에 올리기' : '지식창고에서 내리기')
+                      : (on ? '지식창고에 올라가 있습니다' : '체크하면 여기가 켜집니다')}
+                  </button>
+                  <div
+                    data-testid="publish-listed-hint"
+                    style={{ fontSize: 11.5, lineHeight: 1.6, marginTop: 6,
+                      color: pending ? t.warning : t.textSubtle }}
+                  >
+                    {pending
+                      ? (want
+                        ? <><b>아직 올라가지 않았습니다.</b> 아래 <b>미리보기</b>를 확인한 뒤 [지식창고에 올리기] 를 눌러 주세요. 창을 그냥 닫으면 올라가지 않습니다.</>
+                        : <><b>아직 내려가지 않았습니다.</b> [지식창고에서 내리기] 를 눌러야 목록에서 빠집니다.</>)
+                      : <>체크를 바꾸면 이 단추로 반영합니다 — <b>[닫기] 는 이 창만 닫습니다.</b></>}
+                  </div>
+                </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* 미리보기 실루엣 — 링크 카드·목록 썸네일이 이 그림을 쓴다.
                 **글자가 없는 것이 정상이다**(27a §2.1): 흐리게 만든 것이

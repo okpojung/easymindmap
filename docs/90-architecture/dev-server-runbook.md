@@ -241,6 +241,7 @@ SSD 인지 NFS 인지 구분하지 않는다 — S3 호환 드라이버는 향�
 >     N=$(printf '%s' "$U"  | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
 >     OK=$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
 >           "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null) || continue
+>     # ★★ 이 `map_documents` 확인을 **빼면 안 된다** (2026-09-21 실패)
 >     [ "$OK" = "t" ] && { DB="$H"; PGUSER="$US"; PGDB="$N"; echo "✅ DB=$DB 계정=$PGUSER DB이름=$PGDB"; return 0; }
 >   done
 >   echo "❌ easymindmap DB 를 찾지 못했습니다."; docker ps --format '{{.Names}}'; return 1
@@ -251,6 +252,25 @@ SSD 인지 NFS 인지 구분하지 않는다 — S3 호환 드라이버는 향�
 > SQL
 > SCRIPT
 > ```
+
+> ### ★★ 이 블록을 **줄여 쓰지 않는다** (2026-09-21 실패)
+>
+> 보고서에 넣을 때 `find_emm_db` 를 짧게 고쳐 쓰다가 **`map_documents`
+> 확인 한 줄을 뺐다.** 그러자 `DATABASE_URL` 을 가진 **첫 컨테이너**가
+> 뽑혔는데, 그것이 **Coolify 자신의 DB**(`coolify-db`, 계정 `postgres`)였다.
+> 사용자 터미널에서 이렇게 끝났다:
+>
+> ```
+> ✅ DB=coolify-db 계정=postgres DB이름=postgres
+> psql: error: … FATAL:  role "postgres" does not exist
+> ```
+>
+> **같은 호스트에 `DATABASE_URL` 을 가진 컨테이너가 여럿 있다** — Coolify
+> 도 그중 하나다. 이름·순서로는 고를 수 없고, **"그 DB 에 우리 표가 있나"**
+> 를 물어야 구분된다. 그 한 줄이 이 함수의 전부다.
+>
+> → 보고서용 블록은 **이 파일에서 복사**하고 SQL 자리만 바꾼다. 줄여 쓰지
+>   않는다. (저장소가 있는 서버라면 `apply-delta.sh <파일>` 이 같은 일을 한다.)
 
 `<DB컨테이너>` 이름을 몰라도 된다 — 아래 블록 **전체를 서버 SSH 터미널에
 그대로 붙여넣으면**, DB 컨테이너를 자동으로 찾아 델타 SQL 을 적용하고

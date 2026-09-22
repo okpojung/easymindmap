@@ -7,6 +7,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { findNodeInMap, findParentId, getNodeDepth, isCenterRootId, useDocumentStore } from '@/stores/documentStore';
 import { snapshotNodeStyle } from './stylePainter';
+import { CalendarNodeDialog } from '@/editor/dialogs/CalendarNodeDialog';
+import { parseYearMonth, type YearMonth } from '@/utils/calendarNodes';
 import { expandScope } from '@/utils/expandScope';
 import { mapCenters } from '@/editor/__samples__/types';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -100,6 +102,40 @@ export function CanvasFloatingToolbar({
     setSelectedId(newNodeId);
   };
 
+  // [+] 의 두 얼굴 (2026-09-22 사용자 요청) —
+  //   · 선택이 없으면: 빈 캔버스에 **중심 노드** 추가 (새 중심주제 버튼과 같다)
+  //   · 선택이 있으면: 메뉴 → "자식 노드 추가" / "달력 노드 추가…"
+  // 달력은 노드 글(과 조상)에서 년도·월을 읽어 미리 채운 창을 띄운다.
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [calendar, setCalendar] = useState<{ parentId: string; parentLabel: string; initial: YearMonth } | null>(null);
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as Element).closest?.('[data-testid="add-menu"], [data-testid="add-node"]')) setAddMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAddMenuOpen(false); };
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => { document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); };
+  }, [addMenuOpen]);
+  const handleAddClick = () => {
+    if (!selectedId) { handleAddCenter(); return; }
+    setAddMenuOpen((v) => !v);
+  };
+  const openCalendar = () => {
+    setAddMenuOpen(false);
+    if (!selectedId) return;
+    const map = useDocumentStore.getState().map;
+    const node = findNodeInMap(map, selectedId);
+    if (!node) return;
+    const ancestors: string[] = [];
+    for (let pid = findParentId(map, selectedId); pid; pid = findParentId(map, pid)) {
+      const p = findNodeInMap(map, pid);
+      if (p) ancestors.push(p.text);
+    }
+    setCalendar({ parentId: selectedId, parentLabel: node.text || '(빈 노드)', initial: parseYearMonth(node.text, ancestors) });
+  };
+
   const handleDeleteNode = () => {
     deleteNode(selectedId);
     setSelectedId(null);
@@ -138,14 +174,42 @@ export function CanvasFloatingToolbar({
       boxShadow: t.shadowSm,
     }}>
       <GroupLabel t={t}>노드</GroupLabel>
-      <ToolbarBtn
-        t={t}
-        title="선택 노드에 자식 노드 추가"
-        highlight={hasSelection}
-        onClick={handleAddNode}
-      >
-        <I.Plus size={15} />
-      </ToolbarBtn>
+      <span style={{ position: 'relative', display: 'inline-flex' }}>
+        <ToolbarBtn
+          t={t}
+          title={hasSelection
+            ? '노드 추가 — 자식 노드 · 달력 노드(년도 → 1월~12월, 년월 → 주별)'
+            : '중심 노드 추가 (노드를 고르면 그 아래에 자식 노드 추가)'}
+          highlight={hasSelection || addMenuOpen}
+          onClick={handleAddClick}
+          testId="add-node"
+        >
+          <I.Plus size={15} />
+        </ToolbarBtn>
+        {addMenuOpen && (
+          <div
+            data-testid="add-menu"
+            style={{
+              position: 'absolute', top: 32, left: 0, zIndex: 20, minWidth: 190,
+              background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8,
+              boxShadow: '0 8px 24px rgba(60,45,15,0.25)', padding: 4,
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }}
+          >
+            <MenuItem t={t} testId="add-menu-child" label="자식 노드 추가" hint="선택 노드 아래에 하나" onClick={() => { setAddMenuOpen(false); handleAddNode(); }} />
+            <MenuItem t={t} testId="add-menu-calendar" label="달력 노드 추가…" hint="년도 → 1월~12월 · 년월 → 주별(일~토)" onClick={openCalendar} />
+          </div>
+        )}
+      </span>
+      {calendar && (
+        <CalendarNodeDialog
+          t={t}
+          parentId={calendar.parentId}
+          parentLabel={calendar.parentLabel}
+          initial={calendar.initial}
+          onClose={() => setCalendar(null)}
+        />
+      )}
       
       <ToolbarBtn
        t={t}
@@ -340,6 +404,26 @@ function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick, 
         transition: 'background 120ms, color 120ms',
       }}>
       {children}
+    </button>
+  );
+}
+
+function MenuItem({ t, label, hint, onClick, testId }: { t: ThemeTokens; label: string; hint: string; onClick: () => void; testId: string }) {
+  const [h, setH] = useState(false);
+  return (
+    <button
+      data-testid={testId}
+      onClick={onClick}
+      onMouseEnter={() => setH(true)}
+      onMouseLeave={() => setH(false)}
+      style={{
+        textAlign: 'left', border: 'none', borderRadius: 6, cursor: 'pointer',
+        padding: '6px 10px', background: h ? t.surfaceAlt : 'transparent', color: t.text,
+        display: 'flex', flexDirection: 'column', gap: 1,
+      }}
+    >
+      <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: 10.5, color: t.textMuted, whiteSpace: 'nowrap' }}>{hint}</span>
     </button>
   );
 }

@@ -177,6 +177,9 @@ PR #221 준비 완료 — 병합은 확인 후 해주세요.
 ## 4. 마무리에 항상 하는 것
 
 - 관련 **문서 갱신** (기능 문서 · api-spec · runbook 등)
+- **레이아웃(`src/layout/**`)을 고쳤으면** `layoutInvariants.test.ts`(체인에 있다)가
+  녹색인지 보고, 넓게는 `scripts/layout/fuzz.ts`·`matrix.ts` 를 돌린다. 노드를 여럿
+  만드는 기능은 `createNodeId` 만 쓴다 (2026-09-22 사고 — `08-layout.md` 조사 절).
 - **사용자 가이드에 `TODO(스크린샷)` 가 생기면 내가 만든다** (2026-09-13).
   실제 프런트엔드를 vite + Playwright 로 띄워 그 장면을 찍는다 —
   `apps/frontend/scripts/doc-shots/README.md`. 사용자에게 캡처를 부탁하는

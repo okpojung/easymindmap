@@ -211,3 +211,8 @@ export function ProSalesGate(
 export function ProSalesPanel({ t }: { t: ThemeTokens }) {
   return <ProFeaturePanel t={t} featureId="map-sales" />;
 }
+
+/** 관리자 콘솔 ▸ 판매관리 — 공개판에는 탭 자체가 없다(자리만 지킨다) */
+export function ProSalesAdminPanel({ t }: { t: ThemeTokens }) {
+  return <ProFeaturePanel t={t} featureId="map-sales" />;
+}

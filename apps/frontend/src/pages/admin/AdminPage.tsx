@@ -18,8 +18,10 @@ import { AdminLogin } from './AdminLogin';
 import { MembersPanel } from './MembersPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
+import { ProSalesAdminPanel } from '@pro';
+import { useProFeature } from '@/pro/contract';
 
-type Tab = 'members' | 'billing' | 'settings' | 'password';
+type Tab = 'members' | 'billing' | 'settings' | 'password' | 'sales';
 
 const TABS: { id: Tab; label: string; soon?: string }[] = [
   { id: 'members', label: '회원관리' },
@@ -33,6 +35,15 @@ const TABS: { id: Tab; label: string; soon?: string }[] = [
   { id: 'password', label: '비밀번호 변경' },
 ];
 
+/**
+ * **판매관리** — `map-sales` 가 켜진 서버에서만 나는 탭 (2026-09-22, 27b §8.3).
+ *
+ * ★ '준비 중' 으로 두지 않는다. 다른 준비 중 탭(결제관리)은 이 빌드에서
+ *   언젠가 열리지만, 판매는 **유료 모듈이 꽂힌 서버에서만** 열린다 —
+ *   공개판에서는 눌러도 영영 같은 안내뿐인 탭이 된다.
+ */
+const SALES_TAB: (typeof TABS)[number] = { id: 'sales', label: '판매관리' };
+
 export function AdminPage() {
   // 관리자 화면은 **항상 밝은 테마**로 둔다 — 에디터의 테마 설정과 얽히면
   // 분리할 때 스토어를 끌고 가야 한다.
@@ -41,6 +52,11 @@ export function AdminPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
   const [tab, setTab] = useState<Tab>('members');
+  const salesOn = useProFeature('map-sales').status === 'on';
+  // 설정관리 **앞**에 둔다 — 돈이 오가는 탭이라 설정보다 자주 본다
+  const tabs = salesOn
+    ? TABS.flatMap((x) => (x.id === 'settings' ? [SALES_TAB, x] : [x]))
+    : TABS;
 
   // 새로고침해도 표가 살아 있으면 그대로 들어간다 (표는 sessionStorage)
   useEffect(() => {
@@ -82,7 +98,7 @@ export function AdminPage() {
         <div style={{ fontSize: 14.5, fontWeight: 800 }}>EasyMindMap 관리자</div>
         <EnvBadge />
         <nav style={{ display: 'flex', gap: 4, flex: 1 }}>
-          {TABS.map((x) => (
+          {tabs.map((x) => (
             <button
               key={x.id}
               data-testid={`admin-tab-${x.id}`}
@@ -121,6 +137,8 @@ export function AdminPage() {
       <main style={{ padding: 18, maxWidth: 1560, margin: '0 auto' }}>
         {tab === 'members' && <MembersPanel t={t} />}
         {tab === 'settings' && <SettingsPanel t={t} />}
+        {/* 판매관리 — 표도 판정도 유료 모듈 것이다. 코어는 탭 자리만 낸다 */}
+        {tab === 'sales' && <ProSalesAdminPanel t={t} />}
         {tab === 'password' && (
           <ChangePasswordForm
             t={t} email={email}

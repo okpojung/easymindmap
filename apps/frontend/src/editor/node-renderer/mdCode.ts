@@ -4,7 +4,7 @@
 // 줄바꿈에서 제외하고 패널 크기를 노드 크기에 더하며, NodeRenderer 와
 // HTML 뷰어가 같은 규칙으로 그린다. (리치 노드 P1 — rich-node-content.md)
 //
-// 파싱 규칙: 첫 번째 ``` 펜스 구간 하나를 블록으로 인정한다.
+// 파싱 규칙 (parseMdCode = 첫 블록. 여러 블록은 nodeBlocks.splitNodeParts, 2026-09-22):
 //   ```lang        ← 여는 펜스 (lang 라벨 선택)
 //   코드 줄들       ← 원문 그대로 (공백 보존, 인라인 마크 미적용)
 //   ```            ← 닫는 펜스 (없으면 텍스트 끝까지)
@@ -34,27 +34,57 @@ export const MD_CODE_HEAD_FS_DELTA = 2; // 헤더 글자 = codeFs - 2 (최소 9)
 
 const FENCE_RE = /^\s*```(.*)$/;
 
+/**
+ * lines[i] 가 여는 펜스면 그 코드 블록을 읽는다 — 아니면 null. `end` = 블록 다음 줄
+ * 인덱스 (닫는 펜스 뒤, 닫는 펜스가 없으면 lines.length). 빈 코드는 블록이 아니다
+ * (그 줄들은 일반 글로 남는다). `splitNodeParts` 가 표와 함께 원문 순서대로 훑는다.
+ */
+export function parseCodeAt(lines: string[], i: number): { code: string[]; lang?: string; end: number; closed: boolean } | null {
+  const open = lines[i]?.match(FENCE_RE);
+  if (!open) return null;
+  let j = i + 1;
+  const code: string[] = [];
+  while (j < lines.length && !FENCE_RE.test(lines[j])) {
+    code.push(lines[j]);
+    j++;
+  }
+  const closed = j < lines.length; // 닫는 펜스 존재 여부
+  if (code.join('').trim() === '') return null; // 빈 코드 블록은 무시
+  return { code, lang: open[1].trim() || undefined, end: closed ? j + 1 : lines.length, closed };
+}
+
 export function parseMdCode(text: string): MdCodeParse | null {
   const lines = String(text || '').split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const open = lines[i].match(FENCE_RE);
-    if (!open) continue;
-    let j = i + 1;
-    const code: string[] = [];
-    while (j < lines.length && !FENCE_RE.test(lines[j])) {
-      code.push(lines[j]);
-      j++;
-    }
-    const closed = j < lines.length; // 닫는 펜스 존재 여부
-    if (code.join('').trim() === '') return null; // 빈 코드 블록은 무시
+    if (!FENCE_RE.test(lines[i])) continue;
+    const c = parseCodeAt(lines, i);
+    if (!c) return null; // 빈 코드 블록 — 예전과 같이 코드 없음으로 본다
     return {
       before: lines.slice(0, i).join('\n').trimEnd(),
-      after: closed ? lines.slice(j + 1).join('\n').trim() : '',
-      code,
-      lang: open[1].trim() || undefined,
+      after: c.closed ? lines.slice(c.end).join('\n').trim() : '',
+      code: c.code,
+      lang: c.lang,
     };
   }
   return null;
+}
+
+/**
+ * 글 속의 코드 블록 **전부** — 원문 순서 (2026-09-22 사용자 보고: 두 번째 코드
+ * 블록이 펜스 원문으로 보였다). 각 항목의 `before` 는 앞 블록 뒤부터, 마지막의
+ * `after` 만 뒤 글. (`RichTextHtml` 이 코드 사이 글을 순서대로 그릴 때 쓴다)
+ */
+export function parseMdCodes(text: string): MdCodeParse[] {
+  const out: MdCodeParse[] = [];
+  let rest = String(text || '');
+  for (;;) {
+    const c = parseMdCode(rest);
+    if (!c) break;
+    out.push(c);
+    rest = c.after;
+    if (out.length > 200) break;
+  }
+  return out;
 }
 
 // 코드 폭 = **격자 칸 수 × 칸 폭** (utils/monoGrid). 렌더도 같은 격자에
@@ -68,6 +98,10 @@ function monoMeasure(s: string, fs: number): number {
 export function layoutMdCode(text: string, fontSize: number): MdCodeLayout | null {
   const parsed = parseMdCode(text);
   if (!parsed) return null;
+  return layoutParsedCode(parsed, fontSize);
+}
+
+export function layoutParsedCode(parsed: MdCodeParse, fontSize: number): MdCodeLayout {
   const codeFs = Math.max(10, fontSize - 2);
   const lineH = codeFs + 6;
   const headFs = Math.max(9, codeFs - MD_CODE_HEAD_FS_DELTA);

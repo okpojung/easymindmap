@@ -27,8 +27,7 @@ import {
   setLevelFontConfig, setLevelShapeConfig,
   levelFontFamily, levelTextAlign, levelShape,
 } from '@/editor/node-renderer/sizeNodeForText';
-import { parseMdCode as parseMdCodeEditor } from '@/editor/node-renderer/mdCode';
-import { parseMdTables as parseMdTablesEditor } from '@/editor/node-renderer/mdTable';
+import { splitNodeParts } from '@/editor/node-renderer/nodeBlocks';
 import { computeNodeChecks } from '@/editor/node-renderer/mdCheck';
 import { buildZip, type ZipEntry } from './zip';
 import { attachmentFetchUrl } from '@/services/cloud/apiClient';
@@ -414,6 +413,88 @@ const VIEWER_JS = String.raw`
   function parseMdTables(text) {
     var out = [], rest = String(text || ''), t;
     while (out.length < 200 && (t = parseMdTable(rest))) { out.push(t); rest = t.after; }
+    return out;
+  }
+  // lines[i] 에서 시작하는 표 — 아니면 null (에디터 mdTable.parseTableAt 동일)
+  function parseTableAt(lines, i) {
+    function trimS(s) { return s.replace(/^\s+|\s+$/g, ''); }
+    function isPipe(s) { s = trimS(s); return s.length > 1 && s.indexOf('|') >= 0; }
+    function isSep(s) {
+      if (!isPipe(s)) return false;
+      var c = splitPipeCells(s), i2;
+      if (!c.length) return false;
+      for (i2 = 0; i2 < c.length; i2++) { if (!/^:?-{2,}:?$/.test(c[i2])) return false; }
+      return true;
+    }
+    if (i >= lines.length - 1) return null;
+    if (!isPipe(lines[i]) || isSep(lines[i]) || !isPipe(lines[i + 1])) return null;
+    var headers = splitPipeCells(lines[i]);
+    if (headers.length < 2) return null;
+    var rows = [], j = i + 1, aligns = [], ai;
+    for (ai = 0; ai < headers.length; ai++) aligns.push(null);
+    if (isSep(lines[j])) {
+      var sepc = splitPipeCells(lines[j]);
+      for (ai = 0; ai < headers.length; ai++) {
+        var sc = sepc[ai] || '';
+        var sl = sc.charAt(0) === ':', sr = sc.charAt(sc.length - 1) === ':';
+        aligns[ai] = sl && sr ? 'center' : sr ? 'right' : sl ? 'left' : null;
+      }
+      j++;
+    }
+    while (j < lines.length && isPipe(lines[j]) && !isSep(lines[j])) {
+      var c2 = splitPipeCells(lines[j]);
+      while (c2.length < headers.length) c2.push('');
+      rows.push(c2.slice(0, headers.length));
+      j++;
+    }
+    if (!rows.length) return null;
+    return { k: 't', headers: headers, rows: rows, aligns: aligns, end: j };
+  }
+  // lines[i] 가 여는 펜스면 그 코드 블록 — 아니면 null (에디터 mdCode.parseCodeAt 동일)
+  function parseCodeAt(lines, i) {
+    if (!isFenceLine(lines[i])) return null;
+    var code = [], j = i + 1;
+    while (j < lines.length && !isFenceLine(lines[j])) { code.push(lines[j]); j++; }
+    if (!code.join('').replace(/\s/g, '')) return null;
+    var lang = lines[i].replace(/^\s+/, '').slice(3).replace(/^\s+|\s+$/g, '');
+    return { k: 'c', code: code, lang: lang || undefined, end: j < lines.length ? j + 1 : lines.length };
+  }
+  // 노드 본문의 표·코드 블록 전부 — 원문 순서, 각 블록의 beforeLines = 앞 일반 글의
+  // 누적 줄 수 (에디터 nodeBlocks.splitNodeParts/layoutNodeBlocks 와 같은 규칙,
+  // 2026-09-22: 두 번째 표·코드 블록이 원문 그대로 보이던 문제)
+  function splitNodeBlocks(text) {
+    var lines = String(text || '').split('\n');
+    var blocks = [], buf = [], count = 0, first = true, i = 0;
+    function flush() {
+      if (!buf.length) return;
+      var joined = buf.join('\n'); buf = [];
+      var body = first ? joined.replace(/\s+$/, '') : joined.replace(/^\s+|\s+$/g, '');
+      first = false;
+      if (body) count += body.split('\n').length;
+    }
+    while (i < lines.length) {
+      var b = null;
+      if (isFenceLine(lines[i])) {
+        b = parseCodeAt(lines, i);
+        if (!b) {
+          // 빈 펜스 — 여닫는 줄을 글로 두고 닫는 펜스 뒤부터 (에디터 동일)
+          var j2 = i + 1;
+          while (j2 < lines.length && !isFenceLine(lines[j2])) j2++;
+          var end2 = Math.min(lines.length, j2 + 1);
+          for (var k2 = i; k2 < end2; k2++) buf.push(lines[k2]);
+          i = end2; continue;
+        }
+      }
+      if (!b) b = parseTableAt(lines, i);
+      if (b) { flush(); first = false; b.beforeLines = count; blocks.push(b); i = b.end; continue; }
+      buf.push(lines[i]); i++;
+    }
+    return blocks;
+  }
+  // 코드 블록 전부 (아웃라인 행이 코드 사이 글을 순서대로 그릴 때)
+  function parseMdCodes(text) {
+    var out = [], rest = String(text || ''), c;
+    while (out.length < 200 && (c = parseMdCode(rest))) { out.push(c); rest = c.after; }
     return out;
   }
 
@@ -1360,67 +1441,49 @@ const VIEWER_JS = String.raw`
     // 텍스트 강조(취소선·하이라이트)·정렬·글꼴 + Markdown 표 — 에디터와 동일
     var st = node.style || {};
     var align = node.textAlign || 'center'; // 기본 정렬 = 중앙 (에디터와 동일)
-    var mdts = node._fixed ? parseMdTables(node.text) : [];
-    var mdt = mdts.length ? mdts[0] : null; // 표가 하나라도 있나 (아래 판정용)
-    var mdc = node._fixed ? parseMdCode(node.text) : null;
-    var cellFs = 0, rowH2 = 0, tblH = 0;
-    // 표마다 끼어드는 래핑 줄 인덱스(tAts)·위/아래 여백·블록 높이 — 에디터
-    // sizeNodeForText.mdTables[].at · tableBlockGaps 와 동일 규칙 (2026-09-22
-    // 여러 표: 각 표는 자기 앞 텍스트의 누적 줄 수로 자리를 잡고, 앞선 표들의
-    // 블록 높이만큼 더 내려간다. 코드와 함께면 텍스트 뒤)
-    var tAt = node._lines.length, tGapAbove = 0, tGapBelow = 0, tBlockH = 0;
-    var tAts = [], tGapAboves = [], tGapBelows = [], tBlockHs = [], tblHs = [], tI;
-    if (mdt) {
-      cellFs = Math.max(10, node._fs - 2);
-      rowH2 = cellFs + 10;
-      var ms4 = (node._manualStarts && node._manualStarts.length) ? node._manualStarts : [0];
-      var tBeforeCnt = 0;
-      for (tI = 0; tI < mdts.length; tI++) {
-        if (mdts[tI].before !== '') tBeforeCnt += mdts[tI].before.split('\n').length;
-        tAts.push(!mdc && tBeforeCnt < ms4.length ? ms4[tBeforeCnt] : node._lines.length);
-      }
-      for (tI = 0; tI < mdts.length; tI++) {
-        tblHs.push((1 + mdts[tI].rows.length) * rowH2);
-        var tNextAt = tI + 1 < mdts.length ? tAts[tI + 1] : -1;
-        tGapAboves.push(tAts[tI] > 0 || tI > 0 ? 6 : 0);
-        tGapBelows.push(node._lines.length > tAts[tI] && (tNextAt < 0 || tNextAt > tAts[tI]) ? 6 : 0);
-        // 13 = 복사(⧉) 스트립 — 표 바깥 위 (에디터 MD_TABLE_COPY_STRIP 동일)
-        tBlockHs.push(13 + tblHs[tI] + tGapAboves[tI] + tGapBelows[tI]);
-        tBlockH += tBlockHs[tI];
+    // 표·코드 블록 전부 — 원문 순서 (에디터 nodeBlocks · sizeNodeForText 와 같은
+    // 규칙, 2026-09-22): 각 블록은 자기 앞 글의 누적 줄 수(bAts)로 자리를 잡고,
+    // 위·아래 여백(bGapA/bGapB, 에디터 blockGaps 동일)을 더한 블록 높이만큼 뒤
+    // 줄과 다음 블록이 내려간다.
+    var blocks = node._fixed ? splitNodeBlocks(node.text) : [];
+    var hasBlocks = blocks.length > 0;
+    var mdt = null, mdc = null; // 그리기 루프에서 블록마다 다시 묶는다
+    var cellFs = Math.max(10, node._fs - 2), rowH2 = cellFs + 10, tblH = 0;
+    // 코드 패널 크기 — 에디터 mdCode.ts와 동일 (codeFs=fs-2, lineH=codeFs+6)
+    var cFs = cellFs, cLineH = cFs + 6, cH = 0, cW = 0, CPX = 8, CPY = 6;
+    var cHeadFs = Math.max(9, cFs - 2), cHeadH = cHeadFs + 10;
+    var ms4 = (node._manualStarts && node._manualStarts.length) ? node._manualStarts : [0];
+    var bAts = [], bHs = [], bGapA = [], bGapB = [], bBlockHs = [], blocksH = 0, bI, bK;
+    for (bI = 0; bI < blocks.length; bI++) {
+      bK = blocks[bI];
+      bAts.push(bK.beforeLines < ms4.length ? ms4[bK.beforeLines] : node._lines.length);
+      if (bK.k === 't') {
+        bK.tblH = (1 + bK.rows.length) * rowH2;
+        bHs.push(13 + bK.tblH); // 13 = 복사(⧉) 스트립 — 표 바깥 위 (에디터 MD_TABLE_COPY_STRIP 동일)
+      } else {
+        bK.cH = cHeadH + bK.code.length * cLineH + CPY * 2;
+        var cw0 = 0;
+        for (var cwi = 0; cwi < bK.code.length; cwi++) {
+          // 격자 폭 — 에디터 mdCode.monoMeasure 와 같은 계산
+          cw0 = Math.max(cw0, cellsOf(bK.code[cwi]) * cFs * CELL_RATIO);
+        }
+        cw0 = Math.max(cw0, cellsOf(bK.lang || 'code') * cHeadFs * CELL_RATIO + cHeadFs * 7 + 16);
+        bK.cW = Math.ceil(cw0) + CPX * 2;
+        bHs.push(bK.cH);
       }
     }
-    // li 번째 줄이 그 위 표들 때문에 아래로 밀리는 양
-    function tShiftAt(li) {
+    for (bI = 0; bI < blocks.length; bI++) {
+      var bNextAt = bI + 1 < blocks.length ? bAts[bI + 1] : -1;
+      bGapA.push(bAts[bI] > 0 || bI > 0 ? 6 : 0);
+      bGapB.push(node._lines.length > bAts[bI] && (bNextAt < 0 || bNextAt > bAts[bI]) ? 6 : 0);
+      bBlockHs.push(bHs[bI] + bGapA[bI] + bGapB[bI]);
+      blocksH += bBlockHs[bI];
+    }
+    // li 번째 줄이 그 위 블록들 때문에 아래로 밀리는 양
+    function bShiftAt(li) {
       var sh = 0;
-      for (var k = 0; k < tAts.length; k++) if (li >= tAts[k]) sh += tBlockHs[k];
+      for (var k = 0; k < bAts.length; k++) if (li >= bAts[k]) sh += bBlockHs[k];
       return sh;
-    }
-    // 코드 패널 크기 — 에디터 mdCode.ts와 동일 (codeFs=fs-2, lineH=fs+6? → codeFs+6)
-    var cFs = 0, cLineH = 0, cH = 0, cW = 0, CPX = 8, CPY = 6;
-    var cHeadFs = 0, cHeadH = 0;
-    // 패널이 끼어드는 래핑 줄 인덱스(cAt)·위/아래 여백 — 에디터
-    // sizeNodeForText.mdCodeAt과 동일 규칙 (표가 있으면 텍스트 뒤)
-    var cAt = node._lines.length, cGapAbove = 0, cGapBelow = 0;
-    if (mdc) {
-      cFs = Math.max(10, node._fs - 2);
-      cLineH = cFs + 6;
-      cHeadFs = Math.max(9, cFs - 2);
-      cHeadH = cHeadFs + 10;
-      if (!mdt) {
-        var beforeCnt = mdc.before === '' ? 0 : mdc.before.split('\n').length;
-        var ms3 = (node._manualStarts && node._manualStarts.length) ? node._manualStarts : [0];
-        cAt = beforeCnt < ms3.length ? ms3[beforeCnt] : node._lines.length;
-      }
-      cGapAbove = (cAt > 0 || mdt) ? 6 : 0;
-      cGapBelow = node._lines.length > cAt ? 6 : 0;
-      cH = cHeadH + mdc.code.length * cLineH + CPY * 2;
-      for (var cwi = 0; cwi < mdc.code.length; cwi++) {
-        // 격자 폭 — 에디터 mdCode.monoMeasure 와 같은 계산
-        cW = Math.max(cW, cellsOf(mdc.code[cwi]) * cFs * CELL_RATIO);
-      }
-      cW = Math.max(cW,
-        cellsOf(mdc.lang || 'code') * cHeadFs * CELL_RATIO + cHeadFs * 7 + 16);
-      cW = Math.ceil(cW) + CPX * 2;
     }
     // 텍스트 중간 인라인 사진(기사 붙여넣기) — 에디터 layoutInlineImages와
     // 동일 규칙: afterLine(논리 줄)을 _manualStarts로 래핑 줄 자리로 바꿔
@@ -1458,11 +1521,9 @@ const VIEWER_JS = String.raw`
       var isc = Math.min(1, innerW / Math.max(1, node.image.w));
       img = { w: Math.round(node.image.w * isc), h: Math.round(node.image.h * isc) };
     }
-    var imgGap = img && (node._lines.length || mdt || mdc) ? 6 : 0;
-    var stacked = !!(mdt || img || inImgs || mdc); // 표·코드·사진이 있으면 세로 스택
-    var cBlockH = mdc ? cH + cGapAbove + cGapBelow : 0;
-    var contentH = flowH +
-      tBlockH + cBlockH + (img ? img.h + imgGap : 0);
+    var imgGap = img && (node._lines.length || hasBlocks) ? 6 : 0;
+    var stacked = !!(hasBlocks || img || inImgs); // 표·코드·사진이 있으면 세로 스택
+    var contentH = flowH + blocksH + (img ? img.h + imgGap : 0);
     var topY = node._cy - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
     // 체크리스트 항목(- [x] …) — 에디터가 실어 보낸 래핑 줄 범위(_checks).
@@ -1499,8 +1560,7 @@ const VIEWER_JS = String.raw`
       // 표(tAt)·코드 패널(cAt) 뒤 줄은 그 높이만큼 아래로 (원문 순서 보존)
       var baseY = stacked
         ? topY + (flowTops ? flowTops[li] : li * node._lineH) +
-          tShiftAt(li) +
-          (mdc && li >= cAt ? cBlockH : 0) +
+          bShiftAt(li) +
           node._lineH / 2 + node._fs * 0.34
         : y0 + PAD_Y + node._fs * 0.85 + li * node._lineH;
       // 중앙 정렬은 아이콘(왼쪽)·마커(오른쪽) 영역을 뺀 띠의 중앙 —
@@ -1584,20 +1644,23 @@ const VIEWER_JS = String.raw`
         sp.textContent = segs[si].t;
       }
     }
-    var tAcc = 0; // 앞선 표들의 블록 높이 누적
-    for (tI = 0; tI < mdts.length; tI++) {
-      // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트 (표마다)
-      mdt = mdts[tI]; tAt = tAts[tI]; tGapAbove = tGapAboves[tI]; tGapBelow = tGapBelows[tI]; tblH = tblHs[tI];
+    var bAcc = 0; // 앞선 블록들의 높이 누적
+    for (bI = 0; bI < blocks.length; bI++) {
+      // 블록 상단: 텍스트 중간이면 그 줄 경계, 끝이면 모든 텍스트 아래 (에디터 파리티)
+      var bBase = bAts[bI] >= node._lines.length
+        ? flowH
+        : (bAts[bI] > 0
+            ? (flowTops ? flowTops[bAts[bI] - 1] : (bAts[bI] - 1) * node._lineH) + node._lineH
+            : 0);
+      var bTop = topY + bBase + bAcc + bGapA[bI];
+      bAcc += bBlockHs[bI];
+      if (blocks[bI].k === 't') {
+      // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
+      mdt = blocks[bI]; tblH = mdt.tblH;
       var gridC = color || textColor;
       var tblX = x0 + PAD_X;
-      // 원문 위치: 표 앞 텍스트 아래, 표 뒤 텍스트 위 (에디터 파리티).
       // 블록 맨 위 13px = 복사(⧉) 스트립, 격자는 그 아래
-      var tStripY = topY + (tAt >= node._lines.length
-        ? flowH
-        : (tAt > 0
-            ? (flowTops ? flowTops[tAt - 1] : (tAt - 1) * node._lineH) + node._lineH
-            : 0)) + tAcc + tGapAbove;
-      tAcc += tBlockHs[tI];
+      var tStripY = bTop;
       var tblY = tStripY + 13;
       var colWs = [], ci, ri, mmax;
       for (ci = 0; ci < mdt.headers.length; ci++) {
@@ -1686,16 +1749,10 @@ const VIEWER_JS = String.raw`
         btnEl.addEventListener('click', run);
         hitEl.addEventListener('click', run);
       })(mdt.headers, mdt.rows, tCopyT, tCopyHit);
-    }
-    if (mdc) {
+      } else {
       // 노드 속 코드 블록 — 헤더(언어 라벨 + ⧉ 복사) + 모노 줄 (에디터 파리티)
-      // 패널 상단 — 텍스트 중간이면 그 줄 경계, 끝이면 표 아래 (에디터 동일)
-      var cBoundY = cAt >= node._lines.length
-        ? flowH + tBlockH
-        : (cAt > 0
-            ? (flowTops ? flowTops[cAt - 1] : (cAt - 1) * node._lineH) + node._lineH
-            : 0);
-      var codeY = topY + cBoundY + cGapAbove;
+      mdc = blocks[bI]; cH = mdc.cH; cW = mdc.cW;
+      var codeY = bTop;
       var codeX = node._cx - cW / 2;
       el('rect', { x: codeX, y: codeY, width: cW, height: cH, rx: 5,
         fill: CODE_BG, stroke: '#D8DDE4', 'stroke-width': 1 }, g);
@@ -1726,6 +1783,7 @@ const VIEWER_JS = String.raw`
         }, g);
         cT.setAttribute('xml:space', 'preserve');
         cT.textContent = cLine;
+      }
       }
     }
     if (flowBands) {
@@ -2914,12 +2972,8 @@ const VIEWER_JS = String.raw`
     root.appendChild(tblWrap);
     if (mdt.after) richTextPlain(root, mdt.after); // 표 뒤 글에 표가 또 있으면 그것도 (2026-09-22)
   }
-  function richTextEl(text) {
-    var root = el2('div', 'mm-ol-rich');
-    var raw = String(text || '');
-    var mdc = parseMdCode(raw);
-    if (!mdc) { richTextPlain(root, raw); return root; }
-    if (mdc.before) richTextPlain(root, mdc.before);
+  // 코드 패널 하나 — 노트 패널의 코드 블록과 같은 DOM(.mm-code) (맵 패널과 같은 색)
+  function codePanelEl(root, mdc) {
     // 코드 패널 — 노트 패널의 코드 블록과 같은 DOM(.mm-code) (맵 패널과 같은 색)
     var wrap = el2('div', 'mm-code mm-ol-code');
     var head = el2('div', 'mm-code-head');
@@ -2953,7 +3007,18 @@ const VIEWER_JS = String.raw`
     wrap.appendChild(head);
     wrap.appendChild(pre);
     root.appendChild(wrap);
-    if (mdc.after) richTextPlain(root, mdc.after);
+  }
+  function richTextEl(text) {
+    var root = el2('div', 'mm-ol-rich');
+    var raw = String(text || '');
+    // 코드 블록 전부 — 각 블록 앞 글 → 패널, 마지막 블록 뒤 글 (2026-09-22)
+    var codes = parseMdCodes(raw);
+    if (!codes.length) { richTextPlain(root, raw); return root; }
+    for (var ci0 = 0; ci0 < codes.length; ci0++) {
+      if (codes[ci0].before) richTextPlain(root, codes[ci0].before);
+      codePanelEl(root, codes[ci0]);
+    }
+    if (codes[codes.length - 1].after) richTextPlain(root, codes[codes.length - 1].after);
     return root;
   }
   // render()가 끝날 때마다 호출됨 (호이스팅) — 보일 때만 재구축
@@ -3405,14 +3470,11 @@ export function buildStandaloneHtml(
   // 계산해 노드마다 실어 보낸다 (뷰어는 계산 없이 그대로 그린다)
   const bakeChecks = (n: (typeof laid)[number]) => {
     const text = String(n.text ?? '');
-    const mdc = parseMdCodeEditor(text);
-    const baseText = mdc ? [mdc.before, mdc.after].filter(Boolean).join('\n') : text;
-    const mdts = parseMdTablesEditor(baseText);
-    const mdt = mdts.length > 0;
-    const plainText = mdt
-      ? [...mdts.map((t) => t.before), mdts[mdts.length - 1].after].filter(Boolean).join('\n')
-      : baseText;
-    const manualLines = (mdt || mdc) && plainText === '' ? [] : plainText.split('\n');
+    // 표·코드 블록 전부를 뺀 일반 글 (에디터 nodeBlocks 와 같은 규칙)
+    const parts = splitNodeParts(text);
+    const hasBlock = parts.some((p) => p.kind !== 'text');
+    const plainText = parts.filter((p) => p.kind === 'text').map((p) => (p as { body: string }).body).join('\n');
+    const manualLines = hasBlock && plainText === '' ? [] : plainText.split('\n');
     const checks = computeNodeChecks(manualLines, n._manualStarts, (n._lines ?? []).length);
     return checks.length
       // s = 항목 순번 — 뷰어에서 "몇 번째 체크를 눌렀나"를 가리는 열쇠

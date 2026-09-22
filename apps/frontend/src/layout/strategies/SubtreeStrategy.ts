@@ -48,6 +48,10 @@ export const SUBTREE_SUPPORTED = new Set<LayoutType>([
 const HORIZONTAL_SIBLING_PARENTS = new Set<LayoutType>([
   'process-tree-right' as LayoutType,
   'tree-down' as LayoutType,
+  // 시간배치의 자식은 축을 따라 왼쪽→오른쪽 (2026-09-22 조사: 시간배치 안의
+  // 오버라이드가 자라도 다음 주제가 밀리지 않아 겹쳤다)
+  'timeline' as LayoutType,
+  'timeline-center' as LayoutType,
 ]);
 
 // Layouts that stack their direct children top → bottom (a taller subtree
@@ -95,8 +99,9 @@ export function applyLayoutOverrides(
       {
         before: branches.slice(0, i).filter(sameSide),
         after: branches.slice(i + 1).filter(sameSide),
-        axis: axisOf(rootEffective),
+        ...axisOf(rootEffective),
         pathNode: branches[i],
+        centered: RADIAL_PARENTS.has(rootEffective),
       },
     ]);
   }
@@ -106,7 +111,7 @@ export function applyLayoutOverrides(
     if (!anchor) continue;
     const subtreeIds = new Set<string>([top.node.id]);
     collectDescendantIds(top.node, subtreeIds);
-    clearRootCollision(out, subtreeIds, anchor);
+    clearRootCollision(out, subtreeIds, anchor, normalizeLayoutType(top.node.layoutType));
     separateBranchGroups(out, subtreeIds, anchor, top.parentEffective);
   }
 }
@@ -126,14 +131,30 @@ interface ChainLevel {
   /** 이 레벨에서 오버라이드로 내려가는 길목의 노드 — 그 서브트리 전체의
    *  크기 변화로 형제를 민다 (2026-09-08, 아래 propagateByLevels) */
   pathNode: MindNode;
+  /** 이 레벨의 부모가 자식을 **가운데 정렬**로 쌓나(방사형) — 그럴 때만 위로
+   *  자란 만큼 앞 형제를 올린다. 윗변 정렬 스택(트리·오른쪽/계층형)에서 앞
+   *  형제를 올리면 루트·윗줄과 겹친다 (2026-09-22 조사) */
+  centered: boolean;
+  /** 형제가 **반대 방향**으로 쌓이나 — 시간배치 위쪽 가지의 세로 스택(위로),
+   *  왼쪽으로 뒤집은 시간배치 축(왼쪽으로). 뒤 형제가 위/왼쪽에 있다 (2026-09-22) */
+  reversed: boolean;
 }
 
-function axisOf(effective: LayoutType): 'x' | 'y' | null {
-  if (HORIZONTAL_SIBLING_PARENTS.has(effective)) return 'x';
+function axisOf(
+  effective: LayoutType, laidParent?: LaidOutNode, selfIsTimelineAnchor = false,
+): { axis: 'x' | 'y' | null; reversed: boolean } {
+  const isTimeline = effective === ('timeline' as LayoutType) || effective === ('timeline-center' as LayoutType);
+  if (isTimeline) {
+    // 시간배치: 축의 시작 노드(루트/오버라이드 앵커)의 자식은 축을 따라 가로,
+    // 축 위 노드와 그 아래 스택의 자식은 세로 — 위쪽 가지는 **위로** 쌓인다.
+    if (!selfIsTimelineAnchor && laidParent?._timelineRole) return { axis: 'y', reversed: laidParent.side === 'up' };
+    return { axis: 'x', reversed: laidParent?._timelineDir === 'left' }; // 왼쪽으로 뒤집은 축
+  }
+  if (HORIZONTAL_SIBLING_PARENTS.has(effective)) return { axis: 'x', reversed: false };
   // Radial layouts in this codebase stack siblings as a vertical column
   // (vertically centered on the parent), so their linear axis is 'y' too.
-  if (VERTICAL_SIBLING_PARENTS.has(effective) || RADIAL_PARENTS.has(effective)) return 'y';
-  return null; // freeform / kanban 등
+  if (VERTICAL_SIBLING_PARENTS.has(effective) || RADIAL_PARENTS.has(effective)) return { axis: 'y', reversed: false };
+  return { axis: null, reversed: false }; // freeform / kanban 등
 }
 
 function walk(
@@ -162,14 +183,20 @@ function walk(
   }
 
   const children = node.children ?? [];
+  const laidSelf = out.find((l) => l.id === node.id);
+  // 이 노드 자신이 시간배치 오버라이드의 앵커면 자식은 이 노드의 축(가로)을 따른다
+  const selfIsTimelineAnchor =
+    (effective === ('timeline' as LayoutType) || effective === ('timeline-center' as LayoutType)) &&
+    !!node.layoutType && normalizeLayoutType(node.layoutType) === effective && effective !== parentEffective;
   for (let i = 0; i < children.length; i += 1) {
     walk(children[i], effective, out, childScope, topLevel, [
       ...chain,
       {
         before: children.slice(0, i),
         after: children.slice(i + 1),
-        axis: axisOf(effective),
+        ...axisOf(effective, laidSelf, selfIsTimelineAnchor),
         pathNode: children[i],
+        centered: RADIAL_PARENTS.has(effective),
       },
     ]);
   }
@@ -265,11 +292,21 @@ function propagateByLevels(
     const after = bboxOf(out, subtreeIdSet(level.pathNode));
     if (!after) continue;
     if (level.axis === 'x') {
-      shift(level.after, 'x', after.right - before.right);
-      shift(level.before, 'x', -(before.left - after.left));
+      if (level.reversed) {
+        // 축이 왼쪽으로 흐른다 — 뒤 형제는 왼쪽, 앞 형제는 오른쪽
+        shift(level.after, 'x', after.left - before.left);
+        shift(level.before, 'x', after.right - before.right);
+      } else {
+        shift(level.after, 'x', after.right - before.right);
+        shift(level.before, 'x', -(before.left - after.left));
+      }
+    } else if (level.reversed) {
+      // 위로 쌓이는 스택 — 뒤 형제는 위, 앞 형제는 아래(축 쪽)
+      shift(level.after, 'y', after.top - before.top);
+      shift(level.before, 'y', after.bottom - before.bottom);
     } else {
       shift(level.after, 'y', after.bottom - before.bottom);
-      shift(level.before, 'y', -(before.top - after.top));
+      if (level.centered) shift(level.before, 'y', -(before.top - after.top));
     }
   }
 }
@@ -284,6 +321,33 @@ function propagateByLevels(
 
 const SEPARATION_MARGIN = 16; // min gap kept between the subtree and a branch
 const MAX_SEPARATION_PASSES = 8;
+
+/** 서브트리의 자식들이 서브트리 밖의 어떤 노드와라도 겹치나 */
+function collidesOutside(out: LaidOutNode[], childIds: Set<string>, subtreeIds: Set<string>): boolean {
+  const kids = out.filter((n) => childIds.has(n.id));
+  for (const n of out) {
+    if (subtreeIds.has(n.id)) continue;
+    const nb: BBox = { left: n.x - n.w / 2, right: n.x + n.w / 2, top: n.y - n.h / 2, bottom: n.y + n.h / 2 };
+    for (const k of kids) {
+      const kb: BBox = { left: k.x - k.w / 2, right: k.x + k.w / 2, top: k.y - k.h / 2, bottom: k.y + k.h / 2 };
+      if (boxesIntersect(kb, nb, 0)) return true;
+    }
+  }
+  return false;
+}
+
+/** 두 노드 묶음에 **실제로 겹치는 노드 쌍**이 있나 (bbox 끼리가 아니라 노드끼리 — 2026-09-22:
+ *  가지의 큰 bbox 안 빈 곳에 다른 서브트리가 들어가도 노드가 안 닿으면 밀지 않는다) */
+function nodesCollide(a: LaidOutNode[], b: LaidOutNode[], margin: number): boolean {
+  for (const x of a) {
+    const xb: BBox = { left: x.x - x.w / 2, right: x.x + x.w / 2, top: x.y - x.h / 2, bottom: x.y + x.h / 2 };
+    for (const y of b) {
+      const yb: BBox = { left: y.x - y.w / 2, right: y.x + y.w / 2, top: y.y - y.h / 2, bottom: y.y + y.h / 2 };
+      if (boxesIntersect(xb, yb, margin)) return true;
+    }
+  }
+  return false;
+}
 
 function bboxOfNodes(nodes: LaidOutNode[]): BBox | null {
   let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
@@ -309,7 +373,11 @@ function boxesIntersect(a: BBox, b: BBox, margin: number): boolean {
 // its depth-1 ancestor branch, following parent pointers.
 function branchIdOf(byId: Map<string, LaidOutNode>, node: LaidOutNode): string | null {
   let cur: LaidOutNode | undefined = node;
-  while (cur && cur.depth > 1) cur = cur.parent ? byId.get(cur.parent) : undefined;
+  // guard: id 가 겹친 문서(가져오기 오류 등)면 parent 사슬이 돌 수 있다 — 무한
+  // 루프 대신 끊는다 (2026-09-22 조사 중 발견: 재현 스크립트의 중복 id 로 앱이
+  // 멈추는 경로가 있었다)
+  let guard = 0;
+  while (cur && cur.depth > 1 && guard++ < 10000) cur = cur.parent ? byId.get(cur.parent) : undefined;
   return cur && cur.depth === 1 ? cur.id : null;
 }
 
@@ -346,10 +414,22 @@ function collectBranchGroups(
 // re-laid-out children can land on the root box. In that case shift the
 // children (the anchor stays put) vertically past the root; the branch
 // separation pass afterwards resolves any knock-on collisions.
+// Overrides whose children hang BELOW the anchor (a row or a column under it).
+// Their children must never be lifted above the anchor — that buries them in
+// the anchor box and everything above it (2026-09-22 조사: 방사형 맵의 위쪽
+// 가지에 진행트리를 걸면 자식 행이 루트에 닿아 **위로** 들어 올려져 앵커와
+// 겹쳤다). Such a subtree clears the root sideways instead.
+const DOWNWARD_OVERRIDES = new Set<LayoutType>([
+  'process-tree-right' as LayoutType,
+  'tree-down' as LayoutType,
+  'tree-right' as LayoutType,
+]);
+
 function clearRootCollision(
   out: LaidOutNode[],
   subtreeIds: Set<string>,
   anchor: LaidOutNode,
+  effective: LayoutType,
 ): void {
   const root = out.find((n) => n.depth === 0);
   if (!root) return;
@@ -366,6 +446,19 @@ function clearRootCollision(
     bottom: root.y + root.h / 2,
   };
   if (!boxesIntersect(cBox, rootBox, SEPARATION_MARGIN / 2)) return;
+
+  if (DOWNWARD_OVERRIDES.has(effective)) {
+    // 아래로 늘어지는 서브트리 — 루트를 옆으로 비켜 간다 (앵커가 루트의
+    // 오른쪽이면 오른쪽으로, 왼쪽이면 왼쪽으로). 위로 올리면 앵커와 겹친다.
+    const dx =
+      anchor.x >= root.x
+        ? rootBox.right + SEPARATION_MARGIN - cBox.left
+        : -(cBox.right - (rootBox.left - SEPARATION_MARGIN));
+    for (const n of out) {
+      if (childIds.has(n.id)) n.x += dx;
+    }
+    return;
+  }
 
   const dy =
     anchor.y >= root.y
@@ -390,31 +483,53 @@ function separateBranchGroups(
   for (let pass = 0; pass < MAX_SEPARATION_PASSES; pass += 1) {
     const sBox = bboxOf(out, subtreeIds);
     if (!sBox) return;
+    const sNodes = out.filter((n) => subtreeIds.has(n.id));
 
     const groups = collectBranchGroups(out, subtreeIds, anchor);
     let moved = false;
+    // 이번 패스에서 밀린 가지들 — 2) 연쇄 분리는 **밀린 가지가 낀 쌍만** 본다.
+    // 예전엔 모든 쌍을 봐서, 서로 닿아 있던(원래 배치의 8px 안쪽) 무관한 가지들이
+    // 패스마다 앵커 반대쪽으로 조금씩 밀려 루트 위까지 올라갔다 (2026-09-22 조사:
+    // 트리·오른쪽 맵의 첫 가지가 루트와 겹침).
+    const touched = new Set<number>();
 
     // 1) Move branches out of the overridden subtree's box (subtree is fixed).
+    //    루트는 움직이지 않는 장애물 — 밀려난 가지가 루트에 닿으면 반대쪽
+    //    (서브트리 너머)으로 보낸다 (2026-09-22 조사: 위로 밀린 첫 가지가 루트
+    //    위에 그려졌다).
+    const root = out.find((n) => n.depth === 0);
+    const rootBox: BBox | null = root
+      ? { left: root.x - root.w / 2, right: root.x + root.w / 2, top: root.y - root.h / 2, bottom: root.y + root.h / 2 }
+      : null;
     for (const group of groups) {
       const gBox = bboxOfNodes(group);
       if (!gBox || !boxesIntersect(sBox, gBox, SEPARATION_MARGIN / 2)) continue;
+      // bbox 는 닿아도 노드끼리 안 닿으면(빈 구석에 들어간 것) 그대로 둔다
+      if (!nodesCollide(group, sNodes, SEPARATION_MARGIN / 2)) continue;
 
       const gCenterX = (gBox.left + gBox.right) / 2;
       const gCenterY = (gBox.top + gBox.bottom) / 2;
 
       if (horizontal) {
-        const dx =
+        let dx =
           gCenterX >= anchor.x
             ? sBox.right + SEPARATION_MARGIN - gBox.left
             : -(gBox.right - (sBox.left - SEPARATION_MARGIN));
+        if (rootBox && boxesIntersect({ ...gBox, left: gBox.left + dx, right: gBox.right + dx }, rootBox, SEPARATION_MARGIN / 2)) {
+          dx = dx < 0 ? sBox.right + SEPARATION_MARGIN - gBox.left : -(gBox.right - (sBox.left - SEPARATION_MARGIN));
+        }
         for (const n of group) n.x += dx;
       } else {
-        const dy =
+        let dy =
           gCenterY >= anchor.y
             ? sBox.bottom + SEPARATION_MARGIN - gBox.top
             : -(gBox.bottom - (sBox.top - SEPARATION_MARGIN));
+        if (rootBox && boxesIntersect({ ...gBox, top: gBox.top + dy, bottom: gBox.bottom + dy }, rootBox, SEPARATION_MARGIN / 2)) {
+          dy = dy < 0 ? sBox.bottom + SEPARATION_MARGIN - gBox.top : -(gBox.bottom - (sBox.top - SEPARATION_MARGIN));
+        }
         for (const n of group) n.y += dy;
       }
+      touched.add(groups.indexOf(group));
       moved = true;
     }
 
@@ -424,9 +539,11 @@ function separateBranchGroups(
     //    of oscillating a group back into the subtree's box.
     for (let i = 0; i < groups.length; i += 1) {
       for (let j = i + 1; j < groups.length; j += 1) {
+        if (!touched.has(i) && !touched.has(j)) continue;
         const a = bboxOfNodes(groups[i]);
         const b = bboxOfNodes(groups[j]);
         if (!a || !b || !boxesIntersect(a, b, SEPARATION_MARGIN / 2)) continue;
+        if (!nodesCollide(groups[i], groups[j], SEPARATION_MARGIN / 2)) continue;
 
         if (horizontal) {
           const aC = (a.left + a.right) / 2;
@@ -440,7 +557,7 @@ function separateBranchGroups(
             fC >= anchor.x
               ? lead.right + SEPARATION_MARGIN - fBox.left
               : -(fBox.right - (lead.left - SEPARATION_MARGIN));
-          if (Math.abs(dx) > 0.5) { for (const n of follow) n.x += dx; moved = true; }
+          if (Math.abs(dx) > 0.5) { for (const n of follow) n.x += dx; moved = true; touched.add(groups.indexOf(follow)); }
         } else {
           const aC = (a.top + a.bottom) / 2;
           const bC = (b.top + b.bottom) / 2;
@@ -453,7 +570,7 @@ function separateBranchGroups(
             fC >= anchor.y
               ? lead.bottom + SEPARATION_MARGIN - fBox.top
               : -(fBox.bottom - (lead.top - SEPARATION_MARGIN));
-          if (Math.abs(dy) > 0.5) { for (const n of follow) n.y += dy; moved = true; }
+          if (Math.abs(dy) > 0.5) { for (const n of follow) n.y += dy; moved = true; touched.add(groups.indexOf(follow)); }
         }
       }
     }
@@ -501,12 +618,21 @@ function relayoutSubtree(
       // pointing the subtree left would bury it in the root/opposite side
       // (the root cannot be pushed away). The anchor's own laid-out side wins
       // over the requested direction when they conflict.
+      // 시간배치 부모(앵커 side 가 up/down)는 부모가 왼쪽에 있으므로 오른쪽으로
+      // 편다 — 요청이 '왼쪽'이어도 (2026-09-22 조사: 축 위 노드의 방사형·왼쪽
+      // 자식이 부모 상자 안으로 들어갔다).
+      const laidParent = out.find((l) => l.id === anchor.parent);
+      const timelineParentSide =
+        parentEffective === ('timeline' as LayoutType) || parentEffective === ('timeline-center' as LayoutType) ||
+        !!laidParent?._timelineRole; // 부모가 축 위 노드면 그 옆(축의 반대쪽)에 축의 시작점이 있다
       const side: 'left' | 'right' =
         anchor.side === 'left' || anchor.side === 'right'
           ? anchor.side
-          : effective === 'radial-left'
-            ? 'left'
-            : 'right';
+          : timelineParentSide
+            ? (anchor._timelineDir === 'left' ? 'left' : 'right')
+            : effective === 'radial-left'
+              ? 'left'
+              : 'right';
 
       layoutCenteredChildren(
         children, anchor.x, anchor.y, anchor.w, anchor.depth,
@@ -518,10 +644,19 @@ function relayoutSubtree(
     }
 
     case 'hierarchy-right':
-      layoutHierarchyChildren(
-        children, anchor.x, anchor.y, anchor.w, anchor.depth,
-        node.id, out, node.colorKey,
-      );
+      // 앵커가 부모의 **왼쪽**에 놓여 있으면(방사형·왼쪽/양쪽의 왼쪽 가지) 자식을
+      // 왼쪽으로 편다 — 오른쪽으로 펴면 부모·루트 쪽으로 되돌아가 겹친다
+      // (2026-09-22 조사. 방사형 오버라이드와 같은 규칙)
+      {
+        // 앵커가 왼쪽에 놓였거나 왼쪽으로 흐르는 시간배치 안이면 왼쪽으로
+        const hierSide: 'left' | 'right' =
+          anchor.side === 'left' || anchor._timelineDir === 'left' ? 'left' : 'right';
+        layoutHierarchyChildren(
+          children, anchor.x, anchor.y, anchor.w, anchor.depth,
+          node.id, out, node.colorKey, anchor.h, hierSide,
+        );
+        if (hierSide === 'left') anchor.layoutType = 'hierarchy-left' as LayoutType; // 선을 왼쪽 변에
+      }
       break;
 
     case 'process-tree-right':
@@ -562,6 +697,31 @@ function relayoutSubtree(
       break;
   }
 
+  // ★ 거울상 (2026-09-22 조사)
+  //  · 시간배치 오버라이드의 축은 오른쪽으로만 흐른다 — 앵커가 부모의 **왼쪽**에
+  //    놓여 있으면(방사형·왼쪽 아래) 축이 부모 쪽으로 되돌아가 겹친다 → x 를
+  //    앵커 기준으로 뒤집어 왼쪽으로 흐르게 한다.
+  //  · 아래로 늘어지는 오버라이드(진행트리·트리·아래·트리·오른쪽)를 시간배치의
+  //    **위쪽** 가지(side 'up') 에 걸면 자식이 축과 아래쪽 노드 위로 내려온다 → y 를
+  //    앵커 기준으로 뒤집어 위로 자라게 한다.
+  const timelineOverride =
+    effective === 'timeline' || effective === 'timeline-center';
+  let mirroredUp = false;
+  if (timelineOverride) {
+    const dir: 'left' | 'right' =
+      anchor.side === 'left' || anchor._timelineDir === 'left' ? 'left' : 'right';
+    anchor._timelineDir = dir; // 앵커에도 — 그 자식 레벨의 형제 밀기 방향(axisOf)이 본다
+    for (const n of out) {
+      if (!descendantIds.has(n.id)) continue;
+      n._timelineDir = dir;
+      if (dir === 'left') n.x = 2 * anchor.x - n.x;
+    }
+  }
+  if (DOWNWARD_OVERRIDES.has(effective) && anchor.side === 'up') {
+    for (const n of out) if (descendantIds.has(n.id)) { n.y = 2 * anchor.y - n.y; n.side = 'up'; }
+    mirroredUp = true;
+  }
+
   // Re-flow siblings so the resized subtree doesn't overlap them.
   let after = bboxOf(out, subtreeIds);
 
@@ -577,19 +737,53 @@ function relayoutSubtree(
   // 위·아래로 뻗는 것이 제 모양이라, 위로 넘쳤다고 통째로 내리면 **축이
   // 무너진다** — 중앙노드에서는 축 위에 얹혀야 할 노드가 시작점보다
   // 아래로 밀려 내려갔다(보고 2번).
-  const timelineOverride =
-    effective === 'timeline' || effective === 'timeline-center';
+  //
+  // 다만 시간배치라도 **실제로 다른 노드와 겹치면** 내린다 (2026-09-22 조사:
+  // 진행트리·트리 맵 안의 시간배치가 윗줄과 겹친 채 남았다 — 겹침보다는
+  // 축이 시작점 아래에 놓이는 편이 낫다).
   if (
     before && after &&
     after.top < before.top - 0.5 &&
-    !timelineOverride &&
-    !RADIAL_PARENTS.has(parentEffective)
+    !RADIAL_PARENTS.has(parentEffective) &&
+    !mirroredUp &&
+    (!timelineOverride || collidesOutside(out, descendantIds, subtreeIds))
   ) {
     const dy = before.top - after.top;
     for (const n of out) {
       if (descendantIds.has(n.id)) n.y += dy;
     }
     after = bboxOf(out, subtreeIds);
+  }
+
+  // ★ 부모가 자식을 **옆에** 두는 배치(계층형·방사형)에서는, 다시 놓인 자식들이
+  // 앵커의 부모 쪽으로 튀어나오면 안 된다 — 부모 상자가 크면(표 두 개 든
+  // 노드 등) 그 안으로 들어간다 (2026-09-22 조사: 계층형 아래 노드에 트리·아래
+  // 를 걸면 가운데 정렬된 자식 행이 앵커 왼쪽으로 삐져나와 부모 표 위에
+  // 그려졌다). 앵커의 바깥쪽 모서리까지만 허용하고 나머지는 밀어낸다.
+  // 옆으로 뻗는 오버라이드(계층형·방사형)는 뺀다 — 자식이 애초에 앵커 옆에
+  // 놓이므로 밀면 앵커 위로 올라간다. 아래로 늘어지는 것(진행트리·트리·아래·
+  // 트리·오른쪽)만 부모 쪽으로 삐져나온 만큼 민다.
+  if (DOWNWARD_OVERRIDES.has(effective)) {
+    const cBox = bboxOf(out, descendantIds);
+    if (cBox) {
+      // 앵커가 부모의 어느 쪽에 놓였나로 판단한다 (`side`) — 부모 레이아웃 이름이
+      // 아니라 실제 놓인 쪽. 방사형·왼쪽 오버라이드도 앵커의 side 가 오른쪽이면
+      // 자식을 오른쪽에 두므로(위 radial 케이스), 이름으로 판단하면 반대로 민다.
+      // 시간배치 부모는 자식을 축을 따라 **오른쪽**에 둔다 (side 는 위/아래) —
+      // 부모 상자는 앵커의 왼쪽이므로 오른쪽 방향으로 본다.
+      const timelineParent =
+        parentEffective === ('timeline' as LayoutType) || parentEffective === ('timeline-center' as LayoutType) ||
+        !!anchor._timelineRole;
+      const rightward = anchor.side === 'right' || (timelineParent && anchor._timelineDir !== 'left');
+      const leftward = anchor.side === 'left' || (timelineParent && anchor._timelineDir === 'left');
+      let dx = 0;
+      if (rightward && cBox.left < anchor.x - anchor.w / 2 - 0.5) dx = anchor.x - anchor.w / 2 - cBox.left;
+      if (leftward && cBox.right > anchor.x + anchor.w / 2 + 0.5) dx = anchor.x + anchor.w / 2 - cBox.right;
+      if (dx) {
+        for (const n of out) if (descendantIds.has(n.id)) n.x += dx;
+        after = bboxOf(out, subtreeIds);
+      }
+    }
   }
 
   if (before && after) {

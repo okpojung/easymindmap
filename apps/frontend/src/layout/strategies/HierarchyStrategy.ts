@@ -45,13 +45,16 @@ function placeSubtree(
   parentId: string,
   out: LaidOutNode[],
   parentColorKey?: string,
+  side: 'left' | 'right' = 'right',
 ): number {
   const size = measureNode(node, depth);
-  const x = leftX + size.w / 2;
+  // side 'left' 면 leftX 는 **오른쪽 모서리**다 (거울상, 서브트리 오버라이드용)
+  const x = side === 'left' ? leftX - size.w / 2 : leftX + size.w / 2;
 
   out.push({
     ...node,
-    layoutType: HIERARCHY_TAG,
+    // 거울상(왼쪽)이면 hierarchy-left 로 표시 — EdgeRenderer 가 왼쪽 변에 선을 댄다
+    layoutType: side === 'left' ? ('hierarchy-left' as LayoutType) : HIERARCHY_TAG,
     x,
     y: centerY,
     w: size.w,
@@ -63,7 +66,7 @@ function placeSubtree(
     _lineHeight: size.lineHeight,
     depth,
     parent: parentId,
-    side: 'right',
+    side,
     parentColorKey: parentColorKey as any,
   });
 
@@ -71,19 +74,24 @@ function placeSubtree(
   // column doesn't get covered by them.
   let bottom = centerY + size.h / 2 + nodeOverhang(node);
 
-  const childLeft = x + size.w / 2 + H_GAP;
+  const childLeft = side === 'left' ? x - size.w / 2 - H_GAP : x + size.w / 2 + H_GAP;
   const children = node.children ?? [];
 
   for (let i = 0; i < children.length; i += 1) {
     const child = children[i];
     const childSize = measureNode(child, depth + 1);
 
+    // 첫 자식은 부모와 같은 줄 — 단, 부모보다 **키가 크면** 윗변을 부모 윗변에
+    // 맞춘다. 중심을 맞추면 위로 삐져나와 앞 형제 서브트리와 겹친다
+    // (2026-09-22 조사: 표·코드가 든 큰 첫 자식이 앞 형제 위에 그려졌다).
     const childCenterY =
-      i === 0 ? centerY : bottom + ROW_GAP + childSize.h / 2;
+      i === 0
+        ? Math.max(centerY, centerY - size.h / 2 + childSize.h / 2)
+        : bottom + ROW_GAP + childSize.h / 2;
 
     bottom = Math.max(
       bottom,
-      placeSubtree(child, depth + 1, childLeft, childCenterY, node.id, out, node.colorKey),
+      placeSubtree(child, depth + 1, childLeft, childCenterY, node.id, out, node.colorKey, side),
     );
   }
 
@@ -102,16 +110,21 @@ export function layoutHierarchyChildren(
   parentId: string,
   out: LaidOutNode[],
   parentColorKey?: string,
+  anchorH = 0,
+  side: 'left' | 'right' = 'right',
 ): void {
-  const childLeft = anchorX + anchorW / 2 + H_GAP;
+  const childLeft = side === 'left' ? anchorX - anchorW / 2 - H_GAP : anchorX + anchorW / 2 + H_GAP;
   let bottom = anchorY;
 
   for (let i = 0; i < children.length; i += 1) {
     const child = children[i];
     const childSize = measureNode(child, anchorDepth + 1);
 
+    // 첫 자식은 앵커와 같은 줄 — 앵커보다 키가 크면 윗변을 앵커 윗변에 (위 placeSubtree 와 같은 규칙)
     const childCenterY =
-      i === 0 ? anchorY : bottom + ROW_GAP + childSize.h / 2;
+      i === 0
+        ? Math.max(anchorY, anchorY - anchorH / 2 + childSize.h / 2)
+        : bottom + ROW_GAP + childSize.h / 2;
 
     bottom = Math.max(
       bottom,
@@ -123,6 +136,7 @@ export function layoutHierarchyChildren(
         parentId,
         out,
         parentColorKey,
+        side,
       ),
     );
   }
@@ -143,5 +157,5 @@ export function layoutHierarchyRight(
   out[0].side = 'right';
   out[0].layoutType = HIERARCHY_TAG;
 
-  layoutHierarchyChildren(branches, rootX, rootY, rootW, 0, 'root', out);
+  layoutHierarchyChildren(branches, rootX, rootY, rootW, 0, 'root', out, undefined, out[0].h);
 }

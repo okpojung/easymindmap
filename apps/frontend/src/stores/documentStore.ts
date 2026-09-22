@@ -306,12 +306,50 @@ interface DocumentState {
 // id helpers
 // ---------------------------------------------------------------------------
 
+// ★ id 는 **한 틱 안에서 수십 개를 만들어도** 겹치면 안 된다 (2026-09-22 사용자 보고
+// "[36주]에 진행트리를 걸었더니 맵이 엉망"의 원인). 예전 `Date.now() + 0~999 난수`는
+// 달력 노드처럼 40개를 한 번에 만들 때 절반 넘는 확률로 같은 id 가 나왔고, 서브트리
+// 레이아웃은 id 로 노드를 찾아 떼었다 붙이므로 겹친 id 의 노드가 엉뚱한 자리(수천 px
+// 밖)에 놓이거나 사라졌다. 이제 프로세스 안 일련번호 + 넉넉한 난수(36진수 6자리).
+let idSeq = 0;
+function freshId(prefix: string): string {
+  idSeq = (idSeq + 1) % 1679616; // 36^4
+  return `${prefix}-${Date.now()}-${idSeq.toString(36)}${Math.floor(Math.random() * 2176782336).toString(36).padStart(6, '0')}`;
+}
 function createNodeId() {
-  return `node-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  return freshId('node');
 }
 
 function createSubId(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  return freshId(prefix);
+}
+
+/**
+ * 문서 안에 **같은 id 가 두 번** 있으면 뒤의 것에 새 id 를 준다 (2026-09-22). 예전
+ * id 생성기로 만든 맵(특히 달력 노드)은 이미 겹친 id 를 품고 있을 수 있어, 여는
+ * 순간 고친다. 첫 번째 것은 그대로 두므로 선택·링크 같은 참조는 흔들리지 않는다.
+ * 겹침이 없으면 같은 객체를 돌려준다 (불필요한 복사 없음).
+ */
+export function dedupeNodeIds(map: SampleMap): { map: SampleMap; fixed: number } {
+  const seen = new Set<string>();
+  let fixed = 0;
+  const fix = <T extends { id: string; children?: MindNode[] }>(n: T): T => {
+    let next = n;
+    if (seen.has(n.id)) { next = { ...n, id: createNodeId() }; fixed++; }
+    seen.add(next.id);
+    const kids = next.children;
+    if (kids && kids.length) {
+      let changed = false;
+      const out = kids.map((c) => { const r = fix(c); if (r !== c) changed = true; return r; });
+      if (changed) next = { ...next, children: out };
+    }
+    return next;
+  };
+  const root = fix(map.root as unknown as MindNode) as unknown as SampleRoot;
+  const branches = map.branches.map((b) => fix(b));
+  const centers = map.centers?.map((c) => ({ ...c, root: fix(c.root as unknown as MindNode) as unknown as SampleRoot, branches: c.branches.map((b) => fix(b)) }));
+  if (!fixed) return { map, fixed: 0 };
+  return { map: { ...map, root, branches: branches as SampleBranch[], ...(centers ? { centers: centers as SampleMap['centers'] } : {}) }, fixed };
 }
 
 // depth 0 = root, 1 = branch, 2+ = deeper
@@ -1787,7 +1825,10 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     // 문서 경계를 넘는 되돌리기 금지 — 열기/불러오기는 여기서 끊는다.
     // (템플릿 적용처럼 "같은 문서를 바꾸는" 경우는 그대로 되돌아간다)
     const apply = () => {
-      set({ map: cloneMap(map) });
+      // 여는 순간 겹친 id 를 고친다 (2026-09-22 — 예전 생성기로 만든 맵 방어)
+      const { map: clean, fixed } = dedupeNodeIds(cloneMap(map));
+      if (fixed) console.warn(`[emm] 문서에 겹친 노드 id ${fixed}개를 새 id 로 고쳤습니다`);
+      set({ map: clean });
       // 출처 갱신 — 기본은 '출처 없음'(서버 맵과 무관한 새 문서)
       if (!opts?.keepOrigin) set({ docOrigin: opts?.serverMapId ?? null });
     };
@@ -1798,7 +1839,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   applyRemoteMap: (map) => asServerDriven(() => {
     // `asRemote` 가 두 구독(되돌리기·자동저장)에 "이건 밖에서 온 것"이라고
     // 알린다. 동기 실행 전제는 viewOnlyChange 와 같다.
-    asRemote(() => set({ map: cloneMap(map) }));
+    asRemote(() => set({ map: dedupeNodeIds(cloneMap(map)).map }));
   }),
 
   // 서버에 저장한 맵 이름과 문서 제목을 맞춘다 (2026-08-02 문서함).

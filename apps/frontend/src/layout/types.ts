@@ -39,6 +39,9 @@ export interface LaidOutNode {
    * 1~5번). 배치가 정한 역할을 그대로 들고 다니게 한다.
    */
   _timelineRole?: 'axis' | 'stack';
+  /** 서브트리 시간배치의 축 방향 — 앵커가 부모의 왼쪽에 놓여 있으면 축을
+   *  왼쪽으로 뒤집는다(SubtreeStrategy, 2026-09-22). 자식 배치·형제 밀기가 본다 */
+  _timelineDir?: 'left' | 'right';
 
   colorKey?: NodeColorKey;
   parentColorKey?: NodeColorKey;

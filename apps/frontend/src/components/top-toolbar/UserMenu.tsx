@@ -20,7 +20,8 @@ import { AiSettingsView } from '@/editor/inspector-panels/AiSettingsView';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { LoginHistoryList, type LoginHistory } from '@/components/auth/LoginHistoryList';
 import { McpTokensView } from '@/components/auth/McpTokensView';
-import { ProShareDialog } from '@pro';
+import { ProShareDialog, ProSalesPanel } from '@pro';
+import { useProFeature } from '@/pro/contract';
 import { useProfileStore } from '@/stores/profileStore';
 import { AccountProfileForm } from '@/components/account/AccountProfileForm';
 import { displayNameOf, formatPhone } from '@/utils/profileName';
@@ -141,6 +142,25 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const [mcpOpen, setMcpOpen] = useState(false);
   /** 내 로그인 기록 창 (2026-08-13) */
   const [logOpen, setLogOpen] = useState(false);
+  /** 💰 판매·정산 창 (2026-09-22, 27b §8.1) */
+  const [salesOpen, setSalesOpen] = useState(false);
+  /**
+   * **파는 기능이 켜진 서버에서만** 이 줄을 낸다.
+   *
+   * ★ 다른 미구현 항목처럼 '준비 중' 으로 두지 않는다. 그것들은 언젠가
+   *   이 빌드에서 열리지만, 판매는 **유료 모듈이 꽂힌 서버에서만** 열린다 —
+   *   공개판에서는 눌러도 영영 같은 안내뿐인 줄이 된다. 유료공개가 왜
+   *   아직인지는 퍼블리싱 대화상자가 그 자리에서 말한다(`PriceRow`).
+   *
+   * ★ 서버에 못 물었을 때(`unknown`)도 내지 않는다 — 없는 줄은 나중에
+   *   생기면 그만이지만, 열리지 않는 줄은 고장으로 보인다.
+   */
+  const salesOn = useProFeature('map-sales').status === 'on';
+  const entries = salesOn
+    ? ENTRIES.flatMap<MenuEntry>((e) => (e.id === 'subscription'
+      ? [{ id: 'sales', icon: '💰', label: '판매·정산' }, e]
+      : [e]))
+    : ENTRIES;
   const [logs, setLogs] = useState<LoginHistory | null>(null);
 
   const openLogins = () => {
@@ -343,7 +363,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
 
           {/* 개인 설정·계정 프로필·구독 상태 — Guest 에게는 의미가 없어
               아예 숨긴다 (2026-08-04 사용자 결정) */}
-          {!isGuest && ENTRIES.map((e) => (
+          {!isGuest && entries.map((e) => (
             <button
               key={e.id}
               data-testid={`user-menu-${e.id}`}
@@ -354,6 +374,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 if (e.id === 'mcp') { setOpen(false); setMcpOpen(true); return; }
                 if (e.id === 'logins') { openLogins(); return; }
                 if (e.id === 'profile') { setOpen(false); setProfileOpen(true); return; }
+                if (e.id === 'sales') { setOpen(false); setSalesOpen(true); return; }
                 setSoon(soon === e.id ? null : e.id);
               }}
               style={{
@@ -591,6 +612,22 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           footer={<DialogCloseButton t={t} onClick={() => setMcpOpen(false)} testId="mcp-close" />}
         >
             <McpTokensView t={t} />
+        </DialogFrame>
+      )}
+
+      {/* 💰 판매·정산 — 계좌 등록 · 판매 내역 · 정산 회차 (27b §8.1).
+          알맹이는 유료 모듈이 채운다 — 요율도 원장도 그쪽에 있다. */}
+      {salesOpen && (
+        <DialogFrame
+          t={t}
+          testId="sales-dialog"
+          width="min(580px, 94vw)"
+          onClose={() => setSalesOpen(false)}
+          title="💰 판매·정산"
+          subtitle="정산받을 계좌 · 무엇이 팔렸나 · 언제 얼마가 나가나"
+          footer={<DialogCloseButton t={t} onClick={() => setSalesOpen(false)} testId="sales-close" />}
+        >
+            <ProSalesPanel t={t} />
         </DialogFrame>
       )}
 

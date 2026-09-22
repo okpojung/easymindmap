@@ -43,4 +43,33 @@ declare module '@pro' {
   export function ProSharedMapActions(p: {
     t: ThemeTokens; mapId: string; onLeft: () => void;
   }): JSX.Element | null;
+
+  // ── 맵 판매 자리 (2026-09-22, 27b §8.1) ──
+  /**
+   * 퍼블리싱 대화상자의 **값 칸 아래**. 하는 일이 둘이다.
+   *
+   *   ① **받을 준비가 됐는지** 유료 모듈에 묻고 `onReady` 로 답한다 —
+   *      코어는 그 답으로 값 칸을 잠그고 푼다. 모드 A 에서 "준비" 는
+   *      정산 계좌가 확인됐다는 뜻이다.
+   *   ② 지금 친 값에서 **수수료·원천징수·받는 금액을 갈라서** 보여 준다
+   *      (27a §6.4 — 합치지 않는다). 요율은 유료 모듈의 설정값이라 코어가
+   *      모른다.
+   *
+   * ★ `onReady` 를 **반드시 한 번은 부른다.** 부르지 않으면 코어는 "아직
+   *   모른다" 로 보고 칸을 잠근 채 둔다 — 그것이 안전한 쪽이지만, 영영
+   *   잠긴 칸이 되면 안 된다.
+   */
+  export function ProSalesGate(p: {
+    t: ThemeTokens;
+    /** 지금 칸에 쳐 넣은 값(원) — 숫자가 아니면 null */
+    priceKrw: number | null;
+    onReady: (ready: boolean) => void;
+  }): JSX.Element | null;
+  /**
+   * 계정 메뉴 ▸ **💰 판매·정산** 창의 알맹이 — 정산 계좌 등록 · 판매 내역
+   * (수수료·저자몫) · 아직 못 받은 돈 · 정산 회차.
+   *
+   * 공개판에는 이 창을 여는 자리 자체가 없다(`map-sales` 가 꺼져 있다).
+   */
+  export function ProSalesPanel(p: { t: ThemeTokens }): JSX.Element | null;
 }

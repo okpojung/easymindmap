@@ -32,6 +32,13 @@ export type {
   SampleMap,
   EmmMap,
   EmmNode,
+  Connector,
+  ConnectorShape,
+  ConnectorDash,
+  ConnectorArrows,
+  ConnectorLabel,
+  ConnectorLabelPlace,
+  ConnectorLabelShape,
 } from '@emm/model';
 // 여러 중심주제 순회 — 첫 중심(root/branches) + 두 번째 이후(centers)
 export { mapCenters } from '@emm/model';

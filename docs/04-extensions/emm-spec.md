@@ -298,6 +298,35 @@ levels:
 노드의 `emm` 코드 노트로 **보이며**, 다시 내보낼 때는 그 노트를 건너뛰고
 맵 설정에서 새로 쓴다 — 같은 정보를 두 곳에 두지 않는다.
 
+#### `connectors:` — 노드와 노드를 잇는 연결선 (2026-09-22)
+
+트리와 무관한 선은 본문 구조로 표현할 수 없으므로 선언에 적는다. 번호 키
+아래 `from`·`to` 는 **노드 경로** — 중심 노드의 글부터 `>` 로 이어 적는다
+(MCP 의 `parent: "가지 > 하위"` 표기와 같은 꼴, 중심이 여럿일 수 있어 중심을
+맨 앞에). 경로 조각은 그 노드의 **견출 글**(가지는 블록 앞 첫 줄, 중심은 `#`
+한 줄)과 같고, 글 속 `>` 는 `＞` 로 쓴다. 같은 글이 둘이면 **첫 번째**.
+
+````markdown
+```emm
+connectors:
+  1:
+    from: 2026 제품 로드맵 > Q1 · 기반 구축 > 인증 시스템
+    to: 2026 제품 로드맵 > Q2 · AI 통합 > 프롬프트 → 맵 생성
+    shape: rounded        # elbow | rounded (기본 rounded)
+    width: 2              # 0.5~8 (기본 1.6)
+    color: #2563EB        # 기본 파랑
+    dash: solid           # solid | dashed | dotted
+    arrows: end           # none | end | start | both (기본 end)
+    label: 검토 / 승인    # 라벨 글 — 줄바꿈은 ` / `
+    labelPlace: center    # center | above | below | branch
+    labelShape: rounded   # none | rounded | rectangle | pill | ellipse
+```
+````
+
+`from`·`to` 가 없는 항목, 경로를 못 찾는 항목은 **그 항목만** 버린다. 모르는
+키는 무시한다(전방 호환). 앱이 내보낼 때는 `from`·`to` 다음에 값이 정해진
+속성만 쓴다(비운 것은 쓰지 않는다). 자료형과 그리는 규칙은 `10-canvas.md §31`.
+
 ## 4. 메타데이터 계층 — 폐기 (2026-09-15)
 
 파일 끝 HTML 주석 `<!-- easymindmap:v1:BASE64(JSON) -->` 에 맵 전체

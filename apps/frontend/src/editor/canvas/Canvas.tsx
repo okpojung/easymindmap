@@ -49,6 +49,7 @@ import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
+import { ConnectorLayer } from './ConnectorLayer';
 import { ChooserPopover } from './ChooserPopover';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import { hasForeignMapMarker, stripForeignMapMarkers } from '@/utils/foreignClipboard';
@@ -292,6 +293,24 @@ export function Canvas({
   const setMultiSelectedIds = useInteractionStore((s) => s.setMultiSelectedIds);
   const multiSet = useMemo(() => new Set(multiSelectedIds), [multiSelectedIds]);
 
+  // 연결선 (2026-09-22) — 툴바 [연결] 이 connectMode 를 켜면 다음에 누르는 노드가
+  // 끝점이 된다. 연결선을 고르면 노드 선택은 풀리고 속성 패널(스타일 탭)에
+  // 연결선 패널이 뜬다. Delete = 삭제 · Esc = 모드 취소/선택 해제.
+  // 규칙: docs/03-editor-core/canvas/10-canvas.md §31
+  const selectedConnectorId = useInteractionStore((s) => s.selectedConnectorId);
+  const setSelectedConnectorId = useInteractionStore((s) => s.setSelectedConnectorId);
+  const connectMode = useInteractionStore((s) => s.connectMode);
+  const setConnectMode = useInteractionStore((s) => s.setConnectMode);
+  const addConnector = useDocumentStore((s) => s.addConnector);
+  const removeConnector = useDocumentStore((s) => s.removeConnector);
+  const setInspectorTab = useEditorUiStore((s) => s.setInspectorTab);
+  const selectConnector = (id: string) => {
+    if (multiSelectedIds.length) setMultiSelectedIds([]);
+    onSelect(null);
+    setSelectedConnectorId(id);
+    setInspectorTab('style');
+  };
+
   // 단일 선택은 항상 다중 선택을 해제한다 (러버밴드만이 다중 선택을 만든다)
   const selectOne = (id: string | null) => {
     if (multiSelectedIds.length) setMultiSelectedIds([]);
@@ -304,6 +323,20 @@ export function Canvas({
       if (id) applyStyleSnapshot([id], stylePainter.snap);
       else setStylePainter(null);
     }
+    // 연결 모드 — 시작 노드가 아닌 노드를 누르면 연결선이 생기고 모드는 끝난다.
+    // 빈 곳을 누르면 취소. 시작 노드를 다시 누른 것은 무시(모드 유지).
+    if (connectMode) {
+      if (id && id !== connectMode.fromId) {
+        const cid = addConnector(connectMode.fromId, id);
+        setConnectMode(null);
+        if (cid) { selectConnector(cid); return; }
+      } else if (!id) {
+        setConnectMode(null);
+      } else {
+        return;
+      }
+    }
+    if (selectedConnectorId) setSelectedConnectorId(null);
     onSelect(id);
   };
 
@@ -344,6 +377,8 @@ export function Canvas({
     });
   };
   const visibleNodes = focusedId ? subtreeOf(focusedId, nodes) : nodes;
+  // 연결선이 끝점을 찾는 표 — 접히거나 Focus 밖이면 없다 → 선도 안 그린다
+  const visibleById = useMemo(() => new Map(visibleNodes.map((n) => [n.id, n])), [visibleNodes]);
 
   // 노드별 "자식 배치에 쓰이는 실효 레이아웃" — 접기 토글 위치를
   // 레이아웃 종류로 결정하기 위해 오버라이드 체인을 한 번 걸어 둔다.
@@ -913,6 +948,12 @@ export function Canvas({
       if (e.key === 'Delete') {
         e.preventDefault();
 
+        // 고른 연결선 삭제 (2026-09-22)
+        if (selectedConnectorId) {
+          removeConnector(selectedConnectorId);
+          setSelectedConnectorId(null);
+          return;
+        }
         // 러버밴드 다중 선택 = 일괄 삭제 (한 번의 undo 단계)
         if (multiSelectedIds.length > 1) {
           deleteNodesBulk(multiSelectedIds);
@@ -930,6 +971,9 @@ export function Canvas({
         e.preventDefault();
         // 스타일 복사(붓) 모드면 붓만 내려놓는다 — 선택은 그대로
         if (stylePainter) { setStylePainter(null); return; }
+        // 연결 모드 취소 · 연결선 선택 해제 (2026-09-22)
+        if (connectMode) { setConnectMode(null); return; }
+        if (selectedConnectorId) { setSelectedConnectorId(null); return; }
         selectOne(null);
         setPopover(null);
         return;
@@ -1347,6 +1391,24 @@ export function Canvas({
         onFocusSelected={focusSelected}
       />
 
+      {/* 연결 모드 안내 (2026-09-22) — 시작 노드가 정해졌고 끝 노드를 기다린다 */}
+      {connectMode && (
+        <div
+          data-testid="connect-hint"
+          style={{
+            position: 'absolute', top: 14, left: '50%',
+            transform: 'translateX(-50%)', zIndex: 6,
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '5px 12px', borderRadius: 999,
+            background: t.primary, color: '#fff',
+            fontSize: 12, fontWeight: 600, boxShadow: t.shadowSm,
+            pointerEvents: 'none', whiteSpace: 'nowrap',
+          }}
+        >
+          연결할 노드를 클릭하세요 · Esc 취소
+        </div>
+      )}
+
       {/* Pan 모드 표시 — 상단 중앙 배지 + 캔버스 테두리 하이라이트.
           Pan 모드에서는 드래그가 화면 이동이고, 해제하면 드래그가
           다중 선택(러버밴드)이 된다. */}
@@ -1586,6 +1648,16 @@ export function Canvas({
               })}
           </g>
 
+          {/* 연결선 — 트리 엣지 뒤·노드 앞 (2026-09-22) */}
+          <ConnectorLayer
+            part="lines"
+            connectors={sample.connectors}
+            nodesById={visibleById}
+            t={t}
+            selectedId={selectedConnectorId}
+            onSelect={selectConnector}
+          />
+
           <g>
             {visibleNodes.map((n) => (
               <NodeRenderer
@@ -1657,6 +1729,16 @@ export function Canvas({
               </g>
             );
           })()}
+
+          {/* 연결선 라벨 — 노드 위 (2026-09-22) */}
+          <ConnectorLayer
+            part="labels"
+            connectors={sample.connectors}
+            nodesById={visibleById}
+            t={t}
+            selectedId={selectedConnectorId}
+            onSelect={selectConnector}
+          />
 
           {selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
             multiSelectedIds.length <= 1 && (

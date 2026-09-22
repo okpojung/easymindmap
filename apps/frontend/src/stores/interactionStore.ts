@@ -46,6 +46,15 @@ interface InteractionState {
    */
   stylePainter: { sourceId: string; snap: StyleSnapshot } | null;
   setStylePainter: (p: { sourceId: string; snap: StyleSnapshot } | null) => void;
+  /**
+   * 선택된 연결선 (2026-09-22). 노드 선택과 배타 — 선을 고르면 노드 선택은 비우고,
+   * 노드를 고르면 선 선택은 비운다. 스타일 탭이 이 값이 있으면 "연결" 패널을 보인다.
+   */
+  selectedConnectorId: string | null;
+  setSelectedConnectorId: (id: string | null) => void;
+  /** 연결 모드 — 우상단 [연결] 버튼으로 켠다. 다음에 클릭하는 노드가 선의 끝(`to`)이 된다 */
+  connectMode: { fromId: string } | null;
+  setConnectMode: (m: { fromId: string } | null) => void;
 }
 
 export const useInteractionStore = create<InteractionState>((set) => ({
@@ -61,4 +70,8 @@ export const useInteractionStore = create<InteractionState>((set) => ({
   setEditingDraft: (editingDraft) => set({ editingDraft }),
   stylePainter: null,
   setStylePainter: (stylePainter) => set({ stylePainter }),
+  selectedConnectorId: null,
+  setSelectedConnectorId: (selectedConnectorId) => set({ selectedConnectorId }),
+  connectMode: null,
+  setConnectMode: (connectMode) => set({ connectMode }),
 }));

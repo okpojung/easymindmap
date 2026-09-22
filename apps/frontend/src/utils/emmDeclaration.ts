@@ -10,6 +10,9 @@
 // 전부**다 — 파일 끝 메타데이터 주석은 폐기했다. 노드별 스타일·아이콘 같은
 // 충실도는 HTML 내보내기와 서버가 맡는다 (emm-spec.md §2.1).
 
+import type { Connector } from '@/editor/__samples__/types';
+import type { EmmConnectorSpec } from '@emm/declaration';
+import { findNodeIdByPath, nodePathOf } from '@/utils/nodePath';
 import type { LayoutType, MapSettings, SampleMap, ShapeType } from '@/editor/__samples__/types';
 import { expandTemplateId, type EmmDeclaration } from '@emm/declaration';
 import { SUBTREE_SUPPORTED } from '@/layout/strategies/SubtreeStrategy';
@@ -69,6 +72,8 @@ export interface ResolvedDeclaration {
    * 이 그렇게 조용히 사라졌다 (2026-09-03).
    */
   skipped?: string[];
+  /** 연결선 선언 (2026-09-22) — 노드 경로 그대로. 불러오기가 id 로 푼다 (`applyDeclaredConnectors`) */
+  connectors?: EmmConnectorSpec[];
 }
 
 /**
@@ -126,6 +131,7 @@ function cascade<T>(arr: (T | null | undefined)[], from: number, value: T): void
 export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
   const out: ResolvedDeclaration = {};
   const skipped: string[] = [];
+  if (emm.connectors?.length) out.connectors = emm.connectors;
 
   // ── template — levels 가 없을 때만 ────────────────────────────────
   // 짧은 ID(TP·PT·TR…)는 긴 이름으로 펼친 뒤 본다 (declaration.ts TEMPLATE_IDS)
@@ -255,7 +261,7 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
  * 레벨을 상속"하므로 같은 뜻이고, 블록이 짧아진다.
  */
 export function declareFromMap(
-  map: Pick<SampleMap, 'settings'>,
+  map: Pick<SampleMap, 'settings'> & Partial<Pick<SampleMap, 'root' | 'branches' | 'centers' | 'connectors'>>,
   layoutType?: LayoutType,
   mapId?: string | null,
 ): EmmDeclaration {
@@ -281,5 +287,55 @@ export function declareFromMap(
   const out: EmmDeclaration = {};
   if (mapId) out.map = mapId;
   if (Object.keys(levels).length) out.levels = levels;
+  // 연결선 — 끝 노드를 경로로 적는다. 경로를 못 만드는 것(끝 노드 없음)은 뺀다
+  if (map.connectors?.length && map.root && map.branches) {
+    const full = map as SampleMap;
+    const specs: EmmConnectorSpec[] = [];
+    for (const c of map.connectors) {
+      const from = nodePathOf(full, c.from), to = nodePathOf(full, c.to);
+      if (!from || !to) continue;
+      const spec: EmmConnectorSpec = { from, to };
+      if (c.shape) spec.shape = c.shape;
+      if (c.width != null) spec.width = String(c.width);
+      if (c.color) spec.color = c.color;
+      if (c.dash) spec.dash = c.dash;
+      if (c.arrows) spec.arrows = c.arrows;
+      if (c.label?.text) {
+        spec.label = c.label.text.replace(/\s*\n\s*/g, ' / ');
+        if (c.label.place) spec.labelPlace = c.label.place;
+        if (c.label.shape) spec.labelShape = c.label.shape;
+      }
+      specs.push(spec);
+    }
+    if (specs.length) out.connectors = specs;
+  }
   return out;
+}
+
+/**
+ * 선언의 연결선을 맵에 넣는다 (불러오기, 2026-09-22) — 경로를 id 로 풀고, 못 찾는
+ * 것은 조용히 버린다(관용적 파싱). 값이 이상하면 기본값으로 둔다.
+ */
+export function applyDeclaredConnectors(map: SampleMap, specs: EmmConnectorSpec[] | undefined): SampleMap {
+  if (!specs?.length) return map;
+  const out: Connector[] = [];
+  let seq = 0;
+  for (const spec of specs) {
+    const from = findNodeIdByPath(map, spec.from), to = findNodeIdByPath(map, spec.to);
+    if (!from || !to || from === to) continue;
+    const c: Connector = { id: `conn-${Date.now()}-${(++seq).toString(36)}`, from, to };
+    if (spec.shape === 'elbow' || spec.shape === 'rounded') c.shape = spec.shape;
+    const w = Number(spec.width);
+    if (Number.isFinite(w) && w > 0) c.width = Math.min(8, w);
+    if (spec.color && /^#[0-9a-f]{3,8}$/i.test(spec.color)) c.color = spec.color;
+    if (spec.dash === 'solid' || spec.dash === 'dashed' || spec.dash === 'dotted') c.dash = spec.dash;
+    if (spec.arrows === 'none' || spec.arrows === 'end' || spec.arrows === 'start' || spec.arrows === 'both') c.arrows = spec.arrows;
+    if (spec.label) {
+      c.label = { text: spec.label.replace(/ \/ /g, '\n') };
+      if (spec.labelPlace === 'center' || spec.labelPlace === 'above' || spec.labelPlace === 'below' || spec.labelPlace === 'branch') c.label.place = spec.labelPlace;
+      if (spec.labelShape === 'none' || spec.labelShape === 'rounded' || spec.labelShape === 'rectangle' || spec.labelShape === 'pill' || spec.labelShape === 'ellipse') c.label.shape = spec.labelShape;
+    }
+    out.push(c);
+  }
+  return out.length ? { ...map, connectors: out } : map;
 }

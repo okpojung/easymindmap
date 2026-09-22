@@ -290,11 +290,41 @@ export interface SampleCenter {
   pos?: { dx: number; dy: number };
 }
 
+// --- 연결선 (2026-09-22) — 트리 밖에서 노드와 노드를 잇는 선 ------------------
+// 부모·자식 연결선(엣지)과 다르다. 아무 두 노드나 잇고, 모양·굵기·색·점선·
+// 화살표를 따로 가지며, 선 가운데에 글(도형 있음/없음)이나 곁가지 상자를 단다.
+export type ConnectorShape = 'elbow' | 'rounded'; // 각진 선 · 모서리 둥근 선
+export type ConnectorDash = 'solid' | 'dashed' | 'dotted';
+export type ConnectorArrows = 'none' | 'end' | 'start' | 'both';
+/** 라벨 자리 — 선 가운데 / 선 위 / 선 아래 / 곁가지(짧은 줄기로 매단 상자) */
+export type ConnectorLabelPlace = 'center' | 'above' | 'below' | 'branch';
+export type ConnectorLabelShape = 'none' | 'rounded' | 'rectangle' | 'pill' | 'ellipse';
+
+export interface ConnectorLabel {
+  text: string;
+  place?: ConnectorLabelPlace; // 기본 center
+  shape?: ConnectorLabelShape; // 기본 rounded
+}
+
+export interface Connector {
+  id: string;
+  from: string; // 노드 id
+  to: string; // 노드 id
+  shape?: ConnectorShape; // 기본 rounded
+  width?: number; // 기본 1.6
+  color?: string; // 기본 = 테마 강조색
+  dash?: ConnectorDash; // 기본 solid
+  arrows?: ConnectorArrows; // 기본 end
+  label?: ConnectorLabel;
+}
+
 export interface SampleMap {
   title: string;
   root: SampleRoot;
   branches: SampleBranch[];
   settings?: MapSettings;
+  /** 노드와 노드를 잇는 연결선들 (2026-09-22). 없으면 없다. */
+  connectors?: Connector[];
   /**
    * **두 번째 이후의 중심주제** (없거나 빈 배열이면 예전과 같은 중심 하나).
    * 순서는 문서의 `#` 순서다 — 화면에서 옮겨도 이 순서는 바뀌지 않는다

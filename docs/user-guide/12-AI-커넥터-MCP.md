@@ -25,7 +25,7 @@ Claude 와 나눈 대화를 **복사·붙여넣기 없이** EasyMindMap 맵으�
 | **Claude Code — PC 터미널·VS Code·데스크톱 앱의 Claude Code** | ✅ | 아래 **2-A** |
 | **Claude Code 웹** ([claude.ai/code](https://claude.ai/code) 클라우드 세션) | ✅ | 아래 **2-B** |
 | Claude Desktop 채팅 앱의 로컬 MCP 설정 파일 | △ | 규격상 되지만 직접 확인하지 않았습니다 |
-| **ChatGPT** (개발자 모드의 커스텀 커넥터) | △ | 아래 **2-D** — 서버 쪽 요건은 갖췄습니다(2026-09-21). 실제로 붙여 본 분이 아직 없습니다. **유료 요금제**가 필요합니다 |
+| **ChatGPT** (개발자 모드의 커스텀 플러그인) | △ | 아래 **2-D** — 2026-09-22 첫 시도에서 서버 쪽 문제(`openid`)를 찾아 고쳤습니다. 고친 뒤의 성공 확인은 아직입니다. **유료 요금제**가 필요합니다 |
 | Gemini 등 다른 AI | ❌ | 아직 |
 
 > **어느 것을 고르나** — 평소 claude.ai 채팅으로 쓰신다면 **2-C 가 가장
@@ -358,56 +358,38 @@ ChatGPT 도 2-C 와 **같은 길(OAuth)** 로 붙습니다 — 토큰이 필요 
 | 만들기에서 **"연결할 수 없습니다"** | URL 이 `…/v1/mcp` 인지(앱 주소가 아니라 **API 주소**), 인증이 OAuth 인지 확인하세요 |
 | 로그인·동의까지 됐는데 도구가 안 잡힌다 | 커넥터를 **지우고 새로 만드세요**(2-C 와 같습니다) |
 | 대화에서 도구가 안 불린다 | 그 대화에서 **[+] ▸ 더 보기** 로 커넥터를 켰는지 보세요 — 개발자 모드 커넥터는 대화마다 켭니다 |
-| [다른 계정 연결] 을 누르면 로그인 창 없이 **"emm 연결에 문제가 발생했습니다"** | ChatGPT 의 자동 등록(DCR) 방식과 EasyMindMap 로그인 서버가 맞지 않는 경우입니다 (2026-09-22 실측, 설계 문서 §12.5). **아래 "클라이언트 ID 를 손으로 넣는 법"** 으로 넘어가세요 |
+| [다른 계정 연결] 을 누르면 **"emm 연결에 문제가 발생했습니다"** | 2026-09-22 에 서버 쪽에서 고쳤습니다. 플러그인을 **지우고 새로 만드세요** — 아래 "연결에 문제가 발생했습니다 가 뜰 때" |
 
-### 클라이언트 ID 를 손으로 넣는 법 — "연결에 문제가 발생했습니다" 일 때 (2026-09-22)
+### "연결에 문제가 발생했습니다" 가 뜰 때 (2026-09-22)
 
-ChatGPT 가 스스로 등록하는 대신, 우리가 로그인 서버에 클라이언트를 하나 만들어
-그 ID 와 시크릿을 ChatGPT 에 넣습니다. 서버 설정은 바뀌지 않습니다.
+2026-09-22 에 처음 붙일 때 이 오류가 났고, 원인은 서버 쪽이었습니다 — ChatGPT 가
+요구하는 `openid` 범위를 우리 로그인 서버가 처리하지 못했습니다. **같은 날 고쳐
+배포했습니다**(설계 문서 §12.6). 그 뒤에도 같은 문구가 보이면:
 
-1. ChatGPT ▸ 설정 ▸ 플러그인 ▸ `emm` ▸ 오른쪽 위 **[⋯] ▸ 편집**(또는 삭제 후
-   [+] 로 새로 만들기) → 오른쪽 **OAuth 고급 설정 ▸ 클라이언트 등록 ▸ 등록
-   방법**을 **"ChatGPT의 클라이언트 자격 증명"** 으로 바꿉니다. 화면에
-   **리디렉션 URI** 가 보이면 복사해 둡니다.
-2. **`ubuntu@em-dev` SSH 터미널**에서 아래를 통째로 붙여 넣습니다. 1번에서
-   복사한 리디렉션 URI 가 아래 기본값과 다르면 첫 줄만 바꿉니다.
+1. ChatGPT ▸ 설정 ▸ 플러그인 ▸ `emm` ▸ **[⋯] ▸ 삭제** 하고 2-D 의 2번부터
+   **새로 만듭니다.** (플러그인은 만들 때 서버 정보를 기억하므로, 고치기 전에
+   만든 것은 옛 정보를 보고 있습니다.)
+2. 그래도 안 되면 **`ubuntu@em-dev` SSH 터미널**에서 아래를 붙여 넣고 출력을
+   그대로 보내 주세요. 비밀번호·시크릿은 들어 있지 않습니다.
 
 ```bash
 bash <<'SCRIPT'
-REDIRECT="https://chatgpt.com/connector_platform_oauth_redirect"   # ChatGPT 화면의 리디렉션 URI 가 다르면 여기만 바꾼다
-AUTH="https://auth-dev.mindmap.ai.kr"
-echo "== ① 최근 2시간 GoTrue 의 OAuth 요청 (연결 실패가 어디서 멈췄는지)"
-C=""; for N in $(sudo docker ps --format '{{.Names}}'); do
-  I=$(sudo docker inspect -f '{{.Config.Image}}' "$N"); case "$I$N" in *gotrue*|*supabase/auth*|*easymindmap-auth*) C="$N";; esac; done
-if [ -n "$C" ]; then sudo docker logs --since 2h "$C" 2>&1 | grep -i '/oauth/\|registered for\|invalid_client' | tail -30; else echo "(GoTrue 컨테이너를 못 찾음)"; sudo docker ps --format '{{.Names}}'; fi
-echo; echo "== ② ChatGPT 용 클라이언트 등록 (시크릿 있는 비밀 클라이언트)"
-curl -sS -X POST "$AUTH/oauth/clients/register" -H 'Content-Type: application/json' \
-  -d "{\"client_name\":\"ChatGPT\",\"redirect_uris\":[\"$REDIRECT\"],\"grant_types\":[\"authorization_code\",\"refresh_token\"],\"token_endpoint_auth_method\":\"client_secret_post\"}" \
-  | python3 -c 'import json,sys; d=json.load(sys.stdin); print("client_id     =", d.get("client_id")); print("client_secret =", d.get("client_secret")); print("auth method   =", d.get("token_endpoint_auth_method")); print("redirect_uris =", d.get("redirect_uris")); (d.get("client_id") and d.get("client_secret")) or print("❌ 등록 실패:", d)'
+C=""; for N in $(sudo docker ps --format '{{.Names}}'); do I=$(sudo docker inspect -f '{{.Config.Image}}' "$N"); case "$I$N" in *gotrue*|*supabase/auth*|*easymindmap-auth*) C="$N";; esac; done
+echo "== GoTrue OAuth 요청 6시간 (시간 · 메서드 · 경로 · 상태 · 보낸 곳 · IP · 오류)"
+sudo docker logs --since 6h "$C" 2>&1 | grep -i 'oauth' | python3 -c '
+import sys,json
+for line in sys.stdin:
+    i=line.find("{")
+    try: d=json.loads(line[i:])
+    except Exception: print(line.rstrip()[:400]); continue
+    print(d.get("time"), d.get("method"), d.get("path"), d.get("status"), "| from:", d.get("referer"), d.get("remote_addr"), "| error:", d.get("error") or d.get("msg"))
+' | tail -60
 SCRIPT
 ```
 
-   정상 출력 예:
-
-```
-== ① …
-… "method":"POST","path":"/oauth/clients/register","status":201 …
-== ② …
-client_id     = 1aeba8af-…
-client_secret = sb_secret_…
-auth method   = client_secret_post
-redirect_uris = ['https://chatgpt.com/connector_platform_oauth_redirect']
-```
-
-3. 출력의 `client_id`·`client_secret` 을 ChatGPT 화면의 **클라이언트 ID ·
-   클라이언트 시크릿** 칸에 넣고 저장 → [다른 계정 연결] → EasyMindMap
-   로그인 → [허용].
-4. 그래도 안 되면 ①의 출력과 화면 문구를 알려 주세요. 특히 GoTrue 로그에
-   *"registered for 'client_secret_post' but 'client_secret_basic' was used"*
-   가 있으면 등록 방식만 `client_secret_basic` 으로 바꿔 다시 등록하면 됩니다
-   (스크립트의 `client_secret_post` 두 글자 자리).
-
-> 시크릿은 비밀번호입니다 — ChatGPT 칸에만 넣고 대화창·메모에 남기지 마세요.
+   정상이면 마지막 줄들이 `GET /oauth/authorize 302` → `GET /oauth/authorizations/… 200`
+   → `POST /oauth/token 200` 입니다. `token 500` 이면 그 줄의 `error:` 문장이
+   원인입니다.
 
 ---
 

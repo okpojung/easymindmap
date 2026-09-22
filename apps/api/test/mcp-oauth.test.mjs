@@ -11,8 +11,10 @@
 // 설계: docs/04-extensions/ai/mcp-connector.md §11
 
 import {
-  MCP_SCOPES, MCP_SCOPE_STRING, PRM_SUFFIX, looksLikeJwt,
-  mcpResourceUri, prmUrl, protectedResourceMetadata, requestOrigin, wwwAuthenticate,
+  AS_METADATA_SUFFIX, AUTHORIZE_PATH, MCP_SCOPES, MCP_SCOPE_STRING, OIDC_DISCOVERY_SUFFIX, PRM_SUFFIX,
+  authorizationServerMetadata, looksLikeJwt,
+  mcpResourceUri, prmUrl, protectedResourceMetadata, requestOrigin, rewriteAuthorizeUrl, stripOpenId,
+  wwwAuthenticate,
 } from '../dist/mcp/oauth.js';
 
 let failed = 0;
@@ -123,6 +125,60 @@ check('메타데이터 주소는 경로를 끼운 형태',
 }
 
 check('scope 는 상수와 문자열이 같다', MCP_SCOPE_STRING, MCP_SCOPES.join(' '));
+
+
+// ── 인가 서버 겉면 (2026-09-22, §12.6) — ChatGPT 가 붙이는 openid 를 우리 authorize 가 뗀다 ──
+check('stripOpenId: openid 만 뗀다', stripOpenId('openid email'), 'email');
+check('stripOpenId: 순서·다른 scope 는 그대로', stripOpenId('profile openid email'), 'profile email');
+check('stripOpenId: 비면 기본 scope', stripOpenId('openid'), MCP_SCOPE_STRING);
+check('stripOpenId: undefined 도 기본 scope', stripOpenId(undefined), MCP_SCOPE_STRING);
+check('stripOpenId: 공백 여러 개', stripOpenId('  openid   email  '), 'email');
+
+const GOTRUE = 'https://auth-dev.example.com/';
+const q = {
+  response_type: 'code', client_id: 'abc', redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect',
+  scope: 'openid email', state: 's1', code_challenge: 'cc', code_challenge_method: 'S256',
+  resource: 'https://api-dev.example.com/v1/mcp',
+};
+const u = new URL(rewriteAuthorizeUrl(GOTRUE, q));
+check('authorize: GoTrue 의 /oauth/authorize 로', u.origin + u.pathname, 'https://auth-dev.example.com/oauth/authorize');
+check('authorize: scope 에서 openid 만 뗐다', u.searchParams.get('scope'), 'email');
+check('authorize: 나머지 파라미터는 그대로 (PKCE·state·resource·redirect_uri)',
+  ['response_type', 'client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'resource'].map((k) => u.searchParams.get(k)),
+  ['code', 'abc', 'https://chatgpt.com/connector_platform_oauth_redirect', 's1', 'cc', 'S256', 'https://api-dev.example.com/v1/mcp']);
+check('authorize: scope 가 없으면 기본 scope 를 넣는다', new URL(rewriteAuthorizeUrl(GOTRUE, { client_id: 'x' })).searchParams.get('scope'), MCP_SCOPE_STRING);
+check('authorize: 같은 키가 여럿이면 첫 값', new URL(rewriteAuthorizeUrl(GOTRUE, { scope: ['openid email', 'profile'] })).searchParams.get('scope'), 'email');
+check('authorize: undefined 값은 건너뛴다', new URL(rewriteAuthorizeUrl(GOTRUE, { scope: 'email', nonce: undefined })).searchParams.has('nonce'), false);
+
+const upstream = {
+  issuer: 'https://auth-dev.example.com',
+  authorization_endpoint: 'https://auth-dev.example.com/oauth/authorize',
+  token_endpoint: 'https://auth-dev.example.com/oauth/token',
+  registration_endpoint: 'https://auth-dev.example.com/oauth/clients/register',
+  jwks_uri: 'https://auth-dev.example.com/.well-known/jwks.json',
+  userinfo_endpoint: 'https://auth-dev.example.com/oauth/userinfo',
+  scopes_supported: ['openid', 'email', 'profile'],
+  response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'],
+  token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+  code_challenge_methods_supported: ['S256', 'plain'],
+  id_token_signing_alg_values_supported: ['RS256', 'HS256', 'ES256'], subject_types_supported: ['public'], claims_supported: ['sub'],
+};
+const facade = authorizationServerMetadata(upstream, ORIGIN + '/');
+check('겉면: issuer 는 우리 주소 (끝 / 없이)', facade.issuer, ORIGIN);
+check('겉면: authorization_endpoint 는 우리 /v1/oauth/authorize', facade.authorization_endpoint, `${ORIGIN}/${AUTHORIZE_PATH}`);
+check('겉면: 토큰·등록·JWKS 는 GoTrue 그대로',
+  [facade.token_endpoint, facade.registration_endpoint, facade.jwks_uri],
+  [upstream.token_endpoint, upstream.registration_endpoint, upstream.jwks_uri]);
+check('겉면: scopes_supported 에서 openid 를 뺀다', facade.scopes_supported, ['email', 'profile']);
+check('겉면: OIDC 전용 항목은 뺀다',
+  ['userinfo_endpoint', 'id_token_signing_alg_values_supported', 'subject_types_supported', 'claims_supported'].map((k) => k in facade),
+  [false, false, false, false]);
+check('겉면: PKCE·grant·auth method 목록은 그대로',
+  [facade.code_challenge_methods_supported, facade.grant_types_supported, facade.token_endpoint_auth_methods_supported],
+  [upstream.code_challenge_methods_supported, upstream.grant_types_supported, upstream.token_endpoint_auth_methods_supported]);
+check('겉면: scopes_supported 가 없으면 우리 기본', authorizationServerMetadata({ token_endpoint: 't' }, ORIGIN).scopes_supported, [...MCP_SCOPES]);
+check('겉면 문서 자리 둘', [AS_METADATA_SUFFIX, OIDC_DISCOVERY_SUFFIX], ['.well-known/oauth-authorization-server', '.well-known/openid-configuration']);
+check('PRM 이 겉면(우리 주소)을 인가 서버로 알린다', protectedResourceMetadata(ORIGIN, ORIGIN).authorization_servers, [ORIGIN]);
 
 console.log(failed ? `\n${failed}개 실패` : '\n전부 통과');
 process.exit(failed ? 1 : 0);

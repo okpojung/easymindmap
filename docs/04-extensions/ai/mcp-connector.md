@@ -1798,69 +1798,86 @@ ChatGPT 가 **부르기 전에 확인 창**을 띄운다 — 승인하지 않으
 
 붙어서 도구가 잡히면 이 표를 §10.10 처럼 실측으로 바꾼다.
 
-### 12.5 실측 1 — 만들기까지 됐다 · **계정 연결에서 실패** (2026-09-22)
+### 12.5 실측 1 — 만들기까지 됐다 · 계정 연결에서 실패 · **원인은 `openid`** (2026-09-22)
 
-사용자가 §12.3 대로 눌렀다. 결과를 순서대로 적는다.
+사용자가 §12.3 대로 눌렀다.
 
 | 단계 | 결과 |
 |---|---|
 | 설정 ▸ 보안 및 로그인 ▸ 개발자 모드 | 켜짐 |
-| 설정 ▸ 플러그인 ▸ [+] ▸ 새 플러그인 | 이름 `emm` · 서버 URL `…/v1/mcp` · 인증 OAuth. 오른쪽 "OAuth 고급 설정"이 **PRM·GoTrue 메타데이터를 스스로 읽었다** — 등록 방법 `동적 클라이언트 등록(DCR)`, 기본 범위 `email` 체크, "OAuth 엔드포인트가 MCP 서버에서 발견되었습니다". CIMD 는 "서버가 지원하지 않음" 안내(무해) |
-| [만들기] | 플러그인 생성. 정보: 인증 지원됨 OAuth · 버전 이름 dev mode · 검토 상태 development. **액션: "아직 사용할 수 있는 앱 액션이 없습니다"** (로그인 전이라 `tools/list` 를 못 받은 것) |
-| 연결된 계정 ▸ [+] 다른 계정 연결 | ❌ **"emm 연결에 문제가 발생했습니다. 나중에 다시 시도해주세요."** — EasyMindMap 로그인 화면이 **뜨지 않았다** |
+| 설정 ▸ 플러그인 ▸ [+] ▸ 새 플러그인 | 이름 `emm` · 서버 URL `…/v1/mcp` · 인증 OAuth. 오른쪽 "OAuth 고급 설정"이 **PRM·GoTrue 메타데이터를 스스로 읽었다** — 등록 방법 `동적 클라이언트 등록(DCR)`, 기본 범위 `email` 체크, "OAuth 엔드포인트가 발견되었습니다". CIMD 는 "서버가 지원하지 않음"(무해 — GoTrue 소스에 CIMD 코드가 없다) |
+| [만들기] | 플러그인 생성. 액션: "아직 사용할 수 있는 앱 액션이 없습니다"(로그인 전) |
+| 연결된 계정 ▸ [+] 다른 계정 연결 | ❌ **"emm 연결에 문제가 발생했습니다. 나중에 다시 시도해주세요."** |
 
-#### 진단 — 로그인 화면 전에 죽었으니 DCR 단계다
+#### 처음 진단은 틀렸다 — 그리고 로그가 바로잡았다
 
-로그인 화면이 안 떴다는 것은 ChatGPT 가 `/oauth/authorize` 로 보내기 **전에**
-멈췄다는 뜻이다. 그 앞에 있는 것은 메타데이터(만들기 화면에서 이미 성공)와
-**동적 클라이언트 등록** 둘뿐이다.
+로그인 창이 안 보였다기에 *DCR 단계에서 죽었다* 고 적고(커뮤니티의 "ChatGPT 는
+`none` 으로 등록하고 시크릿을 기대한다" 보고에 기대어) 손 등록 우회를 안내했다.
+**GoTrue 로그를 받아 보니 아니었다.**
 
-OpenAI 개발자 커뮤니티에 같은 증상이 있다 — *"MCP with OAuth dynamic
-registration — ChatGPT registers with `token_endpoint_auth_method: none` but
-still expects a `client_secret`"*. ChatGPT 는 **공개 클라이언트로 등록해 놓고
-응답에 시크릿이 없으면 실패**시킨다는 보고다.
+```
+07:02:05  POST /oauth/clients/register              201      ← DCR 성공
+07:02:27  GET  /oauth/authorize                     302      ← 인가 요청
+07:02:28  GET  /oauth/authorizations/<id>           200      ← 우리 동의 화면이 읽음
+07:02:31  POST /oauth/authorizations/<id>/consent   200      ← [허용]
+07:02:36  POST /oauth/token                         500      error: HS256 is not supported for ID token signing
+09:50 · 09:51 · 09:51   authorize 302 → authorizations 200 → token 500 (동의는 이미 있어 건너뜀)  ×3
+```
 
-우리 GoTrue 는 정확히 그 반대편에 서 있다(소스 실측, supabase/auth 2026-09-21):
+전부 통과하고 **토큰 교환에서 500** — §10.9 에서 claude.ai 가 걸렸던 바로 그
+오류다. 그때는 우리 PRM 의 `scopes_supported` 에서 `openid` 를 빼서 풀었는데,
+**ChatGPT 는 PRM 과 무관하게 `openid` 를 덧붙인다**(기본 범위 체크박스는
+`email` 하나였는데도). 로그인 창이 안 보인 것은 pro-dev 에 이미 로그인돼 있고
+두 번째부터는 동의도 기록돼 있어 창이 순식간에 지나갔기 때문이다.
 
-- `InferClientTypeFromAuthMethod("none")` → `public` (`client_auth.go:12`)
-- DCR 응답은 `client.IsConfidential()` 일 때만 `client_secret` 을 싣는다
-  (`handlers.go:155`)
-- claude.ai 는 `client_secret_post` 로 등록했기 때문에(§10.9) 시크릿을 받았고
-  그래서 붙었다
+> 배운 것 — **로그가 없는 진단은 진단이 아니다.** §10.9 때 "틀린 답을 두 번
+> 했다" 고 적어 놓고 또 했다. 이번엔 첫 답에서 로그 스크립트를 함께 주었으니
+> 한 번에 잡혔다. 다음부터는 **로그 스크립트를 먼저** 준다.
 
-즉 **DCR 자체는 201 로 성공했을 가능성이 높고, ChatGPT 쪽이 응답을 보고
-포기한 것**이다. GoTrue 로그에 `POST /oauth/clients/register` 가 201 로 남고
-그 뒤 `/oauth/authorize` 가 없으면 확정이다(아래 스크립트 ①).
+#### 왜 GoTrue 를 못 고치나 (다시)
 
-> **정직하게** — 커뮤니티 글 원문은 프록시에 막혀 못 읽었다(검색 요약).
-> 팝업 차단도 같은 문구를 낼 수 있다. 그래서 확정은 GoTrue 로그로 한다.
+`openid` 가 오면 GoTrue 는 ID 토큰을 만들려 하고, 대칭키(HS256)로는 못 만든다
+(`tokens/service.go` "HS256 is not supported for ID token signing"). 비대칭키로
+바꾸면 액세스 토큰 서명까지 바뀌어 우리 가드 둘과 살아 있는 로그인이 끊긴다
+(§10.9). 클라이언트(ChatGPT)는 우리가 못 고친다.
 
-#### 우회 — ChatGPT 가 고칠 때까지, **비밀 클라이언트를 손으로 등록해 넣는다**
+### 12.6 고친 것 — **우리 API 가 인가 서버의 겉면이 된다** (2026-09-22)
 
-ChatGPT 만들기 화면의 "등록 방법" 에는 **"ChatGPT의 클라이언트 자격 증명"**
-이 있다. 우리가 GoTrue 에 `client_secret_post` 클라이언트를 등록해 그
-`client_id`·`client_secret` 을 넣으면 DCR 을 건너뛴다. 등록은 DCR 엔드포인트를
-curl 로 부르면 된다(관리자 키 불필요, §10.5 때 한 번 했다). 서버 코드 변경 없음.
+`openid` 를 **GoTrue 에 닿기 전에 떼면** 된다. GoTrue 는 인가 요청의 scope 를
+그대로 저장하고 토큰 교환 때 그 값으로 ID 토큰 여부를 정하므로(`authorization.
+Scope`), 인가 요청에 `openid` 가 없으면 500 이 날 자리가 없다. 그 자리를
+우리가 잡는다.
 
-주의 둘:
-
-1. **redirect URI** 는 ChatGPT 화면이 알려 주는 값을 넣어야 한다. 알려진
-   값은 `https://chatgpt.com/connector_platform_oauth_redirect` 다 — 화면에
-   다른 값이 보이면 그것으로.
-2. GoTrue 는 토큰 교환 때 **등록된 인증 방식과 실제 쓴 방식이 다르면 거절**한다
-   (`ValidateClientAuthMethod`, `client_auth.go:113`). ChatGPT 가 시크릿을
-   본문에 넣는지(`client_secret_post`) 헤더에 넣는지(`client_secret_basic`)
-   모른다 — 먼저 `post` 로 등록하고, 토큰 교환이 `invalid_client` 로 막히면
-   GoTrue 로그의 *"registered for 'client_secret_post' but 'client_secret_basic'
-   was used"* 문장을 보고 `basic` 으로 다시 등록한다.
-
-스크립트는 사용자 가이드 12 §2-D "연결에 문제가 발생했습니다" 항목에 있다.
-
-#### 근본 해결 후보 (아직 안 했다)
-
-| 안 | 내용 | 판단 |
+| 자리 | 전 | 후 |
 |---|---|---|
-| GoTrue 가 `none` 에도 시크릿을 돌려주게 | 규격상 공개 클라이언트에 시크릿은 무의미 — GoTrue 를 고칠 일이 아니다 | ✗ |
-| 우리 API 에 DCR 프록시를 두고 `none`→`client_secret_post` 로 바꿔 GoTrue 에 전달 | `registration_endpoint` 는 GoTrue 메타데이터가 `issuer + /oauth/clients/register` 로 박아 내므로 우리 API 로 돌릴 수 없다(issuer 를 바꾸면 토큰 `iss` 가 바뀐다) | ✗ |
-| CIMD(Client ID Metadata Documents) 지원 | ChatGPT 가 "서버가 CIMD 를 지원하지 않는다" 고 했다. GoTrue 가 CIMD 를 지원하는지 확인해야 한다 — 지원하면 DCR 을 아예 피한다 | 검토 |
-| 손 등록(위 우회) | 사용자마다 한 번 curl — dev 에서는 충분하다 | ✅ 지금 |
+| PRM `authorization_servers` | GoTrue (`https://auth-dev…`) | **우리 API** (`https://api-dev…`) |
+| `GET /.well-known/oauth-authorization-server` (+ `openid-configuration`) | 없음 (GoTrue 것을 직접 읽었다) | **우리가 낸다** — GoTrue 문서를 받아(10분 캐시) `issuer` · `authorization_endpoint` 만 우리 것으로 바꾸고, `scopes_supported` 에서 `openid` 를 빼고, OIDC 전용 항목(userinfo·id_token alg·claims)은 뺀다 |
+| `GET /v1/oauth/authorize` | 없음 | **scope 에서 `openid` 를 떼고** 나머지 파라미터(PKCE·state·resource·redirect_uri) 그대로 GoTrue `/oauth/authorize` 로 302 |
+| 토큰 · 동적 등록 · JWKS | GoTrue | **GoTrue 그대로** (메타데이터가 GoTrue 의 절대 주소를 그대로 싣는다) |
+
+- **서명키·가드·기존 로그인은 아무것도 바뀌지 않는다.** 토큰은 여전히 GoTrue 가
+  HS256 으로 발급하고 우리 가드가 그대로 검증한다. `iss` 는 가드가 보지 않는다.
+- RFC 8414 는 엔드포인트가 issuer 와 다른 호스트여도 된다고 한다 — issuer 만
+  문서를 낸 주소와 같으면 된다(§3.3). 그래서 `issuer` 를 우리 주소로 낸다.
+- **claude.ai 도 같은 길**을 지난다(새로 붙일 때). 이미 붙어 있는 커넥터는 토큰
+  갱신을 GoTrue 토큰 엔드포인트로 하므로 영향이 없다.
+- 코드: `oauth.ts` `stripOpenId` · `rewriteAuthorizeUrl` · `authorizationServerMetadata`,
+  `oauth-metadata.controller.ts`(문서 둘), `oauth-authorize.controller.ts`(302),
+  `main.ts` 프리픽스 예외 둘. 시험: `mcp-oauth.test.mjs` +24 (전체 59 PASS).
+
+#### 확정은 다시 눌러 보는 것으로
+
+API 재배포 뒤 ChatGPT 에서 플러그인을 **지우고 새로 만든다**(만들 때 PRM 을
+읽어 인가 서버를 기억하므로, 옛 플러그인은 GoTrue 를 직접 보고 있다). 정상이면
+GoTrue 로그가 `authorize 302 → … → token 200` 으로 끝난다. **모르는 것 하나** —
+ChatGPT 가 `openid` 를 요청해 놓고 토큰 응답에 `id_token` 이 없다고 거절할
+가능성. claude.ai 는 그러지 않았고 규격상 액세스 토큰이면 충분하다. 거절하면
+GoTrue 로그가 아니라 ChatGPT 화면에만 오류가 남을 것이다.
+
+#### 접은 길
+
+| 안 | 왜 안 골랐나 |
+|---|---|
+| 손 등록(`client_secret_post`) 클라이언트를 ChatGPT 에 넣기 (§12.5 첫 진단) | DCR 은 이미 성공했다. 어느 방식으로 등록하든 `openid` 는 붙는다 |
+| GoTrue 비대칭키 | 액세스 토큰까지 바뀌어 가드·로그인 전부 손본다 (§10.9) |
+| DCR 프록시 | 등록은 문제가 아니었다 |

@@ -136,7 +136,26 @@ export function CanvasFloatingToolbar({
     setCalendar({ parentId: selectedId, parentLabel: node.text || '(빈 노드)', initial: parseYearMonth(node.text, ancestors) });
   };
 
+  // 연결선 (2026-09-22) — [연결] 은 선택 노드를 시작점으로 연결 모드를 켠다
+  // (다시 누르면 끈다). 끝 노드 클릭·Esc·빈 곳 클릭은 Canvas 가 맡는다.
+  // 연결선을 고른 상태면 휴지통이 그 연결선을 지운다.
+  const connectMode = useInteractionStore((state) => state.connectMode);
+  const setConnectMode = useInteractionStore((state) => state.setConnectMode);
+  const selectedConnectorId = useInteractionStore((state) => state.selectedConnectorId);
+  const setSelectedConnectorId = useInteractionStore((state) => state.setSelectedConnectorId);
+  const removeConnector = useDocumentStore((state) => state.removeConnector);
+  const handleConnect = () => {
+    if (connectMode) { setConnectMode(null); return; }
+    if (!selectedId) return;
+    setConnectMode({ fromId: selectedId });
+  };
+
   const handleDeleteNode = () => {
+    if (selectedConnectorId) {
+      removeConnector(selectedConnectorId);
+      setSelectedConnectorId(null);
+      return;
+    }
     deleteNode(selectedId);
     setSelectedId(null);
   };
@@ -211,12 +230,32 @@ export function CanvasFloatingToolbar({
         />
       )}
       
+      {!kanban && (
+      <ToolbarBtn
+        t={t}
+        title={connectMode
+          ? '연결 모드 끄기 (Esc)'
+          : '연결선 — 선택 노드에서 시작해, 다음에 클릭하는 노드까지 연결선을 긋는다'}
+        highlight={!!connectMode}
+        disabled={!connectMode && !hasSelection}
+        onClick={handleConnect}
+        testId="connect-node"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="1.5" y="2" width="5" height="4" rx="1.2" />
+          <rect x="9.5" y="10" width="5" height="4" rx="1.2" />
+          <path d="M6.5 4 H8.5 A1.5 1.5 0 0 1 10 5.5 V8 A1.5 1.5 0 0 0 11.5 9.5" />
+          <path d="M10.2 8.2 L11.5 9.6 L12.8 8.2" />
+        </svg>
+      </ToolbarBtn>
+      )}
       <ToolbarBtn
        t={t}
-       title="선택 노드 삭제 (Del)"
+       title={selectedConnectorId ? '선택한 연결선 삭제 (Del)' : '선택 노드 삭제 (Del)'}
        danger
-       disabled={!hasSelection}
+       disabled={!hasSelection && !selectedConnectorId}
        onClick={handleDeleteNode}
+       testId="delete-node"
       >
         <I.Trash size={15} />
       </ToolbarBtn>

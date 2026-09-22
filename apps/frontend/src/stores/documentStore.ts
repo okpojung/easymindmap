@@ -17,6 +17,7 @@ import { wouldCreateCycle } from '@emm/tree-rules';
 import { SAMPLE_ROADMAP } from '@/editor/__samples__';
 import type { OutlineItem } from '@/utils/outlineLines';
 import type {
+  Connector,
   ShapeType,
   SampleMap,
   SampleRoot,
@@ -143,6 +144,12 @@ interface DocumentState {
   deleteNode: (nodeId: string | null) => void;
   // 러버밴드 다중 선택 일괄 삭제 — 한 번의 set = undo 1단계
   deleteNodesBulk: (nodeIds: string[]) => void;
+
+  // 연결선 (2026-09-22) — 노드와 노드를 잇는 선. set() 한 번 = undo 한 단계.
+  /** 같은 from→to 가 이미 있으면 새로 만들지 않고 그 id 를 돌려준다. 같은 노드면 null */
+  addConnector: (fromId: string, toId: string) => string | null;
+  updateConnector: (id: string, patch: Partial<Omit<Connector, 'id'>>) => void;
+  removeConnector: (id: string) => void;
   moveNode: (nodeId: string | null, newParentId: string | null) => boolean;
   // Drag-and-drop move relative to a target node (drop zones).
   moveNodeRelative: (
@@ -322,6 +329,25 @@ function createNodeId() {
 
 function createSubId(prefix: string) {
   return freshId(prefix);
+}
+
+/** 문서의 모든 노드 id (루트·가지·둘째 이후 중심 포함, 접힘 무관) */
+function allNodeIds(map: SampleMap): Set<string> {
+  const ids = new Set<string>();
+  const walk = (n: { id: string; children?: MindNode[] }) => { ids.add(n.id); for (const c of n.children ?? []) walk(c); };
+  walk(map.root as unknown as MindNode); map.branches.forEach(walk);
+  for (const c of map.centers ?? []) { walk(c.root as unknown as MindNode); c.branches.forEach(walk); }
+  return ids;
+}
+
+/** 끝 노드가 사라진 연결선을 걷어낸다 (노드 삭제 뒤, 2026-09-22). 바뀐 게 없으면 같은 객체 */
+export function pruneConnectors(map: SampleMap): SampleMap {
+  const list = map.connectors;
+  if (!list || !list.length) return map;
+  const ids = allNodeIds(map);
+  const kept = list.filter((c) => ids.has(c.from) && ids.has(c.to));
+  if (kept.length === list.length) return map;
+  return { ...map, connectors: kept.length ? kept : undefined };
 }
 
 /**
@@ -1442,7 +1468,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         const centers = map.centers.filter((c) => c.root.id !== nodeId);
         return { map: { ...map, centers: centers.length ? centers : undefined } };
       }
-      return { map: mapAllBranches(map, (b) => deleteNodeRecursive(b, nodeId) as SampleBranch[]) };
+      return { map: pruneConnectors(mapAllBranches(map, (b) => deleteNodeRecursive(b, nodeId) as SampleBranch[])) };
     });
   },
 
@@ -1460,7 +1486,37 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         if (centerIds.has(id)) continue;
         map = mapAllBranches(map, (b) => deleteNodeRecursive(b, id) as SampleBranch[]);
       }
-      return { map };
+      return { map: pruneConnectors(map) };
+    });
+  },
+
+  addConnector: (fromId, toId) => {
+    if (!fromId || !toId || fromId === toId) return null;
+    const cur = get().map;
+    if (!findNodeInMap(cur, fromId) || !findNodeInMap(cur, toId)) return null;
+    const existing = (cur.connectors ?? []).find((c) => c.from === fromId && c.to === toId);
+    if (existing) return existing.id;
+    const id = createSubId('conn');
+    set((state) => ({
+      map: { ...state.map, connectors: [...(state.map.connectors ?? []), { id, from: fromId, to: toId }] },
+    }));
+    return id;
+  },
+
+  updateConnector: (id, patch) => {
+    set((state) => {
+      const list = state.map.connectors ?? [];
+      if (!list.some((c) => c.id === id)) return {};
+      return { map: { ...state.map, connectors: list.map((c) => (c.id === id ? { ...c, ...patch } : c)) } };
+    });
+  },
+
+  removeConnector: (id) => {
+    set((state) => {
+      const list = state.map.connectors ?? [];
+      if (!list.some((c) => c.id === id)) return {};
+      const kept = list.filter((c) => c.id !== id);
+      return { map: { ...state.map, connectors: kept.length ? kept : undefined } };
     });
   },
 

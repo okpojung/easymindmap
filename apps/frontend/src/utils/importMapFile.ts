@@ -10,7 +10,7 @@
 import type { SampleMap, SampleBranch } from '@/editor/__samples__/types';
 import { parseMarkdownToMap, type ParseEmmOptions } from './importMarkdown';
 import { readDeclaration } from '@emm/declaration';
-import { resolveDeclaration } from './emmDeclaration';
+import { applyDeclaredConnectors, resolveDeclaration } from './emmDeclaration';
 import { applyLevelLayouts } from './levelLayouts';
 import { parseMetaJson, type MapFileMeta } from '@/export/mapMeta';
 
@@ -73,6 +73,10 @@ export function parseMarkdownMapFile(
       }
     }
   }
+
+  // 연결선 선언 → 경로를 id 로 풀어 맵에 (2026-09-22)
+  const withConnectors = applyDeclaredConnectors(map, declared.connectors);
+  if (withConnectors !== map) map.connectors = withConnectors.connectors;
 
   return {
     map,

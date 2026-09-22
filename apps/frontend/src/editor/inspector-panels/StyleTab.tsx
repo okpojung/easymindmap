@@ -10,6 +10,7 @@ import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { InspectorSection, InspectorRow, ColorSwatchInput } from './InspectorSection';
+import { ConnectorPanel } from './ConnectorPanel';
 
 const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
   // 도형 없음 — 글자만 놓는다 (2026-08-08 사용자 요청). 미리보기는
@@ -62,6 +63,10 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
   // 러버밴드 다중 선택 — 2개 이상이면 모든 컨트롤이 선택된 노드 전체에
   // 일괄 적용된다 (한 번의 undo 단계). 표시 상태는 대표(첫) 노드 기준.
   const multiSelectedIds = useInteractionStore((s) => s.multiSelectedIds);
+  // 연결선을 골랐으면 노드 대신 연결선 패널 (2026-09-22). 훅은 위에서 다 불렀다.
+  const selectedConnectorId = useInteractionStore((s) => s.selectedConnectorId);
+  const connector = selectedConnectorId ? map.connectors?.find((c) => c.id === selectedConnectorId) : undefined;
+  if (connector) return <ConnectorPanel t={t} connector={connector} />;
   const targets =
     multiSelectedIds.length > 1 ? multiSelectedIds : selectedId ? [selectedId] : [];
 

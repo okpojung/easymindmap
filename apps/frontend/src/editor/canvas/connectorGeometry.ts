@@ -17,13 +17,18 @@ export const CORNER_R = 12;   // 둥근 모서리 반지름
 export const BRANCH_STUB = 40; // 곁가지 라벨의 짧은 줄기 길이
 export const LABEL_GAP = 6;   // 선 위/아래 라벨과 선 사이
 
-/** 꺾이는 점들 (시작·끝 포함). 겹침·같은 높이 등 특수 경우는 점 2개. */
-export function connectorPoints(a: CBox, b: CBox): CPoint[] {
+/**
+ * 꺾이는 점들 (시작·끝 포함). 겹침·같은 높이 등 특수 경우는 점 2개.
+ * `obstacles` — 화면의 다른 노드 상자들. 고리 모양일 때 세로 줄기가 **두 노드 사이
+ * 높이에 있는 다른 노드를 관통하지 않도록** 그 오른쪽 너머로 민다 (하위 노드가
+ * 오른쪽에 펼쳐진 트리에서 줄기가 자식들을 가로지르던 것, 2026-09-22 캡처로 확인).
+ */
+export function connectorPoints(a: CBox, b: CBox, obstacles?: CBox[]): CPoint[] {
   const aL = a.x - a.w / 2, aR = a.x + a.w / 2;
   const bL = b.x - b.w / 2, bR = b.x + b.w / 2;
   const xOverlap = aL < bR && bL < aR;
   if (xOverlap) {
-    const X = Math.max(aR, bR) + LOOP_OUT;
+    const X = loopTrunkX(a, b, obstacles);
     if (Math.abs(a.y - b.y) < 1) return [{ x: aR, y: a.y }, { x: X, y: a.y }, { x: X, y: b.y + 1 }, { x: bR, y: b.y + 1 }];
     return [{ x: aR, y: a.y }, { x: X, y: a.y }, { x: X, y: b.y }, { x: bR, y: b.y }];
   }
@@ -100,6 +105,24 @@ export function labelBox(mid: ReturnType<typeof connectorMid>, w: number, h: num
   const sign = place === 'above' ? -1 : 1;
   if (mid.dir === 'h') return { x: mid.x, y: mid.y + sign * (h / 2 + LABEL_GAP), w, h };
   return { x: mid.x + sign * (w / 2 + LABEL_GAP), y: mid.y, w, h };
+}
+
+/** 고리 줄기 x — 두 노드 오른쪽 변 + LOOP_OUT 에서 시작해, 두 노드 사이 높이의 다른
+ * 상자를 지나게 되면 그 상자 오른쪽 + LOOP_OUT 으로 (새로 걸리는 게 없을 때까지) */
+export function loopTrunkX(a: CBox, b: CBox, obstacles?: CBox[]): number {
+  let X = Math.max(a.x + a.w / 2, b.x + b.w / 2) + LOOP_OUT;
+  if (!obstacles?.length) return X;
+  const top = Math.min(a.y, b.y), bottom = Math.max(a.y, b.y);
+  const band = obstacles.filter((o) => o !== a && o !== b && o.y + o.h / 2 > top && o.y - o.h / 2 < bottom);
+  for (let guard = 0; guard < 50; guard++) {
+    let moved = false;
+    for (const o of band) {
+      const oL = o.x - o.w / 2, oR = o.x + o.w / 2;
+      if (oL - LOOP_OUT / 2 <= X && X <= oR + LOOP_OUT / 2) { X = oR + LOOP_OUT; moved = true; }
+    }
+    if (!moved) break;
+  }
+  return X;
 }
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toString();

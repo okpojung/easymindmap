@@ -1,5 +1,5 @@
 // 연결선 기하 (2026-09-22).   npx tsx src/editor/canvas/connectorGeometry.test.ts
-import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, LOOP_OUT } from './connectorGeometry';
+import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, loopTrunkX, LOOP_OUT } from './connectorGeometry';
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
   const g = JSON.stringify(got), w = JSON.stringify(want); const ok = g === w; if (!ok) failed++;
@@ -31,4 +31,17 @@ const hmid = connectorMid([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
 check('⑤ 가로 변의 above = 위', labelBox(hmid, 60, 24, 'above'), { x: 50, y: -18, w: 60, h: 24 });
 check('⑤ 가로 변의 branch = 아래 곁가지', labelBox(hmid, 60, 24, 'branch').stub, { x1: 50, y1: 0, x2: 50, y2: 40 });
 if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }
+// ⑥ 고리 줄기는 사이 높이의 다른 상자를 관통하지 않는다 (2026-09-22)
+{
+  const a = { x: 100, y: 100, w: 100, h: 40 }, b = { x: 100, y: 400, w: 100, h: 40 };
+  const kid = { x: 260, y: 200, w: 120, h: 40 }; // a 의 오른쪽 아래, 두 노드 사이 높이
+  const far = { x: 260, y: 700, w: 120, h: 40 }; // 사이 높이 밖 — 무시
+  check('⑥ 장애물 없으면 max right + 40', loopTrunkX(a, b), 190);
+  check('⑥ 사이 높이의 상자는 넘어간다 (320 + 40)', loopTrunkX(a, b, [a, b, kid, far]), 360);
+  const kid2 = { x: 400, y: 300, w: 100, h: 40 }; // 밀린 줄기(360)가 다시 걸리는 상자
+  check('⑥ 밀린 자리에 또 걸리면 한 번 더 민다', loopTrunkX(a, b, [kid, kid2]), 490);
+  const pts = connectorPoints(a, b, [kid]);
+  check('⑥ connectorPoints 도 같은 줄기 x', [pts[1].x, pts[2].x], [360, 360]);
+}
+
 console.log('\n모두 통과');

@@ -6,7 +6,7 @@
 //   ② 우리 것이 아닌 펜스는 건드리지 않는다
 //   ③ 본문에서 블록을 **걷어내지 않는다** — 그 노드의 코드 노트가 되어야 한다
 
-import { TEMPLATE_IDS, expandTemplateId, readDeclaration } from '../src/declaration';
+import { TEMPLATE_IDS, buildDeclaration, expandTemplateId, readDeclaration } from '../src/declaration';
 import { parseEmm, parseMarkdownToMap } from '../src/parse';
 
 let failed = 0;
@@ -150,6 +150,25 @@ const F = '```';
   const me = parseMarkdownToMap(e, '파일')!;
   check('⑤E 닫지 않은 bash 펜스는 끝까지 코드 — 가지 없음', me?.branches.map((x) => x.text), []);
   check('⑤E 견출이 코드 노트 안에', (me?.root.notes?.[0] as { text?: string } | undefined)?.text, 'echo hi\n## 가지');
+}
+
+// ── ⑥ 연결선 (2026-09-22) — 번호 키 아래 from/to 경로 + 속성. 읽고 다시 쓰면 같다 ──
+{
+  const src = md(F + 'emm', 'template: tree-progtree', 'connectors:', '  1:', '    from: 테스트 > Topic 1',
+    '    to: 테스트 > Topic 2 > Sub', '    shape: elbow', '    width: 2.5', '    color: #DC2626', '    dash: dashed',
+    '    arrows: both', '    label: 검토 / 승인', '    labelPlace: branch', '    labelShape: pill',
+    '  2:', '    from: 테스트 > Topic 2', '    to: 테스트 > Topic 3', '  3:', '    from: 테스트 > Topic 1', F);
+  const r = readDeclaration(src);
+  check('⑥ 연결선 2개 (from/to 없는 3번은 버린다)', r.connectors?.length, 2);
+  check('⑥ 1번의 모든 키', r.connectors?.[0], {
+    from: '테스트 > Topic 1', to: '테스트 > Topic 2 > Sub', shape: 'elbow', width: '2.5', color: '#DC2626',
+    dash: 'dashed', arrows: 'both', label: '검토 / 승인', labelPlace: 'branch', labelShape: 'pill',
+  });
+  check('⑥ 2번은 from/to 만', r.connectors?.[1], { from: '테스트 > Topic 2', to: '테스트 > Topic 3' });
+  const built = buildDeclaration({ template: 'tree-progtree', connectors: r.connectors });
+  check('⑥ 다시 쓴 블록을 읽으면 같다', readDeclaration(built).connectors, r.connectors);
+  check('⑥ template 도 그대로', readDeclaration(built).template, 'tree-progtree');
+  check('⑥ 연결선 없으면 connectors 키를 쓰지 않는다', buildDeclaration({ template: 'kanban' }).includes('connectors'), false);
 }
 
 console.log(failed ? `\n${failed}건 실패` : '\n전부 통과');

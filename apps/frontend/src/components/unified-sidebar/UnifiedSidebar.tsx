@@ -327,6 +327,8 @@ function InspectorContent({ t, tab, onClose }: {
   onClose: () => void;
 }) {
   const selectedId = useInteractionStore((s) => s.selectedId);
+  // 연결선을 고른 상태 (2026-09-22) — 머리말이 "연결선" 이라고 알려 준다
+  const selectedConnectorId = useInteractionStore((s) => s.selectedConnectorId);
   const multiCount = useInteractionStore((s) => s.multiSelectedIds.length);
   const map = useDocumentStore((s) => s.map);
 
@@ -357,14 +359,15 @@ function InspectorContent({ t, tab, onClose }: {
           textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3,
         }}>{multiCount > 1 ? `${multiCount}개 노드 선택 · 일괄 편집`
           // 레벨 표기 = 중심 주제가 1레벨 (내부 depth 0 기준 → 표시 +1)
-          : node ? `선택 · ${depth + 1}레벨${depth === 0 ? ' (중심 주제)' : ''}` : '선택된 노드 없음'}</div>
+          : node ? `선택 · ${depth + 1}레벨${depth === 0 ? ' (중심 주제)' : ''}`
+          : selectedConnectorId ? '선택 · 연결선' : '선택된 노드 없음'}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
           <div style={{
-            fontSize: 13.5, fontWeight: 600, color: node ? t.text : t.textMuted,
+            fontSize: 13.5, fontWeight: 600, color: node || selectedConnectorId ? t.text : t.textMuted,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{/* 블록 마커는 접어 표시 — ⧉코드·☑/☐·⊞표 (P4) */}
-            {node ? flattenNodeText(node.text) : '노드를 선택하세요'}</div>
+            {node ? flattenNodeText(node.text) : selectedConnectorId ? '연결선 (노드 ↔ 노드)' : '노드를 선택하세요'}</div>
         </div>
         {parentNode && parentId !== selectedId && (
           <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 3 }}>

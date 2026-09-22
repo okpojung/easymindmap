@@ -1261,3 +1261,67 @@ CANVAS-06)에서 시작한다. 같은 문서 안의 편집·되돌리기·템플
 배율(10% 안팎)이 되고, 새로고침·`?map=` 새 탭이 이미 100% 원위치로 여는
 것과도 어긋난다. 처음 보는 자리는 한 가지여야 한다 — 중심 주제가 화면
 가운데(진행트리는 왼쪽 위)에 있는 100%.
+
+### 31. 연결선 — 노드와 노드를 잇는 선 (2026-09-22 사용자 요청)
+
+> 요청: "노드와 노드를 연결하는 연결선 — ① 종류는 각진 선·모서리 둥근 직선
+> ② 선 두께·선 색·선 종류(실선·점선)·양쪽 끝 화살표·그냥 직선 ③ 가운데에
+> 하위 노드를 달거나 선 가운데·위·아래에 글(도형 있음/없음)". 설계 확인 뒤
+> 결정 둘: **기본 선 색은 파란색**, **곁가지 상자는 트리 노드가 아니라 연결선의
+> 라벨**이다.
+
+**자료형** — `SampleMap.connectors?: Connector[]` (`packages/emm-parser/src/model.ts`).
+`{ id, from, to, shape?, width?, color?, dash?, arrows?, label?: { text, place?, shape? } }`.
+트리와 무관하므로 노드 안이 아니라 **문서 맨 위에** 산다. 기본값(`ConnectorLayer.tsx`
+`CONNECTOR_DEFAULTS`): rounded · 1.6 · `#2563EB` · solid · end. 라벨 기본은 가운데 · 둥근.
+
+**저장소** — `documentStore.addConnector(from, to)`(같은 from→to 가 있으면 그 id,
+같은 노드면 null) · `updateConnector(id, patch)` · `removeConnector(id)`. 각각 `set()`
+한 번 = undo 한 단계. `deleteNode`·`deleteNodesBulk` 는 끝에 `pruneConnectors` 로 끝
+노드가 사라진 선을 걷어낸다 (되돌리면 맵 스냅샷째 돌아온다).
+`interactionStore.selectedConnectorId` · `connectMode: { fromId }`.
+
+**만들기(연결 모드)** — 툴바 [연결](`connect-node`) 이 선택 노드를 `fromId` 로 모드를
+켠다 → 화면 위 가운데 배지(`connect-hint`) → `Canvas.selectOne` 에서 다른 노드를 누르면
+`addConnector` → 모드 끝 → **연결선 선택**(노드 선택 해제, `setInspectorTab('style')`).
+시작 노드를 다시 누른 것은 무시, 빈 곳·Esc 는 취소.
+
+**선택·삭제** — 선의 넓은 투명 획(`data-connector-hit`, 14px)·라벨을 누르면 선택.
+노드를 누르면 풀린다(둘 중 하나만 선택된다). Delete = `removeConnector`, Esc = 해제.
+툴바 휴지통도 연결선을 골랐으면 그것을 지운다. 사이드바 머리말은 "선택 · 연결선".
+
+**그리기 순서** — 트리 엣지 → **연결선 층**(`ConnectorLayer part="lines"`) → 노드 →
+**라벨 층**(`part="labels"`) → 오버레이. 끝 노드가 접히거나 Focus 밖이면(`visibleById`
+에 없으면) 그 선은 그리지 않는다.
+
+**기하** (`connectorGeometry.ts`, 순수 함수 — 뷰어 `exportHtml.ts` 의 JS 와 **같은 식**):
+
+| 두 상자 | 길 |
+|---|---|
+| x 범위가 겹친다(위아래) | 둘 다 **오른쪽 변** → 오른쪽 바깥 세로 줄기(`max right + 40`) → 고리 |
+| a 가 b 의 왼쪽 | a 오른쪽 변 → 가운데 x 에서 꺾어 → b 왼쪽 변 (같은 높이면 직선) |
+| a 가 b 의 오른쪽 | 거울상 |
+
+세로 줄기는 **두 노드 사이 높이에 있는 다른 상자를 지나게 되면 그 오른쪽 + 40** 으로
+밀린다(`loopTrunkX`, 더 걸리는 게 없을 때까지) — 오른쪽으로 펼친 트리에서 줄기가
+자식들을 관통하던 것을 캡처로 보고 넣었다. 가로 변이 다른 노드와 같은 높이면 그 노드
+뒤로 지나간다(선은 노드 뒤 층) — 완전한 경로 탐색은 하지 않는다.
+`rounded` 는 꺾이는 점을 반지름 12 의 Q 곡선으로, `elbow` 는 직각. 화살촉 크기
+`7 + 굵기×2.2`. 파선 `4w 3w`, 점선 `0.1w 2.4w`(둥근 끝).
+
+**라벨** — `connectorMid` 로 선 길이의 한가운데와 그 변의 방향(가로/세로)을 잡고
+`labelBox` 로 자리: 가운데(선 위에 얹음) · 위/아래(가로 변이면 위/아래, 세로 변이면
+왼쪽/오른쪽, 간격 6) · 곁가지(길이 40 의 줄기 끝, 세로 변이면 오른쪽·가로 변이면
+아래). 도형 없음/둥근/사각/캡슐/원 — 채움은 `t.surface`, 테두리는 선 색, 글 13px.
+도형 없음은 글 뒤를 바탕색 획(paint-order stroke)으로 살짝 지워 선 위에서도 읽힌다.
+**곁가지는 노드가 아니다** — 자식을 달거나 옮길 수 없고, 아웃라인·검색·MCP 에도
+나오지 않는다.
+
+**mmd** — `emm` 선언 블록 `connectors:` 번호 키 아래 `from`/`to` 는 **노드 경로**
+(`중심 > 가지 > 하위`, `utils/nodePath.ts`). 경로 조각은 내보낼 때 견출이 되는 글과
+같은 규칙(가지 = 블록 앞 첫 줄, 중심 = 블록 앞 줄들을 한 줄로)이라 왕복이 맞는다.
+같은 글이 둘이면 첫 번째. 라벨 줄바꿈은 ` / `. 불러올 때 못 찾는 경로는 그 선만 버린다
+(`applyDeclaredConnectors`). HTML 메타·서버 저장은 맵 JSON 그대로.
+
+**검증** — 단위 `connectorGeometry.test.ts` 19 · `nodePath.test.ts` 14 · 파서
+`declaration.test.ts` ⑥ 6 · 브라우저 `guide03-connector.mjs` 34 (e2e303).

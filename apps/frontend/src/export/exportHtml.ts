@@ -1201,8 +1201,172 @@ const VIEWER_JS = String.raw`
     }
   }
 
+  // ── 연결선 (2026-09-22) — 에디터 connectorGeometry.ts·ConnectorLayer.tsx 와
+  // **같은 식**을 JS 로 옮겨 적었다 (한쪽을 고치면 다른 쪽도). 트리와 무관하게
+  // 두 노드를 잇는 선 · 화살촉 · 라벨(글+도형). 접혀서 안 그려진 끝 노드(DRAWN 에
+  // 없다)가 있으면 그 선은 감춘다. 선 층은 맨 뒤(첫 자식), 라벨 층은 맨 앞.
+  var DRAWN = {};
+  var CONN_DEF = { shape: 'rounded', width: 1.6, color: '#2563EB', dash: 'solid', arrows: 'end' };
+  var CONN_LOOP_OUT = 40, CONN_CORNER_R = 12, CONN_STUB = 40, CONN_LABEL_GAP = 6;
+  var CONN_FS = 13, CONN_PAD_X = 8, CONN_PAD_Y = 5, CONN_LINE_H = 17;
+  // 고리 줄기 x — 두 노드 사이 높이의 다른 상자를 지나면 그 오른쪽 너머로 (connectorGeometry.loopTrunkX)
+  function connTrunkX(a, b, obstacles) {
+    var X = Math.max(a.x + a.w / 2, b.x + b.w / 2) + CONN_LOOP_OUT;
+    if (!obstacles || !obstacles.length) return X;
+    var top = Math.min(a.y, b.y), bottom = Math.max(a.y, b.y), band = [], i;
+    for (i = 0; i < obstacles.length; i++) {
+      var o = obstacles[i];
+      if (o !== a && o !== b && o.y + o.h / 2 > top && o.y - o.h / 2 < bottom) band.push(o);
+    }
+    for (var guard = 0; guard < 50; guard++) {
+      var moved = false;
+      for (i = 0; i < band.length; i++) {
+        var oL = band[i].x - band[i].w / 2, oR = band[i].x + band[i].w / 2;
+        if (oL - CONN_LOOP_OUT / 2 <= X && X <= oR + CONN_LOOP_OUT / 2) { X = oR + CONN_LOOP_OUT; moved = true; }
+      }
+      if (!moved) break;
+    }
+    return X;
+  }
+  function connPoints(a, b, obstacles) {
+    var aL = a.x - a.w / 2, aR = a.x + a.w / 2, bL = b.x - b.w / 2, bR = b.x + b.w / 2;
+    var same = Math.abs(a.y - b.y) < 1, midX;
+    if (aL < bR && bL < aR) {
+      var X = connTrunkX(a, b, obstacles);
+      if (same) return [{ x: aR, y: a.y }, { x: X, y: a.y }, { x: X, y: b.y + 1 }, { x: bR, y: b.y + 1 }];
+      return [{ x: aR, y: a.y }, { x: X, y: a.y }, { x: X, y: b.y }, { x: bR, y: b.y }];
+    }
+    if (aR <= bL) {
+      midX = (aR + bL) / 2;
+      if (same) return [{ x: aR, y: a.y }, { x: bL, y: b.y }];
+      return [{ x: aR, y: a.y }, { x: midX, y: a.y }, { x: midX, y: b.y }, { x: bL, y: b.y }];
+    }
+    midX = (bR + aL) / 2;
+    if (same) return [{ x: aL, y: a.y }, { x: bR, y: b.y }];
+    return [{ x: aL, y: a.y }, { x: midX, y: a.y }, { x: midX, y: b.y }, { x: bR, y: b.y }];
+  }
+  function connF(n) { return String(Math.round(n * 10) / 10); }
+  function connDist(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
+  function connLerp(a, b, t) { return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; }
+  function connPath(pts, shape) {
+    if (pts.length < 2) return '';
+    var i, d;
+    if (shape === 'elbow' || pts.length === 2) {
+      d = '';
+      for (i = 0; i < pts.length; i++) d += (i === 0 ? 'M ' : ' L ') + connF(pts[i].x) + ' ' + connF(pts[i].y);
+      return d;
+    }
+    d = 'M ' + connF(pts[0].x) + ' ' + connF(pts[0].y);
+    for (i = 1; i < pts.length - 1; i++) {
+      var p0 = pts[i - 1], p1 = pts[i], p2 = pts[i + 1];
+      var l1 = connDist(p0, p1), l2 = connDist(p1, p2);
+      var rr = Math.min(CONN_CORNER_R, l1 / 2, l2 / 2);
+      if (rr < 0.5) { d += ' L ' + connF(p1.x) + ' ' + connF(p1.y); continue; }
+      var inP = connLerp(p1, p0, rr / l1), outP = connLerp(p1, p2, rr / l2);
+      d += ' L ' + connF(inP.x) + ' ' + connF(inP.y) + ' Q ' + connF(p1.x) + ' ' + connF(p1.y) + ' ' + connF(outP.x) + ' ' + connF(outP.y);
+    }
+    var last = pts[pts.length - 1];
+    return d + ' L ' + connF(last.x) + ' ' + connF(last.y);
+  }
+  function connMid(pts) {
+    var total = 0, i, acc = 0;
+    for (i = 1; i < pts.length; i++) total += connDist(pts[i - 1], pts[i]);
+    for (i = 1; i < pts.length; i++) {
+      var l = connDist(pts[i - 1], pts[i]);
+      if (acc + l >= total / 2 || i === pts.length - 1) {
+        var t = l === 0 ? 0 : (total / 2 - acc) / l;
+        var p = connLerp(pts[i - 1], pts[i], Math.max(0, Math.min(1, t)));
+        var dir = Math.abs(pts[i].x - pts[i - 1].x) >= Math.abs(pts[i].y - pts[i - 1].y) ? 'h' : 'v';
+        return { x: p.x, y: p.y, dir: dir };
+      }
+      acc += l;
+    }
+    return { x: pts[0].x, y: pts[0].y, dir: 'h' };
+  }
+  function connArrow(tip, from, size) {
+    var dx = tip.x - from.x, dy = tip.y - from.y, l = Math.hypot(dx, dy) || 1;
+    var ux = dx / l, uy = dy / l, bx = tip.x - ux * size, by = tip.y - uy * size;
+    var wx = -uy * size * 0.5, wy = ux * size * 0.5;
+    return 'M ' + connF(tip.x) + ' ' + connF(tip.y) + ' L ' + connF(bx + wx) + ' ' + connF(by + wy) + ' L ' + connF(bx - wx) + ' ' + connF(by - wy) + ' Z';
+  }
+  function connLabelBox(mid, w, h, place) {
+    if (place === 'center') return { x: mid.x, y: mid.y, w: w, h: h };
+    if (place === 'branch') {
+      if (mid.dir === 'v') return { x: mid.x + CONN_STUB + w / 2, y: mid.y, w: w, h: h, stub: { x1: mid.x, y1: mid.y, x2: mid.x + CONN_STUB, y2: mid.y } };
+      return { x: mid.x, y: mid.y + CONN_STUB + h / 2, w: w, h: h, stub: { x1: mid.x, y1: mid.y, x2: mid.x, y2: mid.y + CONN_STUB } };
+    }
+    var sign = place === 'above' ? -1 : 1;
+    if (mid.dir === 'h') return { x: mid.x, y: mid.y + sign * (h / 2 + CONN_LABEL_GAP), w: w, h: h };
+    return { x: mid.x + sign * (w / 2 + CONN_LABEL_GAP), y: mid.y, w: w, h: h };
+  }
+  function connDash(dash, w) {
+    var r = function (n) { return Math.round(n * 100) / 100; };
+    if (dash === 'dashed') return r(w * 4) + ' ' + r(w * 3);
+    if (dash === 'dotted') return r(Math.max(0.1, w * 0.1)) + ' ' + r(w * 2.4);
+    return null;
+  }
+  function drawConnectors() {
+    var list = DATA.connectors || [];
+    if (!list.length) return;
+    var lines = el('g', { 'class': 'mm-conn-lines' });
+    world.insertBefore(lines, world.firstChild);
+    var labels = el('g', { 'class': 'mm-conn-labels' }, world);
+    var surface = SKIN.fam.l2.fill, textColor = SKIN.fam.l2.text;
+    var boxes = {}, obstacles = [], k;
+    for (k in DRAWN) { boxes[k] = { x: DRAWN[k]._cx, y: DRAWN[k]._cy, w: DRAWN[k]._w, h: DRAWN[k]._h }; obstacles.push(boxes[k]); }
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i], a = boxes[c.from], b = boxes[c.to];
+      if (!a || !b || a === b) continue;
+      var pts = connPoints(a, b, obstacles);
+      var shape = c.shape || CONN_DEF.shape;
+      var width = Number(c.width) > 0 ? Math.min(8, Number(c.width)) : CONN_DEF.width;
+      var color = c.color || CONN_DEF.color;
+      var dash = c.dash || CONN_DEF.dash;
+      var arrows = c.arrows || CONN_DEF.arrows;
+      var d = connPath(pts, shape);
+      var g = el('g', { 'class': 'mm-conn', 'data-connector-id': c.id }, lines);
+      var pa = { d: d, fill: 'none', stroke: color, 'stroke-width': width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+      var da = connDash(dash, width);
+      if (da) pa['stroke-dasharray'] = da;
+      el('path', pa, g);
+      var size = 7 + width * 2.2;
+      if (arrows === 'end' || arrows === 'both') el('path', { d: connArrow(pts[pts.length - 1], pts[pts.length - 2], size), fill: color }, g);
+      if (arrows === 'start' || arrows === 'both') el('path', { d: connArrow(pts[0], pts[1], size), fill: color }, g);
+      var text = c.label && c.label.text ? String(c.label.text) : '';
+      if (!text.trim()) continue;
+      var place = (c.label && c.label.place) || 'center';
+      var lshape = (c.label && c.label.shape) || 'rounded';
+      var ls = text.split('\n'), lw = 12, j;
+      for (j = 0; j < ls.length; j++) lw = Math.max(lw, measureReal(ls[j], CONN_FS, 500));
+      var w = lw + CONN_PAD_X * 2, h = ls.length * CONN_LINE_H + CONN_PAD_Y * 2;
+      if (lshape === 'ellipse') { w = w * 1.25 + 4; h = h * 1.3; }
+      var box = connLabelBox(connMid(pts), w, h, place);
+      var lg = el('g', { 'class': 'mm-conn-label', 'data-connector-label': c.id }, labels);
+      if (box.stub) {
+        var sa = { x1: box.stub.x1, y1: box.stub.y1, x2: box.stub.x2, y2: box.stub.y2, stroke: color, 'stroke-width': width, 'stroke-linecap': 'round' };
+        if (da) sa['stroke-dasharray'] = da;
+        el('line', sa, lg);
+      }
+      if (lshape === 'ellipse') {
+        el('ellipse', { cx: box.x, cy: box.y, rx: box.w / 2, ry: box.h / 2, fill: surface, stroke: color, 'stroke-width': 1.2 }, lg);
+      } else if (lshape !== 'none') {
+        el('rect', { x: box.x - box.w / 2, y: box.y - box.h / 2, width: box.w, height: box.h,
+          rx: lshape === 'pill' ? box.h / 2 : (lshape === 'rectangle' ? 2 : 8), fill: surface, stroke: color, 'stroke-width': 1.2 }, lg);
+      }
+      var ta = { x: box.x, 'text-anchor': 'middle', 'font-size': CONN_FS, 'font-weight': 500, fill: textColor };
+      if (lshape === 'none') { ta.stroke = surface; ta['stroke-width'] = 4; ta['stroke-linejoin'] = 'round'; ta['paint-order'] = 'stroke'; }
+      var tEl = el('text', ta, lg);
+      var firstBase = box.y - ((ls.length - 1) * CONN_LINE_H) / 2;
+      for (j = 0; j < ls.length; j++) {
+        var sp = el('tspan', { x: box.x, y: firstBase + j * CONN_LINE_H + CONN_FS * 0.35 }, tEl);
+        sp.textContent = ls[j] || ' ';
+      }
+    }
+  }
+
   function render() {
     while (world.firstChild) world.removeChild(world.firstChild);
+    DRAWN = {};
     chipLayer = el('g', { 'class': 'mm-chip-layer' });
     if (!C0_DONE) { rememberCollapsed0(); C0_DONE = true; }
     DYN = collapsedChanged();
@@ -1242,6 +1406,7 @@ const VIEWER_JS = String.raw`
     } else {
       drawNode(start, sd, scol);
     }
+    drawConnectors(); // 연결선 — 노드가 다 놓인 뒤 (접힌 끝은 건너뛴다)
     world.appendChild(chipLayer); // 접힘 칩을 마지막에 올려 항상 위에
     updateCount();
     syncOutline(); // 아웃라인 페인이 보이면 함께 갱신 (function 선언 호이스팅)
@@ -1341,6 +1506,7 @@ const VIEWER_JS = String.raw`
     }
 
     var g = el('g', { 'class': 'mm-node' + (SEL === node.id ? ' mm-selected' : '') }, world);
+    DRAWN[node.id] = node; // 연결선 끝점 찾기 (drawConnectors)
     if (SEL === node.id) {
       // 에디터와 동일: 노드 테두리 "밖" 별도 점선 사각형으로 선택 표시
       // (도형 테두리 스타일을 바꾸면 원래 점선 테두리로 오해된다)
@@ -3539,6 +3705,8 @@ export function buildStandaloneHtml(
       children: c.branches.map((b) =>
         toExportNode(b, resolveHref, resolvePos, resolveSide, 1)),
     })),
+    // 연결선 (2026-09-22) — 뷰어가 drawConnectors 로 같은 기하로 그린다
+    connectors: map.connectors?.length ? map.connectors : undefined,
   };
 
   // <-escape so node text like "</script>" cannot terminate the block.

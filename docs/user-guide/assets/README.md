@@ -27,6 +27,7 @@ vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 �
 | `04-minimap.png` · `04-minimap-window.png` (2026-09-21) | `guide04-minimap.mjs` (미니맵 토글·사각형 크기·끌기·클릭·창 모드·따라오기·휠·대비·열 때 100% 검증 35항목도 함께 돈다) |
 | `01-browser-refresh.png` (2026-09-21) | `guide01-browser-refresh.mjs` — 인증 모드 vite (문서함 새로고침 검증 9항목도 함께 돈다) |
 | `03-add-menu.png` · `03-calendar-dialog.png` · `03-calendar-dialog-month.png` · `03-calendar-weeks.png` · `03-calendar-holiday.png` · `03-calendar-dialog-table.png` · `03-calendar-table.png` · `03-two-tables.png` · `03-two-codes.png` (2026-09-22) | `guide03-calendar.mjs` (+ 메뉴·달력 노드·표로 붙여넣기·표 2개·코드 2개·HTML 내보내기 검증 52항목도 함께 돈다) |
+| `03-connector-canvas.png` · `03-connector-panel.png` · `03-connector-elbow.png` · `03-connector-viewer.png` (2026-09-22) | `guide03-connector.mjs` (연결선 만들기·패널·라벨·접힘·삭제·되돌리기·mmd/HTML 왕복 검증 34항목도 함께 돈다) |
 | `04-layout-multi.png` · `04-layout-multi-collapsed.png` (2026-09-21) | `guide04-layout-multi.mjs` (다중 선택 레이아웃·접힘 배지·다크 칩 검증 13항목도 함께 돈다) |
 | `01-overview.png` · `01-theme-toggle.png` · `01-dark.png` · `02-newmap-menu.png` · `02-template-choose.png` · `02-template-register.png` | `guide01-02.mjs` |
 | `04-layout-tab.png` · `04-collapse-badge.png` · `04-outline-split.png` · `04-mainview-toggle.png` · `04-outline-mode.png` | `guide04.mjs` |

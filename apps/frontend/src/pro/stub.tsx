@@ -9,6 +9,7 @@
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
+import { useEffect } from 'react';
 import { useProFeature } from './contract';
 
 export function ProFeaturePanel({ t, featureId }: { t: ThemeTokens; featureId: string }) {
@@ -183,4 +184,30 @@ export function ProInbox(_p: { t: ThemeTokens; onOpenMap: (mapId: string) => voi
 /** '공유받은 맵' 행의 [나가기] 자리 */
 export function ProSharedMapActions(_p: { t: ThemeTokens; mapId: string; onLeft: () => void }) {
   return null;
+}
+
+// ── 맵 판매 자리 (2026-09-22, 27b §8.1) ─────────────────────────────
+
+/**
+ * 값 칸의 잠금·셈 자리 — **공개판에서는 잠그지 않는다.**
+ *
+ * ★ 언뜻 거꾸로 보이지만 이유가 있다. 이 자리가 잠그는 것은 "정산 계좌가
+ *   아직" 하나뿐인데, 그 판정을 하는 모듈이 여기엔 없다. **모르면서 잠그면**
+ *   화면은 이유를 대지 못하고 칸만 죽는다 — 저자는 왜 안 되는지 알 길이 없다.
+ *
+ *   그리고 공개판에서는 애초에 값 칸까지 오지 않는다. `map-sales` 가 켜져야
+ *   `PriceRow` 가 칸을 그리고, 그것을 켜는 것은 유료 모듈이다. 여기까지
+ *   왔다면 **유료 모듈은 있는데 화면 모듈만 빠진 빌드**이고, 그때 막아야 할
+ *   자리는 서버다(`checkout` 이 같은 판정을 다시 한다).
+ */
+export function ProSalesGate(
+  { onReady }: { t: ThemeTokens; priceKrw: number | null; onReady: (ready: boolean) => void },
+) {
+  useEffect(() => { onReady(true); }, [onReady]);
+  return null;
+}
+
+/** 계정 메뉴 ▸ 판매·정산 — 공개판에서는 **왜 없는지** 서버 문장 그대로 */
+export function ProSalesPanel({ t }: { t: ThemeTokens }) {
+  return <ProFeaturePanel t={t} featureId="map-sales" />;
 }

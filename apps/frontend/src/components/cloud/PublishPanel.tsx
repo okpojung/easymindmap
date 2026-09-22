@@ -23,6 +23,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { useProFeature } from '@/pro/contract';
+import { ProSalesGate } from '@pro';
 
 /** 퍼블리싱 주소 — 브라우저 주소는 `/p/{publishId}` 다 (API 경로와 다르다) */
 export function publicMapUrl(publishId: string): string {
@@ -729,10 +730,20 @@ export function PublishPanel(
  *   그래서 `GET /v1/features` 의 `map-sales` 가 켜져 있을 때만 값 칸을
  *   그리고, 아니면 **왜 아직인지**를 적는다.
  *
- * ★ **수수료·원천징수는 여기서 적지 않는다.** 요율은 유료 모듈의 설정값
+ * ★ **수수료·원천징수는 코어가 적지 않는다.** 요율은 유료 모듈의 설정값
  *   (`sale_settings`)이라 코어가 모른다. 아는 척 10% 를 적어 두면 실제와
  *   다를 때 저자가 "10%라며 왜 13%를 뗐냐" 고 묻게 되고, 그 물음은
- *   정당하다 (27a §6.4). 모르는 숫자는 적지 않는다.
+ *   정당하다 (27a §6.4). 모르는 숫자는 적지 않는다 — 그 자리는
+ *   **`ProSalesGate` 자리**로 열어 두고, 요율을 아는 쪽이 채운다.
+ *
+ * ★ **값 칸은 기본이 잠김이다** (2026-09-22, 27b §8.1). 유료 모듈이
+ *   "이 저자는 받을 준비가 됐다" 고 말해야 풀린다 — 모드 A 에서는 정산
+ *   계좌가 확인됐다는 뜻이다. 반대로 두면(기본 열림, 아니면 잠근다)
+ *   **확인이 늦게 오는 동안 값이 매겨진다.**
+ *
+ *   ★ 다만 **[값을 내리고 무료공개로]** 는 잠기지 않는다. 계좌가 나중에
+ *     반려돼 잠긴 저자도 자기 맵의 값은 내릴 수 있어야 한다 — 잠그면
+ *     팔리지도 내려지지도 않는 맵이 남는다.
  */
 function PriceRow({ t, status, busy, onApply }: {
   t: ThemeTokens;
@@ -743,6 +754,8 @@ function PriceRow({ t, status, busy, onApply }: {
   const sales = useProFeature('map-sales');
   const cur = status.priceKrw ?? null;
   const [draft, setDraft] = useState<string>(cur === null ? '' : String(cur));
+  /** 유료 모듈의 답 — `null` 은 "아직 모른다"(잠긴 채로 둔다) */
+  const [gateReady, setGateReady] = useState<boolean | null>(null);
 
   // 서버가 준 값이 바뀌면(다른 곳에서 고쳤다) 칸도 따라간다
   useEffect(() => { setDraft(cur === null ? '' : String(cur)); }, [cur]);
@@ -770,6 +783,8 @@ function PriceRow({ t, status, busy, onApply }: {
   const n = Number.parseInt(draft.replace(/[^0-9]/g, ''), 10);
   const valid = Number.isInteger(n) && n > 0;
   const changed = (valid ? n : null) !== cur;
+  // null = 아직 답을 못 받았다. **모르는 동안은 잠근 채로 둔다.**
+  const ready = gateReady === true;
 
   return (
     <div data-testid="publish-price" style={{ ...box, border: `1px solid ${cur === null ? t.border : t.primary}` }}>
@@ -786,7 +801,7 @@ function PriceRow({ t, status, busy, onApply }: {
           type="text"
           inputMode="numeric"
           value={draft}
-          disabled={busy}
+          disabled={busy || !ready}
           placeholder="4900"
           onChange={(e) => setDraft(e.target.value)}
           style={{
@@ -798,18 +813,23 @@ function PriceRow({ t, status, busy, onApply }: {
         <span style={{ fontSize: 12.5, color: t.textSubtle }}>원</span>
         <button
           data-testid="publish-price-apply"
-          disabled={busy || !changed || !valid}
+          disabled={busy || !changed || !valid || !ready}
           onClick={() => onApply(n)}
           style={{
             height: 30, padding: '0 12px', fontSize: 12, fontWeight: 700, borderRadius: 6,
-            border: `1px solid ${changed && valid ? t.primary : t.border}`,
-            background: changed && valid ? t.primary : t.surfaceAlt,
-            color: changed && valid ? '#fff' : t.textSubtle,
-            cursor: changed && valid && !busy ? 'pointer' : 'default',
+            border: `1px solid ${changed && valid && ready ? t.primary : t.border}`,
+            background: changed && valid && ready ? t.primary : t.surfaceAlt,
+            color: changed && valid && ready ? '#fff' : t.textSubtle,
+            cursor: changed && valid && ready && !busy ? 'pointer' : 'default',
             fontFamily: 'inherit', whiteSpace: 'nowrap',
           }}
         >값 매기기</button>
       </div>
+
+      {/* ★ **유료 모듈의 자리** — 받을 준비가 됐는지 묻고, 됐으면 이 값에서
+          수수료·원천징수를 갈라 보여 준다. 코어는 답만 받아 칸을 잠그고
+          푼다 (`@pro` 가 없는 빌드의 자리는 `src/pro/stub.tsx`). */}
+      <ProSalesGate t={t} priceKrw={valid ? n : null} onReady={setGateReady} />
       {cur !== null && (
         <button
           data-testid="publish-price-clear"

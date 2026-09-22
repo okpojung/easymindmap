@@ -131,7 +131,9 @@ export class McpAuthGuard implements CanActivate {
       this.challenge(req, wwwAuthenticate(origin, {
         error: 'invalid_token', description: 'The access token is invalid or expired.',
       }));
-      this.log.debug?.(`MCP OAuth 토큰 거절: ${String((err as Error).message)}`);
+      // warn 으로 남긴다 (2026-09-22) — 거절 이유(만료·client_id 없음·서명 불일치)가
+      // 진단의 전부인데 debug 는 배포 로그에 안 찍힌다.
+      this.log.warn(`MCP OAuth 토큰 거절 [${(req.get('user-agent') ?? '').slice(0, 60)}]: ${String((err as Error).message)}`);
       throw new UnauthorizedException('토큰이 유효하지 않거나 만료되었습니다. 다시 연결해 주세요.');
     }
 

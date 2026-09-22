@@ -19,6 +19,19 @@ import {
  * 이렇게 한 폴더에 모여 있으면 1단계가 쓸모없다고 판정될 때 **폴더째
  * 지우는 것으로 끝난다** (§7 "1단계에서 멈출 수 있어야 한다").
  */
+/** 로그 한 줄에 넣을 클라이언트 표식 — User-Agent 앞 60자 (토큰·본문은 절대 안 적는다) */
+function clientOf(req: Request): string {
+  const ua = (req.get('user-agent') ?? '').replace(/\s+/g, ' ').trim();
+  return ua ? `[${ua.slice(0, 60)}]` : '[UA 없음]';
+}
+
+/** JSON-RPC 한 덩어리를 `method` 또는 `tools/call:도구이름` 으로 */
+function describe(msg: RpcRequest): string {
+  if (msg.method !== 'tools/call') return msg.method;
+  const name = (msg.params as { name?: unknown } | undefined)?.name;
+  return `tools/call:${typeof name === 'string' ? name : '?'}`;
+}
+
 @Controller('mcp')
 @UseGuards(McpAuthGuard)
 export class McpController {
@@ -40,26 +53,35 @@ export class McpController {
   async rpc(
     @CurrentUser() user: AuthUser,
     @Body() body: unknown,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     const batch = Array.isArray(body) ? body : [body];
     if (batch.length === 0) {
       res.status(400).json(rpcError(null, RPC.INVALID_REQUEST, '빈 요청입니다.'));
+      this.log.warn(`MCP ${clientOf(req)} ← (빈 요청) → 400`);
       return;
     }
 
     const out: RpcResponse[] = [];
+    const seen: string[] = [];
     for (const msg of batch) {
       if (!isValidRpc(msg)) {
         out.push(rpcError(null, RPC.INVALID_REQUEST, 'JSON-RPC 2.0 형식이 아닙니다.'));
+        seen.push('(형식 오류)');
         continue;
       }
+      seen.push(describe(msg));
       const reply = await this.handle(user.id, msg);
       if (reply) out.push(reply);
     }
 
     // 통지만 온 요청 — 돌려줄 것이 없다. 규격이 정한 응답은 **202 + 빈 본문**
-    if (out.length === 0) { res.status(202).end(); return; }
+    const status = out.length === 0 ? 202 : 200;
+    // ★ 한 줄은 남긴다 (2026-09-22) — ChatGPT 가 "액션이 없다" 고 할 때 tools/list 가
+    //   왔는지조차 알 길이 없었다(§12.7). 본문·토큰은 적지 않는다.
+    this.log.log(`MCP ${clientOf(req)} ← ${seen.join(', ')} → ${status}`);
+    if (status === 202) { res.status(202).end(); return; }
     res.status(200).json(Array.isArray(body) ? out : out[0]);
   }
 
@@ -72,6 +94,9 @@ export class McpController {
   @All()
   @HttpCode(405)
   notAllowed(@Req() req: Request, @Res() res: Response): void {
+    // GET 은 Streamable HTTP 클라이언트가 SSE 를 열어 보는 것 — 405 를 견디는지가
+    // 클라이언트마다 다르므로 **누가** 그랬는지 남긴다 (§12.7).
+    this.log.log(`MCP ${clientOf(req)} ← ${req.method} (JSON-RPC 아님) → 405`);
     res.setHeader('Allow', 'POST');
     res.status(405).json(
       rpcError(null, RPC.INVALID_REQUEST,

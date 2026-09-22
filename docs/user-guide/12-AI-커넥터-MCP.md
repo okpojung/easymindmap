@@ -391,6 +391,34 @@ SCRIPT
    → `POST /oauth/token 200` 입니다. `token 500` 이면 그 줄의 `error:` 문장이
    원인입니다.
 
+### 연결은 됐는데 "사용할 수 있는 앱 액션이 없습니다" 일 때 (2026-09-22)
+
+1. 플러그인 화면 **정보** 옆의 **[새로 고침]** 을 누릅니다. 액션 목록은
+   플러그인을 만들 때 읽어 둔 것이라 로그인 전에는 비어 있습니다.
+2. 그래도 비어 있으면 **새 대화**에서 입력창 **[+] ▸ 더 보기** 로 `emm` 을 켜고
+   "내 emm 맵 목록 보여줘" 라고 해 보세요. 화면 표시와 무관하게 도구가 불리는지
+   보는 것입니다.
+3. 둘 다 안 되면 **`ubuntu@em-dev` SSH 터미널**에서 아래를 붙여 넣고 출력을
+   보내 주세요. ChatGPT 가 우리 서버에 무엇을 보냈는지(도구 목록 요청이 왔는지,
+   거절됐는지)가 나옵니다. 토큰·본문은 들어 있지 않습니다.
+
+```bash
+bash <<'SCRIPT'
+A=""; for N in $(sudo docker ps --format '{{.Names}}'); do case "$N" in *api*) A="$N";; esac; done
+[ -z "$A" ] && { echo "(api 컨테이너를 못 찾음)"; sudo docker ps --format '{{.Names}}'; exit 1; }
+echo "== $A — 최근 3시간 MCP 요청"
+sudo docker logs --since 3h "$A" 2>&1 | grep -a 'MCP \[\|MCP OAuth 토큰 거절' | tail -40
+SCRIPT
+```
+
+   정상 출력 예 — 한 줄에 요청과 응답 코드가 같이 보입니다.
+
+```
+MCP [ChatGPT/1.0 (+https://openai.com/bot)] ← initialize → 200
+MCP [ChatGPT/1.0 (+https://openai.com/bot)] ← notifications/initialized → 202
+MCP [ChatGPT/1.0 (+https://openai.com/bot)] ← tools/list → 200
+```
+
 ---
 
 ## 3단계 — 대화에서 이렇게 말합니다

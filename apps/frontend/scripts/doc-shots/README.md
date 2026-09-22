@@ -16,6 +16,7 @@ node scripts/doc-shots/guide03.mjs  /tmp/doc-shots /tmp/article-img.b64
 node scripts/doc-shots/guide03-table.mjs /tmp/doc-shots   # 표 ⊞ 격자·팝업·코드 팝업 (+ 검증 13항목)
 node scripts/doc-shots/guide03-style-copy.mjs /tmp/doc-shots   # 스타일 복사(붓) 버튼·커서·칠한 뒤 (+ 검증 27항목)
 node scripts/doc-shots/guide05-note-table.mjs /tmp/doc-shots   # 노트 표: +표 격자 · 그려진 표 + ✎ (+ 검증 16항목)
+node scripts/doc-shots/guide05-note-multi.mjs /tmp/doc-shots   # 노트 문단·코드·표 여러 개 + 배지 개수 (캔버스·팝업·아웃라인·HTML 뷰어) (+ 검증 14항목)
 node scripts/doc-shots/guide04-minimap.mjs /tmp/doc-shots   # 미니맵 (+ 검증 35항목)
 node scripts/doc-shots/guide04-layout-multi.mjs /tmp/doc-shots   # 다중 선택 레이아웃 · 접힘 배지 · 다크 칩 (+ 검증 13항목)
 node scripts/doc-shots/guide03-calendar.mjs /tmp/doc-shots   # [+] 메뉴 · 달력 노드(년→월, 년월→주→날짜 7개·빨간 날·회색 점선, 표로 붙여넣기) · 노드 표 2개·코드 2개 · HTML 내보내기 (+ 검증 52항목)

@@ -141,29 +141,28 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         action={
           <div style={{ display: 'flex', gap: 3 }}>
             {BLOCK_TYPES.map((b) => {
-              // 문단/코드/표는 노드당 1개만 — 이미 있으면 추가 비활성.
-              // 체크리스트만 여러 개 허용.
-              const exists =
-                b.type !== 'checklist' && notes.some((n) => n.type === b.type);
+              // 모든 종류를 여러 개 추가할 수 있다 (2026-09-22 사용자 요청 — 예전엔
+              // 문단/코드/표는 노드당 1개, 체크만 여러 개). 같은 종류가 여럿이면
+              // 노드 인디케이터에 개수 배지가 뜬다 (체크와 같은 규칙).
+              const have = notes.filter((n) => n.type === b.type).length;
               const isTable = b.type === 'table';
               return (
                 <span key={b.type} style={{ position: 'relative', display: 'inline-flex' }}>
                 <button
-                  data-testid={isTable ? 'note-add-table' : undefined}
+                  data-testid={`note-add-${b.type}`}
                   onClick={() => {
-                    if (exists || !selectedId) return;
+                    if (!selectedId) return;
                     if (isTable) setTablePick(true); else addNoteBlock(selectedId, b.type);
                   }}
-                  disabled={exists}
-                  title={exists ? `${b.label} 블록은 노드당 1개만 추가할 수 있습니다`
-                    : isTable ? '표 블록 추가 — 격자에서 크기를 고르면 팝업에서 채웁니다' : `${b.label} 블록 추가`}
+                  title={isTable
+                    ? `표 블록 추가 — 격자에서 크기를 고르면 팝업에서 채웁니다${have ? ` (지금 ${have}개)` : ''}`
+                    : `${b.label} 블록 추가${have ? ` (지금 ${have}개)` : ''}`}
                   style={{
                     padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-                    background: exists ? t.surfaceAlt : t.primarySoft,
-                    color: exists ? t.textSubtle : t.primary,
-                    border: `1px solid ${exists ? t.border : `${t.primaryBorder}40`}`,
-                    cursor: exists ? 'default' : 'pointer',
-                    opacity: exists ? 0.6 : 1,
+                    background: t.primarySoft,
+                    color: t.primary,
+                    border: `1px solid ${t.primaryBorder}40`,
+                    cursor: 'pointer',
                   }}>+{b.label}</button>
                 {isTable && tablePick && (
                   <TableGridPicker
@@ -182,8 +181,8 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {notes.length === 0 && (
             <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>
-              위 버튼으로 노트 블록을 추가하세요. 문단·코드·표는 노드당
-              1개, 체크리스트는 여러 개 추가할 수 있습니다.
+              위 버튼으로 노트 블록을 추가하세요. 문단·코드·표·체크 모두
+              여러 개 추가할 수 있습니다 (같은 종류가 여럿이면 노드 배지에 개수).
             </div>
           )}
           {notes.map((block) => (

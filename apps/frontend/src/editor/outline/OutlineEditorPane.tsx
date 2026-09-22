@@ -638,18 +638,26 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
                 style={
                   isNoteKind(ic.kind)
                     ? {
+                        position: 'relative',
                         width: 14, height: 14, borderRadius: 3.5,
                         background: NOTE_KIND_META[ic.kind].color, color: '#FFF',
                         fontSize: 9, fontWeight: 800, lineHeight: '14px',
                         textAlign: 'center', cursor: 'pointer',
                         fontFamily: 'Arial, sans-serif',
                       }
-                    : { fontSize: 11, cursor: 'pointer', lineHeight: 1 }
+                    : { position: 'relative', fontSize: 11, cursor: 'pointer', lineHeight: 1 }
                 }
               >
                 {isNoteKind(ic.kind)
                   ? (ic.kind === 'note-table' ? '⊞' : ic.kind === 'note-check' ? '✓' : NOTE_KIND_META[ic.kind].letter)
                   : ic.icon}
+                {/* 개수 배지 — 같은 종류가 2개 이상이면 오른쪽 위에 작은 숫자 (캔버스와 같은 규칙, 2026-09-22) */}
+                {ic.count > 1 && (
+                  <span data-outline-ind-count={ic.kind} style={{
+                    position: 'absolute', top: -6, right: -7, fontSize: 8, fontWeight: 700,
+                    lineHeight: '10px', color: t.primary, fontFamily: 'inherit',
+                  }}>{ic.count}</span>
+                )}
               </span>
             ))}
           </span>

@@ -157,20 +157,25 @@ export function spliceCodeBlock(
   return pre + block + post;
 }
 
-// 기존 텍스트의 첫 번째 ``` 펜스 블록을 새 언어·코드로 교체한다.
-// (펜스가 없으면 끝에 덧붙인다 — 방어적)
+// 기존 텍스트의 index 번째(기본 첫 번째) ``` 펜스 블록을 새 언어·코드로 교체한다.
+// (펜스가 없으면 끝에 덧붙인다 — 방어적). 빈 코드 펜스도 한 블록으로 센다
+// (splitNodeParts 는 빈 펜스를 글로 두지만, 그런 블록은 그려지지 않아 더블클릭
+// 으로 여기 올 수 없다).
 export function replaceCodeBlock(
   value: string,
   lang: string,
   code: string,
+  index = 0,
 ): string {
   const lines = String(value || '').split('\n');
   const block = ['```' + lang, ...code.split('\n'), '```'];
+  let seen = 0;
   for (let i = 0; i < lines.length; i++) {
     if (!/^\s*```/.test(lines[i])) continue;
     let j = i + 1;
     while (j < lines.length && !/^\s*```/.test(lines[j])) j++;
     const end = j < lines.length ? j + 1 : lines.length;
+    if (seen++ < index) { i = end - 1; continue; }
     return [...lines.slice(0, i), ...block, ...lines.slice(end)].join('\n');
   }
   return (value ? value + '\n' : '') + block.join('\n');

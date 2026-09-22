@@ -3,7 +3,7 @@
 
 import { buildMdTable, emptyTable, spliceMdTable, replaceMdTable, hasMdTable } from './TableDialog';
 import { layoutMdTables, parseMdTable, parseMdTables, splitPipeCells } from './mdTable';
-import { tableBlockGaps } from './sizeNodeForText';
+import { blockGaps as tableBlockGaps } from './nodeBlocks';
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {

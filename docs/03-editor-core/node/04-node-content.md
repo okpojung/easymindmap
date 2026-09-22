@@ -85,7 +85,7 @@ NODE_CONTENT는 노드의 “본문 데이터” 저장/해석 기준을 정의�
 
 #### 4.4 코드 콘텐츠 정책 (현행)
 
-- 노드 본문의 ``` 코드 펜스는 **코드 패널**로 렌더된다 — 언어 라벨·복사(⧉)·편집(✎) 팝업 제공.
+- 노드 본문의 ``` 코드 펜스는 **코드 패널**로 렌더된다 — 언어 라벨·복사(⧉)·편집(✎) 팝업 제공. 여러 개면 전부, 표와 섞여도 원문 순서 (2026-09-22, 아래 표 절의 `nodeBlocks`).
 - 노트의 코드는 `NoteBlock`(kind=`code_block`)으로 저장하며, 언어는 `NoteBlock.lang`에 기록한다.
 - 별도 `code` 노드 타입·`nodes.code_language` 컬럼은 사용하지 않는다 (설계 초안 — 미채택).
 
@@ -484,22 +484,31 @@ const rawHtml = (hasImgFile && !htmlHasTable) ? '' : rawHtmlAll;
 표로 그린다 (markmap 스타일 — 향후 Markdown 파일 가져오기 대비).
 
 - 감지: 파이프(`|`) 행 바로 다음 줄이 구분선 행(각 셀 `:?--:?`)이면 표.
-  **표 여러 개** (2026-09-22 사용자 보고 — 두 번째 표가 파이프 원문으로
-  보였다): `parseMdTables()` 가 원문 순서대로 전부 읽고, 각 표는 자기 앞
-  텍스트의 수동 줄 수(`beforeLines`)로 자리를 잡는다. 표 사이는 빈 줄로
-  구분한다 (빈 줄 없이 이어 쓰면 GFM 처럼 다음 머리글이 앞 표의 행이 된다).
-  표 더블클릭 → `replaceMdTable(text, md, index)` 로 **그 표만** 교체.
-- 측정·그리기 일치: `mdTable.ts`의 `layoutMdTables()`(→ `plainText` +
-  `tables[].beforeLines`)을 `sizeNodeForText()`(노드 크기 계산, `mdTables[].at`)와
-  `NodeRenderer`(그리기)가 공유 — 셀 글자 = 본문−2pt (최소 10), 행 높이 =
-  셀 글자+10, 열 폭 = 최장 셀 폭+12 (최소 26). 표 블록 여백은
-  `tableBlockGaps()` 한 곳 — 위 6(앞에 글이나 다른 표가 있을 때), 아래 6(뒤에
-  글이 바로 올 때; 같은 자리에 다음 표가 오면 그 표의 위 여백이 대신). 앞선
-  표들의 블록 높이만큼 다음 표·뒤 줄이 내려간다. 아웃라인/칸반의
-  `RichTextHtml.renderPlain` 은 표 뒤 글을 재귀로 그려 표를 모두 보인다.
-  HTML 내보내기(`exportHtml`)의 뷰어도 같은 규칙 — 뷰어 JS `parseMdTables` ·
-  표마다 `tAts/tBlockHs` · `tShiftAt(li)` · 앞 표 블록 높이 누적(`tAcc`),
-  아웃라인 `richTextPlain` 재귀 (2026-09-22 사용자 요청).
+- **블록 여러 개 · 원문 순서** (2026-09-22 사용자 보고 — 두 번째 표/코드
+  블록이 원문 그대로 보였다. 예전엔 표 하나·코드 하나만 그리고 둘이 함께면
+  글 뒤로 몰았다): `nodeBlocks.ts` 의 `splitNodeParts()` 가 한 번의 줄 훑기로
+  글·표·코드 조각을 순문 순서대로 나눈다 (펜스 안 파이프 줄은 코드, 빈
+  펜스는 글, 닫지 않은 펜스는 끝까지 코드). `layoutNodeBlocks(text, fontSize)`
+  → `plainText`(블록을 뺀 글 — 첫 블록 앞은 trimEnd, 나머지는 trim, 예전
+  before/after 와 같은 결과) + `blocks[]`(표 `layoutParsedTable` / 코드
+  `layoutParsedCode`, `beforeLines` = 앞 글의 누적 수동 줄 수, `blockH` = 표는
+  복사 스트립 13 포함). 표 사이는 빈 줄로 구분한다 (빈 줄 없이 이어 쓰면 GFM
+  처럼 다음 머리글이 앞 표의 행이 된다). 더블클릭/✎ → `replaceMdTable(text,
+  md, index)` · `replaceCodeBlock(text, lang, code, index)` 로 **그 블록만**
+  교체 (index = 같은 종류 안의 순번).
+- 측정·그리기 일치: `sizeNodeForText()` 가 `blocks[].at`(= `manualStarts
+  [beforeLines]`, 없으면 줄 끝)을 정하고 `NodeRenderer` 가 같은 값으로
+  그린다 — 셀 글자 = 본문−2pt (최소 10), 행 높이 = 셀 글자+10, 열 폭 = 최장
+  셀 폭+12 (최소 26). 블록 여백은 `blockGaps()` 한 곳 — 위 6(앞에 글이나 다른
+  블록이 있을 때), 아래 6(뒤에 글이 바로 올 때; 같은 자리에 다음 블록이 오면
+  그 블록의 위 여백이 대신). 각 블록의 상단 = 자기 줄 경계 + 앞선 블록들의
+  높이 누적(`boundaryY`), 뒤 줄은 `blockShiftAt(i)` 만큼 내려간다. 아웃라인/
+  칸반 `RichTextHtml` 은 `parseMdCodes` 로 코드 블록마다 앞 글 → 패널을 순서대로,
+  `renderPlain` 은 표 뒤 글을 재귀로. HTML 내보내기(`exportHtml`) 뷰어도 같은
+  규칙을 JS 로(`splitNodeBlocks` · 블록마다 `bAts/bGapA/bGapB/bBlockHs` ·
+  `bShiftAt(li)` · 누적 `bAcc`), 아웃라인 `richTextEl` 은 `parseMdCodes` +
+  `richTextPlain` 재귀. `bakeChecks` 는 `splitNodeParts` 로 블록 전부를 뺀
+  글에서 체크 줄을 센다.
   표 폭이 노드 최대 폭(maxW)보다 크면 노드가 표 폭만큼 늘어난다.
 - 표 스타일: 첫 행 = 헤더(굵게 + 연한 배경), 격자선은 노드 테두리색.
 - 구분선 없는 파이프 텍스트(예: `항목 | 값` 한 줄)는 표로 취급하지 않는다.

@@ -114,40 +114,47 @@ function isSeparatorRow(line: string): boolean {
 //   ② 단순 파이프 표 — 구분선 없이 파이프 행이 2줄 이상 연속 (줄=행,
 //      |=열, 첫 행=헤더). 헤더가 2칸 이상이어야 표로 인정해
 //      본문 속 파이프 한 줄이 표로 오인되는 것을 막는다.
+/**
+ * lines[i] 에서 시작하는 표를 읽는다 — 아니면 null. `end` = 표 다음 줄 인덱스.
+ * (`splitNodeParts` 가 코드 펜스와 함께 원문 순서대로 훑을 때 쓴다, 2026-09-22)
+ */
+export function parseTableAt(lines: string[], i: number): { headers: string[]; rows: string[][]; aligns: MdTableAlign[]; end: number } | null {
+  if (i >= lines.length - 1) return null;
+  if (!isPipeRow(lines[i]) || isSeparatorRow(lines[i])) return null;
+  if (!isPipeRow(lines[i + 1])) return null; // 다음 줄도 파이프 행이어야 표
+  const headers = splitCells(lines[i]);
+  if (headers.length < 2) return null;
+  let j = i + 1;
+  let aligns: MdTableAlign[] = headers.map(() => null);
+  if (isSeparatorRow(lines[j])) {
+    // MD 구분선 행 — 건너뛰되 GFM 정렬 콜론은 읽는다
+    const sep = splitCells(lines[j]);
+    aligns = headers.map((_, c) => alignOfSepCell(sep[c] ?? ''));
+    j++;
+  }
+  const rows: string[][] = [];
+  while (j < lines.length && isPipeRow(lines[j]) && !isSeparatorRow(lines[j])) {
+    const cells = splitCells(lines[j]);
+    // 열 수를 헤더에 맞춘다 (모자라면 빈 칸, 넘치면 자름)
+    while (cells.length < headers.length) cells.push('');
+    rows.push(cells.slice(0, headers.length));
+    j++;
+  }
+  if (rows.length === 0) return null; // 데이터 행 없는 표는 무시
+  return { headers, rows, aligns, end: j };
+}
+
 export function parseMdTable(text: string): MdTableParse | null {
   const lines = String(text || '').split('\n');
   for (let i = 0; i < lines.length - 1; i++) {
-    if (!isPipeRow(lines[i]) || isSeparatorRow(lines[i])) continue;
-    if (!isPipeRow(lines[i + 1])) continue; // 다음 줄도 파이프 행이어야 표
-
-    const headers = splitCells(lines[i]);
-    if (headers.length < 2) continue;
-
-    let j = i + 1;
-    let aligns: MdTableAlign[] = headers.map(() => null);
-    if (isSeparatorRow(lines[j])) {
-      // MD 구분선 행 — 건너뛰되 GFM 정렬 콜론은 읽는다
-      const sep = splitCells(lines[j]);
-      aligns = headers.map((_, c) => alignOfSepCell(sep[c] ?? ''));
-      j++;
-    }
-
-    const rows: string[][] = [];
-    while (j < lines.length && isPipeRow(lines[j]) && !isSeparatorRow(lines[j])) {
-      const cells = splitCells(lines[j]);
-      // 열 수를 헤더에 맞춘다 (모자라면 빈 칸, 넘치면 자름)
-      while (cells.length < headers.length) cells.push('');
-      rows.push(cells.slice(0, headers.length));
-      j++;
-    }
-    if (rows.length === 0) continue; // 데이터 행 없는 표는 무시
-
+    const t = parseTableAt(lines, i);
+    if (!t) continue;
     return {
       before: lines.slice(0, i).join('\n').trimEnd(),
-      after: lines.slice(j).join('\n').trim(),
-      headers,
-      rows,
-      aligns,
+      after: lines.slice(t.end).join('\n').trim(),
+      headers: t.headers,
+      rows: t.rows,
+      aligns: t.aligns,
     };
   }
   return null;
@@ -201,7 +208,7 @@ export function layoutMdTable(text: string, fontSize: number): MdTableLayout | n
   return layoutParsedTable(parsed, fontSize);
 }
 
-function layoutParsedTable(parsed: MdTableParse, fontSize: number): MdTableLayout {
+export function layoutParsedTable(parsed: MdTableParse, fontSize: number): MdTableLayout {
 
   const cellFs = Math.max(10, fontSize - 2);
   const rowH = cellFs + 10;

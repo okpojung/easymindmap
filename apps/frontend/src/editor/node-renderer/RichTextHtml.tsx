@@ -14,7 +14,7 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { parseInlineMarks, CODE_BG, CODE_TEXT } from './inlineMarks';
-import { parseMdCode } from './mdCode';
+import { parseMdCodes, type MdCodeParse } from './mdCode';
 import { parseMdTable, splitPipeCells } from './mdTable';
 import { parseCheckLine, toggleCheckInText } from './mdCheck';
 import { CodeBlockDialog, replaceCodeBlock } from './CodeBlockDialog';
@@ -128,30 +128,27 @@ export function NodeRichText({
   textColor?: string;
 }) {
   const raw = String(text || '');
-  const mdc = parseMdCode(raw);
-  const [codeDlgOpen, setCodeDlgOpen] = useState(false);
+  // 코드 블록 전부 (원문 순서, 2026-09-22) — 각 항목의 before = 앞 블록 뒤부터의 글
+  const codes = parseMdCodes(raw);
+  const [codeDlgIdx, setCodeDlgIdx] = useState<number | null>(null);
   const codeEditable = !!(onUpdateText && t);
   // 표 ✎ 수정(팝업 편집기) — 코드 블록과 같은 조건 (2026-09-17)
   const [tableDlgOpen, setTableDlgOpen] = useState(false);
-  // 코드 복사 피드백 — 맵 패널의 '⧉ 복사 → 복사됨 ✓'와 동일 (1.5초)
-  const [codeCopied, setCodeCopied] = useState(false);
-  const copyCode = () => {
-    if (!mdc) return;
+  // 코드 복사 피드백 — 맵 패널의 '⧉ 복사 → 복사됨 ✓'와 동일 (1.5초). 값 = 복사한 블록 순번
+  const [codeCopied, setCodeCopied] = useState<number | null>(null);
+  const copyCode = (mdc: MdCodeParse, idx: number) => {
     const done = () => {
-      setCodeCopied(true);
-      window.setTimeout(() => setCodeCopied(false), 1500);
+      setCodeCopied(idx);
+      window.setTimeout(() => setCodeCopied(null), 1500);
     };
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(mdc.code.join('\n')).then(done, done);
     } else done();
   };
-  // 코드 앞/뒤 일반 구간 (원문 순서 보존 — 맵과 동일)
-  const plains: { seg: string; key: string }[] = mdc
-    ? [
-        ...(mdc.before ? [{ seg: mdc.before, key: 'b' }] : []),
-      ]
-    : [{ seg: raw, key: 'all' }];
-  const after = mdc?.after ? { seg: mdc.after, key: 'a' } : null;
+  // 코드를 뺀 일반 글 (표 팝업이 첫 표를 찾을 때)
+  const plainNoCode = codes.length
+    ? [...codes.map((c) => c.before), codes[codes.length - 1].after].filter(Boolean).join('\n')
+    : raw;
 
   // 체크 줄 순번(seq) — toggleCheckInText와 같은 규칙(펜스 밖 순서)
   let seq = 0;
@@ -284,14 +281,11 @@ export function NodeRichText({
     });
   };
 
-  return (
-    // overflowWrap: 긴 URL·경로 같은 끊김 없는 토큰이 좁은 컨테이너(칸반
-    // 카드 등)를 밀어내지 않도록 필요할 때만 줄바꿈 (상속되는 속성).
-    <div style={{ minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere', ...style }}>
-      {plains.map((p) => renderPlain(p.seg, p.key))}
-      {mdc && (
+  // 코드 패널 (블록마다) — 맵 패널과 같은 색 (컴팩트: 언어 라벨 헤더 + 모노 줄)
+  const renderCode = (mdc: MdCodeParse, idx: number) => (
         // 코드 패널 — 맵 패널과 같은 색 (컴팩트: 언어 라벨 헤더 + 모노 줄)
         <div
+          key={`code${idx}`}
           data-html-code
           style={{
             background: CODE_BG, border: '1px solid #D8DDE4', borderRadius: 5,
@@ -307,7 +301,7 @@ export function NodeRichText({
               // 언어 라벨(✎) 클릭 = 팝업 편집기 — 맵 코드 패널과 동일
               <span
                 data-html-code-edit
-                onClick={(e) => { e.stopPropagation(); setCodeDlgOpen(true); }}
+                onClick={(e) => { e.stopPropagation(); setCodeDlgIdx(idx); }}
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => e.stopPropagation()}
                 title="클릭하면 팝업에서 언어·코드를 편집합니다"
@@ -321,17 +315,17 @@ export function NodeRichText({
             {/* ⧉ 복사 — 맵 코드 패널 헤더와 동일 구성 */}
             <span
               data-html-code-copy
-              onClick={(e) => { e.stopPropagation(); copyCode(); }}
+              onClick={(e) => { e.stopPropagation(); copyCode(mdc, idx); }}
               onPointerDown={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
               title="코드 복사"
               style={{
                 cursor: 'pointer', userSelect: 'none', marginLeft: 10,
-                color: codeCopied ? '#15803D' : '#475569', fontWeight: 600,
+                color: codeCopied === idx ? '#15803D' : '#475569', fontWeight: 600,
                 fontFamily: 'inherit',
               }}
             >
-              {codeCopied ? '복사됨 ✓' : '⧉'}
+              {codeCopied === idx ? '복사됨 ✓' : '⧉'}
             </span>
           </div>
           {/* 격자 배치 — 맵 캔버스(SVG)와 같은 규칙으로 글자마다 칸을
@@ -354,11 +348,22 @@ export function NodeRichText({
             ))}
           </pre>
         </div>
-      )}
-      {after && renderPlain(after.seg, after.key)}
+  );
+
+  return (
+    // overflowWrap: 긴 URL·경로 같은 끊김 없는 토큰이 좁은 컨테이너(칸반
+    // 카드 등)를 밀어내지 않도록 필요할 때만 줄바꿈 (상속되는 속성).
+    <div style={{ minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere', ...style }}>
+      {codes.length === 0
+        ? renderPlain(raw, 'all')
+        : codes.map((mdc, idx) => [
+            mdc.before ? renderPlain(mdc.before, `b${idx}`) : null,
+            renderCode(mdc, idx),
+          ])}
+      {codes.length > 0 && codes[codes.length - 1].after && renderPlain(codes[codes.length - 1].after, 'a')}
       {tableDlgOpen && codeEditable && (() => {
         // 표 팝업 편집기 — 확인 시 원문의 첫 표를 교체
-        const parsed = parseMdTable(mdc ? [mdc.before, mdc.after].filter(Boolean).join('\n') : raw);
+        const parsed = parseMdTable(plainNoCode);
         if (!parsed) return null;
         return (
           <TableDialog
@@ -372,16 +377,16 @@ export function NodeRichText({
           />
         );
       })()}
-      {codeDlgOpen && codeEditable && mdc && (
-        // 코드 블록 팝업 편집기 — 확인 시 원문의 첫 펜스 블록을 교체
+      {codeDlgIdx !== null && codeEditable && codes[codeDlgIdx] && (
+        // 코드 블록 팝업 편집기 — 확인 시 원문의 그(index 번째) 펜스 블록을 교체
         <CodeBlockDialog
           t={t!}
-          initialLang={mdc.lang}
-          initialCode={mdc.code.join('\n')}
-          onCancel={() => setCodeDlgOpen(false)}
+          initialLang={codes[codeDlgIdx].lang}
+          initialCode={codes[codeDlgIdx].code.join('\n')}
+          onCancel={() => setCodeDlgIdx(null)}
           onSave={(lang, code) => {
-            onUpdateText!(replaceCodeBlock(raw, lang, code));
-            setCodeDlgOpen(false);
+            onUpdateText!(replaceCodeBlock(raw, lang, code, codeDlgIdx));
+            setCodeDlgIdx(null);
           }}
         />
       )}

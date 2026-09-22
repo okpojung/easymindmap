@@ -146,6 +146,31 @@ const dlgVals = await page.evaluate(() => Array.from(document.querySelectorAll('
 ok('⑧ 팝업 내용은 두 번째(10월) 표 — 31일 칸이 있다 (9월 표에는 없다)', dlgVals.includes('31') && dlgVals.includes('**25**'));
 await page.keyboard.press('Escape'); await page.waitForTimeout(200);
 
+// ⑧-b 코드 블록 2개 + 표 (사용자 보고 2026-09-22: 두 번째 코드 블록이 펜스 원문으로 보였다). "12월" 노드에
+//     글·코드·글·표·글·코드·글 — 원문 순서대로 캔버스에 그려지고, 둘째 코드 더블클릭은 그 블록을 연다.
+const dec = (await childrenOf('b1-1')).find((k) => k.text === '12월');
+const decText = '12월 메모\n\n```js\nconst a = 1;\n```\n\n표 앞 글\n\n| 항목 | 값 |\n|---|---|\n| 가 | 1 |\n\n표 뒤 글\n\n```sh\necho hi\nls -la\n```\n\n끝 글';
+await doc((d, m, arg) => d.useDocumentStore.getState().updateNodeText(arg.id, arg.text), { id: dec.id, text: decText });
+await stores.select(page, dec.id); await stores.center(page, dec.id, 100); await page.waitForTimeout(500);
+const codeGroups = page.locator(`[data-node-id="${dec.id}"] [data-node-code]`);
+ok('⑧-b 코드 블록 2개가 모두 패널로 그려진다', (await codeGroups.count()) === 2);
+const decTbl = page.locator(`[data-node-id="${dec.id}"] [data-node-table]`);
+ok('⑧-b 표도 함께 1개', (await decTbl.count()) === 1);
+const cBox = [await codeGroups.nth(0).boundingBox(), await decTbl.first().boundingBox(), await codeGroups.nth(1).boundingBox()];
+ok('⑧-b 원문 순서: 코드1 → 표 → 코드2 (위에서 아래로, 겹침 없음)', cBox[0].y + cBox[0].height <= cBox[1].y + 1 && cBox[1].y + cBox[1].height <= cBox[2].y + 1);
+const decTexts = await page.evaluate((id) => Array.from(document.querySelectorAll(`[data-node-id="${id}"] text`)).map((t) => t.textContent.replace(/\u00A0/g, ' ')), dec.id);
+ok('⑧-b 펜스 원문(```)이 글자로 남지 않고 사이 글들이 보인다', !decTexts.some((t) => t.includes('```')) && ['12월 메모', '표 앞 글', '표 뒤 글', '끝 글'].every((t) => decTexts.includes(t)) && decTexts.includes('echo hi'));
+const decBox = await nodeBox(page, dec.id);
+ok('⑧-b 둘째 코드가 노드 박스 안에 있다', cBox[2].y + cBox[2].height <= decBox.y + decBox.height + 1);
+await page.mouse.move(4, size.height - 4); await page.waitForTimeout(200); // 패널 툴팁이 찍히지 않게
+await shot('03-two-codes', [decBox], 24);
+await codeGroups.nth(1).dblclick(); await page.waitForTimeout(300);
+const cdlg = page.locator('[data-testid="code-dialog"], [data-testid="code-block-dialog"]');
+const cdlgVals = await page.evaluate(() => Array.from(document.querySelectorAll('textarea, input')).map((e) => e.value));
+ok('⑧-b 둘째 코드 더블클릭 → 팝업에 둘째 코드(echo hi)와 언어 sh', cdlgVals.some((v) => v.includes('echo hi')) && cdlgVals.includes('sh'));
+await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+ok('⑧-b Esc → 팝업 닫힘, 노드 글 그대로', (await cdlg.count()) === 0 && (await textOf(dec.id)) === decText);
+
 // ⑨ HTML 내보내기 뷰어도 표를 전부 그린다 (2026-09-22 사용자 요청) — 실제 내보내기 함수로 만든 HTML 을 연다
 {
   const { html, expectTables } = await page.evaluate(async () => {
@@ -165,7 +190,11 @@ await page.keyboard.press('Escape'); await page.waitForTimeout(200);
   await v.route('https://cdn.jsdelivr.net/**', (r) => r.abort());
   await v.goto('file://' + file); await v.waitForTimeout(1200);
   const headerRects = await v.locator('svg rect[opacity="0.16"]').count(); // 표마다 머리글 배경 1개
-  ok(`⑨ 뷰어 SVG 의 표 수 = 맵의 표 수 (${headerRects} / ${expectTables}, 표 2개 노드 포함)`, expectTables >= 3 && headerRects === expectTables);
+  ok(`⑨ 뷰어 SVG 의 표 수 = 맵의 표 수 (${headerRects} / ${expectTables}, 표 2개 노드 포함)`, expectTables >= 4 && headerRects === expectTables);
+  const codeRects = await v.locator('svg rect[rx="5"][stroke="#D8DDE4"]').count(); // 코드 패널마다 1개
+  ok(`⑨ 뷰어 SVG 의 코드 패널 수 = 2 (${codeRects})`, codeRects === 2);
+  const vTexts0 = await v.evaluate(() => Array.from(document.querySelectorAll('svg text')).map((t) => t.textContent));
+  ok('⑨ 뷰어에 펜스 원문 없음 · 둘째 코드 줄(ls -la) 보임', !vTexts0.some((t) => t.includes('```')) && vTexts0.some((t) => t.replace(/\u00A0/g, ' ') === 'ls -la'));
   const vTexts = await v.evaluate(() => Array.from(document.querySelectorAll('svg text')).map((t) => t.textContent));
   ok('⑨ 뷰어에 파이프 원문이 글자로 남지 않고 사이 글·끝 글은 보인다', !vTexts.some((t) => t.includes('| 일') || t.includes(':---')) && vTexts.includes('가운데 글') && vTexts.includes('끝 글'));
   await vctx.close();

@@ -28,9 +28,9 @@ import {
   scaleNodeImage,
   sizeNodeForText,
 } from './sizeNodeForText';
-import { layoutMdTables, parseMdTable, parseMdTables, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
-import { tableBlockGaps } from './sizeNodeForText';
-import { layoutMdCode, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
+import { parseMdTable, parseMdTables, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
+import { parseMdCodes, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
+import { blockGaps, layoutNodeBlocks } from './nodeBlocks';
 import { gridXAttr } from '@/utils/monoGrid';
 import {
   parseInlineMarks,
@@ -222,13 +222,13 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(n.text);
   // 코드 패널 ⧉ 복사 피드백 (1.5s 후 원복)
-  const [codeCopied, setCodeCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState<number | null>(null); // 복사된 코드 블록 순번
   // 표 복사(⧉) 피드백 — 코드 패널 '복사됨 ✓'과 동일 (1.5초)
   const [tableCopied, setTableCopied] = useState<number | null>(null); // 복사된 표 순번
   // 코드 블록 팝업 편집기 — insert: 편집 중 커서 위치에 새 블록 삽입,
   // edit: 기존 블록(첫 펜스)을 언어·코드째 교체
   const [codeDlg, setCodeDlg] = useState<
-    { mode: 'insert'; cursor: number } | { mode: 'edit' } | null
+    { mode: 'insert'; cursor: number } | { mode: 'edit'; index: number } | null
   >(null);
   // blur 핸들러가 최신 팝업 상태를 보게 하는 미러 — 팝업이 여는 blur로
   // 편집이 커밋돼 버리는 경합 방지
@@ -344,30 +344,20 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
 
   // 노드 텍스트 속 Markdown 코드 펜스/표 — sizeNodeForText와 같은 측정으로
   // 그린다. (lines에는 코드·표를 제외한 텍스트만 들어 있다 — 리치 노드 P1)
-  const mdCode = useMemo(() => layoutMdCode(String(n.text || ''), fontSize), [n.text, fontSize]);
-  const mdTables = useMemo(
-    () => layoutMdTables(
-      mdCode ? [mdCode.before, mdCode.after].filter(Boolean).join('\n') : String(n.text || ''),
-      fontSize,
-    ),
-    [n.text, fontSize, mdCode],
-  );
+  // 표·코드 블록 전부 (원문 순서, 2026-09-22 nodeBlocks)
+  const nodeBlocks = useMemo(() => layoutNodeBlocks(String(n.text || ''), fontSize), [n.text, fontSize]);
   // 체크리스트 항목(- [x] …) — sizeNodeForText가 마커를 뗀 것과 같은
   // 수동 줄 목록을 재구성해 래핑 줄 범위를 얻는다 (리치 노드 P2)
   const glyphW = checkGlyphW(fontSize);
   const nodeChecks = useMemo(() => {
-    const baseText = mdCode
-      ? [mdCode.before, mdCode.after].filter(Boolean).join('\n')
-      : String(n.text || '');
-    const plainText = mdTables ? mdTables.plainText : baseText;
-    const manualLines =
-      (mdTables || mdCode) && plainText === '' ? [] : plainText.split('\n');
+    const plainText = nodeBlocks ? nodeBlocks.plainText : String(n.text || '');
+    const manualLines = nodeBlocks && plainText === '' ? [] : plainText.split('\n');
     return computeNodeChecks(
       manualLines,
       n._manualStarts,
       (n._lines || String(n.text || '').split('\n')).length,
     );
-  }, [n.text, mdCode, mdTables, n._manualStarts, n._lines]);
+  }, [n.text, nodeBlocks, n._manualStarts, n._lines]);
 
   const strokeWidth = searchHit ? 2.6 : (style.borderWidth ?? (isRoot ? 2 : selected ? 1.5 : 1));
   const dash = borderDash(style.borderStyle, strokeWidth);
@@ -609,61 +599,37 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
         const img = n.image && inlineImgs.length === 0
           ? scaleNodeImage(n.image, n.w, padX)
           : null;
-        // 표가 끼어드는 줄 위치 — 표 앞 텍스트는 위, 뒤 텍스트는 아래
-        // (sizeNodeForText.mdTableAt과 같은 규칙 — 표 뒤 텍스트가 표
-        // 위로 올라가던 문제 수정, 2026-07-31. 코드와 함께면 텍스트 뒤)
-        // 표가 여러 개면 각각 자기 앞 텍스트 줄 수로 자리를 잡고, 앞선 표들의
-        // 블록 높이만큼 더 내려간다 (2026-09-22 — 두 번째 표가 안 그려지던 문제)
+        // 표·코드 블록이 끼어드는 줄 위치 — 블록 앞 텍스트는 위, 뒤 텍스트는 아래
+        // (sizeNodeForText 와 같은 규칙: 각 블록은 자기 앞 텍스트의 누적 줄 수로
+        // 자리를 잡고, 앞선 블록들의 높이만큼 더 내려간다. 2026-09-22 여러 블록)
         const ms = manualStarts && manualStarts.length ? manualStarts : [0];
-        const tablesAt = (mdTables?.tables ?? []).map((t) => ({
-          ...t,
-          at: !mdCode && t.beforeLines < ms.length ? ms[t.beforeLines] : lines.length,
+        const blocksAt = (nodeBlocks?.blocks ?? []).map((b) => ({
+          ...b,
+          at: b.beforeLines < ms.length ? ms[b.beforeLines] : lines.length,
         }));
-        let tblAcc = 0;
-        const tableLayouts = tablesAt.map((t, i) => {
-          const g = tableBlockGaps(tablesAt, i, lines.length);
-          const blockH = MD_TABLE_COPY_STRIP + t.h + g.total;
-          // 표 상단: 텍스트 중간이면 그 줄 경계, 끝이면 모든 텍스트 아래
-          const base = t.at >= lines.length ? flow.totalH : t.at > 0 ? flow.lineTops[t.at - 1] + lineHeight : 0;
-          const boundaryY = base + tblAcc;
-          tblAcc += blockH;
-          return { ...t, gapAbove: g.above, gapBelow: g.below, blockH, boundaryY };
+        let blkAcc = 0;
+        let tableOrd = 0, codeOrd = 0;
+        const blockLayouts = blocksAt.map((b, i) => {
+          const g = blockGaps(blocksAt, i, lines.length);
+          const fullH = b.blockH + g.total;
+          // 블록 상단: 텍스트 중간이면 그 줄 경계, 끝이면 모든 텍스트 아래
+          const base = b.at >= lines.length ? flow.totalH : b.at > 0 ? flow.lineTops[b.at - 1] + lineHeight : 0;
+          const boundaryY = base + blkAcc;
+          blkAcc += fullH;
+          // 같은 종류 안의 순번 — 팝업 편집(index)·복사 피드백용
+          const ordinal = b.kind === 'table' ? tableOrd++ : codeOrd++;
+          return { ...b, gapAbove: g.above, gapBelow: g.below, fullH, boundaryY, ordinal };
         });
-        const tableBlockH = tableLayouts.reduce((a, t) => a + t.blockH, 0);
-        const hasTable = tableLayouts.length > 0;
-        // i 번째 줄이 그 위 표들 때문에 아래로 밀리는 양
-        const tableShiftAt = (i: number) => tableLayouts.reduce((a, t) => a + (i >= t.at ? t.blockH : 0), 0);
-        // 코드 패널이 끼어드는 줄 위치 — 펜스 앞 텍스트는 위, 뒤는 아래
-        // (sizeNodeForText.mdCodeAt과 같은 규칙. 표가 있으면 텍스트 뒤)
-        const codeAt = !mdCode
-          ? lines.length
-          : hasTable
-            ? lines.length
-            : (() => {
-                const beforeCount =
-                  mdCode.before === '' ? 0 : mdCode.before.split('\n').length;
-                const ms = manualStarts && manualStarts.length ? manualStarts : [0];
-                return beforeCount < ms.length ? ms[beforeCount] : lines.length;
-              })();
-        const codeGapAbove = mdCode && (codeAt > 0 || hasTable) ? 6 : 0;
-        const codeGapBelow = mdCode && lines.length > codeAt ? 6 : 0;
-        const codeBlockH = mdCode ? mdCode.h + codeGapAbove + codeGapBelow : 0;
-        const imgGap = img && (lines.length > 0 || hasTable || mdCode) ? 6 : 0;
+        const blocksH = blockLayouts.reduce((a2, b) => a2 + b.fullH, 0);
+        const hasBlocks = blockLayouts.length > 0;
+        // i 번째 줄이 그 위 블록들 때문에 아래로 밀리는 양
+        const blockShiftAt = (i: number) => blockLayouts.reduce((a2, b) => a2 + (i >= b.at ? b.fullH : 0), 0);
+        const imgGap = img && (lines.length > 0 || hasBlocks) ? 6 : 0;
         const contentH =
           flow.totalH +
-          tableBlockH +
-          codeBlockH +
+          blocksH +
           (img ? img.h + imgGap : 0);
         const contentTop = n.y - contentH / 2;
-        // 패널 상단: 패널이 텍스트 중간이면 그 줄 경계, 끝이면 표 아래
-        const codeBoundaryY = codeAt >= lines.length
-          ? flow.totalH + tableBlockH
-          : codeAt > 0
-            ? flow.lineTops[codeAt - 1] + lineHeight
-            : 0;
-        const codeTop = contentTop + codeBoundaryY + codeGapAbove;
-        // 패널 뒤 줄들이 아래로 밀리는 양
-        const codeShift = codeBlockH;
         const imgTop = contentTop + contentH - (img ? img.h : 0);
 
         // 인라인 마커 상태를 자동 줄바꿈 사이로 이월한다 — 마커 구간이
@@ -685,8 +651,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               // + 코드 패널 뒤(codeAt 이후) 줄은 패널 높이만큼 아래로
               const lineCenter =
                 contentTop + flow.lineTops[i] +
-                tableShiftAt(i) +
-                (i >= codeAt ? codeShift : 0) + lineHeight / 2;
+                blockShiftAt(i) + lineHeight / 2;
               // 인라인 강조(부분 텍스트) — **굵게** *기울임* ~~취소선~~
               // __밑줄__ ==하이라이트== 마커를 구간(tspan)으로 그린다.
               // 마커 문자는 표시에서 제거되고, 노드 전체 강조(스타일 탭)와
@@ -832,7 +797,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               );
             })}
 
-            {tableLayouts.map((tbl, ti) => (() => {
+            {blockLayouts.map((blk) => blk.kind === 'table' ? (() => {
+              const tbl = blk; const ti = blk.ordinal;
               // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
               // (원문 위치: 표 앞 텍스트 아래, 표 뒤 텍스트 위)
               const tX = n.x - n.w / 2 + padX;
@@ -953,9 +919,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                   )}
                 </g>
               );
-            })())}
-
-            {mdCode && (() => {
+            })() : (() => {
+              const mdCode = blk; const ci0 = blk.ordinal;
+              const codeTop = contentTop + blk.boundaryY + blk.gapAbove;
               // 노드 속 코드 블록 — 노트 코드와 같은 구성: 헤더(언어 라벨 +
               // ⧉ 복사) + 모노스페이스 코드 줄. 인라인 마크·자동 줄바꿈 없음.
               const cX = n.x - mdCode.w / 2;
@@ -964,11 +930,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               const bodyTop = codeTop + mdCode.headH;
               return (
                 <g
+                  key={`code${ci0}`}
                   data-node-code
                   onDoubleClick={(e) => {
                     // 패널 더블클릭 = 팝업 편집기 (노드 텍스트 편집 대신)
                     e.stopPropagation();
-                    setCodeDlg({ mode: 'edit' });
+                    setCodeDlg({ mode: 'edit', index: ci0 });
                   }}
                 >
                   <title>더블클릭하면 팝업에서 언어·코드를 편집합니다</title>
@@ -999,7 +966,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     style={{ fontFamily: CODE_FONT, cursor: 'pointer', userSelect: 'none' }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setCodeDlg({ mode: 'edit' });
+                      setCodeDlg({ mode: 'edit', index: ci0 });
                     }}
                   >
                     {(mdCode.lang || 'code') + ' ✎'}
@@ -1011,14 +978,14 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     y={headBase}
                     textAnchor="end"
                     fontSize={headFs}
-                    fill={codeCopied ? '#15803D' : '#475569'}
+                    fill={codeCopied === ci0 ? '#15803D' : '#475569'}
                     style={{ cursor: 'pointer', userSelect: 'none' }}
                     onClick={(e) => {
                       e.stopPropagation();
                       const textToCopy = mdCode.code.join('\n');
                       const done = () => {
-                        setCodeCopied(true);
-                        window.setTimeout(() => setCodeCopied(false), 1500);
+                        setCodeCopied(ci0);
+                        window.setTimeout(() => setCodeCopied(null), 1500);
                       };
                       if (navigator.clipboard?.writeText) {
                         navigator.clipboard.writeText(textToCopy).then(done, done);
@@ -1026,7 +993,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     }}
                   >
                     <title>코드 복사</title>
-                    {codeCopied ? '복사됨 ✓' : '⧉'}
+                    {codeCopied === ci0 ? '복사됨 ✓' : '⧉'}
                   </text>
                   {mdCode.code.map((ln, ci) => {
                     // \uAE00\uC790\uB9C8\uB2E4 x \uB97C \uC9C1\uC811 \uC9C0\uC815\uD574 **\uACA9\uC790\uC5D0 \uC549\uD78C\uB2E4** \u2014 \uD3F0\uD2B8\uAC00
@@ -1050,7 +1017,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                   })}
                 </g>
               );
-            })()}
+            })())}
 
             {flow.bands.map((band) => {
               // 텍스트 중간 인라인 사진 — 원문 위치(afterLine)의 밴드에
@@ -1515,8 +1482,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
       {codeDlg && (
         <CodeBlockDialog
           t={t}
-          initialLang={codeDlg.mode === 'edit' ? mdCode?.lang : undefined}
-          initialCode={codeDlg.mode === 'edit' ? mdCode?.code.join('\n') : undefined}
+          initialLang={codeDlg.mode === 'edit' ? parseMdCodes(String(n.text || ''))[codeDlg.index]?.lang : undefined}
+          initialCode={codeDlg.mode === 'edit' ? parseMdCodes(String(n.text || ''))[codeDlg.index]?.code.join('\n') : undefined}
           onCancel={() => {
             setCodeDlg(null);
             if (editing) window.setTimeout(() => textareaRef.current?.focus(), 0);
@@ -1528,8 +1495,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               setDraftText(next);
               window.setTimeout(() => textareaRef.current?.focus(), 0);
             } else {
-              // 기존 블록(첫 펜스)을 통째로 교체하고 바로 저장
-              updateNodeText(n.id, replaceCodeBlock(String(n.text || ''), lang, code));
+              // 그 블록(index 번째 펜스)을 통째로 교체하고 바로 저장
+              updateNodeText(n.id, replaceCodeBlock(String(n.text || ''), lang, code, codeDlg.index));
             }
             setCodeDlg(null);
           }}

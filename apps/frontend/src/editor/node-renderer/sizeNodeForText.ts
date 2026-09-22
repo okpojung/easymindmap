@@ -9,8 +9,7 @@
 // 측정과 NodeRenderer의 그리기가 항상 같은 값을 쓴다.
 
 import type { LevelFontSetting } from '@/editor/__samples__/types';
-import { layoutMdTables, MD_TABLE_COPY_STRIP, type MdTableLayout } from './mdTable';
-import { layoutMdCode, type MdCodeLayout } from './mdCode';
+import { blockGaps, layoutNodeBlocks, type NodeBlockLayout } from './nodeBlocks';
 import { parseCheckLine, checkGlyphW } from './mdCheck';
 
 export interface SizeOpts {
@@ -42,15 +41,11 @@ export interface NodeSize {
   lineHeight: number;
   padX: number;
   padY: number;
-  // 노드 텍스트에 Markdown 표가 있으면 그 측정 결과(원문 순서, 여러 개 —
-  // 2026-09-22) — lines에는 표를 뺀 나머지 텍스트만 남는다. NodeRenderer가
-  // 같은 값으로 표를 그린다. `at` = 표가 끼어드는 래핑 줄 인덱스.
-  mdTables?: (MdTableLayout & { at: number })[];
-  mdCode?: MdCodeLayout;
-  // 코드 패널이 끼어드는 래핑 줄 인덱스 — 이 인덱스 "앞"에 패널이 놓이고
-  // 그 이후 줄은 패널 아래로 밀린다 (원문 순서 보존: 펜스 앞 텍스트는
-  // 위, 뒤 텍스트는 아래). 표와 함께 있으면 기존처럼 텍스트 뒤(=lines.length).
-  mdCodeAt?: number;
+  // 노드 텍스트 속 표·코드 블록 전부의 측정 결과(원문 순서, 2026-09-22
+  // nodeBlocks) — lines에는 블록을 뺀 나머지 텍스트만 남는다. NodeRenderer가
+  // 같은 값으로 그린다. `at` = 블록이 끼어드는 래핑 줄 인덱스 (이 인덱스
+  // "앞"에 블록이 놓이고 그 이후 줄은 블록 아래로 밀린다 — 원문 순서 보존).
+  blocks?: (NodeBlockLayout & { at: number })[];
   // 수동 줄바꿈(\n) 세그먼트가 시작하는 lines 인덱스 — 인라인 마커 상태
   // 이월의 리셋 지점 (자동 줄바꿈 줄에는 상태가 이어진다)
   manualStarts?: number[];
@@ -187,17 +182,13 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
     : 0;
 
   // Markdown 코드 펜스(```)가 있으면 코드 구간을 먼저 떼어 낸다 —
-  // 코드는 자동 줄바꿈·인라인 마크 없이 별도 패널로 그린다 (리치 노드 P1)
-  const mdCode = layoutMdCode(String(text || ''), fontSize) ?? undefined;
-  const baseText = mdCode
-    ? [mdCode.before, mdCode.after].filter(Boolean).join('\n')
-    : String(text || '');
-
-  // Markdown 표가 있으면 표 부분을 빼고 나머지 텍스트만 줄바꿈한다.
-  // (파이프 원문을 자동 줄바꿈하면 표가 망가지므로)
-  const mdTablesLay = layoutMdTables(baseText, fontSize);
-  const mdTable = !!mdTablesLay; // 표가 하나라도 있나
-  const plainText = mdTablesLay ? mdTablesLay.plainText : baseText;
+  // 표·코드 블록(전부, 원문 순서)은 자동 줄바꿈·인라인 마크 없이 따로 그린다 —
+  // 블록을 뺀 나머지 텍스트만 줄바꿈한다 (파이프·펜스 원문을 자동 줄바꿈하면
+  // 망가지므로). 리치 노드 P1 · 2026-09-22 여러 블록.
+  const blocksLay = layoutNodeBlocks(String(text || ''), fontSize);
+  const mdTable = !!blocksLay; // 블록이 하나라도 있나
+  const mdCode = false;
+  const plainText = blocksLay ? blocksLay.plainText : String(text || '');
 
   // Honor manual breaks first, then word-wrap each segment.
   // (표·코드만 있는 노드는 텍스트 줄이 없다 — 빈 줄 하나를 만들지 않는다)
@@ -262,29 +253,18 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   });
   if (!mdTable && !mdCode && wrappedLines.length === 0) wrappedLines.push('');
 
-  // 코드 패널이 끼어드는 래핑 줄 위치 — 펜스 "앞" 텍스트의 래핑 줄 수.
-  // 표가 함께 있으면 줄↔원문 매핑이 어긋나므로 기존처럼 텍스트 뒤에 둔다.
-  let mdCodeAt = wrappedLines.length;
-  if (mdCode && !mdTable) {
-    const beforeCount = mdCode.before === '' ? 0 : mdCode.before.split('\n').length;
-    mdCodeAt = beforeCount < manualStarts.length
-      ? manualStarts[beforeCount]
-      : wrappedLines.length;
-  }
-
-  // 표가 끼어드는 래핑 줄 위치 — 표 "앞" 텍스트의 래핑 줄 수 (코드와
-  // 같은 원문 순서 규칙, 2026-07-31: 표 뒤 텍스트(※첨부 등)가 표 위로
-  // 올라가던 문제). 코드와 함께면 기존처럼 텍스트 뒤(매핑 단순화).
-  // 표가 여러 개면 각각 자기 앞 텍스트의 줄 수로 자리를 잡는다 (2026-09-22).
-  const mdTables = (mdTablesLay?.tables ?? []).map((t) => ({
-    ...t,
-    at: !mdCode && t.beforeLines < manualStarts.length ? manualStarts[t.beforeLines] : wrappedLines.length,
+  // 블록이 끼어드는 래핑 줄 위치 — 블록 "앞" 텍스트의 래핑 줄 수 (원문 순서
+  // 규칙, 2026-07-31: 표 뒤 텍스트(※첨부 등)가 표 위로 올라가던 문제). 블록이
+  // 여러 개면 각각 자기 앞 텍스트의 누적 줄 수로 자리를 잡는다 (2026-09-22).
+  const blocks = (blocksLay?.blocks ?? []).map((b) => ({
+    ...b,
+    at: b.beforeLines < manualStarts.length ? manualStarts[b.beforeLines] : wrappedLines.length,
   }));
 
   // Width = widest wrapped line + padding (clamped between min and max).
   // 표·코드가 있으면 그 폭만큼은 항상 확보한다 (maxW보다 넓어도 잘리지 않게).
   // 수동 폭이면 그 값 그대로 (표·코드가 더 넓을 때만 예외적으로 확장).
-  const blockW = Math.max(...mdTables.map((t) => t.w), mdCode ? mdCode.w : 0, 0);
+  const blockW = Math.max(...blocks.map((b) => b.w), 0);
   const inCheck = (i: number) =>
     checkRanges.some(([s, e]) => i >= s && i < e);
   const widest = wrappedLines.reduce(
@@ -300,15 +280,9 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
         Math.max(minW, Math.ceil(contentW + padX * 2 + iconReserve + indicatorReserve)),
       );
   const textH = wrappedLines.length * lineHeight;
-  // 표 위(앞 텍스트)와 아래(뒤 텍스트)에 각각 여백 6 — 코드 패널과 동일.
-  // 복사(⧉) 스트립이 표 바깥 위에 붙는다 (머리글과 겹치지 않게)
-  const tableH = mdTables.reduce((acc, t, i) => acc + tableBlockGaps(mdTables, i, wrappedLines.length).total + MD_TABLE_COPY_STRIP + t.h, 0);
-  // 패널 위(펜스 앞 텍스트·표)와 아래(펜스 뒤 텍스트)에 각각 여백 6
-  const codeH = mdCode
-    ? mdCode.h +
-      (mdCodeAt > 0 || mdTable ? 6 : 0) +
-      (wrappedLines.length > mdCodeAt ? 6 : 0)
-    : 0;
+  // 블록마다 위·아래 여백(blockGaps) + 블록 높이(표는 복사 ⧉ 스트립 포함)
+  const tableH = blocks.reduce((acc, b, i) => acc + blockGaps(blocks, i, wrappedLines.length).total + b.blockH, 0);
+  const codeH = 0;
   // 붙여넣은 사진 — 노드 폭에 맞춰 축소한 높이만큼 박스가 커진다
   const imgH = opts.image
     ? scaleNodeImage(opts.image, w, padX).h +
@@ -325,23 +299,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
 
   return {
     w, h, lines: wrappedLines, fontSize, fontWeight, lineHeight,
-    padX, padY, mdTables: mdTables.length ? mdTables : undefined, mdCode, mdCodeAt, manualStarts,
+    padX, padY, blocks: blocks.length ? blocks : undefined, manualStarts,
   };
 }
 
-/**
- * 표 블록의 위·아래 여백 (측정과 렌더가 같은 규칙, 2026-09-22 여러 표):
- *  · 위 6 — 앞에 텍스트가 있거나(at > 0) 앞에 다른 표가 있을 때
- *  · 아래 6 — 이 표 뒤에 **텍스트**가 바로 올 때 (같은 자리에 다음 표가
- *    오면 그 표의 위 여백이 대신한다)
- */
-export function tableBlockGaps(
-  tables: { at: number }[], i: number, lineCount: number,
-): { above: number; below: number; total: number } {
-  const at = tables[i].at;
-  const above = at > 0 || i > 0 ? 6 : 0;
-  const next = tables[i + 1];
-  const textFollows = lineCount > at && (!next || next.at > at);
-  const below = textFollows ? 6 : 0;
-  return { above, below, total: above + below };
-}

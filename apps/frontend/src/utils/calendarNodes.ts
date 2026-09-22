@@ -5,10 +5,12 @@
 //   · 년도만  (2026년 · 26년 · 2026 · 26)          → 하위에 1월 … 12월
 //   · 년도+월 (2026년9월 · 26년09월 · 2026/09 · 26/09 …) → 그 달에 걸친 주마다
 //         `[36주] 2026/08/30(일) ~ 09/05(토)` 노드, 그 아래 **날짜 노드 7개**
-//         `2026/08/30(일)` … `2026/09/05(토)`. 일요일·공휴일은 빨간 글자, 토요일은 파란 글자.
+//         `2026/08/30(일)` … `2026/09/05(토)`. 일요일·토요일·공휴일은 빨간 글자, 공휴일은
+//         줄을 바꿔 `[추석]` 처럼 이름을 붙인다. 고른 달이 아닌 날(앞뒤 달)은 회색 글자 +
+//         점선 테두리로 희미하게 (2026-09-22 사용자 수정 2차).
 //   · 월만 (9월) 이고 조상 노드에 년도가 있으면 그 년도를 쓴다 (2026년 → 9월 → 주)
 //   · "표로 붙여넣기" — 노드 내용에 그 달의 달력 표(일~토 7열, 주마다 한 행)를 붙인다.
-//         일요일·공휴일 날짜는 **굵게**, 공휴일은 이름을 함께.
+//         일요일·공휴일 날짜는 **굵게** (이름은 넣지 않는다 — 칸이 넓어진다).
 // 주 번호 = 그 해 1월 1일이 든 주가 1주, 일요일 시작 (달력 관행). 12월 마지막 주가
 // 다음 해 1월로 넘어가도 이 해 번호(53주)로 센다.
 // 사양: docs/03-editor-core/canvas/10-canvas.md §21.2 · 사용자 가이드 03.
@@ -20,9 +22,11 @@ import { holidayName } from '@/utils/koreanHolidays';
 
 export interface YearMonth { year?: number; month?: number }
 
-/** 빨간 날(일요일·공휴일) · 파란 날(토요일) 글자색 — 달력 관행 */
+/** 빨간 날(일요일·토요일·공휴일) 글자색 */
 export const RED_DAY_COLOR = '#DC2626';
-export const BLUE_DAY_COLOR = '#2563EB';
+/** 고른 달이 아닌 날 — 회색 글자 + 점선 테두리 */
+export const DIM_DAY_COLOR = '#A3A3A3';
+export const DIM_DAY_BORDER = '#CFCFCF';
 
 const toYear = (s: string): number => {
   const n = Number(s);
@@ -96,11 +100,20 @@ export function weekOfYear(d: Date, year = d.getFullYear()): number {
   return Math.floor((utc(d.getFullYear(), d.getMonth(), d.getDate()) - firstSunday) / (7 * DAY)) + 1;
 }
 
-/** 날짜 노드의 글자색 — 일요일·공휴일 빨강, 토요일 파랑, 평일은 없음 */
-export function dayStyle(d: Date): NodeStyle | undefined {
-  if (d.getDay() === 0 || holidayName(d)) return { textColor: RED_DAY_COLOR };
-  if (d.getDay() === 6) return { textColor: BLUE_DAY_COLOR };
+/**
+ * 날짜 노드의 스타일 — 고른 달(month, 1~12)이 아닌 날은 회색 글자 + 점선 테두리,
+ * 일요일·토요일·공휴일은 빨간 글자, 평일은 없음
+ */
+export function dayStyle(d: Date, month?: number): NodeStyle | undefined {
+  if (month && d.getMonth() !== month - 1) return { textColor: DIM_DAY_COLOR, borderColor: DIM_DAY_BORDER, borderStyle: 'dashed' };
+  if (d.getDay() === 0 || d.getDay() === 6 || holidayName(d)) return { textColor: RED_DAY_COLOR };
   return undefined;
+}
+
+/** 날짜 노드 글 — `2026/09/25(금)`, 공휴일이면 줄을 바꿔 `[추석]` */
+export function dayText(d: Date): string {
+  const hol = holidayName(d);
+  return hol ? `${fmtDay(d)}\n[${hol}]` : fmtDay(d);
 }
 
 /** 1월 … 12월 */
@@ -124,30 +137,28 @@ export function weekLabel(sunday: Date, year: number): string {
   return `[${pad2(weekOfYear(sunday, year))}주] ${fmtDay(sunday)} ~ ${end}`;
 }
 
-/** 그 달에 걸친 주들 — `[NN주] 시작 ~ 끝` → 날짜 노드 7개 (일요일·공휴일 빨강, 토요일 파랑) */
+/** 그 달에 걸친 주들 — `[NN주] 시작 ~ 끝` → 날짜 노드 7개 (빨간 날 · 공휴일 이름 · 다른 달은 희미하게) */
 export function weekOutline(year: number, month: number): OutlineItem[] {
   return weekStarts(year, month).map((s) => ({
     text: weekLabel(s, year),
     children: Array.from({ length: 7 }, (_, i) => {
       const d = addDays(s, i);
-      const style = dayStyle(d);
-      return { text: fmtDay(d), children: [], ...(style ? { style } : {}) };
+      const style = dayStyle(d, month);
+      return { text: dayText(d), children: [], ...(style ? { style } : {}) };
     }),
   }));
 }
 
 /**
  * 달력 표 (GFM) — 일~토 7열, 그 달에 걸친 주마다 한 행. 다른 달의 날은 빈 칸.
- * 일요일·공휴일은 **굵게**, 공휴일은 이름을 붙인다 (`**25** 추석`).
+ * 일요일·공휴일은 **굵게** (이름은 넣지 않는다 — 2026-09-22 사용자 수정 2차).
  */
 export function calendarTable(year: number, month: number): string {
   const rows = weekStarts(year, month).map((s) =>
     Array.from({ length: 7 }, (_, i) => {
       const d = addDays(s, i);
       if (d.getMonth() !== month - 1) return '';
-      const hol = holidayName(d);
-      const num = d.getDay() === 0 || hol ? `**${d.getDate()}**` : String(d.getDate());
-      return hol ? `${num} ${hol}` : num;
+      return d.getDay() === 0 || holidayName(d) ? `**${d.getDate()}**` : String(d.getDate());
     }));
   return buildMdTable(DOW, rows, DOW.map(() => 'center'));
 }

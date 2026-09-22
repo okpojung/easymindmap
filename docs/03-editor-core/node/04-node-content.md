@@ -484,10 +484,20 @@ const rawHtml = (hasImgFile && !htmlHasTable) ? '' : rawHtmlAll;
 표로 그린다 (markmap 스타일 — 향후 Markdown 파일 가져오기 대비).
 
 - 감지: 파이프(`|`) 행 바로 다음 줄이 구분선 행(각 셀 `:?--:?`)이면 표.
-  노드당 첫 번째 표 하나만 표로 그리고 나머지 텍스트는 그대로 표시.
-- 측정·그리기 일치: `mdTable.ts`의 `layoutMdTable()`을 `sizeNodeForText()`
-  (노드 크기 계산)와 `NodeRenderer`(그리기)가 공유 — 셀 글자 = 본문−2pt
-  (최소 10), 행 높이 = 셀 글자+10, 열 폭 = 최장 셀 폭+12 (최소 26).
+  **표 여러 개** (2026-09-22 사용자 보고 — 두 번째 표가 파이프 원문으로
+  보였다): `parseMdTables()` 가 원문 순서대로 전부 읽고, 각 표는 자기 앞
+  텍스트의 수동 줄 수(`beforeLines`)로 자리를 잡는다. 표 사이는 빈 줄로
+  구분한다 (빈 줄 없이 이어 쓰면 GFM 처럼 다음 머리글이 앞 표의 행이 된다).
+  표 더블클릭 → `replaceMdTable(text, md, index)` 로 **그 표만** 교체.
+- 측정·그리기 일치: `mdTable.ts`의 `layoutMdTables()`(→ `plainText` +
+  `tables[].beforeLines`)을 `sizeNodeForText()`(노드 크기 계산, `mdTables[].at`)와
+  `NodeRenderer`(그리기)가 공유 — 셀 글자 = 본문−2pt (최소 10), 행 높이 =
+  셀 글자+10, 열 폭 = 최장 셀 폭+12 (최소 26). 표 블록 여백은
+  `tableBlockGaps()` 한 곳 — 위 6(앞에 글이나 다른 표가 있을 때), 아래 6(뒤에
+  글이 바로 올 때; 같은 자리에 다음 표가 오면 그 표의 위 여백이 대신). 앞선
+  표들의 블록 높이만큼 다음 표·뒤 줄이 내려간다. 아웃라인/칸반의
+  `RichTextHtml.renderPlain` 은 표 뒤 글을 재귀로 그려 표를 모두 보인다.
+  HTML 내보내기(`exportHtml`)는 아직 첫 표만 그린다.
   표 폭이 노드 최대 폭(maxW)보다 크면 노드가 표 폭만큼 늘어난다.
 - 표 스타일: 첫 행 = 헤더(굵게 + 연한 배경), 격자선은 노드 테두리색.
 - 구분선 없는 파이프 텍스트(예: `항목 | 값` 한 줄)는 표로 취급하지 않는다.

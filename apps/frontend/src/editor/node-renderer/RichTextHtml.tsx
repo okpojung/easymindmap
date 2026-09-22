@@ -167,14 +167,16 @@ export function NodeRichText({
 
   const renderPlain = (seg: string, key: string) => {
     const mdt = parseMdTable(seg);
-    const parts: { kind: 'text' | 'table'; body: string }[] = mdt
+    // 표 뒤 텍스트는 다시 renderPlain — 표가 여러 개여도 전부 그린다 (2026-09-22)
+    const parts: { kind: 'text' | 'table' | 'rest'; body: string }[] = mdt
       ? [
           ...(mdt.before ? [{ kind: 'text' as const, body: mdt.before }] : []),
           { kind: 'table' as const, body: '' },
-          ...(mdt.after ? [{ kind: 'text' as const, body: mdt.after }] : []),
+          ...(mdt.after ? [{ kind: 'rest' as const, body: mdt.after }] : []),
         ]
       : [{ kind: 'text', body: seg }];
     return parts.map((p, pi) => {
+      if (p.kind === 'rest') return <div key={`${key}-r${pi}`}>{renderPlain(p.body, `${key}-r${pi}`)}</div>;
       if (p.kind === 'table' && mdt) {
         return (
           // 바깥 래퍼(relative) — 표 복사(⧉) 버튼을 스크롤과 무관하게

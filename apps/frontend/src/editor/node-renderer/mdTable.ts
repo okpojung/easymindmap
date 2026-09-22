@@ -153,10 +153,55 @@ export function parseMdTable(text: string): MdTableParse | null {
   return null;
 }
 
+/**
+ * 글 속의 표 **전부** — 원문 순서대로 (2026-09-22 사용자 보고: 노드에 표를 두 개
+ * 넣으면 두 번째가 파이프 원문으로 보였다). 각 항목의 `before` 는 **앞 표 뒤부터**
+ * 이 표 앞까지의 일반 텍스트, 마지막 항목의 `after` 만 뒤 텍스트다 (중간 항목의
+ * `after` 는 쓰지 않는다).
+ */
+export function parseMdTables(text: string): MdTableParse[] {
+  const out: MdTableParse[] = [];
+  let rest = String(text || '');
+  for (;;) {
+    const t = parseMdTable(rest);
+    if (!t) break;
+    out.push(t);
+    rest = t.after;
+    if (out.length > 200) break; // 안전장치
+  }
+  return out;
+}
+
+export interface MdTablesLayout {
+  /** 표 측정값 — 원문 순서. `beforeLines` = 이 표 앞에 오는 일반 텍스트의 **수동 줄 수**(누적) */
+  tables: (MdTableLayout & { beforeLines: number })[];
+  /** 표를 모두 뺀 일반 텍스트 (빈 조각은 빼고 `\n` 으로 이음) */
+  plainText: string;
+}
+
+/** 표 전부의 측정 — 없으면 null. `sizeNodeForText` · `NodeRenderer` 가 같은 값을 쓴다 */
+export function layoutMdTables(text: string, fontSize: number): MdTablesLayout | null {
+  const parsed = parseMdTables(text);
+  if (parsed.length === 0) return null;
+  const parts: string[] = [];
+  let count = 0;
+  const tables = parsed.map((t, i) => {
+    if (t.before) { parts.push(t.before); count += t.before.split('\n').length; }
+    const lay = layoutParsedTable(t, fontSize);
+    if (i === parsed.length - 1 && t.after) parts.push(t.after);
+    return { ...lay, beforeLines: count };
+  });
+  return { tables, plainText: parts.join('\n') };
+}
+
 // fontSize = 노드 본문 글자 크기 (셀은 -2, 최소 10)
 export function layoutMdTable(text: string, fontSize: number): MdTableLayout | null {
   const parsed = parseMdTable(text);
   if (!parsed) return null;
+  return layoutParsedTable(parsed, fontSize);
+}
+
+function layoutParsedTable(parsed: MdTableParse, fontSize: number): MdTableLayout {
 
   const cellFs = Math.max(10, fontSize - 2);
   const rowH = cellFs + 10;

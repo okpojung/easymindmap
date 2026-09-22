@@ -18,7 +18,7 @@ node scripts/doc-shots/guide03-style-copy.mjs /tmp/doc-shots   # 스타일 복�
 node scripts/doc-shots/guide05-note-table.mjs /tmp/doc-shots   # 노트 표: +표 격자 · 그려진 표 + ✎ (+ 검증 16항목)
 node scripts/doc-shots/guide04-minimap.mjs /tmp/doc-shots   # 미니맵 (+ 검증 35항목)
 node scripts/doc-shots/guide04-layout-multi.mjs /tmp/doc-shots   # 다중 선택 레이아웃 · 접힘 배지 · 다크 칩 (+ 검증 13항목)
-node scripts/doc-shots/guide03-calendar.mjs /tmp/doc-shots   # [+] 메뉴 · 달력 노드(년→월, 년월→주→날짜 7개·빨간 날, 표로 붙여넣기) (+ 검증 31항목)
+node scripts/doc-shots/guide03-calendar.mjs /tmp/doc-shots   # [+] 메뉴 · 달력 노드(년→월, 년월→주→날짜 7개·빨간 날·회색 점선, 표로 붙여넣기) · 노드 표 2개 (+ 검증 41항목)
 node scripts/doc-shots/guide04-expand-zoom.mjs                   # [+]/[−] 뒤 선택 노드 100% 중앙 (검증 11항목, 스크린샷 없음)
 # ② 인증 켠 화면 — 가이드 12 계열 (vite 를 이렇게 다시 띄운다)
 VITE_SUPABASE_URL=http://auth.local VITE_SUPABASE_ANON_KEY=anon VITE_SUPABASE_AUTH_PREFIX= \

@@ -28,7 +28,8 @@ import {
   scaleNodeImage,
   sizeNodeForText,
 } from './sizeNodeForText';
-import { layoutMdTable, parseMdTable, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
+import { layoutMdTables, parseMdTable, parseMdTables, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
+import { tableBlockGaps } from './sizeNodeForText';
 import { layoutMdCode, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
 import { gridXAttr } from '@/utils/monoGrid';
 import {
@@ -223,7 +224,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   // 코드 패널 ⧉ 복사 피드백 (1.5s 후 원복)
   const [codeCopied, setCodeCopied] = useState(false);
   // 표 복사(⧉) 피드백 — 코드 패널 '복사됨 ✓'과 동일 (1.5초)
-  const [tableCopied, setTableCopied] = useState(false);
+  const [tableCopied, setTableCopied] = useState<number | null>(null); // 복사된 표 순번
   // 코드 블록 팝업 편집기 — insert: 편집 중 커서 위치에 새 블록 삽입,
   // edit: 기존 블록(첫 펜스)을 언어·코드째 교체
   const [codeDlg, setCodeDlg] = useState<
@@ -237,7 +238,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   // 위치에 넣고 팝업에서 채운다 · edit: 기존 표를 교체. inDraft = 편집 중인
   // 초안(draftText)의 표인지(툴바 ⊞), 저장된 텍스트의 표인지(캔버스 더블클릭)
   const [tableDlg, setTableDlg] = useState<
-    { mode: 'insert'; cursor: number; rows: number; cols: number } | { mode: 'edit'; inDraft: boolean } | null
+    { mode: 'insert'; cursor: number; rows: number; cols: number } | { mode: 'edit'; inDraft: boolean; index: number } | null
   >(null);
   const tableDlgRef = useRef<boolean>(false);
   useEffect(() => { tableDlgRef.current = !!tableDlg; }, [tableDlg]);
@@ -344,8 +345,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
   // 노드 텍스트 속 Markdown 코드 펜스/표 — sizeNodeForText와 같은 측정으로
   // 그린다. (lines에는 코드·표를 제외한 텍스트만 들어 있다 — 리치 노드 P1)
   const mdCode = useMemo(() => layoutMdCode(String(n.text || ''), fontSize), [n.text, fontSize]);
-  const mdTable = useMemo(
-    () => layoutMdTable(
+  const mdTables = useMemo(
+    () => layoutMdTables(
       mdCode ? [mdCode.before, mdCode.after].filter(Boolean).join('\n') : String(n.text || ''),
       fontSize,
     ),
@@ -358,17 +359,15 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     const baseText = mdCode
       ? [mdCode.before, mdCode.after].filter(Boolean).join('\n')
       : String(n.text || '');
-    const plainText = mdTable
-      ? [mdTable.before, mdTable.after].filter(Boolean).join('\n')
-      : baseText;
+    const plainText = mdTables ? mdTables.plainText : baseText;
     const manualLines =
-      (mdTable || mdCode) && plainText === '' ? [] : plainText.split('\n');
+      (mdTables || mdCode) && plainText === '' ? [] : plainText.split('\n');
     return computeNodeChecks(
       manualLines,
       n._manualStarts,
       (n._lines || String(n.text || '').split('\n')).length,
     );
-  }, [n.text, mdCode, mdTable, n._manualStarts, n._lines]);
+  }, [n.text, mdCode, mdTables, n._manualStarts, n._lines]);
 
   const strokeWidth = searchHit ? 2.6 : (style.borderWidth ?? (isRoot ? 2 : selected ? 1.5 : 1));
   const dash = borderDash(style.borderStyle, strokeWidth);
@@ -457,7 +456,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     // '표' 버튼 — 격자에서 고른 크기의 빈 표를 넣고 팝업에서 채운다.
     // 노드는 표를 하나만 그리므로, 이미 있으면 그 표를 팝업에서 수정한다.
     if (mark === 'table') {
-      if (parseMdTable(draftText)) setTableDlg({ mode: 'edit', inDraft: true });
+      if (parseMdTable(draftText)) setTableDlg({ mode: 'edit', inDraft: true, index: 0 });
       else setTableDlg({ mode: 'insert', cursor: e0, rows: size?.rows ?? 2, cols: size?.cols ?? 2 });
       return;
     }
@@ -613,26 +612,32 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
         // 표가 끼어드는 줄 위치 — 표 앞 텍스트는 위, 뒤 텍스트는 아래
         // (sizeNodeForText.mdTableAt과 같은 규칙 — 표 뒤 텍스트가 표
         // 위로 올라가던 문제 수정, 2026-07-31. 코드와 함께면 텍스트 뒤)
-        const tableAt = !mdTable
-          ? lines.length
-          : mdCode
-            ? lines.length
-            : (() => {
-                const beforeCount =
-                  mdTable.before === '' ? 0 : mdTable.before.split('\n').length;
-                const ms = manualStarts && manualStarts.length ? manualStarts : [0];
-                return beforeCount < ms.length ? ms[beforeCount] : lines.length;
-              })();
-        const tableGapAbove = mdTable && tableAt > 0 ? 6 : 0;
-        const tableGapBelow = mdTable && lines.length > tableAt ? 6 : 0;
-        const tableBlockH = mdTable
-          ? MD_TABLE_COPY_STRIP + mdTable.h + tableGapAbove + tableGapBelow
-          : 0;
+        // 표가 여러 개면 각각 자기 앞 텍스트 줄 수로 자리를 잡고, 앞선 표들의
+        // 블록 높이만큼 더 내려간다 (2026-09-22 — 두 번째 표가 안 그려지던 문제)
+        const ms = manualStarts && manualStarts.length ? manualStarts : [0];
+        const tablesAt = (mdTables?.tables ?? []).map((t) => ({
+          ...t,
+          at: !mdCode && t.beforeLines < ms.length ? ms[t.beforeLines] : lines.length,
+        }));
+        let tblAcc = 0;
+        const tableLayouts = tablesAt.map((t, i) => {
+          const g = tableBlockGaps(tablesAt, i, lines.length);
+          const blockH = MD_TABLE_COPY_STRIP + t.h + g.total;
+          // 표 상단: 텍스트 중간이면 그 줄 경계, 끝이면 모든 텍스트 아래
+          const base = t.at >= lines.length ? flow.totalH : t.at > 0 ? flow.lineTops[t.at - 1] + lineHeight : 0;
+          const boundaryY = base + tblAcc;
+          tblAcc += blockH;
+          return { ...t, gapAbove: g.above, gapBelow: g.below, blockH, boundaryY };
+        });
+        const tableBlockH = tableLayouts.reduce((a, t) => a + t.blockH, 0);
+        const hasTable = tableLayouts.length > 0;
+        // i 번째 줄이 그 위 표들 때문에 아래로 밀리는 양
+        const tableShiftAt = (i: number) => tableLayouts.reduce((a, t) => a + (i >= t.at ? t.blockH : 0), 0);
         // 코드 패널이 끼어드는 줄 위치 — 펜스 앞 텍스트는 위, 뒤는 아래
         // (sizeNodeForText.mdCodeAt과 같은 규칙. 표가 있으면 텍스트 뒤)
         const codeAt = !mdCode
           ? lines.length
-          : mdTable
+          : hasTable
             ? lines.length
             : (() => {
                 const beforeCount =
@@ -640,24 +645,16 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                 const ms = manualStarts && manualStarts.length ? manualStarts : [0];
                 return beforeCount < ms.length ? ms[beforeCount] : lines.length;
               })();
-        const codeGapAbove = mdCode && (codeAt > 0 || mdTable) ? 6 : 0;
+        const codeGapAbove = mdCode && (codeAt > 0 || hasTable) ? 6 : 0;
         const codeGapBelow = mdCode && lines.length > codeAt ? 6 : 0;
         const codeBlockH = mdCode ? mdCode.h + codeGapAbove + codeGapBelow : 0;
-        const imgGap = img && (lines.length > 0 || mdTable || mdCode) ? 6 : 0;
+        const imgGap = img && (lines.length > 0 || hasTable || mdCode) ? 6 : 0;
         const contentH =
           flow.totalH +
           tableBlockH +
           codeBlockH +
           (img ? img.h + imgGap : 0);
         const contentTop = n.y - contentH / 2;
-        // 표 상단: 표가 텍스트 중간이면 그 줄 경계, 끝이면 모든 텍스트 아래
-        const tableBoundaryY = tableAt >= lines.length
-          ? flow.totalH
-          : tableAt > 0
-            ? flow.lineTops[tableAt - 1] + lineHeight
-            : 0;
-        // 표 뒤 줄들이 아래로 밀리는 양
-        const tableShift = tableBlockH;
         // 패널 상단: 패널이 텍스트 중간이면 그 줄 경계, 끝이면 표 아래
         const codeBoundaryY = codeAt >= lines.length
           ? flow.totalH + tableBlockH
@@ -688,7 +685,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               // + 코드 패널 뒤(codeAt 이후) 줄은 패널 높이만큼 아래로
               const lineCenter =
                 contentTop + flow.lineTops[i] +
-                (i >= tableAt ? tableShift : 0) +
+                tableShiftAt(i) +
                 (i >= codeAt ? codeShift : 0) + lineHeight / 2;
               // 인라인 강조(부분 텍스트) — **굵게** *기울임* ~~취소선~~
               // __밑줄__ ==하이라이트== 마커를 구간(tspan)으로 그린다.
@@ -835,15 +832,15 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               );
             })}
 
-            {mdTable && (() => {
+            {tableLayouts.map((tbl, ti) => (() => {
               // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
               // (원문 위치: 표 앞 텍스트 아래, 표 뒤 텍스트 위)
               const tX = n.x - n.w / 2 + padX;
               // 블록 맨 위 = 복사(⧉) 스트립, 격자는 그 아래 — 아이콘이
               // 머리글 셀 내용과 겹치지 않는다 (2026-07-31)
-              const stripY = contentTop + tableBoundaryY + tableGapAbove;
+              const stripY = contentTop + tbl.boundaryY + tbl.gapAbove;
               const tY = stripY + MD_TABLE_COPY_STRIP;
-              const { colWs, rowH, cellFs, headers, rows, aligns, w: tW, h: tH } = mdTable;
+              const { colWs, rowH, cellFs, headers, rows, aligns, w: tW, h: tH } = tbl;
               const colX: number[] = [];
               let acc = tX;
               for (const cw of colWs) { colX.push(acc); acc += cw; }
@@ -851,11 +848,12 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
               const allRows = [headers, ...rows];
               return (
                 <g
+                  key={`tbl${ti}`}
                   data-node-table
                   onDoubleClick={(e) => {
                     // 표 더블클릭 = 팝업 편집기 (코드 패널과 같은 규칙)
                     e.stopPropagation();
-                    setTableDlg({ mode: 'edit', inDraft: false });
+                    setTableDlg({ mode: 'edit', inDraft: false, index: ti });
                   }}
                 >
                   <title>더블클릭하면 팝업에서 표를 편집합니다</title>
@@ -884,8 +882,8 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                     onClick={(e) => {
                       e.stopPropagation();
                       void copyTable(headers, rows).then(() => {
-                        setTableCopied(true);
-                        window.setTimeout(() => setTableCopied(false), 1500);
+                        setTableCopied(ti);
+                        window.setTimeout(() => setTableCopied(null), 1500);
                       });
                     }}
                     onPointerDown={(e) => e.stopPropagation()}
@@ -893,9 +891,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                   >
                     <title>표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다</title>
                     <rect
-                      x={-(tableCopied ? cellFs * 4.6 : cellFs * 2.2)}
+                      x={-(tableCopied === ti ? cellFs * 4.6 : cellFs * 2.2)}
                       y={-MD_TABLE_COPY_STRIP / 2}
-                      width={tableCopied ? cellFs * 4.6 : cellFs * 2.2}
+                      width={tableCopied === ti ? cellFs * 4.6 : cellFs * 2.2}
                       height={MD_TABLE_COPY_STRIP}
                       fill="transparent"
                     />
@@ -904,9 +902,9 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                       y={cellFs * 0.34}
                       fontSize={Math.max(8, cellFs - 1)}
                       fontWeight={700}
-                      fill={tableCopied ? '#15803D' : '#475569'}
+                      fill={tableCopied === ti ? '#15803D' : '#475569'}
                     >
-                      {tableCopied ? '복사됨 ✓' : '⧉'}
+                      {tableCopied === ti ? '복사됨 ✓' : '⧉'}
                     </text>
                   </g>
                   {allRows.map((cells, r) =>
@@ -955,7 +953,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                   )}
                 </g>
               );
-            })()}
+            })())}
 
             {mdCode && (() => {
               // 노드 속 코드 블록 — 노트 코드와 같은 구성: 헤더(언어 라벨 +
@@ -1541,7 +1539,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
       {/* 표 팝업 편집기 — ⊞ 버튼(격자 크기 → 삽입) / 표 더블클릭(수정) */}
       {tableDlg && (() => {
         const src = tableDlg.mode === 'edit' ? (tableDlg.inDraft ? draftText : String(n.text || '')) : '';
-        const parsed = tableDlg.mode === 'edit' ? parseMdTable(src) : null;
+        const parsed = tableDlg.mode === 'edit' ? (parseMdTables(src)[tableDlg.index] ?? null) : null;
         const initialMd = parsed ? buildMdTable(parsed.headers, parsed.rows, parsed.aligns) : undefined;
         const size = tableDlg.mode === 'insert' ? { rows: tableDlg.rows, cols: tableDlg.cols } : undefined;
         return (
@@ -1558,10 +1556,10 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                 setDraftText(spliceMdTable(draftText, tableDlg.cursor, md));
                 window.setTimeout(() => textareaRef.current?.focus(), 0);
               } else if (tableDlg.inDraft) {
-                setDraftText(replaceMdTable(draftText, md));
+                setDraftText(replaceMdTable(draftText, md, tableDlg.index));
                 window.setTimeout(() => textareaRef.current?.focus(), 0);
               } else {
-                updateNodeText(n.id, replaceMdTable(String(n.text || ''), md));
+                updateNodeText(n.id, replaceMdTable(String(n.text || ''), md, tableDlg.index));
               }
               setTableDlg(null);
             }}

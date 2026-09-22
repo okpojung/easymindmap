@@ -10,6 +10,7 @@
 // 규격: MCP 인증(2026-07-28) · RFC 9728 · RFC 6750
 
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import jwt from 'jsonwebtoken';
 
 const DSN = process.env.DATABASE_URL;
@@ -17,7 +18,30 @@ if (!DSN) { console.error('DATABASE_URL 이 필요합니다.'); process.exit(1);
 const PORT = Number(process.env.OAUTH_PORT || 3405);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SECRET = 'oauth-http-test-secret-0123456789';
-const AS = 'https://auth-dev.example.com';
+const AS = 'https://auth-dev.example.com';   // 닿지 않는 인가 서버 — 겉면이 502 를 내야 한다
+
+// ── 가짜 GoTrue — 메타데이터 한 장만 낸다 (겉면 시험용, 2026-09-22 §12.6) ──
+const FAKE_PORT = Number(process.env.OAUTH_FAKE_AS_PORT || 3406);
+const FAKE_AS = `http://127.0.0.1:${FAKE_PORT}`;
+const UPSTREAM = {
+  issuer: FAKE_AS,
+  authorization_endpoint: `${FAKE_AS}/oauth/authorize`,
+  token_endpoint: `${FAKE_AS}/oauth/token`,
+  registration_endpoint: `${FAKE_AS}/oauth/clients/register`,
+  jwks_uri: `${FAKE_AS}/.well-known/jwks.json`,
+  userinfo_endpoint: `${FAKE_AS}/oauth/userinfo`,
+  scopes_supported: ['openid', 'email', 'profile'],
+  response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'],
+  token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+  code_challenge_methods_supported: ['S256', 'plain'],
+  id_token_signing_alg_values_supported: ['RS256', 'HS256', 'ES256'],
+};
+const fakeAs = http.createServer((req, res) => {
+  if (req.url === '/.well-known/oauth-authorization-server') {
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(UPSTREAM));
+  } else { res.writeHead(404); res.end(); }
+});
+await new Promise((r) => fakeAs.listen(FAKE_PORT, '127.0.0.1', r));
 const SUB = '11111111-2222-3333-4444-555555555555';
 
 let failed = 0;
@@ -63,7 +87,7 @@ const stop = () => { if (api) { api.kill(); api = null; } };
 
 try {
   // ══ OAuth 를 켠 배포 ═══════════════════════════════════════════
-  await start({ GOTRUE_PUBLIC_URL: AS });
+  await start({ GOTRUE_PUBLIC_URL: FAKE_AS });
 
   // ── ① 보호 자원 메타데이터가 /v1 **밖에** 있다 ────────────────
   // 프리픽스 예외를 빼먹으면 여기가 404 가 되고, 클라이언트는 이유를
@@ -76,10 +100,45 @@ try {
     const j = await r.json().catch(() => null);
     check(`★ ${path} 가 열린다`, r.status, 200);
     check('  resource 가 우리 MCP 주소', j?.resource, `${BASE}/v1/mcp`);
-    check('  인가 서버를 가리킨다', j?.authorization_servers, [AS]);
+    // ★ 2026-09-22 부터 인가 서버는 GoTrue 가 아니라 **우리 겉면**이다 (§12.6)
+    check('  ★ 인가 서버로 **우리 주소**(겉면)를 가리킨다', j?.authorization_servers, [BASE]);
   }
   check('메타데이터는 **인증 없이** 읽힌다(닭과 달걀)',
     (await fetch(BASE + '/.well-known/oauth-protected-resource')).status, 200);
+
+  // ── ①-b 인가 서버 겉면 문서 — GoTrue 문서를 받아 우리 것으로 바꿔 낸다 (§12.6) ──
+  for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/openid-configuration']) {
+    const r = await fetch(BASE + path);
+    const j = await r.json().catch(() => null);
+    check(`★ ${path} 가 /v1 밖에서 열린다`, r.status, 200);
+    check('  issuer 는 우리 주소', j?.issuer, BASE);
+    check('  authorization_endpoint 는 우리 /v1/oauth/authorize', j?.authorization_endpoint, `${BASE}/v1/oauth/authorize`);
+    check('  토큰·등록·JWKS 는 GoTrue 그대로',
+      [j?.token_endpoint, j?.registration_endpoint, j?.jwks_uri],
+      [UPSTREAM.token_endpoint, UPSTREAM.registration_endpoint, UPSTREAM.jwks_uri]);
+    check('  ★ scopes_supported 에 openid 가 없다', j?.scopes_supported, ['email', 'profile']);
+    check('  OIDC 전용 항목(userinfo·id_token alg)은 없다',
+      ['userinfo_endpoint', 'id_token_signing_alg_values_supported'].map((k) => j && k in j), [false, false]);
+    check('  10분 캐시 헤더', (r.headers.get('cache-control') ?? '').includes('max-age=600'), true);
+  }
+
+  // ── ①-c 겉면 인가 엔드포인트 — openid 만 떼고 GoTrue 로 302 (ChatGPT 가 붙이는 그것) ──
+  {
+    const q = new URLSearchParams({
+      response_type: 'code', client_id: 'abc', redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect',
+      scope: 'openid email', state: 's1', code_challenge: 'cc', code_challenge_method: 'S256',
+      resource: `${BASE}/v1/mcp`,
+    });
+    const r = await fetch(`${BASE}/v1/oauth/authorize?${q}`, { redirect: 'manual' });
+    check('★ /v1/oauth/authorize 는 302', r.status, 302);
+    const loc = new URL(r.headers.get('location') ?? 'http://x/');
+    check('  GoTrue 의 /oauth/authorize 로', loc.origin + loc.pathname, `${FAKE_AS}/oauth/authorize`);
+    check('  ★ scope 에서 openid 만 뗐다', loc.searchParams.get('scope'), 'email');
+    check('  PKCE·state·resource·redirect_uri 는 그대로',
+      ['client_id', 'redirect_uri', 'state', 'code_challenge', 'code_challenge_method', 'resource', 'response_type'].map((k) => loc.searchParams.get(k)),
+      ['abc', 'https://chatgpt.com/connector_platform_oauth_redirect', 's1', 'cc', 'S256', `${BASE}/v1/mcp`, 'code']);
+    check('  인증 없이 (로그인 전 첫걸음)', r.headers.get('www-authenticate'), null);
+  }
 
   // ── ② 무토큰 401 — 클라이언트가 읽는 유일한 안내 ───────────────
   {
@@ -155,6 +214,8 @@ try {
   await start({ GOTRUE_PUBLIC_URL: '' });
   check('메타데이터는 404 (없는 것을 있는 척하지 않는다)',
     (await fetch(BASE + '/.well-known/oauth-protected-resource/v1/mcp')).status, 404);
+  check('  겉면 문서도 404', (await fetch(BASE + '/.well-known/oauth-authorization-server')).status, 404);
+  check('  겉면 authorize 도 404', (await fetch(BASE + '/v1/oauth/authorize?scope=email', { redirect: 'manual' })).status, 404);
   {
     const r = await rpc(sign({ client_id: 'c' }), { jsonrpc: '2.0', id: 1, method: 'tools/list' });
     check('★ OAuth 토큰도 401 (문을 안 열었다)', r.status, 401);
@@ -170,7 +231,10 @@ try {
   await start({ AUTH_MODE: 'dev', DEV_USER_ID: SUB, GOTRUE_PUBLIC_URL: AS });
   check('★ dev 에서는 OAuth 토큰도 403',
     (await rpc(sign({ client_id: 'c' }), { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status, 403);
-} finally { stop(); }
+  // 인가 서버(GoTrue)에 닿지 못하면 겉면 문서는 **502** — 없는 것을 있는 척하지 않는다
+  check('★ GoTrue 를 못 읽으면 겉면 문서는 502',
+    (await fetch(BASE + '/.well-known/oauth-authorization-server')).status, 502);
+} finally { stop(); fakeAs.close(); }
 
 console.log(failed ? `\n${failed}개 실패` : '\n전부 통과');
 process.exit(failed ? 1 : 0);

@@ -6,7 +6,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import type { AppEnv } from './config/env.validation';
 import { VaultService } from './vault/vault.service';
-import { PRM_SUFFIX } from './mcp/oauth';
+import { AS_METADATA_SUFFIX, OIDC_DISCOVERY_SUFFIX, PRM_SUFFIX } from './mcp/oauth';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
@@ -51,6 +51,9 @@ async function bootstrap() {
     exclude: [
       { path: `${PRM_SUFFIX}/v1/mcp`, method: RequestMethod.GET },
       { path: PRM_SUFFIX, method: RequestMethod.GET },
+      // 인가 서버 겉면 (2026-09-22) — 이 둘도 도메인 뿌리 자리다
+      { path: AS_METADATA_SUFFIX, method: RequestMethod.GET },
+      { path: OIDC_DISCOVERY_SUFFIX, method: RequestMethod.GET },
     ],
   });
 

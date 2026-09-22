@@ -20,7 +20,8 @@
 > 번호는 그 사이에 남이 가져갔을 수 있다.
 >
 > ```bash
-> grep -o '^| e2e[0-9]\+' docs/05-implementation/test-catalog.md \
+> grep -o '^| e2e301 | **MCP — ChatGPT 연결 실패의 진짜 원인(`openid` → 토큰 교환 500)과 인가 서버 겉면** (2026-09-22 사용자 보고 "연결 오류가 난다" + GoTrue 로그) | 구성: `test:mcp` 의 `mcp-oauth.test.mjs` 단위 — 전체 **59항목 PASS**(새로 24) + `test:mcp-http` 의 `mcp-oauth-http.test.mjs`(진짜 API + **가짜 GoTrue** 한 장 :3406) **+22** — 겉면 문서 둘(200 · issuer · authorization_endpoint · 토큰/등록/JWKS 보존 · openid 없음 · OIDC 항목 없음 · 캐시 헤더) · `/v1/oauth/authorize` 302(GoTrue 경로 · openid 만 제거 · PKCE/state/resource 보존 · 인증 없음) · OAuth 끈 배포에서 둘 다 404 · GoTrue 못 읽으면 502. PRM 검사는 `[GoTrue]` → `[우리 주소]` 로 바뀜(CI 가 그 자리에서 빨간불로 잡아 줬다). **실측** — GoTrue 로그: DCR 201 → authorize 302 → 동의 200 → **`POST /oauth/token` 500 "HS256 is not supported for ID token signing"** ×4. ChatGPT 는 PRM 의 `scopes_supported`(email) 와 무관하게 `openid` 를 덧붙인다. 첫 진단(DCR 단계 실패, 손 등록 우회)은 **틀렸고 로그가 바로잡았다**(§12.5). **고친 것** — 우리 API 가 인가 서버의 겉면: PRM `authorization_servers` = 우리 주소, `/.well-known/oauth-authorization-server`(+`openid-configuration`)는 GoTrue 문서를 받아 issuer·authorization_endpoint 만 바꿔 내고, `/v1/oauth/authorize` 가 `openid` 를 떼고 GoTrue 로 302. 토큰·등록·JWKS·서명키·가드는 그대로. **단위** — `stripOpenId` ⑤(openid 만 · 순서 유지 · 비면 기본 · undefined · 공백) · `rewriteAuthorizeUrl` ⑥(GoTrue 경로 · scope 정리 · PKCE/state/resource/redirect_uri 보존 · scope 없음 · 다중 값 첫 값 · undefined 건너뜀) · `authorizationServerMetadata` ⑧(issuer · authorization_endpoint · 토큰/등록/JWKS 보존 · openid 제거 · OIDC 전용 항목 제거 · PKCE/grant/auth method 보존 · scopes 없을 때 기본 · 문서 자리 둘) · PRM 이 겉면을 가리킴 ①. **한계(정직하게)** — 컨트롤러 둘은 이 컨테이너에 의존성이 없어 타입만 봤고 HTTP 시험은 CI 에서 돈다. 실물 확인은 dev 재배포 뒤 ChatGPT 플러그인 재생성. ChatGPT 가 `id_token` 없는 토큰 응답을 거절할지는 모른다(§12.6). claude.ai 새 연결도 같은 겉면을 지나므로 다시 붙여 확인할 것 | mcp-connector.md §12.5·§12.6 · user-guide 12 §2-D · api-spec 41c·41d·41e |
+| e2e[0-9]\+' docs/05-implementation/test-catalog.md \
 >   | grep -o '[0-9]\+' | sort -n | tail -1
 > ```
 >
@@ -461,6 +462,14 @@
 > 겹쳐 보이지만 날짜와 함께 읽으면 유일하다. **고치지 말 것** — 그때의
 > 기록을 지금 규칙으로 고쳐 쓰면 없던 역사를 만드는 셈이다.
 
+- 2026-09-22 (255차): **e2e301 — ChatGPT 연결 실패의 진짜 원인과 인가 서버 겉면**.
+  GoTrue 로그로 확정: DCR·인가·동의는 통과, **토큰 교환 500 (`openid` → HS256
+  ID 토큰 불가)**. 첫 진단(DCR)은 틀렸고 로그가 바로잡았다. 우리 API 가
+  인가 서버 겉면이 되어 `/v1/oauth/authorize` 에서 `openid` 를 떼고 GoTrue 로
+  302 하며, PRM 과 `/.well-known/oauth-authorization-server` 를 우리가 낸다.
+  서명키·가드·기존 로그인 무변경. 단위 +24 (전체 59 PASS). 확정은 재배포 뒤
+  ChatGPT 플러그인 재생성. 문서: mcp-connector §12.5·§12.6 · user-guide 12 §2-D ·
+  api-spec 41c·41d·41e.
 - 2026-09-22 (254차): **e2e300 — 안쪽 노드 레이아웃 변경 사고: 노드 id 충돌 +
   서브트리 배치 결함 9종 · 불변식 시험**. 사용자 보고(심각). 근본 원인은 한
   틱에 여럿 만든 노드의 id 충돌(`createNodeId` 0~999 난수), 오버라이드가 id 로

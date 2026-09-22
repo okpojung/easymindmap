@@ -97,7 +97,11 @@ export function prmUrl(origin: string): string {
   return `${origin.replace(/\/+$/, '')}/${PRM_SUFFIX}/v1/mcp`;
 }
 
-/** RFC 9728 문서. `authorization_servers` 는 **최소 하나**가 있어야 한다 */
+/**
+ * RFC 9728 문서. `authorization_servers` 는 **최소 하나**가 있어야 한다.
+ * 2026-09-22 부터 컨트롤러는 여기에 GoTrue 가 아니라 **우리 주소**(겉면)를 넣는다 —
+ * 아래 "인가 서버 겉면" 참조.
+ */
 export function protectedResourceMetadata(
   origin: string, authorizationServer: string,
 ): Record<string, unknown> {
@@ -201,4 +205,95 @@ export function requestOrigin(
   if (fixed) return fixed;
   const host = req.get?.('host') ?? 'localhost';
   return `${req.protocol ?? 'https'}://${host}`;
+}
+
+/* ───────────────────────────── 인가 서버 겉면 (2026-09-22) ─────────────────────────────
+ *
+ * ★ **ChatGPT 는 PRM 과 무관하게 `openid` 를 덧붙인다** (2026-09-22 실측, §12.5).
+ *   위 `MCP_SCOPES` 에서 `openid` 를 뺀 것으로 claude.ai 는 풀렸지만, ChatGPT 는
+ *   `scope=openid email` 로 인가를 요청했고 GoTrue 는 토큰 교환에서 같은 500
+ *   ("HS256 is not supported for ID token signing")을 냈다. 클라이언트가 붙이는
+ *   것이라 우리 메타데이터로는 막을 수 없다.
+ *
+ *   그래서 **우리 API 가 인가 서버의 겉면(facade)이 된다.**
+ *     · PRM 의 `authorization_servers` 가 GoTrue 가 아니라 **우리 주소**를 가리킨다
+ *     · 우리가 `/.well-known/oauth-authorization-server` 를 낸다 — GoTrue 의
+ *       문서를 받아 `issuer` 와 `authorization_endpoint` 만 우리 것으로 바꾼 것
+ *     · 우리 `/v1/oauth/authorize` 가 scope 에서 `openid` 를 **떼고** 나머지
+ *       파라미터(PKCE·state·resource·redirect_uri…)는 그대로 GoTrue 로 302 한다
+ *     · 토큰·등록·JWKS 엔드포인트는 **GoTrue 그대로** — 서명키·가드·살아 있는
+ *       로그인은 아무것도 바뀌지 않는다 (RFC 8414 는 엔드포인트가 다른 호스트여도
+ *       된다고 한다; issuer 만 메타데이터를 낸 주소와 같으면 된다)
+ *
+ *   GoTrue 는 인가 요청의 scope 를 그대로 저장하고 토큰 교환 때 그 값으로
+ *   ID 토큰 여부를 정한다(`authorization.Scope`). 그러므로 `openid` 가 들어가지
+ *   않으면 500 이 날 자리가 없다.
+ */
+
+/** 우리가 내는 인가 서버 메타데이터 자리 (RFC 8414 · OIDC 디스커버리) */
+export const AS_METADATA_SUFFIX = '.well-known/oauth-authorization-server';
+export const OIDC_DISCOVERY_SUFFIX = '.well-known/openid-configuration';
+/** 겉면 인가 엔드포인트 — `/v1` 프리픽스 아래에 있다 */
+export const AUTHORIZE_PATH = 'v1/oauth/authorize';
+
+/**
+ * scope 문자열에서 `openid` 를 뗀다. 비면 우리 기본 scope(`email`)로 채운다 —
+ * GoTrue 는 scope 가 비면 `invalid_scope` 로 되돌려 보낸다.
+ */
+export function stripOpenId(scope: string | undefined): string {
+  const kept = (scope ?? '').split(/\s+/).filter((s) => s && s !== 'openid');
+  return kept.length ? kept.join(' ') : MCP_SCOPE_STRING;
+}
+
+type QueryValue = string | string[] | undefined;
+
+/**
+ * GoTrue 의 `/oauth/authorize` 로 보낼 주소. scope 만 고치고 나머지는 **받은
+ * 순서 그대로** 옮긴다(같은 키가 여럿이면 첫 값). scope 가 아예 없어도 우리
+ * 기본 scope 를 넣는다 — 그래야 GoTrue 가 받는다.
+ */
+export function rewriteAuthorizeUrl(gotrueOrigin: string, query: Record<string, QueryValue>): string {
+  const params = new URLSearchParams();
+  let sawScope = false;
+  for (const [k, v] of Object.entries(query)) {
+    const first = Array.isArray(v) ? v[0] : v;
+    if (first === undefined) continue;
+    if (k === 'scope') { sawScope = true; params.set('scope', stripOpenId(first)); }
+    else params.append(k, first);
+  }
+  if (!sawScope) params.set('scope', MCP_SCOPE_STRING);
+  return `${gotrueOrigin.replace(/\/+$/, '')}/oauth/authorize?${params.toString()}`;
+}
+
+/** GoTrue 메타데이터에서 **OIDC 전용** 항목 — 겉면에서는 뺀다(`openid` 를 부추기지 않도록) */
+const OIDC_ONLY_KEYS = [
+  'userinfo_endpoint', 'id_token_signing_alg_values_supported',
+  'subject_types_supported', 'claims_supported',
+];
+
+/**
+ * GoTrue 의 인가 서버 메타데이터를 **우리 겉면** 문서로 바꾼다.
+ *   · `issuer` = 우리 주소 (RFC 8414 §3.3 — 문서를 받은 주소와 같아야 한다)
+ *   · `authorization_endpoint` = 우리 `/v1/oauth/authorize`
+ *   · `scopes_supported` 에서 `openid` 를 뺀다
+ *   · OIDC 전용 항목은 뺀다
+ *   · 그 밖(`token_endpoint` · `registration_endpoint` · `jwks_uri` · PKCE·
+ *     grant·auth method 목록)은 **그대로** — 전부 GoTrue 의 절대 주소다
+ */
+export function authorizationServerMetadata(
+  upstream: Record<string, unknown>, origin: string,
+): Record<string, unknown> {
+  const o = origin.replace(/\/+$/, '');
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(upstream)) {
+    if (OIDC_ONLY_KEYS.includes(k)) continue;
+    out[k] = v;
+  }
+  out.issuer = o;
+  out.authorization_endpoint = `${o}/${AUTHORIZE_PATH}`;
+  const scopes = upstream.scopes_supported;
+  out.scopes_supported = Array.isArray(scopes)
+    ? scopes.filter((s) => s !== 'openid')
+    : [...MCP_SCOPES];
+  return out;
 }

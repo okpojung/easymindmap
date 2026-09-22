@@ -72,4 +72,16 @@ declare module '@pro' {
    * 공개판에는 이 창을 여는 자리 자체가 없다(`map-sales` 가 꺼져 있다).
    */
   export function ProSalesPanel(p: { t: ThemeTokens }): JSX.Element | null;
+  /**
+   * 관리자 콘솔 ▸ **판매관리** 탭의 알맹이 (2026-09-22).
+   *
+   * 요율·값 범위·환불 기간·최소 정산액 · 정산 계좌 확인/반려 · 정산 회차
+   * 돌리기와 보냄 표시. 표도 판정도 유료 모듈 것이라, 코어는 **탭 자리**만
+   * 낸다 (`map-sales` 가 켜진 서버에서만 그린다).
+   *
+   * ★ 관리자 표(`X-Admin-Token`)는 코어의 `adminToken` 에 있다 — 유료
+   *   모듈이 그것을 읽어 싣는다. 표를 두 벌로 만들면 한쪽이 언젠가
+   *   어긋난다.
+   */
+  export function ProSalesAdminPanel(p: { t: ThemeTokens }): JSX.Element | null;
 }

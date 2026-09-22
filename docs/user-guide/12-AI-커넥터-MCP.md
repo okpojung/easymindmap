@@ -379,7 +379,7 @@ AUTH="https://auth-dev.mindmap.ai.kr"
 echo "== ① 최근 2시간 GoTrue 의 OAuth 요청 (연결 실패가 어디서 멈췄는지)"
 C=""; for N in $(sudo docker ps --format '{{.Names}}'); do
   I=$(sudo docker inspect -f '{{.Config.Image}}' "$N"); case "$I$N" in *gotrue*|*supabase/auth*|*easymindmap-auth*) C="$N";; esac; done
-if [ -n "$C" ]; then sudo docker logs --since 2h "$C" 2>&1 | grep -i '/oauth/' | grep -v '/oauth/token' | tail -20; else echo "(GoTrue 컨테이너를 못 찾음)"; sudo docker ps --format '{{.Names}}'; fi
+if [ -n "$C" ]; then sudo docker logs --since 2h "$C" 2>&1 | grep -i '/oauth/\|registered for\|invalid_client' | tail -30; else echo "(GoTrue 컨테이너를 못 찾음)"; sudo docker ps --format '{{.Names}}'; fi
 echo; echo "== ② ChatGPT 용 클라이언트 등록 (시크릿 있는 비밀 클라이언트)"
 curl -sS -X POST "$AUTH/oauth/clients/register" -H 'Content-Type: application/json' \
   -d "{\"client_name\":\"ChatGPT\",\"redirect_uris\":[\"$REDIRECT\"],\"grant_types\":[\"authorization_code\",\"refresh_token\"],\"token_endpoint_auth_method\":\"client_secret_post\"}" \

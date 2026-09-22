@@ -11,9 +11,13 @@
 //     — 발표 자료의 "10. 연 128억 건" 처럼 번호가 내용인 경우가 많다.
 //   · 첫 줄이 들여쓰여 있어도(붙여넣기 흔적) 최상위로 본다 — 조상이 없으니.
 
+import type { NodeStyle } from '@emm/model';
+
 export interface OutlineItem {
   text: string;
   children: OutlineItem[];
+  /** 만들 노드의 스타일 (달력 노드의 빨간/파란 날짜 — 2026-09-22). 파서는 채우지 않는다 */
+  style?: NodeStyle;
 }
 
 const BULLET_RE = /^[-*+•·▪◦](?:\s+|$)/;

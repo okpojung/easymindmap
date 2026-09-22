@@ -1,6 +1,11 @@
-// 달력 노드 단위 테스트 (2026-09-22).   npx tsx src/utils/calendarNodes.test.ts
+// 달력 노드 단위 테스트 (2026-09-22 · 같은 날 수정: 주 노드 문구 · 날짜 노드 7개 · 빨간 날 · 달력 표).
+//   npx tsx src/utils/calendarNodes.test.ts
 
-import { calendarPreview, fmtDay, monthOutline, parseYearMonth, parseYearMonthText, weekOfYear, weekOutline } from './calendarNodes';
+import {
+  BLUE_DAY_COLOR, RED_DAY_COLOR, calendarPreview, calendarTable, dayStyle, fmtDay, monthOutline,
+  parseYearMonth, parseYearMonthText, weekLabel, weekOfYear, weekOutline,
+} from './calendarNodes';
+import { holidayName, holidayTableCovers, isRedDay } from './koreanHolidays';
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
@@ -36,23 +41,58 @@ check('⑤ 2026-01-03(토) → 1주 · 01-04(일) → 2주', [weekOfYear(new Dat
 check('⑤ 2026-08-30(일) → 36주', weekOfYear(new Date(2026, 7, 30)), 36);
 check('⑤ 2025-12-28(일) 을 2026년 기준으로 세면 1주', weekOfYear(new Date(2025, 11, 28), 2026), 1);
 
-// ⑥ 2026년 9월 — 36주 ~ 40주, 첫 주 26/08/30(일) ~ 26/09/05(토)
+// ⑥ 2026년 9월 — 주 노드 문구 `[36주] 2026/08/30(일) ~ 09/05(토)` · 아래 날짜 노드 7개 (사용자 지정 2026-09-22)
 const sep = weekOutline(2026, 9);
-check('⑥ 9월은 5주', sep.map((w) => w.text), ['36주', '37주', '38주', '39주', '40주']);
-check('⑥ 36주 → 26/08/30(일) ~ 26/09/05(토)', sep[0].children[0].text, '26/08/30(일) ~ 26/09/05(토)');
-check('⑥ 40주 → 26/09/27(일) ~ 26/10/03(토)', sep[4].children[0].text, '26/09/27(일) ~ 26/10/03(토)');
-// ⑦ 1월 — 첫 주가 전년 12월에서 시작해도 01주, 두 자리 패딩
+check('⑥ 9월은 5주 · 주 노드 문구', sep.map((w) => w.text), [
+  '[36주] 2026/08/30(일) ~ 09/05(토)', '[37주] 2026/09/06(일) ~ 09/12(토)', '[38주] 2026/09/13(일) ~ 09/19(토)',
+  '[39주] 2026/09/20(일) ~ 09/26(토)', '[40주] 2026/09/27(일) ~ 10/03(토)',
+]);
+check('⑥ 36주 아래 날짜 노드 7개 (4자리 년도)', sep[0].children.map((c) => c.text), [
+  '2026/08/30(일)', '2026/08/31(월)', '2026/09/01(화)', '2026/09/02(수)', '2026/09/03(목)', '2026/09/04(금)', '2026/09/05(토)',
+]);
+check('⑥ 모든 주가 7개씩', sep.map((w) => w.children.length), [7, 7, 7, 7, 7]);
+check('⑥ 일요일 빨강 · 평일 없음 · 토요일 파랑', [sep[0].children[0].style, sep[0].children[1].style, sep[0].children[6].style],
+  [{ textColor: RED_DAY_COLOR }, undefined, { textColor: BLUE_DAY_COLOR }]);
+// 2026-09-24(목)·25(금) 추석 연휴·추석 → 빨강 · 26(토) 추석 연휴 → 빨강(공휴일이 토요일보다 우선)
+check('⑥ 39주: 추석 연휴(목·금) 빨강 · 토요일 추석 연휴도 빨강', sep[3].children.slice(4).map((c) => c.style?.textColor), [RED_DAY_COLOR, RED_DAY_COLOR, RED_DAY_COLOR]);
+check('⑥ 40주: 10/03(토) 개천절 → 빨강 (토요일이지만 공휴일)', sep[4].children[6].style, { textColor: RED_DAY_COLOR });
+// ⑦ 1월 — 첫 주가 전년 12월에서 시작해도 01주, 두 자리 패딩. 해가 다르면 끝 날짜에도 년도
 const jan = weekOutline(2026, 1);
-check('⑦ 2026년 1월 첫 주 = 01주 · 25/12/28(일) ~ 26/01/03(토)', [jan[0].text, jan[0].children[0].text], ['01주', '25/12/28(일) ~ 26/01/03(토)']);
-check('⑦ 1월은 5주 (01~05)', jan.map((w) => w.text), ['01주', '02주', '03주', '04주', '05주']);
+check('⑦ 2026년 1월 첫 주 = [01주] 2025/12/28(일) ~ 2026/01/03(토)', jan[0].text, '[01주] 2025/12/28(일) ~ 2026/01/03(토)');
+check('⑦ 1월 첫 주 날짜 7개 · 01/01(목) 신정 빨강', [jan[0].children.map((c) => c.text), jan[0].children[4].style], [
+  ['2025/12/28(일)', '2025/12/29(월)', '2025/12/30(화)', '2025/12/31(수)', '2026/01/01(목)', '2026/01/02(금)', '2026/01/03(토)'],
+  { textColor: RED_DAY_COLOR },
+]);
+check('⑦ 1월은 5주 (01~05)', jan.map((w) => w.text.slice(0, 5)), ['[01주]', '[02주]', '[03주]', '[04주]', '[05주]']);
 // ⑧ 12월 — 마지막 주가 다음 해로 넘어가도 53주 (이 해 번호)
 const dec = weekOutline(2026, 12);
-check('⑧ 2026년 12월 마지막 주 = 53주 · 26/12/27(일) ~ 27/01/02(토)', [dec[dec.length - 1].text, dec[dec.length - 1].children[0].text], ['53주', '26/12/27(일) ~ 27/01/02(토)']);
-// ⑨ 월 노드 · 미리보기 · 날짜 형식
-check('⑨ 월 노드 12개', monthOutline().map((m) => m.text), ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']);
-check('⑨ 미리보기(년)', calendarPreview(2026), '2026년 → 1월 … 12월 (12개)');
-check('⑨ 미리보기(년월)', calendarPreview(2026, 9), '2026년 9월 → 36주 … 40주 (5주, 각 주 아래 일~토 범위)');
-check('⑨ 날짜 형식 YY/MM/DD(요일)', fmtDay(new Date(2026, 8, 22)), '26/09/22(화)');
+check('⑧ 2026년 12월 마지막 주 = [53주] 2026/12/27(일) ~ 2027/01/02(토)', dec[dec.length - 1].text, '[53주] 2026/12/27(일) ~ 2027/01/02(토)');
+check('⑧ weekLabel 직접', weekLabel(new Date(2026, 7, 30), 2026), '[36주] 2026/08/30(일) ~ 09/05(토)');
+
+// ⑨ 공휴일 — 고정 · 연도별 표 · 표 밖의 해
+check('⑨ 2026-10-09(금) 한글날', [holidayName(new Date(2026, 9, 9)), dayStyle(new Date(2026, 9, 9))], ['한글날', { textColor: RED_DAY_COLOR }]);
+check('⑨ 2026-03-02(월) 삼일절 대체공휴일', holidayName(new Date(2026, 2, 2)), '삼일절 대체공휴일');
+check('⑨ 2026-09-25(금) 추석', holidayName(new Date(2026, 8, 25)), '추석');
+check('⑨ 2027-02-07(일) 설날', holidayName(new Date(2027, 1, 7)), '설날');
+check('⑨ 2026-09-22(화) 는 공휴일 아님', [holidayName(new Date(2026, 8, 22)), dayStyle(new Date(2026, 8, 22)), isRedDay(new Date(2026, 8, 22))], [null, undefined, false]);
+check('⑨ 표 범위 2024~2030', [holidayTableCovers(2024), holidayTableCovers(2030), holidayTableCovers(2031), holidayTableCovers(2023)], [true, true, false, false]);
+check('⑨ 표 밖의 해(2035)는 고정 공휴일만', [holidayName(new Date(2035, 7, 15)), holidayName(new Date(2035, 1, 10))], ['광복절', null]);
+
+// ⑩ 달력 표 (GFM) — 일~토 7열 · 다른 달은 빈 칸 · 일요일·공휴일 굵게 + 이름
+const tbl = calendarTable(2026, 9).split('\n');
+check('⑩ 헤더 · 가운데 정렬', tbl.slice(0, 2), ['| 일 | 월 | 화 | 수 | 목 | 금 | 토 |', '|:---:|:---:|:---:|:---:|:---:|:---:|:---:|']);
+check('⑩ 첫 행: 8/30·31 은 빈 칸, 9/1(화)~', tbl[2], '|  |  | 1 | 2 | 3 | 4 | 5 |');
+check('⑩ 셋째 행(9/13~19): 일요일 13 굵게', tbl[4], '| **13** | 14 | 15 | 16 | 17 | 18 | 19 |');
+check('⑩ 넷째 행(9/20~26): 추석 연휴 굵게 + 이름', tbl[5], '| **20** | 21 | 22 | 23 | **24** 추석 연휴 | **25** 추석 | **26** 추석 연휴 |');
+check('⑩ 마지막 행: 27~30, 10월은 빈 칸', tbl[6], '| **27** | 28 | 29 | 30 |  |  |  |');
+check('⑩ 5주 = 헤더 2 + 5행', tbl.length, 7);
+
+// ⑪ 월 노드 · 미리보기 · 날짜 형식
+check('⑪ 월 노드 12개', monthOutline().map((m) => m.text), ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']);
+check('⑪ 미리보기(년)', calendarPreview(2026), '2026년 → 1월 … 12월 (12개)');
+check('⑪ 미리보기(년월)', calendarPreview(2026, 9), '2026년 9월 → [36주] … [40주] (5주, 각 주 아래 일~토 날짜 노드 7개)');
+check('⑪ 미리보기(표)', calendarPreview(2026, 9, true), '2026년 9월 → 노드 내용에 달력 표 (일~토 7열 × 5주)');
+check('⑪ 날짜 형식 YYYY/MM/DD(요일)', fmtDay(new Date(2026, 8, 22)), '2026/09/22(화)');
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 if (failed) process.exit(1);

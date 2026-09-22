@@ -1239,6 +1239,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     const toNodes = (list: OutlineItem[]): MindNode[] =>
       list.map((it) => {
         const node: MindNode = { ...createNewNode(), text: it.text };
+        if (it.style) node.style = { ...it.style };
         if (it.children.length) node.children = toNodes(it.children);
         return node;
       });

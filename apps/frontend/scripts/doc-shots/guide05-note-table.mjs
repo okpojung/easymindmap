@@ -52,7 +52,7 @@ ok('② 노트 표 블록 원문 = 줄=행 · " | "=열 · 정렬 구분선만',
   && notes[0].text === '항목 | 값 | 단위 | 비고\n--- | :---: | --- | ---\n메모리 | 32 | GB | DDR5\n디스크 | 1 | TB | NVMe');
 ok('② 노트 탭에 그려진 표 (머리글 4 · 데이터 2행)', (await view.locator('th').count()) === 4 && (await view.locator('tbody tr').count()) === 2);
 ok('② 값 열이 가운데 정렬로 그려진다', (await view.locator('tbody tr').first().locator('td').nth(1).evaluate((el) => getComputedStyle(el).textAlign)) === 'center');
-ok('② +표 는 이제 비활성 (노드당 1개)', await addBtn.isDisabled());
+ok('② +표 는 표가 있어도 계속 활성 (2026-09-22 — 여러 개 허용) · 안내에 (지금 1개)', !(await addBtn.isDisabled()) && (await addBtn.getAttribute('title')).includes('지금 1개'));
 const vb = await view.boundingBox();
 await shotUnion(page, size, `${OUT}/05-note-table.png`, [vb, { x: vb.x - 10, y: vb.y - 46, width: vb.width + 20, height: 10 }], 14);
 

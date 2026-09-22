@@ -82,7 +82,25 @@ export interface EmmDeclaration {
    * 뜻을 아는 쪽(앱)이 `levels` 가 있으면 `template` 을 무시한다.
    */
   levels?: Record<number, EmmLevelSpec>;
+
+  /**
+   * 연결선 (2026-09-22). 번호 키 아래 `from`/`to` 는 **노드 경로**
+   * (`가지 > 하위`, MCP 의 parent 표기와 같다) — id 는 문서를 다시 읽을 때마다
+   * 새로 나므로 경로로 적는다. 나머지 키(shape·width·color·dash·arrows·label·
+   * labelPlace·labelShape)는 문자열 그대로 넘기고 뜻은 앱이 정한다.
+   *
+   *   connectors:
+   *     1:
+   *       from: Topic 1 > Sub Topic
+   *       to: Topic 2 > Sub Topic
+   *       shape: rounded
+   *       arrows: end
+   */
+  connectors?: EmmConnectorSpec[];
 }
+
+/** 연결선 하나의 선언 — 키도 값도 문자열 (`from`·`to` 는 노드 경로) */
+export type EmmConnectorSpec = Record<string, string>;
 
 /** 들여쓰기로 중첩을 나타내는 최소 블록 — YAML 이 아니다. */
 interface Block {
@@ -226,6 +244,19 @@ export function readDeclaration(md: string): EmmDeclaration {
     if (Object.keys(byLevel).length) out.levels = byLevel;
   }
 
+  const connectors = top.get('connectors');
+  if (connectors) {
+    const list: EmmConnectorSpec[] = [];
+    const keys = [...connectors.children.keys()].filter((k) => Number.isInteger(Number(k))).sort((a, b) => Number(a) - Number(b));
+    for (const key of keys) {
+      const block = connectors.children.get(key)!;
+      const spec: EmmConnectorSpec = {};
+      for (const [prop, leaf] of block.children) if (leaf.value) spec[prop] = leaf.value;
+      if (spec.from && spec.to) list.push(spec);
+    }
+    if (list.length) out.connectors = list;
+  }
+
   return out;
 }
 
@@ -297,6 +328,19 @@ export function buildDeclaration(decl: EmmDeclaration): string {
     }
   } else if (decl.template) {
     lines.push(`template: ${decl.template}`);
+  }
+  if (decl.connectors && decl.connectors.length) {
+    lines.push('connectors:');
+    decl.connectors.forEach((spec, i) => {
+      if (!spec.from || !spec.to) return;
+      lines.push(`  ${i + 1}:`);
+      // from·to 를 먼저, 나머지는 적힌 순서대로
+      for (const k of ['from', 'to', ...Object.keys(spec).filter((x) => x !== 'from' && x !== 'to')]) {
+        const v = spec[k];
+        if (v == null || String(v).trim() === '') continue;
+        lines.push(`    ${k}: ${String(v).trim()}`);
+      }
+    });
   }
   if (!lines.length) return '';
   return ['```emm', ...lines, '```'].join('\n');

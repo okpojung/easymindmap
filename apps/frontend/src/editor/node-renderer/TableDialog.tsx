@@ -66,8 +66,9 @@ export function spliceMdTable(value: string, cursor: number, md: string): string
 
 // 텍스트 안의 첫 표(코드 펜스 밖)를 새 표로 바꾼다. 표가 없으면 끝에 덧붙인다.
 // 파서(parseMdTable)와 같은 판정: 파이프 행 두 줄 연속 + 헤더 2칸 이상.
-export function replaceMdTable(value: string, md: string): string {
+export function replaceMdTable(value: string, md: string, index = 0): string {
   const lines = String(value || '').split('\n');
+  let seen = 0; // 몇 번째 표인가 (2026-09-22 — 노드에 표가 여러 개일 때 그 표만)
   const isPipe = (l: string) => { const s = l.trim(); return s.length > 1 && s.includes('|'); };
   const isSep = (l: string) => {
     if (!isPipe(l)) return false;
@@ -86,6 +87,7 @@ export function replaceMdTable(value: string, md: string): string {
     const start = j;
     while (j < lines.length && isPipe(lines[j]) && !isSep(lines[j])) j++;
     if (j === start) continue; // 데이터 행 없음 — 파서도 표로 안 본다
+    if (seen++ < index) { i = j - 1; continue; }
     return [...lines.slice(0, i), ...md.split('\n'), ...lines.slice(j)].join('\n');
   }
   return (value ? value + '\n' : '') + md;

@@ -2,7 +2,7 @@
 //   npx tsx src/utils/calendarNodes.test.ts
 
 import {
-  BLUE_DAY_COLOR, RED_DAY_COLOR, calendarPreview, calendarTable, dayStyle, fmtDay, monthOutline,
+  DIM_DAY_BORDER, DIM_DAY_COLOR, RED_DAY_COLOR, calendarPreview, calendarTable, dayStyle, dayText, fmtDay, monthOutline,
   parseYearMonth, parseYearMonthText, weekLabel, weekOfYear, weekOutline,
 } from './calendarNodes';
 import { holidayName, holidayTableCovers, isRedDay } from './koreanHolidays';
@@ -51,17 +51,21 @@ check('⑥ 36주 아래 날짜 노드 7개 (4자리 년도)', sep[0].children.ma
   '2026/08/30(일)', '2026/08/31(월)', '2026/09/01(화)', '2026/09/02(수)', '2026/09/03(목)', '2026/09/04(금)', '2026/09/05(토)',
 ]);
 check('⑥ 모든 주가 7개씩', sep.map((w) => w.children.length), [7, 7, 7, 7, 7]);
-check('⑥ 일요일 빨강 · 평일 없음 · 토요일 파랑', [sep[0].children[0].style, sep[0].children[1].style, sep[0].children[6].style],
-  [{ textColor: RED_DAY_COLOR }, undefined, { textColor: BLUE_DAY_COLOR }]);
-// 2026-09-24(목)·25(금) 추석 연휴·추석 → 빨강 · 26(토) 추석 연휴 → 빨강(공휴일이 토요일보다 우선)
-check('⑥ 39주: 추석 연휴(목·금) 빨강 · 토요일 추석 연휴도 빨강', sep[3].children.slice(4).map((c) => c.style?.textColor), [RED_DAY_COLOR, RED_DAY_COLOR, RED_DAY_COLOR]);
-check('⑥ 40주: 10/03(토) 개천절 → 빨강 (토요일이지만 공휴일)', sep[4].children[6].style, { textColor: RED_DAY_COLOR });
+const DIM = { textColor: DIM_DAY_COLOR, borderColor: DIM_DAY_BORDER, borderStyle: 'dashed' };
+check('⑥ 36주: 8월의 08/30(일)·08/31(월)은 회색 점선 · 평일 없음 · 09/05(토) 빨강 (2차 수정)', [sep[0].children[0].style, sep[0].children[1].style, sep[0].children[2].style, sep[0].children[6].style],
+  [DIM, DIM, undefined, { textColor: RED_DAY_COLOR }]);
+check('⑥ 37주: 일요일 빨강 · 토요일 빨강', [sep[1].children[0].style, sep[1].children[6].style], [{ textColor: RED_DAY_COLOR }, { textColor: RED_DAY_COLOR }]);
+// 2026-09-24(목)·25(금)·26(토) 추석 연휴·추석·추석 연휴 → 빨강 + 줄바꿈 [이름]
+check('⑥ 39주: 추석 연휴 목·금·토 빨강', sep[3].children.slice(4).map((c) => c.style?.textColor), [RED_DAY_COLOR, RED_DAY_COLOR, RED_DAY_COLOR]);
+check('⑥ 39주: 공휴일 노드 글 = 날짜 + 줄바꿈 + [이름]', sep[3].children.slice(4).map((c) => c.text), ['2026/09/24(목)\n[추석 연휴]', '2026/09/25(금)\n[추석]', '2026/09/26(토)\n[추석 연휴]']);
+check('⑥ 40주: 10월의 10/01~10/03 은 회색 점선 (개천절이라도 다른 달이면 희미하게)', sep[4].children.slice(4).map((c) => c.style), [DIM, DIM, DIM]);
+check('⑥ 40주: 10/03(토) 글에는 [개천절]', sep[4].children[6].text, '2026/10/03(토)\n[개천절]');
 // ⑦ 1월 — 첫 주가 전년 12월에서 시작해도 01주, 두 자리 패딩. 해가 다르면 끝 날짜에도 년도
 const jan = weekOutline(2026, 1);
 check('⑦ 2026년 1월 첫 주 = [01주] 2025/12/28(일) ~ 2026/01/03(토)', jan[0].text, '[01주] 2025/12/28(일) ~ 2026/01/03(토)');
-check('⑦ 1월 첫 주 날짜 7개 · 01/01(목) 신정 빨강', [jan[0].children.map((c) => c.text), jan[0].children[4].style], [
-  ['2025/12/28(일)', '2025/12/29(월)', '2025/12/30(화)', '2025/12/31(수)', '2026/01/01(목)', '2026/01/02(금)', '2026/01/03(토)'],
-  { textColor: RED_DAY_COLOR },
+check('⑦ 1월 첫 주 날짜 7개 · 01/01(목) 신정 빨강 + [신정] · 12월 날들은 희미하게', [jan[0].children.map((c) => c.text), jan[0].children[4].style, jan[0].children[0].style], [
+  ['2025/12/28(일)', '2025/12/29(월)', '2025/12/30(화)', '2025/12/31(수)', '2026/01/01(목)\n[신정]', '2026/01/02(금)', '2026/01/03(토)'],
+  { textColor: RED_DAY_COLOR }, DIM,
 ]);
 check('⑦ 1월은 5주 (01~05)', jan.map((w) => w.text.slice(0, 5)), ['[01주]', '[02주]', '[03주]', '[04주]', '[05주]']);
 // ⑧ 12월 — 마지막 주가 다음 해로 넘어가도 53주 (이 해 번호)
@@ -70,11 +74,12 @@ check('⑧ 2026년 12월 마지막 주 = [53주] 2026/12/27(일) ~ 2027/01/02(�
 check('⑧ weekLabel 직접', weekLabel(new Date(2026, 7, 30), 2026), '[36주] 2026/08/30(일) ~ 09/05(토)');
 
 // ⑨ 공휴일 — 고정 · 연도별 표 · 표 밖의 해
-check('⑨ 2026-10-09(금) 한글날', [holidayName(new Date(2026, 9, 9)), dayStyle(new Date(2026, 9, 9))], ['한글날', { textColor: RED_DAY_COLOR }]);
+check('⑨ 2026-10-09(금) 한글날', [holidayName(new Date(2026, 9, 9)), dayStyle(new Date(2026, 9, 9)), dayText(new Date(2026, 9, 9))], ['한글날', { textColor: RED_DAY_COLOR }, '2026/10/09(금)\n[한글날]']);
+check('⑨ dayStyle 에 달을 주면 다른 달은 희미하게, 같은 달 토요일은 빨강', [dayStyle(new Date(2026, 9, 9), 9), dayStyle(new Date(2026, 8, 5), 9)], [DIM, { textColor: RED_DAY_COLOR }]);
 check('⑨ 2026-03-02(월) 삼일절 대체공휴일', holidayName(new Date(2026, 2, 2)), '삼일절 대체공휴일');
 check('⑨ 2026-09-25(금) 추석', holidayName(new Date(2026, 8, 25)), '추석');
 check('⑨ 2027-02-07(일) 설날', holidayName(new Date(2027, 1, 7)), '설날');
-check('⑨ 2026-09-22(화) 는 공휴일 아님', [holidayName(new Date(2026, 8, 22)), dayStyle(new Date(2026, 8, 22)), isRedDay(new Date(2026, 8, 22))], [null, undefined, false]);
+check('⑨ 2026-09-22(화) 는 공휴일 아님', [holidayName(new Date(2026, 8, 22)), dayStyle(new Date(2026, 8, 22)), isRedDay(new Date(2026, 8, 22)), dayText(new Date(2026, 8, 22))], [null, undefined, false, '2026/09/22(화)']);
 check('⑨ 표 범위 2024~2030', [holidayTableCovers(2024), holidayTableCovers(2030), holidayTableCovers(2031), holidayTableCovers(2023)], [true, true, false, false]);
 check('⑨ 표 밖의 해(2035)는 고정 공휴일만', [holidayName(new Date(2035, 7, 15)), holidayName(new Date(2035, 1, 10))], ['광복절', null]);
 
@@ -83,7 +88,8 @@ const tbl = calendarTable(2026, 9).split('\n');
 check('⑩ 헤더 · 가운데 정렬', tbl.slice(0, 2), ['| 일 | 월 | 화 | 수 | 목 | 금 | 토 |', '|:---:|:---:|:---:|:---:|:---:|:---:|:---:|']);
 check('⑩ 첫 행: 8/30·31 은 빈 칸, 9/1(화)~', tbl[2], '|  |  | 1 | 2 | 3 | 4 | 5 |');
 check('⑩ 셋째 행(9/13~19): 일요일 13 굵게', tbl[4], '| **13** | 14 | 15 | 16 | 17 | 18 | 19 |');
-check('⑩ 넷째 행(9/20~26): 추석 연휴 굵게 + 이름', tbl[5], '| **20** | 21 | 22 | 23 | **24** 추석 연휴 | **25** 추석 | **26** 추석 연휴 |');
+check('⑩ 넷째 행(9/20~26): 추석 연휴 굵게, 이름은 없음 (2차 수정)', tbl[5], '| **20** | 21 | 22 | 23 | **24** | **25** | **26** |');
+check('⑩ 표에는 공휴일 이름이 없다', calendarTable(2026, 10).includes('개천절') || calendarTable(2026, 10).includes('한글날'), false);
 check('⑩ 마지막 행: 27~30, 10월은 빈 칸', tbl[6], '| **27** | 28 | 29 | 30 |  |  |  |');
 check('⑩ 5주 = 헤더 2 + 5행', tbl.length, 7);
 

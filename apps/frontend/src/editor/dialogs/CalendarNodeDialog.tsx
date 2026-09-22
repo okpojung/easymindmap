@@ -40,7 +40,9 @@ export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose 
   const tableMode = asTable && !!m;
   const preview = useMemo(() => (yearOk ? calendarPreview(y, m, tableMode) : '년도를 네 자리로 입력하세요 (1900~2199)'), [yearOk, y, m, tableMode]);
   const holidayNote = yearOk && m
-    ? (holidayTableCovers(y) ? '일요일·공휴일(대체공휴일 포함)은 빨간 글자, 토요일은 파란 글자' : `${y}년은 공휴일 표에 없어 고정 공휴일만 빨간 글자로 표시합니다`)
+    ? (holidayTableCovers(y)
+      ? '일요일·토요일·공휴일(대체공휴일 포함)은 빨간 글자, 공휴일은 이름을 함께. 앞뒤 달의 날은 회색 점선'
+      : `${y}년은 공휴일 표에 없어 고정 공휴일만 빨간 글자로 표시합니다`)
     : null;
 
   const submit = () => {

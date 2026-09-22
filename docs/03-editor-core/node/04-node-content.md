@@ -497,7 +497,9 @@ const rawHtml = (hasImgFile && !htmlHasTable) ? '' : rawHtmlAll;
   글이 바로 올 때; 같은 자리에 다음 표가 오면 그 표의 위 여백이 대신). 앞선
   표들의 블록 높이만큼 다음 표·뒤 줄이 내려간다. 아웃라인/칸반의
   `RichTextHtml.renderPlain` 은 표 뒤 글을 재귀로 그려 표를 모두 보인다.
-  HTML 내보내기(`exportHtml`)는 아직 첫 표만 그린다.
+  HTML 내보내기(`exportHtml`)의 뷰어도 같은 규칙 — 뷰어 JS `parseMdTables` ·
+  표마다 `tAts/tBlockHs` · `tShiftAt(li)` · 앞 표 블록 높이 누적(`tAcc`),
+  아웃라인 `richTextPlain` 재귀 (2026-09-22 사용자 요청).
   표 폭이 노드 최대 폭(maxW)보다 크면 노드가 표 폭만큼 늘어난다.
 - 표 스타일: 첫 행 = 헤더(굵게 + 연한 배경), 격자선은 노드 테두리색.
 - 구분선 없는 파이프 텍스트(예: `항목 | 값` 한 줄)는 표로 취급하지 않는다.

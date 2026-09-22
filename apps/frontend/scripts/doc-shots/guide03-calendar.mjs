@@ -2,6 +2,7 @@
 //   같은 날 수정: 주 노드 `[36주] 2026/08/30(일) ~ 09/05(토)` + 날짜 노드 7개(빨간 날) · "표로 붙여넣기".
 //   2차 수정: 토요일도 빨강 · 다른 달의 날은 회색 점선 · 공휴일은 줄바꿈 [이름] · 표에 이름 없음 · 표 2개 렌더.
 //   node scripts/doc-shots/guide03-calendar.mjs <출력폴더>
+import { writeFileSync } from 'node:fs';
 import { boot, forceFont, stores, nodeBox, shotUnion } from './lib.mjs';
 const OUT = process.argv[2] ?? '/tmp/doc-shots';
 const { browser, page, size } = await boot();
@@ -76,6 +77,7 @@ const fillOf = (id) => page.evaluate((id) => document.querySelector(`[data-node-
 const dashOf = (id) => page.evaluate((id) => { const r = document.querySelector(`[data-node-id="${id}"] rect`); return r ? (r.getAttribute('stroke-dasharray') || r.style.strokeDasharray || '') : null; }, id);
 ok('③ 화면에서도 08/30(일) 회색 · 09/01(화) 기본색 · 09/05(토) 빨강', (await fillOf(kids[0].kidIds[0])) === '#A3A3A3' && (await fillOf(kids[0].kidIds[2])) !== '#DC2626' && (await fillOf(kids[0].kidIds[6])) === '#DC2626');
 ok('③ 화면에서도 08/30(일) 테두리는 점선, 09/01(화) 는 실선', (await dashOf(kids[0].kidIds[0])) !== '' && (await dashOf(kids[0].kidIds[2])) === '');
+await stores.center(page, kids[3].kidIds[5], 100); await page.waitForTimeout(300); // 화면 밖이면 안 그려질 수 있다
 ok('③ 화면의 09/25(금) 노드 글이 두 줄 (날짜 / [추석])', (await page.locator(`[data-node-id="${kids[3].kidIds[5]}"] text`).count()) === 2);
 await doc((d) => d.useDocumentStore.getState().undo()); await page.waitForTimeout(200);
 ok('③ undo 한 단계로 5개(+35)가 함께 사라진다', (await childrenOf(sep.id)).length === 0);
@@ -143,6 +145,31 @@ ok('⑧ 두 번째 표 더블클릭 → 표 편집 팝업', (await tdlg.count())
 const dlgVals = await page.evaluate(() => Array.from(document.querySelectorAll('[data-testid="table-dialog"] input, [data-testid="table-dialog"] textarea')).map((e) => e.value));
 ok('⑧ 팝업 내용은 두 번째(10월) 표 — 31일 칸이 있다 (9월 표에는 없다)', dlgVals.includes('31') && dlgVals.includes('**25**'));
 await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+
+// ⑨ HTML 내보내기 뷰어도 표를 전부 그린다 (2026-09-22 사용자 요청) — 실제 내보내기 함수로 만든 HTML 을 연다
+{
+  const { html, expectTables } = await page.evaluate(async () => {
+    const d = await import('/src/stores/documentStore.ts'); const ui = await import('/src/stores/editorUiStore.ts');
+    const { buildStandaloneHtml } = await import('/src/export/exportHtml.ts');
+    const { parseMdTables } = await import('/src/editor/node-renderer/mdTable.ts');
+    const map = d.useDocumentStore.getState().map;
+    // 보이는(접히지 않은) 노드의 표 수 = 뷰어가 그려야 할 표 수
+    let n = 0;
+    const walk = (node) => { n += parseMdTables(String(node.text ?? '')).length; if (!node.collapsed) (node.children ?? []).forEach(walk); };
+    for (const c of [{ root: map.root, branches: map.branches }, ...(map.centers ?? [])]) { walk(c.root); if (!c.root.collapsed) (c.branches ?? []).forEach(walk); }
+    return { html: buildStandaloneHtml(map, ui.useEditorUiStore.getState().layoutType), expectTables: n };
+  });
+  const file = `${OUT}/viewer-tables.html`; writeFileSync(file, html);
+  const vctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+  const v = await vctx.newPage();
+  await v.route('https://cdn.jsdelivr.net/**', (r) => r.abort());
+  await v.goto('file://' + file); await v.waitForTimeout(1200);
+  const headerRects = await v.locator('svg rect[opacity="0.16"]').count(); // 표마다 머리글 배경 1개
+  ok(`⑨ 뷰어 SVG 의 표 수 = 맵의 표 수 (${headerRects} / ${expectTables}, 표 2개 노드 포함)`, expectTables >= 3 && headerRects === expectTables);
+  const vTexts = await v.evaluate(() => Array.from(document.querySelectorAll('svg text')).map((t) => t.textContent));
+  ok('⑨ 뷰어에 파이프 원문이 글자로 남지 않고 사이 글·끝 글은 보인다', !vTexts.some((t) => t.includes('| 일') || t.includes(':---')) && vTexts.includes('가운데 글') && vTexts.includes('끝 글'));
+  await vctx.close();
+}
 
 // ④ 년도 정보가 없는 노드 → 올해가 기본, Esc 로 닫으면 아무것도 안 넣는다
 await stores.select(page, 'b2-1'); await page.waitForTimeout(200);

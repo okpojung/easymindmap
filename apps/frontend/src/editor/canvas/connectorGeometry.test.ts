@@ -1,5 +1,5 @@
 // 연결선 기하 (2026-09-22).   npx tsx src/editor/canvas/connectorGeometry.test.ts
-import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, loopTrunkX, LOOP_OUT } from './connectorGeometry';
+import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, loopTrunkX, LOOP_OUT, resolveSide, dedupePoints } from './connectorGeometry';
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
   const g = JSON.stringify(got), w = JSON.stringify(want); const ok = g === w; if (!ok) failed++;
@@ -34,14 +34,51 @@ if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }
 // ⑥ 고리 줄기는 사이 높이의 다른 상자를 관통하지 않는다 (2026-09-22)
 {
   const a = { x: 100, y: 100, w: 100, h: 40 }, b = { x: 100, y: 400, w: 100, h: 40 };
-  const kid = { x: 260, y: 200, w: 120, h: 40 }; // a 의 오른쪽 아래, 두 노드 사이 높이
+  const kid = { x: 200, y: 200, w: 80, h: 40 }; // a 의 오른쪽 아래, 두 노드 사이 높이 (오른쪽 240)
   const far = { x: 260, y: 700, w: 120, h: 40 }; // 사이 높이 밖 — 무시
   check('⑥ 장애물 없으면 max right + 40', loopTrunkX(a, b), 190);
-  check('⑥ 사이 높이의 상자는 넘어간다 (320 + 40)', loopTrunkX(a, b, [a, b, kid, far]), 360);
-  const kid2 = { x: 400, y: 300, w: 100, h: 40 }; // 밀린 줄기(360)가 다시 걸리는 상자
-  check('⑥ 밀린 자리에 또 걸리면 한 번 더 민다', loopTrunkX(a, b, [kid, kid2]), 490);
+  check('⑥ 사이 높이의 상자는 넘어간다 (240 + 40)', loopTrunkX(a, b, [a, b, kid, far]), 280);
+  const kid2 = { x: 290, y: 300, w: 40, h: 40 }; // 밀린 줄기(280)가 다시 걸리는 상자 (270~310)
+  check('⑥ 밀린 자리에 또 걸리면 한 번 더 민다 (310 + 40, 한도 160 안)', loopTrunkX(a, b, [kid, kid2]), 350);
+  const kid3 = { x: 360, y: 300, w: 40, h: 40 }; // 또 걸려 390 까지 밀면 한도(160)를 넘는다 → 원래 190
+  check('⑥ 한도를 넘게 밀어야 하면 원래 자리', loopTrunkX(a, b, [kid, kid2, kid3]), 190);
   const pts = connectorPoints(a, b, [kid]);
-  check('⑥ connectorPoints 도 같은 줄기 x', [pts[1].x, pts[2].x], [360, 360]);
+  check('⑥ connectorPoints 도 같은 줄기 x', [pts[1].x, pts[2].x], [280, 280]);
+}
+
+// ⑦ 면을 정한 길 (2026-09-23) — 시작 면·끝 면
+{
+  const L = { x: 100, y: 100, w: 100, h: 40 }, R = { x: 500, y: 400, w: 100, h: 40 };
+  check('⑦ auto 해석 — 오른쪽 아래의 상대는 더 먼 축(x) 으로 right', resolveSide(L, R, 'auto'), 'right');
+  check('⑦ auto 해석 — 상대가 바로 아래면 bottom', resolveSide({ x: 100, y: 100, w: 100, h: 40 }, { x: 120, y: 400, w: 100, h: 40 }, 'auto'), 'bottom');
+  check('⑦ 둘 다 auto 면 예전 규칙 그대로', connectorPoints(L, R, undefined, 'auto', 'auto'), connectorPoints(L, R));
+  // 아래 → 아래 (사용자 요청의 두 번째 연결선): 아래 바깥 줄기로 도는 고리
+  check('⑦ 아래→아래 = 둘 아래 바깥(max bottom + 40) 고리', connectorPoints(L, R, undefined, 'bottom', 'bottom'),
+    [{ x: 100, y: 120 }, { x: 100, y: 460 }, { x: 500, y: 460 }, { x: 500, y: 420 }]);
+  const mid = { x: 300, y: 450, w: 100, h: 40 }; // 두 노드 x 사이에서 줄기(460)에 걸리는 상자
+  check('⑦ 아래→아래 줄기는 사이의 상자를 넘어간다 (470 + 40)', connectorPoints(L, R, [L, R, mid], 'bottom', 'bottom')[1].y, 510);
+  check('⑦ 위→위 = 둘 위 바깥(min top − 40)', connectorPoints(L, R, undefined, 'top', 'top')[1].y, 40);
+  check('⑦ 왼쪽→왼쪽 = 둘 왼쪽 바깥(min left − 40)', connectorPoints(L, R, undefined, 'left', 'left')[1].x, 10);
+  // 마주 보는 면
+  check('⑦ 오른쪽→왼쪽 (서로 향함) = 가운데서 ㄷ', connectorPoints(L, R, undefined, 'right', 'left'),
+    [{ x: 150, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 400 }, { x: 450, y: 400 }]);
+  const back = connectorPoints(R, L, undefined, 'right', 'left'); // R 의 오른쪽에서 L 의 왼쪽으로 — 등진 방향
+  check('⑦ 오른쪽→왼쪽 (등짐) = STUB 나와 두 상자 사이 높이로 돌아감', [back.length, back[1].x, back[2].y, back[4].x], [6, 574, 250, 26]);
+  check('⑦ 아래→위 (서로 향함) = 가운데 높이에서 ㄷ', connectorPoints(L, R, undefined, 'bottom', 'top'),
+    [{ x: 100, y: 120 }, { x: 100, y: 250 }, { x: 500, y: 250 }, { x: 500, y: 380 }]);
+  // 직각
+  check('⑦ 아래→왼쪽 = 모서리 한 점(ㄱ)', connectorPoints(L, R, undefined, 'bottom', 'left'),
+    [{ x: 100, y: 120 }, { x: 100, y: 400 }, { x: 450, y: 400 }]);
+  const z = connectorPoints(R, L, undefined, 'bottom', 'left'); // 모서리(500,100)가 R 의 아래 앞이 아니다
+  check('⑦ 모서리가 면 앞에 없으면 STUB 로 ㄹ 자 (5점)', [z.length, z[1].y, z[2].x], [5, 444, 26]);
+  check('⑦ 오른쪽→위 = 모서리 (R.x, L.y)', connectorPoints(L, R, undefined, 'right', 'top'),
+    [{ x: 150, y: 100 }, { x: 500, y: 100 }, { x: 500, y: 380 }]);
+  check('⑦ 한쪽만 정하면 다른 쪽은 auto 로 상대를 향한다 (bottom + auto→left)', connectorPoints(L, R, undefined, 'bottom', 'auto'),
+    connectorPoints(L, R, undefined, 'bottom', 'left'));
+  check('⑦ 붙은 같은 점은 없앤다', dedupePoints([{ x: 1, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }]).length, 2);
+  // 한도 — 세로로 빽빽한 열: 줄기를 160 넘게 밀어야 하면 원래 자리(둘 아래 + 40)로
+  const column = Array.from({ length: 8 }, (_, i) => ({ x: 300, y: 480 + i * 60, w: 120, h: 40 }));
+  check('⑦ 장애물이 끝없이 이어지면 밀지 않는다 (max bottom + 40 그대로)', connectorPoints(L, R, [L, R, ...column], 'bottom', 'bottom')[1].y, 460);
 }
 
 console.log('\n모두 통과');

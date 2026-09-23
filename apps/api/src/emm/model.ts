@@ -304,6 +304,8 @@ export type ConnectorArrows = 'none' | 'end' | 'start' | 'both';
 /** 라벨 자리 — 선 가운데 / 선 위 / 선 아래 / 곁가지(짧은 줄기로 매단 상자) */
 export type ConnectorLabelPlace = 'center' | 'above' | 'below' | 'branch';
 export type ConnectorLabelShape = 'none' | 'rounded' | 'rectangle' | 'pill' | 'ellipse';
+/** 선이 노드에 닿는 면 (2026-09-23) — auto 는 상대 노드 쪽을 보고 고른다 */
+export type ConnectorSide = 'auto' | 'top' | 'bottom' | 'left' | 'right';
 
 export interface ConnectorLabel {
   text: string;
@@ -320,6 +322,8 @@ export interface Connector {
   color?: string; // 기본 = 테마 강조색
   dash?: ConnectorDash; // 기본 solid
   arrows?: ConnectorArrows; // 기본 end
+  fromSide?: ConnectorSide; // 시작 노드의 어느 면에서 나가나 (기본 auto)
+  toSide?: ConnectorSide; // 끝 노드의 어느 면에 닿나 (기본 auto)
   label?: ConnectorLabel;
 }
 

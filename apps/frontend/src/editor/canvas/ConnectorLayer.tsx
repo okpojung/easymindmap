@@ -91,7 +91,7 @@ function resolve(connectors: Connector[] | undefined, nodesById: Map<string, Lai
     if (!a || !b || a === b) continue;
     out.push({
       c,
-      pts: connectorPoints(a, b, obstacles),
+      pts: connectorPoints(a, b, obstacles, c.fromSide ?? 'auto', c.toSide ?? 'auto'),
       color: connectorColorOf(c),
       width: connectorWidthOf(c),
       shape: connectorShapeOf(c),

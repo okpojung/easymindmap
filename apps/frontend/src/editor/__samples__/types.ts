@@ -34,6 +34,7 @@ export type {
   EmmNode,
   Connector,
   ConnectorShape,
+  ConnectorSide,
   ConnectorDash,
   ConnectorArrows,
   ConnectorLabel,

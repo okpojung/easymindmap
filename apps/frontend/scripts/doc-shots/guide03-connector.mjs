@@ -144,6 +144,52 @@ ok('⑥ 끝 노드 삭제 → 연결선 정리', (await connectors()).length ===
 await doc((d, st) => st.undo()); await page.waitForTimeout(200);
 ok('⑥ 되돌리기 → 노드와 연결선 복구', (await connectors()).length === 1);
 
+// ⑨ 닿는 면 (2026-09-23 사용자 요청) — 시작 면·끝 면을 아래로: 둘 아래 바깥 고리
+await fit();
+await page.locator('[data-connector-hit]').first().dispatchEvent('click'); await page.waitForTimeout(200);
+const boxes = () => page.evaluate(() => {
+  // 화면 SVG 의 노드 rect (world 좌표) — 연결선 path 와 같은 좌표계
+  const g = (id) => { const r = document.querySelector(`[data-node-id="${id}"]:not([data-testid="collapse-toggle"]) rect`); const x0 = Number(r.getAttribute('x')), y0 = Number(r.getAttribute('y')), w = Number(r.getAttribute('width')), h = Number(r.getAttribute('height')); return { x: x0 + w / 2, y: y0 + h / 2, w, h }; };
+  return { a: g('b1-1'), b: g('b2-1') };
+});
+const pathPts = () => page.evaluate(() => {
+  const d = document.querySelector('[data-connector-path]').getAttribute('d');
+  const nums = d.match(/[ML] (-?[\d.]+) (-?[\d.]+)/g).map((s) => s.split(' ').slice(1).map(Number));
+  return { first: nums[0], last: nums[nums.length - 1], d };
+});
+ok('⑨ 패널에 시작 면·끝 면 단추(자동 활성)', await page.locator('[data-testid="connector-from-side-auto"]').isVisible() && await page.locator('[data-testid="connector-to-side-auto"]').isVisible());
+await page.locator('[data-testid="connector-from-side-bottom"]').click(); await page.waitForTimeout(150);
+await page.locator('[data-testid="connector-to-side-bottom"]').click(); await page.waitForTimeout(200);
+let bx = await boxes(); let pp = await pathPts();
+ok('⑨ 아래→아래: 시작점 = 시작 노드 아래 면 한가운데', Math.abs(pp.first[0] - bx.a.x) < 0.6 && Math.abs(pp.first[1] - (bx.a.y + bx.a.h / 2)) < 0.6);
+ok('⑨ 아래→아래: 끝점 = 끝 노드 아래 면 한가운데', Math.abs(pp.last[0] - bx.b.x) < 0.6 && Math.abs(pp.last[1] - (bx.b.y + bx.b.h / 2)) < 0.6);
+const trunkY = await page.evaluate(() => { const d = document.querySelector('[data-connector-path]').getAttribute('d'); const ys = d.match(/[LQ] [^LQ]+/g).map((s) => Number(s.trim().split(' ').pop())); return Math.max(...ys); });
+ok('⑨ 아래→아래: 줄기가 둘 아래 바깥으로', trunkY >= Math.max(bx.a.y + bx.a.h / 2, bx.b.y + bx.b.h / 2) + 39);
+cs = await connectors();
+ok('⑨ 문서에 fromSide/toSide 저장', cs[0].fromSide === 'bottom' && cs[0].toSide === 'bottom');
+// 문서용 — 왼쪽 노드 아래 → 오른쪽 노드 아래 (사용자 그림의 두 번째 연결선 모양): 임시로 하나 더 긋고 찍은 뒤 지운다
+const tmpId = await doc((d, st) => { const id = st.addConnector('b1-3', 'b2-1-2'); st.updateConnector(id, { fromSide: 'bottom', toSide: 'bottom', width: 2 }); return id; });
+await page.evaluate(async ({ id }) => { const m = await import('/src/stores/interactionStore.ts'); m.useInteractionStore.getState().setSelectedConnectorId(id); }, { id: tmpId });
+await stores.center(page, 'b1-3', 100); await page.waitForTimeout(500);
+await shotUnion(page, size, `${OUT}/03-connector-sides.png`, [await nodeBox(page, 'b1-3'), await nodeBox(page, 'b2-1-2'), await nodeBox(page, 'b2-1'), await page.locator(`[data-connector-id="${tmpId}"]`).boundingBox()], 40);
+const tmpPts = await page.evaluate(({ id }) => { const d = document.querySelector(`[data-connector-id="${id}"] [data-connector-path]`).getAttribute('d'); return d.match(/[ML] (-?[\d.]+) (-?[\d.]+)/g).map((s) => s.split(' ').slice(1).map(Number)); }, { id: tmpId });
+ok('⑨ 왼쪽 노드 아래 → 오른쪽 노드 아래: 점 4개(내려가 · 건너 · 올라옴)', tmpPts.length >= 3 && tmpPts[0][1] < Math.max(...tmpPts.map((p) => p[1])) && tmpPts[tmpPts.length - 1][1] < Math.max(...tmpPts.map((p) => p[1])));
+await doc((d, st) => { st.removeConnector(st.map.connectors.find((c) => c.to === 'b2-1-2').id); });
+await page.evaluate(async ({ id }) => { const m = await import('/src/stores/interactionStore.ts'); m.useInteractionStore.getState().setSelectedConnectorId(id); }, { id: cs[0].id });
+await page.waitForTimeout(200);
+ok('⑨ 임시 연결선 지움 — 1개만 남는다', (await connectors()).length === 1);
+await fit();
+await page.locator('[data-testid="connector-from-side-right"]').click(); await page.waitForTimeout(150);
+await page.locator('[data-testid="connector-to-side-top"]').click(); await page.waitForTimeout(200);
+bx = await boxes(); pp = await pathPts();
+ok('⑨ 오른쪽→위: 시작 = 오른쪽 면, 끝 = 위 면', Math.abs(pp.first[0] - (bx.a.x + bx.a.w / 2)) < 0.6 && Math.abs(pp.last[1] - (bx.b.y - bx.b.h / 2)) < 0.6);
+await page.locator('[data-testid="connector-from-side-auto"]').click(); await page.waitForTimeout(150);
+await page.locator('[data-testid="connector-to-side-auto"]').click(); await page.waitForTimeout(200);
+cs = await connectors();
+ok('⑨ 자동으로 되돌리면 값이 지워진다', cs[0].fromSide === undefined && cs[0].toSide === undefined);
+await page.locator('[data-testid="connector-from-side-bottom"]').click(); await page.locator('[data-testid="connector-to-side-bottom"]').click(); await page.waitForTimeout(200);
+await page.keyboard.press('Escape');
+
 // ⑦ mmd 내보내기 → 선언에 connectors → 다시 읽으면 같은 연결선
 const md = await page.evaluate(async () => {
   const d = await import('/src/stores/documentStore.ts'); const ui = await import('/src/stores/editorUiStore.ts');
@@ -151,13 +197,13 @@ const md = await page.evaluate(async () => {
   const pkg = await ex.buildMarkdownExportPackage(d.useDocumentStore.getState().map, ui.useEditorUiStore.getState().layoutType);
   return await pkg.blob.text();
 });
-ok('⑦ mmd 에 connectors 선언 (경로로)', /connectors:\n  1:\n    from: .* > Q1 · 기반 구축 > 인증 시스템 \(Supabase Auth\)\n    to: .* > 프롬프트 → 맵 생성/.test(md) && /label: 검토 \/ 승인/.test(md));
+ok('⑦ mmd 에 connectors 선언 (경로로) + fromSide/toSide', /connectors:\n  1:\n    from: .* > Q1 · 기반 구축 > 인증 시스템 \(Supabase Auth\)\n    to: .* > 프롬프트 → 맵 생성/.test(md) && /label: 검토 \/ 승인/.test(md) && /fromSide: bottom\n    toSide: bottom/.test(md));
 const back = await page.evaluate(async ({ md }) => {
   const im = await import('/src/utils/importMapFile.ts');
   const r = im.parseMarkdownMapFile(md, 'x');
   return r?.map.connectors ?? null;
 }, { md });
-ok('⑦ 다시 읽으면 연결선 1개 · 라벨 두 줄 · 속성 그대로', back && back.length === 1 && back[0].label?.text === '검토\n승인' && back[0].width === 2 && back[0].label?.shape === 'rounded' && back[0].from !== back[0].to);
+ok('⑦ 다시 읽으면 연결선 1개 · 라벨 두 줄 · 속성·면 그대로', back && back.length === 1 && back[0].label?.text === '검토\n승인' && back[0].width === 2 && back[0].label?.shape === 'rounded' && back[0].from !== back[0].to && back[0].fromSide === 'bottom' && back[0].toSide === 'bottom');
 
 // ⑧ HTML 내보내기 — 뷰어가 같은 선·라벨을 그린다
 const html = await page.evaluate(async () => {
@@ -174,6 +220,12 @@ const v = await page2.evaluate(() => {
     tspans: l?.querySelectorAll('tspan').length, firstIsLines: document.getElementById('mm-world')?.firstChild?.getAttribute('class') };
 });
 ok(`⑧ HTML 뷰어: 연결선 1 · 라벨 1(두 줄) · 파랑 · 둥근 · 선 층이 맨 뒤`, v.conn === 1 && v.label === 1 && v.stroke === '#2563EB' && v.q && v.tspans === 2 && v.firstIsLines === 'mm-conn-lines');
+const vSides = await page2.evaluate(() => {
+  const d = document.querySelector('.mm-conn path').getAttribute('d'); const nums = d.match(/[ML] (-?[\d.]+) (-?[\d.]+)/g).map((s) => s.split(' ').slice(1).map(Number));
+  const box = (id) => { const g = Array.from(document.querySelectorAll('.mm-node')).find((n) => n.querySelector(`[data-id="${id}"]`) || n.getAttribute('data-id') === id); return null; };
+  return { first: nums[0], last: nums[nums.length - 1], ys: d.match(/[LQ] [^LQ]+/g).map((s) => Number(s.trim().split(' ').pop())) };
+});
+ok('⑧ HTML 뷰어도 아래→아래 고리 (줄기가 양 끝점보다 아래)', Math.max(...vSides.ys) > vSides.first[1] + 30 && Math.max(...vSides.ys) > vSides.last[1] + 30);
 const shotBox = await page2.evaluate(() => { const a = document.querySelector('.mm-conn').getBoundingClientRect(); const b = document.querySelector('.mm-conn-label').getBoundingClientRect(); return { x: Math.min(a.x, b.x) - 120, y: Math.min(a.y, b.y) - 60, w: Math.max(a.right, b.right) - Math.min(a.x, b.x) + 240, h: Math.max(a.bottom, b.bottom) - Math.min(a.y, b.y) + 120 }; });
 await page2.screenshot({ path: `${OUT}/03-connector-viewer.png`, clip: { x: Math.max(0, shotBox.x), y: Math.max(0, shotBox.y), width: Math.min(1400 - Math.max(0, shotBox.x), shotBox.w), height: Math.min(900 - Math.max(0, shotBox.y), shotBox.h) } });
 console.log('shot', `${OUT}/03-connector-viewer.png`);

@@ -156,13 +156,13 @@ const F = '```';
 {
   const src = md(F + 'emm', 'template: tree-progtree', 'connectors:', '  1:', '    from: 테스트 > Topic 1',
     '    to: 테스트 > Topic 2 > Sub', '    shape: elbow', '    width: 2.5', '    color: #DC2626', '    dash: dashed',
-    '    arrows: both', '    label: 검토 / 승인', '    labelPlace: branch', '    labelShape: pill',
+    '    arrows: both', '    fromSide: bottom', '    toSide: bottom', '    label: 검토 / 승인', '    labelPlace: branch', '    labelShape: pill',
     '  2:', '    from: 테스트 > Topic 2', '    to: 테스트 > Topic 3', '  3:', '    from: 테스트 > Topic 1', F);
   const r = readDeclaration(src);
   check('⑥ 연결선 2개 (from/to 없는 3번은 버린다)', r.connectors?.length, 2);
   check('⑥ 1번의 모든 키', r.connectors?.[0], {
     from: '테스트 > Topic 1', to: '테스트 > Topic 2 > Sub', shape: 'elbow', width: '2.5', color: '#DC2626',
-    dash: 'dashed', arrows: 'both', label: '검토 / 승인', labelPlace: 'branch', labelShape: 'pill',
+    dash: 'dashed', arrows: 'both', fromSide: 'bottom', toSide: 'bottom', label: '검토 / 승인', labelPlace: 'branch', labelShape: 'pill',
   });
   check('⑥ 2번은 from/to 만', r.connectors?.[1], { from: '테스트 > Topic 2', to: '테스트 > Topic 3' });
   const built = buildDeclaration({ template: 'tree-progtree', connectors: r.connectors });

@@ -11,11 +11,17 @@
 export interface CBox { x: number; y: number; w: number; h: number } // 중심 좌표
 export interface CPoint { x: number; y: number }
 export type CShape = 'elbow' | 'rounded';
+/** 선이 노드에 닿는 면 — auto 는 상대 노드 쪽을 보고 고른다 (2026-09-23) */
+export type CSide = 'auto' | 'top' | 'bottom' | 'left' | 'right';
+export type CDir = Exclude<CSide, 'auto'>;
 
 export const LOOP_OUT = 40;   // 고리 줄기: 오른쪽 변 바깥 거리
 export const CORNER_R = 12;   // 둥근 모서리 반지름
 export const BRANCH_STUB = 40; // 곁가지 라벨의 짧은 줄기 길이
 export const LABEL_GAP = 6;   // 선 위/아래 라벨과 선 사이
+export const STUB = 24;       // 면에서 곧게 빠져나오는 최소 길이 (면을 정했을 때)
+/** 고리 줄기를 장애물 너머로 미는 한도 — 이보다 멀어지면 차라리 노드 뒤로 지나간다 (2026-09-23) */
+export const MAX_TRUNK_PUSH = LOOP_OUT * 4;
 
 /**
  * 꺾이는 점들 (시작·끝 포함). 겹침·같은 높이 등 특수 경우는 점 2개.
@@ -23,7 +29,11 @@ export const LABEL_GAP = 6;   // 선 위/아래 라벨과 선 사이
  * 높이에 있는 다른 노드를 관통하지 않도록** 그 오른쪽 너머로 민다 (하위 노드가
  * 오른쪽에 펼쳐진 트리에서 줄기가 자식들을 가로지르던 것, 2026-09-22 캡처로 확인).
  */
-export function connectorPoints(a: CBox, b: CBox, obstacles?: CBox[]): CPoint[] {
+export function connectorPoints(a: CBox, b: CBox, obstacles?: CBox[], fromSide: CSide = 'auto', toSide: CSide = 'auto'): CPoint[] {
+  // 면을 정했으면(한쪽이라도) 면 기반 길 (2026-09-23 사용자 요청). 둘 다 auto 면 예전 규칙.
+  if (fromSide !== 'auto' || toSide !== 'auto') {
+    return dedupePoints(routeBySides(a, resolveSide(a, b, fromSide), b, resolveSide(b, a, toSide), obstacles));
+  }
   const aL = a.x - a.w / 2, aR = a.x + a.w / 2;
   const bL = b.x - b.w / 2, bR = b.x + b.w / 2;
   const xOverlap = aL < bR && bL < aR;
@@ -110,19 +120,132 @@ export function labelBox(mid: ReturnType<typeof connectorMid>, w: number, h: num
 /** 고리 줄기 x — 두 노드 오른쪽 변 + LOOP_OUT 에서 시작해, 두 노드 사이 높이의 다른
  * 상자를 지나게 되면 그 상자 오른쪽 + LOOP_OUT 으로 (새로 걸리는 게 없을 때까지) */
 export function loopTrunkX(a: CBox, b: CBox, obstacles?: CBox[]): number {
-  let X = Math.max(a.x + a.w / 2, b.x + b.w / 2) + LOOP_OUT;
-  if (!obstacles?.length) return X;
-  const top = Math.min(a.y, b.y), bottom = Math.max(a.y, b.y);
-  const band = obstacles.filter((o) => o !== a && o !== b && o.y + o.h / 2 > top && o.y - o.h / 2 < bottom);
+  return loopTrunk(a, b, 'right', obstacles);
+}
+
+/**
+ * 같은 면끼리 이을 때의 고리 줄기 자리 — 그 면 바깥 LOOP_OUT. 두 노드 사이(줄기와
+ * 나란한 구간)에 있는 다른 상자를 지나게 되면 그 상자 너머 + LOOP_OUT 으로 민다.
+ * right/left 는 x 값, bottom/top 은 y 값을 돌려준다.
+ */
+export function loopTrunk(a: CBox, b: CBox, side: CDir, obstacles?: CBox[]): number {
+  const horiz = side === 'right' || side === 'left';
+  const sign = side === 'right' || side === 'bottom' ? 1 : -1;
+  const edge = (o: CBox) => (horiz ? o.x + sign * o.w / 2 : o.y + sign * o.h / 2);
+  const T0 = (sign > 0 ? Math.max(edge(a), edge(b)) : Math.min(edge(a), edge(b))) + sign * LOOP_OUT;
+  let T = T0;
+  if (!obstacles?.length) return T;
+  // 줄기와 나란한 구간 — 가로 줄기(bottom/top)는 두 노드의 x 사이, 세로 줄기는 y 사이
+  const lo = horiz ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+  const hi = horiz ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+  const band = obstacles.filter((o) => o !== a && o !== b && (horiz
+    ? o.y + o.h / 2 > lo && o.y - o.h / 2 < hi
+    : o.x + o.w / 2 > lo && o.x - o.w / 2 < hi));
   for (let guard = 0; guard < 50; guard++) {
     let moved = false;
     for (const o of band) {
-      const oL = o.x - o.w / 2, oR = o.x + o.w / 2;
-      if (oL - LOOP_OUT / 2 <= X && X <= oR + LOOP_OUT / 2) { X = oR + LOOP_OUT; moved = true; }
+      const near = horiz ? o.x - o.w / 2 : o.y - o.h / 2;
+      const far = horiz ? o.x + o.w / 2 : o.y + o.h / 2;
+      if (near - LOOP_OUT / 2 <= T && T <= far + LOOP_OUT / 2) { T = (sign > 0 ? far : near) + sign * LOOP_OUT; moved = true; }
     }
     if (!moved) break;
   }
-  return X;
+  // 빽빽한 곳에서는 끝없이 밀려 맵 전체를 도는 고리가 된다 (2026-09-23 캡처) — 한도를
+  // 넘으면 원래 자리로 (선은 노드 뒤 층이라 가려질 뿐, 멀리 돌지는 않는다)
+  return Math.abs(T - T0) > MAX_TRUNK_PUSH ? T0 : T;
+}
+
+/** auto → 상대 노드 중심이 어느 쪽에 있나 (더 먼 축) */
+export function resolveSide(box: CBox, other: CBox, side: CSide): CDir {
+  if (side !== 'auto') return side;
+  const dx = other.x - box.x, dy = other.y - box.y;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+  return dy >= 0 ? 'bottom' : 'top';
+}
+
+/** 면 위의 닿는 점 (면 한가운데) */
+export function sideAnchor(box: CBox, side: CDir): CPoint {
+  if (side === 'right') return { x: box.x + box.w / 2, y: box.y };
+  if (side === 'left') return { x: box.x - box.w / 2, y: box.y };
+  if (side === 'bottom') return { x: box.x, y: box.y + box.h / 2 };
+  return { x: box.x, y: box.y - box.h / 2 };
+}
+
+const normalOf = (side: CDir): CPoint => (
+  side === 'right' ? { x: 1, y: 0 } : side === 'left' ? { x: -1, y: 0 } : side === 'bottom' ? { x: 0, y: 1 } : { x: 0, y: -1 });
+const isHoriz = (side: CDir) => side === 'right' || side === 'left';
+
+/**
+ * 면을 정한 길 (2026-09-23) — 두 면 조합에 따라:
+ *   · 같은 면          → 그 면 바깥의 줄기(loopTrunk)로 도는 고리
+ *   · 마주 보는 면     → 서로를 향해 나오면 가운데서 한 번 꺾음(ㄷ), 등지고 있으면
+ *                        STUB 만큼 나와 두 상자 사이(겹치면 아래쪽 바깥)로 돌아감
+ *   · 직각인 면        → 모서리 한 점에서 꺾는 ㄱ 자 (모서리가 두 면 앞에 있을 때),
+ *                        아니면 STUB 만큼 나와 ㄹ 자
+ */
+export function routeBySides(a: CBox, sA: CDir, b: CBox, sB: CDir, obstacles?: CBox[]): CPoint[] {
+  const pA = sideAnchor(a, sA), pB = sideAnchor(b, sB);
+  const nA = normalOf(sA), nB = normalOf(sB);
+  const p1 = { x: pA.x + nA.x * STUB, y: pA.y + nA.y * STUB };
+  const p4 = { x: pB.x + nB.x * STUB, y: pB.y + nB.y * STUB };
+  if (sA === sB) {
+    const T = loopTrunk(a, b, sA, obstacles);
+    return isHoriz(sA)
+      ? [pA, { x: T, y: pA.y }, { x: T, y: pB.y }, pB]
+      : [pA, { x: pA.x, y: T }, { x: pB.x, y: T }, pB];
+  }
+  if (isHoriz(sA) && isHoriz(sB)) {
+    // 마주 보는 좌우 면
+    const gap = (pB.x - pA.x) * nA.x; // 양수면 서로를 향해 나온다
+    if (gap >= STUB * 2) {
+      const midX = (pA.x + pB.x) / 2;
+      return [pA, { x: midX, y: pA.y }, { x: midX, y: pB.y }, pB];
+    }
+    const midY = betweenY(a, b);
+    return [pA, p1, { x: p1.x, y: midY }, { x: p4.x, y: midY }, p4, pB];
+  }
+  if (!isHoriz(sA) && !isHoriz(sB)) {
+    const gap = (pB.y - pA.y) * nA.y;
+    if (gap >= STUB * 2) {
+      const midY = (pA.y + pB.y) / 2;
+      return [pA, { x: pA.x, y: midY }, { x: pB.x, y: midY }, pB];
+    }
+    const midX = betweenX(a, b);
+    return [pA, p1, { x: midX, y: p1.y }, { x: midX, y: p4.y }, p4, pB];
+  }
+  // 직각 — A 세로면·B 가로면이면 모서리는 (A.x, B.y), 반대면 (B.x, A.y)
+  const corner = isHoriz(sA) ? { x: pB.x, y: pA.y } : { x: pA.x, y: pB.y };
+  const frontA = (corner.x - pA.x) * nA.x + (corner.y - pA.y) * nA.y;
+  const frontB = (corner.x - pB.x) * nB.x + (corner.y - pB.y) * nB.y;
+  if (frontA >= STUB && frontB >= STUB) return [pA, corner, pB];
+  return isHoriz(sA)
+    ? [pA, p1, { x: p1.x, y: p4.y }, p4, pB]
+    : [pA, p1, { x: p4.x, y: p1.y }, p4, pB];
+}
+
+/** 두 상자 사이의 빈 세로 자리 — 위아래로 떨어져 있으면 그 틈의 가운데, 겹치면 둘 아래 바깥 */
+function betweenY(a: CBox, b: CBox): number {
+  const aT = a.y - a.h / 2, aB = a.y + a.h / 2, bT = b.y - b.h / 2, bB = b.y + b.h / 2;
+  if (aB <= bT) return (aB + bT) / 2;
+  if (bB <= aT) return (bB + aT) / 2;
+  return Math.max(aB, bB) + LOOP_OUT;
+}
+/** 두 상자 사이의 빈 가로 자리 — 좌우로 떨어져 있으면 그 틈의 가운데, 겹치면 둘 오른쪽 바깥 */
+function betweenX(a: CBox, b: CBox): number {
+  const aL = a.x - a.w / 2, aR = a.x + a.w / 2, bL = b.x - b.w / 2, bR = b.x + b.w / 2;
+  if (aR <= bL) return (aR + bL) / 2;
+  if (bR <= aL) return (bR + aL) / 2;
+  return Math.max(aR, bR) + LOOP_OUT;
+}
+
+/** 붙어 있는 같은 점을 없앤다 (화살촉 방향이 0 벡터가 되지 않게) */
+export function dedupePoints(pts: CPoint[]): CPoint[] {
+  const out: CPoint[] = [];
+  for (const p of pts) {
+    const last = out[out.length - 1];
+    if (!last || Math.abs(last.x - p.x) > 0.01 || Math.abs(last.y - p.y) > 0.01) out.push(p);
+  }
+  return out;
 }
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toString();

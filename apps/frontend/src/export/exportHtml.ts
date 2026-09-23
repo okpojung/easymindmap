@@ -1211,7 +1211,7 @@ const VIEWER_JS = String.raw`
   var CONN_FS = 13, CONN_PAD_X = 8, CONN_PAD_Y = 5, CONN_LINE_H = 17;
   // 고리 줄기 x — 두 노드 사이 높이의 다른 상자를 지나면 그 오른쪽 너머로 (connectorGeometry.loopTrunkX)
   function connTrunkX(a, b, obstacles) {
-    var X = Math.max(a.x + a.w / 2, b.x + b.w / 2) + CONN_LOOP_OUT;
+    var X0 = Math.max(a.x + a.w / 2, b.x + b.w / 2) + CONN_LOOP_OUT, X = X0;
     if (!obstacles || !obstacles.length) return X;
     var top = Math.min(a.y, b.y), bottom = Math.max(a.y, b.y), band = [], i;
     for (i = 0; i < obstacles.length; i++) {
@@ -1226,9 +1226,92 @@ const VIEWER_JS = String.raw`
       }
       if (!moved) break;
     }
-    return X;
+    return Math.abs(X - X0) > CONN_LOOP_OUT * 4 ? X0 : X; // 한도 (connectorGeometry.MAX_TRUNK_PUSH)
   }
-  function connPoints(a, b, obstacles) {
+  // 면을 정한 길 (2026-09-23) — connectorGeometry.routeBySides 와 같은 식
+  function connTrunk(a, b, side, obstacles) {
+    var horiz = side === 'right' || side === 'left', sign = (side === 'right' || side === 'bottom') ? 1 : -1;
+    var edge = function (o) { return horiz ? o.x + sign * o.w / 2 : o.y + sign * o.h / 2; };
+    var T0 = (sign > 0 ? Math.max(edge(a), edge(b)) : Math.min(edge(a), edge(b))) + sign * CONN_LOOP_OUT, T = T0;
+    if (!obstacles || !obstacles.length) return T;
+    var lo = horiz ? Math.min(a.y, b.y) : Math.min(a.x, b.x), hi = horiz ? Math.max(a.y, b.y) : Math.max(a.x, b.x), band = [], i;
+    for (i = 0; i < obstacles.length; i++) {
+      var o = obstacles[i];
+      if (o === a || o === b) continue;
+      if (horiz ? (o.y + o.h / 2 > lo && o.y - o.h / 2 < hi) : (o.x + o.w / 2 > lo && o.x - o.w / 2 < hi)) band.push(o);
+    }
+    for (var guard = 0; guard < 50; guard++) {
+      var moved = false;
+      for (i = 0; i < band.length; i++) {
+        var near = horiz ? band[i].x - band[i].w / 2 : band[i].y - band[i].h / 2;
+        var far = horiz ? band[i].x + band[i].w / 2 : band[i].y + band[i].h / 2;
+        if (near - CONN_LOOP_OUT / 2 <= T && T <= far + CONN_LOOP_OUT / 2) { T = (sign > 0 ? far : near) + sign * CONN_LOOP_OUT; moved = true; }
+      }
+      if (!moved) break;
+    }
+    return Math.abs(T - T0) > CONN_LOOP_OUT * 4 ? T0 : T; // 한도 (connectorGeometry.MAX_TRUNK_PUSH)
+  }
+  function connResolveSide(box, other, side) {
+    if (side && side !== 'auto') return side;
+    var dx = other.x - box.x, dy = other.y - box.y;
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+    return dy >= 0 ? 'bottom' : 'top';
+  }
+  function connAnchor(box, side) {
+    if (side === 'right') return { x: box.x + box.w / 2, y: box.y };
+    if (side === 'left') return { x: box.x - box.w / 2, y: box.y };
+    if (side === 'bottom') return { x: box.x, y: box.y + box.h / 2 };
+    return { x: box.x, y: box.y - box.h / 2 };
+  }
+  function connNormal(side) { return side === 'right' ? { x: 1, y: 0 } : side === 'left' ? { x: -1, y: 0 } : side === 'bottom' ? { x: 0, y: 1 } : { x: 0, y: -1 }; }
+  function connHoriz(side) { return side === 'right' || side === 'left'; }
+  function connBetweenY(a, b) {
+    var aT = a.y - a.h / 2, aB = a.y + a.h / 2, bT = b.y - b.h / 2, bB = b.y + b.h / 2;
+    if (aB <= bT) return (aB + bT) / 2;
+    if (bB <= aT) return (bB + aT) / 2;
+    return Math.max(aB, bB) + CONN_LOOP_OUT;
+  }
+  function connBetweenX(a, b) {
+    var aL = a.x - a.w / 2, aR = a.x + a.w / 2, bL = b.x - b.w / 2, bR = b.x + b.w / 2;
+    if (aR <= bL) return (aR + bL) / 2;
+    if (bR <= aL) return (bR + aL) / 2;
+    return Math.max(aR, bR) + CONN_LOOP_OUT;
+  }
+  function connRouteBySides(a, sA, b, sB, obstacles) {
+    var S = 24, pA = connAnchor(a, sA), pB = connAnchor(b, sB), nA = connNormal(sA), nB = connNormal(sB);
+    var p1 = { x: pA.x + nA.x * S, y: pA.y + nA.y * S }, p4 = { x: pB.x + nB.x * S, y: pB.y + nB.y * S };
+    if (sA === sB) {
+      var T = connTrunk(a, b, sA, obstacles);
+      return connHoriz(sA) ? [pA, { x: T, y: pA.y }, { x: T, y: pB.y }, pB] : [pA, { x: pA.x, y: T }, { x: pB.x, y: T }, pB];
+    }
+    if (connHoriz(sA) && connHoriz(sB)) {
+      if ((pB.x - pA.x) * nA.x >= S * 2) { var mx = (pA.x + pB.x) / 2; return [pA, { x: mx, y: pA.y }, { x: mx, y: pB.y }, pB]; }
+      var my = connBetweenY(a, b);
+      return [pA, p1, { x: p1.x, y: my }, { x: p4.x, y: my }, p4, pB];
+    }
+    if (!connHoriz(sA) && !connHoriz(sB)) {
+      if ((pB.y - pA.y) * nA.y >= S * 2) { var my2 = (pA.y + pB.y) / 2; return [pA, { x: pA.x, y: my2 }, { x: pB.x, y: my2 }, pB]; }
+      var mx2 = connBetweenX(a, b);
+      return [pA, p1, { x: mx2, y: p1.y }, { x: mx2, y: p4.y }, p4, pB];
+    }
+    var corner = connHoriz(sA) ? { x: pB.x, y: pA.y } : { x: pA.x, y: pB.y };
+    var frontA = (corner.x - pA.x) * nA.x + (corner.y - pA.y) * nA.y;
+    var frontB = (corner.x - pB.x) * nB.x + (corner.y - pB.y) * nB.y;
+    if (frontA >= S && frontB >= S) return [pA, corner, pB];
+    return connHoriz(sA) ? [pA, p1, { x: p1.x, y: p4.y }, p4, pB] : [pA, p1, { x: p4.x, y: p1.y }, p4, pB];
+  }
+  function connDedupe(pts) {
+    var out = [];
+    for (var i = 0; i < pts.length; i++) {
+      var l = out[out.length - 1];
+      if (!l || Math.abs(l.x - pts[i].x) > 0.01 || Math.abs(l.y - pts[i].y) > 0.01) out.push(pts[i]);
+    }
+    return out;
+  }
+  function connPoints(a, b, obstacles, fromSide, toSide) {
+    if ((fromSide && fromSide !== 'auto') || (toSide && toSide !== 'auto')) {
+      return connDedupe(connRouteBySides(a, connResolveSide(a, b, fromSide), b, connResolveSide(b, a, toSide), obstacles));
+    }
     var aL = a.x - a.w / 2, aR = a.x + a.w / 2, bL = b.x - b.w / 2, bR = b.x + b.w / 2;
     var same = Math.abs(a.y - b.y) < 1, midX;
     if (aL < bR && bL < aR) {
@@ -1317,7 +1400,7 @@ const VIEWER_JS = String.raw`
     for (var i = 0; i < list.length; i++) {
       var c = list[i], a = boxes[c.from], b = boxes[c.to];
       if (!a || !b || a === b) continue;
-      var pts = connPoints(a, b, obstacles);
+      var pts = connPoints(a, b, obstacles, c.fromSide, c.toSide);
       var shape = c.shape || CONN_DEF.shape;
       var width = Number(c.width) > 0 ? Math.min(8, Number(c.width)) : CONN_DEF.width;
       var color = c.color || CONN_DEF.color;

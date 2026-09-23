@@ -7,7 +7,7 @@
 // 값은 `updateConnector` 한 번 = undo 한 단계. 규칙: 10-canvas.md §31.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { Connector, ConnectorArrows, ConnectorDash, ConnectorLabelPlace, ConnectorLabelShape, ConnectorShape } from '@/editor/__samples__/types';
+import type { Connector, ConnectorArrows, ConnectorDash, ConnectorLabelPlace, ConnectorLabelShape, ConnectorShape, ConnectorSide } from '@/editor/__samples__/types';
 import { findNodeInMap, useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { CONNECTOR_DEFAULTS, CONNECTOR_WIDTH_MAX, connectorArrowsOf, connectorColorOf, connectorDashOf, connectorShapeOf, connectorWidthOf } from '@/editor/canvas/ConnectorLayer';
@@ -37,6 +37,15 @@ const ARROWS: { key: ConnectorArrows; label: string }[] = [
   { key: 'end', label: '끝 ▶' },
   { key: 'start', label: '◀ 시작' },
   { key: 'both', label: '◀ 양쪽 ▶' },
+];
+
+// 닿는 면 (2026-09-23 사용자 요청: "시작 면과 끝 면을 설정할 수 있게") — auto 는 상대 노드 쪽
+const SIDES: { key: ConnectorSide; label: string; hint: string }[] = [
+  { key: 'auto', label: '자동', hint: '상대 노드가 있는 쪽 (둘 다 자동이면 오른쪽 고리·가운데 꺾음 규칙)' },
+  { key: 'top', label: '위', hint: '노드 위쪽 면 한가운데' },
+  { key: 'bottom', label: '아래', hint: '노드 아래쪽 면 한가운데' },
+  { key: 'left', label: '왼쪽', hint: '노드 왼쪽 면 한가운데' },
+  { key: 'right', label: '오른쪽', hint: '노드 오른쪽 면 한가운데' },
 ];
 
 const PLACES: { key: ConnectorLabelPlace; label: string; hint: string }[] = [
@@ -74,6 +83,8 @@ export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Co
   const arrows = connectorArrowsOf(c);
   const color = connectorColorOf(c);
   const labelText = c.label?.text ?? '';
+  const fromSide = c.fromSide ?? 'auto';
+  const toSide = c.toSide ?? 'auto';
   const place = c.label?.place ?? 'center';
   const labelShape = c.label?.shape ?? 'rounded';
 
@@ -106,6 +117,32 @@ export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Co
               <span style={{ fontSize: 9.5 }}>{s.label}</span>
             </button>
           ))}
+        </div>
+      </InspectorSection>
+
+      <InspectorSection t={t} title="닿는 면 — 어디서 나가 어디에 닿나">
+        <InspectorRow t={t} label="시작 면">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 3 }}>
+            {SIDES.map((s) => (
+              <button key={s.key} title={s.hint} data-testid={`connector-from-side-${s.key}`} onClick={() => patch({ fromSide: s.key === 'auto' ? undefined : s.key })}
+                style={{ ...chip(fromSide === s.key), padding: '6px 0', fontSize: 10.5 }}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </InspectorRow>
+        <InspectorRow t={t} label="끝 면">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 3 }}>
+            {SIDES.map((s) => (
+              <button key={s.key} title={s.hint} data-testid={`connector-to-side-${s.key}`} onClick={() => patch({ toSide: s.key === 'auto' ? undefined : s.key })}
+                style={{ ...chip(toSide === s.key), padding: '6px 0', fontSize: 10.5 }}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </InspectorRow>
+        <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.5 }}>
+          같은 면끼리(아래→아래 등)는 그 면 바깥으로 도는 고리, 마주 보는 면은 가운데서 꺾고, 직각인 면은 모서리 한 점에서 꺾습니다.
         </div>
       </InspectorSection>
 

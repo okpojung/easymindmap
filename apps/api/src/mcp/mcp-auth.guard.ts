@@ -48,8 +48,16 @@ export class McpAuthGuard implements CanActivate {
     const origin = requestOrigin(req, this.config.get('PUBLIC_API_URL', { infer: true }));
     const authz = req.header('authorization') ?? '';
     const raw = authz.startsWith('Bearer ') ? authz.slice(7).trim() : '';
+    // ★ 거절은 **전부 warn 으로 남긴다** (2026-09-24, §12.9). "ChatGPT 가 우리 서버를
+    //   안 불렀다" 와 "왔는데 조용히 401 로 돌아갔다" 를 로그로 가를 수 있어야 한다.
+    //   토큰 값은 절대 적지 않는다 — 모양(없음 · PAT · JWT · 기타)과 UA 만.
+    const who = `[${(req.get('user-agent') ?? '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'UA 없음'}]`;
+    const shape = !authz ? '헤더 없음' : !raw ? `Bearer 아님(${authz.slice(0, 12)}…)`
+      : raw.startsWith('emm_') ? 'PAT' : looksLikeJwt(raw) ? 'JWT' : `기타(${raw.length}자)`;
+    const reject = (why: string) => this.log.warn(`MCP 거절 ${who} 토큰=${shape}: ${why}`);
 
     if (!raw) {
+      reject('토큰 없음 → 401 + WWW-Authenticate');
       // 규격의 핵심 자리 — 클라이언트는 401 **본문이 아니라 이 헤더**를
       // 보고 인가 서버를 찾아간다(RFC 9728 §5.1). 토큰이 아예 없을 때는
       // `error` 를 붙이지 않는다(RFC 6750 §3.1).
@@ -66,6 +74,7 @@ export class McpAuthGuard implements CanActivate {
     if (raw.startsWith('emm_')) {
       const userId = await this.tokens.userIdFor(raw);
       if (!userId) {
+        reject('PAT 가 폐기됐거나 모른다');
         this.challenge(req, wwwAuthenticate(origin, {
           error: 'invalid_token', description: 'The access token is revoked or unknown.',
         }));
@@ -82,6 +91,7 @@ export class McpAuthGuard implements CanActivate {
     //   `.mcp.json` 의 자리표시가 환경 변수 없이 **그대로** 나간 경우다
     //   (2026-09-06 실측).
     if (!looksLikeJwt(raw)) {
+      reject('PAT 도 JWT 도 아닌 토큰');
       this.challenge(req, wwwAuthenticate(origin, {
         error: 'invalid_token',
         description: 'Malformed token: expected a personal access token (emm_...) or a JWT.',
@@ -97,6 +107,7 @@ export class McpAuthGuard implements CanActivate {
     if (!this.config.get('GOTRUE_PUBLIC_URL', { infer: true })) {
       // 여기까지 왔으면 **JWT 는 맞다** — 그러니 "서버가 OAuth 를 열지
       // 않았다" 는 이제 사실에 맞는 진단이다.
+      reject('JWT 인데 이 서버는 OAuth 미설정');
       this.challenge(req, wwwAuthenticate(origin, {
         error: 'invalid_token', description: 'OAuth is not configured on this server; use a personal access token.',
       }));
@@ -131,9 +142,8 @@ export class McpAuthGuard implements CanActivate {
       this.challenge(req, wwwAuthenticate(origin, {
         error: 'invalid_token', description: 'The access token is invalid or expired.',
       }));
-      // warn 으로 남긴다 (2026-09-22) — 거절 이유(만료·client_id 없음·서명 불일치)가
-      // 진단의 전부인데 debug 는 배포 로그에 안 찍힌다.
-      this.log.warn(`MCP OAuth 토큰 거절 [${(req.get('user-agent') ?? '').slice(0, 60)}]: ${String((err as Error).message)}`);
+      // 거절 이유(만료·client_id 없음·서명 불일치)가 진단의 전부다 (2026-09-22)
+      reject(`OAuth 토큰 검증 실패 — ${String((err as Error).message)}`);
       throw new UnauthorizedException('토큰이 유효하지 않거나 만료되었습니다. 다시 연결해 주세요.');
     }
 

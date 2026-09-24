@@ -1,4 +1,4 @@
-import { BadGatewayException, Controller, Get, Header, NotFoundException, Req } from '@nestjs/common';
+import { BadGatewayException, Controller, Get, Header, Logger, NotFoundException, Req } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type { AppEnv } from '../config/env.validation';
@@ -26,7 +26,14 @@ import {
  */
 @Controller()
 export class OAuthMetadataController {
+  private readonly log = new Logger(OAuthMetadataController.name);
   constructor(private readonly config: ConfigService<AppEnv, true>) {}
+
+  /** 누가 안내판을 읽어 갔나 — 클라이언트가 어디까지 왔는지 보는 자국 (2026-09-24, §12.9) */
+  private trace(req: Request, what: string): void {
+    const ua = (req.get('user-agent') ?? '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'UA 없음';
+    this.log.log(`메타데이터 [${ua}] ← ${what}`);
+  }
 
   @Get(`${PRM_SUFFIX}/v1/mcp`)
   forMcp(@Req() req: Request) {
@@ -46,6 +53,7 @@ export class OAuthMetadataController {
   @Get(AS_METADATA_SUFFIX)
   @Header('Cache-Control', 'public, max-age=600')
   authorizationServer(@Req() req: Request) {
+    this.trace(req, 'oauth-authorization-server');
     return this.asDoc(req);
   }
 
@@ -53,6 +61,7 @@ export class OAuthMetadataController {
   @Get(OIDC_DISCOVERY_SUFFIX)
   @Header('Cache-Control', 'public, max-age=600')
   openidConfiguration(@Req() req: Request) {
+    this.trace(req, 'openid-configuration');
     return this.asDoc(req);
   }
 
@@ -98,6 +107,7 @@ export class OAuthMetadataController {
   }
 
   private doc(req: Request) {
+    this.trace(req, 'oauth-protected-resource');
     this.gotrue(); // 설정이 없으면 여기서 404 — 거짓 문서를 내지 않는다
     const origin = requestOrigin(req, this.config.get('PUBLIC_API_URL', { infer: true }));
     // ★ 인가 서버는 **우리 겉면**이다 (2026-09-22). GoTrue 를 직접 가리키면

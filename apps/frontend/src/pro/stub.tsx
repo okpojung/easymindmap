@@ -216,3 +216,18 @@ export function ProSalesPanel({ t }: { t: ThemeTokens }) {
 export function ProSalesAdminPanel({ t }: { t: ThemeTokens }) {
   return <ProFeaturePanel t={t} featureId="map-sales" />;
 }
+
+/**
+ * 유료 맵 뷰어의 [구매하기] 자리 — **공개판에서는 아무것도 그리지 않는다.**
+ *
+ * ★ 여기까지 오는 일이 애초에 없다: 코어는 `map-sales` 가 켜진 서버에서만
+ *   이 자리를 그리고(아니면 "아직 구매할 수 없습니다"), 그것을 켜는 것은
+ *   유료 모듈이다. 여기 왔다면 **유료 모듈은 있는데 화면 모듈만 빠진
+ *   빌드**이고, 그때 단추를 그리면 **눌러도 아무 일이 없는 단추**가 된다 —
+ *   손님에게 그것보다는 없는 편이 낫다.
+ */
+export function ProBuyPanel(_p: {
+  publishId: string; title: string; priceKrw: number | null;
+}) {
+  return null;
+}

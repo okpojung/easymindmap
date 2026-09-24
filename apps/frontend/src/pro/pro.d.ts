@@ -84,4 +84,21 @@ declare module '@pro' {
    *   어긋난다.
    */
   export function ProSalesAdminPanel(p: { t: ThemeTokens }): JSX.Element | null;
+  /**
+   * 유료 맵 뷰어(`/p/{publishId}`)의 **[구매하기] 자리** (2026-09-24).
+   *
+   * 하는 일이 둘이다.
+   *   ① 손님에게 **[구매하기]** 를 내주고 결제창으로 보낸다
+   *   ② 결제 뒤 `?sale=<id>` 를 달고 돌아오면 그것을 읽어 **열쇠를 받아
+   *      파일을 내준다** (27b §7 ①~③)
+   *
+   * ★ 테마 토큰을 받지 않는다 — 이 화면은 에디터가 아니라 **뷰어**라
+   *   자기 색(`#FFF7E6` 계열)을 쓴다. 자리도 그 색에 맞춰 그린다.
+   *
+   * ★ 코어는 **무엇을 파는지**만 넘긴다. 값 판정·결제·환불·전문 서빙은
+   *   전부 유료 모듈 안에서 끝난다.
+   */
+  export function ProBuyPanel(p: {
+    publishId: string; title: string; priceKrw: number | null;
+  }): JSX.Element | null;
 }

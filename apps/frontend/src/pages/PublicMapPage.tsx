@@ -27,6 +27,7 @@ import {
   type PreviewStats, type PublishedMap,
 } from '@/services/cloud/apiClient';
 import { useProFeature } from '@/pro/contract';
+import { ProBuyPanel } from '@pro';
 import { isFreshTab, libraryBackHref } from '@/utils/viewerChrome';
 
 /** 주소가 퍼블리싱 링크인가 — 맞으면 publishId */
@@ -127,7 +128,14 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   return (
     <>
       <ViewerBar title={data.title} />
-      {data.locked && <PaidBanner priceKrw={data.priceKrw ?? null} stats={data.stats} />}
+      {data.locked && (
+        <PaidBanner
+          publishId={publishId}
+          title={data.title}
+          priceKrw={data.priceKrw ?? null}
+          stats={data.stats}
+        />
+      )}
       <iframe
         data-testid="public-map-frame"
         title={data.title}
@@ -235,7 +243,11 @@ function ViewerBar({ title }: { title: string }) {
  *   (`GET /v1/features` 의 `map-sales`). 누르고 나서야 실패를 만나는 것이
  *   가장 나쁘다 — `canSetVisibility` 를 다루는 방식과 같다.
  */
-function PaidBanner({ priceKrw, stats }: { priceKrw: number | null; stats?: PreviewStats }) {
+function PaidBanner(
+  { publishId, title, priceKrw, stats }: {
+    publishId: string; title: string; priceKrw: number | null; stats?: PreviewStats;
+  },
+) {
   const sales = useProFeature('map-sales');
 
   useEffect(() => {
@@ -284,7 +296,13 @@ function PaidBanner({ priceKrw, stats }: { priceKrw: number | null; stats?: Prev
         {sales.status === 'on' ? (
           // 판매가 켜진 서버에서는 유료 모듈이 자기 화면을 얹는다.
           // 코어에는 결제 단추의 **자리**만 있다 (open-core-boundary §3.1 ③).
-          <div data-testid="paid-buy-slot" style={{ marginTop: 4 }} />
+          //
+          // ★ 결제·환불·전문 서빙은 전부 유료 모듈의 일이다. 코어는 이
+          //   자리에 **무엇을 파는지**(주소·제목·값)만 넘긴다 — 손님이
+          //   결제 뒤 `?sale=` 을 달고 돌아오는 것도 그쪽이 읽는다.
+          <div data-testid="paid-buy-slot" style={{ marginTop: 4 }}>
+            <ProBuyPanel publishId={publishId} title={title} priceKrw={priceKrw} />
+          </div>
         ) : (
           // ★ **서버가 준 `reason` 을 손님에게 그대로 보이지 않는다.**
           //   그 문장은 운영자를 위한 것이다("모듈이 코어보다 오래된 판일

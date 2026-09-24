@@ -4,9 +4,10 @@
 > **대상 표준:** [mindmapmarkdown/spec](https://github.com/mindmapmarkdown/spec) — Draft, 0.1.0 목표 2026-10-05
 > **관련 문서:** [`emm-spec.md`](emm-spec.md) · [`markdown-export.md`](markdown-export.md) · [`rich-node-content.md`](rich-node-content.md) · [`ai/emm-prompt-templates.md`](ai/emm-prompt-templates.md)
 
-easymindmap이 Markdown을 **불러오고, 화면에 보여주고, 내보내는 방식**을 Mindmap
-Markdown 표준에 맞추기 위해 항목별로 내린 결정이다. easymindmap은 표준 위에 올라가는
-**프로파일**(맵 설정을 ```` ```emm ```` 블록으로 더하는 방식) 방향으로 정렬한다.
+emm(EasyMindMap)이 Markdown을 **불러오고, 화면에 보여주고, 내보내는 방식**을
+mmd(Mindmap Markdown) 표준에 맞추기 위해 항목별로 내린 결정이다. emm은 표준 위에
+올라가는 **emm 프로파일**(맵 설정을 ```` ```emm ```` 블록으로 더하는 방식) 방향으로
+정렬한다. 그 관계는 2026-09-25 에 [`emm-spec.md`](emm-spec.md) §0 에 명시했다.
 
 ---
 

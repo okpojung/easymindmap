@@ -6,9 +6,11 @@
 * 최종 업데이트: 2026-08-04 — 현행(100% 클라이언트, 옵션 없는 단일 규칙, ZIP 첨부 패키징) 기준으로 서버 설계 절에 배지 정리
 * 참조: `docs/01-product/functional-spec.md § EXPORT`, `docs/02-domain/db-schema.md § exports`
 
-> **📐 포맷 정의는 이 문서가 아니라 mmd 스펙이 규범이다.**
-> Markdown 내보내기가 만드는 파일은 **Mindmap Markdown(mmd)** 문서다.
-> - 포맷 명세(설계 원칙·문법·적합성): `docs/04-extensions/emm-spec.md`
+> **📐 포맷 정의는 이 문서가 아니다.**
+> Markdown 내보내기가 만드는 파일은 **mmd(Mindmap Markdown)** 표준을 따르는
+> **emm 프로파일** 문서다.
+> - 표준(`md ↔ 트리`): <https://github.com/mindmapmarkdown/spec> — 규범
+> - 프로파일 명세(선언 블록·화면 규칙·적합성): `docs/04-extensions/emm-spec.md`
 > - 변환 규칙 상세(구현 규칙서): `docs/04-extensions/markdown-export.md`
 > - 메타데이터 계층: `22-map-file-meta.md`
 >

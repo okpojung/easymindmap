@@ -136,21 +136,24 @@ PWA·Electron·Tauri 가 **같은 코드 경로**를 쓸 수 있다.
 
 ## 3. 이 프로젝트 고유어
 
-### mmd(Mindmap Markdown) · emm(EasyMindMap) — 용어 규칙 (2026-09-15)
+### mmd(Mindmap Markdown) · emm(EasyMindMap) — 용어 규칙 (2026-09-25 개정)
 
-앞으로 두 낱말을 이렇게 나눠 쓴다 (사용자 결정).
+두 낱말을 이렇게 나눠 쓴다 (사용자 결정).
 
 | 낱말 | 뜻 | 쓰는 자리 |
 |---|---|---|
-| **mmd** | **Mindmap Markdown** — 마인드맵을 담는 마크다운 **형식**(표준) | 형식·스펙·문서·파일·프롬프트를 가리킬 때: "mmd 문서", "mmd 스펙", "mmd-Basic" |
-| **emm** | **EasyMindMap** — 이 **제품**의 준말 | 앱·커넥터·토큰·코드 식별자: `emm` 커넥터, `emm_…` 토큰, `packages/emm-parser`, `@emm/*`, ```` ```emm ```` 선언 블록(앱의 맵 정책), `emm-spec.md` 같은 파일 이름 |
+| **mmd** | **Mindmap Markdown** — `md ↔ 트리` 를 정하는 **표준**. 사양은 이 저장소 밖 [`mindmapmarkdown/spec`](https://github.com/mindmapmarkdown/spec) 에 있고 공개 RFC 로 바뀐다 | 표준을 가리킬 때: "mmd 표준", "mmd 문서", "mmd L1" |
+| **emm** | **EasyMindMap** — 이 **제품**의 준말 | 앱·커넥터·토큰·코드 식별자: `emm` 커넥터, `emm_…` 토큰, `packages/emm-parser`, `@emm/*`, ```` ```emm ```` 선언 블록, `emm-spec.md` 같은 파일 이름. 그리고 표준 위에 이 제품이 얹는 규약 — **emm 프로파일** |
 
-예전에는 형식도 "EMM(EasyMindMap Markdown)" 이라 불렀다. 2026-09-15 문서
-전체에서 형식 이름을 mmd 로 바꿨고, 파일 이름·코드 식별자의 `emm` 은
+처음에는 형식도 "EMM(EasyMindMap Markdown)" 이라 불렀고, 2026-09-15 에 형식
+이름을 mmd 로 바꿨다. 2026-09-25 에 관계를 정리해 **mmd 는 바깥의 표준**,
+**emm 프로파일은 그 표준 위에 이 제품이 얹는 규약**으로 나눈다. 프로파일 사양은
+`docs/04-extensions/emm-spec.md` 이고, 적합성 수준은 `emm-Basic`·`emm-Full`
+이라 부른다(옛 이름 mmd-Basic·mmd-Full). 파일 이름·코드 식별자의 `emm` 은
 "easymindmap 의 것"이라는 뜻이라 그대로 둔다.
 
-**mmd** = 본문 100% CommonMark/GFM + 첫 헤딩 아래 ```emm 선언 블록(맵 ID ·
-레벨별 레이아웃·도형·글자 크기). 파일 끝 메타데이터 주석(`easymindmap:v1`)은
+**emm 프로파일 문서** = mmd 표준을 따르는 본문 + 선언 블록(맵 ID · 레벨별
+레이아웃·도형·글자 크기 · 연결선). 파일 끝 메타데이터 주석(`easymindmap:v1`)은
 2026-09-15 폐기 — 노드별 스타일까지 담는 무손실 형식은 HTML 내보내기다.
 
 ````

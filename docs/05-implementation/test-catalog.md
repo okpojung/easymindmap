@@ -20,7 +20,8 @@
 > 번호는 그 사이에 남이 가져갔을 수 있다.
 >
 > ```bash
-> grep -o '^| e2e302 | **MCP 요청 로그 — ChatGPT 가 "액션이 없다" 는데 서버에 근거가 없었다** (2026-09-22, e2e301 후속) | 구성: 코드 변경만(로그). ChatGPT 계정 연결은 **성공**(겉면이 통했다 — §12.7)했는데 액션 목록이 비어 있고, API 가 MCP 요청을 한 줄도 남기지 않아 `tools/list` 가 왔는지조차 몰랐다. `mcp.controller.ts` 가 POST 마다 `MCP [UA] ← 메서드(들) → 상태` 한 줄(`tools/call` 은 도구 이름), 405 도 한 줄, 가드의 토큰 거절은 debug→warn. 본문·토큰은 안 적는다. **검증** — 의존성 없는 컨테이너라 타입만 봤고 CI 의 `test:mcp-http`(진짜 서버)가 같은 경로를 지난다. 실물은 재배포 뒤 API 컨테이너 로그(사용자 가이드 12 §2-D 스크립트) | mcp-connector.md §12.7 · user-guide 12 §2-D · api-spec 40a |
+> grep -o '^| e2e307 | **MCP 로그 구멍 — 가드의 모든 거절 · 메타데이터 · 겉면 authorize** (2026-09-24, ChatGPT 대화에서 도구가 안 불리는데 서버 흔적이 0건) | 구성: 코드 변경만(로그). **실측(§12.9)** — 재연결 두 번은 GoTrue 에서 token 200 으로 끝났는데, 그 뒤 1시간 동안 ChatGPT 의 `/v1/mcp` 요청이 0건이고 모델은 "도구가 없다"고 답했다. 가드는 JWT 검증 실패만 warn 이었고 토큰 없음·PAT 폐기·형식 오류·OAuth 미설정은 소리 없이 401 이라 "안 왔다"와 "조용히 거절됐다"를 못 갈랐다. `mcp-auth.guard.ts` 의 다섯 거절 자리를 `reject()` 하나로 모아 `MCP 거절 [UA] 토큰=<모양>: 이유` warn, `oauth-metadata.controller.ts` 의 PRM·AS 문서 읽기와 `oauth-authorize.controller.ts` 의 302 에 UA·scope 한 줄. 토큰 값·state·PKCE 는 적지 않는다. **검증** — 의존성 없는 컨테이너라 타입만 봤고 CI 의 `test:mcp-http`(401 경로 여럿)가 같은 자리를 지난다. 실물은 재배포 뒤 [새로 고침]·새 채팅 두 실험(§12.9) | mcp-connector.md §12.9 · api-spec 40a |
+| e2e302 | **MCP 요청 로그 — ChatGPT 가 "액션이 없다" 는데 서버에 근거가 없었다** (2026-09-22, e2e301 후속) | 구성: 코드 변경만(로그). ChatGPT 계정 연결은 **성공**(겉면이 통했다 — §12.7)했는데 액션 목록이 비어 있고, API 가 MCP 요청을 한 줄도 남기지 않아 `tools/list` 가 왔는지조차 몰랐다. `mcp.controller.ts` 가 POST 마다 `MCP [UA] ← 메서드(들) → 상태` 한 줄(`tools/call` 은 도구 이름), 405 도 한 줄, 가드의 토큰 거절은 debug→warn. 본문·토큰은 안 적는다. **검증** — 의존성 없는 컨테이너라 타입만 봤고 CI 의 `test:mcp-http`(진짜 서버)가 같은 경로를 지난다. 실물은 재배포 뒤 API 컨테이너 로그(사용자 가이드 12 §2-D 스크립트) | mcp-connector.md §12.7 · user-guide 12 §2-D · api-spec 40a |
 | e2e301 | **MCP — ChatGPT 연결 실패의 진짜 원인(`openid` → 토큰 교환 500)과 인가 서버 겉면** (2026-09-22 사용자 보고 "연결 오류가 난다" + GoTrue 로그) | 구성: `test:mcp` 의 `mcp-oauth.test.mjs` 단위 — 전체 **59항목 PASS**(새로 24) + `test:mcp-http` 의 `mcp-oauth-http.test.mjs`(진짜 API + **가짜 GoTrue** 한 장 :3406) **+22** — 겉면 문서 둘(200 · issuer · authorization_endpoint · 토큰/등록/JWKS 보존 · openid 없음 · OIDC 항목 없음 · 캐시 헤더) · `/v1/oauth/authorize` 302(GoTrue 경로 · openid 만 제거 · PKCE/state/resource 보존 · 인증 없음) · OAuth 끈 배포에서 둘 다 404 · GoTrue 못 읽으면 502. PRM 검사는 `[GoTrue]` → `[우리 주소]` 로 바뀜(CI 가 그 자리에서 빨간불로 잡아 줬다). **실측** — GoTrue 로그: DCR 201 → authorize 302 → 동의 200 → **`POST /oauth/token` 500 "HS256 is not supported for ID token signing"** ×4. ChatGPT 는 PRM 의 `scopes_supported`(email) 와 무관하게 `openid` 를 덧붙인다. 첫 진단(DCR 단계 실패, 손 등록 우회)은 **틀렸고 로그가 바로잡았다**(§12.5). **고친 것** — 우리 API 가 인가 서버의 겉면: PRM `authorization_servers` = 우리 주소, `/.well-known/oauth-authorization-server`(+`openid-configuration`)는 GoTrue 문서를 받아 issuer·authorization_endpoint 만 바꿔 내고, `/v1/oauth/authorize` 가 `openid` 를 떼고 GoTrue 로 302. 토큰·등록·JWKS·서명키·가드는 그대로. **단위** — `stripOpenId` ⑤(openid 만 · 순서 유지 · 비면 기본 · undefined · 공백) · `rewriteAuthorizeUrl` ⑥(GoTrue 경로 · scope 정리 · PKCE/state/resource/redirect_uri 보존 · scope 없음 · 다중 값 첫 값 · undefined 건너뜀) · `authorizationServerMetadata` ⑧(issuer · authorization_endpoint · 토큰/등록/JWKS 보존 · openid 제거 · OIDC 전용 항목 제거 · PKCE/grant/auth method 보존 · scopes 없을 때 기본 · 문서 자리 둘) · PRM 이 겉면을 가리킴 ①. **한계(정직하게)** — 컨트롤러 둘은 이 컨테이너에 의존성이 없어 타입만 봤고 HTTP 시험은 CI 에서 돈다. 실물 확인은 dev 재배포 뒤 ChatGPT 플러그인 재생성. ChatGPT 가 `id_token` 없는 토큰 응답을 거절할지는 모른다(§12.6). claude.ai 새 연결도 같은 겉면을 지나므로 다시 붙여 확인할 것 | mcp-connector.md §12.5·§12.6 · user-guide 12 §2-D · api-spec 41c·41d·41e |
 | e2e[0-9]\+' docs/05-implementation/test-catalog.md \
 >   | grep -o '[0-9]\+' | sort -n | tail -1
@@ -467,6 +468,10 @@
 > 겹쳐 보이지만 날짜와 함께 읽으면 유일하다. **고치지 말 것** — 그때의
 > 기록을 지금 규칙으로 고쳐 쓰면 없던 역사를 만드는 셈이다.
 
+- 2026-09-24 (261차): **e2e307 — MCP 로그 구멍**. ChatGPT 재연결은 token 200 인데
+  대화에서 도구가 안 불리고 서버 흔적 0건 — 가드의 모든 거절·메타데이터 읽기·겉면
+  authorize 를 로그로 남겨 "안 왔다/조용히 거절됐다" 를 가를 수 있게 했다.
+  문서: mcp-connector §12.9 · api-spec 40a.
 - 2026-09-23 (260차): **e2e306 — 연결선 시작 면·끝 면**. 사용자 캡처(왼쪽 노드
   오른쪽 → 오른쪽 노드 왼쪽으로 크게 도는 선) 보고. `fromSide`/`toSide`(auto·top·
   bottom·left·right) + `routeBySides`(같은 면 고리 4방향 장애물 회피 · 마주 봄 ㄷ ·

@@ -112,9 +112,9 @@ mmd의 본문은 100% 일반 Markdown이다. 그래서 ChatGPT·Claude 같은 AI
 1. **파싱 스냅숏** — 문서를 맵으로 변환한 결과가 저장된 기대 결과
    (`expected/*.json`)와 완전히 같은가 (파서가 몰래 바뀌면 즉시 탐지)
 2. **메타데이터 무손실 왕복** — 맵 → MD로 내보냈다가 메타데이터로
-   다시 읽으면 **원본과 100% 동일**한가 (mmd-Full 보장)
+   다시 읽으면 **원본과 100% 동일**한가 (emm-Full 보장)
 3. **본문 왕복** — 메타데이터를 지우고 본문만 다시 읽어도 노드 수가
-   기록된 값과 같은가 (mmd-Basic 보장)
+   기록된 값과 같은가 (emm-Basic 보장)
 
 CommonMark가 표준이 된 비결이 "명세 + 테스트 세트"였듯이, 이 코퍼스가
 **"이걸 통과하면 mmd 호환"이라는 판정 기준** 역할을 한다.
@@ -207,16 +207,16 @@ npx tsx cli.ts validate test.md
 성공 판정:
 
 ```
-VALID (mmd-Basic) — 구조 파싱 성공
+VALID (emm-Basic) — 구조 파싱 성공
   중심 주제: Ubuntu Apache + SSL 구축
   노드 수(본문): 13
-VALID (mmd-Full) — 메타데이터로 무손실 복원 가능
+VALID (emm-Full) — 메타데이터로 무손실 복원 가능
 ```
 
 **(d) 앱↔부품 순환 테스트 (종합)**
 
 1. EasyMindMap 앱에서 아무 맵이나 **내보내기(MD)** 로 저장
-2. 그 파일을 `validate` → `VALID (mmd-Full)` 확인
+2. 그 파일을 `validate` → `VALID (emm-Full)` 확인
    (앱과 CLI가 같은 파서를 쓴다는 증거)
 3. `convert`로 JSON까지 만들었다가 다시 MD로 되돌리고
 4. 그 파일을 앱의 **새 맵 → MD 파일 불러오기**로 열기

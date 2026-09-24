@@ -63,7 +63,7 @@ if (cmd === 'convert') {
   const map = parseEmm(text, 'validate');
   if (!map) { console.error('INVALID — 인식할 마인드맵 구조가 없습니다'); process.exit(1); }
   const decl = readDeclaration(text);
-  console.log('VALID (EMM-Basic) — 구조 파싱 성공');
+  console.log('VALID (emm-Basic) — 구조 파싱 성공');
   console.log(`  중심 주제: ${map.root.text}`);
   console.log(`  노드 수(본문): ${countMapNodes(map)}`);
   if (decl.map || decl.template || decl.levels) {

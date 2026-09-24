@@ -52,7 +52,10 @@ export class McpAuthGuard implements CanActivate {
     //   안 불렀다" 와 "왔는데 조용히 401 로 돌아갔다" 를 로그로 가를 수 있어야 한다.
     //   토큰 값은 절대 적지 않는다 — 모양(없음 · PAT · JWT · 기타)과 UA 만.
     const who = `[${(req.get('user-agent') ?? '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'UA 없음'}]`;
-    const shape = !authz ? '헤더 없음' : !raw ? `Bearer 아님(${authz.slice(0, 12)}…)`
+    //   Bearer 가 아닐 때도 값은 적지 않는다 — 스킴 이름만, 그것도 아는 것만 (#563 Codex).
+    const scheme = (authz.split(/\s+/)[0] ?? '').toLowerCase();
+    const schemeLabel = ['basic', 'bearer', 'token', 'digest'].includes(scheme) ? scheme : '알 수 없는 스킴';
+    const shape = !authz ? '헤더 없음' : !raw ? `Bearer 아님(${schemeLabel})`
       : raw.startsWith('emm_') ? 'PAT' : looksLikeJwt(raw) ? 'JWT' : `기타(${raw.length}자)`;
     const reject = (why: string) => this.log.warn(`MCP 거절 ${who} 토큰=${shape}: ${why}`);
 

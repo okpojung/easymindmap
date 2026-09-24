@@ -29,9 +29,14 @@ export class OAuthAuthorizeController {
     if (!as) {
       throw new NotFoundException('OAuth 커넥터가 이 서버에 설정되지 않았습니다 (GOTRUE_PUBLIC_URL 미설정).');
     }
-    // scope 만 남긴다 — state·PKCE·code 는 적지 않는다 (2026-09-24, §12.9)
-    const scope = Array.isArray(query.scope) ? query.scope[0] : query.scope;
-    this.log.log(`겉면 authorize [${(req.get('user-agent') ?? '').slice(0, 60) || 'UA 없음'}] scope="${scope ?? ''}" → GoTrue 302`);
+    // scope 만 남긴다 — state·PKCE·code 는 적지 않는다 (2026-09-24, §12.9).
+    // 인증 없는 자리라 값은 **씻어서** 적는다: scope 글자(RFC 6749 §3.3: 출력 가능
+    // ASCII, 공백 구분)만 남기고 길이를 자른다 — 줄바꿈으로 가짜 로그 줄을 끼워
+    // 넣거나 긴 값으로 로그를 부풀리지 못하게 (#563 Codex).
+    const scopeRaw = Array.isArray(query.scope) ? query.scope[0] : query.scope;
+    const scope = String(scopeRaw ?? '').replace(/[^\x21-\x7e ]+/g, '?').replace(/\s+/g, ' ').trim().slice(0, 80);
+    const ua = (req.get('user-agent') ?? '').replace(/[^\x20-\x7e]+/g, '?').replace(/\s+/g, ' ').trim().slice(0, 60) || 'UA 없음';
+    this.log.log(`겉면 authorize [${ua}] scope="${scope}" → GoTrue 302`);
     res.redirect(302, rewriteAuthorizeUrl(as, query));
   }
 }

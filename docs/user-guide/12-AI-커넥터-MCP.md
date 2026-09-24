@@ -407,8 +407,8 @@ SCRIPT
 
 ```bash
 bash <<'SCRIPT'
-A=""; for N in $(sudo docker ps --format '{{.Names}}'); do case "$N" in *api*) A="$N";; esac; done
-[ -z "$A" ] && { echo "(api 컨테이너를 못 찾음)"; sudo docker ps --format '{{.Names}}'; exit 1; }
+A=""; for N in $(sudo docker ps --format '{{.Names}}'); do sudo docker exec "$N" printenv GOTRUE_PUBLIC_URL >/dev/null 2>&1 && A="$N"; done   # 이름이 아니라 환경변수로 찾는다 — 같은 호스트에 다른 앱의 api 컨테이너가 있다 (2026-09-24 실측)
+[ -z "$A" ] && { echo "(EasyMindMap API 컨테이너를 못 찾음)"; sudo docker ps --format '{{.Names}}  {{.Image}}'; exit 1; }
 echo "== $A — 최근 3시간 MCP 요청"
 sudo docker logs --since 3h "$A" 2>&1 | grep -a 'MCP \[\|MCP OAuth 토큰 거절' | tail -40
 SCRIPT

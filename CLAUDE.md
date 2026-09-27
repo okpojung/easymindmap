@@ -20,7 +20,10 @@ Markdown)" 이라는 옛 형식 이름은 더 쓰지 않는다 (`glossary.md` §
 2. **PR 을 만든다** (사용자가 따로 요청하지 않아도 만든다).
 3. **검증이 끝났으면 내가 병합한다.** 병합 뒤 `main` 을 당겨 받고 로컬·
    원격 브랜치를 정리한다.
-4. 그리고 **사용자가 할 일만** 보고한다 (§3).
+4. **dev 에 배포한다** — 코어 병합만으로는 아무것도 배포되지 않는다. pro
+   저장소의 `CORE_SHA` 를 올려야 Coolify 가 빌드한다 (§2.5). 코드가 바뀐
+   PR 이면 빠뜨리지 않는다(문서만 바뀌었으면 건너뛴다).
+5. 그리고 **사용자가 할 일만** 보고한다 (§3).
 
 ### 2.0 ★ 내가 병합하지 **않는** 경우 — **하나뿐이다** (2026-08-16)
 
@@ -113,6 +116,45 @@ grep -c "그 커밋이 넣은 고유 문장" <파일>     # main 에 실제로 �
 (#254 병합 뒤 문서 커밋 2개를 이렇게 잃었다 — 나중에 cherry-pick 으로
 되살렸다.)
 
+### 2.5 ★ dev 배포 — 코어 병합 뒤 **pro 의 `CORE_SHA` 를 올린다** (2026-09-27 사용자 요청으로 기록)
+
+> 이 절차는 그동안 한 세션의 기억에만 있었다. 어느 세션이든 같은 순서로
+> 하라고 여기 적는다. "병합했으니 배포됐다" 는 **틀린 보고**다.
+
+**왜 이렇게 되어 있나.** dev 서버(`api-dev.mindmap.ai.kr` · `pro-dev.mindmap.ai.kr`)
+의 Coolify 는 **비공개 `okpojung/easymindmap-pro` 에 GitHub App 으로 붙어 있고,
+그 `main` 에 푸시가 오면 알아서 다시 빌드·배포한다** (pro `docs/deploy.md` §1.4-A).
+pro 의 `Dockerfile`(API)·`Dockerfile.frontend` 는 코어를 `ARG CORE_SHA=<코어 커밋
+40자리>` 로 **고정**해 얹는다. 그래서 코어 `main` 이 바뀌어도 pro 의 그 줄을
+바꾸기 전에는 dev 는 옛 코어 그대로다. 내가 웹훅을 부르는 것이 아니다.
+
+**순서** (pro 저장소는 이 세션에 `/home/user/easymindmap-pro` 로 함께 붙어
+있다 — 없으면 `add_repo` 로 `okpojung/easymindmap-pro` 를 push 권한으로 붙인다):
+
+```bash
+SHA=$(git -C /home/user/easymindmap rev-parse origin/main)   # ① 코어 병합 커밋 (fetch 뒤)
+cd /home/user/easymindmap-pro && git checkout main && git pull -q origin main
+git checkout -b chore/core-sha-${SHA:0:7}                    # ② 브랜치
+sed -i "s/^ARG CORE_SHA=.*/ARG CORE_SHA=$SHA/" Dockerfile Dockerfile.frontend   # ③ 두 파일
+grep -n "ARG CORE_SHA" Dockerfile Dockerfile.frontend        #    둘 다 새 값인지 눈으로
+git commit -am "chore(deploy): CORE_SHA → ${SHA:0:7} (<무엇>, 코어 #<PR>)"
+git push -u origin chore/core-sha-${SHA:0:7}                 # ④ PR → 스쿼시 병합 (pro 에는 CI 검사가 없다)
+```
+
+⑤ 병합 뒤 pro `main` 을 당기고 브랜치를 정리한다. ⑥ **배포를 확인한다** —
+Coolify 가 두 이미지를 빌드하는 데 3분 안팎:
+
+```bash
+# API: health 의 commit 이 **pro 병합 커밋**(코어 SHA 가 아니다)이 될 때까지 15초마다
+curl -s https://api-dev.mindmap.ai.kr/v1/health | python3 -c "import sys,json; print(json.load(sys.stdin)['commit'])"
+# 프런트: 새 번들에 이번 PR 의 고유 문자열(testid 등)이 있는가
+js=$(curl -s https://pro-dev.mindmap.ai.kr/ | grep -o 'assets/index-[^"]*\.js' | head -1)
+curl -s "https://pro-dev.mindmap.ai.kr/$js" | grep -c "<이번 PR 의 고유 문자열>"
+```
+
+둘 다 확인된 뒤에 §3 보고를 쓴다. pro `main` 에 푸시가 있으면 **문서만 바뀌어도**
+Coolify 는 다시 빌드한다(같은 `CORE_SHA` 면 같은 결과) — 놀라지 않는다.
+
 ## 3. ★ 병합했으면 **항상 이 형식으로 알린다**
 
 병합 직후, 답변의 **맨 첫 두 줄**을 이 형식으로 시작한다.
@@ -132,6 +174,8 @@ PR #221 준비 완료 — 병합은 확인 후 해주세요.
 ### 3.1 재배포 범위 — 무엇을 적나
 
 바꾼 파일로 판정한다. **추측하지 말고 `git show --stat` 으로 확인**한다.
+재배포 범위가 "없음" 이 아니면 §2.5 의 `CORE_SHA` 갱신과 health 확인까지 마친
+뒤에 이 줄을 쓴다 — dev 에 올라간 것을 확인하고 적는 것이지 예고가 아니다.
 
 | 바뀐 곳 | 적는 문장 |
 |---|---|

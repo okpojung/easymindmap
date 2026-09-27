@@ -340,6 +340,59 @@ export class AttachmentsService {
   }
 
   /**
+   * ★ **산 사람에게 여는 첨부** (2026-09-27, 27b §8.2.1 8단계).
+   *
+   * 유료 맵의 첨부는 `openPublished` 가 열지 않는다 — 거기 조건이
+   * `visibility='public'` 이기 때문이고, 그건 옳다(값을 매긴 맵의 사진이
+   * 주소만으로 새면 미리보기를 자른 의미가 없다).
+   *
+   * 그래서 문을 하나 더 두되, **여는 판정은 우리가 하지 않는다.** 누가
+   * 샀는지는 유료 모듈의 원장에 있다 — 부르는 쪽이 넘겨준 `allow(mapId)`
+   * 가 그 판정이고, 우리는 **그 맵의 첨부가 맞는지**와 파일만 책임진다.
+   *
+   * 순서가 중요하다: **먼저 그 맵의 첨부인지 확인하고, 그다음에 묻는다.**
+   * 반대로 하면 남의 맵 첨부 id 로 물어도 "산 사람" 이면 열린다.
+   */
+  async openPaid(
+    publishId: string,
+    id: string,
+    allow: (mapId: string) => Promise<boolean>,
+    range?: { start: number; end: number },
+  ): Promise<AttachmentMeta & { stream: ReadStream }> {
+    // 퍼블리싱·값 칸이 없는 서버에는 유료 맵 자체가 없다
+    if (!(await tableReady(this.db, 'public.published_maps'))
+      || !(await columnReady(this.db, 'public.published_maps', 'visibility'))) {
+      throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');
+    }
+    const { rows } = await this.db.query<{
+      map_id: string; name: string; mime: string; size_bytes: string; storage_key: string;
+    }>(
+      `SELECT a.map_id, a.name, a.mime, a.size_bytes, a.storage_key
+         FROM public.attachments a
+         JOIN public.maps m
+           ON m.id = a.map_id AND m.deleted_at IS NULL
+         JOIN public.published_maps p
+           ON p.map_id = a.map_id AND p.unpublished_at IS NULL
+        WHERE a.id = $1 AND p.publish_id = $2
+          AND p.visibility = 'paid'`,
+      [id, publishId],
+    );
+    const r = rows[0];
+    // ★ **없는 것과 못 여는 것을 같은 말로 답한다.** 구분하면 열쇠를 찍어
+    //   보는 사람에게 "그 첨부는 있다" 를 알려 주는 셈이다.
+    if (!r || !(await allow(r.map_id))) {
+      throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');
+    }
+    return {
+      id,
+      name: r.name,
+      mime: r.mime,
+      sizeBytes: Number(r.size_bytes),
+      stream: await this.storage.stream(r.storage_key, range),
+    };
+  }
+
+  /**
    * 첨부 지우기 — 내 것이거나, **그 맵에 쓸 수 있는 사람**이면 된다
    * (2026-09-05). 협업맵의 첨부는 맵 주인 것이라, 올린 참가자가 노드에서
    * 떼어 낼 때 서버 파일도 함께 지우려면 편집 권한으로 열어 줘야 한다 —

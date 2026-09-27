@@ -49,6 +49,26 @@ export interface ProContract {
    * 스텁(공개판)은 구현하지 않는다 — 방이 없으므로 물을 것도 없다.
    */
   collabRoomLive?(mapId: string): boolean | Promise<boolean>;
+
+  /**
+   * ★ **이 열쇠가 이 맵을 산 사람의 것인가** (2026-09-27, 선택).
+   *   설계: docs/04-extensions/publish/27b-paid-implementation.md §8.2.1
+   *
+   * 유료 맵의 **사진·첨부**를 산 사람에게 내주려면 누군가 두 가지를 알아야
+   * 한다 — 파일이 어디 있는지(저장소)와, 이 사람이 샀는지(원장). 저장소는
+   * 코어 것이고 원장은 유료 모듈 것이다.
+   *
+   * 그래서 **코어가 열고, 판정만 여기서 묻는다.** 반대로 했다면(유료가
+   * 직접 파일을 읽는다) 유료 모듈이 코어의 저장소 드라이버를 베껴야 하고,
+   * 로컬·S3 가 갈릴 때 **한쪽만 고쳐진다.**
+   *
+   * ★ **구현이 없으면 열지 않는다.** 모르면 닫는 쪽이 맞다 — 유료 맵의
+   *   첨부가 공짜로 새는 것은 되돌릴 수 없다.
+   *
+   * @param token 손님이 가진 다운로드 열쇠의 **원문** (주소가 아니라 본문으로 온다)
+   * @param mapId 그 첨부가 달린 맵
+   */
+  saleGrantsMap?(token: string, mapId: string): boolean | Promise<boolean>;
 }
 
 /**

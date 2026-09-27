@@ -1,8 +1,8 @@
 import {
   BadRequestException,
   Body,
-  Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res,
-  StreamableFile, UploadedFile, UseGuards, UseInterceptors,
+  Controller, Delete, Get, HttpCode, Inject, Optional, Param, ParseUUIDPipe, Patch, Post, Put,
+  Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UPLOAD_LIMITS } from '../common/upload-limits';
@@ -13,6 +13,7 @@ import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { PublishService, type PublishVisibility } from './publish.service';
 import { buildOgFragment } from './og-tags';
+import { PRO, type ProContract } from '../pro/pro.contract';
 
 /**
  * 퍼블리싱 · 중단 · 상태 — **맵 주인의 조작**이라 인증이 필요하다.
@@ -156,6 +157,8 @@ export class PublicPublishController {
   constructor(
     private readonly publish: PublishService,
     private readonly attachments: AttachmentsService,
+    // 유료 모듈 — **없을 수 있다**(공개판). 없으면 유료 첨부는 열리지 않는다.
+    @Optional() @Inject(PRO) private readonly pro?: ProContract,
   ) {}
 
   /** 슬러그 모양이 아니면 DB 에 묻지도 않는다 — 공개 경로라 아무나 두드린다 */
@@ -231,6 +234,50 @@ export class PublicPublishController {
     const slug = PublicPublishController.slug(publishId);
     await sendAttachment(req, res,
       (range) => this.attachments.openPublished(slug, attachmentId, range));
+  }
+
+  /**
+   * ★ **산 사람의 사진·첨부** (2026-09-27, 27b §8.2.1 8단계).
+   *
+   * 유료 맵의 첨부는 위의 GET 이 열지 않는다(`visibility='public'` 만 연다).
+   * 산 사람에게는 열어야 하는데, **누가 샀는지는 유료 모듈의 원장**에 있다.
+   * 그래서 **코어가 열고 판정만 유료에 묻는다**(`saleGrantsMap`).
+   *
+   * ★ **POST 인 것에 이유가 있다.** 열쇠를 주소에 실으면 주소창·referrer·
+   *   프록시 로그에 남는다(27b §7.2). 받은 파일이 남의 사이트로 referrer 를
+   *   보내는 순간 **그 열쇠로 누구나 같은 파일을 받는다.**
+   *
+   * ★ 유료 모듈이 없거나 그 함수를 구현하지 않았으면 **열지 않는다** —
+   *   모르면 닫는 쪽이 맞다.
+   */
+  @Post(':publishId/attachment')
+  // 파일을 **주는** 요청이다 — POST 의 기본값 201(Created)은 거짓말이 된다.
+  // (구간 요청일 때 `sendAttachment` 가 206 으로 덮어쓴다.)
+  @HttpCode(200)
+  async paidAttachment(
+    @Param('publishId') publishId: string,
+    @Body() body: { attachmentId?: string; token?: string } | undefined,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const slug = PublicPublishController.slug(publishId);
+    const attachmentId = String(body?.attachmentId ?? '');
+    const token = String(body?.token ?? '');
+    // UUID 가 아니면 DB 에 묻지 않는다 — 공개 경로라 아무나 두드린다
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attachmentId)) {
+      throw new BadRequestException('첨부 파일을 찾을 수 없습니다.');
+    }
+    // 받은 파일이 열쇠를 밖으로 흘리지 않게, 캐시·referrer 를 닫는다
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    await sendAttachment(req, res, (range) => this.attachments.openPaid(
+      slug, attachmentId,
+      async (mapId) => {
+        if (!token || !this.pro?.saleGrantsMap) return false;
+        return (await this.pro.saleGrantsMap(token, mapId)) === true;
+      },
+      range,
+    ));
   }
 
   /**

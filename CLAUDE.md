@@ -157,10 +157,11 @@ Coolify 는 다시 빌드한다(같은 `CORE_SHA` 면 같은 결과) — 놀라�
 
 > ⑥ 의 `curl` 이 `CONNECT tunnel failed, response 403` 이면 **세션 환경의 네트워크
 > 정책**이 그 호스트를 막은 것이다(서버 문제가 아니다). 클라우드 환경 편집 ▸
-> 허용된 도메인에 `api-dev.mindmap.ai.kr` · `pro-dev.mindmap.ai.kr` ·
-> `coolify-dev.mindmap.ai.kr` 이 있어야 한다 — 2026-09-27 에 넣었고, 저장 즉시
-> 돌던 세션에도 적용됐다(`pro-dev` 200 · `coolify-dev` 401 = 닿는다). 셋 중 하나가
-> 빠져 있으면 사용자에게 그 도메인을 넣어 달라고 한다(사용자만 할 수 있다).
+> 허용된 도메인에 `api-dev.mindmap.ai.kr` · `pro-dev.mindmap.ai.kr` 이 있어야
+> 한다 — 2026-09-27 에 넣었고, 저장 즉시 돌던 세션에도 적용됐다(`pro-dev` 200).
+> 둘 중 하나가 빠져 있으면 사용자에게 그 도메인을 넣어 달라고 한다(사용자만
+> 할 수 있다). `coolify-dev.mindmap.ai.kr` 은 ⑥ 에 필요 없다 — Coolify API 로
+> 직접 재배포하는 절차가 생길 때만 그 절차가 요구한다(지금은 없다).
 
 ## 3. ★ 병합했으면 **항상 이 형식으로 알린다**
 

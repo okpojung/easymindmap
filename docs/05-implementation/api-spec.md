@@ -1660,6 +1660,34 @@ nginx 가 `/p/{id}` 를 낼 때 **SSI 로 이것만 끼워 넣는다** — 페�
 **Response** `200 OK` (또는 `206 Partial Content`) — 파일 바이트
 `404` — 위 조건 중 하나라도 아니다.
 
+### POST /published/{publishId}/attachment
+**산 사람**의 사진·첨부 (2026-09-27, 27b §8.2.2). `Range` 지원.
+
+```json
+{ "attachmentId": "uuid", "token": "emm_dl_…" }
+```
+
+위 GET 은 **무료공개(`public`)만** 연다 — 값을 매긴 맵의 사진이 주소만으로
+새면 미리보기를 자른 의미가 없다. 산 사람에게는 열어야 하므로 문을 따로 둔다.
+
+★ **POST 인 이유** — 열쇠를 주소에 실으면 주소창·referrer·프록시 로그에
+남는다(27b §7.2). 본문으로만 받는다.
+
+여는 조건 — 넷을 모두 만족해야 한다.
+1. 그 첨부가 **그 맵의 것**(`attachments.map_id`)
+2. 그 맵이 **유료공개 중**(`visibility = 'paid'` · `unpublished_at IS NULL`)
+3. 맵이 휴지통에 있지 않다
+4. ★ **유료 모듈이 "이 열쇠가 이 맵을 산 사람의 것"이라고 답한다**
+   (`ProContract.saleGrantsMap` — 유료 모듈이 없거나 구현하지 않았으면 **닫는다**)
+
+판정 **순서**가 규칙의 일부다: 1~3 을 먼저 보고 **그다음에** 4 를 묻는다.
+반대로 하면 남의 맵 첨부 id 로 물어도 산 사람이면 열린다.
+
+**Response** `200 OK` (또는 `206`) — 파일 바이트.
+`Cache-Control: no-store` · `Referrer-Policy: no-referrer`
+`400` — `attachmentId` 가 UUID 가 아니다
+`404` — 위 조건 중 하나라도 아니다 (**없는 것과 못 여는 것을 구분하지 않는다**)
+
 ---
 
 ## 9. AI Generation `[미구현]`

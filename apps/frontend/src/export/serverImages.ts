@@ -32,6 +32,22 @@ function toDataUrl(bytes: Uint8Array, mime: string): string {
   return `data:${mime};base64,${btoa(bin)}`;
 }
 
+/**
+ * ★ **첨부 바이트를 가져오는 다른 길** (2026-09-27, 27b §8.2.1 8단계).
+ *
+ * 기본 길은 **내 로그인**으로 서버 첨부를 받는 것이다(`attachmentFetchUrl`).
+ * 그런데 **맵을 산 사람**은 그 맵의 주인이 아니라 그 길이 닫혀 있다 —
+ * 열쇠(`sale_claims`)로 여는 다른 문이 있고, 그 문은 유료 모듈이 판정한다.
+ *
+ * 그래서 **가져오는 방법만** 갈아 끼우게 열어 둔다. 내보내기의 나머지(어떤
+ * 사진을 찾을지·어떻게 담을지)는 한 벌로 남는다 — 두 벌이 되면 한쪽만
+ * 고쳐져 "산 사람의 파일에서만 사진이 깨지는" 날이 온다.
+ *
+ * `null` 을 돌려주면 **못 받은 것**으로 센다(원래 주소가 그대로 남는다).
+ */
+export type AttachmentBytesFetcher =
+  (attachmentId: string) => Promise<{ bytes: Uint8Array; mime: string } | null>;
+
 export interface ServerImageResult {
   /** src → data URL. 못 받아 온 것은 담기지 않는다(원래 src 가 유지된다) */
   bySrc: Map<string, string>;
@@ -65,7 +81,11 @@ function collectSrcs(n: MindNode | undefined, out: Set<string>): void {
  * 같은 사진이 여러 노드에 있으면 **한 번만 받는다**(src 로 모은다) —
  * 큰 사진이 여러 번 흐르면 내보내기가 그만큼 느려진다.
  */
-export async function fetchServerImageDataUrls(map: SampleMap): Promise<ServerImageResult> {
+export async function fetchServerImageDataUrls(
+  map: SampleMap,
+  /** 주어지면 **이 길로** 받는다 (산 사람의 열쇠 등) */
+  fetchBytes?: AttachmentBytesFetcher,
+): Promise<ServerImageResult> {
   const srcs = new Set<string>();
   // **둘째 이후 중심주제도 훑는다** (2026-09-16, 3단계). 첫 중심만 보면
   // 둘째 중심의 사진은 서버 주소로 남아 내보낸 파일에서 그 사진만 깨진다.
@@ -78,10 +98,20 @@ export async function fetchServerImageDataUrls(map: SampleMap): Promise<ServerIm
   let failed = 0;
   for (const src of srcs) {
     try {
-      const res = await fetch(await attachmentFetchUrl(src));
-      if (!res.ok) throw new Error(String(res.status));
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      const mime = (res.headers.get('content-type') || 'image/png').split(';')[0].trim();
+      let bytes: Uint8Array;
+      let mime: string;
+      const id = serverAttachmentId(src);
+      if (fetchBytes && id) {
+        const got = await fetchBytes(id);
+        if (!got) { failed += 1; continue; }
+        bytes = got.bytes;
+        mime = (got.mime || 'image/png').split(';')[0].trim();
+      } else {
+        const res = await fetch(await attachmentFetchUrl(src));
+        if (!res.ok) throw new Error(String(res.status));
+        bytes = new Uint8Array(await res.arrayBuffer());
+        mime = (res.headers.get('content-type') || 'image/png').split(';')[0].trim();
+      }
       if (!PACKABLE.test(mime)) { failed += 1; continue; }
       bySrc.set(src, toDataUrl(bytes, mime.toLowerCase()));
     } catch {

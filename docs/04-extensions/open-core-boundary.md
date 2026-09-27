@@ -188,6 +188,12 @@ export interface ProContract {
   // 선택 (2026-09-09) — 협업 방이 살아 있나. MCP 가 정본에 쓰기 전에 묻는다
   // (mcp-connector.md §9.13). 스텁은 구현하지 않는다
   collabRoomLive?(mapId: string): boolean | Promise<boolean>;
+  // 선택 (2026-09-27) — **이 열쇠가 이 맵을 산 사람의 것인가.**
+  // 유료 맵의 사진·첨부를 코어가 내주기 전에 묻는다 (27b §8.2.2).
+  // ★ 파일은 코어가 연다 — 저장소 드라이버를 유료가 베끼면 로컬·S3 가
+  //   갈릴 때 한쪽만 고쳐진다. **판정만** 여기서 한다.
+  // ★ 구현이 없으면 **열지 않는다**(모르면 닫는다).
+  saleGrantsMap?(token: string, mapId: string): boolean | Promise<boolean>;
 }
 ```
 

@@ -30,8 +30,8 @@ import {
 import { splitNodeParts } from '@/editor/node-renderer/nodeBlocks';
 import { computeNodeChecks } from '@/editor/node-renderer/mdCheck';
 import { buildZip, type ZipEntry } from './zip';
-import { attachmentFetchUrl } from '@/services/cloud/apiClient';
-import { fetchServerImageDataUrls } from './serverImages';
+import { attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClient';
+import { fetchServerImageDataUrls, type AttachmentBytesFetcher } from './serverImages';
 import {
   buildMapMeta,
   bytesToDataUrl,
@@ -3891,11 +3891,22 @@ export async function buildExportPackage(
   spacing?: LayoutSpacing,
   // 내보낼 때의 에디터 테마가 다크인지 — 뷰어가 이 모드로 열린다
   dark?: boolean,
+  /**
+   * ★ **첨부를 가져오는 다른 길** (2026-09-27, 27b §8.2.1 8단계).
+   *
+   * 없으면 예전 그대로 **내 로그인**으로 받는다. 주어지면 그 길로만 받는다 —
+   * **맵을 산 사람**은 그 맵의 주인이 아니라서 내 로그인으로는 열리지 않고,
+   * 대신 열쇠로 여는 문이 있다(그 판정은 유료 모듈이 한다).
+   *
+   * 파는 쪽이 자기 내보내기를 따로 쓰지 않게 하려고 **여기 한 자리만** 연다.
+   * 두 벌이 되면 한쪽만 고쳐져 "산 사람의 파일에서만 깨지는" 날이 온다.
+   */
+  fetchBytes?: AttachmentBytesFetcher,
 ): Promise<ExportPackage> {
   // 우리 저장소 사진을 **먼저** 되받아 data URL 로 되돌린다 (B16 ② 슬라이스 1).
   // **첨부가 하나도 없는 경로(아래 조기 반환)에서도** 사진은 있을 수 있으므로
   // 여기서 한다 — 그 아래에 두면 사진만 있는 맵이 서버 URL 로 나간다.
-  const srvImg = await fetchServerImageDataUrls(map0);
+  const srvImg = await fetchServerImageDataUrls(map0, fetchBytes);
   const map = srvImg.inlined ? withInlinedImages(map0, (s) => srvImg.bySrc.get(s)) : map0;
 
   const title = safeName(map.title, 'mindmap');
@@ -3931,10 +3942,19 @@ export async function buildExportPackage(
   for (const att of attachments) {
     if (!att.url) continue;
     try {
-      // 서버 첨부(B9)는 인증 토큰을 붙여 받아온다 — 그 외 URL 은 그대로
-      const res = await fetch(await attachmentFetchUrl(att.url));
-      if (!res.ok) throw new Error(String(res.status));
-      const bytes = new Uint8Array(await res.arrayBuffer());
+      let bytes: Uint8Array;
+      const srvId = serverAttachmentId(att.url);
+      if (fetchBytes && srvId) {
+        // 산 사람의 길 — 열쇠로 연다 (위 `fetchBytes` 주석)
+        const got = await fetchBytes(srvId);
+        if (!got) throw new Error('열쇠로 받지 못했다');
+        bytes = got.bytes;
+      } else {
+        // 서버 첨부(B9)는 인증 토큰을 붙여 받아온다 — 그 외 URL 은 그대로
+        const res = await fetch(await attachmentFetchUrl(att.url));
+        if (!res.ok) throw new Error(String(res.status));
+        bytes = new Uint8Array(await res.arrayBuffer());
+      }
       if (bytes.length <= INLINE_ATTACHMENT_LIMIT) {
         inlineById.set(att.id, bytesToDataUrl(bytes, att.name));
       }

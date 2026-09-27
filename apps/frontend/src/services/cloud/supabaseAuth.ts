@@ -4,6 +4,8 @@
 // 것은 가입/로그인/갱신/로그아웃 4개뿐이고, 번들 크기와 의존을 줄인다.
 // VITE_SUPABASE_URL 이 없으면 인증 비활성(개발 모드 — 백엔드 AUTH_MODE=dev).
 
+import { LOGOUT_PATH } from './logoutRules';
+
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 // 인증 엔드포인트 경로 접두사 — 전체 Supabase(Kong 게이트웨이)는
@@ -131,9 +133,15 @@ export const supabaseAuth = {
     await goTrue<void>('/user', { password }, accessToken, 'PUT');
   },
 
+  /**
+   * ★ **이 세션만** 끝낸다 (2026-09-27). 경로를 `/logout` 으로만 두면 GoTrue 기본
+   *   `global` 이 되어 그 사용자의 세션이 **전부** 지워진다 — ChatGPT·claude.ai 가
+   *   OAuth 로 받아 둔 세션까지. 그래서 앱에서 로그아웃할 때마다 AI 커넥터가
+   *   "Refresh Token Not Found" 로 끊겼다(mcp-connector.md §12.10). logoutRules.ts.
+   */
   async signOut(accessToken: string): Promise<void> {
     try {
-      await goTrue<void>('/logout', {}, accessToken);
+      await goTrue<void>(LOGOUT_PATH, {}, accessToken);
     } catch { /* best-effort */ }
   },
 };

@@ -42,6 +42,14 @@ await stores.select(page, 'b1-1'); await stores.center(page, 'b1-1'); await page
 await addBtn.click(); await page.waitForTimeout(200);
 ok('② 선택 있음: [+] → 메뉴(자식 노드 / 달력 노드)', await menu.isVisible() && (await menu.innerText()).includes('자식 노드 추가') && (await menu.innerText()).includes('달력 노드 추가'));
 await shot('03-add-menu', [await addBtn.boundingBox(), await menu.boundingBox()], 24);
+// 여러 노드 추가… (2026-09-28) — Ctrl+Space 없이 메뉴로 같은 창을 연다
+ok('② 메뉴에 "여러 노드 추가…"', (await menu.innerText()).includes('여러 노드 추가'));
+await page.locator('[data-testid="add-menu-multi"]').click();
+await page.waitForSelector('[data-testid="multi-add-dialog"]', { timeout: 3000 });
+ok('② 누르면 다중 노드 추가 창이 뜬다 (Esc 로 닫힘)', await page.locator('[data-testid="multi-add-dialog"]').isVisible());
+await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+ok('② 창이 닫히고 메뉴도 닫혀 있다', (await page.locator('[data-testid="multi-add-dialog"]').count()) === 0 && (await menu.count()) === 0);
+await addBtn.click(); await page.waitForTimeout(200);
 await page.locator('[data-testid="add-menu-calendar"]').click();
 await page.waitForSelector('[data-testid="calendar-dialog"]', { timeout: 3000 });
 ok('② 대화상자: 년도 2026 미리 채움 · 월 전체', (await yearIn.inputValue()) === '2026' && (await monthSel.inputValue()) === 'all');

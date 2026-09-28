@@ -36,6 +36,7 @@ check_not() {
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/docker" <<'FAKE'
 #!/bin/bash
+echo "docker-called $*" >> "${DOCKER_LOG:-/dev/null}"
 case "$1" in
   ps)
     # --format '{{.Names}}' 와 '{{.Names}}|{{.Ports}}' 두 가지로 불린다
@@ -68,6 +69,31 @@ esac
 exit 0
 FAKE
 chmod +x "$WORK/bin/docker"
+
+# 가짜 runuser — native 모드는 `runuser -u postgres -- psql|pg_dumpall …` 로 돈다.
+# 가짜 docker 의 exec 가지와 같은 시나리오 변수를 쓴다.
+cat > "$WORK/bin/runuser" <<'FAKE'
+#!/bin/bash
+echo "runuser-called $*" >> "${RUNUSER_LOG:-/dev/null}"
+shift 2; [ "$1" = "--" ] && shift          # -u <user> --
+if [ "$1" = "psql" ]; then
+  if printf '%s' "$*" | grep -q 'to_regclass'; then
+    printf '%s' "$*" | grep -q -- '-d easymindmap ' && echo "t" || echo "f"
+  else
+    printf '%s\n' ${FAKE_DBS:-easymindmap gotrue}
+  fi
+elif [ "$1" = "pg_dumpall" ]; then
+  [ "${FAKE_DIE:-0}" = "1" ] && { echo "-- 중간까지만 나오고"; exit 1; }
+  { echo "-- pg_dumpall"
+    for d in ${FAKE_DUMP_DBS:-easymindmap gotrue}; do
+      echo "CREATE DATABASE $d;"; echo "\\connect $d"; echo "-- rows";
+    done
+    head -c "${FAKE_DUMP_PAD:-40000}" /dev/zero | tr '\0' 'x'
+  }
+fi
+exit 0
+FAKE
+chmod +x "$WORK/bin/runuser"
 
 # 메일은 보내지 않는다 — 보내려 했는지만 기록한다
 cat > "$WORK/bin/curl" <<'FAKE'
@@ -181,6 +207,53 @@ ls "$WORK/nas/all-20260901-0000.sql.gz" >/dev/null 2>&1 && ok '⑩ 60일 안 된
 ls "$WORK/nas"/*.tmp >/dev/null 2>&1 && bad '⑩ NAS 에 임시 파일을 남기지 않는다' || ok '⑩ NAS 에 임시 파일을 남기지 않는다'
 L=$(ls "$WORK/dest"/all-*.sql.gz); cmp -s "$L" "$WORK/nas/$(basename "$L")" && ok '⑩ 사본이 원본과 같다' || bad '⑩ 사본이 원본과 같다'
 [ -f "$WORK/state/last-success" ] && ok '⑩ 성공으로 기록한다' || bad '⑩ 성공으로 기록한다'
+
+# ── ⑪ native 모드 — 운영 VM-03 (네이티브 PostgreSQL + /etc/emm-backup.env) ──
+export DOCKER_LOG="$WORK/docker.log" RUNUSER_LOG="$WORK/runuser.log"
+mkdir -p "$WORK/nas2"; touch "$WORK/nas2/.emm-offsite"
+cat > "$WORK/emm-backup.env" <<EOF
+# 운영 백업 설정 (시험용)
+PG_MODE=native
+PGUSER=postgres
+SMTP_HOST=127.0.0.1
+SMTP_PORT=2525
+SMTP_FROM="EasyMindMap <noreply@test>"
+ALERT_EMAILS='ops@test'
+OFFSITE_DIR=$WORK/nas2
+EOF
+rm -rf "$WORK/dest" "$WORK/state"; : > "$DOCKER_LOG"; : > "$RUNUSER_LOG"
+OUT=$(EMM_BACKUP_ENV="$WORK/emm-backup.env" run)
+check '⑪ native 로 시작한다'                  'DB=native.*앱DB=easymindmap'  "$OUT"
+check '⑪ 담을 목록을 보여준다'                '담을 데이터베이스: easymindmap gotrue' "$OUT"
+check '⑪ 성공을 알린다'                       '✅.*all-.*\.sql\.gz'        "$OUT"
+check '⑪ 설정 파일의 OFFSITE_DIR 을 쓴다'     '서버 밖으로 복사했습니다 → .*nas2/' "$OUT"
+[ -f "$WORK/state/last-success" ] && ok '⑪ 성공으로 기록한다' || bad '⑪ 성공으로 기록한다'
+[ -s "$DOCKER_LOG" ] && bad '⑪ docker 를 한 번도 부르지 않는다' || ok '⑪ docker 를 한 번도 부르지 않는다'
+check '⑪ pg_dumpall 을 postgres 계정으로 돌린다' 'runuser-called -u postgres -- pg_dumpall' "$(cat "$RUNUSER_LOG")"
+
+rm -rf "$WORK/dest" "$WORK/state"; : > "$DOCKER_LOG"
+OUT=$(EMM_BACKUP_ENV="$WORK/emm-backup.env" FAKE_DUMP_DBS="easymindmap" run)
+check '⑪ gotrue 가 빠지면 실패한다(native)'   "'gotrue' 이 백업 파일 안에 없습니다" "$OUT"
+check '⑪ 메일 설정을 파일에서 읽는다'         '\-\-mail-rcpt ops@test'      "$(cat "$MAIL_LOG")"
+check '⑪ 보내는 주소는 <> 안쪽만'             '\-\-mail-from noreply@test'  "$(cat "$MAIL_LOG")"
+[ -s "$DOCKER_LOG" ] && bad '⑪ 실패 알림도 docker 없이' || ok '⑪ 실패 알림도 docker 없이'
+
+# cron 줄의 환경변수가 파일보다 우선한다
+rm -rf "$WORK/dest" "$WORK/state"
+OUT=$(EMM_BACKUP_ENV="$WORK/emm-backup.env" OFFSITE_DIR="" run)
+check '⑪ cron 환경변수가 파일보다 우선한다'   'OFFSITE_DIR/OFFSITE_CMD 가 없습니다' "$OUT"
+
+# 파일에 메일 설정이 없으면 — 백업은 하되, 실패 때 알리지 못한다고 말한다
+printf 'PG_MODE=native\n' > "$WORK/emm-backup-nomail.env"
+rm -rf "$WORK/dest" "$WORK/state"
+OUT=$(EMM_BACKUP_ENV="$WORK/emm-backup-nomail.env" FAKE_DUMP_DBS="easymindmap" run)
+check '⑪ 메일 설정이 없으면 그렇다고 말한다'  '메일 설정을 찾지 못해 알리지 못했습니다' "$OUT"
+check_not '⑪ 그때는 curl 을 부르지 않는다'    'curl-called'                "$(cat "$MAIL_LOG")"
+
+# --check 도 native 로
+OUT=$(EMM_BACKUP_ENV="$WORK/emm-backup.env" run --check)
+check '⑪ --check 도 native 로 전제만 본다'    '전제 확인 완료'             "$OUT"
+unset DOCKER_LOG RUNUSER_LOG
 
 echo
 echo "합계: ${pass}건 통과, ${fail}건 실패"

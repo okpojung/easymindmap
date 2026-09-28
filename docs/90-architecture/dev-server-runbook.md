@@ -1667,7 +1667,7 @@ Coolify → `easymindmap-db` → **Backups** 탭은 여전히
 
 2026-08-28 부터 스크립트와 절차가 저장소에 있다 —
 [`scripts/emm-db-backup.sh`](../../scripts/emm-db-backup.sh), 가짜 docker 로
-27항목을 통과한다([`emm-db-backup.test.sh`](../../scripts/emm-db-backup.test.sh)).
+54항목을 통과한다([`emm-db-backup.test.sh`](../../scripts/emm-db-backup.test.sh)).
 **2026-09-18 에 dev 에 걸었다** (root cron `10 3 * * *`). 그날 손으로 돌린
 첫 실행이 "'gotrue' 이 백업 파일 안에 없습니다" 로 **거짓 실패**했다 —
 확인 단계의 `grep -q` 가 첫 일치에서 끝나 gzip 이 SIGPIPE 로 죽고
@@ -1754,6 +1754,9 @@ sudo crontab -l          # 백업 줄이 보여야 한다 (헬스 감시 줄과 
 | `OFFSITE_KEEP_DAYS` | `60` | `OFFSITE_DIR` 안에서 이보다 오래된 백업은 지운다 (NAS 는 서버보다 오래 둔다) |
 | `OFFSITE_TIMEOUT` | `600` | NAS 가 응답하지 않을 때 복사를 기다리는 상한(초) |
 | `OFFSITE_CMD` | (없음) | 디렉터리가 아니라 명령으로 보낼 때. 파일 경로가 `$1`. `OFFSITE_DIR` 이 있으면 무시 |
+| `PG_MODE` | `docker` | `native` 면 이 호스트의 PostgreSQL 을 `runuser -u $PGUSER -- pg_dumpall` 로 담는다 (운영 VM-03, 2026-09-28) |
+| `PGUSER` | `postgres` | native 모드의 OS/DB 계정 (소켓 peer 인증). docker 모드에서는 `DATABASE_URL` 에서 읽으므로 무시 |
+| `EMM_BACKUP_ENV` | `/etc/emm-backup.env` | 위 값들을 적어 두는 파일. **cron 줄의 환경변수가 파일보다 우선**한다 (본보기 [`scripts/emm-backup.env.example`](../../scripts/emm-backup.env.example)) |
 | `MIN_BYTES` | `10240` | 푼 크기의 바닥값 |
 
 #### ★ 서버 밖으로 — 안 하면 백업이 아니다
@@ -1875,14 +1878,40 @@ sudo bash -c '( crontab -l 2>/dev/null | grep -v emm-db-backup.sh; echo "10 3 * 
 sudo crontab -l
 ```
 
-##### ⑤ 운영으로 갈 때 (B20 ⑤ 와 함께)
+##### ⑤ 운영(VM-03) — 미리 만들어 둔 것과 구축 날 할 것 (B20 ⑤, 2026-09-28)
 
-- 운영 DB 는 **VM-03 네이티브 PostgreSQL** 이라 백업 cron 도 **VM-03** 에서
-  돈다. 스크립트는 `docker exec` 대신 로컬 `pg_dumpall` 분기가 필요하고
-  (B20 ⑤), 메일 설정은 api 컨테이너가 없으니 `/etc/emm-backup.env` 에서
-  읽는다. NAS NFS 권한에 VM-03 IP 를 더하고 ②를 VM-03 에서 반복한다.
-- 운영 cron: `OFFSITE_DIR=/mnt/nas/emm-db-backup/prod`. **dev 의 cron 에서는
-  `OFFSITE_DIR` 을 뺀다** — 사용자 결정: 운영이 서면 dev 는 NAS 에 두지 않는다.
+운영 DB 는 **VM-03 네이티브 PostgreSQL** 이라 백업 cron 도 VM-03 에서 돈다.
+스크립트 쪽은 **이미 되어 있다** — `PG_MODE=native` 면 `docker exec` 대신
+`runuser -u postgres -- pg_dumpall` 로 담고, 메일 설정은 api 컨테이너가
+없으니 `/etc/emm-backup.env` 에서 읽는다(가짜 시험 ⑪ 14항목, docker 를 한
+번도 부르지 않는 것까지 확인). 구축 날 VM-03 에서 할 것은 넷이다.
+
+```bash
+# ⓐ 스크립트 + 설정 파일 (VM-03, root)
+sudo curl -fsSL https://raw.githubusercontent.com/okpojung/easymindmap/main/scripts/emm-db-backup.sh \
+  -o /usr/local/bin/emm-db-backup.sh && sudo chmod +x /usr/local/bin/emm-db-backup.sh
+sudo curl -fsSL https://raw.githubusercontent.com/okpojung/easymindmap/main/scripts/emm-backup.env.example \
+  -o /etc/emm-backup.env && sudo chmod 600 /etc/emm-backup.env
+sudo nano /etc/emm-backup.env        # SMTP_* · ALERT_EMAILS 를 운영 값으로, OFFSITE_DIR 은 …/prod
+
+# ⓑ NAS — hng2 NFS 권한에 VM-03 IP 를 더한 뒤(①), ② 를 VM-03 에서 반복 (prod/ 표식은 이미 있다)
+
+# ⓒ 전제 확인 → 손으로 한 번
+sudo /usr/local/bin/emm-db-backup.sh --check   # "DB=native … 앱DB=<이름>" + "담을 데이터베이스: … gotrue"
+sudo /usr/local/bin/emm-db-backup.sh           # ✅ 두 줄(담기 · 서버 밖 복사)
+
+# ⓓ cron — 파일이 설정을 다 갖고 있으니 줄에는 환경변수가 없다
+sudo bash -c '( crontab -l 2>/dev/null | grep -v emm-db-backup.sh; echo "10 3 * * * /usr/local/bin/emm-db-backup.sh >> /var/log/emm-backup.log 2>&1" ) | crontab -'
+sudo crontab -l
+```
+
+같은 날 **dev 쪽에서는** cron 줄의 `OFFSITE_DIR=…` 를 빼고 NAS 의 `dev/` 를
+지운다 — 사용자 결정: 운영이 서면 dev 는 NAS 에 두지 않는다. dev 의 서버
+안 백업(14일)은 그대로 둔다.
+
+- `runuser` 는 util-linux 에 있어 Ubuntu 에 기본으로 있다. `PGUSER=postgres`
+  는 apt 가 만든 OS 계정이자 DB 슈퍼유저라 소켓 peer 인증으로 붙는다 —
+  파일에 DB 비밀번호를 둘 일이 없다.
 - 다른 명령으로 보내야 하면 `OFFSITE_CMD` 가 그대로 있다:
   `OFFSITE_CMD='rclone copy "$1" remote:emm-backups/'`.
 

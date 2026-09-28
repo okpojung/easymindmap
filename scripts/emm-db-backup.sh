@@ -17,6 +17,27 @@
 #            emm-db-backup.sh --check    담지 않고 전제만 확인한다
 set -uo pipefail
 
+# ── 설정 파일 (운영 VM-03 용, 2026-09-28) ──────────────────────────
+#
+# dev 는 api 컨테이너의 환경변수에서 메일 설정을 읽지만, 운영 DB 호스트
+# (VM-03, 네이티브 PostgreSQL)에는 api 컨테이너가 없다. 그래서 거기서는
+# `/etc/emm-backup.env`(root 600) 에 적는다 — 본보기: scripts/emm-backup.env.example.
+# **cron 줄의 환경변수가 파일보다 우선**한다(파일은 기본값이다).
+ENV_FILE="${EMM_BACKUP_ENV:-/etc/emm-backup.env}"
+if [ -f "$ENV_FILE" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|\#*) continue ;; esac
+    k=${line%%=*}; v=${line#*=}
+    v=${v%\"}; v=${v#\"}; v=${v%\'}; v=${v#\'}          # 양끝 따옴표만 벗긴다
+    # 환경에 **정해져 있으면**(빈 값이라도 — cron 줄의 `OFFSITE_DIR=` 는 "끈다"는 뜻) 파일이 이기지 않는다
+    [ -n "$k" ] && [ -z "${!k+x}" ] && export "$k=$v"
+  done < "$ENV_FILE"
+fi
+# docker  = Coolify 컨테이너의 PostgreSQL 을 `docker exec` 로 (dev)
+# native  = 이 호스트에 apt 로 깐 PostgreSQL 을 `runuser -u postgres` 로 (운영 VM-03)
+PG_MODE="${PG_MODE:-docker}"
+PGUSER="${PGUSER:-postgres}"          # native 모드에서 psql·pg_dumpall 을 돌릴 OS/DB 계정
+
 DEST="${DEST:-/var/backups/emm}"
 STATE_DIR="${STATE_DIR:-/var/lib/emm-backup}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
@@ -57,6 +78,7 @@ fail() {
 # **검증된 경로를 검증되지 않은 공용 코드로 바꾸는 것**이 되기 때문이다.
 # 합치려면 두 스크립트를 함께 시험할 수 있게 된 다음에 한다.
 envof() {
+  [ -n "$1" ] || return 0          # 컨테이너가 없으면(native) docker 를 부르지 않는다
   docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
     | sed -n "s/^$2=//p" | head -1
 }
@@ -64,8 +86,11 @@ envof() {
 notify() {
   local reason="$1"
   local api_ct smtp_host smtp_port smtp_user smtp_pass smtp_from to_list
-  api_ct=$(docker ps -a --format '{{.Names}}|{{.Ports}}' 2>/dev/null \
-    | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+  api_ct=""
+  if [ "$PG_MODE" = "docker" ]; then
+    api_ct=$(docker ps -a --format '{{.Names}}|{{.Ports}}' 2>/dev/null \
+      | grep '3000/tcp' | head -1 | cut -d'|' -f1)
+  fi
 
   smtp_host="${SMTP_HOST:-$(envof "$api_ct" SMTP_HOST)}"
   smtp_port="${SMTP_PORT:-$(envof "$api_ct" SMTP_PORT)}"
@@ -131,30 +156,63 @@ notify() {
 #
 # 이름이나 포트로 고르지 않는다. **우리 표가 있는 데이터베이스**를 가진
 # 앱을 찾는다 — 서버에 postgres 가 여럿일 수 있고, 이름은 배포마다 바뀐다.
-API=""
-for C in $(docker ps --format '{{.Names}}' 2>/dev/null); do
-  U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
-  [ -n "$U" ] || continue
-  H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
-  US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
-  N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
-  [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
-        "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
-    && { API="$C"; break; }
-done
-[ -n "$API" ] || fail "우리 표(map_documents)를 가진 데이터베이스를 찾지 못했습니다."
+# psql / pg_dumpall 을 어디서 돌리나 — 모드에 따라 둘 중 하나.
+pg_sql()  { # $1 = DB 이름, $2 = SQL   (한 값만 돌려준다)
+  if [ "$PG_MODE" = "native" ]; then
+    runuser -u "$PGUSER" -- psql -d "$1" -tAc "$2" 2>/dev/null | tr -d '\r'
+  else
+    docker exec -i "$DB" psql -U "$PGUSER" -d "$1" -tAc "$2" 2>/dev/null | tr -d '\r'
+  fi
+}
+pg_dumpall_stream() {
+  if [ "$PG_MODE" = "native" ]; then
+    runuser -u "$PGUSER" -- pg_dumpall
+  else
+    docker exec -i "$DB" pg_dumpall -U "$PGUSER"
+  fi
+}
 
-URL=$(docker exec -i "$API" printenv DATABASE_URL)
-DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
-PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
-# 시각을 먼저 찍는다 — cron 로그(`>> emm-backup.log`)에 여러 실행이 쌓이면
-# 어느 실행의 결과인지 이것으로 가른다 (2026-09-18: 옛 스크립트의 03:10
-# 실패와 새 스크립트의 손 실행이 구분되지 않아 겪었다).
-echo "── $(date '+%F %T') 시작  DB=$DB  계정=$PGUSER  (api=$API)"
+if [ "$PG_MODE" = "native" ]; then
+  # 이 호스트의 PostgreSQL. 계정은 OS 사용자 $PGUSER 로 소켓(peer)에 붙는다 —
+  # 비밀번호가 필요 없고, 파일에 비밀번호를 둘 일도 없다.
+  command -v runuser >/dev/null 2>&1 || fail "runuser 가 없습니다 (util-linux)."
+  DB="native"; API="(없음 — $ENV_FILE)"
+  DBS=$(pg_sql postgres "SELECT datname FROM pg_database WHERE datistemplate = false")
+  [ -n "$DBS" ] || fail "이 호스트의 PostgreSQL 에 붙지 못했습니다 (runuser -u $PGUSER -- psql)."
+  APPDB=""
+  for n in $DBS; do
+    [ "$(pg_sql "$n" "SELECT to_regclass('public.map_documents') IS NOT NULL")" = "t" ] \
+      && { APPDB="$n"; break; }
+  done
+  [ -n "$APPDB" ] || fail "우리 표(map_documents)를 가진 데이터베이스를 찾지 못했습니다 (native)."
+  echo "── $(date '+%F %T') 시작  DB=$DB  계정=$PGUSER  앱DB=$APPDB  (설정=$ENV_FILE)"
+else
+  # 이름이나 포트로 고르지 않는다. **우리 표가 있는 데이터베이스**를 가진
+  # 앱을 찾는다 — 서버에 postgres 가 여럿일 수 있고, 이름은 배포마다 바뀐다.
+  API=""
+  for C in $(docker ps --format '{{.Names}}' 2>/dev/null); do
+    U=$(docker exec "$C" printenv DATABASE_URL 2>/dev/null) || continue
+    [ -n "$U" ] || continue
+    H=$(printf '%s' "$U" | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+    US=$(printf '%s' "$U" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+    N=$(printf '%s' "$U" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')
+    [ "$(docker exec "$H" psql -U "$US" -d "$N" -tAc \
+          "SELECT to_regclass('public.map_documents') IS NOT NULL" 2>/dev/null)" = "t" ] \
+      && { API="$C"; break; }
+  done
+  [ -n "$API" ] || fail "우리 표(map_documents)를 가진 데이터베이스를 찾지 못했습니다."
 
-DBS=$(docker exec -i "$DB" psql -U "$PGUSER" -d postgres -tAc \
-        "SELECT datname FROM pg_database WHERE datistemplate = false" 2>/dev/null | tr -d '\r')
-[ -n "$DBS" ] || fail "데이터베이스 목록을 읽지 못했습니다."
+  URL=$(docker exec -i "$API" printenv DATABASE_URL)
+  DB=$(printf '%s' "$URL"     | sed -E 's#^[^:]+://[^@]*@([^:/]+).*#\1#')
+  PGUSER=$(printf '%s' "$URL" | sed -E 's#^[^:]+://([^:@]+).*#\1#')
+  # 시각을 먼저 찍는다 — cron 로그(`>> emm-backup.log`)에 여러 실행이 쌓이면
+  # 어느 실행의 결과인지 이것으로 가른다 (2026-09-18: 옛 스크립트의 03:10
+  # 실패와 새 스크립트의 손 실행이 구분되지 않아 겪었다).
+  echo "── $(date '+%F %T') 시작  DB=$DB  계정=$PGUSER  (api=$API)"
+
+  DBS=$(pg_sql postgres "SELECT datname FROM pg_database WHERE datistemplate = false")
+  [ -n "$DBS" ] || fail "데이터베이스 목록을 읽지 못했습니다."
+fi
 echo "담을 데이터베이스: $(printf '%s' "$DBS" | tr '\n' ' ')"
 
 # 요구한 이름이 이 인스턴스에 아예 없으면, 담아도 없다 — 먼저 말한다.
@@ -175,7 +233,7 @@ fi
 mkdir -p "$DEST" "$STATE_DIR"
 OUT="$DEST/all-$(date +%Y%m%d-%H%M).sql.gz"
 # 다 받은 뒤에만 정식 이름으로 — 반쪽 파일을 백업으로 착각하지 않게.
-docker exec -i "$DB" pg_dumpall -U "$PGUSER" | gzip > "$OUT.tmp" \
+pg_dumpall_stream | gzip > "$OUT.tmp" \
   || { rm -f "$OUT.tmp"; fail "pg_dumpall 이 실패했습니다."; }
 
 # ── 3) 확인한다 — 여기가 이 스크립트의 요점이다 ───────────────────

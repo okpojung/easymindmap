@@ -13,6 +13,7 @@ import { expandScope } from '@/utils/expandScope';
 import { mapCenters } from '@/editor/__samples__/types';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 
 interface Props {
   t: ThemeTokens;
@@ -107,6 +108,9 @@ export function CanvasFloatingToolbar({
   //   · 선택이 있으면: 메뉴 → "자식 노드 추가" / "달력 노드 추가…"
   // 달력은 노드 글(과 조상)에서 년도·월을 읽어 미리 채운 창을 띄운다.
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  // 여러 노드 추가 창 (2026-09-28 사용자 보고: Ctrl+Space 가 다른 프로그램에 잡혀 있어
+  // 단축키만으로는 열 수 없다 — 메뉴에서도 연다)
+  const setMultiAddOpen = useEditorUiStore((state) => state.setMultiAddOpen);
   const [calendar, setCalendar] = useState<{ parentId: string; parentLabel: string; initial: YearMonth } | null>(null);
   useEffect(() => {
     if (!addMenuOpen) return;
@@ -197,7 +201,7 @@ export function CanvasFloatingToolbar({
         <ToolbarBtn
           t={t}
           title={hasSelection
-            ? '노드 추가 — 자식 노드 · 달력 노드(년도 → 1월~12월, 년월 → 주별)'
+            ? '노드 추가 — 자식 노드 · 여러 노드 · 달력 노드(년도 → 1월~12월, 년월 → 주별)'
             : '중심 노드 추가 (노드를 고르면 그 아래에 자식 노드 추가)'}
           highlight={hasSelection || addMenuOpen}
           onClick={handleAddClick}
@@ -216,6 +220,7 @@ export function CanvasFloatingToolbar({
             }}
           >
             <MenuItem t={t} testId="add-menu-child" label="자식 노드 추가" hint="선택 노드 아래에 하나" onClick={() => { setAddMenuOpen(false); handleAddNode(); }} />
+            <MenuItem t={t} testId="add-menu-multi" label="여러 노드 추가…" hint="한 줄에 하나 · 들여쓰기 = 하위 (Ctrl+Space)" onClick={() => { setAddMenuOpen(false); setMultiAddOpen(true); }} />
             <MenuItem t={t} testId="add-menu-calendar" label="달력 노드 추가…" hint="년도 → 1월~12월 · 년월 → 주별(일~토)" onClick={openCalendar} />
           </div>
         )}

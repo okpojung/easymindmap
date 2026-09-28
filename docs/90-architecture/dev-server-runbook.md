@@ -1952,6 +1952,7 @@ echo "파일=$F"; echo "DB=$DBC ($IMG) 앱DB=$DBN"; echo "gotrue=$AUTHC ($AUTH_I
 ```bash
 # ── 1) 격리된 망 + 빈 PostgreSQL (진짜와 같은 이미지, 같은 postgres 비밀번호)
 docker network create emm-rehearsal >/dev/null 2>&1 || true
+docker rm -f emm-rehearsal-db >/dev/null 2>&1   # 지난 시도가 남아 있어도 다시 붙여 넣을 수 있게
 docker run -d --name emm-rehearsal-db --network emm-rehearsal -e POSTGRES_PASSWORD="$PW" "$IMG" >/dev/null
 until docker exec emm-rehearsal-db pg_isready -U postgres -q 2>/dev/null; do sleep 1; done
 docker exec emm-rehearsal-db psql -U postgres -tAc "SELECT datname FROM pg_database WHERE NOT datistemplate"
@@ -1978,7 +1979,7 @@ cmp_q() { a=$(docker exec "$DBC" psql -U postgres -d "$1" -tAc "$2" 2>&1 | tr -d
           [ "$a" = "$b" ] && echo "✅ $1 · $2 → $a" || echo "❌ $1 · $2 → 진짜=$a 복원=$b"; }
 cmp_q "$DBN" "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
 cmp_q "$DBN" "SELECT count(*) FROM map_documents"
-cmp_q "$DBN" "SELECT count(*) FROM map_versions"
+cmp_q "$DBN" "SELECT count(*) FROM map_document_versions"
 cmp_q gotrue "SELECT count(*) FROM $NS.users"
 cmp_q gotrue "SELECT count(*) FROM $NS.identities"
 echo "정상이면: 전부 ✅ (백업 뒤에 누가 저장했으면 map_* 만 진짜가 1~2 크다 — 그건 정상)"
@@ -1989,14 +1990,18 @@ echo "정상이면: 전부 ✅ (백업 뒤에 누가 저장했으면 map_* 만 �
 docker inspect "$AUTHC" --format '{{range .Config.Env}}{{println .}}{{end}}' \
   | grep -vE '^(GOTRUE_DB_DATABASE_URL|DATABASE_URL|GOTRUE_API_HOST|GOTRUE_API_PORT|PORT)=' > "$HOME/rehearsal-auth.env"
 REH_URL=$(printf '%s' "$AUTH_URL" | sed -E 's#@[^/]+/#@emm-rehearsal-db:5432/#')
+docker rm -f emm-rehearsal-auth >/dev/null 2>&1
+# ★ 포트를 못 박는다 — supabase/auth 의 기본 포트는 8081 이라(옛 GoTrue 는 9999)
+#   명시하지 않으면 -p 매핑이 빗나가 /health 가 빈 줄로 나온다 (2026-09-28 겪음)
 docker run -d --name emm-rehearsal-auth --network emm-rehearsal --env-file "$HOME/rehearsal-auth.env" \
-  -e GOTRUE_DB_DATABASE_URL="$REH_URL" -e DATABASE_URL="$REH_URL" -e GOTRUE_API_HOST=0.0.0.0 \
+  -e GOTRUE_DB_DATABASE_URL="$REH_URL" -e DATABASE_URL="$REH_URL" \
+  -e GOTRUE_API_HOST=0.0.0.0 -e GOTRUE_API_PORT=9999 \
   -p 127.0.0.1:9998:9999 "$AUTH_IMG" >/dev/null
-sleep 8; curl -s http://127.0.0.1:9998/health; echo
+sleep 8; curl -s http://127.0.0.1:9998/health; echo   # {"version":…,"name":"GoTrue",…} 가 보여야 한다
 read -rp "시험할 계정 이메일: " EM; read -rsp "비밀번호: " PWD_; echo
 curl -s -X POST 'http://127.0.0.1:9998/token?grant_type=password' -H 'Content-Type: application/json' \
   -d "{\"email\":\"$EM\",\"password\":\"$PWD_\"}" | grep -o '"access_token":"[^"]\{0,12\}' \
-  && echo "✅ 복원된 DB 로 로그인됐다 — gotrue 가 살아났다" || { echo "❌ 로그인 실패"; docker logs --tail 20 emm-rehearsal-auth; }
+  && echo "✅ 복원된 DB 로 로그인됐다 — gotrue 가 살아났다" || { echo "❌ 로그인 실패"; docker logs --tail 20 emm-rehearsal-auth | grep -v apiworker; }
 ```
 
 > 이 GoTrue 는 진짜 DB 를 모른다(격리된 망에서 `emm-rehearsal-db` 만
@@ -2022,8 +2027,16 @@ docker ps -a --format '{{.Names}}' | grep rehearsal || echo "정상이면: 이 �
 
 리허설 결과(날짜 · 파일 이름 · ③ 결과 · ④ 결과)는 이 절 아래에 한 줄씩 남긴다.
 
-- 2026-09-21: 절차 작성. **아직 dev 에서 한 번도 돌리지 않았다** — 첫 실행
-  결과를 보고 다듬는다.
+- **2026-09-28 ✅ 첫 리허설 통과** (dev, 사용자 실행 · 단계별 확인).
+  파일 `all-20260928-0310.sql.gz`(5.7MB). ② 오류는 `role "postgres" already
+  exists` 1건뿐, `gotrue` DB 복원. ③ public 표 37=37 · `map_documents`
+  68/67(백업 뒤 저장 1건 — 정상) · `auth.users` 27=27 · `auth.identities`
+  27=27. ④ 복원본만 보는 GoTrue(`supabase/auth:v2.194.0`)로 비밀번호 로그인
+  → `access_token` 발급. ⑤ 정리 뒤 남은 컨테이너 없음. **절차에서 고친 것
+  둘** — 버전 표 이름은 `map_document_versions`(`map_versions` 는 없는
+  표였다), GoTrue 포트는 `GOTRUE_API_PORT=9999` 로 명시(기본 8081). 블록을
+  두 번 붙여 넣어도 되게 `docker rm -f` 를 앞에 두었다.
+- 2026-09-21: 절차 작성.
 
 ### 2.2 ★ 헬스체크 감시 — 나빠지면 메일 (2026-08-15, B14 ⑤)
 

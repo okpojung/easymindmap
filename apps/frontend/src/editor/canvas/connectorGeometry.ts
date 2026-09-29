@@ -29,7 +29,11 @@ export const MAX_TRUNK_PUSH = LOOP_OUT * 4;
  * 높이에 있는 다른 노드를 관통하지 않도록** 그 오른쪽 너머로 민다 (하위 노드가
  * 오른쪽에 펼쳐진 트리에서 줄기가 자식들을 가로지르던 것, 2026-09-22 캡처로 확인).
  */
-export function connectorPoints(a: CBox, b: CBox, obstacles?: CBox[], fromSide: CSide = 'auto', toSide: CSide = 'auto'): CPoint[] {
+export function connectorPoints(a: CBox, b: CBox, obstacles?: CBox[], fromSide: CSide = 'auto', toSide: CSide = 'auto', offset = 0): CPoint[] {
+  return shiftTrunk(connectorPointsRaw(a, b, obstacles, fromSide, toSide), offset);
+}
+
+function connectorPointsRaw(a: CBox, b: CBox, obstacles?: CBox[], fromSide: CSide = 'auto', toSide: CSide = 'auto'): CPoint[] {
   // 면을 정했으면(한쪽이라도) 면 기반 길 (2026-09-23 사용자 요청). 둘 다 auto 면 예전 규칙.
   if (fromSide !== 'auto' || toSide !== 'auto') {
     return dedupePoints(routeBySides(a, resolveSide(a, b, fromSide), b, resolveSide(b, a, toSide), obstacles));
@@ -236,6 +240,30 @@ function betweenX(a: CBox, b: CBox): number {
   if (aR <= bL) return (aR + bL) / 2;
   if (bR <= aL) return (bR + aL) / 2;
   return Math.max(aR, bR) + LOOP_OUT;
+}
+
+/**
+ * 가운데 **줄기**(양 끝에 닿지 않는 가운데 변)의 자리 — 점이 4개 이상일 때만 있다.
+ * 세로 줄기면 'v'(x 를 옮긴다), 가로 줄기면 'h'(y 를 옮긴다). 2·3점 길은 줄기가 없다.
+ */
+export function trunkSegment(pts: CPoint[]): { i: number; dir: 'h' | 'v' } | null {
+  if (pts.length < 4) return null;
+  const i = Math.floor((pts.length - 2) / 2); // 4점→1, 5점→1, 6점→2
+  const p = pts[i], q = pts[i + 1];
+  return { i, dir: Math.abs(p.x - q.x) < 0.01 ? 'v' : 'h' };
+}
+
+/**
+ * 줄기를 `offset` 만큼 옆으로 민다 (2026-09-29 사용자 요청: 연결선이 트리 연결선과
+ * 겹치면 **끌어서** 옮긴다). 세로 줄기는 x, 가로 줄기는 y. 줄기가 없는 길은 그대로.
+ */
+export function shiftTrunk(pts: CPoint[], offset: number): CPoint[] {
+  if (!offset || !Number.isFinite(offset)) return pts;
+  const seg = trunkSegment(pts);
+  if (!seg) return pts;
+  return pts.map((p, k) => (k === seg.i || k === seg.i + 1
+    ? (seg.dir === 'v' ? { x: p.x + offset, y: p.y } : { x: p.x, y: p.y + offset })
+    : p));
 }
 
 /** 붙어 있는 같은 점을 없앤다 (화살촉 방향이 0 벡터가 되지 않게) */

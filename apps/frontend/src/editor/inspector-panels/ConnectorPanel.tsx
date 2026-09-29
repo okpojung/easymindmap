@@ -141,9 +141,23 @@ export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Co
             ))}
           </div>
         </InspectorRow>
-        <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.5, marginBottom: 8 }}>
           같은 면끼리(아래→아래 등)는 그 면 바깥으로 도는 고리, 마주 보는 면은 가운데서 꺾고, 직각인 면은 모서리 한 점에서 꺾습니다.
         </div>
+        <InspectorRow t={t} label="줄기 위치">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: t.textMuted, flexWrap: 'wrap' }}>
+            <span data-testid="connector-offset" style={{ fontVariantNumeric: 'tabular-nums', minWidth: 44, color: t.text }}>
+              {c.offset ? `${c.offset > 0 ? '+' : ''}${c.offset}px` : '기본'}
+            </span>
+            {!!c.offset && (
+              <button data-testid="connector-offset-reset" onClick={() => patch({ offset: undefined })}
+                style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 5, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.textMuted, cursor: 'pointer' }}>
+                제자리로
+              </button>
+            )}
+            <span style={{ fontSize: 10.5 }}>캔버스에서 고른 선의 가운데 손잡이를 끌어 옮깁니다</span>
+          </div>
+        </InspectorRow>
       </InspectorSection>
 
       <InspectorSection t={t} title="선">

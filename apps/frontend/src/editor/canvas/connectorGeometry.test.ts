@@ -1,5 +1,5 @@
 // 연결선 기하 (2026-09-22).   npx tsx src/editor/canvas/connectorGeometry.test.ts
-import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, loopTrunkX, LOOP_OUT, resolveSide, dedupePoints } from './connectorGeometry';
+import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, loopTrunkX, LOOP_OUT, resolveSide, dedupePoints, trunkSegment } from './connectorGeometry';
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
   const g = JSON.stringify(got), w = JSON.stringify(want); const ok = g === w; if (!ok) failed++;
@@ -79,6 +79,21 @@ if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }
   // 한도 — 세로로 빽빽한 열: 줄기를 160 넘게 밀어야 하면 원래 자리(둘 아래 + 40)로
   const column = Array.from({ length: 8 }, (_, i) => ({ x: 300, y: 480 + i * 60, w: 120, h: 40 }));
   check('⑦ 장애물이 끝없이 이어지면 밀지 않는다 (max bottom + 40 그대로)', connectorPoints(L, R, [L, R, ...column], 'bottom', 'bottom')[1].y, 460);
+}
+
+// ⑧ 줄기 옮기기 (2026-09-29) — offset
+{
+  const L = { x: 100, y: 100, w: 100, h: 40 }, R = { x: 500, y: 400, w: 100, h: 40 };
+  const base = connectorPoints(L, R);            // 오른쪽→왼쪽 ㄷ: 세로 줄기 x=300
+  check('⑧ 4점 길의 줄기는 가운데 변(1) · 세로', trunkSegment(base), { i: 1, dir: 'v' });
+  const moved = connectorPoints(L, R, undefined, 'auto', 'auto', 35);
+  check('⑧ offset 35 → 줄기 x 만 335, 양 끝은 그대로', [moved[1].x, moved[2].x, moved[0], moved[3]], [335, 335, base[0], base[3]]);
+  const bb = connectorPoints(L, R, undefined, 'bottom', 'bottom', -20);
+  check('⑧ 가로 줄기(아래→아래)는 y 를 옮긴다 (460 − 20)', [bb[1].y, bb[2].y], [440, 440]);
+  check('⑧ 3점(ㄱ) 길은 줄기가 없어 그대로', connectorPoints(L, R, undefined, 'bottom', 'left', 50), connectorPoints(L, R, undefined, 'bottom', 'left'));
+  const z = connectorPoints(R, L, undefined, 'right', 'left', 10); // 등진 6점
+  check('⑧ 6점 길의 줄기는 가운데 변(2) · 가로 → y +10', [trunkSegment(z)?.i, z[2].y - connectorPoints(R, L, undefined, 'right', 'left')[2].y], [2, 10]);
+  check('⑧ offset 0/NaN 은 그대로', connectorPoints(L, R, undefined, 'auto', 'auto', NaN), base);
 }
 
 console.log('\n모두 통과');

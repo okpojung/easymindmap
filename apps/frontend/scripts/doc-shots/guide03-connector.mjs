@@ -190,6 +190,34 @@ ok('⑨ 자동으로 되돌리면 값이 지워진다', cs[0].fromSide === undef
 await page.locator('[data-testid="connector-from-side-bottom"]').click(); await page.locator('[data-testid="connector-to-side-bottom"]').click(); await page.waitForTimeout(200);
 await page.keyboard.press('Escape');
 
+// ⑩ 줄기 손잡이 끌기 (2026-09-29 사용자 제안) — 고른 선의 가운데 손잡이를 끌면 offset
+await fit();
+await page.locator('[data-connector-hit]').first().dispatchEvent('click'); await page.waitForTimeout(200);
+const handle = page.locator('[data-connector-handle]').first();
+ok('⑩ 고른 선에 줄기 손잡이가 보인다', await handle.count() === 1);
+const hb = await handle.boundingBox();
+const trunkBefore = await page.evaluate(() => { const d = document.querySelector('[data-connector-path]').getAttribute('d'); const ys = d.match(/[LQ] [^LQ]+/g).map((s) => Number(s.trim().split(' ').pop())); return Math.max(...ys); });
+// 아래→아래(가로 줄기) 상태 — 아래로 40px 끈다 (100% 배율이 아니어도 world 로 환산된다)
+await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+await page.mouse.down();
+await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2 + 20, { steps: 4 });
+await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2 + 40, { steps: 4 });
+await page.mouse.up(); await page.waitForTimeout(200);
+cs = await connectors();
+const zoomNow = await page.evaluate(async () => { const m = await import('/src/stores/viewportStore.ts'); return m.useViewportStore.getState().zoom; });
+const expected = Math.round(40 / (zoomNow / 100));
+ok(`⑩ 끌면 offset 저장 (배율 ${zoomNow}% → +${expected}px 안팎: ${cs[0].offset})`, typeof cs[0].offset === 'number' && Math.abs(cs[0].offset - expected) <= 2);
+const trunkAfter = await page.evaluate(() => { const d = document.querySelector('[data-connector-path]').getAttribute('d'); const ys = d.match(/[LQ] [^LQ]+/g).map((s) => Number(s.trim().split(' ').pop())); return Math.max(...ys); });
+ok('⑩ 줄기가 그만큼 내려갔다', Math.abs((trunkAfter - trunkBefore) - cs[0].offset) <= 1);
+ok('⑩ 패널에 값과 [제자리로]', (await page.locator('[data-testid="connector-offset"]').innerText()).includes('px') && await page.locator('[data-testid="connector-offset-reset"]').isVisible());
+await doc((d, st) => st.undo()); await page.waitForTimeout(200);
+ok('⑩ 되돌리기 한 번 = 끌기 한 번 전체', (await connectors())[0].offset === undefined);
+await doc((d, st) => st.redo()); await page.waitForTimeout(200);
+ok('⑩ 다시 실행 → 다시 옮겨진다', (await connectors())[0].offset === cs[0].offset);
+await page.locator('[data-testid="connector-offset-reset"]').click(); await page.waitForTimeout(200);
+ok('⑩ [제자리로] → 값 지움', (await connectors())[0].offset === undefined);
+await doc((d, st, map) => st.updateConnector(map.connectors[0].id, { offset: 30 })); await page.waitForTimeout(200);
+
 // ⑦ mmd 내보내기 → 선언에 connectors → 다시 읽으면 같은 연결선
 const md = await page.evaluate(async () => {
   const d = await import('/src/stores/documentStore.ts'); const ui = await import('/src/stores/editorUiStore.ts');
@@ -197,13 +225,13 @@ const md = await page.evaluate(async () => {
   const pkg = await ex.buildMarkdownExportPackage(d.useDocumentStore.getState().map, ui.useEditorUiStore.getState().layoutType);
   return await pkg.blob.text();
 });
-ok('⑦ mmd 에 connectors 선언 (경로로) + fromSide/toSide', /connectors:\n  1:\n    from: .* > Q1 · 기반 구축 > 인증 시스템 \(Supabase Auth\)\n    to: .* > 프롬프트 → 맵 생성/.test(md) && /label: 검토 \/ 승인/.test(md) && /fromSide: bottom\n    toSide: bottom/.test(md));
+ok('⑦ mmd 에 connectors 선언 (경로로) + fromSide/toSide', /connectors:\n  1:\n    from: .* > Q1 · 기반 구축 > 인증 시스템 \(Supabase Auth\)\n    to: .* > 프롬프트 → 맵 생성/.test(md) && /label: 검토 \/ 승인/.test(md) && /fromSide: bottom\n    toSide: bottom\n    offset: 30/.test(md));
 const back = await page.evaluate(async ({ md }) => {
   const im = await import('/src/utils/importMapFile.ts');
   const r = im.parseMarkdownMapFile(md, 'x');
   return r?.map.connectors ?? null;
 }, { md });
-ok('⑦ 다시 읽으면 연결선 1개 · 라벨 두 줄 · 속성·면 그대로', back && back.length === 1 && back[0].label?.text === '검토\n승인' && back[0].width === 2 && back[0].label?.shape === 'rounded' && back[0].from !== back[0].to && back[0].fromSide === 'bottom' && back[0].toSide === 'bottom');
+ok('⑦ 다시 읽으면 연결선 1개 · 라벨 두 줄 · 속성·면 그대로', back && back.length === 1 && back[0].label?.text === '검토\n승인' && back[0].width === 2 && back[0].label?.shape === 'rounded' && back[0].from !== back[0].to && back[0].fromSide === 'bottom' && back[0].toSide === 'bottom' && back[0].offset === 30);
 
 // ⑧ HTML 내보내기 — 뷰어가 같은 선·라벨을 그린다
 const html = await page.evaluate(async () => {
@@ -226,6 +254,10 @@ const vSides = await page2.evaluate(() => {
   return { first: nums[0], last: nums[nums.length - 1], ys: d.match(/[LQ] [^LQ]+/g).map((s) => Number(s.trim().split(' ').pop())) };
 });
 ok('⑧ HTML 뷰어도 아래→아래 고리 (줄기가 양 끝점보다 아래)', Math.max(...vSides.ys) > vSides.first[1] + 30 && Math.max(...vSides.ys) > vSides.last[1] + 30);
+// 뷰어와 에디터는 원점이 다르다 — 시작점에서 줄기까지의 거리로 비교한다
+const vOff = await page2.evaluate(() => { const d = document.querySelector('.mm-conn path').getAttribute('d'); const y0 = Number(d.match(/^M (-?[\d.]+) (-?[\d.]+)/)[2]); return Math.max(...d.match(/[LQ] [^LQ]+/g).map((s) => Number(s.trim().split(' ').pop()))) - y0; });
+const eOff = await page.evaluate(() => { const d = document.querySelector('[data-connector-path]').getAttribute('d'); const y0 = Number(d.match(/^M (-?[\d.]+) (-?[\d.]+)/)[2]); return Math.max(...d.match(/[LQ] [^LQ]+/g).map((s) => Number(s.trim().split(' ').pop()))) - y0; });
+ok(`⑧ 뷰어 줄기도 offset 30 만큼 내려가 에디터와 같은 거리 (${vOff} vs ${eOff})`, Math.abs(vOff - eOff) <= 1);
 const shotBox = await page2.evaluate(() => { const a = document.querySelector('.mm-conn').getBoundingClientRect(); const b = document.querySelector('.mm-conn-label').getBoundingClientRect(); return { x: Math.min(a.x, b.x) - 120, y: Math.min(a.y, b.y) - 60, w: Math.max(a.right, b.right) - Math.min(a.x, b.x) + 240, h: Math.max(a.bottom, b.bottom) - Math.min(a.y, b.y) + 120 }; });
 await page2.screenshot({ path: `${OUT}/03-connector-viewer.png`, clip: { x: Math.max(0, shotBox.x), y: Math.max(0, shotBox.y), width: Math.min(1400 - Math.max(0, shotBox.x), shotBox.w), height: Math.min(900 - Math.max(0, shotBox.y), shotBox.h) } });
 console.log('shot', `${OUT}/03-connector-viewer.png`);

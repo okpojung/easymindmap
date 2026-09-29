@@ -12,7 +12,9 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Connector, ConnectorArrows, ConnectorDash, ConnectorLabelPlace, ConnectorLabelShape, ConnectorShape } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { measureTextPx } from '@/editor/node-renderer/textMeasure';
-import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, type CBox, type CPoint } from './connectorGeometry';
+import { useRef } from 'react';
+import { setHistoryPaused, useDocumentStore } from '@/stores/documentStore';
+import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, trunkSegment, type CBox, type CPoint } from './connectorGeometry';
 
 /** 기본값 — 사용자 결정(2026-09-22): 기본 선 색은 **파란색** */
 export const CONNECTOR_DEFAULTS: Required<Pick<Connector, 'shape' | 'width' | 'color' | 'dash' | 'arrows'>> = {
@@ -91,7 +93,7 @@ function resolve(connectors: Connector[] | undefined, nodesById: Map<string, Lai
     if (!a || !b || a === b) continue;
     out.push({
       c,
-      pts: connectorPoints(a, b, obstacles, c.fromSide ?? 'auto', c.toSide ?? 'auto'),
+      pts: connectorPoints(a, b, obstacles, c.fromSide ?? 'auto', c.toSide ?? 'auto', c.offset ?? 0),
       color: connectorColorOf(c),
       width: connectorWidthOf(c),
       shape: connectorShapeOf(c),
@@ -100,6 +102,60 @@ function resolve(connectors: Connector[] | undefined, nodesById: Map<string, Lai
     });
   }
   return out;
+}
+
+/**
+ * 줄기 손잡이 끌기 (2026-09-29 사용자 제안: "연결선을 선택하여 좌우로 드래그해
+ * 높이를 조절") — 고른 연결선의 가운데 줄기에 손잡이를 놓고, 세로 줄기는 좌우·
+ * 가로 줄기는 상하로 끌면 `offset` 이 바뀐다. 첫 움직임만 undo 에 남기고 끄는
+ * 동안은 히스토리를 잠근다(색 피커와 같은 규칙) — 한 번 끌기 = undo 한 단계.
+ */
+function TrunkHandle({ id, pts, offset, dir, t }: { id: string; pts: CPoint[]; offset: number; dir: 'h' | 'v'; t: ThemeTokens }) {
+  const updateConnector = useDocumentStore((s) => s.updateConnector);
+  const drag = useRef<{ start: number; base: number; moved: boolean } | null>(null);
+  const seg = trunkSegment(pts)!;
+  const p = pts[seg.i], q = pts[seg.i + 1];
+  const cx = (p.x + q.x) / 2, cy = (p.y + q.y) / 2;
+  // 화면 px → world 좌표: 이 요소의 CTM 은 조상 <g transform>(pan·zoom)까지 담는다
+  const toWorld = (e: React.PointerEvent<SVGElement>) => {
+    const ctm = (e.currentTarget as SVGGraphicsElement).getScreenCTM();
+    if (!ctm) return dir === 'v' ? e.clientX : e.clientY;
+    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+    return dir === 'v' ? pt.x : pt.y;
+  };
+  return (
+    <g
+      data-connector-handle={id}
+      style={{ cursor: dir === 'v' ? 'ew-resize' : 'ns-resize' }}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        (e.currentTarget as SVGElement).setPointerCapture(e.pointerId);
+        drag.current = { start: toWorld(e), base: offset, moved: false };
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d) return;
+        const next = Math.round(d.base + (toWorld(e) - d.start));
+        if (next === offset) return;
+        if (!d.moved) { d.moved = true; updateConnector(id, { offset: next || undefined }); setHistoryPaused(true); return; }
+        updateConnector(id, { offset: next || undefined });
+      }}
+      onPointerUp={(e) => {
+        const d = drag.current;
+        drag.current = null;
+        if (d?.moved) setHistoryPaused(false);
+        try { (e.currentTarget as SVGElement).releasePointerCapture(e.pointerId); } catch { /* 이미 풀림 */ }
+      }}
+      onPointerCancel={() => { if (drag.current?.moved) setHistoryPaused(false); drag.current = null; }}
+    >
+      <title>{dir === 'v' ? '좌우로 끌어 줄기 옮기기' : '상하로 끌어 줄기 옮기기'}</title>
+      <rect x={cx - (dir === 'v' ? 5 : 9)} y={cy - (dir === 'v' ? 9 : 5)} width={dir === 'v' ? 10 : 18} height={dir === 'v' ? 18 : 10} rx={3} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
+      {dir === 'v'
+        ? <path d={`M ${cx - 2} ${cy - 4} V ${cy + 4} M ${cx + 2} ${cy - 4} V ${cy + 4}`} stroke={t.primary} strokeWidth={1.2} />
+        : <path d={`M ${cx - 4} ${cy - 2} H ${cx + 4} M ${cx - 4} ${cy + 2} H ${cx + 4}`} stroke={t.primary} strokeWidth={1.2} />}
+    </g>
+  );
 }
 
 export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onSelect }: Props) {
@@ -148,6 +204,9 @@ export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onS
                 <>
                   <circle cx={pts[0].x} cy={pts[0].y} r={4} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
                   <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r={4} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
+                  {trunkSegment(pts) && (
+                    <TrunkHandle id={c.id} pts={pts} offset={c.offset ?? 0} dir={trunkSegment(pts)!.dir} t={t} />
+                  )}
                 </>
               )}
             </g>

@@ -337,6 +337,7 @@ connectors:
     arrows: end           # none | end | start | both (기본 end)
     fromSide: bottom      # top | bottom | left | right — 시작 노드의 어느 면에서 나가나 (없으면 자동)
     toSide: bottom        # 끝 노드의 어느 면에 닿나 (없으면 자동)
+    offset: 30            # 가운데 줄기를 옆으로 민 px (세로 줄기는 x, 가로 줄기는 y · 없으면 0)
     label: 검토 / 승인    # 라벨 글 — 줄바꿈은 ` / `
     labelPlace: center    # center | above | below | branch
     labelShape: rounded   # none | rounded | rectangle | pill | ellipse

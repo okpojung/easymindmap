@@ -1308,7 +1308,19 @@ const VIEWER_JS = String.raw`
     }
     return out;
   }
-  function connPoints(a, b, obstacles, fromSide, toSide) {
+  // 줄기 옮기기 (connectorGeometry.shiftTrunk, 2026-09-29) — 4점 이상 길의 가운데 변만
+  function connShiftTrunk(pts, offset) {
+    if (!offset || !isFinite(offset) || pts.length < 4) return pts;
+    var i = Math.floor((pts.length - 2) / 2), vert = Math.abs(pts[i].x - pts[i + 1].x) < 0.01;
+    return pts.map(function (p, k) {
+      if (k !== i && k !== i + 1) return p;
+      return vert ? { x: p.x + offset, y: p.y } : { x: p.x, y: p.y + offset };
+    });
+  }
+  function connPoints(a, b, obstacles, fromSide, toSide, offset) {
+    return connShiftTrunk(connPointsRaw(a, b, obstacles, fromSide, toSide), Number(offset) || 0);
+  }
+  function connPointsRaw(a, b, obstacles, fromSide, toSide) {
     if ((fromSide && fromSide !== 'auto') || (toSide && toSide !== 'auto')) {
       return connDedupe(connRouteBySides(a, connResolveSide(a, b, fromSide), b, connResolveSide(b, a, toSide), obstacles));
     }
@@ -1400,7 +1412,7 @@ const VIEWER_JS = String.raw`
     for (var i = 0; i < list.length; i++) {
       var c = list[i], a = boxes[c.from], b = boxes[c.to];
       if (!a || !b || a === b) continue;
-      var pts = connPoints(a, b, obstacles, c.fromSide, c.toSide);
+      var pts = connPoints(a, b, obstacles, c.fromSide, c.toSide, c.offset);
       var shape = c.shape || CONN_DEF.shape;
       var width = Number(c.width) > 0 ? Math.min(8, Number(c.width)) : CONN_DEF.width;
       var color = c.color || CONN_DEF.color;

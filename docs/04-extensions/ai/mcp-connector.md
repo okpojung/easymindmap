@@ -1788,8 +1788,10 @@ Settings ▸ Permissions ▸ Connected Data ▸ *Create custom MCP connectors*).
 *"이 내용을 emm 맵으로 저장해줘"* · *"OOO 저장소 문서를 emm 새 맵으로
 만들어줘"* · *"OOO 맵을 업데이트 해줘"*. 쓰기 도구 앞의 **확인 창은 기본
 설정에서는 뜨지 않는다** (2026-09-29 실측 — §12.11). 플러그인 화면의 "권한" 이
-기본값 **"저위험 도구 허용"** 이라, `destructiveHint` 가 없는 쓰기(`create_map` ·
-`append_to_map`)는 묻지 않고 실행된다. 묻게 하려면 그 "권한" 을 바꾼다.
+기본값 **"저위험 도구 허용"** 이라, **`destructiveHint:false` 로 명시한** 쓰기
+(`create_map` · `append_to_map` — `mcp-tools.ts` 가 일부러 `false` 를 보낸다. MCP 의
+기본값은 `true` 라 값을 빼면 파괴적 도구가 된다)는 묻지 않고 실행된다. 묻게
+하려면 그 "권한" 을 바꾼다.
 `destructiveHint:true` 인 `check_items` · `update_map_from_github` 가 기본 설정에서
 묻는지는 **아직 모른다**. 읽기 셋은 §12.2 덕에 어느 설정에서도 묻지 않는다.
 
@@ -2179,7 +2181,8 @@ ChatGPT 가 그것으로 새 액세스 토큰을 받았다. **§12.10 이 묻던
   넣는다(지금은 근거 없이 넣지 않는다).
 - **확인 창은 뜨지 않았다** (사용자 화면, 09-29). `append_to_map` 이 곧바로 실행됐다.
   플러그인 화면의 "권한" 이 기본값 "저위험 도구 허용" 이고, 이 도구는
-  `destructiveHint` 가 없어 저위험으로 분류된 것으로 보인다. §12.3 이 "부르기 전에
+  `destructiveHint:false` 를 **명시**해 저위험으로 분류된 것으로 보인다(MCP 기본값은
+  `true` 다 — 그 `false` 를 지우면 파괴적 도구가 되어 묻기 시작할 것이다). §12.3 이 "부르기 전에
   확인 창을 띄운다" 고 적었던 것은 **틀렸다** — 고쳤다. 기본 설정에서 묻는 도구가
   있다면 `destructiveHint:true` 인 둘(`check_items` · `update_map_from_github`)일
   텐데, 그건 아직 눌러 보지 않았다.

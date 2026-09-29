@@ -273,7 +273,7 @@ export const TOOL_DEFS: McpToolDef[] = [
         path: { type: 'string', description: '문서 폴더 경로(예: "docs", "docs/guide"). 비우면 저장소 뿌리의 docs/doc/documentation 을 찾고, 없으면 저장소 전체의 마크다운.' },
         ref: { type: 'string', description: '브랜치·태그·커밋. 비우면 기본 브랜치.' },
         title: { type: 'string', description: '맵 이름. 비우면 "저장소이름 문서".' },
-        template: { type: 'string', description: '맵 모양 — create_map 과 같다. 비우면 트리·오른쪽(TR).' },
+        template: { type: 'string', description: '맵 모양 — create_map 과 같다. 비우면 create_map 과 같은 방사형(양쪽). 문서 트리를 개요처럼 보려면 "TR"(트리·오른쪽).' },
         max_files: { type: 'integer', minimum: 1, maximum: 500, description: '가져올 문서 수 상한(기본 200). 넘으면 경로순 앞부분만 가져오고 그 사실을 알린다.' },
       },
       required: ['repo'],
@@ -870,10 +870,13 @@ export class McpToolsService {
     const map = buildDocsMap(src, docs, title, fetchedAt);
     const snapshot = { v: 2, map, editor: { layoutType: 'radial-bidirectional', spacingX: 1, spacingY: 1 } };
 
-    // 템플릿 — create_map 과 같은 길. 비우면 트리·오른쪽(문서 트리는 개요처럼 읽힌다)
+    // 템플릿 — create_map 과 같은 길. 비우면 **방사형(양쪽)** — create_map·앱 새 맵과 같다
+    // (2026-09-29 사용자 결정: 처음엔 트리·오른쪽(TR)이 기본이었는데 "새 맵의 레이아웃이
+    // 왜 트리가 기본인가" — 문서 가져오기만 다른 기본을 갖지 않는다)
     let templateNote = '';
     try {
-      const tpl = templateFor((typeof args.template === 'string' && args.template.trim()) || 'TR', '');
+      const askedTemplate = typeof args.template === 'string' && args.template.trim();
+      const tpl = askedTemplate ? templateFor(askedTemplate, '') : {};
       if (tpl.editor) snapshot.editor = { ...snapshot.editor, layoutType: tpl.editor.layoutType };
       if (tpl.settings) {
         snapshot.map.settings = { ...(snapshot.map.settings ?? {}), ...tpl.settings };

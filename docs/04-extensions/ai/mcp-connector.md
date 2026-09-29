@@ -1045,6 +1045,10 @@ GitHub 주소를 링크로, 파일 안 목차 2레벨까지 노드로(중요 표
 파일 안의 2레벨 목차 절)로.
 
 `import_github_docs {repo, path?, ref?, title?, template?, max_files?}`
+
+`template` 을 비우면 **방사형(양쪽)** — `create_map`·앱 새 맵과 같은 기본이다(2026-09-29 사용자
+결정; 그전에는 트리·오른쪽이 기본이라 "왜 트리가 기본인가" 를 들었다). 문서 트리를 개요처럼
+보려면 `"TR"`.
 `update_map_from_github {map_id, node?}`
 
 | 자리 | 파일 |

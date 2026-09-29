@@ -1327,6 +1327,14 @@ CANVAS-06)에서 시작한다. 같은 문서 안의 편집·되돌리기·템플
 됐다(2026-09-23 캡처). 작은 비킴(노드 한둘)만 허용한다.
 한도를 넘으면 원래 자리(둘 바깥 + 40)로 두고 노드 뒤로 지나간다(선은 노드 뒤 층).
 예전 규칙의 오른쪽 줄기(`loopTrunkX`)도 같은 한도를 쓴다.
+**줄기 옮기기** (2026-09-29 사용자 제안: "연결선을 선택하여 좌우로 드래그해 높이를
+조절") — `Connector.offset`(px). `trunkSegment(pts)` 가 가운데 변(4점→1, 5점→1, 6점→2;
+2·3점 길은 없음)을 찾고 `shiftTrunk` 가 세로 줄기면 x, 가로 줄기면 y 를 민다. 고른
+연결선의 줄기 한가운데에 손잡이(`data-connector-handle`, `TrunkHandle`)가 뜨고, 화면
+px 를 그 요소의 `getScreenCTM()` 역행렬로 world 로 바꿔 끈 만큼 `offset` 을 쓴다. 첫
+움직임만 undo 에 남기고 끄는 동안 `setHistoryPaused` — 한 번 끌기 = undo 1단계(색
+피커와 같은 규칙). 패널 "줄기 위치" 는 값과 [제자리로](`connector-offset-reset`).
+mmd `offset:`(±2000 안, 0 은 쓰지 않는다) · 뷰어 `connShiftTrunk` 같은 식.
 붙은 같은 점은 `dedupePoints` 로 없앤다(화살촉 방향이 0 벡터가 되지 않게). 패널은
 "닿는 면" 절의 시작 면·끝 면 단추 5개씩(`connector-from-side-*`·`connector-to-side-*`),
 자동을 고르면 값을 지운다. mmd 는 `fromSide:`·`toSide:` (auto 는 쓰지 않는다).
@@ -1345,5 +1353,7 @@ CANVAS-06)에서 시작한다. 같은 문서 안의 편집·되돌리기·템플
 같은 글이 둘이면 첫 번째. 라벨 줄바꿈은 ` / `. 불러올 때 못 찾는 경로는 그 선만 버린다
 (`applyDeclaredConnectors`). HTML 메타·서버 저장은 맵 JSON 그대로.
 
-**검증** — 단위 `connectorGeometry.test.ts` 34(면 15 포함) · `nodePath.test.ts` 14 · 파서
-`declaration.test.ts` ⑥ 6 · 브라우저 `guide03-connector.mjs` 44 (e2e303 · e2e306).
+**검증** — 단위 `connectorGeometry.test.ts` 40(면 15 · 줄기 6 포함) · `nodePath.test.ts` 14 · 파서
+`declaration.test.ts` ⑥ 6 · 브라우저 `guide03-connector.mjs` 52 (e2e303 · e2e306 · e2e314).
+**협업** — 연결선은 pro 협업 Y.Doc 의 `connectors` 맵으로 함께 흐른다(2026-09-29,
+pro-e2e29). 그전에는 노드만 실려 상대 화면에 오지 않았다.

@@ -302,6 +302,7 @@ export function declareFromMap(
       if (c.arrows) spec.arrows = c.arrows;
       if (c.fromSide && c.fromSide !== 'auto') spec.fromSide = c.fromSide;
       if (c.toSide && c.toSide !== 'auto') spec.toSide = c.toSide;
+      if (c.offset) spec.offset = String(c.offset);
       if (c.label?.text) {
         spec.label = c.label.text.replace(/\s*\n\s*/g, ' / ');
         if (c.label.place) spec.labelPlace = c.label.place;
@@ -335,6 +336,8 @@ export function applyDeclaredConnectors(map: SampleMap, specs: EmmConnectorSpec[
     const side = (v: string | undefined) => (v === 'top' || v === 'bottom' || v === 'left' || v === 'right' ? v : undefined);
     if (side(spec.fromSide)) c.fromSide = side(spec.fromSide);
     if (side(spec.toSide)) c.toSide = side(spec.toSide);
+    const off = Number(spec.offset);
+    if (Number.isFinite(off) && off !== 0) c.offset = Math.max(-2000, Math.min(2000, Math.round(off)));
     if (spec.label) {
       c.label = { text: spec.label.replace(/ \/ /g, '\n') };
       if (spec.labelPlace === 'center' || spec.labelPlace === 'above' || spec.labelPlace === 'below' || spec.labelPlace === 'branch') c.label.place = spec.labelPlace;

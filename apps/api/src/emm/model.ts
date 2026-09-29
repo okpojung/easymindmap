@@ -324,6 +324,8 @@ export interface Connector {
   arrows?: ConnectorArrows; // 기본 end
   fromSide?: ConnectorSide; // 시작 노드의 어느 면에서 나가나 (기본 auto)
   toSide?: ConnectorSide; // 끝 노드의 어느 면에 닿나 (기본 auto)
+  /** 가운데 줄기를 옆으로 민 거리(px, 2026-09-29) — 세로 줄기면 x, 가로 줄기면 y. 트리 연결선과 겹칠 때 끌어서 옮긴다 */
+  offset?: number;
   label?: ConnectorLabel;
 }
 

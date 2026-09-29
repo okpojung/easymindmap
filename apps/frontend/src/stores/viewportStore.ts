@@ -24,6 +24,16 @@ interface ViewportState {
    * 트리 맵은 위 1/5 이 빈 채로 열렸다(사용자 지적).
    */
   homeSeq: number;
+  /**
+   * **첫 화면이 아직 살아 있는가** (2026-09-29 보강). `reset()` 이 켜고, 사용자가
+   * 화면을 옮기거나 배율을 바꾸는 순간(setPan·setZoom·zoomIn/Out·fit·센터)
+   * 꺼진다. 켜져 있는 동안 캔버스는 **배치가 바뀔 때마다** 첫 화면(트리·
+   * 진행트리는 중심 주제를 위쪽에)을 다시 잡는다 — 한 번만 잡는 방식은
+   * "잡은 뒤에 배치가 바뀌면"(큰 맵의 늦은 렌더·글꼴 로드·크기 측정) 그
+   * 결과가 낡아 중심 주제가 화면 밖에 남을 수 있었다(2026-09-29 실사용
+   * 보고: 2847 노드 맵이 빈 화면으로 열림 — 로컬에서는 재현되지 않았다).
+   */
+  homeArmed: boolean;
 
   setZoom: (v: number) => void;
   setPan: (x: number, y: number) => void;
@@ -34,6 +44,8 @@ interface ViewportState {
   requestFit: () => void;
   requestCenterNode: (id: string, zoom?: number) => void;
   reset: () => void;
+  /** 첫 화면 보정 전용 — `homeArmed` 를 끄지 않는 pan 설정 (캔버스 homeArmed 효과만 쓴다) */
+  setHomePan: (x: number, y: number) => void;
 }
 
 export const useViewportStore = create<ViewportState>((set) => ({
@@ -44,20 +56,24 @@ export const useViewportStore = create<ViewportState>((set) => ({
   fitRequestId: 0,
   centerRequest: null,
   homeSeq: 1,
+  homeArmed: true,
 
-  setZoom: (zoom) => set({ zoom: clamp(zoom, ZOOM_MIN, ZOOM_MAX) }),
-  setPan: (panX, panY) => set({ panX, panY }),
+  // 사용자(또는 맞추기·센터 같은 명시적 이동)가 화면을 바꾸면 첫 화면은 끝난다
+  setZoom: (zoom) => set({ zoom: clamp(zoom, ZOOM_MIN, ZOOM_MAX), homeArmed: false }),
+  setPan: (panX, panY) => set({ panX, panY, homeArmed: false }),
+  setHomePan: (panX, panY) => set({ panX, panY }),
   // 버튼·단축키 줌 스텝 5% — 하단 상태바 ±버튼과 동일 (10-canvas.md §17)
-  zoomIn:  () => set((s) => ({ zoom: clamp(s.zoom + 5, ZOOM_MIN, ZOOM_MAX) })),
-  zoomOut: () => set((s) => ({ zoom: clamp(s.zoom - 5, ZOOM_MIN, ZOOM_MAX) })),
+  zoomIn:  () => set((s) => ({ zoom: clamp(s.zoom + 5, ZOOM_MIN, ZOOM_MAX), homeArmed: false })),
+  zoomOut: () => set((s) => ({ zoom: clamp(s.zoom - 5, ZOOM_MIN, ZOOM_MAX), homeArmed: false })),
   setPanMode: (panMode) => set({ panMode }),
   togglePanMode: () => set((s) => ({ panMode: !s.panMode })),
-  requestFit: () => set((s) => ({ fitRequestId: s.fitRequestId + 1 })),
+  requestFit: () => set((s) => ({ fitRequestId: s.fitRequestId + 1, homeArmed: false })),
   requestCenterNode: (id, zoom = 100) =>
     set((s) => ({
       centerRequest: { id, zoom, seq: (s.centerRequest?.seq ?? 0) + 1 },
+      homeArmed: false,
     })),
-  reset:   () => set((s) => ({ zoom: 100, panX: 0, panY: 0, homeSeq: s.homeSeq + 1 })),
+  reset:   () => set((s) => ({ zoom: 100, panX: 0, panY: 0, homeSeq: s.homeSeq + 1, homeArmed: true })),
 }));
 
 function clamp(v: number, lo: number, hi: number) {

@@ -50,5 +50,22 @@ ok('⑤ 같은 문서에서 레이아웃만 바꾸면 이동 상태 그대로 (�
 await openAs('tree-right', null, 5, 3, 2); await page.waitForTimeout(700);
 m = await measure();
 ok(`⑥ 다시 열면 다시 위 72px (${m.rootTop}, pan ${m.panX},${m.panY}, zoom ${m.zoom})`, near(m.rootTop, 72) && m.panX === 0);
+// ⑦ 첫 화면이 살아 있는 동안(사용자가 아직 화면을 안 옮김) 배치가 나중에 바뀌어도 다시 잡는다
+//    — 낡은 한 번짜리 보정이 남긴 엉뚱한 pan(예: +4000)을 흉내 낸 뒤 배치를 바꾼다
+await page.evaluate(async () => {
+  const vp = (await import('/src/stores/viewportStore.ts')).useViewportStore; vp.setState({ panY: 4000 });
+  const d = (await import('/src/stores/documentStore.ts')).useDocumentStore.getState(); d.addChildNode('root');
+});
+await page.waitForTimeout(500);
+m = await measure();
+ok(`⑦ 첫 화면이 살아 있으면 배치가 바뀔 때 다시 위 72px (${m.rootTop}, pan ${m.panX},${m.panY})`, near(m.rootTop, 72) && m.panX === 0);
+// ⑧ 사용자가 화면을 옮긴 뒤에는 배치가 바뀌어도 손대지 않는다
+await page.evaluate(async () => {
+  const vp = (await import('/src/stores/viewportStore.ts')).useViewportStore.getState(); vp.setPan(-120, 350);
+  const d = (await import('/src/stores/documentStore.ts')).useDocumentStore.getState(); d.addChildNode('root');
+});
+await page.waitForTimeout(500);
+m = await measure();
+ok(`⑧ 사용자가 옮긴 뒤에는 배치가 바뀌어도 그대로 (pan ${m.panX},${m.panY})`, m.panX === -120 && m.panY === 350);
 await browser.close();
 console.log(process.exitCode ? '\n실패 있음' : '\n전부 통과');

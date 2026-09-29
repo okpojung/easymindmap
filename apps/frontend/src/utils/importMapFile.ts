@@ -28,6 +28,21 @@ export interface ImportedMap {
 const HTML_META_RE =
   /<script type="application\/json" id="easymindmap-map">([\s\S]*?)<\/script>/;
 
+/**
+ * 이 파일을 **뷰어 HTML 로 읽어야 하는가** — 확장자가 .html 이거나, 내용이 HTML
+ * 문서로 **시작**할 때만 (`<!doctype html` · `<html`). 예전엔 본문 어디든
+ * `id="easymindmap-map"` 이 있으면 HTML 로 봤는데, 우리 문서를 담은 mmd 는
+ * 노트 안에 그 문자열(HTML 내보내기를 설명하는 글)이 있어 **.md 인데도 "뷰어
+ * HTML 이 아닙니다" 로 거절**됐다(2026-09-29 실제 보고). 확장자가 바뀐 HTML 은
+ * 첫 글자 `<` 로 여전히 잡는다.
+ */
+export function looksLikeHtmlFile(name: string, text: string): boolean {
+  if (/\.html?$/i.test(name)) return true;
+  const head = String(text || '').replace(/^\uFEFF/, '').trimStart().slice(0, 4000);
+  if (/^<!doctype html/i.test(head) || /^<html[\s>]/i.test(head)) return true;
+  return head.startsWith('<') && head.includes('id="easymindmap-map"');
+}
+
 export function parseHtmlMapFile(text: string): ImportedMap | null {
   const m = String(text || '').match(HTML_META_RE);
   if (!m) return null;

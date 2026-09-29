@@ -21,7 +21,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
-import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile } from '@/utils/importMapFile';
+import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile, looksLikeHtmlFile } from '@/utils/importMapFile';
 import { resolveRemoteImages } from '@/utils/remoteImages';
 import { isDocumentEmpty, NEW_MAP_TITLE, useDocumentStore } from '@/stores/documentStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
@@ -360,10 +360,9 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     reader.onload = () => {
       const text = String(reader.result ?? '');
       const name = file.name.replace(/\.(md|markdown|txt|html?)$/i, '');
-      // HTML 판별은 확장자 + 내용 둘 다 — 확장자가 지워진/바뀐 파일도 인식
-      const isHtml = kind === 'html' || /\.html?$/i.test(file.name) ||
-        /^\s*<!doctype html/i.test(text) ||
-        text.includes('id="easymindmap-map"');
+      // HTML 판별은 확장자 + 내용의 **시작** — 확장자가 바뀐 파일도 인식하되, 본문
+      // 어딘가에 뷰어 문자열이 적힌 .md 를 HTML 로 오인하지 않는다 (looksLikeHtmlFile)
+      const isHtml = kind === 'html' || looksLikeHtmlFile(file.name, text);
       const imported = isHtml
         ? parseHtmlMapFile(text)
         : parseMarkdownMapFile(text, name, parseOpts);

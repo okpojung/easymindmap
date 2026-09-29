@@ -89,10 +89,9 @@ interface Props {
   collabs: Collaborator[];
 }
 
-// 첫 화면에서 중심 주제를 위쪽에 두는 레이아웃(아래로 자란다)과 그 위 여백 — homeSeq 효과
+// 첫 화면에서 중심 주제를 위쪽에 두는 레이아웃(아래로 자란다)과 그 위 여백 — homeArmed 효과
 const HOME_TOP_LAYOUTS = new Set(['tree-right', 'tree-down', 'process-tree-right']);
 const HOME_TOP_GAP = 72;
-let handledHomeSeq = 0;
 
 // 큰 맵(수백 노드)도 '맵 전체 맞추기'가 전부 담을 수 있게 최소 2%
 // (viewportStore의 하한과 반드시 같아야 한다 — 다르면 fit이 잘린다)
@@ -150,7 +149,7 @@ export function Canvas({
   const panMode = useViewportStore((s) => s.panMode);
   const fitRequestId = useViewportStore((s) => s.fitRequestId);
   const centerRequest = useViewportStore((s) => s.centerRequest);
-  const homeSeq = useViewportStore((s) => s.homeSeq);
+  const homeArmed = useViewportStore((s) => s.homeArmed);
   const setZoom = useViewportStore((s) => s.setZoom);
   const setPan = useViewportStore((s) => s.setPan);
   const zoomIn = useViewportStore((s) => s.zoomIn);
@@ -666,22 +665,26 @@ export function Canvas({
   // 원점이 화면 가운데에 오는데, 트리·진행트리는 중심 주제가 원점 위 235~250px 에
   // 놓이고 나무는 아래로만 자라 **위 1/5 이 빈 채**로 열렸다. 그런 레이아웃은 중심
   // 주제 위 변이 HOME_TOP_GAP 에 오도록 세로만 옮긴다. 방사형처럼 사방으로 자라는
-  // 것은 예전처럼 가운데. 한 tick 뒤에 잡는 이유: 열기 흐름이 loadMap 뒤에
-  // setLayoutType 을 부르므로 그때의 레이아웃·배치로 계산해야 한다.
-  // handledHomeSeq 는 모듈 변수 — 아웃라인·칸반에 다녀와 다시 마운트돼도 되풀이하지 않는다.
+  // 것은 예전처럼 가운데.
+  //
+  // ★ **한 번 잡고 끝내지 않는다** (2026-09-29 보강). 처음엔 reset 직후 한 tick 뒤에
+  // 그때의 배치로 한 번만 잡았는데, 그 뒤에 배치가 바뀌면(큰 맵의 늦은 렌더·글꼴
+  // 로드·노드 크기 측정·열기 흐름의 setLayoutType) 그 값이 낡는다 — 2847 노드
+  // 맵이 중심 주제 없이 빈 화면으로 열린 실사용 보고가 있었다(로컬 재현은 안 됐다).
+  // 지금은 `homeArmed`(reset 이 켜고 사용자의 첫 이동·배율 변경이 끈다)가 켜져 있는
+  // 동안 **배치(nodes)·레이아웃이 바뀔 때마다** 현재 배치로 다시 잡는다. 사용자가
+  // 화면을 옮긴 뒤에는 손대지 않는다. 같은 값이면 store 를 건드리지 않는다.
   useEffect(() => {
-    if (homeSeq === handledHomeSeq) return;
-    handledHomeSeq = homeSeq;
-    const t = window.setTimeout(() => {
-      const lt = normalizeLayoutType(useEditorUiStore.getState().layoutType);
-      if (!HOME_TOP_LAYOUTS.has(lt)) return;
-      const root = nodesRef.current.find((n) => n.depth === 0) ?? nodesRef.current[0];
-      if (!root) return;
-      setPan(0, HOME_TOP_GAP - (root.y - root.h / 2));
-    }, 0);
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [homeSeq]);
+    if (!homeArmed) return;
+    const lt = normalizeLayoutType(layoutType);
+    const root = nodes.find((n) => n.depth === 0) ?? nodes[0];
+    if (!root) return;
+    const wantY = HOME_TOP_LAYOUTS.has(lt) ? HOME_TOP_GAP - (root.y - root.h / 2) : 0;
+    const vp = useViewportStore.getState();
+    if (vp.zoom !== 100) return; // 배율이 바뀌었으면 이미 첫 화면이 아니다
+    if (Math.abs(vp.panY - wantY) < 0.5 && Math.abs(vp.panX) < 0.5) return;
+    vp.setHomePan(0, wantY);
+  }, [homeArmed, nodes, layoutType]);
 
   // 특정 노드를 화면 중앙 + 지정 배율로 보기 (검색 결과 클릭 —
   // requestCenterNode). 접힌 조상 때문에 아직 배치에 없으면 무시.

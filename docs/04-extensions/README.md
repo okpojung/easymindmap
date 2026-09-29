@@ -18,7 +18,7 @@ AI, 번역, 협업, 퍼블리시, 외부 연동 등 편집기 코어 위에 올�
 | 19 | `ai/19-ai-workflow.md` | AI WORKFLOW | AI 실행형 절차 (step 기반 workflow) | V1.5 |
 | 20 | `import-export/20-export.md` | EXPORT | Markdown / HTML / ZIP(첨부 패키징) 내보내기 | MVP |
 | 21 | `import-export/21-import.md` | IMPORT | Markdown 가져오기 (아웃라인 / 문서 파싱) | MVP |
-| 22 | `dashboard/22-dashboard.md` | DASHBOARD | 대시보드 맵 (Read-only / Auto Refresh) | V3 |
+| 22 | `dashboard/22-dashboard.md` | DASHBOARD | 대시보드 맵 — 편집 잠금 + 노드 값(별도 표) + 맵별 열쇠로 값 넣기. **v2 설계안 검토 대기 (2026-09-29)** · 유료 | V3 |
 | 23 | `translation/23-node-translation.md` | TRANSLATION | 노드 다국어 자동 번역 | V2 |
 | 24 | `translation/24-chat-translation.md` | TRANSLATION | 채팅 메시지 실시간 번역 | V2 |
 | 25 | `collaboration/25-map-collaboration.md` | COLLAB | 협업 초대 / 동기화 / 커서 / Soft Lock / Node Thread | V1~V2 |

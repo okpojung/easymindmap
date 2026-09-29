@@ -17,6 +17,13 @@ interface ViewportState {
   // 특정 노드를 화면 중앙 + 지정 배율로 보기 요청 (검색 결과 클릭 등).
   // seq가 바뀔 때마다 캔버스가 반응한다 — fitRequestId와 같은 패턴.
   centerRequest: { id: string; zoom: number; seq: number } | null;
+  /**
+   * **원위치 요청 번호** (2026-09-29) — `reset()` 마다 오른다. 캔버스는 이 번호가 바뀌면
+   * 레이아웃에 맞는 첫 화면을 잡는다: 위에서 아래로 자라는 레이아웃(트리·진행트리)은
+   * 중심 주제를 **화면 위쪽**에, 나머지는 가운데에. 예전엔 언제나 원점(가운데)이라
+   * 트리 맵은 위 1/5 이 빈 채로 열렸다(사용자 지적).
+   */
+  homeSeq: number;
 
   setZoom: (v: number) => void;
   setPan: (x: number, y: number) => void;
@@ -36,6 +43,7 @@ export const useViewportStore = create<ViewportState>((set) => ({
   panMode: false,
   fitRequestId: 0,
   centerRequest: null,
+  homeSeq: 1,
 
   setZoom: (zoom) => set({ zoom: clamp(zoom, ZOOM_MIN, ZOOM_MAX) }),
   setPan: (panX, panY) => set({ panX, panY }),
@@ -49,7 +57,7 @@ export const useViewportStore = create<ViewportState>((set) => ({
     set((s) => ({
       centerRequest: { id, zoom, seq: (s.centerRequest?.seq ?? 0) + 1 },
     })),
-  reset:   () => set({ zoom: 100, panX: 0, panY: 0 }),
+  reset:   () => set((s) => ({ zoom: 100, panX: 0, panY: 0, homeSeq: s.homeSeq + 1 })),
 }));
 
 function clamp(v: number, lo: number, hi: number) {

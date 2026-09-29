@@ -1334,6 +1334,11 @@ CANVAS-06)에서 시작한다. 같은 문서 안의 편집·되돌리기·템플
 px 를 그 요소의 `getScreenCTM()` 역행렬로 world 로 바꿔 끈 만큼 `offset` 을 쓴다. 첫
 움직임만 undo 에 남기고 끄는 동안 `setHistoryPaused` — 한 번 끌기 = undo 1단계(색
 피커와 같은 규칙). 패널 "줄기 위치" 는 값과 [제자리로](`connector-offset-reset`).
+**보강 (같은 날 사용자 보고 "줄기 끌기가 안 된다")** — 손잡이를 선 층에 그렸더니 줄기 한가운데에
+앉은 라벨(캡처의 "기사")이 그 위를 덮어 클릭이 라벨로 갔다. 손잡이는 **라벨 층 맨 뒤**(맨 위)로
+옮기고 라벨 상자와 겹치면 줄기 방향으로 라벨 바깥(+14)까지 비켜 놓는다(`TrunkHandle avoid`).
+또 **줄기 선 자체**에 넓은 투명 획(`data-connector-trunk`, `TrunkGrip`)을 얹어 줄기 어디를 잡아도
+끌린다 — 둘 다 `useTrunkDrag` 한 벌이다.
 mmd `offset:`(±2000 안, 0 은 쓰지 않는다) · 뷰어 `connShiftTrunk` 같은 식.
 붙은 같은 점은 `dedupePoints` 로 없앤다(화살촉 방향이 0 벡터가 되지 않게). 패널은
 "닿는 면" 절의 시작 면·끝 면 단추 5개씩(`connector-from-side-*`·`connector-to-side-*`),

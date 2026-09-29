@@ -104,6 +104,32 @@ const labelBox = await page.locator('[data-connector-label]').boundingBox();
 await shotUnion(page, size, `${OUT}/03-connector-canvas.png`, [await nodeBox(page, 'b1-1'), await nodeBox(page, 'b2-1'), labelBox], 50);
 await page.locator('[data-testid="connector-panel"]').screenshot({ path: `${OUT}/03-connector-panel.png` });
 console.log('shot', `${OUT}/03-connector-panel.png`);
+// ⑪ 라벨이 줄기 한가운데에 있어도 손잡이가 잡힌다 · 줄기 선 자체를 끌 수 있다 (2026-09-29 사용자 보고:
+//    "줄기 끌기가 안 된다" — 손잡이가 라벨 밑에 깔려 있었다). 지금 상태 = 오른쪽 고리 + 가운데 라벨.
+{
+  const hnd = page.locator('[data-connector-handle]').first();
+  ok('⑪ 고른 선에 손잡이', await hnd.count() === 1);
+  const hb = await hnd.boundingBox(); const lb2 = await page.locator('[data-connector-label]').boundingBox();
+  const overlap = hb.x < lb2.x + lb2.width && lb2.x < hb.x + hb.width && hb.y < lb2.y + lb2.height && lb2.y < hb.y + hb.height;
+  ok('⑪ 손잡이가 라벨 상자와 겹치지 않는다 (라벨 바깥으로 비켜 있다)', !overlap);
+  const topAtHandle = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-connector-handle]') != null, { x: hb.x + hb.width / 2, y: hb.y + hb.height / 2 });
+  ok('⑪ 손잡이 한가운데를 찍으면 맨 위 요소가 손잡이다', topAtHandle);
+  const tb = await page.locator('[data-connector-trunk]').first().boundingBox();
+  const gx = tb.x + tb.width / 2, gy = tb.y + 14; // 줄기 위쪽 — 라벨·손잡이와 떨어진 자리
+  const topAtTrunk = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-connector-trunk]') != null, { x: gx, y: gy });
+  ok('⑪ 줄기 선 위의 맨 위 요소가 잡는 획이다', topAtTrunk);
+  const zoomNow = await page.evaluate(async () => { const m = await import('/src/stores/viewportStore.ts'); return m.useViewportStore.getState().zoom; });
+  await page.mouse.move(gx, gy); await page.mouse.down();
+  await page.mouse.move(gx + 15, gy, { steps: 3 }); await page.mouse.move(gx + 30, gy, { steps: 3 });
+  await page.mouse.up(); await page.waitForTimeout(200);
+  const off = (await connectors())[0].offset;
+  const exp = Math.round(30 / (zoomNow / 100));
+  ok(`⑪ 줄기 선을 잡아 오른쪽으로 30px 끌면 offset (+${exp} 안팎: ${off})`, typeof off === 'number' && Math.abs(off - exp) <= 2);
+  const lbAfter = await page.locator('[data-connector-label]').boundingBox();
+  ok('⑪ 라벨도 줄기를 따라 옮겨진다', Math.abs((lbAfter.x - lb2.x) - 30) <= 2);
+  await doc((d, st, map) => st.updateConnector(map.connectors[0].id, { offset: undefined })); await page.waitForTimeout(200);
+}
+
 // 각진 선도 한 장
 await page.locator('[data-testid="connector-shape-elbow"]').click(); await page.waitForTimeout(300);
 await shotUnion(page, size, `${OUT}/03-connector-elbow.png`, [await nodeBox(page, 'b1-1'), await nodeBox(page, 'b2-1'), await page.locator('[data-connector-label]').boundingBox()], 50);

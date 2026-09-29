@@ -105,17 +105,14 @@ function resolve(connectors: Connector[] | undefined, nodesById: Map<string, Lai
 }
 
 /**
- * 줄기 손잡이 끌기 (2026-09-29 사용자 제안: "연결선을 선택하여 좌우로 드래그해
- * 높이를 조절") — 고른 연결선의 가운데 줄기에 손잡이를 놓고, 세로 줄기는 좌우·
- * 가로 줄기는 상하로 끌면 `offset` 이 바뀐다. 첫 움직임만 undo 에 남기고 끄는
- * 동안은 히스토리를 잠근다(색 피커와 같은 규칙) — 한 번 끌기 = undo 한 단계.
+ * 줄기 끌기 (2026-09-29 사용자 제안: "연결선을 선택하여 좌우로 드래그해 높이를
+ * 조절") — 고른 연결선의 가운데 줄기를 **선 자체로도, 손잡이로도** 끌 수 있다.
+ * 세로 줄기는 좌우·가로 줄기는 상하로 끌면 `offset` 이 바뀐다. 첫 움직임만 undo 에
+ * 남기고 끄는 동안은 히스토리를 잠근다(색 피커와 같은 규칙) — 한 번 끌기 = undo 한 단계.
  */
-function TrunkHandle({ id, pts, offset, dir, t }: { id: string; pts: CPoint[]; offset: number; dir: 'h' | 'v'; t: ThemeTokens }) {
+function useTrunkDrag(id: string, offset: number, dir: 'h' | 'v') {
   const updateConnector = useDocumentStore((s) => s.updateConnector);
   const drag = useRef<{ start: number; base: number; moved: boolean } | null>(null);
-  const seg = trunkSegment(pts)!;
-  const p = pts[seg.i], q = pts[seg.i + 1];
-  const cx = (p.x + q.x) / 2, cy = (p.y + q.y) / 2;
   // 화면 px → world 좌표: 이 요소의 CTM 은 조상 <g transform>(pan·zoom)까지 담는다
   const toWorld = (e: React.PointerEvent<SVGElement>) => {
     const ctm = (e.currentTarget as SVGGraphicsElement).getScreenCTM();
@@ -123,34 +120,73 @@ function TrunkHandle({ id, pts, offset, dir, t }: { id: string; pts: CPoint[]; o
     const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
     return dir === 'v' ? pt.x : pt.y;
   };
+  return {
+    style: { cursor: dir === 'v' ? 'ew-resize' : 'ns-resize' } as React.CSSProperties,
+    onClick: (e: React.MouseEvent) => e.stopPropagation(),
+    onPointerDown: (e: React.PointerEvent<SVGElement>) => {
+      e.stopPropagation();
+      (e.currentTarget as SVGElement).setPointerCapture(e.pointerId);
+      drag.current = { start: toWorld(e), base: offset, moved: false };
+    },
+    onPointerMove: (e: React.PointerEvent<SVGElement>) => {
+      const d = drag.current;
+      if (!d) return;
+      const next = Math.round(d.base + (toWorld(e) - d.start));
+      if (next === offset) return;
+      if (!d.moved) { d.moved = true; updateConnector(id, { offset: next || undefined }); setHistoryPaused(true); return; }
+      updateConnector(id, { offset: next || undefined });
+    },
+    onPointerUp: (e: React.PointerEvent<SVGElement>) => {
+      const d = drag.current;
+      drag.current = null;
+      if (d?.moved) setHistoryPaused(false);
+      try { (e.currentTarget as SVGElement).releasePointerCapture(e.pointerId); } catch { /* 이미 풀림 */ }
+    },
+    onPointerCancel: () => { if (drag.current?.moved) setHistoryPaused(false); drag.current = null; },
+  };
+}
+
+/** 줄기 선 위의 넓은 투명 획 — 줄기 어디를 잡아도 끌린다 (선 층, 고른 선에만) */
+function TrunkGrip({ id, pts, offset, dir }: { id: string; pts: CPoint[]; offset: number; dir: 'h' | 'v' }) {
+  const h = useTrunkDrag(id, offset, dir);
+  const seg = trunkSegment(pts)!;
+  const p = pts[seg.i], q = pts[seg.i + 1];
   return (
-    <g
-      data-connector-handle={id}
-      style={{ cursor: dir === 'v' ? 'ew-resize' : 'ns-resize' }}
-      onClick={(e) => e.stopPropagation()}
-      onPointerDown={(e) => {
-        e.stopPropagation();
-        (e.currentTarget as SVGElement).setPointerCapture(e.pointerId);
-        drag.current = { start: toWorld(e), base: offset, moved: false };
-      }}
-      onPointerMove={(e) => {
-        const d = drag.current;
-        if (!d) return;
-        const next = Math.round(d.base + (toWorld(e) - d.start));
-        if (next === offset) return;
-        if (!d.moved) { d.moved = true; updateConnector(id, { offset: next || undefined }); setHistoryPaused(true); return; }
-        updateConnector(id, { offset: next || undefined });
-      }}
-      onPointerUp={(e) => {
-        const d = drag.current;
-        drag.current = null;
-        if (d?.moved) setHistoryPaused(false);
-        try { (e.currentTarget as SVGElement).releasePointerCapture(e.pointerId); } catch { /* 이미 풀림 */ }
-      }}
-      onPointerCancel={() => { if (drag.current?.moved) setHistoryPaused(false); drag.current = null; }}
-    >
+    <path d={`M ${p.x} ${p.y} L ${q.x} ${q.y}`} fill="none" stroke="transparent" strokeWidth={HIT_WIDTH + 2} strokeLinecap="round" data-connector-trunk={id} {...h}>
       <title>{dir === 'v' ? '좌우로 끌어 줄기 옮기기' : '상하로 끌어 줄기 옮기기'}</title>
-      <rect x={cx - (dir === 'v' ? 5 : 9)} y={cy - (dir === 'v' ? 9 : 5)} width={dir === 'v' ? 10 : 18} height={dir === 'v' ? 18 : 10} rx={3} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
+    </path>
+  );
+}
+
+/**
+ * 줄기 손잡이 — **맨 위 층**(라벨 뒤에 그린다). 라벨이 줄기 한가운데에 앉으면
+ * (사용자 캡처 "기사") 손잡이가 그 밑에 깔려 잡히지 않았다 — 라벨 상자와 겹치면
+ * 줄기 방향으로 라벨 바깥까지 비켜 놓는다.
+ */
+function TrunkHandle({ id, pts, offset, dir, avoid, t }: { id: string; pts: CPoint[]; offset: number; dir: 'h' | 'v'; avoid?: { x: number; y: number; w: number; h: number }; t: ThemeTokens }) {
+  const h = useTrunkDrag(id, offset, dir);
+  const seg = trunkSegment(pts)!;
+  const p = pts[seg.i], q = pts[seg.i + 1];
+  let cx = (p.x + q.x) / 2, cy = (p.y + q.y) / 2;
+  if (avoid) {
+    const PAD = 6, GAP = 14;
+    const inside = Math.abs(cx - avoid.x) <= avoid.w / 2 + PAD && Math.abs(cy - avoid.y) <= avoid.h / 2 + PAD;
+    if (inside) {
+      if (dir === 'v') {
+        const lo = Math.min(p.y, q.y), hi = Math.max(p.y, q.y);
+        const below = avoid.y + avoid.h / 2 + GAP, above = avoid.y - avoid.h / 2 - GAP;
+        cy = below <= hi ? below : above >= lo ? above : cy;
+      } else {
+        const lo = Math.min(p.x, q.x), hi = Math.max(p.x, q.x);
+        const right = avoid.x + avoid.w / 2 + GAP, left = avoid.x - avoid.w / 2 - GAP;
+        cx = right <= hi ? right : left >= lo ? left : cx;
+      }
+    }
+  }
+  return (
+    <g data-connector-handle={id} {...h}>
+      <title>{dir === 'v' ? '좌우로 끌어 줄기 옮기기' : '상하로 끌어 줄기 옮기기'}</title>
+      <rect x={cx - (dir === 'v' ? 6 : 10)} y={cy - (dir === 'v' ? 10 : 6)} width={dir === 'v' ? 12 : 20} height={dir === 'v' ? 20 : 12} rx={3} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
       {dir === 'v'
         ? <path d={`M ${cx - 2} ${cy - 4} V ${cy + 4} M ${cx + 2} ${cy - 4} V ${cy + 4}`} stroke={t.primary} strokeWidth={1.2} />
         : <path d={`M ${cx - 4} ${cy - 2} H ${cx + 4} M ${cx - 4} ${cy + 2} H ${cx + 4}`} stroke={t.primary} strokeWidth={1.2} />}
@@ -205,7 +241,7 @@ export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onS
                   <circle cx={pts[0].x} cy={pts[0].y} r={4} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
                   <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r={4} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
                   {trunkSegment(pts) && (
-                    <TrunkHandle id={c.id} pts={pts} offset={c.offset ?? 0} dir={trunkSegment(pts)!.dir} t={t} />
+                    <TrunkGrip id={c.id} pts={pts} offset={c.offset ?? 0} dir={trunkSegment(pts)!.dir} />
                   )}
                 </>
               )}
@@ -266,6 +302,20 @@ export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onS
             </text>
           </g>
         );
+      })}
+      {/* 줄기 손잡이 — 라벨보다 위에 (고른 선에만) */}
+      {list.map(({ c, pts }) => {
+        if (c.id !== selectedId) return null;
+        const seg = trunkSegment(pts);
+        if (!seg) return null;
+        let avoid: { x: number; y: number; w: number; h: number } | undefined;
+        const text = c.label?.text?.trim() ? c.label.text : '';
+        if (text) {
+          const shape: ConnectorLabelShape = c.label?.shape ?? 'rounded';
+          const { w, h } = connectorLabelSize(text, shape);
+          avoid = labelBox(connectorMid(pts), w, h, c.label?.place ?? 'center');
+        }
+        return <TrunkHandle key={`h-${c.id}`} id={c.id} pts={pts} offset={c.offset ?? 0} dir={seg.dir} avoid={avoid} t={t} />;
       })}
     </g>
   );

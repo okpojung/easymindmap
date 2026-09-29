@@ -231,3 +231,8 @@ export function ProBuyPanel(_p: {
 }) {
   return null;
 }
+
+/** 계정 메뉴 ▸ 내 구매 — 공개판에는 이 창을 여는 자리 자체가 없다 */
+export function ProPurchasesPanel({ t }: { t: ThemeTokens }) {
+  return <ProFeaturePanel t={t} featureId="map-sales" />;
+}

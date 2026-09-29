@@ -20,7 +20,7 @@ import { AiSettingsView } from '@/editor/inspector-panels/AiSettingsView';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { LoginHistoryList, type LoginHistory } from '@/components/auth/LoginHistoryList';
 import { McpTokensView } from '@/components/auth/McpTokensView';
-import { ProShareDialog, ProSalesPanel } from '@pro';
+import { ProShareDialog, ProSalesPanel, ProPurchasesPanel } from '@pro';
 import { useProFeature } from '@/pro/contract';
 import { useProfileStore } from '@/stores/profileStore';
 import { AccountProfileForm } from '@/components/account/AccountProfileForm';
@@ -144,6 +144,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const [logOpen, setLogOpen] = useState(false);
   /** 💰 판매·정산 창 (2026-09-22, 27b §8.1) */
   const [salesOpen, setSalesOpen] = useState(false);
+  /** 🧾 내 구매 창 (2026-09-29) — 산 맵을 언제든 다시 받는다 */
+  const [buysOpen, setBuysOpen] = useState(false);
   /**
    * **파는 기능이 켜진 서버에서만** 이 줄을 낸다.
    *
@@ -156,9 +158,18 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
    *   생기면 그만이지만, 열리지 않는 줄은 고장으로 보인다.
    */
   const salesOn = useProFeature('map-sales').status === 'on';
+  /**
+   * ★ **산 사람과 파는 사람은 다른 사람이다** (2026-09-29 사용자 요청).
+   *   한 줄에 묶으면 맵을 사기만 한 사람이 '판매·정산' 을 열어 자기와
+   *   상관없는 정산 얘기를 읽게 된다. 줄을 갈라 각자 자기 것만 본다.
+   */
   const entries = salesOn
     ? ENTRIES.flatMap<MenuEntry>((e) => (e.id === 'subscription'
-      ? [{ id: 'sales', icon: '💰', label: '판매·정산' }, e]
+      ? [
+        { id: 'purchases', icon: '🧾', label: '내 구매' },
+        { id: 'sales', icon: '💰', label: '판매·정산' },
+        e,
+      ]
       : [e]))
     : ENTRIES;
   const [logs, setLogs] = useState<LoginHistory | null>(null);
@@ -375,6 +386,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 if (e.id === 'logins') { openLogins(); return; }
                 if (e.id === 'profile') { setOpen(false); setProfileOpen(true); return; }
                 if (e.id === 'sales') { setOpen(false); setSalesOpen(true); return; }
+                if (e.id === 'purchases') { setOpen(false); setBuysOpen(true); return; }
                 setSoon(soon === e.id ? null : e.id);
               }}
               style={{
@@ -612,6 +624,23 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           footer={<DialogCloseButton t={t} onClick={() => setMcpOpen(false)} testId="mcp-close" />}
         >
             <McpTokensView t={t} />
+        </DialogFrame>
+      )}
+
+      {/* 🧾 내 구매 — 산 맵 목록과 [다시 받기] (2026-09-29).
+          결제 직후의 링크는 30일짜리 열쇠 하나였다 — 여기서는 계정에 붙은
+          구매로 **언제든** 새 열쇠를 받아 다시 내려받는다. */}
+      {buysOpen && (
+        <DialogFrame
+          t={t}
+          testId="purchases-dialog"
+          width="min(560px, 94vw)"
+          onClose={() => setBuysOpen(false)}
+          title="🧾 내 구매"
+          subtitle="산 맵을 언제든 다시 받습니다 — 사진·첨부까지 함께."
+          footer={<DialogCloseButton t={t} onClick={() => setBuysOpen(false)} testId="purchases-close" />}
+        >
+            <ProPurchasesPanel t={t} />
         </DialogFrame>
       )}
 

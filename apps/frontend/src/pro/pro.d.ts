@@ -101,4 +101,12 @@ declare module '@pro' {
   export function ProBuyPanel(p: {
     publishId: string; title: string; priceKrw: number | null;
   }): JSX.Element | null;
+  /**
+   * 계정 메뉴 ▸ **🧾 내 구매** 창의 알맹이 (2026-09-29 사용자 요청).
+   *
+   * 산 맵의 목록과 **[다시 받기]** — 결제 직후의 링크는 30일짜리 열쇠
+   * 하나였다. 구매가 계정에 붙어 있으므로(회원만 산다) 여기서 언제든 새
+   * 열쇠를 받아 다시 내려받는다.
+   */
+  export function ProPurchasesPanel(p: { t: ThemeTokens }): JSX.Element | null;
 }

@@ -1361,4 +1361,4 @@ mmd `offset:`(±2000 안, 0 은 쓰지 않는다) · 뷰어 `connShiftTrunk` 같
 **검증** — 단위 `connectorGeometry.test.ts` 40(면 15 · 줄기 6 포함) · `nodePath.test.ts` 14 · 파서
 `declaration.test.ts` ⑥ 6 · 브라우저 `guide03-connector.mjs` 52 (e2e303 · e2e306 · e2e314).
 **협업** — 연결선은 pro 협업 Y.Doc 의 `connectors` 맵으로 함께 흐른다(2026-09-29,
-pro-e2e29). 그전에는 노드만 실려 상대 화면에 오지 않았다.
+pro-e2e31). 그전에는 노드만 실려 상대 화면에 오지 않았다.

@@ -200,6 +200,11 @@ export interface MapListItem {
    */
   listed?: boolean;
   /**
+   * `'edit'` | `'dashboard'` (2026-09-30, 22-dashboard.md §4.2) — 문서함 유형 칸의
+   * **📊 대시보드맵**. 칸을 모르는 옛 서버는 보내지 않는다(undefined = 일반맵).
+   */
+  viewMode?: string;
+  /**
    * 내용 검색(q) 결과에만 실린다 (2026-08-08).
    * **맵 안에서 맞은 건수** — 1건 = 조각 하나(노드 텍스트/노트/태그/
    * 링크/첨부 파일명). 0 이면 이름만 맞은 것이다.
@@ -414,8 +419,12 @@ export const cloudApi = {
   // 이름 변경 · 폴더 이동 · 유형 변경 (중복 이름이면 409)
   updateMap: (
     mapId: string,
-    patch: { title?: string; folderId?: string | null; kind?: MapKind },
-  ) => req<{ mapId: string; title: string; folderId: string | null; kind: MapKind }>(
+    patch: {
+      title?: string; folderId?: string | null; kind?: MapKind;
+      /** 대시보드맵 전환·되돌리기 (22-dashboard.md §4.1) — 막히면 409/403 + `code` */
+      viewMode?: 'edit' | 'dashboard';
+    },
+  ) => req<{ mapId: string; title: string; folderId: string | null; kind: MapKind; viewMode?: string }>(
     'PATCH', `/maps/${mapId}`, patch),
   renameMap: (mapId: string, title: string) =>
     req<{ mapId: string; title: string }>('PATCH', `/maps/${mapId}`, { title }),
@@ -494,6 +503,12 @@ export const cloudApi = {
        * 고칠 수 없다 — 읽기 전용으로 연다. 서버도 저장을 막는다.
        */
       published?: boolean;
+      /**
+       * **대시보드맵인가** (2026-09-30, 22-dashboard.md §4.3). 사람은 고칠 수 없고
+       * 프로그램이 내용을 바꾸는 맵 — 읽기 전용으로 연다. `[&변수]` 는 서버가
+       * 채워서 준다.
+       */
+      dashboard?: boolean;
       editLock?: 'acquired' | 'busy';
     }>(
       'GET',

@@ -11,6 +11,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import { useEffect } from 'react';
 import { useProFeature } from './contract';
+import { DashboardRevertButton } from '@/components/cloud/DashboardRevertButton';
 
 export function ProFeaturePanel({ t, featureId }: { t: ThemeTokens; featureId: string }) {
   const s = useProFeature(featureId);
@@ -236,3 +237,33 @@ export function ProBuyPanel(_p: {
 export function ProPurchasesPanel({ t }: { t: ThemeTokens }) {
   return <ProFeaturePanel t={t} featureId="map-sales" />;
 }
+
+// ── 대시보드맵 자리 (2026-09-30, 22-dashboard.md §8) ───────────────────
+
+/**
+ * 전환 단추 — **공개판에서는 그리지 않는다.** 대시보드맵은 유료 기능이라
+ * 전환할 길이 없다. 다만 유료 모듈이 꺼진 서버에 대시보드맵이 **남아 있으면**
+ * (라이선스가 끝났다 등) 사람이 갇히면 안 되므로, 되돌리기 단추만은 코어가
+ * 그린다 — 서버도 되돌리기는 기능 여부와 상관없이 받는다(`dashboard-rules.ts`).
+ */
+export function ProDashboardToggle(p: {
+  t: ThemeTokens;
+  map: { mapId: string; title: string; kind?: string; viewMode?: string; publishId?: string | null };
+  compact?: boolean;
+  iconStyle?: import('react').CSSProperties;
+  gapStyle?: import('react').CSSProperties;
+  onChanged?: () => void;
+}) {
+  if (p.map.viewMode !== 'dashboard') return null;
+  return (
+    <DashboardRevertButton
+      t={p.t} map={p.map} compact={p.compact} iconStyle={p.iconStyle} onChanged={p.onChanged}
+    />
+  );
+}
+
+/** 대시보드맵이 열려 있는 동안의 자동 갱신·패널 — 공개판에서는 없다(문서는 원문 그대로 보인다) */
+export function ProDashboardLive(_p: { t: ThemeTokens; mapId: string | null }) {
+  return null;
+}
+

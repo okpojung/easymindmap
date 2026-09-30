@@ -489,7 +489,7 @@ export async function openMapHere(
   const cloud = useCloudStore.getState();
   cloud.setBusy('opening');
   try {
-    const { doc, updatedAt, title, folderId, kind, editLock, role, published } =
+    const { doc, updatedAt, title, folderId, kind, editLock, role, published, dashboard } =
       await cloudApi.getDocument(mapId, editSessionKey());
     const loadedMap = (doc as { map?: unknown }).map;
     if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
@@ -511,7 +511,11 @@ export async function openMapHere(
     // (2026-08-19 실사용에서 그대로 겪었다).
     // 열람자면 **화면 편집 자체를 막는다**(#306 이후). 다른 세션 잠금은
     // 내 권한은 있는 것이므로 사본 저장을 열어 둔다 — 그 갈래가 다르다.
-    setViewerLocked(role === 'viewer');
+    // ★ **대시보드맵도 화면 편집을 막는다** (2026-09-30, 22-dashboard.md §4.3).
+    //   사람이 고친 것은 저장되지 않고(서버 403), 다음 자동 갱신이 서버 문서로
+    //   덮는다 — 고치게 두면 "사라지는 편집" 이 된다. 서버발 교체
+    //   (`applyRemoteMap`)는 이 잠금을 지나간다.
+    setViewerLocked(role === 'viewer' || dashboard === true);
     // ★ **공개 중인 맵은 읽기 전용으로 연다** (2026-09-05). 완성본이라
     //   고칠 수 없다 — 고치려면 **비공개(보관)로 바꿔야** 한다(주소는
     //   그대로다). 세 갈래가 되었으므로 이유도 셋이다. 이유가 다르면
@@ -521,6 +525,8 @@ export async function openMapHere(
     //   등록만 해 둔 보관 상태는 false 라 그대로 편집된다.
     const readOnlyReason = published
       ? '공개 중인 맵입니다 — 고치려면 비공개(보관)로 바꾸세요'
+      : dashboard
+        ? '📊 대시보드맵 — 프로그램이 내용을 바꿉니다 (고치려면 일반맵으로 되돌리세요)'
       : editLock === 'busy'
         ? '다른 세션에서 편집 중'
         : role === 'viewer' ? '이 맵은 읽기만 권한으로 공유받았습니다' : null;
@@ -532,6 +538,7 @@ export async function openMapHere(
       // 주지만, "이 맵이 협업맵이다" 는 사실은 알려 줘야 협업 세션이 열린다.
       useCloudStore.getState().setReadOnlyInfo({
         mapId, title, reason: readOnlyReason, viewer: role === 'viewer', kind,
+        ...(dashboard ? { dashboard: true } : {}),
       });
     } else {
       useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });

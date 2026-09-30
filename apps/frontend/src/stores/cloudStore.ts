@@ -54,12 +54,18 @@ interface CloudState {
    * 문서를 가져가도 좋다고 한 적이 없다 (2026-08-19).
    */
   readOnlyInfo:
-    { mapId: string; title: string; reason?: string; viewer?: boolean; kind?: MapKind } | null;
+    {
+      mapId: string; title: string; reason?: string; viewer?: boolean; kind?: MapKind;
+      /** 대시보드맵으로 열었다 (2026-09-30) — 자동 갱신·데이터 연결 패널이 이것을 본다 */
+      dashboard?: boolean;
+    } | null;
 
   link: (mapId: string, savedAt: string, meta?: Partial<CloudMapMeta>) => void;
   unlink: () => void;
   setReadOnlyInfo: (
-    info: { mapId: string; title: string; reason?: string; viewer?: boolean; kind?: MapKind } | null,
+    info: {
+      mapId: string; title: string; reason?: string; viewer?: boolean; kind?: MapKind; dashboard?: boolean;
+    } | null,
   ) => void;
   setBusy: (b: CloudState['busy']) => void;
   setError: (e: string | null) => void;

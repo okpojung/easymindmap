@@ -249,15 +249,26 @@ export class PublishService {
   static readonly COLLAB_BLOCKED =
     '협업 중인 맵은 퍼블리싱할 수 없습니다 — 아직 완성된 문서가 아닙니다. 퍼블리싱은 단독맵만 됩니다.';
 
+  /**
+   * ★ **대시보드맵은 퍼블리싱할 수 없다** (2026-09-30, 22-dashboard.md §4.1).
+   *   대시보드맵의 내용은 **프로그램이 계속 바꾼다** — 퍼블리싱이 지키는
+   *   "편집이 끝난 완성본"(27-publish-share.md)과 정반대다. 반대 방향(퍼블리싱
+   *   등록된 맵을 대시보드로)은 `MapsService.update` 가 막는다 — 양쪽을 다
+   *   막아야 규칙이 닫힌다(협업맵과 같은 이유).
+   */
+  static readonly DASHBOARD_BLOCKED =
+    '대시보드맵은 퍼블리싱할 수 없습니다 — 먼저 [일반맵으로 되돌리기] 를 해 주세요.';
+
   /** 이 맵을 퍼블리싱할 수 있는가 — 없거나 권한이 없으면 예외 */
   private async requirePublishable(userId: string, mapId: string): Promise<void> {
-    const map = await findAccessibleMap<{ id: string; kind: string }>(this.db, mapId, userId);
+    const map = await findAccessibleMap<{ id: string; kind: string; view_mode?: string }>(this.db, mapId, userId);
     // 없는 맵과 권한 없는 맵을 구분하지 않는다 (map-access.ts 와 같은 이유)
     if (!map) throw new NotFoundException('맵을 찾을 수 없거나 권한이 없습니다.');
     if (map.access_role !== 'owner') {
       throw new ForbiddenException('맵을 퍼블리싱할 수 있는 사람은 맵 주인뿐입니다.');
     }
     if (map.kind === 'collab') throw new ForbiddenException(PublishService.COLLAB_BLOCKED);
+    if (map.view_mode === 'dashboard') throw new ForbiddenException(PublishService.DASHBOARD_BLOCKED);
   }
 
   /**

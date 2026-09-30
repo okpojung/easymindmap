@@ -109,4 +109,31 @@ declare module '@pro' {
    * 열쇠를 받아 다시 내려받는다.
    */
   export function ProPurchasesPanel(p: { t: ThemeTokens }): JSX.Element | null;
+
+  // ── 대시보드맵 자리 (2026-09-30, 22-dashboard.md §8) ──
+  // 규칙(사람의 편집 잠금·문서함 유형·읽기 전용 열기)은 코어가 지키고,
+  // 알맹이(변수·ops·열쇠·자동 갱신·패널)는 유료가 채운다. 공개판은 둘 다 null.
+  /**
+   * **[📊 대시보드맵으로 전환] / [일반맵으로 되돌리기]** 단추.
+   * 문서함 행(`compact`, 아이콘 칸 정렬을 위해 `iconStyle`·`gapStyle` 을 받는다)과
+   * 에디터 맵 도구줄에 선다. 바꾼 뒤 `onChanged` 로 부른 쪽이 목록을 다시 읽는다.
+   * 막히면(퍼블리싱·협업·기능 꺼짐) 서버 문장을 그대로 보여 준다.
+   */
+  export function ProDashboardToggle(p: {
+    t: ThemeTokens;
+    map: {
+      mapId: string; title: string; kind?: string;
+      viewMode?: string; publishId?: string | null;
+    };
+    compact?: boolean;
+    iconStyle?: import('react').CSSProperties;
+    gapStyle?: import('react').CSSProperties;
+    onChanged?: () => void;
+  }): JSX.Element | null;
+  /**
+   * 대시보드맵이 **열려 있는 동안** 도는 자리 — 자동 갱신(바뀐 것이 있을 때만
+   * 문서를 다시 받아 `applyRemoteMap`) · 바뀐 노드 깜빡임 · 노드를 고르면 뜨는
+   * **[데이터 연결]** 패널 · 열쇠 관리. `mapId` 가 null 이면 아무것도 하지 않는다.
+   */
+  export function ProDashboardLive(p: { t: ThemeTokens; mapId: string | null }): JSX.Element | null;
 }

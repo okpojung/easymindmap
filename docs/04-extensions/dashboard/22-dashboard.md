@@ -362,6 +362,18 @@ CREATE INDEX IF NOT EXISTS dashboard_keys_map_idx ON public.dashboard_keys (map_
 
 ---
 
+
+### 6.1 DB 에서 바로 바꾸는 함수 (2026-09-30 사용자 요청 — "DB 에 직접 접속해서도")
+
+| 함수 | 하는 일 |
+|---|---|
+| `dashboard_set_var(맵, 이름, 값)` | ② 변수 upsert — 처음·다음 같은 한 줄. `updated_by='sql'` |
+| `dashboard_set_text(맵, 노드ID, 글자)` | ① 노드 글자 통째로 — `doc.map` 의 root·branches·centers 를 걸어 id 가 맞는 노드 **하나**만. 문서 행 `FOR UPDATE`, 문서·맵 `updated_at` 을 움직인다 |
+
+둘 다 API 와 같은 규칙(대시보드맵만 · 이름·길이 · 틀리면 예외 = 아무것도 안 바뀜). pro `database/dashboard.sql`
+에 함께 있다(함수만 더한다 · 멱등). 노드 글자는 표 한 칸이 아니라 JSONB 문서 속이라 손 SQL 로는 경로를 찾기
+어렵다 — 그래서 함수로 뒀다. 외부 프로그램에는 여전히 **API + 맵 열쇠**를 권한다(DB 계정은 모든 데이터에 닿는다).
+
 ## 7. API
 
 **코어가 갖는 것** (규칙 — 공개):

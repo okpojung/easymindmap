@@ -138,9 +138,9 @@ function knowsListed(m: MapListItem): boolean {
  *
  * ★ 대시보드맵 (2026-09-30, 22-dashboard.md §4.2)
  *   판정은 `kind` 가 아니라 `viewMode === 'dashboard'` 다 — 유형 칸은 한 값만
- *   보여 주지만 사실은 두 칸(kind·viewMode)에서 온다. 순서는 ② 퍼블리싱 다음:
- *   둘은 서버가 서로 막아(퍼블리싱 등록된 맵은 대시보드가 못 되고, 대시보드맵은
- *   퍼블리싱할 수 없다) 동시에 참일 수 없으니, 순서는 안전장치다.
+ *   보여 주지만 사실은 두 칸(kind·viewMode)에서 온다. 링크로 퍼블리싱한
+ *   대시보드맵(2026-09-30 v3.3 — 사내 시스템에 붙이기)은 ② 안에서 두 사실을
+ *   함께 보인다(`📊 대시보드맵 🔗`). 진열·판매는 서버가 막아 겹치지 않는다.
  */
 function mapType(m: MapListItem): {
   label: string;
@@ -164,6 +164,19 @@ function mapType(m: MapListItem): {
     //   숨기면 "내려 뒀다고 생각했는데 열려 있는" 사고가 그대로 남는다.
     //   주소는 어느 쪽이든 같으므로 배지를 눌러 복사하는 것은 그대로다.
     const priv = m.publishVisibility === 'private';
+    // ★ **대시보드맵을 링크로 붙여 둔 것** (2026-09-30, 22-dashboard.md §4.7) — 두 사실
+    //   (대시보드 · 링크 공개)을 함께 보인다. 진열·판매는 서버가 막아 여기 없다.
+    if (m.viewMode === 'dashboard') {
+      return {
+        label: priv ? '📊 대시보드맵 🔒' : '📊 대시보드맵 🔗',
+        strong: true,
+        publishUrl: url,
+        title: (priv
+          ? '대시보드맵 · 링크 보관 중 — 붙여 둔 자리에서도 지금은 열리지 않습니다(404)\n'
+          : '대시보드맵 · 링크 공개 중 — 사내 시스템에 붙인 화면이 10초마다 스스로 갱신합니다\n')
+          + `누르면 링크를 복사합니다\n${url}`,
+      };
+    }
     return {
       label: priv ? '🔒 보관중' : '🌐 퍼블리싱맵',
       strong: true,
@@ -1405,7 +1418,10 @@ export function MapBrowser({
                         [퍼블리싱] 자리에 있다. 눌러도 화면이 그대로라
                         "안 먹었나" 를 겪는다. 취소하면 원래 폴더로 돌아간다.
                       그 자리에는 **지식창고 토글**이 선다. */}
-                  {knowsListed(r.map) ? (
+                  {r.map.viewMode === 'dashboard' ? (
+                    // 대시보드맵은 협업맵도, 지식창고 진열도 안 된다(서버가 막는다) — 자리를 비워 둔다
+                    <span aria-hidden style={actionGap} />
+                  ) : knowsListed(r.map) ? (
                     <button
                       data-testid="browser-map-listed"
                       aria-pressed={r.map.listed}
@@ -1416,9 +1432,6 @@ export function MapBrowser({
                       aria-label={r.map.listed ? '지식창고에서 내리기' : '지식창고에 올리기'}
                       onClick={() => void toggleListed(r.map)}
                     ><I.Library size={15} /></button>
-                  ) : r.map.viewMode === 'dashboard' ? (
-                    // 대시보드맵은 협업맵이 될 수 없다(서버가 막는다) — 공유 자리를 비워 둔다
-                    <span aria-hidden style={actionGap} />
                   ) : (
                     <button data-testid="browser-map-share" style={iconBtn}
                       title="공유 — 참여자 초대 · 소유권 넘기기 (맵을 열지 않아도 됩니다)" aria-label="공유"
@@ -1438,8 +1451,8 @@ export function MapBrowser({
                     onChanged={() => void load()}
                   />
                   {/* 퍼블리싱은 **단독맵만** (e2e202 사용자 결정) — 협업맵에는 버튼을 두지 않는다.
-                      대시보드맵도 퍼블리싱할 수 없다(22-dashboard.md §4.1 — 서버도 막는다) */}
-                  {r.map.kind !== 'collab' && r.map.viewMode !== 'dashboard' ? (
+                      대시보드맵은 **링크로만** 퍼블리싱한다(22-dashboard.md §4.7 — 사내 시스템에 붙이기) */}
+                  {r.map.kind !== 'collab' ? (
                     <button data-testid="browser-map-publish" style={iconBtn}
                       title="퍼블리싱 — 링크를 가진 사람이 로그인 없이 읽습니다 (맵을 열지 않아도 됩니다)" aria-label="퍼블리싱"
                       onClick={() => setPublishMap(r.map)}><I.Globe size={15} /></button>

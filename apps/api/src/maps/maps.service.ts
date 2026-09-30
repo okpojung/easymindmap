@@ -575,7 +575,7 @@ export class MapsService {
         next: dto.viewMode,
         kind: cur.kind,
         nextKind: dto.kind,
-        registered: toDash ? await this.isRegistered(mapId) : false,
+        listedOrPaid: toDash ? await this.isListedOrPaid(mapId) : false,
         featureEnabled: feat.enabled,
         featureReason: feat.reason,
         duplicateIds: dupIds,
@@ -1471,6 +1471,27 @@ export class MapsService {
    * 맵은 저자 한 사람의 것이라야 한다 — 수익 배분 문제가 아예 생기지
    * 않게 하는 것이 규칙의 목적이다(27a §5.0). 보관 중이어도 마찬가지다.
    */
+  /**
+   * **지식창고 진열 · 유료 판매 중**인가 (2026-09-30, 22-dashboard.md §4.7).
+   * 대시보드맵과 함께 설 수 없는 것은 이 둘뿐이다 — 링크 공개·보관은 된다.
+   * 칸이 없는 서버(델타 미적용)에서는 그 상태가 있을 수 없으므로 false.
+   */
+  private async isListedOrPaid(mapId: string): Promise<boolean> {
+    if (!(await tableReady(this.db, 'public.published_maps'))) return false;
+    const listed = await columnReady(this.db, 'public.published_maps', 'listed');
+    const vis = await columnReady(this.db, 'public.published_maps', 'visibility');
+    if (!listed && !vis) return false;
+    const conds = [listed ? 'listed' : null, vis ? "visibility = 'paid'" : null].filter(Boolean).join(' OR ');
+    const { rows } = await this.db.query<{ ok: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM public.published_maps
+          WHERE map_id = $1 AND unpublished_at IS NULL AND (${conds})
+       ) AS ok`,
+      [mapId],
+    );
+    return rows[0]?.ok === true;
+  }
+
   private async isRegistered(mapId: string): Promise<boolean> {
     if (!(await tableReady(this.db, 'public.published_maps'))) return false;
     const { rows } = await this.db.query<{ ok: boolean }>(

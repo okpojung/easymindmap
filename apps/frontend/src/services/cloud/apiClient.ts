@@ -366,6 +366,11 @@ export interface PublishStatus {
    * false 면 화면은 값 줄을 **아예 그리지 않는다** — 위 둘과 같은 이유다.
    */
   canSetPrice?: boolean;
+  /**
+   * **대시보드맵인가** (2026-09-30, 22-dashboard.md §4.7) — 참이면 지식창고·값 줄
+   * 대신 **사내 시스템에 붙이는 코드**를 보여 준다(서버가 진열·판매를 막는다).
+   */
+  dashboard?: boolean;
 }
 
 /** 잘린 미리보기와 함께 오는 **숫자** (27b §8.2) */
@@ -398,6 +403,10 @@ export interface PublishedMap {
   priceKrw?: number | null;
   /** 잘리기 **전**의 규모 — 손님이 살지 정하는 근거다 */
   stats?: PreviewStats;
+  /** 대시보드맵이면 true — 값이 채워진 문서이고, `stamp` 로 바뀐 것을 물어 갱신한다 */
+  dashboard?: boolean;
+  /** 바뀌었는지 가르는 표식(문서 시각 + 변수) — 뜻은 없고 같은지만 본다 */
+  stamp?: string;
 }
 
 export const cloudApi = {
@@ -797,6 +806,10 @@ export const cloudApi = {
   getPublished: (publishId: string) =>
     req<PublishedMap>('GET', `/published/${encodeURIComponent(publishId)}`,
       undefined, true),
+  /** 바뀌었나만 — 붙여 둔 대시보드맵의 10초 물음 (문서를 받지 않는다) */
+  getPublishedStamp: (publishId: string) =>
+    req<{ stamp: string; dashboard: boolean }>(
+      'GET', `/published/${encodeURIComponent(publishId)}/stamp`, undefined, true),
 
   deleteAttachment: (id: string) => req<void>('DELETE', `/attachments/${id}`),
   quota: () =>

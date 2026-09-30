@@ -84,6 +84,18 @@ export interface ProContract {
    *   것은 "값이 아직 없다" 와 같은 모양이라 안전하다.
    */
   renderDashboardDoc?(mapId: string, doc: unknown): unknown | Promise<unknown>;
+
+  /**
+   * ★ **대시보드맵 값이 바뀌었는지 알리는 짧은 표식** (2026-09-30, 선택).
+   *   설계: docs/04-extensions/dashboard/22-dashboard.md §4.7
+   *
+   * 퍼블리싱 주소(`/p/{id}`)로 붙여 둔 대시보드가 **스스로 갱신**하려면 "바뀌었나"
+   * 를 싸게 물어야 한다. 문서 시각은 코어가 알지만 변수 값은 유료 모듈의 표에
+   * 있다 — 그 쪽 표식(예: 마지막 갱신 시각 + 개수)을 여기서 받는다. 값 자체는
+   * 주지 않는다(표식만 — 비인증 경로에서 불린다).
+   * 구현이 없거나 실패하면 코어는 문서 시각만으로 판단한다.
+   */
+  dashboardStamp?(mapId: string): string | Promise<string>;
 }
 
 /**

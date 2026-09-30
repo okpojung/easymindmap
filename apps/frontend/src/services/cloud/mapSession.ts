@@ -523,10 +523,12 @@ export async function openMapHere(
     //
     //   서버가 주는 `published` 는 **"지금 남에게 열려 있는가"** 다 —
     //   등록만 해 둔 보관 상태는 false 라 그대로 편집된다.
-    const readOnlyReason = published
-      ? '공개 중인 맵입니다 — 고치려면 비공개(보관)로 바꾸세요'
-      : dashboard
-        ? '📊 대시보드맵 — 프로그램이 내용을 바꿉니다'
+    // ★ 대시보드맵이 **먼저**다 (2026-09-30) — 링크로 퍼블리싱한 대시보드맵은
+    //   비공개로 바꿔도 여전히 못 고친다. "비공개로 바꾸세요" 는 틀린 안내가 된다.
+    const readOnlyReason = dashboard
+      ? '📊 대시보드맵 — 프로그램이 내용을 바꿉니다'
+      : published
+        ? '공개 중인 맵입니다 — 고치려면 비공개(보관)로 바꾸세요'
       : editLock === 'busy'
         ? '다른 세션에서 편집 중'
         : role === 'viewer' ? '이 맵은 읽기만 권한으로 공유받았습니다' : null;

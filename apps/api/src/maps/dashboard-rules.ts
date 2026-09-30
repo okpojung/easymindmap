@@ -31,8 +31,13 @@ export interface DashboardSwitchInput {
   kind: string | null | undefined;
   /** 같은 요청이 바꾸려는 kind (없으면 그대로) */
   nextKind?: string;
-  /** 퍼블리싱 문서함에 등록돼 있나(공개·보관 모두) */
-  registered: boolean;
+  /**
+   * **지식창고에 진열됐거나 유료로 파는 중**인가 (2026-09-30 v3.3).
+   * 링크로만 여는 퍼블리싱(공개·보관)은 대시보드맵과 함께 설 수 있다 — 사내
+   * 시스템에 붙이는 것이 대시보드의 쓸모다. 불특정 다수에게 진열하거나 파는
+   * 것만 막는다(프로그램이 바꾸는 숫자는 팔 물건도, 둘러볼 글도 아니다).
+   */
+  listedOrPaid: boolean;
   /** 유료 모듈의 `dashboard` 기능이 켜져 있나 */
   featureEnabled: boolean;
   /** 꺼져 있으면 그 이유(`/v1/features` 의 문장) */
@@ -46,10 +51,11 @@ export interface DashboardSwitchInput {
  *
  * ★ **되돌리기(`edit`)는 언제나 된다** — 유료 모듈이 꺼져도. 기능이 꺼졌다고
  *   맵이 영영 잠긴 채 갇히면, 그건 사용자의 문서를 인질로 잡는 셈이다.
- * ★ **협업맵과 퍼블리싱은 서로 막는다**(양쪽을 다 막아야 규칙이 닫힌다 —
- *   `update()` 의 "퍼블리싱 ↔ 협업" 과 같은 이유). 여기서는 대시보드 쪽
- *   두 방향(대시보드로 들어가기 · 대시보드인 채 협업맵이 되기)을 본다.
- *   반대 방향(대시보드맵을 퍼블리싱)은 퍼블리싱 쪽이 막는다.
+ * ★ **협업맵과는 서로 막는다**. 여기서는 대시보드 쪽 두 방향(대시보드로
+ *   들어가기 · 대시보드인 채 협업맵이 되기)을 본다.
+ * ★ **퍼블리싱은 링크까지만 함께 선다** (2026-09-30 v3.3) — 지식창고 진열·
+ *   유료 판매 중인 맵은 대시보드가 못 되고, 반대 방향(대시보드맵을 진열·판매)은
+ *   퍼블리싱 쪽이 `DASHBOARD_NO_LISTING` · `DASHBOARD_NO_PRICE` 로 막는다.
  */
 export function dashboardSwitchBlock(i: DashboardSwitchInput): DashboardBlock | null {
   const isDash = i.current === DASHBOARD_VIEW_MODE;
@@ -64,10 +70,11 @@ export function dashboardSwitchBlock(i: DashboardSwitchInput): DashboardBlock | 
         message: `대시보드맵은 유료 기능입니다${i.featureReason ? ` — ${i.featureReason}` : '.'}`,
       };
     }
-    if (i.registered) {
+    if (i.listedOrPaid) {
       return {
         code: 'DASHBOARD_PUBLISHED',
-        message: '퍼블리싱 등록된 맵은 대시보드맵으로 바꿀 수 없습니다. 먼저 퍼블리싱을 취소해 주세요.',
+        message: '지식창고에 올렸거나 유료로 파는 맵은 대시보드맵으로 바꿀 수 없습니다. '
+          + '먼저 지식창고에서 내리거나 무료로 돌려 주세요(링크 공개는 그대로 둬도 됩니다).',
       };
     }
     if (i.duplicateIds.length) {
@@ -87,6 +94,16 @@ export function dashboardSwitchBlock(i: DashboardSwitchInput): DashboardBlock | 
   }
   return null;
 }
+
+/**
+ * **퍼블리싱 쪽에서 대시보드맵에 막는 것** (2026-09-30 v3.3, 22-dashboard.md §4.7).
+ * 링크(공개·보관)는 된다 — 사내 시스템에 붙이거나 첨부하는 주소다. 지식창고
+ * 진열과 유료 판매만 막는다.
+ */
+export const DASHBOARD_NO_LISTING =
+  '대시보드맵은 지식창고에 올릴 수 없습니다 — 링크(사내 시스템에 붙이기·첨부)로만 공유합니다.';
+export const DASHBOARD_NO_PRICE =
+  '대시보드맵은 유료로 팔 수 없습니다 — 프로그램이 바꾸는 숫자는 파는 물건이 아닙니다.';
 
 /** 사람의 저장(`saveDocument`)을 막을 때의 이유 */
 export function dashboardLockBlock(viewMode: string | null | undefined): DashboardBlock | null {

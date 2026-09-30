@@ -184,6 +184,9 @@ export function PublishPanel(
    */
   const lockThisTab = (locked: boolean) => {
     const c = useCloudStore.getState();
+    // ★ 대시보드맵은 **퍼블리싱과 상관없이** 잠겨 있다 (2026-09-30) — 비공개로
+    //   돌렸다고 여기서 풀면 대시보드맵이 편집 가능한 맵으로 다시 이어진다.
+    if (c.readOnlyInfo?.mapId === mapId && c.readOnlyInfo.dashboard) return;
     if (locked) {
       if (c.readOnlyInfo?.mapId === mapId) return; // 이미 잠겨 있다
       const meta = { title: c.cloudTitle ?? mapTitle, kind: c.cloudKind };
@@ -487,11 +490,15 @@ export function PublishPanel(
                   })}
                 </div>
                 <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 6 }}>
-                  {(status.visibility ?? 'public') === 'private'
-                    ? '지금은 남에게 보이지 않습니다 (주소를 열면 404). 이 상태에서는 맵을 고칠 수 있습니다.'
-                    : '링크를 가진 누구나 읽습니다. 고치려면 [비공개(보관)]로 바꾸세요 — 주소는 그대로입니다.'}
+                  {status.dashboard
+                    ? ((status.visibility ?? 'public') === 'private'
+                      ? '지금은 남에게 보이지 않습니다 (주소를 열면 404). 붙여 둔 자리에서 보이게 하려면 [링크 공개] 로 바꾸세요.'
+                      : '링크를 가진 누구나 읽습니다 — 값은 프로그램이 넣은 대로 10초 안에 바뀝니다.')
+                    : (status.visibility ?? 'public') === 'private'
+                      ? '지금은 남에게 보이지 않습니다 (주소를 열면 404). 이 상태에서는 맵을 고칠 수 있습니다.'
+                      : '링크를 가진 누구나 읽습니다. 고치려면 [비공개(보관)]로 바꾸세요 — 주소는 그대로입니다.'}
                   <br />★ <b>목록에는 뜨지 않습니다</b> — 주소를 아는 사람만 봅니다.
-                  둘러보는 사람에게도 보이게 하려면 아래 <b>[지식창고]</b> 를 켜세요.
+                  {!status.dashboard && <> 둘러보는 사람에게도 보이게 하려면 아래 <b>[지식창고]</b> 를 켜세요.</>}
                 </div>
               </div>
             )}
@@ -502,7 +509,12 @@ export function PublishPanel(
                 *"불특정 다수에게 공개하는"* 것이다. 주소를 따로 만들지는
                 않는다 — 같은 `/p/{id}` 를 쓴다.
                 칸이 없는 서버(델타 미적용)에서는 그리지 않는다. */}
-            {status.canSetListed && (() => {
+            {/* ★ **대시보드맵 — 사내 시스템에 붙이기** (2026-09-30, 22-dashboard.md §4.7).
+                지식창고·값 줄 대신 이것을 보여 준다(서버도 진열·판매를 막는다).
+                `?embed=1` 은 머리말 없이 맵만 — 사내 페이지 안 iframe 에 맞다. */}
+            {status.dashboard && <DashboardEmbed t={t} url={url} flash={flash} />}
+
+            {status.canSetListed && !status.dashboard && (() => {
               const on = !!status.listed;                 // 서버가 아는 상태
               const want = listedWant ?? on;              // 내가 고른 상태
               const pending = want !== on;                // 아직 반영 안 됐다
@@ -579,7 +591,7 @@ export function PublishPanel(
                 켜지지 않은 서버에서도** 값 칸 대신 이유를 적는다 — 값만
                 매겨 두면 **저자는 팔린다고 믿는데 살 길이 없는** 상태가
                 된다(27a §3 이 경고한 바로 그 자리). */}
-            {status.canSetPrice && (
+            {status.canSetPrice && !status.dashboard && (
               <PriceRow
                 t={t}
                 status={status}
@@ -842,6 +854,60 @@ function PriceRow({ t, status, busy, onApply }: {
           }}
         >값을 내리고 무료공개로 되돌리기</button>
       )}
+    </div>
+  );
+}
+
+/**
+ * **대시보드맵을 사내 시스템에 붙이는 코드** (2026-09-30, 22-dashboard.md §4.7).
+ *
+ * 링크 하나로 두 가지를 한다 — ⑴ 게시판·메일에 **첨부**(그냥 주소) ⑵ 사내 페이지의
+ * **하위 화면**으로 끼우기(`<iframe src="…?embed=1">`). 붙여 둔 화면은 10초마다
+ * 바뀐 것만 물어 스스로 갱신한다(로그인 없이 — 링크를 아는 사람만 본다).
+ */
+function DashboardEmbed({ t, url, flash }: { t: ThemeTokens; url: string; flash: (m: string) => void }) {
+  const embedUrl = url ? `${url}?embed=1` : '';
+  const code = embedUrl
+    ? `<iframe src="${embedUrl}" width="100%" height="600" style="border:0" title="대시보드"></iframe>`
+    : '';
+  const copy = (text: string, what: string) => {
+    const fail = () => flash('⚠ 복사하지 못했습니다 — 아래 칸을 직접 선택해 복사해 주세요.');
+    if (!navigator.clipboard?.writeText) { fail(); return; }
+    navigator.clipboard.writeText(text).then(() => flash(`${what}을(를) 복사했습니다.`), fail);
+  };
+  const box = {
+    width: '100%', boxSizing: 'border-box' as const, padding: '7px 9px', borderRadius: 7,
+    border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
+    fontSize: 11.5, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    resize: 'none' as const,
+  };
+  const small = {
+    height: 26, padding: '0 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 700,
+    border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: 'pointer',
+  };
+  return (
+    <div data-testid="publish-dashboard-embed" style={{
+      marginBottom: 10, padding: '10px 12px', borderRadius: 8,
+      border: `1px solid ${t.primary}`, background: t.surfaceAlt,
+    }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>📊 사내 시스템에 붙이기</div>
+      <div style={{ fontSize: 11.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 8 }}>
+        대시보드맵은 <b>지식창고·유료 판매 없이 링크로만</b> 공유합니다. 붙여 둔 화면은
+        <b> 10초마다 스스로 갱신</b>됩니다(로그인 없이 — <b>링크를 아는 사람만</b> 봅니다).
+        <br />링크 공개 상태여야 열립니다 — 비공개(보관)이면 붙인 자리도 404 입니다.
+      </div>
+      <div style={{ fontSize: 11.5, fontWeight: 700, margin: '6px 0 3px' }}>하위 페이지로 끼우기 (iframe)</div>
+      <textarea data-testid="publish-embed-code" readOnly rows={3} value={code} style={box}
+        onFocus={(e) => e.currentTarget.select()} />
+      <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
+        <button data-testid="publish-embed-copy" style={small} disabled={!code}
+          onClick={() => copy(code, '붙이는 코드')}>코드 복사</button>
+        <button data-testid="publish-embed-url-copy" style={small} disabled={!embedUrl}
+          onClick={() => copy(embedUrl, '머리말 없는 주소')}>머리말 없는 주소 복사</button>
+      </div>
+      <div style={{ fontSize: 11, color: t.textSubtle, lineHeight: 1.6, marginTop: 6 }}>
+        게시판·메일에 <b>첨부</b>할 때는 아래 <b>[링크 복사]</b> 의 주소를 그대로 쓰세요.
+      </div>
     </div>
   );
 }

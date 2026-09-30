@@ -333,7 +333,7 @@ export class PublishService {
     PublishService.assertUsable(visibility, canSet);
 
     const cur = await this.activeRow(mapId);
-    if (cur) return this.toStatus(cur, canSet, canList, await this.hasPrice());
+    if (cur) return this.withDash(mapId, this.toStatus(cur, canSet, canList, await this.hasPrice()));
 
     // publish_id 는 UNIQUE 다. 충돌 확률은 무시할 만하지만 0 은 아니므로
     // 몇 번 다시 뽑는다 — 여기서 포기하면 사용자에게는 이유 없는 실패다.
@@ -351,7 +351,7 @@ export class PublishService {
           `INSERT INTO public.published_maps ${cols} VALUES ${vals} RETURNING ${ret}`,
           canSet ? [mapId, publishId, visibility] : [mapId, publishId],
         );
-        return this.toStatus(rows[0], canSet, canList, await this.hasPrice());
+        return this.withDash(mapId, this.toStatus(rows[0], canSet, canList, await this.hasPrice()));
       } catch (err) {
         // 23505 = unique_violation. 그 외 오류는 그대로 올린다 —
         // 삼키면 DB 장애가 "퍼블리싱 실패"로 둔갑해 원인을 못 찾는다.
@@ -421,7 +421,7 @@ export class PublishService {
     if (!rows[0]) {
       throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
     }
-    return this.toStatus(rows[0], true, canList, await this.hasPrice());
+    return this.withDash(mapId, this.toStatus(rows[0], true, canList, await this.hasPrice()));
   }
 
   /**
@@ -490,7 +490,7 @@ export class PublishService {
       // 끄는 쪽에서만 올 수 있다 — 켜는 쪽은 위에서 등록을 만들었다
       throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다.');
     }
-    return this.toStatus(rows[0], canSet, true, await this.hasPrice());
+    return this.withDash(mapId, this.toStatus(rows[0], canSet, true, await this.hasPrice()));
   }
 
   /** 값의 상·하한 — 27b §8.3 권고. 넘으면 이유를 말하고 거절한다 */
@@ -548,7 +548,7 @@ export class PublishService {
       // 칸이 없는 서버에서 "값을 내린다" 는 이미 이루어진 일이다 — 멱등
       const cur = await this.activeRow(mapId);
       if (!cur) throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
-      return this.toStatus(cur, canSet, canList, canPrice);
+      return this.withDash(mapId, this.toStatus(cur, canSet, canList, canPrice));
     }
 
     const { rows } = await this.db.query<PublishedRow>(
@@ -565,7 +565,7 @@ export class PublishService {
     if (!rows[0]) {
       throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
     }
-    return this.toStatus(rows[0], canSet, canList, canPrice);
+    return this.withDash(mapId, this.toStatus(rows[0], canSet, canList, canPrice));
   }
 
   /**
@@ -997,6 +997,15 @@ export class PublishService {
     return rows[0];
   }
 
+  /**
+   * 상태에 **대시보드맵인가**를 싣는다 — 모든 상태 응답이 같은 칸을 가져야 한다.
+   * (첫 조회에만 싣고 등록·전환 응답에서 빠지니, 화면이 [사내 시스템에 붙이기] 칸을
+   *  잃고 지식창고 줄을 다시 그렸다 — pro 화면 시험이 잡았다.)
+   */
+  private async withDash(mapId: string, st: PublishStatus): Promise<PublishStatus> {
+    return { ...st, dashboard: await this.isDashboard(mapId) };
+  }
+
   private toStatus(
     row: PublishedRow, canSetVisibility: boolean, canSetListed = false,
     canSetPrice = false,
@@ -1063,10 +1072,10 @@ export class PublishService {
         WHERE map_id = $1 AND unpublished_at IS NULL`,
       [mapId, key],
     );
-    return {
+    return this.withDash(mapId, {
       ...this.toStatus(cur, await this.hasVisibility(), await this.hasListed(), await this.hasPrice()),
       hasPreview: true,
-    };
+    });
   }
 
   /**

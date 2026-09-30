@@ -291,7 +291,7 @@ export function PublishPanel(
     await cloudApi.unpublishMap(mapId);
     setStatus({
       available: true, publishId: null, publishedAt: null,
-      publishable: true, canSetVisibility: status?.canSetVisibility,
+      publishable: true, canSetVisibility: status?.canSetVisibility, dashboard: status?.dashboard,
     });
     setCopied(false);
     lockThisTab(false); // 다시 고칠 수 있다

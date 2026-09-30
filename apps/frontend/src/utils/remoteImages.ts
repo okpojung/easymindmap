@@ -18,6 +18,7 @@
 import type { MindNode, SampleMap } from '@/editor/__samples__/types';
 import { serverAttachmentId } from '@/services/cloud/apiClient';
 import { importRemoteImage } from './embedImage';
+import { isFetchableImageUrl } from './imageUrl';
 
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -58,6 +59,15 @@ function measureImage(src: string): Promise<{ w: number; h: number }> {
 
 type ImgEntry = { src: string; w: number; h: number; afterLine?: number };
 
+// 사진으로 쓸 수 없는 주소를 노드 링크(🔗)로 남긴다 — 주소는 잃지 않는다
+function linkFallback(node: MindNode, src: string): void {
+  const links = node.links ?? [];
+  if (!links.some((l) => l.url === src)) {
+    links.push({ id: `rimg-${Date.now()}-${links.length}`, url: src, label: fileNameOf(src) });
+  }
+  node.links = links;
+}
+
 // 노드 하나의 원격 이미지들을 처리 — images 배열을 새로 만들어 돌려주고,
 // 실패분은 links에 추가한다 (node를 제자리 수정)
 async function resolveNode(node: MindNode, stats: RemoteImageStats): Promise<void> {
@@ -72,6 +82,13 @@ async function resolveNode(node: MindNode, stats: RemoteImageStats): Promise<voi
   for (const im of list) {
     if (!/^https?:\/\//i.test(im.src) || isOurs(im.src)) {
       out.push(im);
+      continue;
+    }
+    // 자리표시·깨진 주소(`https://…png` 등)는 받으러 가지 않는다 — 서버는
+    // ENOTFOUND, 브라우저 <img> 는 ERR_INVALID_URL 로 영원히 답이 없다 (2026-09-30)
+    if (!isFetchableImageUrl(im.src)) {
+      linkFallback(node, im.src);
+      stats.linked += 1;
       continue;
     }
     // 남의 사이트 사진 → 우리가 보관하는 사진으로 (로그인이면 서버,
@@ -89,15 +106,7 @@ async function resolveNode(node: MindNode, stats: RemoteImageStats): Promise<voi
       stats.kept += 1;
     } catch {
       // 이미지로 쓸 수 없음 — 링크로 폴백 (URL은 잃지 않는다)
-      const links = node.links ?? [];
-      if (!links.some((l) => l.url === im.src)) {
-        links.push({
-          id: `rimg-${Date.now()}-${links.length}`,
-          url: im.src,
-          label: fileNameOf(im.src),
-        });
-      }
-      node.links = links;
+      linkFallback(node, im.src);
       stats.linked += 1;
     }
   }

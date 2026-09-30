@@ -1,9 +1,11 @@
 # 22. 대시보드맵 (DASHBOARD) — v3 설계안
 
-* 문서 버전: **v3.1 — 설계안, 사용자 검토 대기** (2026-09-30 — v3.1: 형제 노드 앞·뒤 추가)
+* 문서 버전: **v3.2 — 승인·1단계 구현** (2026-09-30 — v3.1: 형제 노드 앞·뒤 추가 · v3.2: 구현하며 정한 것 반영, 부록 C)
 * 이력: v1.0 (2026-04-16, `nodes` 표 전제 — 폐기) → v2.0 (2026-09-29, 값을 노드 **밖** 칩으로 —
   사용자 정정으로 폐기) → **v3.0 (노드 내용 자체를 바꾼다)**. 부록 B.
-* 상태: **승인 전에는 구현하지 않는다.** 승인되면 §11 1단계부터 착수한다.
+* 상태: **승인됨**(2026-09-30 "이대로 진행"). 1단계 구현 — 코어 okpojung/easymindmap#594 (규칙·자리),
+  pro `okpojung/easymindmap-pro` #189 (서버·화면·`emm-dash`·PR 검사 e2e). 사용자 가이드
+  [`13-대시보드맵.md`](../../user-guide/13-대시보드맵.md).
 * 경계: **유료(pro) 기능** — `open-core-boundary.md` §3 표 "대시보드 맵 ❌ 공개 / ✅ 유료".
   이 설계 문서는 공개로 둔다(같은 표 "유료 기능의 설계 문서 ✅ 그대로").
 * 참조: `publish/27-publish-share.md`(읽기 전용 잠금의 선례) ·
@@ -162,8 +164,8 @@
 - 에디터는 **읽기 전용**으로 연다(퍼블리싱과 같은 길 — `getDocument` 가 `dashboard: true`
   를 주고 `mapSession` 이 `readOnlyInfo` 로 연다). 노드 글자에는 변수가 **채워진** 채로 보인다.
 - 상단 배너: `📊 대시보드맵 — 프로그램이 내용을 바꿉니다 · 마지막 갱신 14:32:05 · [⟳] · [일반맵으로 되돌리기]`
-- **자동 갱신**: 기본 10초(끄기 · 10초 · 30초 · 1분 · 5분 — `maps.refresh_interval_seconds`
-  칸이 이미 있다). 가벼운 상태 물음(§7 `state`)으로 **바뀐 것이 있을 때만** 문서를 다시
+- **자동 갱신**: 기본 10초(끄기 · 10초 · 30초 · 1분 · 5분). **보는 사람마다 그 브라우저에
+  기억한다**(구현 결정 — 부록 C ①; `maps.refresh_interval_seconds` 는 쓰지 않는다). 가벼운 상태 물음(§7 `state`)으로 **바뀐 것이 있을 때만** 문서를 다시
   받는다. 탭이 안 보이면 멈추고, 돌아오면 바로 한 번 읽는다.
 - **바뀐 노드는 2초 노란 깜빡임**(v1 DASH-03) — 새 문서와 옛 문서의 노드 글자를 비교한다.
   새로 붙은 노드도 깜빡인다.
@@ -327,7 +329,7 @@ CREATE INDEX IF NOT EXISTS dashboard_keys_map_idx ON public.dashboard_keys (map_
 
 | 메서드 · 경로 | 인증 | 무엇 |
 |---|---|---|
-| `GET /v1/maps/:id/dashboard/state?since=<iso>` | 로그인(읽기 권한) · 그 맵의 열쇠 | `{docUpdatedAt, vars:[{name,value,updatedAt,updatedBy}], serverTime}` — `since` 뒤에 바뀐 변수만. 화면의 10초 물음 |
+| `GET /v1/maps/:id/dashboard/state?since=<iso>` | 로그인(주인) · 그 맵의 열쇠 | `{viewMode, docUpdatedAt, vars:[{name,value,updated_at,updated_by}], varCount, serverTime}` — `since` 뒤에 바뀐 변수만. `serverTime` 은 **DB 시계**, `varCount` 는 지운 변수를 알아채는 칸(부록 C ②). 화면의 10초 물음 |
 | `GET /v1/maps/:id/dashboard/nodes` | 〃 | 노드 ID · 경로 · 원문 · 쓰는 변수 목록 · 채워진 글자 (= [노드·변수 목록 내려받기]) |
 | `PUT /v1/maps/:id/dashboard/vars` | 로그인(주인) · 열쇠 | `{vars:{amt:"2,345,678,000", rate:"78"}}` → `{updated, unused:[어느 노드에도 없는 이름]}`. **있으면 고치고 없으면 넣는다.** `unused` 는 거절하지 않고 알려만 준다(노드보다 값을 먼저 넣는 순서도 되게) |
 | `DELETE /v1/maps/:id/dashboard/vars/:name` | 〃 | 변수 지우기 → 화면에 `[&name]` 이 다시 보인다 |
@@ -335,6 +337,7 @@ CREATE INDEX IF NOT EXISTS dashboard_keys_map_idx ON public.dashboard_keys (map_
 | `POST /v1/maps/:id/dashboard/keys` `{name}` | 로그인(주인) | `{id, key, prefix}` — `key` 는 이때 한 번만 |
 | `GET /v1/maps/:id/dashboard/keys` | 〃 | 목록(원문 없음) |
 | `DELETE /v1/maps/:id/dashboard/keys/:keyId` | 〃 | 폐기(`revoked_at`) |
+| `GET /v1/dashboard/emm-dash.mjs` | 없음(기능이 켜진 서버만, 아니면 404) | 시험 프로그램 파일 — `curl -O` 한 줄로 받는다(부록 C ③) |
 
 **`ops` 의 모양** (① ③):
 
@@ -350,8 +353,8 @@ CREATE INDEX IF NOT EXISTS dashboard_keys_map_idx ON public.dashboard_keys (map_
 ]}
 ```
 
-응답: `{applied: 4, added: [{ref:"oct", nodeId:"node-7c1e04"}], version: "<히스토리 버전 ID — delete 가 있을 때>"}`.
-틀리면 409 `{code:"OP_FAILED", index: 2, reason:"맵에 없는 노드: 매출 현황 > 비고"}` 이고
+응답: `{applied: 4, added: [{ref:"oct", nodeId:"node-7c1e04"}], version: <히스토리 버전 번호 — delete 가 있을 때>, updatedAt}`.
+틀리면 409 `{code:"OP_FAILED", message:"3번째 변경이 틀렸습니다 — 맵에 없는 노드: 매출 현황 > 비고"}` 이고
 **아무것도 바뀌지 않는다.**
 
 열쇠 인증: `Authorization: Bearer emd_…`. `emd_`(dashboard)는 MCP 의 `emm_` 과 머리가 달라
@@ -370,14 +373,15 @@ CREATE INDEX IF NOT EXISTS dashboard_keys_map_idx ON public.dashboard_keys (map_
 | 전환 단추 | 문서함 행 · `MapActions.tsx` → `@pro` 의 `ProDashboardToggle` | 스텁 — **되돌리기 단추만** 그린다(`DashboardRevertButton`, 코어). 유료 모듈이 꺼진 서버에 대시보드맵이 남아도 사람이 갇히지 않게 |
 | 자동 갱신 · 깜빡임 · [데이터 연결] 카드 · 열쇠 관리 | `MapActions.tsx` → `@pro` 의 `ProDashboardLive` | 스텁 — 아무것도 하지 않음(문서는 원문 `[&amt]` 그대로 보인다) |
 
-**pro(비공개) — 알맹이**: 위 두 컴포넌트, 변수 채우기(`applyVars`), 열쇠 관리, [변수 전체 보기].
+**pro(비공개) — 알맹이**: 위 두 컴포넌트(`ui/Dashboard.tsx`), 변수 채우기(`renderDoc`), 열쇠 관리, [변수 전체 보기].
 화면은 서버가 채운 문서를 받으므로 변수 규칙을 화면에 두 벌 두지 않는다.
 
 ---
 
 ## 9. 시험 프로그램 `emm-dash` — R5
 
-Node 18+ 하나로 도는 명령줄 도구, 의존성 없음(`fetch` 만). pro 저장소 `scripts/emm-dash.mjs`.
+Node 18+ 하나로 도는 명령줄 도구, 의존성 없음(`fetch` 만). pro 저장소 `scripts/emm-dash.mjs` —
+**서버가 그대로 내려 준다**(`curl -O $EMM_API/v1/dashboard/emm-dash.mjs`).
 
 ```bash
 export EMM_API=https://api-dev.mindmap.ai.kr
@@ -388,7 +392,8 @@ node emm-dash.mjs vars  <mapId>                     # 변수 이름 · 현재 �
 
 # ② 변수만
 node emm-dash.mjs var   <mapId> amt "2,345,678,000"
-node emm-dash.mjs var   <mapId> --file vars.json     # {"amt":"…","rate":"78"} 여러 개
+node emm-dash.mjs var   <mapId> amt "…" rate "78"    # 여러 개는 이름·값 짝으로
+node emm-dash.mjs unvar <mapId> amt                   # 변수 지우기
 
 # ① 통째로 · ③ 추가/삭제
 node emm-dash.mjs text  <mapId> <노드ID|경로> "2026년 9월 매출 : 23억원"
@@ -396,13 +401,13 @@ node emm-dash.mjs add   <mapId> --parent <노드ID|경로> "10월 매출 : [&amt
 node emm-dash.mjs add   <mapId> --after  <노드ID|경로> "10월 매출 : [&amt10]원"   # 형제로 바로 뒤
 node emm-dash.mjs add   <mapId> --before <노드ID|경로> "8월 매출 : [&amt08]원"    # 형제로 바로 앞
 node emm-dash.mjs del   <mapId> <노드ID|경로>
-node emm-dash.mjs ops   <mapId> --file ops.json      # §7 ops 그대로
+node emm-dash.mjs ops   <mapId> ops.json             # §7 ops 그대로 (- 이면 표준입력)
 
-node emm-dash.mjs demo  <mapId> --every 5            # 숫자 변수를 5초마다 흔든다 — 깜빡임 시험용
+node emm-dash.mjs demo  <mapId> amt --count 5 --every 3   # 변수 하나를 3초마다 5번 — 깜빡임 시험용
 ```
 
-성공하면 `✅ amt = 2,345,678,000 (노드 1개에 반영)`, 실패하면 `❌ 맵에 없는 노드: …` 와
-종료코드 1 — 스크립트·cron 이 실패를 알 수 있게.
+성공하면 `✅ 바뀜 1 · 같은 값 0 · 노드 1개에 반영`, 실패하면 `✖ 409 [OP_FAILED] 1번째 변경이
+틀렸습니다 — …` 와 종료코드 1 — 스크립트·cron 이 실패를 알 수 있게.
 
 ---
 
@@ -480,3 +485,29 @@ node emm-dash.mjs demo  <mapId> --every 5            # 숫자 변수를 5초마�
 | v2 (2026-09-29) | 노드 글자는 두고 **값을 노드 밖 칩**으로, `dashboard_values(map_id, node_id)` | **폐기 (2026-09-30 사용자 정정)** | 사용자가 원한 것은 **노드 내용 자체를 바꾸는 것**, 부분 갱신은 `[&변수]`, 노드 추가·삭제까지다. v2 의 "레이아웃이 들썩이지 않는다" 는 장점은 v3 에서 포기한다(§4.3) |
 
 이전 판 전문은 git 이력에 있다(이 파일의 2026-04-16 판, #589 판).
+
+---
+
+## 부록 C. 구현하며 정한 것 (v3.2, 2026-09-30)
+
+① **자동 갱신 간격은 보는 사람의 브라우저에** 둔다(`localStorage`). `maps.refresh_interval_seconds`
+   는 기본값이 `0`(끔)이라 "기본 10초" 와 뜻이 반대이고, 간격은 **보는 사람의 편의**라 맵에 박을
+   이유가 없다(한 사람이 1분으로 바꾸면 모두가 1분이 되는 것은 이상하다).
+
+② **10초 물음이 놓치지 않게** — 변수의 `updated_at` 은 DB 트리거가 찍으므로 `since` 의 기준도
+   **DB 시계**(`serverTime`)로 준다(API 컨테이너 시계와 어긋나면 그만큼 놓친다). 트랜잭션 시작
+   시각이 찍히므로 화면은 **5초 겹쳐** 묻고, 받은 값을 이전 값과 비교해 헛갱신을 거른다.
+   `since` 로는 **지운 행이 안 보여서** `varCount` 를 함께 준다(개수가 바뀌면 다시 받는다).
+
+③ **`emm-dash` 는 서버가 내려 준다** — 사용자는 비공개 저장소를 받을 수 없다. 패키지 `files`
+   에 실어 `GET /v1/dashboard/emm-dash.mjs` 로 준다(기능이 꺼진 서버는 404).
+
+④ **전환할 때 열린 맵은 먼저 저장한다** — 서버는 **저장된** 문서로 중복 ID 를 판정하고, 전환
+   뒤에는 저장이 막힌다. 저장하지 않으면 마지막 몇 초의 편집이 잠긴 채 사라진다.
+
+⑤ **state · nodes 도 주인 또는 열쇠만** — "읽기 권한" 공유는 대시보드맵에 없다(단독맵만).
+   협업·공개 대시보드는 2단계.
+
+⑥ **검증은 pro 의 PR 검사가 한다** — `.github/workflows/pr-check.yml` 이 코어(`CORE_SHA`)에
+   유료 모듈을 얹어 빌드하고, 임시 PostgreSQL · 시험용 라이선스로 API 를 띄워
+   `test/dashboard.http.test.mjs`(HTTP) 와 `test/dashboard.ui.e2e.mjs`(Playwright 화면)를 돌린다.

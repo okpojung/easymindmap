@@ -217,8 +217,11 @@ export function splitNodeBody(
 
 // splitNodeBody의 블록들을 MD 줄로 밀어 넣는다 (견출 바로 아래)
 function pushBodyBlocks(lines: string[], blocks: NodeBodyBlock[]): void {
-  for (const b of blocks) {
-    lines.push('');
+  blocks.forEach((b, i) => {
+    // 첫 블록이 본문 줄(plain)이면 견출에 **빈 줄 없이** 붙인다 — 되읽을 때
+    // "견출 바로 아래 `>` = 본문 줄, 빈 줄 뒤 `>` = 문단 노트" 로 가른다
+    // (parse.ts adjacentQuoteIsBody, 2026-09-30). 다른 블록은 예전처럼 빈 줄 뒤.
+    if (!(i === 0 && b.kind === 'plain')) lines.push('');
     if (b.kind === 'code') {
       const f = fenceFor(b.body || '');
       lines.push(f + (b.lang || ''));
@@ -235,7 +238,7 @@ function pushBodyBlocks(lines: string[], blocks: NodeBodyBlock[]): void {
       // 'node' 배치가 노드 본문의 원문 순서를 복원한다)
       for (const ln of b.lines ?? []) lines.push(b.kind === 'check' ? ln : ln ? `> ${ln}` : '>');
     }
-  }
+  });
 }
 
 // 표 노트("셀 | 셀" 줄들) → Markdown 파이프 표 (헤더 다음 구분선 포함)

@@ -72,6 +72,14 @@ export interface ParseEmmOptions {
    */
   codeToNote?: boolean;
   longParagraphToNote?: number;
+  /**
+   * **견출(또는 리스트 항목) 바로 아래 빈 줄 없이 이어지는 `>` 줄은 그 노드의
+   * 본문 줄**이다 (2026-09-30). easymindmap 이 내보낸 문서(선언 `blocks: note`)를
+   * 노트 배치로 되읽을 때 쓴다 — 내보내기는 여러 줄 노드의 나머지 줄을 견출에
+   * 붙여 `>` 로, 문단 노트는 빈 줄 뒤 `>` 로 쓴다. 이 구분이 없으면 노트 배치는
+   * 여러 줄 노드를 "제목 + 노트" 로 바꿔 버린다.
+   */
+  adjacentQuoteIsBody?: boolean;
 }
 
 // "A4 한 장" 근사 — 노드 본문 제한 (텍스트 글자 수, 이미지 1장 = 600자)
@@ -474,6 +482,8 @@ export function parseMarkdownToMap(
   let paraBuf: string[] = [];
   let tableBuf: string[] = [];
   let quoteBuf: string[] = [];
+  let lastLineWasHead: boolean = false; // 직전 줄이 견출·리스트 항목(빈 줄 없이) — adjacentQuoteIsBody
+  let quoteAdjacent: boolean = false;   // 지금 모으는 인용문이 견출 바로 아래에서 시작했나
   let fenceBuf: string[] | null = null; // null = 펜스 밖
   let fenceLang = '';
   let fenceTicks = 3; // 연 펜스의 백틱 개수 — 같거나 긴 것만 닫는다 (fence.ts)
@@ -591,7 +601,18 @@ export function parseMarkdownToMap(
     if (!quoteBuf.length) return;
     const text = quoteBuf.join('\n').trim();
     quoteBuf = [];
+    const adjacent = quoteAdjacent;
+    quoteAdjacent = false;
     if (!text) return;
+    // 견출 바로 아래(빈 줄 없이)의 인용문 = 그 노드의 본문 줄 (adjacentQuoteIsBody)
+    if (opts.adjacentQuoteIsBody && adjacent && sawHeading && stack.length) {
+      const cur = stack[stack.length - 1].node;
+      const { text: t, links, images } = stripLinks(text);
+      mergeLinks(cur, links);
+      mergeImages(cur, images);
+      if (t) cur.text = cur.text ? `${cur.text}\n${t}` : t;
+      return;
+    }
     // 인용문(문단) — 'node' 배치에서 직전 블록을 자식 노드로 분리했다면
     // 그 노드의 본문 줄로 이어 붙인다 (표 아래 "※ 첨부 …"가 표와 함께).
     // 아니면 현재 노드 본문에 줄로 합친다 (A4 초과 시 노트로 — placeBlock)
@@ -631,6 +652,8 @@ export function parseMarkdownToMap(
 
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, '');
+    const prevWasHead: boolean = lastLineWasHead;
+    lastLineWasHead = false;
 
     // 코드 펜스 — 내용은 현재 노드의 코드 노트로
     const fence = openFence(line);
@@ -680,6 +703,8 @@ export function parseMarkdownToMap(
     if (quote) {
       flushPara();
       lastItem = null;
+      if (!quoteBuf.length) quoteAdjacent = prevWasHead;
+      lastLineWasHead = quoteAdjacent; // 견출에 붙은 인용 줄이 이어지는 동안은 여전히 '붙어 있다'
       quoteBuf.push(quote[1]);
       continue;
     }
@@ -700,6 +725,7 @@ export function parseMarkdownToMap(
     const heading = line.match(/^(#{1,6})(?:[ \t]+(.*))?$/);
     if (heading) {
       flushAll();
+      lastLineWasHead = true;
       lastItem = null;
       lastBlockNode = null;
       sectionDepth = null;
@@ -757,6 +783,7 @@ export function parseMarkdownToMap(
     const bullet = line.match(/^([ \t]*)([-*+]|\d+[.)])(?:[ \t]+(.*))?$/);
     if (bullet) {
       flushPara();
+      lastLineWasHead = true;
       lastBlockNode = null;
       const indent = bullet[1].replace(/\t/g, '  ').length;
       const indentLevel = Math.floor(indent / 2);

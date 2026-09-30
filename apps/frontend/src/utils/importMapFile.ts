@@ -19,6 +19,11 @@ export interface ImportedMap {
   editor?: MapFileMeta['editor'];
   source: 'easymindmap-html' | 'plain-md';
   /**
+   * 선언 `blocks: note`(easymindmap 이 내보낸 MD)를 보고 **노트를 그대로 복원**했다 —
+   * 블록 배치 옵션("노드로")을 쓰지 않았다. 안내에 붙는다 (2026-09-30).
+   */
+  restoredNotes?: boolean;
+  /**
    * EMM 선언에서 **알아는 들었지만 건너뛴 것**. 불러오기 안내에 붙는다 —
    * 조용히 사라지면 문서를 쓴 사람이 왜 안 되는지 알 길이 없다.
    */
@@ -57,14 +62,22 @@ export function parseMarkdownMapFile(
   opts?: ParseEmmOptions,
 ): ImportedMap | null {
   const raw = String(text || '');
-  const map = parseMarkdownToMap(raw, fallbackTitle, opts);
+  // ★ 우리가 내보낸 문서(선언 `blocks: note`)는 옵션과 상관없이 **노트로** 되읽는다
+  //   (2026-09-30 사용자 요청: "노드로 옵션을 고르지 않아도 원래 맵 모양으로").
+  //   견출 바로 아래 붙은 `>` 는 그 노드의 본문 줄(여러 줄 노드) — adjacentQuoteIsBody.
+  const declaredRaw = readDeclaration(raw);
+  const restoredNotes = declaredRaw.blocks === 'note';
+  const effOpts: ParseEmmOptions | undefined = restoredNotes
+    ? { ...(opts ?? {}), blockPlacement: 'note', codeToNote: undefined, longParagraphToNote: undefined, adjacentQuoteIsBody: true }
+    : opts;
+  const map = parseMarkdownToMap(raw, fallbackTitle, effOpts);
   if (!map) return null;
 
   // 문서의 `emm` 코드블록 선언 — 우리가 내보낸 MD 도, 손으로 쓴 것·AI 가
   // 만든 것도 여기서 레이아웃을 말한다. 블록은 루트의 `emm` 코드 노트로도
   // 남는다(declaration.ts — 숨은 마법이 아니라 보이는 노트). 다시 내보낼
   // 때는 직렬화가 그 노트를 건너뛰고 맵 설정에서 새로 쓴다.
-  const declared = resolveDeclaration(readDeclaration(raw));
+  const declared = resolveDeclaration(declaredRaw);
   if (declared.settings) {
     map.settings = { ...(map.settings ?? {}), ...declared.settings };
     // **설정만 합쳐서는 그림이 바뀌지 않는다** (2026-09-03). 레이아웃 엔진은
@@ -96,6 +109,7 @@ export function parseMarkdownMapFile(
   return {
     map,
     source: 'plain-md',
+    restoredNotes: restoredNotes || undefined,
     ...(declared.editor ? { editor: declared.editor } : {}),
     ...(declared.skipped ? { skipped: declared.skipped } : {}),
   };

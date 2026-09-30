@@ -10,7 +10,7 @@
 //
 //   npx tsx src/utils/emmDeclaration.test.ts
 
-import { resolveDeclaration } from './emmDeclaration';
+import { declareFromMap, deriveLevelLayouts, resolveDeclaration } from './emmDeclaration';
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
@@ -130,6 +130,26 @@ function check(name: string, got: unknown, want: unknown): void {
   check('④ levels layout: HR', resolveDeclaration({ levels: { 2: { layout: 'HR' } } }).settings?.levelLayouts,
     [null, 'hierarchy-right', 'hierarchy-right', 'hierarchy-right', 'hierarchy-right']);
   check('④ 모르는 ID 는 조용히 무시', resolveDeclaration({ template: 'ZZ' }), {});
+}
+
+
+// ── ⑤ 노드에 적힌 레이아웃에서 레벨별 레이아웃을 읽어 낸다 (2026-09-30) ──────────
+// import_github_docs 처럼 settings 없이 노드 layoutType 만 바꾼 맵 — 내보내기가
+// `levels: 1` 만 적어 되읽은 맵이 전부 맵 레이아웃이 되던 것.
+{
+  const doc = (i: number) => ({ id: `d${i}`, text: `doc${i}`, layoutType: 'tree-right' as const, children: [{ id: `h${i}`, text: 'h' }] });
+  const branches = [
+    { id: 'f1', text: 'f1', layoutType: 'tree-right' as const, children: [doc(1), doc(2)] },
+    { id: 'f2', text: 'f2', layoutType: 'tree-right' as const, children: [doc(3), { id: 'leaf', text: '자식 없음(레이아웃 없어도 무관)' }] },
+  ];
+  check('⑤ 깊이 1·2 전부 tree-right → [ , tree-right, tree-right]', deriveLevelLayouts(branches), [undefined, 'tree-right', 'tree-right']);
+  const decl = declareFromMap({ settings: undefined, branches } as never, 'process-tree-right', 'mapX');
+  check('⑤ 선언: 1=맵 레이아웃, 2=tree-right, 3은 2와 같아 생략', decl.levels, { 1: { layout: 'process-tree-right' }, 2: { layout: 'tree-right' } });
+  check('⑤ 선언에 blocks: note', decl.blocks, 'note');
+  const mixed = [{ id: 'a', text: 'a', layoutType: 'tree-right' as const, children: [doc(1)] }, { id: 'b', text: 'b', layoutType: 'radial-right' as const, children: [doc(2)] }];
+  check('⑤ 깊이 1 이 서로 다르면 말하지 않는다(깊이 2 는 같다)', deriveLevelLayouts(mixed), [undefined, undefined, 'tree-right']);
+  check('⑤ 설정이 있으면 설정이 이긴다 (설정이 말하지 않는 3레벨은 노드에서)', declareFromMap({ settings: { levelLayouts: [null, 'hierarchy-right'] }, branches } as never, 'process-tree-right').levels, { 1: { layout: 'process-tree-right' }, 2: { layout: 'hierarchy-right' }, 3: { layout: 'tree-right' } });
+  check('⑤ 레이아웃 없는 노드만 → 아무 말 없음', deriveLevelLayouts([{ id: 'x', text: 'x', children: [{ id: 'y', text: 'y' }] }]), []);
 }
 
 console.log(failed ? `\n${failed}건 실패` : '\n전부 통과');

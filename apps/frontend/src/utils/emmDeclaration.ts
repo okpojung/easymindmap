@@ -260,6 +260,42 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
  * 뒤 레벨이 앞 레벨과 같은 값이면 적지 않는다 — 읽는 쪽이 "가장 깊게 선언된
  * 레벨을 상속"하므로 같은 뜻이고, 블록이 짧아진다.
  */
+/**
+ * **노드에 적힌 레이아웃에서 레벨별 레이아웃을 읽어 낸다** (2026-09-30 사용자 보고:
+ * MD 로 내보냈다 되읽으면 레이아웃이 다르다). `import_github_docs`·서브트리 레이아웃
+ * 패널처럼 `settings.levelLayouts` 없이 **노드의 `layoutType`** 만 바꾸는 길이 있어,
+ * 설정만 보고 쓰면 선언에 `levels: 1` 뿐이라 되읽은 맵은 전부 맵 레이아웃이 됐다
+ * (진행트리 안의 트리 열이 사라짐). 깊이 d 의 **자식 있는 노드**가 전부 같은
+ * layoutType 이면 그 깊이의 레이아웃으로 본다(하나라도 다르거나 없으면 말하지
+ * 않는다 — 노드마다 다른 것은 `levels:` 로 적을 수 없다). 마지막 칸(CAP)은 그
+ * 깊이 이상 전부를 모아 본다. 색인은 `levelLayouts` 와 같다(d = 노드 깊이).
+ */
+export function deriveLevelLayouts(
+  branches: { children?: unknown[]; layoutType?: LayoutType }[] | undefined,
+): (LayoutType | undefined)[] {
+  const seen: (Set<string> | undefined)[] = [];
+  const walk = (list: { children?: unknown[]; layoutType?: LayoutType }[], depth: number) => {
+    for (const n of list) {
+      const kids = (n.children ?? []) as typeof list;
+      if (kids.length) {
+        const slot = Math.min(depth, CAP);
+        const set = (seen[slot] = seen[slot] ?? new Set<string>());
+        set.add(n.layoutType ? String(normalizeLayoutType(n.layoutType)) : '');
+      }
+      walk(kids, depth + 1);
+    }
+  };
+  walk(branches ?? [], 1);
+  const out: (LayoutType | undefined)[] = [];
+  for (let d = 1; d <= CAP; d++) {
+    const set = seen[d];
+    if (!set || set.size !== 1) continue;
+    const only = [...set][0];
+    if (only) out[d] = only as LayoutType;
+  }
+  return out;
+}
+
 export function declareFromMap(
   map: Pick<SampleMap, 'settings'> & Partial<Pick<SampleMap, 'root' | 'branches' | 'centers' | 'connectors'>>,
   layoutType?: LayoutType,
@@ -273,11 +309,13 @@ export function declareFromMap(
   };
   if (layoutType) set(1, 'layout', layoutType);
   const s = map.settings ?? {};
+  // 설정이 말하지 않는 레벨은 노드에 적힌 것으로 (deriveLevelLayouts)
+  const derived = deriveLevelLayouts(map.branches);
   let prevLayout: string | undefined = layoutType;
   let prevShape: string | undefined;
   let prevFont: number | undefined;
   for (let lv = 1; lv <= CAP + 1; lv++) {
-    const layout = lv === 1 ? undefined : (s.levelLayouts?.[lv - 1] ?? undefined);
+    const layout = lv === 1 ? undefined : (s.levelLayouts?.[lv - 1] ?? derived[lv - 1] ?? undefined);
     const shape = s.levelShapes?.[lv - 1] ?? undefined;
     const font = s.levelFonts?.[lv]?.size;
     if (layout && layout !== prevLayout) { set(lv, 'layout', layout); prevLayout = layout; }
@@ -286,6 +324,8 @@ export function declareFromMap(
   }
   const out: EmmDeclaration = {};
   if (mapId) out.map = mapId;
+  // 우리 내보내기는 노트를 블록(인용문·펜스·표)으로 쓴다 — 되읽을 때 노트로 복원하라는 표시
+  out.blocks = 'note';
   if (Object.keys(levels).length) out.levels = levels;
   // 연결선 — 끝 노드를 경로로 적는다. 경로를 못 만드는 것(끝 노드 없음)은 뺀다
   if (map.connectors?.length && map.root && map.branches) {

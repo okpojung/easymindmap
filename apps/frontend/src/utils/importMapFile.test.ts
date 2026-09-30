@@ -37,8 +37,8 @@ const body = (md: string) => md.split('\n').filter(Boolean);
     },
   } as SampleMap;
   const md = exportMd(map, 'tree-right', 'map123');
-  check('① 선언 블록 — 같은 값이 이어지는 레벨은 적지 않는다', body(md).slice(1, 15), [
-    '```emm', 'map: map123', 'levels:',
+  check('① 선언 블록 — 같은 값이 이어지는 레벨은 적지 않는다', body(md).slice(1, 16), [
+    '```emm', 'map: map123', 'blocks: note', 'levels:',
     '  1:', '    layout: tree-right', '    shape: rounded', '    font: 16',
     '  2:', '    layout: process-tree-right', '    shape: rectangle', '    font: 14',
     '  3:', '    layout: tree-right', '```',
@@ -64,7 +64,7 @@ const body = (md: string) => md.split('\n').filter(Boolean);
   const kids = first.map.branches[0].children!;
   check('② 리스트 출신 노드에 mdForm', kids.map((k) => (k as { mdForm?: string }).mdForm ?? '-'), ['list', 'list', '-']);
   const out1 = exportMd(first.map);
-  check('② 첫 내보내기 — 리스트·인용문 그대로', body(out1).filter((l) => !l.startsWith('```') && !/^(levels:|  1:|    layout)/.test(l)),
+  check('② 첫 내보내기 — 리스트·인용문 그대로', body(out1).filter((l) => !l.startsWith('```') && !/^(levels:|blocks:|  1:|    layout)/.test(l)),
     ['# 목록', '## 절', '- a', '- b', '  - b1', '### 소절', '> 둘째 줄']);
   const second = parseMarkdownMapFile(out1, '목록', NODE)!;
   check('② 다시 읽어도 mdForm', second.map.branches[0].children!.map((k) => (k as { mdForm?: string }).mdForm ?? '-'), ['list', 'list', '-']);
@@ -92,6 +92,39 @@ const body = (md: string) => md.split('\n').filter(Boolean);
   check('④ <html 로 시작해도 HTML', looksLikeHtmlFile('map.txt', '<html lang="ko">'), true);
   check('④ < 로 시작하고 뷰어 id 가 있으면 HTML', looksLikeHtmlFile('map', '<div><script id="easymindmap-map"></script>'), true);
   check('④ 그냥 < 로 시작하는 md (HTML 조각) 는 HTML 아님', looksLikeHtmlFile('a.md', '<b>굵게</b>\n\n# 제목'), false);
+}
+
+
+// ── ⑤ 우리 MD 왕복 — 노드별 레이아웃(진행트리 안의 트리) · 노트 · 여러 줄 노드 (2026-09-30) ──
+// 사용자 보고: "내보냈다 불러오면 레이아웃이 틀리다", "노트를 '노드로' 없이 원래대로".
+{
+  const map = {
+    title: '문서',
+    root: { id: 'root', text: '문서' },
+    branches: [{
+      id: 'f', text: '00-project-overview', layoutType: 'tree-right', colorKey: 'l1A', side: 'right',
+      notes: [{ id: 'n0', type: 'paragraph', text: '폴더 설명' }],
+      children: [{
+        id: 'd', text: '백로그 (To Do)\n둘째 줄', layoutType: 'tree-right',
+        notes: [{ id: 'n1', type: 'paragraph', text: '최종 업데이트: 어제' }, { id: 'n2', type: 'code_block', text: 'npm test', lang: 'bash' }, { id: 'n3', type: 'table', text: '# | 항목\n1 | a' }],
+        children: [{ id: 'h', text: '하지 않기로 한 것', notes: [{ id: 'n4', type: 'paragraph', text: '이유' }] }],
+      }],
+    }],
+  } as unknown as SampleMap;
+  const md = exportMd(map, 'process-tree-right', 'map9');
+  check('⑤ 선언에 blocks: note 와 levels 2=tree-right', body(md).slice(1, 9), ['```emm', 'map: map9', 'blocks: note', 'levels:', '  1:', '    layout: process-tree-right', '  2:', '    layout: tree-right']);
+  // 앱 기본(노드로) 옵션을 준 채 되읽어도 — 선언이 이긴다
+  const back = parseMarkdownMapFile(md, '문서', { blockPlacement: 'node' })!;
+  check('⑤ restoredNotes', back.restoredNotes, true);
+  const count = (m: SampleMap) => m.branches.reduce(function c(acc: number, n: MindNode): number { return (n.children ?? []).reduce(c, acc + 1); }, 1);
+  check('⑤ 노드 수 그대로 (4) — 블록이 노드가 되지 않는다', count(back.map), 4);
+  const f = back.map.branches[0]; const d = f.children![0]; const h = d.children![0];
+  check('⑤ 깊이 1·2 노드에 tree-right', [f.layoutType, d.layoutType], ['tree-right', 'tree-right']);
+  check('⑤ 맵 레이아웃은 진행트리', back.editor?.layoutType, 'process-tree-right');
+  check('⑤ 여러 줄 노드 본문 그대로', d.text, '백로그 (To Do)\n둘째 줄');
+  check('⑤ 노트 종류·본문 그대로', (d.notes ?? []).map((n) => [n.type, n.text]), [['paragraph', '최종 업데이트: 어제'], ['code_block', 'npm test'], ['table', '# | 항목\n1 | a']]);
+  check('⑤ 폴더·잎의 노트', [f.notes?.[0]?.text, h.notes?.[0]?.text], ['폴더 설명', '이유']);
+  check('⑤ 두 번째 내보내기도 같은 파일', exportMd(back.map, back.editor!.layoutType, 'map9'), md);
 }
 
 if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }

@@ -25,6 +25,7 @@ node scripts/doc-shots/guide03-connector.mjs /tmp/doc-shots   # 연결선 — [�
 node scripts/doc-shots/guide04-expand-zoom.mjs                   # [+]/[−] 뒤 선택 노드 100% 중앙 (검증 11항목, 스크린샷 없음)
 node scripts/doc-shots/guide04-home-view.mjs                     # 첫 화면(원위치) — 트리·진행트리는 중심 주제 위 72px, 방사형은 가운데 (검증 8항목, 스크린샷 없음)
 node scripts/doc-shots/guide04-large-map.mjs                     # 큰 맵 — 뷰포트 컬링 · "여는 중" 안내 · 선택 반응 (검증 14항목, 스크린샷 없음)
+node scripts/doc-shots/guide08-viewer-home-minimap.mjs           # HTML 뷰어 — 첫 화면(100%·트리는 위쪽) · 미니맵 (검증 9항목, 스크린샷 없음)
 # ② 인증 켠 화면 — 가이드 12 계열 (vite 를 이렇게 다시 띄운다)
 VITE_SUPABASE_URL=http://auth.local VITE_SUPABASE_ANON_KEY=anon VITE_SUPABASE_AUTH_PREFIX= \
   VITE_API_URL=https://api-dev.mindmap.ai.kr npx vite --port 5199 --strictPort --host 127.0.0.1 &

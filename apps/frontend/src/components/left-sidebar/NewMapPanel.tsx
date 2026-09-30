@@ -294,7 +294,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     map: Parameters<typeof loadMap>[0];
     editor?: { layoutType?: Parameters<typeof setLayoutType>[0]; spacingX?: number; spacingY?: number };
     source: string;
-  } & { relinked?: number; skipped?: string[] }, movedToNote = 0) => {
+  } & { relinked?: number; skipped?: string[]; restoredNotes?: boolean }, movedToNote = 0) => {
     // MD의 원격 이미지 URL(![](https://…png))을 다운로드해 내장 —
     // 실패분은 원격 참조 유지 또는 링크 폴백 (remoteImages.ts)
     const { map: resolvedMap, stats: img } = await resolveRemoteImages(imported.map);
@@ -326,6 +326,8 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
       img.linked ? `이미지 ${img.linked}개는 다운로드 실패로 링크로 대체` : '',
     ].filter(Boolean).join(' · ');
     const imgMsg = imgNote ? ` · ${imgNote}` : '';
+    // easymindmap 이 내보낸 MD — 블록 배치 옵션과 상관없이 노트를 그대로 복원했다
+    const notesMsg = imported.restoredNotes ? ' · 노트는 원래대로 복원했습니다 (EasyMindMap 파일)' : '';
     // EMM 선언에서 건너뛴 것 — **아는 값인데 그 자리에서만 못 쓰는** 경우다.
     // 모르는 이름처럼 조용히 버리면 문서를 쓴 사람이 왜 안 되는지 모른다.
     const skipMsg = imported.skipped?.length
@@ -334,7 +336,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
       : '';
     setChooseTpl({
       msg: imported.source === 'plain-md'
-        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다${moved}${imgMsg}${skipMsg}`
+        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다${moved}${imgMsg}${notesMsg}${skipMsg}`
         : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다${extra}${imgMsg}`,
       mode: 'import',
     });

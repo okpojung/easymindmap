@@ -73,6 +73,15 @@ export interface EmmDeclaration {
   template?: string;
 
   /**
+   * **블록(인용문·코드 펜스·표·체크)의 자리** (2026-09-30). easymindmap 이 내보낸
+   * 문서는 노트를 블록으로 쓰므로 `note` 를 적는다 — 되읽을 때 사용자가 "노드로"
+   * 옵션을 고른 채여도 **노트로 복원**한다(원래 맵 모양). 견출 바로 아래 빈 줄
+   * 없이 이어지는 `>` 줄만은 그 노드의 본문 줄(여러 줄 노드)이다. 손으로 쓴
+   * 문서에는 보통 없고, 없으면 앱의 옵션을 따른다.
+   */
+  blocks?: 'note' | 'node';
+
+  /**
    * 레벨별 선언. 키는 **명시적인 레벨 번호**(1~6)다.
    *
    * 배열 색인을 쓰지 않는 이유가 있다 — 맵 설정의 세 배열은 색인 기준이
@@ -234,6 +243,9 @@ export function readDeclaration(md: string): EmmDeclaration {
   const template = top.get('template')?.value;
   if (template) out.template = template;
 
+  const blocks = top.get('blocks')?.value?.toLowerCase();
+  if (blocks === 'note' || blocks === 'node') out.blocks = blocks;
+
   const levels = top.get('levels');
   if (levels) {
     const byLevel: Record<number, EmmLevelSpec> = {};
@@ -321,6 +333,7 @@ export function expandTemplateId(value: string | undefined): string | undefined 
 export function buildDeclaration(decl: EmmDeclaration): string {
   const lines: string[] = [];
   if (decl.map) lines.push(`map: ${decl.map}`);
+  if (decl.blocks) lines.push(`blocks: ${decl.blocks}`);
   if (decl.levels && Object.keys(decl.levels).length) {
     lines.push('levels:');
     const levels = Object.keys(decl.levels).map(Number).filter(Number.isInteger).sort((a, b) => a - b);

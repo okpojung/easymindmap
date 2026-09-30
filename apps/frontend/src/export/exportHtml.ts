@@ -1505,6 +1505,7 @@ const VIEWER_JS = String.raw`
     world.appendChild(chipLayer); // 접힘 칩을 마지막에 올려 항상 위에
     updateCount();
     syncOutline(); // 아웃라인 페인이 보이면 함께 갱신 (function 선언 호이스팅)
+    if (typeof mmBox !== 'undefined' && mmBox) syncMinimap(); // 미니맵 — 접기·펼치기·포커스 뒤 다시
   }
 
   // 사용자 지정 채움색 위 글자색 — 에디터 readableTextOn과 동일 규칙.
@@ -2583,6 +2584,7 @@ const VIEWER_JS = String.raw`
       'translate(' + view.x + ',' + view.y + ') scale(' + view.k + ')');
     var pct = document.getElementById('mm-zoom-pct');
     if (pct) pct.textContent = Math.round(view.k * 100) + '%';
+    syncMinimapView();
   }
   // 화면 중앙 기준 줌 (에디터 축소/확대 버튼과 동일: 10% 단위)
   function zoomTo(kNext) {
@@ -2650,6 +2652,136 @@ const VIEWER_JS = String.raw`
     view.x = (rect.width - bb.width * k) / 2 - bb.x * k;
     view.y = (rect.height - bb.height * k) / 2 - bb.y * k;
     applyView();
+  }
+
+  // 첫 화면 — 에디터와 같은 규칙 (10-canvas "첫 화면", 2026-09-30 사용자 지적:
+  // "HTML 로 내보내도 원래 레이아웃이 아니다" — 뷰어는 2% 전체 맞추기로 열려 12개 열이
+  // 실처럼 보였다). 100% 에서 트리·진행트리는 중심 주제 위 변을 화면 위 72px(왼쪽 40px)에,
+  // 나머지는 중심 주제를 화면 가운데에. 전체 맞추기는 ⛶ 단추로.
+  var HOME_TOP = { 'tree-right': 1, 'tree-down': 1, 'process-tree-right': 1 };
+  function home() {
+    var r = DATA.root;
+    if (r._cx == null || r._cy == null) { fit(); return; }
+    var rect = svg.getBoundingClientRect();
+    var eff = normalize(DATA.mapLayout) || normalize(r.layoutType) || 'radial-bidirectional';
+    view.k = 1;
+    if (HOME_TOP[eff]) {
+      var bb = world.getBBox();
+      view.x = 40 - bb.x;
+      view.y = 72 - (r._cy - (r._h || 0) / 2);
+    } else {
+      view.x = rect.width / 2 - r._cx;
+      view.y = rect.height / 2 - r._cy;
+    }
+    applyView();
+  }
+
+  // ---- 미니맵 (2026-09-30 사용자 요청: "HTML 파일에서도 미니맵") ---------------
+  // 에디터의 미니맵과 같은 자리·같은 뜻: 맵 전체를 작은 상자에, 지금 보는 영역을
+  // 사각형으로. 상자 클릭 = 그 자리가 화면 가운데로, 사각형 끌기 = 화면 이동.
+  var MM_W = 220, MM_H = 150, MM_PAD = 6;
+  var mmBox = document.getElementById('mm-minimap');
+  var mmSvg = document.getElementById('mm-minimap-svg');
+  var mmNodes = document.getElementById('mm-minimap-nodes');
+  var mmView = document.getElementById('mm-minimap-view');
+  var mmGeom = null; // { x, y, s }: mini = (world - x) * s + MM_PAD
+  var MM_KEY = 'emm.viewer.minimap';
+  function minimapOn() { return document.body.classList.contains('mm-minimap-on'); }
+  function eachDrawn(n, depth, cb) {
+    cb(n, depth);
+    if (n.collapsed) return;
+    var kids = n.children || [];
+    for (var i = 0; i < kids.length; i++) eachDrawn(kids[i], depth + 1, cb);
+  }
+  function syncMinimap() {
+    if (!mmBox || !minimapOn()) return;
+    var bb = world.getBBox();
+    if (!bb.width || !bb.height) return;
+    var innerW = MM_W - MM_PAD * 2, innerH = MM_H - MM_PAD * 2;
+    var s = Math.min(innerW / bb.width, innerH / bb.height);
+    mmGeom = { x: bb.x - (innerW / s - bb.width) / 2, y: bb.y - (innerH / s - bb.height) / 2, s: s };
+    while (mmNodes.firstChild) mmNodes.removeChild(mmNodes.firstChild);
+    var roots = FOCUS ? [findNodeById(FOCUS)] : ROOTS();
+    for (var ri = 0; ri < roots.length; ri++) {
+      if (!roots[ri]) continue;
+      eachDrawn(roots[ri], 0, function (n, depth) {
+        if (n._cx == null) return;
+        var rc = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        var w = Math.max(1.5, (n._w || 0) * s), h = Math.max(1.2, (n._h || 0) * s);
+        rc.setAttribute('x', (n._cx - (n._w || 0) / 2 - mmGeom.x) * s + MM_PAD);
+        rc.setAttribute('y', (n._cy - (n._h || 0) / 2 - mmGeom.y) * s + MM_PAD);
+        rc.setAttribute('width', w);
+        rc.setAttribute('height', h);
+        if (depth === 0) rc.setAttribute('class', 'root');
+        mmNodes.appendChild(rc);
+      });
+    }
+    syncMinimapView();
+  }
+  function syncMinimapView() {
+    if (!mmGeom || !mmView || !minimapOn()) return;
+    var rect = svg.getBoundingClientRect();
+    var vx = -view.x / view.k, vy = -view.y / view.k;
+    var vw = rect.width / view.k, vh = rect.height / view.k;
+    mmView.setAttribute('x', (vx - mmGeom.x) * mmGeom.s + MM_PAD);
+    mmView.setAttribute('y', (vy - mmGeom.y) * mmGeom.s + MM_PAD);
+    mmView.setAttribute('width', Math.max(2, vw * mmGeom.s));
+    mmView.setAttribute('height', Math.max(2, vh * mmGeom.s));
+  }
+  function findNodeById(id) {
+    var found = null;
+    var roots = ROOTS();
+    for (var ri = 0; ri < roots.length && !found; ri++) (function walk(n) {
+      if (found) return;
+      if (n.id === id) { found = n; return; }
+      var kids = n.children || [];
+      for (var i = 0; i < kids.length; i++) walk(kids[i]);
+    })(roots[ri]);
+    return found;
+  }
+  function minimapCenterAt(mx, my) {
+    if (!mmGeom) return;
+    var wx = (mx - MM_PAD) / mmGeom.s + mmGeom.x;
+    var wy = (my - MM_PAD) / mmGeom.s + mmGeom.y;
+    var rect = svg.getBoundingClientRect();
+    view.x = rect.width / 2 - wx * view.k;
+    view.y = rect.height / 2 - wy * view.k;
+    applyView();
+  }
+  function setMinimap(on) {
+    document.body.classList.toggle('mm-minimap-on', on);
+    var b = document.getElementById('mm-minimap-btn');
+    if (b) b.classList.toggle('on', on);
+    try { localStorage.setItem(MM_KEY, on ? '1' : '0'); } catch (e) {}
+    if (on) syncMinimap();
+  }
+  if (mmSvg) {
+    var mmDrag = null; // { id, dx, dy } — 사각형 안에서 시작하면 그 간격을 유지하며 끈다
+    var mmPoint = function (e) {
+      var r = mmSvg.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * (MM_W / r.width), y: (e.clientY - r.top) * (MM_H / r.height) };
+    };
+    mmSvg.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0 || !mmGeom) return;
+      e.preventDefault(); e.stopPropagation();
+      var m = mmPoint(e);
+      var vx = parseFloat(mmView.getAttribute('x')), vy = parseFloat(mmView.getAttribute('y'));
+      var vw = parseFloat(mmView.getAttribute('width')), vh = parseFloat(mmView.getAttribute('height'));
+      var inside = m.x >= vx && m.x <= vx + vw && m.y >= vy && m.y <= vy + vh;
+      mmDrag = { id: e.pointerId, dx: inside ? m.x - (vx + vw / 2) : 0, dy: inside ? m.y - (vy + vh / 2) : 0 };
+      if (!inside) minimapCenterAt(m.x, m.y);
+      mmSvg.setPointerCapture(e.pointerId);
+    });
+    mmSvg.addEventListener('pointermove', function (e) {
+      if (!mmDrag || mmDrag.id !== e.pointerId) return;
+      var m = mmPoint(e);
+      minimapCenterAt(m.x - mmDrag.dx, m.y - mmDrag.dy);
+    });
+    mmSvg.addEventListener('pointerup', function (e) { if (mmDrag && mmDrag.id === e.pointerId) mmDrag = null; });
+    mmSvg.addEventListener('wheel', function (e) { e.preventDefault(); e.stopPropagation(); }, { passive: false });
+    var mmBtn = document.getElementById('mm-minimap-btn');
+    if (mmBtn) mmBtn.addEventListener('click', function () { setMinimap(!minimapOn()); });
+    window.addEventListener('resize', syncMinimapView);
   }
 
   function setAll(node, collapsed) {
@@ -3320,7 +3452,10 @@ const VIEWER_JS = String.raw`
   });
 
   render();
-  fit();
+  home(); // 첫 화면은 에디터와 같은 규칙(100% · 트리는 중심 주제 위쪽) — 전체 맞추기는 ⛶
+  var savedMini = null;
+  try { savedMini = localStorage.getItem(MM_KEY); } catch (e) {}
+  if (savedMini === '1') setMinimap(true);
   syncViewToggle();
 })();
 `;
@@ -3364,6 +3499,21 @@ const VIEWER_CSS = `
   body.mm-outline-full  #mm-outline { display: block; width: 100%; border-right: none; }
   body.mm-outline-full  #mm-svg { display: none; }
   body.mm-outline-full  #mm-zoombar { display: none; }
+  /* 미니맵 (2026-09-30) — 에디터와 같은 자리(우하단). 맵 전체 + 화면 사각형 */
+  #mm-minimap {
+    display: none; position: fixed; right: 14px; bottom: 60px; width: 220px; height: 150px;
+    background: rgba(255,251,245,0.96); border: 1px solid #E4D9C3; border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.14); z-index: 40; overflow: hidden;
+  }
+  body.mm-minimap-on #mm-minimap { display: block; }
+  body.mm-outline-full #mm-minimap { display: none; }
+  #mm-minimap svg { width: 100%; height: 100%; display: block; cursor: crosshair; }
+  #mm-minimap-nodes rect { fill: #B8A98A; }
+  #mm-minimap-nodes rect.root { fill: #D97706; }
+  #mm-minimap-view { fill: rgba(217,119,6,0.12); stroke: #D97706; stroke-width: 1.5; }
+  body.mm-dark #mm-minimap { background: rgba(30,26,22,0.95); border-color: #4A4038; }
+  body.mm-dark #mm-minimap-nodes rect { fill: #6B6157; }
+  header button.icon.on { background: #FDE7C6; border-color: #D97706; }
   .mm-ol-row {
     display: flex; align-items: flex-start; gap: 4px; padding: 4px 6px;
     border-radius: 6px; cursor: pointer; font-size: 13px; line-height: 1.4;
@@ -3837,6 +3987,7 @@ export function buildStandaloneHtml(
   <button id="mm-center" class="icon" title="선택 노드 화면 중앙 보기 (노드를 클릭해 선택 · 다시 누르면 전체 보기)"><svg id="mm-center-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></button>
   <button id="mm-pan" class="icon" title="Pan 모드 — 드래그로 화면 이동 (마우스 오른쪽 버튼 드래그로도 이동)">✋</button>
   <button id="mm-fit" class="icon" title="맵 전체를 화면에 맞추기">⛶</button>
+  <button id="mm-minimap-btn" class="icon" title="미니맵 — 지금 어디를 보고 있나 (클릭·끌기로 이동)">▦</button>
   <button id="mm-expand" class="icon" title="모두 펼치기">+</button>
   <button id="mm-collapse" class="icon" title="모두 접기">−</button>
   <button id="mm-outline-split" class="icon" title="아웃라인 분할 보기">◫</button>
@@ -3853,6 +4004,7 @@ export function buildStandaloneHtml(
   <h2 id="mm-note-title"></h2>
   <div id="mm-note-body"></div>
 </div>
+<div id="mm-minimap"><svg id="mm-minimap-svg" viewBox="0 0 220 150"><g id="mm-minimap-nodes"></g><rect id="mm-minimap-view" x="0" y="0" width="0" height="0" rx="2"/></svg></div>
 <div id="mm-zoombar">
   <button id="mm-zoom-out" title="축소 (5% 단위)">−</button>
   <button id="mm-zoom-pct" title="클릭해서 배율 직접 입력 (2~400)">100%</button>

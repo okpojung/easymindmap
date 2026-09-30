@@ -63,7 +63,10 @@ export const useInteractionStore = create<InteractionState>((set) => ({
   searchHitId: null,
   setSelectedId: (selectedId) => set({ selectedId }),
   multiSelectedIds: [],
-  setMultiSelectedIds: (multiSelectedIds) => set({ multiSelectedIds }),
+  // 빈 배열 → 빈 배열은 같은 참조를 유지한다 — 노드 하나를 누를 때마다 새 [] 를
+  // 넣으면 이 슬라이스를 구독하는 NodeRenderer 2,847개가 전부 다시 그려진다 (2026-09-30)
+  setMultiSelectedIds: (multiSelectedIds) => set((s) =>
+    (s.multiSelectedIds.length === 0 && multiSelectedIds.length === 0) ? {} : { multiSelectedIds }),
   editingNodeId: null,
   setEditingNodeId: (editingNodeId) => set({ editingNodeId }),
   editingDraft: null,

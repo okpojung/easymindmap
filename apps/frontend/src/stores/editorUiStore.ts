@@ -54,6 +54,13 @@ interface EditorUiState {
 
   // Multi-node add dialog (Ctrl+Space)
   multiAddOpen: boolean;
+  /**
+   * **맵을 여는 중** 안내 (2026-09-30 사용자 요청: 큰 맵을 불러올 때 아무 안내가
+   * 없다). null 이 아니면 EditorPage 가 화면 가운데에 이 문구를 띄운다. 무거운
+   * 렌더(수천 노드)가 시작되기 **전에** 그려져야 하므로 `withOpening`(utils/opening.ts)
+   * 이 한 프레임을 기다린 뒤 일을 시작하고, 렌더가 끝나 그려진 뒤에 지운다.
+   */
+  openingLabel: string | null;
   // 'AI 설정' 대화상자 (아바타 메뉴 — 2026-09-04). AI 탭의 "키 등록" 버튼도
   // 여기를 켠다 — 대화상자는 UserMenu 가 그리므로 상태는 스토어에 둔다.
   aiSettingsOpen: boolean;
@@ -96,6 +103,7 @@ interface EditorUiState {
   setActiveSection: (v: SidebarSection) => void;
   toggleSidebar: () => void;
   setShowTags: (v: boolean) => void;
+  setOpeningLabel: (label: string | null) => void;
   setMinimapOpen: (v: boolean) => void;
   toggleMinimap: () => void;
   toggleTagHidden: (tag: string) => void;
@@ -137,6 +145,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   minimapOpen: false,
   hiddenTags: [],
   multiAddOpen: false,
+  openingLabel: null,
   aiSettingsOpen: false,
   spacingX: 1,
   spacingY: 1,
@@ -191,6 +200,7 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   historyPinTarget: null,
   setHistoryPinTarget: (historyPinTarget) => set({ historyPinTarget }),
   setShowTags: (showTags) => set({ showTags }),
+  setOpeningLabel: (openingLabel) => set({ openingLabel }),
   setMinimapOpen: (minimapOpen) => set({ minimapOpen }),
   toggleMinimap: () => set((s) => ({ minimapOpen: !s.minimapOpen })),
   toggleTagHidden: (tag) =>

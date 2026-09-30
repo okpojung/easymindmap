@@ -180,7 +180,9 @@ export function EditorPage() {
   // Guest 체험(2026-08-04)은 게이트를 통과한다 — 로컬 편집만 가능.
   const gated = authEnabled && !session && !guest;
 
-  const kanbanFromMap = buildKanbanFromMap(map);
+  // 렌더마다 2,847노드를 다시 걷지 않는다 — 맵이 바뀔 때만 (2026-09-30)
+  const kanbanFromMap = useMemo(() => buildKanbanFromMap(map), [map]);
+  const openingLabel = useEditorUiStore((s) => s.openingLabel);
 
   // 아웃라인 패널용 트리 — 실제 편집 중인 맵을 그대로 반영 (텍스트·구조·
   // 접힘 상태·선택 표시). 노드를 클릭하면 캔버스 선택과 연동된다.
@@ -595,6 +597,34 @@ export function EditorPage() {
           어디서 붙여넣어도** 같은 자리에 뜬다. 업로드가 실패했는데 아무
           말이 없으면 사용자는 노드에 빈 자리가 남은 이유를 알 수 없다
           (stores/noticeStore.ts) */}
+      {/* 맵을 여는 중 — 큰 맵을 그리는 동안 멈춘 것처럼 보이지 않게 (utils/opening.ts) */}
+      {openingLabel && (
+        <div
+          data-testid="opening-overlay"
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 400,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.18)', cursor: 'progress',
+          }}
+        >
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: t.surface, color: t.text, border: `1px solid ${t.border}`,
+            borderRadius: 12, padding: '14px 20px', fontSize: 13.5, fontWeight: 600,
+            boxShadow: '0 14px 36px rgba(0,0,0,0.25)',
+          }}>
+            <span style={{
+              width: 18, height: 18, borderRadius: '50%', flex: '0 0 auto',
+              border: `3px solid ${t.border}`, borderTopColor: t.accent,
+              animation: 'emm-spin 0.9s linear infinite',
+            }} />
+            <span>{openingLabel}</span>
+            <style>{'@keyframes emm-spin { to { transform: rotate(360deg) } }'}</style>
+          </div>
+        </div>
+      )}
       {appNotice && (
         <div
           data-testid="app-notice"

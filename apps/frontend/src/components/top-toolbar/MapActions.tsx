@@ -133,11 +133,17 @@ export function MapActions(
       {/* 읽기 전용 배너 — 다른 세션이 편집 중인 맵을 보는 상태임을
           화면에 상시 표시 (2026-08-04 사용자 요청) */}
       {readOnlyInfo && (
+        // ★ **폭을 묶는다** (2026-09-30). 이유 문장이 길면 배지 하나가 480px 을 먹어
+        //   도구줄 끝의 단추(되돌리기·저장·닫기)가 화면 밖으로 밀렸다(pro e2e 1400px 에서
+        //   실측). 넘치는 문장은 말줄임하고 **전문은 마우스를 올리면** 보인다.
         <span
           data-testid="readonly-badge"
-          title="다른 세션(브라우저)에서 편집 중인 맵입니다. 여기서의 변경은 이 맵에 저장되지 않으며, ☁ 저장을 누르면 다른 이름의 새 맵으로 저장할 수 있습니다."
+          title={`${readOnlyInfo.reason ?? '다른 세션(브라우저)에서 편집 중인 맵입니다'}\n`
+            + '여기서의 변경은 이 맵에 저장되지 않으며, ☁ 저장을 누르면 다른 이름의 새 맵으로 저장할 수 있습니다.'}
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
+            display: 'inline-block', minWidth: 0, flexShrink: 1,
+            maxWidth: iconOnly ? 150 : 300,
+            overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle',
             padding: '5px 10px', borderRadius: 7,
             background: '#FEF3C7', border: '1px solid #F59E0B',
             color: '#92400E', fontSize: 11.5, fontWeight: 700,

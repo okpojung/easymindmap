@@ -526,7 +526,7 @@ export async function openMapHere(
     const readOnlyReason = published
       ? '공개 중인 맵입니다 — 고치려면 비공개(보관)로 바꾸세요'
       : dashboard
-        ? '📊 대시보드맵 — 프로그램이 내용을 바꿉니다 (고치려면 일반맵으로 되돌리세요)'
+        ? '📊 대시보드맵 — 프로그램이 내용을 바꿉니다'
       : editLock === 'busy'
         ? '다른 세션에서 편집 중'
         : role === 'viewer' ? '이 맵은 읽기만 권한으로 공유받았습니다' : null;

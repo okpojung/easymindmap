@@ -29,6 +29,7 @@ import { cloudApi, attachmentFetchUrl, serverAttachmentId } from '@/services/clo
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { notifyUser } from '@/stores/noticeStore';
+import { isFetchableImageUrl } from './imageUrl';
 
 /** 서버에 올릴 수 있는 상태인가 — 게스트는 서버가 없다 */
 function canUseServer(): boolean {
@@ -44,12 +45,19 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+// <img> 가 onload·onerror 어느 쪽도 안 부르는 주소(`ERR_INVALID_URL`)가 있어
+// **시간제한**을 둔다 — 없으면 불러오기가 영원히 끝나지 않는다 (2026-09-30)
+const IMAGE_LOAD_TIMEOUT_MS = 8000;
+
 function imageSize(src: string): Promise<{ w: number; h: number } | null> {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () =>
+    const timer = window.setTimeout(() => resolve(null), IMAGE_LOAD_TIMEOUT_MS);
+    img.onload = () => {
+      window.clearTimeout(timer);
       resolve({ w: img.naturalWidth || 400, h: img.naturalHeight || 300 });
-    img.onerror = () => resolve(null);
+    };
+    img.onerror = () => { window.clearTimeout(timer); resolve(null); };
     img.src = src;
   });
 }
@@ -65,7 +73,7 @@ export async function fetchImageAsDataUrl(
   src: string,
   opts: { viaServer?: boolean } = {},
 ): Promise<{ dataUrl: string; w: number; h: number } | null> {
-  if (!/^https?:\/\//i.test(src)) return null;
+  if (!isFetchableImageUrl(src)) return null; // 자리표시·깨진 주소는 받으러 가지 않는다
 
   // ⓪ 서버 대리 다운로드 — CORS 를 넘는 유일한 길.
   //    `viaServer: false` 는 **이미 서버에 물어봤다가 실패한** 호출부가
@@ -99,9 +107,10 @@ export async function fetchImageAsDataUrl(
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const im = new Image();
+      const timer = window.setTimeout(() => reject(new Error('timeout')), IMAGE_LOAD_TIMEOUT_MS);
       im.crossOrigin = 'anonymous';
-      im.onload = () => resolve(im);
-      im.onerror = () => reject(new Error('load fail'));
+      im.onload = () => { window.clearTimeout(timer); resolve(im); };
+      im.onerror = () => { window.clearTimeout(timer); reject(new Error('load fail')); };
       im.src = src;
     });
     const c = document.createElement('canvas');
@@ -166,7 +175,7 @@ export async function embedRichHtmlImages(html: string): Promise<string | null> 
 export async function importRemoteImage(
   src: string,
 ): Promise<{ src: string; w: number; h: number } | null> {
-  if (!/^https?:\/\//i.test(src)) return null;
+  if (!isFetchableImageUrl(src)) return null; // 자리표시·깨진 주소 — 서버에도 묻지 않는다
 
   let serverWhy: string | null = null;
   if (canUseServer()) {

@@ -107,6 +107,7 @@
 
 | ID | 대상 | 핵심 검증 | 문서 |
 |---|---|---|---|
+| e2e318 | **자리표시 사진 주소가 MD 불러오기를 영원히 멈추게 하던 것** (2026-09-30 사용자 보고: 같은 mmd 를 [MD 파일 불러오기] 하면 "⚠ 사진을 가져오지 못해 원본 주소만 남겼습니다 — getaddrinfo ENOTFOUND …" 만 뜨고 맵이 열리지 않는다) | **원인** — 우리 문서를 담은 맵에는 `![](https://…png)`·`![배경](https://...)`·`![대체](http URL)` 같은 **자리표시 주소**가 본문에 있다(파일 1856·20959·28510·43681행). `resolveRemoteImages` 가 그 주소로 사진을 받으러 가면 서버는 `ENOTFOUND`(그 안내가 사용자가 본 것), 이어서 브라우저 `fetchImageAsDataUrl` 의 canvas 경로가 `new Image()` 에 `ERR_INVALID_URL` 주소를 넣는데 **onload·onerror 어느 쪽도 오지 않고 시간제한도 없어** 약속이 영원히 안 끝났다 → `loadMap` 이 호출되지 않는다. **고침** — `utils/imageUrl.ts` `isFetchableImageUrl`(http(s) + `new URL` 파싱 + 호스트에 글자)로 `remoteImages`·`importRemoteImage`·`fetchImageAsDataUrl` 입구에서 자리표시 주소를 걸러 **링크(🔗)로만 남기고**(서버에도 묻지 않는다 — 안내도 뜨지 않는다), `imageSize`·canvas 경로 `<img>` 로드에 8초 시간제한. **재현·확인** — 문서함 ▸ `+ 새 맵` ▸ MD 파일 불러오기에 사용자 파일을 넣는 브라우저 스크립트(vite + 크로미움, `setInputFiles`): 수정 전 **160초 뒤에도 안 열림**(CDP 프로파일: `resolveRemoteImages` 대기) → 수정 후 dev 모드 68초에 열림(2,847노드를 dev 모드로 여러 번 그리는 시간 — 프로덕션 빌드는 아래). 단계 계측: 파싱 114ms · 사진 정리 37ms(링크 4) · loadMap 122ms. 단위 `imageUrl.test.ts` **9항목**(보통 주소·포트·`https://…png`·`https://…`·`https://...`·`http URL`·상대 경로·data URL·빈 문자열). ★ 함정: `embedImage.ts` 를 고치면 HMR 이 스토어를 두 벌로 만들어 `page.evaluate` 가 옛 스토어를 읽는다 — vite 재시작 | user-guide 08 · e2e317 |
 | e2e317 | **코드 안의 ``` 를 살려 내보내고 되읽는다 + .md 를 HTML 로 오판하지 않는다** (2026-09-29 사용자 보고: 2,847노드 "easymindmap docs — GitHub 연동" 맵의 mmd 를 [MD 파일 불러오기] 하면 "뷰어 HTML 이 아닙니다" 로 거절, 억지로 읽으면 중심주제 209개·노드 1,521개) | **원인 두 가지** — ① `NewMapPanel` 이 본문 어디든 `id="easymindmap-map"` 이 있으면 HTML 로 봤는데 우리 문서를 담은 맵은 노트에 그 글이 있다. ② 용어집 노트의 코드블록이 ```` ```emm … ``` ```` 예시를 품고 있는데 내보내기가 같은 세 개 백틱으로 감싸 안쪽 ``` 이 바깥 펜스를 먼저 닫았다(첫 어긋남은 파일 320행) → 뒤의 코드가 본문으로 새어 `# 프로젝트 A` 같은 줄마다 중심이 생겼다. **고침** — ① `looksLikeHtmlFile(name, text)`: 확장자 .html 이거나 내용이 `<!doctype html`·`<html` 로 **시작**할 때만(첫 글자 `<` + 뷰어 id 도 허용). ② 파서 `fence.ts`(`openFence`·`isClosingFence`·`fenceFor`·`fencedBlock`): 여는 펜스의 백틱 수를 기억하고 같거나 긴 백틱만의 줄만 닫는 펜스로; 직렬화 세 곳(노트 코드·노드 본문 코드·pushBodyBlocks)과 `splitNodeBody` 가 코드 안의 가장 긴 백틱 줄 +1 길이로 감싼다. API 복사본 동기화 목록에 `fence.ts` 추가. **검증** — 파서 `test/nested-fence.test.ts` **16항목**(긴 펜스 안 ``` 은 코드 · 중심 수 · fenceFor 3/4/5 · 왕복 뒤 노트 본문·언어·두 번째 내보내기 동일 · 노드로 배치도 같음) · 프런트 `importMapFile.test.ts` ④ **7항목** 추가(합계 23) · **사용자의 실제 파일**(2.3MB, 44,834행)을 새 파서로 읽으면 **중심 1 · 노드 2,847 · 가지 12**(HTML 내보내기의 원본 맵과 같다; 예전 파서는 중심 209). 회귀: 파서 단위 246 · 프런트 `tsc -b`·unit 통과 · API `tsc`·`test:mcp` 통과 · `check:emm` 일치. **알아 둘 것** — 이미 내보낸 옛 파일도 새 파서로는 바르게 읽힌다(안쪽 ```` ```emm ```` 줄에 info 가 있어 닫는 펜스가 아니다) | emm-spec §3.3 · markdown-export §1.6 · user-guide 08 |
 | e2e25 | 내보내기/불러오기 왕복 | HTML 메타데이터 복원·MD 본문 수정 반영·일반 MD 파싱·사진 있으면 ZIP | 20-export / 21-import |
 | e2e27 | 첨부 왕복 | 첨부 드롭→MD=ZIP·작은 첨부 인라인(data URL)·ZIP 직접 불러오기 복원 | 20-export |
@@ -478,6 +479,9 @@
 > 겹쳐 보이지만 날짜와 함께 읽으면 유일하다. **고치지 말 것** — 그때의
 > 기록을 지금 규칙으로 고쳐 쓰면 없던 역사를 만드는 셈이다.
 
+- 2026-09-30 (274차): **e2e318 — 자리표시 사진 주소(`https://…png`)가 MD 불러오기를 영원히
+  멈추게 하던 것**. 받으러 가기 전에 주소를 가르고(`isFetchableImageUrl`) `<img>` 로드에
+  시간제한. 단위 9 · 브라우저 재현(수정 전 160초 무응답 → 수정 후 열림).
 - 2026-09-29 (273차): **e2e317 — 코드 안의 ``` 를 살려 내보내고 되읽는다 + .md 를 HTML 로
   오판하지 않는다**. 사용자 mmd(2.3MB) 가 "뷰어 HTML 이 아닙니다" 로 거절되고, 읽으면 중심
   209개가 되던 것. 파서 `fence.ts`(펜스 길이 규칙) · `looksLikeHtmlFile`. 파서 16 · 프런트 7

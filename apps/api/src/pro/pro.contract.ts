@@ -69,6 +69,21 @@ export interface ProContract {
    * @param mapId 그 첨부가 달린 맵
    */
   saleGrantsMap?(token: string, mapId: string): boolean | Promise<boolean>;
+
+  /**
+   * ★ **대시보드맵 문서의 `[&변수]` 를 채운다** (2026-09-30, 선택).
+   *   설계: docs/04-extensions/dashboard/22-dashboard.md §3 · §7
+   *
+   * 대시보드맵의 원본 문서는 `[&amt]` 를 **그대로** 품고, 값은 유료 모듈의
+   * 표(`dashboard_vars`)에 있다. 코어는 대시보드맵을 내줄 때(`getDocument`)
+   * 여기에 물어 **채운 문서**를 준다 — 화면·MCP `get_map`·내보내기가 모두 그
+   * 한 곳을 지나므로 채워진 글자만 본다.
+   *
+   * ★ **원본을 고치지 않는다** — 새 문서를 돌려준다(저장은 하지 않는다).
+   * ★ 구현이 없거나 실패하면 코어는 **원문 그대로** 준다 — `[&amt]` 가 보이는
+   *   것은 "값이 아직 없다" 와 같은 모양이라 안전하다.
+   */
+  renderDashboardDoc?(mapId: string, doc: unknown): unknown | Promise<unknown>;
 }
 
 /**

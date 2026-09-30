@@ -26,7 +26,7 @@ import {
   saveAndCloseMap, saveCurrentMap,
 } from '@/services/cloud/mapSession';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
-import { ProCollabSession } from '@pro';
+import { ProCollabSession, ProDashboardLive, ProDashboardToggle } from '@pro';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
@@ -126,6 +126,10 @@ export function MapActions(
         mapId={cloudMapId ?? (readOnlyInfo?.viewer ? readOnlyInfo.mapId : null)}
         kind={cloudMapId ? cloudKind : readOnlyInfo?.kind}
       />
+      {/* **대시보드맵 자동 갱신 · 데이터 연결 패널** (2026-09-30, 22-dashboard.md §4.3 · §4.4).
+          대시보드맵은 읽기 전용으로 열리므로 링크(`cloudMapId`)가 없다 —
+          `readOnlyInfo.dashboard` 로 자리를 연다. 공개판(스텁)은 아무것도 하지 않는다. */}
+      <ProDashboardLive t={t} mapId={readOnlyInfo?.dashboard ? readOnlyInfo.mapId : null} />
       {/* 읽기 전용 배너 — 다른 세션이 편집 중인 맵을 보는 상태임을
           화면에 상시 표시 (2026-08-04 사용자 요청) */}
       {readOnlyInfo && (
@@ -140,6 +144,22 @@ export function MapActions(
             whiteSpace: 'nowrap',
           }}
         >🔒 읽기 전용 — {readOnlyInfo.reason ?? '다른 세션에서 편집 중'}</span>
+      )}
+      {/* 대시보드맵 전환·되돌리기 (2026-09-30, 22-dashboard.md §4.1) — 열려 있는 맵이
+          **내 맵**일 때만(링크가 있거나, 대시보드라서 읽기 전용으로 연 경우).
+          퍼블리싱·협업 판정은 서버가 하고, 막히면 그 문장을 그대로 보여 준다. */}
+      {(cloudMapId || readOnlyInfo?.dashboard) && !readOnlyInfo?.viewer && (
+        <ProDashboardToggle
+          t={t}
+          map={{
+            mapId: (cloudMapId ?? readOnlyInfo?.mapId) as string,
+            title: cloudTitle ?? mapTitle,
+            kind: cloudMapId ? cloudKind : readOnlyInfo?.kind,
+            viewMode: readOnlyInfo?.dashboard ? 'dashboard' : 'edit',
+            publishId: null,
+          }}
+          compact={iconOnly}
+        />
       )}
       {/* **열람자에게는 저장 자리를 아예 주지 않는다** (2026-08-19).
           링크가 없으므로 누르면 **자기 문서함의 새 맵**으로 떨어진다 —

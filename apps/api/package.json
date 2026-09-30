@@ -21,6 +21,7 @@
     "check:emm": "node scripts/sync-emm-parser.mjs --check",
     "test:og": "node test/og-tags.test.mjs",
     "test:search-term": "node test/search-term.test.mjs",
+    "test:dashboard": "node test/dashboard-rules.test.mjs",
     "test:trim": "node test/trim-for-preview.test.mjs"
   },
   "dependencies": {

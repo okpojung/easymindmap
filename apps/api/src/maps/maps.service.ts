@@ -1,8 +1,12 @@
 import { FocusService } from './focus.service';
 import {
-  ConflictException, ForbiddenException, Injectable, Logger, NotFoundException,
-  ServiceUnavailableException,
+  ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException,
+  Optional, ServiceUnavailableException,
 } from '@nestjs/common';
+import { PRO, type ProContract } from '../pro/pro.contract';
+import {
+  DASHBOARD_VIEW_MODE, dashboardLockBlock, dashboardSwitchBlock, duplicateNodeIds,
+} from './dashboard-rules';
 import { AttachmentsService } from '../attachments/attachments.service';
 import { VaultService } from '../vault/vault.service';
 import { VersionPruneService } from '../versions/version-prune.service';
@@ -65,7 +69,19 @@ export class MapsService {
     private readonly vault: VaultService,             // 파일 미러 (셀프호스트)
     private readonly prune: VersionPruneService,      // 버전 정리 워커 (13a §2)
     private readonly focus: FocusService,             // 열린 맵·선택 노드 (MCP §9.9)
+    // 유료 모듈 (전역) — 대시보드맵의 **기능 켜짐**과 **변수 채우기**를 묻는다
+    // (22-dashboard.md §7). 없으면(공개판) 스텁이 답한다.
+    @Optional() @Inject(PRO) private readonly pro?: ProContract,
   ) {}
+
+  /** 유료 모듈의 `dashboard` 기능이 켜져 있나 — 꺼져 있으면 그 이유까지 */
+  private async dashboardFeature(): Promise<{ enabled: boolean; reason: string | null }> {
+    try {
+      const f = (await this.pro?.features())?.find((x) => x.id === 'dashboard');
+      if (f) return { enabled: f.enabled, reason: f.reason };
+    } catch { /* 묻지 못했으면 꺼진 것으로 본다 — 모르면 열지 않는다 */ }
+    return { enabled: false, reason: '유료 모듈이 설치되어 있지 않습니다.' };
+  }
 
   /**
    * POST /maps — 새 맵 생성.
@@ -316,7 +332,7 @@ export class MapsService {
         listed?: boolean | null;
       }>(
         `${hitsCte}${hitsCte ? ', p AS (' : 'WITH p AS ('}
-           SELECT m.id, m.title, m.folder_id, m.kind, m.deleted_at,
+           SELECT m.id, m.title, m.folder_id, m.kind, m.view_mode, m.deleted_at,
                   m.created_at, m.updated_at,
                   d.node_count, d.attach_count, d.attach_bytes,
                   octet_length(d.doc::text) AS doc_bytes${searching ? ',\n                  d.search_text' : ''}
@@ -326,7 +342,7 @@ export class MapsService {
             ORDER BY ${sortCol} ${dir} NULLS LAST, m.id
             LIMIT $${params.length + 1} OFFSET $${params.length + 2}
          )
-         SELECT p.id, p.title, p.folder_id, p.kind, p.deleted_at,
+         SELECT p.id, p.title, p.folder_id, p.kind, p.view_mode, p.deleted_at,
                 p.created_at, p.updated_at, p.node_count, p.attach_count,
                 p.attach_bytes, p.doc_bytes${matchCountSql}${lastCols}${pubCols}
            FROM p
@@ -347,6 +363,8 @@ export class MapsService {
         title: m.title,
         folderId: m.folder_id,
         kind: m.kind,
+        // 'edit' | 'dashboard' — 문서함 유형 칸의 📊 (22-dashboard.md §4.2)
+        viewMode: m.view_mode,
         deletedAt: m.deleted_at,
         createdAt: m.created_at,
         updatedAt: m.updated_at,
@@ -538,6 +556,37 @@ export class MapsService {
       );
     }
 
+    // ★ **대시보드맵 전환 규칙** (2026-09-30, 22-dashboard.md §4.1 · §5).
+    //   대시보드로 **들어갈 때만** 기능·퍼블리싱·겹친 ID 를 보고, 되돌리기는
+    //   언제나 통과시킨다 — 기능이 꺼졌다고 맵이 잠긴 채 갇히면 안 된다.
+    //   무거운 검사(기능 목록·문서 읽기)는 정말 들어가는 요청에서만 한다.
+    const toDash = dto.viewMode === DASHBOARD_VIEW_MODE && cur.view_mode !== DASHBOARD_VIEW_MODE;
+    if (toDash || dto.viewMode !== undefined || dto.kind !== undefined) {
+      const feat = toDash ? await this.dashboardFeature() : { enabled: true, reason: null };
+      let dupIds: string[] = [];
+      if (toDash) {
+        const d = await this.db.query<{ doc: unknown }>(
+          `SELECT doc FROM public.map_documents WHERE map_id = $1`, [mapId],
+        );
+        dupIds = duplicateNodeIds(d.rows[0]?.doc);
+      }
+      const block = dashboardSwitchBlock({
+        current: cur.view_mode,
+        next: dto.viewMode,
+        kind: cur.kind,
+        nextKind: dto.kind,
+        registered: toDash ? await this.isRegistered(mapId) : false,
+        featureEnabled: feat.enabled,
+        featureReason: feat.reason,
+        duplicateIds: dupIds,
+      });
+      if (block) {
+        throw block.code === 'DASHBOARD_FEATURE_OFF'
+          ? new ForbiddenException(block)
+          : new ConflictException(block);
+      }
+    }
+
     const sets: string[] = [];
     const params: unknown[] = [];
     let i = 1;
@@ -622,6 +671,15 @@ export class MapsService {
         '공개 중인 맵은 편집할 수 없습니다. 고치려면 먼저 비공개(보관)로 바꿔 주세요.',
       );
     }
+
+    // ★ **대시보드맵은 사람이 고칠 수 없다** (2026-09-30, 22-dashboard.md §5).
+    //   퍼블리싱 잠금과 같은 자리 · 같은 이유 — 자동저장·옛 탭·MCP
+    //   (`append_to_map`·`check_items`)·직접 호출이 모두 이 문을 지난다.
+    //   프로그램의 변경은 유료 모듈의 **다른 문**(`/dashboard/ops`)으로 오고,
+    //   그 문은 사람의 저장 경로를 열어 주지 않는다. 유료 모듈이 없어도 잠금은
+    //   그대로다 — 규칙은 공개다.
+    const dashLock = dashboardLockBlock(map.view_mode);
+    if (dashLock) throw new ForbiddenException(dashLock);
 
     // 단일 세션 편집 잠금 (2026-08-04) — 다른 살아 있는 세션이 이 맵을
     // 편집 중이면 저장을 거절한다 (읽기 전용으로 연 탭·죽지 않은 옛
@@ -1172,8 +1230,11 @@ export class MapsService {
     // **협업맵은 잠그지 않는다** (2026-08-16, B16 ①). editLock 을 아예
     // 주지 않으므로 프런트는 읽기 전용으로 열지 않는다 — 'acquired' 라고
     // 거짓말하지 않기 위해서다(잠근 적이 없다).
+    // 대시보드맵은 읽기 전용으로만 열린다 — 편집 잠금을 잡을 일이 없다.
+    // 잡으면 옆 탭이 "다른 세션에서 편집 중" 이라는 **틀린 이유**로 열린다.
+    const dashboard = map.view_mode === DASHBOARD_VIEW_MODE;
     let editLock: 'acquired' | 'busy' | undefined;
-    if (editSession && !isCollabMap(map)) {
+    if (editSession && !isCollabMap(map) && !dashboard) {
       editLock = (await this.tryAcquireEditLock(mapId, userId, editSession))
         ? 'acquired' : 'busy';
     }
@@ -1197,10 +1258,31 @@ export class MapsService {
       // 모르면 사용자는 한참 고친 뒤 저장할 때에야 403 을 만난다 — 그때는
       // 이미 그 편집이 갈 곳이 없다(열람자 문제에서 똑같이 겪었다).
       published: await this.isPublicallyVisible(mapId),
-      doc: rows[0].doc,
+      // **대시보드맵** (2026-09-30, 22-dashboard.md §4.3) — 화면은 이것을 보고
+      // 읽기 전용으로 연다. 문서의 `[&변수]` 는 유료 모듈이 **읽을 때 채운다**
+      // (§3) — 화면·MCP `get_map`·내보내기가 모두 이 한 곳을 지나므로 채워진
+      // 글자만 본다. 유료 모듈이 없으면 원문(`[&amt]`) 그대로 준다.
+      dashboard,
+      doc: dashboard ? await this.renderDashboard(mapId, rows[0].doc) : rows[0].doc,
       updatedAt: rows[0].updated_at,
       ...(editLock ? { editLock } : {}),
     };
+  }
+
+  /**
+   * 대시보드맵 문서에 변수를 채운다 — 유료 모듈에 묻는다.
+   * ★ **실패해도 문서는 연다.** 채우기가 깨졌다고 맵이 안 열리면 더 나쁘다 —
+   *   원문(`[&amt]`)이 보이는 것이 "값이 아직 없다" 와 같은 모양이라 안전하다.
+   */
+  private async renderDashboard(mapId: string, doc: unknown): Promise<unknown> {
+    const render = this.pro?.renderDashboardDoc;
+    if (!render) return doc;
+    try {
+      return (await render.call(this.pro, mapId, doc)) ?? doc;
+    } catch (err) {
+      this.log.warn(`대시보드 변수 채우기 실패 (map=${mapId}): ${(err as Error).message}`);
+      return doc;
+    }
   }
 
   /** 편집 잠금 하트비트 TTL — 이보다 오래 조용하면 죽은 세션으로 본다 */

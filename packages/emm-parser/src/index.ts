@@ -12,6 +12,8 @@ export * from './tree-rules';
 // 평평한 노드 목록 → 중첩 트리. 유료 물질화가 부른다 (28-sync-prework-plan §2.3 A-5)
 export * from './build-tree';
 export * from './meta';
+// 코드 펜스 길이 규칙 — 코드 안의 ``` 를 살려 내보내고 되읽는다 (2026-09-29)
+export * from './fence';
 // 리치 노트 HTML 속 <img> 의 주소를 읽고 바꾼다 — 노드 사진(`image`·`images`)과
 // **같은 자리에서** 다루기 위한 것 (28-sync-prework-plan §3.5 셋째 줄)
 export * from './note-images';

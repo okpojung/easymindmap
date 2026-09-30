@@ -7,7 +7,7 @@
 //   node scripts/run-vite-test.mjs src/utils/importMapFile.test.ts
 
 import { buildEmmBody } from '@emm/serialize';
-import { parseMarkdownMapFile } from './importMapFile';
+import { looksLikeHtmlFile, parseMarkdownMapFile } from './importMapFile';
 import { declareFromMap } from './emmDeclaration';
 import type { MindNode, SampleMap } from '@/editor/__samples__/types';
 
@@ -78,6 +78,20 @@ const body = (md: string) => md.split('\n').filter(Boolean);
   check('③ source', back.source, 'plain-md');
   check('③ 레이아웃 선언 없음 → editor 없음', back.editor, undefined);
   check('③ 가지', back.map.branches.map((b) => b.text), ['하나', '둘']);
+}
+
+// ── ④ HTML 판별은 확장자 + 내용의 **시작** (2026-09-29) ─────────────────
+// 우리 문서를 담은 mmd 는 노트에 `id="easymindmap-map"` 이 적혀 있어 .md 인데도
+// "뷰어 HTML 이 아닙니다" 로 거절됐다. 본문 한가운데의 문자열로는 판단하지 않는다.
+{
+  const mdWithViewerWords = '# 문서\n\n## HTML 내보내기\n\n> `<script type="application/json" id="easymindmap-map">` 에 맵이 들어간다\n';
+  check('④ .md — 본문에 뷰어 문자열이 있어도 HTML 아님', looksLikeHtmlFile('docs.md', mdWithViewerWords), false);
+  check('④ .md 를 파싱하면 맵이 나온다', parseMarkdownMapFile(mdWithViewerWords, 'x')?.map.branches.map((b) => b.text), ['HTML 내보내기']);
+  check('④ .html 확장자는 HTML', looksLikeHtmlFile('map.html', 'anything'), true);
+  check('④ 확장자가 바뀌어도 <!doctype html 로 시작하면 HTML', looksLikeHtmlFile('map.txt', '\n<!DOCTYPE html><html>'), true);
+  check('④ <html 로 시작해도 HTML', looksLikeHtmlFile('map.txt', '<html lang="ko">'), true);
+  check('④ < 로 시작하고 뷰어 id 가 있으면 HTML', looksLikeHtmlFile('map', '<div><script id="easymindmap-map"></script>'), true);
+  check('④ 그냥 < 로 시작하는 md (HTML 조각) 는 HTML 아님', looksLikeHtmlFile('a.md', '<b>굵게</b>\n\n# 제목'), false);
 }
 
 if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }

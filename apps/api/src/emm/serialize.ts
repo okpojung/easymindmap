@@ -18,6 +18,7 @@
 // 담당한다.
 
 import type { MindNode, SampleMap } from './model';
+import { fenceFor, fencedBlock, isClosingFence, openFence } from './fence';
 import { buildDeclaration, type EmmDeclaration } from './declaration';
 
 export interface EmmImageFile {
@@ -126,14 +127,14 @@ export function splitNodeBody(
     const line = lines[i];
     const trimmed = line.trim();
 
-    const fence = trimmed.match(/^```(.*)$/);
+    const fence = openFence(trimmed);
     if (fence) {
       let j = i + 1;
       const body: string[] = [];
-      while (j < lines.length && !/^```\s*$/.test(lines[j].trim())) { body.push(lines[j]); j++; }
+      while (j < lines.length && !isClosingFence(lines[j], fence.ticks)) { body.push(lines[j]); j++; }
       flushPlain();
       sawBlock = true;
-      blocks.push({ kind: 'code', lang: fence[1].trim(), body: body.join('\n') });
+      blocks.push({ kind: 'code', lang: fence.info, body: body.join('\n') });
       i = j + 1;
       continue;
     }
@@ -224,9 +225,10 @@ function pushBodyBlocks(lines: string[], blocks: NodeBodyBlock[]): void {
   for (const b of blocks) {
     lines.push('');
     if (b.kind === 'code') {
-      lines.push('```' + (b.lang || ''));
+      const f = fenceFor(b.body || '');
+      lines.push(f + (b.lang || ''));
       if (b.body) lines.push(b.body);
-      lines.push('```');
+      lines.push(f);
     } else if (b.kind === 'table') {
       (b.rows ?? []).forEach((cells, ri) => {
         lines.push(`| ${cells.join(' | ')} |`);
@@ -350,9 +352,7 @@ export function buildEmmBody(
       } else if (n.type === 'code_block' && n.text.trim()) {
         // 불러오기가 남긴 `emm` 선언 노트는 건너뛴다 — 위에서 맵 설정으로 새로 썼다
         if ((n.lang ?? '').toLowerCase() === 'emm') continue;
-        lines.push('```' + (n.lang ?? ''));
-        lines.push(n.text);
-        lines.push('```');
+        lines.push(fencedBlock(n.text, n.lang));
         lines.push('');
       } else if (n.type === 'checklist' && n.text.trim()) {
         // 체크리스트 → - [x] / - [ ] (markmap 호환, 불러오기 시 다시 노트로)
@@ -455,9 +455,7 @@ export function buildEmmBody(
         for (const ln of n.text.split('\n')) lines.push(`> ${ln}`);
       } else if (n.type === 'code_block' && n.text.trim()) {
         lines.push('');
-        lines.push('```' + (n.lang ?? ''));
-        lines.push(n.text);
-        lines.push('```');
+        lines.push(fencedBlock(n.text, n.lang));
       } else if (n.type === 'table' && n.text.trim()) {
         lines.push('');
         pushTableNote(lines, n.text);

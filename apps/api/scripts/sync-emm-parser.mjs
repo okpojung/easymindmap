@@ -36,7 +36,7 @@ const DEST = join(here, '..', 'src', 'emm');
 // (1단계 create_map), buildEmmBody: serialize.ts → { declaration }
 // (2단계 get_map), readDeclaration: declaration.ts (create_map 의 template —
 // 문서의 ```emm 선언). 이 여덟 말고는 아무것도 필요 없다(런타임 의존도 없다).
-const FILES = ['model.ts', 'frontMatter.ts', 'setext.ts', 'parse.ts', 'serialize.ts', 'meta.ts', 'note-images.ts', 'declaration.ts'];
+const FILES = ['model.ts', 'frontMatter.ts', 'setext.ts', 'fence.ts', 'parse.ts', 'serialize.ts', 'meta.ts', 'note-images.ts', 'declaration.ts'];
 
 const BANNER = (name) =>
   `// ⚠️ 자동 복사본 — 직접 고치지 마세요.\n` +

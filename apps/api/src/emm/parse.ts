@@ -31,6 +31,7 @@
 // 인라인 강조(**굵게** ==하이라이트== 등)는 노드 텍스트에 그대로 담겨
 // 에디터의 인라인 마커 렌더링으로 표시된다.
 
+import { fencedBlock, isClosingFence, openFence } from './fence';
 import type {
   SampleMap,
   SampleBranch,
@@ -475,6 +476,7 @@ export function parseMarkdownToMap(
   let quoteBuf: string[] = [];
   let fenceBuf: string[] | null = null; // null = 펜스 밖
   let fenceLang = '';
+  let fenceTicks = 3; // 연 펜스의 백틱 개수 — 같거나 긴 것만 닫는다 (fence.ts)
 
   const flushPara = () => {
     if (!paraBuf.length) return;
@@ -617,7 +619,7 @@ export function parseMarkdownToMap(
     if (code.trim()) {
       // 'node'면 **각각의 자식 노드**의 ``` 펜스(코드 패널 렌더)로
       // 분리 (markmap 파리티, 2026-07-31) — 원문 보존(링크 미추출)
-      const block = '```' + (fenceLang || '') + '\n' + code + '\n```';
+      const block = fencedBlock(code, fenceLang);
       // codeToNote — 자식 노드 대신 **가장 가까운 견출·불릿 노드**의 코드 노트
       if (opts.codeToNote) {
         addNoteToHost({ id: nid(), type: 'code_block', text: code, lang: fenceLang || undefined });
@@ -631,19 +633,21 @@ export function parseMarkdownToMap(
     const line = raw.replace(/\s+$/, '');
 
     // 코드 펜스 — 내용은 현재 노드의 코드 노트로
-    const fence = line.match(/^\s*```(.*)$/);
-    if (fence) {
-      if (fenceBuf === null) {
-        flushAll();
-        lastItem = null;
-        fenceBuf = [];
-        fenceLang = fence[1].trim();
-      } else {
-        closeFence();
-      }
+    const fence = openFence(line);
+    if (fence && fenceBuf === null) {
+      flushAll();
+      lastItem = null;
+      fenceBuf = [];
+      fenceLang = fence.info;
+      fenceTicks = fence.ticks;
+      continue;
+    }
+    if (fenceBuf !== null && isClosingFence(line, fenceTicks)) {
+      closeFence();
       continue;
     }
     if (fenceBuf !== null) {
+      // 펜스 안의 짧은 ``` 줄(안쪽 예시)은 코드의 일부다 — 위에서 닫지 않았다
       // ★ 닫지 않은 ```emm 선언 블록은 **첫 견출 앞에서 닫힌 것으로** 본다
       // (2026-09-07, 관용적 파싱). 선언 줄은 `key: value` 뿐이라 `#` 로
       // 시작하는 줄이 선언일 수는 없다. 이 한 줄이 없으면 닫는 ``` 을 잊은
@@ -801,7 +805,7 @@ export function parseMarkdownToMap(
   if (fenceBuf !== null && fenceBuf.join('\n').trim()) {
     // 닫는 펜스 없이 끝난 코드 — 같은 배치 규칙 적용
     const tail = fenceBuf.join('\n');
-    const tailBlock = '```' + (fenceLang || '') + '\n' + tail + '\n```';
+    const tailBlock = fencedBlock(tail, fenceLang);
     if (!attachBlockChild(tailBlock, false)) {
       addNote({ id: nid(), type: 'code_block', text: tail });
     }

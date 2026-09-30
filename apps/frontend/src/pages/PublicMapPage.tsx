@@ -68,6 +68,16 @@ function isEmbed(): boolean {
   try { return new URLSearchParams(window.location.search).get('embed') === '1'; } catch { return false; }
 }
 
+/**
+ * 다음 **시계 눈금**까지 남은 ms — :00·:10·:20… (2026-09-30 사용자 요청, 에디터의 대시보드
+ * 자동 갱신과 같은 규칙). 눈금이 2초 안이면 그다음 눈금으로 넘긴다.
+ */
+function msToNextTick(intervalMs: number, now = Date.now(), minGap = 2000): number {
+  let d = intervalMs - (now % intervalMs);
+  if (d < minGap) d += intervalMs;
+  return d;
+}
+
 const hhmmss = (d: Date) => [d.getHours(), d.getMinutes(), d.getSeconds()]
   .map((n) => String(n).padStart(2, '0')).join(':');
 
@@ -75,8 +85,9 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   const [data, setData] = useState<PublishedMap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [embed] = useState(isEmbed);
-  /** 대시보드맵 — 마지막으로 **바뀐 내용을 받은** 시각(없으면 처음 연 시각) */
+  /** 대시보드맵 — 마지막으로 **서버에 확인한** 시각(눈금 시각). 바뀐 시각은 `changedAt` */
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  const [changedAt, setChangedAt] = useState<Date | null>(null);
   const [stale, setStale] = useState(false);
   const stampRef = useRef<string | undefined>(undefined);
   useEffect(() => { stampRef.current = data?.stamp; }, [data?.stamp]);
@@ -107,7 +118,7 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
     setRefreshedAt((v) => v ?? new Date());
     let alive = true;
     let busy = false;
-    const tick = async () => {
+    const tick = async (at: Date) => {
       if (busy || document.hidden) return;
       busy = true;
       try {
@@ -118,8 +129,9 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
           const d = await cloudApi.getPublished(publishId);
           if (!alive) return;
           setData(d);
-          setRefreshedAt(new Date());
+          setChangedAt(new Date());
         }
+        setRefreshedAt(at);
       } catch (err) {
         // 링크가 닫혔으면(비공개·취소) 그 사실을 보인다 — 옛 숫자를 계속 띄우지 않는다
         if (alive && err instanceof CloudError && err.status === 404) {
@@ -131,12 +143,25 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
         busy = false;
       }
     };
-    const timer = window.setInterval(() => void tick(), DASH_POLL_MS);
-    const onVis = () => { if (!document.hidden) void tick(); };
+    // 시계 눈금마다(:00·:10·:20…) — setInterval 은 밀리므로 매번 다음 눈금을 다시 잰다
+    let timer: number | undefined;
+    const arm = () => {
+      window.clearTimeout(timer);
+      if (document.hidden) return;
+      timer = window.setTimeout(() => {
+        void tick(new Date(Math.round(Date.now() / 1000) * 1000));
+        arm();
+      }, msToNextTick(DASH_POLL_MS));
+    };
+    const onVis = () => {
+      if (!document.hidden) void tick(new Date());
+      arm();
+    };
+    arm();
     document.addEventListener('visibilitychange', onVis);
     return () => {
       alive = false;
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [isDashboard, publishId]);
@@ -197,7 +222,8 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
           data-testid="public-dashboard-live"
           title={stale
             ? '서버에 묻지 못했습니다 — 마지막으로 받은 값을 보여 주고 있습니다'
-            : '대시보드맵 — 10초마다 바뀐 것을 확인해 스스로 갱신합니다'}
+            : `대시보드맵 — 10초마다(:00·:10·:20…) 바뀐 것을 확인해 스스로 갱신합니다\n`
+              + `보이는 시각 = 마지막으로 확인한 시각 · 마지막으로 내용이 바뀐 시각 ${changedAt ? hhmmss(changedAt) : '—'}`}
           style={{
             // 뷰어 바닥글(약 30px) 위 — 겹치면 바닥글 글자를 가린다(e2e 스크린샷에서 봤다)
             position: 'fixed', left: 10, bottom: 40, zIndex: 11,

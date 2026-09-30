@@ -4,7 +4,7 @@
 // NodeTagChips), content indicators (note / link / attachment), collapse toggle,
 // inline text edit, soft-lock editor label.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens, ThemeName } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
@@ -72,7 +72,9 @@ interface Props {
   // 검색 결과로 강조 표시 (노란 채움 + 붉은 테두리)
   searchHit?: boolean;
   dropTarget?: boolean;
-  onSelect: () => void;
+  // 노드 id 를 받는다 — 캔버스가 노드마다 새 클로저를 만들지 않고 **같은
+  // 함수 하나**를 넘길 수 있어야 memo 가 산다 (2026-09-30, 2,847노드 맵)
+  onSelect: (id: string) => void;
   onHover?: (id: string | null) => void;
   onOpenPopover?: (nodeId: string, kind: ContentKind) => void;
   collabs: Collaborator[];
@@ -193,7 +195,17 @@ function NodeShape({
   return <rect x={x0} y={y0} width={n.w} height={n.h} rx={rx} {...common} />;
 }
 
-export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, onHover, onOpenPopover, collabs }: Props) {
+/**
+ * ★ **memo** (2026-09-30 사용자 보고: 2,847노드 맵을 불러온 뒤 한참 편집이 안 된다).
+ * 캔버스는 pan·선택·안내 문구 하나에도 다시 렌더되는데, 그때마다 노드 2,847개가
+ * 전부 다시 그려졌다(계측: 불러오기 한 번에 노드 렌더 37,032회 = 13벌). props 가
+ * 같으면 건너뛴다 — 그래서 캔버스는 onSelect·onOpenPopover 를 노드마다 새로 만들지
+ * 않고 안정된 함수 하나를 넘긴다(Canvas.tsx). 안에서 구독하는 스토어 슬라이스
+ * (multiSelectedIds·zoom·showTags·hiddenTags)가 바뀔 때는 당연히 다시 그린다.
+ */
+export const NodeRenderer = memo(NodeRendererImpl);
+
+function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onHover, onOpenPopover, collabs }: Props) {
   // 우리 저장소 사진은 그릴 때 토큰을 붙여야 한다 (B16 ② 슬라이스 2)
   const resolveImgSrc = useImageSrcResolver();
   const colors = resolveNodeColors(n, t);
@@ -397,7 +409,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
     setEditingDraft(null);
     setEditing(true);
     setEditingNodeId(n.id); // 편집 중 +/− 인디케이터 숨김 (겹침 방지)
-    onSelect();
+    onSelect(n.id);
   };
 
   const saveEdit = () => {
@@ -492,7 +504,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
       data-node-id={n.id}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect();
+        onSelect(n.id);
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
@@ -1423,7 +1435,7 @@ export function NodeRenderer({ n, t, selected, searchHit, dropTarget, onSelect, 
                   e.stopPropagation();
                   // 인디케이터를 눌러도 노드 자체는 항상 선택된다 —
                   // 노드 오른쪽(아이콘 영역) 클릭이 무반응이던 문제 방지.
-                  onSelect();
+                  onSelect(n.id);
                   // 노트(종류별): 그 종류의 노트만 담은 읽기 전용 뷰어
                   // 팝업을 연다 (Canvas의 NoteViewerPopover).
                   if (isNoteKind(ic.kind)) { onOpenPopover?.(n.id, ic.kind); return; }

@@ -13,6 +13,8 @@ import {
   setViewerLocked, isViewerLocked,
 } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { afterPaint, openingLabelFor } from '@/utils/opening';
+import { countMapNodes } from '@/utils/userTemplates';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
@@ -488,11 +490,20 @@ export async function openMapHere(
 ): Promise<{ readOnly: boolean; reason?: string; viewer?: boolean }> {
   const cloud = useCloudStore.getState();
   cloud.setBusy('opening');
+  // "여는 중" 안내 — 내려받는 동안도, 큰 맵을 그리는 동안도 (utils/opening.ts, 2026-09-30)
+  const ui = useEditorUiStore.getState();
+  const showOpening = ui.openingLabel === null;
+  if (showOpening) { ui.setOpeningLabel('맵을 여는 중…'); await afterPaint(); }
   try {
     const { doc, updatedAt, title, folderId, kind, editLock, role, published, dashboard } =
       await cloudApi.getDocument(mapId, editSessionKey());
     const loadedMap = (doc as { map?: unknown }).map;
     if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
+    if (showOpening) {
+      useEditorUiStore.getState().setOpeningLabel(
+        openingLabelFor(`'${title}' 여는 중`, countMapNodes(loadedMap as never)));
+      await afterPaint();
+    }
     suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
     // 열기는 **문서 경계** — 되돌리기가 '열기 이전' 문서로 넘어가면
     // 안 된다 (그 상태로 저장하면 이 맵이 비워진다, §7.4)
@@ -503,6 +514,8 @@ export async function openMapHere(
     // 저장 당시의 레이아웃·간격 복원 (v2 스냅샷 — 없으면 그대로 둔다)
     applySnapshotEditor(doc);
     useInteractionStore.getState().setSelectedId(null);
+    // 여기까지가 한 동기 블록 — React 는 이 뒤에 한 번 그린다. 그려진 뒤에 안내를 지운다
+    if (showOpening) { await afterPaint(); useEditorUiStore.getState().setOpeningLabel(null); }
     // **읽기 전용으로 여는 두 갈래** — 이유가 다르므로 문장도 다르다.
     //   ⑴ editLock='busy' : 다른 세션이 편집 중이다(내 권한은 있다)
     //   ⑵ role='viewer'   : '읽기만' 으로 초대받았다(권한 자체가 없다)
@@ -553,5 +566,6 @@ export async function openMapHere(
     };
   } finally {
     useCloudStore.getState().setBusy('idle');
+    if (showOpening) useEditorUiStore.getState().setOpeningLabel(null); // 실패해도 안내는 지운다
   }
 }

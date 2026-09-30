@@ -30,6 +30,8 @@ import { detachFromServer, saveCurrentMap } from '@/services/cloud/mapSession';
 import { CloudError } from '@/services/cloud/apiClient';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { openingLabelFor, withOpening } from '@/utils/opening';
+import { countMapNodes } from '@/utils/userTemplates';
 import { useInteractionStore } from '@/stores/interactionStore';
 import {
   loadUserTemplates,
@@ -296,18 +298,23 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     // MD의 원격 이미지 URL(![](https://…png))을 다운로드해 내장 —
     // 실패분은 원격 참조 유지 또는 링크 폴백 (remoteImages.ts)
     const { map: resolvedMap, stats: img } = await resolveRemoteImages(imported.map);
-    // 불러온 파일도 새 문서다 — 서버 맵 연결을 끊는다 (위 doStartBlank 주석)
-    detachFromServer();
-    setBrowserOpen(false);
-    onDone?.();
-    // 불러오기도 문서 경계 — 되돌리기가 이전 문서로 넘어가지 않게 한다
-    loadMap(resolvedMap, { resetHistory: true });
-    if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
-    else setLayoutType('radial-right');
-    if (imported.editor?.spacingX) setSpacingX(imported.editor.spacingX);
-    else resetSpacing();
-    if (imported.editor?.spacingY) setSpacingY(imported.editor.spacingY);
-    setSelectedId('root');
+    // 큰 맵은 그리는 데 수 초~수십 초 걸린다 — "여는 중" 안내를 먼저 그린 뒤
+    // 무거운 일을 시작하고, 다 그려진 뒤에 지운다 (utils/opening.ts, 2026-09-30)
+    await withOpening(openingLabelFor(`'${imported.map.title}' 여는 중`, countMapNodes(resolvedMap)), () => {
+      // 불러온 파일도 새 문서다 — 서버 맵 연결을 끊는다 (위 doStartBlank 주석)
+      detachFromServer();
+      setBrowserOpen(false);
+      onDone?.();
+      // 불러오기도 문서 경계 — 되돌리기가 이전 문서로 넘어가지 않게 한다.
+      // 레이아웃·간격·선택까지 **한 동기 블록**에서 바꿔 React 가 한 번에 그리게 한다.
+      loadMap(resolvedMap, { resetHistory: true });
+      if (imported.editor?.layoutType) setLayoutType(imported.editor.layoutType);
+      else setLayoutType('radial-right');
+      if (imported.editor?.spacingX) setSpacingX(imported.editor.spacingX);
+      else resetSpacing();
+      if (imported.editor?.spacingY) setSpacingY(imported.editor.spacingY);
+      setSelectedId('root');
+    });
     const extra = imported.relinked ? ` (첨부 ${imported.relinked}개 연결)` : '';
     // A4 분량 초과로 노트로 옮긴 블록 안내 (데이터는 잃지 않는다 — P3)
     const moved = movedToNote > 0

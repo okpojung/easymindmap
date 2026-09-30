@@ -92,6 +92,10 @@ interface Props {
 // 첫 화면에서 중심 주제를 위쪽에 두는 레이아웃(아래로 자란다)과 그 위 여백 — homeArmed 효과
 const HOME_TOP_LAYOUTS = new Set(['tree-right', 'tree-down', 'process-tree-right']);
 const HOME_TOP_GAP = 72;
+// 뷰포트 컬링 — 이 노드 수부터 화면 근처만 그린다 (작은 맵은 예전처럼 전부)
+const CULL_MIN_NODES = 400;
+// 화면 크기의 이 배율만큼 사방으로 더 그린다 (0.5 = 화면 절반씩)
+const CULL_MARGIN = 0.5;
 
 // 큰 맵(수백 노드)도 '맵 전체 맞추기'가 전부 담을 수 있게 최소 2%
 // (viewportStore의 하한과 반드시 같아야 한다 — 다르면 fit이 잘린다)
@@ -229,6 +233,13 @@ export function Canvas({
   // Multi-item content chooser popover (link/file/media), rendered on the TOP
   // overlay so other nodes never cover it.
   const [popover, setPopover] = useState<{ nodeId: string; kind: ContentKind } | null>(null);
+  // NodeRenderer(memo)에 넘기는 **안정된 콜백** — 노드마다 새 클로저를 만들면 memo 가
+  // 죽어 렌더마다 노드 전부를 다시 그린다 (2026-09-30). selectOne 은 렌더마다 새로
+  // 만들어지는 함수라 ref 로 최신 것을 가리킨다.
+  const selectOneRef = useRef<(id: string | null) => void>(() => {});
+  const onSelectNode = useCallback((id: string) => selectOneRef.current(id), []);
+  const onOpenPopover = useCallback((nodeId: string, kind: ContentKind) =>
+    setPopover((p) => (p && p.nodeId === nodeId && p.kind === kind ? null : { nodeId, kind })), []);
   // 붙여넣기 안내 — 붙일 것이 없거나(다른 앱의 자리표시 텍스트) 이 탭에
   // 원본이 없을 때 "아무 반응 없음"으로 보이지 않게 한 줄 띄운다.
   const [pasteNotice, setPasteNotice] = useState<string | null>(null);
@@ -344,6 +355,7 @@ export function Canvas({
     if (selectedConnectorId) setSelectedConnectorId(null);
     onSelect(id);
   };
+  selectOneRef.current = selectOne;
 
   // 드래그로 옮길 노드들 — 다중 선택된 노드 중 하나를 끌면 **고른 전부**가
   // 함께 간다 (2026-09-08). 아니면 끈 노드 하나.
@@ -384,6 +396,50 @@ export function Canvas({
   const visibleNodes = focusedId ? subtreeOf(focusedId, nodes) : nodes;
   // 연결선이 끝점을 찾는 표 — 접히거나 Focus 밖이면 없다 → 선도 안 그린다
   const visibleById = useMemo(() => new Map(visibleNodes.map((n) => [n.id, n])), [visibleNodes]);
+  // 부모 → 자식 목록 — 렌더마다 `visibleNodes.find/for` 로 부모·자식을 찾으면 O(n²) 다
+  // (4,629노드 맵에서 렌더 한 번에 1천만 번 비교, 2026-09-30 계측)
+  const childrenOf = useMemo(() => {
+    const m = new Map<string, typeof visibleNodes>();
+    for (const n of visibleNodes) {
+      if (!n.parent) continue;
+      const list = m.get(n.parent);
+      if (list) list.push(n); else m.set(n.parent, [n]);
+    }
+    return m;
+  }, [visibleNodes]);
+
+  // ★ **뷰포트 컬링** (2026-09-30 사용자 보고: 2,847노드 맵을 불러온 뒤 한참 편집이
+  // 안 된다). 노드 4,629개를 전부 DOM 에 두면 SVG 요소 2만여 개라, 클릭 한 번의
+  // 렌더에 프로덕션 빌드로 1.7초(JS 가 아니라 브라우저 레이아웃·페인트)가 걸렸다.
+  // 큰 맵(CULL_MIN_NODES 이상)에서는 **화면 근처의 노드·엣지·접힘 칩만** 그린다 —
+  // 화면 밖 노드는 배치(`nodes`)에는 있으므로 맞추기·검색·드롭·연결선 계산은
+  // 그대로다. 여백은 화면의 절반씩 — 웬만한 이동에는 노드가 톡 튀어나오지 않는다.
+  // 선택·편집·검색 강조·드롭 대상 노드는 화면 밖이어도 늘 그린다(툴바·편집창이
+  // 그 노드에 붙는다). 작은 맵은 예전 그대로 전부 그린다.
+  const cullActive = visibleNodes.length >= CULL_MIN_NODES;
+  const drawn = useMemo(() => {
+    if (!cullActive) return null;
+    const s = (zoom || 100) / 100;
+    const vw = W / s; const vh = H / s;
+    const vx = (0 - CX - panX) / s + CX; const vy = (0 - CY - panY) / s + CY;
+    const mx = vw * CULL_MARGIN; const my = vh * CULL_MARGIN;
+    const x0 = vx - mx; const y0 = vy - my; const x1 = vx + vw + mx; const y1 = vy + vh + my;
+    const set = new Set<string>();
+    for (const n of visibleNodes) {
+      if (n.x + n.w / 2 < x0 || n.x - n.w / 2 > x1 || n.y + n.h / 2 < y0 || n.y - n.h / 2 > y1) continue;
+      set.add(n.id);
+    }
+    for (const id of [selectedId, editingNodeId, searchHitId, dropZone?.targetId, ...multiSelectedIds]) {
+      if (id) set.add(id);
+    }
+    return set;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cullActive, visibleNodes, zoom, panX, panY, W, H, CX, CY, selectedId, editingNodeId, searchHitId, dropZone?.targetId, multiSelectedIds]);
+  const isDrawn = (id: string) => !drawn || drawn.has(id);
+  const drawnNodes = useMemo(
+    () => (drawn ? visibleNodes.filter((n) => drawn.has(n.id)) : visibleNodes),
+    [drawn, visibleNodes],
+  );
 
   // 노드별 "자식 배치에 쓰이는 실효 레이아웃" — 접기 토글 위치를
   // 레이아웃 종류로 결정하기 위해 오버라이드 체인을 한 번 걸어 둔다.
@@ -1655,8 +1711,10 @@ export function Canvas({
             {visibleNodes
               .filter((n) => n.parent)
               .map((n) => {
-                const p = visibleNodes.find((x) => x.id === n.parent);
+                const p = visibleById.get(n.parent as string);
                 if (!p) return null;
+                // 컬링 — 양 끝이 다 화면 밖이면 선도 그리지 않는다
+                if (drawn && !drawn.has(n.id) && !drawn.has(p.id)) return null;
                 // 시간배치(중앙노드): 축 시작점 → 축 노드는 **시간축 자체가
                 // 연결선**이다(둘 다 축 위에 있다). 여기서 또 그으면 축과
                 // 완전히 겹치고, 먼 노드로 가는 선은 앞 노드들을 관통한다.
@@ -1690,7 +1748,7 @@ export function Canvas({
           />
 
           <g>
-            {visibleNodes.map((n) => (
+            {drawnNodes.map((n) => (
               <NodeRenderer
                 key={n.id}
                 n={n}
@@ -1698,11 +1756,9 @@ export function Canvas({
                 selected={n.id === selectedId || multiSet.has(n.id)}
                 searchHit={n.id === searchHitId}
                 dropTarget={n.id === dropZone?.targetId}
-                onSelect={() => selectOne(n.id)}
+                onSelect={onSelectNode}
                 onHover={setHoverNodeId}
-                onOpenPopover={(nodeId, kind) =>
-                  setPopover((p) => (p && p.nodeId === nodeId && p.kind === kind ? null : { nodeId, kind }))
-                }
+                onOpenPopover={onOpenPopover}
                 collabs={collabs}
               />
             ))}
@@ -1818,6 +1874,7 @@ export function Canvas({
                 // 노드 여럿을 고르면 대표(첫) 노드의 접힘 숫자만 사라졌다).
                 .filter((n) => multiSelectedIds.length > 1
                   || (n.id !== selectedId && n.id !== (selectedNode?.parent ?? '')))
+                .filter((n) => isDrawn(n.id))
                 .map((n) => {
                   // 접기 토글 위치 — 레이아웃 종류로 "결정론적으로" 정한다.
                   // 예전의 자식 좌표 평균 방향 방식은 같은 레이아웃에서도
@@ -1831,8 +1888,7 @@ export function Canvas({
                   let sd: FallbackDir = (n.side === 'left' ? 'left' : 'right');
                   if (!n.collapsed) {
                     let adx = 0; let ady = 0; let acnt = 0;
-                    for (const c of visibleNodes) {
-                      if (c.parent !== n.id) continue;
+                    for (const c of childrenOf.get(n.id) ?? []) {
                       adx += c.x - n.x; ady += c.y - n.y; acnt++;
                     }
                     if (acnt) {

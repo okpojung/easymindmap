@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -140,8 +140,21 @@ export function TopToolbar({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const compact = barW < 1150;
-  const iconOnly = barW < 960;
+  // ★ **폭만 재면 모자란다** (2026-09-30). 같은 폭이라도 도구줄에 무엇이 붙었는지가
+  //   다르다 — 읽기 전용 배지·유료 자리(대시보드 자동 갱신 표시)가 붙으면 1400px 에서도
+  //   끝의 단추(되돌리기·저장·닫기)가 화면 밖으로 밀렸다(pro 화면 시험이 잡았다). 그래서
+  //   **실제로 넘치는지**(scrollWidth > clientWidth)를 그린 직후에 보고 한 단계씩 줄인다.
+  //   그리기 전(layout effect)이라 깜빡이지 않는다. 폭이나 읽기 전용 상태가 바뀌면
+  //   처음(0)부터 다시 잰다 — 넓어졌는데 줄인 채로 남지 않게.
+  const [squeeze, setSqueeze] = useState(0);
+  useEffect(() => { setSqueeze(0); }, [barW, readOnly]);
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!el || squeeze >= 2) return;
+    if (el.scrollWidth > el.clientWidth + 1) setSqueeze((v) => Math.min(2, v + 1));
+  });
+  const compact = barW < 1150 || squeeze >= 1;
+  const iconOnly = barW < 960 || squeeze >= 2;
 
   const saveStateInfo = ({
     saved: { text: `저장됨${agoText}`, short: '저장됨', color: t.textMuted, dot: t.success },

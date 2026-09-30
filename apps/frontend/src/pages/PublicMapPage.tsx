@@ -90,6 +90,18 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   const [changedAt, setChangedAt] = useState<Date | null>(null);
   const [stale, setStale] = useState(false);
   const stampRef = useRef<string | undefined>(undefined);
+  // ★ **지금 시각을 매초** 보인다 (2026-09-30 사용자 요청 — 마지막 확인 시각이 아니라 현재 시각).
+  //   시계는 멈추지 않으므로 **확인이 멈춘 것**은 따로 가린다(아래 `stalled` → ⚠️).
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!data?.dashboard) return undefined;
+    let timer: number | undefined;
+    const arm = () => {
+      timer = window.setTimeout(() => { setNow(new Date()); arm(); }, 1000 - (Date.now() % 1000) + 5);
+    };
+    arm();
+    return () => window.clearTimeout(timer);
+  }, [data?.dashboard]);
   useEffect(() => { stampRef.current = data?.stamp; }, [data?.stamp]);
 
   useEffect(() => {
@@ -217,13 +229,17 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   return (
     <>
       {!embed && <ViewerBar title={data.title} />}
-      {isDashboard && refreshedAt && (
+      {isDashboard && refreshedAt && (() => {
+        // 확인 간격(10초)의 2배 + 5초 넘게 확인이 없으면 멈춘 것으로 본다
+        const stalled = now.getTime() - refreshedAt.getTime() > DASH_POLL_MS * 2 + 5000;
+        const warn = stale || stalled;
+        return (
         <div
           data-testid="public-dashboard-live"
-          title={stale
-            ? '서버에 묻지 못했습니다 — 마지막으로 받은 값을 보여 주고 있습니다'
-            : `대시보드맵 — 10초마다(:00·:10·:20…) 바뀐 것을 확인해 스스로 갱신합니다\n`
-              + `보이는 시각 = 마지막으로 확인한 시각 · 마지막으로 내용이 바뀐 시각 ${changedAt ? hhmmss(changedAt) : '—'}`}
+          title={(warn
+            ? '서버에 확인하지 못하고 있습니다 — 마지막으로 받은 값을 보여 주고 있습니다\n'
+            : `대시보드맵 — 10초마다(:00·:10·:20…) 바뀐 것을 확인해 스스로 갱신합니다\n`)
+            + `보이는 시각 = 지금 시각 · 마지막 확인 ${hhmmss(refreshedAt)} · 마지막 변경 ${changedAt ? hhmmss(changedAt) : '—'}`}
           style={{
             // 뷰어 바닥글(약 30px) 위 — 겹치면 바닥글 글자를 가린다(e2e 스크린샷에서 봤다)
             position: 'fixed', left: 10, bottom: 40, zIndex: 11,
@@ -232,8 +248,9 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
             fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
             pointerEvents: 'none',
           }}
-        >{stale ? '⚠️' : '🟢'} 📊 {hhmmss(refreshedAt)}</div>
-      )}
+        >{warn ? '⚠️' : '🟢'} 📊 <span style={{ fontVariantNumeric: 'tabular-nums' }}>{hhmmss(now)}</span></div>
+        );
+      })()}
       {data.locked && (
         <PaidBanner
           publishId={publishId}

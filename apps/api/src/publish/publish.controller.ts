@@ -321,6 +321,17 @@ export class PublicPublishController {
     return this.publish.listListed(n, cursor, term);
   }
 
+  /**
+   * **바뀌었나만** — 사내 시스템에 붙여 둔 대시보드맵이 10초마다 묻는다
+   * (2026-09-30, 22-dashboard.md §4.7). 문서를 읽지 않는 싼 물음이다.
+   * `:publishId` 보다 먼저 선언한다(위 목록과 같은 이유).
+   */
+  @Get(':publishId/stamp')
+  async stamp(@Param('publishId') publishId: string, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    return this.publish.stamp(PublicPublishController.slug(publishId));
+  }
+
   @Get(':publishId')
   getPublished(@Param('publishId') publishId: string) {
     return this.publish.getPublished(PublicPublishController.slug(publishId));

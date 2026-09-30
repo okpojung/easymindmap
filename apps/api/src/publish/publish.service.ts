@@ -24,7 +24,7 @@
 
 import {
   BadRequestException, ConflictException,
-  ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException,
+  ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
 import type { ReadStream } from 'node:fs';
@@ -34,6 +34,10 @@ import { columnReady, tableReady } from '../common/table-ready';
 import { likePattern, searchTerm } from '../common/search-term';
 import { findAccessibleMap } from '../maps/map-access';
 import { trimForPreview, type PreviewStats } from './trim-for-preview';
+import { PRO, type ProContract } from '../pro/pro.contract';
+import {
+  DASHBOARD_NO_LISTING, DASHBOARD_NO_PRICE, DASHBOARD_VIEW_MODE,
+} from '../maps/dashboard-rules';
 
 const PUBLISHED_TABLE = 'public.published_maps';
 
@@ -104,6 +108,11 @@ export interface PublishStatus {
   priceKrw?: number | null;
   /** 이 서버가 값을 매길 수 있는가 — `price_krw` 칸이 있는가 */
   canSetPrice?: boolean;
+  /**
+   * **대시보드맵인가** (2026-09-30, 22-dashboard.md §4.7). 참이면 화면은 지식창고·
+   * 값 줄을 그리지 않고(서버가 막는다) 대신 **사내 시스템에 붙이는 코드**를 보여 준다.
+   */
+  dashboard?: boolean;
 }
 
 interface PublishedRow {
@@ -144,7 +153,17 @@ export class PublishService {
   constructor(
     private readonly db: DatabaseService,
     private readonly storage: StorageService,
+    // 대시보드맵의 `[&변수]` 채우기·갱신 표식 (유료, 선택) — 없으면 원문·문서 시각만
+    @Optional() @Inject(PRO) private readonly pro?: ProContract,
   ) {}
+
+  /** 대시보드맵인가 — 지식창고·유료를 막고, 공개 화면에 채운 문서를 준다 */
+  private async isDashboard(mapId: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ v: string | null }>(
+      'SELECT view_mode AS v FROM public.maps WHERE id = $1', [mapId],
+    );
+    return rows[0]?.v === DASHBOARD_VIEW_MODE;
+  }
 
   /** 퍼블리싱 기능을 쓸 수 있는 서버인가 */
   private async ready(): Promise<boolean> {
@@ -249,15 +268,14 @@ export class PublishService {
   static readonly COLLAB_BLOCKED =
     '협업 중인 맵은 퍼블리싱할 수 없습니다 — 아직 완성된 문서가 아닙니다. 퍼블리싱은 단독맵만 됩니다.';
 
-  /**
-   * ★ **대시보드맵은 퍼블리싱할 수 없다** (2026-09-30, 22-dashboard.md §4.1).
-   *   대시보드맵의 내용은 **프로그램이 계속 바꾼다** — 퍼블리싱이 지키는
-   *   "편집이 끝난 완성본"(27-publish-share.md)과 정반대다. 반대 방향(퍼블리싱
-   *   등록된 맵을 대시보드로)은 `MapsService.update` 가 막는다 — 양쪽을 다
-   *   막아야 규칙이 닫힌다(협업맵과 같은 이유).
+  /*
+   * ★ **대시보드맵도 퍼블리싱한다 — 링크까지만** (2026-09-30 v3.3, 22-dashboard.md §4.7).
+   *   처음에는 막았다("완성본이 아니다"). 사용자 요청으로 뒤집었다 — 대시보드는
+   *   **사내 시스템에 붙이거나 첨부하는 주소**가 쓸모다. 퍼블리싱이 지키는 "사람이
+   *   고치지 않는다" 는 대시보드도 같이 지키고(둘 다 잠금), 바뀌는 것은 프로그램이
+   *   넣는 값뿐이다. 불특정 다수에게 **진열**(지식창고)하거나 **파는** 것만 막는다
+   *   (`setListed` · `setPrice`) — 반대 방향은 `MapsService.update` 가 막는다.
    */
-  static readonly DASHBOARD_BLOCKED =
-    '대시보드맵은 퍼블리싱할 수 없습니다 — 먼저 [일반맵으로 되돌리기] 를 해 주세요.';
 
   /** 이 맵을 퍼블리싱할 수 있는가 — 없거나 권한이 없으면 예외 */
   private async requirePublishable(userId: string, mapId: string): Promise<void> {
@@ -268,7 +286,6 @@ export class PublishService {
       throw new ForbiddenException('맵을 퍼블리싱할 수 있는 사람은 맵 주인뿐입니다.');
     }
     if (map.kind === 'collab') throw new ForbiddenException(PublishService.COLLAB_BLOCKED);
-    if (map.view_mode === 'dashboard') throw new ForbiddenException(PublishService.DASHBOARD_BLOCKED);
   }
 
   /**
@@ -316,7 +333,7 @@ export class PublishService {
     PublishService.assertUsable(visibility, canSet);
 
     const cur = await this.activeRow(mapId);
-    if (cur) return this.toStatus(cur, canSet, canList, await this.hasPrice());
+    if (cur) return this.withDash(mapId, this.toStatus(cur, canSet, canList, await this.hasPrice()));
 
     // publish_id 는 UNIQUE 다. 충돌 확률은 무시할 만하지만 0 은 아니므로
     // 몇 번 다시 뽑는다 — 여기서 포기하면 사용자에게는 이유 없는 실패다.
@@ -334,7 +351,7 @@ export class PublishService {
           `INSERT INTO public.published_maps ${cols} VALUES ${vals} RETURNING ${ret}`,
           canSet ? [mapId, publishId, visibility] : [mapId, publishId],
         );
-        return this.toStatus(rows[0], canSet, canList, await this.hasPrice());
+        return this.withDash(mapId, this.toStatus(rows[0], canSet, canList, await this.hasPrice()));
       } catch (err) {
         // 23505 = unique_violation. 그 외 오류는 그대로 올린다 —
         // 삼키면 DB 장애가 "퍼블리싱 실패"로 둔갑해 원인을 못 찾는다.
@@ -404,7 +421,7 @@ export class PublishService {
     if (!rows[0]) {
       throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
     }
-    return this.toStatus(rows[0], true, canList, await this.hasPrice());
+    return this.withDash(mapId, this.toStatus(rows[0], true, canList, await this.hasPrice()));
   }
 
   /**
@@ -441,6 +458,10 @@ export class PublishService {
     }
     const canSet = await this.hasVisibility();
 
+    if (listed && await this.isDashboard(mapId)) {
+      throw new ConflictException({ code: 'DASHBOARD_NO_LISTING', message: DASHBOARD_NO_LISTING });
+    }
+
     if (listed) {
       // ① 주소가 없으면 만든다 — 규칙(협업맵 거절 등)은 publish() 가 본다
       let cur = await this.activeRow(mapId);
@@ -469,7 +490,7 @@ export class PublishService {
       // 끄는 쪽에서만 올 수 있다 — 켜는 쪽은 위에서 등록을 만들었다
       throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다.');
     }
-    return this.toStatus(rows[0], canSet, true, await this.hasPrice());
+    return this.withDash(mapId, this.toStatus(rows[0], canSet, true, await this.hasPrice()));
   }
 
   /** 값의 상·하한 — 27b §8.3 권고. 넘으면 이유를 말하고 거절한다 */
@@ -501,6 +522,9 @@ export class PublishService {
     const canList = await this.hasListed();
     const canPrice = await this.hasPrice();
 
+    if (priceKrw !== null && await this.isDashboard(mapId)) {
+      throw new ConflictException({ code: 'DASHBOARD_NO_PRICE', message: DASHBOARD_NO_PRICE });
+    }
     if (priceKrw !== null) {
       if (!canPrice || !canSet) {
         throw new ServiceUnavailableException(
@@ -524,7 +548,7 @@ export class PublishService {
       // 칸이 없는 서버에서 "값을 내린다" 는 이미 이루어진 일이다 — 멱등
       const cur = await this.activeRow(mapId);
       if (!cur) throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
-      return this.toStatus(cur, canSet, canList, canPrice);
+      return this.withDash(mapId, this.toStatus(cur, canSet, canList, canPrice));
     }
 
     const { rows } = await this.db.query<PublishedRow>(
@@ -541,7 +565,7 @@ export class PublishService {
     if (!rows[0]) {
       throw new NotFoundException('퍼블리싱 등록이 되어 있지 않습니다. 먼저 퍼블리싱해 주세요.');
     }
-    return this.toStatus(rows[0], canSet, canList, canPrice);
+    return this.withDash(mapId, this.toStatus(rows[0], canSet, canList, canPrice));
   }
 
   /**
@@ -762,8 +786,9 @@ export class PublishService {
     if (!(await this.ready())) {
       return { available: false, publishId: null, publishedAt: null };
     }
-    const map = await findAccessibleMap<{ id: string; kind: string }>(this.db, mapId, userId);
+    const map = await findAccessibleMap<{ id: string; kind: string; view_mode?: string }>(this.db, mapId, userId);
     if (!map) throw new NotFoundException('맵을 찾을 수 없거나 권한이 없습니다.');
+    const dashboard = map.view_mode === DASHBOARD_VIEW_MODE;
     // **왜 규칙을 상태에 실어 보내나** — 화면이 같은 판정을 한 벌 더 갖게
     // 두면 언젠가 서버와 다른 말을 한다. 눌러 보고 나서야 거절당하는 것도
     // 나쁘다. 그래서 "할 수 있는가" 와 "왜 안 되는가" 를 서버가 준다.
@@ -776,11 +801,11 @@ export class PublishService {
     const canPrice = await this.hasPrice();
     const cur = await this.activeRow(mapId);
     return cur
-      ? { ...this.toStatus(cur, canSet, canList, canPrice), ...gate }
+      ? { ...this.toStatus(cur, canSet, canList, canPrice), ...gate, dashboard }
       : {
         available: true, publishId: null, publishedAt: null,
         canSetVisibility: canSet, listed: false, canSetListed: canList,
-        priceKrw: null, canSetPrice: canPrice, ...gate,
+        priceKrw: null, canSetPrice: canPrice, ...gate, dashboard,
       };
   }
 
@@ -806,9 +831,9 @@ export class PublishService {
     const { rows } = await this.db.query<{
       map_id: string; title: string; published_at: Date;
       doc: unknown; updated_at: Date | null;
-      price_krw?: number | null; visibility?: string;
+      price_krw?: number | null; visibility?: string; view_mode?: string | null;
     }>(
-      `SELECT p.map_id, m.title, p.published_at, d.doc, d.updated_at${psel}${vsel}
+      `SELECT p.map_id, m.title, p.published_at, d.doc, d.updated_at, m.view_mode${psel}${vsel}
          FROM public.published_maps p
          JOIN public.maps m ON m.id = p.map_id
     LEFT JOIN public.map_documents d ON d.map_id = p.map_id
@@ -834,15 +859,20 @@ export class PublishService {
     //     저자가 공짜로 풀기로 한 맵을 우리가 잠그는 셈이다.
     const paid = row.visibility === 'paid';
     if (!paid) {
+      // ★ **대시보드맵은 채운 문서를 준다** (2026-09-30, 22-dashboard.md §4.7) —
+      //   에디터의 `getDocument` 와 같은 한 곳(`renderDashboardDoc`)을 지난다.
+      //   화면은 `dashboard` 를 보고 `stamp` 로 바뀐 것을 물어 스스로 갱신한다.
+      const dashboard = row.view_mode === DASHBOARD_VIEW_MODE;
       return {
         publishId,
         mapId: row.map_id,
         title: row.title,
-        doc: row.doc,
+        doc: dashboard ? await this.renderDashboard(row.map_id, row.doc) : row.doc,
         publishedAt: row.published_at,
         updatedAt: row.updated_at,
         locked: false as const,
         priceKrw: null,
+        ...(dashboard ? { dashboard: true as const, stamp: await this.stampOf(row.map_id, row.updated_at) } : {}),
       };
     }
     const { doc, stats } = trimForPreview(row.doc);
@@ -857,6 +887,56 @@ export class PublishService {
       locked: true as const,
       priceKrw: canPrice ? (row.price_krw ?? null) : null,
       stats,
+    };
+  }
+
+  /** 채우기가 없거나 실패하면 원문 — `[&amt]` 가 보이는 것은 "값이 아직 없다" 와 같다 */
+  private async renderDashboard(mapId: string, doc: unknown): Promise<unknown> {
+    const render = this.pro?.renderDashboardDoc;
+    if (!render) return doc;
+    try {
+      return await render.call(this.pro, mapId, doc);
+    } catch {
+      return doc;
+    }
+  }
+
+  /** 문서 시각 + (유료) 변수 표식 — 둘 중 하나라도 바뀌면 다른 글자가 된다 */
+  private async stampOf(mapId: string, docAt: Date | null): Promise<string> {
+    let vars = '';
+    const f = this.pro?.dashboardStamp;
+    if (f) {
+      try { vars = String(await f.call(this.pro, mapId)); } catch { vars = ''; }
+    }
+    return `${docAt ? new Date(docAt).toISOString() : '-'}|${vars}`;
+  }
+
+  /**
+   * **바뀌었나만** 묻는 싼 물음 — 퍼블리싱 주소로 붙여 둔 대시보드가 쓴다
+   * (2026-09-30, 22-dashboard.md §4.7). 여는 조건은 본문(`getPublished`)과
+   * **같다**(`openWhere` · 취소·지운 맵 404). 유료공개는 대시보드가 될 수 없고
+   * 일반 맵의 표식은 문서 시각뿐이라 새는 것이 없다. 문서를 읽지 않는다.
+   */
+  async stamp(publishId: string): Promise<{ stamp: string; dashboard: boolean }> {
+    if (!(await this.ready())) throw new NotFoundException('페이지를 찾을 수 없습니다.');
+    const open = await this.openWhere();
+    const { rows } = await this.db.query<{ map_id: string; updated_at: Date | null; view_mode: string | null }>(
+      `SELECT p.map_id, d.updated_at, m.view_mode
+         FROM public.published_maps p
+         JOIN public.maps m ON m.id = p.map_id
+    LEFT JOIN public.map_documents d ON d.map_id = p.map_id
+        WHERE p.publish_id = $1
+          AND p.unpublished_at IS NULL
+          AND m.deleted_at IS NULL
+          ${open}`,
+      [publishId],
+    );
+    const row = rows[0];
+    if (!row) throw new NotFoundException('페이지를 찾을 수 없습니다. 링크가 만료되었거나 퍼블리싱이 중단되었습니다.');
+    const dashboard = row.view_mode === DASHBOARD_VIEW_MODE;
+    return {
+      dashboard,
+      stamp: dashboard ? await this.stampOf(row.map_id, row.updated_at) : `${row.updated_at?.toISOString() ?? '-'}|`,
     };
   }
 
@@ -915,6 +995,15 @@ export class PublishService {
       [mapId],
     );
     return rows[0];
+  }
+
+  /**
+   * 상태에 **대시보드맵인가**를 싣는다 — 모든 상태 응답이 같은 칸을 가져야 한다.
+   * (첫 조회에만 싣고 등록·전환 응답에서 빠지니, 화면이 [사내 시스템에 붙이기] 칸을
+   *  잃고 지식창고 줄을 다시 그렸다 — pro 화면 시험이 잡았다.)
+   */
+  private async withDash(mapId: string, st: PublishStatus): Promise<PublishStatus> {
+    return { ...st, dashboard: await this.isDashboard(mapId) };
   }
 
   private toStatus(
@@ -983,10 +1072,10 @@ export class PublishService {
         WHERE map_id = $1 AND unpublished_at IS NULL`,
       [mapId, key],
     );
-    return {
+    return this.withDash(mapId, {
       ...this.toStatus(cur, await this.hasVisibility(), await this.hasListed(), await this.hasPrice()),
       hasPreview: true,
-    };
+    });
   }
 
   /**

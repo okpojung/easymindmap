@@ -8,6 +8,7 @@
 
 import {
   dashboardSwitchBlock, dashboardLockBlock, duplicateNodeIds,
+  DASHBOARD_NO_LISTING, DASHBOARD_NO_PRICE,
 } from '../dist/maps/dashboard-rules.js';
 
 let failed = 0;
@@ -16,7 +17,7 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `\n      ${detail}`}`);
 }
 const base = {
-  current: 'edit', kind: 'solo', registered: false,
+  current: 'edit', kind: 'solo', listedOrPaid: false,
   featureEnabled: true, featureReason: null, duplicateIds: [],
 };
 const code = (x) => (x ? x.code : null);
@@ -31,8 +32,14 @@ check('① 기능이 꺼져 있으면 FEATURE_OFF',
   });
   check('① 꺼진 이유를 문장에 싣는다', !!b && b.message.includes('라이선스'), b && b.message);
 }
-check('① 퍼블리싱 등록(공개·보관)이면 PUBLISHED',
-  code(dashboardSwitchBlock({ ...base, next: 'dashboard', registered: true })) === 'DASHBOARD_PUBLISHED');
+check('① 지식창고 진열·유료 판매 중이면 PUBLISHED',
+  code(dashboardSwitchBlock({ ...base, next: 'dashboard', listedOrPaid: true })) === 'DASHBOARD_PUBLISHED');
+{
+  const b = dashboardSwitchBlock({ ...base, next: 'dashboard', listedOrPaid: true });
+  check('① 무엇을 하면 되는지 말한다(링크 공개는 둬도 된다)', !!b && b.message.includes('링크 공개는 그대로'), b && b.message);
+}
+check('① 링크로만 퍼블리싱한 맵(진열·판매 아님)은 통과 — 사내 첨부용 (v3.3)',
+  dashboardSwitchBlock({ ...base, next: 'dashboard', listedOrPaid: false }) === null);
 check('① 협업맵이면 COLLAB',
   code(dashboardSwitchBlock({ ...base, next: 'dashboard', kind: 'collab' })) === 'DASHBOARD_COLLAB');
 {
@@ -41,13 +48,17 @@ check('① 협업맵이면 COLLAB',
   check('① 겹친 ID 를 셋까지 보여 준다', !!b && b.message.includes('node-a') && b.message.includes('…'), b && b.message);
 }
 
+// ── ①' 퍼블리싱 쪽 문장 (v3.3 — 링크는 되고 진열·판매만 막는다) ─────────
+check("①' 진열 거절 문장이 무엇이 되는지(링크) 말한다", DASHBOARD_NO_LISTING.includes('지식창고') && DASHBOARD_NO_LISTING.includes('링크'));
+check("①' 판매 거절 문장", DASHBOARD_NO_PRICE.includes('유료'));
+
 // ── ② 대시보드 → 일반맵 (되돌리기) ────────────────────────────────
 const dash = { ...base, current: 'dashboard' };
 check('② 되돌리기는 된다', dashboardSwitchBlock({ ...dash, next: 'edit' }) === null);
 check('② 기능이 꺼져도 되돌리기는 된다',
   dashboardSwitchBlock({ ...dash, next: 'edit', featureEnabled: false }) === null);
-check('② 퍼블리싱 등록돼 있어도 되돌리기는 된다',
-  dashboardSwitchBlock({ ...dash, next: 'edit', registered: true }) === null);
+check('② 진열·판매 중이어도 되돌리기는 된다',
+  dashboardSwitchBlock({ ...dash, next: 'edit', listedOrPaid: true }) === null);
 
 // ── ③ 대시보드인 채로 다른 것을 바꿀 때 ───────────────────────────
 check('③ 대시보드인 채 협업맵이 되려 하면 COLLAB',

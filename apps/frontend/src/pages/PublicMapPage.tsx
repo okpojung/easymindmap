@@ -18,7 +18,7 @@
 //   설령 그 글에서 무언가 새어 나가더라도 **우리 오리진에 닿지 못한다**
 //   (allow-same-origin 을 주지 않는다 — 이 한 줄이 격리의 전부다).
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { buildStandaloneHtml } from '@/export/exportHtml';
 import { withInlinedImages, withInlinedAttachments } from '@/export/mapMeta';
@@ -60,9 +60,26 @@ function withPublicAttachments(map: SampleMap, publishId: string): SampleMap {
   );
 }
 
+/** 대시보드맵을 붙여 둔 화면이 "바뀌었나" 묻는 간격 (에디터와 같은 기본 10초) */
+const DASH_POLL_MS = 10_000;
+
+/** `?embed=1` — 사내 페이지 안 iframe 으로 붙일 때. 돌아갈 막대를 그리지 않는다 */
+function isEmbed(): boolean {
+  try { return new URLSearchParams(window.location.search).get('embed') === '1'; } catch { return false; }
+}
+
+const hhmmss = (d: Date) => [d.getHours(), d.getMinutes(), d.getSeconds()]
+  .map((n) => String(n).padStart(2, '0')).join(':');
+
 export function PublicMapPage({ publishId }: { publishId: string }) {
   const [data, setData] = useState<PublishedMap | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [embed] = useState(isEmbed);
+  /** 대시보드맵 — 마지막으로 **바뀐 내용을 받은** 시각(없으면 처음 연 시각) */
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  const [stale, setStale] = useState(false);
+  const stampRef = useRef<string | undefined>(undefined);
+  useEffect(() => { stampRef.current = data?.stamp; }, [data?.stamp]);
 
   useEffect(() => {
     let alive = true;
@@ -76,6 +93,53 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
       });
     return () => { alive = false; };
   }, [publishId]);
+
+  // ★ **대시보드맵은 스스로 갱신한다** (2026-09-30, 22-dashboard.md §4.7).
+  //   사내 시스템에 붙여 둔 화면이라 아무도 새로고침을 누르지 않는다. 10초마다
+  //   **표식만** 묻고(`/stamp` — 문서를 받지 않는다), 달라졌을 때만 문서를 다시
+  //   받는다. 탭이 안 보이면 멈추고, 돌아오면 바로 한 번 묻는다. 일반 퍼블리싱
+  //   맵은 편집이 잠긴 완성본이라 묻지 않는다.
+  //   ★ 다시 그리면 뷰어의 확대·위치가 처음으로 돌아간다 — 대시보드는 "한눈에
+  //   보는" 화면이라 받아들인다(22 §4.7).
+  const isDashboard = !!data?.dashboard;
+  useEffect(() => {
+    if (!isDashboard) return undefined;
+    setRefreshedAt((v) => v ?? new Date());
+    let alive = true;
+    let busy = false;
+    const tick = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try {
+        const s = await cloudApi.getPublishedStamp(publishId);
+        if (!alive) return;
+        setStale(false);
+        if (s.stamp !== stampRef.current) {
+          const d = await cloudApi.getPublished(publishId);
+          if (!alive) return;
+          setData(d);
+          setRefreshedAt(new Date());
+        }
+      } catch (err) {
+        // 링크가 닫혔으면(비공개·취소) 그 사실을 보인다 — 옛 숫자를 계속 띄우지 않는다
+        if (alive && err instanceof CloudError && err.status === 404) {
+          setError('이 대시보드의 링크가 닫혔습니다 — 맵 주인이 비공개로 돌렸거나 퍼블리싱을 취소했습니다.');
+        } else if (alive) {
+          setStale(true);
+        }
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = window.setInterval(() => void tick(), DASH_POLL_MS);
+    const onVis = () => { if (!document.hidden) void tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [isDashboard, publishId]);
 
   // 뷰어 HTML 은 문서가 바뀔 때만 다시 만든다 — 큰 맵에서는 무거운 작업이다
   const html = useMemo(() => {
@@ -127,7 +191,23 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
 
   return (
     <>
-      <ViewerBar title={data.title} />
+      {!embed && <ViewerBar title={data.title} />}
+      {isDashboard && refreshedAt && (
+        <div
+          data-testid="public-dashboard-live"
+          title={stale
+            ? '서버에 묻지 못했습니다 — 마지막으로 받은 값을 보여 주고 있습니다'
+            : '대시보드맵 — 10초마다 바뀐 것을 확인해 스스로 갱신합니다'}
+          style={{
+            // 뷰어 바닥글(약 30px) 위 — 겹치면 바닥글 글자를 가린다(e2e 스크린샷에서 봤다)
+            position: 'fixed', left: 10, bottom: 40, zIndex: 11,
+            padding: '4px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+            background: '#FFFDF8', border: '1px solid #E4D9C3', color: '#6B5E4A',
+            fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+            pointerEvents: 'none',
+          }}
+        >{stale ? '⚠️' : '🟢'} 📊 {hhmmss(refreshedAt)}</div>
+      )}
       {data.locked && (
         <PaidBanner
           publishId={publishId}

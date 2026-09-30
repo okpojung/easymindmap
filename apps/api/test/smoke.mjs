@@ -30,8 +30,17 @@ const mapId = created.mapId;
 const list = (await req('GET', '/v1/maps')).data;
 ok('map list 포함', list.maps?.some((m) => m.mapId === mapId));
 
-const patched = (await req('PATCH', `/v1/maps/${mapId}`, { title: 'renamed', viewMode: 'dashboard' })).data;
-ok('map patch 반영', patched.title === 'renamed' && patched.viewMode === 'dashboard');
+const patched = (await req('PATCH', `/v1/maps/${mapId}`, { title: 'renamed', viewMode: 'edit' })).data;
+ok('map patch 반영', patched.title === 'renamed' && patched.viewMode === 'edit');
+
+// 대시보드맵 전환은 유료 기능 — 공개판(스텁)에서는 403 DASHBOARD_FEATURE_OFF,
+// 거절된 요청의 다른 필드도 반영되지 않는다 (22-dashboard.md §4.1)
+const toDash = await req('PATCH', `/v1/maps/${mapId}`, { title: 'dash-try', viewMode: 'dashboard' });
+ok('대시보드 전환 — 기능 꺼짐이면 403', toDash.status === 403 && toDash.data?.code === 'DASHBOARD_FEATURE_OFF',
+   `status=${toDash.status} code=${toDash.data?.code}`);
+const afterDash = (await req('GET', '/v1/maps')).data.maps?.find((m) => m.mapId === mapId);
+ok('거절된 전환은 아무것도 바꾸지 않음', afterDash?.title === 'renamed' && afterDash?.viewMode === 'edit',
+   JSON.stringify({ title: afterDash?.title, viewMode: afterDash?.viewMode }));
 
 // ═══ 노드 CRUD + ltree ═════════════════════════════════════
 const root = (await req('POST', `/v1/maps/${mapId}/nodes`, { text: '중심 주제' })).data;

@@ -199,7 +199,8 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
             ? '서버에 묻지 못했습니다 — 마지막으로 받은 값을 보여 주고 있습니다'
             : '대시보드맵 — 10초마다 바뀐 것을 확인해 스스로 갱신합니다'}
           style={{
-            position: 'fixed', left: 10, bottom: 10, zIndex: 11,
+            // 뷰어 바닥글(약 30px) 위 — 겹치면 바닥글 글자를 가린다(e2e 스크린샷에서 봤다)
+            position: 'fixed', left: 10, bottom: 40, zIndex: 11,
             padding: '4px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
             background: '#FFFDF8', border: '1px solid #E4D9C3', color: '#6B5E4A',
             fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',

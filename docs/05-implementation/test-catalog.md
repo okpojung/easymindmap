@@ -482,6 +482,10 @@
 > 겹쳐 보이지만 날짜와 함께 읽으면 유일하다. **고치지 말 것** — 그때의
 > 기록을 지금 규칙으로 고쳐 쓰면 없던 역사를 만드는 셈이다.
 
+- 2026-09-30 (279차): **대시보드맵 — 세 가지 길 정리 + DB 함수**(문서, 알맹이는 pro-e2e36).
+  변수·글자 통째로를 시험 프로그램 · API 직접 · **DB SQL 한 줄**(`dashboard_set_var` ·
+  `dashboard_set_text`)로. `INSERT` 한 번 + `UPDATE` 의 함정(없는 행 UPDATE 는 0건) 설명.
+  열쇠는 API 에만, **맵에 하나**.
 - 2026-09-30 (278차): **대시보드맵 가이드 — Windows PowerShell 안내**(문서만). 사용자의 첫
   dev 시험이 PowerShell 이라 `export`·`curl -O` 가 안 됐다 — `curl.exe -o` · `$env:` ·
   `Invoke-RestMethod`(UTF-8 본문). 카드 쪽은 pro-e2e35. dev 실물로 `nodes`·`demo` 반영 확인.

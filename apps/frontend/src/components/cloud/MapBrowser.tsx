@@ -254,7 +254,11 @@ type Row =
   | { kind: 'sharedHead'; depth: 0; count: number }
   // ★ **퍼블리싱 자리** (2026-09-05 사용자 결정) — 등록한 맵은 내 폴더
   // 트리에서 빠져 여기로 모인다. 쇼핑몰에 상품을 등록해 둔 것과 같다.
-  | { kind: 'publishHead'; depth: 0; count: number; open: number };
+  | { kind: 'publishHead'; depth: 0; count: number; open: number }
+  // ★ **대시보드 자리** (2026-10-01 사용자 요청) — 대시보드맵은 퍼블리싱 자리가
+  // 아니라 제 구역에 모이고, 맵마다 아래에 **연결 주소** 줄(`dashLink`)이 붙는다.
+  | { kind: 'dashboardHead'; depth: 0; count: number; linked: number }
+  | { kind: 'dashLink'; depth: 0; map: MapListItem };
 
 export function MapBrowser({
   t, onClose, onFlash, onOpened,
@@ -508,15 +512,29 @@ export function MapBrowser({
    *   기억하는 칸도 없다. 보이는 것은 사용자가 말한 그대로다.
    */
   const publishedMaps = useMemo(
-    () => mapPool.filter((m) => !!m.publishId),
+    () => mapPool.filter((m) => !!m.publishId && m.viewMode !== 'dashboard'),
     [mapPool],
   );
 
-  /** folderId → 그 폴더에 **직접** 든 맵들 (등록된 맵은 뺀다) */
+  /**
+   * ★ **대시보드 자리** (2026-10-01 사용자 요청: "대시보드맵을 퍼블리싱에 넣는 것이
+   * 아니라 대시보드 구분을 별도로 만들어서 여기에 넣어줘").
+   *
+   *   판정은 `viewMode === 'dashboard'` **하나** — 링크 공개 여부와 상관없이 모인다.
+   *   퍼블리싱 자리와 같은 이유로 진짜 폴더가 아니다(위 주석): 일반맵으로 되돌리면
+   *   원래 폴더(링크가 남아 있으면 퍼블리싱 자리)에 그대로 다시 나타난다.
+   *   대시보드는 **붙여 쓰는 것**이라 맵마다 아래에 연결 주소 줄을 둔다.
+   */
+  const dashboardMaps = useMemo(
+    () => mapPool.filter((m) => m.viewMode === 'dashboard'),
+    [mapPool],
+  );
+
+  /** folderId → 그 폴더에 **직접** 든 맵들 (등록된 맵·대시보드맵은 뺀다) */
   const mapsByFolder = useMemo(() => {
     const m = new Map<string, MapListItem[]>();
     for (const x of mapPool) {
-      if (x.publishId) continue; // 퍼블리싱 자리로 갔다
+      if (x.publishId || x.viewMode === 'dashboard') continue; // 퍼블리싱·대시보드 자리로 갔다
       const k = x.folderId ?? '';
       const arr = m.get(k);
       if (arr) arr.push(x); else m.set(k, [x]);
@@ -574,6 +592,18 @@ export function MapBrowser({
       }
     };
     walk('', 0);
+    // 대시보드 자리 — 내 트리 바로 아래. 맵마다 연결 주소 줄이 따라온다.
+    const dashRows = dashboardMaps.filter((m) => !searching || mapHit(m));
+    if (dashRows.length) {
+      out.push({
+        kind: 'dashboardHead', depth: 0, count: dashRows.length,
+        linked: dashRows.filter((m) => m.publishId && m.publishVisibility !== 'private').length,
+      });
+      for (const m of dashRows) {
+        out.push({ kind: 'map', depth: 0, map: m });
+        out.push({ kind: 'dashLink', depth: 0, map: m });
+      }
+    }
     // 퍼블리싱 자리 — 내 트리 **아래**, 공유받은 맵 **위**. 내 것이 먼저다.
     const pubRows = publishedMaps.filter((m) => !searching || mapHit(m));
     if (pubRows.length) {
@@ -594,7 +624,7 @@ export function MapBrowser({
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q, serverFound,
-      newFolder, shared, foundShared, publishedMaps]);
+      newFolder, shared, foundShared, publishedMaps, dashboardMaps]);
 
   const shownMaps = useMemo(
     // **공유받은 맵은 합계에서 뺀다.** 합계는 "내 문서함이 얼마나 되나"를
@@ -1136,7 +1166,26 @@ export function MapBrowser({
                 맵을 만들어 <b>☁ 저장</b>하면 여기에 쌓입니다.</>
               )}
           </div>
-        ) : rows.map((r) => (r.kind === 'publishHead' ? (
+        ) : rows.map((r) => (r.kind === 'dashboardHead' ? (
+          /* ★ 대시보드 자리 (2026-10-01) — 퍼블리싱 자리와 따로. 머리글이 **몇 개가
+             지금 연결(링크 공개) 중인지**를 말한다 — 붙여 둔 화면이 살아 있는 수다. */
+          <div key="dashboard-head" data-testid="browser-dashboard-head"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 12px 7px', borderBottom: `1px solid ${t.divider}`,
+              background: t.surfaceAlt, color: t.text, fontSize: 12, fontWeight: 700,
+            }}>
+            📊 대시보드 ({r.count})
+            <span style={{ color: t.textMuted, fontSize: 11, fontWeight: 500 }}>
+              {r.linked > 0
+                ? `${r.linked}개가 연결 주소로 열려 있습니다 — 각 맵 아래 주소를 사내 시스템에 붙이세요.`
+                : '아직 열린 연결 주소가 없습니다 — 맵 아래 [🔗 연결 주소 만들기] 를 누르세요.'}
+              {' '}일반맵으로 되돌리면 원래 폴더로 돌아갑니다.
+            </span>
+          </div>
+        ) : r.kind === 'dashLink' ? (
+          <DashLinkRow key={`dl:${r.map.mapId}`} t={t} map={r.map} onFlash={onFlash} onChanged={() => void load()} />
+        ) : r.kind === 'publishHead' ? (
           /* ★ 퍼블리싱 자리 (2026-09-05) — 등록한 맵은 내 폴더에서 빠져
              여기로 온다. **폴더처럼 보이지만 폴더가 아니다**: 판정이
              `publishId != null` 하나라 어긋날 수가 없고, 취소하면 원래
@@ -1643,6 +1692,96 @@ function InfoRow({ t, k, v, mono }: {
         fontFamily: mono ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined,
         userSelect: 'text',
       }}>{v}</span>
+    </div>
+  );
+}
+
+/**
+ * 대시보드 자리의 **연결 주소** 줄 (2026-10-01 사용자 요청: "대시보드 맵이 제대로
+ * 연결될 수 있도록 퍼블리싱 URL 을 제공해줘").
+ *
+ *   · 링크 공개 중 — 사내 시스템에 붙일 주소(`?embed=1`, 머리말 없음)를 그대로
+ *     보이고 복사 · iframe 코드 · 열어 보기. 붙여 둔 화면은 10초마다 스스로 갱신한다.
+ *   · 보관(비공개) — 주소는 그대로지만 지금은 404 다. [다시 열기] 로 같은 주소가 산다.
+ *   · 아직 없음 — [🔗 연결 주소 만들기] = **링크 공개**로 퍼블리싱(지식창고·판매는
+ *     서버가 대시보드에 막는다 — 22-dashboard.md §4.7). 미리보기 그림은 지식창고
+ *     카드용이라 여기서는 만들지 않는다.
+ */
+function DashLinkRow({ t, map, onFlash, onChanged }: {
+  t: ThemeTokens; map: MapListItem; onFlash: (msg: string) => void; onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const url = map.publishId ? publicMapUrl(map.publishId) : '';
+  const embedUrl = url ? `${url}?embed=1` : '';
+  const open = !!map.publishId && map.publishVisibility !== 'private';
+  const code = `<iframe src="${embedUrl}" width="100%" height="600" style="border:0" title="${
+    (map.title || '대시보드').replace(/"/g, '&quot;')}"></iframe>`;
+  const copy = (text: string, what: string) => {
+    const fail = () => onFlash(`⚠ 복사하지 못했습니다 — ${text}`);
+    if (!navigator.clipboard?.writeText) { fail(); return; }
+    navigator.clipboard.writeText(text).then(() => onFlash(`🔗 ${what}을(를) 복사했습니다 — ${text}`), fail);
+  };
+  const run = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      onFlash(done);
+      onChanged();
+    } catch (e) {
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '연결 주소를 바꾸지 못했습니다'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const btn: React.CSSProperties = {
+    height: 22, padding: '0 8px', borderRadius: 5, fontSize: 11, fontWeight: 700,
+    border: `1px solid ${t.border}`, background: t.surface, color: t.text,
+    cursor: busy ? 'wait' : 'pointer', whiteSpace: 'nowrap', flex: '0 0 auto',
+  };
+  return (
+    <div data-testid="browser-dash-link" data-state={open ? 'open' : map.publishId ? 'private' : 'none'}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        padding: '3px 12px 7px 36px', borderBottom: `1px solid ${t.divider}`,
+        fontSize: 11.5, color: t.textMuted,
+      }}>
+      {map.publishId ? (
+        <>
+          <span style={{ fontWeight: 700, color: open ? t.primary : t.textMuted, flex: '0 0 auto' }}>
+            {open ? '🔗 연결 주소' : '🔒 연결 보관 중'}
+          </span>
+          <code data-testid="browser-dash-url" title={open
+            ? '사내 시스템에 붙일 주소 — 머리말 없이 맵만 보이고 10초마다 스스로 갱신합니다'
+            : '주소는 그대로지만 지금은 열리지 않습니다(404) — [다시 열기] 를 누르면 같은 주소가 다시 열립니다'}
+          style={{
+            flex: '1 1 260px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            padding: '1px 6px', borderRadius: 4, border: `1px solid ${t.border}`, background: t.surfaceAlt,
+            color: open ? t.text : t.textSubtle, textDecoration: open ? 'none' : 'line-through',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 11,
+          }}>{embedUrl}</code>
+          {open ? (
+            <>
+              <button data-testid="browser-dash-copy" style={btn} onClick={() => copy(embedUrl, '연결 주소')}>주소 복사</button>
+              <button data-testid="browser-dash-code" style={btn} onClick={() => copy(code, 'iframe 코드')}>iframe 코드</button>
+              <button data-testid="browser-dash-open" style={btn} title="새 탭에서 붙인 모양 그대로 열어 봅니다"
+                onClick={() => window.open(embedUrl, '_blank', 'noopener')}>열어 보기</button>
+            </>
+          ) : (
+            <button data-testid="browser-dash-reopen" style={btn} disabled={busy}
+              onClick={() => void run(() => cloudApi.setPublishVisibility(map.mapId, 'public'),
+                '🔗 연결 주소를 다시 열었습니다 — 붙여 둔 화면이 다시 보입니다.')}>다시 열기</button>
+          )}
+        </>
+      ) : (
+        <>
+          <span style={{ flex: '0 0 auto' }}>아직 연결 주소가 없습니다 — 사내 시스템에 붙이려면</span>
+          <button data-testid="browser-dash-make" style={{ ...btn, borderColor: t.primary, color: t.primary }} disabled={busy}
+            onClick={() => void run(() => cloudApi.publishMap(map.mapId, 'public'),
+              '🔗 연결 주소를 만들었습니다 — 링크를 아는 사람만 봅니다(지식창고에는 올라가지 않습니다).')}>
+            🔗 연결 주소 만들기
+          </button>
+        </>
+      )}
     </div>
   );
 }

@@ -150,12 +150,31 @@ export function Canvas({
   const setMultiAddOpen = useEditorUiStore((state) => state.setMultiAddOpen);
 
   const zoom = useViewportStore((s) => s.zoom);
-  const panX = useViewportStore((s) => s.panX);
-  const panY = useViewportStore((s) => s.panY);
+  const storePanX = useViewportStore((s) => s.panX);
+  const storePanY = useViewportStore((s) => s.panY);
   const panMode = useViewportStore((s) => s.panMode);
   const fitRequestId = useViewportStore((s) => s.fitRequestId);
   const centerRequest = useViewportStore((s) => s.centerRequest);
   const homeArmed = useViewportStore((s) => s.homeArmed);
+  const homeSeq = useViewportStore((s) => s.homeSeq);
+  // ★ **첫 화면 보호** (2026-10-01 사용자 보고: 새로고침해도 중심 주제가 화면 아래쪽에 —
+  // 제 환경에선 재현되지 않았다). 문서를 연 뒤 사용자가 **아무 조작도 하기 전**(캔버스
+  // 포인터·휠·키 — document 수준에서 듣는다)에는, 스토어의 pan 이 어떤 경로로 어떻게
+  // 바뀌어 있든 **렌더 단계에서 첫 화면 pan 을 쓴다**. 효과(아래 homeArmed)가 스토어를
+  // 맞추지만 그것이 어떤 이유로 비껴가도 화면은 맞는다. 첫 조작 뒤에는 스토어 그대로.
+  const [gestureSinceHome, setGestureSinceHome] = useState(false);
+  useEffect(() => { setGestureSinceHome(false); }, [homeSeq]);
+  useEffect(() => {
+    const mark = () => setGestureSinceHome(true);
+    document.addEventListener('pointerdown', mark, true);
+    document.addEventListener('wheel', mark, true);
+    document.addEventListener('keydown', mark, true);
+    return () => {
+      document.removeEventListener('pointerdown', mark, true);
+      document.removeEventListener('wheel', mark, true);
+      document.removeEventListener('keydown', mark, true);
+    };
+  }, []);
   const setZoom = useViewportStore((s) => s.setZoom);
   const setPan = useViewportStore((s) => s.setPan);
   const zoomIn = useViewportStore((s) => s.zoomIn);
@@ -382,6 +401,18 @@ export function Canvas({
     return computeLayout(sample, layoutType, CX, CY, { x: spacingX, y: spacingY });
   }, [sample, layoutType, CX, CY, spacingX, spacingY]);
 
+  // 첫 화면 pan — 트리·진행트리는 중심 주제 위 변이 HOME_TOP_GAP, 나머지는 원점 (homeArmed 효과·보호가 같이 쓴다)
+  const homeWantY = useMemo(() => {
+    const lt = normalizeLayoutType(layoutType);
+    const root = nodes.find((n) => n.depth === 0) ?? nodes[0];
+    if (!root) return null;
+    return HOME_TOP_LAYOUTS.has(lt) ? HOME_TOP_GAP - (root.y - root.h / 2) : 0;
+  }, [nodes, layoutType]);
+  const homeGuard = homeArmed && !gestureSinceHome && zoom === 100 && homeWantY !== null;
+  const panX = homeGuard ? 0 : storePanX;
+  const panY = homeGuard ? (homeWantY as number) : storePanY;
+
+
   // In focus mode, render only the focused node and its descendants — keeping
   // their existing layout positions (the layout is NOT recomputed/re-rooted).
   const subtreeOf = (rootId: string, list: typeof nodes) => {
@@ -503,6 +534,28 @@ export function Canvas({
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
+
+  // 진단 훅 — 재현 안 되는 첫 화면 보고를 받을 때 DevTools 콘솔에서 `__emm.viewport()`
+  useEffect(() => {
+    (window as unknown as { __emm?: Record<string, unknown> }).__emm = {
+      ...((window as unknown as { __emm?: Record<string, unknown> }).__emm ?? {}),
+      viewport: () => {
+        const vp = useViewportStore.getState();
+        const root = nodesRef.current.find((n) => n.depth === 0) ?? nodesRef.current[0];
+        const rootEl = containerRef.current?.querySelector('[data-node-id="root"]:not([data-testid="collapse-toggle"]) rect');
+        const sr = containerRef.current?.getBoundingClientRect();
+        const rr = rootEl?.getBoundingClientRect();
+        return {
+          store: { zoom: vp.zoom, panX: vp.panX, panY: vp.panY, homeArmed: vp.homeArmed, homeSeq: vp.homeSeq },
+          effective: { panX, panY, homeGuard, gestureSinceHome, homeWantY },
+          canvas: { W, H, CX, CY, rect: sr ? [Math.round(sr.width), Math.round(sr.height)] : null },
+          layoutType, root: root ? { id: root.id, x: root.x, y: root.y, w: root.w, h: root.h } : null,
+          rootScreenTop: rr && sr ? Math.round(rr.top - sr.top) : null,
+          nodes: nodesRef.current.length,
+        };
+      },
+    };
+  });
 
   const selectedNode = nodes.find((n) => n.id === selectedId);
   const scale = (zoom || 100) / 100;

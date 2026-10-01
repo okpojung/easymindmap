@@ -461,7 +461,8 @@ export async function refreshFromServer(
       { resetHistory: true, serverMapId: mapId });
     useDocumentStore.getState().setMapTitle(title);
     applySnapshotEditor(doc);
-    useViewportStore.setState(keepView);
+    // 이 뷰는 **의도한 것**(갱신 전 화면 유지) — 첫 화면 보호가 덮어쓰지 않게 끈다
+    useViewportStore.setState({ ...keepView, homeArmed: false });
     useInteractionStore.getState().setSelectedId(keepSel);
     useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
     useAutosaveStore.getState().setSaveState('saved');

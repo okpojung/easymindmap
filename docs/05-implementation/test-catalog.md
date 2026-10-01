@@ -74,6 +74,7 @@
 | e2e40 | 노드 텍스트 중간 인라인 사진 | 사진이 텍스트 줄 사이 원문 위치·노드 높이 확대·개별 제거·뷰어 파리티 | 04-node-content |
 | e2e41 | 기사 사진 다운로드 내장 | CORS 허용=data URL 내장 / 차단=원본 URL 폴백, 원문 위치 보존 | 04-node-content |
 | e2e324 | **그림만 붙여넣기 = 선택 노드의 첨부** (2026-10-01 사용자 요청 — 캡처를 Ctrl+V 하면 하위 노드 사진이 아니라 선택 노드의 📎 첨부로) | 구성: 프런트 단위(`pasteIntent.test.ts`, `test:unit`) **15항목** — ①그림만 → `attach-image` ②그림+공백 → 첨부 ③그림+글자 → `child-node` ④글자만·기사 사진만 → 하위 노드 ⑤표+그림 비트맵 → 하위 노드(표 우선 규칙 유지) ⑥빈 클립보드·공백만 → `nothing` ⑦이름 `image.png`·빈 이름·`blob.webp` → `캡처-YYYYMMDD-HHMMSS.<확장자>`(jpeg→jpg · svg+xml→svg · mime 없음→png), 진짜 파일 이름은 지킨다. `Canvas.handlePaste` 는 `attach-image` 면 `addNodeAttachment(selectedId, {kind:'file', url: attachFileWithProgress})` — 드롭과 같은 길. **첨부 탭 단추 「📋 첨부파일로 이미지 붙여넣기」**(사용자 제안) — 단위(`clipboardRead.test.ts`) **14항목**: ①png+html 항목 → 그림 1개 ②같은 그림 두 형식 → png 우선 ③글자만·빈 클립보드 → 빈 배열 ④항목 2개 → 2개 ⑤오류 문장(권한 거부·그림 없음·그 밖) ⑥첨부 종류 `attachmentKindFor`(png→file · mp3→audio · mp4→video · pdf→file) · `isImageFileName`. **업로드 뒤 같은 문서 확인**(Codex #603) — `documentStore.docEpoch` 가 문서 경계(`asDocumentSwap`)마다 +1, 업로드 전후가 다르면 붙이지 않고 알린다(붙여넣기·드롭·첨부 탭 세 길). 단위(`docEpoch.test.ts`) **5항목**: ①숫자 ②맵 열기(resetHistory) +1 ③같은 문서 편집 그대로 ④resetHistory 없는 loadMap 그대로 ⑤다른 맵 또 +1. **한계(정직하게)** — 브라우저 e2e(실제 Ctrl+V → 📎 칩)는 이 컨테이너에 프런트 의존성(npm 403)이 없어 못 돌렸다. CI 의 type-check·build·`test:unit` 이 검사한다 | 02-node-editing.md §5.2 「그림만 붙여넣기」 · user-guide 03 「사진·기사 붙여넣기」 · `pasteIntent.ts` |
+| e2e325 | **문서함 📊 대시보드 구역 · 연결 주소 줄 + 노드를 내용째 추가** (2026-10-01 사용자 요청: "내 문서에서 대시보드맵을 퍼블리싱에 넣지 말고 대시보드 구분을 따로 — 제대로 연결될 퍼블리싱 URL 을 제공" · "노드 추가 시 노드 자체만이 아니라 노드 내용까지 포함" — 22-dashboard.md v3.4 §4.2 · §7) | **코어**: `MapBrowser.tsx` — `viewMode==='dashboard'` 판정 하나로 `📊 대시보드 (N)` 구역(내 트리 아래 · 퍼블리싱 위, 진짜 폴더 아님 — 되돌리면 원래 폴더), 머리글 "N개가 연결 주소로 열려 있습니다", 맵마다 `DashLinkRow`(링크 공개 = `…/p/{id}?embed=1` + 주소 복사·iframe 코드·열어 보기 / 보관 = 취소선 + 다시 열기 / 없음 = [🔗 연결 주소 만들기] → `publishMap(…,'public')`). **검증은 유료 저장소 PR 검사**(`dashboard.ui.e2e.mjs` 가 이 코어를 `CORE_SHA` 로 얹어 띄운다 — 유료 기능이 있어야 대시보드맵이 생긴다): 구역 순서(DOM 순서 대시보드 머리글 < 이 맵 < 퍼블리싱 머리글) · 연결 줄 `data-state` none → 만들기 → open · 서버 publish-status public·미진열 · 표시 주소가 `/p/{publishId}?embed=1` · 링크를 열어도 대시보드 구역에 그대로 · 단추 3개 · 보관 → 🔒 · [다시 열기] → **같은 주소** — **UI 49 PASS**(노드를 내용째 추가하는 유료 쪽 항목은 유료 카탈로그) · HTTP 110 PASS · 프런트 tsc·vite 빌드. 가이드 13 스크린샷 2장(문서함 · 카드 ③)이 같은 실행에서 나왔다 | 22-dashboard §4.2 · §7 · 가이드 13 §2 · §6 · §7 |
 
 ### 2.3 캔버스·레이아웃·선택
 
@@ -485,6 +486,10 @@
 > 겹쳐 보이지만 날짜와 함께 읽으면 유일하다. **고치지 말 것** — 그때의
 > 기록을 지금 규칙으로 고쳐 쓰면 없던 역사를 만드는 셈이다.
 
+- 2026-10-01 (285차): **e2e325 — 문서함 📊 대시보드 구역 · 연결 주소 줄 + 노드를 내용째 추가**(사용자 요청).
+  대시보드맵은 퍼블리싱 구역이 아니라 제 구역에 모이고, 맵마다 `…?embed=1` 연결 주소와 복사·iframe·열기
+  (없으면 [🔗 연결 주소 만들기], 보관이면 [다시 열기]). 노드를 내용째 추가는 유료 쪽(유료 카탈로그).
+  유료 PR 검사 UI 49 · HTTP 110 PASS.
 - 2026-10-01 (284차): **e2e324 — 그림만 붙여넣기 = 선택 노드의 첨부**. 캡처를
   선택 노드에 Ctrl+V 하면 하위 노드 사진 대신 그 노드의 📎 첨부(드롭과 같은
   길). `utils/pasteIntent.ts` 가 클립보드 모양(그림·글자·표·기사 사진)으로

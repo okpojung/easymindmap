@@ -67,5 +67,27 @@ await page.evaluate(async () => {
 await page.waitForTimeout(500);
 m = await measure();
 ok(`⑧ 사용자가 옮긴 뒤에는 배치가 바뀌어도 그대로 (pan ${m.panX},${m.panY})`, m.panX === -120 && m.panY === 350);
+// ⑨ 첫 화면 보호 — 문서를 연 뒤 아무 조작도 없는데 스토어 pan 이 엉뚱하게 바뀌어도(배치는 그대로)
+//    화면은 첫 화면이다 (렌더 단계 보호, 2026-10-01 — 재현 안 되는 "상단 공백" 보고)
+await openAs('process-tree-right', null, 5, 3, 2); await page.waitForTimeout(700);
+await page.evaluate(async () => { (await import('/src/stores/viewportStore.ts')).useViewportStore.setState({ panY: 668 }); });
+await page.waitForTimeout(300);
+m = await measure();
+ok(`⑨ 조작 전 스토어 pan 이 +668 로 바뀌어도 화면은 위 72px (${m.rootTop})`, near(m.rootTop, 72));
+// ⑩ 사용자가 캔버스에 손대면(포인터) 보호가 풀리고 스토어를 따른다
+await page.mouse.move(700, 500); await page.mouse.down(); await page.mouse.up();
+await page.evaluate(async () => { (await import('/src/stores/viewportStore.ts')).useViewportStore.setState({ panY: 300 }); });
+await page.waitForTimeout(300);
+m = await measure();
+ok(`⑩ 조작 뒤에는 스토어 pan(+300)을 그대로 따른다 (root ${m.rootTop})`, m.rootTop > 300);
+// ⑪ 갱신 유지 뷰(keepView 처럼 homeArmed:false 로 넣은 것)는 조작 전이라도 보호가 덮지 않는다
+await openAs('process-tree-right', null, 5, 3, 2); await page.waitForTimeout(700);
+await page.evaluate(async () => { (await import('/src/stores/viewportStore.ts')).useViewportStore.setState({ panY: 300, homeArmed: false }); });
+await page.waitForTimeout(300);
+m = await measure();
+ok(`⑪ 의도한 뷰(homeArmed:false)는 그대로 (root ${m.rootTop})`, m.rootTop > 300);
+// ⑫ 진단 훅
+const diag = await page.evaluate(() => window.__emm?.viewport?.());
+ok(`⑫ __emm.viewport() 가 수치를 준다 (rootScreenTop ${diag?.rootScreenTop}, homeGuard ${diag?.effective?.homeGuard})`, !!diag && typeof diag.rootScreenTop === 'number' && diag.store && diag.canvas);
 await browser.close();
 console.log(process.exitCode ? '\n실패 있음' : '\n전부 통과');

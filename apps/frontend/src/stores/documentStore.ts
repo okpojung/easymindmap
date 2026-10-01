@@ -107,6 +107,13 @@ interface DocumentState {
    * 기본값(null)이라 위험한 저장이 일어나지 않는다.
    */
   docOrigin: string | null;
+  /**
+   * 문서 세대 — **문서 경계(asDocumentSwap)를 넘을 때마다 1 씩** 오른다
+   * (2026-10-01). 오래 걸리는 일(첨부 업로드)이 끝난 뒤 "아직 같은 문서인가"
+   * 를 묻는 데 쓴다. 맵 id 로는 안 된다 — 로컬 문서는 id 가 없고, 중심
+   * 노드 id 는 모든 맵이 `root` 라 다른 맵에 조용히 붙는다 (Codex #603).
+   */
+  docEpoch: number;
   /** 서버 저장/열기 성공 시 이 문서의 출처를 그 맵으로 표시 */
   setDocOrigin: (mapId: string | null) => void;
 
@@ -999,7 +1006,7 @@ let swappingDocument = false;
 function asDocumentSwap(run: () => void): void {
   swappingDocument = true;
   try { run(); } finally { swappingDocument = false; }
-  useDocumentStore.setState({ past: [], future: [] });
+  useDocumentStore.setState((s) => ({ past: [], future: [], docEpoch: s.docEpoch + 1 }));
   // **뷰포트도 문서 경계를 넘지 않는다** (2026-09-04 사용자 보고).
   // 확대·이동은 viewportStore 에 있어 문서를 바꿔도 그대로 남았다 — 앞
   // 맵에서 180% 로 구석을 보다가 닫고 다른 맵을 열면, 새 맵의 중심이 그
@@ -1167,6 +1174,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   return ({
   map: cloneMap(SAMPLE_ROADMAP),
   docOrigin: null,
+  docEpoch: 0,
   setDocOrigin: (docOrigin) => set({ docOrigin }),
   past: [],
   future: [],

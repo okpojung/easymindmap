@@ -53,6 +53,7 @@ import { ConnectorLayer } from './ConnectorLayer';
 import { ChooserPopover } from './ChooserPopover';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import { clipboardImageName, pasteIntent } from '@/utils/pasteIntent';
+import { attachmentKindFor } from '@/utils/attachmentKind';
 import { hasForeignMapMarker, stripForeignMapMarkers } from '@/utils/foreignClipboard';
 import {
   collectSubtrees, isNodeClipToken, stashNodes, takeStashed,
@@ -614,16 +615,22 @@ export function Canvas({
     if (!target) return;
 
     if (files.length) {
+      // 같은 문서인지 — 업로드 중에 다른 맵을 열면 붙이지 않는다 (2026-10-01)
+      const epoch = useDocumentStore.getState().docEpoch;
       void (async () => {
         for (const f of files) {
-          const kind = f.type.startsWith('audio') ? 'audio' : f.type.startsWith('video') ? 'video' : 'file';
+          const kind = attachmentKindFor(f);
           try {
             // ≤2MB 는 data URL 내장, 초과는 서버 업로드 — 저장 후에도 유지.
             // 8MB 초과는 **청크 업로드**로 가고 진행률 줄이 뜬다 (§12).
+            const url = await attachFileWithProgress(f);
+            if (useDocumentStore.getState().docEpoch !== epoch) {
+              notifyPaste(`⚠ '${f.name}' 을(를) 올리는 사이 다른 맵이 열려 첨부하지 않았습니다.`);
+              return;
+            }
             addNodeAttachment(target.id, {
               // 크기도 함께 (하단 상태바의 첨부 용량 집계용, 2026-08-07)
-              name: f.name, kind, size: f.size,
-              url: await attachFileWithProgress(f),
+              name: f.name, kind, size: f.size, url,
             });
           } catch (err) {
             // 사용자가 [취소]를 누른 것은 오류가 아니다 — 조용히 넘어간다.
@@ -909,12 +916,17 @@ export function Canvas({
         e.preventDefault();
         const targetId = selectedId;
         const name = clipboardImageName(f, new Date());
+        // 업로드가 끝났을 때 **아직 같은 문서인지** 본다 — 그 사이 다른 맵을
+        // 열었으면 중심 노드 id 가 같아(`root`) 엉뚱한 맵에 붙는다 (Codex #603).
+        const epoch = useDocumentStore.getState().docEpoch;
         void (async () => {
           try {
-            addNodeAttachment(targetId, {
-              name, kind: 'file', size: f.size,
-              url: await attachFileWithProgress(f),
-            });
+            const url = await attachFileWithProgress(f);
+            if (useDocumentStore.getState().docEpoch !== epoch) {
+              notifyPaste(`⚠ '${name}' 을(를) 올리는 사이 다른 맵이 열려 첨부하지 않았습니다.`);
+              return;
+            }
+            addNodeAttachment(targetId, { name, kind: 'file', size: f.size, url });
             notifyPaste(`📎 '${name}' 을(를) 첨부했습니다 — 노드 사진으로 넣으려면 노드를 편집 중에 붙여넣으세요.`);
           } catch (err) {
             if ((err as Error)?.name === 'UploadAborted') return;

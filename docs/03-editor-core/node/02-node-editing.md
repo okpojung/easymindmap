@@ -164,7 +164,15 @@ Canvas 또는 선택 노드 상태에서 일반 텍스트를 붙여넣는 경우
   `video` 🎬 오동작). 이제 그림은 어느 길이든 **`file`** 이고, 첨부 탭은
   **이름(확장자)** 으로 알아봐 멀티미디어 목록에 🖼 로 둔다. 열기는 전부터
   `openAttachment` 라 종류와 무관하다.
-- 단위 `pasteIntent.test.ts` 15항목 · `clipboardRead.test.ts` 14항목 · E2E e2e324.
+- **업로드가 끝났을 때 아직 같은 문서인가** (Codex #603) — 큰 그림은 서버
+  업로드가 오래 걸리고, 그 사이 다른 맵을 열면 중심 노드 id 가 같아(`root`)
+  **엉뚱한 맵에 조용히 붙는다.** `documentStore.docEpoch`(문서 경계
+  `asDocumentSwap` 을 넘을 때마다 +1)를 업로드 전에 잡아 두고, 끝난 뒤 다르면
+  붙이지 않고 "올리는 사이 다른 맵이 열려 첨부하지 않았습니다" 로 알린다.
+  붙여넣기·노드 드롭·첨부 탭(`addFiles`) 세 길 모두 같은 보호다 — 드롭·탭은
+  전부터 있던 같은 구멍이었다. 단위 `docEpoch.test.ts` 5항목.
+- 단위 `pasteIntent.test.ts` 15항목 · `clipboardRead.test.ts` 14항목 ·
+  `docEpoch.test.ts` 5항목 · E2E e2e324.
 
 ##### 노드 복사·붙여넣기 — 다른 맵·다른 창까지 (2026-08-05)
 

@@ -55,16 +55,20 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   ) => {
     if (!selectedId) return;
     setAttErr(null);
+    // 같은 문서인지 — 업로드 중에 다른 맵을 열면 붙이지 않는다 (2026-10-01)
+    const epoch = useDocumentStore.getState().docEpoch;
     for (const f of files) {
       try {
         // 8MB 초과는 **청크 업로드**로 간다 — 진행률은 화면 아래 줄에
         // 뜨고, 사용자가 고를 것은 없다 (§12.7 — 경로를 나누지 않는다).
         // **크기를 함께 적어 둔다** (2026-08-07) — 서버 저장소 첨부는
         // URL 만으로 크기를 알 수 없어 하단 상태바가 셀 수 없었다.
-        addNodeAttachment(selectedId, {
-          name: f.name, kind: kindOf(f), size: f.size,
-          url: await attachFileWithProgress(f),
-        });
+        const url = await attachFileWithProgress(f);
+        if (useDocumentStore.getState().docEpoch !== epoch) {
+          setAttErr({ where, msg: `'${f.name}' 을(를) 올리는 사이 다른 맵이 열려 첨부하지 않았습니다.` });
+          return;
+        }
+        addNodeAttachment(selectedId, { name: f.name, kind: kindOf(f), size: f.size, url });
       } catch (err) {
         // 사용자가 [취소]를 누른 것은 오류가 아니다 — 빨간 줄을 띄우지 않는다.
         if ((err as Error)?.name === 'UploadAborted') continue;

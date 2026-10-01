@@ -60,8 +60,23 @@ function withPublicAttachments(map: SampleMap, publishId: string): SampleMap {
   );
 }
 
-/** 대시보드맵을 붙여 둔 화면이 "바뀌었나" 묻는 간격 (에디터와 같은 기본 10초) */
-const DASH_POLL_MS = 10_000;
+/**
+ * 대시보드맵을 붙여 둔 화면이 "바뀌었나" 묻는 간격 — 에디터의 대시보드 도구줄과 **같은
+ * 선택지·같은 기본(10초)·같은 저장 칸** (2026-10-01 사용자 요청: "대시보드맵을 열었을 때와
+ * 똑같이 상단에, 리프레시 간격 설정도 같이"). 0 = 끔(⟳ 를 누를 때만 확인).
+ */
+const DASH_INTERVALS = [0, 10, 30, 60, 300];
+const DASH_INTERVAL_KEY = 'emm.dash.interval';
+function loadDashInterval(): number {
+  try {
+    const raw = localStorage.getItem(DASH_INTERVAL_KEY);
+    const v = Number(raw);
+    return raw !== null && DASH_INTERVALS.includes(v) ? v : 10;
+  } catch { return 10; }
+}
+const intervalLabel = (s: number) => (s === 0 ? '끔' : s < 60 ? `${s}초` : `${s / 60}분`);
+/** 위쪽 대시보드 막대 높이 — iframe 이 이만큼 내려간다 */
+const DASH_H = 34;
 
 /** `?embed=1` — 사내 페이지 안 iframe 으로 붙일 때. 돌아갈 막대를 그리지 않는다 */
 function isEmbed(): boolean {
@@ -89,6 +104,14 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [changedAt, setChangedAt] = useState<Date | null>(null);
   const [stale, setStale] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [intervalSec, setIntervalSec] = useState(loadDashInterval);
+  const pickInterval = (v: number) => {
+    setIntervalSec(v);
+    try { localStorage.setItem(DASH_INTERVAL_KEY, String(v)); } catch { /* 이 브라우저만의 편의 */ }
+  };
+  /** ⟳ — 표식과 상관없이 지금 다시 받는다 (아래 효과가 채운다) */
+  const checkNowRef = useRef<() => void>(() => undefined);
   const stampRef = useRef<string | undefined>(undefined);
   // ★ **지금 시각을 매초** 보인다 (2026-09-30 사용자 요청 — 마지막 확인 시각이 아니라 현재 시각).
   //   시계는 멈추지 않으므로 **확인이 멈춘 것**은 따로 가린다(아래 `stalled` → ⚠️).
@@ -130,14 +153,15 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
     setRefreshedAt((v) => v ?? new Date());
     let alive = true;
     let busy = false;
-    const tick = async (at: Date) => {
-      if (busy || document.hidden) return;
+    const tick = async (at: Date, force = false) => {
+      if (busy || (document.hidden && !force)) return;
       busy = true;
+      setChecking(true);
       try {
         const s = await cloudApi.getPublishedStamp(publishId);
         if (!alive) return;
         setStale(false);
-        if (s.stamp !== stampRef.current) {
+        if (force || s.stamp !== stampRef.current) {
           const d = await cloudApi.getPublished(publishId);
           if (!alive) return;
           setData(d);
@@ -153,20 +177,23 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
         }
       } finally {
         busy = false;
+        if (alive) setChecking(false);
       }
     };
-    // 시계 눈금마다(:00·:10·:20…) — setInterval 은 밀리므로 매번 다음 눈금을 다시 잰다
+    checkNowRef.current = () => { void tick(new Date(), true); };
+    // 시계 눈금마다(:00·:10·:20…) — setInterval 은 밀리므로 매번 다음 눈금을 다시 잰다.
+    // 간격 0(끔)이면 스스로 묻지 않는다 — ⟳ 를 누를 때만
     let timer: number | undefined;
     const arm = () => {
       window.clearTimeout(timer);
-      if (document.hidden) return;
+      if (document.hidden || intervalSec <= 0) return;
       timer = window.setTimeout(() => {
         void tick(new Date(Math.round(Date.now() / 1000) * 1000));
         arm();
-      }, msToNextTick(DASH_POLL_MS));
+      }, msToNextTick(intervalSec * 1000));
     };
     const onVis = () => {
-      if (!document.hidden) void tick(new Date());
+      if (!document.hidden && intervalSec > 0) void tick(new Date());
       arm();
     };
     arm();
@@ -175,8 +202,16 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
       alive = false;
       window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVis);
+      checkNowRef.current = () => undefined;
     };
-  }, [isDashboard, publishId]);
+  }, [isDashboard, publishId, intervalSec]);
+
+  // 위쪽 대시보드 막대만큼 iframe 을 내린다 (ViewerBar 의 `--viewer-bar` 와 같은 방법)
+  useEffect(() => {
+    if (!isDashboard) return undefined;
+    document.documentElement.style.setProperty('--viewer-dash', `${DASH_H}px`);
+    return () => { document.documentElement.style.removeProperty('--viewer-dash'); };
+  }, [isDashboard]);
 
   // 뷰어 HTML 은 문서가 바뀔 때만 다시 만든다 — 큰 맵에서는 무거운 작업이다
   const html = useMemo(() => {
@@ -229,28 +264,18 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   return (
     <>
       {!embed && <ViewerBar title={data.title} />}
-      {isDashboard && refreshedAt && (() => {
-        // 확인 간격(10초)의 2배 + 5초 넘게 확인이 없으면 멈춘 것으로 본다
-        const stalled = now.getTime() - refreshedAt.getTime() > DASH_POLL_MS * 2 + 5000;
-        const warn = stale || stalled;
-        return (
-        <div
-          data-testid="public-dashboard-live"
-          title={(warn
-            ? '서버에 확인하지 못하고 있습니다 — 마지막으로 받은 값을 보여 주고 있습니다\n'
-            : `대시보드맵 — 10초마다(:00·:10·:20…) 바뀐 것을 확인해 스스로 갱신합니다\n`)
-            + `보이는 시각 = 지금 시각 · 마지막 확인 ${hhmmss(refreshedAt)} · 마지막 변경 ${changedAt ? hhmmss(changedAt) : '—'}`}
-          style={{
-            // 뷰어 바닥글(약 30px) 위 — 겹치면 바닥글 글자를 가린다(e2e 스크린샷에서 봤다)
-            position: 'fixed', left: 10, bottom: 40, zIndex: 11,
-            padding: '4px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
-            background: '#FFFDF8', border: '1px solid #E4D9C3', color: '#6B5E4A',
-            fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-            pointerEvents: 'none',
-          }}
-        >{warn ? '⚠️' : '🟢'} 📊 <span style={{ fontVariantNumeric: 'tabular-nums' }}>{hhmmss(now)}</span></div>
-        );
-      })()}
+      {isDashboard && refreshedAt && (
+        <DashboardBar
+          now={now}
+          refreshedAt={refreshedAt}
+          changedAt={changedAt}
+          stale={stale}
+          checking={checking}
+          intervalSec={intervalSec}
+          onInterval={pickInterval}
+          onRefresh={() => checkNowRef.current()}
+        />
+      )}
       {data.locked && (
         <PaidBanner
           publishId={publishId}
@@ -270,12 +295,78 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
           position: 'fixed', left: 0, right: 0, bottom: 0,
           // 막대가 있을 때만 그만큼 내린다 — 없으면 예전 그대로 화면 전체다
           // 막대 + (유료면) 잠김 띠만큼 내려간다
-          top: 'calc(var(--viewer-bar, 0px) + var(--viewer-paid, 0px))', width: '100%',
-          height: 'calc(100% - var(--viewer-bar, 0px) - var(--viewer-paid, 0px))',
+          top: 'calc(var(--viewer-bar, 0px) + var(--viewer-paid, 0px) + var(--viewer-dash, 0px))', width: '100%',
+          height: 'calc(100% - var(--viewer-bar, 0px) - var(--viewer-paid, 0px) - var(--viewer-dash, 0px))',
           border: 'none',
         }}
       />
     </>
+  );
+}
+
+/**
+ * 대시보드맵 공개 화면의 **위쪽 막대** (2026-10-01 사용자 요청: "링크로 열었을 때 시간이랑
+ * 연결 상태가 좌측 하단에 표시되는데, 대시보드맵을 열었을 때와 똑같이 상단에 — 리프레시 시간
+ * 간격 설정도 같이"). 에디터 도구줄의 대시보드 알약과 같은 순서·같은 기호다:
+ * `🟢 HH:MM:SS  ⟳  [10초▾]` — 🟢 정상 · ⏳ 확인 중 · ⚠️ 서버에 닿지 못함/확인이 멈춤.
+ * 색은 뷰어 머리말(`#FFFDF8` / `#E4D9C3`)과 같아 바로 아래 머리말과 한 덩어리로 읽힌다.
+ * 간격은 에디터와 같은 칸(`emm.dash.interval`)에 이 브라우저만 기억한다.
+ */
+function DashboardBar({
+  now, refreshedAt, changedAt, stale, checking, intervalSec, onInterval, onRefresh,
+}: {
+  now: Date; refreshedAt: Date; changedAt: Date | null; stale: boolean; checking: boolean;
+  intervalSec: number; onInterval: (v: number) => void; onRefresh: () => void;
+}) {
+  // 확인 간격의 2배 + 5초 넘게 확인이 없으면 멈춘 것으로 본다 (끔이면 보지 않는다)
+  const stalled = intervalSec > 0 && now.getTime() - refreshedAt.getTime() > intervalSec * 2000 + 5000;
+  const warn = stale || stalled;
+  const small: CSSProperties = {
+    height: 22, padding: '0 7px', borderRadius: 5, fontSize: 11, fontWeight: 700,
+    border: '1px solid #D8CBB2', background: '#fff', color: '#4A3F30',
+    cursor: 'pointer', fontFamily: 'inherit',
+  };
+  return (
+    <div
+      data-testid="public-dashboard-bar"
+      style={{
+        position: 'fixed', left: 0, right: 0, zIndex: 9,
+        top: 'calc(var(--viewer-bar, 0px) + var(--viewer-paid, 0px))', height: DASH_H,
+        boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px',
+        background: '#FFFDF8', borderBottom: '1px solid #E4D9C3', color: '#6B5E4A',
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', fontSize: 11.5,
+      }}
+    >
+      <span style={{ fontWeight: 700 }}>📊 대시보드</span>
+      <span style={{ flex: 1 }} />
+      <span
+        data-testid="public-dashboard-live"
+        title={(warn
+          ? '서버에 확인하지 못하고 있습니다 — 마지막으로 받은 값을 보여 주고 있습니다\n'
+          : intervalSec > 0
+            ? `대시보드맵 — ${intervalLabel(intervalSec)}마다 시계 눈금에 맞춰 바뀐 것을 확인해 스스로 갱신합니다\n`
+            : '자동 갱신이 꺼져 있습니다 — ⟳ 를 누를 때만 확인합니다\n')
+          + `보이는 시각 = 지금 시각 · 마지막 확인 ${hhmmss(refreshedAt)} · 마지막 변경 ${changedAt ? hhmmss(changedAt) : '—'}`}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px',
+          borderRadius: 7, fontWeight: 600, whiteSpace: 'nowrap',
+          background: '#F7F1E6', border: '1px solid #E4D9C3', color: '#4A3F30',
+        }}
+      >
+        <span data-testid="public-dashboard-health" aria-hidden>{warn ? '⚠️' : checking ? '⏳' : '🟢'}</span>
+        <span data-testid="public-dashboard-clock" style={{ fontVariantNumeric: 'tabular-nums' }}>{hhmmss(now)}</span>
+        <button data-testid="public-dashboard-refresh" style={small} title="지금 다시 받기" onClick={onRefresh}>⟳</button>
+        <select
+          data-testid="public-dashboard-interval"
+          value={intervalSec}
+          onChange={(e) => onInterval(Number(e.target.value))}
+          title="자동 갱신 간격 (이 브라우저에만 기억)"
+          style={{ ...small, padding: '0 2px' }}
+        >
+          {DASH_INTERVALS.map((v) => <option key={v} value={v}>{intervalLabel(v)}</option>)}
+        </select>
+      </span>
+    </div>
   );
 }
 

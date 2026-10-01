@@ -31,6 +31,7 @@ vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 �
 | `13-dashboard-map.png` · `13-dashboard-card.png` · `13-dashboard-key.png` · `13-dashboard-browser.png` (2026-09-30) | **pro** `test/dashboard.ui.e2e.mjs` — pro PR 검사(`pr-check.yml`)가 코어에 유료 화면을 얹어 빌드·기동하고 찍는다(대시보드 화면 검증 26항목도 함께 돈다). 그림은 `ci/dashboard-shots` 가지로 받아 `finish.py` 규칙(폭 1000 이하 + 연회색 테두리)으로 다듬었다 |
 | `13-dashboard-card.png` 은 Windows PowerShell 모양(`dashboard-card-ps.png`)으로 다시 찍었다 · `13-dashboard-key.png` 은 [환경 변수 줄로 복사] 로 다시 찍었다 (2026-09-30, 같은 스크립트) | 〃 |
 | `13-dashboard-embed-code.png` · `13-dashboard-embed.png` (2026-09-30) | **pro** `test/dashboard.ui.e2e.mjs` ⑨ — 퍼블리싱 창의 [사내 시스템에 붙이기] 칸, 그리고 **사내 포털 흉내 페이지**(시험이 만든 가짜 페이지 — 실제 사내 시스템이 아니다)에 iframe 으로 끼운 대시보드. 값 갱신·링크 닫힘까지 함께 돈다 |
+| `13-dashboard-browser.png` 다시 · `13-dashboard-card-add.png` (2026-10-01) | **pro** `test/dashboard.ui.e2e.mjs` ⑧ — 문서함의 **📊 대시보드 구역**과 맵 아래 **연결 주소 줄**([🔗 연결 주소 만들기]를 누른 직후), 카드의 **③ 노드 추가 — 노드와 내용을 함께** 칸(카드를 그 칸까지 내려 찍음). 같은 스크립트 49항목이 함께 돈다 |
 | `04-layout-multi.png` · `04-layout-multi-collapsed.png` (2026-09-21) | `guide04-layout-multi.mjs` (다중 선택 레이아웃·접힘 배지·다크 칩 검증 13항목도 함께 돈다) |
 | `01-overview.png` · `01-theme-toggle.png` · `01-dark.png` · `02-newmap-menu.png` · `02-template-choose.png` · `02-template-register.png` | `guide01-02.mjs` |
 | `04-layout-tab.png` · `04-collapse-badge.png` · `04-outline-split.png` · `04-mainview-toggle.png` · `04-outline-mode.png` | `guide04.mjs` |

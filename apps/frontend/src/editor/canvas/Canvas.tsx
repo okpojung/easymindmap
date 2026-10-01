@@ -52,6 +52,7 @@ import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 import { ConnectorLayer } from './ConnectorLayer';
 import { ChooserPopover } from './ChooserPopover';
 import { extractClipboardImage } from '@/utils/clipboardImage';
+import { clipboardImageName, pasteIntent } from '@/utils/pasteIntent';
 import { hasForeignMapMarker, stripForeignMapMarkers } from '@/utils/foreignClipboard';
 import {
   collectSubtrees, isNodeClipToken, stashNodes, takeStashed,
@@ -892,7 +893,37 @@ export function Canvas({
       // 표로 변환됐다면 클립보드의 비트맵 사본은 붙이지 않는다 (중복)
       const usedTable = htmlHasTable && /^\|/m.test(art.text);
       const text = art.text || plain;
-      if (!hasImgFile && !text && art.images.length === 0) return; // 붙일 내용 없음
+      const intent = pasteIntent({
+        hasImageFile: hasImgFile, text, htmlHasTable, htmlImageCount: art.images.length,
+      });
+      if (intent === 'nothing') return; // 붙일 내용 없음
+
+      if (intent === 'attach-image') {
+        // **그림만** 붙여넣었다(화면 캡처 등) → 선택 노드의 **첨부**(📎)로.
+        // 드래그앤드롭(handleExternalDrop)과 같은 길 — 저장 규칙도 같다
+        // (≤2MB 내장, 초과는 서버, 8MB 초과는 청크). 하위 노드를 만들지
+        // 않는다 (2026-10-01 사용자 요청). 노드 **사진**으로 넣고 싶으면
+        // 노드를 편집 중에 붙여넣는다 (NodeRenderer onPaste).
+        const f = Array.from(dt.files).find((x) => x.type.startsWith('image/'));
+        if (!f) return;
+        e.preventDefault();
+        const targetId = selectedId;
+        const name = clipboardImageName(f, new Date());
+        void (async () => {
+          try {
+            addNodeAttachment(targetId, {
+              name, kind: 'file', size: f.size,
+              url: await attachFileWithProgress(f),
+            });
+            notifyPaste(`📎 '${name}' 을(를) 첨부했습니다 — 노드 사진으로 넣으려면 노드를 편집 중에 붙여넣으세요.`);
+          } catch (err) {
+            if ((err as Error)?.name === 'UploadAborted') return;
+            const why = err instanceof Error ? err.message : '알 수 없는 오류';
+            notifyPaste(`⚠ '${name}' 첨부 실패 — ${why}`);
+          }
+        })();
+        return;
+      }
 
       e.preventDefault();
       const childId = addChildNode(selectedId);
@@ -920,7 +951,7 @@ export function Canvas({
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, setNodeImage, setNodeImages, addChildNode, updateNodeText, notifyPaste]);
+  }, [selectedId, setNodeImage, setNodeImages, addChildNode, updateNodeText, notifyPaste, addNodeAttachment]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

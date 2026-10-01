@@ -9,6 +9,10 @@ import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { attachFileWithProgress } from '@/utils/attachmentFile';
+import { attachmentKindFor, isImageFileName } from '@/utils/attachmentKind';
+import {
+  CLIPBOARD_NO_IMAGE, CLIPBOARD_UNSUPPORTED, clipboardImageFiles, clipboardReadErrorMessage,
+} from '@/utils/clipboardRead';
 import { cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { InspectorSection } from './InspectorSection';
 
@@ -33,8 +37,12 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
 
   const links = node?.links ?? [];
   const attachments = node?.attachments ?? [];
-  const docs = attachments.filter((a) => a.kind === 'file');
-  const media = attachments.filter((a) => a.kind === 'audio' || a.kind === 'video');
+  // 그림은 kind 가 'file' 이지만 **멀티미디어 목록**에 둔다 — 이름으로 알아본다
+  // (utils/attachmentKind.ts, 2026-10-01). 드롭·Ctrl+V·「미디어 선택」·
+  // 「첨부파일로 이미지 붙여넣기」 어느 길로 붙였든 같은 자리에 보인다.
+  const docs = attachments.filter((a) => a.kind === 'file' && !isImageFileName(a.name));
+  const media = attachments.filter((a) =>
+    a.kind === 'audio' || a.kind === 'video' || isImageFileName(a.name));
 
   // 파일 첨부 — ≤2MB 내장 / 초과는 서버 업로드(attachmentUrlForFile).
   // 업로드 실패(쿼터 초과 등)는 그 파일만 건너뛰고 메시지를 보여준다.
@@ -186,17 +194,21 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
       <InspectorSection t={t} title="첨부 (멀티미디어)">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {media.map((a) => (
-            <AttachmentRow key={a.id} t={t} icon={a.kind === 'audio' ? '🎤' : '🎬'} name={a.name}
+            <AttachmentRow key={a.id} t={t}
+              icon={a.kind === 'audio' ? '🎤' : a.kind === 'video' ? '🎬' : '🖼'} name={a.name}
               onRemove={() => selectedId && removeAttachment(a)} />
           ))}
         </div>
         <FilePickerButton t={t} label="미디어 선택" accept="audio/*,video/*,image/*"
           disabled={!selectedId}
-          onFiles={(files) => addFiles(
-            files, (f) => (f.type.startsWith('audio') ? 'audio' : 'video'), 'media')} />
+          onFiles={(files) => addFiles(files, attachmentKindFor, 'media')} />
+        <ClipboardImageButton t={t} disabled={!selectedId}
+          onFiles={(files) => addFiles(files, attachmentKindFor, 'media')}
+          onError={(msg) => setAttErr({ where: 'media', msg })} />
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
           오디오·영상·이미지. 문서 첨부와 같은 규칙입니다 (2MB 이하는 맵
-          내장, 초과분은 서버 저장소).
+          내장, 초과분은 서버 저장소). 화면을 캡처한 뒤 위 단추를 누르거나,
+          노드를 선택한 채 <b>Ctrl+V</b> 해도 그림이 첨부됩니다.
           <br />
           <b>큰 파일도 그냥 고르면 됩니다</b> — 8MB를 넘으면 자동으로 나눠
           올리고(최대 1GB) 진행률이 화면 아래에 표시됩니다.
@@ -258,6 +270,56 @@ function FilePickerButton({ t, label, accept, disabled, onFiles }: {
         style={{ display: 'none' }}
       />
     </label>
+  );
+}
+
+/**
+ * 「첨부파일로 이미지 붙여넣기」 (2026-10-01 사용자 제안) — 비동기 클립보드 API 로
+ * 그림을 읽어 「미디어 선택」과 같은 길로 첨부한다. Ctrl+V 는 캔버스에
+ * 포커스가 있을 때만 잡히므로, 이 탭을 보고 있을 때의 입구다.
+ */
+function ClipboardImageButton({ t, disabled, onFiles, onError }: {
+  t: ThemeTokens;
+  disabled?: boolean;
+  onFiles: (files: File[]) => void | Promise<void>;
+  onError: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const supported = typeof navigator !== 'undefined'
+    && typeof navigator.clipboard?.read === 'function';
+  const run = async () => {
+    if (disabled || busy) return;
+    if (!supported) { onError(CLIPBOARD_UNSUPPORTED); return; }
+    setBusy(true);
+    try {
+      const files = await clipboardImageFiles(navigator.clipboard, new Date());
+      if (!files.length) { onError(CLIPBOARD_NO_IMAGE); return; }
+      await onFiles(files);
+    } catch (err) {
+      onError(clipboardReadErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      data-testid="attach-clipboard-image"
+      disabled={disabled || busy}
+      onClick={() => { void run(); }}
+      title={supported ? '캡처하거나 복사한 그림을 이 노드의 첨부로 붙입니다'
+        : CLIPBOARD_UNSUPPORTED}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        width: '100%', padding: '8px 10px', marginTop: 6,
+        background: t.surfaceAlt, border: `1px dashed ${t.border}`,
+        borderRadius: 5, color: supported ? t.textMuted : t.textSubtle,
+        cursor: disabled || busy ? 'default' : 'pointer',
+        fontSize: 11.5, fontWeight: 500, justifyContent: 'center',
+        boxSizing: 'border-box', fontFamily: 'inherit',
+      }}>
+      📋 {busy ? '붙여넣는 중…' : '첨부파일로 이미지 붙여넣기'}
+    </button>
   );
 }
 

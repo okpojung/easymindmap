@@ -73,7 +73,7 @@
 | e2e39 | ThinkWise식 붙여넣기 | 선택+붙여넣기 = 하위 노드에 모두, 노트 분리 없음·클립 배지·편집 중 붙여넣기 | 02-node-editing |
 | e2e40 | 노드 텍스트 중간 인라인 사진 | 사진이 텍스트 줄 사이 원문 위치·노드 높이 확대·개별 제거·뷰어 파리티 | 04-node-content |
 | e2e41 | 기사 사진 다운로드 내장 | CORS 허용=data URL 내장 / 차단=원본 URL 폴백, 원문 위치 보존 | 04-node-content |
-| e2e324 | **그림만 붙여넣기 = 선택 노드의 첨부** (2026-10-01 사용자 요청 — 캡처를 Ctrl+V 하면 하위 노드 사진이 아니라 선택 노드의 📎 첨부로) | 구성: 프런트 단위(`pasteIntent.test.ts`, `test:unit`) **15항목** — ①그림만 → `attach-image` ②그림+공백 → 첨부 ③그림+글자 → `child-node` ④글자만·기사 사진만 → 하위 노드 ⑤표+그림 비트맵 → 하위 노드(표 우선 규칙 유지) ⑥빈 클립보드·공백만 → `nothing` ⑦이름 `image.png`·빈 이름·`blob.webp` → `캡처-YYYYMMDD-HHMMSS.<확장자>`(jpeg→jpg · svg+xml→svg · mime 없음→png), 진짜 파일 이름은 지킨다. `Canvas.handlePaste` 는 `attach-image` 면 `addNodeAttachment(selectedId, {kind:'file', url: attachFileWithProgress})` — 드롭과 같은 길. **한계(정직하게)** — 브라우저 e2e(실제 Ctrl+V → 📎 칩)는 이 컨테이너에 프런트 의존성(npm 403)이 없어 못 돌렸다. CI 의 type-check·build·`test:unit` 이 검사한다 | 02-node-editing.md §5.2 「그림만 붙여넣기」 · user-guide 03 「사진·기사 붙여넣기」 · `pasteIntent.ts` |
+| e2e324 | **그림만 붙여넣기 = 선택 노드의 첨부** (2026-10-01 사용자 요청 — 캡처를 Ctrl+V 하면 하위 노드 사진이 아니라 선택 노드의 📎 첨부로) | 구성: 프런트 단위(`pasteIntent.test.ts`, `test:unit`) **15항목** — ①그림만 → `attach-image` ②그림+공백 → 첨부 ③그림+글자 → `child-node` ④글자만·기사 사진만 → 하위 노드 ⑤표+그림 비트맵 → 하위 노드(표 우선 규칙 유지) ⑥빈 클립보드·공백만 → `nothing` ⑦이름 `image.png`·빈 이름·`blob.webp` → `캡처-YYYYMMDD-HHMMSS.<확장자>`(jpeg→jpg · svg+xml→svg · mime 없음→png), 진짜 파일 이름은 지킨다. `Canvas.handlePaste` 는 `attach-image` 면 `addNodeAttachment(selectedId, {kind:'file', url: attachFileWithProgress})` — 드롭과 같은 길. **첨부 탭 단추 「📋 첨부파일로 이미지 붙여넣기」**(사용자 제안) — 단위(`clipboardRead.test.ts`) **14항목**: ①png+html 항목 → 그림 1개 ②같은 그림 두 형식 → png 우선 ③글자만·빈 클립보드 → 빈 배열 ④항목 2개 → 2개 ⑤오류 문장(권한 거부·그림 없음·그 밖) ⑥첨부 종류 `attachmentKindFor`(png→file · mp3→audio · mp4→video · pdf→file) · `isImageFileName`. **한계(정직하게)** — 브라우저 e2e(실제 Ctrl+V → 📎 칩)는 이 컨테이너에 프런트 의존성(npm 403)이 없어 못 돌렸다. CI 의 type-check·build·`test:unit` 이 검사한다 | 02-node-editing.md §5.2 「그림만 붙여넣기」 · user-guide 03 「사진·기사 붙여넣기」 · `pasteIntent.ts` |
 
 ### 2.3 캔버스·레이아웃·선택
 
@@ -488,8 +488,10 @@
 - 2026-10-01 (284차): **e2e324 — 그림만 붙여넣기 = 선택 노드의 첨부**. 캡처를
   선택 노드에 Ctrl+V 하면 하위 노드 사진 대신 그 노드의 📎 첨부(드롭과 같은
   길). `utils/pasteIntent.ts` 가 클립보드 모양(그림·글자·표·기사 사진)으로
-  판정, 이름은 `캡처-시각.png`. 편집 중 붙여넣기(노드 사진)는 그대로. 단위
-  15항목. 문서: 02-node-editing §5.2 · user-guide 03/05/09.
+  판정, 이름은 `캡처-시각.png`. 편집 중 붙여넣기(노드 사진)는 그대로. 첨부 탭에
+  「📋 첨부파일로 이미지 붙여넣기」 단추(`clipboard.read()`)와 첨부 종류 한 곳
+  (`attachmentKind.ts` — 그림은 file, 목록은 이름으로 🖼). 단위 15+14항목.
+  문서: 02-node-editing §5.2 · user-guide 03/05/09.
 - 2026-09-30 (283차): **e2e323 — MD 왕복 레이아웃·노트 복원 + HTML 뷰어 첫 화면·미니맵**.
   `levels:` 를 노드 layoutType 에서 유도, 선언 `blocks: note` 로 노트 자동 복원, 뷰어
   `home()`·미니맵. 파서 14 · 프런트 6+9 · 브라우저 9 · 실제 맵 2,847노드 왕복.

@@ -152,7 +152,19 @@ Canvas 또는 선택 노드 상태에서 일반 텍스트를 붙여넣는 경우
 - Guest 는 `링크·첨부` 탭이 숨어 있지만 드롭과 마찬가지로 이 길은 막지
   않는다 — ≤2MB 는 data URL 로 맵에 내장되고, 초과는 `blob:` 이라
   새로고침하면 사라진다(드롭과 같은 한계).
-- 단위 `pasteIntent.test.ts` 15항목 · E2E e2e324.
+- **첨부 탭의 단추** — `ContentTab` 「첨부 (멀티미디어)」 에 **📋 첨부파일로
+  이미지 붙여넣기** (사용자 제안, 같은 날). `navigator.clipboard.read()` 로
+  그림 항목을 읽어 `File` 로 만들고(`utils/clipboardRead.ts`) 「미디어 선택」과
+  같은 `addFiles` 로 붙인다. Ctrl+V 는 캔버스 포커스가 있어야 잡히므로 이 탭을
+  보고 있을 때의 입구다. 권한 거부(`NotAllowedError`)·그림 없음·미지원
+  (Firefox 기본)은 그 섹션의 빨간 줄로 말한다. 사용자 제스처(클릭) 안에서만
+  부를 수 있다.
+- **첨부 종류를 한 곳으로** (`utils/attachmentKind.ts`) — 모델에 `image` kind 가
+  없어 그림은 길마다 종류가 달랐다(드롭·Ctrl+V 는 `file`, 「미디어 선택」은
+  `video` 🎬 오동작). 이제 그림은 어느 길이든 **`file`** 이고, 첨부 탭은
+  **이름(확장자)** 으로 알아봐 멀티미디어 목록에 🖼 로 둔다. 열기는 전부터
+  `openAttachment` 라 종류와 무관하다.
+- 단위 `pasteIntent.test.ts` 15항목 · `clipboardRead.test.ts` 14항목 · E2E e2e324.
 
 ##### 노드 복사·붙여넣기 — 다른 맵·다른 창까지 (2026-08-05)
 

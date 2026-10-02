@@ -53,7 +53,6 @@ export function CanvasFloatingToolbar({
   const scope = expandScope(selectedId, multiSelectedIds, rootIds);
 
   // 여러 중심주제 (2026-09-15, 2단계 — emm-spec §3.1 · 10-canvas §21.2)
-  const addCenter = useDocumentStore((state) => state.addCenter);
   const promoteToCenter = useDocumentStore((state) => state.promoteToCenter);
   const mergeCentersInto = useDocumentStore((state) => state.mergeCentersInto);
   const centerCount = useDocumentStore((state) => 1 + (state.map.centers?.length ?? 0));
@@ -63,10 +62,21 @@ export function CanvasFloatingToolbar({
     !!selectedId && !isCenterRootId(state.map, selectedId)
     && isCenterRootId(state.map, findParentId(state.map, selectedId)));
 
+  // 새 중심주제 = **배치 모드** (2026-10-02 사용자 보고 "원하는 위치에 추가할 수
+  // 없다"). 전에는 누르는 즉시 맨 오른쪽에 자동 배치됐다. 이제 단추는 모드를
+  // 켜고, 캔버스의 빈 자리를 클릭하면 **거기에** 생긴다 (Canvas handlePointerDown).
+  // 재클릭·Esc 는 취소. `addCenter` 자체는 그대로 쓸 수 있다(자리 없이 = 자동).
+  const placingCenter = useViewportStore((state) => state.placingCenter);
+  const setPlacingCenter = useViewportStore((state) => state.setPlacingCenter);
+  const addCenter = useDocumentStore((state) => state.addCenter);
   const handleAddCenter = () => {
-    const id = addCenter();
-    setSelectedId(id);
+    setPlacingCenter(!placingCenter);
   };
+  // 칸반에는 Canvas 가 없어 배치 모드를 받을 곳이 없다 (Codex #609) — 켜져 있던
+  // 모드는 끄고, 선택 없는 [+] 는 전처럼 즉시(자동 배치) 만든다.
+  useEffect(() => {
+    if (kanban && placingCenter) setPlacingCenter(false);
+  }, [kanban, placingCenter, setPlacingCenter]);
   const handlePromote = () => {
     const id = promoteToCenter(selectedId);
     if (id) setSelectedId(id);
@@ -123,7 +133,11 @@ export function CanvasFloatingToolbar({
     return () => { document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); };
   }, [addMenuOpen]);
   const handleAddClick = () => {
-    if (!selectedId) { handleAddCenter(); return; }
+    if (!selectedId) {
+      if (kanban) { setSelectedId(addCenter()); return; }
+      handleAddCenter();
+      return;
+    }
     setAddMenuOpen((v) => !v);
   };
   const openCalendar = () => {
@@ -285,7 +299,10 @@ export function CanvasFloatingToolbar({
           <GroupLabel t={t}>중심</GroupLabel>
           <ToolbarBtn
             t={t}
-            title="새 중심주제 — 빈 자리에 중심주제를 하나 더 만든다 (끌어서 옮길 수 있다)"
+            title={placingCenter
+              ? "배치 모드 — 캔버스의 빈 자리를 클릭하면 거기에 새 중심주제가 생깁니다 · 다시 누르거나 Esc 로 취소"
+              : "새 중심주제 — 누른 뒤 캔버스의 빈 자리를 클릭하면 그 자리에 생깁니다 (만든 뒤에도 끌어서 옮길 수 있다)"}
+            highlight={placingCenter}
             onClick={handleAddCenter}
             testId="center-add"
           >

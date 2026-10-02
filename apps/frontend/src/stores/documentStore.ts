@@ -278,8 +278,11 @@ interface DocumentState {
   setBranchSide: (branchId: string | null, side: 'left' | 'right') => void;
 
   // 여러 중심주제 (2026-09-15, 2단계 — emm-spec §3.1 · 08-layout §23)
-  /** 빈 자리에 새 중심주제를 만든다 (맨 뒤 순서 · 자동 배치). 새 루트 id 를 돌려준다 */
-  addCenter: (text?: string) => string;
+  /** 새 중심주제를 만든다 (맨 뒤 순서). `pos` 를 주면 그 자리(첫 중심 루트 기준
+   *  상대 px, 반올림)에, 없으면 자동 배치(앞 테두리 오른쪽). 새 루트 id 를 돌려준다.
+   *  2026-10-02 — 캔버스 배치 모드가 클릭한 자리를 넘긴다 (사용자 보고: 원하는
+   *  위치에 추가할 수 없다). */
+  addCenter: (text?: string, pos?: { dx: number; dy: number }) => string;
   /** 끌어 옮긴 자리 — 첫 중심 루트 기준 상대 좌표. null 이면 자동 배치로 돌아간다 */
   setCenterPos: (rootId: string | null, pos: { dx: number; dy: number } | null) => void;
   /** 다른 중심주제를 전부 이 중심의 가지로 묶는다 (각 중심 = 가지 하나, 그 가지들 = 자식) */
@@ -2058,14 +2061,15 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
   // ---- 여러 중심주제 (2026-09-15, 2단계) ----------------------------------
 
-  addCenter: (text = '중심 주제') => {
+  addCenter: (text = '중심 주제', pos?: { dx: number; dy: number }) => {
     const id = createNodeId();
+    const at = pos ? { pos: { dx: Math.round(pos.dx), dy: Math.round(pos.dy) } } : {};
     set((state) => ({
       map: {
         ...state.map,
         centers: [
           ...(state.map.centers ?? []),
-          { root: { id, text, colorKey: 'root', side: 'center' }, branches: [] },
+          { root: { id, text, colorKey: 'root', side: 'center' }, branches: [], ...at },
         ],
       },
     }));

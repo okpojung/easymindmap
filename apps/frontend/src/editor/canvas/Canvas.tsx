@@ -45,7 +45,7 @@ import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { ProCursorLayer } from '@pro';
 import { zoneAxesFor, zoneAt } from './dropGeometry';
 import { useDocumentStore } from '@/stores/documentStore';
-import { useViewportStore } from '@/stores/viewportStore';
+import { useViewportStore, logViewport, readViewportLog } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
@@ -165,7 +165,11 @@ export function Canvas({
   const [gestureSinceHome, setGestureSinceHome] = useState(false);
   useEffect(() => { setGestureSinceHome(false); }, [homeSeq]);
   useEffect(() => {
-    const mark = () => setGestureSinceHome(true);
+    const mark = (e: Event) => {
+      const tg = e.target as Element | null;
+      logViewport('gesture', [e.type, tg?.tagName, (tg as HTMLElement | null)?.getAttribute?.('data-testid') ?? (tg as HTMLElement | null)?.id ?? '', (e as KeyboardEvent).key ?? '']);
+      setGestureSinceHome(true);
+    };
     document.addEventListener('pointerdown', mark, true);
     document.addEventListener('wheel', mark, true);
     document.addEventListener('keydown', mark, true);
@@ -539,6 +543,7 @@ export function Canvas({
   useEffect(() => {
     (window as unknown as { __emm?: Record<string, unknown> }).__emm = {
       ...((window as unknown as { __emm?: Record<string, unknown> }).__emm ?? {}),
+      viewportLog: () => readViewportLog(),
       viewport: () => {
         const vp = useViewportStore.getState();
         const root = nodesRef.current.find((n) => n.depth === 0) ?? nodesRef.current[0];

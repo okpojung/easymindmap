@@ -1295,6 +1295,14 @@ CANVAS-06)에서 시작한다. 같은 문서 안의 편집·되돌리기·템플
 > `homeArmed: false` 로 넣어 보호가 덮지 않는다. **진단 훅** `window.__emm.viewport()` —
 > DevTools 콘솔에서 스토어·실효 pan·캔버스 크기·루트 좌표·루트 화면 위치를 한 번에 본다
 > (다음 보고 때 이 출력을 받는다). 검증 ⑨~⑫ (12항목).
+>
+> **2026-10-02 사용자 측정** — 새로고침 뒤 아무것도 누르지 않고 `__emm.viewport()`:
+> `rootScreenTop 72 · homeGuard true · store pan (0, −98)` — **열자마자의 화면은 맞다.** 앞서
+> 본 어긋난 pan(266.65, −154.99 같은 소수점 값)은 그 뒤의 조작(미니맵 끌기·툴바 ⊙ 센터 등)에서
+> 온 코드 계산값이다. 그래서 **변경 이력 로그**를 뒀다: `viewportStore.logViewport` 가
+> setPan·setZoom·zoomIn/Out·setHomePan·reset·requestFit·requestCenterNode·keepView 와 캔버스의
+> 조작 감지(종류·대상 testid·키)를 호출 스택 몇 줄과 함께 마지막 60개까지 남기고,
+> `__emm.viewportLog()` 로 본다(⑬). 다음 보고는 "무엇을 눌렀더니" 까지 이 로그로 읽는다.
 
 ## MVS 구현 — 큰 맵: 뷰포트 컬링 · "여는 중" 안내 (2026-09-30 사용자 보고)
 

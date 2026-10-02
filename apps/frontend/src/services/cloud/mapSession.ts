@@ -19,7 +19,7 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { notifyExplicitSave, suppressCloudAutosave, isCollabDriving, handleStaleConflict } from '@/hooks/useCloudAutosave';
-import { useViewportStore } from '@/stores/viewportStore';
+import { logViewport, useViewportStore } from '@/stores/viewportStore';
 import type { SampleMap } from '@/editor/__samples__/types';
 import { mergeServerAppends } from '@/utils/mergeAppends';
 import { cloudApi, CloudError, type MapKind } from '@/services/cloud/apiClient';
@@ -462,6 +462,7 @@ export async function refreshFromServer(
     useDocumentStore.getState().setMapTitle(title);
     applySnapshotEditor(doc);
     // 이 뷰는 **의도한 것**(갱신 전 화면 유지) — 첫 화면 보호가 덮어쓰지 않게 끈다
+    logViewport('keepView(refreshFromServer)', keepView);
     useViewportStore.setState({ ...keepView, homeArmed: false });
     useInteractionStore.getState().setSelectedId(keepSel);
     useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });

@@ -89,5 +89,9 @@ ok(`⑪ 의도한 뷰(homeArmed:false)는 그대로 (root ${m.rootTop})`, m.root
 // ⑫ 진단 훅
 const diag = await page.evaluate(() => window.__emm?.viewport?.());
 ok(`⑫ __emm.viewport() 가 수치를 준다 (rootScreenTop ${diag?.rootScreenTop}, homeGuard ${diag?.effective?.homeGuard})`, !!diag && typeof diag.rootScreenTop === 'number' && diag.store && diag.canvas);
+// ⑬ 변경 이력 — reset·setHomePan·조작·setPan 이 순서대로 남고 스택이 붙는다
+const log = await page.evaluate(() => window.__emm?.viewportLog?.() ?? []);
+const whats = log.map((e) => e.what);
+ok(`⑬ __emm.viewportLog(): ${log.length}건 — reset·setHomePan·gesture 가 있고 스택이 붙는다`, whats.includes('reset') && whats.includes('setHomePan') && whats.includes('gesture') && log.every((e) => Array.isArray(e.stack)));
 await browser.close();
 console.log(process.exitCode ? '\n실패 있음' : '\n전부 통과');

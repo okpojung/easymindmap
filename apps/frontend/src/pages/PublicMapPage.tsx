@@ -75,8 +75,6 @@ function loadDashInterval(): number {
   } catch { return 10; }
 }
 const intervalLabel = (s: number) => (s === 0 ? '끔' : s < 60 ? `${s}초` : `${s / 60}분`);
-/** 위쪽 대시보드 막대 높이 — iframe 이 이만큼 내려간다 */
-const DASH_H = 34;
 
 /** `?embed=1` — 사내 페이지 안 iframe 으로 붙일 때. 돌아갈 막대를 그리지 않는다 */
 function isEmbed(): boolean {
@@ -206,12 +204,6 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
     };
   }, [isDashboard, publishId, intervalSec]);
 
-  // 위쪽 대시보드 막대만큼 iframe 을 내린다 (ViewerBar 의 `--viewer-bar` 와 같은 방법)
-  useEffect(() => {
-    if (!isDashboard) return undefined;
-    document.documentElement.style.setProperty('--viewer-dash', `${DASH_H}px`);
-    return () => { document.documentElement.style.removeProperty('--viewer-dash'); };
-  }, [isDashboard]);
 
   // 뷰어 HTML 은 문서가 바뀔 때만 다시 만든다 — 큰 맵에서는 무거운 작업이다
   const html = useMemo(() => {
@@ -295,8 +287,8 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
           position: 'fixed', left: 0, right: 0, bottom: 0,
           // 막대가 있을 때만 그만큼 내린다 — 없으면 예전 그대로 화면 전체다
           // 막대 + (유료면) 잠김 띠만큼 내려간다
-          top: 'calc(var(--viewer-bar, 0px) + var(--viewer-paid, 0px) + var(--viewer-dash, 0px))', width: '100%',
-          height: 'calc(100% - var(--viewer-bar, 0px) - var(--viewer-paid, 0px) - var(--viewer-dash, 0px))',
+          top: 'calc(var(--viewer-bar, 0px) + var(--viewer-paid, 0px))', width: '100%',
+          height: 'calc(100% - var(--viewer-bar, 0px) - var(--viewer-paid, 0px))',
           border: 'none',
         }}
       />
@@ -305,12 +297,17 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
 }
 
 /**
- * 대시보드맵 공개 화면의 **위쪽 막대** (2026-10-01 사용자 요청: "링크로 열었을 때 시간이랑
- * 연결 상태가 좌측 하단에 표시되는데, 대시보드맵을 열었을 때와 똑같이 상단에 — 리프레시 시간
- * 간격 설정도 같이"). 에디터 도구줄의 대시보드 알약과 같은 순서·같은 기호다:
- * `🟢 HH:MM:SS  ⟳  [10초▾]` — 🟢 정상 · ⏳ 확인 중 · ⚠️ 서버에 닿지 못함/확인이 멈춤.
- * 색은 뷰어 머리말(`#FFFDF8` / `#E4D9C3`)과 같아 바로 아래 머리말과 한 덩어리로 읽힌다.
- * 간격은 에디터와 같은 칸(`emm.dash.interval`)에 이 브라우저만 기억한다.
+ * 대시보드맵 공개 화면의 **갱신 표시** — 뷰어 **바닥글 줄 가운데**에 얹는다.
+ *
+ * (2026-10-01 사용자 요청) 처음엔 왼쪽 아래 배지였고, "대시보드맵을 열었을 때와 똑같이 상단에 —
+ * 간격 설정도 같이" 로 위쪽 막대가 됐다. (2026-10-02 사용자 요청) 새 탭에서 열면 위에 돌아가기
+ * 막대 · 대시보드 막대 · 뷰어 머리말 세 줄이 쌓여 "**하단의 줄에 중앙에**" 로 옮겼다 — 뷰어
+ * 바닥글(26px, `EasyMindMap 내보내기 · 읽기 전용 뷰어 …`)은 왼쪽만 쓰므로 가운데가 빈다.
+ * 줄을 새로 만들지 않아 맵 영역이 줄지 않는다.
+ *
+ * 내용은 에디터 도구줄의 대시보드 알약과 같은 순서·같은 기호다: `🟢 HH:MM:SS  ⟳  [10초▾]` —
+ * 🟢 정상 · ⏳ 확인 중 · ⚠️ 서버에 닿지 못함/확인이 멈춤. 간격은 에디터와 같은 칸
+ * (`emm.dash.interval`)에 이 브라우저만 기억한다. 색은 바닥글과 같은 `#FFFDF8` / `#E4D9C3`.
  */
 function DashboardBar({
   now, refreshedAt, changedAt, stale, checking, intervalSec, onInterval, onRefresh,
@@ -322,50 +319,41 @@ function DashboardBar({
   const stalled = intervalSec > 0 && now.getTime() - refreshedAt.getTime() > intervalSec * 2000 + 5000;
   const warn = stale || stalled;
   const small: CSSProperties = {
-    height: 22, padding: '0 7px', borderRadius: 5, fontSize: 11, fontWeight: 700,
+    height: 18, padding: '0 6px', borderRadius: 4, fontSize: 10.5, fontWeight: 700,
     border: '1px solid #D8CBB2', background: '#fff', color: '#4A3F30',
-    cursor: 'pointer', fontFamily: 'inherit',
+    cursor: 'pointer', fontFamily: 'inherit', lineHeight: '16px',
   };
   return (
     <div
-      data-testid="public-dashboard-bar"
+      data-testid="public-dashboard-live"
+      title={(warn
+        ? '서버에 확인하지 못하고 있습니다 — 마지막으로 받은 값을 보여 주고 있습니다\n'
+        : intervalSec > 0
+          ? `대시보드맵 — ${intervalLabel(intervalSec)}마다 시계 눈금에 맞춰 바뀐 것을 확인해 스스로 갱신합니다\n`
+          : '자동 갱신이 꺼져 있습니다 — ⟳ 를 누를 때만 확인합니다\n')
+        + `보이는 시각 = 지금 시각 · 마지막 확인 ${hhmmss(refreshedAt)} · 마지막 변경 ${changedAt ? hhmmss(changedAt) : '—'}`}
       style={{
-        position: 'fixed', left: 0, right: 0, zIndex: 9,
-        top: 'calc(var(--viewer-bar, 0px) + var(--viewer-paid, 0px))', height: DASH_H,
-        boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px',
-        background: '#FFFDF8', borderBottom: '1px solid #E4D9C3', color: '#6B5E4A',
-        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', fontSize: 11.5,
+        // 뷰어 바닥글(높이 26px) 한가운데 — 바닥글 위에 얹는다
+        position: 'fixed', left: '50%', bottom: 2, transform: 'translateX(-50%)', zIndex: 11,
+        display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 7px',
+        boxSizing: 'border-box', borderRadius: 6, whiteSpace: 'nowrap',
+        background: '#FFFDF8', border: '1px solid #E4D9C3', color: '#4A3F30',
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', fontSize: 11, fontWeight: 600,
       }}
     >
-      <span style={{ fontWeight: 700 }}>📊 대시보드</span>
-      <span style={{ flex: 1 }} />
-      <span
-        data-testid="public-dashboard-live"
-        title={(warn
-          ? '서버에 확인하지 못하고 있습니다 — 마지막으로 받은 값을 보여 주고 있습니다\n'
-          : intervalSec > 0
-            ? `대시보드맵 — ${intervalLabel(intervalSec)}마다 시계 눈금에 맞춰 바뀐 것을 확인해 스스로 갱신합니다\n`
-            : '자동 갱신이 꺼져 있습니다 — ⟳ 를 누를 때만 확인합니다\n')
-          + `보이는 시각 = 지금 시각 · 마지막 확인 ${hhmmss(refreshedAt)} · 마지막 변경 ${changedAt ? hhmmss(changedAt) : '—'}`}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px',
-          borderRadius: 7, fontWeight: 600, whiteSpace: 'nowrap',
-          background: '#F7F1E6', border: '1px solid #E4D9C3', color: '#4A3F30',
-        }}
+      <span data-testid="public-dashboard-health" aria-hidden>{warn ? '⚠️' : checking ? '⏳' : '🟢'}</span>
+      <span aria-hidden>📊</span>
+      <span data-testid="public-dashboard-clock" style={{ fontVariantNumeric: 'tabular-nums' }}>{hhmmss(now)}</span>
+      <button data-testid="public-dashboard-refresh" style={small} title="지금 다시 받기" onClick={onRefresh}>⟳</button>
+      <select
+        data-testid="public-dashboard-interval"
+        value={intervalSec}
+        onChange={(e) => onInterval(Number(e.target.value))}
+        title="자동 갱신 간격 (이 브라우저에만 기억)"
+        style={{ ...small, padding: '0 1px' }}
       >
-        <span data-testid="public-dashboard-health" aria-hidden>{warn ? '⚠️' : checking ? '⏳' : '🟢'}</span>
-        <span data-testid="public-dashboard-clock" style={{ fontVariantNumeric: 'tabular-nums' }}>{hhmmss(now)}</span>
-        <button data-testid="public-dashboard-refresh" style={small} title="지금 다시 받기" onClick={onRefresh}>⟳</button>
-        <select
-          data-testid="public-dashboard-interval"
-          value={intervalSec}
-          onChange={(e) => onInterval(Number(e.target.value))}
-          title="자동 갱신 간격 (이 브라우저에만 기억)"
-          style={{ ...small, padding: '0 2px' }}
-        >
-          {DASH_INTERVALS.map((v) => <option key={v} value={v}>{intervalLabel(v)}</option>)}
-        </select>
-      </span>
+        {DASH_INTERVALS.map((v) => <option key={v} value={v}>{intervalLabel(v)}</option>)}
+      </select>
     </div>
   );
 }

@@ -139,9 +139,13 @@ export function computeLayout(
     let dx: number;
     let dy: number;
     if (c.pos) {
-      // 사용자가 옮긴 자리 — 첫 중심 루트 기준 상대 좌표
-      dx = CX + c.pos.dx;
-      dy = CY + c.pos.dy;
+      // 사용자가 놓은 자리 — **루트의 가운데**가 (CX + dx, CY + dy) 에 오도록.
+      // 트리 계열 전략은 루트를 원점에서 옮겨 놓으므로(tree-right 는
+      // (-430, -235) 쯤) 통째 이동량에서 그 루트 위치를 뺀다 — 안 빼면
+      // 클릭·드롭한 지점과 그만큼 어긋난다 (Codex #609, 드래그에도 같은 버그).
+      const rootNode = part.find((n) => n.id === c.root.id) ?? part[0];
+      dx = CX + c.pos.dx - rootNode.x;
+      dy = CY + c.pos.dy - rootNode.y;
     } else {
       const pb = boxOf(part);
       dx = box.maxX + CENTER_GAP - pb.minX; // 왼쪽 끝이 앞 테두리 + 간격

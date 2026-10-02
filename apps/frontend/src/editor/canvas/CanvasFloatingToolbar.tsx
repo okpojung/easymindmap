@@ -68,9 +68,15 @@ export function CanvasFloatingToolbar({
   // 재클릭·Esc 는 취소. `addCenter` 자체는 그대로 쓸 수 있다(자리 없이 = 자동).
   const placingCenter = useViewportStore((state) => state.placingCenter);
   const setPlacingCenter = useViewportStore((state) => state.setPlacingCenter);
+  const addCenter = useDocumentStore((state) => state.addCenter);
   const handleAddCenter = () => {
     setPlacingCenter(!placingCenter);
   };
+  // 칸반에는 Canvas 가 없어 배치 모드를 받을 곳이 없다 (Codex #609) — 켜져 있던
+  // 모드는 끄고, 선택 없는 [+] 는 전처럼 즉시(자동 배치) 만든다.
+  useEffect(() => {
+    if (kanban && placingCenter) setPlacingCenter(false);
+  }, [kanban, placingCenter, setPlacingCenter]);
   const handlePromote = () => {
     const id = promoteToCenter(selectedId);
     if (id) setSelectedId(id);
@@ -127,7 +133,11 @@ export function CanvasFloatingToolbar({
     return () => { document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); };
   }, [addMenuOpen]);
   const handleAddClick = () => {
-    if (!selectedId) { handleAddCenter(); return; }
+    if (!selectedId) {
+      if (kanban) { setSelectedId(addCenter()); return; }
+      handleAddCenter();
+      return;
+    }
     setAddMenuOpen((v) => !v);
   };
   const openCalendar = () => {

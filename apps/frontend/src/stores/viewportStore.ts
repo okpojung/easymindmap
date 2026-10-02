@@ -13,6 +13,9 @@ interface ViewportState {
   panX: number;     // viewBox units
   panY: number;
   panMode: boolean; // Hand tool — drag anywhere on the canvas pans the view
+  /** 새 중심주제 배치 모드 (2026-10-02) — 켜진 동안 빈 캔버스를 클릭한 자리에
+   *  중심주제가 생긴다. 툴바 [새 중심주제] 로 켜고, 클릭·Esc·재클릭으로 꺼진다. */
+  placingCenter: boolean;
   fitRequestId: number; // bumped by requestFit(); the canvas reacts and fits the map
   // 특정 노드를 화면 중앙 + 지정 배율로 보기 요청 (검색 결과 클릭 등).
   // seq가 바뀔 때마다 캔버스가 반응한다 — fitRequestId와 같은 패턴.
@@ -40,6 +43,7 @@ interface ViewportState {
   zoomIn: () => void;
   zoomOut: () => void;
   setPanMode: (v: boolean) => void;
+  setPlacingCenter: (v: boolean) => void;
   togglePanMode: () => void;
   requestFit: () => void;
   requestCenterNode: (id: string, zoom?: number) => void;
@@ -71,6 +75,7 @@ export const useViewportStore = create<ViewportState>((set) => ({
   panX: 0,
   panY: 0,
   panMode: false,
+  placingCenter: false,
   fitRequestId: 0,
   centerRequest: null,
   homeSeq: 1,
@@ -84,6 +89,7 @@ export const useViewportStore = create<ViewportState>((set) => ({
   zoomIn:  () => { logViewport('zoomIn'); set((s) => ({ zoom: clamp(s.zoom + 5, ZOOM_MIN, ZOOM_MAX), homeArmed: false })); },
   zoomOut: () => { logViewport('zoomOut'); set((s) => ({ zoom: clamp(s.zoom - 5, ZOOM_MIN, ZOOM_MAX), homeArmed: false })); },
   setPanMode: (panMode) => set({ panMode }),
+  setPlacingCenter: (placingCenter) => set({ placingCenter }),
   togglePanMode: () => set((s) => ({ panMode: !s.panMode })),
   requestFit: () => { logViewport('requestFit'); set((s) => ({ fitRequestId: s.fitRequestId + 1, homeArmed: false })); },
   requestCenterNode: (id, zoom = 100) => {
@@ -93,7 +99,7 @@ export const useViewportStore = create<ViewportState>((set) => ({
       homeArmed: false,
     }));
   },
-  reset:   () => { logViewport('reset'); set((s) => ({ zoom: 100, panX: 0, panY: 0, homeSeq: s.homeSeq + 1, homeArmed: true })); },
+  reset:   () => { logViewport('reset'); set((s) => ({ zoom: 100, panX: 0, panY: 0, homeSeq: s.homeSeq + 1, homeArmed: true, placingCenter: false })); },
 }));
 
 function clamp(v: number, lo: number, hi: number) {

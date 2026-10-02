@@ -153,6 +153,12 @@ export function Canvas({
   const storePanX = useViewportStore((s) => s.panX);
   const storePanY = useViewportStore((s) => s.panY);
   const panMode = useViewportStore((s) => s.panMode);
+  // 새 중심주제 배치 모드 (2026-10-02) — 툴바 [새 중심주제] 가 켜고, 빈 캔버스
+  // 클릭이 그 자리에 중심을 만들며 끈다. 전에는 누르는 즉시 맨 오른쪽에 자동
+  // 배치돼 "원하는 위치에 추가할 수 없다"(사용자 보고).
+  const placingCenter = useViewportStore((s) => s.placingCenter);
+  const setPlacingCenter = useViewportStore((s) => s.setPlacingCenter);
+  const addCenter = useDocumentStore((state) => state.addCenter);
   const fitRequestId = useViewportStore((s) => s.fitRequestId);
   const centerRequest = useViewportStore((s) => s.centerRequest);
   const homeArmed = useViewportStore((s) => s.homeArmed);
@@ -1157,6 +1163,8 @@ export function Canvas({
 
       if (e.key === 'Escape') {
         e.preventDefault();
+        // 중심주제 배치 모드 취소 (2026-10-02)
+        if (placingCenter) { setPlacingCenter(false); return; }
         // 스타일 복사(붓) 모드면 붓만 내려놓는다 — 선택은 그대로
         if (stylePainter) { setStylePainter(null); return; }
         // 연결 모드 취소 · 연결선 선택 해제 (2026-09-22)
@@ -1229,6 +1237,21 @@ export function Canvas({
     const isMiddleButton = e.button === 1 || e.button === 2;
     const nodeEl = (e.target as Element).closest('[data-node-id]');
     const onEmptyCanvas = (e.target as Element).tagName === 'svg';
+
+    // 중심주제 배치 모드 — 빈 자리 클릭 = **거기에** 새 중심 (루트가 클릭 지점
+    // 가운데에 오도록 pos 는 첫 중심 루트(CX, CY) 기준 상대 좌표). 노드 위를
+    // 클릭하면 배치를 접고 평소대로(선택) 간다.
+    if (placingCenter && e.button === 0) {
+      setPlacingCenter(false);
+      if (onEmptyCanvas) {
+        const w = clientToWorld(e.clientX, e.clientY);
+        const id = addCenter(undefined, { dx: w.x - CX, dy: w.y - CY });
+        selectOne(id);
+        // 뒤따르는 svg onClick(빈 캔버스 = 선택 해제)이 방금 만든 중심을 풀지 않게
+        suppressClickRef.current = true;
+        return;
+      }
+    }
 
     // Start a node drag (reparent) when pressing on a non-root node body.
     //
@@ -1600,6 +1623,26 @@ export function Canvas({
       {/* Pan 모드 표시 — 상단 중앙 배지 + 캔버스 테두리 하이라이트.
           Pan 모드에서는 드래그가 화면 이동이고, 해제하면 드래그가
           다중 선택(러버밴드)이 된다. */}
+      {/* 중심주제 배치 모드 배지 (2026-10-02) — Pan 배지와 같은 자리·모양 */}
+      {placingCenter && !panMode && (
+        <div
+          data-testid="center-place-badge"
+          style={{
+            position: 'absolute', top: 14, left: '50%',
+            transform: 'translateX(-50%)', zIndex: 6,
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '7px 16px', borderRadius: 20,
+            background: t.primary, color: '#FFFFFF',
+            fontSize: 12.5, fontWeight: 700,
+            boxShadow: '0 4px 14px rgba(60,45,15,0.35)',
+            pointerEvents: 'none', whiteSpace: 'nowrap',
+          }}
+        >
+          <span style={{ fontSize: 15 }}>◎</span>
+          새 중심주제 — 캔버스의 빈 자리를 클릭하면 거기에 생깁니다 · Esc 취소
+        </div>
+      )}
+
       {panMode && (
         <>
           <div
@@ -1682,7 +1725,7 @@ export function Canvas({
           width: '100%',
           height: '100%',
           display: 'block',
-          cursor: panMode ? (panning ? 'grabbing' : 'grab') : 'default',
+          cursor: panMode ? (panning ? 'grabbing' : 'grab') : placingCenter ? 'crosshair' : 'default',
           touchAction: 'none',
           // 드래그 시 SVG 글자가 브라우저 '텍스트 선택'으로 잡혀 주황
           // 선택 배경이 그려지는 문제 방지 — 캔버스 글자는 선택 대상이

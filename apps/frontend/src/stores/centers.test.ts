@@ -116,6 +116,12 @@ load();
   check('새 중심 루트 모양', [m().centers![1].root.text, m().centers![1].root.colorKey, m().centers![1].branches.length], ['새 중심', 'root', 0]);
   const kid = st().addChildNode(id);
   check('새 중심에 자식', m().centers![1].branches[0].id, kid);
+  // 자리를 주고 만들기 (2026-10-02 배치 모드) — 반올림해 pos 로
+  const at = st().addCenter('자리 중심', { dx: 120.6, dy: -40.4 });
+  check('자리 주고 추가 → 맨 뒤 + pos(반올림)', [m().centers![2].root.id === at, m().centers![2].pos], [true, { dx: 121, dy: -40 }]);
+  check('자리 없이 만든 중심은 pos 없음', m().centers![1].pos, undefined);
+  st().deleteNode(at);
+  check('자리 중심 삭제 → 둘', m().centers!.length, 2);
   st().setCenterPos(id, { dx: 300.4, dy: -20.6 });
   check('자리 저장(반올림)', m().centers![1].pos, { dx: 300, dy: -21 });
   st().setCenterPos(id, null);

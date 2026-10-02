@@ -426,7 +426,24 @@ export function PublishPanel(
           </div>
         )}
 
-        {status?.available && status.publishable !== false && !status.publishId && (
+        {/* ★ **대시보드맵은 한 단계로 링크를 만든다** (2026-10-02 사용자 요청: 비공개/링크 공개 단추가
+            필요 없다) — 보관 상태를 거치지 않고 바로 링크 공개. 지식창고·판매는 서버가 막는다 */}
+        {status?.available && status.publishable !== false && !status.publishId && status.dashboard && (
+          <>
+            <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8, marginBottom: 16 }}>
+              대시보드맵을 <b>사내 시스템에 붙일 링크</b>를 만듭니다 — 링크를 아는 사람만 봅니다
+              (지식창고에는 올라가지 않습니다). 붙여 둔 화면은 스스로 갱신됩니다.
+            </div>
+            <button
+              data-testid="publish-create"
+              disabled={busy}
+              onClick={() => void doPublish('public')}
+              style={{ ...btn, width: '100%', background: t.primary, color: '#fff' }}
+            >{busy ? '만드는 중…' : '🔗 링크 만들기'}</button>
+          </>
+        )}
+
+        {status?.available && status.publishable !== false && !status.publishId && !status.dashboard && (
           <>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8, marginBottom: 16 }}>
               퍼블리싱하면 이 맵이 문서함의 <b>퍼블리싱 자리</b>로 옮겨집니다 —
@@ -463,7 +480,29 @@ export function PublishPanel(
                 등록(주소를 만든다)과 노출(남에게 보인다)을 나눈 자리다.
                 칸이 없는 서버(델타 미적용)에서는 아예 그리지 않는다 —
                 눌러 보고 나서야 실패를 만나지 않게. */}
-            {status.canSetVisibility && (
+            {/* ★ 대시보드맵은 상태 전환 단추를 두지 않는다 (2026-10-02 사용자 요청) — 링크 공개가
+                대시보드의 쓰임새 전부다. 예전에 보관으로 돌려 둔 맵만 [링크 다시 열기] 하나를 보인다
+                (그것마저 없으면 붙여 둔 자리를 되살릴 길이 없다) */}
+            {status.dashboard && (status.visibility ?? 'public') === 'private' && (
+              <div data-testid="publish-dashboard-reopen" style={{ marginBottom: 10 }}>
+                <button
+                  data-testid="publish-vis-public"
+                  disabled={busy}
+                  onClick={() => void doSetVisibility('public')}
+                  style={{ ...btn, width: '100%', height: 32, fontSize: 12.5, background: t.primary, color: '#fff' }}
+                >🔗 링크 다시 열기</button>
+                <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 6 }}>
+                  지금은 보관 중이라 남에게 보이지 않습니다(주소를 열면 404). 다시 열면 <b>같은 주소</b>가 살아납니다.
+                </div>
+              </div>
+            )}
+            {status.dashboard && (status.visibility ?? 'public') !== 'private' && (
+              <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginBottom: 10 }}>
+                🔗 링크 공개 중 — 링크를 가진 누구나 읽습니다. 값은 프로그램이 넣은 대로 스스로 바뀝니다.
+                <br />★ <b>목록에는 뜨지 않습니다</b> — 주소를 아는 사람만 봅니다.
+              </div>
+            )}
+            {status.canSetVisibility && !status.dashboard && (
               <div data-testid="publish-visibility" style={{ marginBottom: 10 }}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {([
@@ -490,15 +529,11 @@ export function PublishPanel(
                   })}
                 </div>
                 <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 6 }}>
-                  {status.dashboard
-                    ? ((status.visibility ?? 'public') === 'private'
-                      ? '지금은 남에게 보이지 않습니다 (주소를 열면 404). 붙여 둔 자리에서 보이게 하려면 [링크 공개] 로 바꾸세요.'
-                      : '링크를 가진 누구나 읽습니다 — 값은 프로그램이 넣은 대로 10초 안에 바뀝니다.')
-                    : (status.visibility ?? 'public') === 'private'
-                      ? '지금은 남에게 보이지 않습니다 (주소를 열면 404). 이 상태에서는 맵을 고칠 수 있습니다.'
-                      : '링크를 가진 누구나 읽습니다. 고치려면 [비공개(보관)]로 바꾸세요 — 주소는 그대로입니다.'}
+                  {(status.visibility ?? 'public') === 'private'
+                    ? '지금은 남에게 보이지 않습니다 (주소를 열면 404). 이 상태에서는 맵을 고칠 수 있습니다.'
+                    : '링크를 가진 누구나 읽습니다. 고치려면 [비공개(보관)]로 바꾸세요 — 주소는 그대로입니다.'}
                   <br />★ <b>목록에는 뜨지 않습니다</b> — 주소를 아는 사람만 봅니다.
-                  {!status.dashboard && <> 둘러보는 사람에게도 보이게 하려면 아래 <b>[지식창고]</b> 를 켜세요.</>}
+                  {' '}둘러보는 사람에게도 보이게 하려면 아래 <b>[지식창고]</b> 를 켜세요.
                 </div>
               </div>
             )}
@@ -684,7 +719,8 @@ export function PublishPanel(
                 사용자 결정). 취소는 주소를 영구히 죽이는 일이고 되돌릴 수
                 없다. 서버도 같은 판정을 하지만(409), 화면이 **누르기 전에**
                 말해 준다 — 눌러 보고 나서야 거절당하지 않게. */}
-            {(() => {
+            {/* 대시보드맵은 [퍼블리싱 취소] 를 두지 않는다 (2026-10-02 사용자 요청) */}
+            {!status.dashboard && (() => {
               const locked = !!status.canSetVisibility
                 && (status.visibility ?? 'public') !== 'private';
               return (
@@ -894,7 +930,7 @@ function DashboardEmbed({ t, url, flash }: { t: ThemeTokens; url: string; flash:
       <div style={{ fontSize: 11.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 8 }}>
         대시보드맵은 <b>지식창고·유료 판매 없이 링크로만</b> 공유합니다. 붙여 둔 화면은
         <b> 10초마다 스스로 갱신</b>됩니다(로그인 없이 — <b>링크를 아는 사람만</b> 봅니다).
-        <br />링크 공개 상태여야 열립니다 — 비공개(보관)이면 붙인 자리도 404 입니다.
+        <br />링크는 일반맵으로 되돌려도 남습니다 — 닫으려면 일반맵으로 되돌린 뒤 퍼블리싱 창에서 취소합니다.
       </div>
       <div style={{ fontSize: 11.5, fontWeight: 700, margin: '6px 0 3px' }}>하위 페이지로 끼우기 (iframe)</div>
       <textarea data-testid="publish-embed-code" readOnly rows={3} value={code} style={box}

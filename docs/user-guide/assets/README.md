@@ -33,6 +33,7 @@ vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 �
 | `13-dashboard-embed-code.png` · `13-dashboard-embed.png` (2026-09-30) | **pro** `test/dashboard.ui.e2e.mjs` ⑨ — 퍼블리싱 창의 [사내 시스템에 붙이기] 칸, 그리고 **사내 포털 흉내 페이지**(시험이 만든 가짜 페이지 — 실제 사내 시스템이 아니다)에 iframe 으로 끼운 대시보드. 값 갱신·링크 닫힘까지 함께 돈다 |
 | `13-dashboard-browser.png` 다시 · `13-dashboard-card-add.png` (2026-10-01) | **pro** `test/dashboard.ui.e2e.mjs` ⑧ — 문서함의 **📊 대시보드 구역**과 맵 아래 **연결 주소 줄**([🔗 연결 주소 만들기]를 누른 직후), 카드의 **③ 노드 추가 — 노드와 내용을 함께** 칸(카드를 그 칸까지 내려 찍음). 같은 스크립트 49항목이 함께 돈다 |
 | `13-dashboard-browser.png` · `13-dashboard-embed.png` 다시 (2026-10-01, #606) | 같은 스크립트 — 문서함은 연결 주소 줄을 뺀 모양, 포털 iframe 은 맨 위 `📊 대시보드` 막대(🟢 시각 · ⟳ · 10초)가 보이는 모양 |
+| `13-dashboard-embed.png` · `13-dashboard-embed-code.png` 다시 · `13-dashboard-newtab.png` (2026-10-02, #612) | 같은 스크립트 — 갱신 표시가 바닥글 줄 가운데로 옮긴 모양(포털 iframe · 새 탭 1280×760), 붙이기 칸은 "닫으려면 일반맵으로 되돌린 뒤" 문구 |
 | `04-layout-multi.png` · `04-layout-multi-collapsed.png` (2026-09-21) | `guide04-layout-multi.mjs` (다중 선택 레이아웃·접힘 배지·다크 칩 검증 13항목도 함께 돈다) |
 | `01-overview.png` · `01-theme-toggle.png` · `01-dark.png` · `02-newmap-menu.png` · `02-template-choose.png` · `02-template-register.png` | `guide01-02.mjs` |
 | `04-layout-tab.png` · `04-collapse-badge.png` · `04-outline-split.png` · `04-mainview-toggle.png` · `04-outline-mode.png` | `guide04.mjs` |

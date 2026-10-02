@@ -2744,6 +2744,13 @@ const VIEWER_JS = String.raw`
     var wx = (mx - MM_PAD) / mmGeom.s + mmGeom.x;
     var wy = (my - MM_PAD) / mmGeom.s + mmGeom.y;
     var rect = svg.getBoundingClientRect();
+    // 맵 바깥 빈 공간으로는 가지 않는다 — 화면 사각형이 맵 경계 안에 머문다 (에디터와 같은 규칙)
+    var bb = world.getBBox();
+    if (bb.width && bb.height) {
+      var vw = rect.width / view.k, vh = rect.height / view.k;
+      wx = bb.width > vw ? Math.min(Math.max(wx, bb.x + vw / 2), bb.x + bb.width - vw / 2) : Math.min(Math.max(wx, bb.x), bb.x + bb.width);
+      wy = bb.height > vh ? Math.min(Math.max(wy, bb.y + vh / 2), bb.y + bb.height - vh / 2) : Math.min(Math.max(wy, bb.y), bb.y + bb.height);
+    }
     view.x = rect.width / 2 - wx * view.k;
     view.y = rect.height / 2 - wy * view.k;
     applyView();

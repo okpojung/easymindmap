@@ -43,8 +43,15 @@ const box = await v.locator('#mm-minimap-svg').boundingBox();
 await v.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.8); await v.waitForTimeout(200);
 const after = await v.evaluate(() => document.getElementById('mm-world').getAttribute('transform'));
 ok('③ 미니맵 클릭으로 화면이 이동한다', before !== after);
-m = await v.evaluate(() => { const r = document.getElementById('mm-minimap-view'); const x = parseFloat(r.getAttribute('x')) + parseFloat(r.getAttribute('width')) / 2; const y = parseFloat(r.getAttribute('y')) + parseFloat(r.getAttribute('height')) / 2; return { x, y }; });
-ok(`③ 화면 사각형이 클릭한 자리(0.8,0.8)에 온다 (${Math.round(m.x)},${Math.round(m.y)} / 220×150)`, near(m.x, 176, 4) && near(m.y, 120, 4));
+m = await v.evaluate(() => { const r = document.getElementById('mm-minimap-view'); const nodes = Array.from(document.querySelectorAll('#mm-minimap-nodes rect')); const x0 = Math.min(...nodes.map((n) => parseFloat(n.getAttribute('x')))), y0 = Math.min(...nodes.map((n) => parseFloat(n.getAttribute('y')))); const x1 = Math.max(...nodes.map((n) => parseFloat(n.getAttribute('x')) + parseFloat(n.getAttribute('width')))), y1 = Math.max(...nodes.map((n) => parseFloat(n.getAttribute('y')) + parseFloat(n.getAttribute('height')))); const vx = parseFloat(r.getAttribute('x')), vy = parseFloat(r.getAttribute('y')), vw = parseFloat(r.getAttribute('width')), vh = parseFloat(r.getAttribute('height')); return { cx: vx + vw / 2, cy: vy + vh / 2, right: vx + vw, bottom: vy + vh, x1, y1, vw, vh, w: x1 - x0, h: y1 - y0 }; });
+// 가둠(e2e330): 맵이 화면보다 큰 축은 사각형이 맵 안에, 작은 축은 중심이 맵 안에 — 클릭 자리(176,120)와 그 한계 중 가까운 쪽
+const wantX = m.w > m.vw ? Math.min(176, m.x1 - m.vw / 2) : Math.min(176, m.x1); const wantY = m.h > m.vh ? Math.min(120, m.y1 - m.vh / 2) : Math.min(120, m.y1);
+ok(`③ 화면 사각형이 클릭한 자리(0.8,0.8)로 가되 맵 밖으로는 안 나간다 (${Math.round(m.cx)},${Math.round(m.cy)} ≈ ${Math.round(wantX)},${Math.round(wantY)})`, near(m.cx, wantX, 4) && near(m.cy, wantY, 4));
+
+// ③-b 맵 바깥 빈 공간으로는 못 간다 — 왼쪽 위 구석 클릭 → 화면 사각형이 맵 경계 안에 붙는다
+await v.mouse.click(box.x + 2, box.y + 2); await v.waitForTimeout(200);
+m = await v.evaluate(() => { const r = document.getElementById('mm-minimap-view'); const nodes = Array.from(document.querySelectorAll('#mm-minimap-nodes rect')); const nx = Math.min(...nodes.map((n) => parseFloat(n.getAttribute('x')))); const ny = Math.min(...nodes.map((n) => parseFloat(n.getAttribute('y')))); return { vx: parseFloat(r.getAttribute('x')), vy: parseFloat(r.getAttribute('y')), nx, ny }; });
+ok(`③-b 뷰어 미니맵 구석 클릭 → 사각형 왼쪽 위가 맵 왼쪽 위에 붙는다 (${Math.round(m.vx)},${Math.round(m.vy)} ≈ ${Math.round(m.nx)},${Math.round(m.ny)})`, Math.abs(m.vx - m.nx) <= 2 && Math.abs(m.vy - m.ny) <= 2);
 
 // ④ 접기 뒤 미니맵 노드 수가 줄고, 다시 켜지 않아도 갱신된다
 await v.click('#mm-collapse'); await v.waitForTimeout(400);

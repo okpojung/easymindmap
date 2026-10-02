@@ -48,6 +48,24 @@ interface ViewportState {
   setHomePan: (x: number, y: number) => void;
 }
 
+/**
+ * **뷰포트 변경 이력** (2026-10-02 진단) — 재현되지 않는 "첫 화면이 아래쪽" 보고를 사후에
+ * 추적한다. pan·배율을 바꾸는 모든 길(setPan·setZoom·zoomIn/Out·setHomePan·reset·fit·센터
+ * 요청)과 캔버스의 조작 감지가 한 줄씩 남기고, 호출 스택 몇 줄을 함께 적는다. 마지막 60개.
+ * DevTools 콘솔 `__emm.viewportLog()` 로 본다. 프로덕션 번들에서도 남는다(비용 미미).
+ */
+export interface ViewportLogEntry { t: number; what: string; args?: unknown; stack?: string[] }
+const viewportLog: ViewportLogEntry[] = [];
+export function logViewport(what: string, args?: unknown): void {
+  let stack: string[] | undefined;
+  try {
+    stack = (new Error().stack ?? '').split('\n').slice(2, 7).map((l) => l.trim().replace(/^at /, '').slice(0, 120));
+  } catch { /* 무시 */ }
+  viewportLog.push({ t: Math.round(performance.now()), what, args, stack });
+  if (viewportLog.length > 60) viewportLog.splice(0, viewportLog.length - 60);
+}
+export function readViewportLog(): ViewportLogEntry[] { return viewportLog.slice(); }
+
 export const useViewportStore = create<ViewportState>((set) => ({
   zoom: 100,
   panX: 0,
@@ -59,21 +77,23 @@ export const useViewportStore = create<ViewportState>((set) => ({
   homeArmed: true,
 
   // 사용자(또는 맞추기·센터 같은 명시적 이동)가 화면을 바꾸면 첫 화면은 끝난다
-  setZoom: (zoom) => set({ zoom: clamp(zoom, ZOOM_MIN, ZOOM_MAX), homeArmed: false }),
-  setPan: (panX, panY) => set({ panX, panY, homeArmed: false }),
-  setHomePan: (panX, panY) => set({ panX, panY }),
+  setZoom: (zoom) => { logViewport('setZoom', zoom); set({ zoom: clamp(zoom, ZOOM_MIN, ZOOM_MAX), homeArmed: false }); },
+  setPan: (panX, panY) => { logViewport('setPan', [panX, panY]); set({ panX, panY, homeArmed: false }); },
+  setHomePan: (panX, panY) => { logViewport('setHomePan', [panX, panY]); set({ panX, panY }); },
   // 버튼·단축키 줌 스텝 5% — 하단 상태바 ±버튼과 동일 (10-canvas.md §17)
-  zoomIn:  () => set((s) => ({ zoom: clamp(s.zoom + 5, ZOOM_MIN, ZOOM_MAX), homeArmed: false })),
-  zoomOut: () => set((s) => ({ zoom: clamp(s.zoom - 5, ZOOM_MIN, ZOOM_MAX), homeArmed: false })),
+  zoomIn:  () => { logViewport('zoomIn'); set((s) => ({ zoom: clamp(s.zoom + 5, ZOOM_MIN, ZOOM_MAX), homeArmed: false })); },
+  zoomOut: () => { logViewport('zoomOut'); set((s) => ({ zoom: clamp(s.zoom - 5, ZOOM_MIN, ZOOM_MAX), homeArmed: false })); },
   setPanMode: (panMode) => set({ panMode }),
   togglePanMode: () => set((s) => ({ panMode: !s.panMode })),
-  requestFit: () => set((s) => ({ fitRequestId: s.fitRequestId + 1, homeArmed: false })),
-  requestCenterNode: (id, zoom = 100) =>
+  requestFit: () => { logViewport('requestFit'); set((s) => ({ fitRequestId: s.fitRequestId + 1, homeArmed: false })); },
+  requestCenterNode: (id, zoom = 100) => {
+    logViewport('requestCenterNode', [id, zoom]);
     set((s) => ({
       centerRequest: { id, zoom, seq: (s.centerRequest?.seq ?? 0) + 1 },
       homeArmed: false,
-    })),
-  reset:   () => set((s) => ({ zoom: 100, panX: 0, panY: 0, homeSeq: s.homeSeq + 1, homeArmed: true })),
+    }));
+  },
+  reset:   () => { logViewport('reset'); set((s) => ({ zoom: 100, panX: 0, panY: 0, homeSeq: s.homeSeq + 1, homeArmed: true })); },
 }));
 
 function clamp(v: number, lo: number, hi: number) {

@@ -3,7 +3,7 @@
 
 import {
   MINIMAP_MIN_VIEW, minimapGeometry, minimapPanelSize, miniToWorld, paddedBounds, panForCenter,
-  shiftOrigin, viewportWorldRect, worldBounds, worldToMini,
+  shiftOrigin, viewportWorldRect, worldBounds, worldToMini, clampCenterToBounds,
 } from './minimapMath';
 
 let failed = 0;
@@ -98,6 +98,19 @@ const mr = worldToMini(gs, wr);
 const back = miniToWorld(gs, mr.x, mr.y);
 check('⑧ world → mini → world 왕복', [r2(back.x), r2(back.y)], [500, 100]);
 check('⑧ 크기도 배율대로', [r2(mr.w), r2(mr.h)], [r2(300 * gs.scale), r2(200 * gs.scale)]);
+
+
+// ⑨ 맵 밖으로는 못 간다 — 화면 사각형이 노드 경계 안에 머문다 (2026-10-02 사용자 요청)
+{
+  const b = { x: 0, y: 0, w: 4000, h: 3000 };   // 맵
+  const v = { x: 0, y: 0, w: 1000, h: 800 };    // 화면(world 크기)
+  check('⑨ 안쪽 점은 그대로', clampCenterToBounds(2000, 1500, b, v), { x: 2000, y: 1500 });
+  check('⑨ 맵 위 빈 공간을 클릭 → 위 변에 붙는다 (y = 400)', clampCenterToBounds(2000, -5000, b, v), { x: 2000, y: 400 });
+  check('⑨ 오른쪽 아래 밖 → 모서리 (3500, 2600)', clampCenterToBounds(9000, 9000, b, v), { x: 3500, y: 2600 });
+  check('⑨ 맵이 화면보다 작은 축은 중심이 맵 안에 (x: -100 → 0) · 큰 축은 사각형이 맵 안에 (y: 50 → 400)', clampCenterToBounds(-100, 50, { x: 0, y: 0, w: 600, h: 3000 }, v), { x: 0, y: 400 });
+  check('⑨ 작은 축 안쪽은 그대로', clampCenterToBounds(450, 1500, { x: 0, y: 0, w: 600, h: 3000 }, v), { x: 450, y: 1500 });
+  check('⑨ 경계 없음(노드 없음) → 그대로', clampCenterToBounds(7, 8, null, v), { x: 7, y: 8 });
+}
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 if (failed) process.exit(1);

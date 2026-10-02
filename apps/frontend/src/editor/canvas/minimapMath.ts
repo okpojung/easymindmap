@@ -163,3 +163,21 @@ export function panForCenter(
   const s = (zoom || 100) / 100;
   return { panX: -(wx - CX) * s, panY: -(wy - CY) * s };
 }
+
+/**
+ * **미니맵으로 가는 자리를 맵 안으로 가둔다** (2026-10-02 사용자 요청: "미니맵 바깥 빈 영역은
+ * 못 가게"). 창 모드에서는 상자에 맵 바깥의 빈 공간도 보이므로, 거기를 클릭하거나 사각형을
+ * 끌면 아무것도 없는 곳으로 갔다. 화면 사각형(`view`)이 노드 경계(`bounds`) 밖으로 나가지
+ * 않도록 중심점을 축마다 자른다. 맵이 화면보다 작은 축은 맵 가운데에 맞춘다.
+ */
+export function clampCenterToBounds(
+  wx: number, wy: number, bounds: Rect | null, view: Rect,
+): { x: number; y: number } {
+  if (!bounds) return { x: wx, y: wy };
+  // 맵이 화면보다 큰 축: 화면 사각형이 맵 안에 머문다. 작은 축: 화면 중심이 맵 안에 머문다
+  // (작은 맵도 조금은 옮길 수 있되 맵이 화면 가운데 선을 벗어나지는 않는다)
+  const axis = (c: number, b0: number, bw: number, vw: number) =>
+    bw > vw ? Math.min(Math.max(c, b0 + vw / 2), b0 + bw - vw / 2) : Math.min(Math.max(c, b0), b0 + bw);
+  return { x: axis(wx, bounds.x, bounds.w, view.w), y: axis(wy, bounds.y, bounds.h, view.h) };
+}
+

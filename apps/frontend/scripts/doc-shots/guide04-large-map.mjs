@@ -93,5 +93,34 @@ ok(`⑧ 큰 MD 를 불러오면 맵이 열린다 (${await nodeCount()}노드)`, 
 ok(`⑧ "여는 중" 안내가 떴다가 사라졌다 — ${JSON.stringify(ov.map((x) => x[0]))}`, ov.length >= 2 && ov[0][0] === true && ov[ov.length - 1][0] === false);
 ok(`⑧ 안내 문구에 노드 수 — "${(ov[0]?.[1] ?? '').replace(/@keyframes.*$/, '')}"`, /개 노드를 그리는 중/.test(ov[0]?.[1] ?? ''));
 ok('⑧ 다 열린 뒤 안내는 없다', await page.$('[data-testid="opening-overlay"]') === null);
+// ⑨ 미니맵 바깥 빈 영역으로는 못 간다 (2026-10-02 사용자 요청) — 큰 맵을 다시 열고 미니맵의
+//    왼쪽 위 빈 구석을 클릭하면 화면 사각형이 맵 경계 안에 붙어 멈춘다(중심 주제가 화면 안)
+await page.evaluate(async () => {
+  const d = await import('/src/stores/documentStore.ts'); const ui = await import('/src/stores/editorUiStore.ts');
+  let seq = 0; const id = () => `big${++seq}`;
+  const branches = Array.from({ length: 40 }, (_, i) => ({ id: id(), text: `folder-${i}`, children: Array.from({ length: 10 }, (_, j) => ({ id: id(), text: `doc-${i}-${j}`, children: Array.from({ length: 5 }, (_, k) => ({ id: id(), text: `heading ${i}-${j}-${k}` })) })) }));
+  d.useDocumentStore.getState().loadMap({ title: 'big', root: { id: 'root', text: '큰 맵' }, branches }, { resetHistory: true });
+  ui.useEditorUiStore.getState().setLayoutType('process-tree-right');
+  ui.useEditorUiStore.getState().setMinimapOpen(true);
+  (await import('/src/stores/interactionStore.ts')).useInteractionStore.getState().setSelectedId(null); // 선택 테두리 rect 가 먼저 잡히지 않게
+});
+await settle(1200);
+const mm = await page.locator('[data-testid="minimap"] svg').first().boundingBox();
+await page.mouse.click(mm.x + 4, mm.y + 4); await settle(500);
+const clampRes = await page.evaluate(async () => {
+  const vp = (await import('/src/stores/viewportStore.ts')).useViewportStore.getState();
+  const { computeLayout } = await import('/src/layout/LayoutEngine.ts');
+  const d = (await import('/src/stores/documentStore.ts')).useDocumentStore.getState();
+  const svg = Array.from(document.querySelectorAll('svg')).sort((a, b) => b.getBoundingClientRect().width * b.getBoundingClientRect().height - a.getBoundingClientRect().width * a.getBoundingClientRect().height)[0];
+  const sr = svg.getBoundingClientRect(); const W = Math.round(sr.width), H = Math.round(sr.height);
+  const out = computeLayout(d.map, 'process-tree-right', W / 2, H / 2, { x: 1, y: 1 });
+  const minX = Math.min(...out.map((n) => n.x - n.w / 2)), minY = Math.min(...out.map((n) => n.y - n.h / 2)), maxY = Math.max(...out.map((n) => n.y + n.h / 2));
+  const s = vp.zoom / 100; const vx = (0 - W / 2 - vp.panX) / s + W / 2; const vy = (0 - H / 2 - vp.panY) / s + H / 2; const vh = H / s;
+  const rr = document.querySelector('[data-node-id="root"]:not([data-testid="collapse-toggle"]) rect')?.getBoundingClientRect();
+  return { vx: Math.round(vx), vy: Math.round(vy), cy: Math.round(vy + vh / 2), minX: Math.round(minX), minY: Math.round(minY), maxY: Math.round(maxY), tall: maxY - minY > vh, rootVisible: !!rr && rr.top >= sr.top - 1 && rr.left >= sr.left - 1 && rr.bottom <= sr.bottom + 1 && rr.right <= sr.right + 1 };
+});
+// 이 맵은 가로로 아주 넓고(x: 사각형이 맵 안) 세로는 화면보다 짧다(y: 화면 중심이 맵 안)
+const yOk = clampRes.tall ? clampRes.vy >= clampRes.minY - 1 : (clampRes.cy >= clampRes.minY - 1 && clampRes.cy <= clampRes.maxY + 1);
+ok(`⑨ 미니맵 왼쪽 위 빈 구석 클릭 → 맵 밖으로 안 나간다 (view x ${clampRes.vx} ≥ ${clampRes.minX} · 화면 중심 y ${clampRes.cy} ∈ [${clampRes.minY}, ${clampRes.maxY}]) · 중심 주제 화면 안`, clampRes.vx >= clampRes.minX - 1 && yOk && clampRes.rootVisible);
 await browser.close();
 console.log(process.exitCode ? '\n실패 있음' : '\n전부 통과');

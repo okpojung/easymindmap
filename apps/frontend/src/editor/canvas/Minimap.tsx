@@ -21,6 +21,7 @@ import { useViewportStore } from '@/stores/viewportStore';
 import {
   minimapGeometry, minimapPanelSize, miniToWorld, panForCenter, shiftOrigin, viewportWorldRect, worldBounds, worldToMini,
   type MinimapOriginMode,
+  clampCenterToBounds,
 } from './minimapMath';
 
 interface Props {
@@ -82,7 +83,9 @@ export function Minimap({ t, nodes, W, H, CX, CY, onClose }: Props) {
     return { x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) };
   };
   const centerAt = (mx: number, my: number) => {
-    const w = miniToWorld(geom, mx, my);
+    const w0 = miniToWorld(geom, mx, my);
+    // 맵 바깥의 빈 공간으로는 가지 않는다 — 화면 사각형이 노드 경계 안에 머문다 (clampCenterToBounds)
+    const w = clampCenterToBounds(w0.x, w0.y, nodeBounds, viewWorld);
     const p = panForCenter(w.x, w.y, CX, CY, zoom);
     setPan(p.panX, p.panY);
   };

@@ -59,16 +59,32 @@ await page.mouse.move(cx + 20, cy + 10, { steps: 4 }); await page.mouse.move(cx 
 await page.mouse.up(); await page.waitForTimeout(150);
 const v2 = await vp(); const rb2 = await rectBox();
 // mini 40px = world 40/sc → pan 은 그만큼 반대로(×s)
-ok('④ 끌기 40×20px → pan 이 반대로 (40/배율)·(20/배율)', near(v2.panX - v.panX, -40 / sc * (v.zoom / 100), 2) && near(v2.panY - v.panY, -20 / sc * (v.zoom / 100), 2));
-ok('④ 사각형도 40×20 만큼 옮겨졌다', near(rb2.x - rb.x, 40, 2) && near(rb2.y - rb.y, 20, 2));
+// 2026-10-02 가둠(e2e330): 화면 중심이 노드 경계 밖으로 못 가므로, 기대값은 "가둔 뒤" 좌표로 센다
+const clampAt = async (wx, wy) => page.evaluate(async ({ wx, wy }) => {
+  const mm = await import('/src/editor/canvas/minimapMath.ts'); const { computeLayout } = await import('/src/layout/LayoutEngine.ts');
+  const d = (await import('/src/stores/documentStore.ts')).useDocumentStore.getState(); const ui = (await import('/src/stores/editorUiStore.ts')).useEditorUiStore.getState();
+  const vp = (await import('/src/stores/viewportStore.ts')).useViewportStore.getState();
+  const svg = Array.from(document.querySelectorAll('svg')).sort((a, b) => b.getBoundingClientRect().width * b.getBoundingClientRect().height - a.getBoundingClientRect().width * a.getBoundingClientRect().height)[0];
+  const sr = svg.getBoundingClientRect(); const W = Math.round(sr.width), H = Math.round(sr.height);
+  const out = computeLayout(d.map, ui.layoutType, W / 2, H / 2, { x: ui.spacingX ?? 1, y: ui.spacingY ?? 1 });
+  const b = mm.worldBounds(out); const view = mm.viewportWorldRect(W, H, W / 2, H / 2, vp.panX, vp.panY, vp.zoom);
+  return mm.clampCenterToBounds(wx, wy, b, view);
+}, { wx, wy });
+{
+  const s1 = v.zoom / 100; const c0x = cs.W / 2 - v.panX / s1, c0y = cs.H / 2 - v.panY / s1; // 끌기 전 화면 중심(world)
+  const want = await clampAt(c0x + 40 / sc, c0y + 20 / sc);
+  ok('④ 끌기 40×20px → 화면 중심이 그만큼(가둔 범위 안에서) 옮겨진다', near(v2.panX, -(want.x - cs.W / 2) * s1, 2) && near(v2.panY, -(want.y - cs.H / 2) * s1, 2));
+  ok('④ 사각형도 같은 방향으로 옮겨졌다', rb2.x - rb.x > 0 && rb2.x - rb.x <= 42 && rb2.y - rb.y > 0 && rb2.y - rb.y <= 22);
+}
 
 // ⑤ 빈 곳 클릭 → 그 자리가 화면 중앙 (클릭 시점의 배율·창 원점으로 world 점을 셈)
 sc = await scale(); const [ox, oy] = await origin(); v = await vp();
 const wx = 8 / sc + ox, wy = 8 / sc + oy;
 await page.mouse.click(rb.sx + 8, rb.sy + 8); await page.waitForTimeout(150);
 const v3 = await vp();
-ok('⑤ 미니맵 (8,8) 클릭 → 그 world 점이 화면 중앙 (pan = −(w − C)·s)',
-  near(v3.panX, -(wx - cs.W / 2) * (v.zoom / 100), 2) && near(v3.panY, -(wy - cs.H / 2) * (v.zoom / 100), 2));
+const want5 = await clampAt(wx, wy); // (8,8) 은 여백 구석 — 가둬서 맵 경계에 붙는다 (e2e330)
+ok('⑤ 미니맵 (8,8) 클릭 → 그 world 점(가둔 뒤)이 화면 중앙 (pan = −(w − C)·s)',
+  near(v3.panX, -(want5.x - cs.W / 2) * (v.zoom / 100), 2) && near(v3.panY, -(want5.y - cs.H / 2) * (v.zoom / 100), 2));
 
 // ⑥ Alt+M · Alt+H 토글, H 단독은 Pan 모드
 await page.keyboard.press('Alt+m'); await page.waitForTimeout(150);

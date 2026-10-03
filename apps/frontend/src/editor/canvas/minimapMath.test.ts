@@ -23,6 +23,7 @@ check('① 노드 경계 (왼쪽 위 + 크기)', worldBounds(nodes), { x: 80, y:
 check('① 노드 없음 → null', worldBounds([]), null);
 check('① 여백: 12%(최소 80)', paddedBounds({ x: 0, y: 0, w: 2000, h: 500 }), { x: -240, y: -80, w: 2480, h: 660 });
 check('① 노드 없음 → 400×300 상자 + 80', paddedBounds(null), { x: -80, y: -80, w: 560, h: 460 });
+check('① 여백 상한 300 — 4만 px 맵도 여백은 300 (2026-10-03: 창이 여백만 보이던 것)', paddedBounds({ x: 0, y: 0, w: 6000, h: 40000 }), { x: -300, y: -300, w: 6600, h: 40600 });
 
 // ② 화면 영역 — 캔버스 창 px ÷ 배율
 const W = 1200, H = 800, CX = 600, CY = 400;
@@ -61,8 +62,11 @@ check('⑥ 맵이 안 들어간다 (창 모드)', gt.fits, false);
 check('⑥ 배율은 표시창이 60×45 가 되는 값 (세로 45/800 가 더 크다)', r2(gt.scale), r2(45 / 800));
 const vt = worldToMini(gt, view);
 check('⑥ 표시창 크기 ≥ 최소', vt.w >= MINIMAP_MIN_VIEW.w - 0.01 && vt.h >= MINIMAP_MIN_VIEW.h - 0.01, true);
-check('⑥ 창은 표시창 중심을 가운데 (세로) · 가로는 맵이 들어가니 맵 가운데',
-  [r2(gt.bounds.y + gt.bounds.h / 2), r2(gt.bounds.x + gt.bounds.w / 2)], [r2(view.y + view.h / 2), r2(-120 + 1240 / 2)]);
+// 세로: 표시창 중심을 가운데 두려 하지만 창이 맵 위 여백(−300) 밖으로는 못 나가 위 끝에 붙는다
+// (2026-10-03 여백 상한 — 그래서 미니맵에 맵 위 빈 공간이 창의 몇 % 만 보인다)
+check('⑥ 창은 세로로 맵 위 여백에 붙고(표시창은 창 안) · 가로는 맵이 들어가니 맵 가운데',
+  [r2(gt.bounds.y), r2(gt.bounds.x + gt.bounds.w / 2)], [r2(paddedBounds(tall).y), r2(-120 + 1240 / 2)]);
+check('⑥ 표시창은 창 안에 있다', gt.bounds.y <= view.y && view.y + view.h <= gt.bounds.y + gt.bounds.h, true);
 
 // ⑦ 창은 표시창이 가장자리(6%)에 닿기 전까지 그대로 · 끄는 동안(freeze)은 무조건
 const prev = { x: gt.bounds.x, y: gt.bounds.y, scale: gt.scale };
@@ -76,14 +80,15 @@ check('⑦ 창 밖으로 나가면 창이 따라온다 (표시창 중심으로)'
 const g4 = minimapGeometry(tall, far, 288, 288, prev, 'follow');
 check('⑦ 끄는 중 밖으로 나가면 창이 그만큼만 따라온다 (아래 끝이 표시창 아래 끝)', r2(g4.bounds.y + g4.bounds.h), r2(far.y + far.h));
 check('⑦ 끄는 중 창 안이면 그대로', minimapGeometry(tall, moved, 288, 288, prev, 'follow').bounds.y, prev.y);
-const up = { ...view, y: prev.y - 300 };                  // 위로 조금 넘김
-check('⑦ 위로 넘기면 위 끝이 표시창 위 끝', r2(minimapGeometry(tall, up, 288, 288, prev, 'follow').bounds.y), r2(up.y));
+const prevLow = { ...prev, y: 5000 };                     // 창이 아래쪽에 있을 때
+const up = { ...view, y: 4700 };                          // 위로 조금 넘김
+check('⑦ 위로 넘기면 위 끝이 표시창 위 끝', r2(minimapGeometry(tall, up, 288, 288, prevLow, 'follow').bounds.y), r2(up.y));
 // 휠 뒤(hold): 표시창이 어디 있든 직전 창 그대로
 check('⑦ hold 는 밖으로 나가도 창 그대로', minimapGeometry(tall, far, 288, 288, prev, 'hold').bounds.y, prev.y);
 const top = { ...view, y: -20000 };                       // 맵 위 끝(−7200) 너머
 const g5 = minimapGeometry(tall, top, 288, 288);
 check('⑦ 창은 맵 경계 밖으로 나가지 않는다 (위 끝에서 멈춤)', r2(g5.bounds.y), r2(paddedBounds(tall).y));
-check('⑦ 배율이 바뀌면 직전 창은 버린다', minimapGeometry(tall, moved, 288, 288, { ...prev, scale: prev.scale * 2 }).bounds.y !== prev.y, true);
+check('⑦ 배율이 바뀌면 직전 창은 버린다', minimapGeometry(tall, moved, 288, 288, { ...prevLow, scale: prev.scale * 2 }).bounds.y !== prevLow.y, true);
 
 // ⑦-b 휠로 창 옮기기 — mini px ÷ 배율만큼, 맵 경계 안에서, 맵이 들어가는 축(가로)은 그대로
 const o1 = shiftOrigin(gt, tall, 50, 120);

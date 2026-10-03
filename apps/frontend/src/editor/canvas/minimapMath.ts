@@ -60,11 +60,14 @@ export function viewportWorldRect(
   };
 }
 
-/** 노드 경계 + 여백(각 변 12%, 최소 80 world). 노드가 없으면 400×300 상자 */
+/** 여백 상한 (world px) — 2026-10-03: 4만 px 맵은 12% 가 5,000px 이라 창(≈4,600px)이 여백만 보였다 */
+export const MINIMAP_PAD_MAX = 300;
+
+/** 노드 경계 + 여백(각 변 12%, 최소 80 · 최대 MINIMAP_PAD_MAX world). 노드가 없으면 400×300 상자 */
 export function paddedBounds(nodeBounds: Rect | null): Rect {
   const nb = nodeBounds ?? { x: 0, y: 0, w: 400, h: 300 };
-  const padX = Math.max(80, nb.w * 0.12);
-  const padY = Math.max(80, nb.h * 0.12);
+  const padX = Math.min(MINIMAP_PAD_MAX, Math.max(80, nb.w * 0.12));
+  const padY = Math.min(MINIMAP_PAD_MAX, Math.max(80, nb.h * 0.12));
   return { x: nb.x - padX, y: nb.y - padY, w: nb.w + padX * 2, h: nb.h + padY * 2 };
 }
 

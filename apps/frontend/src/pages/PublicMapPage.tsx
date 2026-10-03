@@ -98,6 +98,11 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   const [data, setData] = useState<PublishedMap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [embed] = useState(isEmbed);
+  /** 기록 한 장인 탭(새 탭에서 열기) — 예전엔 여기 제목 줄(ViewerBar)을 따로 그렸다 */
+  const [fresh] = useState(() => !isEmbed() && isFreshTab(window.history.length));
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  /** 뷰어 머리말 안의 빈 칸 — 뷰어가 `postMessage` 로 알려 준 화면 좌표 (`oneLine` 일 때) */
+  const [slots, setSlots] = useState<{ center: SlotRect | null; right: SlotRect | null } | null>(null);
   /** 대시보드맵 — 마지막으로 **서버에 확인한** 시각(눈금 시각). 바뀐 시각은 `changedAt` */
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [changedAt, setChangedAt] = useState<Date | null>(null);
@@ -205,6 +210,32 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   }, [isDashboard, publishId, intervalSec]);
 
 
+  // ★ **한 줄로** (2026-10-03 사용자 요청: "새 탭 제목 줄 가운데 시간 표시랑 ✕ 닫기 버튼을 아래 줄로
+  //   이동하여 한 줄로") — 새 탭에서 연 대시보드맵은 제목 줄(ViewerBar)을 따로 그리지 않고, 뷰어
+  //   머리말(제목 · 검색 · 보기 단추 줄)의 **가운데에 갱신 알약, 오른쪽 끝에 ✕ 닫기**를 얹는다.
+  //   뷰어는 sandbox 라 그 줄의 DOM 을 만질 수 없다 — 머리말에 빈 칸을 비워 두게 하고(`hostSlots`)
+  //   그 칸의 좌표를 `postMessage` 로 받아 그 위에 띄운다.
+  const oneLine = isDashboard && fresh;
+  useEffect(() => {
+    if (!oneLine) return undefined;
+    const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+    const onMsg = (e: MessageEvent) => {
+      const f = frameRef.current;
+      if (!f || e.source !== f.contentWindow) return;
+      const d = e.data as { type?: unknown; center?: unknown; right?: unknown } | null;
+      if (!d || d.type !== 'emm-host-slots') return;
+      const box = f.getBoundingClientRect();
+      const fix = (r: unknown): SlotRect | null => {
+        const o = r as SlotRect | null;
+        if (!o || ![o.x, o.y, o.w, o.h].every(num) || o.h <= 0) return null; // 머리말이 숨었다(전체화면)
+        return { x: o.x + box.left, y: o.y + box.top, w: o.w, h: o.h };
+      };
+      setSlots({ center: fix(d.center), right: fix(d.right) });
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [oneLine]);
+
   // 뷰어 HTML 은 문서가 바뀔 때만 다시 만든다 — 큰 맵에서는 무거운 작업이다
   const html = useMemo(() => {
     if (!data) return null;
@@ -221,11 +252,15 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
         snap?.editor?.layoutType,
         undefined,
         spacing,
+        undefined,
+        undefined,
+        // 한 줄일 때만 — 가운데 알약(상태 글 포함)과 ✕ 닫기가 들어갈 너비
+        oneLine ? { center: SLOT_CENTER_W, right: SLOT_RIGHT_W } : undefined,
       );
     } catch {
       return null;
     }
-  }, [data, publishId]);
+  }, [data, publishId, oneLine]);
 
   useEffect(() => {
     if (data?.title) document.title = `${data.title} — EasyMindMap`;
@@ -253,10 +288,6 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
     );
   }
 
-  // ★ 갱신 표시 자리 (2026-10-02 사용자 요청: "대시보드맵을 열었을 때처럼 **제목 줄 중앙**에 시간 및
-  //   연결 정보를") — 제목 줄(ViewerBar)이 있는 탭(새 탭에서 열기)은 그 가운데, 없는 화면(사내 페이지에
-  //   끼운 `?embed=1` 등)은 뷰어 바닥글 가운데. ViewerBar 와 같은 판정(`isFreshTab`)을 쓴다.
-  const titleBar = !embed && isFreshTab(window.history.length);
   const dashPill = (placement: 'title' | 'footer') => (isDashboard && refreshedAt ? (
     <DashboardBar
       placement={placement}
@@ -270,16 +301,25 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
       onRefresh={() => checkNowRef.current()}
     />
   ) : null);
+  // 칸 가운데에 얹는다 — 좌표는 뷰어가 알려 준 머리말 안의 빈 칸
+  const onSlot = (r: SlotRect, child: ReactNode, testId: string) => (
+    <div data-testid={testId} style={{
+      position: 'fixed', zIndex: 11, left: r.x + r.w / 2, top: r.y + r.h / 2,
+      transform: 'translate(-50%, -50%)',
+    }}>{child}</div>
+  );
 
   return (
     <>
-      {!embed && (
-        <ViewerBar
-          title={data.title}
-          center={titleBar && dashPill('title')}
-        />
-      )}
-      {!titleBar && dashPill('footer')}
+      {!embed && !oneLine && <ViewerBar title={data.title} />}
+      {oneLine && slots?.center
+        ? onSlot(slots.center, dashPill('title'), 'public-dashboard-slot')
+        : dashPill('footer')}
+      {oneLine && slots?.right && onSlot(slots.right, (
+        <button data-testid="viewer-close" type="button" onClick={() => closeTabOr('/')} style={barBtn}>
+          ✕ 닫기
+        </button>
+      ), 'public-close-slot')}
       {data.locked && (
         <PaidBanner
           publishId={publishId}
@@ -289,6 +329,7 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
         />
       )}
       <iframe
+        ref={frameRef}
         data-testid="public-map-frame"
         title={data.title}
         srcDoc={html}
@@ -381,6 +422,29 @@ function DashboardBar({
   );
 }
 
+/** 머리말 가운데 칸 너비 — `🟢 연결됨 📊 HH:MM:SS ⟳ [10초▾]` 가 들어간다 */
+const SLOT_CENTER_W = 270;
+/** 머리말 오른쪽 끝 칸 너비 — `✕ 닫기` */
+const SLOT_RIGHT_W = 76;
+interface SlotRect { x: number; y: number; w: number; h: number }
+
+/**
+ * 이 탭을 닫는다.
+ *
+ * ★ `window.close()` 는 **거부될 수 있다** — 브라우저는 "스크립트가 연
+ *   창" 이나 "기록이 한 장뿐인 탭" 만 닫게 해 준다. 규칙상 여기는 닫히는
+ *   자리지만(새 탭이라 기록이 한 장이다), 거부되면 **아무 일도 일어나지
+ *   않은 것처럼 보인다** — 누른 사람은 버튼이 고장 났다고 여긴다.
+ *   그래서 닫히지 않으면 `fallback`(지식창고 등)으로 **데려다준다**.
+ */
+function closeTabOr(fallback: string) {
+  window.close();
+  window.setTimeout(() => {
+    if (window.closed) return;
+    window.location.href = fallback;
+  }, 200);
+}
+
 /** 막대 높이 — iframe 이 이만큼 내려간다 */
 const BAR_H = 38;
 /** 유료 띠까지 있을 때의 높이 */
@@ -398,7 +462,7 @@ const PAID_H = 86;
  * ★ 색은 뷰어 머리말(`exportHtml` 의 `<header>`)과 같은 `#FFFDF8` /
  *   `#E4D9C3` 다 — 두 줄이 **한 덩어리**로 읽히게.
  */
-function ViewerBar({ title, center }: { title: string; center?: ReactNode }) {
+function ViewerBar({ title }: { title: string }) {
   const [back] = useState(() => libraryBackHref(document.referrer, window.location.origin));
   const [fresh] = useState(() => isFreshTab(window.history.length));
 
@@ -411,22 +475,6 @@ function ViewerBar({ title, center }: { title: string; center?: ReactNode }) {
 
   if (!fresh) return null;
 
-  /**
-   * 이 탭을 닫는다.
-   *
-   * ★ `window.close()` 는 **거부될 수 있다** — 브라우저는 "스크립트가 연
-   *   창" 이나 "기록이 한 장뿐인 탭" 만 닫게 해 준다. 규칙상 여기는 닫히는
-   *   자리지만(새 탭이라 기록이 한 장이다), 거부되면 **아무 일도 일어나지
-   *   않은 것처럼 보인다** — 누른 사람은 버튼이 고장 났다고 여긴다.
-   *   그래서 닫히지 않으면 지식창고로 **데려다준다**.
-   */
-  const closeTab = () => {
-    window.close();
-    window.setTimeout(() => {
-      if (window.closed) return;
-      window.location.href = back ?? '/';
-    }, 200);
-  };
 
   return (
     <div
@@ -446,17 +494,9 @@ function ViewerBar({ title, center }: { title: string; center?: ReactNode }) {
         style={{
           flex: 1, minWidth: 0, fontSize: 12, color: '#8B7D68',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          // 가운데 알약(대시보드 갱신 표시)과 겹치지 않게 — 왼쪽 반에서만
-          ...(center ? { maxWidth: 'calc(50% - 190px)' } : {}),
         }}
       >{title}</span>
-      {center && (
-        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
-          {center}
-        </div>
-      )}
-      {center && <span style={{ flex: 1 }} />}
-      <button data-testid="viewer-close" type="button" onClick={closeTab} style={barBtn}>
+      <button data-testid="viewer-close" type="button" onClick={() => closeTabOr(back ?? '/')} style={barBtn}>
         ✕ 닫기
       </button>
     </div>

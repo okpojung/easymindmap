@@ -18,7 +18,7 @@
 //   설령 그 글에서 무언가 새어 나가더라도 **우리 오리진에 닿지 못한다**
 //   (allow-same-origin 을 주지 않는다 — 이 한 줄이 격리의 전부다).
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { buildStandaloneHtml } from '@/export/exportHtml';
 import { withInlinedImages, withInlinedAttachments } from '@/export/mapMeta';
@@ -253,21 +253,33 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
     );
   }
 
+  // ★ 갱신 표시 자리 (2026-10-02 사용자 요청: "대시보드맵을 열었을 때처럼 **제목 줄 중앙**에 시간 및
+  //   연결 정보를") — 제목 줄(ViewerBar)이 있는 탭(새 탭에서 열기)은 그 가운데, 없는 화면(사내 페이지에
+  //   끼운 `?embed=1` 등)은 뷰어 바닥글 가운데. ViewerBar 와 같은 판정(`isFreshTab`)을 쓴다.
+  const titleBar = !embed && isFreshTab(window.history.length);
+  const dashPill = (placement: 'title' | 'footer') => (isDashboard && refreshedAt ? (
+    <DashboardBar
+      placement={placement}
+      now={now}
+      refreshedAt={refreshedAt}
+      changedAt={changedAt}
+      stale={stale}
+      checking={checking}
+      intervalSec={intervalSec}
+      onInterval={pickInterval}
+      onRefresh={() => checkNowRef.current()}
+    />
+  ) : null);
+
   return (
     <>
-      {!embed && <ViewerBar title={data.title} />}
-      {isDashboard && refreshedAt && (
-        <DashboardBar
-          now={now}
-          refreshedAt={refreshedAt}
-          changedAt={changedAt}
-          stale={stale}
-          checking={checking}
-          intervalSec={intervalSec}
-          onInterval={pickInterval}
-          onRefresh={() => checkNowRef.current()}
+      {!embed && (
+        <ViewerBar
+          title={data.title}
+          center={titleBar && dashPill('title')}
         />
       )}
+      {!titleBar && dashPill('footer')}
       {data.locked && (
         <PaidBanner
           publishId={publishId}
@@ -310,8 +322,10 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
  * (`emm.dash.interval`)에 이 브라우저만 기억한다. 색은 바닥글과 같은 `#FFFDF8` / `#E4D9C3`.
  */
 function DashboardBar({
-  now, refreshedAt, changedAt, stale, checking, intervalSec, onInterval, onRefresh,
+  placement, now, refreshedAt, changedAt, stale, checking, intervalSec, onInterval, onRefresh,
 }: {
+  /** `title` — 제목 줄(ViewerBar) 가운데 · `footer` — 뷰어 바닥글 가운데 */
+  placement: 'title' | 'footer';
   now: Date; refreshedAt: Date; changedAt: Date | null; stale: boolean; checking: boolean;
   intervalSec: number; onInterval: (v: number) => void; onRefresh: () => void;
 }) {
@@ -332,16 +346,25 @@ function DashboardBar({
           ? `대시보드맵 — ${intervalLabel(intervalSec)}마다 시계 눈금에 맞춰 바뀐 것을 확인해 스스로 갱신합니다\n`
           : '자동 갱신이 꺼져 있습니다 — ⟳ 를 누를 때만 확인합니다\n')
         + `보이는 시각 = 지금 시각 · 마지막 확인 ${hhmmss(refreshedAt)} · 마지막 변경 ${changedAt ? hhmmss(changedAt) : '—'}`}
+      data-placement={placement}
       style={{
-        // 뷰어 바닥글(높이 26px) 한가운데 — 바닥글 위에 얹는다
-        position: 'fixed', left: '50%', bottom: 2, transform: 'translateX(-50%)', zIndex: 11,
-        display: 'inline-flex', alignItems: 'center', gap: 5, height: 22, padding: '0 7px',
+        // 바닥글이면 뷰어 바닥글(높이 26px) 한가운데에 얹는다 · 제목 줄이면 ViewerBar 가 가운데에 둔다
+        ...(placement === 'footer'
+          ? { position: 'fixed', left: '50%', bottom: 2, transform: 'translateX(-50%)', zIndex: 11 } as const
+          : {}),
+        display: 'inline-flex', alignItems: 'center', gap: 5, height: placement === 'title' ? 26 : 22, padding: '0 7px',
         boxSizing: 'border-box', borderRadius: 6, whiteSpace: 'nowrap',
         background: '#FFFDF8', border: '1px solid #E4D9C3', color: '#4A3F30',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', fontSize: 11, fontWeight: 600,
       }}
     >
       <span data-testid="public-dashboard-health" aria-hidden>{warn ? '⚠️' : checking ? '⏳' : '🟢'}</span>
+      {/* 제목 줄에서는 연결 상태를 글로도 — 에디터의 🟢 와 같은 뜻 (2026-10-02 "시간 및 연결 등 정보") */}
+      {placement === 'title' && (
+        <span data-testid="public-dashboard-status" style={{ color: warn ? '#B45309' : '#6B5E4A' }}>
+          {warn ? '연결 끊김' : checking ? '확인 중' : '연결됨'}
+        </span>
+      )}
       <span aria-hidden>📊</span>
       <span data-testid="public-dashboard-clock" style={{ fontVariantNumeric: 'tabular-nums' }}>{hhmmss(now)}</span>
       <button data-testid="public-dashboard-refresh" style={small} title="지금 다시 받기" onClick={onRefresh}>⟳</button>
@@ -375,7 +398,7 @@ const PAID_H = 86;
  * ★ 색은 뷰어 머리말(`exportHtml` 의 `<header>`)과 같은 `#FFFDF8` /
  *   `#E4D9C3` 다 — 두 줄이 **한 덩어리**로 읽히게.
  */
-function ViewerBar({ title }: { title: string }) {
+function ViewerBar({ title, center }: { title: string; center?: ReactNode }) {
   const [back] = useState(() => libraryBackHref(document.referrer, window.location.origin));
   const [fresh] = useState(() => isFreshTab(window.history.length));
 
@@ -423,8 +446,16 @@ function ViewerBar({ title }: { title: string }) {
         style={{
           flex: 1, minWidth: 0, fontSize: 12, color: '#8B7D68',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          // 가운데 알약(대시보드 갱신 표시)과 겹치지 않게 — 왼쪽 반에서만
+          ...(center ? { maxWidth: 'calc(50% - 190px)' } : {}),
         }}
       >{title}</span>
+      {center && (
+        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+          {center}
+        </div>
+      )}
+      {center && <span style={{ flex: 1 }} />}
       <button data-testid="viewer-close" type="button" onClick={closeTab} style={barBtn}>
         ✕ 닫기
       </button>

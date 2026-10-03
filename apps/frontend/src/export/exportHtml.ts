@@ -3841,6 +3841,21 @@ function escapeHtml(s: string): string {
 // Builds the complete standalone HTML document for the given map.
 // `mapLayoutType` = the editor's current whole-map layout (editorUiStore);
 // per-node overrides ride along on each node's layoutType field.
+/**
+ * 머리말의 빈 칸 위치를 부모에게 알린다 (`hostSlots` 를 줬을 때만 실린다).
+ * 머리말 크기가 바뀌면(창 크기 · 전체화면 · 아웃라인 모드) 다시 알린다. 머리말이 숨으면 높이 0.
+ * 위치(숫자)만 보낸다 — 맵 내용은 실지 않는다.
+ */
+const HOST_SLOTS_JS = `(function(){
+  function rect(id){var e=document.getElementById(id);if(!e)return null;var r=e.getBoundingClientRect();return {x:r.left,y:r.top,w:r.width,h:r.height};}
+  function post(){if(!window.parent||window.parent===window)return;
+    window.parent.postMessage({type:'emm-host-slots',center:rect('mm-host-center'),right:rect('mm-host-right')},'*');}
+  window.addEventListener('resize',post);window.addEventListener('load',post);
+  var h=document.querySelector('header');
+  if(h&&window.ResizeObserver){new ResizeObserver(post).observe(h);}
+  post();setTimeout(post,300);setTimeout(post,1500);
+})();`;
+
 export function buildStandaloneHtml(
   map: SampleMap,
   mapLayoutType?: LayoutType,
@@ -3851,6 +3866,11 @@ export function buildStandaloneHtml(
   metaMap?: SampleMap,
   // 내보낼 때의 에디터 테마가 다크인지 — 뷰어의 최초 모드가 된다
   dark?: boolean,
+  // ★ **바깥 페이지가 머리말에 얹을 자리** (2026-10-03, 대시보드 공개 화면 — 22-dashboard §4.7).
+  //   주면 머리말 가운데·오른쪽 끝에 빈 칸을 비워 두고, 그 칸의 위치를 `postMessage`
+  //   (`emm-host-slots`)로 부모에게 알린다. 뷰어는 sandbox(allow-same-origin 없음)라 부모가
+  //   DOM 을 읽을 수 없어 위치를 이렇게 받는다. 내보내기 파일에는 쓰지 않는다.
+  hostSlots?: { center: number; right: number },
 ): string {
   const layoutType = (mapLayoutType ??
     map.root.layoutType ??
@@ -3984,7 +4004,9 @@ export function buildStandaloneHtml(
 <header>
   <h1>${LOGO_SVG.replace('<svg ', '<svg width="20" height="20" style="vertical-align:-4px;margin-right:6px" ')}${escapeHtml(map.title)}</h1>
   <span class="meta" id="mm-count"></span>
-  <span class="spacer"></span>
+  <span class="spacer"></span>${hostSlots
+    ? `\n  <span id="mm-host-center" aria-hidden="true" style="flex:0 0 ${Math.round(hostSlots.center)}px;height:28px"></span>\n  <span class="spacer"></span>`
+    : ''}
   <span id="mm-search-wrap">
     <svg id="mm-search-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
     <input id="mm-search" type="search" placeholder="노드 · 태그 · 노트 검색"
@@ -4000,7 +4022,9 @@ export function buildStandaloneHtml(
   <button id="mm-outline-split" class="icon" title="아웃라인 분할 보기">◫</button>
   <button id="mm-view-toggle" class="icon" title="아웃라인 모드로 전환 (화면 전체)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg></button>
   <button id="mm-fullscreen" class="icon" title="전체화면 모드"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>
-  <button id="mm-dark" class="icon" title="다크 모드로 전환">🌙</button>
+  <button id="mm-dark" class="icon" title="다크 모드로 전환">🌙</button>${hostSlots
+    ? `\n  <span id="mm-host-right" aria-hidden="true" style="flex:0 0 ${Math.round(hostSlots.right)}px;height:28px"></span>`
+    : ''}
 </header>
 <div id="mm-main">
   <div id="mm-outline"><div id="mm-outline-body"></div></div>
@@ -4024,7 +4048,7 @@ export function buildStandaloneHtml(
      아래 메타데이터(#easymindmap-map)로 '새 맵 > 불러오기'에서 편집 가능하게 복원됩니다 -->
 <script type="application/json" id="easymindmap-map">${metaJson}</script>
 <script>window.__MINDMAP__ = ${json};</script>
-<script>${VIEWER_JS}</script>
+<script>${VIEWER_JS}</script>${hostSlots ? `\n<script>${HOST_SLOTS_JS}</script>` : ''}
 </body>
 </html>`;
 }

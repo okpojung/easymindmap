@@ -2088,7 +2088,7 @@ docker ps -a --format '{{.Names}}' | grep rehearsal || echo "정상이면: 이 �
 마지막 줄은 이 방식도 못 잡는다 — 그건 외부 감시(UptimeRobot 등)가
 필요하다. **쓰지 않기로 했다**(2026-08-15 사용자 결정).
 
-#### 설치
+#### 설치 (갱신도 같은 두 줄 — 2026-10-03 에 down 메일에 '답한 쪽(Server 헤더)·본문 앞부분' 을 넣었다. 그 전에 깐 서버는 다시 받는다)
 
 ```bash
 sudo curl -fsSL https://raw.githubusercontent.com/okpojung/easymindmap/main/scripts/health-watch.sh \

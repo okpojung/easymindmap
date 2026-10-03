@@ -23,7 +23,13 @@ TIMEOUT="${TIMEOUT:-10}"
 mkdir -p "$STATE_DIR"
 
 # ── 1) 지금 상태를 본다 ────────────────────────────────────────────
-BODY=$(curl -sS --max-time "$TIMEOUT" -w '\n%{http_code}' "$URL" 2>/dev/null)
+# 응답 헤더도 받아 둔다 — 200 이 아닐 때 **누가 답했는지**(Server 헤더)가
+# 원인을 가른다 (2026-10-03: 배포도 재시작도 없는 시각에 404 가 와서 API 인지
+# 앞단(NPM=openresty · Traefik="404 page not found")인지 알 수 없었다).
+HDR_FILE=$(mktemp)
+BODY=$(curl -sS --max-time "$TIMEOUT" -D "$HDR_FILE" -w '\n%{http_code}' "$URL" 2>/dev/null)
+SERVER=$(grep -i '^server:' "$HDR_FILE" 2>/dev/null | tail -1 | tr -d '\r' | cut -d' ' -f2-)
+rm -f "$HDR_FILE"
 CODE=$(printf '%s' "$BODY" | tail -1)
 JSON=$(printf '%s' "$BODY" | sed '$d')
 
@@ -43,7 +49,10 @@ health_status() {
 if [ "$CODE" != "200" ]; then
   # 응답이 없거나 200 이 아니다 = API 가 떠 있지 않다
   STATE="down"
-  DETAIL="HTTP ${CODE:-응답없음} — API 가 응답하지 않습니다."
+  SNIP=$(printf '%s' "$JSON" | tr '\n' ' ' | head -c 200)
+  DETAIL="HTTP ${CODE:-응답없음} — API 가 응답하지 않습니다.
+답한 쪽(Server 헤더): ${SERVER:-없음}
+본문 앞부분: ${SNIP:-없음}"
 elif [ "$(health_status "$JSON")" = "ok" ]; then
   STATE="ok"
   DETAIL="$JSON"
@@ -128,7 +137,7 @@ SUBJ_ENC="=?UTF-8?B?$(printf '%s' "$SUBJ" | base64 -w0)?="
 
 HINT=""
 case "$STATE" in
-  down)     HINT="Coolify 에서 api 컨테이너 상태와 배포 로그를 확인하세요." ;;
+  down)     HINT="Coolify 에서 api 컨테이너 상태와 배포 로그를 확인하세요. 방금 pro 에 병합했다면 컨테이너 교체 중의 틈일 수 있습니다(복구 메일의 commit 이 그 병합이면 그 경우). '답한 쪽' 이 openresty 면 NPM 이, '404 page not found' 면 Traefik 이 답한 것이고, '없음' 이면 연결 자체가 안 된 것입니다." ;;
   degraded) HINT="스키마가 낡았을 수 있습니다 — 응답의 missingTables·missingColumns 를 보고 런북 §0 의 델타 SQL 을 적용하세요." ;;
 esac
 

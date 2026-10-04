@@ -83,7 +83,11 @@ export function parseRepoRef(input: string): RepoRef {
   return out;
 }
 
-/** 문서 폴더 자동 판정 — 저장소 뿌리에 있는 흔한 이름을 차례로 본다 */
+/**
+ * 문서 폴더 자동 판정 — 저장소 뿌리에 있는 흔한 이름을 차례로 본다.
+ * ★ (2026-10-04) 이제 **기본은 저장소 전체**다 — 이 판정은 전체 목록이 너무 커서 GitHub 이
+ *   잘랐을 때 물러설 자리로만 쓴다(`import_github_docs`).
+ */
 export const DOC_DIR_CANDIDATES = ['docs', 'doc', 'documentation', 'documents', 'wiki'];
 
 export function detectDocsDir(treePaths: { path: string; type: string }[]): string {
@@ -96,13 +100,29 @@ export function detectDocsDir(treePaths: { path: string; type: string }[]): stri
 
 export const MARKDOWN_RE = /\.(md|mdx|markdown)$/i;
 
-/** 문서 폴더 아래의 마크다운 파일만 — 폴더 경로 접두를 붙여 거른다 */
+/**
+ * 문서가 아닌 곳 — 저장소 전체를 볼 때 건너뛴다 (2026-10-04). 의존 패키지·빌드 결과물에도
+ * README.md 가 수백 개 있어 맵이 남의 문서로 덮인다. 점(`.`)으로 시작하는 폴더(.github·.vscode 등
+ * 설정)도 뺀다. 이 이름의 폴더를 `path` 로 직접 고르면 그 안은 본다(접두 아래만 검사).
+ */
+export const SKIP_DIRS = new Set([
+  'node_modules', 'vendor', 'third_party', 'third-party', 'bower_components',
+  'dist', 'build', 'out', 'target', 'coverage', '__pycache__', 'site-packages',
+]);
+export function isSkippedPath(path: string): boolean {
+  const dirs = path.split('/').slice(0, -1);
+  return dirs.some((d) => d.startsWith('.') || SKIP_DIRS.has(d.toLowerCase()));
+}
+
+/** 문서 폴더(빈 값이면 저장소 전체) 아래의 마크다운 파일만 — 폴더 경로 접두를 붙여 거른다 */
 export function selectDocFiles(
   tree: { path: string; type: string; sha: string }[], docsDir: string,
 ): RemoteFile[] {
   const prefix = docsDir ? docsDir.replace(/\/+$/, '') + '/' : '';
   return tree
-    .filter((e) => e.type === 'blob' && MARKDOWN_RE.test(e.path) && (!prefix || e.path.startsWith(prefix)))
+    .filter((e) => e.type === 'blob' && MARKDOWN_RE.test(e.path) && (!prefix || e.path.startsWith(prefix))
+      // 고른 폴더 **아래**에서만 건너뛸 곳을 본다 — `path:"vendor/docs"` 처럼 직접 고른 곳은 읽는다
+      && !isSkippedPath(prefix ? e.path.slice(prefix.length) : e.path))
     .map((e) => ({ path: e.path, blobSha: e.sha }))
     // 바이트순(로캘 무관) — 어느 서버에서 돌려도 같은 순서·같은 "앞 N개"
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));

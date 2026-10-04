@@ -6,6 +6,10 @@ import {
   parseYearMonth, parseYearMonthText, weekLabel, weekOfYear, weekOutline,
 } from './calendarNodes';
 import { holidayName, holidayTableCovers, isRedDay } from './koreanHolidays';
+import { useLangStore } from '@/i18n';
+
+// 한국어 문구(만드는 순간의 언어로 저장되는 글)를 확인한다 — 언어를 한국어로 고정
+useLangStore.getState().setLang('ko');
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {

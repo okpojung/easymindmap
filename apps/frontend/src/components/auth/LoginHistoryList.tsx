@@ -10,6 +10,8 @@
 // 빈 목록은 "로그인한 적이 없다"로 읽히기 때문이다.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 export interface LoginEvent {
   at: string;
@@ -40,6 +42,15 @@ export function fmtWhen(v: string | null): string {
     + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+/**
+ * 사건 이름 — 서버가 한국어 `label` 을 주지만, 아는 종류는 화면 언어로 옮긴다.
+ * 모르는 종류는 서버가 준 이름 그대로 (audit-log.service.ts 의 SHOWN_ACTIONS 와 같은 목록).
+ */
+const KNOWN_ACTIONS = new Set([
+  'login', 'logout', 'user_signedup', 'user_modified',
+  'user_recovery_requested', 'user_updated_password',
+]);
+
 /** 사건마다 색을 달리해 **로그인만 눈으로 훑을 수 있게** 한다 */
 function actionColor(action: string, t: ThemeTokens): string {
   if (action === 'login') return t.primary;
@@ -53,8 +64,9 @@ export function LoginHistoryList({ t, data, compact = false }: {
   /** 좁은 창(사용자 쪽)에서 쓰는 형태 */
   compact?: boolean;
 }) {
+  const tr = useTr();
   if (data === null) {
-    return <div style={{ fontSize: 12.5, color: t.textSubtle }}>불러오는 중…</div>;
+    return <div style={{ fontSize: 12.5, color: t.textSubtle }}>{tr('common.loading')}</div>;
   }
   if (!data.available) {
     return (
@@ -63,11 +75,9 @@ export function LoginHistoryList({ t, data, compact = false }: {
         padding: '10px 12px', borderRadius: 8,
         background: t.surfaceAlt, border: `1px solid ${t.border}`,
       }}>
-        <b>로그인 기록을 볼 수 없습니다.</b>
+        <b>{tr('auth.history.unavailable')}</b>
         <br />
-        로그인은 인증 서버(GoTrue)가 기록하며, 서버에 그 기록을 읽는 설정
-        (<code>GOTRUE_DATABASE_URL</code>)이 아직 없습니다.
-        {' '}<b>기록이 없다는 뜻이 아닙니다.</b>
+        {rich(tr('auth.history.unavailableWhy'))}
       </div>
     );
   }
@@ -96,16 +106,16 @@ export function LoginHistoryList({ t, data, compact = false }: {
   return (
     <div data-testid="login-history">
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-        <Stat t={t} label="최근 30일 로그인" value={`${data.logins30d}회`} />
-        <Stat t={t} label="전체 로그인" value={`${data.loginsTotal}회`} />
-        <Stat t={t} label="마지막 로그인" value={fmtWhen(data.lastLoginAt)} wide />
+        <Stat t={t} label={tr('auth.history.last30')} value={tr('auth.history.times', { n: data.logins30d })} />
+        <Stat t={t} label={tr('auth.history.total')} value={tr('auth.history.times', { n: data.loginsTotal })} />
+        <Stat t={t} label={tr('auth.history.lastLogin')} value={fmtWhen(data.lastLoginAt)} wide />
       </div>
 
       {data.events.length === 0 ? (
         <div data-testid="login-history-empty" style={{
           fontSize: 12, color: t.textSubtle, padding: '10px 12px',
           borderRadius: 8, background: t.surfaceAlt, border: `1px solid ${t.border}`,
-        }}>아직 기록이 없습니다.</div>
+        }}>{tr('auth.history.empty')}</div>
       ) : (
         <div style={{
           overflow: 'auto', maxHeight: compact ? 300 : 460,
@@ -113,15 +123,15 @@ export function LoginHistoryList({ t, data, compact = false }: {
         }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', background: t.surface }}>
             <thead><tr>
-              <th style={th}>시각</th><th style={th}>사건</th>
-              <th style={th}>접속한 곳</th>
+              <th style={th}>{tr('auth.history.colTime')}</th><th style={th}>{tr('auth.history.colEvent')}</th>
+              <th style={th}>{tr('auth.history.colFrom')}</th>
             </tr></thead>
             <tbody>
               {data.events.map((e, i) => (
                 <tr key={`${e.at}-${i}`} data-testid="login-history-row" data-action={e.action}>
                   <td style={td}>{fmtWhen(e.at)}</td>
                   <td style={{ ...td, color: actionColor(e.action, t), fontWeight: 700 }}>
-                    {e.label}
+                    {KNOWN_ACTIONS.has(e.action) ? tr(`auth.history.action.${e.action}`) : e.label}
                   </td>
                   <td style={{ ...td, color: t.textMuted, verticalAlign: 'top' }}>
                     {e.ip ?? '—'}
@@ -145,31 +155,24 @@ export function LoginHistoryList({ t, data, compact = false }: {
             "일부만 나오는데 규칙은 어떤건가?"). 그냥 "최근 N건"이라고만 쓰면
             그것이 전부인지 잘린 것인지 알 수 없다. */}
         {data.events.length >= data.limit && data.limit > 0
-          ? <>이 목록은 <b>최근 {data.limit}건까지</b>만 보여 줍니다
-              (전체 로그인 {data.loginsTotal}회).</>
-          : <>기록 <b>전체 {data.events.length}건</b>입니다.</>}
-        {' '}자동 토큰 갱신은 하루에도 수십 건씩 쌓여 <b>목록에서 뺐습니다</b> —
-        사람이 한 일이 묻히지 않도록.
+          ? rich(tr('auth.history.capped', { limit: data.limit, total: data.loginsTotal }))
+          : rich(tr('auth.history.all', { n: data.events.length }))}
+        {' '}{rich(tr('auth.history.refreshHidden'))}
         {/* 접속한 곳이 안 보일 때, **무엇을 하면 보이는지**까지 말한다
             (2026-08-14 사용자 지적: "이젠 이력화면에서 IP가 빠졌다").
             원인이 둘인데 한 문장으로 뭉뚱그리면, 델타 SQL 을 안 넣은 것인지
             다시 로그인을 안 한 것인지 알 수 없다. 서버가 `ipSource` 로 가른다. */}
         {!hasIp && data.ipSource === 'no-table' ? (
           <div data-testid="login-history-noip" data-why="no-table" style={{ marginTop: 4 }}>
-            <b>접속한 곳을 아직 기록하지 않습니다.</b> 서버에 접속 기록 표
-            (<code>login_events</code>)가 없습니다 — 관리자가 델타 SQL
-            (<code>dev-server-runbook.md §1.5-0-F</code>)을 적용해야 합니다.
+            {rich(tr('auth.history.noTable'))}
           </div>
         ) : !hasIp ? (
           <div data-testid="login-history-noip" data-why="no-records" style={{ marginTop: 4 }}>
-            <b>접속한 곳은 다시 로그인하면 그때부터 보입니다.</b> 인증 서버(GoTrue)가
-            접속 IP 를 남기지 않아 우리 서버가 직접 기록하는데, <b>기록을 시작한 뒤의
-            로그인</b>부터 쌓입니다. 지난 로그인의 IP 는 남아 있지 않습니다.
+            {rich(tr('auth.history.noRecords'))}
           </div>
         ) : data.events.some((e) => e.action === 'login' && !e.ip) ? (
           <div data-testid="login-history-partial-ip" style={{ marginTop: 4 }}>
-            접속한 곳이 <b>비어 있는 줄</b>은 우리 서버가 기록을 시작하기 전의
-            로그인입니다.
+            {rich(tr('auth.history.partialIp'))}
           </div>
         ) : null}
       </div>

@@ -15,8 +15,10 @@ import { I } from '@/components/icons';
 import { UserMenu } from './UserMenu';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
+import { useTr } from '@/i18n';
 
 export function DocsToolbar({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   const themeName = useEditorUiStore((s) => s.themeName);
   const setThemeName = useEditorUiStore((s) => s.setThemeName);
 
@@ -59,7 +61,7 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
           <span style={{ fontSize: 11, color: t.textSubtle, fontWeight: 500 }}>EasyMindMap</span>
-          <span data-testid="docs-title" style={{ fontSize: 14, color: t.text, fontWeight: 600 }}>내 문서</span>
+          <span data-testid="docs-title" style={{ fontSize: 14, color: t.text, fontWeight: 600 }}>{tr('shell.toolbar.crumb')}</span>
         </div>
       </div>
 
@@ -67,7 +69,7 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
 
       {/* 다크 모드 토글 — 편집 툴바와 같은 버튼 */}
       <button
-        title={themeName === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+        title={themeName === 'dark' ? tr('shell.toolbar.toLight') : tr('shell.toolbar.toDark')}
         data-testid="theme-toggle"
         onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}
         style={{

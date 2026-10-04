@@ -3,8 +3,11 @@
 // 사용자 요청: 아바타에 이메일 첫 글자 대신 **이름의 첫 글자**, 협업 화면의
 // 이메일 대신 **이름**, 이름에 마우스를 올리면 이메일·휴대폰.
 // 순수 함수 — 단위 테스트(profileName.test.ts)가 표를 그대로 본다.
+// 사용자에게 보이는 문장은 사전(auth.name.*)에서 부르는 순간의 언어로 가져온다.
 
-/** 화면에 보일 이름 — 성명이 없으면 이메일, 그것도 없으면 '나' */
+import { tr } from '@/i18n';
+
+/** 화면에 보일 이름 — 성명이 없으면 이메일, 그것도 없으면 '나'(언어를 따른다) */
 export function displayNameOf(
   fullName: string | null | undefined,
   email: string | null | undefined,
@@ -12,7 +15,7 @@ export function displayNameOf(
   const n = (fullName ?? '').trim();
   if (n) return n;
   const e = (email ?? '').trim();
-  return e || '나';
+  return e || tr('auth.name.me');
 }
 
 /**
@@ -78,9 +81,9 @@ export function formatPhone(
 export const NAME_LETTER_RE = /[가-힣A-Za-z]/g;
 export function nameProblem(raw: string | null | undefined): string | null {
   const name = (raw ?? '').trim();
-  if (!name) return '성명을 입력해 주세요.';
-  if (name.length > 100) return '성명은 100자까지입니다.';
-  if (!/^[가-힣A-Za-z][가-힣A-Za-z ]*$/.test(name)) return '성명은 한글 또는 영문(대소문자)만 쓸 수 있습니다.';
-  if ((name.match(NAME_LETTER_RE) ?? []).length < 2) return '성명은 2자 이상 입력해 주세요.';
+  if (!name) return tr('auth.name.required');
+  if (name.length > 100) return tr('auth.name.tooLong', { n: 100 });
+  if (!/^[가-힣A-Za-z][가-힣A-Za-z ]*$/.test(name)) return tr('auth.name.letters');
+  if ((name.match(NAME_LETTER_RE) ?? []).length < 2) return tr('auth.name.tooShort', { n: 2 });
   return null;
 }

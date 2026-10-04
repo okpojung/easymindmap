@@ -8,6 +8,7 @@
 // 초안이 여러 건이면 **한 건씩 차례로** 묻는다 — 예전에는 가장 최근 1건만
 // 보여 주고 나머지는 영영 남아 있었다.
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import {
@@ -19,6 +20,8 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { applySnapshotEditor, detachFromServer } from '@/services/cloud/mapSession';
 import { isDraftFromThisSession, writeLocalDraftNow } from '@/hooks/useLocalDraft';
+import { useTr, useLang, LANG_LOCALE } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 /**
  * **이 세션에서 복구 배너를 이미 한 번 보여 줬는가** (2026-08-06 보고).
@@ -35,6 +38,7 @@ import { isDraftFromThisSession, writeLocalDraftNow } from '@/hooks/useLocalDraf
  */
 let shownThisSession = false;
 
+
 /** 화면 위쪽 가운데 알림 띠 — 복구 안내와 보관 불가 안내가 함께 쓴다 */
 function bannerStyle(t: ThemeTokens) {
   return {
@@ -48,6 +52,8 @@ function bannerStyle(t: ThemeTokens) {
 }
 
 export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
+  const lang = useLang();
   const [queue, setQueue] = useState<LocalDraft[]>([]);
   /** IndexedDB 를 못 쓰는 브라우저·모드 — 크래시 대비 보관이 통째로 없다 */
   const [storageOff, setStorageOff] = useState(false);
@@ -83,10 +89,9 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
            style={{ ...bannerStyle(t), borderColor: t.danger ?? t.warning }}>
         <span style={{ display: 'flex', color: t.danger ?? t.warning }}><I.History size={16} /></span>
         <div style={{ flex: 1, lineHeight: 1.5 }}>
-          <b>브라우저 임시 보관에 실패했습니다</b>
+          <b>{tr('cloud.draft.writeFailedTitle')}</b>
           <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>
-            저장 공간이 부족한 것 같습니다 — <b>지금 편집은 이 브라우저에도
-            남지 않습니다.</b> ☁ 저장을 눌러 서버에 올려 주세요.
+            {rich(tr('cloud.draft.writeFailedBody'))}
           </div>
         </div>
         <button
@@ -96,7 +101,7 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
             fontSize: 12, padding: '6px 10px', borderRadius: 6,
             border: `1px solid ${t.border}`, background: t.surface,
             color: t.textMuted, cursor: 'pointer',
-          }}>알겠습니다</button>
+          }}>{tr('cloud.gotIt')}</button>
       </div>
     );
   }
@@ -106,10 +111,9 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
       <div data-testid="draft-storage-off" style={{ ...bannerStyle(t), borderColor: t.danger ?? t.warning }}>
         <span style={{ display: 'flex', color: t.warning }}><I.History size={16} /></span>
         <div style={{ flex: 1, lineHeight: 1.5 }}>
-          <b>이 브라우저에서는 임시 보관을 쓸 수 없습니다</b>
+          <b>{tr('cloud.draft.storageOffTitle')}</b>
           <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>
-            사생활 보호(시크릿) 모드이거나 저장소가 막혀 있습니다 — 크래시·전원
-            차단에 대비한 자동 보관이 동작하지 않습니다. ☁ 저장을 자주 눌러 주세요.
+            {tr('cloud.draft.storageOffBody')}
           </div>
         </div>
         <button
@@ -119,7 +123,7 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
             fontSize: 12, padding: '6px 10px', borderRadius: 6,
             border: `1px solid ${t.border}`, background: t.surface,
             color: t.textMuted, cursor: 'pointer',
-          }}>알겠습니다</button>
+          }}>{tr('cloud.gotIt')}</button>
       </div>
     );
   }
@@ -128,7 +132,7 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
 
   const when = (() => {
     try {
-      return new Date(draft.savedAt).toLocaleString('ko-KR', {
+      return new Date(draft.savedAt).toLocaleString(LANG_LOCALE[lang], {
         month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
       });
     } catch { return draft.savedAt; }
@@ -171,10 +175,10 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
     >
       <span style={{ display: 'flex', color: t.warning }}><I.History size={16} /></span>
       <div style={{ flex: 1, lineHeight: 1.5 }}>
-        <b>저장되지 않은 맵이 있습니다 — 복구할까요?</b>
+        <b>{tr('cloud.draft.title')}</b>
         <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>
-          {`'${draft.title}' · ${draft.nodeCount}개 노드 · ${when}에 이 브라우저에 보관됨`}
-          {queue.length > 1 && ` · 외 ${queue.length - 1}건`}
+          {tr('cloud.draft.meta', { title: draft.title, n: draft.nodeCount, when })}
+          {queue.length > 1 && tr('cloud.draft.more', { n: queue.length - 1 })}
         </div>
       </div>
       <button
@@ -184,16 +188,16 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
           fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 6,
           border: `1px solid ${t.primaryBorder}`, background: t.primary,
           color: '#fff', cursor: 'pointer',
-        }}>복구</button>
+        }}>{tr('cloud.draft.restore')}</button>
       <button
         data-testid="draft-discard"
         onClick={discard}
-        title="이 초안을 지웁니다 (되돌릴 수 없습니다)"
+        title={tr('cloud.draft.discardTip')}
         style={{
           fontSize: 12, padding: '6px 10px', borderRadius: 6,
           border: `1px solid ${t.border}`, background: t.surface,
           color: t.textMuted, cursor: 'pointer',
-        }}>버리기</button>
+        }}>{tr('cloud.draft.discard')}</button>
     </div>
   );
 }

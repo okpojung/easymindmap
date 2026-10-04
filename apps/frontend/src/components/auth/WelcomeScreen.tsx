@@ -14,21 +14,17 @@ import { I } from '@/components/icons';
 import { LoginForm } from './LoginForm';
 import { SignupForm } from './SignupForm';
 import { ResetPasswordForm } from './ResetPasswordForm';
+import { LanguagePicker } from '@/components/ui/LanguagePicker';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 // 소개 문구는 docs/01-product/product-highlights.md 의 "한 줄 소개"·
 // "5가지 약속"에서 가져온다 (문서와 화면이 어긋나지 않도록).
-const SLOGAN = '생각을 적는 속도 그대로, 정리는 알아서.';
-const SUB =
-  '글로 쓰든(아웃라인·Markdown), 그림으로 그리든(마인드맵), 보드로 옮기든(Kanban) — ' +
-  '같은 내용이 세 가지 모습으로 함께 움직입니다.';
-
-const POINTS: { icon: string; title: string; desc: string }[] = [
-  { icon: '📄', title: '쓰던 문서가 그대로 맵으로',
-    desc: 'Markdown을 불러오면 견출·표·코드·체크리스트까지 통째로 맵이 되고, 다시 내보내도 그대로 복원됩니다.' },
-  { icon: '✨', title: 'AI로 초안부터 확장까지',
-    desc: '질문 하나로 맵 초안을 만들고, 고른 노드만 골라 더 깊게 확장합니다.' },
-  { icon: '☁', title: '어느 기기에서나 이어서',
-    desc: '작업은 계정에 저장되어 자동으로 이어지고, 저장 시점마다 되돌아갈 버전이 쌓입니다.' },
+// 문장은 사전(auth.welcome.*)에 있다 — 여기에는 키만 둔다.
+const POINTS: { icon: string; key: string }[] = [
+  { icon: '📄', key: 'auth.welcome.point1' },
+  { icon: '✨', key: 'auth.welcome.point2' },
+  { icon: '☁', key: 'auth.welcome.point3' },
 ];
 
 export function WelcomeScreen({ t }: { t: ThemeTokens }) {
@@ -36,6 +32,7 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
   // 남기는 안내 (가입 확인 메일이 필요한 서버에서 특히 중요하다).
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [flash, setFlash] = useState<string | null>(null);
+  const tr = useTr();
   return (
     <div
       data-testid="welcome-screen"
@@ -46,11 +43,17 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
           "'Pretendard Variable','Pretendard','Inter',-apple-system,BlinkMacSystemFont,system-ui,sans-serif",
       }}
     >
+      {/* 언어 고르기 — 로그인 전에도 바꿀 수 있어야 한다 (B10 i18n).
+          오른쪽 위 구석에 작게 둔다. 좁은 폰(360px)에서도 겹치지 않게
+          본문 위쪽 여백(padding-top)을 이 줄만큼 남겼다. */}
+      <div style={{ position: 'absolute', top: 10, right: 12, zIndex: 2 }}>
+        <LanguagePicker t={t} compact testId="welcome-language" />
+      </div>
       <div
         style={{
           minHeight: '100%', boxSizing: 'border-box',
           display: 'flex', flexWrap: 'wrap', alignItems: 'center',
-          justifyContent: 'center', gap: 48, padding: '48px 32px',
+          justifyContent: 'center', gap: 48, padding: '52px clamp(16px, 4vw, 32px) 48px',
         }}
       >
         {/* ── 소개 ────────────────────────────────────────── */}
@@ -71,17 +74,17 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
             fontSize: 34, lineHeight: 1.3, fontWeight: 800,
             margin: '0 0 14px', letterSpacing: -0.8,
           }}>
-            {SLOGAN}
+            {tr('auth.welcome.slogan')}
           </h1>
           <p style={{
             fontSize: 15, lineHeight: 1.7, color: t.textMuted, margin: '0 0 28px',
           }}>
-            {SUB}
+            {tr('auth.welcome.sub')}
           </p>
 
           <div style={{ display: 'grid', gap: 14 }}>
             {POINTS.map((p) => (
-              <div key={p.title} style={{ display: 'flex', gap: 12 }}>
+              <div key={p.key} style={{ display: 'flex', gap: 12 }}>
                 <div style={{
                   width: 34, height: 34, flexShrink: 0, borderRadius: 9,
                   background: t.primarySoft, color: t.primary,
@@ -89,8 +92,8 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
                   fontSize: 16,
                 }}>{p.icon}</div>
                 <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 3 }}>{p.title}</div>
-                  <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6 }}>{p.desc}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 3 }}>{tr(`${p.key}.title`)}</div>
+                  <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6 }}>{tr(`${p.key}.desc`)}</div>
                 </div>
               </div>
             ))}
@@ -123,10 +126,9 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
             />
           ) : (
             <>
-              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>시작하기</div>
+              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{tr('auth.welcome.start')}</div>
               <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 20 }}>
-                로그인하면 저장한 맵을 어느 기기에서나 이어서 편집할 수 있습니다.
-                계정이 없다면 <b>가입</b>을 눌러 주세요.
+                {rich(tr('auth.welcome.intro'))}
               </div>
               {flash && (
                 <div data-testid="welcome-flash" style={{

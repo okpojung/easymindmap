@@ -4,6 +4,7 @@
 // 때 로컬 등록분을 서버로 옮긴다 (docs/02-domain/db-schema.md 참조).
 
 import type { SampleMap, SampleBranch, MindNode, LayoutType } from '@/editor/__samples__/types';
+import { tr } from '@/i18n';
 
 export const USER_TPL_KEY = 'easymindmap.userTemplates.v1';
 
@@ -51,16 +52,19 @@ export function saveUserTemplates(list: UserTemplate[]): boolean {
 //   · 노트·링크·첨부·사진·태그·아이콘·수동 크기 제외, 접힘 해제
 //   · 구조는 4레벨(루트 포함)까지만 — 그 아래는 잘라냄
 // (템플릿 패널의 '적용'은 기존대로 맵 전체를 그대로 복제한다)
-const SKELETON_TEXT: Record<number, string> = {
-  2: '하위 주제',
-  3: '내용',
+// 자리 표시 텍스트는 부르는 순간의 언어로 (i18n — 사전 panel.lib.node.*)
+const SKELETON_KEY: Record<number, string> = {
+  2: 'panel.lib.node.subtopic',
+  3: 'panel.lib.node.content',
 };
 
 export function templateSkeletonMap(map: SampleMap): SampleMap {
   // depth: 루트=0 … '4레벨'=depth 3 (루트를 1레벨로 세는 사용자 기준)
   const strip = (n: MindNode, depth: number, index: number): MindNode => ({
     ...n,
-    text: depth === 1 ? `주제 ${index + 1}` : SKELETON_TEXT[depth] ?? '내용',
+    text: depth === 1
+      ? tr('panel.lib.node.topicN', { n: index + 1 })
+      : tr(SKELETON_KEY[depth] ?? 'panel.lib.node.content'),
     note: undefined,
     notes: undefined,
     links: undefined,
@@ -83,7 +87,7 @@ export function templateSkeletonMap(map: SampleMap): SampleMap {
     ...cloned,
     root: {
       ...cloned.root,
-      text: '중심 주제',
+      text: tr('panel.lib.node.central'),
       note: undefined,
       notes: undefined,
       links: undefined,

@@ -7,8 +7,9 @@
 //   · 로그아웃
 // 아직 구현 전인 항목은 **자리를 미리 만들어** '준비 중'으로 표시한다 —
 // 메뉴 구조가 나중에 흔들리지 않도록.
+// 개인 설정은 B10(i18n, 2026-10-05)에서 열렸다 — 언어 고르기.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { cloudApi } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
@@ -27,31 +28,36 @@ import { AccountProfileForm } from '@/components/account/AccountProfileForm';
 import { displayNameOf, formatPhone } from '@/utils/profileName';
 import { AvatarBadge } from '@/components/account/AvatarBadge';
 import { DialogCloseButton, DialogFrame } from '@/components/ui/DialogFrame';
+import { LanguagePicker } from '@/components/ui/LanguagePicker';
+import { useLang, useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 interface MenuEntry {
   id: string;
   icon: string;
-  label: string;
-  /** 아직 구현 전 — '준비 중' 배지 + 안내 */
-  soon?: string;
+  /** 사전 키 — 모듈 상수라 렌더 때 번역한다 */
+  labelKey: string;
+  /** 아직 구현 전 — '준비 중' 배지 + 안내 (사전 키) */
+  soonKey?: string;
 }
 
 const ENTRIES: MenuEntry[] = [
-  { id: 'settings', icon: '⚙', label: '개인 설정', soon: '언어(한국어·English)·기본 저장 위치 등 — 다국어(B10) 단계에서 열립니다.' },
+  // 개인 설정 — 언어 고르기 (B10 i18n, 2026-10-05). 더는 '준비 중' 이 아니다.
+  { id: 'settings', icon: '⚙', labelKey: 'shell.user.settings' },
   // 비밀번호 변경은 **'준비 중'이 아니라 실제로 동작한다** — soon 이 없으면
   // 클릭이 안내가 아니라 기능으로 간다 (2026-08-13 사용자 요청).
-  { id: 'password', icon: '🔑', label: '비밀번호 변경' },
+  { id: 'password', icon: '🔑', labelKey: 'shell.user.password' },
   // AI 설정 — 키(암호화)·우선순위·모델·프롬프트 템플릿, 계정에 저장돼 어디서
   // 로그인하든 따라온다 (2026-09-04 — AI 탭의 '설정' 을 여기로 옮겼다)
-  { id: 'aisettings', icon: '🤖', label: 'AI 설정' },
+  { id: 'aisettings', icon: '🤖', labelKey: 'shell.user.aiSettings' },
   // AI 커넥터(MCP) — Claude·ChatGPT 대화에서 바로 맵을 만드는 연결.
   // 토큰 발급과 **폐기가 한 화면**에 있어야 한다 (mcp-connector.md §3)
-  { id: 'mcp', icon: '🔌', label: 'AI 커넥터(MCP)' },
+  { id: 'mcp', icon: '🔌', labelKey: 'shell.user.mcp' },
   // 내 로그인 기록 — 남의 것은 볼 수 없다(서버가 토큰 주인만 조회한다)
-  { id: 'logins', icon: '🕘', label: '로그인 기록' },
+  { id: 'logins', icon: '🕘', labelKey: 'shell.user.logins' },
   // 계정 프로필 — 이름·이메일·휴대폰, 이름 수정 (2026-09-08 사용자 요청)
-  { id: 'profile', icon: '👤', label: '계정 프로필' },
-  { id: 'subscription', icon: '💳', label: '구독 상태', soon: '요금제 변경 — Free 10MB · Basic 10GB · Pro 30GB · Team 20GB/사용자. 결제 단계에서 열립니다(현재 요금제와 사용량은 위에 표시됩니다).' },
+  { id: 'profile', icon: '👤', labelKey: 'shell.user.profile' },
+  { id: 'subscription', icon: '💳', labelKey: 'shell.user.subscription', soonKey: 'shell.user.subscriptionSoon' },
 ];
 
 /** 요금제 이름 — 용량 숫자는 서버가 준다(여기 적어 두면 어긋난다) */
@@ -65,6 +71,7 @@ interface QuotaInfo {
   plan?: string;
 }
 
+
 function fmtBytes(b: number): string {
   const gb = b / 1024 ** 3;
   if (gb >= 1) return `${Math.round(gb * 100) / 100}GB`;
@@ -74,6 +81,7 @@ function fmtBytes(b: number): string {
 }
 
 export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string) => void }) {
+  const tr = useTr();
   const [open, setOpen] = useState(false);
   const [soon, setSoon] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -92,6 +100,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const myPhone = formatPhone(profile?.phoneCountry, profile?.phoneNumber);
   /** 계정 프로필 창 (2026-09-08) */
   const [profileOpen, setProfileOpen] = useState(false);
+  /** 개인 설정 창 — 언어 (B10 i18n, 2026-10-05) */
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 저장 용량 (B9) — 메뉴를 열 때마다 조회. DB(문서)+첨부 합산 / 한도.
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
@@ -166,8 +176,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const entries = salesOn
     ? ENTRIES.flatMap<MenuEntry>((e) => (e.id === 'subscription'
       ? [
-        { id: 'purchases', icon: '🧾', label: '내 구매' },
-        { id: 'sales', icon: '💰', label: '판매·정산' },
+        { id: 'purchases', icon: '🧾', labelKey: 'shell.user.purchases' },
+        { id: 'sales', icon: '💰', labelKey: 'shell.user.sales' },
         e,
       ]
       : [e]))
@@ -188,12 +198,12 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
     if (isGuest) {
       // Guest 종료 → 로그인/가입 화면. 초안 삭제는 exitGuest 안에서 한다.
       useAuthStore.getState().exitGuest();
-      onFlash?.('로그아웃했습니다.');
+      onFlash?.(tr('shell.user.loggedOut'));
       return;
     }
     void useAuthStore.getState().signOut().then(() => {
       useCloudStore.getState().unlink();
-      onFlash?.('로그아웃했습니다.');
+      onFlash?.(tr('shell.user.loggedOut'));
     });
   };
 
@@ -220,6 +230,10 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
   const [delText, setDelText] = useState('');
   const [delBusy, setDelBusy] = useState(false);
   const [delErr, setDelErr] = useState<string | null>(null);
+  // 확인 문구 — 한국어 화면은 서버가 준 문구, 그 밖의 언어는 'DELETE'
+  // (서버가 둘 다 받는다 · account.service.ts DELETE_CONFIRM_PHRASES)
+  const lang = useLang();
+  const phrase = del ? (lang === 'ko' ? del.confirmPhrase : 'DELETE') : '';
 
   const openDelete = () => {
     setOpen(false);
@@ -229,6 +243,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
     cloudApi.deletePreview()
       .then((p) => setDel(p))
       .catch(() => setDel({
+        // 확인 문구는 서버가 검사하는 값(데이터)이라 번역하지 않는다
         maps: -1, attachments: -1, usedBytes: -1, confirmPhrase: '회원탈퇴',
         collabMaps: [], blocked: false,
       }));
@@ -243,17 +258,16 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
         useCloudStore.getState().unlink();
         // 계정이 사라졌으니 이 브라우저의 세션·초안도 함께 정리한다
         return useAuthStore.getState().signOut().then(() => {
-          const base =
-            `회원탈퇴가 완료되었습니다 — 맵 ${r.maps}개 · 첨부 ${r.attachments}개를 삭제했습니다.`;
+          const base = tr('shell.user.deleteDone', { maps: r.maps, attachments: r.attachments });
           // 로그인 계정이 남았으면 **숨기지 않는다.** 사용자는 그 사실을
           // 재가입을 시도할 때가 아니라 지금 알아야 한다.
           onFlash?.(r.loginAccountRemoved
             ? base
-            : `${base} 다만 로그인 계정 삭제가 끝나지 않아 같은 이메일로 다시 가입하지 못할 수 있습니다 — 관리자에게 문의해 주세요.`);
+            : tr('shell.user.deleteLoginLeft', { base }));
         });
       })
       .catch((e: unknown) => {
-        setDelErr(e instanceof Error ? e.message : '탈퇴에 실패했습니다.');
+        setDelErr(e instanceof Error ? e.message : tr('shell.user.deleteFailed'));
       })
       .finally(() => setDelBusy(false));
   };
@@ -276,9 +290,9 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
       <button
         data-testid="user-menu"
         title={session
-          ? [myName, session.email !== myName ? session.email : null, myPhone, '계정 메뉴']
+          ? [myName, session.email !== myName ? session.email : null, myPhone, tr('shell.user.menu')]
             .filter(Boolean).join(' — ')
-          : '계정 메뉴'}
+          : tr('shell.user.menu')}
         onClick={() => setOpen((v) => !v)}
         style={{
           width: 30, height: 30, borderRadius: '50%', padding: 0,
@@ -311,7 +325,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}
             >
-              {myName ?? (isGuest ? 'Guest 체험 중' : '로컬 모드')}
+              {myName ?? (isGuest ? tr('shell.user.guestTrial') : tr('shell.user.localMode'))}
             </div>
             {session && profile?.fullName && (
               <div data-testid="user-menu-email" style={{
@@ -323,10 +337,10 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             )}
             <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 2 }}>
               {authEnabled
-                ? (session ? '로그인됨'
-                  : isGuest ? '가입하면 저장·첨부·히스토리를 쓸 수 있습니다'
-                    : '로그인하지 않음')
-                : '서버 인증이 꺼진 개발 모드'}
+                ? (session ? tr('shell.user.signedIn')
+                  : isGuest ? tr('shell.user.guestHint')
+                    : tr('shell.user.notSignedIn'))
+                : tr('shell.user.devMode')}
             </div>
           </div>
 
@@ -343,7 +357,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 fontSize: 10.5, color: t.textMuted, marginBottom: 4,
               }}>
                 <span>
-                  저장 용량 (문서+첨부)
+                  {tr('shell.user.storage')}
                   {/* **어느 요금제의 한도인지 함께 보여 준다** — 숫자만
                       보면 "왜 10MB 인가"를 알 수 없다 (2026-08-06) */}
                   {quota.plan && (
@@ -367,7 +381,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 }} />
               </div>
               <div style={{ fontSize: 9.5, color: t.textSubtle, marginTop: 4 }}>
-                문서 {fmtBytes(quota.dbBytes)} · 첨부 {fmtBytes(quota.fileBytes)}
+                {tr('shell.user.storageBreakdown', { doc: fmtBytes(quota.dbBytes), files: fmtBytes(quota.fileBytes) })}
               </div>
             </div>
           )}
@@ -378,8 +392,9 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             <button
               key={e.id}
               data-testid={`user-menu-${e.id}`}
-              title={e.soon ?? e.label}
+              title={e.soonKey ? tr(e.soonKey) : tr(e.labelKey)}
               onClick={() => {
+                if (e.id === 'settings') { setOpen(false); setSettingsOpen(true); return; }
                 if (e.id === 'password') { setOpen(false); setPwOpen(true); return; }
                 if (e.id === 'aisettings') { setOpen(false); setAiSettingsOpen(true); return; }
                 if (e.id === 'mcp') { setOpen(false); setMcpOpen(true); return; }
@@ -399,12 +414,12 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               onMouseLeave={(ev) => { ev.currentTarget.style.background = 'transparent'; }}
             >
               <span style={{ width: 16, textAlign: 'center' }}>{e.icon}</span>
-              <span style={{ flex: 1 }}>{e.label}</span>
-              {e.soon && (
+              <span style={{ flex: 1 }}>{tr(e.labelKey)}</span>
+              {e.soonKey && (
                 <span style={{
                   fontSize: 9.5, fontWeight: 600, color: t.textSubtle,
                   border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 6px',
-                }}>준비 중</span>
+                }}>{tr('common.comingSoon')}</span>
               )}
             </button>
           ))}
@@ -418,7 +433,10 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 fontSize: 11, color: t.textMuted, lineHeight: 1.55,
               }}
             >
-              {ENTRIES.find((e) => e.id === soon)?.soon}
+              {(() => {
+                const k = ENTRIES.find((e) => e.id === soon)?.soonKey;
+                return k ? tr(k) : null;
+              })()}
             </div>
           )}
 
@@ -440,7 +458,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 onMouseLeave={(ev) => { ev.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ width: 16, textAlign: 'center' }}>🚪</span>
-                <span style={{ flex: 1 }}>로그아웃</span>
+                <span style={{ flex: 1 }}>{tr('shell.user.logout')}</span>
               </button>
             </>
           )}
@@ -461,7 +479,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 onMouseLeave={(ev) => { ev.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ width: 16, textAlign: 'center' }}>🚪</span>
-                <span style={{ flex: 1 }}>로그아웃</span>
+                <span style={{ flex: 1 }}>{tr('shell.user.logout')}</span>
               </button>
               {/* 회원탈퇴는 **계정 프로필 창 맨 아래**로 옮겼다 (2026-09-08 사용자
                   요청 — 로그아웃 바로 밑에 있어 잘못 누를 수 있었다). */}
@@ -479,11 +497,10 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           width="min(460px, 92vw)"
           closeDisabled={delBusy}
           onClose={() => setDel(null)}
-          title={<span style={{ color: t.danger }}>⚠ 회원탈퇴 — 되돌릴 수 없습니다</span>}
+          title={<span style={{ color: t.danger }}>{tr('shell.user.deleteTitle')}</span>}
         >
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7 }}>
-              <b>{session?.email}</b> 계정과 서버에 저장된 자료가 <b>모두 삭제</b>됩니다.
-              삭제한 뒤에는 복구할 방법이 없습니다.
+              {rich(tr('shell.user.deleteIntro', { email: session?.email ?? '' }))}
             </div>
 
             <div
@@ -494,12 +511,12 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 fontSize: 12, lineHeight: 1.9,
               }}
             >
-              <div>맵 <b>{del.maps < 0 ? '—' : `${del.maps}개`}</b> (히스토리 포함)</div>
-              <div>첨부 <b>{del.attachments < 0 ? '—' : `${del.attachments}개`}</b>
+              <div>{rich(tr('shell.user.deleteMaps', { n: del.maps < 0 ? '—' : tr('shell.user.countItems', { n: del.maps }) }))}</div>
+              <div>{rich(tr('shell.user.deleteAttach', { n: del.attachments < 0 ? '—' : tr('shell.user.countItems', { n: del.attachments }) }))}
                 {del.usedBytes >= 0 && <> · <b>{fmtBytes(del.usedBytes)}</b></>}
               </div>
               <div style={{ color: t.textSubtle, fontSize: 11 }}>
-                이 브라우저에 남은 임시 초안도 함께 지워집니다.
+                {tr('shell.user.deleteDraftsToo')}
               </div>
             </div>
 
@@ -518,11 +535,10 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 }}
               >
                 <div style={{ fontWeight: 700, color: t.danger }}>
-                  함께 쓰는 맵 {del.collabMaps.length}개의 개설자라 아직 탈퇴할 수 없습니다.
+                  {tr('shell.user.blockedTitle', { n: del.collabMaps.length })}
                 </div>
                 <div style={{ color: t.textMuted, fontSize: 11.5 }}>
-                  탈퇴하면 참여자의 작업도 함께 사라집니다. 먼저 그 맵을 삭제하거나
-                  소유권을 넘겨 주세요.
+                  {tr('shell.user.blockedBody')}
                 </div>
                 {del.collabMaps.map((m) => (
                   <div key={m.mapId} data-testid="delete-account-blocked-map"
@@ -530,7 +546,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       · {m.title}
                       <span style={{ color: t.textSubtle, fontSize: 11 }}>
-                        {' '}(참여자 {m.memberCount === null ? '수 알 수 없음' : `${m.memberCount}명`})
+                        {' '}{m.memberCount === null ? tr('shell.user.membersUnknown') : tr('shell.user.members', { n: m.memberCount })}
                       </span>
                     </span>
                     <button
@@ -541,21 +557,21 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                         border: `1px solid ${t.border}`, background: t.surface, color: t.text,
                         fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
                       }}
-                    >공유 설정</button>
+                    >{tr('shell.user.shareSettings')}</button>
                   </div>
                 ))}
               </div>
             )}
 
             <div style={{ fontSize: 12, marginBottom: 6 }}>
-              계속하려면 <b style={{ color: t.danger }}>{del.confirmPhrase}</b> 를 입력하세요.
+              {rich(tr('shell.user.confirmPrompt', { phrase }), undefined, { color: t.danger })}
             </div>
             <input
               data-testid="delete-account-confirm"
               value={delText}
               autoFocus
               onChange={(e) => { setDelText(e.target.value); setDelErr(null); }}
-              placeholder={del.confirmPhrase}
+              placeholder={phrase}
               style={{
                 width: '100%', height: 36, borderRadius: 7, padding: '0 10px',
                 border: `1px solid ${t.border}`, background: t.surfaceAlt,
@@ -579,21 +595,21 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                   cursor: delBusy ? 'default' : 'pointer',
                   background: t.primary, color: '#fff', fontSize: 13, fontWeight: 700,
                 }}
-              >취소 — 계정을 유지합니다</button>
+              >{tr('shell.user.deleteCancel')}</button>
               <button
                 data-testid="delete-account-submit"
                 onClick={doDelete}
-                disabled={delBusy || del.blocked || delText.trim() !== del.confirmPhrase}
+                disabled={delBusy || del.blocked || delText.trim() !== phrase}
                 style={{
                   height: 34, borderRadius: 7,
-                  cursor: delText.trim() === del.confirmPhrase && !delBusy ? 'pointer' : 'default',
+                  cursor: delText.trim() === phrase && !delBusy ? 'pointer' : 'default',
                   border: `1px solid ${t.border}`,
                   background: t.surfaceAlt,
-                  color: delText.trim() === del.confirmPhrase ? t.danger : t.textSubtle,
+                  color: delText.trim() === phrase ? t.danger : t.textSubtle,
                   fontSize: 12.5, fontWeight: 700,
-                  opacity: delText.trim() === del.confirmPhrase && !delBusy ? 1 : 0.6,
+                  opacity: delText.trim() === phrase && !delBusy ? 1 : 0.6,
                 }}
-              >{delBusy ? '삭제하는 중…' : del.blocked ? '협업맵을 먼저 정리해 주세요' : '탈퇴하고 모든 자료 삭제'}</button>
+              >{delBusy ? tr('shell.user.deleting') : del.blocked ? tr('shell.user.deleteBlockedBtn') : tr('shell.user.deleteSubmit')}</button>
             </div>
         </DialogFrame>
       )}
@@ -619,8 +635,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           testId="mcp-dialog"
           width="min(560px, 94vw)"
           onClose={() => setMcpOpen(false)}
-          title="🔌 AI 커넥터(MCP)"
-          subtitle="AI 대화에서 바로 이 문서함에 맵을 만듭니다."
+          title={`🔌 ${tr('shell.user.mcp')}`}
+          subtitle={tr('shell.user.mcpSubtitle')}
           footer={<DialogCloseButton t={t} onClick={() => setMcpOpen(false)} testId="mcp-close" />}
         >
             <McpTokensView t={t} />
@@ -636,8 +652,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           testId="purchases-dialog"
           width="min(560px, 94vw)"
           onClose={() => setBuysOpen(false)}
-          title="🧾 내 구매"
-          subtitle="산 맵을 언제든 다시 받습니다 — 사진·첨부까지 함께."
+          title={`🧾 ${tr('shell.user.purchases')}`}
+          subtitle={tr('shell.user.purchasesSubtitle')}
           footer={<DialogCloseButton t={t} onClick={() => setBuysOpen(false)} testId="purchases-close" />}
         >
             <ProPurchasesPanel t={t} />
@@ -652,8 +668,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           testId="sales-dialog"
           width="min(580px, 94vw)"
           onClose={() => setSalesOpen(false)}
-          title="💰 판매·정산"
-          subtitle="정산받을 계좌 · 무엇이 팔렸나 · 언제 얼마가 나가나"
+          title={`💰 ${tr('shell.user.sales')}`}
+          subtitle={tr('shell.user.salesSubtitle')}
           footer={<DialogCloseButton t={t} onClick={() => setSalesOpen(false)} testId="sales-close" />}
         >
             <ProSalesPanel t={t} />
@@ -667,8 +683,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           testId="logins-dialog"
           width="min(520px, 94vw)"
           onClose={() => setLogOpen(false)}
-          title="🕘 내 로그인 기록"
-          subtitle={<>{session?.email} — 모르는 접속이 있으면 비밀번호를 바꿔 주세요.</>}
+          title={`🕘 ${tr('shell.user.loginsTitle')}`}
+          subtitle={tr('shell.user.loginsSubtitle', { email: session?.email ?? '' })}
           footer={<DialogCloseButton t={t} onClick={() => setLogOpen(false)} testId="logins-close" />}
         >
             <LoginHistoryList t={t} data={logs} compact />
@@ -682,7 +698,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           testId="profile-dialog"
           width="min(430px, 92vw)"
           onClose={() => setProfileOpen(false)}
-          title="👤 계정 프로필"
+          title={`👤 ${tr('shell.user.profile')}`}
           footer={<DialogCloseButton t={t} onClick={() => setProfileOpen(false)} testId="profile-close" />}
         >
             <AccountProfileForm
@@ -693,6 +709,25 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
         </DialogFrame>
       )}
 
+      {/* 개인 설정 — 화면 언어 (B10 i18n, 2026-10-05). 고르는 즉시 바뀌고
+          이 브라우저에 기억된다(localStorage `emm.lang`). */}
+      {settingsOpen && (
+        <DialogFrame
+          t={t}
+          testId="settings-dialog"
+          width="min(430px, 92vw)"
+          onClose={() => setSettingsOpen(false)}
+          title={`⚙ ${tr('shell.user.settings')}`}
+          subtitle={tr('shell.user.settingsSubtitle')}
+          footer={<DialogCloseButton t={t} onClick={() => setSettingsOpen(false)} testId="settings-close" />}
+        >
+            <LanguagePicker t={t} />
+            <div style={{ fontSize: 11.5, color: t.textMuted, lineHeight: 1.6, marginTop: 8 }}>
+              {tr('common.languageHint')}
+            </div>
+        </DialogFrame>
+      )}
+
       {/* 비밀번호 변경 — 관리자 콘솔과 **같은 폼**을 쓴다 */}
       {pwOpen && (
         <DialogFrame
@@ -700,7 +735,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           testId="password-dialog"
           width="min(430px, 92vw)"
           onClose={() => setPwOpen(false)}
-          title="🔑 비밀번호 변경"
+          title={`🔑 ${tr('shell.user.password')}`}
           footer={<DialogCloseButton t={t} onClick={() => setPwOpen(false)} testId="password-close" />}
         >
             <ChangePasswordForm t={t} email={session?.email ?? ''} />
@@ -713,8 +748,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           testId="ai-settings-dialog"
           width="min(560px, 94vw)"
           onClose={() => setAiSettingsOpen(false)}
-          title="🤖 AI 설정"
-          subtitle="API 키 · 사용 우선순위 · 모델 · mmd 프롬프트 템플릿 — 계정에 저장되어 다른 PC·브라우저에서 로그인해도 따라옵니다."
+          title={`🤖 ${tr('shell.user.aiSettings')}`}
+          subtitle={tr('shell.user.aiSettingsSubtitle')}
           footer={<DialogCloseButton t={t} onClick={() => setAiSettingsOpen(false)} testId="ai-settings-close" />}
         >
             <AiSettingsView t={t} />
@@ -740,15 +775,12 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
             }}
           >
             <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6 }}>
-              ⚠ 저장되지 않은 편집이 있습니다
+              {tr('shell.user.unsavedDraftsTitle')}
             </div>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7, marginBottom: 16 }}>
-              아직 서버에 저장되지 않은 맵이 <b>{warnDrafts}개</b> 이 브라우저에
-              남아 있습니다. 로그아웃하면 <b>이 브라우저에서 함께 삭제</b>되어
-              되돌릴 수 없습니다(공용 PC 에서 다음 사람에게 남지 않도록 하는
-              동작입니다).
+              {rich(tr('shell.user.unsavedDraftsBody', { n: warnDrafts }))}
               <br />
-              계속 쓰시려면 <b>취소</b> 후 ☁ 저장을 먼저 하세요.
+              {rich(tr('shell.user.unsavedDraftsHint'))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <button
@@ -758,7 +790,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                   height: 36, borderRadius: 7, border: 'none', cursor: 'pointer',
                   background: t.primary, color: '#fff', fontSize: 13, fontWeight: 700,
                 }}
-              >취소 — 먼저 저장하기</button>
+              >{tr('shell.user.logoutCancel')}</button>
               <button
                 data-testid="logout-anyway"
                 onClick={doLogout}
@@ -767,7 +799,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                   border: `1px solid ${t.border}`, background: t.surfaceAlt,
                   color: t.text, fontSize: 12.5, fontWeight: 600,
                 }}
-              >그대로 로그아웃 (초안 삭제)</button>
+              >{tr('shell.user.logoutAnyway')}</button>
             </div>
           </div>
         </div>

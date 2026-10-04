@@ -7,7 +7,7 @@
 //   키는 계정에 암호화 보관(aiKeysSync), 우선순위·모델·프롬프트 템플릿도
 //   계정에 저장된다 — 프로필 설정인데 브라우저마다 다르면 반쪽이다.
 
-import { useState } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { InspectorSection } from './InspectorSection';
 import { AiKeyInput } from './AiKeyInput';
@@ -17,12 +17,16 @@ import {
   DEFAULT_MODELS, KEY_HELP, KNOWN_MODELS, PROVIDERS, PROVIDER_LABELS,
   listGeminiModels, type AiProvider,
 } from '@/utils/aiProviders';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
+
 
 // ---------------------------------------------------------------------------
 // 설정 뷰 — API 키·모델 + 시스템 프롬프트(EMM 템플릿)
 // ---------------------------------------------------------------------------
 
 export function AiSettingsView({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   const keys = useAiSettingsStore((s) => s.keys);
   const models = useAiSettingsStore((s) => s.models);
   const priority = useAiSettingsStore((s) => s.priority);
@@ -36,11 +40,9 @@ export function AiSettingsView({ t }: { t: ThemeTokens }) {
 
   return (
     <div>
-      <InspectorSection t={t} title="사용 우선순위">
+      <InspectorSection t={t} title={tr('inspector.aiSet.priority')}>
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 8, lineHeight: 1.5 }}>
-          키를 여러 개 등록했을 때 어떤 AI를 먼저 쓸지의 순서입니다 —
-          생성 화면의 <b>'자동'</b>은 이 순서에서 키가 등록된 첫 회사를
-          사용합니다.
+          {rich(tr('inspector.aiSet.priorityHelp'), { auto: <b>{tr('inspector.aiSet.autoQuoted')}</b> })}
         </div>
         {priority.map((p, i) => (
           <div key={p} data-ai-priority={p} style={{
@@ -57,27 +59,27 @@ export function AiSettingsView({ t }: { t: ThemeTokens }) {
             <span style={{ flex: 1, fontSize: 11.5, fontWeight: 600, color: t.text }}>
               {PROVIDER_LABELS[p]}
               {!keys[p]?.trim() && (
-                <span style={{ color: t.textSubtle, fontWeight: 400 }}> — 키 미등록</span>
+                <span style={{ color: t.textSubtle, fontWeight: 400 }}>{tr('inspector.ai.noKeySuffix')}</span>
               )}
             </span>
             <button
               onClick={() => movePriority(p, -1)}
               disabled={i === 0}
-              title="우선순위 올리기"
+              title={tr('inspector.aiSet.up')}
               data-ai-priority-up={p}
               style={priorityBtnStyle(t, i === 0)}
             >▲</button>
             <button
               onClick={() => movePriority(p, 1)}
               disabled={i === priority.length - 1}
-              title="우선순위 내리기"
+              title={tr('inspector.aiSet.down')}
               style={priorityBtnStyle(t, i === priority.length - 1)}
             >▼</button>
           </div>
         ))}
       </InspectorSection>
 
-      <InspectorSection t={t} title="API 키 등록">
+      <InspectorSection t={t} title={tr('inspector.aiSet.keys')}>
         {/* 어디에 보관되는지는 서버 상태가 정한다 — 계정(암호화) / 브라우저만.
             입력칸은 계정 메뉴의 'AI API 키' 와 같은 컴포넌트다 (2026-09-04) */}
         <div data-ai-key-notice style={{
@@ -99,11 +101,9 @@ export function AiSettingsView({ t }: { t: ThemeTokens }) {
         ))}
       </InspectorSection>
 
-      <InspectorSection t={t} title="mmd 프롬프트 템플릿 (시스템 프롬프트)">
+      <InspectorSection t={t} title={tr('inspector.aiSet.template')}>
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 6, lineHeight: 1.5 }}>
-          질문할 때 <b>항상 기본으로</b> AI에게 함께 전달되는 규칙입니다 —
-          답변이 그대로 맵으로 변환되게 합니다. 필요하면 수정할 수
-          있습니다 (docs/04-extensions/ai/emm-prompt-templates.md 참조).
+          {rich(tr('inspector.aiSet.templateHelp'), { always: <b>{tr('inspector.aiSet.always')}</b> })}
         </div>
         <textarea
           value={systemPrompt}
@@ -120,7 +120,7 @@ export function AiSettingsView({ t }: { t: ThemeTokens }) {
           }} />
         <button
           onClick={() => {
-            if (window.confirm('시스템 프롬프트를 기본 mmd 템플릿으로 되돌릴까요?')) {
+            if (window.confirm(tr('inspector.aiSet.resetConfirm'))) {
               resetSystemPrompt();
             }
           }}
@@ -128,7 +128,7 @@ export function AiSettingsView({ t }: { t: ThemeTokens }) {
             marginTop: 6, padding: '6px 12px', borderRadius: 6,
             border: `1px solid ${t.border}`, background: t.surface,
             color: t.textMuted, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
-          }}>기본 템플릿 복원</button>
+          }}>{tr('inspector.aiSet.reset')}</button>
       </InspectorSection>
     </div>
   );
@@ -146,6 +146,7 @@ function ModelPicker({
   value: string;
   onChange: (m: string) => void;
 }) {
+  const tr = useTr();
   const [fetched, setFetched] = useState<string[] | null>(null);
   const [fetchMsg, setFetchMsg] = useState('');
   const known = fetched ?? KNOWN_MODELS[p];
@@ -165,7 +166,7 @@ function ModelPicker({
             onChange(e.target.value);
           }
         }}
-        title="사용할 모델 — 목록에 없는 새 모델은 '직접 입력'"
+        title={tr('inspector.aiSet.modelTitle')}
         style={{
           width: '100%', padding: '5px 8px', borderRadius: 6,
           border: `1px solid ${t.border}`,
@@ -175,23 +176,23 @@ function ModelPicker({
       >
         {known.map((m) => (
           <option key={m} value={m}>
-            {m}{m === DEFAULT_MODELS[p] ? ' (기본)' : ''}
+            {m}{m === DEFAULT_MODELS[p] ? tr('inspector.style.alignDefault') : ''}
           </option>
         ))}
-        <option value="__custom__">직접 입력…</option>
+        <option value="__custom__">{tr('inspector.aiSet.custom')}</option>
       </select>
       {p === 'gemini' && (
         <>
           <button
             data-ai-model-refresh="gemini"
-            title="등록한 Gemini 키로 지금 실제 호출 가능한 모델 목록을 조회합니다 — 구글이 구형 모델을 없애 404가 날 때 여기서 현재 모델을 고르세요"
+            title={tr('inspector.aiSet.refreshTitle')}
             onClick={() => {
               const key = useAiSettingsStore.getState().keys.gemini;
-              setFetchMsg('불러오는 중…');
+              setFetchMsg(tr('common.loading'));
               void listGeminiModels(key)
                 .then((list) => {
                   setFetched(list);
-                  setFetchMsg(`이 키로 사용 가능한 모델 ${list.length}개`);
+                  setFetchMsg(tr('inspector.aiSet.modelsFound', { n: list.length }));
                 })
                 .catch((e: Error) => setFetchMsg(e.message || String(e)));
             }}
@@ -201,7 +202,7 @@ function ModelPicker({
               color: t.textMuted, fontSize: 10.5, fontWeight: 600,
               cursor: 'pointer',
             }}
-          >↻ 지금 키로 사용 가능한 모델 불러오기</button>
+          >{tr('inspector.aiSet.refresh')}</button>
           {fetchMsg && (
             <div data-ai-model-refresh-msg style={{
               fontSize: 10, color: t.textSubtle, marginTop: 3, lineHeight: 1.4,
@@ -214,7 +215,7 @@ function ModelPicker({
           value={value}
           data-ai-model={p}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={`모델 이름 (예: ${DEFAULT_MODELS[p]})`}
+          placeholder={tr('inspector.aiSet.modelPlaceholder', { model: DEFAULT_MODELS[p] })}
           style={{
             width: '100%', boxSizing: 'border-box', padding: '5px 9px',
             marginTop: 4,
@@ -229,6 +230,7 @@ function ModelPicker({
 
 // API 키 발급 방법 도움말 — 접었다 펴는 단계 안내 (IT 초보자용)
 function KeyHelp({ t, p }: { t: ThemeTokens; p: AiProvider }) {
+  const tr = useTr();
   const [open, setOpen] = useState(false);
   const help = KEY_HELP[p];
   return (
@@ -242,7 +244,7 @@ function KeyHelp({ t, p }: { t: ThemeTokens; p: AiProvider }) {
           color: t.textMuted, fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
         }}
       >
-        {open ? '▾' : '▸'} 키 발급 방법 (처음이신가요?)
+        {open ? '▾' : '▸'} {tr('inspector.aiSet.howToGet')}
       </button>
       {open && (
         <div style={{
@@ -251,7 +253,7 @@ function KeyHelp({ t, p }: { t: ThemeTokens; p: AiProvider }) {
           fontSize: 10.5, color: t.textMuted, lineHeight: 1.6,
         }}>
           <div style={{ marginBottom: 4 }}>
-            발급 페이지:{' '}
+            {tr('inspector.aiSet.issuePage')}{' '}
             <a
               href={help.url}
               target="_blank"
@@ -261,7 +263,7 @@ function KeyHelp({ t, p }: { t: ThemeTokens; p: AiProvider }) {
           </div>
           <ol style={{ margin: 0, paddingLeft: 16 }}>
             {help.steps.map((s2, i) => (
-              <li key={i} style={{ marginBottom: 2 }}>{s2}</li>
+              <li key={i} style={{ marginBottom: 2 }}>{tr(s2)}</li>
             ))}
           </ol>
         </div>

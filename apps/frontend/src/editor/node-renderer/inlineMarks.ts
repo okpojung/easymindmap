@@ -10,6 +10,8 @@
 // 파서 규칙: 마커는 토글 — 닫는 짝이 없으면 줄 끝까지 적용된다.
 // 스타일 탭의 노드 전체 강조(굵게·기울임·취소선·하이라이트)와 결합된다.
 
+import { tr as trNow } from '@/i18n';
+
 export interface InlineSeg {
   text: string;
   b?: boolean; // 굵게
@@ -175,7 +177,8 @@ export function insertCodeBlock(
   const after = value.slice(e0);
   const nlB = before && !before.endsWith('\n') ? '\n' : '';
   const nlA = after && !after.startsWith('\n') ? '\n' : '';
-  const inner = sel || '코드';
+  // 자리표시 글은 넣는 순간의 언어로 (노드 본문에 저장된다)
+  const inner = sel || trNow('editor.code.placeholderText');
   const block = `${nlB}\`\`\`\n${inner}\n\`\`\`${nlA}`;
   const start = s0 + nlB.length + 4; // ```\n 다음
   return {

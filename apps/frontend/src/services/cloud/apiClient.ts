@@ -5,6 +5,7 @@
 //   (개발 모드)이면 헤더 없이 호출 — 백엔드 AUTH_MODE=dev 가 처리.
 import { authEnabled, getFreshAccessToken } from '@/stores/authStore';
 import { getClientInfo } from '@/utils/clientInfo';
+import { tr } from '@/i18n';
 import type { LoginHistory } from '@/components/auth/LoginHistoryList';
 
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -32,7 +33,7 @@ async function req<T>(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (authEnabled && !anon) {
     const token = await getFreshAccessToken();
-    if (!token) throw new CloudError(401, '로그인이 필요합니다.');
+    if (!token) throw new CloudError(401, tr('cloud.err.loginRequired'));
     headers.Authorization = `Bearer ${token}`;
   }
   let res: Response;
@@ -48,17 +49,17 @@ async function req<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new CloudError(0, '서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.');
+    throw new CloudError(0, tr('cloud.err.unreachable'));
   }
   if (!res.ok) {
-    let msg = `요청 실패 (${res.status})`;
+    let msg = tr('cloud.err.requestFailed', { status: res.status });
     let code: string | undefined;
     try {
       const j = await res.json();
       msg = j.message || j.error || msg;
       if (typeof j.code === 'string') code = j.code;
     } catch { /* 본문 없음 */ }
-    if (res.status === 401 && authEnabled) msg = '세션이 만료되었습니다. 다시 로그인해 주세요.';
+    if (res.status === 401 && authEnabled) msg = tr('cloud.err.sessionExpired');
     throw new CloudError(res.status, msg, code);
   }
   if (res.status === 204) return undefined as T;
@@ -77,17 +78,17 @@ async function reqForm<T>(method: string, path: string, form: FormData): Promise
   const headers: Record<string, string> = {};
   if (authEnabled) {
     const token = await getFreshAccessToken();
-    if (!token) throw new CloudError(401, '로그인이 필요합니다.');
+    if (!token) throw new CloudError(401, tr('cloud.err.loginRequired'));
     headers.Authorization = `Bearer ${token}`;
   }
   let res: Response;
   try {
     res = await fetch(`${BASE}/v1${path}`, { method, headers, body: form });
   } catch {
-    throw new CloudError(0, '서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.');
+    throw new CloudError(0, tr('cloud.err.unreachable'));
   }
   if (!res.ok) {
-    let msg = `업로드 실패 (${res.status})`;
+    let msg = tr('cloud.err.uploadFailed', { status: res.status });
     try { msg = (await res.json()).message || msg; } catch { /* 본문 없음 */ }
     throw new CloudError(res.status, msg);
   }
@@ -316,10 +317,11 @@ function qs(q: MapListQuery = {}): string {
  */
 export type PublishVisibility = 'private' | 'public' | 'paid';
 
+// 읽는 순간의 언어로 — getter 라 언어를 바꾸면 따라온다
 export const VISIBILITY_LABEL: Record<PublishVisibility, string> = {
-  private: '비공개(보관)',
-  public: '링크 공개',
-  paid: '유료공개',
+  get private() { return tr('cloud.visibility.private'); },
+  get public() { return tr('cloud.visibility.public'); },
+  get paid() { return tr('cloud.visibility.paid'); },
 };
 
 /** 퍼블리싱 상태 (PUBL). available:false = 이 서버에 퍼블리싱 기능이 없다 */
@@ -681,7 +683,7 @@ export const cloudApi = {
     const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' };
     if (authEnabled) {
       const token = await getFreshAccessToken();
-      if (!token) throw new CloudError(401, '로그인이 필요합니다.');
+      if (!token) throw new CloudError(401, tr('cloud.err.loginRequired'));
       headers.Authorization = `Bearer ${token}`;
     }
     const { signal, onBytes } = opts;
@@ -708,7 +710,7 @@ export const cloudApi = {
       xhr.onabort = () => { done(); reject(new DOMException('aborted', 'AbortError')); };
       xhr.onerror = () => {
         done();
-        reject(new CloudError(0, '서버에 연결할 수 없습니다. 백엔드가 켜져 있는지 확인하세요.'));
+        reject(new CloudError(0, tr('cloud.err.unreachable')));
       };
       xhr.onload = () => {
         done();
@@ -718,7 +720,7 @@ export const cloudApi = {
           } catch { resolve({ received: 0, parts: 0 }); }
           return;
         }
-        let msg = `조각 전송 실패 (${xhr.status})`;
+        let msg = tr('cloud.err.partFailed', { status: xhr.status });
         try { msg = JSON.parse(xhr.responseText).message || msg; } catch { /* 본문 없음 */ }
         reject(new CloudError(xhr.status, msg));
       };
@@ -781,13 +783,13 @@ export const cloudApi = {
     const headers: Record<string, string> = {};
     if (authEnabled) {
       const token = await getFreshAccessToken();
-      if (!token) throw new CloudError(401, '로그인이 필요합니다.');
+      if (!token) throw new CloudError(401, tr('cloud.err.loginRequired'));
       headers.Authorization = `Bearer ${token}`;
     }
     const res = await fetch(`${BASE}/v1/maps/${mapId}/publish/preview`, {
       headers, cache: 'no-store',
     });
-    if (!res.ok) throw new CloudError(res.status, '미리보기를 받지 못했습니다.');
+    if (!res.ok) throw new CloudError(res.status, tr('cloud.err.previewFailed'));
     return res.blob();
   },
   /**

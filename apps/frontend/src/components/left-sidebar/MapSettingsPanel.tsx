@@ -17,75 +17,79 @@ import { useDocumentStore } from '@/stores/documentStore';
 import {
   LEVEL_FONT_DEFAULT_SIZES,
 } from '@/editor/node-renderer/sizeNodeForText';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 // 레벨 표기 = 중심 주제가 1레벨 (내부 depth 0=중심 → 표시 레벨 = depth+1)
-const LEVEL_LABELS = ['1레벨 (중심)', '2레벨', '3레벨', '4레벨', '5레벨+'];
+// (화면 글자는 사전 키 — 그릴 때 tr() 로 바꾼다)
+const LEVEL_LABELS = ['panel.settings.level1', 'panel.settings.level2', 'panel.settings.level3', 'panel.settings.level4', 'panel.settings.level5'];
 const LEVEL_WEIGHTS = [700, 600, 500, 500, 500];
 
 const FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 26, 28];
 
 // 글꼴 목록 — value에 CSS font-family 문자열을 그대로 저장한다.
 // [서버 연결 예정] 코드 언어 목록처럼 시스템 관리자 카탈로그로 이관 예정.
-const FONT_FAMILIES: { label: string; css: string }[] = [
-  { label: '기본 (시스템)', css: '' },
-  { label: '맑은 고딕', css: '"Malgun Gothic", "맑은 고딕", sans-serif' },
-  { label: '나눔고딕', css: '"NanumGothic", "나눔고딕", "Malgun Gothic", sans-serif' },
-  { label: '본고딕 (Noto Sans KR)', css: '"Noto Sans KR", "Malgun Gothic", sans-serif' },
-  { label: '명조 (바탕/세리프)', css: '"Nanum Myeongjo", Batang, "바탕", serif' },
-  { label: '고정폭 (코드)', css: 'ui-monospace, Consolas, "Nanum Gothic Coding", monospace' },
+const FONT_FAMILIES: { labelKey: string; css: string }[] = [
+  { labelKey: 'panel.settings.font.system', css: '' },
+  { labelKey: 'panel.settings.font.malgun', css: '"Malgun Gothic", "맑은 고딕", sans-serif' },
+  { labelKey: 'panel.settings.font.nanum', css: '"NanumGothic", "나눔고딕", "Malgun Gothic", sans-serif' },
+  { labelKey: 'panel.settings.font.noto', css: '"Noto Sans KR", "Malgun Gothic", sans-serif' },
+  { labelKey: 'panel.settings.font.serif', css: '"Nanum Myeongjo", Batang, "바탕", serif' },
+  { labelKey: 'panel.settings.font.mono', css: 'ui-monospace, Consolas, "Nanum Gothic Coding", monospace' },
 ];
 
 // 레벨별 레이아웃 선택지 — 서브트리에 적용 가능한 레이아웃만
 // (방사형·양쪽 / 트리·아래 / Kanban / 자유배치는 루트 전용이라 제외.
 //  레이아웃 탭의 rootOnly 규칙과 동일 — 08-layout.md §6.3.1)
-const LEVEL_LAYOUTS: { key: LayoutType | ''; label: string }[] = [
-  { key: '',                    label: '기본 (상위 따름)' },
-  { key: 'radial-right' as LayoutType,       label: '방사형 · 오른쪽' },
-  { key: 'tree-right' as LayoutType,         label: '트리 · 오른쪽' },
-  { key: 'hierarchy-right' as LayoutType,    label: '계층형 · 오른쪽' },
-  { key: 'process-tree-right' as LayoutType, label: '진행트리 · 오른쪽' },
+const LEVEL_LAYOUTS: { key: LayoutType | ''; labelKey: string }[] = [
+  { key: '',                    labelKey: 'panel.settings.layout.inherit' },
+  { key: 'radial-right' as LayoutType,       labelKey: 'panel.settings.layout.radialRight' },
+  { key: 'tree-right' as LayoutType,         labelKey: 'panel.settings.layout.treeRight' },
+  { key: 'hierarchy-right' as LayoutType,    labelKey: 'panel.settings.layout.hierarchyRight' },
+  { key: 'process-tree-right' as LayoutType, labelKey: 'panel.settings.layout.processTreeRight' },
 ];
 
-const LAYOUT_LEVEL_LABELS = ['2레벨', '3레벨', '4레벨', '5레벨+'];
+const LAYOUT_LEVEL_LABELS = ['panel.settings.level2', 'panel.settings.level3', 'panel.settings.level4', 'panel.settings.level5'];
 
 // 1레벨(중심) = 맵 전체 레이아웃 — 레이아웃 탭과 동일한 선택지
-const ROOT_LAYOUTS: { key: LayoutType; label: string }[] = [
-  { key: 'radial-bidirectional' as LayoutType, label: '방사형 · 양쪽' },
-  { key: 'radial-right' as LayoutType,         label: '방사형 · 오른쪽' },
-  { key: 'tree-right' as LayoutType,           label: '트리 · 오른쪽' },
-  { key: 'tree-down' as LayoutType,            label: '트리 · 아래' },
-  { key: 'hierarchy-right' as LayoutType,      label: '계층형 · 오른쪽' },
-  { key: 'process-tree-right' as LayoutType,   label: '진행트리 · 오른쪽' },
-  { key: 'timeline' as LayoutType,             label: '시간배치 (타임라인)' },
-  { key: 'timeline-center' as LayoutType,      label: '시간배치 (중앙노드)' },
+const ROOT_LAYOUTS: { key: LayoutType; labelKey: string }[] = [
+  { key: 'radial-bidirectional' as LayoutType, labelKey: 'panel.settings.layout.radialBoth' },
+  { key: 'radial-right' as LayoutType,         labelKey: 'panel.settings.layout.radialRight' },
+  { key: 'tree-right' as LayoutType,           labelKey: 'panel.settings.layout.treeRight' },
+  { key: 'tree-down' as LayoutType,            labelKey: 'panel.settings.layout.treeDown' },
+  { key: 'hierarchy-right' as LayoutType,      labelKey: 'panel.settings.layout.hierarchyRight' },
+  { key: 'process-tree-right' as LayoutType,   labelKey: 'panel.settings.layout.processTreeRight' },
+  { key: 'timeline' as LayoutType,             labelKey: 'panel.settings.layout.timeline' },
+  { key: 'timeline-center' as LayoutType,      labelKey: 'panel.settings.layout.timelineCenter' },
 ];
 
 // 텍스트 맞춤 선택지 — '' = 기본(중앙)
-const ALIGN_OPTIONS: { key: TextAlign | ''; label: string }[] = [
-  { key: '',       label: '맞춤 · 기본(중앙)' },
-  { key: 'left',   label: '왼쪽 맞춤' },
-  { key: 'center', label: '중앙 맞춤' },
-  { key: 'right',  label: '오른쪽 맞춤' },
+const ALIGN_OPTIONS: { key: TextAlign | ''; labelKey: string }[] = [
+  { key: '',       labelKey: 'panel.settings.align.default' },
+  { key: 'left',   labelKey: 'panel.settings.align.left' },
+  { key: 'center', labelKey: 'panel.settings.align.center' },
+  { key: 'right',  labelKey: 'panel.settings.align.right' },
 ];
 
 // 레벨별 도형 선택지 — '' = 기본(둥근)
-const SHAPE_OPTIONS: { key: ShapeType | ''; label: string }[] = [
-  { key: '',              label: '기본 (둥근)' },
-  { key: 'none',          label: '없음 (글자만)' },
-  { key: 'rounded',       label: '둥근' },
-  { key: 'rectangle',     label: '사각' },
-  { key: 'pill',          label: '캡슐' },
-  { key: 'ellipse',       label: '원' },
-  { key: 'hexagon',       label: '육각' },
-  { key: 'diamond',       label: '다이아' },
-  { key: 'parallelogram', label: '평행' },
-  { key: 'arrow-left',    label: '화살◀' },
-  { key: 'arrow-right',   label: '화살▶' },
-  { key: 'cylinder',      label: '원통' },
-  { key: 'star',          label: '별' },
+const SHAPE_OPTIONS: { key: ShapeType | ''; labelKey: string }[] = [
+  { key: '',              labelKey: 'panel.settings.shape.default' },
+  { key: 'none',          labelKey: 'panel.settings.shape.none' },
+  { key: 'rounded',       labelKey: 'panel.settings.shape.rounded' },
+  { key: 'rectangle',     labelKey: 'panel.settings.shape.rectangle' },
+  { key: 'pill',          labelKey: 'panel.settings.shape.pill' },
+  { key: 'ellipse',       labelKey: 'panel.settings.shape.ellipse' },
+  { key: 'hexagon',       labelKey: 'panel.settings.shape.hexagon' },
+  { key: 'diamond',       labelKey: 'panel.settings.shape.diamond' },
+  { key: 'parallelogram', labelKey: 'panel.settings.shape.parallelogram' },
+  { key: 'arrow-left',    labelKey: 'panel.settings.shape.arrowLeft' },
+  { key: 'arrow-right',   labelKey: 'panel.settings.shape.arrowRight' },
+  { key: 'cylinder',      labelKey: 'panel.settings.shape.cylinder' },
+  { key: 'star',          labelKey: 'panel.settings.shape.star' },
 ];
 
 export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   const levelFonts = useDocumentStore((s) => s.map.settings?.levelFonts);
   const levelLayouts = useDocumentStore((s) => s.map.settings?.levelLayouts);
   const updateLevelFont = useDocumentStore((s) => s.updateLevelFont);
@@ -121,11 +125,11 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
       <div style={{
         fontSize: 11, fontWeight: 700, color: t.textSubtle,
         textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6,
-      }}>저장 (개인 설정)</div>
+      }}>{tr('panel.settings.saveHeader')}</div>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
       }}>
-        <span style={{ fontSize: 11.5, color: t.text }}>자동저장 주기</span>
+        <span style={{ fontSize: 11.5, color: t.text }}>{tr('panel.settings.autosaveInterval')}</span>
         <select
           data-testid="autosave-interval"
           value={autosaveIntervalMin}
@@ -133,18 +137,14 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
           style={{ ...selectStyle, marginLeft: 'auto' }}
         >
           {AUTOSAVE_INTERVAL_CHOICES.map((m) => (
-            <option key={m} value={m}>{m}분마다</option>
+            <option key={m} value={m}>{tr('panel.settings.everyNMin', { n: m })}</option>
           ))}
         </select>
       </div>
       <div style={{
         fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5, marginBottom: 14,
       }}>
-        서버 저장은 <b>이 주기</b>와 <b>탭 전환·창 닫기</b>, 그리고 미저장
-        편집이 50개 쌓였을 때 일어납니다. 그 사이 편집은 이 브라우저에
-        보관돼 다음 실행에서 복구할 수 있지만, <b>PC 가 강제 종료되면
-        서버에는 반영되지 않습니다</b> — 중요한 시점에는 ☁ 저장을 눌러
-        주세요(그때만 히스토리 버전이 남습니다).
+        {rich(tr('panel.settings.saveHelp'))}
       </div>
 
       <div style={{
@@ -153,19 +153,18 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
         <div style={{
           fontSize: 11, fontWeight: 700, color: t.textSubtle,
           textTransform: 'uppercase', letterSpacing: 0.5,
-        }}>레벨별 폰트 (맵 전체 설정)</div>
+        }}>{tr('panel.settings.levelFonts')}</div>
         {hasCustom && (
-          <button onClick={resetLevelFonts} title="레벨별 폰트를 기본값으로 되돌립니다"
+          <button onClick={resetLevelFonts} title={tr('panel.settings.resetFontsTip')}
             style={{
               marginLeft: 'auto', fontSize: 10, padding: '2px 7px', borderRadius: 4,
               border: `1px solid ${t.border}`, background: t.surfaceAlt,
               color: t.textMuted, cursor: 'pointer', fontWeight: 600,
-            }}>기본값</button>
+            }}>{tr('panel.settings.resetFonts')}</button>
         )}
       </div>
       <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 10, lineHeight: 1.5 }}>
-        노드 깊이별 기본 글자 크기·글꼴. 변경하면 맵의 모든 노드에 일괄
-        적용되고 레이아웃(노드 크기)도 함께 다시 계산됩니다.
+        {tr('panel.settings.levelFontsHelp')}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -182,47 +181,47 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
             }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 5 }}>
                 <span style={{ fontSize: 10.5, color: t.textMuted, width: 52, fontWeight: 600 }}>
-                  {label}
+                  {tr(label)}
                 </span>
                 <span style={{
                   fontSize: size, fontWeight: LEVEL_WEIGHTS[li], color: t.text,
                   flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden',
                   fontFamily: family || 'inherit',
-                }}>가나다 Aa</span>
+                }}>{tr('panel.settings.sampleText')}</span>
               </div>
               <div style={{ display: 'flex', gap: 5 }}>
                 <select
                   value={size}
                   onChange={(e) => updateLevelFont(li, { size: Number(e.target.value) })}
-                  title="글자 크기"
+                  title={tr('panel.settings.fontSizeTip')}
                   style={{ ...selectStyle, width: 62 }}
                 >
                   {(FONT_SIZES.includes(size) ? FONT_SIZES : [...FONT_SIZES, size].sort((a, b) => a - b))
                     .map((s) => (
                       <option key={s} value={s}>
-                        {s}pt{s === LEVEL_FONT_DEFAULT_SIZES[li] ? ' ·기본' : ''}
+                        {s}pt{s === LEVEL_FONT_DEFAULT_SIZES[li] ? tr('panel.settings.defaultSuffix') : ''}
                       </option>
                     ))}
                 </select>
                 <select
                   value={family}
                   onChange={(e) => updateLevelFont(li, { family: e.target.value })}
-                  title="글꼴"
+                  title={tr('panel.settings.fontTip')}
                   style={{ ...selectStyle, flex: 1, minWidth: 0 }}
                 >
                   {FONT_FAMILIES.map((f) => (
-                    <option key={f.label} value={f.css}>{f.label}</option>
+                    <option key={f.labelKey} value={f.css}>{tr(f.labelKey)}</option>
                   ))}
                 </select>
                 <select
                   value={setting?.align ?? ''}
                   onChange={(e) =>
                     updateLevelFont(li, { align: (e.target.value || undefined) as TextAlign | undefined })}
-                  title="텍스트 맞춤 (노드별 설정이 우선)"
+                  title={tr('panel.settings.alignTip')}
                   style={{ ...selectStyle, width: 96 }}
                 >
                   {ALIGN_OPTIONS.map((a) => (
-                    <option key={a.key} value={a.key}>{a.label}</option>
+                    <option key={a.key} value={a.key}>{tr(a.labelKey)}</option>
                   ))}
                 </select>
               </div>
@@ -235,11 +234,9 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
         fontSize: 11, fontWeight: 700, color: t.textSubtle,
         textTransform: 'uppercase', letterSpacing: 0.5,
         margin: '16px 0 6px',
-      }}>레벨별 레이아웃 (맵 전체 설정)</div>
+      }}>{tr('panel.settings.levelLayouts')}</div>
       <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 10, lineHeight: 1.5 }}>
-        선택하면 해당 레벨의 <b>모든 노드</b>에 서브트리 레이아웃을 일괄
-        적용합니다 (개별 노드 설정을 덮어씀). '기본'으로 되돌리면 상위
-        레이아웃을 따릅니다. 1레벨(중심)은 맵 전체 레이아웃입니다.
+        {rich(tr('panel.settings.levelLayoutsHelp'))}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {/* 1레벨(중심) = 맵 전체 레이아웃 (레이아웃 탭과 동일 동작) */}
@@ -249,7 +246,7 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
           background: t.surfaceAlt, border: `1px solid ${t.border}`,
         }}>
           <span style={{ fontSize: 10.5, color: t.textMuted, width: 52, fontWeight: 600 }}>
-            1레벨 (중심)
+            {tr('panel.settings.level1')}
           </span>
           <select
             value={mapLayoutType}
@@ -259,11 +256,11 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
               updateNodeLayoutType('root', lt);
               setLayoutType(lt);
             }}
-            title="맵 전체 레이아웃 (레이아웃 탭과 동일)"
+            title={tr('panel.settings.rootLayoutTip')}
             style={{ ...selectStyle, flex: 1, minWidth: 0 }}
           >
             {ROOT_LAYOUTS.map((o) => (
-              <option key={o.key} value={o.key}>{o.label}</option>
+              <option key={o.key} value={o.key}>{tr(o.labelKey)}</option>
             ))}
           </select>
         </div>
@@ -277,17 +274,17 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
               background: t.surfaceAlt, border: `1px solid ${t.border}`,
             }}>
               <span style={{ fontSize: 10.5, color: t.textMuted, width: 52, fontWeight: 600 }}>
-                {label}
+                {tr(label)}
               </span>
               <select
                 value={value}
                 onChange={(e) =>
                   setLevelLayout(level, (e.target.value || null) as LayoutType | null)}
-                title={`${label} 노드들의 서브트리 레이아웃`}
+                title={tr('panel.settings.levelLayoutTip', { level: tr(label) })}
                 style={{ ...selectStyle, flex: 1, minWidth: 0 }}
               >
                 {LEVEL_LAYOUTS.map((o) => (
-                  <option key={o.key} value={o.key}>{o.label}</option>
+                  <option key={o.key} value={o.key}>{tr(o.labelKey)}</option>
                 ))}
               </select>
             </div>
@@ -299,10 +296,9 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
         fontSize: 11, fontWeight: 700, color: t.textSubtle,
         textTransform: 'uppercase', letterSpacing: 0.5,
         margin: '16px 0 6px',
-      }}>노트 폰트 (맵 전체 설정)</div>
+      }}>{tr('panel.settings.noteFont')}</div>
       <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 10, lineHeight: 1.5 }}>
-        노트(문단·코드·표·체크리스트)의 글꼴과 크기입니다. 노트 뷰어
-        팝업과 노트 편집창에 적용됩니다. 기본 크기는 13pt입니다.
+        {tr('panel.settings.noteFontHelp')}
       </div>
       <div style={{
         display: 'flex', gap: 5, padding: '6px 8px', borderRadius: 5,
@@ -312,21 +308,21 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
         <select
           value={noteFont?.size && noteFont.size > 0 ? noteFont.size : 13}
           onChange={(e) => setNoteFont({ size: Number(e.target.value) })}
-          title="노트 글자 크기"
+          title={tr('panel.settings.noteSizeTip')}
           style={{ ...selectStyle, width: 74 }}
         >
           {[10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24].map((sz) => (
-            <option key={sz} value={sz}>{sz}pt{sz === 13 ? ' ·기본' : ''}</option>
+            <option key={sz} value={sz}>{sz}pt{sz === 13 ? tr('panel.settings.defaultSuffix') : ''}</option>
           ))}
         </select>
         <select
           value={noteFont?.family ?? ''}
           onChange={(e) => setNoteFont({ family: e.target.value })}
-          title="노트 글꼴"
+          title={tr('panel.settings.noteFontTip')}
           style={{ ...selectStyle, flex: 1, minWidth: 0 }}
         >
           {FONT_FAMILIES.map((f) => (
-            <option key={f.label} value={f.css}>{f.label}</option>
+            <option key={f.labelKey} value={f.css}>{tr(f.labelKey)}</option>
           ))}
         </select>
       </div>
@@ -335,10 +331,9 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
         fontSize: 11, fontWeight: 700, color: t.textSubtle,
         textTransform: 'uppercase', letterSpacing: 0.5,
         margin: '16px 0 6px',
-      }}>레벨별 도형 (맵 전체 설정)</div>
+      }}>{tr('panel.settings.levelShapes')}</div>
       <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 10, lineHeight: 1.5 }}>
-        레벨의 기본 도형입니다. 스타일 탭에서 노드별로 정한 도형이
-        우선하고, '기본'이면 둥근 사각형입니다.
+        {tr('panel.settings.levelShapesHelp')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {LEVEL_LABELS.map((label, li) => (
@@ -348,17 +343,17 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
             background: t.surfaceAlt, border: `1px solid ${t.border}`,
           }}>
             <span style={{ fontSize: 10.5, color: t.textMuted, width: 52, fontWeight: 600 }}>
-              {label}
+              {tr(label)}
             </span>
             <select
               value={levelShapes?.[li] ?? ''}
               onChange={(e) =>
                 setLevelShape(li, (e.target.value || null) as ShapeType | null)}
-              title={`${label} 기본 도형`}
+              title={tr('panel.settings.shapeTip', { level: tr(label) })}
               style={{ ...selectStyle, flex: 1, minWidth: 0 }}
             >
               {SHAPE_OPTIONS.map((o) => (
-                <option key={o.key} value={o.key}>{o.label}</option>
+                <option key={o.key} value={o.key}>{tr(o.labelKey)}</option>
               ))}
             </select>
           </div>

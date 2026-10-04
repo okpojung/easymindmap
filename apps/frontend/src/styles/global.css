@@ -9,6 +9,21 @@ html, body {
                -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+/* 중국어·일본어 화면의 글꼴 (2026-10-05 다국어). Pretendard 에는 한자·가나가
+ * 없어 글자마다 대체 글꼴로 넘어가는데, 그대로 두면 한국어 글꼴(맑은 고딕)의
+ * 가나·한자가 잡혀 자간이 벌어지고 글자 모양이 어색하다. 언어별로 그 나라
+ * 글꼴을 먼저 세운다 — 라틴 글자는 계속 Pretendard 가 그린다.
+ * (`lang` 은 i18n/index.ts 가 <html> 에 단다) */
+html:lang(ja), html:lang(ja) body {
+  font-family: 'Pretendard Variable', 'Pretendard', 'Inter',
+               'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Yu Gothic',
+               Meiryo, 'Noto Sans JP', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+html:lang(zh), html:lang(zh) body {
+  font-family: 'Pretendard Variable', 'Pretendard', 'Inter',
+               'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei',
+               'Noto Sans SC', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
 #root { height: 100%; }
 button { font-family: inherit; }
 input, textarea, select { font-family: inherit; }

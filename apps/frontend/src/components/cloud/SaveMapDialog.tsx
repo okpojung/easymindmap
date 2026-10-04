@@ -18,6 +18,7 @@ import { cloudApi, CloudError, type FolderItem } from '@/services/cloud/apiClien
 import { saveNewMap } from '@/services/cloud/mapSession';
 import { flattenFolders } from './folderTree';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { useTr } from '@/i18n';
 
 export function SaveMapDialog({
   t, defaultTitle, onSaved, onCancel, note,
@@ -30,6 +31,7 @@ export function SaveMapDialog({
   /** 위쪽에 덧붙일 안내 (예: 맵 닫기 흐름에서 왔을 때) */
   note?: string;
 }) {
+  const tr = useTr();
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [title, setTitle] = useState(defaultTitle);
@@ -59,13 +61,13 @@ export function SaveMapDialog({
       setNewFolder('');
       setErr(null);
     } catch (e) {
-      setErr(e instanceof CloudError ? e.message : '폴더를 만들지 못했습니다.');
+      setErr(e instanceof CloudError ? e.message : tr('cloud.save.folderFailed'));
     }
   };
 
   const submit = async () => {
     const clean = title.trim();
-    if (!clean) { setErr('맵 이름을 입력해 주세요.'); return; }
+    if (!clean) { setErr(tr('cloud.save.nameRequired')); return; }
     setBusy(true);
     setErr(null);
     try {
@@ -73,7 +75,7 @@ export function SaveMapDialog({
       onSaved({ mapId, title: clean });
     } catch (e) {
       // 409 = 같은 폴더에 같은 이름 (서버 메시지에 안내가 들어 있다)
-      setErr(e instanceof CloudError ? e.message : '저장 중 오류가 발생했습니다.');
+      setErr(e instanceof CloudError ? e.message : tr('cloud.save.failed'));
     } finally {
       setBusy(false);
     }
@@ -107,20 +109,20 @@ export function SaveMapDialog({
         }}
       >
         <DialogXButton t={t} testId="save-map-dialog-x" onClose={onCancel} />
-        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4, paddingRight: 34 }}>맵 저장</div>
+        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4, paddingRight: 34 }}>{tr('cloud.save.title')}</div>
         <div style={{ fontSize: 12, color: t.textMuted, lineHeight: 1.6, marginBottom: 16 }}>
-          {note ?? '저장할 폴더와 맵 이름을 정해 주세요. 다음부터는 묻지 않고 이 이름으로 저장됩니다.'}
+          {note ?? tr('cloud.save.intro')}
         </div>
 
         {/* 폴더 */}
-        <label style={label}>저장 위치</label>
+        <label style={label}>{tr('cloud.save.location')}</label>
         <select
           data-testid="save-folder"
           value={folderId ?? ''}
           onChange={(e) => setFolderId(e.target.value || null)}
           style={{ ...inputStyle, marginBottom: 8 }}
         >
-          <option value="">홈 (최상위)</option>
+          <option value="">{tr('cloud.folder.homeRoot')}</option>
           {flattenFolders(folders).map((f) => (
             <option key={f.folderId} value={f.folderId}>
               {' '.repeat(f.depth * 3)}{f.name}
@@ -131,7 +133,7 @@ export function SaveMapDialog({
           <input
             data-testid="save-new-folder"
             value={newFolder}
-            placeholder="여기에 새 폴더 만들기"
+            placeholder={tr('cloud.save.newFolderPh')}
             onChange={(e) => setNewFolder(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void addFolder(); }}
             style={{ ...inputStyle, height: 30, fontSize: 12 }}
@@ -144,11 +146,11 @@ export function SaveMapDialog({
               border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
               cursor: newFolder.trim() ? 'pointer' : 'default', fontSize: 12, fontWeight: 600,
             }}
-          >폴더 추가</button>
+          >{tr('cloud.save.addFolder')}</button>
         </div>
 
         {/* 이름 */}
-        <label style={label}>맵 이름</label>
+        <label style={label}>{tr('cloud.save.mapName')}</label>
         <input
           data-testid="save-title"
           autoFocus
@@ -176,7 +178,7 @@ export function SaveMapDialog({
               background: t.primary, color: '#fff', fontSize: 13.5, fontWeight: 700,
               opacity: busy ? 0.6 : 1,
             }}
-          >{busy ? '저장 중…' : '저장'}</button>
+          >{busy ? tr('common.saving') : tr('common.save')}</button>
           <button
             data-testid="save-cancel"
             onClick={onCancel}
@@ -185,7 +187,7 @@ export function SaveMapDialog({
               border: `1px solid ${t.border}`, background: t.surfaceAlt,
               color: t.text, fontSize: 13.5, fontWeight: 600,
             }}
-          >취소</button>
+          >{tr('common.cancel')}</button>
         </div>
       </div>
     </div>

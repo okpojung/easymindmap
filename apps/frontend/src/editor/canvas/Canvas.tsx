@@ -61,25 +61,27 @@ import {
 import { reassignIds } from '@/utils/aiProjectContext';
 import { attachFileWithProgress } from '@/utils/attachmentFile';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
+import { tr, useLang } from '@/i18n';
 
-const LAYOUT_LABEL: Record<string, string> = {
-  tree: '트리 · 오른쪽 (직각선)',
-  radial: '방사형 · 오른쪽 (곡선)',
-  'both-radial': '방사형 · 양쪽 (곡선)',
-  hierarchy: '계층형 · 오른쪽 (직각선)',
-  'progress-tree': '진행트리 · 오른쪽 (직각선)',
-  free: '자유배치',
-  kanban: 'Kanban 보드',
-  'radial-bidirectional': '방사형 · 양쪽 (곡선)',
-  'radial-right': '방사형 · 오른쪽 (곡선)',
-  'radial-left': '방사형 · 왼쪽 (곡선)',
-  'tree-right': '트리 · 오른쪽 (직각선)',
-  'tree-down': '트리 · 아래 (직각선)',
-  'hierarchy-right': '계층형 · 오른쪽 (직각선)',
-  'process-tree-right': '진행트리 · 오른쪽 (직각선)',
-  freeform: '자유배치',
-  timeline: '시간배치 (타임라인)',
-  'timeline-center': '시간배치 (중앙노드)',
+// 레이아웃 이름 — 사전 키 (렌더 때 tr 로 옮긴다)
+const LAYOUT_LABEL_KEY: Record<string, string> = {
+  tree: 'editor.layout.treeRight',
+  radial: 'editor.layout.radialRight',
+  'both-radial': 'editor.layout.radialBoth',
+  hierarchy: 'editor.layout.hierarchyRight',
+  'progress-tree': 'editor.layout.processTreeRight',
+  free: 'editor.layout.free',
+  kanban: 'editor.layout.kanban',
+  'radial-bidirectional': 'editor.layout.radialBoth',
+  'radial-right': 'editor.layout.radialRight',
+  'radial-left': 'editor.layout.radialLeft',
+  'tree-right': 'editor.layout.treeRight',
+  'tree-down': 'editor.layout.treeDown',
+  'hierarchy-right': 'editor.layout.hierarchyRight',
+  'process-tree-right': 'editor.layout.processTreeRight',
+  freeform: 'editor.layout.free',
+  timeline: 'editor.layout.timeline',
+  'timeline-center': 'editor.layout.timelineCenter',
 };
 
 interface Props {
@@ -116,6 +118,8 @@ export function Canvas({
   onSelect,
   collabs,
 }: Props) {
+  // 언어가 바뀌면 다시 그린다 — 화면 문자열은 tr() 로 (콜백 안에서도 부르는 순간의 언어)
+  useLang();
   // 캔버스 viewBox를 "실제 컨테이너 픽셀 크기"로 맞춘다 — 예전 고정
   // 1400×760 viewBox는 화면 폭에 맞춰 통째로 축소되어, 줌 100%인데도
   // 글자가 실제 px보다 작게 보였다 (HTML 뷰어와 크기가 달라 보이던 원인).
@@ -689,7 +693,7 @@ export function Canvas({
             // 8MB 초과는 **청크 업로드**로 가고 진행률 줄이 뜬다 (§12).
             const url = await attachFileWithProgress(f);
             if (useDocumentStore.getState().docEpoch !== epoch) {
-              notifyPaste(`⚠ '${f.name}' 을(를) 올리는 사이 다른 맵이 열려 첨부하지 않았습니다.`);
+              notifyPaste(tr('editor.canvas.attachSkippedOtherMap', { name: f.name }));
               return;
             }
             addNodeAttachment(target.id, {
@@ -706,8 +710,8 @@ export function Canvas({
             // 사용자는 그 탭을 열지 않는다.** 20MB 를 넘는 파일을 노드에
             // 드롭하면 서버가 거절하는데도 화면에는 아무 일도 일어나지
             // 않아, 사용자에게는 "무반응"으로 보였다.
-            const why = err instanceof Error ? err.message : '알 수 없는 오류';
-            notifyPaste(`⚠ '${f.name}' 첨부 실패 — ${why}`);
+            const why = err instanceof Error ? err.message : tr('editor.canvas.unknownError');
+            notifyPaste(tr('editor.canvas.attachFailed', { name: f.name, why }));
           }
         }
       })();
@@ -915,7 +919,7 @@ export function Canvas({
         }
         // 토큰만 오고 내용이 없다 — 다른 탭에서 복사했는데 그 서브트리가
         // 너무 커서 클립보드에 싣지 못했거나, 복사한 탭을 새로고침한 뒤다.
-        notifyPaste('복사한 노드를 찾지 못했습니다 — 복사한 창에서 다시 Ctrl+C 한 뒤 붙여넣어 주세요.');
+        notifyPaste(tr('editor.canvas.copiedNodesMissing'));
         return;
       }
 
@@ -930,10 +934,7 @@ export function Canvas({
           // 표시만 왔다 = 그림을 복사한 경우. ThinkWise 는 클립보드에
           // 표준 이미지를 넣지 않아 브라우저가 그림을 읽을 수 없다.
           e.preventDefault();
-          notifyPaste(
-            'ThinkWise가 클립보드에 그림을 넣지 않았습니다 (자기 형식만 넣습니다). '
-            + '그림은 ThinkWise에서 이미지 파일로 저장하거나 화면을 캡처해 붙여넣어 주세요.',
-          );
+          notifyPaste(tr('editor.canvas.thinkwiseNoImage'));
           return;
         }
       }
@@ -987,15 +988,15 @@ export function Canvas({
           try {
             const url = await attachFileWithProgress(f);
             if (useDocumentStore.getState().docEpoch !== epoch) {
-              notifyPaste(`⚠ '${name}' 을(를) 올리는 사이 다른 맵이 열려 첨부하지 않았습니다.`);
+              notifyPaste(tr('editor.canvas.attachSkippedOtherMap', { name }));
               return;
             }
             addNodeAttachment(targetId, { name, kind: 'file', size: f.size, url });
-            notifyPaste(`📎 '${name}' 을(를) 첨부했습니다 — 노드 사진으로 넣으려면 노드를 편집 중에 붙여넣으세요.`);
+            notifyPaste(tr('editor.canvas.attachedPasted', { name }));
           } catch (err) {
             if ((err as Error)?.name === 'UploadAborted') return;
-            const why = err instanceof Error ? err.message : '알 수 없는 오류';
-            notifyPaste(`⚠ '${name}' 첨부 실패 — ${why}`);
+            const why = err instanceof Error ? err.message : tr('editor.canvas.unknownError');
+            notifyPaste(tr('editor.canvas.attachFailed', { name, why }));
           }
         })();
         return;
@@ -1006,7 +1007,7 @@ export function Canvas({
       if (!childId) return;
 
       // 텍스트 전체(줄바꿈 포함)를 노드에 그대로 — 없으면 "이미지"
-      updateNodeText(childId, text || '이미지');
+      updateNodeText(childId, text || tr('editor.canvas.imageFallback'));
       if (art.images.length) {
         // 사진들을 원문 위치(afterLine)째 노드 텍스트 중간에 — 우선 기본
         // 크기로 배치하고, 실측이 끝나면 실제 비율로 갱신한다
@@ -1434,10 +1435,7 @@ export function Canvas({
           // '하위'·'이전/다음 형제'는 전부 붙이고, '상위(부모)로 붙이기'는
           // 한 개일 때만이라 안내하고 아무것도 옮기지 않는다.
           if (zone.position === 'parent') {
-            notifyPaste(
-              `⚠ 상위(부모) 노드로 붙이기는 한 개의 노드만 가능합니다 — 지금 ${dragIds.length}개가 선택되어 있습니다. ` +
-              '노드 하나만 고른 뒤 다시 끌어 주세요. (여러 노드를 한꺼번에 옮길 때는 노드 안쪽=하위, 옆=형제 자리에 놓습니다)',
-            );
+            notifyPaste(tr('editor.canvas.parentMultiBlocked', { n: dragIds.length }));
           } else {
             const r = moveNodesRelative(dragIds, zone.targetId, zone.position);
             if (r.reason === 'ok') {
@@ -1451,9 +1449,9 @@ export function Canvas({
               onSelect(nodeDrag.id);
               setMultiSelectedIds(dragIds);
             } else if (r.reason === 'failed') {
-              notifyPaste('⚠ 옮기지 못했습니다 — 깊이 한도(50단계)를 넘거나 옮길 수 없는 자리입니다. 아무것도 바뀌지 않았습니다.');
+              notifyPaste(tr('editor.canvas.moveFailed'));
             } else if (r.reason === 'into-self') {
-              notifyPaste('⚠ 고른 노드 자신이나 그 아래로는 옮길 수 없습니다.');
+              notifyPaste(tr('editor.canvas.moveIntoSelf'));
             }
           }
         } else if (zone) {
@@ -1587,10 +1585,10 @@ export function Canvas({
             background: t.primary,
           }}
         />
-        {LAYOUT_LABEL[layoutType] || '마인드맵'} · 자동 배치 · {nodes.length} 노드 ·{' '}
+        {tr(LAYOUT_LABEL_KEY[layoutType] ?? 'editor.canvas.mindmap')} · {tr('editor.canvas.statusAuto', { n: nodes.length })}{' '}
         {Math.round(zoom || 100)}%
         {panMode && (
-          <span style={{ color: t.primary, fontWeight: 600 }}>· Pan 모드 (H)</span>
+          <span style={{ color: t.primary, fontWeight: 600 }}>{tr('editor.canvas.panBadge')}</span>
         )}
       </div>
 
@@ -1616,7 +1614,7 @@ export function Canvas({
             pointerEvents: 'none', whiteSpace: 'nowrap',
           }}
         >
-          연결할 노드를 클릭하세요 · Esc 취소
+          {tr('editor.canvas.connectHint')}
         </div>
       )}
 
@@ -1639,7 +1637,7 @@ export function Canvas({
           }}
         >
           <span style={{ fontSize: 15 }}>◎</span>
-          새 중심주제 — 캔버스의 빈 자리를 클릭하면 거기에 생깁니다 · Esc 취소
+          {tr('editor.canvas.placeCenterHint')}
         </div>
       )}
 
@@ -1659,7 +1657,7 @@ export function Canvas({
             }}
           >
             <span style={{ fontSize: 15 }}>✋</span>
-            Pan 모드 — 드래그로 화면 이동 (노드는 고를 수 있고, 옮겨지지 않습니다) · H 키로 해제
+            {tr('editor.canvas.panHint')}
           </div>
           <div
             style={{
@@ -1695,7 +1693,7 @@ export function Canvas({
           }}
         >
           <I.Brush size={13} strokeWidth={2} />
-          스타일 복사
+          {tr('editor.canvas.stylePainter')}
         </div>
       )}
 
@@ -1953,7 +1951,7 @@ export function Canvas({
                           fill={t.warning} opacity={0.95} />
                     <text y={4} fontSize={11.5} fontWeight={700} fill="#FFFFFF"
                           textAnchor="middle">
-                      상위로 붙이기는 1개만 가능
+                      {tr('editor.canvas.parentOnlyOne')}
                     </text>
                   </g>
                 )}
@@ -2091,7 +2089,7 @@ export function Canvas({
                         fill={t.primary} opacity={0.95} />
                   <text y={4} fontSize={11.5} fontWeight={700} fill="#FFFFFF"
                         textAnchor="middle">
-                    {dragGhost.count}개 이동
+                    {tr('editor.canvas.moveCount', { n: dragGhost.count })}
                   </text>
                 </g>
               )}
@@ -2104,8 +2102,8 @@ export function Canvas({
                   <text y={4} fontSize={11.5} fontWeight={700} fill="#FFFFFF"
                         textAnchor="middle">
                     {dragGhost.flip === 'left'
-                      ? '⬅ 놓으면 왼쪽으로 이동'
-                      : '놓으면 오른쪽으로 이동 ➡'}
+                      ? tr('editor.canvas.flipLeft')
+                      : tr('editor.canvas.flipRight')}
                   </text>
                 </g>
               )}
@@ -2212,6 +2210,7 @@ function CollapseControl({
   nodeId: string; // 검증용 — 어느 노드의 토글인지 (e2e106 위치 실측)
 }) {
   const [h, setH] = useState(false);
+  useLang();
 
   const wrap = (children: ReactNode, title: string) => (
     <g
@@ -2251,7 +2250,7 @@ function CollapseControl({
           fill={readableTextOn(t.primary)}
         >{label}</text>
       </>,
-      `펼치기 — 숨은 노드 ${count}개`,
+      tr('editor.canvas.expandHidden', { n: count }),
     );
   }
 
@@ -2264,6 +2263,6 @@ function CollapseControl({
       <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
       <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.6" strokeLinecap="round" />
     </>,
-    '접기',
+    tr('editor.canvas.collapse'),
   );
 }

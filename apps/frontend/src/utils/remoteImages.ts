@@ -18,6 +18,7 @@
 import type { MindNode, SampleMap } from '@/editor/__samples__/types';
 import { serverAttachmentId } from '@/services/cloud/apiClient';
 import { importRemoteImage } from './embedImage';
+import { tr } from '@/i18n';
 import { isFetchableImageUrl } from './imageUrl';
 
 const FETCH_TIMEOUT_MS = 8000;
@@ -34,9 +35,9 @@ export interface RemoteImageStats {
 function fileNameOf(url: string): string {
   try {
     const path = url.replace(/[?#].*$/, '');
-    return decodeURIComponent(path.split('/').filter(Boolean).pop() ?? '') || '이미지';
+    return decodeURIComponent(path.split('/').filter(Boolean).pop() ?? '') || tr('editor.canvas.imageFallback');
   } catch {
-    return '이미지';
+    return tr('editor.canvas.imageFallback');
   }
 }
 

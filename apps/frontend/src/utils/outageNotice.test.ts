@@ -3,6 +3,10 @@
 //   npx tsx src/utils/outageNotice.test.ts
 
 import { outageNoticeFor } from './outageNotice';
+import { useLangStore } from '@/i18n';
+
+// 문구 검사(⑨⑩)는 한국어 기준이다
+useLangStore.getState().setLang('ko');
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {

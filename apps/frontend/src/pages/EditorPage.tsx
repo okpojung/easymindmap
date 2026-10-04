@@ -48,6 +48,8 @@ import {
   useAutosaveStore,
 } from '@/stores';
 import { isDocumentEmpty, setHistoryPaused } from '@/stores/documentStore';
+// effect 안에서는 부르는 순간의 언어로(trNow), 렌더에서는 useTr
+import { tr as trNow, useTr } from '@/i18n';
 
 // Maps the live document tree onto the Kanban board WITHOUT a depth limit:
 // depth-1 nodes become columns, depth-2 nodes become cards, and depth-3+
@@ -99,9 +101,10 @@ function OutlineSplitHandle({ t, ratio, onRatioChange }: {
   ratio: number;
   onRatioChange: (v: number) => void;
 }) {
+  const tr = useTr();
   return (
     <div
-      title="드래그: 아웃라인/맵 영역 조절"
+      title={tr('shell.editor.splitHandle')}
       onPointerDown={(e) => {
         const parent = (e.currentTarget as HTMLElement).parentElement!;
         const rect = parent.getBoundingClientRect();
@@ -133,6 +136,7 @@ function OutlineSplitHandle({ t, ratio, onRatioChange }: {
 }
 
 export function EditorPage() {
+  const tr = useTr();
   const map = useDocumentStore((s) => s.map);
   const setSample = useDocumentStore((s) => s.setSample);
 
@@ -304,7 +308,7 @@ export function EditorPage() {
     openMapHere(initialMapId)
       .then(({ readOnly }) => {
         if (alive && readOnly) {
-          setBrowserMsg('🔒 다른 세션(브라우저)에서 편집 중이라 읽기 전용으로 열었습니다 — 변경은 이 맵에 저장되지 않습니다.');
+          setBrowserMsg(trNow('shell.editor.openedReadOnly'));
         }
       })
       .catch((e: unknown) => {
@@ -318,8 +322,8 @@ export function EditorPage() {
         //   서버가 아무 말도 못 했을 때만 그 꼬리를 붙인다.
         const why = e instanceof CloudError ? e.message : '';
         setUrlMapErr(why
-          ? `이 맵을 열 수 없습니다 — ${why}`
-          : '이 맵을 열 수 없습니다. 목록에서 다시 선택해 주세요.');
+          ? trNow('shell.editor.openFailedWhy', { why })
+          : trNow('shell.editor.openFailed'));
         // ★ **주소에서 그 id 를 지운다** (2026-09-06 사용자 보고 —
         //   "새로고침하면 계속 뜬다"). 지우지 않으면 이 탭은 새로고침할
         //   때마다 같은 맵을 다시 열려다 같은 오류를 낸다.
@@ -384,11 +388,7 @@ export function EditorPage() {
             //    끊어 두면 이후 편집은 '저장 안 됨'으로 표시되고 초안에
             //    쌓이며, ☁ 저장을 누르면 **새 이름의 새 맵**으로 간다.
             detachFromServer();
-            useCloudStore.getState().setError(
-              '다른 창에서 이 맵을 편집 중이라 편집권을 잃었습니다 — '
-              + '지금 내용은 이 브라우저에 보관했습니다. '
-              + '☁ 저장을 누르면 새 이름의 맵으로 저장됩니다.',
-            );
+            useCloudStore.getState().setError(trNow('shell.editor.lostLock'));
             // detachFromServer 가 'saved' 로 되돌리므로 그 뒤에 세운다
             useAutosaveStore.getState().setSaveState('unsaved');
           }
@@ -549,7 +549,7 @@ export function EditorPage() {
                   t={t}
                   outline={outline}
                   onClose={() => setMainView('map')}
-                  closeTitle="맵 모드로 전환"
+                  closeTitle={tr('shell.toolbar.toMapMode')}
                 />
               </div>
             ) : layoutType === 'kanban' ? (
@@ -669,8 +669,8 @@ export function EditorPage() {
           ⚠ {urlMapErr}
           <button
             data-testid="url-map-error-close"
-            title="이 안내 닫기"
-            aria-label="이 안내 닫기"
+            title={tr('shell.editor.dismiss')}
+            aria-label={tr('shell.editor.dismiss')}
             onClick={() => setUrlMapErr(null)}
             style={{
               marginLeft: 10, border: 'none', background: 'transparent',

@@ -13,6 +13,7 @@ import type { Connector, ConnectorArrows, ConnectorDash, ConnectorLabelPlace, Co
 import type { LaidOutNode } from '@/layout/types';
 import { measureTextPx } from '@/editor/node-renderer/textMeasure';
 import { useRef } from 'react';
+import { useTr } from '@/i18n';
 import { setHistoryPaused, useDocumentStore } from '@/stores/documentStore';
 import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, trunkSegment, type CBox, type CPoint } from './connectorGeometry';
 
@@ -149,11 +150,12 @@ function useTrunkDrag(id: string, offset: number, dir: 'h' | 'v') {
 /** 줄기 선 위의 넓은 투명 획 — 줄기 어디를 잡아도 끌린다 (선 층, 고른 선에만) */
 function TrunkGrip({ id, pts, offset, dir }: { id: string; pts: CPoint[]; offset: number; dir: 'h' | 'v' }) {
   const h = useTrunkDrag(id, offset, dir);
+  const tr = useTr();
   const seg = trunkSegment(pts)!;
   const p = pts[seg.i], q = pts[seg.i + 1];
   return (
     <path d={`M ${p.x} ${p.y} L ${q.x} ${q.y}`} fill="none" stroke="transparent" strokeWidth={HIT_WIDTH + 2} strokeLinecap="round" data-connector-trunk={id} {...h}>
-      <title>{dir === 'v' ? '좌우로 끌어 줄기 옮기기' : '상하로 끌어 줄기 옮기기'}</title>
+      <title>{dir === 'v' ? tr('editor.connector.dragTrunkH') : tr('editor.connector.dragTrunkV')}</title>
     </path>
   );
 }
@@ -165,6 +167,7 @@ function TrunkGrip({ id, pts, offset, dir }: { id: string; pts: CPoint[]; offset
  */
 function TrunkHandle({ id, pts, offset, dir, avoid, t }: { id: string; pts: CPoint[]; offset: number; dir: 'h' | 'v'; avoid?: { x: number; y: number; w: number; h: number }; t: ThemeTokens }) {
   const h = useTrunkDrag(id, offset, dir);
+  const tr = useTr();
   const seg = trunkSegment(pts)!;
   const p = pts[seg.i], q = pts[seg.i + 1];
   let cx = (p.x + q.x) / 2, cy = (p.y + q.y) / 2;
@@ -185,7 +188,7 @@ function TrunkHandle({ id, pts, offset, dir, avoid, t }: { id: string; pts: CPoi
   }
   return (
     <g data-connector-handle={id} {...h}>
-      <title>{dir === 'v' ? '좌우로 끌어 줄기 옮기기' : '상하로 끌어 줄기 옮기기'}</title>
+      <title>{dir === 'v' ? tr('editor.connector.dragTrunkH') : tr('editor.connector.dragTrunkV')}</title>
       <rect x={cx - (dir === 'v' ? 6 : 10)} y={cy - (dir === 'v' ? 10 : 6)} width={dir === 'v' ? 12 : 20} height={dir === 'v' ? 20 : 12} rx={3} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
       {dir === 'v'
         ? <path d={`M ${cx - 2} ${cy - 4} V ${cy + 4} M ${cx + 2} ${cy - 4} V ${cy + 4}`} stroke={t.primary} strokeWidth={1.2} />

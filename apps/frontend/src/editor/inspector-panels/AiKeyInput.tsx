@@ -9,6 +9,7 @@
 // 사실은 배지가 아니라 위쪽 안내 한 줄(aiKeyStorageNotice)이 말한다.
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { useTr } from '@/i18n';
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
 import { pushAiKey } from '@/services/cloud/aiKeysSync';
 import { PROVIDER_LABELS, type AiProvider } from '@/utils/aiProviders';
@@ -23,6 +24,7 @@ export function AiKeyInput({ t, p, children }: {
   /** 입력칸 아래에 붙일 것 (AI 탭은 모델 선택·도움말을 단다) */
   children?: React.ReactNode;
 }) {
+  const tr = useTr();
   const value = useAiSettingsStore((s) => s.keys[p]);
   const setKey = useAiSettingsStore((s) => s.setKey);
   const server = useAiSettingsStore((s) => s.server);
@@ -31,12 +33,12 @@ export function AiKeyInput({ t, p, children }: {
   const onAccount = server.enabled === true && !!server.hints[p] && status !== 'error';
 
   const badge = status === 'saving'
-    ? { text: '계정에 저장 중…', bg: '#FEF3C7', fg: '#92400E' }
+    ? { text: tr('inspector.aiKey.saving'), bg: '#FEF3C7', fg: '#92400E' }
     : status === 'error'
-      ? { text: '계정 저장 실패', bg: '#FEE2E2', fg: '#B91C1C' }
+      ? { text: tr('inspector.aiKey.failed'), bg: '#FEE2E2', fg: '#B91C1C' }
       : onAccount
-        ? { text: `계정에 저장됨 ${server.hints[p]}`, bg: '#DCFCE7', fg: '#15803D' }
-        : has ? { text: '이 브라우저에 등록됨', bg: '#DCFCE7', fg: '#15803D' } : null;
+        ? { text: tr('inspector.aiKey.onAccount', { hint: server.hints[p] ?? '' }), bg: '#DCFCE7', fg: '#15803D' }
+        : has ? { text: tr('inspector.aiKey.inBrowser'), bg: '#DCFCE7', fg: '#15803D' } : null;
 
   return (
     <div style={{ marginBottom: 12 }}>

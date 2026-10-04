@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useUploadStore } from '@/stores/uploadStore';
+import { tr, useLang } from '@/i18n';
 
 function fmt(bytes: number): string {
   const mb = bytes / 1024 ** 2;
@@ -28,9 +29,9 @@ function fmt(bytes: number): string {
 /** 남은 시간 — 초 단위를 사람 말로 */
 function fmtEta(sec: number): string {
   if (!Number.isFinite(sec) || sec <= 0) return '';
-  if (sec < 60) return `약 ${Math.max(1, Math.round(sec))}초 남음`;
-  if (sec < 3600) return `약 ${Math.round(sec / 60)}분 남음`;
-  return `약 ${Math.round(sec / 360) / 10}시간 남음`;
+  if (sec < 60) return tr('cloud.upload.etaSec', { n: Math.max(1, Math.round(sec)) });
+  if (sec < 3600) return tr('cloud.upload.etaMin', { n: Math.round(sec / 60) });
+  return tr('cloud.upload.etaHour', { n: Math.round(sec / 360) / 10 });
 }
 
 /** 바이트가 이만큼 멈춰 있으면 "느립니다"로 본다 */
@@ -63,6 +64,7 @@ function UploadRow({ t, item }: {
 }) {
   // 속도·남은 시간 — 최근 표본으로 계산한다. 순간값은 심하게 튀므로
   // **약 5초 창**의 평균을 쓴다.
+  useLang(); // 언어가 바뀌면 다시 그린다 (문구는 tr() 로 그 자리에서 만든다)
   const samples = useRef<{ at: number; bytes: number }[]>([]);
   const [speed, setSpeed] = useState(0);
   const [stalled, setStalled] = useState(false);
@@ -100,7 +102,7 @@ function UploadRow({ t, item }: {
   ].filter(Boolean).join(' · ');
   // 재시도 안내가 있으면 그것이 우선 — 가장 구체적인 설명이다
   const note = item.note
-    ?? (stalled ? '전송이 느립니다 — 계속 시도 중입니다' : null);
+    ?? (stalled ? tr('cloud.upload.stalled') : null);
 
   return (
     <div style={{
@@ -149,18 +151,18 @@ function UploadRow({ t, item }: {
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}
         >
-          {note ?? (rate || '전송 준비 중…')}
+          {note ?? (rate || tr('cloud.upload.preparing'))}
         </div>
       </div>
       <button
         data-testid="upload-cancel"
         onClick={item.abort}
-        title="이 업로드를 취소합니다"
+        title={tr('cloud.upload.cancelTip')}
         style={{
           fontSize: 11.5, padding: '5px 9px', borderRadius: 6,
           border: `1px solid ${t.border}`, background: t.surface,
           color: t.textMuted, cursor: 'pointer', flexShrink: 0,
-        }}>취소</button>
+        }}>{tr('common.cancel')}</button>
     </div>
   );
 }

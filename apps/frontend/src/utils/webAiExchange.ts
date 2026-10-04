@@ -8,7 +8,8 @@
 // UI 는 WebAiPanel.tsx — 여기는 조립·추출·변환만 (단위 검증 가능).
 
 import type { SampleMap } from '@/editor/__samples__/types';
-import { GENERATION_TYPES } from '@/utils/emmSystemPrompt';
+import { GENERATION_TYPES, emmOutputLanguageDirective } from '@/utils/emmSystemPrompt';
+import { tr } from '@/i18n';
 import { parseEmm } from '@/utils/importMarkdown';
 import { parseMarkdownMapFile } from '@/utils/importMapFile';
 import { countMapNodes } from '@/export/mapMeta';
@@ -42,8 +43,10 @@ export function buildWebAiPrompt(opts: {
   return [
     opts.systemPrompt,
     addition,
+    // 화면 언어가 한국어가 아니면 노드 글을 그 언어로 (한국어면 빈 줄 — 걸러진다)
+    emmOutputLanguageDirective(),
     OUTPUT_DIRECTIVE,
-    `요청: ${opts.topic.trim()}`,
+    tr('inspector.webx.request', { topic: opts.topic.trim() }),
   ].filter(Boolean).join('\n\n');
 }
 
@@ -101,15 +104,15 @@ export interface AnswerMapFail {
  */
 export function answerToMap(source: string): AnswerMapOk | AnswerMapFail {
   const candidate = source.trim();
-  if (!candidate) return { ok: false, reason: '붙여넣은 내용이 비어 있습니다.' };
+  if (!candidate) return { ok: false, reason: tr('inspector.webx.empty') };
 
   // blockPlacement 'node' (2026-08-04) — 문단·코드·표를 숨은 노트가
   // 아니라 **노드 본문**에 넣는다. MD 파일 불러오기 기본과 동일하고,
   // 템플릿 v4 규칙 4("블록은 노드 본문에 표시된다")와 한 쌍이다.
-  const emm = parseEmm(candidate, 'AI 생성 맵', { blockPlacement: 'node' });
+  const emm = parseEmm(candidate, tr('inspector.ai.defaultMapTitle'), { blockPlacement: 'node' });
   if (emm) return { ok: true, map: emm, nodeCount: countMapNodes(emm) };
 
-  const imported = parseMarkdownMapFile(candidate, 'AI 생성 맵',
+  const imported = parseMarkdownMapFile(candidate, tr('inspector.ai.defaultMapTitle'),
     { blockPlacement: 'node' });
   if (imported) {
     return {
@@ -121,7 +124,7 @@ export function answerToMap(source: string): AnswerMapOk | AnswerMapFail {
   }
   return {
     ok: false,
-    reason: '맵 구조(# 견출·- 리스트)를 찾지 못했습니다. AI에게 아래 재요청 문구를 보낸 뒤 새 답변을 다시 붙여넣으세요.',
+    reason: tr('inspector.webx.noStructure'),
   };
 }
 
@@ -173,14 +176,16 @@ export function answerFromPaste(pasted: string): AnswerMapOk | AnswerMapFail {
     if (res.ok) return res;
     first = first ?? res;
   }
-  return first ?? { ok: false, reason: '붙여넣은 내용이 비어 있습니다.' };
+  return first ?? { ok: false, reason: tr('inspector.webx.empty') };
 }
 
-/** 파싱 실패 시 AI 채팅창에 다시 보낼 요청 문구 (⧉ 복사 버튼용) */
-export const RETRY_REQUEST_TEXT =
-  '방금 답변 전체를 다른 말 없이, ~~~ 로 시작해 ~~~ 로 끝나는 코드블록 ' +
-  '하나 안에 mmd(Mindmap Markdown)로 다시 출력해줘 (물결 3개 펜스 — 백틱 아님). ' +
-  '중심 주제는 "# 제목" 한 줄, 하위 항목은 "##/###" 또는 "-" 목록으로.';
+/**
+ * 파싱 실패 시 AI 채팅창에 다시 보낼 요청 문구 (⧉ 복사 버튼용).
+ * 사용자가 자기 말로 보내는 문장이라 화면 언어를 따른다 — 함수다(부르는 순간의 언어).
+ */
+export function retryRequestText(): string {
+  return tr('inspector.webx.retry');
+}
 
 /**
  * ①단계 바로가기 — AI 웹을 새 탭으로 연다.
@@ -208,6 +213,7 @@ export const PREFILL_MAX_LEN = 6000;
  *     열고 있어 이름과 동작이 어긋났다 — 둘을 갈랐다.)
  */
 export const AI_SHORTCUTS: {
+  /** label·tip 은 사전 키 — 렌더할 때 번역한다 (고유명사 label 은 키가 아니어도 그대로 보인다) */
   key: string; label: string; url: string;
   kind: 'plain' | 'gpt';
   prefill?: 'topic' | 'prompt'; tip?: string;
@@ -218,7 +224,7 @@ export const AI_SHORTCUTS: {
     kind: 'plain',
     url: 'https://claude.ai/new',
     prefill: 'prompt',
-    tip: 'Claude 새 대화를 엽니다 — ① 프롬프트를 자동 입력해 보고, 들어가지 않으면 Ctrl+V 로 붙여넣으세요 (클립보드에 복사해 둡니다)',
+    tip: 'inspector.webx.tip.claude',
   },
   {
     key: 'chatgpt',
@@ -227,21 +233,21 @@ export const AI_SHORTCUTS: {
     // 일반 ChatGPT — EMM 규칙을 모르므로 프롬프트 전체가 필요하다.
     url: 'https://chatgpt.com/',
     prefill: 'prompt',
-    tip: '일반 ChatGPT 새 대화를 엽니다 — ① 프롬프트를 자동 입력해 보고, 들어가지 않으면 Ctrl+V 로 붙여넣으세요 (클립보드에 복사해 둡니다)',
+    tip: 'inspector.webx.tip.chatgpt',
   },
   {
     key: 'gemini',
     label: 'Gemini',
     kind: 'plain',
     url: 'https://gemini.google.com/app',
-    tip: 'Gemini 를 새 탭으로 엽니다 — 자동 입력을 지원하지 않아 붙여넣기(Ctrl+V)로 진행하세요 (클립보드에 복사해 둡니다)',
+    tip: 'inspector.webx.tip.gemini',
   },
   {
     key: 'copilot',
     // 화면 이름은 'EasyMindMap ChatGPT 앱' (2026-08-05 지정) — 사용자가
     // ChatGPT 안에서 쓰는 우리 앱이라는 뜻이 바로 읽힌다. 스토어에
     // 등록된 GPT 이름('EasyMindMap Copilot')과는 별개다.
-    label: 'EasyMindMap ChatGPT 앱',
+    label: 'inspector.webx.copilotLabel',
     kind: 'gpt',
     // 커스텀 GPT (2026-08-04 등록 — easymindmap-copilot-gpt.md).
     // EMM 템플릿이 GPT 안에 내장돼 있어 주제만 보내면 EMM 코드블록이
@@ -251,7 +257,7 @@ export const AI_SHORTCUTS: {
     // 주소로 넘긴 질문이 채팅창에 들어가지 않는 것을 확인했다
     // (2026-08-05). 그래서 프리필을 걸지 않고 **주제를 클립보드에**
     // 넣어 준다 (열린 창에서 Ctrl+V 한 번).
-    tip: 'EasyMindMap 전용 ChatGPT 앱을 엽니다 — mmd 규칙이 안에 있어 ① 프롬프트 없이 주제만 붙여넣으면 됩니다. 주제는 클립보드에 복사해 둡니다 (ChatGPT 로그인 필요)',
+    tip: 'inspector.webx.tip.copilot',
   },
 ];
 

@@ -17,6 +17,7 @@ import type { LayoutType, MapSettings, SampleMap, ShapeType } from '@/editor/__s
 import { expandTemplateId, type EmmDeclaration } from '@emm/declaration';
 import { SUBTREE_SUPPORTED } from '@/layout/strategies/SubtreeStrategy';
 import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
+import { tr } from '@/i18n';
 
 // ── 알려진 값 ────────────────────────────────────────────────────────
 //
@@ -149,7 +150,7 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
       let deepest = 0;
       for (let lv = 2; lv <= pattern.length; lv++) {
         if (!usableAtLevel(pattern[lv - 1])) {
-          skipped.push(`${lv}레벨의 '${pattern[lv - 1]}'`);
+          skipped.push(tr('editor.decl.skippedLevel', { lv, name: String(pattern[lv - 1]) }));
           continue;
         }
         put(levelLayouts, lv - 1, pattern[lv - 1]);
@@ -206,7 +207,7 @@ export function resolveDeclaration(emm: EmmDeclaration): ResolvedDeclaration {
           } else {
             // **상속도 시키지 않는다** — 못 쓰는 값을 더 깊은 레벨로 퍼뜨리면
             // 건너뛴 이유가 여러 줄로 불어난다
-            skipped.push(`${lv}레벨의 '${layout}'`);
+            skipped.push(tr('editor.decl.skippedLevel', { lv, name: String(layout) }));
           }
         }
 

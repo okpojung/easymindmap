@@ -12,7 +12,7 @@
 // 조립·추출·변환 로직은 utils/webAiExchange.ts (순수 함수).
 // 설계: docs/04-extensions/ai/web-ai-clipboard.md
 
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { InspectorSection } from './InspectorSection';
@@ -24,21 +24,25 @@ import {
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { detachFromServer } from '@/services/cloud/mapSession';
-import { buildExpandContext, reassignIds } from '@/utils/aiProjectContext';
+import { sourceMarker, buildExpandContext, reassignIds } from '@/utils/aiProjectContext';
 import { parseEmm } from '@/utils/importMarkdown';
 import { GENERATION_TYPES } from '@/utils/emmSystemPrompt';
 import {
   AI_SHORTCUTS,
   aiShortcutUrl,
   OUTPUT_DIRECTIVE,
-  RETRY_REQUEST_TEXT,
+  retryRequestText,
   answerFromPaste,
   buildWebAiPrompt,
   mapSourceCandidates,
   type AnswerMapOk,
 } from '@/utils/webAiExchange';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
+
 
 export function WebAiPanel({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   const systemPrompt = useAiSettingsStore((s) => s.systemPrompt);
   const map = useDocumentStore((s) => s.map);
   const loadMap = useDocumentStore((s) => s.loadMap);
@@ -149,10 +153,8 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
       willLose
         // **되돌릴 수 있다고 하지 않는다** — 새 문서로 열리므로
         // 되돌리기가 이전 맵으로 넘어가지 않는다 (2026-08-06 3차 보고).
-        ? `현재 맵을 닫고 생성한 맵(${res.nodeCount}개 노드)을 열까요?\n` +
-          '새 문서로 열리므로 되돌리기(Ctrl+Z)로는 지금 맵으로 돌아올 수 없습니다 —\n'
-          + '저장하지 않은 편집이 있으면 먼저 ☁ 저장하세요.'
-        : `'${res.map.title}' 맵(${res.nodeCount}개 노드)을 새로 열까요?`,
+        ? tr('inspector.web.confirmReplace', { n: res.nodeCount })
+        : tr('inspector.web.confirmOpen', { title: res.map.title, n: res.nodeCount }),
       () => runOpenAsNewMap(res),
     );
   };
@@ -170,7 +172,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     setAnswer('');
     setPreview(null);
     // (🗺 이모지는 윈도에서 우산처럼 깨져 보여 제거 — 2026-08-04 보고)
-    flashNotice(`'${res.map.title}' 맵 생성 완료 (${res.nodeCount}개 노드)`);
+    flashNotice(tr('inspector.web.created', { title: res.map.title, n: res.nodeCount }));
   };
 
   // 선택 노드에 하위로 삽입 — API 모드 runExpand 의 답변 처리와 동일:
@@ -180,7 +182,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     // (2026-08-05 보고 — 버튼은 항상 보이되 안내를 준다)
     if (!selectedId || !selectedNode) {
       setPreview(null);
-      setError('먼저 맵에서 삽입할 노드를 클릭해 선택하세요 — 그 노드의 하위로 추가됩니다.');
+      setError(tr('inspector.ai.selectNodeFirst'));
       return;
     }
     setError('');
@@ -196,18 +198,17 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
       if (found.length) { kids = found; break; }
     }
     if (!kids.length) {
-      setError('답변에서 하위 구조를 인식하지 못했습니다. 확장 프롬프트로 다시 요청해 보세요.');
+      setError(tr('inspector.web.noChildren'));
       return;
     }
     askConfirm(
-      `'${selectedNode.text || '노드'}' 아래에 ${kids.length}개 항목을 추가할까요?\n` +
-      '(실행 취소 Ctrl+Z 로 되돌릴 수 있습니다)',
+      tr('inspector.ai.confirmInsert', { node: selectedNode.text || tr('inspector.ai.nodeFallback'), n: kids.length }),
       () => {
         appendChildren(selectedId, kids as never);
         setSelectedId(selectedId);
         setAnswer('');
         setPreview(null);
-        flashNotice(`'${selectedNode.text}' 아래에 ${kids.length}개 항목을 추가했습니다`);
+        flashNotice(tr('inspector.web.inserted', { node: selectedNode.text, n: kids.length }));
       },
     );
   };
@@ -234,10 +235,9 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
       <AiConfirmPopover
         t={t} panelRef={panelRef} req={confirmReq}
         onClose={() => setConfirmReq(null)} />
-      <InspectorSection t={t} title="🌐 웹 AI로 만들기 (API 키 불필요)">
+      <InspectorSection t={t} title={tr('inspector.web.title')}>
         <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.55, marginBottom: 2 }}>
-          쓰고 있는 AI 웹 구독(Claude·ChatGPT·Gemini…)으로 맵을 만듭니다 —
-          <b> 복사 2번</b>이면 됩니다.
+          {rich(tr('inspector.web.intro'), { two: <b>{tr('inspector.web.introTwo')}</b> })}
         </div>
 
         {notice && (
@@ -248,12 +248,12 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           }}>{notice}</div>
         )}
 
-        {stepLabel('1', '무엇을 만들까요?')}
+        {stepLabel('1', tr('inspector.web.step1'))}
         <textarea
           value={topic}
           data-webai-topic
           onChange={(e) => setTopic(e.target.value)}
-          placeholder={'예: 신제품 출시 계획을 마인드맵으로 정리해줘'}
+          placeholder={tr('inspector.web.topicPlaceholder')}
           style={{
             width: '100%', boxSizing: 'border-box', padding: 10,
             fontSize: 12.5, borderRadius: 7, resize: 'vertical',
@@ -262,12 +262,12 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             border: `1px solid ${t.border}`, fontFamily: 'inherit',
           }} />
         <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
-          <span style={{ fontSize: 10.5, color: t.textSubtle }}>유형</span>
+          <span style={{ fontSize: 10.5, color: t.textSubtle }}>{tr('inspector.web.type')}</span>
           <select
             value={genType}
             data-webai-type
             onChange={(e) => setGenType(e.target.value)}
-            title="mmd 템플릿에 덧붙일 용도별 추가 지시"
+            title={tr('inspector.ai.genTypeTitle')}
             style={{
               flex: 1, padding: '5px 8px', borderRadius: 5,
               border: `1px solid ${t.border}`,
@@ -276,7 +276,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             }}
           >
             {GENERATION_TYPES.map((g) => (
-              <option key={g.key} value={g.key}>{g.label}</option>
+              <option key={g.key} value={g.key}>{tr(g.label)}</option>
             ))}
           </select>
         </div>
@@ -284,7 +284,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           onClick={copyPrompt}
           disabled={!topic.trim()}
           data-webai-copy
-          title="mmd 프롬프트 템플릿 + 주제를 클립보드에 복사 — AI 채팅창에 붙여넣으세요"
+          title={tr('inspector.web.copyTitle')}
           style={{
             width: '100%', marginTop: 8, padding: 9,
             background: !topic.trim() ? t.surfaceAlt
@@ -295,23 +295,23 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             borderRadius: 7, fontSize: 13, fontWeight: 700,
             cursor: !topic.trim() ? 'default' : 'pointer',
           }}>
-          {copied === 'prompt' ? '✓ 복사됨 — AI 창에 붙여넣으세요' : '📋 ① 프롬프트 복사'}
+          {copied === 'prompt' ? tr('inspector.web.copiedPaste') : tr('inspector.web.copyPrompt')}
         </button>
         <div style={{
           display: 'flex', gap: 5, marginTop: 6, alignItems: 'center',
         }}>
-          <span style={{ fontSize: 10.5, color: t.textSubtle, flexShrink: 0 }}>AI 열기:</span>
+          <span style={{ fontSize: 10.5, color: t.textSubtle, flexShrink: 0 }}>{tr('inspector.web.openAi')}</span>
           {AI_SHORTCUTS.filter((s) => s.kind === 'plain').map((s) => (
             <button
               key={s.key}
               data-webai-open={s.key}
               onClick={() => openAiSite(s)}
-              title={s.tip ?? `${s.label} 을(를) 새 탭으로 엽니다`}
+              title={s.tip ? tr(s.tip) : tr('inspector.web.openTab', { name: tr(s.label) })}
               style={{
                 flex: 1, padding: '5px 0', borderRadius: 6,
                 border: `1px solid ${t.border}`, background: t.surface,
                 color: t.text, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-              }}>{s.label}</button>
+              }}>{tr(s.label)}</button>
           ))}
         </div>
         {/* 전용 GPT 는 위의 일반 채팅과 **다른 것** — ① 프롬프트 없이
@@ -321,25 +321,24 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             key={s.key}
             data-webai-open={s.key}
             onClick={() => openAiSite(s)}
-            title={s.tip}
+            title={s.tip ? tr(s.tip) : undefined}
             style={{
               width: '100%', marginTop: 5, padding: '6px 8px', borderRadius: 6,
               border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
               color: t.primary, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>⚡ {s.label}</button>
+            }}>⚡ {tr(s.label)}</button>
         ))}
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 3, lineHeight: 1.5 }}>
           {topic.trim()
-            ? '누르면 질문을 클립보드에 복사하고 창을 엽니다 — 자동 입력이 되는 곳(Claude·일반 ChatGPT)은 바로 들어가고, 안 되는 곳(Gemini·전용 GPT)은 Ctrl+V 로 붙여넣으세요. 전용 GPT에는 주제만, 일반 채팅에는 ① 프롬프트 전체가 담깁니다.'
-            : '먼저 위에 주제를 적으면, 창을 열 때 질문이 클립보드에 함께 담깁니다.'}
+            ? tr('inspector.web.openHelp')
+            : tr('inspector.web.openHelpEmpty')}
         </div>
 
         {fallbackText && (
           <div data-webai-fallback style={{ marginTop: 6 }}>
             <div style={{ fontSize: 10.5, color: '#B45309', marginBottom: 3, lineHeight: 1.5 }}>
-              클립보드 복사가 막혀 있습니다 — 아래 내용을 전체 선택(Ctrl+A)해
-              직접 복사하세요.
+              {tr('inspector.web.clipboardBlocked')}
             </div>
             <textarea
               readOnly
@@ -356,13 +355,12 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           </div>
         )}
 
-        {stepLabel('2', 'AI 창에 붙여넣고(Ctrl+V) 실행 → 답변을 복사하세요')}
+        {stepLabel('2', tr('inspector.web.step2'))}
         <div style={{ fontSize: 10, color: '#B45309', lineHeight: 1.5, margin: '2px 0 0' }}>
-          답변은 반드시 답변 끝의 <b>⧉ 복사 버튼</b>으로 복사하세요 —
-          화면을 드래그해 복사하면 코드·도식 블록의 형식이 사라져 깨집니다.
+          {rich(tr('inspector.web.copyWarn'), { btn: <b>{tr('inspector.web.copyWarnBtn')}</b> })}
         </div>
 
-        {stepLabel('3', '답변 붙여넣기')}
+        {stepLabel('3', tr('inspector.web.step3'))}
         <textarea
           value={answer}
           data-webai-answer
@@ -377,7 +375,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             // 보여 준다 — 적용은 아래 두 버튼 중 하나를 눌러야 한다.
             window.setTimeout(() => process(text), 0);
           }}
-          placeholder="AI 답변을 여기에 붙여넣으세요 (Ctrl+V)"
+          placeholder={tr('inspector.web.answerPlaceholder')}
           style={{
             width: '100%', boxSizing: 'border-box', padding: 10,
             fontSize: 11.5, borderRadius: 7, resize: 'vertical',
@@ -387,8 +385,11 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
           }} />
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.5 }}>
-          붙여넣으면 <b>인식만</b> 합니다 — 아래에서 <b>새 맵 생성</b> 또는
-          <b> 선택 노드에 삽입</b>을 누르면 확인 후 반영됩니다.
+          {rich(tr('inspector.web.pasteHelp'), {
+            only: <b>{tr('inspector.web.pasteHelpOnly')}</b>,
+            newmap: <b>{tr('inspector.web.newMapPlain')}</b>,
+            insert: <b>{tr('inspector.ai.insert')}</b>,
+          })}
         </div>
 
         {preview && (
@@ -397,8 +398,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             background: '#DCFCE7', border: '1px solid #86EFAC',
             color: '#15803D', fontSize: 11.5, lineHeight: 1.5, fontWeight: 600,
           }}>
-            '{preview.map.title}' · {preview.nodeCount}노드 인식됨 — 아래에서
-            반영할 방법을 고르세요
+            {tr('inspector.web.recognized', { title: preview.map.title, n: preview.nodeCount })}
           </div>
         )}
         {error && (
@@ -410,14 +410,14 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             {error}
             <button
               data-webai-retry-copy
-              onClick={() => void copyText(RETRY_REQUEST_TEXT, 'retry')}
+              onClick={() => void copyText(retryRequestText(), 'retry')}
               style={{
                 display: 'block', marginTop: 6, padding: '4px 10px',
                 borderRadius: 5, border: '1px solid #FECACA',
                 background: '#FFF', color: '#B91C1C',
                 fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
               }}>
-              {copied === 'retry' ? '✓ 복사됨 — AI 창에 붙여넣으세요' : '⧉ 재요청 문구 복사'}
+              {copied === 'retry' ? tr('inspector.web.copiedPaste') : tr('inspector.web.copyRetry')}
             </button>
           </div>
         )}
@@ -450,7 +450,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
                   }}
                   disabled={off}
                   data-webai-generate
-                  title="붙여넣은 답변을 새 맵으로 엽니다 (확인 후 실행)"
+                  title={tr('inspector.web.newMapTitle')}
                   style={{
                     ...baseStyle,
                     ...(off ? disabledStyle : onStyle),
@@ -458,7 +458,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
                     display: 'flex', alignItems: 'center',
                     justifyContent: 'center', gap: 6,
                   }}>
-                  <I.Sparkles size={13} /> ③ 새 맵 생성
+                  <I.Sparkles size={13} /> {tr('inspector.web.newMap')}
                 </button>
                 {/* 노드를 안 골랐어도 **버튼은 보인다** — 누르면 노드를
                     먼저 고르라고 알려 준다 (2026-08-05 보고) */}
@@ -467,30 +467,28 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
                   disabled={off}
                   data-webai-insert
                   title={selectedNode
-                    ? `답변을 '${selectedNode.text}' 노드의 하위로 추가합니다 (확인 후 실행)`
-                    : '맵에서 노드를 먼저 선택하세요 — 그 노드의 하위로 추가됩니다'}
+                    ? tr('inspector.ai.insertTitle', { node: selectedNode.text })
+                    : tr('inspector.ai.insertNoNodeTitle')}
                   style={{
                     ...baseStyle,
                     ...(off ? disabledStyle : onStyle),
                     cursor: off ? 'default' : 'pointer',
-                  }}>선택 노드에 삽입</button>
+                  }}>{tr('inspector.ai.insert')}</button>
               </>
             );
           })()}
         </div>
 
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 8, lineHeight: 1.5 }}>
-          입력한 내용과 답변은 <b>EasyMindMap 서버로 전송되지 않습니다</b> —
-          이 브라우저 안에서만 처리됩니다.
+          {rich(tr('inspector.web.privacy'), { notsent: <b>{tr('inspector.web.privacyNotSent')}</b> })}
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="선택 노드 자세히 확장 (웹 AI)">
+      <InspectorSection t={t} title={tr('inspector.web.expandTitle')}>
         <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5, marginBottom: 6 }}>
-          맵에서 노드를 고르고 확장 프롬프트를 복사해 AI 창에 붙여넣으세요.
-          답변을 위 ③에 붙여넣고 <b>[선택 노드에 삽입]</b>을 누르면 하위
-          노드로 채워집니다 (중심 주제의 프로젝트 지침·@소스 규칙은 API
-          모드와 동일).
+          {rich(tr('inspector.web.expandHelp', { marker: sourceMarker() }), {
+            insert: <b>[{tr('inspector.ai.insert')}]</b>,
+          })}
         </div>
         <div data-webai-expand-target style={{
           fontSize: 11.5, padding: '6px 9px', borderRadius: 6, marginBottom: 6,
@@ -499,16 +497,16 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {selectedNode
-            ? `대상: ${selectedNode.text || '(빈 노드)'}`
-            : '맵에서 확장할 노드를 선택하세요'}
+            ? tr('inspector.ai.expandTarget', { node: selectedNode.text || tr('inspector.conn.emptyNode') })
+            : tr('inspector.ai.expandPick')}
         </div>
         <button
           onClick={copyExpandPrompt}
           disabled={!selectedNode}
           data-webai-expand-copy
           title={selectedNode
-            ? '선택 노드의 확장 프롬프트(상위 경로·프로젝트 지침 포함)를 복사합니다'
-            : '맵에서 노드를 선택하세요'}
+            ? tr('inspector.web.expandCopyTitle')
+            : tr('inspector.ai.selectNode')}
           style={{
             width: '100%', padding: 9,
             background: !selectedNode ? t.surfaceAlt
@@ -519,7 +517,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             borderRadius: 7, fontSize: 12.5, fontWeight: 700,
             cursor: !selectedNode ? 'default' : 'pointer',
           }}>
-          {copied === 'expand' ? '✓ 복사됨 — AI 창에 붙여넣으세요' : '📋 확장 프롬프트 복사'}
+          {copied === 'expand' ? tr('inspector.web.copiedPaste') : tr('inspector.web.copyExpand')}
         </button>
       </InspectorSection>
     </div>

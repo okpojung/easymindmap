@@ -39,6 +39,7 @@ import {
   withInlinedImages,
   INLINE_ATTACHMENT_LIMIT,
 } from './mapMeta';
+import { currentLang, tr } from '@/i18n';
 
 // 에디터가 계산한 노드의 최종 배치 좌표 — 뷰어는 이 좌표를 그대로 사용해
 // 에디터 화면과 100% 동일한 레이아웃을 재현한다 (자체 레이아웃은 좌표가
@@ -207,6 +208,11 @@ const VIEWER_JS = String.raw`
 (function () {
   'use strict';
   var DATA = window.__MINDMAP__;
+  // 화면 문구 — 내보내는 순간의 언어로 굳힌 표 (buildStandaloneHtml 의 viewerStrings)
+  var MML = window.__MM_L__ || {};
+  function mmFmt(s, v) {
+    return String(s).replace(/\{(\w+)\}/g, function (m, k) { return k in v ? String(v[k]) : m; });
+  }
   var svg = document.getElementById('mm-svg');
   var world = document.getElementById('mm-world');
   var notePanel = document.getElementById('mm-note');
@@ -531,14 +537,14 @@ const VIEWER_JS = String.raw`
     for (var i = 0; i < lines.length; i++) {
       var ln = lines[i];
       if (isFenceLine(ln)) {
-        if (!inFence && !codeChip) { out.push('⧉코드'); codeChip = true; }
+        if (!inFence && !codeChip) { out.push(MML.chipCode); codeChip = true; }
         inFence = !inFence;
         continue;
       }
       if (inFence) continue;
       var t2 = ln.replace(/^\s+|\s+$/g, '');
       if (t2.length > 1 && t2.indexOf('|') >= 0 && t2.split('|').length >= 2) {
-        if (!/^[\s|:\-]+$/.test(t2) && !tableChip) { out.push('⊞표'); tableChip = true; }
+        if (!/^[\s|:\-]+$/.test(t2) && !tableChip) { out.push(MML.chipTable); tableChip = true; }
         continue;
       }
       var m3 = /^[ \t]*[-*+][ \t]+\[([ xX])\][ \t]?(.*)$/.exec(ln);
@@ -648,10 +654,10 @@ const VIEWER_JS = String.raw`
   // 노트 종류(문단/코드/표/체크) — 종류별로 개별 마커를 그린다.
   // 에디터의 NOTE_KIND_META(nodeContent.ts)와 동일한 규격.
   var NOTE_STYLE = {
-    'note-paragraph': { color: '#64748B', letter: 'T', label: '문단 노트', type: 'paragraph' },
-    'note-code':      { color: '#B45309', letter: 'C', label: '코드 노트', type: 'code_block' },
-    'note-table':     { color: '#1D4ED8', letter: '',  label: '표 노트', type: 'table' },
-    'note-check':     { color: '#15803D', letter: '',  label: '체크리스트', type: 'checklist' }
+    'note-paragraph': { color: '#64748B', letter: 'T', label: MML.noteParagraph, type: 'paragraph' },
+    'note-code':      { color: '#B45309', letter: 'C', label: MML.noteCode, type: 'code_block' },
+    'note-table':     { color: '#1D4ED8', letter: '',  label: MML.noteTable, type: 'table' },
+    'note-check':     { color: '#15803D', letter: '',  label: MML.noteChecklist, type: 'checklist' }
   };
   var NOTE_KIND_ORDER = ['note-paragraph', 'note-code', 'note-table', 'note-check'];
   function noteType(b) {
@@ -1844,7 +1850,7 @@ const VIEWER_JS = String.raw`
         var ckOn = checkState(node.id, ck0.s, ck0.c);
         var ckG = el('g', { 'class': 'mm-check', style: 'cursor:pointer' }, g);
         var ttl = el('title', {}, ckG);
-        ttl.textContent = ckOn ? '클릭하면 미완료로' : '클릭하면 완료로';
+        ttl.textContent = ckOn ? MML.checkToUndone : MML.checkToDone;
         el('rect', { x: bx3, y: by3, width: bs, height: bs, rx: 3,
           fill: ckOn ? '#22A06B' : 'none',
           stroke: ckOn ? '#22A06B' : '#8B94A3', 'stroke-width': 1.5,
@@ -2000,7 +2006,7 @@ const VIEWER_JS = String.raw`
         'text-anchor': 'end', 'font-size': Math.max(8, cellFs - 1),
         'font-weight': 700, fill: '#475569' }, g);
       tCopyT.textContent = '⧉';
-      tCopyT.setAttribute('title', '표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다');
+      tCopyT.setAttribute('title', MML.copyTable);
       tCopyT.style.cursor = 'pointer';
       tCopyHit.style.cursor = 'pointer';
       (function (hdrs, rws, btnEl, hitEl) {
@@ -2027,7 +2033,7 @@ const VIEWER_JS = String.raw`
       var copyT = el('text', { x: codeX + cW - CPX, y: headBase, 'text-anchor': 'end',
         'font-size': cHeadFs, fill: '#475569' }, g);
       copyT.textContent = '⧉';
-      copyT.setAttribute('title', '코드 복사');
+      copyT.setAttribute('title', MML.copyCode);
       copyT.style.cursor = 'pointer';
       (function (codeJoined, btnEl) {
         btnEl.addEventListener('click', function (ev) {
@@ -2108,7 +2114,7 @@ const VIEWER_JS = String.raw`
       for (var i2 = 0; i2 < arr.length; i2++) {
         rows.push({
           icon: icon,
-          label: arr[i2].name + (arr[i2].href ? (arr[i2].external ? ' ↗' : '') : ' (파일 없음)'),
+          label: arr[i2].name + (arr[i2].href ? (arr[i2].external ? ' ↗' : '') : ' ' + MML.fileMissing),
           title: arr[i2].name,
           act: openAttachmentHref(arr[i2])
         });
@@ -2118,7 +2124,7 @@ const VIEWER_JS = String.raw`
     if (node.links && node.links.length) {
       (function (links) {
         markers.push({ kind: 'link', n: links.length,
-          tip: links.length > 1 ? '링크 ' + links.length + '개'
+          tip: links.length > 1 ? mmFmt(MML.linksN, { n: links.length })
             : (links[0].label || links[0].url),
           act: (links.length === 1
           ? function () { window.open(links[0].url, '_blank'); }
@@ -2143,7 +2149,7 @@ const VIEWER_JS = String.raw`
           if (!blocks.length) return;
           markers.push({
             kind: kind, n: blocks.length,
-            tip: blocks.length > 1 ? def.label + ' ' + blocks.length + '개' : def.label,
+            tip: blocks.length > 1 ? mmFmt(MML.kindN, { label: def.label, n: blocks.length }) : def.label,
             act: function () { showDetail(node, kind); }
           });
         })(NOTE_KIND_ORDER[nk]);
@@ -2151,14 +2157,14 @@ const VIEWER_JS = String.raw`
     }
     if (files.length) {
       markers.push({ kind: 'file', n: files.length,
-        tip: files.length > 1 ? '첨부파일 ' + files.length + '개' : files[0].name,
+        tip: files.length > 1 ? mmFmt(MML.filesN, { n: files.length }) : files[0].name,
         act: (files.length === 1 && files[0].href
         ? function () { window.open(files[0].href, '_blank'); }
         : function (mk) { openChooser(mk, attachmentRows(files, '📎')); }) });
     }
     if (media.length) {
       markers.push({ kind: 'media', n: media.length,
-        tip: media.length > 1 ? '멀티미디어 ' + media.length + '개' : media[0].name,
+        tip: media.length > 1 ? mmFmt(MML.mediaN, { n: media.length }) : media[0].name,
         act: (media.length === 1 && media[0].href
         ? function () { window.open(media[0].href, '_blank'); }
         : function (mk) { openChooser(mk, attachmentRows(media, '▶️')); }) });
@@ -2265,7 +2271,7 @@ const VIEWER_JS = String.raw`
       el('circle', { cx: ccx, cy: ccy, r: cr, fill: node._open ? SKIN.fam.l2.fill : color,
         stroke: color, 'stroke-width': 1.3 }, chip);
       var chTitle = el('title', {}, chip);
-      chTitle.textContent = node._open ? '접기' : ('펼치기 — 숨은 노드 ' + cnt + '개');
+      chTitle.textContent = node._open ? MML.collapse : mmFmt(MML.expandHidden, { n: cnt });
       var ct = el('text', { x: ccx, y: ccy + 3.4, 'text-anchor': 'middle',
         'font-size': 9.5, 'font-weight': 700, fill: node._open ? color : '#FFFFFF' }, chip);
       ct.textContent = node._open ? '−' : cnt;
@@ -2299,7 +2305,7 @@ const VIEWER_JS = String.raw`
   function copyTableData(headers, rows, btn) {
     function done() {
       var prev = btn.textContent;
-      btn.textContent = '복사됨 ✓';
+      btn.textContent = MML.copied;
       setTimeout(function () { btn.textContent = prev; }, 1200);
     }
     function escH(s) {
@@ -2332,7 +2338,7 @@ const VIEWER_JS = String.raw`
   function copyText(text, btn) {
     function done() {
       var prev = btn.textContent;
-      btn.textContent = '복사됨 ✓';
+      btn.textContent = MML.copied;
       setTimeout(function () { btn.textContent = prev; }, 1200);
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2389,7 +2395,7 @@ const VIEWER_JS = String.raw`
       var tBtn = document.createElement('button');
       tBtn.className = 'mm-copy';
       tBtn.textContent = '⧉';
-      tBtn.setAttribute('title', '표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다');
+      tBtn.setAttribute('title', MML.copyTable);
       tBtn.style.position = 'absolute';
       tBtn.style.top = '0';
       tBtn.style.right = '0';
@@ -2413,7 +2419,7 @@ const VIEWER_JS = String.raw`
       var btn = document.createElement('button');
       btn.className = 'mm-copy';
       btn.textContent = '⧉';
-      btn.setAttribute('title', '코드 복사');
+      btn.setAttribute('title', MML.copyCode);
       (function (text, b) {
         b.addEventListener('click', function () { copyText(text, b); });
       })(note.text, btn);
@@ -2436,7 +2442,7 @@ const VIEWER_JS = String.raw`
       gl.className = 'mm-note-check';
       gl.setAttribute('data-viewer-note-check', on ? '1' : '0');
       gl.textContent = on ? '☑' : '☐';
-      gl.setAttribute('title', on ? '클릭하면 미완료로' : '클릭하면 완료로');
+      gl.setAttribute('title', on ? MML.checkToUndone : MML.checkToDone);
       var txt = document.createElement('span');
       txt.textContent = ' ' + note.text;
       // 완료해도 **취소선을 긋지 않는다** (2026-08-09 사용자 결정) —
@@ -2450,7 +2456,7 @@ const VIEWER_JS = String.raw`
             setNoteCheck(nt, next);
             span.textContent = next ? '☑' : '☐';
             span.setAttribute('data-viewer-note-check', next ? '1' : '0');
-            span.setAttribute('title', next ? '클릭하면 미완료로' : '클릭하면 완료로');
+            span.setAttribute('title', next ? MML.checkToUndone : MML.checkToDone);
           });
         })(note, gl);
       }
@@ -2474,7 +2480,7 @@ const VIEWER_JS = String.raw`
       if (!att.external) a.setAttribute('download', att.name);
       row.appendChild(a);
     } else {
-      row.textContent = icon + ' ' + att.name + ' (파일 없음)';
+      row.textContent = icon + ' ' + att.name + ' ' + MML.fileMissing;
     }
     return row;
   }
@@ -2489,7 +2495,7 @@ const VIEWER_JS = String.raw`
     var i, a, row;
 
     if (kind === 'links' && node.links) {
-      section('링크');
+      section(MML.sectionLinks);
       for (i = 0; i < node.links.length; i++) {
         row = document.createElement('div');
         row.className = 'mm-note-block';
@@ -2504,7 +2510,7 @@ const VIEWER_JS = String.raw`
     }
 
     if (kind === 'notes' && node.notes) {
-      section('메모');
+      section(MML.sectionMemo);
       for (i = 0; i < node.notes.length; i++) {
         noteBody.appendChild(renderNoteBlock(node.notes[i]));
       }
@@ -2522,7 +2528,7 @@ const VIEWER_JS = String.raw`
 
     if ((kind === 'files' || kind === 'media') && node.attachments) {
       var wantMedia = kind === 'media';
-      section(wantMedia ? '멀티미디어' : '첨부 파일');
+      section(wantMedia ? MML.sectionMedia : MML.sectionFiles);
       for (i = 0; i < node.attachments.length; i++) {
         var att = node.attachments[i];
         var isMedia = att.kind === 'audio' || att.kind === 'video';
@@ -2799,15 +2805,15 @@ const VIEWER_JS = String.raw`
 
   function updateCount() {
     var layoutLabels = {
-      'radial-bidirectional': '방사형·양쪽', 'radial-right': '방사형·오른쪽',
-      'radial-left': '방사형·왼쪽', 'tree-right': '트리·오른쪽',
-      'tree-down': '트리·아래', 'hierarchy-right': '계층형·오른쪽',
-      'process-tree-right': '진행트리·오른쪽', 'timeline': '시간배치',
-      'timeline-center': '시간배치·중앙'
+      'radial-bidirectional': MML.layoutRadialBi, 'radial-right': MML.layoutRadialRight,
+      'radial-left': MML.layoutRadialLeft, 'tree-right': MML.layoutTreeRight,
+      'tree-down': MML.layoutTreeDown, 'hierarchy-right': MML.layoutHierarchyRight,
+      'process-tree-right': MML.layoutProcessTreeRight, 'timeline': MML.layoutTimeline,
+      'timeline-center': MML.layoutTimelineCenter
     };
     var eff = normalize(DATA.mapLayout) || normalize(DATA.root.layoutType) || 'radial-bidirectional';
     document.getElementById('mm-count').textContent =
-      countAllNodes() + ' 노드 · ' + (layoutLabels[eff] || eff);
+      mmFmt(MML.nodeCount, { n: countAllNodes(), layout: layoutLabels[eff] || eff });
   }
 
   document.getElementById('mm-fit').addEventListener('click', fit);
@@ -2839,10 +2845,10 @@ const VIEWER_JS = String.raw`
       });
       if (inText || inTags || inNotes || inLinks) {
         var kinds = [];
-        if (inText) kinds.push('노드');
-        if (inTags) kinds.push('태그');
-        if (inNotes) kinds.push('노트');
-        if (inLinks) kinds.push('링크');
+        if (inText) kinds.push('node');
+        if (inTags) kinds.push('tag');
+        if (inNotes) kinds.push('note');
+        if (inLinks) kinds.push('link');
         // 제목의 블록 마커는 접어 표시 (⧉코드·☑/☐·⊞표 — P4)
         out.push({ id: n.id, title: flattenText(text), path: path.join(' › '), kinds: kinds });
       }
@@ -2898,11 +2904,11 @@ const VIEWER_JS = String.raw`
     if (!searchHits.length) {
       var q0 = (searchInput.value || '').trim();
       searchResults.style.display = q0 ? 'block' : 'none';
-      searchResults.innerHTML = q0 ? '<div class="cnt">결과 0건</div>' : '';
+      searchResults.innerHTML = q0 ? '<div class="cnt">' + escapeHtml2(mmFmt(MML.resultsN, { n: 0 })) + '</div>' : '';
       return;
     }
     var q = (searchInput.value || '').trim().toLowerCase();
-    var html = '<div class="cnt">결과 ' + searchHits.length + '건</div>';
+    var html = '<div class="cnt">' + escapeHtml2(mmFmt(MML.resultsN, { n: searchHits.length })) + '</div>';
     for (var i = 0; i < searchHits.length; i++) {
       var h = searchHits[i];
       var t2 = escapeHtml2(h.title);
@@ -2916,14 +2922,16 @@ const VIEWER_JS = String.raw`
       var kb2 = '';
       for (var ki = 0; ki < (h.kinds || []).length; ki++) {
         var kn = h.kinds[ki];
-        var kcls = kn === '노드' ? 'kb-node' : kn === '태그' ? 'kb-tag' :
-          kn === '노트' ? 'kb-note' : 'kb-link';
-        kb2 += '<span class="kb ' + kcls + '">' + escapeHtml2(kn) + '</span>';
+        // kn = 'node' | 'tag' | 'note' | 'link' — 표시 글자는 MML 에서
+        var kcls = 'kb-' + kn;
+        var klabel = kn === 'node' ? MML.kindNode : kn === 'tag' ? MML.kindTag :
+          kn === 'note' ? MML.kindNote : MML.kindLink;
+        kb2 += '<span class="kb ' + kcls + '">' + escapeHtml2(klabel) + '</span>';
       }
       html += '<div class="hit' + (h.id === SEARCHHIT ? ' on' : '') +
-        '" data-hit="' + escapeHtml2(h.id) + '" title="클릭하면 노란 강조로 표시됩니다">' +
+        '" data-hit="' + escapeHtml2(h.id) + '" title="' + escapeHtml2(MML.hitTip) + '">' +
         '<div class="ttl">' + kb2 + t2 + '</div>' +
-        '<div class="sub">' + escapeHtml2(h.path || '루트') + '</div></div>';
+        '<div class="sub">' + escapeHtml2(h.path || MML.root) + '</div></div>';
     }
     searchResults.innerHTML = html;
     searchResults.style.display = 'block';
@@ -2982,7 +2990,7 @@ const VIEWER_JS = String.raw`
     var on = !!document.fullscreenElement;
     fsBtn.innerHTML = on ? FS_EXIT : FS_ENTER;
     fsBtn.className = on ? 'icon active' : 'icon';
-    fsBtn.setAttribute('title', on ? '전체화면 종료' : '전체화면 모드');
+    fsBtn.setAttribute('title', on ? MML.fsExit : MML.fsEnter);
   }
   fsBtn.addEventListener('click', function () {
     if (document.fullscreenElement) {
@@ -3035,8 +3043,8 @@ const VIEWER_JS = String.raw`
       : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg>';
     centerBtn.className = on ? 'icon active' : 'icon';
     centerBtn.setAttribute('title', on
-      ? '선택 노드 보기 취소 — 맵 전체 보기'
-      : '선택 노드 화면 중앙 보기 (노드를 클릭해 선택 · 다시 누르면 전체 보기)');
+      ? MML.centerOff
+      : MML.centerOn);
   }
   centerBtn.addEventListener('click', function () {
     if (FOCUS) {
@@ -3122,7 +3130,7 @@ const VIEWER_JS = String.raw`
   function setDark(on) {
     document.body.classList.toggle('mm-dark', on);
     darkBtn.textContent = on ? '☀' : '🌙';
-    darkBtn.setAttribute('title', on ? '라이트 모드로 전환' : '다크 모드로 전환');
+    darkBtn.setAttribute('title', on ? MML.toLight : MML.toDark);
     SKIN = on ? SKIN_DARK : SKIN_LIGHT;
     render(); // 노드 카드·글자·연결선까지 스킨 교체 (에디터 다크와 파리티)
     try { localStorage.setItem(DARK_KEY, on ? '1' : '0'); } catch (e) {}
@@ -3281,7 +3289,7 @@ const VIEWER_JS = String.raw`
       Object.keys(kinds).forEach(function (k) {
         var meta = NOTE_BADGE[k] || NOTE_BADGE.paragraph;
         var b = el2('span', 'mm-ol-badge'); b.style.background = meta.c;
-        b.textContent = meta.t; b.title = '노트 보기';
+        b.textContent = meta.t; b.title = MML.viewNote;
         b.addEventListener('click', function (e) { e.stopPropagation(); showDetail(node, 'notes'); });
         row.appendChild(b);
       });
@@ -3349,7 +3357,7 @@ const VIEWER_JS = String.raw`
     var tblWrap = el2('div', 'mm-ol-table');
     var tBtn = el2('button', 'mm-copy');
     tBtn.textContent = '⧉';
-    tBtn.setAttribute('title', '표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다');
+    tBtn.setAttribute('title', MML.copyTable);
     (function (hdrs, rws, b) {
       b.addEventListener('click', function (ev) { ev.stopPropagation(); copyTableData(hdrs, rws, b); });
     })(mdt.headers, mdt.rows, tBtn);
@@ -3381,7 +3389,7 @@ const VIEWER_JS = String.raw`
     langEl.textContent = mdc.lang || 'code';
     var btn = el2('button', 'mm-copy');
     btn.textContent = '⧉';
-    btn.setAttribute('title', '코드 복사');
+    btn.setAttribute('title', MML.copyCode);
     (function (t, b) {
       b.addEventListener('click', function (ev) { ev.stopPropagation(); copyText(t, b); });
     })(mdc.code.join('\n'), btn);
@@ -3434,7 +3442,7 @@ const VIEWER_JS = String.raw`
     var split = document.body.classList.contains('mm-outline-split');
     var full = document.body.classList.contains('mm-outline-full');
     olSplitBtn.className = split ? 'icon active' : 'icon';
-    olSplitBtn.setAttribute('title', split ? '분할 보기 닫기' : '아웃라인 분할 보기');
+    olSplitBtn.setAttribute('title', split ? MML.splitClose : MML.splitOpen);
     // 분할 중에는 전체 토글 비활성 (에디터와 동일 규칙)
     viewToggleBtn.disabled = split;
     viewToggleBtn.style.opacity = split ? '0.4' : '1';
@@ -3442,8 +3450,8 @@ const VIEWER_JS = String.raw`
     viewToggleBtn.innerHTML = full ? MINDMAP_ICON : OUTLINE_ICON;
     viewToggleBtn.className = full ? 'icon active' : 'icon';
     viewToggleBtn.setAttribute('title', split
-      ? '분할 보기 중에는 사용할 수 없습니다 (분할 닫은 뒤 전환)'
-      : (full ? '맵 모드로 전환' : '아웃라인 모드로 전환 (화면 전체)'));
+      ? MML.splitBusy
+      : (full ? MML.toMap : MML.toOutline));
   }
   olSplitBtn.addEventListener('click', function () {
     var on = document.body.classList.toggle('mm-outline-split');
@@ -3866,6 +3874,27 @@ function escapeHtml(s: string): string {
  * 머리말 크기가 바뀌면(창 크기 · 전체화면 · 아웃라인 모드) 다시 알린다. 머리말이 숨으면 높이 0.
  * 위치(숫자)만 보낸다 — 맵 내용은 실지 않는다.
  */
+/** 뷰어 키 목록 — `io.viewer.<키>` 를 내보내는 순간의 언어로 굳혀 파일에 싣는다 (뷰어의 MML) */
+const VIEWER_STRING_KEYS = [
+  'chipCode', 'chipTable', 'noteParagraph', 'noteCode', 'noteTable', 'noteChecklist',
+  'checkToUndone', 'checkToDone', 'copyTable', 'copyCode', 'fileMissing',
+  'linksN', 'kindN', 'filesN', 'mediaN', 'collapse', 'expandHidden',
+  'sectionLinks', 'sectionMemo', 'sectionMedia', 'sectionFiles',
+  'layoutRadialBi', 'layoutRadialRight', 'layoutRadialLeft', 'layoutTreeRight',
+  'layoutTreeDown', 'layoutHierarchyRight', 'layoutProcessTreeRight',
+  'layoutTimeline', 'layoutTimelineCenter', 'nodeCount',
+  'kindNode', 'kindTag', 'kindNote', 'kindLink', 'resultsN', 'hitTip', 'root',
+  'fsExit', 'fsEnter', 'centerOff', 'centerOn', 'toLight', 'toDark', 'viewNote',
+  'splitClose', 'splitOpen', 'splitBusy', 'toMap', 'toOutline',
+] as const;
+
+function viewerStrings(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of VIEWER_STRING_KEYS) out[k] = tr(`io.viewer.${k}`);
+  out.copied = tr('common.copied');
+  return out;
+}
+
 const HOST_SLOTS_JS = `(function(){
   function rect(id){var e=document.getElementById(id);if(!e)return null;var r=e.getBoundingClientRect();return {x:r.left,y:r.top,w:r.width,h:r.height};}
   function post(){if(!window.parent||window.parent===window)return;
@@ -4011,8 +4040,12 @@ export function buildStandaloneHtml(
   const metaJson = JSON.stringify(buildMapMeta(metaMap ?? map, layoutType, spacing))
     .replace(/</g, '\\u003c');
 
+  // 뷰어 화면 문구 — 파일 안에서는 언어를 바꿀 수 없으니 지금 언어로 굳힌다
+  const stringsJson = JSON.stringify(viewerStrings()).replace(/</g, '\\u003c');
+  const A = (key: string) => escapeHtml(tr(`io.viewer.${key}`)); // 속성·본문용 (이스케이프)
+
   return `<!DOCTYPE html>
-<html lang="ko">
+<html lang="${currentLang()}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4029,20 +4062,20 @@ export function buildStandaloneHtml(
     : ''}
   <span id="mm-search-wrap">
     <svg id="mm-search-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
-    <input id="mm-search" type="search" placeholder="노드 · 태그 · 노트 검색"
-      title="노드 텍스트·태그·노트·링크 검색 — 결과를 클릭하면 노란 강조로 표시됩니다" />
+    <input id="mm-search" type="search" placeholder="${A('searchPlaceholder')}"
+      title="${A('searchTitle')}" />
     <div id="mm-search-results"></div>
   </span>
-  <button id="mm-center" class="icon" title="선택 노드 화면 중앙 보기 (노드를 클릭해 선택 · 다시 누르면 전체 보기)"><svg id="mm-center-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></button>
-  <button id="mm-pan" class="icon" title="Pan 모드 — 드래그로 화면 이동 (마우스 오른쪽 버튼 드래그로도 이동)">✋</button>
-  <button id="mm-fit" class="icon" title="맵 전체를 화면에 맞추기">⛶</button>
-  <button id="mm-minimap-btn" class="icon" title="미니맵 — 지금 어디를 보고 있나 (클릭·끌기로 이동)">▦</button>
-  <button id="mm-expand" class="icon" title="모두 펼치기">+</button>
-  <button id="mm-collapse" class="icon" title="모두 접기">−</button>
-  <button id="mm-outline-split" class="icon" title="아웃라인 분할 보기">◫</button>
-  <button id="mm-view-toggle" class="icon" title="아웃라인 모드로 전환 (화면 전체)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg></button>
-  <button id="mm-fullscreen" class="icon" title="전체화면 모드"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>
-  <button id="mm-dark" class="icon" title="다크 모드로 전환">🌙</button>${hostSlots
+  <button id="mm-center" class="icon" title="${A('centerOn')}"><svg id="mm-center-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></button>
+  <button id="mm-pan" class="icon" title="${A('pan')}">✋</button>
+  <button id="mm-fit" class="icon" title="${A('fit')}">⛶</button>
+  <button id="mm-minimap-btn" class="icon" title="${A('minimap')}">▦</button>
+  <button id="mm-expand" class="icon" title="${A('expandAll')}">+</button>
+  <button id="mm-collapse" class="icon" title="${A('collapseAll')}">−</button>
+  <button id="mm-outline-split" class="icon" title="${A('splitOpen')}">◫</button>
+  <button id="mm-view-toggle" class="icon" title="${A('toOutline')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg></button>
+  <button id="mm-fullscreen" class="icon" title="${A('fsEnter')}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>
+  <button id="mm-dark" class="icon" title="${A('toDark')}">🌙</button>${hostSlots
     ? `\n  <span id="mm-host-right" aria-hidden="true" style="flex:0 0 ${Math.round(hostSlots.right)}px;height:28px"></span>`
     : ''}
 </header>
@@ -4057,17 +4090,18 @@ export function buildStandaloneHtml(
 </div>
 <div id="mm-minimap"><svg id="mm-minimap-svg" viewBox="0 0 220 150"><g id="mm-minimap-nodes"></g><rect id="mm-minimap-view" x="0" y="0" width="0" height="0" rx="2"/></svg></div>
 <div id="mm-zoombar">
-  <button id="mm-zoom-out" title="축소 (5% 단위)">−</button>
-  <button id="mm-zoom-pct" title="클릭해서 배율 직접 입력 (2~400)">100%</button>
-  <input id="mm-zoom-input" type="number" min="2" max="400" style="display:none" title="배율 입력 후 Enter" />
-  <button id="mm-zoom-in" title="확대 (5% 단위)">+</button>
-  <button id="mm-zoom-100" title="100%로 보기"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><line x1="20" y1="20" x2="15" y2="15"/><text x="10" y="12.3" font-size="6.3" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">100</text></svg></button>
+  <button id="mm-zoom-out" title="${A('zoomOut')}">−</button>
+  <button id="mm-zoom-pct" title="${A('zoomPct')}">100%</button>
+  <input id="mm-zoom-input" type="number" min="2" max="400" style="display:none" title="${A('zoomInput')}" />
+  <button id="mm-zoom-in" title="${A('zoomIn')}">+</button>
+  <button id="mm-zoom-100" title="${A('zoom100')}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><line x1="20" y1="20" x2="15" y2="15"/><text x="10" y="12.3" font-size="6.3" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">100</text></svg></button>
 </div>
-<footer>EasyMindMap 내보내기 · 읽기 전용 뷰어 · ${exportedAt}</footer>
+<footer>${escapeHtml(tr('io.viewer.footer', { at: exportedAt }))}</footer>
 <!-- EasyMindMap 생성 파일 · 제목: ${escapeHtml(map.title)} · 내보낸 시각: ${exportedAt}
      아래 메타데이터(#easymindmap-map)로 '새 맵 > 불러오기'에서 편집 가능하게 복원됩니다 -->
 <script type="application/json" id="easymindmap-map">${metaJson}</script>
 <script>window.__MINDMAP__ = ${json};</script>
+<script>window.__MM_L__ = ${stringsJson};</script>
 <script>${VIEWER_JS}</script>${hostSlots ? `\n<script>${HOST_SLOTS_JS}</script>` : ''}
 </body>
 </html>`;

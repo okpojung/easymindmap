@@ -9,11 +9,17 @@
 // 한국을 맨 위에 두고, 이용자가 있을 법한 나라를 넣었다. 여기 없는
 // 나라는 검색 칸에 숫자를 쳐서 찾을 수 있게 화면에서 처리한다
 // (SignupForm 의 국가번호 선택 — 이름·번호 어느 쪽으로도 찾힌다).
+//
+// 나라 이름은 화면 언어를 따른다 (B10 i18n) — `countryName()` 이 브라우저의
+// `Intl.DisplayNames` 로 옮기고, 한국어이거나 그것을 못 쓰는 브라우저면
+// 아래 표의 한국어 이름을 쓴다.
+
+import { currentLang, currentLocale } from '@/i18n';
 
 export interface Country {
   /** ISO 3166-1 alpha-2 — 목록의 열쇠 */
   iso: string;
-  /** 화면에 보이는 이름 (한국어) */
+  /** 한국어 이름 — 화면에는 `countryName()` 을 쓴다(언어를 따른다) */
   name: string;
   /** 국가번호 — '+' 없이 숫자만 담고 화면에서 + 를 붙인다 */
   dial: string;
@@ -56,12 +62,32 @@ export const COUNTRIES: Country[] = [
 
 export const DEFAULT_COUNTRY = COUNTRIES[0]; // 대한민국
 
-/** 이름·ISO·번호 어느 쪽으로 쳐도 찾힌다 ('한국'·'kr'·'82') */
+// 언어마다 한 번만 만든다 (DisplayNames 생성은 가볍지 않다)
+const regionNames = new Map<string, Intl.DisplayNames | null>();
+
+/** 지금 화면 언어의 나라 이름 — 한국어면 표의 이름, 아니면 Intl, 실패하면 한국어 */
+export function countryName(c: Country): string {
+  if (currentLang() === 'ko') return c.name;
+  const loc = currentLocale();
+  if (!regionNames.has(loc)) {
+    let dn: Intl.DisplayNames | null = null;
+    try { dn = new Intl.DisplayNames([loc], { type: 'region' }); } catch { /* 옛 브라우저 */ }
+    regionNames.set(loc, dn);
+  }
+  try {
+    return regionNames.get(loc)?.of(c.iso) ?? c.name;
+  } catch {
+    return c.name;
+  }
+}
+
+/** 이름(지금 언어·한국어)·ISO·번호 어느 쪽으로 쳐도 찾힌다 ('한국'·'Korea'·'kr'·'82') */
 export function findCountries(q: string): Country[] {
   const s = q.trim().toLowerCase().replace(/^\+/, '');
   if (!s) return COUNTRIES;
   return COUNTRIES.filter(
     (c) => c.name.toLowerCase().includes(s)
+      || countryName(c).toLowerCase().includes(s)
       || c.iso.toLowerCase().includes(s)
       || c.dial.startsWith(s),
   );

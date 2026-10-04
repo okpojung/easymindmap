@@ -11,11 +11,13 @@ import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { InspectorSection, InspectorRow, ColorSwatchInput } from './InspectorSection';
 import { ConnectorPanel } from './ConnectorPanel';
+import { useTr } from '@/i18n';
 
+// label 은 사전 키 — 렌더할 때 번역한다
 const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
   // 도형 없음 — 글자만 놓는다 (2026-08-08 사용자 요청). 미리보기는
   // "박스가 없다"를 보이려고 **점선 윤곽 + 가운데 글자 획**으로 그린다.
-  { key: 'none',          label: '없음',  shape: (
+  { key: 'none',          label: 'inspector.style.shape.none',  shape: (
     <span style={{
       display: 'inline-block', width: 22, height: 14, position: 'relative',
       border: '1.5px dashed currentColor', borderRadius: 3, opacity: 0.4,
@@ -24,39 +26,46 @@ const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
         position: 'absolute', inset: 0, display: 'flex',
         alignItems: 'center', justifyContent: 'center',
         fontSize: 10, fontWeight: 700, opacity: 2.2,
-      }}>가</span>
+      }}><NoneGlyph /></span>
     </span>
   ) },
-  { key: 'rounded',       label: '둥근',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:6}} /> },
-  { key: 'rectangle',     label: '사각',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:2}} /> },
-  { key: 'pill',          label: '캡슐',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:999}} /> },
-  { key: 'ellipse',       label: '원',    shape: <span style={{display:'inline-block', width:18, height:14, border:'1.5px solid currentColor', borderRadius:'50%'}} /> },
-  { key: 'hexagon',       label: '육각',  shape: <I.Hexagon size={15} /> },
-  { key: 'diamond',       label: '다이아', shape: <I.Diamond size={13} /> },
-  { key: 'parallelogram', label: '평행', shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', transform:'skewX(-18deg)'}} /> },
-  { key: 'arrow-left',  label: '화살◀', shape: (
+  { key: 'rounded',       label: 'inspector.style.shape.rounded',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:6}} /> },
+  { key: 'rectangle',     label: 'inspector.style.shape.rectangle',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:2}} /> },
+  { key: 'pill',          label: 'inspector.style.shape.pill',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:999}} /> },
+  { key: 'ellipse',       label: 'inspector.style.shape.ellipse',    shape: <span style={{display:'inline-block', width:18, height:14, border:'1.5px solid currentColor', borderRadius:'50%'}} /> },
+  { key: 'hexagon',       label: 'inspector.style.shape.hexagon',  shape: <I.Hexagon size={15} /> },
+  { key: 'diamond',       label: 'inspector.style.shape.diamond', shape: <I.Diamond size={13} /> },
+  { key: 'parallelogram', label: 'inspector.style.shape.parallelogram', shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', transform:'skewX(-18deg)'}} /> },
+  { key: 'arrow-left',  label: 'inspector.style.shape.arrowLeft', shape: (
     <svg width="24" height="14" viewBox="0 0 24 14"><polygon points="1,7 7,1 23,1 23,13 7,13" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
   ) },
-  { key: 'arrow-right', label: '화살▶', shape: (
+  { key: 'arrow-right', label: 'inspector.style.shape.arrowRight', shape: (
     <svg width="24" height="14" viewBox="0 0 24 14"><polygon points="23,7 17,13 1,13 1,1 17,1" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
   ) },
-  { key: 'cylinder',    label: '원통', shape: (
+  { key: 'cylinder',    label: 'inspector.style.shape.cylinder', shape: (
     <svg width="20" height="16" viewBox="0 0 20 16"><path d="M1 4 V12 A9 3 0 0 0 19 12 V4" fill="none" stroke="currentColor" strokeWidth="1.5" /><ellipse cx="10" cy="4" rx="9" ry="3" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
   ) },
-  { key: 'star',        label: '별', shape: (
+  { key: 'star',        label: 'inspector.style.shape.star', shape: (
     <svg width="18" height="17" viewBox="0 0 18 17"><polygon points="9,1 11.2,6.2 17,6.6 12.6,10.3 14,16 9,12.9 4,16 5.4,10.3 1,6.6 6.8,6.2" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>
   ) },
 ];
 
+/** 도형 없음 미리보기의 글자 획 — 언어마다 그 언어의 글자 하나 */
+function NoneGlyph() {
+  const tr = useTr();
+  return <>{tr('inspector.style.shapeNoneGlyph')}</>;
+}
+
 const DEFAULT_COLORS = { fillColor: '#FEF3C7', borderColor: '#F59E0B', textColor: '#78350F' };
 
 const ALIGNS: { key: TextAlign; label: string }[] = [
-  { key: 'left',   label: '왼쪽' },
-  { key: 'center', label: '중앙' }, // 기본값
-  { key: 'right',  label: '오른쪽' },
+  { key: 'left',   label: 'inspector.style.align.left' },
+  { key: 'center', label: 'inspector.style.align.center' }, // 기본값
+  { key: 'right',  label: 'inspector.style.align.right' },
 ];
 
 export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
+  const tr = useTr();
   const map = useDocumentStore((s) => s.map);
   const updateNodesStyle = useDocumentStore((s) => s.updateNodesStyle);
   const updateNodesTextAlign = useDocumentStore((s) => s.updateNodesTextAlign);
@@ -88,15 +97,15 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
           background: t.primarySoft, border: `1px solid ${t.primaryBorder}`,
           color: t.primary, fontSize: 11.5, fontWeight: 700,
         }}>
-          {targets.length}개 노드 선택 — 스타일이 일괄 적용됩니다
+          {tr('inspector.style.multi', { n: targets.length })}
         </div>
       )}
-      <InspectorSection t={t} title="도형 (NS-04)">
+      <InspectorSection t={t} title={tr('inspector.style.shapeTitle')}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
           {SHAPES.map(s => {
             const active = shape === s.key;
             return (
-              <button key={s.key} title={s.label}
+              <button key={s.key} title={tr(s.label)}
                 onClick={() => set({ shapeType: s.key })}
                 style={{
                   padding: '7px 0 5px', borderRadius: 6,
@@ -107,29 +116,29 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
                   cursor: 'pointer',
                 }}>
                 {s.shape}
-                <span style={{ fontSize: 9.5, fontWeight: active ? 600 : 500 }}>{s.label}</span>
+                <span style={{ fontSize: 9.5, fontWeight: active ? 600 : 500 }}>{tr(s.label)}</span>
               </button>
             );
           })}
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="채움 · 테두리 · 글자색">
-        <InspectorRow t={t} label="채움색">
+      <InspectorSection t={t} title={tr('inspector.style.colorsTitle')}>
+        <InspectorRow t={t} label={tr('inspector.style.fill')}>
           <ColorSwatchInput t={t} value={style.fillColor ?? DEFAULT_COLORS.fillColor}
             onChange={(v) => set({ fillColor: v })} />
         </InspectorRow>
-        <InspectorRow t={t} label="테두리">
+        <InspectorRow t={t} label={tr('inspector.style.border')}>
           <ColorSwatchInput t={t} value={style.borderColor ?? DEFAULT_COLORS.borderColor}
             onChange={(v) => set({ borderColor: v })} />
         </InspectorRow>
-        <InspectorRow t={t} label="글자색">
+        <InspectorRow t={t} label={tr('inspector.style.textColor')}>
           <ColorSwatchInput t={t} value={style.textColor ?? DEFAULT_COLORS.textColor}
             onChange={(v) => set({ textColor: v })} />
         </InspectorRow>
       </InspectorSection>
 
-      <InspectorSection t={t} title="테두리 스타일">
+      <InspectorSection t={t} title={tr('inspector.style.borderStyleTitle')}>
         <div style={{ display: 'flex', gap: 4 }}>
           {(['solid', 'dashed', 'dotted', 'double'] as const).map((bs) => {
             const active = (style.borderStyle ?? 'solid') === bs;
@@ -142,34 +151,34 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
                   border: `1px solid ${active ? t.primaryBorder : t.border}`,
                   cursor: 'pointer',
                 }}>
-                {bs === 'solid' ? '실선' : bs === 'dashed' ? '파선' : bs === 'dotted' ? '점선' : '이중선'}
+                {tr(`inspector.style.border.${bs}`)}
               </button>
             );
           })}
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="텍스트 강조">
+      <InspectorSection t={t} title={tr('inspector.style.emphasisTitle')}>
         <div style={{ display: 'flex', gap: 4 }}>
-          <StyleToggle t={t} label="굵게" weight={700}
+          <StyleToggle t={t} label={tr('inspector.style.bold')} weight={700}
             active={style.fontWeight === 'bold'}
             onClick={() => set({ fontWeight: style.fontWeight === 'bold' ? 'normal' : 'bold' })} />
-          <StyleToggle t={t} label="기울임" italic
+          <StyleToggle t={t} label={tr('inspector.style.italic')} italic
             active={style.fontStyle === 'italic'}
             onClick={() => set({ fontStyle: style.fontStyle === 'italic' ? 'normal' : 'italic' })} />
-          <StyleToggle t={t} label="취소선" strike
+          <StyleToggle t={t} label={tr('inspector.style.strike')} strike
             active={!!style.strike}
             onClick={() => set({ strike: !style.strike })} />
-          <StyleToggle t={t} label="밑줄" underline
+          <StyleToggle t={t} label={tr('inspector.style.underline')} underline
             active={!!style.underline}
             onClick={() => set({ underline: !style.underline })} />
-          <StyleToggle t={t} label="하이라이트" highlightSwatch
+          <StyleToggle t={t} label={tr('inspector.style.highlight')} highlightSwatch
             active={!!style.highlight}
             onClick={() => set({ highlight: !style.highlight })} />
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="텍스트 정렬">
+      <InspectorSection t={t} title={tr('inspector.style.alignTitle')}>
         <div style={{ display: 'flex', gap: 4 }}>
           {ALIGNS.map((a) => {
             const active = textAlign === a.key;
@@ -183,7 +192,7 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
                   border: `1px solid ${active ? t.primaryBorder : t.border}`,
                   cursor: 'pointer', fontWeight: active ? 600 : 500,
                 }}>
-                {a.label}{a.key === 'center' ? ' (기본)' : ''}
+                {tr(a.label)}{a.key === 'center' ? tr('inspector.style.alignDefault') : ''}
               </button>
             );
           })}

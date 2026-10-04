@@ -14,6 +14,7 @@ import { embedRichHtmlImages } from '@/utils/embedImage';
 import { useNoteHtmlResolver } from '@/utils/imageSrc';
 import { TableDialog, TableGridPicker } from '@/editor/node-renderer/TableDialog';
 import { noteTableCells, noteTableFromMd, noteTableToMd } from './noteTable';
+import { useTr } from '@/i18n';
 
 // 맵 전체에서 노트 블록을 id로 찾는다 — 사진 내장(비동기) 완료 시점에
 // 블록이 아직 그 서식(html)을 갖고 있는지 확인하는 용도.
@@ -48,6 +49,8 @@ const CODE_LANGUAGES = [
   'C', 'C++', 'C#', 'Go', 'Rust', 'SQL', 'HTML', 'CSS', 'JSON', 'YAML',
   'Markdown', '기타',
 ];
+// '기타' 는 노트에 저장되는 값이라 그대로 두고, 보이는 이름만 번역한다
+const CODE_LANG_OTHER = '기타';
 
 // 노트 블록 입력창 높이(행 수) — 길이를 조절하려면 이 숫자만 바꾸면 된다.
 // (docs/03-editor-core/node/04-node-content.md §UI 조정 가이드 참조)
@@ -56,14 +59,16 @@ const NOTE_INPUT_ROWS: Record<string, number> = {
   code_block: 15,
 };
 
+// label 은 사전 키 — 렌더할 때 번역한다
 const BLOCK_TYPES: { type: NoteBlockType; label: string }[] = [
-  { type: 'paragraph', label: '문단' },
-  { type: 'code_block', label: '코드' },
-  { type: 'table', label: '표' },
-  { type: 'checklist', label: '체크' },
+  { type: 'paragraph', label: 'inspector.note.add.paragraph' },
+  { type: 'code_block', label: 'inspector.note.add.code' },
+  { type: 'table', label: 'inspector.note.add.table' },
+  { type: 'checklist', label: 'inspector.note.add.check' },
 ];
 
 export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
+  const tr = useTr();
   const map = useDocumentStore((s) => s.map);
   const addNodeTag = useDocumentStore((s) => s.addNodeTag);
   const removeNodeTag = useDocumentStore((s) => s.removeNodeTag);
@@ -93,7 +98,7 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
 
   return (
     <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
-      <InspectorSection t={t} title="태그">
+      <InspectorSection t={t} title={tr('inspector.note.tags')}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
           {tags.map((tagName) => {
             const tc = resolveTagColor(tagName, t);
@@ -120,7 +125,7 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
             value={tagDraft}
             onChange={(e) => setTagDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') commitTag(); }}
-            placeholder="태그 입력 후 Enter"
+            placeholder={tr('inspector.note.tagPlaceholder')}
             style={{
               flex: 1, fontSize: 11, padding: '4px 7px', borderRadius: 4,
               border: `1px solid ${t.border}`, background: t.surface, color: t.text,
@@ -131,13 +136,13 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
             fontSize: 11, padding: '4px 8px', borderRadius: 4,
             border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,
             color: t.primary, cursor: 'pointer', fontWeight: 600,
-          }}>추가</button>
+          }}>{tr('inspector.content.add')}</button>
         </div>
       </InspectorSection>
 
       <InspectorSection
         t={t}
-        title="노드 노트"
+        title={tr('inspector.note.title')}
         action={
           <div style={{ display: 'flex', gap: 3 }}>
             {BLOCK_TYPES.map((b) => {
@@ -155,15 +160,15 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
                     if (isTable) setTablePick(true); else addNoteBlock(selectedId, b.type);
                   }}
                   title={isTable
-                    ? `표 블록 추가 — 격자에서 크기를 고르면 팝업에서 채웁니다${have ? ` (지금 ${have}개)` : ''}`
-                    : `${b.label} 블록 추가${have ? ` (지금 ${have}개)` : ''}`}
+                    ? tr('inspector.note.addTableTitle') + (have ? tr('inspector.note.haveCount', { n: have }) : '')
+                    : tr('inspector.note.addBlockTitle', { label: tr(b.label) }) + (have ? tr('inspector.note.haveCount', { n: have }) : '')}
                   style={{
                     padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
                     background: t.primarySoft,
                     color: t.primary,
                     border: `1px solid ${t.primaryBorder}40`,
                     cursor: 'pointer',
-                  }}>+{b.label}</button>
+                  }}>+{tr(b.label)}</button>
                 {isTable && tablePick && (
                   <TableGridPicker
                     t={t}
@@ -181,8 +186,7 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {notes.length === 0 && (
             <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>
-              위 버튼으로 노트 블록을 추가하세요. 문단·코드·표·체크 모두
-              여러 개 추가할 수 있습니다 (같은 종류가 여럿이면 노드 배지에 개수).
+              {tr('inspector.note.empty')}
             </div>
           )}
           {notes.map((block) => (
@@ -222,17 +226,18 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   );
 }
 
+// label 은 사전 키 — 렌더할 때 번역한다
 const BLOCK_META: Record<string, { icon: string; label: string }> = {
-  paragraph: { icon: '¶', label: '문단' },
-  code_block: { icon: '</>', label: '코드' },
-  table: { icon: '⊞', label: '표' },
+  paragraph: { icon: '¶', label: 'inspector.note.add.paragraph' },
+  code_block: { icon: '</>', label: 'inspector.note.add.code' },
+  table: { icon: '⊞', label: 'inspector.note.add.table' },
   // ★ 아이콘을 ☑ 로 두면 **바로 아래 진짜 체크 상자와 헷갈린다** —
   //   블록마다 늘 켜져 있는 ☑ 가 머리글에 붙어 있으니 "체크했는데
   //   왜 위에도 체크가 있지"가 된다 (2026-08-09 보고). 목록 글리프로.
-  checklist: { icon: '☰', label: '체크리스트' },
+  checklist: { icon: '☰', label: 'inspector.note.checklist' },
   // 폐기된 옛 타입(warning/tip) 데이터 하위호환 — 문단으로 취급
-  warning: { icon: '¶', label: '문단' },
-  tip: { icon: '¶', label: '문단' },
+  warning: { icon: '¶', label: 'inspector.note.add.paragraph' },
+  tip: { icon: '¶', label: 'inspector.note.add.paragraph' },
 };
 
 function NoteBlockEditor({
@@ -249,6 +254,7 @@ function NoteBlockEditor({
 }) {
   // 노트 사진이 **우리 저장소**에 있으면 그릴 때 토큰을 붙인다 (2026-08-20).
   // 토큰은 문서에 저장하지 않는다 — 저장하면 만료되는 날 사진이 전부 깨진다.
+  const tr = useTr();
   const resolveNoteHtml = useNoteHtmlResolver();
   // 노트 글꼴·크기 (맵 설정) — 뷰어 팝업과 동일 규칙 (기본 13pt)
   const noteFont = useDocumentStore((st) => st.map.settings?.noteFont);
@@ -277,7 +283,7 @@ function NoteBlockEditor({
         borderBottom: `1px solid ${t.divider}`,
       }}>
         <span style={{ fontSize: 10 }}>{meta.icon}</span>
-        <span>{meta.label}</span>
+        <span>{tr(meta.label)}</span>
         {block.type === 'code_block' && (
           <select
             value={block.lang ?? ''}
@@ -289,9 +295,9 @@ function NoteBlockEditor({
               textTransform: 'none', letterSpacing: 0, cursor: 'pointer',
             }}
           >
-            <option value="">언어 선택</option>
+            <option value="">{tr('inspector.note.pickLang')}</option>
             {CODE_LANGUAGES.map((lang) => (
-              <option key={lang} value={lang}>{lang}</option>
+              <option key={lang} value={lang}>{lang === CODE_LANG_OTHER ? tr('inspector.note.langOther') : lang}</option>
             ))}
           </select>
         )}
@@ -299,14 +305,14 @@ function NoteBlockEditor({
           <button
             data-testid="note-table-edit"
             onClick={onEditTable}
-            title="표 편집 — 팝업(격자 / MD)"
+            title={tr('inspector.note.editTable')}
             style={{
               marginLeft: 'auto', background: 'transparent', border: 'none',
               color: accent, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 4px',
             }}
           >✎</button>
         )}
-        <button onClick={onRemove} title="블록 삭제" style={{
+        <button onClick={onRemove} title={tr('inspector.note.removeBlock')} style={{
           marginLeft: block.type === 'table' ? 0 : 'auto', background: 'transparent', border: 'none',
           color: t.textMuted, cursor: 'pointer', fontSize: 13, lineHeight: 1,
         }}>×</button>
@@ -360,7 +366,7 @@ function NoteBlockEditor({
                 e.preventDefault();
                 if (block.text.trim()) onEnterNext?.();
               }}
-              placeholder="할 일"
+              placeholder={tr('inspector.note.todo')}
               // 완료해도 **취소선을 긋지 않는다** (2026-08-09 사용자 결정).
               // 맵 노드 안의 체크(- [x])도 긋지 않는데 여기만 그어서
               // 규칙이 갈렸고, 글자가 지워진 것처럼 보여 읽기도 나빴다.
@@ -415,8 +421,8 @@ function NoteBlockEditor({
             rows={NOTE_INPUT_ROWS[block.type] ?? 15}
             placeholder={
               block.type === 'code_block'
-                ? '코드를 입력하세요'
-                : '내용을 입력하세요 — 웹 기사 붙여넣기 시 사진·서식 유지'
+                ? tr('inspector.note.codePlaceholder')
+                : tr('inspector.note.textPlaceholder')
             }
             style={{
               width: '100%', resize: 'vertical', border: 'none', outline: 'none',
@@ -465,6 +471,7 @@ function NoteTableView({
 }: {
   t: ThemeTokens; text: string; fs: number; family?: string; onEdit?: () => void;
 }) {
+  const tr = useTr();
   const cells = noteTableCells(text);
   const cellStyle = (align: string | null, head: boolean) => ({
     border: `1px solid ${t.border}`, padding: '3px 6px',
@@ -476,7 +483,7 @@ function NoteTableView({
     <div
       data-testid="note-table-view"
       onDoubleClick={onEdit}
-      title="더블클릭 — 표 편집"
+      title={tr('inspector.note.dblclickTable')}
       style={{ cursor: 'pointer', fontSize: Math.max(9, fs - 1), fontFamily: family ?? 'inherit', color: t.text }}
     >
       {cells ? (
@@ -493,7 +500,7 @@ function NoteTableView({
       ) : text.trim() ? (
         <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{text}</pre>
       ) : (
-        <div style={{ fontSize: 10.5, color: t.textSubtle }}>빈 표 — ✎ 를 눌러 채우세요</div>
+        <div style={{ fontSize: 10.5, color: t.textSubtle }}>{tr('inspector.note.emptyTable')}</div>
       )}
     </div>
   );

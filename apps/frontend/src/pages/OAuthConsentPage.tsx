@@ -21,6 +21,9 @@ import {
   authorizationIdFromSearch, oauthConsent,
   type AuthorizationDetails,
 } from '@/services/cloud/oauthConsent';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
+import { LanguagePicker } from '@/components/ui/LanguagePicker';
 
 // 동의 화면은 **항상 밝은 테마**다 — 관리자 콘솔과 같은 이유로, 에디터의
 // 테마 스토어를 여기까지 끌고 오지 않는다.
@@ -37,8 +40,9 @@ export function OAuthConsentPage() {
   const authorizationId = authorizationIdFromSearch(window.location.search);
   const [phase, setPhase] = useState<Phase>({ s: 'loading' });
   const [busy, setBusy] = useState<'approve' | 'deny' | null>(null);
+  const tr = useTr();
 
-  useEffect(() => { document.title = '연결 허용 — EasyMindMap'; }, []);
+  useEffect(() => { document.title = tr('auth.consent.docTitle'); }, [tr]);
 
   // 인가 요청 읽기 — 로그인한 뒤에야 할 수 있다(GoTrue 가 사용자 토큰을
   // 요구한다). 그래서 세션이 생기면 이 훅이 다시 돈다.
@@ -50,7 +54,7 @@ export function OAuthConsentPage() {
       const token = await getFreshAccessToken();
       if (!alive) return;
       if (!token) {
-        setPhase({ s: 'error', message: '로그인이 만료되었습니다. 다시 로그인해 주세요.', retryable: false });
+        setPhase({ s: 'error', message: tr('auth.consent.loginExpired'), retryable: false });
         return;
       }
       try {
@@ -63,12 +67,14 @@ export function OAuthConsentPage() {
         if (!alive) return;
         setPhase({
           s: 'error',
-          message: e instanceof AuthError ? e.message : '연결 요청을 읽는 중 오류가 발생했습니다.',
+          message: e instanceof AuthError ? e.message : tr('auth.consent.readFailed'),
           retryable: false,
         });
       }
     })();
     return () => { alive = false; };
+    // tr 은 일부러 뺀다 — 언어를 바꿨다고 인가 요청을 다시 읽지 않는다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorizationId, session]);
 
   const decide = useCallback(async (action: 'approve' | 'deny') => {
@@ -76,28 +82,26 @@ export function OAuthConsentPage() {
     setBusy(action);
     try {
       const token = await getFreshAccessToken();
-      if (!token) throw new AuthError(401, '로그인이 만료되었습니다. 다시 로그인해 주세요.');
+      if (!token) throw new AuthError(401, tr('auth.consent.loginExpired'));
       leave(await oauthConsent.decide(authorizationId, action, token), setPhase);
     } catch (e) {
       setPhase({
         s: 'error',
-        message: e instanceof AuthError ? e.message : '처리 중 오류가 발생했습니다.',
+        message: e instanceof AuthError ? e.message : tr('auth.consent.decideFailed'),
         retryable: false,
       });
     } finally {
       setBusy(null);
     }
-  }, [authorizationId, busy]);
+  }, [authorizationId, busy, tr]);
 
   // ── 열리지 않는 경우들. **왜 안 되는지**까지 적는다 ─────────────────
 
   if (!authEnabled) {
     return (
-      <Shell testId="consent-auth-disabled" title="이 배포에서는 연결할 수 없습니다">
+      <Shell testId="consent-auth-disabled" title={tr('auth.consent.disabledTitle')}>
         <p style={pStyle}>
-          이 화면은 계정이 있는 배포에서만 동작합니다. 지금 브라우저가 보고 있는 곳은
-          로그인 없이 도는 개발용 배포입니다(<code>VITE_SUPABASE_URL</code> 이 비어
-          있습니다).
+          {rich(tr('auth.consent.disabledBody'))}
         </p>
       </Shell>
     );
@@ -105,13 +109,12 @@ export function OAuthConsentPage() {
 
   if (!authorizationId) {
     return (
-      <Shell testId="consent-no-id" title="연결 요청이 없습니다">
+      <Shell testId="consent-no-id" title={tr('auth.consent.noIdTitle')}>
         <p style={pStyle}>
-          이 주소는 <b>AI 앱이 연결을 요청할 때</b> 열리는 화면입니다. 주소창에 직접
-          입력해서는 열 수 없습니다.
+          {rich(tr('auth.consent.noIdBody'))}
         </p>
         <p style={pStyle}>
-          연결하려면 claude.ai ▸ 설정 ▸ 커넥터에서 EasyMindMap 커넥터를 추가하세요.
+          {tr('auth.consent.noIdHow')}
         </p>
         <HomeLink />
       </Shell>
@@ -120,10 +123,9 @@ export function OAuthConsentPage() {
 
   if (!session) {
     return (
-      <Shell testId="consent-login" title="먼저 로그인해 주세요">
+      <Shell testId="consent-login" title={tr('auth.consent.loginTitle')}>
         <p style={pStyle}>
-          어떤 계정의 맵을 열어 줄지 정해야 합니다. 로그인하면 <b>무엇을 허락하는지</b>
-          바로 다음 화면에서 보여 드립니다.
+          {rich(tr('auth.consent.loginBody'))}
         </p>
         <div style={{ marginTop: 6 }}>
           <LoginForm t={t} />
@@ -133,21 +135,21 @@ export function OAuthConsentPage() {
   }
 
   if (phase.s === 'loading') {
-    return <Shell testId="consent-loading" title="확인하는 중…"><p style={pStyle}>연결 요청을 읽고 있습니다.</p></Shell>;
+    return <Shell testId="consent-loading" title={tr('auth.code.verifying')}><p style={pStyle}>{tr('auth.consent.loadingBody')}</p></Shell>;
   }
 
   if (phase.s === 'leaving') {
     return (
-      <Shell testId="consent-leaving" title="돌아가는 중…">
-        <p style={pStyle}>요청한 앱으로 돌아갑니다. 자동으로 넘어가지 않으면 아래를 눌러 주세요.</p>
-        <a href={phase.to} style={{ ...linkStyle, fontSize: 13 }}>계속하기</a>
+      <Shell testId="consent-leaving" title={tr('auth.consent.leavingTitle')}>
+        <p style={pStyle}>{tr('auth.consent.leavingBody')}</p>
+        <a href={phase.to} style={{ ...linkStyle, fontSize: 13 }}>{tr('auth.consent.continue')}</a>
       </Shell>
     );
   }
 
   if (phase.s === 'error') {
     return (
-      <Shell testId="consent-error" title="연결하지 못했습니다">
+      <Shell testId="consent-error" title={tr('auth.consent.errorTitle')}>
         <p style={pStyle}>{phase.message}</p>
         <HomeLink />
       </Shell>
@@ -157,10 +159,11 @@ export function OAuthConsentPage() {
   const { details } = phase;
 
   return (
-    <Shell testId="consent-ask" title={`${details.clientName} 을(를) 연결할까요?`}>
+    <Shell testId="consent-ask" title={tr('auth.consent.askTitle', { app: details.clientName })}>
       <p style={pStyle}>
-        허용하면 이 앱이 <b>{details.userEmail || '내'}</b> 계정으로 EasyMindMap 에
-        접근합니다.
+        {rich(details.userEmail
+          ? tr('auth.consent.askBody', { email: `**${details.userEmail}**` })
+          : tr('auth.consent.askBodyMine'))}
       </p>
 
       <div
@@ -171,11 +174,11 @@ export function OAuthConsentPage() {
         }}
       >
         <div style={{ fontSize: 12, fontWeight: 700, color: t.textSubtle, marginBottom: 8 }}>
-          앱이 요청한 것
+          {tr('auth.consent.requested')}
         </div>
         {details.scopes.length === 0 ? (
           <div data-testid="consent-scope-none" style={{ fontSize: 13, color: t.textMuted }}>
-            추가로 요청한 정보가 없습니다.
+            {tr('auth.consent.noScopes')}
           </div>
         ) : (
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
@@ -190,7 +193,7 @@ export function OAuthConsentPage() {
                   {s.label}
                   {s.unknown && (
                     <span style={{ color: t.warning, marginLeft: 6, fontSize: 12 }}>
-                      (우리가 모르는 항목입니다)
+                      {tr('auth.consent.unknownScope')}
                     </span>
                   )}
                 </span>
@@ -205,8 +208,7 @@ export function OAuthConsentPage() {
           "맵을 읽고 쓴다"를 범위로 표현할 수가 없다. 목록만 보고 "그럼 맵은
           못 보는구나" 로 읽히면 안 되므로 글로 밝힌다. */}
       <p data-testid="consent-maps-note" style={{ ...pStyle, fontSize: 12.5, color: t.textMuted }}>
-        위 목록과 별개로, 연결된 앱은 <b>내 맵을 읽고 새 맵을 만들 수 있습니다</b>.
-        연결은 계정 설정에서 언제든 끊을 수 있습니다.
+        {rich(tr('auth.consent.mapsNote'))}
       </p>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -219,7 +221,7 @@ export function OAuthConsentPage() {
             border: `1px solid ${t.border}`, background: t.surface, color: t.text,
             fontSize: 14, fontWeight: 600,
           }}
-        >{busy === 'deny' ? '처리 중…' : '거부'}</button>
+        >{busy === 'deny' ? tr('auth.busy') : tr('auth.consent.deny')}</button>
         <button
           data-testid="consent-approve"
           onClick={() => void decide('approve')}
@@ -229,12 +231,12 @@ export function OAuthConsentPage() {
             border: `1px solid ${t.primaryBorder}`, background: t.primary, color: '#1A1206',
             fontSize: 14, fontWeight: 800,
           }}
-        >{busy === 'approve' ? '처리 중…' : '허용'}</button>
+        >{busy === 'approve' ? tr('auth.busy') : tr('auth.consent.approve')}</button>
       </div>
 
       {details.clientUri && (
         <div style={{ marginTop: 12, fontSize: 12, color: t.textSubtle, wordBreak: 'break-all' }}>
-          앱 주소: {details.clientUri}
+          {tr('auth.consent.appUrl', { url: details.clientUri })}
         </div>
       )}
     </Shell>
@@ -260,9 +262,10 @@ const pStyle: React.CSSProperties = {
 const linkStyle: React.CSSProperties = { color: t.accent, textDecoration: 'none' };
 
 function HomeLink() {
+  const tr = useTr();
   return (
     <a href="/" style={{ ...linkStyle, display: 'inline-block', marginTop: 14, fontSize: 13 }}>
-      EasyMindMap 열기
+      {tr('auth.consent.openApp')}
     </a>
   );
 }
@@ -285,8 +288,12 @@ function Shell({
           border: `1px solid ${t.border}`, boxShadow: t.shadowSm, padding: '26px 24px 24px',
         }}
       >
-        <div style={{ fontSize: 12, fontWeight: 700, color: t.textSubtle, letterSpacing: 0.3 }}>
-          EasyMindMap
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: t.textSubtle, letterSpacing: 0.3 }}>
+            EasyMindMap
+          </div>
+          {/* 로그인 전에도 언어를 바꿀 수 있게 (B10 i18n) */}
+          <LanguagePicker t={t} compact testId="consent-language" />
         </div>
         <h1 style={{ margin: '8px 0 0', fontSize: 19, fontWeight: 800, lineHeight: 1.45 }}>
           {title}

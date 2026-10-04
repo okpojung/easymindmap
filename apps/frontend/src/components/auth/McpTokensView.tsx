@@ -14,6 +14,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { cloudApi, CloudError, type McpToken } from '@/services/cloud/apiClient';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 function fmtDate(v: string | null): string {
   if (!v) return '—';
@@ -38,6 +40,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
   /** 폐기된 토큰의 기록 삭제 확인 대기 (2026-09-07) */
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const alive = useRef(true);
+  const tr = useTr();
 
   useEffect(() => {
     alive.current = true;
@@ -57,7 +60,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
       if (!alive.current) return;
       setAvail(false);
       setTokens([]);
-      setErr(e instanceof CloudError ? e.message : '토큰을 불러오지 못했습니다.');
+      setErr(e instanceof CloudError ? e.message : tr('auth.mcp.loadFailed'));
     }
   }
 
@@ -71,7 +74,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
       setName('');
       await reload();
     } catch (e) {
-      if (alive.current) setErr(e instanceof CloudError ? e.message : '발급하지 못했습니다.');
+      if (alive.current) setErr(e instanceof CloudError ? e.message : tr('auth.mcp.issueFailed'));
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -83,7 +86,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
       await cloudApi.revokeMcpToken(id);
       await reload();
     } catch (e) {
-      if (alive.current) setErr(e instanceof CloudError ? e.message : '폐기하지 못했습니다.');
+      if (alive.current) setErr(e instanceof CloudError ? e.message : tr('auth.mcp.revokeFailed'));
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -95,7 +98,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
       await cloudApi.deleteMcpTokenRecord(id);
       await reload();
     } catch (e) {
-      if (alive.current) setErr(e instanceof CloudError ? e.message : '지우지 못했습니다.');
+      if (alive.current) setErr(e instanceof CloudError ? e.message : tr('auth.mcp.deleteFailed'));
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -108,28 +111,24 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
   };
 
   if (tokens === null) {
-    return <div style={{ fontSize: 12.5, color: t.textSubtle }}>불러오는 중…</div>;
+    return <div style={{ fontSize: 12.5, color: t.textSubtle }}>{tr('common.loading')}</div>;
   }
 
   return (
     <div data-testid="mcp-tokens-view">
       <div style={{ ...box, marginBottom: 12 }}>
-        Claude·ChatGPT 대화에서 <b>“이 내용을 맵으로 저장해줘”</b> 라고 하면
-        문서함에 맵이 생기게 하는 연결입니다. 아래에서 토큰을 발급해
-        AI 쪽 <b>커넥터 설정</b>에 붙여넣으세요.
+        {rich(tr('auth.mcp.intro'))}
         <br />
-        연결 주소: <code style={{ userSelect: 'all' }}>{apiOrigin()}/v1/mcp</code>
+        {tr('auth.mcp.endpoint')} <code style={{ userSelect: 'all' }}>{apiOrigin()}/v1/mcp</code>
       </div>
 
       {/* 서버에 표가 아직 없다 — **누르기 전에** 말한다. 발급을 눌러 500 을
           받으면 사용자는 자기 잘못인지 서버 사정인지 알 수 없다 */}
       {!ready && (
         <div data-testid="mcp-not-ready" style={{ ...box, marginBottom: 12 }}>
-          <b>서버 준비가 아직 끝나지 않았습니다.</b>
+          <b>{tr('auth.mcp.notReady')}</b>
           <br />
-          토큰을 담을 표(<code>api_tokens</code>)가 서버에 없습니다 —
-          운영자가 델타 SQL 을 한 번 적용하면 바로 쓸 수 있습니다.
-          다른 기능에는 영향이 없습니다.
+          {rich(tr('auth.mcp.notReadyWhy'))}
         </div>
       )}
 
@@ -139,11 +138,9 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
           data-testid="mcp-unavailable"
           style={{ ...box, marginBottom: 12, borderColor: t.border, color: t.textMuted }}
         >
-          <b>이 서버에서는 MCP 커넥터를 열지 않습니다.</b>
+          <b>{tr('auth.mcp.unavailable')}</b>
           <br />
-          로그인 없이 쓰는 개발 모드(<code>AUTH_MODE=dev</code>)로 돌고 있어서,
-          외부에 열면 토큰 없이도 남의 문서함에 맵을 만들 수 있습니다.
-          토큰을 발급해 두더라도 연결은 거절됩니다.
+          {rich(tr('auth.mcp.unavailableWhy'))}
         </div>
       )}
 
@@ -153,9 +150,9 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
           data-testid="mcp-fresh-token"
           style={{ ...box, marginBottom: 12, borderColor: t.primary }}
         >
-          <b style={{ color: t.text }}>지금 복사해 두세요 — 이 값은 다시 볼 수 없습니다.</b>
+          <b style={{ color: t.text }}>{tr('auth.mcp.copyNow')}</b>
           <br />
-          서버에도 남지 않습니다(해시만 저장). 잃어버리면 폐기하고 새로 발급하면 됩니다.
+          {tr('auth.mcp.copyNowWhy')}
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <code
               style={{
@@ -170,7 +167,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
                 void navigator.clipboard.writeText(fresh).then(
                   () => setCopied(true),
                   // 클립보드가 막힌 브라우저 — 위 상자를 직접 고르면 된다
-                  () => setErr('복사가 막혀 있습니다 — 위 값을 직접 선택해 복사하세요.'),
+                  () => setErr(tr('auth.mcp.copyBlocked')),
                 );
               }}
               style={{
@@ -178,7 +175,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
                 border: `1px solid ${t.border}`, background: t.surfaceAlt,
                 color: t.text, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
               }}
-            >{copied ? '복사됨' : '복사'}</button>
+            >{copied ? tr('auth.mcp.copied') : tr('common.copy')}</button>
           </div>
         </div>
       )}
@@ -189,7 +186,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
           data-testid="mcp-token-name"
           value={name}
           maxLength={60}
-          placeholder="토큰 이름 (예: 집 노트북 Claude)"
+          placeholder={tr('auth.mcp.namePh')}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void issue(); }}
           style={{
@@ -209,7 +206,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
             cursor: busy || !ready || !name.trim() ? 'default' : 'pointer',
             opacity: busy || !ready || !name.trim() ? 0.6 : 1,
           }}
-        >{busy ? '…' : '발급'}</button>
+        >{busy ? '…' : tr('auth.mcp.issue')}</button>
       </div>
 
       {err && (
@@ -221,7 +218,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
       {/* 목록 + 폐기 — **같은 화면**이다 (§3) */}
       {tokens.length === 0 ? (
         <div style={{ fontSize: 12, color: t.textSubtle, padding: '8px 2px' }}>
-          아직 발급한 토큰이 없습니다.
+          {tr('auth.mcp.none')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -246,9 +243,9 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
                   }}>{tok.name}</div>
                   <div style={{ fontSize: 11, color: t.textMuted }}>
                     <code>{tok.prefix}…</code>
-                    {' · '}발급 {fmtDate(tok.createdAt)}
-                    {' · '}마지막 사용 {fmtDate(tok.lastUsedAt)}
-                    {dead && <> · <b>폐기됨 {fmtDate(tok.revokedAt)}</b></>}
+                    {' · '}{tr('auth.mcp.issuedAt', { date: fmtDate(tok.createdAt) })}
+                    {' · '}{tr('auth.mcp.lastUsed', { date: fmtDate(tok.lastUsedAt) })}
+                    {dead && <> · <b>{tr('auth.mcp.revokedAt', { date: fmtDate(tok.revokedAt) })}</b></>}
                   </div>
                 </div>
                 {!dead && (
@@ -262,7 +259,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
                         border: `1px solid ${t.danger}`, background: 'transparent',
                         color: t.danger, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
                       }}
-                    >정말 폐기</button>
+                    >{tr('auth.mcp.revokeConfirm')}</button>
                   ) : (
                     <button
                       data-testid="mcp-revoke"
@@ -272,7 +269,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
                         border: `1px solid ${t.border}`, background: t.surface,
                         color: t.textMuted, fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
                       }}
-                    >폐기</button>
+                    >{tr('auth.mcp.revoke')}</button>
                   )
                 )}
                 {dead && (
@@ -287,18 +284,18 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
                         border: `1px solid ${t.danger}`, background: 'transparent',
                         color: t.danger, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
                       }}
-                    >정말 삭제</button>
+                    >{tr('auth.mcp.deleteConfirm')}</button>
                   ) : (
                     <button
                       data-testid="mcp-delete"
                       onClick={() => setDeleteId(tok.id)}
-                      title="폐기된 토큰의 기록을 목록에서 지웁니다"
+                      title={tr('auth.mcp.deleteHint')}
                       style={{
                         height: 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer',
                         border: `1px solid ${t.border}`, background: t.surface,
                         color: t.textMuted, fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
                       }}
-                    >삭제</button>
+                    >{tr('common.delete')}</button>
                   )
                 )}
               </div>
@@ -308,10 +305,7 @@ export function McpTokensView({ t }: { t: ThemeTokens }) {
       )}
 
       <div style={{ fontSize: 11.5, color: t.textSubtle, marginTop: 12, lineHeight: 1.7 }}>
-        토큰으로 할 수 있는 것은 <b>문서함의 맵을 읽고</b>(목록 · 내용 · 지금 열어 둔 맵),
-        <b> 새 맵을 만들고</b>, <b>기존 맵의 노드 아래에 가지를 덧붙이는</b> 것입니다 —
-        맵을 지우거나 이름을 바꾸거나 계정을 건드릴 수는 없습니다. 만든 내용은 평소와
-        같이 저장 용량을 씁니다. 폐기한 토큰은 기록으로 남고, [삭제]로 목록에서 치울 수 있습니다.
+        {rich(tr('auth.mcp.scopeNote'))}
       </div>
     </div>
   );

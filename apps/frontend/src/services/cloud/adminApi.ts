@@ -6,6 +6,7 @@
 
 import { authEnabled, getFreshAccessToken } from '@/stores/authStore';
 import { CloudError } from './apiClient';
+import { tr } from '@/i18n';
 import type { LoginHistory } from '@/components/auth/LoginHistoryList';
 
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -46,11 +47,11 @@ async function req<T>(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (auth === 'admin') {
     const t = adminToken.get();
-    if (!t) throw new CloudError(401, '관리자 로그인이 필요합니다.');
+    if (!t) throw new CloudError(401, tr('cloud.err.adminLoginRequired'));
     headers['X-Admin-Token'] = t;
   } else if (authEnabled) {
     const t = await getFreshAccessToken();
-    if (!t) throw new CloudError(401, '먼저 로그인해 주세요.');
+    if (!t) throw new CloudError(401, tr('cloud.err.loginFirst'));
     headers.Authorization = `Bearer ${t}`;
   }
   let res: Response;
@@ -60,10 +61,10 @@ async function req<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new CloudError(0, '서버에 연결할 수 없습니다.');
+    throw new CloudError(0, tr('cloud.err.unreachableShort'));
   }
   if (!res.ok) {
-    let msg = `요청 실패 (${res.status})`;
+    let msg = tr('cloud.err.requestFailed', { status: res.status });
     try { const j = await res.json(); msg = j.message || j.error || msg; } catch { /* 본문 없음 */ }
     throw new CloudError(res.status, msg);
   }

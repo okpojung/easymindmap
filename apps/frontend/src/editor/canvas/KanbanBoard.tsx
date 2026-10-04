@@ -28,6 +28,7 @@ import { reassignIds } from '@/utils/aiProjectContext';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useImageSrcResolver } from '@/utils/imageSrc';
+import { useTr } from '@/i18n';
 
 interface Props {
   t: ThemeTokens;
@@ -288,6 +289,7 @@ function CardNode({
 }
 
 export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
+  const tr = useTr();
   const moveNodeRelative = useDocumentStore((s) => s.moveNodeRelative);
   const addChildNode = useDocumentStore((s) => s.addChildNode);
   const deleteNode = useDocumentStore((s) => s.deleteNode);
@@ -573,7 +575,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
         fontSize: 11, color: t.textMuted, fontWeight: 500,
       }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary }} />
-        Kanban 보드 · 카드 드래그로 이동 · 더블클릭 편집
+        {tr('editor.kanban.hint')}
       </div>
 
       <div style={{ fontSize: 20, fontWeight: 700, color: t.text, marginBottom: 20, paddingLeft: 4 }}>
@@ -615,7 +617,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
                 outline: selectedId === col.id ? `2px solid ${t.primary}` : undefined,
                 outlineOffset: 2,
               }}
-              title="클릭 = 컬럼 선택 (Del 로 삭제 가능) · 더블클릭 = 이름 편집"
+              title={tr('editor.kanban.columnTitle')}
             >
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.color }} />
               <div style={{
@@ -648,7 +650,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
                 fontSize: 12, fontWeight: 500,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
               }}>
-              <I.Plus size={12} /> 카드 추가
+              <I.Plus size={12} /> {tr('editor.kanban.addCard')}
             </button>
           </div>
         ))}
@@ -662,7 +664,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
             fontSize: 13, fontWeight: 500,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
-          <I.Plus size={14} /> 컬럼 추가
+          <I.Plus size={14} /> {tr('editor.kanban.addColumn')}
         </button>
       </div>
 

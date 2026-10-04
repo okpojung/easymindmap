@@ -27,8 +27,10 @@ import { nameProblem } from '@/utils/profileName';
 import { AuthError } from '@/services/cloud/supabaseAuth';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import {
-  COUNTRIES, DEFAULT_COUNTRY, findCountries, formatPhone, type Country,
+  COUNTRIES, DEFAULT_COUNTRY, countryName, findCountries, formatPhone, type Country,
 } from '@/utils/countryCodes';
+import { useLang, useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 const MIN_PW = 6; // GoTrue 기본값(GOTRUE_PASSWORD_MIN_LENGTH=6)과 맞춘다
 
@@ -68,9 +70,11 @@ export function SignupForm({
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const codeRef = useRef<HTMLInputElement | null>(null);
+  const tr = useTr();
+  const lang = useLang(); // 나라 이름 검색이 지금 언어를 따르도록
 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
-  const countryList = useMemo(() => findCountries(countryQuery), [countryQuery]);
+  const countryList = useMemo(() => findCountries(countryQuery), [countryQuery, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const phoneDigits = phone.replace(/\D/g, '');
   const canSubmit =
     !!emailToken && !nameProblem(fullName)
@@ -82,7 +86,7 @@ export function SignupForm({
 
   // ① 인증번호 발송
   const sendCode = async () => {
-    if (!emailOk) { setErr('올바른 이메일 주소를 입력해 주세요.'); return; }
+    if (!emailOk) { setErr(tr('auth.signup.badEmail')); return; }
     setBusy('code'); setErr(null); setNote(null); setDevCode(null);
     try {
       const r = await cloudApi.sendEmailCode(email.trim());
@@ -92,35 +96,35 @@ export function SignupForm({
       setCode('');
       if (r.devCode) {
         setDevCode(r.devCode);
-        setNote(r.message ?? '개발 모드 — 아래 번호를 입력하세요.');
+        setNote(r.message ?? tr('auth.code.devMode'));
       } else {
-        setNote(`인증번호를 보냈습니다. ${r.expiresInMin}분 안에 입력해 주세요.`);
+        setNote(tr('auth.signup.codeSent', { n: r.expiresInMin }));
       }
       window.setTimeout(() => codeRef.current?.focus(), 50);
     } catch (e) {
-      fail(e, '인증번호를 보내지 못했습니다.');
+      fail(e, tr('auth.code.sendFailed'));
     } finally { setBusy(null); }
   };
 
   // ② 인증번호 확인
   const verifyCode = async () => {
-    if (!code.trim()) { setErr('인증번호를 입력해 주세요.'); return; }
+    if (!code.trim()) { setErr(tr('auth.signup.needCode')); return; }
     setBusy('verify'); setErr(null);
     try {
       const r = await cloudApi.verifyEmailCode(email.trim(), code.trim());
       setEmailToken(r.emailToken);
-      setNote('이메일 인증을 마쳤습니다.');
+      setNote(tr('auth.signup.emailVerified'));
     } catch (e) {
-      fail(e, '인증번호를 확인하지 못했습니다.');
+      fail(e, tr('auth.code.verifyFailed'));
     } finally { setBusy(null); }
   };
 
   // ③ 가입
   const submit = async () => {
-    if (!emailToken) { setErr('먼저 이메일 인증을 마쳐 주세요.'); return; }
+    if (!emailToken) { setErr(tr('auth.signup.verifyFirst')); return; }
     { const bad = nameProblem(fullName); if (bad) { setErr(bad); return; } }
-    if (pw.length < MIN_PW) { setErr(`비밀번호는 ${MIN_PW}자 이상이어야 합니다.`); return; }
-    if (pw !== pw2) { setErr('비밀번호가 서로 다릅니다.'); return; }
+    if (pw.length < MIN_PW) { setErr(tr('auth.signup.pwTooShort', { n: MIN_PW })); return; }
+    if (pw !== pw2) { setErr(tr('auth.signup.pwMismatch')); return; }
     setBusy('signup'); setErr(null);
     try {
       // 계정 생성 + 로그인 (GoTrue). 메일 확인이 켜진 서버면 세션이 없다.
@@ -134,7 +138,7 @@ export function SignupForm({
           phoneCountry: phoneDigits ? `+${country.dial}` : undefined,
           phoneNumber: phoneDigits || undefined,
         });
-        onDone?.('가입 확인 메일을 보냈습니다. 메일함에서 확인한 뒤 로그인해 주세요. (적어 주신 성명·휴대폰은 처음 로그인할 때 계정에 저장됩니다)');
+        onDone?.(tr('auth.signup.confirmMailSent'));
         return;
       }
       // 프로필 저장 — 여기서 성명·휴대폰이 계정에 붙는다
@@ -147,9 +151,9 @@ export function SignupForm({
       // 아바타 글자·협업 이름표가 곧바로 새 이름을 쓰게 (세션이 먼저 생겨
       // 프로필 스토어가 빈 성명을 읽어 둔 상태일 수 있다)
       useProfileStore.getState().setProfile(saved);
-      onDone?.('가입했습니다. (무료 요금제로 시작합니다)');
+      onDone?.(tr('auth.signup.done'));
     } catch (e) {
-      fail(e, '가입 중 오류가 발생했습니다.');
+      fail(e, tr('auth.signup.failed'));
     } finally { setBusy(null); }
   };
 
@@ -173,14 +177,14 @@ export function SignupForm({
 
   return (
     <div data-testid="signup-form">
-      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>회원가입</div>
+      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{tr('auth.signup.title')}</div>
       <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 18 }}>
-        이메일 인증을 마치면 <b>무료 요금제</b>로 시작합니다.
+        {rich(tr('auth.signup.intro'))}
       </div>
 
       {/* ① 이메일 + 인증 */}
       <div style={field}>
-        <label style={label}>이메일 주소</label>
+        <label style={label}>{tr('auth.signup.email')}</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <input
             data-testid="signup-email"
@@ -199,19 +203,19 @@ export function SignupForm({
               opacity: !emailOk || emailToken || busy === 'code' ? 0.55 : 1,
               cursor: !emailOk || emailToken ? 'default' : 'pointer',
             }}
-          >{busy === 'code' ? '보내는 중…' : codeSent ? '재발송' : '이메일 인증'}</button>
+          >{busy === 'code' ? tr('auth.code.sending') : codeSent ? tr('auth.signup.resend') : tr('auth.signup.verifyEmail')}</button>
         </div>
       </div>
 
       {/* ② 인증번호 — 발송한 뒤에만 보인다 */}
       {codeSent && (
         <div style={field}>
-          <label style={label}>인증번호</label>
+          <label style={label}>{tr('auth.code.label')}</label>
           <div style={{ display: 'flex', gap: 6 }}>
             <input
               data-testid="signup-code"
               ref={codeRef}
-              value={code} placeholder="6자리 숫자" inputMode="numeric"
+              value={code} placeholder={tr('auth.code.placeholder')} inputMode="numeric"
               disabled={!!emailToken}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               onKeyDown={(e) => { if (e.key === 'Enter') void verifyCode(); }}
@@ -230,7 +234,7 @@ export function SignupForm({
                   ? { background: '#22A06B', borderColor: '#22A06B', color: '#fff', cursor: 'default' }
                   : {}),
               }}
-            >{emailToken ? '인증 완료 ✓' : busy === 'verify' ? '확인 중…' : '확인'}</button>
+            >{emailToken ? tr('auth.signup.verified') : busy === 'verify' ? tr('auth.signup.verifying') : tr('common.ok')}</button>
           </div>
           {/* 메일 발송이 아직 설정되지 않은 서버 — 개발 모드에서만 */}
           {devCode && !emailToken && (
@@ -239,7 +243,7 @@ export function SignupForm({
               background: t.surfaceAlt, border: `1px dashed ${t.borderStrong}`,
               fontSize: 11.5, color: t.textMuted,
             }}>
-              메일 발송이 설정되지 않아 화면에 표시합니다 —{' '}
+              {tr('auth.signup.devCode')}{' '}
               <b style={{ color: t.primary, fontSize: 14, letterSpacing: 2 }}>{devCode}</b>
             </div>
           )}
@@ -248,10 +252,10 @@ export function SignupForm({
 
       {/* ③ 성명 */}
       <div style={field}>
-        <label style={label}>성명</label>
+        <label style={label}>{tr('auth.signup.fullName')}</label>
         <input
           data-testid="signup-name"
-          value={fullName} placeholder="홍길동 (한글 또는 영문 2자 이상)" autoComplete="name"
+          value={fullName} placeholder={tr('auth.signup.fullNamePh')} autoComplete="name"
           onChange={(e) => setFullName(e.target.value)}
           style={input}
         />
@@ -260,7 +264,7 @@ export function SignupForm({
       {/* ④ 휴대폰 — 국가번호 + 번호 */}
       <div style={{ ...field, position: 'relative' }}>
         <label style={label}>
-          휴대폰번호 <span style={{ fontWeight: 500, color: t.textSubtle }}>(선택)</span>
+          {tr('auth.signup.phone')} <span style={{ fontWeight: 500, color: t.textSubtle }}>{tr('auth.signup.optional')}</span>
         </label>
         <div style={{ display: 'flex', gap: 6 }}>
           <button
@@ -297,12 +301,12 @@ export function SignupForm({
               autoFocus
               value={countryQuery}
               onChange={(e) => setCountryQuery(e.target.value)}
-              placeholder="나라 이름 또는 번호"
+              placeholder={tr('auth.signup.countrySearch')}
               style={{ ...input, height: 30, fontSize: 12, marginBottom: 4 }}
             />
             {countryList.length === 0 && (
               <div style={{ padding: '8px 6px', fontSize: 11.5, color: t.textSubtle }}>
-                찾는 나라가 없습니다.
+                {tr('auth.signup.noCountry')}
               </div>
             )}
             {countryList.map((c) => (
@@ -323,20 +327,20 @@ export function SignupForm({
                 }}
               >
                 <span style={{ fontSize: 15 }}>{c.flag}</span>
-                <span style={{ flex: 1, textAlign: 'left' }}>{c.name}</span>
+                <span style={{ flex: 1, textAlign: 'left' }}>{countryName(c)}</span>
                 <span style={{ color: t.textMuted, fontWeight: 600 }}>+{c.dial}</span>
               </button>
             ))}
           </div>
         )}
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 5, lineHeight: 1.5 }}>
-          휴대폰 인증은 준비 중입니다 — 지금은 번호만 저장합니다.
+          {tr('auth.signup.phoneNote')}
         </div>
       </div>
 
       {/* ⑤ 비밀번호 */}
       <div style={field}>
-        <label style={label}>비밀번호 <span style={{ fontWeight: 500, color: t.textSubtle }}>({MIN_PW}자 이상)</span></label>
+        <label style={label}>{tr('auth.field.password')} <span style={{ fontWeight: 500, color: t.textSubtle }}>{tr('auth.signup.pwMin', { n: MIN_PW })}</span></label>
         <div style={{ position: 'relative' }}>
           <input
             data-testid="signup-password"
@@ -348,7 +352,7 @@ export function SignupForm({
             type="button"
             data-testid="signup-pw-toggle"
             onClick={() => setShowPw((v) => !v)}
-            title={showPw ? '비밀번호 숨기기' : '비밀번호 표시'}
+            title={showPw ? tr('auth.pw.hide') : tr('auth.pw.show')}
             style={{
               position: 'absolute', right: 4, top: (H - 26) / 2,
               width: 30, height: 26, padding: 0, border: 'none',
@@ -368,7 +372,7 @@ export function SignupForm({
         </div>
       </div>
       <div style={field}>
-        <label style={label}>비밀번호 확인</label>
+        <label style={label}>{tr('auth.signup.pwConfirm')}</label>
         <input
           data-testid="signup-password2"
           type={showPw ? 'text' : 'password'} value={pw2} autoComplete="new-password"
@@ -381,7 +385,7 @@ export function SignupForm({
         />
         {pw2 && pw !== pw2 && (
           <div style={{ color: '#d9534f', fontSize: 11.5, marginTop: 4 }}>
-            비밀번호가 서로 다릅니다.
+            {tr('auth.signup.pwMismatch')}
           </div>
         )}
       </div>
@@ -414,9 +418,9 @@ export function SignupForm({
           style={{ marginTop: 2, cursor: 'pointer' }}
         />
         <span>
-          <b>만 14세 이상</b>입니다.{' '}
+          {rich(tr('auth.signup.age'))}{' '}
           <span style={{ opacity: 0.7 }}>
-            만 14세 미만은 가입할 수 없습니다.
+            {tr('auth.signup.ageNote')}
           </span>
         </span>
       </label>
@@ -426,8 +430,8 @@ export function SignupForm({
         onClick={() => void submit()}
         disabled={!canSubmit}
         title={
-          !emailToken ? '먼저 이메일 인증을 마쳐 주세요'
-            : !ageOk ? '만 14세 이상임을 확인해 주세요'
+          !emailToken ? tr('auth.signup.verifyFirstHint')
+            : !ageOk ? tr('auth.signup.ageHint')
               : undefined
         }
         style={{
@@ -435,7 +439,7 @@ export function SignupForm({
           background: t.primary, color: '#fff', fontSize: 14, fontWeight: 800,
           cursor: canSubmit ? 'pointer' : 'default', opacity: canSubmit ? 1 : 0.5,
         }}
-      >{busy === 'signup' ? '가입하는 중…' : '가입하기'}</button>
+      >{busy === 'signup' ? tr('auth.signup.submitting') : tr('auth.signup.submit')}</button>
 
       {/* 돌아가는 길 — **버튼으로 보여야 한다** (2026-08-11 사용자 지적).
           테두리도 배경도 없으면 안내문으로 읽혀, 누를 수 있다는 것을
@@ -451,11 +455,10 @@ export function SignupForm({
         }}
         onMouseEnter={(e) => { e.currentTarget.style.background = t.surface; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = t.surfaceAlt; }}
-      >로그인 화면으로 돌아가기</button>
+      >{tr('auth.backToLogin')}</button>
 
       <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 10, lineHeight: 1.6 }}>
-        국가번호는 {COUNTRIES.length}개국을 고를 수 있습니다. 목록에서 나라 이름이나
-        번호로 찾을 수 있습니다.
+        {tr('auth.signup.countryNote', { n: COUNTRIES.length })}
       </div>
     </div>
   );

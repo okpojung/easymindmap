@@ -20,7 +20,7 @@
 //
 // 여는 방식은 mapSession 규칙을 따른다 — 편집 중이면 브라우저 새 탭,
 // 잃을 것이 없으면 이 탭.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
@@ -40,6 +40,9 @@ import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/
 import { FolderPickerDialog } from './FolderPickerDialog';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { clampLeft, clampTop } from '@/utils/popupPosition';
+// 컴포넌트 안은 useTr() 의 tr, 컴포넌트 밖 함수·useCallback 안은 부르는 순간의 언어(trNow)
+import { useTr, useLang, tr as trNow, currentLocale, LANG_LOCALE } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 type SortKey = 'title' | 'createdAt' | 'updatedAt'
   | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
@@ -62,6 +65,7 @@ function fmtBytes(n: number | null | undefined): string {
   return v + u;
 }
 
+
 /**
  * 머리글 위 **합계**는 단위를 괄호로 떼어 쓴다 (2026-08-09 요청) —
  * `309.8(KB)` · `1,448(개)`. 숫자와 단위가 붙어 있으면 자릿수를 눈으로
@@ -76,7 +80,7 @@ function totalBytesText(n: number | null | undefined): string {
   return u ? `${v}(${u})` : v;
 }
 function totalCountText(n: number): string {
-  return `${n.toLocaleString()}(개)`;
+  return trNow('cloud.browser.countUnit', { n: n.toLocaleString(currentLocale()) });
 }
 
 // 날짜 — 목록 폭에 맞춘 짧은 표기 (YYYY.M.D HH:mm — 브라우저 로캘과
@@ -151,12 +155,13 @@ function mapType(m: MapListItem): {
   publishUrl?: string;
 } {
   if (m.shared) {
-    const who = m.ownerEmail ?? '다른 사람';
+    const who = m.ownerEmail ?? trNow('cloud.type.someone');
     return m.role === 'viewer'
-      ? { label: '👁 읽기 전용', strong: false, title: `${who} 이(가) 공유한 맵 — 읽기만 됩니다` }
-      : { label: '🤝 함께 편집', strong: false, title: `${who} 이(가) 공유한 맵 — 함께 편집합니다` };
+      ? { label: trNow('cloud.type.readOnly'), strong: false, title: trNow('cloud.type.sharedViewTip', { who }) }
+      : { label: trNow('cloud.type.coEdit'), strong: false, title: trNow('cloud.type.sharedEditTip', { who }) };
   }
-  const base = m.kind === 'collab' ? '협업맵' : '단독맵';
+  const base = m.kind === 'collab' ? trNow('cloud.type.collabBase') : trNow('cloud.type.soloBase');
+  const clickCopy = (url: string) => trNow('cloud.type.clickCopy', { url });
   if (m.publishId) {
     const url = publicMapUrl(m.publishId);
     // ★ **보관과 공개를 다르게 그린다** (2026-09-05). 둘 다 퍼블리싱
@@ -168,44 +173,38 @@ function mapType(m: MapListItem): {
     //   (대시보드 · 링크 공개)을 함께 보인다. 진열·판매는 서버가 막아 여기 없다.
     if (m.viewMode === 'dashboard') {
       return {
-        label: priv ? '📊 대시보드맵 🔒' : '📊 대시보드맵 🔗',
+        label: `${trNow('cloud.type.dashboard')} ${priv ? '🔒' : '🔗'}`,
         strong: true,
         publishUrl: url,
-        title: (priv
-          ? '대시보드맵 · 링크 보관 중 — 붙여 둔 자리에서도 지금은 열리지 않습니다(404)\n'
-          : '대시보드맵 · 링크 공개 중 — 사내 시스템에 붙인 화면이 10초마다 스스로 갱신합니다\n')
-          + `누르면 링크를 복사합니다\n${url}`,
+        title: (priv ? trNow('cloud.type.dashPrivTip') : trNow('cloud.type.dashPubTip'))
+          + '\n' + clickCopy(url),
       };
     }
     return {
-      label: priv ? '🔒 보관중' : '🌐 퍼블리싱맵',
+      label: priv ? trNow('cloud.type.privBadge') : trNow('cloud.type.publishedBadge'),
       strong: true,
       publishUrl: url,
       title: priv
-        ? `퍼블리싱 문서함에 있습니다 — **비공개(보관)** 라 남에게는 열리지 않습니다 (${base})\n`
-          + `이 상태에서는 맵을 고칠 수 있습니다\n누르면 링크를 복사합니다\n${url}`
-        : `링크 공개 중 — 링크를 가진 사람은 로그인 없이 읽습니다 (${base})\n`
-          + (m.listed
-            ? '지식창고에도 올라가 있습니다 — 둘러보는 누구나 찾을 수 있습니다\n'
-            : '지식창고에는 올라가 있지 않습니다 — 주소를 아는 사람만 봅니다\n')
-          + `공개 중에는 편집할 수 없습니다 (비공개로 바꾸면 고칠 수 있습니다)\n`
-          + `누르면 링크를 복사합니다\n${url}`,
+        ? trNow('cloud.type.privTip', { base }) + '\n' + clickCopy(url)
+        : trNow('cloud.type.pubTip', { base }) + '\n'
+          + (m.listed ? trNow('cloud.type.listedYes') : trNow('cloud.type.listedNo')) + '\n'
+          + trNow('cloud.type.pubNoEdit') + '\n'
+          + clickCopy(url),
     };
   }
   if (m.viewMode === 'dashboard') {
     return {
-      label: '📊 대시보드맵',
+      label: trNow('cloud.type.dashboard'),
       strong: true,
-      title: '대시보드맵 — 사람은 고칠 수 없고 프로그램이 내용을 바꾸는 맵입니다\n'
-        + '되돌리려면 행의 📊 단추 또는 맵을 열어 [일반맵으로 되돌리기]',
+      title: trNow('cloud.type.dashTip'),
     };
   }
   return m.kind === 'collab'
-    ? { label: '👥 협업맵', strong: true, title: '협업맵 — 협업자가 참여 중인 맵' }
+    ? { label: trNow('cloud.type.collab'), strong: true, title: trNow('cloud.type.collabTip') }
     : {
-      label: '👤 단독맵',
+      label: trNow('cloud.type.solo'),
       strong: false,
-      title: '단독맵 — 협업자를 초대해 승인되면 협업맵이 됩니다 (준비 중)',
+      title: trNow('cloud.type.soloTip'),
     };
 }
 
@@ -268,6 +267,8 @@ export function MapBrowser({
   /** 이 탭에 문서를 실제로 열었을 때 (호출부가 브라우저를 닫는다) */
   onOpened?: () => void;
 }) {
+  const tr = useTr();
+  const locale = LANG_LOCALE[useLang()];
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [maps, setMaps] = useState<MapListItem[] | null>(null);
   /** 나에게 공유된 맵 — 공유가 없거나 서버가 아직 모르면 빈 배열 */
@@ -390,11 +391,11 @@ export function MapBrowser({
       setMaps(m.maps);
       setShared(sh.maps);
       if (m.total > m.maps.length) {
-        setErr(`맵이 ${m.total}개라 최근 ${m.maps.length}개만 표시합니다 — 검색으로 좁혀 주세요.`);
+        setErr(trNow('cloud.browser.truncated', { total: m.total, shown: m.maps.length }));
       }
     } catch (e) {
       setMaps([]);
-      setErr(e instanceof CloudError ? e.message : '문서함을 불러오지 못했습니다.');
+      setErr(e instanceof CloudError ? e.message : trNow('cloud.browser.loadFailed'));
     } finally {
       setRefreshing(false);
     }
@@ -455,7 +456,7 @@ export function MapBrowser({
         .catch((e) => {
           if (!alive) return;
           setFound(null); setFoundShared(null);
-          setFindErr(e instanceof CloudError ? e.message : '검색에 실패했습니다.');
+          setFindErr(e instanceof CloudError ? e.message : trNow('cloud.browser.searchFailed'));
         })
         .finally(() => { if (alive) setFinding(false); });
     }, 250);
@@ -677,7 +678,7 @@ export function MapBrowser({
     // 링크가 낡아 있으면 맵으로 돌아갈 길이 없었다 — 사용자 보고 #4)
     if (cloudMapId === m.mapId) {
       onClose();
-      onFlash(`'${m.title}' 편집 화면으로 돌아갑니다.`);
+      onFlash(tr('cloud.browser.backToEdit', { title: m.title }));
       return;
     }
     if (canReuseThisTab()) {
@@ -692,20 +693,20 @@ export function MapBrowser({
         // 안 되는 것을 하라고 안내하면 두 번 실망한다. 다른 세션이
         // 편집 중이라 읽기 전용인 경우에만 그 길이 열려 있다.
         onFlash(readOnly
-          ? `🔒 '${m.title}' — ${reason ?? '읽기 전용'}`
-            + (viewerOnly ? '' : ' · 변경은 이 맵에 저장되지 않습니다. 필요하면 다른 이름으로 저장하세요.')
-          : `☁ '${m.title}'을(를) 불러왔습니다.`);
+          ? tr('cloud.browser.openedReadOnly', { title: m.title, reason: reason ?? tr('cloud.browser.readOnly') })
+            + (viewerOnly ? '' : tr('cloud.browser.notSavedHint'))
+          : tr('cloud.browser.opened', { title: m.title }));
         onOpened?.();
         onClose();
       } catch (e) {
-        onFlash('⚠ ' + (e instanceof CloudError ? e.message : '불러오기 실패'));
+        onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.openFailed')));
       }
       return;
     }
     const ok = openMapInNewTab(m.mapId);
     onFlash(ok
-      ? `↗ '${m.title}'을(를) 새 탭에서 열었습니다.`
-      : '⚠ 팝업이 차단되어 새 탭을 열지 못했습니다. 브라우저의 팝업 차단을 해제해 주세요.');
+      ? tr('cloud.browser.openedNewTab', { title: m.title })
+      : tr('cloud.browser.popupBlocked'));
   };
 
   const createFolder = async () => {
@@ -716,39 +717,39 @@ export function MapBrowser({
     if (!clean) return;
     try {
       await cloudApi.createFolder(clean, parentId);
-      onFlash(`📁 '${clean}' 폴더를 만들었습니다.`);
+      onFlash(tr('cloud.browser.folderCreated', { name: clean }));
       // 하위 폴더를 만들었으면 그 부모를 펼쳐 둔다 — 만든 것이 바로 보인다
       if (parentId) setExpanded((p) => new Set(p).add(parentId));
       void load();
     } catch (e) {
-      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '폴더를 만들지 못했습니다.'));
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.save.folderFailed')));
     }
   };
 
   const renameFolder = async (f: FolderItem) => {
-    const next = window.prompt('폴더 새 이름', f.name);
+    const next = window.prompt(tr('cloud.browser.folderRenamePrompt'), f.name);
     if (next == null || !next.trim() || next.trim() === f.name) return;
     try {
       await cloudApi.renameFolder(f.folderId, next.trim());
       void load();
     } catch (e) {
-      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '이름 변경 실패'));
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.renameFailed')));
     }
   };
 
   const deleteFolder = async (f: FolderItem) => {
-    if (!window.confirm(`“${f.name}” 폴더를 삭제할까요?`)) return;
+    if (!window.confirm(tr('cloud.browser.folderDeleteConfirm', { name: f.name }))) return;
     try {
       await cloudApi.deleteFolder(f.folderId);
       void load();
     } catch (e) {
       // 비어 있지 않으면 409 — 서버 메시지가 몇 개 남았는지 알려 준다
-      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '폴더 삭제 실패'));
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.folderDeleteFailed')));
     }
   };
 
   const renameMap = async (m: MapListItem) => {
-    const next = window.prompt('맵 새 이름', m.title);
+    const next = window.prompt(tr('cloud.browser.mapRenamePrompt'), m.title);
     if (next == null || !next.trim() || next.trim() === m.title) return;
     try {
       await cloudApi.updateMap(m.mapId, { title: next.trim() });
@@ -757,7 +758,7 @@ export function MapBrowser({
       }
       void load();
     } catch (e) {
-      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '이름 변경 실패'));
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.renameFailed')));
     }
   };
 
@@ -774,24 +775,20 @@ export function MapBrowser({
    */
   const toggleListed = async (m: MapListItem) => {
     const on = !m.listed;
+    // ★ 카드에는 **미리보기 그림이 함께 나간다.** 여기(행)에는 그 그림을
+    //   볼 자리가 없으므로, 보고 나서 올리고 싶은 사람에게 길을 알려 준다
+    //   (퍼블리싱 창은 미리보기를 보여 주고 [올리기] 단추로 반영한다).
     if (on && !window.confirm(
-      `“${m.title || '제목 없음'}” 을 지식창고에 올릴까요?\n\n`
-      + '둘러보는 누구나 이 맵을 찾을 수 있게 됩니다.\n'
-      + '아직 퍼블리싱하지 않았다면 주소를 만들어 함께 공개합니다.\n\n'
-      // ★ 카드에는 **미리보기 그림이 함께 나간다.** 여기(행)에는 그 그림을
-      //   볼 자리가 없으므로, 보고 나서 올리고 싶은 사람에게 길을 알려 준다
-      //   (퍼블리싱 창은 미리보기를 보여 주고 [올리기] 단추로 반영한다).
-      + '맵의 미리보기 그림이 카드로 함께 나갑니다 — 그림을 먼저 보시려면\n'
-      + '[퍼블리싱] 창에서 올리세요.',
+      tr('cloud.browser.listConfirm', { title: m.title || tr('cloud.untitled') }),
     )) return;
     try {
       await cloudApi.setMapListed(m.mapId, on);
       onFlash(on
-        ? '📚 지식창고에 올렸습니다 — 홈페이지 [지식창고]에서 보입니다.'
-        : '지식창고에서 내렸습니다 — 목록에서만 빠집니다. 링크는 그대로 열립니다.');
+        ? tr('cloud.browser.listedOn')
+        : tr('cloud.browser.listedOff'));
       void load();
     } catch (e) {
-      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '지식창고 설정을 바꾸지 못했습니다'));
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.listFailed')));
     }
   };
 
@@ -799,23 +796,23 @@ export function MapBrowser({
     setMoving(null);
     try {
       await cloudApi.updateMap(m.mapId, { folderId });
-      onFlash(`📂 '${m.title}'을(를) 옮겼습니다.`);
+      onFlash(tr('cloud.browser.moved', { title: m.title }));
       if (folderId) setExpanded((p) => new Set(p).add(folderId));
       void load();
     } catch (e) {
       // 옮기려는 폴더에 같은 이름이 있으면 409 — 서버 안내를 그대로
-      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '이동 실패'));
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.moveFailed')));
     }
   };
 
   const deleteMap = async (m: MapListItem) => {
-    if (!window.confirm(`“${m.title || '제목 없음'}” 맵을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(tr('cloud.browser.mapDeleteConfirm', { title: m.title || tr('cloud.untitled') }))) return;
     try {
       await cloudApi.deleteMap(m.mapId);
       if (cloudMapId === m.mapId) useCloudStore.getState().unlink();
       void load();
     } catch (e) {
-      onFlash('⚠ ' + (e instanceof CloudError ? e.message : '삭제 실패'));
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.deleteFailed')));
     }
   };
 
@@ -841,7 +838,7 @@ export function MapBrowser({
         if (sort === key) setOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
         else { setSort(key); setOrder(key === 'title' ? 'asc' : 'desc'); }
       }}
-      title={`${label} 기준 정렬 (다시 누르면 오름/내림 전환)`}
+      title={tr('cloud.browser.sortTip', { label })}
       style={{
         display: 'flex', alignItems: 'center', gap: 3,
         justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
@@ -931,41 +928,41 @@ export function MapBrowser({
         padding: '12px 14px', borderBottom: `1px solid ${t.border}`,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
-          <strong style={{ fontSize: 15, marginRight: 4 }}>내 문서</strong>
+          <strong style={{ fontSize: 15, marginRight: 4 }}>{tr('cloud.browser.heading')}</strong>
           <button
             data-testid="browser-refresh"
             onClick={() => { void load(); }}
             disabled={refreshing}
-            title="목록 새로고침 — 남이 공유해 준 맵·다른 탭에서 저장한 맵을 다시 읽습니다 (브라우저 새로고침 대신)"
+            title={tr('cloud.browser.refreshTip')}
             style={{ ...toolBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? 'default' : 'pointer' }}
-          >{refreshing ? '↻ 읽는 중…' : '↻ 새로고침'}</button>
+          >{refreshing ? tr('cloud.browser.refreshing') : tr('cloud.browser.refresh')}</button>
           <button
             data-testid="browser-expand-all"
             onClick={expandAll}
-            title="모든 폴더 펼치기"
+            title={tr('cloud.browser.expandAllTip')}
             style={toolBtn}
-          >⊞ 모두 펼치기</button>
+          >{tr('cloud.browser.expandAll')}</button>
           <button
             data-testid="browser-collapse-all"
             onClick={collapseAll}
-            title="모든 폴더 접기"
+            title={tr('cloud.browser.collapseAllTip')}
             style={toolBtn}
-          >⊟ 모두 접기</button>
+          >{tr('cloud.browser.collapseAll')}</button>
           <button
             data-testid="browser-new-map"
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
               setNewMapAt((cur) => (cur ? null : { x: r.left, y: r.bottom + 6 }));
             }}
-            title="새 맵 만들기 — 기본 맵 · 템플릿 · MD/HTML/ZIP 파일에서"
+            title={tr('cloud.browser.newMapTip')}
             style={{ ...toolBtn, marginLeft: 2, fontWeight: 700, color: t.primary, borderColor: t.primaryBorder }}
-          >＋ 새 맵 ▾</button>
+          >{tr('cloud.browser.newMap')}</button>
           <button
             data-testid="browser-new-folder"
             onClick={() => setNewFolder({ parentId: null, name: '' })}
-            title="맨 위(홈)에 새 폴더 만들기 — 폴더 안에 만들려면 그 폴더 줄의 ＋ 를 누르세요"
+            title={tr('cloud.browser.newFolderTip')}
             style={{ ...toolBtn, marginLeft: 2 }}
-          >＋ 새 폴더</button>
+          >{tr('cloud.browser.newFolder')}</button>
           {/* **전체 검색** (2026-08-07 요청) — 지금 폴더가 아니라
               **문서함 전체**를 훑는다. 맞는 파일이 든 폴더는 자동으로
               펼쳐지고, 그 안에서도 맞는 파일만 남는다. */}
@@ -974,11 +971,8 @@ export function MapBrowser({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             /* Esc = 검색어 지우기 — window 핸들러가 계층으로 처리한다 */
-            placeholder="🔍 이름 · 맵 내용으로 찾기"
-            title={'문서함 전체(하위 폴더 포함)에서 찾습니다 — 폴더·맵 이름은 물론'
-              + ' 맵 안의 노드 텍스트·노트·태그·링크·첨부 파일명까지 봅니다.'
-              + ' 이름이 맞으면 글자가 강조되고, 맵 내용이 맞으면 맵(N건)으로'
-              + ' 표시됩니다 (Esc 로 지움)'}
+            placeholder={tr('cloud.browser.searchPh')}
+            title={tr('cloud.browser.searchTip')}
             style={{
               height: 24, width: 210, padding: '0 8px', borderRadius: 6,
               marginLeft: 4, fontSize: 11.5,
@@ -990,13 +984,13 @@ export function MapBrowser({
             <span
               data-testid="browser-search-busy"
               style={{ fontSize: 11, color: t.textMuted, marginLeft: 2 }}
-            >찾는 중…</span>
+            >{tr('cloud.browser.searching')}</span>
           )}
           {query && (
             <button
               data-testid="browser-search-clear"
               onClick={() => setQuery('')}
-              title="검색어 지우기"
+              title={tr('cloud.browser.clearSearch')}
               style={{ ...toolBtn, padding: '0 7px' }}
             >✕</button>
           )}
@@ -1009,7 +1003,7 @@ export function MapBrowser({
           <button
             data-testid="browser-close"
             onClick={onClose}
-            title="문서함 닫기 (Esc)"
+            title={tr('cloud.browser.closeTip')}
             style={{ ...iconBtn, fontSize: 17 }}
           >✕</button>
         )}
@@ -1038,7 +1032,7 @@ export function MapBrowser({
             color: '#b33', fontSize: 12.5, lineHeight: 1.65,
           }}
         >
-          ⚠ 내용 검색에 실패했습니다 — 지금은 <b>이름</b>으로만 찾고 있습니다. ({findErr})
+          ⚠ {rich(tr('cloud.browser.contentSearchFailed', { err: findErr }))}
         </div>
       )}
 
@@ -1056,18 +1050,18 @@ export function MapBrowser({
         }}
       >
         <span />
-        {th('폴더/파일명', 'title')}
+        {th(tr('cloud.col.title'), 'title')}
         {/* 유형·생성일·수정일은 **오른쪽 맞춤** (2026-08-09 요청) —
             값(단독맵 배지·날짜)이 열 오른쪽 끝에서 끝나므로 머리글도
             같은 선에 세워야 세로줄이 맞는다. */}
-        <span style={{ textAlign: 'right' }}>유형</span>
-        {th('생성일', 'createdAt', 'right')}
-        {th('수정일', 'updatedAt', 'right')}
-        {th('노드', 'nodeCount', 'right')}
-        {th('크기', 'docBytes', 'right')}
-        {th('첨부', 'attachCount', 'right')}
-        {th('첨부 용량', 'attachBytes', 'right')}
-        <span style={{ textAlign: 'center' }}>관리</span>
+        <span style={{ textAlign: 'right' }}>{tr('cloud.col.type')}</span>
+        {th(tr('cloud.col.created'), 'createdAt', 'right')}
+        {th(tr('cloud.col.modified'), 'updatedAt', 'right')}
+        {th(tr('cloud.col.nodes'), 'nodeCount', 'right')}
+        {th(tr('cloud.col.size'), 'docBytes', 'right')}
+        {th(tr('cloud.col.attach'), 'attachCount', 'right')}
+        {th(tr('cloud.col.attachSize'), 'attachBytes', 'right')}
+        <span style={{ textAlign: 'center' }}>{tr('cloud.col.manage')}</span>
       </div>
 
       {/* **합계 줄** — 머리글 바로 아래 고정 (2026-08-09 3차 요청).
@@ -1089,27 +1083,27 @@ export function MapBrowser({
       >
         <span />
         <span data-testid="browser-total-label" style={{ whiteSpace: 'nowrap' }}>
-          합계{searching ? ' (검색 결과)' : ''}
+          {searching ? tr('cloud.browser.totalSearch') : tr('cloud.browser.total')}
         </span>
         <span data-testid="browser-total-folders" style={totalNumCell}
-          title="폴더 수 (하위 폴더까지 전부)">
+          title={tr('cloud.browser.folderCountTip')}>
           {totalCountText(folderCount)}
         </span>
-        <span data-testid="browser-total-maps" style={totalNumCell} title="맵 수">
-          맵 {totalCountText(totals.maps)}
+        <span data-testid="browser-total-maps" style={totalNumCell} title={tr('cloud.browser.mapCountTip')}>
+          {tr('cloud.browser.totalMaps', { n: totalCountText(totals.maps) })}
         </span>
         <span />
-        <span data-testid="browser-total-nodes" style={totalNumCell} title="노드 수 합계">
+        <span data-testid="browser-total-nodes" style={totalNumCell} title={tr('cloud.browser.nodesSumTip')}>
           {totalCountText(totals.nodeCount)}
         </span>
-        <span data-testid="browser-total-size" style={totalNumCell} title="문서 크기 합계">
+        <span data-testid="browser-total-size" style={totalNumCell} title={tr('cloud.browser.sizeSumTip')}>
           {totalBytesText(totals.docBytes)}
         </span>
-        <span data-testid="browser-total-attach" style={totalNumCell} title="첨부 개수 합계">
+        <span data-testid="browser-total-attach" style={totalNumCell} title={tr('cloud.browser.attachSumTip')}>
           {totalCountText(totals.attachCount)}
         </span>
         <span data-testid="browser-total-attach-bytes" style={totalNumCell}
-          title="첨부 용량 합계">
+          title={tr('cloud.browser.attachBytesSumTip')}>
           {totalBytesText(totals.attachBytes)}
         </span>
         <span />
@@ -1149,19 +1143,14 @@ export function MapBrowser({
         />
         {maps === null ? (
           <div style={{ padding: '28px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center' }}>
-            불러오는 중…
+            {tr('common.loading')}
           </div>
         ) : rows.length === 0 ? (
           <div data-testid="browser-empty"
             style={{ padding: '32px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center', lineHeight: 1.7 }}>
-            {err ? '목록을 표시할 수 없습니다 — 위 안내를 확인해 주세요.'
-              : searching ? (
-                <>‘{query}’ 가 <b>이름에도 맵 내용에도</b> 없습니다.<br />
-                검색어를 지우면 전체가 다시 보입니다.</>
-              ) : (
-                <>아직 문서가 없습니다.<br />
-                맵을 만들어 <b>☁ 저장</b>하면 여기에 쌓입니다.</>
-              )}
+            {err ? tr('cloud.browser.emptyErr')
+              : searching ? rich(tr('cloud.browser.noMatch', { query }))
+              : rich(tr('cloud.browser.emptyNone'))}
           </div>
         ) : rows.map((r) => (r.kind === 'dashboardHead' ? (
           /* ★ 대시보드 자리 (2026-10-01) — 퍼블리싱 자리와 따로. 머리글이 **몇 개가
@@ -1172,12 +1161,12 @@ export function MapBrowser({
               padding: '10px 12px 7px', borderBottom: `1px solid ${t.divider}`,
               background: t.surfaceAlt, color: t.text, fontSize: 12, fontWeight: 700,
             }}>
-            📊 대시보드 ({r.count})
+            {tr('cloud.browser.dashHead', { n: r.count })}
             <span style={{ color: t.textMuted, fontSize: 11, fontWeight: 500 }}>
               {r.linked > 0
-                ? `${r.linked}개가 링크로 열려 있습니다 — 사내 시스템에 붙일 주소는 줄의 🌐 퍼블리싱에서 봅니다.`
-                : '아직 링크로 연 대시보드가 없습니다 — 줄의 🌐 퍼블리싱에서 링크를 만듭니다.'}
-              {' '}일반맵으로 되돌리면 원래 폴더로 돌아갑니다.
+                ? tr('cloud.browser.dashLinked', { n: r.linked })
+                : tr('cloud.browser.dashNone')}
+              {' '}{tr('cloud.browser.dashRevertNote')}
             </span>
           </div>
         ) : r.kind === 'publishHead' ? (
@@ -1193,12 +1182,12 @@ export function MapBrowser({
               padding: '10px 12px 7px', borderBottom: `1px solid ${t.divider}`,
               background: t.surfaceAlt, color: t.text, fontSize: 12, fontWeight: 700,
             }}>
-            <I.Globe size={14} /> 퍼블리싱 ({r.count})
+            <I.Globe size={14} /> {tr('cloud.browser.publishHead', { n: r.count })}
             <span style={{ color: t.textMuted, fontSize: 11, fontWeight: 500 }}>
               {r.open > 0
-                ? `${r.open}개가 지금 공개 중입니다 — 링크를 가진 누구나 읽습니다.`
-                : '전부 비공개(보관)입니다 — 남에게는 보이지 않고, 고칠 수 있습니다.'}
-              {' '}퍼블리싱을 취소하면 원래 폴더로 돌아옵니다.
+                ? tr('cloud.browser.pubOpen', { n: r.open })
+                : tr('cloud.browser.pubAllPrivate')}
+              {' '}{tr('cloud.browser.pubCancelNote')}
             </span>
           </div>
         ) : r.kind === 'sharedHead' ? (
@@ -1211,9 +1200,9 @@ export function MapBrowser({
               padding: '10px 12px 7px', borderBottom: `1px solid ${t.divider}`,
               background: t.surfaceAlt, color: t.text, fontSize: 12, fontWeight: 700,
             }}>
-            <I.Share size={14} /> 공유받은 맵 ({r.count})
+            <I.Share size={14} /> {tr('cloud.browser.sharedHead', { n: r.count })}
             <span style={{ color: t.textMuted, fontSize: 11, fontWeight: 500 }}>
-              다른 사람이 나를 참가자로 넣은 맵입니다 — 주인의 문서함에 있습니다.
+              {tr('cloud.browser.sharedNote')}
             </span>
           </div>
         ) : r.kind === 'newFolder' ? (
@@ -1230,7 +1219,7 @@ export function MapBrowser({
               data-testid="browser-new-folder-name"
               autoFocus
               value={newFolder?.name ?? ''}
-              placeholder="새 폴더 이름"
+              placeholder={tr('cloud.browser.newFolderNamePh')}
               onChange={(e) => setNewFolder((p) => (p ? { ...p, name: e.target.value } : p))}
               // Esc 는 위쪽 window 핸들러가 계층으로 처리한다 (입력 취소)
               onKeyDown={(e) => { if (e.key === 'Enter') void createFolder(); }}
@@ -1248,7 +1237,7 @@ export function MapBrowser({
                 background: t.primary, color: '#fff', cursor: 'pointer',
                 fontSize: 12, fontWeight: 700,
               }}
-            >만들기</button>
+            >{tr('cloud.browser.create')}</button>
             <button
               onClick={() => setNewFolder(null)}
               style={{
@@ -1256,7 +1245,7 @@ export function MapBrowser({
                 border: `1px solid ${t.border}`, background: t.surface,
                 color: t.text, fontSize: 12,
               }}
-            >취소</button>
+            >{tr('common.cancel')}</button>
           </div>
         ) : r.kind === 'folder' ? (
           <div key={`f:${r.folder.folderId}`} data-testid="browser-folder"
@@ -1294,17 +1283,17 @@ export function MapBrowser({
             {/* 유형·생성일 자리 — 머리글과 같은 오른쪽 선에 세운다
                 (2026-08-09 요청) */}
             {/* 같은 줄의 **폴더 이름과 같은 색** (2026-08-09 2차 요청) */}
-            <span style={{ color: t.text, fontSize: 11, textAlign: 'right' }}>폴더</span>
+            <span style={{ color: t.text, fontSize: 11, textAlign: 'right' }}>{tr('cloud.browser.folderType')}</span>
             {/* '맵 N개' 는 **생성일 칸 하나**만 쓴다 — 예전처럼 두 칸을
                 차지하면(span 2) 오른쪽 맞춤이 수정일 선까지 밀려 머리글과
                 어긋난다 (2026-08-09) */}
             <span style={{ color: t.textMuted, fontSize: 11.5, textAlign: 'right' }}>
-              맵 {r.folder.mapCount}개
+              {tr('cloud.browser.folderMapCount', { n: r.folder.mapCount })}
             </span>
             <span />
             <span /><span /><span /><span />
             <span style={actionCell}>
-              <button style={iconBtn} title="이 폴더 안에 새 폴더" aria-label="하위 폴더 만들기"
+              <button style={iconBtn} title={tr('cloud.browser.subfolderTip')} aria-label={tr('cloud.browser.subfolderAria')}
                 onClick={() => {
                   setNewFolder({ parentId: r.folder.folderId, name: '' });
                   // 접혀 있으면 펼친다 — 입력창 아래로 기존 하위가 함께
@@ -1312,10 +1301,10 @@ export function MapBrowser({
                   setExpanded((prev) => new Set(prev).add(r.folder.folderId));
                 }}
               >＋</button>
-              <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
+              <button style={iconBtn} title={tr('cloud.browser.rename')} aria-label={tr('cloud.browser.rename')}
                 onClick={() => void renameFolder(r.folder)}><I.Pencil size={15} /></button>
               <button style={{ ...iconBtn, color: '#d9534f' }}
-                title="삭제 (비어 있을 때만)" aria-label="삭제"
+                title={tr('cloud.browser.deleteFolderTip')} aria-label={tr('common.delete')}
                 onClick={() => void deleteFolder(r.folder)}><I.Trash size={15} /></button>
             </span>
           </div>
@@ -1343,23 +1332,23 @@ export function MapBrowser({
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}
             >
-              <Mark text={r.map.title || '(제목 없음)'} q={searching ? qRaw : ''} />
+              <Mark text={r.map.title || tr('cloud.untitledParen')} q={searching ? qRaw : ''} />
               {/* 맵 **내용**에서 맞았으면 건수만 — 어느 노드·노트인지까지
                   보여 주면 목록이 감당이 안 된다. 열어서 같은 말로 다시
                   검색하면 그 안에서 하나씩 짚을 수 있다. */}
               {(r.map.matchCount ?? 0) > 0 && (
                 <span
                   data-testid="browser-map-matches"
-                  title={`이 맵의 내용(노드·노트·태그·링크·첨부 이름)에서 ${r.map.matchCount}건 찾았습니다`}
+                  title={tr('cloud.browser.matchTip', { n: r.map.matchCount ?? 0 })}
                   style={{
                     marginLeft: 6, padding: '0 6px', borderRadius: 8,
                     border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
                     color: t.primary, fontSize: 10.5, fontWeight: 700,
                   }}
-                >맵({r.map.matchCount}건)</span>
+                >{tr('cloud.browser.matchBadge', { n: r.map.matchCount ?? 0 })}</span>
               )}
               {cloudMapId === r.map.mapId && (
-                <span style={{ fontSize: 10, marginLeft: 6, color: t.textSubtle }}>편집 중</span>
+                <span style={{ fontSize: 10, marginLeft: 6, color: t.textSubtle }}>{tr('cloud.browser.editing')}</span>
               )}
             </button>
             {/* 유형은 표시 전용 — 협업맵은 협업자를 초대해 승인·참여하는
@@ -1395,12 +1384,12 @@ export function MapBrowser({
                   title={ty.title}
                   onClick={(e) => {
                     e.stopPropagation(); // 행 클릭(맵 열기)과 겹치지 않게
-                    const done = () => notifyUser(`🔗 퍼블리싱 링크를 복사했습니다 — ${url}`);
+                    const done = () => notifyUser(tr('cloud.browser.linkCopied', { url }));
                     if (navigator.clipboard?.writeText) {
                       navigator.clipboard.writeText(url).then(done,
-                        () => notifyUser(`⚠ 복사하지 못했습니다 — ${url}`));
+                        () => notifyUser(tr('cloud.browser.linkCopyFailed', { url })));
                     } else {
-                      notifyUser(`퍼블리싱 링크: ${url}`);
+                      notifyUser(tr('cloud.browser.linkIs', { url }));
                     }
                   }}
                   style={{ ...common, cursor: 'pointer', fontWeight: 700 }}
@@ -1409,30 +1398,30 @@ export function MapBrowser({
             })()}
             </ProMapMembersTip>
             <span style={{ color: t.textMuted, fontSize: 11, textAlign: 'right' }}
-              title="최초 생성일">
+              title={tr('cloud.browser.createdTip')}>
               {fmtDate(r.map.createdAt)}
             </span>
             <span style={{ color: t.textMuted, fontSize: 11, textAlign: 'right' }}
-              title="마지막 수정일">
+              title={tr('cloud.browser.modifiedTip')}>
               {fmtDate(r.map.updatedAt)}
             </span>
             <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }}
-              title="노드 수 ('—'는 통계 도입 전 저장분 — 다음 저장 때 채워집니다)">
+              title={tr('cloud.browser.nodesTip')}>
               {r.map.nodeCount ?? '—'}
             </span>
-            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }} title="문서 크기">
+            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }} title={tr('cloud.browser.docSizeTip')}>
               {fmtBytes(r.map.docBytes)}
             </span>
-            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }} title="첨부파일 수">
+            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }} title={tr('cloud.browser.attachCountTip')}>
               {r.map.attachCount ?? '—'}
             </span>
-            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }} title="첨부 총 용량">
+            <span style={{ ...numCell, color: t.textMuted, fontSize: 11 }} title={tr('cloud.browser.attachBytesTip')}>
               {fmtBytes(r.map.attachBytes)}
             </span>
             <span style={actionCell}>
               <button
                 data-testid="browser-map-info" style={iconBtn}
-                title="상세 정보 (저장한 기기·브라우저·IP 포함)" aria-label="상세 정보"
+                title={tr('cloud.browser.infoTip')} aria-label={tr('cloud.browser.infoAria')}
                 onClick={(e) => {
                   const r2 = e.currentTarget.getBoundingClientRect();
                   if (infoTimer.current) window.clearTimeout(infoTimer.current);
@@ -1471,14 +1460,14 @@ export function MapBrowser({
                       aria-pressed={r.map.listed}
                       style={{ ...iconBtn, color: r.map.listed ? t.primary : undefined }}
                       title={r.map.listed
-                        ? '지식창고에서 내리기 — 목록에서만 빠집니다. 링크는 그대로 살아 있습니다'
-                        : '지식창고에 올리기 — 둘러보는 누구나 찾을 수 있게 됩니다'}
-                      aria-label={r.map.listed ? '지식창고에서 내리기' : '지식창고에 올리기'}
+                        ? tr('cloud.browser.unlistTip')
+                        : tr('cloud.browser.listTip')}
+                      aria-label={r.map.listed ? tr('cloud.browser.unlistAria') : tr('cloud.browser.listAria')}
                       onClick={() => void toggleListed(r.map)}
                     ><I.Library size={15} /></button>
                   ) : (
                     <button data-testid="browser-map-share" style={iconBtn}
-                      title="공유 — 참여자 초대 · 소유권 넘기기 (맵을 열지 않아도 됩니다)" aria-label="공유"
+                      title={tr('cloud.browser.shareTip')} aria-label={tr('cloud.browser.shareAria')}
                       onClick={() => setShareMap(r.map)}><I.Share size={15} /></button>
                   )}
                   {/* 대시보드맵 전환·되돌리기 자리 (2026-09-30, 22-dashboard.md §4.1) —
@@ -1498,21 +1487,21 @@ export function MapBrowser({
                       대시보드맵은 **링크로만** 퍼블리싱한다(22-dashboard.md §4.7 — 사내 시스템에 붙이기) */}
                   {r.map.kind !== 'collab' ? (
                     <button data-testid="browser-map-publish" style={iconBtn}
-                      title="퍼블리싱 — 링크를 가진 사람이 로그인 없이 읽습니다 (맵을 열지 않아도 됩니다)" aria-label="퍼블리싱"
+                      title={tr('cloud.browser.publishTip')} aria-label={tr('cloud.browser.publishAria')}
                       onClick={() => setPublishMap(r.map)}><I.Globe size={15} /></button>
                   ) : (
                     <span aria-hidden style={actionGap} />
                   )}
-                  <button style={iconBtn} title="이름 변경" aria-label="이름 변경"
+                  <button style={iconBtn} title={tr('cloud.browser.rename')} aria-label={tr('cloud.browser.rename')}
                     onClick={() => void renameMap(r.map)}><I.Pencil size={15} /></button>
                   {knowsListed(r.map) ? (
                     <span aria-hidden style={actionGap} />
                   ) : (
                     <button data-testid="browser-map-move" style={iconBtn}
-                      title="다른 폴더로 이동" aria-label="다른 폴더로 이동"
+                      title={tr('cloud.browser.moveTip')} aria-label={tr('cloud.browser.moveTip')}
                       onClick={() => setMoving(r.map)}><I.FolderMove size={15} /></button>
                   )}
-                  <button style={{ ...iconBtn, color: '#d9534f' }} title="삭제" aria-label="삭제"
+                  <button style={{ ...iconBtn, color: '#d9534f' }} title={tr('common.delete')} aria-label={tr('common.delete')}
                     onClick={() => void deleteMap(r.map)}><I.Trash size={15} /></button>
                 </>
               )}
@@ -1558,45 +1547,44 @@ export function MapBrowser({
             fontWeight: 700, fontSize: 12.5, marginBottom: 4,
             paddingRight: info.pinned ? 30 : 0,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{info.map.title || '(제목 없음)'}</div>
-          <InfoRow t={t} k="유형" v={mapType(info.map).label} />
-          <InfoRow t={t} k="생성" v={fmtDate(info.map.createdAt)} />
-          <InfoRow t={t} k="수정" v={fmtDate(info.map.updatedAt)} />
-          <InfoRow t={t} k="노드" v={info.map.nodeCount === null || info.map.nodeCount === undefined
-            ? '—' : `${info.map.nodeCount.toLocaleString()}개`} />
-          <InfoRow t={t} k="문서 크기" v={fmtBytes(info.map.docBytes)} />
+          }}>{info.map.title || tr('cloud.untitledParen')}</div>
+          <InfoRow t={t} k={tr('cloud.col.type')} v={mapType(info.map).label} />
+          <InfoRow t={t} k={tr('cloud.info.created')} v={fmtDate(info.map.createdAt)} />
+          <InfoRow t={t} k={tr('cloud.info.modified')} v={fmtDate(info.map.updatedAt)} />
+          <InfoRow t={t} k={tr('cloud.col.nodes')} v={info.map.nodeCount === null || info.map.nodeCount === undefined
+            ? '—' : tr('cloud.info.count', { n: info.map.nodeCount.toLocaleString(locale) })} />
+          <InfoRow t={t} k={tr('cloud.info.docSize')} v={fmtBytes(info.map.docBytes)} />
           {info.map.publishId && (
-            <InfoRow t={t} k="퍼블리싱 링크" v={publicMapUrl(info.map.publishId)} />
+            <InfoRow t={t} k={tr('cloud.info.publishLink')} v={publicMapUrl(info.map.publishId)} />
           )}
-          <InfoRow t={t} k="첨부" v={
+          <InfoRow t={t} k={tr('cloud.col.attach')} v={
             info.map.attachCount === null || info.map.attachCount === undefined
               ? '—'
-              : `${info.map.attachCount}개 · ${fmtBytes(info.map.attachBytes)}`} />
+              : tr('cloud.info.attachValue', { n: info.map.attachCount, size: fmtBytes(info.map.attachBytes) })} />
           {/* 마지막 저장 자리 — 접속 정보 도입(2026-08-09) 전에 저장된
               맵은 값이 없다. 없는 것을 '—' 로 늘어놓지 않고 왜 없는지
               한 줄로 알려 준다. */}
           <div style={{
             marginTop: 6, paddingTop: 6, borderTop: `1px solid ${t.divider}`,
             fontSize: 10.5, color: t.textSubtle, fontWeight: 700,
-          }}>마지막 저장 자리</div>
+          }}>{tr('cloud.info.lastSaved')}</div>
           {info.map.lastPlatform || info.map.lastBrowser || info.map.lastIp ? (
             <div data-testid="browser-info-origin">
-              <InfoRow t={t} k="기기" v={info.map.lastPlatform ?? '—'} />
-              <InfoRow t={t} k="브라우저" v={info.map.lastBrowser ?? '—'} />
+              <InfoRow t={t} k={tr('cloud.info.device')} v={info.map.lastPlatform ?? '—'} />
+              <InfoRow t={t} k={tr('cloud.info.browser')} v={info.map.lastBrowser ?? '—'} />
               <InfoRow t={t} k="IP" v={info.map.lastIp ?? '—'} mono />
               {info.map.lastSavedAt && (
-                <InfoRow t={t} k="저장 시각" v={fmtDate(info.map.lastSavedAt)} />
+                <InfoRow t={t} k={tr('cloud.info.savedAt')} v={fmtDate(info.map.lastSavedAt)} />
               )}
             </div>
           ) : (
             <div style={{ fontSize: 10.5, color: t.textSubtle }}>
-              아직 기록이 없습니다 — 이 기능이 생기기 전에 저장된 맵입니다.
-              다음 <b>☁ 저장</b> 부터 남습니다.
+              {rich(tr('cloud.info.noOrigin'))}
             </div>
           )}
           {info.pinned && (
             <div style={{ marginTop: 6, fontSize: 10, color: t.textSubtle }}>
-              오른쪽 위 × · Esc · ⓘ 를 다시 누르면 닫힙니다.
+              {tr('cloud.info.closeHint')}
             </div>
           )}
         </div>
@@ -1648,7 +1636,7 @@ export function MapBrowser({
       {moving && (
         <FolderPickerDialog
           t={t}
-          title={`'${moving.title || '제목 없음'}' 옮기기`}
+          title={tr('cloud.browser.moveTitle', { title: moving.title || tr('cloud.untitled') })}
           folders={folders}
           currentFolderId={moving.folderId}
           onPick={(folderId) => void moveMapTo(moving, folderId)}
@@ -1660,13 +1648,7 @@ export function MapBrowser({
         padding: '8px 14px', borderTop: `1px solid ${t.border}`,
         color: t.textSubtle, fontSize: 11, lineHeight: 1.6,
       }}>
-        폴더 이름을 누르면 <b>그 자리에서 펼쳐집니다</b>. 검색은 문서함
-        <b> 전체</b>에서 이름과 <b>맵 안의 내용(노드·노트·태그·링크·첨부
-        이름)</b>을 함께 찾습니다 — 이름이 맞으면 <b>글자가 강조</b>되고,
-        맵 내용이 맞으면 <b>맵(N건)</b>으로 알립니다. 맞는 파일이 든 폴더는
-        저절로 펼쳐집니다.
-        편집 중인 맵이 있으면 다른 맵은 <b>브라우저 새 탭</b>에서 열립니다.
-        폴더는 <b>비어 있을 때만</b> 삭제할 수 있습니다.
+        {rich(tr('cloud.browser.footer'))}
       </div>
     </div>
   );

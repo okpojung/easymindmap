@@ -22,6 +22,7 @@
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
+import { useTr } from '@/i18n';
 
 type ActionKey = 'child' | 'child-left' | 'parent' | 'before' | 'after';
 
@@ -41,12 +42,12 @@ interface Props {
   onAddSiblingAfter: () => void;
 }
 
-const LABELS: Record<ActionKey, string> = {
-  parent: '상위 노드 추가',
-  child: '하위 노드 추가',
-  'child-left': '하위 노드 추가 (왼쪽)',
-  before: '형제 노드 앞에 추가',
-  after: '형제 노드 뒤에 추가',
+const LABEL_KEYS: Record<ActionKey, string> = {
+  parent: 'editor.indicator.parent',
+  child: 'editor.indicator.child',
+  'child-left': 'editor.indicator.childLeft',
+  before: 'editor.indicator.before',
+  after: 'editor.indicator.after',
 };
 
 type Dir = 'up' | 'down' | 'left' | 'right';
@@ -55,6 +56,7 @@ export function NodeIndicators({
   node, t, rootChildSides, effLayout,
   onAddChild, onAddParent, onAddSiblingBefore, onAddSiblingAfter,
 }: Props) {
+  const tr = useTr();
   const isRoot = node.depth === 0;
   const GAP = 26;
 
@@ -158,7 +160,7 @@ export function NodeIndicators({
             onClick={(e) => { e.stopPropagation(); handlers[action](); }}
             onDoubleClick={(e) => e.stopPropagation()}
           >
-            <title>{LABELS[action]}</title>
+            <title>{tr(LABEL_KEYS[action])}</title>
             <line
               x1={dir === 'left' ? node.x - node.w / 2 : dir === 'right' ? node.x + node.w / 2 : node.x}
               y1={dir === 'up' ? node.y - node.h / 2 : dir === 'down' ? node.y + node.h / 2 : node.y}

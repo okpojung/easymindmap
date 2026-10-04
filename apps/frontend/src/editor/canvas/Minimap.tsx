@@ -18,6 +18,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import { resolveNodeColors } from '@/editor/node-renderer/resolveNodeColors';
 import { useViewportStore } from '@/stores/viewportStore';
+import { useTr } from '@/i18n';
 import {
   minimapGeometry, minimapPanelSize, miniToWorld, panForCenter, shiftOrigin, viewportWorldRect, worldBounds, worldToMini,
   type MinimapOriginMode,
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export function Minimap({ t, nodes, W, H, CX, CY, onClose }: Props) {
+  const tr = useTr();
   const zoom = useViewportStore((s) => s.zoom);
   const panX = useViewportStore((s) => s.panX);
   const panY = useViewportStore((s) => s.panY);
@@ -130,7 +132,7 @@ export function Minimap({ t, nodes, W, H, CX, CY, onClose }: Props) {
       <button
         data-testid="minimap-close"
         onClick={onClose}
-        title="미니맵 닫기 (Alt+M)"
+        title={tr('editor.minimap.close')}
         style={{
           position: 'absolute', top: 2, right: 4, zIndex: 1,
           width: 18, height: 18, border: 'none', borderRadius: 4,

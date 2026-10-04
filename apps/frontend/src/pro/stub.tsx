@@ -12,8 +12,10 @@ import type { LaidOutNode } from '@/layout/types';
 import { useEffect } from 'react';
 import { useProFeature } from './contract';
 import { DashboardRevertButton } from '@/components/cloud/DashboardRevertButton';
+import { useTr } from '@/i18n';
 
 export function ProFeaturePanel({ t, featureId }: { t: ThemeTokens; featureId: string }) {
+  const tr = useTr();
   const s = useProFeature(featureId);
 
   const box: React.CSSProperties = {
@@ -21,7 +23,7 @@ export function ProFeaturePanel({ t, featureId }: { t: ThemeTokens; featureId: s
   };
 
   if (s.status === 'loading') {
-    return <div style={{ ...box, color: t.textMuted, fontSize: 13 }}>확인 중…</div>;
+    return <div style={{ ...box, color: t.textMuted, fontSize: 13 }}>{tr('publish.pro.checking')}</div>;
   }
 
   // 서버에 못 물었다. **"유료라서 안 됩니다"라고 말하지 않는다** — 백엔드가
@@ -29,8 +31,8 @@ export function ProFeaturePanel({ t, featureId }: { t: ThemeTokens; featureId: s
   if (s.status === 'unknown') {
     return (
       <div style={{ ...box, color: t.textMuted, fontSize: 13, lineHeight: 1.6 }}>
-        기능 정보를 불러오지 못했습니다.<br />
-        서버에 연결된 뒤 다시 열어 주세요.
+        {tr('publish.pro.unknown1')}<br />
+        {tr('publish.pro.unknown2')}
       </div>
     );
   }
@@ -40,10 +42,18 @@ export function ProFeaturePanel({ t, featureId }: { t: ThemeTokens; featureId: s
     // 하는데 화면이 없다 — 조용히 빈 화면을 주면 원인을 못 찾는다.
     return (
       <div style={{ ...box, fontSize: 13, lineHeight: 1.6, color: t.text }}>
-        <b>{s.feature.name}</b> 은(는) 이 서버에서 사용할 수 있지만,
-        <br />이 화면 모듈이 설치돼 있지 않습니다.
+        {/* 값을 안 넘기면 `**{name}**` 가 그대로 남는다 — 그 자리를 갈라 이름을 굵게 넣는다 */}
+        {tr('publish.pro.notInstalled').split('\n').map((line, i) => (
+          <span key={i}>
+            {i > 0 && <br />}
+            {line.split('**{name}**').flatMap((part, j) => (
+              j === 0 ? [part] : [<b key={j}>{s.feature.name}</b>, part]
+            ))}
+          </span>
+        ))}
+        {' '}
         <span style={{ color: t.textMuted }}>
-          유료 UI 를 포함해 다시 빌드해야 합니다.
+          {tr('publish.pro.rebuild')}
         </span>
       </div>
     );
@@ -57,7 +67,7 @@ export function ProFeaturePanel({ t, featureId }: { t: ThemeTokens; featureId: s
           fontSize: 11, padding: '2px 7px', borderRadius: 10,
           background: t.primarySoft, color: t.primary, whiteSpace: 'nowrap',
         }}>
-          준비 중
+          {tr('common.comingSoon')}
         </span>
       </div>
       {/* 서버가 준 문장 그대로 — 우리가 바꿔 쓰면 갈래가 뭉개진다 */}
@@ -99,12 +109,13 @@ export function ProCollabSession(_p: { mapId: string | null; kind?: string }) {
 export function ProShareDialog(
   { t, mapId, onClose }: { t: ThemeTokens; mapId: string | null; onClose: () => void },
 ) {
+  const tr = useTr();
   if (!mapId) return null;
   return (
     <div
       data-testid="share-dialog"
       role="dialog"
-      aria-label="맵 공유"
+      aria-label={tr('publish.pro.shareTitle')}
       style={{
         position: 'fixed', inset: 0, zIndex: 60, display: 'grid', placeItems: 'center',
         background: 'rgba(0,0,0,.35)',
@@ -122,7 +133,7 @@ export function ProShareDialog(
           padding: '12px 16px', borderBottom: `1px solid ${t.divider}`,
           fontWeight: 700, fontSize: 14,
         }}>
-          맵 공유
+          {tr('publish.pro.shareTitle')}
         </div>
         <ProFeaturePanel t={t} featureId="collab" />
         <div style={{ padding: '10px 16px', textAlign: 'right' }}>
@@ -133,7 +144,7 @@ export function ProShareDialog(
               padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
               border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
             }}
-          >닫기</button>
+          >{tr('common.close')}</button>
         </div>
       </div>
     </div>

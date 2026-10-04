@@ -15,6 +15,7 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
+import { useTr } from '@/i18n';
 
 const MIN_PW = 6;
 
@@ -35,6 +36,7 @@ export function ResetPasswordForm({ t, onCancel, onDone }: {
   const [note, setNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const tr = useTr();
 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
   const fail = (e: unknown, f: string) =>
@@ -47,9 +49,9 @@ export function ResetPasswordForm({ t, onCancel, onDone }: {
       setStep('code');
       setDevCode(r.devCode ?? null);
       setNote(r.devCode
-        ? (r.message ?? '개발 모드 — 아래 번호를 입력하세요.')
-        : `가입된 계정이라면 인증번호를 보냈습니다. ${r.expiresInMin}분 안에 입력해 주세요.`);
-    } catch (e) { fail(e, '인증번호를 보내지 못했습니다.'); } finally { setBusy(false); }
+        ? (r.message ?? tr('auth.code.devMode'))
+        : tr('auth.reset.sent', { n: r.expiresInMin }));
+    } catch (e) { fail(e, tr('auth.code.sendFailed')); } finally { setBusy(false); }
   };
 
   const verify = async () => {
@@ -58,16 +60,16 @@ export function ResetPasswordForm({ t, onCancel, onDone }: {
       const r = await cloudApi.resetVerify(email.trim(), code.trim());
       setResetToken(r.resetToken);
       setStep('password');
-      setNote('본인 확인을 마쳤습니다. 새 비밀번호를 정해 주세요.');
-    } catch (e) { fail(e, '인증번호를 확인하지 못했습니다.'); } finally { setBusy(false); }
+      setNote(tr('auth.reset.verified'));
+    } catch (e) { fail(e, tr('auth.code.verifyFailed')); } finally { setBusy(false); }
   };
 
   const confirm = async () => {
     setBusy(true); setErr(null);
     try {
       await cloudApi.resetConfirm(resetToken, pw);
-      onDone('비밀번호를 바꿨습니다. 새 비밀번호로 로그인해 주세요.');
-    } catch (e) { fail(e, '비밀번호를 바꾸지 못했습니다.'); } finally { setBusy(false); }
+      onDone(tr('auth.reset.done'));
+    } catch (e) { fail(e, tr('auth.pw.changeFailed')); } finally { setBusy(false); }
   };
 
   const input: CSSProperties = {
@@ -87,16 +89,16 @@ export function ResetPasswordForm({ t, onCancel, onDone }: {
 
   return (
     <div data-testid="reset-form">
-      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>비밀번호 재설정</div>
+      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{tr('auth.reset.title')}</div>
       <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 18 }}>
-        {step === 'email' && '① 가입한 이메일로 인증번호를 보내 드립니다.'}
-        {step === 'code' && '② 메일로 받은 인증번호를 입력하세요.'}
-        {step === 'password' && '③ 새 비밀번호를 정해 주세요.'}
+        {step === 'email' && tr('auth.reset.step1')}
+        {step === 'code' && tr('auth.reset.step2')}
+        {step === 'password' && tr('auth.reset.step3')}
       </div>
 
       {step === 'email' && (
         <>
-          <label style={label} htmlFor="reset-email">아이디 (이메일)</label>
+          <label style={label} htmlFor="reset-email">{tr('auth.field.emailId')}</label>
           <input
             id="reset-email" data-testid="reset-email" style={input}
             type="email" autoComplete="username" placeholder="name@example.com"
@@ -107,35 +109,35 @@ export function ResetPasswordForm({ t, onCancel, onDone }: {
           <button
             data-testid="reset-send" disabled={!emailOk || busy} onClick={() => void send()}
             style={{ ...primary, marginTop: 12, opacity: !emailOk || busy ? 0.5 : 1 }}
-          >{busy ? '보내는 중…' : '인증번호 받기'}</button>
+          >{busy ? tr('auth.code.sending') : tr('auth.reset.getCode')}</button>
         </>
       )}
 
       {step === 'code' && (
         <>
-          <label style={label} htmlFor="reset-code">인증번호</label>
+          <label style={label} htmlFor="reset-code">{tr('auth.code.label')}</label>
           <input
             id="reset-code" data-testid="reset-code"
             style={{ ...input, letterSpacing: 4, fontSize: 16 }}
-            placeholder="6자리 숫자" inputMode="numeric" autoFocus value={code}
+            placeholder={tr('auth.code.placeholder')} inputMode="numeric" autoFocus value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
             onKeyDown={(e) => { if (e.key === 'Enter' && code.length >= 4 && !busy) void verify(); }}
           />
           {devCode && (
             <div data-testid="reset-dev-code" style={{ fontSize: 12, color: t.warning, marginTop: 8 }}>
-              개발 모드 인증번호: <b>{devCode}</b>
+              {tr('auth.reset.devCode')} <b>{devCode}</b>
             </div>
           )}
           <button
             data-testid="reset-verify" disabled={code.length < 4 || busy} onClick={() => void verify()}
             style={{ ...primary, marginTop: 12, opacity: code.length < 4 || busy ? 0.5 : 1 }}
-          >{busy ? '확인하는 중…' : '확인'}</button>
+          >{busy ? tr('auth.code.verifying') : tr('common.ok')}</button>
         </>
       )}
 
       {step === 'password' && (
         <>
-          <label style={label} htmlFor="reset-pw">새 비밀번호 ({MIN_PW}자 이상)</label>
+          <label style={label} htmlFor="reset-pw">{tr('auth.pw.new', { n: MIN_PW })}</label>
           <div style={{ position: 'relative' }}>
             <input
               id="reset-pw" data-testid="reset-pw" style={{ ...input, paddingRight: 36 }}
@@ -144,7 +146,7 @@ export function ResetPasswordForm({ t, onCancel, onDone }: {
             />
             <button
               data-testid="reset-pw-toggle" type="button" onClick={() => setShow((v) => !v)}
-              title={show ? '숨기기' : '보기'}
+              title={show ? tr('auth.pw.hideShort') : tr('auth.pw.showShort')}
               style={{
                 position: 'absolute', right: 6, top: 6, width: 26, height: 26,
                 borderRadius: 6, border: 'none', background: 'transparent',
@@ -152,7 +154,7 @@ export function ResetPasswordForm({ t, onCancel, onDone }: {
               }}
             >{show ? '🙈' : '👁'}</button>
           </div>
-          <label style={{ ...label, marginTop: 12 }} htmlFor="reset-pw2">새 비밀번호 확인</label>
+          <label style={{ ...label, marginTop: 12 }} htmlFor="reset-pw2">{tr('auth.pw.confirmNew')}</label>
           <input
             id="reset-pw2" data-testid="reset-pw2"
             style={{ ...input, borderColor: pw2 && pw !== pw2 ? t.danger : t.border }}
@@ -162,13 +164,13 @@ export function ResetPasswordForm({ t, onCancel, onDone }: {
           />
           {pw2 && pw !== pw2 && (
             <div style={{ fontSize: 11.5, color: t.danger, marginTop: 4 }}>
-              두 번 입력한 비밀번호가 다릅니다.
+              {tr('auth.pw.mismatchTwice')}
             </div>
           )}
           <button
             data-testid="reset-confirm" disabled={!canConfirm} onClick={() => void confirm()}
             style={{ ...primary, marginTop: 12, opacity: canConfirm ? 1 : 0.5 }}
-          >{busy ? '바꾸는 중…' : '비밀번호 바꾸기'}</button>
+          >{busy ? tr('auth.pw.changing') : tr('auth.pw.change')}</button>
         </>
       )}
 
@@ -190,7 +192,7 @@ export function ResetPasswordForm({ t, onCancel, onDone }: {
           border: `1px solid ${t.border}`, background: t.surfaceAlt,
           color: t.text, fontSize: 13, fontWeight: 600, cursor: 'pointer',
         }}
-      >로그인 화면으로 돌아가기</button>
+      >{tr('auth.backToLogin')}</button>
     </div>
   );
 }

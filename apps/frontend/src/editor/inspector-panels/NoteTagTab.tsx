@@ -16,6 +16,9 @@ import { TableDialog, TableGridPicker } from '@/editor/node-renderer/TableDialog
 import { noteTableCells, noteTableFromMd, noteTableToMd } from './noteTable';
 import { useTr } from '@/i18n';
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
+import { useCoarse } from '@/hooks/useViewport';
 // 맵 전체에서 노트 블록을 id로 찾는다 — 사진 내장(비동기) 완료 시점에
 // 블록이 아직 그 서식(html)을 갖고 있는지 확인하는 용도.
 function findBlockById(
@@ -69,6 +72,7 @@ const BLOCK_TYPES: { type: NoteBlockType; label: string }[] = [
 
 export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
   const tr = useTr();
+  const coarse = useCoarse();
   const map = useDocumentStore((s) => s.map);
   const addNodeTag = useDocumentStore((s) => s.addNodeTag);
   const removeNodeTag = useDocumentStore((s) => s.removeNodeTag);
@@ -97,7 +101,7 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   };
 
   return (
-    <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
+    <div data-mm-touch="" style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
       <InspectorSection t={t} title={tr('inspector.note.tags')}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
           {tags.map((tagName) => {
@@ -112,10 +116,19 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
                 letterSpacing: 0.2,
               }}>
                 #{tagName}
-                <span
+                {/* 단추로 — 키보드·화면 낭독기로도 지울 수 있게. 손가락이면 누를 자리를 넓힌다 */}
+                <button
+                  type="button"
+                  data-mm-small=""
+                  aria-label={`${tr('common.delete')} #${tagName}`}
+                  title={tr('common.delete')}
                   onClick={() => selectedId && removeNodeTag(selectedId, tagName)}
-                  style={{ opacity: 0.6, cursor: 'pointer', fontSize: 11, lineHeight: 1 }}
-                >×</span>
+                  style={{
+                    opacity: 0.6, cursor: 'pointer', fontSize: coarse ? 15 : 11, lineHeight: 1,
+                    border: 'none', background: 'transparent', color: 'inherit',
+                    padding: coarse ? '6px 6px' : 0, margin: coarse ? '-6px -6px -6px 0' : 0,
+                  }}
+                >×</button>
               </span>
             );
           })}
@@ -144,7 +157,7 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         t={t}
         title={tr('inspector.note.title')}
         action={
-          <div style={{ display: 'flex', gap: 3 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
             {BLOCK_TYPES.map((b) => {
               // 모든 종류를 여러 개 추가할 수 있다 (2026-09-22 사용자 요청 — 예전엔
               // 문단/코드/표는 노드당 1개, 체크만 여러 개). 같은 종류가 여럿이면

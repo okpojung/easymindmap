@@ -22,6 +22,8 @@ import { openMapInNewTab } from '@/services/cloud/mapSession';
 import { currentLocale, tr as trNow, useLang, useTr, LANG_LOCALE } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 // 영구보관(별표) — 13a §3 (2026-09-06).
 //   · **이름을 붙이는 것이 곧 보관하는 것이다.** 버튼은 하나(☆)이고, 누르면
 //     이름 입력창이 그 자리에 뜬다. 기본값은 시각이 든 문구 — 그대로 [보관].
@@ -276,7 +278,7 @@ export function HistoryPanel({ t }: { t: ThemeTokens }) {
     [v.platform, v.browser, v.ip].filter(Boolean).join(' · ');
 
   return (
-    <div style={{ padding: '12px 12px 16px' }} data-testid="history-panel">
+    <div data-mm-touch="" style={{ padding: '12px 12px 16px' }} data-testid="history-panel">
       <div style={{
         fontSize: 11, color: t.textSubtle, marginBottom: 8,
         textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,

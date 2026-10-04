@@ -62,6 +62,8 @@ import { reassignIds } from '@/utils/aiProjectContext';
 import { attachFileWithProgress } from '@/utils/attachmentFile';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 import { tr, useLang } from '@/i18n';
+import { usePhoneLayout, isCoarseNow } from '@/hooks/useViewport';
+import { primeTouchKeyboard } from './touchKeyboard';
 
 // 레이아웃 이름 — 사전 키 (렌더 때 tr 로 옮긴다)
 const LAYOUT_LABEL_KEY: Record<string, string> = {
@@ -106,6 +108,15 @@ const CULL_MARGIN = 0.5;
 const ZOOM_MIN = 2;
 const ZOOM_MAX = 400;
 
+// ── 손가락 조작 (모바일 웹, 2026-10-05) ──
+// 길게 누르기 = 노드 메뉴 · 누른 채 이만큼 움직이면 톡이 아니다(화면 px)
+const LONG_PRESS_MS = 500;
+const TAP_SLOP = 8;
+// 손가락으로 노드를 끌기 시작하는 거리 — 마우스(4)보다 크게: 톡이 떨려도 끌리지 않게
+const TOUCH_DRAG_START = 10;
+// 폰 폭에서 맞추기 여백 — 위는 캔버스 도구 모음 높이만큼 더 비운다 (화면 px)
+const COMPACT_FIT_MARGIN = { top: 64, side: 16, bottom: 20 };
+
 function clampZoom(v: number) {
   return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v));
 }
@@ -120,6 +131,8 @@ export function Canvas({
 }: Props) {
   // 언어가 바뀌면 다시 그린다 — 화면 문자열은 tr() 로 (콜백 안에서도 부르는 순간의 언어)
   useLang();
+  // 폰 폭 — 첫 화면은 맵 전체 맞추기, 도구 모음·안내 칩은 좁게 (모바일 웹, 2026-10-05)
+  const compact = usePhoneLayout();
   // 캔버스 viewBox를 "실제 컨테이너 픽셀 크기"로 맞춘다 — 예전 고정
   // 1400×760 viewBox는 화면 폭에 맞춰 통째로 축소되어, 줌 100%인데도
   // 글자가 실제 px보다 작게 보였다 (HTML 뷰어와 크기가 달라 보이던 원인).
@@ -422,7 +435,8 @@ export function Canvas({
     if (!root) return null;
     return HOME_TOP_LAYOUTS.has(lt) ? HOME_TOP_GAP - (root.y - root.h / 2) : 0;
   }, [nodes, layoutType]);
-  const homeGuard = homeArmed && !gestureSinceHome && zoom === 100 && homeWantY !== null;
+  // 폰 폭에서는 첫 화면이 '맵 전체 맞추기'라(아래 homeArmed 효과) 100% 원점 보호를 쓰지 않는다
+  const homeGuard = homeArmed && !gestureSinceHome && zoom === 100 && homeWantY !== null && !compact;
   const panX = homeGuard ? 0 : storePanX;
   const panY = homeGuard ? (homeWantY as number) : storePanY;
 
@@ -721,6 +735,12 @@ export function Canvas({
     selectOne(target.id);
   };
 
+  // 휠 처리기는 한 번만 붙으므로 **최신** 화면 크기·변환을 ref 로 본다 (2026-10-05) —
+  // 예전에는 첫 렌더의 W·H(1400×760 기본값)가 닫혀 들어가, 실제 캔버스 크기가 다르면
+  // 확대 기준점이 커서에서 조금씩 미끄러졌다(1400×860 창에서 휠 두 번에 맵 좌표 ~2 어긋남).
+  const wheelGeomRef = useRef({ clientToViewBox, CX, CY });
+  wheelGeomRef.current = { clientToViewBox, CX, CY };
+
   // Wheel zoom anchored at the cursor. Attached manually with passive:false
   // so preventDefault() blocks the browser page zoom/scroll.
   useEffect(() => {
@@ -731,7 +751,8 @@ export function Canvas({
       e.preventDefault();
 
       const state = useViewportStore.getState();
-      const cursor = clientToViewBox(e.clientX, e.clientY);
+      const { clientToViewBox: toVB, CX, CY } = wheelGeomRef.current;
+      const cursor = toVB(e.clientX, e.clientY);
 
       const s1 = state.zoom / 100;
       const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
@@ -755,8 +776,10 @@ export function Canvas({
   }, []);
 
   // Zoom + pan so the given laid-out nodes all fit in the viewport.
-  const fitToNodes = (list: typeof nodes, margin = 70) => {
-    if (!list.length) return;
+  // 폰 폭(compact)은 여백을 좁히고, 위는 캔버스 도구 모음 높이만큼 더 비운다 —
+  // 데스크톱 여백 70 을 390px 화면에 그대로 쓰면 맵이 가운데 점처럼 작아진다.
+  const computeFit = (list: typeof nodes, margin = 70, maxScale = 2) => {
+    if (!list.length) return null;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of list) {
       minX = Math.min(minX, n.x - n.w / 2);
@@ -766,13 +789,26 @@ export function Canvas({
     }
     const bw = Math.max(1, maxX - minX);
     const bh = Math.max(1, maxY - minY);
-    const fitScale = Math.min((W - margin * 2) / bw, (H - margin * 2) / bh, 2);
+    const mTop = compact ? COMPACT_FIT_MARGIN.top : margin;
+    const mSide = compact ? COMPACT_FIT_MARGIN.side : margin;
+    const mBottom = compact ? COMPACT_FIT_MARGIN.bottom : margin;
+    const fitScale = Math.min(
+      Math.max(1, W - mSide * 2) / bw,
+      Math.max(1, H - mTop - mBottom) / bh,
+      maxScale,
+    );
     const zoomNext = clampZoom(Math.round(fitScale * 100));
     const s2 = zoomNext / 100;
     const bcx = (minX + maxX) / 2;
     const bcy = (minY + maxY) / 2;
-    setZoom(zoomNext);
-    setPan(-(bcx - CX) * s2, -(bcy - CY) * s2);
+    // 위·아래 여백이 다르면(폰) 그 차이의 절반만큼 아래로 — 데스크톱은 0
+    return { zoom: zoomNext, panX: -(bcx - CX) * s2, panY: -(bcy - CY) * s2 + (mTop - mBottom) / 2 };
+  };
+  const fitToNodes = (list: typeof nodes, margin = 70) => {
+    const f = computeFit(list, margin);
+    if (!f) return;
+    setZoom(f.zoom);
+    setPan(f.panX, f.panY);
   };
 
   // Fit the currently-laid-out nodes when requested. In focus mode the laid-out
@@ -808,6 +844,22 @@ export function Canvas({
   // 화면을 옮긴 뒤에는 손대지 않는다. 같은 값이면 store 를 건드리지 않는다.
   useEffect(() => {
     if (!homeArmed) return;
+    // ★ **폰 폭의 첫 화면 = 맵 전체** (모바일 웹, 2026-10-05). 390px 화면에서 100% 로
+    // 열면 맵의 한 귀퉁이만 보여 "어디가 어딘지" 모른다. 맵 전체가 들어오게 맞추되
+    // 작은 맵을 100% 넘게 키우지는 않는다. homeArmed 는 끄지 않는다(setState 직접) —
+    // 늦게 바뀐 배치(글꼴·크기 측정)에도 다시 맞춘다. 첫 손가락 조작이 끈다.
+    if (compact) {
+      // 사용자가 무엇이든 만진 뒤에는(톡 하나로 노드를 더해도) 다시 맞추지 않는다 —
+      // 맵이 자랄 때마다 화면이 움찔하면 안 된다
+      if (gestureSinceHome) return;
+      const f = computeFit(nodes, 70, 1);
+      if (!f) return;
+      const vp0 = useViewportStore.getState();
+      if (Math.abs(vp0.zoom - f.zoom) < 0.5 && Math.abs(vp0.panX - f.panX) < 0.5 && Math.abs(vp0.panY - f.panY) < 0.5) return;
+      logViewport('compactHome', [f.zoom, f.panX, f.panY]);
+      useViewportStore.setState({ zoom: f.zoom, panX: f.panX, panY: f.panY });
+      return;
+    }
     const lt = normalizeLayoutType(layoutType);
     const root = nodes.find((n) => n.depth === 0) ?? nodes[0];
     if (!root) return;
@@ -816,7 +868,8 @@ export function Canvas({
     if (vp.zoom !== 100) return; // 배율이 바뀌었으면 이미 첫 화면이 아니다
     if (Math.abs(vp.panY - wantY) < 0.5 && Math.abs(vp.panX) < 0.5) return;
     vp.setHomePan(0, wantY);
-  }, [homeArmed, nodes, layoutType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeArmed, nodes, layoutType, compact, W, H, gestureSinceHome]);
 
   // 특정 노드를 화면 중앙 + 지정 배율로 보기 (검색 결과 클릭 —
   // requestCenterNode). 접힌 조상 때문에 아직 배치에 없으면 무시.
@@ -1232,7 +1285,156 @@ export function Canvas({
     };
   });
 
+  // ── 손가락 조작 (모바일 웹, 2026-10-05) ──────────────────────────────
+  // 마우스·펜은 아래 예전 길 그대로다. 손가락(pointerType 'touch')만:
+  //   · 한 손가락 — 노드 위에서 끌면 노드 이동(10px 넘게 움직인 뒤), 빈 곳·중심
+  //     주제에서 끌면 화면 이동(러버밴드 대신). 톡 = 선택, 고른 노드를 다시 톡
+  //     (= 두 번 톡) = 글 편집, 길게 누르기 = 선택 + 노드 메뉴.
+  //   · 두 손가락 — 벌리고 오므리기 = 두 손가락 가운데를 기준으로 확대/축소(휠과
+  //     같은 식·같은 한계), 같이 끌기 = 화면 이동. 두 번째 손가락이 닿는 순간
+  //     진행 중이던 노드 끌기·화면 이동은 취소된다.
+  // 손가락마다 pointerId 로 따로 따라간다.
+  const touchPtsRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{
+    a: number; b: number; d0: number;
+    mid0: { x: number; y: number }; zoom0: number; panX0: number; panY0: number;
+  } | null>(null);
+  const touchTapRef = useRef<{
+    pointerId: number; x: number; y: number; t0: number;
+    nodeId: string | null; wasSelected: boolean; moved: boolean; longFired: boolean;
+  } | null>(null);
+  const longPressTimer = useRef<number | undefined>(undefined);
+  const requestEdit = useInteractionStore((s) => s.requestEdit);
+  const openNodeMenu = useInteractionStore((s) => s.openNodeMenu);
+
+  const cancelLongPress = () => {
+    window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = undefined;
+  };
+
+  /** 두 번째 손가락 — 한 손가락 조작을 모두 거두고 핀치를 시작한다 */
+  const startPinch = (svg: SVGSVGElement) => {
+    cancelLongPress();
+    touchTapRef.current = null;
+    if (nodeDragRef.current) {
+      nodeDragRef.current = null;
+      dropZoneRef.current = null;
+      setDropZone(null);
+      setDragGhost(null);
+    }
+    if (marqueeRef.current) { marqueeRef.current = null; setMarquee(null); }
+    dragRef.current = null;
+    setPanning(false);
+    const [[a, pa], [b, pb]] = Array.from(touchPtsRef.current.entries());
+    for (const id of [a, b]) {
+      try { svg.setPointerCapture(id); } catch { /* 이미 떨어진 손가락 */ }
+    }
+    pinchRef.current = {
+      a, b,
+      d0: Math.max(1, Math.hypot(pb.x - pa.x, pb.y - pa.y)),
+      mid0: clientToViewBox((pa.x + pb.x) / 2, (pa.y + pb.y) / 2),
+      zoom0: useViewportStore.getState().zoom,
+      // 화면에 실제로 쓰인 pan (첫 화면 보호 중이면 그 값) — 마우스 끌기와 같은 기준
+      panX0: panX, panY0: panY,
+    };
+    suppressClickRef.current = true;
+  };
+
+  /** 핀치 중 — 휠 확대와 같은 식: 처음 두 손가락 가운데의 맵 점이 지금 가운데에 오게 */
+  const movePinch = () => {
+    const p = pinchRef.current;
+    if (!p) return;
+    const pa = touchPtsRef.current.get(p.a);
+    const pb = touchPtsRef.current.get(p.b);
+    if (!pa || !pb) return;
+    const d = Math.max(1, Math.hypot(pb.x - pa.x, pb.y - pa.y));
+    const mid = clientToViewBox((pa.x + pb.x) / 2, (pa.y + pb.y) / 2);
+    const s1 = p.zoom0 / 100;
+    const zoomNext = clampZoom(Math.round(p.zoom0 * (d / p.d0)));
+    const s2 = zoomNext / 100;
+    // screen = (w − C)·s + C + pan  ⇒  pan' = mid − C − (mid0 − C − pan0)·s2/s1
+    const st = useViewportStore.getState();
+    st.setZoom(zoomNext);
+    st.setPan(
+      mid.x - CX - ((p.mid0.x - CX - p.panX0) / s1) * s2,
+      mid.y - CY - ((p.mid0.y - CY - p.panY0) / s1) * s2,
+    );
+  };
+
+  /** 손가락이 닿았다 — 이 손가락의 처리가 여기서 끝났으면 true */
+  const handleTouchDown = (e: ReactPointerEvent<SVGSVGElement>): boolean => {
+    // 호환 마우스 이벤트(mousedown 의 포커스 이동·글자 선택)를 막는다 — click 은 그대로 온다.
+    // 그래서 편집창의 blur(=저장)도 직접 일으킨다 (데스크톱에서 캔버스를 누르면 저장되듯)
+    e.preventDefault();
+    const ae = document.activeElement as HTMLElement | null;
+    if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT')) ae.blur();
+    const pts = touchPtsRef.current;
+    if (e.isPrimary) { pts.clear(); pinchRef.current = null; } // 새 터치 — 놓친 손가락 정리
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { startPinch(e.currentTarget); return true; }
+    if (pts.size > 2) return true; // 세 번째 손가락은 무시
+    suppressClickRef.current = false; // 지난 제스처가 남긴 것 — 이번 톡에는 무관
+    const nodeEl = (e.target as Element).closest('[data-node-id]');
+    const nodeId = nodeEl?.getAttribute('data-node-id') ?? null;
+    touchTapRef.current = {
+      pointerId: e.pointerId, x: e.clientX, y: e.clientY, t0: Date.now(),
+      nodeId,
+      wasSelected: !!nodeId && nodeId === selectedId && multiSelectedIds.length <= 1,
+      moved: false, longFired: false,
+    };
+    cancelLongPress();
+    if (nodeId) {
+      longPressTimer.current = window.setTimeout(() => {
+        const tap = touchTapRef.current;
+        if (!tap || tap.moved || tap.nodeId !== nodeId) return;
+        tap.longFired = true;
+        selectOneRef.current(nodeId);
+        if (compact) openNodeMenu();
+        try { navigator.vibrate?.(12); } catch { /* 지원 안 함 */ }
+      }, LONG_PRESS_MS);
+    }
+    return false;
+  };
+
+  /** 손가락을 뗐다 — 핀치였으면 true (나머지 처리는 건너뛴다) */
+  const handleTouchUp = (e: ReactPointerEvent<SVGSVGElement>): boolean => {
+    const pts = touchPtsRef.current;
+    pts.delete(e.pointerId);
+    const p = pinchRef.current;
+    if (p && (p.a === e.pointerId || p.b === e.pointerId)) {
+      pinchRef.current = null;
+      // 남은 손가락으로 이어서 화면 이동
+      const restId = p.a === e.pointerId ? p.b : p.a;
+      const rest = pts.get(restId);
+      if (rest) {
+        const vp = useViewportStore.getState();
+        dragRef.current = {
+          pointerId: restId, startX: rest.x, startY: rest.y,
+          panX0: vp.panX, panY0: vp.panY, moved: true, needsCapture: false,
+        };
+        setPanning(true);
+      }
+      return true;
+    }
+    const tap = touchTapRef.current;
+    if (tap && tap.pointerId === e.pointerId) {
+      touchTapRef.current = null;
+      cancelLongPress();
+      const isTap = e.type === 'pointerup' && !tap.moved && !tap.longFired;
+      // 고른 노드를 다시 톡 = 편집 (두 번 톡도 이것 — 첫 톡이 고르고 둘째가 편집).
+      // 붓·연결 모드에서는 톡이 칠하기·끝점이라 편집하지 않는다.
+      if (isTap && tap.nodeId && tap.wasSelected && !stylePainter && !connectMode
+          && editingNodeId !== tap.nodeId) {
+        primeTouchKeyboard(); // 톡 처리 안에서 — iOS 가 키보드를 띄우게
+        requestEdit(tap.nodeId);
+      }
+    }
+    return false;
+  };
+
   const handlePointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const isTouch = e.pointerType === 'touch';
+    if (isTouch && handleTouchDown(e)) return;
     // 휠 클릭 + 우클릭 드래그 = 임시 Pan (Pan 모드를 켜지 않고도 화면 이동,
     // 버튼을 떼면 자동 해제). 우클릭 컨텍스트 메뉴는 svg에서 차단.
     const isMiddleButton = e.button === 1 || e.button === 2;
@@ -1293,7 +1495,7 @@ export function Canvas({
 
     // Pan은 Pan 모드(H) 또는 휠 클릭에서만 — Pan 모드가 아닐 때 빈 캔버스
     // 드래그는 러버밴드(사각형) 다중 선택이다.
-    if (!isMiddleButton && !panMode) {
+    if (!isMiddleButton && !panMode && !isTouch) {
       if (onEmptyCanvas) {
         e.currentTarget.setPointerCapture(e.pointerId);
         const w = clientToWorld(e.clientX, e.clientY);
@@ -1315,7 +1517,9 @@ export function Canvas({
     //   톡 누른 것은 캡처가 없으니 그대로 노드 선택(→ 아웃라인 동기화)이
     //   되고, 끌면 예전처럼 화면이 따라온다. 막는 것은 **노드를 끌어
     //   옮기는 것** 하나뿐이다 (위 분기).
-    const deferCapture = !isMiddleButton && panMode && !!nodeEl;
+    // 손가락은 Pan 모드가 아니어도 빈 곳·중심 주제를 끌면 화면 이동이다 — 중심 주제를
+    // 톡한 것이 선택되도록 같은 이유로 캡처를 미룬다
+    const deferCapture = !isMiddleButton && (panMode || isTouch) && !!nodeEl;
     if (!deferCapture) e.currentTarget.setPointerCapture(e.pointerId);
     setPanning(true);
 
@@ -1331,12 +1535,24 @@ export function Canvas({
   };
 
   const handlePointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const isTouch = e.pointerType === 'touch';
+    if (isTouch) {
+      const pts = touchPtsRef.current;
+      if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinchRef.current) { movePinch(); return; }
+      const tap = touchTapRef.current;
+      if (tap && tap.pointerId === e.pointerId && !tap.moved
+          && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > TAP_SLOP) {
+        tap.moved = true;
+        cancelLongPress();
+      }
+    }
     const nodeDrag = nodeDragRef.current;
     if (nodeDrag && nodeDrag.pointerId === e.pointerId) {
       const dx = e.clientX - nodeDrag.startX;
       const dy = e.clientY - nodeDrag.startY;
 
-      if (!nodeDrag.dragging && Math.abs(dx) + Math.abs(dy) > 4) {
+      if (!nodeDrag.dragging && Math.abs(dx) + Math.abs(dy) > (isTouch ? TOUCH_DRAG_START : 4)) {
         nodeDrag.dragging = true;
         e.currentTarget.setPointerCapture(e.pointerId);
       }
@@ -1398,6 +1614,7 @@ export function Canvas({
   };
 
   const handlePointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === 'touch' && handleTouchUp(e)) return;
     const nodeDrag = nodeDragRef.current;
     if (nodeDrag && nodeDrag.pointerId === e.pointerId) {
       nodeDragRef.current = null;
@@ -1559,15 +1776,16 @@ export function Canvas({
       }}
     >
       <div
+        data-testid="canvas-info-chip"
         style={{
           position: 'absolute',
-          top: 14,
-          left: 14,
+          top: compact ? 10 : 14,
+          left: compact ? 8 : 14,
           zIndex: 5,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          padding: '5px 10px',
+          padding: compact ? '4px 8px' : '5px 10px',
           borderRadius: 20,
           background: t.surface,
           border: `1px solid ${t.border}`,
@@ -1585,9 +1803,11 @@ export function Canvas({
             background: t.primary,
           }}
         />
-        {tr(LAYOUT_LABEL_KEY[layoutType] ?? 'editor.canvas.mindmap')} · {tr('editor.canvas.statusAuto', { n: nodes.length })}{' '}
+        {/* 폰 폭(compact)은 배율만 — 레이아웃 이름·노드 수까지 쓰면 오른쪽 도구 모음과
+            겹친다 (모바일 웹, 2026-10-05). Pan 모드는 위 가운데 배지가 따로 알린다. */}
+        {!compact && <>{tr(LAYOUT_LABEL_KEY[layoutType] ?? 'editor.canvas.mindmap')} · {tr('editor.canvas.statusAuto', { n: nodes.length })}{' '}</>}
         {Math.round(zoom || 100)}%
-        {panMode && (
+        {panMode && !compact && (
           <span style={{ color: t.primary, fontWeight: 600 }}>{tr('editor.canvas.panBadge')}</span>
         )}
       </div>
@@ -1605,13 +1825,14 @@ export function Canvas({
         <div
           data-testid="connect-hint"
           style={{
-            position: 'absolute', top: 14, left: '50%',
+            position: 'absolute', top: compact ? 58 : 14, left: '50%',
             transform: 'translateX(-50%)', zIndex: 6,
             display: 'flex', alignItems: 'center', gap: 7,
-            padding: '5px 12px', borderRadius: 999,
+            padding: '5px 12px', borderRadius: compact ? 14 : 999,
             background: t.primary, color: '#fff',
             fontSize: 12, fontWeight: 600, boxShadow: t.shadowSm,
-            pointerEvents: 'none', whiteSpace: 'nowrap',
+            pointerEvents: 'none', whiteSpace: compact ? 'normal' : 'nowrap',
+            ...(compact ? { width: 'max-content', maxWidth: 'calc(100% - 24px)', textAlign: 'center' as const } : {}),
           }}
         >
           {tr('editor.canvas.connectHint')}
@@ -1626,14 +1847,15 @@ export function Canvas({
         <div
           data-testid="center-place-badge"
           style={{
-            position: 'absolute', top: 14, left: '50%',
+            position: 'absolute', top: compact ? 58 : 14, left: '50%',
             transform: 'translateX(-50%)', zIndex: 6,
             display: 'flex', alignItems: 'center', gap: 7,
             padding: '7px 16px', borderRadius: 20,
             background: t.primary, color: '#FFFFFF',
             fontSize: 12.5, fontWeight: 700,
             boxShadow: '0 4px 14px rgba(60,45,15,0.35)',
-            pointerEvents: 'none', whiteSpace: 'nowrap',
+            pointerEvents: 'none', whiteSpace: compact ? 'normal' : 'nowrap',
+            ...(compact ? { width: 'max-content', maxWidth: 'calc(100% - 24px)', textAlign: 'center' as const } : {}),
           }}
         >
           <span style={{ fontSize: 15 }}>◎</span>
@@ -1646,14 +1868,15 @@ export function Canvas({
           <div
             data-testid="pan-mode-badge"
             style={{
-              position: 'absolute', top: 14, left: '50%',
+              position: 'absolute', top: compact ? 58 : 14, left: '50%',
               transform: 'translateX(-50%)', zIndex: 6,
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '7px 16px', borderRadius: 20,
               background: t.primary, color: '#FFFFFF',
               fontSize: 12.5, fontWeight: 700,
               boxShadow: '0 4px 14px rgba(60,45,15,0.35)',
-              pointerEvents: 'none', whiteSpace: 'nowrap',
+              pointerEvents: 'none', whiteSpace: compact ? 'normal' : 'nowrap',
+              ...(compact ? { width: 'max-content', maxWidth: 'calc(100% - 24px)', textAlign: 'center' as const } : {}),
             }}
           >
             <span style={{ fontSize: 15 }}>✋</span>
@@ -1674,7 +1897,7 @@ export function Canvas({
       {/* 미니맵 — 우하단 (2026-09-21). 배치된 노드(visibleNodes: 포커스 모드면
           그 하위만)를 작은 사각형으로, 지금 보이는 영역을 끌 수 있는 틀로. */}
       {minimapOpen && (
-        <Minimap t={t} nodes={visibleNodes} W={W} H={H} CX={CX} CY={CY} onClose={() => setMinimapOpen(false)} />
+        <Minimap t={t} nodes={visibleNodes} W={W} H={H} CX={CX} CY={CY} compact={compact} onClose={() => setMinimapOpen(false)} />
       )}
 
       {/* 스타일 복사(붓) — 커서 오른쪽 아래에 따라다니는 붓 (2026-09-19).
@@ -1701,9 +1924,11 @@ export function Canvas({
         <div
           data-testid="canvas-notice"
           style={{
-            position: 'absolute', top: 14, left: '50%',
+            position: 'absolute', top: compact ? 58 : 14, left: '50%',
             transform: 'translateX(-50%)', zIndex: 20,
-            maxWidth: 620, padding: '9px 14px', borderRadius: 8,
+            maxWidth: compact ? 'calc(100% - 24px)' : 620,
+            ...(compact ? { width: 'max-content' } : {}),
+            padding: '9px 14px', borderRadius: 8,
             background: t.surface, color: t.text,
             border: `1px solid ${t.warning}`,
             borderLeft: `4px solid ${t.warning}`,
@@ -1717,6 +1942,7 @@ export function Canvas({
 
       <svg
         ref={svgRef}
+        data-testid="canvas-svg"
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMid meet"
         style={{
@@ -1730,6 +1956,8 @@ export function Canvas({
           // 아니다 (노드 편집창(textarea) 안의 선택은 그대로 동작).
           userSelect: 'none',
           WebkitUserSelect: 'none',
+          // iOS 길게 누르기의 '복사·찾아보기' 말풍선을 막는다 — 길게 누르기는 노드 메뉴다
+          WebkitTouchCallout: 'none',
         }}
         // 노드 안 사진(SVG image)은 브라우저가 기본 드래그 대상으로 취급해
         // 노드를 끌면 반투명 스냅샷(주황빛 창)이 네이티브 드래그 고스트로
@@ -2225,8 +2453,8 @@ function CollapseControl({
       onMouseLeave={() => setH(false)}
     >
       <title>{title}</title>
-      {/* larger transparent hit area */}
-      <circle r="13" fill="transparent" />
+      {/* larger transparent hit area — 손가락이면 더 넓게 (모바일 웹, 2026-10-05) */}
+      <circle r={isCoarseNow() ? 20 : 13} fill="transparent" />
       {children}
     </g>
   );

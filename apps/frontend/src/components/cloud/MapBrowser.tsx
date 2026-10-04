@@ -39,6 +39,8 @@ import { publicMapUrl } from './PublishPanel';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
 import { FolderPickerDialog } from './FolderPickerDialog';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { ActionSheet, type SheetItem } from '@/components/ui/ActionSheet';
+import { usePhoneLayout, useCoarse, isPhoneLayoutNow, isCoarseNow } from '@/hooks/useViewport';
 import { clampLeft, clampTop } from '@/utils/popupPosition';
 // 컴포넌트 안은 useTr() 의 tr, 컴포넌트 밖 함수·useCallback 안은 부르는 순간의 언어(trNow)
 import { useTr, useLang, tr as trNow, currentLocale, LANG_LOCALE } from '@/i18n';
@@ -46,6 +48,31 @@ import { rich } from '@/i18n/rich';
 
 type SortKey = 'title' | 'createdAt' | 'updatedAt'
   | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
+
+/**
+ * 데스크톱 표가 잘리지 않는 최소 폭 — 아래 `rowStyle` 의 열 폭 합
+ * (24+140+76+108+108+58+76+54+86+196) + 간격 9×8 + 좌우 여백 20.
+ */
+const TABLE_MIN_WIDTH = 1020;
+/** 도움말 펼침을 기억하는 자리 (브라우저마다) */
+const HELP_PREF = 'emm.browser.help';
+
+/** 손가락 기기 + 표가 들어가지 않는 폭 — 카드 배치를 쓴다 */
+function useNarrowTouch(): boolean {
+  const q = `(pointer: coarse) and (max-width: ${TABLE_MIN_WIDTH - 1}px)`;
+  const get = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia(q).matches;
+  const [v, setV] = useState(get);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia(q);
+    const on = () => setV(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [q]);
+  return v;
+}
 
 /** 한 번에 받아 오는 맵 수 상한 — 서버 list() 의 limit 최대값과 같다 */
 const MAP_FETCH_LIMIT = 500;
@@ -269,6 +296,43 @@ export function MapBrowser({
 }) {
   const tr = useTr();
   const locale = LANG_LOCALE[useLang()];
+  /**
+   * 폰 배치 (모바일 웹, 2026-10-05). 표(열 10개, 1000px)는 폰 폭에 들어가지 않아
+   * 관리 칸이 화면 밖으로 잘렸다 — 맵을 지우지도 옮기지도 못했다. 폰에서는
+   *   · 줄 = 카드(이름 + 작은 정보 줄: 유형 · 수정일 · 크기), 줄을 누르면 연다
+   *   · 줄 끝 [⋯] = 데스크톱 관리 아이콘과 **같은 동작 전부**를 담은 아래 시트
+   *   · 머리 = 검색창 한 줄 + [＋ 새 맵] [?] [⋯](새로고침·펼치기·접기·새 폴더·정렬)
+   *   · 도움말 문단은 [?] 를 눌렀을 때만
+   * 데스크톱 표는 한 줄도 바뀌지 않는다.
+   */
+  // 손가락 기기인데 표가 들어가지 않는 폭(가로로 든 폰 등)도 카드로 — 26px 아이콘
+  // 여섯 개를 옆으로 굴려 가며 누르게 하지 않는다. 마우스면 표를 옆으로 굴린다.
+  const narrowTouch = useNarrowTouch();
+  const compact = usePhoneLayout() || narrowTouch;
+  const coarse = useCoarse();
+  /** 폰의 아래 시트 — 맵 줄 · 폴더 줄 · 머리의 [⋯] */
+  const [sheet, setSheet] = useState<
+    | { kind: 'map'; map: MapListItem }
+    | { kind: 'folder'; folder: FolderItem }
+    | { kind: 'header' }
+    | null
+  >(null);
+  /**
+   * 도움말 문단을 펼쳤는가 — [?] 로 접고 편다 (2026-10-05). 처음에는 마우스
+   * 화면이면 펼침(예전과 같다), 폰·손가락 기기면 접힘. 고른 것은 기억한다.
+   */
+  const [helpOpen, setHelpOpenRaw] = useState<boolean>(() => {
+    try {
+      const v = window.localStorage.getItem(HELP_PREF);
+      if (v === '1' || v === '0') return v === '1';
+    } catch { /* 저장소를 못 쓰면 기본값 */ }
+    return !isPhoneLayoutNow() && !isCoarseNow();
+  });
+  const setHelpOpen = (f: (v: boolean) => boolean) => setHelpOpenRaw((v) => {
+    const next = f(v);
+    try { window.localStorage.setItem(HELP_PREF, next ? '1' : '0'); } catch { /* 무시 */ }
+    return next;
+  });
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [maps, setMaps] = useState<MapListItem[] | null>(null);
   /** 나에게 공유된 맵 — 공유가 없거나 서버가 아직 모르면 빈 배열 */
@@ -416,6 +480,7 @@ export function MapBrowser({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (sheet) { setSheet(null); return; }
       if (newMapAt) { setNewMapAt(null); return; }
       if (info) { setInfo(null); return; }
       if (newFolder) { setNewFolder(null); return; }
@@ -424,7 +489,7 @@ export function MapBrowser({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, newFolder, query, info, newMapAt]);
+  }, [onClose, newFolder, query, info, newMapAt, sheet]);
 
   // ── 내용 검색 ───────────────────────────────────────────────
   // 서버가 제목 + 맵 안(노드·노트·태그)을 찾아 **맞은 맵만** 돌려준다.
@@ -912,6 +977,233 @@ export function MapBrowser({
   /** 들여쓰기 — 트리 단계마다 한 칸 (아이콘 열 다음부터 밀린다) */
   const indent = (depth: number) => ({ paddingLeft: depth * 16 });
 
+  /** 정렬 기준 고르기 — 열 머리글(데스크톱)과 폰 시트가 같은 규칙을 쓴다 */
+  const pickSort = (key: SortKey) => {
+    if (sort === key) setOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    else { setSort(key); setOrder(key === 'title' ? 'asc' : 'desc'); }
+  };
+  /** 퍼블리싱 주소 복사 — 유형 배지(데스크톱)와 폰 시트의 [링크 복사] */
+  const copyPublishLink = (url: string) => {
+    const done = () => notifyUser(tr('cloud.browser.linkCopied', { url }));
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(done,
+        () => notifyUser(tr('cloud.browser.linkCopyFailed', { url })));
+    } else {
+      notifyUser(tr('cloud.browser.linkIs', { url }));
+    }
+  };
+  const sortLabel = (key: SortKey): string => ({
+    title: tr('cloud.m.sortName'),
+    createdAt: tr('cloud.col.created'),
+    updatedAt: tr('cloud.col.modified'),
+    nodeCount: tr('cloud.col.nodes'),
+    docBytes: tr('cloud.col.size'),
+    attachCount: tr('cloud.col.attach'),
+    attachBytes: tr('cloud.col.attachSize'),
+  })[key];
+
+  // ── 폰 배치의 단추 ──
+  /** 손가락이면 44, 아니면 36 — 폰 머리·줄 끝 단추 */
+  const mTap = coarse ? 44 : 36;
+  const mIconBtn: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    width: mTap, height: mTap, borderRadius: 8, padding: 0,
+    background: t.surface, border: `1px solid ${t.border}`, color: t.textMuted, cursor: 'pointer',
+    fontSize: 16, fontWeight: 700,
+  };
+  const mRowMore: React.CSSProperties = { ...mIconBtn, border: 'none', background: 'transparent' };
+
+  /** 폰 시트의 항목 — 데스크톱 관리 아이콘과 **같은 조건, 같은 동작** */
+  type SheetEntry = Parameters<typeof ActionSheet>[0]['items'][number];
+  const sheetItems = (): SheetEntry[] => {
+    if (!sheet) return [];
+    if (sheet.kind === 'header') {
+      const sortKeys: SortKey[] = ['title', 'updatedAt', 'createdAt', 'docBytes', 'nodeCount'];
+      return [
+        { key: 'refresh', label: refreshing ? tr('cloud.browser.refreshing') : tr('cloud.browser.refresh'),
+          testId: 'browser-refresh', onSelect: () => { void load(); }, disabled: refreshing },
+        { key: 'expand', label: tr('cloud.browser.expandAll'), testId: 'browser-expand-all', onSelect: expandAll },
+        { key: 'collapse', label: tr('cloud.browser.collapseAll'), testId: 'browser-collapse-all', onSelect: collapseAll },
+        { key: 'newFolder', label: tr('cloud.browser.newFolder'), testId: 'browser-new-folder',
+          onSelect: () => setNewFolder({ parentId: null, name: '' }) },
+        { key: 'sortHead', heading: tr('cloud.m.sortBy') },
+        ...sortKeys.map((k): SheetItem => ({
+          key: `sort-${k}`, testId: `browser-sort-${k}`,
+          label: sortLabel(k) + (sort === k ? (order === 'asc' ? '  ▲' : '  ▼') : ''),
+          checked: sort === k,
+          onSelect: () => pickSort(k),
+        })),
+      ];
+    }
+    if (sheet.kind === 'folder') {
+      const f = sheet.folder;
+      return [
+        { key: 'sub', icon: <I.Plus size={18} />, label: tr('cloud.browser.subfolderAria'), testId: 'm-folder-sub',
+          onSelect: () => {
+            setNewFolder({ parentId: f.folderId, name: '' });
+            setExpanded((prev) => new Set(prev).add(f.folderId));
+          } },
+        { key: 'rename', icon: <I.Pencil size={18} />, label: tr('cloud.browser.rename'), testId: 'm-folder-rename',
+          onSelect: () => void renameFolder(f) },
+        'divider',
+        { key: 'delete', icon: <I.Trash size={18} />, label: tr('cloud.browser.deleteFolderTip'), danger: true,
+          testId: 'm-folder-delete', onSelect: () => void deleteFolder(f) },
+      ];
+    }
+    const m = sheet.map;
+    const ty = mapType(m);
+    const items: SheetEntry[] = [
+      { key: 'open', icon: <I.MindMap size={18} />, label: tr('cloud.m.open'), testId: 'm-map-open',
+        onSelect: () => void openMap(m) },
+      { key: 'info', icon: <I.Info size={18} />, label: tr('cloud.browser.infoAria'), testId: 'browser-map-info',
+        onSelect: () => setInfo({ map: m, x: 0, y: 0, pinned: true }) },
+    ];
+    if (ty.publishUrl) {
+      const url = ty.publishUrl;
+      items.push({ key: 'copy', icon: <I.Link size={18} />, label: tr('cloud.m.copyLink'), testId: 'm-map-copy-link',
+        onSelect: () => copyPublishLink(url) });
+    }
+    if (m.shared) return items;
+    items.push('divider');
+    if (m.viewMode !== 'dashboard') {
+      if (knowsListed(m)) {
+        items.push({ key: 'listed', icon: <I.Library size={18} />, checked: m.listed, testId: 'browser-map-listed',
+          label: m.listed ? tr('cloud.browser.unlistAria') : tr('cloud.browser.listAria'),
+          onSelect: () => void toggleListed(m) });
+      } else {
+        items.push({ key: 'share', icon: <I.Share size={18} />, label: tr('cloud.browser.shareAria'),
+          testId: 'browser-map-share', onSelect: () => setShareMap(m) });
+      }
+    }
+    if (m.kind !== 'collab') {
+      items.push({ key: 'publish', icon: <I.Globe size={18} />, label: tr('cloud.browser.publishAria'),
+        testId: 'browser-map-publish', onSelect: () => setPublishMap(m) });
+    }
+    items.push({ key: 'rename', icon: <I.Pencil size={18} />, label: tr('cloud.browser.rename'),
+      testId: 'm-map-rename', onSelect: () => void renameMap(m) });
+    if (!knowsListed(m)) {
+      items.push({ key: 'move', icon: <I.FolderMove size={18} />, label: tr('cloud.browser.moveTip'),
+        testId: 'browser-map-move', onSelect: () => setMoving(m) });
+    }
+    items.push('divider');
+    items.push({ key: 'delete', icon: <I.Trash size={18} />, label: tr('common.delete'), danger: true,
+      testId: 'm-map-delete', onSelect: () => void deleteMap(m) });
+    return items;
+  };
+
+  /** 폰 — 폴더 줄: 이름(누르면 펼침) + 맵 수 + [⋯] */
+  const renderMFolder = (r: Extract<Row, { kind: 'folder' }>) => (
+    <div key={`f:${r.folder.folderId}`} data-testid="browser-folder"
+      className="mm-list-row"
+      data-target={newFolder?.parentId === r.folder.folderId ? 'new-folder' : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 2,
+        padding: '0 2px 0 10px', borderBottom: `1px solid ${t.divider}`,
+        background: newFolder?.parentId === r.folder.folderId ? t.primarySoft : undefined,
+        ['--row-hover' as string]: t.primarySoft,
+        ['--row-hover-bd' as string]: t.primaryBorder,
+      } as React.CSSProperties}>
+      <button
+        data-testid="browser-folder-toggle"
+        aria-expanded={expanded.has(r.folder.folderId) || searching}
+        onClick={() => toggleFolder(r.folder.folderId)}
+        style={{
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8,
+          minHeight: 50, padding: 0, paddingLeft: r.depth * 14,
+          textAlign: 'left', background: 'transparent', border: 'none',
+          color: t.text, cursor: 'pointer', fontSize: 14.5, fontWeight: 600,
+        }}
+      >
+        <span style={{ fontSize: 9, color: t.textSubtle, width: 9, flexShrink: 0 }}>
+          {expanded.has(r.folder.folderId) || searching ? '▼' : '▶'}
+        </span>
+        <span style={{ fontSize: 17, flexShrink: 0 }}>📁</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <Mark text={r.folder.name} q={searching ? qRaw : ''} />
+        </span>
+        <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 500, color: t.textMuted }}>
+          {tr('cloud.browser.folderMapCount', { n: r.folder.mapCount })}
+        </span>
+      </button>
+      <button
+        data-testid="m-browser-folder-menu"
+        aria-label={tr('cloud.m.rowMenu')}
+        title={tr('cloud.m.rowMenu')}
+        onClick={() => setSheet({ kind: 'folder', folder: r.folder })}
+        style={mRowMore}
+      ><I.MoreH size={18} /></button>
+    </div>
+  );
+
+  /** 폰 — 맵 줄: 누르면 연다. 이름 아래 작은 정보 줄(유형 · 수정일 · 크기) + [⋯] */
+  const renderMMap = (r: Extract<Row, { kind: 'map' }>) => {
+    const m = r.map;
+    const ty = mapType(m);
+    const editing = cloudMapId === m.mapId;
+    return (
+      <div key={`m:${m.mapId}`} data-testid="browser-map"
+        className="mm-list-row" aria-selected={editing}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 2,
+          padding: '0 2px 0 10px', borderBottom: `1px solid ${t.divider}`,
+          ['--row-hover' as string]: t.primarySoft,
+          ['--row-hover-bd' as string]: t.primaryBorder,
+        } as React.CSSProperties}>
+        <button
+          data-testid="browser-map-open"
+          onClick={() => void openMap(m)}
+          style={{
+            flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10,
+            minHeight: 56, padding: '6px 0', paddingLeft: r.depth * 14,
+            textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
+            color: editing ? t.primary : t.text,
+          }}
+        >
+          <span style={{ display: 'flex', color: t.primary, flexShrink: 0 }}><I.MindMap size={18} /></span>
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span style={{
+              fontSize: 14.5, fontWeight: 500,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              <Mark text={m.title || tr('cloud.untitledParen')} q={searching ? qRaw : ''} />
+            </span>
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
+              fontSize: 11.5, color: t.textMuted, whiteSpace: 'nowrap', overflow: 'hidden',
+            }}>
+              <span data-testid="browser-map-kind" style={{
+                flexShrink: 0,
+                border: `1px solid ${ty.strong ? t.primaryBorder : t.border}`,
+                borderRadius: 8, padding: '0 6px',
+                background: ty.strong ? t.primarySoft : 'transparent',
+                color: ty.strong ? t.primary : t.textMuted,
+                fontSize: 10.5, fontWeight: 600,
+              }}>{ty.label}</span>
+              {(m.matchCount ?? 0) > 0 && (
+                <span data-testid="browser-map-matches" style={{
+                  flexShrink: 0, padding: '0 6px', borderRadius: 8,
+                  border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
+                  color: t.primary, fontSize: 10.5, fontWeight: 700,
+                }}>{tr('cloud.browser.matchBadge', { n: m.matchCount ?? 0 })}</span>
+              )}
+              {editing && <span style={{ flexShrink: 0, color: t.primary, fontWeight: 600 }}>{tr('cloud.browser.editing')}</span>}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {fmtDate(m.updatedAt)} · {fmtBytes(m.docBytes)}
+              </span>
+            </span>
+          </span>
+        </button>
+        <button
+          data-testid="m-browser-row-menu"
+          aria-label={tr('cloud.m.rowMenu')}
+          title={tr('cloud.m.rowMenu')}
+          onClick={() => setSheet({ kind: 'map', map: m })}
+          style={mRowMore}
+        ><I.MoreH size={18} /></button>
+      </div>
+    );
+  };
+
   return (
     <div
       data-testid="map-browser"
@@ -920,9 +1212,103 @@ export function MapBrowser({
         background: t.surface, color: t.text, overflow: 'hidden',
       }}
     >
-      {/* 헤더 — 제목 + 도구.
+      {compact ? (
+        /* 폰 머리 — 첫 줄: 제목 · [＋ 새 맵] · [?] · [⋯] · [✕], 둘째 줄: 검색창 전체 폭.
+           데스크톱의 단추 다섯 개가 세 줄로 접히던 것을 시트로 옮겼다. */
+        <div data-testid="m-browser-header" style={{
+          display: 'flex', flexDirection: 'column', gap: 8,
+          padding: '10px 12px', borderBottom: `1px solid ${t.border}`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <strong style={{
+              fontSize: 16, flex: 1, minWidth: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{tr('cloud.browser.heading')}</strong>
+            <button
+              data-testid="browser-new-map"
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setNewMapAt((cur) => (cur ? null : { x: 8, y: r.bottom + 6 }));
+              }}
+              title={tr('cloud.browser.newMapTip')}
+              style={{
+                ...mIconBtn, width: 'auto', padding: '0 12px', fontSize: 13.5,
+                color: t.primary, borderColor: t.primaryBorder, whiteSpace: 'nowrap',
+              }}
+            >{tr('cloud.browser.newMap')}</button>
+            <button
+              data-testid="browser-help-toggle"
+              aria-pressed={helpOpen}
+              aria-label={tr('cloud.m.help')}
+              title={tr('cloud.m.help')}
+              onClick={() => setHelpOpen((v) => !v)}
+              style={{ ...mIconBtn, color: helpOpen ? t.primary : t.textMuted,
+                borderColor: helpOpen ? t.primaryBorder : t.border }}
+            >?</button>
+            <button
+              data-testid="m-browser-header-menu"
+              aria-label={tr('common.more')}
+              title={tr('common.more')}
+              onClick={() => setSheet({ kind: 'header' })}
+              style={mIconBtn}
+            ><I.MoreH size={18} /></button>
+            {hasOpenMap && (
+              <button
+                data-testid="browser-close"
+                onClick={onClose}
+                aria-label={tr('cloud.browser.closeTip')}
+                title={tr('cloud.browser.closeTip')}
+                style={{ ...mIconBtn, fontSize: 17 }}
+              >✕</button>
+            )}
+          </div>
+          <div style={{ position: 'relative' }}>
+            <input
+              data-testid="browser-search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={tr('cloud.browser.searchPh')}
+              enterKeyHint="search"
+              style={{
+                width: '100%', boxSizing: 'border-box', height: 40,
+                padding: query ? '0 44px 0 12px' : '0 12px', borderRadius: 8,
+                // 16px — iOS 는 그보다 작은 칸에 들어가면 화면을 확대한다
+                fontSize: 16,
+                border: `1px solid ${query ? t.primaryBorder : t.border}`,
+                background: t.surfaceAlt, color: t.text, outline: 'none',
+              }}
+            />
+            {query && (
+              <button
+                data-testid="browser-search-clear"
+                onClick={() => setQuery('')}
+                aria-label={tr('cloud.browser.clearSearch')}
+                style={{
+                  position: 'absolute', right: 2, top: 2, width: 36, height: 36,
+                  border: 'none', background: 'transparent', color: t.textMuted,
+                  fontSize: 16, cursor: 'pointer',
+                }}
+              >✕</button>
+            )}
+          </div>
+          {finding && (
+            <span data-testid="browser-search-busy" style={{ fontSize: 12, color: t.textMuted }}>
+              {tr('cloud.browser.searching')}
+            </span>
+          )}
+          {helpOpen && (
+            <div data-testid="browser-help" style={{
+              padding: '8px 10px', borderRadius: 8, background: t.surfaceAlt,
+              border: `1px solid ${t.border}`, color: t.textMuted, fontSize: 12.5, lineHeight: 1.6,
+            }}>
+              {rich(tr('cloud.browser.footer'))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* 헤더 — 제목 + 도구.
           트리가 되면서 **경로(breadcrumb)가 사라졌다** — 폴더로 들어가지
-          않으니 돌아 나올 길도 필요 없다. 대신 모두 펼치기/접기가 왔다. */}
+          않으니 돌아 나올 길도 필요 없다. 대신 모두 펼치기/접기가 왔다. */
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '12px 14px', borderBottom: `1px solid ${t.border}`,
@@ -994,6 +1380,18 @@ export function MapBrowser({
               style={{ ...toolBtn, padding: '0 7px' }}
             >✕</button>
           )}
+          <button
+            data-testid="browser-help-toggle"
+            aria-pressed={helpOpen}
+            title={tr('cloud.m.help')}
+            aria-label={tr('cloud.m.help')}
+            onClick={() => setHelpOpen((v) => !v)}
+            style={{
+              ...toolBtn, width: 24, padding: 0, marginLeft: 2,
+              color: helpOpen ? t.primary : t.textMuted,
+              borderColor: helpOpen ? t.primaryBorder : t.border,
+            }}
+          >?</button>
         </div>
         {/* **열린 맵이 없으면 닫기를 감춘다** (2026-08-20 사용자 지적).
             닫아 봐야 '문서 없음' 빈 화면만 남는다 — 갈 곳이 없는 문을
@@ -1008,6 +1406,7 @@ export function MapBrowser({
           >✕</button>
         )}
       </div>
+      )}
 
       {err && !searching && (
         <div
@@ -1036,6 +1435,42 @@ export function MapBrowser({
         </div>
       )}
 
+      {/* 표 영역 — 창이 표보다 좁으면(가로 폰·좁은 노트북 창) **옆으로 굴린다.**
+          전에는 바깥이 overflow: hidden 이라 관리 칸이 그냥 잘려 보이지 않았다. */}
+      <div data-testid="browser-table" style={{
+        flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+        overflowX: compact ? 'hidden' : 'auto', overflowY: 'hidden',
+      }}>
+      <div style={{
+        flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+        minWidth: compact ? 0 : TABLE_MIN_WIDTH,
+      }}>
+      {compact ? (
+        /* 폰 — 표 머리글·합계 줄 대신 한 줄 요약. 오른쪽은 지금 정렬(누르면 시트) */
+        <div data-testid="m-browser-summary" style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '2px 4px 2px 14px', background: t.surfaceAlt, borderBottom: `1px solid ${t.border}`,
+          fontSize: 12, color: t.textMuted,
+        }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {searching ? `${tr('cloud.browser.totalSearch')} · ` : ''}
+            {tr('cloud.m.summary', {
+              maps: totals.maps.toLocaleString(locale),
+              folders: folderCount.toLocaleString(locale),
+              size: fmtBytes(totals.docBytes),
+            })}
+          </span>
+          <button
+            data-testid="m-browser-sort"
+            onClick={() => setSheet({ kind: 'header' })}
+            style={{
+              flexShrink: 0, height: mTap, padding: '0 10px', border: 'none', background: 'transparent',
+              color: t.primary, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >{sortLabel(sort)} {order === 'asc' ? '▲' : '▼'}</button>
+        </div>
+      ) : (
+        <>
       {/* 열 머리글 — **한 줄**. 합계는 아래 별도 줄로 내렸다
           (2026-08-09 3차 요청). 예전에는 숫자 4열만 이름 위에 합계를
           얹었는데, 그 열만 두 줄이 되어 머리글 높이가 들쭉날쭉했고
@@ -1108,6 +1543,8 @@ export function MapBrowser({
         </span>
         <span />
       </div>
+        </>
+      )}
 
       {/* 목록 (트리) — 새 폴더 이름을 입력하는 동안에는 hover 강조를
           끈다(mm-rows-editing). 커서가 다른 줄 위에 남아 그 줄이 강조되면
@@ -1152,12 +1589,15 @@ export function MapBrowser({
               : searching ? rich(tr('cloud.browser.noMatch', { query }))
               : rich(tr('cloud.browser.emptyNone'))}
           </div>
-        ) : rows.map((r) => (r.kind === 'dashboardHead' ? (
+        ) : rows.map((r) => (compact && r.kind === 'folder' ? renderMFolder(r)
+          : compact && r.kind === 'map' ? renderMMap(r)
+          : r.kind === 'dashboardHead' ? (
           /* ★ 대시보드 자리 (2026-10-01) — 퍼블리싱 자리와 따로. 머리글이 **몇 개가
              지금 연결(링크 공개) 중인지**를 말한다 — 붙여 둔 화면이 살아 있는 수다. */
           <div key="dashboard-head" data-testid="browser-dashboard-head"
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
+              flexWrap: compact ? 'wrap' : undefined, rowGap: 2,
               padding: '10px 12px 7px', borderBottom: `1px solid ${t.divider}`,
               background: t.surfaceAlt, color: t.text, fontSize: 12, fontWeight: 700,
             }}>
@@ -1179,6 +1619,7 @@ export function MapBrowser({
           <div key="publish-head" data-testid="browser-publish-head"
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
+              flexWrap: compact ? 'wrap' : undefined, rowGap: 2,
               padding: '10px 12px 7px', borderBottom: `1px solid ${t.divider}`,
               background: t.surfaceAlt, color: t.text, fontSize: 12, fontWeight: 700,
             }}>
@@ -1197,6 +1638,7 @@ export function MapBrowser({
           <div key="shared-head" data-testid="browser-shared-head"
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
+              flexWrap: compact ? 'wrap' : undefined, rowGap: 2,
               padding: '10px 12px 7px', borderBottom: `1px solid ${t.divider}`,
               background: t.surfaceAlt, color: t.text, fontSize: 12, fontWeight: 700,
             }}>
@@ -1224,8 +1666,8 @@ export function MapBrowser({
               // Esc 는 위쪽 window 핸들러가 계층으로 처리한다 (입력 취소)
               onKeyDown={(e) => { if (e.key === 'Enter') void createFolder(); }}
               style={{
-                flex: 1, maxWidth: 320, height: 28, padding: '0 9px', borderRadius: 6,
-                fontSize: 12.5, border: `1px solid ${t.primaryBorder}`,
+                flex: 1, minWidth: 0, maxWidth: 320, height: compact ? 40 : 28, padding: '0 9px', borderRadius: 6,
+                fontSize: compact ? 16 : 12.5, border: `1px solid ${t.primaryBorder}`,
                 background: t.surface, color: t.text, outline: 'none',
               }}
             />
@@ -1233,7 +1675,7 @@ export function MapBrowser({
               data-testid="browser-new-folder-create"
               onClick={() => void createFolder()}
               style={{
-                height: 28, padding: '0 12px', borderRadius: 6, border: 'none',
+                height: compact ? 40 : 28, padding: '0 12px', borderRadius: 6, border: 'none', flexShrink: 0,
                 background: t.primary, color: '#fff', cursor: 'pointer',
                 fontSize: 12, fontWeight: 700,
               }}
@@ -1241,7 +1683,7 @@ export function MapBrowser({
             <button
               onClick={() => setNewFolder(null)}
               style={{
-                height: 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer',
+                height: compact ? 40 : 28, padding: '0 10px', borderRadius: 6, cursor: 'pointer', flexShrink: 0,
                 border: `1px solid ${t.border}`, background: t.surface,
                 color: t.text, fontSize: 12,
               }}
@@ -1510,10 +1952,18 @@ export function MapBrowser({
         )))}
       </div>
 
+      </div>
+      </div>
+
       {/* 상세 정보 카드 (2026-08-09 요청) — 목록의 좁은 칸에 다 담을 수
           없는 값들을 한자리에 보여 준다. 목록 위에 떠야 하므로 fixed +
           화면 밖으로 나가지 않게 좌표를 접어 넣는다.
           (겹치는 레이어 순서는 coding-conventions.md §5-1-4) */}
+      {/* 폰 — 카드 바깥을 누르면 닫힌다(호버가 없으니 닫는 길을 넓힌다) */}
+      {info && compact && (
+        <div data-testid="m-info-backdrop" onClick={() => setInfo(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 329, background: 'rgba(0,0,0,0.25)' }} />
+      )}
       {info && (
         <div
           ref={infoRef}
@@ -1522,7 +1972,16 @@ export function MapBrowser({
             if (infoTimer.current) window.clearTimeout(infoTimer.current);
           }}
           onMouseLeave={hideInfoSoon}
-          style={{
+          style={compact ? {
+            // 폰 — 화면 아래에 폭 가득(가장자리 12px). 호버가 없으니 늘 고정 카드다
+            position: 'fixed', zIndex: 330, left: 12, right: 12,
+            bottom: 'calc(12px + env(safe-area-inset-bottom))',
+            maxHeight: '70dvh', overflowY: 'auto',
+            padding: '12px 14px', borderRadius: 12,
+            background: t.surface, border: `1px solid ${t.borderStrong}`,
+            boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
+            fontSize: 13, color: t.text, lineHeight: 1.8,
+          } : {
             position: 'fixed', zIndex: 230,
             // 셈은 `utils/popupPosition` 한 곳에 있다 — 눈으로 확인하기
             // 어려운 자리라 따로 시험한다(popupPosition.test.ts).
@@ -1582,7 +2041,7 @@ export function MapBrowser({
               {rich(tr('cloud.info.noOrigin'))}
             </div>
           )}
-          {info.pinned && (
+          {info.pinned && !compact && (
             <div style={{ marginTop: 6, fontSize: 10, color: t.textSubtle }}>
               {tr('cloud.info.closeHint')}
             </div>
@@ -1608,7 +2067,9 @@ export function MapBrowser({
           data-testid="browser-new-map-menu"
           style={{
             position: 'fixed', left: newMapAt.x, top: newMapAt.y, zIndex: 300,
-            width: 340, maxHeight: '70vh', overflow: 'auto',
+            // 폰 — 화면 폭 가득(양옆 8px), 높이는 아래 끝까지
+            width: compact ? 'calc(100vw - 16px)' : 340,
+            maxHeight: compact ? `calc(100dvh - ${newMapAt.y + 8}px)` : '70vh', overflow: 'auto',
             background: t.surface, color: t.text, borderRadius: 10,
             border: `1px solid ${t.border}`, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
           }}
@@ -1644,12 +2105,44 @@ export function MapBrowser({
         />
       )}
 
-      <div style={{
-        padding: '8px 14px', borderTop: `1px solid ${t.border}`,
-        color: t.textSubtle, fontSize: 11, lineHeight: 1.6,
-      }}>
-        {rich(tr('cloud.browser.footer'))}
-      </div>
+      {sheet && (
+        <ActionSheet
+          t={t}
+          testId={sheet.kind === 'header' ? 'm-browser-header-sheet' : 'm-browser-row-sheet'}
+          title={sheet.kind === 'map' ? (sheet.map.title || tr('cloud.untitledParen'))
+            : sheet.kind === 'folder' ? `📁 ${sheet.folder.name}`
+            : tr('cloud.browser.heading')}
+          subtitle={sheet.kind === 'map' ? `${mapType(sheet.map).label} · ${fmtDate(sheet.map.updatedAt)}` : undefined}
+          items={sheetItems()}
+          extra={sheet.kind !== 'map' ? undefined
+            // 유료 모듈 단추 — 공유받은 맵의 [나가기] · 대시보드맵 되돌리기. 공개판은 대개 비어 있다
+            : sheet.map.shared
+              ? <ProSharedMapActions t={t} mapId={sheet.map.mapId} onLeft={() => { setSheet(null); void load(); }} />
+              : sheet.map.viewMode === 'dashboard'
+                ? (
+                  <ProDashboardToggle
+                    t={t}
+                    map={{
+                      mapId: sheet.map.mapId, title: sheet.map.title, kind: sheet.map.kind,
+                      viewMode: sheet.map.viewMode, publishId: sheet.map.publishId ?? null,
+                    }}
+                    onChanged={() => { setSheet(null); void load(); }}
+                  />
+                ) : undefined}
+          onClose={() => setSheet(null)}
+        />
+      )}
+
+      {/* 도움말 — 데스크톱은 늘 아래에. 폰은 머리의 [?] 로 펼친다(좁은 화면에서
+          다섯 줄이 목록 자리를 늘 먹고 있었다) */}
+      {!compact && helpOpen && (
+        <div data-testid="browser-help" style={{
+          padding: '8px 14px', borderTop: `1px solid ${t.border}`,
+          color: t.textSubtle, fontSize: 11, lineHeight: 1.6,
+        }}>
+          {rich(tr('cloud.browser.footer'))}
+        </div>
+      )}
     </div>
   );
 }

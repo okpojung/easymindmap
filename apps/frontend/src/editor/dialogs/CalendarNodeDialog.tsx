@@ -17,6 +17,8 @@ import { holidayTableCovers } from '@/utils/koreanHolidays';
 import { useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
+// 폰 대화상자 규칙(data-mm-*) — 불러오기만 하면 CSS 가 한 번 들어간다
+import '@/components/ui/mobileCss';
 interface Props {
   t: ThemeTokens;
   parentId: string;
@@ -72,6 +74,7 @@ export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose 
         if (e.key === 'Escape') { e.preventDefault(); onClose(); }
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); }
       }}
+      data-mm-dialog-overlay=""
       style={{
         position: 'fixed', inset: 0, zIndex: 1200,
         background: 'rgba(0,0,0,0.35)',
@@ -81,12 +84,15 @@ export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose 
       <div
         onClick={(e) => e.stopPropagation()}
         data-testid="calendar-dialog"
+        data-mm-dialog=""
+        data-mm-touch=""
         style={{
           position: 'relative', width: 420, maxWidth: '92vw',
           background: t.surface, color: t.text,
           borderRadius: 12, border: `1px solid ${t.border}`,
           boxShadow: '0 12px 40px rgba(0,0,0,0.3)',
           padding: 18, fontFamily: 'inherit',
+          maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', boxSizing: 'border-box',
         }}
       >
         <DialogXButton t={t} testId="calendar-dialog-x" onClose={onClose} />

@@ -22,12 +22,20 @@ import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useTr } from '@/i18n';
+import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 
 interface Props {
   t: ThemeTokens;
   collabs: Collaborator[];
   zoom: number;
   onZoomChange: (v: number) => void;
+  /** 확대/축소 묶음을 보일까 — 문서함에서는 뜻이 없어 숨긴다 (기본: 보임) */
+  showZoom?: boolean;
+  /** 폰: 왼쪽 패널 서랍을 연다 (없으면 단추를 그리지 않는다) */
+  onOpenPanels?: () => void;
+  /** 폰: 지금 보는 화면 — 주면 아웃라인/맵 전환 단추를 그린다 */
+  mainView?: 'map' | 'outline';
+  onToggleMainView?: () => void;
 }
 
 function fmtBytes(n: number): string {
@@ -84,21 +92,59 @@ function measureDocument(map: unknown): {
   return { docBytes, attachCount, attachBytes, unknown };
 }
 
-export function BottomStatusBar({ t, collabs, zoom, onZoomChange }: Props) {
+export function BottomStatusBar({
+  t, collabs, zoom, onZoomChange, showZoom = true, onOpenPanels, mainView, onToggleMainView,
+}: Props) {
   const tr = useTr();
   const activeCount = collabs.filter((c) => c.active).length;
   const map = useDocumentStore((s) => s.map);
   const m = useMemo(() => measureDocument(map), [map]);
+  // 폰 — 엄지가 닿는 자리라 패널 서랍·아웃라인 전환 문을 여기 둔다.
+  // 손가락 입력이면 막대를 44px 로 키우고, 아래 홈 표시줄(safe-area)만큼 띄운다.
+  const phone = usePhoneLayout();
+  const coarse = useCoarse();
+  const barH = coarse ? 44 : 30;
+  const sideBtn = (testId: string, title: string, icon: React.ReactNode, onClick: () => void, active = false) => (
+    <button
+      data-testid={testId}
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      style={{
+        width: coarse ? 40 : 28, height: coarse ? 36 : 24, flexShrink: 0, borderRadius: 7,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: active ? t.primarySoft : t.surface,
+        color: active ? t.primary : t.text,
+        border: `1px solid ${active ? t.primaryBorder + '66' : t.border}`, cursor: 'pointer',
+      }}
+    >{icon}</button>
+  );
 
   return (
-    <div style={{
-      height: 30, flexShrink: 0,
-      background: t.surfaceAlt,
-      borderTop: `1px solid ${t.border}`,
-      display: 'flex', alignItems: 'center',
-      padding: '0 12px', gap: 14,
-      fontSize: 11, color: t.textMuted, fontWeight: 500,
-    }}>
+    <div
+      data-testid="bottom-status-bar"
+      style={{
+        height: `calc(${barH}px + env(safe-area-inset-bottom, 0px))`, flexShrink: 0,
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingLeft: `max(${phone ? 8 : 12}px, env(safe-area-inset-left, 0px))`,
+        paddingRight: `max(${phone ? 8 : 12}px, env(safe-area-inset-right, 0px))`,
+        background: t.surfaceAlt,
+        borderTop: `1px solid ${t.border}`,
+        display: 'flex', alignItems: 'center',
+        gap: phone ? 6 : 14,
+        fontSize: 11, color: t.textMuted, fontWeight: 500,
+        minWidth: 0,
+      }}
+    >
+      {onOpenPanels && sideBtn('m-open-panels', tr('shell.m.panels'), <I.Sidebar size={17} />, onOpenPanels)}
+      {mainView && onToggleMainView && sideBtn(
+        'm-mainview-toggle',
+        mainView === 'outline' ? tr('shell.m.mapView') : tr('shell.m.outlineView'),
+        mainView === 'outline' ? <I.MindMap size={17} /> : <I.Outline size={17} />,
+        onToggleMainView,
+        mainView === 'outline',
+      )}
+
       <span
         data-testid="status-map-weight"
         title={
@@ -107,11 +153,20 @@ export function BottomStatusBar({ t, collabs, zoom, onZoomChange }: Props) {
             ? `\n${tr('shell.status.weightUnknown', { n: m.unknown })}`
             : '')
         }
-        style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          // 좁으면 글자만 줄인다 — 확대/축소 단추를 밀어내지 않게
+          minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap',
+        }}
       >
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary }} />
-        {tr('shell.status.weight', { doc: fmtBytes(m.docBytes), n: m.attachCount })}
-        {m.attachCount > 0 && ` · ${fmtBytes(m.attachBytes)}${m.unknown ? '+' : ''}`}
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+          {/* 폰은 짧게 — "115B · 📎2" (전문은 데스크톱과 같은 툴팁에) */}
+          {phone
+            ? `${fmtBytes(m.docBytes)}${m.attachCount > 0 ? ` · 📎${m.attachCount}` : ''}`
+            : tr('shell.status.weight', { doc: fmtBytes(m.docBytes), n: m.attachCount })}
+          {!phone && m.attachCount > 0 && ` · ${fmtBytes(m.attachBytes)}${m.unknown ? '+' : ''}`}
+        </span>
       </span>
 
       <div style={{ flex: 1 }} />
@@ -131,13 +186,17 @@ export function BottomStatusBar({ t, collabs, zoom, onZoomChange }: Props) {
         </>
       )}
 
-      <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} />
+      {showZoom && <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} />}
     </div>
   );
 }
 
 function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void }) {
   const tr = useTr();
+  // 손가락 입력이면 단추를 키운다 (32×36) — 데스크톱은 예전 22×20 그대로
+  const coarse = useCoarse();
+  const bw = coarse ? 32 : 22;
+  const bh = coarse ? 36 : 20;
   // % 클릭 = 배율 직접 입력 (2~400, Enter 적용 / Esc 취소)
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState('');
@@ -153,15 +212,15 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
   };
 
   const stepBtn = (children: React.ReactNode, onClick?: () => void, title?: string) => (
-    <button onClick={onClick} title={title} style={{
-      width: 22, height: 20, background: 'transparent', border: 'none',
+    <button onClick={onClick} title={title} aria-label={title} style={{
+      width: bw, height: bh, flexShrink: 0, background: 'transparent', border: 'none',
       color: t.text, cursor: 'pointer', borderRadius: 3,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>{children}</button>
   );
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: coarse ? 1 : 3, flexShrink: 0, marginLeft: 'auto' }}>
       {stepBtn(<I.Minus size={12} />, () => onZoomChange(Math.max(2, zoom - 5)), tr('shell.status.zoomOut'))}
       {editing ? (
         <input
@@ -185,20 +244,21 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
           onClick={() => { setVal(String(Math.round(zoom))); setEditing(true); }}
           title={tr('shell.status.zoomClickTitle')}
           style={{
-            padding: '2px 10px', background: t.surface,
+            padding: '2px 10px', background: t.surface, height: coarse ? 32 : undefined,
             border: `1px solid ${t.border}`, borderRadius: 4,
             color: t.text, cursor: 'pointer', fontSize: 11, fontWeight: 600,
             fontFamily: 'ui-monospace, monospace', minWidth: 44,
           }}>{Math.round(zoom)}%</button>
       )}
       {stepBtn(<I.Plus size={12} />, () => onZoomChange(Math.min(400, zoom + 5)), tr('shell.status.zoomIn'))}
-      <span style={{ marginLeft: 3 }}>{stepBtn(<I.Zoom100 size={13} />, () => onZoomChange(100), tr('shell.status.zoom100'))}</span>
+      <span style={{ marginLeft: coarse ? 0 : 3, display: 'flex' }}>{stepBtn(<I.Zoom100 size={13} />, () => onZoomChange(100), tr('shell.status.zoom100'))}</span>
       <button
         data-testid="minimap-toggle"
         onClick={toggleMinimap}
         title={minimapOpen ? tr('shell.status.minimapClose') : tr('shell.status.minimapOpen')}
+        aria-label={minimapOpen ? tr('shell.status.minimapClose') : tr('shell.status.minimapOpen')}
         style={{
-          width: 22, height: 20, border: 'none', borderRadius: 3, cursor: 'pointer',
+          width: bw, height: bh, flexShrink: 0, border: 'none', borderRadius: 3, cursor: 'pointer',
           background: minimapOpen ? t.primarySoft : 'transparent',
           color: minimapOpen ? t.primary : t.text,
           display: 'flex', alignItems: 'center', justifyContent: 'center',

@@ -10,6 +10,8 @@ import { flattenFolders } from './folderTree';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { useTr } from '@/i18n';
 
+// 폰 대화상자 규칙(data-mm-*) — 불러오기만 하면 CSS 가 한 번 들어간다
+import '@/components/ui/mobileCss';
 export function FolderPickerDialog({
   t, title, folders, currentFolderId, disabledIds, onPick, onCancel,
 }: {
@@ -47,6 +49,7 @@ export function FolderPickerDialog({
   return (
     <div
       onClick={onCancel}
+      data-mm-dialog-overlay=""
       style={{
         position: 'fixed', inset: 0, zIndex: 240, background: 'rgba(0,0,0,0.35)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -55,6 +58,8 @@ export function FolderPickerDialog({
       <div
         onClick={(e) => e.stopPropagation()}
         data-testid="folder-picker"
+        data-mm-dialog=""
+        data-mm-touch=""
         style={{
           position: 'relative',
           width: 'min(420px, 92vw)', maxHeight: '70vh', display: 'flex', flexDirection: 'column',

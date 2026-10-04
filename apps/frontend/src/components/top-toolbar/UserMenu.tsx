@@ -30,6 +30,7 @@ import { AvatarBadge } from '@/components/account/AvatarBadge';
 import { DialogCloseButton, DialogFrame } from '@/components/ui/DialogFrame';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
 import { useLang, useTr } from '@/i18n';
+import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 import { rich } from '@/i18n/rich';
 
 interface MenuEntry {
@@ -82,6 +83,10 @@ function fmtBytes(b: number): string {
 
 export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string) => void }) {
   const tr = useTr();
+  // 폰 — 메뉴는 화면 오른쪽에 붙여 띄우고(넘치면 안에서 스크롤), 손가락
+  // 입력이면 아바타·항목을 누르기 좋은 크기로 (모바일 웹 2026-10-05)
+  const phone = usePhoneLayout();
+  const coarse = useCoarse();
   const [open, setOpen] = useState(false);
   const [soon, setSoon] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -118,16 +123,18 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => {
+    // pointerdown — 손가락으로 캔버스를 눌러도 닫히게 (캔버스가 터치의
+    // 기본 동작을 막으면 mousedown 은 오지 않는다)
+    const onDoc = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) { setOpen(false); setSoon(null); }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { setOpen(false); setSoon(null); }
     };
-    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('pointerdown', onDoc);
     window.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('pointerdown', onDoc);
       window.removeEventListener('keydown', onKey);
     };
   }, [open]);
@@ -295,21 +302,32 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           : tr('shell.user.menu')}
         onClick={() => setOpen((v) => !v)}
         style={{
-          width: 30, height: 30, borderRadius: '50%', padding: 0,
+          width: coarse ? 40 : 30, height: coarse ? 40 : 30, borderRadius: '50%', padding: 0,
+          flexShrink: 0,
           background: t.surface,
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 12, fontWeight: 700,
           border: `2px solid ${open ? t.primaryBorder : t.surface}`, cursor: 'pointer',
         }}
       >
-        <AvatarBadge t={t} avatar={profile?.avatar} fullName={profile?.fullName} email={session?.email} size={26} guest={isGuest} />
+        <AvatarBadge t={t} avatar={profile?.avatar} fullName={profile?.fullName} email={session?.email} size={coarse ? 32 : 26} guest={isGuest} />
       </button>
 
       {open && (
         <div
           data-testid="user-menu-panel"
           style={{
-            position: 'absolute', top: 38, right: 0, zIndex: 60, width: 240,
+            ...(phone
+              ? {
+                position: 'fixed',
+                top: 'calc(52px + env(safe-area-inset-top, 0px))',
+                right: 'max(6px, env(safe-area-inset-right, 0px))',
+                width: 'min(280px, calc(100vw - 12px))',
+                maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
+                overflowY: 'auto', overscrollBehavior: 'contain',
+              } as const
+              : { position: 'absolute', top: 38, right: 0, width: 240 } as const),
+            zIndex: 60,
             background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10,
             boxShadow: '0 10px 28px rgba(0,0,0,0.20)', padding: 6,
           }}
@@ -406,7 +424,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                textAlign: 'left', padding: '8px 10px', borderRadius: 6,
+                textAlign: 'left', padding: '8px 10px', borderRadius: 6, minHeight: coarse ? 44 : undefined,
                 background: 'transparent', border: 'none', color: t.text,
                 cursor: 'pointer', fontSize: 13,
               }}
@@ -450,7 +468,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 onClick={logout}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                  textAlign: 'left', padding: '8px 10px', borderRadius: 6,
+                  textAlign: 'left', padding: '8px 10px', borderRadius: 6, minHeight: coarse ? 44 : undefined,
                   background: 'transparent', border: 'none', color: t.text,
                   cursor: 'pointer', fontSize: 13,
                 }}
@@ -471,7 +489,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
                 onClick={logout}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                  textAlign: 'left', padding: '8px 10px', borderRadius: 6,
+                  textAlign: 'left', padding: '8px 10px', borderRadius: 6, minHeight: coarse ? 44 : undefined,
                   background: 'transparent', border: 'none', color: t.text,
                   cursor: 'pointer', fontSize: 13,
                 }}

@@ -15,6 +15,8 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useTr } from '@/i18n';
+import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
+import { primeTouchKeyboard } from './touchKeyboard';
 
 interface Props {
   t: ThemeTokens;
@@ -100,6 +102,34 @@ export function CanvasFloatingToolbar({
   };
 
   const tr = useTr();
+  // 폰 폭 — 자주 쓰는 단추 몇 개 + [더 보기] 메뉴로 접는다 (모바일 웹, 2026-10-05).
+  // 390px 에 단추 13개(손가락 40px)를 한 줄로 두면 왼쪽으로 넘쳐 잘렸다.
+  const compact = usePhoneLayout();
+  const coarse = useCoarse();
+  const [moreOpen, setMoreOpen] = useState(false);
+  // 노드를 길게 누르면 캔버스가 요청한다 → 메뉴를 펼친다 (처음 값은 무시)
+  const nodeMenuSeq = useInteractionStore((state) => state.nodeMenuSeq);
+  const [seenMenuSeq, setSeenMenuSeq] = useState(nodeMenuSeq);
+  useEffect(() => {
+    if (nodeMenuSeq === seenMenuSeq) return;
+    setSeenMenuSeq(nodeMenuSeq);
+    if (compact && !kanban) setMoreOpen(true);
+  }, [nodeMenuSeq, seenMenuSeq, compact, kanban]);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as Element).closest?.('[data-testid="m-canvas-more-panel"], [data-testid="m-canvas-more"]')) setMoreOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); };
+  }, [moreOpen]);
+  useEffect(() => { if (!compact) setMoreOpen(false); }, [compact]);
+  const requestEdit = useInteractionStore((state) => state.requestEdit);
+  // iPhone Safari 는 문서 전체화면을 지원하지 않는다 — 없는 기능의 단추는 숨긴다
+  const fullscreenSupported = typeof document !== 'undefined'
+    && (document.fullscreenEnabled ?? typeof document.documentElement?.requestFullscreen === 'function');
   const [isFullscreen, setIsFullscreen] = useState(
     typeof document !== 'undefined' && !!document.fullscreenElement,
   );
@@ -126,13 +156,14 @@ export function CanvasFloatingToolbar({
   const [calendar, setCalendar] = useState<{ parentId: string; parentLabel: string; initial: YearMonth } | null>(null);
   useEffect(() => {
     if (!addMenuOpen) return;
-    const onDown = (e: MouseEvent) => {
+    // pointerdown — 캔버스는 손가락의 호환 mousedown 을 막으므로 mousedown 만 들으면 폰에서 안 닫힌다
+    const onDown = (e: PointerEvent) => {
       if (!(e.target as Element).closest?.('[data-testid="add-menu"], [data-testid="add-node"]')) setAddMenuOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAddMenuOpen(false); };
-    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('keydown', onKey, true);
-    return () => { document.removeEventListener('mousedown', onDown, true); document.removeEventListener('keydown', onKey, true); };
+    return () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); };
   }, [addMenuOpen]);
   const handleAddClick = () => {
     if (!selectedId) {
@@ -197,16 +228,211 @@ export function CanvasFloatingToolbar({
 
   const handleFullscreen = () => {
     if (document.fullscreenElement) {
-      void document.exitFullscreen();
+      void document.exitFullscreen().catch(() => { /* 무시 */ });
     } else {
-      void document.documentElement.requestFullscreen();
+      void document.documentElement.requestFullscreen?.()?.catch(() => { /* 지원 안 함 */ });
     }
   };
+
+  // [+] 메뉴 — 데스크톱은 단추 바로 아래 왼쪽 정렬, 폰 폭은 도구 모음 오른쪽 끝에
+  // 맞춰 화면 안에 들어오게 (단추 감싸개를 relative 로 두지 않아 도구 모음 기준이 된다)
+  const addMenu = addMenuOpen && (
+    <div
+      data-testid="add-menu"
+      style={{
+        position: 'absolute', zIndex: 20, minWidth: 190,
+        ...(compact
+          ? { top: (coarse ? 40 : 28) + 12, right: 0, width: 'min(300px, calc(100vw - 16px))', boxSizing: 'border-box' as const }
+          : { top: coarse ? 44 : 32, left: 0 }),
+        background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8,
+        boxShadow: '0 8px 24px rgba(60,45,15,0.25)', padding: 4,
+        display: 'flex', flexDirection: 'column', gap: 2,
+      }}
+    >
+      <MenuItem t={t} wrap={compact} testId="add-menu-child" label={tr('editor.toolbar.addChild')} hint={tr('editor.toolbar.addChildHint')} onClick={() => { setAddMenuOpen(false); handleAddNode(); }} />
+      <MenuItem t={t} wrap={compact} testId="add-menu-multi" label={tr('editor.toolbar.addMulti')} hint={tr('editor.toolbar.addMultiHint')} onClick={() => { setAddMenuOpen(false); setMultiAddOpen(true); }} />
+      <MenuItem t={t} wrap={compact} testId="add-menu-calendar" label={tr('editor.toolbar.addCalendar')} hint={tr('editor.toolbar.addCalendarHint')} onClick={openCalendar} />
+    </div>
+  );
+  const calendarDlg = calendar && (
+    <CalendarNodeDialog
+      t={t}
+      parentId={calendar.parentId}
+      parentLabel={calendar.parentLabel}
+      initial={calendar.initial}
+      onClose={() => setCalendar(null)}
+    />
+  );
+  const connectIcon = (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="2" width="5" height="4" rx="1.2" />
+      <rect x="9.5" y="10" width="5" height="4" rx="1.2" />
+      <path d="M6.5 4 H8.5 A1.5 1.5 0 0 1 10 5.5 V8 A1.5 1.5 0 0 0 11.5 9.5" />
+      <path d="M10.2 8.2 L11.5 9.6 L12.8 8.2" />
+    </svg>
+  );
+
+  // ── 폰 폭: [+] [휴지통] [맞추기] [더 보기 ⋯] + 펼치는 메뉴 ──────────────
+  if (compact) {
+    const close = (fn: () => void) => () => { setMoreOpen(false); fn(); };
+    const groups: { label: string; items: MoreItem[] }[] = [
+      {
+        label: tr('editor.toolbar.groupNode'),
+        items: [
+          {
+            key: 'edit', icon: <I.Pencil size={16} />, label: tr('editor.toolbar.m.editText'),
+            disabled: !hasSelection || !selectedId || !!kanban,
+            onClick: () => {
+              setMoreOpen(false);
+              if (!selectedId) return;
+              primeTouchKeyboard(); // 누른 처리 안에서 — iOS 키보드
+              requestEdit(selectedId);
+            },
+            hidden: !!kanban,
+          },
+          { key: 'child', icon: <I.Plus size={16} />, label: tr('editor.toolbar.addChild'), disabled: !hasSelection, onClick: close(handleAddNode) },
+          { key: 'multi', icon: <span style={{ fontWeight: 700, fontSize: 13 }}>≡+</span>, label: tr('editor.toolbar.addMulti'), disabled: !hasSelection, onClick: close(() => setMultiAddOpen(true)) },
+          { key: 'calendar', icon: <span style={{ fontSize: 14 }}>📅</span>, label: tr('editor.toolbar.addCalendar'), disabled: !hasSelection, onClick: () => { setMoreOpen(false); openCalendar(); } },
+          {
+            key: 'connect', icon: connectIcon, testId: 'connect-node', hidden: !!kanban,
+            label: connectMode ? tr('editor.toolbar.m.connectOff') : tr('editor.toolbar.m.connect'),
+            highlight: !!connectMode, disabled: !connectMode && !hasSelection, onClick: close(handleConnect),
+          },
+          {
+            key: 'style', icon: <I.Brush size={16} />, testId: 'style-copy', hidden: !!kanban,
+            label: stylePainter ? tr('editor.toolbar.m.stylePainterOff') : tr('editor.toolbar.m.stylePainter'),
+            highlight: !!stylePainter, disabled: !stylePainter && !hasSelection, onClick: close(handleStyleCopy),
+          },
+        ],
+      },
+      ...(kanban ? [] : [{
+        label: tr('editor.toolbar.groupCenter'),
+        items: [
+          {
+            key: 'center-add', icon: <I.Center size={16} />, testId: 'center-add',
+            label: placingCenter ? tr('editor.toolbar.m.placingCenter') : tr('editor.toolbar.m.addCenter'),
+            highlight: placingCenter, onClick: close(handleAddCenter),
+          },
+          { key: 'promote', icon: <I.ArrowUp size={16} />, testId: 'center-promote', label: tr('editor.toolbar.m.promote'), disabled: !selectedIsLevel1, onClick: close(handlePromote) },
+          { key: 'merge', icon: <I.FolderMove size={16} />, testId: 'center-merge', label: tr('editor.toolbar.m.merge'), disabled: !selectedIsCenter || centerCount < 2, onClick: close(handleMerge) },
+        ] as MoreItem[],
+      }]),
+      {
+        label: tr('editor.toolbar.groupView'),
+        items: [
+          { key: 'pan', icon: <I.Hand size={16} />, label: tr('editor.toolbar.m.pan'), highlight: panMode, hidden: !!kanban, onClick: close(togglePanMode) },
+          {
+            key: 'focus', icon: focusActive ? <I.FocusOff size={16} /> : <I.Focus size={16} />,
+            label: kanban ? tr('editor.toolbar.m.scrollToCard') : focusActive ? tr('editor.toolbar.m.focusOff') : tr('editor.toolbar.m.focus'),
+            highlight: focusActive, disabled: !focusActive && !hasSelection, onClick: close(() => onFocusSelected?.()),
+          },
+          {
+            key: 'expand', icon: <span style={{ fontSize: 16, fontWeight: 700 }}>+</span>, testId: 'expand-all', hidden: !!kanban,
+            label: scope === 'all' ? tr('editor.toolbar.m.expandAll') : tr('editor.toolbar.m.expandSubtree'),
+            onClick: close(() => { if (scope === 'all') expandAll(); else expandSubtree(scope); afterFold(scope); }),
+          },
+          {
+            key: 'collapse', icon: <span style={{ fontSize: 16, fontWeight: 700 }}>−</span>, testId: 'collapse-all', hidden: !!kanban,
+            label: scope === 'all' ? tr('editor.toolbar.m.collapseAll') : tr('editor.toolbar.m.collapseSubtree'),
+            onClick: close(() => { if (scope === 'all') collapseAll(); else collapseSubtree(scope); afterFold(scope); }),
+          },
+          {
+            key: 'fullscreen', icon: isFullscreen ? <I.FullscreenExit size={16} /> : <I.FullscreenEnter size={16} />,
+            label: isFullscreen ? tr('editor.toolbar.m.fullscreenExit') : tr('editor.toolbar.m.fullscreen'),
+            highlight: isFullscreen, hidden: !fullscreenSupported, onClick: close(handleFullscreen),
+          },
+        ],
+      },
+    ];
+    return (
+      <div
+        data-testid="m-canvas-toolbar"
+        style={{
+          position: 'absolute', top: 8, right: 8, zIndex: 5,
+          display: 'flex', alignItems: 'center', gap: 2,
+          padding: 3, borderRadius: 10,
+          background: t.surface,
+          border: `1px solid ${t.border}`,
+          boxShadow: t.shadowSm,
+        }}
+      >
+        <span style={{ display: 'inline-flex' }}>
+          <ToolbarBtn
+            t={t}
+            title={hasSelection ? tr('editor.toolbar.addNodeMenu') : tr('editor.toolbar.addCenterNode')}
+            highlight={hasSelection || addMenuOpen}
+            onClick={() => { setMoreOpen(false); handleAddClick(); }}
+            testId="add-node"
+          >
+            <I.Plus size={17} />
+          </ToolbarBtn>
+          {addMenu}
+        </span>
+        {calendarDlg}
+        <ToolbarBtn
+          t={t}
+          title={selectedConnectorId ? tr('editor.toolbar.deleteConnector') : tr('editor.toolbar.deleteNode')}
+          danger
+          disabled={!hasSelection && !selectedConnectorId}
+          onClick={handleDeleteNode}
+          testId="delete-node"
+        >
+          <I.Trash size={16} />
+        </ToolbarBtn>
+        <ToolbarBtn t={t} title={kanban ? tr('editor.toolbar.boardHome') : tr('editor.toolbar.fit')} onClick={onFitView} testId="m-canvas-fit">
+          <I.Fit size={16} />
+        </ToolbarBtn>
+        <ToolbarBtn
+          t={t}
+          title={tr('editor.toolbar.m.more')}
+          highlight={moreOpen || !!connectMode || !!stylePainter || placingCenter || panMode}
+          onClick={() => { setAddMenuOpen(false); setMoreOpen((v) => !v); }}
+          testId="m-canvas-more"
+          ariaExpanded={moreOpen}
+        >
+          <I.MoreH size={17} />
+        </ToolbarBtn>
+        {moreOpen && (
+          <div
+            data-testid="m-canvas-more-panel"
+            role="menu"
+            style={{
+              position: 'absolute', top: (coarse ? 40 : 28) + 12, right: 0, zIndex: 20,
+              width: 'min(320px, calc(100vw - 16px))', boxSizing: 'border-box',
+              maxHeight: 'calc(100dvh - 180px)', overflowY: 'auto', overscrollBehavior: 'contain',
+              background: t.surface, border: `1px solid ${t.border}`, borderRadius: 12,
+              boxShadow: '0 10px 30px rgba(60,45,15,0.28)', padding: '6px 6px 8px',
+            }}
+          >
+            {groups.map((g) => {
+              const items = g.items.filter((it) => !it.hidden);
+              if (!items.length) return null;
+              return (
+                <div key={g.label} style={{ marginBottom: 4 }}>
+                  <div style={{ padding: '6px 6px 4px' }}><GroupLabel t={t}>{g.label}</GroupLabel></div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                    {items.map((it) => <MoreBtn key={it.key} t={t} item={it} />)}
+                  </div>
+                </div>
+              );
+            })}
+            {!kanban && (
+              <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.45, padding: '6px 6px 0', borderTop: `1px solid ${t.divider}`, marginTop: 4 }}>
+                {tr('editor.toolbar.m.touchHint')}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{
       position: 'absolute', top: 14, right: 14, zIndex: 5,
       display: 'flex', alignItems: 'center', gap: 4,
+      // 좁은 창(태블릿 세로 등)에서는 왼쪽으로 넘치지 않고 줄을 바꾼다
+      flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 'calc(100% - 28px)',
       padding: 4, borderRadius: 8,
       background: t.surface,
       border: `1px solid ${t.border}`,
@@ -225,31 +451,9 @@ export function CanvasFloatingToolbar({
         >
           <I.Plus size={15} />
         </ToolbarBtn>
-        {addMenuOpen && (
-          <div
-            data-testid="add-menu"
-            style={{
-              position: 'absolute', top: 32, left: 0, zIndex: 20, minWidth: 190,
-              background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8,
-              boxShadow: '0 8px 24px rgba(60,45,15,0.25)', padding: 4,
-              display: 'flex', flexDirection: 'column', gap: 2,
-            }}
-          >
-            <MenuItem t={t} testId="add-menu-child" label={tr('editor.toolbar.addChild')} hint={tr('editor.toolbar.addChildHint')} onClick={() => { setAddMenuOpen(false); handleAddNode(); }} />
-            <MenuItem t={t} testId="add-menu-multi" label={tr('editor.toolbar.addMulti')} hint={tr('editor.toolbar.addMultiHint')} onClick={() => { setAddMenuOpen(false); setMultiAddOpen(true); }} />
-            <MenuItem t={t} testId="add-menu-calendar" label={tr('editor.toolbar.addCalendar')} hint={tr('editor.toolbar.addCalendarHint')} onClick={openCalendar} />
-          </div>
-        )}
+        {addMenu}
       </span>
-      {calendar && (
-        <CalendarNodeDialog
-          t={t}
-          parentId={calendar.parentId}
-          parentLabel={calendar.parentLabel}
-          initial={calendar.initial}
-          onClose={() => setCalendar(null)}
-        />
-      )}
+      {calendarDlg}
       
       {!kanban && (
       <ToolbarBtn
@@ -262,12 +466,7 @@ export function CanvasFloatingToolbar({
         onClick={handleConnect}
         testId="connect-node"
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="1.5" y="2" width="5" height="4" rx="1.2" />
-          <rect x="9.5" y="10" width="5" height="4" rx="1.2" />
-          <path d="M6.5 4 H8.5 A1.5 1.5 0 0 1 10 5.5 V8 A1.5 1.5 0 0 0 11.5 9.5" />
-          <path d="M10.2 8.2 L11.5 9.6 L12.8 8.2" />
-        </svg>
+        {connectIcon}
       </ToolbarBtn>
       )}
       <ToolbarBtn
@@ -399,14 +598,16 @@ export function CanvasFloatingToolbar({
       >
         <I.Fit size={15} />
       </ToolbarBtn>
-      <ToolbarBtn
-        t={t}
-        title={isFullscreen ? tr('editor.toolbar.fullscreenExit') : tr('editor.toolbar.fullscreen')}
-        highlight={isFullscreen}
-        onClick={handleFullscreen}
-      >
-        {isFullscreen ? <I.FullscreenExit size={16} /> : <I.FullscreenEnter size={16} />}
-      </ToolbarBtn>
+      {fullscreenSupported && (
+        <ToolbarBtn
+          t={t}
+          title={isFullscreen ? tr('editor.toolbar.fullscreenExit') : tr('editor.toolbar.fullscreen')}
+          highlight={isFullscreen}
+          onClick={handleFullscreen}
+        >
+          {isFullscreen ? <I.FullscreenExit size={16} /> : <I.FullscreenEnter size={16} />}
+        </ToolbarBtn>
+      )}
     </div>
   );
 }
@@ -430,10 +631,13 @@ interface ToolbarBtnProps {
   disabled?: boolean;
   onClick?: () => void;
   testId?: string;
+  ariaExpanded?: boolean;
 }
 
-function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick, testId }: ToolbarBtnProps) {
+function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick, testId, ariaExpanded }: ToolbarBtnProps) {
   const [h, setH] = useState(false);
+  // 손가락 — 누를 자리 40px (마우스는 예전 28px)
+  const coarse = useCoarse();
   let bg = 'transparent';
   let color = t.text;
 
@@ -453,12 +657,14 @@ function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick, 
     <button
       data-testid={testId}
       title={title}
+      aria-label={title}
+      aria-expanded={ariaExpanded}
       disabled={disabled}
       onClick={onClick}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
       style={{
-        width: 28, height: 28, borderRadius: 5,
+        width: coarse ? 40 : 28, height: coarse ? 40 : 28, borderRadius: coarse ? 8 : 5,
         background: bg, color,
         border: 'none',
         cursor: disabled ? 'default' : 'pointer',
@@ -471,8 +677,9 @@ function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick, 
   );
 }
 
-function MenuItem({ t, label, hint, onClick, testId }: { t: ThemeTokens; label: string; hint: string; onClick: () => void; testId: string }) {
+function MenuItem({ t, label, hint, onClick, testId, wrap }: { t: ThemeTokens; label: string; hint: string; onClick: () => void; testId: string; wrap?: boolean }) {
   const [h, setH] = useState(false);
+  const coarse = useCoarse();
   return (
     <button
       data-testid={testId}
@@ -481,12 +688,53 @@ function MenuItem({ t, label, hint, onClick, testId }: { t: ThemeTokens; label: 
       onMouseLeave={() => setH(false)}
       style={{
         textAlign: 'left', border: 'none', borderRadius: 6, cursor: 'pointer',
-        padding: '6px 10px', background: h ? t.surfaceAlt : 'transparent', color: t.text,
+        padding: coarse ? '9px 12px' : '6px 10px', background: h ? t.surfaceAlt : 'transparent', color: t.text,
         display: 'flex', flexDirection: 'column', gap: 1,
+        minHeight: coarse ? 44 : undefined, justifyContent: 'center',
       }}
     >
-      <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
-      <span style={{ fontSize: 10.5, color: t.textMuted, whiteSpace: 'nowrap' }}>{hint}</span>
+      {/* 폰 폭(wrap)은 화면 안에서 줄을 바꾼다 */}
+      <span style={{ fontSize: coarse ? 13.5 : 12.5, fontWeight: 600, whiteSpace: wrap ? 'normal' : 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: coarse ? 11.5 : 10.5, color: t.textMuted, whiteSpace: wrap ? 'normal' : 'nowrap' }}>{hint}</span>
+    </button>
+  );
+}
+
+interface MoreItem {
+  key: string;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  highlight?: boolean;
+  hidden?: boolean;
+  testId?: string;
+}
+
+/** 폰 폭 [더 보기] 메뉴의 한 칸 — 아이콘 + 짧은 이름, 높이 44px (모바일 웹, 2026-10-05) */
+function MoreBtn({ t, item }: { t: ThemeTokens; item: MoreItem }) {
+  const { disabled, highlight } = item;
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      data-testid={item.testId ? `m-more-${item.testId}` : `m-more-${item.key}`}
+      disabled={disabled}
+      onClick={item.onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, minHeight: 44,
+        padding: '6px 8px', borderRadius: 8, textAlign: 'left',
+        border: `1px solid ${highlight ? t.primary : 'transparent'}`,
+        background: highlight ? t.primarySoft : t.surfaceAlt,
+        color: disabled ? t.textSubtle : highlight ? t.primary : t.text,
+        opacity: disabled ? 0.5 : 1,
+        cursor: disabled ? 'default' : 'pointer',
+        fontSize: 12.5, fontWeight: 600, lineHeight: 1.25,
+        minWidth: 0, overflowWrap: 'anywhere',
+      }}
+    >
+      <span style={{ width: 20, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>{item.icon}</span>
+      <span style={{ minWidth: 0 }}>{item.label}</span>
     </button>
   );
 }

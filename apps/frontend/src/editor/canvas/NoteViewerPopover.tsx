@@ -19,6 +19,7 @@ import type { NoteBlock } from '@/editor/__samples__/types';
 import { gridCharSpans } from '@/utils/monoGrid';
 import { useNoteHtmlResolver } from '@/utils/imageSrc';
 import { useTr } from '@/i18n';
+import { isPhoneLayoutNow, useCoarse } from '@/hooks/useViewport';
 
 // Markdown 링크 — [라벨](url). 노트 원문에 그대로 남아 있는 링크를
 // 클릭 가능한 <a>로 렌더링한다 (MD 불러오기의 인용문 노트 등).
@@ -323,6 +324,10 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
 
 export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: Props) {
   const tr = useTr();
+  // 폰 폭 — 화면 폭 1/2(195px)이면 읽을 수 없다. 좌우 12px 만 남기고 넓게,
+  // 높이는 화면의 60%. 손으로 크기를 끄는 모서리(CSS resize)는 없앤다 (모바일 웹, 2026-10-05)
+  const compact = isPhoneLayoutNow();
+  const coarse = useCoarse();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -355,15 +360,15 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
     const body = bodyRef.current;
     const head = headRef.current;
     if (!body || !head) return;
-    const maxW = Math.floor(window.innerWidth / 2);
-    const maxH = Math.floor(window.innerHeight / 2);
+    const maxW = compact ? window.innerWidth - 24 : Math.floor(window.innerWidth / 2);
+    const maxH = Math.floor(window.innerHeight * (compact ? 0.6 : 0.5));
     // 자연 폭 측정 — 블록 요소는 컨테이너 폭을 다 차지하므로 잠시
     // max-content로 줄여 내용의 실제 폭을 잰다
     const prevW = body.style.width;
     body.style.width = 'max-content';
     const natW = body.offsetWidth;
     body.style.width = prevW;
-    const w = Math.min(maxW, Math.max(220, natW + 6));
+    const w = compact ? maxW : Math.min(maxW, Math.max(220, natW + 6));
     const h = Math.min(maxH, Math.max(120, body.scrollHeight + head.offsetHeight + 8));
     setAutoSize({ w, h });
   }, [autoSize]);
@@ -381,15 +386,16 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
       // docs/02-domain/db-schema.md §향후 관리 테이블, 32-settings.md 참조.
       style={{
         position: 'absolute',
-        ...(pos ? { left: pos.x, top: pos.y } : { right: 14, top: 60 }),
+        ...(pos ? { left: pos.x, top: pos.y } : compact ? { left: 12, top: 60 } : { right: 14, top: 60 }),
         // 자동 크기 — 측정 전 한 프레임은 최대 폭으로 그려 내용을 잰다
-        width: autoSize ? autoSize.w : Math.floor(window.innerWidth / 2),
+        width: compact ? 'calc(100% - 24px)' : autoSize ? autoSize.w : Math.floor(window.innerWidth / 2),
         ...(autoSize ? { height: autoSize.h } : {}),
         // 최대 = "화면 4분할 시 우측 상단" — 브라우저 화면의 1/2 × 1/2
-        maxWidth: Math.floor(window.innerWidth / 2),
-        maxHeight: Math.floor(window.innerHeight / 2),
-        minWidth: 220, minHeight: 120,
-        resize: 'both', overflow: 'auto',
+        maxWidth: compact ? 'calc(100% - 24px)' : Math.floor(window.innerWidth / 2),
+        maxHeight: compact ? '60dvh' : Math.floor(window.innerHeight / 2),
+        minWidth: compact ? 0 : 220, minHeight: 120,
+        boxSizing: compact ? 'border-box' : undefined,
+        resize: compact ? 'none' : 'both', overflow: 'auto',
         background: t.surface,
         border: `1px solid ${t.border}`, borderRadius: 10,
         boxShadow: '0 8px 24px rgba(80, 60, 20, 0.18)', zIndex: 30,
@@ -425,7 +431,8 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
         }}
         style={{
           display: 'flex', alignItems: 'center', gap: 7,
-          padding: '8px 12px', cursor: 'move', userSelect: 'none',
+          padding: coarse ? '2px 4px 2px 12px' : '8px 12px', cursor: 'move', userSelect: 'none',
+          touchAction: 'none', // 손가락으로 제목줄을 끌어 옮길 때 페이지가 스크롤되지 않게
           borderBottom: `1px solid ${t.divider}`,
           background: t.surfaceAlt,
           borderRadius: '10px 10px 0 0', flexShrink: 0,
@@ -453,9 +460,10 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
           onPointerDown={(e) => e.stopPropagation()}
           title={tr('common.close')}
           style={{
-            border: 'none', background: 'none', fontSize: 14,
+            border: 'none', background: 'none', fontSize: coarse ? 17 : 14,
             cursor: 'pointer', color: t.textMuted, flexShrink: 0,
             padding: 0, lineHeight: 1,
+            ...(coarse ? { width: 40, height: 40 } : {}),
           }}
         >
           ✕

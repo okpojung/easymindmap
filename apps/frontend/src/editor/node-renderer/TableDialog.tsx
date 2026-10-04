@@ -18,6 +18,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { parseMdTable, sepCellOfAlign, splitPipeCells, escapePipe, type MdTableAlign } from './mdTable';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { tr as trNow, useTr } from '@/i18n';
+import { useCoarse } from '@/hooks/useViewport';
 
 export const TABLE_MIN_ROWS = 2; // 헤더 + 데이터 1행
 export const TABLE_MIN_COLS = 2;
@@ -107,29 +108,35 @@ export function TableGridPicker({
   onPick,
   onClose,
   anchor = 'left',
+  top = 34,
 }: {
   t: ThemeTokens;
   onPick: (rows: number, cols: number) => void;
   onClose: () => void;
+  /** 붙는 단추 아래로 얼마나 — 단추가 큰 손가락 툴바(40px)면 더 아래 */
+  top?: number;
   /** 어느 쪽 모서리에 붙일지 — 사이드바 오른쪽 끝 버튼(노트 +표)은 'right' (2026-09-19) */
   anchor?: 'left' | 'right';
 }) {
   const tr = useTr();
+  const coarse = useCoarse();
   const [hover, setHover] = useState<{ r: number; c: number }>({ r: TABLE_MIN_ROWS, c: TABLE_MIN_COLS });
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('mousedown', onDown, true);
+    // pointerdown — 캔버스는 손가락의 호환 mousedown 을 막으므로(Canvas 터치 처리) mousedown 만 들으면 안 닫힌다
+    document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('keydown', onKey, true);
     return () => {
-      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('keydown', onKey, true);
     };
   }, [onClose]);
-  const CELL = 16;
+  // 손가락이면 칸을 크게 — 16px 칸은 손끝으로 고를 수 없다 (모바일 웹, 2026-10-05)
+  const CELL = coarse ? 24 : 16;
   const pick = (r: number, c: number) => onPick(Math.max(TABLE_MIN_ROWS, r), Math.max(TABLE_MIN_COLS, c));
   return (
     <div
@@ -137,7 +144,7 @@ export function TableGridPicker({
       data-testid="table-grid-picker"
       onMouseDown={(e) => e.preventDefault()}
       style={{
-        position: 'absolute', top: 34, ...(anchor === 'right' ? { right: 0 } : { left: 0 }), zIndex: 5,
+        position: 'absolute', top, ...(anchor === 'right' ? { right: 0 } : { left: 0 }), zIndex: 5,
         background: t.surface, border: `1.5px solid ${t.border}`, borderRadius: 9,
         padding: 8, boxShadow: '0 6px 18px rgba(60,45,15,0.28)',
         display: 'flex', flexDirection: 'column', gap: 6, whiteSpace: 'nowrap',
@@ -368,8 +375,9 @@ export function TableDialog({
         data-testid="table-panel"
         style={{
           position: 'relative',
-          width: 'min(760px, calc(100vw - 48px))',
-          maxHeight: 'calc(100vh - 48px)',
+          // 폰 — 좌우 12px 여백 (데스크톱은 760 그대로) · 주소창이 접혔다 펴져도 dvh
+          width: 'min(760px, calc(100vw - 59px))', // 59 = 여백 12×2 + 안쪽 16×2 + 테두리 — 화면 끝까지 12px
+          maxHeight: 'calc(100dvh - 59px)',
           background: t.surface,
           border: `1.5px solid ${t.border}`,
           borderRadius: 12,

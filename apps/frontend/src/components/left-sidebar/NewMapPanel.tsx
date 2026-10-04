@@ -43,6 +43,8 @@ import { libraryTemplates } from '@/utils/libraryTemplates';
 import { useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 type ImportKind = 'md' | 'html' | 'zip';
 
 interface TplChoice {
@@ -437,7 +439,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
   } as const;
 
   return (
-    <div style={{ padding: 12 }}>
+    <div data-mm-touch="" style={{ padding: 12 }}>
       {notice && (
         <div
           ref={noticeRef}

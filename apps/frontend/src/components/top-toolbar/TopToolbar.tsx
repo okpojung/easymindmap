@@ -16,6 +16,8 @@ import { downloadMapAsMarkdown } from '@/export/exportMarkdown';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { useTr } from '@/i18n';
+import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
+import { MenuItem, MenuSep } from './OverflowMenu';
 
 // 'retrying' = 저장이 실패했고 **실제로 자동 재시도 중**,
 // 'error' = 재시도까지 다 실패해 더는 자동으로 시도하지 않음.
@@ -157,6 +159,58 @@ export function TopToolbar({
   });
   const compact = barW < 1150 || squeeze >= 1;
   const iconOnly = barW < 960 || squeeze >= 2;
+  // **폰 막대** (모바일 웹 2026-10-05). 폰 배치(세로 compact · 눕힌 폰)이거나,
+  // 손가락 입력인데 데스크톱 막대가 아이콘만 남길 만큼 좁으면(작은 태블릿)
+  // 로고·제목·핵심 단추만 남기고 나머지는 "⋯" 메뉴로 옮긴다. 아이콘만 남긴
+  // 데스크톱 막대는 손가락으로 누르기에 단추가 작고, 390px 에서는 그래도 넘쳤다.
+  const phoneLayout = usePhoneLayout();
+  const coarse = useCoarse();
+  const phone = phoneLayout || (coarse && barW < 960);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  const moreBtnRef = useRef<HTMLButtonElement | null>(null);
+  // MapActions 가 메뉴 안에 항목(보관·다른 이름으로 저장·맵 닫기)을 넣는 자리
+  const [menuSlot, setMenuSlot] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const close = (e: PointerEvent) => {
+      const n = e.target as Node;
+      if (moreRef.current?.contains(n) || moreBtnRef.current?.contains(n)) return;
+      setMoreOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', esc);
+    };
+  }, [moreOpen]);
+  useEffect(() => { if (!phone) setMoreOpen(false); }, [phone]);
+  // 폭이 넉넉하면(400px 이상) 다시 실행도 막대에 — 아니면 "⋯" 메뉴 맨 위
+  const redoInline = barW >= 400;
+  const openDocs = () => useEditorUiStore.getState().setBrowserOpen(true);
+
+  // 내보내기 — 데스크톱 메뉴와 폰 "⋯" 메뉴가 같은 동작을 쓴다
+  const runExportHtml = async () => {
+    // 뷰어는 지금 에디터 모드(라이트/다크) 그대로 열린다
+    const pkg = await downloadMapAsHtml(
+      map, layoutType, { x: spacingX, y: spacingY }, themeName === 'dark');
+    // 원본을 가져오지 못한 첨부가 있으면 묵묵히 넘어가지
+    // 않는다 (2026-08-02: 저장 후 다시 연 맵의 blob: 첨부가
+    // 소리 없이 빠져 "ZIP이 안 나온다" 보고로 이어졌다)
+    if (pkg.external > 0) {
+      flash(pkg.packaged === 0
+        ? tr('shell.toolbar.exportHtmlOnly', { n: pkg.external })
+        : tr('shell.toolbar.exportZipSkipped', { n: pkg.external }));
+    }
+  };
+  const runExportMd = async () => {
+    const pkg = await downloadMapAsMarkdown(map, layoutType, { x: spacingX, y: spacingY });
+    if (pkg.external > 0) {
+      flash(tr('shell.toolbar.exportMdSkipped', { n: pkg.external }));
+    }
+  };
 
   const saveStateInfo = ({
     saved: { text: savedText, short: tr('shell.toolbar.saved'), color: t.textMuted, dot: t.success },
@@ -183,20 +237,286 @@ export function TopToolbar({
     // 사실까지 말해야 한다(잠시 뒤 반영되는 것과 이미 반영된 것은 다르다).
     collab: { text: tr('shell.toolbar.collab'), short: tr('shell.toolbar.collabShort'), color: t.textMuted, dot: t.success },
   } as const)[saveState];
+  // 저장 배지의 설명 — 실패했을 때는 **왜** 실패했는지 보여 준다 (2026-08-05).
+  // 데스크톱은 마우스를 올려(title), 폰은 "⋯" 메뉴 맨 위에 글로 보여 준다.
+  const saveStateTip = saveState === 'error' || saveState === 'retrying'
+    ? (cloudError ?? tr('shell.toolbar.saveFailedTip'))
+    // '저장 안 됨'도 이유가 있을 수 있다 — 편집권을 잃어 연결이
+    // 끊긴 경우가 그렇다 (2026-08-06 R3)
+    : saveState === 'unsaved'
+      ? (cloudError ?? tr('shell.toolbar.unsavedTip'))
+      : saveState === 'dirty'
+        ? tr('shell.toolbar.dirtyTip', { n: pendingEdits })
+        : undefined;
+
+  const shareDialog = shareOpen && (
+    <ProShareDialog t={t} mapId={shareMapId} onClose={() => setShareOpen(false)} />
+  );
+  const publishDialog = publishOpen && publishMapId && (
+    <PublishPanel
+      t={t}
+      mapId={publishMapId}
+      mapTitle={mapTitle}
+      flash={flash}
+      onClose={() => setPublishOpen(false)}
+    />
+  );
+  const toastEl = toast && (
+    <div
+      data-testid="cloud-toast"
+      style={{
+        position: 'absolute', top: 'calc(46px + env(safe-area-inset-top, 0px))',
+        right: phone ? 8 : 14, zIndex: 80,
+        // 긴 안내가 폰 화면 밖으로 나가지 않게 — 넓은 화면은 예전처럼 한 줄
+        maxWidth: 'calc(100vw - 16px)', whiteSpace: phone ? 'normal' : 'nowrap',
+        background: t.text, color: t.surface, padding: '6px 12px', borderRadius: 8,
+        fontSize: 12, lineHeight: 1.45, boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
+        // 안내가 그 아래 버튼(문서함 '새 폴더' 등) 클릭을 막지 않도록
+        pointerEvents: 'none',
+      }}
+    >
+      {toast}
+    </div>
+  );
+  // 모든 상단 막대가 같이 쓰는 틀 — 노치(safe-area)만큼 위·옆을 띄운다.
+  // 데스크톱에서는 env() 가 0 이라 예전과 같다.
+  const barStyle = {
+    height: 'calc(52px + env(safe-area-inset-top, 0px))',
+    paddingTop: 'env(safe-area-inset-top, 0px)',
+    background: t.surface,
+    borderBottom: `1px solid ${t.border}`,
+    display: 'flex',
+    alignItems: 'center',
+    position: 'relative',
+    zIndex: 20,
+    flexShrink: 0,
+  } as const;
+
+  if (phone) {
+    const pickThen = (fn: () => void) => () => { setMoreOpen(false); fn(); };
+    const btn = coarse ? 40 : 34;
+    return (
+      <div
+        ref={barRef}
+        data-testid="top-toolbar"
+        data-layout="phone"
+        style={{
+          ...barStyle,
+          paddingLeft: 'max(6px, env(safe-area-inset-left, 0px))',
+          paddingRight: 'max(6px, env(safe-area-inset-right, 0px))',
+          gap: 2,
+        }}
+      >
+        {/* 로고 + 맵 제목 — 누르면 문서함(데스크톱의 '내 문서' 와 같다) */}
+        <button
+          data-testid="crumb-docs"
+          title={tr('shell.toolbar.crumbTitle')}
+          onClick={openDocs}
+          style={{
+            flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
+            height: btn, padding: '0 4px 0 0', background: 'none', border: 'none',
+            cursor: 'pointer', textAlign: 'left', color: t.text,
+          }}
+        >
+          <span style={{ width: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <I.Logo size={26} />
+          </span>
+          <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.2 }}>
+            <span style={{ fontSize: 10.5, color: t.textSubtle, fontWeight: 500 }}>
+              {tr('shell.toolbar.crumb')}
+            </span>
+            <span
+              data-testid="map-title"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 3, minWidth: 0,
+                fontSize: 13.5, fontWeight: 600,
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                {mapTitle}
+              </span>
+              <span style={{ opacity: 0.5, display: 'flex', flexShrink: 0 }}><I.ChevronDown size={13} /></span>
+            </span>
+          </span>
+        </button>
+
+        <IconBtn t={t} testId="m-undo" title={tr('shell.toolbar.undo')} disabled={!canUndo} onClick={undo}>
+          <I.Undo size={18} />
+        </IconBtn>
+        {redoInline && (
+          <IconBtn t={t} testId="m-redo" title={tr('shell.toolbar.redo')} disabled={!canRedo} onClick={redo}>
+            <I.Redo size={18} />
+          </IconBtn>
+        )}
+
+        <button
+          data-testid="m-ai"
+          onClick={() => setInspectorTab('ai')}
+          title={tr('shell.toolbar.aiTitle')}
+          aria-label={tr('shell.toolbar.ai')}
+          style={{
+            width: btn, height: btn, flexShrink: 0, borderRadius: 9,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
+            color: '#fff', border: 'none', cursor: 'pointer',
+            boxShadow: `0 1px 2px ${t.primary}60, 0 0 0 1px ${t.primary}80`,
+            margin: '0 2px',
+          }}
+        >
+          <I.Sparkles size={17} />
+        </button>
+
+        {/* 저장 — 단추에 저장 상태 점이 붙는다 (자세한 상태는 "⋯" 맨 위) */}
+        <MapActions
+          t={t}
+          flash={flash}
+          phone
+          menuSlot={moreOpen ? menuSlot : null}
+          onMenuPick={() => setMoreOpen(false)}
+          stateDot={saveStateInfo.dot}
+        />
+
+        <button
+          ref={moreBtnRef}
+          data-testid="m-more"
+          title={tr('shell.m.more')}
+          aria-label={tr('shell.m.more')}
+          aria-haspopup="menu"
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen((v) => !v)}
+          style={{
+            width: btn, height: btn, flexShrink: 0, borderRadius: 8,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: moreOpen ? t.primarySoft : 'transparent',
+            color: moreOpen ? t.primary : t.text,
+            border: 'none', cursor: 'pointer',
+          }}
+        >
+          <I.MoreH size={20} />
+        </button>
+
+        <UserMenu t={t} onFlash={flash} />
+
+        {moreOpen && (
+          <div
+            ref={moreRef}
+            role="menu"
+            data-testid="m-more-menu"
+            style={{
+              position: 'fixed',
+              top: 'calc(52px + env(safe-area-inset-top, 0px))',
+              right: 'max(6px, env(safe-area-inset-right, 0px))',
+              width: 'min(320px, calc(100vw - 12px))',
+              maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
+              overflowY: 'auto', overscrollBehavior: 'contain',
+              zIndex: 60, background: t.surface,
+              border: `1px solid ${t.border}`, borderRadius: 12,
+              boxShadow: '0 12px 32px rgba(80,60,20,0.22)', padding: 6,
+            }}
+          >
+            {/* 저장 상태 — 폰에는 마우스를 올릴 일이 없으니 설명을 글로 */}
+            <div
+              data-testid="save-badge"
+              data-save-state={saveState}
+              style={{
+                display: 'flex', gap: 8, padding: '8px 10px 10px',
+                borderBottom: `1px solid ${t.divider}`, marginBottom: 4,
+              }}
+            >
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%', background: saveStateInfo.dot,
+                flexShrink: 0, marginTop: 5, boxShadow: `0 0 0 3px ${saveStateInfo.dot}22`,
+              }} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: saveStateInfo.color }}>
+                  {saveStateInfo.text}
+                </span>
+                {saveStateTip && (
+                  <span style={{
+                    display: 'block', fontSize: 11, color: t.textMuted, marginTop: 3,
+                    lineHeight: 1.45, whiteSpace: 'pre-line',
+                  }}>{saveStateTip}</span>
+                )}
+              </span>
+            </div>
+            <ProPresenceBar t={t} />
+            {/* MapActions 가 포털로 채운다: 읽기 전용 안내·보관·다른 이름으로 저장·맵 닫기 */}
+            <div ref={setMenuSlot} />
+            {!redoInline && (
+              <MenuItem
+                t={t} testId="m-redo" icon={<I.Redo size={16} />}
+                label={tr('shell.m.redo')} disabled={!canRedo}
+                onClick={() => redo()}
+              />
+            )}
+            {undoDepth > 0 && (
+              <MenuItem
+                t={t} testId="undo-depth" icon={<span style={{ fontSize: 11, fontWeight: 800 }}>-{undoDepth}</span>}
+                label={tr('shell.m.commitLatest', { n: undoDepth })}
+                onClick={pickThen(commitCurrentAsLatest)}
+              />
+            )}
+            <MenuItem
+              t={t} testId="map-share" icon={<I.Share size={16} />}
+              label={tr('shell.toolbar.share')}
+              desc={shareMapId ? undefined : tr('shell.toolbar.shareNeedSave')}
+              disabled={!shareMapId}
+              onClick={pickThen(() => setShareOpen(true))}
+            />
+            <MenuItem
+              t={t} testId="map-publish" icon={<I.Globe size={16} />}
+              label={tr('shell.toolbar.publish')}
+              desc={publishMapId ? undefined : tr('shell.toolbar.publishNeedSave')}
+              disabled={!publishMapId}
+              onClick={pickThen(() => setPublishOpen(true))}
+            />
+            <MenuSep t={t} />
+            {/* 폰에는 분할 보기가 없다 — 아웃라인과 맵을 한 화면씩 바꿔 본다 */}
+            <MenuItem
+              t={t} testId="mainview-toggle"
+              icon={mainView === 'outline' ? <I.MindMap size={16} /> : <I.Outline size={16} />}
+              label={mainView === 'outline' ? tr('shell.m.mapView') : tr('shell.m.outlineView')}
+              onClick={pickThen(toggleMainView)}
+            />
+            <MenuItem
+              t={t} testId="theme-toggle"
+              icon={themeName === 'dark' ? '☀' : '🌙'}
+              label={themeName === 'dark' ? tr('shell.m.lightMode') : tr('shell.m.darkMode')}
+              onClick={pickThen(() => setThemeName(themeName === 'dark' ? 'light' : 'dark'))}
+            />
+            <MenuSep t={t} />
+            <MenuItem
+              t={t} testId="m-export-html" icon={<I.Download size={16} />}
+              label={tr('shell.toolbar.exportHtml')} desc={tr('shell.toolbar.exportHtmlDesc')}
+              onClick={pickThen(() => void runExportHtml())}
+            />
+            <MenuItem
+              t={t} testId="m-export-md" icon={<I.Download size={16} />}
+              label={tr('shell.toolbar.exportMd')} desc={tr('shell.toolbar.exportMdDesc')}
+              onClick={pickThen(() => void runExportMd())}
+            />
+            <div style={{ fontSize: 10.5, color: t.textSubtle, padding: '4px 10px 6px 42px', lineHeight: 1.5 }}>
+              {tr('shell.toolbar.exportZipNote')}
+            </div>
+          </div>
+        )}
+        {shareDialog}
+        {publishDialog}
+        {toastEl}
+      </div>
+    );
+  }
 
   return (
     <div
       ref={barRef}
+      data-testid="top-toolbar"
+      data-layout="desktop"
       style={{
-        height: 52,
-        background: t.surface,
-        borderBottom: `1px solid ${t.border}`,
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 14px',
+        ...barStyle,
+        paddingLeft: 'max(14px, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(14px, env(safe-area-inset-right, 0px))',
         gap: 10,
-        position: 'relative',
-        zIndex: 20,
       }}
     >
       <div style={{
@@ -235,7 +555,12 @@ export function TopToolbar({
             {tr('shell.toolbar.crumb')}
           </button>
 
-          <div
+          {/* 맵 제목 — ▾ 가 붙어 있는데 눌러도 아무 일이 없었다(고장으로 보인다).
+              '내 문서' 와 같이 문서함을 연다 — 다른 맵으로 갈아타는 문 (2026-10-05) */}
+          <button
+            data-testid="map-title"
+            title={tr('shell.toolbar.crumbTitle')}
+            onClick={openDocs}
             style={{
               fontSize: 14,
               color: t.text,
@@ -244,16 +569,19 @@ export function TopToolbar({
               alignItems: 'center',
               gap: 6,
               maxWidth: iconOnly ? 120 : compact ? 180 : 260,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              minWidth: 0,
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              textAlign: 'left',
             }}
           >
-            {mapTitle}
-            <span style={{ opacity: 0.5, display: 'flex' }}>
+            {/* 긴 제목은 글자만 말줄임 — 예전에는 ▾ 까지 잘려 나갔다 */}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+              {mapTitle}
+            </span>
+            <span style={{ opacity: 0.5, display: 'flex', flexShrink: 0 }}>
               <I.ChevronDown size={14} />
             </span>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -296,17 +624,7 @@ export function TopToolbar({
         data-testid="save-badge"
         data-save-state={saveState}
         // 실패했을 때는 **왜** 실패했는지 마우스를 올려 볼 수 있게 한다
-        title={saveState === 'error' || saveState === 'retrying'
-          ? (cloudError ?? tr('shell.toolbar.saveFailedTip'))
-          // '저장 안 됨'도 이유가 있을 수 있다 — 편집권을 잃어 연결이
-          // 끊긴 경우가 그렇다 (2026-08-06 R3)
-          : saveState === 'unsaved'
-            ? (cloudError ?? tr('shell.toolbar.unsavedTip'))
-            : saveState === 'dirty'
-              ? tr('shell.toolbar.dirtyTip', { n: pendingEdits })
-              // 문구를 줄였을 때는 전문을 툴팁으로 남긴다 (위의 안내가
-              // 있는 상태들은 그 안내가 그대로 우선한다)
-              : compact ? saveStateInfo.text : undefined}
+        title={saveStateTip ?? (compact ? saveStateInfo.text : undefined)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -401,9 +719,7 @@ export function TopToolbar({
       >
         <I.Share size={15} />{!iconOnly && ` ${tr('shell.toolbar.share')}`}
       </button>
-      {shareOpen && (
-        <ProShareDialog t={t} mapId={shareMapId} onClose={() => setShareOpen(false)} />
-      )}
+      {shareDialog}
 
       {/* 퍼블리싱(무료) — 위의 [공유]와 **다른 일**이라 버튼을 나눴다.
           [공유]는 사람을 불러 **함께 편집**하는 것이고(참가자·권한),
@@ -434,15 +750,7 @@ export function TopToolbar({
       >
         <I.Globe size={15} />{!iconOnly && ` ${tr('shell.toolbar.publish')}`}
       </button>
-      {publishOpen && publishMapId && (
-        <PublishPanel
-          t={t}
-          mapId={publishMapId}
-          mapTitle={mapTitle}
-          flash={flash}
-          onClose={() => setPublishOpen(false)}
-        />
-      )}
+      {publishDialog}
 
       {/* 아웃라인 모드 / 맵 모드 전환 — 다크 토글과 같은 방식. 편집
           영역 전체를 아웃라인 전용/맵 전용으로 바꾼다. 분할 보기가
@@ -523,31 +831,14 @@ export function TopToolbar({
                 label: tr('shell.toolbar.exportHtml'),
                 desc: tr('shell.toolbar.exportHtmlDesc'),
                 title: tr('shell.toolbar.exportHtmlTitle'),
-                run: async () => {
-                  // 뷰어는 지금 에디터 모드(라이트/다크) 그대로 열린다
-                  const pkg = await downloadMapAsHtml(
-                    map, layoutType, { x: spacingX, y: spacingY }, themeName === 'dark');
-                  // 원본을 가져오지 못한 첨부가 있으면 묵묵히 넘어가지
-                  // 않는다 (2026-08-02: 저장 후 다시 연 맵의 blob: 첨부가
-                  // 소리 없이 빠져 "ZIP이 안 나온다" 보고로 이어졌다)
-                  if (pkg.external > 0) {
-                    flash(pkg.packaged === 0
-                      ? tr('shell.toolbar.exportHtmlOnly', { n: pkg.external })
-                      : tr('shell.toolbar.exportZipSkipped', { n: pkg.external }));
-                  }
-                },
+                run: runExportHtml,
               },
               {
                 id: 'md',
                 label: tr('shell.toolbar.exportMd'),
                 desc: tr('shell.toolbar.exportMdDesc'),
                 title: tr('shell.toolbar.exportMdTitle'),
-                run: async () => {
-                  const pkg = await downloadMapAsMarkdown(map, layoutType, { x: spacingX, y: spacingY });
-                  if (pkg.external > 0) {
-                    flash(tr('shell.toolbar.exportMdSkipped', { n: pkg.external }));
-                  }
-                },
+                run: runExportMd,
               },
             ] as const).map((item) => (
               <button
@@ -583,20 +874,7 @@ export function TopToolbar({
       {/* 계정 메뉴 — 개인 설정·계정 프로필·구독 상태·로그아웃 */}
       <UserMenu t={t} onFlash={flash} />
 
-      {toast && (
-        <div
-          data-testid="cloud-toast"
-          style={{
-            position: 'absolute', top: 46, right: 14, zIndex: 80, whiteSpace: 'nowrap',
-            background: t.text, color: t.surface, padding: '6px 12px', borderRadius: 8,
-            fontSize: 12, boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
-            // 안내가 그 아래 버튼(문서함 '새 폴더' 등) 클릭을 막지 않도록
-            pointerEvents: 'none',
-          }}
-        >
-          {toast}
-        </div>
-      )}
+      {toastEl}
     </div>
   );
 }

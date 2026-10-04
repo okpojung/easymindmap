@@ -55,6 +55,20 @@ interface InteractionState {
   /** 연결 모드 — 우상단 [연결] 버튼으로 켠다. 다음에 클릭하는 노드가 선의 끝(`to`)이 된다 */
   connectMode: { fromId: string } | null;
   setConnectMode: (m: { fromId: string } | null) => void;
+  /**
+   * **노드 글 편집 요청** (모바일 웹, 2026-10-05). 데스크톱은 노드를 더블클릭하면
+   * NodeRenderer 가 스스로 편집을 연다. 손가락에서는 "고른 노드를 한 번 더 톡"이
+   * 편집이라 캔버스가 판정하고, 해당 노드에 이 요청으로 알린다. seq 가 바뀔 때마다
+   * 그 노드가 한 번 반응한다 (재마운트는 반응하지 않는다).
+   */
+  editRequest: { id: string; seq: number } | null;
+  requestEdit: (id: string) => void;
+  /**
+   * **노드 메뉴 열기 요청** (모바일 웹, 2026-10-05) — 노드를 길게 누르면 캔버스가
+   * 올린다. 폰 폭(compact)의 캔버스 도구 모음이 받아 접혀 있던 메뉴를 펼친다.
+   */
+  nodeMenuSeq: number;
+  openNodeMenu: () => void;
 }
 
 export const useInteractionStore = create<InteractionState>((set) => ({
@@ -77,4 +91,8 @@ export const useInteractionStore = create<InteractionState>((set) => ({
   setSelectedConnectorId: (selectedConnectorId) => set({ selectedConnectorId }),
   connectMode: null,
   setConnectMode: (connectMode) => set({ connectMode }),
+  editRequest: null,
+  requestEdit: (id) => set((s) => ({ editRequest: { id, seq: (s.editRequest?.seq ?? 0) + 1 } })),
+  nodeMenuSeq: 0,
+  openNodeMenu: () => set((s) => ({ nodeMenuSeq: s.nodeMenuSeq + 1 })),
 }));

@@ -12,6 +12,7 @@
 import type { ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useTr } from '@/i18n';
+import { ensureMobileCss } from './mobileCss';
 
 export function DialogFrame({
   t, testId, title, subtitle, onClose, width = 'min(430px, 92vw)', zIndex = 245, children, footer, closeDisabled,
@@ -30,9 +31,13 @@ export function DialogFrame({
   closeDisabled?: boolean;
 }) {
   const close = () => { if (!closeDisabled) onClose(); };
+  // 폰(폭 < 768px)에서는 화면 폭 - 24px · 100dvh 안, 손가락이면 입력 16px·버튼 40px
+  // — 규칙은 mobileCss 한 곳에 있다 (데스크톱은 그대로)
+  ensureMobileCss();
   return (
     <div
       onClick={close}
+      data-mm-dialog-overlay=""
       style={{
         position: 'fixed', inset: 0, zIndex, background: 'rgba(0,0,0,0.35)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -43,6 +48,8 @@ export function DialogFrame({
         data-testid={testId}
         role="dialog"
         aria-modal="true"
+        data-mm-dialog=""
+        data-mm-touch=""
         style={{
           position: 'relative', width, maxHeight: '88vh',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -60,7 +67,7 @@ export function DialogFrame({
         </div>
         <DialogXButton t={t} testId={`${testId}-x`} onClose={close} disabled={closeDisabled} />
         {/* 본문 — 여기만 스크롤 */}
-        <div data-testid={`${testId}-body`} style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: '4px 20px 12px' }}>
+        <div data-testid={`${testId}-body`} style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', padding: '4px 20px 12px' }}>
           {children}
         </div>
         {footer && (
@@ -114,6 +121,7 @@ export function DialogXButton({
     <button
       type="button"
       data-testid={testId}
+      data-mm-dialog-x=""
       title={tr('common.close')}
       aria-label={tr('common.close')}
       onClick={() => { if (!disabled) onClose(); }}

@@ -13,6 +13,8 @@ import { InspectorSection, InspectorRow, ColorSwatchInput } from './InspectorSec
 import { ConnectorPanel } from './ConnectorPanel';
 import { useTr } from '@/i18n';
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 // label 은 사전 키 — 렌더할 때 번역한다
 const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
   // 도형 없음 — 글자만 놓는다 (2026-08-08 사용자 요청). 미리보기는
@@ -90,7 +92,7 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
   };
 
   return (
-    <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
+    <div data-mm-touch="" style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
       {targets.length > 1 && (
         <div style={{
           margin: '10px 14px 0', padding: '7px 10px', borderRadius: 7,

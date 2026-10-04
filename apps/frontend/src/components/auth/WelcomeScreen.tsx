@@ -17,6 +17,9 @@ import { ResetPasswordForm } from './ResetPasswordForm';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
 import { useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
+import { usePhoneLayout } from '@/hooks/useViewport';
+// 폰 입력칸 규칙(data-mm-touch — 16px 글자·40px 칸) — 불러오기만 하면 CSS 가 한 번 들어간다
+import '@/components/ui/mobileCss';
 
 // 소개 문구는 docs/01-product/product-highlights.md 의 "한 줄 소개"·
 // "5가지 약속"에서 가져온다 (문서와 화면이 어긋나지 않도록).
@@ -33,11 +36,35 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [flash, setFlash] = useState<string | null>(null);
   const tr = useTr();
+  /**
+   * 폰 (2026-10-05) — 소개 글이 화면 두 장을 차지해 **로그인 칸이 아래로 밀려
+   * 보이지 않았다.** 폰에서는 로고·한 줄 소개 → 로그인 → 장점 셋 순서로 둔다.
+   * 로고·제목 글자도 줄인다(40px 워드마크가 360px 화면 끝에 닿았다).
+   */
+  const phone = usePhoneLayout();
+  const points = (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {POINTS.map((p) => (
+        <div key={p.key} style={{ display: 'flex', gap: 12 }}>
+          <div style={{
+            width: 34, height: 34, flexShrink: 0, borderRadius: 9,
+            background: t.primarySoft, color: t.primary,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16,
+          }}>{p.icon}</div>
+          <div>
+            <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 3 }}>{tr(`${p.key}.title`)}</div>
+            <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6 }}>{tr(`${p.key}.desc`)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
   return (
     <div
       data-testid="welcome-screen"
       style={{
-        position: 'fixed', inset: 0, overflow: 'auto',
+        position: 'fixed', inset: 0, overflow: 'auto', overscrollBehavior: 'contain',
         background: t.bg, color: t.text,
         fontFamily:
           "'Pretendard Variable','Pretendard','Inter',-apple-system,BlinkMacSystemFont,system-ui,sans-serif",
@@ -53,17 +80,20 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
         style={{
           minHeight: '100%', boxSizing: 'border-box',
           display: 'flex', flexWrap: 'wrap', alignItems: 'center',
-          justifyContent: 'center', gap: 48, padding: '52px clamp(16px, 4vw, 32px) 48px',
+          justifyContent: 'center', gap: phone ? 24 : 48,
+          padding: phone
+            ? '56px 16px calc(32px + env(safe-area-inset-bottom))'
+            : '52px clamp(16px, 4vw, 32px) 48px',
         }}
       >
         {/* ── 소개 ────────────────────────────────────────── */}
-        <div style={{ flex: '1 1 420px', maxWidth: 560, minWidth: 300 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
+        <div style={{ flex: '1 1 420px', maxWidth: 560, minWidth: phone ? 0 : 300 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: phone ? 10 : 14, marginBottom: phone ? 14 : 24 }}>
             {/* 2026-08-04 사용자 요청 — 초기 화면 로고·워드마크 확대 */}
-            <I.Logo size={72} />
+            <I.Logo size={phone ? 48 : 72} />
             {/* 워드마크 — 브랜드 브라운 (다크 테마는 밝은 탠으로 가독 확보) */}
             <span style={{
-              fontSize: 40, fontWeight: 900, letterSpacing: -1,
+              fontSize: phone ? 28 : 40, fontWeight: 900, letterSpacing: -1,
               color: t.name === 'dark' ? '#E8C9A6' : '#5C3B25',
             }}>
               EasyMindMap
@@ -71,41 +101,27 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
           </div>
 
           <h1 style={{
-            fontSize: 34, lineHeight: 1.3, fontWeight: 800,
-            margin: '0 0 14px', letterSpacing: -0.8,
+            fontSize: phone ? 24 : 34, lineHeight: 1.3, fontWeight: 800,
+            margin: phone ? '0 0 8px' : '0 0 14px', letterSpacing: -0.8,
           }}>
             {tr('auth.welcome.slogan')}
           </h1>
           <p style={{
-            fontSize: 15, lineHeight: 1.7, color: t.textMuted, margin: '0 0 28px',
+            fontSize: phone ? 14 : 15, lineHeight: 1.7, color: t.textMuted, margin: phone ? 0 : '0 0 28px',
           }}>
             {tr('auth.welcome.sub')}
           </p>
-
-          <div style={{ display: 'grid', gap: 14 }}>
-            {POINTS.map((p) => (
-              <div key={p.key} style={{ display: 'flex', gap: 12 }}>
-                <div style={{
-                  width: 34, height: 34, flexShrink: 0, borderRadius: 9,
-                  background: t.primarySoft, color: t.primary,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16,
-                }}>{p.icon}</div>
-                <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 3 }}>{tr(`${p.key}.title`)}</div>
-                  <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6 }}>{tr(`${p.key}.desc`)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          {!phone && points}
         </div>
 
         {/* ── 로그인 ──────────────────────────────────────── */}
         <div
+          data-mm-touch=""
           style={{
-            flex: '0 1 380px', minWidth: 300, boxSizing: 'border-box',
+            flex: phone ? '1 1 100%' : '0 1 380px', minWidth: phone ? 0 : 300, boxSizing: 'border-box',
+            maxWidth: phone ? 480 : undefined,
             background: t.surface, border: `1px solid ${t.border}`,
-            borderRadius: 14, padding: 28,
+            borderRadius: 14, padding: phone ? 20 : 28,
             boxShadow: '0 18px 48px rgba(0,0,0,0.10)',
           }}
         >
@@ -146,6 +162,8 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
           )}
 
         </div>
+        {/* 폰 — 장점 셋은 로그인 아래에 */}
+        {phone && <div style={{ flex: '1 1 100%', maxWidth: 480 }}>{points}</div>}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { setHistoryPaused } from '@/stores/documentStore';
+import { useCoarse } from '@/hooks/useViewport';
 
 interface SectionProps {
   t: ThemeTokens;
@@ -17,8 +18,11 @@ export function InspectorSection({ t, title, action, children, pad = true }: Sec
       padding: pad ? '14px 14px 2px' : 0,
       borderBottom: `1px solid ${t.divider}`,
     }}>
+      {/* 제목과 동작 단추가 한 줄에 안 들어가면(폰 서랍 266px) 단추를 다음 줄로 —
+          전에는 노트의 [+문단][+코드][+표][+체크] 가 패널 밖으로 삐져나갔다 */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap', rowGap: 6, columnGap: 8,
         marginBottom: 10,
       }}>
         <div style={{
@@ -55,19 +59,26 @@ interface ToggleProps {
 }
 
 export function Toggle({ t, on, onChange }: ToggleProps) {
+  // 손가락 기기 — 32×18 은 누르기 어렵다. 겉 크기만 키우고(44×26) 모양은 같다
+  const coarse = useCoarse();
+  const k = coarse ? 1.4 : 1;
   return (
     <div
+      role="switch"
+      aria-checked={!!on}
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onChange?.(!on); } }}
       onClick={() => onChange?.(!on)}
       style={{
-        width: 32, height: 18, borderRadius: 9,
+        width: 32 * k, height: 18 * k, borderRadius: 9 * k, flexShrink: 0,
         background: on ? t.primary : t.borderStrong,
         position: 'relative', cursor: 'pointer',
         transition: 'background 120ms',
       }}>
       <div style={{
-        width: 14, height: 14, borderRadius: '50%',
+        width: 14 * k, height: 14 * k, borderRadius: '50%',
         background: '#fff',
-        position: 'absolute', top: 2, left: on ? 16 : 2,
+        position: 'absolute', top: 2 * k, left: on ? 16 * k : 2 * k,
         transition: 'left 120ms',
         boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
       }} />
@@ -82,6 +93,7 @@ interface ColorSwatchProps {
 }
 
 export function ColorSwatchInput({ t, value, onChange }: ColorSwatchProps) {
+  const coarse = useCoarse();
   // 네이티브 색상 피커의 슬라이더 드래그는 input 이벤트를 초당 수십 번
   // 발사한다 — 매 이벤트마다 전체 맵 재배치 + undo 스냅샷이 쌓여 슬라이더가
   // 심하게 버벅였다 (2026-07-31). 두 가지로 해결:
@@ -143,7 +155,7 @@ export function ColorSwatchInput({ t, value, onChange }: ColorSwatchProps) {
   return (
     <label style={{
       display: 'flex', alignItems: 'center', gap: 6,
-      padding: '4px 6px', borderRadius: 6,
+      padding: '4px 6px', borderRadius: 6, minHeight: coarse ? 40 : undefined, boxSizing: 'border-box',
       border: `1px solid ${t.border}`, background: t.surface,
       cursor: onChange ? 'pointer' : 'default',
     }}>

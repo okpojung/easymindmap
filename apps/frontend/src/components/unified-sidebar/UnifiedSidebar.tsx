@@ -5,7 +5,7 @@
 //
 // Spec: docs/03-editor-core/canvas/10-canvas.md § 21 (unified left sidebar).
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -36,6 +36,7 @@ import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
 // (docs/04-extensions/open-core-boundary.md §5).
 import { ProFeaturePanel } from '@pro';
 import { useTr } from '@/i18n';
+import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 
 export type NavTabKey       = 'newMap' | 'search' | 'template' | 'history' | 'mapSettings' | 'collab';
 export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
@@ -65,6 +66,28 @@ export function UnifiedSidebar({
   outlineSplit, onToggleOutlineSplit,
 }: Props) {
   const tr = useTr();
+  // **폰에서는 겹쳐 뜨는 서랍** (모바일 웹 2026-10-05). 데스크톱처럼 레일(44px)과
+  // 패널(300px)을 캔버스 옆에 붙이면 390px 화면에서 캔버스가 거의 사라진다.
+  // 폰에서는 접혀 있으면 아무것도 그리지 않고(하단 막대의 ☰ 가 연다), 열리면
+  // 레일+패널이 캔버스 **위에** 미끄러져 나온다 — 캔버스 크기는 그대로다.
+  const phone = usePhoneLayout();
+  const coarse = useCoarse();
+  const mainView = useEditorUiStore((s) => s.mainView);
+  const toggleMainView = useEditorUiStore((s) => s.toggleMainView);
+  // 폰 배치로 바뀌는 순간 열려 있던 패널은 접는다 — 데스크톱에서 펼쳐 둔
+  // 패널이 폰 화면을 통째로 덮은 채 시작하지 않게.
+  useEffect(() => {
+    if (phone && !useEditorUiStore.getState().sidebarCollapsed) {
+      useEditorUiStore.setState({ sidebarCollapsed: true });
+    }
+  }, [phone]);
+  // 서랍이 열려 있으면 Esc 로 닫는다
+  useEffect(() => {
+    if (!phone || collapsed) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onToggleCollapsed(); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [phone, collapsed, onToggleCollapsed]);
   // 사이드바(패널)와 맵 화면 사이 세로 스플리터 — 드래그로 패널 폭 조절
   const sidebarWidth = useEditorUiStore((s) => s.sidebarWidth);
   const setSidebarWidth = useEditorUiStore((s) => s.setSidebarWidth);
@@ -96,37 +119,50 @@ export function UnifiedSidebar({
 
   // 펼침은 setNavTab/setInspectorTab(store)이 담당한다 — 여기서 토글을
   // 또 부르면 store 가 이미 펼친 것을 도로 접는다 (2026-08-02 수정).
+  // 폰에는 분할 보기가 없다 — 그 자리의 단추는 아웃라인/맵을 한 화면씩 바꾼다
+  const splitActive = phone ? mainView === 'outline' : outlineSplit;
+  const splitTitle = phone
+    ? (mainView === 'outline' ? tr('shell.toolbar.toMapMode') : tr('shell.toolbar.toOutlineMode'))
+    : (outlineSplit ? tr('shell.sidebar.outlineSplitClose') : tr('shell.sidebar.outlineSplitOpen'));
+  const onSplitClick = phone
+    ? () => { toggleMainView(); onToggleCollapsed(); }
+    : onToggleOutlineSplit;
+
   function handleRailClick(section: SidebarSection, key: string) {
     if (section === 'nav') onNavTabChange(key as NavTabKey);
     else onInspectorTabChange(key as InspectorTabKey);
     onActiveSectionChange(section);
   }
 
-  return (
-    <div style={{
-      width: collapsed ? 44 : 44 + sidebarWidth, flexShrink: 0,
-      background: t.surfaceAlt,
-      borderRight: `1px solid ${t.border}`,
-      display: 'flex',
-      overflow: 'hidden',
-      position: 'relative',
-      // 스플리터 드래그 중에는 전환 애니메이션을 꺼서 즉시 따라오게
-      transition: resizing ? 'none' : 'width 180ms cubic-bezier(.4,0,.2,1)',
-    }}>
-      {/* Icon rail */}
+  // 폰: 접혀 있으면 자리를 차지하지 않는다 (여는 문은 하단 막대의 ☰)
+  if (phone && collapsed) return null;
+
+  const railW = phone && coarse ? 52 : 44;
+  const body = (
+    <>
+      {/* Icon rail — 항목이 화면보다 많으면(낮은 창·눕힌 폰) 레일 안에서 스크롤 */}
       <div style={{
-        width: 44, flexShrink: 0,
+        width: railW, flexShrink: 0,
         background: t.surfaceSunken,
         borderRight: `1px solid ${t.divider}`,
         display: 'flex', flexDirection: 'column',
-        padding: '8px 0',
+        padding: phone ? 'max(8px, env(safe-area-inset-top, 0px)) 0 max(8px, env(safe-area-inset-bottom, 0px))' : '8px 0',
+        overflowY: 'auto', overflowX: 'hidden',
+        scrollbarWidth: 'none',
       }}>
         <button
-          title={collapsed ? tr('shell.sidebar.expand') : tr('shell.sidebar.collapse')}
+          data-testid={phone ? 'm-drawer-close' : 'sidebar-toggle'}
+          title={phone
+            ? tr('shell.sidebar.panelClose')
+            : collapsed ? tr('shell.sidebar.expand') : tr('shell.sidebar.collapse')}
+          aria-label={phone
+            ? tr('shell.sidebar.panelClose')
+            : collapsed ? tr('shell.sidebar.expand') : tr('shell.sidebar.collapse')}
           onClick={onToggleCollapsed}
           style={{
-            margin: '0 7px 8px',
-            width: 30, height: 30, borderRadius: 6,
+            margin: `0 ${(railW - (phone && coarse ? 40 : 30)) / 2}px 8px`,
+            width: phone && coarse ? 40 : 30, height: phone && coarse ? 40 : 30, borderRadius: 6,
+            flexShrink: 0,
             background: t.primarySoft, color: t.primary,
             border: `1px solid ${t.primaryBorder}40`,
             cursor: 'pointer',
@@ -139,10 +175,12 @@ export function UnifiedSidebar({
         <RailGroupLabel t={t}>{tr('shell.sidebar.groupNav')}</RailGroupLabel>
         {/* 아웃라인 — 사이드 패널이 아니라 메인 화면을 좌(아웃라인)/우(맵)로
             나누는 분할 보기 토글. 아이콘도 분할 화면 모양. */}
-        <RailIcon t={t} title={outlineSplit ? tr('shell.sidebar.outlineSplitClose') : tr('shell.sidebar.outlineSplitOpen')}
-                  active={outlineSplit}
+        <RailIcon t={t} title={splitTitle}
+                  active={splitActive}
                   expanded={!collapsed}
-                  onClick={onToggleOutlineSplit}>
+                  big={phone && coarse}
+                  testId="rail-outline"
+                  onClick={onSplitClick}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -157,6 +195,8 @@ export function UnifiedSidebar({
           <RailIcon key={it.key} t={t} title={it.label}
                     active={activeSection === 'nav' && navTab === it.key}
                     expanded={!collapsed}
+                    big={phone && coarse}
+                    testId={`rail-${it.key}`}
                     onClick={() => handleRailClick('nav', it.key)}>
             {it.icon}
           </RailIcon>
@@ -168,12 +208,14 @@ export function UnifiedSidebar({
           <RailIcon key={it.key} t={t} title={it.label}
                     active={activeSection === 'inspector' && inspectorTab === it.key}
                     expanded={!collapsed}
+                    big={phone && coarse}
+                    testId={`rail-${it.key}`}
                     onClick={() => handleRailClick('inspector', it.key)}>
             {it.icon}
           </RailIcon>
         ))}
 
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: 1, minHeight: 8 }} />
 
         {/* 협업 — 유료 기능의 **자리**. 알맹이는 유료 모듈이 채운다
             (open-core-boundary.md §3.1 ③). 눌러야 왜 못 쓰는지 알 수 있다.
@@ -182,6 +224,8 @@ export function UnifiedSidebar({
         <RailIcon t={t} title={tr('shell.sidebar.collab')}
                   active={activeSection === 'nav' && navTab === 'collab'}
                   expanded={!collapsed}
+                  big={phone && coarse}
+                  testId="rail-collab"
                   onClick={() => handleRailClick('nav', 'collab')}>
           <I.Users size={16} />
         </RailIcon>
@@ -201,8 +245,9 @@ export function UnifiedSidebar({
       )}
 
       {/* 세로 스플리터 — 사이드바(아웃라인 등)와 맵 화면의 영역을 드래그로
-          조절 (220~640px). 더블클릭 시 기본 폭(300px)으로 복귀. */}
-      {!collapsed && (
+          조절 (220~640px). 더블클릭 시 기본 폭(300px)으로 복귀.
+          폰 서랍은 화면 폭에 맞춰 정해지므로 손잡이가 없다. */}
+      {!collapsed && !phone && (
         <div
           title={tr('shell.sidebar.resizeTitle')}
           onPointerDown={(e) => {
@@ -236,6 +281,60 @@ export function UnifiedSidebar({
           }}
         />
       )}
+    </>
+  );
+
+  if (phone) {
+    // 서랍 — 어두운 막(scrim)을 누르거나 ✕·‹ 를 누르면 닫힌다. 막과 서랍은
+    // 화면에 **겹쳐** 뜬다(fixed) — 아래 캔버스의 크기는 그대로다.
+    return (
+      <>
+        <div
+          data-testid="m-drawer-scrim"
+          onClick={onToggleCollapsed}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 120,
+            background: 'rgba(20,14,4,0.38)',
+            animation: 'emm-fade-in 160ms ease-out',
+          }}
+        />
+        <div
+          data-testid="m-drawer"
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 121,
+            // 오른쪽에 캔버스가 조금 비쳐야 "덮인 것" 임을 안다 (최소 40px)
+            width: `min(${railW + 340}px, calc(100vw - 40px))`,
+            paddingLeft: 'env(safe-area-inset-left, 0px)',
+            background: t.surfaceAlt,
+            borderRight: `1px solid ${t.border}`,
+            boxShadow: '8px 0 28px rgba(0,0,0,0.22)',
+            display: 'flex', overflow: 'hidden',
+            animation: 'emm-drawer-in 200ms cubic-bezier(.4,0,.2,1)',
+          }}
+        >
+          {body}
+        </div>
+        <style>{'@keyframes emm-drawer-in { from { transform: translateX(-100%) } to { transform: none } }'
+          + '@keyframes emm-fade-in { from { opacity: 0 } to { opacity: 1 } }'
+          + '@media (prefers-reduced-motion: reduce) { [data-testid="m-drawer"], [data-testid="m-drawer-scrim"] { animation: none !important } }'}</style>
+      </>
+    );
+  }
+
+  return (
+    <div style={{
+      width: collapsed ? 44 : 44 + sidebarWidth, flexShrink: 0,
+      background: t.surfaceAlt,
+      borderRight: `1px solid ${t.border}`,
+      display: 'flex',
+      overflow: 'hidden',
+      position: 'relative',
+      // 스플리터 드래그 중에는 전환 애니메이션을 꺼서 즉시 따라오게
+      transition: resizing ? 'none' : 'width 180ms cubic-bezier(.4,0,.2,1)',
+    }}>
+      {body}
     </div>
   );
 }
@@ -255,21 +354,26 @@ interface RailIconProps {
   title: string;
   active: boolean;
   expanded: boolean;
+  /** 폰(손가락 입력) — 누를 자리 40px */
+  big?: boolean;
+  testId?: string;
   onClick: () => void;
   children: ReactNode;
 }
 
-function RailIcon({ t, title, active, expanded, onClick, children }: RailIconProps) {
+function RailIcon({ t, title, active, expanded, big, testId, onClick, children }: RailIconProps) {
   const [h, setH] = useState(false);
   const showIndicator = active && expanded;
   return (
     <button title={title}
+      aria-label={title}
+      data-testid={testId}
       onClick={onClick}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
       style={{
-        margin: '1px 7px',
-        width: 30, height: 30, borderRadius: 6,
+        margin: big ? '2px 6px' : '1px 7px',
+        width: big ? 40 : 30, height: big ? 40 : 30, borderRadius: 6, flexShrink: 0,
         background: showIndicator ? t.primarySoft : (h ? t.surfaceAlt : 'transparent'),
         color:      showIndicator ? t.primary     : (h ? t.text      : t.textMuted),
         border: 'none', cursor: 'pointer',
@@ -280,7 +384,7 @@ function RailIcon({ t, title, active, expanded, onClick, children }: RailIconPro
       {children}
       {showIndicator && (
         <span style={{
-          position: 'absolute', left: -7, top: 5, bottom: 5,
+          position: 'absolute', left: big ? -6 : -7, top: 5, bottom: 5,
           width: 3, borderRadius: 2,
           background: t.primary,
         }} />
@@ -402,6 +506,7 @@ function ContentHeader({ t, title, subtitle, compact, onClose }: {
   onClose: () => void;
 }) {
   const tr = useTr();
+  const coarse = useCoarse();
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
@@ -430,9 +535,12 @@ function ContentHeader({ t, title, subtitle, compact, onClose }: {
         aria-label={tr('shell.sidebar.panelClose')}
         style={{
           background: 'none', border: 'none', color: t.textMuted,
-          cursor: 'pointer', display: 'flex', padding: 2,
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 2, flexShrink: 0,
+          // 손가락 입력이면 누를 자리를 40px 로 (모바일 웹 2026-10-05)
+          ...(coarse ? { width: 40, height: 40, margin: '-8px -10px -8px 0' } : null),
         }}>
-        <I.X size={14} />
+        <I.X size={coarse ? 18 : 14} />
       </button>
     </div>
   );

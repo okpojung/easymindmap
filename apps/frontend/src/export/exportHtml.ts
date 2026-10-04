@@ -223,6 +223,14 @@ const VIEWER_JS = String.raw`
   if (NOTE_FONT.family) noteBody.style.fontFamily = NOTE_FONT.family;
   var noteTitle = document.getElementById('mm-note-title');
   var NS = 'http://www.w3.org/2000/svg';
+  // ── 휴대폰 (2026-10-05) — CSS 의 휴대폰 규칙과 **같은 조건**. 앱의 useCompact(폭 < 768)
+  //    + 가로로 눕힌 휴대폰(굵은 포인터 · 높이 ≤ 500). 데스크톱에서는 늘 false 라 예전 그대로다.
+  var COMPACT_MQ = '(max-width: 767px), (pointer: coarse) and (max-height: 500px)';
+  function isCompact() {
+    return window.matchMedia ? window.matchMedia(COMPACT_MQ).matches : window.innerWidth < 768;
+  }
+  // 손가락 — 접기 칩의 누르는 자리를 넓힌다 (마우스 화면에서는 아무것도 더하지 않는다)
+  var COARSE = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 
   var COLORS = {
     root: '#C2410C',
@@ -1621,6 +1629,7 @@ const VIEWER_JS = String.raw`
     }
     g.addEventListener('click', function (ev) {
       ev.stopPropagation();
+      if (panMoved) { panMoved = false; return; } // 끌어서 화면을 옮긴 직후는 선택이 아니다
       SEL = node.id;
       // 맵에서 직접 조작하면 검색 강조 해제 (에디터 selectOne과 동일 —
       // 강조된 노드 자체를 클릭한 경우는 유지)
@@ -2268,6 +2277,8 @@ const VIEWER_JS = String.raw`
       var cnt = cnt0;
       // 숫자 자릿수에 맞춰 칩 크기 확대 (두 자리 10.5, 세 자리+ 13)
       var cr = cr0;
+      // 손가락 화면: 보이지 않는 넓은 원(지름 36)을 깔아 칩을 누르기 쉽게
+      if (COARSE) el('circle', { cx: ccx, cy: ccy, r: Math.max(cr, 18), fill: 'transparent' }, chip);
       el('circle', { cx: ccx, cy: ccy, r: cr, fill: node._open ? SKIN.fam.l2.fill : color,
         stroke: color, 'stroke-width': 1.3 }, chip);
       var chTitle = el('title', {}, chip);
@@ -2538,6 +2549,13 @@ const VIEWER_JS = String.raw`
     }
 
     notePanel.style.display = 'block';
+    // 휴대폰: 화면 아래 폭 전체 시트 (CSS) — 손으로 잡은 크기·위치는 지운다
+    if (isCompact()) {
+      notePanel.style.width = ''; notePanel.style.height = ''; notePanel.style.maxHeight = '';
+      notePanel.style.left = ''; notePanel.style.top = ''; notePanel.style.right = '';
+      notePanel.scrollTop = 0;
+      return;
+    }
     // 자동 크기 — 에디터 노트 뷰어 팝업과 동일: 내용의 자연 크기에 맞추되
     // 최소 220×120 ~ 최대 "화면 4분할 시 우측 상단"(화면의 1/2 × 1/2).
     // 먼저 최대 폭으로 그려 내용 폭(max-content)을 재고 즉시 줄인다.
@@ -2564,6 +2582,7 @@ const VIEWER_JS = String.raw`
   (function () {
     var drag = null;
     noteTitle.addEventListener('pointerdown', function (e) {
+      if (isCompact()) return; // 휴대폰은 화면 아래 고정 시트 — 끌어 옮기지 않는다
       var r = notePanel.getBoundingClientRect();
       drag = { id: e.pointerId, px: e.clientX, py: e.clientY, left: r.left, top: r.top };
       noteTitle.setPointerCapture(e.pointerId);
@@ -2630,7 +2649,37 @@ const VIEWER_JS = String.raw`
       render();
     }
   });
+  // ── 손가락 (2026-10-05, 휴대폰) — Pan 모드와 상관없이 한 손가락 끌기 = 화면 이동,
+  //    두 손가락 = 가운데를 기준으로 확대·축소 + 함께 끌면 이동 (휠 줌과 같은 셈: 손가락 사이
+  //    가운데 아래의 맵 자리가 손가락을 따라간다). 가볍게 톡 = 클릭 그대로(노드 선택·칩 접기).
+  //    포인터를 잡지(setPointerCapture) 않는다 — 잡으면 click 이 svg 로 가서 노드 탭이 사라진다.
+  var touches = {}; // pointerId → { x, y }
+  var tGest = null; // 한 손가락: { mode:'pan', x, y, vx, vy } · 두 손가락: { mode:'pinch', mx, my, d, vx, vy, k }
+  function touchList() {
+    var out = [];
+    for (var id in touches) if (Object.prototype.hasOwnProperty.call(touches, id)) out.push(touches[id]);
+    return out;
+  }
+  function touchStart() {
+    var ts = touchList();
+    if (ts.length >= 2) {
+      var a = ts[0], b = ts[1];
+      tGest = { mode: 'pinch', mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2,
+        d: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), vx: view.x, vy: view.y, k: view.k };
+    } else if (ts.length === 1) {
+      tGest = { mode: 'pan', x: ts[0].x, y: ts[0].y, vx: view.x, vy: view.y, moved: false };
+    } else {
+      tGest = null;
+    }
+  }
   svg.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'touch') {
+      panMoved = false;
+      touches[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (touchList().length >= 2) panMoved = true; // 두 손가락 = 클릭이 아니다
+      touchStart();
+      return;
+    }
     var temp = e.button === 1 || e.button === 2;
     if (!panMode && !temp) return;
     drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
@@ -2638,22 +2687,62 @@ const VIEWER_JS = String.raw`
     svg.style.cursor = 'grabbing';
   });
   svg.addEventListener('pointermove', function (e) {
+    if (e.pointerType === 'touch') {
+      if (!touches[e.pointerId] || !tGest) return;
+      touches[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ts = touchList();
+      if (tGest.mode === 'pinch' && ts.length >= 2) {
+        var a = ts[0], b = ts[1];
+        var rect = svg.getBoundingClientRect();
+        var d = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+        var k2 = Math.min(4, Math.max(0.02, tGest.k * d / tGest.d)); // 휠과 같은 범위 (2%~400%)
+        var px0 = tGest.mx - rect.left, py0 = tGest.my - rect.top;   // 처음 가운데
+        var px1 = (a.x + b.x) / 2 - rect.left, py1 = (a.y + b.y) / 2 - rect.top; // 지금 가운데
+        view.x = px1 - ((px0 - tGest.vx) / tGest.k) * k2;
+        view.y = py1 - ((py0 - tGest.vy) / tGest.k) * k2;
+        view.k = k2;
+        applyView();
+      } else if (tGest.mode === 'pan' && ts.length === 1) {
+        var dx = e.clientX - tGest.x, dy = e.clientY - tGest.y;
+        // 손가락은 톡 칠 때도 조금 흔들린다 — 8px 를 넘어야 끌기로 본다 (그 전에는 탭)
+        if (!tGest.moved && Math.abs(dx) + Math.abs(dy) <= 8) return;
+        tGest.moved = true;
+        panMoved = true;
+        view.x = tGest.vx + dx;
+        view.y = tGest.vy + dy;
+        applyView();
+      }
+      return;
+    }
     if (!drag) return;
     if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) panMoved = true;
     view.x = drag.vx + (e.clientX - drag.x);
     view.y = drag.vy + (e.clientY - drag.y);
     applyView();
   });
-  svg.addEventListener('pointerup', function () {
+  function touchEnd(e) {
+    if (!touches[e.pointerId]) return;
+    delete touches[e.pointerId];
+    // 두 손가락 → 한 손가락: 남은 손가락으로 이어서 끈다 (튀지 않게 지금 자리에서 다시 잡는다)
+    touchStart();
+    if (tGest && tGest.mode === 'pan' && panMoved) tGest.moved = true;
+  }
+  svg.addEventListener('pointerup', function (e) {
+    if (e.pointerType === 'touch') { touchEnd(e); return; }
     drag = null;
     svg.style.cursor = panMode ? 'grab' : 'default';
+  });
+  svg.addEventListener('pointercancel', function (e) {
+    if (e.pointerType === 'touch') touchEnd(e);
   });
 
   function fit() {
     var bb = world.getBBox();
     var rect = svg.getBoundingClientRect();
     if (!bb.width || !bb.height) return;
-    var k = Math.min((rect.width - 80) / bb.width, (rect.height - 80) / bb.height, 1.6);
+    // 휴대폰은 화면이 작아 여백을 줄인다 (사방 12px) — 데스크톱은 예전 그대로 40px
+    var pad = isCompact() ? 24 : 80;
+    var k = Math.min((rect.width - pad) / bb.width, (rect.height - pad) / bb.height, isCompact() ? 1 : 1.6);
     view.k = k;
     view.x = (rect.width - bb.width * k) / 2 - bb.x * k;
     view.y = (rect.height - bb.height * k) / 2 - bb.y * k;
@@ -2666,6 +2755,9 @@ const VIEWER_JS = String.raw`
   // 나머지는 중심 주제를 화면 가운데에. 전체 맞추기는 ⛶ 단추로.
   var HOME_TOP = { 'tree-right': 1, 'tree-down': 1, 'process-tree-right': 1 };
   function home() {
+    // 휴대폰 첫 화면 = 맵 전체 맞추기 (2026-10-05) — 100% 로 열면 작은 화면에는 중심 주제
+    // 둘레만 보여 맵이 어떻게 생겼는지 알 수 없다. 데스크톱은 아래 규칙 그대로.
+    if (isCompact()) { fit(); return; }
     var r = DATA.root;
     if (r._cx == null || r._cy == null) { fit(); return; }
     var rect = svg.getBoundingClientRect();
@@ -2981,6 +3073,23 @@ const VIEWER_JS = String.raw`
       searchResults.style.display = 'none';
     }
   });
+  // ── 휴대폰: 검색은 돋보기 단추로 접혀 있다가 누르면 머리말 첫 줄을 덮으며 펼쳐진다.
+  //    (데스크톱에서는 이 단추가 CSS 로 숨어 있어 아무 일도 없다)
+  var searchToggle = document.getElementById('mm-search-toggle');
+  function setSearchOpen(on) {
+    document.body.classList.toggle('mm-search-open', on);
+    searchToggle.setAttribute('aria-expanded', on ? 'true' : 'false');
+    searchToggle.setAttribute('title', on ? MML.searchClose : MML.searchOpen);
+    searchToggle.setAttribute('aria-label', on ? MML.searchClose : MML.searchOpen);
+    if (on) { searchInput.focus(); if ((searchInput.value || '').trim()) runSearch(); }
+    else { searchResults.style.display = 'none'; searchInput.blur(); }
+  }
+  searchToggle.addEventListener('click', function () {
+    setSearchOpen(!document.body.classList.contains('mm-search-open'));
+  });
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.body.classList.contains('mm-search-open')) setSearchOpen(false);
+  });
 
   // ── 전체화면 모드 — 에디터 툴바와 동일 (F11식 토글, 아이콘·title 전환) ──
   var fsBtn = document.getElementById('mm-fullscreen');
@@ -3000,6 +3109,8 @@ const VIEWER_JS = String.raw`
     }
   });
   document.addEventListener('fullscreenchange', syncFsBtn);
+  // 전체화면 API 가 없는 브라우저(iPhone Safari)에서는 눌러도 아무 일이 없다 — 단추를 감춘다
+  if (!document.documentElement.requestFullscreen) fsBtn.style.display = 'none';
   document.getElementById('mm-zoom-out').addEventListener('click', function () {
     zoomTo((Math.round(view.k * 100) - 5) / 100); // 에디터와 동일: 5%p 단위
   });
@@ -3174,10 +3285,17 @@ const VIEWER_JS = String.raw`
     tipEl.style.left = left + 'px';
     tipEl.style.top = top + 'px';
   }
+  // 손가락으로 톡 치면 브라우저가 흉내 mouseover 를 보낸다 — 그때 뜬 설명은 손을 떼도
+  // 남아 화면을 가린다. 손가락 직후의 mouseover 는 설명을 띄우지 않는다.
+  var lastTouchAt = 0;
+  document.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'touch') lastTouchAt = Date.now();
+  }, true);
   document.addEventListener('mouseover', function (e) {
     var target = e.target;
     if (!target || !target.closest) return;
     tipRestore();
+    if (Date.now() - lastTouchAt < 1000) return;
     var host = target.closest('[title]');
     if (host && (host.getAttribute('title') || '').replace(/\s/g, '')) {
       var text = host.getAttribute('title');
@@ -3508,8 +3626,19 @@ const VIEWER_CSS = `
     height: 46px; flex-shrink: 0; display: flex; align-items: center; gap: 10px;
     padding: 0 14px; background: #FFFDF8; border-bottom: 1px solid #E4D9C3;
   }
-  header h1 { font-size: 14px; font-weight: 700; }
-  header .meta { font-size: 11px; color: #8B7D68; }
+  /* 좁아지면 제목이 세로로 찌그러지던 것(2026-10-05 보고) — 한 줄 + 말줄임, 단추는 줄지 않는다 */
+  header h1 {
+    font-size: 14px; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto;
+  }
+  header .meta {
+    font-size: 11px; color: #8B7D68;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto;
+  }
+  header button, #mm-search-wrap { flex-shrink: 0; }
+  /* 보기 단추 묶음 — 데스크톱에서는 상자가 없는 것처럼(contents) 예전 줄 그대로 */
+  #mm-tools { display: contents; }
+  #mm-search-toggle { display: none; }
   header .spacer { flex: 1; }
   header button {
     padding: 5px 11px; border: 1px solid #D8CBB2; border-radius: 6px;
@@ -3856,6 +3985,130 @@ const VIEWER_CSS = `
     padding: 0 14px; gap: 8px; background: #FFFDF8;
     border-top: 1px solid #E4D9C3; font-size: 10.5px; color: #8B7D68;
   }
+  /* ════ 휴대폰 · 손가락 (2026-10-05) ════════════════════════════════════════════
+     데스크톱(마우스)에는 하나도 걸리지 않는다. 조건은 VIEWER_JS 의 COMPACT_MQ 와 같다. */
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  html, body { overscroll-behavior: none; }
+  @supports (height: 100dvh) { body { height: 100dvh; } }
+  /* 브라우저 자체 확대·스크롤이 맵 손짓과 다투지 않게 — 스크롤하는 곳만 그 방향을 허락 */
+  header, footer, #mm-zoombar, #mm-minimap { touch-action: none; }
+  #mm-tools { touch-action: pan-x; }
+  #mm-note, #mm-outline, #mm-search-results, #mm-chooser { touch-action: pan-x pan-y; }
+  #mm-svg { -webkit-tap-highlight-color: transparent; }
+  /* 손가락이면 누르는 자리 ≥ 40px */
+  @media (pointer: coarse) {
+    header button.icon { width: 40px; height: 40px; font-size: 17px; }
+    #mm-zoombar { gap: 4px; padding: 4px; }
+    #mm-zoombar button { height: 40px; min-width: 40px; font-size: 15px; }
+    #mm-zoom-pct { min-width: 56px; }
+    #mm-zoom-input { height: 40px; font-size: 16px; }
+    #mm-note-close {
+      top: 2px; right: 2px; width: 40px; height: 40px; font-size: 17px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    #mm-note h2 { padding-right: 40px; min-height: 30px; }
+    .mm-chooser-item { min-height: 40px; padding: 10px 12px; font-size: 13px; }
+    .mm-copy { min-height: 32px; padding: 4px 10px; font-size: 12px; }
+    #mm-search-results .hit { padding: 10px 12px; }
+    .mm-ol-row { padding: 9px 8px; font-size: 14px; }
+    .mm-ol-caret { width: 24px; }
+    #mm-minimap { bottom: calc(92px + env(safe-area-inset-bottom)); }
+  }
+  /* 호버가 없는 화면 — 펼쳐진 노드의 접기(−)는 선택한(톡 친) 노드에서 보이고 눌린다.
+     안 보이는 칩이 손가락을 가로채지 않게 나머지는 누를 수 없게 둔다. */
+  @media (hover: none) {
+    .mm-toggle-open { pointer-events: none; }
+    .mm-node.mm-selected .mm-toggle-open { opacity: 1; pointer-events: auto; }
+    header button:hover, #mm-zoombar button:hover { background: #FFF; }
+    body.mm-dark header button:hover, body.mm-dark #mm-zoombar button:hover { background: #262A31; }
+    header button.active:hover { background: #F0E2C4; }
+    body.mm-dark header button.active:hover { background: #4A3B18; }
+  }
+  /* 손가락은 오른쪽 버튼 끌기·Pan 모드가 필요 없다 — 한 손가락 끌기가 곧 이동 */
+  @media (hover: none) and (pointer: coarse) { #mm-pan { display: none; } }
+  /* 휴대폰 세로(폭 < 768) · 눕힌 휴대폰: 머리말 두 줄
+       1줄: 제목(말줄임) · 검색(돋보기) · 다크
+       2줄: 보기 단추 묶음 (넘치면 그 줄 안에서만 옆으로 밀린다 — 페이지는 가로로 안 밀린다) */
+  @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+    header {
+      height: auto; flex-wrap: wrap; position: relative;
+      row-gap: 4px; column-gap: 6px;
+      padding: calc(4px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right))
+        4px calc(10px + env(safe-area-inset-left));
+    }
+    header h1 { order: 1; flex: 1 1 0; font-size: 15px; line-height: 40px; }
+    header .meta, header .spacer { display: none; }
+    #mm-search-wrap { order: 2; }
+    #mm-dark { order: 3; }
+    #mm-host-right { order: 4; }
+    #mm-host-center { order: 5; flex: 1 1 100% !important; height: 36px !important; }
+    #mm-tools {
+      order: 6; flex: 1 1 100%; display: flex; align-items: center; gap: 4px;
+      overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-width: 0;
+    }
+    #mm-tools::-webkit-scrollbar { display: none; }
+    /* 아웃라인 분할은 좁은 화면에서 맵·목록 둘 다 못 쓰게 된다 — 전체 아웃라인 전환만 둔다 */
+    #mm-outline-split { display: none; }
+    /* 검색 — 접힌 돋보기 단추. 펼치면 머리말 첫 줄을 덮는다 */
+    #mm-search-toggle { display: inline-flex; }
+    #mm-search-toggle .ic-close { display: none; }
+    #mm-search, #mm-search-ic { display: none; }
+    body.mm-search-open #mm-search-wrap {
+      position: absolute; z-index: 70; display: flex; gap: 6px;
+      top: calc(4px + env(safe-area-inset-top));
+      left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right));
+      background: #FFFDF8;
+    }
+    body.mm-dark.mm-search-open #mm-search-wrap { background: #1F2229; }
+    body.mm-search-open #mm-search {
+      display: block; order: -1; flex: 1; width: auto; min-width: 0;
+      height: 40px; font-size: 16px; padding: 0 10px;
+    }
+    body.mm-search-open #mm-search-toggle .ic-open { display: none; }
+    body.mm-search-open #mm-search-toggle .ic-close { display: inline; }
+    #mm-search-results {
+      top: 46px; left: 0; width: 100%; max-height: 60vh; max-height: 60dvh;
+    }
+    /* 노트·상세 — 화면 아래 폭 전체 시트 */
+    #mm-note {
+      left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right));
+      top: auto; bottom: calc(8px + env(safe-area-inset-bottom));
+      width: auto; min-width: 0; max-height: 62vh; max-height: 62dvh;
+      resize: none; z-index: 80; padding: 12px 14px 14px; border-radius: 14px;
+      box-shadow: 0 -6px 28px rgba(80, 60, 20, 0.22);
+      overscroll-behavior: contain;
+    }
+    #mm-note h2 { cursor: default; font-size: 14px; }
+    /* 좁은 시트에서는 문단을 줄바꿈해 읽힌다 (데스크톱은 입력한 줄 그대로 + 가로 스크롤) */
+    .mm-note-block { white-space: pre-wrap; overflow-wrap: anywhere; }
+    #mm-chooser { max-width: calc(100vw - 16px); }
+    #mm-tip { max-width: calc(100vw - 16px); }
+    /* 미니맵 — 작게, 줌 바 위 */
+    #mm-minimap {
+      right: calc(8px + env(safe-area-inset-right)); width: 150px; height: 102px;
+    }
+    #mm-zoombar {
+      right: calc(8px + env(safe-area-inset-right));
+      bottom: calc(32px + env(safe-area-inset-bottom));
+    }
+    footer {
+      display: block; height: auto; min-height: 26px; line-height: 26px;
+      padding: 0 calc(10px + env(safe-area-inset-right)) env(safe-area-inset-bottom) calc(10px + env(safe-area-inset-left));
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    body.mm-outline-split #mm-outline { min-width: 0; }
+  }
+  /* 눕힌 휴대폰 중 폭이 넉넉하면(≥ 600) 한 줄로 — 세로 공간이 귀하다 */
+  @media (pointer: coarse) and (max-height: 500px) and (min-width: 600px) {
+    header { flex-wrap: nowrap; }
+    #mm-tools { order: 2; flex: 0 1 auto; }
+    #mm-search-wrap { order: 3; }
+    #mm-dark { order: 4; }
+    #mm-host-center { order: 5; flex: 0 0 var(--slot-w) !important; height: 28px !important; }
+    #mm-host-right { order: 6; }
+    #mm-search-results { max-height: 70vh; max-height: calc(100dvh - 70px); }
+    #mm-note { max-height: 78vh; max-height: calc(100dvh - 70px); }
+  }
 `;
 
 function escapeHtml(s: string): string {
@@ -3886,6 +4139,7 @@ const VIEWER_STRING_KEYS = [
   'kindNode', 'kindTag', 'kindNote', 'kindLink', 'resultsN', 'hitTip', 'root',
   'fsExit', 'fsEnter', 'centerOff', 'centerOn', 'toLight', 'toDark', 'viewNote',
   'splitClose', 'splitOpen', 'splitBusy', 'toMap', 'toOutline',
+  'searchOpen', 'searchClose',
 ] as const;
 
 function viewerStrings(): Record<string, string> {
@@ -4048,7 +4302,7 @@ export function buildStandaloneHtml(
 <html lang="${currentLang()}">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>${escapeHtml(map.title)} — EasyMindMap</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent(LOGO_SVG)}">
 <style>${VIEWER_CSS}</style>
@@ -4058,14 +4312,16 @@ export function buildStandaloneHtml(
   <h1>${LOGO_SVG.replace('<svg ', '<svg width="20" height="20" style="vertical-align:-4px;margin-right:6px" ')}${escapeHtml(map.title)}</h1>
   <span class="meta" id="mm-count"></span>
   <span class="spacer"></span>${hostSlots
-    ? `\n  <span id="mm-host-center" aria-hidden="true" style="flex:0 0 ${Math.round(hostSlots.center)}px;height:28px"></span>\n  <span class="spacer"></span>`
+    ? `\n  <span id="mm-host-center" aria-hidden="true" style="--slot-w:${Math.round(hostSlots.center)}px;flex:0 0 var(--slot-w);height:28px"></span>\n  <span class="spacer"></span>`
     : ''}
   <span id="mm-search-wrap">
+    <button id="mm-search-toggle" class="icon" type="button" title="${A('searchOpen')}" aria-label="${A('searchOpen')}" aria-expanded="false" data-testid="m-viewer-search-toggle"><svg class="ic-open" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg><svg class="ic-close" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <svg id="mm-search-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
     <input id="mm-search" type="search" placeholder="${A('searchPlaceholder')}"
       title="${A('searchTitle')}" />
     <div id="mm-search-results"></div>
   </span>
+  <span id="mm-tools">
   <button id="mm-center" class="icon" title="${A('centerOn')}"><svg id="mm-center-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></button>
   <button id="mm-pan" class="icon" title="${A('pan')}">✋</button>
   <button id="mm-fit" class="icon" title="${A('fit')}">⛶</button>
@@ -4075,6 +4331,7 @@ export function buildStandaloneHtml(
   <button id="mm-outline-split" class="icon" title="${A('splitOpen')}">◫</button>
   <button id="mm-view-toggle" class="icon" title="${A('toOutline')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg></button>
   <button id="mm-fullscreen" class="icon" title="${A('fsEnter')}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>
+  </span>
   <button id="mm-dark" class="icon" title="${A('toDark')}">🌙</button>${hostSlots
     ? `\n  <span id="mm-host-right" aria-hidden="true" style="flex:0 0 ${Math.round(hostSlots.right)}px;height:28px"></span>`
     : ''}

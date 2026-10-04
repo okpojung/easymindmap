@@ -20,6 +20,9 @@ import {
 import { useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
+import { useCoarse } from '@/hooks/useViewport';
 // 레벨 표기 = 중심 주제가 1레벨 (내부 depth 0=중심 → 표시 레벨 = depth+1)
 // (화면 글자는 사전 키 — 그릴 때 tr() 로 바꾼다)
 const LEVEL_LABELS = ['panel.settings.level1', 'panel.settings.level2', 'panel.settings.level3', 'panel.settings.level4', 'panel.settings.level5'];
@@ -110,6 +113,7 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
   const autosaveIntervalMin = useAppSettingsStore((s) => s.autosaveIntervalMin);
   const setAutosaveIntervalMin = useAppSettingsStore((s) => s.setAutosaveIntervalMin);
 
+  const coarse = useCoarse();
   const selectStyle: CSSProperties = {
     fontSize: 10.5, padding: '3px 4px', borderRadius: 4,
     border: `1px solid ${t.border}`, background: t.surface, color: t.text,
@@ -117,7 +121,7 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
   };
 
   return (
-    <div style={{ padding: '12px 14px' }}>
+    <div data-mm-touch="" style={{ padding: '12px 14px' }}>
       {/* ── 저장 (개인 설정) ─────────────────────────────────────────
           맵이 아니라 **이 브라우저**의 설정이다. 2026-08-06 저장 모델
           개편 — 실시간 저장(디바운스)을 없애고 이 주기로만 서버에 올린다.
@@ -189,12 +193,13 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
                   fontFamily: family || 'inherit',
                 }}>{tr('panel.settings.sampleText')}</span>
               </div>
-              <div style={{ display: 'flex', gap: 5 }}>
+              {/* 손가락 기기 — 글자가 16px 로 커지므로 정렬 칸은 다음 줄로 (좁은 서랍에서 잘리지 않게) */}
+              <div style={{ display: 'flex', flexWrap: coarse ? 'wrap' : undefined, gap: 5 }}>
                 <select
                   value={size}
                   onChange={(e) => updateLevelFont(li, { size: Number(e.target.value) })}
                   title={tr('panel.settings.fontSizeTip')}
-                  style={{ ...selectStyle, width: 62 }}
+                  style={{ ...selectStyle, width: coarse ? 84 : 62 }}
                 >
                   {(FONT_SIZES.includes(size) ? FONT_SIZES : [...FONT_SIZES, size].sort((a, b) => a - b))
                     .map((s) => (
@@ -218,7 +223,7 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
                   onChange={(e) =>
                     updateLevelFont(li, { align: (e.target.value || undefined) as TextAlign | undefined })}
                   title={tr('panel.settings.alignTip')}
-                  style={{ ...selectStyle, width: 96 }}
+                  style={{ ...selectStyle, width: coarse ? undefined : 96, flex: coarse ? '1 1 100%' : undefined }}
                 >
                   {ALIGN_OPTIONS.map((a) => (
                     <option key={a.key} value={a.key}>{tr(a.labelKey)}</option>
@@ -309,7 +314,7 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
           value={noteFont?.size && noteFont.size > 0 ? noteFont.size : 13}
           onChange={(e) => setNoteFont({ size: Number(e.target.value) })}
           title={tr('panel.settings.noteSizeTip')}
-          style={{ ...selectStyle, width: 74 }}
+          style={{ ...selectStyle, width: coarse ? 100 : 74 }}
         >
           {[10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24].map((sz) => (
             <option key={sz} value={sz}>{sz}pt{sz === 13 ? tr('panel.settings.defaultSuffix') : ''}</option>

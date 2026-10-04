@@ -45,6 +45,8 @@ import { extractClipboardImage } from '@/utils/clipboardImage';
 import type { LaidOutNode } from '@/layout/types';
 import { useImageSrcResolver } from '@/utils/imageSrc';
 import { useTr } from '@/i18n';
+import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
+import { primeTouchKeyboard } from '@/editor/canvas/touchKeyboard';
 
 interface PaneProps {
   t: ThemeTokens;
@@ -61,10 +63,10 @@ interface ListPopup {
   items: { label: string; url?: string }[];
 }
 
-/** 헤더의 작은 사각 버튼 — 맵 모드 +/− 와 같은 감각으로 */
-function miniBtn(t: ThemeTokens) {
+/** 헤더의 작은 사각 버튼 — 맵 모드 +/− 와 같은 감각으로 (손가락이면 40px) */
+function miniBtn(t: ThemeTokens, coarse = false) {
   return {
-    width: 22, height: 22, borderRadius: 5, flexShrink: 0,
+    width: coarse ? 40 : 22, height: coarse ? 40 : 22, borderRadius: coarse ? 8 : 5, flexShrink: 0,
     border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted,
     cursor: 'pointer', fontSize: 13, fontWeight: 700, lineHeight: 1, padding: 0,
   } as const;
@@ -72,6 +74,9 @@ function miniBtn(t: ThemeTokens) {
 
 export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps) {
   const tr = useTr();
+  // 폰 폭·손가락 (모바일 웹, 2026-10-05) — 머리말 안내는 손가락용으로, 단추는 40px
+  const compact = usePhoneLayout();
+  const coarse = useCoarse();
   const setOutlineSplit = useEditorUiStore((s) => s.setOutlineSplit);
   const handleClose = onClose ?? (() => setOutlineSplit(false));
   // 맵 모드의 모두 접기/펼치기와 **같은 스토어 액션**을 쓴다 (2026-08-06)
@@ -100,12 +105,13 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
-        padding: '9px 14px', borderBottom: `1px solid ${t.divider}`,
+        padding: compact ? '4px 8px 4px 12px' : '9px 14px', borderBottom: `1px solid ${t.divider}`,
         background: t.surfaceAlt, flexShrink: 0,
       }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: t.text }}>{tr('editor.outline.title')}</div>
+        <div style={{ fontSize: compact ? 13 : 12, fontWeight: 700, color: t.text }}>{tr('editor.outline.title')}</div>
         <div style={{ fontSize: 9.5, color: t.textSubtle, flex: 1, minWidth: 0 }}>
-          {tr('editor.outline.hint')}
+          {/* 폰 폭은 자리가 없어 숨긴다(톡 규칙은 맵 메뉴의 안내와 같다), 손가락이면 톡 안내 */}
+          {compact ? null : coarse ? tr('editor.outline.touchHint') : tr('editor.outline.hint')}
         </div>
         {/* **모두 펼치기 / 모두 접기** (2026-08-06 요청) — 맵 모드의 +/−
             와 같은 동작·같은 기호다. 아웃라인은 맵의 `collapsed` 를 그대로
@@ -118,7 +124,7 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
           title={outlineScope === 'all'
             ? tr('editor.fold.expandAll')
             : tr('editor.fold.expandSubtree')}
-          style={miniBtn(t)}
+          style={miniBtn(t, coarse)}
         >＋</button>
         <button
           data-testid="outline-collapse-all"
@@ -128,12 +134,14 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
           title={outlineScope === 'all'
             ? tr('editor.fold.collapseAll')
             : tr('editor.fold.collapseSubtree')}
-          style={miniBtn(t)}
+          style={miniBtn(t, coarse)}
         >−</button>
         <button onClick={handleClose} title={closeTitle ?? tr('editor.outline.close')}
+          aria-label={closeTitle ?? tr('editor.outline.close')}
           style={{
             border: 'none', background: 'none', color: t.textMuted,
-            cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 2,
+            cursor: 'pointer', fontSize: coarse ? 16 : 13, lineHeight: 1, padding: 2,
+            ...(coarse ? { width: 40, height: 40, flexShrink: 0 } : {}),
           }}>✕</button>
       </div>
 
@@ -162,7 +170,7 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
       {/* 링크/첨부 목록 팝업 — 항목 클릭 시 새 탭으로 연다 */}
       {listPopup && (
         <div style={{
-          position: 'absolute', right: 14, top: 60, width: 260, zIndex: 30,
+          position: 'absolute', right: 14, top: 60, width: 260, maxWidth: 'calc(100% - 28px)', zIndex: 30,
           background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10,
           boxShadow: '0 8px 24px rgba(80, 60, 20, 0.18)', padding: '10px 12px',
         }}>
@@ -177,7 +185,7 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
             <div key={i}
               onClick={() => it.url && window.open(it.url, '_blank', 'noopener')}
               style={{
-                fontSize: 11.5, padding: '5px 6px', borderRadius: 5,
+                fontSize: 11.5, padding: coarse ? '11px 6px' : '5px 6px', borderRadius: 5,
                 cursor: it.url ? 'pointer' : 'default',
                 color: it.url ? t.primary : t.textMuted,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -250,6 +258,11 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(node.text);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // 손가락 (모바일 웹, 2026-10-05) — 호버가 없으니 고른 행의 단추를 늘 보이고,
+  // 고른 행을 다시 톡 = 입력 (데스크톱 더블클릭)
+  const coarse = useCoarse();
+  const compactRow = usePhoneLayout();
+  const tapEditRef = useRef(false);
 
   useEffect(() => {
     if (editing) window.setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select(); }, 0);
@@ -402,8 +415,9 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
       tabIndex={-1}
       style={{
         border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted,
-        borderRadius: 4, fontSize: 10, padding: '1px 5px', cursor: 'pointer',
+        borderRadius: coarse ? 8 : 4, fontSize: coarse ? 12 : 10, padding: coarse ? '0 8px' : '1px 5px', cursor: 'pointer',
         lineHeight: 1.4, flexShrink: 0,
+        ...(coarse ? { minWidth: 40, height: 40, margin: '-8px 0' } : {}),
       }}>{label}</button>
   );
 
@@ -412,7 +426,14 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
       <div
         data-outline-id={node.id}
         tabIndex={0}
+        onPointerDown={(e) => { tapEditRef.current = e.pointerType === 'touch' && !!node.selected && !editing; }}
         onClick={() => {
+          if (tapEditRef.current) {
+            tapEditRef.current = false;
+            primeTouchKeyboard(); // 톡 처리 안에서 — iOS 키보드
+            startEdit();
+            return;
+          }
           setSelectedId(node.id);
           // 맵에서도 검색 선택처럼 노란 채움 + 붉은 테두리로 또렷하게
           // 강조한다 (다크 모드도 같은 고정색). 아웃라인만 선택하면
@@ -431,8 +452,9 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
         onMouseLeave={() => setHover(false)}
         style={{
           display: 'flex', alignItems: 'flex-start', gap: 4,
-          padding: '5px 6px',
-          paddingLeft: 8 + node.depth * 16,
+          padding: coarse ? '9px 6px' : '5px 6px',
+          // 폰 폭은 들여쓰기를 줄인다 — 깊은 단계에서 글자 칸이 남도록
+          paddingLeft: 8 + node.depth * (compactRow ? 12 : 16),
           borderRadius: 6,
           background: node.selected ? t.primarySoft : 'transparent',
           color: node.selected ? t.primary : t.text,
@@ -445,7 +467,8 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
           onClick={(e) => { e.stopPropagation(); setExpanded((x) => !x); }}
           tabIndex={-1}
           style={{
-            width: 16, height: 16, background: 'none', border: 'none',
+            width: coarse ? 28 : 16, height: coarse ? 28 : 16, margin: coarse ? '-6px 0' : undefined,
+            background: 'none', border: 'none', flexShrink: 0,
             color: t.textMuted, cursor: 'pointer', display: 'flex',
             alignItems: 'center', justifyContent: 'center',
             visibility: hasChildren ? 'visible' : 'hidden', padding: 0,
@@ -471,7 +494,8 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             <MarkToolbar
               t={t}
               onApply={wrapSelection}
-              style={{ display: 'inline-flex', marginBottom: 4 }}
+              // 손가락(40px 단추)이면 좁은 행에서 줄을 바꿔 행 안에 머문다
+              style={{ display: 'inline-flex', marginBottom: 4, ...(coarse ? { flexWrap: 'wrap' as const, maxWidth: '100%', boxSizing: 'border-box' as const } : {}) }}
             />
             {codeDlgCursor !== null && (
               // 코드 블록 팝업 편집기 — { } 버튼 (맵 편집창과 동일)
@@ -596,7 +620,8 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
               // (툴바 래퍼 도입 시 flex:1이 무효가 되어 편집창이 아주 작게
               //  줄어들던 회귀의 수정 — 회귀 E2E로 검증)
               width: '100%', boxSizing: 'border-box',
-              fontSize: 13, lineHeight: 1.5,
+              // 손가락 — 16px 미만이면 iOS 가 입력칸에 포커스할 때 화면을 확대한다
+              fontSize: coarse ? 16 : 13, lineHeight: 1.5,
               padding: '2px 6px', resize: 'vertical',
               borderRadius: 4, border: `1px solid ${t.primaryBorder}`,
               background: t.surface, color: t.text, outline: 'none',
@@ -674,7 +699,10 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
         {!editing && (
           <span style={{
             display: 'inline-flex', gap: 3, marginLeft: 'auto', flexShrink: 0,
-            visibility: hover ? 'visible' : 'hidden',
+            // 손가락 — 호버가 없으므로 **고른 행에만** 보인다. 자리를 늘 차지하게 두면
+            // (마우스용 규칙) 40px 단추 셋이 모든 행의 글자 칸을 130px씩 빼앗는다
+            visibility: hover || coarse ? 'visible' : 'hidden',
+            ...(coarse && !node.selected ? { display: 'none' } : {}),
           }}>
             {!isCenter && btn(tr('editor.outline.addSibling'), tr('editor.outline.addSiblingTitle'), () => {
               const id = addSiblingNode(node.id, 'after');

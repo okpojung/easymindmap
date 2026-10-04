@@ -23,6 +23,8 @@ import { isDraftFromThisSession, writeLocalDraftNow } from '@/hooks/useLocalDraf
 import { useTr, useLang, LANG_LOCALE } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
+// 손가락 기기의 누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 /**
  * **이 세션에서 복구 배너를 이미 한 번 보여 줬는가** (2026-08-06 보고).
  *
@@ -42,8 +44,12 @@ let shownThisSession = false;
 /** 화면 위쪽 가운데 알림 띠 — 복구 안내와 보관 불가 안내가 함께 쓴다 */
 function bannerStyle(t: ThemeTokens) {
   return {
+    // 폭은 **글 길이대로, 화면 - 24px 까지** (2026-10-05). left: 50% 인 절대 위치 상자는
+    // 그냥 두면 부모의 **절반 폭**만 쓴다 — 폰(360px)에서 글이 180px 기둥으로 접혔다.
+    // 단추는 자리가 모자라면 다음 줄로 내려간다(flexWrap).
     position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
-    zIndex: 30, maxWidth: 640, padding: '10px 14px', borderRadius: 8,
+    width: 'max-content', maxWidth: 'min(640px, calc(100% - 24px))', boxSizing: 'border-box', flexWrap: 'wrap',
+    zIndex: 30, padding: '10px 14px', borderRadius: 8,
     background: t.surface, color: t.text,
     border: `1px solid ${t.warning}`, borderLeft: `4px solid ${t.warning}`,
     boxShadow: '0 6px 20px rgba(60,45,15,0.22)',
@@ -86,9 +92,9 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
   if (draftWriteFailed) {
     return (
       <div data-testid="draft-write-failed"
-           style={{ ...bannerStyle(t), borderColor: t.danger ?? t.warning }}>
+           data-mm-touch="" style={{ ...bannerStyle(t), borderColor: t.danger ?? t.warning }}>
         <span style={{ display: 'flex', color: t.danger ?? t.warning }}><I.History size={16} /></span>
-        <div style={{ flex: 1, lineHeight: 1.5 }}>
+        <div style={{ flex: '1 1 220px', minWidth: 0, lineHeight: 1.5 }}>
           <b>{tr('cloud.draft.writeFailedTitle')}</b>
           <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>
             {rich(tr('cloud.draft.writeFailedBody'))}
@@ -108,9 +114,9 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
 
   if (storageOff) {
     return (
-      <div data-testid="draft-storage-off" style={{ ...bannerStyle(t), borderColor: t.danger ?? t.warning }}>
+      <div data-testid="draft-storage-off" data-mm-touch="" style={{ ...bannerStyle(t), borderColor: t.danger ?? t.warning }}>
         <span style={{ display: 'flex', color: t.warning }}><I.History size={16} /></span>
-        <div style={{ flex: 1, lineHeight: 1.5 }}>
+        <div style={{ flex: '1 1 220px', minWidth: 0, lineHeight: 1.5 }}>
           <b>{tr('cloud.draft.storageOffTitle')}</b>
           <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>
             {tr('cloud.draft.storageOffBody')}
@@ -171,10 +177,11 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
   return (
     <div
       data-testid="draft-recovery"
+      data-mm-touch=""
       style={bannerStyle(t)}
     >
       <span style={{ display: 'flex', color: t.warning }}><I.History size={16} /></span>
-      <div style={{ flex: 1, lineHeight: 1.5 }}>
+      <div style={{ flex: '1 1 220px', minWidth: 0, lineHeight: 1.5 }}>
         <b>{tr('cloud.draft.title')}</b>
         <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>
           {tr('cloud.draft.meta', { title: draft.title, n: draft.nodeCount, when })}

@@ -8,6 +8,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { useTr } from '@/i18n';
 
+// 손가락 기기의 누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 export function OutageBanner({ t }: { t: ThemeTokens }) {
   const tr = useTr();
   const notice = useAutosaveStore((s) => s.outageNotice);
@@ -16,11 +18,16 @@ export function OutageBanner({ t }: { t: ThemeTokens }) {
   return (
     <div
       data-testid="outage-banner"
+      data-mm-touch=""
       data-kind={notice.kind}
       role="status"
       style={{
+        // 폭은 **글 길이대로, 화면 - 24px 까지** (2026-10-05). left: 50% 인 절대 위치 상자는
+        // 그냥 두면 부모의 **절반 폭**만 쓴다 — 폰(360px)에서 글이 180px 기둥으로 접혔다.
+        // 단추는 자리가 모자라면 다음 줄로 내려간다(flexWrap).
         position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
-        zIndex: 31, maxWidth: 640, padding: '10px 14px', borderRadius: 8,
+        width: 'max-content', maxWidth: 'min(640px, calc(100% - 24px))', boxSizing: 'border-box', flexWrap: 'wrap',
+        zIndex: 31, padding: '10px 14px', borderRadius: 8,
         background: t.surface, color: t.text,
         border: `1px solid ${t.warning}`, borderLeft: `4px solid ${t.warning}`,
         boxShadow: '0 6px 20px rgba(60,45,15,0.22)',
@@ -28,7 +35,7 @@ export function OutageBanner({ t }: { t: ThemeTokens }) {
       }}
     >
       <span aria-hidden style={{ color: t.warning, fontSize: 16, lineHeight: 1 }}>⟳</span>
-      <div style={{ flex: 1, lineHeight: 1.5 }}>
+      <div style={{ flex: '1 1 220px', minWidth: 0, lineHeight: 1.5 }}>
         <b>{notice.title}</b>
         <div style={{ fontSize: 11.5, color: t.textMuted, marginTop: 2 }}>{notice.detail}</div>
       </div>

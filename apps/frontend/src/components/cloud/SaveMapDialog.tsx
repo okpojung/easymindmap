@@ -20,6 +20,8 @@ import { flattenFolders } from './folderTree';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { useTr } from '@/i18n';
 
+// 폰 대화상자 규칙(data-mm-*) — 불러오기만 하면 CSS 가 한 번 들어간다
+import '@/components/ui/mobileCss';
 export function SaveMapDialog({
   t, defaultTitle, onSaved, onCancel, note,
 }: {
@@ -93,6 +95,7 @@ export function SaveMapDialog({
   return (
     <div
       onClick={onCancel}
+      data-mm-dialog-overlay=""
       style={{
         position: 'fixed', inset: 0, zIndex: 220, background: 'rgba(0,0,0,0.35)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -101,11 +104,15 @@ export function SaveMapDialog({
       <div
         onClick={(e) => e.stopPropagation()}
         data-testid="save-map-dialog"
+        data-mm-dialog=""
+        data-mm-touch=""
         style={{
           position: 'relative',
           width: 'min(460px, 92vw)', background: t.surface, color: t.text,
           border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
           boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+          // 화면보다 길면(낮은 창·폰 가로) 안에서 구른다 — 전에는 위아래가 잘렸다
+          maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', boxSizing: 'border-box',
         }}
       >
         <DialogXButton t={t} testId="save-map-dialog-x" onClose={onCancel} />

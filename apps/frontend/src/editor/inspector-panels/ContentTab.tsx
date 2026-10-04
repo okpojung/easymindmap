@@ -19,6 +19,8 @@ import { useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
   const tr = useTr();
   const map = useDocumentStore((s) => s.map);
@@ -112,7 +114,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   };
 
   return (
-    <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
+    <div data-mm-touch="" style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
       <InspectorSection t={t} title={tr('inspector.content.links')}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {links.map((link) => (

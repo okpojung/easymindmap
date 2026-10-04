@@ -3459,7 +3459,27 @@ const VIEWER_JS = String.raw`
   });
 
   render();
-  home(); // 첫 화면은 에디터와 같은 규칙(100% · 트리는 중심 주제 위쪽) — 전체 맞추기는 ⛶
+  // 첫 화면은 에디터와 같은 규칙(100% · 트리는 중심 주제 위쪽) — 전체 맞추기는 ⛶
+  //
+  // ★ **크기가 정해진 뒤에도 다시 맞춘다** (2026-10-05, dev 공개 화면에서 발견 — 맵이 왼쪽
+  //   위 모서리에 붙어 열렸다). home() 은 그 순간의 화면 크기로 가운데를 잡는데, 뒤에서 처음
+  //   열린 탭은 크기 0 으로 시작하고(가운데 = 0,0), 공개 화면은 잠김 띠를 잰 뒤 iframe 높이를
+  //   줄인다. 그래서 **사용자가 화면을 움직이기 전까지는** 크기가 바뀔 때마다 첫 화면을 다시
+  //   잡는다. 한 번이라도 움직였으면(view 가 첫 화면과 다르면) 더는 손대지 않는다.
+  var homeView = null;
+  function homeNow() { home(); homeView = { x: view.x, y: view.y, k: view.k }; }
+  function rehomeIfUntouched() {
+    if (!homeView) return;
+    if (view.x !== homeView.x || view.y !== homeView.y || view.k !== homeView.k) { homeView = null; return; }
+    var rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    homeNow();
+  }
+  homeNow();
+  if (window.ResizeObserver) new ResizeObserver(rehomeIfUntouched).observe(svg);
+  else window.addEventListener('resize', rehomeIfUntouched);
+  // 숨은 탭은 그리기를 멈춰 ResizeObserver 가 앞으로 나올 때까지 오지 않는다 — 나오는 순간 맞춘다
+  document.addEventListener('visibilitychange', rehomeIfUntouched);
   var savedMini = null;
   try { savedMini = localStorage.getItem(MM_KEY); } catch (e) {}
   if (savedMini === '1') setMinimap(true);

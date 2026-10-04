@@ -12,14 +12,17 @@ import { findNodeInMap, useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { CONNECTOR_DEFAULTS, CONNECTOR_WIDTH_MAX, connectorArrowsOf, connectorColorOf, connectorDashOf, connectorShapeOf, connectorWidthOf } from '@/editor/canvas/ConnectorLayer';
 import { InspectorSection, InspectorRow, ColorSwatchInput } from './InspectorSection';
+import { useTr, type TrVars } from '@/i18n';
+
+// 아래 표의 label·hint 는 사전 키 — 렌더할 때 번역한다
 
 const SHAPES: { key: ConnectorShape; label: string; icon: React.ReactNode }[] = [
-  { key: 'elbow', label: '각진 선', icon: (
+  { key: 'elbow', label: 'inspector.conn.shape.elbow', icon: (
     <svg width="34" height="18" viewBox="0 0 34 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 4 H17 V14 H32" />
     </svg>
   ) },
-  { key: 'rounded', label: '모서리 둥근', icon: (
+  { key: 'rounded', label: 'inspector.conn.shape.rounded', icon: (
     <svg width="34" height="18" viewBox="0 0 34 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 4 H13 Q17 4 17 8 V10 Q17 14 21 14 H32" />
     </svg>
@@ -27,43 +30,44 @@ const SHAPES: { key: ConnectorShape; label: string; icon: React.ReactNode }[] = 
 ];
 
 const DASHES: { key: ConnectorDash; label: string; dash?: string }[] = [
-  { key: 'solid', label: '실선' },
-  { key: 'dashed', label: '파선', dash: '6 4' },
-  { key: 'dotted', label: '점선', dash: '1 4' },
+  { key: 'solid', label: 'inspector.style.border.solid' },
+  { key: 'dashed', label: 'inspector.style.border.dashed', dash: '6 4' },
+  { key: 'dotted', label: 'inspector.style.border.dotted', dash: '1 4' },
 ];
 
 const ARROWS: { key: ConnectorArrows; label: string }[] = [
-  { key: 'none', label: '없음' },
-  { key: 'end', label: '끝 ▶' },
-  { key: 'start', label: '◀ 시작' },
-  { key: 'both', label: '◀ 양쪽 ▶' },
+  { key: 'none', label: 'inspector.style.shape.none' },
+  { key: 'end', label: 'inspector.conn.arrow.end' },
+  { key: 'start', label: 'inspector.conn.arrow.start' },
+  { key: 'both', label: 'inspector.conn.arrow.both' },
 ];
 
 // 닿는 면 (2026-09-23 사용자 요청: "시작 면과 끝 면을 설정할 수 있게") — auto 는 상대 노드 쪽
 const SIDES: { key: ConnectorSide; label: string; hint: string }[] = [
-  { key: 'auto', label: '자동', hint: '상대 노드가 있는 쪽 (둘 다 자동이면 오른쪽 고리·가운데 꺾음 규칙)' },
-  { key: 'top', label: '위', hint: '노드 위쪽 면 한가운데' },
-  { key: 'bottom', label: '아래', hint: '노드 아래쪽 면 한가운데' },
-  { key: 'left', label: '왼쪽', hint: '노드 왼쪽 면 한가운데' },
-  { key: 'right', label: '오른쪽', hint: '노드 오른쪽 면 한가운데' },
+  { key: 'auto', label: 'inspector.conn.side.auto', hint: 'inspector.conn.side.autoHint' },
+  { key: 'top', label: 'inspector.conn.side.top', hint: 'inspector.conn.side.topHint' },
+  { key: 'bottom', label: 'inspector.conn.side.bottom', hint: 'inspector.conn.side.bottomHint' },
+  { key: 'left', label: 'inspector.style.align.left', hint: 'inspector.conn.side.leftHint' },
+  { key: 'right', label: 'inspector.style.align.right', hint: 'inspector.conn.side.rightHint' },
 ];
 
 const PLACES: { key: ConnectorLabelPlace; label: string; hint: string }[] = [
-  { key: 'center', label: '가운데', hint: '선 한가운데 위에 얹는다' },
-  { key: 'above', label: '위', hint: '선 위(세로 변이면 왼쪽)' },
-  { key: 'below', label: '아래', hint: '선 아래(세로 변이면 오른쪽)' },
-  { key: 'branch', label: '곁가지', hint: '짧은 줄기로 매단 상자' },
+  { key: 'center', label: 'inspector.conn.place.center', hint: 'inspector.conn.place.centerHint' },
+  { key: 'above', label: 'inspector.conn.side.top', hint: 'inspector.conn.place.aboveHint' },
+  { key: 'below', label: 'inspector.conn.side.bottom', hint: 'inspector.conn.place.belowHint' },
+  { key: 'branch', label: 'inspector.conn.place.branch', hint: 'inspector.conn.place.branchHint' },
 ];
 
 const LABEL_SHAPES: { key: ConnectorLabelShape; label: string; icon: React.ReactNode }[] = [
-  { key: 'none', label: '없음', icon: <span style={{ display: 'inline-block', width: 22, height: 14, border: '1.5px dashed currentColor', borderRadius: 3, opacity: 0.4 }} /> },
-  { key: 'rounded', label: '둥근', icon: <span style={{ display: 'inline-block', width: 22, height: 14, border: '1.5px solid currentColor', borderRadius: 6 }} /> },
-  { key: 'rectangle', label: '사각', icon: <span style={{ display: 'inline-block', width: 22, height: 14, border: '1.5px solid currentColor', borderRadius: 2 }} /> },
-  { key: 'pill', label: '캡슐', icon: <span style={{ display: 'inline-block', width: 22, height: 14, border: '1.5px solid currentColor', borderRadius: 999 }} /> },
-  { key: 'ellipse', label: '원', icon: <span style={{ display: 'inline-block', width: 18, height: 14, border: '1.5px solid currentColor', borderRadius: '50%' }} /> },
+  { key: 'none', label: 'inspector.style.shape.none', icon: <span style={{ display: 'inline-block', width: 22, height: 14, border: '1.5px dashed currentColor', borderRadius: 3, opacity: 0.4 }} /> },
+  { key: 'rounded', label: 'inspector.style.shape.rounded', icon: <span style={{ display: 'inline-block', width: 22, height: 14, border: '1.5px solid currentColor', borderRadius: 6 }} /> },
+  { key: 'rectangle', label: 'inspector.style.shape.rectangle', icon: <span style={{ display: 'inline-block', width: 22, height: 14, border: '1.5px solid currentColor', borderRadius: 2 }} /> },
+  { key: 'pill', label: 'inspector.style.shape.pill', icon: <span style={{ display: 'inline-block', width: 22, height: 14, border: '1.5px solid currentColor', borderRadius: 999 }} /> },
+  { key: 'ellipse', label: 'inspector.style.shape.ellipse', icon: <span style={{ display: 'inline-block', width: 18, height: 14, border: '1.5px solid currentColor', borderRadius: '50%' }} /> },
 ];
 
 export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Connector }) {
+  const tr = useTr();
   const map = useDocumentStore((s) => s.map);
   const updateConnector = useDocumentStore((s) => s.updateConnector);
   const removeConnector = useDocumentStore((s) => s.removeConnector);
@@ -104,64 +108,64 @@ export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Co
         background: t.primarySoft, border: `1px solid ${t.primaryBorder}`,
         color: t.primary, fontSize: 11.5, fontWeight: 700, lineHeight: 1.5,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }} title={`${firstLine(from?.text)} → ${firstLine(to?.text)}`}>
-        연결선 · {firstLine(from?.text)} → {firstLine(to?.text)}
+      }} title={`${firstLine(from?.text, tr)} → ${firstLine(to?.text, tr)}`}>
+        {tr('inspector.conn.header', { from: firstLine(from?.text, tr), to: firstLine(to?.text, tr) })}
       </div>
 
-      <InspectorSection t={t} title="연결선 모양">
+      <InspectorSection t={t} title={tr('inspector.conn.shapeTitle')}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4 }}>
           {SHAPES.map((s) => (
-            <button key={s.key} title={s.label} data-testid={`connector-shape-${s.key}`}
+            <button key={s.key} title={tr(s.label)} data-testid={`connector-shape-${s.key}`}
               onClick={() => patch({ shape: s.key })} style={chip(shape === s.key)}>
               {s.icon}
-              <span style={{ fontSize: 9.5 }}>{s.label}</span>
+              <span style={{ fontSize: 9.5 }}>{tr(s.label)}</span>
             </button>
           ))}
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="닿는 면 — 어디서 나가 어디에 닿나">
-        <InspectorRow t={t} label="시작 면">
+      <InspectorSection t={t} title={tr('inspector.conn.sidesTitle')}>
+        <InspectorRow t={t} label={tr('inspector.conn.fromSide')}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 3 }}>
             {SIDES.map((s) => (
-              <button key={s.key} title={s.hint} data-testid={`connector-from-side-${s.key}`} onClick={() => patch({ fromSide: s.key === 'auto' ? undefined : s.key })}
+              <button key={s.key} title={tr(s.hint)} data-testid={`connector-from-side-${s.key}`} onClick={() => patch({ fromSide: s.key === 'auto' ? undefined : s.key })}
                 style={{ ...chip(fromSide === s.key), padding: '6px 0', fontSize: 10.5 }}>
-                {s.label}
+                {tr(s.label)}
               </button>
             ))}
           </div>
         </InspectorRow>
-        <InspectorRow t={t} label="끝 면">
+        <InspectorRow t={t} label={tr('inspector.conn.toSide')}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 3 }}>
             {SIDES.map((s) => (
-              <button key={s.key} title={s.hint} data-testid={`connector-to-side-${s.key}`} onClick={() => patch({ toSide: s.key === 'auto' ? undefined : s.key })}
+              <button key={s.key} title={tr(s.hint)} data-testid={`connector-to-side-${s.key}`} onClick={() => patch({ toSide: s.key === 'auto' ? undefined : s.key })}
                 style={{ ...chip(toSide === s.key), padding: '6px 0', fontSize: 10.5 }}>
-                {s.label}
+                {tr(s.label)}
               </button>
             ))}
           </div>
         </InspectorRow>
         <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.5, marginBottom: 8 }}>
-          같은 면끼리(아래→아래 등)는 그 면 바깥으로 도는 고리, 마주 보는 면은 가운데서 꺾고, 직각인 면은 모서리 한 점에서 꺾습니다.
+          {tr('inspector.conn.sidesHelp')}
         </div>
-        <InspectorRow t={t} label="줄기 위치">
+        <InspectorRow t={t} label={tr('inspector.conn.offset')}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: t.textMuted, flexWrap: 'wrap' }}>
             <span data-testid="connector-offset" style={{ fontVariantNumeric: 'tabular-nums', minWidth: 44, color: t.text }}>
-              {c.offset ? `${c.offset > 0 ? '+' : ''}${c.offset}px` : '기본'}
+              {c.offset ? `${c.offset > 0 ? '+' : ''}${c.offset}px` : tr('inspector.conn.offsetDefault')}
             </span>
             {!!c.offset && (
               <button data-testid="connector-offset-reset" onClick={() => patch({ offset: undefined })}
                 style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 5, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.textMuted, cursor: 'pointer' }}>
-                제자리로
+                {tr('inspector.conn.offsetReset')}
               </button>
             )}
-            <span style={{ fontSize: 10.5 }}>캔버스에서 고른 선의 가운데 손잡이를 끌어 옮깁니다</span>
+            <span style={{ fontSize: 10.5 }}>{tr('inspector.conn.offsetHelp')}</span>
           </div>
         </InspectorRow>
       </InspectorSection>
 
-      <InspectorSection t={t} title="선">
-        <InspectorRow t={t} label="두께">
+      <InspectorSection t={t} title={tr('inspector.conn.lineTitle')}>
+        <InspectorRow t={t} label={tr('inspector.conn.width')}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               type="range" min={0.5} max={CONNECTOR_WIDTH_MAX} step={0.5} value={width}
@@ -172,45 +176,45 @@ export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Co
             <span style={{ fontSize: 11, color: t.textMuted, width: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{width}px</span>
           </div>
         </InspectorRow>
-        <InspectorRow t={t} label="종류">
+        <InspectorRow t={t} label={tr('inspector.conn.dash')}>
           <div style={{ display: 'flex', gap: 4 }}>
             {DASHES.map((d) => (
               <button key={d.key} data-testid={`connector-dash-${d.key}`} onClick={() => patch({ dash: d.key })}
                 style={{ ...chip(dash === d.key), flex: 1 }}>
                 <svg width="30" height="8" viewBox="0 0 30 8"><line x1="1" y1="4" x2="29" y2="4" stroke="currentColor" strokeWidth="1.8" strokeDasharray={d.dash} strokeLinecap="round" /></svg>
-                <span style={{ fontSize: 9.5 }}>{d.label}</span>
+                <span style={{ fontSize: 9.5 }}>{tr(d.label)}</span>
               </button>
             ))}
           </div>
         </InspectorRow>
-        <InspectorRow t={t} label="화살표">
+        <InspectorRow t={t} label={tr('inspector.conn.arrows')}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
             {ARROWS.map((a) => (
               <button key={a.key} data-testid={`connector-arrows-${a.key}`} onClick={() => patch({ arrows: a.key })}
                 style={{ ...chip(arrows === a.key), padding: '6px 0', whiteSpace: 'nowrap', fontSize: 10.5 }}>
-                {a.label}
+                {tr(a.label)}
               </button>
             ))}
           </div>
         </InspectorRow>
-        <InspectorRow t={t} label="선 색">
+        <InspectorRow t={t} label={tr('inspector.conn.color')}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <ColorSwatchInput t={t} value={color} onChange={(v) => patch({ color: v })} />
             {color.toUpperCase() !== CONNECTOR_DEFAULTS.color && (
               <button data-testid="connector-color-reset" onClick={() => patch({ color: undefined })}
                 style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 5, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.textMuted, cursor: 'pointer' }}>
-                기본(파랑)
+                {tr('inspector.conn.colorDefault')}
               </button>
             )}
           </div>
         </InspectorRow>
       </InspectorSection>
 
-      <InspectorSection t={t} title="라벨 (선 위 글)">
+      <InspectorSection t={t} title={tr('inspector.conn.labelTitle')}>
         <textarea
           data-testid="connector-label-text"
           value={labelText}
-          placeholder="선에 붙일 글 (비우면 없음 · 여러 줄 가능)"
+          placeholder={tr('inspector.conn.labelPlaceholder')}
           rows={2}
           onChange={(e) => patchLabel({ text: e.target.value })}
           style={{
@@ -220,30 +224,30 @@ export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Co
             marginBottom: 8,
           }}
         />
-        <InspectorRow t={t} label="자리">
+        <InspectorRow t={t} label={tr('inspector.conn.place')}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
             {PLACES.map((p) => (
-              <button key={p.key} title={p.hint} data-testid={`connector-place-${p.key}`} onClick={() => patchLabel({ place: p.key })}
+              <button key={p.key} title={tr(p.hint)} data-testid={`connector-place-${p.key}`} onClick={() => patchLabel({ place: p.key })}
                 style={{ ...chip(place === p.key), padding: '6px 0', fontSize: 10.5 }}>
-                {p.label}
+                {tr(p.label)}
               </button>
             ))}
           </div>
         </InspectorRow>
-        <InspectorRow t={t} label="도형">
+        <InspectorRow t={t} label={tr('inspector.conn.labelShape')}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
             {LABEL_SHAPES.map((s) => (
-              <button key={s.key} title={s.label} data-testid={`connector-label-shape-${s.key}`} onClick={() => patchLabel({ shape: s.key })}
+              <button key={s.key} title={tr(s.label)} data-testid={`connector-label-shape-${s.key}`} onClick={() => patchLabel({ shape: s.key })}
                 style={chip(labelShape === s.key)}>
                 {s.icon}
-                <span style={{ fontSize: 9.5 }}>{s.label}</span>
+                <span style={{ fontSize: 9.5 }}>{tr(s.label)}</span>
               </button>
             ))}
           </div>
         </InspectorRow>
       </InspectorSection>
 
-      <InspectorSection t={t} title="삭제">
+      <InspectorSection t={t} title={tr('common.delete')}>
         <button
           data-testid="connector-delete"
           onClick={() => { removeConnector(c.id); setSelectedConnectorId(null); }}
@@ -252,17 +256,17 @@ export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Co
             border: `1px solid ${t.danger}55`, background: `${t.danger}12`, color: t.danger,
           }}
         >
-          이 연결선 삭제 (Del)
+          {tr('inspector.conn.delete')}
         </button>
         <div style={{ fontSize: 11, color: t.textMuted, marginTop: 8, lineHeight: 1.5 }}>
-          끝 노드를 지우면 연결선도 함께 사라집니다. 끝 노드가 접혀 있으면 선은 잠시 감춰집니다.
+          {tr('inspector.conn.deleteHelp')}
         </div>
       </InspectorSection>
     </div>
   );
 }
 
-function firstLine(text: string | undefined): string {
+function firstLine(text: string | undefined, tr: (key: string, vars?: TrVars) => string): string {
   const s = String(text ?? '').split('\n')[0].trim();
-  return s || '(빈 노드)';
+  return s || tr('inspector.conn.emptyNode');
 }

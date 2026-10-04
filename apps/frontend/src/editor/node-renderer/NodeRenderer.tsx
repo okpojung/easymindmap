@@ -60,6 +60,7 @@ import { hasForeignMapMarker, stripForeignMapMarkers } from '@/utils/foreignClip
 import { openAttachment } from '@/utils/openAttachment';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 import { useImageSrcResolver } from '@/utils/imageSrc';
+import { useTr } from '@/i18n';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -208,6 +209,7 @@ export const NodeRenderer = memo(NodeRendererImpl);
 function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onHover, onOpenPopover, collabs }: Props) {
   // 우리 저장소 사진은 그릴 때 토큰을 붙여야 한다 (B16 ② 슬라이스 2)
   const resolveImgSrc = useImageSrcResolver();
+  const tr = useTr();
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
@@ -717,7 +719,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                         onPointerDown={(e) => e.stopPropagation()}
                       >
                         <title>
-                          {chkHere.checked ? '클릭하면 미완료([ ])로' : '클릭하면 완료([x])로'}
+                          {chkHere.checked ? tr('editor.node.checkUndone') : tr('editor.node.checkDone')}
                         </title>
                         {/* 클릭 판정 영역 — 보이는 사각형(약 13px)만 노리면
                             빗나가서 노드가 선택돼 버린다. 위·아래·왼쪽 6px,
@@ -834,7 +836,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                     setTableDlg({ mode: 'edit', inDraft: false, index: ti });
                   }}
                 >
-                  <title>더블클릭하면 팝업에서 표를 편집합니다</title>
+                  <title>{tr('editor.node.tableDblClick')}</title>
                   {/* 히트 영역 — 격자선·글자 사이 빈 곳도 더블클릭이 표에 닿게
                       (없으면 아래 노드 박스가 받아 텍스트 편집으로 들어간다) */}
                   <rect x={tX} y={tY} width={tW} height={tH} fill="transparent" />
@@ -867,7 +869,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                     onPointerDown={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
                   >
-                    <title>표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다</title>
+                    <title>{tr('editor.note.copyTable')}</title>
                     <rect
                       x={-(tableCopied === ti ? cellFs * 4.6 : cellFs * 2.2)}
                       y={-MD_TABLE_COPY_STRIP / 2}
@@ -882,7 +884,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                       fontWeight={700}
                       fill={tableCopied === ti ? '#15803D' : '#475569'}
                     >
-                      {tableCopied === ti ? '복사됨 ✓' : '⧉'}
+                      {tableCopied === ti ? tr('common.copied') : '⧉'}
                     </text>
                   </g>
                   {allRows.map((cells, r) =>
@@ -950,7 +952,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                     setCodeDlg({ mode: 'edit', index: ci0 });
                   }}
                 >
-                  <title>더블클릭하면 팝업에서 언어·코드를 편집합니다</title>
+                  <title>{tr('editor.node.codeDblClick')}</title>
                   <rect
                     x={cX}
                     y={codeTop}
@@ -1004,8 +1006,8 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                       } else done();
                     }}
                   >
-                    <title>코드 복사</title>
-                    {codeCopied === ci0 ? '복사됨 ✓' : '⧉'}
+                    <title>{tr('editor.note.copyCode')}</title>
+                    {codeCopied === ci0 ? tr('common.copied') : '⧉'}
                   </text>
                   {mdCode.code.map((ln, ci) => {
                     // \uAE00\uC790\uB9C8\uB2E4 x \uB97C \uC9C1\uC811 \uC9C0\uC815\uD574 **\uACA9\uC790\uC5D0 \uC549\uD78C\uB2E4** \u2014 \uD3F0\uD2B8\uAC00
@@ -1060,7 +1062,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                         );
                       }}
                     >
-                      <title>사진 제거</title>
+                      <title>{tr('editor.node.removeImage')}</title>
                       <circle r={8} fill="#FFFFFF" stroke={t.border} strokeWidth={1}
                               opacity={0.92} />
                       <line x1={-3.2} y1={-3.2} x2={3.2} y2={3.2}
@@ -1095,7 +1097,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                       setNodeImage(n.id, undefined);
                     }}
                   >
-                    <title>사진 제거</title>
+                    <title>{tr('editor.node.removeImage')}</title>
                     <circle r={8} fill="#FFFFFF" stroke={t.border} strokeWidth={1}
                             opacity={0.92} />
                     <line x1={-3.2} y1={-3.2} x2={3.2} y2={3.2}
@@ -1153,7 +1155,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
             updateNodesSize(resizeTargets(), null); // 자동 크기로 복귀 — 다중 선택이면 전부
           }}
         >
-          <title>드래그: 크기 조절 · 더블클릭: 자동 크기</title>
+          <title>{tr('editor.node.resizeHint')}</title>
           <rect x={-11} y={-11} width={16} height={16} fill="transparent" />
           <path d="M0,-7 L-7,0 M0,-2.5 L-2.5,0" fill="none"
                 stroke={t.primary} strokeWidth={1.8} strokeLinecap="round" />
@@ -1485,7 +1487,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
             ✏
           </text>
           <text x="-16" y="4" fontSize="10" fill="#fff" fontWeight="600" textAnchor="start">
-            {lockedBy.name} 편집 중
+            {tr('editor.node.editingBy', { name: lockedBy.name })}
           </text>
         </g>
       )}

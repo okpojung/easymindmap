@@ -12,6 +12,8 @@
 // 400·401·409·500 같은 것은 **서버가 살아서 대답한 것**이라 여기 해당하지 않는다 —
 // 그런 실패에 "배포 중일 수 있다"고 말하면 원인을 감춘다.
 
+import { tr } from '@/i18n';
+
 export interface OutageNotice {
   /** 굵은 한 줄 */
   title: string;
@@ -21,7 +23,8 @@ export interface OutageNotice {
   kind: 'maintenance' | 'unreachable';
 }
 
-const DETAIL = '편집은 이 브라우저에 보관되고 있고, 연결이 돌아오면 자동으로 저장됩니다. 잠시만 기다려 주세요.';
+// 문구는 부르는 순간의 언어로 만든다 (모듈 상수로 굳히지 않는다).
+const detail = () => tr('cloud.outage.detail');
 
 /**
  * 실패 원인이 "서버가 없다"면 배너 문구를, 아니면 null 을 돌려준다.
@@ -31,11 +34,11 @@ export function outageNoticeFor(err: unknown): OutageNotice | null {
   if (!err || typeof err !== 'object') return null;
   const e = err as { status?: unknown; code?: unknown };
   if (e.code === 'MAINTENANCE') {
-    return { kind: 'maintenance', title: '버전 업그레이드 배포 중입니다', detail: DETAIL };
+    return { kind: 'maintenance', title: tr('cloud.outage.maintenance'), detail: detail() };
   }
   const st = typeof e.status === 'number' ? e.status : NaN;
   if (st === 0 || st === 502 || st === 503 || st === 504) {
-    return { kind: 'unreachable', title: '서버에 연결되지 않습니다 — 배포 중일 수 있습니다', detail: DETAIL };
+    return { kind: 'unreachable', title: tr('cloud.outage.unreachable'), detail: detail() };
   }
   return null;
 }

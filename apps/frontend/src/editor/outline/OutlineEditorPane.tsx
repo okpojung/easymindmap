@@ -44,6 +44,7 @@ import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import type { LaidOutNode } from '@/layout/types';
 import { useImageSrcResolver } from '@/utils/imageSrc';
+import { useTr } from '@/i18n';
 
 interface PaneProps {
   t: ThemeTokens;
@@ -70,6 +71,7 @@ function miniBtn(t: ThemeTokens) {
 }
 
 export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps) {
+  const tr = useTr();
   const setOutlineSplit = useEditorUiStore((s) => s.setOutlineSplit);
   const handleClose = onClose ?? (() => setOutlineSplit(false));
   // 맵 모드의 모두 접기/펼치기와 **같은 스토어 액션**을 쓴다 (2026-08-06)
@@ -101,9 +103,9 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
         padding: '9px 14px', borderBottom: `1px solid ${t.divider}`,
         background: t.surfaceAlt, flexShrink: 0,
       }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: t.text }}>아웃라인</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: t.text }}>{tr('editor.outline.title')}</div>
         <div style={{ fontSize: 9.5, color: t.textSubtle, flex: 1, minWidth: 0 }}>
-          더블클릭: 입력 · Enter: 아래 행 추가 · Tab/Space: 들여쓰기 · Shift+Enter: 줄바꿈
+          {tr('editor.outline.hint')}
         </div>
         {/* **모두 펼치기 / 모두 접기** (2026-08-06 요청) — 맵 모드의 +/−
             와 같은 동작·같은 기호다. 아웃라인은 맵의 `collapsed` 를 그대로
@@ -114,8 +116,8 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
             if (outlineScope === 'all') expandAll(); else expandSubtree(outlineScope);
           }}
           title={outlineScope === 'all'
-            ? '모두 펼치기 — 맵 전체 (노드를 고르면 그 아래만)'
-            : '선택한 노드의 하위 모두 펼치기 (선택을 풀면 맵 전체)'}
+            ? tr('editor.fold.expandAll')
+            : tr('editor.fold.expandSubtree')}
           style={miniBtn(t)}
         >＋</button>
         <button
@@ -124,11 +126,11 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
             if (outlineScope === 'all') collapseAll(); else collapseSubtree(outlineScope);
           }}
           title={outlineScope === 'all'
-            ? '모두 접기 — 2레벨만 남기고 전부 (노드를 고르면 그 아래만)'
-            : '선택한 노드의 하위 모두 접기 — 직계 자식만 남기고'}
+            ? tr('editor.fold.collapseAll')
+            : tr('editor.fold.collapseSubtree')}
           style={miniBtn(t)}
         >−</button>
-        <button onClick={handleClose} title={closeTitle ?? '아웃라인 닫기'}
+        <button onClick={handleClose} title={closeTitle ?? tr('editor.outline.close')}
           style={{
             border: 'none', background: 'none', color: t.textMuted,
             cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 2,
@@ -180,7 +182,7 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
                 color: it.url ? t.primary : t.textMuted,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
-              {it.label}{it.url ? ' ↗' : ' (파일 없음)'}
+              {it.label}{it.url ? ' ↗' : tr('editor.outline.noFile')}
             </div>
           ))}
         </div>
@@ -228,6 +230,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   onOpenNote: (nodeId: string, kind: NoteKind) => void;
   onOpenList: (p: ListPopup) => void;
 }) {
+  const tr = useTr();
   const [expanded, setExpanded] = useState(node.expanded !== false);
   const [hover, setHover] = useState(false);
   // 우리 저장소 사진은 그릴 때 토큰을 붙여야 한다 (B16 ② 슬라이스 2)
@@ -673,15 +676,15 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             display: 'inline-flex', gap: 3, marginLeft: 'auto', flexShrink: 0,
             visibility: hover ? 'visible' : 'hidden',
           }}>
-            {!isCenter && btn('＋형제', '아래에 형제 노드 추가', () => {
+            {!isCenter && btn(tr('editor.outline.addSibling'), tr('editor.outline.addSiblingTitle'), () => {
               const id = addSiblingNode(node.id, 'after');
               if (id) setSelectedId(id);
             })}
-            {btn('＋자식', '자식 노드 추가', () => {
+            {btn(tr('editor.outline.addChild'), tr('editor.outline.addChildTitle'), () => {
               const id = addChildNode(node.id);
               if (id) setSelectedId(id);
             })}
-            {node.id !== 'root' && btn('🗑', '노드 삭제 (하위 포함)', () => deleteNode(node.id))}
+            {node.id !== 'root' && btn('🗑', tr('editor.outline.deleteTitle'), () => deleteNode(node.id))}
           </span>
         )}
       </div>

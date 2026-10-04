@@ -24,7 +24,7 @@ await page.evaluate(async ({ MAP }) => {
   const d = await import('/src/stores/documentStore.ts'); const s = await import('/src/editor/__samples__/index.ts');
   const ui = await import('/src/stores/editorUiStore.ts'); const vp = await import('/src/stores/viewportStore.ts');
   const c = await import('/src/stores/cloudStore.ts');
-  d.setHistoryPaused(true); d.useDocumentStore.getState().loadMap(structuredClone(s.SAMPLE_ROADMAP), { resetHistory: true, serverMapId: MAP }); d.setHistoryPaused(false);
+  d.setHistoryPaused(true); d.useDocumentStore.getState().loadMap(s.sampleRoadmap(), { resetHistory: true, serverMapId: MAP }); d.setHistoryPaused(false);
   // loadMap 의 serverMapId 만으로는 cloudStore 가 묶이지 않는다 — 문서함이 하듯 link() 로 서버 맵으로 묶는다
   c.useCloudStore.getState().link(MAP, new Date().toISOString(), { title: '2026 제품 로드맵' });
   ui.useEditorUiStore.getState().setBrowserOpen(false); vp.useViewportStore.getState().requestFit();

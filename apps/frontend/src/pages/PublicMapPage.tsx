@@ -29,6 +29,16 @@ import {
 import { useProFeature } from '@/pro/contract';
 import { ProBuyPanel } from '@pro';
 import { isFreshTab, libraryBackHref } from '@/utils/viewerChrome';
+import { LANG_LOCALE, useLang, useTr } from '@/i18n';
+import { LanguagePicker } from '@/components/ui/LanguagePicker';
+import { THEMES, type ThemeTokens } from '@/components/design-tokens/theme';
+
+type Tr = ReturnType<typeof useTr>;
+
+/** 언어 고르기를 뷰어 막대 색(`#FFFDF8` / `#E4D9C3`)에 맞춘 토큰 */
+const PICKER_T: ThemeTokens = {
+  ...THEMES.light, border: '#D8CBB2', surface: '#FFF', text: '#3F3428', textMuted: '#8B7D68',
+};
 
 /** 주소가 퍼블리싱 링크인가 — 맞으면 publishId */
 export function publishIdFromPath(pathname: string): string | null {
@@ -74,7 +84,8 @@ function loadDashInterval(): number {
     return raw !== null && DASH_INTERVALS.includes(v) ? v : 10;
   } catch { return 10; }
 }
-const intervalLabel = (s: number) => (s === 0 ? '끔' : s < 60 ? `${s}초` : `${s / 60}분`);
+const intervalLabel = (tr: Tr, s: number) => (s === 0 ? tr('publish.public.interval.off')
+  : s < 60 ? tr('publish.public.interval.sec', { n: s }) : tr('publish.public.interval.min', { n: s / 60 }));
 
 /** `?embed=1` — 사내 페이지 안 iframe 으로 붙일 때. 돌아갈 막대를 그리지 않는다 */
 function isEmbed(): boolean {
@@ -95,8 +106,10 @@ const hhmmss = (d: Date) => [d.getHours(), d.getMinutes(), d.getSeconds()]
   .map((n) => String(n).padStart(2, '0')).join(':');
 
 export function PublicMapPage({ publishId }: { publishId: string }) {
+  const tr = useTr();
   const [data, setData] = useState<PublishedMap | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /** `msg` = 서버가 준 문장 그대로 · `key` = 우리 사전 키(언어를 바꾸면 따라온다) */
+  const [error, setError] = useState<{ msg?: string; key?: string } | null>(null);
   const [embed] = useState(isEmbed);
   /** 기록 한 장인 탭(새 탭에서 열기) — 예전엔 여기 제목 줄(ViewerBar)을 따로 그렸다 */
   const [fresh] = useState(() => !isEmbed() && isFreshTab(window.history.length));
@@ -137,8 +150,8 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
       .catch((err) => {
         if (!alive) return;
         setError(err instanceof CloudError
-          ? err.message
-          : '페이지를 여는 중 오류가 발생했습니다.');
+          ? { msg: err.message }
+          : { key: 'publish.public.loadError' });
       });
     return () => { alive = false; };
   }, [publishId]);
@@ -174,7 +187,7 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
       } catch (err) {
         // 링크가 닫혔으면(비공개·취소) 그 사실을 보인다 — 옛 숫자를 계속 띄우지 않는다
         if (alive && err instanceof CloudError && err.status === 404) {
-          setError('이 대시보드의 링크가 닫혔습니다 — 맵 주인이 비공개로 돌렸거나 퍼블리싱을 취소했습니다.');
+          setError({ key: 'publish.public.dashClosed' });
         } else if (alive) {
           setStale(true);
         }
@@ -269,20 +282,26 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
   if (error) {
     return (
       <Message
-        title="페이지를 찾을 수 없습니다"
-        body={error}
+        title={tr('publish.public.notFound')}
+        body={error.msg ?? tr(error.key ?? 'publish.public.loadError')}
         testId="public-map-error"
       />
     );
   }
   if (!data) {
-    return <Message title="여는 중…" body="퍼블리싱된 맵을 불러오고 있습니다." testId="public-map-loading" />;
+    return (
+      <Message
+        title={tr('publish.public.opening')}
+        body={tr('publish.public.openingBody')}
+        testId="public-map-loading"
+      />
+    );
   }
   if (!html) {
     return (
       <Message
-        title="맵을 표시할 수 없습니다"
-        body="이 맵의 저장 형식을 인식하지 못했습니다. 맵 주인에게 다시 저장한 뒤 공유해 달라고 알려 주세요."
+        title={tr('publish.public.broken')}
+        body={tr('publish.public.brokenBody')}
         testId="public-map-broken"
       />
     );
@@ -317,7 +336,7 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
         : dashPill('footer')}
       {oneLine && slots?.right && onSlot(slots.right, (
         <button data-testid="viewer-close" type="button" onClick={() => closeTabOr('/')} style={barBtn}>
-          ✕ 닫기
+          {tr('publish.public.close')}
         </button>
       ), 'public-close-slot')}
       {data.locked && (
@@ -370,6 +389,7 @@ function DashboardBar({
   now: Date; refreshedAt: Date; changedAt: Date | null; stale: boolean; checking: boolean;
   intervalSec: number; onInterval: (v: number) => void; onRefresh: () => void;
 }) {
+  const tr = useTr();
   // 확인 간격의 2배 + 5초 넘게 확인이 없으면 멈춘 것으로 본다 (끔이면 보지 않는다)
   const stalled = intervalSec > 0 && now.getTime() - refreshedAt.getTime() > intervalSec * 2000 + 5000;
   const warn = stale || stalled;
@@ -381,12 +401,14 @@ function DashboardBar({
   return (
     <div
       data-testid="public-dashboard-live"
-      title={(warn
-        ? '서버에 확인하지 못하고 있습니다 — 마지막으로 받은 값을 보여 주고 있습니다\n'
+      title={`${warn
+        ? tr('publish.public.dash.warnTip')
         : intervalSec > 0
-          ? `대시보드맵 — ${intervalLabel(intervalSec)}마다 시계 눈금에 맞춰 바뀐 것을 확인해 스스로 갱신합니다\n`
-          : '자동 갱신이 꺼져 있습니다 — ⟳ 를 누를 때만 확인합니다\n')
-        + `보이는 시각 = 지금 시각 · 마지막 확인 ${hhmmss(refreshedAt)} · 마지막 변경 ${changedAt ? hhmmss(changedAt) : '—'}`}
+          ? tr('publish.public.dash.autoTip', { interval: intervalLabel(tr, intervalSec) })
+          : tr('publish.public.dash.offTip')}\n${
+        tr('publish.public.dash.timesTip', {
+          checked: hhmmss(refreshedAt), changed: changedAt ? hhmmss(changedAt) : '—',
+        })}`}
       data-placement={placement}
       style={{
         // 바닥글이면 뷰어 바닥글(높이 26px) 한가운데에 얹는다 · 제목 줄이면 ViewerBar 가 가운데에 둔다
@@ -403,20 +425,21 @@ function DashboardBar({
       {/* 제목 줄에서는 연결 상태를 글로도 — 에디터의 🟢 와 같은 뜻 (2026-10-02 "시간 및 연결 등 정보") */}
       {placement === 'title' && (
         <span data-testid="public-dashboard-status" style={{ color: warn ? '#B45309' : '#6B5E4A' }}>
-          {warn ? '연결 끊김' : checking ? '확인 중' : '연결됨'}
+          {warn ? tr('publish.public.dash.disconnected')
+            : checking ? tr('publish.public.dash.checking') : tr('publish.public.dash.connected')}
         </span>
       )}
       <span aria-hidden>📊</span>
       <span data-testid="public-dashboard-clock" style={{ fontVariantNumeric: 'tabular-nums' }}>{hhmmss(now)}</span>
-      <button data-testid="public-dashboard-refresh" style={small} title="지금 다시 받기" onClick={onRefresh}>⟳</button>
+      <button data-testid="public-dashboard-refresh" style={small} title={tr('publish.public.dash.refresh')} onClick={onRefresh}>⟳</button>
       <select
         data-testid="public-dashboard-interval"
         value={intervalSec}
         onChange={(e) => onInterval(Number(e.target.value))}
-        title="자동 갱신 간격 (이 브라우저에만 기억)"
+        title={tr('publish.public.dash.intervalTip')}
         style={{ ...small, padding: '0 1px' }}
       >
-        {DASH_INTERVALS.map((v) => <option key={v} value={v}>{intervalLabel(v)}</option>)}
+        {DASH_INTERVALS.map((v) => <option key={v} value={v}>{intervalLabel(tr, v)}</option>)}
       </select>
     </div>
   );
@@ -463,6 +486,7 @@ const PAID_H = 86;
  *   `#E4D9C3` 다 — 두 줄이 **한 덩어리**로 읽히게.
  */
 function ViewerBar({ title }: { title: string }) {
+  const tr = useTr();
   const [back] = useState(() => libraryBackHref(document.referrer, window.location.origin));
   const [fresh] = useState(() => isFreshTab(window.history.length));
 
@@ -488,7 +512,7 @@ function ViewerBar({ title }: { title: string }) {
       }}
     >
       {back && (
-        <a data-testid="viewer-back" href={back} style={barBtn}>← 지식창고</a>
+        <a data-testid="viewer-back" href={back} style={barBtn}>{tr('publish.public.back')}</a>
       )}
       <span
         style={{
@@ -496,8 +520,10 @@ function ViewerBar({ title }: { title: string }) {
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}
       >{title}</span>
+      {/* 로그인 없이 오는 손님도 언어를 고를 수 있게 (B10 i18n) */}
+      <LanguagePicker t={PICKER_T} compact testId="public-language-picker" />
       <button data-testid="viewer-close" type="button" onClick={() => closeTabOr(back ?? '/')} style={barBtn}>
-        ✕ 닫기
+        {tr('publish.public.close')}
       </button>
     </div>
   );
@@ -521,6 +547,8 @@ function PaidBanner(
     publishId: string; title: string; priceKrw: number | null; stats?: PreviewStats;
   },
 ) {
+  const tr = useTr();
+  const locale = LANG_LOCALE[useLang()];
   const sales = useProFeature('map-sales');
 
   useEffect(() => {
@@ -528,12 +556,12 @@ function PaidBanner(
     return () => { document.documentElement.style.removeProperty('--viewer-paid'); };
   }, []);
 
-  const num = (n: number) => n.toLocaleString('ko-KR');
+  const num = (n: number) => n.toLocaleString(locale);
   const facts = stats ? [
-    `${num(stats.nodeCount)}개 노드`,
-    `최대 ${stats.maxDepth}단계`,
-    ...(stats.attachmentCount ? [`첨부 ${num(stats.attachmentCount)}개`] : []),
-    ...(stats.noteCount ? [`노트 ${num(stats.noteCount)}개`] : []),
+    tr('publish.public.paid.nodes', { n: num(stats.nodeCount) }),
+    tr('publish.public.paid.depth', { n: stats.maxDepth }),
+    ...(stats.attachmentCount ? [tr('publish.public.paid.attachments', { n: num(stats.attachmentCount) })] : []),
+    ...(stats.noteCount ? [tr('publish.public.paid.notes', { n: num(stats.noteCount) })] : []),
   ].join(' · ') : null;
 
   return (
@@ -549,14 +577,14 @@ function PaidBanner(
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: '#7A5A12' }}>
-          🔒 유료 맵의 미리보기입니다 — 2단계까지만 보입니다
+          {tr('publish.public.paid.headline')}
         </div>
         <div style={{ fontSize: 11.5, color: '#8B7346', marginTop: 3, lineHeight: 1.6 }}>
-          {facts ? `전체 ${facts}` : '전체 내용은 구매하면 볼 수 있습니다'}
-          {stats && stats.hiddenCount > 0 && ` · 가려진 노드 ${num(stats.hiddenCount)}개`}
+          {facts ? tr('publish.public.paid.total', { facts }) : tr('publish.public.paid.buyToSee')}
+          {stats && stats.hiddenCount > 0 && tr('publish.public.paid.hidden', { n: num(stats.hiddenCount) })}
         </div>
         <div style={{ fontSize: 11, color: '#A08B5E', marginTop: 2 }}>
-          노트 · 첨부 · 링크는 미리보기에 들어 있지 않습니다.
+          {tr('publish.public.paid.notIncluded')}
         </div>
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -564,7 +592,7 @@ function PaidBanner(
           <div
             data-testid="paid-price"
             style={{ fontSize: 17, fontWeight: 800, color: '#7A5A12' }}
-          >{num(priceKrw)}원</div>
+          >{tr('publish.price.amount', { price: num(priceKrw) })}</div>
         )}
         {sales.status === 'on' ? (
           // 판매가 켜진 서버에서는 유료 모듈이 자기 화면을 얹는다.
@@ -586,7 +614,7 @@ function PaidBanner(
             data-testid="paid-unavailable"
             style={{ fontSize: 11, color: '#A08B5E', marginTop: 4, maxWidth: 260 }}
           >
-            아직 구매할 수 없습니다 — 판매 준비가 끝나면 열립니다.
+            {tr('publish.public.paid.unavailable')}
           </div>
         )}
       </div>
@@ -602,6 +630,7 @@ const barBtn: CSSProperties = {
 };
 
 function Message({ title, body, testId }: { title: string; body: string; testId: string }) {
+  const tr = useTr();
   return (
     <div
       data-testid={testId}
@@ -617,7 +646,10 @@ function Message({ title, body, testId }: { title: string; body: string; testId:
       <a
         href="/"
         style={{ marginTop: 10, fontSize: 13, color: '#2563EB', textDecoration: 'none' }}
-      >EasyMindMap 열기</a>
+      >{tr('publish.public.openApp')}</a>
+      <div style={{ marginTop: 6 }}>
+        <LanguagePicker t={PICKER_T} compact testId="public-language-picker" />
+      </div>
     </div>
   );
 }

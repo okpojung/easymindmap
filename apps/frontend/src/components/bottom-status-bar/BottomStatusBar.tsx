@@ -21,6 +21,7 @@ import { I } from '@/components/icons';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useTr } from '@/i18n';
 
 interface Props {
   t: ThemeTokens;
@@ -84,6 +85,7 @@ function measureDocument(map: unknown): {
 }
 
 export function BottomStatusBar({ t, collabs, zoom, onZoomChange }: Props) {
+  const tr = useTr();
   const activeCount = collabs.filter((c) => c.active).length;
   const map = useDocumentStore((s) => s.map);
   const m = useMemo(() => measureDocument(map), [map]);
@@ -100,18 +102,15 @@ export function BottomStatusBar({ t, collabs, zoom, onZoomChange }: Props) {
       <span
         data-testid="status-map-weight"
         title={
-          '이 맵이 저장 용량에서 차지하는 무게입니다 (요금제 한도 = 문서 + 첨부 합산).\n'
-          + '문서 = 지금 화면의 스냅샷 크기 (편집하면 바로 바뀝니다)\n'
-          + '첨부 = 맵 내장분 + 서버 저장소분'
+          tr('shell.status.weightTip')
           + (m.unknown
-            ? `\n※ ${m.unknown}개는 크기를 적어 두기 전에 붙은 첨부라 합계에서 빠져 있습니다.`
+            ? `\n${tr('shell.status.weightUnknown', { n: m.unknown })}`
             : '')
         }
         style={{ display: 'flex', alignItems: 'center', gap: 5 }}
       >
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary }} />
-        문서 {fmtBytes(m.docBytes)}
-        {' · '}첨부 {m.attachCount}개
+        {tr('shell.status.weight', { doc: fmtBytes(m.docBytes), n: m.attachCount })}
         {m.attachCount > 0 && ` · ${fmtBytes(m.attachBytes)}${m.unknown ? '+' : ''}`}
       </span>
 
@@ -124,8 +123,8 @@ export function BottomStatusBar({ t, collabs, zoom, onZoomChange }: Props) {
         <>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <I.Users size={12} />
-            협업자 {activeCount}명 ·{' '}
-            <span style={{ color: t.success, fontWeight: 600 }}>● 실시간 연결됨</span>
+            {tr('shell.status.collabCount', { n: activeCount })}{' '}
+            <span style={{ color: t.success, fontWeight: 600 }}>{tr('shell.status.live')}</span>
           </span>
 
           <span style={{ width: 1, height: 14, background: t.divider }} />
@@ -138,6 +137,7 @@ export function BottomStatusBar({ t, collabs, zoom, onZoomChange }: Props) {
 }
 
 function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void }) {
+  const tr = useTr();
   // % 클릭 = 배율 직접 입력 (2~400, Enter 적용 / Esc 취소)
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState('');
@@ -162,7 +162,7 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-      {stepBtn(<I.Minus size={12} />, () => onZoomChange(Math.max(2, zoom - 5)), '축소 (5% 단위)')}
+      {stepBtn(<I.Minus size={12} />, () => onZoomChange(Math.max(2, zoom - 5)), tr('shell.status.zoomOut'))}
       {editing ? (
         <input
           autoFocus
@@ -173,7 +173,7 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
             else if (e.key === 'Escape') commit(false);
           }}
           onBlur={() => commit(true)}
-          title="배율 입력 후 Enter (2~400)"
+          title={tr('shell.status.zoomInputTitle')}
           style={{
             width: 44, padding: '2px 4px', textAlign: 'center',
             background: t.surface, border: `1px solid ${t.primary}`,
@@ -183,7 +183,7 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
       ) : (
         <button
           onClick={() => { setVal(String(Math.round(zoom))); setEditing(true); }}
-          title="클릭해서 배율 직접 입력 (2~400)"
+          title={tr('shell.status.zoomClickTitle')}
           style={{
             padding: '2px 10px', background: t.surface,
             border: `1px solid ${t.border}`, borderRadius: 4,
@@ -191,12 +191,12 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
             fontFamily: 'ui-monospace, monospace', minWidth: 44,
           }}>{Math.round(zoom)}%</button>
       )}
-      {stepBtn(<I.Plus size={12} />, () => onZoomChange(Math.min(400, zoom + 5)), '확대 (5% 단위)')}
-      <span style={{ marginLeft: 3 }}>{stepBtn(<I.Zoom100 size={13} />, () => onZoomChange(100), '100%로 보기')}</span>
+      {stepBtn(<I.Plus size={12} />, () => onZoomChange(Math.min(400, zoom + 5)), tr('shell.status.zoomIn'))}
+      <span style={{ marginLeft: 3 }}>{stepBtn(<I.Zoom100 size={13} />, () => onZoomChange(100), tr('shell.status.zoom100'))}</span>
       <button
         data-testid="minimap-toggle"
         onClick={toggleMinimap}
-        title={minimapOpen ? '미니맵 닫기 (Alt+M · Alt+H)' : '미니맵 — 전체 맵을 작게 보고 끌어서 이동 (Alt+M · Alt+H)'}
+        title={minimapOpen ? tr('shell.status.minimapClose') : tr('shell.status.minimapOpen')}
         style={{
           width: 22, height: 20, border: 'none', borderRadius: 3, cursor: 'pointer',
           background: minimapOpen ? t.primarySoft : 'transparent',

@@ -3,6 +3,10 @@
 //   npx tsx src/utils/profileName.test.ts
 
 import { avatarInitialOf, displayNameOf, formatPhone, nameProblem } from './profileName';
+import { useLangStore } from '@/i18n';
+
+// 기대 문장이 한국어다 — Node 의 기본 언어(en)가 아니라 한국어로 고정한다 (B10 i18n)
+useLangStore.getState().setLang('ko');
 
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {

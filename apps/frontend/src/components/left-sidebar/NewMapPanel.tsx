@@ -39,7 +39,9 @@ import {
   applyTemplateStyles,
   type UserTemplate,
 } from '@/utils/userTemplates';
-import { LIBRARY_TEMPLATES } from '@/utils/libraryTemplates';
+import { libraryTemplates } from '@/utils/libraryTemplates';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 type ImportKind = 'md' | 'html' | 'zip';
 
@@ -59,6 +61,7 @@ interface TplChoice {
 export function NewMapPanel({ t, inBrowser = false, onDone }: {
   t: ThemeTokens; inBrowser?: boolean; onDone?: () => void;
 }) {
+  const tr = useTr();
   const newMap = useDocumentStore((s) => s.newMap);
   const loadMap = useDocumentStore((s) => s.loadMap);
   const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
@@ -197,7 +200,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
       // **저장에 실패하면 닫지 않는다** — 닫으면 그대로 유실이다.
       setClosing(false);
       flash('⚠ ' + (err instanceof CloudError ? err.message
-        : '저장 실패 — 맵을 닫지 않았습니다.'), true);
+        : tr('panel.newMap.saveFailed')), true);
       return;
     }
     setClosing(false);
@@ -217,13 +220,13 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
   // 현재 맵을 닫아도 되는지 확인한 다음 **템플릿 선택 단계만** 연다.
   // 문서는 아직 그대로다 — 여기서 ✕(취소)를 누르면 아무 일도 없었던
   // 것이 된다.
-  const startBlank = () => confirmThen('새 맵 만들기', () =>
-    setChooseTpl({ msg: '새 맵을 시작합니다', mode: 'new' }));
+  const startBlank = () => confirmThen(tr('panel.newMap.create'), () =>
+    setChooseTpl({ msg: tr('panel.newMap.starting'), mode: 'new' }));
   const startImportFile = (kind: ImportKind) =>
     confirmThen(
-      kind === 'md' ? 'MD 파일 불러오기'
-        : kind === 'html' ? 'HTML 파일 불러오기'
-          : 'ZIP 파일 불러오기',
+      kind === 'md' ? tr('panel.newMap.importMd')
+        : kind === 'html' ? tr('panel.newMap.importHtml')
+          : tr('panel.newMap.importZip'),
       () => {
         setImportKind(kind);
         // accept가 state 반영된 뒤 열리도록 다음 틱에
@@ -254,7 +257,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
       if (tpl.editor?.spacingY) setSpacingY(tpl.editor.spacingY);
       setSelectedId('root');
       setChooseTpl(null);
-      flash(`'${tpl.name}' 템플릿 골격으로 새 맵을 시작했습니다`);
+      flash(tr('panel.newMap.startedFromTpl', { name: tpl.name }));
       onDone?.();
       return;
     }
@@ -266,21 +269,22 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     if (tpl.editor?.spacingX) setSpacingX(tpl.editor.spacingX);
     if (tpl.editor?.spacingY) setSpacingY(tpl.editor.spacingY);
     setChooseTpl(null);
-    flash(`'${tpl.name}' 템플릿을 적용했습니다 (Ctrl+Z로 되돌리기 가능)`);
+    flash(tr('panel.newMap.appliedTpl', { name: tpl.name }));
   };
 
   const tplChoices: TplChoice[] = [
     ...userTpls.map((tpl) => ({
       key: tpl.id,
       name: tpl.name,
-      meta: `내 템플릿 · 노드 ${tpl.nodeCount}개`,
+      meta: tr('panel.newMap.metaMine', { n: tpl.nodeCount }),
       map: tpl.map,
       editor: tpl.editor,
     })),
-    ...LIBRARY_TEMPLATES.map((tpl) => ({
+    // 기본 제공 템플릿 — 그릴 때마다 지금 언어로 짓는다 (이름·설명·노드 내용)
+    ...libraryTemplates().map((tpl) => ({
       key: tpl.id,
       name: tpl.name,
-      meta: `라이브러리 · ${tpl.desc}`,
+      meta: tr('panel.newMap.metaLibrary', { desc: tpl.desc }),
       map: tpl.map,
       editor: tpl.editor,
     })),
@@ -300,7 +304,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     const { map: resolvedMap, stats: img } = await resolveRemoteImages(imported.map);
     // 큰 맵은 그리는 데 수 초~수십 초 걸린다 — "여는 중" 안내를 먼저 그린 뒤
     // 무거운 일을 시작하고, 다 그려진 뒤에 지운다 (utils/opening.ts, 2026-09-30)
-    await withOpening(openingLabelFor(`'${imported.map.title}' 여는 중`, countMapNodes(resolvedMap)), () => {
+    await withOpening(openingLabelFor(tr('panel.newMap.opening', { title: imported.map.title }), countMapNodes(resolvedMap)), () => {
       // 불러온 파일도 새 문서다 — 서버 맵 연결을 끊는다 (위 doStartBlank 주석)
       detachFromServer();
       setBrowserOpen(false);
@@ -315,29 +319,28 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
       if (imported.editor?.spacingY) setSpacingY(imported.editor.spacingY);
       setSelectedId('root');
     });
-    const extra = imported.relinked ? ` (첨부 ${imported.relinked}개 연결)` : '';
+    const extra = imported.relinked ? tr('panel.newMap.relinked', { n: imported.relinked }) : '';
     // A4 분량 초과로 노트로 옮긴 블록 안내 (데이터는 잃지 않는다 — P3)
     const moved = movedToNote > 0
-      ? ` · A4 분량을 넘어 블록 ${movedToNote}개를 노트로 옮겼습니다`
+      ? tr('panel.newMap.movedToNote', { n: movedToNote })
       : '';
     const imgNote = [
-      img.embedded ? `사진 ${img.embedded}개 내장` : '',
-      img.kept ? `사진 ${img.kept}개 원격 참조` : '',
-      img.linked ? `이미지 ${img.linked}개는 다운로드 실패로 링크로 대체` : '',
+      img.embedded ? tr('panel.newMap.imgEmbedded', { n: img.embedded }) : '',
+      img.kept ? tr('panel.newMap.imgKept', { n: img.kept }) : '',
+      img.linked ? tr('panel.newMap.imgLinked', { n: img.linked }) : '',
     ].filter(Boolean).join(' · ');
     const imgMsg = imgNote ? ` · ${imgNote}` : '';
     // easymindmap 이 내보낸 MD — 블록 배치 옵션과 상관없이 노트를 그대로 복원했다
-    const notesMsg = imported.restoredNotes ? ' · 노트는 원래대로 복원했습니다 (EasyMindMap 파일)' : '';
+    const notesMsg = imported.restoredNotes ? tr('panel.newMap.notesRestored') : '';
     // EMM 선언에서 건너뛴 것 — **아는 값인데 그 자리에서만 못 쓰는** 경우다.
     // 모르는 이름처럼 조용히 버리면 문서를 쓴 사람이 왜 안 되는지 모른다.
     const skipMsg = imported.skipped?.length
-      ? ` · ⚠ ${imported.skipped.join(', ')} 은(는) 레벨별로 쓸 수 없어 `
-        + '건너뛰었습니다 (맵 전체 레이아웃으로는 쓸 수 있습니다)'
+      ? tr('panel.newMap.skipped', { names: imported.skipped.join(', ') })
       : '';
     setChooseTpl({
       msg: imported.source === 'plain-md'
-        ? `'${imported.map.title}' — MD 파일에서 맵을 만들었습니다${moved}${imgMsg}${notesMsg}${skipMsg}`
-        : `'${imported.map.title}' — EasyMindMap 파일에서 맵을 복원했습니다${extra}${imgMsg}`,
+        ? tr('panel.newMap.fromMd', { title: imported.map.title, extra: `${moved}${imgMsg}${notesMsg}${skipMsg}` })
+        : tr('panel.newMap.fromEmm', { title: imported.map.title, extra: `${extra}${imgMsg}` }),
       mode: 'import',
     });
   };
@@ -354,8 +357,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
           const bytes = new Uint8Array(reader.result as ArrayBuffer);
           const imported = await parseZipMapFile(bytes, parseOpts);
           if (!imported) {
-            flash(`⚠ '${file.name}' 안에서 EasyMindMap 맵 파일(.md/.html)을 ` +
-              '찾지 못했습니다. 이 앱의 [내보내기]로 만든 ZIP만 열 수 있습니다.', true);
+            flash(tr('panel.newMap.zipNoMap', { file: file.name }), true);
             return;
           }
           await applyImported(imported, stats.movedToNote);
@@ -377,13 +379,8 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
         : parseMarkdownMapFile(text, name, parseOpts);
       if (!imported) {
         flash(isHtml
-          ? `⚠ '${file.name}' 은(는) EasyMindMap 뷰어 HTML이 아닙니다. ` +
-            '이 앱의 [내보내기 → HTML 파일]로 만든 파일만 열 수 있습니다 ' +
-            '(맵 정보가 들어 있어야 합니다). 일반 웹페이지 HTML은 ' +
-            '지원하지 않습니다 — 웹 문서를 맵으로 만들려면 내용을 복사해 ' +
-            '노드에 붙여넣거나, MD 파일로 저장해 불러오세요.'
-          : `⚠ '${file.name}' 에서 맵으로 만들 구조를 찾지 못했습니다. ` +
-            'Markdown 견출(#)이나 리스트(-)가 있는 파일이어야 합니다.',
+          ? tr('panel.newMap.notViewerHtml', { file: file.name })
+          : tr('panel.newMap.noStructure', { file: file.name }),
           true);
         return;
       }
@@ -464,17 +461,12 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
           background: t.primarySoft, padding: '10px 12px', marginBottom: 10,
         }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 4 }}>
-            현재 맵 '{mapTitle}'을(를) 닫고 진행할까요?
+            {tr('panel.newMap.closeConfirm', { title: mapTitle })}
           </div>
           <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.55, marginBottom: 8 }}>
-            {pending.label} — {savableServerMap() ? (
-              <>이 맵은 <b>서버에 저장한 뒤</b> 화면에서 닫힙니다. 방금 붙인
-                첨부·편집도 함께 저장됩니다.</>
-            ) : (
-              <>편집 중인 맵은 화면에서 닫힙니다 (Ctrl+Z로 복구 가능).
-                아직 서버에 저장한 적이 없는 맵이라, 보존하려면 먼저
-                <b> ☁ 저장</b>하거나 <b>HTML로 내보내기</b> 해 두세요.</>
-            )}
+            {pending.label} — {rich(savableServerMap()
+              ? tr('panel.newMap.closeSavable')
+              : tr('panel.newMap.closeUnsaved'))}
           </div>
           <div style={{ display: 'flex', gap: 5 }}>
             <button
@@ -485,7 +477,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
                 border: 'none', background: t.primary, color: '#FFF',
                 cursor: closing ? 'default' : 'pointer', fontWeight: 700,
                 opacity: closing ? 0.6 : 1,
-              }}>{closing ? '저장 중…' : (savableServerMap() ? '저장하고 계속' : '현재 맵 닫고 계속')}</button>
+              }}>{closing ? tr('common.saving') : (savableServerMap() ? tr('panel.newMap.saveAndContinue') : tr('panel.newMap.closeAndContinue'))}</button>
             <button
               disabled={closing}
               onClick={() => setPending(null)}
@@ -493,7 +485,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
                 flex: 1, fontSize: 11.5, padding: '6px 0', borderRadius: 6,
                 border: `1px solid ${t.border}`, background: t.surface,
                 color: t.text, cursor: 'pointer', fontWeight: 600,
-              }}>취소</button>
+              }}>{tr('common.cancel')}</button>
           </div>
         </div>
       )}
@@ -516,12 +508,12 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
               data-testid="tpl-cancel"
               onClick={() => {
                 setChooseTpl(null);
-                if (chooseTpl.mode === 'new') flash('새 맵 만들기를 취소했습니다');
+                if (chooseTpl.mode === 'new') flash(tr('panel.newMap.cancelled'));
               }}
               title={chooseTpl.mode === 'new'
-                ? '새 맵 만들기 취소 — 지금 열려 있는 맵을 그대로 둡니다'
-                : '닫기 — 불러온 내용을 그대로 둡니다'}
-              aria-label={chooseTpl.mode === 'new' ? '새 맵 만들기 취소' : '닫기'}
+                ? tr('panel.newMap.cancelNewTip')
+                : tr('panel.newMap.closeImportTip')}
+              aria-label={chooseTpl.mode === 'new' ? tr('panel.newMap.cancelNewAria') : tr('common.close')}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 22, height: 22, flexShrink: 0,
@@ -530,12 +522,12 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
               }}><I.X size={13} /></button>
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 4 }}>
-            적용할 템플릿을 선택하세요
+            {tr('panel.newMap.chooseTitle')}
           </div>
           <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.55, marginBottom: 8 }}>
             {chooseTpl.mode === 'new'
-              ? '고른 템플릿의 골격(4레벨 자리 표시 텍스트)과 레이아웃·스타일로 시작합니다. 건너뛰면 기본 골격 그대로 시작합니다.'
-              : '내용은 그대로 두고 템플릿의 레이아웃·스타일·맵 설정만 입힙니다. 건너뛰면 기본 모양 그대로 시작합니다.'}
+              ? tr('panel.newMap.chooseHelpNew')
+              : tr('panel.newMap.chooseHelpImport')}
           </div>
           <div style={{ maxHeight: 210, overflowY: 'auto', marginBottom: 8 }}>
             {tplChoices.map((tpl) => (
@@ -563,7 +555,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
               if (chooseTpl.mode === 'new') {
                 replaceWithBlankDoc();
                 setChooseTpl(null);
-                flash('기본 골격으로 새 맵을 시작했습니다');
+                flash(tr('panel.newMap.startedBlank'));
                 onDone?.();
                 return;
               }
@@ -573,7 +565,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
               width: '100%', fontSize: 11.5, padding: '6px 0', borderRadius: 6,
               border: `1px solid ${t.border}`, background: t.surface,
               color: t.text, cursor: 'pointer', fontWeight: 600,
-            }}>건너뛰기 (기본 그대로)</button>
+            }}>{tr('panel.newMap.skip')}</button>
         </div>
       )}
 
@@ -585,9 +577,9 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
       {/* ═══ 1. 새 맵 만들기 — 단일 버튼 (2026-08-03: 트리 하위에 같은
           버튼이 한 번 더 있던 이중 구조 제거) ═══ */}
       {menuHeader({
-        icon: '＋', label: '새 맵 만들기',
+        icon: '＋', label: tr('panel.newMap.create'),
         onClick: startBlank,
-        tip: `기본 템플릿 '트리-진행트리맵' 골격으로 새 맵을 시작하고, 이어서 적용할 템플릿을 고릅니다. 제목은 저장할 때 폴더와 함께 정합니다 — 그전까지는 '${NEW_MAP_TITLE}'. 현재 편집 중인 맵은 교체됩니다(Ctrl+Z로 복구).`,
+        tip: tr('panel.newMap.createTip', { title: NEW_MAP_TITLE }),
       })}
 
       {/* ═══ 2. 서버 맵 불러오기 ═══
@@ -595,16 +587,16 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
           문서함이 자동으로 열리고, 상단의 '내 문서'를 눌러도 열리므로
           왼쪽 메뉴는 중복이다. 인증 꺼진 개발 빌드에서만 유지. */}
       {!inBrowser && !(authEnabled && (session || guest)) && menuHeader({
-        icon: '☁', label: '서버 맵 불러오기',
+        icon: '☁', label: tr('panel.newMap.serverMaps'),
         onClick: () => setBrowserOpen(true),
-        tip: '서버에 저장된 내 문서함을 편집 영역에 엽니다 (폴더·정렬 지원)',
+        tip: tr('panel.newMap.serverMapsTip'),
       })}
 
       {/* ═══ 3. Local 파일 불러오기 — 선택하면 하위 메뉴가 트리로 ═══ */}
       {menuHeader({
-        icon: '📂', label: 'Local 파일 불러오기', open: openLocal,
+        icon: '📂', label: tr('panel.newMap.local'), open: openLocal,
         onClick: () => setOpenLocal((v) => !v),
-        tip: 'MD·HTML·ZIP 파일을 불러옵니다 (선택하면 하위 메뉴가 펼쳐집니다)',
+        tip: tr('panel.newMap.localTip'),
       })}
 
       </>)}
@@ -623,21 +615,21 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
       {!chooseTpl && !pending && openLocal && (
         <div style={treeBoxStyle}>
       <button onClick={() => startImportFile('md')}
-        title="일반 MD 파일과 EasyMindMap에서 생성된 MD 파일을 불러옵니다"
-        style={{ ...fileBtnStyle, marginBottom: 3 }}>📄 MD 파일 불러오기</button>
+        title={tr('panel.newMap.importMdTip')}
+        style={{ ...fileBtnStyle, marginBottom: 3 }}>📄 {tr('panel.newMap.importMd')}</button>
       {/* MD 블록 배치 옵션 (일반 MD 전용) — MD 항목의 하위 트리 */}
       <div data-testid="block-placement" style={{
         border: `1px solid ${t.border}`, borderRadius: 6,
         padding: '5px 8px', margin: '0 0 6px 12px', background: t.surface,
       }}>
         <div style={{ fontSize: 10, color: t.textSubtle, fontWeight: 600, marginBottom: 3 }}>
-          블록(문단·코드·표·체크) 배치
+          {tr('panel.newMap.blockPlacement')}
         </div>
         {([
-          ['node', '노드로 (기본)', '코드·표·이미지 블록은 각각의 자식 노드로 분리합니다(markmap 방식). 블록 바로 뒤의 인용문은 그 블록 노드에 이어 붙습니다'],
-          ['note', '노트로', '기존 방식 — 문단·코드·표·체크를 노드의 노트로 넣습니다'],
+          ['node', 'panel.newMap.placeNode', 'panel.newMap.placeNodeTip'],
+          ['note', 'panel.newMap.placeNote', 'panel.newMap.placeNoteTip'],
         ] as const).map(([v, label, tip]) => (
-          <label key={v} title={tip} style={{
+          <label key={v} title={tr(tip)} style={{
             display: 'flex', alignItems: 'center', gap: 6,
             fontSize: 11, color: t.text, cursor: 'pointer', padding: '2px 0',
           }}>
@@ -648,19 +640,18 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
               onChange={() => chooseBlockPlacement(v)}
               style={{ accentColor: t.primary }}
             />
-            {label}
+            {tr(label)}
           </label>
         ))}
       </div>
       <button onClick={() => startImportFile('html')}
-        title="EasyMindMap에서 생성된 HTML 파일만 불러올 수 있습니다"
-        style={fileBtnStyle}>🌐 HTML 파일 불러오기</button>
+        title={tr('panel.newMap.importHtmlTip')}
+        style={fileBtnStyle}>🌐 {tr('panel.newMap.importHtml')}</button>
       <button onClick={() => startImportFile('zip')}
-        title="EasyMindMap에서 생성된 HTML/MD와 files/ 폴더의 첨부파일을 포함한 ZIP을 불러옵니다"
-        style={fileBtnStyle}>🗜 ZIP 파일 불러오기</button>
+        title={tr('panel.newMap.importZipTip')}
+        style={fileBtnStyle}>🗜 {tr('panel.newMap.importZip')}</button>
       <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, margin: '2px 0 4px' }}>
-        MD는 일반 문서·EasyMindMap 생성 파일 모두, HTML/ZIP은 EasyMindMap이
-        생성한 파일만 지원합니다. 불러온 뒤 적용할 템플릿을 고를 수 있습니다.
+        {tr('panel.newMap.localHelp')}
       </div>
         </div>
       )}

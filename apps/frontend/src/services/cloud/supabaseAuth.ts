@@ -5,6 +5,7 @@
 // VITE_SUPABASE_URL 이 없으면 인증 비활성(개발 모드 — 백엔드 AUTH_MODE=dev).
 
 import { LOGOUT_PATH } from './logoutRules';
+import { tr } from '@/i18n';
 
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -72,17 +73,17 @@ async function goTrue<T>(
       body: JSON.stringify(body ?? {}),
     });
   } catch {
-    throw new AuthError(0, '인증 서버에 연결할 수 없습니다.');
+    throw new AuthError(0, tr('auth.error.unreachable'));
   }
   if (!res.ok) {
-    let msg = `인증 실패 (${res.status})`;
+    let msg = tr('auth.error.failed', { status: res.status });
     try {
       const j = (await res.json()) as { msg?: string; message?: string; error_description?: string };
       msg = j.error_description || j.msg || j.message || msg;
     } catch { /* 본문 없음 */ }
     // GoTrue 의 대표 오류를 사용자 언어로
-    if (/invalid login credentials/i.test(msg)) msg = '이메일 또는 비밀번호가 올바르지 않습니다.';
-    if (/already registered/i.test(msg)) msg = '이미 가입된 이메일입니다. 로그인해 주세요.';
+    if (/invalid login credentials/i.test(msg)) msg = tr('auth.error.badCredentials');
+    if (/already registered/i.test(msg)) msg = tr('auth.error.alreadyRegistered');
     throw new AuthError(res.status, msg);
   }
   return (res.status === 204 ? undefined : res.json()) as Promise<T>;

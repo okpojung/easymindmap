@@ -21,6 +21,7 @@ import { CodeBlockDialog, replaceCodeBlock } from './CodeBlockDialog';
 import { TableDialog, replaceMdTable, buildMdTable } from './TableDialog';
 import { copyTable } from '@/utils/copyTable';
 import { gridCharSpans } from '@/utils/monoGrid';
+import { tr as trNow, useTr } from '@/i18n';
 
 const MONO = "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace";
 
@@ -63,13 +64,14 @@ function CheckGlyph({
   checked: boolean;
   onClick?: () => void;
 }) {
+  const tr = useTr();
   return (
     <span
       data-html-check
       data-checked={checked ? '1' : '0'}
       onClick={onClick ? (e) => { e.stopPropagation(); onClick(); } : undefined}
       onPointerDown={(e) => e.stopPropagation()}
-      title={onClick ? (checked ? '클릭하면 미완료([ ])로' : '클릭하면 완료([x])로') : undefined}
+      title={onClick ? (checked ? tr('editor.node.checkUndone') : tr('editor.node.checkDone')) : undefined}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         width: 13, height: 13, borderRadius: 3, marginRight: 5,
@@ -131,6 +133,7 @@ export function NodeRichText({
   // 코드 블록 전부 (원문 순서, 2026-09-22) — 각 항목의 before = 앞 블록 뒤부터의 글
   const codes = parseMdCodes(raw);
   const [codeDlgIdx, setCodeDlgIdx] = useState<number | null>(null);
+  const tr = useTr();
   const codeEditable = !!(onUpdateText && t);
   // 표 ✎ 수정(팝업 편집기) — 코드 블록과 같은 조건 (2026-09-17)
   const [tableDlgOpen, setTableDlgOpen] = useState(false);
@@ -183,7 +186,7 @@ export function NodeRichText({
           <div key={`${key}-t${pi}`} style={{ position: 'relative', paddingTop: 15 }}>
           <button
             data-html-table-copy
-            title="표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다"
+            title={tr('editor.note.copyTable')}
             onClick={(e) => { e.stopPropagation(); doCopyTable(mdt.headers, mdt.rows); }}
             onPointerDown={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
@@ -195,13 +198,13 @@ export function NodeRichText({
               lineHeight: 1.4,
             }}
           >
-            {tableCopied ? '복사됨 ✓' : '⧉'}
+            {tableCopied ? tr('common.copied') : '⧉'}
           </button>
           {codeEditable && (
             // ✎ = 팝업 편집기 — 맵의 표 더블클릭과 동일
             <button
               data-html-table-edit
-              title="표 편집 — 팝업에서 셀을 고칩니다"
+              title={tr('editor.node.tableEdit')}
               onClick={(e) => { e.stopPropagation(); setTableDlgOpen(true); }}
               onPointerDown={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
@@ -304,7 +307,7 @@ export function NodeRichText({
                 onClick={(e) => { e.stopPropagation(); setCodeDlgIdx(idx); }}
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => e.stopPropagation()}
-                title="클릭하면 팝업에서 언어·코드를 편집합니다"
+                title={tr('editor.node.codeClick')}
                 style={{ cursor: 'pointer', userSelect: 'none' }}
               >
                 {(mdc.lang || 'code') + ' ✎'}
@@ -318,14 +321,14 @@ export function NodeRichText({
               onClick={(e) => { e.stopPropagation(); copyCode(mdc, idx); }}
               onPointerDown={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
-              title="코드 복사"
+              title={tr('editor.note.copyCode')}
               style={{
                 cursor: 'pointer', userSelect: 'none', marginLeft: 10,
                 color: codeCopied === idx ? '#15803D' : '#475569', fontWeight: 600,
                 fontFamily: 'inherit',
               }}
             >
-              {codeCopied === idx ? '복사됨 ✓' : '⧉'}
+              {codeCopied === idx ? tr('common.copied') : '⧉'}
             </span>
           </div>
           {/* 격자 배치 — 맵 캔버스(SVG)와 같은 규칙으로 글자마다 칸을
@@ -405,13 +408,13 @@ export function flattenNodeText(text: string): string {
   let tableChip = false;
   for (const ln of lines) {
     if (/^\s*```/.test(ln)) {
-      if (!inFence && !codeChip) { out.push('⧉코드'); codeChip = true; }
+      if (!inFence && !codeChip) { out.push(trNow('editor.node.chipCode')); codeChip = true; }
       inFence = !inFence;
       continue;
     }
     if (inFence) continue;
     if (isPipeRow(ln) && splitCells(ln).length >= 2) {
-      if (!isSepRow(ln) && !tableChip) { out.push('⊞표'); tableChip = true; }
+      if (!isSepRow(ln) && !tableChip) { out.push(trNow('editor.node.chipTable')); tableChip = true; }
       continue;
     }
     const chk = parseCheckLine(ln);

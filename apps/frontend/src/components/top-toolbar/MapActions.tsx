@@ -28,6 +28,7 @@ import {
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { ProCollabSession, ProDashboardLive, ProDashboardToggle } from '@pro';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { LANG_LOCALE, useLang, useTr } from '@/i18n';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
 type SaveIntent = null | 'save' | 'close' | 'saveAs';
@@ -38,6 +39,8 @@ export function MapActions(
   { t, flash, iconOnly = false }:
   { t: ThemeTokens; flash: (m: string) => void; iconOnly?: boolean },
 ) {
+  const tr = useTr();
+  const lang = useLang();
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
   // 협업맵인가 — 세션 자리에 그대로 넘긴다(판정은 서버가 내린 kind 다)
   const cloudKind = useCloudStore((s) => s.cloudKind);
@@ -63,27 +66,27 @@ export function MapActions(
   useLocalDraft();
 
   const savedHint = lastSavedAt
-    ? `저장됨 · ${new Date(lastSavedAt).toLocaleString()}`
-    : '아직 서버에 저장하지 않음';
+    ? tr('shell.mapActions.savedAt', { time: new Date(lastSavedAt).toLocaleString(LANG_LOCALE[lang]) })
+    : tr('shell.mapActions.neverSaved');
 
   const handleSave = async () => {
     // 열려 있는 맵이 없으면 저장할 것도 없다 (맵 닫기와 같은 안내 —
     // 2026-08-02 사용자 보고: 빈 상태에서 저장 대화상자가 떴다)
-    if (isCurrentMapEmpty()) { flash('열려 있는 맵이 없습니다.'); return; }
+    if (isCurrentMapEmpty()) { flash(tr('shell.mapActions.noMap')); return; }
     // Guest 체험 (2026-08-04) — 서버 저장 없음, 내보내기로 안내
     if (authEnabled && useAuthStore.getState().guest) {
-      flash('Guest 체험 중 — 서버 저장은 가입 후 가능합니다. 내보내기(MD·HTML)로 파일 보관은 됩니다.');
+      flash(tr('shell.mapActions.guestSave'));
       return;
     }
-    if (needLogin()) { flash('⚠ 로그인해야 서버에 저장할 수 있습니다.'); return; }
+    if (needLogin()) { flash(tr('shell.mapActions.needLogin')); return; }
     if (isUnsavedMap()) { setSaveIntent('save'); return; } // 폴더·이름 묻기
     try {
       const r = await saveCurrentMap({ keepVersion: true });
       flash(r.unchanged
-        ? `☁ '${cloudTitle ?? mapTitle}' — 변경된 내용이 없어 그대로 두었습니다.`
-        : `☁ '${cloudTitle ?? mapTitle}' 저장 완료 (이 시점이 히스토리에 남습니다).`);
+        ? tr('shell.mapActions.unchanged', { title: cloudTitle ?? mapTitle })
+        : tr('shell.mapActions.savedKeep', { title: cloudTitle ?? mapTitle }));
     } catch (err) {
-      const m = err instanceof CloudError ? err.message : '저장 중 오류가 발생했습니다.';
+      const m = err instanceof CloudError ? err.message : tr('shell.mapActions.saveError');
       useCloudStore.getState().setError(m);
       flash('⚠ ' + m);
     }
@@ -100,7 +103,7 @@ export function MapActions(
     // 유일하게 눈에 띄는 출구인데 아무 데도 데려가지 않았다.
     if (r === 'empty') { setBrowserOpen(true); return; }
     if (r !== 'closed') return;
-    flash(wasReadOnly ? '읽기 전용으로 보던 맵을 닫았습니다.' : '맵을 저장하고 닫았습니다.');
+    flash(wasReadOnly ? tr('shell.mapActions.closedReadOnly') : tr('shell.mapActions.closedSaved'));
     setBrowserOpen(true);
   };
 
@@ -138,8 +141,8 @@ export function MapActions(
         //   실측). 넘치는 문장은 말줄임하고 **전문은 마우스를 올리면** 보인다.
         <span
           data-testid="readonly-badge"
-          title={`${readOnlyInfo.reason ?? '다른 세션(브라우저)에서 편집 중인 맵입니다'}\n`
-            + '여기서의 변경은 이 맵에 저장되지 않으며, ☁ 저장을 누르면 다른 이름의 새 맵으로 저장할 수 있습니다.'}
+          title={`${readOnlyInfo.reason ?? tr('shell.mapActions.readOnlyReason')}\n`
+            + tr('shell.mapActions.readOnlyHint')}
           style={{
             display: 'inline-block', minWidth: 0, flexShrink: 1,
             maxWidth: iconOnly ? 150 : 300,
@@ -149,7 +152,7 @@ export function MapActions(
             color: '#92400E', fontSize: 11.5, fontWeight: 700,
             whiteSpace: 'nowrap',
           }}
-        >🔒 읽기 전용 — {readOnlyInfo.reason ?? '다른 세션에서 편집 중'}</span>
+        >{tr('shell.mapActions.readOnlyBadge', { reason: readOnlyInfo.reason ?? tr('shell.mapActions.readOnlyShort') })}</span>
       )}
       {/* 대시보드맵 전환·되돌리기 (2026-09-30, 22-dashboard.md §4.1) — 열려 있는 맵이
           **내 맵**일 때만(링크가 있거나, 대시보드라서 읽기 전용으로 연 경우).
@@ -174,7 +177,7 @@ export function MapActions(
       {!readOnlyInfo?.viewer && (
       <button
         data-testid="map-save"
-        title={`${savedHint} — 지금 저장하면 이 시점이 히스토리 버전으로 남습니다`}
+        title={tr('shell.mapActions.saveTitle', { hint: savedHint })}
         disabled={busy !== 'idle'}
         onClick={() => void handleSave()}
         style={{
@@ -183,7 +186,7 @@ export function MapActions(
           border: `1px solid ${cloudMapId ? t.primaryBorder + '66' : t.border}`,
         }}
       >
-        <I.Cloud size={15} />{!iconOnly && ' 저장'}
+        <I.Cloud size={15} />{!iconOnly && ` ${tr('common.save')}`}
       </button>
       )}
       {/* 저장 직후 — "이 버전 보관" (13a §3.2 ②). 큰 작업을 마친 순간이 보관
@@ -192,14 +195,14 @@ export function MapActions(
       {cloudMapId && lastSavedVersion !== null && !readOnlyInfo && (
         <button
           data-testid="map-pin-last"
-          title={`방금 저장한 버전(v${lastSavedVersion})에 이름을 붙여 영구보관합니다 — 보관한 버전은 정리되지 않습니다`}
+          title={tr('shell.mapActions.pinTitle', { v: lastSavedVersion })}
           onClick={() => { setHistoryPinTarget(lastSavedVersion); setNavTab('history'); }}
           style={{
             ...btn, padding: '0 8px', cursor: 'pointer',
             background: 'transparent', color: t.textMuted,
             border: `1px dashed ${t.border}`, fontWeight: 500,
           }}
-        >☆{!iconOnly && ' 이 버전 보관'}</button>
+        >☆{!iconOnly && ` ${tr('shell.mapActions.pin')}`}</button>
       )}
 
       {/* 다른 이름으로 저장 (2026-08-03 요청) — 서버 맵과 연결된 상태에서만.
@@ -208,7 +211,7 @@ export function MapActions(
       {cloudMapId && !readOnlyInfo?.viewer && (
         <button
           data-testid="map-save-as"
-          title="다른 이름으로 저장 — 현재 내용을 새 폴더·이름의 새 맵으로 저장합니다"
+          title={tr('shell.mapActions.saveAsTitle')}
           disabled={busy !== 'idle'}
           onClick={() => setSaveIntent('saveAs')}
           style={{
@@ -224,8 +227,8 @@ export function MapActions(
       <button
         data-testid="map-close"
         title={isCurrentMapEmpty()
-          ? '열려 있는 맵이 없습니다'
-          : `'${cloudTitle ?? mapTitle}' 맵 닫기 — 저장한 뒤 닫고 문서함을 엽니다`}
+          ? tr('shell.mapActions.noMapTitle')
+          : tr('shell.mapActions.closeTitle', { title: cloudTitle ?? mapTitle })}
         disabled={busy !== 'idle'}
         onClick={() => void handleClose()}
         style={{
@@ -234,7 +237,7 @@ export function MapActions(
           border: `1px solid ${t.border}`,
         }}
       >
-        <I.X size={15} />{!iconOnly && ' 맵 닫기'}
+        <I.X size={15} />{!iconOnly && ` ${tr('shell.mapActions.close')}`}
       </button>
 
       {/* 미저장 맵 닫기 경고 (규칙 4) */}
@@ -258,11 +261,10 @@ export function MapActions(
           >
             <DialogXButton t={t} testId="unsaved-warning-x" onClose={() => setWarnUnsaved(false)} />
             <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6, paddingRight: 34 }}>
-              ⚠ 맵이 저장되지 않았습니다
+              {tr('shell.mapActions.unsavedTitle')}
             </div>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7, marginBottom: 16 }}>
-              “{mapTitle}”은(는) 아직 서버에 저장한 적이 없습니다.
-              그냥 닫으면 내용이 사라집니다(Ctrl+Z로는 되돌릴 수 있습니다).
+              {tr('shell.mapActions.unsavedBody', { title: mapTitle })}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <button
@@ -272,7 +274,7 @@ export function MapActions(
                   height: 36, borderRadius: 7, border: 'none', cursor: 'pointer',
                   background: t.primary, color: '#fff', fontSize: 13, fontWeight: 700,
                 }}
-              >저장하고 닫기</button>
+              >{tr('shell.mapActions.saveAndClose')}</button>
               <button
                 data-testid="unsaved-close-anyway"
                 onClick={() => {
@@ -283,7 +285,7 @@ export function MapActions(
                   // "저장하지 않는다"고 답한 그 문서를 두고 묻는 셈이다.
                   void clearLocalDraft(useCloudStore.getState().cloudMapId);
                   clearCurrentMap();
-                  flash('저장하지 않고 닫았습니다.');
+                  flash(tr('shell.mapActions.closedWithoutSave'));
                   setBrowserOpen(true);
                 }}
                 style={{
@@ -291,7 +293,7 @@ export function MapActions(
                   border: `1px solid ${t.border}`, background: t.surfaceAlt,
                   color: t.text, fontSize: 12.5, fontWeight: 600,
                 }}
-              >저장 없이 닫기</button>
+              >{tr('shell.mapActions.closeWithoutSave')}</button>
               <button
                 data-testid="unsaved-cancel"
                 onClick={() => setWarnUnsaved(false)}
@@ -300,7 +302,7 @@ export function MapActions(
                   border: 'none', background: 'transparent',
                   color: t.textSubtle, fontSize: 12.5,
                 }}
-              >취소</button>
+              >{tr('common.cancel')}</button>
             </div>
           </div>
         </div>
@@ -311,18 +313,19 @@ export function MapActions(
         <SaveMapDialog
           t={t}
           defaultTitle={saveIntent === 'saveAs'
-            ? `${cloudTitle ?? mapTitle} 사본`
-            : mapTitle && mapTitle !== '새 맵' ? mapTitle : '새 맵'}
+            ? tr('shell.mapActions.copyTitle', { title: cloudTitle ?? mapTitle })
+            // '새 맵' 비교는 문서에 들어 있는 기본 제목(데이터)이라 번역하지 않는다
+            : mapTitle && mapTitle !== '새 맵' ? mapTitle : tr('shell.mapActions.newMapTitle')}
           note={saveIntent === 'close'
-            ? '닫기 전에 저장합니다. 저장할 폴더와 맵 이름을 정해 주세요.'
+            ? tr('shell.mapActions.noteClose')
             : saveIntent === 'saveAs'
-              ? `'${cloudTitle ?? mapTitle}'의 현재 내용을 새 맵으로 저장합니다. 저장 후 이 탭은 새 맵을 편집합니다.`
+              ? tr('shell.mapActions.noteSaveAs', { title: cloudTitle ?? mapTitle })
               : undefined}
           onCancel={() => setSaveIntent(null)}
           onSaved={({ title }) => {
             const intent = saveIntent;
             setSaveIntent(null);
-            flash(`☁ '${title}' 저장 완료.`);
+            flash(tr('shell.mapActions.savedNew', { title }));
             if (intent === 'close') {
               clearCurrentMap();
               setBrowserOpen(true);

@@ -13,6 +13,7 @@ import { readDeclaration } from '@emm/declaration';
 import { applyDeclaredConnectors, resolveDeclaration } from './emmDeclaration';
 import { applyLevelLayouts } from './levelLayouts';
 import { parseMetaJson, type MapFileMeta } from '@/export/mapMeta';
+import { tr } from '@/i18n';
 
 export interface ImportedMap {
   map: SampleMap;
@@ -270,7 +271,7 @@ export async function relinkImages(
   const key = `zip-img-${Date.now()}`;
   if (showProgress) {
     useUploadStore.getState().begin({
-      key, name: `사진 ${targets.length}장 불러오는 중`, size: targets.length,
+      key, name: tr('io.import.loadingPhotos', { n: targets.length }), size: targets.length,
       ratio: 0, abort: () => undefined,
     });
   }

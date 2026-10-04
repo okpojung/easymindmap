@@ -95,6 +95,18 @@ export function translate(lang: Lang, key: string, vars?: TrVars): string {
   return s.replace(/\{(\w+)\}/g, (m, name: string) => (name in vars ? String(vars[name]) : m));
 }
 
+/**
+ * 바깥 모듈의 사전을 더한다 — 유료 UI(`@pro`)처럼 코어 밖에서 빌드에
+ * 얹히는 화면이 자기 영역(`pro.*`)을 가져온다. 코어 키를 덮어쓰지 않는다.
+ */
+export function registerDict(set: Record<Lang, Record<string, string>>): void {
+  for (const l of LANGS) {
+    for (const [k, v] of Object.entries(set[l] ?? {})) {
+      if (!(k in DICTS[l])) DICTS[l][k] = v;
+    }
+  }
+}
+
 /** 컴포넌트 밖에서 — 부르는 순간의 언어로 */
 export function tr(key: string, vars?: TrVars): string {
   return translate(useLangStore.getState().lang, key, vars);

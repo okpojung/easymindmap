@@ -7,6 +7,7 @@
 
 import type { LaidOutNode } from '@/layout/types';
 import type { NoteBlock } from '@/editor/__samples__/types';
+import { tr } from '@/i18n';
 
 export type NoteKind = 'note-paragraph' | 'note-code' | 'note-table' | 'note-check';
 export type ContentKind = NoteKind | 'note' | 'link' | 'file' | 'media';
@@ -29,12 +30,12 @@ export interface ContentIndicator {
 //   문단 = T(Text) · 코드 = C(Code) · 표 = 격자(⊞) · 체크 = ✓
 export const NOTE_KIND_META: Record<
   NoteKind,
-  { label: string; letter: string; color: string; blockType: string }
+  { labelKey: string; letter: string; color: string; blockType: string }
 > = {
-  'note-paragraph': { label: '문단 노트',     letter: 'T', color: '#64748B', blockType: 'paragraph' },
-  'note-code':      { label: '코드 노트',     letter: 'C', color: '#B45309', blockType: 'code_block' },
-  'note-table':     { label: '표 노트',       letter: '⊞', color: '#1D4ED8', blockType: 'table' },
-  'note-check':     { label: '체크리스트',    letter: '✓', color: '#15803D', blockType: 'checklist' },
+  'note-paragraph': { labelKey: 'editor.content.noteParagraph', letter: 'T', color: '#64748B', blockType: 'paragraph' },
+  'note-code':      { labelKey: 'editor.content.noteCode', letter: 'C', color: '#B45309', blockType: 'code_block' },
+  'note-table':     { labelKey: 'editor.content.noteTable', letter: '⊞', color: '#1D4ED8', blockType: 'table' },
+  'note-check':     { labelKey: 'editor.content.noteCheck', letter: '✓', color: '#15803D', blockType: 'checklist' },
 };
 
 export const NOTE_KINDS: NoteKind[] = [
@@ -62,11 +63,13 @@ const KIND_ICON: Record<'link' | 'file' | 'media', string> = {
   media: '▶️',
 };
 
-const KIND_LABEL: Record<'link' | 'file' | 'media', string> = {
-  link: '링크',
-  file: '첨부파일',
-  media: '멀티미디어',
+// 사전 키 — 인디케이터를 만들 때(렌더 시점) tr 로 옮긴다
+const KIND_LABEL_KEY: Record<'link' | 'file' | 'media', string> = {
+  link: 'editor.content.link',
+  file: 'editor.content.file',
+  media: 'editor.content.media',
 };
+const countTitle = (labelKey: string, n: number) => tr('editor.content.count', { label: tr(labelKey), n });
 
 export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
   const links = n.links ?? [];
@@ -86,7 +89,7 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
       out.push({
         kind,
         icon: meta.letter,
-        title: blocks.length > 1 ? `${meta.label} ${blocks.length}개` : meta.label,
+        title: blocks.length > 1 ? countTitle(meta.labelKey, blocks.length) : tr(meta.labelKey),
         count: blocks.length,
         items: [],
       });
@@ -96,7 +99,7 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
     out.push({
       kind: 'note-paragraph',
       icon: NOTE_KIND_META['note-paragraph'].letter,
-      title: NOTE_KIND_META['note-paragraph'].label,
+      title: tr(NOTE_KIND_META['note-paragraph'].labelKey),
       count: 1,
       items: [],
     });
@@ -106,7 +109,7 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
     out.push({
       kind: 'link',
       icon: KIND_ICON.link,
-      title: links.length > 1 ? `${KIND_LABEL.link} ${links.length}개` : links[0].label || links[0].url,
+      title: links.length > 1 ? countTitle(KIND_LABEL_KEY.link, links.length) : links[0].label || links[0].url,
       count: links.length,
       items: links.map((l) => ({ label: l.label || l.url, url: l.url })),
     });
@@ -115,7 +118,7 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
     out.push({
       kind: 'file',
       icon: KIND_ICON.file,
-      title: files.length > 1 ? `${KIND_LABEL.file} ${files.length}개` : files[0].name,
+      title: files.length > 1 ? countTitle(KIND_LABEL_KEY.file, files.length) : files[0].name,
       count: files.length,
       items: files.map((a) => ({ label: a.name, url: a.url })),
     });
@@ -124,7 +127,7 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
     out.push({
       kind: 'media',
       icon: KIND_ICON.media,
-      title: media.length > 1 ? `${KIND_LABEL.media} ${media.length}개` : media[0].name,
+      title: media.length > 1 ? countTitle(KIND_LABEL_KEY.media, media.length) : media[0].name,
       count: media.length,
       items: media.map((a) => ({ label: a.name, url: a.url })),
     });

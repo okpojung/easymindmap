@@ -10,7 +10,7 @@
 // 관련 문서: docs/04-extensions/ai/18-ai.md,
 //           docs/04-extensions/ai/emm-prompt-templates.md
 
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { InspectorSection } from './InspectorSection';
@@ -32,11 +32,15 @@ import {
   resolveProvider,
   type AiProviderChoice,
 } from '@/stores/aiSettingsStore';
-import { GENERATION_TYPES } from '@/utils/emmSystemPrompt';
+import { GENERATION_TYPES, withOutputLanguage } from '@/utils/emmSystemPrompt';
+import { sourceMarker } from '@/utils/aiProjectContext';
+import { LANG_LOCALE, useLang, useTr } from '@/i18n';
 import { parseEmm } from '@/utils/importMarkdown';
 import { countMapNodes } from '@/export/mapMeta';
 import { WebAiPanel } from './WebAiPanel';
 import { AiConfirmPopover, type ConfirmRequest } from './AiConfirmPopover';
+import { rich } from '@/i18n/rich';
+
 
 export function AITab({ t }: { t: ThemeTokens }) {
   // Guest 체험 (2026-08-04) — API 키 등록·호출 없음: 웹 AI(클립보드
@@ -85,6 +89,8 @@ function GenerateView({ t, onNeedKey }: {
   /** 키가 없을 때 'AI 설정' 대화상자(아바타 메뉴)로 데려간다 (2026-08-06 보고) */
   onNeedKey: () => void;
 }) {
+  const tr = useTr();
+  const lang = useLang();
   const provider = useAiSettingsStore((s) => s.provider);
   const setProvider = useAiSettingsStore((s) => s.setProvider);
   const priority = useAiSettingsStore((s) => s.priority);
@@ -151,16 +157,17 @@ function GenerateView({ t, onNeedKey }: {
     setBusy(true);
     try {
       const addition = GENERATION_TYPES.find((g) => g.key === genType)?.addition ?? '';
-      const system = addition ? `${systemPrompt}\n\n${addition}` : systemPrompt;
+      // 화면 언어가 한국어가 아니면 출력 언어 지시를 맨 끝에 (한국어면 그대로)
+      const system = withOutputLanguage(addition ? `${systemPrompt}\n\n${addition}` : systemPrompt);
       const md = await generateWithAi(
         effective, keys[effective],
         models[effective] || DEFAULT_MODELS[effective], system, q,
       );
       // blockPlacement 'node' — 문단·코드·표를 노드 본문에 (웹 AI 모드
       // answerToMap·MD 불러오기 기본과 동일, 템플릿 v4 규칙 4와 한 쌍)
-      const map = parseEmm(md, 'AI 생성 맵', { blockPlacement: 'node' });
+      const map = parseEmm(md, tr('inspector.ai.defaultMapTitle'), { blockPlacement: 'node' });
       if (!map) {
-        throw new Error('답변에서 마인드맵 구조를 인식하지 못했습니다 — 다시 시도해 보세요');
+        throw new Error(tr('inspector.ai.noStructure'));
       }
       setResult({ md, map, nodeCount: countMapNodes(map), prompt: q });
     } catch (e) {
@@ -177,9 +184,7 @@ function GenerateView({ t, onNeedKey }: {
     // #210 에서 AI 경로가 `resetHistory: true` 가 되면서 그 약속이 사실이
     // 아니게 됐는데 문구만 남아 있었다.
     askConfirm(
-      `현재 맵을 닫고 AI가 생성한 맵(${result.nodeCount}개 노드)을 열까요?\n`
-      + '새 문서로 열리므로 되돌리기(Ctrl+Z)로는 지금 맵으로 돌아올 수 없습니다 —\n'
-      + '저장하지 않은 편집이 있으면 먼저 ☁ 저장하세요.',
+      tr('inspector.ai.confirmNewMap', { n: result.nodeCount }),
       () => {
         // **서버 맵 연결을 먼저 끊는다** — 끊지 않으면 자동저장이 조금 전까지
         // 열어 두었던 서버 맵을 이 AI 맵으로 덮어쓴다 (2026-08-05 저장 감사).
@@ -210,7 +215,7 @@ function GenerateView({ t, onNeedKey }: {
   const applyToSelected = () => {
     if (!result) return;
     if (!selectedId || !selectedNode) {
-      setError('먼저 맵에서 삽입할 노드를 클릭해 선택하세요 — 그 노드의 하위로 추가됩니다.');
+      setError(tr('inspector.ai.selectNodeFirst'));
       return;
     }
     setError('');
@@ -220,17 +225,16 @@ function GenerateView({ t, onNeedKey }: {
     const parsed = parseEmm(wrapped, '삽입', { blockPlacement: 'node' });
     const kids = parsed ? reassignIds(parsed.branches as never) : [];
     if (!kids.length) {
-      setError('답변에서 하위 구조를 인식하지 못했습니다 — 다시 생성해 보세요.');
+      setError(tr('inspector.ai.noChildren'));
       return;
     }
     askConfirm(
-      `'${selectedNode.text || '노드'}' 아래에 ${kids.length}개 항목을 추가할까요?\n`
-      + '(실행 취소 Ctrl+Z 로 되돌릴 수 있습니다)',
+      tr('inspector.ai.confirmInsert', { node: selectedNode.text || tr('inspector.ai.nodeFallback'), n: kids.length }),
       () => {
         appendChildren(selectedId, kids as never);
         setSelectedId(selectedId);
         pushHistory({
-          prompt: `[삽입] ${result.prompt}`,
+          prompt: tr('inspector.ai.histInsert', { prompt: result.prompt }),
           at: new Date().toISOString(),
           nodes: kids.length,
           provider: effective,
@@ -251,7 +255,7 @@ function GenerateView({ t, onNeedKey }: {
       // 입력창에 적어 둔 질문이 있으면 **함께 보낸다** (2026-08-06 보고 —
       // 적어 둔 질문이 무시돼 맵 문맥대로만 나왔다)
       const ctx = buildExpandContext(map, selectedId, systemPrompt, prompt);
-      if (!ctx) throw new Error('선택한 노드를 찾지 못했습니다');
+      if (!ctx) throw new Error(tr('inspector.ai.nodeNotFound'));
       const md = await generateWithAi(
         effective, keys[effective],
         models[effective] || DEFAULT_MODELS[effective],
@@ -264,17 +268,16 @@ function GenerateView({ t, onNeedKey }: {
       const parsed = parseEmm(wrapped, '확장', { blockPlacement: 'node' });
       const kids = parsed ? reassignIds(parsed.branches as never) : [];
       if (!kids.length) {
-        throw new Error('확장 결과에서 하위 구조를 인식하지 못했습니다 — 다시 시도해 보세요');
+        throw new Error(tr('inspector.ai.expandNoChildren'));
       }
       const ok = window.confirm(
-        `'${ctx.targetText}' 아래에 AI가 만든 세부 ${kids.length}개 항목을 추가할까요?\n` +
-        '(실행 취소 Ctrl+Z 로 되돌릴 수 있습니다)',
+        tr('inspector.ai.confirmExpand', { node: ctx.targetText, n: kids.length }),
       );
       if (!ok) return;
       appendChildren(selectedId, kids as never);
       setSelectedId(selectedId);
       pushHistory({
-        prompt: `[확장] ${ctx.targetText}`,
+        prompt: tr('inspector.ai.histExpand', { node: ctx.targetText }),
         at: new Date().toISOString(),
         nodes: kids.length,
         provider: effective,
@@ -290,16 +293,16 @@ function GenerateView({ t, onNeedKey }: {
   const modeSwitch = (
     <div style={{ display: 'flex', gap: 4, padding: '10px 12px 0' }}>
       {([
-        ['web', '🌐 웹 AI (키 불필요)'],
-        ['api', '🔑 API 키'],
+        ['web', tr('inspector.ai.modeWeb')],
+        ['api', tr('inspector.ai.modeApi')],
       ] as const).map(([k, label]) => (
         <button
           key={k}
           data-ai-mode={k}
           onClick={() => setGenMode(k)}
           title={k === 'web'
-            ? 'Claude·ChatGPT·Gemini 웹 구독으로 맵 생성 (복사 2번, API 키 불필요)'
-            : '등록한 API 키로 앱 안에서 바로 생성'}
+            ? tr('inspector.ai.modeWebTitle')
+            : tr('inspector.ai.modeApiTitle')}
           style={{
             flex: 1, padding: '6px 0', borderRadius: 7,
             border: `1.5px solid ${mode === k ? t.primary : t.border}`,
@@ -328,36 +331,36 @@ function GenerateView({ t, onNeedKey }: {
         t={t} panelRef={panelRef} req={confirmReq} testId="aiapi"
         onClose={() => setConfirmReq(null)} />
       {modeSwitch}
-      <InspectorSection t={t} title="AI 마인드맵 생성">
+      <InspectorSection t={t} title={tr('inspector.ai.genTitle')}>
         <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
           <div style={{ flex: 1.4 }}>
             <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 3 }}>AI</div>
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value as AiProviderChoice)}
-              title="답변을 요청할 AI (키 등록·우선순위는 아바타 메뉴 → AI 설정에서)"
+              title={tr('inspector.ai.providerTitle')}
               style={selectStyle(t)}
             >
               <option value="auto">
-                자동 — 우선순위 순 ({PROVIDER_LABELS[effective].split(' ')[0]})
+                {tr('inspector.ai.autoOption', { name: PROVIDER_LABELS[effective].split(' ')[0] })}
               </option>
               {PROVIDERS.map((p) => (
                 <option key={p} value={p}>
-                  {PROVIDER_LABELS[p]}{keys[p]?.trim() ? '' : ' — 키 미등록'}
+                  {PROVIDER_LABELS[p]}{keys[p]?.trim() ? '' : tr('inspector.ai.noKeySuffix')}
                 </option>
               ))}
             </select>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 3 }}>생성 유형</div>
+            <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 3 }}>{tr('inspector.ai.genType')}</div>
             <select
               value={genType}
               onChange={(e) => setGenType(e.target.value)}
-              title="mmd 템플릿에 덧붙일 용도별 추가 지시"
+              title={tr('inspector.ai.genTypeTitle')}
               style={selectStyle(t)}
             >
               {GENERATION_TYPES.map((g) => (
-                <option key={g.key} value={g.key}>{g.label}</option>
+                <option key={g.key} value={g.key}>{tr(g.label)}</option>
               ))}
             </select>
           </div>
@@ -366,7 +369,7 @@ function GenerateView({ t, onNeedKey }: {
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder={'웹 채팅에 질문하듯 입력하세요 — 답변이 그대로 맵이 됩니다.\n예: Docker로 WordPress 설치 절차를 정리해줘'}
+          placeholder={tr('inspector.ai.promptPlaceholder')}
           style={{
             width: '100%', boxSizing: 'border-box', padding: 10,
             fontSize: 12.5, borderRadius: 7, resize: 'vertical',
@@ -377,8 +380,7 @@ function GenerateView({ t, onNeedKey }: {
           }} />
 
         <div style={{ fontSize: 10.5, color: t.textSubtle, margin: '4px 0 0', lineHeight: 1.5 }}>
-          질문에는 항상 <b>mmd 프롬프트 템플릿</b>이 함께 전달됩니다
-          (아바타 메뉴 → AI 설정에서 열람·수정).
+          {rich(tr('inspector.ai.templateNote'), { tpl: <b>{tr('inspector.ai.templateName')}</b> })}
         </div>
 
         {error && (
@@ -399,8 +401,8 @@ function GenerateView({ t, onNeedKey }: {
           disabled={hasKey && (busy || !prompt.trim())}
           data-ai-generate
           title={hasKey
-            ? 'AI에게 질문하고 답변을 맵으로 변환'
-            : '눌러서 AI 설정으로 이동 — API 키를 먼저 등록하세요'}
+            ? tr('inspector.ai.askTitle')
+            : tr('inspector.ai.goSettingsTitle')}
           style={{
             width: '100%', marginTop: 8, padding: 9,
             background: busy || !hasKey
@@ -414,8 +416,8 @@ function GenerateView({ t, onNeedKey }: {
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
           <I.Sparkles size={14} />
-          {busy ? 'AI 답변을 기다리는 중…'
-            : hasKey ? '① AI에게 물어보기' : '🔑 API 키를 등록하세요 — 눌러서 AI 설정으로'}
+          {busy ? tr('inspector.ai.waiting')
+            : hasKey ? tr('inspector.ai.ask') : tr('inspector.ai.needKey')}
         </button>
 
         {/* ② **답변을 어디에 넣을지 고른다** (2026-08-06 사용자 결정).
@@ -428,26 +430,28 @@ function GenerateView({ t, onNeedKey }: {
               border: `1px solid ${t.border}`, borderRadius: 6,
               padding: '7px 9px', lineHeight: 1.55,
             }}>
-              ✨ 답변을 받았습니다 — <b>{result.nodeCount}개 노드</b>.
-              아래에서 <b>어디에 넣을지</b> 골라 주세요.
+              {rich(tr('inspector.ai.gotAnswer'), {
+                nodes: <b>{tr('inspector.ai.nodesCount', { n: result.nodeCount })}</b>,
+                where: <b>{tr('inspector.ai.whereToPut')}</b>,
+              })}
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
               <button
                 data-ai-apply-newmap
                 onClick={applyAsNewMap}
-                title="현재 맵을 닫고 새 맵으로 엽니다 (확인 후 실행)"
+                title={tr('inspector.ai.newMapTitle')}
                 style={applyBtn(t, true)}
-              >② 새 맵 생성</button>
+              >{tr('inspector.ai.newMap')}</button>
               {/* 노드를 안 골랐어도 **버튼은 보인다** — 누르면 노드를
                   먼저 고르라고 알려 준다 (웹 AI 모드와 같은 규칙) */}
               <button
                 data-ai-apply-insert
                 onClick={applyToSelected}
                 title={selectedNode
-                  ? `답변을 '${selectedNode.text}' 노드의 하위로 추가합니다 (확인 후 실행)`
-                  : '맵에서 노드를 먼저 선택하세요 — 그 노드의 하위로 추가됩니다'}
+                  ? tr('inspector.ai.insertTitle', { node: selectedNode.text })
+                  : tr('inspector.ai.insertNoNodeTitle')}
                 style={applyBtn(t, false)}
-              >선택 노드에 삽입</button>
+              >{tr('inspector.ai.insert')}</button>
             </div>
             <button
               data-ai-result-discard
@@ -456,29 +460,33 @@ function GenerateView({ t, onNeedKey }: {
                 marginTop: 5, background: 'none', border: 'none', padding: 0,
                 color: t.textSubtle, fontSize: 10.5, cursor: 'pointer',
                 textDecoration: 'underline',
-              }}>이 답변 버리기</button>
+              }}>{tr('inspector.ai.discard')}</button>
           </div>
         )}
         {!hasKey && (
           <div data-ai-nokey style={{
             marginTop: 6, fontSize: 10.5, color: t.textSubtle, lineHeight: 1.55,
           }}>
-            <b>API 키 방식</b>은 내 키로 AI를 직접 부릅니다 (요금은 그 AI 회사에
-            냅니다). 키가 없으면 위 <b>🌐 웹 AI</b> 를 쓰세요 — <b>키 없이</b>
-            ChatGPT·Claude 같은 창에 붙여넣고 답을 되가져오는 방식입니다.
+            {rich(tr('inspector.ai.noKeyNote'), {
+              api: <b>{tr('inspector.ai.noKeyNoteApi')}</b>,
+              web: <b>{tr('inspector.ai.noKeyNoteWeb')}</b>,
+              nokey: <b>{tr('inspector.ai.noKeyNoteNoKey')}</b>,
+            })}
           </div>
         )}
       </InspectorSection>
 
-      <InspectorSection t={t} title="선택 노드 자세히 확장">
+      <InspectorSection t={t} title={tr('inspector.ai.expandTitle')}>
         <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5, marginBottom: 6 }}>
-          맵에서 노드를 고르고 누르면, <b>중심 주제(프로젝트 지침) + 상위
-          경로 + 이 노드</b>를 AI에게 보내 <b>세부 내용을 하위 노드로</b>
-          채웁니다. AI가 만든 노드든 직접 만든 노드든 상관없습니다.
+          {rich(tr('inspector.ai.expandHelp1'), {
+            ctx: <b>{tr('inspector.ai.expandHelp1Ctx')}</b>,
+            detail: <b>{tr('inspector.ai.expandHelp1Detail')}</b>,
+          })}
           <br />
-          <b>위 입력창에 적은 요청도 함께 보냅니다</b> — 맵 문맥과 다르면
-          <b>적은 요청을 따릅니다</b>. 맵 문맥만으로 확장하려면 입력창을
-          비우세요. (2026-08-06)
+          {rich(tr('inspector.ai.expandHelp2'), {
+            also: <b>{tr('inspector.ai.expandHelp2Also')}</b>,
+            follow: <b>{tr('inspector.ai.expandHelp2Follow')}</b>,
+          })}
 </div>
         <div data-ai-expand-target style={{
           fontSize: 11.5, padding: '6px 9px', borderRadius: 6, marginBottom: 6,
@@ -487,17 +495,17 @@ function GenerateView({ t, onNeedKey }: {
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {selectedNode
-            ? `대상: ${selectedNode.text || '(빈 노드)'}`
-            : '맵에서 확장할 노드를 선택하세요'}
+            ? tr('inspector.ai.expandTarget', { node: selectedNode.text || tr('inspector.conn.emptyNode') })
+            : tr('inspector.ai.expandPick')}
         </div>
         {/* 위 버튼과 같은 규칙 — 키가 없으면 눌러서 'AI 설정'으로 간다 */}
         <button
           onClick={hasKey ? runExpand : onNeedKey}
           disabled={hasKey && (expandBusy || !selectedNode)}
           data-ai-expand
-          title={!hasKey ? '눌러서 AI 설정으로 이동 — API 키를 먼저 등록하세요'
-            : !selectedNode ? '맵에서 노드를 선택하세요'
-              : '선택 노드를 AI로 상세 확장 (하위 노드 추가)'}
+          title={!hasKey ? tr('inspector.ai.goSettingsTitle')
+            : !selectedNode ? tr('inspector.ai.selectNode')
+              : tr('inspector.ai.expandBtnTitle')}
           style={{
             width: '100%', padding: 9,
             background: expandBusy || !selectedNode || !hasKey ? t.surfaceAlt : t.primarySoft,
@@ -508,24 +516,23 @@ function GenerateView({ t, onNeedKey }: {
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
           <I.Sparkles size={13} />
-          {expandBusy ? 'AI가 확장 중…'
-            : hasKey ? '선택 노드 자세히 확장' : '🔑 API 키를 등록하세요 — 눌러서 AI 설정으로'}
+          {expandBusy ? tr('inspector.ai.expanding')
+            : hasKey ? tr('inspector.ai.expandTitle') : tr('inspector.ai.needKey')}
         </button>
         <ExpandHelp t={t} />
       </InspectorSection>
 
-      <InspectorSection t={t} title="최근 생성 기록">
+      <InspectorSection t={t} title={tr('inspector.ai.history')}>
         {history.length === 0 && (
           <div style={{ fontSize: 11, color: t.textSubtle, lineHeight: 1.5 }}>
-            아직 생성 기록이 없습니다. 프롬프트를 입력하고 'AI로 맵
-            생성'을 눌러 보세요.
+            {tr('inspector.ai.historyEmpty')}
           </div>
         )}
         {history.map((h, i) => (
           <div
             key={i}
             onClick={() => setPrompt(h.prompt)}
-            title="클릭하면 프롬프트 입력창에 다시 채웁니다"
+            title={tr('inspector.ai.historyItemTitle')}
             style={{
               padding: '8px 10px', borderRadius: 6,
               background: t.surfaceAlt, border: `1px solid ${t.border}`,
@@ -536,9 +543,9 @@ function GenerateView({ t, onNeedKey }: {
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{h.prompt}</div>
             <div style={{ fontSize: 10.5, color: t.textSubtle, display: 'flex', gap: 8 }}>
-              <span>{new Date(h.at).toLocaleString('ko-KR')}</span>
+              <span>{new Date(h.at).toLocaleString(LANG_LOCALE[lang])}</span>
               <span>·</span>
-              <span>{h.nodes} 노드</span>
+              <span>{tr('inspector.ai.nodesCount', { n: h.nodes })}</span>
               <span>·</span>
               <span>{PROVIDER_LABELS[h.provider]}</span>
             </div>
@@ -551,6 +558,7 @@ function GenerateView({ t, onNeedKey }: {
 
 // 선택 노드 확장 — 프로젝트 지침·@소스·전달 범위 도움말 (접이식)
 function ExpandHelp({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   const [open, setOpen] = useState(false);
   return (
     <div style={{ marginTop: 6 }}>
@@ -563,7 +571,7 @@ function ExpandHelp({ t }: { t: ThemeTokens }) {
           color: t.textMuted, fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
         }}
       >
-        {open ? '▾' : '▸'} 프로젝트 지침·소스 설정 방법
+        {open ? '▾' : '▸'} {tr('inspector.ai.expandHelpToggle')}
       </button>
       {open && (
         <div style={{
@@ -572,20 +580,22 @@ function ExpandHelp({ t }: { t: ThemeTokens }) {
           fontSize: 10.5, color: t.textMuted, lineHeight: 1.6,
         }}>
           <div style={{ marginBottom: 5 }}>
-            <b style={{ color: t.text }}>① 프로젝트 지침</b> — <b>중심 주제
-            노드의 노트</b>에 적습니다(중심 주제 선택 → 노트·태그 탭 →
-            문단 노트). 모든 확장에 공통 지시로 함께 전달됩니다.
+            <b style={{ color: t.text }}>{tr('inspector.ai.guide1Title')}</b>
+            {rich(tr('inspector.ai.guide1'), { where: <b>{tr('inspector.ai.guide1Where')}</b> })}
           </div>
           <div style={{ marginBottom: 5 }}>
-            <b style={{ color: t.text }}>② 소스(참고 자료)</b> — 중심 주제
-            바로 아래(<b>2레벨</b>)에 <b>제목에 <code>@소스</code>가 들어간
-            노드</b>를 만들고, 그 노드의 <b>텍스트·노트·하위 노드</b>에
-            참고 내용을 적습니다. 확장할 때 자동으로 함께 참고합니다.
+            <b style={{ color: t.text }}>{tr('inspector.ai.guide2Title')}</b>
+            {rich(tr('inspector.ai.guide2'), {
+              level: <b>{tr('inspector.ai.guide2Level')}</b>,
+              node: <b>{rich(tr('inspector.ai.guide2Node'), { marker: <code>{sourceMarker()}</code> })}</b>,
+              parts: <b>{tr('inspector.ai.guide2Parts')}</b>,
+            })}
           </div>
           <div>
-            <b style={{ color: t.text }}>전달되는 것 = 글(텍스트)뿐</b>입니다.
-            PDF·이미지 첨부와 하이퍼링크는 AI가 열지 못하므로 참고되지
-            않습니다 — 필요한 내용은 <b>글로 적어</b> 두세요.
+            {rich(tr('inspector.ai.guide3'), {
+              only: <b style={{ color: t.text }}>{tr('inspector.ai.guide3Only')}</b>,
+              write: <b>{tr('inspector.ai.guide3Write')}</b>,
+            })}
           </div>
         </div>
       )}

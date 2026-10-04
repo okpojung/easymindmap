@@ -11,6 +11,10 @@ import { computeLayout } from '@/layout/LayoutEngine';
 import { SUBTREE_SUPPORTED } from '@/layout/strategies/SubtreeStrategy';
 import { calendarTable } from '@/utils/calendarNodes';
 import { checkIdentity, findOverlaps, genMap, chainMap, BASES } from './invariantGen';
+import { useLangStore } from '@/i18n';
+
+// 한국어 문구(만드는 순간의 언어로 저장되는 글)를 확인한다 — 언어를 한국어로 고정
+useLangStore.getState().setLang('ko');
 
 let failed = 0, ran = 0;
 function check(name: string, out: ReturnType<typeof computeLayout>, extra?: () => string | null, map?: any): void {

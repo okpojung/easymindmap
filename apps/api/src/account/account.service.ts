@@ -52,6 +52,14 @@ const TOKEN_TTL_MIN = 30; // 인증표 유효 시간
  */
 export const DELETE_CONFIRM_PHRASE = '회원탈퇴';
 
+/**
+ * 받아 주는 확인 문구 — 한국어 화면은 위 문구, 그 밖의 언어(영·중·일)
+ * 화면은 **`DELETE`** 를 치게 한다 (2026-10-05 다국어). 한글을 칠 수
+ * 없는 사람이 탈퇴하지 못하는 일이 없게 한다. 미리보기가 내주는
+ * `confirmPhrase` 는 그대로 한국어다(옛 화면 호환).
+ */
+export const DELETE_CONFIRM_PHRASES: readonly string[] = [DELETE_CONFIRM_PHRASE, 'DELETE'];
+
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 
 @Injectable()
@@ -645,9 +653,9 @@ export class AccountService {
    */
   async deleteAccount(userId: string, confirmRaw: string) {
     const confirm = String(confirmRaw || '').trim();
-    if (confirm !== DELETE_CONFIRM_PHRASE) {
+    if (!DELETE_CONFIRM_PHRASES.includes(confirm)) {
       throw new BadRequestException(
-        `확인을 위해 '${DELETE_CONFIRM_PHRASE}' 를 정확히 입력해 주세요.`,
+        `확인을 위해 '${DELETE_CONFIRM_PHRASE}' (or 'DELETE') 를 정확히 입력해 주세요.`,
       );
     }
 

@@ -8,6 +8,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { FolderItem } from '@/services/cloud/apiClient';
 import { flattenFolders } from './folderTree';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { useTr } from '@/i18n';
 
 export function FolderPickerDialog({
   t, title, folders, currentFolderId, disabledIds, onPick, onCancel,
@@ -23,6 +24,7 @@ export function FolderPickerDialog({
   onPick: (folderId: string | null) => void;
   onCancel: () => void;
 }) {
+  const tr = useTr();
   const [picked, setPicked] = useState<string | null>(currentFolderId);
   const blocked = new Set(disabledIds ?? []);
 
@@ -33,7 +35,7 @@ export function FolderPickerDialog({
   }, [onCancel]);
 
   const rows = [
-    { folderId: null as string | null, name: '홈 (최상위)', depth: 0, disabled: false },
+    { folderId: null as string | null, name: tr('cloud.folder.homeRoot'), depth: 0, disabled: false },
     ...flattenFolders(folders).map((f) => ({
       folderId: f.folderId as string | null,
       name: f.name,
@@ -63,7 +65,7 @@ export function FolderPickerDialog({
         <DialogXButton t={t} testId="folder-picker-x" onClose={onCancel} />
         <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4, paddingRight: 34 }}>{title}</div>
         <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 12 }}>
-          옮길 폴더를 고르세요.
+          {tr('cloud.picker.hint')}
         </div>
 
         <div style={{
@@ -94,7 +96,7 @@ export function FolderPickerDialog({
                   {r.name}
                 </span>
                 {isCurrent && (
-                  <span style={{ fontSize: 10, color: t.textSubtle }}>현재 위치</span>
+                  <span style={{ fontSize: 10, color: t.textSubtle }}>{tr('cloud.picker.current')}</span>
                 )}
               </button>
             );
@@ -113,7 +115,7 @@ export function FolderPickerDialog({
               color: picked === currentFolderId ? t.textSubtle : '#fff',
               fontSize: 13.5, fontWeight: 700,
             }}
-          >여기로 옮기기</button>
+          >{tr('cloud.picker.moveHere')}</button>
           <button
             data-testid="folder-picker-cancel"
             onClick={onCancel}
@@ -122,7 +124,7 @@ export function FolderPickerDialog({
               border: `1px solid ${t.border}`, background: t.surfaceAlt,
               color: t.text, fontSize: 13.5, fontWeight: 600,
             }}
-          >취소</button>
+          >{tr('common.cancel')}</button>
         </div>
       </div>
     </div>

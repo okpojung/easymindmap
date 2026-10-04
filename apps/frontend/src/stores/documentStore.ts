@@ -14,7 +14,8 @@ import { create } from 'zustand';
 // 트리 규칙의 **단일 원본** — 화면·협업·DB 가 같은 판정을 써야 한다
 // (docs/04-extensions/collaboration/27-sync-model.md §4)
 import { wouldCreateCycle } from '@emm/tree-rules';
-import { SAMPLE_ROADMAP } from '@/editor/__samples__';
+import { sampleRoadmap } from '@/editor/__samples__';
+import { tr } from '@/i18n';
 import type { OutlineItem } from '@/utils/outlineLines';
 import type {
   Connector,
@@ -50,7 +51,10 @@ export const MAX_DEPTH = 50;
 
 const BRANCH_COLOR_KEYS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 
-/** '맵 닫기' 후의 빈 문서 제목 — "지금 열린 문서가 없다"의 단일 기준 */
+/**
+ * '맵 닫기' 후의 빈 문서 제목 — "지금 열린 문서가 없다"의 단일 기준.
+ * ★ 판정용 표식이라 번역하지 않는다 (화면의 중심 노드 글만 지금 언어로 — closeMap).
+ */
 export const EMPTY_MAP_TITLE = '문서 없음';
 
 /**
@@ -58,6 +62,11 @@ export const EMPTY_MAP_TITLE = '문서 없음';
  * 않고 이 이름으로 시작하고, **서버에 저장할 때** 폴더와 이름을 정한다.
  */
 export const NEW_MAP_TITLE = '새 맵';
+
+/** 새 맵 제목 — 지금 언어로 (newMap(NEW_MAP_TITLE) 도 이것으로 바뀐다) */
+export function newMapTitle(): string {
+  return tr('editor.doc.newMap');
+}
 
 /** 지금 열린 문서가 없는 상태인가 (맵 닫기 직후 / 첫 진입) */
 export function isDocumentEmpty(map: { title: string; branches: unknown[] }): boolean {
@@ -399,7 +408,7 @@ function defaultFontSizeForDepth(depth: number): number {
 function createNewNode(): MindNode {
   return {
     id: createNodeId(),
-    text: '새 노드',
+    text: tr('editor.doc.newNode'),
     textAlign: 'left',
     children: [],
   };
@@ -1175,7 +1184,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   }) as typeof rawSet;
 
   return ({
-  map: cloneMap(SAMPLE_ROADMAP),
+  map: sampleRoadmap(),
   docOrigin: null,
   docEpoch: 0,
   setDocOrigin: (docOrigin) => set({ docOrigin }),
@@ -1220,7 +1229,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   },
 
   setSample: () => asDocumentSwap(
-    () => set({ map: cloneMap(SAMPLE_ROADMAP), docOrigin: null })),
+    () => set({ map: sampleRoadmap(), docOrigin: null })),
 
   addChildNode: (parentId) => {
     let newNodeId = '';
@@ -1931,13 +1940,15 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       docOrigin: null,
       map: {
         title: EMPTY_MAP_TITLE,
-        root: { id: 'root', text: EMPTY_MAP_TITLE, colorKey: 'root', side: 'center' },
+        root: { id: 'root', text: tr('editor.doc.emptyMap'), colorKey: 'root', side: 'center' },
         branches: [],
       },
     });
   })),
 
-  newMap: (title = NEW_MAP_TITLE) => {
+  newMap: (title0 = NEW_MAP_TITLE) => {
+    // 기본 제목·골격 글은 **만드는 순간의 언어**로 (2026-10-05 i18n)
+    const title = title0 === NEW_MAP_TITLE ? newMapTitle() : title0;
     // 새 문서 = 서버 맵 출처 없음 (자동저장이 이전 맵을 덮어쓰지 못한다)
     // 기본 맵 골격 = '트리-진행트리맵' 기본 템플릿.
     // 2026-08-04 축소(사용자 지정 이미지 기준, 11노드): 주제 1·2 =
@@ -1950,18 +1961,18 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     const now = Date.now();
     const branches: SampleBranch[] = [0, 1, 2].map((i) => ({
       id: `n-${now}-${i}`,
-      text: `주제 ${i + 1}`,
+      text: tr('editor.doc.topic', { n: i + 1 }),
       colorKey: colorKeys[i],
       side: 'right' as const,
       layoutType: 'process-tree-right' as const,
       children: [{
         id: `n-${now}-${i}-0`,
-        text: '하위 주제',
+        text: tr('editor.doc.subtopic'),
         layoutType: 'tree-right' as const,
         // 주제 3은 하위 주제까지만 (이미지 기준)
         children: i === 2 ? undefined : [0, 1].map((k) => ({
           id: `n-${now}-${i}-0-${k}`,
-          text: '내용',
+          text: tr('editor.doc.content'),
           layoutType: 'process-tree-right' as const,
         })),
       }],
@@ -1970,7 +1981,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       docOrigin: null,
       map: {
         title,
-        root: { id: 'root', text: '중심 주제', colorKey: 'root', side: 'center' },
+        root: { id: 'root', text: tr('editor.doc.centralTopic'), colorKey: 'root', side: 'center' },
         branches,
       },
     }));
@@ -2061,7 +2072,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
   // ---- 여러 중심주제 (2026-09-15, 2단계) ----------------------------------
 
-  addCenter: (text = '중심 주제', pos?: { dx: number; dy: number }) => {
+  addCenter: (text = tr('editor.doc.centralTopic'), pos?: { dx: number; dy: number }) => {
     const id = createNodeId();
     const at = pos ? { pos: { dx: Math.round(pos.dx), dy: Math.round(pos.dy) } } : {};
     set((state) => ({

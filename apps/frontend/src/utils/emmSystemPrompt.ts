@@ -4,6 +4,13 @@
 // 추가 지시)의 앱 내장본이다 — 템플릿 문서를 고치면 여기도 함께 갱신한다.
 // AI 설정 메뉴에서 사용자가 이 프롬프트를 열람·수정할 수 있고,
 // "기본 템플릿 복원"은 이 상수로 되돌린다.
+//
+// ★ 템플릿은 한국어 하나뿐이다 (다국어 2026-10-05). 화면 언어가 한국어가
+//   아니면 부르는 순간 `withOutputLanguage()` 가 **출력 언어 지시 한 단락**만
+//   덧붙여, AI 가 노드 글을 그 언어로 쓰게 한다. 한국어면 아무것도 붙이지
+//   않는다 — 예전 동작 그대로.
+
+import { currentLang, type Lang } from '@/i18n';
 
 export const EMM_SYSTEM_PROMPT = `너는 EasyMindMap용 구조화 엔진이다. 두 단계로 일하라.
 
@@ -414,18 +421,48 @@ export const EMM_SYSTEM_PROMPT_PREVIOUS: string[] = [
 10. 강조는 **굵게**, ==하이라이트== 만 쓴다. HTML 태그는 금지.`,
 ];
 
+// 출력 언어 지시 — 화면 언어가 한국어가 아닐 때 시스템 프롬프트 끝에 붙인다.
+// 규칙(위 템플릿)은 한국어로 적혀 있어도, 노드 글은 화면 언어로 쓰게 한다.
+const OUTPUT_LANGUAGE: Record<Lang, string> = {
+  ko: '',
+  en: `[Output language]
+The rules above are written in Korean, but write ALL map content in English:
+the central topic, every heading, list item, quote, table cell and explanation.
+Keep code, commands, file names, URLs and product names as they are.`,
+  zh: `[输出语言]
+上面的规则是用韩语写的，但请用简体中文书写导图的全部内容：
+中心主题、所有标题、列表项、引用、表格单元格和说明。
+代码、命令、文件名、URL 和产品名称保持原样。`,
+  ja: `[出力言語]
+上のルールは韓国語で書かれていますが、マップの内容はすべて日本語で書いてください:
+中心トピック、すべての見出し・リスト項目・引用・表のセル・説明。
+コード・コマンド・ファイル名・URL・製品名はそのままにしてください。`,
+};
+
+/** 지금 화면 언어의 출력 언어 지시 (한국어면 빈 문자열) — 부르는 순간의 언어 */
+export function emmOutputLanguageDirective(lang: Lang = currentLang()): string {
+  return OUTPUT_LANGUAGE[lang];
+}
+
+/** 시스템 프롬프트 끝에 출력 언어 지시를 붙인다 (한국어면 그대로 돌려준다) */
+export function withOutputLanguage(system: string, lang: Lang = currentLang()): string {
+  const d = emmOutputLanguageDirective(lang);
+  return d ? `${system}\n\n${d}` : system;
+}
+
 // 생성 유형 — 프롬프트에 덧붙이는 용도별 추가 지시 (기본 = 없음)
 export interface GenerationType {
   key: string;
+  /** 화면에 보이는 이름 — 사전 키 (렌더할 때 번역) */
   label: string;
   addition: string;
 }
 
 export const GENERATION_TYPES: GenerationType[] = [
-  { key: 'basic', label: '기본', addition: '' },
+  { key: 'basic', label: 'inspector.gen.basic', addition: '' },
   {
     key: 'tech',
-    label: '기술 절차형',
+    label: 'inspector.gen.tech',
     addition: `추가 규칙:
 - 절차 단계는 ## 레벨로 실행 순서대로 나열하라.
 - 각 단계의 실행 명령은 반드시 \`\`\` 코드 펜스(bash 등 언어 표기)로
@@ -437,7 +474,7 @@ export const GENERATION_TYPES: GenerationType[] = [
   },
   {
     key: 'meeting',
-    label: '회의록형',
+    label: 'inspector.gen.meeting',
     addition: `추가 규칙:
 - ## 는 안건 단위로 나눠라 (예: 논의 사항 / 결정 사항 / 실행 항목 / 위험).
 - 실행 항목은 \`- 담당자 — 할 일 (기한)\` 형식의 불릿으로.
@@ -445,7 +482,7 @@ export const GENERATION_TYPES: GenerationType[] = [
   },
   {
     key: 'wbs',
-    label: 'WBS/계획형',
+    label: 'inspector.gen.wbs',
     addition: `추가 규칙:
 - ## 는 공정(Phase) 단위, ### 는 작업 패키지, 불릿은 세부 태스크로.
 - 각 공정 헤딩 아래 > 인용문으로 기간·산출물을 요약하라.
@@ -455,7 +492,7 @@ export const GENERATION_TYPES: GenerationType[] = [
   },
   {
     key: 'summary',
-    label: '문서/기사 요약형',
+    label: 'inspector.gen.summary',
     addition: `추가 규칙:
 - 원문의 목차 구조를 ##/### 계층으로 재구성하라 (원문 순서 유지).
 - 핵심 문장 원문 인용은 > 인용문으로, 수치·비교는 표로.

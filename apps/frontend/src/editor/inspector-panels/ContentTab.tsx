@@ -2,7 +2,7 @@
 // wired to the selected node via documentStore. Background image (IMG-01~05) is
 // a V1 feature and stays as a visual placeholder.
 
-import { useState, type DragEvent } from 'react';
+import { Fragment, useState, type DragEvent, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { AttachmentKind } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -15,8 +15,12 @@ import {
 } from '@/utils/clipboardRead';
 import { cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { InspectorSection } from './InspectorSection';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
+
 
 export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
+  const tr = useTr();
   const map = useDocumentStore((s) => s.map);
   const addNodeLink = useDocumentStore((s) => s.addNodeLink);
   const removeNodeLink = useDocumentStore((s) => s.removeNodeLink);
@@ -65,7 +69,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         // URL 만으로 크기를 알 수 없어 하단 상태바가 셀 수 없었다.
         const url = await attachFileWithProgress(f);
         if (useDocumentStore.getState().docEpoch !== epoch) {
-          setAttErr({ where, msg: `'${f.name}' 을(를) 올리는 사이 다른 맵이 열려 첨부하지 않았습니다.` });
+          setAttErr({ where, msg: tr('inspector.content.switchedMap', { name: f.name }) });
           return;
         }
         addNodeAttachment(selectedId, { name: f.name, kind: kindOf(f), size: f.size, url });
@@ -74,7 +78,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         if ((err as Error)?.name === 'UploadAborted') continue;
         setAttErr({
           where,
-          msg: err instanceof Error ? err.message : '첨부에 실패했습니다.',
+          msg: err instanceof Error ? err.message : tr('inspector.content.attachFailed'),
         });
       }
     }
@@ -109,7 +113,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
 
   return (
     <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
-      <InspectorSection t={t} title="하이퍼링크">
+      <InspectorSection t={t} title={tr('inspector.content.links')}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {links.map((link) => (
             <div key={link.id} style={{
@@ -135,12 +139,12 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <input value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)}
-            placeholder="표시 이름 (선택)" style={inputStyle(t)} />
+            placeholder={tr('inspector.content.linkLabel')} style={inputStyle(t)} />
           <div style={{ display: 'flex', gap: 4 }}>
             <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') commitLink(); }}
               placeholder="https://..." style={{ ...inputStyle(t), flex: 1 }} />
-            <button onClick={commitLink} style={addBtnStyle(t)}>추가</button>
+            <button onClick={commitLink} style={addBtnStyle(t)}>{tr('inspector.content.add')}</button>
           </div>
           {/* Drag the address-bar lock/URL from a browser and drop here. */}
           <div
@@ -152,40 +156,36 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
               fontSize: 10.5, color: t.textSubtle,
             }}
           >
-            브라우저 주소창의 자물쇠/URL을 여기로 Drag &amp; Drop
+            {tr('inspector.content.urlDrop')}
           </div>
         </div>
       </InspectorSection>
 
       {isGuest ? (
         // Guest 체험 (2026-08-04) — 첨부 기능 없음 (가입 유도 안내만)
-        <InspectorSection t={t} title="첨부">
+        <InspectorSection t={t} title={tr('inspector.content.attach')}>
           <div data-testid="guest-attach-note" style={{
             fontSize: 11, color: t.textMuted, lineHeight: 1.6,
             padding: '8px 10px', borderRadius: 6,
             background: t.surfaceAlt, border: `1px dashed ${t.border}`,
           }}>
-            Guest 체험 중에는 첨부파일을 쓸 수 없습니다.<br />
-            <b>가입하면</b> 문서·미디어 첨부(2MB 이하 맵 내장 + 초과분
-            서버 저장소)를 쓸 수 있습니다.
+            {tr('inspector.content.guest1')}<br />
+            {rich(tr('inspector.content.guest2'), { b: <b>{tr('inspector.content.guestSignup')}</b> })}
           </div>
         </InspectorSection>
       ) : (<>
-      <InspectorSection t={t} title="첨부 (문서)">
+      <InspectorSection t={t} title={tr('inspector.content.attachDocs')}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {docs.map((a) => (
             <AttachmentRow key={a.id} t={t} icon="📄" name={a.name}
               onRemove={() => selectedId && removeAttachment(a)} />
           ))}
         </div>
-        <FilePickerButton t={t} label="문서 선택" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md"
+        <FilePickerButton t={t} label={tr('inspector.content.pickDocs')} accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md"
           disabled={!selectedId}
           onFiles={(files) => addFiles(files, () => 'file', 'doc')} />
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
-          2MB 이하 파일은 맵에 내장되고(맵당 내장 합계 10MB까지), 초과분은
-          로그인 상태에서 서버 첨부 저장소에 올라갑니다 — 둘 다 저장 후
-          다시 열어도 유지됩니다. (저장 용량 = 문서+첨부 합산 — 남은 용량은
-          <b> 아바타 메뉴 📊 저장 용량</b>에서 확인하세요)
+          {rich(tr('inspector.content.docsHelp'), { b: <b>{tr('inspector.content.docsHelpWhere')}</b> })}
         </div>
         {attErr?.where === 'doc' && (
           <div data-testid="attach-error"
@@ -195,7 +195,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         )}
       </InspectorSection>
 
-      <InspectorSection t={t} title="첨부 (멀티미디어)">
+      <InspectorSection t={t} title={tr('inspector.content.attachMedia')}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {media.map((a) => (
             <AttachmentRow key={a.id} t={t}
@@ -203,19 +203,16 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
               onRemove={() => selectedId && removeAttachment(a)} />
           ))}
         </div>
-        <FilePickerButton t={t} label="미디어 선택" accept="audio/*,video/*,image/*"
+        <FilePickerButton t={t} label={tr('inspector.content.pickMedia')} accept="audio/*,video/*,image/*"
           disabled={!selectedId}
           onFiles={(files) => addFiles(files, attachmentKindFor, 'media')} />
         <ClipboardImageButton t={t} disabled={!selectedId}
           onFiles={(files) => addFiles(files, attachmentKindFor, 'media')}
           onError={(msg) => setAttErr({ where: 'media', msg })} />
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
-          오디오·영상·이미지. 문서 첨부와 같은 규칙입니다 (2MB 이하는 맵
-          내장, 초과분은 서버 저장소). 화면을 캡처한 뒤 위 단추를 누르거나,
-          노드를 선택한 채 <b>Ctrl+V</b> 해도 그림이 첨부됩니다.
+          {rich(tr('inspector.content.mediaHelp'), { key: <b>Ctrl+V</b> })}
           <br />
-          <b>큰 파일도 그냥 고르면 됩니다</b> — 8MB를 넘으면 자동으로 나눠
-          올리고(최대 1GB) 진행률이 화면 아래에 표시됩니다.
+          <b>{tr('inspector.content.bigFiles')}</b>{tr('inspector.content.bigFilesRest')}
         </div>
         {attErr?.where === 'media' && (
           <div data-testid="attach-error-media"
@@ -226,9 +223,9 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
       </InspectorSection>
       </>)}
 
-      <InspectorSection t={t} title="노드 배경 이미지 (IMG-01~05 · V1)">
+      <InspectorSection t={t} title={tr('inspector.content.bgImage')}>
         <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>
-          노드 배경 이미지는 V1 범위입니다. (MVP 제외)
+          {tr('inspector.content.bgImageNote')}
         </div>
       </InspectorSection>
     </div>
@@ -242,6 +239,7 @@ function FilePickerButton({ t, label, accept, disabled, onFiles }: {
   disabled?: boolean;
   onFiles: (files: File[]) => void | Promise<void>;
 }) {
+  const tr = useTr();
   return (
     <label
       onDragOver={(e) => { if (!disabled) e.preventDefault(); }}
@@ -260,7 +258,7 @@ function FilePickerButton({ t, label, accept, disabled, onFiles }: {
         fontSize: 11.5, fontWeight: 500, justifyContent: 'center',
         boxSizing: 'border-box',
       }}>
-      <I.Plus size={12} /> {label} · 또는 Drag &amp; Drop
+      <I.Plus size={12} /> {tr('inspector.content.pickOrDrop', { label })}
       <input
         type="file"
         accept={accept}
@@ -288,6 +286,7 @@ function ClipboardImageButton({ t, disabled, onFiles, onError }: {
   onFiles: (files: File[]) => void | Promise<void>;
   onError: (msg: string) => void;
 }) {
+  const tr = useTr();
   const [busy, setBusy] = useState(false);
   const supported = typeof navigator !== 'undefined'
     && typeof navigator.clipboard?.read === 'function';
@@ -311,7 +310,7 @@ function ClipboardImageButton({ t, disabled, onFiles, onError }: {
       data-testid="attach-clipboard-image"
       disabled={disabled || busy}
       onClick={() => { void run(); }}
-      title={supported ? '캡처하거나 복사한 그림을 이 노드의 첨부로 붙입니다'
+      title={supported ? tr('inspector.content.clipboardTitle')
         : CLIPBOARD_UNSUPPORTED}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
@@ -322,7 +321,7 @@ function ClipboardImageButton({ t, disabled, onFiles, onError }: {
         fontSize: 11.5, fontWeight: 500, justifyContent: 'center',
         boxSizing: 'border-box', fontFamily: 'inherit',
       }}>
-      📋 {busy ? '붙여넣는 중…' : '첨부파일로 이미지 붙여넣기'}
+      📋 {busy ? tr('inspector.content.pasting') : tr('inspector.content.pasteImage')}
     </button>
   );
 }
@@ -346,6 +345,7 @@ function addBtnStyle(t: ThemeTokens) {
 function AttachmentRow({ t, icon, name, onRemove }: {
   t: ThemeTokens; icon: string; name: string; onRemove: () => void;
 }) {
+  const tr = useTr();
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
@@ -357,7 +357,7 @@ function AttachmentRow({ t, icon, name, onRemove }: {
         flex: 1, minWidth: 0, fontSize: 11.5, color: t.text, fontWeight: 500,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{name}</div>
-      <button onClick={onRemove} title="첨부 삭제" style={{
+      <button onClick={onRemove} title={tr('inspector.content.removeAttachment')} style={{
         background: 'none', border: 'none', cursor: 'pointer',
         color: t.textMuted, padding: 2, display: 'flex',
       }}>

@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { useTr } from '@/i18n';
 
 export function CodeBlockDialog({
   t,
@@ -25,6 +26,7 @@ export function CodeBlockDialog({
   onCancel: () => void;
   onSave: (lang: string, code: string) => void;
 }) {
+  const tr = useTr();
   const [lang, setLang] = useState(initialLang ?? '');
   const [code, setCode] = useState(initialCode ?? '');
   const codeRef = useRef<HTMLTextAreaElement | null>(null);
@@ -71,15 +73,15 @@ export function CodeBlockDialog({
       >
         <DialogXButton t={t} testId="code-block-dialog-x" onClose={onCancel} />
         <div style={{ fontSize: 14, fontWeight: 700, color: t.text, paddingRight: 34 }}>
-          코드 블록 {initialCode ? '수정' : '삽입'}
+          {initialCode ? tr('editor.code.titleEdit') : tr('editor.code.titleInsert')}
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 12, color: t.textMuted, flexShrink: 0 }}>언어</span>
+          <span style={{ fontSize: 12, color: t.textMuted, flexShrink: 0 }}>{tr('common.language')}</span>
           <input
             data-testid="code-lang-input"
             value={lang}
             onChange={(e) => setLang(e.target.value)}
-            placeholder="예: bash, js, python — 비우면 code"
+            placeholder={tr('editor.code.langPlaceholder')}
             style={{
               flex: 1, boxSizing: 'border-box', padding: '6px 9px',
               borderRadius: 7, border: `1px solid ${t.border}`,
@@ -95,7 +97,7 @@ export function CodeBlockDialog({
           value={code}
           onChange={(e) => setCode(e.target.value)}
           rows={10}
-          placeholder="코드를 입력하세요 (여러 줄 가능)"
+          placeholder={tr('editor.code.codePlaceholder')}
           spellCheck={false}
           style={{
             width: '100%', boxSizing: 'border-box', resize: 'vertical',
@@ -118,7 +120,7 @@ export function CodeBlockDialog({
               color: t.textMuted, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
             }}
           >
-            취소 (Esc)
+            {tr('editor.dlg.cancelEsc')}
           </button>
           <button
             type="button"
@@ -132,7 +134,7 @@ export function CodeBlockDialog({
               cursor: canSave ? 'pointer' : 'default',
             }}
           >
-            확인 (Ctrl+Enter)
+            {tr('editor.dlg.okCtrlEnter')}
           </button>
         </div>
       </div>

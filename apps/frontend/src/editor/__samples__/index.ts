@@ -1,3 +1,3 @@
 export * from './types';
-export { SAMPLE_ROADMAP } from './roadmap';
+export { sampleRoadmap } from './roadmap';
 export { SAMPLE_COLLABS } from './collabs';

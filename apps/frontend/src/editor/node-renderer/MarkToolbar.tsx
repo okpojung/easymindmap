@@ -12,21 +12,22 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { TableGridPicker } from './TableDialog';
+import { useTr } from '@/i18n';
 
 export const MARK_BUTTONS = [
-  { m: '**', label: 'B', title: '굵게 (Ctrl+B)', st: { fontWeight: 800 } },
-  { m: '*', label: 'I', title: '기울임 (Ctrl+I)', st: { fontStyle: 'italic', fontWeight: 600 } },
-  { m: '~~', label: 'S', title: '취소선', st: { textDecoration: 'line-through', fontWeight: 600 } },
-  { m: '__', label: 'U', title: '밑줄 (Ctrl+U)', st: { textDecoration: 'underline', fontWeight: 600 } },
-  { m: '==', label: 'H', title: '하이라이트 (다시 누르면 해제)', st: { background: '#FFE066', color: '#1F1B16', borderRadius: 3, padding: '0 4px', fontWeight: 700 } },
+  { m: '**', label: 'B', titleKey: 'editor.mark.bold', st: { fontWeight: 800 } },
+  { m: '*', label: 'I', titleKey: 'editor.mark.italic', st: { fontStyle: 'italic', fontWeight: 600 } },
+  { m: '~~', label: 'S', titleKey: 'editor.mark.strike', st: { textDecoration: 'line-through', fontWeight: 600 } },
+  { m: '__', label: 'U', titleKey: 'editor.mark.underline', st: { textDecoration: 'underline', fontWeight: 600 } },
+  { m: '==', label: 'H', titleKey: 'editor.mark.highlight', st: { background: '#FFE066', color: '#1F1B16', borderRadius: 3, padding: '0 4px', fontWeight: 700 } },
   // 코드는 { } 하나로 통일 — 팝업에서 언어·코드를 입력해 블록으로 삽입.
   // (한 줄 인라인 코드가 필요하면 백틱 ` 로 직접 감싸는 것은 계속 지원)
-  { m: '```', label: '{ }', title: '코드 블록 (팝업에서 언어·코드 입력)', st: { fontFamily: "ui-monospace, 'Consolas', monospace", background: '#334155', color: '#ECEFF3', borderRadius: 3, padding: '0 3px', fontWeight: 700, fontSize: 11 } },
+  { m: '```', label: '{ }', titleKey: 'editor.mark.codeBlock', st: { fontFamily: "ui-monospace, 'Consolas', monospace", background: '#334155', color: '#ECEFF3', borderRadius: 3, padding: '0 3px', fontWeight: 700, fontSize: 11 } },
   // 체크박스 줄 — 커서 줄에 '- [ ] ' 마커 토글 (노드에 체크박스로 렌더)
-  { m: 'check', label: '☑', title: '체크박스 줄 (- [ ] — 다시 누르면 해제)', st: { color: '#22A06B', fontWeight: 700, fontSize: 15 } },
+  { m: 'check', label: '☑', titleKey: 'editor.mark.check', st: { color: '#22A06B', fontWeight: 700, fontSize: 15 } },
   // 표 — 10×10 격자에서 크기를 고르면 그 크기의 표가 들어가고 팝업에서 채운다
   // (노드에 이미 표가 있으면 그 표를 팝업에서 수정). TableDialog 참조 (2026-09-17)
-  { m: 'table', label: '⊞', title: '표 (격자에서 행·열을 고르면 삽입 · 이미 있으면 수정)', st: { color: '#2563EB', fontWeight: 700, fontSize: 16 } },
+  { m: 'table', label: '⊞', titleKey: 'editor.mark.table', st: { color: '#2563EB', fontWeight: 700, fontSize: 16 } },
 ] as const;
 
 export function MarkToolbar({
@@ -39,6 +40,7 @@ export function MarkToolbar({
   onApply: (mark: string, size?: { rows: number; cols: number }) => void;
   style?: CSSProperties;
 }) {
+  const tr = useTr();
   const [hover, setHover] = useState<string | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
   return (
@@ -64,7 +66,7 @@ export function MarkToolbar({
         <button
           key={b.label}
           type="button"
-          title={b.title}
+          title={tr(b.titleKey)}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => (b.m === 'table' ? setGridOpen((v) => !v) : onApply(b.m))}
           aria-pressed={b.m === 'table' ? gridOpen : undefined}

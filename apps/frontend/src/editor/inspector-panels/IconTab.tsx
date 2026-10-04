@@ -5,22 +5,25 @@
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { InspectorSection } from './InspectorSection';
+import { useTr } from '@/i18n';
 
 // [서버 연결 예정] Supabase 연동 시 이 하드코딩 카탈로그는 icon_catalog
 // 테이블(분류·glyph·명칭)로 이관되어 시스템 관리자 설정 메뉴에서
 // 추가·수정·삭제한다 (docs/02-domain/db-schema.md §향후 관리 테이블,
 // docs/04-extensions/settings/32-settings.md §4.3.1 참조).
+// label 은 사전 키 — 렌더할 때 번역한다
 const CATEGORIES: { label: string; icons: string[] }[] = [
-  { label: '깃발 · 표시', icons: ['🚩', '⛳', '📌', '📍', '🏁', '🔖', '🏷️'] },
-  { label: '별 · 평점', icons: ['⭐', '🌟', '✨', '💫', '🏆', '🥇'] },
-  { label: '상태', icons: ['✅', '✔️', '❌', '⚠️', '❗', '❓', '⛔', '🔴', '🟠', '🟡', '🟢', '🔵'] },
-  { label: '화살표', icons: ['➡️', '⬅️', '⬆️', '⬇️', '↗️', '↘️', '🔁', '🔄'] },
-  { label: '숫자', icons: ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'] },
-  { label: '감정', icons: ['😀', '🙂', '😐', '😟', '😡', '😎', '👍', '👎'] },
-  { label: '사물 · 일반', icons: ['💡', '🚀', '🔥', '🎯', '📊', '🧱', '🔒', '💬', '🌐', '⏱️', '🗂️', '📎', '📁', '📅', '💰', '🔔'] },
+  { label: 'inspector.icon.cat.flags', icons: ['🚩', '⛳', '📌', '📍', '🏁', '🔖', '🏷️'] },
+  { label: 'inspector.icon.cat.stars', icons: ['⭐', '🌟', '✨', '💫', '🏆', '🥇'] },
+  { label: 'inspector.icon.cat.status', icons: ['✅', '✔️', '❌', '⚠️', '❗', '❓', '⛔', '🔴', '🟠', '🟡', '🟢', '🔵'] },
+  { label: 'inspector.icon.cat.arrows', icons: ['➡️', '⬅️', '⬆️', '⬇️', '↗️', '↘️', '🔁', '🔄'] },
+  { label: 'inspector.icon.cat.numbers', icons: ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'] },
+  { label: 'inspector.icon.cat.emotions', icons: ['😀', '🙂', '😐', '😟', '😡', '😎', '👍', '👎'] },
+  { label: 'inspector.icon.cat.objects', icons: ['💡', '🚀', '🔥', '🎯', '📊', '🧱', '🔒', '💬', '🌐', '⏱️', '🗂️', '📎', '📁', '📅', '💰', '🔔'] },
 ];
 
 export function IconTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
+  const tr = useTr();
   const map = useDocumentStore((s) => s.map);
   const setNodeIcon = useDocumentStore((s) => s.setNodeIcon);
   const setNodeIconSide = useDocumentStore((s) => s.setNodeIconSide);
@@ -31,7 +34,7 @@ export function IconTab({ t, selectedId }: { t: ThemeTokens; selectedId: string 
 
   return (
     <div style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
-      <InspectorSection t={t} title="현재 아이콘 (NS-05 · 모든 레벨)">
+      <InspectorSection t={t} title={tr('inspector.icon.currentTitle')}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '6px 8px', background: t.surfaceAlt,
@@ -39,20 +42,20 @@ export function IconTab({ t, selectedId }: { t: ThemeTokens; selectedId: string 
         }}>
           <span style={{ fontSize: 20 }}>{node?.icon ?? '∅'}</span>
           <span style={{ fontSize: 11, color: t.textMuted, flex: 1 }}>
-            {node?.icon ? '현재 아이콘' : '아이콘 없음'}
+            {node?.icon ? tr('inspector.icon.current') : tr('inspector.icon.none')}
           </span>
           {node?.icon && (
             <button onClick={() => selectedId && setNodeIcon(selectedId, undefined)} style={{
               fontSize: 10, padding: '2px 8px', borderRadius: 4,
               background: 'transparent', border: `1px solid ${t.border}`,
               color: t.textMuted, cursor: 'pointer',
-            }}>제거</button>
+            }}>{tr('inspector.icon.remove')}</button>
           )}
         </div>
 
         {/* Icon position within the node */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-          <span style={{ fontSize: 11.5, color: t.textMuted, width: 60 }}>위치</span>
+          <span style={{ fontSize: 11.5, color: t.textMuted, width: 60 }}>{tr('inspector.icon.position')}</span>
           {(['left', 'right'] as const).map((side) => {
             const active = iconSide === side;
             return (
@@ -65,7 +68,7 @@ export function IconTab({ t, selectedId }: { t: ThemeTokens; selectedId: string 
                   border: `1px solid ${active ? t.primaryBorder : t.border}`,
                   cursor: 'pointer',
                 }}>
-                {side === 'left' ? '◧ 왼쪽' : '오른쪽 ◨'}
+                {side === 'left' ? tr('inspector.icon.left') : tr('inspector.icon.right')}
               </button>
             );
           })}
@@ -73,7 +76,7 @@ export function IconTab({ t, selectedId }: { t: ThemeTokens; selectedId: string 
       </InspectorSection>
 
       {CATEGORIES.map((cat) => (
-        <InspectorSection key={cat.label} t={t} title={cat.label}>
+        <InspectorSection key={cat.label} t={t} title={tr(cat.label)}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 3 }}>
             {cat.icons.map((em) => (
               <button key={em} title={em}

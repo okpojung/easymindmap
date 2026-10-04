@@ -17,6 +17,7 @@ import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { parseMdTable, sepCellOfAlign, splitPipeCells, escapePipe, type MdTableAlign } from './mdTable';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { tr as trNow, useTr } from '@/i18n';
 
 export const TABLE_MIN_ROWS = 2; // 헤더 + 데이터 1행
 export const TABLE_MIN_COLS = 2;
@@ -48,7 +49,8 @@ export function emptyTable(rows: number, cols: number): { headers: string[]; row
   const r = Math.max(TABLE_MIN_ROWS, rows);
   const c = Math.max(TABLE_MIN_COLS, cols);
   return {
-    headers: Array.from({ length: c }, (_, i) => `열${i + 1}`),
+    // 머리글 자리표시는 만드는 순간의 언어로 (표 원문으로 저장된다)
+    headers: Array.from({ length: c }, (_, i) => trNow('editor.table.colHeader', { n: i + 1 })),
     rows: Array.from({ length: r - 1 }, () => Array(c).fill('')),
     aligns: Array(c).fill(null),
   };
@@ -112,6 +114,7 @@ export function TableGridPicker({
   /** 어느 쪽 모서리에 붙일지 — 사이드바 오른쪽 끝 버튼(노트 +표)은 'right' (2026-09-19) */
   anchor?: 'left' | 'right';
 }) {
+  const tr = useTr();
   const [hover, setHover] = useState<{ r: number; c: number }>({ r: TABLE_MIN_ROWS, c: TABLE_MIN_COLS });
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -141,8 +144,8 @@ export function TableGridPicker({
       }}
     >
       <div style={{ fontSize: 12, color: t.text, fontWeight: 600 }}>
-        표 {Math.max(TABLE_MIN_ROWS, hover.r)}행 × {Math.max(TABLE_MIN_COLS, hover.c)}열
-        <span style={{ color: t.textMuted, fontWeight: 400 }}> (첫 행은 머리글 · 최소 2×2)</span>
+        {tr('editor.table.pickerSize', { r: Math.max(TABLE_MIN_ROWS, hover.r), c: Math.max(TABLE_MIN_COLS, hover.c) })}
+        <span style={{ color: t.textMuted, fontWeight: 400 }}>{tr('editor.table.pickerHint')}</span>
       </div>
       <div
         style={{
@@ -194,6 +197,7 @@ export function TableDialog({
   /** 확인 — 정리된 Markdown 표 한 덩어리 */
   onSave: (md: string) => void;
 }) {
+  const tr = useTr();
   const init = useMemo(() => {
     const parsed = initialMd ? parseMdTable(initialMd) : null;
     if (parsed) return { headers: parsed.headers, rows: parsed.rows, aligns: parsed.aligns };
@@ -244,7 +248,7 @@ export function TableDialog({
   // 커서 열 오른쪽에 열 추가
   const addCol = () => {
     const at = Math.min(cols, cursor.c + 1);
-    setHeaders([...headers.slice(0, at), `열${cols + 1}`, ...headers.slice(at)]);
+    setHeaders([...headers.slice(0, at), tr('editor.table.colHeader', { n: cols + 1 }), ...headers.slice(at)]);
     setRows(rows.map((r) => [...r.slice(0, at), '', ...r.slice(at)]));
     setAligns([...aligns.slice(0, at), null, ...aligns.slice(at)]);
     setCursor({ r: cursor.r, c: at }); focusCell(cursor.r, at);
@@ -265,13 +269,13 @@ export function TableDialog({
   // MD → 격자 (원문을 읽어 셀로) — 표로 못 읽으면 전환하지 않고 알린다
   const toGrid = () => {
     const parsed = parseMdTable(mdText);
-    if (!parsed) { setMdError('표로 읽을 수 없습니다 — 헤더 행과 데이터 행이 각각 한 줄 이상, 열이 2개 이상이어야 합니다.'); return; }
+    if (!parsed) { setMdError(tr('editor.table.mdError')); return; }
     setHeaders(parsed.headers); setRows(parsed.rows); setAligns(parsed.aligns); setMdError(null); setView('grid');
   };
   const save = () => {
     if (view === 'md') {
       const parsed = parseMdTable(mdText);
-      if (!parsed) { setMdError('표로 읽을 수 없습니다 — 헤더 행과 데이터 행이 각각 한 줄 이상, 열이 2개 이상이어야 합니다.'); return; }
+      if (!parsed) { setMdError(tr('editor.table.mdError')); return; }
       onSave(buildMdTable(parsed.headers, parsed.rows, parsed.aligns));
       return;
     }
@@ -333,7 +337,7 @@ export function TableDialog({
       value={value}
       onChange={(e) => setCell(r, c, e.target.value)}
       onFocus={() => setCursor({ r, c })}
-      placeholder={isHead ? '머리글' : ''}
+      placeholder={isHead ? tr('editor.table.headerPlaceholder') : ''}
       style={{
         width: '100%', minWidth: 72, boxSizing: 'border-box', padding: '5px 8px',
         border: 'none', background: 'transparent', outline: 'none',
@@ -377,14 +381,14 @@ export function TableDialog({
         <DialogXButton t={t} testId="table-dialog-x" onClose={onCancel} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 34 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: t.text, flex: 1 }}>
-            표 {initialMd ? '수정' : '삽입'}
+            {initialMd ? tr('editor.table.titleEdit') : tr('editor.table.titleInsert')}
             <span style={{ fontSize: 12, color: t.textMuted, fontWeight: 400, marginLeft: 8 }}>
-              {view === 'grid' ? `${rows.length + 1}행 × ${cols}열` : 'Markdown 원문'}
+              {view === 'grid' ? tr('editor.table.size', { r: rows.length + 1, c: cols }) : tr('editor.table.mdSource')}
             </span>
           </div>
           {/* 격자 ↔ MD 보기 — 상단 툴바의 맵/아웃라인 토글과 같은 모양 */}
-          {viewBtn('grid', '⊞ 격자', '격자 보기 — 셀을 직접 입력합니다', () => view !== 'grid' && toGrid())}
-          {viewBtn('md', 'MD', 'Markdown 원문 보기 — 파이프(|) 표를 직접 고칩니다', () => view !== 'md' && toMd())}
+          {viewBtn('grid', tr('editor.table.gridView'), tr('editor.table.gridViewTitle'), () => view !== 'grid' && toGrid())}
+          {viewBtn('md', 'MD', tr('editor.table.mdViewTitle'), () => view !== 'md' && toMd())}
         </div>
 
         {view === 'grid' ? (
@@ -414,16 +418,16 @@ export function TableDialog({
               </table>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              {smallBtn('+ 행', addRow, '커서가 있는 행 아래에 행 추가')}
-              {smallBtn('− 행', delRow, canDelRow ? '커서가 있는 행 삭제' : '머리글 행과 마지막 데이터 행은 지울 수 없습니다', !canDelRow)}
-              {smallBtn('+ 열', addCol, '커서가 있는 열 오른쪽에 열 추가')}
-              {smallBtn('− 열', delCol, canDelCol ? '커서가 있는 열 삭제' : '열은 2개 이상이어야 합니다', !canDelCol)}
+              {smallBtn(tr('editor.table.addRow'), addRow, tr('editor.table.addRowTitle'))}
+              {smallBtn(tr('editor.table.delRow'), delRow, canDelRow ? tr('editor.table.delRowTitle') : tr('editor.table.delRowBlocked'), !canDelRow)}
+              {smallBtn(tr('editor.table.addCol'), addCol, tr('editor.table.addColTitle'))}
+              {smallBtn(tr('editor.table.delCol'), delCol, canDelCol ? tr('editor.table.delColTitle') : tr('editor.table.delColBlocked'), !canDelCol)}
               <span style={{ width: 1, height: 18, background: t.border, margin: '0 4px' }} />
-              {alignBtn('left', '⇤', '커서 열 왼쪽 맞춤 (GFM `:---`)')}
-              {alignBtn('center', '↔', '커서 열 가운데 맞춤 (GFM `:---:`)')}
-              {alignBtn('right', '⇥', '커서 열 오른쪽 맞춤 (GFM `---:`)')}
+              {alignBtn('left', '⇤', tr('editor.table.alignLeft'))}
+              {alignBtn('center', '↔', tr('editor.table.alignCenter'))}
+              {alignBtn('right', '⇥', tr('editor.table.alignRight'))}
               <span style={{ fontSize: 11.5, color: t.textMuted, marginLeft: 6 }}>
-                커서 셀 기준 · 정렬은 열 단위(GFM) · 셀 안의 | 는 \| 로 저장 · Tab 으로 다음 칸
+                {tr('editor.table.gridHint')}
               </span>
             </div>
           </>
@@ -456,7 +460,7 @@ export function TableDialog({
               background: 'transparent', color: t.textMuted, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
             }}
           >
-            취소 (Esc)
+            {tr('editor.dlg.cancelEsc')}
           </button>
           <button
             type="button" data-testid="table-dialog-save" onClick={save}
@@ -465,7 +469,7 @@ export function TableDialog({
               background: t.primary, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
             }}
           >
-            확인 (Ctrl+Enter)
+            {tr('editor.dlg.okCtrlEnter')}
           </button>
         </div>
       </div>

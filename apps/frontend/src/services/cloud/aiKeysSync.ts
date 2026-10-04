@@ -23,6 +23,7 @@
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
+import { tr } from '@/i18n';
 import { PROVIDERS, type AiProvider } from '@/utils/aiProviders';
 
 const PUSH_DELAY_MS = 800;
@@ -168,7 +169,7 @@ async function pushAiKeyNow(provider: AiProvider, key: string): Promise<void> {
     });
   } catch (e) {
     const cur = useAiSettingsStore.getState().server;
-    const msg = e instanceof CloudError ? e.message : '계정에 저장하지 못했습니다.';
+    const msg = e instanceof CloudError ? e.message : tr('cloud.aiKeys.saveFailed');
     // 503 = 서버가 못 맡는다(비밀 미설정·표 없음) — 브라우저 보관으로 되돌린다
     const off = e instanceof CloudError && e.status === 503;
     useAiSettingsStore.getState().setServer({
@@ -195,14 +196,13 @@ export function clearAiKeysOnLogout(): void {
 export function aiKeyStorageNotice(): string {
   const srv = useAiSettingsStore.getState().server;
   if (!loggedIn() || srv.enabled === null) {
-    return '키는 이 브라우저(localStorage)에만 저장되며, 질문할 때 해당 AI 사에만 전달됩니다. 로그인하면 계정에 암호화되어 보관되어 다른 PC·브라우저에서도 따라옵니다.';
+    return tr('cloud.aiKeys.noteLocal');
   }
   if (srv.enabled) {
-    return '키는 계정에 암호화되어 보관되고(서버) 이 브라우저에도 남습니다 — 다른 PC·브라우저에서 로그인해도 따라옵니다. 질문할 때 해당 AI 사에만 전달됩니다.';
+    return tr('cloud.aiKeys.noteAccount');
   }
-  const why = srv.reason === 'secret'
-    ? '서버에 AI_KEY_SECRET 이 설정되지 않아'
-    : srv.reason === 'schema' ? '서버 스키마(user_ai_keys 표)가 아직 적용되지 않아'
-      : '서버가 키 보관에 응답하지 않아';
-  return `${why} 지금은 이 브라우저(localStorage)에만 저장됩니다. 질문할 때 해당 AI 사에만 전달됩니다.`;
+  return srv.reason === 'secret'
+    ? tr('cloud.aiKeys.noteNoSecret')
+    : srv.reason === 'schema' ? tr('cloud.aiKeys.noteNoSchema')
+      : tr('cloud.aiKeys.noteNoServer');
 }

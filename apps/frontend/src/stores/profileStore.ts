@@ -12,6 +12,7 @@
 import { create } from 'zustand';
 import { cloudApi, CloudError, type AccountProfile } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
+import { tr } from '@/i18n';
 
 /**
  * **가입 때 적은 성명·휴대폰을 잃지 않는다** (2026-09-08 실사용 보고: 계정
@@ -106,7 +107,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         return p;
       })
       .catch((err: unknown) => {
-        const why = err instanceof CloudError ? err.message : (err instanceof Error ? err.message : '프로필을 읽지 못했습니다.');
+        const why = err instanceof CloudError ? err.message : (err instanceof Error ? err.message : tr('auth.profile.readFailed'));
         set({ profile: null, forUser: uid, loaded: true, error: why });
         return null;
       })

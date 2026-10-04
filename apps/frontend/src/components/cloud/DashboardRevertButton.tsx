@@ -13,6 +13,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { CloudError, cloudApi } from '@/services/cloud/apiClient';
 import { openMapHere } from '@/services/cloud/mapSession';
 import { useCloudStore } from '@/stores/cloudStore';
+import { useTr } from '@/i18n';
 
 export interface DashboardMapRef {
   mapId: string;
@@ -37,30 +38,29 @@ export function DashboardRevertButton({ t, map, compact, iconStyle, onChanged }:
   iconStyle?: CSSProperties;
   onChanged?: () => void;
 }) {
+  const tr = useTr();
   const [busy, setBusy] = useState(false);
   const run = async () => {
     if (!window.confirm(
-      `“${map.title || '제목 없음'}” 을(를) 일반맵으로 되돌릴까요?\n`
-      + '· 다시 편집할 수 있게 됩니다\n'
-      + '· 노드의 [&변수] 는 글자로 보입니다 — 넣어 둔 값은 지우지 않습니다',
+      tr('publish.revert.confirm', { title: map.title || tr('publish.revert.untitled') }),
     )) return;
     setBusy(true);
     try {
       await revertDashboard(map);
       onChanged?.();
     } catch (err) {
-      window.alert(err instanceof CloudError ? err.message : '되돌리지 못했습니다.');
+      window.alert(err instanceof CloudError ? err.message : tr('publish.revert.failed'));
     } finally {
       setBusy(false);
     }
   };
-  const title = '일반맵으로 되돌리기 — 다시 편집할 수 있게 됩니다 (넣어 둔 값은 남습니다)';
+  const title = tr('publish.revert.tooltip');
   if (compact && iconStyle) {
     return (
       <button
         data-testid="dashboard-revert"
         style={{ ...iconStyle, color: t.primary }}
-        title={title} aria-label="일반맵으로 되돌리기"
+        title={title} aria-label={tr('publish.revert.label')}
         disabled={busy}
         onClick={() => void run()}
       >📊</button>
@@ -79,6 +79,6 @@ export function DashboardRevertButton({ t, map, compact, iconStyle, onChanged }:
         cursor: busy ? 'default' : 'pointer',
         background: t.surfaceAlt, color: t.text, border: `1px solid ${t.border}`,
       }}
-    >📊{!compact && ' 일반맵으로 되돌리기'}</button>
+    >📊{!compact && ` ${tr('publish.revert.label')}`}</button>
   );
 }

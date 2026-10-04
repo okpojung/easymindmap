@@ -10,6 +10,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
+import { useTr } from '@/i18n';
 
 // 실시간 검색 — 노드 텍스트·태그·노트 본문·링크(라벨/URL)를 대상으로
 // 대소문자 무시 부분 일치. 결과 클릭 = 캔버스 노드 선택.
@@ -27,6 +28,15 @@ export const SEARCH_KIND_BADGE: Record<string, { bg: string; fg: string }> = {
   태그: { bg: '#F59E0B', fg: '#1F1B16' },
   노트: { bg: '#10B981', fg: '#FFFFFF' },
   링크: { bg: '#8B5CF6', fg: '#FFFFFF' },
+};
+
+// 일치 위치의 화면 표기 — kinds 값(한국어)은 내부 식별자(data-search-kind)로
+// 그대로 두고, 보이는 글자만 사전에서 고른다 (i18n)
+const SEARCH_KIND_LABEL: Record<string, string> = {
+  노드: 'panel.search.kind.node',
+  태그: 'panel.search.kind.tag',
+  노트: 'panel.search.kind.note',
+  링크: 'panel.search.kind.link',
 };
 
 /** 노드 하나가 검색어와 맞는 자리(노드/태그/노트/링크). 없으면 빈 배열. */
@@ -71,6 +81,7 @@ function collectTags(nodes: MindNode[], acc: Set<string>) {
 }
 
 export function SearchPanel({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   const showTags = useEditorUiStore((s) => s.showTags);
   const setShowTags = useEditorUiStore((s) => s.setShowTags);
   const hiddenTags = useEditorUiStore((s) => s.hiddenTags);
@@ -116,7 +127,7 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
           <I.Search size={14} />
         </div>
         <input
-          placeholder="노드 · 태그 · 노트 검색"
+          placeholder={tr('panel.search.placeholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{
@@ -134,14 +145,14 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
         <div style={{
           fontSize: 11, color: t.textSubtle, marginBottom: 6,
           textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
-        }}>결과 {results.length}건</div>
+        }}>{tr('panel.search.resultsN', { n: results.length })}</div>
       )}
 
       {/* 처음 쓰는 사람을 위한 안내는 **목록 위 한 줄**로 한 번만 —
           행마다 따라다니는 툴팁을 대신한다 (2026-08-05 보고) */}
       {results.length > 0 && (
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 6 }}>
-          누르면 그 노드로 이동합니다 (화면 중앙 · 100%)
+          {tr('panel.search.clickHint')}
         </div>
       )}
 
@@ -188,7 +199,7 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
                     verticalAlign: 'text-bottom', letterSpacing: 0.3,
                   }}
                 >
-                  {k}
+                  {SEARCH_KIND_LABEL[k] ? tr(SEARCH_KIND_LABEL[k]) : k}
                 </span>
               );
             })}
@@ -196,7 +207,7 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
             {highlight(flattenNodeText(r.title), query, t.primary)}
           </div>
           <div style={{ fontSize: 11, color: t.textSubtle }}>
-            {r.path || '루트'}
+            {r.path || tr('panel.search.root')}
           </div>
         </div>
       ))}
@@ -208,9 +219,9 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
         <span style={{
           fontSize: 11, color: t.textSubtle,
           textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
-        }}>태그 필터</span>
+        }}>{tr('panel.search.tagFilter')}</span>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <span style={{ fontSize: 11, color: t.textMuted }}>Tag 표시</span>
+          <span style={{ fontSize: 11, color: t.textMuted }}>{tr('panel.search.showTags')}</span>
           <Toggle t={t} on={showTags} onChange={setShowTags} />
         </label>
       </div>
@@ -218,11 +229,11 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
       {/* Per-tag visibility filter — when "Tag 표시" is on, only checked tags
           are shown on the canvas. */}
       <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 6, lineHeight: 1.4 }}>
-        선택한 태그만 노드에 표시됩니다.
+        {tr('panel.search.tagHint')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {mapTags.length === 0 && (
-          <div style={{ fontSize: 11.5, color: t.textSubtle }}>맵에 정의된 태그가 없습니다.</div>
+          <div style={{ fontSize: 11.5, color: t.textSubtle }}>{tr('panel.search.noTags')}</div>
         )}
         {mapTags.map((tag) => {
           const tc = resolveTagColor(tag, t);

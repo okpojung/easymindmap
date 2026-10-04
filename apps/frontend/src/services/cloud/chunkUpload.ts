@@ -12,6 +12,7 @@
 // 멈춰 세우지 않게 절반만 쓴다.
 
 import { CloudError, cloudApi } from './apiClient';
+import { tr } from '@/i18n';
 
 /** 조각 하나가 실패했을 때 다시 보내는 간격 — 자동저장 재시도와 같은 감각 */
 const RETRY_DELAYS = [1000, 3000, 10_000];
@@ -40,7 +41,7 @@ export interface ChunkUploadOptions {
 /** 사용자가 [취소]를 눌러 중단됐다 — 오류로 떠들지 않기 위한 구분용 */
 export class UploadAborted extends Error {
   constructor() {
-    super('업로드를 취소했습니다.');
+    super(tr('cloud.upload.canceled'));
     this.name = 'UploadAborted';
   }
 }
@@ -83,11 +84,11 @@ async function sendPart(
       // **재시도 중임을 화면에 알린다** — 진행률이 잠깐 멈춰도 "왜"가
       // 보여야 사용자가 고장으로 오해하지 않는다 (2026-08-06 보고).
       onBytes?.(0); // 이 조각은 처음부터 다시 보낸다
-      onNotice?.(`전송이 끊겨 다시 시도합니다 (${attempt + 1}/${RETRY_DELAYS.length})`);
+      onNotice?.(tr('cloud.upload.retrying', { n: attempt + 1, total: RETRY_DELAYS.length }));
       await sleep(RETRY_DELAYS[attempt]);
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error(`조각 ${index} 전송 실패`);
+  throw lastErr instanceof Error ? lastErr : new Error(tr('cloud.upload.partFailed', { index }));
 }
 
 /**
@@ -167,7 +168,7 @@ export async function uploadInChunks(
       return { id: att.id, url: att.url };
     } catch (err) {
       if (!(err instanceof CloudError) || err.status !== 409) throw err;
-      onNotice?.('빠진 조각을 다시 보내는 중…');
+      onNotice?.(tr('cloud.upload.resending'));
       const again = await cloudApi.uploadStatus(s.uploadId);
       const have = new Set(again.received);
       for (let i = 0; i < again.parts; i += 1) {

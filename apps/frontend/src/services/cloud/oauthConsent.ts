@@ -14,6 +14,7 @@
 
 import { authUrl, authHeaders, AuthError } from './supabaseAuth';
 import { describeScopes, isSafeRedirect, type ScopeItem } from './oauthConsentRules';
+import { tr } from '@/i18n';
 
 // 한 문을 유지한다 — 부르는 쪽이 '판정은 저기, 호출은 여기' 를 외우지
 // 않아도 되게 이 파일에서 함께 내보낸다.
@@ -50,21 +51,20 @@ async function call<T>(path: string, accessToken: string, body?: unknown): Promi
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   } catch {
-    throw new AuthError(0, '인증 서버에 연결할 수 없습니다.');
+    throw new AuthError(0, tr('auth.error.unreachable'));
   }
   if (!res.ok) {
-    let msg = `요청이 거부되었습니다 (${res.status})`;
+    let msg = tr('auth.error.rejected', { status: res.status });
     try {
       const j = (await res.json()) as { msg?: string; message?: string; error_description?: string };
       msg = j.error_description || j.msg || j.message || msg;
     } catch { /* 본문 없음 */ }
     // GoTrue 의 대표 오류를 사용자 언어로 — 여기서 가장 흔한 둘이다.
     if (/authorization not found/i.test(msg)) {
-      msg = '이 연결 요청을 찾을 수 없습니다. 시간이 지났거나(10분) 이미 처리된 요청입니다. '
-        + '연결을 처음부터 다시 시작해 주세요.';
+      msg = tr('auth.consent.notFound');
     }
     if (/no longer pending|cannot be processed/i.test(msg)) {
-      msg = '이미 처리된 연결 요청입니다. 연결을 처음부터 다시 시작해 주세요.';
+      msg = tr('auth.consent.alreadyHandled');
     }
     throw new AuthError(res.status, msg);
   }
@@ -85,7 +85,7 @@ export const oauthConsent = {
     if (r.redirect_url) {
       // 자동 승인도 같은 검사를 지난다 — 이동 주소는 어느 길로 왔든 위험하다
       if (!isSafeRedirect(r.redirect_url)) {
-        throw new AuthError(0, '인증 서버가 돌아갈 주소를 주지 않았습니다.');
+        throw new AuthError(0, tr('auth.consent.noRedirect'));
       }
       return { kind: 'approved', redirectUrl: r.redirect_url };
     }
@@ -93,7 +93,7 @@ export const oauthConsent = {
       kind: 'consent',
       details: {
         authorizationId: r.authorization_id ?? authorizationId,
-        clientName: r.client?.name?.trim() || '이름을 밝히지 않은 앱',
+        clientName: r.client?.name?.trim() || tr('auth.consent.unnamedApp'),
         clientUri: r.client?.uri ?? '',
         userEmail: r.user?.email ?? '',
         scopes: describeScopes(r.scope),
@@ -113,7 +113,7 @@ export const oauthConsent = {
       `/oauth/authorizations/${authorizationId}/consent`, accessToken, { action },
     );
     if (!isSafeRedirect(r.redirect_url)) {
-      throw new AuthError(0, '인증 서버가 돌아갈 주소를 주지 않았습니다.');
+      throw new AuthError(0, tr('auth.consent.noRedirect'));
     }
     return r.redirect_url as string;
   },

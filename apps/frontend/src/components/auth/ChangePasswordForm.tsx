@@ -15,6 +15,8 @@ import type React from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { getFreshAccessToken } from '@/stores/authStore';
 import { AuthError, supabaseAuth } from '@/services/cloud/supabaseAuth';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 const MIN_PW = 6; // GoTrue GOTRUE_PASSWORD_MIN_LENGTH 와 맞춘다
 
@@ -30,6 +32,7 @@ export function ChangePasswordForm({ t, email, note }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const tr = useTr();
 
   const canSubmit = pw.length >= MIN_PW && pw === pw2 && !busy;
 
@@ -38,11 +41,11 @@ export function ChangePasswordForm({ t, email, note }: {
     try {
       // 1단계 로그인의 세션을 그대로 쓴다 — 만료됐으면 갱신된다
       const token = await getFreshAccessToken();
-      if (!token) throw new AuthError(401, '세션이 만료되었습니다. 다시 로그인해 주세요.');
+      if (!token) throw new AuthError(401, tr('auth.sessionExpired'));
       await supabaseAuth.updatePassword(token, pw);
       setPw(''); setPw2(''); setDone(true);
     } catch (e) {
-      setErr(e instanceof AuthError ? e.message : '비밀번호를 바꾸지 못했습니다.');
+      setErr(e instanceof AuthError ? e.message : tr('auth.pw.changeFailed'));
     } finally { setBusy(false); }
   };
 
@@ -63,12 +66,12 @@ export function ChangePasswordForm({ t, email, note }: {
         padding: '10px 12px', borderRadius: 8,
         background: t.surfaceAlt, border: `1px solid ${t.border}`,
       }}>
-        <b>{email}</b> 의 비밀번호를 바꿉니다.
+        {rich(tr('auth.pw.changeFor', { email: `**${email}**` }))}
         {note && <><br />{note}</>}
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <label style={label} htmlFor="change-pw">새 비밀번호 ({MIN_PW}자 이상)</label>
+        <label style={label} htmlFor="change-pw">{tr('auth.pw.new', { n: MIN_PW })}</label>
         <div style={{ position: 'relative' }}>
           <input
             id="change-pw" data-testid="change-pw"
@@ -78,7 +81,7 @@ export function ChangePasswordForm({ t, email, note }: {
           />
           <button
             data-testid="change-pw-toggle" type="button" onClick={() => setShow((v) => !v)}
-            title={show ? '숨기기' : '보기'}
+            title={show ? tr('auth.pw.hideShort') : tr('auth.pw.showShort')}
             style={{
               position: 'absolute', right: 6, top: 6, width: 26, height: 26,
               borderRadius: 6, border: 'none', background: 'transparent',
@@ -89,7 +92,7 @@ export function ChangePasswordForm({ t, email, note }: {
       </div>
 
       <div style={{ marginBottom: 14 }}>
-        <label style={label} htmlFor="change-pw2">새 비밀번호 확인</label>
+        <label style={label} htmlFor="change-pw2">{tr('auth.pw.confirmNew')}</label>
         <input
           id="change-pw2" data-testid="change-pw2"
           style={{
@@ -102,7 +105,7 @@ export function ChangePasswordForm({ t, email, note }: {
         />
         {pw2 && pw !== pw2 && (
           <div style={{ fontSize: 11.5, color: t.danger, marginTop: 4 }}>
-            두 번 입력한 비밀번호가 다릅니다.
+            {tr('auth.pw.mismatchTwice')}
           </div>
         )}
       </div>
@@ -114,14 +117,13 @@ export function ChangePasswordForm({ t, email, note }: {
           background: t.primary, color: '#fff', fontSize: 14, fontWeight: 800,
           cursor: canSubmit ? 'pointer' : 'default', opacity: canSubmit ? 1 : 0.5,
         }}
-      >{busy ? '바꾸는 중…' : '비밀번호 바꾸기'}</button>
+      >{busy ? tr('auth.pw.changing') : tr('auth.pw.change')}</button>
 
       {done && (
         <div data-testid="change-pw-done" style={{
           marginTop: 12, fontSize: 12.5, color: t.primary, lineHeight: 1.7,
         }}>
-          바꿨습니다. <b>다음 로그인부터 새 비밀번호</b>를 씁니다 — 지금 열린
-          창은 그대로 쓰셔도 됩니다.
+          {rich(tr('auth.pw.changedNote'))}
         </div>
       )}
       {err && (

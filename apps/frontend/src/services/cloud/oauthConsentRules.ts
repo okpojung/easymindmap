@@ -11,6 +11,8 @@
 //   `main.tsx` 도 `isConsentPath` 하나 때문에 인증 모듈을 끌고 오지
 //   않게 되는 이득이 함께 온다.
 
+import { tr } from '@/i18n';
+
 /** 동의 화면의 주소 — GoTrue 의 `GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH` 와 **같아야 한다** */
 export const CONSENT_PATH = '/oauth/consent';
 
@@ -42,13 +44,8 @@ export function authorizationIdFromSearch(search: string): string | null {
  *   가장 나쁘다. GoTrue 는 범위 목록을 스스로 늘릴 수 있어(`oauth_scope.go`)
  *   우리 표가 언제든 뒤처질 수 있다.
  */
-const SCOPE_LABELS: Record<string, string> = {
-  openid: '회원 식별 — 어느 계정인지',
-  email: '이메일 주소',
-  profile: '프로필 정보 (이름·사진)',
-  phone: '전화번호',
-  offline_access: '연결 유지 — 자리에 없을 때도 갱신',
-};
+// 문장은 사전(auth.consent.scope.<id>)에 있다 — 부를 때의 언어로 옮긴다.
+const KNOWN_SCOPES = new Set(['openid', 'email', 'profile', 'phone', 'offline_access']);
 
 export interface ScopeItem {
   id: string;
@@ -64,8 +61,8 @@ export function describeScopes(scope: string | undefined): ScopeItem[] {
   for (const id of ids) {
     if (seen.has(id)) continue;
     seen.add(id);
-    const label = SCOPE_LABELS[id];
-    out.push({ id, label: label ?? id, unknown: label === undefined });
+    const known = KNOWN_SCOPES.has(id);
+    out.push({ id, label: known ? tr(`auth.consent.scope.${id}`) : id, unknown: !known });
   }
   return out;
 }

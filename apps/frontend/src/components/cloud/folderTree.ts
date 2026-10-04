@@ -2,6 +2,7 @@
 // 서버는 폴더를 평면 배열로 주고, 트리 구성은 클라이언트가 한다
 // (폴더 수가 많지 않고, 화면마다 표현이 달라 서버가 정할 이유가 없다).
 import type { FolderItem } from '@/services/cloud/apiClient';
+import { tr } from '@/i18n';
 
 export interface FolderNode extends FolderItem {
   depth: number;
@@ -38,6 +39,6 @@ export function folderPath(folders: FolderItem[], folderId: string | null): Fold
 
 /** 폴더 표시 이름 — null = 홈 */
 export function folderLabel(folders: FolderItem[], folderId: string | null): string {
-  if (!folderId) return '홈';
-  return folders.find((f) => f.folderId === folderId)?.name ?? '(삭제된 폴더)';
+  if (!folderId) return tr('cloud.folder.home');
+  return folders.find((f) => f.folderId === folderId)?.name ?? tr('cloud.folder.deleted');
 }

@@ -14,6 +14,8 @@ import { DialogXButton } from '@/components/ui/DialogFrame';
 import { findNodeInMap, useDocumentStore } from '@/stores/documentStore';
 import { calendarPreview, calendarTable, monthOutline, weekOutline, type YearMonth } from '@/utils/calendarNodes';
 import { holidayTableCovers } from '@/utils/koreanHolidays';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 interface Props {
   t: ThemeTokens;
@@ -24,6 +26,7 @@ interface Props {
 }
 
 export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose }: Props) {
+  const tr = useTr();
   const addChildOutlineBulk = useDocumentStore((s) => s.addChildOutlineBulk);
   const updateNodeText = useDocumentStore((s) => s.updateNodeText);
   const [year, setYear] = useState<string>(String(initial.year ?? new Date().getFullYear()));
@@ -38,11 +41,11 @@ export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose 
   const yearOk = /^\d{4}$/.test(year) && y >= 1900 && y <= 2199;
   const m = month === 'all' ? undefined : Number(month);
   const tableMode = asTable && !!m;
-  const preview = useMemo(() => (yearOk ? calendarPreview(y, m, tableMode) : '년도를 네 자리로 입력하세요 (1900~2199)'), [yearOk, y, m, tableMode]);
+  const preview = useMemo(() => (yearOk ? calendarPreview(y, m, tableMode) : tr('editor.calendar.yearInvalid')), [yearOk, y, m, tableMode, tr]);
   const holidayNote = yearOk && m
     ? (holidayTableCovers(y)
-      ? '일요일·토요일·공휴일(대체공휴일 포함)은 빨간 글자, 공휴일은 이름을 함께. 앞뒤 달의 날은 회색 점선'
-      : `${y}년은 공휴일 표에 없어 고정 공휴일만 빨간 글자로 표시합니다`)
+      ? tr('editor.calendar.holidayNote')
+      : tr('editor.calendar.holidayPartial', { y }))
     : null;
 
   const submit = () => {
@@ -87,14 +90,12 @@ export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose 
         }}
       >
         <DialogXButton t={t} testId="calendar-dialog-x" onClose={onClose} />
-        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, paddingRight: 34 }}>달력 노드 추가</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, paddingRight: 34 }}>{tr('editor.calendar.title')}</div>
         <div style={{ fontSize: 11.5, color: t.textMuted, marginBottom: 12, lineHeight: 1.5 }}>
-          <b style={{ color: t.text }}>{parentLabel}</b> 아래에 넣습니다. 노드 글에서 읽은 값을 채워 두었으니
-          확인하거나 고치세요. <b style={{ color: t.text }}>월을 "전체"</b>로 두면 1월~12월, 달을 고르면 그 달의
-          주 노드([NN주] 시작 ~ 끝)와 그 아래 날짜 노드 7개(일~토)가 들어갑니다.
+          {rich(tr('editor.calendar.desc'), { parent: <b style={{ color: t.text }}>{parentLabel}</b> }, { color: t.text })}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-          <label style={{ fontSize: 12, fontWeight: 600 }}>년도</label>
+          <label style={{ fontSize: 12, fontWeight: 600 }}>{tr('editor.calendar.year')}</label>
           <input
             ref={yearRef}
             data-testid="calendar-year"
@@ -103,21 +104,21 @@ export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose 
             onChange={(e) => setYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
             style={{ ...field, width: 80, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}
           />
-          <label style={{ fontSize: 12, fontWeight: 600, marginLeft: 6 }}>월</label>
+          <label style={{ fontSize: 12, fontWeight: 600, marginLeft: 6 }}>{tr('editor.calendar.month')}</label>
           <select
             data-testid="calendar-month"
             value={month}
             onChange={(e) => setMonth(e.target.value)}
             style={{ ...field, width: 150, cursor: 'pointer' }}
           >
-            <option value="all">전체 (1월~12월 노드)</option>
+            <option value="all">{tr('editor.calendar.monthAll')}</option>
             {Array.from({ length: 12 }, (_, i) => (
-              <option key={i + 1} value={String(i + 1)}>{i + 1}월 (주 노드)</option>
+              <option key={i + 1} value={String(i + 1)}>{tr('editor.calendar.monthOption', { mn: tr('editor.calendar.months').split(',')[i] })}</option>
             ))}
           </select>
         </div>
         <label
-          title={m ? '노드를 만들지 않고, 선택한 노드의 내용에 그 달의 달력 표(일~토 × 주)를 붙입니다' : '월을 고르면 표로 넣을 수 있습니다'}
+          title={m ? tr('editor.calendar.asTableTitle') : tr('editor.calendar.asTableNeedMonth')}
           style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 10, color: m ? t.text : t.textSubtle, cursor: m ? 'pointer' : 'default' }}
         >
           <input
@@ -127,7 +128,7 @@ export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose 
             disabled={!m}
             onChange={(e) => setAsTable(e.target.checked)}
           />
-          표로 붙여넣기 — 노드 내용에 그 달의 달력 표(일~토 7열 × 주)를 넣습니다
+          {tr('editor.calendar.asTable')}
         </label>
         {holidayNote && (
           <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 8 }}>{holidayNote}</div>
@@ -145,7 +146,7 @@ export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose 
           <button
             onClick={onClose}
             style={{ height: 32, padding: '0 14px', borderRadius: 7, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: 'pointer', fontSize: 12.5 }}
-          >취소 (Esc)</button>
+          >{tr('editor.dlg.cancelEsc')}</button>
           <button
             data-testid="calendar-dialog-save"
             onClick={submit}
@@ -155,7 +156,7 @@ export function CalendarNodeDialog({ t, parentId, parentLabel, initial, onClose 
               background: yearOk ? t.primary : t.border, color: '#fff', cursor: yearOk ? 'pointer' : 'default',
               fontSize: 12.5, fontWeight: 700,
             }}
-          >확인 (Ctrl+Enter)</button>
+          >{tr('editor.dlg.okCtrlEnter')}</button>
         </div>
       </div>
     </div>,

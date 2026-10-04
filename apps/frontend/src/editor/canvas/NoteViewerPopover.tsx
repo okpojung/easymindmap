@@ -18,6 +18,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock } from '@/editor/__samples__/types';
 import { gridCharSpans } from '@/utils/monoGrid';
 import { useNoteHtmlResolver } from '@/utils/imageSrc';
+import { useTr } from '@/i18n';
 
 // Markdown 링크 — [라벨](url). 노트 원문에 그대로 남아 있는 링크를
 // 클릭 가능한 <a>로 렌더링한다 (MD 불러오기의 인용문 노트 등).
@@ -71,6 +72,7 @@ interface Props {
 
 function CopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   const [copied, setCopied] = useState(false);
+  const tr = useTr();
 
   const copy = () => {
     const done = () => {
@@ -95,14 +97,14 @@ function CopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   return (
     <button
       onClick={copy}
-      title="코드 복사"
+      title={tr('editor.note.copyCode')}
       style={{
         border: `1px solid ${t.border}`, borderRadius: 4, background: t.surface,
         fontSize: 10, padding: '1px 7px', cursor: 'pointer', color: t.text,
         fontWeight: 600,
       }}
     >
-      {copied ? '복사됨 ✓' : '⧉'}
+      {copied ? tr('common.copied') : '⧉'}
     </button>
   );
 }
@@ -110,10 +112,11 @@ function CopyButton({ t, text }: { t: ThemeTokens; text: string }) {
 // 노트 문단 우상단 ⧉ 복사 — 마커를 뗀 표시 텍스트를 클립보드에
 function NoteParagraphCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   const [copied, setCopied] = useState(false);
+  const tr = useTr();
   return (
     <button
       data-note-para-copy
-      title="문단 복사"
+      title={tr('editor.note.copyParagraph')}
       onClick={(e) => {
         e.stopPropagation();
         const clean = stripInlineMarks(text).trim();
@@ -131,7 +134,7 @@ function NoteParagraphCopyButton({ t, text }: { t: ThemeTokens; text: string }) 
         fontWeight: 700, color: copied ? '#15803D' : t.textMuted,
       }}
     >
-      {copied ? '복사됨 ✓' : '⧉'}
+      {copied ? tr('common.copied') : '⧉'}
     </button>
   );
 }
@@ -139,10 +142,11 @@ function NoteParagraphCopyButton({ t, text }: { t: ThemeTokens; text: string }) 
 // 노트 표 우상단 ⧉ 복사 — 엑셀(TSV)·웹 에디터(HTML 표) 두 형식 동시 복사
 function NoteTableCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   const [copied, setCopied] = useState(false);
+  const tr = useTr();
   return (
     <button
       data-note-table-copy
-      title="표 복사 — 엑셀·웹 편집기에 붙여넣을 수 있습니다"
+      title={tr('editor.note.copyTable')}
       onClick={(e) => {
         e.stopPropagation();
         const tbl = pipeTextToTable(text);
@@ -160,7 +164,7 @@ function NoteTableCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
         fontWeight: 700, color: copied ? '#15803D' : t.textMuted,
       }}
     >
-      {copied ? '복사됨 ✓' : '⧉'}
+      {copied ? tr('common.copied') : '⧉'}
     </button>
   );
 }
@@ -173,6 +177,7 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
   // 노트 사진이 **우리 저장소**에 있으면 그릴 때 토큰을 붙인다 (2026-08-20).
   // 토큰은 문서에 저장하지 않는다 — 저장하면 만료되는 날 사진이 전부 깨진다.
   const resolveNoteHtml = useNoteHtmlResolver();
+  const tr = useTr();
   // 폐기된 옛 타입(warning/tip)은 문단으로 렌더 (하위호환)
   const type =
     (block.type as string) === 'warning' || (block.type as string) === 'tip'
@@ -298,7 +303,7 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
               onClick={onToggleCheck ? (e) => { e.stopPropagation(); onToggleCheck(); } : undefined}
               onPointerDown={(e) => e.stopPropagation()}
               title={onToggleCheck
-                ? (block.checked ? '클릭하면 미완료로' : '클릭하면 완료로')
+                ? (block.checked ? tr('editor.note.markUndone') : tr('editor.note.markDone'))
                 : undefined}
               style={{
                 display: 'inline-block', padding: '0 5px', margin: '0 -5px',
@@ -317,6 +322,7 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
 }
 
 export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: Props) {
+  const tr = useTr();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -394,7 +400,7 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
       {/* 제목줄 — 드래그하면 창이 움직인다 */}
       <div
         ref={headRef}
-        title="드래그하여 이동"
+        title={tr('editor.note.dragToMove')}
         onPointerDown={(e) => {
           e.stopPropagation();
           const root = rootRef.current;
@@ -445,7 +451,7 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
         <button
           onClick={onClose}
           onPointerDown={(e) => e.stopPropagation()}
-          title="닫기"
+          title={tr('common.close')}
           style={{
             border: 'none', background: 'none', fontSize: 14,
             cursor: 'pointer', color: t.textMuted, flexShrink: 0,

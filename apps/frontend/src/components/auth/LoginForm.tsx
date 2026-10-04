@@ -12,10 +12,12 @@ import { useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useAuthStore } from '@/stores/authStore';
 import { AuthError } from '@/services/cloud/supabaseAuth';
+import { useTr } from '@/i18n';
 
 export interface SocialProvider {
   id: string;
-  label: string;
+  /** 버튼 문구의 사전 키 (auth.login.provider.*) — 렌더할 때 옮긴다 */
+  labelKey: string;
   /** 버튼 앞 글리프 — 실제 브랜드 로고는 붙일 때 교체 */
   mark: string;
   /** 브랜드 색 (테두리·글리프) */
@@ -27,9 +29,9 @@ export interface SocialProvider {
  *  순서·구성은 2026-08-04 사용자 결정: 카카오 → 네이버 → Google
  *  (Apple 은 제외). mark 는 브랜드 로고를 붙이기 전의 임시 글리프. */
 export const SOCIAL_PROVIDERS: SocialProvider[] = [
-  { id: 'kakao', label: '카카오로 계속하기', mark: 'K', color: '#FEE500', enabled: false },
-  { id: 'naver', label: '네이버로 계속하기', mark: 'N', color: '#03C75A', enabled: false },
-  { id: 'google', label: 'Google로 계속하기', mark: 'G', color: '#4285F4', enabled: false },
+  { id: 'kakao', labelKey: 'auth.login.provider.kakao', mark: 'K', color: '#FEE500', enabled: false },
+  { id: 'naver', labelKey: 'auth.login.provider.naver', mark: 'N', color: '#03C75A', enabled: false },
+  { id: 'google', labelKey: 'auth.login.provider.google', mark: 'G', color: '#4285F4', enabled: false },
 ];
 
 export function LoginForm({
@@ -55,19 +57,20 @@ export function LoginForm({
   const [showPw, setShowPw] = useState(false); // 👁 비밀번호 표시 (2026-08-04)
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const tr = useTr();
 
   const run = async () => {
     if (!email.trim() || !pw) {
-      setErr('이메일과 비밀번호를 입력하세요.');
+      setErr(tr('auth.login.needBoth'));
       return;
     }
     setBusy(true);
     setErr(null);
     try {
       await useAuthStore.getState().signIn(email.trim(), pw);
-      onDone?.('로그인했습니다.');
+      onDone?.(tr('auth.login.done'));
     } catch (e) {
-      setErr(e instanceof AuthError ? e.message : '인증 중 오류가 발생했습니다.');
+      setErr(e instanceof AuthError ? e.message : tr('auth.login.failed'));
     } finally {
       setBusy(false);
     }
@@ -93,9 +96,9 @@ export function LoginForm({
       style={{ padding: compact ? '8px 10px' : 0, width: compact ? 230 : '100%' }}
     >
       {compact && (
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>클라우드 로그인</div>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{tr('auth.login.cloudTitle')}</div>
       )}
-      <label style={labelStyle} htmlFor="login-email">아이디 (이메일)</label>
+      <label style={labelStyle} htmlFor="login-email">{tr('auth.field.emailId')}</label>
       <input
         id="login-email"
         data-testid="login-email"
@@ -104,13 +107,13 @@ export function LoginForm({
         onKeyDown={(e) => { if (e.key === 'Enter') void run(); }}
       />
       {/* 비밀번호 + 👁 표시 토글 — 아이콘이 입력창 안 오른쪽에 겹친다 */}
-      <label style={labelStyle} htmlFor="login-password">비밀번호</label>
+      <label style={labelStyle} htmlFor="login-password">{tr('auth.field.password')}</label>
       <div style={{ position: 'relative' }}>
         <input
           id="login-password"
           data-testid="login-password"
           type={showPw ? 'text' : 'password'}
-          placeholder="비밀번호" value={pw} autoComplete="current-password"
+          placeholder={tr('auth.field.password')} value={pw} autoComplete="current-password"
           onChange={(e) => setPw(e.target.value)}
           style={{ ...inputStyle, paddingRight: 36 }}
           onKeyDown={(e) => { if (e.key === 'Enter') void run(); }}
@@ -119,7 +122,7 @@ export function LoginForm({
           type="button"
           data-testid="login-pw-toggle"
           onClick={() => setShowPw((v) => !v)}
-          title={showPw ? '비밀번호 숨기기' : '비밀번호 표시'}
+          title={showPw ? tr('auth.pw.hide') : tr('auth.pw.show')}
           style={{
             position: 'absolute', right: 4, top: (h - 26) / 2,
             width: 30, height: 26, padding: 0,
@@ -152,7 +155,7 @@ export function LoginForm({
             fontSize: compact ? 12 : 13.5, fontWeight: 700,
             opacity: busy ? 0.6 : 1,
           }}
-        >{busy ? '처리 중…' : '로그인'}</button>
+        >{busy ? tr('auth.busy') : tr('auth.login.submit')}</button>
         {onSignup && (
           <button
             data-testid="login-signup" disabled={busy} onClick={onSignup}
@@ -162,7 +165,7 @@ export function LoginForm({
               color: t.text, fontSize: compact ? 12 : 13.5, fontWeight: 600,
               opacity: busy ? 0.6 : 1,
             }}
-          >가입</button>
+          >{tr('auth.login.signup')}</button>
         )}
       </div>
 
@@ -177,7 +180,7 @@ export function LoginForm({
             fontSize: compact ? 11 : 12, cursor: 'pointer',
             textDecoration: 'underline', textUnderlineOffset: 3,
           }}
-        >비밀번호를 잊으셨나요?</button>
+        >{tr('auth.login.forgot')}</button>
       )}
 
       {/* 준비 중인 로그인 방식 — 자리를 미리 보여 준다 (넓은 형태에서만) */}
@@ -188,7 +191,7 @@ export function LoginForm({
             color: t.textSubtle, fontSize: 11, marginBottom: 10,
           }}>
             <span style={{ flex: 1, height: 1, background: t.divider }} />
-            다른 방법으로 로그인
+            {tr('auth.login.otherWays')}
             <span style={{ flex: 1, height: 1, background: t.divider }} />
           </div>
           {SOCIAL_PROVIDERS.map((p) => (
@@ -196,7 +199,7 @@ export function LoginForm({
               key={p.id}
               data-testid={`login-provider-${p.id}`}
               disabled={!p.enabled}
-              title={p.enabled ? p.label : `${p.label} — 준비 중입니다`}
+              title={p.enabled ? tr(p.labelKey) : tr('auth.login.providerSoon', { name: tr(p.labelKey) })}
               style={{
                 width: '100%', height: 38, marginBottom: 7, borderRadius: 7,
                 border: `1px solid ${t.border}`, background: t.surface,
@@ -210,12 +213,12 @@ export function LoginForm({
                 width: 20, textAlign: 'center', fontWeight: 800,
                 color: p.enabled ? p.color : t.textSubtle,
               }}>{p.mark}</span>
-              <span style={{ flex: 1, textAlign: 'left' }}>{p.label}</span>
+              <span style={{ flex: 1, textAlign: 'left' }}>{tr(p.labelKey)}</span>
               {!p.enabled && (
                 <span style={{
                   fontSize: 10, fontWeight: 600, color: t.textSubtle,
                   border: `1px solid ${t.border}`, borderRadius: 8, padding: '1px 7px',
-                }}>준비 중</span>
+                }}>{tr('common.comingSoon')}</span>
               )}
             </button>
           ))}
@@ -226,7 +229,7 @@ export function LoginForm({
           <button
             data-testid="login-guest"
             onClick={() => useAuthStore.getState().enterGuest()}
-            title="가입 없이 에디터를 체험합니다 — 서버 저장·불러오기·첨부는 안 되고, MD/HTML 내보내기는 됩니다"
+            title={tr('auth.login.guestHint')}
             style={{
               width: '100%', height: 38, marginTop: 4, borderRadius: 7,
               border: `1px dashed ${t.border}`, background: t.surfaceAlt,
@@ -236,7 +239,7 @@ export function LoginForm({
             }}
           >
             <span style={{ width: 20, textAlign: 'center', fontWeight: 800 }}>👤</span>
-            <span style={{ flex: 1, textAlign: 'left' }}>Guest로 체험하기 (가입 없이)</span>
+            <span style={{ flex: 1, textAlign: 'left' }}>{tr('auth.login.guest')}</span>
           </button>
         </div>
       )}

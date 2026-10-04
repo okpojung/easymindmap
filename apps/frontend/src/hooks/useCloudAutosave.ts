@@ -33,6 +33,7 @@ import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import { outageNoticeFor } from '@/utils/outageNotice';
+import { tr } from '@/i18n';
 import { editSessionKey } from '@/services/cloud/editSession';
 import { useAppSettingsStore } from '@/stores/appSettingsStore';
 import { clearLocalDraft, writeLocalDraftNow } from '@/hooks/useLocalDraft';
@@ -188,10 +189,7 @@ export async function handleStaleConflict(mapId: string): Promise<void> {
     staleCollabHold = mapId;
     cancelRetry();
     useAutosaveStore.getState().setSaveState('dirty');
-    useCloudStore.getState().setNotice(
-      '협업 연결이 잠시 끊긴 사이 다른 사람이 이 맵을 저장했습니다 — 지금 편집분은 화면에 그대로 있고, '
-      + '다시 연결되면 자동으로 합쳐집니다. 이 맵과의 연결은 끊지 않았습니다.',
-    );
+    useCloudStore.getState().setNotice(tr('cloud.autosave.collabStale'));
     return;
   }
   await writeLocalDraftNow();
@@ -199,11 +197,7 @@ export async function handleStaleConflict(mapId: string): Promise<void> {
   useDocumentStore.getState().setDocOrigin(null);
   void cloudApi.editRelease(mapId, editSessionKey()).catch(() => { /* TTL 로도 풀린다 */ });
   useCloudStore.getState().unlink();
-  useCloudStore.getState().setError(
-    'AI 대화가 이 맵을 먼저 바꿔서 지금 편집분을 그 위에 저장하지 않았습니다 — '
-    + '편집분은 이 브라우저에 보관했습니다. 문서함에서 이 맵을 다시 열면 AI 가 붙인 내용이 보이고, '
-    + '초안 복구 배너로 편집분을 되살릴 수 있습니다.',
-  );
+  useCloudStore.getState().setError(tr('cloud.autosave.stale'));
   useAutosaveStore.getState().setSaveState('unsaved');
 }
 
@@ -273,7 +267,7 @@ async function doSave() {
       return;
     }
     if (useCloudStore.getState().cloudMapId === mapId) {
-      const msg = err instanceof CloudError ? err.message : '자동 저장 실패';
+      const msg = err instanceof CloudError ? err.message : tr('cloud.autosave.failed');
       useCloudStore.getState().setError(msg);
       // **서버에 닿지 않는 실패**(배포 중 컨테이너 교체 · 점검 응답)면 화면
       // 위쪽 띠로 알린다 — 재시도·초안 보관은 아래 그대로다 (2026-09-13, B20 ⑧ⓑ).

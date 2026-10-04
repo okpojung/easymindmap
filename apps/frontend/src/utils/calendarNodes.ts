@@ -19,6 +19,7 @@ import type { NodeStyle } from '@emm/model';
 import type { OutlineItem } from '@/utils/outlineLines';
 import { buildMdTable } from '@/editor/node-renderer/TableDialog';
 import { holidayName } from '@/utils/koreanHolidays';
+import { tr } from '@/i18n';
 
 export interface YearMonth { year?: number; month?: number }
 
@@ -80,14 +81,18 @@ export function parseYearMonth(text: string, ancestors: string[] = []): YearMont
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
-const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+// 요일·달 이름·주 표시는 **노드를 만드는 순간의 언어**로 (노드 글로 저장된다).
+// 읽기(parseYearMonth)는 예전 그대로 — 저장된 글의 해석은 바꾸지 않는다.
+const dow = (): string[] => tr('editor.calendar.dow').split(',');
+const monthName = (m: number): string => tr('editor.calendar.months').split(',')[m - 1] ?? String(m);
+const weekTag = (n: number): string => tr('editor.calendar.weekTag', { n: pad2(n) });
 
 /** YYYY/MM/DD(요일) */
 export function fmtDay(d: Date): string {
-  return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}(${DOW[d.getDay()]})`;
+  return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}(${dow()[d.getDay()]})`;
 }
 /** MM/DD(요일) — 같은 해 안의 끝 날짜에 */
-const fmtDayShort = (d: Date) => `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}(${DOW[d.getDay()]})`;
+const fmtDayShort = (d: Date) => `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}(${dow()[d.getDay()]})`;
 
 const DAY = 86400000;
 const utc = (y: number, m: number, d: number) => Date.UTC(y, m, d);
@@ -118,7 +123,7 @@ export function dayText(d: Date): string {
 
 /** 1월 … 12월 */
 export function monthOutline(): OutlineItem[] {
-  return Array.from({ length: 12 }, (_, i) => ({ text: `${i + 1}월`, children: [] }));
+  return Array.from({ length: 12 }, (_, i) => ({ text: monthName(i + 1), children: [] }));
 }
 
 /** 그 달에 걸친 주(일~토)의 첫 일요일들 */
@@ -134,7 +139,7 @@ function weekStarts(year: number, month: number): Date[] {
 export function weekLabel(sunday: Date, year: number): string {
   const sat = addDays(sunday, 6);
   const end = sat.getFullYear() === sunday.getFullYear() ? fmtDayShort(sat) : fmtDay(sat);
-  return `[${pad2(weekOfYear(sunday, year))}주] ${fmtDay(sunday)} ~ ${end}`;
+  return `${weekTag(weekOfYear(sunday, year))} ${fmtDay(sunday)} ~ ${end}`;
 }
 
 /** 그 달에 걸친 주들 — `[NN주] 시작 ~ 끝` → 날짜 노드 7개 (빨간 날 · 공휴일 이름 · 다른 달은 희미하게) */
@@ -160,14 +165,16 @@ export function calendarTable(year: number, month: number): string {
       if (d.getMonth() !== month - 1) return '';
       return d.getDay() === 0 || holidayName(d) ? `**${d.getDate()}**` : String(d.getDate());
     }));
-  return buildMdTable(DOW, rows, DOW.map(() => 'center'));
+  const head = dow();
+  return buildMdTable(head, rows, head.map(() => 'center'));
 }
 
 /** 대화상자 미리보기 한 줄 */
 export function calendarPreview(year: number, month?: number, asTable = false): string {
-  if (!month) return `${year}년 → 1월 … 12월 (12개)`;
+  if (!month) return tr('editor.calendar.previewYear', { y: year });
   const w = weekStarts(year, month);
-  if (asTable) return `${year}년 ${month}월 → 노드 내용에 달력 표 (일~토 7열 × ${w.length}주)`;
-  const first = pad2(weekOfYear(w[0], year)), last = pad2(weekOfYear(w[w.length - 1], year));
-  return `${year}년 ${month}월 → [${first}주] … [${last}주] (${w.length}주, 각 주 아래 일~토 날짜 노드 7개)`;
+  const ym = tr('editor.calendar.ym', { y: year, mn: monthName(month) });
+  if (asTable) return tr('editor.calendar.previewTable', { ym, w: w.length });
+  const first = weekTag(weekOfYear(w[0], year)), last = weekTag(weekOfYear(w[w.length - 1], year));
+  return tr('editor.calendar.previewWeeks', { ym, first, last, w: w.length });
 }

@@ -1,7 +1,7 @@
 // i18n 사전 검사 — 키 접두사·빈 값·자리표시({n}) 일치. 타입이 못 잡는 것을 본다.
 import assert from 'node:assert/strict';
 import { DICT_SETS } from './dict';
-import { detectLang, translate } from './index';
+import { detectLang, registerDict, translate } from './index';
 
 let checked = 0;
 for (const [ns, set] of Object.entries(DICT_SETS)) {
@@ -34,5 +34,10 @@ assert.equal(detectLang(['fr-FR', 'en-US']), 'en');
 assert.equal(detectLang(['fr-FR']), 'en');
 assert.equal(translate('en', 'common.ok'), 'OK');
 assert.equal(translate('ko', 'no.such.key'), 'no.such.key');
+
+registerDict({ ko: { 'pro.x': '가', 'common.ok': '덮어씀' }, en: { 'pro.x': 'A' }, zh: {}, ja: {} });
+assert.equal(translate('en', 'pro.x'), 'A');
+assert.equal(translate('ja', 'pro.x'), 'A'); // 일본어가 없으면 영어로
+assert.equal(translate('ko', 'common.ok'), '확인'); // 코어 키는 덮어쓰지 않는다
 
 console.log(`i18n.test: ${checked} 항목 PASS`);

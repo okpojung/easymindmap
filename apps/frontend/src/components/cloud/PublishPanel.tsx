@@ -10,7 +10,7 @@
 //   ③ 주소는 **등록**에 붙는다 — 상태를 오가도 그대로다. 주소가 죽는 것은
 //      **[퍼블리싱 취소]** 하나뿐이고, 그때는 다시 등록해도 새 주소다
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import {
   cloudApi, CloudError,
@@ -24,6 +24,10 @@ import { useCloudStore } from '@/stores/cloudStore';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { useProFeature } from '@/pro/contract';
 import { ProSalesGate } from '@pro';
+import { LANG_LOCALE, tr as trNow, useLang, useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
+export { rich };
+
 
 /** 퍼블리싱 주소 — 브라우저 주소는 `/p/{publishId}` 다 (API 경로와 다르다) */
 export function publicMapUrl(publishId: string): string {
@@ -65,7 +69,7 @@ async function previewSource(mapId: string): Promise<PreviewSource> {
     map?: SampleMap;
     editor?: { layoutType?: LayoutType; spacingX?: number; spacingY?: number };
   } | null;
-  if (!snap?.map) throw new Error('이 맵의 내용을 읽지 못했습니다.');
+  if (!snap?.map) throw new Error(trNow('publish.err.readMap'));
   return {
     map: snap.map,
     layoutType: snap.editor?.layoutType,
@@ -82,6 +86,8 @@ export function PublishPanel(
     flash: (m: string) => void;
   },
 ) {
+  const tr = useTr();
+  const lang = useLang();
   const [status, setStatus] = useState<PublishStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -122,7 +128,7 @@ export function PublishPanel(
     cloudApi.publishStatus(mapId)
       .then((s) => { if (alive) setStatus(s); })
       .catch((err) => {
-        if (alive) setError(err instanceof CloudError ? err.message : '퍼블리싱 상태를 읽지 못했습니다.');
+        if (alive) setError(err instanceof CloudError ? err.message : trNow('publish.err.status'));
       });
     return () => { alive = false; };
   }, [mapId]);
@@ -133,7 +139,7 @@ export function PublishPanel(
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof CloudError ? err.message : '요청이 실패했습니다.');
+      setError(err instanceof CloudError ? err.message : tr('publish.err.request'));
     } finally {
       setBusy(false);
     }
@@ -167,7 +173,7 @@ export function PublishPanel(
       //   것뿐**이다.
       return err instanceof CloudError ? err.message
         : err instanceof Error && err.message ? err.message
-          : '알 수 없는 오류';
+          : tr('publish.err.unknown');
     }
   };
 
@@ -193,7 +199,7 @@ export function PublishPanel(
       c.unlink();
       useCloudStore.getState().setReadOnlyInfo({
         mapId, title: meta.title,
-        reason: '공개 중인 맵입니다 — 고치려면 비공개(보관)로 바꾸세요',
+        reason: tr('publish.lockReason'),
         viewer: false, kind: meta.kind,
       });
     } else {
@@ -210,17 +216,17 @@ export function PublishPanel(
     const s = await cloudApi.publishMap(mapId, visibility);
     setStatus(s);
     if (visibility === 'public') {
-      flash('🔗 퍼블리싱했습니다 — 이제 이 맵은 읽기 전용입니다.');
+      flash(tr('publish.flash.published'));
       lockThisTab(true);
     } else {
-      flash('문서함의 [퍼블리싱] 자리로 옮겼습니다 — 아직 비공개(보관)라 남에게는 보이지 않습니다.');
+      flash(tr('publish.flash.registeredPrivate'));
     }
     setPreviewBusy(true);
     const why = await uploadPreview();
     setPreviewBusy(false);
     setPreviewError(why);
     if (why !== null) {
-      flash(`등록은 됐습니다 — 미리보기 이미지만 실패했습니다 (${why}). [다시 만들기]를 눌러 주세요.`);
+      flash(tr('publish.flash.previewFailedAfterPublish', { why }));
     }
   });
 
@@ -236,8 +242,8 @@ export function PublishPanel(
     setStatus(s);
     lockThisTab(v === 'public');
     flash(v === 'public'
-      ? '공개했습니다 — 같은 주소로 열립니다. 이제 이 맵은 읽기 전용입니다.'
-      : '비공개(보관)로 바꿨습니다 — 주소는 그대로 두고 남에게만 닫혔습니다. 이제 다시 편집할 수 있습니다.');
+      ? tr('publish.flash.madePublic')
+      : tr('publish.flash.madePrivate'));
   });
 
   /**
@@ -253,8 +259,8 @@ export function PublishPanel(
     setListedWant(null);          // 반영됐으니 "아직 안 된 뜻" 은 없다
     if (on) lockThisTab(true);
     flash(on
-      ? '📚 지식창고에 올렸습니다 — 홈페이지 [지식창고]에서 누구나 찾을 수 있습니다.'
-      : '지식창고에서 내렸습니다 — 목록에서만 빠집니다. 링크는 그대로 열립니다.');
+      ? tr('publish.flash.listed')
+      : tr('publish.flash.unlisted'));
   });
 
   /**
@@ -268,8 +274,8 @@ export function PublishPanel(
     const st = await cloudApi.setMapPrice(mapId, priceKrw);
     setStatus(st);
     flash(priceKrw === null
-      ? '값을 내렸습니다 — 무료공개로 돌아갔습니다.'
-      : `${priceKrw.toLocaleString('ko-KR')}원으로 값을 매겼습니다.`);
+      ? tr('publish.flash.priceCleared')
+      : tr('publish.flash.priceSet', { price: priceKrw.toLocaleString(LANG_LOCALE[lang]) }));
   });
 
   const doRemakePreview = () => run(async () => {
@@ -278,8 +284,8 @@ export function PublishPanel(
     setPreviewBusy(false);
     setPreviewError(why);
     flash(why === null
-      ? '미리보기를 다시 만들었습니다.'
-      : `⚠ 미리보기를 만들지 못했습니다 — ${why}`);
+      ? tr('publish.flash.previewRemade')
+      : tr('publish.flash.previewFailed', { why }));
   });
 
   /**
@@ -295,7 +301,7 @@ export function PublishPanel(
     });
     setCopied(false);
     lockThisTab(false); // 다시 고칠 수 있다
-    flash('퍼블리싱을 취소했습니다 — 맵이 원래 폴더로 돌아왔습니다. 그 주소는 영구히 사라졌습니다(다시 등록하면 새 주소).');
+    flash(tr('publish.flash.unpublished'));
   });
 
   // 미리보기 받아 오기 — 상태가 바뀌거나 다시 만들 때마다.
@@ -322,8 +328,8 @@ export function PublishPanel(
     if (!url) return;
     // 클립보드가 막힌 환경(비 HTTPS·권한 거부)에서도 **주소는 화면에 있다**.
     // 복사가 안 됐는데 됐다고 말하지 않는다.
-    const ok = () => { setCopied(true); flash('링크를 복사했습니다.'); };
-    const fail = () => flash('⚠ 복사하지 못했습니다 — 아래 주소를 직접 선택해 복사해 주세요.');
+    const ok = () => { setCopied(true); flash(tr('publish.flash.linkCopied')); };
+    const fail = () => flash(tr('publish.flash.copyFailed'));
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(url).then(ok, fail);
     } else {
@@ -375,7 +381,7 @@ export function PublishPanel(
         <div style={{
           fontSize: 15.5, fontWeight: 800, marginBottom: 4, paddingRight: 34, flexShrink: 0,
         }}>
-          🔗 퍼블리싱 — 링크로 공유
+          {tr('publish.title')}
         </div>
         <div style={{ fontSize: 12, color: t.textSubtle, marginBottom: 14, flexShrink: 0 }}>
           {mapTitle}
@@ -397,7 +403,7 @@ export function PublishPanel(
         )}
 
         {status === null && !error && (
-          <div style={{ fontSize: 12.5, color: t.textMuted }}>퍼블리싱 상태를 확인하는 중…</div>
+          <div style={{ fontSize: 12.5, color: t.textMuted }}>{tr('publish.checking')}</div>
         )}
 
         {/* 서버에 퍼블리싱 표가 없는 배포 — 버튼을 주고 실패시키지 않는다 */}
@@ -406,8 +412,8 @@ export function PublishPanel(
             data-testid="publish-unavailable"
             style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7 }}
           >
-            이 서버에는 아직 퍼블리싱 기능이 준비되지 않았습니다.
-            <br />관리자가 <code>published_maps</code> 스키마 델타를 적용하면 바로 쓸 수 있습니다.
+            {tr('publish.unavailable')}
+            <br />{rich(tr('publish.unavailableHint'))}
           </div>
         )}
 
@@ -422,7 +428,7 @@ export function PublishPanel(
             style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8 }}
           >
             {status.blockedReason}
-            <br />지금 내용을 퍼블리싱하려면 <b>다른 이름으로 저장</b>하세요 — 사본은 단독맵으로 만들어집니다.
+            <br />{rich(tr('publish.blockedHint'))}
           </div>
         )}
 
@@ -431,40 +437,32 @@ export function PublishPanel(
         {status?.available && status.publishable !== false && !status.publishId && status.dashboard && (
           <>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8, marginBottom: 16 }}>
-              대시보드맵을 <b>사내 시스템에 붙일 링크</b>를 만듭니다 — 링크를 아는 사람만 봅니다
-              (지식창고에는 올라가지 않습니다). 붙여 둔 화면은 스스로 갱신됩니다.
+              {rich(tr('publish.dashboard.intro'))}
             </div>
             <button
               data-testid="publish-create"
               disabled={busy}
               onClick={() => void doPublish('public')}
               style={{ ...btn, width: '100%', background: t.primary, color: '#fff' }}
-            >{busy ? '만드는 중…' : '🔗 링크 만들기'}</button>
+            >{busy ? tr('publish.creating') : tr('publish.dashboard.create')}</button>
           </>
         )}
 
         {status?.available && status.publishable !== false && !status.publishId && !status.dashboard && (
           <>
             <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.8, marginBottom: 16 }}>
-              퍼블리싱하면 이 맵이 문서함의 <b>퍼블리싱 자리</b>로 옮겨집니다 —
-              쇼핑몰에 상품을 등록해 두는 것과 같습니다.
-              <br />★ 처음에는 <b>비공개(보관)</b>입니다 — 남에게는 보이지 않고
-              <b> 계속 고칠 수 있습니다.</b> 다 되면 거기서 <b>링크 공개</b>로 바꾸면 됩니다.
-              <br />★ <b>주소는 지금 만들어지고, 그대로 유지됩니다</b> —
-              비공개 ↔ 공개를 오가도 바뀌지 않습니다.
-              <br />★ 취소하면 원래 폴더로 돌아옵니다. 그때 <b>주소는 사라집니다.</b>
+              {rich(tr('publish.intro'))}
             </div>
             <button
               data-testid="publish-create"
               disabled={busy}
               onClick={() => void doPublish(status.canSetVisibility ? 'private' : 'public')}
               style={{ ...btn, width: '100%', background: t.primary, color: '#fff' }}
-            >{busy ? '만드는 중…'
-              : status.canSetVisibility ? '퍼블리싱 — 비공개로 등록' : '퍼블리싱하기 (링크 공개)'}</button>
+            >{busy ? tr('publish.creating')
+              : status.canSetVisibility ? tr('publish.createPrivate') : tr('publish.createPublic')}</button>
             {!status.canSetVisibility && (
               <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 8 }}>
-                이 서버에는 아직 <b>비공개(보관)</b> 상태가 준비되지 않았습니다
-                (스키마 델타 미적용) — 지금 누르면 <b>바로 링크 공개</b>가 됩니다.
+                {rich(tr('publish.noPrivateHint'))}
               </div>
             )}
           </>
@@ -473,7 +471,9 @@ export function PublishPanel(
         {status?.available && status.publishId && (
           <>
             <div style={{ fontSize: 12.5, color: t.textMuted, marginBottom: 8 }}>
-              퍼블리싱 등록됨 · {status.publishedAt ? new Date(status.publishedAt).toLocaleString() : ''}
+              {tr('publish.registeredAt', {
+                at: status.publishedAt ? new Date(status.publishedAt).toLocaleString(LANG_LOCALE[lang]) : '',
+              })}
             </div>
 
             {/* ★ **상태 전환** (2026-09-05 사용자 결정) — 주소는 그대로다.
@@ -490,24 +490,24 @@ export function PublishPanel(
                   disabled={busy}
                   onClick={() => void doSetVisibility('public')}
                   style={{ ...btn, width: '100%', height: 32, fontSize: 12.5, background: t.primary, color: '#fff' }}
-                >🔗 링크 다시 열기</button>
+                >{tr('publish.dashboard.reopen')}</button>
                 <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 6 }}>
-                  지금은 보관 중이라 남에게 보이지 않습니다(주소를 열면 404). 다시 열면 <b>같은 주소</b>가 살아납니다.
+                  {rich(tr('publish.dashboard.reopenHint'))}
                 </div>
               </div>
             )}
             {status.dashboard && (status.visibility ?? 'public') !== 'private' && (
               <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginBottom: 10 }}>
-                🔗 링크 공개 중 — 링크를 가진 누구나 읽습니다. 값은 프로그램이 넣은 대로 스스로 바뀝니다.
-                <br />★ <b>목록에는 뜨지 않습니다</b> — 주소를 아는 사람만 봅니다.
+                {tr('publish.dashboard.liveHint')}
+                <br />{rich(tr('publish.notListedLine'))}
               </div>
             )}
             {status.canSetVisibility && !status.dashboard && (
               <div data-testid="publish-visibility" style={{ marginBottom: 10 }}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {([
-                    ['private', '🔒 비공개(보관)'],
-                    ['public', '🔗 링크 공개'],
+                    ['private', tr('publish.vis.private')],
+                    ['public', tr('publish.vis.public')],
                   ] as const).map(([v, label]) => {
                     const on = (status.visibility ?? 'public') === v;
                     return (
@@ -530,10 +530,10 @@ export function PublishPanel(
                 </div>
                 <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 6 }}>
                   {(status.visibility ?? 'public') === 'private'
-                    ? '지금은 남에게 보이지 않습니다 (주소를 열면 404). 이 상태에서는 맵을 고칠 수 있습니다.'
-                    : '링크를 가진 누구나 읽습니다. 고치려면 [비공개(보관)]로 바꾸세요 — 주소는 그대로입니다.'}
-                  <br />★ <b>목록에는 뜨지 않습니다</b> — 주소를 아는 사람만 봅니다.
-                  {' '}둘러보는 사람에게도 보이게 하려면 아래 <b>[지식창고]</b> 를 켜세요.
+                    ? tr('publish.vis.privateHint')
+                    : tr('publish.vis.publicHint')}
+                  <br />{rich(tr('publish.notListedLine'))}
+                  {' '}{rich(tr('publish.vis.listedTip'))}
                 </div>
               </div>
             )}
@@ -574,12 +574,12 @@ export function PublishPanel(
                       있으면 지금 어떤 상태인지 읽어 낼 수가 없다. */}
                   <span>
                     <b style={{ fontSize: 12.5 }}>
-                      {on ? '📚 지식창고에 올라가 있습니다' : '📚 지식창고에 올린다'}
+                      {on ? tr('publish.listed.on') : tr('publish.listed.off')}
                     </b>
                     <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 2 }}>
                       {on
-                        ? '지금 홈페이지 [지식창고] 목록에서 누구나 찾을 수 있습니다. 내려도 링크는 그대로 열립니다.'
-                        : '올리면 홈페이지 [지식창고] 목록에서 불특정 다수가 찾을 수 있습니다.'}
+                        ? tr('publish.listed.onHint')
+                        : tr('publish.listed.offHint')}
                     </div>
                   </span>
                 </label>
@@ -602,8 +602,8 @@ export function PublishPanel(
                     }}
                   >
                     {pending
-                      ? (want ? '📚 지식창고에 올리기' : '지식창고에서 내리기')
-                      : (on ? '지식창고에 올라가 있습니다' : '체크하면 여기가 켜집니다')}
+                      ? (want ? tr('publish.listed.applyOn') : tr('publish.listed.applyOff'))
+                      : (on ? tr('publish.listed.isOn') : tr('publish.listed.idle'))}
                   </button>
                   <div
                     data-testid="publish-listed-hint"
@@ -612,9 +612,9 @@ export function PublishPanel(
                   >
                     {pending
                       ? (want
-                        ? <><b>아직 올라가지 않았습니다.</b> 아래 <b>미리보기</b>를 확인한 뒤 [지식창고에 올리기] 를 눌러 주세요. 창을 그냥 닫으면 올라가지 않습니다.</>
-                        : <><b>아직 내려가지 않았습니다.</b> [지식창고에서 내리기] 를 눌러야 목록에서 빠집니다.</>)
-                      : <>체크를 바꾸면 이 단추로 반영합니다 — <b>[닫기] 는 이 창만 닫습니다.</b></>}
+                        ? rich(tr('publish.listed.pendingOn'))
+                        : rich(tr('publish.listed.pendingOff')))
+                      : rich(tr('publish.listed.idleHint'))}
                   </div>
                 </div>
               </div>
@@ -651,12 +651,12 @@ export function PublishPanel(
                 <img
                   data-testid="publish-preview-img"
                   src={previewSrc}
-                  alt="미리보기 실루엣"
+                  alt={tr('publish.preview.alt')}
                   style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                 />
               ) : (
                 <span style={{ fontSize: 12, color: t.textSubtle }}>
-                  {previewBusy ? '미리보기 만드는 중…' : '미리보기 없음'}
+                  {previewBusy ? tr('publish.preview.making') : tr('publish.preview.none')}
                 </span>
               )}
             </div>
@@ -668,13 +668,12 @@ export function PublishPanel(
                   borderRadius: 7, border: `1px solid ${t.danger}`, color: t.danger,
                 }}
               >
-                ⚠ 미리보기를 만들지 못했습니다 — {previewError}
-                <br />퍼블리싱과 지식창고는 그대로입니다. 그림만 없는 상태입니다.
+                {tr('publish.flash.previewFailed', { why: previewError })}
+                <br />{tr('publish.preview.errorKeep')}
               </div>
             )}
             <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginBottom: 10 }}>
-              글자 대신 회색 막대로 그립니다 — 확대해도 내용이 읽히지 않습니다.
-              맵을 고친 뒤에는 [미리보기 다시 만들기]를 눌러 주세요.
+              {tr('publish.preview.note')}
             </div>
             <button
               data-testid="publish-preview-remake"
@@ -685,7 +684,7 @@ export function PublishPanel(
                 border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
                 fontSize: 12.5, fontWeight: 600,
               }}
-            >{previewBusy ? '만드는 중…' : '미리보기 다시 만들기'}</button>
+            >{previewBusy ? tr('publish.creating') : tr('publish.preview.remake')}</button>
             <input
               data-testid="publish-url"
               readOnly
@@ -702,7 +701,7 @@ export function PublishPanel(
                 data-testid="publish-copy"
                 onClick={doCopy}
                 style={{ ...btn, flex: 1, background: t.primary, color: '#fff' }}
-              >{copied ? '복사됨 ✓' : '링크 복사'}</button>
+              >{copied ? tr('common.copied') : tr('publish.copyLink')}</button>
               <a
                 data-testid="publish-open"
                 href={url}
@@ -713,7 +712,7 @@ export function PublishPanel(
                   justifyContent: 'center', textDecoration: 'none',
                   border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
                 }}
-              >새 탭에서 열기</a>
+              >{tr('publish.openNewTab')}</a>
             </div>
             {/* ★ **공개 중에는 취소할 수 없다 — 먼저 비공개로** (2026-09-05
                 사용자 결정). 취소는 주소를 영구히 죽이는 일이고 되돌릴 수
@@ -728,7 +727,7 @@ export function PublishPanel(
                   <button
                     data-testid="publish-stop"
                     disabled={busy || locked}
-                    title={locked ? '먼저 [🔒 비공개(보관)] 로 바꿔 주세요' : undefined}
+                    title={locked ? tr('publish.stop.lockedTitle') : undefined}
                     onClick={() => void doUnpublish()}
                     style={{
                       ...btn, width: '100%', marginTop: 10, height: 34,
@@ -737,14 +736,13 @@ export function PublishPanel(
                       cursor: locked ? 'not-allowed' : (busy ? 'default' : 'pointer'),
                       fontWeight: 600, fontSize: 12.5,
                     }}
-                  >{busy ? '처리 중…' : '퍼블리싱 취소 (주소가 사라집니다)'}</button>
+                  >{busy ? tr('publish.processing') : tr('publish.stop')}</button>
                   {locked && (
                     <div
                       data-testid="publish-stop-locked"
                       style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 6 }}
                     >
-                      공개 중에는 취소할 수 없습니다 — 먼저 <b>[🔒 비공개(보관)]</b> 로 바꿔 주세요.
-                      취소하면 이 주소는 <b>영구히</b> 사라집니다.
+                      {rich(tr('publish.stop.lockedHint'))}
                     </div>
                   )}
                 </>
@@ -762,7 +760,7 @@ export function PublishPanel(
             ...btn, width: '100%', marginTop: 12, height: 32, flexShrink: 0,
             background: 'transparent', color: t.textSubtle, fontWeight: 600, fontSize: 12.5,
           }}
-        >닫기</button>
+        >{tr('common.close')}</button>
       </div>
     </div>
   );
@@ -799,6 +797,8 @@ function PriceRow({ t, status, busy, onApply }: {
   busy: boolean;
   onApply: (priceKrw: number | null) => void;
 }) {
+  const tr = useTr();
+  const locale = LANG_LOCALE[useLang()];
   const sales = useProFeature('map-sales');
   const cur = status.priceKrw ?? null;
   const [draft, setDraft] = useState<string>(cur === null ? '' : String(cur));
@@ -816,13 +816,12 @@ function PriceRow({ t, status, busy, onApply }: {
   if (sales.status !== 'on') {
     return (
       <div data-testid="publish-price-off" style={box}>
-        <b style={{ fontSize: 12.5 }}>💰 유료공개</b>
+        <b style={{ fontSize: 12.5 }}>{tr('publish.price.title')}</b>
         {/* ★ 서버가 준 `reason` 을 그대로 보이지 않는다 — 그 문장은 운영자
             를 위한 것이라("모듈이 코어보다 오래된 판") 저자에게는 뜻이 없다.
             저자가 알아야 할 것은 **지금 팔 수 있나 없나**와 **왜**다. */}
         <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 2 }}>
-          아직 값을 매길 수 없습니다 — 결제·정산이 붙은 뒤에 열립니다.
-          지금은 무료공개만 됩니다.
+          {tr('publish.price.offHint')}
         </div>
       </div>
     );
@@ -837,11 +836,10 @@ function PriceRow({ t, status, busy, onApply }: {
   return (
     <div data-testid="publish-price" style={{ ...box, border: `1px solid ${cur === null ? t.border : t.primary}` }}>
       <b style={{ fontSize: 12.5 }}>
-        {cur === null ? '💰 유료공개 — 값을 매기면 팝니다' : `💰 유료공개 중 — ${cur.toLocaleString('ko-KR')}원`}
+        {cur === null ? tr('publish.price.unset') : tr('publish.price.on', { price: cur.toLocaleString(locale) })}
       </b>
       <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, margin: '2px 0 8px' }}>
-        값을 매기면 손님에게는 <b>2단계까지만</b> 보입니다 — 노트·첨부·링크는
-        미리보기에 들어가지 않습니다. 값을 내리면 다시 전부 공개됩니다.
+        {rich(tr('publish.price.hint'))}
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input
@@ -858,7 +856,7 @@ function PriceRow({ t, status, busy, onApply }: {
             background: t.surface, color: t.text, fontFamily: 'inherit',
           }}
         />
-        <span style={{ fontSize: 12.5, color: t.textSubtle }}>원</span>
+        <span style={{ fontSize: 12.5, color: t.textSubtle }}>{tr('publish.price.unit')}</span>
         <button
           data-testid="publish-price-apply"
           disabled={busy || !changed || !valid || !ready}
@@ -871,7 +869,7 @@ function PriceRow({ t, status, busy, onApply }: {
             cursor: changed && valid && ready && !busy ? 'pointer' : 'default',
             fontFamily: 'inherit', whiteSpace: 'nowrap',
           }}
-        >값 매기기</button>
+        >{tr('publish.price.apply')}</button>
       </div>
 
       {/* ★ **유료 모듈의 자리** — 받을 준비가 됐는지 묻고, 됐으면 이 값에서
@@ -888,7 +886,7 @@ function PriceRow({ t, status, busy, onApply }: {
             border: `1px solid ${t.border}`, background: t.surface, color: t.textSubtle,
             cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit',
           }}
-        >값을 내리고 무료공개로 되돌리기</button>
+        >{tr('publish.price.clear')}</button>
       )}
     </div>
   );
@@ -902,14 +900,16 @@ function PriceRow({ t, status, busy, onApply }: {
  * 바뀐 것만 물어 스스로 갱신한다(로그인 없이 — 링크를 아는 사람만 본다).
  */
 function DashboardEmbed({ t, url, flash }: { t: ThemeTokens; url: string; flash: (m: string) => void }) {
+  const tr = useTr();
   const embedUrl = url ? `${url}?embed=1` : '';
   const code = embedUrl
-    ? `<iframe src="${embedUrl}" width="100%" height="600" style="border:0" title="대시보드"></iframe>`
+    ? `<iframe src="${embedUrl}" width="100%" height="600" style="border:0" title="${tr('publish.embed.iframeTitle')}"></iframe>`
     : '';
-  const copy = (text: string, what: string) => {
-    const fail = () => flash('⚠ 복사하지 못했습니다 — 아래 칸을 직접 선택해 복사해 주세요.');
+  /** `doneKey` — 복사됐을 때 띄울 문장의 사전 키 */
+  const copy = (text: string, doneKey: string) => {
+    const fail = () => flash(tr('publish.embed.copyFailed'));
     if (!navigator.clipboard?.writeText) { fail(); return; }
-    navigator.clipboard.writeText(text).then(() => flash(`${what}을(를) 복사했습니다.`), fail);
+    navigator.clipboard.writeText(text).then(() => flash(tr(doneKey)), fail);
   };
   const box = {
     width: '100%', boxSizing: 'border-box' as const, padding: '7px 9px', borderRadius: 7,
@@ -926,23 +926,21 @@ function DashboardEmbed({ t, url, flash }: { t: ThemeTokens; url: string; flash:
       marginBottom: 10, padding: '10px 12px', borderRadius: 8,
       border: `1px solid ${t.primary}`, background: t.surfaceAlt,
     }}>
-      <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>📊 사내 시스템에 붙이기</div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>{tr('publish.embed.title')}</div>
       <div style={{ fontSize: 11.5, color: t.textMuted, lineHeight: 1.6, marginBottom: 8 }}>
-        대시보드맵은 <b>지식창고·유료 판매 없이 링크로만</b> 공유합니다. 붙여 둔 화면은
-        <b> 10초마다 스스로 갱신</b>됩니다(로그인 없이 — <b>링크를 아는 사람만</b> 봅니다).
-        <br />링크는 일반맵으로 되돌려도 남습니다 — 닫으려면 일반맵으로 되돌린 뒤 퍼블리싱 창에서 취소합니다.
+        {rich(tr('publish.embed.intro'))}
       </div>
-      <div style={{ fontSize: 11.5, fontWeight: 700, margin: '6px 0 3px' }}>하위 페이지로 끼우기 (iframe)</div>
+      <div style={{ fontSize: 11.5, fontWeight: 700, margin: '6px 0 3px' }}>{tr('publish.embed.iframeLabel')}</div>
       <textarea data-testid="publish-embed-code" readOnly rows={3} value={code} style={box}
         onFocus={(e) => e.currentTarget.select()} />
       <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
         <button data-testid="publish-embed-copy" style={small} disabled={!code}
-          onClick={() => copy(code, '붙이는 코드')}>코드 복사</button>
+          onClick={() => copy(code, 'publish.embed.copiedCode')}>{tr('publish.embed.copyCode')}</button>
         <button data-testid="publish-embed-url-copy" style={small} disabled={!embedUrl}
-          onClick={() => copy(embedUrl, '머리말 없는 주소')}>머리말 없는 주소 복사</button>
+          onClick={() => copy(embedUrl, 'publish.embed.copiedUrl')}>{tr('publish.embed.copyUrl')}</button>
       </div>
       <div style={{ fontSize: 11, color: t.textSubtle, lineHeight: 1.6, marginTop: 6 }}>
-        게시판·메일에 <b>첨부</b>할 때는 아래 <b>[링크 복사]</b> 의 주소를 그대로 쓰세요.
+        {rich(tr('publish.embed.attachHint'))}
       </div>
     </div>
   );

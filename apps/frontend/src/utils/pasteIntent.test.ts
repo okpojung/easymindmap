@@ -1,6 +1,10 @@
 // 선택 노드에 Ctrl+V — 그림만이면 첨부, 그 밖에는 하위 노드 (2026-10-01, e2e324).
 //   npx tsx src/utils/pasteIntent.test.ts
 import { clipboardImageName, pasteIntent } from './pasteIntent';
+import { useLangStore } from '@/i18n';
+
+// 한국어 문구(만드는 순간의 언어로 저장되는 글)를 확인한다 — 언어를 한국어로 고정
+useLangStore.getState().setLang('ko');
 
 let failed = 0;
 const check = (name: string, got: unknown, want: unknown) => {

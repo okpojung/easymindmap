@@ -6,8 +6,10 @@
 // 다음 저장이 성공하면 스스로 사라진다. 모양은 DraftRecoveryBanner 와 같은 띠.
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useAutosaveStore } from '@/stores/autosaveStore';
+import { useTr } from '@/i18n';
 
 export function OutageBanner({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   const notice = useAutosaveStore((s) => s.outageNotice);
   const dismissed = useAutosaveStore((s) => s.outageDismissed);
   if (!notice || dismissed) return null;
@@ -37,7 +39,7 @@ export function OutageBanner({ t }: { t: ThemeTokens }) {
           fontSize: 12, padding: '6px 10px', borderRadius: 6,
           border: `1px solid ${t.border}`, background: t.surface,
           color: t.textMuted, cursor: 'pointer',
-        }}>알겠습니다</button>
+        }}>{tr('cloud.gotIt')}</button>
     </div>
   );
 }

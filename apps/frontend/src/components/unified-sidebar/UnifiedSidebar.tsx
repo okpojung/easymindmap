@@ -35,6 +35,7 @@ import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
 // 유료 화면 모듈 — vite 별칭. 유료 UI 가 없으면 코어의 스텁으로 간다
 // (docs/04-extensions/open-core-boundary.md §5).
 import { ProFeaturePanel } from '@pro';
+import { useTr } from '@/i18n';
 
 export type NavTabKey       = 'newMap' | 'search' | 'template' | 'history' | 'mapSettings' | 'collab';
 export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
@@ -63,6 +64,7 @@ export function UnifiedSidebar({
   collapsed, onToggleCollapsed,
   outlineSplit, onToggleOutlineSplit,
 }: Props) {
+  const tr = useTr();
   // 사이드바(패널)와 맵 화면 사이 세로 스플리터 — 드래그로 패널 폭 조절
   const sidebarWidth = useEditorUiStore((s) => s.sidebarWidth);
   const setSidebarWidth = useEditorUiStore((s) => s.setSidebarWidth);
@@ -76,19 +78,19 @@ export function UnifiedSidebar({
   const railNewMap = authEnabled && guest && !session;
   const navItems = [
     // 새 맵 만들기 — 기본 맵 또는 등록된 템플릿에서 시작 (Guest 만)
-    ...(railNewMap ? [{ key: 'newMap' as NavTabKey, label: '새 맵', icon: <I.Plus size={17} /> }] : []),
-    { key: 'search'   as NavTabKey, label: '검색',     icon: <I.Search size={17} /> },
-    { key: 'template' as NavTabKey, label: '템플릿',   icon: <I.Template size={17} /> },
-    { key: 'history'  as NavTabKey, label: '히스토리', icon: <I.History size={17} /> },
+    ...(railNewMap ? [{ key: 'newMap' as NavTabKey, label: tr('shell.sidebar.newMap'), icon: <I.Plus size={17} /> }] : []),
+    { key: 'search'   as NavTabKey, label: tr('common.search'), icon: <I.Search size={17} /> },
+    { key: 'template' as NavTabKey, label: tr('shell.sidebar.template'), icon: <I.Template size={17} /> },
+    { key: 'history'  as NavTabKey, label: tr('shell.sidebar.history'), icon: <I.History size={17} /> },
     // 맵 전체 설정 (레벨별 폰트 등) — 특정 노드가 아닌 맵 단위 설정 메뉴
-    { key: 'mapSettings' as NavTabKey, label: '맵 설정', icon: <I.Settings size={17} /> },
+    { key: 'mapSettings' as NavTabKey, label: tr('shell.sidebar.mapSettings'), icon: <I.Settings size={17} /> },
   ];
   const inspectorItems = [
-    { key: 'style'   as InspectorTabKey, label: '스타일',   icon: <I.Palette size={17} /> },
-    { key: 'layout'  as InspectorTabKey, label: '레이아웃', icon: <I.Layout size={17} /> },
-    { key: 'icon'    as InspectorTabKey, label: '아이콘',   icon: <span style={{ fontSize: 15, lineHeight: 1 }}>🙂</span> },
-    { key: 'content' as InspectorTabKey, label: '링크·첨부', icon: <I.Link size={17} /> },
-    { key: 'note'    as InspectorTabKey, label: '노트·태그', icon: <I.Note size={17} /> },
+    { key: 'style'   as InspectorTabKey, label: tr('shell.sidebar.style'), icon: <I.Palette size={17} /> },
+    { key: 'layout'  as InspectorTabKey, label: tr('shell.sidebar.layout'), icon: <I.Layout size={17} /> },
+    { key: 'icon'    as InspectorTabKey, label: tr('shell.sidebar.icon'), icon: <span style={{ fontSize: 15, lineHeight: 1 }}>🙂</span> },
+    { key: 'content' as InspectorTabKey, label: tr('shell.sidebar.content'), icon: <I.Link size={17} /> },
+    { key: 'note'    as InspectorTabKey, label: tr('shell.sidebar.note'), icon: <I.Note size={17} /> },
     { key: 'ai'      as InspectorTabKey, label: 'AI',        icon: <I.Sparkles size={17} /> },
   ];
 
@@ -120,7 +122,7 @@ export function UnifiedSidebar({
         padding: '8px 0',
       }}>
         <button
-          title={collapsed ? '패널 펼치기' : '패널 접기'}
+          title={collapsed ? tr('shell.sidebar.expand') : tr('shell.sidebar.collapse')}
           onClick={onToggleCollapsed}
           style={{
             margin: '0 7px 8px',
@@ -134,10 +136,10 @@ export function UnifiedSidebar({
         </button>
 
         <div style={{ margin: '0 10px 6px', height: 1, background: t.divider }} />
-        <RailGroupLabel t={t}>탐색</RailGroupLabel>
+        <RailGroupLabel t={t}>{tr('shell.sidebar.groupNav')}</RailGroupLabel>
         {/* 아웃라인 — 사이드 패널이 아니라 메인 화면을 좌(아웃라인)/우(맵)로
             나누는 분할 보기 토글. 아이콘도 분할 화면 모양. */}
-        <RailIcon t={t} title={outlineSplit ? '아웃라인 분할 닫기' : '아웃라인 분할 보기'}
+        <RailIcon t={t} title={outlineSplit ? tr('shell.sidebar.outlineSplitClose') : tr('shell.sidebar.outlineSplitOpen')}
                   active={outlineSplit}
                   expanded={!collapsed}
                   onClick={onToggleOutlineSplit}>
@@ -161,7 +163,7 @@ export function UnifiedSidebar({
         ))}
 
         <div style={{ margin: '10px 10px 6px', height: 1, background: t.divider }} />
-        <RailGroupLabel t={t}>속성</RailGroupLabel>
+        <RailGroupLabel t={t}>{tr('shell.sidebar.groupInspector')}</RailGroupLabel>
         {inspectorItems.map(it => (
           <RailIcon key={it.key} t={t} title={it.label}
                     active={activeSection === 'inspector' && inspectorTab === it.key}
@@ -177,7 +179,7 @@ export function UnifiedSidebar({
             (open-core-boundary.md §3.1 ③). 눌러야 왜 못 쓰는지 알 수 있다.
             빨간 점(읽지 않은 메시지 표시)은 뺐다 — 오지도 않은 메시지를
             왔다고 말하는 표시였다. */}
-        <RailIcon t={t} title="협업"
+        <RailIcon t={t} title={tr('shell.sidebar.collab')}
                   active={activeSection === 'nav' && navTab === 'collab'}
                   expanded={!collapsed}
                   onClick={() => handleRailClick('nav', 'collab')}>
@@ -202,7 +204,7 @@ export function UnifiedSidebar({
           조절 (220~640px). 더블클릭 시 기본 폭(300px)으로 복귀. */}
       {!collapsed && (
         <div
-          title="드래그: 패널 폭 조절 · 더블클릭: 기본 폭"
+          title={tr('shell.sidebar.resizeTitle')}
           onPointerDown={(e) => {
             splitRef.current = { pointerId: e.pointerId, x: e.clientX, w: sidebarWidth };
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -290,20 +292,21 @@ function RailIcon({ t, title, active, expanded, onClick, children }: RailIconPro
 function NavContent({ t, tab, onClose }: {
   t: ThemeTokens; tab: NavTabKey; onClose: () => void;
 }) {
-  const title = ({
-    newMap:      '새 맵',
-    search:      '검색',
-    template:    '템플릿',
-    history:     '히스토리',
-    mapSettings: '맵 설정',
-    collab:      '협업',
-  } as const)[tab];
+  const tr = useTr();
+  const title = tr(({
+    newMap:      'shell.sidebar.newMap',
+    search:      'common.search',
+    template:    'shell.sidebar.template',
+    history:     'shell.sidebar.history',
+    mapSettings: 'shell.sidebar.mapSettings',
+    collab:      'shell.sidebar.collab',
+  } as const)[tab]);
 
   const subtitle =
-    tab === 'mapSettings' ? '맵 전체에 적용'
-    : tab === 'newMap' ? '기본 맵 또는 템플릿에서 시작'
-    : tab === 'collab' ? '함께 편집하기'
-    : '전체 맵 탐색';
+    tab === 'mapSettings' ? tr('shell.sidebar.subMapSettings')
+    : tab === 'newMap' ? tr('shell.sidebar.subNewMap')
+    : tab === 'collab' ? tr('shell.sidebar.subCollab')
+    : tr('shell.sidebar.subBrowse');
 
   return (
     <>
@@ -326,6 +329,7 @@ function InspectorContent({ t, tab, onClose }: {
   collabs: Collaborator[];
   onClose: () => void;
 }) {
+  const tr = useTr();
   const selectedId = useInteractionStore((s) => s.selectedId);
   // 연결선을 고른 상태 (2026-09-22) — 머리말이 "연결선" 이라고 알려 준다
   const selectedConnectorId = useInteractionStore((s) => s.selectedConnectorId);
@@ -337,14 +341,14 @@ function InspectorContent({ t, tab, onClose }: {
   const parentId = findParentId(map, selectedId);
   const parentNode = findNodeInMap(map, parentId);
 
-  const title = ({
-    style:   '스타일',
-    layout:  '레이아웃',
-    icon:    '아이콘 · 기호',
-    content: '링크 · 첨부 · 배경',
-    note:    '노트 · 태그',
-    ai:      'AI 생성',
-  } as const)[tab];
+  const title = tr(({
+    style:   'shell.sidebar.style',
+    layout:  'shell.sidebar.layout',
+    icon:    'shell.sidebar.iconTitle',
+    content: 'shell.sidebar.contentTitle',
+    note:    'shell.sidebar.noteTitle',
+    ai:      'shell.toolbar.ai',
+  } as const)[tab]);
 
   return (
     <>
@@ -357,17 +361,17 @@ function InspectorContent({ t, tab, onClose }: {
         <div style={{
           fontSize: 10, fontWeight: 700, color: t.textSubtle,
           textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3,
-        }}>{multiCount > 1 ? `${multiCount}개 노드 선택 · 일괄 편집`
+        }}>{multiCount > 1 ? tr('shell.sidebar.multiSelected', { n: multiCount })
           // 레벨 표기 = 중심 주제가 1레벨 (내부 depth 0 기준 → 표시 +1)
-          : node ? `선택 · ${depth + 1}레벨${depth === 0 ? ' (중심 주제)' : ''}`
-          : selectedConnectorId ? '선택 · 연결선' : '선택된 노드 없음'}</div>
+          : node ? tr(depth === 0 ? 'shell.sidebar.selectedCentral' : 'shell.sidebar.selectedLevel', { n: depth + 1 })
+          : selectedConnectorId ? tr('shell.sidebar.selectedConnector') : tr('shell.sidebar.noSelection')}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
           <div style={{
             fontSize: 13.5, fontWeight: 600, color: node || selectedConnectorId ? t.text : t.textMuted,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{/* 블록 마커는 접어 표시 — ⧉코드·☑/☐·⊞표 (P4) */}
-            {node ? flattenNodeText(node.text) : selectedConnectorId ? '연결선 (노드 ↔ 노드)' : '노드를 선택하세요'}</div>
+            {node ? flattenNodeText(node.text) : selectedConnectorId ? tr('shell.sidebar.connectorDesc') : tr('shell.sidebar.selectNode')}</div>
         </div>
         {parentNode && parentId !== selectedId && (
           <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 3 }}>
@@ -397,6 +401,7 @@ function ContentHeader({ t, title, subtitle, compact, onClose }: {
   compact?: boolean;
   onClose: () => void;
 }) {
+  const tr = useTr();
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
@@ -421,8 +426,8 @@ function ContentHeader({ t, title, subtitle, compact, onClose }: {
       <button
         data-testid="panel-close"
         onClick={onClose}
-        title="패널 닫기"
-        aria-label="패널 닫기"
+        title={tr('shell.sidebar.panelClose')}
+        aria-label={tr('shell.sidebar.panelClose')}
         style={{
           background: 'none', border: 'none', color: t.textMuted,
           cursor: 'pointer', display: 'flex', padding: 2,

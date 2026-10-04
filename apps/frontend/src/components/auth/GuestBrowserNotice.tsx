@@ -8,8 +8,11 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { useAuthStore } from '@/stores/authStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 export function GuestBrowserNotice({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   return (
     <div
       data-testid="guest-browser-notice"
@@ -24,14 +27,11 @@ export function GuestBrowserNotice({ t }: { t: ThemeTokens }) {
       }}>
         <div style={{ marginBottom: 14 }}><I.Logo size={44} /></div>
         <div style={{ fontSize: 16, fontWeight: 800, color: t.text, marginBottom: 8 }}>
-          Guest 체험 중입니다
+          {tr('auth.guest.title')}
         </div>
         <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7, marginBottom: 18 }}>
-          Guest 모드에서는 서버 문서함(내 문서)을 쓸 수 없어 저장한 맵
-          목록이 없습니다. 편집한 맵은 <b>내보내기(MD·HTML)</b>로 파일로
-          보관할 수 있습니다.<br />
-          <b>가입하면</b> 맵이 계정에 저장되어 어느 기기에서나 이어서
-          편집하고, 저장 시점별 히스토리와 첨부파일도 쓸 수 있습니다.
+          {rich(tr('auth.guest.body1'))}<br />
+          {rich(tr('auth.guest.body2'))}
         </div>
         <button
           data-testid="guest-signup"
@@ -44,7 +44,7 @@ export function GuestBrowserNotice({ t }: { t: ThemeTokens }) {
             width: '100%', padding: '10px 0', borderRadius: 8, border: 'none',
             background: t.primary, color: '#FFF', fontSize: 13.5,
             fontWeight: 700, cursor: 'pointer', marginBottom: 8,
-          }}>가입하고 시작하기</button>
+          }}>{tr('auth.guest.signup')}</button>
         <button
           data-testid="guest-browser-close"
           onClick={() => useEditorUiStore.getState().setBrowserOpen(false)}
@@ -52,7 +52,7 @@ export function GuestBrowserNotice({ t }: { t: ThemeTokens }) {
             width: '100%', padding: '9px 0', borderRadius: 8,
             border: `1px solid ${t.border}`, background: t.surfaceAlt,
             color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-          }}>계속 체험하기 (편집 화면으로)</button>
+          }}>{tr('auth.guest.keepTrying')}</button>
       </div>
     </div>
   );

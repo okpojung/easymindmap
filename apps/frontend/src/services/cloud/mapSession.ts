@@ -14,6 +14,7 @@ import {
 } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { afterPaint, openingLabelFor } from '@/utils/opening';
+import { tr } from '@/i18n';
 import { countMapNodes } from '@/utils/userTemplates';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useCloudStore } from '@/stores/cloudStore';
@@ -124,13 +125,7 @@ export function canReuseThisTab(): boolean {
 function confirmEmptyOverwrite(): 'ok' | 'yes' | 'cancel' {
   const branches = useDocumentStore.getState().map.branches?.length ?? 0;
   if (branches > 0) return 'ok';
-  const yes = window.confirm(
-    '지금 화면의 문서에는 가지(주제)가 하나도 없습니다.\n'
-    + '이대로 저장하면 서버에 저장돼 있던 내용이 사라집니다.\n\n'
-    + '되돌리기(Ctrl+Z)를 너무 많이 눌렀다면 [취소]를 누르고 '
-    + '다시 실행(Ctrl+Y)으로 되돌아가세요.\n\n'
-    + '정말 비운 채로 저장할까요?',
-  );
+  const yes = window.confirm(tr('cloud.session.confirmEmptySave'));
   return yes ? 'yes' : 'cancel';
 }
 
@@ -154,15 +149,15 @@ export async function saveCurrentMap(
   // 자동저장·다른 경로가 남아 있으므로 여기서도 막는다. 막을 거면 한 곳이
   // 아니라 **문이 있는 모든 곳**을 막아야 한다 (2026-08-19).
   if (isViewerLocked()) {
-    throw new CloudError(403, '이 맵은 읽기만 권한으로 공유받았습니다. 저장할 수 없습니다.');
+    throw new CloudError(403, tr('cloud.session.viewerCannotSave'));
   }
   const cloud = useCloudStore.getState();
   const id = cloud.cloudMapId;
-  if (!id) throw new CloudError(0, '저장할 폴더와 이름을 먼저 정해 주세요.');
+  if (!id) throw new CloudError(0, tr('cloud.session.needFolderName'));
   // 가지 0개 문서로 서버 맵을 덮어쓰려는 저장은 **먼저 묻는다** (§7.4)
   const allowEmpty = confirmEmptyOverwrite();
   if (allowEmpty === 'cancel') {
-    throw new CloudError(0, '저장을 취소했습니다 — 내용이 사라지지 않았습니다.');
+    throw new CloudError(0, tr('cloud.session.saveCanceled'));
   }
   cloud.setBusy('saving');
   try {
@@ -214,7 +209,7 @@ export async function saveNewMap(opts: {
   // 내보내기도 '문서 없음' 이 된다. 버튼을 누른 순간이 아니라 **보내기
   // 직전**에 다시 본다 — 그래야 그 사이에 무슨 일이 있었든 막힌다.
   if (isDocumentEmpty(useDocumentStore.getState().map)) {
-    throw new CloudError(0, '열려 있는 맵이 없어 저장할 내용이 없습니다 — 문서함에서 맵을 열거나 새 맵을 만든 뒤 저장하세요.');
+    throw new CloudError(0, tr('cloud.session.nothingToSave'));
   }
   const cloud = useCloudStore.getState();
   cloud.setBusy('saving');
@@ -293,13 +288,13 @@ export async function saveAndCloseMap(
   flash: (msg: string) => void,
 ): Promise<'closed' | 'unsaved' | 'failed' | 'empty'> {
   if (isCurrentMapEmpty()) {
-    flash('열려 있는 맵이 없습니다.');
+    flash(tr('cloud.session.noOpenMap'));
     return 'empty';
   }
   // 읽기 전용으로 연 맵 (다른 세션이 편집 중) — 저장 없이 그대로 닫는다
   if (useCloudStore.getState().readOnlyInfo) {
     clearCurrentMap();
-    flash('읽기 전용으로 보던 맵을 닫았습니다.');
+    flash(tr('cloud.session.closedReadOnly'));
     return 'closed';
   }
   if (isUnsavedMap()) return 'unsaved';
@@ -321,14 +316,14 @@ export async function saveAndCloseMap(
   //   어디에도 남지 않는다.**
   if (isCollabDriving(useCloudStore.getState().cloudMapId)) {
     clearCurrentMap();
-    flash('맵을 닫았습니다 — 협업 중 편집은 서버에 이미 반영돼 있습니다.');
+    flash(tr('cloud.session.closedCollab'));
     return 'closed';
   }
 
   try {
     await saveCurrentMap({ keepVersion: true });
   } catch (err) {
-    flash('⚠ ' + (err instanceof CloudError ? err.message : '저장 실패 — 닫지 않았습니다.'));
+    flash('⚠ ' + (err instanceof CloudError ? err.message : tr('cloud.session.saveFailedNotClosed')));
     return 'failed';
   }
   clearCurrentMap();
@@ -432,7 +427,7 @@ export async function refreshFromServer(
     if (!loadedMap) return false;
     // 응답을 기다리는 사이에 맵이 바뀌었으면 손대지 않는다
     if (useCloudStore.getState().cloudMapId !== mapId) return false;
-    const label = who === 'MCP' ? 'AI 대화' : (who ? `다른 곳(${who})` : '다른 곳');
+    const label = who === 'MCP' ? tr('cloud.session.whoAi') : (who ? tr('cloud.session.whoOther', { who }) : tr('cloud.session.whoElsewhere'));
 
     // **편집 중이면 통째로 바꾸지 않고 합친다** (2026-09-05 사용자 흐름:
     // "AI 추가 → 내가 편집 → AI 에게 또 요청"). AI(`append_to_map`)는
@@ -447,7 +442,7 @@ export async function refreshFromServer(
       useDocumentStore.getState().applyRemoteMap(merged.map);
       useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
       useCloudStore.getState().setNotice(
-        `${label}에서 붙인 가지 ${merged.added}개를 화면에 합쳤습니다 — 편집 중인 내용은 그대로입니다.`,
+        tr('cloud.session.mergedAppends', { who: label, n: merged.added }),
       );
       return true;
     }
@@ -467,7 +462,7 @@ export async function refreshFromServer(
     useInteractionStore.getState().setSelectedId(keepSel);
     useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
     useAutosaveStore.getState().setSaveState('saved');
-    useCloudStore.getState().setNotice(`${label}에서 이 맵을 갱신했습니다 — 화면을 새로 읽었습니다.`);
+    useCloudStore.getState().setNotice(tr('cloud.session.refreshed', { who: label }));
     return true;
   } catch {
     return false; // 다음 하트비트가 다시 시도한다
@@ -495,15 +490,15 @@ export async function openMapHere(
   // "여는 중" 안내 — 내려받는 동안도, 큰 맵을 그리는 동안도 (utils/opening.ts, 2026-09-30)
   const ui = useEditorUiStore.getState();
   const showOpening = ui.openingLabel === null;
-  if (showOpening) { ui.setOpeningLabel('맵을 여는 중…'); await afterPaint(); }
+  if (showOpening) { ui.setOpeningLabel(tr('cloud.session.opening')); await afterPaint(); }
   try {
     const { doc, updatedAt, title, folderId, kind, editLock, role, published, dashboard } =
       await cloudApi.getDocument(mapId, editSessionKey());
     const loadedMap = (doc as { map?: unknown }).map;
-    if (!loadedMap) throw new CloudError(0, '문서 형식을 인식할 수 없습니다.');
+    if (!loadedMap) throw new CloudError(0, tr('cloud.session.badFormat'));
     if (showOpening) {
       useEditorUiStore.getState().setOpeningLabel(
-        openingLabelFor(`'${title}' 여는 중`, countMapNodes(loadedMap as never)));
+        openingLabelFor(tr('cloud.session.openingTitle', { title }), countMapNodes(loadedMap as never)));
       await afterPaint();
     }
     suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
@@ -541,12 +536,12 @@ export async function openMapHere(
     // ★ 대시보드맵이 **먼저**다 (2026-09-30) — 링크로 퍼블리싱한 대시보드맵은
     //   비공개로 바꿔도 여전히 못 고친다. "비공개로 바꾸세요" 는 틀린 안내가 된다.
     const readOnlyReason = dashboard
-      ? '📊 대시보드맵 — 프로그램이 내용을 바꿉니다'
+      ? tr('cloud.readOnly.dashboard')
       : published
-        ? '공개 중인 맵입니다 — 고치려면 비공개(보관)로 바꾸세요'
+        ? tr('cloud.readOnly.published')
       : editLock === 'busy'
-        ? '다른 세션에서 편집 중'
-        : role === 'viewer' ? '이 맵은 읽기만 권한으로 공유받았습니다' : null;
+        ? tr('cloud.readOnly.otherSession')
+        : role === 'viewer' ? tr('cloud.readOnly.viewer') : null;
     if (readOnlyReason) {
       // 읽기 전용 — 링크 없음(저장 경로 차단) + 배너 정보만
       useCloudStore.getState().unlink();

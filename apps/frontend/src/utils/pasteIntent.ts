@@ -16,6 +16,8 @@
 // 하면 그 노드의 사진이 된다(NodeRenderer 의 textarea onPaste). 그래서 두
 // 결과 모두 키 하나로 닿는다: 선택 → 첨부, 편집 → 사진.
 
+import { tr } from '@/i18n';
+
 export type PasteIntent = 'attach-image' | 'child-node' | 'nothing';
 
 export interface PasteShape {
@@ -56,7 +58,8 @@ export function clipboardImageName(
   const p = (n: number) => String(n).padStart(2, '0');
   const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}`
     + `-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
-  return `캡처-${stamp}.${ext}`;
+  // 첨부 이름으로 저장된다 — 붙여넣는 순간의 언어로
+  return tr('editor.paste.captureName', { stamp, ext });
 }
 
 function extFromMime(type: string): string | null {

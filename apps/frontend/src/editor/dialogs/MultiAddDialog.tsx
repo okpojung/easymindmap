@@ -10,8 +10,11 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { countOutline, parseOutlineLines } from '@/utils/outlineLines';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { useTr } from '@/i18n';
+import { rich } from '@/i18n/rich';
 
 export function MultiAddDialog({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   const open = useEditorUiStore((s) => s.multiAddOpen);
   const setOpen = useEditorUiStore((s) => s.setMultiAddOpen);
   const map = useDocumentStore((s) => s.map);
@@ -31,7 +34,7 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
   if (!open) return null;
 
   const parentNode = findNodeInMap(map, selectedId);
-  const parentLabel = parentNode ? parentNode.text : '루트(맵 전체)';
+  const parentLabel = parentNode ? parentNode.text : tr('editor.multiAdd.rootLabel');
   // 들여쓰기(스페이스·탭)는 하위 노드 — utils/outlineLines (2026-09-08)
   const outline = parseOutlineLines(text);
   const lineCount = countOutline(outline);
@@ -63,12 +66,9 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
         }}
       >
         <DialogXButton t={t} testId="multi-add-dialog-x" onClose={() => setOpen(false)} />
-        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, paddingRight: 34 }}>다중 노드 추가</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, paddingRight: 34 }}>{tr('editor.multiAdd.title')}</div>
         <div style={{ fontSize: 11.5, color: t.textMuted, marginBottom: 10 }}>
-          한 줄에 하나씩 입력하면 각 줄이{' '}
-          <b style={{ color: t.text }}>{parentLabel}</b>의 자식 노드로 추가됩니다.
-          {' '}<b style={{ color: t.text }}>스페이스·Tab 으로 들여쓴 줄은 바로 위 줄의 하위 노드</b>가 됩니다
-          (앞의 <code>-</code> 불릿은 뗍니다).
+          {rich(tr('editor.multiAdd.desc'), { parent: <b style={{ color: t.text }}>{parentLabel}</b> }, { color: t.text })}
         </div>
         <textarea
           ref={taRef}
@@ -98,7 +98,7 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
             }
           }}
           rows={9}
-          placeholder={'예)\n- I. 문제정의\n  - 10. 연 128억 건 발급 (1P)\n  - 11. 국가 데이터 공백 (2P)\n- II. 해결구조\n  - 20. 간편인증 한 번으로 통합 (5P)'}
+          placeholder={tr('editor.multiAdd.placeholder')}
           style={{
             width: '100%', boxSizing: 'border-box',
             resize: 'vertical', borderRadius: 8,
@@ -108,7 +108,7 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
           }}
         />
         <div style={{ display: 'flex', alignItems: 'center', marginTop: 12, gap: 8 }}>
-          <span style={{ fontSize: 11.5, color: t.textMuted }}>{lineCount}개 노드 · Ctrl+Enter로 추가</span>
+          <span style={{ fontSize: 11.5, color: t.textMuted }}>{tr('editor.multiAdd.footer', { n: lineCount })}</span>
           <div style={{ flex: 1 }} />
           <button
             onClick={() => setOpen(false)}
@@ -116,7 +116,7 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
               padding: '7px 14px', borderRadius: 7, fontSize: 12.5, cursor: 'pointer',
               background: 'transparent', border: `1px solid ${t.border}`, color: t.text,
             }}
-          >취소</button>
+          >{tr('common.cancel')}</button>
           <button
             onClick={submit}
             disabled={lineCount === 0}
@@ -126,7 +126,7 @@ export function MultiAddDialog({ t }: { t: ThemeTokens }) {
               background: t.primary, border: `1px solid ${t.primary}`, color: '#fff',
               opacity: lineCount === 0 ? 0.5 : 1,
             }}
-          >{lineCount}개 추가</button>
+          >{tr('editor.multiAdd.submit', { n: lineCount })}</button>
         </div>
       </div>
     </div>

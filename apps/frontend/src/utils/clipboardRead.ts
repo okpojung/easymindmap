@@ -10,6 +10,7 @@
 // 안에서만 부를 수 있다.
 
 import { clipboardImageName } from './pasteIntent';
+import { tr, useLangStore } from '@/i18n';
 
 /** `navigator.clipboard` 중 여기서 쓰는 만큼만 — 테스트에서 가짜로 넣는다 */
 export interface ClipboardLike {
@@ -45,17 +46,20 @@ function rank(type: string): number {
 export function clipboardReadErrorMessage(err: unknown): string {
   const name = (err as { name?: string } | null)?.name ?? '';
   if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return '브라우저가 클립보드 읽기를 허용하지 않았습니다 — 주소창 왼쪽 권한에서 '
-      + '클립보드를 허용하거나, 노드를 선택한 채 Ctrl+V 하세요.';
+    return tr('editor.clipboard.denied');
   }
   if (name === 'DataError' || name === 'NotFoundError') {
-    return '클립보드에 그림이 없습니다 — 화면을 캡처하거나 그림을 복사한 뒤 다시 누르세요.';
+    return tr('editor.clipboard.noImage');
   }
-  const why = err instanceof Error ? err.message : '알 수 없는 오류';
-  return `클립보드를 읽지 못했습니다 — ${why}`;
+  const why = err instanceof Error ? err.message : tr('editor.paste.unknownError');
+  return tr('editor.clipboard.readFailed', { why });
 }
 
-export const CLIPBOARD_UNSUPPORTED =
-  '이 브라우저는 클립보드 읽기를 지원하지 않습니다 — 노드를 선택한 채 Ctrl+V 하세요.';
-export const CLIPBOARD_NO_IMAGE =
-  '클립보드에 그림이 없습니다 — 화면을 캡처하거나 그림을 복사한 뒤 다시 누르세요.';
+// 안내 문구 — 지금 언어로. 상수 이름은 그대로 두고(가져다 쓰는 곳이 있다),
+// 언어가 바뀌면 값을 다시 채운다 (ES 모듈의 live binding).
+export let CLIPBOARD_UNSUPPORTED = tr('editor.clipboard.unsupported');
+export let CLIPBOARD_NO_IMAGE = tr('editor.clipboard.noImage');
+useLangStore.subscribe(() => {
+  CLIPBOARD_UNSUPPORTED = tr('editor.clipboard.unsupported');
+  CLIPBOARD_NO_IMAGE = tr('editor.clipboard.noImage');
+});

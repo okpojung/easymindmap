@@ -12,7 +12,8 @@
 
 import type { MindNode, SampleMap, SampleRoot } from '@/editor/__samples__/types';
 import { findNodeInMap, findParentId } from '@/stores/documentStore';
-import { EMM_EXPAND_DIRECTIVE } from '@/utils/emmSystemPrompt';
+import { EMM_EXPAND_DIRECTIVE, emmOutputLanguageDirective } from '@/utils/emmSystemPrompt';
+import { currentLang, tr, type Lang } from '@/i18n';
 
 type AnyNode = MindNode | SampleRoot;
 
@@ -55,11 +56,30 @@ export function ancestorPath(map: SampleMap, nodeId: string): AnyNode[] {
 // 않게 눈에 띄는 "@소스"를 쓴다 (2026-07 사용자 요청).
 export const SOURCE_MARKER = '@소스';
 
+/**
+ * 받아 주는 소스 표식 — 언어마다 자기 말로 쓸 수 있게 (2026-10-05 다국어).
+ * 도움말은 지금 언어의 것을 보여 주고(`sourceMarker()`), 찾을 때는 넷 다 본다
+ * — 한국어로 만든 맵을 영어 화면에서 열어도 그대로 소스로 잡힌다.
+ */
+export const SOURCE_MARKERS: Record<Lang, string> = {
+  ko: SOURCE_MARKER, en: '@source', zh: '@资料', ja: '@ソース',
+};
+
+/** 지금 언어의 소스 표식 (도움말·안내용) */
+export function sourceMarker(): string {
+  return SOURCE_MARKERS[currentLang()];
+}
+
+function hasSourceMarker(text: string): boolean {
+  const lower = text.toLowerCase();
+  return Object.values(SOURCE_MARKERS).some((m) => lower.includes(m.toLowerCase()));
+}
+
 // 소스 노드 — 중심 주제 바로 아래(2레벨)에서 이름에 "@소스"가 들어간
 // 첫 노드. 그 노드의 텍스트·노트 + 하위 노드 내용이 확장 맥락에 항상
 // 참고 자료로 실린다. 없으면 null.
 export function findProjectSourceNode(map: SampleMap): MindNode | null {
-  return map.branches.find((b) => (b.text || '').includes(SOURCE_MARKER)) ?? null;
+  return map.branches.find((b) => hasSourceMarker(b.text || '')) ?? null;
 }
 
 export interface ExpandContext {
@@ -94,6 +114,9 @@ export function buildExpandContext(
 
   // system: EMM 규칙 + 확장 지시 + 프로젝트 지침(루트) + 소스(@소스)
   const sysParts = [baseSystem, EMM_EXPAND_DIRECTIVE];
+  // 화면 언어가 한국어가 아니면 노드 글을 그 언어로 (한국어면 붙지 않는다)
+  const lang = emmOutputLanguageDirective();
+  if (lang) sysParts.push(lang);
   sysParts.push('[프로젝트 지침]\n' + nodeContent(root));
   // @소스 노드가 확장 대상 경로에 없을 때만 별도 첨부(중복 방지)
   if (source && !path.some((p) => p.id === source.id)) {
@@ -118,7 +141,7 @@ export function buildExpandContext(
   userParts.push('위 노드를 더 자세하고 상세하게 확장해줘. 그 노드의 하위 구조만 mmd로 출력해줘.');
   const user = userParts.join('\n\n');
 
-  return { system, user, targetText: target.text || '노드' };
+  return { system, user, targetText: target.text || tr('inspector.ai.nodeFallback') };
 }
 
 // 파싱된 확장 결과(하위 노드들)에 맵 내 고유 ID를 새로 부여한다 —

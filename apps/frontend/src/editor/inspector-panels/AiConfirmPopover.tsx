@@ -10,6 +10,7 @@
 // 모양·같은 자리에 뜨는 것이 이 컴포넌트의 존재 이유다.
 import type { RefObject } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { useTr } from '@/i18n';
 
 export interface ConfirmRequest {
   message: string;
@@ -25,6 +26,7 @@ export function AiConfirmPopover({ t, panelRef, req, onClose, testId = 'webai' }
   /** data-* 접두사 — 기존 e2e 선택자(webai)를 그대로 살린다 */
   testId?: string;
 }) {
+  const tr = useTr();
   if (!req) return null;
   return (
     <div
@@ -53,7 +55,7 @@ export function AiConfirmPopover({ t, panelRef, req, onClose, testId = 'webai' }
             padding: '6px 16px', borderRadius: 6, border: 'none',
             background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
             color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          }}>확인</button>
+          }}>{tr('common.ok')}</button>
         <button
           {...{ [`data-${testId}-confirm-cancel`]: '' }}
           onClick={onClose}
@@ -61,7 +63,7 @@ export function AiConfirmPopover({ t, panelRef, req, onClose, testId = 'webai' }
             padding: '6px 14px', borderRadius: 6,
             border: `1px solid ${t.border}`, background: t.surface,
             color: t.text, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          }}>취소</button>
+          }}>{tr('common.cancel')}</button>
       </div>
     </div>
   );

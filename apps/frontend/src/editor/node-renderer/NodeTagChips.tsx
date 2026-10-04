@@ -4,6 +4,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import { resolveTagColor } from './resolveTagColor';
 import { measureTextApprox } from './mdTable';
+import { useTr } from '@/i18n';
 
 interface Props {
   n: LaidOutNode;
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function NodeTagChips({ n, tagList, t, onRemove }: Props) {
+  const tr = useTr();
   const tagH = 16;
   const arrowW = 6;
   const padX = 8;
@@ -88,7 +90,7 @@ export function NodeTagChips({ n, tagList, t, onRemove }: Props) {
                  e.stopPropagation();
                  onRemove?.(tagName);
                }}>
-              <title>태그 삭제</title>
+              <title>{tr('editor.node.deleteTag')}</title>
               {/* 투명 히트 영역 — X 선만으로는 클릭 판정이 너무 좁다 */}
               <circle r={7} fill="transparent" />
               <line x1={-3} y1={-3} x2={3} y2={3}

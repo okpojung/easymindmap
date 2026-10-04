@@ -24,6 +24,7 @@ import type { LayoutType, MindNode, SampleMap } from '@/editor/__samples__/types
 import type { LaidOutNode } from '@/layout/types';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import { setLevelFontConfig, setLevelShapeConfig } from '@/editor/node-renderer/sizeNodeForText';
+import { tr } from '@/i18n';
 
 /**
  * 링크 카드(Open Graph)가 기대하는 비율 1.91:1 — 1200×630.
@@ -267,11 +268,11 @@ export async function buildSilhouette(
   canvas.width = SILHOUETTE_W;
   canvas.height = SILHOUETTE_H;
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('이 브라우저에서는 미리보기 이미지를 만들 수 없습니다.');
+  if (!ctx) throw new Error(tr('io.silhouette.noCanvas'));
 
   drawSilhouette(ctx, laid, SILHOUETTE_W, SILHOUETTE_H);
 
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
-  if (!blob) throw new Error('미리보기 이미지를 만들지 못했습니다.');
+  if (!blob) throw new Error(tr('io.silhouette.failed'));
   return { blob, nodeCount: laid.length, width: SILHOUETTE_W, height: SILHOUETTE_H };
 }

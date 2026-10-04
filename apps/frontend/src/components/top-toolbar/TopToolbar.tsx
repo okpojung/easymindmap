@@ -15,6 +15,7 @@ import { downloadMapAsHtml } from '@/export/exportHtml';
 import { downloadMapAsMarkdown } from '@/export/exportMarkdown';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
+import { useTr } from '@/i18n';
 
 // 'retrying' = 저장이 실패했고 **실제로 자동 재시도 중**,
 // 'error' = 재시도까지 다 실패해 더는 자동으로 시도하지 않음.
@@ -48,6 +49,7 @@ export function TopToolbar({
   mapTitle,
   saveState: rawSaveState = 'saved',
 }: Props) {
+  const tr = useTr();
   const map = useDocumentStore((s) => s.map);
   const layoutType = useEditorUiStore((s) => s.layoutType);
   const themeName = useEditorUiStore((s) => s.themeName);
@@ -101,10 +103,10 @@ export function TopToolbar({
   // 보여 준다 — "저장됨"인지 아닌지 애매한 상태를 남기지 않는다.
   const pendingEdits = useAutosaveStore((s) => s.pendingEdits);
   const lastSavedAt = useAutosaveStore((s) => s.lastSavedAt);
-  const agoText = (() => {
-    if (!lastSavedAt) return '';
+  const savedText = (() => {
+    if (!lastSavedAt) return tr('shell.toolbar.saved');
     const min = Math.floor((Date.now() - lastSavedAt) / 60_000);
-    return min < 1 ? ' · 방금 전' : ` · ${min}분 전`;
+    return min < 1 ? tr('shell.toolbar.savedJustNow') : tr('shell.toolbar.savedMinAgo', { n: min });
   })();
   // **협업이 몰고 있으면 그것이 우선이다.** 배지는 "지금 무엇이 저장을
   // 책임지고 있나"를 말해야 한다 — 저장 방식이 바뀐 사실을 숨기면
@@ -157,11 +159,11 @@ export function TopToolbar({
   const iconOnly = barW < 960 || squeeze >= 2;
 
   const saveStateInfo = ({
-    saved: { text: `저장됨${agoText}`, short: '저장됨', color: t.textMuted, dot: t.success },
-    saving: { text: '저장 중…', short: '저장 중', color: t.accent, dot: t.accent },
+    saved: { text: savedText, short: tr('shell.toolbar.saved'), color: t.textMuted, dot: t.success },
+    saving: { text: tr('common.saving'), short: tr('shell.toolbar.savingShort'), color: t.accent, dot: t.accent },
     dirty: {
-      text: `미저장 편집 ${pendingEdits}개`,
-      short: `미저장 ${pendingEdits}`,
+      text: tr('shell.toolbar.dirty', { n: pendingEdits }),
+      short: tr('shell.toolbar.dirtyShort', { n: pendingEdits }),
       color: t.warning, dot: t.warning,
     },
     // **'저장 안 됨'은 오해를 샀다** (2026-09-02). unsaved 는 실패가
@@ -170,16 +172,16 @@ export function TopToolbar({
     // 문구가 뜨니 사용자는 뭔가 실패한 줄 알았다 — 사실형 문구에
     // 중립색으로 바꾼다. error·retrying 은 진짜 문제라 경고색 그대로다.
     unsaved: {
-      text: '새 문서 — ☁ 저장을 눌러 서버에 보관하세요',
-      short: '새 문서',
+      text: tr('shell.toolbar.unsaved'),
+      short: tr('shell.toolbar.unsavedShort'),
       color: t.textMuted, dot: t.textMuted,
     },
-    retrying: { text: '저장 실패 — 재시도 중…', short: '재시도 중', color: t.warning, dot: t.warning },
-    error: { text: '저장 실패 — ☁ 저장을 눌러 주세요', short: '저장 실패', color: t.danger, dot: t.danger },
+    retrying: { text: tr('shell.toolbar.retrying'), short: tr('shell.toolbar.retryingShort'), color: t.warning, dot: t.warning },
+    error: { text: tr('shell.toolbar.error'), short: tr('shell.toolbar.errorShort'), color: t.danger, dot: t.danger },
     // 협업이 몰고 있다 — 통째 저장 대신 **글자 단위로 서버에 합쳐진다**.
     // '저장됨' 이라고 쓰지 않는 이유: 배지는 저장 방식이 달라졌다는
     // 사실까지 말해야 한다(잠시 뒤 반영되는 것과 이미 반영된 것은 다르다).
-    collab: { text: '협업 중 — 자동 반영', short: '협업 중', color: t.textMuted, dot: t.success },
+    collab: { text: tr('shell.toolbar.collab'), short: tr('shell.toolbar.collabShort'), color: t.textMuted, dot: t.success },
   } as const)[saveState];
 
   return (
@@ -222,7 +224,7 @@ export function TopToolbar({
               구 '제품팀'은 초기 시안의 하드코딩이라 제거) */}
           <button
             data-testid="crumb-docs"
-            title="내 문서(문서함) 열기"
+            title={tr('shell.toolbar.crumbTitle')}
             onClick={() => useEditorUiStore.getState().setBrowserOpen(true)}
             style={{
               fontSize: 11, color: t.textSubtle, fontWeight: 500,
@@ -230,7 +232,7 @@ export function TopToolbar({
               cursor: 'pointer', textAlign: 'left',
             }}
           >
-            내 문서
+            {tr('shell.toolbar.crumb')}
           </button>
 
           <div
@@ -258,7 +260,7 @@ export function TopToolbar({
       <div style={{ width: 1, height: 28, background: t.divider }} />
 
       <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-        <IconBtn t={t} title="되돌리기 (Ctrl+Z)" disabled={!canUndo} onClick={undo}>
+        <IconBtn t={t} title={tr('shell.toolbar.undo')} disabled={!canUndo} onClick={undo}>
           <I.Undo size={17} />
         </IconBtn>
         {/* 되돌린 단계 표시 — 원본(최신 상태) = 0, 한 번 되돌릴 때마다
@@ -271,10 +273,8 @@ export function TopToolbar({
           role={undoDepth > 0 ? 'button' : undefined}
           onClick={undoDepth > 0 ? commitCurrentAsLatest : undefined}
           title={undoDepth === 0
-            ? '되돌린 단계 없음 (최신 상태) · 이 세션 안에서 최대 99단계까지 되돌릴 수 있습니다'
-            : `최신 상태에서 ${undoDepth}단계 되돌린 상태`
-              + '\n누르면 지금 이 상태를 최신(0)으로 확정합니다 — 다시 실행'
-              + `할 ${undoDepth}단계는 버려집니다.`}
+            ? tr('shell.toolbar.undoDepthZero')
+            : tr('shell.toolbar.undoDepth', { n: undoDepth })}
           style={{
             minWidth: 22, textAlign: 'center', fontSize: 10.5, fontWeight: 700,
             fontFamily: 'ui-monospace, monospace',
@@ -285,7 +285,7 @@ export function TopToolbar({
         >
           {undoDepth > 0 ? `-${undoDepth}` : '0'}
         </span>
-        <IconBtn t={t} title="다시 실행 (Ctrl+Y)" disabled={!canRedo} onClick={redo}>
+        <IconBtn t={t} title={tr('shell.toolbar.redo')} disabled={!canRedo} onClick={redo}>
           <I.Redo size={17} />
         </IconBtn>
       </div>
@@ -297,15 +297,13 @@ export function TopToolbar({
         data-save-state={saveState}
         // 실패했을 때는 **왜** 실패했는지 마우스를 올려 볼 수 있게 한다
         title={saveState === 'error' || saveState === 'retrying'
-          ? (cloudError ?? '서버에 저장하지 못했습니다.')
+          ? (cloudError ?? tr('shell.toolbar.saveFailedTip'))
           // '저장 안 됨'도 이유가 있을 수 있다 — 편집권을 잃어 연결이
           // 끊긴 경우가 그렇다 (2026-08-06 R3)
           : saveState === 'unsaved'
-            ? (cloudError ?? '이 문서는 아직 서버에 저장되지 않았습니다 — ☁ 저장을 눌러 주세요.')
+            ? (cloudError ?? tr('shell.toolbar.unsavedTip'))
             : saveState === 'dirty'
-              ? `아직 서버에 올라가지 않은 편집이 ${pendingEdits}개 있습니다.\n`
-                + '자동저장 주기(맵 설정 ▸ 저장)와 탭 전환·창 닫기 때 올라갑니다.\n'
-                + '그 사이 편집은 이 브라우저에 보관되지만, PC 가 강제 종료되면 서버에는 반영되지 않습니다.'
+              ? tr('shell.toolbar.dirtyTip', { n: pendingEdits })
               // 문구를 줄였을 때는 전문을 툴팁으로 남긴다 (위의 안내가
               // 있는 상태들은 그 안내가 그대로 우선한다)
               : compact ? saveStateInfo.text : undefined}
@@ -353,7 +351,7 @@ export function TopToolbar({
 
       <button
         onClick={() => setInspectorTab('ai')}
-        title="AI에게 질문하고 답변을 그대로 맵으로 변환합니다"
+        title={tr('shell.toolbar.aiTitle')}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -371,7 +369,7 @@ export function TopToolbar({
           boxShadow: `0 1px 2px ${t.primary}60, 0 0 0 1px ${t.primary}80`,
         }}
       >
-        <I.Sparkles size={15} />{!iconOnly && ' AI 생성'}
+        <I.Sparkles size={15} />{!iconOnly && ` ${tr('shell.toolbar.ai')}`}
       </button>
 
       {/* **눌리는데 아무 일도 없는 버튼은 고장으로 보인다** (2026-08-18).
@@ -383,8 +381,8 @@ export function TopToolbar({
         onClick={() => setShareOpen(true)}
         disabled={!shareMapId}
         title={shareMapId
-          ? '이 맵을 다른 사람과 함께 편집합니다'
-          : '먼저 맵을 저장해야 공유할 수 있습니다'}
+          ? tr('shell.toolbar.shareTitle')
+          : tr('shell.toolbar.shareNeedSave')}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -401,7 +399,7 @@ export function TopToolbar({
           flexShrink: 0,
         }}
       >
-        <I.Share size={15} />{!iconOnly && ' 공유'}
+        <I.Share size={15} />{!iconOnly && ` ${tr('shell.toolbar.share')}`}
       </button>
       {shareOpen && (
         <ProShareDialog t={t} mapId={shareMapId} onClose={() => setShareOpen(false)} />
@@ -416,8 +414,8 @@ export function TopToolbar({
         onClick={() => setPublishOpen(true)}
         disabled={!publishMapId}
         title={publishMapId
-          ? '퍼블리싱 — 링크를 가진 사람이 로그인 없이 읽습니다 (완성본만, 읽기 전용)'
-          : '먼저 맵을 저장해야 퍼블리싱할 수 있습니다'}
+          ? tr('shell.toolbar.publishTitle')
+          : tr('shell.toolbar.publishNeedSave')}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -434,7 +432,7 @@ export function TopToolbar({
           flexShrink: 0,
         }}
       >
-        <I.Globe size={15} />{!iconOnly && ' 퍼블리싱'}
+        <I.Globe size={15} />{!iconOnly && ` ${tr('shell.toolbar.publish')}`}
       </button>
       {publishOpen && publishMapId && (
         <PublishPanel
@@ -451,8 +449,8 @@ export function TopToolbar({
           켜져 있으면 비활성(분할이 이미 아웃라인+맵이므로). */}
       <button
         title={outlineSplit
-          ? '분할 보기 중에는 사용할 수 없습니다 (분할 닫은 뒤 전환)'
-          : mainView === 'outline' ? '맵 모드로 전환' : '아웃라인 모드로 전환 (편집 영역 전체)'}
+          ? tr('shell.toolbar.splitBlocked')
+          : mainView === 'outline' ? tr('shell.toolbar.toMapMode') : tr('shell.toolbar.toOutlineMode')}
         data-testid="mainview-toggle"
         disabled={outlineSplit}
         onClick={() => !outlineSplit && toggleMainView()}
@@ -472,7 +470,7 @@ export function TopToolbar({
 
       {/* 다크 모드 토글 — 라이트/다크 테마 전환 (브라우저에 저장) */}
       <button
-        title={themeName === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+        title={themeName === 'dark' ? tr('shell.toolbar.toLight') : tr('shell.toolbar.toDark')}
         data-testid="theme-toggle"
         onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}
         style={{
@@ -494,7 +492,7 @@ export function TopToolbar({
           복원되고, 사진·첨부가 있으면 ZIP(파일 + files/)으로 내려간다. */}
       <div ref={exportRef} style={{ position: 'relative' }}>
         <button
-          title="내보내기"
+          title={tr('shell.toolbar.export')}
           onClick={() => setExportOpen((v) => !v)}
           style={{
             display: 'flex', alignItems: 'center', gap: 5,
@@ -506,7 +504,7 @@ export function TopToolbar({
             whiteSpace: 'nowrap', flexShrink: 0,
           }}
         >
-          <I.Download size={15} />{!iconOnly && ' 내보내기 '}
+          <I.Download size={15} />{!iconOnly && ` ${tr('shell.toolbar.export')} `}
           <span style={{ fontSize: 8 }}>▼</span>
         </button>
         {exportOpen && (
@@ -521,9 +519,10 @@ export function TopToolbar({
           >
             {([
               {
-                label: 'HTML 파일 내보내기',
-                desc: '읽기 전용 뷰어 · 다시 불러오기 가능',
-                title: '내보내기 (HTML — 읽기 전용 뷰어 + 다시 불러오기 가능)',
+                id: 'html',
+                label: tr('shell.toolbar.exportHtml'),
+                desc: tr('shell.toolbar.exportHtmlDesc'),
+                title: tr('shell.toolbar.exportHtmlTitle'),
                 run: async () => {
                   // 뷰어는 지금 에디터 모드(라이트/다크) 그대로 열린다
                   const pkg = await downloadMapAsHtml(
@@ -533,25 +532,26 @@ export function TopToolbar({
                   // 소리 없이 빠져 "ZIP이 안 나온다" 보고로 이어졌다)
                   if (pkg.external > 0) {
                     flash(pkg.packaged === 0
-                      ? `첨부 ${pkg.external}개의 원본을 찾을 수 없어 HTML만 내보냈습니다. 파일을 다시 첨부한 뒤 내보내면 ZIP에 포함됩니다.`
-                      : `첨부 ${pkg.external}개는 원본을 찾을 수 없어 ZIP에서 제외했습니다. 다시 첨부한 뒤 내보내면 포함됩니다.`);
+                      ? tr('shell.toolbar.exportHtmlOnly', { n: pkg.external })
+                      : tr('shell.toolbar.exportZipSkipped', { n: pkg.external }));
                   }
                 },
               },
               {
-                label: 'MD 파일 내보내기',
-                desc: '일반 에디터에서 수정 · 다시 불러오기 가능',
-                title: '내보내기 (Markdown — 일반 에디터에서 수정 + 다시 불러오기 가능)',
+                id: 'md',
+                label: tr('shell.toolbar.exportMd'),
+                desc: tr('shell.toolbar.exportMdDesc'),
+                title: tr('shell.toolbar.exportMdTitle'),
                 run: async () => {
                   const pkg = await downloadMapAsMarkdown(map, layoutType, { x: spacingX, y: spacingY });
                   if (pkg.external > 0) {
-                    flash(`첨부 ${pkg.external}개는 원본을 찾을 수 없어 제외했습니다. 다시 첨부한 뒤 내보내면 포함됩니다.`);
+                    flash(tr('shell.toolbar.exportMdSkipped', { n: pkg.external }));
                   }
                 },
               },
             ] as const).map((item) => (
               <button
-                key={item.label}
+                key={item.id}
                 title={item.title}
                 onClick={() => { setExportOpen(false); void item.run(); }}
                 style={{
@@ -574,7 +574,7 @@ export function TopToolbar({
               fontSize: 9.5, color: t.textSubtle, padding: '6px 10px 4px',
               borderTop: `1px solid ${t.divider}`, marginTop: 4, lineHeight: 1.5,
             }}>
-              사진·첨부가 있으면 ZIP(파일 + files/)으로 내려갑니다
+              {tr('shell.toolbar.exportZipNote')}
             </div>
           </div>
         )}

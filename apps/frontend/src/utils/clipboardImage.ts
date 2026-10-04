@@ -28,6 +28,7 @@
 
 import type { NodeImage } from '@/editor/__samples__/types';
 import { resolveLazyImgSrc } from './sanitizeRichHtml';
+import { tr } from '@/i18n';
 import { importRemoteImage } from './embedImage';
 import { attachmentUrlForFile } from './attachmentFile';
 import { notifyUser } from '@/stores/noticeStore';
@@ -85,12 +86,12 @@ async function applyImageFile(f: File, apply: (img: NodeImage) => void): Promise
     // ★ **업로드 실패를 조용히 삼키지 않는다.** 삼키면 노드에 빈 사진
     //   자리가 남고, 사용자는 무엇이 잘못됐는지 알 수 없다. 문서에
     //   넣어서라도 사진은 남기고, 그렇게 했다고 알린다.
-    const why = err instanceof Error ? err.message : '알 수 없는 오류';
+    const why = err instanceof Error ? err.message : tr('editor.paste.unknownError');
     try {
       src = await fileToDataUrl(f);
-      notifyUser(`⚠ 사진을 서버에 저장하지 못해 문서에 넣었습니다 — ${why}`);
+      notifyUser(tr('editor.paste.imageSavedInDoc', { why }));
     } catch {
-      notifyUser(`⚠ 사진을 붙여넣지 못했습니다 — ${why}`);
+      notifyUser(tr('editor.paste.imageFailed', { why }));
       return;
     }
   }

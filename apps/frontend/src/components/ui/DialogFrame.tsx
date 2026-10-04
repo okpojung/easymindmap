@@ -11,6 +11,7 @@
 
 import type { ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { useTr } from '@/i18n';
 
 export function DialogFrame({
   t, testId, title, subtitle, onClose, width = 'min(430px, 92vw)', zIndex = 245, children, footer, closeDisabled,
@@ -71,7 +72,8 @@ export function DialogFrame({
 }
 
 /** 발에 두는 표준 [닫기] 버튼 */
-export function DialogCloseButton({ t, onClick, testId, label = '닫기' }: { t: ThemeTokens; onClick: () => void; testId: string; label?: string }) {
+export function DialogCloseButton({ t, onClick, testId, label }: { t: ThemeTokens; onClick: () => void; testId: string; label?: string }) {
+  const tr = useTr();
   return (
     <button
       data-testid={testId}
@@ -81,7 +83,7 @@ export function DialogCloseButton({ t, onClick, testId, label = '닫기' }: { t:
         border: `1px solid ${t.border}`, background: t.surfaceAlt,
         color: t.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
       }}
-    >{label}</button>
+    >{label ?? tr('common.close')}</button>
   );
 }
 
@@ -107,12 +109,13 @@ export function DialogXButton({
   onClose: () => void;
   disabled?: boolean;
 }) {
+  const tr = useTr();
   return (
     <button
       type="button"
       data-testid={testId}
-      title="닫기"
-      aria-label="닫기"
+      title={tr('common.close')}
+      aria-label={tr('common.close')}
       onClick={() => { if (!disabled) onClose(); }}
       disabled={disabled}
       style={{

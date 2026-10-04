@@ -28,9 +28,11 @@ import { InspectorSection } from './InspectorSection';
 import { useDocumentStore, useEditorUiStore, useInteractionStore } from '@/stores';
 import { findNodeInMap, isCenterRootId } from '@/stores/documentStore';
 import { mapCenters } from '@/editor/__samples__/types';
+import { useTr } from '@/i18n';
 
 interface LayoutOption {
   key: LayoutType;
+  /** 사전 키 — 렌더할 때 번역한다 */
   label: string;
   glyph: LayoutGlyphType;
   // Only applicable to the ROOT node (= the whole map): layouts that place
@@ -44,34 +46,34 @@ interface LayoutOption {
 const LAYOUTS: LayoutOption[] = [
   {
     key: 'radial-bidirectional' as LayoutType,
-    label: '방사형 · 양쪽',
+    label: 'inspector.layout.opt.radialBoth',
     glyph: 'both-radial',
     rootOnly: true,
   },
   {
     key: 'radial-right' as LayoutType,
-    label: '방사형 · 오른쪽',
+    label: 'inspector.layout.opt.radialRight',
     glyph: 'radial-right',
   },
   {
     key: 'tree-right' as LayoutType,
-    label: '트리 · 오른쪽',
+    label: 'inspector.layout.opt.treeRight',
     glyph: 'tree-right',
   },
   {
     key: 'tree-down' as LayoutType,
-    label: '트리 · 아래',
+    label: 'inspector.layout.opt.treeDown',
     glyph: 'tree-down',
     rootOnly: true,
   },
   {
     key: 'hierarchy-right' as LayoutType,
-    label: '계층형 · 오른쪽',
+    label: 'inspector.layout.opt.hierarchyRight',
     glyph: 'hierarchy-right',
   },
   {
     key: 'process-tree-right' as LayoutType,
-    label: '진행트리 · 오른쪽',
+    label: 'inspector.layout.opt.processTreeRight',
     glyph: 'process-tree-right',
   },
   {
@@ -79,24 +81,24 @@ const LAYOUTS: LayoutOption[] = [
     // 해제). 고른 노드가 축의 시작점이 되고 그 자식들이 오른쪽으로
     // 늘어선다 (SubtreeStrategy 'timeline' case).
     key: 'timeline' as LayoutType,
-    label: '시간배치 (타임라인)',
+    label: 'inspector.layout.opt.timeline',
     glyph: 'timeline',
   },
   {
     // 시간배치(중앙노드) — 축이 노드들을 관통한다. 위와 같이 서브트리 가능.
     key: 'timeline-center' as LayoutType,
-    label: '시간배치 (중앙노드)',
+    label: 'inspector.layout.opt.timelineCenter',
     glyph: 'timeline-center',
   },
   {
     key: 'kanban' as LayoutType,
-    label: 'Kanban 보드',
+    label: 'inspector.layout.opt.kanban',
     glyph: 'kanban',
     rootOnly: true,
   },
   {
     key: 'freeform' as LayoutType,
-    label: '자유 배치',
+    label: 'inspector.layout.opt.freeform',
     glyph: 'freeform',
     rootOnly: true,
     neverApplies: true,
@@ -130,6 +132,7 @@ function effectiveLayoutOf(
 }
 
 export function LayoutTab({ t }: { t: ThemeTokens }) {
+  const tr = useTr();
   const map = useDocumentStore((s) => s.map);
   const updateNodeLayoutType = useDocumentStore((s) => s.updateNodeLayoutType);
   const updateNodesLayoutType = useDocumentStore((s) => s.updateNodesLayoutType);
@@ -186,7 +189,7 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
 
   const disabledReason = (option: LayoutOption): string | undefined => {
     if (subtreeScope && option.rootOnly)
-      return '메인 노드에서만 적용할 수 있는 레이아웃입니다.';
+      return tr('inspector.layout.rootOnly');
     return undefined;
   };
 
@@ -216,7 +219,7 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
 
   return (
     <div>
-      <InspectorSection t={t} title="레이아웃">
+      <InspectorSection t={t} title={tr('inspector.layout.title')}>
         <div
           style={{
             display: 'grid',
@@ -263,7 +266,7 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
                     color: active ? t.primary : t.text,
                   }}
                 >
-                  {layout.label}
+                  {tr(layout.label)}
                 </span>
               </button>
             );
@@ -279,18 +282,18 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
           }}
         >
           {bulkTargets.length > 1
-            ? `${bulkTargets.length}개 노드 선택 — 각 노드의 하위 서브트리에 레이아웃이 한 번에 적용됩니다 (되돌리기 1단계). 흐리게 표시된 레이아웃은 메인 노드 전용입니다.`
+            ? tr('inspector.layout.scopeBulk', { n: bulkTargets.length })
             : subtreeScope
-            ? `선택한 노드(${selectedId}) 하위 서브트리에 레이아웃이 적용됩니다. 흐리게 표시된 레이아웃은 메인 노드 전용입니다.`
+            ? tr('inspector.layout.scopeSubtree', { id: selectedId ?? '' })
             : mapIsKanban
-              ? 'Kanban 보드에는 하위 노드별 레이아웃이 없습니다. 어떤 노드를 선택해도 선택한 레이아웃이 맵 전체에 적용됩니다.'
+              ? tr('inspector.layout.scopeKanban')
               : !hasSelection
-                ? '선택한 노드가 없어 맵 전체에 적용됩니다. 특정 가지만 바꾸려면 그 하위 노드를 선택하세요.'
-                : '메인 노드 기준 — 선택한 레이아웃이 맵 전체에 적용됩니다.'}
+                ? tr('inspector.layout.scopeNone')
+                : tr('inspector.layout.scopeRoot')}
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="자유 배치">
+      <InspectorSection t={t} title={tr('inspector.layout.opt.freeform')}>
         <div
           style={{
             padding: '10px 12px',
@@ -324,40 +327,39 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
               lineHeight: 1.5,
             }}
           >
-            자유 배치는 순서도·플로차트 등 자유형 문서를 위한 모드로 향후
-            제공됩니다. 선택해도 현재 맵 레이아웃은 변경되지 않습니다.
+            {tr('inspector.layout.freeformNote')}
           </div>
         </div>
       </InspectorSection>
 
       <InspectorSection
         t={t}
-        title="간격 · 정렬"
+        title={tr('inspector.layout.spacingTitle')}
         action={
           (spacingX !== 1 || spacingY !== 1) ? (
             <button
               onClick={resetSpacing}
-              title="간격을 기본값(100%)으로 되돌립니다"
+              title={tr('inspector.layout.spacingResetTitle')}
               style={{
                 padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 600,
                 background: t.surfaceAlt, color: t.textMuted,
                 border: `1px solid ${t.border}`, cursor: 'pointer',
               }}
             >
-              초기화
+              {tr('common.reset')}
             </button>
           ) : undefined
         }
       >
         <SpacingSlider
           t={t}
-          label="가로 간격"
+          label={tr('inspector.layout.spacingX')}
           value={spacingX}
           onChange={setSpacingX}
         />
         <SpacingSlider
           t={t}
-          label="세로 간격"
+          label={tr('inspector.layout.spacingY')}
           value={spacingY}
           onChange={setSpacingY}
         />
@@ -369,12 +371,11 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
             lineHeight: 1.5,
           }}
         >
-          맵 전체의 노드 사이 거리를 조정합니다 (노드 크기는 유지). 모든
-          레이아웃과 서브트리 오버라이드에 함께 적용됩니다.
+          {tr('inspector.layout.spacingHelp')}
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title="연결선 스타일">
+      <InspectorSection t={t} title={tr('inspector.layout.lineStyleTitle')}>
         <div
           style={{
             padding: '10px 12px',
@@ -408,8 +409,7 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
               lineHeight: 1.5,
             }}
           >
-            연결선 스타일·두께·색상 사용자 지정은 향후 단계에서 제공됩니다.
-            MVP에서는 레이아웃 종류에 따라 자동 결정됩니다.
+            {tr('inspector.layout.lineStyleNote')}
           </div>
         </div>
       </InspectorSection>

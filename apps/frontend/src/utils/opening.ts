@@ -7,6 +7,7 @@
 // 무거운 렌더 중에는 rAF 가 돌 수 없으므로 "다음 프레임" 이 곧 "렌더가 끝난 뒤" 다.
 
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { tr, currentLocale } from '@/i18n';
 
 /** 브라우저가 한 번 그린 뒤 이어서 — 안내를 화면에 올리거나, 렌더가 끝났음을 안다 */
 export function afterPaint(): Promise<void> {
@@ -19,7 +20,7 @@ export function afterPaint(): Promise<void> {
 /** 노드 수를 넣은 안내 문구 */
 export function openingLabelFor(what: string, nodeCount?: number): string {
   return nodeCount && nodeCount >= 300
-    ? `${what} — ${nodeCount.toLocaleString()}개 노드를 그리는 중…`
+    ? tr('cloud.opening.drawing', { what, n: nodeCount.toLocaleString(currentLocale()) })
     : `${what}…`;
 }
 

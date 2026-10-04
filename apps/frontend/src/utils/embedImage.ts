@@ -30,6 +30,7 @@ import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { notifyUser } from '@/stores/noticeStore';
 import { isFetchableImageUrl } from './imageUrl';
+import { tr } from '@/i18n';
 
 /** 서버에 올릴 수 있는 상태인가 — 게스트는 서버가 없다 */
 function canUseServer(): boolean {
@@ -188,7 +189,7 @@ export async function importRemoteImage(
       // 크기를 못 재도 주소는 살아 있다 — 기본 비율로 붙인다
       return { src: up.url, w: dim?.w ?? 400, h: dim?.h ?? 300 };
     } catch (err) {
-      serverWhy = err instanceof Error ? err.message : '알 수 없는 오류';
+      serverWhy = err instanceof Error ? err.message : tr('io.embed.unknownError');
     }
   }
 
@@ -201,8 +202,8 @@ export async function importRemoteImage(
   if (serverWhy) {
     notifyUser(
       emb
-        ? `⚠ 사진을 서버에 저장하지 못해 문서에 넣었습니다 — ${serverWhy}`
-        : `⚠ 사진을 가져오지 못해 원본 주소만 남겼습니다 — ${serverWhy}`,
+        ? tr('io.embed.savedInDoc', { why: serverWhy })
+        : tr('io.embed.linkOnly', { why: serverWhy }),
     );
   }
   return emb ? { src: emb.dataUrl, w: emb.w, h: emb.h } : null;

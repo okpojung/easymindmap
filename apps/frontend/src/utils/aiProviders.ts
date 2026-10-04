@@ -7,6 +7,8 @@
 // (localStorage)에만 저장된다 — 서버로 보내지 않는다.
 // [서버 연결 예정] SaaS에서는 서버가 키를 보관·호출하는 프록시로 이관.
 
+import { tr } from '@/i18n';
+
 export type AiProvider = 'anthropic' | 'openai' | 'gemini';
 
 export const PROVIDER_LABELS: Record<AiProvider, string> = {
@@ -58,11 +60,11 @@ export const KNOWN_MODELS: Record<AiProvider, string[]> = {
 // (generateContent 지원 모델만). 구글의 잦은 모델 은퇴로 목록이
 // 낡아도 사용자가 스스로 최신 목록을 받아 고를 수 있게 한다.
 export async function listGeminiModels(apiKey: string): Promise<string[]> {
-  if (!apiKey.trim()) throw new Error('먼저 Gemini API 키를 입력하세요');
+  if (!apiKey.trim()) throw new Error(tr('inspector.prov.geminiKeyFirst'));
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`,
   );
-  if (!res.ok) throw new Error(`모델 목록 조회 실패: ${await readError(res)}`);
+  if (!res.ok) throw new Error(tr('inspector.prov.listFailed', { msg: await readError(res) }));
   const data = await res.json();
   const names = ((data.models ?? []) as {
     name?: string; supportedGenerationMethods?: string[];
@@ -70,41 +72,42 @@ export async function listGeminiModels(apiKey: string): Promise<string[]> {
     .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
     .map((m) => String(m.name ?? '').replace(/^models\//, ''))
     .filter((n) => n.startsWith('gemini'));
-  if (!names.length) throw new Error('이 키로 사용 가능한 Gemini 모델이 없습니다');
+  if (!names.length) throw new Error(tr('inspector.prov.noGeminiModels'));
   return names;
 }
 
 export const PROVIDERS: AiProvider[] = ['anthropic', 'openai', 'gemini'];
 
 // API 키 발급 방법 — AI 설정 메뉴의 도움말 (IT 초보자 단계 안내)
+// steps 는 사전 키 — 렌더할 때 번역한다
 export const KEY_HELP: Record<AiProvider, { url: string; steps: string[] }> = {
   anthropic: {
     url: 'https://console.anthropic.com/settings/keys',
     steps: [
-      'console.anthropic.com 에 접속해 계정을 만들고 로그인합니다.',
-      '왼쪽 메뉴 Settings → API Keys 로 이동합니다.',
-      "'Create Key' 버튼을 누르고 이름을 아무거나 정합니다.",
-      "만들어진 'sk-ant-' 로 시작하는 키를 복사해 아래 칸에 붙여넣습니다 (키는 만들 때 한 번만 보입니다).",
-      '사용하려면 Billing 메뉴에서 결제 수단(크레딧)을 등록해야 합니다.',
+      'inspector.prov.help.anthropic.1',
+      'inspector.prov.help.anthropic.2',
+      'inspector.prov.help.anthropic.3',
+      'inspector.prov.help.anthropic.4',
+      'inspector.prov.help.anthropic.5',
     ],
   },
   openai: {
     url: 'https://platform.openai.com/api-keys',
     steps: [
-      'platform.openai.com 에 접속해 계정을 만들고 로그인합니다 (ChatGPT 계정과 같은 계정).',
-      '왼쪽 메뉴 API keys 로 이동합니다.',
-      "'Create new secret key' 버튼을 누릅니다.",
-      "만들어진 'sk-' 로 시작하는 키를 복사해 아래 칸에 붙여넣습니다 (키는 만들 때 한 번만 보입니다).",
-      'Settings → Billing 에서 결제 수단을 등록해야 호출이 됩니다 (ChatGPT Plus 구독과는 별개 요금).',
+      'inspector.prov.help.openai.1',
+      'inspector.prov.help.openai.2',
+      'inspector.prov.help.openai.3',
+      'inspector.prov.help.openai.4',
+      'inspector.prov.help.openai.5',
     ],
   },
   gemini: {
     url: 'https://aistudio.google.com/apikey',
     steps: [
-      'aistudio.google.com/apikey 에 접속해 Google 계정으로 로그인합니다.',
-      "'API 키 만들기(Create API key)' 버튼을 누릅니다.",
-      "만들어진 'AIza' 로 시작하는 키를 복사해 아래 칸에 붙여넣습니다.",
-      '무료 사용량이 제공되어 결제 등록 없이 바로 시험해 볼 수 있습니다.',
+      'inspector.prov.help.gemini.1',
+      'inspector.prov.help.gemini.2',
+      'inspector.prov.help.gemini.3',
+      'inspector.prov.help.gemini.4',
     ],
   },
 };
@@ -148,7 +151,7 @@ export async function generateWithAi(
   user: string,
   opts?: { cacheSystem?: boolean },
 ): Promise<string> {
-  if (!apiKey.trim()) throw new Error('API 키가 등록되지 않았습니다 — AI 설정에서 등록하세요');
+  if (!apiKey.trim()) throw new Error(tr('inspector.prov.noKey'));
 
   if (provider === 'anthropic') {
     // 캐싱 켜짐 = system을 블록 배열로 보내고 마지막에 cache_control 마킹
@@ -184,13 +187,13 @@ export async function generateWithAi(
       const errText = await res.clone().text();
       if (/max_tokens/i.test(errText)) res = await tryCall(8192);
     }
-    if (!res.ok) throw new Error(`Anthropic 호출 실패: ${await readError(res)}`);
+    if (!res.ok) throw new Error(tr('inspector.prov.callFailed', { name: 'Anthropic', msg: await readError(res) }));
     const data = await res.json();
     const text = (data.content ?? [])
       .filter((b: { type?: string }) => b.type === 'text')
       .map((b: { text?: string }) => b.text ?? '')
       .join('');
-    if (!text.trim()) throw new Error('Anthropic 응답이 비어 있습니다');
+    if (!text.trim()) throw new Error(tr('inspector.prov.empty', { name: 'Anthropic' }));
     return unwrapOuterFence(text);
   }
 
@@ -209,10 +212,10 @@ export async function generateWithAi(
         ],
       }),
     });
-    if (!res.ok) throw new Error(`OpenAI 호출 실패: ${await readError(res)}`);
+    if (!res.ok) throw new Error(tr('inspector.prov.callFailed', { name: 'OpenAI', msg: await readError(res) }));
     const data = await res.json();
     const text = data.choices?.[0]?.message?.content ?? '';
-    if (!text.trim()) throw new Error('OpenAI 응답이 비어 있습니다');
+    if (!text.trim()) throw new Error(tr('inspector.prov.empty', { name: 'OpenAI' }));
     return unwrapOuterFence(text);
   }
 
@@ -232,14 +235,14 @@ export async function generateWithAi(
     const msg = await readError(res);
     // 구글이 모델을 은퇴시킨 경우 — 해결 방법을 함께 안내
     const hint = /no longer available|not found/i.test(msg)
-      ? " — AI 설정 > Gemini 모델에서 '지금 키로 사용 가능한 모델 불러오기'를 눌러 현재 모델을 선택하세요"
+      ? tr('inspector.prov.geminiRetiredHint')
       : '';
-    throw new Error(`Gemini 호출 실패: ${msg}${hint}`);
+    throw new Error(tr('inspector.prov.callFailed', { name: 'Gemini', msg }) + hint);
   }
   const data = await res.json();
   const text = (data.candidates?.[0]?.content?.parts ?? [])
     .map((p: { text?: string }) => p.text ?? '')
     .join('');
-  if (!text.trim()) throw new Error('Gemini 응답이 비어 있습니다');
+  if (!text.trim()) throw new Error(tr('inspector.prov.empty', { name: 'Gemini' }));
   return unwrapOuterFence(text);
 }

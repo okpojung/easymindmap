@@ -2,6 +2,10 @@
 //   npx tsx src/utils/clipboardRead.test.ts
 import { clipboardImageFiles, clipboardReadErrorMessage, type ClipboardLike } from './clipboardRead';
 import { attachmentKindFor, isImageFileName } from './attachmentKind';
+import { useLangStore } from '@/i18n';
+
+// 한국어 문구(만드는 순간의 언어로 저장되는 글)를 확인한다 — 언어를 한국어로 고정
+useLangStore.getState().setLang('ko');
 
 let failed = 0;
 const check = (name: string, got: unknown, want: unknown) => {

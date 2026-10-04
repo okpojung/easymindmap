@@ -14,6 +14,7 @@ import { mapCenters } from '@/editor/__samples__/types';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useTr } from '@/i18n';
 
 interface Props {
   t: ThemeTokens;
@@ -98,6 +99,7 @@ export function CanvasFloatingToolbar({
     if (focus) requestCenterNode(focus, 100); else onFitView?.();
   };
 
+  const tr = useTr();
   const [isFullscreen, setIsFullscreen] = useState(
     typeof document !== 'undefined' && !!document.fullscreenElement,
   );
@@ -151,7 +153,7 @@ export function CanvasFloatingToolbar({
       const p = findNodeInMap(map, pid);
       if (p) ancestors.push(p.text);
     }
-    setCalendar({ parentId: selectedId, parentLabel: node.text || '(빈 노드)', initial: parseYearMonth(node.text, ancestors) });
+    setCalendar({ parentId: selectedId, parentLabel: node.text || tr('editor.toolbar.emptyNode'), initial: parseYearMonth(node.text, ancestors) });
   };
 
   // 연결선 (2026-09-22) — [연결] 은 선택 노드를 시작점으로 연결 모드를 켠다
@@ -210,13 +212,13 @@ export function CanvasFloatingToolbar({
       border: `1px solid ${t.border}`,
       boxShadow: t.shadowSm,
     }}>
-      <GroupLabel t={t}>노드</GroupLabel>
+      <GroupLabel t={t}>{tr('editor.toolbar.groupNode')}</GroupLabel>
       <span style={{ position: 'relative', display: 'inline-flex' }}>
         <ToolbarBtn
           t={t}
           title={hasSelection
-            ? '노드 추가 — 자식 노드 · 여러 노드 · 달력 노드(년도 → 1월~12월, 년월 → 주별)'
-            : '중심 노드 추가 (노드를 고르면 그 아래에 자식 노드 추가)'}
+            ? tr('editor.toolbar.addNodeMenu')
+            : tr('editor.toolbar.addCenterNode')}
           highlight={hasSelection || addMenuOpen}
           onClick={handleAddClick}
           testId="add-node"
@@ -233,9 +235,9 @@ export function CanvasFloatingToolbar({
               display: 'flex', flexDirection: 'column', gap: 2,
             }}
           >
-            <MenuItem t={t} testId="add-menu-child" label="자식 노드 추가" hint="선택 노드 아래에 하나" onClick={() => { setAddMenuOpen(false); handleAddNode(); }} />
-            <MenuItem t={t} testId="add-menu-multi" label="여러 노드 추가…" hint="한 줄에 하나 · 들여쓰기 = 하위 (Ctrl+Space)" onClick={() => { setAddMenuOpen(false); setMultiAddOpen(true); }} />
-            <MenuItem t={t} testId="add-menu-calendar" label="달력 노드 추가…" hint="년도 → 1월~12월 · 년월 → 주별(일~토)" onClick={openCalendar} />
+            <MenuItem t={t} testId="add-menu-child" label={tr('editor.toolbar.addChild')} hint={tr('editor.toolbar.addChildHint')} onClick={() => { setAddMenuOpen(false); handleAddNode(); }} />
+            <MenuItem t={t} testId="add-menu-multi" label={tr('editor.toolbar.addMulti')} hint={tr('editor.toolbar.addMultiHint')} onClick={() => { setAddMenuOpen(false); setMultiAddOpen(true); }} />
+            <MenuItem t={t} testId="add-menu-calendar" label={tr('editor.toolbar.addCalendar')} hint={tr('editor.toolbar.addCalendarHint')} onClick={openCalendar} />
           </div>
         )}
       </span>
@@ -253,8 +255,8 @@ export function CanvasFloatingToolbar({
       <ToolbarBtn
         t={t}
         title={connectMode
-          ? '연결 모드 끄기 (Esc)'
-          : '연결선 — 선택 노드에서 시작해, 다음에 클릭하는 노드까지 연결선을 긋는다'}
+          ? tr('editor.toolbar.connectOff')
+          : tr('editor.toolbar.connect')}
         highlight={!!connectMode}
         disabled={!connectMode && !hasSelection}
         onClick={handleConnect}
@@ -270,7 +272,7 @@ export function CanvasFloatingToolbar({
       )}
       <ToolbarBtn
        t={t}
-       title={selectedConnectorId ? '선택한 연결선 삭제 (Del)' : '선택 노드 삭제 (Del)'}
+       title={selectedConnectorId ? tr('editor.toolbar.deleteConnector') : tr('editor.toolbar.deleteNode')}
        danger
        disabled={!hasSelection && !selectedConnectorId}
        onClick={handleDeleteNode}
@@ -282,8 +284,8 @@ export function CanvasFloatingToolbar({
       <ToolbarBtn
         t={t}
         title={stylePainter
-          ? '스타일 복사 끄기 (ESC · 빈 곳 클릭)'
-          : '스타일 복사 — 선택 노드의 도형·색·글자맞춤을 붓에 담아 다른 노드에 클릭/드래그로 칠하기'}
+          ? tr('editor.toolbar.stylePainterOff')
+          : tr('editor.toolbar.stylePainter')}
         highlight={!!stylePainter}
         disabled={!stylePainter && !hasSelection}
         onClick={handleStyleCopy}
@@ -296,12 +298,12 @@ export function CanvasFloatingToolbar({
       {!kanban && (
         <>
           <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
-          <GroupLabel t={t}>중심</GroupLabel>
+          <GroupLabel t={t}>{tr('editor.toolbar.groupCenter')}</GroupLabel>
           <ToolbarBtn
             t={t}
             title={placingCenter
-              ? "배치 모드 — 캔버스의 빈 자리를 클릭하면 거기에 새 중심주제가 생깁니다 · 다시 누르거나 Esc 로 취소"
-              : "새 중심주제 — 누른 뒤 캔버스의 빈 자리를 클릭하면 그 자리에 생깁니다 (만든 뒤에도 끌어서 옮길 수 있다)"}
+              ? tr('editor.toolbar.placingCenter')
+              : tr('editor.toolbar.addCenter')}
             highlight={placingCenter}
             onClick={handleAddCenter}
             testId="center-add"
@@ -310,7 +312,7 @@ export function CanvasFloatingToolbar({
           </ToolbarBtn>
           <ToolbarBtn
             t={t}
-            title="이 가지를 중심주제로 올리기 — 1레벨 가지를 떼어 새 중심주제로 (하위는 그 가지가 된다)"
+            title={tr('editor.toolbar.promote')}
             disabled={!selectedIsLevel1}
             onClick={handlePromote}
             testId="center-promote"
@@ -319,7 +321,7 @@ export function CanvasFloatingToolbar({
           </ToolbarBtn>
           <ToolbarBtn
             t={t}
-            title="다른 중심주제를 이 중심의 가지로 묶기 — 중심주제를 하나로 (각 중심이 가지 하나가 된다)"
+            title={tr('editor.toolbar.merge')}
             disabled={!selectedIsCenter || centerCount < 2}
             onClick={handleMerge}
             testId="center-merge"
@@ -331,11 +333,11 @@ export function CanvasFloatingToolbar({
 
       <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
 
-      <GroupLabel t={t}>보기</GroupLabel>
+      <GroupLabel t={t}>{tr('editor.toolbar.groupView')}</GroupLabel>
       {!kanban && (
         <ToolbarBtn
           t={t}
-          title="Pan 모드 — 캔버스 끌기 (H)"
+          title={tr('editor.toolbar.pan')}
           highlight={panMode}
           onClick={togglePanMode}
         >
@@ -345,8 +347,8 @@ export function CanvasFloatingToolbar({
       <ToolbarBtn
         t={t}
         title={kanban
-          ? '선택 카드가 보이게 스크롤'
-          : focusActive ? '선택 노드 보기 취소 — 맵 전체 보기' : '선택 노드 화면 중앙 보기 (Alt+F)'}
+          ? tr('editor.toolbar.scrollToCard')
+          : focusActive ? tr('editor.toolbar.focusOff') : tr('editor.toolbar.focus')}
         highlight={focusActive}
         disabled={!focusActive && !hasSelection}
         onClick={onFocusSelected}
@@ -361,8 +363,8 @@ export function CanvasFloatingToolbar({
           <ToolbarBtn
             t={t}
             title={scope === 'all'
-              ? '모두 펼치기 — 맵 전체 (노드를 고르면 그 아래만)'
-              : '선택한 노드의 하위 모두 펼치기 (선택을 풀면 맵 전체)'}
+              ? tr('editor.fold.expandAll')
+              : tr('editor.fold.expandSubtree')}
             testId="expand-all"
             onClick={() => {
               if (scope === 'all') expandAll(); else expandSubtree(scope);
@@ -374,8 +376,8 @@ export function CanvasFloatingToolbar({
           <ToolbarBtn
             t={t}
             title={scope === 'all'
-              ? '모두 접기 — 2레벨만 남기고 전부 (노드를 고르면 그 아래만)'
-              : '선택한 노드의 하위 모두 접기 — 직계 자식만 남기고'}
+              ? tr('editor.fold.collapseAll')
+              : tr('editor.fold.collapseSubtree')}
             testId="collapse-all"
             onClick={() => {
               if (scope === 'all') collapseAll(); else collapseSubtree(scope);
@@ -392,14 +394,14 @@ export function CanvasFloatingToolbar({
       )}
       <ToolbarBtn
         t={t}
-        title={kanban ? '보드 처음으로 (스크롤 원점)' : '맵 전체를 화면에 맞추기'}
+        title={kanban ? tr('editor.toolbar.boardHome') : tr('editor.toolbar.fit')}
         onClick={onFitView}
       >
         <I.Fit size={15} />
       </ToolbarBtn>
       <ToolbarBtn
         t={t}
-        title={isFullscreen ? '전체화면 종료' : '전체화면 모드'}
+        title={isFullscreen ? tr('editor.toolbar.fullscreenExit') : tr('editor.toolbar.fullscreen')}
         highlight={isFullscreen}
         onClick={handleFullscreen}
       >

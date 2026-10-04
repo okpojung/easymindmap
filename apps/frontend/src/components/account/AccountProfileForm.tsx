@@ -15,10 +15,11 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import { useAuthStore } from '@/stores/authStore';
 import { useProfileStore } from '@/stores/profileStore';
-import { COUNTRIES, DEFAULT_COUNTRY, formatPhone as formatPhoneInput } from '@/utils/countryCodes';
+import { COUNTRIES, DEFAULT_COUNTRY, countryName, formatPhone as formatPhoneInput } from '@/utils/countryCodes';
 import { AVATAR_EMOJIS, nameProblem } from '@/utils/profileName';
 import { fileToAvatarDataUrl } from '@/utils/avatarImage';
 import { AvatarBadge } from './AvatarBadge';
+import { useTr } from '@/i18n';
 
 export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
   t: ThemeTokens;
@@ -40,6 +41,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
   // 프로필 사진/아바타 (2026-09-08) — undefined = 서버 값 그대로, null = 지움
   const [avatar, setAvatar] = useState<string | null | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const tr = useTr();
   const shownAvatar = avatar === undefined ? (profile?.avatar ?? null) : avatar;
   const avatarReady = profile?.avatarReady !== false;
 
@@ -65,7 +67,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
   const save = async () => {
     const fullName = name.trim();
     { const bad = nameProblem(fullName); if (bad) { setError(bad); return; } }
-    if (phoneDigits && phoneDigits.length < 6) { setError('휴대폰 번호가 너무 짧습니다.'); return; }
+    if (phoneDigits && phoneDigits.length < 6) { setError(tr('auth.profile.phoneTooShort')); return; }
     setBusy(true); setError(null);
     try {
       const p = await cloudApi.saveProfile({
@@ -75,9 +77,9 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
         ...(avatarDirty ? { avatar: avatar ?? null } : {}),
       });
       setProfile(p);
-      onSaved?.('계정 프로필을 저장했습니다.');
+      onSaved?.(tr('auth.profile.saved'));
     } catch (err) {
-      setError(err instanceof CloudError ? err.message : '저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
+      setError(err instanceof CloudError ? err.message : tr('auth.profile.saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -97,7 +99,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
     try {
       setAvatar(await fileToAvatarDataUrl(f));
     } catch (err) {
-      setError(err instanceof Error ? err.message : '사진을 읽지 못했습니다.');
+      setError(err instanceof Error ? err.message : tr('auth.profile.photoReadFailed'));
     } finally {
       if (fileRef.current) fileRef.current.value = '';
     }
@@ -112,7 +114,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
     <div data-testid="account-profile-form" style={{ display: 'grid', gap: 12 }}>
       {/* 사진/아바타 — 네이버 웨일 프로필처럼. 없으면 이름 첫 자 (2026-09-08) */}
       <div>
-        <div style={label}>사진 · 아바타</div>
+        <div style={label}>{tr('auth.profile.photo')}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <AvatarBadge t={t} avatar={shownAvatar} fullName={name || profile?.fullName} email={session?.email} size={56} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
@@ -127,18 +129,18 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
                 disabled={busy || !loaded || !avatarReady}
                 onClick={() => fileRef.current?.click()}
                 style={{ ...box, height: 30, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
-              >사진 선택</button>
+              >{tr('auth.profile.pickPhoto')}</button>
               <button
                 type="button" data-testid="avatar-clear"
                 disabled={busy || !loaded || !shownAvatar}
                 onClick={() => setAvatar(null)}
                 style={{ ...box, height: 30, cursor: 'pointer', fontSize: 12, opacity: shownAvatar ? 1 : 0.5 }}
-              >기본으로 (이름 첫 자)</button>
+              >{tr('auth.profile.resetAvatar')}</button>
             </div>
             <div data-testid="avatar-emojis" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {AVATAR_EMOJIS.map((ch) => (
                 <button
-                  key={ch} type="button" title={`아바타 ${ch}`}
+                  key={ch} type="button" title={tr('auth.profile.avatarTitle', { ch })}
                   disabled={busy || !loaded || !avatarReady}
                   onClick={() => setAvatar(`emoji:${ch}`)}
                   style={chip(shownAvatar === `emoji:${ch}`)}
@@ -149,8 +151,8 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
         </div>
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 4 }}>
           {!avatarReady
-            ? '⚠ 이 서버에는 아직 사진 저장 열이 없습니다 — 관리자가 델타 SQL(users.avatar)을 적용하면 열립니다.'
-            : '사진은 96×96 으로 줄여 저장합니다(64KB 이하). 사진이나 아바타가 없으면 이름 첫 자가 보입니다.'}
+            ? tr('auth.profile.avatarNotReady')
+            : tr('auth.profile.avatarNote')}
         </div>
       </div>
       {loadError && (
@@ -158,18 +160,18 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
           fontSize: 12, lineHeight: 1.5, padding: '8px 10px', borderRadius: 7,
           border: `1px solid ${t.warning}`, borderLeft: `4px solid ${t.warning}`, color: t.text,
         }}>
-          ⚠ 프로필을 서버에서 읽지 못했습니다 — {loadError}
+          {tr('auth.profile.loadError', { why: loadError })}
           <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 2 }}>
-            아래 값은 비어 보이지만 서버에는 있을 수 있습니다. 새로고침한 뒤 다시 열어 주세요.
+            {tr('auth.profile.loadErrorHint')}
           </div>
         </div>
       )}
       <div>
-        <div style={label}>이름</div>
+        <div style={label}>{tr('auth.profile.name')}</div>
         <input
           data-testid="profile-name"
           value={name}
-          placeholder={loaded ? '홍길동' : '불러오는 중…'}
+          placeholder={loaded ? tr('auth.profile.namePh') : tr('common.loading')}
           maxLength={100}
           disabled={busy || !loaded}
           onChange={(e) => { setName(e.target.value); setError(null); }}
@@ -177,16 +179,16 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
           style={{ ...box, width: '100%' }}
         />
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 4 }}>
-          아바타 글자와 협업 화면의 이름표에 이 이름이 쓰입니다.
+          {tr('auth.profile.nameNote')}
         </div>
       </div>
       <div>
-        <div style={label}>이메일</div>
+        <div style={label}>{tr('auth.profile.email')}</div>
         <div data-testid="profile-email" style={ro}>{session?.email ?? '—'}</div>
-        <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 4 }}>로그인 계정이라 바꿀 수 없습니다.</div>
+        <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 4 }}>{tr('auth.profile.emailNote')}</div>
       </div>
       <div>
-        <div style={label}>휴대폰</div>
+        <div style={label}>{tr('auth.profile.phone')}</div>
         <div style={{ display: 'flex', gap: 6 }}>
           <select
             data-testid="profile-dial"
@@ -196,13 +198,13 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
             style={{ ...box, width: 118, padding: '0 6px' }}
           >
             {COUNTRIES.map((c) => (
-              <option key={c.iso} value={c.dial}>{c.flag} {c.name} +{c.dial}</option>
+              <option key={c.iso} value={c.dial}>{c.flag} {countryName(c)} +{c.dial}</option>
             ))}
           </select>
           <input
             data-testid="profile-phone"
             value={phone}
-            placeholder={loaded ? '010-1234-5678' : '불러오는 중…'}
+            placeholder={loaded ? '010-1234-5678' : tr('common.loading')}
             inputMode="tel"
             autoComplete="tel"
             disabled={busy || !loaded}
@@ -212,7 +214,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
           />
         </div>
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 4 }}>
-          {loaded && !savedDigits && !loadError ? '등록된 번호가 없습니다 — 여기서 넣을 수 있습니다.' : '협업맵에서 이름에 마우스를 올린 사람에게 보입니다. 비워 두면 지웁니다.'}
+          {loaded && !savedDigits && !loadError ? tr('auth.profile.phoneEmpty') : tr('auth.profile.phoneNote')}
         </div>
       </div>
       {error && (
@@ -227,7 +229,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
           background: t.primary, color: '#fff',
           cursor: canSave ? 'pointer' : 'default', opacity: canSave ? 1 : 0.55,
         }}
-      >{busy ? '저장 중…' : '저장'}</button>
+      >{busy ? tr('common.saving') : tr('common.save')}</button>
       {onDeleteAccount && (
         <div style={{ borderTop: `1px solid ${t.divider}`, paddingTop: 8, textAlign: 'right' }}>
           {/* 회원탈퇴 — 계정 메뉴의 로그아웃 밑에서 여기로 (2026-09-08 사용자 요청:
@@ -236,7 +238,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
             type="button" data-testid="profile-delete-account"
             onClick={onDeleteAccount}
             style={{ background: 'transparent', border: 'none', color: t.danger, fontSize: 11.5, cursor: 'pointer', padding: '2px 4px' }}
-          >⚠ 회원탈퇴…</button>
+          >{tr('auth.profile.deleteAccount')}</button>
         </div>
       )}
     </div>

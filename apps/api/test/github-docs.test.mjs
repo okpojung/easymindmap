@@ -16,7 +16,7 @@
 import {
   IdGen, applyUpdate, buildDocsMap, buildFileNode, collectFileNodes, detectDocsDir, fileNodePath,
   folderNodePath, mergeNode, parseRepoRef, planUpdate, readFileMeta, readSource, resolveScope,
-  sectionize, selectDocFiles, settleByCommit, GithubDocsError,
+  sectionize, selectDocFiles, settleByCommit, GithubDocsError, isSkippedPath,
 } from '../dist/mcp/github-docs.js';
 import { GithubClient, GithubError } from '../dist/mcp/github-client.js';
 
@@ -64,6 +64,32 @@ check('Doc 대소문자', detectDocsDir([{ path: 'Doc', type: 'tree' }]), 'Doc')
 check('docs 아래 마크다운만, 경로순', selectDocFiles(tree, 'docs').map((f) => f.path), ['docs/README.md', 'docs/guide/a.md', 'docs/guide/b.MD', 'docs/z.markdown']);
 check('뿌리면 전부', selectDocFiles(tree, '').map((f) => f.path).length, 6);
 check('blob sha 보존', selectDocFiles(tree, 'docs/guide')[0], { path: 'docs/guide/a.md', blobSha: 'a1' });
+// ★ 저장소 전체가 문서인 경우 (2026-10-04 사용자 요청 — K-PaaS/container-platform 처럼 docs/ 없이 뿌리에 가이드 폴더가 여럿)
+const whole = [
+  { path: 'README.md', type: 'blob', sha: 'r0' },
+  { path: 'install-guide/README.md', type: 'blob', sha: 'i0' },
+  { path: 'install-guide/cluster/a.md', type: 'blob', sha: 'i1' },
+  { path: 'use-guide/b.md', type: 'blob', sha: 'u1' },
+  { path: 'use-guide/images/x.png', type: 'blob', sha: 'u2' },
+  { path: 'node_modules/pkg/README.md', type: 'blob', sha: 'n1' },
+  { path: 'web/node_modules/pkg/README.md', type: 'blob', sha: 'n2' },
+  { path: 'vendor/lib/README.md', type: 'blob', sha: 'v1' },
+  { path: '.github/PULL_REQUEST_TEMPLATE.md', type: 'blob', sha: 'g1' },
+  { path: 'dist/README.md', type: 'blob', sha: 'd1' },
+];
+check('저장소 전체 — 가이드 폴더 전부 · 뿌리 README 포함',
+  selectDocFiles(whole, '').map((f) => f.path),
+  ['README.md', 'install-guide/README.md', 'install-guide/cluster/a.md', 'use-guide/b.md']);
+check('건너뛸 곳 — node_modules(깊은 곳도) · vendor · 점 폴더 · dist',
+  ['node_modules/a/x.md', 'web/node_modules/a/x.md', 'vendor/x.md', '.github/x.md', 'dist/x.md', 'Build/x.md'].map(isSkippedPath),
+  [true, true, true, true, true, true]);
+check('파일 이름은 보지 않는다 — 폴더만 (dist.md · .hidden.md 는 문서)',
+  ['dist.md', '.hidden.md', 'docs/build-guide.md'].map(isSkippedPath), [false, false, false]);
+check('path 로 직접 고른 곳은 읽는다 — vendor/docs',
+  selectDocFiles([{ path: 'vendor/docs/a.md', type: 'blob', sha: 'q' }], 'vendor/docs').map((f) => f.path), ['vendor/docs/a.md']);
+check('고른 폴더 아래의 node_modules 는 여전히 건너뛴다',
+  selectDocFiles([{ path: 'docs/a.md', type: 'blob', sha: 'a' }, { path: 'docs/node_modules/b.md', type: 'blob', sha: 'b' }], 'docs').map((f) => f.path),
+  ['docs/a.md']);
 
 console.log('── ③ 절 나누기');
 const MD = `---

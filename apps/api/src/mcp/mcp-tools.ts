@@ -258,19 +258,21 @@ export const TOOL_DEFS: McpToolDef[] = [
   {
     name: 'import_github_docs',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    title: 'GitHub 저장소의 문서 폴더를 EasyMindMap 새 맵으로',
+    title: 'GitHub 저장소의 문서를 EasyMindMap 새 맵으로',
     description:
-      'GitHub 저장소를 지정하면 그 저장소의 **문서 폴더**(`docs/`·`doc/` 를 자동으로 찾는다, `path` 로 지정 가능)에 있는 마크다운 문서들을 **새 맵 하나**로 만든다. ' +
+      'GitHub 저장소를 지정하면 그 저장소의 마크다운 문서들을 **새 맵 하나**로 만든다. 기본은 **저장소 전체**에서 문서(.md)를 찾는다 — ' +
+      '`docs/` 가 없고 저장소 자체가 문서인 경우(예: 가이드 폴더가 뿌리에 여럿)도 그대로 된다. node_modules·vendor·dist·build 와 점(.)으로 시작하는 폴더는 건너뛴다. ' +
+      '사용자가 특정 폴더만 말하면("docs 폴더만", "install-guide 만") 그 폴더를 `path` 로 준다. ' +
       '사용자가 "OOO 저장소 문서를 emm 새 맵으로 만들어 줘" · "github 문서를 맵으로" 라고 하면 이것을 부른다. ' +
       '폴더 트리가 그대로 가지가 되고(폴더 노드는 GitHub 폴더 링크), 문서 하나는 노드 하나다 — 제목은 문서의 첫 `#`, GitHub 주소가 그 노드의 링크로 붙고, ' +
       '문서 안의 `##`·`###` 제목이 그 아래 노드가 되며 표·문단·코드는 그 노드의 노트로 들어간다. 문서 노드에는 마지막 커밋 시각이 노트로 붙는다. ' +
       '이 맵은 나중에 update_map_from_github 으로 저장소 변경에 맞춰 갱신할 수 있다. ' +
-      '익명으로는 GitHub 이 시간당 60회만 허용해 문서 50개까지만 된다 — 더 크면 API 서버에 GITHUB_TOKEN 을 넣거나 `path` 로 좁힌다.',
+      '익명으로는 GitHub API 가 시간당 60회라 앞 50개 문서만 마지막 커밋 시각을 읽고 나머지는 "(알 수 없음)" 으로 둔다(문서 내용은 전부 가져온다) — 전부 읽으려면 API 서버에 GITHUB_TOKEN.',
     inputSchema: {
       type: 'object',
       properties: {
         repo: { type: 'string', description: '저장소 — "owner/repo" 또는 GitHub 주소("https://github.com/owner/repo", ".../tree/main/docs" 도 됨).' },
-        path: { type: 'string', description: '문서 폴더 경로(예: "docs", "docs/guide"). 비우면 저장소 뿌리의 docs/doc/documentation 을 찾고, 없으면 저장소 전체의 마크다운.' },
+        path: { type: 'string', description: '이 폴더 아래만(예: "docs", "docs/guide", "install-guide"). 비우면 **저장소 전체**의 마크다운 — 사용자가 폴더를 말했을 때만 준다.' },
         ref: { type: 'string', description: '브랜치·태그·커밋. 비우면 기본 브랜치.' },
         title: { type: 'string', description: '맵 이름. 비우면 "저장소이름 문서".' },
         template: { type: 'string', description: '맵 모양 — create_map 과 같다. 비우면 create_map 과 같은 방사형(양쪽). 문서 트리를 개요처럼 보려면 "TR"(트리·오른쪽).' },
@@ -803,11 +805,17 @@ export class McpToolsService {
   private static readonly DEFAULT_MAX_FILES = 200;
   private static readonly FETCH_CONCURRENCY = 6;
 
-  /** 문서 하나를 읽는다 — 원문 + 마지막 커밋 (둘은 서로 독립이라 같이 기다린다) */
-  private async loadDoc(gh: GithubClient, src: DocsSource, file: RemoteFile): Promise<DocInput> {
+  /**
+   * 문서 하나를 읽는다 — 원문 + 마지막 커밋 (둘은 서로 독립이라 같이 기다린다).
+   * 원문은 raw.githubusercontent.com 이라 API 한도를 쓰지 않는다. 커밋 조회만 한도를 쓴다 —
+   * `withCommit` 이 거짓이면 건너뛴다(익명 한도, 2026-10-04).
+   */
+  private async loadDoc(gh: GithubClient, src: DocsSource, file: RemoteFile, withCommit = true): Promise<DocInput> {
     const [markdown, commit] = await Promise.all([
       gh.raw(src.owner, src.repo, src.ref, file.path),
-      gh.lastCommit(src.owner, src.repo, src.ref, file.path).catch(() => null as FileCommit | null),
+      withCommit
+        ? gh.lastCommit(src.owner, src.repo, src.ref, file.path).catch(() => null as FileCommit | null)
+        : Promise.resolve(null as FileCommit | null),
     ]);
     return { file, markdown, commit };
   }
@@ -824,12 +832,22 @@ export class McpToolsService {
 
     let src: DocsSource;
     let files: RemoteFile[];
+    let scopeNote = '';
     try {
       const branch = (typeof args.ref === 'string' && args.ref.trim()) || ref.ref || await gh.defaultBranch(ref.owner, ref.repo);
-      // 문서 폴더 판정은 뿌리 한 층만 보면 된다 — 그 다음 **그 폴더 아래만** 재귀로
+      // ★ 기본은 **저장소 전체** (2026-10-04 사용자 요청: "저장소 전체가 문서인 경우 — docs 하위뿐 아니라
+      //   저장소 전체에서 문서를 찾아서"). 예전엔 뿌리의 docs/doc/… 를 먼저 찾아 그 아래만 읽었다.
       let dir = askedPath || ref.path || '';
-      if (!dir) dir = detectDocsDir((await gh.tree(ref.owner, ref.repo, branch, false)).entries);
-      const tree = await gh.treeUnder(ref.owner, ref.repo, branch, dir);
+      let tree = await gh.treeUnder(ref.owner, ref.repo, branch, dir);
+      if (tree.truncated && !dir) {
+        // 저장소가 너무 커서 전체 목록이 잘렸다 — 문서 폴더가 있으면 그리로 물러선다
+        const docsDir = detectDocsDir((await gh.tree(ref.owner, ref.repo, branch, false)).entries);
+        if (docsDir) {
+          dir = docsDir;
+          tree = await gh.treeUnder(ref.owner, ref.repo, branch, dir);
+          scopeNote = `\n(저장소가 너무 커서 GitHub 이 전체 목록을 잘랐습니다 — 문서 폴더 "${dir}" 만 가져왔습니다. 다른 폴더는 \`path\` 로 따로 가져오세요.)`;
+        }
+      }
       if (tree.truncated) {
         return text(`${ref.owner}/${ref.repo}@${branch} 의 "${dir || '/'}" 아래가 너무 커서 GitHub 이 목록을 잘랐습니다 — \`path\` 로 더 좁혀 주세요.`, true);
       }
@@ -849,16 +867,16 @@ export class McpToolsService {
       limitNote = `\n(문서가 ${files.length}개라 경로순 앞 ${maxFiles}개만 가져왔습니다 — \`max_files\` 를 늘리거나 \`path\` 로 좁혀 주세요.)`;
       files = files.slice(0, maxFiles);
     }
-    if (!gh.authenticated && files.length > McpToolsService.ANON_FILE_LIMIT) {
-      return text(
-        `문서가 ${files.length}개인데 익명 GitHub 호출은 시간당 60회라 ${McpToolsService.ANON_FILE_LIMIT}개까지만 가져올 수 있습니다 — ` +
-        'API 서버에 GITHUB_TOKEN 을 넣거나(시간당 5,000회), `path` 로 폴더를 좁히거나, `max_files` 를 50 이하로 주세요.', true,
-      );
-    }
+    // ★ 익명이면 커밋 시각은 앞 50개만 (2026-10-04) — 예전엔 50개가 넘으면 통째로 거절했다.
+    //   원문은 한도를 쓰지 않으니 문서는 전부 가져오고, 커밋 시각만 "(알 수 없음)" 으로 남긴다.
+    //   갱신(update_map_from_github)은 파일 sha 로 비교하므로 커밋 시각이 없어도 된다.
+    const commitBudget = gh.authenticated ? files.length : McpToolsService.ANON_FILE_LIMIT;
+    const skippedCommits = Math.max(0, files.length - commitBudget);
 
     let docs: DocInput[];
     try {
-      docs = await mapLimit(files, McpToolsService.FETCH_CONCURRENCY, (f) => this.loadDoc(gh, src, f));
+      const withIdx = files.map((f, i) => ({ f, i }));
+      docs = await mapLimit(withIdx, McpToolsService.FETCH_CONCURRENCY, ({ f, i }) => this.loadDoc(gh, src, f, i < commitBudget));
     } catch (err) {
       if (err instanceof GithubError) return text(err.message, true);
       throw err;
@@ -908,10 +926,13 @@ export class McpToolsService {
     const nodes = 1 + countNodes(map.branches);
     const noCommit = docs.filter((d) => !d.commit).length;
     return text(
-      `EasyMindMap 문서함에 "${title}" 맵을 만들었습니다 — ${src.owner}/${src.repo}@${src.ref} 의 "${src.path || '/'}" 아래 문서 ${docs.length}개 · 노드 ${nodes}개${templateNote}.\n` +
+      `EasyMindMap 문서함에 "${title}" 맵을 만들었습니다 — ${src.owner}/${src.repo}@${src.ref} 의 ${src.path ? `"${src.path}" 아래` : '저장소 전체'} 문서 ${docs.length}개 · 노드 ${nodes}개${templateNote}.\n` +
       `맵 id: ${mapId}\n` +
-      (noCommit ? `(문서 ${noCommit}개는 커밋 시각을 읽지 못해 "(알 수 없음)" 으로 적었습니다.)\n` : '') +
-      limitNote +
+      (skippedCommits
+        ? `(익명 GitHub 호출 한도(시간당 60회) 때문에 문서 ${skippedCommits}개는 커밋 시각을 읽지 않고 "(알 수 없음)" 으로 적었습니다 — 내용은 모두 가져왔습니다. API 서버에 GITHUB_TOKEN 을 넣으면 전부 읽습니다.)\n`
+        : noCommit ? `(문서 ${noCommit}개는 커밋 시각을 읽지 못해 "(알 수 없음)" 으로 적었습니다.)\n` : '') +
+      (limitNote ? `${limitNote.trim()}\n` : '') +
+      (scopeNote ? `${scopeNote.trim()}\n` : '') +
       '나중에 "이 맵을 업데이트 해줘" 라고 하면 update_map_from_github 이 저장소 변경을 반영합니다.',
     );
   }

@@ -169,7 +169,7 @@ Export   : Mindmap Markdown(mmd) serializer (@easymindmap/emm-parser) + 자체 S
 
 > scope 규칙: `full`(creator 전용) / `level`(depth 기준) / `node`(특정 노드+하위)  
 > Soft Lock TTL: 5초 (소스 기준, 비활동 시 자동 해제)  
-> 협업자 최대 수: 20명/맵
+> 협업자 최대 수: **100명/맵** (동시 접속 기준 · 2026-10-04 상향 — 초대 인원은 무제한)
 
 ### Diff Viewer 상세
 

@@ -31,6 +31,7 @@ import { ProBuyPanel } from '@pro';
 import { isFreshTab, libraryBackHref } from '@/utils/viewerChrome';
 import { LANG_LOCALE, useLang, useTr } from '@/i18n';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
+import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
 import { THEMES, type ThemeTokens } from '@/components/design-tokens/theme';
 
 type Tr = ReturnType<typeof useTr>;
@@ -470,6 +471,8 @@ function closeTabOr(fallback: string) {
 
 /** 막대 높이 — iframe 이 이만큼 내려간다 */
 const BAR_H = 38;
+/** 손가락 기기의 막대 높이 */
+const BAR_H_TOUCH = 46;
 /** 유료 띠까지 있을 때의 높이 */
 const PAID_H = 86;
 
@@ -489,13 +492,19 @@ function ViewerBar({ title }: { title: string }) {
   const tr = useTr();
   const [back] = useState(() => libraryBackHref(document.referrer, window.location.origin));
   const [fresh] = useState(() => isFreshTab(window.history.length));
+  // 손가락이면 막대·단추를 키운다 (누를 자리 40px 안팎)
+  const coarse = useCoarse();
+  const barH = coarse ? BAR_H_TOUCH : BAR_H;
+  const btn: CSSProperties = coarse
+    ? { ...barBtn, minHeight: 36, display: 'inline-flex', alignItems: 'center', padding: '0 12px', fontSize: 13 }
+    : barBtn;
 
   // 막대가 있을 때만 iframe 을 내린다 — CSS 변수 하나로 전한다
   useEffect(() => {
     if (!fresh) return undefined;
-    document.documentElement.style.setProperty('--viewer-bar', `${BAR_H}px`);
+    document.documentElement.style.setProperty('--viewer-bar', `${barH}px`);
     return () => { document.documentElement.style.removeProperty('--viewer-bar'); };
-  }, [fresh]);
+  }, [fresh, barH]);
 
   if (!fresh) return null;
 
@@ -504,15 +513,15 @@ function ViewerBar({ title }: { title: string }) {
     <div
       data-testid="viewer-bar"
       style={{
-        position: 'fixed', top: 0, left: 0, right: 0, height: BAR_H, zIndex: 10,
-        display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px',
+        position: 'fixed', top: 0, left: 0, right: 0, height: barH, zIndex: 10,
+        display: 'flex', alignItems: 'center', gap: coarse ? 6 : 10, padding: '0 10px',
         background: '#FFFDF8', borderBottom: '1px solid #E4D9C3',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         boxSizing: 'border-box',
       }}
     >
       {back && (
-        <a data-testid="viewer-back" href={back} style={barBtn}>{tr('publish.public.back')}</a>
+        <a data-testid="viewer-back" href={back} style={btn}>{tr('publish.public.back')}</a>
       )}
       <span
         style={{
@@ -522,7 +531,7 @@ function ViewerBar({ title }: { title: string }) {
       >{title}</span>
       {/* 로그인 없이 오는 손님도 언어를 고를 수 있게 (B10 i18n) */}
       <LanguagePicker t={PICKER_T} compact testId="public-language-picker" />
-      <button data-testid="viewer-close" type="button" onClick={() => closeTabOr(back ?? '/')} style={barBtn}>
+      <button data-testid="viewer-close" type="button" onClick={() => closeTabOr(back ?? '/')} style={btn}>
         {tr('publish.public.close')}
       </button>
     </div>
@@ -550,10 +559,19 @@ function PaidBanner(
   const tr = useTr();
   const locale = LANG_LOCALE[useLang()];
   const sales = useProFeature('map-sales');
+  const phone = usePhoneLayout();
+  const boxRef = useRef<HTMLDivElement>(null);
 
+  // iframe 을 **띠의 실제 높이만큼** 내린다. 예전엔 86px 로 못박아, 폰(360px)에서
+  // 글이 여러 줄로 접히면 띠 밖으로 넘쳐 뷰어 머리말 위에 겹쳐 그려졌다.
   useEffect(() => {
-    document.documentElement.style.setProperty('--viewer-paid', `${PAID_H}px`);
-    return () => { document.documentElement.style.removeProperty('--viewer-paid'); };
+    const set = (h: number) => document.documentElement.style.setProperty('--viewer-paid', `${Math.ceil(h)}px`);
+    set(boxRef.current?.offsetHeight ?? PAID_H);
+    const el = boxRef.current;
+    const ro = el && typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => set(el.offsetHeight)) : null;
+    if (el && ro) ro.observe(el);
+    return () => { ro?.disconnect(); document.documentElement.style.removeProperty('--viewer-paid'); };
   }, []);
 
   const num = (n: number) => n.toLocaleString(locale);
@@ -566,11 +584,13 @@ function PaidBanner(
 
   return (
     <div
+      ref={boxRef}
       data-testid="paid-banner"
       style={{
         position: 'fixed', left: 0, right: 0, zIndex: 9,
-        top: 'var(--viewer-bar, 0px)', height: PAID_H, boxSizing: 'border-box',
-        display: 'flex', alignItems: 'center', gap: 14, padding: '0 14px',
+        top: 'var(--viewer-bar, 0px)', minHeight: PAID_H, boxSizing: 'border-box',
+        display: 'flex', alignItems: 'center', gap: phone ? 10 : 14,
+        padding: phone ? '8px 12px' : '8px 14px',
         background: '#FFF7E6', borderBottom: '1px solid #F0D9A8',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
       }}
@@ -583,9 +603,12 @@ function PaidBanner(
           {facts ? tr('publish.public.paid.total', { facts }) : tr('publish.public.paid.buyToSee')}
           {stats && stats.hiddenCount > 0 && tr('publish.public.paid.hidden', { n: num(stats.hiddenCount) })}
         </div>
-        <div style={{ fontSize: 11, color: '#A08B5E', marginTop: 2 }}>
-          {tr('publish.public.paid.notIncluded')}
-        </div>
+        {/* 폰에서는 한 줄을 아낀다 — 뷰어 자리가 그만큼 넓어진다 */}
+        {!phone && (
+          <div style={{ fontSize: 11, color: '#A08B5E', marginTop: 2 }}>
+            {tr('publish.public.paid.notIncluded')}
+          </div>
+        )}
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0 }}>
         {priceKrw !== null && (
@@ -612,7 +635,7 @@ function PaidBanner(
           //   **지금 살 수 있나 없나**만 있으면 된다.
           <div
             data-testid="paid-unavailable"
-            style={{ fontSize: 11, color: '#A08B5E', marginTop: 4, maxWidth: 260 }}
+            style={{ fontSize: 11, color: '#A08B5E', marginTop: 4, maxWidth: phone ? 130 : 260 }}
           >
             {tr('publish.public.paid.unavailable')}
           </div>

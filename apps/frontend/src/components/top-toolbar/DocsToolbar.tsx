@@ -16,11 +16,15 @@ import { UserMenu } from './UserMenu';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useTr } from '@/i18n';
+import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 
 export function DocsToolbar({ t }: { t: ThemeTokens }) {
   const tr = useTr();
   const themeName = useEditorUiStore((s) => s.themeName);
   const setThemeName = useEditorUiStore((s) => s.setThemeName);
+  // 폰 — 노치(safe-area)만큼 띄우고, 손가락 입력이면 단추를 40px 로
+  const phone = usePhoneLayout();
+  const coarse = useCoarse();
 
   // 우측 상단 토스트 — 편집 툴바와 같은 모양. 계정 메뉴(로그아웃 등)와
   // cloudStore 의 소식(notice)이 여기로 온다.
@@ -41,13 +45,16 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
     <div
       data-testid="docs-toolbar"
       style={{
-        height: 52,
+        height: 'calc(52px + env(safe-area-inset-top, 0px))',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingLeft: `max(${phone ? 8 : 14}px, env(safe-area-inset-left, 0px))`,
+        paddingRight: `max(${phone ? 8 : 14}px, env(safe-area-inset-right, 0px))`,
+        flexShrink: 0,
         background: t.surface,
         borderBottom: `1px solid ${t.border}`,
         display: 'flex',
         alignItems: 'center',
-        padding: '0 14px',
-        gap: 10,
+        gap: phone ? 6 : 10,
         position: 'relative',
         zIndex: 20,
       }}
@@ -74,7 +81,7 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
         onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 34, height: 32, borderRadius: 8,
+          width: coarse ? 40 : 34, height: coarse ? 40 : 32, borderRadius: 8, flexShrink: 0,
           background: t.surfaceAlt, color: t.text,
           border: `1px solid ${t.border}`, cursor: 'pointer', fontSize: 15,
         }}
@@ -89,7 +96,9 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
         <div
           data-testid="cloud-toast"
           style={{
-            position: 'absolute', top: 46, right: 14, zIndex: 80, whiteSpace: 'nowrap',
+            position: 'absolute', top: 'calc(46px + env(safe-area-inset-top, 0px))',
+            right: phone ? 8 : 14, zIndex: 80,
+            maxWidth: 'calc(100vw - 16px)', whiteSpace: phone ? 'normal' : 'nowrap', lineHeight: 1.45,
             background: t.text, color: t.surface, padding: '6px 12px', borderRadius: 8,
             fontSize: 12, boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
             pointerEvents: 'none',

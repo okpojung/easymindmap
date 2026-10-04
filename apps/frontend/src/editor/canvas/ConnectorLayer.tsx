@@ -16,6 +16,7 @@ import { useRef } from 'react';
 import { useTr } from '@/i18n';
 import { setHistoryPaused, useDocumentStore } from '@/stores/documentStore';
 import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, trunkSegment, type CBox, type CPoint } from './connectorGeometry';
+import { isCoarseNow } from '@/hooks/useViewport';
 
 /** 기본값 — 사용자 결정(2026-09-22): 기본 선 색은 **파란색** */
 export const CONNECTOR_DEFAULTS: Required<Pick<Connector, 'shape' | 'width' | 'color' | 'dash' | 'arrows'>> = {
@@ -30,7 +31,8 @@ export const CONNECTOR_LABEL_FONT = 13;
 const LABEL_PAD_X = 8;
 const LABEL_PAD_Y = 5;
 const LABEL_LINE_H = 17;
-const HIT_WIDTH = 14;
+// 손가락이면 선을 잡는 폭을 넓게 (모바일 웹, 2026-10-05) — 장치는 도중에 바뀌지 않으니 한 번만 본다
+const HIT_WIDTH = isCoarseNow() ? 24 : 14;
 
 export function connectorShapeOf(c: Connector): ConnectorShape { return c.shape ?? CONNECTOR_DEFAULTS.shape; }
 export function connectorWidthOf(c: Connector): number {

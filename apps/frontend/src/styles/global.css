@@ -25,6 +25,20 @@ html:lang(zh), html:lang(zh) body {
                'Noto Sans SC', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 #root { height: 100%; }
+/* 폰 (모바일 웹 2026-10-05) — 주소창이 접히고 펴져도 화면 높이에 꼭 맞게.
+ * 100dvh 를 모르는 옛 브라우저는 위의 100% 를 그대로 쓴다. */
+@supports (height: 100dvh) {
+  html, body, #root { height: 100dvh; }
+}
+html {
+  /* 가로로 눕혔을 때 iOS 가 글자를 멋대로 키우지 않게 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+/* 손가락 입력 — 누를 때 회색 사각형 깜빡임을 없앤다(눌린 표시는 각 단추가 한다) */
+@media (pointer: coarse) {
+  button, [role='button'], a { -webkit-tap-highlight-color: transparent; }
+}
 button { font-family: inherit; }
 input, textarea, select { font-family: inherit; }
 
@@ -88,9 +102,13 @@ mark { background: transparent; }
   border-radius: 7px;
   transition: background-color .12s ease, border-color .12s ease;
 }
-.mm-list-row:hover {
-  background: var(--row-hover, rgba(120, 110, 90, 0.10));
-  border-color: var(--row-hover-bd, transparent);
+/* 마우스가 있는 기기에서만 — 터치에서는 마지막으로 누른 줄에 hover 가 눌어붙어
+ * 다른 줄을 골라도 강조가 남는다 (모바일 웹 2026-10-05) */
+@media (hover: hover) {
+  .mm-list-row:hover {
+    background: var(--row-hover, rgba(120, 110, 90, 0.10));
+    border-color: var(--row-hover-bd, transparent);
+  }
 }
 .mm-list-row:focus-visible {
   outline: 2px solid var(--row-hover-bd, #999);

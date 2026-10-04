@@ -62,7 +62,9 @@ export function CodeBlockDialog({
         data-testid="code-block-panel"
         style={{
           position: 'relative',
-          width: 'min(640px, calc(100vw - 48px))',
+          // 폰 — 좌우 12px 여백 · 키보드가 올라와도 안에서 스크롤 (모바일 웹, 2026-10-05)
+          width: 'min(640px, calc(100vw - 59px))', // 59 = 여백 12×2 + 안쪽 16×2 + 테두리 — 화면 끝까지 12px
+          maxHeight: 'calc(100dvh - 59px)', overflowY: 'auto',
           background: t.surface,
           border: `1.5px solid ${t.border}`,
           borderRadius: 12,

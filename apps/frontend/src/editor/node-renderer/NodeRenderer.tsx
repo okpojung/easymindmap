@@ -54,6 +54,7 @@ import { measureTextPx } from './textMeasure';
 import { MarkToolbar } from './MarkToolbar';
 import { EditPreviewBackdrop } from './EditPreviewBackdrop';
 import { useViewportStore } from '@/stores/viewportStore';
+import { isPhoneLayoutNow } from '@/hooks/useViewport';
 import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import { hasForeignMapMarker, stripForeignMapMarkers } from '@/utils/foreignClipboard';
@@ -282,9 +283,23 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
     measure();
     window.addEventListener('resize', measure);
     window.addEventListener('wheel', measure, true); // 편집 중 줌/팬 대응
+    // 손가락 핀치·화면 키보드를 피하려 옮긴 pan 에도 따라간다 (모바일 웹, 2026-10-05) —
+    // 캔버스가 새 변환으로 그려진 다음 프레임에 잰다
+    let raf = 0;
+    const later = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(measure); };
+    const unsub = useViewportStore.subscribe((st, prev) => {
+      if (st.panX !== prev.panX || st.panY !== prev.panY || st.zoom !== prev.zoom) later();
+    });
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', later);
+    vv?.addEventListener('scroll', later);
     return () => {
       window.removeEventListener('resize', measure);
       window.removeEventListener('wheel', measure, true);
+      cancelAnimationFrame(raf);
+      unsub();
+      vv?.removeEventListener('resize', later);
+      vv?.removeEventListener('scroll', later);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, n.x, n.y, n.w, n.h]);
@@ -413,6 +428,56 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
     setEditingNodeId(n.id); // 편집 중 +/− 인디케이터 숨김 (겹침 방지)
     onSelect(n.id);
   };
+
+  // 손가락 편집 요청 (모바일 웹, 2026-10-05) — 캔버스가 "고른 노드를 다시 톡"을
+  // 판정해 interactionStore.requestEdit 로 알린다 (데스크톱 더블클릭과 같은 startEdit).
+  // 이 노드에 온 요청만 구독한다 — 다른 노드의 요청에는 다시 그려지지 않는다.
+  // 처음 그릴 때의 번호는 처리한 것으로 친다(컬링으로 다시 마운트돼도 반응하지 않게).
+  const editReqSeq = useInteractionStore((s) => (s.editRequest?.id === n.id ? s.editRequest.seq : 0));
+  const handledEditSeq = useRef(editReqSeq);
+  useEffect(() => {
+    if (!editReqSeq || editReqSeq === handledEditSeq.current) return;
+    handledEditSeq.current = editReqSeq;
+    if (!editing) startEdit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editReqSeq]);
+
+  // ★ **폰: 화면 키보드가 편집 중인 노드를 가리지 않게** (모바일 웹, 2026-10-05).
+  // 키보드가 뜨면 visualViewport 가 줄어든다. 노드 상자가 보이는 영역(위는 서식
+  // 도구 모음 자리만큼 비운다) 밖이면 그만큼 캔버스를 옮긴다(pan = 화면 px).
+  // 데스크톱 폭에서는 하지 않는다.
+  const [vvTop, setVvTop] = useState(0);
+  useEffect(() => {
+    if (!editing || !isPhoneLayoutNow()) return;
+    const vv = window.visualViewport;
+    const TOOLBAR_SPACE = 60;
+    const ensure = () => {
+      if (vv) setVvTop(vv.offsetTop);
+      const r = boxRef.current?.getBoundingClientRect();
+      if (!r || r.width === 0) return;
+      const top = (vv?.offsetTop ?? 0) + TOOLBAR_SPACE;
+      const bottom = (vv ? vv.offsetTop + vv.height : window.innerHeight) - 12;
+      const left = (vv?.offsetLeft ?? 0) + 8;
+      const right = (vv ? vv.offsetLeft + vv.width : window.innerWidth) - 8;
+      let dy = 0;
+      if (r.height > bottom - top || r.top < top) dy = top - r.top;
+      else if (r.bottom > bottom) dy = bottom - r.bottom;
+      let dx = 0;
+      if (r.width > right - left || r.left < left) dx = left - r.left;
+      else if (r.right > right) dx = right - r.right;
+      if (Math.abs(dx) + Math.abs(dy) < 2) return;
+      const vp = useViewportStore.getState();
+      vp.setPan(vp.panX + dx, vp.panY + dy);
+    };
+    const t1 = window.setTimeout(ensure, 60);
+    const t2 = window.setTimeout(ensure, 450); // 키보드가 다 올라온 뒤 한 번 더
+    vv?.addEventListener('resize', ensure);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      vv?.removeEventListener('resize', ensure);
+    };
+  }, [editing]);
 
   const saveEdit = () => {
     const nextText = draftText.trimEnd();
@@ -1193,7 +1258,15 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           {!codeDlg && !tableDlg && <MarkToolbar
             t={t}
             onApply={wrapSelection}
-            style={{
+            style={isPhoneLayoutNow() ? {
+              // 폰 폭 — 노드 위(-46px)에 두면 화면 밖으로 잘리거나 노드를 가린다.
+              // 보이는 화면(visualViewport) 맨 위 가운데에 고정하고, 노드는 그 아래로
+              // 옮겨 둔다(위 키보드 피하기 효과의 TOOLBAR_SPACE).
+              position: 'fixed',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              top: vvTop + 8,
+            } : {
               position: 'absolute',
               left: '50%',
               transform: 'translateX(-50%)',

@@ -13,6 +13,7 @@ import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { TableGridPicker } from './TableDialog';
 import { useTr } from '@/i18n';
+import { useCoarse } from '@/hooks/useViewport';
 
 export const MARK_BUTTONS = [
   { m: '**', label: 'B', titleKey: 'editor.mark.bold', st: { fontWeight: 800 } },
@@ -43,17 +44,20 @@ export function MarkToolbar({
   const tr = useTr();
   const [hover, setHover] = useState<string | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
+  // 손가락 — 누를 자리 40px (8개 = 331px, 360px 폰에도 한 줄). 모바일 웹, 2026-10-05
+  const coarse = useCoarse();
+  const BTN = coarse ? 40 : 28;
   return (
     <div
       data-testid="mark-toolbar"
       style={{
         display: 'flex',
-        gap: 2,
+        gap: coarse ? 0 : 2,
         alignItems: 'center',
         background: t.surface,
         border: `1.5px solid ${t.border}`,
         borderRadius: 9,
-        padding: '4px 6px',
+        padding: coarse ? '3px 4px' : '4px 6px',
         boxShadow: '0 4px 14px rgba(60,45,15,0.28), 0 1px 3px rgba(60,45,15,0.18)',
         whiteSpace: 'nowrap',
         position: 'relative',
@@ -73,8 +77,8 @@ export function MarkToolbar({
           onMouseEnter={() => setHover(b.label)}
           onMouseLeave={() => setHover(null)}
           style={{
-            width: 28,
-            height: 28,
+            width: BTN,
+            height: BTN,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -105,6 +109,7 @@ export function MarkToolbar({
       {gridOpen && (
         <TableGridPicker
           t={t}
+          top={BTN + 6}
           onClose={() => setGridOpen(false)}
           onPick={(rows, cols) => { setGridOpen(false); onApply('table', { rows, cols }); }}
         />

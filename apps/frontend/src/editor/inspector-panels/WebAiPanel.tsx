@@ -41,6 +41,8 @@ import { useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 export function WebAiPanel({ t }: { t: ThemeTokens }) {
   const tr = useTr();
   const systemPrompt = useAiSettingsStore((s) => s.systemPrompt);
@@ -229,7 +231,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
   );
 
   return (
-    <div ref={panelRef}>
+    <div data-mm-touch="" ref={panelRef}>
       {/* 확인 팝오버 — API 키 패널과 **같은 컴포넌트**를 쓴다
           (2026-08-06: 두 모드의 적용 흐름을 하나로 맞추면서 공용화) */}
       <AiConfirmPopover
@@ -269,7 +271,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             onChange={(e) => setGenType(e.target.value)}
             title={tr('inspector.ai.genTypeTitle')}
             style={{
-              flex: 1, padding: '5px 8px', borderRadius: 5,
+              flex: 1, minWidth: 0, padding: '5px 8px', borderRadius: 5,
               border: `1px solid ${t.border}`,
               background: t.surface, color: t.text, fontSize: 12,
               fontFamily: 'inherit',

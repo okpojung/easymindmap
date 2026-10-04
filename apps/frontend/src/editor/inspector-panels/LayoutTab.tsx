@@ -30,6 +30,8 @@ import { findNodeInMap, isCenterRootId } from '@/stores/documentStore';
 import { mapCenters } from '@/editor/__samples__/types';
 import { useTr } from '@/i18n';
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 interface LayoutOption {
   key: LayoutType;
   /** 사전 키 — 렌더할 때 번역한다 */
@@ -218,7 +220,7 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   };
 
   return (
-    <div>
+    <div data-mm-touch="">
       <InspectorSection t={t} title={tr('inspector.layout.title')}>
         <div
           style={{

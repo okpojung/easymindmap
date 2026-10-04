@@ -6,6 +6,7 @@
 
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { LANGS, LANG_LABELS, useLangStore, useTr, type Lang } from '@/i18n';
+import { useCoarse } from '@/hooks/useViewport';
 
 export function LanguagePicker({
   t, compact = false, testId = 'language-picker',
@@ -18,6 +19,8 @@ export function LanguagePicker({
   const tr = useTr();
   const lang = useLangStore((s) => s.lang);
   const setLang = useLangStore((s) => s.setLang);
+  // 손가락 기기 — 누를 자리 36px 이상, 글자 16px(iOS 는 더 작은 칸을 누르면 화면을 확대한다)
+  const coarse = useCoarse();
   return (
     <label
       style={{
@@ -34,8 +37,8 @@ export function LanguagePicker({
         value={lang}
         onChange={(e) => setLang(e.target.value as Lang)}
         style={{
-          font: 'inherit', fontSize: compact ? 12 : 13,
-          padding: compact ? '3px 6px' : '6px 8px', minHeight: compact ? 28 : 34,
+          font: 'inherit', fontSize: coarse ? 16 : compact ? 12 : 13,
+          padding: compact ? '3px 6px' : '6px 8px', minHeight: coarse ? 38 : compact ? 28 : 34,
           borderRadius: 7, border: `1px solid ${t.border}`,
           background: t.surface, color: t.text, cursor: 'pointer',
         }}

@@ -12,6 +12,8 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useTr } from '@/i18n';
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 // 실시간 검색 — 노드 텍스트·태그·노트 본문·링크(라벨/URL)를 대상으로
 // 대소문자 무시 부분 일치. 결과 클릭 = 캔버스 노드 선택.
 interface SearchHit {
@@ -117,7 +119,7 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
   const mapTags = Array.from(tagSet);
 
   return (
-    <div style={{ padding: 12 }}>
+    <div data-mm-touch="" style={{ padding: 12 }}>
       <div style={{ position: 'relative', marginBottom: 12 }}>
         <div style={{
           position: 'absolute', left: 10, top: '50%',

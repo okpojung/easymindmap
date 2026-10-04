@@ -35,7 +35,7 @@ export const SOCIAL_PROVIDERS: SocialProvider[] = [
 ];
 
 export function LoginForm({
-  t, onDone, onSignup, onForgot, compact = false,
+  t, onDone, onSignup, onForgot, compact = false, hideGuest = false,
 }: {
   t: ThemeTokens;
   /** 로그인/가입이 끝났을 때 (안내 문구 전달) */
@@ -51,6 +51,11 @@ export function LoginForm({
   onForgot?: () => void;
   /** 메뉴 팝업 안에 넣는 좁은 형태 */
   compact?: boolean;
+  /**
+   * [게스트로 체험] 을 감춘다 — OAuth 동의 화면처럼 **계정으로 허락하러 온**
+   * 자리에서는 게스트가 갈 곳이 없다 (2026-10-05).
+   */
+  hideGuest?: boolean;
 }) {
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
@@ -226,6 +231,7 @@ export function LoginForm({
           {/* Guest 체험 (2026-08-04) — 가입 없이 로컬 에디터만.
               서버 저장·불러오기·첨부·API 키 AI 는 막히고, MD/HTML
               내보내기와 웹 AI 붙여넣기는 된다. */}
+          {!hideGuest && (
           <button
             data-testid="login-guest"
             onClick={() => useAuthStore.getState().enterGuest()}
@@ -241,6 +247,7 @@ export function LoginForm({
             <span style={{ width: 20, textAlign: 'center', fontWeight: 800 }}>👤</span>
             <span style={{ flex: 1, textAlign: 'left' }}>{tr('auth.login.guest')}</span>
           </button>
+          )}
         </div>
       )}
     </div>

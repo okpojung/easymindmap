@@ -50,6 +50,7 @@ import {
 import { isDocumentEmpty, setHistoryPaused } from '@/stores/documentStore';
 // effect 안에서는 부르는 순간의 언어로(trNow), 렌더에서는 useTr
 import { tr as trNow, useTr } from '@/i18n';
+import { isCoarseNow, usePhoneLayout } from '@/hooks/useViewport';
 
 // Maps the live document tree onto the Kanban board WITHOUT a depth limit:
 // depth-1 nodes become columns, depth-2 nodes become cards, and depth-3+
@@ -161,8 +162,14 @@ export function EditorPage() {
   // 문서함(서버 맵 목록)을 편집 영역에 띄운 상태 (2026-08-02)
   const browserOpen = useEditorUiStore((s) => s.browserOpen);
   const setBrowserOpen = useEditorUiStore((s) => s.setBrowserOpen);
+  // **폰에는 분할 보기가 없다** (모바일 웹 2026-10-05). 390px 를 아웃라인(최소
+  // 240px)과 맵으로 나누면 둘 다 쓸 수 없다. 폰에서는 한 화면씩 — 아웃라인과
+  // 맵을 "⋯ ▸ 아웃라인 보기" · 하단 막대 · 레일의 같은 단추로 바꿔 본다.
+  // 저장된 분할 설정(outlineSplit)은 지우지 않는다 — 넓은 화면으로 돌아오면 그대로.
+  const phone = usePhoneLayout();
+  const splitView = outlineSplit && !phone;
   // 아웃라인 전체 모드 = 분할이 아니고 mainView가 'outline'일 때
-  const fullOutline = !outlineSplit && mainView === 'outline';
+  const fullOutline = !splitView && mainView === 'outline';
 
   const zoom = useViewportStore((s) => s.zoom);
   const setZoom = useViewportStore((s) => s.setZoom);
@@ -435,7 +442,11 @@ export function EditorPage() {
   }, [saveState]);
 
   // 커서가 설명 텍스트를 가리지 않는 전역 커스텀 툴팁 (요소 위쪽 표시)
+  // **손가락 입력 기기에는 달지 않는다** (모바일 웹 2026-10-05). 탭하면 브라우저가
+  // 흉내 낸 mouseover 가 뒤따라와 설명 풍선이 뜨고, mouseout 이 오지 않아 다음
+  // 탭까지 화면에 붙어 남았다(하단 단추 위에 'Map view' 가 계속 떠 있었다).
   useEffect(() => {
+    if (isCoarseNow()) return;
     installGlobalTooltip();
   }, []);
 
@@ -443,11 +454,18 @@ export function EditorPage() {
   // authEnabled=false 라 그대로 에디터가 열린다)
   if (gated) return <WelcomeScreen t={t} />;
 
+  // 하단 막대 — 문서함에서는 그리지 않는다 (아래 BottomStatusBar 자리의 주석)
+  const showStatusBar = !browserOpen || (phone && guest && !session);
+
   return (
     <div
+      data-testid="editor-root"
       style={{
         position: 'fixed',
         inset: 0,
+        // 폰 브라우저의 주소창이 접히고 펴질 때도 화면에 꼭 맞게 (100vh 는 주소창
+        // 뒤까지 잡아 하단 막대가 가려진다)
+        height: '100dvh',
         background: t.bg,
         color: t.text,
         display: 'flex',
@@ -476,6 +494,8 @@ export function EditorPage() {
           minHeight: 0,
           overflow: 'hidden',
           position: 'relative',
+          // 하단 막대가 없으면 홈 표시줄(safe-area)만큼은 이 칸이 비켜 선다
+          paddingBottom: showStatusBar ? undefined : 'env(safe-area-inset-bottom, 0px)',
         }}
       >
         {/* 문서함이 열려 있으면 왼쪽 레일도 뺀다 (2026-09-07 사용자 결정) —
@@ -486,7 +506,7 @@ export function EditorPage() {
         <UnifiedSidebar
           t={t}
           collabs={SAMPLE_COLLABS}
-          outlineSplit={outlineSplit}
+          outlineSplit={splitView}
           onToggleOutlineSplit={toggleOutlineSplit}
           navTab={navTab}
           onNavTabChange={setNavTab}
@@ -509,7 +529,7 @@ export function EditorPage() {
             <OutageBanner t={t} />
             {/* 큰 첨부 업로드 진행률 — 어느 경로로 시작했든 여기서만 그린다 */}
             <UploadProgress t={t} />
-            {outlineSplit && (
+            {splitView && (
               <>
                 <div style={{
                   width: `${outlineSplitRatio * 100}%`,
@@ -582,12 +602,25 @@ export function EditorPage() {
         )}
       </div>
 
+      {/* **문서함에서는 하단 막대를 그리지 않는다** (2026-10-05). 그 화면에서
+          확대/축소는 아무 일도 하지 않고, '문서 116B · 첨부 0개' 는 열려 있지도
+          않은 빈 문서의 무게였다. 폰에서 Guest 는 문서함 화면에도 패널(새 맵)
+          서랍이 필요해 그 문만 남긴다. */}
+      {showStatusBar && (
       <BottomStatusBar
         t={t}
         collabs={SAMPLE_COLLABS}
         zoom={zoom}
         onZoomChange={setZoom}
+        showZoom={!browserOpen}
+        // 폰: 왼쪽 패널(서랍)을 여는 문 · 아웃라인/맵 전환 — 사이드바가 있을 때만
+        onOpenPanels={phone && !(browserOpen && !(guest && !session))
+          ? () => useEditorUiStore.setState({ sidebarCollapsed: false })
+          : undefined}
+        mainView={phone && !browserOpen ? mainView : undefined}
+        onToggleMainView={() => setMainView(mainView === 'outline' ? 'map' : 'outline')}
       />
+      )}
 
       {/* Hide canvas-only overlays (collapse toggles, +indicators) when printing
           or exporting to image. */}
@@ -613,6 +646,7 @@ export function EditorPage() {
             display: 'flex', alignItems: 'center', gap: 12,
             background: t.surface, color: t.text, border: `1px solid ${t.border}`,
             borderRadius: 12, padding: '14px 20px', fontSize: 13.5, fontWeight: 600,
+            maxWidth: 'calc(100vw - 32px)',
             boxShadow: '0 14px 36px rgba(0,0,0,0.25)',
           }}>
             <span style={{
@@ -629,8 +663,10 @@ export function EditorPage() {
         <div
           data-testid="app-notice"
           style={{
-            position: 'fixed', top: 62, left: '50%', transform: 'translateX(-50%)',
-            zIndex: 320, maxWidth: 620, background: t.surface, color: t.text,
+            position: 'fixed', top: 'calc(62px + env(safe-area-inset-top, 0px))',
+            left: '50%', transform: 'translateX(-50%)',
+            zIndex: 320, maxWidth: 'min(620px, calc(100vw - 24px))', width: 'max-content',
+            background: t.surface, color: t.text,
             border: `1px solid ${t.warning}`, borderLeft: `4px solid ${t.warning}`,
             borderRadius: 9, padding: '9px 14px', fontSize: 12.5, lineHeight: 1.5,
             boxShadow: '0 10px 28px rgba(0,0,0,0.2)',
@@ -644,10 +680,13 @@ export function EditorPage() {
         <div
           data-testid="browser-toast"
           style={{
-            position: 'fixed', top: 62, left: '50%', transform: 'translateX(-50%)',
+            position: 'fixed', top: 'calc(62px + env(safe-area-inset-top, 0px))',
+            left: '50%', transform: 'translateX(-50%)',
             zIndex: 300, background: t.text, color: t.surface,
             borderRadius: 9, padding: '8px 14px', fontSize: 12.5,
-            boxShadow: '0 10px 28px rgba(0,0,0,0.2)', whiteSpace: 'nowrap',
+            boxShadow: '0 10px 28px rgba(0,0,0,0.2)',
+            // 한 줄이 기본, 폰 폭을 넘으면 접는다
+            width: 'max-content', maxWidth: 'calc(100vw - 24px)',
             pointerEvents: 'none', // 아래 요소 클릭을 막지 않는다
           }}
         >
@@ -660,7 +699,9 @@ export function EditorPage() {
         <div
           data-testid="url-map-error"
           style={{
-            position: 'fixed', top: 62, left: '50%', transform: 'translateX(-50%)',
+            position: 'fixed', top: 'calc(62px + env(safe-area-inset-top, 0px))',
+            left: '50%', transform: 'translateX(-50%)',
+            width: 'max-content', maxWidth: 'calc(100vw - 24px)',
             zIndex: 300, background: t.surface, color: t.text,
             border: `1px solid ${t.border}`, borderRadius: 9, padding: '9px 14px',
             fontSize: 12.5, boxShadow: '0 10px 28px rgba(0,0,0,0.2)',
@@ -674,7 +715,7 @@ export function EditorPage() {
             onClick={() => setUrlMapErr(null)}
             style={{
               marginLeft: 10, border: 'none', background: 'transparent',
-              color: t.textMuted, cursor: 'pointer', fontSize: 13, padding: 0,
+              color: t.textMuted, cursor: 'pointer', fontSize: 13, padding: '4px 6px',
             }}
           >✕</button>
         </div>

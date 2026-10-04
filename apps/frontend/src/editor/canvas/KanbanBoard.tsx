@@ -29,6 +29,8 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useImageSrcResolver } from '@/utils/imageSrc';
 import { useTr } from '@/i18n';
+import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
+import { primeTouchKeyboard } from './touchKeyboard';
 
 interface Props {
   t: ThemeTokens;
@@ -94,6 +96,9 @@ function CardNode({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(card.title);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // 손가락 — 이미 고른 카드를 다시 톡 = 편집 (데스크톱 더블클릭과 같다, 모바일 웹 2026-10-05)
+  const tapEditRef = useRef(false);
+  const coarse = useCoarse();
 
   const startEdit = () => {
     setDraft(card.title);
@@ -143,7 +148,11 @@ function CardNode({
       )}
       <div
         data-kanban-card={card.id}
-        onClick={() => onSelect(card.id)}
+        onPointerDown={(e) => { tapEditRef.current = e.pointerType === 'touch' && selectedId === card.id && !editing; }}
+        onClick={() => {
+          if (tapEditRef.current) { tapEditRef.current = false; primeTouchKeyboard(); startEdit(); return; }
+          onSelect(card.id);
+        }}
         onDoubleClick={(e) => { e.stopPropagation(); startEdit(); }}
         style={{
           background: st?.fillColor ?? t.surface,
@@ -163,6 +172,8 @@ function CardNode({
           // 카드 내용(표·코드·긴 URL)이 컬럼 밖으로 넘치지 않게 가둔다 —
           // 블록별 가로 스크롤은 NodeRichText가 담당
           minWidth: 0, maxWidth: '100%', overflow: 'hidden',
+          // 손가락 — 길게 눌러 끌 때 글자 선택·iOS 말풍선이 뜨지 않게 (편집 중은 제외)
+          ...(coarse && !editing ? { WebkitUserSelect: 'none' as const, userSelect: 'none' as const, WebkitTouchCallout: 'none' as const } : {}),
         }}
       >
         {editing ? (
@@ -170,7 +181,8 @@ function CardNode({
             <MarkToolbar
               t={t}
               onApply={wrapSelection}
-              style={{ display: 'inline-flex', marginBottom: 4 }}
+              // 손가락(40px 단추)이면 카드 폭 안에서 줄을 바꾼다
+              style={{ display: 'inline-flex', marginBottom: 4, ...(coarse ? { flexWrap: 'wrap' as const, maxWidth: '100%', boxSizing: 'border-box' as const } : {}) }}
             />
             <textarea
               ref={inputRef}
@@ -290,6 +302,9 @@ function CardNode({
 
 export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
   const tr = useTr();
+  // 폰 폭 — 컬럼을 화면 폭에 맞추고 가로로 넘기며 컬럼 단위로 멈춘다 (모바일 웹, 2026-10-05)
+  const compact = usePhoneLayout();
+  const coarse = useCoarse();
   const moveNodeRelative = useDocumentStore((s) => s.moveNodeRelative);
   const addChildNode = useDocumentStore((s) => s.addChildNode);
   const deleteNode = useDocumentStore((s) => s.deleteNode);
@@ -390,7 +405,12 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
   // 카드 드래그 이동 상태 — 보드 레벨에서 위임 처리 (컬럼을 넘나들므로)
   const dragRef = useRef<{
     pointerId: number; id: string; startX: number; startY: number; moved: boolean;
+    /** 손가락 — 길게 눌러(armed) 집은 뒤에만 끈다. 그 전에 움직이면 보드 스크롤이다 */
+    touch?: boolean; armed?: boolean;
   } | null>(null);
+  const holdTimer = useRef<number | undefined>(undefined);
+  // 손가락 빈 곳 톡 = 선택 해제 (데스크톱의 빈 곳 클릭) — 끌면 스크롤
+  const emptyTapRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const dropRef = useRef<DropTarget | null>(null);
@@ -430,6 +450,29 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
     // 스크롤바(또는 내용)를 잡고 끌면 카드가 끌려가 스크롤을 못 쓰던 문제
     if (target.closest('[data-html-scroll]')) return;
     const cardEl = target.closest('[data-kanban-card]');
+    // ── 손가락 (모바일 웹, 2026-10-05) — 끌기는 보드 스크롤이 먼저다.
+    //    카드는 **길게 눌러(0.35초) 집은 뒤에** 끈다. 러버밴드는 없다.
+    if (e.pointerType === 'touch') {
+      window.clearTimeout(holdTimer.current);
+      if (!cardEl) {
+        if (!target.closest('[data-kanban-colhead]')) {
+          emptyTapRef.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+        }
+        return;
+      }
+      const d = {
+        pointerId: e.pointerId,
+        id: cardEl.getAttribute('data-kanban-card')!,
+        startX: e.clientX, startY: e.clientY, moved: false, touch: true, armed: false,
+      };
+      dragRef.current = d;
+      holdTimer.current = window.setTimeout(() => {
+        if (dragRef.current !== d) return;
+        d.armed = true;
+        try { navigator.vibrate?.(12); } catch { /* 지원 안 함 */ }
+      }, 350);
+      return;
+    }
     if (!cardEl) {
       // 빈 영역(보드 배경·컬럼 배경) 드래그 = 러버밴드 다중 선택 (맵과 동일)
       marqueeRef.current = {
@@ -457,8 +500,20 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
       }
       return;
     }
+    const et = emptyTapRef.current;
+    if (et && et.pointerId === e.pointerId && Math.hypot(e.clientX - et.x, e.clientY - et.y) > 8) {
+      emptyTapRef.current = null; // 끌었다 = 스크롤
+    }
     const d = dragRef.current;
     if (!d || d.pointerId !== e.pointerId) return;
+    if (d.touch && !d.armed) {
+      // 집기 전에 움직였다 — 카드 끌기가 아니라 보드 스크롤이다
+      if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 8) {
+        window.clearTimeout(holdTimer.current);
+        dragRef.current = null;
+      }
+      return;
+    }
     if (!d.moved && Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) > 5) {
       d.moved = true;
       setDragId(d.id);
@@ -473,6 +528,12 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    window.clearTimeout(holdTimer.current);
+    const et = emptyTapRef.current;
+    if (et && et.pointerId === e.pointerId) {
+      emptyTapRef.current = null;
+      if (e.type === 'pointerup') { setMultiSelectedIds([]); onSelect(null); }
+    }
     // 러버밴드 확정 — 사각형에 걸친 카드 전체를 다중 선택
     const mq = marqueeRef.current;
     if (mq && mq.pointerId === e.pointerId) {
@@ -514,6 +575,17 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
     setDropTarget(null);
     setGhost(null);
   };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onTouchMove = (e: TouchEvent) => {
+      const d = dragRef.current;
+      if (d?.touch && d.armed && e.cancelable) e.preventDefault();
+    };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, []);
 
   const addCard = (colId: string) => {
     const id = addChildNode(colId);
@@ -562,11 +634,14 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
       style={{
         flex: 1, minWidth: 0, overflow: 'auto', position: 'relative',
         background: `${t.canvas} radial-gradient(circle at center, ${t.border}aa 1px, transparent 1px) 0 0 / 24px 24px repeat`,
-        padding: '40px 30px',
+        // 폰 폭 — 위는 캔버스 도구 모음 자리, 좌우는 좁게. 가로로 넘기면 컬럼 단위로 멈춘다
+        padding: compact ? '60px 12px 16px' : '40px 30px',
+        ...(compact ? { scrollSnapType: 'x mandatory' as const, scrollPaddingLeft: 12, overscrollBehaviorX: 'contain' as const } : {}),
         userSelect: dragId ? 'none' : undefined,
       }}
     >
-      <div style={{
+      {/* 폰 폭에서는 숨긴다 — 오른쪽 도구 모음과 겹친다 */}
+      {!compact && <div style={{
         position: 'absolute', top: 14, left: 14, zIndex: 5,
         display: 'flex', alignItems: 'center', gap: 6,
         padding: '5px 10px', borderRadius: 20,
@@ -576,13 +651,13 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
       }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary }} />
         {tr('editor.kanban.hint')}
-      </div>
+      </div>}
 
-      <div style={{ fontSize: 20, fontWeight: 700, color: t.text, marginBottom: 20, paddingLeft: 4 }}>
+      <div style={{ fontSize: compact ? 17 : 20, fontWeight: 700, color: t.text, marginBottom: compact ? 12 : 20, paddingLeft: 4, overflowWrap: 'anywhere' }}>
         📋 {kanban.title}
       </div>
 
-      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: compact ? 10 : 14, alignItems: 'flex-start' }}>
         {kanban.columns.map(col => (
           <div
             key={col.id}
@@ -590,7 +665,10 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
             style={{
               // 300px — 표·코드 블록이 든 카드(리치 노드)를 담기 위해 260에서
               // 넓힘. 그래도 넘치는 표/코드는 카드 안에서 가로 스크롤된다.
-              width: 300, flexShrink: 0,
+              // 폰 폭 — 화면에 컬럼 하나 + 다음 컬럼 끝이 살짝 보이게
+              width: compact ? 'min(300px, calc(100vw - 56px))' : 300, flexShrink: 0,
+              boxSizing: compact ? 'border-box' : undefined,
+              scrollSnapAlign: compact ? 'start' : undefined,
               // 컬럼(1레벨 노드)에 지정한 색 반영
               background: col.style?.fillColor ?? t.surfaceAlt,
               border: `1px solid ${
@@ -644,7 +722,7 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
             <button
               onClick={() => addCard(col.id)}
               style={{
-                width: '100%', padding: '6px 8px',
+                width: '100%', padding: '6px 8px', minHeight: coarse ? 40 : undefined,
                 background: 'transparent', border: `1px dashed ${t.border}`,
                 borderRadius: 6, color: t.textMuted, cursor: 'pointer',
                 fontSize: 12, fontWeight: 500,
@@ -657,7 +735,8 @@ export function KanbanBoard({ t, kanban, selectedId, onSelect }: Props) {
         <button
           onClick={addColumn}
           style={{
-            width: 200, flexShrink: 0,
+            width: compact ? 160 : 200, flexShrink: 0,
+            scrollSnapAlign: compact ? 'start' : undefined,
             padding: 14, background: 'transparent',
             border: `1px dashed ${t.borderStrong}`, borderRadius: 10,
             color: t.textMuted, cursor: 'pointer',

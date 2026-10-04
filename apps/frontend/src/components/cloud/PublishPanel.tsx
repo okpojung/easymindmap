@@ -26,6 +26,8 @@ import { useProFeature } from '@/pro/contract';
 import { ProSalesGate } from '@pro';
 import { LANG_LOCALE, tr as trNow, useLang, useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
+// 폰 대화상자 규칙(data-mm-*) — 불러오기만 하면 CSS 가 한 번 들어간다
+import '@/components/ui/mobileCss';
 export { rich };
 
 
@@ -345,6 +347,7 @@ export function PublishPanel(
   return (
     <div
       onClick={onClose}
+      data-mm-dialog-overlay=""
       style={{
         position: 'fixed', inset: 0, zIndex: 220, background: 'rgba(0,0,0,0.35)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -353,6 +356,8 @@ export function PublishPanel(
       <div
         onClick={(e) => e.stopPropagation()}
         data-testid="publish-panel"
+        data-mm-dialog=""
+        data-mm-touch=""
         style={{
           position: 'relative',
           width: 'min(500px, 94vw)', background: t.surface, color: t.text,
@@ -373,7 +378,7 @@ export function PublishPanel(
           //   ★ `boxSizing` 이 없으면 **패딩 40px 과 테두리가 그 위에 더해져**
           //     화면을 5px 넘긴다(실측 — 화면 900 에 패널 910). maxHeight 는
           //     content-box 에 걸리기 때문이다.
-          maxHeight: 'calc(100vh - 32px)', boxSizing: 'border-box',
+          maxHeight: 'calc(100dvh - 32px)', boxSizing: 'border-box',
           display: 'flex', flexDirection: 'column',
         }}
       >

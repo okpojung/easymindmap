@@ -20,6 +20,7 @@ import { AVATAR_EMOJIS, nameProblem } from '@/utils/profileName';
 import { fileToAvatarDataUrl } from '@/utils/avatarImage';
 import { AvatarBadge } from './AvatarBadge';
 import { useTr } from '@/i18n';
+import { useCoarse } from '@/hooks/useViewport';
 
 export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
   t: ThemeTokens;
@@ -42,6 +43,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
   const [avatar, setAvatar] = useState<string | null | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const tr = useTr();
+  const coarse = useCoarse();
   const shownAvatar = avatar === undefined ? (profile?.avatar ?? null) : avatar;
   const avatarReady = profile?.avatarReady !== false;
 
@@ -105,20 +107,23 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
     }
   };
   const chip = (active: boolean) => ({
-    width: 32, height: 32, borderRadius: 8, fontSize: 18, lineHeight: 1, cursor: 'pointer',
+    // 손가락이면 40 — 32 는 이웃 칸을 잘못 누르기 쉽다
+    width: coarse ? 40 : 32, height: coarse ? 40 : 32, borderRadius: 8, fontSize: 18, lineHeight: 1, cursor: 'pointer',
     border: `1px solid ${active ? t.primary : t.border}`, background: active ? t.surfaceAlt : t.surface,
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
   });
 
   return (
-    <div data-testid="account-profile-form" style={{ display: 'grid', gap: 12 }}>
+    // minmax(0, 1fr) — 그냥 grid 면 칸이 가장 넓은 자식(사진 단추 줄)만큼 늘어나
+    // 좁은 화면(폰 대화상자 336px)에서 입력칸이 오른쪽으로 삐져나갔다
+    <div data-testid="account-profile-form" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
       {/* 사진/아바타 — 네이버 웨일 프로필처럼. 없으면 이름 첫 자 (2026-09-08) */}
       <div>
         <div style={label}>{tr('auth.profile.photo')}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <AvatarBadge t={t} avatar={shownAvatar} fullName={name || profile?.fullName} email={session?.email} size={56} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               <input
                 ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden
                 data-testid="avatar-file"

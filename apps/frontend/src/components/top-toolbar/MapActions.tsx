@@ -12,6 +12,7 @@
 // 닫은 뒤에는 편집 영역에 문서함(MapBrowser)을 연다.
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { useCloudStore } from '@/stores/cloudStore';
@@ -29,6 +30,8 @@ import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { ProCollabSession, ProDashboardLive, ProDashboardToggle } from '@pro';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { LANG_LOCALE, useLang, useTr } from '@/i18n';
+import { useCoarse } from '@/hooks/useViewport';
+import { MenuItem, MenuSep } from './OverflowMenu';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
 type SaveIntent = null | 'save' | 'close' | 'saveAs';
@@ -36,9 +39,25 @@ type SaveIntent = null | 'save' | 'close' | 'saveAs';
 export function MapActions(
   // iconOnly — 툴바가 좁아지면 라벨을 숨기고 아이콘만 남긴다.
   // **버튼 자체는 없애지 않는다**. 이름은 title 로 그대로 남는다.
-  { t, flash, iconOnly = false }:
-  { t: ThemeTokens; flash: (m: string) => void; iconOnly?: boolean },
+  //
+  // phone — 폰 상단 막대 (모바일 웹 2026-10-05). 막대에는 저장 단추(상태 점이
+  //   붙은 아이콘)만 남기고, 나머지(보관·다른 이름으로 저장·맵 닫기·읽기 전용
+  //   안내·대시보드 전환)는 `menuSlot` 이 가리키는 "⋯" 메뉴 안에 그린다.
+  //   **이 컴포넌트는 메뉴가 닫혀도 계속 살아 있다** — 자동저장 훅과 저장
+  //   대화상자가 여기 있기 때문이다. 그래서 메뉴 안에는 포털로 항목만 넣는다.
+  { t, flash, iconOnly = false, phone = false, menuSlot = null, onMenuPick, stateDot }:
+  {
+    t: ThemeTokens; flash: (m: string) => void; iconOnly?: boolean;
+    phone?: boolean;
+    /** "⋯" 메뉴가 열려 있을 때 항목을 넣을 자리 (닫혀 있으면 null) */
+    menuSlot?: HTMLElement | null;
+    /** 메뉴 항목을 누른 뒤 — 메뉴를 닫는다 */
+    onMenuPick?: () => void;
+    /** 폰: 저장 단추에 얹을 저장 상태 점 색 */
+    stateDot?: string;
+  },
 ) {
+  const coarse = useCoarse();
   const tr = useTr();
   const lang = useLang();
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
@@ -114,6 +133,170 @@ export function MapActions(
     fontSize: 12.5, fontWeight: 600,
     whiteSpace: 'nowrap', flexShrink: 0,
   } as const;
+
+  const pick = (fn: () => void) => () => { onMenuPick?.(); fn(); };
+  const canDashboard = !!(cloudMapId || readOnlyInfo?.dashboard) && !readOnlyInfo?.viewer;
+  const dialogs = (
+    <>
+      {/* 미저장 맵 닫기 경고 (규칙 4) */}
+      {warnUnsaved && (
+        <UnsavedWarning
+          t={t}
+          mapTitle={mapTitle}
+          onCancel={() => setWarnUnsaved(false)}
+          onSaveClose={() => { setWarnUnsaved(false); setSaveIntent('close'); }}
+          onCloseAnyway={() => {
+            setWarnUnsaved(false);
+            // **버리기로 한 문서의 로컬 초안도 버린다** (2026-08-07).
+            // 안 지우면 다음에 앱을 열 때 "저장되지 않은 맵이
+            // 있습니다 — 복구할까요?" 가 계속 뜬다 — 방금 사용자가
+            // "저장하지 않는다"고 답한 그 문서를 두고 묻는 셈이다.
+            void clearLocalDraft(useCloudStore.getState().cloudMapId);
+            clearCurrentMap();
+            flash(tr('shell.mapActions.closedWithoutSave'));
+            setBrowserOpen(true);
+          }}
+        />
+      )}
+
+      {/* 첫 저장 — 폴더·이름·유형 (규칙 3) */}
+      {saveIntent && (
+        <SaveMapDialog
+          t={t}
+          defaultTitle={saveIntent === 'saveAs'
+            ? tr('shell.mapActions.copyTitle', { title: cloudTitle ?? mapTitle })
+            // '새 맵' 비교는 문서에 들어 있는 기본 제목(데이터)이라 번역하지 않는다
+            : mapTitle && mapTitle !== '새 맵' ? mapTitle : tr('shell.mapActions.newMapTitle')}
+          note={saveIntent === 'close'
+            ? tr('shell.mapActions.noteClose')
+            : saveIntent === 'saveAs'
+              ? tr('shell.mapActions.noteSaveAs', { title: cloudTitle ?? mapTitle })
+              : undefined}
+          onCancel={() => setSaveIntent(null)}
+          onSaved={({ title }) => {
+            const intent = saveIntent;
+            setSaveIntent(null);
+            flash(tr('shell.mapActions.savedNew', { title }));
+            if (intent === 'close') {
+              clearCurrentMap();
+              setBrowserOpen(true);
+            }
+          }}
+        />
+      )}
+    </>
+  );
+
+  // ── 폰 막대 ─────────────────────────────────────────────────────────
+  if (phone) {
+    const size = coarse ? 40 : 34;
+    const menu = menuSlot && createPortal(
+      <>
+        {readOnlyInfo && (
+          <div
+            data-testid="readonly-badge"
+            style={{
+              margin: '2px 4px 6px', padding: '7px 10px', borderRadius: 7,
+              background: '#FEF3C7', border: '1px solid #F59E0B',
+              color: '#92400E', fontSize: 12, fontWeight: 700, lineHeight: 1.45,
+            }}
+          >
+            {tr('shell.mapActions.readOnlyBadge', { reason: readOnlyInfo.reason ?? tr('shell.mapActions.readOnlyShort') })}
+            <div style={{ fontWeight: 500, marginTop: 3 }}>{tr('shell.mapActions.readOnlyHint')}</div>
+          </div>
+        )}
+        {canDashboard && (
+          <div style={{ padding: '2px 6px' }}>
+            <ProDashboardToggle
+              t={t}
+              map={{
+                mapId: (cloudMapId ?? readOnlyInfo?.mapId) as string,
+                title: cloudTitle ?? mapTitle,
+                kind: cloudMapId ? cloudKind : readOnlyInfo?.kind,
+                viewMode: readOnlyInfo?.dashboard ? 'dashboard' : 'edit',
+                publishId: null,
+              }}
+              compact={false}
+            />
+          </div>
+        )}
+        {cloudMapId && lastSavedVersion !== null && !readOnlyInfo && (
+          <MenuItem
+            t={t} testId="map-pin-last" icon="☆"
+            label={tr('shell.mapActions.pin')}
+            desc={`v${lastSavedVersion}`}
+            title={tr('shell.mapActions.pinTitle', { v: lastSavedVersion })}
+            onClick={pick(() => { setHistoryPinTarget(lastSavedVersion); setNavTab('history'); })}
+          />
+        )}
+        {cloudMapId && !readOnlyInfo?.viewer && (
+          <MenuItem
+            t={t} testId="map-save-as" icon={<I.Copy size={15} />}
+            label={tr('shell.m.saveAs')}
+            title={tr('shell.mapActions.saveAsTitle')}
+            disabled={busy !== 'idle'}
+            onClick={pick(() => setSaveIntent('saveAs'))}
+          />
+        )}
+        <MenuItem
+          t={t} testId="map-close" icon={<I.X size={15} />}
+          label={tr('shell.mapActions.close')}
+          title={isCurrentMapEmpty()
+            ? tr('shell.mapActions.noMapTitle')
+            : tr('shell.mapActions.closeTitle', { title: cloudTitle ?? mapTitle })}
+          disabled={busy !== 'idle'}
+          onClick={pick(() => void handleClose())}
+        />
+        <MenuSep t={t} />
+      </>,
+      menuSlot,
+    );
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <ProCollabSession
+          mapId={cloudMapId ?? (readOnlyInfo?.viewer ? readOnlyInfo.mapId : null)}
+          kind={cloudMapId ? cloudKind : readOnlyInfo?.kind}
+        />
+        <ProDashboardLive t={t} mapId={readOnlyInfo?.dashboard ? readOnlyInfo.mapId : null} />
+        {/* 읽기 전용 — 막대에는 자물쇠만, 사유 전문은 "⋯" 메뉴 맨 위에 */}
+        {readOnlyInfo && (
+          <span
+            data-testid="m-readonly-lock"
+            title={readOnlyInfo.reason ?? tr('shell.mapActions.readOnlyReason')}
+            aria-label={readOnlyInfo.reason ?? tr('shell.mapActions.readOnlyReason')}
+            style={{ fontSize: 14, lineHeight: 1, padding: '0 2px' }}
+          >🔒</span>
+        )}
+        {!readOnlyInfo?.viewer && (
+          <button
+            data-testid="map-save"
+            title={tr('shell.mapActions.saveTitle', { hint: savedHint })}
+            aria-label={tr('common.save')}
+            disabled={busy !== 'idle'}
+            onClick={() => void handleSave()}
+            style={{
+              position: 'relative',
+              width: size, height: size, borderRadius: 8, padding: 0, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: t.surfaceAlt, color: t.text,
+              border: `1px solid ${cloudMapId ? t.primaryBorder + '66' : t.border}`,
+              cursor: busy === 'idle' ? 'pointer' : 'default',
+            }}
+          >
+            <I.Cloud size={17} />
+            {stateDot && (
+              <span style={{
+                position: 'absolute', right: 5, top: 5, width: 7, height: 7, borderRadius: '50%',
+                background: stateDot, boxShadow: `0 0 0 2px ${t.surfaceAlt}`,
+              }} />
+            )}
+          </button>
+        )}
+        {menu}
+        {dialogs}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -240,99 +423,74 @@ export function MapActions(
         <I.X size={15} />{!iconOnly && ` ${tr('shell.mapActions.close')}`}
       </button>
 
-      {/* 미저장 맵 닫기 경고 (규칙 4) */}
-      {warnUnsaved && (
-        <div
-          onClick={() => setWarnUnsaved(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 220, background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            data-testid="unsaved-warning"
-            style={{
-              position: 'relative',
-              width: 'min(420px, 92vw)', background: t.surface, color: t.text,
-              border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
-              boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
-            }}
-          >
-            <DialogXButton t={t} testId="unsaved-warning-x" onClose={() => setWarnUnsaved(false)} />
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6, paddingRight: 34 }}>
-              {tr('shell.mapActions.unsavedTitle')}
-            </div>
-            <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7, marginBottom: 16 }}>
-              {tr('shell.mapActions.unsavedBody', { title: mapTitle })}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <button
-                data-testid="unsaved-save-close"
-                onClick={() => { setWarnUnsaved(false); setSaveIntent('close'); }}
-                style={{
-                  height: 36, borderRadius: 7, border: 'none', cursor: 'pointer',
-                  background: t.primary, color: '#fff', fontSize: 13, fontWeight: 700,
-                }}
-              >{tr('shell.mapActions.saveAndClose')}</button>
-              <button
-                data-testid="unsaved-close-anyway"
-                onClick={() => {
-                  setWarnUnsaved(false);
-                  // **버리기로 한 문서의 로컬 초안도 버린다** (2026-08-07).
-                  // 안 지우면 다음에 앱을 열 때 "저장되지 않은 맵이
-                  // 있습니다 — 복구할까요?" 가 계속 뜬다 — 방금 사용자가
-                  // "저장하지 않는다"고 답한 그 문서를 두고 묻는 셈이다.
-                  void clearLocalDraft(useCloudStore.getState().cloudMapId);
-                  clearCurrentMap();
-                  flash(tr('shell.mapActions.closedWithoutSave'));
-                  setBrowserOpen(true);
-                }}
-                style={{
-                  height: 34, borderRadius: 7, cursor: 'pointer',
-                  border: `1px solid ${t.border}`, background: t.surfaceAlt,
-                  color: t.text, fontSize: 12.5, fontWeight: 600,
-                }}
-              >{tr('shell.mapActions.closeWithoutSave')}</button>
-              <button
-                data-testid="unsaved-cancel"
-                onClick={() => setWarnUnsaved(false)}
-                style={{
-                  height: 32, borderRadius: 7, cursor: 'pointer',
-                  border: 'none', background: 'transparent',
-                  color: t.textSubtle, fontSize: 12.5,
-                }}
-              >{tr('common.cancel')}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {dialogs}
+    </div>
+  );
+}
 
-      {/* 첫 저장 — 폴더·이름·유형 (규칙 3) */}
-      {saveIntent && (
-        <SaveMapDialog
-          t={t}
-          defaultTitle={saveIntent === 'saveAs'
-            ? tr('shell.mapActions.copyTitle', { title: cloudTitle ?? mapTitle })
-            // '새 맵' 비교는 문서에 들어 있는 기본 제목(데이터)이라 번역하지 않는다
-            : mapTitle && mapTitle !== '새 맵' ? mapTitle : tr('shell.mapActions.newMapTitle')}
-          note={saveIntent === 'close'
-            ? tr('shell.mapActions.noteClose')
-            : saveIntent === 'saveAs'
-              ? tr('shell.mapActions.noteSaveAs', { title: cloudTitle ?? mapTitle })
-              : undefined}
-          onCancel={() => setSaveIntent(null)}
-          onSaved={({ title }) => {
-            const intent = saveIntent;
-            setSaveIntent(null);
-            flash(tr('shell.mapActions.savedNew', { title }));
-            if (intent === 'close') {
-              clearCurrentMap();
-              setBrowserOpen(true);
-            }
-          }}
-        />
-      )}
+/** 미저장 맵 닫기 경고 (규칙 4) — 막대 모양(데스크톱·폰)과 상관없이 같은 대화상자 */
+function UnsavedWarning({ t, mapTitle, onCancel, onSaveClose, onCloseAnyway }: {
+  t: ThemeTokens; mapTitle: string;
+  onCancel: () => void; onSaveClose: () => void; onCloseAnyway: () => void;
+}) {
+  const tr = useTr();
+  const coarse = useCoarse();
+  // 손가락 입력이면 단추 높이를 40px 로 — 데스크톱은 예전 크기 그대로
+  const h = (desk: number) => (coarse ? 40 : desk);
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 220, background: 'rgba(0,0,0,0.35)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        data-testid="unsaved-warning"
+        style={{
+          position: 'relative',
+          width: 'min(420px, calc(100vw - 24px))', background: t.surface, color: t.text,
+          border: `1px solid ${t.border}`, borderRadius: 12, padding: 20,
+          boxShadow: '0 16px 48px rgba(0,0,0,0.3)',
+        }}
+      >
+        <DialogXButton t={t} testId="unsaved-warning-x" onClose={onCancel} />
+        <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 6, paddingRight: 34 }}>
+          {tr('shell.mapActions.unsavedTitle')}
+        </div>
+        <div style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.7, marginBottom: 16 }}>
+          {tr('shell.mapActions.unsavedBody', { title: mapTitle })}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <button
+            data-testid="unsaved-save-close"
+            onClick={onSaveClose}
+            style={{
+              height: h(36), borderRadius: 7, border: 'none', cursor: 'pointer',
+              background: t.primary, color: '#fff', fontSize: 13, fontWeight: 700,
+            }}
+          >{tr('shell.mapActions.saveAndClose')}</button>
+          <button
+            data-testid="unsaved-close-anyway"
+            onClick={onCloseAnyway}
+            style={{
+              height: h(34), borderRadius: 7, cursor: 'pointer',
+              border: `1px solid ${t.border}`, background: t.surfaceAlt,
+              color: t.text, fontSize: 12.5, fontWeight: 600,
+            }}
+          >{tr('shell.mapActions.closeWithoutSave')}</button>
+          <button
+            data-testid="unsaved-cancel"
+            onClick={onCancel}
+            style={{
+              height: h(32), borderRadius: 7, cursor: 'pointer',
+              border: 'none', background: 'transparent',
+              color: t.textSubtle, fontSize: 12.5,
+            }}
+          >{tr('common.cancel')}</button>
+        </div>
+      </div>
     </div>
   );
 }

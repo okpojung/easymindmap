@@ -42,6 +42,8 @@ import { AiConfirmPopover, type ConfirmRequest } from './AiConfirmPopover';
 import { rich } from '@/i18n/rich';
 
 
+// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import '@/components/ui/mobileCss';
 export function AITab({ t }: { t: ThemeTokens }) {
   // Guest 체험 (2026-08-04) — API 키 등록·호출 없음: 웹 AI(클립보드
   // 왕복)만 제공하고 모드 스위치를 숨긴다.
@@ -61,7 +63,7 @@ export function AITab({ t }: { t: ThemeTokens }) {
   }
 
   return (
-    <div>
+    <div data-mm-touch="">
       <GenerateView t={t} onNeedKey={() => openAiSettings(true)} />
     </div>
   );

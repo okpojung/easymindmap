@@ -23,6 +23,8 @@
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import { useTr } from '@/i18n';
+import { useCoarse } from '@/hooks/useViewport';
+import { useViewportStore } from '@/stores/viewportStore';
 
 type ActionKey = 'child' | 'child-left' | 'parent' | 'before' | 'after';
 
@@ -58,7 +60,14 @@ export function NodeIndicators({
 }: Props) {
   const tr = useTr();
   const isRoot = node.depth === 0;
-  const GAP = 26;
+  // 손가락 — 배율이 작아도 화면에서 누를 만한 크기로 (모바일 웹, 2026-10-05).
+  // 맵 좌표로 그리므로 축소하면 같이 작아진다 → 배율의 역수만큼(최대 4배) 키우고,
+  // 누르는 자리는 지름 40px(화면) 안팎. 마우스는 예전 그대로(f = 1).
+  const coarse = useCoarse();
+  const zoom = useViewportStore((s) => s.zoom);
+  const f = coarse ? Math.min(4, Math.max(1, 100 / (zoom || 100))) : 1;
+  const GAP = 26 * f;
+  const HIT_R = (coarse ? 20 : 14) * f;
 
   const handlers: Record<ActionKey, () => void> = {
     child: () => onAddChild(isRoot ? 'right' : undefined),
@@ -167,10 +176,10 @@ export function NodeIndicators({
               x2={s.x} y2={s.y}
               stroke={t.primary} strokeWidth="1.3" strokeDasharray="2 3"
             />
-            <circle cx={s.x} cy={s.y} r="14" fill="transparent" />
-            <circle cx={s.x} cy={s.y} r="11" fill={t.surface} stroke={t.primary} strokeWidth="1.8" />
-            <line x1={s.x - 5} y1={s.y} x2={s.x + 5} y2={s.y} stroke={t.primary} strokeWidth="1.8" strokeLinecap="round" />
-            <line x1={s.x} y1={s.y - 5} x2={s.x} y2={s.y + 5} stroke={t.primary} strokeWidth="1.8" strokeLinecap="round" />
+            <circle cx={s.x} cy={s.y} r={HIT_R} fill="transparent" />
+            <circle cx={s.x} cy={s.y} r={11 * f} fill={t.surface} stroke={t.primary} strokeWidth={1.8 * f} />
+            <line x1={s.x - 5 * f} y1={s.y} x2={s.x + 5 * f} y2={s.y} stroke={t.primary} strokeWidth={1.8 * f} strokeLinecap="round" />
+            <line x1={s.x} y1={s.y - 5 * f} x2={s.x} y2={s.y + 5 * f} stroke={t.primary} strokeWidth={1.8 * f} strokeLinecap="round" />
           </g>
         );
       })}

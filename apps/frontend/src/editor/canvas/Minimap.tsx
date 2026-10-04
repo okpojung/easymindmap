@@ -32,10 +32,12 @@ interface Props {
   H: number;
   CX: number;
   CY: number;
+  /** 폰 폭 — 작은 패널로 (모바일 웹, 2026-10-05) */
+  compact?: boolean;
   onClose: () => void;
 }
 
-export function Minimap({ t, nodes, W, H, CX, CY, onClose }: Props) {
+export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   const tr = useTr();
   const zoom = useViewportStore((s) => s.zoom);
   const panX = useViewportStore((s) => s.panX);
@@ -54,7 +56,10 @@ export function Minimap({ t, nodes, W, H, CX, CY, onClose }: Props) {
   // 휠로 창을 옮긴 뒤에는 표시창과 무관하게 그 창을 지킨다 (다음 클릭·끌기까지)
   const [hold, setHold] = useState(false);
   const mode: MinimapOriginMode = dragging ? 'follow' : hold ? 'hold' : 'auto';
-  const { panelW, panelH } = minimapPanelSize(W, H);
+  // 폰 폭에서는 화면의 40% × 20% 안쪽 — 데스크톱 최소 200×150 은 390px 화면의 절반을 가린다
+  const full = minimapPanelSize(W, H);
+  const panelW = compact ? Math.round(Math.min(160, W * 0.42)) : full.panelW;
+  const panelH = compact ? Math.round(Math.min(120, H * 0.2)) : full.panelH;
   const geom = minimapGeometry(nodeBounds, viewWorld, panelW, panelH, originRef.current, mode);
   originRef.current = { x: geom.bounds.x, y: geom.bounds.y, scale: geom.scale };
   const view = worldToMini(geom, viewWorld);
@@ -124,7 +129,7 @@ export function Minimap({ t, nodes, W, H, CX, CY, onClose }: Props) {
       data-testid="minimap"
       className="mm-overlay-controls"
       style={{
-        position: 'absolute', right: 14, bottom: 14, zIndex: 6,
+        position: 'absolute', right: compact ? 8 : 14, bottom: compact ? 8 : 14, zIndex: 6,
         background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8,
         boxShadow: t.shadowSm, padding: 4, userSelect: 'none',
       }}
@@ -135,7 +140,7 @@ export function Minimap({ t, nodes, W, H, CX, CY, onClose }: Props) {
         title={tr('editor.minimap.close')}
         style={{
           position: 'absolute', top: 2, right: 4, zIndex: 1,
-          width: 18, height: 18, border: 'none', borderRadius: 4,
+          width: compact ? 28 : 18, height: compact ? 28 : 18, border: 'none', borderRadius: 4,
           background: 'transparent', color: t.textMuted, cursor: 'pointer',
           fontSize: 13, lineHeight: 1, padding: 0,
         }}
@@ -153,7 +158,8 @@ export function Minimap({ t, nodes, W, H, CX, CY, onClose }: Props) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onClick={(e) => e.stopPropagation()}
-        style={{ display: 'block', cursor: dragging ? 'grabbing' : 'grab', overflow: 'hidden', borderRadius: 5, background: t.surfaceAlt }}
+        // touchAction none — 손가락으로 표시창을 끌 때 페이지가 스크롤되지 않게
+        style={{ display: 'block', cursor: dragging ? 'grabbing' : 'grab', overflow: 'hidden', borderRadius: 5, background: t.surfaceAlt, touchAction: 'none' }}
       >
         {nodes.map((n) => {
           const c = resolveNodeColors(n, t);

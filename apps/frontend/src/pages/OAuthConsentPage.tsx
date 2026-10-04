@@ -24,6 +24,8 @@ import {
 import { useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
+// 폰 입력칸 규칙(data-mm-touch) — 불러오기만 하면 CSS 가 한 번 들어간다
+import '@/components/ui/mobileCss';
 
 // 동의 화면은 **항상 밝은 테마**다 — 관리자 콘솔과 같은 이유로, 에디터의
 // 테마 스토어를 여기까지 끌고 오지 않는다.
@@ -128,7 +130,7 @@ export function OAuthConsentPage() {
           {rich(tr('auth.consent.loginBody'))}
         </p>
         <div style={{ marginTop: 6 }}>
-          <LoginForm t={t} />
+          <LoginForm t={t} hideGuest />
         </div>
       </Shell>
     );
@@ -277,15 +279,18 @@ function Shell({
     <div
       data-testid={testId}
       style={{
-        minHeight: '100vh', background: t.bg, color: t.text, padding: '48px 20px',
+        // 100dvh — 폰 브라우저의 주소창 높이를 뺀 실제 화면. 위 여백은 폰에서 줄인다
+        minHeight: '100dvh', boxSizing: 'border-box', background: t.bg, color: t.text,
+        padding: 'clamp(16px, 6vh, 48px) clamp(12px, 4vw, 20px) calc(24px + env(safe-area-inset-bottom))',
         display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
       }}
     >
       <div
+        data-mm-touch=""
         style={{
-          width: '100%', maxWidth: 420, background: t.surface, borderRadius: 14,
-          border: `1px solid ${t.border}`, boxShadow: t.shadowSm, padding: '26px 24px 24px',
+          width: '100%', maxWidth: 420, boxSizing: 'border-box', background: t.surface, borderRadius: 14,
+          border: `1px solid ${t.border}`, boxShadow: t.shadowSm, padding: 'clamp(18px, 5vw, 26px) clamp(16px, 5vw, 24px) 24px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>

@@ -741,7 +741,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
         >
             <LanguagePicker t={t} />
             <div style={{ fontSize: 11.5, color: t.textMuted, lineHeight: 1.6, marginTop: 8 }}>
-              {tr('common.languageHint')}
+              {tr(profile?.languageReady ? 'common.languageHintAccount' : 'common.languageHint')}
             </div>
         </DialogFrame>
       )}

@@ -8,7 +8,7 @@ import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorato
 import { AccountService } from './account.service';
 import {
   DeleteAccountDto, LoginEventDto, ResetConfirmDto, ResetStartDto, ResetVerifyDto,
-  SaveAiKeyDto, SaveAiSettingsDto, SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
+  SaveAiKeyDto, SaveAiSettingsDto, SaveLanguageDto, SaveProfileDto, SendEmailCodeDto, VerifyEmailCodeDto,
 } from './dto/account.dto';
 import { AuditLogService } from '../common/audit-log.service';
 import { LoginEventsService } from '../common/login-events.service';
@@ -56,6 +56,13 @@ export class AccountController {
   @UseGuards(AuthGuard)
   saveProfile(@CurrentUser() user: AuthUser, @Body() dto: SaveProfileDto) {
     return this.account.saveProfile(user.id, user.email ?? '', dto);
+  }
+
+  /** 화면 언어 — 어느 기기에서나 같은 언어로 (2026-10-05, i18n.md P3) */
+  @Put('language')
+  @UseGuards(AuthGuard)
+  saveLanguage(@CurrentUser() user: AuthUser, @Body() dto: SaveLanguageDto) {
+    return this.account.saveLanguage(user.id, dto.language);
   }
 
   // ── AI API 키 보관 (2026-09-04) — 본인 것만, 암호화 저장 ──────────

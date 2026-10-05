@@ -79,7 +79,8 @@
 | 19 | DELETE | `/v1/attachments/:id` | 삭제 → 204. **내 것이거나 그 맵에 쓸 수 있는 사람**이면 된다 (2026-09-05 — 협업맵의 첨부는 맵 주인 것이라, 올린 참가자가 노드에서 뗄 때 파일도 지우려면 편집 권한으로 열어야 한다). 읽기만 참가자·남은 404 |
 | 19b | POST | `/v1/account/email-code` | **무인증.** 가입 이메일 인증번호 발송 `{email}` → `{sent,expiresInMin,devCode?}` — devCode 는 AUTH_MODE=dev + 메일 미설정일 때만 (2026-08-09) |
 | 19c | POST | `/v1/account/email-code/verify` | **무인증.** `{email,code}` → `{verified,emailToken}` (인증표, 유효 30분) |
-| 19d | GET/PUT | `/v1/account/profile` | 회원 프로필 조회·저장 `{fullName,phoneCountry?,phoneNumber?,emailToken?}` → `{fullName,phoneCountry,phoneNumber,plan,emailVerifiedAt,phoneVerifiedAt,complete}` |
+| 19d | GET/PUT | `/v1/account/profile` | 회원 프로필 조회·저장 `{fullName,phoneCountry?,phoneNumber?,emailToken?}` → `{fullName,phoneCountry,phoneNumber,plan,emailVerifiedAt,phoneVerifiedAt,complete}` · 2026-10-05: 응답에 `language`(고른 화면 언어 ko·en·zh·ja, 없으면 null)·`languageReady`(서버에 `users.language` 열이 있는가) |
+| 19d2 | PUT | `/v1/account/language` | **화면 언어를 계정에**(2026-10-05, i18n.md P3) `{language:'ko'\|'en'\|'zh'\|'ja'}` → `{saved:true,language}`. 그 밖의 값은 400. 열이 없는 서버(델타 전)는 **200 `{saved:false,reason:'NO_COLUMN'}`** — 앱은 언어를 브라우저에만 기억한다. 프로필 저장과 따로인 이유: 성명 없이 언어만 바꾼다 |
 | 19e | GET | `/v1/account/ai-keys` | **내 AI API 키**(2026-09-04) → `{enabled, reason?:'secret'\|'schema', keys:{[provider]:{key,hint,updatedAt}}}` — 본인 것만 **복호화해서** 준다. `enabled:false` = 서버가 못 맡는다(`AI_KEY_SECRET` 미설정 / `user_ai_keys` 표 없음) → 프런트는 브라우저 보관으로 되돌아간다 |
 | 19g | GET | `/v1/account/ai-settings` | **내 AI 설정**(2026-09-04) → `{available, settings:{priority?,models?,systemPrompt?}\|null, updatedAt}`. 비밀이 아니라 `AI_KEY_SECRET` 과 무관. `available:false` = `user_ai_settings` 표 없음(델타 미적용) — 앱은 브라우저 값으로 동작 |
 | 19h | PUT | `/v1/account/ai-settings` | `{priority?:['anthropic'\|'openai'\|'gemini'…], models?:{회사:모델}, systemPrompt?}` → `{saved}`. 계정당 1행 upsert. 표가 없으면 **503 + 이유 문장** |

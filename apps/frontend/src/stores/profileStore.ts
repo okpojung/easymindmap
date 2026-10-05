@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import { cloudApi, CloudError, type AccountProfile } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
-import { tr } from '@/i18n';
+import { LANGS, tr, useLangStore, type Lang } from '@/i18n';
 
 /**
  * **가입 때 적은 성명·휴대폰을 잃지 않는다** (2026-09-08 실사용 보고: 계정
@@ -104,6 +104,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
           }
         }
         set({ profile: p, forUser: uid, loaded: true, error: null });
+        syncLanguageFromProfile(p);
         return p;
       })
       .catch((err: unknown) => {
@@ -122,4 +123,50 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 // 계정이 바뀌면(로그아웃·다른 계정 로그인) 비운다
 useAuthStore.subscribe((s, prev) => {
   if (s.session?.userId !== prev.session?.userId) useProfileStore.getState().clear();
+});
+
+// ── 화면 언어를 계정에 (2026-10-05, i18n.md P3) ─────────────────────────
+//
+// 어느 기기에서 로그인해도 같은 언어로 뜨게 한다. 순서(i18n.md §1):
+//   ① 프로필을 읽었을 때 계정에 언어가 있으면 **그것을 따른다**(서버가 이긴다)
+//   ② 계정에 아직 없으면(처음) 지금 이 브라우저의 언어를 계정에 올린다
+//   ③ 로그인한 채 언어를 바꾸면 계정에도 저장한다
+// 서버에 열이 없으면(델타 전, `languageReady:false`) 아무것도 올리지 않는다 —
+// 언어는 지금처럼 이 브라우저에만 기억된다.
+
+/** ① 을 적용하는 동안 ③ 이 그 변경을 다시 서버로 올리지 않게 */
+let applyingFromServer = false;
+
+function isLang(v: unknown): v is Lang {
+  return typeof v === 'string' && (LANGS as readonly string[]).includes(v);
+}
+
+function pushLanguage(lang: Lang): void {
+  void cloudApi.saveLanguage(lang)
+    .then((r) => {
+      const st = useProfileStore.getState();
+      if (r.saved && st.profile) st.setProfile({ ...st.profile, language: lang });
+    })
+    .catch(() => { /* 못 올려도 이 브라우저에는 기억돼 있다 — 다음 변경 때 다시 */ });
+}
+
+export function syncLanguageFromProfile(p: AccountProfile): void {
+  if (!p.languageReady) return;
+  const local = useLangStore.getState().lang;
+  if (isLang(p.language)) {
+    if (p.language !== local) {
+      applyingFromServer = true;
+      try { useLangStore.getState().setLang(p.language); } finally { applyingFromServer = false; }
+    }
+  } else {
+    pushLanguage(local);
+  }
+}
+
+useLangStore.subscribe((s, prev) => {
+  if (s.lang === prev.lang || applyingFromServer) return;
+  if (!useAuthStore.getState().session) return; // 게스트·로그인 전 — 브라우저에만
+  const st = useProfileStore.getState();
+  if (!st.profile?.languageReady) return;
+  pushLanguage(s.lang);
 });

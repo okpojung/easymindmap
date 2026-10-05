@@ -28,6 +28,7 @@ export default defineDict({
     'common.error': '오류가 났습니다.',
     'common.language': '언어',
     'common.languageHint': '화면에 쓰는 언어입니다. 이 브라우저에 기억됩니다.',
+    'common.languageHintAccount': '화면에 쓰는 언어입니다. 계정에 저장되어, 어느 기기에서 로그인해도 같은 언어로 열립니다.',
   },
   en: {
     'common.ok': 'OK',
@@ -55,6 +56,7 @@ export default defineDict({
     'common.error': 'Something went wrong.',
     'common.language': 'Language',
     'common.languageHint': 'The language used on screen. Remembered in this browser.',
+    'common.languageHintAccount': 'The language used on screen. Saved to your account, so it applies on every device you sign in on.',
   },
   zh: {
     'common.ok': '确定',
@@ -82,6 +84,7 @@ export default defineDict({
     'common.error': '出错了。',
     'common.language': '语言',
     'common.languageHint': '界面显示的语言，会保存在此浏览器中。',
+    'common.languageHintAccount': '界面显示的语言。已保存到您的账户，在任何设备登录都会使用相同语言。',
   },
   ja: {
     'common.ok': 'OK',
@@ -109,5 +112,6 @@ export default defineDict({
     'common.error': 'エラーが発生しました。',
     'common.language': '言語',
     'common.languageHint': '画面に表示する言語です。このブラウザに保存されます。',
+    'common.languageHintAccount': '画面に表示する言語です。アカウントに保存され、どの端末でログインしても同じ言語で表示されます。',
   },
 });

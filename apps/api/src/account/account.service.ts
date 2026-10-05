@@ -392,20 +392,23 @@ export class AccountService {
       phone_number: string | null; plan: string;
       email_verified_at: Date | null; phone_verified_at: Date | null;
       avatar?: string | null;
+      language?: string | null;
     };
     // 낡은 표(avatar 열 없음, 2026-09-08 델타 전)에서도 프로필은 산다 —
     // **오류 코드로 판단하지 않는다**(DatabaseService 가 42703 을 503 으로
     // 바꿔 올리므로 catch 로는 못 잡는다 — table-ready.ts 머리말). 열이
     // 있는지 직접 묻고, 없으면 열 없이 읽는다. 없음은 1분만 기억한다.
     const avatarReady = await columnReady(this.db, 'users', 'avatar');
+    // 화면 언어(2026-10-05 델타) — 사진과 같은 방식: 열이 없으면 빼고 읽는다
+    const languageReady = await columnReady(this.db, 'users', 'language');
+    const cols = [
+      'full_name', 'phone_country', 'phone_number', 'plan',
+      'email_verified_at', 'phone_verified_at',
+      ...(avatarReady ? ['avatar'] : []),
+      ...(languageReady ? ['language'] : []),
+    ];
     const { rows } = await this.db.query<Row>(
-      avatarReady
-        ? `SELECT full_name, phone_country, phone_number, plan,
-                  email_verified_at, phone_verified_at, avatar
-             FROM public.users WHERE id = $1`
-        : `SELECT full_name, phone_country, phone_number, plan,
-                  email_verified_at, phone_verified_at
-             FROM public.users WHERE id = $1`,
+      `SELECT ${cols.join(', ')} FROM public.users WHERE id = $1`,
       [userId],
     );
     const r = rows[0];
@@ -423,7 +426,30 @@ export class AccountService {
       avatar: r?.avatar ?? null,
       /** 서버에 사진 열이 있는가 — 없으면 앱이 사진 선택을 막고 안내한다 */
       avatarReady,
+      /** 고른 화면 언어(ko·en·zh·ja) — 고른 적 없거나 열이 없으면 null (2026-10-05) */
+      language: r?.language ?? null,
+      /** 서버에 언어 열이 있는가 — 없으면 앱은 언어를 이 브라우저에만 기억한다 */
+      languageReady,
     };
+  }
+
+  /**
+   * 화면 언어 저장 (2026-10-05, i18n.md P3). 값 검사는 DTO(`@IsIn`)가 한다.
+   * 열이 없는 서버(델타 전)면 **400 이 아니라 저장 안 됨을 알리는 200** —
+   * 앱은 그대로 이 브라우저에만 기억하고, 언어를 바꿀 때마다 오류를 띄우지 않는다.
+   */
+  async saveLanguage(userId: string, language: string) {
+    if (!(await columnReady(this.db, 'users', 'language', { missTtlMs: 0 }))) {
+      return { saved: false as const, language, reason: 'NO_COLUMN' as const };
+    }
+    const res = await this.db.query(
+      `UPDATE public.users SET language = $2, updated_at = NOW() WHERE id = $1`,
+      [userId, language],
+    );
+    if (res.rowCount === 0) {
+      throw new BadRequestException('계정을 찾을 수 없습니다. 다시 로그인해 주세요.');
+    }
+    return { saved: true as const, language };
   }
 
   /**

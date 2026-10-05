@@ -7,6 +7,9 @@
 -- 어디서: docker 가 도는 호스트의 SSH 터미널 — dev 는 `ubuntu@em-dev`.
 --   bash apps/api/database/deltas/apply-delta.sh 이파일   (컨테이너 자동 탐색)
 --   또는 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f 이파일
+-- 2026-10-05 dev 적용 완료 (✅ DB=roxca4… 계정=postgres DB이름=postgres · language | text).
+--   적용 뒤 실측: PUT /v1/account/language → saved:true, 프로필 language 즉시 반영,
+--   일본어 브라우저로 로그인하자 계정 언어(en)로 바뀜.
 --
 -- **두 번 실행해도 안전하다** — ADD COLUMN IF NOT EXISTS 만 쓴다.
 -- **지우는 것이 없다** — 칸 하나를 더할 뿐이고 기존 행은 NULL(브라우저 언어).

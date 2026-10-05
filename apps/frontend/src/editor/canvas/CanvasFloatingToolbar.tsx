@@ -320,7 +320,6 @@ export function CanvasFloatingToolbar({
       {
         label: tr('editor.toolbar.groupView'),
         items: [
-          { key: 'pan', icon: <I.Hand size={16} />, label: tr('editor.toolbar.m.pan'), highlight: panMode, hidden: !!kanban, onClick: close(togglePanMode) },
           {
             key: 'focus', icon: focusActive ? <I.FocusOff size={16} /> : <I.Focus size={16} />,
             label: kanban ? tr('editor.toolbar.m.scrollToCard') : focusActive ? tr('editor.toolbar.m.focusOff') : tr('editor.toolbar.m.focus'),
@@ -379,13 +378,26 @@ export function CanvasFloatingToolbar({
         >
           <I.Trash size={16} />
         </ToolbarBtn>
+        {/* Pan 모드 — 폰에서는 ⋯ 안이 아니라 늘 보이게 (2026-10-05 사용자 요청).
+            폰은 Pan 모드로 시작하므로 끄는 단추가 바로 보여야 한다 */}
+        {!kanban && (
+          <ToolbarBtn
+            t={t}
+            title={tr(panMode ? 'editor.toolbar.m.panOff' : 'editor.toolbar.m.pan')}
+            highlight={panMode}
+            onClick={() => { setMoreOpen(false); togglePanMode(); }}
+            testId="m-canvas-pan"
+          >
+            <I.Hand size={16} />
+          </ToolbarBtn>
+        )}
         <ToolbarBtn t={t} title={kanban ? tr('editor.toolbar.boardHome') : tr('editor.toolbar.fit')} onClick={onFitView} testId="m-canvas-fit">
           <I.Fit size={16} />
         </ToolbarBtn>
         <ToolbarBtn
           t={t}
           title={tr('editor.toolbar.m.more')}
-          highlight={moreOpen || !!connectMode || !!stylePainter || placingCenter || panMode}
+          highlight={moreOpen || !!connectMode || !!stylePainter || placingCenter}
           onClick={() => { setAddMenuOpen(false); setMoreOpen((v) => !v); }}
           testId="m-canvas-more"
           ariaExpanded={moreOpen}

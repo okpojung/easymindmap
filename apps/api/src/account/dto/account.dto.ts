@@ -172,3 +172,11 @@ export class SaveAiKeyDto {
   @MaxLength(512)
   key!: string;
 }
+
+/** 화면 언어 저장 (2026-10-05, i18n.md P3) — 프로필 저장과 따로: 성명 없이 언어만 바꾼다 */
+export const UI_LANGUAGES = ['ko', 'en', 'zh', 'ja'] as const;
+export class SaveLanguageDto {
+  @IsString()
+  @IsIn(UI_LANGUAGES as unknown as string[], { message: 'language 는 ko·en·zh·ja 중 하나여야 합니다.' })
+  language!: string;
+}

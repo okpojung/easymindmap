@@ -249,6 +249,10 @@ export interface AccountProfile {
   avatar?: string | null;
   /** 서버에 사진 열이 있는가(델타 SQL) — false 면 사진 선택을 막고 안내 */
   avatarReady?: boolean;
+  /** 고른 화면 언어(ko·en·zh·ja) — 고른 적 없으면 null (2026-10-05, i18n.md P3) */
+  language?: string | null;
+  /** 서버에 언어 열이 있는가(델타 SQL) — false 면 언어는 이 브라우저에만 기억된다 */
+  languageReady?: boolean;
 }
 
 /** MCP 커넥터 토큰 한 개 (2026-09-04) — **원문은 여기 없다**(발급 응답에만 한 번) */
@@ -565,6 +569,9 @@ export const cloudApi = {
     /** 생략 = 그대로 · null = 지움 · 문자열 = 바꿈 */
     avatar?: string | null;
   }) => req<AccountProfile>('PUT', '/account/profile', p),
+  /** 화면 언어를 계정에 — 열이 없는 서버면 `saved:false` (오류 아님) */
+  saveLanguage: (language: string) =>
+    req<{ saved: boolean; language: string; reason?: string }>('PUT', '/account/language', { language }),
 
   /** **내 로그인 기록** (2026-08-13) — 남의 것은 볼 수 없다(서버가 토큰 주인만 본다) */
   myLogins: () => req<LoginHistory>('GET', '/account/logins'),

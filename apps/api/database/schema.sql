@@ -1271,3 +1271,13 @@ ALTER TABLE public.users
 COMMENT ON COLUMN public.users.avatar IS
     '프로필 사진(data URL, ≤64KB) 또는 이모지 아바타(emoji:😀). NULL = 이름 첫 자.';
 
+-- ── 화면 언어 (2026-10-05 사용자 요청 — i18n.md P3) ─────────────────────
+-- 로그인한 사람이 고른 화면 언어. 어느 기기에서 로그인해도 같은 언어로 뜬다.
+--   'ko' · 'en' · 'zh' · 'ja' (앱이 검사한다 — 언어를 더할 때 제약을 바꾸지
+--   않도록 CHECK 는 두지 않는다). NULL = 아직 고른 적 없음(브라우저 언어).
+-- 열이 없는 서버에서도 앱은 죽지 않는다 — 언어는 이 브라우저에만 기억된다.
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS language TEXT;
+COMMENT ON COLUMN public.users.language IS
+    '화면 언어(ko·en·zh·ja). NULL = 고른 적 없음 — 브라우저 언어를 따른다.';
+

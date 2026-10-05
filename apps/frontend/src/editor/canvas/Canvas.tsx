@@ -121,6 +121,9 @@ function clampZoom(v: number) {
   return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v));
 }
 
+/** Pan 모드 안내가 떠 있는 시간 — 마지막 0.6초에 흐려진다(global.css `mm-pan-hint`) */
+const PAN_HINT_MS = 4000;
+
 export function Canvas({
   t,
   sample,
@@ -170,6 +173,18 @@ export function Canvas({
   const storePanX = useViewportStore((s) => s.panX);
   const storePanY = useViewportStore((s) => s.panY);
   const panMode = useViewportStore((s) => s.panMode);
+  /**
+   * Pan 모드 안내는 **켜는 순간 4초만** 보인다 (2026-10-05 사용자 요청 — 폰
+   * 화면 위쪽을 늘 크게 차지했다). 그 뒤에도 Pan 모드인 것은 주황 테두리와
+   * 강조된 ✋ 단추(데스크톱은 정보 칩의 '· Pan 모드')로 남는다.
+   */
+  const [panHintVisible, setPanHintVisible] = useState(false);
+  useEffect(() => {
+    if (!panMode) { setPanHintVisible(false); return; }
+    setPanHintVisible(true);
+    const id = window.setTimeout(() => setPanHintVisible(false), PAN_HINT_MS);
+    return () => window.clearTimeout(id);
+  }, [panMode]);
   // 새 중심주제 배치 모드 (2026-10-02) — 툴바 [새 중심주제] 가 켜고, 빈 캔버스
   // 클릭이 그 자리에 중심을 만들며 끈다. 전에는 누르는 즉시 맨 오른쪽에 자동
   // 배치돼 "원하는 위치에 추가할 수 없다"(사용자 보고).
@@ -1865,23 +1880,24 @@ export function Canvas({
 
       {panMode && (
         <>
-          <div
+          {panHintVisible && <div
             data-testid="pan-mode-badge"
             style={{
               position: 'absolute', top: compact ? 58 : 14, left: '50%',
               transform: 'translateX(-50%)', zIndex: 6,
-              display: 'flex', alignItems: 'center', gap: 7,
-              padding: '7px 16px', borderRadius: 20,
+              display: 'flex', alignItems: 'center', gap: compact ? 5 : 7,
+              padding: compact ? '4px 11px' : '7px 16px', borderRadius: 20,
               background: t.primary, color: '#FFFFFF',
-              fontSize: 12.5, fontWeight: 700,
+              fontSize: compact ? 11 : 12.5, fontWeight: compact ? 600 : 700,
+              animation: 'mm-pan-hint 4s ease forwards',
               boxShadow: '0 4px 14px rgba(60,45,15,0.35)',
               pointerEvents: 'none', whiteSpace: compact ? 'normal' : 'nowrap',
               ...(compact ? { width: 'max-content', maxWidth: 'calc(100% - 24px)', textAlign: 'center' as const } : {}),
             }}
           >
-            <span style={{ fontSize: 15 }}>✋</span>
-            {tr('editor.canvas.panHint')}
-          </div>
+            <span style={{ fontSize: compact ? 12 : 15 }}>✋</span>
+            {tr(compact ? 'editor.canvas.panHintShort' : 'editor.canvas.panHint')}
+          </div>}
           <div
             style={{
               position: 'absolute', inset: 0, zIndex: 4,

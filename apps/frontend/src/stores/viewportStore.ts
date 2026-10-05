@@ -2,6 +2,14 @@
 // viewport changes do NOT trigger document re-renders. Spec: § 6.7.
 
 import { create } from 'zustand';
+import { isPhoneLayoutNow } from '@/hooks/useViewport';
+
+/**
+ * **폰에서는 Pan 모드로 시작한다** (2026-10-05 사용자 요청). 손가락으로 맵을
+ * 훑다가 노드를 잘못 끌어 옮기는 일을 막는다 — Pan 모드에서도 노드는 탭으로
+ * 고를 수 있다. 맵을 열 때마다(`reset`, 문서 경계) 다시 켠다.
+ */
+const panByDefault = (): boolean => isPhoneLayoutNow();
 
 // 최소 2% — '맵 전체 맞추기'가 수백 노드 맵도 전부 담을 수 있어야 하므로
 // (예전 33%·10% 하한은 큰 맵에서 fit이 잘리는 원인이었다. 10-canvas.md §6)
@@ -74,7 +82,7 @@ export const useViewportStore = create<ViewportState>((set) => ({
   zoom: 100,
   panX: 0,
   panY: 0,
-  panMode: false,
+  panMode: panByDefault(),
   placingCenter: false,
   fitRequestId: 0,
   centerRequest: null,
@@ -99,7 +107,7 @@ export const useViewportStore = create<ViewportState>((set) => ({
       homeArmed: false,
     }));
   },
-  reset:   () => { logViewport('reset'); set((s) => ({ zoom: 100, panX: 0, panY: 0, homeSeq: s.homeSeq + 1, homeArmed: true, placingCenter: false })); },
+  reset:   () => { logViewport('reset'); set((s) => ({ zoom: 100, panX: 0, panY: 0, homeSeq: s.homeSeq + 1, homeArmed: true, placingCenter: false, panMode: panByDefault() })); },
 }));
 
 function clamp(v: number, lo: number, hi: number) {

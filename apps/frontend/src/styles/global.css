@@ -149,3 +149,12 @@ mark { background: transparent; }
 @media (prefers-reduced-motion: reduce) {
   [data-testid='upload-progress-bar'] { animation: none !important; }
 }
+
+/* Pan 모드 안내 — 4초 동안 보이다 마지막에 흐려진다 (Canvas.tsx PAN_HINT_MS, 2026-10-05) */
+@keyframes mm-pan-hint {
+  0%, 85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-testid='pan-mode-badge'] { animation: none !important; }
+}

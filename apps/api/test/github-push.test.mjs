@@ -289,6 +289,43 @@ check('PR 방식 — "PR #17 대기"', pendingPrOf(f3), 17);
 check('대기 표시가 있어도 파일 sha 는 읽힌다', readFileMeta(f3).blobSha, gitBlobSha(ch.after).slice(0, 7));
 check('대기 지우기', [clearPending(f3), pendingPrOf(f3)], [true, null]);
 
+console.log('── ⑨ 같은 글이 둘 · 새 절 안의 메모 (Codex 리뷰 #639)');
+// 같은 문단이 둘인 절에서 첫째만 고치면 — 둘째와 짝지어 고친 것을 "추가" 로 보고, 지운 블록 뒤
+// 빈 줄에 겹친 끼워 넣기가 건너뛰어져 고친 내용이 사라졌다
+const DUP = '# 문서\n\n## 절\n\nsame\n\nsame\n\n## 끝\n\n끝 문단\n';
+const dupNode = () => buildFileNode(src, { path: PATH, blobSha: gitBlobSha(DUP) }, DUP, null, new IdGen());
+n = dupNode(); n.children[0].notes[0].text = '바뀐';
+d = diffFileNode(PATH, n, DUP);
+check('같은 글 둘 — 첫째 고침 → 그 자리만', [d.after, d.ops], [DUP.replace('same\n\nsame', '바뀐\n\nsame'), ['절: 노트 수정 "same" → "바뀐"']]);
+n = dupNode(); n.children[0].notes[1].text = '바뀐';
+check('같은 글 둘 — 둘째 고침 → 그 자리만', diffFileNode(PATH, n, DUP).after, DUP.replace('same\n\nsame', 'same\n\n바뀐'));
+const ORIG = '# 문서\n\n## 절\n\norig\n\nsame\n\n## 끝\n';
+n = buildFileNode(src, { path: PATH, blobSha: gitBlobSha(ORIG) }, ORIG, null, new IdGen()); n.children[0].notes[0].text = 'same';
+check('고친 글이 옆 글과 같아짐 → 그 자리만', diffFileNode(PATH, n, ORIG).after, ORIG.replace('orig', 'same'));
+check('짝짓기 — 같은 글은 같은 자리끼리', align(['바뀐', 'same'], ['same', 'same']), [{ a: 0, b: 0 }, { a: 1, b: 1 }]);
+check('짝짓기 — 앞에 하나 더함은 그대로', align(['새', 'x', 'y'], ['x', 'y']), [{ a: 0, b: null }, { a: 1, b: 0 }, { a: 2, b: 1 }]);
+check('짝짓기 — 앞을 지움은 그대로', align(['y'], ['x', 'y']), [{ a: null, b: 0 }, { a: 0, b: 1 }]);
+
+// 사용자가 붙인 새 절 안의 메모 — 반영 뒤 맵에서 사라지면 안 된다
+{
+  const mm = buildDocsMap(src, docs, 'r 문서', '2026-10-14T00:00:00.000Z', new IdGen());
+  const fn = collectFileNodes(src, mm.branches).find((r) => r.path === 'docs/guide/a.md').node;
+  fn.children.push({
+    id: 'u20', text: '새 절', notes: [{ id: 'u21', type: 'paragraph', text: '새 절 문단' }, { id: 'u22', type: 'paragraph', text: '[메모] 절 메모' }],
+    children: [{ id: 'u23', text: '[메모] 절 아래 메모' }, { id: 'u24', text: '더 깊은 절', children: [{ id: 'u25', text: '[메모] 깊은 메모' }] }],
+  });
+  const c9 = diffFileNode('docs/guide/a.md', fn, MD);
+  check('새 절 — 메모는 파일에 안 나감', [c9.after.includes('메모'), c9.after.includes('\n## 새 절\n') && c9.after.includes('\n### 더 깊은 절\n')], [false, true]);
+  const m9 = applyPushToMap(mm, src, [{ path: c9.path, nodeId: c9.nodeId, markdown: c9.after, isNew: false }], commit, null, new IdGen());
+  const f9 = collectFileNodes(src, m9.branches).find((r) => r.path === 'docs/guide/a.md').node;
+  const sec = f9.children.find((c) => c.text === '새 절');
+  check('새 절은 한 번만 (생성 절로)', [f9.children.filter((c) => c.text === '새 절').length, String(sec?.id).startsWith('u')], [1, false]);
+  check('새 절의 메모 노트는 남는다', (sec?.notes ?? []).filter((x) => x.text === '[메모] 절 메모').length, 1);
+  check('새 절 아래 메모 노드는 남는다', (sec?.children ?? []).map((c) => c.text), ['더 깊은 절', '[메모] 절 아래 메모']);
+  const deep = sec?.children.find((c) => c.text === '더 깊은 절');
+  check('더 깊은 절의 메모도 남는다', (deep?.children ?? []).map((c) => c.text), ['[메모] 깊은 메모']);
+}
+
 console.log('── ⑦ 확인 코드 · blob sha · 허용 목록 · 짝짓기');
 check('git blob sha (hello\\n)', gitBlobSha('hello\n'), 'ce013625030ba8dba906f756967f9e9ca394464a');
 const pc = (c) => planCode({ headSha: 'h1', mode: 'pr', files: [{ path: 'a.md', content: c }] });

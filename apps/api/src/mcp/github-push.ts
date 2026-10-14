@@ -110,19 +110,28 @@ function norm(s: string): string {
 /**
  * 두 목록을 짝짓는다 — 같은 글은 순서를 지키며(LCS) 묶고, 그 사이의 틈은
  * **자리대로** 짝짓는다(= 고친 것), 남는 것은 한쪽만(= 더함·지움).
+ *
+ * ★ 같은 글이 여럿이면 **자리가 가까운 쪽**과 묶는다 (2026-10-14, Codex 리뷰 #639).
+ *   `same`·`same` 의 첫째를 고치면, 예전엔 남은 `same` 을 원문 첫째와 묶어 고친 글을
+ *   "추가"·원문 둘째를 "삭제" 로 봤고, 고친 내용이 파일에서 사라졌다. 묶는 수가 같으면
+ *   두 목록의 자리 차이 합이 작은 쪽을 고른다(`W` 는 묶는 수 하나가 언제나 이기게).
  */
 export function align(a: string[], b: string[]): Pair[] {
   const A = a.map(norm);
   const B = b.map(norm);
   const n = A.length, m = B.length;
+  const W = (n + m + 1) * (n + m + 1);
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  const take = (i: number, j: number) => dp[i + 1][j + 1] + W - Math.abs(i - j);
   for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1], A[i] === B[j] ? take(i, j) : -Infinity);
+    }
   }
   const anchors: [number, number][] = [];
   let i = 0, j = 0;
   while (i < n && j < m) {
-    if (A[i] === B[j]) { anchors.push([i, j]); i++; j++; } else if (dp[i + 1][j] >= dp[i][j + 1]) i++; else j++;
+    if (A[i] === B[j] && dp[i][j] === take(i, j)) { anchors.push([i, j]); i++; j++; } else if (dp[i + 1][j] >= dp[i][j + 1]) i++; else j++;
   }
   const out: Pair[] = [];
   let pa = 0, pb = 0;
@@ -289,7 +298,12 @@ class Patcher {
     const hunks: string[] = [];
     let pos = 0;
     for (const e of all) {
-      if (e.start < pos) continue; // 겹침 — 만들지 않게 짰지만, 생기면 원문을 지킨다
+      if (e.start < pos) {
+        // 겹침 — 만들지 않게 짰지만, 생기면 원문을 지킨다. 끼워 넣기는 버리지 않고 지금 자리에
+        // (버리면 사용자가 더한·고친 글이 미리보기에는 "추가" 로 보이고 파일에서는 사라진다)
+        if (e.end === e.start) { for (const t of e.lines) out.push({ t, touched: true }); hunks.push(...describeHunk(L, e)); }
+        continue;
+      }
       for (let k = pos; k < e.start; k++) out.push({ t: L[k], touched: false });
       if (out.length) out[out.length - 1].touched = out[out.length - 1].touched || !out[out.length - 1].t.trim();
       for (const t of e.lines) out.push({ t, touched: true });
@@ -704,6 +718,37 @@ function stripPushed(node: MindNode): MindNode {
   return out;
 }
 
+/**
+ * 반영한 사용자 절 안의 메모를 다시 만든 절로 옮긴다 (2026-10-14, Codex 리뷰 #639).
+ * `stripPushed` 는 사용자 절을 통째로 걷고 원문에서 다시 만드는데, 원문에는 메모가 없으므로
+ * 그 절 안의 `[메모]` 노드·노트가 사라졌다. 같은 이름의 새 생성 절을 찾아 붙이고, 못 찾으면
+ * 부모에 남긴다 — 메모는 어떤 경우에도 잃지 않는다.
+ */
+function carryMemos(old: MindNode, merged: MindNode): void {
+  const used = new Set<MindNode>();
+  for (const c of old.children ?? []) {
+    if (isGenerated(c.id)) {
+      const t = (merged.children ?? []).find((x) => x.id === c.id);
+      if (t) carryMemos(c, t);
+      continue;
+    }
+    if (isMemoNode(c)) continue; // stripPushed 가 이미 남겼다
+    const target = (merged.children ?? []).find((x) => !used.has(x) && isGenerated(x.id) && norm(x.text) === norm(cleanTitle(c)));
+    if (target) {
+      used.add(target);
+      const notes = (c.notes ?? []).filter(isMemoNote);
+      const kids = (c.children ?? []).filter(isMemoNode);
+      if (notes.length) target.notes = [...(target.notes ?? []), ...notes];
+      if (kids.length) target.children = [...(target.children ?? []), ...kids];
+      carryMemos(c, target);
+    } else {
+      const memo = memosOf(c);
+      if (memo.notes.length) merged.notes = [...(merged.notes ?? []), ...memo.notes];
+      if (memo.kids.length) merged.children = [...(merged.children ?? []), ...memo.kids];
+    }
+  }
+}
+
 /** 새 파일 노드에 딸린 메모(노드·노트) — 반영 뒤에도 남긴다 */
 function memosOf(node: MindNode): { notes: NoteBlock[]; kids: MindNode[] } {
   const notes = (node.notes ?? []).filter(isMemoNote);
@@ -759,7 +804,9 @@ export function applyPushToMap(
         hit.siblings[hit.index] = node;
       }
     } else {
-      hit.siblings[hit.index] = mergeNode(stripPushed(old), fresh);
+      const merged = mergeNode(stripPushed(old), fresh);
+      carryMemos(old, merged);
+      hit.siblings[hit.index] = merged;
     }
   }
   return copy;

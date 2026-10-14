@@ -42,3 +42,15 @@ export function folderLabel(folders: FolderItem[], folderId: string | null): str
   if (!folderId) return tr('cloud.folder.home');
   return folders.find((f) => f.folderId === folderId)?.name ?? tr('cloud.folder.deleted');
 }
+
+/**
+ * 폴더 자신과 그 아래 모든 하위 폴더 id — 폴더를 옮길 때 고를 수 없는 곳.
+ * (자기 안으로 옮기면 고리가 생긴다. 서버도 막지만 고르기 전에 흐리게 보인다.)
+ */
+export function folderSubtreeIds(folders: FolderItem[], folderId: string): string[] {
+  const out = [folderId];
+  for (let i = 0; i < out.length; i++) {
+    for (const f of folders) if (f.parentId === out[i] && !out.includes(f.folderId)) out.push(f.folderId);
+  }
+  return out;
+}

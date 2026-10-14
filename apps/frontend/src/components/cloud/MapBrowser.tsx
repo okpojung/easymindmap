@@ -38,6 +38,7 @@ import { notifyUser } from '@/stores/noticeStore';
 import { publicMapUrl } from './PublishPanel';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
 import { FolderPickerDialog } from './FolderPickerDialog';
+import { folderSubtreeIds } from './folderTree';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { ActionSheet, type SheetItem } from '@/components/ui/ActionSheet';
 import { usePhoneLayout, useCoarse, isPhoneLayoutNow, isCoarseNow } from '@/hooks/useViewport';
@@ -369,6 +370,8 @@ export function MapBrowser({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
   const [moving, setMoving] = useState<MapListItem | null>(null);
+  /** 옮기려는 폴더 — 안의 맵·하위 폴더는 parent 를 따라 함께 간다 */
+  const [movingFolder, setMovingFolder] = useState<FolderItem | null>(null);
   /**
    * 문서함 행에서 연 공유 대화상자 (2026-09-07 사용자 요청 — "소유권을
    * 넘기려고 꼭 맵을 열어야 하나"). 툴바의 공유와 **같은 대화상자**를 맵 id
@@ -870,6 +873,24 @@ export function MapBrowser({
     }
   };
 
+  /**
+   * 폴더를 다른 폴더(또는 홈) 아래로 옮긴다 (2026-10-14).
+   * 서버는 폴더의 `parent_id` 하나만 바꾼다 — 맵은 `folder_id` 로, 하위 폴더는
+   * `parent_id` 로 이 폴더를 가리키므로 **안의 것은 따로 옮길 필요 없이 함께 간다.**
+   */
+  const moveFolderTo = async (f: FolderItem, parentId: string | null) => {
+    setMovingFolder(null);
+    try {
+      await cloudApi.moveFolder(f.folderId, parentId);
+      onFlash(tr('cloud.browser.folderMoved', { name: f.name }));
+      if (parentId) setExpanded((p) => new Set(p).add(parentId));
+      void load();
+    } catch (e) {
+      // 같은 이름(409) · 자기 하위로(400) — 서버 안내를 그대로
+      onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.moveFailed')));
+    }
+  };
+
   const deleteMap = async (m: MapListItem) => {
     if (!window.confirm(tr('cloud.browser.mapDeleteConfirm', { title: m.title || tr('cloud.untitled') }))) return;
     try {
@@ -1045,6 +1066,8 @@ export function MapBrowser({
           } },
         { key: 'rename', icon: <I.Pencil size={18} />, label: tr('cloud.browser.rename'), testId: 'm-folder-rename',
           onSelect: () => void renameFolder(f) },
+        { key: 'move', icon: <I.FolderMove size={18} />, label: tr('cloud.browser.moveTip'), testId: 'm-folder-move',
+          onSelect: () => setMovingFolder(f) },
         'divider',
         { key: 'delete', icon: <I.Trash size={18} />, label: tr('cloud.browser.deleteFolderTip'), danger: true,
           testId: 'm-folder-delete', onSelect: () => void deleteFolder(f) },
@@ -1745,6 +1768,9 @@ export function MapBrowser({
               >＋</button>
               <button style={iconBtn} title={tr('cloud.browser.rename')} aria-label={tr('cloud.browser.rename')}
                 onClick={() => void renameFolder(r.folder)}><I.Pencil size={15} /></button>
+              <button data-testid="browser-folder-move" style={iconBtn}
+                title={tr('cloud.browser.moveTip')} aria-label={tr('cloud.browser.moveTip')}
+                onClick={() => setMovingFolder(r.folder)}><I.FolderMove size={15} /></button>
               <button style={{ ...iconBtn, color: '#d9534f' }}
                 title={tr('cloud.browser.deleteFolderTip')} aria-label={tr('common.delete')}
                 onClick={() => void deleteFolder(r.folder)}><I.Trash size={15} /></button>
@@ -2102,6 +2128,18 @@ export function MapBrowser({
           currentFolderId={moving.folderId}
           onPick={(folderId) => void moveMapTo(moving, folderId)}
           onCancel={() => setMoving(null)}
+        />
+      )}
+
+      {movingFolder && (
+        <FolderPickerDialog
+          t={t}
+          title={tr('cloud.browser.folderMoveTitle', { name: movingFolder.name })}
+          folders={folders}
+          currentFolderId={movingFolder.parentId}
+          disabledIds={folderSubtreeIds(folders, movingFolder.folderId)}
+          onPick={(parentId) => void moveFolderTo(movingFolder, parentId)}
+          onCancel={() => setMovingFolder(null)}
         />
       )}
 

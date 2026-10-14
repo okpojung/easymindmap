@@ -935,6 +935,11 @@ export function MapBrowser({
     onDragLeave: (e: React.DragEvent) => {
       if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
       if (dropAt === (target ?? '')) setDropAt(null);
+      // 스쳐 지나간 폴더가 뒤늦게 펼쳐져 줄이 밀리지 않도록 예약을 거둔다
+      if (target && dragOpenTimer.current?.id === target) {
+        window.clearTimeout(dragOpenTimer.current.t);
+        dragOpenTimer.current = null;
+      }
     },
     onDrop: (e: React.DragEvent) => {
       e.preventDefault();

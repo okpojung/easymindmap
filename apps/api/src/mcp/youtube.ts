@@ -388,6 +388,8 @@ function trackLabel(t: CaptionTrack): string {
 /** 도구가 돌려주는 글 — 정보 · 챕터 · 자막 쪽 · 맵 만들기 안내 */
 export function formatTranscriptResult(p: TranscriptResultInput): string {
   const { info, track, chapters, page } = p;
+  // `t=` 나 start_at 으로 중간부터 읽었으면, 그 앞에서 끝난 챕터에는 자막이 없다 — 가지를 지어내지 않게 짚는다
+  const before = chapters.filter((c, i) => (i + 1 < chapters.length ? chapters[i + 1].start : info.lengthSec) <= page.from);
   const out: string[] = [];
   out.push(`유튜브 영상: ${info.title}`);
   out.push(`채널: ${info.author || '(알 수 없음)'} · 길이 ${formatTime(info.lengthSec)}${info.viewCount !== undefined ? ` · 조회수 ${info.viewCount.toLocaleString('en-US')}회` : ''}${info.isLive ? ' · 라이브' : ''}`);
@@ -408,6 +410,10 @@ export function formatTranscriptResult(p: TranscriptResultInput): string {
     '\n맵 만들기 안내: 위 자막을 **요약해서** create_map 을 부르세요(자막을 그대로 옮기지 말 것). ' +
     `\`# ${info.title}\` 를 중심으로, 중심 아래 첫 줄에 영상 주소·채널·길이를 적고, ` +
     (chapters.length ? '챕터마다 `##` 가지를 만드세요. ' : '내용 흐름대로 4~8개 주제로 나눠 `##` 가지를 만드세요. ') +
+    (before.length
+      ? `이번 자막은 ${formatTime(page.from)} 부터라 그 앞에서 끝나는 챕터(${before.map((c) => c.title).join(' · ')})는 읽지 않았습니다 — ` +
+        '앞서 이어 받은 쪽에서 읽지 않았다면 그 챕터는 가지로 만들지 마세요. '
+      : '') +
     '가지 아래에는 핵심 내용·용어·숫자·예시를 `###`·목록으로 간결하게, 가지마다 그 부분의 시작 시각 링크를 ' +
     `\`[▶ 12:34](${watchUrl(info.id, 754)})\` 꼴로 붙이세요. 마지막에 \`## 핵심 정리\`(3~5줄)를 두면 좋습니다. ` +
     '자막에 없는 내용을 지어내지 마세요.' +

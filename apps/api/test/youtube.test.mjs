@@ -177,5 +177,8 @@ check('맵 만들기 안내 — 요약 · 챕터 가지 · 시각 링크 · 지�
 const outLong = formatTranscriptResult({ info, track: info.tracks[0], chapters: [], page: { ...page, nextStart: 300 }, others: [{ languageCode: 'en', kind: 'asr', name: 'English', baseUrl: '' }] });
 check('잘렸으면 start_at 안내 · 챕터 없으면 주제 4~8개 · 다른 자막', [outLong.includes('start_at:300'), outLong.includes('4~8개 주제'), outLong.includes('다른 자막: en(자동)')], [true, true, true]);
 
+const outMid = formatTranscriptResult({ info, track: info.tracks[0], chapters, page: buildTranscript(segsLive, chapters, 200, 30000), others: [] });
+check('중간부터(t=200) — 앞에서 끝난 챕터는 읽지 않았다고 짚는다 (#641 Codex)', [outMid.includes('3:20 부터라'), outMid.includes('(소개 · LLM)'), outMid.includes('가지로 만들지 마세요')], [true, true, true]);
+check('처음부터 읽었으면 그런 말이 없다', out.includes('가지로 만들지 마세요'), false);
 console.log(failed ? `\n실패 ${failed}개` : '\n전부 통과');
 if (failed) process.exit(1);

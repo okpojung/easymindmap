@@ -87,7 +87,6 @@ export async function expandLinkedMaps(
     // ★ 같은 맵이 큰 맵 안에 두 번 연결돼 있으면 **처음 것만** 고칠 수 있다 —
     //   둘 다 펼쳐 고치면 저장할 때 어느 쪽이 정본인지 알 수 없다
     if (fetched.has(id)) {
-      st.set({ ...(st.entries[id] ?? { mapId: id, title: holder.node.text }), mapId: id });
       holder.setChildren([]);
       (holder.node as MindNode & { _linkDup?: boolean })._linkDup = true;
       return;

@@ -9,12 +9,16 @@ import { DocShapeError, docToEmm, mapFromDoc } from './doc-to-emm';
 import { EmmParseError, emmToSnapshot, titleFromSnapshot } from './emm-to-doc';
 import { TemplateError, applyLevelLayouts, templateFor } from './map-template';
 import { mapCenters, type MindNode } from '../emm/model';
-import { GithubClient, GithubError, mapLimit } from './github-client';
+import { GithubClient, GithubError, GithubWriter, mapLimit } from './github-client';
 import {
-  GithubDocsError, IdGen, applyUpdate, buildDocsMap, detectDocsDir, listSome, parseRepoRef, planUpdate,
-  readSource, resolveScope, selectDocFiles, settleByCommit, type DocInput, type DocsSource, type FileCommit,
-  type RemoteFile, type UpdateScope,
+  GithubDocsError, IdGen, applyUpdate, buildDocsMap, collectFileNodes, detectDocsDir, listSome, parseRepoRef, planUpdate,
+  readFileMeta, readSource, resolveScope, selectDocFiles, settleByCommit, type DocInput, type DocsSource, type FileCommit,
+  type FileNodeRef, type RemoteFile, type UpdateScope,
 } from './github-docs';
+import {
+  applyPushToMap, clearPendingIn, collectNewFiles, diffFileNode, formatPushPreview, pendingPrOf, planCode, pushAllowed,
+  type FileChange, type PushedFile,
+} from './github-push';
 
 /**
  * MCP 가 AI 에게 주는 **도구 목록**과 그 실행.
@@ -301,6 +305,37 @@ export const TOOL_DEFS: McpToolDef[] = [
       required: ['map_id'],
     },
   },
+  {
+    // §9.15 (2026-10-14) — 맵에서 고친 내용을 저장소 파일로. 맵이 아니라 GitHub 을 바꾼다 — 파괴적·바깥 세상.
+    name: 'push_map_to_github',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    title: 'GitHub 문서로 만든 맵에서 고친 내용을 저장소 파일에 반영',
+    description:
+      'import_github_docs 로 만든 맵에서 사용자가 고친 내용을 **GitHub 저장소의 파일에 되돌려 쓴다.** ' +
+      '사용자가 "이 맵에서 고친 내용을 GitHub 에 반영해 줘" · "맵 수정사항을 저장소에 올려 줘" 라고 하면 이것을 부른다. ' +
+      '**두 번 부른다** — 처음(confirm 없이)은 미리보기만 돌려준다(어느 파일의 어느 줄이 어떻게 바뀌는지 + 확인 코드). ' +
+      '그 미리보기를 사용자에게 보여 주고 승인을 받은 뒤에만 같은 인자에 confirm:"확인 코드" 를 붙여 다시 부른다. 승인 없이 confirm 을 넣지 않는다. ' +
+      '반영 규칙: 문서 노드·절 노드의 이름 → 제목·견출, 노트 글 → 그 문단·표·코드, 지운 절·노트 → 파일에서 지움, ' +
+      '문서 노드 아래에 사용자가 붙인 노드·노트 → 새 절·새 문단(반영하지 않을 것은 태그 `메모` 또는 이름 머리 `[메모]`). ' +
+      '원문은 바뀜 자리만 고친다(맵에 안 들어온 사진·긴 글은 그대로). ' +
+      '**새 파일**은 폴더 노드(또는 중심주제) 아래 노드 중 태그 `새파일` 또는 이름 머리 `[새파일]` 을 단 것만 — 파일 이름을 정하려면 ' +
+      '태그 `새파일:install.md` 또는 이름 `[새파일:guide/install.md] 설치 안내`. 대화에서 새 파일을 만들 때는 append_to_map(parent: 폴더 노드) 로 ' +
+      '`## [새파일:이름.md] 제목` 가지(그 아래 `###` = 파일의 `##` 절)를 붙인 뒤 이 도구를 부른다. ' +
+      '맵을 가져온 뒤 GitHub 쪽 파일이 바뀌었으면 그 파일은 충돌로 건너뛴다. 맵에서 문서 노드를 지워도 GitHub 파일은 지우지 않는다. ' +
+      '기본은 새 브랜치에 커밋하고 PR 을 연다(mode:"pr"). mode:"commit" 은 맵의 브랜치에 바로 커밋한다. ' +
+      '반영 뒤 맵의 문서 노드는 반영한 원문으로 다시 맞춘다(히스토리 버전). 이 도구로 만들지 않은 맵(루트 노트에 `출처: github:…` 가 없는 맵)은 거절한다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        map_id: { type: 'string', description: '`list_maps` 가 돌려준 맵 id (UUID), 또는 `"current"` = 사용자가 앱에서 지금 열어 둔 맵.' },
+        node: { type: 'string', description: '반영 범위 — 폴더·문서 노드 이름 또는 `"폴더 > 문서"` 경로, 또는 `"selected"`. 문서 안의 절을 고르면 그 문서 전체. 비우면 맵 전체.' },
+        mode: { type: 'string', enum: ['pr', 'commit'], description: '"pr"(기본) = 새 브랜치 + PR, "commit" = 맵의 브랜치에 바로 커밋.' },
+        confirm: { type: 'string', description: '미리보기가 준 확인 코드. **사용자가 미리보기를 승인한 뒤에만** 넣는다. 비우면 미리보기만.' },
+        message: { type: 'string', description: '커밋·PR 제목. 비우면 "docs: EasyMindMap 맵 "…" 수정 반영".' },
+      },
+      required: ['map_id'],
+    },
+  },
 ];
 
 /** `get_map` 이 한 번에 돌려주는 본문 상한 — 넘으면 자르고 그 사실을 알린다 */
@@ -349,6 +384,7 @@ export class McpToolsService {
       case 'get_open_map': return this.getOpenMap(userId);
       case 'import_github_docs': return this.importGithubDocs(userId, args);
       case 'update_map_from_github': return this.updateMapFromGithub(userId, args);
+      case 'push_map_to_github': return this.pushMapToGithub(userId, args);
       default: return text(`알 수 없는 도구입니다: ${name}`, true);
     }
   }
@@ -1015,8 +1051,45 @@ export class McpToolsService {
       throw err;
     }
 
+    // ★ 반영 대기(PR) — push_map_to_github 가 PR 로 올린 문서는 **머지 전이면 건너뛴다**
+    //   (2026-10-14, §9.15). 기준 브랜치에는 아직 옛 내용(또는 파일 없음)이라 그대로 맞추면
+    //   맵에서 고쳐 올린 내용이 옛 내용으로 되돌아가거나(수정) 새 파일 노드가 지워진다(삭제).
+    //   머지·닫힘이면 평소처럼 맞추고 "PR #n 대기" 표시를 지운다.
+    const pendingRefs: FileNodeRef[] = (scope.kind === 'file' || scope.kind === 'section'
+      ? [{ node: scope.kind === 'file' ? scope.node : scope.fileNode, siblings: [], index: 0, path: scope.path, meta: null }]
+      : collectFileNodes(src, scope.kind === 'folder' ? (scope.node.children ?? []) : (map.branches as MindNode[])))
+      .filter((r) => pendingPrOf(r.node) !== null);
+    const held: string[] = [];
+    const clearIds: string[] = [];
+    if (pendingRefs.length) {
+      const states = new Map<number, string>();
+      for (const num of new Set(pendingRefs.map((r) => pendingPrOf(r.node) as number))) {
+        // 묻다 실패하면 **열려 있는 것으로** — 모르면 되돌리지 않는 쪽이 안전하다
+        states.set(num, await gh.pullState(src.owner, src.repo, num).catch(() => 'open'));
+      }
+      const openIds = new Set(pendingRefs.filter((r) => states.get(pendingPrOf(r.node) as number) === 'open').map((r) => r.node.id));
+      pendingRefs.forEach((r) => { if (!openIds.has(r.node.id)) clearIds.push(r.node.id); });
+      const keep = (ref: FileNodeRef): boolean => {
+        if (!openIds.has(ref.node.id)) return true;
+        held.push(`${ref.path} (PR #${pendingPrOf(ref.node)} 머지 전)`);
+        return false;
+      };
+      plan.updated = plan.updated.filter((u) => keep(u.ref));
+      plan.removed = plan.removed.filter((r) => keep(r));
+    }
+    const heldNote = held.length ? `\n머지 전이라 건너뛴 문서 ${held.length}개:\n${listSome(held)}` : '';
+
     if (plan.added.length === 0 && plan.updated.length === 0 && plan.removed.length === 0) {
-      return text(`"${docRes.title}" 맵(${scopeLabel})은 이미 저장소와 같습니다 — 바뀐 문서가 없어 저장하지 않았습니다 (문서 ${plan.unchanged}개 그대로).`);
+      if (clearIds.length) {
+        const copy = JSON.parse(JSON.stringify(map)) as typeof map;
+        const cleared = clearPendingIn(copy, clearIds);
+        if (cleared) {
+          const saved = await this.saveVersion(userId, mapId, docRes.doc, copy, 'update_map_from_github', '대기 표시를 지운 맵을');
+          if ('error' in saved) return text(saved.error, true);
+          return text(`"${docRes.title}" 맵(${scopeLabel})은 저장소와 같습니다 — PR 이 머지(또는 닫힘)된 문서 ${cleared}개의 "PR 대기" 표시를 지웠습니다.${saved.versionNote}${heldNote}`);
+        }
+      }
+      return text(`"${docRes.title}" 맵(${scopeLabel})은 이미 저장소와 같습니다 — 바뀐 문서가 없어 저장하지 않았습니다 (문서 ${plan.unchanged}개 그대로).${heldNote}`);
     }
 
     let applied;
@@ -1034,6 +1107,7 @@ export class McpToolsService {
       return text(`저장소의 문서에 "${applied.sectionGone}" 절이 더 이상 없습니다 — 이 절 노드는 그대로 두었습니다. 문서 노드 전체를 갱신하면(node 에 문서 이름) 이 절 노드가 지워집니다.`, true);
     }
 
+    if (clearIds.length) clearPendingIn(applied.map, clearIds);
     const saved = await this.saveVersion(userId, mapId, docRes.doc, applied.map, 'update_map_from_github', '갱신한 내용을');
     if ('error' in saved) return text(saved.error, true);
     const lines: string[] = [];
@@ -1042,7 +1116,228 @@ export class McpToolsService {
     if (applied.removed.length) lines.push(`삭제 ${applied.removed.length}개${applied.removedFolders ? ` (빈 폴더 ${applied.removedFolders}개 함께)` : ''}:\n${listSome(applied.removed)}`);
     if (plan.unchanged) lines.push(`그대로 ${plan.unchanged}개`);
     return text(
-      `"${docRes.title}" 맵(${scopeLabel})을 ${src.owner}/${src.repo}@${src.ref} 에 맞췄습니다.${saved.versionNote}\n${lines.join('\n')}\n` + LIVE_NOTE,
+      `"${docRes.title}" 맵(${scopeLabel})을 ${src.owner}/${src.repo}@${src.ref} 에 맞췄습니다.${saved.versionNote}\n${lines.join('\n')}${heldNote}\n` + LIVE_NOTE,
+    );
+  }
+
+  // ── 맵 → GitHub 반영 (2026-10-14, §9.15) ─────────────────────────────
+
+  /**
+   * 맵에서 고친 내용을 저장소 파일로. **confirm 없이 부르면 미리보기만** — 아무것도
+   * 쓰지 않고 확인 코드를 준다. 같은 계획(기준 커밋·방식·파일 내용)일 때만 그 코드가
+   * 맞으므로, 미리보기 뒤 맵이나 저장소가 바뀌면 쓰지 않고 새 미리보기를 돌려준다.
+   * 쓰기는 `GITHUB_WRITE_TOKEN` + `GITHUB_PUSH_ALLOW`(사용자·저장소 허용 목록)가 있어야 한다.
+   */
+  private async pushMapToGithub(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    const rid = this.resolveMapId(userId, args.map_id);
+    if ('error' in rid) return text(rid.error, true);
+    const mapId = rid.mapId;
+    if (args.mode !== undefined && args.mode !== null && args.mode !== '' && args.mode !== 'pr' && args.mode !== 'commit') {
+      return text('`mode` 는 "pr"(기본 — 새 브랜치 + PR) 또는 "commit"(바로 커밋) 입니다.', true);
+    }
+    const mode: 'pr' | 'commit' = args.mode === 'commit' ? 'commit' : 'pr';
+    const confirm = typeof args.confirm === 'string' ? args.confirm.trim().toLowerCase() : '';
+    let nodeArg = typeof args.node === 'string' ? args.node.trim() : '';
+    if (nodeArg && McpToolsService.isSelectedWord(nodeArg)) {
+      const f = this.focus.get(userId);
+      if (!f) return text('앱에서 선택한 노드를 알 수 없습니다 — 앱에서 그 맵을 열어 두고 노드를 고른 뒤 다시 불러 주세요(1분 안에 알려집니다).', true);
+      if (f.mapId !== mapId) {
+        return text(`앱에서 지금 열어 둔 맵은 다른 맵(id: ${f.mapId})입니다 — 그 맵이면 map_id:"current" 로, 이 맵이면 node 를 노드 이름으로 적어 주세요.`, true);
+      }
+      nodeArg = f.nodeId === null || f.nodeId === 'root' ? '' : `id:${f.nodeId}`;
+    }
+
+    // 쓰기용으로 연다 — 반영 뒤 맵도 맞추므로(편집 권한·협업 방 규칙 그대로)
+    const opened = await this.openForWrite(userId, mapId, 'GitHub 에 반영할');
+    if ('error' in opened) return text(opened.error, true);
+    const docRes = opened.docRes;
+    let map;
+    try { map = mapFromDoc(docRes.doc); } catch (err) {
+      if (err instanceof DocShapeError) return text(err.message, true);
+      throw err;
+    }
+    const src = readSource(map);
+    if (!src) {
+      return text(`"${docRes.title}" 맵은 import_github_docs 로 만든 맵이 아닙니다(루트 노트에 \`출처: github:…\` 가 없습니다) — 어느 저장소에 반영할지 모릅니다.`, true);
+    }
+
+    let scope: UpdateScope | null = { kind: 'all' };
+    let scopeLabel = '맵 전체';
+    if (nodeArg && !/^root$/i.test(nodeArg)) {
+      let found;
+      try { found = findByPath(map, nodeArg); } catch (err) {
+        if (err instanceof AppendError) return text(err.message, true);
+        throw err;
+      }
+      scope = resolveScope(src, map, found.node);
+      if (!scope) {
+        return text(`"${found.path}" 노드는 GitHub 문서에서 온 노드가 아닙니다 — 폴더·문서 노드(또는 문서 안의 절)를 고르거나 node 를 비워 맵 전체를 반영하세요.`, true);
+      }
+      // 절을 골랐어도 파일은 통째로 올라간다 — 그 문서 노드 전체를 비교한다
+      if (scope.kind === 'section') scope = { kind: 'file', path: scope.path, node: scope.fileNode };
+      scopeLabel = scope.kind === 'folder' ? `폴더 "${found.path}"` : scope.kind === 'file' ? `문서 "${scope.path}"` : '맵 전체';
+    }
+
+    // 기준 = 지금 브랜치의 커밋 하나. 목록·원문을 모두 그 커밋에서 읽고, 새 커밋의 부모도 그것이다.
+    const gh = new GithubClient();
+    let headSha: string;
+    let remote: RemoteFile[];
+    let repoPaths: Set<string>;
+    try {
+      headSha = await gh.headSha(src.owner, src.repo, src.ref);
+      const tree = await gh.treeUnder(src.owner, src.repo, headSha, src.path);
+      if (tree.truncated) {
+        return text(`${src.owner}/${src.repo}@${src.ref} 의 "${src.path || '/'}" 아래가 너무 커서 GitHub 이 목록을 잘랐습니다 — 잘린 목록으로는 새 파일이 있는 파일을 덮을 수 있어 멈췄습니다.`, true);
+      }
+      remote = selectDocFiles(tree.entries, src.path);
+      repoPaths = new Set(tree.entries.map((e) => e.path));
+    } catch (err) {
+      if (err instanceof GithubError) return text(err.message, true);
+      throw err;
+    }
+
+    const roots: MindNode[] = scope.kind === 'all' ? (map.branches as MindNode[])
+      : scope.kind === 'folder' ? (scope.node.children ?? []) : [];
+    const refs: FileNodeRef[] = scope.kind === 'file'
+      ? [{ node: scope.node, siblings: [scope.node], index: 0, path: scope.path, meta: readFileMeta(scope.node) }]
+      : collectFileNodes(src, roots);
+    const byPath = new Map(remote.map((f) => [f.path, f]));
+    const conflicts: string[] = [];
+    const ready: { ref: FileNodeRef; file: RemoteFile }[] = [];
+    for (const r of refs) {
+      const pr = pendingPrOf(r.node);
+      if (pr !== null) { conflicts.push(`${r.path} — PR #${pr} 이 아직 반영 대기입니다. 머지한 뒤 update_map_from_github 로 맞추고 다시 반영하세요.`); continue; }
+      const f = byPath.get(r.path);
+      if (!f) { conflicts.push(`${r.path} — 저장소(${src.ref})에 이 파일이 없습니다.`); continue; }
+      ready.push({ ref: r, file: f });
+    }
+
+    // 원문을 읽고 비교 — 맵이 가져온 판(blob sha)과 같은 파일만 반영한다.
+    // 판이 다르면 기준이 없다: 맵과 내용이 다르면 충돌, 같으면(맵에서 고친 것 없음) 조용히 건너뛴다.
+    let loaded: { ref: FileNodeRef; file: RemoteFile; change: FileChange; base: boolean }[];
+    try {
+      loaded = await mapLimit(ready, McpToolsService.FETCH_CONCURRENCY, async ({ ref, file }) => {
+        const md = await gh.raw(src.owner, src.repo, headSha, file.path);
+        const base = Boolean(ref.meta?.blobSha && file.blobSha.startsWith(ref.meta.blobSha));
+        return { ref, file, change: diffFileNode(file.path, ref.node, md), base };
+      });
+    } catch (err) {
+      if (err instanceof GithubError) return text(err.message, true);
+      throw err;
+    }
+    const edits: FileChange[] = [];
+    const warnings: string[] = [];
+    let behind = 0;
+    for (const l of loaded) {
+      if (!l.base) {
+        if (!l.change.changed) { behind++; continue; }
+        conflicts.push(l.ref.meta?.blobSha
+          ? `${l.file.path} — 맵을 가져온 뒤 GitHub 쪽 파일이 바뀌었습니다(맵 ${l.ref.meta.blobSha.slice(0, 7)} · 저장소 ${l.file.blobSha.slice(0, 7)}). update_map_from_github 로 맞추면 맵에서 고친 내용이 GitHub 내용으로 바뀌니, 고친 내용을 따로 적어 두고 맞춘 뒤 다시 고쳐 주세요.`
+          : `${l.file.path} — 맵에 파일 sha 가 없는 옛 노드라 비교 기준이 없습니다. update_map_from_github 로 먼저 맞추세요.`);
+        continue;
+      }
+      if (l.change.changed) edits.push(l.change);
+      l.change.warnings.forEach((w) => warnings.push(`${l.file.path}: ${w}`));
+    }
+
+    // 새 파일 — 문서 하나만 골랐으면 찾지 않는다
+    const newErrors: string[] = [];
+    const newFiles = scope.kind === 'file' ? []
+      : collectNewFiles(src, roots, scope.kind === 'folder' ? scope.dir : src.path, repoPaths, newErrors);
+    newFiles.forEach((n) => n.warnings.forEach((w) => warnings.push(`${n.path}: ${w}`)));
+    const inMap = new Set(collectFileNodes(src, map.branches as MindNode[]).map((r) => r.path));
+    const notInMap = scope.kind === 'all' ? remote.filter((f) => !inMap.has(f.path)).map((f) => f.path) : [];
+    const behindNote = behind
+      ? `\n(GitHub 쪽이 더 새로운 문서 ${behind}개는 맵에서 고친 것이 없어 건너뛰었습니다 — update_map_from_github 로 맵을 맞출 수 있습니다.)`
+      : '';
+
+    const preview = formatPushPreview({
+      mapTitle: docRes.title, src, headSha, mode, edits, newFiles, conflicts, errors: newErrors,
+      warnings: [...new Set(warnings)], notInMap,
+    }) + behindNote;
+    if (edits.length === 0 && newFiles.length === 0) {
+      return text(`"${docRes.title}" 맵(${scopeLabel})에는 GitHub 에 반영할 변경이 없습니다.\n\n${preview}`, conflicts.length + newErrors.length > 0);
+    }
+
+    const files = [
+      ...edits.map((e) => ({ path: e.path, content: e.after })),
+      ...newFiles.map((n) => ({ path: n.path, content: n.content })),
+    ];
+    const code = planCode({ headSha, mode, files });
+    const writer = new GithubWriter();
+    const blockers: string[] = [];
+    if (!writer.configured) blockers.push('API 서버에 GITHUB_WRITE_TOKEN 이 없습니다 — 서버 관리자가 이 저장소에 쓸 수 있는 토큰을 넣어야 반영할 수 있습니다.');
+    if (!pushAllowed(process.env.GITHUB_PUSH_ALLOW, userId, src.owner, src.repo)) {
+      blockers.push(`이 계정(${userId})은 ${src.owner}/${src.repo} 에 반영하도록 허용되지 않았습니다 — API 서버의 GITHUB_PUSH_ALLOW 에 "${src.owner}/${src.repo}=${userId}" 를 넣어야 합니다.`);
+    }
+    if (!confirm) {
+      return text(
+        `${preview}\n\n` + (blockers.length
+          ? `지금은 반영할 수 없습니다:\n${blockers.map((b) => `  · ${b}`).join('\n')}`
+          : `확인 코드: ${code}\n사용자에게 위 내용을 보여 주고 승인을 받은 뒤, 같은 인자에 confirm:"${code}" 를 붙여 다시 부르세요.`),
+      );
+    }
+    if (confirm !== code) {
+      return text(`확인 코드(${confirm})가 지금 계획과 맞지 않습니다 — 미리보기 뒤에 맵이나 저장소(또는 mode)가 바뀌었습니다. 아래 새 미리보기를 사용자에게 다시 보여 주세요.\n\n${preview}\n\n새 확인 코드: ${code}`, true);
+    }
+    if (blockers.length) return text(blockers.join('\n'), true);
+
+    // 쓰기 — 커밋 하나(트리 → 커밋 → 브랜치). 실패하면 맵은 그대로 둔다.
+    const title = docRes.title;
+    const subject = ((typeof args.message === 'string' && args.message.trim()) || `docs: EasyMindMap 맵 "${title}" 수정 반영 (파일 ${files.length}개)`).slice(0, 200);
+    const fileList = [
+      ...edits.map((e) => `- ${e.path}${e.ops.length ? `\n${e.ops.map((o) => `  - ${o}`).join('\n')}` : ''}`),
+      ...newFiles.map((n) => `- ${n.path} (새 파일)`),
+    ].join('\n');
+    const body = `EasyMindMap 맵 "${title}" 에서 고친 내용을 push_map_to_github 로 반영합니다.\n\n${fileList}\n\n맵 id: ${mapId} · 기준 커밋 ${headSha.slice(0, 7)}`.slice(0, 60000);
+    let commit: { sha: string; date: string };
+    let branch = src.ref;
+    try {
+      const baseTree = await writer.commitTree(src.owner, src.repo, headSha);
+      const treeSha = await writer.createTree(src.owner, src.repo, baseTree, files);
+      commit = await writer.createCommit(src.owner, src.repo, `${subject}\n\n${body}`.slice(0, 60000), treeSha, headSha);
+      if (mode === 'commit') {
+        await writer.fastForward(src.owner, src.repo, src.ref, commit.sha);
+      } else {
+        branch = `emm/${mapId.slice(0, 8)}-${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}`;
+        await writer.createBranch(src.owner, src.repo, branch, commit.sha);
+      }
+    } catch (err) {
+      if (err instanceof GithubError) return text(`GitHub 에 반영하지 못했습니다 — ${err.message}\n(맵은 바꾸지 않았습니다.)`, true);
+      throw err;
+    }
+    let pr: { number: number; url: string } | null = null;
+    if (mode === 'pr') {
+      try {
+        pr = await writer.createPull(src.owner, src.repo, { title: subject, head: branch, base: src.ref, body });
+      } catch (err) {
+        if (err instanceof GithubError) {
+          return text(`브랜치 ${branch} 에 커밋(${commit.sha.slice(0, 7)})은 올렸지만 PR 을 열지 못했습니다 — ${err.message}\nGitHub 에서 그 브랜치로 PR 을 직접 열어 주세요. 맵은 바꾸지 않았습니다.`, true);
+        }
+        throw err;
+      }
+    }
+
+    // 맵 맞추기 — 반영한 문서 노드를 반영한 원문으로 다시 만든다(파일 sha 가 새 원문과 같아진다)
+    const pushed: PushedFile[] = [
+      ...edits.map((e) => ({ path: e.path, nodeId: e.nodeId, markdown: e.after, isNew: false })),
+      ...newFiles.map((n) => ({ path: n.path, nodeId: n.nodeId, markdown: n.content, isNew: true, parentDir: n.parentDir, subDirs: n.subDirs })),
+    ];
+    const next = applyPushToMap(map, src, pushed, commit, pr ? pr.number : null, new IdGen());
+    const where = pr
+      ? `PR #${pr.number}: ${pr.url}`
+      : `커밋 ${commit.sha.slice(0, 7)}: https://github.com/${src.owner}/${src.repo}/commit/${commit.sha}`;
+    const saved = await this.saveVersion(userId, mapId, docRes.doc, next, 'push_map_to_github', 'GitHub 반영 뒤 맵을');
+    if ('error' in saved) {
+      return text(`GitHub 에는 반영했습니다(${where}). 그런데 맵을 반영한 내용으로 맞추지 못했습니다 — ${saved.error}\n${pr ? 'PR 을 머지한 뒤' : '지금'} update_map_from_github 로 이 맵을 맞춰 주세요.`, true);
+    }
+    return text(
+      `"${title}" 맵(${scopeLabel})에서 고친 내용을 ${src.owner}/${src.repo} 에 반영했습니다 — ${where}${saved.versionNote}\n` +
+      (edits.length ? `수정 ${edits.length}개:\n${listSome(edits.map((e) => e.path))}\n` : '') +
+      (newFiles.length ? `새 파일 ${newFiles.length}개:\n${listSome(newFiles.map((n) => n.path))}\n` : '') +
+      (conflicts.length ? `건너뜀 ${conflicts.length}개:\n${listSome(conflicts)}\n` : '') +
+      (pr ? `PR 이 머지되기 전에는 이 문서들에 "PR #${pr.number} 대기" 가 표시되고, update_map_from_github 는 머지 전까지 이 문서들을 건너뜁니다.\n` : '') +
+      LIVE_NOTE,
     );
   }
 

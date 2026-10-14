@@ -61,7 +61,7 @@ check('error 봉투', rpcError(null, RPC.METHOD_NOT_FOUND, '없음'),
   { jsonrpc: '2.0', id: null, error: { code: -32601, message: '없음' } });
 
 // ── ⑥ 도구는 여섯 — create_map(1단계) + list_maps·get_map(2단계, §7) + get_open_map · append_to_map · check_items ──
-check('도구는 여덟', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github']);
+check('도구는 아홉 (2026-10-14 push_map_to_github, §9.15)', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github', 'push_map_to_github']);
 const byName = Object.fromEntries(TOOL_DEFS.map((t) => [t.name, t]));
 check('get_open_map: 인자 없음', Object.keys(byName.get_open_map.inputSchema.properties), []);
 check('create_map: markdown 은 필수', byName.create_map.inputSchema.required, ['markdown']);
@@ -77,20 +77,25 @@ check('append_to_map: 받는 인자는 여섯', Object.keys(byName.append_to_map
 check('check_items: map_id·nodes 필수', byName.check_items.inputSchema.required, ['map_id', 'nodes']);
 check('check_items: 받는 인자는 넷', Object.keys(byName.check_items.inputSchema.properties).sort(),
   ['checked', 'item', 'map_id', 'nodes']);
+check('push_map_to_github: map_id 만 필수', byName.push_map_to_github.inputSchema.required, ['map_id']);
+check('push_map_to_github: 받는 인자는 다섯', Object.keys(byName.push_map_to_github.inputSchema.properties).sort(),
+  ['confirm', 'map_id', 'message', 'mode', 'node']);
+check('push_map_to_github: mode 는 pr·commit', byName.push_map_to_github.inputSchema.properties.mode.enum, ['pr', 'commit']);
 check('check_items: nodes 는 문자열 배열', [byName.check_items.inputSchema.properties.nodes.type, byName.check_items.inputSchema.properties.nodes.items.type], ['array', 'string']);
 // ── 도구 힌트(annotations, 2026-09-21 §12) — ChatGPT 는 readOnlyHint 없는 도구를 전부 쓰기로 보고 매번 묻는다 ──
 check('읽기 전용 셋만 readOnlyHint', TOOL_DEFS.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name), ['list_maps', 'get_map', 'get_open_map']);
 check('쓰는 도구는 전부 readOnlyHint:false', TOOL_DEFS.filter((t) => t.annotations?.readOnlyHint === false).map((t) => t.name),
-  ['create_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github']);
-check('있는 내용을 바꾸는 둘만 destructiveHint — 체크박스·GitHub 갱신 (#534 Codex: false 는 "덧붙이기만" 약속)', TOOL_DEFS.filter((t) => t.annotations?.destructiveHint === true).map((t) => t.name), ['check_items', 'update_map_from_github']);
+  ['create_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github', 'push_map_to_github']);
+check('있는 내용을 바꾸는 셋만 destructiveHint — 체크박스·GitHub 갱신·GitHub 반영 (#534 Codex: false 는 "덧붙이기만" 약속)', TOOL_DEFS.filter((t) => t.annotations?.destructiveHint === true).map((t) => t.name), ['check_items', 'update_map_from_github', 'push_map_to_github']);
 check('덧붙이기만 하는 셋은 destructiveHint:false', TOOL_DEFS.filter((t) => t.annotations?.destructiveHint === false).map((t) => t.name), ['create_map', 'append_to_map', 'import_github_docs']);
-check('GitHub 로 나가는 둘만 openWorldHint', TOOL_DEFS.filter((t) => t.annotations?.openWorldHint === true).map((t) => t.name), ['import_github_docs', 'update_map_from_github']);
+check('GitHub 로 나가는 셋만 openWorldHint', TOOL_DEFS.filter((t) => t.annotations?.openWorldHint === true).map((t) => t.name), ['import_github_docs', 'update_map_from_github', 'push_map_to_github']);
 check('힌트 없는 도구는 없다', TOOL_DEFS.filter((t) => !t.annotations).map((t) => t.name), []);
 // **지우거나 바꾸는 도구가 없다**(§2-3) — 이름으로 못 박는다. append 는 덧붙이기만,
 // check_items 는 체크박스 한 글자만 바꾸는 예외(§9.12)라 허용
 // 삭제·수정 도구는 두지 않는다(§2-3) — 예외는 `update_map_from_github` 하나(2026-09-21
 // 사용자 결정, §9.14): 이 도구가 **스스로 만든** 노드(GitHub 링크·생성 id)만 저장소에
 // 맞춰 더하고·바꾸고·지우며, 사용자가 손으로 붙인 노드·노트는 남기고, 히스토리 버전으로 남는다.
+// push_map_to_github(2026-10-14, §9.15)는 맵이 아니라 GitHub 을 바꾼다 — 미리보기 + 확인 코드, 파일은 지우지 않는다.
 check('삭제·수정 도구 없음 (github 갱신 하나만 예외)', TOOL_DEFS.filter((t) => /delete|remove|update|replace|set_/.test(t.name)).map((t) => t.name), ['update_map_from_github']);
 
 console.log(failed ? `\n${failed}개 실패` : '\n전부 통과');

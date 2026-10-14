@@ -85,6 +85,13 @@ declare module '@pro' {
    */
   export function ProSalesAdminPanel(p: { t: ThemeTokens }): JSX.Element | null;
   /**
+   * 관리자 콘솔 ▸ **주소록관리** 탭의 알맹이 (2026-10-14, collaboration/30 §5).
+   * 팀 요금제 회원을 골라 그 사람의 주소록을 조직 구조(하위 그룹)대로 채우고,
+   * 엑셀·CSV 로 한꺼번에 넣는다. `collab` 이 켜진 서버에서만 그린다.
+   * 관리자 표는 `ProSalesAdminPanel` 과 같이 코어의 `adminToken` 을 읽어 싣는다.
+   */
+  export function ProContactsAdminPanel(p: { t: ThemeTokens }): JSX.Element | null;
+  /**
    * 유료 맵 뷰어(`/p/{publishId}`)의 **[구매하기] 자리** (2026-09-24).
    *
    * 하는 일이 둘이다.

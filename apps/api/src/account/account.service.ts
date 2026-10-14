@@ -162,7 +162,26 @@ export class AccountService {
     );
 
     if (this.mail.isConfigured()) {
-      await this.mail.sendCode(email, code, CODE_TTL_MIN, purpose);
+      try {
+        await this.mail.sendCode(email, code, CODE_TTL_MIN, purpose);
+      } catch (err) {
+        // ★ **메일 서버가 거절하면 그 까닭을 말한다** (2026-10-14 사용자 보고: "/admin
+        //   인증번호 받기가 오류"). 예전에는 SMTP 예외가 그대로 올라가 화면에
+        //   "Internal server error" 만 떴다 — 계정 문제인지 메일 서버 문제인지 알 수 없다.
+        //   보내지 못한 번호는 쓸모가 없으니 재발송 대기도 풀어 준다(곧바로 다시 누를 수 있게).
+        const why = String((err as { response?: string; message?: string })?.response
+          ?? (err as Error)?.message ?? err).slice(0, 200);
+        this.log.error(`인증번호 메일 실패 (${purpose}) → ${email}: ${why}`);
+        await this.db.query(
+          `UPDATE public.email_verifications
+              SET sent_at = NOW() - INTERVAL '1 hour', expires_at = NOW()
+            WHERE email = $1`,
+          [email],
+        ).catch(() => undefined);
+        throw new ServiceUnavailableException(
+          `인증번호 메일을 보내지 못했습니다 — 메일 서버 응답: ${why}`,
+        );
+      }
       return { sent: true as const, expiresInMin: CODE_TTL_MIN };
     }
 

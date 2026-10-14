@@ -18,10 +18,10 @@ import { AdminLogin } from './AdminLogin';
 import { MembersPanel } from './MembersPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
-import { ProSalesAdminPanel } from '@pro';
+import { ProContactsAdminPanel, ProSalesAdminPanel } from '@pro';
 import { useProFeature } from '@/pro/contract';
 
-type Tab = 'members' | 'billing' | 'settings' | 'password' | 'sales';
+type Tab = 'members' | 'billing' | 'settings' | 'password' | 'sales' | 'contacts';
 
 const TABS: { id: Tab; label: string; soon?: string }[] = [
   { id: 'members', label: '회원관리' },
@@ -44,6 +44,13 @@ const TABS: { id: Tab; label: string; soon?: string }[] = [
  */
 const SALES_TAB: (typeof TABS)[number] = { id: 'sales', label: '판매관리' };
 
+/**
+ * **주소록관리** — 팀 요금제 회원의 주소록을 관리자가 조직 구조대로 채운다
+ * (2026-10-14 사용자 요청 · collaboration/30 §5). 주소록은 협업의 일부라
+ * `collab` 이 켜진 서버에서만 난다 — 판매관리와 같은 이유로 '준비 중' 으로 두지 않는다.
+ */
+const CONTACTS_TAB: (typeof TABS)[number] = { id: 'contacts', label: '주소록관리' };
+
 export function AdminPage() {
   // 관리자 화면은 **항상 밝은 테마**로 둔다 — 에디터의 테마 설정과 얽히면
   // 분리할 때 스토어를 끌고 가야 한다.
@@ -53,10 +60,14 @@ export function AdminPage() {
   const [checking, setChecking] = useState(true);
   const [tab, setTab] = useState<Tab>('members');
   const salesOn = useProFeature('map-sales').status === 'on';
-  // 설정관리 **앞**에 둔다 — 돈이 오가는 탭이라 설정보다 자주 본다
-  const tabs = salesOn
-    ? TABS.flatMap((x) => (x.id === 'settings' ? [SALES_TAB, x] : [x]))
-    : TABS;
+  const collabOn = useProFeature('collab').status === 'on';
+  // 판매관리는 설정관리 **앞**에 둔다 — 돈이 오가는 탭이라 설정보다 자주 본다.
+  // 주소록관리는 회원관리 바로 뒤 — 회원을 보고 그 회원의 주소록으로 간다.
+  const tabs = TABS.flatMap((x) => {
+    if (x.id === 'members' && collabOn) return [x, CONTACTS_TAB];
+    if (x.id === 'settings' && salesOn) return [SALES_TAB, x];
+    return [x];
+  });
 
   // 새로고침해도 표가 살아 있으면 그대로 들어간다 (표는 sessionStorage)
   useEffect(() => {
@@ -139,6 +150,8 @@ export function AdminPage() {
         {tab === 'settings' && <SettingsPanel t={t} />}
         {/* 판매관리 — 표도 판정도 유료 모듈 것이다. 코어는 탭 자리만 낸다 */}
         {tab === 'sales' && <ProSalesAdminPanel t={t} />}
+        {/* 주소록관리 — 표·가져오기·화면 모두 유료 모듈 것. 코어는 탭 자리만 */}
+        {tab === 'contacts' && <ProContactsAdminPanel t={t} />}
         {tab === 'password' && (
           <ChangePasswordForm
             t={t} email={email}

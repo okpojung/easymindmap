@@ -1604,11 +1604,28 @@ export function MapBrowser({
         data-testid="browser-totals"
         style={{
           ...rowStyle,
+          position: 'relative',
           background: t.surfaceAlt,
           borderBottom: `2px solid ${t.border}`,
           color: t.text, fontWeight: 700, fontSize: 11.5,
         }}
       >
+        {drag && !compact && (
+          <div data-testid="browser-drop-home" {...dropProps(null)}
+            style={{
+              // 합계 줄 위에 **덮어** 그린다 — 목록 안에 끼우면 끌기를 시작하는 순간
+              // 모든 줄이 한 칸 밀려 손 아래 줄이 바뀐다 (e2e341 에서 잡았다)
+              position: 'absolute', inset: 0, zIndex: 2,
+              display: 'flex', alignItems: 'center',
+              padding: '0 14px', fontSize: 12.5, fontWeight: 700,
+              borderBottom: `1px dashed ${t.border}`,
+              background: dropAt === '' ? t.primarySoft : t.surfaceAlt,
+              color: canDropAt(null) ? (dropAt === '' ? t.primary : t.text) : t.textSubtle,
+              outline: dropAt === '' ? `2px solid ${t.primary}` : undefined, outlineOffset: -2,
+            }}>
+            {tr('cloud.browser.dropHome')}
+          </div>
+        )}
         <span />
         <span data-testid="browser-total-label" style={{ whiteSpace: 'nowrap' }}>
           {searching ? tr('cloud.browser.totalSearch') : tr('cloud.browser.total')}
@@ -1671,18 +1688,6 @@ export function MapBrowser({
             if (m) void openMap(m); else void load();
           }}
         />
-        {drag && !compact && (
-          <div data-testid="browser-drop-home" {...dropProps(null)}
-            style={{
-              padding: '8px 14px', fontSize: 12.5, fontWeight: 700,
-              borderBottom: `1px dashed ${t.border}`,
-              background: dropAt === '' ? t.primarySoft : t.surfaceAlt,
-              color: canDropAt(null) ? (dropAt === '' ? t.primary : t.text) : t.textSubtle,
-              outline: dropAt === '' ? `2px solid ${t.primary}` : undefined, outlineOffset: -2,
-            }}>
-            {tr('cloud.browser.dropHome')}
-          </div>
-        )}
         {maps === null ? (
           <div style={{ padding: '28px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center' }}>
             {tr('common.loading')}

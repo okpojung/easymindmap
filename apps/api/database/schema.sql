@@ -1281,3 +1281,18 @@ ALTER TABLE public.users
 COMMENT ON COLUMN public.users.language IS
     '화면 언어(ko·en·zh·ja). NULL = 고른 적 없음 — 브라우저 언어를 따른다.';
 
+
+-- ── 연결 맵 (2026-10-14 사용자 요청 — 04-extensions/linked-maps.md) ──────
+-- 큰 맵의 노드가 다른 단독맵을 가리킨다(문서 노드의 linkMapId). 정본은 문서이고,
+-- 이 표는 **문서를 열지 않고** "이 맵이 몇 개의 맵에 연결돼 있나" 를 세려는 색인이다.
+-- 저장(PUT /maps/:id/document) 때마다 그 맵의 행을 지우고 다시 넣는다.
+-- 표가 없는 서버에서도 앱은 죽지 않는다 — 문서함에 연결 수만 안 보인다.
+CREATE TABLE IF NOT EXISTS public.map_links (
+    parent_map_id UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+    child_map_id  UUID NOT NULL REFERENCES public.maps(id) ON DELETE CASCADE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (parent_map_id, child_map_id)
+);
+CREATE INDEX IF NOT EXISTS idx_map_links_child ON public.map_links (child_map_id);
+COMMENT ON TABLE public.map_links IS
+    '연결 맵 — parent 맵 안의 노드가 child 맵을 가리킨다(문서의 linkMapId 에서 저장 때 만든다). 문서함의 "맵 N개에 연결됨" 집계용.';

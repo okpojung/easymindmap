@@ -314,6 +314,14 @@ export class MapsService {
       : '';
     const pubCols = withPublish
       ? `, pub.publish_id${withVis ? ', pub.visibility' : ''}${withListed ? ', pub.listed' : ''}` : '';
+    // 연결 맵 (2026-10-14) — **이 맵을 연결해 둔 (지우지 않은) 맵의 수**. 문서함 정보
+    // 팝업이 "맵 N개에 연결됨" 으로 그린다. 표가 없는 서버(델타 전)는 칸을 뺀다.
+    const withLinks = await tableReady(this.db, 'public.map_links');
+    const linkCols = withLinks
+      ? `, (SELECT COUNT(*)::int FROM public.map_links l
+             JOIN public.maps pm2 ON pm2.id = l.parent_map_id AND pm2.deleted_at IS NULL
+            WHERE l.child_map_id = p.id) AS linked_from`
+      : '';
 
     const [list, count] = await Promise.all([
       this.db.query<MapRow & {
@@ -330,6 +338,7 @@ export class MapsService {
         publish_id?: string | null;
         visibility?: string | null;
         listed?: boolean | null;
+        linked_from?: number | null;
       }>(
         `${hitsCte}${hitsCte ? ', p AS (' : 'WITH p AS ('}
            SELECT m.id, m.title, m.folder_id, m.kind, m.view_mode, m.deleted_at,
@@ -344,7 +353,7 @@ export class MapsService {
          )
          SELECT p.id, p.title, p.folder_id, p.kind, p.view_mode, p.deleted_at,
                 p.created_at, p.updated_at, p.node_count, p.attach_count,
-                p.attach_bytes, p.doc_bytes${matchCountSql}${lastCols}${pubCols}
+                p.attach_bytes, p.doc_bytes${matchCountSql}${lastCols}${pubCols}${linkCols}
            FROM p
            ${lastJoin}
            ${pubJoin}
@@ -388,6 +397,8 @@ export class MapsService {
         // `undefined`** 로 둔다 — false(내려가 있다)와 "이 서버는 지식창고를
         // 모른다"는 다른 사실이고, 화면은 뒤쪽이면 토글을 아예 안 그린다.
         listed: m.publish_id ? (m.listed ?? undefined) : undefined,
+        // 이 맵을 연결해 둔 맵의 수 (2026-10-14) — 표가 없는 서버는 undefined
+        ...(withLinks ? { linkedFrom: m.linked_from ?? 0 } : {}),
       })),
       total: Number(count.rows[0]?.total ?? 0),
     };
@@ -851,6 +862,11 @@ export class MapsService {
        RETURNING updated_at`,
       [mapId, docJson, nodeCount, attachCount, attachBytes],
     );
+
+    // 연결 맵 (2026-10-14) — 이 맵 안의 연결 노드(`linkMapId`)를 map_links 에 맞춘다.
+    // 문서함이 "이 맵이 몇 개의 맵에 연결돼 있나" 를 문서를 열지 않고 센다.
+    // 표가 없거나(델타 전) 실패해도 저장 자체는 막지 않는다 — 셈이 늦을 뿐이다.
+    await this.syncMapLinks(mapId, doc);
     // 제목은 **달라졌을 때만** 갱신하고, 그때는 중복 검사도 거친다.
     // 서버 맵을 열어 편집한 뒤 저장하면 프런트가 "열었던 그 이름"을 그대로
     // 보내므로(2026-08-02 규칙) 보통 이 분기는 지나간다.
@@ -1289,6 +1305,37 @@ export class MapsService {
   private static readonly EDIT_LOCK_TTL_MS = 60_000;
 
   /** 잠금 획득 시도 — 없거나 죽었거나 내 것이면 upsert 후 true */
+  /** 문서 안의 연결 노드를 map_links 에 맞춘다 (2026-10-14 연결 맵) */
+  private async syncMapLinks(mapId: string, doc: unknown): Promise<void> {
+    try {
+      if (!(await tableReady(this.db, 'public.map_links'))) return;
+      interface N { linkMapId?: string; children?: N[] }
+      const m = (doc as { map?: { root?: N; branches?: N[]; centers?: { root?: N; branches?: N[] }[] } })?.map;
+      const ids = new Set<string>();
+      const walk = (ns: N[] | undefined) => {
+        for (const n of ns ?? []) { if (typeof n.linkMapId === 'string') ids.add(n.linkMapId); walk(n.children); }
+      };
+      walk(m?.branches);
+      for (const c of m?.centers ?? []) {
+        if (typeof c.root?.linkMapId === 'string') ids.add(c.root.linkMapId);
+        walk(c.branches);
+      }
+      const uuids = [...ids].filter((x) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x) && x !== mapId);
+      await this.db.query(`DELETE FROM public.map_links WHERE parent_map_id = $1`, [mapId]);
+      if (uuids.length) {
+        await this.db.query(
+          `INSERT INTO public.map_links (parent_map_id, child_map_id)
+           SELECT $1, m.id FROM public.maps m WHERE m.id = ANY($2::uuid[])
+           ON CONFLICT DO NOTHING`,
+          [mapId, uuids],
+        );
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[map_links] 연결 맵 집계를 갱신하지 못했습니다', mapId, (e as Error)?.message);
+    }
+  }
+
   private async tryAcquireEditLock(
     mapId: string, userId: string, sessionKey: string,
   ): Promise<boolean> {

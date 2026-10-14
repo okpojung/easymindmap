@@ -25,6 +25,7 @@ import type { SampleMap } from '@/editor/__samples__/types';
 import { mergeServerAppends } from '@/utils/mergeAppends';
 import { cloudApi, CloudError, type MapKind } from '@/services/cloud/apiClient';
 import { editSessionKey } from '@/services/cloud/editSession';
+import { expandLinkedMaps, releaseLinkedLocks, saveLinkedChildren, splitLinkedMaps, useLinkedMapStore } from '@/services/cloud/linkedMaps';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 
 /**
@@ -45,9 +46,25 @@ export { editSessionKey };
 
 /** 현재 연결된 맵의 편집 잠금을 해제 (닫기·새 문서 전환 시 — 베스트 에포트) */
 function releaseEditLock(): void {
+  // 연결 맵(2026-10-14)의 잠금도 함께 놓는다 — 큰 맵을 닫으면 그 맵들도 다시 편집할 수 있다
+  releaseLinkedLocks();
+  useLinkedMapStore.getState().reset();
   const id = useCloudStore.getState().cloudMapId;
   if (!id) return;
   void cloudApi.editRelease(id, editSessionKey()).catch(() => { /* 무시 — TTL 이 정리 */ });
+}
+
+/**
+ * 큰 맵을 저장한 뒤 **연결 맵 가운데 고친 것**을 각자 저장한다 (2026-10-14).
+ * 다른 곳에서 편집 중이라 저장하지 못한 것이 있으면 알린다 — 조용히 버리지 않는다.
+ */
+export async function saveLinkedAfter(keepVersion: boolean): Promise<void> {
+  const map = useDocumentStore.getState().map;
+  if (!Object.keys(useLinkedMapStore.getState().entries).length) return;
+  const { blocked } = await saveLinkedChildren(map, { keepVersion });
+  if (blocked.length) {
+    useCloudStore.getState().setNotice(tr('cloud.linked.notSaved', { titles: blocked.join(', ') }));
+  }
 }
 
 export interface SnapshotEditor {
@@ -67,7 +84,9 @@ export function buildSnapshot(): {
     v: SNAPSHOT_VERSION,
     // 로드 경로와 같은 정규형으로 저장 (2026-08-03) — 그래야 "다시 열기
     // → 그대로 닫기"가 서버에서 무변경으로 판정된다 (normalizeMapForSnapshot)
-    map: normalizeMapForSnapshot(st.map),
+    // ★ 연결 맵(2026-10-14)은 떼어 낸다 — 큰 맵에는 연결 노드의 이름만 저장되고,
+    //   그 아래 내용은 저장 뒤 `saveLinkedChildren` 이 그 맵에 따로 저장한다
+    map: splitLinkedMaps(normalizeMapForSnapshot(st.map) as SampleMap).parent,
     editor: { layoutType: ui.layoutType, spacingX: ui.spacingX, spacingY: ui.spacingY },
   };
 }
@@ -181,6 +200,7 @@ export async function saveCurrentMap(
     if (res.version) useCloudStore.getState().setLastSavedVersion(res.version);
     // 이 문서를 그 맵에 저장했으니 이제 그 맵의 문서다 (자동저장 출처 검사)
     useDocumentStore.getState().setDocOrigin(id);
+    await saveLinkedAfter(keepVersion);
     useAutosaveStore.getState().setSaveState('saved');
     // 대기 중이던 편집 수를 털고, **그 맵의 로컬 초안도 지운다**
     // (2026-08-07 — 저장했는데 다음에 열면 복구 배너가 뜨던 문제)
@@ -239,6 +259,7 @@ export async function saveNewMap(opts: {
       title: opts.title, folderId: opts.folderId, kind: opts.kind,
     });
     useDocumentStore.getState().setDocOrigin(created.mapId);
+    await saveLinkedAfter(true);
     useAutosaveStore.getState().setSaveState('saved');
     notifyExplicitSave(res.mapId);
     return { mapId: created.mapId };
@@ -451,8 +472,10 @@ export async function refreshFromServer(
     const keepView = { zoom: vp.zoom, panX: vp.panX, panY: vp.panY };
     const keepSel = useInteractionStore.getState().selectedId;
 
+    const shownMap = kind === 'collab' ? loadedMap
+      : await expandLinkedMaps(loadedMap, { lock: true, selfId: mapId });
     suppressCloudAutosave();
-    useDocumentStore.getState().loadMap(loadedMap as never,
+    useDocumentStore.getState().loadMap(shownMap as never,
       { resetHistory: true, serverMapId: mapId });
     useDocumentStore.getState().setMapTitle(title);
     applySnapshotEditor(doc);
@@ -501,10 +524,16 @@ export async function openMapHere(
         openingLabelFor(tr('cloud.session.openingTitle', { title }), countMapNodes(loadedMap as never)));
       await afterPaint();
     }
+    // ★ 연결 맵(2026-10-14) — 연결 노드 아래에 그 맵의 내용을 붙여 보인다. 이 맵을
+    //   **편집하려고** 열 때만 그 맵들의 편집 잠금도 쥔다(그동안 그 맵은 다른 곳에서
+    //   읽기 전용). 협업맵에는 붙이지 않는다 — 정본이 방이라 떼어 저장할 자리가 없다.
+    const editable = !dashboard && !published && editLock !== 'busy' && role !== 'viewer';
+    const shown = kind === 'collab' ? loadedMap as SampleMap
+      : await expandLinkedMaps(loadedMap as SampleMap, { lock: editable, selfId: mapId });
     suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
     // 열기는 **문서 경계** — 되돌리기가 '열기 이전' 문서로 넘어가면
     // 안 된다 (그 상태로 저장하면 이 맵이 비워진다, §7.4)
-    useDocumentStore.getState().loadMap(loadedMap as never,
+    useDocumentStore.getState().loadMap(shown as never,
       { resetHistory: true, serverMapId: mapId });
     // 서버의 맵 이름을 문서 제목으로도 맞춘다 — 이후 저장은 이 이름 그대로
     useDocumentStore.getState().setMapTitle(title);

@@ -17,6 +17,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useTr } from '@/i18n';
 import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
 import { primeTouchKeyboard } from './touchKeyboard';
+import { useLinkedMapMenu } from '@/components/cloud/LinkedMapControls';
 
 interface Props {
   t: ThemeTokens;
@@ -102,6 +103,17 @@ export function CanvasFloatingToolbar({
   };
 
   const tr = useTr();
+  // 연결 맵 (2026-10-14) — 노드를 새 맵으로 떼어 저장·저장된 맵 붙이기·열기·끊기
+  const linkMenu = useLinkedMapMenu(t);
+  const [linkOpen, setLinkOpen] = useState(false);
+  useEffect(() => {
+    if (!linkOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement)?.closest?.('[data-link-menu]')) setLinkOpen(false);
+    };
+    window.addEventListener('pointerdown', onDown);
+    return () => window.removeEventListener('pointerdown', onDown);
+  }, [linkOpen]);
   // 폰 폭 — 자주 쓰는 단추 몇 개 + [더 보기] 메뉴로 접는다 (모바일 웹, 2026-10-05).
   // 390px 에 단추 13개(손가락 40px)를 한 줄로 두면 왼쪽으로 넘쳐 잘렸다.
   const compact = usePhoneLayout();
@@ -317,6 +329,13 @@ export function CanvasFloatingToolbar({
           { key: 'merge', icon: <I.FolderMove size={16} />, testId: 'center-merge', label: tr('editor.toolbar.m.merge'), disabled: !selectedIsCenter || centerCount < 2, onClick: close(handleMerge) },
         ] as MoreItem[],
       }]),
+      ...(kanban ? [] : [{
+        label: tr('cloud.linked.group'),
+        items: linkMenu.items.map((it) => ({
+          key: it.key, icon: it.icon, label: it.label, testId: it.testId, disabled: it.disabled,
+          onClick: () => { setMoreOpen(false); it.onClick(); },
+        })) as MoreItem[],
+      }]),
       {
         label: tr('editor.toolbar.groupView'),
         items: [
@@ -368,6 +387,7 @@ export function CanvasFloatingToolbar({
           {addMenu}
         </span>
         {calendarDlg}
+        {linkMenu.dialog}
         <ToolbarBtn
           t={t}
           title={selectedConnectorId ? tr('editor.toolbar.deleteConnector') : tr('editor.toolbar.deleteNode')}
@@ -539,6 +559,41 @@ export function CanvasFloatingToolbar({
           >
             <I.FolderMove size={15} />
           </ToolbarBtn>
+          {/* 연결 맵 (2026-10-14) — 단추 하나에 메뉴 4개(새 맵으로 저장·붙이기·열기·끊기) */}
+          <span data-link-menu="" style={{ position: 'relative', display: 'inline-flex' }}>
+            <ToolbarBtn
+              t={t}
+              title={tr('cloud.linked.menu')}
+              highlight={linkOpen}
+              onClick={() => setLinkOpen((v) => !v)}
+              testId="link-menu"
+            >
+              <I.Link size={15} />
+            </ToolbarBtn>
+            {linkOpen && (
+              <div data-testid="link-menu-panel" role="menu" style={{
+                position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 20, minWidth: 230,
+                background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8,
+                boxShadow: '0 10px 30px rgba(60,45,15,0.22)', padding: 4,
+              }}>
+                {linkMenu.items.map((it) => (
+                  <button key={it.key} type="button" role="menuitem" data-testid={it.testId}
+                    disabled={it.disabled} title={it.title}
+                    onClick={() => { setLinkOpen(false); it.onClick(); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                      padding: '7px 10px', border: 'none', borderRadius: 6, background: 'transparent',
+                      color: it.disabled ? t.textSubtle : t.text, fontSize: 12.5,
+                      cursor: it.disabled ? 'default' : 'pointer',
+                    }}>
+                    <span style={{ display: 'flex', width: 16, justifyContent: 'center' }}>{it.icon}</span>
+                    {it.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </span>
+          {linkMenu.dialog}
         </>
       )}
 

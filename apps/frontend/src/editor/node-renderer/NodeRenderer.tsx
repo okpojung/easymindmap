@@ -19,6 +19,8 @@ import { NodeTagChips } from './NodeTagChips';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { nodeContentIndicators, isNoteKind, nodeSizingOpts, type ContentKind } from './nodeContent';
 import { IndicatorGlyph, NoteTypeGlyph } from './IndicatorGlyph';
+import { openMapInNewTab } from '@/services/cloud/mapSession';
+import { useLinkedMapStore } from '@/stores/linkedMapStore';
 import {
   layoutInlineImages,
   levelFontFamily,
@@ -1528,12 +1530,20 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                     if (single?.url) window.open(single.url, '_blank', 'noopener');
                     return;
                   }
+                  // 연결 맵 — 그 맵을 새 탭에서 연다 (2026-10-14)
+                  if (ic.kind === 'linkmap') {
+                    if (single?.url) openMapInNewTab(single.url);
+                    return;
+                  }
                   if (single) openAttachment(single.label, single.url);
                 }}
                 onDoubleClick={(e) => e.stopPropagation()}
               >
                 <title>{ic.title}</title>
-                {isNoteKind(ic.kind) ? (
+                {ic.kind === 'linkmap' ? (
+                  // 연결 맵 배지 — 고칠 수 있으면 청록, 보기만이면 회색, 없는 맵이면 빨강
+                  <LinkMapGlyph size={icSize + 2} state={useLinkedMapStore.getState().entries[n.linkMapId ?? '']?.state} />
+                ) : isNoteKind(ic.kind) ? (
                   // 노트 종류별 배지 글리프 — 문단 T / 코드 C / 표 ⊞ / 체크 ✓
                   <NoteTypeGlyph kind={ic.kind} size={icSize + 2} />
                 ) : ic.kind === 'link' || ic.kind === 'file' ? (
@@ -1636,6 +1646,24 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           />
         </filter>
       </defs>
+    </g>
+  );
+}
+
+/** 연결 맵 배지 (2026-10-14) — 둥근 사각 + 작은 맵(가지 셋) + 바깥 화살표 */
+function LinkMapGlyph({ size, state }: { size: number; state?: string }) {
+  const s = size / 24;
+  const fill = state === 'missing' || state === 'skipped' ? '#B91C1C'
+    : state === 'readonly' ? '#64748B' : '#0F766E';
+  return (
+    <g transform={`scale(${s}) translate(-12,-12)`} data-link-state={state ?? 'editable'}>
+      <rect x="2" y="2" width="20" height="20" rx="5" fill={fill} />
+      <g stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" fill="none">
+        <path d="M7 12 H11 M11 12 L15 8 M11 12 L15 16" />
+      </g>
+      <circle cx="7" cy="12" r="2.2" fill="#FFFFFF" />
+      <circle cx="16" cy="8" r="1.6" fill="#FFFFFF" />
+      <circle cx="16" cy="16" r="1.6" fill="#FFFFFF" />
     </g>
   );
 }

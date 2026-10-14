@@ -803,6 +803,9 @@ export class MapsService {
       // 문서가 그대로여도 **폴더나 형제 맵의 이름이 바뀌었을 수** 있다 —
       // 그러면 이 맵의 파일 자리도 달라진다. 예약해 두고 판단은 미러가 한다.
       this.vault.scheduleMirror(userId, mapId);
+      // 연결 맵 색인도 맞춘다 — 표가 생기기 전에 저장한 큰 맵은 내용이 그대로인
+      // 저장 한 번으로 채워져야 한다(Codex #640). 행 몇 개라 가볍다.
+      await this.syncMapLinks(mapId, doc);
       // **문서의 시각**을 돌려준다(맵 표의 시각이 아니라). 클라이언트는 이
       // 값을 다음 저장의 baseUpdatedAt 으로 쓰므로 하트비트와 같은 기준이어야 한다.
       return { mapId, updatedAt: cur[0]?.updated_at ?? map.updated_at, unchanged: true as const };

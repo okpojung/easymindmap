@@ -80,7 +80,8 @@ export async function expandLinkedMaps(
     const id = holder.node.linkMapId!;
     const st = useLinkedMapStore.getState();
     if (chain.includes(id) || depth > MAX_DEPTH) {
-      st.set({ mapId: id, title: holder.node.text, state: 'skipped' });
+      // 바깥에서 이미 펼친 같은 맵(A→B→C→B 의 첫 B)의 상태는 덮어쓰지 않는다 (Codex #640)
+      if (!st.entries[id]) st.set({ mapId: id, title: holder.node.text, state: 'skipped' });
       holder.setChildren([]);
       return;
     }
@@ -256,13 +257,16 @@ export function splitLinkedMaps(map: SampleMap): SplitResult {
 
 /**
  * 큰 맵을 저장한 **뒤에** 부른다 — 연결된 맵 가운데 고친 것만 각자 저장한다.
- * @returns 저장하지 못한 연결 맵 이름(다른 곳에서 편집 중인데 이 탭에서 고친 것)
+ * @returns `blocked` = 보기만 하는 연결이라 저장할 수 없는 것(다른 곳에서 편집 중),
+ *   `failed` = 저장을 시도했는데 실패한 것(네트워크·STALE 등) — **다시 시도해야 한다.**
+ *   부르는 쪽은 failed 가 있으면 저장이 끝났다고 말하면 안 된다(닫기·초안 지우기 금지).
  */
 export async function saveLinkedChildren(
   map: SampleMap, { keepVersion }: { keepVersion: boolean },
-): Promise<{ saved: number; blocked: string[] }> {
+): Promise<{ saved: number; blocked: string[]; failed: string[] }> {
   const { children } = splitLinkedMaps(map);
   const blocked: string[] = [];
+  const failed: string[] = [];
   let saved = 0;
   for (const c of children) {
     const e = useLinkedMapStore.getState().entries[c.mapId];
@@ -277,10 +281,10 @@ export async function saveLinkedChildren(
       useLinkedMapStore.getState().set({ ...e, savedJson: json, updatedAt: res.updatedAt });
       saved++;
     } catch {
-      blocked.push(e.title);
+      failed.push(e.title);
     }
   }
-  return { saved, blocked };
+  return { saved, blocked, failed };
 }
 
 // ── 잠금 유지 · 해제 ───────────────────────────────────────────

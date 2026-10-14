@@ -61,9 +61,16 @@ function releaseEditLock(): void {
 export async function saveLinkedAfter(keepVersion: boolean): Promise<void> {
   const map = useDocumentStore.getState().map;
   if (!Object.keys(useLinkedMapStore.getState().entries).length) return;
-  const { blocked } = await saveLinkedChildren(map, { keepVersion });
+  const { blocked, failed } = await saveLinkedChildren(map, { keepVersion });
   if (blocked.length) {
     useCloudStore.getState().setNotice(tr('cloud.linked.notSaved', { titles: blocked.join(', ') }));
+  }
+  // ★ 저장하지 못한 연결 맵이 있으면 **저장이 끝난 것이 아니다** (Codex #640) —
+  //   던져서 부르는 쪽(저장 후 닫기 등)이 멈추게 한다. 큰 맵은 이미 저장됐고,
+  //   화면의 편집분은 그대로 남아 다음 저장이 다시 시도한다.
+  if (failed.length) {
+    useAutosaveStore.getState().setSaveState('dirty');
+    throw new CloudError(0, tr('cloud.linked.saveFailed', { titles: failed.join(', ') }));
   }
 }
 

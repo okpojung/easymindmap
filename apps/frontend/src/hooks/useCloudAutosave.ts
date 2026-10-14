@@ -258,13 +258,22 @@ async function doSave() {
       useAutosaveStore.getState().setLastSavedAt(lastSaveAt);
       // 서버가 돌아왔다 — "배포 중" 띠를 내린다 (B20 ⑧ⓑ)
       useAutosaveStore.getState().setOutageNotice(null);
-      // 서버에 들어갔으니 이 맵의 로컬 초안은 더 필요 없다
-      void clearLocalDraft(mapId);
-      // 연결 맵 가운데 고친 것도 각자 올린다 (2026-10-14)
+      // 연결 맵 가운데 고친 것도 각자 올린다 (2026-10-14). **하나라도 실패하면**
+      // 저장이 끝난 것이 아니다 — 초안을 지우지 않고 편집 대기로 남겨 다음 주기에
+      // 다시 올린다 (Codex #640)
+      let childFailed = false;
       if (Object.keys(useLinkedMapStore.getState().entries).length) {
-        const { blocked } = await saveLinkedChildren(useDocumentStore.getState().map, { keepVersion: false });
+        const { blocked, failed } = await saveLinkedChildren(useDocumentStore.getState().map, { keepVersion: false });
         if (blocked.length) useCloudStore.getState().setNotice(tr('cloud.linked.notSaved', { titles: blocked.join(', ') }));
+        if (failed.length) {
+          childFailed = true;
+          setPending(Math.max(1, pendingEdits));
+          useAutosaveStore.getState().setSaveState('dirty');
+          useCloudStore.getState().setError(tr('cloud.linked.saveFailed', { titles: failed.join(', ') }));
+        }
       }
+      // 서버에 들어갔으니 이 맵의 로컬 초안은 더 필요 없다
+      if (!childFailed) void clearLocalDraft(mapId);
     }
   } catch (err) {
     // **서버가 더 새롭다(STALE)** — 재시도해도 같은 답이다. 편집분을 초안으로

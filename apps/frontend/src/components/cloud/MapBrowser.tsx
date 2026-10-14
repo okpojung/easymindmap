@@ -483,6 +483,8 @@ export function MapBrowser({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // 폴더 고르는 창(맵·폴더 이동)은 제 Esc 로 스스로 닫는다 — 여기서는 비켜선다
+      if (moving || movingFolder) return;
       if (sheet) { setSheet(null); return; }
       if (newMapAt) { setNewMapAt(null); return; }
       if (info) { setInfo(null); return; }
@@ -492,7 +494,7 @@ export function MapBrowser({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, newFolder, query, info, newMapAt, sheet]);
+  }, [onClose, newFolder, query, info, newMapAt, sheet, moving, movingFolder]);
 
   // ── 내용 검색 ───────────────────────────────────────────────
   // 서버가 제목 + 맵 안(노드·노트·태그)을 찾아 **맞은 맵만** 돌려준다.

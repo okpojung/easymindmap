@@ -373,6 +373,17 @@ export function MapBrowser({
   /** 옮기려는 폴더 — 안의 맵·하위 폴더는 parent 를 따라 함께 간다 */
   const [movingFolder, setMovingFolder] = useState<FolderItem | null>(null);
   /**
+   * **끌어서 옮기기** (2026-10-14 사용자 요청) — 폴더·맵 줄을 끌어 폴더 줄(또는
+   * 맨 위 🏠 홈 띠)에 놓는다. `dropAt` 은 지금 놓을 자리('' = 홈).
+   * 데스크톱 표에서만 — 폰(compact)은 HTML 끌기가 손가락으로 되지 않아
+   * ⋯ 시트의 '다른 폴더로 이동'을 쓴다.
+   */
+  const [drag, setDrag] = useState<
+    { kind: 'map'; map: MapListItem } | { kind: 'folder'; folder: FolderItem } | null
+  >(null);
+  const [dropAt, setDropAt] = useState<string | null>(null);
+  const dragOpenTimer = useRef<{ id: string; t: number } | null>(null);
+  /**
    * 문서함 행에서 연 공유 대화상자 (2026-09-07 사용자 요청 — "소유권을
    * 넘기려고 꼭 맵을 열어야 하나"). 툴바의 공유와 **같은 대화상자**를 맵 id
    * 만으로 띄운다(탈퇴 차단 목록의 [공유 설정]과 같은 길). 닫으면 목록을
@@ -892,6 +903,63 @@ export function MapBrowser({
       onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.moveFailed')));
     }
   };
+
+  /** 끌고 있는 것을 target 폴더(null = 홈)에 놓을 수 있나 — 제자리·자기 하위는 안 된다 */
+  const canDropAt = (target: string | null): boolean => {
+    if (!drag) return false;
+    if (drag.kind === 'map') return (drag.map.folderId ?? null) !== target;
+    if (target && folderSubtreeIds(folders, drag.folder.folderId).includes(target)) return false;
+    return (drag.folder.parentId ?? null) !== target;
+  };
+  const endDrag = () => {
+    setDrag(null);
+    setDropAt(null);
+    if (dragOpenTimer.current) { window.clearTimeout(dragOpenTimer.current.t); dragOpenTimer.current = null; }
+  };
+  /** 놓을 자리 하나에 붙이는 끌기 핸들러 — target: 폴더 id, null = 홈 */
+  const dropProps = (target: string | null) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!canDropAt(target)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dropAt !== (target ?? '')) setDropAt(target ?? '');
+      // 접힌 폴더 위에 잠깐 머물면 펼친다 — 더 깊은 하위로 놓을 수 있게
+      if (target && !expanded.has(target) && dragOpenTimer.current?.id !== target) {
+        if (dragOpenTimer.current) window.clearTimeout(dragOpenTimer.current.t);
+        dragOpenTimer.current = {
+          id: target,
+          t: window.setTimeout(() => setExpanded((p) => new Set(p).add(target)), 700),
+        };
+      }
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      if (dropAt === (target ?? '')) setDropAt(null);
+      // 스쳐 지나간 폴더가 뒤늦게 펼쳐져 줄이 밀리지 않도록 예약을 거둔다
+      if (target && dragOpenTimer.current?.id === target) {
+        window.clearTimeout(dragOpenTimer.current.t);
+        dragOpenTimer.current = null;
+      }
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      const d = drag;
+      endDrag();
+      if (!d || !canDropAt(target)) return;
+      if (d.kind === 'map') void moveMapTo(d.map, target);
+      else void moveFolderTo(d.folder, target);
+    },
+  });
+  /** 끌 수 있는 줄에 붙이는 핸들러 */
+  const dragProps = (d: { kind: 'map'; map: MapListItem } | { kind: 'folder'; folder: FolderItem }) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', d.kind === 'map' ? d.map.title : d.folder.name);
+      setDrag(d);
+    },
+    onDragEnd: endDrag,
+  });
 
   const deleteMap = async (m: MapListItem) => {
     if (!window.confirm(tr('cloud.browser.mapDeleteConfirm', { title: m.title || tr('cloud.untitled') }))) return;
@@ -1603,6 +1671,18 @@ export function MapBrowser({
             if (m) void openMap(m); else void load();
           }}
         />
+        {drag && !compact && (
+          <div data-testid="browser-drop-home" {...dropProps(null)}
+            style={{
+              padding: '8px 14px', fontSize: 12.5, fontWeight: 700,
+              borderBottom: `1px dashed ${t.border}`,
+              background: dropAt === '' ? t.primarySoft : t.surfaceAlt,
+              color: canDropAt(null) ? (dropAt === '' ? t.primary : t.text) : t.textSubtle,
+              outline: dropAt === '' ? `2px solid ${t.primary}` : undefined, outlineOffset: -2,
+            }}>
+            {tr('cloud.browser.dropHome')}
+          </div>
+        )}
         {maps === null ? (
           <div style={{ padding: '28px 14px', color: t.textSubtle, fontSize: 13, textAlign: 'center' }}>
             {tr('common.loading')}
@@ -1717,12 +1797,19 @@ export function MapBrowser({
         ) : r.kind === 'folder' ? (
           <div key={`f:${r.folder.folderId}`} data-testid="browser-folder"
             className="mm-list-row"
+            {...dragProps({ kind: 'folder', folder: r.folder })}
+            {...dropProps(r.folder.folderId)}
+            data-drop={dropAt === r.folder.folderId ? 'on' : undefined}
             // 새 폴더를 만드는 중인 **대상 폴더**는 계속 표시해 둔다 —
             // 마우스가 다른 줄로 옮겨 가 그 줄이 hover 로 강조돼도
             // 목적지가 헷갈리지 않는다 (2026-08-08 사용자 보고)
             data-target={newFolder?.parentId === r.folder.folderId ? 'new-folder' : undefined}
-            style={newFolder?.parentId === r.folder.folderId
+            style={dropAt === r.folder.folderId
+              ? { ...rowStyle, background: t.primarySoft, outline: `2px solid ${t.primary}`, outlineOffset: -2 }
+              : newFolder?.parentId === r.folder.folderId
               ? { ...rowStyle, background: t.primarySoft }
+              : drag?.kind === 'folder' && drag.folder.folderId === r.folder.folderId
+              ? { ...rowStyle, opacity: 0.5 }
               : rowStyle}>
             <span style={{ fontSize: 15, ...indent(r.depth) }}>📁</span>
             {/* 폴더 이름을 누르면 **그 자리에서 펼쳐진다** (2026-08-07) —
@@ -1781,7 +1868,9 @@ export function MapBrowser({
         ) : (
           <div key={`m:${r.map.mapId}`} data-testid="browser-map"
             className="mm-list-row" aria-selected={cloudMapId === r.map.mapId}
-            style={rowStyle}>
+            // 이동 버튼이 있는 맵만 끌린다 (공유받은 맵·퍼블리싱 자리의 맵은 내 트리 밖)
+            {...(!r.map.shared && !knowsListed(r.map) ? dragProps({ kind: 'map', map: r.map }) : {})}
+            style={drag?.kind === 'map' && drag.map.mapId === r.map.mapId ? { ...rowStyle, opacity: 0.5 } : rowStyle}>
             {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
                 (2026-08-02 사용자 보고) — 앱 SVG 아이콘으로 통일 */}
             <span style={{ display: 'flex', color: t.primary, ...indent(r.depth) }}>

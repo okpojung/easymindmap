@@ -156,7 +156,10 @@ export function readSource(map: SampleMap): (DocsSource & { fetchedAt?: string; 
   return null;
 }
 
-const FILE_META_RE = /^최종 업데이트:\s*(\S+)(?:\s*·\s*커밋\s+([0-9a-f]+))?(?:\s*·\s*파일\s+([0-9a-f]+))?/;
+// ★ 시각 자리는 `(알 수 없음)` 도 받는다 (2026-10-14) — 예전엔 `(\S+)` 라 공백에서 멈춰
+//   뒤의 `· 파일 <sha>` 를 못 읽었다. 익명 한도로 커밋 시각을 건너뛴 문서(50개 넘는 가져오기)가
+//   sha 없는 옛 노드로 보여 갱신이 커밋 조회로 돌고, GitHub 반영(§9.15)은 기준이 없다며 막혔다.
+const FILE_META_RE = /^최종 업데이트:\s*(\(알 수 없음\)|\S+)(?:\s*·\s*커밋\s+([0-9a-f]+))?(?:\s*·\s*파일\s+([0-9a-f]+))?/;
 
 export function fileMetaText(commit: FileCommit | null, blobSha: string): string {
   const when = commit?.date ?? '(알 수 없음)';
@@ -177,9 +180,30 @@ export function readFileMeta(node: MindNode): FileMeta | null {
 // ── 마크다운 절 나누기 ────────────────────────────────────────────────
 
 export type BlockKind = 'paragraph' | 'list' | 'table' | 'code' | 'quote';
-export interface Block { kind: BlockKind; text: string; lang?: string }
-export interface Section { level: number; title: string; blocks: Block[]; children: Section[] }
+/**
+ * `start`·`end` 는 **원문 줄 번호**(0 부터, end 는 그 줄을 포함하지 않는다) —
+ * `sectionizeRanged` 일 때만 채운다(맵 → GitHub 반영이 원문의 그 자리만 고치려고, §9.15).
+ */
+export interface Block { kind: BlockKind; text: string; lang?: string; start?: number; end?: number }
+/** `start` = 견출 줄 · `bodyEnd` = 첫 하위 절 견출(없으면 end) · `end` = 다음 같은·윗 단계 절 견출 */
+export interface Section {
+  level: number; title: string; blocks: Block[]; children: Section[];
+  start?: number; bodyEnd?: number; end?: number;
+}
 export interface DocOutline { title: string | null; intro: Block[]; sections: Section[] }
+/** 줄 번호가 붙은 개요 — 원문 줄 배열과 함께 (§9.15) */
+export interface RangedOutline extends DocOutline {
+  /** `\r\n` 을 `\n` 으로 바꾼 원문의 줄 */
+  lines: string[];
+  /** front matter 다음 줄 (없으면 0) */
+  startLine: number;
+  /** 첫 `#` 제목 줄 — 없으면 null */
+  titleLine: number | null;
+  /** 머리말이 끝나는 줄 (= 첫 절 견출, 없으면 줄 수) */
+  introEnd: number;
+  eol: '\n' | '\r\n';
+  finalNewline: boolean;
+}
 
 const HEADING_RE = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/;
 const FENCE_RE = /^[ \t]{0,3}(```+|~~~+)[ \t]*([^\s`]*)/;
@@ -206,24 +230,53 @@ export function plainTitle(s: string): string {
  * 안의 `#` 은 견출이 아니다. front matter(`---`)는 걷어낸다.
  */
 export function sectionize(markdown: string): DocOutline {
-  let md = String(markdown ?? '').replace(/\r\n?/g, '\n');
+  const r = scanOutline(markdown, false);
+  return { title: r.title, intro: r.intro, sections: r.sections };
+}
+
+/**
+ * `sectionize` 와 **같은 판정**에 원문 줄 번호를 붙인다 (2026-10-14, §9.15).
+ * 맵에서 고친 노드를 GitHub 파일에 되돌려 쓸 때 문서를 다시 만들지 않고
+ * **그 블록·견출 줄만** 바꾸려고 쓴다 — 가져오기는 노트를 자르고(NOTE_LIMITS)
+ * 사진·주석·수평선을 버리므로, 맵에서 파일을 통째로 다시 만들면 원문이 깎인다.
+ * 판정 코드는 하나다(이 함수와 `sectionize` 가 같은 `scanOutline` 을 탄다).
+ */
+export function sectionizeRanged(markdown: string): RangedOutline {
+  return scanOutline(markdown, true);
+}
+
+function scanOutline(markdown: string, ranged: boolean): RangedOutline {
+  const rawText = String(markdown ?? '');
+  const eol: '\n' | '\r\n' = /\r\n/.test(rawText) ? '\r\n' : '\n';
+  const md = rawText.replace(/\r\n?/g, '\n');
+  const lines = md.split('\n');
+  // front matter(`---`)는 걷어낸다 — 예전의 `md.slice(...)` 와 같은 자리에서 시작한다
+  let startLine = 0;
   if (/^---\n/.test(md)) {
     const end = md.indexOf('\n---', 4);
-    if (end > 0) md = md.slice(md.indexOf('\n', end + 1) + 1);
+    if (end > 0) {
+      const nl = md.indexOf('\n', end + 1);
+      if (nl >= 0) startLine = md.slice(0, nl + 1).split('\n').length - 1;
+    }
   }
-  const lines = md.split('\n');
-  const out: DocOutline = { title: null, intro: [], sections: [] };
+  const out: RangedOutline = {
+    title: null, intro: [], sections: [],
+    lines, startLine, titleLine: null, introEnd: lines.length, eol, finalNewline: md.endsWith('\n'),
+  };
   let cur: Section | null = null;   // 지금 글이 들어가는 절 (null = 머리말)
   let h2: Section | null = null;
   const target = (): Block[] => (cur ? cur.blocks : out.intro);
+  const order: { sec: Section; depth: number }[] = [];
+  const at = (b: Block, start: number, end: number): Block => (ranged ? { ...b, start, end } : b);
 
-  let i = 0;
-  const pushPara = (buf: string[], kind: BlockKind) => {
+  let i = startLine;
+  const pushPara = (buf: string[], kind: BlockKind, start: number) => {
     const text = kind === 'paragraph' ? buf.join(' ').replace(/\s+/g, ' ').trim() : buf.join('\n').trim();
-    if (text) target().push({ kind, text });
+    if (text) target().push(at({ kind, text }, start, i));
   };
   while (i < lines.length) {
     const line = lines[i];
+    const s0 = i;
     const fence = FENCE_RE.exec(line);
     if (fence) {
       const mark = fence[1][0];
@@ -232,7 +285,7 @@ export function sectionize(markdown: string): DocOutline {
       while (i < lines.length && !new RegExp(`^[ \\t]{0,3}${mark}{3,}[ \\t]*$`).test(lines[i])) { body.push(lines[i]); i++; }
       i++; // 닫는 펜스
       const text = body.join('\n').replace(/\s+$/, '');
-      if (text.trim()) target().push({ kind: 'code', text, lang: fence[2] || undefined });
+      if (text.trim()) target().push(at({ kind: 'code', text, lang: fence[2] || undefined }, s0, Math.min(i, lines.length)));
       continue;
     }
     const h = HEADING_RE.exec(line);
@@ -241,16 +294,19 @@ export function sectionize(markdown: string): DocOutline {
       const title = plainTitle(h[2]);
       if (level === 1 && out.title === null && out.sections.length === 0 && cur === null) {
         out.title = title;
+        out.titleLine = i;
       } else if (level <= 2) {
-        h2 = { level: 2, title, blocks: [], children: [] };
+        h2 = { level: 2, title, blocks: [], children: [], ...(ranged ? { start: i } : {}) };
         out.sections.push(h2);
+        order.push({ sec: h2, depth: 0 });
         cur = h2;
       } else if (level === 3) {
-        const sec: Section = { level: 3, title, blocks: [], children: [] };
+        const sec: Section = { level: 3, title, blocks: [], children: [], ...(ranged ? { start: i } : {}) };
         if (h2) h2.children.push(sec); else out.sections.push(sec);
+        order.push({ sec, depth: h2 ? 1 : 0 });
         cur = sec;
       } else {
-        target().push({ kind: 'paragraph', text: `**${title}**` });
+        target().push(at({ kind: 'paragraph', text: `**${title}**` }, i, i + 1));
       }
       i++;
       continue;
@@ -259,7 +315,7 @@ export function sectionize(markdown: string): DocOutline {
     if (/^\s*\|/.test(line) && i + 1 < lines.length && TABLE_SEP_RE.test(lines[i + 1])) {
       const rows: string[] = [];
       while (i < lines.length && /^\s*\|/.test(lines[i])) { rows.push(lines[i].trim()); i++; }
-      target().push({ kind: 'table', text: rows.join('\n') });
+      target().push(at({ kind: 'table', text: rows.join('\n') }, s0, i));
       continue;
     }
     if (!line.trim()) { i++; continue; }
@@ -273,13 +329,13 @@ export function sectionize(markdown: string): DocOutline {
     if (/^\s*>/.test(line)) {
       const buf: string[] = [];
       while (i < lines.length && /^\s*>/.test(lines[i])) { buf.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
-      pushPara(buf.filter((l) => l.trim()), 'quote');
+      pushPara(buf.filter((l) => l.trim()), 'quote', s0);
       continue;
     }
     if (LIST_RE.test(line)) {
       const buf: string[] = [];
       while (i < lines.length && lines[i].trim() && !HEADING_RE.test(lines[i]) && !FENCE_RE.test(lines[i])) { buf.push(lines[i].replace(/\s+$/, '')); i++; }
-      pushPara(buf, 'list');
+      pushPara(buf, 'list', s0);
       continue;
     }
     const buf: string[] = [];
@@ -288,7 +344,17 @@ export function sectionize(markdown: string): DocOutline {
       && !LIST_RE.test(lines[i]) && !/^\s*>/.test(lines[i]) && !/^\s*\|/.test(lines[i])
     ) { buf.push(lines[i].trim()); i++; }
     if (buf.length === 0) { i++; continue; }
-    pushPara(buf, 'paragraph');
+    pushPara(buf, 'paragraph', s0);
+  }
+  if (ranged) {
+    // 절의 끝 = 다음의 같은·윗 단계 절 견출 (없으면 문서 끝)
+    order.forEach(({ sec, depth }, k) => {
+      let end = lines.length;
+      for (let j = k + 1; j < order.length; j++) if (order[j].depth <= depth) { end = order[j].sec.start!; break; }
+      sec.end = end;
+    });
+    order.forEach(({ sec }) => { sec.bodyEnd = sec.children.length ? sec.children[0].start! : sec.end!; });
+    out.introEnd = order.length ? order[0].sec.start! : lines.length;
   }
   return out;
 }
@@ -310,28 +376,38 @@ function clip(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1).replace(/\s+\S*$/, '') + '…' : s;
 }
 
-export function notesFromBlocks(blocks: Block[], ids: IdGen): NoteBlock[] {
-  const out: NoteBlock[] = [];
+/** 노트 하나가 **어느 블록에서 왔는지** — `blockIndex` 는 blocks 안의 자리, `clipped` 는 잘렸는지 (§9.15) */
+export interface NoteSource { blockIndex: number; note: Omit<NoteBlock, 'id'>; clipped: boolean }
+
+/** 노트로 옮길 블록 고르기 — `notesFromBlocks` 와 GitHub 반영(§9.15)이 같은 규칙을 쓴다 */
+export function selectNoteBlocks(blocks: Block[]): NoteSource[] {
+  const out: NoteSource[] = [];
   let tables = 0, codes = 0, prose = 0;
-  for (const b of blocks) {
-    if (out.length >= NOTE_LIMITS.maxNotes) break;
+  blocks.forEach((b, blockIndex) => {
+    if (out.length >= NOTE_LIMITS.maxNotes) return;
     if (b.kind === 'table') {
-      if (tables >= NOTE_LIMITS.maxTables) continue;
+      if (tables >= NOTE_LIMITS.maxTables) return;
       tables++;
-      out.push({ id: ids.next('nt'), type: 'table', text: clip(b.text, NOTE_LIMITS.maxTableChars) });
+      const text = clip(b.text, NOTE_LIMITS.maxTableChars);
+      out.push({ blockIndex, note: { type: 'table', text }, clipped: text !== b.text });
     } else if (b.kind === 'code') {
-      if (codes >= NOTE_LIMITS.maxCodes) continue;
+      if (codes >= NOTE_LIMITS.maxCodes) return;
       codes++;
-      out.push({ id: ids.next('nt'), type: 'code_block', text: clip(b.text, NOTE_LIMITS.maxCodeChars), ...(b.lang ? { lang: b.lang } : {}) });
+      const text = clip(b.text, NOTE_LIMITS.maxCodeChars);
+      out.push({ blockIndex, note: { type: 'code_block', text, ...(b.lang ? { lang: b.lang } : {}) }, clipped: text !== b.text });
     } else {
-      if (prose >= NOTE_LIMITS.maxProseChars) continue;
+      if (prose >= NOTE_LIMITS.maxProseChars) return;
       const room = NOTE_LIMITS.maxProseChars - prose;
       const text = clip(b.text, room);
       prose += text.length;
-      out.push({ id: ids.next('nt'), type: 'paragraph', text });
+      out.push({ blockIndex, note: { type: 'paragraph', text }, clipped: text !== b.text });
     }
-  }
+  });
   return out;
+}
+
+export function notesFromBlocks(blocks: Block[], ids: IdGen): NoteBlock[] {
+  return selectNoteBlocks(blocks).map((s) => ({ id: ids.next('nt'), ...s.note }));
 }
 
 // ── 노드 만들기 ───────────────────────────────────────────────────────
@@ -670,7 +746,7 @@ export interface ApplyResult {
 }
 
 /** 폴더 노드 안에 relPath 의 폴더 사슬을 찾거나 만들어 그 형제 목록을 돌려준다 */
-function ensureFolderChain(
+export function ensureFolderChain(
   src: DocsSource, siblings: MindNode[], baseDir: string, relDirSegs: string[], ids: IdGen,
 ): MindNode[] {
   let cur = siblings;

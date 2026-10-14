@@ -18,7 +18,7 @@ export class GithubError extends Error {
 
 export interface TreeEntry { path: string; type: 'blob' | 'tree' | 'commit'; sha: string }
 
-type FetchLike = (url: string, init?: { headers?: Record<string, string> }) => Promise<{
+type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{
   ok: boolean; status: number; headers: { get(name: string): string | null };
   json(): Promise<unknown>; text(): Promise<string>;
 }>;
@@ -136,11 +136,118 @@ export class GithubClient {
     return { sha: c.sha, date: new Date(date).toISOString() };
   }
 
+  /** 브랜치·태그의 지금 커밋 sha — 반영(§9.15)은 이 커밋 하나를 기준으로 읽고 쓴다 */
+  async headSha(owner: string, repo: string, ref: string): Promise<string> {
+    const { body } = await this.request(`${API}/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}`, `커밋 ${owner}/${repo}@${ref}`);
+    const sha = (body as { sha?: string }).sha;
+    if (!sha) throw new GithubError(`${owner}/${repo}@${ref} 의 지금 커밋을 읽지 못했습니다.`);
+    return sha;
+  }
+
+  /** PR 상태 — 머지 전 갱신이 맵을 옛 내용으로 되돌리지 않게 (§9.15) */
+  async pullState(owner: string, repo: string, num: number): Promise<'open' | 'merged' | 'closed'> {
+    const { body } = await this.request(`${API}/repos/${owner}/${repo}/pulls/${num}`, `PR #${num}`);
+    const b = body as { state?: string; merged_at?: string | null };
+    if (b.merged_at) return 'merged';
+    return b.state === 'open' ? 'open' : 'closed';
+  }
+
   /** 파일 원문 — raw 주소는 API 한도를 쓰지 않는다 */
   async raw(owner: string, repo: string, ref: string, path: string): Promise<string> {
     const url = `${RAW}/${owner}/${repo}/${encodeURIComponent(ref)}/${path.split('/').map(encodeURIComponent).join('/')}`;
     const { text } = await this.request(url, `원문 ${path}`, 'text/plain');
     return text;
+  }
+}
+
+/**
+ * GitHub **쓰기** — `push_map_to_github` (2026-10-14, §9.15).
+ *
+ * 읽기 토큰(`GITHUB_TOKEN`)과 **따로** `GITHUB_WRITE_TOKEN` 을 쓴다 — 읽기는 누구에게나
+ * 열려 있는 기능이라, 쓰기 권한이 있는 토큰을 거기에 섞지 않는다. 권장: fine-grained
+ * PAT, 허용할 저장소만, Contents: Read and write · Pull requests: Read and write.
+ * 여러 파일을 **커밋 하나**로 올리려고 Git Data API(트리 → 커밋 → ref)를 쓴다.
+ */
+export class GithubWriter {
+  constructor(
+    private readonly token: string | undefined = process.env.GITHUB_WRITE_TOKEN?.trim() || undefined,
+    private readonly fetchImpl: FetchLike = fetch as unknown as FetchLike,
+  ) {}
+
+  get configured(): boolean { return Boolean(this.token); }
+
+  private async send(method: string, url: string, what: string, payload?: unknown): Promise<unknown> {
+    if (!this.token) throw new GithubError('API 서버에 GITHUB_WRITE_TOKEN 이 없어 GitHub 에 쓸 수 없습니다.');
+    let res;
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'EasyMindMap-MCP',
+          'X-GitHub-Api-Version': '2022-11-28',
+          Authorization: `Bearer ${this.token}`,
+          ...(payload !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
+      });
+    } catch (err) {
+      throw new GithubError(`GitHub 에 연결하지 못했습니다 (${what}): ${(err as Error).message}`);
+    }
+    const text = await res.text();
+    let body: unknown = text;
+    try { body = JSON.parse(text); } catch { /* 글 그대로 */ }
+    if (res.ok) return body;
+    const msg = (body as { message?: string })?.message ?? '';
+    if (res.status === 401) throw new GithubError('GitHub 쓰기 토큰이 거절됐습니다 — API 서버의 GITHUB_WRITE_TOKEN 이 만료됐거나 잘못됐습니다.', 401);
+    if (res.status === 403 || res.status === 404) {
+      throw new GithubError(`GitHub 가 쓰기를 거절했습니다 (${what}, ${res.status}) — GITHUB_WRITE_TOKEN 에 이 저장소의 Contents·Pull requests 쓰기 권한이 있는지, 브랜치 보호 규칙이 막고 있지 않은지 확인해 주세요.${msg ? ` (${msg})` : ''}`, res.status);
+    }
+    if (res.status === 409 || res.status === 422) {
+      throw new GithubError(`GitHub 가 받지 않았습니다 (${what}) — 그사이 브랜치가 앞서 나갔거나 같은 이름의 브랜치가 있습니다.${msg ? ` (${msg})` : ''}`, res.status);
+    }
+    throw new GithubError(`GitHub 응답 오류 (${what}, HTTP ${res.status})${msg ? ` — ${msg}` : ''}.`, res.status);
+  }
+
+  /** 커밋의 트리 sha */
+  async commitTree(owner: string, repo: string, commitSha: string): Promise<string> {
+    const b = await this.send('GET', `${API}/repos/${owner}/${repo}/git/commits/${commitSha}`, `커밋 ${commitSha.slice(0, 7)}`) as { tree?: { sha?: string } };
+    if (!b.tree?.sha) throw new GithubError(`커밋 ${commitSha.slice(0, 7)} 의 트리를 읽지 못했습니다.`);
+    return b.tree.sha;
+  }
+
+  /** 파일 여럿을 올린 새 트리 (나머지는 baseTree 그대로) */
+  async createTree(owner: string, repo: string, baseTree: string, files: { path: string; content: string }[]): Promise<string> {
+    const b = await this.send('POST', `${API}/repos/${owner}/${repo}/git/trees`, '트리 만들기', {
+      base_tree: baseTree,
+      tree: files.map((f) => ({ path: f.path, mode: '100644', type: 'blob', content: f.content })),
+    }) as { sha?: string };
+    if (!b.sha) throw new GithubError('GitHub 에 트리를 만들지 못했습니다.');
+    return b.sha;
+  }
+
+  async createCommit(owner: string, repo: string, message: string, tree: string, parent: string): Promise<{ sha: string; date: string }> {
+    const b = await this.send('POST', `${API}/repos/${owner}/${repo}/git/commits`, '커밋 만들기', { message, tree, parents: [parent] }) as {
+      sha?: string; committer?: { date?: string };
+    };
+    if (!b.sha) throw new GithubError('GitHub 에 커밋을 만들지 못했습니다.');
+    return { sha: b.sha, date: new Date(b.committer?.date ?? Date.now()).toISOString() };
+  }
+
+  /** 새 브랜치 */
+  async createBranch(owner: string, repo: string, branch: string, sha: string): Promise<void> {
+    await this.send('POST', `${API}/repos/${owner}/${repo}/git/refs`, `브랜치 ${branch} 만들기`, { ref: `refs/heads/${branch}`, sha });
+  }
+
+  /** 브랜치를 앞으로만 옮긴다(force 아님) — 그사이 누가 올렸으면 422 */
+  async fastForward(owner: string, repo: string, branch: string, sha: string): Promise<void> {
+    await this.send('PATCH', `${API}/repos/${owner}/${repo}/git/refs/heads/${branch.split('/').map(encodeURIComponent).join('/')}`, `브랜치 ${branch} 옮기기`, { sha, force: false });
+  }
+
+  async createPull(owner: string, repo: string, p: { title: string; head: string; base: string; body: string }): Promise<{ number: number; url: string }> {
+    const b = await this.send('POST', `${API}/repos/${owner}/${repo}/pulls`, 'PR 만들기', p) as { number?: number; html_url?: string };
+    if (!b.number) throw new GithubError('GitHub 에 PR 을 만들지 못했습니다.');
+    return { number: b.number, url: b.html_url ?? `https://github.com/${owner}/${repo}/pull/${b.number}` };
   }
 }
 

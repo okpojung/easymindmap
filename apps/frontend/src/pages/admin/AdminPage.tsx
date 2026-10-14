@@ -45,11 +45,11 @@ const TABS: { id: Tab; label: string; soon?: string }[] = [
 const SALES_TAB: (typeof TABS)[number] = { id: 'sales', label: '판매관리' };
 
 /**
- * **주소록관리** — 팀 요금제 회원의 주소록을 관리자가 조직 구조대로 채운다
- * (2026-10-14 사용자 요청 · collaboration/30 §5). 주소록은 협업의 일부라
+ * **팀 주소록관리** — 관리자가 팀 주소록을 만들어 조직 구조대로 채우고, 팀 요금제 회원을
+ * 할당한다 (2026-10-14 사용자 요청 · collaboration/30 §5). 주소록은 협업의 일부라
  * `collab` 이 켜진 서버에서만 난다 — 판매관리와 같은 이유로 '준비 중' 으로 두지 않는다.
  */
-const CONTACTS_TAB: (typeof TABS)[number] = { id: 'contacts', label: '주소록관리' };
+const CONTACTS_TAB: (typeof TABS)[number] = { id: 'contacts', label: '팀 주소록관리' };
 
 export function AdminPage() {
   // 관리자 화면은 **항상 밝은 테마**로 둔다 — 에디터의 테마 설정과 얽히면
@@ -150,7 +150,7 @@ export function AdminPage() {
         {tab === 'settings' && <SettingsPanel t={t} />}
         {/* 판매관리 — 표도 판정도 유료 모듈 것이다. 코어는 탭 자리만 낸다 */}
         {tab === 'sales' && <ProSalesAdminPanel t={t} />}
-        {/* 주소록관리 — 표·가져오기·화면 모두 유료 모듈 것. 코어는 탭 자리만 */}
+        {/* 팀 주소록관리 — 표·가져오기·화면 모두 유료 모듈 것. 코어는 탭 자리만 */}
         {tab === 'contacts' && <ProContactsAdminPanel t={t} />}
         {tab === 'password' && (
           <ChangePasswordForm

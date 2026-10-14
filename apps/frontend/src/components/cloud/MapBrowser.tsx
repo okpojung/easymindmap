@@ -916,30 +916,36 @@ export function MapBrowser({
     setDropAt(null);
     if (dragOpenTimer.current) { window.clearTimeout(dragOpenTimer.current.t); dragOpenTimer.current = null; }
   };
+  /** 놓을 자리 위에 있다 — 강조하고, 접힌 폴더면 잠깐 머물 때 펼친다(더 깊은 하위로 놓게) */
+  const hoverDrop = (target: string | null) => {
+    if (dropAt !== (target ?? '')) setDropAt(target ?? '');
+    if (target && !expanded.has(target) && dragOpenTimer.current?.id !== target) {
+      if (dragOpenTimer.current) window.clearTimeout(dragOpenTimer.current.t);
+      dragOpenTimer.current = {
+        id: target,
+        t: window.setTimeout(() => setExpanded((p) => new Set(p).add(target)), 700),
+      };
+    }
+  };
+  /** 놓을 자리를 떠났다 — 스쳐 지나간 폴더가 뒤늦게 펼쳐져 줄이 밀리지 않도록 예약도 거둔다 */
+  const leaveDrop = (target: string | null) => {
+    setDropAt((cur) => (cur === (target ?? '') ? null : cur));
+    if (target && dragOpenTimer.current?.id === target) {
+      window.clearTimeout(dragOpenTimer.current.t);
+      dragOpenTimer.current = null;
+    }
+  };
   /** 놓을 자리 하나에 붙이는 끌기 핸들러 — target: 폴더 id, null = 홈 */
   const dropProps = (target: string | null) => ({
     onDragOver: (e: React.DragEvent) => {
       if (!canDropAt(target)) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      if (dropAt !== (target ?? '')) setDropAt(target ?? '');
-      // 접힌 폴더 위에 잠깐 머물면 펼친다 — 더 깊은 하위로 놓을 수 있게
-      if (target && !expanded.has(target) && dragOpenTimer.current?.id !== target) {
-        if (dragOpenTimer.current) window.clearTimeout(dragOpenTimer.current.t);
-        dragOpenTimer.current = {
-          id: target,
-          t: window.setTimeout(() => setExpanded((p) => new Set(p).add(target)), 700),
-        };
-      }
+      hoverDrop(target);
     },
     onDragLeave: (e: React.DragEvent) => {
       if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-      if (dropAt === (target ?? '')) setDropAt(null);
-      // 스쳐 지나간 폴더가 뒤늦게 펼쳐져 줄이 밀리지 않도록 예약을 거둔다
-      if (target && dragOpenTimer.current?.id === target) {
-        window.clearTimeout(dragOpenTimer.current.t);
-        dragOpenTimer.current = null;
-      }
+      leaveDrop(target);
     },
     onDrop: (e: React.DragEvent) => {
       e.preventDefault();
@@ -959,6 +965,101 @@ export function MapBrowser({
       setDrag(d);
     },
     onDragEnd: endDrag,
+  });
+
+  /**
+   * **폰 — 길게 눌러 끌기** (2026-10-14 사용자 요청). HTML 끌기(`draggable`)는
+   * 손가락으로 시작되지 않아 포인터 이벤트로 직접 한다.
+   *   · 0.45초 동안 거의 움직이지 않고 누르고 있으면 끌기 시작(짧은 진동).
+   *     그 전에 8px 넘게 움직이면 **스크롤**로 보고 손을 뗀다 — 목록 굴리기를 막지 않는다
+   *   · 끄는 동안에는 `touchmove` 를 막아 화면이 굴러가지 않게 하고, 손가락 아래
+   *     `data-drop-folder`(폴더 줄)·`data-drop-home`(🏠 띠)을 찾아 놓을 자리로 삼는다
+   *   · 목록 위·아래 끝 56px 안에 손가락이 있으면 목록을 굴린다(긴 목록의 먼 폴더로)
+   *   · 놓을 수 있는지 · 접힌 폴더 펼침 · 실제 이동은 데스크톱과 같은 함수를 쓴다
+   *   · 끝난 직후의 click 은 삼킨다 — 맵 줄이면 놓자마자 그 맵이 열린다
+   */
+  const listRef = useRef<HTMLDivElement>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; label: string } | null>(null);
+  const live = useRef({ canDropAt, hoverDrop, leaveDrop, moveMapTo, moveFolderTo, endDrag });
+  live.current = { canDropAt, hoverDrop, leaveDrop, moveMapTo, moveFolderTo, endDrag };
+  const longPressProps = (d: { kind: 'map'; map: MapListItem } | { kind: 'folder'; folder: FolderItem }) => ({
+    onContextMenu: (e: React.MouseEvent) => { if (coarse) e.preventDefault(); },
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse' || !e.isPrimary) return;
+      const x0 = e.clientX, y0 = e.clientY;
+      const st = { active: false, x: x0, y: y0, target: undefined as string | null | undefined, scroll: 0 };
+      const label = d.kind === 'map' ? (d.map.title || trNow('cloud.untitled')) : `📁 ${d.folder.name}`;
+      const pick = () => {
+        const el = document.elementFromPoint(st.x, st.y) as HTMLElement | null;
+        const hit = el?.closest<HTMLElement>('[data-drop-folder],[data-drop-home]');
+        const target = !hit ? undefined : hit.dataset.dropHome != null ? null : hit.dataset.dropFolder ?? undefined;
+        const next = target !== undefined && live.current.canDropAt(target) ? target : undefined;
+        if (next !== st.target) {
+          if (st.target !== undefined) live.current.leaveDrop(st.target);
+          if (next !== undefined) live.current.hoverDrop(next);
+          st.target = next;
+        }
+      };
+      const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return;
+        st.x = ev.clientX; st.y = ev.clientY;
+        if (!st.active) {
+          if (Math.hypot(st.x - x0, st.y - y0) > 8) cleanup();
+          return;
+        }
+        setGhost({ x: st.x, y: st.y, label });
+        pick();
+      };
+      const onTouchMove = (ev: TouchEvent) => { if (st.active && ev.cancelable) ev.preventDefault(); };
+      const onUp = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return;
+        if (st.active) {
+          const target = st.target;
+          const ok = target !== undefined && live.current.canDropAt(target);
+          live.current.endDrag();
+          // 놓은 뒤 따라오는 click 이 줄을 열지 않게 한 번 삼킨다
+          const swallow = (ce: MouseEvent) => { ce.stopPropagation(); ce.preventDefault(); };
+          window.addEventListener('click', swallow, { capture: true, once: true });
+          window.setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 600);
+          if (ok) {
+            if (d.kind === 'map') void live.current.moveMapTo(d.map, target ?? null);
+            else void live.current.moveFolderTo(d.folder, target ?? null);
+          }
+        }
+        cleanup();
+      };
+      const onCancel = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return;
+        if (st.active) live.current.endDrag();
+        cleanup();
+      };
+      const timer = window.setTimeout(() => {
+        st.active = true;
+        try { navigator.vibrate?.(20); } catch { /* 진동을 못 하는 기기 */ }
+        setDrag(d);
+        setGhost({ x: st.x, y: st.y, label });
+        // 끝 가까이에서 들고 있으면 목록을 굴린다 — 손가락이 멈춰 있어도
+        st.scroll = window.setInterval(() => {
+          const box = listRef.current?.getBoundingClientRect();
+          if (!box) return;
+          const dy = st.y < box.top + 56 ? -10 : st.y > box.bottom - 56 ? 10 : 0;
+          if (dy) { listRef.current!.scrollTop += dy; pick(); }
+        }, 16);
+      }, 450);
+      function cleanup() {
+        window.clearTimeout(timer);
+        window.clearInterval(st.scroll);
+        setGhost(null);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onCancel);
+        window.removeEventListener('touchmove', onTouchMove);
+      }
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onCancel);
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
+    },
   });
 
   const deleteMap = async (m: MapListItem) => {
@@ -1185,14 +1286,25 @@ export function MapBrowser({
   };
 
   /** 폰 — 폴더 줄: 이름(누르면 펼침) + 맵 수 + [⋯] */
+  /** 폰 줄 — 길게 누를 때 글자 선택·iOS 말풍선이 뜨지 않게 */
+  const mDragRowStyle: React.CSSProperties = {
+    userSelect: 'none', WebkitUserSelect: 'none',
+    ['WebkitTouchCallout' as string]: 'none',
+  } as React.CSSProperties;
   const renderMFolder = (r: Extract<Row, { kind: 'folder' }>) => (
     <div key={`f:${r.folder.folderId}`} data-testid="browser-folder"
       className="mm-list-row"
       data-target={newFolder?.parentId === r.folder.folderId ? 'new-folder' : undefined}
+      data-drop-folder={r.folder.folderId}
+      data-drop={dropAt === r.folder.folderId ? 'on' : undefined}
+      {...longPressProps({ kind: 'folder', folder: r.folder })}
       style={{
         display: 'flex', alignItems: 'center', gap: 2,
         padding: '0 2px 0 10px', borderBottom: `1px solid ${t.divider}`,
-        background: newFolder?.parentId === r.folder.folderId ? t.primarySoft : undefined,
+        ...mDragRowStyle,
+        opacity: drag?.kind === 'folder' && drag.folder.folderId === r.folder.folderId ? 0.5 : undefined,
+        outline: dropAt === r.folder.folderId ? `2px solid ${t.primary}` : undefined, outlineOffset: -2,
+        background: dropAt === r.folder.folderId || newFolder?.parentId === r.folder.folderId ? t.primarySoft : undefined,
         ['--row-hover' as string]: t.primarySoft,
         ['--row-hover-bd' as string]: t.primaryBorder,
       } as React.CSSProperties}>
@@ -1236,9 +1348,13 @@ export function MapBrowser({
     return (
       <div key={`m:${m.mapId}`} data-testid="browser-map"
         className="mm-list-row" aria-selected={editing}
+        // 📂 이동이 있는 맵만 길게 눌러 끈다 (공유받은 맵·퍼블리싱 자리 제외)
+        {...(!m.shared && !knowsListed(m) ? longPressProps({ kind: 'map', map: m }) : {})}
         style={{
           display: 'flex', alignItems: 'center', gap: 2,
           padding: '0 2px 0 10px', borderBottom: `1px solid ${t.divider}`,
+          ...mDragRowStyle,
+          opacity: drag?.kind === 'map' && drag.map.mapId === m.mapId ? 0.5 : undefined,
           ['--row-hover' as string]: t.primarySoft,
           ['--row-hover-bd' as string]: t.primaryBorder,
         } as React.CSSProperties}>
@@ -1659,7 +1775,7 @@ export function MapBrowser({
       {/* 목록 (트리) — 새 폴더 이름을 입력하는 동안에는 hover 강조를
           끈다(mm-rows-editing). 커서가 다른 줄 위에 남아 그 줄이 강조되면
           "어디에 만들어지나"를 화면이 두 가지로 말하게 된다. */}
-      <div className={newFolder ? 'mm-rows-editing' : undefined}
+      <div ref={listRef} className={newFolder ? 'mm-rows-editing' : undefined}
         style={{ flex: 1, overflowY: 'auto' }}>
         {/* 받은함 자리 (2026-09-05, collaboration/29 §4·§8.2) — 받은 소유권
             제안과 새로 공유된 맵. 유료 모듈이 채우고 공개판은 비어 있다.
@@ -2214,6 +2330,35 @@ export function MapBrowser({
             onClose={() => { setPublishMap(null); void load(); }}
           />
         </div>
+      )}
+
+      {/* 폰 끌기 — 🏠 홈 띠(화면 아래에 떠 있다: 목록 안에 끼우면 줄이 밀린다)와
+          손가락을 따라오는 이름표. 이름표는 pointer-events 를 끄므로 손가락 아래
+          줄을 찾는 elementFromPoint 를 가리지 않는다 */}
+      {drag && compact && (
+        <div data-testid="m-browser-drop-home" data-drop-home=""
+          style={{
+            position: 'fixed', left: 12, right: 12,
+            bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', zIndex: 300,
+            padding: '16px 14px', borderRadius: 12, textAlign: 'center',
+            fontSize: 14, fontWeight: 700, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+            border: `2px ${dropAt === '' ? 'solid' : 'dashed'} ${dropAt === '' ? t.primary : t.border}`,
+            background: dropAt === '' ? t.primarySoft : t.surface,
+            color: canDropAt(null) ? (dropAt === '' ? t.primary : t.text) : t.textSubtle,
+          }}>
+          {tr('cloud.browser.dropHome')}
+        </div>
+      )}
+      {ghost && (
+        <div data-testid="m-browser-drag-ghost" aria-hidden
+          style={{
+            position: 'fixed', left: ghost.x + 14, top: ghost.y - 44, zIndex: 301,
+            pointerEvents: 'none', maxWidth: '60vw',
+            padding: '6px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            background: t.surface, color: t.text, border: `1px solid ${t.primaryBorder}`,
+            boxShadow: '0 6px 18px rgba(0,0,0,0.25)',
+          }}>{ghost.label}</div>
       )}
 
       {moving && (

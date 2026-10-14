@@ -229,6 +229,11 @@ export function ProSalesAdminPanel({ t }: { t: ThemeTokens }) {
   return <ProFeaturePanel t={t} featureId="map-sales" />;
 }
 
+/** 관리자 콘솔 ▸ 주소록관리 — 공개판에는 탭 자체가 없다(자리만 지킨다) */
+export function ProContactsAdminPanel({ t }: { t: ThemeTokens }) {
+  return <ProFeaturePanel t={t} featureId="collab" />;
+}
+
 /**
  * 유료 맵 뷰어의 [구매하기] 자리 — **공개판에서는 아무것도 그리지 않는다.**
  *

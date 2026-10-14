@@ -131,11 +131,6 @@ export async function expandLinkedMaps(
       if (n.linkMapId) inner.push({ node: n, setChildren: (c) => { n.children = c; }, isCenter: false });
     });
     for (const h of inner) await graftInto(h, nextChain, depth + 1);
-    // 지금 내용을 '저장된 것'으로 기억한다 — 고친 맵만 저장하려고
-    const now = useLinkedMapStore.getState().entries[id];
-    useLinkedMapStore.getState().set({
-      ...now, savedJson: JSON.stringify(childDocFromHolder(holder.node, branches, now)),
-    });
   };
 
   const top: Holder[] = [];
@@ -149,6 +144,13 @@ export async function expandLinkedMaps(
     });
   }
   for (const h of top) await graftInto(h, chain, 1);
+  // 지금 내용을 '저장된 것'으로 기억한다 — 고친 맵만 저장하려고. **저장할 때와 같은
+  // 떼기**로 만든다: 연결 안의 연결은 그 맵에 이름만 남으므로, 펼친 내용 그대로
+  // 비교하면 고치지 않은 맵도 매번 바뀐 것으로 보인다
+  for (const c of splitLinkedMaps(out).children) {
+    const e = useLinkedMapStore.getState().entries[c.mapId];
+    if (e) useLinkedMapStore.getState().set({ ...e, savedJson: JSON.stringify(c.map) });
+  }
   // centersOf 가 만든 첫 중심 객체는 out.root/branches 를 그대로 가리킨다
   return out;
 }

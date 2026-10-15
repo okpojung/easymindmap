@@ -271,7 +271,9 @@ export function TableDialog({
   // ③ **줄바꿈 넣기** (2026-10-15 사용자 요청) — 격자에서는 커서 자리에서 줄을 바꾸고
   //    (저장할 때 `<br>` 이 된다), MD 에서는 커서 자리에 `<br>` 을 넣는다. 단추를 눌러도
   //    입력칸의 커서를 잃지 않게 mousedown 의 기본 동작(포커스 이동)을 막는다
-  const lastCell = useRef<{ r: number; c: number; el: HTMLTextAreaElement } | null>(null);
+  // 마지막으로 커서가 있던 셀 **위치**만 기억한다 — 입력칸 요소를 쥐고 있으면 MD 를
+  // 다녀온 뒤 떨어져 나간 옛 입력칸의 옛 값을 다시 써서 MD 에서 고친 것을 지운다 (Codex #647)
+  const lastCell = useRef<{ r: number; c: number } | null>(null);
   const insertBreak = () => {
     if (view === 'md') {
       const el = mdRef.current;
@@ -284,8 +286,12 @@ export function TableDialog({
     }
     const cur = lastCell.current;
     if (!cur) return;
-    const { r, c, el } = cur;
-    const v = el.value;
+    const { r, c } = cur;
+    const el = gridRef.current?.querySelector<HTMLTextAreaElement>(`[data-table-cell="${r + 1}x${c + 1}"]`);
+    if (!el) return;
+    const v = r < 0 ? (headers[c] ?? '') : (rows[r]?.[c] ?? '');
+    // 지금 그 칸에 커서가 없으면(다른 곳을 눌렀다 왔다) 끝에 넣는다
+    if (document.activeElement !== el) el.setSelectionRange(v.length, v.length);
     const a = el.selectionStart ?? v.length, b = el.selectionEnd ?? a;
     setCell(r, c, v.slice(0, a) + '\n' + v.slice(b));
     window.setTimeout(() => { el.focus(); el.setSelectionRange(a + 1, a + 1); }, 0);
@@ -408,7 +414,7 @@ export function TableDialog({
       value={value}
       rows={1}
       onChange={(e) => setCell(r, c, e.target.value)}
-      onFocus={(e) => { setCursor({ r, c }); lastCell.current = { r, c, el: e.currentTarget }; }}
+      onFocus={() => { setCursor({ r, c }); lastCell.current = { r, c }; }}
       placeholder={isHead ? tr('editor.table.headerPlaceholder') : ''}
       style={{
         width: '100%', minWidth: 72, boxSizing: 'border-box', padding: '5px 8px',

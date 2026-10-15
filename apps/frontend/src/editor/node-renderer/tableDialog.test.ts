@@ -2,7 +2,7 @@
 // 왕복하는지 (2026-09-17).   npx tsx src/editor/node-renderer/tableDialog.test.ts
 
 import { buildMdTable, emptyTable, spliceMdTable, replaceMdTable, hasMdTable } from './TableDialog';
-import { layoutMdTables, parseMdTable, parseMdTables, splitPipeCells } from './mdTable';
+import { cellFromLines, cellLineY, cellLines, layoutMdTables, layoutParsedTable, parseMdTable, parseMdTables, rowTop, splitPipeCells } from './mdTable';
 import { blockGaps as tableBlockGaps } from './nodeBlocks';
 import { useLangStore } from '@/i18n';
 
@@ -29,10 +29,10 @@ function check(name: string, got: unknown, want: unknown): void {
   check('① 최소 2×2 로 올림', [emptyTable(1, 1).headers.length, emptyTable(1, 1).rows.length], [2, 1]);
 }
 
-// ② 셀 정리 — '|' 와 줄바꿈은 셀 안에 둘 수 없다
+// ② 셀 정리 — '|' 는 셀 안에 둘 수 없고, 줄바꿈은 <br> 로 (2026-10-15)
 {
   const md = buildMdTable(['a|b', 'c'], [['x\ny', ' z ']]);
-  check('② 줄바꿈 → 공백, 앞뒤 공백 제거', parseMdTable(md)!.rows[0], ['x y', 'z']);
+  check('② 줄바꿈 → <br>, 앞뒤 공백 제거', parseMdTable(md)!.rows[0], ['x<br>y', 'z']);
   check('② 셀 안 | 는 원문에 \\| 로 (GFM)', md.split('\n')[0], '| a\\|b | c |');
   check('② 파서는 \\| 를 | 로 되돌린다', parseMdTable(md)!.headers, ['a|b', 'c']);
   check('② keepEscape 면 원문 그대로', splitPipeCells('| a\\|b | c |', { keepEscape: true }), ['a\\|b', 'c']);
@@ -114,6 +114,35 @@ function check(name: string, got: unknown, want: unknown): void {
   const r0 = replaceMdTable(text, nt);
   check('⑦ replaceMdTable(기본 index 0) → 첫 표만', parseMdTables(r0).map((t) => t.headers), [['q', 'r'], ['x', 'y', 'z']]);
   check('⑦ index 가 표 수를 넘으면 끝에 붙인다', parseMdTables(replaceMdTable(text, nt, 5)).length, 3);
+}
+
+// ⑧ 셀 안 줄바꿈 = <br> (2026-10-15 사용자 요청 "표 셀 줄바꿈 해줘").
+//    GFM 표는 줄 하나가 곧 행 하나라서 <br> 밖에 길이 없다 — GitHub 에서
+//    본 모습과 emm 에서 본 모습이 같아야 한다.
+{
+  check('⑧ cellLines: <br> · <br/> · <BR /> 모두 줄바꿈', cellLines('a<br>b<br/>c<BR />d'), ['a', 'b', 'c', 'd']);
+  check('⑧ 줄바꿈이 없으면 줄 하나', cellLines('그냥'), ['그냥']);
+  check('⑧ cellFromLines: 끝의 빈 줄은 버린다', [cellFromLines(['a', 'b']), cellFromLines(['a', '']), cellFromLines([''])], ['a<br>b', 'a', '']);
+  // 격자 입력칸(여러 줄)의 진짜 줄바꿈 → 표 원문의 <br>
+  const md = buildMdTable(['머리', 'h2'], [['첫 줄\n둘째 줄', 'x']]);
+  check('⑧ 격자의 Enter 줄바꿈이 원문 <br> 로', parseMdTable(md)!.rows[0][0], '첫 줄<br>둘째 줄');
+  check('⑧ 왕복: build → parse → build 동일', buildMdTable(parseMdTable(md)!.headers, parseMdTable(md)!.rows), md);
+
+  // 측정 — 한 줄 표는 **예전과 한 픽셀도 다르지 않다** (기존 맵이 움직이지 않는다)
+  const one = layoutParsedTable(parseMdTable(buildMdTable(['a', 'b'], [['1', '2']]))!, 14);
+  const two = layoutParsedTable(parseMdTable(buildMdTable(['a', 'b'], [['1<br>2', 'x']]))!, 14);
+  check('⑧ 한 줄 표의 행 높이 = 예전 cellFs+10 (22) · 전체 44', [one.rowHs, one.h], [[22, 22], 44]);
+  check('⑧ <br> 가 있는 행만 높아진다 (머리글 22 + 두 줄 38 = 60)', [two.rowHs, two.h], [[22, 38], 60]);
+  check('⑧ rowTop = 앞 행 높이의 누적', [rowTop(two, 0), rowTop(two, 1), rowTop(two, 2)], [0, 22, 60]);
+  const y0 = cellLineY(two, 38, 2, 0), y1 = cellLineY(two, 38, 2, 1);
+  check('⑧ 두 줄 간격 = lineH · 행 안에서 세로 가운데', [Math.round(y1 - y0), Math.round((y0 + y1) / 2 - two.cellFs * 0.34)], [two.lineH, 19]);
+  check('⑧ 한 줄 기준선은 예전 식(rowH/2 + fs*0.34) 그대로', cellLineY(one, 22, 1, 0), 22 / 2 + one.cellFs * 0.34);
+  // 열 폭 — **가장 긴 줄** 기준 (한 줄로 이어 재면 줄바꿈한 보람이 없다)
+  const w1 = layoutParsedTable(parseMdTable(buildMdTable(['abcdef', 'b'], [['1', '2']]))!, 14);
+  const w2 = layoutParsedTable(parseMdTable(buildMdTable(['abc<br>def', 'b'], [['1', '2']]))!, 14);
+  check('⑧ 열 폭은 가장 긴 줄 기준 — 줄바꿈하면 좁아진다', [w1.colWs[0], w2.colWs[0]], [52, 32]);
+  // 셀 안 <br> 와 \| 가 함께 있어도 셀이 쪼개지지 않는다
+  check('⑧ <br> 와 \\| 가 함께', splitPipeCells('| a<br>b\\|c | d |'), ['a<br>b|c', 'd']);
 }
 
 if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }

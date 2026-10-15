@@ -10,12 +10,12 @@
 // flattenNodeText는 한 줄 요약이 필요한 곳(검색 결과 목록 등)에서
 // 마커 원문 대신 ☑/☐·⧉코드·⊞표 로 접어 보여주기 위한 도우미다.
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { parseInlineMarks, CODE_BG, CODE_TEXT } from './inlineMarks';
 import { parseMdCodes, type MdCodeParse } from './mdCode';
-import { parseMdTable, splitPipeCells } from './mdTable';
+import { cellLines, parseMdTable, splitPipeCells } from './mdTable';
 import { parseCheckLine, toggleCheckInText } from './mdCheck';
 import { CodeBlockDialog, replaceCodeBlock } from './CodeBlockDialog';
 import { TableDialog, replaceMdTable, buildMdTable } from './TableDialog';
@@ -247,7 +247,13 @@ export function NodeRichText({
                         textAlign: mdt.aligns[ci] ?? 'left', // GFM 열 정렬
                       }}
                     >
-                      <InlineMarkSpans text={cell} textColor={textColor} />
+                      {/* 셀 안 `<br>` = 줄바꿈 (2026-10-15) — 맵·뷰어와 같은 규칙 */}
+                      {cellLines(cell).map((cl, cli) => (
+                        <Fragment key={cli}>
+                          {cli > 0 && <br />}
+                          <InlineMarkSpans text={cl} textColor={textColor} />
+                        </Fragment>
+                      ))}
                     </td>
                   ))}
                 </tr>

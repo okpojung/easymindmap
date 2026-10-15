@@ -28,7 +28,7 @@ import {
   scaleNodeImage,
   sizeNodeForText,
 } from './sizeNodeForText';
-import { parseMdTable, parseMdTables, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
+import { parseMdTable, parseMdTables, cellLineY, cellLines, rowTop, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
 import { parseMdCodes, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
 import { blockGaps, layoutNodeBlocks } from './nodeBlocks';
 import { gridXAttr } from '@/utils/monoGrid';
@@ -885,7 +885,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               // 머리글 셀 내용과 겹치지 않는다 (2026-07-31)
               const stripY = contentTop + tbl.boundaryY + tbl.gapAbove;
               const tY = stripY + MD_TABLE_COPY_STRIP;
-              const { colWs, rowH, cellFs, headers, rows, aligns, w: tW, h: tH } = tbl;
+              const { colWs, rowHs, cellFs, headers, rows, aligns, w: tW, h: tH } = tbl;
               const colX: number[] = [];
               let acc = tX;
               for (const cw of colWs) { colX.push(acc); acc += cw; }
@@ -905,13 +905,15 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                   {/* 히트 영역 — 격자선·글자 사이 빈 곳도 더블클릭이 표에 닿게
                       (없으면 아래 노드 박스가 받아 텍스트 편집으로 들어간다) */}
                   <rect x={tX} y={tY} width={tW} height={tH} fill="transparent" />
-                  <rect x={tX} y={tY} width={tW} height={rowH}
+                  <rect x={tX} y={tY} width={tW} height={rowHs[0]}
                         fill={border} opacity={0.16} />
                   <rect x={tX} y={tY} width={tW} height={tH}
                         fill="none" stroke={gridColor} strokeWidth={1} opacity={0.75} />
+                  {/* 행 높이가 행마다 다르다 (셀 `<br>` 줄바꿈) — 가로선은
+                      누적 오프셋 rowTop() 으로 긋는다 (2026-10-15) */}
                   {allRows.slice(1).map((_, r) => (
-                    <line key={`h${r}`} x1={tX} y1={tY + (r + 1) * rowH}
-                          x2={tX + tW} y2={tY + (r + 1) * rowH}
+                    <line key={`h${r}`} x1={tX} y1={tY + rowTop(tbl, r + 1)}
+                          x2={tX + tW} y2={tY + rowTop(tbl, r + 1)}
                           stroke={gridColor} strokeWidth={0.7} opacity={0.55} />
                   ))}
                   {colX.slice(1).map((x, c) => (
@@ -953,10 +955,12 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                     </text>
                   </g>
                   {allRows.map((cells, r) =>
-                    cells.map((cell, c) => {
+                    // 셀 안 `<br>` = 줄바꿈 (2026-10-15) — 줄마다 <text> 하나,
+                    // 행 안에서 세로 가운데로 모은다 (cellLineY)
+                    cells.map((cell, c) => cellLines(cell).map((line, k, lns) => {
                       // 셀 안 인라인 마커(**굵게** 등) — 마커 문자는 숨기고
                       // 서식만 적용 (tspan 구간, 실측 오프셋)
-                      const cSegs = parseInlineMarks(cell);
+                      const cSegs = parseInlineMarks(line);
                       // GFM 열 정렬(구분선 콜론) — 구간 폭을 먼저 재고 시작 x 를 정한다
                       const segWs = cSegs.map((sg) => measureTextPx(sg.text, cellFs, {
                         weight: r === 0 || sg.b ? 700 : 400,
@@ -971,20 +975,20 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                           ? colX[c] + colWs[c] - MD_TABLE_CELL_PAD_X - textW
                           : colX[c] + MD_TABLE_CELL_PAD_X;
                       return (
-                        <text key={`c${r}-${c}`}
-                              y={tY + r * rowH + rowH / 2 + cellFs * 0.34}
+                        <text key={`c${r}-${c}-${k}`}
+                              y={tY + rowTop(tbl, r) + cellLineY(tbl, rowHs[r], lns.length, k)}
                               fontSize={cellFs}
                               fill={textColor}
                               style={{ fontFamily }}>
-                          {cSegs.map((sg, k) => {
+                          {cSegs.map((sg, si) => {
                             const x2 = cx2;
-                            cx2 += segWs[k];
+                            cx2 += segWs[si];
                             const deco = [
                               sg.s ? 'line-through' : '',
                               sg.u ? 'underline' : '',
                             ].filter(Boolean).join(' ');
                             return (
-                              <tspan key={k} x={x2}
+                              <tspan key={si} x={x2}
                                      fontWeight={r === 0 || sg.b ? 700 : 400}
                                      fontStyle={sg.i ? 'italic' : 'normal'}
                                      style={{ textDecoration: deco || undefined }}>
@@ -994,7 +998,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                           })}
                         </text>
                       );
-                    }),
+                    })),
                   )}
                 </g>
               );

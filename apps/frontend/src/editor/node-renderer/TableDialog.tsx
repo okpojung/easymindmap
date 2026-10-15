@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { parseMdTable, sepCellOfAlign, splitPipeCells, escapePipe, type MdTableAlign } from './mdTable';
+import { parseMdTable, sepCellOfAlign, splitPipeCells, escapePipe, cellFromLines, cellLines, type MdTableAlign } from './mdTable';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { tr as trNow, useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
@@ -26,10 +26,20 @@ export const TABLE_GRID_MAX = 10; // 격자 선택기 크기 (10×10)
 
 // ── Markdown 표 만들기·끼워 넣기·바꾸기 ─────────────────────────────
 
-// 셀 글자 정리 — 줄바꿈은 공백으로, '|' 는 GFM 대로 `\\|` 로 이스케이프
-// (2026-09-17 — 예전엔 `¦` 로 바꿨다).
+// 셀 글자 정리 — 줄바꿈은 **`<br>`** 로(2026-10-15 사용자 요청 "표 셀 줄바꿈";
+// 예전엔 공백으로 폈다), '|' 는 GFM 대로 `\\|` 로 이스케이프 (2026-09-17 —
+// 예전엔 `¦` 로 바꿨다).
+//
+// 격자 보기의 셀 입력칸은 **진짜 줄바꿈**을 담고(여러 줄 textarea), 표
+// 원문으로 나갈 때 여기서 `<br>` 이 된다. 이미 `<br>` 인 셀(파서에서 온
+// 것)은 그대로 지난다 — 두 번 해도 같은 결과다.
 function cleanCell(s: string): string {
-  return escapePipe(String(s ?? '').replace(/\r?\n/g, ' ').trim());
+  return escapePipe(cellFromLines(String(s ?? '').split(/\r?\n/)));
+}
+
+/** 표 원문 셀 → 격자 입력칸에 보일 글자 (`<br>` → 진짜 줄바꿈) */
+function cellForEdit(s: string): string {
+  return cellLines(s).join('\n');
 }
 
 /** 헤더·행(·열 정렬) → `| a | b |\n|:---|---:|\n| 1 | 2 |` — 정렬은 GFM 구분선 콜론 */
@@ -207,7 +217,12 @@ export function TableDialog({
   const tr = useTr();
   const init = useMemo(() => {
     const parsed = initialMd ? parseMdTable(initialMd) : null;
-    if (parsed) return { headers: parsed.headers, rows: parsed.rows, aligns: parsed.aligns };
+    // 셀 안 `<br>` 은 입력칸에서 **진짜 줄바꿈**으로 보여 준다 (2026-10-15)
+    if (parsed) return {
+      headers: parsed.headers.map(cellForEdit),
+      rows: parsed.rows.map((r) => r.map(cellForEdit)),
+      aligns: parsed.aligns,
+    };
     return emptyTable(initialSize?.rows ?? TABLE_MIN_ROWS, initialSize?.cols ?? TABLE_MIN_COLS);
   }, [initialMd, initialSize]);
   const [headers, setHeaders] = useState<string[]>(init.headers);
@@ -218,7 +233,7 @@ export function TableDialog({
   const [view, setView] = useState<'grid' | 'md'>('grid');
   const [mdText, setMdText] = useState('');
   const [mdError, setMdError] = useState<string | null>(null);
-  const firstRef = useRef<HTMLInputElement | null>(null);
+  const firstRef = useRef<HTMLTextAreaElement | null>(null);
   const mdRef = useRef<HTMLTextAreaElement | null>(null);
   // 커서가 있는 셀 — 행·열 추가/삭제의 기준 (r=-1 은 머리글). 2026-09-17
   // 사용자 요청: +행 = 커서 행 아래, −행 = 커서 행, +열 = 커서 열 오른쪽, −열 = 커서 열
@@ -226,7 +241,7 @@ export function TableDialog({
   const gridRef = useRef<HTMLTableElement | null>(null);
   const focusCell = (r: number, c: number) => {
     window.setTimeout(() => {
-      const el = gridRef.current?.querySelector<HTMLInputElement>(`[data-table-cell="${r + 1}x${c + 1}"]`);
+      const el = gridRef.current?.querySelector<HTMLTextAreaElement>(`[data-table-cell="${r + 1}x${c + 1}"]`);
       el?.focus();
     }, 0);
   };
@@ -277,7 +292,9 @@ export function TableDialog({
   const toGrid = () => {
     const parsed = parseMdTable(mdText);
     if (!parsed) { setMdError(tr('editor.table.mdError')); return; }
-    setHeaders(parsed.headers); setRows(parsed.rows); setAligns(parsed.aligns); setMdError(null); setView('grid');
+    setHeaders(parsed.headers.map(cellForEdit));
+    setRows(parsed.rows.map((r) => r.map(cellForEdit)));
+    setAligns(parsed.aligns); setMdError(null); setView('grid');
   };
   const save = () => {
     if (view === 'md') {
@@ -336,12 +353,17 @@ export function TableDialog({
       </button>
     );
   };
+  // 셀 입력칸은 **여러 줄**이다 (2026-10-15 "표 셀 줄바꿈") — Enter(또는
+  // Shift+Enter) 로 셀 안에서 줄을 바꾸고, 표 원문으로는 `<br>` 로 저장된다
+  // (GFM 표는 줄 하나가 곧 행 하나라 `<br>` 밖에 길이 없다). 창 확인은
+  // 예전처럼 Ctrl+Enter — 그래서 Enter 를 줄바꿈에 쓸 수 있다.
   const cellInput = (r: number, c: number, value: string, isHead: boolean) => (
-    <input
+    <textarea
       key={`${r}-${c}`}
       ref={r === -1 && c === 0 ? firstRef : undefined}
       data-table-cell={`${r + 1}x${c + 1}`}
       value={value}
+      rows={Math.max(1, value.split('\n').length)}
       onChange={(e) => setCell(r, c, e.target.value)}
       onFocus={() => setCursor({ r, c })}
       placeholder={isHead ? tr('editor.table.headerPlaceholder') : ''}
@@ -350,6 +372,10 @@ export function TableDialog({
         border: 'none', background: 'transparent', outline: 'none',
         color: t.text, fontSize: 12.5, fontWeight: isHead ? 700 : 400,
         textAlign: aligns[c] ?? 'left',
+        // 입력칸이 줄 수에 맞춰 늘어난다 — 손잡이로 늘이는 것은 막고
+        // (표 격자가 흔들린다) 글꼴·줄 간격은 다른 입력칸과 같게 맞춘다
+        display: 'block', resize: 'none', overflow: 'hidden',
+        fontFamily: 'inherit', lineHeight: 1.45,
       }}
     />
   );

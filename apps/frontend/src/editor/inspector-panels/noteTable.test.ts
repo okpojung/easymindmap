@@ -40,5 +40,13 @@ check('⑤ 셀 보기도 null', noteTableCells('그냥 글'), null);
 // ⑥ 열 수가 들쭉날쭉한 옛 원문 — 머리글 열 수에 맞춘다
 check('⑥ 모자란 셀은 빈 칸', noteTableCells('a | b | c\n1 | 2')?.rows, [['1', '2', '']]);
 
+// ⑦ 셀 안 줄바꿈(<br>, 2026-10-15) — 노트 표 블록도 그대로 담고 왕복한다
+{
+  const blk = noteTableFromMd('| a<br>b | c |\n|---|---|\n| 1<br>2 | 3 |');
+  check('⑦ <br> 는 노트 블록 원문에 그대로', blk, 'a<br>b | c\n1<br>2 | 3');
+  check('⑦ 셀 보기도 <br> 를 담는다 (그릴 때 줄로 나눈다)', noteTableCells(blk)?.rows, [['1<br>2', '3']]);
+  check('⑦ 왕복: 블록 → 팝업 MD → 블록 동일', noteTableFromMd(noteTableToMd(blk)!), blk);
+}
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 if (failed) process.exit(1);

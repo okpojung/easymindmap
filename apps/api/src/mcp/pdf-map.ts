@@ -20,7 +20,11 @@ import type { OutlineItem, PageText, Run } from './pdf-parse';
 export type Structure = 'auto' | 'outline' | 'fontsize' | 'numbering' | 'pages';
 
 /** `lead` = 줄 머리에 빈칸이 찍혀 있다(들여쓰기 — 많은 한국어 문서가 새 문단·항목을 이렇게 연다) */
-export interface Line { page: number; y: number; x0: number; x1: number; size: number; bold: boolean; text: string; lead?: boolean; rot?: boolean }
+export interface Line {
+  page: number; y: number; x0: number; x1: number; size: number; bold: boolean; text: string; lead?: boolean; rot?: boolean;
+  /** 원래 마지막 조각이 빈칸으로 끝났는가 — 다음 줄과 이을 때 낱말 경계인지 가르는 데 쓴다 */
+  trail?: boolean;
+}
 /** `rot` = 돌아간 글씨(여백의 세로 글씨) — 글은 담되 제목·맵 이름 후보에서는 뺀다 */
 export interface Block { page: number; y: number; x0: number; size: number; bold: boolean; text: string; lines: number; bullet: boolean; endPage: number; rot?: boolean }
 
@@ -46,7 +50,7 @@ export function dedupeRuns(runs: Run[]): { runs: Run[]; dropped: number } {
 
 const SPACE_RE = /\s$/;
 
-function joinRuns(rs: Run[]): { text: string; size: number; bold: boolean } {
+function joinRuns(rs: Run[]): { text: string; size: number; bold: boolean; trail: boolean } {
   let text = '';
   let prev: Run | null = null;
   const bySize = new Map<number, number>();
@@ -69,7 +73,7 @@ function joinRuns(rs: Run[]): { text: string; size: number; bold: boolean } {
   for (const [k, n] of bySize) if (n > best) { best = n; size = k; }
   // 줄 머리의 보이지 않는 하이픈(U+00AD)은 한글 문서의 글머리표 '-' 다. 줄 가운데 것은 지운다.
   const t = text.replace(/\s+/g, ' ').trim().replace(/^\u00ad/, '-').replace(/\u00ad/g, '');
-  return { text: t, size, bold: chars > 0 && boldChars / chars > 0.6 };
+  return { text: t, size, bold: chars > 0 && boldChars / chars > 0.6, trail: SPACE_RE.test(text) };
 }
 
 /**
@@ -104,7 +108,7 @@ export function pageLines(page: PageText, index: number): Line[] {
     const vis = rs.filter((r) => r.text.trim());
     return {
       page: index, y: rs[0].y, x0: Math.min(...(vis.length ? vis : rs).map((r) => r.x0)), x1: Math.max(...rs.map((r) => r.x1)),
-      size: j.size, bold: j.bold, text: j.text, lead: /^\s/.test(rs[0].text),
+      size: j.size, bold: j.bold, text: j.text, lead: /^\s/.test(rs[0].text), ...(j.trail ? { trail: true } : {}),
     };
   };
   const lines = [...segs.filter((s) => s.col === 0), ...segs.filter((s) => s.col === 1)].map((s) => toLine(s.runs)).filter((l) => l.text);
@@ -167,9 +171,51 @@ export function stripMargins(pages: { lines: Line[]; height: number }[]): { remo
 export const BULLET_RE = /^\s*(?:[•●○◦▪▫■□◆◇▶▷►‣⁃∙·※☞✓✔➢➤\-–—*]|\(?\d{1,2}\)|[①-⑳]|[㉠-㉭]|\(?[가-하]\)|[a-z]\)|\d{1,2}\.(?!\d))\s*/;
 const END_RE = /[.!?。．다요음함됨임:;)\]」』"”'’]$/;
 
-function hyphenJoin(a: string, b: string): string {
+/**
+ * 한글 줄바꿈이 낱말 가운데에서 났을 때 다음 줄 머리에 오는 조사·어미 조각 (2026-10-15 dev 실측).
+ * 다음 줄 **첫 토큰 전체**가 이 중 하나일 때만 붙인다 — "이은경"·"가능성" 처럼 이 글자로 시작하는 낱말은 안 붙는다.
+ */
+const KO_TAIL = new Set((
+  '은 는 이 가 을 를 의 에 에서 에게 에는 에도 으로 로 로서 로써 와 과 도 만 까지 부터 처럼 보다 게 께 여 써 해 해야 하여 히 ' +
+  '록 도록 되 된 될 됨 되어 되며 되고 되는 된다 며 면 서 어 아 야 지 기 음 함 한다 하는 하고 했다 니다 습니다 있다 없다'
+).split(' '));
+
+/**
+ * 조사·어미 조각이면서 **혼자 쓰이는 낱말**이기도 한 것 — "느리지만|이 방식은"(관형사 이)·"해"·"도"·"하는" (#645 Codex).
+ * 줄 끝 빈칸으로 낱말 경계를 표시하지 않는 문서에서는 이것들을 붙이지 않는다(띄어 쓴 채로 두는 쪽이 덜 해롭다).
+ */
+const KO_AMBIG = new Set((
+  '이 가 도 만 서 지 기 음 함 해 해야 하여 하는 하고 한다 했다 되 된 될 됨 되어 되며 되고 되는 된다 있다 없다 어 아 야 여 게 께 로 와 과 며 면 은 는 ' +
+  '보다 써 록' // "결과를|보다 쉽게"·"글을|써 보았다"·"그는|록 음악을" (#645 Codex 2·3차)
+).split(' '));
+
+/**
+ * 줄 잇기. ① 앞 줄이 빈칸으로 끝났으면 언제나 띄운다. ② 한글 음절로 끝나고 다음 줄 첫 토큰 전체가 조사·어미
+ * 조각이면 붙인다("제시함으로|써" → "제시함으로써") — 단 `marks`(이 문서가 낱말 경계 줄바꿈에 줄 끝 빈칸을 남기는가)가
+ * 아니면 혼자 쓰이는 낱말일 수 있는 조각(`KO_AMBIG`)은 붙이지 않는다. 줄 끝 빈칸이 없어도 낱말 경계인 문서가 있어
+ * ("보고서는|국가") 빈칸 유무만으로는 못 가른다. ③ 영어 줄 끝 하이픈은 잇는다. ④ 그 밖은 띄운다.
+ */
+export function joinLine(a: string, b: string, trail = false, marks = false): string {
+  // 영어 줄 끝 하이픈이 먼저 — 하이픈 뒤에 빈칸 글자가 붙어 와도(`exam- `) 잇는다 (#645 Codex 2차)
   if (/[A-Za-z]-$/.test(a) && /^[a-z]/.test(b)) return a.slice(0, -1) + b;
+  if (trail) return `${a} ${b}`;
+  const tok = /^[가-힣]+/.exec(b)?.[0];
+  if (tok && /[가-힣]$/.test(a) && KO_TAIL.has(tok) && (marks || !KO_AMBIG.has(tok))) return a + b;
   return `${a} ${b}`;
+}
+
+/**
+ * 이 문서는 한글 낱말 사이 줄바꿈에 줄 끝 빈칸을 남기는가 — 문단 안에서 잇는 줄 짝 가운데, 한글로 끝나 한글로 시작하는 같은 쪽 줄바꿈 중
+ * 줄 끝 빈칸이 있는 것이 3개 이상이고 30% 이상이면 그렇다고 본다(고려대 PDF 43/60, NIA 보고서 0/34).
+ * 그런 문서에서 빈칸 없는 한글 줄바꿈은 낱말 가운데다.
+ */
+export function marksWordWraps(pairs: [Line, Line][]): boolean {
+  let n = 0, t = 0;
+  for (const [a, b] of pairs) {
+    if (a.page !== b.page || !/[가-힣]$/.test(a.text) || !/^[가-힣]/.test(b.text)) continue;
+    n++; if (a.trail) t++;
+  }
+  return t >= 3 && t / n >= 0.3;
 }
 
 export function toBlocks(lines: Line[]): Block[] {
@@ -186,6 +232,9 @@ export function toBlocks(lines: Line[]): Block[] {
   let body = 10, bw = -1;
   for (const [k, n] of sizeW) if (n > bw) { bw = n; body = k; }
   const out: Block[] = [];
+  // 이어 붙일 줄 짝 — 문서 표시(marks)는 **실제로 잇는 줄바꿈만** 보고 정한다. 제목·표 줄·문단 끝처럼 끊기는
+  // 자리의 줄 끝 빈칸을 세면 문서 전체가 '표시하는 문서' 로 잘못 잡힌다 (#645 Codex 3차)
+  const joins: { block: Block; prev: Line; line: Line }[] = [];
   let cur: Block | null = null;
   let prev: Line | null = null;
   for (const l of lines) {
@@ -207,12 +256,14 @@ export function toBlocks(lines: Line[]): Block[] {
       cur = { page: l.page, y: l.y, x0: l.x0, size: l.size, bold: l.bold, text: l.text, lines: 1, bullet, endPage: l.page, ...(l.rot ? { rot: true } : {}) };
       out.push(cur);
     } else {
-      cur.text = hyphenJoin(cur.text, l.text);
+      joins.push({ block: cur, prev: prev!, line: l });
       cur.lines++;
       cur.endPage = l.page;
     }
     prev = l;
   }
+  const marks = marksWordWraps(joins.map((j): [Line, Line] => [j.prev, j.line]));
+  for (const j of joins) j.block.text = joinLine(j.block.text, j.line.text, Boolean(j.prev.trail), marks);
   return out;
 }
 

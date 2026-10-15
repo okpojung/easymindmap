@@ -19,6 +19,8 @@ import type { NoteBlock } from '@/editor/__samples__/types';
 import { gridCharSpans } from '@/utils/monoGrid';
 import { useNoteHtmlResolver } from '@/utils/imageSrc';
 import { useTr } from '@/i18n';
+import { TableDialog } from '@/editor/node-renderer/TableDialog';
+import { noteTableFromMd, noteTableToMd } from '@/editor/inspector-panels/noteTable';
 import { isPhoneLayoutNow, useCoarse } from '@/hooks/useViewport';
 
 // Markdown 링크 — [라벨](url). 노트 원문에 그대로 남아 있는 링크를
@@ -177,10 +179,12 @@ function NoteTableCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   );
 }
 
-function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
+function NoteBlockView({ t, block, fs, family, onToggleCheck, onEditTable }: {
   t: ThemeTokens; block: NoteBlock; fs: number; family?: string;
   // 체크리스트 블록의 ☑/☐ 클릭 토글 — nodeId를 아는 호출자만 넘긴다
   onToggleCheck?: () => void;
+  // 표 블록 ✎ 편집 — 표 편집 팝업(격자/MD)을 연다. nodeId를 아는 호출자만 (2026-10-15)
+  onEditTable?: () => void;
 }) {
   // 노트 사진이 **우리 저장소**에 있으면 그릴 때 토큰을 붙인다 (2026-08-20).
   // 토큰은 문서에 저장하지 않는다 — 저장하면 만료되는 날 사진이 전부 깨진다.
@@ -204,6 +208,20 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
       <div style={{ position: 'relative', paddingTop: 20 }}>
       {/* 표 복사(⧉) — 엑셀(TSV)·웹 에디터(HTML 표) 동시 형식 */}
       <NoteTableCopyButton t={t} text={String(block.text || '')} />
+      {/* ✎ 편집 — 노드 안 표와 같은 표 편집 팝업(격자/MD · ↵ 줄바꿈 · 창 이동)으로 (2026-10-15 사용자 요청) */}
+      {onEditTable && (
+        <button
+          data-testid="note-viewer-table-edit"
+          title={tr('editor.note.editTable')}
+          onClick={(e) => { e.stopPropagation(); onEditTable(); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute', top: 2, right: 28, zIndex: 1,
+            border: `1px solid ${t.border}`, background: t.surface, borderRadius: 4,
+            padding: '1px 6px', cursor: 'pointer', fontSize: 10, fontWeight: 700, color: t.textMuted,
+          }}
+        >✎ {tr('editor.note.editTableShort')}</button>
+      )}
       <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 8,
         fontSize: Math.max(9, fs - 1), fontFamily: family }}>
         <tbody>
@@ -353,6 +371,8 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
   // 노트 글꼴·크기 (맵 설정 — 기본 13pt)
   const noteFont = useDocumentStore((s) => s.map.settings?.noteFont);
   const updateNoteBlock = useDocumentStore((s) => s.updateNoteBlock);
+  // 표 블록 편집 팝업 (2026-10-15) — 열린 블록 id 와 그 표의 GFM 원문
+  const [tableEdit, setTableEdit] = useState<{ blockId: string; md?: string } | null>(null);
   const fs = noteFont?.size && noteFont.size > 0 ? noteFont.size : 13;
   const family = noteFont?.family && noteFont.family.trim() ? noteFont.family : undefined;
 
@@ -486,9 +506,23 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
             onToggleCheck={nodeId && block.type === 'checklist'
               ? () => updateNoteBlock(nodeId, block.id, { checked: !block.checked })
               : undefined}
+            onEditTable={nodeId && block.type === 'table'
+              ? () => setTableEdit({ blockId: block.id, md: noteTableToMd(block.text) })
+              : undefined}
           />
         ))}
       </div>
+      {tableEdit && nodeId && (
+        <TableDialog
+          t={t}
+          initialMd={tableEdit.md}
+          onCancel={() => setTableEdit(null)}
+          onSave={(md) => {
+            updateNoteBlock(nodeId, tableEdit.blockId, { text: noteTableFromMd(md) });
+            setTableEdit(null);
+          }}
+        />
+      )}
     </div>
   );
 }

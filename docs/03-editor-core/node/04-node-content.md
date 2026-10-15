@@ -410,6 +410,29 @@ const rawHtml = (hasImgFile && !htmlHasTable) ? '' : rawHtmlAll;
 
 ---
 
+### 14.6-a 표 셀 줄바꿈 = `<br>` (2026-10-15 사용자 요청 "표 셀 줄바꿈 해줘")
+
+**왜 `<br>` 인가.** GFM 표는 **줄 하나가 곧 행 하나**라서 셀 안에 진짜
+줄바꿈(`\n`)을 넣을 길이 아예 없다. 그래서 GFM 은 인라인 HTML 을 허용하고
+셀 안 줄바꿈으로 **`<br>`** 를 쓴다 — GitHub 자신이 안내하는 방법이다.
+우리가 다른 표기를 만들면 같은 mmd 를 GitHub·VS Code·Obsidian 에서 볼 때
+깨진 글자로 보인다. 그래서 **원문은 `<br>` 그대로 두고 보여 줄 때만 나눈다.**
+
+| 자리 | 규칙 |
+|---|---|
+| 파서 (`mdTable.ts`) | `cellLines(셀)` — `<br>` · `<br/>` · `<br />`(대소문자 무관)로 나누고 줄마다 trim. 되돌리기는 `cellFromLines(줄들)` |
+| 열 폭 | **가장 긴 줄** 기준 (`layoutParsedTable`) — 한 줄로 이어 재면 줄바꿈한 보람이 없어진다 |
+| 행 높이 | `rowHs[]`(0 = 머리글) — 그 행에서 **줄이 가장 많은 셀** 기준 `줄수 × lineH + 6`, `lineH = cellFs + 4`. 한 줄짜리 행은 예전 `cellFs + 10` 과 **같은 값**이라 기존 맵의 표가 한 픽셀도 움직이지 않는다. 표 높이 `h` = `rowHs` 의 합 (예전엔 `(1+행수) × rowH`) |
+| 행·줄 좌표 | `rowTop(lay, r)` = 앞 행 높이의 누적 · `cellLineY(lay, 행높이, 줄수, k)` = 행 안에서 세로 가운데로 모은 k 번째 줄의 기준선 (한 줄이면 예전 `rowH/2 + fs*0.34` 와 같은 값) |
+| 그리는 쪽 | 캔버스(`NodeRenderer` — 줄마다 `<text>`) · 아웃라인/칸반(`RichTextHtml` — 줄 사이 `<br>` 요소) · 노트 표(`NoteTagTab` `NoteTableView`) · 노트 뷰어 팝업(`NoteViewerPopover`) · HTML 뷰어(`exportHtml` 의 `cellLines2`·`rowHOf2`·`rowTop2`·`cellLineY2`·`appendCellLines`) |
+| 넣는 쪽 | 표 팝업(`TableDialog`)의 셀 입력칸이 **여러 줄 textarea** — Enter(Shift+Enter 도) 로 셀 안에서 줄을 바꾸고, 확인하면 `cleanCell` 이 `<br>` 로 저장한다. 창 확인은 예전처럼 Ctrl+Enter 라서 Enter 를 줄바꿈에 쓸 수 있다. 노드 본문에 `<br>` 을 직접 쳐도 똑같이 그려진다 |
+| 복사 (⧉) | HTML 은 `<br>` 그대로, **TSV 는 공백** — 셀 안 줄바꿈을 TSV 에 넣으면 엑셀이 다음 행으로 읽는다 (`copyTable.ts`, 뷰어 `copyTableData`) |
+| mmd 왕복 | 내보내기·불러오기는 `<br>` 을 글자 그대로 지난다 (`markdown-export.md` §1.5) |
+
+★ **폭·높이는 에디터가 정하고 뷰어가 그린다.** 그래서 뷰어의 측정식이
+에디터와 조금이라도 다르면 표가 노드 박스를 넘친다 — 뷰어 쪽 도우미는
+같은 상수(`lineH = cellFs + 4`, 행 `+6`)를 쓴다. 검증: e2e344.
+
 ### 14.7 노트 표 블록 — 격자 선택 + 표 팝업 (2026-09-19 사용자 요청)
 
 > *"노드 노트의 표 삽입 메뉴도 노드 내용의 표처럼 n×n 설정 및 렌더링된
@@ -428,12 +451,13 @@ const rawHtml = (hasImgFile && !htmlHasTable) ? '' : rawHtmlAll;
 |---|---|---|
 | 팝업 GFM → 노트 원문 | `noteTableFromMd` | 줄 = 행 · ` \| ` = 열 · **바깥 파이프 없음** · 첫 행 = 머리글. 장식 구분선(`\|---\|`)은 버리고 **정렬 콜론이 있는 구분선**(`:--- \| ---:`)만 남긴다 — 불러오기 `flushTable` 의 정규화와 같다. 셀 안 `\|` 는 `\\|` 그대로 |
 | 노트 원문 → 팝업 GFM | `noteTableToMd` | `parseMdTable`(단순 파이프 표도 읽는다) → `buildMdTable`. 표로 읽히지 않으면(빈 블록·한 줄) `undefined` → 팝업은 빈 표 |
-| 노트 원문 → 그리기 | `noteTableCells` | 머리글·행·정렬. 열 수는 머리글에 맞춘다(옛 데이터의 들쭉날쭉한 행) |
+| 노트 원문 → 그리기 | `noteTableCells` | 머리글·행·정렬. 열 수는 머리글에 맞춘다(옛 데이터의 들쭉날쭉한 행). 셀 안 `<br>` 은 `NoteTableView` 가 줄로 나눠 그린다 (§14.6-a) |
 
 노트 뷰어 팝업·HTML 뷰어·MD 내보내기(`pushTableNote`)·복사(⧉)는 전부
 이 원문을 그대로 읽으므로 손댈 것이 없었다 — e2e282 ⑤⑥ 이 그것을 확인한다.
 
-검증: 단위 `noteTable.test.ts` 12항목 · 브라우저 e2e282 16항목.
+검증: 단위 `noteTable.test.ts` 15항목(2026-10-15 `<br>` 3항목 추가) · 브라우저
+e2e282 16항목 · e2e344 ⑥(노트 표에서 Enter 로 넣은 줄바꿈).
 
 ### 15. 노트 문단 리치 붙여넣기 (MVS 구현 — 2026-07)
 

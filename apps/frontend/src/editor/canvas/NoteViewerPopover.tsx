@@ -8,8 +8,8 @@
 // 창 조작: 제목줄 드래그 = 이동, 우하단 모서리 드래그(CSS resize) = 크기
 // 조절. (편집은 좌측 노트·태그 탭에서)
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { splitPipeCells } from '@/editor/node-renderer/mdTable';
+import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { cellLines, splitPipeCells } from '@/editor/node-renderer/mdTable';
 import { useDocumentStore } from '@/stores/documentStore';
 import { parseInlineMarks, stripInlineMarks } from '@/editor/node-renderer/inlineMarks';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
@@ -140,6 +140,13 @@ function NoteParagraphCopyButton({ t, text }: { t: ThemeTokens; text: string }) 
   );
 }
 
+// 표 셀 한 칸 — 셀 안 `<br>` 마다 줄을 바꾼다 (2026-10-15)
+function cellBody(t: ThemeTokens, cell: string): ReactNode {
+  return cellLines(cell).map((ln, i) => (
+    <Fragment key={i}>{i > 0 ? <br /> : null}<InlineText t={t} text={ln} /></Fragment>
+  ));
+}
+
 // 노트 표 우상단 ⧉ 복사 — 엑셀(TSV)·웹 에디터(HTML 표) 두 형식 동시 복사
 function NoteTableCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   const [copied, setCopied] = useState(false);
@@ -188,6 +195,7 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
   if (type === 'table') {
     // 구분선 행(|---|)은 표시하지 않는다 (예전 데이터 하위호환). 셀 안의
     // 인라인 마커(**굵게** 등)·링크는 서식으로 렌더링 — 마커 문자 숨김.
+    // 셀 안 `<br>` 은 줄바꿈이다 (2026-10-15, 맵·뷰어와 같은 규칙).
     const rows = String(block.text || '').split('\n')
       .filter((r) => r.trim() && !/^[\s|:\-]+$/.test(r))
       .map((r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, ''));
@@ -206,11 +214,11 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck }: {
                   <th key={c} style={{
                     border: `1px solid ${t.border}`, padding: '4px 7px',
                     textAlign: 'left', background: t.surfaceAlt, fontWeight: 700,
-                  }}><InlineText t={t} text={cell.trim()} /></th>
+                  }}>{cellBody(t, cell)}</th>
                 ) : (
                   <td key={c} style={{
                     border: `1px solid ${t.border}`, padding: '4px 7px', textAlign: 'left',
-                  }}><InlineText t={t} text={cell.trim()} /></td>
+                  }}>{cellBody(t, cell)}</td>
                 ),
               )}
             </tr>

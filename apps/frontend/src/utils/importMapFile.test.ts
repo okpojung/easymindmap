@@ -127,5 +127,31 @@ const body = (md: string) => md.split('\n').filter(Boolean);
   check('⑤ 두 번째 내보내기도 같은 파일', exportMd(back.map, back.editor!.layoutType, 'map9'), md);
 }
 
+// ── ⑥ 표 셀 줄바꿈(<br>) 왕복 — 2026-10-15 사용자 요청 ───────────────
+// MD 표는 줄 하나가 곧 행 하나라 셀 안 줄바꿈은 <br> 다. 내보낸 글이
+// GitHub 이 읽는 표기 그대로이고, 되읽어도 셀이 쪼개지지 않아야 한다.
+{
+  const cell = '50,000원<br>부가세 포함';
+  const map: SampleMap = {
+    title: '표 줄바꿈',
+    root: { id: 'root', text: '표', colorKey: 'root', side: 'center' },
+    branches: [{
+      id: 'b1', colorKey: 'l1A', side: 'right',
+      text: `| 항목 | 설명 |\n| --- | --- |\n| 가격 | ${cell} |`,
+    }],
+  } as unknown as SampleMap;
+  const md = exportMd(map, 'tree-right', 'mapBr');
+  const rowLines = md.split('\n').filter((l) => l.includes('부가세 포함'));
+  check('⑥ 내보낸 MD — 셀 안 줄바꿈은 <br> 한 줄 (행으로 새지 않는다)',
+    [rowLines.length, rowLines[0]?.includes(cell)], [1, true]);
+  // 되읽기: `blocks: note` 선언대로 표는 **노트 표 블록**으로 돌아온다
+  // (기존 규칙, 2026-09-15) — 그 원문에도 <br> 가 살아 있어야 한다
+  const back = parseMarkdownMapFile(md, '문서')!;
+  const tnote = (back.map.branches[0].notes ?? []).find((n) => n.type === 'table');
+  check('⑥ 되읽은 노트 표 블록의 셀에 <br> 그대로',
+    [!!tnote, (tnote?.text ?? '').includes(cell)], [true, true]);
+  check('⑥ 두 번째 내보내기도 같은 파일', exportMd(back.map, back.editor!.layoutType, 'mapBr'), md);
+}
+
 if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }
 console.log('\n모두 통과');

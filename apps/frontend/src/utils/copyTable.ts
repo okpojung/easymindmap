@@ -6,7 +6,7 @@
 // 셀의 인라인 마커(**굵게** 등)는 제거한 표시 텍스트로 복사한다.
 
 import { stripInlineMarks } from '@/editor/node-renderer/inlineMarks';
-import { splitPipeCells } from '@/editor/node-renderer/mdTable';
+import { cellLines, splitPipeCells } from '@/editor/node-renderer/mdTable';
 
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -20,19 +20,24 @@ const TH_STYLE = CELL_STYLE + 'background:#F1F3F5;font-weight:700;text-align:lef
 const TABLE_STYLE = 'border-collapse:collapse;border:1px solid #999;';
 
 export function tableClipboardPayload(headers: string[], rows: string[][]) {
-  const clean = (s: string) => stripInlineMarks(String(s ?? '')).trim();
+  // 셀 안 줄바꿈(`<br>`, 2026-10-15)은 형식마다 다르게 옮긴다:
+  //   · HTML 은 <br> 그대로 (붙인 쪽에서도 두 줄로 보인다)
+  //   · TSV 는 공백 — 셀 안 줄바꿈을 그대로 넣으면 엑셀이 **다음 행**으로 읽는다
+  const clean = (s: string) => cellLines(String(s ?? '')).map((ln) => stripInlineMarks(ln).trim());
   const h = headers.map(clean);
   const rs = rows.map((r) => r.map(clean));
+  const cellHtml = (ls: string[]) => ls.map(escHtml).join('<br>');
+  const cellTsv = (ls: string[]) => ls.join(' ').replace(/\t/g, ' ');
   const html =
     `<table style="${TABLE_STYLE}"><thead><tr>` +
-    h.map((c) => `<th style="${TH_STYLE}">${escHtml(c)}</th>`).join('') +
+    h.map((c) => `<th style="${TH_STYLE}">${cellHtml(c)}</th>`).join('') +
     '</tr></thead><tbody>' +
     rs.map((r) =>
-      '<tr>' + r.map((c) => `<td style="${CELL_STYLE}">${escHtml(c)}</td>`).join('') + '</tr>',
+      '<tr>' + r.map((c) => `<td style="${CELL_STYLE}">${cellHtml(c)}</td>`).join('') + '</tr>',
     ).join('') +
     '</tbody></table>';
   const tsv = [h, ...rs]
-    .map((r) => r.map((c) => c.replace(/\t/g, ' ')).join('\t'))
+    .map((r) => r.map(cellTsv).join('\t'))
     .join('\n');
   return { html, tsv };
 }

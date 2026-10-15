@@ -20,6 +20,7 @@ vite + Playwright 로 띄워 그 장면을 만들어 찍는다.** 사용자가 �
 | `node-add-*.png` (12) | `node-add.mjs` |
 | `mark-toolbar.png` · `node-drag-*.png` (4) · `paste-article.png` | `guide03.mjs` |
 | `mark-toolbar.png`(⊞ 포함, 2026-09-17 재촬영) · `03-table-grid.png` · `03-table-dialog.png` · `03-table-dialog-md.png` · `03-table-node.png` · `03-code-dialog.png` · `03-code-node.png` | `guide03-table.mjs` (동작 검증 13항목도 함께 돈다) |
+| `03-table-cell-br-dialog.png` · `03-table-cell-br-node.png` (2026-10-15) | `guide03-table-br.mjs` — 표 셀 줄바꿈(`<br>`). 팝업 셀 Enter 줄바꿈·캔버스 행 높이·아웃라인·노트 표·노트 뷰어 팝업 **검증 13항목**도 함께 돈다 |
 | `03-style-copy-button.png` · `03-style-copy-brush.png` · `03-style-copy-after.png` (2026-09-19) | `guide03-style-copy.mjs` (붓 동작 검증 27항목도 함께 돈다) |
 | `05-note-table-picker.png` · `05-note-table.png` (2026-09-19) | `guide05-note-table.mjs` (노트 표 격자·팝업·✎ 검증 16항목도 함께 돈다) |
 | `04-layout-nested.png` (2026-09-22) | `guide04-layout-nested.mjs` (3레벨 노드 레이아웃 변경 · 엔진·화면 겹침 0 검증 17항목도 함께 돈다) |

@@ -185,7 +185,8 @@ const KO_TAIL = new Set((
  * 줄 끝 빈칸으로 낱말 경계를 표시하지 않는 문서에서는 이것들을 붙이지 않는다(띄어 쓴 채로 두는 쪽이 덜 해롭다).
  */
 const KO_AMBIG = new Set((
-  '이 가 도 만 서 지 기 음 함 해 해야 하여 하는 하고 한다 했다 되 된 될 됨 되어 되며 되고 되는 된다 있다 없다 어 아 야 여 게 께 로 와 과 며 면 은 는'
+  '이 가 도 만 서 지 기 음 함 해 해야 하여 하는 하고 한다 했다 되 된 될 됨 되어 되며 되고 되는 된다 있다 없다 어 아 야 여 게 께 로 와 과 며 면 은 는 ' +
+  '보다 써' // "결과를|보다 쉽게"·"글을|써 보았다" (#645 Codex 2차)
 ).split(' '));
 
 /**
@@ -195,8 +196,9 @@ const KO_AMBIG = new Set((
  * ("보고서는|국가") 빈칸 유무만으로는 못 가른다. ③ 영어 줄 끝 하이픈은 잇는다. ④ 그 밖은 띄운다.
  */
 export function joinLine(a: string, b: string, trail = false, marks = false): string {
-  if (trail) return `${a} ${b}`;
+  // 영어 줄 끝 하이픈이 먼저 — 하이픈 뒤에 빈칸 글자가 붙어 와도(`exam- `) 잇는다 (#645 Codex 2차)
   if (/[A-Za-z]-$/.test(a) && /^[a-z]/.test(b)) return a.slice(0, -1) + b;
+  if (trail) return `${a} ${b}`;
   const tok = /^[가-힣]+/.exec(b)?.[0];
   if (tok && /[가-힣]$/.test(a) && KO_TAIL.has(tok) && (marks || !KO_AMBIG.has(tok))) return a + b;
   return `${a} ${b}`;

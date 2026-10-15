@@ -59,10 +59,33 @@ export interface MdTableParse {
 
 export interface MdTableLayout extends MdTableParse {
   colWs: number[]; // 열별 픽셀 폭 (패딩 포함)
-  rowH: number; // 행 높이
+  /**
+   * **행별** 높이 (0 = 머리글, 2026-10-15). 셀이 `<br>` 로 여러 줄이면 그
+   * 행만 높아진다 — 한 칸 때문에 표 전체가 높아지지 않게 행마다 센다.
+   */
+  rowHs: number[];
+  /** 한 줄 높이 (줄 간격 포함) */
+  lineH: number;
   cellFs: number; // 셀 글자 크기
   w: number; // 표 전체 폭
   h: number; // 표 전체 높이 (헤더 + 데이터 행)
+}
+
+/** r 번째 행(0 = 머리글)의 위쪽 y 오프셋 — 표 맨 위를 0 으로 */
+export function rowTop(lay: { rowHs: number[] }, r: number): number {
+  let y = 0;
+  for (let i = 0; i < r && i < lay.rowHs.length; i++) y += lay.rowHs[i];
+  return y;
+}
+
+/**
+ * 셀 안 k 번째 줄의 **글자 기준선** — 행 안에서 세로 가운데에 모아 놓는다.
+ * 한 줄짜리 행에서는 예전 계산(`rowH/2 + fs*0.34`)과 **정확히 같은 값**이다.
+ */
+export function cellLineY(
+  lay: { lineH: number; cellFs: number }, rowHeight: number, lineCount: number, k: number,
+): number {
+  return (rowHeight - lineCount * lay.lineH) / 2 + k * lay.lineH + lay.lineH / 2 + lay.cellFs * 0.34;
 }
 
 const CELL_PAD_X = 6; // 셀 좌우 여백
@@ -92,6 +115,28 @@ export function splitPipeCells(line: string, opts?: { keepEscape?: boolean }): s
   }
   out.push(cur.trim());
   return out;
+}
+
+/**
+ * ★ **셀 안 줄바꿈은 `<br>` 이다** (2026-10-15 사용자 요청).
+ *
+ * Markdown 표는 **줄 하나가 곧 행 하나**라서, 셀 안에 진짜 줄바꿈(`\n`)을
+ * 넣을 길이 아예 없다. 그래서 GFM 은 인라인 HTML 을 허용하고 **`<br>`** 를
+ * 쓴다 — GitHub 자신이 표 셀 줄바꿈 방법으로 그것을 안내한다. 우리가 다른
+ * 표기를 만들면 GitHub·VS Code·Obsidian 에서는 깨진 글자로 보인다.
+ *
+ * `<br>` · `<br/>` · `<br />` 을 모두 받고, 대소문자를 가리지 않는다.
+ */
+const BR_RE = /<br\s*\/?>/gi;
+
+/** 셀 글자 → 줄들 (줄바꿈이 없으면 길이 1) */
+export function cellLines(cell: string): string[] {
+  return String(cell ?? '').split(BR_RE).map((s) => s.trim());
+}
+
+/** 줄들 → 셀 글자 (표 원문용) */
+export function cellFromLines(lines: string[]): string {
+  return lines.map((s) => s.trim()).filter((s, i, a) => s !== '' || (i > 0 && i < a.length - 1) || a.length === 1).join('<br>');
 }
 
 /** 셀 글자 → 표 원문용 (`|` → `\\|`) */
@@ -211,24 +256,40 @@ export function layoutMdTable(text: string, fontSize: number): MdTableLayout | n
 export function layoutParsedTable(parsed: MdTableParse, fontSize: number): MdTableLayout {
 
   const cellFs = Math.max(10, fontSize - 2);
-  const rowH = cellFs + 10;
+  const lineH = cellFs + 4;
 
-  const colWs = parsed.headers.map((h, c) => {
-    // 셀 폭은 마커(** 등)를 뺀 표시 텍스트 기준으로 잰다
-    let m = measureTextApprox(stripInlineMarks(h), cellFs);
-    for (const row of parsed.rows) {
-      m = Math.max(m, measureTextApprox(stripInlineMarks(row[c] ?? ''), cellFs));
+  // 폭은 **가장 긴 줄** 기준이다 — `<br>` 로 나눈 뒤 재지 않으면 두 줄짜리
+  // 셀이 한 줄로 이어진 만큼 넓은 열을 만든다(줄바꿈한 보람이 없어진다).
+  const widest = (cell: string) => {
+    let m = 0;
+    for (const ln of cellLines(cell)) {
+      m = Math.max(m, measureTextApprox(stripInlineMarks(ln), cellFs));
     }
+    return m;
+  };
+  const colWs = parsed.headers.map((h, c) => {
+    let m = widest(h);
+    for (const row of parsed.rows) m = Math.max(m, widest(row[c] ?? ''));
     return Math.max(MIN_COL_W, Math.ceil(m) + CELL_PAD_X * 2);
   });
+
+  // 행 높이 = 그 행에서 **가장 줄이 많은 셀** 기준. 한 줄이면 예전과 같은
+  // `cellFs + 10` 이 되도록 맞췄다(기존 맵의 표가 한 픽셀도 움직이지 않는다).
+  const rowOf = (cells: string[]) => {
+    let n = 1;
+    for (const cell of cells) n = Math.max(n, cellLines(cell).length);
+    return n * lineH + 6;
+  };
+  const rowHs = [rowOf(parsed.headers), ...parsed.rows.map(rowOf)];
 
   return {
     ...parsed,
     colWs,
-    rowH,
+    rowHs,
+    lineH,
     cellFs,
     w: colWs.reduce((a, b) => a + b, 0),
-    h: (1 + parsed.rows.length) * rowH,
+    h: rowHs.reduce((a, b) => a + b, 0),
   };
 }
 

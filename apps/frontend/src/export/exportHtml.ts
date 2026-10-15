@@ -652,6 +652,50 @@ const VIEWER_JS = String.raw`
     return out;
   }
 
+  // ── 셀 안 줄바꿈 = '<br>' (2026-10-15) ───────────────────────────────
+  //
+  // GFM 표는 **줄 하나가 곧 행 하나**라 셀 안에 진짜 줄바꿈을 넣을 길이
+  // 없다. 그래서 '<br>' 을 쓴다(GitHub 이 안내하는 방법) — 에디터
+  // mdTable.ts 의 cellLines/rowHs 와 **같은 규칙**으로 재고 그린다.
+  // 어긋나면 표가 노드 박스를 넘친다 (폭·높이를 에디터가 정한다).
+  var CELL_BR_RE = /<br\s*\/?>/gi;
+  function cellLines2(s2) {
+    var arr = String(s2 || '').split(CELL_BR_RE), out = [], i;
+    for (i = 0; i < arr.length; i++) out.push(arr[i].trim());
+    return out;
+  }
+  /* 셀의 **가장 긴 줄** 폭 — 한 줄로 이은 폭으로 재면 줄바꿈한 보람이 없다 */
+  function cellWidestW(s2, fontSize) {
+    var lns = cellLines2(s2), m = 0, i;
+    for (i = 0; i < lns.length; i++) m = Math.max(m, cellApproxW(stripCellMarks(lns[i]), fontSize));
+    return m;
+  }
+  /* 행 높이 = 그 행에서 줄이 가장 많은 셀 기준 (한 줄이면 예전 cellFs+10) */
+  function rowHOf2(cells, lineH) {
+    var n = 1, i;
+    for (i = 0; i < cells.length; i++) n = Math.max(n, cellLines2(cells[i]).length);
+    return n * lineH + 6;
+  }
+  /* r 번째 행(0 = 머리글)의 위쪽 오프셋 */
+  function rowTop2(rowHs, r) {
+    var y = 0, i;
+    for (i = 0; i < r && i < rowHs.length; i++) y += rowHs[i];
+    return y;
+  }
+  /* 셀 안 k 번째 줄의 글자 기준선 — 행 안에서 세로 가운데 (에디터 cellLineY) */
+  function cellLineY2(lineH, fontSize, rowHeight, lineCount, k) {
+    return (rowHeight - lineCount * lineH) / 2 + k * lineH + lineH / 2 + fontSize * 0.34;
+  }
+  /* 셀 한 칸을 DOM 에 — 줄바꿈마다 <br> 요소 (withMarks = 인라인 서식까지) */
+  function appendCellLines(cell, text, withMarks) {
+    var lns = cellLines2(text), i;
+    for (i = 0; i < lns.length; i++) {
+      if (i > 0) cell.appendChild(document.createElement('br'));
+      if (withMarks) cell.appendChild(inlineSpansEl(lns[i]));
+      else cell.appendChild(document.createTextNode(lns[i]));
+    }
+  }
+
   // ---- measure pass (bottom-up, per-layout block model) ----------------------
   // Sets on each node: _w/_h (box), _boxH (box + tag reserve), _lines/_fs/
   // _lineH, _open, _eff (effective layout for ITS children), _bw/_bh (block),
@@ -1725,7 +1769,9 @@ const VIEWER_JS = String.raw`
     var blocks = node._fixed ? splitNodeBlocks(node.text) : [];
     var hasBlocks = blocks.length > 0;
     var mdt = null, mdc = null; // 그리기 루프에서 블록마다 다시 묶는다
-    var cellFs = Math.max(10, node._fs - 2), rowH2 = cellFs + 10, tblH = 0;
+    // 표 — 행마다 높이가 다르다 (셀 '<br>' 줄바꿈, 2026-10-15). 한 줄짜리
+    // 행은 예전 rowH2(=cellFs+10) 과 같은 값이 된다 (lineH*1 + 6).
+    var cellFs = Math.max(10, node._fs - 2), cellLineH = cellFs + 4, tblH = 0;
     // 코드 패널 크기 — 에디터 mdCode.ts와 동일 (codeFs=fs-2, lineH=codeFs+6)
     var cFs = cellFs, cLineH = cFs + 6, cH = 0, cW = 0, CPX = 8, CPY = 6;
     var cHeadFs = Math.max(9, cFs - 2), cHeadH = cHeadFs + 10;
@@ -1735,7 +1781,12 @@ const VIEWER_JS = String.raw`
       bK = blocks[bI];
       bAts.push(bK.beforeLines < ms4.length ? ms4[bK.beforeLines] : node._lines.length);
       if (bK.k === 't') {
-        bK.tblH = (1 + bK.rows.length) * rowH2;
+        bK.rowHs = [rowHOf2(bK.headers, cellLineH)];
+        bK.tblH = bK.rowHs[0];
+        for (var rhi = 0; rhi < bK.rows.length; rhi++) {
+          bK.rowHs.push(rowHOf2(bK.rows[rhi], cellLineH));
+          bK.tblH += bK.rowHs[bK.rowHs.length - 1];
+        }
         bHs.push(13 + bK.tblH); // 13 = 복사(⧉) 스트립 — 표 바깥 위 (에디터 MD_TABLE_COPY_STRIP 동일)
       } else {
         bK.cH = cHeadH + bK.code.length * cLineH + CPY * 2;
@@ -1941,21 +1992,22 @@ const VIEWER_JS = String.raw`
       var tblY = tStripY + 13;
       var colWs = [], ci, ri, mmax;
       for (ci = 0; ci < mdt.headers.length; ci++) {
-        mmax = cellApproxW(stripCellMarks(mdt.headers[ci]), cellFs);
+        mmax = cellWidestW(mdt.headers[ci], cellFs);
         for (ri = 0; ri < mdt.rows.length; ri++) {
-          mmax = Math.max(mmax, cellApproxW(stripCellMarks(mdt.rows[ri][ci] || ''), cellFs));
+          mmax = Math.max(mmax, cellWidestW(mdt.rows[ri][ci] || '', cellFs));
         }
         colWs.push(Math.max(26, Math.ceil(mmax) + 12));
       }
       var tblW = 0;
       for (ci = 0; ci < colWs.length; ci++) tblW += colWs[ci];
-      el('rect', { x: tblX, y: tblY, width: tblW, height: rowH2,
+      el('rect', { x: tblX, y: tblY, width: tblW, height: mdt.rowHs[0],
         fill: gridC, opacity: 0.16 }, g);
       el('rect', { x: tblX, y: tblY, width: tblW, height: tblH, fill: 'none',
         stroke: gridC, 'stroke-width': 1, opacity: 0.75 }, g);
       var allRows = [mdt.headers].concat(mdt.rows);
       for (ri = 1; ri < allRows.length; ri++) {
-        el('line', { x1: tblX, y1: tblY + ri * rowH2, x2: tblX + tblW, y2: tblY + ri * rowH2,
+        el('line', { x1: tblX, y1: tblY + rowTop2(mdt.rowHs, ri),
+          x2: tblX + tblW, y2: tblY + rowTop2(mdt.rowHs, ri),
           stroke: gridC, 'stroke-width': 0.7, opacity: 0.55 }, g);
       }
       var vlx = tblX;
@@ -1967,15 +2019,20 @@ const VIEWER_JS = String.raw`
       for (ri = 0; ri < allRows.length; ri++) {
         var cellX = tblX;
         for (ci = 0; ci < allRows[ri].length; ci++) {
+          // 셀 안 '<br>' = 줄바꿈 (2026-10-15) — 줄마다 <text> 하나,
+          // 행 안에서 세로 가운데로 모은다 (에디터 cellLineY 와 같은 식)
+          var cLns = cellLines2(allRows[ri][ci] || '');
+          for (var lk = 0; lk < cLns.length; lk++) {
           var cellT = el('text', {
-            y: tblY + ri * rowH2 + rowH2 / 2 + cellFs * 0.34,
+            y: tblY + rowTop2(mdt.rowHs, ri)
+              + cellLineY2(cellLineH, cellFs, mdt.rowHs[ri], cLns.length, lk),
             'font-size': cellFs, fill: textColor
           }, g);
           if (node._ff) cellT.setAttribute('font-family', node._ff);
           // 셀 안 인라인 마커(굵게·코드·기울임 표시) — **마커 문자는
           // 숨기고 서식만 입힌다** (에디터 NodeRenderer 의 셀 렌더와 같다).
           // 예전에는 원문을 그대로 넣어 백틱·별표가 글자로 보였다.
-          var cSegs = parseInlineSegs(String(allRows[ri][ci] || ''));
+          var cSegs = parseInlineSegs(cLns[lk]);
           // GFM 열 정렬 — 구간 폭을 먼저 재고 시작 x 를 정한다 (에디터와 동일)
           var segWs2 = [], textW2 = 0, sk0;
           for (sk0 = 0; sk0 < cSegs.length; sk0++) {
@@ -2003,6 +2060,7 @@ const VIEWER_JS = String.raw`
             if (deco2.length) csp.setAttribute('text-decoration', deco2.join(' '));
             csp.textContent = sg2.t;
             cx2 += segWs2[sk];
+          }
           }
           cellX += colWs[ci];
         }
@@ -2327,14 +2385,22 @@ const VIEWER_JS = String.raw`
     var CELL_ST = 'border:1px solid #999;padding:4px 8px;';
     var TH_ST = CELL_ST + 'background:#F1F3F5;font-weight:700;text-align:left;';
     var all = [headers].concat(rows);
+    // 셀 안 줄바꿈('<br>', 2026-10-15): HTML 은 <br> 그대로, TSV 는 공백으로
+    // (셀 안에 줄바꿈을 넣으면 엑셀이 **다음 행**으로 읽는다)
+    function cellH2(c) {
+      var lns = cellLines2(c), i, out = [];
+      for (i = 0; i < lns.length; i++) out.push(escH(lns[i]));
+      return out.join('<br>');
+    }
+    function cellT2(c) { return cellLines2(c).join(' ').replace(/\t/g, ' '); }
     var html = '<table style="border-collapse:collapse;border:1px solid #999;"><thead><tr>' +
-      headers.map(function (c) { return '<th style="' + TH_ST + '">' + escH(c) + '</th>'; }).join('') +
+      headers.map(function (c) { return '<th style="' + TH_ST + '">' + cellH2(c) + '</th>'; }).join('') +
       '</tr></thead><tbody>' +
       rows.map(function (r) {
-        return '<tr>' + r.map(function (c) { return '<td style="' + CELL_ST + '">' + escH(c) + '</td>'; }).join('') + '</tr>';
+        return '<tr>' + r.map(function (c) { return '<td style="' + CELL_ST + '">' + cellH2(c) + '</td>'; }).join('') + '</tr>';
       }).join('') + '</tbody></table>';
     var tsv = all.map(function (r) {
-      return r.map(function (c) { return String(c).replace(/\t/g, ' '); }).join('\t');
+      return r.map(cellT2).join('\t');
     }).join('\n');
     if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
       navigator.clipboard.write([new ClipboardItem({
@@ -2396,7 +2462,7 @@ const VIEWER_JS = String.raw`
         var rowCells = [];
         for (var cIdx = 0; cIdx < cells.length; cIdx++) {
           var cell = document.createElement(tblData.length === 0 ? 'th' : 'td');
-          cell.textContent = cells[cIdx];
+          appendCellLines(cell, cells[cIdx], false); // 셀 안 '<br>' = 줄바꿈
           rowCells.push(cells[cIdx]);
           tr.appendChild(cell);
         }
@@ -3488,7 +3554,7 @@ const VIEWER_JS = String.raw`
       for (var ci = 0; ci < allRows[ri].length; ci++) {
         var cell = document.createElement(ri === 0 ? 'th' : 'td');
         if (mdt.aligns && mdt.aligns[ci]) cell.style.textAlign = mdt.aligns[ci]; // GFM 열 정렬
-        cell.appendChild(inlineSpansEl(allRows[ri][ci]));
+        appendCellLines(cell, allRows[ri][ci], true); // 셀 안 '<br>' = 줄바꿈
         tr.appendChild(cell);
       }
       tbl.appendChild(tr);

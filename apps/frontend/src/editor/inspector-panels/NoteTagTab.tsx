@@ -1,7 +1,7 @@
 // NoteTagTab — tag chips + structured note (paragraph/code_block/table/checklist)
 // editor, wired to the selected node via documentStore.
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock as NoteBlockData, NoteBlockType } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -14,6 +14,7 @@ import { embedRichHtmlImages } from '@/utils/embedImage';
 import { useNoteHtmlResolver } from '@/utils/imageSrc';
 import { TableDialog, TableGridPicker } from '@/editor/node-renderer/TableDialog';
 import { noteTableCells, noteTableFromMd, noteTableToMd } from './noteTable';
+import { cellLines } from '@/editor/node-renderer/mdTable';
 import { useTr } from '@/i18n';
 
 // 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
@@ -492,6 +493,10 @@ function NoteTableView({
     background: head ? t.surface : 'transparent', fontWeight: head ? 700 : 400,
     whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const,
   });
+  // 셀 안 `<br>` = 줄바꿈 (2026-10-15) — 맵·뷰어·내보내기와 같은 규칙
+  const cellBody = (v: string) => cellLines(v).map((ln, i) => (
+    <Fragment key={i}>{i > 0 ? <br /> : null}{ln}</Fragment>
+  ));
   return (
     <div
       data-testid="note-table-view"
@@ -502,11 +507,11 @@ function NoteTableView({
       {cells ? (
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
-            <tr>{cells.headers.map((h, c) => <th key={c} style={cellStyle(cells.aligns[c], true)}>{h}</th>)}</tr>
+            <tr>{cells.headers.map((h, c) => <th key={c} style={cellStyle(cells.aligns[c], true)}>{cellBody(h)}</th>)}</tr>
           </thead>
           <tbody>
             {cells.rows.map((r, i) => (
-              <tr key={i}>{r.map((v, c) => <td key={c} style={cellStyle(cells.aligns[c], false)}>{v}</td>)}</tr>
+              <tr key={i}>{r.map((v, c) => <td key={c} style={cellStyle(cells.aligns[c], false)}>{cellBody(v)}</td>)}</tr>
             ))}
           </tbody>
         </table>

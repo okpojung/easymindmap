@@ -14,6 +14,7 @@ export PLAYWRIGHT_MODULE=$(npm root -g)/playwright/index.mjs   # 전역 설치�
 node scripts/doc-shots/node-add.mjs /tmp/doc-shots
 node scripts/doc-shots/guide03.mjs  /tmp/doc-shots /tmp/article-img.b64
 node scripts/doc-shots/guide03-table.mjs /tmp/doc-shots   # 표 ⊞ 격자·팝업·코드 팝업 (+ 검증 13항목)
+node scripts/doc-shots/guide03-table-br.mjs /tmp/doc-shots   # 표 셀 줄바꿈(<br>) — 팝업 Enter·행 높이·아웃라인·노트 표·노트 뷰어 (+ 검증 13항목)
 node scripts/doc-shots/guide03-style-copy.mjs /tmp/doc-shots   # 스타일 복사(붓) 버튼·커서·칠한 뒤 (+ 검증 27항목)
 node scripts/doc-shots/guide05-note-table.mjs /tmp/doc-shots   # 노트 표: +표 격자 · 그려진 표 + ✎ (+ 검증 16항목)
 node scripts/doc-shots/guide04-layout-nested.mjs /tmp/doc-shots   # 3레벨 노드에 레이아웃 걸기 — 엔진·화면 모두 겹침 0 (+ 검증 17항목)

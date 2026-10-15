@@ -61,7 +61,10 @@ check('error 봉투', rpcError(null, RPC.METHOD_NOT_FOUND, '없음'),
   { jsonrpc: '2.0', id: null, error: { code: -32601, message: '없음' } });
 
 // ── ⑥ 도구는 여섯 — create_map(1단계) + list_maps·get_map(2단계, §7) + get_open_map · append_to_map · check_items ──
-check('도구는 아홉 (2026-10-14 push_map_to_github, §9.15)', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github', 'push_map_to_github']);
+const byNameEarly = () => Object.fromEntries(TOOL_DEFS.map((t) => [t.name, t]));
+check('도구는 열 (2026-10-14 push_map_to_github §9.15 · get_youtube_transcript §9.16)', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github', 'push_map_to_github', 'get_youtube_transcript']);
+check('get_youtube_transcript: url 만 필수', byNameEarly().get_youtube_transcript.inputSchema.required, ['url']);
+check('get_youtube_transcript: 받는 인자는 넷', Object.keys(byNameEarly().get_youtube_transcript.inputSchema.properties).sort(), ['lang', 'max_chars', 'start_at', 'url']);
 const byName = Object.fromEntries(TOOL_DEFS.map((t) => [t.name, t]));
 check('get_open_map: 인자 없음', Object.keys(byName.get_open_map.inputSchema.properties), []);
 check('create_map: markdown 은 필수', byName.create_map.inputSchema.required, ['markdown']);
@@ -83,12 +86,12 @@ check('push_map_to_github: 받는 인자는 다섯', Object.keys(byName.push_map
 check('push_map_to_github: mode 는 pr·commit', byName.push_map_to_github.inputSchema.properties.mode.enum, ['pr', 'commit']);
 check('check_items: nodes 는 문자열 배열', [byName.check_items.inputSchema.properties.nodes.type, byName.check_items.inputSchema.properties.nodes.items.type], ['array', 'string']);
 // ── 도구 힌트(annotations, 2026-09-21 §12) — ChatGPT 는 readOnlyHint 없는 도구를 전부 쓰기로 보고 매번 묻는다 ──
-check('읽기 전용 셋만 readOnlyHint', TOOL_DEFS.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name), ['list_maps', 'get_map', 'get_open_map']);
+check('읽기 전용 넷만 readOnlyHint (유튜브 읽기 포함)', TOOL_DEFS.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name), ['list_maps', 'get_map', 'get_open_map', 'get_youtube_transcript']);
 check('쓰는 도구는 전부 readOnlyHint:false', TOOL_DEFS.filter((t) => t.annotations?.readOnlyHint === false).map((t) => t.name),
   ['create_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github', 'push_map_to_github']);
 check('있는 내용을 바꾸는 셋만 destructiveHint — 체크박스·GitHub 갱신·GitHub 반영 (#534 Codex: false 는 "덧붙이기만" 약속)', TOOL_DEFS.filter((t) => t.annotations?.destructiveHint === true).map((t) => t.name), ['check_items', 'update_map_from_github', 'push_map_to_github']);
 check('덧붙이기만 하는 셋은 destructiveHint:false', TOOL_DEFS.filter((t) => t.annotations?.destructiveHint === false).map((t) => t.name), ['create_map', 'append_to_map', 'import_github_docs']);
-check('GitHub 로 나가는 셋만 openWorldHint', TOOL_DEFS.filter((t) => t.annotations?.openWorldHint === true).map((t) => t.name), ['import_github_docs', 'update_map_from_github', 'push_map_to_github']);
+check('밖(GitHub·YouTube)으로 나가는 넷만 openWorldHint', TOOL_DEFS.filter((t) => t.annotations?.openWorldHint === true).map((t) => t.name), ['import_github_docs', 'update_map_from_github', 'push_map_to_github', 'get_youtube_transcript']);
 check('힌트 없는 도구는 없다', TOOL_DEFS.filter((t) => !t.annotations).map((t) => t.name), []);
 // **지우거나 바꾸는 도구가 없다**(§2-3) — 이름으로 못 박는다. append 는 덧붙이기만,
 // check_items 는 체크박스 한 글자만 바꾸는 예외(§9.12)라 허용

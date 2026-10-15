@@ -19,6 +19,9 @@ import {
   applyPushToMap, clearPendingIn, collectNewFiles, diffFileNode, formatPushPreview, pendingPrOf, planCode, pushAllowed,
   type FileChange, type PushedFile,
 } from './github-push';
+import {
+  YoutubeClient, YoutubeError, buildTranscript, formatTranscriptResult, parseChapters, parseStartParam, parseVideoId, pickTrack,
+} from './youtube';
 
 /**
  * MCP 가 AI 에게 주는 **도구 목록**과 그 실행.
@@ -336,6 +339,29 @@ export const TOOL_DEFS: McpToolDef[] = [
       required: ['map_id'],
     },
   },
+  {
+    // §9.16 (2026-10-14) — 유튜브 영상 → 맵. 이 도구는 읽기만, 요약·create_map 은 부른 AI 가 한다. YouTube 로 나간다.
+    name: 'get_youtube_transcript',
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    title: '유튜브 영상의 정보·챕터·자막 읽기 (맵으로 요약하려고)',
+    description:
+      '유튜브 영상 주소를 받아 **제목·채널·길이·챕터(설명란 시각 목록)·시각이 붙은 자막**을 돌려준다. ' +
+      '사용자가 "이 유튜브 영상을 맵으로 만들어 줘" · "영상 내용을 요약해서 emm 맵으로" 라고 하면: ① 이 도구로 자막을 받고 ' +
+      '② 그 내용을 직접 요약해 create_map 을 부른다(결과 끝의 "맵 만들기 안내" 대로 — 챕터/주제별 가지, 가지마다 시작 시각 링크, 자막에 없는 내용은 쓰지 않음). ' +
+      '자막을 그대로 맵에 옮기지 않는다. 긴 영상은 자막이 나눠 오니 결과의 start_at 으로 이어 받아 다 읽은 뒤 한 번에 만든다. ' +
+      '사람이 만든 자막을 자동 생성보다, 한국어를 영어보다 먼저 고른다(`lang` 으로 바꿀 수 있다). ' +
+      '자막이 없거나 YouTube 가 서버를 막으면 이유를 돌려주니, 그때는 사용자에게 스크립트를 붙여 넣어 달라고 한다. 맵은 바꾸지 않는다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: '유튜브 영상 주소(youtube.com/watch?v=… · youtu.be/… · shorts/… · live/…) 또는 영상 id. 주소의 t= 는 시작 시각으로 쓴다.' },
+        lang: { type: 'string', description: '자막 언어 코드(ko·en·ja …). 비우면 한국어 → 영어 → 있는 것.' },
+        start_at: { type: 'integer', minimum: 0, description: '이 초부터 읽는다 — 긴 영상에서 앞선 결과가 알려 준 값으로 이어 읽을 때.' },
+        max_chars: { type: 'integer', minimum: 2000, maximum: 100000, description: '한 번에 받을 자막 글자 수(기본 30000).' },
+      },
+      required: ['url'],
+    },
+  },
 ];
 
 /** `get_map` 이 한 번에 돌려주는 본문 상한 — 넘으면 자르고 그 사실을 알린다 */
@@ -385,6 +411,7 @@ export class McpToolsService {
       case 'import_github_docs': return this.importGithubDocs(userId, args);
       case 'update_map_from_github': return this.updateMapFromGithub(userId, args);
       case 'push_map_to_github': return this.pushMapToGithub(userId, args);
+      case 'get_youtube_transcript': return this.getYoutubeTranscript(args);
       default: return text(`알 수 없는 도구입니다: ${name}`, true);
     }
   }
@@ -1339,6 +1366,58 @@ export class McpToolsService {
       (pr ? `PR 이 머지되기 전에는 이 문서들에 "PR #${pr.number} 대기" 가 표시되고, update_map_from_github 는 머지 전까지 이 문서들을 건너뜁니다.\n` : '') +
       LIVE_NOTE,
     );
+  }
+
+  // ── 유튜브 영상 → 맵 (2026-10-14, §9.16) ────────────────────────────
+
+  /** 자막 한 번에 보내는 글자 수 — 기본과 상한 (길면 start_at 으로 이어 읽는다) */
+  private static readonly YT_DEFAULT_CHARS = 30000;
+  private static readonly YT_MAX_CHARS = 100000;
+
+  /**
+   * 유튜브 영상의 정보·챕터·시각 붙은 자막을 돌려준다 — 요약과 `create_map` 은 부른 AI 가 한다.
+   * 읽기만 한다(맵·계정과 무관 — 사용자 id 도 쓰지 않는다).
+   */
+  private async getYoutubeTranscript(args: Record<string, unknown>): Promise<ToolResult> {
+    const raw = typeof args.url === 'string' ? args.url : '';
+    let id: string;
+    try { id = parseVideoId(raw); } catch (err) {
+      if (err instanceof YoutubeError) return text(err.message, true);
+      throw err;
+    }
+    const askedStart = Number(args.start_at);
+    const startAt = Number.isFinite(askedStart) && askedStart > 0 ? Math.floor(askedStart) : parseStartParam(raw);
+    const maxChars = Math.max(2000, Math.min(McpToolsService.YT_MAX_CHARS, Number(args.max_chars) || McpToolsService.YT_DEFAULT_CHARS));
+    const lang = typeof args.lang === 'string' ? args.lang.trim() : '';
+
+    const yt = new YoutubeClient();
+    try {
+      const info = await yt.video(id);
+      const track = pickTrack(info.tracks, lang);
+      if (!track) {
+        return text(
+          `"${info.title}" (${info.author}) 영상에는 자막이 없습니다 — 자막 없이는 내용을 요약할 수 없습니다. ` +
+          '사용자에게 스크립트를 붙여 넣어 달라고 하거나, 제목·설명만으로 만들지 물어 보세요.' +
+          (info.description ? `\n설명(앞부분): ${info.description.slice(0, 600)}` : ''),
+          true,
+        );
+      }
+      if (lang && !track.languageCode.toLowerCase().startsWith(lang.toLowerCase().split('-')[0])) {
+        // 요청한 언어가 없으면 있는 것으로 읽는다 — 결과의 `자막:` 줄이 어느 언어인지 말해 준다
+        this.log.debug(`get_youtube_transcript: ${id} 에 ${lang} 자막 없음 — ${track.languageCode} 로 읽음`);
+      }
+      const segments = await yt.captions(track);
+      if (segments.length === 0) {
+        return text(`"${info.title}" 의 자막(${track.languageCode})을 받았지만 비어 있습니다 — YouTube 가 자막 본문을 내주지 않았습니다. 잠시 뒤 다시 시도하거나 사용자에게 스크립트를 붙여 넣어 달라고 하세요.`, true);
+      }
+      const chapters = parseChapters(info.description, info.lengthSec || Infinity);
+      const page = buildTranscript(segments, chapters, startAt, maxChars);
+      return text(formatTranscriptResult({ info, track, chapters, page, others: info.tracks.filter((t) => t !== track) }));
+    } catch (err) {
+      if (err instanceof YoutubeError) return text(err.message, true);
+      this.log.warn(`MCP get_youtube_transcript 실패 (video=${id})`, err as Error);
+      throw err;
+    }
   }
 
 }

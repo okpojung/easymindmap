@@ -2251,6 +2251,12 @@ export function MapBrowser({
           <InfoRow t={t} k={tr('cloud.col.nodes')} v={info.map.nodeCount === null || info.map.nodeCount === undefined
             ? '—' : tr('cloud.info.count', { n: info.map.nodeCount.toLocaleString(locale) })} />
           <InfoRow t={t} k={tr('cloud.info.docSize')} v={fmtBytes(info.map.docBytes)} />
+          {/* 연결 맵 (2026-10-14) — 이 맵을 연결해 둔 맵이 있으면 몇 개인지 */}
+          {(info.map.linkedFrom ?? 0) > 0 && (
+            <div data-testid="browser-info-linked">
+              <InfoRow t={t} k={tr('cloud.browser.linkedFrom')} v={tr('cloud.browser.linkedFromN', { n: info.map.linkedFrom ?? 0 })} />
+            </div>
+          )}
           {info.map.publishId && (
             <InfoRow t={t} k={tr('cloud.info.publishLink')} v={publicMapUrl(info.map.publishId)} />
           )}

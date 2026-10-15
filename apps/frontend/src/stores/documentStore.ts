@@ -10,6 +10,7 @@
 // - node style (+ inheritance from parent, depth-based default fontSize)
 // - node content: tags, links, structured notes, attachments
 
+import { LINK_PARENT_KEYS } from '@/utils/linkNode';
 import { create } from 'zustand';
 // 트리 규칙의 **단일 원본** — 화면·협업·DB 가 같은 판정을 써야 한다
 // (docs/04-extensions/collaboration/27-sync-model.md §4)
@@ -326,6 +327,18 @@ interface DocumentState {
     attachment: Omit<NodeAttachment, 'id'>,
   ) => void;
   removeNodeAttachment: (nodeId: string | null, attachmentId: string) => void;
+
+  /**
+   * **연결 맵** (2026-10-14) — 노드(또는 둘째 이후 중심주제)를 다른 맵에 연결하거나
+   * 연결을 끊는다. `content` 를 주면 노드의 내용 칸(글·노트·스타일…)을 그것으로
+   * 바꾸고, `children` 을 주면 하위(중심이면 가지)를 그것으로 바꾼다.
+   * 첫 중심주제('root')는 맵 자신이라 연결할 수 없다.
+   */
+  setNodeLink: (
+    nodeId: string | null,
+    linkMapId: string | null,
+    opts?: { content?: Record<string, unknown>; children?: MindNode[] },
+  ) => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -2165,6 +2178,35 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       };
     });
     return newId;
+  },
+
+  setNodeLink: (nodeId, linkMapId, opts) => {
+    if (!nodeId || nodeId === 'root') return false;
+    const map = get().map;
+    const isCenter = isCenterRootId(map, nodeId);
+    if (!isCenter && !findNodeInMap(map, nodeId)) return false;
+    set((state) => {
+      let next = mutateNode(state.map, nodeId, (n) => {
+        const keep: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(n)) if (LINK_PARENT_KEYS.has(k)) keep[k] = v;
+        const out = (opts?.content ? { ...keep, ...opts.content } : { ...n }) as MindNode & { _linkDup?: boolean };
+        if (linkMapId) out.linkMapId = linkMapId; else delete out.linkMapId;
+        delete out._linkDup;
+        if (!out.text) out.text = n.text;
+        if (opts?.children && !isCenter) { out.children = opts.children; out.collapsed = undefined; }
+        return out;
+      });
+      if (opts?.children && isCenter && next.centers) {
+        next = {
+          ...next,
+          centers: next.centers.map((c) => (c.root.id === nodeId
+            ? { ...c, branches: opts.children!.map((b, i) => makeBranch(b, i)) }
+            : c)),
+        };
+      }
+      return { map: next };
+    });
+    return true;
   },
 
   setNodeIcon: (nodeId, icon) => {

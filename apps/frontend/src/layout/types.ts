@@ -58,6 +58,8 @@ export interface LaidOutNode {
   collapsed?: boolean;
   style?: NodeStyle;
   links?: NodeLink[];
+  /** 연결 맵 (2026-10-14) — 이 노드가 가리키는 다른 맵. 아이콘 줄에 표시한다 */
+  linkMapId?: string;
   notes?: NoteBlock[];
   attachments?: NodeAttachment[];
   image?: NodeImage; // 노드 안 사진 (텍스트 아래 표시)

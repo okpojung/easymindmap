@@ -1,6 +1,7 @@
 // File: src/pages/EditorPage.tsx
 // Version: MVP-Layout-Kanban-Fix-v1
 
+import { heartbeatLinkedLocks } from '@/services/cloud/linkedMaps';
 import { useEffect, useMemo, useState } from 'react';
 import { THEMES } from '@/components/design-tokens/theme';
 import { TopToolbar } from '@/components/top-toolbar/TopToolbar';
@@ -406,6 +407,13 @@ export function EditorPage() {
       tick += 1;
       if (document.hidden && tick % 5 !== 0) return;
       send();
+      // 연결 맵(2026-10-14)의 잠금도 10초마다 이어 쥔다 — 놓치면 그 맵은 다른 곳에서
+      // 편집될 수 있으니, 잃은 것은 보기만으로 바꾸고 알린다
+      if (tick % 2 === 0) {
+        void heartbeatLinkedLocks().then((lost) => {
+          if (lost.length) useCloudStore.getState().setNotice(trNow('cloud.linked.lostLock', { titles: lost.join(', ') }));
+        });
+      }
     }, 5_000);
     // 선택이 바뀌면 곧바로 — 사용자가 노드를 고르고 바로 AI 에게 말하는 흐름
     let debounce: number | null = null;

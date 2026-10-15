@@ -8,9 +8,10 @@
 import type { LaidOutNode } from '@/layout/types';
 import type { NoteBlock } from '@/editor/__samples__/types';
 import { tr } from '@/i18n';
+import { useLinkedMapStore } from '@/stores/linkedMapStore';
 
 export type NoteKind = 'note-paragraph' | 'note-code' | 'note-table' | 'note-check';
-export type ContentKind = NoteKind | 'note' | 'link' | 'file' | 'media';
+export type ContentKind = NoteKind | 'note' | 'link' | 'file' | 'media' | 'linkmap';
 
 export interface ContentItem {
   label: string;
@@ -105,6 +106,19 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
     });
   }
 
+  // 연결 맵 (2026-10-14) — 맨 앞에. 누르면 그 맵을 새 탭에서 연다. 제목에 상태를 담는다
+  if (n.linkMapId) {
+    const e = useLinkedMapStore.getState().entries[n.linkMapId];
+    const state = e?.state ?? 'editable';
+    out.unshift({
+      kind: 'linkmap',
+      icon: '↗',
+      title: tr(`editor.content.linkedMap.${state}`, { title: e?.title ?? n.text }),
+      count: 1,
+      items: [{ label: e?.title ?? n.text, url: n.linkMapId }],
+    });
+  }
+
   if (links.length) {
     out.push({
       kind: 'link',
@@ -140,6 +154,7 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
 // 전략별 minW/maxW와 함께 spread 한다 (아이콘·인디케이터·수동 크기·사진).
 export function nodeSizingOpts(n: {
   icon?: string;
+  linkMapId?: string;
   note?: boolean;
   notes?: { type?: string }[];
   links?: unknown[];
@@ -177,12 +192,13 @@ export function nodeSizingOpts(n: {
 // INSIDE it, next to the text. 노트는 종류 수만큼 아이콘이 생기므로
 // 종류 수를 센다 (nodeContentIndicators와 반드시 일치해야 한다).
 export function contentIndicatorCount(n: {
+  linkMapId?: string;
   note?: boolean;
   notes?: { type?: string }[];
   links?: unknown[];
   attachments?: { kind?: string }[];
 }): number {
-  let count = 0;
+  let count = n.linkMapId ? 1 : 0;
   const notes = n.notes ?? [];
   if (notes.length > 0) {
     const types = new Set(

@@ -201,6 +201,11 @@ export interface MapListItem {
    */
   listed?: boolean;
   /**
+   * **이 맵을 연결해 둔 맵의 수** (2026-10-14 연결 맵). 문서함 정보 팝업이 그린다.
+   * map_links 표가 없는 서버(델타 전)는 보내지 않는다(undefined).
+   */
+  linkedFrom?: number;
+  /**
    * `'edit'` | `'dashboard'` (2026-09-30, 22-dashboard.md §4.2) — 문서함 유형 칸의
    * **📊 대시보드맵**. 칸을 모르는 옛 서버는 보내지 않는다(undefined = 일반맵).
    */

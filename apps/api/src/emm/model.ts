@@ -205,6 +205,14 @@ export interface MindNode {
   // canvas can show a collapse/expand toggle even when children are hidden.
   _childCount?: number;
 
+  /**
+   * **연결 맵** (2026-10-14) — 이 노드가 가리키는 다른 단독맵의 id. 저장된 문서에서
+   * 연결 노드는 이름만 가지고 하위가 없다. 앱이 열 때 그 맵의 내용(중심주제 =
+   * 이 노드의 내용, 가지 = 이 노드의 하위)을 붙여 보이고, 저장할 때 다시 떼어
+   * 그 맵에 저장한다. md 에는 담지 않는다 — 내보내기는 붙인 내용을 그대로 쓴다.
+   */
+  linkMapId?: string;
+
   children?: MindNode[];
 }
 
@@ -247,6 +255,8 @@ export interface SampleRoot {
   sizeW?: number;
   sizeH?: number;
   _childCount?: number;
+  /** 연결 맵 — 둘째 이후 중심주제만 (첫 중심은 맵 자신이라 연결이 될 수 없다). MindNode.linkMapId 참조 */
+  linkMapId?: string;
 }
 
 // --- 맵 전체 설정 (좌측 상단 '맵 설정' 메뉴) --------------------------------

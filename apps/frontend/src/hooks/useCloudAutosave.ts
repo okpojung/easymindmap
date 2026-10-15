@@ -24,6 +24,7 @@
 //  - cloudMapId 가 없으면(미연결) 절대 자동 저장하지 않는다.
 //  - 방금 "열기/저장"으로 문서가 바뀐 직후에는 잠깐 억제(suppress)한다.
 //  - 문서 출처(docOrigin)가 이 맵이 아니면 아예 보내지 않는다.
+import { saveLinkedChildren, splitLinkedMaps, useLinkedMapStore } from '@/services/cloud/linkedMaps';
 import { useEffect } from 'react';
 import {
   useDocumentStore, isDocumentEmpty, EMPTY_MAP_TITLE, isViewOnlyChange, isRemoteChange,
@@ -155,7 +156,8 @@ function snapshot() {
   const ui = useEditorUiStore.getState();
   return {
     v: 2,
-    map: st.map,
+    // 연결 맵은 떼어 낸다 — 그 아래 내용은 저장 뒤 그 맵에 따로 (linkedMaps.ts)
+    map: splitLinkedMaps(st.map).parent,
     editor: { layoutType: ui.layoutType, spacingX: ui.spacingX, spacingY: ui.spacingY },
   };
 }
@@ -256,8 +258,22 @@ async function doSave() {
       useAutosaveStore.getState().setLastSavedAt(lastSaveAt);
       // 서버가 돌아왔다 — "배포 중" 띠를 내린다 (B20 ⑧ⓑ)
       useAutosaveStore.getState().setOutageNotice(null);
+      // 연결 맵 가운데 고친 것도 각자 올린다 (2026-10-14). **하나라도 실패하면**
+      // 저장이 끝난 것이 아니다 — 초안을 지우지 않고 편집 대기로 남겨 다음 주기에
+      // 다시 올린다 (Codex #640)
+      let childFailed = false;
+      if (Object.keys(useLinkedMapStore.getState().entries).length) {
+        const { blocked, failed } = await saveLinkedChildren(useDocumentStore.getState().map, { keepVersion: false });
+        if (blocked.length) useCloudStore.getState().setNotice(tr('cloud.linked.notSaved', { titles: blocked.join(', ') }));
+        if (failed.length) {
+          childFailed = true;
+          setPending(Math.max(1, pendingEdits));
+          useAutosaveStore.getState().setSaveState('dirty');
+          useCloudStore.getState().setError(tr('cloud.linked.saveFailed', { titles: failed.join(', ') }));
+        }
+      }
       // 서버에 들어갔으니 이 맵의 로컬 초안은 더 필요 없다
-      void clearLocalDraft(mapId);
+      if (!childFailed) void clearLocalDraft(mapId);
     }
   } catch (err) {
     // **서버가 더 새롭다(STALE)** — 재시도해도 같은 답이다. 편집분을 초안으로

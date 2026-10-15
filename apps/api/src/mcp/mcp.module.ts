@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AttachmentsModule } from '../attachments/attachments.module';
 import { FoldersModule } from '../folders/folders.module';
 import { MapsModule } from '../maps/maps.module';
 import { ApiTokenService } from './api-token.service';
@@ -20,7 +21,8 @@ import { OAuthAuthorizeController } from './oauth-authorize.controller';
  * 있게 하는 설계다(§7).
  */
 @Module({
-  imports: [MapsModule, FoldersModule], // 폴더는 list_maps 가 이름을 보여 주는 데 쓴다
+  // 폴더는 list_maps 가 이름을 보여 주는 데, 첨부는 import_pdf 가 맵에 붙은 PDF 를 읽는 데 쓴다
+  imports: [MapsModule, FoldersModule, AttachmentsModule],
   controllers: [McpController, McpTokensController, OAuthMetadataController, OAuthAuthorizeController],
   providers: [ApiTokenService, McpToolsService, McpAuthGuard],
 })

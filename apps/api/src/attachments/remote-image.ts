@@ -43,6 +43,59 @@ import { isIP } from 'node:net';
  */
 export const REMOTE_IMAGE_MAX_BYTES = 2_500_000;
 
+/** PDF 를 받아 올 때의 상한 (MCP `import_pdf`, 2026-10-14) */
+export const REMOTE_PDF_MAX_BYTES = 50 * 1024 * 1024;
+// 사진용 `image/*` 로 물으면 내용 협상을 하는 서버가 406 이나 그림을 돌려준다 (#642 Codex)
+const PDF_ACCEPT = 'application/pdf, application/octet-stream;q=0.9, */*;q=0.8';
+const PDF_MIMES = new Set(['application/pdf', 'application/x-pdf', 'application/octet-stream', 'binary/octet-stream', 'application/download', '']);
+
+/**
+ * 원격 PDF 를 받아 온다 — `fetchRemoteImage` 와 **같은 길**(①~⑥: 주소 검사·사설망 차단·검사한 IP 로 직접·
+ * 리다이렉트마다 다시 검사·시간 상한·실제 바이트로 상한)을 탄다. 다른 것은 형식 검사뿐 — PDF 이거나
+ * 형식을 밝히지 않은 파일이면 받고, 받은 뒤 머리가 `%PDF-` 인지 본다. 이름은 주소의 마지막 조각.
+ */
+export async function fetchRemotePdf(rawUrl: string, cap = REMOTE_PDF_MAX_BYTES): Promise<{ bytes: Buffer; name: string; finalUrl: string }> {
+  let u = parseAndCheckUrl(rawUrl);
+  const deadline: Deadline = { expired: false, idle: false };
+  const timer = setTimeout(() => {
+    deadline.expired = true;
+    deadline.current?.destroy(new RemoteFetchError('PDF 를 받아오는 데 너무 오래 걸립니다(시간 초과).'));
+  }, TOTAL_TIMEOUT_MS * 3);
+  const say = (e: unknown) => (e instanceof RemoteFetchError ? new RemoteFetchError(e.message.replace(/사진/g, 'PDF')) : e);
+  try {
+    for (let hop = 0; ; hop += 1) {
+      const r = await requestOnce(u, deadline, PDF_ACCEPT);
+      deadline.current = r.res;
+      if (r.status >= 300 && r.status < 400 && r.location) {
+        r.res.resume();
+        if (hop >= MAX_REDIRECTS) throw new RemoteFetchError(`리다이렉트가 ${MAX_REDIRECTS}회를 넘었습니다.`);
+        let next: URL;
+        try { next = new URL(r.location, u); } catch { throw new RemoteFetchError('리다이렉트 주소를 해석할 수 없습니다.'); }
+        u = parseAndCheckUrl(next.toString());
+        continue;
+      }
+      if (r.status !== 200) { r.res.resume(); throw new RemoteFetchError(`PDF 서버가 ${r.status} 로 답했습니다.`); }
+      const mime = r.contentType.split(';')[0].trim().toLowerCase();
+      if (!PDF_MIMES.has(mime)) { r.res.resume(); throw new RemoteFetchError(`PDF 가 아닙니다 — Content-Type: ${mime}`); }
+      if (r.contentLength !== null && r.contentLength > cap) {
+        r.res.resume();
+        throw new RemoteFetchError(`PDF 가 너무 큽니다 — ${Math.round(cap / 1024 / 1024)}MB 까지만 받아옵니다.`);
+      }
+      const bytes = await readCapped(r.res, cap, deadline);
+      if (r.contentLength !== null && bytes.length < r.contentLength) throw new RemoteFetchError('전송이 중간에 끊겼습니다(길이가 맞지 않습니다).');
+      if (bytes.subarray(0, 1024).toString('latin1').indexOf('%PDF-') < 0) throw new RemoteFetchError('받은 파일이 PDF 가 아닙니다(머리에 %PDF- 가 없습니다).');
+      let name = 'document.pdf';
+      try { name = decodeURIComponent(u.pathname.split('/').pop() || '') || name; } catch { /* 그대로 */ }
+      return { bytes, name, finalUrl: u.toString() };
+    }
+  } catch (e) {
+    throw say(e);
+  } finally {
+    clearTimeout(timer);
+    deadline.current = undefined;
+  }
+}
+
 /** 리다이렉트 상한 — 매 홉마다 검사를 다시 한다 */
 const MAX_REDIRECTS = 3;
 
@@ -294,7 +347,7 @@ interface Deadline {
   current?: { destroy: (err?: Error) => void };
 }
 
-function requestOnce(u: URL, deadline: Deadline): Promise<Hop> {
+function requestOnce(u: URL, deadline: Deadline, accept = 'image/*'): Promise<Hop> {
   return new Promise<Hop>((resolve, reject) => {
     const mod = u.protocol === 'https:' ? https : http;
     const req = mod.request(
@@ -312,7 +365,7 @@ function requestOnce(u: URL, deadline: Deadline): Promise<Hop> {
           // 않는다 — 사용자가 어느 페이지에서 복사했는지는 남의 서버가
           // 알 일이 아니다.
           'User-Agent': 'EasyMindMap/1.0 (+image fetch)',
-          Accept: 'image/*',
+          Accept: accept,
           'Accept-Encoding': 'identity', // 크기 상한을 압축 해제 전 바이트로 센다
         },
         timeout: HEADER_TIMEOUT_MS,

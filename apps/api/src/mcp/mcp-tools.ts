@@ -8,7 +8,7 @@ import { checkItems, listCheckable } from './check-items';
 import { DocShapeError, docToEmm, mapFromDoc } from './doc-to-emm';
 import { EmmParseError, emmToSnapshot, titleFromSnapshot } from './emm-to-doc';
 import { TemplateError, applyLevelLayouts, templateFor } from './map-template';
-import { mapCenters, type MindNode } from '../emm/model';
+import { mapCenters, type MindNode, type SampleMap } from '../emm/model';
 import { GithubClient, GithubError, GithubWriter, mapLimit } from './github-client';
 import {
   GithubDocsError, IdGen, applyUpdate, buildDocsMap, collectFileNodes, detectDocsDir, listSome, parseRepoRef, planUpdate,
@@ -19,6 +19,10 @@ import {
   applyPushToMap, clearPendingIn, collectNewFiles, diffFileNode, formatPushPreview, pendingPrOf, planCode, pushAllowed,
   type FileChange, type PushedFile,
 } from './github-push';
+import { AttachmentsService } from '../attachments/attachments.service';
+import { BlockedUrlError, RemoteFetchError, fetchRemotePdf } from '../attachments/remote-image';
+import { PdfError, readPdf } from './pdf-parse';
+import { buildPdfMap, cleanPdfTitle, linesFromPages, type Structure } from './pdf-map';
 import {
   YoutubeClient, YoutubeError, buildTranscript, formatTranscriptResult, parseChapters, parseStartParam, parseVideoId, pickTrack,
 } from './youtube';
@@ -362,6 +366,36 @@ export const TOOL_DEFS: McpToolDef[] = [
       required: ['url'],
     },
   },
+  {
+    // §9.17 (2026-10-14) — PDF → 새 맵. **요약하지 않는다** — 글을 모두 담고 구조만 만든다. URL 이면 밖으로 나간다.
+    name: 'import_pdf',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    title: 'PDF 를 EasyMindMap 새 맵으로 (내용 전체를 구조화)',
+    description:
+      'PDF 파일을 읽어 **새 맵 하나**로 만든다. **요약하지 않는다 — PDF 의 글을 모두 담고**, 책갈피(없으면 글자 크기·번호 꼴, 그것도 없으면 쪽)로 ' +
+      '제목 가지를 만들고 문단·목록 항목을 그 아래 노드로 둔다(목록은 들여쓰기 단계대로). 빼는 것은 반복 머리글·바닥글·쪽 번호와 겹쳐 그린 글자뿐이고 결과에 양을 알린다. ' +
+      '사용자가 "이 PDF 를 맵으로 만들어 줘" · "첨부한 PDF 를 emm 맵으로" 라고 하면 이것을 부른다 — 대화에서 직접 요약해 create_map 을 부르지 않는다. ' +
+      'PDF 를 넘기는 길은 셋: ① **EasyMindMap 에 첨부한 PDF** — attachment 에 get_map 에 보이는 첨부 주소(…/v1/attachments/<id>)·id, 또는 map_id(+node)와 파일 이름. ' +
+      'map_id 만 주면 그 맵(node 를 주면 그 노드 아래)의 PDF 첨부가 하나일 때 그것. ② url — 인터넷의 PDF 주소. ③ data_base64 — 파일을 직접 읽을 수 있을 때(예: Claude Code 가 로컬 파일을 읽어) PDF 바이트를 base64 로(약 18MB 까지). ' +
+      '**대화창에 올린 첨부 파일은 도구로 넘어오지 않는다** — 그때는 사용자에게 EasyMindMap 앱에서 노드에 PDF 를 첨부하거나(링크·첨부 탭) PDF 주소를 달라고 한다. ' +
+      '암호 걸린 PDF·글자가 그림인 스캔 PDF(OCR 없음)는 만들 수 없다. 큰 PDF 는 pages 로 나눈다(한 번에 300쪽).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        attachment: { type: 'string', description: 'EasyMindMap 첨부 — 첨부 주소(…/v1/attachments/<id>) 또는 id, 또는 map_id 와 함께 파일 이름.' },
+        map_id: { type: 'string', description: '첨부를 찾을 맵(list_maps 의 id 또는 "current"). attachment 가 이름이거나 비었을 때.' },
+        node: { type: 'string', description: '첨부를 찾을 노드 이름·경로 또는 "selected" — 그 노드 아래에서만 찾는다.' },
+        url: { type: 'string', description: '인터넷의 PDF 주소 (https://…).' },
+        data_base64: { type: 'string', description: 'PDF 파일 바이트를 base64 로 (data:application/pdf;base64,… 도 됨).' },
+        file_name: { type: 'string', description: 'data_base64 일 때 파일 이름(출처 표시용).' },
+        title: { type: 'string', description: '맵 이름. 비우면 PDF 문서 제목 → 표지 제목 → 파일 이름.' },
+        template: { type: 'string', description: '맵 모양 — create_map 과 같다. 비우면 앱 기본(방사형 양쪽). 긴 문서는 "TR"(트리·오른쪽)이 읽기 좋다.' },
+        pages: { type: 'string', description: '쪽 범위 "1-20,25" · "30-". 비우면 전부.' },
+        structure: { type: 'string', enum: ['auto', 'outline', 'fontsize', 'numbering', 'pages'], description: '가지를 나누는 기준. auto(기본) = 책갈피 → 글자 크기 → 번호 꼴 → 쪽.' },
+        long_text_to_note: { type: 'integer', minimum: 1, description: '이 글자 수 이상 문단은 노드가 아니라 그 제목 노드의 노트(문단)로 — 글은 그대로 다 담긴다. 비우면 모든 문단이 노드.' },
+      },
+    },
+  },
 ];
 
 /** `get_map` 이 한 번에 돌려주는 본문 상한 — 넘으면 자르고 그 사실을 알린다 */
@@ -387,6 +421,8 @@ export class McpToolsService {
     private readonly focus: FocusService,
     // 협업 방이 살아 있는지 묻는 데만 쓴다 — 시험은 안 넣어도 된다(그러면 "방 없음")
     @Optional() @Inject(PRO) private readonly pro?: ProContract,
+    // import_pdf 가 맵에 붙은 PDF 를 읽는 데만 쓴다(열기 권한은 첨부 서비스의 규칙 그대로) — 시험은 안 넣어도 된다
+    @Optional() private readonly attachments?: AttachmentsService,
   ) {}
 
   list(): McpToolDef[] {
@@ -412,6 +448,7 @@ export class McpToolsService {
       case 'update_map_from_github': return this.updateMapFromGithub(userId, args);
       case 'push_map_to_github': return this.pushMapToGithub(userId, args);
       case 'get_youtube_transcript': return this.getYoutubeTranscript(args);
+      case 'import_pdf': return this.importPdf(userId, args);
       default: return text(`알 수 없는 도구입니다: ${name}`, true);
     }
   }
@@ -1418,6 +1455,189 @@ export class McpToolsService {
       this.log.warn(`MCP get_youtube_transcript 실패 (video=${id})`, err as Error);
       throw err;
     }
+  }
+
+  // ── PDF → 맵 (2026-10-14, §9.17) ─────────────────────────────────────
+
+  private static readonly PDF_MAX_BYTES = 50 * 1024 * 1024;
+  private static readonly PDF_MAX_PAGES = 300;
+  private static readonly PDF_MAX_NODES = 8000;
+
+  /** 맵 안의 PDF 첨부 — node 를 주면 그 노드 아래만 */
+  private pdfAttachmentsIn(map: SampleMap, under: MindNode | null): { name: string; url: string }[] {
+    const out: { name: string; url: string }[] = [];
+    const walk = (n: MindNode) => {
+      for (const a of n.attachments ?? []) {
+        if (/\.pdf$/i.test(a.name ?? '')) out.push({ name: a.name, url: String(a.url ?? '') });
+      }
+      for (const c of n.children ?? []) walk(c);
+    };
+    if (under) walk(under);
+    else for (const c of mapCenters(map)) { walk(c.root as unknown as MindNode); for (const b of c.branches) walk(b as unknown as MindNode); }
+    return out;
+  }
+
+  private static attachmentId(s: string): string | null {
+    return /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(s)?.[1] ?? null;
+  }
+
+  /** 첨부 읽기 — 열기 권한은 첨부 서비스 규칙 그대로(내 것 · 내 맵 · 내가 참가한 맵) */
+  private async readAttachment(userId: string, id: string): Promise<{ bytes: Buffer; name: string }> {
+    if (!this.attachments) throw new PdfError('이 서버에서는 첨부를 읽을 수 없습니다(첨부 모듈 없음).');
+    let meta;
+    try { meta = await this.attachments.open(userId, id); } catch (err) {
+      throw new PdfError(`첨부를 열 수 없습니다 — ${(err as Error).message} (그 맵을 열 권한이 있는지, 첨부가 지워지지 않았는지 확인해 주세요)`);
+    }
+    if (meta.sizeBytes > McpToolsService.PDF_MAX_BYTES) {
+      meta.stream.destroy();
+      throw new PdfError(`첨부 PDF 가 너무 큽니다(${Math.round(meta.sizeBytes / 1024 / 1024)}MB) — 50MB 까지 읽습니다.`);
+    }
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const c of meta.stream as AsyncIterable<Buffer>) {
+      total += c.length;
+      if (total > McpToolsService.PDF_MAX_BYTES) { meta.stream.destroy(); throw new PdfError('첨부 PDF 가 너무 큽니다 — 50MB 까지 읽습니다.'); }
+      chunks.push(c);
+    }
+    return { bytes: Buffer.concat(chunks), name: meta.name };
+  }
+
+  /** PDF 바이트 구하기 — attachment · url · data_base64 · map_id(+node) 중 하나 */
+  private async pdfSource(userId: string, args: Record<string, unknown>): Promise<{ bytes: Buffer; name: string; source: string }> {
+    const str = (k: string) => (typeof args[k] === 'string' ? (args[k] as string).trim() : '');
+    const att = str('attachment'), url = str('url'), b64 = str('data_base64');
+    if ([att, url, b64].filter(Boolean).length > 1) throw new PdfError('attachment · url · data_base64 중 하나만 주세요.');
+    if (b64) {
+      const bytes = Buffer.from(b64.replace(/^data:[^,]*,/, '').replace(/\s+/g, ''), 'base64');
+      if (!bytes.length) throw new PdfError('data_base64 가 비어 있거나 base64 가 아닙니다.');
+      return { bytes, name: str('file_name') || 'document.pdf', source: '직접 전달' };
+    }
+    if (url) {
+      // 우리 첨부 주소면 권한 규칙대로 첨부로 읽는다(밖으로 다시 받지 않는다)
+      const own = /\/v1\/attachments\//.test(url) ? McpToolsService.attachmentId(url) : null;
+      if (own) return { ...(await this.readAttachment(userId, own)), source: 'EasyMindMap 첨부' };
+      try {
+        const r = await fetchRemotePdf(url, McpToolsService.PDF_MAX_BYTES);
+        return { bytes: r.bytes, name: r.name, source: r.finalUrl };
+      } catch (err) {
+        if (err instanceof BlockedUrlError || err instanceof RemoteFetchError) throw new PdfError(`PDF 를 받아오지 못했습니다 — ${err.message}`);
+        throw err;
+      }
+    }
+    const directId = att ? McpToolsService.attachmentId(att) : null;
+    if (directId) return { ...(await this.readAttachment(userId, directId)), source: 'EasyMindMap 첨부' };
+    // 이름으로(또는 하나뿐인 PDF) — 맵에서 찾는다
+    if (!str('map_id')) {
+      throw new PdfError(att
+        ? `"${att}" 는 첨부 주소·id 가 아닙니다 — 첨부 이름으로 찾으려면 map_id 도 주세요.`
+        : 'PDF 를 어디서 읽을지 주세요 — attachment(EasyMindMap 첨부 주소·id) · url · data_base64, 또는 map_id(그 맵의 PDF 첨부). 대화창에 올린 파일은 도구로 넘어오지 않으니, 앱에서 노드에 PDF 를 첨부하거나 PDF 주소를 알려 달라고 하세요.');
+    }
+    const rid = this.resolveMapId(userId, args.map_id);
+    if ('error' in rid) throw new PdfError(rid.error);
+    let docRes;
+    try { docRes = await this.maps.getDocument(userId, rid.mapId); } catch (err) { throw new PdfError(mapError(err, '맵을 읽지 못했습니다')); }
+    let map: SampleMap;
+    try { map = mapFromDoc(docRes.doc); } catch (err) { if (err instanceof DocShapeError) throw new PdfError(err.message); throw err; }
+    let under: MindNode | null = null;
+    let nodeArg = str('node');
+    if (nodeArg && McpToolsService.isSelectedWord(nodeArg)) {
+      const f = this.focus.get(userId);
+      if (!f || f.mapId !== rid.mapId) throw new PdfError('앱에서 선택한 노드를 알 수 없습니다 — 그 맵을 열고 노드를 고른 뒤 다시 불러 주세요.');
+      nodeArg = f.nodeId === null || f.nodeId === 'root' ? '' : `id:${f.nodeId}`;
+    }
+    if (nodeArg) {
+      try { under = findByPath(map, nodeArg).node as MindNode | null; } catch (err) { if (err instanceof AppendError) throw new PdfError(err.message); throw err; }
+    }
+    let cands = this.pdfAttachmentsIn(map, under);
+    if (att) {
+      const exact = cands.filter((c) => c.name === att);
+      cands = exact.length ? exact : cands.filter((c) => c.name.toLowerCase().includes(att.toLowerCase()));
+    }
+    if (cands.length === 0) {
+      throw new PdfError(`"${docRes.title}" 맵${nodeArg ? '의 그 노드 아래' : ''}에 ${att ? `"${att}" 와 맞는 ` : ''}PDF 첨부가 없습니다 — 앱에서 노드의 링크·첨부 탭으로 PDF 를 올린 뒤 다시 불러 주세요.`);
+    }
+    if (cands.length > 1) throw new PdfError(`PDF 첨부가 ${cands.length}개입니다 — 어느 것인지 attachment 에 이름을 주세요: ${cands.map((c) => c.name).join(', ')}`);
+    const id = McpToolsService.attachmentId(cands[0].url);
+    if (!id) throw new PdfError(`"${cands[0].name}" 는 서버에 올린 첨부가 아니라 읽을 수 없습니다(맵 안에 내장된 파일) — 다시 첨부해 주세요.`);
+    return { ...(await this.readAttachment(userId, id)), source: `EasyMindMap 첨부 (맵 "${docRes.title}")` };
+  }
+
+  /**
+   * PDF → 새 맵. **요약하지 않는다** — 글을 모두 담고 구조(책갈피 → 글자 크기 → 번호 꼴 → 쪽)만 만든다.
+   * 저장·템플릿·실패 시 지우기는 import_github_docs 와 같은 길.
+   */
+  private async importPdf(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+    let src;
+    try { src = await this.pdfSource(userId, args); } catch (err) {
+      if (err instanceof PdfError) return text(err.message, true);
+      throw err;
+    }
+    const pages = typeof args.pages === 'string' ? args.pages : '';
+    const structure = (['auto', 'outline', 'fontsize', 'numbering', 'pages'].includes(String(args.structure)) ? args.structure : 'auto') as Structure;
+    const longN = Number(args.long_text_to_note) > 0 ? Math.floor(Number(args.long_text_to_note)) : 0;
+    let parsed, lines, built;
+    try {
+      parsed = readPdf(src.bytes, { pages, maxPages: McpToolsService.PDF_MAX_PAGES });
+      lines = linesFromPages(parsed.pages);
+      const total = lines.pages.reduce((s, p) => s + p.lines.reduce((a, l) => a + l.text.length, 0), 0);
+      if (total < Math.max(20, parsed.pages.length * 5)) {
+        return text(`"${src.name}" 에서 글자를 거의 찾지 못했습니다(${parsed.pages.length}쪽에 ${total}자) — 스캔한 그림 PDF 인 것 같습니다. 이 도구는 OCR(그림 속 글자 읽기)을 하지 않습니다. 글자가 들어 있는 PDF 나 OCR 한 PDF 를 주세요.`, true);
+      }
+      built = buildPdfMap({
+        title: (typeof args.title === 'string' && args.title.trim()) || cleanPdfTitle(parsed.title),
+        fileName: src.name, pageCount: parsed.pageCount, pages: lines.pages, outline: parsed.outline,
+        structure, longTextToNote: longN, fetchedAt: new Date().toISOString(), source: src.source,
+      });
+    } catch (err) {
+      if (err instanceof PdfError) return text(`"${src.name}" 을 읽지 못했습니다 — ${err.message}`, true);
+      this.log.warn(`MCP import_pdf 읽기 실패 (${src.name})`, err as Error);
+      return text(`"${src.name}" 을 읽지 못했습니다 — PDF 구조가 예상과 다릅니다(${(err as Error).message}). 다른 프로그램으로 다시 저장한 PDF 로 시도해 주세요.`, true);
+    }
+    if (built.nodes > McpToolsService.PDF_MAX_NODES) {
+      return text(`노드가 ${built.nodes}개나 되어 맵 하나로 만들지 않았습니다(한 번에 ${McpToolsService.PDF_MAX_NODES}개까지) — pages 로 나누거나(예: "1-50"), long_text_to_note:200 처럼 긴 문단을 노트로 넣어 노드 수를 줄여 주세요.`, true);
+    }
+    const title = built.map.title;
+    const snapshot = { v: 2, map: built.map, editor: { layoutType: 'radial-bidirectional', spacingX: 1, spacingY: 1 } };
+    let templateNote = '';
+    try {
+      const askedTemplate = typeof args.template === 'string' && args.template.trim();
+      const tpl = askedTemplate ? templateFor(askedTemplate, '') : {};
+      if (tpl.editor) { snapshot.editor = { ...snapshot.editor, layoutType: tpl.editor.layoutType }; templateNote = ` · 레이아웃: ${tpl.editor.layoutType}`; }
+      if (tpl.settings) {
+        snapshot.map.settings = { ...(snapshot.map.settings ?? {}), ...tpl.settings };
+        if (tpl.settings.levelLayouts) {
+          snapshot.map.branches = applyLevelLayouts(snapshot.map.branches as unknown as MindNode[], tpl.settings.levelLayouts) as unknown as typeof snapshot.map.branches;
+        }
+      }
+    } catch (err) {
+      if (err instanceof TemplateError) return text(err.message, true);
+      throw err;
+    }
+    let mapId: string;
+    try { mapId = (await this.maps.create(userId, { title })).mapId; } catch (err) { return text(mapError(err, '맵을 만들지 못했습니다'), true); }
+    try {
+      await this.maps.saveDocument(userId, mapId, snapshot, title, true);
+    } catch (err) {
+      await this.maps.remove(userId, mapId).catch(() => { /* 원래 오류가 우선 */ });
+      this.log.warn(`MCP import_pdf 문서 저장 실패 (user=${userId})`, err as Error);
+      return text(mapError(err, '맵 내용을 저장하지 못했습니다'), true);
+    }
+    const why: Record<string, string> = { outline: 'PDF 책갈피', fontsize: '글자 크기(큰 글씨 = 제목)', numbering: '번호 꼴(Ⅰ. · 1. · 1.1)', pages: '쪽 (제목을 찾지 못해 쪽마다 가지)' };
+    const margin = lines.removedMargin;
+    const marginChars = margin.reduce((s, l) => s + l.text.length, 0);
+    const unknown = parsed.pages.reduce((s, p) => s + p.unknownGlyphs, 0);
+    const read = parsed.pages.length === parsed.pageCount ? `${parsed.pageCount}쪽 전부` : `${parsed.pageCount}쪽 중 ${parsed.pages.length}쪽`;
+    return text(
+      `EasyMindMap 문서함에 "${title}" 맵을 만들었습니다 — PDF "${src.name}" ${read} · 가지 기준: ${why[built.structureUsed]} · 제목 ${built.headings}개 · 문단·항목 ${built.paragraphs}개 · 노드 ${built.nodes}개${templateNote}.\n` +
+      `맵 id: ${mapId}\n` +
+      `요약하지 않고 글 ${built.charsInMap.toLocaleString('en-US')}자를 모두 담았습니다` +
+      (margin.length ? ` (반복 머리글·바닥글·쪽 번호 ${margin.length}줄 ${marginChars}자는 뺐습니다)` : '') +
+      (lines.droppedDup ? ` · 겹쳐 그린 글자 ${lines.droppedDup}자는 한 번만 넣었습니다` : '') + '.\n' +
+      (lines.emptyPages.length ? `글자가 없는 쪽(그림·스캔일 수 있음 — OCR 하지 않음): ${lines.emptyPages.slice(0, 20).join(', ')}${lines.emptyPages.length > 20 ? ' …' : ''}\n` : '') +
+      (unknown ? `글꼴 정보가 없어 읽지 못한 글자 ${unknown}개가 있습니다(빠졌을 수 있음).\n` : '') +
+      (longN ? `${longN}자 이상 문단은 제목 노드의 노트에 넣었습니다.\n` : '') +
+      '표는 칸 구분 없이 줄 글로 들어갑니다. 제목 노드의 첫 노트에 원문 쪽(p.3–5)이 적혀 있습니다.',
+    );
   }
 
 }

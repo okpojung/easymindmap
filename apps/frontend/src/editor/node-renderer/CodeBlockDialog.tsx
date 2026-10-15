@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { useDialogDrag } from '@/components/ui/useDialogDrag';
 import { useTr } from '@/i18n';
 
 export function CodeBlockDialog({
@@ -30,6 +31,7 @@ export function CodeBlockDialog({
   const [lang, setLang] = useState(initialLang ?? '');
   const [code, setCode] = useState(initialCode ?? '');
   const codeRef = useRef<HTMLTextAreaElement | null>(null);
+  const drag = useDialogDrag();
 
   useEffect(() => {
     window.setTimeout(() => codeRef.current?.focus(), 0);
@@ -58,10 +60,12 @@ export function CodeBlockDialog({
       onClick={onCancel}
     >
       <div
+        ref={drag.panelRef}
         onClick={(e) => e.stopPropagation()}
         data-testid="code-block-panel"
         style={{
           position: 'relative',
+          ...drag.panelStyle,
           // 폰 — 좌우 12px 여백 · 키보드가 올라와도 안에서 스크롤 (모바일 웹, 2026-10-05)
           width: 'min(640px, calc(100vw - 59px))', // 59 = 여백 12×2 + 안쪽 16×2 + 테두리 — 화면 끝까지 12px
           maxHeight: 'calc(100dvh - 59px)', overflowY: 'auto',
@@ -74,7 +78,10 @@ export function CodeBlockDialog({
         }}
       >
         <DialogXButton t={t} testId="code-block-dialog-x" onClose={onCancel} />
-        <div style={{ fontSize: 14, fontWeight: 700, color: t.text, paddingRight: 34 }}>
+        {/* 제목줄을 끌어 창을 옮긴다 (2026-10-15 사용자 요청 — 표 편집 팝업과 같이) */}
+        <div data-testid="code-block-title" onPointerDown={drag.handleProps.onPointerDown}
+          title={tr('editor.table.dragTitle')}
+          style={{ fontSize: 14, fontWeight: 700, color: t.text, paddingRight: 34, ...drag.handleProps.style }}>
           {initialCode ? tr('editor.code.titleEdit') : tr('editor.code.titleInsert')}
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

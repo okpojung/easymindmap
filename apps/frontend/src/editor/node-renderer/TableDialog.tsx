@@ -12,11 +12,12 @@
 // 표 문법은 mdTable.ts 의 파서가 읽는 그대로다: 헤더 행 + 구분선 + 데이터
 // 행. 파서가 헤더 2칸·데이터 1행 이상을 요구하므로 최소 크기는 2행×2열.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { parseMdTable, sepCellOfAlign, splitPipeCells, escapePipe, cellFromLines, cellLines, type MdTableAlign } from './mdTable';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { useDialogDrag } from '@/components/ui/useDialogDrag';
 import { tr as trNow, useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
 
@@ -248,6 +249,54 @@ export function TableDialog({
 
   useEffect(() => { window.setTimeout(() => firstRef.current?.focus(), 0); }, []);
 
+  // ① **제목줄을 끌어 창을 옮긴다** (2026-10-15 사용자 요청) — components/ui/useDialogDrag
+  const drag = useDialogDrag();
+
+  // ② **셀 입력칸 높이를 내용에 맞춘다** (2026-10-15 사용자 보고 "격자 모드에서 표
+  //    내용이 모두 안 보인다"). 예전엔 높이를 직접 넣은 줄바꿈 수로만 정해서, 칸
+  //    폭에서 자동으로 접힌 긴 글은 overflow:hidden 에 잘렸다. 그리고 나서 재고,
+  //    창 크기가 바뀌어도 다시 잰다
+  const fitCells = () => {
+    gridRef.current?.querySelectorAll<HTMLTextAreaElement>('textarea[data-table-cell]').forEach((el) => {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    });
+  };
+  useLayoutEffect(fitCells);
+  useEffect(() => {
+    window.addEventListener('resize', fitCells);
+    return () => window.removeEventListener('resize', fitCells);
+  });
+
+  // ③ **줄바꿈 넣기** (2026-10-15 사용자 요청) — 격자에서는 커서 자리에서 줄을 바꾸고
+  //    (저장할 때 `<br>` 이 된다), MD 에서는 커서 자리에 `<br>` 을 넣는다. 단추를 눌러도
+  //    입력칸의 커서를 잃지 않게 mousedown 의 기본 동작(포커스 이동)을 막는다
+  // 마지막으로 커서가 있던 셀 **위치**만 기억한다 — 입력칸 요소를 쥐고 있으면 MD 를
+  // 다녀온 뒤 떨어져 나간 옛 입력칸의 옛 값을 다시 써서 MD 에서 고친 것을 지운다 (Codex #647)
+  const lastCell = useRef<{ r: number; c: number } | null>(null);
+  const insertBreak = () => {
+    if (view === 'md') {
+      const el = mdRef.current;
+      if (!el) return;
+      const a = el.selectionStart ?? mdText.length, b = el.selectionEnd ?? a;
+      setMdText(mdText.slice(0, a) + '<br>' + mdText.slice(b));
+      setMdError(null);
+      window.setTimeout(() => { el.focus(); el.setSelectionRange(a + 4, a + 4); }, 0);
+      return;
+    }
+    const cur = lastCell.current;
+    if (!cur) return;
+    const { r, c } = cur;
+    const el = gridRef.current?.querySelector<HTMLTextAreaElement>(`[data-table-cell="${r + 1}x${c + 1}"]`);
+    if (!el) return;
+    const v = r < 0 ? (headers[c] ?? '') : (rows[r]?.[c] ?? '');
+    // 지금 그 칸에 커서가 없으면(다른 곳을 눌렀다 왔다) 끝에 넣는다
+    if (document.activeElement !== el) el.setSelectionRange(v.length, v.length);
+    const a = el.selectionStart ?? v.length, b = el.selectionEnd ?? a;
+    setCell(r, c, v.slice(0, a) + '\n' + v.slice(b));
+    window.setTimeout(() => { el.focus(); el.setSelectionRange(a + 1, a + 1); }, 0);
+  };
+
   const cols = headers.length;
   const setCell = (r: number, c: number, v: string) => {
     if (r < 0) setHeaders(headers.map((h, i) => (i === c ? v : h)));
@@ -363,9 +412,9 @@ export function TableDialog({
       ref={r === -1 && c === 0 ? firstRef : undefined}
       data-table-cell={`${r + 1}x${c + 1}`}
       value={value}
-      rows={Math.max(1, value.split('\n').length)}
+      rows={1}
       onChange={(e) => setCell(r, c, e.target.value)}
-      onFocus={() => setCursor({ r, c })}
+      onFocus={() => { setCursor({ r, c }); lastCell.current = { r, c }; }}
       placeholder={isHead ? tr('editor.table.headerPlaceholder') : ''}
       style={{
         width: '100%', minWidth: 72, boxSizing: 'border-box', padding: '5px 8px',
@@ -397,10 +446,12 @@ export function TableDialog({
       onClick={onCancel}
     >
       <div
+        ref={drag.panelRef}
         onClick={(e) => e.stopPropagation()}
         data-testid="table-panel"
         style={{
           position: 'relative',
+          ...drag.panelStyle,
           // 폰 — 좌우 12px 여백 (데스크톱은 760 그대로) · 주소창이 접혔다 펴져도 dvh
           width: 'min(760px, calc(100vw - 59px))', // 59 = 여백 12×2 + 안쪽 16×2 + 테두리 — 화면 끝까지 12px
           maxHeight: 'calc(100dvh - 59px)',
@@ -413,7 +464,9 @@ export function TableDialog({
         }}
       >
         <DialogXButton t={t} testId="table-dialog-x" onClose={onCancel} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 34 }}>
+        <div data-testid="table-dialog-title" onPointerDown={drag.handleProps.onPointerDown}
+          title={tr('editor.table.dragTitle')}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 34, ...drag.handleProps.style }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: t.text, flex: 1 }}>
             {initialMd ? tr('editor.table.titleEdit') : tr('editor.table.titleInsert')}
             <span style={{ fontSize: 12, color: t.textMuted, fontWeight: 400, marginLeft: 8 }}>
@@ -421,6 +474,21 @@ export function TableDialog({
             </span>
           </div>
           {/* 격자 ↔ MD 보기 — 상단 툴바의 맵/아웃라인 토글과 같은 모양 */}
+          {/* 줄바꿈 넣기 — 격자는 셀 안 줄바꿈, MD 는 `<br>` (2026-10-15) */}
+          <button
+            type="button" data-testid="table-insert-br"
+            title={view === 'md' ? tr('editor.table.insertBrMd') : tr('editor.table.insertBrGrid')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={insertBreak}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 9px', borderRadius: 8,
+              background: t.surfaceAlt ?? 'transparent', color: t.text,
+              border: `1px solid ${t.border}`, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+            }}
+          >
+            <span aria-hidden style={{ fontSize: 14, lineHeight: 1 }}>↵</span>
+            {tr('editor.table.insertBr')}
+          </button>
           {viewBtn('grid', tr('editor.table.gridView'), tr('editor.table.gridViewTitle'), () => view !== 'grid' && toGrid())}
           {viewBtn('md', 'MD', tr('editor.table.mdViewTitle'), () => view !== 'md' && toMd())}
         </div>

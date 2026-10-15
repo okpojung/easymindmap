@@ -186,7 +186,7 @@ const KO_TAIL = new Set((
  */
 const KO_AMBIG = new Set((
   '이 가 도 만 서 지 기 음 함 해 해야 하여 하는 하고 한다 했다 되 된 될 됨 되어 되며 되고 되는 된다 있다 없다 어 아 야 여 게 께 로 와 과 며 면 은 는 ' +
-  '보다 써' // "결과를|보다 쉽게"·"글을|써 보았다" (#645 Codex 2차)
+  '보다 써 록' // "결과를|보다 쉽게"·"글을|써 보았다"·"그는|록 음악을" (#645 Codex 2·3차)
 ).split(' '));
 
 /**
@@ -205,14 +205,13 @@ export function joinLine(a: string, b: string, trail = false, marks = false): st
 }
 
 /**
- * 이 문서는 한글 낱말 사이 줄바꿈에 줄 끝 빈칸을 남기는가 — 한글로 끝나 한글로 시작하는 같은 쪽 줄바꿈 가운데
+ * 이 문서는 한글 낱말 사이 줄바꿈에 줄 끝 빈칸을 남기는가 — 문단 안에서 잇는 줄 짝 가운데, 한글로 끝나 한글로 시작하는 같은 쪽 줄바꿈 중
  * 줄 끝 빈칸이 있는 것이 3개 이상이고 30% 이상이면 그렇다고 본다(고려대 PDF 43/60, NIA 보고서 0/34).
  * 그런 문서에서 빈칸 없는 한글 줄바꿈은 낱말 가운데다.
  */
-export function marksWordWraps(lines: Line[]): boolean {
+export function marksWordWraps(pairs: [Line, Line][]): boolean {
   let n = 0, t = 0;
-  for (let i = 1; i < lines.length; i++) {
-    const a = lines[i - 1], b = lines[i];
+  for (const [a, b] of pairs) {
     if (a.page !== b.page || !/[가-힣]$/.test(a.text) || !/^[가-힣]/.test(b.text)) continue;
     n++; if (a.trail) t++;
   }
@@ -232,8 +231,10 @@ export function toBlocks(lines: Line[]): Block[] {
   for (const l of lines) { const k = Math.round(l.size * 2) / 2; sizeW.set(k, (sizeW.get(k) ?? 0) + l.text.length); }
   let body = 10, bw = -1;
   for (const [k, n] of sizeW) if (n > bw) { bw = n; body = k; }
-  const marks = marksWordWraps(lines);
   const out: Block[] = [];
+  // 이어 붙일 줄 짝 — 문서 표시(marks)는 **실제로 잇는 줄바꿈만** 보고 정한다. 제목·표 줄·문단 끝처럼 끊기는
+  // 자리의 줄 끝 빈칸을 세면 문서 전체가 '표시하는 문서' 로 잘못 잡힌다 (#645 Codex 3차)
+  const joins: { block: Block; prev: Line; line: Line }[] = [];
   let cur: Block | null = null;
   let prev: Line | null = null;
   for (const l of lines) {
@@ -255,12 +256,14 @@ export function toBlocks(lines: Line[]): Block[] {
       cur = { page: l.page, y: l.y, x0: l.x0, size: l.size, bold: l.bold, text: l.text, lines: 1, bullet, endPage: l.page, ...(l.rot ? { rot: true } : {}) };
       out.push(cur);
     } else {
-      cur.text = joinLine(cur.text, l.text, Boolean(prev?.trail), marks);
+      joins.push({ block: cur, prev: prev!, line: l });
       cur.lines++;
       cur.endPage = l.page;
     }
     prev = l;
   }
+  const marks = marksWordWraps(joins.map((j): [Line, Line] => [j.prev, j.line]));
+  for (const j of joins) j.block.text = joinLine(j.block.text, j.line.text, Boolean(j.prev.trail), marks);
   return out;
 }
 

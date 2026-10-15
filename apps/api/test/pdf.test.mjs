@@ -309,13 +309,19 @@ console.log('── #642 Codex 리뷰 — 압축 폭탄 · 뒤에 오는 간접 
   // NIA 꼴 — 줄 끝 빈칸 없이도 낱말 경계
   const nia = toBlocks([K('이 보고서는', 700), K('국가 전략을 파악해', 685), K('선제적으로 대응한 미래전략팀', 670), K('이은경 연구원', 655)]);
   check('NIA 꼴 — 첫 토큰이 조사·어미가 아니면 띄운다(이은경 ≠ 이)', nia.map((b) => b.text), ['이 보고서는 국가 전략을 파악해 선제적으로 대응한 미래전략팀 이은경 연구원']);
-  check('줄 끝 빈칸이면 조사 조각이어도 띄운다 · 영어 하이픈 잇기 그대로 · 표시하는 문서면 조각을 붙인다', [joinLine('데이터', '의 활용', true, true), joinLine('An exam-', 'ple'), joinLine('학습자에', '게', false, true), joinLine('간주', '되며', false, true), joinLine('긴밀', '히'), joinLine('구성하도', '록'), joinLine('학습자', '가', false, true), joinLine('동의', '를'), joinLine('받았더라', '도', false, true), joinLine('AI', '를')],
+  check('줄 끝 빈칸이면 조사 조각이어도 띄운다 · 영어 하이픈 잇기 그대로 · 표시하는 문서면 조각을 붙인다', [joinLine('데이터', '의 활용', true, true), joinLine('An exam-', 'ple'), joinLine('학습자에', '게', false, true), joinLine('간주', '되며', false, true), joinLine('긴밀', '히'), joinLine('구성하도', '록', false, true), joinLine('학습자', '가', false, true), joinLine('동의', '를'), joinLine('받았더라', '도', false, true), joinLine('AI', '를')],
     ['데이터 의 활용', 'An example', '학습자에게', '간주되며', '긴밀히', '구성하도록', '학습자가', '동의를', '받았더라도', 'AI 를']);
   // #645 Codex — 줄 끝 빈칸을 남기지 않는 문서에서 혼자 쓰이는 낱말일 수 있는 조각("이"·"해"·"도"·"하는")은 붙이지 않는다
   const plain = toBlocks([K('기존 방식은 느리지만', 700), K('이 방식은 빠르다 그 데이터', 685), K('의 쓰임과 지난', 670), K('해 기록', 655)]);
   check('표시하지 않는 문서 — "보다"·"써" 도 혼자 쓰이는 낱말일 수 있어 띄운다 · 하이픈 뒤 빈칸이 있어도 영어는 잇는다 (#645 Codex 2차)',
     [joinLine('다른 결과를', '보다 쉽게'), joinLine('글을', '써 보았다'), joinLine('제시함으로', '써,', false, true), joinLine('An exam-', 'ple', true)],
     ['다른 결과를 보다 쉽게', '글을 써 보았다', '제시함으로써,', 'An example']);
+  // #645 Codex 3차 — 끊기는 자리(제목 뒤·글머리표)의 줄 끝 빈칸은 문서 표시로 세지 않는다 · "록" 도 혼자 쓰이는 낱말
+  const heads = toBlocks([
+    K('개요', 700, { size: 16, trail: true }), K('본문 하나', 680), K('배경', 650, { size: 16, trail: true }), K('본문 둘', 630),
+    K('목표', 600, { size: 16, trail: true }), K('본문 셋', 580), K('범위', 550, { size: 16, trail: true }), K('다른 결과를', 530), K('보다 쉽게 그는', 515), K('록 음악을', 500),
+  ]);
+  check('제목 뒤 줄 끝 빈칸은 표시로 안 센다 → "보다"·"록" 띄움', heads.map((b) => b.text).slice(-1), ['다른 결과를 보다 쉽게 그는 록 음악을']);
   check('표시하지 않는 문서 — 관형사 "이"·"해" 는 띄우고, 혼자 쓰이지 않는 "의" 는 붙인다', plain.map((b) => b.text), ['기존 방식은 느리지만 이 방식은 빠르다 그 데이터의 쓰임과 지난 해 기록']);
   // 줄 끝 빈칸(trail)은 조각에서 읽는다
   const pl = pageLines({ width: 600, height: 800, unknownGlyphs: 0, runs: [

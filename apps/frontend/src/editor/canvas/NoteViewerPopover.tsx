@@ -20,6 +20,7 @@ import { gridCharSpans } from '@/utils/monoGrid';
 import { useNoteHtmlResolver } from '@/utils/imageSrc';
 import { useTr } from '@/i18n';
 import { TableDialog } from '@/editor/node-renderer/TableDialog';
+import { CodeBlockDialog } from '@/editor/node-renderer/CodeBlockDialog';
 import { noteTableFromMd, noteTableToMd } from '@/editor/inspector-panels/noteTable';
 import { isPhoneLayoutNow, useCoarse } from '@/hooks/useViewport';
 
@@ -179,12 +180,14 @@ function NoteTableCopyButton({ t, text }: { t: ThemeTokens; text: string }) {
   );
 }
 
-function NoteBlockView({ t, block, fs, family, onToggleCheck, onEditTable }: {
+function NoteBlockView({ t, block, fs, family, onToggleCheck, onEditTable, onEditCode }: {
   t: ThemeTokens; block: NoteBlock; fs: number; family?: string;
   // 체크리스트 블록의 ☑/☐ 클릭 토글 — nodeId를 아는 호출자만 넘긴다
   onToggleCheck?: () => void;
   // 표 블록 ✎ 편집 — 표 편집 팝업(격자/MD)을 연다. nodeId를 아는 호출자만 (2026-10-15)
   onEditTable?: () => void;
+  // 코드 블록 ✎ 편집 — 코드블록 편집 팝업을 연다 (2026-10-15, 노드 내용의 코드와 같은 창)
+  onEditCode?: () => void;
 }) {
   // 노트 사진이 **우리 저장소**에 있으면 그릴 때 토큰을 붙인다 (2026-08-20).
   // 토큰은 문서에 저장하지 않는다 — 저장하면 만료되는 날 사진이 전부 깨진다.
@@ -256,7 +259,22 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck, onEditTable }: {
           color: t.textMuted, letterSpacing: 0.4, textTransform: 'uppercase',
         }}>
           <span>{block.lang || 'code'}</span>
-          <CopyButton t={t} text={block.text} />
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {onEditCode && (
+              <button
+                data-testid="note-viewer-code-edit"
+                title={tr('editor.note.editCode')}
+                onClick={(e) => { e.stopPropagation(); onEditCode(); }}
+                onPointerDown={(e) => e.stopPropagation()}
+                style={{
+                  border: `1px solid ${t.border}`, background: t.surface, borderRadius: 4,
+                  padding: '1px 6px', cursor: 'pointer', fontSize: 10, fontWeight: 700,
+                  color: t.textMuted, textTransform: 'none', letterSpacing: 0,
+                }}
+              >✎ {tr('editor.note.editTableShort')}</button>
+            )}
+            <CopyButton t={t} text={block.text} />
+          </span>
         </div>
         {/* 격자 배치 — 맵 캔버스와 같은 규칙 (utils/monoGrid) */}
         <pre style={{
@@ -373,6 +391,7 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
   const updateNoteBlock = useDocumentStore((s) => s.updateNoteBlock);
   // 표 블록 편집 팝업 (2026-10-15) — 열린 블록 id 와 그 표의 GFM 원문
   const [tableEdit, setTableEdit] = useState<{ blockId: string; md?: string } | null>(null);
+  const [codeEdit, setCodeEdit] = useState<{ blockId: string; lang: string; code: string } | null>(null);
   const fs = noteFont?.size && noteFont.size > 0 ? noteFont.size : 13;
   const family = noteFont?.family && noteFont.family.trim() ? noteFont.family : undefined;
 
@@ -506,12 +525,27 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
             onToggleCheck={nodeId && block.type === 'checklist'
               ? () => updateNoteBlock(nodeId, block.id, { checked: !block.checked })
               : undefined}
+            onEditCode={nodeId && block.type === 'code_block'
+              ? () => setCodeEdit({ blockId: block.id, lang: block.lang ?? '', code: block.text ?? '' })
+              : undefined}
             onEditTable={nodeId && block.type === 'table'
               ? () => setTableEdit({ blockId: block.id, md: noteTableToMd(block.text) })
               : undefined}
           />
         ))}
       </div>
+      {codeEdit && nodeId && (
+        <CodeBlockDialog
+          t={t}
+          initialLang={codeEdit.lang}
+          initialCode={codeEdit.code}
+          onCancel={() => setCodeEdit(null)}
+          onSave={(lang, code) => {
+            updateNoteBlock(nodeId, codeEdit.blockId, { text: code, lang: lang || undefined });
+            setCodeEdit(null);
+          }}
+        />
+      )}
       {tableEdit && nodeId && (
         <TableDialog
           t={t}

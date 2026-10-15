@@ -14,6 +14,7 @@ export * from './build-tree';
 export * from './meta';
 // 코드 펜스 길이 규칙 — 코드 안의 ``` 를 살려 내보내고 되읽는다 (2026-09-29)
 export * from './fence';
+export { wrapTableCells, wrapLine, textEm, TABLE_MAX_EM, TABLE_MIN_COL_EM } from './table-wrap';
 // 리치 노트 HTML 속 <img> 의 주소를 읽고 바꾼다 — 노드 사진(`image`·`images`)과
 // **같은 자리에서** 다루기 위한 것 (28-sync-prework-plan §3.5 셋째 줄)
 export * from './note-images';

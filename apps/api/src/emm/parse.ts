@@ -46,6 +46,7 @@ import type {
 } from './model';
 import { readFrontMatter } from './frontMatter';
 import { setextToAtx } from './setext';
+import { wrapTableCells } from './table-wrap';
 
 const BRANCH_COLORS: NodeColorKey[] = ['l1A', 'l1B', 'l1C', 'l1D', 'l1E'];
 
@@ -578,9 +579,14 @@ export function parseMarkdownToMap(
     // (`:---` · `:---:` · `---:`)은 정렬 정보라 남긴다 (2026-09-17) — 앱의
     // 표 파서(mdTable.ts)와 노트 뷰어는 구분선 행을 셀로 세지 않고, 직렬화는
     // 그 콜론을 다시 구분선에 쓴다.
-    const rows = tableBuf
-      .filter((r) => !TABLE_SEP_RE.test(r) || r.includes(':'))
-      .map((r) => pipeCellsKeepEscape(r).join(' | '))
+    const kept = tableBuf.filter((r) => !TABLE_SEP_RE.test(r) || r.includes(':'));
+    // ★ 셀 글이 길면 `<br>` 로 줄바꿈해 표 폭을 맞춘다 (2026-10-15, table-wrap.ts) —
+    //   PDF·AI 가 만든 표가 1,700px 로 넓어져 맵이 옆으로 늘어나던 것. 구분선은 그대로
+    const cellRows = kept.filter((r) => !TABLE_SEP_RE.test(r)).map((r) => pipeCellsKeepEscape(r));
+    const wrapped = wrapTableCells(cellRows);
+    let wi = 0;
+    const rows = kept
+      .map((r) => (TABLE_SEP_RE.test(r) ? pipeCellsKeepEscape(r) : wrapped[wi++]).join(' | '))
       .filter((r) => r.trim());
     tableBuf = [];
     if (!rows.length) return;

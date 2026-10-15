@@ -17,6 +17,7 @@ import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { parseMdTable, sepCellOfAlign, splitPipeCells, escapePipe, cellFromLines, cellLines, type MdTableAlign } from './mdTable';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { useDialogDrag } from '@/components/ui/useDialogDrag';
 import { tr as trNow, useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
 
@@ -248,30 +249,8 @@ export function TableDialog({
 
   useEffect(() => { window.setTimeout(() => firstRef.current?.focus(), 0); }, []);
 
-  // ① **제목줄을 끌어 창을 옮긴다** (2026-10-15 사용자 요청) — 표 뒤의 노드를
-  //    보면서 고치려고. 화면 밖으로 완전히 나가지 않게 제목줄이 40px 은 남긴다
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const startDrag = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return; // 제목줄의 단추는 그대로 누른다
-    e.preventDefault();
-    const sx = e.clientX, sy = e.clientY, ox = offset.x, oy = offset.y;
-    const box = panelRef.current?.getBoundingClientRect();
-    const move = (ev: PointerEvent) => {
-      let dx = ox + ev.clientX - sx, dy = oy + ev.clientY - sy;
-      if (box) {
-        const left = box.left - ox + dx, top = box.top - oy + dy;
-        if (left + box.width < 80) dx += 80 - (left + box.width);
-        if (left > window.innerWidth - 80) dx -= left - (window.innerWidth - 80);
-        if (top < 0) dy -= top;
-        if (top > window.innerHeight - 40) dy -= top - (window.innerHeight - 40);
-      }
-      setOffset({ x: dx, y: dy });
-    };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
+  // ① **제목줄을 끌어 창을 옮긴다** (2026-10-15 사용자 요청) — components/ui/useDialogDrag
+  const drag = useDialogDrag();
 
   // ② **셀 입력칸 높이를 내용에 맞춘다** (2026-10-15 사용자 보고 "격자 모드에서 표
   //    내용이 모두 안 보인다"). 예전엔 높이를 직접 넣은 줄바꿈 수로만 정해서, 칸
@@ -461,12 +440,12 @@ export function TableDialog({
       onClick={onCancel}
     >
       <div
-        ref={panelRef}
+        ref={drag.panelRef}
         onClick={(e) => e.stopPropagation()}
         data-testid="table-panel"
         style={{
           position: 'relative',
-          transform: offset.x || offset.y ? `translate(${offset.x}px, ${offset.y}px)` : undefined,
+          ...drag.panelStyle,
           // 폰 — 좌우 12px 여백 (데스크톱은 760 그대로) · 주소창이 접혔다 펴져도 dvh
           width: 'min(760px, calc(100vw - 59px))', // 59 = 여백 12×2 + 안쪽 16×2 + 테두리 — 화면 끝까지 12px
           maxHeight: 'calc(100dvh - 59px)',
@@ -479,9 +458,9 @@ export function TableDialog({
         }}
       >
         <DialogXButton t={t} testId="table-dialog-x" onClose={onCancel} />
-        <div data-testid="table-dialog-title" onPointerDown={startDrag}
+        <div data-testid="table-dialog-title" onPointerDown={drag.handleProps.onPointerDown}
           title={tr('editor.table.dragTitle')}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 34, cursor: 'move', userSelect: 'none', touchAction: 'none' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 34, ...drag.handleProps.style }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: t.text, flex: 1 }}>
             {initialMd ? tr('editor.table.titleEdit') : tr('editor.table.titleInsert')}
             <span style={{ fontSize: 12, color: t.textMuted, fontWeight: 400, marginLeft: 8 }}>

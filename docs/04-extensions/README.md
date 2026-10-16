@@ -25,6 +25,7 @@ AI, 번역, 협업, 퍼블리시, 외부 연동 등 편집기 코어 위에 올�
 | 26 | `collaboration/26-realtime-chat.md` | CHAT | 실시간 채팅 (맵 채널 / 1:1 DM / @멘션) | V2~V3 |
 | 27 | `collaboration/27-sync-model.md` | COLLAB | **동기화 모델 결정** — CRDT(Yjs) · 무엇을 CRDT 에 담나 · 전송 · 정본 유지 · 오픈코어 경계 (2026-08-16). **25번의 전송·충돌 전제를 대체한다** | 유료 |
 | 30 | `collaboration/30-address-book.md` | COLLAB | **주소록** — 소속(그룹)별 연락처(이름·이메일), 공유 창에서 골라 참여자로 추가 (2026-10-14) | 유료 |
+| 31 | `collaboration/31-collab-panel.md` | COLLAB | **협업 패널** — 참여자(소속별·접속 표시) · ⋯ 간략하게 보기 · 편집권한 설정 · 마우스포인터 공유 · 개설자 변경 (2026-10-16) | 유료 |
 | 27 | `publish/27-publish-share.md` | PUBLISH | 공개 URL 게시 및 읽기 전용 공유 | MVP |
 | 28 | `project/28-wbs.md` | WBS | WBS 모드 (일정 / 마일스톤 / 진척률) | V1 |
 | 29 | `project/29-resource.md` | RESOURCE | 리소스 할당 (담당자 / 역할 / 공수) | V1 |

@@ -68,15 +68,17 @@ export function absolutizeStored(map: SampleMap, origin: string): { map: SampleM
     if (Array.isArray(v)) return v.map(walk);
     if (!v || typeof v !== 'object') return v;
     const o = { ...(v as Record<string, unknown>) };
-    const img = (x: unknown) => {
+    // 직렬화기와 같은 선택 — images 가 있으면 그것만, 없으면 옛 단일 image 를 내보낸다. 내보내는 것만 센다 (#652 Codex)
+    const emitsImages = Array.isArray(o.images) && o.images.length > 0;
+    const img = (count: boolean) => (x: unknown) => {
       if (!x || typeof x !== 'object') return x;
       const src = (x as { src?: unknown }).src;
       const fixed = fix(src);
-      if (fixed !== src && typeof src === 'string' && !seen.has(src)) { seen.add(src); stored++; }
+      if (count && fixed !== src && typeof src === 'string' && !seen.has(src)) { seen.add(src); stored++; }
       return fixed === src ? x : { ...(x as object), src: fixed };
     };
-    if (o.image) o.image = img(o.image);
-    if (Array.isArray(o.images)) o.images = o.images.map(img);
+    if (o.image) o.image = img(!emitsImages)(o.image);
+    if (Array.isArray(o.images)) o.images = o.images.map(img(true));
     if (Array.isArray(o.attachments)) {
       o.attachments = o.attachments.map((a) => (a && typeof a === 'object' && 'url' in a ? { ...(a as object), url: fix((a as { url?: unknown }).url) } : a));
     }

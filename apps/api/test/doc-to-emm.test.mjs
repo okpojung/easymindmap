@@ -113,12 +113,14 @@ check('현행 형식은 그대로 연다', mapFromDoc(emmToSnapshot(MD, 'x')).ti
     ] },
     { id: 'e', text: '첨부', attachments: [{ id: 'f1', name: '보고서.pdf', url: '/v1/attachments/pdf-9' }] },
   ] } };
+  // 옛 단일 image 와 images 가 함께 있는 노드 — 직렬화기는 images 만 내보낸다
+  doc.map.branches.push({ id: 'g', text: '둘 다', image: { src: '/v1/attachments/legacy-9', w: 5, h: 5 }, images: [{ src: '/v1/attachments/abc-1', w: 10, h: 10, afterLine: 1 }] });
   const before = JSON.stringify(doc);
   const out = docToEmm(doc, { origin: 'https://api.example.kr/' });
-  check('저장소 사진 → 서버 주소로 보인다', (out.markdown.match(/\]\(https:\/\/api\.example\.kr\/v1\/attachments\/abc-[12]\)/g) ?? []).length, 3);
+  check('저장소 사진 → 서버 주소로 보인다(같은 사진이 두 노드면 두 번)', (out.markdown.match(/\]\(https:\/\/api\.example\.kr\/v1\/attachments\/abc-[12]\)/g) ?? []).length, 4);
   check('문서 안 사진은 그대로 files/ 경로', /\(files\/img-1\.png\)/.test(out.markdown), true);
   check('첨부(상대 경로)도 서버 주소로', out.markdown.includes('📎 [보고서.pdf](https://api.example.kr/v1/attachments/pdf-9)'), true);
-  check('사진 수 — 문서 안 1 · 저장소 2(같은 사진은 한 번)', [out.imageCount, out.storedImageCount], [1, 2]);
+  check('사진 수 — 문서 안 1 · 저장소 2(같은 사진은 한 번, images 가 있으면 옛 image 는 안 셈)', [out.imageCount, out.storedImageCount, out.markdown.includes('legacy-9')], [1, 2, false]);
   check('원본 문서는 바꾸지 않는다', JSON.stringify(doc), before);
   const plain = docToEmm(doc);
   check('origin 이 없으면 예전 그대로(저장소 사진 없음)', [/attachments/.test(plain.markdown), plain.storedImageCount], [false, 0]);

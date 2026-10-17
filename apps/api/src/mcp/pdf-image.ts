@@ -17,7 +17,8 @@
  * 사진 한 장은 앱과 같이 2.5MB 까지 — PNG 가 넘으면 화소를 줄여(2·3·4…배) 맞추고, JPEG 가 넘으면 건너뛴다.
  * JPEG 에 SMask(투명도)가 있으면 투명도는 버리고 넣는다(JPEG 디코더가 없다) — 결과에 수를 알린다.
  * 이름 붙은 색 공간(`/CS0`)은 그린 자리의 Resources 에서 푼다. Flate·LZW 의 TIFF 예측자 2 도 되돌린다.
- * 맵 하나에 100장 · 합계 40MB 까지(넘으면 건너뛰고 센다). 저장할 때 서버가 data URL 사진을 첨부 저장소로 옮긴다
+ * 맵 하나에 100장 · 합계 40MB 까지(넘으면 건너뛰고 센다). 푸는 일도 PDF 하나에 256MB·300번까지 —
+ * 못 쓰는 그림(형식·크기)도 센다. 저장할 때 서버가 data URL 사진을 첨부 저장소로 옮긴다
  * (`maps/doc-images.ts`) — 문서에는 참조만 남는다.
  */
 import { deflateSync } from 'zlib';
@@ -172,11 +173,22 @@ function unpackRow(data: Uint8Array, r: number, per: number, bpc: number, scale:
 const TARGET_PX = 4_000_000;
 
 /** 이미지 XObject 하나 → 파일. 못 만들면 까닭을 던진다 */
-export function decodeImage(doc: PdfDoc, s: PStream, res: PDict | null = null): { mime: 'image/png' | 'image/jpeg'; bytes: Uint8Array; w: number; h: number; opaque?: boolean } {
+/** 그림 풀기에 쓴 바이트 누계 — 받아들인 그림만이 아니라 **시도한 것 전부**를 센다 (#650 Codex) */
+export interface DecodeBudget { raw: number; tries: number }
+/** 한 PDF 에서 그림을 푸는 데 쓰는 바이트·횟수 상한 — 못 쓰는 그림이 수백 개여도 일이 끝없이 늘지 않게 */
+export const MAX_DECODE_RAW = 256 * 1024 * 1024;
+export const MAX_DECODE_TRIES = 300;
+
+export function decodeImage(doc: PdfDoc, s: PStream, res: PDict | null = null, budget: DecodeBudget = { raw: 0, tries: 0 }): { mime: 'image/png' | 'image/jpeg'; bytes: Uint8Array; w: number; h: number; opaque?: boolean } {
   const d = s.dict;
   const w = num(doc.resolve(d.get('Width'))) ?? 0, h = num(doc.resolve(d.get('Height'))) ?? 0;
   if (w < 1 || h < 1 || w * h > MAX_PIXELS) throw new SkipImage('tooBig');
-  const { data, tail } = doc.imageStream(s, MAX_RAW);
+  const room = MAX_DECODE_RAW - budget.raw;
+  if (room <= 0 || budget.tries >= MAX_DECODE_TRIES) throw new SkipImage('limit');
+  budget.tries++;
+  budget.raw += s.raw.length; // 실패해도 압축 바이트만큼은 센다
+  const { data, tail } = doc.imageStream(s, Math.min(MAX_RAW, room));
+  budget.raw += data.length;
   if (tail === 'DCT') {
     if (data.length > MAX_IMAGE_FILE) throw new SkipImage('tooBig');
     if (data[0] !== 0xff || data[1] !== 0xd8) throw new SkipImage('broken');
@@ -191,15 +203,33 @@ export function decodeImage(doc: PdfDoc, s: PStream, res: PDict | null = null): 
   const per = w * sp.n;
   const rowBytes = Math.ceil((per * bpc) / 8);
   if (data.length < rowBytes * h) throw new SkipImage('broken');
-  // Decode [1 0] — 회색·흑백을 뒤집어 그리라는 뜻(스캔 흑백 그림에 흔하다)
+  // /Decode — 성분마다 [최소 최대] 로 값을 다시 매긴다([1 0] = 뒤집기, 스캔 흑백에 흔하다). 모든 성분에 따로 건다 (#650 Codex).
+  // Indexed 는 색 번호에 건다(기본 [0 2^bpc-1]). 기본값이면 건너뛴다
   const dec = doc.arr(d.get('Decode'))?.map((x) => num(doc.resolve(x)) ?? 0);
-  const invert = sp.gray && !!dec && dec[0] === 1 && dec[1] === 0;
+  const maxV = (1 << Math.min(bpc, 8)) - 1;
+  let remap: Uint8Array[] | null = null;
+  if (dec && dec.length >= sp.n * 2) {
+    const tables: Uint8Array[] = [];
+    let any = false;
+    for (let c = 0; c < sp.n; c++) {
+      const lo = dec[c * 2], hi = dec[c * 2 + 1];
+      const t = new Uint8Array(256);
+      for (let v = 0; v < 256; v++) {
+        if (sp.palette) { const idx = lo + (Math.min(v, maxV) * (hi - lo)) / maxV; t[v] = Math.max(0, Math.min(255, Math.round(idx))); }
+        else t[v] = Math.max(0, Math.min(255, Math.round((lo + (v / 255) * (hi - lo)) * 255)));
+        if (t[v] !== v) any = true;
+      }
+      tables.push(t);
+    }
+    if (any) remap = tables;
+  }
   // 투명도(SMask) — 같은 크기의 그림일 때만
   let mask: { data: Uint8Array; bpc: number; rowBytes: number } | null = null;
   const sm = doc.resolve(d.get('SMask'));
   if (sm instanceof PStream && num(doc.resolve(sm.dict.get('Width'))) === w && num(doc.resolve(sm.dict.get('Height'))) === h) {
     try {
-      const m = doc.imageStream(sm, MAX_RAW);
+      const m = doc.imageStream(sm, Math.max(1, Math.min(MAX_RAW, MAX_DECODE_RAW - budget.raw)));
+      budget.raw += m.data.length;
       const mb = num(doc.resolve(sm.dict.get('BitsPerComponent'))) ?? 8;
       const rb = Math.ceil((w * mb) / 8);
       if (!m.tail && [1, 2, 4, 8, 16].includes(mb) && m.data.length >= rb * h) mask = { data: m.data, bpc: mb, rowBytes: rb };
@@ -215,12 +245,13 @@ export function decodeImage(doc: PdfDoc, s: PStream, res: PDict | null = null): 
   const vals = new Uint8Array(per), alpha = new Uint8Array(w), row = new Uint8Array(w * ch);
   for (let y = 0; y < nh * k0; y++) {
     unpackRow(data, y * rowBytes, per, bpc, !sp.palette, vals);
+    if (remap) for (let i = 0; i < per; i++) vals[i] = remap[i % sp.n][vals[i]];
     if (mask) unpackRow(mask.data, y * mask.rowBytes, w, mask.bpc, true, alpha);
     for (let i = 0, o = 0; i < w; i++, o += ch) {
       if (sp.palette) { const c = vals[i] * 3; row[o] = sp.palette[c] ?? 0; row[o + 1] = sp.palette[c + 1] ?? 0; row[o + 2] = sp.palette[c + 2] ?? 0; }
       else if (sp.toRgb) sp.toRgb(vals, i * sp.n, row, o);
       else if (color) { row[o] = vals[i * 3]; row[o + 1] = vals[i * 3 + 1]; row[o + 2] = vals[i * 3 + 2]; }
-      else row[o] = invert ? 255 - vals[i] : vals[i];
+      else row[o] = vals[i];
       if (mask) row[o + ch - 1] = alpha[i];
     }
     if (k0 === 1) { px.set(row, y * w * ch); continue; }
@@ -257,6 +288,7 @@ export function extractPdfImages(doc: PdfDoc, pages: (PageText & { index: number
   const repeatAt = Math.max(3, Math.ceil(pages.length * 0.5));
   const cache = new Map<PStream, ReturnType<typeof decodeImage> | SkipImage>();
   let total = 0, opaque = 0;
+  const budget: DecodeBudget = { raw: 0, tries: 0 };
   for (const p of pages) {
     const seen = new Set<PStream>();
     const draws = [...(p.draws ?? [])].sort((a, b) => b.y1 - a.y1 || a.x0 - b.x0);
@@ -269,7 +301,9 @@ export function extractPdfImages(doc: PdfDoc, pages: (PageText & { index: number
       if (images.length >= MAX_IMAGES) { skipped.limit++; continue; }
       let got = cache.get(dr.s);
       if (!got) {
-        try { got = decodeImage(doc, dr.s, dr.res ?? null); } catch (e) {
+        // 결과 한도에 이미 닿았으면 풀지도 않는다
+        if (total >= MAX_IMAGES_BYTES) { skipped.limit++; continue; }
+        try { got = decodeImage(doc, dr.s, dr.res ?? null, budget); } catch (e) {
           got = e instanceof SkipImage ? e : new SkipImage(e instanceof PdfError && /너무 큽니다/.test(e.message) ? 'tooBig' : 'broken');
         }
         cache.set(dr.s, got);

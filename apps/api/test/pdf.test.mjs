@@ -19,7 +19,7 @@ import {
 import {
   buildPdfMap, cleanPdfTitle, dedupeRuns, joinLine, linesFromPages, pageLines, stripMargins, toBlocks,
 } from '../dist/mcp/pdf-map.js';
-import { encodePng, extractPdfImages } from '../dist/mcp/pdf-image.js';
+import { MAX_DECODE_RAW, MAX_DECODE_TRIES, SkipImage, decodeImage, encodePng, extractPdfImages } from '../dist/mcp/pdf-image.js';
 
 let failed = 0;
 function check(name, got, want) {
@@ -444,6 +444,15 @@ console.log('── 그림 → 노드 사진 (2026-10-17 사용자 요청: "그�
   check('TIFF 예측자 2 → 원래 화소', unpng(at(364).bytes).px.slice(0, 9 * 3).join(), [...orig.subarray(0, 27)].join());
   check('이름 붙은 색 공간 /CS0 → 쪽 Resources 의 ICCBased(N 3)', at(364) && xg.images.filter((i) => Math.round(i.top) === 364).length, 2);
   check('JPEG + SMask → 넣되 투명도 버린 수를 셈', [at(180)?.mime, xg.opaque, xg.skipped.format], ['image/jpeg', 1, 0]);
+
+  // #650 Codex 2차 — /Decode 를 모든 성분에 · 풀기 예산(시도한 것까지)
+  const inv = multi([{ content: D('Iv', 0, 300, 64, 64), xobj: { Iv: 30 } }], [{ dict: '/Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Decode [1 0 1 0 1 0]', stream: orig, flate: true }]);
+  const ir = readPdf(inv);
+  const iimg = extractPdfImages(ir.doc, ir.pages).images[0];
+  check('RGB /Decode [1 0 1 0 1 0] → 세 성분 다 뒤집힘', unpng(iimg.bytes).px.slice(3, 6), [255 - orig[3], 255 - orig[4], 255 - orig[5]]);
+  const s0 = ir.pages[0].draws[0].s;
+  const why = (b) => { try { decodeImage(ir.doc, s0, null, b); return 'ok'; } catch (e) { return e instanceof SkipImage ? e.why : String(e); } };
+  check('풀기 예산 — 바이트·횟수가 차면 더 풀지 않는다', [why({ raw: MAX_DECODE_RAW, tries: 0 }), why({ raw: 0, tries: MAX_DECODE_TRIES }), why({ raw: 0, tries: 0 })], ['limit', 'limit', 'ok']);
 }
 
 console.log('── 통째로: 한 쪽 PDF → 맵');

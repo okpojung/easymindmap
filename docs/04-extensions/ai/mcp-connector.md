@@ -637,6 +637,14 @@ SELECT COUNT(*) AS ok FROM information_schema.tables
   2026-09-15 앱 전체에서 폐기됐다(AI 에게는 애초에 읽을 수 없는 덩어리였다).
 - **사진 바이트를 주지 않는다.** data URL 은 `files/img-N.png` 경로로
   바뀌고(직렬화기 규칙) 머리줄에 "사진 N장" 만 센다.
+- **저장소로 옮긴 사진도 보인다** (2026-10-17). 저장할 때 서버가 8KB 이상 data URL 사진을 첨부 저장소로 옮기고
+  문서에 **상대 경로** `/v1/attachments/<id>` 를 남긴다(`maps.service` `extractDocImages`). 직렬화기는 http(s)·data URL
+  만 알아 이 사진을 빠뜨렸다 — `import_pdf` 실측에서 그림 12장 중 5장만 보였다. 이제 `docToEmm(doc, { origin })` 이
+  사본에서 그 경로(사진 `image`·`images[]`, 첨부 `attachments[].url`)에 요청이 들어온 서버 주소(`PUBLIC_API_URL` 이 있으면
+  그것 — `requestOrigin`)를 붙여 `![…](https://api…/v1/attachments/<id>)` 로 보여 준다. 머리줄은 "사진 N장(files/ 경로
+  a장 · 저장소 주소 b장)". 직렬화기(코어·`packages/emm-parser` 공통)는 건드리지 않았다 — 서버 주소는 MCP 만 안다.
+  그 주소는 로그인해야 열리고, AI 가 이 본문을 `create_map` 으로 되돌리면 앱이 절대 주소도 우리 첨부로 알아본다
+  (`serverAttachmentId`) — 같은 사진이다. 단 그때 크기는 원격 사진처럼 자리표시(320×200)로 들어간다(남은 것).
 - **12만 자에서 자른다** (`GET_MAP_MAX_CHARS`). 잘랐으면 그 사실과 앱의
   [내보내기 ▸ Markdown] 안내를 붙인다. 페이지네이션은 필요해지면 그때.
 - **접근 판정은 `MapsService` 가 한다.** 남의 맵은 404 문장이 그대로

@@ -358,7 +358,7 @@ console.log('── 그림 → 노드 사진 (2026-10-17 사용자 요청: "그�
     const objs = ['<< /Type /Catalog /Pages 2 0 R >>', `<< /Type /Pages /Kids [${pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')}] /Count ${n} /MediaBox [0 0 600 800] >>`];
     pages.forEach((pg, i) => {
       const xo = Object.entries(pg.xobj ?? {}).map(([k, v]) => `/${k} ${v} 0 R`).join(' ');
-      objs.push(`<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 ${3 + n * 2} 0 R >> /XObject << ${xo} >> >> /Contents ${4 + i * 2} 0 R >>`);
+      objs.push(`<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 ${3 + n * 2} 0 R >> /XObject << ${xo} >> ${pg.res ?? ''} >> /Contents ${4 + i * 2} 0 R >>`);
       objs.push({ dict: '', stream: lat(pg.content), flate: true });
     });
     objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [' + new Array(95).fill(500).join(' ') + '] >>');
@@ -423,6 +423,27 @@ console.log('── 그림 → 노드 사진 (2026-10-17 사용자 요청: "그�
   const bp = readPdf(big);
   const bi = extractPdfImages(bp.doc, bp.pages).images[0];
   check('2.5MB 넘는 그림 → 화소를 줄여 2.5MB 안으로', [bi.w, bi.h, bi.bytes.length <= 2_500_000], [600, 600, true]);
+
+  // #650 Codex — 큰 그림은 풀면서 줄임 · TIFF 예측자 2 · 이름 붙은 색 공간 · JPEG+SMask
+  const orig = rgb(16, 16, (x, y) => [x * 15, y * 15, (x + y) * 7]);
+  const diffed = Buffer.from(orig);
+  for (let y = 0; y < 16; y++) for (let x = 15; x >= 1; x--) for (let c = 0; c < 3; c++) diffed[(y * 16 + x) * 3 + c] = (orig[(y * 16 + x) * 3 + c] - orig[(y * 16 + x - 1) * 3 + c]) & 255;
+  const ext = [
+    { dict: '/Type /XObject /Subtype /Image /Width 2400 /Height 2000 /ColorSpace /DeviceGray /BitsPerComponent 8', stream: Buffer.alloc(2400 * 2000, 77), flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceRGB /BitsPerComponent 8 /DecodeParms << /Predictor 2 /Colors 3 /BitsPerComponent 8 /Columns 16 >>', stream: diffed, flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /CS0 /BitsPerComponent 8', stream: orig, flate: true },
+    { dict: '/N 3 /Alternate /DeviceRGB', stream: Buffer.alloc(10), flate: false },
+    { dict: '/Type /XObject /Subtype /Image /Width 100 /Height 80 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /SMask 35 0 R', stream: jpeg, flate: false },
+    { dict: '/Type /XObject /Subtype /Image /Width 100 /Height 80 /ColorSpace /DeviceGray /BitsPerComponent 8', stream: Buffer.alloc(8000, 255), flate: true },
+  ];
+  const xp = multi([{ content: D('Big', 0, 400, 300, 250) + D('Pr', 0, 300, 64, 64) + D('Nm', 100, 300, 64, 64) + D('Js', 200, 100, 100, 80), xobj: { Big: 30, Pr: 31, Nm: 32, Js: 34 }, res: '/ColorSpace << /CS0 [/ICCBased 33 0 R] >>' }], ext);
+  const xr = readPdf(xp);
+  const xg = extractPdfImages(xr.doc, xr.pages);
+  check('400만 화소 넘는 그림 → 풀면서 줄임(2400×2000 → 1200×1000)', xg.images.map((i) => [i.w, i.h])[0], [1200, 1000]);
+  const at = (top) => xg.images.find((i) => Math.round(i.top) === top);
+  check('TIFF 예측자 2 → 원래 화소', unpng(at(364).bytes).px.slice(0, 9 * 3).join(), [...orig.subarray(0, 27)].join());
+  check('이름 붙은 색 공간 /CS0 → 쪽 Resources 의 ICCBased(N 3)', at(364) && xg.images.filter((i) => Math.round(i.top) === 364).length, 2);
+  check('JPEG + SMask → 넣되 투명도 버린 수를 셈', [at(180)?.mime, xg.opaque, xg.skipped.format], ['image/jpeg', 1, 0]);
 }
 
 console.log('── 통째로: 한 쪽 PDF → 맵');

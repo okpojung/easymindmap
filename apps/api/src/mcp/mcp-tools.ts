@@ -1670,6 +1670,7 @@ function pdfImagesNote(put: number, pics: PdfImagesResult | null, off: boolean):
   if (!put && !why.length) return deco ? `그림: 아이콘·로고 같은 장식 ${deco}개는 넣지 않았습니다.\n` : '';
   return `그림 ${put}장은 글로 옮기지 않고 그 자리에 노드 사진("그림 (p.N)")으로 붙였습니다(그림 속 글자는 읽지 않음)` +
     (deco ? ` · 아이콘·로고 같은 장식 ${deco}개는 뺐습니다` : '') +
+    (pics.opaque ? ` · 투명 배경이 있는 JPEG ${pics.opaque}장은 배경을 채운 채 넣었습니다` : '') +
     (why.length ? ` · 넣지 못한 그림: ${why.join(', ')}` : '') + '.\n';
 }
 

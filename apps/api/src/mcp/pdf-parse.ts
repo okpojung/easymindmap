@@ -216,12 +216,22 @@ function inflate(data: Uint8Array, cap: number): Uint8Array {
   throw new PdfError('압축된 스트림을 풀지 못했습니다(Flate).');
 }
 
+/** TIFF 예측자 2 — 같은 줄의 왼쪽 화소와의 차이로 적힌 값을 되돌린다(8비트 성분만; 그 밖은 그대로) (#650 Codex) */
+function tiffPredict(data: Uint8Array, colors: number, bpc: number, cols: number): Uint8Array {
+  if (bpc !== 8) return data;
+  const row = colors * cols;
+  const out = Uint8Array.from(data);
+  for (let r = 0; r + row <= out.length; r += row) for (let i = colors; i < row; i++) out[r + i] = (out[r + i] + out[r + i - colors]) & 255;
+  return out;
+}
+
 function pngPredict(data: Uint8Array, parms: PDict | null): Uint8Array {
   const pred = num(parms?.get('Predictor')) ?? 1;
-  if (pred < 10) return data;
   const colors = num(parms?.get('Colors')) ?? 1;
   const bpc = num(parms?.get('BitsPerComponent')) ?? 8;
   const cols = num(parms?.get('Columns')) ?? 1;
+  if (pred === 2) return tiffPredict(data, colors, bpc, cols);
+  if (pred < 10) return data;
   const bpp = Math.max(1, Math.ceil((colors * bpc) / 8));
   const row = Math.ceil((colors * bpc * cols) / 8);
   const out = new Uint8Array(Math.floor(data.length / (row + 1)) * row);
@@ -991,7 +1001,7 @@ export interface PageText {
 }
 
 /** 쪽에 그린 그림 하나 — 단위 정사각형을 그때의 CTM 으로 옮긴 상자(쪽 좌표, y 는 위로 큼) */
-export interface ImageDraw { x0: number; y0: number; x1: number; y1: number; s: PStream }
+export interface ImageDraw { x0: number; y0: number; x1: number; y1: number; s: PStream; /** 그린 자리의 Resources — `/ColorSpace /CS0` 같은 이름을 푼다 */ res?: PDict | null }
 /** 쪽 하나에서 기록하는 그림 상한 — 무늬처럼 같은 그림을 수천 번 찍는 PDF 방어 */
 const MAX_DRAWS_PAGE = 500;
 
@@ -1118,7 +1128,7 @@ function run(doc: PdfDoc, data: Uint8Array, res: PDict | null, gs0: GState, out:
           const [a0, b0, c0, d0, e0, f0] = gs.ctm;
           const xs = [e0, a0 + e0, c0 + e0, a0 + c0 + e0], ys = [f0, b0 + f0, d0 + f0, b0 + d0 + f0];
           const draws = (out.draws ??= []);
-          if (draws.length < MAX_DRAWS_PAGE) draws.push({ x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), s: xo });
+          if (draws.length < MAX_DRAWS_PAGE) draws.push({ x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), s: xo, res });
         } else if (xo instanceof PStream && name(xo.dict.get('Subtype')) === 'Form' && depth < 10 && !forms.has(xo)) {
           const m = (doc.arr(xo.dict.get('Matrix')) ?? IDENT).map((x) => num(doc.resolve(x)) ?? 0) as Mat;
           forms.add(xo);

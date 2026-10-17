@@ -1382,8 +1382,10 @@ PDF 한 장 통째로. JSON-RPC 시험은 도구 열하나·힌트. **dev 에서
 - `pdf-parse.ts` 의 `Do` 가 이미지 XObject 를 그린 자리(단위 정사각형을 CTM 으로 옮긴 상자)를 `PageText.draws` 에 적는다(쪽당 500,
   스텐실 `ImageMask` 는 안 적음). `pdf-image.ts` 가 꺼낸다: DCT 는 바이트 그대로 JPEG, 그 밖은 화소를 풀어 PNG(노드 `zlib`, CRC 직접) —
   Gray·RGB·CMYK(→RGB)·Cal*·ICCBased(N)·Indexed, 1·2·4·8·16비트, `Decode [1 0]`, SMask(투명도). JPX·JBIG2·CCITT·Lab·Separation 은 건너뛰고 센다.
-- 그림 해석은 **글 읽기 예산과 따로**(`PdfDoc.imageStream` — 캐시·`overBudget` 없음, 그림 하나 96MB·4천만 화소) — 큰 사진 하나로 PDF 를
-  거절하지 않는다. 사진 한 장 2.5MB(앱과 같음) — PNG 가 넘으면 화소를 2·3…8배 줄여 맞추고, JPEG 가 넘으면 건너뛴다. 맵 하나 100장·40MB.
+- 그림 해석은 **글 읽기 예산과 따로**(`PdfDoc.imageStream` — 캐시·`overBudget` 없음, 그림 하나 64MB·4천만 화소) — 큰 사진 하나로 PDF 를
+  거절하지 않는다. 400만 화소를 넘으면 **풀면서 바로** 줄인다(한 줄씩 펼쳐 상자 평균 — 펼친 버퍼가 수백 MB 가 되지 않게, #650 Codex).
+  이름 붙은 색 공간(`/CS0`)은 그린 자리의 Resources 에서 풀고, Flate·LZW 의 TIFF 예측자 2 도 되돌린다(#650 Codex).
+  JPEG 에 SMask 가 있으면 투명도는 버리고 넣는다(JPEG 디코더가 없다 — 그림을 통째로 빼는 것보다 낫다고 판단, 결과에 수를 알림). 사진 한 장 2.5MB(앱과 같음) — PNG 가 넘으면 화소를 2·3…8배 줄여 맞추고, JPEG 가 넘으면 건너뛴다. 맵 하나 100장·40MB.
 - 장식은 뺀다: 그린 상자 24pt·화소 16 미만(아이콘·글머리표), 읽은 쪽 절반(3쪽) 이상에 되풀이(로고·배경), 같은 쪽의 같은 그림.
 - `pdf-map.ts` 가 쪽·위 가장자리 순으로 본문 차례 사이에 끼운다 — `그림 (p.N)` 노드의 `images[]`(표시 폭 640, `afterLine:1`). 쪽마다
   가지일 때 글 없는 쪽의 그림은 그 쪽 가지를 만든다. data URL 로 넣으면 저장 때 서버가 첨부 저장소로 옮긴다(`maps/doc-images.ts`).

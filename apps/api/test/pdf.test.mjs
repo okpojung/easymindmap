@@ -11,13 +11,15 @@
 //
 // 설계: docs/04-extensions/ai/mcp-connector.md §9.17
 
-import { deflateSync } from 'zlib';
+import { deflateSync, inflateSync } from 'zlib';
+import { randomBytes } from 'crypto';
 import {
   Lexer, MAX_DOC_DECODED, MAX_RUNS_PAGE, MAX_SHOW_BYTES_PAGE, MAX_STREAM_DECODED, PStr, PName, PRef, PdfDoc, PdfError, readPdf, decodeTextString, glyphToUnicode, parseCMap, parsePageRange,
 } from '../dist/mcp/pdf-parse.js';
 import {
   buildPdfMap, cleanPdfTitle, dedupeRuns, joinLine, linesFromPages, pageLines, stripMargins, toBlocks,
 } from '../dist/mcp/pdf-map.js';
+import { encodePng, extractPdfImages } from '../dist/mcp/pdf-image.js';
 
 let failed = 0;
 function check(name, got, want) {
@@ -330,6 +332,99 @@ console.log('── #642 Codex 리뷰 — 압축 폭탄 · 뒤에 오는 간접 
   ] }, 0);
   check('줄 끝 빈칸 글자 → trail', pl.map((l) => [l.text, Boolean(l.trail)]), [['학습자는', true], ['가능성', false]]);
 }
+console.log('── 그림 → 노드 사진 (2026-10-17 사용자 요청: "그림일 때는 이미지로 첨부해 줘")');
+{
+  // PNG 를 풀어 화소를 돌려준다(필터 0 만 — 우리 인코더가 쓰는 것)
+  const unpng = (b) => {
+    const buf = Buffer.from(b);
+    let o = 8, w = 0, h = 0, ct = 0; const idat = [];
+    while (o < buf.length) {
+      const len = buf.readUInt32BE(o), type = buf.toString('latin1', o + 4, o + 8), data = buf.subarray(o + 8, o + 8 + len);
+      if (type === 'IHDR') { w = data.readUInt32BE(0); h = data.readUInt32BE(4); ct = data[9]; }
+      if (type === 'IDAT') idat.push(data);
+      o += 12 + len;
+    }
+    const ch = { 0: 1, 4: 2, 2: 3, 6: 4 }[ct];
+    const raw = inflateSync(Buffer.concat(idat));
+    const px = [];
+    for (let y = 0; y < h; y++) px.push(...raw.subarray(y * (w * ch + 1) + 1, (y + 1) * (w * ch + 1)));
+    return { w, h, ch, px };
+  };
+  check('PNG 인코더 — 풀면 같은 화소', unpng(encodePng(2, 2, 3, Uint8Array.from([255, 0, 0, 0, 255, 0, 0, 0, 255, 9, 9, 9]))), { w: 2, h: 2, ch: 3, px: [255, 0, 0, 0, 255, 0, 0, 0, 255, 9, 9, 9] });
+
+  /** 여러 쪽 PDF — pages[i] = { content, xobj: { Im1: n, … } }, extra = 객체(10번부터) */
+  const multi = (pages, extra) => {
+    const n = pages.length;
+    const objs = ['<< /Type /Catalog /Pages 2 0 R >>', `<< /Type /Pages /Kids [${pages.map((_, i) => `${3 + i * 2} 0 R`).join(' ')}] /Count ${n} /MediaBox [0 0 600 800] >>`];
+    pages.forEach((pg, i) => {
+      const xo = Object.entries(pg.xobj ?? {}).map(([k, v]) => `/${k} ${v} 0 R`).join(' ');
+      objs.push(`<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 ${3 + n * 2} 0 R >> /XObject << ${xo} >> >> /Contents ${4 + i * 2} 0 R >>`);
+      objs.push({ dict: '', stream: lat(pg.content), flate: true });
+    });
+    objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 126 /Widths [' + new Array(95).fill(500).join(' ') + '] >>');
+    while (objs.length < 29) objs.push('null');
+    return buildPdf([...objs, ...extra]);
+  };
+  const rgb = (w, h, f) => { const b = Buffer.alloc(w * h * 3); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) b.set(f(x, y), (y * w + x) * 3); return b; };
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 7), Buffer.from([0xff, 0xd9])]);
+  const pic = rgb(40, 30, (x, y) => [x * 6, y * 8, 100]);
+  // 객체 30~: 30 RGB Flate · 11 JPEG · 12 아이콘(작음) · 13 로고(되풀이) · 14 JPX · 15 Indexed 1비트 · 16 회색+Decode 뒤집기 · 17 SMask · 18 투명 RGB · 19 스텐실
+  const extra = [
+    { dict: '/Type /XObject /Subtype /Image /Width 40 /Height 30 /ColorSpace /DeviceRGB /BitsPerComponent 8', stream: pic, flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 100 /Height 80 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode', stream: jpeg, flate: false },
+    { dict: '/Type /XObject /Subtype /Image /Width 8 /Height 8 /ColorSpace /DeviceGray /BitsPerComponent 8', stream: Buffer.alloc(64, 128), flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 50 /Height 50 /ColorSpace /DeviceGray /BitsPerComponent 8', stream: Buffer.alloc(2500, 90), flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 50 /Height 50 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /JPXDecode', stream: Buffer.alloc(100, 1), flate: false },
+    { dict: '/Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace [/Indexed /DeviceRGB 1 <FF000000FF00>] /BitsPerComponent 1', stream: Buffer.from(Array(16).fill([0xf0, 0x0f]).flat()), flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceGray /BitsPerComponent 8 /Decode [1 0]', stream: Buffer.alloc(256, 10), flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceGray /BitsPerComponent 8', stream: Buffer.alloc(256, 200), flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceRGB /BitsPerComponent 8 /SMask 37 0 R', stream: Buffer.alloc(768, 50), flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 32 /Height 32 /ImageMask true /BitsPerComponent 1', stream: Buffer.alloc(128, 0), flate: true },
+  ];
+  const T = (y, s) => `BT /F1 10 Tf 72 ${y} Td (${s}) Tj ET `;
+  const D = (name, x, y, w, h) => `q ${w} 0 0 ${h} ${x} ${y} cm /${name} Do Q `;
+  const pdf = multi([
+    { content: T(760, 'Intro text.') + T(746, 'More intro.') + T(732, 'End intro.') + D('Im1', 72, 600, 200, 150) + T(560, 'Caption below.') + D('Ico', 72, 540, 10, 10) + D('Logo', 500, 760, 40, 40) + D('Msk', 300, 300, 50, 50), xobj: { Im1: 30, Ico: 32, Logo: 33, Msk: 39 } },
+    { content: D('Jp', 72, 400, 200, 160) + D('Logo', 500, 760, 40, 40) + D('Jx', 72, 100, 100, 100), xobj: { Jp: 31, Logo: 33, Jx: 34 } },
+    { content: T(760, 'Third page.') + D('Ix', 72, 600, 160, 40) + D('Gr', 300, 600, 64, 64) + D('Al', 400, 600, 64, 64) + D('Logo', 500, 760, 40, 40) + D('Im1', 72, 300, 100, 75) + D('Im1', 300, 300, 100, 75), xobj: { Ix: 35, Gr: 36, Al: 38, Logo: 33, Im1: 30 } },
+    { content: T(760, 'Last page.'), xobj: {} },
+  ], extra);
+  const pr = readPdf(pdf);
+  check('그림 자리 기록 — 스텐실 마스크는 안 셈', pr.pages.map((p) => (p.draws ?? []).length), [3, 3, 6, 0]);
+  const got = extractPdfImages(pr.doc, pr.pages);
+  check('고른 그림 — 쪽·위치·형식·크기', got.images.map((i) => [i.page, Math.round(i.top), i.mime, i.w, i.h]),
+    [[0, 750, 'image/png', 40, 30], [1, 560, 'image/jpeg', 100, 80], [2, 664, 'image/png', 16, 16], [2, 664, 'image/png', 16, 16], [2, 640, 'image/png', 16, 16], [2, 375, 'image/png', 40, 30]]
+      .sort((a, b) => a[0] - b[0] || b[1] - a[1]));
+  check('뺀 그림 — 작음 1 · 되풀이 로고 3 · JPX 1', got.skipped, { small: 1, repeated: 3, format: 1, tooBig: 0, limit: 0, broken: 0 });
+  const byPage = (pg, w) => got.images.find((i) => i.page === pg && i.w === w);
+  check('RGB Flate → PNG 화소 그대로', unpng(byPage(0, 40).bytes).px.slice(0, 6), [...pic.subarray(0, 6)]);
+  check('JPEG 는 바이트 그대로', Buffer.from(byPage(1, 100).bytes).equals(jpeg), true);
+  const ix = got.images.find((i) => i.page === 2 && Math.round(i.top) === 640);
+  check('Indexed 1비트 → 팔레트 색', unpng(ix.bytes).px.slice(0, 3 * 5), [0, 255, 0, 0, 255, 0, 0, 255, 0, 0, 255, 0, 255, 0, 0]);
+  const two = got.images.filter((i) => i.page === 2 && Math.round(i.top) === 664).map((i) => unpng(i.bytes));
+  check('회색 Decode [1 0] 뒤집기 · SMask → 투명도', two.map((u) => [u.ch, u.px.slice(0, u.ch)]).sort(), [[1, [245]], [4, [50, 50, 50, 200]]].sort());
+  check('같은 쪽에 같은 그림 두 번 → 한 번만', got.images.filter((i) => i.page === 2 && i.w === 40).length, 1);
+
+  // 맵 — 그림은 위치대로 본문 사이에, 노드 사진으로. 글 없는 쪽의 그림은 그 쪽 가지
+  const wl = linesFromPages(pr.pages);
+  const m = buildPdfMap({ title: 'T', fileName: 'g.pdf', pageCount: 4, pages: wl.pages, outline: [], fetchedAt: 'T', source: 's', images: got.images });
+  const tree2 = (ns) => ns.map((n) => n.images ? `[${n.text}|${n.images[0].src.slice(0, 15)}|${n.images[0].w}x${n.images[0].h}|${n.images[0].afterLine}]` : n.children ? [n.text, tree2(n.children)] : n.text);
+  check('맵 — 쪽 가지 안에서 그림이 글 사이 제자리 · 글 없는 쪽(p.2)도 가지', tree2(m.map.branches), [
+    ['p.1', ['Intro text. More intro. End intro.', '[그림 (p.1)|data:image/png;|40x30|1]', 'Caption below.']],
+    ['p.2', ['[그림 (p.2)|data:image/jpeg|100x80|1]']],
+    ['p.3', ['Third page.', '[그림 (p.3)|data:image/png;|16x16|1]', '[그림 (p.3)|data:image/png;|16x16|1]', '[그림 (p.3)|data:image/png;|16x16|1]', '[그림 (p.3)|data:image/png;|40x30|1]']],
+    ['p.4', ['Last page.']],
+  ]);
+  check('맵 결과 — 그림 수 · 글자 수는 글만', [m.images, m.charsInMap], [6, 'Intro text. More intro. End intro.Caption below.Third page.Last page.'.length + 'p.1p.2p.3p.4'.length]);
+
+  // 큰 그림 — 2.5MB 를 넘는 PNG 는 화소를 줄여 맞춘다
+  const noise = randomBytes(1200 * 1200 * 3);
+  const big = multi([{ content: D('Bg', 0, 0, 600, 600), xobj: { Bg: 30 } }], [{ dict: '/Type /XObject /Subtype /Image /Width 1200 /Height 1200 /ColorSpace /DeviceRGB /BitsPerComponent 8', stream: noise, flate: true }]);
+  const bp = readPdf(big);
+  const bi = extractPdfImages(bp.doc, bp.pages).images[0];
+  check('2.5MB 넘는 그림 → 화소를 줄여 2.5MB 안으로', [bi.w, bi.h, bi.bytes.length <= 2_500_000], [600, 600, true]);
+}
+
 console.log('── 통째로: 한 쪽 PDF → 맵');
 const whole = onePage(`BT /F2 24 Tf 72 740 Td <${KOENC('책갈피제목')}> Tj ET
 BT /F2 10 Tf 72 700 Td <${KOENC('본문글자')}> Tj 0 -14 Td <${KOENC('맵')}> Tj ET

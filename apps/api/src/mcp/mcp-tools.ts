@@ -23,6 +23,7 @@ import { AttachmentsService } from '../attachments/attachments.service';
 import { BlockedUrlError, RemoteFetchError, fetchRemotePdf } from '../attachments/remote-image';
 import { PdfError, readPdf } from './pdf-parse';
 import { buildPdfMap, cleanPdfTitle, linesFromPages, type Structure } from './pdf-map';
+import { extractPdfImages, type PdfImagesResult } from './pdf-image';
 import {
   YoutubeClient, YoutubeError, buildTranscript, formatTranscriptResult, parseChapters, parseStartParam, parseVideoId, pickTrack,
 } from './youtube';
@@ -374,6 +375,7 @@ export const TOOL_DEFS: McpToolDef[] = [
     description:
       'PDF 파일을 읽어 **새 맵 하나**로 만든다. **요약하지 않는다 — PDF 의 글을 모두 담고**, 책갈피(없으면 글자 크기·번호 꼴, 그것도 없으면 쪽)로 ' +
       '제목 가지를 만들고 문단·목록 항목을 그 아래 노드로 둔다(목록은 들여쓰기 단계대로). 빼는 것은 반복 머리글·바닥글·쪽 번호와 겹쳐 그린 글자뿐이고 결과에 양을 알린다. ' +
+      'PDF 의 **그림(사진·구성도)은 글로 옮기지 않고 그 자리에 노드 사진("그림 (p.4)")으로 붙인다** — 그림 속 글자를 읽어 적지 않는다. ' +
       '사용자가 "이 PDF 를 맵으로 만들어 줘" · "첨부한 PDF 를 emm 맵으로" 라고 하면 이것을 부른다 — 대화에서 직접 요약해 create_map 을 부르지 않는다. ' +
       'PDF 를 넘기는 길은 셋: ① **EasyMindMap 에 첨부한 PDF** — attachment 에 get_map 에 보이는 첨부 주소(…/v1/attachments/<id>)·id, 또는 map_id(+node)와 파일 이름. ' +
       'map_id 만 주면 그 맵(node 를 주면 그 노드 아래)의 PDF 첨부가 하나일 때 그것. ② url — 인터넷의 PDF 주소. ③ data_base64 — 파일을 직접 읽을 수 있을 때(예: Claude Code 가 로컬 파일을 읽어) PDF 바이트를 base64 로(약 18MB 까지). ' +
@@ -393,6 +395,7 @@ export const TOOL_DEFS: McpToolDef[] = [
         pages: { type: 'string', description: '쪽 범위 "1-20,25" · "30-". 비우면 전부.' },
         structure: { type: 'string', enum: ['auto', 'outline', 'fontsize', 'numbering', 'pages'], description: '가지를 나누는 기준. auto(기본) = 책갈피 → 글자 크기 → 번호 꼴 → 쪽.' },
         long_text_to_note: { type: 'integer', minimum: 1, description: '이 글자 수 이상 문단은 노드가 아니라 그 제목 노드의 노트(문단)로 — 글은 그대로 다 담긴다. 비우면 모든 문단이 노드.' },
+        images: { type: 'boolean', description: 'PDF 의 그림(사진·구성도 등)을 노드 사진으로 넣는다(기본 true). false 면 그림을 뺀다. 그림 속 글자는 읽지 않는다.' },
       },
     },
   },
@@ -1576,6 +1579,7 @@ export class McpToolsService {
     const structure = (['auto', 'outline', 'fontsize', 'numbering', 'pages'].includes(String(args.structure)) ? args.structure : 'auto') as Structure;
     const longN = Number(args.long_text_to_note) > 0 ? Math.floor(Number(args.long_text_to_note)) : 0;
     let parsed, lines, built;
+    let pics: PdfImagesResult | null = null;
     try {
       parsed = readPdf(src.bytes, { pages, maxPages: McpToolsService.PDF_MAX_PAGES });
       lines = linesFromPages(parsed.pages);
@@ -1583,10 +1587,18 @@ export class McpToolsService {
       if (total < Math.max(20, parsed.pages.length * 5)) {
         return text(`"${src.name}" 에서 글자를 거의 찾지 못했습니다(${parsed.pages.length}쪽에 ${total}자) — 스캔한 그림 PDF 인 것 같습니다. 이 도구는 OCR(그림 속 글자 읽기)을 하지 않습니다. 글자가 들어 있는 PDF 나 OCR 한 PDF 를 주세요.`, true);
       }
+      // 그림 — 글로 옮기지 않고 노드 사진으로 (2026-10-17). 꺼내다 실패해도 글은 그대로 만든다
+      if (args.images !== false) {
+        try { pics = extractPdfImages(parsed.doc, parsed.pages); } catch (err) {
+          this.log.warn(`MCP import_pdf 그림 꺼내기 실패 (${src.name})`, err as Error);
+          pics = null;
+        }
+      }
       built = buildPdfMap({
         title: (typeof args.title === 'string' && args.title.trim()) || cleanPdfTitle(parsed.title),
         fileName: src.name, pageCount: parsed.pageCount, pages: lines.pages, outline: parsed.outline,
         structure, longTextToNote: longN, fetchedAt: new Date().toISOString(), source: src.source,
+        images: pics?.images ?? [],
       });
     } catch (err) {
       if (err instanceof PdfError) return text(`"${src.name}" 을 읽지 못했습니다 — ${err.message}`, true);
@@ -1633,6 +1645,7 @@ export class McpToolsService {
       `요약하지 않고 글 ${built.charsInMap.toLocaleString('en-US')}자를 모두 담았습니다` +
       (margin.length ? ` (반복 머리글·바닥글·쪽 번호 ${margin.length}줄 ${marginChars}자는 뺐습니다)` : '') +
       (lines.droppedDup ? ` · 겹쳐 그린 글자 ${lines.droppedDup}자는 한 번만 넣었습니다` : '') + '.\n' +
+      pdfImagesNote(built.images, pics, args.images === false) +
       (lines.emptyPages.length ? `글자가 없는 쪽(그림·스캔일 수 있음 — OCR 하지 않음): ${lines.emptyPages.slice(0, 20).join(', ')}${lines.emptyPages.length > 20 ? ' …' : ''}\n` : '') +
       (unknown ? `글꼴 정보가 없어 읽지 못한 글자 ${unknown}개가 있습니다(빠졌을 수 있음).\n` : '') +
       (longN ? `${longN}자 이상 문단은 제목 노드의 노트에 넣었습니다.\n` : '') +
@@ -1640,6 +1653,24 @@ export class McpToolsService {
     );
   }
 
+}
+
+/** import_pdf 결과의 그림 한 줄 — 넣은 수와 뺀 까닭 */
+function pdfImagesNote(put: number, pics: PdfImagesResult | null, off: boolean): string {
+  if (off) return '그림은 빼고 만들었습니다(images:false).\n';
+  if (!pics) return '';
+  const s = pics.skipped;
+  const why = [
+    s.format ? `형식(JPEG 2000·JBIG2·팩스 등) ${s.format}장` : '',
+    s.tooBig ? `너무 큼 ${s.tooBig}장` : '',
+    s.limit ? `맵 한도(${100}장·40MB) 넘음 ${s.limit}장` : '',
+    s.broken ? `깨짐 ${s.broken}장` : '',
+  ].filter(Boolean);
+  const deco = s.small + s.repeated;
+  if (!put && !why.length) return deco ? `그림: 아이콘·로고 같은 장식 ${deco}개는 넣지 않았습니다.\n` : '';
+  return `그림 ${put}장은 글로 옮기지 않고 그 자리에 노드 사진("그림 (p.N)")으로 붙였습니다(그림 속 글자는 읽지 않음)` +
+    (deco ? ` · 아이콘·로고 같은 장식 ${deco}개는 뺐습니다` : '') +
+    (why.length ? ` · 넣지 못한 그림: ${why.join(', ')}` : '') + '.\n';
 }
 
 /** 맵을 바꾼 도구가 끝에 붙이는 안내 — 열어 둔 앱 화면·되돌리기 (§9.8) */

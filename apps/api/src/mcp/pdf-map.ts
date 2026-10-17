@@ -16,6 +16,7 @@
 import type { MindNode, NoteBlock, SampleMap } from '../emm/model';
 import { decorateBranches, IdGen } from './github-docs';
 import type { OutlineItem, PageText, Run } from './pdf-parse';
+import type { PdfImage } from './pdf-image';
 
 export type Structure = 'auto' | 'outline' | 'fontsize' | 'numbering' | 'pages';
 
@@ -330,7 +331,12 @@ export interface PdfMapInput {
   longTextToNote?: number;
   fetchedAt: string;
   source: string;
+  /** PDF 의 그림 — 글로 옮기지 않고 노드 사진으로 본문 차례 사이에 끼운다 (2026-10-17, `pdf-image.ts`) */
+  images?: PdfImage[];
 }
+
+/** 그림 노드의 표시 폭 상한 — `image-size.ts` 의 MAX_DISPLAY_W 와 같다 */
+const IMAGE_DISPLAY_W = 640;
 
 export interface PdfMapResult {
   map: SampleMap;
@@ -339,6 +345,8 @@ export interface PdfMapResult {
   paragraphs: number;
   nodes: number;
   charsInMap: number;
+  /** 사진으로 넣은 그림 수 */
+  images: number;
 }
 
 function normTitle(s: string): string { return s.replace(/[\s.．·:\-–—]/g, '').toLowerCase(); }
@@ -382,15 +390,15 @@ export function buildPdfMap(inp: PdfMapInput, ids = new IdGen()): PdfMapResult {
   }
 
   // 차례대로 펼친 항목 — 제목(단계) 또는 본문 문단
-  type Item = { kind: 'h'; level: number; title: string; page: number } | { kind: 'p'; block: Block };
-  const items: Item[] = [];
+  type Item = { kind: 'h'; level: number; title: string; page: number; y?: number } | { kind: 'p'; block: Block } | { kind: 'i'; img: PdfImage };
+  let items: Item[] = [];
   if (used === 'outline') {
     // 책갈피 차례(= 문서 차례)를 지키고, 본문 위치로 끼워 넣는다
     let hi = 0;
     const pending = [...outlineHeads];
     const before = (h: Heading, b: Block) => h.page < b.page || (h.page === b.page && (h.top === null || b.y <= h.top + b.size * 0.5));
     for (const b of blocks) {
-      while (hi < pending.length && before(pending[hi], b)) { const h = pending[hi++]; items.push({ kind: 'h', level: h.level, title: h.title, page: h.page }); }
+      while (hi < pending.length && before(pending[hi], b)) { const h = pending[hi++]; items.push({ kind: 'h', level: h.level, title: h.title, page: h.page, ...(h.top !== null ? { y: h.top } : {}) }); }
       // 책갈피 제목과 같은 줄은 제목의 메아리 — 본문에서 뺀다
       const last = [...items].reverse().find((x) => x.kind === 'h') as { kind: 'h'; title: string; page: number } | undefined;
       if (last && b.lines <= 2 && b.page - last.page <= 1 && normTitle(b.text).endsWith(normTitle(last.title)) && normTitle(b.text).length <= normTitle(last.title).length + 8) continue;
@@ -402,7 +410,7 @@ export function buildPdfMap(inp: PdfMapInput, ids = new IdGen()): PdfMapResult {
     for (const b of blocks) {
       if (b === bySize.cover) continue;
       const l = lv.get(b);
-      items.push(l ? { kind: 'h', level: l, title: b.text, page: b.page } : { kind: 'p', block: b });
+      items.push(l ? { kind: 'h', level: l, title: b.text, page: b.page, y: b.y } : { kind: 'p', block: b });
     }
   } else {
     let page = -1;
@@ -412,13 +420,38 @@ export function buildPdfMap(inp: PdfMapInput, ids = new IdGen()): PdfMapResult {
     }
   }
 
+  // 그림 — 쪽·위치(위 가장자리)대로 본문 차례 사이에 끼운다. 쪽마다 가지일 때 글 없는 쪽의 그림은 그 쪽 가지를 만든다
+  const imgs = [...(inp.images ?? [])].sort((a, b) => a.page - b.page || b.top - a.top);
+  if (imgs.length) {
+    const merged: Item[] = [];
+    let k = 0;
+    const before = (im: PdfImage, it: Item) => {
+      if (it.kind === 'i') return false;
+      const pg = it.kind === 'p' ? it.block.page : it.page;
+      const y = it.kind === 'p' ? it.block.y : it.y;
+      return im.page < pg || (im.page === pg && y !== undefined && im.top > y + 2);
+    };
+    let headPage = -1;
+    const pushImg = (im: PdfImage) => {
+      if (used === 'pages' && im.page !== headPage) { headPage = im.page; merged.push({ kind: 'h', level: 1, title: `p.${im.page + 1}`, page: im.page }); }
+      merged.push({ kind: 'i', img: im });
+    };
+    for (const it of items) {
+      while (k < imgs.length && before(imgs[k], it)) pushImg(imgs[k++]);
+      if (it.kind === 'h') { if (used === 'pages' && it.page === headPage) continue; headPage = it.page; }
+      merged.push(it);
+    }
+    while (k < imgs.length) pushImg(imgs[k++]);
+    items = merged;
+  }
+
   // 트리
   const root: MindNode = { id: 'root', text: '', children: [] };
   type Frame = { node: MindNode; level: number; first: number; last: number };
   const stack: Frame[] = [{ node: root, level: 0, first: -1, last: -1 }];
   const pageSpan = new Map<MindNode, [number, number]>();
   let front: MindNode | null = null;
-  let headings = 0, paragraphs = 0, chars = 0;
+  let headings = 0, paragraphs = 0, chars = 0, pictures = 0;
   const longN = inp.longTextToNote && inp.longTextToNote > 0 ? inp.longTextToNote : 0;
   // 목록 들여쓰기 — 제목 노드마다 (x0, 노드) 사다리
   let ladder: { x0: number; node: MindNode }[] = [];
@@ -436,12 +469,26 @@ export function buildPdfMap(inp: PdfMapInput, ids = new IdGen()): PdfMapResult {
       chars += it.title.length;
       continue;
     }
-    const b = it.block;
     let parent = stack[stack.length - 1].node;
     if (parent === root && anyHeading) {
       if (!front) { front = { id: ids.next('pdf'), text: '앞부분', children: [] }; root.children!.push(front); }
       parent = front;
     }
+    if (it.kind === 'i') {
+      const im = it.img;
+      for (const f of stack) touch(f.node, im.page);
+      if (parent === front) touch(front, im.page);
+      const r = Math.min(1, IMAGE_DISPLAY_W / Math.max(1, im.w));
+      const src = `data:${im.mime};base64,${Buffer.from(im.bytes).toString('base64')}`;
+      ladder = [];
+      parent.children!.push({
+        id: ids.next('pdf'), text: `그림 (p.${im.page + 1})`, children: [],
+        images: [{ src, w: Math.max(1, Math.round(im.w * r)), h: Math.max(1, Math.round(im.h * r)), afterLine: 1 }],
+      });
+      pictures++;
+      continue;
+    }
+    const b = it.block;
     for (const f of stack) touch(f.node, b.endPage);
     if (parent === front) touch(front, b.endPage);
     paragraphs++;
@@ -488,7 +535,7 @@ export function buildPdfMap(inp: PdfMapInput, ids = new IdGen()): PdfMapResult {
     } as SampleMap['root'],
     branches: branches as SampleMap['branches'],
   };
-  return { map, structureUsed: used, headings, paragraphs, nodes: 1 + count(branches), charsInMap: chars };
+  return { map, structureUsed: used, headings, paragraphs, nodes: 1 + count(branches), charsInMap: chars, images: pictures };
 }
 
 /** 문서 정보의 제목이 쓸 만한가 — "Microsoft Word - a.docx" · "untitled" · 파일 이름 꼴은 버린다 */

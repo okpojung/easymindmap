@@ -12,6 +12,8 @@
  *     단순 글꼴의 WinAnsi·MacRoman·Standard + Differences 글리프 이름, 글자 폭(/Widths·/W·/DW).
  *   · 내용 스트림 — 그래픽 상태(q Q cm)·글자 상태(Tf Tc Tw Tz TL Ts Tm Td TD T*)·Tj TJ ' " ·
  *     Form XObject(Do)·인라인 이미지 건너뛰기. 보이지 않는 글자(스캔 PDF 의 OCR 층)도 읽는다.
+ *   · 그림(이미지 XObject) — 글로 옮기지 않고 **그린 자리만** 적는다(`PageText.draws`). 꺼내서 PNG·JPEG 로
+ *     만드는 것은 `pdf-image.ts` (2026-10-17 사용자 요청: "그림일 때는 이미지로 첨부해 줘").
  *   · 책갈피(Outlines) — 제목·쪽·위치(/XYZ 의 top), 이름 있는 목적지(/Dests·Names 트리).
  * 못 하는 것: 암호 걸린 PDF(거절), 글자가 그림인 스캔 PDF(OCR 없음 — 쪽마다 "글자 없음"으로 알린다),
  *   ToUnicode 없는 Identity 글꼴(글자를 알 수 없음 — 센다).
@@ -214,12 +216,22 @@ function inflate(data: Uint8Array, cap: number): Uint8Array {
   throw new PdfError('압축된 스트림을 풀지 못했습니다(Flate).');
 }
 
+/** TIFF 예측자 2 — 같은 줄의 왼쪽 화소와의 차이로 적힌 값을 되돌린다(8비트 성분만; 그 밖은 그대로) (#650 Codex) */
+function tiffPredict(data: Uint8Array, colors: number, bpc: number, cols: number): Uint8Array {
+  if (bpc !== 8) return data;
+  const row = colors * cols;
+  const out = Uint8Array.from(data);
+  for (let r = 0; r + row <= out.length; r += row) for (let i = colors; i < row; i++) out[r + i] = (out[r + i] + out[r + i - colors]) & 255;
+  return out;
+}
+
 function pngPredict(data: Uint8Array, parms: PDict | null): Uint8Array {
   const pred = num(parms?.get('Predictor')) ?? 1;
-  if (pred < 10) return data;
   const colors = num(parms?.get('Colors')) ?? 1;
   const bpc = num(parms?.get('BitsPerComponent')) ?? 8;
   const cols = num(parms?.get('Columns')) ?? 1;
+  if (pred === 2) return tiffPredict(data, colors, bpc, cols);
+  if (pred < 10) return data;
   const bpp = Math.max(1, Math.ceil((colors * bpc) / 8));
   const row = Math.ceil((colors * bpc * cols) / 8);
   const out = new Uint8Array(Math.floor(data.length / (row + 1)) * row);
@@ -301,6 +313,11 @@ function lzw(d: Uint8Array, early = 1, cap = Infinity): Uint8Array {
   }
   return Uint8Array.from(out);
 }
+
+/** 그림 압축 필터 → 이름 (풀지 않는다) */
+const IMAGE_FILTERS = new Map([
+  ['DCTDecode', 'DCT'], ['DCT', 'DCT'], ['JPXDecode', 'JPX'], ['JBIG2Decode', 'JBIG2'], ['CCITTFaxDecode', 'CCITT'], ['CCF', 'CCITT'],
+]);
 
 // ── 문서 ─────────────────────────────────────────────────────────────
 
@@ -499,6 +516,41 @@ export class PdfDoc {
     if (this.decodedBytes >= MAX_DOC_DECODED) this.overBudget = true;
     this.decoded.set(s, d);
     return d;
+  }
+
+  /**
+   * 그림 스트림 풀기 (2026-10-17) — 글 읽기 예산(`overBudget`)과 **따로** 센다: 큰 사진 하나 때문에 PDF 전체를
+   * 거절하면 안 된다. 캐시하지 않는다(그림은 한 번 쓰고 버린다). 마지막 필터가 그림 압축(DCT·JPX·JBIG2·CCITT)이면
+   * 풀지 않고 그 이름을 `tail` 로 돌려준다 — JPEG 는 그 바이트가 곧 파일이다.
+   */
+  imageStream(s: PStream, cap: number): { data: Uint8Array; tail: string | null } {
+    const f = this.resolve(s.dict.get('Filter'));
+    const filters = (Array.isArray(f) ? f : f ? [f] : []).map((x) => name(this.resolve(x)) ?? '');
+    const p = this.resolve(s.dict.get('DecodeParms'));
+    const parms = Array.isArray(p) ? p.map((x) => this.dict(x)) : [p instanceof Map ? p : null];
+    let d: Uint8Array = s.raw;
+    let tail: string | null = null;
+    for (let i = 0; i < filters.length; i++) {
+      const fl = filters[i], pm = parms[i] ?? null;
+      if (IMAGE_FILTERS.has(fl)) {
+        if (i !== filters.length - 1) throw new PdfError(`그림 필터 ${fl} 뒤에 다른 필터가 있습니다`);
+        tail = IMAGE_FILTERS.get(fl)!;
+        break;
+      }
+      try {
+        if (fl === 'FlateDecode' || fl === 'Fl') d = pngPredict(inflate(d, cap), pm);
+        else if (fl === 'ASCIIHexDecode' || fl === 'AHx') d = asciiHex(d);
+        else if (fl === 'ASCII85Decode' || fl === 'A85') d = ascii85(d, cap);
+        else if (fl === 'RunLengthDecode' || fl === 'RL') d = runLength(d, cap);
+        else if (fl === 'LZWDecode' || fl === 'LZW') d = pngPredict(lzw(d, num(pm?.get('EarlyChange')) ?? 1, cap), pm);
+        else throw new PdfError(`지원하지 않는 필터: ${fl}`);
+      } catch (e) {
+        if (e instanceof PdfError && e.message === TOO_BIG().message) throw new PdfError('그림이 너무 큽니다');
+        throw e;
+      }
+      if (d.length > cap) throw new PdfError('그림이 너무 큽니다');
+    }
+    return { data: d, tail };
   }
 
   get root(): PDict | null { return this.dict(this.trailer.get('Root')); }
@@ -942,7 +994,16 @@ function codeLen(b: Uint8Array, i: number, ranges: CodeRange[]): number {
 /** 같은 글꼴·크기·기준선으로 한 번에 그려진 글자 조각 (쪽 좌표, y 는 위로 큼) */
 export interface Run { x0: number; x1: number; y: number; size: number; text: string; bold: boolean; rot: boolean }
 
-export interface PageText { width: number; height: number; runs: Run[]; unknownGlyphs: number; /** 그린 글자열 바이트 — 상한 셈 */ showBytes?: number }
+export interface PageText {
+  width: number; height: number; runs: Run[]; unknownGlyphs: number; /** 그린 글자열 바이트 — 상한 셈 */ showBytes?: number;
+  /** 그린 그림(이미지 XObject) — 쪽 좌표의 상자. 꺼내기는 `pdf-image.ts` (2026-10-17) */
+  draws?: ImageDraw[];
+}
+
+/** 쪽에 그린 그림 하나 — 단위 정사각형을 그때의 CTM 으로 옮긴 상자(쪽 좌표, y 는 위로 큼) */
+export interface ImageDraw { x0: number; y0: number; x1: number; y1: number; s: PStream; /** 그린 자리의 Resources — `/ColorSpace /CS0` 같은 이름을 푼다 */ res?: PDict | null }
+/** 쪽 하나에서 기록하는 그림 상한 — 무늬처럼 같은 그림을 수천 번 찍는 PDF 방어 */
+const MAX_DRAWS_PAGE = 500;
 
 type Mat = [number, number, number, number, number, number];
 const IDENT: Mat = [1, 0, 0, 1, 0, 0];
@@ -1062,7 +1123,13 @@ function run(doc: PdfDoc, data: Uint8Array, res: PDict | null, gs0: GState, out:
       case 'Do': {
         const nm = a[a.length - 1];
         const xo = nm instanceof PName ? doc.resolve(xobjs?.get(nm.name)) : null;
-        if (xo instanceof PStream && name(xo.dict.get('Subtype')) === 'Form' && depth < 10 && !forms.has(xo)) {
+        if (xo instanceof PStream && name(xo.dict.get('Subtype')) === 'Image' && doc.resolve(xo.dict.get('ImageMask')) !== true) {
+          // 그림 — 글로 옮기지 않고 자리만 적어 둔다(꺼내기는 pdf-image.ts). 단위 정사각형의 네 모서리를 옮긴다
+          const [a0, b0, c0, d0, e0, f0] = gs.ctm;
+          const xs = [e0, a0 + e0, c0 + e0, a0 + c0 + e0], ys = [f0, b0 + f0, d0 + f0, b0 + d0 + f0];
+          const draws = (out.draws ??= []);
+          if (draws.length < MAX_DRAWS_PAGE) draws.push({ x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), s: xo, res });
+        } else if (xo instanceof PStream && name(xo.dict.get('Subtype')) === 'Form' && depth < 10 && !forms.has(xo)) {
           const m = (doc.arr(xo.dict.get('Matrix')) ?? IDENT).map((x) => num(doc.resolve(x)) ?? 0) as Mat;
           forms.add(xo);
           try { run(doc, doc.stream(xo), doc.dict(xo.dict.get('Resources')) ?? res, { ...gs, ctm: mul(m.length === 6 ? m : IDENT, gs.ctm) }, out, depth + 1, forms); } catch { /* 깨진 폼은 건너뛴다 */ }
@@ -1102,6 +1169,8 @@ export function parsePageRange(s: string, max: number): Set<number> | null {
 /** PDF 전체 읽기 — 쪽마다 글자 조각 + 책갈피 + 문서 제목. `maxPages` 를 넘으면 쪽 범위를 달라고 거절한다 */
 export function readPdf(bytes: Uint8Array, opts: { pages?: string; maxPages?: number } = {}): {
   title: string; pageCount: number; pages: (PageText & { index: number })[]; outline: OutlineItem[];
+  /** 그림을 꺼낼 때 쓴다(`pdf-image.ts` 의 `extractPdfImages`) */
+  doc: PdfDoc;
 } {
   const doc = new PdfDoc(bytes);
   const list = doc.pages();
@@ -1124,5 +1193,5 @@ export function readPdf(bytes: Uint8Array, opts: { pages?: string; maxPages?: nu
   });
   let outline: OutlineItem[] = [];
   try { outline = doc.outline(byRef); } catch { outline = []; }
-  return { title: doc.title, pageCount: list.length, pages, outline };
+  return { title: doc.title, pageCount: list.length, pages, outline, doc };
 }

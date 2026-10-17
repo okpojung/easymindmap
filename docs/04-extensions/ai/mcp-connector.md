@@ -81,7 +81,7 @@ MCP 서버가 AI 에게 주는 것은 **도구(tool) 목록**이다. 각 도구�
 | `update_map_from_github` | GitHub API + `GET` + `PUT …/document` | 그 맵을 저장소의 지금 상태에 맞춘다 — 사라진 문서 노드 삭제 · 새 문서 추가 · 바뀐 문서 노드 재생성(절은 제목으로 짝지어 id 유지). `node` 로 폴더·문서·**절 하나**까지 좁힌다. "OOO 맵을 업데이트 해줘" · "OOO 맵의 OOO 노드를 업데이트 해줘" · "현재 선택한 노드의 내용을 업데이트 해줘" — §9.14 |
 | `push_map_to_github` | GitHub API(Git Data · Pulls) + `GET` + `PUT …/document` | **반대 방향** — 그 맵에서 사용자가 고친 내용을 저장소 파일에. 원문의 바뀐 자리만 고치고, 태그 `새파일`(또는 이름 머리 `[새파일]`) 노드는 새 파일로. 미리보기 → 확인 코드 → 새 브랜치 + PR(기본) 또는 바로 커밋 — §9.15 (2026-10-14) |
 | `get_youtube_transcript` | YouTube(watch 페이지 · innertube player · timedtext) | **유튜브 영상 → 맵의 읽기 부분** — 제목·채널·길이·챕터(설명란 시각)·시각 붙은 자막을 돌려준다. 요약과 `create_map` 은 부른 AI 가 한다(서버는 AI 를 부르지 않는다). 읽기 전용 — §9.16 (2026-10-14) |
-| `import_pdf` | 첨부(`AttachmentsService.open`) · 원격 받기(`fetchRemotePdf`) + `POST /v1/maps` + `PUT …/document` | **PDF → 새 맵, 요약 없이 글 전체** — 책갈피 → 글자 크기 → 번호 꼴 → 쪽 순으로 가지를 만들고 문단·목록 항목을 그 아래 노드로. PDF 는 맵에 붙은 첨부·URL·base64 — §9.17 (2026-10-14) |
+| `import_pdf` | 첨부(`AttachmentsService.open`) · 원격 받기(`fetchRemotePdf`) + `POST /v1/maps` + `PUT …/document` | **PDF → 새 맵, 요약 없이 글 전체** — 책갈피 → 글자 크기 → 번호 꼴 → 쪽 순으로 가지를 만들고 문단·목록 항목을 그 아래 노드로. 그림은 노드 사진으로(2026-10-17). PDF 는 맵에 붙은 첨부·URL·base64 — §9.17 (2026-10-14) |
 
 **`create_map` 이 받는 것은 mmd 마크다운**이다. `packages/emm-parser` 가
 이미 그 포맷의 단일 원본이고, 프롬프트 템플릿(`emm-prompt-templates.md`)
@@ -1377,7 +1377,23 @@ FitH·이름 있는 목적지)·쪽 범위·쪽 상한 · 그림자 사슬·줄 
 하이픈·크기) · 맵(글자 크기·표지·소제목·목록 단계·쪽 노트·**원문 글이 모두 맵에**·노트·책갈피 메아리·번호 꼴·쪽마다·출처·제목 다듬기) ·
 PDF 한 장 통째로. JSON-RPC 시험은 도구 열하나·힌트. **dev 에서 실제 첨부·URL·AI 대화로는 아직 재 보지 않았다.**
 
-**남은 것**: OCR(스캔 PDF) · 표를 표 노트로 · 그림 · 세로쓰기 · CID 글꼴에 ToUnicode 가 없는 PDF(글자를 알 수 없어 센다) ·
+**그림 → 노드 사진** (2026-10-17 사용자 요청: "그림일 때는 글자를 인식해 넣지 말고 이미지로 첨부해 줘" — 사용자가 본 맵은
+`import_pdf` 가 아니라 AI 가 그림을 "표시 텍스트" 로 옮겨 `create_map` 한 것이었고, 그때까지 `import_pdf` 는 그림을 버렸다).
+- `pdf-parse.ts` 의 `Do` 가 이미지 XObject 를 그린 자리(단위 정사각형을 CTM 으로 옮긴 상자)를 `PageText.draws` 에 적는다(쪽당 500,
+  스텐실 `ImageMask` 는 안 적음). `pdf-image.ts` 가 꺼낸다: DCT 는 바이트 그대로 JPEG, 그 밖은 화소를 풀어 PNG(노드 `zlib`, CRC 직접) —
+  Gray·RGB·CMYK(→RGB)·Cal*·ICCBased(N)·Indexed, 1·2·4·8·16비트, `/Decode`(성분마다 — Indexed 는 색 번호에), SMask(투명도 — 마스크의 `/Decode` 도). JPX·JBIG2·CCITT·Lab·Separation 은 건너뛰고 센다.
+- 그림 해석은 **글 읽기 예산과 따로**(`PdfDoc.imageStream` — 캐시·`overBudget` 없음, 그림 하나 64MB·4천만 화소) — 큰 사진 하나로 PDF 를
+  거절하지 않는다. **푸는 일 자체도** PDF 하나에 256MB·300번까지 — 받아들인 그림만이 아니라 못 쓰는 그림(형식·크기)을 푼 것도 센다(#650 Codex).
+  400만 화소를 넘으면 **풀면서 바로** 줄인다(한 줄씩 펼쳐 상자 평균 — 펼친 버퍼가 수백 MB 가 되지 않게, #650 Codex).
+  이름 붙은 색 공간(`/CS0`)은 그린 자리의 Resources 에서 풀고, Flate·LZW 의 TIFF 예측자 2 도 되돌린다(#650 Codex).
+  JPEG 에 SMask 가 있으면 투명도는 버리고 넣는다(JPEG 디코더가 없다 — 그림을 통째로 빼는 것보다 낫다고 판단, 결과에 수를 알림). 사진 한 장 2.5MB(앱과 같음) — PNG 가 넘으면 화소를 2·3…8배 줄여 맞추고, JPEG 가 넘으면 건너뛴다. 맵 하나 100장·40MB.
+- 장식은 뺀다: 그린 상자 24pt·화소 16 미만(아이콘·글머리표), 읽은 쪽 절반(3쪽) 이상에 되풀이(로고·배경), 같은 쪽의 같은 그림.
+- `pdf-map.ts` 가 쪽·위 가장자리 순으로 본문 차례 사이에 끼운다 — `그림 (p.N)` 노드의 `images[]`(표시 폭 640, `afterLine:1`). 쪽마다
+  가지일 때 글 없는 쪽의 그림은 그 쪽 가지를 만든다. data URL 로 넣으면 저장 때 서버가 첨부 저장소로 옮긴다(`maps/doc-images.ts`).
+- `images:false` 로 끈다. 결과 문장에 넣은 수·뺀 까닭을 알린다. INSTRUCTIONS 에도 "그림 속 글자를 글로 옮기지 말라" 를 넣었다.
+- 못 하는 것: 선·글자로 그린 **벡터 도형**(사진이 아니라 그 안의 글자가 노드로 들어간다 — 그리려면 래스터화가 필요하다), 인라인 이미지.
+
+**남은 것**: OCR(스캔 PDF) · 표를 표 노트로 · 벡터 도형을 그림으로 · 세로쓰기 · CID 글꼴에 ToUnicode 가 없는 PDF(글자를 알 수 없어 센다) ·
 ChatGPT 앱의 파일 인자(`openai/fileParams`)로 대화 첨부를 바로 받기(확인 필요).
 
 ## 10. 3단계 — OAuth 2.1 (2026-09-06)

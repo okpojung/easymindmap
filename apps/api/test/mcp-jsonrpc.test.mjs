@@ -64,7 +64,7 @@ check('error 봉투', rpcError(null, RPC.METHOD_NOT_FOUND, '없음'),
 const byNameEarly = () => Object.fromEntries(TOOL_DEFS.map((t) => [t.name, t]));
 check('도구는 열하나 (2026-10-14 push_map_to_github §9.15 · get_youtube_transcript §9.16 · import_pdf §9.17)', TOOL_DEFS.map((t) => t.name), ['create_map', 'list_maps', 'get_map', 'get_open_map', 'append_to_map', 'check_items', 'import_github_docs', 'update_map_from_github', 'push_map_to_github', 'get_youtube_transcript', 'import_pdf']);
 check('import_pdf: 필수 인자 없음 (attachment · url · data_base64 · map_id 중 하나)', byNameEarly().import_pdf.inputSchema.required, undefined);
-check('import_pdf: 받는 인자', Object.keys(byNameEarly().import_pdf.inputSchema.properties).sort(), ['attachment', 'data_base64', 'file_name', 'long_text_to_note', 'map_id', 'node', 'pages', 'structure', 'template', 'title', 'url']);
+check('import_pdf: 받는 인자', Object.keys(byNameEarly().import_pdf.inputSchema.properties).sort(), ['attachment', 'data_base64', 'file_name', 'images', 'long_text_to_note', 'map_id', 'node', 'pages', 'structure', 'template', 'title', 'url']);
 check('import_pdf: 구조 기준', byNameEarly().import_pdf.inputSchema.properties.structure.enum, ['auto', 'outline', 'fontsize', 'numbering', 'pages']);
 check('get_youtube_transcript: url 만 필수', byNameEarly().get_youtube_transcript.inputSchema.required, ['url']);
 check('get_youtube_transcript: 받는 인자는 넷', Object.keys(byNameEarly().get_youtube_transcript.inputSchema.properties).sort(), ['lang', 'max_chars', 'start_at', 'url']);

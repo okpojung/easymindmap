@@ -450,6 +450,12 @@ console.log('── 그림 → 노드 사진 (2026-10-17 사용자 요청: "그�
   const ir = readPdf(inv);
   const iimg = extractPdfImages(ir.doc, ir.pages).images[0];
   check('RGB /Decode [1 0 1 0 1 0] → 세 성분 다 뒤집힘', unpng(iimg.bytes).px.slice(3, 6), [255 - orig[3], 255 - orig[4], 255 - orig[5]]);
+  const smInv = multi([{ content: D('Al', 0, 300, 64, 64), xobj: { Al: 31 } }], [
+    { dict: '/Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceGray /BitsPerComponent 8 /Decode [1 0]', stream: Buffer.alloc(256, 200), flate: true },
+    { dict: '/Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceRGB /BitsPerComponent 8 /SMask 30 0 R', stream: Buffer.alloc(768, 50), flate: true },
+  ]);
+  const smr = readPdf(smInv);
+  check('SMask 의 /Decode [1 0] → 투명도 뒤집힘', unpng(extractPdfImages(smr.doc, smr.pages).images[0].bytes).px.slice(0, 4), [50, 50, 50, 55]);
   const s0 = ir.pages[0].draws[0].s;
   const why = (b) => { try { decodeImage(ir.doc, s0, null, b); return 'ok'; } catch (e) { return e instanceof SkipImage ? e.why : String(e); } };
   check('풀기 예산 — 바이트·횟수가 차면 더 풀지 않는다', [why({ raw: MAX_DECODE_RAW, tries: 0 }), why({ raw: 0, tries: MAX_DECODE_TRIES }), why({ raw: 0, tries: 0 })], ['limit', 'limit', 'ok']);

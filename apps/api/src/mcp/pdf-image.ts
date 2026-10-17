@@ -224,7 +224,7 @@ export function decodeImage(doc: PdfDoc, s: PStream, res: PDict | null = null, b
     if (any) remap = tables;
   }
   // 투명도(SMask) — 같은 크기의 그림일 때만
-  let mask: { data: Uint8Array; bpc: number; rowBytes: number } | null = null;
+  let mask: { data: Uint8Array; bpc: number; rowBytes: number; table: Uint8Array | null } | null = null;
   const sm = doc.resolve(d.get('SMask'));
   if (sm instanceof PStream && num(doc.resolve(sm.dict.get('Width'))) === w && num(doc.resolve(sm.dict.get('Height'))) === h) {
     try {
@@ -232,7 +232,14 @@ export function decodeImage(doc: PdfDoc, s: PStream, res: PDict | null = null, b
       budget.raw += m.data.length;
       const mb = num(doc.resolve(sm.dict.get('BitsPerComponent'))) ?? 8;
       const rb = Math.ceil((w * mb) / 8);
-      if (!m.tail && [1, 2, 4, 8, 16].includes(mb) && m.data.length >= rb * h) mask = { data: m.data, bpc: mb, rowBytes: rb };
+      // 마스크 자신의 /Decode([1 0] = 뒤집힌 투명도)도 건다 (#650 Codex 3차)
+      const md = doc.arr(sm.dict.get('Decode'))?.map((x) => num(doc.resolve(x)) ?? 0);
+      let table: Uint8Array | null = null;
+      if (md && md.length >= 2 && !(md[0] === 0 && md[1] === 1)) {
+        table = new Uint8Array(256);
+        for (let v = 0; v < 256; v++) table[v] = Math.max(0, Math.min(255, Math.round((md[0] + (v / 255) * (md[1] - md[0])) * 255)));
+      }
+      if (!m.tail && [1, 2, 4, 8, 16].includes(mb) && m.data.length >= rb * h) mask = { data: m.data, bpc: mb, rowBytes: rb, table };
     } catch { mask = null; }
   }
   const color = !sp.gray;
@@ -246,7 +253,7 @@ export function decodeImage(doc: PdfDoc, s: PStream, res: PDict | null = null, b
   for (let y = 0; y < nh * k0; y++) {
     unpackRow(data, y * rowBytes, per, bpc, !sp.palette, vals);
     if (remap) for (let i = 0; i < per; i++) vals[i] = remap[i % sp.n][vals[i]];
-    if (mask) unpackRow(mask.data, y * mask.rowBytes, w, mask.bpc, true, alpha);
+    if (mask) { unpackRow(mask.data, y * mask.rowBytes, w, mask.bpc, true, alpha); if (mask.table) for (let i = 0; i < w; i++) alpha[i] = mask.table[alpha[i]]; }
     for (let i = 0, o = 0; i < w; i++, o += ch) {
       if (sp.palette) { const c = vals[i] * 3; row[o] = sp.palette[c] ?? 0; row[o + 1] = sp.palette[c + 1] ?? 0; row[o + 2] = sp.palette[c + 2] ?? 0; }
       else if (sp.toRgb) sp.toRgb(vals, i * sp.n, row, o);

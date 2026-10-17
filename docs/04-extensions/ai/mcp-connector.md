@@ -644,7 +644,13 @@ SELECT COUNT(*) AS ok FROM information_schema.tables
   그것 — `requestOrigin`)를 붙여 `![…](https://api…/v1/attachments/<id>)` 로 보여 준다. 머리줄은 "사진 N장(files/ 경로
   a장 · 저장소 주소 b장)". 직렬화기(코어·`packages/emm-parser` 공통)는 건드리지 않았다 — 서버 주소는 MCP 만 안다.
   그 주소는 로그인해야 열리고, AI 가 이 본문을 `create_map` 으로 되돌리면 앱이 절대 주소도 우리 첨부로 알아본다
-  (`serverAttachmentId`) — 같은 사진이다. 단 그때 크기는 원격 사진처럼 자리표시(320×200)로 들어간다(남은 것).
+  (`serverAttachmentId`) — 같은 사진이다.
+- **왕복해도 크기가 그대로** (2026-10-17 사용자 요청). 사진 주소 끝에 그 노드의 표시 크기를 조각으로 단다 —
+  `![…](https://api…/v1/attachments/<id>#emm=640x480)`. 조각은 서버로 가지 않아 주소를 열 때도 해가 없다. `create_map`·
+  `append_to_map` 은 파싱 뒤 `restoreStoredImage`(image-size.ts, `sizeDataUrlImages` 안)가 이 꼴을 알아보고 **크기를 되살리고
+  조각을 떼어 상대 경로**(`/v1/attachments/<id>` — 서버가 저장할 때 넣는 모양)로 돌린다. 조각이 없는 주소는 남의 서버 것일 수
+  있어 손대지 않는다(예전처럼 자리표시 320×200). 남는 위험: 새 맵의 사진은 **원래 맵의 첨부**를 가리키므로, 원래 맵에서 그
+  사진을 지워 정리되면 새 맵에서도 깨지고, 원래 맵에 접근 못 하는 사람에게는 보이지 않는다(같은 사진을 따로 복사하지 않는다).
 - **12만 자에서 자른다** (`GET_MAP_MAX_CHARS`). 잘랐으면 그 사실과 앱의
   [내보내기 ▸ Markdown] 안내를 붙인다. 페이지네이션은 필요해지면 그때.
 - **접근 판정은 `MapsService` 가 한다.** 남의 맵은 404 문장이 그대로

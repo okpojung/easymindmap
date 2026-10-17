@@ -62,6 +62,14 @@ const STORED_RE = /^\/v1\/attachments\/[^/?#\s]+/;
 export function absolutizeStored(map: SampleMap, origin: string): { map: SampleMap; stored: number } {
   const base = origin.replace(/\/+$/, '');
   const fix = (u: unknown) => (typeof u === 'string' && STORED_RE.test(u) ? base + u : u);
+  // 사진은 표시 크기를 주소 끝 조각(`#emm=640x480`)에 단다 — create_map·append_to_map 으로 되돌릴 때 그 크기로 들어간다
+  // (`image-size.ts` 의 `restoreStoredImage`). 조각은 서버로 가지 않아 주소를 열 때도 해가 없다
+  const fixImg = (x: { src?: unknown; w?: unknown; h?: unknown }) => {
+    const u = fix(x.src);
+    if (u === x.src || typeof u !== 'string') return u;
+    const w = Number(x.w), h = Number(x.h);
+    return w > 0 && h > 0 ? `${u}#emm=${Math.round(w)}x${Math.round(h)}` : u;
+  };
   let stored = 0;
   const seen = new Set<string>();
   const walk = (v: unknown): unknown => {
@@ -73,7 +81,7 @@ export function absolutizeStored(map: SampleMap, origin: string): { map: SampleM
     const img = (count: boolean) => (x: unknown) => {
       if (!x || typeof x !== 'object') return x;
       const src = (x as { src?: unknown }).src;
-      const fixed = fix(src);
+      const fixed = fixImg(x as { src?: unknown; w?: unknown; h?: unknown });
       if (count && fixed !== src && typeof src === 'string' && !seen.has(src)) { seen.add(src); stored++; }
       return fixed === src ? x : { ...(x as object), src: fixed };
     };

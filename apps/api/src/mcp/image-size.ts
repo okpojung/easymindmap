@@ -111,6 +111,21 @@ export function displaySize(w: number, h: number): { w: number; h: number } {
 }
 
 /**
+ * `get_map` 이 내보낸 **저장소 사진** 주소 — `https://서버/v1/attachments/<id>#emm=640x480` (doc-to-emm.ts `absolutizeStored`).
+ * 조각 `#emm=WxH` 는 우리 get_map 만 붙이므로, 이것이 있으면 우리 첨부다: 크기를 되살리고 조각을 떼어 **상대 경로**로
+ * 돌린다(서버가 저장할 때 넣는 모양 그대로 — 도메인이 바뀌어도 산다). 조각이 없으면 손대지 않는다(남의 서버 주소일 수 있다).
+ */
+const STORED_ABS_RE = /^(?:https?:\/\/[^/\s]+)?(\/v1\/attachments\/[^/?#\s]+)(?:\?[^#\s]*)?#emm=(\d{1,5})x(\d{1,5})$/i;
+export function restoreStoredImage(im: { src: string; w: number; h: number }): boolean {
+  const m = STORED_ABS_RE.exec(im.src);
+  if (!m) return false;
+  const w = Number(m[2]), h = Number(m[3]);
+  im.src = m[1];
+  if (w > 0 && h > 0) { im.w = w; im.h = h; }
+  return true;
+}
+
+/**
  * 트리의 모든 노드에서 data URL 사진의 자리표시 크기를 실제 크기로 바꾼다
  * (제자리 수정). 2.5MB 를 넘는 사진이 있으면 ImageTooLargeError — 앱의
  * 붙여넣기 상한과 같다.
@@ -122,6 +137,7 @@ export function sizeDataUrlImages(nodes: MindNode[]): number {
   const walk = (list: MindNode[]) => {
     for (const n of list) {
       for (const im of n.images ?? []) {
+        if (restoreStoredImage(im)) { touched++; continue; }
         if (!/^data:image\//i.test(im.src)) continue;
         const bytes = dataUrlBytes(im.src);
         if (bytes > MAX_IMAGE_BYTES) {

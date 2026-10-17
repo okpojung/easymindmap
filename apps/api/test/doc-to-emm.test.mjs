@@ -11,6 +11,7 @@
 // 설계: docs/04-extensions/ai/mcp-connector.md §2-1 · §9.5
 
 import { emmToSnapshot } from '../dist/mcp/emm-to-doc.js';
+import { parseFragment } from '../dist/mcp/append-to-map.js';
 import { docToEmm, mapFromDoc, DocShapeError } from '../dist/mcp/doc-to-emm.js';
 
 let failed = 0;
@@ -117,17 +118,25 @@ check('현행 형식은 그대로 연다', mapFromDoc(emmToSnapshot(MD, 'x')).ti
   doc.map.branches.push({ id: 'g', text: '둘 다', image: { src: '/v1/attachments/legacy-9', w: 5, h: 5 }, images: [{ src: '/v1/attachments/abc-1', w: 10, h: 10, afterLine: 1 }] });
   const before = JSON.stringify(doc);
   const out = docToEmm(doc, { origin: 'https://api.example.kr/' });
-  check('저장소 사진 → 서버 주소로 보인다(같은 사진이 두 노드면 두 번)', (out.markdown.match(/\]\(https:\/\/api\.example\.kr\/v1\/attachments\/abc-[12]\)/g) ?? []).length, 4);
+  check('저장소 사진 → 서버 주소로 보인다(같은 사진이 두 노드면 두 번)', (out.markdown.match(/\]\(https:\/\/api\.example\.kr\/v1\/attachments\/abc-[12]#emm=\d+x\d+\)/g) ?? []).length, 4);
+  check('표시 크기를 주소 끝 조각에 단다', [out.markdown.includes('/v1/attachments/abc-1#emm=10x10)'), out.markdown.includes('/v1/attachments/abc-2#emm=5x5)')], [true, true]);
   check('문서 안 사진은 그대로 files/ 경로', /\(files\/img-1\.png\)/.test(out.markdown), true);
   check('첨부(상대 경로)도 서버 주소로', out.markdown.includes('📎 [보고서.pdf](https://api.example.kr/v1/attachments/pdf-9)'), true);
   check('사진 수 — 문서 안 1 · 저장소 2(같은 사진은 한 번, images 가 있으면 옛 image 는 안 셈)', [out.imageCount, out.storedImageCount, out.markdown.includes('legacy-9')], [1, 2, false]);
   check('원본 문서는 바꾸지 않는다', JSON.stringify(doc), before);
   const plain = docToEmm(doc);
   check('origin 이 없으면 예전 그대로(저장소 사진 없음)', [/attachments/.test(plain.markdown), plain.storedImageCount], [false, 0]);
-  // 왕복 — AI 가 이 본문을 create_map 으로 되돌리면 같은 주소의 사진이다(앱은 절대 주소도 우리 첨부로 알아본다)
+  // 왕복 — AI 가 이 본문을 create_map 으로 되돌리면 같은 저장소 사진이 **원래 크기로**, 서버가 저장하는 상대 경로로 들어간다
   const back = emmToSnapshot(out.markdown, 'T');
-  const srcs = JSON.stringify(back).match(/https:\/\/api\.example\.kr\/v1\/attachments\/abc-[12]/g) ?? [];
-  check('왕복 — create_map 으로 되돌려도 같은 저장소 사진', [...new Set(srcs)].sort(), ['https://api.example.kr/v1/attachments/abc-1', 'https://api.example.kr/v1/attachments/abc-2']);
+  const imgsOf = (ns, acc = []) => { for (const n of ns ?? []) { for (const im of n.images ?? []) acc.push([n.text, im.src, im.w, im.h]); imgsOf(n.children, acc); } return acc; };
+  check('왕복 — create_map: 같은 저장소 사진 · 원래 표시 크기 · 상대 경로', imgsOf(back.map.branches).filter((x) => /attachments/.test(x[1])),
+    [['그림 (p.1)', '/v1/attachments/abc-1', 10, 10], ['단일', '/v1/attachments/abc-2', 5, 5], ['같은 사진', '/v1/attachments/abc-1', 10, 10], ['둘 다', '/v1/attachments/abc-1', 10, 10]]);
+  // append_to_map 도 같은 규칙
+  const app = parseFragment('## 붙인 그림\n\n![x](https://api.example.kr/v1/attachments/zz-1#emm=320x96)\n');
+  check('왕복 — append_to_map 도 원래 크기 · 상대 경로', imgsOf(app.nodes).map((x) => [x[1], x[2], x[3]]), [['/v1/attachments/zz-1', 320, 96]]);
+  // 조각이 없으면(남의 서버일 수 있다) 손대지 않는다
+  const other = emmToSnapshot('# T\n\n## 남의 첨부\n\n![x](https://other.example/v1/attachments/q-1)\n', 'T');
+  check('조각 없는 주소는 그대로(자리표시 크기)', imgsOf(other.map.branches).map((x) => [x[1], x[2], x[3]]), [['https://other.example/v1/attachments/q-1', 320, 200]]);
 }
 
 console.log(failed === 0 ? '\n모두 통과' : `\n실패 ${failed}건`);

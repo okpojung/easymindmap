@@ -36,15 +36,54 @@ export function mapFromDoc(doc: unknown): SampleMap {
  * 그대로 남는다(직렬화기 규칙). 바이트는 돌려주지 않는다 — AI 는 사진을
  * 읽지 않고, 그 크기가 그대로 대화에 실리면 안 된다.
  */
-export function docToEmm(doc: unknown): { markdown: string; nodeCount: number; imageCount: number } {
-  const map = mapFromDoc(doc);
+export function docToEmm(doc: unknown, opts: { origin?: string } = {}): { markdown: string; nodeCount: number; imageCount: number; storedImageCount: number } {
+  const raw = mapFromDoc(doc);
+  // 저장소로 옮긴 사진·첨부(`/v1/attachments/<id>` 상대 경로)는 직렬화기가 건너뛴다 — 서버 주소를 붙여 보이게 한다 (2026-10-17)
+  const { map, stored } = opts.origin ? absolutizeStored(raw, opts.origin) : { map: raw, stored: 0 };
   const images: EmmImageFile[] = [];
   const out = { markdown: buildEmmBody(map, images), images };
   return {
     markdown: out.markdown.replace(/\s+$/, '') + '\n',
     nodeCount: countNodes(map),
     imageCount: out.images.length,
+    storedImageCount: stored,
   };
+}
+
+/** 이 서버의 첨부 상대 경로 */
+const STORED_RE = /^\/v1\/attachments\/[^/?#\s]+/;
+
+/**
+ * 문서를 건드리지 않고 사본에서 `/v1/attachments/<id>` 사진(`image.src`·`images[].src`)과 첨부(`attachments[].url`)에
+ * 서버 주소(`origin`)를 붙인다. 저장할 때 서버가 data URL 사진을 저장소로 옮기며 **상대 경로**를 넣으므로
+ * (maps.service `extractDocImages`), 그대로면 직렬화기(http(s)·data URL 만 앎)가 그 사진을 빠뜨렸다.
+ * 앱은 절대 주소도 우리 첨부로 알아본다(`serverAttachmentId`) — AI 가 이 본문을 create_map 으로 되돌려도 같은 사진이다.
+ */
+export function absolutizeStored(map: SampleMap, origin: string): { map: SampleMap; stored: number } {
+  const base = origin.replace(/\/+$/, '');
+  const fix = (u: unknown) => (typeof u === 'string' && STORED_RE.test(u) ? base + u : u);
+  let stored = 0;
+  const seen = new Set<string>();
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (!v || typeof v !== 'object') return v;
+    const o = { ...(v as Record<string, unknown>) };
+    const img = (x: unknown) => {
+      if (!x || typeof x !== 'object') return x;
+      const src = (x as { src?: unknown }).src;
+      const fixed = fix(src);
+      if (fixed !== src && typeof src === 'string' && !seen.has(src)) { seen.add(src); stored++; }
+      return fixed === src ? x : { ...(x as object), src: fixed };
+    };
+    if (o.image) o.image = img(o.image);
+    if (Array.isArray(o.images)) o.images = o.images.map(img);
+    if (Array.isArray(o.attachments)) {
+      o.attachments = o.attachments.map((a) => (a && typeof a === 'object' && 'url' in a ? { ...(a as object), url: fix((a as { url?: unknown }).url) } : a));
+    }
+    for (const k of ['root', 'branches', 'children', 'centers']) if (k in o) o[k] = walk(o[k]);
+    return o;
+  };
+  return { map: walk(map) as SampleMap, stored };
 }
 
 function countNodes(map: SampleMap): number {

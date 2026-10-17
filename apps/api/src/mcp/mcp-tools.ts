@@ -439,11 +439,12 @@ export class McpToolsService {
    * 그렇게 풀리는 실패다). JSON-RPC 오류는 대화가 아니라 프로토콜이
    * 깨졌을 때만 쓴다.
    */
-  async call(userId: string, name: string, args: Record<string, unknown>): Promise<ToolResult> {
+  /** `ctx.origin` — 요청이 들어온 서버 주소(`PUBLIC_API_URL` 이 있으면 그것). 저장소 사진의 주소를 만드는 데 쓴다 */
+  async call(userId: string, name: string, args: Record<string, unknown>, ctx: { origin?: string } = {}): Promise<ToolResult> {
     switch (name) {
       case 'create_map': return this.createMap(userId, args);
       case 'list_maps': return this.listMaps(userId, args);
-      case 'get_map': return this.getMap(userId, args);
+      case 'get_map': return this.getMap(userId, args, ctx.origin);
       case 'append_to_map': return this.appendToMap(userId, args);
       case 'check_items': return this.checkItems(userId, args);
       case 'get_open_map': return this.getOpenMap(userId);
@@ -588,7 +589,7 @@ export class McpToolsService {
    * 사람의 편집 잠금을 가로채면 안 된다. 접근 판정(내 맵·공유받은 맵)은
    * MapsService 가 한다 — 남의 맵이면 404 가 오고 그 문장을 그대로 전한다.
    */
-  private async getMap(userId: string, args: Record<string, unknown>): Promise<ToolResult> {
+  private async getMap(userId: string, args: Record<string, unknown>, origin?: string): Promise<ToolResult> {
     const rid = this.resolveMapId(userId, args.map_id);
     if ('error' in rid) return text(rid.error, true);
     const mapId = rid.mapId;
@@ -600,7 +601,7 @@ export class McpToolsService {
     }
     let emm;
     try {
-      emm = docToEmm(docRes.doc);
+      emm = docToEmm(docRes.doc, { origin });
     } catch (err) {
       if (err instanceof DocShapeError) return text(err.message, true);
       throw err;
@@ -612,7 +613,10 @@ export class McpToolsService {
       body = body.slice(0, GET_MAP_MAX_CHARS);
       cut = `\n\n[… 본문이 ${emm.markdown.length.toLocaleString()}자라 ${GET_MAP_MAX_CHARS.toLocaleString()}자에서 잘랐습니다. 앱에서 [내보내기 ▸ Markdown] 으로 전체를 받을 수 있습니다.]`;
     }
-    const imgs = emm.imageCount ? ` · 사진 ${emm.imageCount}장(본문의 files/ 경로 — 이 도구는 사진 바이트를 주지 않는다)` : '';
+    // 사진 — 문서 안에 든 것(files/ 경로)과 저장소로 옮긴 것(서버 주소, 로그인해야 열림)을 함께 센다 (2026-10-17)
+    const nImg = emm.imageCount + emm.storedImageCount;
+    const where = [emm.imageCount ? `files/ 경로 ${emm.imageCount}장` : '', emm.storedImageCount ? `저장소 주소 ${emm.storedImageCount}장` : ''].filter(Boolean).join(' · ');
+    const imgs = nImg ? ` · 사진 ${nImg}장(${where} — 이 도구는 사진 바이트를 주지 않는다)` : '';
     const role = docRes.role && docRes.role !== 'owner' ? ` · 내 권한: ${docRes.role}` : '';
     return text(
       `맵 "${docRes.title}" (id: ${docRes.mapId} · 수정: ${fmtDate(docRes.updatedAt)} · 노드 ${emm.nodeCount}개${imgs}${role})\n` +

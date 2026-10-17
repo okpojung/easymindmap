@@ -1,7 +1,10 @@
 import {
-  All, Body, Controller, HttpCode, Logger, Post, Req, Res, UseGuards,
+  All, Body, Controller, HttpCode, Logger, Optional, Post, Req, Res, UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
+import type { AppEnv } from '../config/env.validation';
+import { requestOrigin } from './oauth';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { McpAuthGuard } from './mcp-auth.guard';
 import { McpToolsService } from './mcp-tools';
@@ -37,7 +40,11 @@ function describe(msg: RpcRequest): string {
 export class McpController {
   private readonly log = new Logger(McpController.name);
 
-  constructor(private readonly tools: McpToolsService) {}
+  constructor(
+    private readonly tools: McpToolsService,
+    // 저장소 사진의 주소(get_map)를 만드는 데만 쓴다 — 없으면 요청의 Host 로
+    @Optional() private readonly config?: ConfigService<AppEnv, true>,
+  ) {}
 
   /**
    * Streamable HTTP 의 본선. 한 요청에 JSON-RPC **한 덩어리 또는 배열**이
@@ -72,7 +79,7 @@ export class McpController {
         continue;
       }
       seen.push(describe(msg));
-      const reply = await this.handle(user.id, msg);
+      const reply = await this.handle(user.id, msg, requestOrigin(req, this.config?.get('PUBLIC_API_URL', { infer: true })));
       if (reply) out.push(reply);
     }
 
@@ -105,7 +112,7 @@ export class McpController {
   }
 
   /** 한 덩어리 처리. 통지면 null(= 응답 없음) */
-  private async handle(userId: string, msg: RpcRequest): Promise<RpcResponse | null> {
+  private async handle(userId: string, msg: RpcRequest, origin?: string): Promise<RpcResponse | null> {
     const id = msg.id ?? null;
     const params = (msg.params ?? {}) as Record<string, unknown>;
 
@@ -129,7 +136,7 @@ export class McpController {
         if (!name) return rpcError(id, RPC.INVALID_PARAMS, 'params.name 이 없습니다.');
         const args = (params.arguments ?? {}) as Record<string, unknown>;
         try {
-          return rpcResult(id, await this.tools.call(userId, name, args));
+          return rpcResult(id, await this.tools.call(userId, name, args, { origin }));
         } catch (err) {
           // 여기까지 온 것은 **도구가 예상하지 못한 실패**다(도구가 다룰 수
           // 있는 실패는 isError 결과로 이미 돌아갔다). 안쪽 사정을 그대로

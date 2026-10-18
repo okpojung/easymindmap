@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 // 유료 UI 가 **없을 때**의 자리 (2026-08-16).
 //
 // 이것이 공개판의 **정상 화면**이다 — 오류가 아니다. 유료 UI 가 설치된
@@ -283,3 +284,6 @@ export function ProDashboardLive(_p: { t: ThemeTokens; mapId: string | null }) {
   return null;
 }
 
+
+/** Community builds do not claim private routes. */
+export function matchProRoute(_location: { pathname: string }): ComponentType | null { return null; }

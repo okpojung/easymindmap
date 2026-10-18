@@ -2,6 +2,8 @@
 // tsconfig 의 paths 로 해결되지만, 유료 UI 로 바꿔 끼워도 화면 쪽 코드가
 // 그대로 돌아야 하므로 **기대하는 모양을 여기 적어 둔다.**
 declare module '@pro' {
+  import type { ComponentType } from 'react';
+  export function matchProRoute(location: { pathname: string }): ComponentType | null;
   import type { ThemeTokens } from '@/components/design-tokens/theme';
   import type { LaidOutNode } from '@/layout/types';
   export function ProFeaturePanel(p: { t: ThemeTokens; featureId: string }): JSX.Element;

@@ -68,7 +68,11 @@ export function mountHomepage(root: HTMLElement, appUrl: string): () => void {
   if (event.target.closest('.menu')) { const open = menu.getAttribute('aria-expanded') !== 'true'; menu.setAttribute('aria-expanded', String(open)); menu.setAttribute('aria-label', open ? '메뉴 닫기' : '메뉴 열기'); nav.classList.toggle('open', open); return; }
   const example = event.target.closest<HTMLButtonElement>('[data-try]'); if (example) { choosePreset(example.dataset.try ?? ''); navigate('/#experience'); return; }
   const anchor = event.target.closest<HTMLAnchorElement>('a[href]'); if (!anchor || anchor.target || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-  const url = new URL(anchor.href, location.href); if (url.origin === location.origin && (url.pathname === '/' || Object.values(PATHS).includes(url.pathname))) { event.preventDefault(); navigate(url.pathname + url.search + url.hash); }
+  const url = new URL(anchor.href, location.href);
+  if (url.origin === location.origin && url.pathname === location.pathname && url.hash === '#main') {
+   event.preventDefault(); const target = q('#main'); target.tabIndex = -1; target.scrollIntoView({ behavior: 'instant' }); target.focus({ preventScroll: true }); return;
+  }
+  if (url.origin === location.origin && (url.pathname === '/' || Object.values(PATHS).includes(url.pathname))) { event.preventDefault(); navigate(url.pathname + url.search + url.hash); }
  }
  function onInput(event: Event) { if (event.target === memo) { all('[data-preset]').forEach(b => b.setAttribute('aria-pressed', 'false')); status.textContent = '메모가 바뀌었습니다. 지도로 보기를 눌러 새 내용을 연결하세요.'; } }
  function onToggle(event: Event) { const current = event.target; if (current instanceof HTMLDetailsElement && current.classList.contains('question') && current.open) all<HTMLDetailsElement>('.question').forEach(other => { if (other !== current) other.open = false; }); }

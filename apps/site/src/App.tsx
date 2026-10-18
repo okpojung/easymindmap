@@ -61,7 +61,10 @@ const PAGES: Record<string, () => JSX.Element> = {
 
 export default function App() {
   const path = usePath();
-  const Page = PAGES[path] ?? Home;
+  const Page = PAGES[path];
+  // The approved homepage/learning routes own their scoped navigation and footer.
+  // Existing product/library routes and nginx viewer proxies are unchanged.
+  if (!Page) return <Home />;
   return (
     <>
       <header className="top">

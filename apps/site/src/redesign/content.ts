@@ -1,3 +1,4 @@
+import { BRAND_STORY_HTML } from './brand';
 export interface Guide { category: string; eyebrow: string; title: string; description: string; body: string }
 export const PATHS: Record<string, string> = {
   "questions": "/learn/questions",
@@ -7,6 +8,7 @@ export const PATHS: Record<string, string> = {
   "meeting": "/stories/meeting",
   "study": "/stories/study",
   "travel": "/stories/travel",
+  "brand": "/about/brand",
   "publishing": "/about/content"
 };
 /** Curated approved public copy, not automatically synced account data. */
@@ -59,6 +61,13 @@ export const GUIDES: Record<string, Guide> = {
     "title": "이번 주말, 작은 계획 하나로 시작해요.",
     "description": "장소와 준비물, 하고 싶은 일을 나눠 보면 계획을 다른 각도에서 살펴볼 수 있습니다.",
     "body": "<h2>지도 가운데 주말 여행을 적어 보세요.</h2><p>처음부터 시간표를 완성하려고 하지 마세요. 준비할 것, 하고 싶은 것, 가고 싶은 곳으로 생각을 나눈 뒤 필요한 부분부터 구체화해 보세요.</p><pre># 주말 여행\n## 준비할 것\n- 충전기\n- 편한 신발\n## 하고 싶은 것\n- 바다 산책\n- 맛집 탐방\n## 가고 싶은 곳\n- 강릉\n- 속초</pre><h2>다음에는 실제 조건을 확인하세요.</h2><p>지도를 보고 우선순위를 정했다면 예산, 이동 시간, 예약 가능 여부를 따로 확인하세요. 이 예시는 여행지 정보 검색이나 실시간 예약 기능을 제공하지 않습니다.</p><button class=\"btn\" data-try=\"travel\" type=\"button\">이 예시로 체험하기 ↗</button>"
+  },
+  "brand": {
+    "category": "브랜드 스토리",
+    "eyebrow": "Write for AI. Think for yourself.",
+    "title": "로고에 담은 생각",
+    "description": "AI가 읽기 좋은 글, 사람이 키워 가는 질문. EasyMindMap 로고의 의미와 디지털 기준색을 소개합니다.",
+    "body": BRAND_STORY_HTML
   },
   "publishing": {
     "category": "운영 구상",

@@ -21,7 +21,7 @@
 //   node text can never break out of the <script> block.
 
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
-import brandLogoRaw from '@/assets/brand-logo.svg?raw';
+import compactLogoRaw from '@/assets/favicon.svg?raw';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import {
   setLevelFontConfig, setLevelShapeConfig,
@@ -189,14 +189,11 @@ function toExportNode(
   };
 }
 
-// EasyMindMap 로고 (2026-08 v3 — 사용자 제공 원본 벡터 SVG를 그대로 내장).
-// 원본 파일 = src/assets/brand-logo.svg (docs/assets/brand/logo.svg와 동일
-// 바이트) — I.Logo·index.html 파비콘도 같은 파일을 쓴다 (brand-logo.md).
-// 뷰어 헤더 아이콘 + 브라우저 파비콘(data URL)으로 쓰인다. 고정
-// width/height 속성은 제거해 사용처에서 크기를 지정한다.
-const LOGO_SVG = brandLogoRaw
+// Compact text-free mark for the small viewer header and data-URL favicon.
+// Remove fixed dimensions so each placement controls its own size.
+const LOGO_SVG = compactLogoRaw
   .trim()
-  .replace(' width="1254" height="1254"', '');
+  .replace(' width="192" height="192"', '');
 
 // The read-only viewer that runs inside the exported file. Plain ES5-ish JS,
 // no dependencies, no backticks (this whole script lives inside a template

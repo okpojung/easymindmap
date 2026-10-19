@@ -3,6 +3,7 @@
 
 import type { CSSProperties, SVGProps, ReactNode } from 'react';
 import brandLogoUrl from '@/assets/brand-logo.svg';
+import compactLogoUrl from '@/assets/favicon.svg';
 
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'children'> {
   size?: number;
@@ -37,13 +38,11 @@ const Icon = ({
 type P = Partial<IconProps>;
 
 export const I = {
-  // EasyMindMap 로고 (2026-08 v3 — 사용자 제공 원본 벡터 SVG를 그대로
-  // 표시). 원본 파일 = src/assets/brand-logo.svg (docs/assets/brand/
-  // logo.svg와 동일 바이트). index.html 파비콘·뷰어 LOGO_SVG도 같은
-  // 파일을 쓴다 — 로고 교체 시 SVG 파일만 바꾸면 된다 (brand-logo.md).
+  // Compact text-free mark below 48px; full approved raster-in-SVG logo
+  // for larger branding (including the 72px login slot). See brand-logo.md.
   Logo: (p: P = {}) => (
     <img
-      src={brandLogoUrl}
+      src={(p.size || 22) < 48 ? compactLogoUrl : brandLogoUrl}
       width={p.size || 22}
       height={p.size || 22}
       alt="EasyMindMap"

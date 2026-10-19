@@ -5,6 +5,7 @@ import Ai from './pages/Ai';
 import Mmd from './pages/Mmd';
 import Library from './pages/Library';
 import { APP_URL } from './config';
+import { BRAND_FAVICON_URL, installBrandIdentity } from './redesign/brand';
 
 /**
  * 길잡이 — **라우터 라이브러리를 쓰지 않는다** (2026-09-13).
@@ -60,6 +61,7 @@ const PAGES: Record<string, () => JSX.Element> = {
 };
 
 export default function App() {
+  useEffect(() => { installBrandIdentity(); }, []);
   const path = usePath();
   const Page = PAGES[path];
   // The approved homepage/learning routes own their scoped navigation and footer.
@@ -69,13 +71,14 @@ export default function App() {
     <>
       <header className="top">
         <div className="wrap">
-          <Link to="/"><span className="brand">Easy<span>MindMap</span></span></Link>
+          <Link to="/"><span className="brand"><img src={BRAND_FAVICON_URL} alt="" width={28} height={28} style={{ verticalAlign: 'middle', marginRight: 8 }} />Easy<span>MindMap</span></span></Link>
           <nav className="nav">
             <Link to="/">홈</Link>
             <Link to="/function">기능</Link>
             <Link to="/ai">AI 연동</Link>
             <Link to="/mmd">mmd 표준</Link>
             <Link to="/library">지식창고</Link>
+            <Link to="/about/brand">브랜드 스토리</Link>
           </nav>
           <span className="spacer" />
           <a className="btn" href={APP_URL}>시작하기</a>
@@ -89,6 +92,7 @@ export default function App() {
           <Link to="/function">기능</Link>
           <Link to="/ai">AI 연동</Link>
           <Link to="/mmd">mmd 표준</Link>
+          <Link to="/about/brand">브랜드 스토리</Link>
           <a href={APP_URL}>앱 열기</a>
         </div>
       </footer>

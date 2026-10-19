@@ -306,3 +306,8 @@ html.emm-home-page{scroll-behavior: smooth; scroll-padding-top: 100px;}
 .emm-home .brand-icon-example p{margin:0}
 @media(max-width:1200px){.emm-home .header-inner{gap:18px}.emm-home .header .btn{display:none}.emm-home .menu{display:block;margin-left:auto}.emm-home .nav{display:none;position:absolute;top:calc(100% - 1px);left:0;right:0;background:var(--paper);border-bottom:1px solid var(--line);padding:20px;flex-direction:column;gap:5px;margin:0}.emm-home .nav.open{display:flex}}
 @media(max-width:800px){.emm-home .brand-story-visual{padding:12px}.emm-home .brand-story-visual figcaption{font-size:13px}}
+
+/* Full identity in the header; compact footer/favicon stay unchanged. */
+.emm-home .header .brand img[data-brand-logo]{width:80px;height:70px;object-fit:contain;background:#fff;border-radius:5px}
+@media(min-width:1201px){.emm-home .header-inner{gap:24px}.emm-home .header .nav{gap:24px}}
+@media(max-width:800px){.emm-home .header .brand img[data-brand-logo]{width:64px;height:56px}}

@@ -5,7 +5,7 @@ import Ai from './pages/Ai';
 import Mmd from './pages/Mmd';
 import Library from './pages/Library';
 import { APP_URL } from './config';
-import { BRAND_FAVICON_URL, installBrandIdentity } from './redesign/brand';
+import { BRAND_LOGO_URL, installBrandIdentity } from './redesign/brand';
 
 /**
  * 길잡이 — **라우터 라이브러리를 쓰지 않는다** (2026-09-13).
@@ -71,7 +71,7 @@ export default function App() {
     <>
       <header className="top">
         <div className="wrap">
-          <Link to="/"><span className="brand"><img src={BRAND_FAVICON_URL} alt="" width={28} height={28} style={{ verticalAlign: 'middle', marginRight: 8 }} />Easy<span>MindMap</span></span></Link>
+          <Link to="/"><span className="brand"><img src={BRAND_LOGO_URL} alt="" width={56} height={50} style={{ verticalAlign: 'middle', marginRight: 8, objectFit: 'contain' }} />Easy<span>MindMap</span></span></Link>
           <nav className="nav">
             <Link to="/">홈</Link>
             <Link to="/function">기능</Link>

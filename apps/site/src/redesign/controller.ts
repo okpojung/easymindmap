@@ -8,7 +8,8 @@ export function mountHomepage(root: HTMLElement, appUrl: string): () => void {
  const memo = q<HTMLTextAreaElement>('#memo'); const status = q('#demo-status'); const menu = q<HTMLButtonElement>('.menu'); const nav = q('#nav');
  let frame = 0; let disposed = false;
  document.documentElement.classList.add('emm-home-page');
- all<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = appUrl; });
+ function bindAppLinks() { all<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = appUrl; }); }
+ bindAppLinks();
  const ns = 'http://www.w3.org/2000/svg';
  function node(tag: string, attrs: Record<string, string | number> = {}, text?: string): SVGElement {
   const element = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, String(value)));
@@ -49,7 +50,8 @@ export function mountHomepage(root: HTMLElement, appUrl: string): () => void {
   if (content) {
    q('#detail-category').textContent = content.category; q('#detail-eyebrow').textContent = content.eyebrow; q('#detail-title').textContent = content.title; q('#detail-description').textContent = content.description;
    // Only checked-in curated copy is HTML; account/API/AI/user data must never enter this sink.
-   q('#detail-body').innerHTML = content.body + '<div class="detail-next"><a class="btn" href="/#experience">직접 체험하기 ↗</a><a class="btn light" href="/">첫 화면으로</a></div>';
+   q('#detail-body').innerHTML = content.body + '<div class="detail-next"><a class="btn" data-open-app href="https://web.easymindmap.org">직접 체험하기 ↗</a><a class="btn light" href="/">첫 화면으로</a></div>';
+   bindAppLinks();
    all<HTMLAnchorElement>('[data-route]').forEach(a => { if (a.dataset.route === key) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
    title = content.title + ' | EasyMindMap'; description = content.description; window.scrollTo({ top: 0, behavior: 'instant' }); if (focus) q('#detail-title').focus({ preventScroll: true });
   } else if (location.hash) {

@@ -1,3 +1,4 @@
+import { BRAND_FAVICON_URL } from './brand';
 import { GUIDES, PATHS } from './content';
 import { PRESETS, parseMemo, fitLabel } from './demo';
 
@@ -10,6 +11,7 @@ export function mountHomepage(root: HTMLElement, appUrl: string): () => void {
  document.documentElement.classList.add('emm-home-page');
  function bindAppLinks() { all<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = appUrl; }); }
  bindAppLinks();
+ all<HTMLImageElement>('[data-brand-icon]').forEach(image => { image.src = BRAND_FAVICON_URL; });
  const ns = 'http://www.w3.org/2000/svg';
  function node(tag: string, attrs: Record<string, string | number> = {}, text?: string): SVGElement {
   const element = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, String(value)));

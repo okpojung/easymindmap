@@ -289,3 +289,20 @@ html.emm-home-page{scroll-behavior: smooth; scroll-padding-top: 100px;}
 .emm-home .wrap{max-width:none;padding:0}.emm-home .brand span{color:inherit}.emm-home .btn:hover{filter:none}.emm-home .card:hover{box-shadow:none}.emm-home .hero p{max-width:none}.emm-home #detail-title:focus,.emm-home #experience h2:focus{outline:none}.emm-home .result-graph{overflow-x:auto}.emm-home .result-graph svg{min-width:620px}.emm-home .footer-links{flex-wrap:wrap}@media(max-width:800px){.emm-home .result-graph{display:block}}
 
 .emm-home .demo-empty{margin:auto;padding:24px;color:var(--muted);font-size:13px}
+
+/* Approved identity and public brand story. */
+.emm-home .brand img{width:32px;height:32px;object-fit:contain;flex-shrink:0}
+.emm-home .brand-story-visual{margin:0 0 32px;padding:24px;background:#fff;border:1px solid var(--line);border-radius:16px;text-align:center}
+.emm-home .brand-story-visual img{display:block;width:min(100%,480px);height:auto;margin:auto}
+.emm-home .brand-story-visual figcaption{margin-top:12px;font-size:15px;font-weight:600;color:#235a48}
+.emm-home .brand-steps li{padding:8px 0}.emm-home .brand-steps strong,.emm-home .brand-steps span{display:block}
+.emm-home .brand-palette-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+.emm-home .brand-palette{width:100%;border-collapse:collapse;min-width:620px;font-size:13px;line-height:1.6}
+.emm-home .brand-palette caption{text-align:left;padding:14px;font-weight:600;color:#235a48}
+.emm-home .brand-palette th,.emm-home .brand-palette td{padding:12px;text-align:left;border-top:1px solid var(--line);vertical-align:top}
+.emm-home .brand-palette thead{background:#edf1e8}.emm-home .brand-palette code{white-space:nowrap}
+.emm-home .brand-swatch{display:inline-block;width:16px;height:16px;margin-right:7px;border:1px solid #0002;border-radius:50%;vertical-align:middle}
+.emm-home .brand-icon-example{display:flex;align-items:flex-start;gap:18px}.emm-home .brand-icon-example img{flex-shrink:0;object-fit:contain}
+.emm-home .brand-icon-example p{margin:0}
+@media(max-width:1200px){.emm-home .header-inner{gap:18px}.emm-home .header .btn{display:none}.emm-home .menu{display:block;margin-left:auto}.emm-home .nav{display:none;position:absolute;top:calc(100% - 1px);left:0;right:0;background:var(--paper);border-bottom:1px solid var(--line);padding:20px;flex-direction:column;gap:5px;margin:0}.emm-home .nav.open{display:flex}}
+@media(max-width:800px){.emm-home .brand-story-visual{padding:12px}.emm-home .brand-story-visual figcaption{font-size:13px}}

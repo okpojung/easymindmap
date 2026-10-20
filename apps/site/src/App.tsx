@@ -4,7 +4,7 @@ import FunctionPage from './pages/Function';
 import Ai from './pages/Ai';
 import Mmd from './pages/Mmd';
 import Library from './pages/Library';
-import { APP_URL } from './config';
+
 import { BRAND_LOGO_URL, installBrandIdentity } from './redesign/brand';
 
 /**
@@ -61,7 +61,11 @@ const PAGES: Record<string, () => JSX.Element> = {
 };
 
 export default function App() {
-  useEffect(() => { installBrandIdentity(); }, []);
+  useEffect(() => { installBrandIdentity();
+    const close = (event: Event) => { if (event instanceof KeyboardEvent && event.key !== 'Escape') return; document.querySelectorAll<HTMLDetailsElement>('.legacy-dropdown[open]').forEach(d => { if (event instanceof KeyboardEvent || !(event.target instanceof Element) || !d.contains(event.target)) { if (event instanceof KeyboardEvent) d.querySelector('summary')?.focus(); d.open = false; } }); };
+    document.addEventListener('click', close); document.addEventListener('keydown', close);
+    return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', close); };
+  }, []);
   const path = usePath();
   const Page = PAGES[path];
   // The approved homepage/learning routes own their scoped navigation and footer.
@@ -72,16 +76,9 @@ export default function App() {
       <header className="top">
         <div className="wrap">
           <Link to="/"><span className="brand"><img src={BRAND_LOGO_URL} alt="" width={56} height={50} style={{ verticalAlign: 'middle', marginRight: 8, objectFit: 'contain' }} />Easy<span>MindMap</span></span></Link>
-          <nav className="nav">
-            <Link to="/">홈</Link>
-            <Link to="/function">기능</Link>
-            <Link to="/ai">AI 연동</Link>
-            <Link to="/mmd">mmd 표준</Link>
-            <Link to="/library">지식창고</Link>
-            <Link to="/about/brand">브랜드 스토리</Link>
-          </nav>
+          <nav className="nav legacy-site-nav" aria-label="주 메뉴"><a href="/learn/questions">질문하는 힘</a><a href="/#learn">처음이라면</a><details className="legacy-dropdown"><summary>EMM</summary><div><a href="/why">특장점</a><Link to="/function">주요기능</Link><Link to="/ai">AI연동</Link></div></details><Link to="/mmd">MMD Spec</Link><Link to="/library">지식창고</Link><a href="/about/brand">브랜드 스토리</a></nav>
           <span className="spacer" />
-          <a className="btn" href={APP_URL}>시작하기</a>
+          <a className="btn" href="https://web.easymindmap.org/try">시작하기</a>
         </div>
       </header>
       <main><Page /></main>
@@ -89,11 +86,7 @@ export default function App() {
         <div className="wrap">
           <span>© EasyMindMap</span>
           <span className="spacer" />
-          <Link to="/function">기능</Link>
-          <Link to="/ai">AI 연동</Link>
-          <Link to="/mmd">mmd 표준</Link>
-          <Link to="/about/brand">브랜드 스토리</Link>
-          <a href={APP_URL}>앱 열기</a>
+
         </div>
       </footer>
     </>

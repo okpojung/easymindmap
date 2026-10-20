@@ -17,7 +17,9 @@
 // 사용자에게 "메일 발송이 아직 설정되지 않았습니다"로 안내하고, 개발
 // 모드에서는 인증번호를 서버 로그에 남겨 메일 없이도 흐름을 시험한다.
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { MailTemplatesService } from './mail-templates.service';
+import { mailRegistry, renderTemplate } from './mail-templates';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
 import type { AppEnv } from '../config/env.validation';
@@ -39,7 +41,10 @@ export class MailService {
   private readonly log = new Logger('MailService');
   private transporter: Transporter | null = null;
 
-  constructor(private readonly config: ConfigService<AppEnv, true>) {}
+  constructor(
+    private readonly config: ConfigService<AppEnv, true>,
+    @Optional() private readonly templates?: MailTemplatesService,
+  ) {}
 
   /** SMTP 접속 정보가 다 있는가 — 없으면 호출부가 안내 문구로 물러선다 */
   isConfigured(): boolean {
@@ -93,22 +98,18 @@ export class MailService {
   async sendCode(
     to: string, code: string, minutes: number, purpose: CodePurpose = 'signup',
   ): Promise<void> {
-    const what = CODE_PURPOSE[purpose] ?? CODE_PURPOSE.signup;
-    const subject = `[EasyMindMap] ${what} ${code}`;
-    const text =
-      `EasyMindMap ${what}는 ${code} 입니다.\n`
-      + `${minutes}분 안에 입력해 주세요.\n\n`
-      + '본인이 요청하지 않았다면 이 메일은 무시하셔도 됩니다.';
-    const html =
-      '<div style="font-family:system-ui,-apple-system,sans-serif;'
-      + 'max-width:420px;line-height:1.7;color:#1F1B16">'
-      + `<p style="margin:0 0 14px">EasyMindMap ${what}입니다.</p>`
-      + `<div style="font-size:30px;font-weight:800;letter-spacing:6px;`
-      + `padding:14px 0;color:#D97706">${code}</div>`
-      + `<p style="margin:0 0 14px">${minutes}분 안에 입력해 주세요.</p>`
-      + '<p style="margin:0;font-size:12px;color:#8B7D68">'
-      + '본인이 요청하지 않았다면 이 메일은 무시하셔도 됩니다.</p>'
-      + '</div>';
+    const knownPurpose = Object.prototype.hasOwnProperty.call(CODE_PURPOSE, purpose);
+    const id = `auth.${knownPurpose ? purpose : 'signup'}`;
+    const variables = { code, minutes: String(minutes) };
+    const definition = mailRegistry().definitions.get(id)!;
+    const { subject, text } = this.templates
+      ? await this.templates.render(id, variables)
+      : renderTemplate(definition, definition, variables);
+    // Admin-editable content is plain text, never executable HTML.
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const html = '<div style="font-family:system-ui,sans-serif;white-space:pre-wrap;line-height:1.7">'
+      + escaped + '</div>';
     await this.send(to, subject, text, html);
   }
 }

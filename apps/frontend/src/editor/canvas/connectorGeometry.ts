@@ -15,6 +15,18 @@ export type CShape = 'elbow' | 'rounded';
 export type CSide = 'auto' | 'top' | 'bottom' | 'left' | 'right';
 export type CDir = Exclude<CSide, 'auto'>;
 
+/** Dragging changes the port on the same node, never the connected node id. */
+export function connectorSideAtPoint(box: CBox, point: CPoint): CDir {
+  const sides: CDir[] = ['top', 'right', 'bottom', 'left'];
+  let best: CDir = 'right', distance = Infinity;
+  for (const side of sides) {
+    const p = sideAnchor(box, side);
+    const d = (p.x - point.x) ** 2 + (p.y - point.y) ** 2;
+    if (d < distance) { best = side; distance = d; }
+  }
+  return best;
+}
+
 export const LOOP_OUT = 40;   // 고리 줄기: 오른쪽 변 바깥 거리
 export const CORNER_R = 12;   // 둥근 모서리 반지름
 export const BRANCH_STUB = 40; // 곁가지 라벨의 짧은 줄기 길이

@@ -39,7 +39,7 @@ import {
   applyTemplateStyles,
   type UserTemplate,
 } from '@/utils/userTemplates';
-import { libraryTemplates } from '@/utils/libraryTemplates';
+import { createNewMap, libraryTemplates } from '@/utils/libraryTemplates';
 import { useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
@@ -64,7 +64,6 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
   t: ThemeTokens; inBrowser?: boolean; onDone?: () => void;
 }) {
   const tr = useTr();
-  const newMap = useDocumentStore((s) => s.newMap);
   const loadMap = useDocumentStore((s) => s.loadMap);
   const setLayoutType = useEditorUiStore((s) => s.setLayoutType);
   const setSpacingX = useEditorUiStore((s) => s.setSpacingX);
@@ -134,18 +133,15 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
   // 예전에는 '새 맵 만들기'를 누른 순간 곧바로 갈아 끼우고 나서 템플릿을
   // 물었기 때문에, 그 단계의 취소는 "이미 지운 맵을 되살리기"가 됐다.
   const replaceWithBlankDoc = () => {
-    // 기본 맵 = '트리-진행트리맵' 기본 템플릿: 중심 주제 + 주제 1~3 +
-    // 하위 주제 + 내용 (4레벨) · 1레벨 트리·오른쪽 → 2레벨 진행트리 →
-    // 3레벨 트리 → 4레벨 진행트리 (documentStore.newMap과 한 쌍)
-    //
+    // 기본 새 맵은 방사형-오른쪽. 선택을 확정하기 전에는 문서를 바꾸지 않는다.
     // 2026-08-02: **여기서 제목을 묻지 않는다.** 항상 'NEW_MAP_TITLE'로
     // 시작하고, 편집을 마치고 ☁ 저장할 때 폴더와 이름을 정한다(규칙 3).
     // 새 문서다 — 조금 전까지 열려 있던 서버 맵과의 연결을 끊는다.
     // (끊지 않으면 자동저장이 그 서버 맵을 이 새 맵으로 덮어쓴다)
     detachFromServer();
     setBrowserOpen(false); // 문서함이 열려 있었다면 닫고 편집 화면으로
-    newMap(NEW_MAP_TITLE);
-    setLayoutType('tree-right');
+    loadMap(createNewMap(NEW_MAP_TITLE), { resetHistory: true });
+    setLayoutType('radial-right');
     resetSpacing();
     setSelectedId('root');
   };
@@ -244,7 +240,10 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     if (chooseTpl?.mode === 'new') {
       replaceWithBlankDoc(); // 고른 순간에 비로소 새 문서로 갈아 끼운다
       const curTitle = useDocumentStore.getState().map.title;
-      const map = templateSkeletonMap(tpl.map);
+      // Only the built-in empty diagram bypasses skeleton conversion. User templates retain their own content/centers contract.
+      const map = tpl.key === 'lib-freeform'
+        ? createNewMap(curTitle, 'freeform')
+        : templateSkeletonMap(tpl.map);
       map.title = curTitle;
       map.root = { ...map.root, text: curTitle }; // 제목 = 중심 주제
       // **되돌리기 경계** — 이 loadMap 은 replaceWithBlankDoc() 의 기본
@@ -283,7 +282,11 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
       editor: tpl.editor,
     })),
     // 기본 제공 템플릿 — 그릴 때마다 지금 언어로 짓는다 (이름·설명·노드 내용)
-    ...libraryTemplates().map((tpl) => ({
+    ...libraryTemplates()
+      // An empty diagram starts a new document; it is not an import styling preset.
+      .filter((tpl) => chooseTpl?.mode !== 'import' || tpl.id !== 'lib-freeform')
+      .sort((a, b) => Number(b.id === 'lib-meeting') - Number(a.id === 'lib-meeting'))
+      .map((tpl) => ({
       key: tpl.id,
       name: tpl.name,
       meta: tr('panel.newMap.metaLibrary', { desc: tpl.desc }),

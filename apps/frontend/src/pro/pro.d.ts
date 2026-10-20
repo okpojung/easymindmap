@@ -12,6 +12,10 @@ declare module '@pro' {
   // 공개판에서는 셋 다 아무것도 그리지 않는다(그것이 정상 동작이다).
   export function ProCollabSession(p: { mapId: string | null; kind?: string }): JSX.Element | null;
   export function ProPresenceBar(p: { t: ThemeTokens }): JSX.Element | null;
+  /** 문서함에서 맵을 열지 않고 주소록을 관리하는 독립 창. 공개판은 null. */
+  export function ProAddressBookDialog(p: {
+    t: ThemeTokens; onClose: () => void;
+  }): JSX.Element | null;
   export function ProShareDialog(p: {
     t: ThemeTokens; mapId: string | null; onClose: () => void;
   }): JSX.Element | null;

@@ -1,5 +1,5 @@
 // 연결선 기하 (2026-09-22).   npx tsx src/editor/canvas/connectorGeometry.test.ts
-import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, loopTrunkX, LOOP_OUT, resolveSide, dedupePoints, trunkSegment } from './connectorGeometry';
+import { connectorSideAtPoint, sideAnchor, arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, loopTrunkX, LOOP_OUT, resolveSide, dedupePoints, trunkSegment } from './connectorGeometry';
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
   const g = JSON.stringify(got), w = JSON.stringify(want); const ok = g === w; if (!ok) failed++;
@@ -96,4 +96,16 @@ if (failed) { console.log(`\n${failed} FAIL`); process.exit(1); }
   check('⑧ offset 0/NaN 은 그대로', connectorPoints(L, R, undefined, 'auto', 'auto', NaN), base);
 }
 
+// Endpoint ports use existing document fields in both normal and freeform maps.
+for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+  check('endpoint nearest ' + side, connectorSideAtPoint(A, sideAnchor(A, side)), side);
+  const route = connectorPoints(A, C, undefined, side, 'left');
+  check('endpoint persisted start ' + side, route[0], sideAnchor(A, side));
+  check('other endpoint unchanged ' + side, route[route.length - 1], sideAnchor(C, 'left'));
+}
+check('endpoint negative world coordinates', connectorSideAtPoint({ x: -400, y: -200, w: 100, h: 60 }, { x: -470, y: -200 }), 'left');
+const pinnedEnd = connectorSideAtPoint(B, p1[p1.length - 1]);
+const movedStartOnly = connectorPoints(A, B, undefined, 'bottom', pinnedEnd);
+check('endpoint auto opposite remains at original port', movedStartOnly[movedStartOnly.length - 1], p1[p1.length - 1]);
+if (failed) process.exitCode = 1;
 console.log('\n모두 통과');

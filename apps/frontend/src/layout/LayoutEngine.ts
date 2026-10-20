@@ -123,17 +123,25 @@ export function computeLayout(
     return [];
   }
 
-  const out = computeCenterLayout(sample.root, sample.branches, layoutType, CX, CY, spacing);
+  const out = computeCenterLayout(sample.root, sample.branches, layoutType, CX, CY, spacing, sample.canvasMode === 'freeform');
+  // Automatic placement is based on the unshifted first hierarchy.
+  const baseBox = boxOf(out);
+  if (sample.rootPos && out.length) {
+    const first = out.find((n) => n.id === sample.root.id) ?? out[0];
+    const dx = CX + sample.rootPos.dx - first.x;
+    const dy = CY + sample.rootPos.dy - first.y;
+    for (const n of out) { n.x += dx; n.y += dy; }
+  }
   const extra = sample.centers ?? [];
   if (extra.length === 0) return out;
 
   // 지금까지 놓인 것의 테두리 — 다음 자동 배치 중심은 그 오른쪽에
-  let box = boxOf(out);
+  let box = baseBox;
   for (const c of extra) {
     // 중심마다 자기 루트의 레이아웃(없으면 맵 레이아웃). 원점(0,0)에
     // 배치한 뒤 통째로 옮긴다 — 간격 배율도 그 안에서 루트 기준으로 적용됐다.
     const part = computeCenterLayout(
-      c.root, c.branches, c.root.layoutType ?? layoutType, 0, 0, spacing,
+      c.root, c.branches, c.root.layoutType ?? layoutType, 0, 0, spacing, sample.canvasMode === 'freeform',
     );
     if (part.length === 0) continue;
     let dx: number;
@@ -175,6 +183,7 @@ function computeCenterLayout(
   CX: number,
   CY: number,
   spacing?: LayoutSpacing,
+  rootCollapsible = false,
 ): LaidOutNode[] {
   const activeLayoutType = normalizeLayoutType(layoutType);
 
@@ -191,6 +200,10 @@ function computeCenterLayout(
   const out: LaidOutNode[] = [
     {
       ...root,
+      // Only freeform centers may hide their own branches. Keep the original
+      // direct-child count so even a folded center retains its expand chip.
+      collapsed: rootCollapsible ? root.collapsed : undefined,
+      _childCount: rawBranches.length,
       layoutType: activeLayoutType,
       x: CX,
       y: CY,
@@ -208,7 +221,7 @@ function computeCenterLayout(
   ];
 
   const rootW = rootSize.w;
-  const branches = pruneCollapsed(rawBranches) as SampleBranch[];
+  const branches = pruneCollapsed(rootCollapsible && root.collapsed ? [] : rawBranches) as SampleBranch[];
 
   switch (activeLayoutType) {
     case 'tree-right':

@@ -113,7 +113,11 @@ export interface SettingGroup {
   id: string; title: string; why: string; items: SettingItem[];
 }
 
+export interface AdminMailTemplate { id:string;label:string;subject:string;text:string;defaultSubject:string;defaultText:string;required:string[];variables:string[];footer:string;updatedAt:string|null }
 export const adminApi = {
+  mailTemplates: () => req<{templates:AdminMailTemplate[]}>('GET','/admin/mail-templates'),
+  previewMailTemplate: (id:string,body:{subject:string;text:string;baseUpdatedAt:string|null}) => req<{subject:string;text:string}>('POST',`/admin/mail-templates/${encodeURIComponent(id)}/preview`,body),
+  saveMailTemplate: (id:string,body:{subject:string;text:string;baseUpdatedAt:string|null}) => req<{updatedAt:string}>('PATCH',`/admin/mail-templates/${encodeURIComponent(id)}`,body),
   // ── 2단계 로그인 ──────────────────────────────────────────
   loginStart: () =>
     req<{ sent: boolean; expiresInMin: number; devCode?: string; message?: string; email: string }>(

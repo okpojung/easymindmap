@@ -33,6 +33,8 @@ interface Props {
   t: ThemeTokens;
   // 루트에서 자식이 자라는 방향(들) — 레이아웃에서 결정 (양쪽이면 2개)
   rootChildSides?: ('left' | 'right' | 'down')[];
+  /** Leave room for a freeform center's own collapse/expand chip. */
+  rootCollapsible?: boolean;
   /**
    * 이 노드에 실제로 적용된 레이아웃. 시간배치는 side 만으로는 구분되지
    * 않아(트리·아래도 side='down' 이다) 방향 규칙을 가를 수 없다.
@@ -55,7 +57,7 @@ const LABEL_KEYS: Record<ActionKey, string> = {
 type Dir = 'up' | 'down' | 'left' | 'right';
 
 export function NodeIndicators({
-  node, t, rootChildSides, effLayout,
+  node, t, rootChildSides, rootCollapsible = false, effLayout,
   onAddChild, onAddParent, onAddSiblingBefore, onAddSiblingAfter,
 }: Props) {
   const tr = useTr();
@@ -66,7 +68,7 @@ export function NodeIndicators({
   const coarse = useCoarse();
   const zoom = useViewportStore((s) => s.zoom);
   const f = coarse ? Math.min(4, Math.max(1, 100 / (zoom || 100))) : 1;
-  const GAP = 26 * f;
+  const GAP = (isRoot && rootCollapsible ? 52 : 26) * f;
   const HIT_R = (coarse ? 20 : 14) * f;
 
   const handlers: Record<ActionKey, () => void> = {

@@ -726,7 +726,9 @@ export class MapsService {
     }>(
       `SELECT COALESCE(octet_length(doc::text), 0) AS b,
               (doc = $2::jsonb) AS same,
-              jsonb_array_length(doc -> 'map' -> 'branches') AS branches,
+              (COALESCE(jsonb_array_length(doc -> 'map' -> 'branches'), 0)
+                + COALESCE(jsonb_array_length(doc -> 'map' -> 'centers'), 0)
+                + COALESCE((SELECT sum(jsonb_array_length(c -> 'branches')) FROM jsonb_array_elements(doc -> 'map' -> 'centers') c), 0)) AS branches,
               updated_at
          FROM public.map_documents WHERE map_id = $1`,
       [mapId, docJson],
@@ -764,8 +766,8 @@ export class MapsService {
     // 대화상자에서 사용자의 뜻을 받아 allowEmpty=true 로 보낼 때만
     // 통과시킨다. 즉 "맵을 비우는 저장"은 언제나 사용자가 그렇게
     // 답한 경우에만 일어난다.
-    const snapForGuard = doc as { map?: { branches?: unknown[] } };
-    const newBranches = snapForGuard?.map?.branches?.length ?? 0;
+    const snapForGuard = doc as { map?: { branches?: unknown[]; centers?: { branches?: unknown[] }[] } };
+    const newBranches = (snapForGuard?.map?.branches?.length ?? 0) + (snapForGuard.map?.centers ?? []).reduce((n, c) => n + 1 + (c.branches?.length ?? 0), 0);
     const oldBranches = cur[0]?.branches ?? 0;
     if (!allowEmpty && newBranches === 0 && oldBranches > 0) {
       this.log.warn(
@@ -824,11 +826,11 @@ export class MapsService {
     }
     const snap = doc as {
       editor?: { layoutType?: string };
-      map?: { root?: SnapNode; branches?: SnapNode[] };
+      map?: { root?: SnapNode; branches?: SnapNode[]; centers?: { root?: SnapNode; branches?: SnapNode[] }[] };
     };
     const countNodes = (ns: SnapNode[]): number =>
       ns.reduce((a, n) => a + 1 + countNodes(n.children ?? []), 0);
-    const nodeCount = 1 + countNodes(snap.map?.branches ?? []); // +1 = 중심 주제
+    const nodeCount = 1 + countNodes(snap.map?.branches ?? []) + (snap.map?.centers ?? []).reduce((n, c) => n + 1 + countNodes(c.branches ?? []), 0); // +1 = 중심 주제
     // 첨부 개수·용량 — 개수는 문서의 attachments 항목 전부, 용량 =
     // 내장(data URL, base64 → 원본 크기 환산) + 서버 저장소 합.
     // blob:(비로그인 세션 한정)은 개수에만 잡히고 용량은 0 이다.
@@ -846,6 +848,10 @@ export class MapsService {
     };
     if (snap.map?.root) walkAttachments(snap.map.root);
     for (const b of snap.map?.branches ?? []) walkAttachments(b);
+    for (const c of snap.map?.centers ?? []) {
+      if (c.root) walkAttachments(c.root);
+      for (const b of c.branches ?? []) walkAttachments(b);
+    }
     const { rows: ab } = await this.db.query<{ b: string }>(
       `SELECT COALESCE(SUM(size_bytes), 0) AS b
          FROM public.attachments WHERE map_id = $1`,

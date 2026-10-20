@@ -37,7 +37,8 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
 
   const tr = useTr();
   // 기본 제공 템플릿 — 그릴 때마다 지금 언어로 짓는다 (작은 골격 7개라 가볍다)
-  const libTpls = libraryTemplates();
+  // Freeform is a new-document canvas mode, not a style to apply to the current map.
+  const libTpls = libraryTemplates().filter((tpl) => tpl.id !== 'lib-freeform');
   const [userTpls, setUserTpls] = useState<UserTemplate[]>([]);
   const [nameDraft, setNameDraft] = useState('');
   const [notice, setNotice] = useState('');

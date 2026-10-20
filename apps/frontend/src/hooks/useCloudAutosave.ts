@@ -219,7 +219,7 @@ async function doSave() {
   // **가지가 하나도 없으면 자동저장하지 않는다.** 맵 전환 레이스에서
   // **제목은 남고 가지만 비는** 중간 상태가 서버를 덮어썼다 (2026-08-05).
   if (isDocumentEmpty(doc) || doc.title === EMPTY_MAP_TITLE) return;
-  if (!doc.branches || doc.branches.length === 0) return;
+  if (!(doc.branches?.length || doc.centers?.length) && doc.canvasMode !== 'freeform') return;
   // **화면의 문서가 이 맵에서 온 것이 맞는가** (2026-08-05 저장 감사).
   // 문서를 통째로 바꾸면서 서버 링크를 끊지 않은 경로가 있으면 전혀
   // 다른 문서가 이 맵에 저장된다 — AI 새 맵 생성(AITab)이 실제로

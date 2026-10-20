@@ -1,13 +1,13 @@
 /** Homepage-only outline/map editor. Memory only: no network, account or storage APIs. */
 export const DEMO_LIMITS = Object.freeze({ nodes: 80, levels: 8, text: 10000, totalText: 60000 });
-const GAP = 18;
+const GAP = 64;
 export function createDemo(text) {
   const state = { root: null, nextId: 1 }; let branch = null;
   const make = value => ({ id: 'demo-' + state.nextId++, text: value, children: [] });
   for (const raw of String(text).split(/\r?\n/)) {
     const line = raw.trim(); if (!line) continue;
     if (/^#\s+/.test(line)) { state.root = make(line.replace(/^#\s+/, '')); branch = null; continue; }
-    if (!state.root) state.root = make('나의 생각 지도');
+    if (!state.root) state.root = make('나의 생각 맵');
     if (/^##\s+/.test(line)) { branch = make(line.replace(/^##\s+/, '')); state.root.children.push(branch); }
     else (branch || state.root).children.push(make(line.replace(/^[-*+]\s+/, '')));
   }
@@ -29,7 +29,7 @@ export function addDemoNode(state, id, kind = 'child') {
   if (kind === 'sibling' && !found?.parent) return { ok: false, message: '중심 노드는 같은 단계로 추가할 수 없습니다.' };
   const depth = found ? found.depth + (kind === 'child' ? 1 : 0) : 0;
   if (depth >= DEMO_LIMITS.levels) return { ok: false, message: '간단 체험은 ' + DEMO_LIMITS.levels + '단계까지 연결할 수 있습니다.' };
-  const value = state.root ? '새 생각' : '나의 생각 지도';
+  const value = state.root ? '새 생각' : '나의 생각 맵';
   if (rows.reduce((sum, row) => sum + row.node.text.length, 0) + value.length > DEMO_LIMITS.totalText) return { ok: false, message: '전체 입력 한도에 도달했습니다. 내용을 줄인 뒤 추가해 주세요.' };
   const item = { id: 'demo-' + state.nextId++, text: value, children: [] };
   if (!state.root) state.root = item;
@@ -68,15 +68,15 @@ export function layoutDemo(state, measure) {
     const lines = wrapDemoText(row.node.text || '내용을 입력하세요', width - 28, measure);
     boxes.set(row.node.id, { ...row, width, height: Math.max(48, lines.length * 22 + 24), lines, span: 0, x: 0, y: 0 });
   }
-  function span(node) { const box = boxes.get(node.id); const children = node.children.map(span); box.span = Math.max(box.height, children.reduce((a, b) => a + b, 0) + Math.max(0, children.length - 1) * GAP); return box.span; }
+  function span(node) { const box = boxes.get(node.id); const children = node.children.map(span); box.span = Math.max(box.height + 48, children.reduce((a, b) => a + b, 0) + Math.max(0, children.length - 1) * GAP); return box.span; }
   function place(node, top) {
-    const box = boxes.get(node.id); box.x = 24 + (box.depth === 0 ? 0 : 184 + 52 + (box.depth > 1 ? 200 + 52 + (box.depth - 2) * 268 : 0)); box.y = top + (box.span - box.height) / 2;
+    const box = boxes.get(node.id); box.x = 24 + (box.depth === 0 ? 0 : 184 + 92 + (box.depth > 1 ? 200 + 92 + (box.depth - 2) * 308 : 0)); box.y = top + (box.span - box.height) / 2;
     const childHeight = node.children.reduce((sum, child) => sum + boxes.get(child.id).span, 0) + Math.max(0, node.children.length - 1) * GAP;
     let childTop = top + (box.span - childHeight) / 2;
     node.children.forEach(child => { place(child, childTop); childTop += boxes.get(child.id).span + GAP; });
   }
   if (state.root) { span(state.root); place(state.root, 24); }
-  return { boxes: Array.from(boxes.values()), width: Math.max(360, ...Array.from(boxes.values(), box => box.x + box.width + 24)), height: state.root ? boxes.get(state.root.id).span + 48 : 240 };
+  return { boxes: Array.from(boxes.values()), width: Math.max(360, ...Array.from(boxes.values(), box => box.x + box.width + 60)), height: state.root ? boxes.get(state.root.id).span + 48 : 240 };
 }
 export function mountOutlineDemo(root, presets) {
   const query = selector => { const element = root.querySelector(selector); if (!element) throw new Error('Missing outline demo element: ' + selector); return element; };
@@ -97,6 +97,7 @@ export function mountOutlineDemo(root, presets) {
       const target = button.dataset.nodeId ? rows.find(row => row.node.id === button.dataset.nodeId) : chosen; const action = button.dataset.demoAction;
       button.disabled = action === 'first' ? Boolean(state.root) : !target || (action === 'sibling' && !target.parent) || ((action === 'child' || action === 'sibling') && rows.length >= DEMO_LIMITS.nodes) || (action === 'child' && target.depth + 1 >= DEMO_LIMITS.levels);
     });
+    graph.querySelectorAll('[data-map-add]').forEach(control => { const active = control.dataset.nodeId === selected; control.style.display = active ? '' : 'none'; control.setAttribute('tabindex', active ? '0' : '-1'); });
     query('#demo-node-count').textContent = rows.length + '개 노드';
   }
   function focusInput(id, selectAll = false) { const input = fields.get(id); if (!input) { outline.querySelector('button')?.focus(); return; } input.focus({ preventScroll: true }); input.scrollIntoView({ block: 'nearest', inline: 'nearest' }); if (selectAll) input.select(); }
@@ -119,7 +120,7 @@ export function mountOutlineDemo(root, presets) {
   function renderMap() {
     graph.replaceChildren(); const layout = layoutDemo(state, measure);
     if (!state.root) { const empty = document.createElement('p'); empty.className = 'demo-empty'; empty.textContent = '아웃라인에서 첫 노드를 추가해 보세요.'; graph.append(empty); selection(); return; }
-    const svg = svgNode('svg', { viewBox: '0 0 ' + layout.width + ' ' + layout.height, width: layout.width, height: layout.height, role: 'group', 'aria-label': '아웃라인과 실시간으로 연결된 생각 지도' });
+    const svg = svgNode('svg', { viewBox: '0 0 ' + layout.width + ' ' + layout.height, width: layout.width, height: layout.height, role: 'group', 'aria-label': '아웃라인과 실시간으로 연결된 생각 맵' });
     svg.style.width = 'max(100%, ' + layout.width + 'px)'; svg.style.height = layout.height + 'px';
     const byId = new Map(layout.boxes.map(box => [box.node.id, box]));
     const palette = [['#f0f5e5', '#bdcd9c', '#4c6338'], ['#fcf0e3', '#dfc7a3', '#845f32'], ['#eaf2ed', '#b4cbb9', '#41634d']];
@@ -130,11 +131,17 @@ export function mountOutlineDemo(root, presets) {
       const text = svgNode('text', { x: box.x + 14, y: box.y + 27, fill: box.depth === 0 ? '#fff' : color[2], 'font-size': 14, 'font-weight': box.depth === 0 ? 600 : 500, 'xml:space': 'preserve' }); text.style.letterSpacing = '0';
       box.lines.forEach((line, index) => text.append(svgNode('tspan', { x: box.x + 14, dy: index === 0 ? 0 : 22 }, line)));
       group.append(text); svg.append(group);
+      for (const kind of box.parent ? ['child', 'sibling'] : ['child']) {
+        const cx = kind === 'child' ? box.x + box.width + 24 : box.x + box.width / 2;
+        const cy = kind === 'child' ? box.y + box.height / 2 : box.y + box.height + 24;
+        const add = svgNode('g', { 'data-map-add': '', 'data-demo-action': kind, 'data-node-id': box.node.id, role: 'button', tabindex: 0, 'aria-label': (kind === 'child' ? '하위 노드 추가: ' : '같은 단계 노드 추가: ') + box.node.text });
+        add.append(svgNode('circle', { cx, cy, r: 18, fill: '#fff', stroke: '#2d5842', 'stroke-width': 2 }), svgNode('text', { x: cx, y: cy + 6, 'text-anchor': 'middle', 'font-size': 24, fill: '#2d5842', 'aria-hidden': 'true' }, '+')); svg.append(add);
+      }
     }
     graph.append(svg); selection();
   }
   function renderAll() { renderOutline(); renderMap(); }
-  function choosePreset(key) { if (disposed || !Object.hasOwn(presets, key)) return; currentPreset = key; state = createDemo(presets[key]); selected = state.root?.id || null; root.querySelectorAll('[data-preset]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.preset === key))); graph.scrollTop = 0; graph.scrollLeft = 0; renderAll(); announce('예시를 불러왔습니다. 아웃라인을 고치면 지도에 바로 반영됩니다.'); }
+  function choosePreset(key) { if (disposed || !Object.hasOwn(presets, key)) return; currentPreset = key; state = createDemo(presets[key]); selected = state.root?.id || null; root.querySelectorAll('[data-preset]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.preset === key))); graph.scrollTop = 0; graph.scrollLeft = 0; renderAll(); announce('예시를 불러왔습니다. 아웃라인을 고치면 맵에 바로 반영됩니다.'); }
   function reset(toDefault = false) { choosePreset(toDefault ? 'questions' : currentPreset); announce('초기화했습니다. 기본 예시로 다시 시작하세요.'); }
   function runAction(action, id) {
     if (action === 'edit') { focusInput(id); return; }
@@ -153,12 +160,13 @@ export function mountOutlineDemo(root, presets) {
     const input = event.target; if (!(input instanceof HTMLTextAreaElement) || !input.dataset.demoInput) return;
     const result = updateDemoNode(state, input.dataset.demoInput, input.value);
     if (!result.ok) { const found = flattenDemo(state).find(row => row.node.id === input.dataset.demoInput); input.value = found?.node.text || ''; announce(result.message); return; }
-    selected = input.dataset.demoInput; resizeInput(input); renderMap(); announce('수정 내용이 지도에 바로 반영되었습니다.');
+    selected = input.dataset.demoInput; resizeInput(input); renderMap(); announce('수정 내용이 맵에 바로 반영되었습니다.');
   }
   function onFocus(event) { if (event.target instanceof HTMLTextAreaElement && event.target.dataset.demoInput) select(event.target.dataset.demoInput); }
   function onDoubleClick(event) { if (!(event.target instanceof Element)) return; const node = event.target.closest('[data-map-node]'); if (node) { select(node.dataset.mapNode); focusInput(selected); } }
   function onKeyDown(event) {
     if (event.isComposing || event.keyCode === 229 || !(event.target instanceof Element)) return;
+    const add = event.target.closest('[data-map-add]'); if (add && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); runAction(add.dataset.demoAction, add.dataset.nodeId); return; }
     const input = event.target.closest('[data-demo-input]');
     if (input && event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.metaKey) { event.preventDefault(); const row = flattenDemo(state).find(item => item.node.id === input.dataset.demoInput); runAction(event.ctrlKey || !row?.parent ? 'child' : 'sibling', input.dataset.demoInput); return; }
     const node = event.target.closest('[data-map-node]'); if (node && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); select(node.dataset.mapNode); focusInput(selected); }

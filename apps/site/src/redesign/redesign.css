@@ -311,3 +311,33 @@ html.emm-home-page{scroll-behavior: smooth; scroll-padding-top: 100px;}
 .emm-home .header .brand img[data-brand-logo]{width:80px;height:70px;object-fit:contain;background:#fff;border-radius:5px}
 @media(min-width:1201px){.emm-home .header-inner{gap:24px}.emm-home .header .nav{gap:24px}}
 @media(max-width:800px){.emm-home .header .brand img[data-brand-logo]{width:64px;height:56px}}
+
+/* Homepage-only live outline/map split editor. */
+.emm-home .demo-split{grid-template-columns:minmax(310px,.9fr) minmax(0,1.5fr);gap:18px;align-items:stretch;}
+.emm-home .demo-outline-pane,.emm-home .demo-map-pane{height:570px;display:flex;flex-direction:column;}
+.emm-home .demo-split .pane-head{min-height:53px;flex:none;gap:12px;}
+.emm-home .demo-split .pane-head strong{font-weight:650;}
+.emm-home .demo-outline-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 8px;}
+.emm-home .demo-outline-tree,.emm-home .demo-outline-tree ol{list-style:none;padding:0;margin:0;}
+.emm-home .demo-outline-row{display:flex;align-items:flex-start;gap:5px;padding:5px 4px 5px calc(4px + var(--demo-depth)*12px);border-radius:7px;border:1px solid transparent;}
+.emm-home .demo-outline-row.is-selected{background:#f0f5e8;border-color:#cad8bc;}
+.emm-home .demo-outline-mark{color:#71906b;font-size:11px;line-height:34px;flex:none;}
+.emm-home .demo-outline-pane .demo-node-input{display:block;flex:1;min-width:0;width:100%;height:36px;min-height:36px;max-height:240px;resize:none;border:1px solid transparent;border-radius:5px;padding:6px 4px;background:transparent;font:inherit;font-size:13px;line-height:22px;letter-spacing:0;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;color:var(--ink);}
+.emm-home .demo-outline-pane .demo-node-input:focus{outline:2px solid #5d826b;outline-offset:0;background:white;}
+.emm-home .demo-row-actions{display:flex;align-items:center;gap:2px;padding-top:3px;flex:none;opacity:0;}
+.emm-home .demo-outline-row:hover .demo-row-actions,.emm-home .demo-outline-row:focus-within .demo-row-actions,.emm-home .demo-outline-row.is-selected .demo-row-actions{opacity:1;}
+.emm-home .demo-node-action,.emm-home .demo-map-tools button{border:1px solid #d8e2d0;border-radius:5px;background:#fff;color:#315b44;padding:5px 6px;font-size:10px;line-height:1.5;white-space:nowrap;}
+.emm-home .demo-node-action:hover:not(:disabled),.emm-home .demo-map-tools button:hover:not(:disabled){background:#e7efde;border-color:#8daa82;}
+.emm-home .demo-node-action:disabled,.emm-home .demo-map-tools button:disabled{opacity:.4;}
+.emm-home .demo-split .editor-foot{flex:none;min-height:65px;}
+.emm-home .demo-split .editor-foot span{line-height:1.7;}
+.emm-home .demo-map-tools{display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid #e6ebdf;flex:none;}
+.emm-home .demo-map-tools button{font-size:11px;padding:5px 9px;}
+.emm-home .demo-map-pane .result-graph{display:block;flex:1;min-height:0;height:auto;overflow:auto;overscroll-behavior:contain;}
+.emm-home .demo-map-pane .result-graph svg{display:block;width:auto;height:auto;min-width:0;min-height:0;max-width:none;font-family:inherit;flex:none;}
+.emm-home [data-map-node]{cursor:pointer;outline:none;}
+.emm-home [data-map-node].is-selected rect,.emm-home [data-map-node]:focus-visible rect{stroke:#cf613e;stroke-width:3;}
+.emm-home .demo-outline-empty,.emm-home .demo-empty{padding:24px;font-size:13px;color:var(--muted);}
+.emm-home .demo-outline-empty .demo-node-action{font-size:13px;padding:9px 14px;}
+@media(max-width:1050px){.emm-home .demo-split{grid-template-columns:minmax(280px,.95fr) minmax(0,1.3fr);}.emm-home .demo-row-actions{opacity:1;}.emm-home .demo-outline-row{padding-left:calc(2px + var(--demo-depth)*9px);}}
+@media(max-width:800px){.emm-home .demo-split{grid-template-columns:minmax(0,1fr);}.emm-home .demo-outline-pane{height:440px;}.emm-home .demo-map-pane{height:480px;}.emm-home .demo-row-actions{opacity:1;}.emm-home .demo-map-tools{gap:5px;}.emm-home .demo-map-tools button{min-height:36px;}.emm-home .demo-node-action{padding:6px 5px;min-height:32px;}}

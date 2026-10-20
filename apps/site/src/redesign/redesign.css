@@ -341,3 +341,7 @@ html.emm-home-page{scroll-behavior: smooth; scroll-padding-top: 100px;}
 .emm-home .demo-outline-empty .demo-node-action{font-size:13px;padding:9px 14px;}
 @media(max-width:1050px){.emm-home .demo-split{grid-template-columns:minmax(280px,.95fr) minmax(0,1.3fr);}.emm-home .demo-row-actions{opacity:1;}.emm-home .demo-outline-row{padding-left:calc(2px + var(--demo-depth)*9px);}}
 @media(max-width:800px){.emm-home .demo-split{grid-template-columns:minmax(0,1fr);}.emm-home .demo-outline-pane{height:440px;}.emm-home .demo-map-pane{height:480px;}.emm-home .demo-row-actions{opacity:1;}.emm-home .demo-map-tools{gap:5px;}.emm-home .demo-map-tools button{min-height:36px;}.emm-home .demo-node-action{padding:6px 5px;min-height:32px;}}
+
+/* Native details supports touch, Enter and Space; controller handles outside/Escape. */
+.emm-home .emm-dropdown{position:relative}.emm-home .emm-dropdown summary{cursor:pointer;padding:10px 0}.emm-home .emm-dropdown-links{position:absolute;top:100%;left:0;min-width:145px;background:var(--paper);border:1px solid var(--line);padding:12px;display:flex;flex-direction:column;z-index:40}.emm-home [data-map-add]{cursor:pointer}.emm-home [data-map-add]:focus circle{stroke:#b56a24;stroke-width:4}.emm-home .nav{gap:20px}.emm-home .header-inner{gap:20px}
+@media(max-width:800px){.emm-home .nav{max-height:calc(100dvh - 70px);overflow-y:auto}.emm-home .emm-dropdown-links{position:static}.emm-home .nav a,.emm-home .emm-dropdown summary{min-height:44px;display:block}}

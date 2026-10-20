@@ -8,7 +8,7 @@ export const PRESETS: Record<string, string> = {
   "travel": "# 주말 여행\n## 준비할 것\n- 충전기\n- 편한 신발\n## 하고 싶은 것\n- 바다 산책\n- 맛집 탐방\n## 가고 싶은 곳\n- 강릉\n- 속초"
 };
 export function parseMemo(text: string): DemoMap {
- let root = '나의 생각 지도'; const groups: DemoGroup[] = []; let current: DemoGroup | null = null;
+ let root = '나의 생각 맵'; const groups: DemoGroup[] = []; let current: DemoGroup | null = null;
  for (const raw of text.split(/\r?\n/)) { const line = raw.trim(); if (!line) continue;
   if (/^#\s+/.test(line)) { root = line.replace(/^#\s+/, ''); continue; }
   if (/^##\s+/.test(line)) { current = { title: line.replace(/^##\s+/, ''), items: [] }; groups.push(current); continue; }

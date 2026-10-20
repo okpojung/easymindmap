@@ -163,9 +163,37 @@ const meetingMap = (): SampleMap => ({
   ],
 });
 
+/** Fresh document factory. Freeform is a canvas mode, never a hierarchy layout. */
+export function createNewMap(title: string, mode: 'mindmap' | 'freeform' = 'mindmap'): SampleMap {
+  if (mode === 'freeform') {
+    return {
+      title,
+      canvasMode: 'freeform',
+      rootPos: { dx: 0, dy: 0 },
+      root: { ...rootOf(title), layoutType: 'radial-right' },
+      branches: [],
+      centers: [],
+    };
+  }
+  return {
+    ...meetingMap(),
+    title,
+    canvasMode: 'mindmap',
+    root: { ...rootOf(title), layoutType: 'radial-right' },
+  };
+}
+
 /** 기본 제공 템플릿 — **부르는 순간의 언어**로 이름·설명·노드 내용을 짓는다 */
 export function libraryTemplates(): LibraryTemplate[] {
   return [
+    {
+      id: 'lib-freeform',
+      name: tr('panel.lib.freeform.name'),
+      desc: tr('panel.lib.freeform.desc'),
+      colors: ['#0284C7', '#15803D'],
+      map: createNewMap(CENTRAL(), 'freeform'),
+      editor: { layoutType: 'radial-right' },
+    },
     {
       id: 'lib-tree-progress',
       name: tr('panel.lib.treeProgress.name'),

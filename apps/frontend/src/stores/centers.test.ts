@@ -123,7 +123,7 @@ load();
   st().deleteNode(at);
   check('자리 중심 삭제 → 둘', m().centers!.length, 2);
   st().setCenterPos(id, { dx: 300.4, dy: -20.6 });
-  check('자리 저장(반올림)', m().centers![1].pos, { dx: 300, dy: -21 });
+  check('자리 저장(소수 정밀도 보존)', m().centers![1].pos, { dx: 300.4, dy: -20.6 });
   st().setCenterPos(id, null);
   check('자리 지움 → 자동 배치', m().centers![1].pos, undefined);
   st().setCenterPos('root', { dx: 1, dy: 1 });
@@ -185,7 +185,9 @@ load();
   st().setLevelLayout(1, 'tree-right');
   check('레벨 레이아웃은 두 중심 모두', [m().branches[0].layoutType, m().centers![0].branches[0].layoutType], ['tree-right', 'tree-right']);
   st().updateNodeLayoutType('c2', 'hierarchy-right');
-  check('둘째 중심 루트의 레이아웃 + 가지 오버라이드 초기화', [m().centers![0].root.layoutType, m().centers![0].branches[0].layoutType], ['hierarchy-right', undefined]);
+  check('둘째 중심 루트만 변경 — 가지 오버라이드 유지', [m().centers![0].root.layoutType, m().centers![0].branches[0].layoutType], ['hierarchy-right', 'tree-right']);
+  st().updateNodeLayoutType('c2', 'radial-right', true);
+  check('하위노드 변경 명시 — 가지 오버라이드 초기화', [m().centers![0].root.layoutType, m().centers![0].branches[0].layoutType], ['radial-right', undefined]);
   check('첫 중심은 건드리지 않았다', m().branches[0].layoutType, 'tree-right');
 }
 

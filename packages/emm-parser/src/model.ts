@@ -234,8 +234,12 @@ export interface SampleRoot {
   textAlign?: TextAlign;
   layoutType?: LayoutType;
 
-  // Root may carry the same content metadata as any node (it can't be moved,
-  // deleted or collapsed, but it can have style / tags / notes / links).
+  /** Freeform centers may hide their branches. Ordinary-map centers ignore it.
+   * Stored as the same optional view-state flag used by other nodes. */
+  collapsed?: boolean;
+
+  // Root may carry the same content metadata as any node (it can't be deleted,
+  // but it can have style / tags / notes / links).
   icon?: string;
   iconSide?: 'left' | 'right';
   tag?: string;
@@ -293,7 +297,8 @@ export interface SampleCenter {
   root: SampleRoot;
   branches: SampleBranch[];
   /**
-   * 첫 중심의 루트를 원점으로 한 **상대 위치** (px). 앱이 사용자가 끌어
+   * 레이아웃의 고정 기준점(CX, CY)에서 잰 **상대 위치** (px). 첫 중심을
+   * 움직여도 다른 중심의 좌표 원점은 바뀌지 않는다. 앱이 사용자가 끌어
    * 옮긴 자리를 저장한다 — md 에는 좌표가 없으므로(순서만 있다) 이 값은
    * 앱 저장본·HTML 내보내기에만 남는다. 없으면 자동 배치(앞 중심의 오른쪽).
    */
@@ -335,6 +340,9 @@ export interface Connector {
 }
 
 export interface SampleMap {
+  canvasMode?: 'mindmap' | 'freeform';
+  /** First center position relative to the stable canvas origin. */
+  rootPos?: { dx: number; dy: number };
   title: string;
   root: SampleRoot;
   branches: SampleBranch[];
@@ -352,7 +360,7 @@ export interface SampleMap {
 /** 첫 중심(root/branches)을 포함한 **모든 중심주제**를 문서 순서대로. */
 export function mapCenters(map: SampleMap): SampleCenter[] {
   return [
-    { root: map.root, branches: map.branches },
+    { root: map.root, branches: map.branches, pos: map.rootPos },
     ...(map.centers ?? []),
   ];
 }

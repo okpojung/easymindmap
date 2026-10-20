@@ -107,6 +107,10 @@ export function ProCollabSession(_p: { mapId: string | null; kind?: string }) {
  * (`ProFeaturePanel` 과 같은 규칙). 예전에는 이 버튼이 눌려도 아무 일도
  * 일어나지 않았다 — 눌리는데 아무 일도 없는 버튼은 고장으로 보인다.
  */
+export function ProAddressBookDialog(_p: { t: ThemeTokens; onClose: () => void }) {
+  return null;
+}
+
 export function ProShareDialog(
   { t, mapId, onClose }: { t: ThemeTokens; mapId: string | null; onClose: () => void },
 ) {

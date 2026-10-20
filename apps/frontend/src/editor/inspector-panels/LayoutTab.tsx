@@ -1,3 +1,4 @@
+import { useState } from 'react';
 // File: src/editor/inspector-panels/LayoutTab.tsx
 // Version: MVP-LayoutTab-RootOnlyRules-v3.0.0
 // Description:
@@ -135,11 +136,12 @@ function effectiveLayoutOf(
 
 export function LayoutTab({ t }: { t: ThemeTokens }) {
   const tr = useTr();
+  const [descendants, setDescendants] = useState(false);
+  const setCanvasMode = useDocumentStore((s) => s.setCanvasMode);
   const map = useDocumentStore((s) => s.map);
   const updateNodeLayoutType = useDocumentStore((s) => s.updateNodeLayoutType);
   const updateNodesLayoutType = useDocumentStore((s) => s.updateNodesLayoutType);
-  // 러버밴드 다중 선택 — 고른 노드 **전부**의 하위에 적용 (2026-09-21).
-  // 스타일 탭과 같은 규칙. 'root'·중심주제 루트는 빼고 센다.
+  // Bulk hierarchy edits include every selected center and ordinary node.
   const multiSelectedIds = useInteractionStore((s) => s.multiSelectedIds);
 
   const selectedId = useInteractionStore((s) => s.selectedId);
@@ -173,10 +175,10 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   // selection acts as root scope: clicking a layout changes the whole map.
   const subtreeScope =
     hasSelection && !mapIsKanban && selectedId !== 'root' && !centerScope;
-  const bulkTargets =
-    subtreeScope && multiSelectedIds.length > 1
-      ? multiSelectedIds.filter((id) => id !== 'root' && !isCenterRootId(map, id))
-      : [];
+  const bulkTargets = multiSelectedIds.length > 1
+    ? [...new Set(multiSelectedIds)].filter((id) => !!findNodeInMap(map, id))
+    : [];
+  const bulkHasOrdinaryNodes = bulkTargets.some((id) => !isCenterRootId(map, id));
 
   const activeLayoutType = normalizeLayoutType(
     centerScope
@@ -185,12 +187,14 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   );
 
   const optionDisabled = (option: LayoutOption): boolean => {
-    if (!subtreeScope) return false; // 맵 전체 스코프(선택 없음·메인): 전부 선택 가능
-    return !!option.rootOnly; // subtree: root-only layouts are unavailable
+    if (option.key === 'kanban' && (centerScope || bulkTargets.length > 1)) return true;
+    if (bulkTargets.length > 1) return !!option.rootOnly && bulkHasOrdinaryNodes;
+    if (!subtreeScope) return false;
+    return !!option.rootOnly;
   };
 
   const disabledReason = (option: LayoutOption): string | undefined => {
-    if (subtreeScope && option.rootOnly)
+    if (optionDisabled(option))
       return tr('inspector.layout.rootOnly');
     return undefined;
   };
@@ -200,28 +204,35 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
 
     // 자유배치: 메인 노드에서만 선택할 수 있지만 맵 레이아웃은 변경하지
     // 않는다 (순서도·플로차트 등 향후 용도 — 아래 안내 참조).
-    if (option.neverApplies) return;
+    if (option.key === 'freeform') { setCanvasMode('freeform'); return; }
+
+    // Route bulk first, including when the primary selection is a center.
+    if (bulkTargets.length > 1) {
+      updateNodesLayoutType(bulkTargets, option.key, descendants);
+      if (mapIsKanban && option.key !== 'kanban') setLayoutType(option.key);
+      return;
+    }
 
     if (!subtreeScope && !centerScope) {
       // 맵을 먼저 바꾼다 — 히스토리 스냅샷이 "이전 레이아웃"과 함께
       // 기록되어 Ctrl+Z 한 번으로 레이아웃까지 되돌아간다.
-      updateNodeLayoutType('root', option.key);
+      updateNodeLayoutType('root', option.key, descendants);
       setLayoutType(option.key);
       return;
     }
 
-    // 러버밴드로 여럿을 골랐으면 전부 (undo 한 단계)
-    if (bulkTargets.length > 1) {
-      updateNodesLayoutType(bulkTargets, option.key);
-      return;
-    }
     // 서브트리 또는 둘째 이후의 중심주제 — 그 노드/중심만
-    updateNodeLayoutType(selectedId, option.key);
+    updateNodeLayoutType(selectedId, option.key, descendants);
   };
 
   return (
     <div data-mm-touch="">
       <InspectorSection t={t} title={tr('inspector.layout.title')}>
+        <label style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+          <input type="checkbox" checked={descendants} onChange={(e) => setDescendants(e.target.checked)} />
+          하위노드 레이아웃 변경
+        </label>
+        {map.canvasMode === 'freeform' && <button onClick={() => setCanvasMode('mindmap')}>Mindmap</button>}
         <div
           style={{
             display: 'grid',
@@ -230,7 +241,7 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
           }}
         >
           {LAYOUTS.map((layout) => {
-            const active = normalizeLayoutType(layout.key) === activeLayoutType;
+            const active = layout.key === 'freeform' ? map.canvasMode === 'freeform' : normalizeLayoutType(layout.key) === activeLayoutType;
             const disabled = optionDisabled(layout);
 
             return (

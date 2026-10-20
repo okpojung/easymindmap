@@ -29,7 +29,7 @@ import {
   type FolderItem, type MapListItem,
 } from '@/services/cloud/apiClient';
 import {
-  ProDashboardToggle, ProInbox, ProMapMembersTip, ProShareDialog, ProSharedMapActions,
+  ProAddressBookDialog, ProDashboardToggle, ProInbox, ProMapMembersTip, ProShareDialog, ProSharedMapActions,
 } from '@pro';
 import { PublishPanel } from '@/components/cloud/PublishPanel';
 import { NewMapPanel } from '@/components/left-sidebar/NewMapPanel';
@@ -46,6 +46,7 @@ import { clampLeft, clampTop } from '@/utils/popupPosition';
 // 컴포넌트 안은 useTr() 의 tr, 컴포넌트 밖 함수·useCallback 안은 부르는 순간의 언어(trNow)
 import { useTr, useLang, tr as trNow, currentLocale, LANG_LOCALE } from '@/i18n';
 import { rich } from '@/i18n/rich';
+import { useProFeature } from '@/pro/contract';
 
 type SortKey = 'title' | 'createdAt' | 'updatedAt'
   | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
@@ -390,6 +391,14 @@ export function MapBrowser({
    * 다시 읽는다 — 초대로 유형이 협업맵이 됐거나 소유권 제안이 걸렸을 수 있다.
    */
   const [shareMap, setShareMap] = useState<MapListItem | null>(null);
+  // 주소록은 맵과 무관한 계정 기능이다. 문서함에서도 독립적으로 연다.
+  const [addressBookOpen, setAddressBookOpen] = useState(false);
+  const addressBookEnabled = useProFeature('collab').status === 'on';
+  const addressBookTrigger = useRef<HTMLButtonElement>(null);
+  const closeAddressBook = useCallback(() => {
+    setAddressBookOpen(false);
+    addressBookTrigger.current?.focus();
+  }, []);
   /** 문서함 행에서 연 퍼블리싱 창 — 같은 요청. 협업맵은 게시할 수 없어 버튼이 없다 */
   const [publishMap, setPublishMap] = useState<MapListItem | null>(null);
   /**
@@ -410,13 +419,10 @@ export function MapBrowser({
     window.addEventListener('pointerdown', close);
     return () => window.removeEventListener('pointerdown', close);
   }, [newMapAt]);
-  // 상세 정보 카드 (2026-08-09 요청) — 파일명 위에 마우스를 올리거나
-  // 행 오른쪽 ⓘ 를 누르면 뜬다. pinned=true(ⓘ 클릭)면 마우스를 떼도
-  // 남아 있어 IP 같은 값을 드래그해 복사할 수 있다.
+  // 상세 정보는 명시적인 ⓘ/상세 메뉴 동작으로만 연다.
   const [info, setInfo] = useState<
     { map: MapListItem; x: number; y: number; pinned: boolean } | null
   >(null);
-  const infoTimer = useRef<number | null>(null);
   /**
    * 카드의 **실제 높이** — 화면 밖으로 나가지 않게 접으려면 높이를 알아야
    * 한다 (2026-09-18 사용자 지적: 퍼블리싱 맵의 카드가 아래로 잘렸다).
@@ -432,17 +438,6 @@ export function MapBrowser({
     if (!info) { setInfoH(0); return; }
     if (infoRef.current) setInfoH(infoRef.current.offsetHeight);
   }, [info]);
-  const showInfoSoon = (map: MapListItem, el: HTMLElement) => {
-    if (info?.pinned) return; // 고정된 카드는 호버로 갈아치우지 않는다
-    if (infoTimer.current) window.clearTimeout(infoTimer.current);
-    const r = el.getBoundingClientRect();
-    infoTimer.current = window.setTimeout(
-      () => setInfo({ map, x: r.left, y: r.bottom + 6, pinned: false }), 350);
-  };
-  const hideInfoSoon = () => {
-    if (infoTimer.current) window.clearTimeout(infoTimer.current);
-    setInfo((cur) => (cur && !cur.pinned ? null : cur));
-  };
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
   // 돌아갈 맵이 있는가 — 읽기 전용으로 연 맵도 '열려 있는' 것이다
   const readOnlyOpen = useCloudStore((s) => s.readOnlyInfo);
@@ -495,7 +490,7 @@ export function MapBrowser({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       // 폴더 고르는 창(맵·폴더 이동)은 제 Esc 로 스스로 닫는다 — 여기서는 비켜선다
-      if (moving || movingFolder) return;
+      if (moving || movingFolder || addressBookOpen) return;
       if (sheet) { setSheet(null); return; }
       if (newMapAt) { setNewMapAt(null); return; }
       if (info) { setInfo(null); return; }
@@ -505,7 +500,7 @@ export function MapBrowser({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, newFolder, query, info, newMapAt, sheet, moving, movingFolder]);
+  }, [onClose, newFolder, query, info, newMapAt, sheet, moving, movingFolder, addressBookOpen]);
 
   // ── 내용 검색 ───────────────────────────────────────────────
   // 서버가 제목 + 맵 안(노드·노트·태그)을 찾아 **맞은 맵만** 돌려준다.
@@ -1422,7 +1417,7 @@ export function MapBrowser({
       }}
     >
       {compact ? (
-        /* 폰 머리 — 첫 줄: 제목 · [＋ 새 맵] · [?] · [⋯] · [✕], 둘째 줄: 검색창 전체 폭.
+        /* 폰 머리 — 첫 줄: 제목 · [＋ 새 맵] · [?] · [⋯] · [✕], 둘째 줄: 검색창 · 주소록.
            데스크톱의 단추 다섯 개가 세 줄로 접히던 것을 시트로 옮겼다. */
         <div data-testid="m-browser-header" style={{
           display: 'flex', flexDirection: 'column', gap: 8,
@@ -1471,7 +1466,8 @@ export function MapBrowser({
               >✕</button>
             )}
           </div>
-          <div style={{ position: 'relative' }}>
+          <div data-testid="browser-search-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
             <input
               data-testid="browser-search"
               value={query}
@@ -1499,6 +1495,16 @@ export function MapBrowser({
                 }}
               >✕</button>
             )}
+          </div>
+          {addressBookEnabled && (
+            <button ref={addressBookTrigger} type="button" data-testid="browser-addressbook"
+              aria-haspopup="dialog" aria-expanded={addressBookOpen}
+              title={tr('cloud.browser.addressBookTip')}
+              onClick={() => setAddressBookOpen(true)}
+              style={{ ...mIconBtn, width: 'auto', minHeight: 40, padding: '0 12px', fontSize: 13.5,
+                flexShrink: 0, whiteSpace: 'nowrap', color: t.primary, borderColor: t.primaryBorder }}
+            >{tr('cloud.browser.addressBook')}</button>
+          )}
           </div>
           {finding && (
             <span data-testid="browser-search-busy" style={{ fontSize: 12, color: t.textMuted }}>
@@ -1561,6 +1567,7 @@ export function MapBrowser({
           {/* **전체 검색** (2026-08-07 요청) — 지금 폴더가 아니라
               **문서함 전체**를 훑는다. 맞는 파일이 든 폴더는 자동으로
               펼쳐지고, 그 안에서도 맞는 파일만 남는다. */}
+          <div data-testid="browser-search-actions" style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%' }}>
           <input
             data-testid="browser-search"
             value={query}
@@ -1569,12 +1576,21 @@ export function MapBrowser({
             placeholder={tr('cloud.browser.searchPh')}
             title={tr('cloud.browser.searchTip')}
             style={{
-              height: 24, width: 210, padding: '0 8px', borderRadius: 6,
+              height: 24, width: 210, minWidth: 0, padding: '0 8px', borderRadius: 6,
               marginLeft: 4, fontSize: 11.5,
               border: `1px solid ${query ? t.primaryBorder : t.border}`,
               background: t.surfaceAlt, color: t.text, outline: 'none',
             }}
           />
+          {addressBookEnabled && (
+            <button ref={addressBookTrigger} type="button" data-testid="browser-addressbook"
+              aria-haspopup="dialog" aria-expanded={addressBookOpen}
+              title={tr('cloud.browser.addressBookTip')}
+              onClick={() => setAddressBookOpen(true)}
+              style={{ ...toolBtn, flexShrink: 0, whiteSpace: 'nowrap', color: t.primary, borderColor: t.primaryBorder }}
+            >{tr('cloud.browser.addressBook')}</button>
+          )}
+          </div>
           {finding && (
             <span
               data-testid="browser-search-busy"
@@ -2000,11 +2016,6 @@ export function MapBrowser({
             <button
               data-testid="browser-map-open"
               onClick={() => void openMap(r.map)}
-              // 파일명 위에 잠시 머물면 상세 정보 카드 (2026-08-09 요청)
-              onMouseEnter={(e) => showInfoSoon(r.map, e.currentTarget)}
-              onMouseLeave={hideInfoSoon}
-              onFocus={(e) => showInfoSoon(r.map, e.currentTarget)}
-              onBlur={hideInfoSoon}
               style={{
                 textAlign: 'left', background: 'transparent', border: 'none',
                 color: cloudMapId === r.map.mapId ? t.primary : t.text, cursor: 'pointer',
@@ -2104,7 +2115,6 @@ export function MapBrowser({
                 title={tr('cloud.browser.infoTip')} aria-label={tr('cloud.browser.infoAria')}
                 onClick={(e) => {
                   const r2 = e.currentTarget.getBoundingClientRect();
-                  if (infoTimer.current) window.clearTimeout(infoTimer.current);
                   setInfo((cur) =>
                     cur?.pinned && cur.map.mapId === r.map.mapId
                       ? null
@@ -2206,10 +2216,6 @@ export function MapBrowser({
         <div
           ref={infoRef}
           data-testid="browser-info-card"
-          onMouseEnter={() => {
-            if (infoTimer.current) window.clearTimeout(infoTimer.current);
-          }}
-          onMouseLeave={hideInfoSoon}
           style={compact ? {
             // 폰 — 화면 아래에 폭 가득(가장자리 12px). 호버가 없으니 늘 고정 카드다
             position: 'fixed', zIndex: 330, left: 12, right: 12,
@@ -2295,6 +2301,9 @@ export function MapBrowser({
 
       {/* 행에서 연 공유 대화상자 — 문서함 위에 떠야 하므로 높은 층에 감싼다
           (탈퇴 대화상자에서 여는 것과 같은 방식, UserMenu 참조) */}
+      {addressBookOpen && addressBookEnabled && (
+        <ProAddressBookDialog t={t} onClose={closeAddressBook} />
+      )}
       {shareMap && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
           <ProShareDialog

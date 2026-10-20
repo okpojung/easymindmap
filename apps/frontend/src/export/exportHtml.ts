@@ -91,8 +91,9 @@ interface ExportNode {
     strike?: boolean; underline?: boolean; highlight?: boolean;
     // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용
     fillColor?: string; borderColor?: string; textColor?: string;
+    borderWidth?: number; borderStyle?: string;
     // 실효 도형 — 노드별 지정이 없으면 맵 설정의 레벨 기본 도형.
-    // 뷰어는 'none'(도형 없음)만 구분해 사각형을 생략한다
+    // 에디터와 같은 도형 및 테두리 속성을 독립 HTML에 보존한다.
     shapeType?: string;
   };
   // 노드 안 사진 (data URL 또는 원본 URL) — 노드 폭에 맞춰 축소 표시
@@ -132,8 +133,7 @@ function toExportNode(
 
   // 실효 도형을 굽는다 — 뷰어는 맵 설정(레벨별 기본 도형)을 모른다.
   // 에디터 NodeRenderer 와 같은 우선순위: 노드별 → 레벨 기본 → 둥근.
-  // 뷰어가 그리는 도형은 사각형뿐이라 'none'만 의미가 있지만, 규칙은
-  // 에디터와 동일하게 유지한다.
+  // 뷰어는 이 실효 도형을 사용해 에디터와 같은 SVG 도형을 그린다.
   const shapeType = node.style?.shapeType ?? levelShape(depth);
 
   return {
@@ -168,7 +168,8 @@ function toExportNode(
     textAlign: node.textAlign ?? levelTextAlign(depth),
     style: (node.style && (node.style.strike || node.style.underline ||
       node.style.highlight ||
-      node.style.fillColor || node.style.borderColor || node.style.textColor)) ||
+      node.style.fillColor || node.style.borderColor || node.style.textColor ||
+      node.style.borderWidth != null || node.style.borderStyle)) ||
       shapeType
       ? {
         strike: node.style?.strike || undefined,
@@ -177,6 +178,8 @@ function toExportNode(
         // 노드별 지정 색 — 뷰어가 팔레트보다 우선 적용 (원본 색 파리티)
         fillColor: node.style?.fillColor || undefined,
         borderColor: node.style?.borderColor || undefined,
+        borderWidth: node.style?.borderWidth,
+        borderStyle: node.style?.borderStyle,
         textColor: node.style?.textColor || undefined,
         shapeType,
       }
@@ -1223,6 +1226,7 @@ const VIEWER_JS = String.raw`
       layoutBlock(n, depth); // 자식 블록 계산 후 자기 블록 (후위 순회)
     })(DATA.root, rootEff, 0);
     arrange(DATA.root, 40, 40);
+    preserveCenterAnchor(DATA.root);
   }
 
   // 접힌 노드의 +N 칩을 담는 최상위 레이어 — 형제 노드가 나중에
@@ -1245,6 +1249,13 @@ const VIEWER_JS = String.raw`
   }
   // 둘째 이후의 중심 배치 — 에디터가 구운 좌표(pos)가 있고 동적 재배치가 아니면
   // 그 자리에, 아니면(접기·펼치기 뒤) 앞 중심의 오른쪽 160px 에 새로 잰다
+  function preserveCenterAnchor(c) {
+    // Every node has baked pos; only explicit/manual centers and freeform
+    // diagrams keep that anchor when collapse/expand recomputes spacing.
+    if (!c.keepCenterAnchor || !c.pos) return;
+    var dx = c.pos.x - c._cx, dy = c.pos.y - c._cy;
+    (function move(n) { n._cx += dx; n._cy += dy; (n.children || []).forEach(move); })(c);
+  }
   function placeCenters(dynamic) {
     var cs = DATA.centers || [];
     if (!cs.length) return;
@@ -1254,7 +1265,7 @@ const VIEWER_JS = String.raw`
       var eff = normalize(c.layoutType) || normalize(DATA.mapLayout) || 'radial-bidirectional';
       c.layoutType = c.layoutType || eff;
       if (c.pos && !dynamic) assignFixed(c, 0, eff);
-      else { measure(c, 0, eff); arrange(c, x, 40); }
+      else { measure(c, 0, eff); arrange(c, x, 40); preserveCenterAnchor(c); }
       x = subtreeRight(c) + 160;
     }
   }
@@ -1579,6 +1590,75 @@ const VIEWER_JS = String.raw`
     return lum > 140 ? '#1F1B16' : '#F8F5EF';
   }
 
+  // Editor parity: roots have a visible border too; explicit zero remains intentional.
+  function nodeBorderAttributes(st, isRoot, selected, searchHit) {
+    var width = searchHit ? 2.6 :
+      (typeof st.borderWidth === 'number' && isFinite(st.borderWidth) && st.borderWidth >= 0
+        ? st.borderWidth : (isRoot ? 2 : selected ? 1.5 : 1));
+    var attrs = { 'stroke-width': width };
+    if (st.borderStyle === 'dashed') attrs['stroke-dasharray'] = Math.max(4, width * 3) + ' ' + Math.max(3, width * 2);
+    if (st.borderStyle === 'dotted') attrs['stroke-dasharray'] = Math.max(1, width) + ' ' + Math.max(3, width * 2);
+    return attrs;
+  }
+
+  // All shapes, including double-border inset shapes, share the same SVG attributes.
+  function drawNodeShape(g, sh, x0, y0, W, H, isRoot, com) {
+      var put = function (tag, extra) {
+        var at = {}, k;
+        for (k in extra) at[k] = extra[k];
+        for (k in com) at[k] = com[k];
+        return el(tag, at, g);
+      };
+      var x1s = x0 + W, y1s = y0 + H;
+      var cxs = x0 + W / 2, cys = y0 + H / 2;
+      if (sh === 'ellipse') {
+        put('ellipse', { cx: cxs, cy: cys, rx: W / 2, ry: H / 2 });
+      } else if (sh === 'diamond') {
+        put('polygon', { points: cxs + ',' + y0 + ' ' + x1s + ',' + cys
+          + ' ' + cxs + ',' + y1s + ' ' + x0 + ',' + cys });
+      } else if (sh === 'hexagon') {
+        var hi = Math.min(22, W * 0.18);
+        put('polygon', { points: (x0 + hi) + ',' + y0 + ' ' + (x1s - hi) + ',' + y0
+          + ' ' + x1s + ',' + cys + ' ' + (x1s - hi) + ',' + y1s
+          + ' ' + (x0 + hi) + ',' + y1s + ' ' + x0 + ',' + cys });
+      } else if (sh === 'parallelogram') {
+        var ps = Math.min(20, W * 0.16);
+        put('polygon', { points: (x0 + ps) + ',' + y0 + ' ' + x1s + ',' + y0
+          + ' ' + (x1s - ps) + ',' + y1s + ' ' + x0 + ',' + y1s });
+      } else if (sh === 'arrow-left') {
+        // ◀ 촉이 왼쪽 중앙, 몸통은 오른쪽
+        var al = Math.min(26, W * 0.24);
+        put('polygon', { points: x0 + ',' + cys + ' ' + (x0 + al) + ',' + y0
+          + ' ' + x1s + ',' + y0 + ' ' + x1s + ',' + y1s + ' ' + (x0 + al) + ',' + y1s });
+      } else if (sh === 'arrow-right') {
+        // ▶ 촉이 오른쪽 중앙
+        var ar = Math.min(26, W * 0.24);
+        put('polygon', { points: x1s + ',' + cys + ' ' + (x1s - ar) + ',' + y1s
+          + ' ' + x0 + ',' + y1s + ' ' + x0 + ',' + y0 + ' ' + (x1s - ar) + ',' + y0 });
+      } else if (sh === 'cylinder') {
+        // ⛁ 위 뚜껑 타원 + 몸통 + 아래 볼록 바닥
+        var cry = Math.min(9, H * 0.18);
+        put('path', { d: 'M ' + x0 + ' ' + (y0 + cry) + ' V ' + (y1s - cry)
+          + ' A ' + (W / 2) + ' ' + cry + ' 0 0 0 ' + x1s + ' ' + (y1s - cry)
+          + ' V ' + (y0 + cry) });
+        put('ellipse', { cx: cxs, cy: y0 + cry, rx: W / 2, ry: cry });
+      } else if (sh === 'star') {
+        // ★ 박스에 맞춰 늘린 5각 별 (글자는 중앙)
+        var pts = [];
+        for (var sti = 0; sti < 10; sti++) {
+          var ang = -Math.PI / 2 + (sti * Math.PI) / 5;
+          var kk = sti % 2 === 0 ? 1 : 0.45;
+          pts.push((cxs + Math.cos(ang) * (W / 2) * kk) + ','
+            + (cys + Math.sin(ang) * (H / 2) * kk));
+        }
+        put('polygon', { points: pts.join(' ') });
+      } else {
+        // 사각형 계열 — 뷰어의 기존 모서리 반경을 유지 (루트 13 / 그 외 9)
+        put('rect', { x: x0, y: y0, width: W, height: H,
+          rx: sh === 'rectangle' ? 2 : sh === 'pill' ? H / 2 : (isRoot ? 13 : 9) });
+      }
+  }
+
   function drawNode(node, depth, parentColor) {
     // 액센트(접기 칩·태그·표 격자) = 브랜치 테두리 색 (에디터와 동일 계열)
     var color = depth === 0 ? SKIN.fam.root.border
@@ -1683,72 +1763,19 @@ const VIEWER_JS = String.raw`
     var isRoot = depth === 0;
     var x0 = node._cx - node._w / 2, y0 = node._cy - node._h / 2;
     if (!noShape) {
-      // 도형 — 에디터 NodeShape 와 **같은 좌표 공식**을 쓴다. 예전에는
-      // 무엇을 골라도 사각형만 그려서 육각·타원·별이 뷰어에서 전부
-      // 네모로 보였다 (도형 값 자체가 안 실려 오던 시절엔 드러나지
-      // 않던 문제 — 2026-08-08).
-      // class 'mm-box' = **노드 도형** 표식. 코드·표 패널 배경도 같은
-      // 그룹 안의 rect 라, 이게 없으면 도형을 셀 때 섞인다.
-      var com = {
-        'class': 'mm-box',
-        fill: nodeFill2,
-        stroke: isRoot ? (stPre.borderColor || SKIN.fam.root.fill) : nodeStroke2,
-        'stroke-width': isRoot ? 0 : 1.4
-      };
-      var put = function (tag, extra) {
-        var at = {}, k;
-        for (k in extra) at[k] = extra[k];
-        for (k in com) at[k] = com[k];
-        return el(tag, at, g);
-      };
-      var x1s = x0 + node._w, y1s = y0 + node._h;
-      var cxs = node._cx, cys = node._cy, W = node._w, H = node._h;
-      var sh = stPre.shapeType;
-      if (sh === 'ellipse') {
-        put('ellipse', { cx: cxs, cy: cys, rx: W / 2, ry: H / 2 });
-      } else if (sh === 'diamond') {
-        put('polygon', { points: cxs + ',' + y0 + ' ' + x1s + ',' + cys
-          + ' ' + cxs + ',' + y1s + ' ' + x0 + ',' + cys });
-      } else if (sh === 'hexagon') {
-        var hi = Math.min(22, W * 0.18);
-        put('polygon', { points: (x0 + hi) + ',' + y0 + ' ' + (x1s - hi) + ',' + y0
-          + ' ' + x1s + ',' + cys + ' ' + (x1s - hi) + ',' + y1s
-          + ' ' + (x0 + hi) + ',' + y1s + ' ' + x0 + ',' + cys });
-      } else if (sh === 'parallelogram') {
-        var ps = Math.min(20, W * 0.16);
-        put('polygon', { points: (x0 + ps) + ',' + y0 + ' ' + x1s + ',' + y0
-          + ' ' + (x1s - ps) + ',' + y1s + ' ' + x0 + ',' + y1s });
-      } else if (sh === 'arrow-left') {
-        // ◀ 촉이 왼쪽 중앙, 몸통은 오른쪽
-        var al = Math.min(26, W * 0.24);
-        put('polygon', { points: x0 + ',' + cys + ' ' + (x0 + al) + ',' + y0
-          + ' ' + x1s + ',' + y0 + ' ' + x1s + ',' + y1s + ' ' + (x0 + al) + ',' + y1s });
-      } else if (sh === 'arrow-right') {
-        // ▶ 촉이 오른쪽 중앙
-        var ar = Math.min(26, W * 0.24);
-        put('polygon', { points: x1s + ',' + cys + ' ' + (x1s - ar) + ',' + y1s
-          + ' ' + x0 + ',' + y1s + ' ' + x0 + ',' + y0 + ' ' + (x1s - ar) + ',' + y0 });
-      } else if (sh === 'cylinder') {
-        // ⛁ 위 뚜껑 타원 + 몸통 + 아래 볼록 바닥
-        var cry = Math.min(9, H * 0.18);
-        put('path', { d: 'M ' + x0 + ' ' + (y0 + cry) + ' V ' + (y1s - cry)
-          + ' A ' + (W / 2) + ' ' + cry + ' 0 0 0 ' + x1s + ' ' + (y1s - cry)
-          + ' V ' + (y0 + cry) });
-        put('ellipse', { cx: cxs, cy: y0 + cry, rx: W / 2, ry: cry });
-      } else if (sh === 'star') {
-        // ★ 박스에 맞춰 늘린 5각 별 (글자는 중앙)
-        var pts = [];
-        for (var sti = 0; sti < 10; sti++) {
-          var ang = -Math.PI / 2 + (sti * Math.PI) / 5;
-          var kk = sti % 2 === 0 ? 1 : 0.45;
-          pts.push((cxs + Math.cos(ang) * (W / 2) * kk) + ','
-            + (cys + Math.sin(ang) * (H / 2) * kk));
-        }
-        put('polygon', { points: pts.join(' ') });
-      } else {
-        // 사각형 계열 — 뷰어의 기존 모서리 반경을 유지 (루트 13 / 그 외 9)
-        put('rect', { x: x0, y: y0, width: W, height: H,
-          rx: sh === 'rectangle' ? 2 : sh === 'pill' ? H / 2 : (isRoot ? 13 : 9) });
+      var com = nodeBorderAttributes(stPre, isRoot, SEL === node.id, SEARCHHIT === node.id);
+      com['class'] = 'mm-box';
+      com.fill = nodeFill2;
+      com.stroke = nodeStroke2;
+      drawNodeShape(g, stPre.shapeType, x0, y0, node._w, node._h, isRoot, com);
+      // Match the editor's second, slightly inset outline for the double style.
+      if (stPre.borderStyle === 'double') {
+        var innerW = Math.max(10, node._w - 9), innerH = Math.max(8, node._h - 9);
+        drawNodeShape(g, stPre.shapeType, x0 + (node._w - innerW) / 2,
+          y0 + (node._h - innerH) / 2, innerW, innerH, isRoot, {
+            'class': 'mm-box mm-box-inner', fill: 'none', stroke: nodeStroke2,
+            'stroke-width': Math.max(1, com['stroke-width'] * 0.85)
+          });
       }
     }
 
@@ -4325,6 +4352,7 @@ export function buildStandaloneHtml(
         textAlign: map.root.textAlign ?? levelTextAlign(0),
       } as MindNode, resolveHref, resolvePos, resolveSide),
       colorKey: 'root',
+      keepCenterAnchor: map.canvasMode === 'freeform' || !!map.rootPos,
       // 첫 중심의 레이아웃은 **에디터의 맵 레이아웃**이다 — 엔진이 첫 중심을
       // 그것으로 놓았고 pos 도 그 좌표다. `map.root.layoutType` 은 다른 길로
       // 맵 레이아웃을 바꾸면 옛 값이 남을 수 있어(2026-09-18 사용자 파일:
@@ -4342,6 +4370,7 @@ export function buildStandaloneHtml(
         textAlign: c.root.textAlign ?? levelTextAlign(0),
       } as MindNode, resolveHref, resolvePos, resolveSide),
       colorKey: 'root',
+      keepCenterAnchor: map.canvasMode === 'freeform' || !!c.pos,
       layoutType: c.root.layoutType ?? mapLayoutType,
       children: c.branches.map((b) =>
         toExportNode(b, resolveHref, resolvePos, resolveSide, 1)),

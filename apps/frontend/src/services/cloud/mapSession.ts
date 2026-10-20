@@ -149,7 +149,8 @@ export function canReuseThisTab(): boolean {
  *          'cancel' 취소
  */
 function confirmEmptyOverwrite(): 'ok' | 'yes' | 'cancel' {
-  const branches = useDocumentStore.getState().map.branches?.length ?? 0;
+  const doc = useDocumentStore.getState().map;
+  const branches = (doc.branches?.length ?? 0) + (doc.centers?.length ?? 0);
   if (branches > 0) return 'ok';
   const yes = window.confirm(tr('cloud.session.confirmEmptySave'));
   return yes ? 'yes' : 'cancel';

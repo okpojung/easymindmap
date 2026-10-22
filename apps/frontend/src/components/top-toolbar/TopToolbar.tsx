@@ -18,6 +18,7 @@ import { useAutosaveStore } from '@/stores/autosaveStore';
 import { useTr } from '@/i18n';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 import { MenuItem, MenuSep } from './OverflowMenu';
+import { authEnabled, useAuthStore } from '@/stores/authStore';
 
 // 'retrying' = 저장이 실패했고 **실제로 자동 재시도 중**,
 // 'error' = 재시도까지 다 실패해 더는 자동으로 시도하지 않음.
@@ -212,6 +213,7 @@ export function TopToolbar({
     }
   };
 
+  const guestMode = useAuthStore((s) => s.guest && !s.session) && authEnabled;
   const saveStateInfo = ({
     saved: { text: savedText, short: tr('shell.toolbar.saved'), color: t.textMuted, dot: t.success },
     saving: { text: tr('common.saving'), short: tr('shell.toolbar.savingShort'), color: t.accent, dot: t.accent },
@@ -225,9 +227,10 @@ export function TopToolbar({
     // 툴팁이 처음부터 그렇게 적고 있었다). 새 맵을 만들자마자 경고색
     // 문구가 뜨니 사용자는 뭔가 실패한 줄 알았다 — 사실형 문구에
     // 중립색으로 바꾼다. error·retrying 은 진짜 문제라 경고색 그대로다.
+    // Guest 체험은 저장할 곳이 없다 — '저장을 눌러' 라고 권하지 않는다 (2026-10-22)
     unsaved: {
-      text: tr('shell.toolbar.unsaved'),
-      short: tr('shell.toolbar.unsavedShort'),
+      text: guestMode ? tr('shell.toolbar.guestUnsaved') : tr('shell.toolbar.unsaved'),
+      short: guestMode ? tr('shell.toolbar.guestUnsavedShort') : tr('shell.toolbar.unsavedShort'),
       color: t.textMuted, dot: t.textMuted,
     },
     retrying: { text: tr('shell.toolbar.retrying'), short: tr('shell.toolbar.retryingShort'), color: t.warning, dot: t.warning },

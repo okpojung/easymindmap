@@ -1412,12 +1412,58 @@ const VIEWER_JS = String.raw`
   function connF(n) { return String(Math.round(n * 10) / 10); }
   function connDist(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
   function connLerp(a, b, t) { return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; }
-  function connPath(pts, shape) {
+  // 선 건너뛰기 (2026-10-23) — connectorGeometry.jumpRadius·connectorJumps·jumpRun 과 같은 식
+  function connJumpR(w) { return Math.max(4, Math.min(9, 3 + w * 1.5)); }
+  function connJumps(lines) {
+    var verts = [], out = [], i, j, s;
+    for (i = 0; i < lines.length; i++) {
+      var v = [], P = lines[i].pts;
+      for (s = 0; s < P.length - 1; s++) {
+        if (Math.abs(P[s].x - P[s + 1].x) < 0.5 && Math.abs(P[s].y - P[s + 1].y) >= 1) v.push({ x: P[s].x, y1: Math.min(P[s].y, P[s + 1].y), y2: Math.max(P[s].y, P[s + 1].y) });
+      }
+      verts.push(v);
+    }
+    for (i = 0; i < lines.length; i++) {
+      var m = {}, L = lines[i], margin = L.r + 2 + CONN_CORNER_R;
+      for (s = 0; s < L.pts.length - 1; s++) {
+        var p = L.pts[s], q = L.pts[s + 1];
+        if (Math.abs(p.y - q.y) >= 0.5 || Math.abs(q.x - p.x) < 1) continue;
+        var lo = Math.min(p.x, q.x) + margin, hi = Math.max(p.x, q.x) - margin, y = p.y, xs = [];
+        if (hi <= lo) continue;
+        for (j = 0; j < verts.length; j++) {
+          if (j === i) continue;
+          for (var k = 0; k < verts[j].length; k++) {
+            var vv = verts[j][k];
+            if (vv.x > lo && vv.x < hi && y > vv.y1 + 1 && y < vv.y2 - 1) { var rx = Math.round(vv.x * 10) / 10; if (xs.indexOf(rx) < 0) xs.push(rx); }
+          }
+        }
+        if (xs.length) { xs.sort(function (a, b) { return a - b; }); m[s] = xs; }
+      }
+      out.push(m);
+    }
+    return out;
+  }
+  function connJumpRun(from, to, xs, r) {
+    if (!xs || !xs.length || Math.abs(from.y - to.y) >= 0.5) return '';
+    var dir = to.x >= from.x ? 1 : -1, ord = xs.slice().sort(function (a, b) { return dir * (a - b); }), groups = [], i, d = '';
+    for (i = 0; i < ord.length; i++) {
+      var g = groups[groups.length - 1];
+      if (g && Math.abs(ord[i] - g.b) <= r * 2 + 1) g.b = ord[i] + dir * r;
+      else groups.push({ a: ord[i] - dir * r, b: ord[i] + dir * r });
+    }
+    for (i = 0; i < groups.length; i++) {
+      d += ' L ' + connF(groups[i].a) + ' ' + connF(from.y) + ' A ' + connF(Math.abs(groups[i].b - groups[i].a) / 2) + ' ' + connF(r)
+        + ' 0 0 ' + (dir === 1 ? 1 : 0) + ' ' + connF(groups[i].b) + ' ' + connF(from.y);
+    }
+    return d;
+  }
+  function connPath(pts, shape, jx, jr) {
     if (pts.length < 2) return '';
     var i, d;
+    var run = function (s) { return jx ? connJumpRun(pts[s], pts[s + 1], jx[s], jr) : ''; };
     if (shape === 'elbow' || pts.length === 2) {
-      d = '';
-      for (i = 0; i < pts.length; i++) d += (i === 0 ? 'M ' : ' L ') + connF(pts[i].x) + ' ' + connF(pts[i].y);
+      d = 'M ' + connF(pts[0].x) + ' ' + connF(pts[0].y);
+      for (i = 0; i < pts.length - 1; i++) d += run(i) + ' L ' + connF(pts[i + 1].x) + ' ' + connF(pts[i + 1].y);
       return d;
     }
     d = 'M ' + connF(pts[0].x) + ' ' + connF(pts[0].y);
@@ -1425,12 +1471,13 @@ const VIEWER_JS = String.raw`
       var p0 = pts[i - 1], p1 = pts[i], p2 = pts[i + 1];
       var l1 = connDist(p0, p1), l2 = connDist(p1, p2);
       var rr = Math.min(CONN_CORNER_R, l1 / 2, l2 / 2);
+      d += run(i - 1);
       if (rr < 0.5) { d += ' L ' + connF(p1.x) + ' ' + connF(p1.y); continue; }
       var inP = connLerp(p1, p0, rr / l1), outP = connLerp(p1, p2, rr / l2);
       d += ' L ' + connF(inP.x) + ' ' + connF(inP.y) + ' Q ' + connF(p1.x) + ' ' + connF(p1.y) + ' ' + connF(outP.x) + ' ' + connF(outP.y);
     }
     var last = pts[pts.length - 1];
-    return d + ' L ' + connF(last.x) + ' ' + connF(last.y);
+    return d + run(pts.length - 2) + ' L ' + connF(last.x) + ' ' + connF(last.y);
   }
   function connMid(pts) {
     var total = 0, i, acc = 0;
@@ -1478,16 +1525,24 @@ const VIEWER_JS = String.raw`
     var surface = SKIN.fam.l2.fill, textColor = SKIN.fam.l2.text;
     var boxes = {}, obstacles = [], k;
     for (k in DRAWN) { boxes[k] = { x: DRAWN[k]._cx, y: DRAWN[k]._cy, w: DRAWN[k]._w, h: DRAWN[k]._h }; obstacles.push(boxes[k]); }
-    for (var i = 0; i < list.length; i++) {
-      var c = list[i], a = boxes[c.from], b = boxes[c.to];
-      if (!a || !b || a === b) continue;
-      var pts = connPoints(a, b, obstacles, c.fromSide, c.toSide, c.offset);
+    // 먼저 모든 길을 구해야 서로의 교차(선 건너뛰기)를 알 수 있다
+    var routes = [];
+    for (var ri = 0; ri < list.length; ri++) {
+      var rc = list[ri], ra = boxes[rc.from], rb = boxes[rc.to];
+      if (!ra || !rb || ra === rb) continue;
+      var rw = Number(rc.width) > 0 ? Math.min(8, Number(rc.width)) : CONN_DEF.width;
+      routes.push({ c: rc, pts: connPoints(ra, rb, obstacles, rc.fromSide, rc.toSide, rc.offset), r: connJumpR(rw) });
+    }
+    var jumpsAll = connJumps(routes);
+    for (var i = 0; i < routes.length; i++) {
+      var c = routes[i].c;
+      var pts = routes[i].pts;
       var shape = c.shape || CONN_DEF.shape;
       var width = Number(c.width) > 0 ? Math.min(8, Number(c.width)) : CONN_DEF.width;
       var color = c.color || CONN_DEF.color;
       var dash = c.dash || CONN_DEF.dash;
       var arrows = c.arrows || CONN_DEF.arrows;
-      var d = connPath(pts, shape);
+      var d = connPath(pts, shape, jumpsAll[i], routes[i].r);
       var g = el('g', { 'class': 'mm-conn', 'data-connector-id': c.id }, lines);
       var pa = { d: d, fill: 'none', stroke: color, 'stroke-width': width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
       var da = connDash(dash, width);
@@ -1617,7 +1672,8 @@ const VIEWER_JS = String.raw`
         put('polygon', { points: cxs + ',' + y0 + ' ' + x1s + ',' + cys
           + ' ' + cxs + ',' + y1s + ' ' + x0 + ',' + cys });
       } else if (sh === 'hexagon') {
-        var hi = Math.min(22, W * 0.18);
+        // 가로로 긴 육각형, 45° 꼭짓점 (NodeRenderer 와 같은 식)
+        var hi = Math.min(H / 2, W * 0.25);
         put('polygon', { points: (x0 + hi) + ',' + y0 + ' ' + (x1s - hi) + ',' + y0
           + ' ' + x1s + ',' + cys + ' ' + (x1s - hi) + ',' + y1s
           + ' ' + (x0 + hi) + ',' + y1s + ' ' + x0 + ',' + cys });
@@ -1642,6 +1698,21 @@ const VIEWER_JS = String.raw`
           + ' A ' + (W / 2) + ' ' + cry + ' 0 0 0 ' + x1s + ' ' + (y1s - cry)
           + ' V ' + (y0 + cry) });
         put('ellipse', { cx: cxs, cy: y0 + cry, rx: W / 2, ry: cry });
+      } else if (sh === 'offpage') {
+        // ⬟ 페이지 연결자 (NodeRenderer 와 같은 식)
+        var od = Math.min(H * 0.35, W * 0.5);
+        put('polygon', { points: x0 + ',' + y0 + ' ' + x1s + ',' + y0 + ' ' + x1s + ',' + (y1s - od)
+          + ' ' + cxs + ',' + y1s + ' ' + x0 + ',' + (y1s - od) });
+      } else if (sh === 'document') {
+        // 문서 — 아래 변이 물결
+        var da2 = Math.min(8, H * 0.14);
+        put('path', { d: 'M ' + x0 + ' ' + y0 + ' H ' + x1s + ' V ' + (y1s - 1.6 * da2)
+          + ' C ' + (x1s - W * 0.3) + ' ' + (y1s - 3.4 * da2) + ' ' + (x0 + W * 0.45) + ' ' + (y1s + 1.6 * da2)
+          + ' ' + x0 + ' ' + (y1s - 0.2 * da2) + ' Z' });
+      } else if (sh === 'pentagon') {
+        // ⬠ 상자에 맞춘 정오각형
+        put('polygon', { points: (x0 + W * 0.5) + ',' + y0 + ' ' + x1s + ',' + (y0 + H * 0.382)
+          + ' ' + (x0 + W * 0.809) + ',' + y1s + ' ' + (x0 + W * 0.191) + ',' + y1s + ' ' + x0 + ',' + (y0 + H * 0.382) });
       } else if (sh === 'star') {
         // ★ 박스에 맞춰 늘린 5각 별 (글자는 중앙)
         var pts = [];

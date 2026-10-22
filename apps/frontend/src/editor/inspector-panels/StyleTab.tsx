@@ -35,7 +35,10 @@ const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
   { key: 'rectangle',     label: 'inspector.style.shape.rectangle',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:2}} /> },
   { key: 'pill',          label: 'inspector.style.shape.pill',  shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', borderRadius:999}} /> },
   { key: 'ellipse',       label: 'inspector.style.shape.ellipse',    shape: <span style={{display:'inline-block', width:18, height:14, border:'1.5px solid currentColor', borderRadius:'50%'}} /> },
-  { key: 'hexagon',       label: 'inspector.style.shape.hexagon',  shape: <I.Hexagon size={15} /> },
+  // 가로로 긴 육각형 (2026-10-23 사용자 요청: 좌우가 뾰족하고 위아래가 평평한 모양)
+  { key: 'hexagon',       label: 'inspector.style.shape.hexagon',  shape: (
+    <svg width="24" height="14" viewBox="0 0 24 14"><polygon points="1,7 7,1 17,1 23,7 17,13 7,13" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
   { key: 'diamond',       label: 'inspector.style.shape.diamond', shape: <I.Diamond size={13} /> },
   { key: 'parallelogram', label: 'inspector.style.shape.parallelogram', shape: <span style={{display:'inline-block', width:22, height:14, border:'1.5px solid currentColor', transform:'skewX(-18deg)'}} /> },
   { key: 'arrow-left',  label: 'inspector.style.shape.arrowLeft', shape: (
@@ -46,6 +49,16 @@ const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
   ) },
   { key: 'cylinder',    label: 'inspector.style.shape.cylinder', shape: (
     <svg width="20" height="16" viewBox="0 0 20 16"><path d="M1 4 V12 A9 3 0 0 0 19 12 V4" fill="none" stroke="currentColor" strokeWidth="1.5" /><ellipse cx="10" cy="4" rx="9" ry="3" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  // 순서도 도형 (2026-10-23 사용자 요청)
+  { key: 'document',    label: 'inspector.style.shape.document', shape: (
+    <svg width="22" height="16" viewBox="0 0 22 16"><path d="M1 1 H21 V11.5 C15 8.5 9.5 17.5 1 13.5 Z" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  { key: 'offpage',     label: 'inspector.style.shape.offpage', shape: (
+    <svg width="18" height="16" viewBox="0 0 18 16"><polygon points="1,1 17,1 17,10 9,15 1,10" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  { key: 'pentagon',    label: 'inspector.style.shape.pentagon', shape: (
+    <svg width="18" height="17" viewBox="0 0 18 17"><polygon points="9,1 17,6.8 14,16 4,16 1,6.8" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
   ) },
   { key: 'star',        label: 'inspector.style.shape.star', shape: (
     <svg width="18" height="17" viewBox="0 0 18 17"><polygon points="9,1 11.2,6.2 17,6.6 12.6,10.3 14,16 9,12.9 4,16 5.4,10.3 1,6.6 6.8,6.2" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>

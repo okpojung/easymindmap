@@ -38,6 +38,7 @@ const LAYOUTS = new Set<string>([
 const SHAPES = new Set<string>([
   'none', 'rounded', 'rectangle', 'pill', 'ellipse', 'diamond', 'hexagon',
   'parallelogram', 'arrow-left', 'arrow-right', 'cylinder', 'star',
+  'offpage', 'document', 'pentagon',
 ]);
 
 /**

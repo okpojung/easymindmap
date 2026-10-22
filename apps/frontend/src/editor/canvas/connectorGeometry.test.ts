@@ -1,5 +1,5 @@
 // 연결선 기하 (2026-09-22).   npx tsx src/editor/canvas/connectorGeometry.test.ts
-import { connectorSideAtPoint, sideAnchor, arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, loopTrunkX, LOOP_OUT, resolveSide, dedupePoints, trunkSegment } from './connectorGeometry';
+import { connectorJumps, jumpRadius, connectorSideAtPoint, sideAnchor, arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, loopTrunkX, LOOP_OUT, resolveSide, dedupePoints, trunkSegment } from './connectorGeometry';
 let failed = 0;
 function check(name: string, got: unknown, want: unknown): void {
   const g = JSON.stringify(got), w = JSON.stringify(want); const ok = g === w; if (!ok) failed++;
@@ -107,5 +107,18 @@ check('endpoint negative world coordinates', connectorSideAtPoint({ x: -400, y: 
 const pinnedEnd = connectorSideAtPoint(B, p1[p1.length - 1]);
 const movedStartOnly = connectorPoints(A, B, undefined, 'bottom', pinnedEnd);
 check('endpoint auto opposite remains at original port', movedStartOnly[movedStartOnly.length - 1], p1[p1.length - 1]);
+// ⑳ 선 건너뛰기 (2026-10-23) — 가로 변이 다른 선의 세로 변을 지나면 반원
+const hLine = [{ x: 0, y: 100 }, { x: 300, y: 100 }];
+const vLine = [{ x: 150, y: 0 }, { x: 150, y: 200 }];
+const tLine = [{ x: 200, y: 100 }, { x: 200, y: 200 }]; // 가로 선 위에서 시작 — 맞닿음(T), 교차 아님
+const jr = jumpRadius(2);
+const J = connectorJumps([{ pts: hLine, r: jr }, { pts: vLine, r: jr }, { pts: tLine, r: jr }]);
+check('⑳ 가로 선만 x=150 에서 넘는다', [[...J[0].entries()], [...J[1].entries()], [...J[2].entries()]], [[[0, [150]]], [], []]);
+check('⑳ 각진 path 에 위로 볼록한 반원', connectorPath(hLine, 'elbow', undefined, { xs: J[0], r: jr }), `M 0 100 L ${150 - jr} 100 A ${jr} ${jr} 0 0 1 ${150 + jr} 100 L 300 100`);
+check('⑳ 오른쪽→왼쪽 방향도 위로 볼록', connectorPath([...hLine].reverse(), 'elbow', undefined, { xs: connectorJumps([{ pts: [...hLine].reverse(), r: jr }, { pts: vLine, r: jr }])[0], r: jr }), `M 300 100 L ${150 + jr} 100 A ${jr} ${jr} 0 0 0 ${150 - jr} 100 L 0 100`);
+const near = connectorJumps([{ pts: hLine, r: jr }, { pts: [{ x: 150, y: 0 }, { x: 150, y: 200 }], r: jr }, { pts: [{ x: 158, y: 0 }, { x: 158, y: 200 }], r: jr }]);
+check('⑳ 가까운 두 교차는 반원 하나로', (connectorPath(hLine, 'elbow', undefined, { xs: near[0], r: jr }).match(/ A /g) ?? []).length, 1);
+check('⑳ 변 끝(모서리) 가까이는 넘지 않는다', [...connectorJumps([{ pts: hLine, r: jr }, { pts: [{ x: 5, y: 0 }, { x: 5, y: 200 }], r: jr }])[0].entries()], []);
+check('⑳ 교차가 없으면 기존 path 그대로', connectorPath(p1, 'rounded', undefined, { xs: new Map(), r: jr }), connectorPath(p1, 'rounded'));
 if (failed) process.exitCode = 1;
 console.log('\n모두 통과');

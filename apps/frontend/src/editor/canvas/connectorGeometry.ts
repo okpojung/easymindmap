@@ -68,24 +68,90 @@ function connectorPointsRaw(a: CBox, b: CBox, obstacles?: CBox[], fromSide: CSid
   return [{ x: aL, y: a.y }, { x: midX, y: a.y }, { x: midX, y: b.y }, { x: bR, y: b.y }];
 }
 
-/** 점들 → SVG path. rounded 면 꺾이는 점마다 반지름 r(인접 변 절반까지)로 둥글게 */
-export function connectorPath(pts: CPoint[], shape: CShape, r = CORNER_R): string {
+// ── 선 건너뛰기 (2026-10-23 사용자 요청: "선이 교차될 때 교차가 아니라는 표시") ──────
+// 순서도에서 두 연결선이 **엇갈려 지나갈 뿐** 만나지 않는다는 것을 보여 준다(Visio 의
+// '선 점프'). 규칙: 한 연결선의 **가로 변**이 다른 연결선의 **세로 변**을 가로지르면
+// 가로 변 쪽에 작은 반원(위로 볼록)을 그린다. 변 끝·모서리 근처(T 자 맞닿음·꺾임)는
+// 교차로 보지 않는다. 같은 연결선끼리는 보지 않는다. 가까이 붙은 여러 교차는 반원
+// 하나로 묶는다(겹친 반원이 톱니처럼 보이지 않게).
+// HTML 뷰어(exportHtml.ts)는 이 식을 JS 로 옮겨 적었다 — 함께 고친다.
+
+/** 선 굵기에 맞춘 반원 반지름 */
+export function jumpRadius(width: number): number {
+  return Math.max(4, Math.min(9, 3 + width * 1.5));
+}
+/** 변 번호(pts[i]→pts[i+1] 이면 i) → 그 변이 넘어야 할 x 위치들 */
+export type JumpMap = Map<number, number[]>;
+
+/** 모든 연결선의 교차 지점. 결과는 lines 와 같은 순서 */
+export function connectorJumps(lines: { pts: CPoint[]; r: number }[]): JumpMap[] {
+  const verts = lines.map((l) => {
+    const v: { x: number; y1: number; y2: number }[] = [];
+    for (let i = 0; i < l.pts.length - 1; i++) {
+      const p = l.pts[i], q = l.pts[i + 1];
+      if (Math.abs(p.x - q.x) < 0.5 && Math.abs(p.y - q.y) >= 1) v.push({ x: p.x, y1: Math.min(p.y, q.y), y2: Math.max(p.y, q.y) });
+    }
+    return v;
+  });
+  return lines.map((l, i) => {
+    const out: JumpMap = new Map();
+    // 변 끝에서 이만큼은 비운다 — 둥근 모서리·화살촉과 겹치지 않게
+    const margin = l.r + 2 + CORNER_R;
+    for (let s = 0; s < l.pts.length - 1; s++) {
+      const p = l.pts[s], q = l.pts[s + 1];
+      if (Math.abs(p.y - q.y) >= 0.5 || Math.abs(q.x - p.x) < 1) continue;
+      const lo = Math.min(p.x, q.x) + margin, hi = Math.max(p.x, q.x) - margin, y = p.y;
+      if (hi <= lo) continue;
+      const xs: number[] = [];
+      verts.forEach((vs, j) => {
+        if (j === i) return;
+        for (const v of vs) if (v.x > lo && v.x < hi && y > v.y1 + 1 && y < v.y2 - 1) xs.push(v.x);
+      });
+      if (xs.length) out.set(s, [...new Set(xs.map((x) => Math.round(x * 10) / 10))].sort((a, b) => a - b));
+    }
+    return out;
+  });
+}
+
+/** 가로 변 하나에서 넘을 자리마다 반원 — 현재 점(from)에서 시작, 끝점(to)으로 가는 L 은 부르는 쪽이 붙인다 */
+function jumpRun(from: CPoint, to: CPoint, xs: number[] | undefined, r: number): string {
+  if (!xs?.length || Math.abs(from.y - to.y) >= 0.5) return '';
+  const dir = to.x >= from.x ? 1 : -1;
+  const ordered = [...xs].sort((a, b) => dir * (a - b));
+  const groups: { a: number; b: number }[] = [];
+  for (const x of ordered) {
+    const g = groups[groups.length - 1];
+    if (g && Math.abs(x - g.b) <= r * 2 + 1) g.b = x + dir * r;
+    else groups.push({ a: x - dir * r, b: x + dir * r });
+  }
+  const sweep = dir === 1 ? 1 : 0; // 위로 볼록
+  const y = from.y;
+  return groups.map((g) => ` L ${fmt(g.a)} ${fmt(y)} A ${fmt(Math.abs(g.b - g.a) / 2)} ${fmt(r)} 0 0 ${sweep} ${fmt(g.b)} ${fmt(y)}`).join('');
+}
+
+/** 점들 → SVG path. rounded 면 꺾이는 점마다 반지름 r(인접 변 절반까지)로 둥글게.
+ *  jump 가 있으면 가로 변이 다른 선을 넘는 자리마다 반원을 넣는다. */
+export function connectorPath(pts: CPoint[], shape: CShape, r = CORNER_R, jump?: { xs: JumpMap; r: number }): string {
   if (pts.length < 2) return '';
+  const run = (s: number) => (jump ? jumpRun(pts[s], pts[s + 1], jump.xs.get(s), jump.r) : '');
   if (shape === 'elbow' || pts.length === 2) {
-    return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${fmt(p.x)} ${fmt(p.y)}`).join(' ');
+    let e = `M ${fmt(pts[0].x)} ${fmt(pts[0].y)}`;
+    for (let s = 0; s < pts.length - 1; s++) e += `${run(s)} L ${fmt(pts[s + 1].x)} ${fmt(pts[s + 1].y)}`;
+    return e;
   }
   let d = `M ${fmt(pts[0].x)} ${fmt(pts[0].y)}`;
   for (let i = 1; i < pts.length - 1; i++) {
     const p0 = pts[i - 1], p1 = pts[i], p2 = pts[i + 1];
     const l1 = dist(p0, p1), l2 = dist(p1, p2);
     const rr = Math.min(r, l1 / 2, l2 / 2);
+    d += run(i - 1);
     if (rr < 0.5) { d += ` L ${fmt(p1.x)} ${fmt(p1.y)}`; continue; }
     const inP = lerp(p1, p0, rr / l1);
     const outP = lerp(p1, p2, rr / l2);
     d += ` L ${fmt(inP.x)} ${fmt(inP.y)} Q ${fmt(p1.x)} ${fmt(p1.y)} ${fmt(outP.x)} ${fmt(outP.y)}`;
   }
   const last = pts[pts.length - 1];
-  return `${d} L ${fmt(last.x)} ${fmt(last.y)}`;
+  return `${d}${run(pts.length - 2)} L ${fmt(last.x)} ${fmt(last.y)}`;
 }
 
 /** 선 길이의 한가운데 점과 그 자리 변의 방향 ('h' 가로 / 'v' 세로) */

@@ -5,7 +5,7 @@ import type { SampleMap } from '@emm/emm-parser';
 
 const assert = (ok: unknown, label: string) => { if (!ok) throw new Error(label); };
 const shapes = ['rounded', 'rectangle', 'pill', 'ellipse', 'diamond', 'hexagon',
-  'parallelogram', 'arrow-left', 'arrow-right', 'cylinder', 'star'] as const;
+  'parallelogram', 'arrow-left', 'arrow-right', 'cylinder', 'star', 'offpage', 'document', 'pentagon'] as const;
 const map: SampleMap = {
   title: 'Synthetic border regression', canvasMode: 'freeform',
   root: { id: 'root', text: 'Root', colorKey: 'root',

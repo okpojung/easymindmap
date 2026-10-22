@@ -88,6 +88,9 @@ const SHAPE_OPTIONS: { key: ShapeType | ''; labelKey: string }[] = [
   { key: 'arrow-left',    labelKey: 'panel.settings.shape.arrowLeft' },
   { key: 'arrow-right',   labelKey: 'panel.settings.shape.arrowRight' },
   { key: 'cylinder',      labelKey: 'panel.settings.shape.cylinder' },
+  { key: 'document',      labelKey: 'panel.settings.shape.document' },
+  { key: 'offpage',       labelKey: 'panel.settings.shape.offpage' },
+  { key: 'pentagon',      labelKey: 'panel.settings.shape.pentagon' },
   { key: 'star',          labelKey: 'panel.settings.shape.star' },
 ];
 

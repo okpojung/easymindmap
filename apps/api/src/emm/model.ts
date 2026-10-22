@@ -73,6 +73,9 @@ export type ShapeType =
   | 'arrow-left'   // ◀ 왼쪽 화살표
   | 'arrow-right'  // ▶ 오른쪽 화살표
   | 'cylinder'     // ⛁ 원통 (데이터베이스)
+  | 'offpage'      // ⬟ 페이지 연결자 (아래로 뾰족한 오각형, 2026-10-23)
+  | 'document'     // 문서 (아래가 물결)
+  | 'pentagon'     // ⬠ 정오각형
   | 'star';        // ★ 별
 
 export type NodeFontWeight = 'normal' | 'bold';

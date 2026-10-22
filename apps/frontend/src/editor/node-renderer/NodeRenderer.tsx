@@ -134,7 +134,8 @@ function NodeShape({
     );
   }
   if (shape === 'hexagon') {
-    const i = Math.min(22, n.w * 0.18);
+    // 가로로 긴 육각형 — 좌우 꼭짓점이 45° 로 빠진다 (2026-10-23 사용자 요청, 첨부 그림)
+    const i = Math.min(n.h / 2, n.w * 0.25);
     return (
       <polygon
         points={`${x0 + i},${y0} ${x1 - i},${y0} ${x1},${n.y} ${x1 - i},${y1} ${x0 + i},${y1} ${x0},${n.y}`}
@@ -182,6 +183,30 @@ function NodeShape({
         />
         <ellipse cx={n.x} cy={y0 + ry} rx={n.w / 2} ry={ry} {...common} />
       </g>
+    );
+  }
+  if (shape === 'offpage') {
+    // ⬟ 페이지 연결자 — 위는 사각, 아래는 가운데로 모이는 뾰족한 끝 (순서도, 2026-10-23)
+    const d = Math.min(n.h * 0.35, n.w * 0.5);
+    return (
+      <polygon points={`${x0},${y0} ${x1},${y0} ${x1},${y1 - d} ${n.x},${y1} ${x0},${y1 - d}`} {...common} />
+    );
+  }
+  if (shape === 'document') {
+    // 문서 — 아래 변이 물결 (순서도, 2026-10-23)
+    const a = Math.min(8, n.h * 0.14);
+    return (
+      <path
+        d={`M ${x0} ${y0} H ${x1} V ${y1 - 1.6 * a} C ${x1 - n.w * 0.3} ${y1 - 3.4 * a} ${x0 + n.w * 0.45} ${y1 + 1.6 * a} ${x0} ${y1 - 0.2 * a} Z`}
+        {...common}
+      />
+    );
+  }
+  if (shape === 'pentagon') {
+    // ⬠ 정오각형을 상자에 맞춰 늘림 — 꼭짓점이 위, 바닥이 평평
+    const px = (u: number) => x0 + n.w * u, py = (v: number) => y0 + n.h * v;
+    return (
+      <polygon points={`${px(0.5)},${py(0)} ${px(1)},${py(0.382)} ${px(0.809)},${py(1)} ${px(0.191)},${py(1)} ${px(0)},${py(0.382)}`} {...common} />
     );
   }
   if (shape === 'star') {

@@ -15,7 +15,7 @@ import { measureTextPx } from '@/editor/node-renderer/textMeasure';
 import { useEffect, useRef, useState } from 'react';
 import { useTr } from '@/i18n';
 import { isViewerLocked, setHistoryPaused, useDocumentStore } from '@/stores/documentStore';
-import { arrowHead, connectorMid, connectorPath, connectorPoints, connectorSideAtPoint, sideAnchor, labelBox, trunkSegment, type CBox, type CPoint, type CDir } from './connectorGeometry';
+import { arrowHead, connectorJumps, jumpRadius, connectorMid, connectorPath, connectorPoints, connectorSideAtPoint, sideAnchor, labelBox, trunkSegment, type CBox, type CPoint, type CDir } from './connectorGeometry';
 import { isCoarseNow } from '@/hooks/useViewport';
 
 /** 기본값 — 사용자 결정(2026-09-22): 기본 선 색은 **파란색** */
@@ -290,10 +290,12 @@ export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onS
   if (!list.length) return null;
 
   if (part === 'lines') {
+    // 선 건너뛰기 — 가로 변이 다른 연결선을 지나는 자리에 반원 (connectorGeometry.connectorJumps)
+    const jumps = connectorJumps(list.map((l) => ({ pts: l.pts, r: jumpRadius(l.width) })));
     return (
       <g data-testid="connector-lines">
-        {list.map(({ c, pts, color, width, shape, dash, arrows }) => {
-          const d = connectorPath(pts, shape);
+        {list.map(({ c, pts, color, width, shape, dash, arrows }, k) => {
+          const d = connectorPath(pts, shape, undefined, { xs: jumps[k], r: jumpRadius(width) });
           const size = connectorArrowSize(width);
           const selected = editable && c.id === selectedId;
           const stop = (e: React.SyntheticEvent) => e.stopPropagation();

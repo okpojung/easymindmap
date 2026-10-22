@@ -86,7 +86,12 @@ const LAYOUT_LABEL_KEY: Record<string, string> = {
   'timeline-center': 'editor.layout.timelineCenter',
 };
 
-export interface CanvasEditingPolicy { mode: 'basic'; readOnly: boolean }
+/**
+ * `nativeTools` (memory-only hosts such as /try): keep the native floating toolbar,
+ * selected-node add indicators and local-only canvas tools. Server/import paths
+ * (paste, clipboard, file drop, content popovers, linked maps, multi-add) stay blocked.
+ */
+export interface CanvasEditingPolicy { mode: 'basic'; readOnly: boolean; nativeTools?: boolean }
 
 interface Props {
   editingPolicy?: CanvasEditingPolicy;
@@ -141,6 +146,9 @@ export function Canvas({
   const basic = editingPolicy?.mode === 'basic';
   const isReadOnly = () => policyRef.current?.readOnly === true;
   const isBasic = () => policyRef.current?.mode === 'basic';
+  const nativeTools = basic && editingPolicy?.nativeTools === true;
+  // Local-only canvas tools (style brush, connectors, centers) are allowed for native-tool hosts.
+  const localTools = () => !isBasic() || policyRef.current?.nativeTools === true;
   // 언어가 바뀌면 다시 그린다 — 화면 문자열은 tr() 로 (콜백 안에서도 부르는 순간의 언어)
   useLang();
   // 폰 폭 — 첫 화면은 맵 전체 맞추기, 도구 모음·안내 칩은 좁게 (모바일 웹, 2026-10-05)
@@ -407,13 +415,13 @@ export function Canvas({
     // 스타일 복사(붓) 모드 — 노드를 누르면 선택과 함께 붓에 든 겉모습을
     // 입힌다. 모드는 그대로 남아 다음 노드도 이어서 칠할 수 있다
     // (2026-09-19). 빈 곳 클릭(id=null)은 모드 해제.
-    if (!isBasic() && !isReadOnly() && stylePainter) {
+    if (localTools() && !isReadOnly() && stylePainter) {
       if (id) applyStyleSnapshot([id], stylePainter.snap);
       else setStylePainter(null);
     }
     // 연결 모드 — 시작 노드가 아닌 노드를 누르면 연결선이 생기고 모드는 끝난다.
     // 빈 곳을 누르면 취소. 시작 노드를 다시 누른 것은 무시(모드 유지).
-    if (!isBasic() && !isReadOnly() && connectMode) {
+    if (localTools() && !isReadOnly() && connectMode) {
       if (id && id !== connectMode.fromId) {
         const cid = addConnector(connectMode.fromId, id);
         setConnectMode(null);
@@ -1421,7 +1429,7 @@ export function Canvas({
         if (!tap || tap.moved || tap.nodeId !== nodeId) return;
         tap.longFired = true;
         selectOneRef.current(nodeId);
-        if (compact && !isBasic()) openNodeMenu();
+        if (compact && localTools()) openNodeMenu();
         try { navigator.vibrate?.(12); } catch { /* 지원 안 함 */ }
       }, LONG_PRESS_MS);
     }
@@ -1476,7 +1484,7 @@ export function Canvas({
     // 중심주제 배치 모드 — 빈 자리 클릭 = **거기에** 새 중심 (루트가 클릭 지점
     // 가운데에 오도록 pos 는 첫 중심 루트(CX, CY) 기준 상대 좌표). 노드 위를
     // 클릭하면 배치를 접고 평소대로(선택) 간다.
-    if (!isBasic() && !isReadOnly() && placingCenter && e.button === 0) {
+    if (localTools() && !isReadOnly() && placingCenter && e.button === 0) {
       setPlacingCenter(false);
       if (onEmptyCanvas) {
         const w = clientToWorld(e.clientX, e.clientY);
@@ -1590,7 +1598,7 @@ export function Canvas({
       }
 
       if (isReadOnly()) { setDropZone(null); setDragGhost(null); return; }
-      if (nodeDrag.dragging && nodeDrag.center && !isBasic()) {
+      if (nodeDrag.dragging && nodeDrag.center && localTools()) {
         // 중심주제 옮기기 — 드롭존 없이 그림자만 따라간다
         const w = clientToWorld(e.clientX, e.clientY);
         const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
@@ -1653,7 +1661,7 @@ export function Canvas({
       nodeDragRef.current = null;
 
       if (isReadOnly()) { setDropZone(null); setDragGhost(null); return; }
-      if (nodeDrag.dragging && nodeDrag.center && !isBasic()) {
+      if (nodeDrag.dragging && nodeDrag.center && localTools()) {
         // 중심주제를 놓았다 — 끈 만큼 옮긴 자리를 첫 중심 루트(CX, CY) 기준
         // 상대 좌표로 저장한다. 레이아웃 엔진이 다음 그리기에서 그 자리에 놓는다.
         const w = clientToWorld(e.clientX, e.clientY);
@@ -1846,8 +1854,9 @@ export function Canvas({
         )}
       </div>
 
-      {!basic && <CanvasFloatingToolbar
+      {(!basic || nativeTools) && <CanvasFloatingToolbar
         t={t}
+        localOnly={basic}
         hasSelection={!!selectedNode}
         focusActive={!!focusedId}
         onFitView={handleFitWhole}
@@ -2149,7 +2158,7 @@ export function Canvas({
             nodesById={visibleById}
             t={t}
             selectedId={selectedConnectorId}
-            onSelect={basic ? () => {} : selectConnector}
+            onSelect={basic && !nativeTools ? () => {} : selectConnector}
           />
 
           <g>
@@ -2230,10 +2239,10 @@ export function Canvas({
             nodesById={visibleById}
             t={t}
             selectedId={selectedConnectorId}
-            onSelect={basic ? () => {} : selectConnector}
+            onSelect={basic && !nativeTools ? () => {} : selectConnector}
           />
 
-          {!basic && selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
+          {(!basic || nativeTools) && selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
             multiSelectedIds.length <= 1 && (
             <g className="mm-overlay-controls">
               <NodeIndicators

@@ -6,6 +6,7 @@ import Mmd from './pages/Mmd';
 import Library from './pages/Library';
 
 import { installBrandIdentity } from './redesign/brand';
+import { GITHUB_URL, MMD_GITHUB_URL } from './config';
 import { SITE_HEADER_MARKUP, mountSiteHeader } from './redesign/site-header';
 import './redesign/redesign.css';
 
@@ -84,6 +85,8 @@ export default function App() {
         <div className="wrap">
           <span>© EasyMindMap</span>
           <span className="spacer" />
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub · EasyMindMap 오픈소스 코어 ↗</a>
+          <a href={MMD_GITHUB_URL} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 16 }}>Mindmap Markdown 표준 ↗</a>
 
         </div>
       </footer>

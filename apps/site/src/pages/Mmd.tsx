@@ -1,4 +1,3 @@
-import { APP_URL } from '../config';
 import { Link } from '../App';
 
 /**
@@ -120,7 +119,6 @@ template: PT
         <h2>직접 열어 보세요</h2>
         <p>맵을 만들어 Markdown 으로 내보내면, 그 파일이 곧 mmd 입니다.</p>
         <div className="row" style={{ justifyContent: 'center' }}>
-          <a className="btn" href={APP_URL}>앱에서 만들어 보기</a>
           <Link className="btn ghost" to="/library">지식창고 둘러보기</Link>
         </div>
       </section>

@@ -1,6 +1,7 @@
 import { BRAND_FAVICON_URL, BRAND_LOGO_URL } from './brand';
 import { GUIDES, PATHS } from './content';
 import { PRESETS } from './demo';
+import { GUEST_URL } from '../config';
 import { mountOutlineDemo } from './outline-demo.js';
 
 /** Trusted build-time markup only. User input is rendered exclusively via textContent. */
@@ -11,7 +12,7 @@ export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
  let demoPath = location.pathname;
  let frame = 0; let disposed = false;
  document.documentElement.classList.add('emm-home-page');
- function bindAppLinks() { all<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = "https://web.easymindmap.org/try"; }); }
+ function bindAppLinks() { all<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = GUEST_URL; }); }
  bindAppLinks();
  all<HTMLImageElement>('[data-brand-icon]').forEach(image => { image.src = BRAND_FAVICON_URL; });
  all<HTMLImageElement>('[data-brand-logo]').forEach(image => { image.src = BRAND_LOGO_URL; });
@@ -28,7 +29,7 @@ export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
   if (content) {
    q('#detail-category').textContent = content.category; q('#detail-eyebrow').textContent = content.eyebrow; q('#detail-title').textContent = content.title; q('#detail-description').textContent = content.description;
    // Only checked-in curated copy is HTML; account/API/AI/user data must never enter this sink.
-   q('#detail-body').innerHTML = content.body + '<div class="detail-next"><a class="btn" data-open-app href="https://web.easymindmap.org/try">직접 체험하기 ↗</a><a class="btn light" href="/">첫 화면으로</a></div>';
+   q('#detail-body').innerHTML = content.body + '<div class="detail-next"><a class="btn light" href="/">첫 화면으로</a></div>';
    bindAppLinks();
    all<HTMLAnchorElement>('[data-route]').forEach(a => { if (a.dataset.route === key) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
    title = content.title + ' | EasyMindMap'; description = content.description; window.scrollTo({ top: 0, behavior: 'instant' }); if (focus) q('#detail-title').focus({ preventScroll: true });

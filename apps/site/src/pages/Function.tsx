@@ -1,4 +1,3 @@
-import { APP_URL } from '../config';
 import { Link } from '../App';
 import { FUNCTIONS } from '../content/functions';
 
@@ -40,9 +39,8 @@ export default function FunctionPage() {
 
       <section className="wrap cta">
         <h2>직접 눌러 보는 편이 빠릅니다</h2>
-        <p>가입 없이도 맵 하나는 만들어 볼 수 있습니다.</p>
+        <p>오른쪽 위 ‘Guest로 체험해보기’로 가입 없이 바로 써 볼 수 있습니다.</p>
         <div className="row" style={{ justifyContent: 'center' }}>
-          <a className="btn" href={APP_URL}>앱 열기</a>
           <Link className="btn ghost" to="/ai">AI 연동 보기</Link>
         </div>
       </section>

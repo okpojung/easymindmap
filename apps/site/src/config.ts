@@ -19,4 +19,13 @@ export const API_URL = trim(import.meta.env.VITE_API_URL, 'https://api-dev.mindm
  * 퍼블리싱된 맵(`/p/{id}`)은 **같은 도메인**으로 연다(B안) — nginx 가
  * 그 경로만 앱으로 넘긴다. 그래서 여기 주소는 맵 링크에 쓰지 않는다.
  */
+/**
+ * 홈페이지의 유일한 체험 진입점(헤더 고정 버튼).
+ * 앱은 ?from=www 일 때만 'Guest로 체험하기' 안내 팝업을 띄운다. 로그인한 회원은 바로 문서함.
+ */
+export const GUEST_URL = 'https://web.easymindmap.org/?from=www';
+export const GITHUB_URL = 'https://github.com/okpojung/easymindmap';
+/** Mindmap Markdown 표준(사양·참조 구현) GitHub 조직 */
+export const MMD_GITHUB_URL = 'https://github.com/mindmapmarkdown';
+
 export const APP_URL = trim(import.meta.env.VITE_APP_URL, 'https://web.easymindmap.org');

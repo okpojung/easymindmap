@@ -19,10 +19,10 @@ import { MembersPanel } from './MembersPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { MailTemplatesPanel } from './MailTemplatesPanel';
 import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
-import { ProContactsAdminPanel, ProSalesAdminPanel, ProTrialAdminPanel, matchProRoute } from '@pro';
+import { ProContactsAdminPanel, ProSalesAdminPanel } from '@pro';
 import { useProFeature } from '@/pro/contract';
 
-type Tab = 'members' | 'billing' | 'settings' | 'password' | 'sales' | 'contacts' | 'trial' | 'mail';
+type Tab = 'members' | 'billing' | 'settings' | 'password' | 'sales' | 'contacts' | 'mail';
 
 const TABS: { id: Tab; label: string; soon?: string }[] = [
   { id: 'members', label: '회원관리' },
@@ -32,7 +32,6 @@ const TABS: { id: Tab; label: string; soon?: string }[] = [
     soon: '구독 결제는 결제 시스템(PG 연동)을 붙인 뒤 열립니다. 지금은 요금제를 '
       + '회원관리에서 직접 바꿉니다 — 결제 기록이 없어 보여 줄 데이터가 없습니다.',
   },
-  { id: 'trial', label: '체험 초기맵' },
   { id: 'mail', label: '메일발송문 관리' },
   { id: 'settings', label: '설정관리' },
   { id: 'password', label: '비밀번호 변경' },
@@ -67,8 +66,6 @@ export function AdminPage() {
   // 판매관리는 설정관리 **앞**에 둔다 — 돈이 오가는 탭이라 설정보다 자주 본다.
   // 주소록관리는 회원관리 바로 뒤 — 회원을 보고 그 회원의 주소록으로 간다.
   const tabs = TABS.flatMap((x) => {
-    // Community builds have no /try host, so they must not show a nonfunctional tab.
-    if (x.id === 'trial' && !matchProRoute({ pathname: '/try' })) return [];
     if (x.id === 'members' && collabOn) return [x, CONTACTS_TAB];
     if (x.id === 'settings' && salesOn) return [SALES_TAB, x];
     return [x];
@@ -153,7 +150,6 @@ export function AdminPage() {
       <main style={{ padding: 18, maxWidth: 1560, margin: '0 auto' }}>
         {tab === 'members' && <MembersPanel t={t} />}
         {tab === 'settings' && <SettingsPanel t={t} />}
-        {tab === 'trial' && <ProTrialAdminPanel t={t} token={adminToken.get()} onUnauthorized={logout} />}
         {tab === 'mail' && <MailTemplatesPanel />}
         {/* 판매관리 — 표도 판정도 유료 모듈 것이다. 코어는 탭 자리만 낸다 */}
         {tab === 'sales' && <ProSalesAdminPanel t={t} />}

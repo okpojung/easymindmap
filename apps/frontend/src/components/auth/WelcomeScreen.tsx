@@ -8,10 +8,12 @@
 // 인증이 꺼진 개발 모드(VITE_SUPABASE_URL 없음)에서는 이 화면이 뜨지
 // 않고 곧바로 에디터가 열린다 — 로컬 개발·E2E 흐름은 그대로다.
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { LoginForm } from './LoginForm';
+import { GuestInviteDialog } from './GuestInviteDialog';
+import { hasGuestInvite, clearGuestInvite } from '@/services/entryIntent';
 import { SignupForm } from './SignupForm';
 import { ResetPasswordForm } from './ResetPasswordForm';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
@@ -35,6 +37,9 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
   // 남기는 안내 (가입 확인 메일이 필요한 서버에서 특히 중요하다).
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [flash, setFlash] = useState<string | null>(null);
+  // 홈페이지 'Guest로 체험해보기'로 왔다 (2026-10-22) — 게스트 안내를 먼저 띄운다
+  const [invite, setInvite] = useState(hasGuestInvite);
+  const closeInvite = useCallback(() => { clearGuestInvite(); setInvite(false); }, []);
   const tr = useTr();
   /**
    * 폰 (2026-10-05) — 소개 글이 화면 두 장을 차지해 **로그인 칸이 아래로 밀려
@@ -162,6 +167,7 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
           )}
 
         </div>
+        {invite && mode === 'login' && <GuestInviteDialog t={t} onClose={closeInvite} />}
         {/* 폰 — 장점 셋은 로그인 아래에 */}
         {phone && <div style={{ flex: '1 1 100%', maxWidth: 480 }}>{points}</div>}
       </div>

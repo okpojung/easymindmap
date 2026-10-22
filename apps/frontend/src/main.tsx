@@ -7,6 +7,7 @@ import { OAuthConsentPage } from '@/pages/OAuthConsentPage';
 import { isConsentPath } from '@/services/cloud/oauthConsentRules';
 import '@/styles/global.css';
 import { matchProRoute } from '@pro';
+import { captureEntryIntent } from '@/services/entryIntent';
 
 // 화면 고르기 — 라우터를 들이지 않고 **주소만** 본다 (2026-08-13 · 08-14).
 //
@@ -24,6 +25,10 @@ import { matchProRoute } from '@pro';
 // (같은 호스트에 얹혀 있으면 경로만으로 막기 어렵다 — admin-console.md §1).
 // 그래서 관리자 도메인에서는 **경로와 무관하게** 콘솔만 뜬다. 에디터로
 // 새어 나갈 길을 두지 않는다.
+// 홈페이지에서 온 표시(?from=www)·옛 체험 주소(/try)를 먼저 정리한다 — 아래의 경로 판정이
+// 정리된 주소를 보게 한다 (services/entryIntent.ts).
+captureEntryIntent();
+
 const host = window.location.hostname;
 const isAdminHost = host === 'admin' || host.startsWith('admin.');
 const isAdminPath = window.location.pathname.replace(/\/+$/, '') === '/admin';

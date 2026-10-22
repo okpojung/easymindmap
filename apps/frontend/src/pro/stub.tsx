@@ -292,7 +292,3 @@ export function ProDashboardLive(_p: { t: ThemeTokens; mapId: string | null }) {
 /** Community builds do not claim private routes. */
 export function matchProRoute(_location: { pathname: string }): ComponentType | null { return null; }
 
-/** Dedicated public-trial configuration is supplied only by the private UI. */
-export function ProTrialAdminPanel(_p: { t: ThemeTokens; token: string; onUnauthorized: () => void }) {
-  return <p>체험 초기맵 관리 모듈이 설치되지 않았습니다.</p>;
-}

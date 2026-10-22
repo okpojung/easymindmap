@@ -5,7 +5,7 @@ import type { SampleMap } from '@emm/emm-parser';
 
 const assert = (ok: unknown, label: string) => { if (!ok) throw new Error(label); };
 const shapes = ['rounded', 'rectangle', 'pill', 'ellipse', 'diamond', 'hexagon',
-  'parallelogram', 'arrow-left', 'arrow-right', 'cylinder', 'star', 'offpage', 'document', 'pentagon'] as const;
+  'parallelogram', 'arrow-left', 'arrow-right', 'cylinder', 'star', 'offpage', 'document', 'pentagon', 'stored-data', 'tape', 'drum', 'house', 'card'] as const;
 const map: SampleMap = {
   title: 'Synthetic border regression', canvasMode: 'freeform',
   root: { id: 'root', text: 'Root', colorKey: 'root',
@@ -48,7 +48,7 @@ for (const root of [true, false]) for (const shape of shapes) {
   output.length = 0;
   const attrs = { ...border({ borderWidth: 3, borderStyle: 'dashed' }, root, false, false), fill: '#ffffff', stroke: '#123456' };
   draw({}, shape, 10, 20, 160, 80, root, attrs);
-  assert(output.length === (shape === 'cylinder' ? 2 : 1), shape + ': correct shape parts');
+  assert(output.length === (shape === 'cylinder' || shape === 'drum' ? 2 : 1), shape + ': correct shape parts');
   assert(output.every(e => e.attrs.stroke === '#123456' && e.attrs['stroke-width'] === 3 && e.attrs['stroke-dasharray'] === '9 6'), shape + ': every body/cap keeps custom border');
   output.length = 0;
   draw({}, shape, 14.5, 24.5, 151, 71, root, { fill: 'none', stroke: '#abcdef', 'stroke-width': 2.55 });

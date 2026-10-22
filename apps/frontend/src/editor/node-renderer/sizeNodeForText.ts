@@ -30,7 +30,16 @@ export interface SizeOpts {
   // INLINE_IMG_PAD 여백 포함 (h + 6)만큼 박스를 키운다. 위치(afterLine)는
   // 높이 합계에 영향이 없어 여기서는 크기만 받는다.
   images?: { w: number; h: number }[];
+  // 노드 도형 (노드별 설정; 없으면 레벨 기본 도형) — 원통은 뚜껑만큼 높이를 더한다
+  shape?: string;
 }
+
+/**
+ * 원통 뚜껑(위 타원)의 높이 (2026-10-23 사용자 요청: "원통일 때 글자가 원통의 원에 걸치지
+ * 않도록 선 밑에서부터"). 원통 노드는 이만큼 키우고, 글자는 뚜껑 아래 몸통 가운데에 둔다.
+ * NodeRenderer·HTML 뷰어가 같은 값을 쓴다.
+ */
+export const CYLINDER_CAP = 18;
 
 export interface NodeSize {
   w: number;
@@ -294,6 +303,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
     0,
   );
   let h = textH + tableH + codeH + imgH + inlineImgsH + padY * 2;
+  if ((opts.shape ?? levelShape(depth)) === 'cylinder') h += CYLINDER_CAP;
   // 수동 높이는 최소값 — 내용이 더 크면 내용에 맞춘다
   if (opts.manualH && opts.manualH > h) h = Math.min(1200, Math.round(opts.manualH));
 

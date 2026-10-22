@@ -845,6 +845,7 @@ const VIEWER_JS = String.raw`
     } else if (node.image && node.image.src) {
       h += Math.round(node.image.h * Math.min(1, mInner / Math.max(1, node.image.w))) + 6;
     }
+    if ((node.style || {}).shapeType === 'cylinder') h += 18; // 원통 뚜껑 (에디터와 같은 값)
     var tagsH = (node.tags && node.tags.length) ? TAG_H + 7 : 0;
 
     node._fs = fontSize; node._lines = wrapped.lines; node._lineH = lineH;
@@ -1516,6 +1517,19 @@ const VIEWER_JS = String.raw`
     if (dash === 'dotted') return r(Math.max(0.1, w * 0.1)) + ' ' + r(w * 2.4);
     return null;
   }
+  // 다른 연결선이 닿는 자리 (ConnectorLayer.connectorTargetBox 와 같은 식)
+  function connTargetBox(c, pts) {
+    var mid = connMid(pts);
+    var text = c.label && c.label.text ? String(c.label.text) : '';
+    if (!text.trim()) return { x: mid.x, y: mid.y, w: 2, h: 2 };
+    var lshape = (c.label && c.label.shape) || 'rounded';
+    var ls = text.split('\n'), lw = 12, j;
+    for (j = 0; j < ls.length; j++) lw = Math.max(lw, measureReal(ls[j], CONN_FS, 500));
+    var w = lw + CONN_PAD_X * 2, h = ls.length * CONN_LINE_H + CONN_PAD_Y * 2;
+    if (lshape === 'ellipse') { w = w * 1.25 + 4; h = h * 1.3; }
+    var b = connLabelBox(mid, w, h, (c.label && c.label.place) || 'center');
+    return { x: b.x, y: b.y, w: b.w, h: b.h };
+  }
   function drawConnectors() {
     var list = DATA.connectors || [];
     if (!list.length) return;
@@ -1525,14 +1539,25 @@ const VIEWER_JS = String.raw`
     var surface = SKIN.fam.l2.fill, textColor = SKIN.fam.l2.text;
     var boxes = {}, obstacles = [], k;
     for (k in DRAWN) { boxes[k] = { x: DRAWN[k]._cx, y: DRAWN[k]._cy, w: DRAWN[k]._w, h: DRAWN[k]._h }; obstacles.push(boxes[k]); }
-    // 먼저 모든 길을 구해야 서로의 교차(선 건너뛰기)를 알 수 있다
-    var routes = [];
-    for (var ri = 0; ri < list.length; ri++) {
-      var rc = list[ri], ra = boxes[rc.from], rb = boxes[rc.to];
-      if (!ra || !rb || ra === rb) continue;
-      var rw = Number(rc.width) > 0 ? Math.min(8, Number(rc.width)) : CONN_DEF.width;
-      routes.push({ c: rc, pts: connPoints(ra, rb, obstacles, rc.fromSide, rc.toSide, rc.offset), r: connJumpR(rw) });
+    // 먼저 모든 길을 구해야 서로의 교차(선 건너뛰기)를 알 수 있다.
+    // 끝은 노드 또는 다른 연결선의 라벨(없으면 선 한가운데) — ConnectorLayer.resolveAll 과 같은 순서로 푼다
+    var done = {}, pending = list.slice(), guard = list.length + 1;
+    while (pending.length && guard-- > 0) {
+      var nextP = [];
+      for (var ri = 0; ri < pending.length; ri++) {
+        var rc = pending[ri], ra = boxes[rc.from], rb = boxes[rc.to];
+        if (!ra || !rb) { nextP.push(rc); continue; }
+        if (ra === rb) continue;
+        var rw = Number(rc.width) > 0 ? Math.min(8, Number(rc.width)) : CONN_DEF.width;
+        var rp = connPoints(ra, rb, obstacles, rc.fromSide, rc.toSide, rc.offset);
+        done[rc.id] = { c: rc, pts: rp, r: connJumpR(rw) };
+        if (!boxes[rc.id]) boxes[rc.id] = connTargetBox(rc, rp);
+      }
+      if (nextP.length === pending.length) break;
+      pending = nextP;
     }
+    var routes = [];
+    for (var rj = 0; rj < list.length; rj++) if (done[list[rj].id]) routes.push(done[list[rj].id]);
     var jumpsAll = connJumps(routes);
     for (var i = 0; i < routes.length; i++) {
       var c = routes[i].c;
@@ -1713,6 +1738,25 @@ const VIEWER_JS = String.raw`
         // ⬠ 상자에 맞춘 정오각형
         put('polygon', { points: (x0 + W * 0.5) + ',' + y0 + ' ' + x1s + ',' + (y0 + H * 0.382)
           + ' ' + (x0 + W * 0.809) + ',' + y1s + ' ' + (x0 + W * 0.191) + ',' + y1s + ' ' + x0 + ',' + (y0 + H * 0.382) });
+      } else if (sh === 'house') {
+        var hd = Math.min(H * 0.35, W * 0.5);
+        put('polygon', { points: cxs + ',' + y0 + ' ' + x1s + ',' + (y0 + hd) + ' ' + x1s + ',' + y1s + ' ' + x0 + ',' + y1s + ' ' + x0 + ',' + (y0 + hd) });
+      } else if (sh === 'card') {
+        var ck = Math.min(H * 0.35, 16);
+        put('polygon', { points: (x0 + ck) + ',' + y0 + ' ' + x1s + ',' + y0 + ' ' + x1s + ',' + y1s + ' ' + x0 + ',' + y1s + ' ' + x0 + ',' + (y0 + ck) });
+      } else if (sh === 'stored-data') {
+        var sk = Math.min(14, W * 0.15);
+        put('path', { d: 'M ' + (x0 + sk) + ' ' + y0 + ' L ' + x1s + ' ' + y0 + ' Q ' + (x1s - sk) + ' ' + cys + ' ' + x1s + ' ' + y1s
+          + ' L ' + (x0 + sk) + ' ' + y1s + ' Q ' + (x0 - sk) + ' ' + cys + ' ' + (x0 + sk) + ' ' + y0 + ' Z' });
+      } else if (sh === 'tape') {
+        var ta = Math.min(7, H * 0.15);
+        put('path', { d: 'M ' + x0 + ' ' + (y0 + ta) + ' C ' + (x0 + W / 3) + ' ' + (y0 - ta) + ' ' + (x0 + 2 * W / 3) + ' ' + (y0 + 3 * ta) + ' ' + x1s + ' ' + (y0 + ta)
+          + ' L ' + x1s + ' ' + (y1s - ta) + ' C ' + (x0 + 2 * W / 3) + ' ' + (y1s + ta) + ' ' + (x0 + W / 3) + ' ' + (y1s - 3 * ta) + ' ' + x0 + ' ' + (y1s - ta) + ' Z' });
+      } else if (sh === 'drum') {
+        var drx = Math.min(10, W * 0.12), dry = H / 2;
+        put('path', { d: 'M ' + (x0 + drx) + ' ' + y0 + ' H ' + (x1s - drx) + ' A ' + drx + ' ' + dry + ' 0 0 1 ' + (x1s - drx) + ' ' + y1s
+          + ' H ' + (x0 + drx) + ' A ' + drx + ' ' + dry + ' 0 0 1 ' + (x0 + drx) + ' ' + y0 + ' Z' });
+        put('ellipse', { cx: x1s - drx, cy: cys, rx: drx, ry: dry });
       } else if (sh === 'star') {
         // ★ 박스에 맞춰 늘린 5각 별 (글자는 중앙)
         var pts = [];
@@ -1833,6 +1877,8 @@ const VIEWER_JS = String.raw`
     });
     var isRoot = depth === 0;
     var x0 = node._cx - node._w / 2, y0 = node._cy - node._h / 2;
+    // 원통: 글자는 뚜껑 아래부터 (에디터 sizeNodeForText.CYLINDER_CAP = 18 과 같은 값)
+    var capY = ((node.style || {}).shapeType === 'cylinder') ? 18 : 0;
     if (!noShape) {
       var com = nodeBorderAttributes(stPre, isRoot, SEL === node.id, SEARCHHIT === node.id);
       com['class'] = 'mm-box';
@@ -1853,7 +1899,7 @@ const VIEWER_JS = String.raw`
     var textColor = nodeText2;
     var tx = x0 + PAD_X;
     if (node.icon) {
-      var ic = el('text', { x: tx, y: y0 + PAD_Y + node._fs * 0.85, 'font-size': node._fs + 1 }, g);
+      var ic = el('text', { x: tx, y: y0 + capY + PAD_Y + node._fs * 0.85, 'font-size': node._fs + 1 }, g);
       ic.textContent = node.icon;
       tx += node._fs + 6;
     }
@@ -1950,7 +1996,7 @@ const VIEWER_JS = String.raw`
     var imgGap = img && (node._lines.length || hasBlocks) ? 6 : 0;
     var stacked = !!(hasBlocks || img || inImgs); // 표·코드·사진이 있으면 세로 스택
     var contentH = flowH + blocksH + (img ? img.h + imgGap : 0);
-    var topY = node._cy - contentH / 2;
+    var topY = node._cy + capY / 2 - contentH / 2;
     var anchor = align === 'center' ? 'middle' : (align === 'right' ? 'end' : 'start');
     // 체크리스트 항목(- [x] …) — 에디터가 실어 보낸 래핑 줄 범위(_checks).
     // 항목의 모든 줄은 글리프 폭만큼 들여쓰고 첫 줄에 체크박스를 그린다
@@ -1988,7 +2034,7 @@ const VIEWER_JS = String.raw`
         ? topY + (flowTops ? flowTops[li] : li * node._lineH) +
           bShiftAt(li) +
           node._lineH / 2 + node._fs * 0.34
-        : y0 + PAD_Y + node._fs * 0.85 + li * node._lineH;
+        : y0 + capY + PAD_Y + node._fs * 0.85 + li * node._lineH;
       // 중앙 정렬은 아이콘(왼쪽)·마커(오른쪽) 영역을 뺀 띠의 중앙 —
       // 박스 중앙 기준이면 긴 줄이 아이콘/마커와 겹친다 (에디터와 동일 보정)
       var iconW2 = node.icon ? node._fs + 6 : 0;

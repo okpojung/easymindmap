@@ -85,27 +85,57 @@ interface Resolved {
   arrows: ConnectorArrows;
 }
 
-function resolve(connectors: Connector[] | undefined, nodesById: Map<string, LaidOutNode>): Resolved[] {
-  const out: Resolved[] = [];
-  if (!connectors?.length) return out;
+/** 라벨이 없는 선에 붙을 때의 상자 — 선 한가운데의 아주 작은 점(합류점) */
+const JUNCTION = 2;
+
+/**
+ * 연결선이 **다른 연결선에 닿는 자리** (2026-10-23 사용자 요청: "선연결선이 노드의 4면뿐만
+ * 아니라 선의 라벨과도 연결") — 라벨이 있으면 그 라벨 상자, 없으면 선 한가운데의 점.
+ * 순서도에서 되돌아오는 선이 다른 선에 합류하는 모양을 만든다.
+ */
+export function connectorTargetBox(c: Connector, pts: CPoint[]): CBox {
+  const mid = connectorMid(pts);
+  const text = c.label?.text?.trim() ? c.label.text : '';
+  if (!text) return { x: mid.x, y: mid.y, w: JUNCTION, h: JUNCTION };
+  const { w, h } = connectorLabelSize(text, c.label?.shape ?? 'rounded');
+  const b = labelBox(mid, w, h, c.label?.place ?? 'center');
+  return { x: b.x, y: b.y, w: b.w, h: b.h };
+}
+
+/**
+ * 끝(from/to)은 노드 id 이거나 다른 연결선 id 다. 노드에 닿는 선부터 길을 구하고, 그 선들의
+ * 라벨 상자를 더해 가며 남은 선을 푼다. 끝이 사라졌거나 서로를 가리키는(고리) 선은 그리지 않는다.
+ * 돌려주는 boxes = 노드 상자 + 길을 구한 연결선의 라벨 상자 (끝점 끌기가 쓴다).
+ */
+function resolveAll(connectors: Connector[] | undefined, nodesById: Map<string, LaidOutNode>): { list: Resolved[]; boxes: Map<string, CBox> } {
   // 고리 줄기가 피해 갈 상자들 — 화면의 모든 노드 (끝 노드 둘은 안에서 뺀다)
   const boxes = new Map<string, CBox>();
   for (const n of nodesById.values()) boxes.set(n.id, { x: n.x, y: n.y, w: n.w, h: n.h });
+  if (!connectors?.length) return { list: [], boxes };
   const obstacles = [...boxes.values()];
-  for (const c of connectors) {
-    const a = boxes.get(c.from), b = boxes.get(c.to);
-    if (!a || !b || a === b) continue;
-    out.push({
-      c,
-      pts: connectorPoints(a, b, obstacles, c.fromSide ?? 'auto', c.toSide ?? 'auto', c.offset ?? 0),
-      color: connectorColorOf(c),
-      width: connectorWidthOf(c),
-      shape: connectorShapeOf(c),
-      dash: connectorDashOf(c),
-      arrows: connectorArrowsOf(c),
-    });
+  const done = new Map<string, Resolved>();
+  let pending = connectors;
+  while (pending.length) {
+    const next: Connector[] = [];
+    for (const c of pending) {
+      const a = boxes.get(c.from), b = boxes.get(c.to);
+      if (!a || !b) { next.push(c); continue; }
+      if (a === b) continue;
+      const pts = connectorPoints(a, b, obstacles, c.fromSide ?? 'auto', c.toSide ?? 'auto', c.offset ?? 0);
+      done.set(c.id, {
+        c, pts,
+        color: connectorColorOf(c),
+        width: connectorWidthOf(c),
+        shape: connectorShapeOf(c),
+        dash: connectorDashOf(c),
+        arrows: connectorArrowsOf(c),
+      });
+      if (!boxes.has(c.id)) boxes.set(c.id, connectorTargetBox(c, pts));
+    }
+    if (next.length === pending.length) break;
+    pending = next;
   }
-  return out;
+  return { list: connectors.flatMap((c) => (done.has(c.id) ? [done.get(c.id)!] : [])), boxes };
 }
 
 /**
@@ -200,13 +230,20 @@ function TrunkHandle({ id, pts, offset, dir, avoid, t }: { id: string; pts: CPoi
   );
 }
 
-/** Preview is local only. Drop commits one history entry; Escape/cancel commits none. */
-function EndpointGrip({ c, end, pts, boxes, t }: {
-  c: Connector; end: 'from' | 'to'; pts: CPoint[]; boxes: Map<string, CBox>; t: ThemeTokens;
+/**
+ * Preview is local only. Drop commits one history entry; Escape/cancel commits none.
+ * 끝점을 끌어 **같은 노드의 다른 면**으로 옮기거나, **다른 노드·다른 연결선의 라벨**(라벨이
+ * 없으면 선 한가운데) 위에 놓아 끝을 옮긴다 (2026-10-23). 자기 자신·반대쪽 끝과 같은 대상·
+ * 이 선에 매달린 선(고리가 된다)에는 붙지 않는다.
+ */
+function EndpointGrip({ c, end, pts, boxes, nodeBoxes, connectors, t }: {
+  c: Connector; end: 'from' | 'to'; pts: CPoint[]; boxes: Map<string, CBox>; nodeBoxes: Map<string, CBox>; connectors: Connector[]; t: ThemeTokens;
 }) {
   const tr = useTr();
-  const [preview, setPreview] = useState<CDir | null>(null);
+  const [preview, setPreview] = useState<{ target: string; side: CDir } | null>(null);
   const drag = useRef<{ pointerId: number; el: SVGGElement; x: number; y: number; moved: boolean; initial: CDir } | null>(null);
+  const currentId = end === 'from' ? c.from : c.to;
+  const otherId = end === 'from' ? c.to : c.from;
   const a = boxes.get(c.from)!, b = boxes.get(c.to)!;
   const box = end === 'from' ? a : b;
   const otherBox = end === 'from' ? b : a;
@@ -214,8 +251,32 @@ function EndpointGrip({ c, end, pts, boxes, t }: {
   const otherSide = (end === 'from' ? c.toSide : c.fromSide) ?? 'auto';
   const fixedOther = otherSide === 'auto' ? connectorSideAtPoint(otherBox, otherPoint) : otherSide;
   const original = end === 'from' ? pts[0] : pts[pts.length - 1];
-  const point = preview ? sideAnchor(box, preview) : original;
+  const previewBox = preview ? boxes.get(preview.target) ?? box : box;
+  const point = preview ? sideAnchor(previewBox, preview.side) : original;
   const title = tr(end === 'from' ? 'editor.connector.dragStart' : 'editor.connector.dragEnd');
+  const byId = new Map(connectors.map((v) => [v.id, v] as const));
+  /** id 의 선이 (사슬을 따라) 이 선 c 에 매달려 있는가 — 거기 붙으면 고리가 된다 */
+  const dependsOnMe = (id: string): boolean => {
+    const seen = new Set<string>();
+    const stack = [id];
+    while (stack.length) {
+      const cur = byId.get(stack.pop()!);
+      if (!cur || seen.has(cur.id)) continue;
+      seen.add(cur.id);
+      for (const e of [cur.from, cur.to]) { if (e === c.id) return true; if (byId.has(e)) stack.push(e); }
+    }
+    return false;
+  };
+  const inside = (q: CBox, p: CPoint, pad: number) => Math.abs(p.x - q.x) <= q.w / 2 + pad && Math.abs(p.y - q.y) <= q.h / 2 + pad;
+  /** 놓을 자리 — 라벨(위에 그려진다)을 먼저, 그다음 노드. 없으면 지금 끝 */
+  const targetAt = (p: CPoint): string => {
+    for (const [id, q] of boxes) {
+      if (nodeBoxes.has(id) || id === c.id || id === otherId || !byId.has(id) || dependsOnMe(id)) continue;
+      if (inside(q, p, q.w <= JUNCTION ? 10 : 4)) return id;
+    }
+    for (const [id, q] of nodeBoxes) if (id !== otherId && inside(q, p, 0)) return id;
+    return currentId;
+  };
   const cancel = () => {
     const d = drag.current; drag.current = null; setPreview(null);
     if (d) { try { d.el.releasePointerCapture(d.pointerId); } catch { /* already released */ } }
@@ -236,19 +297,30 @@ function EndpointGrip({ c, end, pts, boxes, t }: {
       return Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null;
     } catch { return null; }
   };
-  const commit = (side: CDir) => {
+  const commit = (side: CDir, target: string = currentId) => {
     if (isViewerLocked()) return;
     const live = useDocumentStore.getState().map.connectors?.find(v => v.id === c.id);
     if (!live || live.from !== c.from || live.to !== c.to) return;
-    const current = end === 'from' ? live.fromSide : live.toSide;
-    if (current === side || ((!current || current === 'auto') && connectorSideAtPoint(box, original) === side)) return;
     const opposite = end === 'from' ? live.toSide : live.fromSide;
     const pinOther = !opposite || opposite === 'auto';
+    if (target !== currentId) {
+      useDocumentStore.getState().updateConnector(c.id, end === 'from'
+        ? { from: target, fromSide: side, ...(pinOther ? { toSide: fixedOther } : {}) }
+        : { to: target, toSide: side, ...(pinOther ? { fromSide: fixedOther } : {}) });
+      return;
+    }
+    const current = end === 'from' ? live.fromSide : live.toSide;
+    if (current === side || ((!current || current === 'auto') && connectorSideAtPoint(box, original) === side)) return;
     useDocumentStore.getState().updateConnector(c.id, end === 'from'
       ? { fromSide: side, ...(pinOther ? { toSide: fixedOther } : {}) }
       : { toSide: side, ...(pinOther ? { fromSide: fixedOther } : {}) });
   };
-  const ghost = preview ? connectorPoints(a, b, [...boxes.values()], end === 'from' ? preview : fixedOther, end === 'to' ? preview : fixedOther, c.offset ?? 0) : null;
+  const ghost = preview
+    ? (() => {
+      const from = end === 'from' ? previewBox : a, to = end === 'to' ? previewBox : b;
+      return connectorPoints(from, to, [...nodeBoxes.values()], end === 'from' ? preview.side : fixedOther, end === 'to' ? preview.side : fixedOther, c.offset ?? 0);
+    })()
+    : null;
   return <g data-connector-endpoint={`${c.id}:${end}`} role="button" aria-label={title} tabIndex={0}
     style={{ cursor: preview ? 'grabbing' : 'grab', touchAction: 'none' }}
     onClick={e => e.stopPropagation()}
@@ -267,26 +339,35 @@ function EndpointGrip({ c, end, pts, boxes, t }: {
       const d = drag.current; if (!d || d.pointerId !== e.pointerId) return;
       e.stopPropagation(); const p = world(e); if (!p) return;
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 3 && !d.moved) return;
-      d.moved = true; setPreview(connectorSideAtPoint(box, p));
+      d.moved = true;
+      const target = targetAt(p);
+      setPreview({ target, side: connectorSideAtPoint(boxes.get(target) ?? box, p) });
     }}
     onPointerUp={e => {
       const d = drag.current; if (!d || d.pointerId !== e.pointerId) return;
-      e.stopPropagation(); const p = world(e); const side = p ? connectorSideAtPoint(box, p) : null;
-      cancel(); if (d.moved && side && side !== d.initial) commit(side);
+      e.stopPropagation(); const p = world(e);
+      const target = p ? targetAt(p) : currentId;
+      const side = p ? connectorSideAtPoint(boxes.get(target) ?? box, p) : null;
+      cancel();
+      if (d.moved && side && (target !== currentId || side !== d.initial)) commit(side, target);
     }}
     onPointerCancel={cancel} onLostPointerCapture={cancel}>
     <title>{title}</title>
     {ghost && <path d={connectorPath(ghost, connectorShapeOf(c))} fill="none" stroke={t.primary} strokeWidth={2} strokeDasharray="5 4" pointerEvents="none" />}
-    {preview && (['top', 'right', 'bottom', 'left'] as CDir[]).map(side => {
-      const p = sideAnchor(box, side); return <circle key={side} cx={p.x} cy={p.y} r={4} fill={t.surface} stroke={t.primary} pointerEvents="none" />;
+    {preview && previewBox.w > JUNCTION && (['top', 'right', 'bottom', 'left'] as CDir[]).map(side => {
+      const p = sideAnchor(previewBox, side); return <circle key={side} cx={p.x} cy={p.y} r={4} fill={t.surface} stroke={t.primary} pointerEvents="none" />;
     })}
+    {preview && preview.target !== currentId && (
+      <rect x={previewBox.x - previewBox.w / 2 - 4} y={previewBox.y - previewBox.h / 2 - 4} width={previewBox.w + 8} height={previewBox.h + 8}
+        rx={6} fill="none" stroke={t.primary} strokeWidth={1.5} strokeDasharray="4 3" pointerEvents="none" />
+    )}
     <circle cx={point.x} cy={point.y} r={isCoarseNow() ? 14 : 10} fill="transparent" />
     <circle cx={point.x} cy={point.y} r={5} fill={t.surface} stroke={t.primary} strokeWidth={2} pointerEvents="none" />
   </g>;
 }
 
 export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onSelect, editable = true }: Props) {
-  const list = resolve(connectors, nodesById);
+  const { list, boxes: targetBoxes } = resolveAll(connectors, nodesById);
   if (!list.length) return null;
 
   if (part === 'lines') {
@@ -396,11 +477,11 @@ export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onS
       })}
       {/* Ports are above nodes so the complete grip remains clickable. */}
       {list.filter(({ c }) => editable && c.id === selectedId).map(({ c, pts }) => {
-        const boxes = new Map<string, CBox>();
-        for (const n of nodesById.values()) boxes.set(n.id, { x: n.x, y: n.y, w: n.w, h: n.h });
+        const nodeBoxes = new Map<string, CBox>();
+        for (const n of nodesById.values()) nodeBoxes.set(n.id, { x: n.x, y: n.y, w: n.w, h: n.h });
         return <g key={`ports-${c.id}`}>
-          <EndpointGrip c={c} end="from" pts={pts} boxes={boxes} t={t} />
-          <EndpointGrip c={c} end="to" pts={pts} boxes={boxes} t={t} />
+          <EndpointGrip c={c} end="from" pts={pts} boxes={targetBoxes} nodeBoxes={nodeBoxes} connectors={connectors ?? []} t={t} />
+          <EndpointGrip c={c} end="to" pts={pts} boxes={targetBoxes} nodeBoxes={nodeBoxes} connectors={connectors ?? []} t={t} />
         </g>;
       })}
       {/* 줄기 손잡이 — 라벨보다 위에 (고른 선에만) */}

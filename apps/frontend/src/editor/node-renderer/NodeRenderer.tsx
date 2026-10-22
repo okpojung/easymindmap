@@ -29,6 +29,7 @@ import {
   levelTextAlign,
   scaleNodeImage,
   sizeNodeForText,
+  CYLINDER_CAP,
 } from './sizeNodeForText';
 import { parseMdTable, parseMdTables, cellLineY, cellLines, rowTop, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
 import { parseMdCodes, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
@@ -174,7 +175,7 @@ function NodeShape({
   }
   if (shape === 'cylinder') {
     // ⛁ 원통 — 위 뚜껑 타원 + 몸통 + 아래 볼록 바닥
-    const ry = Math.min(9, n.h * 0.18);
+    const ry = Math.min(CYLINDER_CAP / 2, n.h * 0.18);
     return (
       <g>
         <path
@@ -207,6 +208,41 @@ function NodeShape({
     const px = (u: number) => x0 + n.w * u, py = (v: number) => y0 + n.h * v;
     return (
       <polygon points={`${px(0.5)},${py(0)} ${px(1)},${py(0.382)} ${px(0.809)},${py(1)} ${px(0.191)},${py(1)} ${px(0)},${py(0.382)}`} {...common} />
+    );
+  }
+  if (shape === 'house') {
+    // 집 모양 — 위로 뾰족한 오각형 (2026-10-23)
+    const d = Math.min(n.h * 0.35, n.w * 0.5);
+    return <polygon points={`${n.x},${y0} ${x1},${y0 + d} ${x1},${y1} ${x0},${y1} ${x0},${y0 + d}`} {...common} />;
+  }
+  if (shape === 'card') {
+    // 카드 — 왼쪽 위 모서리를 비스듬히 자른 사각형
+    const k = Math.min(n.h * 0.35, 16);
+    return <polygon points={`${x0 + k},${y0} ${x1},${y0} ${x1},${y1} ${x0},${y1} ${x0},${y0 + k}`} {...common} />;
+  }
+  if (shape === 'stored-data') {
+    // 저장 데이터 — 왼쪽은 바깥으로 볼록, 오른쪽은 안으로 오목
+    const k = Math.min(14, n.w * 0.15);
+    return <path d={`M ${x0 + k} ${y0} L ${x1} ${y0} Q ${x1 - k} ${n.y} ${x1} ${y1} L ${x0 + k} ${y1} Q ${x0 - k} ${n.y} ${x0 + k} ${y0} Z`} {...common} />;
+  }
+  if (shape === 'tape') {
+    // 종이 테이프 — 위아래 변이 물결
+    const a = Math.min(7, n.h * 0.15);
+    return (
+      <path
+        d={`M ${x0} ${y0 + a} C ${x0 + n.w / 3} ${y0 - a} ${x0 + (2 * n.w) / 3} ${y0 + 3 * a} ${x1} ${y0 + a} L ${x1} ${y1 - a} C ${x0 + (2 * n.w) / 3} ${y1 + a} ${x0 + n.w / 3} ${y1 - 3 * a} ${x0} ${y1 - a} Z`}
+        {...common}
+      />
+    );
+  }
+  if (shape === 'drum') {
+    // 가로 원통 — 왼쪽은 둥근 끝, 오른쪽은 마구리 타원이 보인다
+    const rx = Math.min(10, n.w * 0.12), ry = n.h / 2;
+    return (
+      <g>
+        <path d={`M ${x0 + rx} ${y0} H ${x1 - rx} A ${rx} ${ry} 0 0 1 ${x1 - rx} ${y1} H ${x0 + rx} A ${rx} ${ry} 0 0 1 ${x0 + rx} ${y0} Z`} {...common} />
+        <ellipse cx={x1 - rx} cy={n.y} rx={rx} ry={ry} {...common} />
+      </g>
     );
   }
   if (shape === 'star') {
@@ -367,6 +403,8 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   const shape: ShapeType =
     searchHit && shapeSetting === 'none' ? 'rounded' : shapeSetting;
   const noShape = shapeSetting === 'none';
+  // 원통: 글자·아이콘을 뚜껑 아래 몸통 가운데로 (sizeNodeForText.CYLINDER_CAP 만큼 키운 높이)
+  const capShift = shapeSetting === 'cylinder' ? CYLINDER_CAP / 2 : 0;
 
   // 검색 결과 표시 — 어떤 스타일보다 우선해 노란 채움 + 붉은 테두리
   const fill = searchHit ? '#FFE066' : (style.fillColor ?? colors.fill);
@@ -689,7 +727,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
       {hasIcon && !editing && (
         <text
           x={iconX}
-          y={n.y + 5}
+          y={n.y + capShift + 5}
           fontSize={fontSize + 2}
           textAnchor={iconSide === 'right' ? 'middle' : 'start'}
           style={{ fontFamily: 'inherit' }}
@@ -743,7 +781,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           flow.totalH +
           blocksH +
           (img ? img.h + imgGap : 0);
-        const contentTop = n.y - contentH / 2;
+        const contentTop = n.y + capShift - contentH / 2;
         const imgTop = contentTop + contentH - (img ? img.h : 0);
 
         // 인라인 마커 상태를 자동 줄바꿈 사이로 이월한다 — 마커 구간이
@@ -1548,7 +1586,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               n.x + n.w / 2 - 9 -
               (contentIcons.length - 1 - i) * (fontSize + 5) -
               icSize / 2;
-            const cy = n.y;
+            const cy = n.y + capShift;
             const single = ic.items[0];
             return (
               <g

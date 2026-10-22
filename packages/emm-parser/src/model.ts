@@ -71,6 +71,11 @@ export type ShapeType =
   | 'offpage'      // ⬟ 페이지 연결자 (아래로 뾰족한 오각형, 2026-10-23)
   | 'document'     // 문서 (아래가 물결)
   | 'pentagon'     // ⬠ 정오각형
+  | 'stored-data'  // 저장 데이터 (왼쪽 볼록·오른쪽 오목, 2026-10-23)
+  | 'tape'         // 종이 테이프 (위아래 물결)
+  | 'drum'         // 가로 원통
+  | 'house'        // 집 모양 (위로 뾰족한 오각형)
+  | 'card'         // 카드 (왼쪽 위 모서리를 자른 사각형)
   | 'star';        // ★ 별
 
 export type NodeFontWeight = 'normal' | 'bold';

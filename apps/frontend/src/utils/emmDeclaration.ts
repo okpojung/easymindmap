@@ -38,7 +38,7 @@ const LAYOUTS = new Set<string>([
 const SHAPES = new Set<string>([
   'none', 'rounded', 'rectangle', 'pill', 'ellipse', 'diamond', 'hexagon',
   'parallelogram', 'arrow-left', 'arrow-right', 'cylinder', 'star',
-  'offpage', 'document', 'pentagon',
+  'offpage', 'document', 'pentagon', 'stored-data', 'tape', 'drum', 'house', 'card',
 ]);
 
 /**
@@ -329,13 +329,26 @@ export function declareFromMap(
   // 우리 내보내기는 노트를 블록(인용문·펜스·표)으로 쓴다 — 되읽을 때 노트로 복원하라는 표시
   out.blocks = 'note';
   if (Object.keys(levels).length) out.levels = levels;
-  // 연결선 — 끝 노드를 경로로 적는다. 경로를 못 만드는 것(끝 노드 없음)은 뺀다
+  // 연결선 — 끝 노드를 경로로 적는다. 끝이 다른 연결선(라벨 합류, 2026-10-23)이면
+  // `@line:N`(이 목록의 N 번째 선, 1부터)로 적는다. 끝을 못 찾는 것은 뺀다(사슬째).
   if (map.connectors?.length && map.root && map.branches) {
     const full = map as SampleMap;
     const specs: EmmConnectorSpec[] = [];
-    for (const c of map.connectors) {
-      const from = nodePathOf(full, c.from), to = nodePathOf(full, c.to);
-      if (!from || !to) continue;
+    const paths = new Map<string, string>();
+    for (const c of map.connectors) for (const e of [c.from, c.to]) {
+      if (!paths.has(e)) { const p = nodePathOf(full, e); if (p) paths.set(e, p); }
+    }
+    let keep = map.connectors.filter((c) => c.from !== c.to);
+    for (;;) {
+      const ids = new Set(keep.map((c) => c.id));
+      const next = keep.filter((c) => (paths.has(c.from) || ids.has(c.from)) && (paths.has(c.to) || ids.has(c.to)));
+      if (next.length === keep.length) break;
+      keep = next;
+    }
+    const order = new Map(keep.map((c, i) => [c.id, i + 1] as const));
+    const ref = (e: string) => paths.get(e) ?? `@line:${order.get(e)}`;
+    for (const c of keep) {
+      const from = ref(c.from), to = ref(c.to);
       const spec: EmmConnectorSpec = { from, to };
       if (c.shape) spec.shape = c.shape;
       if (c.width != null) spec.width = String(c.width);
@@ -365,10 +378,18 @@ export function applyDeclaredConnectors(map: SampleMap, specs: EmmConnectorSpec[
   if (!specs?.length) return map;
   const out: Connector[] = [];
   let seq = 0;
-  for (const spec of specs) {
-    const from = findNodeIdByPath(map, spec.from), to = findNodeIdByPath(map, spec.to);
+  // `@line:N` = 이 목록 N 번째 선의 라벨에 닿는 끝 (2026-10-23) — 선마다 id 를 먼저 정해 둔다
+  const stamp = Date.now();
+  const lineIds = specs.map((_, i) => `conn-${stamp}-l${(i + 1).toString(36)}`);
+  const endOf = (v: string) => {
+    const m = /^@line:(\d+)$/.exec(String(v ?? '').trim());
+    if (m) { const k = Number(m[1]) - 1; return k >= 0 && k < lineIds.length ? lineIds[k] : null; }
+    return findNodeIdByPath(map, v);
+  };
+  for (const [i, spec] of specs.entries()) {
+    const from = endOf(spec.from), to = endOf(spec.to);
     if (!from || !to || from === to) continue;
-    const c: Connector = { id: `conn-${Date.now()}-${(++seq).toString(36)}`, from, to };
+    const c: Connector = { id: /^@line:/.test(String(spec.from)) || /^@line:/.test(String(spec.to)) || specs.some((o) => /^@line:/.test(String(o.from)) || /^@line:/.test(String(o.to))) ? lineIds[i] : `conn-${stamp}-${(++seq).toString(36)}`, from, to };
     if (spec.shape === 'elbow' || spec.shape === 'rounded') c.shape = spec.shape;
     const w = Number(spec.width);
     if (Number.isFinite(w) && w > 0) c.width = Math.min(8, w);
@@ -387,5 +408,13 @@ export function applyDeclaredConnectors(map: SampleMap, specs: EmmConnectorSpec[
     }
     out.push(c);
   }
-  return out.length ? { ...map, connectors: out } : map;
+  // 가리킨 선이 버려졌으면 그 선에 닿은 선도 버린다 (사슬째)
+  let kept = out;
+  for (;;) {
+    const ids = new Set(kept.map((c) => c.id));
+    const next = kept.filter((c) => (!c.from.startsWith(`conn-${stamp}-l`) || ids.has(c.from)) && (!c.to.startsWith(`conn-${stamp}-l`) || ids.has(c.to)));
+    if (next.length === kept.length) break;
+    kept = next;
+  }
+  return kept.length ? { ...map, connectors: kept } : map;
 }

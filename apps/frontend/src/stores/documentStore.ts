@@ -374,12 +374,22 @@ function allNodeIds(map: SampleMap): Set<string> {
   return ids;
 }
 
-/** 끝 노드가 사라진 연결선을 걷어낸다 (노드 삭제 뒤, 2026-09-22). 바뀐 게 없으면 같은 객체 */
+/**
+ * 끝이 사라진 연결선을 걷어낸다 (노드 삭제 뒤, 2026-09-22). 바뀐 게 없으면 같은 객체.
+ * 연결선의 끝은 노드이거나 **다른 연결선의 라벨**(id = 그 연결선 id, 2026-10-23)이다 —
+ * 끝이 된 연결선이 사라지면 거기 붙은 선도 함께 걷는다(사슬이므로 더 걷을 게 없을 때까지).
+ */
 export function pruneConnectors(map: SampleMap): SampleMap {
   const list = map.connectors;
   if (!list || !list.length) return map;
   const ids = allNodeIds(map);
-  const kept = list.filter((c) => ids.has(c.from) && ids.has(c.to));
+  let kept = list;
+  for (;;) {
+    const valid = new Set<string>([...ids, ...kept.map((c) => c.id)]);
+    const next = kept.filter((c) => c.from !== c.to && valid.has(c.from) && valid.has(c.to));
+    if (next.length === kept.length) break;
+    kept = next;
+  }
   if (kept.length === list.length) return map;
   return { ...map, connectors: kept.length ? kept : undefined };
 }
@@ -1587,7 +1597,8 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       const list = state.map.connectors ?? [];
       if (!list.some((c) => c.id === id)) return {};
       const kept = list.filter((c) => c.id !== id);
-      return { map: { ...state.map, connectors: kept.length ? kept : undefined } };
+      // 이 선의 라벨에 붙어 있던 선도 함께 걷는다 (pruneConnectors)
+      return { map: pruneConnectors({ ...state.map, connectors: kept.length ? kept : undefined }) };
     });
   },
 

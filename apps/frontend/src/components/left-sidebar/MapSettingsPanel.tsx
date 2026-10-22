@@ -91,6 +91,11 @@ const SHAPE_OPTIONS: { key: ShapeType | ''; labelKey: string }[] = [
   { key: 'document',      labelKey: 'panel.settings.shape.document' },
   { key: 'offpage',       labelKey: 'panel.settings.shape.offpage' },
   { key: 'pentagon',      labelKey: 'panel.settings.shape.pentagon' },
+  { key: 'house',         labelKey: 'panel.settings.shape.house' },
+  { key: 'card',          labelKey: 'panel.settings.shape.card' },
+  { key: 'stored-data',   labelKey: 'panel.settings.shape.storedData' },
+  { key: 'tape',          labelKey: 'panel.settings.shape.tape' },
+  { key: 'drum',          labelKey: 'panel.settings.shape.drum' },
   { key: 'star',          labelKey: 'panel.settings.shape.star' },
 ];
 

@@ -60,6 +60,21 @@ const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
   { key: 'pentagon',    label: 'inspector.style.shape.pentagon', shape: (
     <svg width="18" height="17" viewBox="0 0 18 17"><polygon points="9,1 17,6.8 14,16 4,16 1,6.8" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
   ) },
+  { key: 'house',       label: 'inspector.style.shape.house', shape: (
+    <svg width="18" height="16" viewBox="0 0 18 16"><polygon points="9,1 17,6 17,15 1,15 1,6" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  { key: 'card',        label: 'inspector.style.shape.card', shape: (
+    <svg width="22" height="16" viewBox="0 0 22 16"><polygon points="6,1 21,1 21,15 1,15 1,6" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  { key: 'stored-data', label: 'inspector.style.shape.storedData', shape: (
+    <svg width="22" height="16" viewBox="0 0 22 16"><path d="M5 1 H21 Q17 8 21 15 H5 Q-1 8 5 1 Z" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  { key: 'tape',        label: 'inspector.style.shape.tape', shape: (
+    <svg width="22" height="16" viewBox="0 0 22 16"><path d="M1 3.5 C7 -0.5 13 7.5 21 3.5 V12.5 C15 16.5 9 8.5 1 12.5 Z" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
+  { key: 'drum',        label: 'inspector.style.shape.drum', shape: (
+    <svg width="24" height="16" viewBox="0 0 24 16"><path d="M5 1 H19 A4 7 0 0 1 19 15 H5 A4 7 0 0 1 5 1 Z" fill="none" stroke="currentColor" strokeWidth="1.5" /><ellipse cx="19" cy="8" rx="4" ry="7" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+  ) },
   { key: 'star',        label: 'inspector.style.shape.star', shape: (
     <svg width="18" height="17" viewBox="0 0 18 17"><polygon points="9,1 11.2,6.2 17,6.6 12.6,10.3 14,16 9,12.9 4,16 5.4,10.3 1,6.6 6.8,6.2" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>
   ) },

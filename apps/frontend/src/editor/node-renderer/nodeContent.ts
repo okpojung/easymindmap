@@ -163,7 +163,9 @@ export function nodeSizingOpts(n: {
   sizeH?: number;
   image?: { w: number; h: number };
   images?: { w: number; h: number }[];
+  style?: { shapeType?: string };
 }): {
+  shape?: string;
   hasIcon: boolean;
   indicators: number;
   manualW?: number;
@@ -172,6 +174,7 @@ export function nodeSizingOpts(n: {
   images?: { w: number; h: number }[];
 } {
   return {
+    shape: n.style?.shapeType,
     hasIcon: !!n.icon,
     indicators: contentIndicatorCount(n),
     manualW: n.sizeW,

@@ -1,3 +1,4 @@
+import { computeCenterAlignmentGuides } from './centerAlignmentGuides';
 // File: src/editor/canvas/Canvas.tsx
 // Version: MVP-Layout-Canvas-Viewport-v2
 // - Layout (incl. per-node overrides) comes from computeLayout().
@@ -86,7 +87,10 @@ const LAYOUT_LABEL_KEY: Record<string, string> = {
   'timeline-center': 'editor.layout.timelineCenter',
 };
 
+export interface CanvasEditingPolicy { mode: 'basic'; readOnly: boolean }
+
 interface Props {
+  editingPolicy?: CanvasEditingPolicy;
   t: ThemeTokens;
   sample: SampleMap;
   layoutType: LayoutType;
@@ -131,7 +135,13 @@ export function Canvas({
   selectedId,
   onSelect,
   collabs,
+  editingPolicy,
 }: Props) {
+  const policyRef = useRef(editingPolicy);
+  policyRef.current = editingPolicy;
+  const basic = editingPolicy?.mode === 'basic';
+  const isReadOnly = () => policyRef.current?.readOnly === true;
+  const isBasic = () => policyRef.current?.mode === 'basic';
   // 언어가 바뀌면 다시 그린다 — 화면 문자열은 tr() 로 (콜백 안에서도 부르는 순간의 언어)
   useLang();
   // 폰 폭 — 첫 화면은 맵 전체 맞추기, 도구 모음·안내 칩은 좁게 (모바일 웹, 2026-10-05)
@@ -253,6 +263,8 @@ export function Canvas({
     needsCapture: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
+  // Consume the release click before it reaches node/tool click handlers.
+  const centerDragClickRef = useRef(false);
 
   // Node drag-and-drop (reparent) state
   const nodeDragRef = useRef<{
@@ -268,7 +280,16 @@ export function Canvas({
      * 은 원점이라 끌 수 없다.
      */
     center?: boolean;
+    geometry?: { x: number; y: number; startX: number; startY: number; w: number; h: number };
   } | null>(null);
+  const [centerGuides, setCenterGuides] = useState<ReturnType<typeof computeCenterAlignmentGuides>>([]);
+  const cancelNodeDrag = () => { nodeDragRef.current = null; dropZoneRef.current = null; setDropZone(null); setDragGhost(null); setCenterGuides([]); };
+  useEffect(() => {
+    const cancel = (e: KeyboardEvent) => { if (e.key === 'Escape') cancelNodeDrag(); };
+    window.addEventListener('keydown', cancel);
+    const unsubscribe = useDocumentStore.subscribe((state, prev) => { if (state.docOrigin !== prev.docOrigin || state.docEpoch !== prev.docEpoch || state.past.length < prev.past.length) cancelNodeDrag(); });
+    return () => { window.removeEventListener('keydown', cancel); unsubscribe(); nodeDragRef.current = null; };
+  }, []);
   type DropPosition = 'child' | 'parent' | 'before' | 'after';
   const [dropZone, setDropZone] = useState<{ targetId: string; position: DropPosition } | null>(null);
   // 렌더 타이밍과 무관하게 항상 "마지막 move에서 계산한" 드롭존 —
@@ -391,20 +412,20 @@ export function Canvas({
   };
 
   // 단일 선택은 항상 다중 선택을 해제한다 (러버밴드만이 다중 선택을 만든다)
-  const selectOne = (id: string | null) => {
+  const selectOne = (id: string | null, activateClickTools = true) => {
     if (multiSelectedIds.length) setMultiSelectedIds([]);
     // 캔버스에서 직접 조작하면 검색 강조는 해제
     if (searchHitId && id !== searchHitId) setSearchHitId(null);
     // 스타일 복사(붓) 모드 — 노드를 누르면 선택과 함께 붓에 든 겉모습을
     // 입힌다. 모드는 그대로 남아 다음 노드도 이어서 칠할 수 있다
     // (2026-09-19). 빈 곳 클릭(id=null)은 모드 해제.
-    if (stylePainter) {
+    if (activateClickTools && !isBasic() && !isReadOnly() && stylePainter) {
       if (id) applyStyleSnapshot([id], stylePainter.snap);
       else setStylePainter(null);
     }
     // 연결 모드 — 시작 노드가 아닌 노드를 누르면 연결선이 생기고 모드는 끝난다.
     // 빈 곳을 누르면 취소. 시작 노드를 다시 누른 것은 무시(모드 유지).
-    if (connectMode) {
+    if (activateClickTools && !isBasic() && !isReadOnly() && connectMode) {
       if (id && id !== connectMode.fromId) {
         const cid = addConnector(connectMode.fromId, id);
         setConnectMode(null);
@@ -571,7 +592,13 @@ export function Canvas({
       m.set(n.id, c);
       return c;
     };
-    sample.branches.forEach(walk);
+    const countCenter = (rootId: string, branches: typeof sample.branches) => {
+      let count = 0;
+      for (const branch of branches) count += 1 + walk(branch);
+      m.set(rootId, count);
+    };
+    countCenter(sample.root.id, sample.branches);
+    for (const center of sample.centers ?? []) countCenter(center.root.id, center.branches);
     return m;
   }, [sample]);
 
@@ -631,8 +658,8 @@ export function Canvas({
     const vp = useViewportStore.getState();
     const s = (vp.zoom || 100) / 100;
     return {
-      x: (v.x - CX - vp.panX) / s + CX,
-      y: (v.y - CY - vp.panY) / s + CY,
+      x: (v.x - CX - panX) / s + CX,
+      y: (v.y - CY - panY) / s + CY,
     };
   };
 
@@ -695,6 +722,7 @@ export function Canvas({
 
   // Drop a link (URL) or file(s) from outside the app directly onto a node.
   const handleExternalDrop = (e: ReactDragEvent) => {
+    if (isBasic() || isReadOnly()) { e.preventDefault(); return; }
     const dt = e.dataTransfer;
     if (!dt) return;
     const files = Array.from(dt.files ?? []);
@@ -858,7 +886,7 @@ export function Canvas({
   // 동안 **배치(nodes)·레이아웃이 바뀔 때마다** 현재 배치로 다시 잡는다. 사용자가
   // 화면을 옮긴 뒤에는 손대지 않는다. 같은 값이면 store 를 건드리지 않는다.
   useEffect(() => {
-    if (!homeArmed) return;
+    if (!homeArmed || !useViewportStore.getState().homeArmed) return;
     // ★ **폰 폭의 첫 화면 = 맵 전체** (모바일 웹, 2026-10-05). 390px 화면에서 100% 로
     // 열면 맵의 한 귀퉁이만 보여 "어디가 어딘지" 모른다. 맵 전체가 들어오게 맞추되
     // 작은 맵을 100% 넘게 키우지는 않는다. homeArmed 는 끄지 않는다(setState 직접) —
@@ -904,6 +932,7 @@ export function Canvas({
   // side: 루트의 좌/우 +버튼(방사형·양쪽)이 누른 쪽으로 새 브랜치를 배치.
   // 키보드(Space/Tab) 등 side 없이 부르면 기존 좌우 교대 배치 그대로.
   const handleAddChild = (side?: 'left' | 'right') => {
+    if (isReadOnly()) return;
     // 선택된 노드가 없으면 아무것도 하지 않는다 — 미선택 상태에서
     // Enter/Space/Tab이 메인 노드 밑에 노드를 만들어 버리는 것을 방지.
     if (!selectedId) return;
@@ -915,6 +944,7 @@ export function Canvas({
   };
 
   const handleAddSibling = (position: 'before' | 'after' = 'after') => {
+    if (isReadOnly()) return;
     if (!selectedId) return;
     if (selectedId === 'root') {
       // 루트의 형제는 없으므로 루트가 '선택된' 상태에서만 자식 추가로 대체
@@ -926,6 +956,7 @@ export function Canvas({
   };
 
   const handleAddParent = () => {
+    if (isReadOnly()) return;
     if (!selectedId || selectedId === 'root') return;
     const id = addParentNode(selectedId);
     if (id) selectOne(id);
@@ -962,6 +993,7 @@ export function Canvas({
   // (노드 텍스트 편집 중 붙여넣기는 NodeRenderer의 textarea onPaste가 처리)
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
+      if (isBasic() || isReadOnly()) return;
       const target = e.target as HTMLElement | null;
       const isEditingText =
         target?.tagName === 'TEXTAREA' ||
@@ -1107,9 +1139,12 @@ export function Canvas({
         target?.tagName === 'INPUT' ||
         target?.isContentEditable;
 
-      if (isEditingText) return;
+      if (isEditingText || (isBasic() && target?.closest('button,[role="button"],select,input,textarea,[contenteditable="true"]'))) return;
 
       const mod = e.ctrlKey || e.metaKey;
+      // Host-owned basic chrome never invokes import, clipboard or multi-add actions.
+      if (isBasic() && ((mod && /^[cxv]$/i.test(e.key)) || (e.code === 'Space' && mod && !e.shiftKey))) { e.preventDefault(); return; }
+      if (isReadOnly() && (['Delete', 'Backspace', 'Enter', 'Tab', 'ArrowLeft'].includes(e.key) || e.code === 'Space' || (mod && /^[zyx]$/i.test(e.key)))) { e.preventDefault(); return; }
 
       // ── 노드 복사 (Ctrl+C) — 러버밴드 다중 선택/단일 선택의 서브트리를
       // 내부 클립보드에 담고, 시스템 클립보드에는 토큰만 쓴다. 붙여넣기
@@ -1336,6 +1371,7 @@ export function Canvas({
       dropZoneRef.current = null;
       setDropZone(null);
       setDragGhost(null);
+      setCenterGuides([]);
     }
     if (marqueeRef.current) { marqueeRef.current = null; setMarquee(null); }
     dragRef.current = null;
@@ -1404,7 +1440,7 @@ export function Canvas({
         if (!tap || tap.moved || tap.nodeId !== nodeId) return;
         tap.longFired = true;
         selectOneRef.current(nodeId);
-        if (compact) openNodeMenu();
+        if (compact && !isBasic()) openNodeMenu();
         try { navigator.vibrate?.(12); } catch { /* 지원 안 함 */ }
       }, LONG_PRESS_MS);
     }
@@ -1438,7 +1474,7 @@ export function Canvas({
       const isTap = e.type === 'pointerup' && !tap.moved && !tap.longFired;
       // 고른 노드를 다시 톡 = 편집 (두 번 톡도 이것 — 첫 톡이 고르고 둘째가 편집).
       // 붓·연결 모드에서는 톡이 칠하기·끝점이라 편집하지 않는다.
-      if (isTap && tap.nodeId && tap.wasSelected && !stylePainter && !connectMode
+      if (!isReadOnly() && isTap && tap.nodeId && tap.wasSelected && !stylePainter && !connectMode
           && editingNodeId !== tap.nodeId) {
         primeTouchKeyboard(); // 톡 처리 안에서 — iOS 가 키보드를 띄우게
         requestEdit(tap.nodeId);
@@ -1449,6 +1485,10 @@ export function Canvas({
 
   const handlePointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     const isTouch = e.pointerType === 'touch';
+    // A new pointer gesture is intentional, even if the previous browser
+    // emitted no native click after capture/release.
+    if (centerDragClickRef.current) suppressClickRef.current = false;
+    centerDragClickRef.current = false;
     if (isTouch && handleTouchDown(e)) return;
     // 휠 클릭 + 우클릭 드래그 = 임시 Pan (Pan 모드를 켜지 않고도 화면 이동,
     // 버튼을 떼면 자동 해제). 우클릭 컨텍스트 메뉴는 svg에서 차단.
@@ -1459,7 +1499,7 @@ export function Canvas({
     // 중심주제 배치 모드 — 빈 자리 클릭 = **거기에** 새 중심 (루트가 클릭 지점
     // 가운데에 오도록 pos 는 첫 중심 루트(CX, CY) 기준 상대 좌표). 노드 위를
     // 클릭하면 배치를 접고 평소대로(선택) 간다.
-    if (placingCenter && e.button === 0) {
+    if (!isBasic() && !isReadOnly() && placingCenter && e.button === 0) {
       setPlacingCenter(false);
       if (onEmptyCanvas) {
         const w = clientToWorld(e.clientX, e.clientY);
@@ -1489,9 +1529,11 @@ export function Canvas({
     //
     // Capture happens later, only once it actually moves, so a plain tap
     // still selects via the node's onClick.
-    if (!isMiddleButton && !panMode && nodeEl) {
+    if (!isReadOnly() && !isMiddleButton && !panMode && nodeEl) {
       const id = nodeEl.getAttribute('data-node-id');
-      if (e.button === 0 && id && id !== 'root') {
+      const candidate = nodesRef.current.find((nd) => nd.id === id);
+      const isCenter = candidate?.depth === 0;
+      if (e.button === 0 && id && (!isCenter || (!isBasic() && (id !== sample.root.id || sample.canvasMode === 'freeform')))) {
         dropZoneRef.current = null; // 이전 드래그의 드롭존 잔류 방지
         nodeDragRef.current = {
           pointerId: e.pointerId,
@@ -1500,7 +1542,8 @@ export function Canvas({
           id,
           dragging: false,
           // depth 0 이면서 'root' 가 아니다 = 두 번째 이후의 중심주제 루트
-          center: nodesRef.current.find((nd) => nd.id === id)?.depth === 0,
+          center: isCenter,
+          geometry: candidate ? { x: candidate.x, y: candidate.y, w: candidate.w, h: candidate.h, startX: clientToWorld(e.clientX, e.clientY).x, startY: clientToWorld(e.clientX, e.clientY).y } : undefined,
         };
         return;
       }
@@ -1569,15 +1612,38 @@ export function Canvas({
 
       if (!nodeDrag.dragging && Math.abs(dx) + Math.abs(dy) > (isTouch ? TOUCH_DRAG_START : 4)) {
         nodeDrag.dragging = true;
+        if (nodeDrag.center && !isReadOnly() && !isBasic()
+            && (nodeDrag.id !== sample.root.id || sample.canvasMode === 'freeform')) {
+          // Freeze the rendered home pan, not a possibly stale store pan.
+          // Only a real center drag disarms auto-home; taps keep it armed.
+          useViewportStore.getState().setPan(panX, panY);
+        }
         e.currentTarget.setPointerCapture(e.pointerId);
       }
 
-      if (nodeDrag.dragging && nodeDrag.center) {
+      if (isReadOnly()) { setDropZone(null); setDragGhost(null); return; }
+      if (nodeDrag.dragging && nodeDrag.center && !isBasic() && (nodeDrag.id !== sample.root.id || sample.canvasMode === 'freeform')) {
         // 중심주제 옮기기 — 드롭존 없이 그림자만 따라간다
         const w = clientToWorld(e.clientX, e.clientY);
         const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
         if (dragged) {
-          setDragGhost({ x: w.x, y: w.y, w: dragged.w, h: dragged.h, flip: null, count: 1 });
+          const g = nodeDrag.geometry!;
+          const x = g.x + w.x - g.startX, y = g.y + w.y - g.startY;
+          setDragGhost({ x, y, w: g.w, h: g.h, flip: null, count: 1 });
+          const excludedIds = new Set(subtreeOf(nodeDrag.id, nodesRef.current).map((n) => n.id));
+          const a = clientToWorld(0, 0), b = clientToWorld(1, 1);
+          const rect = svgRef.current?.getBoundingClientRect();
+          if (rect && sample.canvasMode === 'freeform') {
+            const k = Math.min(rect.width / W, rect.height / H) || 1;
+            const left = rect.left + (rect.width - W * k) / 2, top = rect.top + (rect.height - H * k) / 2;
+            const tl = clientToWorld(left, top), br = clientToWorld(left + W * k, top + H * k);
+            setCenterGuides(computeCenterAlignmentGuides({
+              moving: { id: nodeDrag.id, left: x - g.w / 2, top: y - g.h / 2, width: g.w, height: g.h },
+              targets: visibleNodes.map((n) => ({ id: n.id, left: n.x - n.w / 2, top: n.y - n.h / 2, width: n.w, height: n.h })),
+              excludedIds, viewport: { left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y },
+              worldPerScreenPixel: { x: Math.abs(b.x - a.x), y: Math.abs(b.y - a.y) },
+            }));
+          }
         }
         return;
       }
@@ -1634,18 +1700,22 @@ export function Canvas({
     if (nodeDrag && nodeDrag.pointerId === e.pointerId) {
       nodeDragRef.current = null;
 
-      if (nodeDrag.dragging && nodeDrag.center) {
+      if (isReadOnly()) { setDropZone(null); setDragGhost(null); return; }
+      if (nodeDrag.dragging && nodeDrag.center && !isBasic() && (nodeDrag.id !== sample.root.id || sample.canvasMode === 'freeform')) {
         // 중심주제를 놓았다 — 끈 만큼 옮긴 자리를 첫 중심 루트(CX, CY) 기준
         // 상대 좌표로 저장한다. 레이아웃 엔진이 다음 그리기에서 그 자리에 놓는다.
         const w = clientToWorld(e.clientX, e.clientY);
-        const s = clientToWorld(nodeDrag.startX, nodeDrag.startY);
+        setCenterGuides([]);
         const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
         if (dragged) {
           setCenterPos(nodeDrag.id, {
-            dx: dragged.x + (w.x - s.x) - CX,
-            dy: dragged.y + (w.y - s.y) - CY,
+            dx: nodeDrag.geometry!.x + (w.x - nodeDrag.geometry!.startX) - CX,
+            dy: nodeDrag.geometry!.y + (w.y - nodeDrag.geometry!.startY) - CY,
           });
-          selectOne(nodeDrag.id);
+          // A move selects only. Keep painter/connector tools armed for the
+          // next intentional click, without applying either on release.
+          centerDragClickRef.current = true;
+          selectOne(nodeDrag.id, false);
         }
         suppressClickRef.current = true;
         setDropZone(null);
@@ -1827,13 +1897,13 @@ export function Canvas({
         )}
       </div>
 
-      <CanvasFloatingToolbar
+      {!basic && <CanvasFloatingToolbar
         t={t}
         hasSelection={!!selectedNode}
         focusActive={!!focusedId}
         onFitView={handleFitWhole}
         onFocusSelected={focusSelected}
-      />
+      />}
 
       {/* 연결 모드 안내 (2026-09-22) — 시작 노드가 정해졌고 끝 노드를 기다린다 */}
       {connectMode && (
@@ -1985,7 +2055,15 @@ export function Canvas({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onPointerCancel={(e) => { handleTouchUp(e); cancelLongPress(); touchTapRef.current = null; pinchRef.current = null; dragRef.current = null; setPanning(false); cancelNodeDrag(); }}
+        onLostPointerCapture={cancelNodeDrag}
+        onClickCapture={(e: MouseEvent<SVGSVGElement>) => {
+          if (!centerDragClickRef.current) return;
+          centerDragClickRef.current = false;
+          suppressClickRef.current = false;
+          e.preventDefault();
+          e.stopPropagation();
+        }}
         onClick={(e: MouseEvent<SVGSVGElement>) => {
           if (suppressClickRef.current) {
             suppressClickRef.current = false;
@@ -2129,8 +2207,9 @@ export function Canvas({
             connectors={sample.connectors}
             nodesById={visibleById}
             t={t}
-            selectedId={selectedConnectorId}
-            onSelect={selectConnector}
+            selectedId={basic ? null : selectedConnectorId}
+            editable={!basic && !isReadOnly()}
+            onSelect={basic ? () => {} : selectConnector}
           />
 
           <g>
@@ -2146,6 +2225,7 @@ export function Canvas({
                 onHover={setHoverNodeId}
                 onOpenPopover={onOpenPopover}
                 collabs={collabs}
+                editingPolicy={editingPolicy}
               />
             ))}
           </g>
@@ -2209,17 +2289,19 @@ export function Canvas({
             connectors={sample.connectors}
             nodesById={visibleById}
             t={t}
-            selectedId={selectedConnectorId}
-            onSelect={selectConnector}
+            selectedId={basic ? null : selectedConnectorId}
+            editable={!basic && !isReadOnly()}
+            onSelect={basic ? () => {} : selectConnector}
           />
 
-          {selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
+          {!basic && selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
             multiSelectedIds.length <= 1 && (
             <g className="mm-overlay-controls">
               <NodeIndicators
                 node={selectedNode}
                 t={t}
                 rootChildSides={rootChildSides}
+                rootCollapsible={sample.canvasMode === 'freeform' && (selectedNode._childCount ?? 0) > 0}
                 effLayout={effByNode.get(selectedNode.id)}
                 onAddChild={handleAddChild}
                 onAddParent={handleAddParent}
@@ -2253,12 +2335,13 @@ export function Canvas({
           {!dragGhost && (
             <g className="mm-overlay-controls">
               {visibleNodes
-                .filter((n) => n.depth > 0 && (n._childCount ?? 0) > 0)
+                .filter((n) => (n.depth > 0 || sample.canvasMode === 'freeform') && (n._childCount ?? 0) > 0)
                 // Hide on the selected node and its parent so it doesn't overlap
                 // the selected node's +/- add indicators. **러버밴드 다중 선택
                 // 중에는 +/- 가 없으므로 숨기지 않는다** (2026-09-21 보고: 접힌
                 // 노드 여럿을 고르면 대표(첫) 노드의 접힘 숫자만 사라졌다).
-                .filter((n) => multiSelectedIds.length > 1
+                .filter((n) => (sample.canvasMode === 'freeform' && n.depth === 0)
+                  || multiSelectedIds.length > 1
                   || (n.id !== selectedId && n.id !== (selectedNode?.parent ?? '')))
                 .filter((n) => isDrawn(n.id))
                 .map((n) => {
@@ -2311,6 +2394,10 @@ export function Canvas({
           )}
 
           {/* Drag ghost while reparenting */}
+          <g pointerEvents="none" aria-hidden="true">{centerGuides.map((g, i) => <line key={i}
+            x1={g.axis === 'x' ? g.coordinate : g.from} y1={g.axis === 'y' ? g.coordinate : g.from}
+            x2={g.axis === 'x' ? g.coordinate : g.to} y2={g.axis === 'y' ? g.coordinate : g.to}
+            stroke={t.primary} strokeWidth={1} vectorEffect="non-scaling-stroke" />)}</g>
           {dragGhost && (
             <g pointerEvents="none">
               <rect
@@ -2358,7 +2445,7 @@ export function Canvas({
               never covered by other nodes. (노트는 아래 NoteViewerPopover)
               노드 오른쪽 배치 + 호버 강조 + 첨부 새 탭/다운로드 정책은
               ChooserPopover.tsx / openAttachment.ts 참조. */}
-          {popover && !isNoteKind(popover.kind) && (() => {
+          {!basic && popover && !isNoteKind(popover.kind) && (() => {
             const node = nodes.find((n) => n.id === popover.nodeId);
             if (!node) return null;
             const ind = nodeContentIndicators(node).find((c) => c.kind === popover.kind);
@@ -2379,7 +2466,7 @@ export function Canvas({
           표시 (HTML 오버레이, 내보내기 뷰어와 동일 렌더링). 글자 편집은
           좌측 노트·태그 탭에서 하고, 체크리스트의 ☑/☐만 여기서 바로 토글한다.
           제목 드래그로 이동, 우하단 모서리 드래그로 크기 조절. */}
-      {popover && isNoteKind(popover.kind) && (() => {
+      {!basic && popover && isNoteKind(popover.kind) && (() => {
         const node = nodes.find((n) => n.id === popover.nodeId);
         if (!node) return null;
         const filtered = notesOfKind(node.notes, popover.kind);
@@ -2419,7 +2506,7 @@ export function Canvas({
       {/* 진짜 협업 커서 자리 — 공개판에서는 아무것도 그리지 않는다.
           좌표 변환에 필요한 값을 **그대로** 넘긴다: 유료 모듈이 화면
           기하를 다시 계산하면 확대·이동할 때 커서만 어긋난다. */}
-      <ProCursorLayer
+      {!basic && <ProCursorLayer
         t={t}
         W={W}
         H={H}
@@ -2429,7 +2516,7 @@ export function Canvas({
         CY={CY}
         panX={panX}
         panY={panY}
-      />
+      />}
     </div>
   );
 }

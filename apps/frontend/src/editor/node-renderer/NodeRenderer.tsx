@@ -70,6 +70,7 @@ type RenderableNode = LaidOutNode & {
 };
 
 interface Props {
+  editingPolicy?: { mode: 'basic'; readOnly: boolean };
   n: RenderableNode;
   t: ThemeTokens;
   selected: boolean;
@@ -209,9 +210,11 @@ function NodeShape({
  */
 export const NodeRenderer = memo(NodeRendererImpl);
 
-function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onHover, onOpenPopover, collabs }: Props) {
+function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onHover, onOpenPopover, collabs, editingPolicy }: Props) {
+  const basic = editingPolicy?.mode === 'basic';
+  const readOnly = editingPolicy?.readOnly === true;
   // 우리 저장소 사진은 그릴 때 토큰을 붙여야 한다 (B16 ② 슬라이스 2)
-  const resolveImgSrc = useImageSrcResolver();
+  const resolveImgSrc = useImageSrcResolver(!basic);
   const tr = useTr();
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
@@ -424,6 +427,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   >(null);
 
   const startEdit = () => {
+    if (readOnly) return;
     setDraftText(n.text);
     setEditingDraft(null);
     setEditing(true);
@@ -482,6 +486,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   }, [editing]);
 
   const saveEdit = () => {
+    if (readOnly) return;
     const nextText = draftText.trimEnd();
     // **빈 텍스트도 그대로 저장한다.** 예전에는 `nextText.trim()` 이 비면
     // 통째로 무시했다 — 전체 선택 후 Del/Ctrl+X 로 지운 뒤 Enter 를 치면
@@ -571,6 +576,9 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   return (
     <g
       data-node-id={n.id}
+      onClickCapture={(e) => { if (basic && !editing) { e.preventDefault(); e.stopPropagation(); onSelect(n.id); } }}
+      onDoubleClickCapture={(e) => { if (basic && !editing) { e.stopPropagation(); startEdit(); } }}
+      onContextMenu={(e) => { if (basic) { e.preventDefault(); e.stopPropagation(); } }}
       onClick={(e) => {
         e.stopPropagation();
         onSelect(n.id);
@@ -1185,7 +1193,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
 
       {/* 우하단 크기 조절 핸들 — 드래그: 수동 크기, 더블클릭: 자동 크기 복귀.
           (노트 뷰어 창의 모서리 크기 조절과 같은 조작감) */}
-      {selected && !editing && (
+      {!basic && selected && !editing && (
         <g
           transform={`translate(${n.x + n.w / 2 - 3}, ${n.y + n.h / 2 - 3})`}
           style={{ cursor: 'nwse-resize' }}
@@ -1261,7 +1269,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           {/* 부분 강조 툴바 (공용 MarkToolbar) — 선택 구간에 마커 토글.
               코드 블록 창이 떠 있는 동안에는 감춘다: 창 밖(노드 위)에
               떠 있어 창을 가리고, 그때는 쓸 수도 없다 (2026-08-09 보고) */}
-          {!codeDlg && !tableDlg && <MarkToolbar
+          {!basic && !codeDlg && !tableDlg && <MarkToolbar
             t={t}
             onApply={wrapSelection}
             style={isPhoneLayoutNow() ? {
@@ -1304,6 +1312,8 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
             }}
           />
           <textarea
+            readOnly={readOnly}
+            maxLength={basic ? 2000 : undefined}
             ref={textareaRef}
             value={draftText}
             onChange={(e) => {
@@ -1325,6 +1335,16 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               if (pv) { pv.scrollTop = ta2.scrollTop; pv.scrollLeft = ta2.scrollLeft; }
             }}
             onPaste={(e) => {
+              if (basic) {
+                e.preventDefault();
+                if (readOnly) return;
+                const ta = e.currentTarget;
+                const plain = e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n');
+                const start = ta.selectionStart ?? draftText.length;
+                const next = draftText.slice(0, start) + plain + draftText.slice(ta.selectionEnd ?? start);
+                if (next.length <= 2000) setDraftText(next);
+                return;
+              }
               // 텍스트 편집 중 붙여넣기도 "모두 노드에" — 기사(text/html에
               // 사진 포함)는 텍스트를 커서 위치에 넣고 사진은 **원문 위치
               // (afterLine)째** 인라인 사진으로 쌓아 두었다가 저장(Enter) 시
@@ -1517,6 +1537,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                   // 인디케이터를 눌러도 노드 자체는 항상 선택된다 —
                   // 노드 오른쪽(아이콘 영역) 클릭이 무반응이던 문제 방지.
                   onSelect(n.id);
+                  if (basic) return;
                   // 노트(종류별): 그 종류의 노트만 담은 읽기 전용 뷰어
                   // 팝업을 연다 (Canvas의 NoteViewerPopover).
                   if (isNoteKind(ic.kind)) { onOpenPopover?.(n.id, ic.kind); return; }

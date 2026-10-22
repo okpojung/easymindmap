@@ -46,6 +46,7 @@ import { applyStyleSnapshot, type StyleSnapshot } from '@/editor/canvas/stylePai
 // 문서를 통째로 바꿀 때 뷰포트(확대·이동)를 원위치로 — viewportStore 는
 // 아무것도 import 하지 않으므로 순환 없음.
 import { useViewportStore } from './viewportStore';
+import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
 
 // ltree physical limit operating cap (chk_nodes_depth). Root is depth 0.
 export const MAX_DEPTH = 50;
@@ -200,14 +201,15 @@ interface DocumentState {
   // Text / align / layout
   updateNodeText: (nodeId: string | null, text: string) => void;
   updateNodeTextAlign: (nodeId: string | null, textAlign: TextAlign) => void;
-  updateNodeLayoutType: (nodeId: string | null, layoutType: LayoutType) => void;
+  updateNodeLayoutType: (nodeId: string | null, layoutType: LayoutType, descendants?: boolean) => void;
+  setCanvasMode: (mode: 'mindmap' | 'freeform') => void;
   /**
    * 러버밴드로 고른 여러 노드의 **하위 서브트리 레이아웃**을 한 번에 (2026-09-21
    * 사용자 보고: "3개를 드래그해 골라 레이아웃을 바꾸면 첫 노드만 바뀐다").
    * set() 한 번 = undo 한 단계. 'root'·중심주제 루트는 건너뛴다 — 그건 맵/중심
    * 전체 레이아웃이라 단일 선택 경로(updateNodeLayoutType)로만 바꾼다.
    */
-  updateNodesLayoutType: (nodeIds: string[], layoutType: LayoutType) => void;
+  updateNodesLayoutType: (nodeIds: string[], layoutType: LayoutType, descendants?: boolean) => void;
 
   // 맵 전체 설정 — 레벨(깊이)별 기본 폰트 (좌측 '맵 설정' 메뉴)
   // level: 0=Root, 1~3=Level1~3, 4=Level4+ / patch에 size·family 부분 갱신
@@ -626,6 +628,20 @@ function withCenter(
       : c)),
   };
 }
+/** 자유배치의 중심도 보기 상태를 가진다. 일반맵 루트 정책은 바꾸지 않는다. */
+function mapFreeformCenters(
+  map: SampleMap,
+  fn: (view: CenterView) => { root?: SampleRoot; branches?: SampleBranch[] } | null,
+): SampleMap {
+  if (map.canvasMode !== 'freeform') return map;
+  let next = map;
+  for (const view of centerViews(map)) {
+    const patch = fn(view);
+    if (patch) next = withCenter(next, view, patch);
+  }
+  return next;
+}
+
 /** 모든 중심의 가지 목록에 같은 변환을 건다 (접기·삭제처럼 id 로 찾는 것). */
 function mapAllBranches(map: SampleMap, fn: (branches: SampleBranch[]) => SampleBranch[]): SampleMap {
   return {
@@ -856,6 +872,19 @@ function mutateNode(
     ...map,
     branches: updateNodeById(map.branches, nodeId, updater) as SampleBranch[],
   };
+}
+
+const HIERARCHY_LAYOUTS = new Set<LayoutType>([
+  'radial-right', 'radial-left', 'radial-bidirectional', 'tree-right', 'tree-down',
+  'hierarchy-right', 'process-tree-right', 'timeline', 'timeline-center',
+]);
+function isHierarchyLayout(layoutType: LayoutType | undefined): boolean {
+  return !!layoutType && HIERARCHY_LAYOUTS.has(normalizeLayoutType(layoutType));
+}
+function hierarchyFallback(map: SampleMap, globalLayout: LayoutType): LayoutType {
+  if (isHierarchyLayout(globalLayout)) return globalLayout;
+  if (isHierarchyLayout(map.root.layoutType)) return map.root.layoutType!;
+  return 'radial-right';
 }
 
 function clearLayoutTypeRecursive(nodes: MindNode[]): MindNode[] {
@@ -1262,7 +1291,10 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
           withLevelLayout({ ...newNode, style: inheritStyle(view.root.style, 1) }, map, 1, view.branches),
           view.branches.length,
         );
-        return { map: withCenter(map, view, { branches: [...view.branches, branch] }) };
+        return { map: withCenter(map, view, {
+          branches: [...view.branches, branch],
+          ...(map.canvasMode === 'freeform' ? { root: { ...view.root, collapsed: undefined } } : {}),
+        }) };
       }
 
       const parent = findNode(view.branches, pid);
@@ -1308,7 +1340,10 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
           );
           branches = [...branches, branch];
         });
-        return { map: withCenter(map, view, { branches: branches as SampleBranch[] }) };
+        return { map: withCenter(map, view, {
+          branches: branches as SampleBranch[],
+          ...(map.canvasMode === 'freeform' ? { root: { ...view.root, collapsed: undefined } } : {}),
+        }) };
       }
 
       const parent = findNode(view.branches, pid);
@@ -1362,7 +1397,10 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
             makeBranch({ ...c, style: c.style ?? inheritStyle(view.root.style, 1) }, branches.length),
           ];
         });
-        return { map: withCenter(map, view, { branches: branches as SampleBranch[] }) };
+        return { map: withCenter(map, view, {
+          branches: branches as SampleBranch[],
+          ...(map.canvasMode === 'freeform' ? { root: { ...view.root, collapsed: undefined } } : {}),
+        }) };
       }
 
       const parent = findNode(view.branches, pid);
@@ -1499,7 +1537,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       // 노드를 지우면 하위가 함께 가는 것과 같은 규칙. 히스토리로 되돌린다.
       if (map.centers?.some((c) => c.root.id === nodeId)) {
         const centers = map.centers.filter((c) => c.root.id !== nodeId);
-        return { map: { ...map, centers: centers.length ? centers : undefined } };
+        return { map: pruneConnectors({ ...map, centers: centers.length ? centers : undefined }) };
       }
       return { map: pruneConnectors(mapAllBranches(map, (b) => deleteNodeRecursive(b, nodeId) as SampleBranch[])) };
     });
@@ -1664,14 +1702,14 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
   toggleCollapse: (nodeId) => {
     if (!nodeId) return;
-    asViewOnly(() => set((state) => (isCenterRootId(state.map, nodeId) ? {} : { // 중심주제는 접지 않는다
+    asViewOnly(() => set((state) => (state.map.canvasMode !== 'freeform' && isCenterRootId(state.map, nodeId) ? {} : { // 일반맵 중심은 기존 정책 유지
       map: mutateNode(state.map, nodeId, (n) => ({ ...n, collapsed: !n.collapsed })),
     })));
   },
 
   setCollapsed: (nodeId, collapsed) => {
     if (!nodeId) return;
-    asViewOnly(() => set((state) => (isCenterRootId(state.map, nodeId) ? {} : {
+    asViewOnly(() => set((state) => (state.map.canvasMode !== 'freeform' && isCenterRootId(state.map, nodeId) ? {} : {
       map: mutateNode(state.map, nodeId, (n) => ({ ...n, collapsed })),
     })));
   },
@@ -1684,7 +1722,8 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         children: walk(n.children ?? []),
       }));
     asViewOnly(() => set((state) => ({
-      map: mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
+      map: mapFreeformCenters(mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
+        (view) => ({ root: { ...view.root, collapsed: view.branches.length > 0 ? true : view.root.collapsed } })),
     })));
   },
 
@@ -1696,12 +1735,13 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         children: walk(n.children ?? []),
       }));
     asViewOnly(() => set((state) => ({
-      map: mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
+      map: mapFreeformCenters(mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
+        (view) => ({ root: { ...view.root, collapsed: undefined } })),
     })));
   },
 
   expandSubtree: (nodeIds) => {
-    const targets = new Set(nodeIds.filter((id) => id && id !== 'root'));
+    const targets = new Set(nodeIds.filter((id) => !!id));
     if (!targets.size) return;
     const open = (nodes: MindNode[]): MindNode[] =>
       nodes.map((n) => ({ ...n, collapsed: undefined, children: open(n.children ?? []) }));
@@ -1710,12 +1750,16 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         ? { ...n, collapsed: undefined, children: open(n.children ?? []) }
         : { ...n, children: walk(n.children ?? []) });
     asViewOnly(() => set((state) => ({
-      map: mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
+      map: mapFreeformCenters(mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
+        (view) => targets.has(view.rootId) ? {
+          root: { ...view.root, collapsed: undefined },
+          branches: open(view.branches) as SampleBranch[],
+        } : null),
     })));
   },
 
   collapseSubtree: (nodeIds) => {
-    const targets = new Set(nodeIds.filter((id) => id && id !== 'root'));
+    const targets = new Set(nodeIds.filter((id) => !!id));
     if (!targets.size) return;
     const close = (nodes: MindNode[]): MindNode[] =>
       nodes.map((n) => ({
@@ -1736,7 +1780,11 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         ? close([n])[0]
         : { ...n, children: walk(n.children ?? []) });
     asViewOnly(() => set((state) => ({
-      map: mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
+      map: mapFreeformCenters(mapAllBranches(state.map, (b) => walk(b) as SampleBranch[]),
+        (view) => targets.has(view.rootId) ? {
+          root: { ...view.root, collapsed: view.branches.length > 0 ? true : view.root.collapsed },
+          branches: close(view.branches) as SampleBranch[],
+        } : null),
     })));
   },
 
@@ -1756,7 +1804,9 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       return [next, found];
     };
     asViewOnly(() => set((state) => ({
-      map: mapAllBranches(state.map, (b) => walk(b)[0] as SampleBranch[]),
+      map: mapFreeformCenters(mapAllBranches(state.map, (b) => walk(b)[0] as SampleBranch[]),
+        (view) => findNode(view.branches, nodeId)
+          ? { root: { ...view.root, collapsed: undefined } } : null),
     })));
   },
 
@@ -1777,62 +1827,57 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     set((state) => ({ map: mutateNode(state.map, nodeId, (n) => ({ ...n, textAlign })) }));
   },
 
-  updateNodeLayoutType: (nodeId, layoutType) => {
-    if (!nodeId) return;
+  setCanvasMode: (canvasMode) => { set((state) => ({ map: { ...state.map, canvasMode } })); },
 
-    set((state) => {
-      const map = state.map;
-
-      if (nodeId === 'root') {
-        return {
-          map: {
-            ...map,
-            root: { ...map.root, layoutType },
-            // Whole-map layout change resets every per-node override —
-            // 맵 설정의 레벨별 레이아웃 선택도 함께 초기화한다.
-            branches: clearLayoutTypeRecursive(map.branches) as SampleBranch[],
-            settings: map.settings
-              ? { ...map.settings, levelLayouts: undefined }
-              : map.settings,
-          },
-        };
-      }
-      // 두 번째 이후의 중심주제 루트 — 그 중심의 레이아웃 (가지 오버라이드 초기화)
-      const cv = centerOfNode(map, nodeId);
-      if (cv && cv.rootId === nodeId) {
-        return {
-          map: withCenter(map, cv, {
-            root: { ...cv.root, layoutType },
-            branches: clearLayoutTypeRecursive(cv.branches) as SampleBranch[],
-          }),
-        };
-      }
-
-      return {
-        map: mutateNode(map, nodeId, (n) => ({
-          ...n,
-          layoutType,
-          edgeType: resolveEdgeType(layoutType),
-          children: clearLayoutTypeRecursive(n.children ?? []),
-        })),
-      };
-    });
+  updateNodeLayoutType: (nodeId, layoutType, descendants = false) => {
+    if (nodeId) get().updateNodesLayoutType([nodeId], layoutType, descendants);
   },
 
-  updateNodesLayoutType: (nodeIds, layoutType) => {
-    const ids = nodeIds.filter((id) => id && id !== 'root');
+  updateNodesLayoutType: (nodeIds, layoutType, descendants = false) => {
+    const before = get().map;
+    const ids = [...new Set(nodeIds)].filter((id) => !!id && !!findNodeInMap(before, id));
     if (!ids.length) return;
-    set((state) => ({
-      map: ids.reduce((m, id) => {
-        if (isCenterRootId(m, id)) return m;
-        return mutateNode(m, id, (n) => ({
-          ...n,
-          layoutType,
-          edgeType: resolveEdgeType(layoutType),
-          children: clearLayoutTypeRecursive(n.children ?? []),
+    const normalized = normalizeLayoutType(layoutType);
+    const hierarchy = isHierarchyLayout(layoutType);
+    // Board/manual views are map modes, never a center/subtree hierarchy.
+    if (!hierarchy && !(ids.length === 1 && ids[0] === 'root' && normalized === 'kanban')) return;
+    // Keep the inspector's root-only hierarchy restriction atomic as well.
+    if ((normalized === 'radial-bidirectional' || normalized === 'tree-down')
+        && ids.some((id) => !isCenterRootId(before, id))) return;
+    const changesFirst = ids.includes('root');
+    const priorHierarchy = hierarchyFallback(before, useEditorUiStore.getState().layoutType);
+    set((state) => {
+      let map = state.map;
+      if (changesFirst) {
+        // Freeze unselected centers before changing the global hierarchy. A
+        // board view is not a valid hierarchy fallback, including on import.
+        map = { ...map, centers: map.centers?.map((c) => ({ ...c, root: {
+          ...c.root, layoutType: isHierarchyLayout(c.root.layoutType) ? c.root.layoutType : priorHierarchy,
+        } })) };
+      }
+      const apply = (current: SampleMap, id: string, clear: boolean): SampleMap => {
+        const cv = centerOfNode(current, id);
+        if (cv && cv.rootId === id) return withCenter(current, cv, {
+          root: { ...cv.root, layoutType },
+          branches: clear ? clearLayoutTypeRecursive(cv.branches) as SampleBranch[] : cv.branches,
+        });
+        return mutateNode(current, id, (n) => ({
+          ...n, layoutType, edgeType: resolveEdgeType(layoutType),
+          children: clear ? clearLayoutTypeRecursive(n.children ?? []) : n.children,
         }));
-      }, state.map),
-    }));
+      };
+      // Clear first, then restore every explicitly selected node. This makes
+      // ancestor+descendant selections independent of selection ordering.
+      if (descendants) for (const id of ids) map = apply(map, id, true);
+      for (const id of ids) map = apply(map, id, false);
+      if (descendants && changesFirst && map.settings) {
+        map = { ...map, settings: { ...map.settings, levelLayouts: undefined } };
+      }
+      return { map };
+    });
+    // The map mutation records the old global layout for one-step undo. Do
+    // not change view state if the document write was blocked by viewer mode.
+    if (changesFirst && get().map !== before) useEditorUiStore.getState().setLayoutType(layoutType);
   },
 
   setLevelShape: (level, shape) => {
@@ -2101,15 +2146,17 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   },
 
   setCenterPos: (rootId, pos) => {
-    if (!rootId || rootId === 'root') return; // 첫 중심은 원점 — 옮기지 않는다
+    if (!rootId || (pos && (!Number.isFinite(pos.dx) || !Number.isFinite(pos.dy)))) return;
     set((state) => {
       const map = state.map;
+      if (rootId === map.root.id && map.canvasMode !== 'freeform') return {};
+      if (rootId === map.root.id) return { map: { ...map, rootPos: pos ? { dx: pos.dx, dy: pos.dy } : undefined } };
       if (!map.centers?.some((c) => c.root.id === rootId)) return {};
       return {
         map: {
           ...map,
           centers: map.centers.map((c) => (c.root.id === rootId
-            ? { ...c, pos: pos ? { dx: Math.round(pos.dx), dy: Math.round(pos.dy) } : undefined }
+            ? { ...c, pos: pos ? { dx: pos.dx, dy: pos.dy } : undefined }
             : c)),
         },
       };
@@ -2130,8 +2177,10 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       // 받아 가지가 된다 — 'root' 라는 id 는 가지 안에 있을 수 없다.
       const others = views.filter((v) => v.rootId !== rootId);
       const merged: SampleBranch[] = [...keep.branches];
+      const remap = new Map<string, string>([[keep.rootId, 'root']]);
       for (const v of others) {
         const id = v.rootId === 'root' ? createNodeId() : v.rootId;
+        remap.set(v.rootId, id);
         merged.push(centerToBranch(v.root, v.branches, id, merged.length));
       }
       ok = true;
@@ -2141,6 +2190,8 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
           ...map,
           root: { ...keep.root, id: 'root', colorKey: 'root', side: 'center' },
           branches: merged,
+          rootPos: keep.rootId === map.root.id ? map.rootPos : map.centers?.find((c) => c.root.id === keep.rootId)?.pos,
+          connectors: map.connectors?.map((c) => ({ ...c, from: remap.get(c.from) ?? c.from, to: remap.get(c.to) ?? c.to })),
           centers: undefined,
         },
       };

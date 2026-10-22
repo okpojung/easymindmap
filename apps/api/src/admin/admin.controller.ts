@@ -16,6 +16,7 @@ import {
 } from './admin-settings';
 import { AuditLogService } from '../common/audit-log.service';
 import type { AppEnv } from '../config/env.validation';
+import { MailTemplatesService } from '../mail/mail-templates.service';
 
 class VerifyDto {
   @IsString() @Length(4, 10) code!: string;
@@ -65,6 +66,7 @@ export class AdminController {
     private readonly db: DatabaseService,
     private readonly config: ConfigService<AppEnv, true>,
     private readonly audit: AuditLogService,
+    private readonly mailTemplates: MailTemplatesService,
   ) {}
 
   // ── 2단계 로그인 ─────────────────────────────────────────────
@@ -90,6 +92,28 @@ export class AdminController {
   @UseGuards(AdminGuard)
   me(@Req() req: Request & { admin?: AdminUser }) {
     return { email: req.admin?.email };
+  }
+
+  @Get('mail-templates')
+  @UseGuards(AdminGuard)
+  mailTemplateList() {
+    return this.mailTemplates.list();
+  }
+
+  @Post('mail-templates/:id/preview')
+  @UseGuards(AdminGuard)
+  mailTemplatePreview(@Param('id') id: string, @Body() body: Record<string, unknown>) {
+    return this.mailTemplates.preview(id, body);
+  }
+
+  @Patch('mail-templates/:id')
+  @UseGuards(AdminGuard)
+  mailTemplateSave(
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request & { admin?: AdminUser },
+  ) {
+    return this.mailTemplates.save(id, body, req.admin!.email);
   }
 
   // ── 회원관리 ─────────────────────────────────────────────────

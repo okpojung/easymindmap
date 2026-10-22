@@ -78,12 +78,18 @@ export function layoutDemo(state, measure) {
   if (state.root) { span(state.root); place(state.root, 24); }
   return { boxes: Array.from(boxes.values()), width: Math.max(360, ...Array.from(boxes.values(), box => box.x + box.width + 60)), height: state.root ? boxes.get(state.root.id).span + 48 : 240 };
 }
+/** Default map fit: whole map visible without scrollbars; only very large maps fall back to scrolling. */
+export const MAP_MIN_FIT = 0.3;
+export function fitMapScale(layout, width, height, min = MAP_MIN_FIT) {
+  if (!layout || !(width > 0) || !(height > 0)) return 1;
+  return Math.max(min, Math.min(1, width / layout.width, height / layout.height));
+}
 export function mountOutlineDemo(root, presets) {
   const query = selector => { const element = root.querySelector(selector); if (!element) throw new Error('Missing outline demo element: ' + selector); return element; };
   const outline = query('#demo-outline'); const graph = query('#result-graph'); const status = query('#demo-status');
   const fields = new Map(); const glyphs = new Map(); const context = document.createElement('canvas').getContext('2d');
   const fontFamily = getComputedStyle(root).fontFamily; if (context) context.font = '600 14px ' + fontFamily;
-  let state; let selected = null; let currentPreset = 'questions'; let disposed = false;
+  let state; let selected = null; let currentPreset = 'questions'; let disposed = false; let lastLayout = null;
   const ns = 'http://www.w3.org/2000/svg';
   const measure = text => { if (!glyphs.has(text)) glyphs.set(text, context ? context.measureText(text).width : (text.codePointAt(0) < 128 ? 8 : 14)); return glyphs.get(text); };
   function svgNode(tag, attributes = {}, text) { const element = document.createElementNS(ns, tag); for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value)); if (text !== undefined) element.textContent = text; return element; }
@@ -121,7 +127,7 @@ export function mountOutlineDemo(root, presets) {
     graph.replaceChildren(); const layout = layoutDemo(state, measure);
     if (!state.root) { const empty = document.createElement('p'); empty.className = 'demo-empty'; empty.textContent = '아웃라인에서 첫 노드를 추가해 보세요.'; graph.append(empty); selection(); return; }
     const svg = svgNode('svg', { viewBox: '0 0 ' + layout.width + ' ' + layout.height, width: layout.width, height: layout.height, role: 'group', 'aria-label': '아웃라인과 실시간으로 연결된 생각 맵' });
-    svg.style.width = 'max(100%, ' + layout.width + 'px)'; svg.style.height = layout.height + 'px';
+    lastLayout = layout;
     const byId = new Map(layout.boxes.map(box => [box.node.id, box]));
     const palette = [['#f0f5e5', '#bdcd9c', '#4c6338'], ['#fcf0e3', '#dfc7a3', '#845f32'], ['#eaf2ed', '#b4cbb9', '#41634d']];
     for (const box of layout.boxes) if (box.parent) { const parent = byId.get(box.parent.id); const x = parent.x + parent.width; const y = parent.y + parent.height / 2; const yy = box.y + box.height / 2; svg.append(svgNode('path', { d: 'M ' + x + ' ' + y + ' C ' + (x + 26) + ' ' + y + ', ' + (box.x - 26) + ' ' + yy + ', ' + box.x + ' ' + yy, fill: 'none', stroke: palette[box.branch % 3][1], 'stroke-width': 2 })); }
@@ -138,7 +144,15 @@ export function mountOutlineDemo(root, presets) {
         add.append(svgNode('circle', { cx, cy, r: 18, fill: '#fff', stroke: '#2d5842', 'stroke-width': 2 }), svgNode('text', { x: cx, y: cy + 6, 'text-anchor': 'middle', 'font-size': 24, fill: '#2d5842', 'aria-hidden': 'true' }, '+')); svg.append(add);
       }
     }
-    graph.append(svg); selection();
+    graph.append(svg); fitMap(); selection();
+  }
+  function fitMap() {
+    const svg = graph.querySelector('svg'); if (!svg || !lastLayout) return;
+    const style = getComputedStyle(graph);
+    const width = graph.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0) - 2;
+    const height = graph.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0) - 2;
+    const scale = fitMapScale(lastLayout, width, height);
+    svg.style.width = Math.floor(lastLayout.width * scale) + 'px'; svg.style.height = Math.floor(lastLayout.height * scale) + 'px';
   }
   function renderAll() { renderOutline(); renderMap(); }
   function choosePreset(key) { if (disposed || !Object.hasOwn(presets, key)) return; currentPreset = key; state = createDemo(presets[key]); selected = state.root?.id || null; root.querySelectorAll('[data-preset]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.preset === key))); graph.scrollTop = 0; graph.scrollLeft = 0; renderAll(); announce('예시를 불러왔습니다. 아웃라인을 고치면 맵에 바로 반영됩니다.'); }
@@ -176,7 +190,10 @@ export function mountOutlineDemo(root, presets) {
   let lastOutlineWidth = 0;
   const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { const width = outline.clientWidth; if (width && width !== lastOutlineWidth) { lastOutlineWidth = width; fields.forEach(resizeInput); } }) : null;
   resizeObserver?.observe(outline);
+  let lastGraphSize = '';
+  const graphObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { const size = graph.clientWidth + 'x' + graph.clientHeight; if (size !== lastGraphSize) { lastGraphSize = size; fitMap(); } }) : null;
+  graphObserver?.observe(graph);
   choosePreset('questions');
   document.fonts?.ready.then(() => { if (!disposed) { glyphs.clear(); fields.forEach(resizeInput); renderMap(); } });
-  return { choosePreset, reset, destroy() { disposed = true; resizeObserver?.disconnect(); root.removeEventListener('click', onClick); root.removeEventListener('input', onInput); root.removeEventListener('focusin', onFocus); root.removeEventListener('dblclick', onDoubleClick); root.removeEventListener('keydown', onKeyDown); window.removeEventListener('pagehide', onLeave); window.removeEventListener('pageshow', onReturn); fields.clear(); glyphs.clear(); } };
+  return { choosePreset, reset, destroy() { disposed = true; resizeObserver?.disconnect(); graphObserver?.disconnect(); root.removeEventListener('click', onClick); root.removeEventListener('input', onInput); root.removeEventListener('focusin', onFocus); root.removeEventListener('dblclick', onDoubleClick); root.removeEventListener('keydown', onKeyDown); window.removeEventListener('pagehide', onLeave); window.removeEventListener('pageshow', onReturn); fields.clear(); glyphs.clear(); } };
 }

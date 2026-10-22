@@ -5,3 +5,5 @@ export interface OutlineDemoController {
   destroy(): void;
 }
 export function mountOutlineDemo(root: HTMLElement, presets: Record<string, string>): OutlineDemoController;
+export const MAP_MIN_FIT: number;
+export function fitMapScale(layout: { width: number; height: number } | null, width: number, height: number, min?: number): number;

@@ -1,11 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Home from './pages/Home';
 import FunctionPage from './pages/Function';
 import Ai from './pages/Ai';
 import Mmd from './pages/Mmd';
 import Library from './pages/Library';
 
-import { BRAND_LOGO_URL, installBrandIdentity } from './redesign/brand';
+import { installBrandIdentity } from './redesign/brand';
+import { SITE_HEADER_MARKUP, mountSiteHeader } from './redesign/site-header';
+import './redesign/redesign.css';
+
+/** Product/spec/library routes use the exact homepage header (no separate legacy copy). */
+function SiteHeader({ path }: { path: string }) {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => (root.current ? mountSiteHeader(root.current, path) : undefined), [path]);
+  return <div ref={root} className="emm-home emm-site-header" dangerouslySetInnerHTML={{ __html: SITE_HEADER_MARKUP }} />;
+}
 
 /**
  * 길잡이 — **라우터 라이브러리를 쓰지 않는다** (2026-09-13).
@@ -61,11 +70,7 @@ const PAGES: Record<string, () => JSX.Element> = {
 };
 
 export default function App() {
-  useEffect(() => { installBrandIdentity();
-    const close = (event: Event) => { if (event instanceof KeyboardEvent && event.key !== 'Escape') return; document.querySelectorAll<HTMLDetailsElement>('.legacy-dropdown[open]').forEach(d => { if (event instanceof KeyboardEvent || !(event.target instanceof Element) || !d.contains(event.target)) { if (event instanceof KeyboardEvent) d.querySelector('summary')?.focus(); d.open = false; } }); };
-    document.addEventListener('click', close); document.addEventListener('keydown', close);
-    return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', close); };
-  }, []);
+  useEffect(() => { installBrandIdentity(); }, []);
   const path = usePath();
   const Page = PAGES[path];
   // The approved homepage/learning routes own their scoped navigation and footer.
@@ -73,14 +78,7 @@ export default function App() {
   if (!Page) return <Home />;
   return (
     <>
-      <header className="top">
-        <div className="wrap">
-          <Link to="/"><span className="brand"><img src={BRAND_LOGO_URL} alt="" width={56} height={50} style={{ verticalAlign: 'middle', marginRight: 8, objectFit: 'contain' }} />Easy<span>MindMap</span></span></Link>
-          <nav className="nav legacy-site-nav" aria-label="주 메뉴"><a href="/learn/questions">질문하는 힘</a><a href="/#learn">처음이라면</a><details className="legacy-dropdown"><summary>EMM</summary><div><a href="/why">특장점</a><Link to="/function">주요기능</Link><Link to="/ai">AI연동</Link></div></details><Link to="/mmd">MMD Spec</Link><Link to="/library">지식창고</Link><a href="/about/brand">브랜드 스토리</a></nav>
-          <span className="spacer" />
-          <a className="btn" href="https://web.easymindmap.org/try">시작하기</a>
-        </div>
-      </header>
+      <SiteHeader path={path} />
       <main><Page /></main>
       <footer className="foot">
         <div className="wrap">

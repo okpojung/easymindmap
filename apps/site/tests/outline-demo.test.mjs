@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDemo, flattenDemo, addDemoNode, updateDemoNode, deleteDemoNode, wrapDemoText, layoutDemo, DEMO_LIMITS } from '../src/redesign/outline-demo.js';
+import { createDemo, flattenDemo, addDemoNode, updateDemoNode, deleteDemoNode, wrapDemoText, layoutDemo, DEMO_LIMITS, fitMapScale, MAP_MIN_FIT } from '../src/redesign/outline-demo.js';
+import { readFileSync } from 'node:fs';
 const seed = "# 우리 팀에 AI가 필요할까?\n## 무엇을 해결하려는가?\n- 지금 가장 불편한 일은?\n- 바꾸고 싶은 결과는?\n## 어떤 근거가 있는가?\n- 실제로 확인한 사실은?\n- 아직 검증하지 않은 것은?\n## 다른 관점은 없는가?\n- 쓰지 않아도 되는 일은?\n- 비용과 위험은 무엇일까?";
 test("기본 예시 10개 노드 보존", () => { const s=createDemo(seed);assert.equal(flattenDemo(s).length,10);assert.equal(s.root.text,'우리 팀에 AI가 필요할까?'); });
 test("세 가지와 두 항목을 넘는 기존 가지도 생략하지 않음", () => { const s=createDemo('# R\n## A\n- a\n- b\n- c\n## B\n- d\n## C\n- e\n## D\n- f');assert.equal(s.root.children.length,4);assert.equal(s.root.children[0].children.length,3);assert.equal(flattenDemo(s).length,11); });
@@ -30,3 +31,6 @@ test("긴 노드에 필요한 높이와 전체 줄을 확보", () => { const s=c
 test("빈 지도 레이아웃도 유효", () => { const l=layoutDemo(createDemo(''));assert.equal(l.boxes.length,0);assert.ok(l.width>0&&l.height>0); });
 test("삭제 뒤 새 노드 ID 재사용 없음", () => { const s=createDemo(seed);const a=addDemoNode(s,s.root.id);deleteDemoNode(s,a.id);const b=addDemoNode(s,s.root.id);assert.notEqual(a.id,b.id); });
 test("없는 노드 삭제는 상태를 바꾸지 않음", () => { const s=createDemo(seed);const before=JSON.stringify(s);assert.equal(deleteDemoNode(s,'missing').ok,false);assert.equal(JSON.stringify(s),before); });
+test("맵은 기본적으로 영역 안에 맞춰 스크롤바가 생기지 않음", () => { for (const key of ['questions']) { const layout=layoutDemo(createDemo(seed),()=>14); const s=fitMapScale(layout,900,420); assert.ok(layout.width*s<=900&&layout.height*s<=420); assert.ok(s<=1&&s>=MAP_MIN_FIT); } });
+test("작은 맵은 확대하지 않고, 아주 큰 맵만 최소 배율에서 멈춤", () => { assert.equal(fitMapScale({width:300,height:200},900,420),1); assert.equal(fitMapScale({width:9000,height:9000},900,420),MAP_MIN_FIT); assert.equal(fitMapScale({width:300,height:200},0,0),1); });
+test("모든 페이지 공통 헤더는 홈 템플릿의 승인된 헤더 하나뿐", () => { const tpl=readFileSync(new URL('../src/redesign/template.html',import.meta.url),'utf8'); const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8'); assert.equal(tpl.split('<header class="header">').length,2); assert.match(tpl,/생각 정리해 보기/); assert.doesNotMatch(app,/className="top"|>시작하기</); assert.match(app,/SITE_HEADER_MARKUP/); });

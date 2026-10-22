@@ -345,3 +345,8 @@ html.emm-home-page{scroll-behavior: smooth; scroll-padding-top: 100px;}
 /* Native details supports touch, Enter and Space; controller handles outside/Escape. */
 .emm-home .emm-dropdown{position:relative}.emm-home .emm-dropdown summary{cursor:pointer;padding:10px 0}.emm-home .emm-dropdown-links{position:absolute;top:100%;left:0;min-width:145px;background:var(--paper);border:1px solid var(--line);padding:12px;display:flex;flex-direction:column;z-index:40}.emm-home [data-map-add]{cursor:pointer}.emm-home [data-map-add]:focus circle{stroke:#b56a24;stroke-width:4}.emm-home .nav{gap:20px}.emm-home .header-inner{gap:20px}
 @media(max-width:800px){.emm-home .nav{max-height:calc(100dvh - 70px);overflow-y:auto}.emm-home .emm-dropdown-links{position:static}.emm-home .nav a,.emm-home .emm-dropdown summary{min-height:44px;display:block}}
+/* Default map fit: the live map is scaled into its pane, centered, without scrollbars. */
+.emm-home .demo-map-pane .result-graph{display:flex}
+.emm-home .demo-map-pane .result-graph svg{margin:auto}
+/* Shared site header on product/spec/library routes (same markup as the homepage). */
+.emm-site-header{position:sticky;top:0;z-index:30}

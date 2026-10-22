@@ -2,6 +2,7 @@
 // Version: MVP-Layout-Kanban-Fix-v1
 
 import { heartbeatLinkedLocks } from '@/services/cloud/linkedMaps';
+import { openGuestMap } from '@/services/guestMap';
 import { useEffect, useMemo, useState } from 'react';
 import { THEMES } from '@/components/design-tokens/theme';
 import { TopToolbar } from '@/components/top-toolbar/TopToolbar';
@@ -270,9 +271,9 @@ export function EditorPage() {
     // 키는 계정으로 올린다. 실패해도 예전처럼 브라우저 키로 동작한다.
     if (session) { void pullAiKeys(); void pullAiSettings(); }
     // Guest 체험 — 빈 화면 대신 곧바로 만져 볼 샘플 맵을 연다
+    // 시작 맵은 관리자가 정한 'Guest로 체험하기 맵', 없으면 내장 샘플 (services/guestMap.ts)
     if (guest && !session && !initialMapId) {
-      setSample();
-      useInteractionStore.getState().setSelectedId('root');
+      void openGuestMap();
     }
     setHistoryPaused(false);
     // `session` 을 안에서 읽지만 의존성은 계정 정체뿐이다 — 위 주석 참조.

@@ -292,3 +292,10 @@ export function ProDashboardLive(_p: { t: ThemeTokens; mapId: string | null }) {
 /** Community builds do not claim private routes. */
 export function matchProRoute(_location: { pathname: string }): ComponentType | null { return null; }
 
+/** Guest start map is configured only with the private module; the community build keeps the built-in sample. */
+export const GUEST_SEED_ADMIN = false;
+export async function loadGuestSeed(): Promise<null> { return null; }
+export function ProTrialAdminPanel(_p: { t: ThemeTokens; token: string; onUnauthorized: () => void }) {
+  return null;
+}
+

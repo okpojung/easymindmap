@@ -32,6 +32,7 @@ import { DialogXButton } from '@/components/ui/DialogFrame';
 import { LANG_LOCALE, useLang, useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
 import { MenuItem, MenuSep } from './OverflowMenu';
+import { openGuestMap } from '@/services/guestMap';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
 type SaveIntent = null | 'save' | 'close' | 'saveAs';
@@ -73,6 +74,9 @@ export function MapActions(
   const busy = useCloudStore((s) => s.busy);
   const mapTitle = useDocumentStore((s) => s.map.title);
   const setBrowserOpen = useEditorUiStore((s) => s.setBrowserOpen);
+  // Guest 체험 (2026-10-22 사용자 요청) — 저장·맵 닫기는 끄고 [초기화] 를 준다.
+  // 게스트에게는 저장할 곳도, 닫고 돌아갈 문서함도 없다.
+  const isGuest = useAuthStore((s) => s.guest && !s.session) && authEnabled;
 
   const [saveIntent, setSaveIntent] = useState<SaveIntent>(null);
   // 미저장 맵 닫기 경고 (규칙 4)
@@ -125,6 +129,12 @@ export function MapActions(
     flash(wasReadOnly ? tr('shell.mapActions.closedReadOnly') : tr('shell.mapActions.closedSaved'));
     setBrowserOpen(true);
   };
+
+  const handleGuestReset = () => {
+    if (!window.confirm(tr('shell.mapActions.guestResetConfirm'))) return;
+    void openGuestMap({ reset: true }).then(() => flash(tr('shell.mapActions.guestResetDone')));
+  };
+  const guestOff = { opacity: 0.45, cursor: 'not-allowed' } as const;
 
   const btn = {
     display: 'flex', alignItems: 'center', gap: 5,
@@ -241,12 +251,20 @@ export function MapActions(
         <MenuItem
           t={t} testId="map-close" icon={<I.X size={15} />}
           label={tr('shell.mapActions.close')}
-          title={isCurrentMapEmpty()
+          title={isGuest ? tr('shell.mapActions.guestDisabled') : isCurrentMapEmpty()
             ? tr('shell.mapActions.noMapTitle')
             : tr('shell.mapActions.closeTitle', { title: cloudTitle ?? mapTitle })}
-          disabled={busy !== 'idle'}
+          disabled={busy !== 'idle' || isGuest}
           onClick={pick(() => void handleClose())}
         />
+        {isGuest && (
+          <MenuItem
+            t={t} testId="map-guest-reset" icon="↺"
+            label={tr('shell.mapActions.guestReset')}
+            title={tr('shell.mapActions.guestResetTitle')}
+            onClick={pick(handleGuestReset)}
+          />
+        )}
         <MenuSep t={t} />
       </>,
       menuSlot,
@@ -272,7 +290,7 @@ export function MapActions(
             data-testid="map-save"
             title={tr('shell.mapActions.saveTitle', { hint: savedHint })}
             aria-label={tr('common.save')}
-            disabled={busy !== 'idle'}
+            disabled={busy !== 'idle' || isGuest}
             onClick={() => void handleSave()}
             style={{
               position: 'relative',
@@ -360,13 +378,14 @@ export function MapActions(
       {!readOnlyInfo?.viewer && (
       <button
         data-testid="map-save"
-        title={tr('shell.mapActions.saveTitle', { hint: savedHint })}
-        disabled={busy !== 'idle'}
+        title={isGuest ? tr('shell.mapActions.guestDisabled') : tr('shell.mapActions.saveTitle', { hint: savedHint })}
+        disabled={busy !== 'idle' || isGuest}
         onClick={() => void handleSave()}
         style={{
           ...btn,
           background: t.surfaceAlt, color: t.text,
           border: `1px solid ${cloudMapId ? t.primaryBorder + '66' : t.border}`,
+          ...(isGuest ? guestOff : {}),
         }}
       >
         <I.Cloud size={15} />{!iconOnly && ` ${tr('common.save')}`}
@@ -409,19 +428,34 @@ export function MapActions(
 
       <button
         data-testid="map-close"
-        title={isCurrentMapEmpty()
+        title={isGuest ? tr('shell.mapActions.guestDisabled') : isCurrentMapEmpty()
           ? tr('shell.mapActions.noMapTitle')
           : tr('shell.mapActions.closeTitle', { title: cloudTitle ?? mapTitle })}
-        disabled={busy !== 'idle'}
+        disabled={busy !== 'idle' || isGuest}
         onClick={() => void handleClose()}
         style={{
           ...btn,
           background: t.surface, color: t.text,
           border: `1px solid ${t.border}`,
+          ...(isGuest ? guestOff : {}),
         }}
       >
         <I.X size={15} />{!iconOnly && ` ${tr('shell.mapActions.close')}`}
       </button>
+      {isGuest && (
+        <button
+          data-testid="map-guest-reset"
+          title={tr('shell.mapActions.guestResetTitle')}
+          onClick={handleGuestReset}
+          style={{
+            ...btn, cursor: 'pointer',
+            background: t.primarySoft, color: t.primary,
+            border: `1px solid ${t.primaryBorder}`,
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 15, lineHeight: 1 }}>↺</span>{!iconOnly && ` ${tr('shell.mapActions.guestReset')}`}
+        </button>
+      )}
 
       {dialogs}
     </div>

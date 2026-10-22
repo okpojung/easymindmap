@@ -7,6 +7,8 @@ import { AppModule } from './app.module';
 import type { AppEnv } from './config/env.validation';
 import { VaultService } from './vault/vault.service';
 import { AS_METADATA_SUFFIX, OIDC_DISCOVERY_SUFFIX, PRM_SUFFIX } from './mcp/oauth';
+import { isWwwPublicRoute, wwwOriginsFrom } from './common/cors-www';
+import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
@@ -74,9 +76,17 @@ async function bootstrap() {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  app.enableCors({
-    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
-    credentials: true,
+  // 홈페이지(www)는 공개 경로만, 인증 정보 없이 (common/cors-www.ts, 2026-10-23)
+  const appOrigins = new Set(corsOrigins);
+  const wwwOrigins = new Set(wwwOriginsFrom(process.env));
+  app.enableCors((req: { headers: Record<string, string | string[] | undefined>; method?: string; url?: string }, cb: (err: Error | null, o: CorsOptions) => void) => {
+    const h = (k: string) => { const v = req.headers[k]; return Array.isArray(v) ? v[0] ?? '' : String(v ?? ''); };
+    const origin = h('origin');
+    if (appOrigins.has(origin)) return cb(null, { origin: true, credentials: true });
+    if (wwwOrigins.has(origin) && isWwwPublicRoute(req.method ?? 'GET', req.url ?? '', h('access-control-request-method'))) {
+      return cb(null, { origin: true, credentials: false, methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Content-Type'], maxAge: 600 });
+    }
+    return cb(null, { origin: false });
   });
 
   // **종료 신호를 받아 정리한다** (2026-08-18).

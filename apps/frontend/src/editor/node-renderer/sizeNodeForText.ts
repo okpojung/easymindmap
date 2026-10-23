@@ -20,7 +20,7 @@ import { measureTextPx } from './textMeasure';
  * 딱 맞춘다 — 밑줄(박스 아래 변)이 글자 바로 밑에 붙고, 밑줄 길이 = 글자 폭이다.
  * NodeRenderer·HTML 뷰어가 같은 값을 쓴다.
  */
-export const NO_SHAPE_PAD_X = 1;
+export const NO_SHAPE_PAD_X = 0;
 export const NO_SHAPE_PAD_Y = 3;
 /** 도형 없음 노드의 최소 폭 — 빈 노드도 고를 수 있게만 */
 export const NO_SHAPE_MIN_W = 24;

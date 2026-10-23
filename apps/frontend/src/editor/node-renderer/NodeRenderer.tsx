@@ -756,7 +756,9 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           y2={n.y + n.h / 2}
           stroke={style.borderColor ?? t.edge}
           strokeWidth={noShapeUnderlineWidth(n.depth)}
-          strokeLinecap="round"
+          // 끝을 둥글게 하면 굵기 절반만큼 글자 밖으로 나간다 — 글자 폭에서 딱 끊는다
+          // (연결선은 둥근 끝이라 이음새는 그쪽이 덮는다)
+          strokeLinecap="butt"
           pointerEvents="none"
         />
       )}

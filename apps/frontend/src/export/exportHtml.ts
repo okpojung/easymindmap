@@ -832,10 +832,10 @@ const VIEWER_JS = String.raw`
     var marks = markerCount(node);
     var marksW = marks ? marks * (mfs + 3) + 5 : 0; // 마커 영역(텍스트 뒤)
     node._marksW = marksW;
-    // 도형 없음 — 박스를 글자에 딱 맞춘다 (에디터 sizeNodeForText 와 같은 1/3 여백, 최소 폭 24)
+    // 도형 없음 — 박스를 글자에 딱 맞춘다 (에디터 sizeNodeForText 와 같은 0/3 여백, 최소 폭 24)
     var tight0 = (node.style || {}).shapeType === 'none';
     var w = tight0
-      ? Math.max(24, wrapped.w + iconW + marksW + 2)
+      ? Math.max(24, wrapped.w + iconW + marksW)
       : Math.max(depth === 0 ? 120 : 90, wrapped.w + iconW + marksW) + PAD_X * 2;
     var h = wrapped.lines.length * lineH + (tight0 ? 6 : PAD_Y * 2);
     // 사진 높이 (폴백 측정 모드 — 에디터 좌표가 없을 때만 쓰인다)
@@ -1921,14 +1921,14 @@ const VIEWER_JS = String.raw`
     if (noShape) {
       el('line', { 'class': 'mm-underline', x1: x0, y1: y0 + node._h, x2: x0 + node._w, y2: y0 + node._h,
         stroke: stPre.borderColor || SKIN.edge, 'stroke-width': depth <= 1 ? 2.2 : 1.6,
-        'stroke-linecap': 'round', 'pointer-events': 'none' }, g);
+        'stroke-linecap': 'butt', 'pointer-events': 'none' }, g);
     }
 
     var textColor = nodeText2;
-    // 도형 없음 — 에디터가 박스를 글자에 딱 맞춰 보낸다(sizeNodeForText NO_SHAPE_PAD_X/Y = 1/3).
+    // 도형 없음 — 에디터가 박스를 글자에 딱 맞춰 보낸다(sizeNodeForText NO_SHAPE_PAD_X/Y = 0/3).
     // 같은 여백으로 그려야 글자가 밑줄을 넘거나 밑줄에 걸치지 않는다
     var tightBox = stPre.shapeType === 'none';
-    var padXv = tightBox ? 1 : PAD_X, padYv = tightBox ? 3 : PAD_Y;
+    var padXv = tightBox ? 0 : PAD_X, padYv = tightBox ? 3 : PAD_Y;
     var tx = x0 + padXv;
     if (node.icon) {
       var ic = el('text', { x: tx, y: y0 + capY + padYv + node._fs * 0.85, 'font-size': node._fs + 1 }, g);

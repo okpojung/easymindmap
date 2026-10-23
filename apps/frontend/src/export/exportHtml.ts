@@ -1018,6 +1018,12 @@ const VIEWER_JS = String.raw`
   }
 
   // ---- edges (style follows the PARENT's effective layout, 08-layout §18) ----
+  // '도형 없음' 노드 — 아래 변에 밑줄이 그어지므로 좌우로 잇는 선은 가운데가
+  // 아니라 밑줄 높이에 닿는다 (markmap·ThinkWise 방식, 2026-10-23).
+  // 에디터 edgePaths.sideLinkY 와 같은 규칙.
+  function linkY(n) {
+    return (n.style || {}).shapeType === 'none' ? n._cy + n._h / 2 : n._cy;
+  }
   function edgePath(p, c) {
     var eff = p._eff;
     if (eff === 'timeline' || eff === 'timeline-center') {
@@ -1038,7 +1044,7 @@ const VIEWER_JS = String.raw`
       var tagPad0 = (!up && p.tags && p.tags.length) ? TAG_H + 7 : 0;
       var fy = up ? p._cy - p._h / 2 : p._cy + p._h / 2 + tagPad0;
       var sp = p._cx - p._w / 2 + 12;
-      return 'M ' + sp + ' ' + fy + ' V ' + c._cy + ' H ' + (c._cx - c._w / 2);
+      return 'M ' + sp + ' ' + fy + ' V ' + linkY(c) + ' H ' + (c._cx - c._w / 2);
     }
     var childLeft = c._cx - c._w / 2, childRight = c._cx + c._w / 2;
     var childTop = c._cy - c._h / 2;
@@ -1052,7 +1058,7 @@ const VIEWER_JS = String.raw`
     if (eff === 'tree-right') {
       // outline: parent bottom-left spine → down → into child's left edge
       var spine = pLeft + 12;
-      return 'M ' + spine + ' ' + pBottom + ' V ' + c._cy + ' H ' + childLeft;
+      return 'M ' + spine + ' ' + pBottom + ' V ' + linkY(c) + ' H ' + childLeft;
     }
     if (eff === 'tree-down') {
       my = (pBottom + childTop) / 2;
@@ -1066,14 +1072,15 @@ const VIEWER_JS = String.raw`
     }
     if (eff === 'hierarchy-right') {
       mx = (pRight + childLeft) / 2;
-      return 'M ' + pRight + ' ' + p._cy + ' H ' + mx + ' V ' + c._cy + ' H ' + childLeft;
+      return 'M ' + pRight + ' ' + linkY(p) + ' H ' + mx + ' V ' + linkY(c) + ' H ' + childLeft;
     }
     // radial family: markmap-style bump curve toward the child's side
     var goesLeft = c._cx < p._cx;
     var x1 = goesLeft ? pLeft : pRight;
     var x2 = goesLeft ? childRight : childLeft;
     mx = (x1 + x2) / 2;
-    return 'M ' + x1 + ' ' + p._cy + ' C ' + mx + ' ' + p._cy + ', ' + mx + ' ' + c._cy + ', ' + x2 + ' ' + c._cy;
+    var y1 = linkY(p), y2 = linkY(c);
+    return 'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2;
   }
 
   // ---- render ----------------------------------------------------------------
@@ -1905,6 +1912,13 @@ const VIEWER_JS = String.raw`
           });
       }
     }
+    // 도형 없음 — 노드 아래 밑줄 (에디터 NodeRenderer node-underline 과 같은 규칙).
+    // 색·굵기 = 들어오는 연결선과 같음, 테두리색을 고른 노드는 그 색
+    if (noShape) {
+      el('line', { 'class': 'mm-underline', x1: x0, y1: y0 + node._h, x2: x0 + node._w, y2: y0 + node._h,
+        stroke: stPre.borderColor || SKIN.edge, 'stroke-width': depth <= 1 ? 2.2 : 1.6,
+        'stroke-linecap': 'round', 'pointer-events': 'none' }, g);
+    }
 
     var textColor = nodeText2;
     var tx = x0 + PAD_X;
@@ -2457,6 +2471,8 @@ const VIEWER_JS = String.raw`
       var OUT = cr0 + 1, OUTLINE_INSET = 12, PROCESS_INSET = 14;
       var bx0 = x0, bx1 = x0 + node._w;
       var byTop = node._cy - node._h / 2, byBot = node._cy + node._h / 2;
+      // 좌우로 나가는 선의 높이 — 도형 없음이면 밑줄(아래 변) (linkY 와 같은 규칙)
+      var bySide = linkY(node);
       var ccx, ccy;
       if (effT.indexOf('process-tree') === 0) {
         ccx = bx0 + PROCESS_INSET; ccy = byBot + OUT;
@@ -2470,17 +2486,17 @@ const VIEWER_JS = String.raw`
         else { ccx = bx0 + OUTLINE_INSET; ccy = byBot + OUT; }
       } else if (effT === 'hierarchy-right' || effT === 'radial-right' ||
                  effT === 'freeform' || effT === 'free') {
-        ccx = bx1 + OUT; ccy = node._cy;
+        ccx = bx1 + OUT; ccy = bySide;
       } else if (effT === 'hierarchy-left' || effT === 'radial-left') {
-        ccx = bx0 - OUT; ccy = node._cy;
+        ccx = bx0 - OUT; ccy = bySide;
       } else if (effT === 'radial' || effT === 'both-radial' ||
                  effT === 'radial-bidirectional') {
-        if (node.side === 'left') { ccx = bx0 - OUT; ccy = node._cy; }
-        else { ccx = bx1 + OUT; ccy = node._cy; }
+        if (node.side === 'left') { ccx = bx0 - OUT; ccy = bySide; }
+        else { ccx = bx1 + OUT; ccy = bySide; }
       } else if (sd === 'down') { ccx = node._cx; ccy = byBot + OUT; }
       else if (sd === 'up') { ccx = node._cx; ccy = byTop - OUT; }
-      else if (sd === 'left') { ccx = bx0 - OUT; ccy = node._cy; }
-      else { ccx = bx1 + OUT; ccy = node._cy; }
+      else if (sd === 'left') { ccx = bx0 - OUT; ccy = bySide; }
+      else { ccx = bx1 + OUT; ccy = bySide; }
       // 펼쳐진 노드의 접기(−) 토글은 항상 보이지 않고 노드에 마우스를
       // 올렸을 때만 나타난다 (에디터와 동일). 접힌 노드의 +N 배지는 숨은
       // 서브트리를 알려야 하므로 항상 표시.

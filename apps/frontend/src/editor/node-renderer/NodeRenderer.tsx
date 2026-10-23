@@ -31,6 +31,7 @@ import {
   sizeNodeForText,
   CYLINDER_CAP,
 } from './sizeNodeForText';
+import { noShapeUnderlineWidth } from './noShapeNode';
 import { parseMdTable, parseMdTables, cellLineY, cellLines, rowTop, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
 import { parseMdCodes, MD_CODE_PAD_X, MD_CODE_PAD_Y } from './mdCode';
 import { blockGaps, layoutNodeBlocks } from './nodeBlocks';
@@ -723,6 +724,23 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           fill="none"
           stroke={border}
           strokeWidth={Math.max(1, strokeWidth * 0.85)}
+        />
+      )}
+      {/* 도형 없음 — markmap·ThinkWise 처럼 노드 아래에 밑줄을 긋고 연결선이 그 끝에
+          붙는다 (noShapeNode.ts, 2026-10-23). 글자가 떠 보이지 않고 선이 내용 아래까지
+          이어져 맵이 안정적으로 보인다. 색·굵기 = 들어오는 연결선과 같음(테두리색을
+          직접 고른 노드는 그 색) */}
+      {shape === 'none' && (
+        <line
+          data-testid="node-underline"
+          x1={n.x - n.w / 2}
+          y1={n.y + n.h / 2}
+          x2={n.x + n.w / 2}
+          y2={n.y + n.h / 2}
+          stroke={style.borderColor ?? t.edge}
+          strokeWidth={noShapeUnderlineWidth(n.depth)}
+          strokeLinecap="round"
+          pointerEvents="none"
         />
       )}
       {/* 편집 오버레이 위치 측정용 투명 rect (노드 박스와 동일 좌표) */}

@@ -38,6 +38,7 @@ import {
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from './NoteViewerPopover';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
+import { isNoShapeNode } from '@/editor/node-renderer/noShapeNode';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
 import { Minimap } from './Minimap';
@@ -2382,7 +2383,7 @@ export function Canvas({
                   const chipR = !n.collapsed ? 8.5
                     : String(cnt).length >= 3 ? 13
                       : String(cnt).length === 2 ? 10.5 : 8.5;
-                  const pos = collapseAnchor(n, eff, sd, chipR);
+                  const pos = collapseAnchor(n, eff, sd, chipR, isNoShapeNode(n));
                   return (
                     <CollapseControl
                       key={`toggle-${n.id}`}

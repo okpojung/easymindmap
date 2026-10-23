@@ -49,12 +49,17 @@ export function collapseAnchor(
   dir: FallbackDir = 'right',
   /** 칩 반지름 — 접힘 +N 칩은 자릿수만큼 커진다 (기본 = '−' 토글) */
   chipR = 8.5,
+  /** '도형 없음' 노드 — 좌우로 나가는 선이 밑줄 높이(아래 변)에서 출발한다
+   *  (edgePaths.sideLinkY, 2026-10-23). 칩도 그 높이에 둔다 */
+  noShape = false,
 ): { x: number; y: number } {
   const OUTWARD = outward(chipR);
   const left = n.x - n.w / 2;
   const right = n.x + n.w / 2;
   const top = n.y - n.h / 2;
   const bottom = n.y + n.h / 2;
+  // 좌우 변에서 나가는 선의 높이 — 도형 없음이면 밑줄(아래 변)
+  const sideY = noShape ? bottom : n.y;
 
   // 진행트리 — 왼쪽 스파인에서 아래로
   if (eff.startsWith('process-tree')) {
@@ -70,7 +75,7 @@ export function collapseAnchor(
   }
   // 시간배치 — 루트만 오른쪽, 그 아래는 왼쪽 스파인(자식 방향으로)
   if (eff === 'timeline' || eff === 'timeline-center') {
-    if (n.depth === 0) return { x: right + OUTWARD, y: n.y };
+    if (n.depth === 0) return { x: right + OUTWARD, y: n.y };  // 축 시작점은 시간축 높이(가운데)
     return n.side === 'up'
       ? { x: left + OUTLINE_INSET, y: top - OUTWARD }
       : { x: left + OUTLINE_INSET, y: bottom + OUTWARD };
@@ -78,23 +83,23 @@ export function collapseAnchor(
   // 계층형·방사형 — 좌/우 변 한가운데
   if (eff === 'hierarchy-right' || eff === 'radial-right' || eff === 'freeform'
       || eff === 'free') {
-    return { x: right + OUTWARD, y: n.y };
+    return { x: right + OUTWARD, y: sideY };
   }
   if (eff === 'hierarchy-left' || eff === 'radial-left') {
-    return { x: left - OUTWARD, y: n.y };
+    return { x: left - OUTWARD, y: sideY };
   }
   // 양쪽 방사형 등 — 노드가 놓인 쪽을 따른다
   if (eff === 'radial' || eff === 'both-radial' || eff === 'radial-bidirectional') {
     return n.side === 'left'
-      ? { x: left - OUTWARD, y: n.y }
-      : { x: right + OUTWARD, y: n.y };
+      ? { x: left - OUTWARD, y: sideY }
+      : { x: right + OUTWARD, y: sideY };
   }
 
   // 알 수 없는 레이아웃 — 자식 좌표로 정한 방향을 쓴다
   switch (dir) {
-    case 'left':  return { x: left - OUTWARD, y: n.y };
+    case 'left':  return { x: left - OUTWARD, y: sideY };
     case 'up':    return { x: n.x, y: top - OUTWARD };
     case 'down':  return { x: n.x, y: bottom + OUTWARD };
-    default:      return { x: right + OUTWARD, y: n.y };
+    default:      return { x: right + OUTWARD, y: sideY };
   }
 }

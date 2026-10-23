@@ -19,10 +19,10 @@ import { MembersPanel } from './MembersPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { MailTemplatesPanel } from './MailTemplatesPanel';
 import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
-import { ProContactsAdminPanel, ProSalesAdminPanel, ProTrialAdminPanel, matchProRoute } from '@pro';
+import { COMMUNITY_ADMIN, ProCommunityAdminPanel, ProContactsAdminPanel, ProSalesAdminPanel, ProTrialAdminPanel, matchProRoute } from '@pro';
 import { useProFeature } from '@/pro/contract';
 
-type Tab = 'members' | 'billing' | 'settings' | 'password' | 'sales' | 'contacts' | 'trial' | 'mail';
+type Tab = 'members' | 'billing' | 'settings' | 'password' | 'sales' | 'contacts' | 'trial' | 'mail' | 'community';
 
 const TABS: { id: Tab; label: string; soon?: string }[] = [
   { id: 'members', label: '회원관리' },
@@ -32,6 +32,7 @@ const TABS: { id: Tab; label: string; soon?: string }[] = [
     soon: '구독 결제는 결제 시스템(PG 연동)을 붙인 뒤 열립니다. 지금은 요금제를 '
       + '회원관리에서 직접 바꿉니다 — 결제 기록이 없어 보여 줄 데이터가 없습니다.',
   },
+  { id: 'community', label: '게시판·문의' },
   { id: 'trial', label: '체험 초기맵' },
   { id: 'mail', label: '메일발송문 관리' },
   { id: 'settings', label: '설정관리' },
@@ -69,6 +70,7 @@ export function AdminPage() {
   const tabs = TABS.flatMap((x) => {
     // Community builds have no /try host, so they must not show a nonfunctional tab.
     if (x.id === 'trial' && !matchProRoute({ pathname: '/try' })) return [];
+    if (x.id === 'community' && !COMMUNITY_ADMIN) return [];
     if (x.id === 'members' && collabOn) return [x, CONTACTS_TAB];
     if (x.id === 'settings' && salesOn) return [SALES_TAB, x];
     return [x];
@@ -153,6 +155,7 @@ export function AdminPage() {
       <main style={{ padding: 18, maxWidth: 1560, margin: '0 auto' }}>
         {tab === 'members' && <MembersPanel t={t} />}
         {tab === 'settings' && <SettingsPanel t={t} />}
+        {tab === 'community' && <ProCommunityAdminPanel t={t} />}
         {tab === 'trial' && <ProTrialAdminPanel t={t} token={adminToken.get()} onUnauthorized={logout} />}
         {tab === 'mail' && <MailTemplatesPanel />}
         {/* 판매관리 — 표도 판정도 유료 모듈 것이다. 코어는 탭 자리만 낸다 */}

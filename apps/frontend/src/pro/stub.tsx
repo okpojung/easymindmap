@@ -293,6 +293,9 @@ export function ProDashboardLive(_p: { t: ThemeTokens; mapId: string | null }) {
 export function matchProRoute(_location: { pathname: string }): ComponentType | null { return null; }
 
 /** Dedicated public-trial configuration is supplied only by the private UI. */
+/** 공개판에는 게시판·문의 관리가 없다 */
+export const COMMUNITY_ADMIN = false;
+export function ProCommunityAdminPanel(_p: { t: ThemeTokens }) { return null; }
 export function ProTrialAdminPanel(_p: { t: ThemeTokens; token: string; onUnauthorized: () => void }) {
   return <p>체험 초기맵 관리 모듈이 설치되지 않았습니다.</p>;
 }

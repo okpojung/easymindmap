@@ -97,6 +97,9 @@ declare module '@pro' {
    * 관리자 표는 `ProSalesAdminPanel` 과 같이 코어의 `adminToken` 을 읽어 싣는다.
    */
   export function ProContactsAdminPanel(p: { t: ThemeTokens }): JSX.Element | null;
+  /** 관리자 > 게시판·문의 탭 (2026-10-23) */
+  export const COMMUNITY_ADMIN: boolean;
+  export function ProCommunityAdminPanel(p: { t: ThemeTokens }): JSX.Element | null;
   /** Public trial seed editor, authenticated with the existing admin token. */
   export function ProTrialAdminPanel(p: { t: ThemeTokens; token: string; onUnauthorized: () => void }): JSX.Element | null;
   /**

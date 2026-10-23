@@ -15,6 +15,12 @@ export interface ListedMap {
   matchCount?: number;
   /** **값** — `null` 이면 무료 (2026-09-21, 27b §3.1) */
   priceKrw?: number | null;
+  /** 계약 v0.3 §4 — 서버가 아직 주지 않으면 없다(그때는 그리지 않는다) */
+  description?: string | null;
+  tags?: string[];
+  likeCount?: number;
+  commentCount?: number;
+  commentsEnabled?: boolean;
 }
 
 export interface ListedPage {

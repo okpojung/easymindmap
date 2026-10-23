@@ -197,8 +197,14 @@ export default function Library() {
                       {m.priceKrw.toLocaleString('ko-KR')}원
                     </span>
                   )}
+                  {m.description && <span className="desc">{m.description}</span>}
+                  {m.tags && m.tags.length > 0 && (
+                    <span className="tags">{m.tags.slice(0, 5).map((t) => <span key={t}>#{t}</span>)}</span>
+                  )}
                   <span className="meta">
                     {m.nodeCount != null ? `${m.nodeCount}노드 · ` : ''}{fmt(m.publishedAt)}
+                    {typeof m.likeCount === 'number' && <span className="react" aria-label={`좋아요 ${m.likeCount}`}>♡ {m.likeCount}</span>}
+                    {typeof m.commentCount === 'number' && m.commentsEnabled !== false && <span className="react" aria-label={`댓글 ${m.commentCount}`}>💬 {m.commentCount}</span>}
                     {(m.matchCount ?? 0) > 0 && (
                       <span
                         className="hits"

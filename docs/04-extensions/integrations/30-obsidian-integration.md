@@ -1,494 +1,277 @@
-# 30. Obsidian Integration
+# 30. Obsidian 연동 — 같은 노트를 글과 맵, 두 화면으로
 
-> ⚠️ **미구현 — 설계본.** Obsidian Vault 연동은 코드가 없다(2026-08-04). 일반 Markdown 가져오기/내보내기는 mmd 포맷으로 이미 구현되어 있다(별건 — docs/04-extensions/import-export/).
-
-## OBSIDIAN_INTEGRATION
-
-* 문서 버전: v1.1
-* 작성일: 2026-04-16
-* 최종 업데이트: 2026-05-07
-* 변경 이력:
-  * v1.1 — Export API 경로를 `api-spec.md` v2.3 통합 방식으로 수정; 구형 문서명 참조 제거 (IMP-002 정합성 보정)
-* 참조: `docs/04-extensions/import-export/20-export.md`, `docs/04-extensions/import-export/21-import.md`
-
----
-
-### 1. 기능 목적
-
-* easymindmap과 **Obsidian Vault 간 Markdown 기반 양방향 동기화**를 지원하는 기능
-* Obsidian에서 작성한 노트를 마인드맵으로 가져오고, 마인드맵을 Obsidian 노트로 내보내기
-* Obsidian 플러그인 또는 Vault 폴더 연동으로 파일 기반 동기화
+> **설계 v2.0 (2026-10-23, 사용자 결정 반영).** 이 문서는 v1.1(Vault ↔ easymindmap
+> 양방향 동기화 · `MarkdownAdapter` · `read-only / manual / live` 동기화 모드)을
+> **대체한다.** v1.1 의 방향은 §2 에 적은 이유로 버렸다.
+>
+> **구현 상태 (2026-10-23):** 플러그인 코드는 아직 없다. 1단계 시제품을 만든다(§9).
+> 공개 저장소와 비공개 `easymindmap-pro` 어디에도 Obsidian 코드는 없다.
+>
+> **이 문서가 정하는 것:** Obsidian 플러그인이 하는 일, 노트 형식, 글 ⇄ 맵 반영 규칙,
+> 스타일을 적는 자리, 무료/유료 범위, 공식 등록 조건, 단계.
+>
+> **정하지 않는 것:** 앱 DB 와 vault 폴더 사이의 동기화. 그것은 하지 않는다(§2).
+> 앱 맵을 폴더로 내보내는 기능은 **백업**으로 따로 둔다 — [`../vault-mirror.md`](../vault-mirror.md).
 
 ---
 
-### 2. 기능 범위
+## 0. 결정 요약 (2026-10-23)
 
-* 포함:
-  * Obsidian → easymindmap: Markdown 가져오기 (OBS-01)
-  * easymindmap → Obsidian: Markdown 내보내기 (OBS-02)
-  * Vault 폴더 연결 설정 (OBS-03)
-  * 변경 감지 및 동기화 (OBS-04, 후순위)
-  * Wikilink 처리 (OBS-05, 후순위)
-
-* 제외:
-  * 실시간 파일 감시 (파일 시스템 이벤트 기반, MVP 제외)
-  * Obsidian 플러그인 직접 개발 (후순위)
-  * Obsidian Dataview 호환 (후순위)
+| # | 질문 | 결정 |
+|---|---|---|
+| D1 | 큰 방향 | **② 같은 파일 편집.** 노트 `.md` 하나를 왼쪽은 Obsidian 글 편집창, 오른쪽은 EasyMindMap 맵 편집창으로 본다. 원본은 노트 파일 하나다 |
+| D2 | 공개 범위·가격 | **A. 플러그인 소스는 공개, EasyMindMap 계정 기능만 유료.** 공식 목록 라벨은 *Optional payments*(일부 유료) |
+| D3 | 지원할 노트 형식 | **A. 견출(`#`~`######`) 전부 + 목록.** 우리 mmd(emm 프로파일) 그대로. 모르는 문법은 원문 그대로 둔다 |
+| D4 | 맵 스타일 저장 위치 | **`emm` 코드블록.** 맵 단위 설정은 지금 규격 그대로, 노드별 스타일은 3단계에서 규격을 넓힌다(§5) |
+| D5 | 지원 기기 | **A. 데스크톱 먼저.** 모바일은 3단계 |
+| D6 | vault 미러(C안) | **백업(유료) + 수동 가져오기.** Obsidian 연동에서 분리한다 |
 
 ---
 
-### 3. 세부 기능 목록
-
-| 기능ID    | 기능명             | 설명                                 | 주요 동작         |
-| ------- | --------------- | ---------------------------------- | ------------- |
-| OBS-01  | Obsidian → 맵   | Obsidian Markdown 파일을 맵으로 가져오기     | 파일 선택 가져오기    |
-| OBS-02  | 맵 → Obsidian   | 맵을 Obsidian 호환 Markdown으로 내보내기     | Markdown 내보내기 |
-| OBS-03  | Vault 연결 설정    | Obsidian Vault 경로 / API 연결 설정       | 설정 UI         |
-| OBS-04  | 변경 감지 동기화     | Vault 파일 변경 → 자동 맵 업데이트 (후순위)     | Polling/Watch  |
-| OBS-05  | Wikilink 처리    | `[[링크]]` → 노드 연결 또는 하이퍼링크로 변환 (후순위) | 링크 변환         |
-
----
-
-### 4. 기능 정의 (What)
-
-#### 4.1 Obsidian Markdown 호환 형식
-
-```markdown
-# 프로젝트 계획 (Root 노드)
-
-## 1단계: 요구사항 (Depth 1)
-### 기능 요구사항 (Depth 2)
-### 비기능 요구사항 (Depth 2)
-
-## 2단계: 설계 (Depth 1)
-### DB 설계 (Depth 2)
-### API 설계 (Depth 2)
-
-> [!NOTE] 노드 Note 표시
-> 상세 내용은 여기에 작성
-
-```bash
-# 코드 블록도 note로 가져오기
-npm install
-```
+## 1. 무엇을 만드나
 
 ```
-
-#### 4.2 Obsidian 전용 요소 처리
-
-| Obsidian 요소        | easymindmap 처리                          |
-| ------------------ | --------------------------------------- |
-| `[[Wikilink]]`     | 하이퍼링크 또는 노드 연결 (OBS-05)                |
-| `#태그`             | 태그 자동 생성 및 할당                           |
-| `> [!NOTE]` callout | 노드 Note로 변환                            |
-| frontmatter (YAML) | 맵 메타데이터로 파싱 (제목, 날짜)                   |
-| `- [ ] checklist`  | Note 체크리스트 블록으로 변환                      |
-
-#### 4.3 Vault 연결 방식 (OBS-03)
-
-* **수동 파일 업로드**: Obsidian에서 `.md` 파일 내보내기 → easymindmap 가져오기 UI
-* **Vault API 연결** (후순위): Obsidian Local REST API 플러그인 경유
-
----
-
-### 5. 동작 방식 (How)
-
-#### 5.1 가져오기 (OBS-01)
-
-```
-Obsidian Vault에서 Markdown 파일 선택 또는 내보내기
-    │
-    ▼
-easymindmap > 가져오기 > Markdown 파일 선택
-    │
-    ▼
-파싱 (헤딩 구조 + Obsidian 전용 요소 처리)
-    │
-    ▼
-미리보기 → 확정 → 노드 트리 생성
+ [왼쪽] Obsidian 글 편집창              [오른쪽] EasyMindMap 맵 편집창 (플러그인)
+   # 프로젝트 계획                          ┌─ 1단계 기획 ─┬─ 요구사항 조사
+   ## 1단계 기획        ── 글이 바뀌면 ──▶  프로젝트 계획 ┤               └─ 경쟁사 분석
+   - 요구사항 조사         맵을 다시 그린다   └─ 2단계 개발 ── 화면 만들기
+   ## 2단계 개발       ◀── 맵을 고치면 ──
+   - 화면 만들기           바뀐 줄만 고쳐 쓴다
+                   ↘                      ↙
+                     같은 파일: 프로젝트 계획.md   ← 원본은 이것 하나
 ```
 
-#### 5.2 내보내기 (OBS-02)
-
-```
-맵 > 내보내기 > Markdown
-    │
-    ▼
-노드 트리 → Obsidian 호환 Markdown 변환
-  - 헤딩 계층 구조
-  - Note → `> [!NOTE]` callout
-  - 태그 → `#태그` inline
-    │
-    ▼
-.md 파일 다운로드 → Obsidian Vault에 저장
-```
+- Obsidian 은 같은 노트를 두 창에 열면 이미 서로 맞춰 보여 준다. 플러그인은
+  그 원리를 그대로 쓴다. **저장소가 하나뿐이라 "누가 맞나"를 정하는 충돌
+  규칙이 필요 없다.**
+- 인터넷·서버·계정 없이 동작한다. 계정이 있으면 유료 기능이 더해진다(§8).
+- 노트를 여는 길은 둘이다.
+  1. **분할창에 맵으로 보기** 명령 — 지금 노트의 오른쪽에 맵을 연다. 파일은 바꾸지 않는다.
+  2. `emm` 코드블록이 있는 노트 — 맵 노트로 보고 맵 화면으로 바로 열 수 있게 한다(설정으로 끈다).
 
 ---
 
-### 6. 규칙 (Rule)
+## 2. 하지 않는 것 — 그리고 왜
 
-* 지원 형식: Obsidian Flavored Markdown (CommonMark 기반)
-* Wikilink는 MVP에서 하이퍼링크로 변환 (노드 연결은 2단계)
-* frontmatter의 `title` 필드 → Root 노드 text로 사용
-* 내보내기 시 태그는 `#tagName` inline 표기
-* 코드 블록 언어 정보 보존 (```bash, ```python 등)
-
----
-
-### 7. 예외 / 경계 (Edge Case)
-
-* **깊이 초과 헤딩 (H7+)**: depth 5로 flat 처리
-* **Wikilink 순환 참조**: 경고 메시지, 링크만 텍스트로 변환
-* **frontmatter 파싱 실패**: frontmatter 무시, 나머지 내용 처리
+| 하지 않는 것 | 이유 |
+|---|---|
+| **앱 DB ↔ vault 폴더 양방향 동기화** (v1.1 의 `manual`/`live` 모드) | 원본이 둘이 된다. 다시 연결될 때 충돌 규칙이 필요하고, 협업 동시편집만큼 어렵다(`vault-mirror.md` §9). ② 방식은 원본이 하나라 이 문제가 없다 |
+| 노트 자동 병합 | 맞는지 확인할 수 없는 쓰기는 하지 않는다(§6.3) |
+| 맵 전용 JSON 을 노트 안에 저장 | 노트가 보통 문서로 읽혀야 한다. Markmind Rich 모드처럼 JSON 덩어리가 되면 Obsidian 사용자가 글로 읽을 수 없다 |
+| `MarkdownAdapter` 를 새로 만들기 | 변환기는 이미 있다 — `packages/emm-parser`. 규칙이 두 벌이 되면 어긋난다 |
+| 플러그인 안 협업 | 협업은 서버(유료판)의 기능이다. 플러그인은 계정 연결로 웹앱을 연다(§8) |
 
 ---
 
-### 8. 권한 규칙
+## 3. vault 미러(C안)와의 관계
 
-| 역할      | 가져오기 | 내보내기 |
-| ------- | ----- | ----- |
-| creator | ✅     | ✅     |
-| editor  | ✅     | ✅     |
-| viewer  | ❌     | ✅     |
+`vault-mirror.md` 는 앱의 맵을 셀프호스트 서버의 폴더에 `.md` 로 **한 방향으로
+복사**한다. 원본은 앱 DB 다. 폴더에서 고친 내용은 앱으로 돌아가지 않는다.
 
----
+이것은 Obsidian 연동이 아니라 **백업**이다(D6).
 
-### 9. DB 영향
-
-* `nodes` — 가져온 노드 트리
-* `node_notes` — Obsidian callout/코드 블록 저장
-* `tags` — Obsidian `#태그` 자동 생성
+- 셀프호스트: vault 미러를 그대로 쓴다(남은 일은 직렬화기 연결 — `vault-mirror.md` §10.1).
+- 클라우드 사용자: 플러그인의 유료 기능 **"내 맵을 vault 로 받기"**(§8).
+- 오프라인에서 고친 백업 파일: 자동 동기화가 아니라 기존 **Markdown 가져오기**로 새 맵이나 새 버전으로 넣는다.
 
 ---
 
-### 10. API 영향
+## 4. 노트 형식 (D3)
 
-* `POST /maps/{mapId}/import` — Obsidian Markdown 가져오기 (기존 Import API 공유)
-* `POST /maps/{mapId}/export` — Obsidian 호환 Markdown 내보내기
-  ```json
-  { "format": "markdown", "exportMode": "extended" }
-  ```
-  > Obsidian 호환 Markdown은 `format: "markdown"` + `exportMode: "extended"` 조합으로 요청한다. `api-spec.md` v2.3 §4 참조.
+플러그인이 읽고 쓰는 형식은 **mmd 의 emm 프로파일 그대로**다
+([`../emm-spec.md`](../emm-spec.md)). 플러그인 전용 문법을 만들지 않는다.
 
----
+- **노드:** 견출 `#`~`######` 와 목록 항목(`-` `*` `+` `1.`). 목록 항목은 다시 목록으로 쓴다(`mdForm: 'list'`).
+- **노드 내용:** 견출 아래 문단·인용·표·코드·체크리스트는 그 노드의 노트다(emm-spec §3.2~§3.6).
+- **머리말(front matter):** 걷어내서 가짜 노드를 만들지 않는다. **원문은 한 글자도 바꾸지 않고 그대로 둔다.** 플러그인은 값을 읽지 않는다.
+- **모르는 문법은 원문 그대로 둔다.** `[[위키링크]]` · `> [!NOTE]` 콜아웃 · `#태그` · `%%주석%%` · 블록 ID(`^abc`)는 노드 글자나 노트의 일부로 보이며, 맵에서 다른 곳을 고쳐도 바뀌지 않는다.
+- **위키링크:** 맵에서 누르면 Obsidian 의 링크 열기로 넘긴다(2단계). 노드 연결로 바꾸지 않는다.
 
-### 11. 연관 기능
-
-* IMPORT (`21-import.md`)
-* EXPORT (`20-export.md`)
-* TAG (`docs/03-editor-core/search/15-tag.md`)
+> 형식을 Mappy 처럼 `## 제목 + 목록` 으로 좁히지 않은 이유: 사용자가 이미 가진
+> 노트를 그대로 열어야 하고, EasyMindMap 웹앱에서 내보낸 `.md` 와 같은 문서여야 한다.
+> 그 대가로 §6.2 의 "바뀐 범위만 쓰기"를 견출과 목록 둘 다에 대해 맞춰야 한다.
 
 ---
 
-### 12. 구현 우선순위
+## 5. 스타일을 적는 자리 (D4) — `emm` 코드블록
 
-#### 1단계 (V1)
-* OBS-01 파일 가져오기 (IMPORT 기능 확장)
-* OBS-02 Obsidian 호환 Markdown 내보내기
+맵이 노트에 남기는 정보는 **첫 견출 바로 아래 `emm` 코드블록 하나**에만 적는다
+(emm-spec §3.7). 머리말·줄 끝 주석·HTML 주석에는 적지 않는다.
 
-#### 2단계
-* OBS-03 Vault API 연결 설정
-* OBS-05 Wikilink 노드 연결 변환
+````markdown
+# 프로젝트 계획
 
-#### 3단계
-* OBS-04 변경 감지 자동 동기화
-
----
-
-### 13. 시스템 구조
-
-```
-Obsidian Vault (*.md files)
-      ↓  read / watch
-Obsidian Plugin  (packages/obsidian-plugin)
-      ↓
-MarkdownAdapter  (packages/markdown-adapter)
-      ↓  parse() / serialize()
-NodeObject[]  →  Command Engine  →  DocumentStore
-      ↓
-Editor UI (React + SVG)
+```emm
+map: 7f3a9c
+levels:
+  2:
+    shape: rounded
+    font: 15
+connectors:
+  1:
+    from: 프로젝트 계획 > 1단계 기획
+    to: 프로젝트 계획 > 2단계 개발
 ```
 
----
+## 1단계 기획
+````
 
-### 14. MarkdownAdapter 인터페이스
+### 5.1 지금 규격이 담는 것과 담지 않는 것
 
-```typescript
-interface MarkdownAdapter {
-  // Markdown → NodeObject[]
-  parse(markdown: string, options?: ParseOptions): NodeObject[];
+| 담는다 (1·2단계에서 그대로 쓴다) | 담지 않는다 |
+|---|---|
+| `map:`(서버 맵 ID) · `template:` 또는 `levels:`(레벨별 배치·도형·글자 크기) · `connectors:`(노드 경로로 지정하는 연결선) | 노드별 색·아이콘·태그·접힘·수동 크기·좌표 (emm-spec §2.1 — 지금은 HTML 내보내기와 서버 몫) |
 
-  // NodeObject[] → Markdown
-  serialize(nodes: NodeObject[], options?: SerializeOptions): string;
+### 5.2 노드별 스타일 — 3단계에서 `nodes:` 확장 (규격 개정 필요)
 
-  // 특정 노드 텍스트만 부분 업데이트
-  updatePartial(markdown: string, nodeId: string, newText: string): string;
+플러그인에서 노드 색·접힘을 고치면 어딘가에 남아야 한다. `connectors:` 가 이미
+**노드 경로**(`중심 > 가지 > 하위`)로 노드를 가리키므로 같은 방식으로 넓힌다.
 
-  // 파싱 가능 여부 확인
-  validate(markdown: string): ValidationResult;
-}
-
-type ParseOptions = {
-  mode: 'heading' | 'list' | 'auto';  // 기본: auto
-  maxDepth?: number;
-  ignoreCodeBlocks?: boolean;
-};
-
-type SerializeOptions = {
-  headingStyle: 'atx' | 'setext';
-  includeMetadata?: boolean;
-};
-
-type ValidationResult = {
-  valid: boolean;
-  warnings: string[];
-  errors: string[];
-};
+```emm
+nodes:
+  프로젝트 계획 > 1단계 기획:
+    color: teal
+    collapsed: true
 ```
 
-#### 14.1 파싱 모드 (ParseOptions.mode)
-
-| 모드 | 설명 |
-| --- | --- |
-| `heading` | Heading(`#` ~ `######`) 계층 구조만 파싱 |
-| `list` | Heading 없이 List(`-`, `*`, `1.`) 들여쓰기 구조만 파싱 |
-| `auto` | Heading이 있으면 heading 기반, 없으면 list 기반으로 자동 선택 (기본값) |
-
-혼합 모드: Heading 아래에 List가 오면 해당 Heading 노드의 자식으로 처리:
-
-```markdown
-## 기획
-- 요구사항 분석
-  - 인터뷰
-  - 설문
-- 경쟁사 조사
-```
+- 이것은 **emm 프로파일 개정**이다. `emm-spec.md` 를 먼저 고치고, `packages/emm-parser` 의
+  `readDeclaration` / `buildDeclaration` 에 넣은 뒤 플러그인과 웹앱이 같이 쓴다
+  (오픈코어 §3.1 ② — 포맷과 파서는 공개).
+- **경로가 끊기는 경우:** 글 편집창에서 견출 글을 고치면 그 경로의 항목은 더 이상 맞는
+  노드가 없다. 그 항목은 **지우지 않고 남겨 둔다**(규격의 "못 찾는 항목은 그 항목만 버린다"
+  를 읽기에만 적용). 맵에서 이름을 고치면 플러그인이 경로도 같이 고친다.
+- `emm` 블록은 Obsidian 읽기 화면에서 코드블록으로 보인다. 플러그인이 `emm` 코드블록
+  처리기를 등록해 작은 표시로 바꿔 보여 주는 방안을 2단계에서 검토한다.
 
 ---
 
-### 15. Markdown 변환 규칙
+## 6. 글 ⇄ 맵 반영 규칙
 
-#### 15.1 Heading 기반 (기본)
+### 6.1 글 → 맵
 
-| Markdown | NodeObject depth |
-| --- | --- |
-| `#` | 0 (root) |
-| `##` | 1 |
-| `###` | 2 |
-| `####` | 3 |
+1. 대상 파일의 `editor-change` 에서 **저장 전 글**을 받는다. 메타데이터 캐시는 원본으로 쓰지 않는다.
+2. 잠깐 모았다가(시작값 100ms) 다시 해석한다.
+3. 파일마다 **문서 세션**(원문 + 버전 번호)을 둔다. 비동기 결과가 늦게 와서 파일이나 버전이 바뀌었으면 버린다.
+4. 노드를 원문 위치와 제목으로 짝지어 **선택·접힘·화면 위치를 유지**한다. 매번 화면 맞춤을 하지 않는다.
 
-#### 15.2 List 기반
+### 6.2 맵 → 글 — 바뀐 범위만 쓴다
 
-Heading 없이 List만 있는 경우에도 변환 지원:
+1. 맵 편집 명령(추가·삭제·이동·이름 바꾸기)은 해석 당시 원문에서 **"이 범위를 이 글로"** 바꿀 목록을 만든다(UTF-16 위치).
+2. 파일마다 한 줄로 세운 대기열에서, **지금 원문이 기대한 원문과 같은지** 확인한다.
+3. 편집기가 열려 있으면 `Editor.transaction` 한 번으로 적용한다(커서가 튀지 않는다). 저장 안 된 편집기 내용이 있을 때 파일에 직접 쓰지 않는다.
+4. 편집기가 없을 때만 `Vault.process` 안에서 기대 원문을 확인하고 적용한다.
+5. 내가 쓴 변경도 최신 원문으로 다시 받는다(버전 번호로 되먹임을 구별한다).
 
-```
-- A
-  - B
-    - C
-      - D
-```
+### 6.3 충돌
 
-→ depth 0~3 tree 구조
+기대 원문과 다르면 **쓰지 않는다.** 맵에서 입력 중이던 글은 남기고 알린다.
+자동 병합하지 않는다. 사용자가 최신 상태에서 다시 고친다.
 
----
+### 6.4 되돌리기
 
-### 16. Metadata 처리
+맵 편집은 파일마다 따로 기록한다(최대 50단계). 글 편집창이나 다른 곳에서 파일이
+바뀐 것을 보면 맵 기록을 비운다. 글 쪽 되돌리기는 Obsidian 표준 그대로다.
 
-#### 16.1 Frontmatter (권장)
+### 6.5 파서에 더할 것 — 노드별 원문 범위
 
-```yaml
----
-easymindmap:
-  layoutType: radial-bidirectional
-  theme: default
-tags: [AI, 중요]
----
-```
+지금 `MindNode`(`packages/emm-parser/src/model.ts`)에는 원문 위치가 없다. 6.2 를 하려면
+노드마다 `from/to`(전체), `titleFrom/titleTo`(견출 글), `bodyFrom/bodyTo`(노트) 범위가 필요하다.
 
-* `easymindmap.layoutType` → 맵 레이아웃 타입으로 적용
-* `easymindmap.theme` → 맵 테마로 적용
-* `tags` → 루트 노드 태그로 가져오기
+- 공개 파서에 **선택 옵션**으로 넣는다(`parse(md, { ranges: true })`). 옵션이 없으면 출력이 지금과 한 글자도 다르지 않아야 한다 — 웹앱·MCP·API 복사본(`apps/api/src/emm`)이 그대로 돈다.
+- 왕복 시험: 고치지 않은 노드의 원문은 바이트 그대로, 고친 노드만 바뀐다.
 
-#### 16.2 Node inline comment (2차)
-
-노드별 개별 메타데이터는 heading 뒤 inline HTML 주석으로 표현:
-
-```markdown
-## 기획 <!-- { "collapsed": true } -->
-```
+> 참고 구현: Mappy(`docs/architecture.md` §3·§4)가 같은 규칙을 쓴다. 설계만 참고하고
+> 코드는 직접 쓴다(§11).
 
 ---
 
-### 17. NodeObject 확장 (externalMeta)
+## 7. 구조
 
-기존 `NodeObject`에 `externalMeta` 필드를 통해 Markdown 소스 정보를 저장한다.
+| 부품 | 출처 | 상태 |
+|---|---|---|
+| 해석기 | `packages/emm-parser` (Apache-2.0) | **고쳐서** — 원문 범위 옵션(§6.5) |
+| 배치 계산 | `apps/frontend/src/layout` (`LayoutEngine` + strategies) | **재사용** — React·상태 저장소에 묶이지 않는다. 다국어 문자열·연결 맵 상태 두 곳만 플러그인용 대체물로 바꾼다 |
+| 맵 화면 | 새로 | DOM/SVG 로 그린다. `innerHTML` 을 쓰지 않는다(공식 검사 규칙) |
+| 문서 세션 · 편집 계획 · 대기열 | 새로 | §6 |
+| 계정 연결 | 새로 (서버는 유료판) | §8 |
 
-```typescript
-type MarkdownMeta = {
-  sourceType: 'markdown';
-  filePath: string;        // vault 내 상대 경로
-  headingLevel?: number;   // 1 ~ 6
-  blockId?: string;        // Obsidian block reference ID
-  listIndent?: number;     // List 기반 변환 시 들여쓰기 레벨
-  lineNumber?: number;     // 원본 파일 내 줄 번호
-};
-```
-
----
-
-### 18. ObsidianPluginSettings 타입
-
-```typescript
-type ObsidianPluginSettings = {
-  serverUrl: string;           // easymindmap 서버 주소
-  apiToken: string;            // Supabase Auth 토큰
-  defaultLayout: LayoutType;   // 기본 레이아웃
-  syncMode: SyncMode;          // read-only | manual | live
-  autoOpenOnNote: boolean;
-};
-```
+- **별도 공개 저장소**에 둔다. 공식 목록은 저장소 루트에 `manifest.json` · `README.md` · `LICENSE` 를 요구한다.
+- 공개 코어의 파서·배치 코드는 빌드 시 가져온다(복사본이면 `apps/api` 처럼 원본과 다르면 실패하는 검사를 둔다).
+- 플러그인 ID 에는 `obsidian` 을, 이름에는 `Obsidian`·`Plugin` 을 넣을 수 없다. 예: ID `easymindmap`, 이름 `EasyMindMap`.
 
 ---
 
-### 19. Sync 정책
+## 8. 무료와 유료 (D2)
 
-| 모드 | 설명 | 구현 시기 |
-| --- | --- | --- |
-| `read-only` | Obsidian → 맵 보기만 | 1차 |
-| `manual` | [저장] 버튼으로 양방향 동기화 | 2차 |
-| `live` | vault 파일 변경 감지 → 자동 업데이트 | 3차 |
+| 공개 · 무료 | EasyMindMap 계정 · 유료 |
+|---|---|
+| 플러그인 소스 전체 (Apache-2.0) | 웹앱에서 이 노트를 맵으로 열기 |
+| 글 ⇄ 맵 보기·편집, 배치·스타일, 이미지 내보내기 | 공유 링크 · 협업 (서버 기능) |
+| `emm` 블록 읽고 쓰기 | 클라우드 백업 — "내 맵을 vault 로 받기" (§3) |
 
-> live 모드는 Obsidian의 `vault.on('modify')` 이벤트 활용.
-
----
-
-### 20. Command Engine 연동
-
-Obsidian에서 맵으로 import 시 반드시 **Command Engine**을 통한다.
-
-```typescript
-// Obsidian note 열기 → 맵 import
-const markdown = await obsidianVault.read(file);
-const nodes = markdownAdapter.parse(markdown);
-
-commandEngine.dispatch({
-  type: 'IMPORT_EXTERNAL_NODES',
-  payload: { nodes, sourceType: 'markdown' }
-});
-
-// 맵 → Obsidian note 저장
-const nodes = documentStore.getNodes();
-const markdown = markdownAdapter.serialize(nodes);
-await obsidianVault.write(filePath, markdown);
-```
+- 공식 목록 라벨: **Optional payments**(유료 서비스에 연결되는 플러그인은 무료 등급이 있어도 이 라벨).
+- README 에 결제·계정·네트워크 사용을 밝힌다. 계정 기능을 쓰지 않으면 네트워크를 쓰지 않는다.
+- 라이선스 판정은 서버(유료판) 쪽에 둔다(오픈코어 §4.2). 플러그인은 "켜졌나"만 묻는다.
 
 ---
 
-### 21. Obsidian Plugin UI 기능
+## 9. 단계
 
-| UI 요소 | 설명 |
-| --- | --- |
-| Command Palette | `easymindmap: Open as Mindmap` 등록 |
-| Side Panel View | 맵 미리보기 (read-only) |
-| 노드 클릭 | 해당 note의 heading 위치로 이동 |
-| Ribbon 아이콘 | 빠른 맵 열기 버튼 |
-
----
-
-### 22. 패키지 구조
-
-```
-packages/
-  core/                        # 기존 NodeObject, Command Engine
-  markdown-adapter/
-    src/
-      MarkdownAdapter.ts        # 구현체
-      headingParser.ts          # Heading 기반 파싱
-      listParser.ts             # List 기반 파싱
-      markdownSerializer.ts     # NodeObject[] → Markdown
-      metadataParser.ts         # Frontmatter / inline comment
-      types.ts
-    index.ts
-  obsidian-plugin/
-    src/
-      main.ts                   # Plugin entry point
-      MindmapView.ts            # Side panel view
-      commands.ts               # Command palette 등록
-      settings.ts               # Plugin 설정 UI
-    manifest.json
-    styles.css
-```
+| 단계 | 무엇 | 끝났다고 보는 기준 |
+|---|---|---|
+| **1 보기** | 오른쪽 분할창에 맵. 글을 치면 맵이 따라온다. 읽기 전용 | 견출+목록 노트가 맵으로 보이고, 타이핑 0.1~0.2초 안에 맵이 바뀐다. 파일을 한 번도 쓰지 않는다 |
+| **2 편집** | 맵에서 추가·삭제·이동·이름 바꾸기 → 바뀐 범위만 쓰기. 파서 원문 범위(§6.5) | 왕복 시험 자동화. 고치지 않은 노드의 원문이 바이트 그대로 |
+| **3 풍부하게** | 노드 색·접힘(`nodes:` 확장 §5.2), 노트·표·사진, 노트 안 맵 코드블록, 모바일 | emm-spec 개정 반영, 모바일 실기 확인 |
+| **4 공식 등록** | 공개 저장소, Release, 자동 검사 통과 | community.obsidian.md 목록에 공개 |
+| **5 계정 연결** | 웹앱 열기 · 공유 · 클라우드 백업 | 유료판 서버와 연결, README 공개 사항 갖춤 |
 
 ---
 
-### 23. MVP 제외 항목
+## 10. 공식 등록 조건 (2026-10-23 확인)
 
-* 실시간 양방향 sync (live mode)
-* block-level 정밀 sync
-* 충돌 자동 해결
-* Obsidian Graph View 연동
-* Dataview plugin 연동
+- 제출: community.obsidian.md 에 Obsidian 계정 + GitHub 연결 → 자동 검사(보안·코드 품질·악성코드) → 통과하면 24시간 안에 앱에서 검색된다.
+- **새 비공개 소스 플러그인은 지금 받지 않는다** → D2-A(소스 공개)의 근거.
+- 결제·계정·네트워크 사용은 README 에 밝힌다. 가격 라벨은 *Free / Optional payments / Paid*.
+- 앱 안 사용 추적(telemetry)·광고 삽입 금지. 버전마다 자동 재검사, 방치하면 목록에서 빠진다.
+- 저장소 루트에 `README.md` · `LICENSE` · `manifest.json`, 버전 태그 Release 에 `main.js` · `manifest.json` · `styles.css`.
+- 공식 ESLint 도구(`eslint-plugin-obsidianmd`)로 미리 검사한다.
 
----
-
-### 24. 확장 로드맵 (Phase 1~5)
-
-| 단계 | 기능 |
-| --- | --- |
-| 1 | Markdown import/export (CLI/API) |
-| 2 | Obsidian Plugin viewer (read-only) |
-| 3 | manual-sync (양방향 저장) |
-| 4 | live sync |
-| 5 | block-level sync |
+출처: Obsidian 블로그 "The future of Obsidian plugins", Developer policies, Submission
+requirements for plugins (Mappy `docs/community-submission.md` 의 2026-09-27 대조표 참고).
 
 ---
 
-### 25. Canonical Format
+## 11. 경쟁 참고 (2026-10-23, 공개 소스 직접 분석)
 
-> **결정:** Markdown을 Canonical Format으로 사용한다.
+| | Mappy (v0.4.11, MIT) | gogoga Mind Map (v0.15.1, MIT) | EasyMindMap |
+|---|---|---|---|
+| 맵 → 글 | 바뀐 범위만 | 파일 전체 다시 쓰기 | 바뀐 범위만 |
+| 글 모양 | 원문 그대로 | 규칙 밖 모양은 정리됨 | 원문 그대로 |
+| 충돌 | 원문 확인 후 거부 | 맵 쪽 편집 우선 | 원문 확인 후 거부 |
+| 기기 | 데스크톱 | 데스크톱 + 모바일 | 데스크톱 먼저 |
+| 노트 형식 | `## 제목 + 목록` | 견출 전부 + 목록 | 견출 전부 + 목록 (mmd) |
+| 스타일 | 머리말 · `<mark>` | 줄 끝 `%%…%%` | `emm` 코드블록 |
 
-| 방향 | 처리 |
-| --- | --- |
-| Obsidian → easymindmap | `MarkdownAdapter.parse(md)` → `NodeObject[]` |
-| easymindmap → Obsidian | `MarkdownAdapter.serialize(nodes)` → `string` |
-
-기존 export의 Markdown 출력 포맷과 **완전히 동일한 포맷**을 사용한다.  
-`serialize()`는 `18-ai.md` 의 Markdown 출력 스펙을 그대로 따른다.
-
----
-
-### 26. 플러그인 기본 기능
-
-| 기능 | 설명 |
-| --- | --- |
-| Note → Mindmap | 현재 note를 easymindmap에서 열기 |
-| Mindmap → Note | 맵 내용을 현재 note에 저장 |
-| 새 맵 생성 | note에서 빈 맵 생성 후 연결 |
+두 플러그인 모두 MIT 다. **설계만 참고하고 코드는 직접 쓴다.** 가져오면 저작권 표기가
+필요하고, 공식 목록의 포크 정책은 원 저장소 코드를 허락 없이 물려받지 말라고 한다.
 
 ---
 
-### 27. 기존 파이프라인과의 관계
+## 12. 아직 정하지 않은 것
 
-기존 easymindmap export 파이프라인:
+- 플러그인 저장소 이름·위치와 플러그인 ID (예: `easymindmap`).
+- `nodes:` 확장의 정확한 키 이름과 경로가 겹칠 때 규칙 (emm-spec 개정).
+- `emm` 블록을 읽기 화면에서 어떻게 보여 줄지.
+- 아주 큰 노트(노드 수천 개)에서 다시 해석하는 비용 — 1단계 시제품으로 잰다.
+- 모바일 지원 시점(3단계)과 Obsidian 최소 버전.
 
-```
-NodeObject[]
-  ↓  `20-export.md` 참조
-Markdown
-  ↓
-Markmap Renderer
-  ↓
-Standalone HTML
-```
+---
 
-Obsidian 연동은 이 파이프라인의 **역방향 입력**을 추가하는 것:
+## 13. 연관 문서
 
-```
-Obsidian note (Markdown)
-  ↓  MarkdownAdapter.parse()
-NodeObject[]
-  ↓
-Editor
-```
-
-`MarkdownAdapter.serialize()` 출력은 `20-export.md`에 정의된 Markdown 포맷과 동일해야 한다.
+| 무엇 | 문서 |
+|---|---|
+| mmd 형식 · `emm` 선언 | [`../emm-spec.md`](../emm-spec.md) §2.1 · §3.7 |
+| 백업 (앱 → 폴더) | [`../vault-mirror.md`](../vault-mirror.md) |
+| 공개/유료 경계 | [`../open-core-boundary.md`](../open-core-boundary.md) §3.1 ⑤ |
+| Markdown 가져오기·내보내기 | [`../import-export/20-export.md`](../import-export/20-export.md) · [`../import-export/21-import.md`](../import-export/21-import.md) |

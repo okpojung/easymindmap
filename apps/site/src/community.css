@@ -67,6 +67,8 @@
 .cm-hp { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
 .cm-done { border-style: solid; background: #f3f8f1; }
 
+.cm-ask { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 8px 0 64px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; background: #f7f9f4; font-size: 14px; color: var(--muted); }
+
 /* 글 본문 Markdown */
 .cm-md { font-size: 15.5px; line-height: 1.8; color: #2b3a34; overflow-wrap: anywhere; }
 .cm-md h1, .cm-md h2, .cm-md h3, .cm-md h4 { color: var(--ink); line-height: 1.4; margin: 1.2em 0 .5em; }

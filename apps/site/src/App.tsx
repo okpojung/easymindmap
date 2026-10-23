@@ -93,7 +93,7 @@ export default function App() {
           <span className="spacer" />
           <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub · EasyMindMap 오픈소스 코어 ↗</a>
           <a href={MMD_GITHUB_URL} target="_blank" rel="noopener noreferrer">Mindmap Markdown 표준 ↗</a>
-          <Link to="/contact">문의하기</Link>
+          <Link to="/contact" className="foot-contact">✉ 문의하기</Link>
 
         </div>
       </footer>

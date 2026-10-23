@@ -239,6 +239,10 @@ export default function Board() {
           })}
         </nav>
         {post ? <PostView board={board} id={post} go={go} /> : <PostList key={board} board={board} q={q} go={go} />}
+        <aside className="cm-ask">
+          <span>원하는 답을 찾지 못했나요? 개인적인 문의나 제휴 제안은 따로 보내 주세요.</span>
+          <a className="btn ghost" href="/contact">✉ 문의하기</a>
+        </aside>
       </section>
     </div>
   );

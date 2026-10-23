@@ -355,3 +355,6 @@ html.emm-home-page{scroll-behavior: smooth; scroll-padding-top: 100px;}
 @media(max-width:480px){.emm-home .header .btn{padding:8px 10px;font-size:12px}.emm-home .header .btn span{display:none}}
 .emm-home .footer-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .emm-home .footer-github{display:flex;align-items:center;gap:18px;flex-wrap:wrap;font-size:14px;font-weight:600}.emm-home .footer-github>span{font-size:12px;color:var(--muted);letter-spacing:.04em}.emm-home .footer-github a{color:var(--green)}
+/* 문의하기는 메뉴 대신 하단 버튼으로 */
+.emm-home .footer-contact{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:1px solid #bccabd;border-radius:8px;font-size:14px;font-weight:650;color:var(--green);background:#fff}
+.emm-home .footer-contact:hover{background:var(--soft);color:var(--green)}

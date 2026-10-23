@@ -43,13 +43,15 @@ test('문의 요청 본문은 계약 §3 필드 그대로', () => {
   assert.equal(p.privacyConsent, true);
 });
 
-test('www 는 인증 정보를 보내지 않고, 헤더에 게시판·문의 메뉴가 있음', () => {
+test('www 는 인증 정보를 보내지 않고, 헤더에 게시판, 하단에 문의하기 버튼', () => {
   const api = readFileSync(new URL('../src/community-api.ts', import.meta.url), 'utf8');
   assert.match(api, /credentials: 'omit'/);
   assert.doesNotMatch(api, /Authorization|x-admin-token/i);
   const tpl = readFileSync(new URL('../src/redesign/template.html', import.meta.url), 'utf8');
   assert.match(tpl, /<a href="\/board">게시판<\/a>/);
-  assert.match(tpl, /<a href="\/contact">문의하기<\/a>/);
+  const nav = tpl.slice(tpl.indexOf('<nav class="nav"'), tpl.indexOf('</nav>', tpl.indexOf('<nav class="nav"')));
+  assert.doesNotMatch(nav, /\/contact/);
+  assert.match(tpl, /<a class="footer-contact" href="\/contact">/);
   const contact = readFileSync(new URL('../src/pages/Contact.tsx', import.meta.url), 'utf8');
   assert.match(contact, /className="cm-hp" aria-hidden="true"/);
   assert.match(contact, /tabIndex=\{-1\}/);

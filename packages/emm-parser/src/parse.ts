@@ -490,6 +490,9 @@ export function parseMarkdownToMap(
     paraBuf = [];
     if (!text) return;
     if (!sawHeading) {
+      // 첫 견출 전의 프로젝트 태그 줄 → 그 중심의 프로젝트 태그 (2026-10-23, project-line.ts)
+      const rootProj = parseProjectLine(text);
+      if (rootProj) { (curCenter ?? firstRoot).project = rootProj; return; }
       // 첫 견출 전의 첨부 줄 → 루트 첨부
       const rootAtt = attachmentLines(text);
       if (rootAtt) { mergeAttachments(rootAttachments, rootAtt); return; }
@@ -507,6 +510,12 @@ export function parseMarkdownToMap(
       // 첫 견출 전의 머리말 문단 → 루트 노트
       rootNotes.push({ id: nid(), type: 'paragraph', text });
       return;
+    }
+    // 프로젝트 태그 줄(📅 … · @담당자 · 35%) → 현재 노드의 프로젝트 태그 (2026-10-23).
+    // 줄 전체가 그 모양일 때만 — 아니면 아래 규칙대로 보통 글이다 (project-line.ts)
+    if (stack.length) {
+      const proj = parseProjectLine(text);
+      if (proj) { stack[stack.length - 1].node.project = proj; return; }
     }
     // "🔗 [라벨](url)" 링크 줄 — EasyMindMap 내보내기의 노드 링크 왕복:
     // 새 자식 노드가 아니라 현재 노드의 링크(🔗)로 되돌린다
@@ -873,6 +882,7 @@ export function parseMarkdownToMap(
       colorKey: 'root',
       side: 'center',
       ...(firstRoot.links?.length ? { links: firstRoot.links } : {}),
+      ...(firstRoot.project ? { project: firstRoot.project } : {}),
       ...(first.rootNotes.length ? { notes: first.rootNotes } : {}),
       ...(first.rootAttachments.length ? { attachments: first.rootAttachments } : {}),
       // 루트 사진 — 항목 줄의 인라인 사진(A-1②, firstRoot.images)과 `# 제목`
@@ -887,6 +897,7 @@ export function parseMarkdownToMap(
 
 // EMM 공개 API 별칭 — parseEmm(md) : 제목 폴백은 'mindmap'
 import type { EmmMap } from './model';
+import { parseProjectLine } from './project-line';
 export function parseEmm(
   md: string,
   fallbackTitle = 'mindmap',

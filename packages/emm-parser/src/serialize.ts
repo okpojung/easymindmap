@@ -15,6 +15,7 @@
 import type { MindNode, SampleMap } from './model';
 import { fenceFor, fencedBlock, isClosingFence, openFence } from './fence';
 import { buildDeclaration, type EmmDeclaration } from './declaration';
+import { projectLine } from './project-line';
 
 export interface EmmImageFile {
   path: string; // files/img-1.png
@@ -320,6 +321,12 @@ export function buildEmmBody(
       lines.push(declaration);
       lines.push('');
     }
+    // 프로젝트 태그 줄 (2026-10-23, project-line.ts) — 노드에 켜 둔 일정·담당자·진척율
+    const rootProj = projectLine(root.project);
+    if (rootProj) {
+      lines.push(rootProj);
+      lines.push('');
+    }
     // 루트 노드의 사진 (2026-08-18, B17) — 예전에는 **빠뜨려서 루트에 붙인
     // 사진이 MD 로 내보내면 사라졌다**(HTML 내보내기는 정상이었다).
     // 가지 노드와 같은 규칙: files/ 로 담을 수 있으면 상대 경로, 아니면 URL.
@@ -402,7 +409,8 @@ export function buildEmmBody(
       !(node.notes?.length) &&
       !(node.links?.length) &&
       !(node.images?.length) &&
-      !node.image?.src;
+      !node.image?.src &&
+      !projectLine(node.project);
     if (bare) {
       // 제목 줄 없음 — 블록만
     } else if (asList) {
@@ -419,6 +427,13 @@ export function buildEmmBody(
     // 사진·링크·노트·블록이 딸리면 예전처럼 빈 줄로 띄운다.
     const before = lines.length;
     pushBodyBlocks(lines, nodeBody.blocks);
+
+    // 프로젝트 태그 줄 (2026-10-23) — 제목·본문 바로 뒤, 사진·링크보다 앞 (project-line.ts)
+    const proj = projectLine(node.project);
+    if (proj) {
+      lines.push('');
+      lines.push(proj);
+    }
 
     // 사진 — files/로 패키징된 경우 상대 경로, 아니면 원본 URL.
     // 인라인 사진(images — 텍스트 중간)이 있으면 원문 순서대로 모두 내보낸다

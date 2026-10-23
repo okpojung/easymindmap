@@ -30,6 +30,9 @@ import {
   scaleNodeImage,
   sizeNodeForText,
   CYLINDER_CAP,
+  nodePadX,
+  NO_SHAPE_PAD_X,
+  NO_SHAPE_PAD_Y,
 } from './sizeNodeForText';
 import { noShapeUnderlineWidth } from './noShapeNode';
 import { parseMdTable, parseMdTables, cellLineY, cellLines, rowTop, MD_TABLE_CELL_PAD_X, MD_TABLE_COPY_STRIP } from './mdTable';
@@ -468,7 +471,11 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   // Icon can be shown on any node (not only branches), on the left or right.
   const hasIcon = !!n.icon;
   const iconSide: 'left' | 'right' = n.iconSide ?? 'left';
-  const iconX = iconSide === 'right' ? n.x + n.w / 2 - 16 : n.x - n.w / 2 + 12;
+  // 도형 없음은 박스가 글자에 딱 맞으므로(sizeNodeForText NO_SHAPE_PAD_X) 아이콘·글자를 박스 끝에 붙인다
+  const iconX = iconSide === 'right'
+    ? n.x + n.w / 2 - (noShape ? 4 + NO_SHAPE_PAD_X : 16)
+    : n.x - n.w / 2 + (noShape ? NO_SHAPE_PAD_X : 12);
+  const sidePad = noShape ? NO_SHAPE_PAD_X : 14;
 
   // 정렬: 노드별 설정 → 레벨 기본 맞춤(맵 설정) → 중앙
   const textAlign: TextAlign = n.textAlign ?? levelTextAlign(n.depth) ?? 'center';
@@ -484,10 +491,10 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   const iconRightPad = hasIcon && iconSide === 'right' ? 22 : 0;
   const textX =
     textAlign === 'right'
-      ? n.x + n.w / 2 - 14 - indicatorReserve - iconRightPad
+      ? n.x + n.w / 2 - sidePad - indicatorReserve - iconRightPad
       : textAlign === 'center'
         ? n.x + (iconLeftPad - iconRightPad - indicatorReserve) / 2
-        : n.x - n.w / 2 + 14 + (hasIcon && iconSide === 'left' ? 24 : 0);
+        : n.x - n.w / 2 + sidePad + (hasIcon && iconSide === 'left' ? 24 : 0);
 
   // 편집 중 기사 붙여넣기로 들어온 인라인 사진 대기 목록 — 저장 시 반영,
   // 취소 시 폐기 (원문 위치 afterLine 포함)
@@ -642,6 +649,16 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, draftText, n.depth, n.w, n.icon, n.notes, n.links, n.attachments]);
 
+  // 도형 없음 편집창 — 박스가 글자에 딱 맞아(NO_SHAPE_PAD_*) 그대로 쓰면 입력 중
+  // 한 글자씩 줄바꿈된다. 최소 폭을 주고 정렬 기준으로 넓힌다(글자 자리는 그대로).
+  const editExtra = ovr && noShape ? Math.max(0, 180 * ovr.k - ovr.width) : 0;
+  const editShift = textAlign === 'center' ? editExtra / 2 : textAlign === 'right' ? editExtra : 0;
+  const editPad = ovr
+    ? (noShape
+      ? `${NO_SHAPE_PAD_Y * ovr.k}px ${NO_SHAPE_PAD_X * ovr.k}px`
+      : `${6 * ovr.k}px ${8 * ovr.k}px`)
+    : 0;
+
   return (
     <g
       data-node-id={n.id}
@@ -762,7 +779,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
       {!editing && (() => {
         // 텍스트 줄(+중간 인라인 사진) + (Markdown 표) + (레거시 사진)을
         // 세로로 쌓아 박스 안 가운데 정렬 (sizeNodeForText와 동일한 배치)
-        const padX = n.depth === 0 ? 22 : 14;
+        const padX = nodePadX(n.depth, noShape);
         const manualStarts = n._manualStarts;
         // 텍스트 중간 인라인 사진 — afterLine(논리 줄)을 래핑 줄 자리로
         // 바꿔 각 줄·사진의 세로 위치를 구한다 (뷰어와 같은 규칙)
@@ -1337,9 +1354,9 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           data-testid="node-edit-overlay"
           style={{
             position: 'fixed',
-            left: ovr.left,
+            left: ovr.left - editShift,
             top: ovr.top,
-            width: ovr.width,
+            width: ovr.width + editExtra,
             // 입력이 늘면 **편집창도 늘어난다** — 저장 후 노드가 될 높이를
             // 그대로 쓴다. 노드 박스보다 커진 부분은 뒤에 SVG 도형이 없으
             // 므로, 아래 배경/테두리로 노드가 자란 것처럼 이어 그린다.
@@ -1393,7 +1410,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               fontFamily,
               textAlign,
               overflow: 'hidden',
-              padding: `${6 * ovr.k}px ${8 * ovr.k}px`,
+              padding: editPad,
               margin: 0,
             }}
           />
@@ -1578,7 +1595,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               fontFamily,
               textAlign,
               overflow: 'hidden',
-              padding: `${6 * ovr.k}px ${8 * ovr.k}px`,
+              padding: editPad,
               margin: 0,
             }}
           />

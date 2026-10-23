@@ -11,6 +11,24 @@
 import type { LevelFontSetting } from '@/editor/__samples__/types';
 import { blockGaps, layoutNodeBlocks, type NodeBlockLayout } from './nodeBlocks';
 import { parseCheckLine, checkGlyphW } from './mdCheck';
+import { parseInlineMarks, CODE_FONT } from './inlineMarks';
+import { measureTextPx } from './textMeasure';
+
+/**
+ * '도형 없음' 노드의 안쪽 여백 (2026-10-23 사용자 요청: "markmap 처럼 더 붙여 맵 간격도 촘촘하게",
+ * "밑줄이 글자를 넘어서지 않도록"). 도형이 없으면 두른 테두리가 없으므로 박스를 글자에
+ * 딱 맞춘다 — 밑줄(박스 아래 변)이 글자 바로 밑에 붙고, 밑줄 길이 = 글자 폭이다.
+ * NodeRenderer·HTML 뷰어가 같은 값을 쓴다.
+ */
+export const NO_SHAPE_PAD_X = 1;
+export const NO_SHAPE_PAD_Y = 3;
+/** 도형 없음 노드의 최소 폭 — 빈 노드도 고를 수 있게만 */
+export const NO_SHAPE_MIN_W = 24;
+
+/** 노드 안쪽 가로 여백 — sizeNodeForText·NodeRenderer 가 같이 쓴다 */
+export function nodePadX(depth: number, noShape: boolean): number {
+  return noShape ? NO_SHAPE_PAD_X : depth === 0 ? 22 : 14;
+}
 
 export interface SizeOpts {
   minW?: number;
@@ -32,6 +50,9 @@ export interface SizeOpts {
   images?: { w: number; h: number }[];
   // 노드 도형 (노드별 설정; 없으면 레벨 기본 도형) — 원통은 뚜껑만큼 높이를 더한다
   shape?: string;
+  // 노드별 글자 굵기·기울임(스타일 탭) — 도형 없음 노드의 실측 폭에만 쓴다
+  textWeight?: number;
+  textItalic?: boolean;
 }
 
 /**
@@ -158,8 +179,10 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   // 바뀌면 그 차이만큼 따라 움직인다 (기본값일 땐 기존과 완전히 동일).
   const baseLineH  = depth === 0 ? 24 : 18;
   const lineHeight = baseLineH + (fontSize - LEVEL_FONT_DEFAULT_SIZES[levelIndex(depth)]);
-  const padX       = depth === 0 ? 22 : 14;
-  const padY       = depth === 0 ? 14 : 9;
+  // 도형 없음 — 박스를 글자에 딱 맞춘다 (NO_SHAPE_PAD_*)
+  const noShape    = (opts.shape ?? levelShape(depth)) === 'none';
+  const padX       = nodePadX(depth, noShape);
+  const padY       = noShape ? NO_SHAPE_PAD_Y : depth === 0 ? 14 : 9;
 
   // Per-char width estimate. CJK chars are wider; mix of latin+CJK averages ~0.62*fontSize.
   const charW = (ch: string): number => {
@@ -181,10 +204,13 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
     : undefined;
   // 사진이 있으면 기본 최소 폭을 조금 넉넉하게 (너무 작게 축소되지 않게)
   const imageMin = (opts.image || (opts.images && opts.images.length)) ? 170 : 0;
-  const minW = manualW ?? Math.max(imageMin, opts.minW ?? (depth === 0 ? 160 : 130));
+  // 도형 없음은 최소 폭을 두지 않는다 — 짧은 글자 아래 밑줄이 글자보다 길어지지 않게
+  const minW = manualW ?? Math.max(imageMin, noShape ? NO_SHAPE_MIN_W : (opts.minW ?? (depth === 0 ? 160 : 130)));
   const maxW = manualW ?? Math.max(minW, opts.maxW ?? (depth === 0 ? 260 : 320));
   // Reserve space for branch icon (NS-05) when present
-  const iconReserve = (depth === 1 && opts.hasIcon) ? 22 : 0;
+  // 도형 없음은 박스가 글자에 딱 맞아 여백에 기대질 수 없으므로 모든 깊이에서 아이콘 자리를 둔다
+  // (NodeRenderer 왼쪽 맞춤이 아이콘 뒤로 24 밀어 쓴다)
+  const iconReserve = opts.hasIcon ? (noShape ? 24 : depth === 1 ? 22 : 0) : 0;
   // Reserve space for content-indicator icons inside the right edge
   const indicatorReserve = (opts.indicators ?? 0) > 0
     ? (opts.indicators ?? 0) * (fontSize + 5) + 4
@@ -276,8 +302,21 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   const blockW = Math.max(...blocks.map((b) => b.w), 0);
   const inCheck = (i: number) =>
     checkRanges.some(([s, e]) => i >= s && i < e);
+  // 도형 없음은 박스 폭 = 밑줄 길이라 근사 폭(넉넉하게 잡는다)을 쓰면 밑줄이
+  // 글자보다 길어진다 — NodeRenderer 가 글자를 그리는 것과 같은 **캔버스 실측**을
+  // 쓴다(인라인 마커는 무게만 반영하고 문자는 뺀다). 브라우저 밖(테스트)은 근사.
+  const realMeasure = noShape && typeof document !== 'undefined';
+  const baseWeight = opts.textWeight ?? fontWeight;
+  const family = levelFontFamily(depth) ?? 'inherit';
+  const lineW = (l: string): number => realMeasure
+    ? parseInlineMarks(l).reduce((acc, sg) => acc + measureTextPx(sg.text, fontSize, {
+        weight: sg.b ? 700 : baseWeight,
+        italic: sg.i || opts.textItalic,
+        family: sg.c ? CODE_FONT : family,
+      }), 0)
+    : measure(l);
   const widest = wrappedLines.reduce(
-    (m, l, i) => Math.max(m, measure(l) + (inCheck(i) ? glyphW : 0)),
+    (m, l, i) => Math.max(m, lineW(l) + (inCheck(i) ? glyphW : 0)),
     0,
   );
   const contentW = Math.max(widest, blockW);

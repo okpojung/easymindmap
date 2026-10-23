@@ -163,9 +163,11 @@ export function nodeSizingOpts(n: {
   sizeH?: number;
   image?: { w: number; h: number };
   images?: { w: number; h: number }[];
-  style?: { shapeType?: string };
+  style?: { shapeType?: string; fontWeight?: string; fontStyle?: string };
 }): {
   shape?: string;
+  textWeight?: number;
+  textItalic?: boolean;
   hasIcon: boolean;
   indicators: number;
   manualW?: number;
@@ -175,6 +177,9 @@ export function nodeSizingOpts(n: {
 } {
   return {
     shape: n.style?.shapeType,
+    // 스타일 탭 굵기·기울임 — 도형 없음 노드의 실측 폭에 쓴다 (NodeRenderer 와 같은 규칙)
+    textWeight: n.style?.fontWeight === 'bold' ? 700 : n.style?.fontWeight === 'normal' ? 400 : undefined,
+    textItalic: n.style?.fontStyle === 'italic' ? true : undefined,
     hasIcon: !!n.icon,
     indicators: contentIndicatorCount(n),
     manualW: n.sizeW,

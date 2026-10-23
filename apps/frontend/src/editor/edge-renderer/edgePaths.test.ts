@@ -2,7 +2,7 @@
 // markmap·ThinkWise 처럼 도형이 없는 노드는 아래 밑줄에 선이 붙어야 한다.
 import { treeEdgePath, sideLinkY } from './edgePaths';
 import { collapseAnchor } from '../canvas/collapseAnchor';
-import { setLevelShapeConfig } from '../node-renderer/sizeNodeForText';
+import { setLevelShapeConfig, sizeNodeForText, NO_SHAPE_PAD_X, NO_SHAPE_PAD_Y } from '../node-renderer/sizeNodeForText';
 import { isNoShapeNode } from '../node-renderer/noShapeNode';
 import type { LaidOutNode } from '@/layout/types';
 
@@ -42,6 +42,15 @@ check('⑦ 설정 해제 후 둥근', isNoShapeNode(Cl), false);
 // ⑧ 접기 칩도 선이 나가는 높이(밑줄)에 놓인다
 check('⑧ 접기 칩: 도형 없음 = 아래 변 높이', collapseAnchor(Pn, 'radial-right', 'right', 8.5, true), { x: 59.5, y: 20 });
 check('⑧ 접기 칩: 도형 있음 = 가운데', collapseAnchor(Pn, 'radial-right', 'right', 8.5, false), { x: 59.5, y: 0 });
+
+// ⑨ 도형 없음 박스는 글자에 딱 맞는다 — 최소 폭 없음, 여백 1/3 (markmap 처럼 촘촘하게)
+const boxed = sizeNodeForText('Links', 2, { minW: 130, maxW: 320 });
+const bare = sizeNodeForText('Links', 2, { minW: 130, maxW: 320, shape: 'none' });
+check('⑨ 도형 있음은 최소 폭 130 유지', boxed.w, 130);
+check('⑨ 도형 없음은 최소 폭을 무시하고 글자 폭 + 여백', bare.w < 60 && bare.w > 24, true);
+check('⑨ 도형 없음 높이 = 줄 높이 + 위아래 3', bare.h, bare.lineHeight + NO_SHAPE_PAD_Y * 2);
+check('⑨ 도형 없음 여백 값', [bare.padX, bare.padY], [NO_SHAPE_PAD_X, NO_SHAPE_PAD_Y]);
+check('⑨ 도형 있음 높이는 예전 그대로(위아래 9)', boxed.h, boxed.lineHeight + 18);
 
 if (failed) { console.log(`\n${failed}개 실패`); process.exit(1); }
 console.log('\n모두 통과');

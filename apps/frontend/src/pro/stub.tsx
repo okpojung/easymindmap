@@ -294,6 +294,10 @@ export function matchProRoute(_location: { pathname: string }): ComponentType | 
 
 /** Guest start map is configured only with the private module; the community build keeps the built-in sample. */
 export const GUEST_SEED_ADMIN = false;
+/** 공개판에는 게시판이 없다 */
+export const BOARD_ENABLED = false;
+export const COMMUNITY_ADMIN = false;
+export function ProCommunityAdminPanel(_p: { t: ThemeTokens }) { return null; }
 /** 공개판에는 주소록이 없다 — 담당자는 직접 입력만 */
 export interface AssigneeCandidate { name: string; email?: string; source: 'contacts' | 'redmine'; redmineUserId?: number }
 export async function searchAssignees(_mapId?: string | null): Promise<AssigneeCandidate[]> { return []; }

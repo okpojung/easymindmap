@@ -32,6 +32,7 @@ import { LanguagePicker } from '@/components/ui/LanguagePicker';
 import { useLang, useTr } from '@/i18n';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 import { rich } from '@/i18n/rich';
+import { BOARD_ENABLED } from '@pro';
 
 interface MenuEntry {
   id: string;
@@ -180,15 +181,16 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
    *   한 줄에 묶으면 맵을 사기만 한 사람이 '판매·정산' 을 열어 자기와
    *   상관없는 정산 얘기를 읽게 된다. 줄을 갈라 각자 자기 것만 본다.
    */
+  const base = BOARD_ENABLED ? [{ id: 'board', icon: '📋', labelKey: 'shell.user.board' } as MenuEntry, ...ENTRIES] : ENTRIES;
   const entries = salesOn
-    ? ENTRIES.flatMap<MenuEntry>((e) => (e.id === 'subscription'
+    ? base.flatMap<MenuEntry>((e) => (e.id === 'subscription'
       ? [
         { id: 'purchases', icon: '🧾', labelKey: 'shell.user.purchases' },
         { id: 'sales', icon: '💰', labelKey: 'shell.user.sales' },
         e,
       ]
       : [e]))
-    : ENTRIES;
+    : base;
   const [logs, setLogs] = useState<LoginHistory | null>(null);
 
   const openLogins = () => {
@@ -412,6 +414,8 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
               data-testid={`user-menu-${e.id}`}
               title={e.soonKey ? tr(e.soonKey) : tr(e.labelKey)}
               onClick={() => {
+                // 게시판 — 같은 창에서 연다(편집 중인 맵은 자동 저장·초안 보관 규칙 그대로)
+                if (e.id === 'board') { setOpen(false); window.location.href = '/?board=notice'; return; }
                 if (e.id === 'settings') { setOpen(false); setSettingsOpen(true); return; }
                 if (e.id === 'password') { setOpen(false); setPwOpen(true); return; }
                 if (e.id === 'aisettings') { setOpen(false); setAiSettingsOpen(true); return; }

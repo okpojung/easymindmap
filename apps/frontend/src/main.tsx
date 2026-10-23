@@ -46,7 +46,10 @@ const publishId = publishIdFromPath(window.location.pathname);
 // 같다 — 여기 온 사람은 맵을 그리러 온 것이 아니라 허락하러 왔다.
 const isConsent = isConsentPath(window.location.pathname);
 
-const ProRoute = matchProRoute({ pathname: window.location.pathname });
+// 게시판 `/?board=…` (2026-10-23, 홈페이지의 [글쓰기]·[댓글 쓰기] 링크) — 유료 모듈의 '/board' 화면으로
+const routePath = window.location.pathname.replace(/\/+$/, '') === '' && new URLSearchParams(window.location.search).has('board')
+  ? '/board' : window.location.pathname;
+const ProRoute = matchProRoute({ pathname: routePath });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

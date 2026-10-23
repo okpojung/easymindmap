@@ -102,6 +102,11 @@ declare module '@pro' {
   /** 담당자 후보 — EasyMindMap 주소록(개인+팀), Redmine 연계 맵이면 구성원도 (2026-10-23) */
   export interface AssigneeCandidate { name: string; email?: string; source: 'contacts' | 'redmine'; redmineUserId?: number }
   export function searchAssignees(mapId?: string | null): Promise<AssigneeCandidate[]>;
+  /** 게시판 화면(`/?board=…`)이 있는가 — 계정 메뉴에 '게시판' 을 띄운다 */
+  export const BOARD_ENABLED: boolean;
+  /** 관리자 > 게시판·문의 탭 */
+  export const COMMUNITY_ADMIN: boolean;
+  export function ProCommunityAdminPanel(p: { t: ThemeTokens }): JSX.Element | null;
   /** Whether the private module supplies the guest start-map admin tab. */
   export const GUEST_SEED_ADMIN: boolean;
   /** Admin-saved guest start map (public read). null = keep the built-in sample. */

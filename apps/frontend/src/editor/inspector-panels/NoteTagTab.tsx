@@ -20,6 +20,7 @@ import { useTr } from '@/i18n';
 // 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
 import '@/components/ui/mobileCss';
 import { useCoarse } from '@/hooks/useViewport';
+import { ProjectTagsSection } from './ProjectTagsSection';
 // 맵 전체에서 노트 블록을 id로 찾는다 — 사진 내장(비동기) 완료 시점에
 // 블록이 아직 그 서식(html)을 갖고 있는지 확인하는 용도.
 function findBlockById(
@@ -168,6 +169,9 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
           }}>{tr('inspector.content.add')}</button>
         </div>
       </InspectorSection>
+
+      {/* 프로젝트 태그 — 일정·담당자·진척율 (2026-10-23) */}
+      <ProjectTagsSection t={t} nodeId={selectedId} project={node?.project} />
 
       <InspectorSection
         t={t}

@@ -294,6 +294,9 @@ export function matchProRoute(_location: { pathname: string }): ComponentType | 
 
 /** Guest start map is configured only with the private module; the community build keeps the built-in sample. */
 export const GUEST_SEED_ADMIN = false;
+/** 공개판에는 주소록이 없다 — 담당자는 직접 입력만 */
+export interface AssigneeCandidate { name: string; email?: string; source: 'contacts' | 'redmine'; redmineUserId?: number }
+export async function searchAssignees(_mapId?: string | null): Promise<AssigneeCandidate[]> { return []; }
 export async function loadGuestSeed(): Promise<null> { return null; }
 export function ProTrialAdminPanel(_p: { t: ThemeTokens; token: string; onUnauthorized: () => void }) {
   return null;

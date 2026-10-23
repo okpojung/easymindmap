@@ -11,6 +11,7 @@ export type {
   EdgeType,
   NodeColorKey,
   ShapeType,
+  ProjectTags,
   NodeFontWeight,
   NodeFontStyle,
   NodeBorderStyle,

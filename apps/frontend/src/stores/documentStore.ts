@@ -47,6 +47,8 @@ import { applyStyleSnapshot, type StyleSnapshot } from '@/editor/canvas/stylePai
 // 아무것도 import 하지 않으므로 순환 없음.
 import { useViewportStore } from './viewportStore';
 import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
+import { cleanProject } from '@/editor/node-renderer/projectTags';
+import type { ProjectTags } from '@/editor/__samples__/types';
 
 // ltree physical limit operating cap (chk_nodes_depth). Root is depth 0.
 export const MAX_DEPTH = 50;
@@ -307,6 +309,8 @@ interface DocumentState {
   removeNodeTag: (nodeId: string | null, tag: string) => void;
   /** 태그 순서 바꾸기 — tag 를 toIndex 자리로 (2026-10-23) */
   moveNodeTag: (nodeId: string | null, tag: string, toIndex: number) => void;
+  /** 프로젝트 태그(일정·담당자·진척율) 고치기 — null 은 그 칸을 지운다 (2026-10-23) */
+  updateNodeProject: (nodeId: string | null, patch: { [K in keyof ProjectTags]?: ProjectTags[K] | null }) => void;
 
   // Links
   addNodeLink: (nodeId: string | null, url: string, label?: string) => void;
@@ -2293,6 +2297,21 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         const tags = n.tags ?? (n.tag ? [n.tag] : []);
         if (tags.includes(clean)) return n;
         return { ...n, tag: undefined, tags: [...tags, clean] };
+      }),
+    }));
+  },
+
+  updateNodeProject: (nodeId, patch) => {
+    if (!nodeId) return;
+    set((state) => ({
+      map: mutateNode(state.map, nodeId, (n) => {
+        const merged: Record<string, unknown> = { ...(n.project ?? {}) };
+        for (const [k, v] of Object.entries(patch)) { if (v === null) delete merged[k]; else if (v !== undefined) merged[k] = v; }
+        const project = cleanProject(merged as ProjectTags);
+        if (JSON.stringify(project ?? null) === JSON.stringify(n.project ?? null)) return n;
+        const next = { ...n, project };
+        if (!project) delete (next as { project?: ProjectTags }).project;
+        return next;
       }),
     }));
   },

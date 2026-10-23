@@ -10,6 +10,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import { layoutTagRows, TAG_INSET, TAG_INSET_LEFT_SPINE, TAG_ROW_GAP, TAG_ROW_H, TAG_TOP_GAP } from '@/layout/tagOverhang';
 import { resolveTagColor } from './resolveTagColor';
+import type { ProjectChip, ProjectChipKind } from './projectTags';
 import { measureTextApprox } from './mdTable';
 import { useTr } from '@/i18n';
 
@@ -21,9 +22,16 @@ interface Props {
   onRemove?: (tag: string) => void;
   // 끌어서 순서 바꾸기 — tag 를 toIndex(tagList 기준) 자리로 (documentStore.moveNodeTag)
   onMove?: (tag: string, toIndex: number) => void;
+  // 프로젝트 태그(📅 @ %) — 맨 앞에 고정, 끌 수 없다. ✕ = 체크 끄기, 누르기 = 입력란 열기
+  fixed?: ProjectChip[];
+  onFixedRemove?: (kind: ProjectChipKind) => void;
+  onFixedClick?: (kind: ProjectChipKind) => void;
 }
 
-export function NodeTagChips({ n, tagList, t, onRemove, onMove }: Props) {
+/** 프로젝트 태그 색 — 일정 파랑 · 담당자 초록 · 진척율 호박색 (팔레트의 같은 계열 태그 이름을 빌린다) */
+const KIND_COLOR_KEY: Record<ProjectChipKind, string> = { date: 'V1', assignee: 'Q1', progress: 'MVP' };
+
+export function NodeTagChips({ n, tagList, t, onRemove, onMove, fixed = [], onFixedRemove, onFixedClick }: Props) {
   const tr = useTr();
   const tagH = TAG_ROW_H;
   const arrowW = 6;
@@ -46,8 +54,11 @@ export function NodeTagChips({ n, tagList, t, onRemove, onMove }: Props) {
 
   const left = n.x - n.w / 2;
   const top = n.y + n.h / 2 + TAG_TOP_GAP;
-  const slots = layoutTagRows(tagList, n.w, connectorOnLeftSide ? TAG_INSET_LEFT_SPINE : TAG_INSET)
+  const nf = fixed.length;
+  const allSlots = layoutTagRows([...fixed.map((f) => f.label), ...tagList], n.w, connectorOnLeftSide ? TAG_INSET_LEFT_SPINE : TAG_INSET)
     .map((s) => ({ ...s, x0: left + s.x, y0: top + s.row * (tagH + TAG_ROW_GAP) }));
+  // 일반 태그 자리 (끌기·끼워 넣기는 일반 태그끼리만)
+  const slots = allSlots.slice(nf);
 
   // ── 끌기 ─────────────────────────────────────────────────────────
   const [drag, setDrag] = useState<{ from: number; to: number; dx: number; dy: number } | null>(null);
@@ -73,6 +84,41 @@ export function NodeTagChips({ n, tagList, t, onRemove, onMove }: Props) {
 
   return (
     <g data-node-tags={n.id}>
+      {fixed.map((f, i) => {
+        const s = allSlots[i];
+        const tc = resolveTagColor(KIND_COLOR_KEY[f.kind], t);
+        const labelW = Math.max(20, Math.ceil(measureTextApprox(f.label, 10)));
+        const x0 = s.x0, x1 = x0 + arrowW, x2 = x0 + s.w, yTop = s.y0, yBot = yTop + tagH, yMid = yTop + tagH / 2;
+        const pct = f.kind === 'progress' ? Math.max(0, Math.min(100, Number(f.label.slice(1)) || 0)) : 0;
+        const path = `M ${x0} ${yMid} L ${x1} ${yTop} L ${x2 - 3} ${yTop} Q ${x2} ${yTop} ${x2} ${yTop + 3} L ${x2} ${yBot - 3} Q ${x2} ${yBot} ${x2 - 3} ${yBot} L ${x1} ${yBot} Z`;
+        return (
+          <g key={'p-' + f.kind} data-project-tag={f.kind}>
+            <g style={{ cursor: onFixedClick ? 'pointer' : undefined }}
+               onPointerDown={(e) => e.stopPropagation()}
+               onDoubleClick={(e) => e.stopPropagation()}
+               onClick={(e) => { e.stopPropagation(); onFixedClick?.(f.kind); }}>
+              <title>{tr('editor.node.projectTagEdit')}</title>
+              <path d={path} fill={tc.bg} stroke={tc.border} strokeWidth="1" />
+              {f.kind === 'progress' && (
+                <rect x={x1 + 2} y={yBot - 3} width={Math.max(0, (x2 - x1 - 6) * pct / 100)} height={2} rx={1} fill={tc.text} opacity={0.55} pointerEvents="none" />
+              )}
+              <text x={x1 + padX} y={yMid + 3.4} fontSize="10" fontWeight="700" fill={tc.text} textAnchor="start"
+                    style={{ fontFamily: 'inherit', letterSpacing: 0.2, userSelect: 'none' }}>{f.label}</text>
+            </g>
+            <line x1={x1 + padX + labelW + 2} y1={yTop + 3} x2={x1 + padX + labelW + 2} y2={yBot - 3}
+                  stroke={tc.text} strokeOpacity="0.25" strokeWidth="0.8" />
+            <g transform={`translate(${x1 + padX + labelW + 8}, ${yMid})`} style={{ cursor: 'pointer' }}
+               onPointerDown={(e) => e.stopPropagation()}
+               onDoubleClick={(e) => e.stopPropagation()}
+               onClick={(e) => { e.stopPropagation(); onFixedRemove?.(f.kind); }}>
+              <title>{tr('editor.node.projectTagHide')}</title>
+              <circle r={7} fill="transparent" />
+              <line x1={-3} y1={-3} x2={3} y2={3} stroke={tc.text} strokeOpacity="0.65" strokeWidth="1.2" strokeLinecap="round" />
+              <line x1={3} y1={-3} x2={-3} y2={3} stroke={tc.text} strokeOpacity="0.65" strokeWidth="1.2" strokeLinecap="round" />
+            </g>
+          </g>
+        );
+      })}
       {tagList.map((tagName, i) => {
         const tc = resolveTagColor(tagName, t);
         // 글자 수 × 고정폭(6.2)은 한글 태그에서 폭이 모자라 라벨과 ✕가

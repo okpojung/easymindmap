@@ -10,6 +10,7 @@ import type {
   NodeAttachment,
   NodeImage,
   NodeInlineImage,
+  ProjectTags,
 } from '@/editor/__samples__/types';
 
 export interface LaidOutNode {
@@ -51,6 +52,7 @@ export interface LaidOutNode {
 
   tag?: string;
   tags?: string[];
+  project?: ProjectTags;
 
   note?: boolean;
   locked?: boolean;

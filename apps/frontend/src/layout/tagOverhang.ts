@@ -9,6 +9,8 @@
 
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { measureTextApprox } from '@/editor/node-renderer/mdTable';
+import { projectChips } from '@/editor/node-renderer/projectTags';
+import type { ProjectTags } from '@/editor/__samples__/types';
 
 export const TAG_ROW_H = 16; // chip height (NodeTagChips.tagH)
 export const TAG_TOP_GAP = 6; // node bottom → chips top (NodeTagChips baseY offset)
@@ -59,11 +61,16 @@ interface DecoratedNode {
   tags?: string[];
   tag?: string;
   locked?: boolean;
+  project?: ProjectTags;
 }
-const tagsOf = (node: DecoratedNode): string[] => (Array.isArray(node.tags) ? node.tags : node.tag ? [node.tag] : []);
+/** 태그 줄에 놓이는 글자 전부 — 프로젝트 태그(📅 @ %)가 앞, 일반 태그가 뒤 */
+const tagsOf = (node: DecoratedNode): string[] => [
+  ...projectChips(node.project).map((c) => c.label),
+  ...(Array.isArray(node.tags) ? node.tags : node.tag ? [node.tag] : []),
+];
 
 export function hasTags(node: DecoratedNode): boolean {
-  return (Array.isArray(node.tags) && node.tags.length > 0) || !!node.tag;
+  return (Array.isArray(node.tags) && node.tags.length > 0) || !!node.tag || projectChips(node.project).length > 0;
 }
 
 // Extra vertical space a node needs BELOW its box to fit its tag chips (여러 줄이면 줄 수만큼).

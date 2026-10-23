@@ -40,6 +40,7 @@ import {
   INLINE_ATTACHMENT_LIMIT,
 } from './mapMeta';
 import { currentLang, tr } from '@/i18n';
+import { projectChips } from '@/editor/node-renderer/projectTags';
 
 // 에디터가 계산한 노드의 최종 배치 좌표 — 뷰어는 이 좌표를 그대로 사용해
 // 에디터 화면과 100% 동일한 레이아웃을 재현한다 (자체 레이아웃은 좌표가
@@ -124,12 +125,10 @@ function toExportNode(
   resolveSide?: SideResolver,
   depth = 0,
 ): ExportNode {
-  const tags =
-    Array.isArray(node.tags) && node.tags.length > 0
-      ? node.tags
-      : node.tag
-        ? [node.tag]
-        : undefined;
+  // 프로젝트 태그(📅 @ %)를 일반 태그 앞에 — 뷰어는 같은 태그 줄에 그린다 (2026-10-23)
+  const plain = Array.isArray(node.tags) && node.tags.length > 0 ? node.tags : node.tag ? [node.tag] : [];
+  const allTags = [...projectChips(node.project).map((c) => c.label), ...plain];
+  const tags = allTags.length ? allTags : undefined;
 
   // 실효 도형을 굽는다 — 뷰어는 맵 설정(레벨별 기본 도형)을 모른다.
   // 에디터 NodeRenderer 와 같은 우선순위: 노드별 → 레벨 기본 → 둥근.

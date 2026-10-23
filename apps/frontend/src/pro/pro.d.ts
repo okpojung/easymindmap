@@ -99,6 +99,9 @@ declare module '@pro' {
   export function ProContactsAdminPanel(p: { t: ThemeTokens }): JSX.Element | null;
   /** 'Guest로 체험하기 맵' editor (admin tab), authenticated with the existing admin token. */
   export function ProTrialAdminPanel(p: { t: ThemeTokens; token: string; onUnauthorized: () => void }): JSX.Element | null;
+  /** 담당자 후보 — EasyMindMap 주소록(개인+팀), Redmine 연계 맵이면 구성원도 (2026-10-23) */
+  export interface AssigneeCandidate { name: string; email?: string; source: 'contacts' | 'redmine'; redmineUserId?: number }
+  export function searchAssignees(mapId?: string | null): Promise<AssigneeCandidate[]>;
   /** Whether the private module supplies the guest start-map admin tab. */
   export const GUEST_SEED_ADMIN: boolean;
   /** Admin-saved guest start map (public read). null = keep the built-in sample. */

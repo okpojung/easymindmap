@@ -65,6 +65,7 @@ import { openAttachment } from '@/utils/openAttachment';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 import { useImageSrcResolver } from '@/utils/imageSrc';
 import { useTr } from '@/i18n';
+import { projectChips } from './projectTags';
 
 type RenderableNode = LaidOutNode & {
   textAlign?: TextAlign;
@@ -281,6 +282,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
   const moveNodeTag = useDocumentStore((state) => state.moveNodeTag);
+  const updateNodeProject = useDocumentStore((state) => state.updateNodeProject);
   const updateNodesSize = useDocumentStore((state) => state.updateNodesSize);
   // 다중 선택 중이면 크기 핸들 하나가 **선택된 노드 전부**를 같은 크기로 만든다
   // (2026-09-08 요청: 드래그로 여럿을 고른 뒤 모서리를 끌면 하나만 바뀌었다)
@@ -390,7 +392,9 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   const allTags = Array.isArray(n.tags) ? n.tags : n.tag ? [n.tag] : [];
   // Only show tags that aren't filtered out in the search panel.
   const tagList = allTags.filter((tg) => !hiddenTags.includes(tg));
-  const hasTags = tagList.length > 0;
+  // 프로젝트 태그(📅 @ %) — 일반 태그 앞에 고정 (2026-10-23)
+  const projChips = projectChips(n.project);
+  const hasTags = tagList.length > 0 || projChips.length > 0;
 
   // Content indicators (note / link / file / media) — see nodeContent.ts
   const contentIcons = nodeContentIndicators(n);
@@ -1572,6 +1576,15 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           onRemove={(tag) => removeNodeTag(n.id, tag)}
           // 숨긴 태그가 있어도 맞는 자리로 — 보이는 목록의 위치를 전체 목록의 위치로 바꾼다
           onMove={readOnly ? undefined : (tag, to) => moveNodeTag(n.id, tag, allTags.indexOf(tagList[to]))}
+          fixed={projChips}
+          onFixedRemove={readOnly ? undefined : (kind) => updateNodeProject(n.id,
+            kind === 'date' ? { dateOn: false } : kind === 'assignee' ? { assigneeOn: false } : { progressOn: false })}
+          onFixedClick={(kind) => {
+            onSelect(n.id);
+            useEditorUiStore.getState().setInspectorTab('note');
+            // 노트·태그 탭의 해당 입력란으로 (ProjectTagsSection 이 듣는다)
+            setTimeout(() => window.dispatchEvent(new CustomEvent('emm:project-focus', { detail: kind })), 50);
+          }}
         />
       )}
 

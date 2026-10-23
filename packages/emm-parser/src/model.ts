@@ -161,6 +161,21 @@ export interface NodeAttachment {
   size?: number;
 }
 
+/**
+ * 프로젝트 태그 — 일정·담당자·진척율 (2026-10-23). 노드 아래 태그 줄 맨 앞에 📅 @ % 로 보인다.
+ * `*On` 은 노드에 태그로 보일지(체크), 값은 체크를 꺼도 남는다. Redmine 연계 맵에서는
+ * 일감의 시작일·마감일·담당자·진척도와 맞춰진다.
+ */
+export interface ProjectTags {
+  dateOn?: boolean;
+  start?: string; // YYYY-MM-DD
+  end?: string;   // YYYY-MM-DD
+  assigneeOn?: boolean;
+  assignee?: { name: string; email?: string; redmineUserId?: number };
+  progressOn?: boolean;
+  progress?: number; // 0~100 정수
+}
+
 export interface MindNode {
   id: string;
   text: string;
@@ -178,6 +193,8 @@ export interface MindNode {
 
   tag?: string;
   tags?: string[];
+  /** 프로젝트 태그 — 일정·담당자·진척율 (ProjectTags) */
+  project?: ProjectTags;
 
   note?: boolean;
   locked?: boolean;
@@ -252,6 +269,8 @@ export interface SampleRoot {
   iconSide?: 'left' | 'right';
   tag?: string;
   tags?: string[];
+  /** 프로젝트 태그 — 일정·담당자·진척율 (ProjectTags) */
+  project?: ProjectTags;
   note?: boolean;
   style?: NodeStyle;
   links?: NodeLink[];

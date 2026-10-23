@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from 'react';
 import Home from './pages/Home';
 import FunctionPage from './pages/Function';
 import Ai from './pages/Ai';
 import Mmd from './pages/Mmd';
 import Library from './pages/Library';
+// 게시판은 Markdown 렌더러를 함께 싣기 때문에 첫 화면 번들과 나눠 필요할 때만 받는다
+const Board = lazy(() => import('./pages/Board'));
+import Contact from './pages/Contact';
+import './community.css';
 
 import { installBrandIdentity } from './redesign/brand';
 import { GITHUB_URL, MMD_GITHUB_URL } from './config';
@@ -62,12 +66,14 @@ export function Link(
   );
 }
 
-const PAGES: Record<string, () => JSX.Element> = {
+const PAGES: Record<string, ComponentType> = {
   '/function': FunctionPage,
   '/ai': Ai,
   '/mmd': Mmd,
   '/emm': Mmd, // 옛 주소 — 2026-09-17 용어 통일(mmd) 전 링크 호환
   '/library': Library,
+  '/board': Board,
+  '/contact': Contact,
 };
 
 export default function App() {
@@ -80,13 +86,14 @@ export default function App() {
   return (
     <>
       <SiteHeader path={path} />
-      <main><Page /></main>
+      <main><Suspense fallback={<p className="wrap" style={{ padding: '48px 20px' }}>불러오는 중…</p>}><Page /></Suspense></main>
       <footer className="foot">
         <div className="wrap">
           <span>© EasyMindMap</span>
           <span className="spacer" />
           <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub · EasyMindMap 오픈소스 코어 ↗</a>
-          <a href={MMD_GITHUB_URL} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 16 }}>Mindmap Markdown 표준 ↗</a>
+          <a href={MMD_GITHUB_URL} target="_blank" rel="noopener noreferrer">Mindmap Markdown 표준 ↗</a>
+          <Link to="/contact" className="foot-contact">✉ 문의하기</Link>
 
         </div>
       </footer>

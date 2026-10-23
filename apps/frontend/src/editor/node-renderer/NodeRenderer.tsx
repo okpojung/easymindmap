@@ -1300,7 +1300,11 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           (노트 뷰어 창의 모서리 크기 조절과 같은 조작감) */}
       {!basic && selected && !editing && (
         <g
-          transform={`translate(${n.x + n.w / 2 - 3}, ${n.y + n.h / 2 - 3})`}
+          // 도형 없음은 박스가 글자에 딱 맞아 작다("내용" = 24×24). 핸들을 박스 안 모서리에
+          // 두면 노드 대부분을 덮어 더블클릭이 편집 대신 '자동 크기'로 간다 — 밖으로 뻐다
+          transform={noShape
+            ? `translate(${n.x + n.w / 2 + 12}, ${n.y + n.h / 2 + 10})`
+            : `translate(${n.x + n.w / 2 - 3}, ${n.y + n.h / 2 - 3})`}
           style={{ cursor: 'nwse-resize' }}
           onPointerDown={(e) => {
             e.stopPropagation();

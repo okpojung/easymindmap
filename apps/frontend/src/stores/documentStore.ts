@@ -305,6 +305,8 @@ interface DocumentState {
   // Tags
   addNodeTag: (nodeId: string | null, tag: string) => void;
   removeNodeTag: (nodeId: string | null, tag: string) => void;
+  /** 태그 순서 바꾸기 — tag 를 toIndex 자리로 (2026-10-23) */
+  moveNodeTag: (nodeId: string | null, tag: string, toIndex: number) => void;
 
   // Links
   addNodeLink: (nodeId: string | null, url: string, label?: string) => void;
@@ -1574,7 +1576,9 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   addConnector: (fromId, toId) => {
     if (!fromId || !toId || fromId === toId) return null;
     const cur = get().map;
-    if (!findNodeInMap(cur, fromId) || !findNodeInMap(cur, toId)) return null;
+    // 끝은 노드 또는 다른 연결선(그 선의 라벨·한가운데에 닿는다, 2026-10-23)
+    const isLine = (id: string) => (cur.connectors ?? []).some((c) => c.id === id);
+    if ((!findNodeInMap(cur, fromId) && !isLine(fromId)) || (!findNodeInMap(cur, toId) && !isLine(toId))) return null;
     const existing = (cur.connectors ?? []).find((c) => c.from === fromId && c.to === toId);
     if (existing) return existing.id;
     const id = createSubId('conn');
@@ -2289,6 +2293,22 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         const tags = n.tags ?? (n.tag ? [n.tag] : []);
         if (tags.includes(clean)) return n;
         return { ...n, tag: undefined, tags: [...tags, clean] };
+      }),
+    }));
+  },
+
+  moveNodeTag: (nodeId, tag, toIndex) => {
+    if (!nodeId) return;
+    set((state) => ({
+      map: mutateNode(state.map, nodeId, (n) => {
+        const tags = [...(n.tags ?? (n.tag ? [n.tag] : []))];
+        const from = tags.indexOf(tag);
+        if (from < 0) return n;
+        const to = Math.max(0, Math.min(tags.length - 1, Math.round(toIndex)));
+        if (from === to) return n;
+        tags.splice(from, 1);
+        tags.splice(to, 0, tag);
+        return { ...n, tag: undefined, tags };
       }),
     }));
   },

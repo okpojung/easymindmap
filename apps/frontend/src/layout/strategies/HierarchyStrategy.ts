@@ -72,7 +72,7 @@ function placeSubtree(
 
   // Reserve room below for this node's tag chips so the next sibling in the
   // column doesn't get covered by them.
-  let bottom = centerY + size.h / 2 + nodeOverhang(node);
+  let bottom = centerY + size.h / 2 + nodeOverhang(node, size.w);
 
   const childLeft = side === 'left' ? x - size.w / 2 - H_GAP : x + size.w / 2 + H_GAP;
   const children = node.children ?? [];

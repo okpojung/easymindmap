@@ -846,7 +846,7 @@ const VIEWER_JS = String.raw`
       h += Math.round(node.image.h * Math.min(1, mInner / Math.max(1, node.image.w))) + 6;
     }
     if ((node.style || {}).shapeType === 'cylinder') h += 18; // 원통 뚜껑 (에디터와 같은 값)
-    var tagsH = (node.tags && node.tags.length) ? TAG_H + 7 : 0;
+    var tagsH = (node.tags && node.tags.length) ? tagRows(node.tags, w) * (TAG_H + 4) + 3 : 0;
 
     node._fs = fontSize; node._lines = wrapped.lines; node._lineH = lineH;
     node._manualStarts = wrapped.starts;
@@ -1214,7 +1214,7 @@ const VIEWER_JS = String.raw`
       n._manualStarts = n.pos.ms;
       n._checks = n.pos.ck;
       n._fs = n.pos.fs; n._ff = n.pos.ff;
-      var tagsH = (n.tags && n.tags.length) ? TAG_H + 7 : 0;
+      var tagsH = (n.tags && n.tags.length) ? tagRows(n.tags, n._w) * (TAG_H + 4) + 3 : 0;
       n._boxH = n._h + tagsH;
       var kids = n.children || [];
       for (var i = 0; i < kids.length; i++) {
@@ -1774,6 +1774,17 @@ const VIEWER_JS = String.raw`
       }
   }
 
+  // 태그 줄 수 (아래 그리기와 같은 규칙) — 레이아웃이 태그 아래 자리를 줄 수만큼 비운다
+  function tagRows(tags, w) {
+    if (!tags || !tags.length) return 0;
+    var x = 6, rows = 1;
+    for (var i = 0; i < tags.length; i++) {
+      var bw = measureText(tags[i], 9.5) + 14;
+      if (x > 6 && x + bw > w - 4) { rows++; x = 6; }
+      x += bw + 4;
+    }
+    return rows;
+  }
   function drawNode(node, depth, parentColor) {
     // 액센트(접기 칩·태그·표 격자) = 브랜치 테두리 색 (에디터와 동일 계열)
     var color = depth === 0 ? SKIN.fam.root.border
@@ -2289,17 +2300,20 @@ const VIEWER_JS = String.raw`
     }
 
     if (node.tags && node.tags.length) {
-      var bx2 = x0 + 6;
+      // 노드 오른쪽 경계를 넘으면 다음 줄로 (에디터 layoutTagRows 와 같은 규칙, 2026-10-23)
+      var bx2 = x0 + 6, tRow = 0;
       for (var ti = 0; ti < node.tags.length; ti++) {
         var label = node.tags[ti];
         var bw2 = measureText(label, 9.5) + 14;
+        if (bx2 > x0 + 6 && bx2 + bw2 > x0 + node._w - 4) { tRow++; bx2 = x0 + 6; }
+        var tY = node._cy + node._h / 2 + 4 + tRow * (TAG_H + 4);
         // 배경을 불투명하게(흰 바탕 + 파스텔 칩) — 반투명이면 뒤로 지나가는
         // 연결선이 비쳐 태그와 겹쳐 보인다.
-        el('rect', { x: bx2, y: node._cy + node._h / 2 + 4, width: bw2, height: TAG_H,
+        el('rect', { x: bx2, y: tY, width: bw2, height: TAG_H,
           rx: 3, fill: SKIN.tagBase }, g);
-        el('rect', { x: bx2, y: node._cy + node._h / 2 + 4, width: bw2, height: TAG_H,
+        el('rect', { x: bx2, y: tY, width: bw2, height: TAG_H,
           rx: 3, fill: color + '1A', stroke: color + '55', 'stroke-width': 0.8 }, g);
-        var bt = el('text', { x: bx2 + 7, y: node._cy + node._h / 2 + 4 + TAG_H - 4,
+        var bt = el('text', { x: bx2 + 7, y: tY + TAG_H - 4,
           'font-size': 9.5, 'font-weight': 600, fill: color }, g);
         bt.textContent = label;
         bx2 += bw2 + 4;

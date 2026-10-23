@@ -405,6 +405,13 @@ export function Canvas({
   const removeConnector = useDocumentStore((s) => s.removeConnector);
   const setInspectorTab = useEditorUiStore((s) => s.setInspectorTab);
   const selectConnector = (id: string) => {
+    // 연결 모드에서 다른 연결선(라벨·선)을 누르면 — 그 선에 닿는 새 연결선을 만든다
+    // (2026-10-23 사용자 보고: 노드 → [연결선] → 라벨을 누르면 그 선만 선택되고 새 선이 안 생겼다)
+    if (connectMode && !isBasic() && !isReadOnly()) {
+      const cid = addConnector(connectMode.fromId, id);
+      setConnectMode(null);
+      if (cid) id = cid;
+    }
     if (multiSelectedIds.length) setMultiSelectedIds([]);
     onSelect(null);
     setSelectedConnectorId(id);

@@ -125,7 +125,7 @@ function place(
   if (m.children.length === 0) return;
 
   // Reserve room below the box for tag chips / lock badge before the row below.
-  const childTop = y + m.h / 2 + ROW_GAP + nodeOverhang(m.node);
+  const childTop = y + m.h / 2 + ROW_GAP + nodeOverhang(m.node, m.w);
   let cursorLeft = left + CHILD_INDENT; // children indented right of the node's left edge
 
   for (const child of m.children) {
@@ -186,7 +186,7 @@ export function layoutProcessTreeRight(
   out[0].side = 'down';
   out[0].layoutType = PROCESS_TAG;
 
-  const childTop = rootY + rootH / 2 + ROOT_TO_STAGE_ROW_GAP + nodeOverhang(out[0]);
+  const childTop = rootY + rootH / 2 + ROOT_TO_STAGE_ROW_GAP + nodeOverhang(out[0], out[0].w);
   let cursorLeft = blockLeft + CHILD_INDENT;
 
   for (const m of measured) {

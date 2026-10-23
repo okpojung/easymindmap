@@ -63,7 +63,7 @@ function measureNode(node: MindNode, depth: number): MeasuredNode {
     fontWeight: size.fontWeight,
     lineHeight: size.lineHeight,
     blockW: Math.max(size.w, childrenW),
-    blockH: size.h + nodeOverhang(node) + childrenH,
+    blockH: size.h + nodeOverhang(node, size.w) + childrenH,
     children,
   };
 }
@@ -113,7 +113,7 @@ function placeSubtree(
   role: 'axis' | 'stack' = 'axis',
 ) {
   const sign = dir === 'down' ? 1 : -1;
-  const over = nodeOverhang(m.node);
+  const over = nodeOverhang(m.node, m.w);
   // 노드 자신은 블록의 축쪽 끝에 놓인다. 태그 칩은 항상 노드 "아래"에
   // 그려지므로, 위 방향(up)일 때는 칩 공간을 노드 아래(축쪽)에 예약해
   // 아래 요소와 겹치지 않게 한다.
@@ -211,7 +211,7 @@ export function layoutTimelineCenter(
     // **중심**이 축(CY)에 오도록 노드 높이 절반만큼 밀어 준다.
     //   dir 'down' → nodeCenterY = edgeY + h/2
     //   dir 'up'   → nodeCenterY = edgeY - over - h/2   (over = 태그 칩 자리)
-    const over = nodeOverhang(m.node);
+    const over = nodeOverhang(m.node, m.w);
     const edgeY = dir === 'down' ? CY - m.h / 2 : CY + m.h / 2 + over;
     placeSubtree(m, x, edgeY, dir, depth, parentId, out, anchor?.colorKey);
     x += m.blockW + STEP_GAP;

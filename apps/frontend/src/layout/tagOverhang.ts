@@ -8,10 +8,47 @@
 // Keep these constants in sync with NodeTagChips.tsx and NodeRenderer.tsx.
 
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
+import { measureTextApprox } from '@/editor/node-renderer/mdTable';
 
-const TAG_ROW_H = 16; // chip height (NodeTagChips.tagH)
-const TAG_TOP_GAP = 6; // node bottom → chips top (NodeTagChips baseY offset)
+export const TAG_ROW_H = 16; // chip height (NodeTagChips.tagH)
+export const TAG_TOP_GAP = 6; // node bottom → chips top (NodeTagChips baseY offset)
 const TAG_BOTTOM_PAD = 6; // breathing room below the chips
+export const TAG_ROW_GAP = 4; // 줄과 줄 사이
+export const TAG_GAP = 4; // 칩과 칩 사이
+const TAG_ARROW_W = 6, TAG_PAD_X = 8, TAG_CLOSE_W = 14;
+/** 레이아웃이 노드 폭을 모를 때 가정하는 폭 (가장 좁은 노드 쪽 — 자리를 넉넉히 잡는다) */
+const FALLBACK_W = 150;
+/** 왼쪽 들여쓰기 — 자식 선이 노드 왼쪽으로 내려가는 배치는 그 선을 피해 28, 그 밖에는 8 */
+export const TAG_INSET_LEFT_SPINE = 28;
+export const TAG_INSET = 8;
+
+/** 태그 칩 하나의 폭 (NodeTagChips 와 같은 식) */
+export function tagChipWidth(tag: string): number {
+  const labelW = Math.max(20, Math.ceil(measureTextApprox(tag, 10)));
+  return TAG_ARROW_W + TAG_PAD_X + labelW + 4 + TAG_CLOSE_W;
+}
+
+/**
+ * 태그 칩 자리 (2026-10-23 사용자 요청: 태그가 노드 오른쪽 경계를 넘어 다른 노드에 가렸다).
+ * 노드 왼쪽(들여쓰기)부터 순서대로 놓고, 노드 오른쪽 경계를 넘으면 다음 줄로 내린다.
+ * 노드보다 넓은 태그 하나는 그 줄에 혼자 놓는다. 좌표는 노드 왼쪽 위(박스 아래 변) 기준 상대값.
+ */
+export function layoutTagRows(tags: string[], nodeW: number, inset = TAG_INSET): { x: number; row: number; w: number }[] {
+  const right = Math.max(inset + 1, nodeW - 4);
+  const out: { x: number; row: number; w: number }[] = [];
+  let x = inset, row = 0;
+  for (const tag of tags) {
+    const w = tagChipWidth(tag);
+    if (x > inset && x + w > right) { row++; x = inset; }
+    out.push({ x, row, w });
+    x += w + TAG_GAP;
+  }
+  return out;
+}
+export function tagRowCount(tags: string[], nodeW: number, inset = TAG_INSET): number {
+  const rows = layoutTagRows(tags, nodeW, inset);
+  return rows.length ? rows[rows.length - 1].row + 1 : 0;
+}
 
 // NodeRenderer lock badge: centred at node.bottom + 14 with half-height 9, so
 // it reaches ~23px below the box. Plus the same breathing room as tags.
@@ -23,14 +60,18 @@ interface DecoratedNode {
   tag?: string;
   locked?: boolean;
 }
+const tagsOf = (node: DecoratedNode): string[] => (Array.isArray(node.tags) ? node.tags : node.tag ? [node.tag] : []);
 
 export function hasTags(node: DecoratedNode): boolean {
   return (Array.isArray(node.tags) && node.tags.length > 0) || !!node.tag;
 }
 
-// Extra vertical space a node needs BELOW its box to fit its tag chips.
-export function tagOverhang(node: DecoratedNode): number {
-  return hasTags(node) ? TAG_TOP_GAP + TAG_ROW_H + TAG_BOTTOM_PAD : 0;
+// Extra vertical space a node needs BELOW its box to fit its tag chips (여러 줄이면 줄 수만큼).
+// 폭을 모르면 좁은 노드로 가정하고 왼쪽 들여쓰기도 넓게 잡는다 — 자리가 남을 수는 있어도 가리지 않는다.
+export function tagOverhang(node: DecoratedNode, nodeW?: number): number {
+  if (!hasTags(node)) return 0;
+  const rows = Math.max(1, tagRowCount(tagsOf(node), nodeW ?? FALLBACK_W, TAG_INSET_LEFT_SPINE));
+  return TAG_TOP_GAP + rows * TAG_ROW_H + (rows - 1) * TAG_ROW_GAP + TAG_BOTTOM_PAD;
 }
 
 // Extra vertical space a node needs BELOW its box to fit the collaborator
@@ -47,6 +88,6 @@ export function lockOverhang(node: DecoratedNode): number {
 // Total below-box reserve a node needs for whichever decorations it has
 // (tag chips and/or lock badge). Layouts should space the next node below by
 // this amount so nothing gets covered.
-export function nodeOverhang(node: DecoratedNode): number {
-  return Math.max(tagOverhang(node), lockOverhang(node));
+export function nodeOverhang(node: DecoratedNode, nodeW?: number): number {
+  return Math.max(tagOverhang(node, nodeW), lockOverhang(node));
 }

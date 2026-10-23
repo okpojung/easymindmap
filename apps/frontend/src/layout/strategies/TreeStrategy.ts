@@ -93,7 +93,7 @@ function arrangeTreeRightNode(
   pushTreeRightNode(out, node, x, y, depth, parentId, parentColorKey);
 
   // Reserve room for tag chips below the node so the next outline row clears them.
-  yRef.value += size.h + TREE_RIGHT_ROW_GAP + nodeOverhang(node);
+  yRef.value += size.h + TREE_RIGHT_ROW_GAP + nodeOverhang(node, size.w);
 
   for (const child of node.children ?? []) {
     arrangeTreeRightNode(
@@ -212,7 +212,7 @@ function arrangeDownNode(
     (measured.children.length - 1) * TREE_DOWN_CHILD_H_GAP;
 
   let childLeftX = x - childrenTotalW / 2;
-  const childY = y + measured.h / 2 + TREE_DOWN_CHILD_GAP + nodeOverhang(measured.node);
+  const childY = y + measured.h / 2 + TREE_DOWN_CHILD_GAP + nodeOverhang(measured.node, measured.w);
 
   for (const child of measured.children) {
     const childCenterX = childLeftX + child.subtreeW / 2;
@@ -255,7 +255,7 @@ export function layoutTreeDown(
         (measuredBranches.length - 1) * TREE_DOWN_BRANCH_H_GAP;
 
   let branchLeftX = CX - totalW / 2;
-  const branchY = rootY + out[0].h / 2 + TREE_DOWN_ROOT_TO_BRANCH_GAP + nodeOverhang(out[0]);
+  const branchY = rootY + out[0].h / 2 + TREE_DOWN_ROOT_TO_BRANCH_GAP + nodeOverhang(out[0], out[0].w);
 
   for (const branch of measuredBranches) {
     const branchCenterX = branchLeftX + branch.subtreeW / 2;

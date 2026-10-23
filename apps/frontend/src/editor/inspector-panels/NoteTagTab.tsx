@@ -77,6 +77,10 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   const map = useDocumentStore((s) => s.map);
   const addNodeTag = useDocumentStore((s) => s.addNodeTag);
   const removeNodeTag = useDocumentStore((s) => s.removeNodeTag);
+  // 태그 끌어서 순서 바꾸기 (2026-10-23)
+  const moveNodeTag = useDocumentStore((s) => s.moveNodeTag);
+  const [dragTag, setDragTag] = useState<string | null>(null);
+  const [overTag, setOverTag] = useState<string | null>(null);
   const addNoteBlock = useDocumentStore((s) => s.addNoteBlock);
   const updateNoteBlock = useDocumentStore((s) => s.updateNoteBlock);
   // 표 블록은 노드 내용의 표와 같은 흐름 (2026-09-19 사용자 요청) —
@@ -105,10 +109,21 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
     <div data-mm-touch="" style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
       <InspectorSection t={t} title={tr('inspector.note.tags')}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-          {tags.map((tagName) => {
+          {tags.map((tagName, idx) => {
             const tc = resolveTagColor(tagName, t);
             return (
-              <span key={tagName} style={{
+              <span key={tagName}
+                draggable={tags.length > 1}
+                title={tags.length > 1 ? tr('editor.node.dragTag') : undefined}
+                onDragStart={(e) => { setDragTag(tagName); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', tagName); }}
+                onDragOver={(e) => { if (dragTag && dragTag !== tagName) { e.preventDefault(); setOverTag(tagName); } }}
+                onDragLeave={() => setOverTag((v) => (v === tagName ? null : v))}
+                onDrop={(e) => { e.preventDefault(); if (dragTag && selectedId && dragTag !== tagName) moveNodeTag(selectedId, dragTag, idx); setDragTag(null); setOverTag(null); }}
+                onDragEnd={() => { setDragTag(null); setOverTag(null); }}
+                style={{
+                cursor: tags.length > 1 ? 'grab' : undefined,
+                opacity: dragTag === tagName ? 0.5 : 1,
+                boxShadow: overTag === tagName ? `inset 3px 0 0 ${t.primary}` : undefined,
                 fontSize: 11, fontWeight: 600,
                 padding: '3px 7px', borderRadius: 3,
                 background: tc.bg, color: tc.text,

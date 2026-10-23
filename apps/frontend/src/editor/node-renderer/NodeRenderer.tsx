@@ -280,6 +280,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   const colors = resolveNodeColors(n, t);
   const updateNodeText = useDocumentStore((state) => state.updateNodeText);
   const removeNodeTag = useDocumentStore((state) => state.removeNodeTag);
+  const moveNodeTag = useDocumentStore((state) => state.moveNodeTag);
   const updateNodesSize = useDocumentStore((state) => state.updateNodesSize);
   // 다중 선택 중이면 크기 핸들 하나가 **선택된 노드 전부**를 같은 크기로 만든다
   // (2026-09-08 요청: 드래그로 여럿을 고른 뒤 모서리를 끌면 하나만 바뀌었다)
@@ -1569,6 +1570,8 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           tagList={tagList}
           t={t}
           onRemove={(tag) => removeNodeTag(n.id, tag)}
+          // 숨긴 태그가 있어도 맞는 자리로 — 보이는 목록의 위치를 전체 목록의 위치로 바꾼다
+          onMove={readOnly ? undefined : (tag, to) => moveNodeTag(n.id, tag, allTags.indexOf(tagList[to]))}
         />
       )}
 

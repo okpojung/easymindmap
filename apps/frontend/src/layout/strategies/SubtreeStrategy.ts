@@ -662,7 +662,7 @@ function relayoutSubtree(
     case 'process-tree-right':
       layoutProcessChildren(
         children, anchor.x, anchor.y, anchor.w, anchor.h, anchor.depth,
-        node.id, out, node.colorKey, nodeOverhang(node),
+        node.id, out, node.colorKey, nodeOverhang(node, anchor.w),
       );
       break;
 
@@ -827,7 +827,7 @@ function measureCentered(node: MindNode, depth: number): MeasuredCentered {
   const childrenH =
     children.length === 0
       ? 0
-      : children.reduce((sum, child) => sum + child.subtreeH + nodeOverhang(child.node), 0) +
+      : children.reduce((sum, child) => sum + child.subtreeH + nodeOverhang(child.node, child.w), 0) +
         (children.length - 1) * RADIAL_V_GAP;
 
   return {
@@ -876,7 +876,7 @@ function placeCentered(
   if (measured.children.length === 0) return;
 
   const childrenH =
-    measured.children.reduce((sum, child) => sum + child.subtreeH + nodeOverhang(child.node), 0) +
+    measured.children.reduce((sum, child) => sum + child.subtreeH + nodeOverhang(child.node, child.w), 0) +
     (measured.children.length - 1) * RADIAL_V_GAP;
 
   let cursorY = y - childrenH / 2;
@@ -901,7 +901,7 @@ function placeCentered(
       measured.node.colorKey,
     );
 
-    cursorY += child.subtreeH + nodeOverhang(child.node) + RADIAL_V_GAP;
+    cursorY += child.subtreeH + nodeOverhang(child.node, child.w) + RADIAL_V_GAP;
   }
 }
 
@@ -922,7 +922,7 @@ function layoutCenteredChildren(
   const totalH =
     measured.length === 0
       ? 0
-      : measured.reduce((sum, item) => sum + item.subtreeH + nodeOverhang(item.node), 0) +
+      : measured.reduce((sum, item) => sum + item.subtreeH + nodeOverhang(item.node, item.w), 0) +
         (measured.length - 1) * RADIAL_BRANCH_V_GAP;
 
   let cursorY = anchorY - totalH / 2;
@@ -937,7 +937,7 @@ function layoutCenteredChildren(
 
     placeCentered(item, x, y, anchorDepth + 1, parentId, side, tag, out, parentColorKey);
 
-    cursorY += item.subtreeH + nodeOverhang(item.node) + RADIAL_BRANCH_V_GAP;
+    cursorY += item.subtreeH + nodeOverhang(item.node, item.w) + RADIAL_BRANCH_V_GAP;
   }
 }
 
@@ -955,7 +955,7 @@ function layoutSubtreeOutline(
   out: LaidOutNode[],
 ): void {
   const baseLeft = anchor.x - anchor.w / 2;
-  const yRef = { value: anchor.y + anchor.h / 2 + OUTLINE_TOP_GAP + nodeOverhang(node) };
+  const yRef = { value: anchor.y + anchor.h / 2 + OUTLINE_TOP_GAP + nodeOverhang(node, anchor.w) };
 
   for (const child of children) {
     arrangeOutlineNode(child, baseLeft, 1, anchor.depth, node.id, yRef, out, node.colorKey);
@@ -1002,7 +1002,7 @@ function arrangeOutlineNode(
     parentColorKey: parentColorKey as any,
   });
 
-  yRef.value += size.h + OUTLINE_ROW_GAP + nodeOverhang(node);
+  yRef.value += size.h + OUTLINE_ROW_GAP + nodeOverhang(node, size.w);
 
   for (const child of node.children ?? []) {
     arrangeOutlineNode(
@@ -1092,7 +1092,7 @@ function placeDown(
     (measured.children.length - 1) * DOWN_H_GAP;
 
   let cursorX = x - childrenW / 2;
-  const childTop = y + measured.h / 2 + DOWN_V_GAP + nodeOverhang(measured.node);
+  const childTop = y + measured.h / 2 + DOWN_V_GAP + nodeOverhang(measured.node, measured.w);
 
   for (const child of measured.children) {
     placeDown(
@@ -1124,7 +1124,7 @@ function layoutSubtreeDown(
         (measured.length - 1) * DOWN_H_GAP;
 
   let cursorX = anchor.x - totalW / 2;
-  const childTop = anchor.y + anchor.h / 2 + DOWN_V_GAP + nodeOverhang(node);
+  const childTop = anchor.y + anchor.h / 2 + DOWN_V_GAP + nodeOverhang(node, anchor.w);
 
   for (const item of measured) {
     placeDown(

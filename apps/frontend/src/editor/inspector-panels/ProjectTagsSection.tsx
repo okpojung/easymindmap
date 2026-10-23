@@ -86,8 +86,8 @@ export function ProjectTagsSection({ t, nodeId, project }: { t: ThemeTokens; nod
     <InspectorSection t={t} title={tr('inspector.project.title')}>
       <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.5, marginBottom: 8 }}>{tr('inspector.project.help')}</div>
 
-      <div style={row}>
-        {head('date', '📅', tr('inspector.project.date'), p.dateOn)}
+      <div style={row}>{head('date', '📅', tr('inspector.project.date'), p.dateOn)}</div>
+      <div style={{ ...row, paddingLeft: 22, marginTop: -3 }}>
         <input ref={refs.date} type="date" data-testid="project-start" value={p.start ?? ''} onChange={(e) => setDate('start', e.target.value)} style={{ ...input, flex: 1 }} aria-label={tr('inspector.project.start')} />
         <span style={{ color: t.textMuted, fontSize: 11 }}>~</span>
         <input type="date" data-testid="project-end" value={p.end ?? ''} min={p.start} onChange={(e) => setDate('end', e.target.value)} style={{ ...input, flex: 1 }} aria-label={tr('inspector.project.end')} />

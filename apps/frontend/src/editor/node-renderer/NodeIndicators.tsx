@@ -25,6 +25,7 @@ import type { LaidOutNode } from '@/layout/types';
 import { useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
 import { useViewportStore } from '@/stores/viewportStore';
+import { hasTags, tagOverhang } from '@/layout/tagOverhang';
 
 type ActionKey = 'child' | 'child-left' | 'parent' | 'before' | 'after';
 
@@ -70,6 +71,7 @@ export function NodeIndicators({
   const f = coarse ? Math.min(4, Math.max(1, 100 / (zoom || 100))) : 1;
   const GAP = (isRoot && rootCollapsible ? 52 : 26) * f;
   const HIT_R = (coarse ? 20 : 14) * f;
+  const tagSpace = hasTags(node) ? tagOverhang(node, node.w) : 0;
 
   const handlers: Record<ActionKey, () => void> = {
     child: () => onAddChild(isRoot ? 'right' : undefined),
@@ -81,7 +83,8 @@ export function NodeIndicators({
 
   const pos: Record<Dir, { x: number; y: number }> = {
     up:    { x: node.x,                    y: node.y - node.h / 2 - GAP },
-    down:  { x: node.x,                    y: node.y + node.h / 2 + GAP },
+    // 태그 줄이 있으면 그 아래로 — +가 태그(✕)를 덮어 누르면 노드가 생기던 문제 (2026-10-23)
+    down:  { x: node.x,                    y: node.y + node.h / 2 + tagSpace + GAP },
     left:  { x: node.x - node.w / 2 - GAP, y: node.y },
     right: { x: node.x + node.w / 2 + GAP, y: node.y },
   };

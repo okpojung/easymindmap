@@ -79,8 +79,15 @@ export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Co
     const next = { text: c.label?.text ?? '', ...c.label, ...p };
     patch({ label: next });
   };
-  const from = findNodeInMap(map, c.from);
-  const to = findNodeInMap(map, c.to);
+  // 끝이 다른 연결선이면 그 선의 라벨 글(없으면 '연결선')을 이름으로 쓴다 (2026-10-23)
+  const endOf = (id: string) => {
+    const node = findNodeInMap(map, id);
+    if (node) return node;
+    const line = (map.connectors ?? []).find((v) => v.id === id);
+    return line ? { text: line.label?.text?.trim() ? `↳ ${line.label.text}` : tr('inspector.conn.lineEnd') } : null;
+  };
+  const from = endOf(c.from);
+  const to = endOf(c.to);
   const shape = connectorShapeOf(c);
   const width = connectorWidthOf(c);
   const dash = connectorDashOf(c);

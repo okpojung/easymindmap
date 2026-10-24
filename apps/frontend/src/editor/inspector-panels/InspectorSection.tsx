@@ -221,7 +221,8 @@ export function ColorSwatchInput({ t, value, onChange, contrastWith, onReset, la
     if (open) { setOpen(false); return; }
     const r = btnRef.current?.getBoundingClientRect();
     if (r) {
-      const estH = contrastWith ? 300 : 262;
+      // 창 높이 어림 — 최근 색 줄·대비 줄이 있으면 더 길다 (아래가 모자라면 위로 연다)
+      const estH = 250 + (readRecentColors().length ? 44 : 0) + (contrastWith ? 40 : 0);
       const below = r.bottom + 6;
       const top = below + estH > window.innerHeight - 8 ? Math.max(8, r.top - 6 - estH) : below;
       const left = Math.max(8, Math.min(r.left, window.innerWidth - POP_W - 8));
@@ -338,6 +339,7 @@ export function ColorSwatchInput({ t, value, onChange, contrastWith, onReset, la
           data-testid="color-popover"
           style={{
             position: 'fixed', left: pos.left, top: pos.top, zIndex: 1000, width: POP_W,
+            maxHeight: `calc(100vh - ${Math.round(pos.top) + 8}px)`, overflowY: 'auto',
             boxSizing: 'border-box', padding: 10, borderRadius: 10,
             background: t.surface, border: `1px solid ${t.border}`,
             boxShadow: '0 12px 32px rgba(40,30,10,0.22)',

@@ -221,7 +221,9 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: coarse ? 1 : 3, flexShrink: 0, marginLeft: 'auto' }}>
-      {stepBtn(<I.Minus size={12} />, () => onZoomChange(Math.max(2, zoom - 5)), tr('shell.status.zoomOut'))}
+      {/* 확대·축소는 돋보기 +/−, 100% 는 '1:1' — 노드 추가 + 와 그림이 겹치지 않게
+          (2026-10-24 UI/UX 검토 ⑤) */}
+      {stepBtn(<I.ZoomOut size={14} />, () => onZoomChange(Math.max(2, zoom - 5)), tr('shell.status.zoomOut'))}
       {editing ? (
         <input
           autoFocus
@@ -250,8 +252,10 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
             fontFamily: 'ui-monospace, monospace', minWidth: 44,
           }}>{Math.round(zoom)}%</button>
       )}
-      {stepBtn(<I.Plus size={12} />, () => onZoomChange(Math.min(400, zoom + 5)), tr('shell.status.zoomIn'))}
-      <span style={{ marginLeft: coarse ? 0 : 3, display: 'flex' }}>{stepBtn(<I.Zoom100 size={13} />, () => onZoomChange(100), tr('shell.status.zoom100'))}</span>
+      {stepBtn(<I.ZoomIn size={14} />, () => onZoomChange(Math.min(400, zoom + 5)), tr('shell.status.zoomIn'))}
+      <span style={{ marginLeft: coarse ? 0 : 3, display: 'flex' }}>{stepBtn(
+        <span data-testid="zoom-1to1" style={{ fontSize: 10.5, fontWeight: 700, fontFamily: 'ui-monospace, monospace', letterSpacing: -0.3 }}>1:1</span>,
+        () => onZoomChange(100), tr('shell.status.zoom100'))}</span>
       <button
         data-testid="minimap-toggle"
         onClick={toggleMinimap}

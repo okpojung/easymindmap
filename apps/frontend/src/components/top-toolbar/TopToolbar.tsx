@@ -483,7 +483,7 @@ export function TopToolbar({
             />
             <MenuItem
               t={t} testId="theme-toggle"
-              icon={themeName === 'dark' ? '☀' : '🌙'}
+              icon={themeName === 'dark' ? <I.Sun size={16} /> : <I.Moon size={16} />}
               label={themeName === 'dark' ? tr('shell.m.lightMode') : tr('shell.m.darkMode')}
               onClick={pickThen(() => setThemeName(themeName === 'dark' ? 'light' : 'dark'))}
             />
@@ -791,7 +791,8 @@ export function TopToolbar({
           border: `1px solid ${t.border}`, cursor: 'pointer', fontSize: 15,
         }}
       >
-        {themeName === 'dark' ? '☀' : '🌙'}
+        {/* 이모지 대신 선 아이콘 — 막대의 다른 단추와 같은 표현 (2026-10-24 UI/UX 검토) */}
+        {themeName === 'dark' ? <I.Sun size={16} /> : <I.Moon size={16} />}
       </button>
 
       {/* 현재 맵 — 저장(히스토리 버전 남김) · 맵 닫기(저장 후 닫기).

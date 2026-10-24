@@ -302,7 +302,7 @@ export function CanvasFloatingToolbar({
             },
             hidden: !!kanban,
           },
-          { key: 'child', icon: <I.Plus size={16} />, label: tr('editor.toolbar.addChild'), disabled: !hasSelection, onClick: close(handleAddNode) },
+          { key: 'child', icon: <I.NodeAdd size={16} />, label: tr('editor.toolbar.addChild'), disabled: !hasSelection, onClick: close(handleAddNode) },
           { key: 'multi', icon: <span style={{ fontWeight: 700, fontSize: 13 }}>≡+</span>, label: tr('editor.toolbar.addMulti'), disabled: !hasSelection, onClick: close(() => setMultiAddOpen(true)) },
           { key: 'calendar', icon: <span style={{ fontSize: 14 }}>📅</span>, label: tr('editor.toolbar.addCalendar'), disabled: !hasSelection, onClick: () => { setMoreOpen(false); openCalendar(); } },
           {
@@ -345,17 +345,17 @@ export function CanvasFloatingToolbar({
             highlight: focusActive, disabled: !focusActive && !hasSelection, onClick: close(() => onFocusSelected?.()),
           },
           {
-            key: 'expand', icon: <span style={{ fontSize: 16, fontWeight: 700 }}>+</span>, testId: 'expand-all', hidden: !!kanban,
+            key: 'expand', icon: <I.BranchExpand size={16} />, testId: 'expand-all', hidden: !!kanban,
             label: scope === 'all' ? tr('editor.toolbar.m.expandAll') : tr('editor.toolbar.m.expandSubtree'),
             onClick: close(() => { if (scope === 'all') expandAll(); else expandSubtree(scope); afterFold(scope); }),
           },
           {
-            key: 'collapse', icon: <span style={{ fontSize: 16, fontWeight: 700 }}>−</span>, testId: 'collapse-all', hidden: !!kanban,
+            key: 'collapse', icon: <I.BranchCollapse size={16} />, testId: 'collapse-all', hidden: !!kanban,
             label: scope === 'all' ? tr('editor.toolbar.m.collapseAll') : tr('editor.toolbar.m.collapseSubtree'),
             onClick: close(() => { if (scope === 'all') collapseAll(); else collapseSubtree(scope); afterFold(scope); }),
           },
           {
-            key: 'fullscreen', icon: isFullscreen ? <I.FullscreenExit size={16} /> : <I.FullscreenEnter size={16} />,
+            key: 'fullscreen', icon: isFullscreen ? <I.Shrink size={16} /> : <I.Expand size={16} />,
             label: isFullscreen ? tr('editor.toolbar.m.fullscreenExit') : tr('editor.toolbar.m.fullscreen'),
             highlight: isFullscreen, hidden: !fullscreenSupported, onClick: close(handleFullscreen),
           },
@@ -382,7 +382,7 @@ export function CanvasFloatingToolbar({
             onClick={() => { setMoreOpen(false); handleAddClick(); }}
             testId="add-node"
           >
-            <I.Plus size={17} />
+            <I.NodeAdd size={18} />
           </ToolbarBtn>
           {addMenu}
         </span>
@@ -412,7 +412,7 @@ export function CanvasFloatingToolbar({
           </ToolbarBtn>
         )}
         <ToolbarBtn t={t} title={kanban ? tr('editor.toolbar.boardHome') : tr('editor.toolbar.fit')} onClick={onFitView} testId="m-canvas-fit">
-          <I.Fit size={16} />
+          <I.FitMap size={17} />
         </ToolbarBtn>
         <ToolbarBtn
           t={t}
@@ -470,7 +470,8 @@ export function CanvasFloatingToolbar({
       border: `1px solid ${t.border}`,
       boxShadow: t.shadowSm,
     }}>
-      <GroupLabel t={t}>{tr('editor.toolbar.groupNode')}</GroupLabel>
+      {/* 묶음 이름 글자(노드·중심·보기)는 뚜다 — 세로 구분선이 묶음을 나누고,
+          이름은 단추 툴팁이 말한다 (2026-10-24 UI/UX 검토 ⑥). 폰 ⋯ 패널은 그대로. */}
       <span style={{ position: 'relative', display: 'inline-flex' }}>
         <ToolbarBtn
           t={t}
@@ -481,7 +482,7 @@ export function CanvasFloatingToolbar({
           onClick={handleAddClick}
           testId="add-node"
         >
-          <I.Plus size={15} />
+          <I.NodeAdd size={17} />
         </ToolbarBtn>
         {addMenu}
       </span>
@@ -529,7 +530,6 @@ export function CanvasFloatingToolbar({
       {!kanban && (
         <>
           <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
-          <GroupLabel t={t}>{tr('editor.toolbar.groupCenter')}</GroupLabel>
           <ToolbarBtn
             t={t}
             title={placingCenter
@@ -568,7 +568,7 @@ export function CanvasFloatingToolbar({
               onClick={() => setLinkOpen((v) => !v)}
               testId="link-menu"
             >
-              <I.Link size={15} />
+              <I.Layers size={15} />
             </ToolbarBtn>
             {linkOpen && (
               <div data-testid="link-menu-panel" role="menu" style={{
@@ -599,7 +599,6 @@ export function CanvasFloatingToolbar({
 
       <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
 
-      <GroupLabel t={t}>{tr('editor.toolbar.groupView')}</GroupLabel>
       {!kanban && (
         <ToolbarBtn
           t={t}
@@ -637,7 +636,7 @@ export function CanvasFloatingToolbar({
               afterFold(scope);
             }}
           >
-            <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>+</span>
+            <I.BranchExpand size={16} />
           </ToolbarBtn>
           <ToolbarBtn
             t={t}
@@ -650,7 +649,7 @@ export function CanvasFloatingToolbar({
               afterFold(scope);
             }}
           >
-            <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1 }}>−</span>
+            <I.BranchCollapse size={16} />
           </ToolbarBtn>
           {/* ★ 전용 단추 ⊞/⊟ 는 **없앴다** (2026-09-21). 위의 +/− 가
               선택에 따라 같은 일을 하므로, 두면 **같은 기호가 둘**이 된다
@@ -663,7 +662,7 @@ export function CanvasFloatingToolbar({
         title={kanban ? tr('editor.toolbar.boardHome') : tr('editor.toolbar.fit')}
         onClick={onFitView}
       >
-        <I.Fit size={15} />
+        <I.FitMap size={16} />
       </ToolbarBtn>
       {fullscreenSupported && (
         <ToolbarBtn
@@ -672,7 +671,7 @@ export function CanvasFloatingToolbar({
           highlight={isFullscreen}
           onClick={handleFullscreen}
         >
-          {isFullscreen ? <I.FullscreenExit size={16} /> : <I.FullscreenEnter size={16} />}
+          {isFullscreen ? <I.Shrink size={15} /> : <I.Expand size={15} />}
         </ToolbarBtn>
       )}
     </div>

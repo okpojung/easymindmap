@@ -1,7 +1,7 @@
 // 문서함의 맵 아이콘 (2026-10-25 사용자 요청: "맵 아이콘이 마음에 안 든다, 이쁘게 다시").
 //
 // 폴더(📁)와 같은 무게로 보이도록 **색을 채운 둥근 타일** 위에 흰색 작은 마인드맵
-// (가운데 노드 하나 + 오른쪽 가지 셋)을 그린다. 타일 색으로 맵의 종류를 한눈에 가른다.
+// (가운데 노드 하나 + 굵고 넓게 펼친 오른쪽 가지 셋)을 그린다. 타일 색으로 맵의 종류를 한눈에 가른다.
 //   단독맵 주황 · 협업맵 파랑 · 퍼블리싱 초록 · 대시보드 보라 · 공유받은 맵 청록
 // 글자 배지(단독맵·협업맵…)는 그대로 두고, 아이콘은 그 배지를 거들 뿐이다.
 import { useId } from 'react';
@@ -36,12 +36,13 @@ export function MapFileIcon({ tone = 'solo', size = 16 }: { tone?: MapTone; size
         </linearGradient>
       </defs>
       <rect x="0.5" y="0.5" width="19" height="19" rx="5.2" fill={`url(#${id})`} />
-      <path d="M9 10 C 11.2 10, 11.5 5.8, 14.2 5.8 M9 10 H 14.2 M9 10 C 11.2 10, 11.5 14.2, 14.2 14.2"
-        stroke="#fff" strokeWidth="1.35" strokeLinecap="round" strokeOpacity="0.95" />
-      <rect x="3.6" y="7.9" width="6.4" height="4.2" rx="2.1" fill="#fff" />
-      <circle cx="15.2" cy="5.8" r="1.55" fill="#fff" />
-      <circle cx="15.2" cy="10" r="1.55" fill="#fff" />
-      <circle cx="15.2" cy="14.2" r="1.55" fill="#fff" />
+      {/* 가지는 굵고 넓게 펼친다 (2026-10-25 2차 요청 — Mindmap Markdown 로고처럼) */}
+      <path d="M8.6 10 C 11.4 10, 11.2 4.6, 14.1 4.6 M8.6 10 H 14.1 M8.6 10 C 11.4 10, 11.2 15.4, 14.1 15.4"
+        stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+      <rect x="3.4" y="7.8" width="6.2" height="4.4" rx="2.2" fill="#fff" />
+      <circle cx="15" cy="4.6" r="1.75" fill="#fff" />
+      <circle cx="15" cy="10" r="1.75" fill="#fff" />
+      <circle cx="15" cy="15.4" r="1.75" fill="#fff" />
     </svg>
   );
 }

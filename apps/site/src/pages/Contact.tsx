@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, sendInquiry } from '../community-api';
 import { INQUIRY_CATEGORIES, INQUIRY_LIMITS, inquiryPayload, validateInquiry, type InquiryForm } from '../community-rules';
 import { Link } from '../App';
+import { Turnstile, type TurnstileHandle } from './Turnstile';
 
 const EMPTY: InquiryForm = { name: '', email: '', category: '', body: '', privacyConsent: false, website: '' };
 
@@ -15,6 +16,8 @@ export default function Contact() {
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const openedAt = useRef(Date.now());
+  const [token, setToken] = useState('');
+  const captcha = useRef<TurnstileHandle>(null);
   useEffect(() => { document.title = '문의하기 | EasyMindMap'; }, []);
 
   const set = <K extends keyof InquiryForm>(k: K, v: InquiryForm[K]) => { setForm(f => ({ ...f, [k]: v })); if (error?.field === k) setError(null); };
@@ -24,14 +27,15 @@ export default function Contact() {
     if (sending) return;
     const bad = validateInquiry(form);
     if (bad) { setError(bad); document.getElementById(`inq-${bad.field}`)?.focus(); return; }
+    if (!token) { setError({ message: '아래 스팸 방지 확인을 마친 뒤 보내 주세요.' }); return; }
     setSending(true); setError(null);
     try {
-      await sendInquiry(inquiryPayload(form, openedAt.current));
+      await sendInquiry(inquiryPayload(form, openedAt.current, token));
       setDone(true); setForm(EMPTY); window.scrollTo(0, 0);
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) setError({ message: `문의가 너무 잦습니다. ${err.retryAfter ? `${Math.ceil(err.retryAfter / 60)}분 ` : '잠시 '}뒤에 다시 보내 주세요.` });
       else setError({ message: err instanceof Error ? err.message : '문의를 보내지 못했습니다.' });
-    } finally { setSending(false); }
+    } finally { setSending(false); captcha.current?.reset(); }
   };
 
   const len = form.body.trim().length;
@@ -80,8 +84,9 @@ export default function Contact() {
               </ul>
               <label className="cm-check"><input id="inq-privacyConsent" type="checkbox" checked={form.privacyConsent} onChange={e => set('privacyConsent', e.target.checked)} aria-invalid={error?.field === 'privacyConsent'} /> 위 내용에 동의합니다.</label>
             </fieldset>
+            <Turnstile ref={captcha} onToken={setToken} />
             {error && <p className="cm-error" role="alert">{error.message}</p>}
-            <button className="btn" type="submit" disabled={sending}>{sending ? '보내는 중…' : '문의 보내기'}</button>
+            <button className="btn" type="submit" disabled={sending || !token} title={token ? undefined : '스팸 방지 확인을 먼저 마쳐 주세요'}>{sending ? '보내는 중…' : '문의 보내기'}</button>
           </form>
         )}
       </section>

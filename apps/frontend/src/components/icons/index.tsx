@@ -606,10 +606,9 @@ export const I = {
   // 노드 추가 — 노드에서 가지가 나와 + (확대 + 와 구분)
   NodeAdd: (p: P = {}) => (
     <Icon {...p}>
-      <rect x="2.5" y="8.5" width="8" height="7" rx="2" />
-      <path d="M10.5 12h2.5" />
-      <line x1="17.5" y1="7.5" x2="17.5" y2="16.5" />
-      <line x1="13" y1="12" x2="22" y2="12" />
+      <rect x="1.5" y="6.5" width="10" height="11" rx="2.5" />
+      <line x1="18.5" y1="8" x2="18.5" y2="16" />
+      <line x1="11.5" y1="12" x2="22.5" y2="12" />
     </Icon>
   ),
 
@@ -654,10 +653,10 @@ export const I = {
   FitMap: (p: P = {}) => (
     <Icon {...p}>
       <path d="M3.5 8V5a1.5 1.5 0 0 1 1.5-1.5h3M16 3.5h3A1.5 1.5 0 0 1 20.5 5v3M20.5 16v3a1.5 1.5 0 0 1-1.5 1.5h-3M8 20.5H5A1.5 1.5 0 0 1 3.5 19v-3" />
-      <circle cx="9" cy="12" r="1.6" fill="currentColor" stroke="none" />
-      <path d="M10.4 11.3 14.5 9.3M10.4 12.7l4.1 2" />
-      <circle cx="15.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
-      <circle cx="15.5" cy="15" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="8.5" cy="12" r="2.1" fill="currentColor" stroke="none" />
+      <path d="M10 11 15 8.6M10 13l5 2.4" />
+      <circle cx="16" cy="8.4" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="15.6" r="1.6" fill="currentColor" stroke="none" />
     </Icon>
   ),
 

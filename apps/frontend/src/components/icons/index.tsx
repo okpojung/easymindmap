@@ -550,6 +550,140 @@ export const I = {
     </Icon>
   ),
 
+  // ── 2026-10-24 UI/UX 검토 1·2단계: 한 그림 = 한 뜻 ─────────────────────
+  // 같은 링크 그림을 Integrations·링크/첨부·연결 맵이 함께 쓰고, + 하나가
+  // 노드 추가·확대·펼치기를 함께 뜻하던 것을 나눈다.
+
+  // Integrations (외부 연동) — 플러그
+  Plug: (p: P = {}) => (
+    <Icon {...p}>
+      <path d="M12 22v-5" />
+      <path d="M9 8V2" />
+      <path d="M15 8V2" />
+      <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+    </Icon>
+  ),
+
+  // 링크·첨부 — 클립
+  Paperclip: (p: P = {}) => (
+    <Icon {...p}>
+      <path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l8.6-8.6a4 4 0 1 1 5.7 5.7l-8.6 8.6a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+    </Icon>
+  ),
+
+  // 연결 맵 — 겹친 지도(다른 맵이 이 노드 아래 겹쳐 있음)
+  Layers: (p: P = {}) => (
+    <Icon {...p}>
+      <polygon points="12 3 21 7.5 12 12 3 7.5" />
+      <polyline points="3 12 12 16.5 21 12" />
+      <polyline points="3 16.5 12 21 21 16.5" />
+    </Icon>
+  ),
+
+  // 아이콘 탭 — 웃는 얼굴(이모지 대신 선 아이콘)
+  Smile: (p: P = {}) => (
+    <Icon {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 14.5s1.3 1.8 3.5 1.8 3.5-1.8 3.5-1.8" />
+      <line x1="9" y1="9.5" x2="9.01" y2="9.5" strokeWidth={2.4} />
+      <line x1="15" y1="9.5" x2="15.01" y2="9.5" strokeWidth={2.4} />
+    </Icon>
+  ),
+
+  // 다크/라이트 전환 — 달·해 (이모지 🌙·☀ 대신)
+  Moon: (p: P = {}) => (
+    <Icon {...p}>
+      <path d="M20.5 13.2A8.5 8.5 0 1 1 10.8 3.5a6.6 6.6 0 0 0 9.7 9.7z" />
+    </Icon>
+  ),
+  Sun: (p: P = {}) => (
+    <Icon {...p}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
+    </Icon>
+  ),
+
+  // 노드 추가 — 노드에서 가지가 나와 + (확대 + 와 구분)
+  NodeAdd: (p: P = {}) => (
+    <Icon {...p}>
+      <rect x="2.5" y="8.5" width="8" height="7" rx="2" />
+      <path d="M10.5 12h2.5" />
+      <line x1="17.5" y1="7.5" x2="17.5" y2="16.5" />
+      <line x1="13" y1="12" x2="22" y2="12" />
+    </Icon>
+  ),
+
+  // 하위 펼치기 / 접기 — 가지 묶음 옆 화살표 (사용자 참고 그림 방식)
+  BranchExpand: (p: P = {}) => (
+    <Icon {...p}>
+      <circle cx="4" cy="12" r="2" />
+      <path d="M6 12h3" />
+      <path d="M12 4.5h-2a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h2" />
+      <path d="M14 12h7" />
+      <polyline points="18 9 21 12 18 15" />
+    </Icon>
+  ),
+  BranchCollapse: (p: P = {}) => (
+    <Icon {...p}>
+      <circle cx="4" cy="12" r="2" />
+      <path d="M6 12h3" />
+      <path d="M12 4.5h-2a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h2" />
+      <path d="M14 12h7" />
+      <polyline points="17 9 14 12 17 15" />
+    </Icon>
+  ),
+
+  // 확대 / 축소 — 돋보기 + / − (노드 추가 + 와 구분)
+  ZoomIn: (p: P = {}) => (
+    <Icon {...p}>
+      <circle cx="11" cy="11" r="7" />
+      <line x1="20.5" y1="20.5" x2="16" y2="16" />
+      <line x1="11" y1="8" x2="11" y2="14" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </Icon>
+  ),
+  ZoomOut: (p: P = {}) => (
+    <Icon {...p}>
+      <circle cx="11" cy="11" r="7" />
+      <line x1="20.5" y1="20.5" x2="16" y2="16" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </Icon>
+  ),
+
+  // 맵 전체를 화면에 맞추기 — 틀 모서리 안에 작은 맵 (전체화면과 구분)
+  FitMap: (p: P = {}) => (
+    <Icon {...p}>
+      <path d="M3.5 8V5a1.5 1.5 0 0 1 1.5-1.5h3M16 3.5h3A1.5 1.5 0 0 1 20.5 5v3M20.5 16v3a1.5 1.5 0 0 1-1.5 1.5h-3M8 20.5H5A1.5 1.5 0 0 1 3.5 19v-3" />
+      <circle cx="9" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M10.4 11.3 14.5 9.3M10.4 12.7l4.1 2" />
+      <circle cx="15.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="15.5" cy="15" r="1.1" fill="currentColor" stroke="none" />
+    </Icon>
+  ),
+
+  // 전체화면 들어가기 / 나가기 — 네 모서리로 퍼지는·모이는 화살표
+  Expand: (p: P = {}) => (
+    <Icon {...p}>
+      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+      <path d="M3 9V3h6M21 15v6h-6M3 3l7 7M21 21l-7-7" />
+    </Icon>
+  ),
+  Shrink: (p: P = {}) => (
+    <Icon {...p}>
+      <path d="M14 4v6h6M10 20v-6H4M14 10l7-7M10 14l-7 7" />
+      <path d="M4 10h6V4M20 14h-6v6M10 10 3 3M14 14l7 7" />
+    </Icon>
+  ),
+
+  // 스포이드 — 화면에서 색 집기
+  Pipette: (p: P = {}) => (
+    <Icon {...p}>
+      <path d="m2 22 1-1h3l9-9" />
+      <path d="M3 21v-3l9-9" />
+      <path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z" />
+    </Icon>
+  ),
+
   // Focus cancel — magnifier with an X (선택 노드 보기 취소)
   FocusOff: (p: P = {}) => (
     <Icon {...p}>

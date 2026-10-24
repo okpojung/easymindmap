@@ -29,7 +29,7 @@ import {
   type FolderItem, type MapListItem,
 } from '@/services/cloud/apiClient';
 import {
-  ProAddressBookDialog, ProDashboardToggle, ProInbox, ProMapMembersTip, ProShareDialog, ProSharedMapActions,
+  BOARD_ENABLED, ProAddressBookDialog, ProDashboardToggle, ProInbox, ProMapMembersTip, ProShareDialog, ProSharedMapActions,
 } from '@pro';
 import { PublishPanel } from '@/components/cloud/PublishPanel';
 import { NewMapPanel } from '@/components/left-sidebar/NewMapPanel';
@@ -1505,6 +1505,15 @@ export function MapBrowser({
                 flexShrink: 0, whiteSpace: 'nowrap', color: t.primary, borderColor: t.primaryBorder }}
             >{tr('cloud.browser.addressBook')}</button>
           )}
+          {/* 게시판 (2026-10-25 사용자 지시: 주소록·도움말 옆에) — 계정 메뉴의 '게시판'과 같은 화면 */}
+          {BOARD_ENABLED && (
+            <button type="button" data-testid="browser-board"
+              title={tr('cloud.browser.boardTip')}
+              onClick={() => { window.location.href = '/?board=notice'; }}
+              style={{ ...mIconBtn, width: 'auto', minHeight: 40, padding: '0 12px', fontSize: 13.5,
+                flexShrink: 0, whiteSpace: 'nowrap' }}
+            >{tr('cloud.browser.board')}</button>
+          )}
           </div>
           {finding && (
             <span data-testid="browser-search-busy" style={{ fontSize: 12, color: t.textMuted }}>
@@ -1589,6 +1598,14 @@ export function MapBrowser({
               onClick={() => setAddressBookOpen(true)}
               style={{ ...toolBtn, flexShrink: 0, whiteSpace: 'nowrap', color: t.primary, borderColor: t.primaryBorder }}
             >{tr('cloud.browser.addressBook')}</button>
+          )}
+          {/* 게시판 (2026-10-25 사용자 지시: 주소록·도움말 옆에) — 계정 메뉴의 '게시판'과 같은 화면 */}
+          {BOARD_ENABLED && (
+            <button type="button" data-testid="browser-board"
+              title={tr('cloud.browser.boardTip')}
+              onClick={() => { window.location.href = '/?board=notice'; }}
+              style={{ ...toolBtn, flexShrink: 0, whiteSpace: 'nowrap' }}
+            >{tr('cloud.browser.board')}</button>
           )}
           </div>
           {finding && (

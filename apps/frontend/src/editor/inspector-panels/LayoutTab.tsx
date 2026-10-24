@@ -306,45 +306,8 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title={tr('inspector.layout.opt.freeform')}>
-        <div
-          style={{
-            padding: '10px 12px',
-            borderRadius: 7,
-            background: t.surfaceAlt,
-            border: `1px dashed ${t.border}`,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 9.5,
-              fontWeight: 700,
-              padding: '2px 6px',
-              borderRadius: 3,
-              background: t.accent + '22',
-              color: t.accent,
-              letterSpacing: 0.4,
-              flexShrink: 0,
-            }}
-          >
-            V1+
-          </span>
-
-          <div
-            style={{
-              fontSize: 11,
-              color: t.textMuted,
-              lineHeight: 1.5,
-            }}
-          >
-            {tr('inspector.layout.freeformNote')}
-          </div>
-        </div>
-      </InspectorSection>
-
+      {/* '자유 배치 V1+' · '연결선 스타일 V1+' 안내는 뺐다 (2026-10-24 UI/UX 검토 ④) —
+          자유 배치는 위 목록에 이미 있고, 연결선은 선을 고르면 스타일 패널에서 바꾼다. */}
       <InspectorSection
         t={t}
         title={tr('inspector.layout.spacingTitle')}
@@ -388,44 +351,6 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
         </div>
       </InspectorSection>
 
-      <InspectorSection t={t} title={tr('inspector.layout.lineStyleTitle')}>
-        <div
-          style={{
-            padding: '10px 12px',
-            borderRadius: 7,
-            background: t.surfaceAlt,
-            border: `1px dashed ${t.border}`,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 9.5,
-              fontWeight: 700,
-              padding: '2px 6px',
-              borderRadius: 3,
-              background: t.accent + '22',
-              color: t.accent,
-              letterSpacing: 0.4,
-              flexShrink: 0,
-            }}
-          >
-            V1+
-          </span>
-
-          <div
-            style={{
-              fontSize: 11,
-              color: t.textMuted,
-              lineHeight: 1.5,
-            }}
-          >
-            {tr('inspector.layout.lineStyleNote')}
-          </div>
-        </div>
-      </InspectorSection>
     </div>
   );
 }

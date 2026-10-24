@@ -206,7 +206,9 @@ export function ConnectorPanel({ t, connector }: { t: ThemeTokens; connector: Co
         </InspectorRow>
         <InspectorRow t={t} label={tr('inspector.conn.color')}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <ColorSwatchInput t={t} value={color} onChange={(v) => patch({ color: v })} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <ColorSwatchInput t={t} value={color} label={tr('inspector.conn.color')} onChange={(v) => patch({ color: v })} />
+            </div>
             {color.toUpperCase() !== CONNECTOR_DEFAULTS.color && (
               <button data-testid="connector-color-reset" onClick={() => patch({ color: undefined })}
                 style={{ fontSize: 10.5, padding: '3px 8px', borderRadius: 5, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.textMuted, cursor: 'pointer' }}>

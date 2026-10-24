@@ -156,14 +156,22 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
       <InspectorSection t={t} title={tr('inspector.style.colorsTitle')}>
         <InspectorRow t={t} label={tr('inspector.style.fill')}>
           <ColorSwatchInput t={t} value={style.fillColor ?? DEFAULT_COLORS.fillColor}
+            label={tr('inspector.style.fill')}
+            contrastWith={style.textColor ?? DEFAULT_COLORS.textColor}
+            onReset={style.fillColor ? () => set({ fillColor: undefined }) : undefined}
             onChange={(v) => set({ fillColor: v })} />
         </InspectorRow>
         <InspectorRow t={t} label={tr('inspector.style.border')}>
           <ColorSwatchInput t={t} value={style.borderColor ?? DEFAULT_COLORS.borderColor}
+            label={tr('inspector.style.border')}
+            onReset={style.borderColor ? () => set({ borderColor: undefined }) : undefined}
             onChange={(v) => set({ borderColor: v })} />
         </InspectorRow>
         <InspectorRow t={t} label={tr('inspector.style.textColor')}>
           <ColorSwatchInput t={t} value={style.textColor ?? DEFAULT_COLORS.textColor}
+            label={tr('inspector.style.textColor')}
+            contrastWith={style.fillColor ?? DEFAULT_COLORS.fillColor}
+            onReset={style.textColor ? () => set({ textColor: undefined }) : undefined}
             onChange={(v) => set({ textColor: v })} />
         </InspectorRow>
       </InspectorSection>

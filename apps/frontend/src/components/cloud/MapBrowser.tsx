@@ -38,6 +38,7 @@ import { notifyUser } from '@/stores/noticeStore';
 import { publicMapUrl } from './PublishPanel';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
 import { FolderPickerDialog } from './FolderPickerDialog';
+import { MapFileIcon, mapTone } from './MapFileIcon';
 import { folderSubtreeIds } from './folderTree';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { ActionSheet, type SheetItem } from '@/components/ui/ActionSheet';
@@ -1242,7 +1243,7 @@ export function MapBrowser({
     const m = sheet.map;
     const ty = mapType(m);
     const items: SheetEntry[] = [
-      { key: 'open', icon: <I.MindMap size={18} />, label: tr('cloud.m.open'), testId: 'm-map-open',
+      { key: 'open', icon: <MapFileIcon tone={mapTone(m)} size={18} />, label: tr('cloud.m.open'), testId: 'm-map-open',
         onSelect: () => void openMap(m) },
       { key: 'info', icon: <I.Info size={18} />, label: tr('cloud.browser.infoAria'), testId: 'browser-map-info',
         onSelect: () => setInfo({ map: m, x: 0, y: 0, pinned: true }) },
@@ -1363,7 +1364,7 @@ export function MapBrowser({
             color: editing ? t.primary : t.text,
           }}
         >
-          <span style={{ display: 'flex', color: t.primary, flexShrink: 0 }}><I.MindMap size={18} /></span>
+          <span style={{ display: 'flex', flexShrink: 0 }}><MapFileIcon tone={mapTone(m)} size={20} /></span>
           <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
             <span style={{
               fontSize: 14.5, fontWeight: 500,
@@ -2026,9 +2027,10 @@ export function MapBrowser({
             {...(!r.map.shared && !knowsListed(r.map) ? dragProps({ kind: 'map', map: r.map }) : {})}
             style={drag?.kind === 'map' && drag.map.mapId === r.map.mapId ? { ...rowStyle, opacity: 0.5 } : rowStyle}>
             {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
-                (2026-08-02 사용자 보고) — 앱 SVG 아이콘으로 통일 */}
-            <span style={{ display: 'flex', color: t.primary, ...indent(r.depth) }}>
-              <I.MindMap size={15} />
+                (2026-08-02 사용자 보고) — 앱 SVG 아이콘으로 통일.
+                2026-10-25: 폴더(📁)와 같은 무게의 색 타일 + 종류별 색 (MapFileIcon.tsx) */}
+            <span style={{ display: 'flex', alignItems: 'center', ...indent(r.depth) }}>
+              <MapFileIcon tone={mapTone(r.map)} size={16} />
             </span>
             <button
               data-testid="browser-map-open"

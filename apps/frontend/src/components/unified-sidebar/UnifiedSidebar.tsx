@@ -108,14 +108,17 @@ export function UnifiedSidebar({
     // 맵 전체 설정 (레벨별 폰트 등) — 특정 노드가 아닌 맵 단위 설정 메뉴
     { key: 'mapSettings' as NavTabKey, label: tr('shell.sidebar.mapSettings'), icon: <I.Settings size={17} /> },
   ];
-  navItems.push({ key: 'plugins' as NavTabKey, label: 'Integrations', icon: <I.Link size={17} /> });
+  // 레일은 글자 제목 없이 구분선으로 세 묶음 (2026-10-24 UI/UX 검토 ①):
+  //   위 = 맵 전체(아웃라인~맵 설정) · 가운데 = 선택 노드(스타일~노트·태그)
+  //   · 아래(바닥) = 서비스(AI · Integrations · 협업)
+  // Integrations 는 '탐색'이 아니라 맵 연결 설정이라 서비스 묶음으로 옮겼고,
+  // 그림도 링크(링크·첨부와 같았던 것) 대신 플러그다.
   const inspectorItems = [
     { key: 'style'   as InspectorTabKey, label: tr('shell.sidebar.style'), icon: <I.Palette size={17} /> },
     { key: 'layout'  as InspectorTabKey, label: tr('shell.sidebar.layout'), icon: <I.Layout size={17} /> },
-    { key: 'icon'    as InspectorTabKey, label: tr('shell.sidebar.icon'), icon: <span style={{ fontSize: 15, lineHeight: 1 }}>🙂</span> },
-    { key: 'content' as InspectorTabKey, label: tr('shell.sidebar.content'), icon: <I.Link size={17} /> },
+    { key: 'icon'    as InspectorTabKey, label: tr('shell.sidebar.icon'), icon: <I.Smile size={17} /> },
+    { key: 'content' as InspectorTabKey, label: tr('shell.sidebar.content'), icon: <I.Paperclip size={17} /> },
     { key: 'note'    as InspectorTabKey, label: tr('shell.sidebar.note'), icon: <I.Note size={17} /> },
-    { key: 'ai'      as InspectorTabKey, label: 'AI',        icon: <I.Sparkles size={17} /> },
   ];
 
   // 펼침은 setNavTab/setInspectorTab(store)이 담당한다 — 여기서 토글을
@@ -173,7 +176,6 @@ export function UnifiedSidebar({
         </button>
 
         <div style={{ margin: '0 10px 6px', height: 1, background: t.divider }} />
-        <RailGroupLabel t={t}>{tr('shell.sidebar.groupNav')}</RailGroupLabel>
         {/* 아웃라인 — 사이드 패널이 아니라 메인 화면을 좌(아웃라인)/우(맵)로
             나누는 분할 보기 토글. 아이콘도 분할 화면 모양. */}
         <RailIcon t={t} title={splitTitle}
@@ -203,8 +205,7 @@ export function UnifiedSidebar({
           </RailIcon>
         ))}
 
-        <div style={{ margin: '10px 10px 6px', height: 1, background: t.divider }} />
-        <RailGroupLabel t={t}>{tr('shell.sidebar.groupInspector')}</RailGroupLabel>
+        <div data-testid="rail-divider-node" style={{ margin: '8px 10px 6px', height: 1, background: t.divider }} />
         {inspectorItems.map(it => (
           <RailIcon key={it.key} t={t} title={it.label}
                     active={activeSection === 'inspector' && inspectorTab === it.key}
@@ -217,6 +218,25 @@ export function UnifiedSidebar({
         ))}
 
         <div style={{ flex: 1, minHeight: 8 }} />
+
+        {/* 서비스 묶음 — AI · Integrations · 협업 (레일 바닥) */}
+        <div data-testid="rail-divider-service" style={{ margin: '6px 10px 6px', height: 1, background: t.divider }} />
+        <RailIcon t={t} title="AI"
+                  active={activeSection === 'inspector' && inspectorTab === 'ai'}
+                  expanded={!collapsed}
+                  big={phone && coarse}
+                  testId="rail-ai"
+                  onClick={() => handleRailClick('inspector', 'ai')}>
+          <I.Sparkles size={17} />
+        </RailIcon>
+        <RailIcon t={t} title="Integrations"
+                  active={activeSection === 'nav' && navTab === 'plugins'}
+                  expanded={!collapsed}
+                  big={phone && coarse}
+                  testId="rail-plugins"
+                  onClick={() => handleRailClick('nav', 'plugins')}>
+          <I.Plug size={17} />
+        </RailIcon>
 
         {/* 협업 — 유료 기능의 **자리**. 알맹이는 유료 모듈이 채운다
             (open-core-boundary.md §3.1 ③). 눌러야 왜 못 쓰는지 알 수 있다.
@@ -337,16 +357,6 @@ export function UnifiedSidebar({
     }}>
       {body}
     </div>
-  );
-}
-
-function RailGroupLabel({ t, children }: { t: ThemeTokens; children: ReactNode }) {
-  return (
-    <div style={{
-      fontSize: 9, fontWeight: 700,
-      color: t.textSubtle, textTransform: 'uppercase', letterSpacing: 0.6,
-      textAlign: 'center', padding: '2px 0 4px',
-    }}>{children}</div>
   );
 }
 

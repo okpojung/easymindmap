@@ -19,11 +19,11 @@
 // 올릴 수 있다. 환경변수는 배포 권한이 있어야 바꾼다.
 
 import {
-  BadRequestException, ForbiddenException, Injectable, Logger,
-  UnauthorizedException,
+  BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException,
+  ServiceUnavailableException, UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 // ⚠️ CJS 전용 패키지만 쓸 것 (auth.guard.ts 와 같은 이유)
 import { sign as jwtSign } from 'jsonwebtoken';
 import { DatabaseService } from '../database/database.service';
@@ -33,6 +33,10 @@ import {
   PLAN_PRICE_MAX_KRW, PLAN_PRICE_MIN_KRW,
   PLAN_QUOTA_MAX_MB, PLAN_QUOTA_MIN_MB,
 } from './admin-settings';
+import {
+  TRUSTED_NETWORKS_KEY, TRUSTED_NETWORKS_MAX, describeCidr, matchTrusted, parseTrustedAddress, sanitizeStored,
+  type TrustedNetwork,
+} from './trusted-networks';
 
 /** 관리자 표 유효 시간 — 하루 일과보다 길지 않게 */
 const ADMIN_TOKEN_TTL_MIN = 8 * 60;
@@ -79,10 +83,17 @@ export class AdminService {
    * GoTrue 로그인을 마친 사람이 부른다(AuthGuard 가 토큰을 검증했다).
    * **관리자가 아니면 여기서 끊는다** — 인증번호도 보내지 않는다.
    */
-  async loginStart(email: string | undefined, devMode: boolean) {
+  async loginStart(email: string | undefined, devMode: boolean, clientIp?: string) {
     if (!this.isAdminEmail(email)) {
       // 관리자 명단은 알려 주지 않는다 — 같은 문구로 끝낸다.
       throw new ForbiddenException('관리자 계정이 아닙니다.');
+    }
+    // **등록된 내부망 IP 에서는 인증번호를 건너뛴다** (2026-10-24, trusted-networks.ts).
+    // 비밀번호 로그인(AuthGuard)과 관리자 명단은 위에서 이미 확인했다.
+    const hit = matchTrusted(await this.readTrusted(), clientIp);
+    if (hit) {
+      this.log.log(`관리자 로그인(인증번호 생략): ${String(email).trim().toLowerCase()} from ${clientIp} — ${hit.cidr}`);
+      return { ...this.issueToken(email as string), step: 'done' as const, trustedNetwork: hit.cidr, clientIp };
     }
     // 문구를 갈라 놓는다 — '가입 인증번호'라고 적힌 메일이 관리자
     // 로그인에도 오면 무엇 때문에 온 메일인지 알 수 없다.
@@ -97,9 +108,14 @@ export class AdminService {
     }
     // 틀린 횟수·만료 처리는 가입 쪽과 같은 규칙을 탄다
     await this.account.verifyEmailCode(email as string, code);
+    this.log.log(`관리자 로그인: ${String(email).trim().toLowerCase()}`);
+    return this.issueToken(email as string);
+  }
+
+  /** 관리자 표 — 8시간 */
+  private issueToken(email: string) {
     const e = String(email).trim().toLowerCase();
     const exp = Math.floor(Date.now() / 1000) + ADMIN_TOKEN_TTL_MIN * 60;
-    this.log.log(`관리자 로그인: ${e}`);
     return {
       adminToken: `${Buffer.from(e, 'utf8').toString('base64url')}.${exp}.${this.sign(e, exp)}`,
       email: e,
@@ -126,6 +142,98 @@ export class AdminService {
     // **명단에서 빠진 사람의 표는 그 순간 무효다** — 표를 회수할 방법이
     // 없으므로, 환경변수에서 지우는 것이 곧 회수가 되어야 한다.
     return this.isAdminEmail(email) ? email : null;
+  }
+
+  // ── 2단계 인증 생략 IP (2026-10-24) ───────────────────────────────
+  /** 저장된 목록 — 표가 없거나 읽지 못하면 빈 목록(= 모두 인증번호를 받는다) */
+  private async readTrusted(): Promise<TrustedNetwork[]> {
+    try {
+      const { rows } = await this.db.query<{ value: unknown }>(
+        `SELECT value FROM public.site_settings WHERE key = $1`, [TRUSTED_NETWORKS_KEY]);
+      return sanitizeStored(rows[0]?.value);
+    } catch (err) {
+      this.log.warn(`2단계 인증 IP 목록을 읽지 못했다 — 인증번호를 받게 둔다: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
+  private view(list: TrustedNetwork[], clientIp?: string) {
+    const hit = matchTrusted(list, clientIp);
+    return {
+      items: list.map((e) => ({ ...e, range: describeCidr(e.cidr), kind: e.cidr.endsWith('/24') ? 'network' : 'host' })),
+      clientIp: clientIp ?? null,
+      clientMatches: hit?.id ?? null,
+      max: TRUSTED_NETWORKS_MAX,
+    };
+  }
+
+  async listTrusted(clientIp?: string) {
+    return this.view(await this.readTrusted(), clientIp);
+  }
+
+  /** 읽고-고치고-쓰기를 한 트랜잭션에서 (동시에 두 관리자가 고쳐도 하나가 사라지지 않게) */
+  private async mutateTrusted(by: string, fn: (list: TrustedNetwork[]) => TrustedNetwork[], clientIp?: string) {
+    try {
+      const next = await this.db.transaction(async (c) => {
+        await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [TRUSTED_NETWORKS_KEY]);
+        const { rows } = await c.query<{ value: unknown }>(
+          `SELECT value FROM public.site_settings WHERE key = $1 FOR UPDATE`, [TRUSTED_NETWORKS_KEY]);
+        const list = fn(sanitizeStored(rows[0]?.value));
+        await c.query(
+          `INSERT INTO public.site_settings (key, value, updated_by) VALUES ($1, $2::jsonb, $3)
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+          [TRUSTED_NETWORKS_KEY, JSON.stringify(list), by]);
+        return list;
+      });
+      return this.view(next, clientIp);
+    } catch (err) {
+      if (err instanceof BadRequestException || err instanceof NotFoundException) throw err;
+      if ((err as { code?: string }).code === '42P01') {
+        throw new ServiceUnavailableException('설정 저장 표(site_settings)가 없습니다 — 공지·게시판 DB 패키지가 먼저 적용돼야 합니다.');
+      }
+      throw err;
+    }
+  }
+
+  async addTrusted(by: string, address: unknown, label: unknown, clientIp?: string) {
+    const p = parseTrustedAddress(address);
+    if (!p.ok) throw new BadRequestException(p.message);
+    const name = String(label ?? '').replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, 60);
+    const now = new Date().toISOString();
+    const r = await this.mutateTrusted(by, (list) => {
+      if (list.some((e) => e.cidr === p.cidr)) throw new BadRequestException(`이미 등록된 주소입니다: ${describeCidr(p.cidr)}`);
+      if (list.length >= TRUSTED_NETWORKS_MAX) throw new BadRequestException(`최대 ${TRUSTED_NETWORKS_MAX}개까지 등록할 수 있습니다.`);
+      return [...list, { id: randomUUID(), cidr: p.cidr, label: name, createdAt: now, createdBy: by, updatedAt: now, updatedBy: by }];
+    }, clientIp);
+    this.log.log(`2단계 인증 생략 IP 추가: ${p.cidr} by ${by}`);
+    return r;
+  }
+
+  async updateTrusted(by: string, id: string, address: unknown, label: unknown, clientIp?: string) {
+    const p = address === undefined ? null : parseTrustedAddress(address);
+    if (p && !p.ok) throw new BadRequestException(p.message);
+    const now = new Date().toISOString();
+    const r = await this.mutateTrusted(by, (list) => {
+      const i = list.findIndex((e) => e.id === id);
+      if (i < 0) throw new NotFoundException('등록된 항목을 찾을 수 없습니다.');
+      if (p && p.ok && list.some((e, j) => j !== i && e.cidr === p.cidr)) throw new BadRequestException(`이미 등록된 주소입니다: ${describeCidr(p.cidr)}`);
+      const cur = list[i];
+      const next = { ...cur, updatedAt: now, updatedBy: by };
+      if (p && p.ok) next.cidr = p.cidr;
+      if (label !== undefined) next.label = String(label ?? '').replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, 60);
+      return list.map((e, j) => (j === i ? next : e));
+    }, clientIp);
+    this.log.log(`2단계 인증 생략 IP 수정: ${id} by ${by}`);
+    return r;
+  }
+
+  async removeTrusted(by: string, id: string, clientIp?: string) {
+    const r = await this.mutateTrusted(by, (list) => {
+      if (!list.some((e) => e.id === id)) throw new NotFoundException('등록된 항목을 찾을 수 없습니다.');
+      return list.filter((e) => e.id !== id);
+    }, clientIp);
+    this.log.log(`2단계 인증 생략 IP 삭제: ${id} by ${by}`);
+    return r;
   }
 
   // ── 회원관리 ─────────────────────────────────────────────────

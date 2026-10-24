@@ -35,6 +35,12 @@ export function AdminLogin({ t, onDone }: { t: ThemeTokens; onDone: (email: stri
     try {
       await useAuthStore.getState().signIn(email.trim(), pw);
       const r = await adminApi.loginStart();
+      // 등록된 내부망 IP(관리자 > 2단계 인증 IP관리) — 인증번호 없이 바로 들어간다
+      if (r.step === 'done' && r.adminToken) {
+        adminToken.set(r.adminToken);
+        onDone(r.email);
+        return;
+      }
       setStep('code');
       setDevCode(r.devCode ?? null);
       setNote(r.devCode

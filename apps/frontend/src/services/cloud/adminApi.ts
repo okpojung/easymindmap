@@ -71,6 +71,14 @@ async function req<T>(
   return res.status === 204 ? (undefined as T) : (res.json() as Promise<T>);
 }
 
+/** 2단계 인증 생략 IP 목록 — 서버 admin/trusted-networks.ts */
+export interface TrustedNetworkList {
+  items: { id: string; cidr: string; range: string; kind: 'network' | 'host'; label: string; createdAt: string; createdBy: string; updatedAt: string; updatedBy: string }[];
+  clientIp: string | null;
+  clientMatches: string | null;
+  max: number;
+}
+
 export interface AdminUserRow {
   id: string;
   email: string | null;
@@ -119,13 +127,22 @@ export const adminApi = {
   previewMailTemplate: (id:string,body:{subject:string;text:string;baseUpdatedAt:string|null}) => req<{subject:string;text:string}>('POST',`/admin/mail-templates/${encodeURIComponent(id)}/preview`,body),
   saveMailTemplate: (id:string,body:{subject:string;text:string;baseUpdatedAt:string|null}) => req<{updatedAt:string}>('PATCH',`/admin/mail-templates/${encodeURIComponent(id)}`,body),
   // ── 2단계 로그인 ──────────────────────────────────────────
+  /** 등록된 내부망 IP 면 step:'done' + adminToken 이 바로 온다 (2026-10-24, 2단계 인증 IP관리) */
   loginStart: () =>
-    req<{ sent: boolean; expiresInMin: number; devCode?: string; message?: string; email: string }>(
-      'POST', '/admin/login/start', undefined, 'gotrue'),
+    req<{
+      step?: 'code' | 'done'; sent?: boolean; expiresInMin?: number; devCode?: string; message?: string; email: string;
+      adminToken?: string; expiresAt?: string; trustedNetwork?: string; clientIp?: string;
+    }>('POST', '/admin/login/start', undefined, 'gotrue'),
   loginVerify: (code: string) =>
     req<{ adminToken: string; email: string; expiresAt: string }>(
       'POST', '/admin/login/verify', { code }, 'gotrue'),
   me: () => req<{ email: string }>('GET', '/admin/me'),
+  // 2단계 인증 IP관리 (2026-10-24)
+  trustedNetworks: () => req<TrustedNetworkList>('GET', '/admin/trusted-networks'),
+  addTrustedNetwork: (address: string, label: string) => req<TrustedNetworkList>('POST', '/admin/trusted-networks', { address, label }),
+  updateTrustedNetwork: (id: string, patch: { address?: string; label?: string }) =>
+    req<TrustedNetworkList>('PATCH', `/admin/trusted-networks/${encodeURIComponent(id)}`, patch),
+  removeTrustedNetwork: (id: string) => req<TrustedNetworkList>('DELETE', `/admin/trusted-networks/${encodeURIComponent(id)}`),
 
   // ── 회원관리 ──────────────────────────────────────────────
   summary: () => req<{

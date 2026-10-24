@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards,
+  Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
@@ -17,9 +17,15 @@ import {
 import { AuditLogService } from '../common/audit-log.service';
 import type { AppEnv } from '../config/env.validation';
 import { MailTemplatesService } from '../mail/mail-templates.service';
+import { clientIpOf } from '../common/client-info';
 
 class VerifyDto {
   @IsString() @Length(4, 10) code!: string;
+}
+/** 2단계 인증 생략 IP — 형식 검사는 서비스(trusted-networks.ts)가 한다 */
+class TrustedNetworkDto {
+  @IsOptional() @IsString() @MaxLength(40) address?: string;
+  @IsOptional() @IsString() @MaxLength(60) label?: string;
 }
 class SetPlanDto {
   @IsIn(PLANS as unknown as string[], { message: '요금제 값이 올바르지 않습니다.' })
@@ -74,9 +80,10 @@ export class AdminController {
   @Post('login/start')
   @HttpCode(200)
   @UseGuards(AuthGuard)
-  loginStart(@CurrentUser() user: AuthUser) {
+  loginStart(@CurrentUser() user: AuthUser, @Req() req: Request) {
     const devMode = this.config.get('AUTH_MODE', { infer: true }) === 'dev';
-    return this.admin.loginStart(user.email, devMode);
+    // 등록된 내부망 IP 면 인증번호 없이 표를 준다 — IP 는 서버가 정한 값(trust proxy)만 쓴다
+    return this.admin.loginStart(user.email, devMode, clientIpOf(req));
   }
 
   /** ② 인증번호 확인 → 관리자 표 */
@@ -85,6 +92,31 @@ export class AdminController {
   @UseGuards(AuthGuard)
   loginVerify(@CurrentUser() user: AuthUser, @Body() dto: VerifyDto) {
     return this.admin.loginVerify(user.email, dto.code);
+  }
+
+  // ── 2단계 인증 IP관리 (2026-10-24) ─────────────────────────────
+  @Get('trusted-networks')
+  @UseGuards(AdminGuard)
+  listTrusted(@Req() req: Request) {
+    return this.admin.listTrusted(clientIpOf(req));
+  }
+
+  @Post('trusted-networks')
+  @UseGuards(AdminGuard)
+  addTrusted(@Req() req: Request & { admin?: AdminUser }, @Body() dto: TrustedNetworkDto) {
+    return this.admin.addTrusted(String(req.admin?.email ?? ''), dto.address, dto.label, clientIpOf(req));
+  }
+
+  @Patch('trusted-networks/:id')
+  @UseGuards(AdminGuard)
+  updateTrusted(@Req() req: Request & { admin?: AdminUser }, @Param('id') id: string, @Body() dto: TrustedNetworkDto) {
+    return this.admin.updateTrusted(String(req.admin?.email ?? ''), String(id), dto.address, dto.label, clientIpOf(req));
+  }
+
+  @Delete('trusted-networks/:id')
+  @UseGuards(AdminGuard)
+  removeTrusted(@Req() req: Request & { admin?: AdminUser }, @Param('id') id: string) {
+    return this.admin.removeTrusted(String(req.admin?.email ?? ''), String(id), clientIpOf(req));
   }
 
   /** 표가 아직 살아 있는지 — 새로고침했을 때 화면이 물어본다 */

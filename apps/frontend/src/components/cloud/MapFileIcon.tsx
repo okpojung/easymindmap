@@ -2,14 +2,14 @@
 //
 // 폴더(📁)와 같은 무게로 보이도록 **색을 채운 둥근 타일** 위에 흰색 작은 마인드맵
 // (가운데 노드 하나 + 굵고 넓게 펼친 오른쪽 가지 셋)을 그린다. 타일 색으로 맵의 종류를 한눈에 가른다.
-//   단독맵 주황 · 협업맵 파랑 · 퍼블리싱 초록 · 대시보드 보라 · 공유받은 맵 청록
+//   단독맵 네이비(2026-10-25: 노란 폴더와 갈리게, 주황→네이비) · 협업맵 파랑 · 퍼블리싱 초록 · 대시보드 보라 · 공유받은 맵 청록
 // 글자 배지(단독맵·협업맵…)는 그대로 두고, 아이콘은 그 배지를 거들 뿐이다.
 import { useId } from 'react';
 
 export type MapTone = 'solo' | 'collab' | 'published' | 'dashboard' | 'shared';
 
 const TONES: Record<MapTone, [string, string]> = {
-  solo: ['#E0701A', '#F9A65A'],
+  solo: ['#1E3A5F', '#3E6A99'],
   collab: ['#2563EB', '#60A5FA'],
   published: ['#15803D', '#4ADE80'],
   dashboard: ['#6D28D9', '#A78BFA'],

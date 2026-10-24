@@ -100,3 +100,4 @@
   .cm-post-head h1 { font-size: 20px; }
   .cm-toolbar .btn { width: 100%; text-align: center; }
 }
+.cm-turnstile { min-height: 65px; }

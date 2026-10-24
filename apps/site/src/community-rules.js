@@ -67,7 +67,7 @@ export function validateInquiry(form) {
 }
 
 /** 서버로 보낼 요청 본문. 숨은 칸(website)은 사람이 비워 둔 값을 그대로 보낸다. */
-export function inquiryPayload(form, formOpenedAt) {
+export function inquiryPayload(form, formOpenedAt, turnstileToken) {
   return {
     name: String(form.name).trim(),
     email: String(form.email).trim(),
@@ -76,6 +76,7 @@ export function inquiryPayload(form, formOpenedAt) {
     privacyConsent: true,
     website: String(form.website ?? ''),
     formOpenedAt,
+    turnstileToken: String(turnstileToken ?? ''),
   };
 }
 
@@ -101,4 +102,15 @@ export function boardAttachmentId(url, apiUrl) {
     const m = /^\/v1\/board\/attachments\/([A-Za-z0-9-]{1,64})$/.exec(u.pathname);
     return m ? m[1] : null;
   } catch { return null; }
+}
+
+/**
+ * Cloudflare Turnstile 사이트 키 (공개 값). 운영 도메인에서만 운영 키를 쓰고,
+ * 로컬·개발 미리보기는 Cloudflare 공식 시험 키(항상 통과)를 쓴다.
+ */
+export const TURNSTILE_SITE_KEYS = { production: '0x4AAAAAAFkEbyZmsEwI_cRN', test: '1x00000000000000000000AA' };
+export const PRODUCTION_HOSTS = ['www.easymindmap.org', 'easymindmap.org'];
+export function turnstileSiteKey(hostname, override) {
+  if (override && String(override).trim()) return String(override).trim();
+  return PRODUCTION_HOSTS.includes(String(hostname).toLowerCase()) ? TURNSTILE_SITE_KEYS.production : TURNSTILE_SITE_KEYS.test;
 }

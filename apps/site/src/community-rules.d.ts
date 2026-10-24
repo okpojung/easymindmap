@@ -11,9 +11,12 @@ export function appBoardUrl(board: BoardId, opts?: { write?: boolean; post?: str
 export function boardPath(board: BoardId, opts?: { post?: string; q?: string }): string;
 export function countLinks(text: string): number;
 export function validateInquiry(form: InquiryForm): { field: keyof InquiryForm; message: string } | null;
-export function inquiryPayload(form: InquiryForm, formOpenedAt: number): {
-  name: string; email: string; category: InquiryCategory; body: string; privacyConsent: true; website: string; formOpenedAt: number;
+export function inquiryPayload(form: InquiryForm, formOpenedAt: number, turnstileToken: string): {
+  name: string; email: string; category: InquiryCategory; body: string; privacyConsent: true; website: string; formOpenedAt: number; turnstileToken: string;
 };
 export function formatDate(iso: string): string;
 export function safeLinkHref(url: string | undefined | null): string | null;
 export function boardAttachmentId(url: string | undefined | null, apiUrl: string): string | null;
+export const TURNSTILE_SITE_KEYS: { production: string; test: string };
+export const PRODUCTION_HOSTS: string[];
+export function turnstileSiteKey(hostname: string, override?: string): string;

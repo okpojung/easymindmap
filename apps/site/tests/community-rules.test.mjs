@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { appBoardUrl, boardPath, normalizeBoard, validateInquiry, inquiryPayload, countLinks, BOARDS, safeLinkHref, boardAttachmentId } from '../src/community-rules.js';
+import { appBoardUrl, boardPath, normalizeBoard, validateInquiry, inquiryPayload, countLinks, BOARDS, safeLinkHref, boardAttachmentId, turnstileSiteKey } from '../src/community-rules.js';
 
 const ok = { name: '홍길동', email: 'a@example.com', category: 'usage', body: '사용 방법을 알고 싶습니다. 맵을 공유하려면 어떻게 하나요?', privacyConsent: true, website: '' };
 
@@ -35,8 +35,9 @@ test('문의 입력 검사', () => {
 });
 
 test('문의 요청 본문은 계약 §3 필드 그대로', () => {
-  const p = inquiryPayload({ ...ok, name: ' 홍길동 ' }, 123);
-  assert.deepEqual(Object.keys(p).sort(), ['body', 'category', 'email', 'formOpenedAt', 'name', 'privacyConsent', 'website']);
+  const p = inquiryPayload({ ...ok, name: ' 홍길동 ' }, 123, 'tok');
+  assert.deepEqual(Object.keys(p).sort(), ['body', 'category', 'email', 'formOpenedAt', 'name', 'privacyConsent', 'turnstileToken', 'website']);
+  assert.equal(p.turnstileToken, 'tok');
   assert.equal(p.name, '홍길동');
   assert.equal(p.website, '');
   assert.equal(p.formOpenedAt, 123);
@@ -76,4 +77,15 @@ test('사진은 같은 API 의 게시판 첨부 주소만', () => {
   assert.equal(boardAttachmentId('https://evil.example/v1/board/attachments/x', api), null);
   assert.equal(boardAttachmentId(api + '/v1/board/attachments/x?track=1', api), null);
   assert.equal(boardAttachmentId(api + '/v1/maps/x', api), null);
+});
+
+test('Turnstile 사이트 키: 운영 도메인만 운영 키, 나머지는 공식 시험 키', () => {
+  assert.equal(turnstileSiteKey('www.easymindmap.org'), '0x4AAAAAAFkEbyZmsEwI_cRN');
+  assert.equal(turnstileSiteKey('easymindmap.org'), '0x4AAAAAAFkEbyZmsEwI_cRN');
+  assert.equal(turnstileSiteKey('127.0.0.1'), '1x00000000000000000000AA');
+  assert.equal(turnstileSiteKey('localhost'), '1x00000000000000000000AA');
+  assert.equal(turnstileSiteKey('127.0.0.1', '0xOVERRIDE'), '0xOVERRIDE');
+  const contact = readFileSync(new URL('../src/pages/Contact.tsx', import.meta.url), 'utf8');
+  assert.match(contact, /inquiryPayload\(form, openedAt\.current, token\)/);
+  assert.match(contact, /captcha\.current\?\.reset\(\)/);
 });

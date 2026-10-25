@@ -39,7 +39,7 @@ export default function FunctionPage() {
 
       <section className="wrap cta">
         <h2>직접 눌러 보는 편이 빠릅니다</h2>
-        <p>오른쪽 위 ‘Guest로 체험해보기’로 가입 없이 바로 써 볼 수 있습니다.</p>
+        <p>오른쪽 위 ‘EMM 로그인’을 누르면 로그인 화면이 열립니다. 회원은 로그인하고, 처음이라면 그 화면의 ‘Guest로 체험하기’로 가입 없이 바로 써 볼 수 있습니다.</p>
         <div className="row" style={{ justifyContent: 'center' }}>
           <Link className="btn ghost" to="/ai">AI 연동 보기</Link>
         </div>

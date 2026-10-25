@@ -1,7 +1,7 @@
 import { BRAND_FAVICON_URL, BRAND_LOGO_URL } from './brand';
 import { GUIDES, PATHS } from './content';
 import { PRESETS } from './demo';
-import { GUEST_URL } from '../config';
+import { APP_LOGIN_URL } from '../config';
 import { mountOutlineDemo } from './outline-demo.js';
 
 /** Trusted build-time markup only. User input is rendered exclusively via textContent. */
@@ -12,7 +12,7 @@ export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
  let demoPath = location.pathname;
  let frame = 0; let disposed = false;
  document.documentElement.classList.add('emm-home-page');
- function bindAppLinks() { all<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = GUEST_URL; }); }
+ function bindAppLinks() { all<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = APP_LOGIN_URL; }); }
  bindAppLinks();
  all<HTMLImageElement>('[data-brand-icon]').forEach(image => { image.src = BRAND_FAVICON_URL; });
  all<HTMLImageElement>('[data-brand-logo]').forEach(image => { image.src = BRAND_LOGO_URL; });

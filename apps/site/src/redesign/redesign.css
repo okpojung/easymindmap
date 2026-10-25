@@ -295,6 +295,7 @@ html.emm-home-page{scroll-behavior: smooth; scroll-padding-top: 100px;}
 .emm-home .brand-story-visual{margin:0 0 32px;padding:24px;background:#fff;border:1px solid var(--line);border-radius:16px;text-align:center}
 .emm-home .brand-story-visual img{display:block;width:min(100%,480px);height:auto;margin:auto}
 .emm-home .brand-story-visual figcaption{margin-top:12px;font-size:15px;font-weight:600;color:#235a48}
+.emm-home .brand-story-person img{width:min(100%,300px)}
 .emm-home .brand-steps li{padding:8px 0}.emm-home .brand-steps strong,.emm-home .brand-steps span{display:block}
 .emm-home .brand-palette-scroll{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:10px}
 .emm-home .brand-palette{width:100%;border-collapse:collapse;min-width:620px;font-size:13px;line-height:1.6}

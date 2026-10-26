@@ -16,6 +16,8 @@ import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { cloudApi, CloudError, type FolderItem } from '@/services/cloud/apiClient';
 import { saveNewMap } from '@/services/cloud/mapSession';
+import { clearNewMapTarget, newMapTargetFolder } from '@/services/cloud/newMapTarget';
+import { useDocumentStore } from '@/stores/documentStore';
 import { flattenFolders } from './folderTree';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { useTr } from '@/i18n';
@@ -35,7 +37,8 @@ export function SaveMapDialog({
 }) {
   const tr = useTr();
   const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [folderId, setFolderId] = useState<string | null>(null);
+  // 문서함에서 폴더를 고르고 [＋ 새 맵] 을 눌렀으면 그 폴더가 기본값 (2026-10-26)
+  const [folderId, setFolderId] = useState<string | null>(() => newMapTargetFolder(useDocumentStore.getState().docEpoch));
   const [title, setTitle] = useState(defaultTitle);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -43,7 +46,11 @@ export function SaveMapDialog({
 
   useEffect(() => {
     cloudApi.listFolders()
-      .then((r) => setFolders(r.folders))
+      .then((r) => {
+        setFolders(r.folders);
+        // 고른 폴더가 그사이 지워졌으면 홈으로
+        setFolderId((cur) => (cur && !r.folders.some((f) => f.folderId === cur) ? null : cur));
+      })
       .catch(() => { /* 폴더가 없어도 홈에는 저장할 수 있다 */ });
   }, []);
 
@@ -74,6 +81,7 @@ export function SaveMapDialog({
     setErr(null);
     try {
       const { mapId } = await saveNewMap({ title: clean, folderId, kind: 'solo' });
+      clearNewMapTarget();
       onSaved({ mapId, title: clean });
     } catch (e) {
       // 409 = 같은 폴더에 같은 이름 (서버 메시지에 안내가 들어 있다)

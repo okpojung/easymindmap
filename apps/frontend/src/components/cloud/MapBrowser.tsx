@@ -33,7 +33,9 @@ import {
 } from '@pro';
 import { PublishPanel } from '@/components/cloud/PublishPanel';
 import { NewMapPanel } from '@/components/left-sidebar/NewMapPanel';
+import { setNewMapTarget } from '@/services/cloud/newMapTarget';
 import { useCloudStore } from '@/stores/cloudStore';
+import { useDocumentStore } from '@/stores/documentStore';
 import { notifyUser } from '@/stores/noticeStore';
 import { publicMapUrl } from './PublishPanel';
 import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/mapSession';
@@ -347,6 +349,12 @@ export function MapBrowser({
   const [err, setErr] = useState<string | null>(null);
   /** 새 폴더를 만드는 중 — parentId 는 만들 위치(null = 홈) */
   const [newFolder, setNewFolder] = useState<{ parentId: string | null; name: string } | null>(null);
+  /**
+   * **고른 폴더** (2026-10-26 사용자 요청) — 폴더 이름을 누르면 펼치면서 고른다.
+   * 머리의 [＋ 새 폴더] 는 그 아래에, [＋ 새 맵] 은 첫 저장 때 그 폴더를 기본 위치로 쓴다.
+   * 머리의 '📁 이름 ✕' 로 풀면 다시 홈.
+   */
+  const [selFolderId, setSelFolderId] = useState<string | null>(null);
   /**
    * 검색어 — **문서함 전체**를 훑는다. 2026-08-08 부터 이름뿐 아니라
    * **맵 안(노드 텍스트·노트·태그)** 까지 서버에서 찾는다.
@@ -786,6 +794,15 @@ export function MapBrowser({
       : tr('cloud.browser.popupBlocked'));
   };
 
+  /** 고른 폴더(지워졌으면 없음) */
+  const selFolder = selFolderId ? folders.find((f) => f.folderId === selFolderId) ?? null : null;
+  /** [＋ 새 폴더] — 고른 폴더가 있으면 그 아래, 없으면 홈 */
+  const newFolderHere = () => {
+    const parentId = selFolder?.folderId ?? null;
+    setNewFolder({ parentId, name: '' });
+    if (parentId) setExpanded((prev) => new Set(prev).add(parentId));
+  };
+
   const createFolder = async () => {
     if (!newFolder) return;
     const clean = newFolder.name.trim();
@@ -1213,7 +1230,7 @@ export function MapBrowser({
         { key: 'expand', label: tr('cloud.browser.expandAll'), testId: 'browser-expand-all', onSelect: expandAll },
         { key: 'collapse', label: tr('cloud.browser.collapseAll'), testId: 'browser-collapse-all', onSelect: collapseAll },
         { key: 'newFolder', label: tr('cloud.browser.newFolder'), testId: 'browser-new-folder',
-          onSelect: () => setNewFolder({ parentId: null, name: '' }) },
+          onSelect: () => newFolderHere() },
         { key: 'sortHead', heading: tr('cloud.m.sortBy') },
         ...sortKeys.map((k): SheetItem => ({
           key: `sort-${k}`, testId: `browser-sort-${k}`,
@@ -1291,6 +1308,7 @@ export function MapBrowser({
     <div key={`f:${r.folder.folderId}`} data-testid="browser-folder"
       className="mm-list-row"
       data-target={newFolder?.parentId === r.folder.folderId ? 'new-folder' : undefined}
+            data-selected={selFolderId === r.folder.folderId ? 'true' : undefined}
       data-drop-folder={r.folder.folderId}
       data-drop={dropAt === r.folder.folderId ? 'on' : undefined}
       {...longPressProps({ kind: 'folder', folder: r.folder })}
@@ -1300,14 +1318,15 @@ export function MapBrowser({
         ...mDragRowStyle,
         opacity: drag?.kind === 'folder' && drag.folder.folderId === r.folder.folderId ? 0.5 : undefined,
         outline: dropAt === r.folder.folderId ? `2px solid ${t.primary}` : undefined, outlineOffset: -2,
-        background: dropAt === r.folder.folderId || newFolder?.parentId === r.folder.folderId ? t.primarySoft : undefined,
+        background: dropAt === r.folder.folderId || newFolder?.parentId === r.folder.folderId || selFolderId === r.folder.folderId ? t.primarySoft : undefined,
+        boxShadow: selFolderId === r.folder.folderId ? `inset 3px 0 0 ${t.primary}` : undefined,
         ['--row-hover' as string]: t.primarySoft,
         ['--row-hover-bd' as string]: t.primaryBorder,
       } as React.CSSProperties}>
       <button
         data-testid="browser-folder-toggle"
         aria-expanded={expanded.has(r.folder.folderId) || searching}
-        onClick={() => toggleFolder(r.folder.folderId)}
+        onClick={() => { toggleFolder(r.folder.folderId); setSelFolderId(r.folder.folderId); }}
         style={{
           flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8,
           minHeight: 50, padding: 0, paddingLeft: r.depth * 14,
@@ -1434,6 +1453,7 @@ export function MapBrowser({
               onClick={(e) => {
                 const r = e.currentTarget.getBoundingClientRect();
                 setNewMapAt((cur) => (cur ? null : { x: 8, y: r.bottom + 6 }));
+                setNewMapTarget(selFolder?.folderId ?? null, useDocumentStore.getState().docEpoch);
               }}
               title={tr('cloud.browser.newMapTip')}
               style={{
@@ -1564,16 +1584,28 @@ export function MapBrowser({
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
               setNewMapAt((cur) => (cur ? null : { x: r.left, y: r.bottom + 6 }));
+              setNewMapTarget(selFolder?.folderId ?? null, useDocumentStore.getState().docEpoch);
             }}
             title={tr('cloud.browser.newMapTip')}
             style={{ ...toolBtn, marginLeft: 2, fontWeight: 700, color: t.primary, borderColor: t.primaryBorder }}
           >{tr('cloud.browser.newMap')}</button>
           <button
             data-testid="browser-new-folder"
-            onClick={() => setNewFolder({ parentId: null, name: '' })}
-            title={tr('cloud.browser.newFolderTip')}
+            onClick={() => newFolderHere()}
+            title={selFolder ? tr('cloud.browser.newFolderInTip', { name: selFolder.name }) : tr('cloud.browser.newFolderTip')}
             style={{ ...toolBtn, marginLeft: 2 }}
           >{tr('cloud.browser.newFolder')}</button>
+          {selFolder && (
+            <span data-testid="browser-selected-folder" title={tr('cloud.browser.selectedTip')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 24, padding: '0 4px 0 8px', marginLeft: 2,
+                borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: t.primarySoft, color: t.primary,
+                border: `1px solid ${t.primaryBorder}`, maxWidth: 180, whiteSpace: 'nowrap' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>📁 {selFolder.name}</span>
+              <button type="button" data-testid="browser-selected-folder-clear" aria-label={tr('cloud.browser.selectedClear')}
+                title={tr('cloud.browser.selectedClear')} onClick={() => setSelFolderId(null)}
+                style={{ border: 'none', background: 'transparent', color: t.primary, cursor: 'pointer', fontSize: 12, padding: '0 2px' }}>✕</button>
+            </span>
+          )}
           {/* **전체 검색** (2026-08-07 요청) — 지금 폴더가 아니라
               **문서함 전체**를 훑는다. 맞는 파일이 든 폴더는 자동으로
               펼쳐지고, 그 안에서도 맞는 파일만 남는다. */}
@@ -1959,12 +1991,15 @@ export function MapBrowser({
             // 마우스가 다른 줄로 옮겨 가 그 줄이 hover 로 강조돼도
             // 목적지가 헷갈리지 않는다 (2026-08-08 사용자 보고)
             data-target={newFolder?.parentId === r.folder.folderId ? 'new-folder' : undefined}
+            data-selected={selFolderId === r.folder.folderId ? 'true' : undefined}
             style={dropAt === r.folder.folderId
               ? { ...rowStyle, background: t.primarySoft, outline: `2px solid ${t.primary}`, outlineOffset: -2 }
               : newFolder?.parentId === r.folder.folderId
               ? { ...rowStyle, background: t.primarySoft }
               : drag?.kind === 'folder' && drag.folder.folderId === r.folder.folderId
               ? { ...rowStyle, opacity: 0.5 }
+              : selFolderId === r.folder.folderId
+              ? { ...rowStyle, background: t.primarySoft, boxShadow: `inset 3px 0 0 ${t.primary}` }
               : rowStyle}>
             <span style={{ fontSize: 15, ...indent(r.depth) }}>📁</span>
             {/* 폴더 이름을 누르면 **그 자리에서 펼쳐진다** (2026-08-07) —
@@ -1974,7 +2009,7 @@ export function MapBrowser({
                 툴팁까지 뜨면 화면만 어수선해진다 (2026-08-05 규칙) */}
             <button
               data-testid="browser-folder-toggle"
-              onClick={() => toggleFolder(r.folder.folderId)}
+              onClick={() => { toggleFolder(r.folder.folderId); setSelFolderId(r.folder.folderId); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 textAlign: 'left', background: 'transparent', border: 'none',
@@ -2346,6 +2381,11 @@ export function MapBrowser({
             border: `1px solid ${t.border}`, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
           }}
         >
+          {selFolder && (
+            <div data-testid="browser-new-map-target" style={{ padding: '8px 12px 0', fontSize: 12, color: t.textMuted }}>
+              {tr('cloud.browser.newMapIn', { name: selFolder.name })}
+            </div>
+          )}
           <NewMapPanel
             t={t}
             inBrowser

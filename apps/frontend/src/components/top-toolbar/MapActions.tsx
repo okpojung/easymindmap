@@ -16,7 +16,7 @@ import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { useCloudStore } from '@/stores/cloudStore';
-import { useDocumentStore } from '@/stores/documentStore';
+import { newMapTitle, useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudAutosave } from '@/hooks/useCloudAutosave';
 import { useLocalDraft, clearLocalDraft } from '@/hooks/useLocalDraft';
@@ -33,6 +33,7 @@ import { LANG_LOCALE, useLang, useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
 import { MenuItem, MenuSep } from './OverflowMenu';
 import { openGuestMap } from '@/services/guestMap';
+import { titleFromCenter } from '@/utils/centerTitle';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
 type SaveIntent = null | 'save' | 'close' | 'saveAs';
@@ -175,8 +176,10 @@ export function MapActions(
           t={t}
           defaultTitle={saveIntent === 'saveAs'
             ? tr('shell.mapActions.copyTitle', { title: cloudTitle ?? mapTitle })
-            // '새 맵' 비교는 문서에 들어 있는 기본 제목(데이터)이라 번역하지 않는다
-            : mapTitle && mapTitle !== '새 맵' ? mapTitle : tr('shell.mapActions.newMapTitle')}
+            // '새 맵' 비교는 문서에 들어 있는 기본 제목(데이터)이라 번역하지 않는다.
+            // 기본 제목 그대로면 **첫 중심주제**를 이름으로 제안한다 (2026-10-26 사용자 요청)
+            : mapTitle && mapTitle !== '새 맵' && mapTitle !== tr('shell.mapActions.newMapTitle') && mapTitle !== newMapTitle() ? mapTitle
+              : titleFromCenter(useDocumentStore.getState().map.root?.text) ?? tr('shell.mapActions.newMapTitle')}
           note={saveIntent === 'close'
             ? tr('shell.mapActions.noteClose')
             : saveIntent === 'saveAs'

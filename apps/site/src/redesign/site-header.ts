@@ -1,6 +1,6 @@
 import markup from './template.html?raw';
 import { BRAND_LOGO_URL } from './brand';
-import { GUEST_URL } from '../config';
+import { APP_LOGIN_URL } from '../config';
 
 /**
  * The one approved site header. It is cut from the homepage template at build time,
@@ -21,7 +21,7 @@ export function mountSiteHeader(root: HTMLElement, pathname: string): () => void
  const nav = root.querySelector<HTMLElement>('#nav');
  const dropdowns = () => Array.from(root.querySelectorAll<HTMLDetailsElement>('.emm-dropdown'));
  root.querySelectorAll<HTMLImageElement>('[data-brand-logo]').forEach(image => { image.src = BRAND_LOGO_URL; });
- root.querySelectorAll<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = GUEST_URL; });
+ root.querySelectorAll<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = APP_LOGIN_URL; });
  root.querySelectorAll<HTMLAnchorElement>('#nav a[href]').forEach(a => {
   if (new URL(a.href, location.href).pathname === pathname) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
  });

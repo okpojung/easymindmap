@@ -215,3 +215,5 @@ a { color: inherit; text-decoration: none; }
 /* 하단 문의하기 버튼 */
 .foot .foot-contact{padding:5px 12px;border:1px solid #bccabd;border-radius:8px;color:#214e3c;font-weight:650;background:#fff}
 .foot .foot-contact:hover{background:#edf1e7}
+
+.head .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}

@@ -359,3 +359,5 @@ html.emm-home-page{scroll-behavior: smooth; scroll-padding-top: 100px;}
 /* 문의하기는 메뉴 대신 하단 버튼으로 */
 .emm-home .footer-contact{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:1px solid #bccabd;border-radius:8px;font-size:14px;font-weight:650;color:var(--green);background:#fff}
 .emm-home .footer-contact:hover{background:var(--soft);color:var(--green)}
+
+.emm-home .header [data-open-app]{white-space:nowrap}

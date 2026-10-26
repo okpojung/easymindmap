@@ -81,6 +81,18 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
       <div style={{ position: 'absolute', top: 10, right: 12, zIndex: 2 }}>
         <LanguagePicker t={t} compact testId="welcome-language" />
       </div>
+      {/* 홈페이지 바로가기 — 왼쪽 위 (2026-10-25 사용자 지시), 같은 탭으로 이동 */}
+      <a
+        href="https://www.easymindmap.org/"
+        data-testid="welcome-homepage"
+        title={tr('shell.toolbar.homepageTip')}
+        style={{
+          position: 'absolute', top: 10, left: 12, zIndex: 2,
+          display: 'flex', alignItems: 'center', gap: 4, height: 30, padding: '0 10px',
+          borderRadius: 7, border: `1px solid ${t.border}`, background: t.surface,
+          color: t.text, fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
+        }}
+      >🏠 {tr('shell.toolbar.homepage')}</a>
       <div
         style={{
           minHeight: '100%', boxSizing: 'border-box',

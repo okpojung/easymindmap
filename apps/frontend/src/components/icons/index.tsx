@@ -41,13 +41,15 @@ export const I = {
   // 표시). 원본 파일 = src/assets/brand-logo.svg (docs/assets/brand/
   // logo.svg와 동일 바이트). index.html 파비콘·뷰어 LOGO_SVG도 같은
   // 파일을 쓴다 — 로고 교체 시 SVG 파일만 바꾸면 된다 (brand-logo.md).
+  // 2026-10-25: 홈페이지와 같은 확정안 H1(670×410 가로형)으로 교체 — **비율을 늘이지 않는다.**
+  // size 는 높이이고 폭은 원본 비율을 따른다. 다크 모드에서도 밝은 바탕 위에 둔다.
+  // 파비콘은 정사각형 마크(brand-favicon.svg)를 따로 쓴다.
   Logo: (p: P = {}) => (
     <img
       src={brandLogoUrl}
-      width={p.size || 22}
       height={p.size || 22}
       alt="EasyMindMap"
-      style={{ display: 'block', borderRadius: '18%' }}
+      style={{ display: 'block', height: p.size || 22, width: 'auto', aspectRatio: '670 / 410', background: '#FDFDFD', borderRadius: 6 }}
       draggable={false}
     />
   ),

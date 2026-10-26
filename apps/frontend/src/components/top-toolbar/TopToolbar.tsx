@@ -321,7 +321,7 @@ export function TopToolbar({
             cursor: 'pointer', textAlign: 'left', color: t.text,
           }}
         >
-          <span style={{ width: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <I.Logo size={26} />
           </span>
           <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.2 }}>
@@ -526,11 +526,11 @@ export function TopToolbar({
         display: 'flex', alignItems: 'center', gap: 10,
         minWidth: iconOnly ? 0 : compact ? 180 : 280,
       }}>
-        {/* EasyMindMap 로고 — 배지형이라 배경 상자 없이 그대로 표시 */}
+        {/* EasyMindMap 로고 — H1 가로형, 높이만 맞추고 폭은 원본 비율 (2026-10-25) */}
         <div
           style={{
-            width: 32,
             height: 32,
+            flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

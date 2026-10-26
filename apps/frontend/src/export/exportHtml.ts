@@ -21,7 +21,8 @@
 //   node text can never break out of the <script> block.
 
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
-import brandLogoRaw from '@/assets/brand-logo.svg?raw';
+// 내보낸 HTML 의 파비콘·제목 옆 아이콘은 20px 정사각형 — 가로형 로고 대신 정사각형 마크 (2026-10-25)
+import brandLogoRaw from '@/assets/brand-favicon.svg?raw';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import {
   setLevelFontConfig, setLevelShapeConfig,

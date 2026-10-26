@@ -18,8 +18,6 @@ import { useCloudStore } from '@/stores/cloudStore';
 import { useTr } from '@/i18n';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 
-/** 홈페이지 (www) — 로그인 여부와 상관없이 보인다 (2026-10-25) */
-export const HOMEPAGE_URL = 'https://www.easymindmap.org/';
 
 export function DocsToolbar({ t }: { t: ThemeTokens }) {
   const tr = useTr();
@@ -73,17 +71,6 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
           <span style={{ fontSize: 11, color: t.textSubtle, fontWeight: 500 }}>EasyMindMap</span>
           <span data-testid="docs-title" style={{ fontSize: 14, color: t.text, fontWeight: 600 }}>{tr('shell.toolbar.crumb')}</span>
         </div>
-        {/* 홈페이지 바로가기 (2026-10-25 사용자 지시: 왼쪽 위) — 같은 탭으로 이동 */}
-        <a
-          href={HOMEPAGE_URL}
-          data-testid="docs-homepage"
-          title={tr('shell.toolbar.homepageTip')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', marginLeft: 4,
-            borderRadius: 7, border: `1px solid ${t.border}`, background: t.surfaceAlt,
-            color: t.text, fontSize: 12.5, fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0,
-          }}
-        >{phone ? '🏠' : `🏠 ${tr('shell.toolbar.homepage')}`}</a>
       </div>
 
       <div style={{ flex: 1 }} />

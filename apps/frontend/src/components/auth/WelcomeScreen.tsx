@@ -81,18 +81,6 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
       <div style={{ position: 'absolute', top: 10, right: 12, zIndex: 2 }}>
         <LanguagePicker t={t} compact testId="welcome-language" />
       </div>
-      {/* 홈페이지 바로가기 — 왼쪽 위 (2026-10-25 사용자 지시), 같은 탭으로 이동 */}
-      <a
-        href="https://www.easymindmap.org/"
-        data-testid="welcome-homepage"
-        title={tr('shell.toolbar.homepageTip')}
-        style={{
-          position: 'absolute', top: 10, left: 12, zIndex: 2,
-          display: 'flex', alignItems: 'center', gap: 4, height: 30, padding: '0 10px',
-          borderRadius: 7, border: `1px solid ${t.border}`, background: t.surface,
-          color: t.text, fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
-        }}
-      >🏠 {tr('shell.toolbar.homepage')}</a>
       <div
         style={{
           minHeight: '100%', boxSizing: 'border-box',
@@ -105,6 +93,18 @@ export function WelcomeScreen({ t }: { t: ThemeTokens }) {
       >
         {/* ── 소개 ────────────────────────────────────────── */}
         <div style={{ flex: '1 1 420px', maxWidth: 560, minWidth: phone ? 0 : 300 }}>
+          {/* 홈페이지 바로가기 — 로고 바로 위, 로고 왼쪽 끝에 맞춘다 (2026-10-26 사용자 지시). 같은 탭으로 이동 */}
+          <a
+            href="https://www.easymindmap.org/"
+            data-testid="welcome-homepage"
+            title={tr('shell.toolbar.homepageTip')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4, height: 30, padding: '0 10px',
+              marginBottom: phone ? 10 : 14,
+              borderRadius: 7, border: `1px solid ${t.border}`, background: t.surface,
+              color: t.text, fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
+            }}
+          >🏠 {tr('shell.toolbar.homepage')}</a>
           <div style={{ display: 'flex', alignItems: 'center', gap: phone ? 10 : 14, marginBottom: phone ? 14 : 24 }}>
             {/* 2026-08-04 사용자 요청 — 초기 화면 로고·워드마크 확대 */}
             <I.Logo size={phone ? 48 : 72} />

@@ -35,6 +35,7 @@ import { likePattern, searchTerm } from '../common/search-term';
 import { findAccessibleMap } from '../maps/map-access';
 import { trimForPreview, type PreviewStats } from './trim-for-preview';
 import { PRO, type ProContract } from '../pro/pro.contract';
+import { PublishSocialService, normalizeTag } from './publish-social.service';
 import {
   DASHBOARD_NO_LISTING, DASHBOARD_NO_PRICE, DASHBOARD_VIEW_MODE,
 } from '../maps/dashboard-rules';
@@ -113,6 +114,11 @@ export interface PublishStatus {
    * 값 줄을 그리지 않고(서버가 막는다) 대신 **사내 시스템에 붙이는 코드**를 보여 준다.
    */
   dashboard?: boolean;
+  /** 설명문·태그·댓글 허용을 정할 수 있는 서버인가 (2026-10-26) */
+  canSetMeta?: boolean;
+  description?: string | null;
+  tags?: string[];
+  commentsEnabled?: boolean;
 }
 
 interface PublishedRow {
@@ -143,6 +149,12 @@ export interface ListedMap {
   matchCount?: number;
   /** **값** — `null` 이면 무료 (2026-09-21). 카드가 그린다 */
   priceKrw: number | null;
+  /** 설명문·태그·좋아요·댓글 (2026-10-26, 지식창고 단계 3) — 칸이 없는 서버는 null·[]·0·false */
+  description: string | null;
+  tags: string[];
+  likeCount: number;
+  commentCount: number;
+  commentsEnabled: boolean;
 }
 
 /** 미리보기 PNG 한 장의 상한. 1200×630 실루엣은 보통 100KB 안쪽이다 */
@@ -153,6 +165,8 @@ export class PublishService {
   constructor(
     private readonly db: DatabaseService,
     private readonly storage: StorageService,
+    // 설명문·태그·좋아요·댓글 (2026-10-26) — 칸·표가 없으면 스스로 꺼진다
+    private readonly social: PublishSocialService,
     // 대시보드맵의 `[&변수]` 채우기·갱신 표식 (유료, 선택) — 없으면 원문·문서 시각만
     @Optional() @Inject(PRO) private readonly pro?: ProContract,
   ) {}
@@ -593,7 +607,7 @@ export class PublishService {
    *   훑는 것 자체를 하지 않는다 — 비인증 엔드포인트에서 "어차피 밖에서
    *   거른다" 는 기대에 기대면 안 된다.
    */
-  async listListed(limit: number, cursor?: string, q?: string): Promise<{
+  async listListed(limit: number, cursor?: string, q?: string, tagRaw?: string): Promise<{
     items: ListedMap[]; nextCursor: string | null;
   }> {
     if (!(await this.ready()) || !(await this.hasListed())) {
@@ -684,16 +698,27 @@ export class PublishService {
       }
     }
 
+    // ── 태그 (2026-10-26) — 하나만, 정확히 일치(소문자 정규화). 칸이 없는 서버는 빈 목록
+    const metaOk = await this.social.metaReady();
+    const tag = tagRaw !== undefined ? normalizeTag(tagRaw) : null;
+    if (tagRaw !== undefined && tagRaw !== '' && (!tag || !metaOk)) return { items: [], nextCursor: null };
+    if (tag) {
+      params.push(tag);
+      where += ` AND $${params.length} = ANY(p.tags)`;
+    }
+    const msel = metaOk ? ', p.description, p.tags, p.comments_enabled' : '';
+
     const priced = await this.hasPrice();
     const psel = priced ? ', p.price_krw' : '';
     const { rows } = await this.db.query<{
-      publish_id: string; title: string; published_at: Date;
+      publish_id: string; title: string; published_at: Date; map_id: string;
       storage_path: string | null; node_count: number | null;
       match_count?: number; price_krw?: number | null;
+      description?: string | null; tags?: string[] | null; comments_enabled?: boolean;
     }>(
       `${hitsCte}${hitsCte ? ', pg AS (' : 'WITH pg AS ('}
-           SELECT p.publish_id, m.title, p.published_at, p.storage_path,
-                  d.node_count${psel}${textCol}
+           SELECT p.publish_id, p.map_id, m.title, p.published_at, p.storage_path,
+                  d.node_count${psel}${msel}${textCol}
              FROM public.published_maps p
              JOIN public.maps m ON m.id = p.map_id
         LEFT JOIN public.map_documents d ON d.map_id = p.map_id
@@ -706,14 +731,15 @@ export class PublishService {
          ORDER BY p.published_at DESC, p.publish_id DESC
             LIMIT $1
          )
-       SELECT pg.publish_id, pg.title, pg.published_at, pg.storage_path,
-              pg.node_count${priced ? ', pg.price_krw' : ''}${matchCountSql}
+       SELECT pg.publish_id, pg.map_id, pg.title, pg.published_at, pg.storage_path,
+              pg.node_count${priced ? ', pg.price_krw' : ''}${metaOk ? ', pg.description, pg.tags, pg.comments_enabled' : ''}${matchCountSql}
          FROM pg
      ORDER BY pg.published_at DESC, pg.publish_id DESC`,
       params,
     );
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
+    const counts = await this.social.countsFor(page.map((r) => r.map_id));
     return {
       items: page.map((r) => ({
         publishId: r.publish_id,
@@ -722,6 +748,11 @@ export class PublishService {
         hasPreview: !!r.storage_path,
         nodeCount: r.node_count ?? null,
         priceKrw: priced ? (r.price_krw ?? null) : null,
+        description: r.description ?? null,
+        tags: r.tags ?? [],
+        likeCount: counts.get(r.map_id)?.likeCount ?? 0,
+        commentCount: counts.get(r.map_id)?.commentCount ?? 0,
+        commentsEnabled: !!r.comments_enabled,
         ...(searching ? { matchCount: r.match_count ?? 0 } : {}),
       })),
       nextCursor: rows.length > limit && last
@@ -800,8 +831,12 @@ export class PublishService {
     const canList = await this.hasListed();
     const canPrice = await this.hasPrice();
     const cur = await this.activeRow(mapId);
+    // 설명문·태그·댓글 허용 (2026-10-26) — 칸이 없는 서버는 canSetMeta:false
+    const meta = cur ? await this.social.metaFor(mapId) : null;
+    const metaOk = await this.social.metaReady();
+    const metaFields = { canSetMeta: metaOk, description: meta?.description ?? null, tags: meta?.tags ?? [], commentsEnabled: meta?.commentsEnabled ?? false };
     return cur
-      ? { ...this.toStatus(cur, canSet, canList, canPrice), ...gate, dashboard }
+      ? { ...this.toStatus(cur, canSet, canList, canPrice), ...gate, dashboard, ...metaFields }
       : {
         available: true, publishId: null, publishedAt: null,
         canSetVisibility: canSet, listed: false, canSetListed: canList,
@@ -858,6 +893,14 @@ export class PublishService {
     //     두지 않는다 — 값이 남은 채 무료로 돌린 맵이 잘려 나가고, 그건
     //     저자가 공짜로 풀기로 한 맵을 우리가 잠그는 셈이다.
     const paid = row.visibility === 'paid';
+    // 설명문·태그·좋아요·댓글 (2026-10-26) — 무료·유료 모두 같은 칸
+    const meta = await this.social.metaFor(row.map_id);
+    const cnt = (await this.social.countsFor([row.map_id])).get(row.map_id)!;
+    const social = {
+      description: meta?.description ?? null, tags: meta?.tags ?? [],
+      commentsEnabled: meta?.commentsEnabled ?? false,
+      likeCount: cnt.likeCount, commentCount: cnt.commentCount,
+    };
     if (!paid) {
       // ★ **대시보드맵은 채운 문서를 준다** (2026-09-30, 22-dashboard.md §4.7) —
       //   에디터의 `getDocument` 와 같은 한 곳(`renderDashboardDoc`)을 지난다.
@@ -872,6 +915,7 @@ export class PublishService {
         updatedAt: row.updated_at,
         locked: false as const,
         priceKrw: null,
+        ...social,
         ...(dashboard ? { dashboard: true as const, stamp: await this.stampOf(row.map_id, row.updated_at) } : {}),
       };
     }
@@ -887,6 +931,7 @@ export class PublishService {
       locked: true as const,
       priceKrw: canPrice ? (row.price_krw ?? null) : null,
       stats,
+      ...social,
     };
   }
 

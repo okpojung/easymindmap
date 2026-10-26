@@ -336,6 +336,11 @@ export const VISIBILITY_LABEL: Record<PublishVisibility, string> = {
 /** 퍼블리싱 상태 (PUBL). available:false = 이 서버에 퍼블리싱 기능이 없다 */
 export interface PublishStatus {
   available: boolean;
+  /** 설명문·태그·댓글 허용 (2026-10-26) — canSetMeta 가 false 면 그 칸을 그리지 않는다 */
+  canSetMeta?: boolean;
+  description?: string | null;
+  tags?: string[];
+  commentsEnabled?: boolean;
   publishId: string | null;
   publishedAt: string | null;
   /** 미리보기 실루엣이 올라와 있는가 (27a §2) */
@@ -418,6 +423,23 @@ export interface PublishedMap {
   dashboard?: boolean;
   /** 바뀌었는지 가르는 표식(문서 시각 + 변수) — 뜻은 없고 같은지만 본다 */
   stamp?: string;
+  /** 설명문·태그·좋아요·댓글 (2026-10-26, 지식창고 단계 3) */
+  description?: string | null;
+  tags?: string[];
+  likeCount?: number;
+  commentCount?: number;
+  commentsEnabled?: boolean;
+}
+
+/** 지식창고 댓글 한 줄 (2026-10-26) */
+export interface PublishedComment {
+  id: string;
+  author: { displayName: string; avatarUrl: string | null };
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  mine: boolean;
+  canDelete?: boolean;
 }
 
 export const cloudApi = {
@@ -784,6 +806,9 @@ export const cloudApi = {
    */
   setMapPrice: (mapId: string, priceKrw: number | null) =>
     req<PublishStatus>('PATCH', `/maps/${mapId}/publish/price`, { priceKrw }),
+  /** 설명문 · 태그 · 댓글 허용 (2026-10-26) — 준 칸만 바뀐다 */
+  setPublishMeta: (mapId: string, meta: { description?: string | null; tags?: string[]; commentsEnabled?: boolean }) =>
+    req<{ description: string | null; tags: string[]; commentsEnabled: boolean }>('PATCH', `/maps/${mapId}/publish/meta`, meta),
   /**
    * ★ **주인이 보는 미리보기** (2026-09-05) — 비공개(보관)여도 받아진다.
    *
@@ -820,6 +845,21 @@ export const cloudApi = {
   getPublished: (publishId: string) =>
     req<PublishedMap>('GET', `/published/${encodeURIComponent(publishId)}`,
       undefined, true),
+  /** 지식창고 좋아요·댓글 (2026-10-26) — 읽기는 비로그인, 쓰기는 로그인 회원 */
+  publishedMe: (publishId: string) =>
+    req<{ liked: boolean; likeCount: number; isOwner: boolean; commentsEnabled: boolean }>('GET', `/published/${encodeURIComponent(publishId)}/me`),
+  setPublishedLike: (publishId: string, on: boolean) =>
+    req<{ liked: boolean; likeCount: number }>(on ? 'POST' : 'DELETE', `/published/${encodeURIComponent(publishId)}/like`),
+  publishedComments: (publishId: string, member: boolean, cursor?: string) =>
+    req<{ items: PublishedComment[]; nextCursor: string | null }>('GET',
+      `/published/${encodeURIComponent(publishId)}/${member ? 'me/comments' : 'comments'}?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+      undefined, !member),
+  addPublishedComment: (publishId: string, body: string) =>
+    req<{ id: string }>('POST', `/published/${encodeURIComponent(publishId)}/comments`, { body }),
+  editPublishedComment: (publishId: string, id: string, body: string) =>
+    req<{ ok: boolean }>('PATCH', `/published/${encodeURIComponent(publishId)}/comments/${id}`, { body }),
+  deletePublishedComment: (publishId: string, id: string) =>
+    req<void>('DELETE', `/published/${encodeURIComponent(publishId)}/comments/${id}`),
   /** 바뀌었나만 — 붙여 둔 대시보드맵의 10초 물음 (문서를 받지 않는다) */
   getPublishedStamp: (publishId: string) =>
     req<{ stamp: string; dashboard: boolean }>(

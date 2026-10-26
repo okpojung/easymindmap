@@ -28,6 +28,7 @@ import {
 } from '@/services/cloud/apiClient';
 import { useProFeature } from '@/pro/contract';
 import { ProBuyPanel } from '@pro';
+import { PublicSocialPanel } from './PublicSocialPanel';
 import { isFreshTab, libraryBackHref } from '@/utils/viewerChrome';
 import { LANG_LOCALE, useLang, useTr } from '@/i18n';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
@@ -365,6 +366,8 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
           border: 'none',
         }}
       />
+      {/* 설명문·태그·좋아요·댓글 (2026-10-26) — 사내 시스템에 붙인(embed) 화면·대시보드맵에는 없다 */}
+      {!embed && !isDashboard && <PublicSocialPanel data={data} />}
     </>
   );
 }

@@ -12,6 +12,7 @@ import { sendAttachment } from '../attachments/attachments.controller';
 import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { PublishService, type PublishVisibility } from './publish.service';
+import { PublishSocialService } from './publish-social.service';
 import { buildOgFragment } from './og-tags';
 import { PRO, type ProContract } from '../pro/pro.contract';
 
@@ -22,7 +23,21 @@ import { PRO, type ProContract } from '../pro/pro.contract';
 @Controller('maps')
 @UseGuards(AuthGuard)
 export class PublishController {
-  constructor(private readonly publish: PublishService) {}
+  constructor(private readonly publish: PublishService, private readonly social: PublishSocialService) {}
+
+  /**
+   * **설명문 · 태그 · 댓글 허용** (2026-10-26, 지식창고 단계 3).
+   *   `{ "description": "…" | null, "tags": ["교육", "ai"], "commentsEnabled": true }` — 준 칸만 바꾼다.
+   * 맵 주인만. 퍼블리싱(등록)된 맵에서만.
+   */
+  @Patch(':id/publish/meta')
+  setMeta(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { description?: unknown; tags?: unknown; commentsEnabled?: unknown },
+  ) {
+    return this.social.setMeta(user.id, id, body ?? {});
+  }
 
   /**
    * 퍼블리싱 **등록**. `visibility` 를 주면 그 상태로 등록한다
@@ -157,12 +172,13 @@ export class PublicPublishController {
   constructor(
     private readonly publish: PublishService,
     private readonly attachments: AttachmentsService,
+    private readonly social: PublishSocialService,
     // 유료 모듈 — **없을 수 있다**(공개판). 없으면 유료 첨부는 열리지 않는다.
     @Optional() @Inject(PRO) private readonly pro?: ProContract,
   ) {}
 
   /** 슬러그 모양이 아니면 DB 에 묻지도 않는다 — 공개 경로라 아무나 두드린다 */
-  private static slug(publishId: string): string {
+  static slug(publishId: string): string {
     if (!/^[a-z0-9]{6,20}$/.test(publishId)) {
       throw new BadRequestException('잘못된 퍼블리싱 링크입니다.');
     }
@@ -311,6 +327,7 @@ export class PublicPublishController {
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
     @Query('q') q?: string,
+    @Query('tag') tag?: string,
   ) {
     // 한 번에 100줄까지. 넘겨도 잘라 준다 — 거절하면 부르는 쪽만 번거롭다
     const n = Math.min(100, Math.max(1, Number.parseInt(limit ?? '', 10) || 24));
@@ -318,7 +335,20 @@ export class PublicPublishController {
     // 있는데, 긴 패턴은 ILIKE 비용만 키우고 찾는 데는 쓸모가 없다.
     // 거절하지 않고 자르는 이유는 limit 과 같다 — 부르는 쪽만 번거롭다.
     const term = typeof q === 'string' ? q.slice(0, 100) : undefined;
-    return this.publish.listListed(n, cursor, term);
+    return this.publish.listListed(n, cursor, term, typeof tag === 'string' ? tag.slice(0, 60) : undefined);
+  }
+
+  /** 지식창고 **태그 목록** — 많이 쓰인 순 (2026-10-26). `:publishId` 보다 먼저 선언한다 */
+  @Get('tags')
+  tags(@Query('limit') limit?: string) {
+    const n = Math.min(100, Math.max(1, Number.parseInt(limit ?? '', 10) || 30));
+    return this.social.tags(n);
+  }
+
+  /** 댓글 — 공개 중이고 게시자가 댓글을 허용한 맵만. 비로그인도 읽는다 */
+  @Get(':publishId/comments')
+  comments(@Param('publishId') publishId: string, @Query('limit') limit?: string, @Query('cursor') cursor?: string) {
+    return this.social.listComments(PublicPublishController.slug(publishId), limit, cursor, null);
   }
 
   /**
@@ -335,5 +365,60 @@ export class PublicPublishController {
   @Get(':publishId')
   getPublished(@Param('publishId') publishId: string) {
     return this.publish.getPublished(PublicPublishController.slug(publishId));
+  }
+}
+
+
+/**
+ * 지식창고 **좋아요 · 댓글 쓰기** (2026-10-26) — 로그인 회원 누구나.
+ * 읽기(목록·댓글 보기)는 위의 비인증 컨트롤러에 있고, 여기는 **쓰는 문만** 모았다.
+ */
+@Controller('published')
+@UseGuards(AuthGuard)
+export class PublishedSocialController {
+  constructor(private readonly social: PublishSocialService) {}
+
+  /** 내가 좋아요를 눌렀나 · 게시자인가 · 댓글을 받나 */
+  @Get(':publishId/me')
+  me(@CurrentUser() user: AuthUser, @Param('publishId') publishId: string) {
+    return this.social.me(PublicPublishController.slug(publishId), user.id);
+  }
+
+  /** 댓글 목록(로그인) — 내 댓글·지울 수 있는 댓글 표시가 붙는다 */
+  @Get(':publishId/me/comments')
+  myComments(@CurrentUser() user: AuthUser, @Param('publishId') publishId: string, @Query('limit') limit?: string, @Query('cursor') cursor?: string) {
+    return this.social.listComments(PublicPublishController.slug(publishId), limit, cursor, user.id);
+  }
+
+  @Post(':publishId/like')
+  @HttpCode(200)
+  like(@CurrentUser() user: AuthUser, @Param('publishId') publishId: string) {
+    return this.social.setLike(PublicPublishController.slug(publishId), user.id, true);
+  }
+
+  @Delete(':publishId/like')
+  @HttpCode(200)
+  unlike(@CurrentUser() user: AuthUser, @Param('publishId') publishId: string) {
+    return this.social.setLike(PublicPublishController.slug(publishId), user.id, false);
+  }
+
+  @Post(':publishId/comments')
+  @HttpCode(201)
+  addComment(@CurrentUser() user: AuthUser, @Param('publishId') publishId: string, @Body() body: { body?: unknown }) {
+    return this.social.addComment(PublicPublishController.slug(publishId), user.id, body?.body);
+  }
+
+  @Patch(':publishId/comments/:commentId')
+  editComment(
+    @CurrentUser() user: AuthUser, @Param('publishId') publishId: string,
+    @Param('commentId', ParseUUIDPipe) commentId: string, @Body() body: { body?: unknown },
+  ) {
+    return this.social.editComment(PublicPublishController.slug(publishId), user.id, commentId, body?.body);
+  }
+
+  @Delete(':publishId/comments/:commentId')
+  @HttpCode(204)
+  deleteComment(@CurrentUser() user: AuthUser, @Param('publishId') publishId: string, @Param('commentId', ParseUUIDPipe) commentId: string) {
+    return this.social.deleteComment(PublicPublishController.slug(publishId), user.id, commentId);
   }
 }

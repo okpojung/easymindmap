@@ -626,6 +626,20 @@ export function PublishPanel(
               );
             })()}
 
+            {/* 설명문 · 태그 · 댓글 허용 (2026-10-26, 지식창고 단계 3) — 지식창고 카드와 공개 화면에 나온다 */}
+            {status.canSetMeta && status.publishId && !status.dashboard && (
+              <MetaRow
+                t={t}
+                status={status}
+                busy={busy}
+                onSave={(m) => void run(async () => {
+                  const r = await cloudApi.setPublishMeta(mapId, m);
+                  setStatus({ ...status, ...r });
+                  flash(tr('publish.meta.saved'));
+                })}
+              />
+            )}
+
             {/* ★ **유료공개의 값** (2026-09-21, 27b §8.1).
                 칸이 없는 서버에서는 그리지 않고(`canSetPrice`), **판매가
                 켜지지 않은 서버에서도** 값 칸 대신 이유를 적는다 — 값만
@@ -796,6 +810,61 @@ export function PublishPanel(
  *     반려돼 잠긴 저자도 자기 맵의 값은 내릴 수 있어야 한다 — 잠그면
  *     팔리지도 내려지지도 않는 맵이 남는다.
  */
+/** 태그 입력값 → 목록 (쉼표·줄바꿈으로 나눈다. 정규화는 서버가 다시 한다) */
+function splitTags(v: string): string[] {
+  return v.split(/[,\n]/).map((x) => x.replace(/^#+/, '').trim()).filter(Boolean).slice(0, 10);
+}
+
+function MetaRow({ t, status, busy, onSave }: {
+  t: ThemeTokens;
+  status: PublishStatus;
+  busy: boolean;
+  onSave: (m: { description: string | null; tags: string[]; commentsEnabled: boolean }) => void;
+}) {
+  const tr = useTr();
+  const [desc, setDesc] = useState(status.description ?? '');
+  const [tags, setTags] = useState((status.tags ?? []).join(', '));
+  const [comments, setComments] = useState(!!status.commentsEnabled);
+  useEffect(() => {
+    setDesc(status.description ?? ''); setTags((status.tags ?? []).join(', ')); setComments(!!status.commentsEnabled);
+  }, [status.description, status.tags, status.commentsEnabled]);
+  const tagList = splitTags(tags);
+  const dirty = desc.trim() !== (status.description ?? '') || tagList.join('|') !== (status.tags ?? []).join('|') || comments !== !!status.commentsEnabled;
+  const input = { width: '100%', boxSizing: 'border-box' as const, padding: '6px 8px', borderRadius: 6, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 12.5, fontFamily: 'inherit' };
+  return (
+    <div data-testid="publish-meta" style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceAlt }}>
+      <b style={{ fontSize: 12.5 }}>{tr('publish.meta.title')}</b>
+      <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, margin: '2px 0 8px' }}>{tr('publish.meta.hint')}</div>
+      <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, marginBottom: 3 }}>{tr('publish.meta.desc')}</label>
+      <textarea data-testid="publish-meta-desc" value={desc} maxLength={500} rows={3} disabled={busy}
+        onChange={(e) => setDesc(e.target.value)} placeholder={tr('publish.meta.descPh')} style={{ ...input, resize: 'vertical' }} />
+      <div style={{ fontSize: 10.5, color: t.textSubtle, textAlign: 'right' }}>{desc.length}/500</div>
+      <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, margin: '4px 0 3px' }}>{tr('publish.meta.tags')}</label>
+      <input data-testid="publish-meta-tags" value={tags} disabled={busy} onChange={(e) => setTags(e.target.value)}
+        placeholder={tr('publish.meta.tagsPh')} style={input} />
+      {tagList.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+          {tagList.map((x) => <span key={x} style={{ fontSize: 11, padding: '1px 7px', borderRadius: 10, background: t.primarySoft ?? t.surface, color: t.primary }}>#{x.toLowerCase()}</span>)}
+        </div>
+      )}
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginTop: 8 }}>
+        <input data-testid="publish-meta-comments" type="checkbox" checked={comments} disabled={busy} onChange={(e) => setComments(e.target.checked)} style={{ marginTop: 2 }} />
+        <span>
+          <b style={{ fontSize: 12.5 }}>{tr('publish.meta.comments')}</b>
+          <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6 }}>{tr('publish.meta.commentsHint')}</div>
+        </span>
+      </label>
+      <button data-testid="publish-meta-save" disabled={!dirty || busy}
+        onClick={() => onSave({ description: desc.trim() || null, tags: tagList, commentsEnabled: comments })}
+        style={{ width: '100%', height: 32, marginTop: 8, borderRadius: 7, fontSize: 12.5, fontWeight: 700,
+          border: `1px solid ${dirty ? t.primary : t.border}`, background: dirty ? t.primary : t.surfaceAlt,
+          color: dirty ? '#fff' : t.textSubtle, cursor: dirty && !busy ? 'pointer' : 'default' }}>
+        {dirty ? tr('publish.meta.save') : tr('publish.meta.savedIdle')}
+      </button>
+    </div>
+  );
+}
+
 function PriceRow({ t, status, busy, onApply }: {
   t: ThemeTokens;
   status: PublishStatus;

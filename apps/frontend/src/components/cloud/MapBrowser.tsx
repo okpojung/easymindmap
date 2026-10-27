@@ -1137,6 +1137,8 @@ export function MapBrowser({
   // (2026-08-09 3차: 머리글 위에 얹던 작은 글씨를 아래 한 줄로 내렸다)
   const totalNumCell: React.CSSProperties = { ...numCell, whiteSpace: 'nowrap' };
 
+  /** 아이콘 열 다음의 열들 — 들여쓰기는 **아이콘 열만** 넓힌다 (rowAt) */
+  const COLS_REST = 'minmax(140px, 1fr) 76px 108px 108px 58px 76px 54px 86px 196px';
   const rowStyle: React.CSSProperties = {
     display: 'grid',
     // 숫자 4열은 머리글 글자('첨부 용량')가 잘리지 않을 만큼 넓힌다 —
@@ -1144,7 +1146,7 @@ export function MapBrowser({
     // 관리 열은 **버튼 여섯 개가 다 들어가는 폭**(28×6 + 4×5 = 188)이어야
     // 한다. 106 이었을 때는 넘친 버튼이 가운데 정렬로 양쪽에 삐져나와
     // 첨부 용량 숫자와 붙어 보였다 (2026-09-07 보고). 왼쪽 여백 8 을 더해 196.
-    gridTemplateColumns: '24px minmax(140px, 1fr) 76px 108px 108px 58px 76px 54px 86px 196px',
+    gridTemplateColumns: `24px ${COLS_REST}`,
     alignItems: 'center',
     gap: 8,
     padding: '7px 10px',
@@ -1181,6 +1183,15 @@ export function MapBrowser({
   };
   /** 들여쓰기 — 트리 단계마다 한 칸 (아이콘 열 다음부터 밀린다) */
   const indent = (depth: number) => ({ paddingLeft: depth * 16 });
+  /**
+   * 단계만큼 **아이콘 열을 넓힌** 줄 모양 (2026-10-28 사용자 보고). 예전에는 24px 열 안에서
+   * 아이콘만 밀어서, 두 단계 아래부터 아이콘이 이름 칸으로 넘어가 이름 앞 글자를 가렸다
+   * (교육 > AI엔지니어링 > 하위메뉴 > '테스트' 의 '테스' 가 안 보였다). 오른쪽 열들은 폭이
+   * 정해져 있어 머리글과 그대로 맞는다.
+   */
+  const rowAt = (depth: number): React.CSSProperties => (depth
+    ? { ...rowStyle, gridTemplateColumns: `${24 + depth * 16}px ${COLS_REST}` }
+    : rowStyle);
 
   /** 정렬 기준 고르기 — 열 머리글(데스크톱)과 폰 시트가 같은 규칙을 쓴다 */
   const pickSort = (key: SortKey) => {
@@ -1993,14 +2004,14 @@ export function MapBrowser({
             data-target={newFolder?.parentId === r.folder.folderId ? 'new-folder' : undefined}
             data-selected={selFolderId === r.folder.folderId ? 'true' : undefined}
             style={dropAt === r.folder.folderId
-              ? { ...rowStyle, background: t.primarySoft, outline: `2px solid ${t.primary}`, outlineOffset: -2 }
+              ? { ...rowAt(r.depth), background: t.primarySoft, outline: `2px solid ${t.primary}`, outlineOffset: -2 }
               : newFolder?.parentId === r.folder.folderId
-              ? { ...rowStyle, background: t.primarySoft }
+              ? { ...rowAt(r.depth), background: t.primarySoft }
               : drag?.kind === 'folder' && drag.folder.folderId === r.folder.folderId
-              ? { ...rowStyle, opacity: 0.5 }
+              ? { ...rowAt(r.depth), opacity: 0.5 }
               : selFolderId === r.folder.folderId
-              ? { ...rowStyle, background: t.primarySoft, boxShadow: `inset 3px 0 0 ${t.primary}` }
-              : rowStyle}>
+              ? { ...rowAt(r.depth), background: t.primarySoft, boxShadow: `inset 3px 0 0 ${t.primary}` }
+              : rowAt(r.depth)}>
             <span style={{ fontSize: 15, ...indent(r.depth) }}>📁</span>
             {/* 폴더 이름을 누르면 **그 자리에서 펼쳐진다** (2026-08-07) —
                 예전처럼 그 폴더로 '들어가지' 않는다. 폴더 위치와 파일을
@@ -2060,7 +2071,7 @@ export function MapBrowser({
             className="mm-list-row" aria-selected={cloudMapId === r.map.mapId}
             // 이동 버튼이 있는 맵만 끌린다 (공유받은 맵·퍼블리싱 자리의 맵은 내 트리 밖)
             {...(!r.map.shared && !knowsListed(r.map) ? dragProps({ kind: 'map', map: r.map }) : {})}
-            style={drag?.kind === 'map' && drag.map.mapId === r.map.mapId ? { ...rowStyle, opacity: 0.5 } : rowStyle}>
+            style={drag?.kind === 'map' && drag.map.mapId === r.map.mapId ? { ...rowAt(r.depth), opacity: 0.5 } : rowAt(r.depth)}>
             {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
                 (2026-08-02 사용자 보고) — 앱 SVG 아이콘으로 통일.
                 2026-10-25: 폴더(📁)와 같은 무게의 색 타일 + 종류별 색 (MapFileIcon.tsx) */}

@@ -21,6 +21,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
+import { useCodeRenderEpoch } from '@/editor/node-renderer/useCodeRenderEpoch';
 import type { LayoutType, SampleMap, Collaborator } from '@/editor/__samples__/types';
 import { computeLayout } from '@/layout/LayoutEngine';
 import { normalizeLayoutType } from '@/layout/normalizeLayoutType';
@@ -463,6 +464,8 @@ export function Canvas({
         : normalizedLayout === 'tree-down' ? ['down']
           : ['right'];
 
+  // Mermaid·HTML 코드 블록 그림이 새로 그려지면 노드 크기가 바뀐다 — 다시 배치 (2026-10-28)
+  const codeEpoch = useCodeRenderEpoch();
   const nodes = useMemo(() => {
     // 맵 설정(레벨별 폰트)을 측정기에 주입 — 모든 레이아웃 전략의
     // sizeNodeForText()와 NodeRenderer가 같은 크기·글꼴을 쓴다.
@@ -470,7 +473,8 @@ export function Canvas({
     setLevelFontConfig(sample.settings?.levelFonts);
     setLevelShapeConfig(sample.settings?.levelShapes);
     return computeLayout(sample, layoutType, CX, CY, { x: spacingX, y: spacingY });
-  }, [sample, layoutType, CX, CY, spacingX, spacingY]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sample, layoutType, CX, CY, spacingX, spacingY, codeEpoch]);
 
   // 첫 화면 pan — 트리·진행트리는 중심 주제 위 변이 HOME_TOP_GAP, 나머지는 원점 (homeArmed 효과·보호가 같이 쓴다)
   const homeWantY = useMemo(() => {

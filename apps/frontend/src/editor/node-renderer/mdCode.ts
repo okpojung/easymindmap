@@ -11,6 +11,7 @@
 // 빈 코드(줄 0)는 블록으로 만들지 않는다.
 
 import { cellWidth, lineCells } from '@/utils/monoGrid';
+import { codeRenderOf, type CodeRender } from './codeRender';
 
 export interface MdCodeParse {
   before: string; // 코드 앞 일반 텍스트 ('' 가능)
@@ -25,6 +26,8 @@ export interface MdCodeLayout extends MdCodeParse {
   headH: number; // 헤더 행(언어 라벨 + 복사 버튼) 높이
   w: number; // 패널 전체 폭 (패딩 포함)
   h: number; // 패널 전체 높이 (헤더 + 코드 + 패딩)
+  /** Mermaid·HTML 을 그린 결과 (2026-10-28) — 있으면 코드 줄 대신 이것을 보인다 */
+  render?: CodeRender;
 }
 
 export const MD_CODE_PAD_X = 8;
@@ -110,6 +113,15 @@ export function layoutParsedCode(parsed: MdCodeParse, fontSize: number): MdCodeL
   for (const ln of parsed.code) maxW = Math.max(maxW, monoMeasure(ln, codeFs));
   // 헤더가 잘리지 않게 최소 폭 확보: 언어 라벨 + '⧉ 복사됨 ✓' 여유
   const headW = monoMeasure(parsed.lang || 'code', headFs) + headFs * 7 + 16;
+  // Mermaid·HTML — 그린 크기가 있으면 그 크기로 (HTML 뷰어 exportHtml 도 같은 식)
+  const render = codeRenderOf(parsed.lang, parsed.code.join('\n'));
+  if (render) {
+    return {
+      ...parsed, codeFs, lineH, headH, render,
+      w: Math.ceil(Math.max(render.w, headW)) + MD_CODE_PAD_X * 2,
+      h: headH + render.h + MD_CODE_PAD_Y * 2,
+    };
+  }
   return {
     ...parsed,
     codeFs,

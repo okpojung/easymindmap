@@ -50,6 +50,8 @@ import {
   type MarkState,
 } from './inlineMarks';
 import { CodeBlockDialog, spliceCodeBlock, replaceCodeBlock } from './CodeBlockDialog';
+import { useCodeRenderEpoch } from './useCodeRenderEpoch';
+import { htmlBlockDoc } from './codeRender';
 import { TableDialog, spliceMdTable, replaceMdTable, buildMdTable } from './TableDialog';
 import {
   computeNodeChecks,
@@ -451,7 +453,10 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   // 노드 텍스트 속 Markdown 코드 펜스/표 — sizeNodeForText와 같은 측정으로
   // 그린다. (lines에는 코드·표를 제외한 텍스트만 들어 있다 — 리치 노드 P1)
   // 표·코드 블록 전부 (원문 순서, 2026-09-22 nodeBlocks)
-  const nodeBlocks = useMemo(() => layoutNodeBlocks(String(n.text || ''), fontSize), [n.text, fontSize]);
+  // Mermaid·HTML 그림이 새로 그려지면 다시 잰다 (2026-10-28)
+  const codeEpoch = useCodeRenderEpoch();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const nodeBlocks = useMemo(() => layoutNodeBlocks(String(n.text || ''), fontSize), [n.text, fontSize, codeEpoch]);
   // 체크리스트 항목(- [x] …) — sizeNodeForText가 마커를 뗀 것과 같은
   // 수동 줄 목록을 재구성해 래핑 줄 범위를 얻는다 (리치 노드 P2)
   const glyphW = checkGlyphW(fontSize);
@@ -1193,7 +1198,24 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                     <title>{tr('editor.note.copyCode')}</title>
                     {codeCopied === ci0 ? tr('common.copied') : '⧉'}
                   </text>
-                  {mdCode.code.map((ln, ci) => {
+                  {mdCode.render && (() => {
+                    // Mermaid·HTML — 그린 결과 (2026-10-28). 코드 원문은 ✎ 편집 창에서 본다
+                    const r = mdCode.render;
+                    const rx = cX + (mdCode.w - r.w) / 2;
+                    const ry = bodyTop + MD_CODE_PAD_Y;
+                    return r.kind === 'mermaid' ? (
+                      <image data-code-render="mermaid" href={r.src} x={rx} y={ry} width={r.w} height={r.h}
+                        preserveAspectRatio="xMidYMid meet" style={{ pointerEvents: 'none' }} />
+                    ) : (
+                      <foreignObject data-code-render="html" x={rx} y={ry} width={r.w} height={r.h} style={{ pointerEvents: 'none' }}>
+                        <iframe title="html" sandbox="" srcDoc={htmlBlockDoc(mdCode.code.join('\n'))} tabIndex={-1}
+                          width={r.nw} height={r.nh}
+                          style={{ border: 0, display: 'block', background: '#fff', pointerEvents: 'none',
+                            transform: r.w !== r.nw ? `scale(${r.w / r.nw})` : undefined, transformOrigin: '0 0' }} />
+                      </foreignObject>
+                    );
+                  })()}
+                  {!mdCode.render && mdCode.code.map((ln, ci) => {
                     // \uAE00\uC790\uB9C8\uB2E4 x \uB97C \uC9C1\uC811 \uC9C0\uC815\uD574 **\uACA9\uC790\uC5D0 \uC549\uD78C\uB2E4** \u2014 \uD3F0\uD2B8\uAC00
                     // \uBB34\uC5C7\uC774\uB4E0(\uD55C\uAE00 \uD3F4\uBC31\uC774 \uBB34\uC5C7\uC774\uB4E0) \uCE78\uC774 \uBC00\uB9AC\uC9C0 \uC54A\uC544
                     // \uC0C1\uC790 \uB3C4\uC2DD\uC774 \uADF8\uB300\uB85C \uC720\uC9C0\uB41C\uB2E4 (2026-08-05, monoGrid).

@@ -28,6 +28,7 @@ import {
 } from '@/services/cloud/apiClient';
 import { useProFeature } from '@/pro/contract';
 import { ProBuyPanel } from '@pro';
+import { mapHasRenderable, prepareCodeRenders } from '@/editor/node-renderer/codeRender';
 import { PublicSocialPanel } from './PublicSocialPanel';
 import { isFreshTab, libraryBackHref } from '@/utils/viewerChrome';
 import { LANG_LOCALE, useLang, useTr } from '@/i18n';
@@ -251,9 +252,26 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
     return () => window.removeEventListener('message', onMsg);
   }, [oneLine]);
 
+  // Mermaid·HTML 코드 블록을 먼저 그려 둔다 (2026-10-28) — 다 그린 뒤 뷰어를 만든다.
+  // 그릴 블록이 없으면 바로 준비된 것으로 본다(예전과 같은 속도).
+  const [codeReady, setCodeReady] = useState<object | null>(null);
+  useEffect(() => {
+    const map = (data?.doc as Snapshot | null)?.map;
+    if (!map) return undefined;
+    if (!mapHasRenderable(map)) { setCodeReady(data); return undefined; }
+    let alive = true;
+    void prepareCodeRenders(map).finally(() => { if (alive) setCodeReady(data); });
+    return () => { alive = false; };
+  }, [data]);
+
   // 뷰어 HTML 은 문서가 바뀔 때만 다시 만든다 — 큰 맵에서는 무거운 작업이다
+  // 그릴 블록이 있는데 아직이면 기다린다 (없는 맵·대시보드 갱신은 예전처럼 바로 만든다)
+  const waitingCode = useMemo(() => {
+    const map = (data?.doc as Snapshot | null)?.map;
+    return !!map && codeReady !== data && mapHasRenderable(map);
+  }, [data, codeReady]);
   const html = useMemo(() => {
-    if (!data) return null;
+    if (!data || waitingCode) return null;
     const snap = data.doc as Snapshot | null;
     const map = snap?.map;
     if (!map) return null;
@@ -275,7 +293,7 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
     } catch {
       return null;
     }
-  }, [data, publishId, oneLine]);
+  }, [data, publishId, oneLine, waitingCode]);
 
   useEffect(() => {
     if (data?.title) document.title = `${data.title} — EasyMindMap`;
@@ -291,6 +309,15 @@ export function PublicMapPage({ publishId }: { publishId: string }) {
     );
   }
   if (!data) {
+    return (
+      <Message
+        title={tr('publish.public.opening')}
+        body={tr('publish.public.openingBody')}
+        testId="public-map-loading"
+      />
+    );
+  }
+  if (!html && waitingCode) {
     return (
       <Message
         title={tr('publish.public.opening')}

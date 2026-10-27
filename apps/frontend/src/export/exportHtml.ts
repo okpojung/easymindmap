@@ -21,6 +21,7 @@
 //   node text can never break out of the <script> block.
 
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
+import { collectCodeRenders, prepareCodeRenders } from '@/editor/node-renderer/codeRender';
 // 내보낸 HTML 의 파비콘·제목 옆 아이콘은 20px 정사각형 — 가로형 로고 대신 정사각형 마크 (2026-10-25)
 import brandLogoRaw from '@/assets/brand-favicon.svg?raw';
 import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
@@ -475,6 +476,24 @@ const VIEWER_JS = String.raw`
     if (!code.join('').replace(/\s/g, '')) return null;
     var lang = lines[i].replace(/^\s+/, '').slice(3).replace(/^\s+|\s+$/g, '');
     return { k: 'c', code: code, lang: lang || undefined, end: j < lines.length ? j + 1 : lines.length };
+  }
+  // Mermaid·HTML 코드 블록 — 내보낼 때 앱이 그려 둔 결과 (2026-10-28, codeRender.ts 와 같은 열쇠·크기).
+  // 없으면(그리지 못했으면) 예전처럼 코드 패널이다.
+  var CODE_RENDERS = DATA.codeRenders || {};
+  function renderKindOf(lang) {
+    var l = String(lang || '').replace(/^\s+|\s+$/g, '').toLowerCase();
+    if (l === 'mermaid' || l === 'mmd') return 'mermaid';
+    if (l === 'html' || l === 'htm') return 'html';
+    return null;
+  }
+  function codeRenderFor(b) {
+    var kind = renderKindOf(b.lang);
+    if (!kind) return null;
+    var s = kind + '\n' + b.code.join('\n');
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    var r = CODE_RENDERS[h.toString(16) + '-' + s.length.toString(36)];
+    return r && r.kind === kind ? r : null;
   }
   // 노드 본문의 표·코드 블록 전부 — 원문 순서, 각 블록의 beforeLines = 앞 일반 글의
   // 누적 줄 수 (에디터 nodeBlocks.splitNodeParts/layoutNodeBlocks 와 같은 규칙,
@@ -1965,6 +1984,11 @@ const VIEWER_JS = String.raw`
           bK.tblH += bK.rowHs[bK.rowHs.length - 1];
         }
         bHs.push(13 + bK.tblH); // 13 = 복사(⧉) 스트립 — 표 바깥 위 (에디터 MD_TABLE_COPY_STRIP 동일)
+      } else if ((bK.rr = codeRenderFor(bK))) {
+        // 그린 Mermaid·HTML — 에디터 mdCode.layoutParsedCode 와 같은 식
+        bK.cH = cHeadH + bK.rr.h + CPY * 2;
+        bK.cW = Math.ceil(Math.max(bK.rr.w, cellsOf(bK.lang || 'code') * cHeadFs * CELL_RATIO + cHeadFs * 7 + 16)) + CPX * 2;
+        bHs.push(bK.cH);
       } else {
         bK.cH = cHeadH + bK.code.length * cLineH + CPY * 2;
         var cw0 = 0;
@@ -2286,7 +2310,28 @@ const VIEWER_JS = String.raw`
           copyText(codeJoined, btnEl);
         });
       })(mdc.code.join('\n'), copyT);
-      for (var cli = 0; cli < mdc.code.length; cli++) {
+      if (mdc.rr) {
+        var rr = mdc.rr, rX = codeX + (cW - rr.w) / 2, rY = codeY + cHeadH + CPY;
+        if (rr.kind === 'mermaid') {
+          var rIm = el('image', { x: rX, y: rY, width: rr.w, height: rr.h, preserveAspectRatio: 'xMidYMid meet' }, g);
+          rIm.setAttribute('href', rr.src);
+          rIm.style.pointerEvents = 'none';
+        } else {
+          // HTML — 스크립트가 돌지 않는 샌드박스 칸 (sandbox="" + 문서 안 CSP)
+          var rFo = el('foreignObject', { x: rX, y: rY, width: rr.w, height: rr.h }, g);
+          rFo.style.pointerEvents = 'none';
+          var rIf = document.createElement('iframe');
+          rIf.setAttribute('sandbox', '');
+          rIf.setAttribute('title', 'html');
+          rIf.tabIndex = -1;
+          rIf.width = String(rr.nw); rIf.height = String(rr.nh);
+          rIf.style.cssText = 'border:0;display:block;background:#fff;pointer-events:none;transform-origin:0 0' +
+            (rr.w !== rr.nw ? ';transform:scale(' + (rr.w / rr.nw) + ')' : '');
+          rIf.srcdoc = rr.doc || '';
+          rFo.appendChild(rIf);
+        }
+      }
+      for (var cli = 0; !mdc.rr && cli < mdc.code.length; cli++) {
         var cLine = mdc.code[cli].replace(/ /g, '\u00A0');
         var cT = el('text', {
           x: gridXAttr(cLine, cFs, codeX + CPX),
@@ -4499,6 +4544,8 @@ export function buildStandaloneHtml(
     dark: dark || undefined,
     // 노트 글꼴·크기 (맵 설정 — 뷰어 노트 패널에 적용, 기본 13pt)
     noteFont: map.settings?.noteFont,
+    // Mermaid·HTML 코드 블록을 그린 결과 (2026-10-28) — prepareCodeRenders 를 먼저 기다려야 실린다
+    codeRenders: (() => { const r = collectCodeRenders(map); return Object.keys(r).length ? r : undefined; })(),
     root: {
       // 루트도 일반 노드처럼 링크·노트·첨부·태그·아이콘을 가질 수 있다 —
       // 전체를 넘겨야 뷰어 마커가 에디터와 같게 그려진다 (2026-08-02:
@@ -4664,6 +4711,8 @@ export async function buildExportPackage(
   // **첨부가 하나도 없는 경로(아래 조기 반환)에서도** 사진은 있을 수 있으므로
   // 여기서 한다 — 그 아래에 두면 사진만 있는 맵이 서버 URL 로 나간다.
   const srvImg = await fetchServerImageDataUrls(map0, fetchBytes);
+  // Mermaid·HTML 코드 블록을 먼저 그려 둔다 — 그래야 크기와 그림이 파일에 실린다 (2026-10-28)
+  await prepareCodeRenders(map0);
   const map = srvImg.inlined ? withInlinedImages(map0, (s) => srvImg.bySrc.get(s)) : map0;
 
   const title = safeName(map.title, 'mindmap');

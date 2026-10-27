@@ -13,6 +13,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { useDialogDrag } from '@/components/ui/useDialogDrag';
 import { useTr } from '@/i18n';
+import { codeRenderError, codeRenderOf, ensureCodeRender, htmlBlockDoc, renderLangOf } from './codeRender';
+import { useCodeRenderEpoch } from './useCodeRenderEpoch';
 
 export function CodeBlockDialog({
   t,
@@ -32,6 +34,15 @@ export function CodeBlockDialog({
   const [code, setCode] = useState(initialCode ?? '');
   const codeRef = useRef<HTMLTextAreaElement | null>(null);
   const drag = useDialogDrag();
+  // 언어가 mermaid·html 이면 **code ↔ 그림** 보기를 고른다 (2026-10-28 — 표 편집 창의 격자/MD 처럼)
+  const kind = renderLangOf(lang);
+  const [view, setView] = useState<'code' | 'render'>('code');
+  const showRender = !!kind && view === 'render';
+  useCodeRenderEpoch(); // 그림이 끝나면 다시 그린다
+  const trimmed = code.replace(/\s+$/, '');
+  useEffect(() => { if (showRender && kind && trimmed.trim()) void ensureCodeRender(kind, trimmed); }, [showRender, kind, trimmed]);
+  const rendered = showRender ? codeRenderOf(lang, trimmed) : null;
+  const renderErr = showRender ? codeRenderError(lang, trimmed) : null;
 
   useEffect(() => {
     window.setTimeout(() => codeRef.current?.focus(), 0);
@@ -79,10 +90,30 @@ export function CodeBlockDialog({
       >
         <DialogXButton t={t} testId="code-block-dialog-x" onClose={onCancel} />
         {/* 제목줄을 끌어 창을 옮긴다 (2026-10-15 사용자 요청 — 표 편집 팝업과 같이) */}
-        <div data-testid="code-block-title" onPointerDown={drag.handleProps.onPointerDown}
-          title={tr('editor.table.dragTitle')}
-          style={{ fontSize: 14, fontWeight: 700, color: t.text, paddingRight: 34, ...drag.handleProps.style }}>
-          {initialCode ? tr('editor.code.titleEdit') : tr('editor.code.titleInsert')}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 34 }}>
+          <div data-testid="code-block-title" onPointerDown={drag.handleProps.onPointerDown}
+            title={tr('editor.table.dragTitle')}
+            style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: t.text, ...drag.handleProps.style }}>
+            {initialCode ? tr('editor.code.titleEdit') : tr('editor.code.titleInsert')}
+          </div>
+          {kind && (['code', 'render'] as const).map((v) => {
+            const on = view === v;
+            return (
+              <button key={v} type="button" data-testid={`code-view-${v === 'code' ? 'code' : kind}`} aria-pressed={on}
+                title={v === 'code' ? tr('editor.code.viewCodeTitle') : tr('editor.code.viewRenderTitle', { lang: kind })}
+                onClick={() => setView(v)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: 44, height: 28, padding: '0 9px', borderRadius: 8,
+                  background: on ? (t.primarySoft ?? 'rgba(200,120,20,0.18)') : (t.surfaceAlt ?? 'transparent'),
+                  color: on ? t.primary : t.text,
+                  border: `1px solid ${on ? `${t.primaryBorder ?? t.primary}55` : t.border}`,
+                  cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                  fontFamily: "ui-monospace, 'Consolas', monospace",
+                }}
+              >{v === 'code' ? 'code' : kind}</button>
+            );
+          })}
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: t.textMuted, flexShrink: 0 }}>{tr('common.language')}</span>
@@ -100,6 +131,26 @@ export function CodeBlockDialog({
             }}
           />
         </label>
+        {showRender && (
+          <div data-testid="code-render-preview" style={{
+            minHeight: 140, maxHeight: '60vh', overflow: 'auto', borderRadius: 8,
+            border: `1px solid ${t.border}`, background: '#fff', padding: 8,
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          }}>
+            {!trimmed.trim() ? (
+              <span style={{ fontSize: 12.5, color: t.textMuted, alignSelf: 'center' }}>{tr('editor.code.renderEmpty')}</span>
+            ) : renderErr ? (
+              <pre data-testid="code-render-error" style={{ margin: 0, fontSize: 12, color: '#B91C1C', whiteSpace: 'pre-wrap', alignSelf: 'stretch' }}>{tr('editor.code.renderFailed')}\n{renderErr}</pre>
+            ) : !rendered ? (
+              <span style={{ fontSize: 12.5, color: t.textMuted, alignSelf: 'center' }}>{tr('editor.code.rendering')}</span>
+            ) : rendered.kind === 'mermaid' ? (
+              <img alt="mermaid" src={rendered.src} style={{ maxWidth: '100%', height: 'auto' }} />
+            ) : (
+              <iframe title="html" sandbox="" srcDoc={htmlBlockDoc(trimmed)} width={rendered.nw} height={rendered.nh}
+                style={{ border: 0, maxWidth: '100%', background: '#fff' }} />
+            )}
+          </div>
+        )}
         <textarea
           ref={codeRef}
           data-testid="code-body-input"
@@ -109,6 +160,7 @@ export function CodeBlockDialog({
           placeholder={tr('editor.code.codePlaceholder')}
           spellCheck={false}
           style={{
+            display: showRender ? 'none' : undefined,
             width: '100%', boxSizing: 'border-box', resize: 'vertical',
             minHeight: 140,
             padding: '8px 10px', borderRadius: 8,

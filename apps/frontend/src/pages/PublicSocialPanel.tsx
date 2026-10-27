@@ -63,7 +63,8 @@ export function PublicSocialPanel({ data }: { data: PublishedMap }) {
   };
 
   const pill: CSSProperties = {
-    position: 'fixed', right: 14, bottom: 40, zIndex: 12, display: 'flex', alignItems: 'center', gap: 10,
+    // 뷰어 오른쪽 아래 확대·축소 단추 위로 비켜 선다 (2026-10-28 — 겹쳐 있었다)
+    position: 'fixed', right: 14, bottom: 96, zIndex: 12, display: 'flex', alignItems: 'center', gap: 10,
     padding: '7px 14px', borderRadius: 999, border: `1px solid ${C.bd}`, background: C.bg, color: C.text,
     boxShadow: '0 4px 14px rgba(0,0,0,0.12)', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
   };

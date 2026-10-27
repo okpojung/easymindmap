@@ -5,8 +5,8 @@
 //     securityLevel 'strict', 글자는 SVG 글자(htmlLabels 끔). 그린 SVG 는 **그림(<image>)**
 //     으로만 붙인다 — 그림 안의 스크립트·링크는 동작하지 않는다.
 //   · HTML — 샌드박스 iframe(srcdoc)에 넣는다. 보여 주는 칸은 sandbox="" 에 CSP
-//     (script 없음, 외부는 https 그림·글꼴·스타일만) — 스크립트는 돌지 않는다. 크기만
-//     잴 때 우리 측정 스크립트 하나(nonce)만 허용한 숨은 iframe 을 잠깐 띄운다.
+//     (script 없음, 외부는 https 그림·글꼴·스타일만) — 스크립트는 돌지 않는다. 크기는
+//     스크립트 없는 숨은 iframe(allow-same-origin 만)을 잠깐 띄워 앱이 직접 잰다.
 //   · 크기는 처음 그린 뒤에 알 수 있다 — 결과를 `cache` 에 두고 세대(epoch)를 올려
 //     배치를 다시 한다. 그리기 전·실패하면 예전처럼 코드 패널을 보인다.
 
@@ -137,9 +137,9 @@ async function renderMermaid(code: string): Promise<CodeRender> {
     const id = 'emm-mmd-' + (++mermaidSeq);
     try {
       const { svg } = await mm.render(id, code);
-      const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-      const root = doc.documentElement;
-      if (root.nodeName.toLowerCase() !== 'svg') throw new Error('mermaid: no svg');
+      // HTML 로 읽고 SVG 만 꺼낸다 — XML 로 읽으면 &nbsp; 같은 것에서 깨진다
+      const root = new DOMParser().parseFromString(svg, 'text/html').querySelector('svg');
+      if (!root) throw new Error('mermaid: no svg');
       const vb = (root.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
       const nw = Math.ceil(vb.length === 4 && vb[2] > 0 ? vb[2] : parseFloat(root.getAttribute('width') || '300'));
       const nh = Math.ceil(vb.length === 4 && vb[3] > 0 ? vb[3] : parseFloat(root.getAttribute('height') || '150'));
@@ -163,55 +163,49 @@ async function renderMermaid(code: string): Promise<CodeRender> {
 // ── HTML ───────────────────────────────────────────────────────────────
 const CSP_BASE = "default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; font-src data: https:; media-src data: https:";
 
-/**
- * HTML 코드 블록을 보일 문서. `nonce` 를 주면 그 nonce 의 스크립트(우리 측정기)만 돈다 —
- * 맵 작성자의 스크립트는 CSP 로 막힌다. 보여 주는 칸은 nonce 없이(스크립트 0) 쓴다.
- */
-export function htmlBlockDoc(code: string, nonce?: string): string {
-  const csp = nonce ? `${CSP_BASE}; script-src 'nonce-${nonce}'` : CSP_BASE;
-  const measure = nonce
-    ? `<script nonce="${nonce}">(function(){function s(){var e=document.getElementById('__emm');if(!e)return;var r=e.getBoundingClientRect();parent.postMessage({emmMeasure:'${nonce}',w:Math.ceil(r.width),h:Math.ceil(r.height)},'*');}if(document.readyState==='complete')setTimeout(s,30);else window.addEventListener('load',function(){setTimeout(s,30);});})();</scr` + 'ipt>'
-    : '';
+/** HTML 코드 블록을 보일 문서 — 스크립트 없음(CSP), 외부는 https 그림·글꼴·스타일만 */
+export function htmlBlockDoc(code: string): string {
   return '<!DOCTYPE html><html><head><meta charset="utf-8">'
-    + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
-    + `<style>html,body{margin:0;padding:0;background:#fff;overflow:hidden}#__emm{display:inline-block;box-sizing:border-box;max-width:${HTML_MEASURE_W}px;padding:8px;font:14px/1.5 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif;color:#1f2937}</style>`
-    + '</head><body><div id="__emm">' + code + '</div>' + measure + '</body></html>';
-}
-
-function randomNonce(): string {
-  const a = new Uint8Array(12);
-  crypto.getRandomValues(a);
-  return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+    + `<meta http-equiv="Content-Security-Policy" content="${CSP_BASE}">`
+    + `<style>html,body{margin:0;padding:0;background:#fff;overflow:hidden}#__emm{display:inline-block;width:max-content;max-width:${HTML_MEASURE_W}px;box-sizing:border-box;padding:8px;font:14px/1.5 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif;color:#1f2937}</style>`
+    + '</head><body><div id="__emm">' + code + '</div></body></html>';
 }
 
 function measureHtml(code: string): Promise<CodeRender> {
+  // 잴 때도 **스크립트는 돌지 않는다** — sandbox 에 allow-scripts 가 없고 문서 안 CSP 도 막는다.
+  // allow-same-origin 만 주어 이 창이 안의 문서를 직접 잰다 (스크립트가 없으니 같은 출처라도 안전).
   return new Promise((resolve) => {
-    const nonce = randomNonce();
     const frame = document.createElement('iframe');
-    frame.setAttribute('sandbox', 'allow-scripts');
+    frame.setAttribute('sandbox', 'allow-same-origin');
     frame.setAttribute('aria-hidden', 'true');
     frame.tabIndex = -1;
-    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${HTML_MEASURE_W + 40}px;height:200px;border:0;visibility:hidden;pointer-events:none`;
+    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${HTML_MEASURE_W + 40}px;height:400px;border:0;visibility:hidden;pointer-events:none`;
     let done = false;
     const finish = (nw: number, nh: number) => {
       if (done) return;
       done = true;
-      window.removeEventListener('message', onMsg);
       window.clearTimeout(timer);
       frame.remove();
-      nw = Math.max(40, Math.min(HTML_MEASURE_W, nw)); nh = Math.max(24, Math.min(4000, nh));
+      nw = Math.max(40, Math.min(HTML_MEASURE_W, Math.ceil(nw))); nh = Math.max(24, Math.min(4000, Math.ceil(nh)));
       resolve({ kind: 'html', nw, nh, ...fit(nw, nh) });
     };
-    const onMsg = (e: MessageEvent) => {
-      if (e.source !== frame.contentWindow) return;
-      const d = e.data as { emmMeasure?: string; w?: number; h?: number } | null;
-      if (!d || d.emmMeasure !== nonce || typeof d.w !== 'number' || typeof d.h !== 'number') return;
-      finish(d.w, d.h);
+    const measure = () => {
+      try {
+        const d = frame.contentDocument;
+        const box = d?.getElementById('__emm');
+        if (!box) { finish(480, 240); return; }
+        const r = box.getBoundingClientRect();
+        finish(Math.max(r.width, box.scrollWidth), Math.max(r.height, box.scrollHeight));
+      } catch { finish(480, 240); }
     };
-    // 그림을 못 받아 오는 등으로 늦으면 기본 크기로
-    const timer = window.setTimeout(() => finish(480, 240), 5000);
-    window.addEventListener('message', onMsg);
-    frame.srcdoc = htmlBlockDoc(code, nonce);
+    frame.addEventListener('load', () => {
+      // 글꼴·그림이 자리를 잡을 짧은 틈
+      const d = frame.contentDocument;
+      const ready = d?.fonts?.ready ?? Promise.resolve();
+      void ready.then(() => window.setTimeout(measure, 30), () => window.setTimeout(measure, 30));
+    });
+    const timer = window.setTimeout(measure, 5000);
+    frame.srcdoc = htmlBlockDoc(code);
     document.body.appendChild(frame);
   });
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { href } from '../i18n';
 import { fetchListed, mapUrl, previewUrl, type ListedMap } from '../api';
 
 const fmt = (iso: string) => {
@@ -83,7 +84,7 @@ export default function Library() {
     // 주소에도 남긴다 — 검색 결과를 그대로 나눠 줄 수 있게. `replaceState`
     // 라 뒤로가기 기록이 타자 수만큼 쌓이지 않는다.
     const url = applied ? `/library?q=${encodeURIComponent(applied)}` : '/library';
-    window.history.replaceState({}, '', url);
+    window.history.replaceState({}, '', href(url));
   }, [applied, load]);
 
   const searching = applied.length > 0;

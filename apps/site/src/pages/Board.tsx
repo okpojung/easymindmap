@@ -3,7 +3,9 @@ import {
   ApiError, fetchComments, fetchPost, fetchPosts, fetchRecentNotices,
   type CommentItem, type NoticeItem, type PostDetail, type PostItem,
 } from '../community-api';
-import { BOARDS, appBoardUrl, boardLabel, boardPath, formatDate, normalizeBoard, type BoardId } from '../community-rules';
+import { BOARDS, appBoardUrl, boardLabel, boardPath as rawBoardPath, formatDate, normalizeBoard, type BoardId } from '../community-rules';
+import { href as localHref } from '../i18n';
+const boardPath = (...args: Parameters<typeof rawBoardPath>) => localHref(rawBoardPath(...args));
 import { GITHUB_URL } from '../config';
 import { BoardMarkdown, unusedAttachments } from './BoardMarkdown';
 
@@ -241,7 +243,7 @@ export default function Board() {
         {post ? <PostView board={board} id={post} go={go} /> : <PostList key={board} board={board} q={q} go={go} />}
         <aside className="cm-ask">
           <span>원하는 답을 찾지 못했나요? 개인적인 문의나 제휴 제안은 따로 보내 주세요.</span>
-          <a className="btn ghost" href="/contact">✉ 문의하기</a>
+          <a className="btn ghost" href={localHref('/contact')}>✉ 문의하기</a>
         </aside>
       </section>
     </div>

@@ -12,6 +12,8 @@ import './community.css';
 import { installBrandIdentity } from './redesign/brand';
 import { GITHUB_URL, MMD_GITHUB_URL } from './config';
 import { SITE_HEADER_MARKUP, mountSiteHeader } from './redesign/site-header';
+import { splitLang, href } from './i18n';
+import { siteText } from './site-text';
 import './redesign/redesign.css';
 
 /** Product/spec/library routes use the exact homepage header (no separate legacy copy). */
@@ -49,10 +51,11 @@ export function go(to: string) {
 export function Link(
   { to, className, children }: { to: string; className?: string; children: React.ReactNode },
 ) {
-  const here = window.location.pathname === to;
+  const target = href(to);
+  const here = window.location.pathname === target;
   return (
     <a
-      href={to}
+      href={target}
       className={className}
       aria-current={here ? 'page' : undefined}
       onClick={(e) => {
@@ -60,7 +63,7 @@ export function Link(
         // 늘 쓰던 조작이 깨진다
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
         e.preventDefault();
-        go(to);
+        go(target);
       }}
     >{children}</a>
   );
@@ -79,21 +82,22 @@ const PAGES: Record<string, ComponentType> = {
 export default function App() {
   useEffect(() => { installBrandIdentity(); }, []);
   const path = usePath();
-  const Page = PAGES[path];
+  const Page = PAGES[splitLang(path).rest];
+  const T = siteText();
   // The approved homepage/learning routes own their scoped navigation and footer.
   // Existing product/library routes and nginx viewer proxies are unchanged.
   if (!Page) return <Home />;
   return (
     <>
       <SiteHeader path={path} />
-      <main><Suspense fallback={<p className="wrap" style={{ padding: '48px 20px' }}>불러오는 중…</p>}><Page /></Suspense></main>
+      <main><Suspense fallback={<p className="wrap" style={{ padding: '48px 20px' }}>{T.loading}</p>}><Page /></Suspense></main>
       <footer className="foot">
         <div className="wrap">
           <span>© EasyMindMap</span>
           <span className="spacer" />
-          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub · EasyMindMap 오픈소스 코어 ↗</a>
-          <a href={MMD_GITHUB_URL} target="_blank" rel="noopener noreferrer">Mindmap Markdown 표준 ↗</a>
-          <Link to="/contact" className="foot-contact">✉ 문의하기</Link>
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">{T.footerCore}</a>
+          <a href={MMD_GITHUB_URL} target="_blank" rel="noopener noreferrer">{T.footerStandard}</a>
+          <Link to="/contact" className="foot-contact">{T.footerContact}</Link>
 
         </div>
       </footer>

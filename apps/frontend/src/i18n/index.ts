@@ -13,6 +13,9 @@
 //   언어를 바꿔도 따라오지 않는다. 함수 안(렌더·이벤트)에서 부른다.
 //
 // 언어를 정하는 순서 (i18n.md §1):
+//   0. 주소의 `?lang=ko|en|ja|zh` (2026-10-28 — 홈페이지 'EMM 로그인' 버튼이 고른 언어를 넘긴다).
+//      맞는 값이면 그 언어로 열고 `emm.lang` 에 저장한 뒤, 주소에서 lang 만 지운다
+//      (새로고침해도 저장값으로 같은 언어 — 주소가 나중에 고른 언어를 덮지 않게)
 //   1. 사용자가 고른 값 (localStorage `emm.lang`)
 //   2. 브라우저 언어 (`navigator.languages`) — ko/zh/ja 면 그 언어
 //   3. 그 밖은 영어
@@ -58,7 +61,28 @@ export function detectLang(langs: readonly string[] | undefined): Lang {
   return 'en';
 }
 
+/** 주소 검색 문자열(?a=1&lang=en)의 lang — 지원 언어면 그 값, 아니면 null (대소문자·공백 무시) */
+export function langFromSearch(search: string | undefined): Lang | null {
+  try {
+    const v = new URLSearchParams(search ?? '').get('lang');
+    const l = v?.trim().toLowerCase();
+    return isLang(l) ? l : null;
+  } catch { return null; }
+}
+
 function initialLang(): Lang {
+  if (typeof window !== 'undefined') {
+    const fromUrl = langFromSearch(window.location?.search);
+    if (fromUrl) {
+      try { window.localStorage.setItem(KEY, fromUrl); } catch { /* 저장을 못 해도 이번에는 그 언어로 */ }
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete('lang');
+        window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+      } catch { /* 주소를 못 고쳐도 언어는 맞다 */ }
+      return fromUrl;
+    }
+  }
   try {
     const saved = window.localStorage.getItem(KEY);
     if (isLang(saved)) return saved;

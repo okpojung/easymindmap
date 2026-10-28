@@ -196,6 +196,28 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
         </div>
       </InspectorSection>
 
+      {/* 안쪽 여백 (2026-10-28 사용자 요청) — 테두리와 글·사진·코드블럭 사이. 도형 없음에는 쓰이지 않는다 */}
+      <InspectorSection t={t} title={tr('inspector.style.paddingTitle')}>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {([['tight', 'inspector.style.padding.tight'], [undefined, 'inspector.style.padding.normal'], ['wide', 'inspector.style.padding.wide']] as const).map(([v, key]) => {
+            const active = (style.padding ?? undefined) === v;
+            return (
+              <button key={key} data-testid={`style-padding-${v ?? 'normal'}`} onClick={() => set({ padding: v })}
+                title={tr('inspector.style.paddingHint')}
+                style={{
+                  flex: 1, padding: '6px 0', borderRadius: 5, fontSize: 11,
+                  background: active ? t.primarySoft : t.surfaceAlt,
+                  color: active ? t.primary : t.textMuted,
+                  border: `1px solid ${active ? t.primaryBorder : t.border}`,
+                  cursor: 'pointer',
+                }}>
+                {tr(key)}
+              </button>
+            );
+          })}
+        </div>
+      </InspectorSection>
+
       <InspectorSection t={t} title={tr('inspector.style.emphasisTitle')}>
         <div style={{ display: 'flex', gap: 4 }}>
           <StyleToggle t={t} label={tr('inspector.style.bold')} weight={700}

@@ -104,7 +104,11 @@ export function layoutMdCode(text: string, fontSize: number): MdCodeLayout | nul
   return layoutParsedCode(parsed, fontSize);
 }
 
-export function layoutParsedCode(parsed: MdCodeParse, fontSize: number): MdCodeLayout {
+/**
+ * fitW — 노드 폭을 손으로 정했으면 그림(Mermaid·HTML)을 그 폭으로 키우거나 줄인다 (2026-10-28,
+ * 사진이 노드 폭을 따르는 것과 같다). 비율은 지킨다. 없으면 원래 크기(최대 560×640).
+ */
+export function layoutParsedCode(parsed: MdCodeParse, fontSize: number, fitW?: number): MdCodeLayout {
   const codeFs = Math.max(10, fontSize - 2);
   const lineH = codeFs + 6;
   const headFs = Math.max(9, codeFs - MD_CODE_HEAD_FS_DELTA);
@@ -114,7 +118,10 @@ export function layoutParsedCode(parsed: MdCodeParse, fontSize: number): MdCodeL
   // 헤더가 잘리지 않게 최소 폭 확보: 언어 라벨 + '⧉ 복사됨 ✓' 여유
   const headW = monoMeasure(parsed.lang || 'code', headFs) + headFs * 7 + 16;
   // Mermaid·HTML — 그린 크기가 있으면 그 크기로 (HTML 뷰어 exportHtml 도 같은 식)
-  const render = codeRenderOf(parsed.lang, parsed.code.join('\n'));
+  const render0 = codeRenderOf(parsed.lang, parsed.code.join('\n'));
+  const render = render0 && fitW && fitW >= 40
+    ? { ...render0, w: Math.round(fitW), h: Math.max(1, Math.min(3000, Math.round(render0.nh * fitW / Math.max(1, render0.nw)))) }
+    : render0;
   if (render) {
     return {
       ...parsed, codeFs, lineH, headH, render,

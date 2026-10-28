@@ -81,7 +81,8 @@ export interface NodeBlocksLayout {
 }
 
 /** 표·코드 블록 전부의 측정 — 없으면 null. fontSize = 노드 본문 글자 크기 */
-export function layoutNodeBlocks(text: string, fontSize: number): NodeBlocksLayout | null {
+/** fitW — 손으로 폭을 정한 노드의 그림(Mermaid·HTML) 폭 (2026-10-28) */
+export function layoutNodeBlocks(text: string, fontSize: number, fitW?: number): NodeBlocksLayout | null {
   const parts = splitNodeParts(text);
   if (!parts.some((p) => p.kind !== 'text')) return null;
   const blocks: NodeBlockLayout[] = [];
@@ -93,7 +94,7 @@ export function layoutNodeBlocks(text: string, fontSize: number): NodeBlocksLayo
       const lay = layoutParsedTable({ before: '', after: '', headers: p.headers, rows: p.rows, aligns: p.aligns }, fontSize);
       blocks.push({ kind: 'table', ...lay, beforeLines: count, blockH: MD_TABLE_COPY_STRIP + lay.h });
     } else {
-      const lay = layoutParsedCode({ before: '', after: '', code: p.code, lang: p.lang }, fontSize);
+      const lay = layoutParsedCode({ before: '', after: '', code: p.code, lang: p.lang }, fontSize, fitW);
       blocks.push({ kind: 'code', ...lay, beforeLines: count, blockH: lay.h });
     }
   }

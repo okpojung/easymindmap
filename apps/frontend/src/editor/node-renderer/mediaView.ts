@@ -14,6 +14,8 @@ interface ViewNode {
   tags?: string[];
   project?: unknown;
   contentFolded?: boolean;
+  sizeW?: number;
+  sizeH?: number;
   children?: ViewNode[];
 }
 interface ViewMap {
@@ -34,6 +36,8 @@ function viewNode<N extends ViewNode>(n: N, fold: boolean): N {
     return {
       ...n, children: kids, text: mediaLabel(kinds),
       image: undefined, images: undefined, tags: undefined, project: undefined,
+      // 손으로 키운 크기도 접힌 동안은 쓰지 않는다 — 접어도 박스가 그대로면 접은 뜻이 없다 (2026-10-28)
+      sizeW: undefined, sizeH: undefined,
       _media: kinds, _mediaFolded: true,
     };
   }

@@ -11,6 +11,7 @@
 // - node content: tags, links, structured notes, attachments
 
 import { LINK_PARENT_KEYS } from '@/utils/linkNode';
+import { mediaKindsOf } from '@/editor/node-renderer/mediaContent';
 import { create } from 'zustand';
 // 트리 규칙의 **단일 원본** — 화면·협업·DB 가 같은 판정을 써야 한다
 // (docs/04-extensions/collaboration/27-sync-model.md §4)
@@ -848,8 +849,9 @@ function updateNodeById(
 function withManualSize(n: MindNode, size: { w?: number; h?: number } | null): MindNode {
   return {
     ...n,
-    sizeW: size?.w ? Math.max(90, Math.min(900, Math.round(size.w))) : undefined,
-    sizeH: size?.h ? Math.max(36, Math.min(1200, Math.round(size.h))) : undefined,
+    // 2026-10-28: 60 까지 줄일 수 있다 (예전 90 — 글 노드를 더 좁히지 못했다)
+    sizeW: size?.w ? Math.max(60, Math.min(900, Math.round(size.w))) : undefined,
+    sizeH: size?.h ? Math.max(24, Math.min(1200, Math.round(size.h))) : undefined,
   };
 }
 
@@ -1742,10 +1744,12 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   },
 
   collapseAll: () => {
+    // 그림만 담은 노드(사진·Mermaid·HTML)의 내용도 함께 접는다 (2026-10-28 사용자 요청)
     const walk = (nodes: MindNode[]): MindNode[] =>
       nodes.map((n) => ({
         ...n,
         collapsed: (n.children?.length ?? 0) > 0 ? true : n.collapsed,
+        contentFolded: mediaKindsOf(n) ? true : n.contentFolded,
         children: walk(n.children ?? []),
       }));
     asViewOnly(() => set((state) => ({
@@ -1755,10 +1759,12 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   },
 
   expandAll: () => {
+    // 접어 둔 그림 노드의 내용도 함께 편다 (2026-10-28)
     const walk = (nodes: MindNode[]): MindNode[] =>
       nodes.map((n) => ({
         ...n,
         collapsed: undefined,
+        contentFolded: undefined,
         children: walk(n.children ?? []),
       }));
     asViewOnly(() => set((state) => ({

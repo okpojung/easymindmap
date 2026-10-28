@@ -9,6 +9,7 @@
 // 측정과 NodeRenderer의 그리기가 항상 같은 값을 쓴다.
 
 import type { LevelFontSetting } from '@/editor/__samples__/types';
+import { MD_CODE_PAD_X } from './mdCode';
 import { blockGaps, layoutNodeBlocks, type NodeBlockLayout } from './nodeBlocks';
 import { parseCheckLine, checkGlyphW } from './mdCheck';
 import { parseInlineMarks, CODE_FONT } from './inlineMarks';
@@ -25,9 +26,22 @@ export const NO_SHAPE_PAD_Y = 3;
 /** 도형 없음 노드의 최소 폭 — 빈 노드도 고를 수 있게만 */
 export const NO_SHAPE_MIN_W = 24;
 
-/** 노드 안쪽 가로 여백 — sizeNodeForText·NodeRenderer 가 같이 쓴다 */
-export function nodePadX(depth: number, noShape: boolean): number {
-  return noShape ? NO_SHAPE_PAD_X : depth === 0 ? 22 : 14;
+/** 노드 안쪽 가로 여백 — sizeNodeForText·NodeRenderer 가 같이 쓴다.
+ *  pad = 스타일 탭 '안쪽 여백'(2026-10-28): tight 좁게 · (없음) 보통 · wide 넓게. 도형 없음은 늘 0 */
+export function nodePadX(depth: number, noShape: boolean, pad?: string): number {
+  if (noShape) return NO_SHAPE_PAD_X;
+  const base = depth === 0 ? 22 : 14;
+  return pad === 'tight' ? (depth === 0 ? 8 : 4) : pad === 'wide' ? base + 10 : base;
+}
+/** 노드 안쪽 세로 여백 — 같은 규칙 */
+export function nodePadY(depth: number, noShape: boolean, pad?: string): number {
+  if (noShape) return NO_SHAPE_PAD_Y;
+  const base = depth === 0 ? 14 : 9;
+  return pad === 'tight' ? (depth === 0 ? 6 : 3) : pad === 'wide' ? base + 6 : base;
+}
+/** 손으로 정한 폭(sizeW) → 실제로 쓰는 폭. 60 미만이면 없는 것으로 (스토어 updateNodesSize 와 같은 범위) */
+export function manualWidthOf(sizeW?: number): number | undefined {
+  return sizeW && sizeW >= 60 ? Math.min(900, Math.round(sizeW)) : undefined;
 }
 
 export interface SizeOpts {
@@ -53,6 +67,8 @@ export interface SizeOpts {
   // 노드별 글자 굵기·기울임(스타일 탭) — 도형 없음 노드의 실측 폭에만 쓴다
   textWeight?: number;
   textItalic?: boolean;
+  /** 안쪽 여백 (스타일 탭) — nodePadX/nodePadY */
+  pad?: string;
 }
 
 /**
@@ -181,8 +197,8 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   const lineHeight = baseLineH + (fontSize - LEVEL_FONT_DEFAULT_SIZES[levelIndex(depth)]);
   // 도형 없음 — 박스를 글자에 딱 맞춘다 (NO_SHAPE_PAD_*)
   const noShape    = (opts.shape ?? levelShape(depth)) === 'none';
-  const padX       = nodePadX(depth, noShape);
-  const padY       = noShape ? NO_SHAPE_PAD_Y : depth === 0 ? 14 : 9;
+  const padX       = nodePadX(depth, noShape, opts.pad);
+  const padY       = nodePadY(depth, noShape, opts.pad);
 
   // Per-char width estimate. CJK chars are wider; mix of latin+CJK averages ~0.62*fontSize.
   const charW = (ch: string): number => {
@@ -199,9 +215,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
 
   // 수동 폭(우하단 핸들)이 있으면 그 폭에 고정 — 텍스트는 이 폭에 맞춰
   // 다시 줄바꿈된다.
-  const manualW = opts.manualW && opts.manualW >= 90
-    ? Math.min(900, Math.round(opts.manualW))
-    : undefined;
+  const manualW = manualWidthOf(opts.manualW);
   // 사진이 있으면 기본 최소 폭을 조금 넉넉하게 (너무 작게 축소되지 않게)
   const imageMin = (opts.image || (opts.images && opts.images.length)) ? 170 : 0;
   // 도형 없음은 최소 폭을 두지 않는다 — 짧은 글자 아래 밑줄이 글자보다 길어지지 않게
@@ -220,14 +234,17 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   // 표·코드 블록(전부, 원문 순서)은 자동 줄바꿈·인라인 마크 없이 따로 그린다 —
   // 블록을 뺀 나머지 텍스트만 줄바꿈한다 (파이프·펜스 원문을 자동 줄바꿈하면
   // 망가지므로). 리치 노드 P1 · 2026-09-22 여러 블록.
-  const blocksLay = layoutNodeBlocks(String(text || ''), fontSize);
+  // 손으로 폭을 정한 노드는 Mermaid·HTML 그림도 그 폭에 맞춰 키우고 줄인다 (2026-10-28, 사진과 같은 규칙)
+  const blocksLay = layoutNodeBlocks(String(text || ''), fontSize, manualW ? manualW - padX * 2 - MD_CODE_PAD_X * 2 : undefined);
   const mdTable = !!blocksLay; // 블록이 하나라도 있나
   const mdCode = false;
   const plainText = blocksLay ? blocksLay.plainText : String(text || '');
 
   // Honor manual breaks first, then word-wrap each segment.
   // (표·코드만 있는 노드는 텍스트 줄이 없다 — 빈 줄 하나를 만들지 않는다)
-  const manualLines = (mdTable || mdCode) && plainText === '' ? [] : plainText.split('\n');
+  // 사진만 있는 노드도 글 줄을 두지 않는다 — 빈 줄 하나가 사진 아래(태그 위)에 빈자리로 남았다 (2026-10-28)
+  const imageOnly = !!(opts.image || (opts.images && opts.images.length)) && String(text || '').trim() === '';
+  const manualLines = ((mdTable || mdCode) && plainText === '') || imageOnly ? [] : plainText.split('\n');
   const wrappedLines: string[] = [];
   const manualStarts: number[] = [];
   const innerMaxW = maxW - padX * 2 - iconReserve;
@@ -237,6 +254,15 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   // (폭 계산에 글리프 폭을 더한다. 렌더는 NodeRenderer가 재구성)
   const glyphW = checkGlyphW(fontSize);
   const checkRanges: [number, number][] = [];
+
+  // 줄바꿈 폭 — 브라우저에서는 그리는 글꼴로 **실측** (2026-10-28). 밖(시험)은 근사
+  const inBrowser = typeof document !== 'undefined';
+  const wrapFamily = levelFontFamily(depth) ?? 'inherit';
+  const wrapWeight = opts.textWeight ?? fontWeight;
+  const wrapMeasure = (str: string): number => (inBrowser
+    ? measureTextPx(str, fontSize, { weight: wrapWeight, italic: opts.textItalic, family: wrapFamily })
+    : measure(str));
+  const wrapCharW = (ch: string): number => (inBrowser ? wrapMeasure(ch) : charW(ch));
 
   manualLines.forEach((seg) => {
     manualStarts.push(wrappedLines.length);
@@ -253,7 +279,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
     let cur = '';
     let curW = 0;
     for (const w of words) {
-      const wLen = measure(w);
+      const wLen = wrapMeasure(w);
       if (wLen > segMaxW) {
         // 한 단어가 줄 폭보다 길다 — 줄 어디에서 나와도(줄 처음뿐 아니라
         // 중간에서도) 지금 줄을 끊고 문자 단위로 분해한다. 그러지 않으면
@@ -263,7 +289,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
         let buf = '';
         let bufW = 0;
         for (const ch of Array.from(w)) {
-          const cw = charW(ch);
+          const cw = wrapCharW(ch);
           if (bufW + cw > segMaxW && buf) {
             wrappedLines.push(buf);
             buf = ch; bufW = cw;
@@ -277,7 +303,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
       if (curW + wLen > segMaxW) {
         wrappedLines.push(cur.trimEnd());
         cur = w.replace(/^\s+/, '');
-        curW = measure(cur);
+        curW = wrapMeasure(cur);
       } else {
         cur += w;
         curW += wLen;
@@ -286,7 +312,7 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
     if (cur) wrappedLines.push(cur.trimEnd());
     if (chk) checkRanges.push([segStart, wrappedLines.length]);
   });
-  if (!mdTable && !mdCode && wrappedLines.length === 0) wrappedLines.push('');
+  if (!mdTable && !mdCode && !imageOnly && wrappedLines.length === 0) wrappedLines.push('');
 
   // 블록이 끼어드는 래핑 줄 위치 — 블록 "앞" 텍스트의 래핑 줄 수 (원문 순서
   // 규칙, 2026-07-31: 표 뒤 텍스트(※첨부 등)가 표 위로 올라가던 문제). 블록이
@@ -305,7 +331,9 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   // 도형 없음은 박스 폭 = 밑줄 길이라 근사 폭(넉넉하게 잡는다)을 쓰면 밑줄이
   // 글자보다 길어진다 — NodeRenderer 가 글자를 그리는 것과 같은 **캔버스 실측**을
   // 쓴다(인라인 마커는 무게만 반영하고 문자는 뺀다). 브라우저 밖(테스트)은 근사.
-  const realMeasure = noShape && typeof document !== 'undefined';
+  // 2026-10-28: 도형 있는 노드도 실측한다 — 근사 폭(한글 1.0em)이 넉넉해 줄 끝에 빈 공간이 남고
+  // 손으로 폭을 줄여도 줄바꿈이 일찍 일어났다 (사용자 보고: "글 뒤 공간이 남는데 더 줄여지지 않는다")
+  const realMeasure = typeof document !== 'undefined';
   const baseWeight = opts.textWeight ?? fontWeight;
   const family = levelFontFamily(depth) ?? 'inherit';
   const lineW = (l: string): number => realMeasure

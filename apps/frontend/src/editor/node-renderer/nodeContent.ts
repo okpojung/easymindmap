@@ -163,7 +163,7 @@ export function nodeSizingOpts(n: {
   sizeH?: number;
   image?: { w: number; h: number };
   images?: { w: number; h: number }[];
-  style?: { shapeType?: string; fontWeight?: string; fontStyle?: string };
+  style?: { shapeType?: string; fontWeight?: string; fontStyle?: string; padding?: string };
 }): {
   shape?: string;
   textWeight?: number;
@@ -172,6 +172,7 @@ export function nodeSizingOpts(n: {
   indicators: number;
   manualW?: number;
   manualH?: number;
+  pad?: string;
   image?: { w: number; h: number };
   images?: { w: number; h: number }[];
 } {
@@ -184,6 +185,8 @@ export function nodeSizingOpts(n: {
     indicators: contentIndicatorCount(n),
     manualW: n.sizeW,
     manualH: n.sizeH,
+    // 안쪽 여백 (스타일 탭, 2026-10-28)
+    pad: n.style?.padding,
     // 인라인 사진(images)이 있으면 레거시 단일 사진은 무시 — 렌더러와
     // 같은 규칙이어야 측정·표시 높이가 일치한다
     image: !n.images?.length && n.image

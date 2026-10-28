@@ -31,6 +31,7 @@ import {
   sizeNodeForText,
   CYLINDER_CAP,
   nodePadX,
+  manualWidthOf,
   NO_SHAPE_PAD_X,
   NO_SHAPE_PAD_Y,
 } from './sizeNodeForText';
@@ -456,7 +457,10 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   // Mermaid·HTML 그림이 새로 그려지면 다시 잰다 (2026-10-28)
   const codeEpoch = useCodeRenderEpoch();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const nodeBlocks = useMemo(() => layoutNodeBlocks(String(n.text || ''), fontSize), [n.text, fontSize, codeEpoch]);
+  // 손으로 폭을 정한 노드 — 그림을 그 폭에 맞춘다 (sizeNodeForText 와 같은 식)
+  const fitManualW = manualWidthOf(n.sizeW);
+  const fitW = fitManualW ? fitManualW - nodePadX(n.depth, noShape, n.style?.padding) * 2 - MD_CODE_PAD_X * 2 : undefined;
+  const nodeBlocks = useMemo(() => layoutNodeBlocks(String(n.text || ''), fontSize, fitW), [n.text, fontSize, codeEpoch, fitW]);
   // 체크리스트 항목(- [x] …) — sizeNodeForText가 마커를 뗀 것과 같은
   // 수동 줄 목록을 재구성해 래핑 줄 범위를 얻는다 (리치 노드 P2)
   const glyphW = checkGlyphW(fontSize);
@@ -789,7 +793,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
       {!editing && (() => {
         // 텍스트 줄(+중간 인라인 사진) + (Markdown 표) + (레거시 사진)을
         // 세로로 쌓아 박스 안 가운데 정렬 (sizeNodeForText와 동일한 배치)
-        const padX = nodePadX(n.depth, noShape);
+        const padX = nodePadX(n.depth, noShape, n.style?.padding);
         const manualStarts = n._manualStarts;
         // 텍스트 중간 인라인 사진 — afterLine(논리 줄)을 래핑 줄 자리로
         // 바꿔 각 줄·사진의 세로 위치를 구한다 (뷰어와 같은 규칙)

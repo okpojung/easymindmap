@@ -95,7 +95,11 @@ export interface NodeStyle {
   borderWidth?: number;
   borderStyle?: NodeBorderStyle;
   shapeType?: ShapeType;
+  /** 안쪽 여백 — 테두리와 글·사진·코드 사이 (2026-10-28). 없으면 보통 */
+  padding?: NodePadding;
 }
+
+export type NodePadding = 'tight' | 'wide';
 
 // --- Node content (links / notes / attachments) ----------------------------
 export interface NodeLink {

@@ -21,6 +21,7 @@
 //   node text can never break out of the <script> block.
 
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
+import { contentIndicatorCount } from '@/editor/node-renderer/nodeContent';
 import { applyMediaView } from '@/editor/node-renderer/mediaView';
 import { collectCodeRenders, prepareCodeRenders } from '@/editor/node-renderer/codeRender';
 // 내보낸 HTML 의 파비콘·제목 옆 아이콘은 20px 정사각형 — 가로형 로고 대신 정사각형 마크 (2026-10-25)
@@ -29,6 +30,7 @@ import { computeLayout, type LayoutSpacing } from '@/layout/LayoutEngine';
 import {
   setLevelFontConfig, setLevelShapeConfig,
   levelFontFamily, levelTextAlign, levelShape,
+  nodePadX, nodePadY, sizeNodeForText,
 } from '@/editor/node-renderer/sizeNodeForText';
 import { splitNodeParts } from '@/editor/node-renderer/nodeBlocks';
 import { computeNodeChecks } from '@/editor/node-renderer/mdCheck';
@@ -64,6 +66,11 @@ interface ExportPos {
   // 에디터가 계산한 값을 그대로 실어 뷰어가 같은 자리에 글리프를 그린다
   // (뷰어는 읽기 전용 — 리치 노드 P2)
   ck?: { a: number; e: number; c: number }[];
+  /** 안쪽 여백(가로·세로) — 스타일 탭 '안쪽 여백'을 고르거나 손으로 폭을 정한 노드만 (2026-10-28) */
+  px?: number;
+  py?: number;
+  /** 손으로 폭을 정한 노드 — 그림(Mermaid·HTML)이 노드 폭을 따른다 */
+  mw?: 1;
 }
 
 interface ExportAttachment {
@@ -189,6 +196,16 @@ function toExportNode(
     layoutType: node.layoutType,
     side: resolveSide?.(node.id) ?? node.side,
     pos: resolvePos?.(node.id),
+    // 그림만 담은 노드 — 접었을 때의 크기·글(종류 이름)과 처음 접힘 상태 (2026-10-28).
+    // 뷰어의 모두 접기/펼치기·칩이 이것으로 바꿔 그린다 (에디터 mediaView 와 같은 규칙)
+    ...((node as { _media?: string[] })._media ? (() => {
+      const label = ((node as { _media?: string[] })._media ?? []).join(', ');
+      const sz = sizeNodeForText(label, depth, { shape: shapeType, hasIcon: !!node.icon, indicators: contentIndicatorCount(node) });
+      return {
+        mf: { w: Math.round(sz.w * 10) / 10, h: Math.round(sz.h * 10) / 10, lines: sz.lines, lh: sz.lineHeight, label },
+        cf: node.contentFolded ? 1 : undefined,
+      };
+    })() : {}),
     children: (node.children ?? []).map((c) =>
       toExportNode(c, resolveHref, resolvePos, resolveSide, depth + 1)),
   };
@@ -311,6 +328,26 @@ const VIEWER_JS = String.raw`
   var COL_GAP = 22;      // horizontal gap between sibling blocks in a row
   var PROC_INDENT = 24;  // process: children row starts right of parent left
   var PAD_X = 13, PAD_Y = 8;
+  // 노드별 안쪽 여백 — 에디터가 '안쪽 여백'을 고른 노드만 실어 보낸다 (2026-10-28)
+  function padXOf(n) { return n.pos && n.pos.px != null ? n.pos.px : PAD_X; }
+  function padYOf(n) { return n.pos && n.pos.py != null ? n.pos.py : PAD_Y; }
+  // 그림만 담은 노드의 내용 접기 (에디터 mediaView 와 같음, 2026-10-28) — 글을 종류 이름으로,
+  // 크기를 접힌 크기(mf)로 바꾸고 사진·태그를 숨긴다. 펴면 되돌린다.
+  function setMediaFold(n, fold) {
+    if (!n.mf) return;
+    if (fold && !n._mfold) {
+      n._mfold = true;
+      n._mfSave = { text: n.text, image: n.image, images: n.images, tags: n.tags, pos: n.pos };
+      var p0 = n.pos || {};
+      n.pos = { x: p0.x, y: p0.y, w: n.mf.w, h: n.mf.h, lines: n.mf.lines, lh: n.mf.lh, fs: p0.fs, ff: p0.ff };
+      n.text = n.mf.label; n.image = null; n.images = null; n.tags = null;
+    } else if (!fold && n._mfold) {
+      var sv = n._mfSave || {};
+      n.text = sv.text; n.image = sv.image; n.images = sv.images; n.tags = sv.tags; n.pos = sv.pos;
+      n._mfold = false; n._mfSave = null;
+    }
+  }
+  function eachNode(f) { ROOTS().forEach(function walk(n) { f(n); (n.children || []).forEach(walk); }); }
   var TAG_H = 15;
 
   function measureText(text, fontSize) {
@@ -1052,6 +1089,7 @@ const VIEWER_JS = String.raw`
   }
   // 내용이 사진·Mermaid·HTML 뿐인 노드 (에디터 mediaContent.mediaKindsOf 와 같은 판정)
   function mediaOnly(n) {
+    if (n.mf) return true; // 접혀서 글이 종류 이름이어도 그림 노드다
     if (n._mo !== undefined) return n._mo;
     var any = !!n.image || !!(n.images && n.images.length);
     var lines = String(n.text || '').split('\n'), i = 0, ok = true;
@@ -1241,6 +1279,7 @@ const VIEWER_JS = String.raw`
     ROOTS().forEach(function walk(n) {
       if (changed) return;
       if ((n.children || []).length && !!n.collapsed !== !!n._c0) { changed = true; return; }
+      if (n._mfold) { changed = true; return; } // 구운 좌표는 그림을 편 상태 기준이다
       (n.children || []).forEach(walk);
     });
     return changed;
@@ -1661,7 +1700,11 @@ const VIEWER_JS = String.raw`
     while (world.firstChild) world.removeChild(world.firstChild);
     DRAWN = {};
     chipLayer = el('g', { 'class': 'mm-chip-layer' });
-    if (!C0_DONE) { rememberCollapsed0(); C0_DONE = true; }
+    if (!C0_DONE) {
+      rememberCollapsed0(); C0_DONE = true;
+      // 앱에서 접어 둔 그림 노드는 접힌 채로 연다 (2026-10-28)
+      eachNode(function (n) { if (n.cf) setMediaFold(n, true); });
+    }
     DYN = collapsedChanged();
     // 첫 중심의 배치는 **에디터의 맵 레이아웃**(mapLayout)이다 — 엔진이 첫 중심을
     // 그것으로 놓았고 pos 도 그 좌표다. root.layoutType 은 옛 값이 남을 수 있어
@@ -1967,7 +2010,7 @@ const VIEWER_JS = String.raw`
     // 도형 없음 — 에디터가 박스를 글자에 딱 맞춰 보낸다(sizeNodeForText NO_SHAPE_PAD_X/Y = 0/3).
     // 같은 여백으로 그려야 글자가 밑줄을 넘거나 밑줄에 걸치지 않는다
     var tightBox = stPre.shapeType === 'none';
-    var padXv = tightBox ? 0 : PAD_X, padYv = tightBox ? 3 : PAD_Y;
+    var padXv = tightBox ? 0 : padXOf(node), padYv = tightBox ? 3 : padYOf(node);
     var tx = x0 + padXv;
     if (node.icon) {
       var ic = el('text', { x: tx, y: y0 + capY + padYv + node._fs * 0.85, 'font-size': node._fs + 1 }, g);
@@ -2004,6 +2047,11 @@ const VIEWER_JS = String.raw`
         }
         bHs.push(13 + bK.tblH); // 13 = 복사(⧉) 스트립 — 표 바깥 위 (에디터 MD_TABLE_COPY_STRIP 동일)
       } else if ((bK.rr = codeRenderFor(bK))) {
+        // 손으로 폭을 정한 노드 — 그림을 노드 폭에 맞춘다 (에디터 layoutParsedCode fitW 와 같음)
+        if (node.pos && node.pos.mw) {
+          var fw = node._w - padXOf(node) * 2 - CPX * 2;
+          if (fw >= 40) bK.rr = { kind: bK.rr.kind, nw: bK.rr.nw, nh: bK.rr.nh, src: bK.rr.src, doc: bK.rr.doc, w: Math.round(fw), h: Math.max(1, Math.min(3000, Math.round(bK.rr.nh * fw / Math.max(1, bK.rr.nw)))) };
+        }
         // 그린 Mermaid·HTML — 에디터 mdCode.layoutParsedCode 와 같은 식
         bK.cH = cHeadH + bK.rr.h + CPY * 2;
         bK.cW = Math.ceil(Math.max(bK.rr.w, cellsOf(bK.lang || 'code') * cHeadFs * CELL_RATIO + cHeadFs * 7 + 16)) + CPX * 2;
@@ -2040,7 +2088,7 @@ const VIEWER_JS = String.raw`
     var inScaled = null, flowTops = null, flowBands = null;
     var flowH = node._lines.length * node._lineH;
     if (inImgs) {
-      var innerW2 = Math.max(40, node._w - PAD_X * 2);
+      var innerW2 = Math.max(40, node._w - padXOf(node) * 2);
       inScaled = inImgs.map(function (im) {
         var s2 = Math.min(1, innerW2 / Math.max(1, im.w));
         return { w: Math.round(im.w * s2), h: Math.round(im.h * s2) };
@@ -2065,7 +2113,7 @@ const VIEWER_JS = String.raw`
     // 노드 안 사진(레거시 단일 — 텍스트 아래) — 인라인 사진이 있으면 생략
     var img = null;
     if (!inImgs && node.image && node.image.src) {
-      var innerW = Math.max(40, node._w - PAD_X * 2);
+      var innerW = Math.max(40, node._w - padXOf(node) * 2);
       var isc = Math.min(1, innerW / Math.max(1, node.image.w));
       img = { w: Math.round(node.image.w * isc), h: Math.round(node.image.h * isc) };
     }
@@ -2207,7 +2255,7 @@ const VIEWER_JS = String.raw`
       // Markdown 표 그리기 — 헤더 행 배경 + 격자선 + 셀 텍스트
       mdt = blocks[bI]; tblH = mdt.tblH;
       var gridC = color || textColor;
-      var tblX = x0 + PAD_X;
+      var tblX = x0 + padXOf(node);
       // 블록 맨 위 13px = 복사(⧉) 스트립, 격자는 그 아래
       var tStripY = bTop;
       var tblY = tStripY + 13;
@@ -2386,6 +2434,30 @@ const VIEWER_JS = String.raw`
       }, g);
     }
 
+    // 그림 노드 내용 접기 칩 (에디터 ContentFoldControl 과 같은 뜻, 2026-10-28) — 들어오는 쪽 가장자리.
+    // 접힘: "1" 칩을 누르면 편다. 펼침: 그 자리에 마우스를 올리면 (−) 가 보이고 누르면 접는다.
+    if (node.mf && depth > 0 && chipLayer) {
+      (function (n) {
+        var cx = n.side === 'left' ? x0 + n._w + 11 : x0 - 11, cy = n._cy;
+        var cg = el('g', { 'class': n._mfold ? 'mm-mf' : 'mm-mf mm-mf-open', transform: 'translate(' + cx + ',' + cy + ')' }, chipLayer);
+        cg.style.cursor = 'pointer';
+        var tt = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        tt.textContent = n._mfold ? (MML.mediaUnfold || '1') : (MML.mediaFold || '-');
+        cg.appendChild(tt);
+        el('circle', { r: 13, fill: 'transparent' }, cg);
+        if (n._mfold) {
+          el('circle', { r: 8.5, fill: color, stroke: color, 'stroke-width': 1.4 }, cg);
+          var ct = el('text', { y: 3.4, 'text-anchor': 'middle', 'font-size': 9.5, 'font-weight': 700, fill: '#fff' }, cg);
+          ct.textContent = '1';
+        } else {
+          el('circle', { 'class': 'mm-mf-ic', r: 8.5, fill: '#fff', stroke: color, 'stroke-width': 1.4 }, cg);
+          el('line', { 'class': 'mm-mf-ic', x1: -4, y1: 0, x2: 4, y2: 0, stroke: color, 'stroke-width': 1.6, 'stroke-linecap': 'round' }, cg);
+        }
+        cg.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+        cg.addEventListener('click', function (ev) { ev.stopPropagation(); setMediaFold(n, !n._mfold); render(); });
+      })(node);
+    }
+
     if (node.tags && node.tags.length) {
       // 노드 오른쪽 경계를 넘으면 다음 줄로 (에디터 layoutTagRows 와 같은 규칙, 2026-10-23)
       var bx2 = x0 + 6, tRow = 0;
@@ -2485,7 +2557,7 @@ const VIEWER_JS = String.raw`
       var mfs = node._fs + 1; // same size as the node's leading icon
       // INSIDE the box, right of the text (leading-icon style) — the measure
       // pass reserved node._marksW so every marker fits within the border.
-      var mx0 = x0 + node._w - PAD_X - markers.length * (mfs + 3) + 3;
+      var mx0 = x0 + node._w - padXOf(node) - markers.length * (mfs + 3) + 3;
       for (var mi = 0; mi < markers.length; mi++) {
         var mk = drawMarkerGlyph(g, markers[mi].kind, mx0 + mfs / 2, node._cy, mfs + 2);
         if (markers[mi].tip) {
@@ -3205,6 +3277,7 @@ const VIEWER_JS = String.raw`
   function setAll(node, collapsed) {
     var kids = node.children || [];
     if (kids.length) node.collapsed = collapsed;
+    setMediaFold(node, collapsed); // 그림 노드의 내용도 같이 (앱과 같은 동작, 2026-10-28)
     for (var i = 0; i < kids.length; i++) setAll(kids[i], collapsed);
   }
 
@@ -3928,6 +4001,9 @@ const VIEWER_JS = String.raw`
 
 const VIEWER_CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* 그림 노드 내용 접기 (−) — 그 자리에 마우스를 올려야 보인다 (2026-10-28) */
+  .mm-mf-open .mm-mf-ic { opacity: 0; transition: opacity .12s; }
+  .mm-mf-open:hover .mm-mf-ic { opacity: 1; }
   html, body { width: 100%; height: 100%; overflow: hidden; }
   body {
     font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic',
@@ -4444,7 +4520,7 @@ function escapeHtml(s: string): string {
 const VIEWER_STRING_KEYS = [
   'chipCode', 'chipTable', 'noteParagraph', 'noteCode', 'noteTable', 'noteChecklist',
   'checkToUndone', 'checkToDone', 'copyTable', 'copyCode', 'fileMissing',
-  'linksN', 'kindN', 'filesN', 'mediaN', 'collapse', 'expandHidden',
+  'linksN', 'kindN', 'filesN', 'mediaN', 'collapse', 'expandHidden', 'mediaFold', 'mediaUnfold',
   'sectionLinks', 'sectionMemo', 'sectionMedia', 'sectionFiles',
   'layoutRadialBi', 'layoutRadialRight', 'layoutRadialLeft', 'layoutTreeRight',
   'layoutTreeDown', 'layoutHierarchyRight', 'layoutProcessTreeRight',
@@ -4552,6 +4628,10 @@ export function buildStandaloneHtml(
     lh: n._lineHeight ?? 18,
     ff: levelFontFamily(n.depth),
     ck: bakeChecks(n),
+    ...((n.style?.padding || n.sizeW) ? (() => {
+      const ns = (n.style?.shapeType ?? levelShape(n.depth) ?? 'rounded') === 'none';
+      return { px: nodePadX(n.depth, ns, n.style?.padding), py: nodePadY(n.depth, ns, n.style?.padding), mw: n.sizeW ? 1 as const : undefined };
+    })() : {}),
   });
   const posById = new Map<string, ExportPos>(laid.map((n) => [n.id, toPos(n)]));
   // 보이는 노드는 실제 배치(laid)의 좌표가 우선 — 접혀서 빠진 노드만 채운다
@@ -4648,8 +4728,8 @@ export function buildStandaloneHtml(
   <button id="mm-pan" class="icon" title="${A('pan')}">✋</button>
   <button id="mm-fit" class="icon" title="${A('fit')}">⛶</button>
   <button id="mm-minimap-btn" class="icon" title="${A('minimap')}">▦</button>
-  <button id="mm-expand" class="icon" title="${A('expandAll')}">+</button>
-  <button id="mm-collapse" class="icon" title="${A('collapseAll')}">−</button>
+  <button id="mm-expand" class="icon" title="${A('expandAll')}" aria-label="${A('expandAll')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>
+  <button id="mm-collapse" class="icon" title="${A('collapseAll')}" aria-label="${A('collapseAll')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>
   <button id="mm-outline-split" class="icon" title="${A('splitOpen')}">◫</button>
   <button id="mm-view-toggle" class="icon" title="${A('toOutline')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg></button>
   <button id="mm-fullscreen" class="icon" title="${A('fsEnter')}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>

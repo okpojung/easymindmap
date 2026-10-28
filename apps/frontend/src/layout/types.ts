@@ -57,6 +57,8 @@ export interface LaidOutNode {
   _media?: string[];
   /** 내용을 접어 종류 이름만 보이는 중 */
   _mediaFolded?: boolean;
+  /** 화면용으로 붙인 자동 태그 (지울 수 없다 — ✕·끌기 없음) */
+  _autoTags?: string[];
 
   note?: boolean;
   locked?: boolean;

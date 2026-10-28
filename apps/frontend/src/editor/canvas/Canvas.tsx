@@ -2413,8 +2413,11 @@ export function Canvas({
                 .map((n) => {
                   const p = visibleById.get(n.parent as string);
                   if (!p) return null;
-                  const end = pathEnd(treeEdgePath(p, n, layoutType));
-                  if (!end) return null;
+                  const end0 = pathEnd(treeEdgePath(p, n, layoutType));
+                  if (!end0) return null;
+                  // 노드 바깥쪽(선이 오는 쪽)으로 조금 비켜 — 칩이 글자 첫 글자를 가리지 않게
+                  const vx = end0.x - n.x; const vy = end0.y - n.y; const vl = Math.hypot(vx, vy) || 1;
+                  const end = { x: end0.x + (vx / vl) * 11, y: end0.y + (vy / vl) * 11 };
                   return (
                     <ContentFoldControl
                       key={`cfold-${n.id}`}

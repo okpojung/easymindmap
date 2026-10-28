@@ -39,7 +39,7 @@ function viewNode<N extends ViewNode>(n: N, fold: boolean): N {
   }
   const own = n.tags ?? [];
   const auto = kinds.filter((k) => !own.some((t) => t.toLowerCase() === k.toLowerCase()));
-  return { ...n, children: kids, tags: auto.length ? [...own, ...auto] : n.tags, _media: kinds };
+  return { ...n, children: kids, tags: auto.length ? [...own, ...auto] : n.tags, _media: kinds, _autoTags: auto.length ? auto : undefined };
 }
 
 /** fold=false — 접기를 무시한다(HTML 뷰어: 읽는 사람이 펼 수 없으니 늘 펼친다) */

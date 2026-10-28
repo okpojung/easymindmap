@@ -33,6 +33,8 @@ const KIND_COLOR_KEY: Record<ProjectChipKind, string> = { date: 'V1', assignee: 
 
 export function NodeTagChips({ n, tagList, t, onRemove, onMove, fixed = [], onFixedRemove, onFixedClick }: Props) {
   const tr = useTr();
+  // 그림 노드의 자동 태그(Image·Mermaid·HTML, 2026-10-28) — 문서에 없는 표시용이라 지우거나 옮기지 않는다
+  const autoTags = new Set(n._autoTags ?? []);
   const tagH = TAG_ROW_H;
   const arrowW = 6;
   const padX = 8;
@@ -151,7 +153,7 @@ export function NodeTagChips({ n, tagList, t, onRemove, onMove, fixed = [], onFi
             <g
               style={{ cursor: onMove && tagList.length > 1 ? (dragging ? 'grabbing' : 'grab') : undefined, touchAction: 'none' }}
               onPointerDown={(e) => {
-                if (!onMove || e.button !== 0 || tagList.length < 2) return;
+                if (!onMove || e.button !== 0 || tagList.length < 2 || autoTags.has(tagName)) return;
                 e.stopPropagation();
                 e.currentTarget.setPointerCapture(e.pointerId);
                 start.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: i, el: e.currentTarget, moved: false };
@@ -184,7 +186,8 @@ export function NodeTagChips({ n, tagList, t, onRemove, onMove, fixed = [], onFi
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
             >
-              {onMove && tagList.length > 1 && <title>{tr('editor.node.dragTag')}</title>}
+              {autoTags.has(tagName) ? <title>{tr('editor.node.autoTag')}</title>
+                : onMove && tagList.length > 1 && <title>{tr('editor.node.dragTag')}</title>}
               <path d={path} fill={tc.bg} stroke={tc.border} strokeWidth="0.8" />
               <text x={x1 + padX} y={yMid + 3.4}
                     fontSize="10" fontWeight="600"
@@ -196,7 +199,7 @@ export function NodeTagChips({ n, tagList, t, onRemove, onMove, fixed = [], onFi
             <line x1={x1 + padX + labelW + 2} y1={yTop + 3}
                   x2={x1 + padX + labelW + 2} y2={yBot - 3}
                   stroke={tc.text} strokeOpacity="0.25" strokeWidth="0.8" />
-            <g transform={`translate(${x1 + padX + labelW + 8}, ${yMid})`}
+            {!autoTags.has(tagName) && <g transform={`translate(${x1 + padX + labelW + 8}, ${yMid})`}
                style={{ cursor: 'pointer' }}
                onPointerDown={(e) => e.stopPropagation()}
                onDoubleClick={(e) => e.stopPropagation()}
@@ -212,7 +215,7 @@ export function NodeTagChips({ n, tagList, t, onRemove, onMove, fixed = [], onFi
                     stroke={tc.text} strokeOpacity="0.65" strokeWidth="1.2" strokeLinecap="round" />
               <line x1={3} y1={-3} x2={-3} y2={3}
                     stroke={tc.text} strokeOpacity="0.65" strokeWidth="1.2" strokeLinecap="round" />
-            </g>
+            </g>}
           </g>
         );
       })}

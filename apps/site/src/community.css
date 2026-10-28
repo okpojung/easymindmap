@@ -94,6 +94,9 @@
 .card .tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
 .card .tags span { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: #eef2ea; color: #3d5a4a; }
 .card .react { margin-left: 8px; }
+/* 좋아요: 빨간 하트 + 큰 숫자 (2026-10-28 요청) */
+.card .react.like { display: inline-flex; align-items: center; gap: 4px; font-size: 16px; font-weight: 700; color: #3a3a3a; vertical-align: middle; }
+.card .react.like .heart { color: #E53935; font-size: 20px; line-height: 1; }
 
 @media (max-width: 560px) {
   .cm-notices { flex-direction: column; gap: 6px; }

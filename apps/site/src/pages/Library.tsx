@@ -203,7 +203,7 @@ export default function Library() {
                   )}
                   <span className="meta">
                     {m.nodeCount != null ? `${m.nodeCount}노드 · ` : ''}{fmt(m.publishedAt)}
-                    {typeof m.likeCount === 'number' && <span className="react" aria-label={`좋아요 ${m.likeCount}`}>♡ {m.likeCount}</span>}
+                    {typeof m.likeCount === 'number' && <span className="react like" aria-label={`좋아요 ${m.likeCount}`}><span className="heart" aria-hidden="true">♥</span>{m.likeCount}</span>}
                     {typeof m.commentCount === 'number' && m.commentsEnabled !== false && <span className="react" aria-label={`댓글 ${m.commentCount}`}>💬 {m.commentCount}</span>}
                     {(m.matchCount ?? 0) > 0 && (
                       <span

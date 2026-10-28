@@ -1,4 +1,5 @@
 import { API_URL } from './config';
+import { pageText } from './i18n/pages';
 
 /** 진열대 목록 한 줄 — 서버의 `GET /v1/published` 와 같은 모양 */
 export interface ListedMap {
@@ -47,7 +48,7 @@ export async function fetchListed(
   //   이름조차 못 찾는다. 게다가 **맵 내용**은 애초에 여기 오지 않는다.
   if (term) q.set('q', term);
   const res = await fetch(`${API_URL}/v1/published?${q}`, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error(`목록을 불러오지 못했습니다 (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(pageText().api.listedFailed(res.status));
   return (await res.json()) as ListedPage;
 }
 

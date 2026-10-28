@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { APP_URL } from '../config';
-import markup from '../redesign/template.html?raw';
+import { templateFor } from '../site-text';
+import { CURRENT_LANG } from '../i18n';
+
+const markup = templateFor(CURRENT_LANG);
 import { mountHomepage } from '../redesign/controller';
 import '../redesign/redesign.css';
 

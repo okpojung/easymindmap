@@ -3,9 +3,17 @@ import {
   ApiError, fetchComments, fetchPost, fetchPosts, fetchRecentNotices,
   type CommentItem, type NoticeItem, type PostDetail, type PostItem,
 } from '../community-api';
-import { BOARDS, appBoardUrl, boardLabel, boardPath, formatDate, normalizeBoard, type BoardId } from '../community-rules';
+import { BOARDS, appBoardUrl, boardPath as rawBoardPath, normalizeBoard, type BoardId } from '../community-rules';
+import { href as localHref } from '../i18n';
+const boardPath = (...args: Parameters<typeof rawBoardPath>) => localHref(rawBoardPath(...args));
 import { GITHUB_URL } from '../config';
 import { BoardMarkdown, unusedAttachments } from './BoardMarkdown';
+import { formatDate, pageText } from '../i18n/pages';
+
+const C = pageText().common;
+const T = pageText().board;
+/** 게시판 이름은 사전에서 — community-rules.js 의 한국어 label 은 규칙·시험용으로 그대로 둔다 */
+const boardLabel = (id: BoardId) => T.names[id] ?? '';
 
 /** 주소가 곧 상태다 — `/board?b=free&q=…`, 글은 `/board?b=free&post=<id>` */
 function readUrl() {
@@ -46,15 +54,15 @@ function RecentNotices({ go }: { go: (to: string) => void }) {
   }, []);
   if (!items || items.length === 0) return null;
   return (
-    <section className="cm-notices" aria-label="최근 공지사항">
-      <strong>공지</strong>
+    <section className="cm-notices" aria-label={T.noticesAria}>
+      <strong>{T.noticesLabel}</strong>
       <ul>
         {items.map(n => {
           const to = boardPath('notice', { post: n.id });
           return (
             <li key={n.id}>
               <a href={to} onClick={onInternal(go, to)}>
-                {n.pinned && <span className="cm-pin">고정</span>}
+                {n.pinned && <span className="cm-pin">{T.pinned}</span>}
                 <span className="cm-notice-title">{n.title}</span>
                 <span className="cm-date">{formatDate(n.createdAt)}</span>
               </a>
@@ -85,7 +93,7 @@ function PostList({ board, q, go }: { board: BoardId; q: string; go: (to: string
       setCursor(page.nextCursor);
     } catch (e) {
       if (gen.current !== mine) return;
-      setError(e instanceof Error ? e.message : '목록을 불러오지 못했습니다.');
+      setError(e instanceof Error ? e.message : C.listLoadFailed);
     } finally {
       if (gen.current === mine) { setLoading(false); setReady(true); }
     }
@@ -104,26 +112,26 @@ function PostList({ board, q, go }: { board: BoardId; q: string; go: (to: string
       <div className="cm-toolbar">
         <label className="searchbox">
           <span className="ico" aria-hidden="true">🔍</span>
-          <input type="search" value={term} onChange={e => setTerm(e.target.value)} placeholder="제목과 내용에서 찾기" aria-label={`${meta.label}에서 찾기`} maxLength={100} />
-          {term && <button type="button" className="clear" onClick={() => setTerm('')} aria-label="검색어 지우기">✕</button>}
+          <input type="search" value={term} onChange={e => setTerm(e.target.value)} placeholder={T.searchPlaceholder} aria-label={T.searchAria(boardLabel(meta.id))} maxLength={100} />
+          {term && <button type="button" className="clear" onClick={() => setTerm('')} aria-label={C.clearSearch}>✕</button>}
         </label>
         {meta.writable && (
-          <a className="btn" href={appBoardUrl(board, { write: true })}>글쓰기 ↗</a>
+          <a className="btn" href={appBoardUrl(board, { write: true })}>{T.write}</a>
         )}
       </div>
-      {meta.writable && <p className="cm-hint">글쓰기와 댓글은 앱에 로그인한 회원만 할 수 있습니다. 버튼을 누르면 앱으로 이동합니다.</p>}
+      {meta.writable && <p className="cm-hint">{T.writeHint}</p>}
       {board === 'bug' && (
-        <p className="cm-hint">개발자라면 <a href={`${GITHUB_URL}/issues`} target="_blank" rel="noopener noreferrer">GitHub Issues ↗</a>에도 남길 수 있습니다. 스크린샷에 개인정보가 보이지 않는지 확인해 주세요.</p>
+        <p className="cm-hint">{T.bugHint(<a href={`${GITHUB_URL}/issues`} target="_blank" rel="noopener noreferrer">GitHub Issues ↗</a>)}</p>
       )}
 
       {error && (
         <div className="note err"><b>{error}</b>
-          <div style={{ marginTop: 12 }}><button className="btn ghost" onClick={() => void load(null)}>다시 시도</button></div>
+          <div style={{ marginTop: 12 }}><button className="btn ghost" onClick={() => void load(null)}>{C.retry}</button></div>
         </div>
       )}
       {!error && ready && items.length === 0 && (
-        <div className="note"><b>{q ? `“${q}” 로 찾은 글이 없습니다.` : `아직 ${meta.label} 글이 없습니다.`}</b>
-          {meta.writable && !q && <div style={{ marginTop: 6 }}>첫 글을 남겨 주세요.</div>}
+        <div className="note"><b>{q ? T.noResults(q) : T.empty(boardLabel(meta.id))}</b>
+          {meta.writable && !q && <div style={{ marginTop: 6 }}>{T.firstPost}</div>}
         </div>
       )}
       {items.length > 0 && (
@@ -134,10 +142,10 @@ function PostList({ board, q, go }: { board: BoardId; q: string; go: (to: string
               <li key={p.id} className={p.pinned ? 'pinned' : undefined}>
                 <a href={to} onClick={onInternal(go, to)}>
                   <span className="cm-title">
-                    {p.pinned && <span className="cm-pin">고정</span>}
+                    {p.pinned && <span className="cm-pin">{T.pinned}</span>}
                     {p.title}
-                    {p.commentCount > 0 && <span className="cm-count" aria-label={`댓글 ${p.commentCount}개`}>[{p.commentCount}]</span>}
-                    {p.attachmentCount > 0 && <span className="cm-attach" aria-label="사진 있음">📷</span>}
+                    {p.commentCount > 0 && <span className="cm-count" aria-label={T.commentCountAria(p.commentCount)}>[{p.commentCount}]</span>}
+                    {p.attachmentCount > 0 && <span className="cm-attach" aria-label={T.hasPhotoAria}>📷</span>}
                   </span>
                   {p.excerpt && <span className="cm-excerpt">{p.excerpt}</span>}
                   <span className="cm-meta">{p.author.avatarUrl && <span aria-hidden="true">{p.author.avatarUrl} </span>}{p.author.displayName} · {formatDate(p.createdAt)}</span>
@@ -148,9 +156,9 @@ function PostList({ board, q, go }: { board: BoardId; q: string; go: (to: string
         </ul>
       )}
       {cursor && !error && (
-        <div className="more"><button className="btn ghost" disabled={loading} onClick={() => void load(cursor)}>{loading ? '불러오는 중…' : '더 보기'}</button></div>
+        <div className="more"><button className="btn ghost" disabled={loading} onClick={() => void load(cursor)}>{loading ? C.loading : C.more}</button></div>
       )}
-      {!ready && !error && <p className="cm-loading">불러오는 중…</p>}
+      {!ready && !error && <p className="cm-loading">{C.loading}</p>}
     </>
   );
 }
@@ -170,7 +178,7 @@ function PostView({ board, id, go }: { board: BoardId; id: string; go: (to: stri
       // 주소의 게시판과 실제 글의 게시판이 다르면 실제 쪽으로 맞춘다
       if (p.board !== board) window.history.replaceState({}, '', boardPath(p.board, { post: p.id }));
       return fetchComments(id, null).then(c => { if (live) { setComments(c.items); setCursor(c.nextCursor); } });
-    }).catch(e => { if (live) setError({ status: e instanceof ApiError ? e.status : 0, message: e instanceof Error ? e.message : '글을 불러오지 못했습니다.' }); });
+    }).catch(e => { if (live) setError({ status: e instanceof ApiError ? e.status : 0, message: e instanceof Error ? e.message : T.postLoadFailed }); });
     return () => { live = false; };
   }, [id, board]);
 
@@ -179,31 +187,31 @@ function PostView({ board, id, go }: { board: BoardId; id: string; go: (to: stri
 
   return (
     <article className="cm-post">
-      <a className="cm-back" href={back} onClick={onInternal(go, back)}>← {boardLabel(post?.board ?? board)} 목록</a>
+      <a className="cm-back" href={back} onClick={onInternal(go, back)}>{T.backToList(boardLabel(post?.board ?? board))}</a>
       {error && (
-        <div className="note err"><b>{error.status === 404 ? '글을 찾을 수 없습니다. 삭제되었거나 숨겨진 글일 수 있습니다.' : error.message}</b></div>
+        <div className="note err"><b>{error.status === 404 ? T.notFound : error.message}</b></div>
       )}
-      {!error && !post && <p className="cm-loading">불러오는 중…</p>}
+      {!error && !post && <p className="cm-loading">{C.loading}</p>}
       {post && (
         <>
           <header className="cm-post-head">
             <span className="cm-board">{boardLabel(post.board)}</span>
-            <h1>{post.pinned && <span className="cm-pin">고정</span>}{post.title}</h1>
-            <p className="cm-meta">{post.author.avatarUrl && <span aria-hidden="true">{post.author.avatarUrl} </span>}{post.author.displayName} · {formatDate(post.createdAt)}{post.updatedAt !== post.createdAt && ' (수정됨)'}</p>
+            <h1>{post.pinned && <span className="cm-pin">{T.pinned}</span>}{post.title}</h1>
+            <p className="cm-meta">{post.author.avatarUrl && <span aria-hidden="true">{post.author.avatarUrl} </span>}{post.author.displayName} · {formatDate(post.createdAt)}{post.updatedAt !== post.createdAt && T.edited}</p>
           </header>
           {/* 본문은 Markdown(계약 v0.4). HTML 원문은 그리지 않는다. */}
           <BoardMarkdown body={post.body} attachments={post.attachments} />
           {unusedAttachments(post.body, post.attachments).length > 0 && (
             <div className="cm-photos">
-              {unusedAttachments(post.body, post.attachments).map(a => <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer"><img src={a.url} alt="첨부 사진" width={a.width} height={a.height} loading="lazy" /></a>)}
+              {unusedAttachments(post.body, post.attachments).map(a => <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer"><img src={a.url} alt={T.photoAlt} width={a.width} height={a.height} loading="lazy" /></a>)}
             </div>
           )}
-          <section className="cm-comments" id="comments" aria-label="댓글">
+          <section className="cm-comments" id="comments" aria-label={T.commentsAria}>
             <div className="cm-comments-head">
-              <h2>댓글 {post.commentCount}</h2>
-              <a className="btn ghost" href={appBoardUrl(post.board, { post: post.id })}>댓글 쓰기 ↗</a>
+              <h2>{T.commentsTitle(post.commentCount)}</h2>
+              <a className="btn ghost" href={appBoardUrl(post.board, { post: post.id })}>{T.writeComment}</a>
             </div>
-            {comments.length === 0 && <p className="cm-hint">아직 댓글이 없습니다.</p>}
+            {comments.length === 0 && <p className="cm-hint">{T.noComments}</p>}
             <ul>
               {comments.map(c => (
                 <li key={c.id}>
@@ -212,8 +220,8 @@ function PostView({ board, id, go }: { board: BoardId; id: string; go: (to: stri
                 </li>
               ))}
             </ul>
-            {cursor && <div className="more"><button className="btn ghost" onClick={moreComments}>댓글 더 보기</button></div>}
-            <p className="cm-hint">댓글은 앱에 로그인한 회원만 쓸 수 있습니다.</p>
+            {cursor && <div className="more"><button className="btn ghost" onClick={moreComments}>{T.moreComments}</button></div>}
+            <p className="cm-hint">{T.commentHint}</p>
           </section>
         </>
       )}
@@ -223,25 +231,25 @@ function PostView({ board, id, go }: { board: BoardId; id: string; go: (to: stri
 
 export default function Board() {
   const { board, post, q, go } = useBoardUrl();
-  useEffect(() => { document.title = `게시판 · ${boardLabel(board)} | EasyMindMap`; }, [board]);
+  useEffect(() => { document.title = T.docTitle(boardLabel(board)); }, [board]);
   return (
     <div className="cm">
       <section className="wrap head">
-        <h1>게시판</h1>
-        <p>사용 소감과 의견, 버그를 나눠 주세요. 읽기는 누구나, 글쓰기와 댓글은 회원만 할 수 있습니다.</p>
+        <h1>{T.title}</h1>
+        <p>{T.intro}</p>
       </section>
       <section className="wrap">
         <RecentNotices go={go} />
-        <nav className="cm-tabs" aria-label="게시판 종류">
+        <nav className="cm-tabs" aria-label={T.tabsAria}>
           {BOARDS.map(b => {
             const to = boardPath(b.id);
-            return <a key={b.id} href={to} aria-current={b.id === board ? 'page' : undefined} onClick={onInternal(go, to)}>{b.label}</a>;
+            return <a key={b.id} href={to} aria-current={b.id === board ? 'page' : undefined} onClick={onInternal(go, to)}>{boardLabel(b.id)}</a>;
           })}
         </nav>
         {post ? <PostView board={board} id={post} go={go} /> : <PostList key={board} board={board} q={q} go={go} />}
         <aside className="cm-ask">
-          <span>원하는 답을 찾지 못했나요? 개인적인 문의나 제휴 제안은 따로 보내 주세요.</span>
-          <a className="btn ghost" href="/contact">✉ 문의하기</a>
+          <span>{T.askText}</span>
+          <a className="btn ghost" href={localHref('/contact')}>{T.askButton}</a>
         </aside>
       </section>
     </div>

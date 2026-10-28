@@ -3,6 +3,9 @@ import remarkGfm from 'remark-gfm';
 import { API_URL } from '../config';
 import { boardAttachmentId, safeLinkHref } from '../community-rules';
 import type { Attachment } from '../community-api';
+import { pageText } from '../i18n/pages';
+
+const T = pageText().board;
 
 /**
  * 게시판 글 본문(Markdown, 계약 v0.4 §2).
@@ -32,7 +35,7 @@ export function BoardMarkdown({ body, attachments }: { body: string; attachments
             }
             const safe = safeLinkHref(src);
             return safe
-              ? <a href={safe} target="_blank" rel="noopener noreferrer nofollow">{alt || '외부 사진 보기'} ↗</a>
+              ? <a href={safe} target="_blank" rel="noopener noreferrer nofollow">{alt || T.externalPhoto} ↗</a>
               : <span>{alt}</span>;
           },
           input: ({ type, checked }) => (type === 'checkbox' ? <input type="checkbox" checked={!!checked} disabled readOnly /> : null),

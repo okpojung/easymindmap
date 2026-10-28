@@ -35,3 +35,16 @@ test("맵은 기본적으로 영역 안에 맞춰 스크롤바가 생기지 않�
 test("작은 맵은 확대하지 않고, 아주 큰 맵만 최소 배율에서 멈춤", () => { assert.equal(fitMapScale({width:300,height:200},900,420),1); assert.equal(fitMapScale({width:9000,height:9000},900,420),MAP_MIN_FIT); assert.equal(fitMapScale({width:300,height:200},0,0),1); });
 test("모든 페이지 공통 헤더는 홈 템플릿의 승인된 헤더 하나뿐", () => { const tpl=readFileSync(new URL('../src/redesign/template.html',import.meta.url),'utf8'); const app=readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8'); assert.equal(tpl.split('<header class="header">').length,2); assert.match(tpl,/EMM 로그인/); assert.doesNotMatch(tpl,/Guest로 체험해보기/); assert.doesNotMatch(app,/className="top"|>시작하기</); assert.match(app,/SITE_HEADER_MARKUP/); });
 test("앱 진입점은 헤더 EMM 로그인 버튼 하나뿐이고 /try 링크가 남아 있지 않음", () => { const tpl=readFileSync(new URL('../src/redesign/template.html',import.meta.url),'utf8'); const ctl=readFileSync(new URL('../src/redesign/controller.ts',import.meta.url),'utf8'); assert.equal(tpl.split('data-open-app').length-1,1); assert.doesNotMatch(tpl+ctl,/easymindmap\.org\/try/); assert.match(tpl,/github\.com\/okpojung\/easymindmap/); assert.match(tpl,/github\.com\/mindmapmarkdown/); assert.match(tpl,/data-open-app href="https:\/\/web\.easymindmap\.org\/"/); assert.match(readFileSync(new URL('../src/config.ts',import.meta.url),'utf8'),/APP_LOGIN_URL = 'https:\/\/web\.easymindmap\.org\/'/); });
+
+test("언어별 홈 템플릿은 한국어 템플릿과 같은 구조(id·data 속성·언어 버튼)를 가짐", () => {
+  const read = name => readFileSync(new URL('../src/redesign/' + name, import.meta.url), 'utf8');
+  const ko = read('template.html');
+  const marks = html => ({ ids: [...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]).join(','), presets: [...html.matchAll(/data-preset="([^"]+)"/g)].map(m => m[1]).join(','), routes: [...html.matchAll(/data-route="([^"]+)"/g)].map(m => m[1]).join(','), langs: [...html.matchAll(/data-lang="([^"]+)"/g)].map(m => m[1]).join(','), app: html.split('data-open-app').length - 1 });
+  for (const name of ['template.en.html', 'template.ja.html', 'template.zh.html']) {
+    const other = read(name);
+    assert.deepEqual(marks(other), marks(ko), name);
+    assert.equal(other.split('<header class="header">').length, 2, name);
+    assert.doesNotMatch(other, /[가-힣]{2,}(?![^<]*<\/a>)/, name + ' 에 한국어 문구가 남아 있음');
+  }
+  assert.equal(marks(ko).langs, 'ko,en,ja,zh');
+});

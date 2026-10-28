@@ -40,7 +40,7 @@ test("언어별 홈 템플릿은 한국어 템플릿과 같은 구조(id·data �
   const read = name => readFileSync(new URL('../src/redesign/' + name, import.meta.url), 'utf8');
   const ko = read('template.html');
   const marks = html => ({ ids: [...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]).join(','), presets: [...html.matchAll(/data-preset="([^"]+)"/g)].map(m => m[1]).join(','), routes: [...html.matchAll(/data-route="([^"]+)"/g)].map(m => m[1]).join(','), langs: [...html.matchAll(/data-lang="([^"]+)"/g)].map(m => m[1]).join(','), app: html.split('data-open-app').length - 1 });
-  for (const name of ['template.en.html']) {
+  for (const name of ['template.en.html', 'template.ja.html', 'template.zh.html']) {
     const other = read(name);
     assert.deepEqual(marks(other), marks(ko), name);
     assert.equal(other.split('<header class="header">').length, 2, name);

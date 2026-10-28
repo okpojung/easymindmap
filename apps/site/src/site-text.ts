@@ -7,12 +7,24 @@ import type { Lang } from './i18n';
 import { CURRENT_LANG } from './i18n';
 import ko from './redesign/template.html?raw';
 import en from './redesign/template.en.html?raw';
+import ja from './redesign/template.ja.html?raw';
+import zh from './redesign/template.zh.html?raw';
+import jaStrings from './i18n/strings.ja.json';
+import zhStrings from './i18n/strings.zh.json';
 import type { Guide } from './redesign/content';
 
 /** 안내 글(질문하는 힘·브랜드 스토리 등) 번역 — 없는 글은 한국어 원문을 보여 준다 (3단계에서 채운다) */
 export const GUIDES_BY_LANG: Partial<Record<Lang, Record<string, Guide>>> = {};
 
-export const TEMPLATES: Partial<Record<Lang, string>> = { ko, en };
+export const TEMPLATES: Partial<Record<Lang, string>> = { ko, en, ja, zh };
+
+/** 번역 JSON 의 `{n}` 자리표시 문구를 함수로 바꾼다 (maxNodes·maxLevels·nodeCount) */
+type DemoStrings = Record<string, string | ((n: number) => string)>;
+function demoFromJson(raw: Record<string, string>): DemoStrings {
+  const out: DemoStrings = {};
+  for (const [k, v] of Object.entries(raw)) out[k] = v.includes('{n}') ? (n: number) => v.split('{n}').join(String(n)) : v;
+  return out;
+}
 export function templateFor(lang: Lang): string { return TEMPLATES[lang] ?? TEMPLATES.en ?? ko; }
 
 export interface SiteText {
@@ -21,6 +33,8 @@ export interface SiteText {
 }
 
 const TEXT: Partial<Record<Lang, SiteText>> = {
+  ja: jaStrings.site,
+  zh: zhStrings.site,
   ko: {
     menuOpen: '메뉴 열기', menuClose: '메뉴 닫기',
     homeTitle: 'EasyMindMap | AI가 답하는 시대, 질문이 나의 힘.',
@@ -45,6 +59,8 @@ export function siteText(lang: Lang = CURRENT_LANG): SiteText {
 
 /** 체험 편집기 문구 (outline-demo.js 의 DEMO_TEXT 키) — 한국어는 그 파일의 기본값 */
 export const DEMO_TEXT_BY_LANG: Partial<Record<Lang, Record<string, string | ((n: number) => string)>>> = {
+  ja: demoFromJson(jaStrings.demo),
+  zh: demoFromJson(zhStrings.demo),
   en: {
     rootDefault: 'My thought map', newThought: 'New thought', placeholder: 'Type here',
     maxNodes: (n: number) => 'The simple demo allows up to ' + n + ' nodes.', maxLevels: (n: number) => 'The simple demo allows up to ' + n + ' levels.',
@@ -63,6 +79,8 @@ export const DEMO_TEXT_BY_LANG: Partial<Record<Lang, Record<string, string | ((n
 
 /** 체험 예시 맵 — 한국어는 demo.ts 의 PRESETS */
 export const PRESETS_BY_LANG: Partial<Record<Lang, Record<string, string>>> = {
+  ja: jaStrings.presets,
+  zh: zhStrings.presets,
   en: {
     questions: '# Does our team need AI?\n## What are we trying to solve?\n- What is most inconvenient right now?\n- What result do we want to change?\n## What is the evidence?\n- What facts have we actually checked?\n- What have we not verified yet?\n## Is there another view?\n- What work does not need AI?\n- What are the costs and risks?',
     meeting: '# Team meeting next week\n## To discuss\n- Direction of the new homepage\n- User feedback\n## To decide\n- What to do first\n- Who is responsible\n## To record\n- Decisions made\n- Next meeting date',

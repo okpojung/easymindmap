@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import { cloudApi, CloudError, type AccountProfile } from '@/services/cloud/apiClient';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
-import { LANGS, tr, useLangStore, type Lang } from '@/i18n';
+import { LANGS, tr, useLangStore, type Lang, takeUrlLangChoice } from '@/i18n';
 
 /**
  * **가입 때 적은 성명·휴대폰을 잃지 않는다** (2026-09-08 실사용 보고: 계정
@@ -153,6 +153,13 @@ function pushLanguage(lang: Lang): void {
 export function syncLanguageFromProfile(p: AccountProfile): void {
   if (!p.languageReady) return;
   const local = useLangStore.getState().lang;
+  // 주소로 언어를 골라 들어왔다(홈페이지 'EMM 로그인' ?lang=, 2026-10-28) — 방금 고른 것이 이긴다.
+  // 계정 언어를 따르지 않고, 계정을 그 언어로 바꾼다
+  const urlChoice = takeUrlLangChoice();
+  if (urlChoice) {
+    if (p.language !== urlChoice) pushLanguage(urlChoice);
+    return;
+  }
   if (isLang(p.language)) {
     if (p.language !== local) {
       applyingFromServer = true;

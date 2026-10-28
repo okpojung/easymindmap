@@ -14,7 +14,8 @@
 //
 // 언어를 정하는 순서 (i18n.md §1):
 //   0. 주소의 `?lang=ko|en|ja|zh` (2026-10-28 — 홈페이지 'EMM 로그인' 버튼이 고른 언어를 넘긴다).
-//      맞는 값이면 그 언어로 열고 `emm.lang` 에 저장한 뒤, 주소에서 lang 만 지운다
+//      맞는 값이면 그 언어로 열고 `emm.lang` 에 저장한 뒤, 주소에서 lang 만 지운다.
+//      로그인한 계정의 언어보다도 앞선다 — 계정 언어를 이 값으로 바꾼다 (profileStore)
 //      (새로고침해도 저장값으로 같은 언어 — 주소가 나중에 고른 언어를 덮지 않게)
 //   1. 사용자가 고른 값 (localStorage `emm.lang`)
 //   2. 브라우저 언어 (`navigator.languages`) — ko/zh/ja 면 그 언어
@@ -70,10 +71,19 @@ export function langFromSearch(search: string | undefined): Lang | null {
   } catch { return null; }
 }
 
+/** 이번 페이지를 연 주소에 lang 이 있었나 — 계정 언어보다 앞선다 (profileStore 가 한 번 가져간다) */
+let urlLangChoice: Lang | null = null;
+export function takeUrlLangChoice(): Lang | null {
+  const v = urlLangChoice;
+  urlLangChoice = null;
+  return v;
+}
+
 function initialLang(): Lang {
   if (typeof window !== 'undefined') {
     const fromUrl = langFromSearch(window.location?.search);
     if (fromUrl) {
+      urlLangChoice = fromUrl;
       try { window.localStorage.setItem(KEY, fromUrl); } catch { /* 저장을 못 해도 이번에는 그 언어로 */ }
       try {
         const u = new URL(window.location.href);

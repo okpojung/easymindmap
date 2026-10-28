@@ -104,9 +104,17 @@ export function localizeLinks(root: ParentNode, lang: Lang = CURRENT_LANG): void
   });
 }
 
-/** 앱 로그인 주소 — 고른 언어를 함께 넘긴다(앱이 `lang` 을 읽으면 그 언어로 연다) */
+/**
+ * 앱 로그인 주소 — 고른 언어를 함께 넘긴다.
+ * 앱(2026-10-28 운영 반영)은 `?lang=` 을 읽어 그 언어로 열고 emm.lang·계정 언어에 저장한 뒤 주소에서 지운다.
+ * 한국어 페이지는 사용자가 언어 버튼으로 한국어를 **직접 골랐을 때만** `lang=ko` 를 붙인다 —
+ * 기본 주소로 그냥 들어온 사람의 앱·계정 언어를 임의로 바꾸지 않기 위해서다.
+ */
 export function appLoginUrl(base: string): string {
-  if (CURRENT_LANG === 'ko') return base;
+  if (CURRENT_LANG === 'ko') {
+    if (savedLang() !== 'ko') return base;
+    const k = new URL(base); k.searchParams.set('lang', 'ko'); return k.toString();
+  }
   const u = new URL(base);
   u.searchParams.set('lang', CURRENT_LANG);
   return u.toString();

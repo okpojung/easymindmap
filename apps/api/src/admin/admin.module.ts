@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { AdminController } from './admin.controller';
+import { AdminController, CodeLanguagesController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
 // 인증번호 발송·확인은 가입 쪽 규칙을 그대로 쓴다 — 두 벌로 나누면
@@ -8,7 +8,7 @@ import { AccountModule } from '../account/account.module';
 
 @Module({
   imports: [AccountModule],
-  controllers: [AdminController],
+  controllers: [AdminController, CodeLanguagesController],
   providers: [AdminService, AdminGuard],
 })
 export class AdminModule {}

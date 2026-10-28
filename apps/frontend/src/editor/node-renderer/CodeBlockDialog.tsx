@@ -15,6 +15,10 @@ import { useDialogDrag } from '@/components/ui/useDialogDrag';
 import { useTr } from '@/i18n';
 import { codeRenderError, codeRenderOf, ensureCodeRender, htmlBlockDoc, renderLangOf } from './codeRender';
 import { useCodeRenderEpoch } from './useCodeRenderEpoch';
+import { filterCodeLanguages, useCodeLanguages } from '@/services/cloud/codeLanguages';
+
+const LINE_NUM_KEY = 'emm.code.lineNumbers';
+const CODE_FONT_STACK = "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace";
 
 export function CodeBlockDialog({
   t,
@@ -42,6 +46,27 @@ export function CodeBlockDialog({
   const trimmed = code.replace(/\s+$/, '');
   useEffect(() => { if (showRender && kind && trimmed.trim()) void ensureCodeRender(kind, trimmed); }, [showRender, kind, trimmed]);
   const rendered = showRender ? codeRenderOf(lang, trimmed) : null;
+  // 줄 번호 (2026-10-28) — 켜고 끈 것은 이 브라우저가 기억한다
+  const [lineNums, setLineNums] = useState<boolean>(() => {
+    try { return window.localStorage.getItem(LINE_NUM_KEY) !== '0'; } catch { return true; }
+  });
+  const toggleLineNums = () => setLineNums((v) => {
+    try { window.localStorage.setItem(LINE_NUM_KEY, v ? '0' : '1'); } catch { /* 저장소를 못 써도 화면은 바뀐다 */ }
+    return !v;
+  });
+  const gutterRef = useRef<HTMLDivElement | null>(null);
+  const lineCount = Math.max(1, code.split('\n').length);
+  // 언어 고르기 (2026-10-28) — 치면 맞는 것만, ☰ 를 누르면 전체 목록 (관리자 > 코드블럭 언어관리)
+  const languages = useCodeLanguages();
+  const [langOpen, setLangOpen] = useState<'typed' | 'all' | null>(null);
+  const [langActive, setLangActive] = useState(0);
+  const langList = langOpen === 'all' ? languages : langOpen === 'typed' ? filterCodeLanguages(languages, lang) : [];
+  const pickLang = (code: string) => { setLang(code); setLangOpen(null); window.setTimeout(() => codeRef.current?.focus(), 0); };
+  const [copied, setCopied] = useState(false);
+  const copyCode = () => {
+    const done = () => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); };
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(code).then(done, done); else done();
+  };
   const renderErr = showRender ? codeRenderError(lang, trimmed) : null;
 
   useEffect(() => {
@@ -96,6 +121,28 @@ export function CodeBlockDialog({
             style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: t.text, ...drag.handleProps.style }}>
             {initialCode ? tr('editor.code.titleEdit') : tr('editor.code.titleInsert')}
           </div>
+          <button type="button" data-testid="code-line-numbers" aria-pressed={lineNums}
+            title={lineNums ? tr('editor.code.lineNumbersOff') : tr('editor.code.lineNumbersOn')}
+            onClick={toggleLineNums}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+              height: 28, padding: '0 8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+              background: lineNums ? (t.primarySoft ?? 'rgba(200,120,20,0.18)') : (t.surfaceAlt ?? 'transparent'),
+              color: lineNums ? t.primary : t.text,
+              border: `1px solid ${lineNums ? `${t.primaryBorder ?? t.primary}55` : t.border}`,
+              fontFamily: CODE_FONT_STACK,
+            }}
+          ><span aria-hidden>1≡</span>{lineNums ? 'On' : 'Off'}</button>
+          <button type="button" data-testid="code-copy" title={copied ? tr('common.copied') : tr('editor.note.copyCode')}
+            aria-label={tr('editor.note.copyCode')} onClick={copyCode} disabled={!code}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 28, borderRadius: 8, cursor: code ? 'pointer' : 'default', fontSize: 14,
+              background: copied ? '#DCFCE7' : (t.surfaceAlt ?? 'transparent'),
+              color: copied ? '#15803D' : t.text, border: `1px solid ${copied ? '#86EFAC' : t.border}`,
+            }}
+          >{copied ? '✓' : '⧉'}</button>
+          {kind && <span aria-hidden style={{ width: 1, height: 18, background: t.border, margin: '0 2px' }} />}
           {kind && (['code', 'render'] as const).map((v) => {
             const on = view === v;
             return (
@@ -115,12 +162,27 @@ export function CodeBlockDialog({
             );
           })}
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
           <span style={{ fontSize: 12, color: t.textMuted, flexShrink: 0 }}>{tr('common.language')}</span>
           <input
             data-testid="code-lang-input"
             value={lang}
-            onChange={(e) => setLang(e.target.value)}
+            role="combobox"
+            aria-expanded={langList.length > 0}
+            aria-autocomplete="list"
+            autoComplete="off"
+            onChange={(e) => { setLang(e.target.value); setLangOpen(e.target.value.trim() ? 'typed' : null); setLangActive(0); }}
+            onBlur={() => window.setTimeout(() => setLangOpen(null), 150)}
+            onKeyDown={(e) => {
+              if (!langList.length) {
+                if (e.key === 'ArrowDown') { e.preventDefault(); setLangOpen('all'); setLangActive(0); }
+                return;
+              }
+              if (e.key === 'ArrowDown') { e.preventDefault(); setLangActive((i) => Math.min(langList.length - 1, i + 1)); }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); setLangActive((i) => Math.max(0, i - 1)); }
+              else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); pickLang(langList[Math.min(langActive, langList.length - 1)].code); }
+              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLangOpen(null); }
+            }}
             placeholder={tr('editor.code.langPlaceholder')}
             style={{
               flex: 1, boxSizing: 'border-box', padding: '6px 9px',
@@ -130,6 +192,38 @@ export function CodeBlockDialog({
               fontFamily: "ui-monospace, 'Consolas', monospace",
             }}
           />
+          <button type="button" data-testid="code-lang-list" title={tr('editor.code.langListTitle')} aria-label={tr('editor.code.langListTitle')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => { setLangOpen((v) => (v === 'all' ? null : 'all')); setLangActive(0); }}
+            style={{
+              flexShrink: 0, width: 32, height: 30, borderRadius: 7, cursor: 'pointer', fontSize: 15,
+              border: `1px solid ${langOpen === 'all' ? t.primary : t.border}`,
+              background: langOpen === 'all' ? (t.primarySoft ?? t.surfaceAlt) : (t.surfaceAlt ?? t.surface),
+              color: langOpen === 'all' ? t.primary : t.text,
+            }}
+          >☰</button>
+          {langList.length > 0 && (
+            <div role="listbox" data-testid="code-lang-options"
+              style={{
+                position: 'absolute', zIndex: 5, top: '100%', left: 44, right: 0, marginTop: 4,
+                maxHeight: 260, overflowY: 'auto', borderRadius: 8, padding: 4,
+                background: t.surface, border: `1px solid ${t.border}`, boxShadow: '0 8px 24px rgba(0,0,0,0.16)',
+              }}>
+              {langList.map((x, i) => (
+                <div key={x.code} role="option" aria-selected={i === langActive} data-testid="code-lang-option"
+                  onMouseDown={(e) => { e.preventDefault(); pickLang(x.code); }}
+                  onMouseEnter={() => setLangActive(i)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '5px 9px', borderRadius: 6, cursor: 'pointer',
+                    background: i === langActive ? (t.primarySoft ?? t.surfaceAlt) : 'transparent',
+                    color: x.code === lang.trim().toLowerCase() ? t.primary : t.text, fontSize: 12.5,
+                  }}>
+                  <span style={{ flex: 1, fontWeight: 600 }}>{x.name}</span>
+                  <span style={{ fontFamily: CODE_FONT_STACK, fontSize: 11.5, color: t.textMuted }}>{x.code}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </label>
         {showRender && (
           <div data-testid="code-render-preview" style={{
@@ -151,26 +245,39 @@ export function CodeBlockDialog({
             )}
           </div>
         )}
+        <div style={{ display: showRender ? 'none' : 'flex', alignItems: 'stretch', borderRadius: 8, border: `1px solid ${t.border}`, background: '#ECEFF3', overflow: 'hidden' }}>
+        {lineNums && (
+          <div ref={gutterRef} data-testid="code-gutter" aria-hidden style={{
+            flexShrink: 0, overflow: 'hidden', padding: '8px 8px 8px 10px', textAlign: 'right',
+            background: '#E2E6EC', borderRight: '1px solid #D3D8DF', color: '#94A3B8',
+            fontSize: 12.5, lineHeight: 1.5, fontFamily: CODE_FONT_STACK, userSelect: 'none',
+            minWidth: `${String(lineCount).length + 1}ch`,
+          }}>
+            {Array.from({ length: lineCount }, (_, i) => <div key={i}>{i + 1}</div>)}
+          </div>
+        )}
         <textarea
           ref={codeRef}
           data-testid="code-body-input"
+          onScroll={(e) => { if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop; }}
           value={code}
           onChange={(e) => setCode(e.target.value)}
           rows={10}
           placeholder={tr('editor.code.codePlaceholder')}
           spellCheck={false}
           style={{
-            display: showRender ? 'none' : undefined,
+            flex: 1, minWidth: 0,
             width: '100%', boxSizing: 'border-box', resize: 'vertical',
             minHeight: 140,
-            padding: '8px 10px', borderRadius: 8,
-            border: `1px solid ${t.border}`,
+            padding: '8px 10px', borderRadius: 0,
+            border: 'none',
             background: '#ECEFF3', color: '#334155',
             fontSize: 12.5, lineHeight: 1.5, outline: 'none',
             fontFamily: "ui-monospace, 'Cascadia Mono', 'Consolas', 'D2Coding', monospace",
             whiteSpace: 'pre', overflowX: 'auto',
           }}
         />
+        </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button
             type="button"

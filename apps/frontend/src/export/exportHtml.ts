@@ -21,6 +21,7 @@
 //   node text can never break out of the <script> block.
 
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
+import { applyMediaView } from '@/editor/node-renderer/mediaView';
 import { collectCodeRenders, prepareCodeRenders } from '@/editor/node-renderer/codeRender';
 // 내보낸 HTML 의 파비콘·제목 옆 아이콘은 20px 정사각형 — 가로형 로고 대신 정사각형 마크 (2026-10-25)
 import brandLogoRaw from '@/assets/brand-favicon.svg?raw';
@@ -1046,7 +1047,25 @@ const VIEWER_JS = String.raw`
   // 아니라 밑줄 높이에 닿는다 (markmap·ThinkWise 방식, 2026-10-23).
   // 에디터 edgePaths.sideLinkY 와 같은 규칙.
   function linkY(n) {
-    return (n.style || {}).shapeType === 'none' ? n._cy + n._h / 2 : n._cy;
+    // 그림만 담은 노드는 밑줄이 없다 — 가운데 (에디터 noShapeNode.hasUnderline, 2026-10-28)
+    return (n.style || {}).shapeType === 'none' && !mediaOnly(n) ? n._cy + n._h / 2 : n._cy;
+  }
+  // 내용이 사진·Mermaid·HTML 뿐인 노드 (에디터 mediaContent.mediaKindsOf 와 같은 판정)
+  function mediaOnly(n) {
+    if (n._mo !== undefined) return n._mo;
+    var any = !!n.image || !!(n.images && n.images.length);
+    var lines = String(n.text || '').split('\n'), i = 0, ok = true;
+    while (i < lines.length) {
+      if (isFenceLine(lines[i])) {
+        var b = parseCodeAt(lines, i);
+        if (!b || !renderKindOf(b.lang)) { ok = false; break; }
+        any = true; i = b.end; continue;
+      }
+      if (/\S/.test(lines[i])) { ok = false; break; }
+      i++;
+    }
+    n._mo = ok && any;
+    return n._mo;
   }
   function edgePath(p, c) {
     var eff = p._eff;
@@ -1938,7 +1957,7 @@ const VIEWER_JS = String.raw`
     }
     // 도형 없음 — 노드 아래 밑줄 (에디터 NodeRenderer node-underline 과 같은 규칙).
     // 색·굵기 = 들어오는 연결선과 같음, 테두리색을 고른 노드는 그 색
-    if (noShape) {
+    if (noShape && !mediaOnly(node)) {
       el('line', { 'class': 'mm-underline', x1: x0, y1: y0 + node._h, x2: x0 + node._w, y2: y0 + node._h,
         stroke: stPre.borderColor || SKIN.edge, 'stroke-width': depth <= 1 ? 2.2 : 1.6,
         'stroke-linecap': 'butt', 'pointer-events': 'none' }, g);
@@ -4469,6 +4488,11 @@ export function buildStandaloneHtml(
   //   DOM 을 읽을 수 없어 위치를 이렇게 받는다. 내보내기 파일에는 쓰지 않는다.
   hostSlots?: { center: number; right: number },
 ): string {
+  // 다시 불러올 원본(메타)은 손대지 않은 맵 — 아래 화면용 사본의 자동 태그가 문서에 섞이지 않게
+  const metaSource = metaMap ?? map;
+  // 그림만 담은 노드: 자동 태그 Image·Mermaid·HTML (에디터 mediaView 와 같음, 2026-10-28).
+  // 뷰어에서는 접을 수 없으니 늘 펼친다(fold:false).
+  map = applyMediaView(map, { fold: false });
   const layoutType = (mapLayoutType ??
     map.root.layoutType ??
     'radial-bidirectional') as LayoutType;
@@ -4589,7 +4613,7 @@ export function buildStandaloneHtml(
   // 맵 메타데이터 — EasyMindMap 생성 파일 표시 + 편집 가능한 원본 맵
   // 전체(스타일·노트·설정 포함). '새 맵 > 불러오기'가 이 블록을 읽어
   // 내보낸 맵을 그대로 복원한다 (mapMeta.ts / importMapFile.ts).
-  const metaJson = JSON.stringify(buildMapMeta(metaMap ?? map, layoutType, spacing))
+  const metaJson = JSON.stringify(buildMapMeta(metaSource, layoutType, spacing))
     .replace(/</g, '\\u003c');
 
   // 뷰어 화면 문구 — 파일 안에서는 언어를 바꿀 수 없으니 지금 언어로 굳힌다

@@ -209,6 +209,8 @@ export interface MindNode {
 
   // Editor-core node metadata
   collapsed?: boolean;
+  /** 그림만 담은 노드(사진·Mermaid·HTML)의 내용을 접어 둔다 — 종류 이름만 보인다 (2026-10-28) */
+  contentFolded?: boolean;
   style?: NodeStyle;
   links?: NodeLink[];
   notes?: NoteBlock[];

@@ -1,9 +1,9 @@
 import {
-  Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards,
+  Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
-import { IsIn, IsInt, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
 import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { DatabaseService } from '../database/database.service';
@@ -26,6 +26,10 @@ class VerifyDto {
 class TrustedNetworkDto {
   @IsOptional() @IsString() @MaxLength(40) address?: string;
   @IsOptional() @IsString() @MaxLength(60) label?: string;
+}
+/** 코드블럭 언어 목록 전체 — 항목 검사는 서비스(code-languages.ts)가 한다 */
+class CodeLanguagesDto {
+  @IsArray() @ArrayMaxSize(300) items!: unknown[];
 }
 class SetPlanDto {
   @IsIn(PLANS as unknown as string[], { message: '요금제 값이 올바르지 않습니다.' })
@@ -120,6 +124,19 @@ export class AdminController {
   }
 
   /** 표가 아직 살아 있는지 — 새로고침했을 때 화면이 물어본다 */
+  // ── 코드블럭 언어관리 (2026-10-28) ────────────────────────────
+  @Get('code-languages')
+  @UseGuards(AdminGuard)
+  codeLanguages() {
+    return this.admin.codeLanguages();
+  }
+
+  @Put('code-languages')
+  @UseGuards(AdminGuard)
+  saveCodeLanguages(@Req() req: Request & { admin?: AdminUser }, @Body() dto: CodeLanguagesDto) {
+    return this.admin.saveCodeLanguages(String(req.admin?.email ?? ''), dto.items);
+  }
+
   @Get('me')
   @UseGuards(AdminGuard)
   me(@Req() req: Request & { admin?: AdminUser }) {
@@ -213,5 +230,20 @@ export class AdminController {
   @UseGuards(AdminGuard)
   setPlanPrice(@Body() dto: PlanPriceDto, @Req() req: Request & { admin?: AdminUser }) {
     return this.admin.setPlanPrice(dto.plan, dto.krw, req.admin?.email ?? '?');
+  }
+}
+
+/**
+ * 코드블럭 언어 목록 — **누구나** 읽는다 (편집 창의 언어 고르기, 2026-10-28).
+ * 로그인하지 않은 손님(Guest 체험)도 편집기를 쓰므로 가드를 두지 않는다.
+ */
+@Controller('code-languages')
+export class CodeLanguagesController {
+  constructor(private readonly admin: AdminService) {}
+
+  @Get()
+  async list() {
+    const r = await this.admin.codeLanguages();
+    return { items: r.items };
   }
 }

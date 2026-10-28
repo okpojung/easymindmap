@@ -509,6 +509,9 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
 
   const startEdit = () => {
     if (readOnly) return;
+    // 접어 둔 그림 노드 — 지금 글은 종류 이름("Image, Mermaid")뿐이다. 그대로 고치면 내용이
+    // 그 이름으로 덮인다. 먼저 펼친다 (다시 더블클릭하면 원래 내용으로 고친다) — 2026-10-28
+    if (n._mediaFolded) { useDocumentStore.getState().setContentFolded(n.id, false); return; }
     setDraftText(n.text);
     setEditingDraft(null);
     setEditing(true);
@@ -752,7 +755,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           붙는다 (noShapeNode.ts, 2026-10-23). 글자가 떠 보이지 않고 선이 내용 아래까지
           이어져 맵이 안정적으로 보인다. 색·굵기 = 들어오는 연결선과 같음(테두리색을
           직접 고른 노드는 그 색) */}
-      {shape === 'none' && (
+      {shape === 'none' && !n._media && (
         <line
           data-testid="node-underline"
           x1={n.x - n.w / 2}

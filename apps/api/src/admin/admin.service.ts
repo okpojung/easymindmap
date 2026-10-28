@@ -37,6 +37,9 @@ import {
   TRUSTED_NETWORKS_KEY, TRUSTED_NETWORKS_MAX, describeCidr, matchTrusted, parseTrustedAddress, sanitizeStored,
   type TrustedNetwork,
 } from './trusted-networks';
+import {
+  CODE_LANGUAGES_KEY, DEFAULT_CODE_LANGUAGES, parseCodeLanguages, storedCodeLanguages, type CodeLanguage,
+} from './code-languages';
 
 /** 관리자 표 유효 시간 — 하루 일과보다 길지 않게 */
 const ADMIN_TOKEN_TTL_MIN = 8 * 60;
@@ -142,6 +145,46 @@ export class AdminService {
     // **명단에서 빠진 사람의 표는 그 순간 무효다** — 표를 회수할 방법이
     // 없으므로, 환경변수에서 지우는 것이 곧 회수가 되어야 한다.
     return this.isAdminEmail(email) ? email : null;
+  }
+
+  // ── 코드블럭 언어 목록 (2026-10-28) ──────────────────────────────
+  /** 지금 쓰는 목록 — 저장한 적이 없거나 읽지 못하면 기본 목록(stored=false) */
+  async codeLanguages(): Promise<{ items: CodeLanguage[]; stored: boolean; updatedAt: string | null; updatedBy: string | null }> {
+    try {
+      const { rows } = await this.db.query<{ value: unknown; updated_at: Date; updated_by: string }>(
+        `SELECT value, updated_at, updated_by FROM public.site_settings WHERE key = $1`, [CODE_LANGUAGES_KEY]);
+      const items = rows[0] ? storedCodeLanguages(rows[0].value) : null;
+      if (items) {
+        return { items, stored: true, updatedAt: rows[0].updated_at.toISOString(), updatedBy: rows[0].updated_by };
+      }
+    } catch (err) {
+      this.log.warn(`코드블럭 언어 목록을 읽지 못했다 — 기본 목록을 쓴다: ${(err as Error).message}`);
+    }
+    return { items: DEFAULT_CODE_LANGUAGES, stored: false, updatedAt: null, updatedBy: null };
+  }
+
+  /** 목록 전체를 바꾼다 (순서 포함). 빈 배열이면 기본 목록으로 되돌린다 */
+  async saveCodeLanguages(by: string, input: unknown) {
+    const p = parseCodeLanguages(input);
+    if (!p.ok) throw new BadRequestException(p.message);
+    try {
+      if (p.items.length === 0) {
+        await this.db.query(`UPDATE public.site_settings SET value = 'null'::jsonb, updated_by = $2, updated_at = now() WHERE key = $1`,
+          [CODE_LANGUAGES_KEY, by]);
+      } else {
+        await this.db.query(
+          `INSERT INTO public.site_settings (key, value, updated_by) VALUES ($1, $2::jsonb, $3)
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+          [CODE_LANGUAGES_KEY, JSON.stringify(p.items), by]);
+      }
+    } catch (err) {
+      if ((err as { code?: string }).code === '42P01') {
+        throw new ServiceUnavailableException('설정 저장 표(site_settings)가 없습니다 — 공지·게시판 DB 패키지가 먼저 적용돼야 합니다.');
+      }
+      throw err;
+    }
+    this.log.log(`코드블럭 언어 목록 저장: ${p.items.length}개 by ${by}`);
+    return this.codeLanguages();
   }
 
   // ── 2단계 인증 생략 IP (2026-10-24) ───────────────────────────────

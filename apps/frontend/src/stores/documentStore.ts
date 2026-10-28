@@ -187,6 +187,8 @@ interface DocumentState {
 
   // View state
   toggleCollapse: (nodeId: string | null) => void;
+  /** 그림만 담은 노드의 내용 접기 (2026-10-28) */
+  setContentFolded: (nodeId: string, folded: boolean) => void;
   setCollapsed: (nodeId: string | null, collapsed: boolean) => void;
   // 모두 접기/펼치기 — 자식이 있는 모든 노드(2레벨 이하 전부)를 일괄
   // 접거나 편다 (HTML 뷰어의 +/− 아이콘과 동일 동작)
@@ -1723,6 +1725,12 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     if (!nodeId) return;
     asViewOnly(() => set((state) => (state.map.canvasMode !== 'freeform' && isCenterRootId(state.map, nodeId) ? {} : { // 일반맵 중심은 기존 정책 유지
       map: mutateNode(state.map, nodeId, (n) => ({ ...n, collapsed: !n.collapsed })),
+    })));
+  },
+
+  setContentFolded: (nodeId, folded) => {
+    asViewOnly(() => set((state) => ({
+      map: mutateNode(state.map, nodeId, (n) => ({ ...n, contentFolded: folded || undefined })),
     })));
   },
 

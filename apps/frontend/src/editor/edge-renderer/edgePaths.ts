@@ -9,11 +9,12 @@
 
 import type { LayoutType } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
-import { isNoShapeNode } from '@/editor/node-renderer/noShapeNode';
+import { hasUnderline } from '@/editor/node-renderer/noShapeNode';
 
 /** 좌우로 잇는 연결선이 이 노드에 닿는 높이 — 도형 없음이면 밑줄(아래 변), 아니면 가운데 */
 export function sideLinkY(n: LaidOutNode): number {
-  return isNoShapeNode(n) ? n.y + n.h / 2 : n.y;
+  // 그림만 담은 노드는 밑줄이 없다 — 가운데 (2026-10-28)
+  return hasUnderline(n) ? n.y + n.h / 2 : n.y;
 }
 
 function isRadialLayout(layoutType?: LayoutType): boolean {

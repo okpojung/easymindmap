@@ -28,3 +28,11 @@ export function isNoShapeNode(n: ShapeProbeNode): boolean {
 export function noShapeUnderlineWidth(depth: number): number {
   return depth <= 1 ? 2.3 : 1.6;
 }
+
+/**
+ * 밑줄을 긋고 선을 밑줄에 붙이나 — 도형 없음이면서 **그림만 담은 노드가 아닐 때** (2026-10-28).
+ * 사진·Mermaid·HTML 만 있는 노드는 도형 있는 노드처럼 가운데로 잇는다 (mediaView `_media`).
+ */
+export function hasUnderline(n: ShapeProbeNode & { _media?: unknown }): boolean {
+  return isNoShapeNode(n) && !n._media;
+}

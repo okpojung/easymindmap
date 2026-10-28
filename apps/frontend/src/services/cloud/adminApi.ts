@@ -71,6 +71,14 @@ async function req<T>(
   return res.status === 204 ? (undefined as T) : (res.json() as Promise<T>);
 }
 
+/** 코드블럭 언어 목록 — 서버 admin/code-languages.ts. stored=false 면 아직 기본 목록 */
+export interface CodeLanguageList {
+  items: { name: string; code: string }[];
+  stored: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 /** 2단계 인증 생략 IP 목록 — 서버 admin/trusted-networks.ts */
 export interface TrustedNetworkList {
   items: { id: string; cidr: string; range: string; kind: 'network' | 'host'; label: string; createdAt: string; createdBy: string; updatedAt: string; updatedBy: string }[];
@@ -138,6 +146,9 @@ export const adminApi = {
       'POST', '/admin/login/verify', { code }, 'gotrue'),
   me: () => req<{ email: string }>('GET', '/admin/me'),
   // 2단계 인증 IP관리 (2026-10-24)
+  // 코드블럭 언어관리 (2026-10-28) — 목록 전체를 순서째 바꾼다
+  codeLanguages: () => req<CodeLanguageList>('GET', '/admin/code-languages'),
+  saveCodeLanguages: (items: { name: string; code: string }[]) => req<CodeLanguageList>('PUT', '/admin/code-languages', { items }),
   trustedNetworks: () => req<TrustedNetworkList>('GET', '/admin/trusted-networks'),
   addTrustedNetwork: (address: string, label: string) => req<TrustedNetworkList>('POST', '/admin/trusted-networks', { address, label }),
   updateTrustedNetwork: (id: string, patch: { address?: string; label?: string }) =>

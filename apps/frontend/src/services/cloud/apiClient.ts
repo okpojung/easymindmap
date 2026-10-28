@@ -860,6 +860,8 @@ export const cloudApi = {
     req<{ ok: boolean }>('PATCH', `/published/${encodeURIComponent(publishId)}/comments/${id}`, { body }),
   deletePublishedComment: (publishId: string, id: string) =>
     req<void>('DELETE', `/published/${encodeURIComponent(publishId)}/comments/${id}`),
+  /** 코드블럭 언어 목록 (2026-10-28) — 로그인 없이 읽는다 */
+  codeLanguages: () => req<{ items: { name: string; code: string }[] }>('GET', '/code-languages', undefined, true),
   /** 바뀌었나만 — 붙여 둔 대시보드맵의 10초 물음 (문서를 받지 않는다) */
   getPublishedStamp: (publishId: string) =>
     req<{ stamp: string; dashboard: boolean }>(

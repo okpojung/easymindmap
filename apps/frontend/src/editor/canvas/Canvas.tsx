@@ -39,7 +39,9 @@ import {
 } from '@/editor/node-renderer/nodeContent';
 import { NoteViewerPopover } from './NoteViewerPopover';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
-import { isNoShapeNode } from '@/editor/node-renderer/noShapeNode';
+import { hasUnderline } from '@/editor/node-renderer/noShapeNode';
+import { applyMediaView } from '@/editor/node-renderer/mediaView';
+import { treeEdgePath } from '@/editor/edge-renderer/edgePaths';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
 import { Minimap } from './Minimap';
@@ -472,7 +474,8 @@ export function Canvas({
     // sample(map)이 의존성이므로 설정 변경 시 레이아웃도 다시 계산된다.
     setLevelFontConfig(sample.settings?.levelFonts);
     setLevelShapeConfig(sample.settings?.levelShapes);
-    return computeLayout(sample, layoutType, CX, CY, { x: spacingX, y: spacingY });
+    // 그림만 담은 노드: 자동 태그·내용 접기를 화면용 사본으로 (mediaView, 2026-10-28 — 문서는 그대로)
+    return computeLayout(applyMediaView(sample), layoutType, CX, CY, { x: spacingX, y: spacingY });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sample, layoutType, CX, CY, spacingX, spacingY, codeEpoch]);
 
@@ -2387,7 +2390,7 @@ export function Canvas({
                   const chipR = !n.collapsed ? 8.5
                     : String(cnt).length >= 3 ? 13
                       : String(cnt).length === 2 ? 10.5 : 8.5;
-                  const pos = collapseAnchor(n, eff, sd, chipR, isNoShapeNode(n));
+                  const pos = collapseAnchor(n, eff, sd, chipR, hasUnderline(n));
                   return (
                     <CollapseControl
                       key={`toggle-${n.id}`}
@@ -2399,6 +2402,29 @@ export function Canvas({
                       count={descCount.get(n.id) ?? n._childCount ?? 0}
                       nodeHovered={hoverNodeId === n.id}
                       onToggle={() => toggleCollapse(n.id)}
+                    />
+                  );
+                })}
+              {/* 그림만 담은 노드의 **내용 접기** (2026-10-28 사용자 요청) — 들어오는 연결선 끝에서.
+                  펼친 상태: 노드나 그 자리에 마우스를 올리면 (−) → 누르면 접는다.
+                  접은 상태: 접은 내용 1개 칩 → 마우스를 잠깐 올리거나 누르면 펼친다. */}
+              {!isReadOnly() && visibleNodes
+                .filter((n) => n._media && n.parent && isDrawn(n.id))
+                .map((n) => {
+                  const p = visibleById.get(n.parent as string);
+                  if (!p) return null;
+                  const end = pathEnd(treeEdgePath(p, n, layoutType));
+                  if (!end) return null;
+                  return (
+                    <ContentFoldControl
+                      key={`cfold-${n.id}`}
+                      t={t}
+                      x={end.x}
+                      y={end.y}
+                      nodeId={n.id}
+                      folded={!!n._mediaFolded}
+                      nodeHovered={hoverNodeId === n.id}
+                      onSet={(f) => useDocumentStore.getState().setContentFolded(n.id, f)}
                     />
                   );
                 })}
@@ -2607,5 +2633,72 @@ function CollapseControl({
       <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.6" strokeLinecap="round" />
     </>,
     tr('editor.canvas.collapse'),
+  );
+}
+
+/** SVG 경로의 끝점 — 들어오는 연결선이 노드에 닿는 자리 (절대·상대 M L H V C S Q T A) */
+export function pathEnd(d: string): { x: number; y: number } | null {
+  const cmds = d.match(/[MLHVCSQTAZmlhvcsqtaz][^MLHVCSQTAZmlhvcsqtaz]*/g);
+  if (!cmds) return null;
+  let x = 0; let y = 0; let sx = 0; let sy = 0;
+  for (const c of cmds) {
+    const k = c[0]; const rel = k === k.toLowerCase();
+    const v = (c.slice(1).match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? []).map(Number);
+    const K = k.toUpperCase();
+    const step = K === 'M' || K === 'L' || K === 'T' ? 2 : K === 'H' || K === 'V' ? 1 : K === 'C' ? 6 : K === 'S' || K === 'Q' ? 4 : K === 'A' ? 7 : 0;
+    if (K === 'Z') { x = sx; y = sy; continue; }
+    for (let i = 0; i + step <= v.length; i += step) {
+      const g = v.slice(i, i + step);
+      if (K === 'H') x = rel ? x + g[0] : g[0];
+      else if (K === 'V') y = rel ? y + g[0] : g[0];
+      else { const nx = g[step - 2]; const ny = g[step - 1]; x = rel ? x + nx : nx; y = rel ? y + ny : ny; }
+      if (K === 'M' && i === 0) { sx = x; sy = y; }
+    }
+  }
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
+// 그림 노드 내용 접기 단추 (2026-10-28). 펼친 상태는 마우스를 올려야 보이고(맵이 깨끗하다),
+// 접은 상태는 늘 "1" 칩이 보인다 — 접은 내용이 하나 있다는 뜻. 칩에 잠깐(0.45초) 머물거나 누르면 펼친다.
+function ContentFoldControl({
+  t, x, y, folded, nodeHovered, onSet, nodeId,
+}: {
+  t: ThemeTokens; x: number; y: number; folded: boolean; nodeHovered: boolean;
+  onSet: (folded: boolean) => void; nodeId: string;
+}) {
+  const [h, setH] = useState(false);
+  const timer = useRef<number | null>(null);
+  const clear = () => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; } };
+  useEffect(() => clear, []);
+  useLang();
+  return (
+    <g
+      data-testid={folded ? 'content-fold-chip' : 'content-fold-toggle'}
+      data-node-id={nodeId}
+      transform={`translate(${x}, ${y})`}
+      style={{ cursor: 'pointer' }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); clear(); onSet(!folded); }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onMouseEnter={() => {
+        setH(true);
+        if (folded) { clear(); timer.current = window.setTimeout(() => { timer.current = null; onSet(false); }, 450); }
+      }}
+      onMouseLeave={() => { setH(false); clear(); }}
+    >
+      <title>{folded ? tr('editor.canvas.contentUnfold') : tr('editor.canvas.contentFold')}</title>
+      <circle r={isCoarseNow() ? 20 : 13} fill="transparent" />
+      {folded ? (
+        <>
+          <circle r={8.5} fill={t.primary} stroke={t.primary} strokeWidth="1.4" />
+          <text y={3.4} textAnchor="middle" fontSize="9.5" fontWeight={700} fill={readableTextOn(t.primary)}>1</text>
+        </>
+      ) : (h || nodeHovered) ? (
+        <>
+          <circle r="8.5" fill={t.surface} stroke={t.primary} strokeWidth="1.4" />
+          <line x1={-4} y1={0} x2={4} y2={0} stroke={t.primary} strokeWidth="1.6" strokeLinecap="round" />
+        </>
+      ) : null}
+    </g>
   );
 }

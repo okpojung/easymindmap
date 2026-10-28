@@ -19,11 +19,12 @@ import { MembersPanel } from './MembersPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { MailTemplatesPanel } from './MailTemplatesPanel';
 import { TrustedNetworksPanel } from './TrustedNetworksPanel';
+import { CodeLanguagesPanel } from './CodeLanguagesPanel';
 import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm';
 import { COMMUNITY_ADMIN, GUEST_SEED_ADMIN, ProCommunityAdminPanel, ProContactsAdminPanel, ProSalesAdminPanel, ProTrialAdminPanel } from '@pro';
 import { useProFeature } from '@/pro/contract';
 
-type Tab = 'members' | 'billing' | 'settings' | 'password' | 'sales' | 'contacts' | 'trial' | 'mail' | 'community' | 'mfaip';
+type Tab = 'members' | 'billing' | 'settings' | 'password' | 'sales' | 'contacts' | 'trial' | 'mail' | 'community' | 'mfaip' | 'codelang';
 
 const TABS: { id: Tab; label: string; soon?: string }[] = [
   { id: 'members', label: '회원관리' },
@@ -36,6 +37,7 @@ const TABS: { id: Tab; label: string; soon?: string }[] = [
   { id: 'community', label: '게시판·문의' },
   { id: 'trial', label: 'Guest로 체험하기 맵' },
   { id: 'mail', label: '메일발송문 관리' },
+  { id: 'codelang', label: '코드블럭 언어관리' },
   { id: 'settings', label: '설정관리' },
   { id: 'mfaip', label: '2단계 인증 IP관리' },
   { id: 'password', label: '비밀번호 변경' },
@@ -158,6 +160,7 @@ export function AdminPage() {
         {tab === 'members' && <MembersPanel t={t} />}
         {tab === 'settings' && <SettingsPanel t={t} />}
         {tab === 'mfaip' && <TrustedNetworksPanel t={t} />}
+        {tab === 'codelang' && <CodeLanguagesPanel t={t} />}
         {tab === 'community' && <ProCommunityAdminPanel t={t} />}
         {tab === 'trial' && <ProTrialAdminPanel t={t} token={adminToken.get()} onUnauthorized={logout} />}
         {tab === 'mail' && <MailTemplatesPanel />}

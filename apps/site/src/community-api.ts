@@ -1,5 +1,6 @@
 import { API_URL } from './config';
 import type { BoardId } from './community-rules';
+import { pageText } from './i18n/pages';
 
 /**
  * 홈페이지가 부르는 게시판·공지·문의 API (계약 v0.3 §2·§3).
@@ -27,10 +28,10 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${BASE}${path}`, { ...init, credentials: 'omit', headers: { Accept: 'application/json', ...(init?.headers ?? {}) } });
   } catch {
-    throw new ApiError(0, '서버에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
+    throw new ApiError(0, pageText().api.network);
   }
   if (!res.ok) {
-    let message = `요청을 처리하지 못했습니다 (HTTP ${res.status}).`;
+    let message = pageText().api.requestFailed(res.status);
     try { const j = await res.json() as { message?: unknown }; if (typeof j.message === 'string' && j.message) message = j.message; } catch { /* 본문 없음 */ }
     const ra = Number(res.headers.get('Retry-After'));
     throw new ApiError(res.status, message, Number.isFinite(ra) && ra > 0 ? ra : null);

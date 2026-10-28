@@ -1,5 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { turnstileSiteKey } from '../community-rules';
+import { pageText } from '../i18n/pages';
+
+const T = pageText().contact;
 
 /**
  * Cloudflare Turnstile 위젯 — 문의하기 스팸 방지.
@@ -47,7 +50,7 @@ export const Turnstile = forwardRef<TurnstileHandle, { onToken: (token: string) 
       if (!live || !box.current) return;
       widget.current = ts.render(box.current, {
         sitekey: turnstileSiteKey(window.location.hostname, import.meta.env.VITE_TURNSTILE_SITE_KEY),
-        language: 'ko',
+        language: T.turnstileLanguage,
         callback: (t: string) => cb.current(t),
         'expired-callback': () => cb.current(''),
         'error-callback': () => { cb.current(''); },
@@ -59,7 +62,7 @@ export const Turnstile = forwardRef<TurnstileHandle, { onToken: (token: string) 
   return (
     <div className="cm-turnstile">
       <div ref={box} />
-      {failed && <p className="cm-error" role="alert">스팸 방지 확인 도구를 불러오지 못했습니다. 광고 차단 프로그램을 끄거나 잠시 뒤 새로고침해 주세요.</p>}
+      {failed && <p className="cm-error" role="alert">{T.turnstileFailed}</p>}
     </div>
   );
 });

@@ -9,6 +9,8 @@
  * ★ 늘리기 쉬우라고 데이터로 뺐다. 묶음을 더할 때 손대는 곳은 이 배열
  *   하나뿐이고, 화면은 개수를 세지 않는다.
  */
+import { pageText, type FunctionGroupId } from '../i18n/pages';
+
 export interface FunctionGroup {
   icon: string;
   title: string;
@@ -21,86 +23,29 @@ export interface FunctionGroup {
   guide: string;
 }
 
-export const FUNCTIONS: FunctionGroup[] = [
-  {
-    icon: '🤖',
-    title: 'AI 로 만들기',
-    // ★ 여기서는 **무엇이 되는지**만 짧게 적는다. 어떻게 붙이는지와
-    //   왜 그렇게 만들었는지는 `/ai` 가 따로 다룬다 (2026-09-15 사용자 결정).
-    lead: '주제만 주면 뼈대를 펼치고, 대화한 내용을 그대로 맵으로 남깁니다.',
-    items: [
-      'AI 생성 — 주제·문서를 주면 가지를 펼쳐 준다',
-      'Claude 커넥터(MCP) — 대화에서 바로 맵 만들기 · 문서함의 맵 읽기',
-      '원하는 노드 아래에 AI 답을 가지로 붙이기',
-      '체크박스 자동 체크 — "끝난 항목 체크해 줘"',
-    ],
-    more: { label: 'AI 연동 자세히 보기', to: '/ai' },
-    guide: '07. AI 생성 · 12. AI 커넥터(MCP)',
-  },
-  {
-    icon: '✏️',
-    title: '맵 만들기와 편집',
-    lead: '노드를 더하고 옮기고 꾸미는, 매일 쓰는 것들.',
-    items: [
-      '템플릿에서 시작 · 내 템플릿 등록',
-      '노드 추가·삭제·복사·드래그 이동·크기 조절',
-      '여러 노드 한 번에 추가 (들여쓰기로 계층까지)',
-      '다중 선택 — 함께 옮기고 함께 크기 맞추기',
-      '굵게·기울임·취소선·밑줄·형광펜 부분 강조',
-      '도형·색·글꼴 — 레벨 정책 + 노드별 덮어쓰기',
-    ],
-    guide: '02. 맵 만들기 · 03. 노드 편집',
-  },
-  {
-    icon: '🗺️',
-    title: '보기와 레이아웃',
-    lead: '같은 내용을 여러 모습으로 봅니다.',
-    items: [
-      '레이아웃 7종 — 방사형·트리·계층형·진행트리·칸반·시간배치 등',
-      '레벨별·서브트리별로 다른 레이아웃 섞기',
-      '접기/펼치기 · 선택 노드 아래 모두 펼치기',
-      '줌 · 화면 맞추기 · 중앙 보기',
-      '아웃라인 분할 보기 · 아웃라인 ↔ 맵 전환',
-      '다크 모드',
-    ],
-    guide: '04. 레이아웃과 보기',
-  },
-  {
-    icon: '📎',
-    title: '노드에 담는 것들',
-    lead: '마인드맵이 문서를 대신할 수 있게 하는 부분입니다.',
-    items: [
-      '노트 — 문단 · 코드(언어 라벨·복사) · 표 격자 · 체크리스트',
-      '하이퍼링크',
-      '첨부파일 · 사진 (글 중간 위치까지 보존)',
-      '태그',
-      '노드 검색 — 제목과 맵 안 내용까지',
-    ],
-    guide: '05. 노트·링크·첨부·태그 · 06. 검색',
-  },
-  {
-    icon: '🔄',
-    title: '들어오고 나가기',
-    lead: '갇히지 않습니다. 파일은 언제나 표준 Markdown 입니다.',
-    items: [
-      'Markdown 불러오기 — 견출·표·코드·체크리스트째',
-      'Markdown 내보내기 (mmd) — 구조·내용·레이아웃 정책 왕복',
-      'HTML 내보내기 — 인터넷 없이 열리는 뷰어 (접기·줌·검색 됨)',
-      '클라우드 문서함 — 로그인하면 어디서나 이어서',
-      '버전 기록과 되돌리기 · 오래 보관(별표)',
-    ],
-    guide: '08. 내보내기·불러오기 · 11. 버전 기록',
-  },
-  {
-    icon: '🌐',
-    title: '나누기',
-    lead: '완성한 맵을 밖으로 보냅니다.',
-    items: [
-      '퍼블리싱 — 로그인 없이 열리는 링크',
-      '비공개(보관) ↔ 무료공개 전환, 주소는 그대로',
-      '링크 카드 — 카카오톡·슬랙에 붙이면 제목·소개·미리보기',
-      '지식창고에 올리기 — 둘러보는 사람에게도 보인다',
-    ],
-    guide: '27-publish-share.md · 홈페이지 지식창고',
-  },
+/**
+ * 묶음의 차례와 화면 쪽 값(아이콘·더 볼 곳). 글자는 `i18n/pages.*.tsx` 의
+ * `functions.groups.<id>` 에 언어별로 있다 (2026-10-29 다국어).
+ */
+const GROUPS: { id: FunctionGroupId; icon: string; moreTo?: string }[] = [
+  // ★ AI 묶음은 **무엇이 되는지**만 짧게 적는다. 어떻게 붙이는지와
+  //   왜 그렇게 만들었는지는 `/ai` 가 따로 다룬다 (2026-09-15 사용자 결정).
+  { id: 'ai', icon: '🤖', moreTo: '/ai' },
+  { id: 'edit', icon: '✏️' },
+  { id: 'view', icon: '🗺️' },
+  { id: 'attach', icon: '📎' },
+  { id: 'io', icon: '🔄' },
+  { id: 'share', icon: '🌐' },
 ];
+
+export const FUNCTIONS: FunctionGroup[] = GROUPS.map(({ id, icon, moreTo }) => {
+  const g = pageText().functions.groups[id];
+  return {
+    icon,
+    title: g.title,
+    lead: g.lead,
+    items: g.items,
+    more: moreTo && g.more ? { label: g.more, to: moreTo } : undefined,
+    guide: g.guide,
+  };
+});

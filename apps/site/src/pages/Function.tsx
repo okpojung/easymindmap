@@ -1,5 +1,8 @@
 import { Link } from '../App';
 import { FUNCTIONS } from '../content/functions';
+import { pageText } from '../i18n/pages';
+
+const T = pageText().functions;
 
 /**
  * `/function` — **무엇이 있는가**를 훑는 자리 (2026-09-15 사용자 요청).
@@ -12,12 +15,9 @@ export default function FunctionPage() {
   return (
     <>
       <section className="wrap head">
-        <p className="eyebrow">기능</p>
-        <h1>무엇을 할 수 있나</h1>
-        <p className="lead">
-          맵을 만들고, 여러 모습으로 보고, 노드에 문서를 담고, 표준 Markdown 으로
-          꺼내고, 링크로 나눕니다. <b>사용자 가이드에 장이 있는 기능만</b> 적었습니다.
-        </p>
+        <p className="eyebrow">{T.eyebrow}</p>
+        <h1>{T.title}</h1>
+        <p className="lead">{T.lead}</p>
       </section>
 
       <section className="wrap">
@@ -31,17 +31,17 @@ export default function FunctionPage() {
                 {g.items.map((it) => <li key={it}>{it}</li>)}
               </ul>
               {g.more && <Link className="morelink" to={g.more.to}>{g.more.label} →</Link>}
-              <p className="guide">가이드 {g.guide}</p>
+              <p className="guide">{T.guidePrefix} {g.guide}</p>
             </article>
           ))}
         </div>
       </section>
 
       <section className="wrap cta">
-        <h2>직접 눌러 보는 편이 빠릅니다</h2>
-        <p>오른쪽 위 ‘EMM 로그인’을 누르면 로그인 화면이 열립니다. 회원은 로그인하고, 처음이라면 그 화면의 ‘Guest로 체험하기’로 가입 없이 바로 써 볼 수 있습니다.</p>
+        <h2>{T.ctaTitle}</h2>
+        <p>{T.ctaBody}</p>
         <div className="row" style={{ justifyContent: 'center' }}>
-          <Link className="btn ghost" to="/ai">AI 연동 보기</Link>
+          <Link className="btn ghost" to="/ai">{T.ctaAi}</Link>
         </div>
       </section>
     </>

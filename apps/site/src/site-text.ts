@@ -12,9 +12,12 @@ import zh from './redesign/template.zh.html?raw';
 import jaStrings from './i18n/strings.ja.json';
 import zhStrings from './i18n/strings.zh.json';
 import type { Guide } from './redesign/content';
+import { GUIDES_EN } from './redesign/guides.en';
+import { GUIDES_JA } from './redesign/guides.ja';
+import { GUIDES_ZH } from './redesign/guides.zh';
 
 /** 안내 글(질문하는 힘·브랜드 스토리 등) 번역 — 없는 글은 한국어 원문을 보여 준다 (3단계에서 채운다) */
-export const GUIDES_BY_LANG: Partial<Record<Lang, Record<string, Guide>>> = {};
+export const GUIDES_BY_LANG: Partial<Record<Lang, Record<string, Guide>>> = { en: GUIDES_EN, ja: GUIDES_JA, zh: GUIDES_ZH };
 
 export const TEMPLATES: Partial<Record<Lang, string>> = { ko, en, ja, zh };
 

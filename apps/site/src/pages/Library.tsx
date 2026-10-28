@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { href } from '../i18n';
 import { fetchListed, mapUrl, previewUrl, type ListedMap } from '../api';
+import { formatDate as fmt, formatNumber, pageText } from '../i18n/pages';
 
-const fmt = (iso: string) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`;
-};
+const C = pageText().common;
+const T = pageText().library;
 
 /**
  * 이름 안의 검색어를 **글자 단위로 강조** — 문서함과 같은 규칙이다
@@ -61,7 +60,7 @@ export default function Library() {
       setCursor(page.nextCursor);
     } catch (e) {
       if (gen.current !== mine) return;
-      setError(e instanceof Error ? e.message : '목록을 불러오지 못했습니다.');
+      setError(e instanceof Error ? e.message : C.listLoadFailed);
     } finally {
       if (gen.current === mine) { setLoading(false); setReady(true); }
     }
@@ -93,8 +92,8 @@ export default function Library() {
   return (
     <>
       <section className="wrap head">
-        <h1>지식창고</h1>
-        <p>저자가 공개한 맵을 둘러보세요. 로그인 없이 바로 열립니다.</p>
+        <h1>{T.title}</h1>
+        <p>{T.intro}</p>
 
         {/* ★ 찾는 자리를 **목록 위**에 둔다 — 문서함과 같다. 맵이 몇 개
             없을 때도 자리가 비어 보이지 않게 설명 한 줄을 붙였다 */}
@@ -105,21 +104,20 @@ export default function Library() {
               type="search"
               value={term}
               onChange={(e) => setTerm(e.target.value)}
-              placeholder="맵 이름과 맵 안의 내용에서 찾기"
-              aria-label="지식창고에서 찾기"
+              placeholder={T.searchPlaceholder}
+              aria-label={T.searchAria}
             />
             {term && (
               <button
                 type="button"
                 className="clear"
                 onClick={() => { setTerm(''); setApplied(''); }}
-                aria-label="검색어 지우기"
+                aria-label={C.clearSearch}
               >✕</button>
             )}
           </label>
-          <p className="small">
-            이름뿐 아니라 <b>맵 안의 노드·노트·태그</b>까지 찾습니다.
-          </p>
+          <p className="small">{T.searchHint}</p>
+
         </div>
       </section>
 
@@ -128,7 +126,7 @@ export default function Library() {
           <div className="note err">
             <b>{error}</b>
             <div style={{ marginTop: 12 }}>
-              <button className="btn ghost" onClick={() => void load(cursor, applied)}>다시 시도</button>
+              <button className="btn ghost" onClick={() => void load(cursor, applied)}>{C.retry}</button>
             </div>
           </div>
         )}
@@ -139,21 +137,19 @@ export default function Library() {
             생각을 못 한다 */}
         {empty && !searching && (
           <div className="note">
-            <b>아직 진열된 맵이 없습니다.</b>
-            <div style={{ marginTop: 6 }}>
-              맵을 퍼블리싱한 뒤 <b>[지식창고에 올린다]</b> 를 켜면 여기에 나타납니다.
-            </div>
+            <b>{T.emptyTitle}</b>
+            <div style={{ marginTop: 6 }}>{T.emptyBody}</div>
+
           </div>
         )}
         {empty && searching && (
           <div className="note">
-            <b>“{applied}” 로 찾은 맵이 없습니다.</b>
-            <div style={{ marginTop: 6 }}>
-              맵 이름과 맵 안의 내용을 모두 찾아본 결과입니다. 다른 말로 찾아보세요.
-            </div>
+            <b>{T.noResults(applied)}</b>
+            <div style={{ marginTop: 6 }}>{T.noResultsBody}</div>
+
             <div style={{ marginTop: 12 }}>
               <button className="btn ghost" onClick={() => { setTerm(''); setApplied(''); }}>
-                전체 보기
+                {T.showAll}
               </button>
             </div>
           </div>
@@ -177,7 +173,7 @@ export default function Library() {
                    referrer 는 남긴다 — 맵 화면이 "지식창고에서 왔다" 를
                    그것으로 안다. `noreferrer` 를 쓰면 돌아갈 자리가 사라진다. */
                 rel="noopener"
-                aria-label={`${m.title} — 새 탭에서 열기`}
+                aria-label={T.openAria(m.title)}
               >
                 {m.hasPreview
                   ? (
@@ -185,7 +181,7 @@ export default function Library() {
                       <img src={previewUrl(m.publishId)} alt="" loading="lazy" width={1200} height={630} />
                     </span>
                   )
-                  : <span className="thumb empty">미리보기 없음</span>}
+                  : <span className="thumb empty">{T.noPreview}</span>}
                 <span className="body">
                   <h2>{highlight(m.title, applied)}</h2>
                   {/* ★ 값은 **카드에서 바로** 보인다 (2026-09-21, 27b §2.1) —
@@ -194,8 +190,8 @@ export default function Library() {
                       않는다(무료 맵에 "무료" 를 붙이면 유료가 기본처럼
                       읽힌다). */}
                   {m.priceKrw != null && (
-                    <span className="price" title="유료 맵 — 미리보기는 2단계까지 보입니다">
-                      {m.priceKrw.toLocaleString('ko-KR')}원
+                    <span className="price" title={T.priceTitle}>
+                      {T.price(formatNumber(m.priceKrw))}
                     </span>
                   )}
                   {m.description && <span className="desc">{m.description}</span>}
@@ -203,14 +199,14 @@ export default function Library() {
                     <span className="tags">{m.tags.slice(0, 5).map((t) => <span key={t}>#{t}</span>)}</span>
                   )}
                   <span className="meta">
-                    {m.nodeCount != null ? `${m.nodeCount}노드 · ` : ''}{fmt(m.publishedAt)}
-                    {typeof m.likeCount === 'number' && <span className="react like" aria-label={`좋아요 ${m.likeCount}`}><span className="heart" aria-hidden="true">♥</span>{m.likeCount}</span>}
-                    {typeof m.commentCount === 'number' && m.commentsEnabled !== false && <span className="react" aria-label={`댓글 ${m.commentCount}`}>💬 {m.commentCount}</span>}
+                    {m.nodeCount != null ? `${T.nodes(m.nodeCount)} · ` : ''}{fmt(m.publishedAt)}
+                    {typeof m.likeCount === 'number' && <span className="react like" aria-label={T.likeAria(m.likeCount)}><span className="heart" aria-hidden="true">♥</span>{m.likeCount}</span>}
+                    {typeof m.commentCount === 'number' && m.commentsEnabled !== false && <span className="react" aria-label={T.commentAria(m.commentCount)}>💬 {m.commentCount}</span>}
                     {(m.matchCount ?? 0) > 0 && (
                       <span
                         className="hits"
-                        title={`이 맵의 내용(노드·노트·태그)에서 ${m.matchCount}건 찾았습니다`}
-                      >내용 {m.matchCount}건</span>
+                        title={T.hitsTitle(m.matchCount ?? 0)}
+                      >{T.hits(m.matchCount ?? 0)}</span>
                     )}
                   </span>
                 </span>
@@ -222,7 +218,7 @@ export default function Library() {
         {cursor && !error && (
           <div className="more">
             <button className="btn ghost" disabled={loading} onClick={() => void load(cursor, applied)}>
-              {loading ? '불러오는 중…' : '더 보기'}
+              {loading ? C.loading : C.more}
             </button>
           </div>
         )}

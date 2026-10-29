@@ -73,12 +73,12 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
   const save = (withRename: boolean) => {
     if (!draft || nameErr) return;
     const def = asDef(draft);
-    if (draft.orig && withRename && renamed) renameVariable(draft.orig, def.name);
-    const base = useDocumentStore.getState().map.settings?.variables ?? [];
-    const next = draft.orig
-      ? base.map((x) => (x.name === (withRename ? def.name : draft.orig) ? def : x))
-      : [...base, def];
-    setVariables(next);
+    if (draft.orig && withRename && renamed) {
+      renameVariable(draft.orig, def.name, def); // 이름·쓰는 곳·정의를 한 번에 (되돌리기 한 번)
+    } else {
+      const base = useDocumentStore.getState().map.settings?.variables ?? [];
+      setVariables(draft.orig ? base.map((x) => (x.name === draft.orig ? def : x)) : [...base, def]);
+    }
     setDraft(null);
     setMsg(tr(draft.orig ? 'editor.var.saved' : 'editor.var.added', { name: def.name }));
   };

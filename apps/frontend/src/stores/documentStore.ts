@@ -231,7 +231,7 @@ interface DocumentState {
   /** 맵 변수 목록 통째로 (왼쪽 레일 '변수', 2026-10-29) — 빈 배열이면 지운다 */
   setVariables: (list: MapVariable[]) => void;
   /** 변수 이름을 바꾸며 쓰는 곳(노드 글자 [&old]·수식) 모두 함께 바꾼다 — 되돌리기 한 번 */
-  renameVariable: (oldName: string, nextName: string) => void;
+  renameVariable: (oldName: string, nextName: string, def?: MapVariable) => void;
   // 노트 글꼴·크기 (맵 설정 — 기본 13pt)
   setNoteFont: (patch: { size?: number; family?: string }) => void;
 
@@ -1926,7 +1926,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     }));
   },
 
-  renameVariable: (oldName, nextName) => {
+  renameVariable: (oldName, nextName, def) => {
     if (!oldName || !nextName || oldName === nextName) return;
     set((state) => {
       const fixNode = <N extends MindNode>(n: N): N => {
@@ -1936,11 +1936,15 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         return nt === t && !kids ? n : { ...n, text: nt, ...(kids ? { children: kids } : {}) };
       };
       const m = state.map;
-      const vars = (m.settings?.variables ?? []).map((v) => ({
-        ...v,
-        name: v.name === oldName ? nextName : v.name,
-        value: v.type === 'formula' && v.value ? renameInFormula(v.value, oldName, nextName) : v.value,
-      }));
+      // def 를 주면 그 변수의 타입·서식·값도 같은 단계에서 바꾼다 (되돌리기 한 번)
+      const vars = (m.settings?.variables ?? []).map((v) => {
+        const own = v.name === oldName && def ? { ...def, name: nextName } : v;
+        return {
+          ...own,
+          name: own.name === oldName ? nextName : own.name,
+          value: own.type === 'formula' && own.value ? renameInFormula(own.value, oldName, nextName) : own.value,
+        };
+      });
       return {
         map: {
           ...m,

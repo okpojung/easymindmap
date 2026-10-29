@@ -317,6 +317,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   // 등록된 변수 이름 — 노드 글자의 [&이름] 칩 색
   const varDefs = useDocumentStore((st) => st.map.settings?.variables);
   const knownVars = useMemo(() => new Set((varDefs ?? []).map((v) => v.name)), [varDefs]);
+  const [draftText, setDraftText] = useState(srcText);
   // [& 자동완성 — 편집 중 '[&' 를 치면 등록된 변수 목록 (2026-10-29)
   const [varAc, setVarAc] = useState<{ start: number; end: number; list: string[]; sel: number } | null>(null);
   const pickVar = (name: string) => {
@@ -327,10 +328,17 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
     setDraftText(next);
     setEditingDraft({ nodeId: n.id, text: next });
     setVarAc(null);
-    const caret = varAc.start + ins.length + (after.startsWith(']') ? 1 : 0);
-    requestAnimationFrame(() => { const ta = textareaRef.current; if (ta) { ta.focus(); ta.setSelectionRange(caret, caret); } });
+    // 커서는 다음 그리기 직후(아래 layout effect)에 — rAF 로 미루면 그사이 친 글자가 엉뚱한 자리로 간다
+    varCaretRef.current = varAc.start + ins.length + (after.startsWith(']') ? 1 : 0);
   };
-  const [draftText, setDraftText] = useState(srcText);
+  const varCaretRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const c = varCaretRef.current;
+    if (c === null) return;
+    varCaretRef.current = null;
+    const ta = textareaRef.current;
+    if (ta) { ta.focus(); ta.setSelectionRange(c, c); }
+  }, [draftText]);
   // 코드 패널 ⧉ 복사 피드백 (1.5s 후 원복)
   const [codeCopied, setCodeCopied] = useState<number | null>(null); // 복사된 코드 블록 순번
   // 표 복사(⧉) 피드백 — 코드 패널 '복사됨 ✓'과 동일 (1.5초)

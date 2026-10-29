@@ -41,6 +41,8 @@ import { NoteViewerPopover } from './NoteViewerPopover';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { hasUnderline } from '@/editor/node-renderer/noShapeNode';
 import { applyMediaView } from '@/editor/node-renderer/mediaView';
+import { applyVariableView } from '@/utils/variables/mapVariables';
+import { useCloudStore } from '@/stores/cloudStore';
 import { treeEdgePath } from '@/editor/edge-renderer/edgePaths';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
 import { CollabCursor } from '@/editor/collaboration/CollabCursor';
@@ -468,6 +470,9 @@ export function Canvas({
 
   // Mermaid·HTML 코드 블록 그림이 새로 그려지면 노드 크기가 바뀐다 — 다시 배치 (2026-10-28)
   const codeEpoch = useCodeRenderEpoch();
+  // 변수 '값으로 보기' (2026-10-29) — 대시보드맵은 늘 값으로
+  const varValueView = useEditorUiStore((s) => s.varValueView);
+  const dashView = useCloudStore((s) => !!s.readOnlyInfo?.dashboard);
   const nodes = useMemo(() => {
     // 맵 설정(레벨별 폰트)을 측정기에 주입 — 모든 레이아웃 전략의
     // sizeNodeForText()와 NodeRenderer가 같은 크기·글꼴을 쓴다.
@@ -475,9 +480,10 @@ export function Canvas({
     setLevelFontConfig(sample.settings?.levelFonts);
     setLevelShapeConfig(sample.settings?.levelShapes);
     // 그림만 담은 노드: 자동 태그·내용 접기를 화면용 사본으로 (mediaView, 2026-10-28 — 문서는 그대로)
-    return computeLayout(applyMediaView(sample), layoutType, CX, CY, { x: spacingX, y: spacingY });
+    const viewMap = varValueView || dashView ? applyVariableView(sample) : sample;
+    return computeLayout(applyMediaView(viewMap), layoutType, CX, CY, { x: spacingX, y: spacingY });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sample, layoutType, CX, CY, spacingX, spacingY, codeEpoch]);
+  }, [sample, layoutType, CX, CY, spacingX, spacingY, codeEpoch, varValueView, dashView]);
 
   // 첫 화면 pan — 트리·진행트리는 중심 주제 위 변이 HOME_TOP_GAP, 나머지는 원점 (homeArmed 효과·보호가 같이 쓴다)
   const homeWantY = useMemo(() => {

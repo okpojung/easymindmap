@@ -312,6 +312,21 @@ export interface MapSettings {
   // 노트(문단·코드·표·체크) 글꼴·크기 — 노트 뷰어 팝업·노트 편집창에
   // 적용 (기본 크기 13pt)
   noteFont?: { size?: number; family?: string };
+  /** 맵 변수 — 노드 글자의 [&이름] 이 쓰는 값 (2026-10-29, 왼쪽 레일 '변수') */
+  variables?: MapVariable[];
+}
+
+/** 변수 타입 — 숫자·통화·날짜·시간·백분율·텍스트·전화번호·숫자한글·이메일·수식 */
+export type VariableType =
+  | 'number' | 'currency' | 'date' | 'time' | 'percent'
+  | 'text' | 'phone' | 'koreanNumber' | 'email' | 'formula';
+
+/** 맵 변수 하나 — value 는 넣은 글자 그대로(수식은 수식), format 은 엑셀 셀 서식 */
+export interface MapVariable {
+  name: string;
+  type: VariableType;
+  format?: string;
+  value?: string;
 }
 
 /**

@@ -103,6 +103,9 @@ interface EditorUiState {
   setActiveSection: (v: SidebarSection) => void;
   toggleSidebar: () => void;
   setShowTags: (v: boolean) => void;
+  /** 변수 '값으로 보기' (2026-10-29) — 노드의 [&이름] 을 서식 입힌 값으로 보인다 (문서는 그대로) */
+  varValueView: boolean;
+  setVarValueView: (v: boolean) => void;
   setOpeningLabel: (label: string | null) => void;
   setMinimapOpen: (v: boolean) => void;
   toggleMinimap: () => void;
@@ -200,6 +203,8 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   historyPinTarget: null,
   setHistoryPinTarget: (historyPinTarget) => set({ historyPinTarget }),
   setShowTags: (showTags) => set({ showTags }),
+  varValueView: false,
+  setVarValueView: (varValueView) => set({ varValueView }),
   setOpeningLabel: (openingLabel) => set({ openingLabel }),
   setMinimapOpen: (minimapOpen) => set({ minimapOpen }),
   toggleMinimap: () => set((s) => ({ minimapOpen: !s.minimapOpen })),

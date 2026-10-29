@@ -22,6 +22,7 @@
 
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
 import { contentIndicatorCount } from '@/editor/node-renderer/nodeContent';
+import { applyVariableView } from '@/utils/variables/mapVariables';
 import { applyMediaView } from '@/editor/node-renderer/mediaView';
 import { collectCodeRenders, prepareCodeRenders } from '@/editor/node-renderer/codeRender';
 // 내보낸 HTML 의 파비콘·제목 옆 아이콘은 20px 정사각형 — 가로형 로고 대신 정사각형 마크 (2026-10-25)
@@ -4568,7 +4569,9 @@ export function buildStandaloneHtml(
   const metaSource = metaMap ?? map;
   // 그림만 담은 노드: 자동 태그 Image·Mermaid·HTML (에디터 mediaView 와 같음, 2026-10-28).
   // 뷰어에서는 접을 수 없으니 늘 펼친다(fold:false).
-  map = applyMediaView(map, { fold: false });
+  // 맵 변수 [&이름] 은 값으로 (2026-10-29) — 공개 화면·HTML 파일은 '값으로 보기'와 같다.
+  // 원본(메타)은 metaSource 라 [&이름] 과 변수 정의가 그대로 남는다(다시 불러오면 변수 그대로).
+  map = applyMediaView(applyVariableView(map), { fold: false });
   const layoutType = (mapLayoutType ??
     map.root.layoutType ??
     'radial-bidirectional') as LayoutType;

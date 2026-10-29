@@ -615,6 +615,17 @@ export class MapsService {
       params,
     );
     const m = rows[0];
+    // ★ **대시보드맵 → 일반맵** (2026-10-29 사용자 요청: "일반맵 → 대시보드맵 → 일반맵").
+    //   대시보드의 연결 주소(공개 링크)가 남아 있으면 문서함이 그 맵을 퍼블리싱 자리로 보낸다.
+    //   되돌린 맵은 원래 폴더에 있어야 하므로 링크를 **비공개(보관)** 로 돌린다 — 주소 자체는
+    //   지우지 않으니, 퍼블리싱 창에서 다시 공개하면 같은 주소가 살아난다.
+    if (cur.view_mode === DASHBOARD_VIEW_MODE && dto.viewMode !== undefined && dto.viewMode !== DASHBOARD_VIEW_MODE) {
+      try {
+        await this.db.query(
+          `UPDATE public.published_maps SET visibility = 'private'
+            WHERE map_id = $1 AND unpublished_at IS NULL AND visibility <> 'private'`, [mapId]);
+      } catch { /* visibility 칸이 없는 옛 서버 — 되돌리기 자체는 끝났다 */ }
+    }
     return {
       mapId: m.id,
       title: m.title,

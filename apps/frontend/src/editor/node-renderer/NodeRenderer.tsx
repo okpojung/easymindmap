@@ -5,6 +5,7 @@
 // inline text edit, soft-lock editor label.
 
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { varSegs, varQueryAt, varSuggestions, type VarSeg } from '@/utils/variables/varUi';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens, ThemeName } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
@@ -311,7 +312,25 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   const hiddenTags = useEditorUiStore((state) => state.hiddenTags);
 
   const [editing, setEditing] = useState(false);
-  const [draftText, setDraftText] = useState(n.text);
+  // 편집·저장에 쓰는 원문 — '값으로 보기'면 화면 글자(값)가 아니라 [&변수] 원문 (2026-10-29)
+  const srcText = n._rawText ?? n.text;
+  // 등록된 변수 이름 — 노드 글자의 [&이름] 칩 색
+  const varDefs = useDocumentStore((st) => st.map.settings?.variables);
+  const knownVars = useMemo(() => new Set((varDefs ?? []).map((v) => v.name)), [varDefs]);
+  // [& 자동완성 — 편집 중 '[&' 를 치면 등록된 변수 목록 (2026-10-29)
+  const [varAc, setVarAc] = useState<{ start: number; end: number; list: string[]; sel: number } | null>(null);
+  const pickVar = (name: string) => {
+    if (!varAc) return;
+    const after = draftText.slice(varAc.end);
+    const ins = '[&' + name + (after.startsWith(']') ? '' : ']');
+    const next = draftText.slice(0, varAc.start) + ins + after;
+    setDraftText(next);
+    setEditingDraft({ nodeId: n.id, text: next });
+    setVarAc(null);
+    const caret = varAc.start + ins.length + (after.startsWith(']') ? 1 : 0);
+    requestAnimationFrame(() => { const ta = textareaRef.current; if (ta) { ta.focus(); ta.setSelectionRange(caret, caret); } });
+  };
+  const [draftText, setDraftText] = useState(srcText);
   // 코드 패널 ⧉ 복사 피드백 (1.5s 후 원복)
   const [codeCopied, setCodeCopied] = useState<number | null>(null); // 복사된 코드 블록 순번
   // 표 복사(⧉) 피드백 — 코드 패널 '복사됨 ✓'과 동일 (1.5초)
@@ -516,7 +535,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
     // 접어 둔 그림 노드 — 지금 글은 종류 이름("Image, Mermaid")뿐이다. 그대로 고치면 내용이
     // 그 이름으로 덮인다. 먼저 펼친다 (다시 더블클릭하면 원래 내용으로 고친다) — 2026-10-28
     if (n._mediaFolded) { useDocumentStore.getState().setContentFolded(n.id, false); return; }
-    setDraftText(n.text);
+    setDraftText(srcText);
     setEditingDraft(null);
     setEditing(true);
     setEditingNodeId(n.id); // 편집 중 +/− 인디케이터 숨김 (겹침 방지)
@@ -581,7 +600,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
     // 지운 글자가 되살아나, 사용자에게는 "지워지지 않는다"로 보였다
     // (2026-08-05 보고). 노드를 지우려는 게 아니라 **내용을 비우려는**
     // 조작이므로 그대로 반영한다. 노드 자체를 없애려면 Del(선택 상태).
-    if (nextText !== n.text) {
+    if (nextText !== srcText) {
       updateNodeText(n.id, nextText);
     }
     // 편집 중 기사 붙여넣기로 쌓인 인라인 사진 — 저장 시 함께 반영
@@ -596,7 +615,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   };
 
   const cancelEdit = () => {
-    setDraftText(n.text);
+    setDraftText(srcText);
     pendingImgsRef.current = null; // 취소 = 붙여넣은 사진도 폐기
     setEditing(false);
     // **취소는 상대에게도 취소여야 한다.** 초안을 비우면 협업이 다시
@@ -862,7 +881,8 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               // __밑줄__ ==하이라이트== 마커를 구간(tspan)으로 그린다.
               // 마커 문자는 표시에서 제거되고, 노드 전체 강조(스타일 탭)와
               // 결합된다. (구간은 위 lineSegs — 줄 간 상태 이월 반영)
-              const segs = lineSegs[i];
+              // [&변수] 는 칩처럼 — 등록된 것 파랑, 등록 안 된 것 주황 (2026-10-29)
+              const segs = varSegs(lineSegs[i], knownVars);
               // 표시 좌표는 근사 폭이 아니라 캔버스 실측 폭 — 근사로 놓으면
               // 인접 구간(tspan)의 x가 실제 렌더 폭과 어긋나 글자가 겹친다.
               const segWs = segs.map((sg) =>
@@ -904,7 +924,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                           e.stopPropagation();
                           updateNodeText(
                             n.id,
-                            toggleCheckInText(String(n.text || ''), chkHere.seq),
+                            toggleCheckInText(String(srcText || ''), chkHere.seq),
                           );
                         }}
                         onDoubleClick={(e) => e.stopPropagation()}
@@ -949,6 +969,19 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                         rx={2}
                         fill="#FFE066"
                       />
+                    ) : (sg as VarSeg).v ? (
+                      <rect
+                        key={`v${k}`}
+                        data-var-chip={(sg as VarSeg).v}
+                        x={segXs[k] - 2}
+                        y={lineCenter - fontSize * 0.7}
+                        width={segWs[k] + 4}
+                        height={fontSize * 1.4}
+                        rx={fontSize * 0.35}
+                        fill={(sg as VarSeg).v === 'k' ? '#DBEAFE' : '#FFEDD5'}
+                        stroke={(sg as VarSeg).v === 'k' ? '#93C5FD' : '#FDBA74'}
+                        strokeWidth={0.8}
+                      />
                     ) : sg.c && sg.text.trim() !== '' ? (
                       // 인라인 코드 — 회색 배경 띠 (모노스페이스와 세트)
                       <rect
@@ -988,7 +1021,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                           x={segXs[k]}
                           fontWeight={sg.b ? 700 : fontWeight}
                           fontStyle={sg.i ? 'italic' : fontStyle}
-                          fill={onHighlight ? hlColor : sg.c ? CODE_TEXT : undefined}
+                          fill={onHighlight ? hlColor : sg.c ? CODE_TEXT : (sg as VarSeg).v ? ((sg as VarSeg).v === 'k' ? '#1D4ED8' : '#C2410C') : undefined}
                           style={{
                             textDecoration: deco || undefined,
                             fontFamily: sg.c ? CODE_FONT : undefined,
@@ -1456,6 +1489,12 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
             value={draftText}
             onChange={(e) => {
               setDraftText(e.target.value);
+              {
+                const caret = e.target.selectionStart ?? e.target.value.length;
+                const q = knownVars.size ? varQueryAt(e.target.value, caret) : null;
+                const list = q ? varSuggestions([...knownVars], q.q) : [];
+                setVarAc(q && list.length ? { start: q.start, end: caret, list, sel: 0 } : null);
+              }
               // **한글 조합 중에는 비추지 않는다** — 조합 중인 자모가
               // 상대 화면에 그대로 가면 글자가 튄다. 조합이 끝나면
               // 아래 onCompositionEnd 가 그때의 값을 비춘다.
@@ -1582,6 +1621,17 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
             }}
             onDragStart={(e) => e.preventDefault()}
             onKeyDown={(e) => {
+              // [& 자동완성 목록이 떠 있으면 화살표·Enter·Tab·Esc 는 목록 조작
+              if (varAc && !(e.nativeEvent as KeyboardEvent).isComposing) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  const d = e.key === 'ArrowDown' ? 1 : -1;
+                  setVarAc({ ...varAc, sel: (varAc.sel + d + varAc.list.length) % varAc.list.length });
+                  return;
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickVar(varAc.list[varAc.sel]); return; }
+                if (e.key === 'Escape') { e.preventDefault(); setVarAc(null); return; }
+              }
               // 부분 강조 단축키 — 선택한 텍스트를 마커로 감싼다
               if ((e.ctrlKey || e.metaKey) && !e.altKey) {
                 const k2 = e.key.toLowerCase();
@@ -1608,6 +1658,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               // 코드 블록 팝업이 열리며 생기는 blur는 커밋이 아니다 —
               // 팝업을 닫으면 편집으로 돌아온다 (삽입 흐름 유지)
               if (codeDlgRef.current || tableDlgRef.current) return;
+              setVarAc(null);
               saveEdit();
             }}
             style={{
@@ -1634,6 +1685,20 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               margin: 0,
             }}
           />
+          {varAc && (
+            <div role="listbox" data-testid="var-autocomplete"
+              style={{ position: 'absolute', left: 0, top: '100%', marginTop: 4, minWidth: 160, maxHeight: 220, overflowY: 'auto', zIndex: 2,
+                background: t.surface, border: '1px solid ' + t.border, borderRadius: 8, boxShadow: '0 6px 18px rgba(0,0,0,.16)', padding: 4 }}>
+              {varAc.list.map((name, i) => (
+                <div key={name} role="option" aria-selected={i === varAc.sel}
+                  onMouseDown={(e) => { e.preventDefault(); pickVar(name); }}
+                  style={{ padding: '4px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12.5, fontFamily: CODE_FONT,
+                    background: i === varAc.sel ? '#DBEAFE' : 'transparent', color: i === varAc.sel ? '#1D4ED8' : t.text }}>
+                  [&amp;{name}]
+                </div>
+              ))}
+            </div>
+          )}
         </div>,
         document.body,
       )}
@@ -1753,8 +1818,8 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
       {codeDlg && (
         <CodeBlockDialog
           t={t}
-          initialLang={codeDlg.mode === 'edit' ? parseMdCodes(String(n.text || ''))[codeDlg.index]?.lang : undefined}
-          initialCode={codeDlg.mode === 'edit' ? parseMdCodes(String(n.text || ''))[codeDlg.index]?.code.join('\n') : undefined}
+          initialLang={codeDlg.mode === 'edit' ? parseMdCodes(String(srcText || ''))[codeDlg.index]?.lang : undefined}
+          initialCode={codeDlg.mode === 'edit' ? parseMdCodes(String(srcText || ''))[codeDlg.index]?.code.join('\n') : undefined}
           onCancel={() => {
             setCodeDlg(null);
             if (editing) window.setTimeout(() => textareaRef.current?.focus(), 0);
@@ -1767,7 +1832,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               window.setTimeout(() => textareaRef.current?.focus(), 0);
             } else {
               // 그 블록(index 번째 펜스)을 통째로 교체하고 바로 저장
-              updateNodeText(n.id, replaceCodeBlock(String(n.text || ''), lang, code, codeDlg.index));
+              updateNodeText(n.id, replaceCodeBlock(String(srcText || ''), lang, code, codeDlg.index));
             }
             setCodeDlg(null);
           }}
@@ -1776,7 +1841,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
 
       {/* 표 팝업 편집기 — ⊞ 버튼(격자 크기 → 삽입) / 표 더블클릭(수정) */}
       {tableDlg && (() => {
-        const src = tableDlg.mode === 'edit' ? (tableDlg.inDraft ? draftText : String(n.text || '')) : '';
+        const src = tableDlg.mode === 'edit' ? (tableDlg.inDraft ? draftText : String(srcText || '')) : '';
         const parsed = tableDlg.mode === 'edit' ? (parseMdTables(src)[tableDlg.index] ?? null) : null;
         const initialMd = parsed ? buildMdTable(parsed.headers, parsed.rows, parsed.aligns) : undefined;
         const size = tableDlg.mode === 'insert' ? { rows: tableDlg.rows, cols: tableDlg.cols } : undefined;
@@ -1797,7 +1862,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                 setDraftText(replaceMdTable(draftText, md, tableDlg.index));
                 window.setTimeout(() => textareaRef.current?.focus(), 0);
               } else {
-                updateNodeText(n.id, replaceMdTable(String(n.text || ''), md, tableDlg.index));
+                updateNodeText(n.id, replaceMdTable(String(srcText || ''), md, tableDlg.index));
               }
               setTableDlg(null);
             }}

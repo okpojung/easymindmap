@@ -11,6 +11,9 @@
 // - node content: tags, links, structured notes, attachments
 
 import { LINK_PARENT_KEYS } from '@/utils/linkNode';
+import type { MapVariable } from '@emm/model';
+import { renameInText } from '@/utils/variables/varSyntax';
+import { renameInFormula } from '@/utils/variables/formula';
 import { mediaKindsOf } from '@/editor/node-renderer/mediaContent';
 import { create } from 'zustand';
 // 트리 규칙의 **단일 원본** — 화면·협업·DB 가 같은 판정을 써야 한다
@@ -225,6 +228,10 @@ interface DocumentState {
   setLevelLayout: (level: number, layoutType: LayoutType | null) => void;
   // 레벨별 기본 도형 — index 0=1레벨(중심) … 4=5레벨+ (null = 기본)
   setLevelShape: (level: number, shape: ShapeType | null) => void;
+  /** 맵 변수 목록 통째로 (왼쪽 레일 '변수', 2026-10-29) — 빈 배열이면 지운다 */
+  setVariables: (list: MapVariable[]) => void;
+  /** 변수 이름을 바꾸며 쓰는 곳(노드 글자 [&old]·수식) 모두 함께 바꾼다 — 되돌리기 한 번 */
+  renameVariable: (oldName: string, nextName: string) => void;
   // 노트 글꼴·크기 (맵 설정 — 기본 13pt)
   setNoteFont: (patch: { size?: number; family?: string }) => void;
 
@@ -1911,6 +1918,39 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     // The map mutation records the old global layout for one-step undo. Do
     // not change view state if the document write was blocked by viewer mode.
     if (changesFirst && get().map !== before) useEditorUiStore.getState().setLayoutType(layoutType);
+  },
+
+  setVariables: (list) => {
+    set((state) => ({
+      map: { ...state.map, settings: { ...state.map.settings, variables: list.length ? list : undefined } },
+    }));
+  },
+
+  renameVariable: (oldName, nextName) => {
+    if (!oldName || !nextName || oldName === nextName) return;
+    set((state) => {
+      const fixNode = <N extends MindNode>(n: N): N => {
+        const kids = n.children?.map(fixNode);
+        const t = String(n.text ?? '');
+        const nt = t.includes('[&') ? renameInText(t, oldName, nextName) : t;
+        return nt === t && !kids ? n : { ...n, text: nt, ...(kids ? { children: kids } : {}) };
+      };
+      const m = state.map;
+      const vars = (m.settings?.variables ?? []).map((v) => ({
+        ...v,
+        name: v.name === oldName ? nextName : v.name,
+        value: v.type === 'formula' && v.value ? renameInFormula(v.value, oldName, nextName) : v.value,
+      }));
+      return {
+        map: {
+          ...m,
+          root: fixNode(m.root),
+          branches: m.branches.map(fixNode),
+          ...(m.centers ? { centers: m.centers.map((c) => ({ ...c, root: fixNode(c.root), branches: c.branches.map(fixNode) })) } : {}),
+          settings: { ...m.settings, variables: vars.length ? vars : undefined },
+        },
+      };
+    });
   },
 
   setLevelShape: (level, shape) => {

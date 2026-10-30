@@ -12,10 +12,10 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Connector, ConnectorArrows, ConnectorDash, ConnectorLabelPlace, ConnectorLabelShape, ConnectorShape } from '@/editor/__samples__/types';
 import type { LaidOutNode } from '@/layout/types';
 import { measureTextPx } from '@/editor/node-renderer/textMeasure';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTr } from '@/i18n';
-import { setHistoryPaused, useDocumentStore } from '@/stores/documentStore';
-import { arrowHead, connectorMid, connectorPath, connectorPoints, labelBox, trunkSegment, type CBox, type CPoint } from './connectorGeometry';
+import { isViewerLocked, setHistoryPaused, useDocumentStore } from '@/stores/documentStore';
+import { arrowHead, connectorMid, connectorPath, connectorPoints, connectorSideAtPoint, sideAnchor, labelBox, trunkSegment, type CBox, type CPoint, type CDir } from './connectorGeometry';
 import { isCoarseNow } from '@/hooks/useViewport';
 
 /** 기본값 — 사용자 결정(2026-09-22): 기본 선 색은 **파란색** */
@@ -72,6 +72,7 @@ interface Props {
   t: ThemeTokens;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  editable?: boolean;
 }
 
 interface Resolved {
@@ -199,7 +200,92 @@ function TrunkHandle({ id, pts, offset, dir, avoid, t }: { id: string; pts: CPoi
   );
 }
 
-export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onSelect }: Props) {
+/** Preview is local only. Drop commits one history entry; Escape/cancel commits none. */
+function EndpointGrip({ c, end, pts, boxes, t }: {
+  c: Connector; end: 'from' | 'to'; pts: CPoint[]; boxes: Map<string, CBox>; t: ThemeTokens;
+}) {
+  const tr = useTr();
+  const [preview, setPreview] = useState<CDir | null>(null);
+  const drag = useRef<{ pointerId: number; el: SVGGElement; x: number; y: number; moved: boolean; initial: CDir } | null>(null);
+  const a = boxes.get(c.from)!, b = boxes.get(c.to)!;
+  const box = end === 'from' ? a : b;
+  const otherBox = end === 'from' ? b : a;
+  const otherPoint = end === 'from' ? pts[pts.length - 1] : pts[0];
+  const otherSide = (end === 'from' ? c.toSide : c.fromSide) ?? 'auto';
+  const fixedOther = otherSide === 'auto' ? connectorSideAtPoint(otherBox, otherPoint) : otherSide;
+  const original = end === 'from' ? pts[0] : pts[pts.length - 1];
+  const point = preview ? sideAnchor(box, preview) : original;
+  const title = tr(end === 'from' ? 'editor.connector.dragStart' : 'editor.connector.dragEnd');
+  const cancel = () => {
+    const d = drag.current; drag.current = null; setPreview(null);
+    if (d) { try { d.el.releasePointerCapture(d.pointerId); } catch { /* already released */ } }
+  };
+  useEffect(() => {
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && drag.current) { e.preventDefault(); e.stopPropagation(); cancel(); }
+    };
+    window.addEventListener('keydown', escape, true);
+    return () => { window.removeEventListener('keydown', escape, true); const d = drag.current; drag.current = null;
+      if (d) { try { d.el.releasePointerCapture(d.pointerId); } catch { /* detached */ } }
+    };
+  }, []);
+  const world = (e: React.PointerEvent<SVGGElement>): CPoint | null => {
+    try {
+      const m = e.currentTarget.getScreenCTM(); if (!m) return null;
+      const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+      return Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null;
+    } catch { return null; }
+  };
+  const commit = (side: CDir) => {
+    if (isViewerLocked()) return;
+    const live = useDocumentStore.getState().map.connectors?.find(v => v.id === c.id);
+    if (!live || live.from !== c.from || live.to !== c.to) return;
+    const current = end === 'from' ? live.fromSide : live.toSide;
+    if (current === side || ((!current || current === 'auto') && connectorSideAtPoint(box, original) === side)) return;
+    const opposite = end === 'from' ? live.toSide : live.fromSide;
+    const pinOther = !opposite || opposite === 'auto';
+    useDocumentStore.getState().updateConnector(c.id, end === 'from'
+      ? { fromSide: side, ...(pinOther ? { toSide: fixedOther } : {}) }
+      : { toSide: side, ...(pinOther ? { fromSide: fixedOther } : {}) });
+  };
+  const ghost = preview ? connectorPoints(a, b, [...boxes.values()], end === 'from' ? preview : fixedOther, end === 'to' ? preview : fixedOther, c.offset ?? 0) : null;
+  return <g data-connector-endpoint={`${c.id}:${end}`} role="button" aria-label={title} tabIndex={0}
+    style={{ cursor: preview ? 'grabbing' : 'grab', touchAction: 'none' }}
+    onClick={e => e.stopPropagation()}
+    onKeyDown={e => {
+      if (drag.current) return;
+      const side = ({ ArrowUp: 'top', ArrowRight: 'right', ArrowDown: 'bottom', ArrowLeft: 'left' } as const)[e.key as 'ArrowUp'];
+      if (side) { e.preventDefault(); e.stopPropagation(); commit(side); }
+    }}
+    onPointerDown={e => {
+      e.preventDefault(); e.stopPropagation();
+      if (e.button !== 0 || drag.current || isViewerLocked() || !world(e)) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      drag.current = { pointerId: e.pointerId, el: e.currentTarget, x: e.clientX, y: e.clientY, moved: false, initial: connectorSideAtPoint(box, original) };
+    }}
+    onPointerMove={e => {
+      const d = drag.current; if (!d || d.pointerId !== e.pointerId) return;
+      e.stopPropagation(); const p = world(e); if (!p) return;
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 3 && !d.moved) return;
+      d.moved = true; setPreview(connectorSideAtPoint(box, p));
+    }}
+    onPointerUp={e => {
+      const d = drag.current; if (!d || d.pointerId !== e.pointerId) return;
+      e.stopPropagation(); const p = world(e); const side = p ? connectorSideAtPoint(box, p) : null;
+      cancel(); if (d.moved && side && side !== d.initial) commit(side);
+    }}
+    onPointerCancel={cancel} onLostPointerCapture={cancel}>
+    <title>{title}</title>
+    {ghost && <path d={connectorPath(ghost, connectorShapeOf(c))} fill="none" stroke={t.primary} strokeWidth={2} strokeDasharray="5 4" pointerEvents="none" />}
+    {preview && (['top', 'right', 'bottom', 'left'] as CDir[]).map(side => {
+      const p = sideAnchor(box, side); return <circle key={side} cx={p.x} cy={p.y} r={4} fill={t.surface} stroke={t.primary} pointerEvents="none" />;
+    })}
+    <circle cx={point.x} cy={point.y} r={isCoarseNow() ? 14 : 10} fill="transparent" />
+    <circle cx={point.x} cy={point.y} r={5} fill={t.surface} stroke={t.primary} strokeWidth={2} pointerEvents="none" />
+  </g>;
+}
+
+export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onSelect, editable = true }: Props) {
   const list = resolve(connectors, nodesById);
   if (!list.length) return null;
 
@@ -209,7 +295,7 @@ export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onS
         {list.map(({ c, pts, color, width, shape, dash, arrows }) => {
           const d = connectorPath(pts, shape);
           const size = connectorArrowSize(width);
-          const selected = c.id === selectedId;
+          const selected = editable && c.id === selectedId;
           const stop = (e: React.SyntheticEvent) => e.stopPropagation();
           return (
             <g
@@ -243,8 +329,6 @@ export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onS
               <path d={d} fill="none" stroke="transparent" strokeWidth={Math.max(HIT_WIDTH, width + 8)} strokeLinecap="round" strokeLinejoin="round" data-connector-hit="1" />
               {selected && pts.length >= 2 && (
                 <>
-                  <circle cx={pts[0].x} cy={pts[0].y} r={4} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
-                  <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r={4} fill={t.surface} stroke={t.primary} strokeWidth={1.5} />
                   {trunkSegment(pts) && (
                     <TrunkGrip id={c.id} pts={pts} offset={c.offset ?? 0} dir={trunkSegment(pts)!.dir} />
                   )}
@@ -267,7 +351,7 @@ export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onS
         const { w, h, lines } = connectorLabelSize(text, shape);
         const mid = connectorMid(pts);
         const box = labelBox(mid, w, h, place);
-        const selected = c.id === selectedId;
+        const selected = editable && c.id === selectedId;
         const x0 = box.x - box.w / 2, y0 = box.y - box.h / 2;
         const stroke = selected ? t.primary : color;
         const firstBase = box.y - ((lines.length - 1) * LABEL_LINE_H) / 2;
@@ -308,9 +392,18 @@ export function ConnectorLayer({ part, connectors, nodesById, t, selectedId, onS
           </g>
         );
       })}
+      {/* Ports are above nodes so the complete grip remains clickable. */}
+      {list.filter(({ c }) => editable && c.id === selectedId).map(({ c, pts }) => {
+        const boxes = new Map<string, CBox>();
+        for (const n of nodesById.values()) boxes.set(n.id, { x: n.x, y: n.y, w: n.w, h: n.h });
+        return <g key={`ports-${c.id}`}>
+          <EndpointGrip c={c} end="from" pts={pts} boxes={boxes} t={t} />
+          <EndpointGrip c={c} end="to" pts={pts} boxes={boxes} t={t} />
+        </g>;
+      })}
       {/* 줄기 손잡이 — 라벨보다 위에 (고른 선에만) */}
       {list.map(({ c, pts }) => {
-        if (c.id !== selectedId) return null;
+        if (!editable || c.id !== selectedId) return null;
         const seg = trunkSegment(pts);
         if (!seg) return null;
         let avoid: { x: number; y: number; w: number; h: number } | undefined;

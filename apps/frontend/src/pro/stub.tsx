@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 // 유료 UI 가 **없을 때**의 자리 (2026-08-16).
 //
 // 이것이 공개판의 **정상 화면**이다 — 오류가 아니다. 유료 UI 가 설치된
@@ -106,6 +107,10 @@ export function ProCollabSession(_p: { mapId: string | null; kind?: string }) {
  * (`ProFeaturePanel` 과 같은 규칙). 예전에는 이 버튼이 눌려도 아무 일도
  * 일어나지 않았다 — 눌리는데 아무 일도 없는 버튼은 고장으로 보인다.
  */
+export function ProAddressBookDialog(_p: { t: ThemeTokens; onClose: () => void }) {
+  return null;
+}
+
 export function ProShareDialog(
   { t, mapId, onClose }: { t: ThemeTokens; mapId: string | null; onClose: () => void },
 ) {
@@ -283,3 +288,6 @@ export function ProDashboardLive(_p: { t: ThemeTokens; mapId: string | null }) {
   return null;
 }
 
+
+/** Community builds do not claim private routes. */
+export function matchProRoute(_location: { pathname: string }): ComponentType | null { return null; }

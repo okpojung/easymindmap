@@ -226,7 +226,7 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
                 <code style={{ flex: 1, minWidth: 0, fontFamily: MONO, fontSize: 12.5, fontWeight: 700, color: '#1D4ED8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>[&amp;{v.name}]</code>
                 <button type="button" data-testid="var-copy" title={tr('editor.var.copyTip', { name: v.name })} onClick={() => copy(v.name)}
                   style={{ ...iconBtn(), color: copied === v.name ? '#15803D' : t.text }}>{copied === v.name ? '✓' : '⧉'}</button>
-                {mapId && dbOn && (
+                {mapId && dbOn && v.type !== 'formula' && (
                   <button type="button" data-testid="var-api" title={tr('editor.var.apiTip', { name: v.name })} aria-pressed={apiOpen === v.name}
                     onClick={() => setApiOpen((o) => (o === v.name ? null : v.name))}
                     style={{ ...iconBtn(), width: 'auto', padding: '0 6px', fontSize: 10.5, fontWeight: 700, color: apiOpen === v.name ? t.primary : t.text }}>API</button>

@@ -138,6 +138,25 @@ export function previewDisplay(def: MapVariable, all: readonly MapVariable[]): s
   return r?.display ?? '';
 }
 
+// ── DB 값 (유료 모듈 dashboard_vars, 2026-10-30) ───────────────────────────
+/** 정의의 값을 DB 값으로 — 수식은 다른 변수로 계산하므로 덮지 않는다 (pro vars.ts renderDoc 과 같은 규칙) */
+export function withDbValues(defs: readonly MapVariable[], db?: Readonly<Record<string, string>>): MapVariable[] {
+  if (!db) return [...defs];
+  return defs.map((d) => (d.type !== 'formula' && Object.prototype.hasOwnProperty.call(db, d.name) ? { ...d, value: db[d.name] } : d));
+}
+
+/** 값으로 보기에 쓰는 결과 — 정의(DB 값 우선)를 계산하고, 정의 없이 DB 에만 있는 이름은 값 그대로 */
+export function variableResults(map: { settings?: { variables?: MapVariable[] } }, db?: Readonly<Record<string, string>>): Map<string, VarResult> {
+  const res = evaluateVariables(withDbValues(map.settings?.variables ?? [], db));
+  if (db) for (const [k, v] of Object.entries(db)) if (!res.has(k) && v !== '') res.set(k, { value: v, display: v });
+  return res;
+}
+
+let dbSource: (() => Record<string, string> | undefined) | null = null;
+/** 지금 열린 맵의 DB 값을 주는 곳 — varDbStore 가 등록한다(내보내기가 스토어를 직접 들이지 않게) */
+export function setVarDbSource(fn: () => Record<string, string> | undefined): void { dbSource = fn; }
+export function currentVarDb(): Record<string, string> | undefined { return dbSource?.(); }
+
 // ── 맵 훑기 ────────────────────────────────────────────────────────────
 interface TNode { text?: string; children?: TNode[] }
 interface TMap { root: TNode; branches: TNode[]; centers?: { root: TNode; branches: TNode[] }[]; settings?: { variables?: MapVariable[] } }
@@ -166,7 +185,7 @@ export function variableUsage(map: TMap): Map<string, { nodes: number; formulas:
  */
 export function applyVariableView<M>(input: M, results?: Map<string, VarResult>): M {
   const map = input as unknown as TMap;
-  const res = results ?? evaluateVariables(map.settings?.variables);
+  const res = results ?? variableResults(map, currentVarDb());
   const values = new Map<string, string>();
   for (const [k, r] of res) if (r.display !== undefined) values.set(k, r.display);
   if (!values.size) return input;

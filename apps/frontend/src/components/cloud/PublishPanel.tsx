@@ -721,6 +721,19 @@ export function PublishPanel(
                 onClick={doCopy}
                 style={{ ...btn, flex: 1, background: t.primary, color: '#fff' }}
               >{copied ? tr('common.copied') : tr('publish.copyLink')}</button>
+              {/* 보관(비공개) 중에는 주소가 404 다 — 열어 봤자 '페이지를 찾을 수 없습니다' 만 보인다
+                  (2026-10-30 사용자 보고 ⑤). 누르기 전에 막고 무엇을 하면 열리는지 말한다. */}
+              {(status.visibility ?? 'public') === 'private' ? (
+                <button
+                  data-testid="publish-open"
+                  disabled
+                  title={tr('publish.openPrivate')}
+                  style={{
+                    ...btn, flex: 1, cursor: 'not-allowed', opacity: 0.55,
+                    border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.textMuted,
+                  }}
+                >{tr('publish.openNewTab')}</button>
+              ) : (
               <a
                 data-testid="publish-open"
                 href={url}
@@ -732,7 +745,13 @@ export function PublishPanel(
                   border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
                 }}
               >{tr('publish.openNewTab')}</a>
+              )}
             </div>
+            {(status.visibility ?? 'public') === 'private' && (
+              <div data-testid="publish-open-private" style={{ fontSize: 11.5, color: t.textMuted, marginTop: 6, lineHeight: 1.5 }}>
+                {tr('publish.openPrivate')}
+              </div>
+            )}
             {/* ★ **공개 중에는 취소할 수 없다 — 먼저 비공개로** (2026-09-05
                 사용자 결정). 취소는 주소를 영구히 죽이는 일이고 되돌릴 수
                 없다. 서버도 같은 판정을 하지만(409), 화면이 **누르기 전에**

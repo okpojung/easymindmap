@@ -910,7 +910,8 @@ export class PublishService {
         publishId,
         mapId: row.map_id,
         title: row.title,
-        doc: dashboard ? await this.renderDashboard(row.map_id, row.doc) : row.doc,
+        // 맵 변수를 정의한 일반맵도 DB 값(유료 모듈)을 채운다 (2026-10-30 — 공개 화면 = '값으로 보기')
+        doc: dashboard || PublishService.hasMapVariables(row.doc) ? await this.renderDashboard(row.map_id, row.doc) : row.doc,
         publishedAt: row.published_at,
         updatedAt: row.updated_at,
         locked: false as const,
@@ -933,6 +934,12 @@ export class PublishService {
       stats,
       ...social,
     };
+  }
+
+  /** 문서에 맵 변수 정의(map.settings.variables)가 있나 — 왼쪽 레일 '변수' (2026-10-29) */
+  private static hasMapVariables(doc: unknown): boolean {
+    const v = (doc as { map?: { settings?: { variables?: unknown } } } | null)?.map?.settings?.variables;
+    return Array.isArray(v) && v.length > 0;
   }
 
   /** 채우기가 없거나 실패하면 원문 — `[&amt]` 가 보이는 것은 "값이 아직 없다" 와 같다 */

@@ -306,3 +306,12 @@ export function ProTrialAdminPanel(_p: { t: ThemeTokens; token: string; onUnauth
   return null;
 }
 
+// 왼쪽 레일 '변수' — 유료 UI 가 없으면 DB 값이 없다(문서 안의 값만) — 2026-10-30
+export interface VarDbRow { name: string; value: string; updatedAt: string | null; updatedBy: string | null }
+export const proVarDb: null | {
+  load(mapId: string): Promise<VarDbRow[]>;
+  save(mapId: string, vars: Record<string, string>): Promise<void>;
+  remove(mapId: string, name: string): Promise<void>;
+  errorText(e: unknown): string;
+} = null;
+export function ProVariableApi(_p: { t: ThemeTokens; mapId: string; name: string; value: string }) { return null; }

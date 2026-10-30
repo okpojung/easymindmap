@@ -41,7 +41,8 @@ import { NoteViewerPopover } from './NoteViewerPopover';
 import { EdgeRenderer } from '@/editor/edge-renderer/EdgeRenderer';
 import { hasUnderline } from '@/editor/node-renderer/noShapeNode';
 import { applyMediaView } from '@/editor/node-renderer/mediaView';
-import { applyVariableView } from '@/utils/variables/mapVariables';
+import { applyVariableView, variableResults } from '@/utils/variables/mapVariables';
+import { useVarDbStore } from '@/stores/varDbStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { treeEdgePath } from '@/editor/edge-renderer/edgePaths';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
@@ -473,6 +474,17 @@ export function Canvas({
   // 변수 '값으로 보기' (2026-10-29) — 대시보드맵은 늘 값으로
   const varValueView = useEditorUiStore((s) => s.varValueView);
   const dashView = useCloudStore((s) => !!s.readOnlyInfo?.dashboard);
+  // DB 값(유료 모듈 dashboard_vars) — 일반맵의 값으로 보기도 DB 값을 쓴다 (2026-10-30 사용자 보고 ②)
+  const openMapId = useCloudStore((s) => s.cloudMapId ?? s.readOnlyInfo?.mapId ?? null);
+  const varDbRows = useVarDbStore((s) => (s.status === 'ok' ? s.rows : null));
+  const varDbMapId = useVarDbStore((s) => s.mapId);
+  useEffect(() => {
+    if ((varValueView || dashView) && openMapId) void useVarDbStore.getState().load(openMapId);
+  }, [varValueView, dashView, openMapId]);
+  const varDb = useMemo(
+    () => (varDbRows && varDbMapId === openMapId ? Object.fromEntries(Object.values(varDbRows).map((r) => [r.name, r.value])) : undefined),
+    [varDbRows, varDbMapId, openMapId],
+  );
   const nodes = useMemo(() => {
     // 맵 설정(레벨별 폰트)을 측정기에 주입 — 모든 레이아웃 전략의
     // sizeNodeForText()와 NodeRenderer가 같은 크기·글꼴을 쓴다.
@@ -480,10 +492,10 @@ export function Canvas({
     setLevelFontConfig(sample.settings?.levelFonts);
     setLevelShapeConfig(sample.settings?.levelShapes);
     // 그림만 담은 노드: 자동 태그·내용 접기를 화면용 사본으로 (mediaView, 2026-10-28 — 문서는 그대로)
-    const viewMap = varValueView || dashView ? applyVariableView(sample) : sample;
+    const viewMap = varValueView || dashView ? applyVariableView(sample, variableResults(sample, varDb)) : sample;
     return computeLayout(applyMediaView(viewMap), layoutType, CX, CY, { x: spacingX, y: spacingY });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sample, layoutType, CX, CY, spacingX, spacingY, codeEpoch, varValueView, dashView]);
+  }, [sample, layoutType, CX, CY, spacingX, spacingY, codeEpoch, varValueView, dashView, varDb]);
 
   // 첫 화면 pan — 트리·진행트리는 중심 주제 위 변이 HOME_TOP_GAP, 나머지는 원점 (homeArmed 효과·보호가 같이 쓴다)
   const homeWantY = useMemo(() => {

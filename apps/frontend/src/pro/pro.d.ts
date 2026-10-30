@@ -163,4 +163,15 @@ declare module '@pro' {
    * **[데이터 연결]** 패널 · 열쇠 관리. `mapId` 가 null 이면 아무것도 하지 않는다.
    */
   export function ProDashboardLive(p: { t: ThemeTokens; mapId: string | null }): JSX.Element | null;
+
+  // 왼쪽 레일 '변수' — DB(dashboard_vars) 값 읽기·쓰기와 변수마다 API 안내 (2026-10-30).
+  // 유료 UI 가 없으면 proVarDb 는 null — 패널은 문서 안의 값만 쓴다.
+  export interface VarDbRow { name: string; value: string; updatedAt: string | null; updatedBy: string | null }
+  export const proVarDb: null | {
+    load(mapId: string): Promise<VarDbRow[]>;
+    save(mapId: string, vars: Record<string, string>): Promise<void>;
+    remove(mapId: string, name: string): Promise<void>;
+    errorText(e: unknown): string;
+  };
+  export function ProVariableApi(p: { t: ThemeTokens; mapId: string; name: string; value: string }): JSX.Element | null;
 }

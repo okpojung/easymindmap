@@ -615,16 +615,37 @@ export class MapsService {
       params,
     );
     const m = rows[0];
-    // ★ **대시보드맵 → 일반맵** (2026-10-29 사용자 요청: "일반맵 → 대시보드맵 → 일반맵").
-    //   대시보드의 연결 주소(공개 링크)가 남아 있으면 문서함이 그 맵을 퍼블리싱 자리로 보낸다.
-    //   되돌린 맵은 원래 폴더에 있어야 하므로 링크를 **비공개(보관)** 로 돌린다 — 주소 자체는
-    //   지우지 않으니, 퍼블리싱 창에서 다시 공개하면 같은 주소가 살아난다.
-    if (cur.view_mode === DASHBOARD_VIEW_MODE && dto.viewMode !== undefined && dto.viewMode !== DASHBOARD_VIEW_MODE) {
+    // ★ **대시보드맵 ↔ 일반맵과 연결 주소** (2026-10-30 사용자 보고 ①⑤).
+    //   문서함은 '살아 있는 퍼블리싱 행'이 있으면 그 맵을 퍼블리싱 자리로 보낸다. 되돌린 맵은
+    //   원래 폴더에 있어야 하므로 되돌릴 때 대시보드 링크를 **닫는다**(unpublished_at).
+    //   단, 공개 중이던 링크는 visibility 를 'public' 그대로 두고 닫는다 — 사람의 [퍼블리싱 취소]는
+    //   공개 중에는 서버가 막으므로(publish.service unpublish) **'닫혔는데 public' 인 행은 되돌리기로
+    //   닫힌 대시보드 링크뿐**이다. 다시 대시보드맵으로 바꾸면 그 행을 되살려 **같은 주소**가
+    //   바로 열린다(사내 시스템에 붙여 둔 iframe 주소가 그대로 산다).
+    //   보관(비공개)이던 링크는 사람이 닫아 둔 것이라 되살리지 않는다(취소와 같다).
+    const toNormal = cur.view_mode === DASHBOARD_VIEW_MODE && dto.viewMode !== undefined && dto.viewMode !== DASHBOARD_VIEW_MODE;
+    const toDashboard = cur.view_mode !== DASHBOARD_VIEW_MODE && dto.viewMode === DASHBOARD_VIEW_MODE;
+    if (toNormal) {
       try {
         await this.db.query(
-          `UPDATE public.published_maps SET visibility = 'private'
-            WHERE map_id = $1 AND unpublished_at IS NULL AND visibility <> 'private'`, [mapId]);
-      } catch { /* visibility 칸이 없는 옛 서버 — 되돌리기 자체는 끝났다 */ }
+          `UPDATE public.published_maps SET unpublished_at = NOW()
+            WHERE map_id = $1 AND unpublished_at IS NULL`, [mapId]);
+      } catch { /* 퍼블리싱 표가 없는 서버 — 되돌리기 자체는 끝났다 */ }
+    }
+    if (toDashboard) {
+      try {
+        // 살아 있는 행이 없고, 이 맵의 **가장 최근** 행이 '되돌리기로 닫힌 공개 링크' 일 때만.
+        // 기준 시각 이전에 닫힌 행은 visibility 칸이 생기기 전(모두 public 으로 채워짐)의
+        // 사람 취소일 수 있어 건드리지 않는다.
+        await this.db.query(
+          `UPDATE public.published_maps p SET unpublished_at = NULL
+            WHERE p.map_id = $1 AND p.unpublished_at IS NOT NULL AND p.visibility = 'public'
+              AND p.price_krw IS NULL AND NOT p.listed
+              AND p.unpublished_at >= $2::timestamptz
+              AND NOT EXISTS (SELECT 1 FROM public.published_maps a WHERE a.map_id = p.map_id AND a.unpublished_at IS NULL)
+              AND NOT EXISTS (SELECT 1 FROM public.published_maps n WHERE n.map_id = p.map_id AND n.published_at > p.published_at)`,
+          [mapId, MapsService.DASHBOARD_PARK_SINCE]);
+      } catch { /* 옛 표(칸 없음) — 전환 자체는 끝났다. 링크는 퍼블리싱 창에서 새로 만든다 */ }
     }
     return {
       mapId: m.id,
@@ -1320,6 +1341,9 @@ export class MapsService {
       return doc;
     }
   }
+
+  /** 되돌리기로 닫힌 대시보드 링크를 되살리는 기준 시각 — 이 규칙이 생긴 날 (그 전 행은 사람 취소일 수 있다) */
+  private static readonly DASHBOARD_PARK_SINCE = '2026-10-30T00:00:00+09:00';
 
   /** 편집 잠금 하트비트 TTL — 이보다 오래 조용하면 죽은 세션으로 본다 */
   private static readonly EDIT_LOCK_TTL_MS = 60_000;

@@ -12,6 +12,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import type { ContentIndicator } from '@/editor/node-renderer/nodeContent';
 import { openAttachment } from '@/utils/openAttachment';
+import { isMarkdownName } from '@/utils/mdEditorUrl';
+import { MarkdownFileIcon } from '@/components/icons/MarkdownFileIcon';
 
 export function ChooserPopover({
   t, node, ind, onClose,
@@ -78,7 +80,8 @@ export function ChooserPopover({
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}
             >
-              {ind.icon} {it.label}{on ? ' ↗' : ''}
+              {ind.kind !== 'link' && isMarkdownName(it.label)
+                ? <MarkdownFileIcon size={14} /> : ind.icon} {it.label}{on ? ' ↗' : ''}
             </button>
           );
         })}

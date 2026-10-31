@@ -363,6 +363,43 @@ interface RegisteredFolder {
   방법이다. **저장 위치는 서버 운영의 문제, 내보내기는 사용자 소유의
   문제** 로 분리한다.
 
+### 7.4 마크다운 첨부 — 웹 편집기로 열어 고치기 (2026-10-31)
+
+서버 첨부 중 이름이 `.md`/`.markdown` 인 것은 PDF·사진처럼 "새 탭에서
+보기"가 아니라 **웹 마크다운 편집기로 열어 고치고 다시 저장**한다.
+
+| 무엇 | 어디 |
+|---|---|
+| 편집기 | `apps/frontend/public/md-editor/index.html` — [okpojung/markdown-editor](https://github.com/okpojung/markdown-editor) 의 **그대로 사본**(MIT). 출처 커밋·갱신 방법은 같은 폴더 `README.md` |
+| 서빙 | Vite 가 `public/` 을 `dist/` 루트로 복사 → `https://<프런트>/md-editor/` (nginx `try_files $uri $uri/`). **앱과 같은 origin** |
+| 여는 곳 | 첨부 탭 목록의 **파일 이름 클릭** · 캔버스 첨부 인디케이터(단수) · ChooserPopover(복수) — 모두 `openAttachment` |
+| 주소 | `/md-editor/?att=<id>&api=<API 베이스>&name=<파일 이름>#t=<액세스 토큰>` (`utils/mdEditorUrl.ts`) |
+
+* **토큰은 해시(`#t=`)에만 싣는다.** 쿼리는 서버 접근 로그·Referer 로
+  새어 나가지만 해시는 브라우저 밖으로 나가지 않는다. 편집기는 같은
+  origin 이라 localStorage `emm.auth` 의 토큰을 먼저 읽고(앱이 갱신해 둔
+  최신 값), 없을 때만 `#t=` 를 쓴다.
+* **팝업 차단을 피하는 수는 PDF·사진과 같다** — 클릭 제스처 안에서
+  `window.open('', '_blank')` 로 빈 창을 먼저 열고, 토큰을 고른 뒤
+  주소를 넣는다. `noopener` 를 붙이지 않는다 — 저장 알림을 받아야 한다.
+* 편집기의 읽기는 `GET /v1/attachments/:id`(Bearer), 저장은
+  **`PUT /v1/attachments/:id/content`**(Bearer · 원문 바디 ·
+  `If-Match: "sha256:<불러온 내용의 hex>"`). 다른 곳에서 먼저 고쳤으면
+  409 → 편집기가 덮어쓸지 묻는다. 403 이면 읽기 전용으로 바뀐다.
+  **저장 경로는 백엔드 별도 PR 이다** — 그 PR 이 배포되기 전에는 열기·
+  읽기만 되고 저장은 서버 오류로 안내된다.
+* 저장에 성공하면 편집기가 opener 로
+  `postMessage({type:"mde:attachment-saved", att, sizeBytes}, origin)` 을
+  보낸다. 앱은 **같은 origin 의 메시지만** 받아 그 첨부를 가리키는 모든
+  항목의 `size` 를 고친다(상태바 "첨부 용량"이 이 값을 센다 — §4.1).
+  이 갱신은 되돌리기에 쌓지 않는다(서버 파일은 이미 바뀌었다).
+* 아이콘 — `.md`/`.markdown` 첨부는 문서 + 주황 **MD** 글자 SVG
+  (`components/icons/MarkdownFileIcon.tsx`). 캔버스 인디케이터는 그 노드의
+  문서 첨부가 **전부** 마크다운일 때만 MD 아이콘이고, 섞여 있으면 기존
+  클립 배지다(한 칸에 한 아이콘).
+* 내장(data URL)·blob 첨부인 `.md` 는 지금처럼 텍스트로 새 탭에서 연다 —
+  편집기가 저장할 서버 자리가 없다.
+
 ---
 
 ## 8. 요금제·용량 정책 (2026-08-06 확정 — 가격 미정)

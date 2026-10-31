@@ -61,6 +61,8 @@ import { setHistoryPaused } from '@/stores/documentStore';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import { hasForeignMapMarker, stripForeignMapMarkers } from '@/utils/foreignClipboard';
 import { openAttachment } from '@/utils/openAttachment';
+import { isMarkdownName } from '@/utils/mdEditorUrl';
+import { MarkdownFileGlyph } from '@/components/icons/MarkdownFileIcon';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 import { useImageSrcResolver } from '@/utils/imageSrc';
 import { useTr } from '@/i18n';
@@ -1546,6 +1548,9 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                 ) : isNoteKind(ic.kind) ? (
                   // 노트 종류별 배지 글리프 — 문단 T / 코드 C / 표 ⊞ / 체크 ✓
                   <NoteTypeGlyph kind={ic.kind} size={icSize + 2} />
+                ) : ic.kind === 'file' && ic.items.length > 0 && ic.items.every((it) => isMarkdownName(it.label)) ? (
+                  // 마크다운 첨부만 있으면 클립 대신 MD 문서 아이콘 (2026-10-31)
+                  <MarkdownFileGlyph size={icSize + 2} />
                 ) : ic.kind === 'link' || ic.kind === 'file' ? (
                   // 이모지 대신 진한 SVG 글리프(지구본+체인 / 클립) —
                   // OS에 따라 흐리게 렌더링되는 문제 해소

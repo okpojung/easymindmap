@@ -327,6 +327,13 @@ interface DocumentState {
     attachment: Omit<NodeAttachment, 'id'>,
   ) => void;
   removeNodeAttachment: (nodeId: string | null, attachmentId: string) => void;
+  /**
+   * 서버 첨부(`/v1/attachments/{id}`)의 내용이 밖(마크다운 편집기 창)에서
+   * 저장돼 크기가 바뀌었을 때 — 그 첨부를 가리키는 항목의 `size` 를 고친다.
+   * 상태바 첨부 용량이 이 값을 센다. 되돌리기에는 쌓지 않는다(내용은 이미
+   * 서버에 저장됐고, 되돌려도 서버 파일은 그대로다).
+   */
+  setServerAttachmentSize: (serverId: string, size: number) => void;
 
   /**
    * **연결 맵** (2026-10-14) — 노드(또는 둘째 이후 중심주제)를 다른 맵에 연결하거나
@@ -2322,6 +2329,38 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
         attachments: (n.attachments ?? []).filter((a) => a.id !== attachmentId),
       })),
     }));
+  },
+
+  setServerAttachmentSize: (serverId, size) => {
+    let changed = false;
+    const fix = <T extends { attachments?: NodeAttachment[]; children?: T[] }>(n: T): T => {
+      const atts = n.attachments?.map((a) => {
+        // 절대 URL·상대 경로 모두 (apiClient.serverAttachmentId 와 같은 판정 —
+        // 그쪽을 import 하면 저장소 ↔ 인증 사슬이 엉킨다)
+        const id = /\/v1\/attachments\/([^/?#]+)/.exec(a.url ?? '')?.[1];
+        if (a.size === size || id !== serverId) return a;
+        changed = true;
+        return { ...a, size };
+      });
+      const kids = n.children?.map(fix);
+      return { ...n, ...(atts ? { attachments: atts } : {}), ...(kids ? { children: kids } : {}) };
+    };
+    const map = get().map;
+    const next: SampleMap = {
+      ...map,
+      root: fix(map.root as unknown as MindNode) as unknown as SampleRoot,
+      branches: map.branches.map((b) => fix(b as unknown as MindNode)) as unknown as SampleBranch[],
+      ...(map.centers ? {
+        centers: map.centers.map((c) => ({
+          ...c,
+          root: fix(c.root as unknown as MindNode) as unknown as SampleRoot,
+          branches: c.branches.map((b) => fix(b as unknown as MindNode)) as unknown as SampleBranch[],
+        })),
+      } : {}),
+    };
+    if (!changed) return;
+    historyPaused = true;
+    try { set({ map: next }); } finally { historyPaused = false; }
   },
   });
 });

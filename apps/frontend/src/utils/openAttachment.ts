@@ -8,8 +8,14 @@
 //     (브라우저 다운로드 항목에서 "항상 열기"를 켜 두면 클릭 한 번으로
 //     오피스가 열린다. 서버 저장 연결 후에는 Office 뷰어 연동 예정 —
 //     docs/03-editor-core/node/04-node-content.md)
+//   · 서버 첨부 중 마크다운(.md/.markdown)은 **웹 마크다운 편집기**
+//     (`/md-editor/`, public/md-editor)로 새 탭에서 연다 — 읽고 고쳐
+//     서버에 다시 저장한다 (2026-10-31, docs/04-extensions/attachment-storage.md).
 
-import { attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClient';
+import { attachmentFetchUrl, cloudApiBase, serverAttachmentId } from '@/services/cloud/apiClient';
+import { getFreshAccessToken } from '@/stores/authStore';
+import { useDocumentStore } from '@/stores/documentStore';
+import { isMarkdownName, mdEditorUrl, MD_SAVED_MESSAGE } from './mdEditorUrl';
 
 const VIEWABLE_MIME = /^(application\/pdf|image\/|text\/|audio\/|video\/)/;
 
@@ -79,6 +85,40 @@ function openTyped(blob: Blob, name: string, preOpened?: Window | null) {
   }
 }
 
+// 편집기 창이 저장하면 opener(이 창)로 알려 온다 — 그 첨부의 크기(size)를
+// 고쳐 상태바 첨부 용량이 맞게 한다. 리스너는 처음 편집기를 열 때 한 번만 단다.
+let mdSavedListening = false;
+function listenMdSaved() {
+  if (mdSavedListening || typeof window === 'undefined') return;
+  mdSavedListening = true;
+  window.addEventListener('message', (e: MessageEvent) => {
+    // 편집기는 같은 origin 에서만 뜬다 — 다른 출처의 같은 모양 메시지는 무시
+    if (e.origin !== window.location.origin) return;
+    const d = e.data as { type?: unknown; att?: unknown; sizeBytes?: unknown } | null;
+    if (!d || d.type !== MD_SAVED_MESSAGE || typeof d.att !== 'string') return;
+    if (typeof d.sizeBytes !== 'number' || !(d.sizeBytes >= 0)) return;
+    useDocumentStore.getState().setServerAttachmentSize(d.att, d.sizeBytes);
+  });
+}
+
+/**
+ * 서버 마크다운 첨부 → 같은 origin 의 웹 편집기(`/md-editor/`)를 새 탭에서
+ * 연다 (2026-10-31). 토큰을 고르는 비동기 사이에 팝업이 막히지 않게
+ * **클릭 제스처 안에서 빈 창을 먼저** 연다(PDF·사진과 같은 수).
+ * opener 를 끊지 않는다(`noopener` 없음) — 저장 알림 postMessage 를 받아야 한다.
+ */
+function openMarkdownEditor(att: string, name: string) {
+  listenMdSaved();
+  const win = window.open('', '_blank');
+  getFreshAccessToken()
+    .catch(() => null)
+    .then((token) => {
+      const u = mdEditorUrl({ att, api: cloudApiBase, name, token });
+      if (win) win.location.href = u;
+      else window.open(u, '_blank');
+    });
+}
+
 export function openAttachment(name: string, url?: string): void {
   if (!url) return;
 
@@ -99,7 +139,13 @@ export function openAttachment(name: string, url?: string): void {
   //
   // 오피스처럼 브라우저가 못 여는 형식만 예전처럼 받아서 다운로드한다
   // (그쪽은 애초에 통째로 내려받는 것이 목적이다).
-  if (serverAttachmentId(url)) {
+  const attId = serverAttachmentId(url);
+  if (attId && isMarkdownName(name)) {
+    openMarkdownEditor(attId, name);
+    return;
+  }
+
+  if (attId) {
     const extMime = EXT_MIME[extOf(name)] || '';
     if (VIEWABLE_MIME.test(extMime)) {
       const win = window.open('', '_blank');

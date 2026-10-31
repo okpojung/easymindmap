@@ -15,7 +15,7 @@ import {
 } from '@/utils/clipboardRead';
 import { cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { InspectorSection } from './InspectorSection';
-import { openAttachment } from '@/utils/openAttachment';
+import { openAttachment, type AttachmentRef } from '@/utils/openAttachment';
 import { isMarkdownName } from '@/utils/mdEditorUrl';
 import { MarkdownFileIcon } from '@/components/icons/MarkdownFileIcon';
 import { useTr } from '@/i18n';
@@ -185,6 +185,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
             <AttachmentRow key={a.id} t={t}
               icon={isMarkdownName(a.name) ? <MarkdownFileIcon size={16} /> : '📄'}
               name={a.name} url={a.url}
+              attRef={selectedId ? { nodeId: selectedId, attachmentId: a.id } : undefined}
               onRemove={() => selectedId && removeAttachment(a)} />
           ))}
         </div>
@@ -207,6 +208,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
           {media.map((a) => (
             <AttachmentRow key={a.id} t={t}
               icon={a.kind === 'audio' ? '🎤' : a.kind === 'video' ? '🎬' : '🖼'} name={a.name} url={a.url}
+              attRef={selectedId ? { nodeId: selectedId, attachmentId: a.id } : undefined}
               onRemove={() => selectedId && removeAttachment(a)} />
           ))}
         </div>
@@ -349,8 +351,8 @@ function addBtnStyle(t: ThemeTokens) {
   };
 }
 
-function AttachmentRow({ t, icon, name, url, onRemove }: {
-  t: ThemeTokens; icon: ReactNode; name: string; url?: string; onRemove: () => void;
+function AttachmentRow({ t, icon, name, url, attRef, onRemove }: {
+  t: ThemeTokens; icon: ReactNode; name: string; url?: string; attRef?: AttachmentRef; onRemove: () => void;
 }) {
   const tr = useTr();
   // 이름을 누르면 연다 (2026-10-31) — md 는 웹 마크다운 편집기, 그 밖은
@@ -367,7 +369,7 @@ function AttachmentRow({ t, icon, name, url, onRemove }: {
         type="button"
         data-testid="attachment-open"
         disabled={!url}
-        onClick={() => openAttachment(name, url)}
+        onClick={() => openAttachment(name, url, attRef)}
         title={md ? tr('inspector.content.openInMdEditor') : tr('inspector.content.openInNewTab')}
         style={{
           flex: 1, minWidth: 0, fontSize: 11.5, color: t.text, fontWeight: 500,

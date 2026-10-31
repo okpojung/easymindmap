@@ -15,6 +15,9 @@ import {
 } from '@/utils/clipboardRead';
 import { cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { InspectorSection } from './InspectorSection';
+import { openAttachment } from '@/utils/openAttachment';
+import { isMarkdownName } from '@/utils/mdEditorUrl';
+import { MarkdownFileIcon } from '@/components/icons/MarkdownFileIcon';
 import { useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
@@ -179,7 +182,9 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
       <InspectorSection t={t} title={tr('inspector.content.attachDocs')}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {docs.map((a) => (
-            <AttachmentRow key={a.id} t={t} icon="📄" name={a.name}
+            <AttachmentRow key={a.id} t={t}
+              icon={isMarkdownName(a.name) ? <MarkdownFileIcon size={16} /> : '📄'}
+              name={a.name} url={a.url}
               onRemove={() => selectedId && removeAttachment(a)} />
           ))}
         </div>
@@ -201,7 +206,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
           {media.map((a) => (
             <AttachmentRow key={a.id} t={t}
-              icon={a.kind === 'audio' ? '🎤' : a.kind === 'video' ? '🎬' : '🖼'} name={a.name}
+              icon={a.kind === 'audio' ? '🎤' : a.kind === 'video' ? '🎬' : '🖼'} name={a.name} url={a.url}
               onRemove={() => selectedId && removeAttachment(a)} />
           ))}
         </div>
@@ -344,21 +349,32 @@ function addBtnStyle(t: ThemeTokens) {
   };
 }
 
-function AttachmentRow({ t, icon, name, onRemove }: {
-  t: ThemeTokens; icon: string; name: string; onRemove: () => void;
+function AttachmentRow({ t, icon, name, url, onRemove }: {
+  t: ThemeTokens; icon: ReactNode; name: string; url?: string; onRemove: () => void;
 }) {
   const tr = useTr();
+  // 이름을 누르면 연다 (2026-10-31) — md 는 웹 마크다운 편집기, 그 밖은
+  // openAttachment 정책 그대로(PDF·사진은 새 탭, 오피스는 내려받기).
+  const md = isMarkdownName(name);
   return (
-    <div style={{
+    <div data-testid="attachment-row" style={{
       display: 'flex', alignItems: 'center', gap: 8,
       padding: '6px 8px',
       background: t.surface, border: `1px solid ${t.border}`, borderRadius: 5,
     }}>
-      <span style={{ fontSize: 14 }}>{icon}</span>
-      <div style={{
-        flex: 1, minWidth: 0, fontSize: 11.5, color: t.text, fontWeight: 500,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{name}</div>
+      <span style={{ fontSize: 14, display: 'flex' }}>{icon}</span>
+      <button
+        type="button"
+        data-testid="attachment-open"
+        disabled={!url}
+        onClick={() => openAttachment(name, url)}
+        title={md ? tr('inspector.content.openInMdEditor') : tr('inspector.content.openInNewTab')}
+        style={{
+          flex: 1, minWidth: 0, fontSize: 11.5, color: t.text, fontWeight: 500,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          background: 'none', border: 'none', padding: 0, textAlign: 'left',
+          fontFamily: 'inherit', cursor: url ? 'pointer' : 'default',
+        }}>{name}</button>
       <button onClick={onRemove} title={tr('inspector.content.removeAttachment')} style={{
         background: 'none', border: 'none', cursor: 'pointer',
         color: t.textMuted, padding: 2, display: 'flex',

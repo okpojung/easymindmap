@@ -11,11 +11,19 @@
 //   · 서버 첨부 중 마크다운(.md/.markdown)은 **웹 마크다운 편집기**
 //     (`/md-editor/`, public/md-editor)로 새 탭에서 연다 — 읽고 고쳐
 //     서버에 다시 저장한다 (2026-10-31, docs/04-extensions/attachment-storage.md).
+//   · 맵 **내장** 마크다운(data URL, ≤2MB — 대부분의 .md 첨부)도 같은 편집기로
+//     연다. 편집기는 내장 바이트를 못 읽으므로 이 탭이 postMessage 로 건네고
+//     저장을 받아 맵에 되쓴다 (mdEmbedBridge.ts, 같은 문서 §7.5).
 
 import { attachmentFetchUrl, cloudApiBase, serverAttachmentId } from '@/services/cloud/apiClient';
 import { getFreshAccessToken } from '@/stores/authStore';
+import { useCloudStore } from '@/stores/cloudStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { isMarkdownName, mdEditorUrl, MD_SAVED_MESSAGE } from './mdEditorUrl';
+import {
+  createMdEmbedHandler, dataUrlText, embeddedAttachmentKey, embeddedMdEditorUrl,
+  embeddedSizeOf, embedLimitError, markdownDataUrl,
+} from './mdEmbedBridge';
 
 const VIEWABLE_MIME = /^(application\/pdf|image\/|text\/|audio\/|video\/)/;
 
@@ -119,8 +127,88 @@ function openMarkdownEditor(att: string, name: string) {
     });
 }
 
-export function openAttachment(name: string, url?: string): void {
+/** 첨부를 가리키는 자리 — 알면 넘긴다(인스펙터). 모르면 url 로 맵에서 찾는다 */
+export interface AttachmentRef { nodeId: string; attachmentId: string }
+
+type AttNode = { id: string; attachments?: { id: string; url?: string; size?: number }[]; children?: AttNode[] };
+
+/** 맵의 모든 노드(첫 중심·가지·둘째 이후 중심) */
+function eachNode(visit: (n: AttNode) => void) {
+  const map = useDocumentStore.getState().map as unknown as {
+    root: AttNode; branches: AttNode[]; centers?: { root: AttNode; branches: AttNode[] }[];
+  };
+  const walk = (n: AttNode) => { visit(n); for (const c of n.children ?? []) walk(c); };
+  walk(map.root);
+  map.branches.forEach(walk);
+  for (const c of map.centers ?? []) { walk(c.root); c.branches.forEach(walk); }
+}
+
+function findAttachment(ref: AttachmentRef | undefined, url: string): { nodeId: string; att: { id: string; url?: string } } | null {
+  let hit: { nodeId: string; att: { id: string; url?: string } } | null = null;
+  eachNode((n) => {
+    if (hit) return;
+    for (const a of n.attachments ?? []) {
+      if (ref ? (n.id === ref.nodeId && a.id === ref.attachmentId) : a.url === url) { hit = { nodeId: n.id, att: a }; return; }
+    }
+  });
+  return hit;
+}
+
+function embeddedMapBytes(): number {
+  let total = 0;
+  eachNode((n) => { for (const a of n.attachments ?? []) total += embeddedSizeOf(a.url); });
+  return total;
+}
+
+/**
+ * 맵 내장 마크다운 → 같은 origin 의 편집기를 새 탭으로 (2026-10-31).
+ * **클릭 제스처 안에서 바로** 연다(비동기 없음 — 팝업 차단을 피한다). opener 를
+ * 끊지 않는다 — 편집기가 opener 로 hello/save 를 보낸다. 리스너는 창이 닫히면
+ * 정리한다(1초마다 `closed` 확인). 같은 첨부를 다시 누르면 새 창이 하나 더 뜬다.
+ */
+function openEmbeddedMarkdown(nodeId: string, attachmentId: string, name: string) {
+  const key = embeddedAttachmentKey(nodeId, attachmentId);
+  const win = window.open(embeddedMdEditorUrl(key, name), '_blank');
+  if (!win) return;
+  const current = () => findAttachment({ nodeId, attachmentId }, '')?.att ?? null;
+  const onMessage = createMdEmbedHandler({
+    key,
+    origin: window.location.origin,
+    read: () => {
+      const u = current()?.url;
+      return u?.startsWith('data:') ? dataUrlText(u) : null;
+    },
+    readOnly: () => !!useCloudStore.getState().readOnlyInfo,
+    write: (markdown) => {
+      const att = current();
+      if (!att?.url?.startsWith('data:')) return { ok: false, error: '맵에서 이 첨부를 찾을 수 없습니다 (지워졌거나 다른 맵을 열었습니다).' };
+      const next = markdownDataUrl(markdown, att.url);
+      const err = embedLimitError(next.size, embeddedSizeOf(att.url), embeddedMapBytes());
+      if (err) return { ok: false, error: err };
+      const ok = useDocumentStore.getState().replaceEmbeddedAttachment(nodeId, attachmentId, next.url, next.size);
+      return ok ? { ok: true } : { ok: false, error: '맵에서 이 첨부를 찾을 수 없습니다.' };
+    },
+  });
+  const listener = (e: MessageEvent) => {
+    if (e.source !== win) return; // 이 창이 보낸 것만
+    onMessage({ origin: e.origin, data: e.data, source: win });
+  };
+  window.addEventListener('message', listener);
+  const timer = window.setInterval(() => {
+    if (!win.closed) return;
+    window.clearInterval(timer);
+    window.removeEventListener('message', listener);
+  }, 1000);
+}
+
+export function openAttachment(name: string, url?: string, ref?: AttachmentRef): void {
   if (!url) return;
+
+  // 맵 내장 마크다운 → 웹 편집기 (opener 다리)
+  if (url.startsWith('data:') && isMarkdownName(name)) {
+    const hit = findAttachment(ref, url);
+    if (hit) { openEmbeddedMarkdown(hit.nodeId, hit.att.id, name); return; }
+  }
 
   // ── 서버 첨부 저장소(B9) ────────────────────────────────────────
   //

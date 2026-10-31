@@ -1537,7 +1537,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                     if (single?.url) openMapInNewTab(single.url);
                     return;
                   }
-                  if (single) openAttachment(single.label, single.url);
+                  if (single) openAttachment(single.label, single.url, single.id ? { nodeId: n.id, attachmentId: single.id } : undefined);
                 }}
                 onDoubleClick={(e) => e.stopPropagation()}
               >

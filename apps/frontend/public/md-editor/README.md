@@ -8,8 +8,8 @@
 |---|---|
 | 출처 저장소 | <https://github.com/okpojung/markdown-editor> |
 | 파일 | `index.html` (단일 파일 편집기) |
-| 커밋 | `38d2f32750fd117ffd283ee21ef7689a8d6be0b8` |
-| sha256 | `c56da07a02609e51bcc2301f510f750c95ef4b7517f05f5ec6cffcc898dc834f` |
+| 커밋 | `b81655299b9a98152bfda5ed8f7bb65d6537a939` (2026-10-31 갱신 — "맵 내장 첨부" 모드. 이전 `38d2f32`) |
+| sha256 | `a06fe45f46951c209779768b22a0b8f9157f2961d764271bb329165c16f251e0` |
 | 라이선스 | MIT — 아래 고지 |
 
 ## 어떻게 서빙되나
@@ -33,6 +33,20 @@ Vite 는 `public/` 을 빌드 결과(`dist/`) 루트로 그대로 복사한다. 
 - 저장하면 opener 로 `postMessage({type:"mde:attachment-saved", att, sizeBytes}, origin)`
   를 보내고, 앱은 그 첨부의 `size` 를 고친다(상태바 첨부 용량).
 
+맵 **내장** 첨부(data URL, ≤2MB — 대부분의 `.md`)는 서버 자리가 없으므로
+편집기를 연 앱 탭(opener)이 내용을 건네고 저장을 받는다
+(`src/utils/mdEmbedBridge.ts` · `openAttachment.ts`).
+
+```
+/md-editor/?src=opener&key=<노드 id>~<첨부 id>&name=<파일 이름>
+```
+
+- 편집기 → 앱 `{type:"mde:hello", key}` (0.5초 간격 최대 10초) → 앱 → 편집기
+  `{type:"mde:load", key, markdown, readOnly}`
+- 편집기 → 앱 `{type:"mde:save", key, markdown, reqId}` → 앱 → 편집기
+  `{type:"mde:saved", key, reqId, ok}` (실패면 `ok:false, error`)
+- 보낼 때 targetOrigin = `location.origin`, 받을 때 `event.origin === location.origin`.
+
 편집 부품(Toast UI Editor·CodeMirror·Mermaid)은 **jsDelivr CDN** 에서 받는다.
 CDN 을 못 쓰는 환경에서는 편집기가 원문 텍스트 상자로 물러난다(편집기 자체 동작).
 
@@ -53,8 +67,8 @@ git init -q /tmp/mde && git -C /tmp/mde fetch -q --depth 1 https://github.com/ok
 ```
 
 그다음 위 표의 **커밋·sha256** 을 고치고, 편집기의 계약(쿼리 이름·저장 경로·
-메시지 이름)이 바뀌었으면 `src/utils/mdEditorUrl.ts` 와
-`docs/04-extensions/attachment-storage.md` §7.4 도 함께 고친다.
+메시지 이름)이 바뀌었으면 `src/utils/mdEditorUrl.ts` · `src/utils/mdEmbedBridge.ts` 와
+`docs/04-extensions/attachment-storage.md` §7.4 · §7.5 도 함께 고친다.
 
 ## MIT 라이선스 고지
 

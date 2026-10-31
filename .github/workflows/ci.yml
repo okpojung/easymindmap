@@ -232,6 +232,11 @@ jobs:
       #   맵은 멀쩡해 보인다) 여기서 막는다 (27b §5.1).
       - name: 유료 미리보기 자르기(trim-for-preview) 단위 테스트
         run: npm run test:trim
+      # 첨부 내용 덮어쓰기(PUT /v1/attachments/:id/content, 2026-10-31) — 원래 바이트
+      # 본문이 전역 json 파서와 부딪치지 않는지, 권한·충돌·쿼터·형식 판정,
+      # CORS preflight(PUT + If-Match)까지 진짜 HTTP 로 본다. DB 없이 돈다.
+      - name: 첨부 내용 덮어쓰기(attachment-content) 단위 테스트
+        run: npm run test:attachment-content
       - name: DB 스키마 로드 (shim → schema → functions → seed)
         env:
           PGPASSWORD: emm

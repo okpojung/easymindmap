@@ -396,8 +396,44 @@ interface RegisteredFolder {
   (`components/icons/MarkdownFileIcon.tsx`). 캔버스 인디케이터는 그 노드의
   문서 첨부가 **전부** 마크다운일 때만 MD 아이콘이고, 섞여 있으면 기존
   클립 배지다(한 칸에 한 아이콘).
-* 내장(data URL)·blob 첨부인 `.md` 는 지금처럼 텍스트로 새 탭에서 연다 —
-  편집기가 저장할 서버 자리가 없다.
+* 맵 **내장**(data URL) `.md` 는 §7.5 — 같은 편집기를 opener 다리로 연다.
+  blob 첨부(비로그인 2MB 초과, 이 세션에서만 유효)인 `.md` 는 지금처럼
+  텍스트로 새 탭에서 연다.
+
+### 7.5 맵 내장 마크다운 첨부 — opener 다리 (2026-10-31)
+
+2MB 이하 첨부는 서버에 올리지 않고 맵 안에 data URL 로 **내장**한다
+(§7.2, `utils/attachmentFile.ts`). 그래서 대부분의 `.md` 첨부는 내장이고,
+§7.4 만으로는 pro-dev 에서 내장 `.md` 를 눌러도 편집기가 아니라 `blob:`
+원문 텍스트 탭이 열렸다 (2026-10-31 사용자 보고). 편집기는 내장 바이트를
+직접 못 읽으므로 **편집기를 연 앱 탭(opener)이 건네고 받는다.**
+
+| 무엇 | 값 |
+|---|---|
+| 주소 | `/md-editor/?src=opener&key=<노드 id>~<첨부 id>&name=<파일 이름>` — 토큰·API 없음 (`utils/mdEmbedBridge.ts` `embeddedMdEditorUrl`) |
+| 편집기 → 앱 | `{type:"mde:hello", key}` — 0.5초 간격, 최대 10초 |
+| 앱 → 편집기 | `{type:"mde:load", key, markdown, readOnly}` — `markdown` 은 내장 바이트의 UTF-8 문자열(BOM 제거) |
+| 편집기 → 앱 | `{type:"mde:save", key, markdown, reqId}` |
+| 앱 → 편집기 | `{type:"mde:saved", key, reqId, ok:true}` 또는 `{…, ok:false, error:"<한국어 이유>"}` |
+| 출처 | 보낼 때 targetOrigin = `location.origin`, 받을 때 `event.origin === location.origin` **그리고** `event.source` 가 그 편집기 창 |
+
+* **여는 곳은 §7.4 와 같다** — 첨부 탭 이름 클릭(노드 id·첨부 id 를 넘긴다)·
+  캔버스 인디케이터(단수)·ChooserPopover(복수). 인디케이터 항목에도 첨부
+  id 를 실어 같은 항목을 가리킨다. id 를 모르면 url 이 같은 첫 첨부를 찾는다.
+* **클릭 제스처 안에서 바로** `window.open(주소, '_blank')` — 비동기가 없어
+  빈 창을 먼저 열 필요가 없다. `noopener` 를 붙이지 않는다.
+* **저장** — `replaceEmbeddedAttachment(nodeId, 첨부 id, dataUrl, size)`:
+  같은 항목(id·이름·종류)을 두고 `url`·`size` 만 바꾼다. MIME 은 원래 것을
+  지킨다(없으면 `text/markdown`). 평소 편집처럼 **되돌리기 한 단계**로 쌓이고,
+  자동저장이 미저장 편집으로 센다(평소 저장·자동저장 흐름 그대로).
+* **거절** (`ok:false`) — 맵이 읽기 전용(`readOnlyInfo` — 열람자·다른 세션이
+  편집 중·대시보드 보기 등)이면 load 의 `readOnly:true` 로 알리고 save 도
+  거절한다. 첨부 하나 **2MB**·맵 합계 **10MB**(이 첨부의 옛 내용을 빼고 셈)를
+  넘으면 이유를 돌려준다. 그 첨부가 맵에서 사라졌으면 load 를 보내지 않고
+  (편집기가 10초 뒤 안내) save 는 거절한다.
+* **정리** — 리스너는 편집기 창마다 하나, 1초마다 `win.closed` 를 보고 닫히면
+  뗀다. 같은 첨부를 다시 누르면 새 창이 하나 더 뜬다(각자 같은 키로 동작).
+* 단위 `src/utils/mdEmbedBridge.test.ts` (test:unit 체인) — test-catalog e2e355.
 
 ---
 

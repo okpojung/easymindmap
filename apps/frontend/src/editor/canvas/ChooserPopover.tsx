@@ -63,7 +63,7 @@ export function ChooserPopover({
                 if (ind.kind === 'link') {
                   if (it.url) window.open(it.url, '_blank', 'noopener');
                 } else {
-                  openAttachment(it.label, it.url);
+                  openAttachment(it.label, it.url, it.id ? { nodeId: node.id, attachmentId: it.id } : undefined);
                 }
                 onClose();
               }}

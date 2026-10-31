@@ -16,6 +16,7 @@ import {
   UseGuards,
   UseInterceptors,
   BadRequestException,
+  UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UPLOAD_LIMITS } from '../common/upload-limits';
@@ -26,6 +27,7 @@ import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorato
 import type { AppEnv } from '../config/env.validation';
 import { AttachmentsService } from './attachments.service';
 import { ChunkUploadService } from './chunk-upload.service';
+import { isTextContentType, readBodyLimited } from './content-edit';
 
 /**
  * `Range: bytes=시작-끝` 한 구간만 해석한다 (RFC 9110 §14.1.1).
@@ -282,6 +284,36 @@ export class AttachmentsController {
     @Res() res: Response,
   ) {
     await sendAttachment(req, res, (range) => this.attachments.open(user.id, id, range));
+  }
+
+  /**
+   * **첨부 내용 덮어쓰기** (2026-10-31) — 웹 마크다운 편집기의 저장.
+   *
+   * 본문은 **JSON 이 아니라 원래 바이트**다(`Content-Type: text/*`).
+   * 전역 json 파서는 `application/json` 만 읽으므로 이 본문은 건드리지
+   * 않고 지나온다 — 여기서 스트림을 직접, ATTACHMENT_MAX_MB 까지만 읽는다.
+   * 그래서 `text/*` 가 아니면 읽기 전에 415 다 (json 파서가 이미 삼킨
+   * 본문을 빈 내용으로 저장하는 일이 없게).
+   *
+   * 선택 `If-Match: "sha256:<hex>"` — 불러온 원본과 지금 저장된 것이
+   * 다르면 409 `{ error: 'conflict', currentSha256 }`.
+   */
+  @Put(':id/content')
+  async replaceContent(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    if (!isTextContentType(req.headers['content-type'])) {
+      throw new UnsupportedMediaTypeException(
+        '본문은 Content-Type: text/markdown (또는 text/plain 등 text/*) 의 원래 바이트로 보내 주세요.',
+      );
+    }
+    if (req.readableEnded || (req as { body?: unknown }).body instanceof Buffer) {
+      throw new BadRequestException('본문을 읽을 수 없습니다.');
+    }
+    const bytes = await readBodyLimited(req, this.maxBytes);
+    return this.attachments.replaceContent(user.id, id, bytes, req.headers['if-match']);
   }
 
   @Delete(':id')

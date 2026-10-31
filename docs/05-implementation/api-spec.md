@@ -50,7 +50,7 @@
 - 격리: 모든 쿼리가 `owner_id = 현재 사용자` 조건 (RLS 는 2차 방어선 —
   API 는 pg 직결이라 RLS 를 타지 않는다).
 
-### 실제 엔드포인트 전체 표 — 36개 (maps 11 · folders 4 · attachments 5 · account 8 · health 2 · nodes 6)
+### 실제 엔드포인트 전체 표 — 37개 (maps 11 · folders 4 · attachments 6 · account 8 · health 2 · nodes 6)
 
 | # | 메서드 | 경로 | 설명 |
 |---|---|---|---|
@@ -77,6 +77,7 @@
 | 17 | GET | `/v1/attachments/quota` | 쿼터 사용량 조회 → `{dbBytes,fileBytes,usedBytes,quotaBytes,plan}`. 합산 = 문서 DB + 첨부. `plan` 은 `free`\|`basic`\|`pro`\|`team` — **용량 숫자는 DB 가 정하고 API 는 이름만 전달한다** |
 | 18 | GET | `/v1/attachments/:id` | 다운로드(스트림, `?access_token=` 허용) |
 | 19 | DELETE | `/v1/attachments/:id` | 삭제 → 204. **내 것이거나 그 맵에 쓸 수 있는 사람**이면 된다 (2026-09-05 — 협업맵의 첨부는 맵 주인 것이라, 올린 참가자가 노드에서 뗄 때 파일도 지우려면 편집 권한으로 열어야 한다). 읽기만 참가자·남은 404 |
+| 19a | PUT | `/v1/attachments/:id/content` | **첨부 내용 덮어쓰기** (2026-10-31) — 노드에 붙인 .md 를 웹 마크다운 편집기(새 탭)에서 고쳐 **같은 id 로** 저장한다(문서 JSON 안의 `/v1/attachments/<id>` 주소가 그대로). 본문은 **JSON 이 아니라 원래 바이트**, `Content-Type: text/markdown; charset=utf-8` 등 **`text/*` 만**(아니면 415 — 전역 json 파서가 본문을 삼키기 전에 거절). 인증은 18번과 같다(`Authorization: Bearer` 또는 `?access_token=`). 대상은 이름 확장자 `.md`·`.markdown`·`.txt` 이거나 DB mime 이 `text/*` 인 첨부만(아니면 **415**). 쓰기 기준은 19번과 같다(첨부 소유자 · 맵 주인 · 편집 참가자) — **읽기만 참가자 403**, 볼 수 없거나 없음 404. 선택 **`If-Match: "sha256:<hex>"`**(불러온 원본 바이트의 SHA-256) — 지금 저장된 바이트와 다르면 **409 `{error:"conflict", currentSha256, message}`**, 형식이 틀리면 400, 없거나 `*` 면 검사 없이 덮어쓴다. 크기 상한 `ATTACHMENT_MAX_MB`(413), 쿼터는 **늘어난 만큼만** 첨부 주인(협업맵이면 맵 주인) 몫으로 검사(413). 저장은 기존 `storage_key` 에 덮어쓰고 `size_bytes` 갱신, `.md`/`.markdown` 이면 mime 을 `text/markdown` 으로 보정 → **200 `{id,name,mime,sizeBytes,sha256}`**. 스키마 변경 없음(해시는 칸에 두지 않고 그때 계산) — [attachment-storage.md §14](../04-extensions/attachment-storage.md) |
 | 19b | POST | `/v1/account/email-code` | **무인증.** 가입 이메일 인증번호 발송 `{email}` → `{sent,expiresInMin,devCode?}` — devCode 는 AUTH_MODE=dev + 메일 미설정일 때만 (2026-08-09) |
 | 19c | POST | `/v1/account/email-code/verify` | **무인증.** `{email,code}` → `{verified,emailToken}` (인증표, 유효 30분) |
 | 19d | GET/PUT | `/v1/account/profile` | 회원 프로필 조회·저장 `{fullName,phoneCountry?,phoneNumber?,emailToken?}` → `{fullName,phoneCountry,phoneNumber,plan,emailVerifiedAt,phoneVerifiedAt,complete}` · 2026-10-05: 응답에 `language`(고른 화면 언어 ko·en·zh·ja, 없으면 null)·`languageReady`(서버에 `users.language` 열이 있는가) |

@@ -266,6 +266,7 @@
 | smoke(api) | 백엔드 맵·노드·autosave·문서 | CI backend 잡에서 임시 Postgres로 매 PR 실행 — 맵 CRUD·노드 CRUD·ltree 이동·순환 차단·autosave(버전·멱등)·문서 스냅샷 손실 없는 왕복·소유권 격리·404 | backend-phase1 |
 | e2e-cloud | 클라우드 저장/열기(풀스택) | 프론트 ☁ 메뉴 → 루트 편집→저장(토스트)→새로고침 리셋→목록→열기→마커 복원(실제 백엔드+DB 왕복)·JS 오류 0 | backend-phase1 |
 | e2e-cloud2 | 클라우드 사용성(풀스택) | 자동 저장이 수동 저장 없이 서버 반영(디바운스)·목록 이름변경 반영·삭제 후 목록 비움·JS 오류 0 | backend-phase1 |
+| e2e354 | **첨부 내용 덮어쓰기 `PUT /v1/attachments/:id/content`** (2026-10-31 요청: 노드에 붙인 .md 를 웹 마크다운 편집기에서 고쳐 같은 첨부에 저장) | 구성: **브라우저 없이** 진짜 Nest HTTP 서버(컨트롤러 + 실제 `AttachmentsService` + `AuthGuard` dev 모드)에 가짜 DB·메모리 저장소, `main.ts` 와 같은 json 파서(25mb)·`corsOptions()`. `npm run test:attachment-content`(CI 백엔드 잡). 순수 판정 4(편집 대상 확장자/mime · 요청 `text/*` · If-Match 해석 · mime 보정) + HTTP: **200** 주인·If-Match 일치 → 응답 `{id,name,mime,sizeBytes,sha256}` · 같은 storage_key 에 바이트 · size/mime 갱신, 편집 참가자·If-Match 없음 덮어쓰기 · **409** `{error:"conflict",currentSha256}` 이고 덮어쓰지 않음 · **400** If-Match 형식 · **403** 읽기만(파일 그대로) · **404** 볼 수 없음·없음 · **415** .pdf 첨부 · `application/json` 본문 · `application/octet-stream` · **413** 늘어난 만큼 쿼터 초과(딱 맞으면 200, 줄면 검사 안 함) · ATTACHMENT_MAX_MB 초과(정확히 1MB 는 200) · **CORS preflight** PUT + `authorization,content-type,if-match` → 204·출처·자격 증명. **검증하지 못한 것** — 판정 SQL 자체(`can_write`)는 가짜 DB 가 흉내 낸다. 로컬 세션은 npm 레지스트리가 막혀 CI 에서만 돌렸다 | attachment-storage.md §14 · api-spec.md 19a |
 
 ### 2.11 서버 저장·문서함·세션
 
@@ -514,6 +515,7 @@
 > 겹쳐 보이지만 날짜와 함께 읽으면 유일하다. **고치지 말 것** — 그때의
 > 기록을 지금 규칙으로 고쳐 쓰면 없던 역사를 만드는 셈이다.
 
+- 2026-10-31 (321차): **e2e354 — 첨부 내용 덮어쓰기 `PUT /v1/attachments/:id/content`**(웹 마크다운 편집기 저장, e2e353 의 백엔드). 단위 attachment-content (CI).
 - 2026-10-31 (320차): **e2e353 — MD 첨부를 웹 마크다운 편집기(`/md-editor/`)로 새 탭에서 연다**(사용자 요청). 토큰은 해시에만. 단위 mdEditorUrl 15(변이 시 5 FAIL). 브라우저 e2e 미실시(레지스트리 차단).
 - 2026-10-17 (319차): **e2e352 dev 실측** — get_map 주소 → append_to_map → get_map, 같은 첨부·640×129 그대로.
 - 2026-10-17 (318차): **e2e352 — 저장소 사진이 get_map ↔ create_map·append_to_map 왕복해도 원래 크기로**(사용자 요청). 주소 끝 `#emm=WxH` 조각. 단위 doc-to-emm 28.

@@ -4,6 +4,7 @@ import { ValidationPipe, Logger, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { corsOrigins } from './common/cors';
 import type { AppEnv } from './config/env.validation';
 import { VaultService } from './vault/vault.service';
 import { AS_METADATA_SUFFIX, OIDC_DISCOVERY_SUFFIX, PRM_SUFFIX } from './mcp/oauth';
@@ -68,16 +69,10 @@ async function bootstrap() {
     }),
   );
 
-  // 프론트엔드(다른 출처)에서 호출 허용.
-  // CORS_ORIGIN 은 **콤마로 여러 출처**를 받을 수 있다 (2026-08-02) —
-  // 로컬 개발 + dev 프런트를 동시에 붙이는 경우가 실제로 있었는데,
-  // 단일 문자열만 넘기면 두 번째 출처가 전부 차단됐다.
-  const corsOrigins = String(config.get('CORS_ORIGIN', { infer: true }))
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  // 프론트엔드(다른 출처)에서 호출 허용 — 여러 출처 규칙은 common/cors.ts.
+  // 앱 출처에는 메서드·헤더 기본값(PUT + If-Match 첨부 덮어쓰기 preflight 포함).
   // 홈페이지(www)는 공개 경로만, 인증 정보 없이 (common/cors-www.ts, 2026-10-23)
-  const appOrigins = new Set(corsOrigins);
+  const appOrigins = new Set(corsOrigins(String(config.get('CORS_ORIGIN', { infer: true }))));
   const wwwOrigins = new Set(wwwOriginsFrom(process.env));
   app.enableCors((req: { headers: Record<string, string | string[] | undefined>; method?: string; url?: string }, cb: (err: Error | null, o: CorsOptions) => void) => {
     const h = (k: string) => { const v = req.headers[k]; return Array.isArray(v) ? v[0] ?? '' : String(v ?? ''); };

@@ -5,9 +5,9 @@
 // 메일로 받는 인증번호 한 단계뿐이다.
 //
 // 등록 형식 (IPv4 만):
-//   · `192.168.94.100`     → 그 IP 하나 (/32)
-//   · `192.168.94.0`       → 끝자리가 0 이면 C클래스 망 192.168.94.0~255 (/24)
-//   · `192.168.94.0/24`    → 같은 뜻을 명시
+//   · `192.168.0.100`     → 그 IP 하나 (/32)
+//   · `192.168.0.0`       → 끝자리가 0 이면 C클래스 망 192.168.0.0~255 (/24)
+//   · `192.168.0.0/24`    → 같은 뜻을 명시
 // **사설망 주소만** 받는다(10/8, 172.16/12, 192.168/16, 127/8) — 내부망에서만 쓰라는
 // 사용자 결정. 공인 IP 를 넣으면 인터넷의 누군가가 그 IP 를 쓰는 순간 인증번호 없이
 // 들어올 수 있다.
@@ -15,7 +15,7 @@
 // 접속 IP 는 서버가 정한다(common/client-info.ts clientIpOf — main.ts `trust proxy`).
 // 클라이언트가 보낸 X-Forwarded-For 를 그대로 믿지 않는다. 외부 접속자의 공인 IP 는
 // 맨 앞 프록시가 사슬에 붙이므로 사설 주소로 위장할 수 없다(2026-10-24 실측:
-// 외부 → 공인 IP, 내부 → 공유기 192.168.94.1 로 보임).
+// 외부 → 공인 IP, 내부 → 공유기 192.168.0.1 로 보임).
 //
 // 저장: `public.site_settings` 의 키 `admin.mfa_trusted_networks` (공지·게시판 패키지가
 // 만든 표). 표가 없거나 읽지 못하면 **목록이 빈 것으로 본다** — 실패하면 인증번호를 받는
@@ -23,7 +23,7 @@
 
 export interface TrustedNetwork {
   id: string;
-  /** 정규화된 CIDR — `192.168.94.100/32`, `192.168.94.0/24` */
+  /** 정규화된 CIDR — `192.168.0.100/32`, `192.168.0.0/24` */
   cidr: string;
   label: string;
   createdAt: string;
@@ -62,9 +62,9 @@ export function parseTrustedAddress(raw: unknown): ParseResult {
   const s = String(raw ?? '').trim();
   if (!s) return { ok: false, message: 'IP 를 입력해 주세요.' };
   const m = /^([\d.]+)(?:\/(\d{1,2}))?$/.exec(s);
-  if (!m) return { ok: false, message: 'IP 형식이 올바르지 않습니다. 예: 192.168.94.100 또는 192.168.94.0' };
+  if (!m) return { ok: false, message: 'IP 형식이 올바르지 않습니다. 예: 192.168.0.100 또는 192.168.0.0' };
   const n = ipv4ToInt(m[1]);
-  if (n === null) return { ok: false, message: 'IP 형식이 올바르지 않습니다. 예: 192.168.94.100 또는 192.168.94.0' };
+  if (n === null) return { ok: false, message: 'IP 형식이 올바르지 않습니다. 예: 192.168.0.100 또는 192.168.0.0' };
   let bits: 24 | 32;
   if (m[2] !== undefined) {
     if (m[2] !== '24' && m[2] !== '32') return { ok: false, message: '망은 /24(C클래스) 또는 /32(IP 하나)만 등록할 수 있습니다.' };
@@ -72,14 +72,14 @@ export function parseTrustedAddress(raw: unknown): ParseResult {
   } else {
     bits = n % 256 === 0 ? 24 : 32;
   }
-  if (bits === 24 && n % 256 !== 0) return { ok: false, message: 'C클래스 망은 끝자리를 0 으로 적어 주세요. 예: 192.168.94.0' };
+  if (bits === 24 && n % 256 !== 0) return { ok: false, message: 'C클래스 망은 끝자리를 0 으로 적어 주세요. 예: 192.168.0.0' };
   if (!isPrivateIpv4(n)) {
     return { ok: false, message: '내부망(사설) 주소만 등록할 수 있습니다 — 10.x, 172.16~31.x, 192.168.x, 127.x' };
   }
   return { ok: true, cidr: `${intToIpv4(n)}/${bits}`, bits };
 }
 
-/** 사람이 읽는 범위 — `192.168.94.0 ~ 192.168.94.255` 또는 `192.168.94.100` */
+/** 사람이 읽는 범위 — `192.168.0.0 ~ 192.168.0.255` 또는 `192.168.0.100` */
 export function describeCidr(cidr: string): string {
   const [ip, bits] = cidr.split('/');
   if (bits === '24') {

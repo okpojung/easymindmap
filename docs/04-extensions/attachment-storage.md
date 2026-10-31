@@ -363,6 +363,42 @@ interface RegisteredFolder {
   방법이다. **저장 위치는 서버 운영의 문제, 내보내기는 사용자 소유의
   문제** 로 분리한다.
 
+### 7.4 마크다운 첨부 — 웹 편집기로 열어 고치기 (2026-10-31)
+
+서버 첨부 중 이름이 `.md`/`.markdown` 인 것은 PDF·사진처럼 "새 탭에서
+보기"가 아니라 **웹 마크다운 편집기로 열어 고치고 다시 저장**한다.
+
+| 무엇 | 어디 |
+|---|---|
+| 편집기 | `apps/frontend/public/md-editor/index.html` — [okpojung/markdown-editor](https://github.com/okpojung/markdown-editor) 의 **그대로 사본**(MIT). 출처 커밋·갱신 방법은 같은 폴더 `README.md` |
+| 서빙 | Vite 가 `public/` 을 `dist/` 루트로 복사 → `https://<프런트>/md-editor/` (nginx `try_files $uri $uri/`). **앱과 같은 origin** |
+| 여는 곳 | 첨부 탭 목록의 **파일 이름 클릭** · 캔버스 첨부 인디케이터(단수) · ChooserPopover(복수) — 모두 `openAttachment` |
+| 주소 | `/md-editor/?att=<id>&api=<API 베이스>&name=<파일 이름>#t=<액세스 토큰>` (`utils/mdEditorUrl.ts`) |
+
+* **토큰은 해시(`#t=`)에만 싣는다.** 쿼리는 서버 접근 로그·Referer 로
+  새어 나가지만 해시는 브라우저 밖으로 나가지 않는다. 편집기는 같은
+  origin 이라 localStorage `emm.auth` 의 토큰을 먼저 읽고(앱이 갱신해 둔
+  최신 값), 없을 때만 `#t=` 를 쓴다.
+* **팝업 차단을 피하는 수는 PDF·사진과 같다** — 클릭 제스처 안에서
+  `window.open('', '_blank')` 로 빈 창을 먼저 열고, 토큰을 고른 뒤
+  주소를 넣는다. `noopener` 를 붙이지 않는다 — 저장 알림을 받아야 한다.
+* 편집기의 읽기는 `GET /v1/attachments/:id`(Bearer), 저장은
+  **`PUT /v1/attachments/:id/content`**(Bearer · 원문 바디 ·
+  `If-Match: "sha256:<불러온 내용의 hex>"`). 다른 곳에서 먼저 고쳤으면
+  409 → 편집기가 덮어쓸지 묻는다. 403 이면 읽기 전용으로 바뀐다.
+  저장 경로의 계약은 **§14** 다.
+* 저장에 성공하면 편집기가 opener 로
+  `postMessage({type:"mde:attachment-saved", att, sizeBytes}, origin)` 을
+  보낸다. 앱은 **같은 origin 의 메시지만** 받아 그 첨부를 가리키는 모든
+  항목의 `size` 를 고친다(상태바 "첨부 용량"이 이 값을 센다 — §4.1).
+  이 갱신은 되돌리기에 쌓지 않는다(서버 파일은 이미 바뀌었다).
+* 아이콘 — `.md`/`.markdown` 첨부는 문서 + 주황 **MD** 글자 SVG
+  (`components/icons/MarkdownFileIcon.tsx`). 캔버스 인디케이터는 그 노드의
+  문서 첨부가 **전부** 마크다운일 때만 MD 아이콘이고, 섞여 있으면 기존
+  클립 배지다(한 칸에 한 아이콘).
+* 내장(data URL)·blob 첨부인 `.md` 는 지금처럼 텍스트로 새 탭에서 연다 —
+  편집기가 저장할 서버 자리가 없다.
+
 ---
 
 ## 8. 요금제·용량 정책 (2026-08-06 확정 — 가격 미정)
@@ -1010,3 +1046,52 @@ CI 스모크(`apps/api/test/smoke.mjs`) 10항목 — 차단 9 + 연결 1. 실제
 프런트는 이 응답을 그대로 쓴다 — 브라우저가 열 수 있는 형식이면 **URL을
 넘기고**(스트리밍), 오피스처럼 못 여는 형식만 받아서 다운로드한다
 (04-node-content.md §14.5).
+
+## 14. 내용 덮어쓰기 — `PUT /v1/attachments/:id/content` (2026-10-31)
+
+노드에 첨부한 `.md` 를 **웹 마크다운 편집기(새 탭)** 에서 고친 뒤 **같은
+첨부에** 저장한다. 새 첨부로 올리지 않는 이유는 하나다 — 문서 JSON 안의
+`/v1/attachments/<id>` 주소가 그대로여야 한다. 새 id 로 올리면 그 첨부를
+가리키는 노드마다 주소를 고쳐 써야 하고, 옛 파일은 용량만 차지한다.
+
+| 항목 | 정한 것 |
+| --- | --- |
+| 본문 | **원래 바이트** (JSON 아님). `Content-Type: text/*` 만 — `text/markdown; charset=utf-8`, `text/plain` 등 |
+| 대상 | 이름 확장자 `.md` · `.markdown` · `.txt` **또는** DB mime `text/*`. 아니면 **415** |
+| 권한 | `remove()` 와 같은 쓰기 기준(첨부 소유자 · 맵 주인 · 맵 멤버 owner/editor). **읽기만 403**, 볼 수 없음·없음 **404** |
+| 충돌 | 선택 `If-Match: "sha256:<hex>"` — 지금 저장된 바이트의 SHA-256 과 다르면 **409** `{ error: 'conflict', currentSha256 }`. 없거나 `*` 면 그대로 덮어쓴다. 형식이 틀리면 400 |
+| 크기 | `ATTACHMENT_MAX_MB` 초과 **413** (Content-Length 로 먼저, 스트림에서 세며 한 번 더) |
+| 쿼터 | **새 크기 − 기존 크기** 가 양수일 때만 `assertQuota` — 줄어드는 저장은 보지 않는다. 세는 사람은 첨부 주인(협업맵의 첨부는 올릴 때부터 맵 주인 것이다 — `attachments.service.ts` 의 `AttachmentOwner`) |
+| 저장 | 기존 `storage_key` 에 `storage.put` 으로 덮어쓰기 → `size_bytes` 갱신. `.md`/`.markdown` 이면 mime 을 `text/markdown` 으로 보정 |
+| 응답 | `200 { id, name, mime, sizeBytes, sha256 }` |
+
+### 14.1 왜 이렇게 했나
+
+- **전역 json 파서(25mb)와 부딪치지 않는다.** express 의 json·urlencoded
+  파서는 Content-Type 으로 거르므로 `text/*` 본문은 건드리지 않고 지나온다.
+  컨트롤러가 요청 스트림을 직접, 한도까지만 읽는다(`content-edit.ts
+  readBodyLimited`). 그래서 **`text/*` 가 아니면 읽기 전에 415** 다 —
+  `application/json` 으로 보내면 json 파서가 이미 본문을 삼켜, 그대로
+  진행하면 빈 내용이 저장된다.
+- **해시를 칸에 두지 않는다** (스키마 변경 없음). 편집 대상은 작은 텍스트라
+  If-Match 가 왔을 때 저장된 바이트를 읽어 그때 계산해도 싸다. 칸을 두면
+  다른 경로(업로드·청크·사진 이관)가 바꿀 때마다 같이 맞춰야 한다.
+- **읽기만 참가자에게 404 가 아니라 403** 이다 — 그 사람은 이미 `GET` 으로
+  그 첨부를 연다. 있는지 숨길 이유가 없고, 편집기가 "저장할 권한이 없다"고
+  말할 수 있어야 한다. 볼 수 없는 사람에게는 여전히 404.
+- **같은 첨부의 쓰기를 한 줄로 세운다** — If-Match 검사와 덮어쓰기 사이에
+  다른 저장이 끼면 충돌을 못 본다. 지금은 **프로세스 안 잠금**이다(API 가
+  한 컨테이너라 충분하다). API 를 여러 벌 띄우게 되면 DB 행 잠금
+  (`SELECT … FOR UPDATE`)으로 옮겨야 한다.
+- **CORS** 는 기본값 그대로 통과한다 — 메서드 기본값에 PUT 이 있고, 허용
+  헤더는 preflight 의 요청 헤더(`content-type`·`if-match`·`authorization`)를
+  되돌려 준다. 설정은 `common/cors.ts` 한 자리이고 시험이 그 함수로 확인한다.
+
+### 14.2 남은 제약
+
+- 로컬 드라이버의 `put` 은 파일을 **제자리에서** 다시 쓴다 — 쓰는 도중에
+  같은 첨부를 `GET` 하면 잘린 내용을 받을 수 있다. 편집 대상이 작은 텍스트라
+  창이 짧아 지금은 두었다.
+- 검증: 단위 `npm run test:attachment-content` (CI) — 200·403·404·409·
+  413(쿼터·크기)·415(첨부·요청 형식)·400(If-Match)·CORS preflight.
+  테스트 카탈로그 **e2e354** (편집기 쪽은 §7.4 · e2e353).

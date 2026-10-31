@@ -59,12 +59,12 @@ export function TrustedNetworksPanel({ t }: { t: ThemeTokens }) {
         <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>2단계 인증 IP관리</div>
         <div style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.6 }}>
           여기 등록한 주소에서 관리자 로그인하면 <b>메일 인증번호 단계를 건너뜁니다.</b> 이메일·비밀번호 확인과 관리자 명단 검사는 그대로입니다.<br />
-          내부망(사설) 주소만 등록할 수 있습니다 — 10.x, 172.16~31.x, 192.168.x. 끝자리를 <b>0</b>으로 적으면 C클래스 망 전체(예: 192.168.94.0 → 192.168.94.0~255)입니다.
+          내부망(사설) 주소만 등록할 수 있습니다 — 10.x, 172.16~31.x, 192.168.x. 끝자리를 <b>0</b>으로 적으면 C클래스 망 전체(예: 192.168.0.0 → 192.168.0.0~255)입니다.
         </div>
         {data && (
           <div style={{ marginTop: 10, fontSize: 13, padding: '8px 10px', borderRadius: 7, background: data.clientMatches ? '#ECFDF5' : '#FFF7ED', color: data.clientMatches ? '#065F46' : '#9A3412' }}>
             서버가 보는 지금 접속 IP: <b>{data.clientIp ?? '알 수 없음'}</b> — {data.clientMatches ? '등록된 주소입니다. 다음 로그인부터 인증번호를 건너뜁니다.' : '등록되지 않은 주소입니다.'}
-            <div style={{ fontSize: 12, marginTop: 3, opacity: 0.85 }}>내부망에서는 공유기를 거쳐 들어와 192.168.94.1 처럼 공유기 주소로 보일 수 있습니다. 그럴 때는 C클래스 망(끝자리 0)으로 등록하세요.</div>
+            <div style={{ fontSize: 12, marginTop: 3, opacity: 0.85 }}>내부망에서는 공유기를 거쳐 들어와 192.168.0.1 처럼 공유기 주소로 보일 수 있습니다. 그럴 때는 C클래스 망(끝자리 0)으로 등록하세요.</div>
           </div>
         )}
       </div>
@@ -72,7 +72,7 @@ export function TrustedNetworksPanel({ t }: { t: ThemeTokens }) {
       <div style={box}>
         <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>새로 등록</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input aria-label="IP 주소" data-testid="trusted-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="192.168.94.100 또는 192.168.94.0" style={{ ...inp, width: 240 }} />
+          <input aria-label="IP 주소" data-testid="trusted-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="192.168.0.100 또는 192.168.0.0" style={{ ...inp, width: 240 }} />
           <input aria-label="설명" data-testid="trusted-label" value={label} maxLength={60} onChange={(e) => setLabel(e.target.value)} placeholder="설명 (예: 사무실 내부망)" style={{ ...inp, flex: 1, minWidth: 200 }} />
           <button type="button" data-testid="trusted-add" disabled={busy || !address.trim()} onClick={() => void add()} style={primary}>등록</button>
           {data?.clientIp && (

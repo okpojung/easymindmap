@@ -14,10 +14,13 @@
 // 파일 원본은 StorageService 드라이버에, 메타데이터는 attachments 에.
 
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
   PayloadTooLargeException,
+  UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { ReadStream } from 'node:fs';
@@ -26,6 +29,7 @@ import { StorageService } from '../storage/storage.service';
 import { canWrite, findAccessibleMap, queryAllowingMissingMembers } from '../maps/map-access';
 import { columnReady, tableReady } from '../common/table-ready';
 import { fetchRemoteImage } from './remote-image';
+import { editedMime, isEditableText, parseIfMatch, sha256Hex, sha256OfStream } from './content-edit';
 
 /**
  * 요금제 — **저장 용량의 단일 기준** (2026-08-06 확정, 가격은 미정).
@@ -390,6 +394,109 @@ export class AttachmentsService {
       sizeBytes: Number(r.size_bytes),
       stream: await this.storage.stream(r.storage_key, range),
     };
+  }
+
+  /**
+   * 같은 첨부 id 에 쓰는 요청을 **한 줄로 세운다** — 두 탭이 동시에 저장하면
+   * If-Match 검사와 덮어쓰기 사이에 다른 쓰기가 끼어 충돌을 못 본다.
+   * 한 프로세스 안에서만 유효하다(API 는 지금 한 컨테이너다 — attachment-storage.md §13).
+   */
+  private readonly contentLocks = new Map<string, Promise<unknown>>();
+
+  /**
+   * **첨부 내용 덮어쓰기** (2026-10-31, `PUT /v1/attachments/:id/content`).
+   *
+   * 노드에 붙인 .md 를 웹 편집기에서 고쳐 **같은 id 로** 저장한다 — 문서
+   * JSON 안의 첨부 주소가 그대로여야 하기 때문이다. 스키마는 바꾸지 않는다
+   * (해시는 칸에 두지 않고 저장된 바이트에서 그때 계산한다).
+   *
+   * 판정 순서: 볼 수 없음/없음 404 → 읽기만 403 → 텍스트 아님 415 →
+   * If-Match 불일치 409 → 늘어난 만큼 쿼터 413 → 덮어쓰기.
+   * 쓰기 기준은 `remove()` 와 같다(첨부 소유자 · 맵 주인 · 편집 참가자).
+   * 다만 지우기와 달리 **읽기만 참가자에게는 403** 이다 — 그 사람은 이미
+   * 그 첨부를 열 수 있으니(`open()`) 있는지 숨길 이유가 없고, "권한이
+   * 없다" 고 말해 줘야 편집기가 저장 버튼을 왜 못 쓰는지 알린다.
+   */
+  async replaceContent(
+    userId: string,
+    id: string,
+    bytes: Buffer,
+    ifMatchHeader?: string | string[],
+  ): Promise<AttachmentMeta & { sha256: string }> {
+    const ifMatch = parseIfMatch(ifMatchHeader);
+    if (ifMatch === 'invalid') {
+      throw new BadRequestException('If-Match 는 "sha256:<64자리 hex>" 형식이어야 합니다.');
+    }
+    const prev = this.contentLocks.get(id) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(() => this.replaceContentLocked(userId, id, bytes, ifMatch));
+    this.contentLocks.set(id, run);
+    try {
+      return await run;
+    } finally {
+      if (this.contentLocks.get(id) === run) this.contentLocks.delete(id);
+    }
+  }
+
+  private async replaceContentLocked(
+    userId: string, id: string, bytes: Buffer, ifMatch: string | null,
+  ): Promise<AttachmentMeta & { sha256: string }> {
+    const rows = await queryAllowingMissingMembers<{
+      name: string; mime: string; size_bytes: string; storage_key: string;
+      owner_id: string; can_write: boolean;
+    }>(
+      this.db,
+      `SELECT a.name, a.mime, a.size_bytes, a.storage_key, a.owner_id,
+              (a.owner_id = $2 OR m.owner_id IS NOT DISTINCT FROM $2::uuid
+               OR COALESCE(mm.role IN ('owner', 'editor'), false)) AS can_write
+         FROM public.attachments a
+         LEFT JOIN public.maps m
+           ON m.id = a.map_id AND m.deleted_at IS NULL
+         LEFT JOIN public.map_members mm
+           ON mm.map_id = a.map_id AND mm.user_id = $2
+        WHERE a.id = $1
+          AND (a.owner_id = $2 OR m.owner_id = $2 OR mm.user_id IS NOT NULL)`,
+      `SELECT a.name, a.mime, a.size_bytes, a.storage_key, a.owner_id, true AS can_write
+         FROM public.attachments a
+         LEFT JOIN public.maps m
+           ON m.id = a.map_id AND m.deleted_at IS NULL
+        WHERE a.id = $1 AND (a.owner_id = $2 OR m.owner_id = $2)`,
+      [id, userId],
+    );
+    const r = rows[0];
+    if (!r) throw new NotFoundException('첨부 파일을 찾을 수 없습니다.');
+    if (!r.can_write) {
+      throw new ForbiddenException('읽기만 권한으로는 첨부를 고칠 수 없습니다.');
+    }
+    if (!isEditableText(r.name, r.mime)) {
+      throw new UnsupportedMediaTypeException(
+        '텍스트 첨부(.md · .markdown · .txt)만 편집기로 고칠 수 있습니다.',
+      );
+    }
+
+    if (ifMatch) {
+      const currentSha256 = await sha256OfStream(await this.storage.stream(r.storage_key));
+      if (currentSha256 !== ifMatch) {
+        throw new ConflictException({
+          error: 'conflict',
+          currentSha256,
+          message: '다른 곳에서 이 첨부가 먼저 바뀌었습니다 — 다시 불러온 뒤 저장해 주세요.',
+        });
+      }
+    }
+
+    // 쿼터는 **늘어난 만큼만** 센다. 세는 사람은 첨부의 주인 — 협업맵의
+    // 첨부는 올릴 때부터 맵 주인 것이다(`AttachmentOwner` 참조).
+    const oldSize = Number(r.size_bytes);
+    const delta = bytes.length - oldSize;
+    if (delta > 0) await this.assertQuota(r.owner_id, delta, r.owner_id !== userId);
+
+    const mime = editedMime(r.name, r.mime);
+    await this.storage.put(r.storage_key, bytes);
+    await this.db.query(
+      `UPDATE public.attachments SET size_bytes = $2, mime = $3 WHERE id = $1`,
+      [id, bytes.length, mime],
+    );
+    return { id, name: r.name, mime, sizeBytes: bytes.length, sha256: sha256Hex(bytes) };
   }
 
   /**

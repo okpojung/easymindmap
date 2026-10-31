@@ -1,0 +1,1897 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>마크다운 편집기</title>
+<link rel="stylesheet" data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
+<link rel="stylesheet" data-lib-url="https://cdn.jsdelivr.net/npm/@toast-ui/editor@3.2.2/dist/toastui-editor.min.css" href="https://cdn.jsdelivr.net/npm/@toast-ui/editor@3.2.2/dist/toastui-editor.min.css">
+<link rel="stylesheet" data-lib-url="https://cdn.jsdelivr.net/npm/@toast-ui/editor@3.2.2/dist/theme/toastui-editor-dark.min.css" href="https://cdn.jsdelivr.net/npm/@toast-ui/editor@3.2.2/dist/theme/toastui-editor-dark.min.css">
+<style id="appStyle">
+  :root { --bd:#e3e3e3; --bg:#fafaf7; --ac:#d97706; --tx:#222; --mu:#888; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: "Pretendard", "Malgun Gothic", system-ui, sans-serif; color: var(--tx); }
+  body { display: flex; flex-direction: column; }
+  #bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--bd); background: #fff; }
+  #bar button, #bar select { height: 30px; border: 1px solid var(--bd); background: #fff; border-radius: 6px; padding: 0 10px; cursor: pointer; font-size: 13px; }
+  #bar button:hover { background: #f3f3f3; }
+  #bar button:disabled, #bar select:disabled { opacity: .4; cursor: default; }
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0 !important; margin-left: -1px; }
+  .seg button:first-child { border-radius: 6px 0 0 6px !important; }
+  .seg button:last-child { border-radius: 0 6px 6px 0 !important; }
+  .seg button.on, #tocBtn.on { background: #fff4e5 !important; border-color: var(--ac) !important; color: #9a4a00; font-weight: 600; position: relative; z-index: 1; }
+  .sp { flex: 1; }
+  #status { font-size: 12px; color: var(--mu); }
+  main { flex: 1; display: flex; min-height: 0; }
+  #toc { width: 260px; border-right: 1px solid var(--bd); background: var(--bg); display: flex; flex-direction: column; min-height: 0; }
+  #toc.off { display: none; }
+  #toc .hd { display: flex; align-items: center; gap: 4px; padding: 8px 10px; font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--bd); }
+  #toc .hd span { flex: 1; }
+  #toc .hd button { font-size: 11px; border: 1px solid var(--bd); background: #fff; border-radius: 4px; cursor: pointer; padding: 2px 6px; }
+  #tocTree { overflow: auto; padding: 6px 4px 20px; font-size: 13px; }
+  .ti { display: flex; align-items: flex-start; gap: 2px; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
+  .ti:hover { background: #fff1dc; }
+  .ti .tw { width: 16px; flex: none; text-align: center; color: var(--mu); user-select: none; }
+  .ti .lv { font-size: 10px; color: #b45309; flex: none; padding-top: 2px; width: 20px; }
+  .tk { padding-left: 14px; }
+  .pane { flex: 1; min-width: 0; min-height: 0; display: none; flex-direction: column; }
+  .pane + .pane { border-left: 1px solid var(--bd); }
+  main[data-mode="md"] #srcPane, main[data-mode="split"] #srcPane,
+  main[data-mode="rendered"] #wwPane, main[data-mode="split"] #wwPane,
+  main[data-mode="outline"] #outPane { display: flex; }
+  .ptitle { font-size: 11px; color: var(--mu); padding: 4px 10px; border-bottom: 1px solid var(--bd); background: var(--bg); }
+  #src, #ww { flex: 1; min-height: 0; }
+  .CodeMirror { height: 100%; font-family: "D2Coding", Consolas, monospace; font-size: 14px; }
+  #ww .toastui-editor-defaultUI { border: 0; }
+  /* outline */
+  #outline { flex: 1; overflow: auto; padding: 14px 18px 60px; font-size: 14px; line-height: 1.6; }
+  .on { margin: 1px 0; }
+  .on .row { display: flex; align-items: flex-start; gap: 6px; }
+  .on .tw { width: 16px; flex: none; text-align: center; color: var(--mu); cursor: pointer; user-select: none; }
+  .on .bd { font-size: 10px; color: #fff; background: #c2410c; border-radius: 3px; padding: 0 4px; flex: none; margin-top: 4px; }
+  .on .bd.k { background: #9ca3af; }
+  .kids { padding-left: 22px; border-left: 1px dashed #e5e5e5; margin-left: 7px; }
+  .tx { flex: 1; min-width: 0; padding: 0 4px; border-radius: 4px; }
+  .tx:hover { background: #fafafa; outline: 1px dashed #ddd; }
+  .tx[contenteditable="true"] { background: #fffbe8; outline: 2px solid var(--ac); white-space: pre-wrap; }
+  .tx.h1 { font-size: 20px; font-weight: 700; } .tx.h2 { font-size: 18px; font-weight: 700; }
+  .tx.h3 { font-size: 16px; font-weight: 700; } .tx.h4, .tx.h5, .tx.h6 { font-weight: 700; }
+  .tx code, .mdtbl code { background: #f3f4f6; padding: 0 4px; border-radius: 3px; font-family: Consolas, monospace; font-size: 90%; }
+  .tx mark { background: #fde68a; }
+  .on blockquote { margin: 0; padding: 2px 10px; border-left: 3px solid #d1d5db; color: #555; flex: 1; }
+  .on pre { margin: 0; flex: 1; background: #f6f8fa; padding: 6px 10px; border-radius: 6px; overflow: auto; font-size: 13px; }
+  .mdtbl { border-collapse: collapse; font-size: 13px; cursor: pointer; }
+  .mdtbl th, .mdtbl td { border: 1px solid #d6d6d6; padding: 3px 8px; vertical-align: top; }
+  .mdtbl th { background: #f5f5f0; }
+  #outline:focus { outline: none; }
+  .on .row { border-radius: 5px; padding: 1px 2px; }
+  .on .row.sel { background: #fff1dc; box-shadow: inset 2px 0 0 var(--ac); }
+  .on .row.dragging { opacity: .4; }
+  .on .row.drop-before { box-shadow: inset 0 3px 0 var(--ac); }
+  .on .row.drop-after { box-shadow: inset 0 -3px 0 var(--ac); }
+  .on .row.drop-inside { outline: 2px dashed var(--ac); background: #fff7e6; }
+  .on .bl { flex: none; min-width: 14px; color: #9a6b2f; text-align: right; }
+  .hint { font-size: 11px; color: var(--mu); margin-bottom: 10px; }
+  /* table dialog */
+  #dlg { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 50; }
+  #dlg[hidden] { display: none; }
+  .box { background: #fff; border-radius: 10px; width: min(860px, 94vw); max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  .box .top { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--bd); }
+  .box .top b { font-size: 15px; } .box .top small { color: var(--mu); flex: 1; }
+  .box button { height: 30px; border: 1px solid var(--bd); background: #fff; border-radius: 6px; padding: 0 10px; cursor: pointer; }
+  .box button.on { background: #fff4e5; border-color: var(--ac); color: #9a4a00; font-weight: 600; }
+  .box .mid { padding: 12px 16px; overflow: auto; }
+  #grid { border-collapse: collapse; width: 100%; }
+  #grid td { border: 1px solid #ddd; padding: 0; }
+  #grid tr:first-child td { background: #f7f5ef; }
+  #grid textarea { width: 100%; border: 0; resize: none; padding: 6px 8px; font: inherit; font-size: 13px; background: transparent; outline: none; min-height: 32px; overflow: hidden; display: block; }
+  #grid tr:first-child textarea { font-weight: 700; }
+  #grid textarea.cur { background: #fff7e6; }
+  #mdView { width: 100%; height: 240px; font-family: Consolas, monospace; font-size: 13px; }
+  .box .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 12px; }
+  .box .ctl small { color: var(--mu); flex: 1; min-width: 200px; }
+  .box .bot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--bd); }
+  .box .ok { background: var(--ac); color: #fff; border-color: var(--ac); font-weight: 600; }
+  /* ===== v2: one toolbar, code/link/settings dialogs, themes ===== */
+  :root { --panel:#ffffff; }
+  body { background: var(--panel); }
+  #bar { background: var(--panel); }
+  #tools { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+  #tools button { min-width: 30px; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center; }
+  #tools button svg { width: 16px; height: 16px; }
+  .tsep { width: 1px; height: 20px; background: var(--bd); margin: 0 5px; }
+  .vsep { width: 1px; height: 24px; background: var(--bd); margin: 0 4px; }
+  .hl-ic { background: #fde68a; color: #1f1b16; padding: 0 4px; border-radius: 2px; font-weight: 700; }
+  #ww .toastui-editor-toolbar { display: none !important; }
+  .pane.tgt .ptitle { color: var(--ac); font-weight: 600; }
+  .pane.tgt .ptitle::after { content: "  ← 편집 도구 적용"; font-weight: 400; }
+  .tx u { text-decoration: underline; }
+  /* generic modal */
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 60; }
+  .modal[hidden] { display: none; }
+  .sp { flex: 1; }
+  /* code block dialog (EasyMindMap style) */
+  .cbox { width: min(800px, 94vw); border-radius: 12px; }
+  .cbox .top { border-bottom: 0; padding: 18px 20px 8px; gap: 8px; }
+  .cbox .top b { font-size: 16px; }
+  .cbox .top button { height: 32px; }
+  .pill { background: #fef3c7 !important; border: 1px solid #fcd34d !important; color: #b45309; font-weight: 700; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+  .pill.off { background: #fff !important; border-color: var(--bd) !important; color: var(--mu); }
+  .crow { display: flex; align-items: center; gap: 8px; padding: 8px 20px; position: relative; }
+  .crow > label { font-size: 13px; color: #555; width: 28px; flex: none; }
+  #cLang { flex: 1; height: 34px; padding: 6px 10px; border: 1px solid #e8e0d2; border-radius: 7px; font: 13px ui-monospace, Consolas, monospace; outline: none; background: #fff; color: #1f1b16; }
+  #cLang:focus { border-color: #d97706; }
+  #cLangBtn { width: 38px; height: 34px; padding: 0; font-size: 16px; }
+  #cLangBtn.on { border-color: #d97706; color: #b45309; background: #fffbeb; }
+  #cList { position: absolute; left: 56px; right: 20px; top: 46px; max-height: 320px; overflow: auto; background: #fff; border: 1px solid #e8e0d2; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.15); z-index: 5; padding: 4px; }
+  #cList[hidden] { display: none; }
+  .lopt { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; color: #1f1b16; }
+  .lopt small { font-family: ui-monospace, Consolas, monospace; color: #6b6355; font-size: 12.5px; }
+  .lopt.act { background: #fef3c7; }
+  .lnone { padding: 8px 12px; font-size: 13px; color: var(--mu); }
+  .cedit { margin: 6px 20px 0; display: flex; border: 1px solid #e3e6ea; border-radius: 8px; overflow: hidden; background: #eceff3; height: 255px; resize: vertical; min-height: 120px; }
+  #cGut { background: #e2e6eb; color: #94a3b8; text-align: right; padding: 10px 8px; font: 12.5px/1.6 ui-monospace, "Cascadia Mono", Consolas, D2Coding, monospace; white-space: pre; overflow: hidden; user-select: none; min-width: 34px; flex: none; }
+  #cGut[hidden] { display: none; }
+  #cCode { flex: 1; border: 0; outline: none; resize: none; background: transparent; color: #334155; padding: 10px 12px; font: 12.5px/1.6 ui-monospace, "Cascadia Mono", Consolas, D2Coding, monospace; white-space: pre; overflow: auto; tab-size: 4; }
+  .cbox .bot, .lbox .bot { border-top: 0; padding: 14px 20px 18px; }
+  .box .ok:disabled { opacity: .45; cursor: default; }
+  #cMsg { font-size: 12px; color: #16a34a; margin-right: auto; align-self: center; }
+  /* link dialog */
+  .lbox { width: min(520px, 94vw); border-radius: 12px; }
+  .lbox .top { border-bottom: 0; padding: 18px 20px 6px; }
+  .lrow { display: flex; align-items: center; gap: 10px; padding: 6px 20px; }
+  .lrow label { width: 44px; font-size: 13px; color: #555; flex: none; }
+  .lrow input { flex: 1; height: 34px; padding: 6px 10px; border: 1px solid #e8e0d2; border-radius: 7px; font-size: 13px; outline: none; }
+  .lrow input:focus { border-color: #d97706; }
+  /* settings dialog */
+  .sbox { width: min(720px, 94vw); border-radius: 12px; max-height: 90vh; }
+  .sgrid { display: grid; grid-template-columns: 150px 1fr; gap: 10px 14px; align-items: center; font-size: 13px; }
+  .sgrid > label { color: #555; }
+  .sgrid select, .sgrid input[type=number] { height: 30px; border: 1px solid var(--bd); border-radius: 6px; padding: 0 8px; font-size: 13px; }
+  .chk { display: block; margin: 3px 0; line-height: 1.6; }
+  .chk input { vertical-align: middle; margin: 0 6px 0 0; }
+  .chk code { white-space: nowrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .sub { font-size: 13px; }
+  .cgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 18px; margin-top: 8px; font-size: 12.5px; }
+  .crow2 { display: flex; align-items: center; gap: 8px; }
+  .crow2 span { flex: 1; }
+  .crow2 code { font-family: ui-monospace, Consolas, monospace; color: var(--mu); font-size: 11.5px; }
+  .crow2 input[type=color] { width: 34px; height: 24px; padding: 0; border: 1px solid var(--bd); border-radius: 4px; background: none; cursor: pointer; }
+  .crow2.mod span::after { content: " •"; color: var(--ac); }
+  /* dark app */
+  body.dark { --bd:#3c3c3c; --bg:#252526; --tx:#cccccc; --mu:#8b8b8b; --panel:#1e1e1e; color-scheme: dark; }
+  body.dark #bar button, body.dark #bar select, body.dark .box button, body.dark .box select, body.dark .box input, body.dark #toc .hd button, body.dark #grid textarea, body.dark #mdView { background: #2d2d2d; color: var(--tx); border-color: var(--bd); }
+  body.dark #bar button:hover { background: #37373d; }
+  body.dark .seg button.on, body.dark #tocBtn.on, body.dark .box button.on, body.dark #cLangBtn.on { background: #4a3415 !important; color: #ffcc80; border-color: #b45309 !important; }
+  body.dark .box { background: #252526; color: var(--tx); }
+  body.dark .box .ok { background: #d97706; color: #fff; }
+  body.dark .ti:hover, body.dark .on .row.sel { background: #3a2f1f; }
+  body.dark #outline { color: var(--tx); }
+  body.dark .tx:hover { background: #2a2a2a; outline-color: #444; }
+  body.dark .tx[contenteditable="true"] { background: #3a3520; }
+  body.dark .mdtbl th, body.dark #grid tr:first-child td { background: #2d2d2d; }
+  body.dark .mdtbl th, body.dark .mdtbl td, body.dark #grid td { border-color: #555; }
+  body.dark .on pre, body.dark .tx code, body.dark .mdtbl code { background: #2d2d2d; }
+  body.dark .on blockquote { color: #aaa; border-left-color: #555; }
+  body.dark .kids { border-left-color: #3c3c3c; }
+  body.dark .pill.off { background: #2d2d2d !important; }
+  body.dark .cedit { background: #1e1e1e; border-color: #3c3c3c; }
+  body.dark #cGut { background: #252526; color: #6e7681; }
+  body.dark #cCode { color: #d4d4d4; }
+  body.dark #cList { background: #252526; border-color: #3c3c3c; }
+  body.dark .lopt, body.dark #cLang { color: #ddd; }
+  body.dark .lopt small { color: #999; }
+  body.dark .lopt.act { background: #4a3415; }
+  body.dark .crow > label, body.dark .lrow label, body.dark .sgrid > label { color: #aaa; }
+  body.dark .tx mark { background: #806600; color: #fff; }
+  /* ===== v3: file menu, splitter, mermaid/html previews ===== */
+  .menu { position: relative; }
+  .mlist { position: absolute; right: 0; top: 34px; min-width: 230px; background: var(--panel); border: 1px solid var(--bd); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 4px; z-index: 70; display: flex; flex-direction: column; }
+  .mlist[hidden] { display: none; }
+  #bar .mlist button { border: 0; background: none; text-align: left; height: 30px; display: flex; justify-content: space-between; align-items: center; gap: 16px; border-radius: 5px; }
+  #bar .mlist button:hover { background: rgba(217,119,6,.12); }
+  .mlist hr { border: 0; border-top: 1px solid var(--bd); margin: 4px 2px; width: auto; }
+  .mlist kbd { font: 11px ui-monospace, Consolas, monospace; color: var(--mu); }
+  #status { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #splitter { display: none; width: 6px; flex: none; cursor: col-resize; background: var(--bd); }
+  #splitter:hover, #splitter.drag { background: var(--ac); }
+  main[data-mode="split"] #splitter { display: block; }
+  main[data-mode="split"] #srcPane { flex: var(--l, 50) 1 0px; }
+  main[data-mode="split"] #wwPane { flex: var(--r, 50) 1 0px; border-left: 0; }
+  body.resizing { cursor: col-resize; user-select: none; }
+  body.resizing iframe { pointer-events: none; }
+  .mde-cb { border: 1px solid var(--bd); border-radius: 8px; margin: 8px 0; overflow: hidden; background: var(--panel); flex: 1; min-width: 0; }
+  .mde-cb-hd { display: flex; justify-content: space-between; gap: 10px; font: 12px ui-monospace, Consolas, monospace; color: var(--mu); padding: 4px 10px; background: rgba(127,127,127,.08); border-bottom: 1px solid var(--bd); user-select: none; }
+  .mde-cb-body { padding: 10px; overflow: auto; text-align: center; color: var(--tx); }
+  .mde-cb-body.err { color: #dc2626; text-align: left; white-space: pre-wrap; font: 12px Consolas, monospace; }
+  .mde-cb-body svg { max-width: 100%; height: auto; }
+  .mde-cb[data-lang="html"] .mde-cb-body { padding: 0; text-align: left; }
+  .mde-html { width: 100%; border: 0; height: 80px; background: #fff; display: block; }
+</style>
+</head>
+<body>
+<textarea id="mdData" hidden data-name=""></textarea>
+<header id="bar">
+  <button id="tocBtn" class="on" title="왼쪽 목차 접기/펼치기">☰ 목차</button>
+  <div class="seg" id="modes">
+    <button data-mode="md">마크다운</button>
+    <button data-mode="outline">아웃라인</button>
+    <button data-mode="rendered">렌더링</button>
+    <button data-mode="split">분할</button>
+  </div>
+  <span class="vsep"></span>
+  <div id="tools">
+    <select id="hSel" title="제목 단계 (커서가 있는 줄)">
+      <option value="">제목</option>
+      <option value="0">본문</option>
+      <option value="1">H1</option><option value="2">H2</option><option value="3">H3</option>
+      <option value="4">H4</option><option value="5">H5</option><option value="6">H6</option>
+    </select>
+    <span class="tsep"></span>
+    <button data-fmt="bold" title="굵게 (Ctrl+B)"><b>B</b></button>
+    <button data-fmt="italic" title="기울임 (Ctrl+I)"><i style="font-family:serif">I</i></button>
+    <button data-fmt="strike" title="취소선"><s>S</s></button>
+    <button data-fmt="underline" title="밑줄 (Ctrl+U)"><u>U</u></button>
+    <button data-fmt="highlight" title="하이라이트 (다시 누르면 해제)"><span class="hl-ic">H</span></button>
+    <span class="tsep"></span>
+    <button data-fmt="ul" title="글머리 기호 (다시 누르면 해제)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="2.5" cy="4" r="1" fill="currentColor"/><circle cx="2.5" cy="8" r="1" fill="currentColor"/><circle cx="2.5" cy="12" r="1" fill="currentColor"/><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
+    <button data-fmt="ol" title="번호 매기기 (다시 누르면 해제)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><text x="0" y="6" font-size="5.5" fill="currentColor" stroke="none" font-family="sans-serif">1</text><text x="0" y="14" font-size="5.5" fill="currentColor" stroke="none" font-family="sans-serif">2</text><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
+    <button data-fmt="task" title="체크박스 (- [ ] — 다시 누르면 해제)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/><path d="M4.5 8.2l2.3 2.3 4.7-5"/></svg></button>
+    <span class="tsep"></span>
+    <button data-fmt="link" title="링크 삽입 (Ctrl+K)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6.5 9.5l3-3"/><path d="M7.5 4.5l1.2-1.2a2.6 2.6 0 0 1 3.7 3.7L11.2 8.2"/><path d="M8.5 11.5l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7L4.8 7.8"/></svg></button>
+    <button data-fmt="code" title="인라인 코드 (`…`)"><span style="font-family:Consolas,monospace;font-size:12px">`c`</span></button>
+    <button data-fmt="codeblock" title="코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)"><span style="font-family:Consolas,monospace;font-size:12px;font-weight:700">{ }</span></button>
+    <button data-fmt="table" title="표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2" width="13" height="12" rx="1.5"/><path d="M1.5 6h13M1.5 10h13M6 2v12M10.5 2v12"/></svg></button>
+  </div>
+  <span class="sp"></span>
+  <span id="status"></span>
+  <button id="setBtn" title="색 테마·글꼴·문법 설정">⚙ 설정</button>
+  <div class="menu" id="fileMenu">
+    <button id="fileBtn" aria-haspopup="true" title="파일 메뉴">파일 ▾</button>
+    <div class="mlist" id="fileList" hidden>
+      <button data-act="new">새 문서</button>
+      <button data-act="open">열기… <kbd>Ctrl+O</kbd></button>
+      <button data-act="sample">예제 문서</button>
+      <hr>
+      <button data-act="save">저장 <kbd>Ctrl+S</kbd></button>
+      <button data-act="saveas">다른 이름으로 저장…</button>
+      <hr>
+      <button data-act="md">.md로 저장…</button>
+      <button data-act="online">md.html(온라인)로 저장…</button>
+      <button data-act="offline">md.html(오프라인)로 저장…</button>
+      <hr>
+      <button data-act="close">닫기</button>
+    </div>
+  </div>
+  <input type="file" id="fileIn" accept=".md,.markdown,.txt,.html,.htm" hidden>
+  <button id="saveBtn" title="저장 (Ctrl+S)">저장</button>
+  <button id="closeBtn" title="닫기">✕ 닫기</button>
+</header>
+
+<main id="main" data-mode="split">
+  <aside id="toc">
+    <div class="hd"><span>목차</span><button id="tocOpen">모두 펼치기</button><button id="tocClose">모두 접기</button></div>
+    <div id="tocTree"></div>
+  </aside>
+  <section id="srcPane" class="pane"><div class="ptitle">마크다운 원문</div><div id="src"></div></section>
+  <section id="outPane" class="pane"><div class="ptitle">아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시</div><div id="outline"></div></section>
+  <div id="splitter" title="끌어서 좌우 크기 조절 · 더블클릭: 반반"></div>
+  <section id="wwPane" class="pane"><div class="ptitle">렌더링 (직접 편집 가능)</div><div id="ww"></div></section>
+</main>
+
+<div id="dlg" hidden>
+  <div class="box">
+    <div class="top">
+      <b>표</b><small id="dlgInfo"></small>
+      <button id="vGrid" class="on">▦ 격자</button><button id="vMd">MD</button>
+      <button id="dlgX" title="닫기">✕</button>
+    </div>
+    <div class="mid">
+      <table id="grid"></table>
+      <textarea id="mdView" hidden spellcheck="false"></textarea>
+    </div>
+    <div class="ctl" id="gridCtl">
+      <button id="addR">+ 행</button><button id="delR">− 행</button>
+      <button id="addC">+ 열</button><button id="delC">− 열</button>
+      <span style="width:8px"></span>
+      <button class="al" data-al="l" title="왼쪽 정렬">⇤</button>
+      <button class="al" data-al="c" title="가운데 정렬">↔</button>
+      <button class="al" data-al="r" title="오른쪽 정렬">⇥</button>
+      <small>커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸</small>
+    </div>
+    <div class="bot"><button id="dlgCancel">취소 (Esc)</button><button id="dlgOk" class="ok">확인 (Ctrl+Enter)</button></div>
+  </div>
+</div>
+
+<div id="cdlg" class="modal" hidden>
+  <div class="box cbox" role="dialog" aria-label="코드 블록">
+    <div class="top">
+      <b id="cTitle">코드 블록 삽입</b><span class="sp"></span>
+      <button id="cLn" class="pill" title="줄 번호 끄기">1≡ On</button>
+      <button id="cCopy" title="코드 복사" aria-label="코드 복사" disabled>⧉</button>
+      <button id="cX" title="닫기" aria-label="닫기">✕</button>
+    </div>
+    <div class="crow">
+      <label for="cLang">언어</label>
+      <input id="cLang" role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="예: bash, js, python — 비우면 code">
+      <button id="cLangBtn" title="언어 목록에서 고르기" aria-label="언어 목록에서 고르기">☰</button>
+      <div id="cList" role="listbox" hidden></div>
+    </div>
+    <div class="cedit"><div id="cGut">1</div><textarea id="cCode" spellcheck="false" placeholder="코드를 입력하세요 (여러 줄 가능)"></textarea></div>
+    <div class="bot"><span id="cMsg"></span><button id="cCancel">취소 (Esc)</button><button id="cOk" class="ok" disabled>확인 (Ctrl+Enter)</button></div>
+  </div>
+</div>
+
+<div id="ldlg" class="modal" hidden>
+  <div class="box lbox" role="dialog" aria-label="링크">
+    <div class="top"><b id="lTitle">링크 삽입</b><span class="sp"></span><button id="lX" title="닫기">✕</button></div>
+    <div class="lrow"><label for="lText">글자</label><input id="lText" placeholder="보일 글자 (비우면 주소)"></div>
+    <div class="lrow"><label for="lUrl">주소</label><input id="lUrl" placeholder="https://"></div>
+    <div class="bot"><button id="lCancel">취소 (Esc)</button><button id="lOk" class="ok" disabled>확인 (Enter)</button></div>
+  </div>
+</div>
+
+<div id="sdlg" class="modal" hidden>
+  <div class="box sbox" role="dialog" aria-label="설정">
+    <div class="top"><b>설정</b><span class="sp"></span><button id="sX" title="닫기">✕</button></div>
+    <div class="mid sgrid">
+      <label for="sTheme">색 테마</label>
+      <select id="sTheme">
+        <option value="light-plus">VS Code Light+ (기본 밝은 테마)</option>
+        <option value="dark-plus">VS Code Dark+ (기본 어두운 테마)</option>
+        <option value="light-modern">VS Code Light Modern</option>
+        <option value="dark-modern">VS Code Dark Modern</option>
+      </select>
+      <label>적용 범위</label>
+      <label class="chk"><input type="checkbox" id="sApp"> 메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)</label>
+      <label for="sFont">원문 글꼴 크기</label>
+      <div><input type="number" id="sFont" min="11" max="24" step="1" style="width:70px"> px</div>
+      <label>원문 줄바꿈</label>
+      <label class="chk"><input type="checkbox" id="sWrap"> 긴 줄을 화면 폭에서 접어 보기</label>
+      <label>밑줄·하이라이트 문법</label>
+      <div>
+        <label class="chk"><input type="radio" name="sSyn" value="html"> HTML: <code>&lt;u&gt;밑줄&lt;/u&gt;</code>, <code>&lt;mark&gt;하이라이트&lt;/mark&gt;</code> (표준, VS Code·GitHub 미리보기와 호환)</label>
+        <label class="chk"><input type="radio" name="sSyn" value="emm"> EMM: <code>__밑줄__</code>, <code>==하이라이트==</code> (EasyMindMap 노드와 같은 방식)</label>
+      </div>
+    </div>
+    <div class="mid">
+      <b class="sub">원문 색 직접 바꾸기</b> <small style="color:var(--mu)">· 바꾼 색(•)은 테마를 바꿔도 유지됩니다</small>
+      <div id="sColors" class="cgrid"></div>
+    </div>
+    <div class="bot"><button id="sReset">색 기본값으로</button><span class="sp"></span><button id="sClose" class="ok">닫기</button></div>
+  </div>
+</div>
+
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/xml/xml.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/xml/xml.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/markdown/markdown.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/markdown/markdown.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/mode/simple.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/mode/simple.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/meta.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/meta.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/css/css.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/css/css.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/htmlmixed/htmlmixed.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/clike/clike.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/clike/clike.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/shell/shell.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/shell/shell.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/sql/sql.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/sql/sql.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/php/php.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/php/php.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/yaml/yaml.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/yaml/yaml.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/go/go.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/go/go.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/rust/rust.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/rust/rust.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/ruby/ruby.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/ruby/ruby.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/swift/swift.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/swift/swift.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/powershell/powershell.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/powershell/powershell.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/lua/lua.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/lua/lua.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/perl/perl.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/perl/perl.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/r/r.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/r/r.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/dockerfile/dockerfile.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/dockerfile/dockerfile.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/nginx/nginx.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/nginx/nginx.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/toml/toml.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/toml/toml.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/properties/properties.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/properties/properties.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/diff/diff.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/diff/diff.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/sass/sass.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/sass/sass.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/haskell/haskell.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/haskell/haskell.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/groovy/groovy.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/groovy/groovy.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/jsx/jsx.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/jsx/jsx.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/cmake/cmake.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/cmake/cmake.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/dart/dart.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/dart/dart.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/vb/vb.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/vb/vb.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/stex/stex.min.js" src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/stex/stex.min.js"></script>
+
+<script data-lib-url="https://cdn.jsdelivr.net/gh/okpojung/markdown-editor@main/lib/toastui-editor-all.min.js" src="https://cdn.jsdelivr.net/gh/okpojung/markdown-editor@main/lib/toastui-editor-all.min.js"></script>
+<script data-lib-url="https://cdn.jsdelivr.net/gh/okpojung/markdown-editor@main/lib/toastui-ko-kr.min.js" src="https://cdn.jsdelivr.net/gh/okpojung/markdown-editor@main/lib/toastui-ko-kr.min.js"></script>
+<script id="appMain">
+"use strict";
+
+/* ---------- page snapshot for md.html saving (taken before the editors change the DOM) ---------- */
+const APP_CSS = document.getElementById("appStyle").textContent;
+const APP_JS = document.getElementById("appMain").textContent;
+const APP_BODY = (() => { const d = document.body.cloneNode(true); d.querySelectorAll("script").forEach((s) => s.remove()); return d.innerHTML; })();
+const LIBS = [...document.querySelectorAll("[data-lib-url]")].map((e) => ({
+  url: e.dataset.libUrl, css: e.tagName !== "SCRIPT", inline: e.tagName === "STYLE" || (e.tagName === "SCRIPT" && !e.src) ? e.textContent : null,
+}));
+const MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js";
+const EMB = document.getElementById("mdData");
+const EMBEDDED = !!(EMB && EMB.dataset.name);
+const PAGE_OFFLINE = LIBS.some((l) => l.inline != null);
+// EasyMindMap attachment mode: /md-editor/?att=<attachment id>&api=<API origin>&name=<file name>
+const QS = new URLSearchParams(location.search);
+const EMM = QS.get("att") ? { att: QS.get("att"), api: (QS.get("api") || location.origin).replace(/\/+$/, ""), name: QS.get("name") || "첨부.md", base: null, readOnly: false } : null;
+function libFail() { // libraries could not load (offline + online-type file): still let the user read and keep the text
+  const text = EMB ? EMB.value : "";
+  document.body.innerHTML = "";
+  const box = document.createElement("div"); box.style.cssText = "padding:14px;font:14px sans-serif;display:flex;flex-direction:column;gap:8px;height:100vh;box-sizing:border-box";
+  const msg = document.createElement("div");
+  msg.innerHTML = "<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.";
+  const ta = document.createElement("textarea"); ta.value = text; ta.style.cssText = "flex:1;font:13px Consolas,monospace;padding:8px";
+  const btn = document.createElement("button"); btn.textContent = ".md로 내려받기"; btn.style.cssText = "align-self:flex-start;padding:4px 12px";
+  btn.onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([ta.value], { type: "text/markdown;charset=utf-8" })); a.download = (EMB && EMB.dataset.name ? EMB.dataset.name.replace(/\.html?$/i, "") : "document.md"); a.click(); };
+  box.append(msg, btn, ta); document.body.append(box);
+}
+if (typeof CodeMirror === "undefined" || typeof toastui === "undefined") { libFail(); throw new Error("editor libraries not loaded"); }
+const $ = (s) => document.querySelector(s);
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const SAMPLE = `# 마크다운 편집기 시제품
+
+이 문서는 **원문**, *아웃라인*, ~~렌더링~~ 세 가지 보기와 \`분할 보기\`를 시험하기 위한 예제입니다.
+
+## 1. 보기 모드
+
+- 마크다운: 원문만 편집
+- 아웃라인: 제목 계층으로 접고 펼치며 편집
+  - 제목, 목록, 문단을 더블클릭하면 바로 고칠 수 있음
+- 렌더링: 완성된 모양으로 편집
+- 분할: 왼쪽 원문, 오른쪽 렌더링 (양쪽 모두 편집, 자동 동기화)
+
+## 2. 표 편집기
+
+| 기능 | 원문 | 렌더링 |
+| :--- | :---: | ---: |
+| 행/열 추가·삭제 | 표 대화상자 | 우클릭 메뉴 |
+| 셀 안 줄바꿈 | 첫 줄<br>둘째 줄 | 그대로 보임 |
+| 파이프 문자 | a \\| b | 이스케이프 |
+
+### 2-1. 사용법
+
+1. 원문에서 표 안에 커서를 두고 **▦ 표**를 누르면 그 표를 고칩니다.
+2. 표 밖이면 새 표를 넣습니다.
+
+## 3. 할 일
+
+- [x] 보기 모드 4종
+- [x] 왼쪽 목차 접기/펼치기
+- [ ] EMM 연동
+
+## 4. 텍스트 강조와 코드
+
+<u>밑줄</u>, <mark>하이라이트</mark>, [링크](https://example.com), \`인라인 코드\`
+
+\`\`\`python
+def hello(name):
+    # 인사말
+    return f"안녕하세요, {name}님"
+
+print(hello("EMM"), 42)
+\`\`\`
+
+## 5. 다이어그램과 HTML 미리보기
+
+\`\`\`mermaid
+graph LR
+  A[원문] --> B(렌더링)
+  B --> C{저장}
+  C -->|온라인| D[md.html]
+  C -->|오프라인| E[md.html + 라이브러리]
+\`\`\`
+
+\`\`\`html
+<div style="padding:10px;border:1px solid #d97706;border-radius:8px;font-family:sans-serif">HTML <b>미리보기</b> — 별도 창(sandbox)에서 실행됩니다.</div>
+\`\`\`
+`;
+
+let md = EMM ? "" : EMBEDDED ? EMB.value : (localStorage.getItem("mde.md") ?? SAMPLE);
+let mode = localStorage.getItem("mde.mode") || "split";
+let lastFocus = "src";
+let wwFocused = false;
+let wwStale = false;
+let wwUserOp = false;
+let fileName = EMM ? EMM.name : EMBEDDED ? EMB.dataset.name : "document.md";
+const DOC = { kind: EMM ? "emm" : EMBEDDED ? (PAGE_OFFLINE ? "offline" : "online") : "md", handle: null, saved: md, fileBound: EMBEDDED || !!EMM };
+const tocFold = new Set();
+const outFold = new Set();
+
+/* ---------- settings & VS Code color themes ---------- */
+// Token colors taken from VS Code's built-in themes (extensions/theme-defaults/themes/*.json):
+// markup.heading, markup.bold, markup.italic, markup.inline.raw, punctuation.definition.list.begin.markdown,
+// punctuation.definition.quote.begin.markdown, entity.name.tag, punctuation.definition.tag, keyword, string, ...
+const THEMES = {
+  "light-plus": { dark: false, bg: "#ffffff", fg: "#000000", ln: "#237893", sel: "#add6ff", cursor: "#000000",
+    heading: "#800000", bold: "#000080", italic: "#800080", inlineCode: "#800000", listMarker: "#0451a5", quoteMarker: "#0451a5",
+    tag: "#800000", tagBracket: "#800000", attr: "#e50000", keyword: "#0000ff", string: "#a31515", number: "#098658",
+    comment: "#008000", func: "#795e26", variable: "#001080", type: "#267f99", operator: "#000000" },
+  "dark-plus": { dark: true, bg: "#1e1e1e", fg: "#d4d4d4", ln: "#858585", sel: "#264f78", cursor: "#aeafad",
+    heading: "#569cd6", bold: "#569cd6", italic: "#c586c0", inlineCode: "#ce9178", listMarker: "#6796e6", quoteMarker: "#6a9955",
+    tag: "#569cd6", tagBracket: "#808080", attr: "#9cdcfe", keyword: "#569cd6", string: "#ce9178", number: "#b5cea8",
+    comment: "#6a9955", func: "#dcdcaa", variable: "#9cdcfe", type: "#4ec9b0", operator: "#d4d4d4" },
+};
+THEMES["light-modern"] = { ...THEMES["light-plus"], fg: "#3b3b3b", ln: "#6e7681" };
+THEMES["dark-modern"] = { ...THEMES["dark-plus"], bg: "#1f1f1f", fg: "#cccccc", ln: "#6e7681" };
+const COLOR_KEYS = [
+  ["bg", "배경"], ["fg", "기본 글자"], ["ln", "줄 번호"], ["sel", "선택 영역"], ["cursor", "커서"],
+  ["heading", "제목 #"], ["bold", "굵게 **"], ["italic", "기울임 *"], ["inlineCode", "인라인 코드 `"],
+  ["listMarker", "목록 기호 - 1."], ["quoteMarker", "인용 기호 >"], ["tag", "HTML 태그 이름"], ["tagBracket", "HTML 꺾쇠 < >"],
+  ["attr", "HTML 속성"], ["keyword", "코드: 키워드"], ["string", "코드: 문자열"], ["number", "코드: 숫자"],
+  ["comment", "코드: 주석"], ["func", "코드: 함수 이름"], ["variable", "코드: 변수·속성"], ["type", "코드: 타입·클래스"], ["operator", "코드: 연산자"],
+];
+const DEF_SETTINGS = { theme: "light-plus", appDark: true, fontSize: 14, wrap: true, syntax: "html", custom: {} };
+function loadSettings() {
+  try { const s = JSON.parse(localStorage.getItem("mde.settings") || "{}"); return { ...DEF_SETTINGS, ...s, custom: { ...(s.custom || {}) } }; }
+  catch { return { ...DEF_SETTINGS, custom: {} }; }
+}
+const S = loadSettings();
+const saveSettings = () => localStorage.setItem("mde.settings", JSON.stringify(S));
+const palette = () => ({ ...(THEMES[S.theme] || THEMES["light-plus"]), ...S.custom });
+function themeCss(p) {
+  return `
+#src .CodeMirror { background:${p.bg}; color:${p.fg}; font-size:${S.fontSize}px; }
+#src .CodeMirror-gutters { background:${p.bg}; border-right:1px solid ${p.dark ? "#333" : "#e8e8e8"}; }
+#src .CodeMirror-linenumber { color:${p.ln}; }
+#src .CodeMirror-cursor { border-left:2px solid ${p.cursor}; }
+#src .CodeMirror-selected, #src .CodeMirror-focused .CodeMirror-selected { background:${p.sel}; }
+#src .CodeMirror-line::selection, #src .CodeMirror-line > span::selection, #src .CodeMirror-line > span > span::selection { background:${p.sel}; }
+#src .cm-header { color:${p.heading}; font-weight:bold; }
+#src .cm-strong { color:${p.bold}; font-weight:bold; }
+#src .cm-em { color:${p.italic}; font-style:italic; }
+#src .cm-strikethrough { text-decoration:line-through; }
+#src .cm-inline-code { color:${p.inlineCode}; }
+#src .cm-inline-code.cm-formatting-code-block, #src .cm-fenced-code { color:${p.fg}; }
+#src .cm-list, #src .cm-quote, #src .cm-link, #src .cm-hr, #src .cm-image-alt-text { color:inherit; }
+#src .cm-formatting-list { color:${p.listMarker}; }
+#src .cm-formatting-quote { color:${p.quoteMarker}; }
+#src .cm-string.cm-url, #src .cm-url { color:inherit; text-decoration:underline; }
+#src .cm-tag { color:${p.tag}; } #src .cm-tag.cm-bracket, #src .cm-bracket { color:${p.tagBracket}; } #src .cm-attribute { color:${p.attr}; }
+#src .cm-keyword, #src .cm-atom, #src .cm-meta { color:${p.keyword}; }
+#src .cm-string, #src .cm-string-2 { color:${p.string}; }
+#src .cm-number { color:${p.number}; }
+#src .cm-comment { color:${p.comment}; }
+#src .cm-def, #src .cm-builtin { color:${p.func}; }
+#src .cm-variable, #src .cm-variable-2, #src .cm-property, #src .cm-qualifier { color:${p.variable}; }
+#src .cm-variable-3, #src .cm-type { color:${p.type}; }
+#src .cm-operator { color:${p.operator}; }
+`;
+}
+function applySettings() {
+  const p = palette();
+  let st = document.getElementById("cmTheme");
+  if (!st) { st = document.createElement("style"); st.id = "cmTheme"; document.head.append(st); }
+  st.textContent = themeCss(p);
+  const dark = !!(S.appDark && p.dark);
+  document.body.classList.toggle("dark", dark);
+  document.querySelector("#ww .toastui-editor-defaultUI")?.classList.toggle("toastui-editor-dark", dark);
+  if (typeof cm !== "undefined") { cm.setOption("lineWrapping", !!S.wrap); setTimeout(() => cm.refresh(), 0); }
+}
+// fenced code without a known language: plain text (VS Code does not color it)
+CodeMirror.defineMode("mdplain", () => ({ token(s) { s.skipToEnd(); return "fenced-code"; } }));
+const _findModeByName = CodeMirror.findModeByName;
+if (_findModeByName) CodeMirror.findModeByName = (n) => { const f = _findModeByName(n); return f && CodeMirror.modes[f.mode] ? f : { mode: "mdplain", mime: "mdplain" }; };
+const MD_MODE = { name: "markdown", highlightFormatting: true, strikethrough: true, taskLists: true, fencedCodeBlockDefaultMode: "mdplain",
+  tokenTypeOverrides: { code: "inline-code", list1: "list", list2: "list", list3: "list" } };
+
+// EMM syntax (__underline__, ==highlight==) <-> HTML (<u>, <mark>) for the rendered editor
+function mapOutsideCode(text, fn) {
+  let fence = null;
+  return text.split("\n").map((L) => {
+    const f = L.match(/^\s*(`{3,}|~{3,})/);
+    if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null; return L; }
+    if (f) { fence = f[1]; return L; }
+    return L.split(/(`[^`\n]*`)/).map((seg, i) => (i % 2 ? seg : fn(seg))).join("");
+  }).join("\n");
+}
+// mermaid / html fences are shown as live previews in the rendered pane (Toast UI custom blocks $$lang ... $$)
+const FENCE_LANG = /^\s*(?:`{3,}|~{3,})\s*([^\s`]+)/;
+const PREVIEW_LANGS = ["mermaid", "html"];
+const cbTokens = (lang, code) => [
+  { type: "openTag", tagName: "div", outerNewLine: true, attributes: { class: "mde-cb", "data-lang": lang, "data-code": encodeURIComponent((code || "").replace(/\n$/, "")) } },
+  { type: "html", content: `<div class="mde-cb-hd"><span>${lang}</span><span>더블클릭: 코드 편집</span></div><div class="mde-cb-body">미리보기 준비 중…</div>` },
+  { type: "closeTag", tagName: "div", outerNewLine: true },
+];
+function fencesToCustom(text) {
+  const L = text.split("\n"), out = [];
+  for (let i = 0; i < L.length; i++) {
+    const m = L[i].match(/^(`{3,}|~{3,})\s*(mermaid|html)\s*$/i);
+    if (m) {
+      const closeRe = new RegExp("^" + m[1][0] + "{" + m[1].length + ",}\\s*$");
+      let j = i + 1; while (j < L.length && !closeRe.test(L[j])) j++;
+      const body = L.slice(i + 1, j);
+      if (j < L.length && !body.some((x) => x.trim() === "$$")) { out.push("$$" + m[2].toLowerCase(), ...body, "$$"); i = j; continue; }
+    }
+    out.push(L[i]);
+  }
+  return out.join("\n");
+}
+function customToFences(text) {
+  const L = text.split("\n"), out = [];
+  for (let i = 0; i < L.length; i++) {
+    const m = L[i].match(/^\$\$(mermaid|html)\s*$/);
+    if (m) {
+      let j = i + 1; while (j < L.length && L[j].trim() !== "$$") j++;
+      const body = L.slice(i + 1, j), runs = body.map((x) => (x.match(/^\s*(`{3,})/) || [])[1]?.length || 0);
+      const f = "`".repeat(Math.max(3, ...runs.map((r) => (r ? r + 1 : 0))));
+      out.push(f + m[1], ...body, f); i = j; continue;
+    }
+    out.push(L[i]);
+  }
+  return out.join("\n");
+}
+function toWw(text) {
+  if (S.syntax === "emm") text = mapOutsideCode(text, (s) => s
+    .replace(/==(?=\S)(.+?)(?<=\S)==/g, "<mark>$1</mark>")
+    .replace(/(^|[^\w_\\])__(?=\S)(.+?)(?<=\S)__(?![\w_])/g, "$1<u>$2</u>"));
+  return fencesToCustom(text);
+}
+function fromWw(text) {
+  text = customToFences(text);
+  if (S.syntax !== "emm") return text;
+  return mapOutsideCode(text, (s) => s.replace(/<mark>(.*?)<\/mark>/g, "==$1==").replace(/<u>(.*?)<\/u>/g, "__$1__"));
+}
+
+/* ---------- editors ---------- */
+const cm = CodeMirror($("#src"), {
+  value: md, mode: MD_MODE, lineNumbers: true, lineWrapping: !!S.wrap, tabSize: 2, indentUnit: 2,
+  extraKeys: { "Ctrl-B": () => fmt("bold"), "Ctrl-I": () => fmt("italic"), "Ctrl-U": () => fmt("underline"), "Ctrl-K": () => fmt("link"), "Cmd-B": () => fmt("bold"), "Cmd-I": () => fmt("italic"), "Cmd-U": () => fmt("underline"), "Cmd-K": () => fmt("link") },
+});
+const ed = new toastui.Editor({
+  el: $("#ww"), height: "100%", initialEditType: "wysiwyg", previewStyle: "tab",
+  hideModeSwitch: true, usageStatistics: false, autofocus: false, language: "ko-KR", initialValue: toWw(md),
+  toolbarItems: [], // all editing buttons live in the top toolbar
+  customHTMLRenderer: { htmlInline: {
+    u: (node, { entering }) => (entering ? { type: "openTag", tagName: "u", attributes: node.attrs } : { type: "closeTag", tagName: "u" }),
+    mark: (node, { entering }) => (entering ? { type: "openTag", tagName: "mark", attributes: node.attrs } : { type: "closeTag", tagName: "mark" }),
+  },
+    mermaid: (node) => cbTokens("mermaid", node.literal),
+    html: (node) => cbTokens("html", node.literal),
+  },
+});
+
+/* ---------- sync ---------- */
+let tSrc = 0, tWw = 0, tPost = 0;
+const wwVisible = () => mode === "rendered" || mode === "split";
+
+cm.on("focus", () => { lastFocus = "src"; updStatus(); });
+cm.on("change", () => {
+  if (cm._silent) return;
+  md = cm.getValue();
+  clearTimeout(tSrc);
+  tSrc = setTimeout(() => { pushToWw(); afterChange(); }, 350);
+});
+ed.on("focus", () => { lastFocus = "ww"; wwFocused = true; updStatus(); });
+let wwSel = null; // selection of the rendered editor at blur, restored before toolbar commands
+ed.on("blur", () => { wwSel = ed.getSelection(); wwFocused = false; });
+ed.on("change", () => {
+  if (!wwFocused && !wwUserOp) return; // ignore changes caused by setMarkdown
+  clearTimeout(tWw);
+  tWw = setTimeout(() => {
+    let next = fromWw(normalizeWw(ed.getMarkdown()));
+    if (md.endsWith("\n") && !next.endsWith("\n")) next += "\n";
+    md = next; pushToSrc(); afterChange(); schedulePreviews();
+  }, 250);
+});
+
+// Toast UI rewrites some syntax when it serializes ("- " -> "* ", "## 1." -> "## 1\.", 2-space -> 4-space list indent).
+// Bring it back to the common style so the source does not jump around while editing on the rendered side.
+function normalizeWw(text) {
+  let fence = null;
+  return text.split("\n").map((L) => {
+    const f = L.match(/^\s*(`{3,}|~{3,})/);
+    if (fence) { if (f && f[1][0] === fence[0]) fence = null; return L; }
+    if (f) { fence = f[1]; return L; }
+    let m = L.match(/^( *)\* (?!\*)(.*)$/);
+    if (m) return " ".repeat(m[1].length % 4 === 0 ? m[1].length / 2 : m[1].length) + "- " + m[2];
+    m = L.match(/^( +)(\d+[.)] .*)$/);
+    if (m && m[1].length % 4 === 0) return " ".repeat(m[1].length / 2 + (m[1].length ? 1 : 0)) + m[2];
+    m = L.match(/^(#{1,6} +)(.*)$/);
+    if (m) return m[1] + m[2].replace(/^(\d+)\\\./, "$1.");
+    return L;
+  }).join("\n");
+}
+
+function pushToWw() {
+  if (!wwVisible()) { wwStale = true; return; }
+  ed.setMarkdown(toWw(md), false);
+  schedulePreviews();
+  wwStale = false;
+}
+function pushToSrc() {
+  if (cm.getValue() === md) return;
+  const sc = cm.getScrollInfo(), cur = cm.getCursor();
+  cm._silent = true; cm.setValue(md); cm._silent = false;
+  cm.scrollTo(sc.left, sc.top); cm.setCursor(cur);
+}
+function setAll(text, origin) {
+  md = text;
+  if (origin !== "src") pushToSrc();
+  if (origin !== "ww") pushToWw();
+  afterChange();
+}
+function afterChange() {
+  renderToc();
+  if (mode === "outline") renderOutline();
+  if (!EMBEDDED && !EMM) localStorage.setItem("mde.md", md);
+  updStatus();
+  clearTimeout(tPost);
+  tPost = setTimeout(() => postToParent({ type: "mde:change", markdown: md }), 400);
+}
+
+/* ---------- modes ---------- */
+function setMode(m) {
+  mode = m;
+  $("#main").dataset.mode = m;
+  localStorage.setItem("mde.mode", m);
+  document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
+  if (wwVisible() && wwStale) pushToWw();
+  if (m === "outline") renderOutline();
+  if (m === "md" || m === "split") setTimeout(() => cm.refresh(), 0);
+  const fmtOff = m === "outline";
+  document.querySelectorAll("#tools button, #tools select").forEach((b) => (b.disabled = fmtOff));
+  updStatus();
+}
+document.querySelectorAll("#modes button").forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+$("#tocBtn").onclick = () => { $("#toc").classList.toggle("off"); $("#tocBtn").classList.toggle("on"); setTimeout(() => cm.refresh(), 0); };
+
+function target() {
+  if (mode === "md" || mode === "outline") return "src";
+  if (mode === "rendered") return "ww";
+  return lastFocus;
+}
+function updStatus() {
+  const t = mode === "outline" ? "아웃라인" : target() === "src" ? "원문" : "렌더링";
+  const dirty = typeof DOC !== "undefined" && md !== DOC.saved;
+  $("#status").textContent = `${dirty ? "● 저장 안 됨 · " : ""}${fileName} (${KIND_LABEL[DOC.kind]}) · 편집 대상: ${t} · ${md.split("\n").length}줄`;
+  document.title = (dirty ? "● " : "") + fileName;
+  $("#srcPane").classList.toggle("tgt", mode === "split" && target() === "src");
+  $("#wwPane").classList.toggle("tgt", mode === "split" && target() === "ww");
+}
+
+/* ---------- one toolbar for both panes (applies to the pane that has the cursor) ---------- */
+document.querySelectorAll("#bar button").forEach((b) => b.addEventListener("mousedown", (e) => e.preventDefault()));
+document.querySelectorAll("#tools [data-fmt]").forEach((b) => (b.onclick = () => fmt(b.dataset.fmt)));
+const WW_CMD = { bold: "bold", italic: "italic", strike: "strike", code: "code", ul: "bulletList", ol: "orderedList", task: "taskList" };
+const wrapOf = (kind) => ({
+  bold: ["**", "**"], italic: ["*", "*"], strike: ["~~", "~~"],
+  underline: S.syntax === "emm" ? ["__", "__"] : ["<u>", "</u>"],
+  highlight: S.syntax === "emm" ? ["==", "=="] : ["<mark>", "</mark>"],
+}[kind]);
+function fmt(kind) {
+  if (mode === "outline") return;
+  if (kind === "table") return openTable();
+  if (kind === "codeblock") return openCode();
+  if (kind === "link") return openLink();
+  if (target() === "ww") {
+    if (kind === "underline") return wwWrapHtml("<u>", "</u>");
+    if (kind === "highlight") return wwWrapHtml("<mark>", "</mark>");
+    if (kind === "ul" || kind === "ol" || kind === "task") return wwList(kind);
+    return wwExec(WW_CMD[kind]);
+  }
+  if (kind === "ul" || kind === "ol" || kind === "task") return srcList(kind);
+  if (kind === "code") {
+    const sel = cm.getSelection(), m = sel.match(/^(`+) ?([\s\S]*?) ?\1$/);
+    if (m) { cm.replaceSelection(m[2], "around"); return cm.focus(); }
+    const runs = (sel.match(/`+/g) || []).map((r) => r.length), n = runs.length ? Math.max(...runs) + 1 : 1, f = "`".repeat(n);
+    return srcWrap(n > 1 ? f + " " : f, n > 1 ? " " + f : f);
+  }
+  const [o, c] = wrapOf(kind);
+  srcWrap(o, c);
+}
+function srcWrap(o, c) {
+  const from = cm.getCursor("from"), to = cm.getCursor("to"), sel = cm.getSelection();
+  // 1) the selection contains the markers -> remove them
+  if (sel.length >= o.length + c.length && sel.startsWith(o) && sel.endsWith(c)) { cm.replaceSelection(sel.slice(o.length, sel.length - c.length), "around"); return cm.focus(); }
+  // 2) the markers sit right outside the selection -> remove them (but not the inner * of **bold**)
+  const bFrom = { line: from.line, ch: from.ch - o.length }, aTo = { line: to.line, ch: to.ch + c.length };
+  const before = from.ch >= o.length ? cm.getRange(bFrom, from) : "", after = cm.getRange(to, aTo);
+  const single = o.length === 1 && o === c;
+  const longer = single && (cm.getRange({ line: from.line, ch: Math.max(0, bFrom.ch - 1) }, bFrom) === o || cm.getRange(aTo, { line: to.line, ch: aTo.ch + 1 }) === o);
+  if (before === o && after === c && !longer) {
+    cm.operation(() => {
+      cm.replaceRange("", to, aTo); cm.replaceRange("", bFrom, from);
+      const nTo = to.line === from.line ? { line: to.line, ch: to.ch - o.length } : to;
+      cm.setSelection(bFrom, nTo);
+    });
+    return cm.focus();
+  }
+  // 3) wrap (each line separately when several lines are selected)
+  if (!sel) { cm.replaceSelection(o + c); cm.setCursor({ line: from.line, ch: from.ch + o.length }); return cm.focus(); }
+  if (sel.includes("\n")) {
+    cm.replaceSelection(sel.split("\n").map((L) => L.replace(/^(\s*)(.*?)(\s*)$/, (m, a, b, z) => (b ? a + o + b + c + z : m))).join("\n"), "around");
+  } else {
+    cm.replaceSelection(o + sel + c);
+    cm.setSelection({ line: from.line, ch: from.ch + o.length }, { line: to.line, ch: to.ch + o.length });
+  }
+  cm.focus();
+}
+// bullet / numbered / checkbox: same toggle rule for both panes (all selected lines already that kind -> remove)
+const LIST_RE = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(\[[ xX]\]\s+)?/;
+function toggleListLines(lines, kind, prevLine) {
+  const RE = LIST_RE;
+  const kindOf = (L) => { const m = L.match(RE); return !m ? null : m[4] ? "task" : m[2] ? "ul" : "ol"; };
+  const content = lines.filter((L) => L.trim());
+  const all = content.length > 0 && content.every((L) => kindOf(L) === kind);
+  let n = 0;
+  if (kind === "ol" && prevLine) { const pm = prevLine.match(/^(\s*)(\d+)[.)]\s/); const im = (lines[0].match(/^\s*/) || [""])[0]; if (pm && pm[1] === im) n = Number(pm[2]); }
+  return lines.map((L) => {
+    if (!L.trim()) return L;
+    const m = L.match(RE), ind = m ? m[1] : (L.match(/^\s*/) || [""])[0], body = m ? L.slice(m[0].length) : L.slice(ind.length);
+    if (all) return ind + body;
+    if (kind === "ul") return ind + "- " + body;
+    if (kind === "ol") return ind + ++n + ". " + body;
+    return ind + "- [" + (m && m[4] && /x/i.test(m[4]) ? "x" : " ") + "] " + body;
+  });
+}
+function wwList(kind) {
+  wwUserOp = true;
+  let s = 0, e = 0;
+  try {
+    wwRestore();
+    [s, e] = ed.getSelection(); if (s > e) [s, e] = [e, s];
+    ed.setSelection(e, e); ed.insertText(MK2);
+    ed.setSelection(s, s); ed.insertText(MK1);
+    const L = normalizeWw(ed.getMarkdown()).split("\n");
+    const a = L.findIndex((x) => x.includes(MK1)), b = L.findIndex((x) => x.includes(MK2));
+    if (a < 0 || b < 0 || b < a) throw new Error("marker lost");
+    const seg = L.slice(a, b + 1).map((x) => x.split(MK1).join("").split(MK2).join(""));
+    L.splice(a, b - a + 1, ...toggleListLines(seg, kind, a > 0 ? L[a - 1] : ""));
+    setAll(fromWw(L.join("\n")), "dialog");
+    try { ed.focus(); ed.setSelection(s, s); } catch {}
+  } catch (err) { console.warn(err); setAll(md, "dialog"); }
+  finally { setTimeout(() => (wwUserOp = false), 300); }
+}
+function srcList(kind) {
+  const a = cm.getCursor("from").line, toC = cm.getCursor("to");
+  let b = toC.line; if (b > a && toC.ch === 0) b--;
+  const lines = []; for (let i = a; i <= b; i++) lines.push(cm.getLine(i));
+  const out = toggleListLines(lines, kind, a > 0 ? cm.getLine(a - 1) : "");
+  cm.replaceRange(out.join("\n"), { line: a, ch: 0 }, { line: b, ch: cm.getLine(b).length });
+  cm.setCursor({ line: b, ch: cm.getLine(b).length });
+  cm.focus();
+}
+function wwRestore() { const keep = !wwFocused && wwSel; ed.focus(); if (keep) ed.setSelection(wwSel[0], wwSel[1]); }
+function wwExec(cmd, payload) {
+  wwUserOp = true;
+  try { wwRestore(); ed.exec(cmd, payload); } catch (e) { console.warn("exec failed", cmd, e); }
+  setTimeout(() => (wwUserOp = false), 400);
+}
+// underline / highlight in the rendered pane: Toast UI has no command, so mark the selection with invisible
+// characters, edit the markdown, and load it back
+const MK1 = "\u2063\u2061", MK2 = "\u2061\u2063";
+function wwWrapHtml(o, c) {
+  wwUserOp = true;
+  try {
+    wwRestore();
+    let [s, e] = ed.getSelection(); if (s > e) [s, e] = [e, s];
+    ed.setSelection(e, e); ed.insertText(MK2);
+    ed.setSelection(s, s); ed.insertText(MK1);
+    let t = normalizeWw(ed.getMarkdown());
+    const i1 = t.indexOf(MK1), i2 = t.indexOf(MK2);
+    if (i1 < 0 || i2 < 0) throw new Error("marker lost");
+    const inner = t.slice(i1 + MK1.length, i2);
+    if (t.slice(i1 - o.length, i1) === o && t.slice(i2 + MK2.length, i2 + MK2.length + c.length) === c) t = t.slice(0, i1 - o.length) + inner + t.slice(i2 + MK2.length + c.length);
+    else if (inner.startsWith(o) && inner.endsWith(c) && inner.length >= o.length + c.length) t = t.slice(0, i1) + inner.slice(o.length, inner.length - c.length) + t.slice(i2 + MK2.length);
+    else t = t.slice(0, i1) + o + inner + c + t.slice(i2 + MK2.length);
+    setAll(fromWw(t), "dialog");
+    try { ed.focus(); ed.setSelection(s, e); } catch {}
+  } catch (err) { console.warn(err); setAll(md, "dialog"); }
+  finally { setTimeout(() => (wwUserOp = false), 300); }
+}
+$("#hSel").onchange = (e) => {
+  const v = e.target.value; e.target.value = "";
+  if (v === "") return;
+  const n = Number(v);
+  if (target() === "ww") return wwExec("heading", { level: n });
+  const ln = cm.getCursor().line, line = cm.getLine(ln);
+  const body = line.replace(/^#{1,6}\s+/, "");
+  cm.replaceRange((n ? "#".repeat(n) + " " : "") + body, { line: ln, ch: 0 }, { line: ln, ch: line.length });
+  cm.focus();
+};
+$("#ww").addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "u" || k === "k") { e.preventDefault(); e.stopPropagation(); lastFocus = "ww"; wwSel = ed.getSelection(); fmt(k === "u" ? "underline" : "link"); }
+}, true);
+$("#ww").addEventListener("dblclick", (e) => {
+  const pre = e.target.closest(".toastui-editor-ww-container :is(pre, .mde-cb), .toastui-editor-ww-container .toastui-editor-custom-block");
+  if (!pre) return;
+  const box = pre.matches(".mde-cb, pre") ? pre : pre.querySelector(".mde-cb") || pre;
+  const idx = [...document.querySelectorAll("#ww .toastui-editor-ww-container .ProseMirror :is(pre, .mde-cb)")].indexOf(box);
+  const blk = parseBlocks(md).filter((b) => b.type === "code")[idx];
+  if (blk) { e.preventDefault(); e.stopPropagation(); lastFocus = "ww"; openCode({ a: blk.start, b: blk.end }); }
+}, true);
+
+/* ---------- markdown block parser (for TOC / outline) ---------- */
+function parseBlocks(text) {
+  const lines = text.split("\n"), out = [];
+  let fence = null, hIdx = 0;
+  const dup = {};
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+    const f = L.match(/^\s*(`{3,}|~{3,})(.*)$/);
+    if (fence) { out[out.length - 1].end = i; if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !f[2].trim()) fence = null; continue; }
+    if (f) { fence = f[1]; out.push({ type: "code", lang: f[2].trim(), start: i, end: i }); continue; }
+    if (!L.trim()) continue;
+    const last = out[out.length - 1];
+    let m;
+    if ((m = L.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/))) {
+      const k = m[1].length + "|" + m[2]; dup[k] = (dup[k] || 0) + 1;
+      out.push({ type: "h", level: m[1].length, text: m[2], start: i, end: i, hIdx: hIdx++, key: k + "|" + dup[k] });
+    } else if (/^\s*\|/.test(L)) {
+      if (last && last.type === "table" && last.end === i - 1) last.end = i; else out.push({ type: "table", start: i, end: i });
+    } else if ((m = L.match(/^(\s*)([-*+]|\d+[.)])\s+(\[[ xX]\]\s+)?(.*)$/))) {
+      out.push({ type: "li", indent: Math.floor(m[1].replace(/\t/g, "  ").length / 2), marker: m[2], task: m[3] ? m[3].trim() : null, text: m[4], start: i, end: i, prefixLen: L.length - m[4].length });
+    } else if ((m = L.match(/^\s*>\s?(.*)$/))) {
+      if (last && last.type === "quote" && last.end === i - 1) { last.end = i; last.text += "\n" + m[1]; } else out.push({ type: "quote", text: m[1], start: i, end: i });
+    } else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(L)) {
+      out.push({ type: "hr", start: i, end: i });
+    } else {
+      if (last && last.type === "p" && last.end === i - 1) { last.end = i; last.text += "\n" + L; } else out.push({ type: "p", text: L, start: i, end: i });
+    }
+  }
+  return out;
+}
+function buildTree(blocks) {
+  const root = { level: 0, children: [] }, stack = [root];
+  for (const b of blocks) {
+    if (b.type === "h") {
+      while (stack.length > 1 && stack[stack.length - 1].level >= b.level) stack.pop();
+      const n = { ...b, children: [] };
+      stack[stack.length - 1].children.push(n); stack.push(n);
+    } else stack[stack.length - 1].children.push(b);
+  }
+  return root;
+}
+
+/* ---------- inline renderer (outline) ---------- */
+const safeUrl = (u) => (/^(https?:|mailto:|#|\/|\.)/i.test(u) ? u : "#");
+function inl(s) {
+  const codes = [];
+  let h = esc(s).replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+  h = h.replace(/\*\*\*(.+?)\*\*\*/g, "<b><i>$1</i></b>")
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/__(.+?)__/g, S.syntax === "emm" ? "<u>$1</u>" : "<b>$1</b>")
+    .replace(/(^|[^*\w])\*(?!\s)(.+?)\*(?!\*)/g, "$1<i>$2</i>")
+    .replace(/~~(.+?)~~/g, "<s>$1</s>").replace(/==(.+?)==/g, "<mark>$1</mark>")
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (_, a, u) => `<img alt="${a}" src="${safeUrl(u)}" style="max-height:60px;vertical-align:middle">`)
+    .replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, (_, t, u) => `<a href="${safeUrl(u)}" target="_blank" rel="noopener">${t}</a>`)
+    .replace(/&lt;br\s*\/?&gt;/gi, "<br>")
+    .replace(/&lt;(u|mark)&gt;(.*?)&lt;\/\1&gt;/g, "<$1>$2</$1>")
+    .replace(/\\\|/g, "|");
+  return h.replace(/\u0000(\d+)\u0000/g, (_, n) => "<code>" + codes[n] + "</code>");
+}
+
+/* ---------- table parse / serialize ---------- */
+function splitRow(line) {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|") && !s.endsWith("\\|")) s = s.slice(0, -1);
+  const cells = []; let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" && s[i + 1] === "|") { cur += "|"; i++; continue; }
+    if (s[i] === "|") { cells.push(cur); cur = ""; continue; }
+    cur += s[i];
+  }
+  cells.push(cur);
+  return cells.map((c) => c.trim().replace(/<br\s*\/?>/gi, "\n"));
+}
+function parseTable(text) {
+  const lines = text.split("\n").filter((l) => l.trim());
+  if (lines.length < 2) return null;
+  const sep = splitRow(lines[1]);
+  if (!sep.every((c) => /^:?-{1,}:?$/.test(c.replace(/\s/g, "")))) return null;
+  const al = sep.map((c) => { c = c.replace(/\s/g, ""); return c.startsWith(":") && c.endsWith(":") ? "c" : c.endsWith(":") ? "r" : c.startsWith(":") ? "l" : ""; });
+  const rows = [splitRow(lines[0]), ...lines.slice(2).map(splitRow)];
+  const n = Math.max(al.length, ...rows.map((r) => r.length));
+  rows.forEach((r) => { while (r.length < n) r.push(""); });
+  while (al.length < n) al.push("");
+  return { rows, al };
+}
+function toTableMd(rows, al) {
+  const n = Math.max(...rows.map((r) => r.length));
+  const cell = (c) => (c || "").replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>");
+  const row = (r) => "| " + Array.from({ length: n }, (_, i) => cell(r[i])).join(" | ") + " |";
+  const sep = "| " + Array.from({ length: n }, (_, i) => ({ l: ":---", c: ":---:", r: "---:" }[al[i]] || "---")).join(" | ") + " |";
+  return [row(rows[0]), sep, ...rows.slice(1).map(row)].join("\n");
+}
+
+/* ---------- TOC ---------- */
+function renderToc() {
+  const root = buildTree(parseBlocks(md).filter((b) => b.type === "h"));
+  const box = $("#tocTree"); box.innerHTML = "";
+  if (!root.children.length) { box.append(el("div", "hint", "제목(# ...)이 없습니다.")); return; }
+  const walk = (nodes, parent) => {
+    for (const n of nodes) {
+      const row = el("div", "ti");
+      const has = n.children.length > 0, folded = tocFold.has(n.key);
+      const tw = el("span", "tw", has ? (folded ? "▸" : "▾") : "·");
+      tw.onclick = (e) => { e.stopPropagation(); folded ? tocFold.delete(n.key) : tocFold.add(n.key); renderToc(); };
+      const tx = el("span"); tx.innerHTML = inl(n.text);
+      row.append(tw, el("span", "lv", "H" + n.level), tx);
+      row.onclick = () => jump(n);
+      parent.append(row);
+      if (has && !folded) { const k = el("div", "tk"); parent.append(k); walk(n.children, k); }
+    }
+  };
+  walk(root.children, box);
+}
+function allHeads() { return parseBlocks(md).filter((b) => b.type === "h"); }
+$("#tocOpen").onclick = () => { tocFold.clear(); outFold.clear(); renderToc(); if (mode === "outline") renderOutline(); };
+$("#tocClose").onclick = () => { allHeads().forEach((h) => { tocFold.add(h.key); outFold.add(h.key); }); renderToc(); if (mode === "outline") renderOutline(); };
+
+function jump(h) {
+  if (mode === "outline") {
+    selLine = h.start; pendingSel = { line: h.start }; renderOutline();
+    document.querySelector('#outline .row[data-line="' + h.start + '"]')?.scrollIntoView({ block: "start", behavior: "smooth" });
+    return;
+  }
+  if (mode === "md" || mode === "split") { cm.setCursor({ line: h.start, ch: 0 }); cm.scrollIntoView({ line: h.start, ch: 0 }, 80); const top = cm.charCoords({ line: h.start, ch: 0 }, "local").top; cm.scrollTo(null, top); }
+  if (mode === "rendered" || mode === "split") {
+    const hs = $("#ww").querySelectorAll(".toastui-editor-ww-container .ProseMirror :is(h1,h2,h3,h4,h5,h6)");
+    hs[h.hIdx]?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+}
+
+/* ---------- outline (EMM-style editing) ---------- */
+const lead = (s) => (s.match(/^ */) || [""])[0].length;
+let curO = null, selLine = null, pendingSel = null, dragSrc = null;
+const undoStack = [], redoStack = [];
+let histTip = null;
+
+// Tree of headings > list items (nested by indent) > other blocks. subEnd = last line of the node with its children.
+function buildOutline(text) {
+  const lines = text.split("\n");
+  const root = { type: "root", level: 0, children: [], start: -1, end: -1 };
+  const hs = [root]; let ls = [];
+  const dup = {}, all = [];
+  for (const b0 of parseBlocks(text)) {
+    const b = { ...b0, children: [] };
+    if (b.type === "h") {
+      while (hs.length > 1 && hs[hs.length - 1].level >= b.level) hs.pop();
+      b.parent = hs[hs.length - 1]; hs.push(b); ls = [];
+    } else if (b.type === "li") {
+      b.lead = lead(lines[b.start]);
+      while (ls.length && ls[ls.length - 1].lead >= b.lead) ls.pop();
+      b.parent = ls.length ? ls[ls.length - 1] : hs[hs.length - 1]; ls.push(b);
+    } else if (b.type === "p" && ls.length && lead(lines[b.start]) > ls[ls.length - 1].lead && lead(lines[b.start]) >= 2) {
+      b.parent = ls[ls.length - 1]; // indented paragraph that belongs to the list item above
+    } else {
+      b.parent = hs[hs.length - 1]; ls = [];
+    }
+    b.parent.children.push(b);
+    if (b.type !== "h") { const k = b.type + "|" + (b.text || "") + "|" + (b.lead || 0); dup[k] = (dup[k] || 0) + 1; b.key = k + "|" + dup[k]; }
+    all.push(b);
+  }
+  const fix = (n) => { let e = n.end; for (const c of n.children) e = Math.max(e, fix(c)); n.subEnd = e; return e; };
+  root.children.forEach(fix);
+  return { root, all, lines };
+}
+const nodeAt = (O, line) => (O ? O.all.find((b) => b.start === line) || null : null);
+const sameKind = (a, b) => (a.type === "h" ? b.type === "h" : a.type === "li" ? b.type === "li" : b.type !== "h" && b.type !== "li");
+function sibling(n, dir) {
+  const sib = n.parent.children; let i = sib.indexOf(n) + dir;
+  for (; i >= 0 && i < sib.length; i += dir) if (sameKind(n, sib[i])) return sib[i];
+  return null;
+}
+
+// collapse extra blank lines (outside code fences); map[i] = new index of old line i
+function tidy(lines) {
+  const out = [], map = new Array(lines.length + 1); let fence = null, blank = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i]; map[i] = out.length;
+    const f = L.match(/^\s*(\x60{3,}|~{3,})/);
+    if (fence) { out.push(L); if (f && f[1][0] === fence[0]) fence = null; continue; }
+    if (f) { fence = f[1]; blank = 0; out.push(L); continue; }
+    if (!L.trim()) { blank++; if (!out.length || blank > 1) continue; out.push(""); continue; }
+    blank = 0; out.push(L);
+  }
+  map[lines.length] = out.length;
+  return { out, map };
+}
+function shiftHeads(seg, d) {
+  let fence = null;
+  return seg.map((L) => {
+    const f = L.match(/^\s*(\x60{3,}|~{3,})/);
+    if (fence) { if (f && f[1][0] === fence[0]) fence = null; return L; }
+    if (f) { fence = f[1]; return L; }
+    const m = L.match(/^(#{1,6})(\s.*)$/);
+    return m ? "#".repeat(m[1].length + d) + m[2] : L;
+  });
+}
+const headLv = (seg) => seg.map((L) => (L.match(/^(#{1,6})\s/) || [])[1]?.length).filter(Boolean);
+const shiftLead = (seg, d) => seg.map((L) => (!L.trim() ? L : d >= 0 ? " ".repeat(d) + L : L.slice(Math.min(-d, lead(L)))));
+
+// Where and how a node (with its children) lands when dropped before / after / inside a target. null = not allowed.
+function planMove(O, src, tgt, pos) {
+  if (!O || !src || !tgt || src === tgt || tgt.type === "root") return null;
+  if (tgt.start >= src.start && tgt.start <= src.subEnd) return null;
+  let seg = O.lines.slice(src.start, src.subEnd + 1), at, pad = true;
+  if (src.type === "h") {
+    if (tgt.type !== "h") return null;
+    const d = (pos === "inside" ? tgt.level + 1 : tgt.level) - src.level, lv = headLv(seg);
+    if (Math.max(...lv) + d > 6 || Math.min(...lv) + d < 1) return null;
+    seg = shiftHeads(seg, d);
+    at = pos === "before" ? tgt.start : tgt.subEnd + 1;
+  } else if (tgt.type === "h") {
+    if (pos !== "inside") return null;
+    seg = shiftLead(seg, -lead(seg[0]));
+    const firstH = tgt.children.find((c) => c.type === "h");
+    at = firstH ? firstH.start : tgt.subEnd + 1;
+  } else if (tgt.type === "li" && src.type === "li") {
+    const step = /\d/.test(tgt.marker) ? tgt.marker.length + 1 : 2;
+    seg = shiftLead(seg, (pos === "inside" ? tgt.lead + step : tgt.lead) - src.lead);
+    pad = false;
+    at = pos === "before" ? tgt.start : tgt.subEnd + 1;
+  } else {
+    if (pos === "inside") return null;
+    seg = shiftLead(seg, -lead(seg[0]));
+    at = pos === "before" ? tgt.start : tgt.subEnd + 1;
+  }
+  return { seg, at, pad };
+}
+
+function pushHistory() {
+  if (histTip !== null && md !== histTip) { undoStack.length = 0; } // source/rendered edits happened in between
+  undoStack.push(md); if (undoStack.length > 200) undoStack.shift();
+  redoStack.length = 0;
+}
+function commitOutline(lines, focusLine, edit, isNew) {
+  const { out, map } = tidy(lines);
+  pendingSel = { line: focusLine == null ? null : map[Math.min(focusLine, lines.length)], edit: !!edit, isNew: !!isNew };
+  pushHistory();
+  setAll(out.join("\n"), "outline");
+  histTip = md;
+}
+function undo() {
+  if (!undoStack.length) return flash("되돌릴 아웃라인 작업이 없습니다");
+  if (md !== histTip) { undoStack.length = 0; redoStack.length = 0; return flash("원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다"); }
+  redoStack.push(md); pendingSel = { line: selLine };
+  setAll(undoStack.pop(), "outline"); histTip = md;
+}
+function redo() {
+  if (!redoStack.length || md !== histTip) return flash("다시 실행할 작업이 없습니다");
+  undoStack.push(md); pendingSel = { line: selLine };
+  setAll(redoStack.pop(), "outline"); histTip = md;
+}
+let tFlash = 0;
+function flash(msg) { $("#status").textContent = msg; $("#status").style.color = "#c2410c"; clearTimeout(tFlash); tFlash = setTimeout(() => { $("#status").style.color = ""; updStatus(); }, 2500); return false; }
+
+function doMove(n, t, pos, edit) {
+  const plan = planMove(curO, n, t, pos);
+  if (!plan) return flash("그 위치로는 옮길 수 없습니다");
+  const lines = curO.lines.slice(), cnt = n.subEnd - n.start + 1;
+  lines.splice(n.start, cnt);
+  let at = plan.at; if (at > n.start) at -= cnt;
+  lines.splice(at, 0, ...(plan.pad ? ["", ...plan.seg, ""] : plan.seg));
+  commitOutline(lines, at + (plan.pad ? 1 : 0), edit);
+  return true;
+}
+function opIndent(n, edit) {
+  if (n.type !== "h" && n.type !== "li") return flash("제목과 목록만 들여쓸 수 있습니다");
+  const s = sibling(n, -1);
+  if (!s) return flash("바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다");
+  return doMove(n, s, "inside", edit);
+}
+function opOutdent(n, edit) {
+  const p = n.parent;
+  if (!p || p.type === "root" || p.type !== n.type) return flash("더 내어쓸 수 없습니다");
+  return doMove(n, p, "after", edit);
+}
+function opAdd(n, lines, delta) {
+  lines = (lines || md.split("\n")).slice(); delta = delta || 0;
+  let ins, pad = true;
+  if (!n) ins = "# 새 노드";
+  else if (n.type === "h") ins = "#".repeat(n.level) + " 새 노드";
+  else if (n.type === "li") {
+    const m = lines[n.start].match(/^(\s*)([-*+]|\d+[.)])\s+(\[[ xX]\]\s+)?/);
+    let mk = m[2]; const om = mk.match(/^(\d+)([.)])$/); if (om) mk = Number(om[1]) + 1 + om[2];
+    ins = m[1] + mk + " " + (m[3] ? "[ ] " : "") + "새 노드"; pad = false;
+  } else ins = "새 노드";
+  const at = n ? n.subEnd + delta + 1 : lines.length;
+  lines.splice(at, 0, ...(pad ? ["", ins, ""] : [ins]));
+  commitOutline(lines, at + (pad ? 1 : 0), true, true);
+}
+function opDelete(n) {
+  const lines = md.split("\n");
+  lines.splice(n.start, n.subEnd - n.start + 1);
+  commitOutline(lines, n.start, false);
+  flash("삭제했습니다 (Ctrl+Z로 되돌리기)");
+}
+function replaceText(n, v, lines) {
+  let rep;
+  if (n.type === "h") rep = "#".repeat(n.level) + " " + v.replace(/\n/g, "<br>");
+  else if (n.type === "li") rep = lines[n.start].slice(0, n.prefixLen) + v.replace(/\n/g, "<br>");
+  else rep = v;
+  const nl = rep.split("\n"), old = n.end - n.start + 1;
+  lines.splice(n.start, old, ...nl);
+  return nl.length - old;
+}
+
+function renderOutline() {
+  const box = $("#outline"), st = box.scrollTop;
+  curO = buildOutline(md);
+  const ps = pendingSel; pendingSel = null;
+  if (ps && ps.line != null) selLine = ps.line;
+  if (selLine != null && !nodeAt(curO, selLine)) { const nx = curO.all.find((b) => b.start >= selLine) || curO.all[curO.all.length - 1]; selLine = nx ? nx.start : null; }
+  const sn = nodeAt(curO, selLine);
+  for (let p = sn && sn.parent; p && p.type !== "root"; p = p.parent) outFold.delete(p.key);
+  box.innerHTML = "";
+  if (!curO.root.children.length) box.append(el("div", "hint", "내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다."));
+  curO.root.children.forEach((n) => box.append(outNode(n)));
+  schedulePreviews();
+  box.scrollTop = st;
+  if (sn) {
+    const row = box.querySelector('.row[data-line="' + sn.start + '"]');
+    if (row) { row.scrollIntoView({ block: "nearest" }); if (ps && ps.edit && row._edit) row._edit(ps.isNew); else if (ps) box.focus({ preventScroll: true }); }
+  }
+}
+function bulletOf(n) {
+  if (n.type === "li") return n.task ? (/x/i.test(n.task) ? "☑" : "☐") : /\d/.test(n.marker) ? n.marker : "•";
+  return { h: "", p: "¶", quote: "❝", code: "{}", hr: "—", table: "▦" }[n.type] || "•";
+}
+function outNode(n) {
+  const d = el("div", "on t-" + n.type); d.dataset.line = n.start;
+  const row = el("div", "row"); row.dataset.line = n.start; d.append(row);
+  if (n.start === selLine) row.classList.add("sel");
+  const has = n.children.length > 0, folded = has && outFold.has(n.key);
+  const tw = el("span", "tw", has ? (folded ? "▸" : "▾") : n.type === "h" ? "•" : "");
+  if (has) tw.onclick = (e) => { e.stopPropagation(); folded ? outFold.delete(n.key) : outFold.add(n.key); renderOutline(); };
+  row.append(tw);
+  if (n.type !== "h") row.append(el("span", "bl", bulletOf(n)));
+  if (n.type === "h") {
+    const tx = el("div", "tx h" + n.level); tx.innerHTML = inl(n.text);
+    row.append(el("span", "bd", "H" + n.level), tx); editable(row, tx, n, n.text.replace(/<br\s*\/?>/gi, "\n"));
+  } else if (n.type === "li") {
+    const tx = el("div", "tx"); tx.innerHTML = inl(n.text);
+    row.append(tx); editable(row, tx, n, n.text.replace(/<br\s*\/?>/gi, "\n"));
+  } else if (n.type === "p") {
+    const tx = el("div", "tx"); tx.innerHTML = inl(n.text.trim()).replace(/\n/g, "<br>");
+    row.append(tx); editable(row, tx, n, n.text);
+  } else if (n.type === "quote") {
+    const q = el("blockquote"); q.innerHTML = inl(n.text).replace(/\n/g, "<br>"); row.append(q);
+  } else if (n.type === "code") {
+    const codeTxt = md.split("\n").slice(n.start + 1, n.end).join("\n"), lg = ((md.split("\n")[n.start] || "").match(FENCE_LANG) || [])[1]?.toLowerCase();
+    const pre = lg === "mermaid" || lg === "html" ? cbBox(lg, codeTxt) : el("pre", null, codeTxt); pre.title = "더블클릭: 코드 블록 편집";
+    pre.ondblclick = () => openCode({ a: n.start, b: n.end });
+    row.append(pre);
+  } else if (n.type === "hr") {
+    const hr = el("hr"); hr.style.flex = "1"; row.append(hr);
+  } else if (n.type === "table") {
+    const raw = md.split("\n").slice(n.start, n.end + 1).join("\n"), t = parseTable(raw);
+    if (!t) row.append(el("pre", null, raw));
+    else {
+      const tb = el("table", "mdtbl"); tb.title = "더블클릭: 표 편집기";
+      const A = { l: "left", c: "center", r: "right" };
+      t.rows.forEach((r, ri) => { const tr = el("tr"); r.forEach((c, ci) => { const td = el(ri ? "td" : "th"); td.innerHTML = inl(c.replace(/\n/g, "<br>")); if (A[t.al[ci]]) td.style.textAlign = A[t.al[ci]]; tr.append(td); }); tb.append(tr); });
+      tb.ondblclick = () => openTable({ a: n.start, b: n.end });
+      row.append(tb);
+    }
+  }
+  row.addEventListener("click", (e) => {
+    if (e.target.isContentEditable || e.target.closest("a")) return;
+    selLine = n.start;
+    document.querySelectorAll("#outline .row.sel").forEach((r) => r.classList.remove("sel"));
+    row.classList.add("sel"); $("#outline").focus({ preventScroll: true });
+  });
+  dnd(row, n);
+  if (has && !folded) { const k = el("div", "kids"); n.children.forEach((c) => k.append(outNode(c))); d.append(k); }
+  return d;
+}
+function editable(row, tx, n, raw) {
+  const multi = n.type === "p";
+  row._edit = (isNew) => startEdit(row, tx, n, raw, multi, isNew);
+  tx.ondblclick = (e) => { if (!e.target.closest("a")) row._edit(false); };
+}
+function startEdit(row, tx, n, raw, multi, isNew) {
+  selLine = n.start; row.classList.add("sel"); row.draggable = false;
+  tx.contentEditable = "true"; tx.textContent = raw; tx.focus();
+  const r = document.createRange(); r.selectNodeContents(tx); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  let done = false;
+  const finish = (how) => {
+    if (done) return; done = true; tx.contentEditable = "false"; row.draggable = true;
+    if (how === "cancel") return isNew ? undo() : renderOutline();
+    const v = tx.innerText.replace(/\n+$/, "");
+    let lines = md.split("\n"), delta = 0;
+    const changed = v !== raw;
+    if (changed) delta = replaceText(n, v, lines);
+    if (changed) commitOutline(lines, n.start, false); // text first (own undo step), so Esc on the next new node keeps it
+    if (how === "enter") return opAdd(changed ? nodeAt(curO, selLine) || n : n);
+    if (how === "indent" || how === "outdent") {
+      const nn = nodeAt(curO, selLine);
+      const ok = nn && (how === "indent" ? opIndent(nn, true) : opOutdent(nn, true));
+      if (!ok) { pendingSel = { line: selLine, edit: true }; renderOutline(); }
+    } else if (!changed) renderOutline();
+  };
+  tx.onkeydown = (k) => {
+    k.stopPropagation(); // keys typed while editing must not reach the outline-level shortcuts
+    if (k.isComposing) return; // Korean IME
+    if (k.key === "Enter" && !k.shiftKey) { k.preventDefault(); finish("enter"); }
+    else if (k.key === "Tab") { k.preventDefault(); finish(k.shiftKey ? "outdent" : "indent"); }
+    else if (k.key === "Escape") { k.preventDefault(); finish("cancel"); }
+    else if (k.key === "Enter" && k.shiftKey && !multi) { k.preventDefault(); document.execCommand("insertLineBreak"); }
+  };
+  tx.onblur = () => finish("save");
+}
+function clearDrop() { document.querySelectorAll("#outline .row[data-drop]").forEach((r) => { r.classList.remove("drop-before", "drop-after", "drop-inside"); delete r.dataset.drop; }); }
+function dnd(row, n) {
+  row.draggable = true;
+  row.addEventListener("dragstart", (e) => {
+    if (e.target.isContentEditable) { e.preventDefault(); return; }
+    dragSrc = n; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(n.start)); row.classList.add("dragging");
+  });
+  row.addEventListener("dragend", () => { dragSrc = null; row.classList.remove("dragging"); clearDrop(); });
+  row.addEventListener("dragover", (e) => {
+    if (!dragSrc) return;
+    const r = row.getBoundingClientRect(), y = (e.clientY - r.top) / r.height;
+    let pos = y < 0.3 ? "before" : y > 0.7 ? "after" : "inside";
+    let plan = planMove(curO, dragSrc, n, pos);
+    if (!plan && pos === "inside") { pos = y < 0.5 ? "before" : "after"; plan = planMove(curO, dragSrc, n, pos); }
+    if (!plan) { if (row.dataset.drop) clearDrop(); return; }
+    e.preventDefault(); e.dataTransfer.dropEffect = "move";
+    if (row.dataset.drop !== pos) { clearDrop(); row.dataset.drop = pos; row.classList.add("drop-" + pos); }
+  });
+  row.addEventListener("dragleave", (e) => { if (!row.contains(e.relatedTarget)) { row.classList.remove("drop-before", "drop-after", "drop-inside"); delete row.dataset.drop; } });
+  row.addEventListener("drop", (e) => { e.preventDefault(); const pos = row.dataset.drop, src = dragSrc; clearDrop(); dragSrc = null; if (src && pos) doMove(src, n, pos); });
+}
+function moveSel(dir) {
+  const rows = [...document.querySelectorAll("#outline .row")];
+  if (!rows.length) return;
+  let i = rows.findIndex((r) => Number(r.dataset.line) === selLine);
+  i = i < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, i + dir));
+  rows.forEach((r) => r.classList.remove("sel")); rows[i].classList.add("sel");
+  selLine = Number(rows[i].dataset.line); rows[i].scrollIntoView({ block: "nearest" });
+}
+$("#outline").tabIndex = 0;
+$("#outline").addEventListener("keydown", (e) => {
+  if (e.target.isContentEditable || (e.target.closest && e.target.closest(".tx")) || mode !== "outline") return;
+  const k = e.key, ctrl = e.ctrlKey || e.metaKey, n = nodeAt(curO, selLine);
+  if (ctrl && k.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); return undo(); }
+  if (ctrl && (k.toLowerCase() === "y" || (k.toLowerCase() === "z" && e.shiftKey))) { e.preventDefault(); return redo(); }
+  if (k === "ArrowUp" || k === "ArrowDown") {
+    e.preventDefault();
+    if (e.altKey && n) { const s = sibling(n, k === "ArrowUp" ? -1 : 1); return s ? doMove(n, s, k === "ArrowUp" ? "before" : "after") : flash("더 옮길 곳이 없습니다"); }
+    return moveSel(k === "ArrowDown" ? 1 : -1);
+  }
+  if (k === "Enter") { e.preventDefault(); return opAdd(n); }
+  if (!n) return;
+  if (k === "F2") { e.preventDefault(); document.querySelector('#outline .row[data-line="' + n.start + '"]')?._edit?.(false); }
+  else if (k === "Tab") { e.preventDefault(); e.shiftKey ? opOutdent(n) : opIndent(n); }
+  else if (k === "Delete") { e.preventDefault(); opDelete(n); }
+  else if (k === "ArrowLeft") { e.preventDefault(); if (n.children.length && !outFold.has(n.key)) { outFold.add(n.key); renderOutline(); } else if (n.parent && n.parent.type !== "root") { selLine = n.parent.start; renderOutline(); } }
+  else if (k === "ArrowRight") { e.preventDefault(); if (outFold.has(n.key)) { outFold.delete(n.key); renderOutline(); } }
+});
+
+/* ---------- table dialog ---------- */
+const T = { rows: [], al: [], r: 0, c: 0, replace: null, tgt: "src", view: "grid" };
+function openTable(range) {
+  T.tgt = range ? "src" : target();
+  T.replace = range || null;
+  if (!T.replace && T.tgt === "src" && mode !== "outline") {
+    const ln = cm.getCursor().line, isRow = (i) => /^\s*\|/.test(cm.getLine(i));
+    if (isRow(ln)) { let a = ln, b = ln; while (a > 0 && isRow(a - 1)) a--; while (b < cm.lineCount() - 1 && isRow(b + 1)) b++; T.replace = { a, b }; }
+  }
+  T.wwSelAt = null;
+  if (!T.replace && T.tgt === "ww") {
+    wwRestore();
+    const a = window.getSelection()?.anchorNode, ae = a && (a.nodeType === 1 ? a : a.parentElement), tb = ae?.closest?.(".toastui-editor-ww-container table");
+    if (tb) { const idx = [...document.querySelectorAll("#ww .toastui-editor-ww-container .ProseMirror table")].indexOf(tb); const b = parseBlocks(md).filter((x) => x.type === "table")[idx]; if (b) T.replace = { a: b.start, b: b.end }; }
+    if (!T.replace) { const sx = ed.getSelection(), end = Math.max(sx[0], sx[1]); T.wwSelAt = [end, end]; } // keep the selected text
+  }
+  let parsed = null;
+  if (T.replace) parsed = parseTable(md.split("\n").slice(T.replace.a, T.replace.b + 1).join("\n"));
+  if (parsed) { T.rows = parsed.rows; T.al = parsed.al; } else { T.replace = null; T.rows = [["열1", "열2", "열3"], ["", "", ""], ["", "", ""]]; T.al = ["", "", ""]; }
+  T.r = 0; T.c = 0; T.view = "grid";
+  $("#dlg").hidden = false; drawGrid(); setView("grid"); setTimeout(focusCell, 30);
+}
+function closeTable() { $("#dlg").hidden = true; (T.tgt === "ww" ? ed : cm).focus(); }
+function info() { $("#dlgInfo").textContent = `${T.rows.length}행 × ${T.rows[0].length}열` + (T.replace ? " · 기존 표 편집" : " · 새 표"); }
+function autoH(t) { t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
+function drawGrid() {
+  const g = $("#grid"); g.innerHTML = "";
+  T.rows.forEach((r, ri) => {
+    const tr = el("tr");
+    r.forEach((c, ci) => {
+      const td = el("td"), ta = el("textarea"); ta.rows = 1; ta.value = c;
+      ta.style.textAlign = { l: "left", c: "center", r: "right" }[T.al[ci]] || "left";
+      if (ri === T.r && ci === T.c) ta.classList.add("cur");
+      ta.oninput = () => { T.rows[ri][ci] = ta.value; autoH(ta); };
+      ta.onfocus = () => { T.r = ri; T.c = ci; g.querySelectorAll("textarea.cur").forEach((x) => x.classList.remove("cur")); ta.classList.add("cur"); markAl(); };
+      td.append(ta); tr.append(td);
+    });
+    g.append(tr);
+  });
+  g.querySelectorAll("textarea").forEach(autoH);
+  info(); markAl();
+}
+function focusCell() { const t = $("#grid").rows[T.r]?.cells[T.c]?.querySelector("textarea"); t?.focus(); }
+function markAl() { document.querySelectorAll(".al").forEach((b) => b.classList.toggle("on", T.al[T.c] === b.dataset.al)); }
+function setView(v) {
+  if (v === "grid" && T.view === "md") {
+    const p = parseTable($("#mdView").value);
+    if (!p) { alert("표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다."); return; }
+    T.rows = p.rows; T.al = p.al; T.r = Math.min(T.r, T.rows.length - 1); T.c = Math.min(T.c, T.rows[0].length - 1);
+  }
+  if (v === "md") $("#mdView").value = toTableMd(T.rows, T.al);
+  T.view = v;
+  $("#grid").hidden = v !== "grid"; $("#gridCtl").style.display = v === "grid" ? "" : "none"; $("#mdView").hidden = v !== "md";
+  $("#vGrid").classList.toggle("on", v === "grid"); $("#vMd").classList.toggle("on", v === "md");
+  if (v === "grid") { drawGrid(); focusCell(); } else $("#mdView").focus();
+}
+$("#vGrid").onclick = () => setView("grid");
+$("#vMd").onclick = () => setView("md");
+$("#addR").onclick = () => { T.rows.splice(T.r + 1, 0, T.rows[0].map(() => "")); T.r++; drawGrid(); focusCell(); };
+$("#delR").onclick = () => { if (T.rows.length <= 2 || T.r === 0) return; T.rows.splice(T.r, 1); T.r = Math.min(T.r, T.rows.length - 1); drawGrid(); focusCell(); };
+$("#addC").onclick = () => { T.rows.forEach((r, i) => r.splice(T.c + 1, 0, i ? "" : "열" + (r.length + 1))); T.al.splice(T.c + 1, 0, ""); T.c++; drawGrid(); focusCell(); };
+$("#delC").onclick = () => { if (T.rows[0].length <= 1) return; T.rows.forEach((r) => r.splice(T.c, 1)); T.al.splice(T.c, 1); T.c = Math.min(T.c, T.rows[0].length - 1); drawGrid(); focusCell(); };
+document.querySelectorAll(".al").forEach((b) => { b.onmousedown = (e) => e.preventDefault(); b.onclick = () => { T.al[T.c] = T.al[T.c] === b.dataset.al ? "" : b.dataset.al; drawGrid(); focusCell(); }; });
+["addR", "delR", "addC", "delC"].forEach((id) => ($("#" + id).onmousedown = (e) => e.preventDefault()));
+$("#dlgX").onclick = $("#dlgCancel").onclick = closeTable;
+$("#dlgOk").onclick = applyTable;
+$("#dlg").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); closeTable(); }
+  else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); applyTable(); }
+});
+function applyTable() {
+  if (T.view === "md") { const p = parseTable($("#mdView").value); if (!p) return alert("표 형식이 올바르지 않습니다."); T.rows = p.rows; T.al = p.al; }
+  const tmd = toTableMd(T.rows, T.al);
+  $("#dlg").hidden = true;
+  if (T.replace) {
+    const lines = md.split("\n"); lines.splice(T.replace.a, T.replace.b - T.replace.a + 1, ...tmd.split("\n"));
+    setAll(lines.join("\n"), "dialog");
+  } else if (T.tgt === "src") {
+    const ln = cm.getCursor().line, line = cm.getLine(ln);
+    const pre = line.trim() ? "\n\n" : "\n";
+    cm.replaceRange(pre + tmd + "\n", { line: ln, ch: line.length });
+    cm.focus();
+  } else wwInsertBlock(tmd, T.wwSelAt);
+}
+
+/* ---------- code block dialog (same layout and keys as EasyMindMap's popup) ---------- */
+const LANGS = [["Bash","bash"],["Batch","bat"],["C","c"],["C#","csharp"],["C++","cpp"],["Clojure","clojure"],["CMake","cmake"],["CSS","css"],["CSV","csv"],["Dart","dart"],["Diff","diff"],["Dockerfile","dockerfile"],["Elixir","elixir"],["Erlang","erlang"],["F#","fsharp"],["Fortran","fortran"],["Go","go"],["GraphQL","graphql"],["Groovy","groovy"],["Haskell","haskell"],["HCL (Terraform)","hcl"],["HTML","html"],["HTTP","http"],["INI","ini"],["Java","java"],["JavaScript","javascript"],["JSON","json"],["JSX","jsx"],["Julia","julia"],["Kotlin","kotlin"],["LaTeX","latex"],["Less","less"],["Lua","lua"],["Makefile","makefile"],["Markdown","markdown"],["MATLAB","matlab"],["Mermaid","mermaid"],["Nginx","nginx"],["Objective-C","objectivec"],["OCaml","ocaml"],["Perl","perl"],["PHP","php"],["Plain text","text"],["PlantUML","plantuml"],["PowerShell","powershell"],["Protocol Buffers","protobuf"],["Python","python"],["R","r"],["Ruby","ruby"],["Rust","rust"],["Sass","sass"],["Scala","scala"],["SCSS","scss"],["Shell","shell"],["Solidity","solidity"],["SQL","sql"],["Svelte","svelte"],["Swift","swift"],["TOML","toml"],["TSX","tsx"],["TypeScript","typescript"],["VB.NET","vbnet"],["Verilog","verilog"],["Vue","vue"],["XML","xml"],["YAML","yaml"],["Zig","zig"]];
+const C = { tgt: "src", range: null, wwSelAt: null, act: -1, items: [] };
+let codeLn = localStorage.getItem("mde.code.ln") !== "0";
+const FENCE_RE = /^\s*(`{3,}|~{3,})\s*([^\s`]*)/;
+function openCode(range) {
+  C.range = range || null; C.tgt = range ? "range" : target(); C.wwSelAt = null;
+  let lang = "", code = "";
+  if (!C.range && C.tgt === "src") {
+    const ln = cm.getCursor().line, b = parseBlocks(md).find((x) => x.type === "code" && ln >= x.start && ln <= x.end);
+    if (b) C.range = { a: b.start, b: b.end }; else code = cm.getSelection();
+  } else if (!C.range && C.tgt === "ww") {
+    wwRestore();
+    const node = window.getSelection()?.anchorNode, elx = node && (node.nodeType === 1 ? node : node.parentElement);
+    const pre = elx?.closest?.(".toastui-editor-ww-container :is(pre, .mde-cb)");
+    if (pre) {
+      const idx = [...document.querySelectorAll("#ww .toastui-editor-ww-container .ProseMirror :is(pre, .mde-cb)")].indexOf(pre);
+      const b = parseBlocks(md).filter((x) => x.type === "code")[idx];
+      if (b) C.range = { a: b.start, b: b.end };
+    }
+    if (!C.range) { C.wwSelAt = ed.getSelection(); code = ed.getSelectedText ? ed.getSelectedText() : ""; }
+  }
+  if (C.range) {
+    const lines = md.split("\n"), first = lines[C.range.a] || "", fm = first.match(FENCE_RE);
+    lang = fm ? fm[2] : "";
+    const closed = C.range.b > C.range.a && fm && new RegExp("^\\s*" + fm[1][0] + "{" + fm[1].length + ",}\\s*$").test(lines[C.range.b]);
+    code = lines.slice(C.range.a + 1, closed ? C.range.b : C.range.b + 1).join("\n");
+  }
+  $("#cTitle").textContent = C.range ? "코드 블록 수정" : "코드 블록 삽입";
+  $("#cLang").value = lang; $("#cCode").value = code; $("#cMsg").textContent = "";
+  closeLangList(); syncCode(); setLn(codeLn);
+  $("#cdlg").hidden = false; $("#cCode").scrollTop = 0;
+  setTimeout(() => { $("#cCode").focus(); $("#cCode").setSelectionRange(0, 0); }, 30);
+}
+function closeCode() { $("#cdlg").hidden = true; (C.tgt === "ww" ? ed : cm).focus(); }
+function syncCode() {
+  const v = $("#cCode").value, n = v.split("\n").length;
+  $("#cGut").textContent = Array.from({ length: n }, (_, i) => i + 1).join("\n");
+  $("#cGut").scrollTop = $("#cCode").scrollTop;
+  $("#cOk").disabled = !v.trim(); $("#cCopy").disabled = !v;
+}
+function setLn(on) {
+  codeLn = on; localStorage.setItem("mde.code.ln", on ? "1" : "0");
+  $("#cGut").hidden = !on; $("#cLn").classList.toggle("off", !on);
+  $("#cLn").textContent = on ? "1≡ On" : "1≡ Off"; $("#cLn").title = on ? "줄 번호 끄기" : "줄 번호 켜기";
+}
+function langId(v) { v = v.trim(); const hit = LANGS.find(([n, id]) => n.toLowerCase() === v.toLowerCase() || id === v.toLowerCase()); return hit ? hit[1] : v; }
+function showLangList(all) {
+  const q = all ? "" : $("#cLang").value.trim().toLowerCase();
+  C.items = LANGS.filter(([n, id]) => !q || n.toLowerCase().startsWith(q) || id.startsWith(q) || n.toLowerCase().includes(q));
+  const box = $("#cList"); box.innerHTML = "";
+  if (!C.items.length) { box.append(el("div", "lnone", "목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다")); }
+  C.items.forEach(([n, id], i) => {
+    const o = el("div", "lopt"); o.setAttribute("role", "option"); o.append(el("span", null, n), el("small", null, id));
+    o.onmousedown = (e) => { e.preventDefault(); pickLang(i); };
+    box.append(o);
+  });
+  C.act = all ? C.items.findIndex(([, id]) => id === langId($("#cLang").value)) : (C.items.length ? 0 : -1);
+  markAct(); box.hidden = false; $("#cLang").setAttribute("aria-expanded", "true"); $("#cLangBtn").classList.toggle("on", !!all);
+}
+function closeLangList() { $("#cList").hidden = true; $("#cLang").setAttribute("aria-expanded", "false"); $("#cLangBtn").classList.remove("on"); C.act = -1; }
+function markAct() { [...$("#cList").querySelectorAll(".lopt")].forEach((o, i) => { o.classList.toggle("act", i === C.act); if (i === C.act) o.scrollIntoView({ block: "nearest" }); }); }
+function pickLang(i) { const it = C.items[i]; if (!it) return; $("#cLang").value = it[1]; closeLangList(); $("#cCode").focus(); }
+$("#cLang").addEventListener("input", () => showLangList(false));
+$("#cLang").addEventListener("blur", () => setTimeout(closeLangList, 120));
+$("#cLang").addEventListener("keydown", (e) => {
+  const open = !$("#cList").hidden;
+  if (e.key === "ArrowDown") { e.preventDefault(); if (!open) showLangList(true); else { C.act = Math.min(C.items.length - 1, C.act + 1); markAct(); } }
+  else if (e.key === "ArrowUp") { e.preventDefault(); if (open) { C.act = Math.max(0, C.act - 1); markAct(); } }
+  else if (e.key === "Enter" && !e.ctrlKey) { e.preventDefault(); if (open && C.act >= 0) pickLang(C.act); else { closeLangList(); $("#cCode").focus(); } }
+  else if (e.key === "Escape" && open) { e.preventDefault(); e.stopPropagation(); closeLangList(); }
+});
+$("#cLangBtn").onmousedown = (e) => e.preventDefault();
+$("#cLangBtn").onclick = () => { if (!$("#cList").hidden && $("#cLangBtn").classList.contains("on")) closeLangList(); else { $("#cLang").focus(); showLangList(true); } };
+$("#cCode").addEventListener("input", syncCode);
+$("#cCode").addEventListener("scroll", () => ($("#cGut").scrollTop = $("#cCode").scrollTop));
+$("#cCode").addEventListener("keydown", (e) => {
+  if (e.key === "Tab" && !e.ctrlKey && !e.altKey) { // indent instead of leaving the box
+    e.preventDefault();
+    const t = e.target, s = t.selectionStart, en = t.selectionEnd, v = t.value;
+    if (s === en && !e.shiftKey) { t.setRangeText("    ", s, en, "end"); }
+    else {
+      const ls = v.lastIndexOf("\n", s - 1) + 1, block = v.slice(ls, en);
+      const nb = e.shiftKey ? block.replace(/^( {1,4}|\t)/gm, "") : block.replace(/^/gm, "    ");
+      t.setRangeText(nb, ls, en, "select");
+    }
+    syncCode();
+  }
+});
+$("#cLn").onclick = () => setLn(!codeLn);
+$("#cCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#cCode").value); $("#cMsg").textContent = "복사했습니다"; } catch { $("#cMsg").textContent = "복사하지 못했습니다"; } setTimeout(() => ($("#cMsg").textContent = ""), 1500); };
+$("#cX").onclick = $("#cCancel").onclick = closeCode;
+$("#cOk").onclick = applyCode;
+$("#cdlg").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); closeCode(); }
+  else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!$("#cOk").disabled) applyCode(); }
+});
+function applyCode() {
+  const code = $("#cCode").value.replace(/\s+$/, ""), lang = langId($("#cLang").value);
+  if (!code.trim()) return;
+  const runs = (code.match(/^\s*`{3,}/gm) || []).map((s) => s.trim().length);
+  const f = "`".repeat(Math.max(3, ...runs.map((r) => r + 1)));
+  const block = f + lang + "\n" + code + "\n" + f;
+  $("#cdlg").hidden = true;
+  if (C.range) {
+    const lines = md.split("\n"); lines.splice(C.range.a, C.range.b - C.range.a + 1, ...block.split("\n"));
+    setAll(lines.join("\n"), "dialog");
+    if (C.tgt !== "ww") { cm.focus(); cm.setCursor({ line: C.range.a, ch: 0 }); }
+  } else if (C.tgt === "src") {
+    const from = cm.getCursor("from"), to = cm.getCursor("to");
+    const pre = cm.getRange({ line: from.line, ch: 0 }, from).trim() ? "\n" : "";
+    const post = cm.getRange(to, { line: to.line, ch: cm.getLine(to.line).length }).trim() ? "\n" : "";
+    cm.replaceRange(pre + block + post, from, to); cm.focus();
+  } else wwInsertBlock(block, C.wwSelAt);
+}
+// insert a block (code block, table) at the rendered editor's cursor via a marker in the markdown
+function wwInsertBlock(block, selAt) {
+  const MK = "\u2063BLOCK\u2063";
+  wwUserOp = true;
+  try {
+    ed.focus(); if (selAt) ed.setSelection(selAt[0], selAt[1]);
+    ed.insertText(MK);
+    const L = normalizeWw(ed.getMarkdown()).split("\n"), B = block.split("\n");
+    const i = L.findIndex((x) => x.includes(MK));
+    if (i < 0) L.push("", ...B);
+    else {
+      L[i] = L[i].split(MK).join("");
+      if (!L[i].trim()) L.splice(i, 1, "", ...B, "");
+      else { let j = i; while (j + 1 < L.length && L[j + 1].trim()) j++; L.splice(j + 1, 0, "", ...B, ""); } // after the paragraph, not inside it
+    }
+    setAll(fromWw(tidy(L).out.join("\n")), "dialog");
+  } finally { setTimeout(() => (wwUserOp = false), 300); }
+}
+
+/* ---------- link dialog ---------- */
+const LK = { tgt: "src", range: null, sel: null };
+function openLink() {
+  LK.tgt = target(); LK.range = null; LK.sel = null;
+  let text = "", url = "";
+  if (LK.tgt === "src") {
+    const c = cm.getCursor(), line = cm.getLine(c.line), re = /\[([^\]]*)\]\(([^)\s]*)(?:\s+"[^"]*")?\)/g; let m;
+    while ((m = re.exec(line))) if (c.ch >= m.index && c.ch <= m.index + m[0].length) { LK.range = { line: c.line, a: m.index, b: m.index + m[0].length }; text = m[1]; url = m[2]; break; }
+    if (!LK.range) text = cm.getSelection().split("\n")[0];
+  } else {
+    wwRestore(); LK.sel = ed.getSelection(); text = ed.getSelectedText ? ed.getSelectedText() : "";
+    const a = window.getSelection()?.anchorNode, ae = a && (a.nodeType === 1 ? a : a.parentElement)?.closest?.("a");
+    if (ae) url = ae.getAttribute("href") || "";
+  }
+  $("#lTitle").textContent = LK.range || url ? "링크 수정" : "링크 삽입";
+  $("#lText").value = text; $("#lUrl").value = url; $("#lOk").disabled = !url.trim();
+  $("#ldlg").hidden = false; setTimeout(() => (text ? $("#lUrl") : $("#lText")).focus(), 30); // after the editor's own focus handling
+}
+function closeLink() { $("#ldlg").hidden = true; (LK.tgt === "ww" ? ed : cm).focus(); }
+$("#lUrl").addEventListener("input", () => ($("#lOk").disabled = !$("#lUrl").value.trim()));
+$("#lX").onclick = $("#lCancel").onclick = closeLink;
+$("#lOk").onclick = applyLink;
+$("#ldlg").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); closeLink(); }
+  else if (e.key === "Enter") { e.preventDefault(); if (!$("#lOk").disabled) applyLink(); }
+});
+function applyLink() {
+  const url = $("#lUrl").value.trim().replace(/\s/g, "%20"), text = $("#lText").value.trim() || url;
+  $("#ldlg").hidden = true;
+  if (LK.tgt === "ww") {
+    wwUserOp = true;
+    try { ed.focus(); if (LK.sel) ed.setSelection(LK.sel[0], LK.sel[1]); ed.exec("addLink", { linkUrl: url, linkText: text }); }
+    finally { setTimeout(() => (wwUserOp = false), 400); }
+    return;
+  }
+  const md2 = "[" + text.replace(/([\[\]])/g, "\\$1") + "](" + url + ")";
+  if (LK.range) cm.replaceRange(md2, { line: LK.range.line, ch: LK.range.a }, { line: LK.range.line, ch: LK.range.b });
+  else cm.replaceSelection(md2);
+  cm.focus();
+}
+
+/* ---------- settings dialog ---------- */
+function drawSettings() {
+  $("#sTheme").value = S.theme; $("#sApp").checked = !!S.appDark; $("#sFont").value = S.fontSize; $("#sWrap").checked = !!S.wrap;
+  document.querySelectorAll('input[name="sSyn"]').forEach((r) => (r.checked = r.value === S.syntax));
+  const p = palette(), box = $("#sColors"); box.innerHTML = "";
+  COLOR_KEYS.forEach(([k, label]) => {
+    const row = el("div", "crow2" + (S.custom[k] ? " mod" : "")), inp = el("input"); inp.type = "color"; inp.value = p[k];
+    const hex = el("code", null, p[k]);
+    inp.oninput = () => { S.custom[k] = inp.value; hex.textContent = inp.value; row.classList.add("mod"); saveSettings(); applySettings(); };
+    row.append(el("span", null, label), hex, inp); box.append(row);
+  });
+}
+$("#setBtn").onclick = () => { drawSettings(); $("#sdlg").hidden = false; $("#sTheme").focus(); };
+$("#sX").onclick = $("#sClose").onclick = () => { $("#sdlg").hidden = true; };
+$("#sdlg").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); $("#sdlg").hidden = true; } });
+$("#sTheme").onchange = () => { S.theme = $("#sTheme").value; saveSettings(); applySettings(); drawSettings(); };
+$("#sApp").onchange = () => { S.appDark = $("#sApp").checked; saveSettings(); applySettings(); };
+$("#sFont").onchange = () => { S.fontSize = Math.min(24, Math.max(11, Number($("#sFont").value) || 14)); saveSettings(); applySettings(); };
+$("#sWrap").onchange = () => { S.wrap = $("#sWrap").checked; saveSettings(); applySettings(); };
+document.querySelectorAll('input[name="sSyn"]').forEach((r) => (r.onchange = () => { S.syntax = r.value; saveSettings(); pushToWw(); if (mode === "outline") renderOutline(); }));
+$("#sReset").onclick = () => { S.custom = {}; saveSettings(); applySettings(); drawSettings(); };
+
+
+/* ---------- file menu: open / save / save as / md.html (online, offline) / close ---------- */
+const FS_OK = typeof window.showSaveFilePicker === "function";
+const KIND_LABEL = { md: ".md", online: "md.html 온라인", offline: "md.html 오프라인", emm: "EMM 첨부" };
+const baseName = () => fileName.replace(/\.html?$/i, "").replace(/\.(md|markdown|txt)$/i, "") || "document";
+const nameFor = (kind) => baseName() + (kind === "md" ? ".md" : ".md.html");
+const isDirty = () => md !== DOC.saved;
+function downloadText(data, name, type) {
+  const a = el("a"); a.href = URL.createObjectURL(new Blob([data], { type: type + ";charset=utf-8" }));
+  a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+const scriptSafe = (s) => s.replace(/<\/(script)/gi, "<\\/$1").replace(new RegExp("<" + "!--", "g"), "<\\!--");
+async function libText(url) {
+  const have = LIBS.find((l) => l.url === url && l.inline != null);
+  if (have) return have.inline;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + " (" + r.status + ")");
+  return r.text();
+}
+// build a self-contained page: this editor + the markdown text in <textarea id="mdData">
+async function buildHtml(offline) {
+  const needMermaid = /^ {0,3}(`{3,}|~{3,})\s*mermaid\b/im.test(md);
+  const libs = LIBS.filter((l) => l.url !== MERMAID_URL);
+  if (offline && needMermaid) libs.push({ url: MERMAID_URL, css: false });
+  const parts = await Promise.all(libs.map(async (l) => {
+    if (!offline) return l.css ? `<link rel="stylesheet" data-lib-url="${l.url}" href="${l.url}">` : `<script data-lib-url="${l.url}" src="${l.url}"><\/script>`;
+    const t = await libText(l.url);
+    return l.css ? `<style data-lib-url="${l.url}">${t.replace(/<\/style/gi, "<\\/style")}</style>` : `<script data-lib-url="${l.url}">${scriptSafe(t)}<\/script>`;
+  }));
+  const css = parts.filter((_, i) => libs[i].css).join("\n"), js = parts.filter((_, i) => !libs[i].css).join("\n");
+  const name = esc(nameFor("online"));
+  const body = APP_BODY.replace(/<textarea id="mdData"[^>]*>[\s\S]*?<\/textarea>/, () => `<textarea id="mdData" hidden data-name="${name}">\n${esc(md)}</textarea>`);
+  return `<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${name}</title>\n${css}\n<style id="appStyle">${APP_CSS}</style>\n</head>\n<body>${body}\n${js}\n<script id="appMain">${APP_JS}<\/script>\n</body>\n</html>\n`;
+}
+async function writeTo(kind, asNew) {
+  let data;
+  try { flash(kind === "offline" ? "오프라인 파일을 만드는 중… (라이브러리를 넣습니다)" : "저장 중…"); data = kind === "md" ? md : await buildHtml(kind === "offline"); }
+  catch (e) { alert("파일을 만들지 못했습니다: " + e.message + (kind === "offline" ? "\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다." : "")); return false; }
+  const type = kind === "md" ? "text/markdown" : "text/html";
+  let how = "내려받기 폴더에 저장했습니다";
+  if (FS_OK) {
+    try {
+      let h = !asNew && DOC.handle && DOC.kind === kind ? DOC.handle : null;
+      if (!h) h = await window.showSaveFilePicker({ suggestedName: nameFor(kind), types: [kind === "md"
+        ? { description: "Markdown", accept: { "text/markdown": [".md"] } }
+        : { description: "md.html (" + KIND_LABEL[kind] + ")", accept: { "text/html": [".html"] } }] });
+      const w = await h.createWritable(); await w.write(new Blob([data], { type })); await w.close();
+      DOC.handle = h; fileName = h.name; how = "저장했습니다";
+    } catch (e) { if (e.name === "AbortError") { updStatus(); return false; } console.warn(e); downloadText(data, nameFor(kind), type); }
+  } else downloadText(data, nameFor(kind), type);
+  DOC.kind = kind; DOC.saved = md; DOC.fileBound = true;
+  updStatus(); flash(`${fileName} (${KIND_LABEL[kind]}) ${how}`);
+  return true;
+}
+const doSave = () => (DOC.kind === "emm" ? emmSave(false) : writeTo(DOC.kind, false));
+
+/* ---------- EasyMindMap attachment: load and save back ---------- */
+function emmToken() { // same origin as the app: read the current session token the app keeps refreshed; fall back to #t=
+  try {
+    const raw = localStorage.getItem("emm.auth");
+    if (raw) {
+      const find = (o, d) => { if (!o || typeof o !== "object" || d > 6) return null; for (const k of ["access_token", "accessToken"]) if (typeof o[k] === "string" && o[k]) return o[k]; for (const v of Object.values(o)) { const r = find(v, d + 1); if (r) return r; } return null; };
+      const t = find(JSON.parse(raw), 0); if (t) return t;
+    }
+  } catch {}
+  return new URLSearchParams(location.hash.slice(1)).get("t") || "";
+}
+async function sha256Hex(data) {
+  const buf = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  const d = await crypto.subtle.digest("SHA-256", buf);
+  return [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+function emmErr(s) {
+  return { 401: "로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.", 403: "이 첨부를 고칠 권한이 없습니다 (읽기 전용).", 404: "첨부를 찾을 수 없거나 볼 권한이 없습니다.",
+    413: "용량 한도를 넘었습니다.", 415: "이 형식의 첨부는 저장할 수 없습니다." }[s] || "서버 오류 (" + s + ")";
+}
+const emmUrl = (suffix) => EMM.api + "/v1/attachments/" + encodeURIComponent(EMM.att) + (suffix || "");
+async function emmLoad() {
+  flash("EasyMindMap 첨부를 불러오는 중…");
+  try {
+    const r = await fetch(emmUrl(), { headers: { Authorization: "Bearer " + emmToken() } });
+    if (!r.ok) throw new Error(emmErr(r.status));
+    const buf = await r.arrayBuffer();
+    EMM.base = await sha256Hex(buf);
+    setAll(new TextDecoder("utf-8").decode(buf).replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"), "file");
+    DOC.saved = md; updStatus(); flash("불러왔습니다: " + EMM.name);
+  } catch (e) { flash("불러오지 못했습니다"); alert("첨부를 불러오지 못했습니다: " + e.message); }
+}
+let emmSaving = false;
+async function emmSave(force) {
+  if (emmSaving) return;
+  if (EMM.readOnly) return alert("읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.");
+  emmSaving = true; flash("EasyMindMap에 저장 중…");
+  try {
+    const body = new TextEncoder().encode(md);
+    const headers = { Authorization: "Bearer " + emmToken(), "Content-Type": "text/markdown; charset=utf-8" };
+    if (EMM.base && !force) headers["If-Match"] = '"sha256:' + EMM.base + '"';
+    const r = await fetch(emmUrl("/content"), { method: "PUT", headers, body });
+    if (r.status === 409) {
+      emmSaving = false;
+      if (confirm("다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)")) return emmSave(true);
+      return flash("저장하지 않았습니다 (다른 곳에서 먼저 고침)");
+    }
+    if (r.status === 403) EMM.readOnly = true;
+    if (!r.ok) throw new Error(emmErr(r.status));
+    EMM.base = await sha256Hex(body);
+    DOC.saved = md; updStatus(); flash("EasyMindMap 첨부에 저장했습니다");
+    try { window.opener && window.opener.postMessage({ type: "mde:attachment-saved", att: EMM.att, sizeBytes: body.length }, location.origin); } catch {}
+  } catch (e) { flash("저장하지 못했습니다"); alert("저장하지 못했습니다: " + e.message); }
+  finally { emmSaving = false; }
+}
+async function loadFile(f, h) {
+  let text = await f.text(), kind = "md";
+  if (/\.html?$/i.test(f.name)) {
+    const d = new DOMParser().parseFromString(text, "text/html"), ta = d.getElementById("mdData");
+    if (!ta) return alert("이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.");
+    text = ta.value || ta.textContent || ""; kind = d.querySelector("script[data-lib-url]:not([src])") ? "offline" : "online";
+  }
+  fileName = f.name; DOC.handle = h || null; DOC.kind = kind; DOC.fileBound = true;
+  setAll(text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"), "file"); DOC.saved = md; updStatus();
+}
+const askDiscard = () => !isDirty() || !DOC.fileBound || confirm("저장하지 않은 변경이 있습니다. 버리고 계속할까요?");
+async function doOpen() {
+  if (!askDiscard()) return;
+  if (typeof window.showOpenFilePicker === "function") {
+    try {
+      const [h] = await window.showOpenFilePicker({ types: [{ description: "Markdown / md.html", accept: { "text/markdown": [".md", ".markdown"], "text/plain": [".txt"], "text/html": [".html", ".htm"] } }] });
+      return loadFile(await h.getFile(), h);
+    } catch (e) { if (e.name === "AbortError") return; }
+  }
+  $("#fileIn").click();
+}
+$("#fileIn").onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) loadFile(f, null); };
+function newDoc(text, name) { fileName = name; DOC.handle = null; DOC.kind = "md"; DOC.fileBound = false; setAll(text, "file"); DOC.saved = md; updStatus(); }
+function doClose() {
+  if (isDirty() && !confirm("저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?")) return;
+  DOC.saved = md;
+  if (window.parent !== window) return postToParent({ type: "mde:close" });
+  window.close(); // works only for windows opened by script
+  setTimeout(() => { newDoc("", "새 문서.md"); flash("브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요."); }, 200);
+}
+const ACTS = {
+  new: () => askDiscard() && newDoc("", "새 문서.md"),
+  open: doOpen,
+  sample: () => askDiscard() && newDoc(SAMPLE, "예제.md"),
+  save: doSave,
+  saveas: () => writeTo(DOC.kind === "emm" ? "md" : DOC.kind, true),
+  md: () => writeTo("md", true),
+  online: () => writeTo("online", true),
+  offline: () => writeTo("offline", true),
+  close: doClose,
+};
+$("#fileBtn").onclick = (e) => { e.stopPropagation(); $("#fileList").hidden = !$("#fileList").hidden; };
+$("#fileList").addEventListener("click", (e) => { const b = e.target.closest("[data-act]"); if (!b) return; $("#fileList").hidden = true; ACTS[b.dataset.act](); });
+document.addEventListener("click", (e) => { if (!e.target.closest("#fileMenu")) $("#fileList").hidden = true; });
+$("#saveBtn").onclick = doSave;
+$("#closeBtn").onclick = doClose;
+window.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "s") { e.preventDefault(); e.stopPropagation(); e.shiftKey ? ACTS.saveas() : doSave(); }
+  else if (k === "o" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); doOpen(); }
+}, true);
+window.addEventListener("beforeunload", (e) => { if (isDirty() && DOC.fileBound) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ---------- split view: drag the bar to resize ---------- */
+function setSplit(p) { p = Math.min(85, Math.max(15, p)); $("#main").style.setProperty("--l", p); $("#main").style.setProperty("--r", 100 - p); localStorage.setItem("mde.split", String(p)); }
+setSplit(Number(localStorage.getItem("mde.split")) || 50);
+$("#splitter").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  const sp = $("#splitter"); sp.setPointerCapture(e.pointerId); sp.classList.add("drag"); document.body.classList.add("resizing");
+  const left = $("#srcPane").getBoundingClientRect().left, total = $("#srcPane").offsetWidth + $("#wwPane").offsetWidth;
+  const move = (ev) => setSplit(((ev.clientX - left) / total) * 100);
+  const up = () => { sp.removeEventListener("pointermove", move); sp.removeEventListener("pointerup", up); sp.classList.remove("drag"); document.body.classList.remove("resizing"); cm.refresh(); };
+  sp.addEventListener("pointermove", move); sp.addEventListener("pointerup", up);
+});
+$("#splitter").ondblclick = () => { setSplit(50); cm.refresh(); };
+
+/* ---------- mermaid / html code block previews (rendered pane and outline) ---------- */
+const MMD_CACHE = new Map();
+let mmdP = null, mmdSeq = 0, tPrev = 0;
+function initMermaid() { if (!window.__mdeMmd) { window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: document.body.classList.contains("dark") ? "dark" : "default" }); window.__mdeMmd = 1; } }
+function loadMermaid() {
+  if (window.mermaid) return Promise.resolve(initMermaid());
+  if (!mmdP) mmdP = new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = MERMAID_URL;
+    s.onload = () => res(initMermaid());
+    s.onerror = () => { mmdP = null; rej(new Error("Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)")); };
+    document.head.append(s);
+  });
+  return mmdP;
+}
+function cbBox(lang, code) { // outline uses the same box as the rendered pane
+  const box = el("div", "mde-cb"); box.dataset.lang = lang; box.dataset.code = encodeURIComponent(code);
+  box.innerHTML = `<div class="mde-cb-hd"><span>${lang}</span><span>더블클릭: 코드 편집</span></div><div class="mde-cb-body">미리보기 준비 중…</div>`;
+  return box;
+}
+function schedulePreviews() { clearTimeout(tPrev); tPrev = setTimeout(renderPreviews, 60); }
+function renderPreviews() { document.querySelectorAll("#ww .toastui-editor-ww-container .mde-cb:not([data-done]), #outline .mde-cb:not([data-done])").forEach(renderPreview); }
+async function renderPreview(box) {
+  box.dataset.done = "1";
+  const lang = box.dataset.lang, code = decodeURIComponent(box.dataset.code || ""), body = box.querySelector(".mde-cb-body") || box;
+  if (lang === "html") {
+    const id = "f" + ++mmdSeq, f = document.createElement("iframe");
+    f.className = "mde-html"; f.dataset.fid = id; f.setAttribute("sandbox", "allow-scripts"); f.title = "HTML 미리보기";
+    f.srcdoc = code + `<script>(function(){function s(){parent.postMessage({mdeFrame:"${id}",h:document.documentElement.scrollHeight},"*")}addEventListener("load",s);new ResizeObserver(s).observe(document.documentElement)})()<\/script>`;
+    body.replaceChildren(f); return;
+  }
+  if (MMD_CACHE.has(code)) { body.innerHTML = MMD_CACHE.get(code); return; }
+  const id = "mmd" + ++mmdSeq;
+  try { await loadMermaid(); const { svg } = await window.mermaid.render(id, code); MMD_CACHE.set(code, svg); body.innerHTML = svg; body.classList.remove("err"); }
+  catch (e) { body.classList.add("err"); body.textContent = "Mermaid 오류: " + (e && e.message ? e.message : e); document.getElementById("d" + id)?.remove(); document.getElementById(id)?.remove(); }
+}
+window.addEventListener("message", (e) => {
+  const d = e.data || {};
+  if (!d.mdeFrame) return;
+  const f = document.querySelector(`iframe[data-fid="${d.mdeFrame}"]`);
+  if (f && e.source === f.contentWindow) f.style.height = Math.min(800, Math.max(40, Number(d.h) || 0)) + "px";
+});
+
+/* ---------- embed API (iframe + postMessage) ---------- */
+// Parent page:  iframe.contentWindow.postMessage({type:"mde:set", markdown:"# hi"}, "*")
+//               iframe.contentWindow.postMessage({type:"mde:get", id:1}, "*")  -> {type:"mde:markdown", id:1, markdown}
+//               listens for {type:"mde:change", markdown}
+// In production, replace "*" with the allowed origin and check e.origin.
+function postToParent(msg) { if (window.parent !== window) window.parent.postMessage(msg, "*"); }
+window.addEventListener("message", (e) => {
+  const d = e.data || {};
+  if (d.type === "mde:set" && typeof d.markdown === "string") setAll(d.markdown, "api");
+  else if (d.type === "mde:get") e.source?.postMessage({ type: "mde:markdown", id: d.id, markdown: md }, "*");
+  else if (d.type === "mde:mode" && ["md", "outline", "rendered", "split"].includes(d.mode)) setMode(d.mode);
+});
+window.MDE = { openCode, openLink, fmt, settings: S, applySettings, outline: { get O() { return curO; }, get sel() { return selLine; }, nodeAt: (l) => nodeAt(curO, l), doMove, opIndent, opOutdent, opAdd, opDelete, undo, redo }, cm, ed, get markdown() { return md; }, setMarkdown: (t) => setAll(t, "api"), setMode, openTable };
+
+/* ---------- start ---------- */
+applySettings();
+setMode(mode);
+schedulePreviews();
+if (EMM) { $("#saveBtn").textContent = "EMM에 저장"; $("#saveBtn").title = "EasyMindMap 첨부에 저장 (Ctrl+S)"; emmLoad(); }
+renderToc();
+updStatus();
+postToParent({ type: "mde:ready" });
+</script>
+</body>
+</html>

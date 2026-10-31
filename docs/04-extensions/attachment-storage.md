@@ -386,8 +386,7 @@ interface RegisteredFolder {
   **`PUT /v1/attachments/:id/content`**(Bearer · 원문 바디 ·
   `If-Match: "sha256:<불러온 내용의 hex>"`). 다른 곳에서 먼저 고쳤으면
   409 → 편집기가 덮어쓸지 묻는다. 403 이면 읽기 전용으로 바뀐다.
-  **저장 경로는 백엔드 별도 PR 이다** — 그 PR 이 배포되기 전에는 열기·
-  읽기만 되고 저장은 서버 오류로 안내된다.
+  저장 경로의 계약은 **§14** 다.
 * 저장에 성공하면 편집기가 opener 로
   `postMessage({type:"mde:attachment-saved", att, sizeBytes}, origin)` 을
   보낸다. 앱은 **같은 origin 의 메시지만** 받아 그 첨부를 가리키는 모든
@@ -1047,3 +1046,52 @@ CI 스모크(`apps/api/test/smoke.mjs`) 10항목 — 차단 9 + 연결 1. 실제
 프런트는 이 응답을 그대로 쓴다 — 브라우저가 열 수 있는 형식이면 **URL을
 넘기고**(스트리밍), 오피스처럼 못 여는 형식만 받아서 다운로드한다
 (04-node-content.md §14.5).
+
+## 14. 내용 덮어쓰기 — `PUT /v1/attachments/:id/content` (2026-10-31)
+
+노드에 첨부한 `.md` 를 **웹 마크다운 편집기(새 탭)** 에서 고친 뒤 **같은
+첨부에** 저장한다. 새 첨부로 올리지 않는 이유는 하나다 — 문서 JSON 안의
+`/v1/attachments/<id>` 주소가 그대로여야 한다. 새 id 로 올리면 그 첨부를
+가리키는 노드마다 주소를 고쳐 써야 하고, 옛 파일은 용량만 차지한다.
+
+| 항목 | 정한 것 |
+| --- | --- |
+| 본문 | **원래 바이트** (JSON 아님). `Content-Type: text/*` 만 — `text/markdown; charset=utf-8`, `text/plain` 등 |
+| 대상 | 이름 확장자 `.md` · `.markdown` · `.txt` **또는** DB mime `text/*`. 아니면 **415** |
+| 권한 | `remove()` 와 같은 쓰기 기준(첨부 소유자 · 맵 주인 · 맵 멤버 owner/editor). **읽기만 403**, 볼 수 없음·없음 **404** |
+| 충돌 | 선택 `If-Match: "sha256:<hex>"` — 지금 저장된 바이트의 SHA-256 과 다르면 **409** `{ error: 'conflict', currentSha256 }`. 없거나 `*` 면 그대로 덮어쓴다. 형식이 틀리면 400 |
+| 크기 | `ATTACHMENT_MAX_MB` 초과 **413** (Content-Length 로 먼저, 스트림에서 세며 한 번 더) |
+| 쿼터 | **새 크기 − 기존 크기** 가 양수일 때만 `assertQuota` — 줄어드는 저장은 보지 않는다. 세는 사람은 첨부 주인(협업맵의 첨부는 올릴 때부터 맵 주인 것이다 — `attachments.service.ts` 의 `AttachmentOwner`) |
+| 저장 | 기존 `storage_key` 에 `storage.put` 으로 덮어쓰기 → `size_bytes` 갱신. `.md`/`.markdown` 이면 mime 을 `text/markdown` 으로 보정 |
+| 응답 | `200 { id, name, mime, sizeBytes, sha256 }` |
+
+### 14.1 왜 이렇게 했나
+
+- **전역 json 파서(25mb)와 부딪치지 않는다.** express 의 json·urlencoded
+  파서는 Content-Type 으로 거르므로 `text/*` 본문은 건드리지 않고 지나온다.
+  컨트롤러가 요청 스트림을 직접, 한도까지만 읽는다(`content-edit.ts
+  readBodyLimited`). 그래서 **`text/*` 가 아니면 읽기 전에 415** 다 —
+  `application/json` 으로 보내면 json 파서가 이미 본문을 삼켜, 그대로
+  진행하면 빈 내용이 저장된다.
+- **해시를 칸에 두지 않는다** (스키마 변경 없음). 편집 대상은 작은 텍스트라
+  If-Match 가 왔을 때 저장된 바이트를 읽어 그때 계산해도 싸다. 칸을 두면
+  다른 경로(업로드·청크·사진 이관)가 바꿀 때마다 같이 맞춰야 한다.
+- **읽기만 참가자에게 404 가 아니라 403** 이다 — 그 사람은 이미 `GET` 으로
+  그 첨부를 연다. 있는지 숨길 이유가 없고, 편집기가 "저장할 권한이 없다"고
+  말할 수 있어야 한다. 볼 수 없는 사람에게는 여전히 404.
+- **같은 첨부의 쓰기를 한 줄로 세운다** — If-Match 검사와 덮어쓰기 사이에
+  다른 저장이 끼면 충돌을 못 본다. 지금은 **프로세스 안 잠금**이다(API 가
+  한 컨테이너라 충분하다). API 를 여러 벌 띄우게 되면 DB 행 잠금
+  (`SELECT … FOR UPDATE`)으로 옮겨야 한다.
+- **CORS** 는 기본값 그대로 통과한다 — 메서드 기본값에 PUT 이 있고, 허용
+  헤더는 preflight 의 요청 헤더(`content-type`·`if-match`·`authorization`)를
+  되돌려 준다. 설정은 `common/cors.ts` 한 자리이고 시험이 그 함수로 확인한다.
+
+### 14.2 남은 제약
+
+- 로컬 드라이버의 `put` 은 파일을 **제자리에서** 다시 쓴다 — 쓰는 도중에
+  같은 첨부를 `GET` 하면 잘린 내용을 받을 수 있다. 편집 대상이 작은 텍스트라
+  창이 짧아 지금은 두었다.
+- 검증: 단위 `npm run test:attachment-content` (CI) — 200·403·404·409·
+  413(쿼터·크기)·415(첨부·요청 형식)·400(If-Match)·CORS preflight.
+  테스트 카탈로그 **e2e354** (편집기 쪽은 §7.4 · e2e353).

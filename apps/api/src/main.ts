@@ -4,6 +4,7 @@ import { ValidationPipe, Logger, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { corsOptions } from './common/cors';
 import type { AppEnv } from './config/env.validation';
 import { VaultService } from './vault/vault.service';
 import { AS_METADATA_SUFFIX, OIDC_DISCOVERY_SUFFIX, PRM_SUFFIX } from './mcp/oauth';
@@ -66,18 +67,8 @@ async function bootstrap() {
     }),
   );
 
-  // 프론트엔드(다른 출처)에서 호출 허용.
-  // CORS_ORIGIN 은 **콤마로 여러 출처**를 받을 수 있다 (2026-08-02) —
-  // 로컬 개발 + dev 프런트를 동시에 붙이는 경우가 실제로 있었는데,
-  // 단일 문자열만 넘기면 두 번째 출처가 전부 차단됐다.
-  const corsOrigins = String(config.get('CORS_ORIGIN', { infer: true }))
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  app.enableCors({
-    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
-    credentials: true,
-  });
+  // 프론트엔드(다른 출처)에서 호출 허용 — 여러 출처·preflight 는 common/cors.ts
+  app.enableCors(corsOptions(String(config.get('CORS_ORIGIN', { infer: true }))));
 
   // **종료 신호를 받아 정리한다** (2026-08-18).
   //

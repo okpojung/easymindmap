@@ -417,7 +417,9 @@ const EMBEDDED = !!(EMB && EMB.dataset.name);
 const PAGE_OFFLINE = LIBS.some((l) => l.inline != null);
 // EasyMindMap attachment mode: /md-editor/?att=<attachment id>&api=<API origin>&name=<file name>
 const QS = new URLSearchParams(location.search);
-const EMM = QS.get("att") ? { att: QS.get("att"), api: (QS.get("api") || location.origin).replace(/\/+$/, ""), name: QS.get("name") || "첨부.md", base: null, readOnly: false } : null;
+// Embedded (in-map) attachment: /md-editor/?src=opener&key=<attachment key>&name=<file name> — content comes from and goes back to the EMM tab that opened this one
+const EMM = QS.get("att") ? { mode: "server", att: QS.get("att"), api: (QS.get("api") || location.origin).replace(/\/+$/, ""), name: QS.get("name") || "첨부.md", base: null, readOnly: false }
+  : QS.get("src") === "opener" && QS.get("key") ? { mode: "opener", key: QS.get("key"), name: QS.get("name") || "첨부.md", readOnly: false } : null;
 function libFail() { // libraries could not load (offline + online-type file): still let the user read and keep the text
   const text = EMB ? EMB.value : "";
   document.body.innerHTML = "";
@@ -1727,7 +1729,44 @@ function emmErr(s) {
     413: "용량 한도를 넘었습니다.", 415: "이 형식의 첨부는 저장할 수 없습니다." }[s] || "서버 오류 (" + s + ")";
 }
 const emmUrl = (suffix) => EMM.api + "/v1/attachments/" + encodeURIComponent(EMM.att) + (suffix || "");
+// ---- opener protocol (same origin only) ----
+// editor → app: {type:"mde:hello", key}            app → editor: {type:"mde:load", key, markdown, readOnly?}
+// editor → app: {type:"mde:save", key, markdown, reqId}   app → editor: {type:"mde:saved", key, reqId, ok, error?}
+const OP = { waiters: new Map(), seq: 0, loaded: false };
+function emmOpener() { try { return window.opener && !window.opener.closed ? window.opener : null; } catch { return null; } }
+window.addEventListener("message", (e) => {
+  if (!EMM || EMM.mode !== "opener" || e.origin !== location.origin) return; // same-origin windows only (the EasyMindMap app)
+  const d = e.data || {};
+  if (d.key !== EMM.key) return;
+  if (d.type === "mde:load" && typeof d.markdown === "string") {
+    OP.loaded = true; EMM.readOnly = !!d.readOnly;
+    setAll(d.markdown.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"), "file"); DOC.saved = md; updStatus();
+    flash(EMM.readOnly ? "불러왔습니다 (읽기 전용)" : "불러왔습니다: " + EMM.name);
+  } else if (d.type === "mde:saved" && OP.waiters.has(d.reqId)) { OP.waiters.get(d.reqId)(d); OP.waiters.delete(d.reqId); }
+});
+async function openerLoad() {
+  flash("EasyMindMap 탭에서 내용을 받는 중…");
+  for (let i = 0; i < 20 && !OP.loaded; i++) {
+    const w = emmOpener();
+    if (!w) break;
+    w.postMessage({ type: "mde:hello", key: EMM.key }, location.origin);
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  if (!OP.loaded) { flash("불러오지 못했습니다"); alert("EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요."); }
+}
+async function openerSave() {
+  const w = emmOpener();
+  if (!w) throw new Error("이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.");
+  const reqId = ++OP.seq;
+  const res = await new Promise((resolve) => {
+    OP.waiters.set(reqId, resolve);
+    w.postMessage({ type: "mde:save", key: EMM.key, markdown: md, reqId }, location.origin);
+    setTimeout(() => { if (OP.waiters.has(reqId)) { OP.waiters.delete(reqId); resolve({ ok: false, error: "EasyMindMap 탭이 응답하지 않습니다." }); } }, 8000);
+  });
+  if (!res.ok) throw new Error(res.error || "저장하지 못했습니다.");
+}
 async function emmLoad() {
+  if (EMM.mode === "opener") return openerLoad();
   flash("EasyMindMap 첨부를 불러오는 중…");
   try {
     const r = await fetch(emmUrl(), { headers: { Authorization: "Bearer " + emmToken() } });
@@ -1743,6 +1782,12 @@ async function emmSave(force) {
   if (emmSaving) return;
   if (EMM.readOnly) return alert("읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.");
   emmSaving = true; flash("EasyMindMap에 저장 중…");
+  if (EMM.mode === "opener") {
+    try { await openerSave(); DOC.saved = md; updStatus(); flash("EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)"); }
+    catch (e) { flash("저장하지 못했습니다"); alert("저장하지 못했습니다: " + e.message); }
+    finally { emmSaving = false; }
+    return;
+  }
   try {
     const body = new TextEncoder().encode(md);
     const headers = { Authorization: "Bearer " + emmToken(), "Content-Type": "text/markdown; charset=utf-8" };

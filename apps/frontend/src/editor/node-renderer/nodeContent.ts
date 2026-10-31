@@ -16,6 +16,8 @@ export type ContentKind = NoteKind | 'note' | 'link' | 'file' | 'media' | 'linkm
 export interface ContentItem {
   label: string;
   url?: string;
+  /** 첨부 id (파일·미디어) — 내장 .md 를 편집기로 열 때 그 항목을 가리킨다 */
+  id?: string;
 }
 
 export interface ContentIndicator {
@@ -134,7 +136,7 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
       icon: KIND_ICON.file,
       title: files.length > 1 ? countTitle(KIND_LABEL_KEY.file, files.length) : files[0].name,
       count: files.length,
-      items: files.map((a) => ({ label: a.name, url: a.url })),
+      items: files.map((a) => ({ label: a.name, url: a.url, id: a.id })),
     });
   }
   if (media.length) {
@@ -143,7 +145,7 @@ export function nodeContentIndicators(n: LaidOutNode): ContentIndicator[] {
       icon: KIND_ICON.media,
       title: media.length > 1 ? countTitle(KIND_LABEL_KEY.media, media.length) : media[0].name,
       count: media.length,
-      items: media.map((a) => ({ label: a.name, url: a.url })),
+      items: media.map((a) => ({ label: a.name, url: a.url, id: a.id })),
     });
   }
 

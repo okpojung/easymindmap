@@ -352,6 +352,14 @@ interface DocumentState {
    * 서버에 저장됐고, 되돌려도 서버 파일은 그대로다).
    */
   setServerAttachmentSize: (serverId: string, size: number) => void;
+  /**
+   * **내장 첨부의 내용을 바꾼다** (2026-10-31) — 웹 마크다운 편집기 창이 맵 내장
+   * .md 를 저장했을 때(utils/mdEmbedBridge.ts). 같은 항목(id·이름·종류)을 두고
+   * `url`(data URL)과 `size` 만 바꾼다. 평소 편집처럼 되돌리기 한 단계로 쌓이고
+   * 자동저장이 미저장 편집으로 센다. 그 노드·첨부가 없으면 false
+   * (내용이 같으면 맵을 건드리지 않고 true).
+   */
+  replaceEmbeddedAttachment: (nodeId: string, attachmentId: string, url: string, size: number) => boolean;
 
   /**
    * **연결 맵** (2026-10-14) — 노드(또는 둘째 이후 중심주제)를 다른 맵에 연결하거나
@@ -2520,6 +2528,38 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     if (!changed) return;
     historyPaused = true;
     try { set({ map: next }); } finally { historyPaused = false; }
+  },
+  replaceEmbeddedAttachment: (nodeId, attachmentId, url, size) => {
+    let found = false;
+    let changed = false;
+    const fix = <T extends { id: string; attachments?: NodeAttachment[]; children?: T[] }>(n: T): T => {
+      let atts = n.attachments;
+      if (n.id === nodeId && atts?.some((a) => a.id === attachmentId)) {
+        found = true;
+        atts = atts.map((a) => {
+          if (a.id !== attachmentId || (a.url === url && a.size === size)) return a;
+          changed = true;
+          return { ...a, url, size };
+        });
+      }
+      const kids = n.children?.map(fix);
+      return { ...n, ...(atts ? { attachments: atts } : {}), ...(kids ? { children: kids } : {}) };
+    };
+    const map = get().map;
+    const next: SampleMap = {
+      ...map,
+      root: fix(map.root as unknown as MindNode) as unknown as SampleRoot,
+      branches: map.branches.map((b) => fix(b as unknown as MindNode)) as unknown as SampleBranch[],
+      ...(map.centers ? {
+        centers: map.centers.map((c) => ({
+          ...c,
+          root: fix(c.root as unknown as MindNode) as unknown as SampleRoot,
+          branches: c.branches.map((b) => fix(b as unknown as MindNode)) as unknown as SampleBranch[],
+        })),
+      } : {}),
+    };
+    if (changed) set({ map: next });
+    return found;
   },
   });
 });

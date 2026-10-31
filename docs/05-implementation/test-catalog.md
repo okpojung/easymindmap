@@ -60,6 +60,7 @@
 
 | ID | 대상 | 핵심 검증 | 문서 |
 |---|---|---|---|
+| e2e355 | **맵 내장 MD 첨부 → 웹 편집기 (opener 다리)** (2026-10-31 사용자 보고 — pro-dev 에서 내장 `.md` 를 누르면 편집기가 아니라 `blob:` 원문 탭) | 단위 `src/utils/mdEmbedBridge.test.ts`(test:unit 체인) **31 PASS** — ①주소 `/md-editor/?src=opener&key=<노드id>~<첨부id>&name=` 세 키뿐·해시(토큰) 없음·이름의 `#`·`&` 안전 ②data URL ↔ 문자열(UTF-8 한글·이모지·BOM 제거·퍼센트 인코딩·원래 MIME 유지·200KB 청크 btoa 왕복) ③한도 2MB·맵 합계 10MB(옛 내용 빼고 셈) ④hello→load(readOnly 포함), save→맵 반영→saved ok, targetOrigin=앱 origin, **다른 origin·다른 키·모양 틀린 메시지 무시**, 읽기 전용 save 거절 ⑤한도 초과 save → `ok:false`+한국어 이유·맵 그대로 ⑥첨부가 사라지면 load 안 보냄. **되돌려 깨지는지**: 답장 targetOrigin 을 `"*"` 로 → 1 FAIL, origin 검사 제거 → 5 FAIL. 편집기 사본은 `okpojung/markdown-editor@b816552` 의 `index.html` 과 바이트 동일(`cmp` · sha256 `a06fe45f…`). 맵 반영은 `replaceEmbeddedAttachment`(같은 항목, url·size 만 — 되돌리기 한 단계·자동저장 대상). **브라우저 e2e 는 하지 못했다** — 이 세션은 npm 레지스트리·jsDelivr CDN 이 막혀 프런트를 띄울 수 없었다. 타입 검사·빌드는 CI, 실물은 dev 배포 확인(번들의 `src=opener`·편집기의 `emmOpener`) | attachment-storage.md §7.5 · public/md-editor/README.md |
 | e2e353 | **MD 첨부 → 웹 마크다운 편집기 새 탭** (2026-10-31 사용자 요청) | 단위 `src/utils/mdEditorUrl.test.ts`(test:unit 체인) **15 PASS** — ①`.md`·`.MARKDOWN` 은 마크다운, `.pdf`·`.mdx`·이름 없음은 아님 ②주소 = `/md-editor/?att=&api=&name=` 세 키뿐, `api` 끝 `/` 제거, 이름의 `#`·`&` 가 쿼리를 깨지 않음 ③**토큰은 쿼리에 없고 해시 `#t=` 에만**, `access_token` 쿼리 안 씀 ④토큰 없으면(dev 인증) 해시도 없음. **되돌려 깨지는지**: 토큰을 `&t=` 로 쿼리에 붙이는 변이 → 5 FAIL. 편집기 사본은 원본 커밋 `38d2f32` 의 `index.html` 과 바이트 동일(`cmp` · sha256 `c56da07a…`), LICENSE 고지 원문 동일(`diff`). **브라우저 e2e 는 하지 못했다** — 이 세션에서 npm 레지스트리가 막혀(`ENOTFOUND`·프록시 403) 프런트 의존성을 설치할 수 없었다. 타입 검사·빌드(`dist/md-editor/` 포함)는 CI 로 확인. 저장(`PUT …/content`)은 백엔드 별도 PR | attachment-storage.md §7.4 · public/md-editor/README.md |
 | e2e18 | 부분 강조(마크) | 하이라이트 인접 tspan 글자 겹침 0(실측)·툴바 토글 해제·툴바 버튼 ≥26px | 03-node-indicator |
 | e2e28 | 사진 노드 드래그 | 네이티브 드래그 고스트(주황 창) 차단 + 이동은 정상 | 02-node-editing |
@@ -515,6 +516,7 @@
 > 겹쳐 보이지만 날짜와 함께 읽으면 유일하다. **고치지 말 것** — 그때의
 > 기록을 지금 규칙으로 고쳐 쓰면 없던 역사를 만드는 셈이다.
 
+- 2026-10-31 (322차): **e2e355 — 맵 내장 MD 첨부도 웹 편집기로**(사용자 보고). opener postMessage 다리, 편집기 `b816552`. 단위 mdEmbedBridge 31(변이 시 1·5 FAIL). 브라우저 e2e 미실시(레지스트리·CDN 차단).
 - 2026-10-31 (321차): **e2e354 — 첨부 내용 덮어쓰기 `PUT /v1/attachments/:id/content`**(웹 마크다운 편집기 저장, e2e353 의 백엔드). 단위 attachment-content (CI).
 - 2026-10-31 (320차): **e2e353 — MD 첨부를 웹 마크다운 편집기(`/md-editor/`)로 새 탭에서 연다**(사용자 요청). 토큰은 해시에만. 단위 mdEditorUrl 15(변이 시 5 FAIL). 브라우저 e2e 미실시(레지스트리 차단).
 - 2026-10-17 (319차): **e2e352 dev 실측** — get_map 주소 → append_to_map → get_map, 같은 첨부·640×129 그대로.

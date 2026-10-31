@@ -143,9 +143,10 @@ export function createMdEmbedHandler(deps: BridgeDeps): (e: MsgEvent) => void {
         return;
       }
       const r = deps.write(d.markdown);
-      reply(r.ok
-        ? { type: 'mde:saved', reqId: d.reqId, ok: true }
-        : { type: 'mde:saved', reqId: d.reqId, ok: false, error: r.error });
+      // `'error' in r` — 이 프로젝트는 strict 가 꺼져 있어 r.ok 로는 좁혀지지 않는다
+      reply('error' in r
+        ? { type: 'mde:saved', reqId: d.reqId, ok: false, error: r.error }
+        : { type: 'mde:saved', reqId: d.reqId, ok: true });
     }
   };
 }

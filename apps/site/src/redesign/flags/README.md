@@ -1,0 +1,1 @@
+Four 4:3 flag SVGs from https://github.com/lipis/flag-icons at commit ac7e0eb3259eb62aa6100c435607e2fe03896a97. MIT license, see LICENSE. Only these four files are vendored; no runtime CDN or npm dependency is added.

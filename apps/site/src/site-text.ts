@@ -10,6 +10,10 @@ import en from './redesign/template.en.html?raw';
 import ja from './redesign/template.ja.html?raw';
 import zh from './redesign/template.zh.html?raw';
 import questionVideoCoverUrl from './redesign/question-video-cover.jpg';
+import koFlagUrl from './redesign/flags/kr.svg';
+import enFlagUrl from './redesign/flags/us.svg';
+import jaFlagUrl from './redesign/flags/jp.svg';
+import zhFlagUrl from './redesign/flags/cn.svg';
 import jaStrings from './i18n/strings.ja.json';
 import zhStrings from './i18n/strings.zh.json';
 import type { Guide } from './redesign/content';
@@ -20,9 +24,15 @@ import { GUIDES_ZH } from './redesign/guides.zh';
 /** 안내 글(질문하는 힘·브랜드 스토리 등) 번역 — 없는 글은 한국어 원문을 보여 준다 (3단계에서 채운다) */
 export const GUIDES_BY_LANG: Partial<Record<Lang, Record<string, Guide>>> = { en: GUIDES_EN, ja: GUIDES_JA, zh: GUIDES_ZH };
 
-const withVideoCover = (html: string): string => html.replace('__QUESTION_VIDEO_COVER__', questionVideoCoverUrl);
+/** Header flags are local SVG assets, not platform-dependent flag emoji or a runtime CDN. */
+const withTemplateAssets = (html: string): string => html
+  .replace('__QUESTION_VIDEO_COVER__', questionVideoCoverUrl)
+  .split('__LANG_FLAG_KO__').join(koFlagUrl)
+  .split('__LANG_FLAG_EN__').join(enFlagUrl)
+  .split('__LANG_FLAG_JA__').join(jaFlagUrl)
+  .split('__LANG_FLAG_ZH__').join(zhFlagUrl);
 export const TEMPLATES: Partial<Record<Lang, string>> = {
-  ko: withVideoCover(ko), en: withVideoCover(en), ja: withVideoCover(ja), zh: withVideoCover(zh),
+  ko: withTemplateAssets(ko), en: withTemplateAssets(en), ja: withTemplateAssets(ja), zh: withTemplateAssets(zh),
 };
 
 /** 번역 JSON 의 `{n}` 자리표시 문구를 함수로 바꾼다 (maxNodes·maxLevels·nodeCount) */

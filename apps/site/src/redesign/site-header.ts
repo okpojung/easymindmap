@@ -40,9 +40,18 @@ export function mountSiteHeader(root: HTMLElement, pathname: string): () => void
    menu?.setAttribute('aria-expanded', String(open)); menu?.setAttribute('aria-label', open ? T.menuClose : T.menuOpen); nav?.classList.toggle('open', open);
   }
  };
+ const onToggle = (event: Event) => {
+  const current = event.target;
+  if (current instanceof HTMLDetailsElement && current.open && current.classList.contains('lang-dropdown')) current.querySelector('.lang-links')?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+ };
  const onOutside = (event: Event) => { if (event.target instanceof Element && !event.target.closest('.emm-dropdown')) dropdowns().forEach(d => { d.open = false; }); };
- const onEscape = (event: KeyboardEvent) => { if (event.key !== 'Escape') return; dropdowns().find(d => d.open)?.querySelector('summary')?.focus(); closeMenu(); };
- root.addEventListener('click', onClick);
+ const onEscape = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape') return;
+  const active = dropdowns().find(d => d.open);
+  if (active) { event.preventDefault(); active.open = false; active.querySelector('summary')?.focus(); return; }
+  if (nav?.classList.contains('open')) { event.preventDefault(); closeMenu(); menu?.focus(); }
+ };
+ root.addEventListener('click', onClick); root.addEventListener('toggle', onToggle, true);
  document.addEventListener('click', onOutside); document.addEventListener('keydown', onEscape);
- return () => { root.removeEventListener('click', onClick); document.removeEventListener('click', onOutside); document.removeEventListener('keydown', onEscape); };
+ return () => { root.removeEventListener('click', onClick); root.removeEventListener('toggle', onToggle, true); document.removeEventListener('click', onOutside); document.removeEventListener('keydown', onEscape); };
 }

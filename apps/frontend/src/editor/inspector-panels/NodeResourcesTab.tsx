@@ -240,8 +240,8 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
             {kind === 'md' ? '✍' : '↗'}
           </button>
           {selected && <>
-            <button type="button" data-testid="res-edit" style={icoBtn} title={tr('inspector.res.edit')} onClick={startEdit}>✎</button>
-            <button type="button" data-testid="res-remove" style={{ ...icoBtn, color: '#B91C1C' }} title={tr('inspector.res.remove')} onClick={remove}>🗑</button>
+            <button type="button" data-testid="res-edit" style={icoBtn} title={tr('inspector.res.edit')} onClick={startEdit}><I.Pencil size={12} /></button>
+            <button type="button" data-testid="res-remove" style={{ ...icoBtn, color: '#B91C1C' }} title={tr('inspector.res.remove')} onClick={remove}><I.Trash size={12} /></button>
           </>}
         </div>
       ) : (

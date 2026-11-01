@@ -105,7 +105,7 @@
   .hl-ic { background: #fde68a; color: #1f1b16; padding: 0 4px; border-radius: 2px; font-weight: 700; }
   #ww .toastui-editor-toolbar { display: none !important; }
   .pane.tgt .ptitle { color: var(--ac); font-weight: 600; }
-  .pane.tgt .ptitle::after { content: "  ← 편집 도구 적용"; font-weight: 400; }
+  .pane.tgt .pane-label::after { content: "  ← 편집 도구 적용"; font-weight: 400; }
   .tx u { text-decoration: underline; }
   /* generic modal */
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 60; }
@@ -137,13 +137,27 @@
   .cbox .bot, .lbox .bot { border-top: 0; padding: 14px 20px 18px; }
   .box .ok:disabled { opacity: .45; cursor: default; }
   #cMsg { font-size: 12px; color: #16a34a; margin-right: auto; align-self: center; }
+  .ptitle { display: flex; align-items: flex-start; gap: 8px; }
+  .pane-label { flex: 1; min-width: 0; align-self: center; }
+  .pane-actions { display: flex; gap: 5px; flex: none; margin-left: auto; }
+  .pane-actions button { min-height: 25px; padding: 2px 8px; border: 1px solid var(--bd); border-radius: 5px; background: var(--bg); color: var(--tx); font: inherit; cursor: pointer; white-space: nowrap; }
+  .pane-actions button:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+  .pane-actions button[aria-pressed="true"] { border-color: var(--ac); }
+  .pane-actions button[data-copied="true"] { color: #16a34a; }
+  .pane-copy-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   /* link dialog */
-  .lbox { width: min(520px, 94vw); border-radius: 12px; }
+  .lbox { width: min(600px, 94vw); border-radius: 12px; }
   .lbox .top { border-bottom: 0; padding: 18px 20px 6px; }
   .lrow { display: flex; align-items: center; gap: 10px; padding: 6px 20px; }
   .lrow label { width: 44px; font-size: 13px; color: #555; flex: none; }
   .lrow input { flex: 1; height: 34px; padding: 6px 10px; border: 1px solid #e8e0d2; border-radius: 7px; font-size: 13px; outline: none; }
+  .lrow input { min-width: 0; }
   .lrow input:focus { border-color: #d97706; }
+  #lProtocol { height: 34px; max-width: 105px; border: 1px solid var(--bd); border-radius: 7px; background: var(--bg); color: var(--tx); }
+  .ltools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 20px 0 74px; }
+  #lMsg { flex: 1; font-size: 12px; color: var(--mu); }
+  .link-help { font-size: 11px; padding: 4px 10px; color: var(--mu); background: var(--bg); }
+  @media (max-width: 480px) { .lrow { gap: 6px; padding-inline: 12px; } .lrow label { width: 30px; } #lProtocol { max-width: 92px; } .ltools { padding-left: 48px; } }
   /* settings dialog */
   .sbox { width: min(720px, 94vw); border-radius: 12px; max-height: 90vh; }
   .sgrid { display: grid; grid-template-columns: 150px 1fr; gap: 10px 14px; align-items: center; font-size: 13px; }
@@ -274,11 +288,12 @@
     <div class="hd"><span>목차</span><button id="tocOpen">모두 펼치기</button><button id="tocClose">모두 접기</button></div>
     <div id="tocTree"></div>
   </aside>
-  <section id="srcPane" class="pane"><div class="ptitle">마크다운 원문</div><div id="src"></div></section>
-  <section id="outPane" class="pane"><div class="ptitle">아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시</div><div id="outline"></div></section>
+  <section id="srcPane" class="pane"><div class="ptitle"><span class="pane-label">마크다운 원문</span><div class="pane-actions"><button id="srcLn" type="button" aria-pressed="true" title="원문 줄 번호 끄기">줄 번호 On</button><button type="button" data-copy-pane="src" aria-label="마크다운 원문 복사">복사</button></div></div><div id="src"></div></section>
+  <section id="outPane" class="pane"><div class="ptitle"><span class="pane-label">아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시</span><div class="pane-actions"><button type="button" data-copy-pane="outline" aria-label="아웃라인 창 내용 복사">복사</button></div></div><div id="outline"></div></section>
   <div id="splitter" title="끌어서 좌우 크기 조절 · 더블클릭: 반반"></div>
-  <section id="wwPane" class="pane"><div class="ptitle">렌더링 (직접 편집 가능)</div><div id="ww"></div></section>
+  <section id="wwPane" class="pane"><div class="ptitle"><span class="pane-label">렌더링 (직접 편집 가능)</span><div class="pane-actions"><button type="button" data-copy-pane="ww" aria-label="렌더링 창 내용 복사">복사</button></div></div><div class="link-help">링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭</div><div id="ww"></div></section>
 </main>
+<div id="paneCopyStatus" class="pane-copy-status" role="status" aria-live="polite"></div>
 
 <div id="dlg" hidden>
   <div class="box">
@@ -327,7 +342,8 @@
   <div class="box lbox" role="dialog" aria-label="링크">
     <div class="top"><b id="lTitle">링크 삽입</b><span class="sp"></span><button id="lX" title="닫기">✕</button></div>
     <div class="lrow"><label for="lText">글자</label><input id="lText" placeholder="보일 글자 (비우면 주소)"></div>
-    <div class="lrow"><label for="lUrl">주소</label><input id="lUrl" placeholder="https://"></div>
+    <div class="lrow"><label for="lUrl">주소</label><select id="lProtocol" aria-label="링크 프로토콜"><option value="https://">https://</option><option value="http://">http://</option></select><input id="lUrl" placeholder="example.com/path" autocomplete="off" spellcheck="false"></div>
+    <div class="ltools"><button id="lPaste" type="button">클립보드 붙여넣기</button><span id="lMsg" role="status" aria-live="polite"></span></div>
     <div class="bot"><button id="lCancel">취소 (Esc)</button><button id="lOk" class="ok" disabled>확인 (Enter)</button></div>
   </div>
 </div>
@@ -641,13 +657,15 @@ function fromWw(text) {
 }
 
 /* ---------- editors ---------- */
+let sourceLn = localStorage.getItem("mde.source.ln") !== "0";
 const cm = CodeMirror($("#src"), {
-  value: md, mode: MD_MODE, lineNumbers: true, lineWrapping: !!S.wrap, tabSize: 2, indentUnit: 2,
+  value: md, mode: MD_MODE, lineNumbers: sourceLn, lineWrapping: !!S.wrap, tabSize: 2, indentUnit: 2,
   extraKeys: { "Ctrl-B": () => fmt("bold"), "Ctrl-I": () => fmt("italic"), "Ctrl-U": () => fmt("underline"), "Ctrl-K": () => fmt("link"), "Cmd-B": () => fmt("bold"), "Cmd-I": () => fmt("italic"), "Cmd-U": () => fmt("underline"), "Cmd-K": () => fmt("link") },
 });
 const ed = new toastui.Editor({
   el: $("#ww"), height: "100%", initialEditType: "wysiwyg", previewStyle: "tab",
   hideModeSwitch: true, usageStatistics: false, autofocus: false, language: "ko-KR", initialValue: toWw(md),
+  linkAttributes: { target: "_blank", rel: "noopener" },
   toolbarItems: [], // all editing buttons live in the top toolbar
   customHTMLRenderer: { htmlInline: {
     u: (node, { entering }) => (entering ? { type: "openTag", tagName: "u", attributes: node.attrs } : { type: "closeTag", tagName: "u" }),
@@ -656,6 +674,40 @@ const ed = new toastui.Editor({
     mermaid: (node) => cbTokens("mermaid", node.literal),
     html: (node) => cbTokens("html", node.literal),
   },
+});
+
+/* ---------- pane controls ---------- */
+function updateSourceLineNumbers() {
+  cm.setOption("lineNumbers", sourceLn);
+  $("#srcLn").textContent = "줄 번호 " + (sourceLn ? "On" : "Off");
+  $("#srcLn").setAttribute("aria-pressed", String(sourceLn));
+  $("#srcLn").title = "원문 줄 번호 " + (sourceLn ? "끄기" : "켜기");
+  cm.refresh();
+}
+$("#srcLn").onclick = () => { sourceLn = !sourceLn; localStorage.setItem("mde.source.ln", sourceLn ? "1" : "0"); updateSourceLineNumbers(); };
+updateSourceLineNumbers();
+async function copyPlainText(text) {
+  if (navigator.clipboard?.writeText) { try { await navigator.clipboard.writeText(text); return; } catch {} }
+  const active = document.activeElement, selection = window.getSelection();
+  const ranges = selection ? Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i).cloneRange()) : [];
+  const ta = document.createElement("textarea"); ta.value = text; ta.readOnly = true;
+  ta.style.cssText = "position:fixed;left:-9999px;top:0"; document.body.append(ta);
+  let ok = false;
+  try { ta.select(); ok = document.execCommand("copy"); }
+  finally { ta.remove(); active?.focus({ preventScroll: true }); if (selection) { selection.removeAllRanges(); ranges.forEach(r => selection.addRange(r)); } }
+  if (!ok) throw new Error("복사 권한을 확인해 주세요.");
+}
+const paneCopyTimers = new WeakMap();
+document.querySelectorAll("[data-copy-pane]").forEach(button => {
+  button.addEventListener("mousedown", event => event.preventDefault());
+  button.addEventListener("click", async () => {
+    const pane = button.dataset.copyPane;
+    const text = pane === "src" ? cm.getValue() : pane === "outline" ? $("#outline").innerText : ($("#ww .toastui-editor-ww-container .ProseMirror")?.innerText || "");
+    clearTimeout(paneCopyTimers.get(button));
+    try { await copyPlainText(text); button.textContent = "복사됨"; button.dataset.copied = "true"; $("#paneCopyStatus").textContent = button.getAttribute("aria-label") + " 완료"; }
+    catch { button.textContent = "복사 실패"; delete button.dataset.copied; $("#paneCopyStatus").textContent = "복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요."; }
+    paneCopyTimers.set(button, setTimeout(() => { button.textContent = "복사"; delete button.dataset.copied; }, 1500));
+  });
 });
 
 /* ---------- sync ---------- */
@@ -909,6 +961,38 @@ $("#ww").addEventListener("dblclick", (e) => {
   const idx = [...document.querySelectorAll("#ww .toastui-editor-ww-container .ProseMirror :is(pre, .mde-cb)")].indexOf(box);
   const blk = parseBlocks(md).filter((b) => b.type === "code")[idx];
   if (blk) { e.preventDefault(); e.stopPropagation(); lastFocus = "ww"; openCode({ a: blk.start, b: blk.end }); }
+}, true);
+
+/* ---------- rendered links: navigate without stealing editing clicks ---------- */
+const renderedRoot = () => $("#ww .toastui-editor-ww-container .ProseMirror");
+function renderedAnchor(target) {
+  const anchor = target?.closest?.("a[href]");
+  return anchor && renderedRoot()?.contains(anchor) ? anchor : null;
+}
+let renderedPointer = null;
+$("#ww").addEventListener("pointerdown", event => {
+  const anchor = renderedAnchor(event.target), root = renderedRoot();
+  renderedPointer = root?.contains(event.target) ? { anchor, editing: wwFocused || root.contains(document.activeElement), x: event.clientX, y: event.clientY, dragged: false } : null;
+}, true);
+$("#ww").addEventListener("pointermove", event => {
+  if (renderedPointer && Math.hypot(event.clientX - renderedPointer.x, event.clientY - renderedPointer.y) > 5) renderedPointer.dragged = true;
+}, true);
+$("#ww").addEventListener("pointercancel", () => { renderedPointer = null; }, true);
+$("#ww").addEventListener("click", event => {
+  const anchor = renderedAnchor(event.target);
+  if (!anchor || event.button !== 0 || event.altKey) return;
+  event.preventDefault();
+  const pointer = renderedPointer;
+  renderedPointer = null;
+  const selection = window.getSelection();
+  const selecting = selection && !selection.isCollapsed && renderedRoot()?.contains(selection.anchorNode);
+  if (pointer?.dragged || event.detail > 1 || (selecting && !(event.ctrlKey || event.metaKey))) return;
+  const editing = pointer ? pointer.editing : wwFocused;
+  if (editing && !(event.ctrlKey || event.metaKey)) return;
+  let url; try { url = new URL(anchor.getAttribute("href"), location.href); } catch { return; }
+  if (!["https:", "http:", "mailto:", "tel:"].includes(url.protocol)) return;
+  const opened = window.open(url.href, "_blank", "noopener");
+  if (opened) { try { opened.opener = null; } catch {} }
 }, true);
 
 /* ---------- markdown block parser (for TOC / outline) ---------- */
@@ -1591,6 +1675,29 @@ function wwInsertBlock(block, selAt) {
 
 /* ---------- link dialog ---------- */
 const LK = { tgt: "src", range: null, sel: null };
+function setLinkAddress(value, resetProtocol = false) {
+  if (resetProtocol) $("#lProtocol").value = "https://";
+  const match = value.trim().match(/^(https?:\/\/)([\s\S]*)$/i);
+  if (match) { $("#lProtocol").value = match[1].toLowerCase(); $("#lUrl").value = match[2]; }
+  else $("#lUrl").value = value.trim().replace(/^\/\//, "");
+  updateLinkState();
+}
+function currentLinkUrl() {
+  const value = $("#lUrl").value.trim();
+  if (!value) return "";
+  if (/^(?:mailto:|tel:|#|\/(?!\/)|\.{1,2}\/)/i.test(value)) return value;
+  if (/^[a-z][a-z0-9+.-]*:(?!\d+(?:[/?#]|$))/i.test(value) && !/^https?:\/\//i.test(value)) return "";
+  try { const url = new URL($("#lProtocol").value + value.replace(/^https?:\/\//i, "")); return url.hostname ? url.href : ""; } catch { return ""; }
+}
+function updateLinkState() { $("#lOk").disabled = !currentLinkUrl(); }
+function findClipboardLink(text) {
+  const full = text.match(/https?:\/\/[^\s<>"'`]+/i);
+  let found = full ? full[0] : (text.match(/(?:localhost|(?:[a-z0-9-]+\.)+[a-z]{2,}|(?:\d{1,3}\.){3}\d{1,3})(?::\d+)?(?:\/[^\s<>"'`]*)?/i)?.[0] || "");
+  found = found.replace(/[.,;]+$/, "");
+  for (const [close, open] of [[")", "("], ["]", "["], ["}", "{"]]) while (found.endsWith(close) && found.split(close).length > found.split(open).length) found = found.slice(0, -1);
+  return found.replace(/[.,;]+$/, "");
+}
+
 function openLink() {
   LK.tgt = target(); LK.range = null; LK.sel = null;
   let text = "", url = "";
@@ -1604,19 +1711,31 @@ function openLink() {
     if (ae) url = ae.getAttribute("href") || "";
   }
   $("#lTitle").textContent = LK.range || url ? "링크 수정" : "링크 삽입";
-  $("#lText").value = text; $("#lUrl").value = url; $("#lOk").disabled = !url.trim();
+  $("#lText").value = text; $("#lMsg").textContent = ""; setLinkAddress(url, true);
   $("#ldlg").hidden = false; setTimeout(() => (text ? $("#lUrl") : $("#lText")).focus(), 30); // after the editor's own focus handling
 }
 function closeLink() { $("#ldlg").hidden = true; (LK.tgt === "ww" ? ed : cm).focus(); }
-$("#lUrl").addEventListener("input", () => ($("#lOk").disabled = !$("#lUrl").value.trim()));
+$("#lUrl").addEventListener("input", () => { $("#lMsg").textContent = ""; const value = $("#lUrl").value; if (/^https?:\/\//i.test(value.trim())) setLinkAddress(value); else updateLinkState(); });
+$("#lProtocol").addEventListener("change", updateLinkState);
+$("#lPaste").onclick = async () => {
+  const button = $("#lPaste"); button.disabled = true;
+  try {
+    if (!navigator.clipboard?.readText) throw new Error("이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.");
+    const value = findClipboardLink(await navigator.clipboard.readText());
+    if (!value) throw new Error("클립보드에서 웹 주소를 찾지 못했습니다.");
+    setLinkAddress(value); $("#lMsg").textContent = "주소를 채웠습니다."; $("#lUrl").focus();
+  } catch (error) { $("#lMsg").textContent = error.name === "NotAllowedError" ? "클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요." : error.message; }
+  finally { button.disabled = false; }
+};
 $("#lX").onclick = $("#lCancel").onclick = closeLink;
 $("#lOk").onclick = applyLink;
 $("#ldlg").addEventListener("keydown", (e) => {
   if (e.key === "Escape") { e.preventDefault(); closeLink(); }
-  else if (e.key === "Enter") { e.preventDefault(); if (!$("#lOk").disabled) applyLink(); }
+  else if (e.key === "Enter" && !e.target.closest("button, select")) { e.preventDefault(); if (!$("#lOk").disabled) applyLink(); }
 });
 function applyLink() {
-  const url = $("#lUrl").value.trim().replace(/\s/g, "%20"), text = $("#lText").value.trim() || url;
+  const value = currentLinkUrl(); if (!value) return;
+  const url = value.replace(/\s/g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29"), text = $("#lText").value.trim() || url;
   $("#ldlg").hidden = true;
   if (LK.tgt === "ww") {
     wwUserOp = true;

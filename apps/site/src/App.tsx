@@ -95,8 +95,10 @@ export default function App() {
         <div className="wrap">
           <span>© EasyMindMap</span>
           <span className="spacer" />
-          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">{T.footerCore}</a>
-          <a href={MMD_GITHUB_URL} target="_blank" rel="noopener noreferrer">{T.footerStandard}</a>
+          <nav className="foot-github" aria-label="GitHub">
+            <a className="github-link" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">{T.footerCore}<span aria-hidden="true">↗</span></a>
+            <a className="github-link" href={MMD_GITHUB_URL} target="_blank" rel="noopener noreferrer">{T.footerStandard}<span aria-hidden="true">↗</span></a>
+          </nav>
           <Link to="/contact" className="foot-contact">{T.footerContact}</Link>
 
         </div>

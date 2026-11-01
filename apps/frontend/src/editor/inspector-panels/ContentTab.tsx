@@ -241,7 +241,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   );
 }
 
-function FilePickerButton({ t, label, accept, disabled, onFiles }: {
+export function FilePickerButton({ t, label, accept, disabled, onFiles }: {
   t: ThemeTokens;
   label: string;
   accept: string;
@@ -289,7 +289,7 @@ function FilePickerButton({ t, label, accept, disabled, onFiles }: {
  * 그림을 읽어 「미디어 선택」과 같은 길로 첨부한다. Ctrl+V 는 캔버스에
  * 포커스가 있을 때만 잡히므로, 이 탭을 보고 있을 때의 입구다.
  */
-function ClipboardImageButton({ t, disabled, onFiles, onError }: {
+export function ClipboardImageButton({ t, disabled, onFiles, onError }: {
   t: ThemeTokens;
   disabled?: boolean;
   onFiles: (files: File[]) => void | Promise<void>;
@@ -335,7 +335,7 @@ function ClipboardImageButton({ t, disabled, onFiles, onError }: {
   );
 }
 
-function inputStyle(t: ThemeTokens) {
+export function inputStyle(t: ThemeTokens) {
   return {
     fontSize: 11, padding: '5px 7px', borderRadius: 4,
     border: `1px solid ${t.border}`, background: t.surface, color: t.text,
@@ -343,7 +343,7 @@ function inputStyle(t: ThemeTokens) {
   };
 }
 
-function addBtnStyle(t: ThemeTokens) {
+export function addBtnStyle(t: ThemeTokens) {
   return {
     fontSize: 11, padding: '5px 10px', borderRadius: 4,
     border: `1px solid ${t.primaryBorder}40`, background: t.primarySoft,

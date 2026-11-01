@@ -207,6 +207,14 @@ export const I = {
     </Icon>
   ),
 
+  // MD 문서 (2026-10-31 왼쪽 레일 'MD') — 마크다운 표식
+  Markdown: (p: P = {}) => (
+    <Icon {...p}>
+      <rect x="2.5" y="5.5" width="19" height="13" rx="2" />
+      <path d="M6 15V9l2.5 3L11 9v6" />
+      <path d="M16 9v6m-2.5-2.5L16 15l2.5-2.5" />
+    </Icon>
+  ),
   // 변수 {x} (2026-10-29 왼쪽 레일 '변수')
   Variable: (p: P = {}) => (
     <Icon {...p}>

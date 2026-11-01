@@ -72,7 +72,8 @@ const BLOCK_TYPES: { type: NoteBlockType; label: string }[] = [
   { type: 'checklist', label: 'inspector.note.add.check' },
 ];
 
-export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
+// part — 왼쪽 메뉴의 '노트'·'태그' 를 나눴다 (2026-10-31). 'tag' 는 태그 + 프로젝트 태그, 'note' 는 노트 블록.
+export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; selectedId: string | null; part?: 'all' | 'note' | 'tag' }) {
   const tr = useTr();
   const coarse = useCoarse();
   const map = useDocumentStore((s) => s.map);
@@ -108,6 +109,7 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
 
   return (
     <div data-mm-touch="" style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
+      {part !== 'note' && <>
       <InspectorSection t={t} title={tr('inspector.note.tags')}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
           {tags.map((tagName, idx) => {
@@ -172,6 +174,9 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
 
       {/* 프로젝트 태그 — 일정·담당자·진척율 (2026-10-23) */}
       <ProjectTagsSection t={t} nodeId={selectedId} project={node?.project} />
+      </>}
+
+      {part !== 'tag' && <>
 
       <InspectorSection
         t={t}
@@ -238,6 +243,8 @@ export function NoteTagTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
           ))}
         </div>
       </InspectorSection>
+
+      </>}
 
       {tableDlg && (
         <TableDialog

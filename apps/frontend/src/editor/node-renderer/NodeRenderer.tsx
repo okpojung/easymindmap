@@ -1726,7 +1726,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
             kind === 'date' ? { dateOn: false } : kind === 'assignee' ? { assigneeOn: false } : { progressOn: false })}
           onFixedClick={(kind) => {
             onSelect(n.id);
-            useEditorUiStore.getState().setInspectorTab('note');
+            useEditorUiStore.getState().setInspectorTab('tag'); // 프로젝트 태그는 '태그' 메뉴에 (2026-10-31)
             // 노트·태그 탭의 해당 입력란으로 (ProjectTagsSection 이 듣는다)
             setTimeout(() => window.dispatchEvent(new CustomEvent('emm:project-focus', { detail: kind })), 50);
           }}

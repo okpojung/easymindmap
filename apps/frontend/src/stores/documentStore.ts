@@ -325,6 +325,10 @@ interface DocumentState {
   // Links
   addNodeLink: (nodeId: string | null, url: string, label?: string) => void;
   removeNodeLink: (nodeId: string | null, linkId: string) => void;
+  /** 링크 고치기 — 주소·이름 (왼쪽 '링크' 패널, 2026-10-31) */
+  updateNodeLink: (nodeId: string | null, linkId: string, patch: { url?: string; label?: string }) => void;
+  /** 첨부 이름 바꾸기 (왼쪽 '첨부'·'MD' 패널, 2026-10-31) — 파일 내용·주소는 그대로 */
+  renameNodeAttachment: (nodeId: string | null, attachmentId: string, name: string) => void;
 
   // Notes (structured blocks) — extra: 리치 붙여넣기(html) 등 초기 필드
   // afterBlockId: 그 블록 "바로 뒤"에 삽입 (체크리스트 Enter로 다음 항목 추가).
@@ -2422,6 +2426,33 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       map: mutateNode(state.map, nodeId, (n) => ({
         ...n,
         links: [...(n.links ?? []), { id: createSubId('link'), url: clean, label }],
+      })),
+    }));
+  },
+
+  updateNodeLink: (nodeId, linkId, patch) => {
+    if (!nodeId) return;
+    const url = patch.url?.trim();
+    if (patch.url !== undefined && !url) return;
+    set((state) => ({
+      map: mutateNode(state.map, nodeId, (n) => ({
+        ...n,
+        links: (n.links ?? []).map((l) => (l.id !== linkId ? l : {
+          ...l,
+          ...(url ? { url } : {}),
+          ...(patch.label !== undefined ? { label: patch.label.trim() || undefined } : {}),
+        })),
+      })),
+    }));
+  },
+
+  renameNodeAttachment: (nodeId, attachmentId, name) => {
+    const clean = name.trim();
+    if (!nodeId || !clean) return;
+    set((state) => ({
+      map: mutateNode(state.map, nodeId, (n) => ({
+        ...n,
+        attachments: (n.attachments ?? []).map((a) => (a.id === attachmentId ? { ...a, name: clean } : a)),
       })),
     }));
   },

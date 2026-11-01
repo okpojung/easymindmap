@@ -29,7 +29,7 @@ import { NewMapPanel } from '@/components/left-sidebar/NewMapPanel';
 import { StyleTab }   from '@/editor/inspector-panels/StyleTab';
 import { LayoutTab }  from '@/editor/inspector-panels/LayoutTab';
 import { IconTab }    from '@/editor/inspector-panels/IconTab';
-import { ContentTab } from '@/editor/inspector-panels/ContentTab';
+import { AttachTab, LinkTab, MdTab } from '@/editor/inspector-panels/NodeResourcesTab';
 import { NoteTagTab } from '@/editor/inspector-panels/NoteTagTab';
 import { AITab }      from '@/editor/inspector-panels/AITab';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
@@ -40,7 +40,8 @@ import { useTr } from '@/i18n';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 
 export type NavTabKey       = 'newMap' | 'search' | 'template' | 'history' | 'variables' | 'mapSettings' | 'collab' | 'plugins';
-export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
+// '링크·첨부' → 링크 · 첨부 · MD, '노트·태그' → 노트 · 태그 (2026-10-31 사용자 요청)
+export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'link' | 'attach' | 'md' | 'note' | 'tag' | 'ai';
 export type SidebarSection  = 'nav' | 'inspector';
 
 interface Props {
@@ -120,8 +121,11 @@ export function UnifiedSidebar({
     { key: 'style'   as InspectorTabKey, label: tr('shell.sidebar.style'), icon: <I.Palette size={17} /> },
     { key: 'layout'  as InspectorTabKey, label: tr('shell.sidebar.layout'), icon: <I.Layout size={17} /> },
     { key: 'icon'    as InspectorTabKey, label: tr('shell.sidebar.icon'), icon: <I.Smile size={17} /> },
-    { key: 'content' as InspectorTabKey, label: tr('shell.sidebar.content'), icon: <I.Paperclip size={17} /> },
+    { key: 'link'    as InspectorTabKey, label: tr('shell.sidebar.link'), icon: <I.Link size={17} /> },
+    { key: 'attach'  as InspectorTabKey, label: tr('shell.sidebar.attach'), icon: <I.Paperclip size={17} /> },
+    { key: 'md'      as InspectorTabKey, label: tr('shell.sidebar.md'), icon: <I.Markdown size={17} /> },
     { key: 'note'    as InspectorTabKey, label: tr('shell.sidebar.note'), icon: <I.Note size={17} /> },
+    { key: 'tag'     as InspectorTabKey, label: tr('shell.sidebar.tag'), icon: <I.Tag size={17} /> },
   ];
 
   // 펼침은 setNavTab/setInspectorTab(store)이 담당한다 — 여기서 토글을
@@ -467,8 +471,11 @@ function InspectorContent({ t, tab, onClose }: {
     style:   'shell.sidebar.style',
     layout:  'shell.sidebar.layout',
     icon:    'shell.sidebar.iconTitle',
-    content: 'shell.sidebar.contentTitle',
+    link:    'shell.sidebar.linkTitle',
+    attach:  'shell.sidebar.attachTitle',
+    md:      'shell.sidebar.mdTitle',
     note:    'shell.sidebar.noteTitle',
+    tag:     'shell.sidebar.tagTitle',
     ai:      'shell.toolbar.ai',
   } as const)[tab]);
 
@@ -508,8 +515,11 @@ function InspectorContent({ t, tab, onClose }: {
         {tab === 'style'   && <StyleTab t={t} selectedId={selectedId} />}
         {tab === 'layout'  && <LayoutTab t={t} />}
         {tab === 'icon'    && <IconTab t={t} selectedId={selectedId} />}
-        {tab === 'content' && <ContentTab t={t} selectedId={selectedId} />}
-        {tab === 'note'    && <NoteTagTab t={t} selectedId={selectedId} />}
+        {tab === 'link'    && <LinkTab t={t} selectedId={selectedId} />}
+        {tab === 'attach'  && <AttachTab t={t} selectedId={selectedId} />}
+        {tab === 'md'      && <MdTab t={t} selectedId={selectedId} />}
+        {tab === 'note'    && <NoteTagTab t={t} selectedId={selectedId} part="note" />}
+        {tab === 'tag'     && <NoteTagTab t={t} selectedId={selectedId} part="tag" />}
         {tab === 'ai'      && <AITab t={t} />}
       </div>
     </>

@@ -44,9 +44,11 @@ test("언어별 홈 템플릿은 한국어 템플릿과 같은 구조(id·data �
     const other = read(name);
     assert.deepEqual(marks(other), marks(ko), name);
     assert.equal(other.split('<header class="header">').length, 2, name);
-    assert.doesNotMatch(other, /[가-힣]{2,}(?![^<]*<\/a>)/, name + ' 에 한국어 문구가 남아 있음');
+    // The Korean option keeps its native name, including when nested in styled spans.
+    const outsideKoreanOption = other.replace(/<a data-lang="ko"[^>]*>[\s\S]*?<\/a>/, '');
+    assert.doesNotMatch(outsideKoreanOption, /[가-힣]{2,}/, name + ' 에 한국어 문구가 남아 있음');
   }
-  assert.equal(marks(ko).langs, 'ko,en,ja,zh');
+  assert.equal(marks(ko).langs, 'en,ko,ja,zh');
 });
 
 for (const lang of ['ko', 'en', 'ja', 'zh']) {
@@ -100,4 +102,30 @@ test('React 공통 푸터도 GitHub 두 버튼과 같은 이름을 사용', () =
     assert.equal(dict.site.footerCore, 'EasyMindMap GitHub');
     assert.equal(dict.site.footerStandard, 'MindMap Markdown GitHub');
   }
+});
+
+for (const lang of ['ko', 'en', 'ja', 'zh']) {
+  test(`${lang}: 국기·언어 코드 버튼과 현재 언어 체크 표시`, () => {
+    const name = 'template' + (lang === 'ko' ? '' : '.' + lang) + '.html';
+    const html = readFileSync(new URL('../src/redesign/' + name, import.meta.url), 'utf8');
+    const menu = html.match(/<details class="emm-dropdown lang-dropdown">([\s\S]*?)<\/details>/)?.[1];
+    assert.ok(menu);
+    assert.deepEqual([...menu.matchAll(/data-lang="([^"]+)"/g)].map(m => m[1]), ['en', 'ko', 'ja', 'zh']);
+    assert.deepEqual([...menu.matchAll(/<a data-lang="([^"]+)"[^>]*aria-current="true"/g)].map(m => m[1]), [lang]);
+    assert.equal((menu.match(/class="lang-flag"/g) || []).length, 5);
+    assert.equal((menu.match(/class="lang-check"/g) || []).length, 4);
+    for (const code of ['KO', 'EN', 'JA', 'ZH']) assert.ok(menu.includes('__LANG_FLAG_' + code + '__'));
+    assert.match(menu, new RegExp('<span class="lang-current-code">' + lang.toUpperCase() + '</span>'));
+    assert.doesNotMatch(menu, /\u{1f310}/u);
+    assert.match(menu, /lang="zh-Hans"/);
+  });
+}
+test('국기 네 개는 로컬 SVG로 보관하고 원본 라이선스를 포함', () => {
+  for (const country of ['us', 'kr', 'jp', 'cn']) {
+    const svg = readFileSync(new URL('../src/redesign/flags/' + country + '.svg', import.meta.url), 'utf8');
+    assert.match(svg, /<svg\b/);
+    assert.doesNotMatch(svg, /<script\b|\bon\w+\s*=|(?:href|src)=["'](?:https?:|\/\/)/i);
+  }
+  const license = readFileSync(new URL('../src/redesign/flags/LICENSE', import.meta.url), 'utf8');
+  assert.match(license, /MIT License/);
 });

@@ -62,9 +62,19 @@ export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
   const target = splitLang(url.pathname);
   if (url.origin === location.origin && target.lang === CURRENT_LANG && (target.rest === '/' || Object.values(PATHS).includes(target.rest))) { event.preventDefault(); navigate(url.pathname + url.search + url.hash); }
  }
- function onToggle(event: Event) { const current = event.target; if (current instanceof HTMLDetailsElement && current.classList.contains('question') && current.open) all<HTMLDetailsElement>('.question').forEach(other => { if (other !== current) other.open = false; }); }
+ function onToggle(event: Event) {
+  const current = event.target;
+  if (!(current instanceof HTMLDetailsElement) || !current.open) return;
+  if (current.classList.contains('lang-dropdown')) { current.querySelector('.lang-links')?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' }); return; }
+  if (current.classList.contains('question')) all<HTMLDetailsElement>('.question').forEach(other => { if (other !== current) other.open = false; });
+ }
  const onOutside = (event: Event) => { if (event.target instanceof Element && !event.target.closest('.emm-dropdown')) all<HTMLDetailsElement>('.emm-dropdown').forEach(d => d.open = false); };
- const onEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') { const active = all<HTMLDetailsElement>('.emm-dropdown').find(d => d.open); active?.querySelector('summary')?.focus(); closeMenu(); } };
+ const onEscape = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape') return;
+  const active = all<HTMLDetailsElement>('.emm-dropdown').find(d => d.open);
+  if (active) { event.preventDefault(); active.open = false; active.querySelector('summary')?.focus(); return; }
+  if (nav.classList.contains('open')) { event.preventDefault(); closeMenu(); menu.focus(); }
+ };
  document.addEventListener('click', onOutside); document.addEventListener('keydown', onEscape);
  const onRoute = () => route(true);
  root.addEventListener('click', onClick); root.addEventListener('toggle', onToggle, true); window.addEventListener('popstate', onRoute); window.addEventListener('hashchange', onRoute);

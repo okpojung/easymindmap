@@ -103,6 +103,9 @@ function borderDash(style: string | undefined, width: number): string | undefine
   return undefined;
 }
 
+/** 그림을 도형 안으로 오리는 도형 — 다각형·타원 하나로 그려지는 것만 (원통·가로 원통은 <g> 라 clipPath 에 못 넣는다) */
+const CLIP_SHAPES = new Set<string>(['ellipse', 'diamond', 'hexagon', 'parallelogram', 'arrow-left', 'arrow-right', 'offpage', 'document', 'pentagon', 'house', 'card', 'stored-data', 'tape', 'star']);
+
 // Returns the SVG body element for the given shape, sized to the node box.
 function NodeShape({
   shape,
@@ -444,6 +447,10 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   const shape: ShapeType =
     searchHit && shapeSetting === 'none' ? 'rounded' : shapeSetting;
   const noShape = shapeSetting === 'none';
+  // 별·다이아몬드 같은 도형에 그림을 넣으면 그림을 **도형 안으로 오린다** (2026-11-01 사용자 요청 —
+  // 그림이 사각형으로 도형 위를 덮어 꼭짓점만 삐져나왔다). 사각형 계열·원통은 그대로.
+  const clipId = CLIP_SHAPES.has(shape) ? 'mmclip-' + n.id.replace(/[^A-Za-z0-9_-]/g, '_') : null;
+  const clipAttr = clipId ? 'url(#' + clipId + ')' : undefined;
   // 원통: 글자·아이콘을 뚜껑 아래 몸통 가운데로 (sizeNodeForText.CYLINDER_CAP 만큼 키운 높이)
   const capShift = shapeSetting === 'cylinder' ? CYLINDER_CAP / 2 : 0;
 
@@ -1254,7 +1261,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                     const rx = cX + (mdCode.w - r.w) / 2;
                     const ry = bodyTop + MD_CODE_PAD_Y;
                     return r.kind === 'mermaid' ? (
-                      <image data-code-render="mermaid" href={r.src} x={rx} y={ry} width={r.w} height={r.h}
+                      <image data-code-render="mermaid" clipPath={clipAttr} href={r.src} x={rx} y={ry} width={r.w} height={r.h}
                         preserveAspectRatio="xMidYMid meet" style={{ pointerEvents: 'none' }} />
                     ) : (
                       <foreignObject data-code-render="html" x={rx} y={ry} width={r.w} height={r.h} style={{ pointerEvents: 'none' }}>
@@ -1297,6 +1304,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               return (
                 <g key={`inimg${band.idx}`}>
                   <image
+                    clipPath={clipAttr}
                     href={resolveImgSrc(im.src)}
                     x={n.x - sc.w / 2}
                     y={top}
@@ -1331,10 +1339,18 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               );
             })}
 
+            {clipId && (img || inlineImgs.length > 0 || blockLayouts.some((b) => b.kind !== 'table')) && (
+              <defs>
+                <clipPath id={clipId}>
+                  <NodeShape shape={shape} n={n} fill="#000" stroke="none" strokeWidth={0} />
+                </clipPath>
+              </defs>
+            )}
             {img && n.image && (
               // 붙여넣은 사진 — 노드 폭에 맞춰 축소, 가운데 정렬
               <g>
                 <image
+                  clipPath={clipAttr}
                   href={resolveImgSrc(n.image.src)}
                   x={n.x - img.w / 2}
                   y={imgTop}
@@ -1722,6 +1738,8 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           // 숨긴 태그가 있어도 맞는 자리로 — 보이는 목록의 위치를 전체 목록의 위치로 바꾼다
           onMove={readOnly ? undefined : (tag, to) => moveNodeTag(n.id, tag, allTags.indexOf(tagList[to]))}
           fixed={projChips}
+          contentInset={nodePadX(n.depth, noShape, n.style?.padding) + (noShape && n.icon ? 24 : 0)}
+          bottomPad={noShape ? NO_SHAPE_PAD_Y : 0}
           onFixedRemove={readOnly ? undefined : (kind) => updateNodeProject(n.id,
             kind === 'date' ? { dateOn: false } : kind === 'assignee' ? { assigneeOn: false } : { progressOn: false })}
           onFixedClick={(kind) => {

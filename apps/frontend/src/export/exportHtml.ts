@@ -1168,7 +1168,7 @@ const VIEWER_JS = String.raw`
   // ---- render ----------------------------------------------------------------
   function el(name, attrs, parent) {
     var e = document.createElementNS(NS, name);
-    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    for (var k in attrs) if (attrs[k] != null) e.setAttribute(k, attrs[k]);
     if (parent) parent.appendChild(e);
     return e;
   }
@@ -1775,6 +1775,7 @@ const VIEWER_JS = String.raw`
   }
 
   // All shapes, including double-border inset shapes, share the same SVG attributes.
+  var CLIP_SHAPES = ['ellipse', 'diamond', 'hexagon', 'parallelogram', 'arrow-left', 'arrow-right', 'offpage', 'document', 'pentagon', 'house', 'card', 'stored-data', 'tape', 'star'];
   function drawNodeShape(g, sh, x0, y0, W, H, isRoot, com) {
       var put = function (tag, extra) {
         var at = {}, k;
@@ -1981,6 +1982,7 @@ const VIEWER_JS = String.raw`
     });
     var isRoot = depth === 0;
     var x0 = node._cx - node._w / 2, y0 = node._cy - node._h / 2;
+    var clipRef = null; // 그림을 도형 안으로 오리는 clipPath 주소 (특수 도형일 때만)
     // 원통: 글자는 뚜껑 아래부터 (에디터 sizeNodeForText.CYLINDER_CAP = 18 과 같은 값)
     var capY = ((node.style || {}).shapeType === 'cylinder') ? 18 : 0;
     if (!noShape) {
@@ -1989,6 +1991,13 @@ const VIEWER_JS = String.raw`
       com.fill = nodeFill2;
       com.stroke = nodeStroke2;
       drawNodeShape(g, stPre.shapeType, x0, y0, node._w, node._h, isRoot, com);
+      // 별·다이아몬드 같은 도형 안의 그림은 도형 모양으로 오린다 (에디터 NodeRenderer CLIP_SHAPES 와 같음, 2026-11-01)
+      if (CLIP_SHAPES.indexOf(stPre.shapeType) >= 0) {
+        clipRef = 'mmclip-' + String(node.id).replace(/[^A-Za-z0-9_-]/g, '_');
+        var cpEl = el('clipPath', { id: clipRef }, g);
+        drawNodeShape(cpEl, stPre.shapeType, x0, y0, node._w, node._h, isRoot, {});
+        clipRef = 'url(#' + clipRef + ')';
+      }
       // Match the editor's second, slightly inset outline for the double style.
       if (stPre.borderStyle === 'double') {
         var innerW = Math.max(10, node._w - 9), innerH = Math.max(8, node._h - 9);
@@ -2417,6 +2426,7 @@ const VIEWER_JS = String.raw`
       for (var bi = 0; bi < flowBands.length; bi++) {
         var bd = flowBands[bi];
         el('image', {
+          'clip-path': clipRef || undefined,
           href: inImgs[bd.idx].src,
           x: node._cx - inScaled[bd.idx].w / 2, y: topY + bd.top,
           width: inScaled[bd.idx].w, height: inScaled[bd.idx].h,
@@ -2428,6 +2438,7 @@ const VIEWER_JS = String.raw`
       // 노드 안 사진 — 텍스트(·표) 아래 가운데 정렬
       var imgY = topY + contentH - img.h;
       el('image', {
+        'clip-path': clipRef || undefined,
         href: node.image.src,
         x: node._cx - img.w / 2, y: imgY,
         width: img.w, height: img.h,
@@ -2461,12 +2472,13 @@ const VIEWER_JS = String.raw`
 
     if (node.tags && node.tags.length) {
       // 노드 오른쪽 경계를 넘으면 다음 줄로 (에디터 layoutTagRows 와 같은 규칙, 2026-10-23)
-      var bx2 = x0 + 6, tRow = 0;
+      // 태그는 **내용의 왼쪽 끝**에서 (에디터와 같음, 2026-11-01) — 도형 없음은 박스 = 내용
+      var tagIn = Math.max(0, padXv), bx2 = x0 + tagIn, tRow = 0;
       for (var ti = 0; ti < node.tags.length; ti++) {
         var label = node.tags[ti];
         var bw2 = measureText(label, 9.5) + 14;
-        if (bx2 > x0 + 6 && bx2 + bw2 > x0 + node._w - 4) { tRow++; bx2 = x0 + 6; }
-        var tY = node._cy + node._h / 2 + 4 + tRow * (TAG_H + 4);
+        if (bx2 > x0 + tagIn && bx2 + bw2 > x0 + node._w - 4) { tRow++; bx2 = x0 + tagIn; }
+        var tY = node._cy + node._h / 2 + (tightBox ? 1 : 4) + tRow * (TAG_H + 4);
         // 배경을 불투명하게(흰 바탕 + 파스텔 칩) — 반투명이면 뒤로 지나가는
         // 연결선이 비쳐 태그와 겹쳐 보인다.
         el('rect', { x: bx2, y: tY, width: bw2, height: TAG_H,

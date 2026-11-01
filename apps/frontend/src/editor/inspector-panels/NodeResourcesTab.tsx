@@ -176,17 +176,19 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
   const att = kind !== 'link' ? (row.item as NodeAttachment) : null;
   const [d1, setD1] = useState('');
   const [d2, setD2] = useState('');
+  const [dp, setDp] = useState<UrlProto>('https://');
 
   const startEdit = () => {
     onError(null);
-    if (link) { setD1(link.label ?? ''); setD2(link.url); }
+    if (link) { setD1(link.label ?? ''); const sp = splitUrl(link.url); setDp(sp.proto); setD2(sp.rest); }
     else if (att) setD1(kind === 'md' ? att.name.replace(/\.(md|markdown)$/i, '') : att.name);
     onEdit(true);
   };
   const saveEdit = () => {
     if (link) {
-      if (!d2.trim()) return;
-      updateNodeLink(row.nodeId, link.id, { url: d2, label: d1 });
+      const url = joinUrl(dp, d2);
+      if (!url) return;
+      updateNodeLink(row.nodeId, link.id, { url, label: d1 });
     } else if (att) {
       let name = d1.trim();
       if (!name) return;
@@ -248,8 +250,7 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
         <div data-testid="res-editor" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {link ? <>
             <input value={d1} onChange={(e) => setD1(e.target.value)} placeholder={tr('inspector.content.linkLabel')} style={inputStyle(t)} autoFocus />
-            <input value={d2} onChange={(e) => setD2(e.target.value)} placeholder="https://..." style={inputStyle(t)}
-              onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') onEdit(false); }} />
+            <UrlField t={t} testId="res-edit-url" proto={dp} rest={d2} onChange={(p, r) => { setDp(p); setD2(r); }} onEnter={saveEdit} />
           </> : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <input value={d1} onChange={(e) => setD1(e.target.value)} style={{ ...inputStyle(t), flex: 1 }} autoFocus
@@ -267,17 +268,69 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
   );
 }
 
+// ── 주소 입력: 프로토콜 고르기(https:// 기본 · http://) + 나머지 주소 (2026-11-01 사용자 요청) ──
+export type UrlProto = 'https://' | 'http://';
+/** 전체 주소를 프로토콜과 나머지로 — 프로토콜이 없으면 https:// */
+export function splitUrl(raw: string): { proto: UrlProto; rest: string } {
+  const s = raw.trim();
+  const m = /^(https?):\/\//i.exec(s);
+  if (m) return { proto: (m[1].toLowerCase() + '://') as UrlProto, rest: s.slice(m[0].length) };
+  return { proto: 'https://', rest: s };
+}
+/** 고른 프로토콜 + 나머지 → 주소. 나머지에 다른 체계(ftp://·mailto: 등)가 이미 있으면 그대로 */
+export function joinUrl(proto: UrlProto, rest: string): string {
+  const r = rest.trim();
+  if (!r) return '';
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(r) || /^(mailto|tel):/i.test(r)) return r;
+  return proto + r.replace(/^\/\//, '');
+}
+/** 클립보드 글자에서 주소 하나 — http(s):// 로 시작하는 것, 없으면 도메인 모양의 첫 단어 */
+export function urlFromText(text: string): string | null {
+  const words = text.trim().split(/\s+/);
+  const full = words.find((w) => /^https?:\/\//i.test(w));
+  if (full) return full;
+  const bare = words.find((w) => /^[\w-]+(\.[\w-]+)+(:\d+)?(\/\S*)?$/.test(w));
+  return bare ?? null;
+}
+
+function UrlField({ t, proto, rest, onChange, onEnter, autoFocus, testId }: {
+  t: ThemeTokens; proto: UrlProto; rest: string;
+  onChange: (proto: UrlProto, rest: string) => void; onEnter?: () => void; autoFocus?: boolean; testId?: string;
+}) {
+  const tr = useTr();
+  return (
+    <div style={{ display: 'flex', gap: 3, flex: 1, minWidth: 0 }}>
+      <select data-testid={testId ? testId + '-proto' : undefined} value={proto} aria-label={tr('inspector.res.proto')}
+        onChange={(e) => onChange(e.target.value as UrlProto, rest)}
+        style={{ ...inputStyle(t), padding: '5px 2px', flexShrink: 0 }}>
+        <option value="https://">https://</option>
+        <option value="http://">http://</option>
+      </select>
+      <input data-testid={testId} value={rest} autoFocus={autoFocus}
+        onChange={(e) => {
+          // 전체 주소를 붙여 넣거나 치면 프로토콜을 떼어 고르기에 반영한다
+          const v = e.target.value;
+          if (/^https?:\/\//i.test(v.trim())) { const sp = splitUrl(v); onChange(sp.proto, sp.rest); } else onChange(proto, v);
+        }}
+        onKeyDown={(e) => { if (e.key === 'Enter') onEnter?.(); }}
+        placeholder={tr('inspector.res.urlRest')} style={{ ...inputStyle(t), flex: 1, minWidth: 0 }} />
+    </div>
+  );
+}
+
 // ── 추가 칸 ───────────────────────────────────────────────────────────
 
 function LinkAdd({ t, nodeId, onDone }: { t: ThemeTokens; nodeId: string; onDone: () => void }) {
   const tr = useTr();
   const addNodeLink = useDocumentStore((s) => s.addNodeLink);
-  const [url, setUrl] = useState('');
+  const [proto, setProto] = useState<UrlProto>('https://');
+  const [rest, setRest] = useState('');
   const [label, setLabel] = useState('');
   const commit = () => {
-    if (!url.trim()) return;
+    const url = joinUrl(proto, rest);
+    if (!url) return;
     addNodeLink(nodeId, url, label.trim() || undefined);
-    setUrl(''); setLabel(''); onDone();
+    setRest(''); setLabel(''); setProto('https://'); onDone();
   };
   const drop = (e: DragEvent) => {
     e.preventDefault();
@@ -287,17 +340,16 @@ function LinkAdd({ t, nodeId, onDone }: { t: ThemeTokens; nodeId: string; onDone
   };
   const paste = async () => {
     try {
-      const txt = (await navigator.clipboard.readText()).trim();
-      const u = txt.split(/\s+/).find((s) => /^https?:\/\//i.test(s));
-      if (u) setUrl(u);
+      const u = urlFromText(await navigator.clipboard.readText());
+      if (u) { const sp = splitUrl(u); setProto(sp.proto); setRest(sp.rest); }
     } catch { /* 권한이 없으면 칸에 직접 붙여 넣는다 */ }
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <input data-testid="link-add-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder={tr('inspector.content.linkLabel')} style={inputStyle(t)} />
       <div style={{ display: 'flex', gap: 4 }}>
-        <input data-testid="link-add-url" value={url} onChange={(e) => setUrl(e.target.value)} autoFocus
-          onKeyDown={(e) => { if (e.key === 'Enter') commit(); }} placeholder="https://..." style={{ ...inputStyle(t), flex: 1 }} />
+        <UrlField t={t} testId="link-add-url" proto={proto} rest={rest} autoFocus
+          onChange={(p, r) => { setProto(p); setRest(r); }} onEnter={commit} />
         <button type="button" data-testid="link-add-commit" onClick={commit} style={addBtnStyle(t)}>{tr('inspector.content.add')}</button>
       </div>
       <div onDragOver={(e) => e.preventDefault()} onDrop={drop}

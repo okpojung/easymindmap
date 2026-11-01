@@ -9,6 +9,7 @@
 // 측정과 NodeRenderer의 그리기가 항상 같은 값을 쓴다.
 
 import type { LevelFontSetting } from '@/editor/__samples__/types';
+import { mediaKindsOf } from './mediaContent';
 import { MD_CODE_PAD_X } from './mdCode';
 import { blockGaps, layoutNodeBlocks, type NodeBlockLayout } from './nodeBlocks';
 import { parseCheckLine, checkGlyphW } from './mdCheck';
@@ -371,8 +372,11 @@ export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}
   );
   let h = textH + tableH + codeH + imgH + inlineImgsH + padY * 2;
   if ((opts.shape ?? levelShape(depth)) === 'cylinder') h += CYLINDER_CAP;
-  // 수동 높이는 최소값 — 내용이 더 크면 내용에 맞춘다
-  if (opts.manualH && opts.manualH > h) h = Math.min(1200, Math.round(opts.manualH));
+  // 수동 높이는 최소값 — 내용이 더 크면 내용에 맞춘다.
+  // 단, **그림만 담은 노드**(사진·Mermaid·HTML)는 그림이 폭에 맞춰 비율대로 커지므로 높이를 그림에 맞춘다 —
+  // 손으로 늘린 높이가 남으면 그림 위아래가 비고 태그가 그림에서 멀리 떨어졌다 (2026-11-01 사용자 보고)
+  const mediaOnly = !!mediaKindsOf({ text: String(text || ''), image: opts.image, images: opts.images });
+  if (!mediaOnly && opts.manualH && opts.manualH > h) h = Math.min(1200, Math.round(opts.manualH));
 
   return {
     w, h, lines: wrappedLines, fontSize, fontWeight, lineHeight,

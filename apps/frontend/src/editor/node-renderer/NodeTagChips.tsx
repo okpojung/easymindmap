@@ -26,12 +26,16 @@ interface Props {
   fixed?: ProjectChip[];
   onFixedRemove?: (kind: ProjectChipKind) => void;
   onFixedClick?: (kind: ProjectChipKind) => void;
+  /** 태그 시작 x — 노드 왼쪽 끝에서 **내용의 왼쪽 끝**까지 (안쪽 여백, 2026-11-01 사용자 요청) */
+  contentInset?: number;
+  /** 도형 없음의 아래 여백 — 그만큼 태그를 내용 쪽으로 올린다 */
+  bottomPad?: number;
 }
 
 /** 프로젝트 태그 색 — 일정 파랑 · 담당자 초록 · 진척율 호박색 (팔레트의 같은 계열 태그 이름을 빌린다) */
 const KIND_COLOR_KEY: Record<ProjectChipKind, string> = { date: 'V1', assignee: 'Q1', progress: 'MVP' };
 
-export function NodeTagChips({ n, tagList, t, onRemove, onMove, fixed = [], onFixedRemove, onFixedClick }: Props) {
+export function NodeTagChips({ n, tagList, t, onRemove, onMove, fixed = [], onFixedRemove, onFixedClick, contentInset, bottomPad = 0 }: Props) {
   const tr = useTr();
   // 그림 노드의 자동 태그(Image·Mermaid·HTML, 2026-10-28) — 문서에 없는 표시용이라 지우거나 옮기지 않는다
   const autoTags = new Set(n._autoTags ?? []);
@@ -55,9 +59,15 @@ export function NodeTagChips({ n, tagList, t, onRemove, onMove, fixed = [], onFi
     n.layoutType === 'tree';
 
   const left = n.x - n.w / 2;
-  const top = n.y + n.h / 2 + TAG_TOP_GAP;
+  const top = n.y + n.h / 2 - bottomPad + TAG_TOP_GAP;
   const nf = fixed.length;
-  const allSlots = layoutTagRows([...fixed.map((f) => f.label), ...tagList], n.w, connectorOnLeftSide ? TAG_INSET_LEFT_SPINE : TAG_INSET)
+  // 태그는 **내용의 왼쪽 끝**에서 시작한다 (2026-11-01 사용자 요청 — 예전엔 도형 왼쪽 끝 + 8).
+  // 자식 선이 노드 왼쪽으로 내려가는 배치에서 자식이 보이면 그 선은 계속 피한다.
+  const spine = connectorOnLeftSide && (n._childCount ?? 0) > 0 && !n.collapsed;
+  const inset = contentInset !== undefined
+    ? Math.max(contentInset, spine ? TAG_INSET_LEFT_SPINE : 0)
+    : (connectorOnLeftSide ? TAG_INSET_LEFT_SPINE : TAG_INSET);
+  const allSlots = layoutTagRows([...fixed.map((f) => f.label), ...tagList], n.w, inset)
     .map((s) => ({ ...s, x0: left + s.x, y0: top + s.row * (tagH + TAG_ROW_GAP) }));
   // 일반 태그 자리 (끌기·끼워 넣기는 일반 태그끼리만)
   const slots = allSlots.slice(nf);

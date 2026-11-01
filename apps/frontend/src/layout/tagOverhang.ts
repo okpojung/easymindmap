@@ -13,7 +13,7 @@ import { projectChips } from '@/editor/node-renderer/projectTags';
 import type { ProjectTags } from '@/editor/__samples__/types';
 
 export const TAG_ROW_H = 16; // chip height (NodeTagChips.tagH)
-export const TAG_TOP_GAP = 6; // node bottom → chips top (NodeTagChips baseY offset)
+export const TAG_TOP_GAP = 4; // node bottom → chips top (NodeTagChips baseY offset) — 2026-11-01 6→4 (사용자: 간격이 넓다)
 const TAG_BOTTOM_PAD = 6; // breathing room below the chips
 export const TAG_ROW_GAP = 4; // 줄과 줄 사이
 export const TAG_GAP = 4; // 칩과 칩 사이

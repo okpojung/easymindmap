@@ -9,6 +9,7 @@ import ko from './redesign/template.html?raw';
 import en from './redesign/template.en.html?raw';
 import ja from './redesign/template.ja.html?raw';
 import zh from './redesign/template.zh.html?raw';
+import questionVideoCoverUrl from './redesign/question-video-cover.jpg';
 import jaStrings from './i18n/strings.ja.json';
 import zhStrings from './i18n/strings.zh.json';
 import type { Guide } from './redesign/content';
@@ -19,7 +20,10 @@ import { GUIDES_ZH } from './redesign/guides.zh';
 /** 안내 글(질문하는 힘·브랜드 스토리 등) 번역 — 없는 글은 한국어 원문을 보여 준다 (3단계에서 채운다) */
 export const GUIDES_BY_LANG: Partial<Record<Lang, Record<string, Guide>>> = { en: GUIDES_EN, ja: GUIDES_JA, zh: GUIDES_ZH };
 
-export const TEMPLATES: Partial<Record<Lang, string>> = { ko, en, ja, zh };
+const withVideoCover = (html: string): string => html.replace('__QUESTION_VIDEO_COVER__', questionVideoCoverUrl);
+export const TEMPLATES: Partial<Record<Lang, string>> = {
+  ko: withVideoCover(ko), en: withVideoCover(en), ja: withVideoCover(ja), zh: withVideoCover(zh),
+};
 
 /** 번역 JSON 의 `{n}` 자리표시 문구를 함수로 바꾼다 (maxNodes·maxLevels·nodeCount) */
 type DemoStrings = Record<string, string | ((n: number) => string)>;
@@ -43,7 +47,7 @@ const TEXT: Partial<Record<Lang, SiteText>> = {
     homeTitle: 'EasyMindMap | AI가 답하는 시대, 질문이 나의 힘.',
     homeDescription: '질문을 펼치고 연결하며 다음 질문을 찾아가는 작업 공간. Markdown과 마인드맵을 EasyMindMap에서 만나 보세요.',
     backHome: '첫 화면으로', loading: '불러오는 중…',
-    footerCore: 'GitHub · EasyMindMap 오픈소스 코어 ↗', footerStandard: 'Mindmap Markdown 표준 ↗', footerContact: '✉ 문의하기',
+    footerCore: 'EasyMindMap GitHub', footerStandard: 'MindMap Markdown GitHub', footerContact: '✉ 문의하기',
     titleSuffix: ' | EasyMindMap',
   },
   en: {
@@ -51,7 +55,7 @@ const TEXT: Partial<Record<Lang, SiteText>> = {
     homeTitle: 'EasyMindMap | AI answers. Questions are your power.',
     homeDescription: 'A workspace for expanding and connecting your questions to find the next one. Meet Markdown and mind maps in EasyMindMap.',
     backHome: 'Back to home', loading: 'Loading…',
-    footerCore: 'GitHub · EasyMindMap open-source core ↗', footerStandard: 'Mindmap Markdown standard ↗', footerContact: '✉ Contact us',
+    footerCore: 'EasyMindMap GitHub', footerStandard: 'MindMap Markdown GitHub', footerContact: '✉ Contact us',
     titleSuffix: ' | EasyMindMap',
   },
 };

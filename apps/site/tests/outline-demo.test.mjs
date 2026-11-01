@@ -50,7 +50,7 @@ test("언어별 홈 템플릿은 한국어 템플릿과 같은 구조(id·data �
 });
 
 for (const lang of ['ko', 'en', 'ja', 'zh']) {
-  test(`${lang}: 영상 링크는 기존 세 가지 연습과 안내 사이에 추가되며 자동 재생하지 않음`, () => {
+  test(`${lang}: 좌측 설명·우측 영상 링크는 기존 세 가지 연습과 안내를 보존하고 차단된 임베드를 표시하지 않음`, () => {
     const name = 'template' + (lang === 'ko' ? '' : '.' + lang) + '.html';
     const html = readFileSync(new URL('../src/redesign/' + name, import.meta.url), 'utf8');
     const section = html.match(/<section class="section question-practice">([\s\S]*?)<\/section>/)?.[1];
@@ -62,9 +62,42 @@ for (const lang of ['ko', 'en', 'ja', 'zh']) {
     assert.match(section, /href="https:\/\/www\.youtube\.com\/watch\?v=OXx6i7LWsh8" target="_blank" rel="noopener noreferrer"/);
     assert.doesNotMatch(section, /<iframe|<video|autoplay/);
     assert.match(section, /aria-labelledby="question-video-title"/);
+    assert.equal((section.match(/class="question-video-copy"/g) || []).length, 1);
+    assert.equal((section.match(/class="question-video-media"/g) || []).length, 1);
+    assert.ok(section.indexOf('class="question-video-copy"') < section.indexOf('class="question-video-media"'));
+    assert.match(section, /<ul class="question-video-points"><li>[\s\S]*?<\/li><li>[\s\S]*?<\/li><li>[\s\S]*?<\/li><\/ul>/);
+    assert.match(section, /src="__QUESTION_VIDEO_COVER__"/);
+    assert.match(section, /width="1280" height="720" loading="lazy"/);
+    assert.match(section, /aria-describedby="question-video-open-note"/);
     assert.match(html, /class="question-promise"/);
     assert.match(html, /class="question-explanation"/);
     const disclaimer = { ko: '질문 능력의 자동 향상을 보장하지 않습니다.', en: 'We do not promise that your questioning skills will improve automatically.', ja: '問いを立てる力が自動的に向上することを保証するものではありません。', zh: '我们不保证提问能力会自动提升。' };
     assert.ok(section.includes(disclaimer[lang]));
   });
 }
+
+for (const lang of ['ko', 'en', 'ja', 'zh']) {
+  test(`${lang}: EMM 로그인은 새 탭, 푸터 GitHub는 두 개의 명확한 버튼`, () => {
+    const name = 'template' + (lang === 'ko' ? '' : '.' + lang) + '.html';
+    const html = readFileSync(new URL('../src/redesign/' + name, import.meta.url), 'utf8');
+    assert.match(html, /data-open-app href="https:\/\/web\.easymindmap\.org\/" target="_blank" rel="noopener noreferrer"/);
+    const footer = html.match(/<footer class="footer">([\s\S]*?)<\/footer>/)?.[1];
+    assert.ok(footer);
+    assert.doesNotMatch(footer, /<span>GitHub<\/span>/);
+    assert.equal((footer.match(/class="github-link"/g) || []).length, 2);
+    assert.match(footer, />EasyMindMap GitHub <span/);
+    assert.match(footer, />MindMap Markdown GitHub <span/);
+    assert.match(footer, /href="https:\/\/github\.com\/okpojung\/easymindmap" target="_blank" rel="noopener noreferrer"/);
+    assert.match(footer, /href="https:\/\/github\.com\/mindmapmarkdown" target="_blank" rel="noopener noreferrer"/);
+  });
+}
+test('React 공통 푸터도 GitHub 두 버튼과 같은 이름을 사용', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /className="foot-github"/);
+  assert.equal((app.match(/className="github-link"/g) || []).length, 2);
+  for (const lang of ['ja', 'zh']) {
+    const dict = JSON.parse(readFileSync(new URL('../src/i18n/strings.' + lang + '.json', import.meta.url), 'utf8'));
+    assert.equal(dict.site.footerCore, 'EasyMindMap GitHub');
+    assert.equal(dict.site.footerStandard, 'MindMap Markdown GitHub');
+  }
+});

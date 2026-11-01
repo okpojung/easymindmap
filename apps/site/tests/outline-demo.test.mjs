@@ -48,3 +48,23 @@ test("언어별 홈 템플릿은 한국어 템플릿과 같은 구조(id·data �
   }
   assert.equal(marks(ko).langs, 'ko,en,ja,zh');
 });
+
+for (const lang of ['ko', 'en', 'ja', 'zh']) {
+  test(`${lang}: 영상 링크는 기존 세 가지 연습과 안내 사이에 추가되며 자동 재생하지 않음`, () => {
+    const name = 'template' + (lang === 'ko' ? '' : '.' + lang) + '.html';
+    const html = readFileSync(new URL('../src/redesign/' + name, import.meta.url), 'utf8');
+    const section = html.match(/<section class="section question-practice">([\s\S]*?)<\/section>/)?.[1];
+    assert.ok(section);
+    assert.equal((section.match(/class="question-video"/g) || []).length, 1);
+    assert.ok(section.indexOf('class="practice-grid"') < section.indexOf('class="question-video"'));
+    assert.ok(section.indexOf('class="question-video"') < section.indexOf('class="practice-note"'));
+    for (const label of ['01 / PURPOSE', '02 / EVIDENCE', '03 / PERSPECTIVE']) assert.ok(section.includes(label));
+    assert.match(section, /href="https:\/\/www\.youtube\.com\/watch\?v=OXx6i7LWsh8" target="_blank" rel="noopener noreferrer"/);
+    assert.doesNotMatch(section, /<iframe|<video|autoplay/);
+    assert.match(section, /aria-labelledby="question-video-title"/);
+    assert.match(html, /class="question-promise"/);
+    assert.match(html, /class="question-explanation"/);
+    const disclaimer = { ko: '질문 능력의 자동 향상을 보장하지 않습니다.', en: 'We do not promise that your questioning skills will improve automatically.', ja: '問いを立てる力が自動的に向上することを保証するものではありません。', zh: '我们不保证提问能力会自动提升。' };
+    assert.ok(section.includes(disclaimer[lang]));
+  });
+}

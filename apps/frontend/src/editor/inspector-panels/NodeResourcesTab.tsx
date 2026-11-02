@@ -177,6 +177,14 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
   const [d1, setD1] = useState('');
   const [d2, setD2] = useState('');
   const [dp, setDp] = useState<UrlProto>('https://');
+  // 링크 주소 복사 (2026-11-02 사용자 요청) — 누르면 잠깐 ✓
+  const [copied, setCopied] = useState(false);
+  const copyUrl = () => {
+    if (!link) return;
+    const done = () => { setCopied(true); window.setTimeout(() => setCopied(false), 1400); };
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link.url).then(done, () => window.prompt(tr('inspector.res.copyPrompt'), link.url));
+    else window.prompt(tr('inspector.res.copyPrompt'), link.url);
+  };
 
   const startEdit = () => {
     onError(null);
@@ -242,6 +250,12 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
             {kind === 'md' ? '✍' : '↗'}
           </button>
           {selected && <>
+            {link && (
+              <button type="button" data-testid="res-copy" style={{ ...icoBtn, color: copied ? '#15803D' : t.text }}
+                title={copied ? tr('common.copied') : tr('inspector.res.copyUrl')} onClick={copyUrl}>
+                {copied ? <I.Check size={12} /> : <I.Copy size={12} />}
+              </button>
+            )}
             <button type="button" data-testid="res-edit" style={icoBtn} title={tr('inspector.res.edit')} onClick={startEdit}><I.Pencil size={12} /></button>
             <button type="button" data-testid="res-remove" style={{ ...icoBtn, color: '#B91C1C' }} title={tr('inspector.res.remove')} onClick={remove}><I.Trash size={12} /></button>
           </>}

@@ -4,6 +4,7 @@
  * 빠진 언어·키는 영어 → 한국어 순으로 대신 쓴다.
  */
 import type { Lang } from './i18n';
+import type { HeroVideoText } from './redesign/hero-video';
 import { CURRENT_LANG } from './i18n';
 import ko from './redesign/template.html?raw';
 import en from './redesign/template.en.html?raw';
@@ -27,6 +28,9 @@ export const GUIDES_BY_LANG: Partial<Record<Lang, Record<string, Guide>>> = { en
 /** Header flags are local SVG assets, not platform-dependent flag emoji or a runtime CDN. */
 const withTemplateAssets = (html: string): string => html
   .replace('__QUESTION_VIDEO_COVER__', questionVideoCoverUrl)
+  .split('__HERO_VIDEO_SRC__').join(import.meta.env.BASE_URL + 'hero-media/v3/emm-hero-v3-ko.mp4')
+  .split('__HERO_VIDEO_POSTER__').join(import.meta.env.BASE_URL + 'hero-media/v3/poster.jpg')
+  .replace(/__HERO_CAPTIONS_(KO|EN|JA|ZH)__/g, (_, lang: string) => import.meta.env.BASE_URL + 'hero-media/v3/captions.' + lang.toLowerCase() + '.vtt')
   .split('__LANG_FLAG_KO__').join(koFlagUrl)
   .split('__LANG_FLAG_EN__').join(enFlagUrl)
   .split('__LANG_FLAG_JA__').join(jaFlagUrl)
@@ -105,3 +109,12 @@ export const PRESETS_BY_LANG: Partial<Record<Lang, Record<string, string>>> = {
     travel: '# Weekend trip\n## To pack\n- Charger\n- Comfortable shoes\n## To do\n- Walk on the beach\n- Try local restaurants\n## Places to go\n- A seaside town\n- A mountain trail',
   },
 };
+
+/** The audio is Korean in every locale. Only the captions are translated. */
+const HERO_VIDEO_TEXT: Record<Lang, HeroVideoText> = {
+ ko: { play: '재생', pause: '일시정지', enableSound: '소리 켜기', mute: '음소거', captions: '자막', ready: '소리 없이 자동 재생됩니다.', playing: '영상 재생 중', paused: '영상이 일시정지되었습니다. 재생 버튼으로 계속할 수 있습니다.', restricted: '동작 줄이기 또는 데이터 절약 설정에 따라 미리보기만 표시합니다. 재생을 누르면 영상을 불러옵니다.', blocked: '자동 재생이 차단되었습니다. 재생 버튼을 눌러 시작하세요.', failed: '영상을 재생할 수 없어 미리보기를 표시합니다. 재생 버튼으로 다시 시도하세요.', captionFailed: '자막을 불러오지 못했습니다. 자막 버튼으로 다시 시도할 수 있습니다.' },
+ en: { play: 'Play', pause: 'Pause', enableSound: 'Enable sound', mute: 'Mute', captions: 'Captions', ready: 'Plays automatically without sound.', playing: 'Video playing', paused: 'Video paused. Press Play to continue.', restricted: 'Preview only because reduced motion or data saving is enabled. Press Play to load the video.', blocked: 'Autoplay was blocked. Press Play to start.', failed: 'The video could not play. The preview is shown. Press Play to retry.', captionFailed: 'Captions could not load. Use the Captions button to retry.' },
+ ja: { play: '再生', pause: '一時停止', enableSound: '音声をオン', mute: 'ミュート', captions: '字幕', ready: '音声なしで自動再生します。', playing: '動画を再生中', paused: '一時停止中です。再生ボタンで続けられます。', restricted: '動きを減らす設定またはデータ節約設定のため、プレビューのみ表示しています。再生を押すと動画を読み込みます。', blocked: '自動再生がブロックされました。再生ボタンを押してください。', failed: '動画を再生できないため、プレビューを表示しています。再生ボタンで再試行できます。', captionFailed: '字幕を読み込めませんでした。字幕ボタンで再試行できます。' },
+ zh: { play: '播放', pause: '暂停', enableSound: '开启声音', mute: '静音', captions: '字幕', ready: '默认静音自动播放。', playing: '视频播放中', paused: '视频已暂停。按播放继续。', restricted: '已启用减少动态效果或节省流量，仅显示预览。按播放加载视频。', blocked: '自动播放被阻止。请按播放开始。', failed: '无法播放视频，现显示预览。按播放重试。', captionFailed: '字幕加载失败。可使用字幕按钮重试。' },
+};
+export function heroVideoText(lang: Lang = CURRENT_LANG): HeroVideoText { return HERO_VIDEO_TEXT[lang]; }

@@ -1,10 +1,11 @@
+import { mountHeroVideo } from './hero-video';
 import { BRAND_FAVICON_URL, BRAND_LOGO_URL } from './brand';
 import { GUIDES, PATHS } from './content';
 import { PRESETS } from './demo';
 import { APP_LOGIN_URL } from '../config';
 import { mountOutlineDemo, setDemoText } from './outline-demo.js';
 import { CURRENT_LANG, splitLang, href, localizeLinks, bindLangLinks, appLoginUrl } from '../i18n';
-import { siteText, DEMO_TEXT_BY_LANG, PRESETS_BY_LANG, GUIDES_BY_LANG } from '../site-text';
+import { siteText, heroVideoText, DEMO_TEXT_BY_LANG, PRESETS_BY_LANG, GUIDES_BY_LANG } from '../site-text';
 
 /** Trusted build-time markup only. User input is rendered exclusively via textContent. */
 export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
@@ -16,6 +17,7 @@ export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
  document.documentElement.classList.add('emm-home-page');
  function bindAppLinks() { all<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = appLoginUrl(APP_LOGIN_URL); }); }
  const T = siteText();
+ const heroVideo = mountHeroVideo(root, heroVideoText(), CURRENT_LANG);
  localizeLinks(root); bindLangLinks(root);
  bindAppLinks();
  all<HTMLImageElement>('[data-brand-icon]').forEach(image => { image.src = BRAND_FAVICON_URL; });
@@ -28,7 +30,7 @@ export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
   if (location.hash.startsWith('#/')) { const [legacy, anchor] = location.hash.slice(2).split('#'); history.replaceState(null, '', href((PATHS[legacy] ?? '/') + (anchor ? '#' + anchor : ''))); }
   const rest = splitLang(location.pathname).rest;
   const key = Object.keys(PATHS).find(name => PATHS[name] === rest); const content = key ? (GUIDES_BY_LANG[CURRENT_LANG]?.[key] ?? GUIDES[key]) : undefined;
-  q('#home').hidden = Boolean(content); q('#detail').hidden = !content; closeMenu();
+  q('#home').hidden = Boolean(content); q('#detail').hidden = !content; heroVideo.setHomeVisible(!content); closeMenu();
   if (demoPath !== location.pathname) { demo.reset(true); demoPath = location.pathname; }
   let title = T.homeTitle;
   let description = T.homeDescription;
@@ -79,5 +81,5 @@ export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
  const onRoute = () => route(true);
  root.addEventListener('click', onClick); root.addEventListener('toggle', onToggle, true); window.addEventListener('popstate', onRoute); window.addEventListener('hashchange', onRoute);
  route(false);
- return () => { document.removeEventListener("click", onOutside); document.removeEventListener("keydown", onEscape); disposed = true; demo.destroy(); cancelAnimationFrame(frame); root.removeEventListener('click', onClick); root.removeEventListener('toggle', onToggle, true); window.removeEventListener('popstate', onRoute); window.removeEventListener('hashchange', onRoute); document.documentElement.classList.remove('emm-home-page'); };
+ return () => { document.removeEventListener("click", onOutside); document.removeEventListener("keydown", onEscape); disposed = true; heroVideo.destroy(); demo.destroy(); cancelAnimationFrame(frame); root.removeEventListener('click', onClick); root.removeEventListener('toggle', onToggle, true); window.removeEventListener('popstate', onRoute); window.removeEventListener('hashchange', onRoute); document.documentElement.classList.remove('emm-home-page'); };
 }

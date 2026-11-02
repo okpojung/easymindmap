@@ -425,3 +425,18 @@ html[lang="zh-Hans"] body,html[lang="zh-Hans"] .emm-home{font-family:Pretendard,
 .emm-home .question-video .question-video-note{display:block;border-top:1px solid #d9e1d0;margin-top:24px;padding-top:16px;font-size:11px;line-height:1.8;color:var(--muted)}
 @media(max-width:950px){.emm-home .question-video-grid{grid-template-columns:minmax(0,1fr);gap:24px}.emm-home .question-video h3{font-size:26px}}
 @media(max-width:600px){.emm-home .question-video{padding:24px 20px}.emm-home .question-video h3{font-size:24px}.emm-home .question-video .question-video-lead{font-size:15px}.emm-home .question-video-points{font-size:14px}.emm-home .question-video-watch-label{left:12px;bottom:12px;font-size:12px}.emm-home .question-explanation br{display:none}}
+
+/* Upper-right hero player only. The video viewport remains 16:9 at every width. */
+.emm-home .hero-board.hero-video{transform:none;min-width:0;align-self:center}
+.emm-home .hero-video-stage{position:relative;aspect-ratio:16/9;background:#edf1e9;overflow:hidden}
+.emm-home .hero-video-stage video,.emm-home .hero-video-poster{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain}
+.emm-home .hero-video[data-failed="true"] video{opacity:0}
+.emm-home .hero-video-controls{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px 6px}
+.emm-home .hero-video-controls button{min-height:44px;min-width:44px;padding:8px 13px;border:1px solid #b7c6b6;border-radius:8px;background:#fff;color:#254d38;font:inherit;font-size:13px;font-weight:650;cursor:pointer}
+.emm-home .hero-video-controls button:hover{background:#eff4eb}
+.emm-home .hero-video-controls button[aria-pressed="true"]{background:#e5eddf;border-color:#668262}
+.emm-home .hero-video-controls button:focus-visible{outline:3px solid #b35325;outline-offset:3px}
+.emm-home .hero-video-note,.emm-home .hero-video-status{margin:0;padding:5px 14px;font-size:12px;line-height:1.6;color:#52604b;overflow-wrap:anywhere}
+.emm-home .hero-video-note{font-weight:650}
+.emm-home .hero-video-status{padding-bottom:13px;min-height:3em}
+.emm-home .hero-video video::cue{background:rgba(15,28,20,.88);color:white;font-size:clamp(12px,1.1vw,16px)}

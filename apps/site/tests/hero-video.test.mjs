@@ -26,7 +26,7 @@ function setup(options={}) {
   intersect(visible) { this.callback([{target:this.target,isIntersecting:visible,intersectionRatio:visible?1:0}]); }
  }
  const video = new Element(); video.paused=true; video.muted=false; video.playCalls=0; video.loadCalls=0;
- video.dataset.heroSrc='/site-assets/hero-media/emm-hero-v2-ko.mp4';
+ video.dataset.heroSrc='/site-assets/hero-media/emm-hero-v3-ko.mp4';
  video.load=()=>{video.loadCalls++;};
  video.pause=()=>{video.paused=true; video.dispatchEvent(new Event('pause'));};
  video.play=()=>{
@@ -131,7 +131,7 @@ for(const lang of ['ko','en','ja','zh']) test(lang+': hero-only markup defers so
 });
 
 test('versioned hero MP4 is fast-start H264/AAC and about 30 seconds', () => {
- const b=readFileSync(new URL('../public/hero-media/v2/emm-hero-v2-ko.mp4',import.meta.url));
+ const b=readFileSync(new URL('../public/hero-media/v3/emm-hero-v3-ko.mp4',import.meta.url));
  const top=[];for(let p=0;p+8<=b.length;){const n=b.readUInt32BE(p),type=b.toString('ascii',p+4,p+8);assert.ok(n>=8&&p+n<=b.length);top.push({type,p,n});p+=n;}
  assert.ok(top.find(x=>x.type==='ftyp'));assert.ok(top.find(x=>x.type==='moov').p<top.find(x=>x.type==='mdat').p);
  assert.ok(b.includes(Buffer.from('avc1')));assert.ok(b.includes(Buffer.from('mp4a')));assert.ok(b.length<12*1024*1024);
@@ -139,9 +139,15 @@ test('versioned hero MP4 is fast-start H264/AAC and about 30 seconds', () => {
  assert.ok(movie>29.5&&movie<30.5,'actual movie duration '+movie);
 });
 test('four native caption files have seven timed UTF-8 cues and use versioned URLs',()=>{
- for(const lang of ['ko','en','ja','zh']){const vtt=readFileSync(new URL('../public/hero-media/v2/captions.'+lang+'.vtt',import.meta.url),'utf8');assert.ok(vtt.startsWith('WEBVTT\n'));assert.equal((vtt.match(/ --> /g)||[]).length,7);assert.match(vtt,/00:00:28\.270/);assert.doesNotMatch(vtt,/\u0000|<script/i);}
- const t=readFileSync(new URL('../src/site-text.ts',import.meta.url),'utf8');assert.match(t,/hero-media\/v2\//);
+ for(const lang of ['ko','en','ja','zh']){const vtt=readFileSync(new URL('../public/hero-media/v3/captions.'+lang+'.vtt',import.meta.url),'utf8');assert.ok(vtt.startsWith('WEBVTT\n'));assert.equal((vtt.match(/ --> /g)||[]).length,7);const pairs=[...vtt.matchAll(/(\d{2}:\d{2}:\d{2}\.\d{3}) --> (\d{2}:\d{2}:\d{2}\.\d{3})/g)];const sec=s=>{const [h,m,z]=s.split(':').map(Number);return h*3600+m*60+z;};let end=0;for(const p of pairs){const a=sec(p[1]),b=sec(p[2]);assert.ok(a>=end&&b>a&&b<30);end=b;}assert.ok(end>27&&end<29);assert.doesNotMatch(vtt,/\u0000|<script/i);}
+ const t=readFileSync(new URL('../src/site-text.ts',import.meta.url),'utf8');assert.match(t,/hero-media\/v3\//);
 });
 test('hero media location explicitly serves MP4 and native VTT captions',()=>{
  const nginx=readFileSync(new URL('../nginx.conf',import.meta.url),'utf8');assert.match(nginx,/location \^~ \/site-assets\/hero-media\//);assert.match(nginx,/video\/mp4 mp4;/);assert.match(nginx,/text\/vtt vtt;/);
+});
+
+test('v3 records the approved freely usable Sarah output and does not point to the earlier narration',()=>{
+ const notice=readFileSync(new URL('../public/hero-media/v3/VOICE-LICENSE.md',import.meta.url),'utf8');
+ assert.match(notice,/Supertonic 3/);assert.match(notice,/Sarah/);assert.match(notice,/OpenRAIL-M/);assert.match(notice,/Licensor claims no rights in the Output/);
+ const text=readFileSync(new URL('../src/site-text.ts',import.meta.url),'utf8');assert.match(text,/hero-media\/v3\/emm-hero-v3-ko\.mp4/);assert.doesNotMatch(text,/hero-media\/v2\//);
 });

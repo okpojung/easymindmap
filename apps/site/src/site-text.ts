@@ -28,9 +28,9 @@ export const GUIDES_BY_LANG: Partial<Record<Lang, Record<string, Guide>>> = { en
 /** Header flags are local SVG assets, not platform-dependent flag emoji or a runtime CDN. */
 const withTemplateAssets = (html: string): string => html
   .replace('__QUESTION_VIDEO_COVER__', questionVideoCoverUrl)
-  .split('__HERO_VIDEO_SRC__').join(import.meta.env.BASE_URL + 'hero-media/v2/emm-hero-v2-ko.mp4')
-  .split('__HERO_VIDEO_POSTER__').join(import.meta.env.BASE_URL + 'hero-media/v2/poster.jpg')
-  .replace(/__HERO_CAPTIONS_(KO|EN|JA|ZH)__/g, (_, lang: string) => import.meta.env.BASE_URL + 'hero-media/v2/captions.' + lang.toLowerCase() + '.vtt')
+  .split('__HERO_VIDEO_SRC__').join(import.meta.env.BASE_URL + 'hero-media/v3/emm-hero-v3-ko.mp4')
+  .split('__HERO_VIDEO_POSTER__').join(import.meta.env.BASE_URL + 'hero-media/v3/poster.jpg')
+  .replace(/__HERO_CAPTIONS_(KO|EN|JA|ZH)__/g, (_, lang: string) => import.meta.env.BASE_URL + 'hero-media/v3/captions.' + lang.toLowerCase() + '.vtt')
   .split('__LANG_FLAG_KO__').join(koFlagUrl)
   .split('__LANG_FLAG_EN__').join(enFlagUrl)
   .split('__LANG_FLAG_JA__').join(jaFlagUrl)

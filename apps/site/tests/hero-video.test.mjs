@@ -151,3 +151,22 @@ test('v3 records the approved freely usable Sarah output and does not point to t
  assert.match(notice,/Supertonic 3/);assert.match(notice,/Sarah/);assert.match(notice,/OpenRAIL-M/);assert.match(notice,/Licensor claims no rights in the Output/);
  const text=readFileSync(new URL('../src/site-text.ts',import.meta.url),'utf8');assert.match(text,/hero-media\/v3\/emm-hero-v3-ko\.mp4/);assert.doesNotMatch(text,/hero-media\/v2\//);
 });
+
+test('selected native caption load clears a previous transient error',async()=>{
+ const f=setup();try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
+  const t=f.tracks[1];t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'captionFailed');
+  t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('load'));assert.equal(f.status.textContent,'playing');
+ }finally{f.cleanup();}
+});
+test('late stale caption error cannot override an already loaded usable track',async()=>{
+ const f=setup();try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
+  const t=f.tracks[1];t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'playing');
+  t.readyState=3;t.track.cues=null;t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'captionFailed');
+ }finally{f.cleanup();}
+});
+test('caption recovery never hides an actual media failure',async()=>{
+ const f=setup();try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
+  f.video.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'failed');
+  const t=f.tracks[1];t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('load'));assert.equal(f.status.textContent,'failed');
+ }finally{f.cleanup();}
+});

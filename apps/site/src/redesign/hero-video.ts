@@ -44,8 +44,15 @@ export function mountHeroVideo(root: HTMLElement, text: HeroVideoText, lang: str
   captions.setAttribute('aria-pressed', String(captionsOn));
   host!.dataset.failed = String(failed || state.blocked);
  }
+ function recoverCaptions(track: HTMLTrackElement) {
+  if (disposed || track.srclang !== selected || track.readyState !== 2 || !track.track.cues?.length) return;
+  captionFailed = false;
+  if (!failed && !state.blocked && status.textContent === text.captionFailed) say(video.paused ? text.paused : text.playing);
+ }
  function applyCaptions() {
   for (const track of tracks) track.track.mode = captionsOn && track.srclang === selected ? 'showing' : 'disabled';
+  const active = tracks.find(track => track.srclang === selected);
+  if (active) recoverCaptions(active);
  }
  function source() {
   if (loaded) return;
@@ -112,7 +119,15 @@ export function mountHeroVideo(root: HTMLElement, text: HeroVideoText, lang: str
  listen(video, 'volumechange', () => { state.muted = video.muted; update(); });
  listen(video, 'error', () => { if (disposed || !loaded) return; failed = true; state.blocked = true; stop(); say(text.failed); });
  listen(video, 'loadedmetadata', applyCaptions);
- for (const track of tracks) listen(track, 'error', () => { if (track.srclang !== selected || !captionsOn || disposed) return; captionFailed = true; say(text.captionFailed); });
+ for (const track of tracks) {
+  listen(track, 'load', () => recoverCaptions(track));
+  listen(track, 'error', () => {
+   if (track.srclang !== selected || !captionsOn || disposed) return;
+   // A cancelled earlier request may report an error after the current native track is already usable.
+   if (track.readyState === 2 && track.track.cues?.length) return;
+   captionFailed = true; say(text.captionFailed);
+  });
+ }
  listen(document, 'visibilitychange', sync);
  const onPreference = () => { const next = restricted(); if (next && !state.restricted) state.consented = false; state.restricted = next; sync(); };
  listen(motion, 'change', onPreference);

@@ -152,21 +152,41 @@ test('v3 records the approved freely usable Sarah output and does not point to t
  const text=readFileSync(new URL('../src/site-text.ts',import.meta.url),'utf8');assert.match(text,/hero-media\/v3\/emm-hero-v3-ko\.mp4/);assert.doesNotMatch(text,/hero-media\/v2\//);
 });
 
-test('selected native caption load clears a previous transient error',async()=>{
- const f=setup();try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
-  const t=f.tracks[1];t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'captionFailed');
-  t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('load'));assert.equal(f.status.textContent,'playing');
+for(const lang of ['ko','en','ja','zh']) {
+ test(lang+': selected native caption load clears a previous transient error',async()=>{
+  const f=setup({lang});try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
+   const t=f.tracks.find(t=>t.srclang===lang);t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'captionFailed');
+   t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('load'));assert.equal(f.status.textContent,'playing');
+  }finally{f.cleanup();}
+ });
+ test(lang+': late stale caption error cannot override an already loaded usable track',async()=>{
+  const f=setup({lang});try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
+   const t=f.tracks.find(t=>t.srclang===lang);t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'playing');
+   t.readyState=3;t.track.cues=null;t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'captionFailed');
+  }finally{f.cleanup();}
+ });
+ test(lang+': caption recovery never hides an actual media failure',async()=>{
+  const f=setup({lang});try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
+   f.video.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'failed');
+   const t=f.tracks.find(t=>t.srclang===lang);t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('load'));assert.equal(f.status.textContent,'failed');
+  }finally{f.cleanup();}
+ });
+}
+test('Japanese caption recovery preserves an explicit pause without playback',async()=>{
+ const f=setup({lang:'ja'});try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();f.play.click();
+  const count=f.video.playCalls,t=f.tracks[2];t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'captionFailed');
+  t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('load'));assert.equal(f.status.textContent,'paused');assert.equal(f.video.paused,true);assert.equal(f.video.playCalls,count);
  }finally{f.cleanup();}
 });
-test('late stale caption error cannot override an already loaded usable track',async()=>{
- const f=setup();try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
-  const t=f.tracks[1];t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'playing');
-  t.readyState=3;t.track.cues=null;t.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'captionFailed');
+test('Japanese caption recovery preserves a changed reduced-motion restriction',async()=>{
+ const f=setup({lang:'ja'});try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
+  const count=f.video.playCalls,t=f.tracks[2];t.dispatchEvent(new Event('error'));f.motion.matches=true;f.motion.dispatchEvent(new Event('change'));assert.equal(f.status.textContent,'restricted');
+  t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('load'));assert.equal(f.status.textContent,'restricted');assert.equal(f.video.paused,true);assert.equal(f.video.playCalls,count);
  }finally{f.cleanup();}
 });
-test('caption recovery never hides an actual media failure',async()=>{
- const f=setup();try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();
-  f.video.dispatchEvent(new Event('error'));assert.equal(f.status.textContent,'failed');
-  const t=f.tracks[1];t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('load'));assert.equal(f.status.textContent,'failed');
+test('caption load and error after destroy cannot change status or resume playback',async()=>{
+ const f=setup({lang:'ja'});try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();f.api.destroy();
+  const count=f.video.playCalls,status=f.status.textContent,t=f.tracks[2];t.readyState=2;t.track.cues=[{}];t.dispatchEvent(new Event('load'));t.dispatchEvent(new Event('error'));
+  assert.equal(f.status.textContent,status);assert.equal(f.video.playCalls,count);assert.equal(f.video.paused,true);
  }finally{f.cleanup();}
 });

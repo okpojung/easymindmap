@@ -63,7 +63,15 @@ export function mountHeroVideo(root: HTMLElement, text: HeroVideoText, lang: str
  }
  function stop() { ++attempt; pending = false; video.pause(); update(); }
  function eligible() { return !disposed && state.homeVisible && state.inView && !document.hidden && !state.userPaused; }
+ function refreshInView() {
+  // A click may follow a scroll before IntersectionObserver delivers its next entry.
+  const rect = host!.getBoundingClientRect();
+  const visibleWidth = Math.max(0, Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0));
+  const visibleHeight = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
+  state.inView = rect.width > 0 && rect.height > 0 && visibleWidth * visibleHeight / (rect.width * rect.height) >= 0.15;
+ }
  async function start(explicit: boolean) {
+  if (explicit && !disposed) refreshInView();
   if (!eligible() || (pending && !explicit)) return;
   if (!explicit && !canAutoPlayHero(state)) return;
   state.blocked = false;

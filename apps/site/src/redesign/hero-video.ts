@@ -64,7 +64,7 @@ export function mountHeroVideo(root: HTMLElement, text: HeroVideoText, lang: str
  function stop() { ++attempt; pending = false; video.pause(); update(); }
  function eligible() { return !disposed && state.homeVisible && state.inView && !document.hidden && !state.userPaused; }
  async function start(explicit: boolean) {
-  if (!eligible() || pending) return;
+  if (!eligible() || (pending && !explicit)) return;
   if (!explicit && !canAutoPlayHero(state)) return;
   state.blocked = false;
   const retry = failed; failed = false;
@@ -104,7 +104,16 @@ export function mountHeroVideo(root: HTMLElement, text: HeroVideoText, lang: str
   state.userPaused = false; state.consented = true; state.blocked = false;
   void start(true);
  });
- listen(sound, 'click', () => { video.muted = !video.muted; state.muted = video.muted; update(); });
+ listen(sound, 'click', () => {
+  const enable = video.muted;
+  video.muted = !enable; state.muted = video.muted;
+  if (enable) {
+   // Invoke play inside this user gesture, including when a muted autoplay attempt is still pending.
+   state.userPaused = false; state.consented = true; state.blocked = false;
+   if (video.paused || pending) void start(true);
+  }
+  update();
+ });
  listen(captions, 'click', () => {
   captionsOn = !captionsOn;
   if (captionsOn && captionFailed && loaded) {

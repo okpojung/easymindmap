@@ -37,8 +37,9 @@ function setup(options={}) {
  const tracks=['ko','en','ja','zh'].map(lang => Object.assign(new Element(), {srclang:lang,track:{mode:'disabled'},dataset:{heroTrackSrc:'/captions.'+lang+'.vtt'}}));
  video.querySelectorAll=()=>tracks;
  const play=new Element(), sound=new Element(), captions=new Element(), status=new Element(), host=new Element();
+ host.getBoundingClientRect=()=>options.rect??{left:0,right:640,top:0,bottom:360,width:640,height:360};
  host.querySelector=selector=>({'video':video,'[data-hero-play]':play,'[data-hero-sound]':sound,'[data-hero-captions]':captions,'[data-hero-status]':status}[selector]);
- for(const [key,value] of Object.entries({window:{matchMedia:()=>motion,IntersectionObserver:Observer},document,navigator:{connection},IntersectionObserver:Observer})) Object.defineProperty(globalThis,key,{configurable:true,value});
+ for(const [key,value] of Object.entries({window:{matchMedia:()=>motion,IntersectionObserver:Observer,innerWidth:1440,innerHeight:1000},document,navigator:{connection},IntersectionObserver:Observer})) Object.defineProperty(globalThis,key,{configurable:true,value});
  const api=mountHeroVideo({querySelector:()=>host},labels,options.lang??'en');
  const flush=()=>new Promise(resolve=>setImmediate(resolve));
  return {api,video,play,sound,captions,status,host,tracks,motion,connection,document,observer,flush,
@@ -225,4 +226,19 @@ test('sound click retries a genuine media failure with a reload',async()=>{
  const f=setup();try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();f.video.dispatchEvent(new Event('error'));const loads=f.video.loadCalls;
   f.sound.click();await f.flush();assert.equal(f.video.loadCalls,loads+1);assert.equal(f.video.paused,false);assert.equal(f.video.muted,false);assert.equal(f.host.dataset.failed,'false');
  }finally{f.cleanup();}
+});
+
+test('sound click sees current viewport even when the observer still says offscreen',async()=>{
+ const f=setup({reduced:true});try{f.api.setHomeVisible(true);f.observer.intersect(false);assert.equal(f.video.src,undefined);f.sound.click();await f.flush();
+  assert.equal(f.video.paused,false);assert.equal(f.video.muted,false);assert.equal(f.video.playCalls,1);
+ }finally{f.cleanup();}
+});
+test('explicit sound click does not load an actually offscreen player with a stale visible observer',async()=>{
+ const f=setup({reduced:true,rect:{left:0,right:640,top:1100,bottom:1460,width:640,height:360}});try{f.api.setHomeVisible(true);f.observer.intersect(true);f.sound.click();await f.flush();
+  assert.equal(f.video.src,undefined);assert.equal(f.video.playCalls,0);
+ }finally{f.cleanup();}
+});
+test('fresh viewport geometry never bypasses hidden document or non-home route',async()=>{
+ for(const gate of ['document','route']){const f=setup({reduced:true});try{f.api.setHomeVisible(gate!=='route');f.observer.intersect(false);if(gate==='document')f.document.hidden=true;f.sound.click();await f.flush();assert.equal(f.video.src,undefined);assert.equal(f.video.playCalls,0);
+ }finally{f.cleanup();}}
 });

@@ -190,3 +190,39 @@ test('caption load and error after destroy cannot change status or resume playba
   assert.equal(f.status.textContent,status);assert.equal(f.video.playCalls,count);assert.equal(f.video.paused,true);
  }finally{f.cleanup();}
 });
+
+for(const lang of ['ko','en','ja','zh']) for(const preference of ['reduced','saveData']) test(lang+': one sound click loads and plays audibly with '+preference,async()=>{
+ const f=setup({lang,[preference]:true});try{f.api.setHomeVisible(true);f.observer.intersect(true);
+  assert.equal(f.video.src,undefined);assert.equal(f.video.playCalls,0);assert.equal(f.video.muted,true);
+  f.sound.click();await f.flush();assert.equal(f.video.playCalls,1);assert.equal(f.video.paused,false);assert.equal(f.video.muted,false);assert.match(f.video.src,/site-assets\/hero-media/);assert.equal(f.status.textContent,'playing');
+  assert.equal(f.tracks.find(t=>t.srclang===lang).track.mode,'showing');
+ }finally{f.cleanup();}
+});
+test('sound click resumes an explicitly paused muted video without seeking',async()=>{
+ const f=setup();try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();f.play.click();f.video.currentTime=12.5;
+  f.sound.click();await f.flush();assert.equal(f.video.paused,false);assert.equal(f.video.muted,false);assert.equal(f.video.playCalls,2);assert.equal(f.video.currentTime,12.5);
+ }finally{f.cleanup();}
+});
+test('sound click recovers a policy-blocked attempt in the same gesture',async()=>{
+ const options={reject:'NotAllowedError'},f=setup(options);try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();assert.equal(f.status.textContent,'blocked');
+  options.reject=null;f.sound.click();await f.flush();assert.equal(f.video.muted,false);assert.equal(f.video.paused,false);assert.equal(f.host.dataset.failed,'false');assert.equal(f.status.textContent,'playing');
+ }finally{f.cleanup();}
+});
+test('sound click supersedes pending muted autoplay and ignores its stale rejection',async()=>{
+ const f=setup();let rejectOld;try{const normalPlay=f.video.play;f.video.play=()=>{if(f.video.playCalls===0){f.video.playCalls++;return new Promise((_,reject)=>{rejectOld=reject;});}return normalPlay();};
+  f.api.setHomeVisible(true);f.observer.intersect(true);assert.equal(f.video.playCalls,1);f.sound.click();await f.flush();assert.equal(f.video.playCalls,2);assert.equal(f.video.muted,false);assert.equal(f.video.paused,false);
+  rejectOld(Object.assign(new Error('stale'),{name:'NotAllowedError'}));await f.flush();assert.equal(f.video.paused,false);assert.equal(f.status.textContent,'playing');assert.equal(f.host.dataset.failed,'false');
+ }finally{f.cleanup();}
+});
+test('one-click audible playback stays paused after background and mute does not restart it',async()=>{
+ const f=setup({reduced:true});try{f.api.setHomeVisible(true);f.observer.intersect(true);f.sound.click();await f.flush();
+  f.document.hidden=true;f.document.dispatchEvent(new Event('visibilitychange'));f.document.hidden=false;f.document.dispatchEvent(new Event('visibilitychange'));await f.flush();assert.equal(f.video.paused,true);assert.equal(f.video.playCalls,1);
+  f.sound.click();await f.flush();assert.equal(f.video.muted,true);assert.equal(f.video.paused,true);assert.equal(f.video.playCalls,1);
+ }finally{f.cleanup();}
+});
+
+test('sound click retries a genuine media failure with a reload',async()=>{
+ const f=setup();try{f.api.setHomeVisible(true);f.observer.intersect(true);await f.flush();f.video.dispatchEvent(new Event('error'));const loads=f.video.loadCalls;
+  f.sound.click();await f.flush();assert.equal(f.video.loadCalls,loads+1);assert.equal(f.video.paused,false);assert.equal(f.video.muted,false);assert.equal(f.host.dataset.failed,'false');
+ }finally{f.cleanup();}
+});

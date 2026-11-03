@@ -5,7 +5,7 @@ import { PRESETS } from './demo';
 import { APP_LOGIN_URL } from '../config';
 import { mountOutlineDemo, setDemoText } from './outline-demo.js';
 import { CURRENT_LANG, splitLang, href, localizeLinks, bindLangLinks, appLoginUrl } from '../i18n';
-import { siteText, heroVideoText, DEMO_TEXT_BY_LANG, PRESETS_BY_LANG, GUIDES_BY_LANG } from '../site-text';
+import { siteText, DEMO_TEXT_BY_LANG, PRESETS_BY_LANG, GUIDES_BY_LANG } from '../site-text';
 
 /** Trusted build-time markup only. User input is rendered exclusively via textContent. */
 export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
@@ -17,7 +17,7 @@ export function mountHomepage(root: HTMLElement, _appUrl: string): () => void {
  document.documentElement.classList.add('emm-home-page');
  function bindAppLinks() { all<HTMLAnchorElement>('[data-open-app]').forEach(a => { a.href = appLoginUrl(APP_LOGIN_URL); }); }
  const T = siteText();
- const heroVideo = mountHeroVideo(root, heroVideoText(), CURRENT_LANG);
+ const heroVideo = mountHeroVideo(root);
  localizeLinks(root); bindLangLinks(root);
  bindAppLinks();
  all<HTMLImageElement>('[data-brand-icon]').forEach(image => { image.src = BRAND_FAVICON_URL; });

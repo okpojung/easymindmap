@@ -6,6 +6,7 @@ import { PublicMapPage, publishIdFromPath } from '@/pages/PublicMapPage';
 import { OAuthConsentPage } from '@/pages/OAuthConsentPage';
 import { isConsentPath } from '@/services/cloud/oauthConsentRules';
 import '@/styles/global.css';
+import { matchProRoute } from '@pro';
 
 // 화면 고르기 — 라우터를 들이지 않고 **주소만** 본다 (2026-08-13 · 08-14).
 //
@@ -40,12 +41,14 @@ const publishId = publishIdFromPath(window.location.pathname);
 // 같다 — 여기 온 사람은 맵을 그리러 온 것이 아니라 허락하러 왔다.
 const isConsent = isConsentPath(window.location.pathname);
 
+const ProRoute = matchProRoute({ pathname: window.location.pathname });
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {isConsent
       ? <OAuthConsentPage />
       : publishId
         ? <PublicMapPage publishId={publishId} />
-        : isAdmin ? <AdminPage /> : <EditorPage />}
+        : isAdmin ? <AdminPage /> : ProRoute ? <ProRoute /> : <EditorPage />}
   </React.StrictMode>,
 );

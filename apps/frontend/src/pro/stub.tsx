@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 // 유료 UI 가 **없을 때**의 자리 (2026-08-16).
 //
 // 이것이 공개판의 **정상 화면**이다 — 오류가 아니다. 유료 UI 가 설치된
@@ -283,3 +284,11 @@ export function ProDashboardLive(_p: { t: ThemeTokens; mapId: string | null }) {
   return null;
 }
 
+
+/** Community builds do not claim private routes. */
+export function matchProRoute(_location: { pathname: string }): ComponentType | null { return null; }
+
+/** Dedicated public-trial configuration is supplied only by the private UI. */
+export function ProTrialAdminPanel(_p: { t: ThemeTokens; token: string; onUnauthorized: () => void }) {
+  return <p>체험 초기맵 관리 모듈이 설치되지 않았습니다.</p>;
+}

@@ -40,7 +40,7 @@ function notify() {
  * 채워지면 **레이아웃이 흔들린다.** 원본 주소로 먼저 시도하는 편이
  * 낫다 — 인증이 꺼진 개발 모드에서는 그것만으로 바로 보인다.
  */
-export function useImageSrcResolver(): (src: string | undefined) => string | undefined {
+export function useImageSrcResolver(allowProtected = true): (src: string | undefined) => string | undefined {
   const [, bump] = useState(0);
   const alive = useRef(true);
 
@@ -53,6 +53,8 @@ export function useImageSrcResolver(): (src: string | undefined) => string | und
 
   return useCallback((src: string | undefined) => {
     if (!src || !serverAttachmentId(src)) return src;
+    // Capability-off must neither read a tokenized cache nor start token resolution.
+    if (!allowProtected) return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="50"%3E%3Ctext x="5" y="28" font-size="12"%3EProtected media%3C/text%3E%3C/svg%3E';
     const got = resolved.get(src);
     if (got) return got;
     if (!inflight.has(src)) {
@@ -65,7 +67,7 @@ export function useImageSrcResolver(): (src: string | undefined) => string | und
     // 토큰이 준비되기 전에는 **절대 주소만이라도** 준다. 상대 경로를
     // 그대로 두면 `<img>` 가 **프런트 주소로 풀어** 404 가 난다.
     return absolutizeAttachmentUrl(src);
-  }, []);
+  }, [allowProtected]);
 }
 
 /**

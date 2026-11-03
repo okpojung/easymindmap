@@ -86,7 +86,15 @@ const LAYOUT_LABEL_KEY: Record<string, string> = {
   'timeline-center': 'editor.layout.timelineCenter',
 };
 
+/**
+ * `nativeTools` (memory-only hosts such as /try): keep the native floating toolbar,
+ * selected-node add indicators and local-only canvas tools. Server/import paths
+ * (paste, clipboard, file drop, content popovers, linked maps, multi-add) stay blocked.
+ */
+export interface CanvasEditingPolicy { mode: 'basic'; readOnly: boolean; nativeTools?: boolean }
+
 interface Props {
+  editingPolicy?: CanvasEditingPolicy;
   t: ThemeTokens;
   sample: SampleMap;
   layoutType: LayoutType;
@@ -131,7 +139,16 @@ export function Canvas({
   selectedId,
   onSelect,
   collabs,
+  editingPolicy,
 }: Props) {
+  const policyRef = useRef(editingPolicy);
+  policyRef.current = editingPolicy;
+  const basic = editingPolicy?.mode === 'basic';
+  const isReadOnly = () => policyRef.current?.readOnly === true;
+  const isBasic = () => policyRef.current?.mode === 'basic';
+  const nativeTools = basic && editingPolicy?.nativeTools === true;
+  // Local-only canvas tools (style brush, connectors, centers) are allowed for native-tool hosts.
+  const localTools = () => !isBasic() || policyRef.current?.nativeTools === true;
   // 언어가 바뀌면 다시 그린다 — 화면 문자열은 tr() 로 (콜백 안에서도 부르는 순간의 언어)
   useLang();
   // 폰 폭 — 첫 화면은 맵 전체 맞추기, 도구 모음·안내 칩은 좁게 (모바일 웹, 2026-10-05)
@@ -398,13 +415,13 @@ export function Canvas({
     // 스타일 복사(붓) 모드 — 노드를 누르면 선택과 함께 붓에 든 겉모습을
     // 입힌다. 모드는 그대로 남아 다음 노드도 이어서 칠할 수 있다
     // (2026-09-19). 빈 곳 클릭(id=null)은 모드 해제.
-    if (stylePainter) {
+    if (localTools() && !isReadOnly() && stylePainter) {
       if (id) applyStyleSnapshot([id], stylePainter.snap);
       else setStylePainter(null);
     }
     // 연결 모드 — 시작 노드가 아닌 노드를 누르면 연결선이 생기고 모드는 끝난다.
     // 빈 곳을 누르면 취소. 시작 노드를 다시 누른 것은 무시(모드 유지).
-    if (connectMode) {
+    if (localTools() && !isReadOnly() && connectMode) {
       if (id && id !== connectMode.fromId) {
         const cid = addConnector(connectMode.fromId, id);
         setConnectMode(null);
@@ -695,6 +712,7 @@ export function Canvas({
 
   // Drop a link (URL) or file(s) from outside the app directly onto a node.
   const handleExternalDrop = (e: ReactDragEvent) => {
+    if (isBasic() || isReadOnly()) { e.preventDefault(); return; }
     const dt = e.dataTransfer;
     if (!dt) return;
     const files = Array.from(dt.files ?? []);
@@ -904,6 +922,7 @@ export function Canvas({
   // side: 루트의 좌/우 +버튼(방사형·양쪽)이 누른 쪽으로 새 브랜치를 배치.
   // 키보드(Space/Tab) 등 side 없이 부르면 기존 좌우 교대 배치 그대로.
   const handleAddChild = (side?: 'left' | 'right') => {
+    if (isReadOnly()) return;
     // 선택된 노드가 없으면 아무것도 하지 않는다 — 미선택 상태에서
     // Enter/Space/Tab이 메인 노드 밑에 노드를 만들어 버리는 것을 방지.
     if (!selectedId) return;
@@ -915,6 +934,7 @@ export function Canvas({
   };
 
   const handleAddSibling = (position: 'before' | 'after' = 'after') => {
+    if (isReadOnly()) return;
     if (!selectedId) return;
     if (selectedId === 'root') {
       // 루트의 형제는 없으므로 루트가 '선택된' 상태에서만 자식 추가로 대체
@@ -926,6 +946,7 @@ export function Canvas({
   };
 
   const handleAddParent = () => {
+    if (isReadOnly()) return;
     if (!selectedId || selectedId === 'root') return;
     const id = addParentNode(selectedId);
     if (id) selectOne(id);
@@ -962,6 +983,7 @@ export function Canvas({
   // (노드 텍스트 편집 중 붙여넣기는 NodeRenderer의 textarea onPaste가 처리)
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
+      if (isBasic() || isReadOnly()) return;
       const target = e.target as HTMLElement | null;
       const isEditingText =
         target?.tagName === 'TEXTAREA' ||
@@ -1107,9 +1129,12 @@ export function Canvas({
         target?.tagName === 'INPUT' ||
         target?.isContentEditable;
 
-      if (isEditingText) return;
+      if (isEditingText || (isBasic() && target?.closest('button,[role="button"],select,input,textarea,[contenteditable="true"]'))) return;
 
       const mod = e.ctrlKey || e.metaKey;
+      // Host-owned basic chrome never invokes import, clipboard or multi-add actions.
+      if (isBasic() && ((mod && /^[cxv]$/i.test(e.key)) || (e.code === 'Space' && mod && !e.shiftKey))) { e.preventDefault(); return; }
+      if (isReadOnly() && (['Delete', 'Backspace', 'Enter', 'Tab', 'ArrowLeft'].includes(e.key) || e.code === 'Space' || (mod && /^[zyx]$/i.test(e.key)))) { e.preventDefault(); return; }
 
       // ── 노드 복사 (Ctrl+C) — 러버밴드 다중 선택/단일 선택의 서브트리를
       // 내부 클립보드에 담고, 시스템 클립보드에는 토큰만 쓴다. 붙여넣기
@@ -1404,7 +1429,7 @@ export function Canvas({
         if (!tap || tap.moved || tap.nodeId !== nodeId) return;
         tap.longFired = true;
         selectOneRef.current(nodeId);
-        if (compact) openNodeMenu();
+        if (compact && localTools()) openNodeMenu();
         try { navigator.vibrate?.(12); } catch { /* 지원 안 함 */ }
       }, LONG_PRESS_MS);
     }
@@ -1438,7 +1463,7 @@ export function Canvas({
       const isTap = e.type === 'pointerup' && !tap.moved && !tap.longFired;
       // 고른 노드를 다시 톡 = 편집 (두 번 톡도 이것 — 첫 톡이 고르고 둘째가 편집).
       // 붓·연결 모드에서는 톡이 칠하기·끝점이라 편집하지 않는다.
-      if (isTap && tap.nodeId && tap.wasSelected && !stylePainter && !connectMode
+      if (!isReadOnly() && isTap && tap.nodeId && tap.wasSelected && !stylePainter && !connectMode
           && editingNodeId !== tap.nodeId) {
         primeTouchKeyboard(); // 톡 처리 안에서 — iOS 가 키보드를 띄우게
         requestEdit(tap.nodeId);
@@ -1459,7 +1484,7 @@ export function Canvas({
     // 중심주제 배치 모드 — 빈 자리 클릭 = **거기에** 새 중심 (루트가 클릭 지점
     // 가운데에 오도록 pos 는 첫 중심 루트(CX, CY) 기준 상대 좌표). 노드 위를
     // 클릭하면 배치를 접고 평소대로(선택) 간다.
-    if (placingCenter && e.button === 0) {
+    if (localTools() && !isReadOnly() && placingCenter && e.button === 0) {
       setPlacingCenter(false);
       if (onEmptyCanvas) {
         const w = clientToWorld(e.clientX, e.clientY);
@@ -1489,7 +1514,7 @@ export function Canvas({
     //
     // Capture happens later, only once it actually moves, so a plain tap
     // still selects via the node's onClick.
-    if (!isMiddleButton && !panMode && nodeEl) {
+    if (!isReadOnly() && !isMiddleButton && !panMode && nodeEl) {
       const id = nodeEl.getAttribute('data-node-id');
       if (e.button === 0 && id && id !== 'root') {
         dropZoneRef.current = null; // 이전 드래그의 드롭존 잔류 방지
@@ -1572,7 +1597,8 @@ export function Canvas({
         e.currentTarget.setPointerCapture(e.pointerId);
       }
 
-      if (nodeDrag.dragging && nodeDrag.center) {
+      if (isReadOnly()) { setDropZone(null); setDragGhost(null); return; }
+      if (nodeDrag.dragging && nodeDrag.center && localTools()) {
         // 중심주제 옮기기 — 드롭존 없이 그림자만 따라간다
         const w = clientToWorld(e.clientX, e.clientY);
         const dragged = nodesRef.current.find((nd) => nd.id === nodeDrag.id);
@@ -1634,7 +1660,8 @@ export function Canvas({
     if (nodeDrag && nodeDrag.pointerId === e.pointerId) {
       nodeDragRef.current = null;
 
-      if (nodeDrag.dragging && nodeDrag.center) {
+      if (isReadOnly()) { setDropZone(null); setDragGhost(null); return; }
+      if (nodeDrag.dragging && nodeDrag.center && localTools()) {
         // 중심주제를 놓았다 — 끈 만큼 옮긴 자리를 첫 중심 루트(CX, CY) 기준
         // 상대 좌표로 저장한다. 레이아웃 엔진이 다음 그리기에서 그 자리에 놓는다.
         const w = clientToWorld(e.clientX, e.clientY);
@@ -1827,13 +1854,14 @@ export function Canvas({
         )}
       </div>
 
-      <CanvasFloatingToolbar
+      {(!basic || nativeTools) && <CanvasFloatingToolbar
         t={t}
+        localOnly={basic}
         hasSelection={!!selectedNode}
         focusActive={!!focusedId}
         onFitView={handleFitWhole}
         onFocusSelected={focusSelected}
-      />
+      />}
 
       {/* 연결 모드 안내 (2026-09-22) — 시작 노드가 정해졌고 끝 노드를 기다린다 */}
       {connectMode && (
@@ -2130,7 +2158,7 @@ export function Canvas({
             nodesById={visibleById}
             t={t}
             selectedId={selectedConnectorId}
-            onSelect={selectConnector}
+            onSelect={basic && !nativeTools ? () => {} : selectConnector}
           />
 
           <g>
@@ -2146,6 +2174,7 @@ export function Canvas({
                 onHover={setHoverNodeId}
                 onOpenPopover={onOpenPopover}
                 collabs={collabs}
+                editingPolicy={editingPolicy}
               />
             ))}
           </g>
@@ -2210,10 +2239,10 @@ export function Canvas({
             nodesById={visibleById}
             t={t}
             selectedId={selectedConnectorId}
-            onSelect={selectConnector}
+            onSelect={basic && !nativeTools ? () => {} : selectConnector}
           />
 
-          {selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
+          {(!basic || nativeTools) && selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
             multiSelectedIds.length <= 1 && (
             <g className="mm-overlay-controls">
               <NodeIndicators
@@ -2358,7 +2387,7 @@ export function Canvas({
               never covered by other nodes. (노트는 아래 NoteViewerPopover)
               노드 오른쪽 배치 + 호버 강조 + 첨부 새 탭/다운로드 정책은
               ChooserPopover.tsx / openAttachment.ts 참조. */}
-          {popover && !isNoteKind(popover.kind) && (() => {
+          {!basic && popover && !isNoteKind(popover.kind) && (() => {
             const node = nodes.find((n) => n.id === popover.nodeId);
             if (!node) return null;
             const ind = nodeContentIndicators(node).find((c) => c.kind === popover.kind);
@@ -2379,7 +2408,7 @@ export function Canvas({
           표시 (HTML 오버레이, 내보내기 뷰어와 동일 렌더링). 글자 편집은
           좌측 노트·태그 탭에서 하고, 체크리스트의 ☑/☐만 여기서 바로 토글한다.
           제목 드래그로 이동, 우하단 모서리 드래그로 크기 조절. */}
-      {popover && isNoteKind(popover.kind) && (() => {
+      {!basic && popover && isNoteKind(popover.kind) && (() => {
         const node = nodes.find((n) => n.id === popover.nodeId);
         if (!node) return null;
         const filtered = notesOfKind(node.notes, popover.kind);
@@ -2419,7 +2448,7 @@ export function Canvas({
       {/* 진짜 협업 커서 자리 — 공개판에서는 아무것도 그리지 않는다.
           좌표 변환에 필요한 값을 **그대로** 넘긴다: 유료 모듈이 화면
           기하를 다시 계산하면 확대·이동할 때 커서만 어긋난다. */}
-      <ProCursorLayer
+      {!basic && <ProCursorLayer
         t={t}
         W={W}
         H={H}
@@ -2429,7 +2458,7 @@ export function Canvas({
         CY={CY}
         panX={panX}
         panY={panY}
-      />
+      />}
     </div>
   );
 }

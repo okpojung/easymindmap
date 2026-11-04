@@ -13,12 +13,13 @@ import { fillText, varsInText } from './varSyntax';
 
 export type { MapVariable, VariableType };
 
-export const VARIABLE_TYPES: VariableType[] = ['number', 'currency', 'date', 'time', 'percent', 'text', 'phone', 'koreanNumber', 'email', 'formula'];
+export const VARIABLE_TYPES: VariableType[] = ['number', 'currency', 'date', 'time', 'percent', 'text', 'phone', 'koreanNumber', 'email', 'formula', 'node'];
 
 /** 타입별 기본 서식 (엑셀 셀 서식) */
 export const DEFAULT_FORMAT: Record<VariableType, string> = {
   number: '#,##0', currency: '₩#,##0', date: 'yyyy-mm-dd', time: 'hh:mm', percent: '0%',
   text: '@', phone: '', koreanNumber: '[DBNum4]G/표준', email: '@', formula: 'G/표준',
+  node: 'first',
 };
 /** 서식 고르기 목록 (자주 쓰는 것) — 직접 입력도 된다 */
 export const FORMAT_PRESETS: Record<VariableType, string[]> = {
@@ -32,6 +33,7 @@ export const FORMAT_PRESETS: Record<VariableType, string[]> = {
   koreanNumber: ['[DBNum4]G/표준', '"일금 "[DBNum4]G/표준"원정"', '[DBNum1]G/표준', '[DBNum2]G/표준'],
   email: ['@'],
   formula: ['G/표준', '#,##0', '#,##0.00', '₩#,##0', '0%', '0.0%', 'yyyy-mm-dd'],
+  node: ['first', 'all'],
 };
 
 const isErr = (v: unknown): v is FErr => v instanceof FErr;
@@ -79,6 +81,7 @@ export function parseRaw(type: VariableType, raw: string | undefined | null): FV
 
 /** 값 검사 (입력 칸 아래 안내) — 문제가 있으면 i18n 키 */
 export function valueProblem(type: VariableType, raw: string): string | null {
+  if (type === 'node') return raw.trim() ? null : 'var.err.nodePick';
   if (!raw.trim() || type === 'formula') return null;
   if (type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.trim())) return 'var.err.email';
   if (type === 'phone' && raw.replace(/\D/g, '').length < 7) return 'var.err.phone';
@@ -86,19 +89,33 @@ export function valueProblem(type: VariableType, raw: string): string | null {
   return isErr(v) ? 'var.err.value' : null;
 }
 
+/** 노드 참조 계산에 쓰는 맵 — 노드 id → 노드 글 (없으면 노드 참조는 값 없음) */
+export interface VarContext { nodeText: (id: string) => string | undefined }
+
+/** 노드 글에서 '첫 줄' — 제목·목록·체크·인용 표시는 떼고, 코드 펜스로 시작하면 빈 글 */
+export function nodeFirstLine(text: string): string {
+  const line = String(text ?? '').split('\n').find((l) => l.trim() !== '') ?? '';
+  if (/^\s*```/.test(line)) return '';
+  return line.replace(/^\s*(#{1,6}\s+|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+|>\s*)/, '').trim();
+}
+const NODE_DEPTH_MAX = 5;
+
 export interface VarResult {
   /** 계산된 값 (null = 값 없음) */
   value: FVal | null;
   /** 서식을 입힌 보이는 글자 — 값이 없으면 undefined (노드에는 [&x] 그대로) */
   display?: string;
+  /** 노드 참조 — 채울 때 서식 기호를 무력화하지 않는다 */
+  raw?: boolean;
 }
 
 /** 모든 변수를 계산한다 — 수식은 다른 변수를 부른다(순환이면 #REF!) */
-export function evaluateVariables(vars: readonly MapVariable[] | undefined): Map<string, VarResult> {
+export function evaluateVariables(vars: readonly MapVariable[] | undefined, ctx?: VarContext): Map<string, VarResult> {
   const out = new Map<string, VarResult>();
   const list = vars ?? [];
   const byName = new Map(list.map((v) => [v.name, v]));
   const computing = new Set<string>();
+  let nodeDepth = 0;
   const valueOf = (name: string): FVal | null => {
     const def = byName.get(name);
     if (!def) return new FErr('#NAME?');
@@ -110,12 +127,44 @@ export function evaluateVariables(vars: readonly MapVariable[] | undefined): Map
     if (def.type === 'formula') {
       v = (def.value ?? '').trim() ? evalFormula(def.value ?? '', (ref) => {
         const r = valueOf(ref);
-        if (r === null) { const d = byName.get(ref); return d && ['text', 'email', 'phone'].includes(d.type) ? '' : 0; }
+        if (r === null) { const d = byName.get(ref); return d && ['text', 'email', 'phone', 'node'].includes(d.type) ? '' : 0; }
+        // 노드 참조가 숫자 모양이면 수식에서 숫자로 (예: 노드 글 "1,234,000")
+        if (typeof r === 'string' && byName.get(ref)?.type === 'node') {
+          const n = Number(r.replace(/[,\s₩$원]/g, ''));
+          if (r.trim() && Number.isFinite(n)) return n;
+        }
         return r;
       }) : null;
+    } else if (def.type === 'node') {
+      // 노드 참조 (2026-11-04) — 가리키는 노드의 첫 줄(또는 전체). 그 글 속 [&변수] 도 값으로 바꾼다
+      const id = String(def.value ?? '').trim();
+      const raw = id && ctx ? ctx.nodeText(id) : undefined;
+      if (!id || !ctx) v = null;
+      else if (raw === undefined || nodeDepth >= NODE_DEPTH_MAX) v = new FErr('#REF!');
+      else {
+        let txt = (def.format ?? 'first') === 'all' ? raw : nodeFirstLine(raw);
+        const inner = varsInText(txt);
+        if (inner.length) {
+          nodeDepth++;
+          const vals = new Map<string, string>();
+          const rawSet = new Set<string>();
+          let broken = false;
+          for (const nm of inner) {
+            const r = valueOf(nm);
+            if (r instanceof FErr && r.code === '#REF!' && byName.get(nm)?.type === 'node') broken = true;
+            const res = out.get(nm);
+            if (res?.display !== undefined) vals.set(nm, res.display);
+            else if (r instanceof FErr) vals.set(nm, r.code);
+            if (res?.raw) rawSet.add(nm);
+          }
+          nodeDepth--;
+          txt = broken ? '#REF!' : fillText(txt, vals, rawSet);
+        }
+        v = txt === '#REF!' ? new FErr('#REF!') : txt;
+      }
     } else v = parseRaw(def.type, def.value);
     computing.delete(name);
-    out.set(name, { value: v, display: displayOf(def, v) });
+    out.set(name, { value: v, display: displayOf(def, v), ...(def.type === 'node' && typeof v === 'string' ? { raw: true } : {}) });
     return v;
   };
   for (const v of list) valueOf(v.name);
@@ -127,6 +176,7 @@ export function displayOf(def: MapVariable, v: FVal | null): string | undefined 
   if (isErr(v)) return v.code;
   const fmt = def.format ?? DEFAULT_FORMAT[def.type];
   if (def.type === 'phone') return formatPhone(String(v), def.format);
+  if (def.type === 'node') return String(v);
   if (typeof v === 'string' && ['number', 'currency', 'percent', 'koreanNumber', 'date', 'time'].includes(def.type)) return v;
   return formatCell(v, fmt || 'General');
 }
@@ -142,12 +192,12 @@ export function previewDisplay(def: MapVariable, all: readonly MapVariable[]): s
 /** 정의의 값을 DB 값으로 — 수식은 다른 변수로 계산하므로 덮지 않는다 (pro vars.ts renderDoc 과 같은 규칙) */
 export function withDbValues(defs: readonly MapVariable[], db?: Readonly<Record<string, string>>): MapVariable[] {
   if (!db) return [...defs];
-  return defs.map((d) => (d.type !== 'formula' && Object.prototype.hasOwnProperty.call(db, d.name) ? { ...d, value: db[d.name] } : d));
+  return defs.map((d) => (d.type !== 'formula' && d.type !== 'node' && Object.prototype.hasOwnProperty.call(db, d.name) ? { ...d, value: db[d.name] } : d));
 }
 
 /** 값으로 보기에 쓰는 결과 — 정의(DB 값 우선)를 계산하고, 정의 없이 DB 에만 있는 이름은 값 그대로 */
-export function variableResults(map: { settings?: { variables?: MapVariable[] } }, db?: Readonly<Record<string, string>>): Map<string, VarResult> {
-  const res = evaluateVariables(withDbValues(map.settings?.variables ?? [], db));
+export function variableResults(map: { settings?: { variables?: MapVariable[] }; root?: unknown }, db?: Readonly<Record<string, string>>): Map<string, VarResult> {
+  const res = evaluateVariables(withDbValues(map.settings?.variables ?? [], db), nodeContext(map));
   if (db) for (const [k, v] of Object.entries(db)) if (!res.has(k) && v !== '') res.set(k, { value: v, display: v });
   return res;
 }
@@ -158,6 +208,14 @@ export function setVarDbSource(fn: () => Record<string, string> | undefined): vo
 export function currentVarDb(): Record<string, string> | undefined { return dbSource?.(); }
 
 // ── 맵 훑기 ────────────────────────────────────────────────────────────
+/** 노드 참조용 — 맵의 노드 id → 글. 맵 모양이 아니면 undefined (노드 참조는 값 없음) */
+export function nodeContext(map: { root?: unknown }): VarContext | undefined {
+  const m = map as unknown as TMap;
+  if (!m || !m.root || !Array.isArray(m.branches)) return undefined;
+  const texts = new Map<string, string>();
+  eachNode(m, (n) => { const id = (n as { id?: string }).id; if (id) texts.set(id, String(n.text ?? '')); });
+  return { nodeText: (id) => texts.get(id) };
+}
 interface TNode { text?: string; children?: TNode[] }
 interface TMap { root: TNode; branches: TNode[]; centers?: { root: TNode; branches: TNode[] }[]; settings?: { variables?: MapVariable[] } }
 
@@ -187,13 +245,14 @@ export function applyVariableView<M>(input: M, results?: Map<string, VarResult>)
   const map = input as unknown as TMap;
   const res = results ?? variableResults(map, currentVarDb());
   const values = new Map<string, string>();
-  for (const [k, r] of res) if (r.display !== undefined) values.set(k, r.display);
+  const rawNames = new Set<string>();
+  for (const [k, r] of res) { if (r.display !== undefined) values.set(k, r.display); if (r.raw) rawNames.add(k); }
   if (!values.size) return input;
   const conv = <N extends TNode>(n: N): N => {
     let kids = n.children;
     if (kids?.length) { const next = kids.map(conv); if (next.some((c, i) => c !== kids![i])) kids = next; }
     const t = String(n.text ?? '');
-    const filled = t.includes('[&') ? fillText(t, values) : t;
+    const filled = t.includes('[&') ? fillText(t, values, rawNames) : t;
     if (filled === t && kids === n.children) return n;
     return { ...n, children: kids, ...(filled !== t ? { text: filled, _rawText: t } : {}) };
   };

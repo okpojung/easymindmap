@@ -90,10 +90,11 @@ export function plainValue(v: string): string {
 }
 
 /** 값으로 채운다 — 값이 없는 이름은 `[&x]` 그대로 (넣는 것을 잊은 변수를 찾을 수 있게) */
-export function fillText(text: string, values: ReadonlyMap<string, string>): string {
+export function fillText(text: string, values: ReadonlyMap<string, string>, rawNames?: ReadonlySet<string>): string {
   if (!String(text ?? '').includes('[&')) return text;
   return mapOutsideCode(text, (s) => s.replace(varRe(), (whole, name: string) => {
     const v = values.get(name);
-    return v === undefined ? whole : plainValue(v);
+    // 노드 참조(rawNames)는 원본 노드의 굵게·기울임 같은 서식을 그대로 가져온다 (2026-11-04)
+    return v === undefined ? whole : rawNames?.has(name) ? v : plainValue(v);
   }));
 }

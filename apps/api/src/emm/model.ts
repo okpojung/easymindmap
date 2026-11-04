@@ -324,7 +324,9 @@ export interface MapSettings {
 /** 변수 타입 — 숫자·통화·날짜·시간·백분율·텍스트·전화번호·숫자한글·이메일·수식 */
 export type VariableType =
   | 'number' | 'currency' | 'date' | 'time' | 'percent'
-  | 'text' | 'phone' | 'koreanNumber' | 'email' | 'formula';
+  | 'text' | 'phone' | 'koreanNumber' | 'email' | 'formula'
+  /** 노드 참조 (2026-11-04) — value = 노드 id, format = 'first'(첫 줄, 기본) | 'all'(전체) */
+  | 'node';
 
 /** 맵 변수 하나 — value 는 넣은 글자 그대로(수식은 수식), format 은 엑셀 셀 서식 */
 export interface MapVariable {

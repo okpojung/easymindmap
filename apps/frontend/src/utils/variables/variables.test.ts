@@ -2,7 +2,7 @@
 import { formatCell, formatPhone, partsToSerial } from './excelFormat';
 import { evalFormula, FErr, formulaRefs, renameInFormula } from './formula';
 import { nameProblem, varsInText, renameInText, fillText } from './varSyntax';
-import { evaluateVariables, applyVariableView, variableUsage, parseRaw } from './mapVariables';
+import { evaluateVariables, applyVariableView, variableUsage, parseRaw, variableResults, nodeFirstLine } from './mapVariables';
 let failed = 0;
 const check = (name: string, got: unknown, want: unknown) => {
   const ok = JSON.stringify(got) === JSON.stringify(want);
@@ -84,5 +84,34 @@ const view = applyVariableView(map) as unknown as { root: { text: string; _rawTe
 check('값으로 보기', [view.root.text, view.root._rawText, view.branches[0].text, view.branches[1].text], ['합계 ₩45,000', '합계 [&total]', '₩15,000 x 3', '없음 [&empty]']);
 const use = variableUsage(map);
 check('사용처', [use.get('price'), use.get('qty')?.nodes], [{ nodes: 1, formulas: ['total'] }, 1]);
+// 노드 참조 (2026-11-04) — 첫 줄 · 전체 · 원본 속 변수 · 고리 · 없는 노드 · 수식
+{
+  const ndefs = [
+    { name: 'price', type: 'currency' as const, value: '15000' },
+    { name: 'nd_1', type: 'node' as const, value: 'A' },
+    { name: 'nd_2', type: 'node' as const, value: 'A', format: 'all' },
+    { name: 'nd_3', type: 'node' as const, value: 'C' },
+    { name: 'nd_4', type: 'node' as const, value: 'GONE' },
+    { name: 'nd_5', type: 'node' as const, value: 'N' },
+    { name: 'tot', type: 'formula' as const, value: 'nd_5 * 2' },
+  ];
+  const nmap = { title: 't', root: { id: 'root', text: '참조 [&nd_1] / [&nd_4]' },
+    branches: [
+      { id: 'A', text: '## **매출** [&price]\n둘째 줄' },
+      { id: 'C', text: '고리 [&nd_3]' },
+      { id: 'N', text: '1,234' },
+      { id: 'D', text: '[&nd_2]' },
+    ], settings: { variables: ndefs } };
+  const nres = variableResults(nmap);
+  check('노드 첫 줄 (제목 표시 떼고 원본 변수 값으로)', nres.get('nd_1')?.display, '**매출** ₩15,000');
+  check('노드 전체', nres.get('nd_2')?.display, '## **매출** ₩15,000\n둘째 줄');
+  check('자기 자신을 부르는 고리 → #REF!', nres.get('nd_3')?.display, '#REF!');
+  check('없는 노드 → #REF!', nres.get('nd_4')?.display, '#REF!');
+  check('숫자 모양 노드는 수식에서 숫자', nres.get('tot')?.display, '2468');
+  const nview = applyVariableView(nmap) as unknown as { root: { text: string } };
+  check('값으로 보기 — 노드 서식은 그대로', nview.root.text, '참조 **매출** ₩15,000 / #REF!');
+  check('첫 줄 고르기', nodeFirstLine('\n- [x] 할 일\n다음'), '할 일');
+  check('맵 없이 계산하면 노드 참조는 값 없음', evaluateVariables(ndefs).get('nd_1')?.display, undefined);
+}
 if (failed) { console.log('\n' + failed + '개 실패'); process.exit(1); }
 console.log('\nvariables: 모두 통과');

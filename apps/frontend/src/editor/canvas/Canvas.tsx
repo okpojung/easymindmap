@@ -485,7 +485,18 @@ export function Canvas({
     () => (varDbRows && varDbMapId === openMapId ? Object.fromEntries(Object.values(varDbRows).map((r) => [r.name, r.value])) : undefined),
     [varDbRows, varDbMapId, openMapId],
   );
+  // ★ 캔버스 크기별 배치 기억 (2026-11-06 성능) — 아웃라인 분할을 열고 닫으면 캔버스 폭이 바뀌어
+  //   (중심 CX 가 바뀌어) 5,000 노드 배치를 통째로 다시 계산했다. 내용이 같으면 크기마다 한 번만 계산하고
+  //   다시 그 크기로 돌아오면 기억한 배치를 쓴다. 내용(맵·배치 종류·간격·보기)이 바뀌면 기억을 버린다.
+  const layoutBySize = useMemo(
+    () => new Map<string, ReturnType<typeof computeLayout>>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sample, layoutType, spacingX, spacingY, codeEpoch, varValueView, dashView, varDb],
+  );
   const nodes = useMemo(() => {
+    const sizeKey = `${CX},${CY}`;
+    const hit = layoutBySize.get(sizeKey);
+    if (hit) return hit;
     // 맵 설정(레벨별 폰트)을 측정기에 주입 — 모든 레이아웃 전략의
     // sizeNodeForText()와 NodeRenderer가 같은 크기·글꼴을 쓴다.
     // sample(map)이 의존성이므로 설정 변경 시 레이아웃도 다시 계산된다.
@@ -493,9 +504,12 @@ export function Canvas({
     setLevelShapeConfig(sample.settings?.levelShapes);
     // 그림만 담은 노드: 자동 태그·내용 접기를 화면용 사본으로 (mediaView, 2026-10-28 — 문서는 그대로)
     const viewMap = varValueView || dashView ? applyVariableView(sample, variableResults(sample, varDb)) : sample;
-    return computeLayout(applyMediaView(viewMap), layoutType, CX, CY, { x: spacingX, y: spacingY });
+    const laid = computeLayout(applyMediaView(viewMap), layoutType, CX, CY, { x: spacingX, y: spacingY });
+    if (layoutBySize.size >= 4) layoutBySize.clear();
+    layoutBySize.set(sizeKey, laid);
+    return laid;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sample, layoutType, CX, CY, spacingX, spacingY, codeEpoch, varValueView, dashView, varDb]);
+  }, [layoutBySize, CX, CY]);
 
   // 첫 화면 pan — 트리·진행트리는 중심 주제 위 변이 HOME_TOP_GAP, 나머지는 원점 (homeArmed 효과·보호가 같이 쓴다)
   const homeWantY = useMemo(() => {

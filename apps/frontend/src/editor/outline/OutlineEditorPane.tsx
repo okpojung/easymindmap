@@ -468,6 +468,9 @@ function PaneRowImpl({ t, node, onOpenNote, onOpenList }: {
           fontSize: 13,
           fontWeight: node.depth === 0 ? 600 : selected ? 600 : 400,
           cursor: 'pointer', position: 'relative', marginBottom: 1, outline: 'none',
+          // 화면 밖 행은 그리기·배치를 건너뛴다 (2026-11-05 성능 — 5,000행에서 글자색 하나 바꿔도
+          // 전체 배치에 1.8초가 걸렸다). 높이는 처음엔 30px로 어림하고, 한 번 그린 뒤엔 실제 높이를 기억한다.
+          contentVisibility: 'auto', containIntrinsicSize: 'auto 30px',
         }}
       >
         <button

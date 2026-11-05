@@ -87,6 +87,7 @@ export function applyLayoutOverrides(
   // run once at the end — after any nested overrides inside them have been
   // applied and their final size is known.
   const topLevel: { node: MindNode; parentEffective: LayoutType }[] = [];
+  const idx = laidIndex(out);
 
   for (let i = 0; i < branches.length; i += 1) {
     // radial-bidirectional splits branches into two independent columns —
@@ -95,7 +96,7 @@ export function applyLayoutOverrides(
       rootEffective !== ('radial-bidirectional' as LayoutType) ||
       (b.side ?? 'right') === (branches[i].side ?? 'right');
 
-    walk(branches[i], rootEffective, out, null, topLevel, [
+    walk(branches[i], rootEffective, out, idx, null, topLevel, [
       {
         before: branches.slice(0, i).filter(sameSide),
         after: branches.slice(i + 1).filter(sameSide),
@@ -157,10 +158,28 @@ function axisOf(
   return { axis: null, reversed: false }; // freeform / kanban 등
 }
 
+/**
+ * 배치된 노드 찾기 색인 (2026-11-05 성능) — 예전엔 노드마다 `out.find` 로 처음부터 뒤져
+ * 5,750 노드 맵에서 3,300만 번 비교(배치 한 번에 약 2초)였다. 다시 놓기(relayoutSubtree)가
+ * `out` 의 노드를 바꾸므로 그때마다 색인을 버리고, 다음 찾기에서 다시 만든다.
+ */
+interface LaidIndex { get(id: string): LaidOutNode | undefined; invalidate(): void }
+function laidIndex(out: LaidOutNode[]): LaidIndex {
+  let m: Map<string, LaidOutNode> | null = null;
+  return {
+    get(id) {
+      if (!m) { m = new Map(); for (const n of out) if (!m.has(n.id)) m.set(n.id, n); }
+      return m.get(id);
+    },
+    invalidate() { m = null; },
+  };
+}
+
 function walk(
   node: MindNode,
   parentEffective: LayoutType,
   out: LaidOutNode[],
+  idx: LaidIndex,
   scope: Set<string> | null,
   topLevel: { node: MindNode; parentEffective: LayoutType }[],
   chain: ChainLevel[],
@@ -173,6 +192,7 @@ function walk(
 
   if (effective !== parentEffective && SUBTREE_SUPPORTED.has(effective)) {
     relayoutSubtree(node, effective, parentEffective, out, chain);
+    idx.invalidate();
 
     if (!scope) {
       // top-level override: nested overrides below it reflow within it
@@ -183,13 +203,13 @@ function walk(
   }
 
   const children = node.children ?? [];
-  const laidSelf = out.find((l) => l.id === node.id);
+  const laidSelf = idx.get(node.id);
   // 이 노드 자신이 시간배치 오버라이드의 앵커면 자식은 이 노드의 축(가로)을 따른다
   const selfIsTimelineAnchor =
     (effective === ('timeline' as LayoutType) || effective === ('timeline-center' as LayoutType)) &&
     !!node.layoutType && normalizeLayoutType(node.layoutType) === effective && effective !== parentEffective;
   for (let i = 0; i < children.length; i += 1) {
-    walk(children[i], effective, out, childScope, topLevel, [
+    walk(children[i], effective, out, idx, childScope, topLevel, [
       ...chain,
       {
         before: children.slice(0, i),
@@ -605,8 +625,13 @@ function relayoutSubtree(
   // 조상 체인 각 레벨의 길목 서브트리 크기 — 바꾸기 전에 재 둔다
   const levelBefore = chain.map((l) => bboxOf(out, subtreeIdSet(l.pathNode)));
 
-  for (let i = out.length - 1; i >= 0; i -= 1) {
-    if (descendantIds.has(out[i].id)) out.splice(i, 1);
+  // 한 번에 걸러 낸다 — 자손마다 splice 하면 큰 맵에서 (자손 수 × 전체 노드 수)가 된다 (2026-11-05 성능)
+  {
+    let w = 0;
+    for (let i = 0; i < out.length; i += 1) {
+      if (!descendantIds.has(out[i].id)) out[w++] = out[i];
+    }
+    out.length = w;
   }
 
   switch (effective) {

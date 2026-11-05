@@ -14,7 +14,8 @@ import { MD_CODE_PAD_X } from './mdCode';
 import { blockGaps, layoutNodeBlocks, type NodeBlockLayout } from './nodeBlocks';
 import { parseCheckLine, checkGlyphW } from './mdCheck';
 import { parseInlineMarks, CODE_FONT } from './inlineMarks';
-import { measureTextPx } from './textMeasure';
+import { measureTextPx, measureVersion } from './textMeasure';
+import { codeRenderEpoch } from './codeRender';
 
 /**
  * '도형 없음' 노드의 안쪽 여백 (2026-10-23 사용자 요청: "markmap 처럼 더 붙여 맵 간격도 촘촘하게",
@@ -152,9 +153,13 @@ export function scaleNodeImage(
 export const LEVEL_FONT_DEFAULT_SIZES = [18, 14, 13, 13, 13];
 
 let levelFontConfig: LevelFontSetting[] = [];
+/** 레벨 글꼴·도형 설정이 바뀔 때마다 오른다 — 크기 캐시 열쇠 */
+let sizeCfgVer = 0;
 
 export function setLevelFontConfig(cfg?: LevelFontSetting[]): void {
-  levelFontConfig = cfg ?? [];
+  const next = cfg ?? [];
+  if (next !== levelFontConfig && JSON.stringify(next) !== JSON.stringify(levelFontConfig)) sizeCfgVer++;
+  levelFontConfig = next;
 }
 
 export function levelIndex(depth: number): number {
@@ -180,7 +185,9 @@ export function levelTextAlign(depth: number): 'left' | 'center' | 'right' | und
 // 레벨 기본 도형 (맵 설정) — 노드별 shapeType이 없을 때 적용
 let levelShapeConfig: (string | null | undefined)[] = [];
 export function setLevelShapeConfig(cfg?: (string | null | undefined)[]): void {
-  levelShapeConfig = cfg ?? [];
+  const next = cfg ?? [];
+  if (next !== levelShapeConfig && JSON.stringify(next) !== JSON.stringify(levelShapeConfig)) sizeCfgVer++;
+  levelShapeConfig = next;
 }
 export function levelShape(depth: number): string | undefined {
   const v = levelShapeConfig[levelIndex(depth)];
@@ -189,7 +196,25 @@ export function levelShape(depth: number): string | undefined {
 
 const CJK_RE = /[\u3000-\u9FFF\uAC00-\uD7AF]/;
 
+// ★ 크기 계산 결과를 기억한다 (2026-11-05 성능 — "고친 가지만 다시 계산").
+//   글·깊이·옵션·맵 글꼴 설정·글꼴 도착·코드 그림 세대가 모두 같으면 지난 결과를 그대로 쓴다.
+//   5,000 노드 맵에서 글 하나를 고치면 그 노드만 새로 재고, 나머지는 기억한 크기로 자리만 다시 잡는다.
+//   (결과 객체는 여럿이 함께 쓰므로 고치지 말 것 — 지금 고치는 곳은 없다)
+const sizeCache = new Map<string, NodeSize>();
+const SIZE_CACHE_MAX = 50_000;
+
 export function sizeNodeForText(text: string, depth: number, opts: SizeOpts = {}): NodeSize {
+  const key = String(text ?? '') + '\u0001' + depth + '\u0001' + JSON.stringify(opts) + '\u0001'
+    + sizeCfgVer + '.' + measureVersion() + '.' + codeRenderEpoch();
+  const hit = sizeCache.get(key);
+  if (hit) return hit;
+  const r = sizeNodeForTextRaw(text, depth, opts);
+  if (sizeCache.size >= SIZE_CACHE_MAX) sizeCache.clear();
+  sizeCache.set(key, r);
+  return r;
+}
+
+function sizeNodeForTextRaw(text: string, depth: number, opts: SizeOpts = {}): NodeSize {
   const fontSize   = levelFontSize(depth);
   const fontWeight = depth === 0 ? 700 : depth === 1 ? 600 : 500;
   // 기본 줄 높이(루트 24, 이하 18)를 유지하되, 맵 설정으로 글자 크기가

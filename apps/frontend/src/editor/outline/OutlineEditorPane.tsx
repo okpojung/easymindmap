@@ -10,7 +10,7 @@
 // 인디케이터를 표시하고, 클릭하면 맵과 동일하게 동작한다:
 //   링크 → 열기(여럿이면 목록) · 노트 → 뷰어 팝업 · 첨부/멀티미디어 → 새 탭
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { OutlineNode as OutlineNodeData, MindNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -101,6 +101,120 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
   const openList = useCallback((p: ListPopup) => { setNotePopup(null); setListPopup(p); }, []);
   const noteBlocks = notePopup && noteNode ? notesOfKind(noteNode.notes, notePopup.kind) : [];
 
+  // ── 보이는 행만 그린다 (2026-11-05 성능 — 5,750 노드 맵에서 분할 보기를 열 때 모든 행을 만들어
+  //    수 초씩 멈췄다). 트리를 펼친 순서대로 한 줄 목록으로 펴고, 스크롤 위치 근처의 행만 만든다.
+  //    행 높이는 처음엔 어림값, 한 번 그린 뒤에는 잰 값을 쓴다.
+  // 아웃라인 ▸/▾ 는 아웃라인 안에서만 접는다(맵은 그대로 — 예전과 같다). 맵 쪽에서 접힘이 바뀌면
+  // 그 노드의 아웃라인 펼침도 맵을 따른다(base 가 달라지면 무시).
+  const [localExp, setLocalExp] = useState<Map<string, { v: boolean; base: boolean }>>(() => new Map());
+  const toggleExpand = useCallback((n: OutlineNodeData) => setLocalExp((m) => {
+    const base = n.expanded !== false;
+    const o = m.get(n.id);
+    const cur = o && o.base === base ? o.v : base;
+    const next = new Map(m);
+    next.set(n.id, { v: !cur, base });
+    return next;
+  }), []);
+  const flat = useMemo(() => {
+    const out: { node: OutlineNodeData; expanded: boolean }[] = [];
+    const walk = (n: OutlineNodeData) => {
+      const base = n.expanded !== false;
+      const o = localExp.get(n.id);
+      const e = o && o.base === base ? o.v : base;
+      out.push({ node: n, expanded: e });
+      if (e && n.children) for (const c of n.children) walk(c);
+    };
+    for (const n of outline) walk(n);
+    return out;
+  }, [outline, localExp]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewH, setViewH] = useState(800);
+  const heightsRef = useRef(new Map<string, number>());
+  const [heightVer, setHeightVer] = useState(0);
+  const estH = coarse ? 40 : 30;
+  const TOP_PAD = 8;
+  const layout = useMemo(() => {
+    const tops = new Float64Array(flat.length + 1);
+    let y = TOP_PAD;
+    for (let i = 0; i < flat.length; i++) {
+      tops[i] = y;
+      y += heightsRef.current.get(flat[i].node.id) ?? estH;
+    }
+    tops[flat.length] = y;
+    return { tops, total: y + 16 };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flat, heightVer, estH]);
+  // 행 높이 재기 — 행 하나가 여러 줄·사진·표면 높이가 바뀐다
+  const bumpRef = useRef<number | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
+  if (!roRef.current && typeof ResizeObserver !== 'undefined') {
+    roRef.current = new ResizeObserver((entries) => {
+      let changed = false;
+      for (const en of entries) {
+        const el = en.target as HTMLElement;
+        const id = el.dataset.vrow;
+        if (!id) continue;
+        const h = Math.round(el.offsetHeight);
+        if (h > 0 && heightsRef.current.get(id) !== h) { heightsRef.current.set(id, h); changed = true; }
+      }
+      if (changed && bumpRef.current === null) {
+        bumpRef.current = requestAnimationFrame(() => { bumpRef.current = null; setHeightVer((v) => v + 1); });
+      }
+    });
+  }
+  useEffect(() => () => {
+    roRef.current?.disconnect();
+    if (bumpRef.current !== null) cancelAnimationFrame(bumpRef.current);
+  }, []);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setViewH(el.clientHeight);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setViewH(el.clientHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const indexOf = (top: number): number => {
+    const { tops } = layout;
+    let lo = 0, hi = flat.length - 1, ans = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (tops[mid] <= top) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    return ans;
+  };
+  const OVERSCAN = 600;
+  const first = flat.length ? indexOf(Math.max(0, scrollTop - OVERSCAN)) : 0;
+  const last = flat.length ? indexOf(scrollTop + viewH + OVERSCAN) : -1;
+  // 고른 행은 화면 밖이어도 그대로 둔다 — 고치는 중인 글·키보드 초점이 사라지지 않게
+  const pinIdx = useMemo(
+    () => (outlineSelectedId ? flat.findIndex((r) => r.node.id === outlineSelectedId) : -1),
+    [flat, outlineSelectedId],
+  );
+  const shown: number[] = [];
+  for (let i = first; i <= last; i++) shown.push(i);
+  if (pinIdx >= 0 && (pinIdx < first || pinIdx > last)) shown.push(pinIdx);
+  // 행으로 스크롤 — 만들어지지 않은 행도 자리를 계산해 찾아간다 (맵에서 고르면 그 행을 보여 준다)
+  const flatRef = useRef(flat); flatRef.current = flat;
+  const layoutRef = useRef(layout); layoutRef.current = layout;
+  const scrollToId = useCallback((id: string, block: 'nearest' | 'center', smooth: boolean) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const i = flatRef.current.findIndex((r) => r.node.id === id);
+    if (i < 0) return;
+    const { tops } = layoutRef.current;
+    const top = tops[i];
+    const h = tops[i + 1] - top;
+    let target: number;
+    if (block === 'center') target = top - (el.clientHeight - h) / 2;
+    else if (top < el.scrollTop) target = top - TOP_PAD;
+    else if (top + h > el.scrollTop + el.clientHeight) target = top + h - el.clientHeight + TOP_PAD;
+    else return;
+    el.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' });
+  }, []);
+
   return (
     <div style={{
       height: '100%', display: 'flex', flexDirection: 'column',
@@ -148,11 +262,21 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
           }}>✕</button>
       </div>
 
-      <OutlineScrollSync />
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0, padding: '8px 6px 16px' }}>
-        {outline.map((node) => (
-          <PaneRow key={node.id} t={t} node={node} onOpenNote={openNote} onOpenList={openList} />
-        ))}
+      <OutlineScrollSync scrollToId={scrollToId} />
+      <div ref={scrollRef} data-testid="outline-scroll"
+        onScroll={(e) => setScrollTop((e.currentTarget as HTMLDivElement).scrollTop)}
+        style={{ flex: 1, overflow: 'auto', minHeight: 0, padding: '0 6px', position: 'relative' }}>
+        <div style={{ position: 'relative', height: layout.total }}>
+          {shown.map((i) => {
+            const r = flat[i];
+            return (
+              <VRow key={r.node.id} id={r.node.id} top={layout.tops[i]} ro={roRef.current}>
+                <PaneRow t={t} node={r.node} expanded={r.expanded} onToggle={toggleExpand}
+                  onOpenNote={openNote} onOpenList={openList} />
+              </VRow>
+            );
+          })}
+        </div>
       </div>
 
       {/* 노트 뷰어 팝업 — 맵의 인디케이터 클릭과 동일한 창 (이동·크기 조절) */}
@@ -203,15 +327,14 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
 // 맵에서 노드를 선택하면 아웃라인의 해당 행이 보이도록 자동 스크롤 —
 // 아웃라인이 다른 구간을 보고 있어도 선택 노드를 바로 찾을 수 있다
 // (아웃라인 안에서의 선택은 이미 보이는 행이라 스크롤이 일어나지 않는다)
-function OutlineScrollSync() {
+function OutlineScrollSync({ scrollToId }: {
+  scrollToId: (id: string, block: 'nearest' | 'center', smooth: boolean) => void;
+}) {
   const selectedId = useInteractionStore((s) => s.selectedId);
   useEffect(() => {
     if (!selectedId) return;
-    const row = document.querySelector(
-      `[data-outline-id="${CSS.escape(selectedId)}"]`,
-    );
-    row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [selectedId]);
+    scrollToId(selectedId, 'nearest', true);
+  }, [selectedId, scrollToId]);
 
   // 아웃라인을 "여는 순간" 1회 — 맵에서 보던 위치로 이어서 보여준다
   // (2026-07 사용성): 열기 액션(editorUiStore)이 캡처해 둔 노드
@@ -222,10 +345,7 @@ function OutlineScrollSync() {
     const id = useEditorUiStore.getState().outlineFocusId;
     if (!id) return;
     const tmr = window.setTimeout(() => {
-      const row = document.querySelector(
-        `[data-outline-id="${CSS.escape(id)}"]`,
-      );
-      row?.scrollIntoView({ block: 'center' });
+      scrollToId(id, 'center', false);
     }, 60); // 행 렌더가 끝난 뒤
     return () => window.clearTimeout(tmr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -233,16 +353,35 @@ function OutlineScrollSync() {
   return null;
 }
 
+/** 보이는 행 하나의 자리 — 제 높이를 재어 목록에 알린다 */
+function VRow({ id, top, ro, children }: {
+  id: string; top: number; ro: ResizeObserver | null; children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !ro) return;
+    ro.observe(el);
+    return () => ro.unobserve(el);
+  }, [ro]);
+  return (
+    <div ref={ref} data-vrow={id} style={{ position: 'absolute', left: 0, right: 0, top }}>
+      {children}
+    </div>
+  );
+}
+
 // 행은 memo — 바뀐 노드(같은 객체가 아닌 행)·선택이 바뀐 행만 다시 그린다 (2026-11-05 성능)
 const PaneRow = memo(PaneRowImpl);
-function PaneRowImpl({ t, node, onOpenNote, onOpenList }: {
+function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList }: {
   t: ThemeTokens;
   node: OutlineNodeData;
+  expanded: boolean;
+  onToggle: (n: OutlineNodeData) => void;
   onOpenNote: (nodeId: string, kind: NoteKind) => void;
   onOpenList: (p: ListPopup) => void;
 }) {
   const tr = useTr();
-  const [expanded, setExpanded] = useState(node.expanded !== false);
   const [hover, setHover] = useState(false);
   // 우리 저장소 사진은 그릴 때 토큰을 붙여야 한다 (B16 ② 슬라이스 2)
   const resolveImgSrc = useImageSrcResolver();
@@ -468,13 +607,10 @@ function PaneRowImpl({ t, node, onOpenNote, onOpenList }: {
           fontSize: 13,
           fontWeight: node.depth === 0 ? 600 : selected ? 600 : 400,
           cursor: 'pointer', position: 'relative', marginBottom: 1, outline: 'none',
-          // 화면 밖 행은 그리기·배치를 건너뛴다 (2026-11-05 성능 — 5,000행에서 글자색 하나 바꿔도
-          // 전체 배치에 1.8초가 걸렸다). 높이는 처음엔 30px로 어림하고, 한 번 그린 뒤엔 실제 높이를 기억한다.
-          contentVisibility: 'auto', containIntrinsicSize: 'auto 30px',
         }}
       >
         <button
-          onClick={(e) => { e.stopPropagation(); setExpanded((x) => !x); }}
+          onClick={(e) => { e.stopPropagation(); onToggle(node); }}
           tabIndex={-1}
           style={{
             width: coarse ? 28 : 16, height: coarse ? 28 : 16, margin: coarse ? '-6px 0' : undefined,
@@ -727,10 +863,6 @@ function PaneRowImpl({ t, node, onOpenNote, onOpenList }: {
         )}
       </div>
 
-      {expanded && hasChildren &&
-        node.children!.map((c) => (
-          <PaneRow key={c.id} t={t} node={c} onOpenNote={onOpenNote} onOpenList={onOpenList} />
-        ))}
     </div>
   );
 }

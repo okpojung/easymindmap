@@ -83,6 +83,8 @@ export interface OutlineNode {
   expanded?: boolean;
   selected?: boolean;
   children?: OutlineNode[];
+  /** 원본 노드 (인디케이터·사진용) — 행이 맵 전체를 뒤지지 않게 (2026-11-05 성능) */
+  raw?: import('@emm/model').MindNode;
 }
 
 export type CollabColorKey = 'user1' | 'user2' | 'user3' | 'user4' | 'user5';

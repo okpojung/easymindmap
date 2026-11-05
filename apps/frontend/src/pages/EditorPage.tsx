@@ -138,6 +138,9 @@ function OutlineSplitHandle({ t, ratio, onRatioChange }: {
   );
 }
 
+/** 아웃라인 행 데이터 재사용 — 노드 객체가 같으면 같은 행 (WeakMap 이라 지운 노드는 저절로 빠진다) */
+const outlineCache = new WeakMap<MindNode, { depth: number; row: OutlineNode }>();
+
 export function EditorPage() {
   const tr = useTr();
   const map = useDocumentStore((s) => s.map);
@@ -199,25 +202,35 @@ export function EditorPage() {
 
   // 아웃라인 패널용 트리 — 실제 편집 중인 맵을 그대로 반영 (텍스트·구조·
   // 접힘 상태·선택 표시). 노드를 클릭하면 캔버스 선택과 연동된다.
+  // ★ 성능 (2026-11-05 사용자 보고: 5,750 노드 맵에서 분할 보기가 몇 초씩 멈춤).
+  //   · 선택은 행이 스토어에서 직접 본다 — 고를 때마다 트리 전체를 새로 만들지 않는다.
+  //   · 바뀌지 않은 노드(같은 객체)는 지난번 행 데이터를 그대로 쓴다 — 아웃라인 행(memo)이
+  //     고친 가지만 다시 그린다. 문서 스토어는 바뀐 경로만 새 객체를 만든다.
   const outline = useMemo<OutlineNode[]>(() => {
-    const walk = (n: MindNode, depth: number): OutlineNode => ({
-      id: n.id,
-      text: n.text,
-      depth,
-      expanded: !n.collapsed,
-      selected: n.id === selectedId,
-      children: (n.children ?? []).map((c) => walk(c, depth + 1)),
-    });
+    const walk = (n: MindNode, depth: number): OutlineNode => {
+      const hit = outlineCache.get(n);
+      if (hit && hit.depth === depth) return hit.row;
+      const row: OutlineNode = {
+        id: n.id,
+        text: n.text,
+        depth,
+        expanded: !n.collapsed,
+        raw: n,
+        children: (n.children ?? []).map((c) => walk(c, depth + 1)),
+      };
+      outlineCache.set(n, { depth, row });
+      return row;
+    };
     // 중심주제마다 최상위 행 하나 — 둘째 이후의 중심도 아웃라인에 (2026-09-16, 3단계)
     return mapCenters(map).map((c) => ({
       id: c.root.id,
       text: c.root.text,
       depth: 0,
       expanded: true,
-      selected: selectedId === c.root.id,
-      children: c.branches.map((b) => walk(b, 1)),
+      raw: c.root as MindNode,
+      children: c.branches.map((b) => walk(b as MindNode, 1)),
     }));
-  }, [map, selectedId]);
+  }, [map]);
 
   const t = THEMES[themeName];
 

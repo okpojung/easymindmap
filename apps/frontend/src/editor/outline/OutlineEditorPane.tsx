@@ -10,7 +10,7 @@
 // 인디케이터를 표시하고, 클릭하면 맵과 동일하게 동작한다:
 //   링크 → 열기(여럿이면 목록) · 노트 → 뷰어 팝업 · 첨부/멀티미디어 → 새 탭
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { OutlineNode as OutlineNodeData, MindNode } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -96,6 +96,9 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
   const map = useDocumentStore((s) => s.map);
 
   const noteNode = notePopup ? (findNodeInMap(map, notePopup.nodeId) as MindNode | null) : null;
+  // 행에 넘기는 함수는 한 번만 만든다 — 행(memo)이 다시 그려지지 않게
+  const openNote = useCallback((nodeId: string, kind: NoteKind) => { setListPopup(null); setNotePopup({ nodeId, kind }); }, []);
+  const openList = useCallback((p: ListPopup) => { setNotePopup(null); setListPopup(p); }, []);
   const noteBlocks = notePopup && noteNode ? notesOfKind(noteNode.notes, notePopup.kind) : [];
 
   return (
@@ -148,9 +151,7 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
       <OutlineScrollSync />
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0, padding: '8px 6px 16px' }}>
         {outline.map((node) => (
-          <PaneRow key={node.id} t={t} node={node}
-            onOpenNote={(nodeId, kind) => { setListPopup(null); setNotePopup({ nodeId, kind }); }}
-            onOpenList={(p) => { setNotePopup(null); setListPopup(p); }} />
+          <PaneRow key={node.id} t={t} node={node} onOpenNote={openNote} onOpenList={openList} />
         ))}
       </div>
 
@@ -232,7 +233,9 @@ function OutlineScrollSync() {
   return null;
 }
 
-function PaneRow({ t, node, onOpenNote, onOpenList }: {
+// 행은 memo — 바뀐 노드(같은 객체가 아닌 행)·선택이 바뀐 행만 다시 그린다 (2026-11-05 성능)
+const PaneRow = memo(PaneRowImpl);
+function PaneRowImpl({ t, node, onOpenNote, onOpenList }: {
   t: ThemeTokens;
   node: OutlineNodeData;
   onOpenNote: (nodeId: string, kind: NoteKind) => void;
@@ -247,7 +250,9 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
   const setSearchHitId = useInteractionStore((s) => s.setSearchHitId);
-  const map = useDocumentStore((s) => s.map);
+  // 맵 전체를 구독하지 않는다 — 5,000 노드 맵에서 행마다 맵 전체를 뒤지면(O(N²)) 몇 초씩 멈췄다.
+  // 필요한 순간에만 스토어에서 읽는다.
+  const selected = useInteractionStore((s) => s.selectedId === node.id);
   const updateNodeText = useDocumentStore((s) => s.updateNodeText);
   const moveNodeRelative = useDocumentStore((s) => s.moveNodeRelative);
   const addChildNode = useDocumentStore((s) => s.addChildNode);
@@ -279,7 +284,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   }, [node.id]);
 
   // 인디케이터 — 맵과 동일한 규칙 (nodeContentIndicators)
-  const rawNode = findNodeInMap(map, node.id) as MindNode | null; // 중심 루트도 찾는다
+  const rawNode = (node.raw ?? null) as MindNode | null; // 행 데이터가 원본 노드를 갖고 온다
   const indicators = rawNode ? nodeContentIndicators(rawNode as unknown as LaidOutNode) : [];
 
   const startEdit = () => {
@@ -341,6 +346,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
   };
 
   const siblingsOf = (): MindNode[] => {
+    const map = useDocumentStore.getState().map;
     const parentId = findParentId(map, node.id);
     if (!parentId) return [];
     // 부모가 중심주제 루트면 그 중심의 가지들 (둘째 이후의 중심도, 2026-09-16)
@@ -351,7 +357,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
     return parent?.children ?? [];
   };
 
-  const isCenter = isCenterRootId(map, node.id); // 어느 중심주제의 루트든
+  const isCenter = node.depth === 0; // 어느 중심주제의 루트든 (아웃라인 최상위 행)
   const indent = () => {
     if (isCenter) return;
     const sibs = siblingsOf();
@@ -363,6 +369,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 
   const outdent = () => {
     if (isCenter || node.depth <= 1) return;
+    const map = useDocumentStore.getState().map;
     const parentId = findParentId(map, node.id);
     if (!parentId || isCenterRootId(map, parentId)) return;
     moveNodeRelative(node.id, parentId, 'after');
@@ -426,7 +433,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
       <div
         data-outline-id={node.id}
         tabIndex={0}
-        onPointerDown={(e) => { tapEditRef.current = e.pointerType === 'touch' && !!node.selected && !editing; }}
+        onPointerDown={(e) => { tapEditRef.current = e.pointerType === 'touch' && !!selected && !editing; }}
         onClick={() => {
           if (tapEditRef.current) {
             tapEditRef.current = false;
@@ -456,10 +463,10 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
           // 폰 폭은 들여쓰기를 줄인다 — 깊은 단계에서 글자 칸이 남도록
           paddingLeft: 8 + node.depth * (compactRow ? 12 : 16),
           borderRadius: 6,
-          background: node.selected ? t.primarySoft : 'transparent',
-          color: node.selected ? t.primary : t.text,
+          background: selected ? t.primarySoft : 'transparent',
+          color: selected ? t.primary : t.text,
           fontSize: 13,
-          fontWeight: node.depth === 0 ? 600 : node.selected ? 600 : 400,
+          fontWeight: node.depth === 0 ? 600 : selected ? 600 : 400,
           cursor: 'pointer', position: 'relative', marginBottom: 1, outline: 'none',
         }}
       >
@@ -481,7 +488,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
 
         <span style={{
           width: 7, height: 7, borderRadius: '50%',
-          background: node.depth === 0 || node.selected ? t.primary : t.borderStrong,
+          background: node.depth === 0 || selected ? t.primary : t.borderStrong,
           flexShrink: 0,
           border: node.depth === 0 ? `2px solid ${t.primary}` : 'none',
         }} />
@@ -702,7 +709,7 @@ function PaneRow({ t, node, onOpenNote, onOpenList }: {
             // 손가락 — 호버가 없으므로 **고른 행에만** 보인다. 자리를 늘 차지하게 두면
             // (마우스용 규칙) 40px 단추 셋이 모든 행의 글자 칸을 130px씩 빼앗는다
             visibility: hover || coarse ? 'visible' : 'hidden',
-            ...(coarse && !node.selected ? { display: 'none' } : {}),
+            ...(coarse && !selected ? { display: 'none' } : {}),
           }}>
             {!isCenter && btn(tr('editor.outline.addSibling'), tr('editor.outline.addSiblingTitle'), () => {
               const id = addSiblingNode(node.id, 'after');

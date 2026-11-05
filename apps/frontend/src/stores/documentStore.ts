@@ -16,6 +16,7 @@ import { renameInText } from '@/utils/variables/varSyntax';
 import { renameInFormula } from '@/utils/variables/formula';
 import { mediaKindsOf } from '@/editor/node-renderer/mediaContent';
 import { create } from 'zustand';
+import { mapCenters } from '@emm/model';
 // 트리 규칙의 **단일 원본** — 화면·협업·DB 가 같은 판정을 써야 한다
 // (docs/04-extensions/collaboration/27-sync-model.md §4)
 import { wouldCreateCycle } from '@emm/tree-rules';
@@ -1851,6 +1852,24 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   // 뷰어 expandTo와 동일 동작). 노드 자체의 접힘 상태는 건드리지 않는다.
   expandAncestors: (nodeId) => {
     if (!nodeId || nodeId === 'root') return;
+    // ★ 접힌 조상이 없으면 아무것도 바꾸지 않는다 (2026-11-05 성능) — 예전에는 늘 새 맵을 만들어
+    //   아웃라인 행을 누를 때마다 캔버스가 5,000 노드 배치를 다시 계산했다(1~2초 멈춤).
+    {
+      const hasCollapsedAncestor = (nodes: MindNode[], parentCollapsed: boolean): boolean | null => {
+        for (const n of nodes) {
+          if (n.id === nodeId) return parentCollapsed;
+          const r = hasCollapsedAncestor(n.children ?? [], parentCollapsed || !!n.collapsed);
+          if (r !== null) return r;
+        }
+        return null;
+      };
+      let need: boolean | null = null;
+      for (const c of mapCenters(get().map)) {
+        need = hasCollapsedAncestor(c.branches as MindNode[], !!c.root.collapsed);
+        if (need !== null) break;
+      }
+      if (need === false) return;
+    }
     const walk = (nodes: MindNode[]): [MindNode[], boolean] => {
       let found = false;
       const next = nodes.map((n) => {

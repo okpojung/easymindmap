@@ -319,7 +319,8 @@ export function EditorPage() {
   }, [appNotice, appNoticeSeq]);
   const setBrowserMsg = (m: string) => {
     setBrowserMsgRaw(m);
-    window.setTimeout(() => setBrowserMsgRaw((cur) => (cur === m ? null : cur)), 3500);
+    // 긴 안내(새 탭에서 열었다 등)는 읽을 시간을 더 준다 (2026-11-06)
+    window.setTimeout(() => setBrowserMsgRaw((cur) => (cur === m ? null : cur)), m.length > 40 ? 6500 : 3500);
   };
   useEffect(() => {
     if (!initialMapId || gated) return;
@@ -551,7 +552,9 @@ export function EditorPage() {
             <OutageBanner t={t} />
             {/* 큰 첨부 업로드 진행률 — 어느 경로로 시작했든 여기서만 그린다 */}
             <UploadProgress t={t} />
-            {splitView && (
+            {/* 문서함이 열려 있으면 아웃라인 분할을 숨긴다 (2026-11-06 사용자 보고: 분할 상태에서 맵을 닫으면
+                빈 아웃라인이 남고 문서함이 오른쪽 반쪽에만 나왔다). 분할 설정은 그대로 — 맵을 다시 열면 돌아온다. */}
+            {splitView && !browserOpen && (
               <>
                 <div style={{
                   width: `${outlineSplitRatio * 100}%`,

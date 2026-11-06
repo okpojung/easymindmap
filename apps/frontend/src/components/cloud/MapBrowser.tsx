@@ -757,7 +757,24 @@ export function MapBrowser({
   const collapseAll = () => setExpanded(new Set());
 
   // ── 동작 ────────────────────────────────────────────────────
+  // ★ 여는 중 표시·두 번 열기 막기 (2026-11-06 사용자 보고: "클릭하면 안 열리고 더블클릭해야 열린다").
+  //   큰 맵은 받아 오는 데 몇 초 걸리는데 그동안 아무 표시가 없어 한 번 더 누르게 됐고, 편집 중인 맵이
+  //   있으면 새 탭으로 열려 이 화면은 그대로라 "안 열렸다"로 보였다. 이제 누르는 즉시 알리고,
+  //   여는 동안·방금 새 탭으로 연 맵을 다시 누르면 또 열지 않고 안내만 한다.
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const openingRef = useRef<string | null>(null);
+  const recentNewTab = useRef<{ id: string; at: number } | null>(null);
   const openMap = async (m: MapListItem) => {
+    const title = m.title || tr('cloud.untitled');
+    if (openingRef.current) {
+      onFlash(tr('cloud.browser.opening', { title }));
+      return;
+    }
+    // 방금(5초 안) 새 탭으로 연 같은 맵 — 더블클릭·연타로 탭이 둘 생기지 않게
+    if (recentNewTab.current && recentNewTab.current.id === m.mapId && Date.now() - recentNewTab.current.at < 5000) {
+      onFlash(tr('cloud.browser.alreadyOpenedNewTab', { title }));
+      return;
+    }
     // 이 탭에서 이미 편집 중인 맵 — 새로 열 것이 없으니 문서함만 닫고
     // 편집 화면으로 돌아간다. (전에는 "이미 편집 중"이라며 거부만 해서,
     // 링크가 낡아 있으면 맵으로 돌아갈 길이 없었다 — 사용자 보고 #4)
@@ -767,6 +784,9 @@ export function MapBrowser({
       return;
     }
     if (canReuseThisTab()) {
+      openingRef.current = m.mapId;
+      setOpeningId(m.mapId);
+      onFlash(tr('cloud.browser.opening', { title }));
       try {
         const { readOnly, reason, viewer: viewerOnly } = await openMapHere(m.mapId);
         // **왜 읽기 전용인지 그대로 말한다.** 전에는 무조건 "다른 세션에서
@@ -785,10 +805,14 @@ export function MapBrowser({
         onClose();
       } catch (e) {
         onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.openFailed')));
+      } finally {
+        openingRef.current = null;
+        setOpeningId(null);
       }
       return;
     }
     const ok = openMapInNewTab(m.mapId);
+    if (ok) recentNewTab.current = { id: m.mapId, at: Date.now() };
     onFlash(ok
       ? tr('cloud.browser.openedNewTab', { title: m.title })
       : tr('cloud.browser.popupBlocked'));
@@ -1422,6 +1446,7 @@ export function MapBrowser({
                 }}>{tr('cloud.browser.matchBadge', { n: m.matchCount ?? 0 })}</span>
               )}
               {editing && <span style={{ flexShrink: 0, color: t.primary, fontWeight: 600 }}>{tr('cloud.browser.editing')}</span>}
+              {openingId === m.mapId && <span data-testid="browser-map-opening" style={{ flexShrink: 0, color: t.primary, fontWeight: 600 }}>{tr('cloud.browser.openingRow')}</span>}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {fmtDate(m.updatedAt)} · {fmtBytes(m.docBytes)}
               </span>
@@ -2071,7 +2096,16 @@ export function MapBrowser({
             className="mm-list-row" aria-selected={cloudMapId === r.map.mapId}
             // 이동 버튼이 있는 맵만 끌린다 (공유받은 맵·퍼블리싱 자리의 맵은 내 트리 밖)
             {...(!r.map.shared && !knowsListed(r.map) ? dragProps({ kind: 'map', map: r.map }) : {})}
-            style={drag?.kind === 'map' && drag.map.mapId === r.map.mapId ? { ...rowAt(r.depth), opacity: 0.5 } : rowAt(r.depth)}>
+            // 줄 어디를 눌러도 연다 (2026-11-06) — 예전엔 제목 글자 위만 눌렸다.
+            // 줄 안의 단추(공유·이동·삭제 등)·입력칸·링크는 제 일을 한다.
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
+              void openMap(r.map);
+            }}
+            style={{
+              ...(drag?.kind === 'map' && drag.map.mapId === r.map.mapId ? { ...rowAt(r.depth), opacity: 0.5 } : rowAt(r.depth)),
+              cursor: 'pointer',
+            }}>
             {/* 🗺 이모지는 윈도에서 흑백 지도 글리프로 깨져 보였다
                 (2026-08-02 사용자 보고) — 앱 SVG 아이콘으로 통일.
                 2026-10-25: 폴더(📁)와 같은 무게의 색 타일 + 종류별 색 (MapFileIcon.tsx) */}
@@ -2089,6 +2123,11 @@ export function MapBrowser({
               }}
             >
               <Mark text={r.map.title || tr('cloud.untitledParen')} q={searching ? qRaw : ''} />
+              {openingId === r.map.mapId && (
+                <span data-testid="browser-map-opening" style={{ marginLeft: 8, color: t.primary, fontWeight: 600, fontSize: 11.5 }}>
+                  {tr('cloud.browser.openingRow')}
+                </span>
+              )}
               {/* 맵 **내용**에서 맞았으면 건수만 — 어느 노드·노트인지까지
                   보여 주면 목록이 감당이 안 된다. 열어서 같은 말로 다시
                   검색하면 그 안에서 하나씩 짚을 수 있다. */}

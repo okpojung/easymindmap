@@ -12,6 +12,8 @@ import { BottomStatusBar } from '@/components/bottom-status-bar/BottomStatusBar'
 import { Canvas } from '@/editor/canvas/Canvas';
 import { OutlineEditorPane } from '@/editor/outline/OutlineEditorPane';
 import { GanttDock, GanttBroadcaster } from '@/editor/gantt/GanttDock';
+import { MdEditorDock, MdBroadcaster } from '@/editor/md/MdEditorDock';
+import { setMdDockAvailable } from '@/utils/openAttachment';
 import { KanbanBoard } from '@/editor/canvas/KanbanBoard';
 import { MultiAddDialog } from '@/editor/dialogs/MultiAddDialog';
 import { SAMPLE_COLLABS } from '@/editor/__samples__';
@@ -175,6 +177,9 @@ export function EditorPage() {
   const phone = usePhoneLayout();
   const splitView = outlineSplit && !phone;
   const ganttDock = useEditorUiStore((s) => s.ganttDock);
+  const mdDock = useEditorUiStore((s) => s.mdDock);
+  // 마크다운 첨부는 이 화면 오른쪽 칸에서 연다 (openAttachment 가 본다)
+  useEffect(() => { setMdDockAvailable(true); return () => setMdDockAvailable(false); }, []);
   // 아웃라인 전체 모드 = 분할이 아니고 mainView가 'outline'일 때
   const fullOutline = !splitView && mainView === 'outline';
 
@@ -627,9 +632,15 @@ export function EditorPage() {
                 collabs={SAMPLE_COLLABS}
               />
             )}
+            {/* 마크다운 첨부 편집기 — 오른쪽 칸 (2026-11-08). 문서함에서는 숨긴다 */}
+            {mdDock && !browserOpen && (
+              <MdEditorDock key={mdDock.kind === 'embedded' ? `${mdDock.nodeId}~${mdDock.attachmentId}` : mdDock.att} t={t} target={mdDock}
+                onBlocked={() => setBrowserMsg(trNow('editor.gantt.popupBlocked'))} />
+            )}
           </div>
           {ganttDock && !browserOpen && <GanttDock t={t} onBlocked={() => setBrowserMsg(trNow('editor.gantt.popupBlocked'))} />}
           <GanttBroadcaster />
+          <MdBroadcaster />
           </div>
         )}
       </div>

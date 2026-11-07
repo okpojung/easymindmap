@@ -19,6 +19,7 @@ import { attachmentFetchUrl, cloudApiBase, serverAttachmentId } from '@/services
 import { getFreshAccessToken } from '@/stores/authStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import { isMarkdownName, mdEditorUrl, MD_SAVED_MESSAGE } from './mdEditorUrl';
 import {
   createMdEmbedHandler, dataUrlText, embeddedAttachmentKey, embeddedMdEditorUrl,
@@ -143,7 +144,7 @@ function eachNode(visit: (n: AttNode) => void) {
   for (const c of map.centers ?? []) { walk(c.root); c.branches.forEach(walk); }
 }
 
-function findAttachment(ref: AttachmentRef | undefined, url: string): { nodeId: string; att: { id: string; url?: string } } | null {
+export function findAttachment(ref: AttachmentRef | undefined, url: string): { nodeId: string; att: { id: string; url?: string } } | null {
   let hit: { nodeId: string; att: { id: string; url?: string } } | null = null;
   eachNode((n) => {
     if (hit) return;
@@ -154,7 +155,7 @@ function findAttachment(ref: AttachmentRef | undefined, url: string): { nodeId: 
   return hit;
 }
 
-function embeddedMapBytes(): number {
+export function embeddedMapBytes(): number {
   let total = 0;
   eachNode((n) => { for (const a of n.attachments ?? []) total += embeddedSizeOf(a.url); });
   return total;
@@ -201,8 +202,24 @@ function openEmbeddedMarkdown(nodeId: string, attachmentId: string, name: string
   }, 1000);
 }
 
+// 편집 화면이 오른쪽 편집기 칸을 그릴 수 있나 (EditorPage 가 켠다) — 아니면 예전처럼 새 탭 (2026-11-08)
+let mdDockHost = false;
+export function setMdDockAvailable(v: boolean): void { mdDockHost = v; }
+
 export function openAttachment(name: string, url?: string, ref?: AttachmentRef): void {
   if (!url) return;
+
+  // ★ 마크다운 첨부는 편집 영역 **오른쪽 칸**에서 렌더링 보기로 연다 (2026-11-08 사용자 요청).
+  //   칸 머리의 [새 탭]·[새 창] 으로 옮길 수 있다(utils/mdSession.ts · editor/md/MdEditorDock.tsx).
+  if (mdDockHost && isMarkdownName(name)) {
+    if (url.startsWith('data:')) {
+      const hit = findAttachment(ref, url);
+      if (hit) { useEditorUiStore.getState().setMdDock({ kind: 'embedded', nodeId: hit.nodeId, attachmentId: hit.att.id, name }); return; }
+    } else {
+      const sid = serverAttachmentId(url);
+      if (sid) { useEditorUiStore.getState().setMdDock({ kind: 'server', att: sid, name }); return; }
+    }
+  }
 
   // 맵 내장 마크다운 → 웹 편집기 (opener 다리)
   if (url.startsWith('data:') && isMarkdownName(name)) {

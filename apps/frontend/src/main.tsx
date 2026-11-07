@@ -9,6 +9,7 @@ import '@/styles/global.css';
 import { matchProRoute } from '@pro';
 import { captureEntryIntent } from '@/services/entryIntent';
 import { GanttWindowPage } from '@/pages/GanttWindowPage';
+import { MdEditorWindowPage } from '@/pages/MdEditorWindowPage';
 
 // 화면 고르기 — 라우터를 들이지 않고 **주소만** 본다 (2026-08-13 · 08-14).
 //
@@ -53,7 +54,10 @@ const routePath = window.location.pathname.replace(/\/+$/, '') === '' && new URL
 const ProRoute = matchProRoute({ pathname: routePath });
 
 // 간트 새 탭·새 창 `/?gantt=<편집 탭 id>` (2026-11-07) — 편집 탭이 보내 주는 간트만 그린다(로그인 화면을 띄우지 않는다)
-const ganttTab = window.location.pathname.replace(/\/+$/, '') === '' ? new URLSearchParams(window.location.search).get('gantt') : null;
+const rootQs = window.location.pathname.replace(/\/+$/, '') === '' ? new URLSearchParams(window.location.search) : null;
+const ganttTab = rootQs?.get('gantt') ?? null;
+// 마크다운 첨부 편집기 새 탭·새 창 `/?mdedit=<편집 탭 id>&key=…&name=…` (2026-11-08)
+const mdEdit = rootQs?.get('mdedit') && rootQs.get('key') ? { tab: rootQs.get('mdedit')!, key: rootQs.get('key')!, name: rootQs.get('name') || 'md' } : null;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -61,6 +65,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       ? <OAuthConsentPage />
       : publishId
         ? <PublicMapPage publishId={publishId} />
-        : isAdmin ? <AdminPage /> : ganttTab ? <GanttWindowPage tabId={ganttTab} /> : ProRoute ? <ProRoute /> : <EditorPage />}
+        : isAdmin ? <AdminPage /> : ganttTab ? <GanttWindowPage tabId={ganttTab} /> : mdEdit ? <MdEditorWindowPage tabId={mdEdit.tab} mdKey={mdEdit.key} name={mdEdit.name} /> : ProRoute ? <ProRoute /> : <EditorPage />}
   </React.StrictMode>,
 );

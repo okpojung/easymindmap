@@ -40,6 +40,14 @@ export function GanttWindowPage({ tabId }: { tabId: string }) {
       <div style={{ padding: '8px 12px', borderBottom: `1px solid ${t.border}`, fontSize: 13.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span>EasyMindMap</span>
         <span style={{ color: t.textMuted, fontWeight: 500 }}>{state?.title ?? ''}</span>
+        <span style={{ flex: 1 }} />
+        {!lost && (
+          <button type="button" data-testid="gantt-back-to-emm"
+            onClick={() => { chRef.current?.postMessage({ type: 'dock' } satisfies GanttMsg); try { window.opener?.focus(); } catch { /* 다른 창 */ } window.setTimeout(() => window.close(), 150); }}
+            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 7, cursor: 'pointer', border: `1px solid ${t.primaryBorder}`, background: t.primarySoft, color: t.primary, fontWeight: 700 }}>
+            ⇤ {tr('editor.dock.backToEmm')}
+          </button>
+        )}
       </div>
       {lost && (
         <div data-testid="gantt-lost" style={{ padding: '8px 12px', background: '#FDECEA', color: '#8A1C1C', fontSize: 12.5 }}>{tr('editor.gantt.lost')}</div>

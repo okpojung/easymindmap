@@ -1,6 +1,7 @@
 // Editor UI Store — panels, dialogs, active tool, sidebar collapsed flag.
 // Spec: docs/03-editor-core/state-architecture.md § 5.1
 
+import type { MdTarget } from '@/utils/mdSession';
 import { create } from 'zustand';
 import type { ThemeName } from '@/components/design-tokens/theme';
 import type { LayoutType } from '@/editor/__samples__/types';
@@ -86,6 +87,12 @@ interface EditorUiState {
   ganttDockH: number;
   /** 새 탭·새 창으로 간트를 연 적이 있다 — 맵 상태를 그 창에 보낸다 */
   ganttRemote: boolean;
+  /** 마크다운 첨부 편집기 — 편집 영역 오른쪽 칸 (2026-11-08). null 이면 닫힘 */
+  mdDock: MdTarget | null;
+  /** 오른쪽 칸 폭(편집 영역에 대한 비율) */
+  mdDockRatio: number;
+  /** 새 탭·새 창 편집기를 연 적이 있다 — 그 창과 내용을 주고받는다 */
+  mdRemote: boolean;
   // 메인 편집 영역 전체 모드 — 'map'(맵 전체) / 'outline'(아웃라인 전체).
   // 분할 화면(outlineSplit)과 별개: 분할이 켜져 있으면 이 토글은 비활성.
   mainView: 'map' | 'outline';
@@ -127,6 +134,9 @@ interface EditorUiState {
   setGanttDock: (v: boolean) => void;
   setGanttDockH: (v: number) => void;
   setGanttRemote: (v: boolean) => void;
+  setMdDock: (t: MdTarget | null) => void;
+  setMdDockRatio: (v: number) => void;
+  setMdRemote: (v: boolean) => void;
   setMainView: (v: 'map' | 'outline') => void;
   setBrowserOpen: (v: boolean) => void;
   toggleMainView: () => void;
@@ -167,6 +177,9 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   ganttDock: false,
   ganttDockH: 300,
   ganttRemote: false,
+  mdDock: null,
+  mdDockRatio: 0.45,
+  mdRemote: false,
   mainView: 'map',
   outlineFocusId: null,
   browserOpen: false,
@@ -203,6 +216,9 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   setGanttDock: (ganttDock) => set({ ganttDock }),
   setGanttDockH: (v) => set({ ganttDockH: Math.max(140, Math.min(Math.round(v), Math.round(window.innerHeight * 0.75))) }),
   setGanttRemote: (ganttRemote) => set({ ganttRemote }),
+  setMdDock: (mdDock) => set({ mdDock }),
+  setMdDockRatio: (v) => set({ mdDockRatio: Math.max(0.25, Math.min(0.75, v)) }),
+  setMdRemote: (mdRemote) => set({ mdRemote }),
   setOutlineSplitRatio: (v) =>
     set({ outlineSplitRatio: Math.min(0.75, Math.max(0.2, v)) }),
   setMainView: (mainView) => set((s) => ({

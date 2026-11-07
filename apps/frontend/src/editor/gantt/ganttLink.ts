@@ -20,6 +20,7 @@ export type GanttMsg =
   | { type: 'hello' }
   | { type: 'select'; id: string }
   | { type: 'setDates'; id: string; patch: { start?: string; end?: string } }
+  | { type: 'dock' }
   | { type: 'bye' };
 
 /** 간트를 새 탭('tab') 또는 새 창('window')으로 연다. 팝업이 막히면 false */

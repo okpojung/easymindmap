@@ -106,6 +106,9 @@
   #ww .toastui-editor-toolbar { display: none !important; }
   .pane.tgt .ptitle { color: var(--ac); font-weight: 600; }
   .pane.tgt .pane-label::after { content: "  ← 편집 도구 적용"; font-weight: 400; }
+  html[lang="en"] .pane.tgt .pane-label::after { content: "  ← Editing target"; }
+  html[lang="ja"] .pane.tgt .pane-label::after { content: "  ← 編集対象"; }
+  html[lang="zh-Hans"] .pane.tgt .pane-label::after { content: "  ← 编辑目标"; }
   .tx u { text-decoration: underline; }
   /* generic modal */
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 60; }
@@ -222,160 +225,165 @@
   .mde-cb-body svg { max-width: 100%; height: auto; }
   .mde-cb[data-lang="html"] .mde-cb-body { padding: 0; text-align: left; }
   .mde-html { width: 100%; border: 0; height: 80px; background: #fff; display: block; }
+.lang-picker{position:relative}.lang-picker svg{flex:none;border:1px solid #ddd;border-radius:2px}.lang-picker #langTrigger{display:flex;align-items:center;gap:8px;border-radius:16px;height:38px}.lang-picker #langList{position:absolute;right:0;top:44px;width:240px;max-width:calc(100vw - 20px);padding:8px;background:#fff;color:#0d2944;border-radius:16px;box-shadow:0 8px 28px #0003;z-index:100}.lang-picker #langList[hidden]{display:none}.lang-picker #langList button{width:100%;height:60px;display:flex;align-items:center;gap:16px;background:#fff;color:#0d2944;border:0;font-size:16px}.lang-picker #langList button[aria-selected=true]{font-weight:bold}.lang-picker small{margin-left:auto;color:#8898aa}.lang-picker button:focus-visible{outline:2px solid #168c99}
+@media(max-width:640px){.sgrid{grid-template-columns:minmax(0,1fr);gap:7px}.sgrid select{min-width:0;max-width:100%;width:100%}.sgrid>label:not(.chk){margin-top:5px}.sbox .mid{min-width:0;overflow-wrap:anywhere}.cgrid{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
 <textarea id="mdData" hidden data-name=""></textarea>
 <header id="bar">
-  <button id="tocBtn" class="on" title="왼쪽 목차 접기/펼치기">☰ 목차</button>
+  <button id="tocBtn" class="on" title="왼쪽 목차 접기/펼치기" data-i18n-title="%EC%99%BC%EC%AA%BD%20%EB%AA%A9%EC%B0%A8%20%EC%A0%91%EA%B8%B0%2F%ED%8E%BC%EC%B9%98%EA%B8%B0"><span data-i18n="%E2%98%B0%20%EB%AA%A9%EC%B0%A8">☰ 목차</span></button>
   <div class="seg" id="modes">
-    <button data-mode="md">마크다운</button>
-    <button data-mode="outline">아웃라인</button>
-    <button data-mode="rendered">렌더링</button>
-    <button data-mode="split">분할</button>
+    <button data-mode="md"><span data-i18n="%EB%A7%88%ED%81%AC%EB%8B%A4%EC%9A%B4">마크다운</span></button>
+    <button data-mode="outline"><span data-i18n="%EC%95%84%EC%9B%83%EB%9D%BC%EC%9D%B8">아웃라인</span></button>
+    <button data-mode="rendered"><span data-i18n="%EB%A0%8C%EB%8D%94%EB%A7%81">렌더링</span></button>
+    <button data-mode="split"><span data-i18n="%EB%B6%84%ED%95%A0">분할</span></button>
   </div>
   <span class="vsep"></span>
   <div id="tools">
-    <select id="hSel" title="제목 단계 (커서가 있는 줄)">
-      <option value="">제목</option>
-      <option value="0">본문</option>
+    <select id="hSel" title="제목 단계 (커서가 있는 줄)" data-i18n-title="%EC%A0%9C%EB%AA%A9%20%EB%8B%A8%EA%B3%84%20(%EC%BB%A4%EC%84%9C%EA%B0%80%20%EC%9E%88%EB%8A%94%20%EC%A4%84)">
+      <option value="" data-i18n="%EC%A0%9C%EB%AA%A9">제목</option>
+      <option value="0" data-i18n="%EB%B3%B8%EB%AC%B8">본문</option>
       <option value="1">H1</option><option value="2">H2</option><option value="3">H3</option>
       <option value="4">H4</option><option value="5">H5</option><option value="6">H6</option>
     </select>
     <span class="tsep"></span>
-    <button data-fmt="bold" title="굵게 (Ctrl+B)"><b>B</b></button>
-    <button data-fmt="italic" title="기울임 (Ctrl+I)"><i style="font-family:serif">I</i></button>
-    <button data-fmt="strike" title="취소선"><s>S</s></button>
-    <button data-fmt="underline" title="밑줄 (Ctrl+U)"><u>U</u></button>
-    <button data-fmt="highlight" title="하이라이트 (다시 누르면 해제)"><span class="hl-ic">H</span></button>
+    <button data-fmt="bold" title="굵게 (Ctrl+B)" data-i18n-title="%EA%B5%B5%EA%B2%8C%20(Ctrl%2BB)"><b>B</b></button>
+    <button data-fmt="italic" title="기울임 (Ctrl+I)" data-i18n-title="%EA%B8%B0%EC%9A%B8%EC%9E%84%20(Ctrl%2BI)"><i style="font-family:serif">I</i></button>
+    <button data-fmt="strike" title="취소선" data-i18n-title="%EC%B7%A8%EC%86%8C%EC%84%A0"><s>S</s></button>
+    <button data-fmt="underline" title="밑줄 (Ctrl+U)" data-i18n-title="%EB%B0%91%EC%A4%84%20(Ctrl%2BU)"><u>U</u></button>
+    <button data-fmt="highlight" title="하이라이트 (다시 누르면 해제)" data-i18n-title="%ED%95%98%EC%9D%B4%EB%9D%BC%EC%9D%B4%ED%8A%B8%20(%EB%8B%A4%EC%8B%9C%20%EB%88%84%EB%A5%B4%EB%A9%B4%20%ED%95%B4%EC%A0%9C)"><span class="hl-ic">H</span></button>
     <span class="tsep"></span>
-    <button data-fmt="ul" title="글머리 기호 (다시 누르면 해제)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="2.5" cy="4" r="1" fill="currentColor"/><circle cx="2.5" cy="8" r="1" fill="currentColor"/><circle cx="2.5" cy="12" r="1" fill="currentColor"/><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
-    <button data-fmt="ol" title="번호 매기기 (다시 누르면 해제)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><text x="0" y="6" font-size="5.5" fill="currentColor" stroke="none" font-family="sans-serif">1</text><text x="0" y="14" font-size="5.5" fill="currentColor" stroke="none" font-family="sans-serif">2</text><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
-    <button data-fmt="task" title="체크박스 (- [ ] — 다시 누르면 해제)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/><path d="M4.5 8.2l2.3 2.3 4.7-5"/></svg></button>
+    <button data-fmt="ul" title="글머리 기호 (다시 누르면 해제)" data-i18n-title="%EA%B8%80%EB%A8%B8%EB%A6%AC%20%EA%B8%B0%ED%98%B8%20(%EB%8B%A4%EC%8B%9C%20%EB%88%84%EB%A5%B4%EB%A9%B4%20%ED%95%B4%EC%A0%9C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="2.5" cy="4" r="1" fill="currentColor"/><circle cx="2.5" cy="8" r="1" fill="currentColor"/><circle cx="2.5" cy="12" r="1" fill="currentColor"/><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
+    <button data-fmt="ol" title="번호 매기기 (다시 누르면 해제)" data-i18n-title="%EB%B2%88%ED%98%B8%20%EB%A7%A4%EA%B8%B0%EA%B8%B0%20(%EB%8B%A4%EC%8B%9C%20%EB%88%84%EB%A5%B4%EB%A9%B4%20%ED%95%B4%EC%A0%9C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><text x="0" y="6" font-size="5.5" fill="currentColor" stroke="none" font-family="sans-serif">1</text><text x="0" y="14" font-size="5.5" fill="currentColor" stroke="none" font-family="sans-serif">2</text><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
+    <button data-fmt="task" title="체크박스 (- [ ] — 다시 누르면 해제)" data-i18n-title="%EC%B2%B4%ED%81%AC%EB%B0%95%EC%8A%A4%20(-%20%5B%20%5D%20%E2%80%94%20%EB%8B%A4%EC%8B%9C%20%EB%88%84%EB%A5%B4%EB%A9%B4%20%ED%95%B4%EC%A0%9C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/><path d="M4.5 8.2l2.3 2.3 4.7-5"/></svg></button>
     <span class="tsep"></span>
-    <button data-fmt="link" title="링크 삽입 (Ctrl+K)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6.5 9.5l3-3"/><path d="M7.5 4.5l1.2-1.2a2.6 2.6 0 0 1 3.7 3.7L11.2 8.2"/><path d="M8.5 11.5l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7L4.8 7.8"/></svg></button>
-    <button data-fmt="code" title="인라인 코드 (`…`)"><span style="font-family:Consolas,monospace;font-size:12px">`c`</span></button>
-    <button data-fmt="codeblock" title="코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)"><span style="font-family:Consolas,monospace;font-size:12px;font-weight:700">{ }</span></button>
-    <button data-fmt="table" title="표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2" width="13" height="12" rx="1.5"/><path d="M1.5 6h13M1.5 10h13M6 2v12M10.5 2v12"/></svg></button>
+    <button data-fmt="link" title="링크 삽입 (Ctrl+K)" data-i18n-title="%EB%A7%81%ED%81%AC%20%EC%82%BD%EC%9E%85%20(Ctrl%2BK)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6.5 9.5l3-3"/><path d="M7.5 4.5l1.2-1.2a2.6 2.6 0 0 1 3.7 3.7L11.2 8.2"/><path d="M8.5 11.5l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7L4.8 7.8"/></svg></button>
+    <button data-fmt="code" title="인라인 코드 (`…`)" data-i18n-title="%EC%9D%B8%EB%9D%BC%EC%9D%B8%20%EC%BD%94%EB%93%9C%20(%60%E2%80%A6%60)"><span style="font-family:Consolas,monospace;font-size:12px">`c`</span></button>
+    <button data-fmt="codeblock" title="코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)" data-i18n-title="%EC%BD%94%EB%93%9C%20%EB%B8%94%EB%A1%9D%20(%ED%8C%9D%EC%97%85%EC%97%90%EC%84%9C%20%EC%96%B8%EC%96%B4%C2%B7%EC%BD%94%EB%93%9C%20%EC%9E%85%EB%A0%A5%20%C2%B7%20%EC%BD%94%EB%93%9C%20%EB%B8%94%EB%A1%9D%20%EC%95%88%EC%9D%B4%EB%A9%B4%20%EC%88%98%EC%A0%95)"><span style="font-family:Consolas,monospace;font-size:12px;font-weight:700">{ }</span></button>
+    <button data-fmt="table" title="표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)" data-i18n-title="%ED%91%9C%20(%EC%9B%90%EB%AC%B8%C2%B7%EB%A0%8C%EB%8D%94%EB%A7%81%EC%97%90%EC%84%9C%20%ED%91%9C%20%EC%95%88%EC%97%90%20%EC%BB%A4%EC%84%9C%EB%A5%BC%20%EB%91%90%EB%A9%B4%20%EA%B7%B8%20%ED%91%9C%EB%A5%BC%20%ED%8E%B8%EC%A7%91)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2" width="13" height="12" rx="1.5"/><path d="M1.5 6h13M1.5 10h13M6 2v12M10.5 2v12"/></svg></button>
   </div>
   <span class="sp"></span>
-  <span id="status"></span>
-  <button id="setBtn" title="색 테마·글꼴·문법 설정">⚙ 설정</button>
+  <span id="status"></span><div class="lang-picker"><button id="langTrigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="langList">KR</button><div id="langList" role="listbox" aria-label="Language" data-i18n-aria-label="Language" hidden><button type="button" role="option" data-ui-language="ko" aria-selected="false">ko</button><button type="button" role="option" data-ui-language="en" aria-selected="false">en</button><button type="button" role="option" data-ui-language="ja" aria-selected="false">ja</button><button type="button" role="option" data-ui-language="zh" aria-selected="false">zh</button></div></div>
+  <button id="setBtn" title="색 테마·글꼴·문법 설정" data-i18n-title="%EC%83%89%20%ED%85%8C%EB%A7%88%C2%B7%EA%B8%80%EA%BC%B4%C2%B7%EB%AC%B8%EB%B2%95%20%EC%84%A4%EC%A0%95"><span data-i18n="%E2%9A%99%20%EC%84%A4%EC%A0%95">⚙ 설정</span></button>
   <div class="menu" id="fileMenu">
-    <button id="fileBtn" aria-haspopup="true" title="파일 메뉴">파일 ▾</button>
+    <button id="fileBtn" aria-haspopup="true" title="파일 메뉴" data-i18n-title="%ED%8C%8C%EC%9D%BC%20%EB%A9%94%EB%89%B4"><span data-i18n="%ED%8C%8C%EC%9D%BC%20%E2%96%BE">파일 ▾</span></button>
     <div class="mlist" id="fileList" hidden>
-      <button data-act="new">새 문서</button>
-      <button data-act="open">열기… <kbd>Ctrl+O</kbd></button>
-      <button data-act="sample">예제 문서</button>
+      <button data-act="new"><span data-i18n="%EC%83%88%20%EB%AC%B8%EC%84%9C">새 문서</span></button>
+      <button data-act="open"><span data-i18n="%EC%97%B4%EA%B8%B0%E2%80%A6">열기…</span> <kbd>Ctrl+O</kbd></button>
+      <button data-act="sample"><span data-i18n="%EC%98%88%EC%A0%9C%20%EB%AC%B8%EC%84%9C">예제 문서</span></button>
       <hr>
-      <button data-act="save">저장 <kbd>Ctrl+S</kbd></button>
-      <button data-act="saveas">다른 이름으로 저장…</button>
+      <button data-act="save"><span data-i18n="%EC%A0%80%EC%9E%A5">저장</span> <kbd>Ctrl+S</kbd></button>
+      <button data-act="saveas"><span data-i18n="%EB%8B%A4%EB%A5%B8%20%EC%9D%B4%EB%A6%84%EC%9C%BC%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">다른 이름으로 저장…</span></button>
       <hr>
-      <button data-act="md">.md로 저장…</button>
-      <button data-act="online">md.html(온라인)로 저장…</button>
-      <button data-act="offline">md.html(오프라인)로 저장…</button>
+      <button data-act="md"><span data-i18n=".md%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">.md로 저장…</span></button>
+      <button data-act="online"><span data-i18n="md.html(%EC%98%A8%EB%9D%BC%EC%9D%B8)%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">md.html(온라인)로 저장…</span></button>
+      <button data-act="offline"><span data-i18n="md.html(%EC%98%A4%ED%94%84%EB%9D%BC%EC%9D%B8)%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">md.html(오프라인)로 저장…</span></button>
       <hr>
-      <button data-act="close">닫기</button>
+      <button data-act="close"><span data-i18n="%EB%8B%AB%EA%B8%B0">닫기</span></button>
     </div>
   </div>
   <input type="file" id="fileIn" accept=".md,.markdown,.txt,.html,.htm" hidden>
-  <button id="saveBtn" title="저장 (Ctrl+S)">저장</button>
-  <button id="closeBtn" title="닫기">✕ 닫기</button>
+  <button id="saveBtn" title="저장 (Ctrl+S)" data-i18n-title="%EC%A0%80%EC%9E%A5%20(Ctrl%2BS)"><span data-i18n="%EC%A0%80%EC%9E%A5">저장</span></button>
+  <button id="closeBtn" title="닫기" data-i18n-title="%EB%8B%AB%EA%B8%B0"><span data-i18n="%E2%9C%95%20%EB%8B%AB%EA%B8%B0">✕ 닫기</span></button>
 </header>
 
 <main id="main" data-mode="split">
   <aside id="toc">
-    <div class="hd"><span>목차</span><button id="tocOpen">모두 펼치기</button><button id="tocClose">모두 접기</button></div>
+    <div class="hd"><span><span data-i18n="%EB%AA%A9%EC%B0%A8">목차</span></span><button id="tocOpen"><span data-i18n="%EB%AA%A8%EB%91%90%20%ED%8E%BC%EC%B9%98%EA%B8%B0">모두 펼치기</span></button><button id="tocClose"><span data-i18n="%EB%AA%A8%EB%91%90%20%EC%A0%91%EA%B8%B0">모두 접기</span></button></div>
     <div id="tocTree"></div>
   </aside>
-  <section id="srcPane" class="pane"><div class="ptitle"><span class="pane-label">마크다운 원문</span><div class="pane-actions"><button id="srcLn" type="button" aria-pressed="true" title="원문 줄 번호 끄기">줄 번호 On</button><button type="button" data-copy-pane="src" aria-label="마크다운 원문 복사">복사</button></div></div><div id="src"></div></section>
-  <section id="outPane" class="pane"><div class="ptitle"><span class="pane-label">아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시</span><div class="pane-actions"><button type="button" data-copy-pane="outline" aria-label="아웃라인 창 내용 복사">복사</button></div></div><div id="outline"></div></section>
-  <div id="splitter" title="끌어서 좌우 크기 조절 · 더블클릭: 반반"></div>
-  <section id="wwPane" class="pane"><div class="ptitle"><span class="pane-label">렌더링 (직접 편집 가능)</span><div class="pane-actions"><button type="button" data-copy-pane="ww" aria-label="렌더링 창 내용 복사">복사</button></div></div><div class="link-help">링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭</div><div id="ww"></div></section>
+  <section id="srcPane" class="pane"><div class="ptitle"><span class="pane-label"><span data-i18n="%EB%A7%88%ED%81%AC%EB%8B%A4%EC%9A%B4%20%EC%9B%90%EB%AC%B8">마크다운 원문</span></span><div class="pane-actions"><button id="srcLn" type="button" aria-pressed="true" title="원문 줄 번호 끄기" data-i18n-title="%EC%9B%90%EB%AC%B8%20%EC%A4%84%20%EB%B2%88%ED%98%B8%20%EB%81%84%EA%B8%B0"><span data-i18n="%EC%A4%84%20%EB%B2%88%ED%98%B8%20On">줄 번호 On</span></button><button type="button" data-copy-pane="src" aria-label="마크다운 원문 복사" data-i18n-aria-label="%EB%A7%88%ED%81%AC%EB%8B%A4%EC%9A%B4%20%EC%9B%90%EB%AC%B8%20%EB%B3%B5%EC%82%AC"><span data-i18n="%EB%B3%B5%EC%82%AC">복사</span></button></div></div><div id="src"></div></section>
+  <section id="outPane" class="pane"><div class="ptitle"><span class="pane-label"><span data-i18n="%EC%95%84%EC%9B%83%EB%9D%BC%EC%9D%B8%20%C2%B7%20%ED%81%B4%EB%A6%AD%3A%20%EC%84%A0%ED%83%9D%20%C2%B7%20%EB%8D%94%EB%B8%94%ED%81%B4%EB%A6%AD%2FF2%3A%20%EC%9E%85%EB%A0%A5%20%C2%B7%20Enter%3A%20%EC%95%84%EB%9E%98%20%ED%96%89%20%EC%B6%94%EA%B0%80%20%C2%B7%20Tab%2FShift%2BTab%3A%20%EB%93%A4%EC%97%AC%EC%93%B0%EA%B8%B0%2F%EB%82%B4%EC%96%B4%EC%93%B0%EA%B8%B0%20%C2%B7%20Shift%2BEnter%3A%20%EC%A4%84%EB%B0%94%EA%BF%88%20%C2%B7%20Alt%2B%E2%86%91%E2%86%93%3A%20%EC%9C%84%EC%95%84%EB%9E%98%20%EC%9D%B4%EB%8F%99%20%C2%B7%20%EB%81%8C%EC%96%B4%EC%84%9C%20%EC%9D%B4%EB%8F%99%20%C2%B7%20Delete%3A%20%EC%82%AD%EC%A0%9C%20%C2%B7%20Ctrl%2BZ%2FY%3A%20%EB%90%98%EB%8F%8C%EB%A6%AC%EA%B8%B0%2F%EB%8B%A4%EC%8B%9C">아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시</span></span><div class="pane-actions"><button type="button" data-copy-pane="outline" aria-label="아웃라인 창 내용 복사" data-i18n-aria-label="%EC%95%84%EC%9B%83%EB%9D%BC%EC%9D%B8%20%EC%B0%BD%20%EB%82%B4%EC%9A%A9%20%EB%B3%B5%EC%82%AC"><span data-i18n="%EB%B3%B5%EC%82%AC">복사</span></button></div></div><div id="outline"></div></section>
+  <div id="splitter" title="끌어서 좌우 크기 조절 · 더블클릭: 반반" data-i18n-title="%EB%81%8C%EC%96%B4%EC%84%9C%20%EC%A2%8C%EC%9A%B0%20%ED%81%AC%EA%B8%B0%20%EC%A1%B0%EC%A0%88%20%C2%B7%20%EB%8D%94%EB%B8%94%ED%81%B4%EB%A6%AD%3A%20%EB%B0%98%EB%B0%98"></div>
+  <section id="wwPane" class="pane"><div class="ptitle"><span class="pane-label"><span data-i18n="%EB%A0%8C%EB%8D%94%EB%A7%81%20(%EC%A7%81%EC%A0%91%20%ED%8E%B8%EC%A7%91%20%EA%B0%80%EB%8A%A5)">렌더링 (직접 편집 가능)</span></span><div class="pane-actions"><button type="button" data-copy-pane="ww" aria-label="렌더링 창 내용 복사" data-i18n-aria-label="%EB%A0%8C%EB%8D%94%EB%A7%81%20%EC%B0%BD%20%EB%82%B4%EC%9A%A9%20%EB%B3%B5%EC%82%AC"><span data-i18n="%EB%B3%B5%EC%82%AC">복사</span></button></div></div><div class="link-help"><span data-i18n="%EB%A7%81%ED%81%AC%3A%20%ED%81%B4%EB%A6%AD%ED%95%98%EC%97%AC%20%EC%83%88%20%ED%83%AD%20%EC%97%B4%EA%B8%B0%20%C2%B7%20%ED%8E%B8%EC%A7%91%20%EC%A4%91%EC%97%90%EB%8A%94%20Ctrl%2FCmd%2B%ED%81%B4%EB%A6%AD">링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭</span></div><div id="ww"></div></section>
 </main>
 <div id="paneCopyStatus" class="pane-copy-status" role="status" aria-live="polite"></div>
 
 <div id="dlg" hidden>
   <div class="box">
     <div class="top">
-      <b>표</b><small id="dlgInfo"></small>
-      <button id="vGrid" class="on">▦ 격자</button><button id="vMd">MD</button>
-      <button id="dlgX" title="닫기">✕</button>
+      <b><span data-i18n="%ED%91%9C">표</span></b><small id="dlgInfo"></small>
+      <button id="vGrid" class="on"><span data-i18n="%E2%96%A6%20%EA%B2%A9%EC%9E%90">▦ 격자</span></button><button id="vMd">MD</button>
+      <button id="dlgX" title="닫기" data-i18n-title="%EB%8B%AB%EA%B8%B0">✕</button>
     </div>
     <div class="mid">
       <table id="grid"></table>
       <textarea id="mdView" hidden spellcheck="false"></textarea>
     </div>
     <div class="ctl" id="gridCtl">
-      <button id="addR">+ 행</button><button id="delR">− 행</button>
-      <button id="addC">+ 열</button><button id="delC">− 열</button>
+      <button id="addR"><span data-i18n="%2B%20%ED%96%89">+ 행</span></button><button id="delR"><span data-i18n="%E2%88%92%20%ED%96%89">− 행</span></button>
+      <button id="addC"><span data-i18n="%2B%20%EC%97%B4">+ 열</span></button><button id="delC"><span data-i18n="%E2%88%92%20%EC%97%B4">− 열</span></button>
       <span style="width:8px"></span>
-      <button class="al" data-al="l" title="왼쪽 정렬">⇤</button>
-      <button class="al" data-al="c" title="가운데 정렬">↔</button>
-      <button class="al" data-al="r" title="오른쪽 정렬">⇥</button>
-      <small>커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸</small>
+      <button class="al" data-al="l" title="왼쪽 정렬" data-i18n-title="%EC%99%BC%EC%AA%BD%20%EC%A0%95%EB%A0%AC">⇤</button>
+      <button class="al" data-al="c" title="가운데 정렬" data-i18n-title="%EA%B0%80%EC%9A%B4%EB%8D%B0%20%EC%A0%95%EB%A0%AC">↔</button>
+      <button class="al" data-al="r" title="오른쪽 정렬" data-i18n-title="%EC%98%A4%EB%A5%B8%EC%AA%BD%20%EC%A0%95%EB%A0%AC">⇥</button>
+      <small><span data-i18n="%EC%BB%A4%EC%84%9C%EA%B0%80%20%EC%9E%88%EB%8A%94%20%EC%85%80%20%EA%B8%B0%EC%A4%80%20%C2%B7%20%EC%A0%95%EB%A0%AC%EC%9D%80%20%EC%97%B4%20%EB%8B%A8%EC%9C%84%20%C2%B7%20%EC%85%80%20%EC%95%88%20%7C%20%EB%8A%94%20%5C%7C%20%EB%A1%9C%20%EC%A0%80%EC%9E%A5%20%C2%B7%20Enter%EB%8A%94%20%EC%85%80%20%EC%95%88%20%EC%A4%84%EB%B0%94%EA%BF%88(%26lt%3Bbr%26gt%3B)%20%C2%B7%20Tab%EC%9C%BC%EB%A1%9C%20%EB%8B%A4%EC%9D%8C%20%EC%B9%B8">커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸</span></small>
     </div>
-    <div class="bot"><button id="dlgCancel">취소 (Esc)</button><button id="dlgOk" class="ok">확인 (Ctrl+Enter)</button></div>
+    <div class="bot"><button id="dlgCancel"><span data-i18n="%EC%B7%A8%EC%86%8C%20(Esc)">취소 (Esc)</span></button><button id="dlgOk" class="ok"><span data-i18n="%ED%99%95%EC%9D%B8%20(Ctrl%2BEnter)">확인 (Ctrl+Enter)</span></button></div>
   </div>
 </div>
 
 <div id="cdlg" class="modal" hidden>
-  <div class="box cbox" role="dialog" aria-label="코드 블록">
+  <div class="box cbox" role="dialog" aria-label="코드 블록" data-i18n-aria-label="%EC%BD%94%EB%93%9C%20%EB%B8%94%EB%A1%9D">
     <div class="top">
-      <b id="cTitle">코드 블록 삽입</b><span class="sp"></span>
-      <button id="cLn" class="pill" title="줄 번호 끄기">1≡ On</button>
-      <button id="cCopy" title="코드 복사" aria-label="코드 복사" disabled>⧉</button>
-      <button id="cX" title="닫기" aria-label="닫기">✕</button>
+      <b id="cTitle"><span data-i18n="%EC%BD%94%EB%93%9C%20%EB%B8%94%EB%A1%9D%20%EC%82%BD%EC%9E%85">코드 블록 삽입</span></b><span class="sp"></span>
+      <button id="cLn" class="pill" title="줄 번호 끄기" data-i18n-title="%EC%A4%84%20%EB%B2%88%ED%98%B8%20%EB%81%84%EA%B8%B0">1≡ On</button>
+      <button id="cCopy" title="코드 복사" data-i18n-title="%EC%BD%94%EB%93%9C%20%EB%B3%B5%EC%82%AC" aria-label="코드 복사" data-i18n-aria-label="%EC%BD%94%EB%93%9C%20%EB%B3%B5%EC%82%AC" disabled>⧉</button>
+      <button id="cX" title="닫기" data-i18n-title="%EB%8B%AB%EA%B8%B0" aria-label="닫기" data-i18n-aria-label="%EB%8B%AB%EA%B8%B0">✕</button>
     </div>
     <div class="crow">
-      <label for="cLang">언어</label>
-      <input id="cLang" role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="예: bash, js, python — 비우면 code">
-      <button id="cLangBtn" title="언어 목록에서 고르기" aria-label="언어 목록에서 고르기">☰</button>
+      <label for="cLang"><span data-i18n="%EC%96%B8%EC%96%B4">언어</span></label>
+      <input id="cLang" role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="예: bash, js, python — 비우면 code" data-i18n-placeholder="%EC%98%88%3A%20bash%2C%20js%2C%20python%20%E2%80%94%20%EB%B9%84%EC%9A%B0%EB%A9%B4%20code">
+      <button id="cLangBtn" title="언어 목록에서 고르기" data-i18n-title="%EC%96%B8%EC%96%B4%20%EB%AA%A9%EB%A1%9D%EC%97%90%EC%84%9C%20%EA%B3%A0%EB%A5%B4%EA%B8%B0" aria-label="언어 목록에서 고르기" data-i18n-aria-label="%EC%96%B8%EC%96%B4%20%EB%AA%A9%EB%A1%9D%EC%97%90%EC%84%9C%20%EA%B3%A0%EB%A5%B4%EA%B8%B0">☰</button>
       <div id="cList" role="listbox" hidden></div>
     </div>
-    <div class="cedit"><div id="cGut">1</div><textarea id="cCode" spellcheck="false" placeholder="코드를 입력하세요 (여러 줄 가능)"></textarea></div>
-    <div class="bot"><span id="cMsg"></span><button id="cCancel">취소 (Esc)</button><button id="cOk" class="ok" disabled>확인 (Ctrl+Enter)</button></div>
+    <div class="cedit"><div id="cGut">1</div><textarea id="cCode" spellcheck="false" placeholder="코드를 입력하세요 (여러 줄 가능)" data-i18n-placeholder="%EC%BD%94%EB%93%9C%EB%A5%BC%20%EC%9E%85%EB%A0%A5%ED%95%98%EC%84%B8%EC%9A%94%20(%EC%97%AC%EB%9F%AC%20%EC%A4%84%20%EA%B0%80%EB%8A%A5)"></textarea></div>
+    <div class="bot"><span id="cMsg"></span><button id="cCancel"><span data-i18n="%EC%B7%A8%EC%86%8C%20(Esc)">취소 (Esc)</span></button><button id="cOk" class="ok" disabled><span data-i18n="%ED%99%95%EC%9D%B8%20(Ctrl%2BEnter)">확인 (Ctrl+Enter)</span></button></div>
   </div>
 </div>
 
 <div id="ldlg" class="modal" hidden>
-  <div class="box lbox" role="dialog" aria-label="링크">
-    <div class="top"><b id="lTitle">링크 삽입</b><span class="sp"></span><button id="lX" title="닫기">✕</button></div>
-    <div class="lrow"><label for="lText">글자</label><input id="lText" placeholder="보일 글자 (비우면 주소)"></div>
-    <div class="lrow"><label for="lUrl">주소</label><select id="lProtocol" aria-label="링크 프로토콜"><option value="https://">https://</option><option value="http://">http://</option></select><input id="lUrl" placeholder="example.com/path" autocomplete="off" spellcheck="false"></div>
-    <div class="ltools"><button id="lPaste" type="button">클립보드 붙여넣기</button><span id="lMsg" role="status" aria-live="polite"></span></div>
-    <div class="bot"><button id="lCancel">취소 (Esc)</button><button id="lOk" class="ok" disabled>확인 (Enter)</button></div>
+  <div class="box lbox" role="dialog" aria-label="링크" data-i18n-aria-label="%EB%A7%81%ED%81%AC">
+    <div class="top"><b id="lTitle"><span data-i18n="%EB%A7%81%ED%81%AC%20%EC%82%BD%EC%9E%85">링크 삽입</span></b><span class="sp"></span><button id="lX" title="닫기" data-i18n-title="%EB%8B%AB%EA%B8%B0">✕</button></div>
+    <div class="lrow"><label for="lText"><span data-i18n="%EA%B8%80%EC%9E%90">글자</span></label><input id="lText" placeholder="보일 글자 (비우면 주소)" data-i18n-placeholder="%EB%B3%B4%EC%9D%BC%20%EA%B8%80%EC%9E%90%20(%EB%B9%84%EC%9A%B0%EB%A9%B4%20%EC%A3%BC%EC%86%8C)"></div>
+    <div class="lrow"><label for="lUrl"><span data-i18n="%EC%A3%BC%EC%86%8C">주소</span></label><select id="lProtocol" aria-label="링크 프로토콜" data-i18n-aria-label="%EB%A7%81%ED%81%AC%20%ED%94%84%EB%A1%9C%ED%86%A0%EC%BD%9C"><option value="https://">https://</option><option value="http://">http://</option></select><input id="lUrl" placeholder="example.com/path" autocomplete="off" spellcheck="false"></div>
+    <div class="ltools"><button id="lPaste" type="button"><span data-i18n="%ED%81%B4%EB%A6%BD%EB%B3%B4%EB%93%9C%20%EB%B6%99%EC%97%AC%EB%84%A3%EA%B8%B0">클립보드 붙여넣기</span></button><span id="lMsg" role="status" aria-live="polite"></span></div>
+    <div class="bot"><button id="lCancel"><span data-i18n="%EC%B7%A8%EC%86%8C%20(Esc)">취소 (Esc)</span></button><button id="lOk" class="ok" disabled><span data-i18n="%ED%99%95%EC%9D%B8%20(Enter)">확인 (Enter)</span></button></div>
   </div>
 </div>
 
 <div id="sdlg" class="modal" hidden>
-  <div class="box sbox" role="dialog" aria-label="설정">
-    <div class="top"><b>설정</b><span class="sp"></span><button id="sX" title="닫기">✕</button></div>
+  <div class="box sbox" role="dialog" aria-label="설정" data-i18n-aria-label="%EC%84%A4%EC%A0%95">
+    <div class="top"><b><span data-i18n="%EC%84%A4%EC%A0%95">설정</span></b><span class="sp"></span><button id="sX" title="닫기" data-i18n-title="%EB%8B%AB%EA%B8%B0">✕</button></div>
     <div class="mid sgrid">
-      <label for="sTheme">색 테마</label>
+      <label for="sUiLanguage"><span data-i18n="%ED%8E%B8%EC%A7%91%EA%B8%B0%20%EC%96%B8%EC%96%B4">편집기 언어</span></label>
+      <div><select id="sUiLanguage" aria-describedby="sLanguageHint"><option value="ko" lang="ko">한국어</option><option value="en" lang="en">English</option><option value="ja" lang="ja">日本語</option><option value="zh" lang="zh-Hans">简体中文</option></select><small id="sLanguageHint" data-i18n="%EB%AC%B8%EC%84%9C%20%EB%82%B4%EC%9A%A9%EC%9D%80%20%EC%9C%A0%EC%A7%80%EB%90%98%EC%A7%80%EB%A7%8C%20%EB%A0%8C%EB%8D%94%EB%A7%81%20%EC%B0%BD%EC%9D%98%20%EC%8B%A4%ED%96%89%20%EC%B7%A8%EC%86%8C%20%EA%B8%B0%EB%A1%9D%EC%9D%80%20%EC%B4%88%EA%B8%B0%ED%99%94%EB%90%A9%EB%8B%88%EB%8B%A4." style="display:block;margin-top:6px;font-size:11px;line-height:1.5;color:var(--mu)">문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.</small></div>
+      
+      <label for="sTheme"><span data-i18n="%EC%83%89%20%ED%85%8C%EB%A7%88">색 테마</span></label>
       <select id="sTheme">
-        <option value="light-plus">VS Code Light+ (기본 밝은 테마)</option>
-        <option value="dark-plus">VS Code Dark+ (기본 어두운 테마)</option>
+        <option value="light-plus" data-i18n="VS%20Code%20Light%2B%20(%EA%B8%B0%EB%B3%B8%20%EB%B0%9D%EC%9D%80%20%ED%85%8C%EB%A7%88)">VS Code Light+ (기본 밝은 테마)</option>
+        <option value="dark-plus" data-i18n="VS%20Code%20Dark%2B%20(%EA%B8%B0%EB%B3%B8%20%EC%96%B4%EB%91%90%EC%9A%B4%20%ED%85%8C%EB%A7%88)">VS Code Dark+ (기본 어두운 테마)</option>
         <option value="light-modern">VS Code Light Modern</option>
         <option value="dark-modern">VS Code Dark Modern</option>
       </select>
-      <label>적용 범위</label>
-      <label class="chk"><input type="checkbox" id="sApp"> 메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)</label>
-      <label for="sFont">원문 글꼴 크기</label>
+      <label><span data-i18n="%EC%A0%81%EC%9A%A9%20%EB%B2%94%EC%9C%84">적용 범위</span></label>
+      <label class="chk"><input type="checkbox" id="sApp"> <span data-i18n="%EB%A9%94%EB%89%B4%C2%B7%EB%AA%A9%EC%B0%A8%C2%B7%EC%95%84%EC%9B%83%EB%9D%BC%EC%9D%B8%C2%B7%EB%A0%8C%EB%8D%94%EB%A7%81%20%ED%99%94%EB%A9%B4%EB%8F%84%20%ED%85%8C%EB%A7%88%EC%97%90%20%EB%A7%9E%EC%B6%A4%20(%EC%96%B4%EB%91%90%EC%9A%B4%20%ED%85%8C%EB%A7%88%EB%A9%B4%20%EC%A0%84%EC%B2%B4%EA%B0%80%20%EC%96%B4%EB%91%90%EC%9B%8C%EC%A7%90)">메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)</span></label>
+      <label for="sFont"><span data-i18n="%EC%9B%90%EB%AC%B8%20%EA%B8%80%EA%BC%B4%20%ED%81%AC%EA%B8%B0">원문 글꼴 크기</span></label>
       <div><input type="number" id="sFont" min="11" max="24" step="1" style="width:70px"> px</div>
-      <label>원문 줄바꿈</label>
-      <label class="chk"><input type="checkbox" id="sWrap"> 긴 줄을 화면 폭에서 접어 보기</label>
-      <label>밑줄·하이라이트 문법</label>
+      <label><span data-i18n="%EC%9B%90%EB%AC%B8%20%EC%A4%84%EB%B0%94%EA%BF%88">원문 줄바꿈</span></label>
+      <label class="chk"><input type="checkbox" id="sWrap"> <span data-i18n="%EA%B8%B4%20%EC%A4%84%EC%9D%84%20%ED%99%94%EB%A9%B4%20%ED%8F%AD%EC%97%90%EC%84%9C%20%EC%A0%91%EC%96%B4%20%EB%B3%B4%EA%B8%B0">긴 줄을 화면 폭에서 접어 보기</span></label>
+      <label><span data-i18n="%EB%B0%91%EC%A4%84%C2%B7%ED%95%98%EC%9D%B4%EB%9D%BC%EC%9D%B4%ED%8A%B8%20%EB%AC%B8%EB%B2%95">밑줄·하이라이트 문법</span></label>
       <div>
-        <label class="chk"><input type="radio" name="sSyn" value="html"> HTML: <code>&lt;u&gt;밑줄&lt;/u&gt;</code>, <code>&lt;mark&gt;하이라이트&lt;/mark&gt;</code> (표준, VS Code·GitHub 미리보기와 호환)</label>
-        <label class="chk"><input type="radio" name="sSyn" value="emm"> EMM: <code>__밑줄__</code>, <code>==하이라이트==</code> (EasyMindMap 노드와 같은 방식)</label>
+        <label class="chk"><input type="radio" name="sSyn" value="html"> HTML: <code data-i18n="%3Cu%3E%EB%B0%91%EC%A4%84%3C%2Fu%3E%2C%20%3Cmark%3E%ED%95%98%EC%9D%B4%EB%9D%BC%EC%9D%B4%ED%8A%B8%3C%2Fmark%3E">&lt;u&gt;밑줄&lt;/u&gt;, &lt;mark&gt;하이라이트&lt;/mark&gt;</code> <span data-i18n="(%ED%91%9C%EC%A4%80%2C%20VS%20Code%C2%B7GitHub%20%EB%AF%B8%EB%A6%AC%EB%B3%B4%EA%B8%B0%EC%99%80%20%ED%98%B8%ED%99%98)">(표준, VS Code·GitHub 미리보기와 호환)</span></label>
+        <label class="chk"><input type="radio" name="sSyn" value="emm"> EMM: <code data-i18n="__%EB%B0%91%EC%A4%84__%2C%20%3D%3D%ED%95%98%EC%9D%B4%EB%9D%BC%EC%9D%B4%ED%8A%B8%3D%3D">__밑줄__, ==하이라이트==</code> <span data-i18n="(EasyMindMap%20%EB%85%B8%EB%93%9C%EC%99%80%20%EA%B0%99%EC%9D%80%20%EB%B0%A9%EC%8B%9D)">(EasyMindMap 노드와 같은 방식)</span></label>
       </div>
     </div>
     <div class="mid">
-      <b class="sub">원문 색 직접 바꾸기</b> <small style="color:var(--mu)">· 바꾼 색(•)은 테마를 바꿔도 유지됩니다</small>
+      <b class="sub"><span data-i18n="%EC%9B%90%EB%AC%B8%20%EC%83%89%20%EC%A7%81%EC%A0%91%20%EB%B0%94%EA%BE%B8%EA%B8%B0">원문 색 직접 바꾸기</span></b> <small style="color:var(--mu)"><span data-i18n="%C2%B7%20%EB%B0%94%EA%BE%BC%20%EC%83%89(%E2%80%A2)%EC%9D%80%20%ED%85%8C%EB%A7%88%EB%A5%BC%20%EB%B0%94%EA%BF%94%EB%8F%84%20%EC%9C%A0%EC%A7%80%EB%90%A9%EB%8B%88%EB%8B%A4">· 바꾼 색(•)은 테마를 바꿔도 유지됩니다</span></small>
       <div id="sColors" class="cgrid"></div>
     </div>
-    <div class="bot"><button id="sReset">색 기본값으로</button><span class="sp"></span><button id="sClose" class="ok">닫기</button></div>
+    <div class="bot"><button id="sReset"><span data-i18n="%EC%83%89%20%EA%B8%B0%EB%B3%B8%EA%B0%92%EC%9C%BC%EB%A1%9C">색 기본값으로</span></button><span class="sp"></span><button id="sClose" class="ok"><span data-i18n="%EB%8B%AB%EA%B8%B0">닫기</span></button></div>
   </div>
 </div>
 
@@ -436,14 +444,43 @@ const QS = new URLSearchParams(location.search);
 // Embedded (in-map) attachment: /md-editor/?src=opener&key=<attachment key>&name=<file name> — content comes from and goes back to the EMM tab that opened this one
 const EMM = QS.get("att") ? { mode: "server", att: QS.get("att"), api: (QS.get("api") || location.origin).replace(/\/+$/, ""), name: QS.get("name") || "첨부.md", base: null, readOnly: false }
   : QS.get("src") === "opener" && QS.get("key") ? { mode: "opener", key: QS.get("key"), name: QS.get("name") || "첨부.md", readOnly: false } : null;
+
+/* v7 explicit UI dictionaries: never traverse or translate document content. */
+const I18N = {"ko":{"마크다운 편집기":"마크다운 편집기","왼쪽 목차 접기/펼치기":"왼쪽 목차 접기/펼치기","☰ 목차":"☰ 목차","마크다운":"마크다운","아웃라인":"아웃라인","렌더링":"렌더링","분할":"분할","제목 단계 (커서가 있는 줄)":"제목 단계 (커서가 있는 줄)","제목":"제목","본문":"본문","굵게 (Ctrl+B)":"굵게 (Ctrl+B)","기울임 (Ctrl+I)":"기울임 (Ctrl+I)","취소선":"취소선","밑줄 (Ctrl+U)":"밑줄 (Ctrl+U)","하이라이트 (다시 누르면 해제)":"하이라이트 (다시 누르면 해제)","글머리 기호 (다시 누르면 해제)":"글머리 기호 (다시 누르면 해제)","번호 매기기 (다시 누르면 해제)":"번호 매기기 (다시 누르면 해제)","체크박스 (- [ ] — 다시 누르면 해제)":"체크박스 (- [ ] — 다시 누르면 해제)","링크 삽입 (Ctrl+K)":"링크 삽입 (Ctrl+K)","인라인 코드 (`…`)":"인라인 코드 (`…`)","코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)":"코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)","표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)":"표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)","색 테마·글꼴·문법 설정":"색 테마·글꼴·문법 설정","⚙ 설정":"⚙ 설정","파일 메뉴":"파일 메뉴","파일 ▾":"파일 ▾","새 문서":"새 문서","열기…":"열기…","예제 문서":"예제 문서","저장":"저장","다른 이름으로 저장…":"다른 이름으로 저장…",".md로 저장…":".md로 저장…","md.html(온라인)로 저장…":"md.html(온라인)로 저장…","md.html(오프라인)로 저장…":"md.html(오프라인)로 저장…","닫기":"닫기","저장 (Ctrl+S)":"저장 (Ctrl+S)","✕ 닫기":"✕ 닫기","목차":"목차","모두 펼치기":"모두 펼치기","모두 접기":"모두 접기","마크다운 원문":"마크다운 원문","원문 줄 번호 끄기":"원문 줄 번호 끄기","줄 번호 On":"줄 번호 On","마크다운 원문 복사":"마크다운 원문 복사","복사":"복사","아웃라인 창 내용 복사":"아웃라인 창 내용 복사","끌어서 좌우 크기 조절 · 더블클릭: 반반":"끌어서 좌우 크기 조절 · 더블클릭: 반반","렌더링 (직접 편집 가능)":"렌더링 (직접 편집 가능)","렌더링 창 내용 복사":"렌더링 창 내용 복사","링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭":"링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭","표":"표","▦ 격자":"▦ 격자","+ 행":"+ 행","− 행":"− 행","+ 열":"+ 열","− 열":"− 열","왼쪽 정렬":"왼쪽 정렬","가운데 정렬":"가운데 정렬","오른쪽 정렬":"오른쪽 정렬","취소 (Esc)":"취소 (Esc)","확인 (Ctrl+Enter)":"확인 (Ctrl+Enter)","코드 블록":"코드 블록","코드 블록 삽입":"코드 블록 삽입","줄 번호 끄기":"줄 번호 끄기","코드 복사":"코드 복사","언어":"언어","예: bash, js, python — 비우면 code":"예: bash, js, python — 비우면 code","언어 목록에서 고르기":"언어 목록에서 고르기","코드를 입력하세요 (여러 줄 가능)":"코드를 입력하세요 (여러 줄 가능)","링크":"링크","링크 삽입":"링크 삽입","글자":"글자","보일 글자 (비우면 주소)":"보일 글자 (비우면 주소)","주소":"주소","링크 프로토콜":"링크 프로토콜","클립보드 붙여넣기":"클립보드 붙여넣기","확인 (Enter)":"확인 (Enter)","설정":"설정","색 테마":"색 테마","VS Code Light+ (기본 밝은 테마)":"VS Code Light+ (기본 밝은 테마)","VS Code Dark+ (기본 어두운 테마)":"VS Code Dark+ (기본 어두운 테마)","적용 범위":"적용 범위","메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)":"메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)","원문 글꼴 크기":"원문 글꼴 크기","원문 줄바꿈":"원문 줄바꿈","긴 줄을 화면 폭에서 접어 보기":"긴 줄을 화면 폭에서 접어 보기","밑줄·하이라이트 문법":"밑줄·하이라이트 문법","(표준, VS Code·GitHub 미리보기와 호환)":"(표준, VS Code·GitHub 미리보기와 호환)","(EasyMindMap 노드와 같은 방식)":"(EasyMindMap 노드와 같은 방식)","원문 색 직접 바꾸기":"원문 색 직접 바꾸기","· 바꾼 색(•)은 테마를 바꿔도 유지됩니다":"· 바꾼 색(•)은 테마를 바꿔도 유지됩니다","색 기본값으로":"색 기본값으로","복사 권한을 확인해 주세요.":"복사 권한을 확인해 주세요.","복사됨":"복사됨"," 완료":" 완료","복사 실패":"복사 실패","복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.":"복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.","원문":"원문","● 저장 안 됨 · ":"● 저장 안 됨 · ","제목(# ...)이 없습니다.":"제목(# ...)이 없습니다.","되돌릴 아웃라인 작업이 없습니다":"되돌릴 아웃라인 작업이 없습니다","원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다":"원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다","다시 실행할 작업이 없습니다":"다시 실행할 작업이 없습니다","그 위치로는 옮길 수 없습니다":"그 위치로는 옮길 수 없습니다","제목과 목록만 들여쓸 수 있습니다":"제목과 목록만 들여쓸 수 있습니다","바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다":"바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다","더 내어쓸 수 없습니다":"더 내어쓸 수 없습니다","삭제했습니다 (Ctrl+Z로 되돌리기)":"삭제했습니다 (Ctrl+Z로 되돌리기)","내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.":"내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.","더블클릭: 코드 블록 편집":"더블클릭: 코드 블록 편집","더블클릭: 표 편집기":"더블클릭: 표 편집기","더 옮길 곳이 없습니다":"더 옮길 곳이 없습니다"," · 기존 표 편집":" · 기존 표 편집"," · 새 표":" · 새 표","표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.":"표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.","표 형식이 올바르지 않습니다.":"표 형식이 올바르지 않습니다.","코드 블록 수정":"코드 블록 수정","줄 번호 켜기":"줄 번호 켜기","목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다":"목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다","복사했습니다":"복사했습니다","복사하지 못했습니다":"복사하지 못했습니다","링크 수정":"링크 수정","이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.":"이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.","클립보드에서 웹 주소를 찾지 못했습니다.":"클립보드에서 웹 주소를 찾지 못했습니다.","주소를 채웠습니다.":"주소를 채웠습니다.","클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.":"클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.","md.html 온라인":"md.html 온라인","md.html 오프라인":"md.html 오프라인","EMM 첨부":"EMM 첨부","오프라인 파일을 만드는 중… (라이브러리를 넣습니다)":"오프라인 파일을 만드는 중… (라이브러리를 넣습니다)","저장 중…":"저장 중…","파일을 만들지 못했습니다: ":"파일을 만들지 못했습니다: ","\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.":"\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.","내려받기 폴더에 저장했습니다":"내려받기 폴더에 저장했습니다","저장했습니다":"저장했습니다","로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.":"로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.","이 첨부를 고칠 권한이 없습니다 (읽기 전용).":"이 첨부를 고칠 권한이 없습니다 (읽기 전용).","첨부를 찾을 수 없거나 볼 권한이 없습니다.":"첨부를 찾을 수 없거나 볼 권한이 없습니다.","용량 한도를 넘었습니다.":"용량 한도를 넘었습니다.","이 형식의 첨부는 저장할 수 없습니다.":"이 형식의 첨부는 저장할 수 없습니다.","서버 오류 (":"서버 오류 (","불러왔습니다 (읽기 전용)":"불러왔습니다 (읽기 전용)","불러왔습니다: ":"불러왔습니다: ","EasyMindMap 탭에서 내용을 받는 중…":"EasyMindMap 탭에서 내용을 받는 중…","불러오지 못했습니다":"불러오지 못했습니다","EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.":"EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.","이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.":"이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.","EasyMindMap 탭이 응답하지 않습니다.":"EasyMindMap 탭이 응답하지 않습니다.","저장하지 못했습니다.":"저장하지 못했습니다.","EasyMindMap 첨부를 불러오는 중…":"EasyMindMap 첨부를 불러오는 중…","첨부를 불러오지 못했습니다: ":"첨부를 불러오지 못했습니다: ","읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.":"읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.","EasyMindMap에 저장 중…":"EasyMindMap에 저장 중…","EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)":"EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)","저장하지 못했습니다":"저장하지 못했습니다","저장하지 못했습니다: ":"저장하지 못했습니다: ","저장하지 않았습니다 (다른 곳에서 먼저 고침)":"저장하지 않았습니다 (다른 곳에서 먼저 고침)","EasyMindMap 첨부에 저장했습니다":"EasyMindMap 첨부에 저장했습니다","이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.":"이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.","저장하지 않은 변경이 있습니다. 버리고 계속할까요?":"저장하지 않은 변경이 있습니다. 버리고 계속할까요?","저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?":"저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?","브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.":"브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.","Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)":"Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)","HTML 미리보기":"HTML 미리보기","Mermaid 오류: ":"Mermaid 오류: ","EMM에 저장":"EMM에 저장","EasyMindMap 첨부에 저장 (Ctrl+S)":"EasyMindMap 첨부에 저장 (Ctrl+S)","더블클릭: 코드 편집":"더블클릭: 코드 편집","미리보기 준비 중…":"미리보기 준비 중…","statusFormat":"편집 대상: {target} · {count}줄","tableFormat":"{rows}행 × {cols}열","Language":"언어","아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시":"아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시","커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸":"커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸",".md로 내려받기":".md로 내려받기","<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.":"<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.","다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)":"다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)","배경":"배경","기본 글자":"기본 글자","줄 번호":"줄 번호","선택 영역":"선택 영역","커서":"커서","제목 #":"제목 #","굵게 **":"굵게 **","기울임 *":"기울임 *","인라인 코드 `":"인라인 코드 `","목록 기호 - 1.":"목록 기호 - 1.","인용 기호 >":"인용 기호 >","HTML 태그 이름":"HTML 태그 이름","HTML 꺾쇠 < >":"HTML 꺾쇠 < >","HTML 속성":"HTML 속성","코드: 키워드":"코드: 키워드","코드: 문자열":"코드: 문자열","코드: 숫자":"코드: 숫자","코드: 주석":"코드: 주석","코드: 함수 이름":"코드: 함수 이름","코드: 변수·속성":"코드: 변수·속성","코드: 타입·클래스":"코드: 타입·클래스","코드: 연산자":"코드: 연산자","편집기 언어":"편집기 언어","<u>밑줄</u>, <mark>하이라이트</mark>":"<u>밑줄</u>, <mark>하이라이트</mark>","__밑줄__, ==하이라이트==":"__밑줄__, ==하이라이트==","문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.":"문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다."},"en":{"마크다운 편집기":"Markdown Editor","왼쪽 목차 접기/펼치기":"Toggle contents","☰ 목차":"☰ Contents","마크다운":"Markdown","아웃라인":"Outline","렌더링":"Rendered","분할":"Split","제목 단계 (커서가 있는 줄)":"Heading level (current line)","제목":"Heading","본문":"Paragraph","굵게 (Ctrl+B)":"Bold (Ctrl+B)","기울임 (Ctrl+I)":"Italic (Ctrl+I)","취소선":"Strikethrough","밑줄 (Ctrl+U)":"Underline (Ctrl+U)","하이라이트 (다시 누르면 해제)":"Highlight (toggle)","글머리 기호 (다시 누르면 해제)":"Bullet list (toggle)","번호 매기기 (다시 누르면 해제)":"Numbered list (toggle)","체크박스 (- [ ] — 다시 누르면 해제)":"Task list (toggle)","링크 삽입 (Ctrl+K)":"Insert link (Ctrl+K)","인라인 코드 (`…`)":"Inline code","코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)":"Insert or edit code block","표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)":"Insert or edit table at cursor","색 테마·글꼴·문법 설정":"Theme, font and syntax","⚙ 설정":"⚙ Settings","파일 메뉴":"File menu","파일 ▾":"File ▾","새 문서":"New document","열기…":"Open…","예제 문서":"Sample document","저장":"Save","다른 이름으로 저장…":"Save as…",".md로 저장…":"Save as .md…","md.html(온라인)로 저장…":"Save md.html (online)…","md.html(오프라인)로 저장…":"Save md.html (offline)…","닫기":"Close","저장 (Ctrl+S)":"Save (Ctrl+S)","✕ 닫기":"✕ Close","목차":"Contents","모두 펼치기":"Expand all","모두 접기":"Collapse all","마크다운 원문":"Markdown source","원문 줄 번호 끄기":"Hide source line numbers","줄 번호 On":"Line numbers On","마크다운 원문 복사":"Copy Markdown source","복사":"Copy","아웃라인 창 내용 복사":"Copy outline pane","끌어서 좌우 크기 조절 · 더블클릭: 반반":"Drag to resize · Double-click: equal widths","렌더링 (직접 편집 가능)":"Rendered (editable)","렌더링 창 내용 복사":"Copy rendered pane","링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭":"Links: click for new tab · Ctrl/Cmd+click while editing","표":"Table","▦ 격자":"▦ Grid","+ 행":"+ Row","− 행":"− Row","+ 열":"+ Column","− 열":"− Column","왼쪽 정렬":"Align left","가운데 정렬":"Align center","오른쪽 정렬":"Align right","취소 (Esc)":"Cancel (Esc)","확인 (Ctrl+Enter)":"OK (Ctrl+Enter)","코드 블록":"Code block","코드 블록 삽입":"Insert code block","줄 번호 끄기":"Hide line numbers","코드 복사":"Copy code","언어":"Language","예: bash, js, python — 비우면 code":"e.g. bash, js, python; blank means code","언어 목록에서 고르기":"Choose language","코드를 입력하세요 (여러 줄 가능)":"Enter code (multiple lines allowed)","링크":"Link","링크 삽입":"Insert link","글자":"Text","보일 글자 (비우면 주소)":"Display text (blank uses URL)","주소":"URL","링크 프로토콜":"Link protocol","클립보드 붙여넣기":"Paste from clipboard","확인 (Enter)":"OK (Enter)","설정":"Settings","색 테마":"Color theme","VS Code Light+ (기본 밝은 테마)":"VS Code Light+ (default light)","VS Code Dark+ (기본 어두운 테마)":"VS Code Dark+ (default dark)","적용 범위":"Scope","메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)":"Apply theme to menus, contents, outline and rendered pane","원문 글꼴 크기":"Source font size","원문 줄바꿈":"Source line wrapping","긴 줄을 화면 폭에서 접어 보기":"Wrap long lines to pane width","밑줄·하이라이트 문법":"Underline and highlight syntax","(표준, VS Code·GitHub 미리보기와 호환)":"(standard, VS Code/GitHub preview compatible)","(EasyMindMap 노드와 같은 방식)":"(same as EasyMindMap nodes)","원문 색 직접 바꾸기":"Customize source colors","· 바꾼 색(•)은 테마를 바꿔도 유지됩니다":"· Custom colors (•) survive theme changes","색 기본값으로":"Reset colors","복사 권한을 확인해 주세요.":"Check clipboard permission.","복사됨":"Copied"," 완료":" complete","복사 실패":"Copy failed","복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.":"Copy failed. Check browser clipboard permission.","원문":"Source","● 저장 안 됨 · ":"● Unsaved · ","제목(# ...)이 없습니다.":"No headings (# ...).","되돌릴 아웃라인 작업이 없습니다":"Nothing to undo","원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다":"Outline history cleared after source/rendered edits","다시 실행할 작업이 없습니다":"Nothing to redo","그 위치로는 옮길 수 없습니다":"Cannot move there","제목과 목록만 들여쓸 수 있습니다":"Only headings and lists can be indented","바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다":"No preceding item at the same level","더 내어쓸 수 없습니다":"Cannot outdent further","삭제했습니다 (Ctrl+Z로 되돌리기)":"Deleted (Ctrl+Z to undo)","내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.":"Empty. Click here and press Enter to add a node.","더블클릭: 코드 블록 편집":"Double-click: edit code block","더블클릭: 표 편집기":"Double-click: edit table","더 옮길 곳이 없습니다":"Cannot move further"," · 기존 표 편집":" · Edit existing table"," · 새 표":" · New table","표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.":"Invalid table. The second line must be a separator such as | --- | --- |.","표 형식이 올바르지 않습니다.":"Invalid table format.","코드 블록 수정":"Edit code block","줄 번호 켜기":"Show line numbers","목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다":"Unknown language; entered name will be used","복사했습니다":"Copied","복사하지 못했습니다":"Copy failed","링크 수정":"Edit link","이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.":"Clipboard unavailable. Paste directly into the URL field.","클립보드에서 웹 주소를 찾지 못했습니다.":"No web address found in clipboard.","주소를 채웠습니다.":"URL filled.","클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.":"Allow clipboard access or paste into URL field.","md.html 온라인":"md.html online","md.html 오프라인":"md.html offline","EMM 첨부":"EMM attachment","오프라인 파일을 만드는 중… (라이브러리를 넣습니다)":"Creating offline file… (including libraries)","저장 중…":"Saving…","파일을 만들지 못했습니다: ":"Could not create file: ","\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.":"\nCreating an offline file initially requires Internet access.","내려받기 폴더에 저장했습니다":"Saved to downloads","저장했습니다":"Saved","로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.":"Session expired. Reopen from EasyMindMap.","이 첨부를 고칠 권한이 없습니다 (읽기 전용).":"No edit permission (read-only).","첨부를 찾을 수 없거나 볼 권한이 없습니다.":"Attachment not found or access denied.","용량 한도를 넘었습니다.":"Size limit exceeded.","이 형식의 첨부는 저장할 수 없습니다.":"Cannot save this attachment format.","서버 오류 (":"Server error (","불러왔습니다 (읽기 전용)":"Loaded (read-only)","불러왔습니다: ":"Loaded: ","EasyMindMap 탭에서 내용을 받는 중…":"Receiving content from EasyMindMap…","불러오지 못했습니다":"Load failed","EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.":"No content received. Reopen the attachment from EasyMindMap.","이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.":"The EasyMindMap tab is closed. Save as .md to keep a local copy.","EasyMindMap 탭이 응답하지 않습니다.":"EasyMindMap is not responding.","저장하지 못했습니다.":"Save failed.","EasyMindMap 첨부를 불러오는 중…":"Loading EasyMindMap attachment…","첨부를 불러오지 못했습니다: ":"Attachment load failed: ","읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.":"Read-only attachment. Save as .md to keep a local copy.","EasyMindMap에 저장 중…":"Saving to EasyMindMap…","EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)":"Updated in EasyMindMap (save the map in its tab)","저장하지 못했습니다":"Save failed","저장하지 못했습니다: ":"Save failed: ","저장하지 않았습니다 (다른 곳에서 먼저 고침)":"Not saved (modified elsewhere)","EasyMindMap 첨부에 저장했습니다":"Saved to EasyMindMap attachment","이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.":"This HTML contains no md.html Markdown source.","저장하지 않은 변경이 있습니다. 버리고 계속할까요?":"Unsaved changes. Discard and continue?","저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?":"Unsaved changes. Close without saving?","브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.":"Browser blocked closing. Empty document shown. Use Ctrl+W to close.","Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)":"Could not load Mermaid (Internet required)","HTML 미리보기":"HTML preview","Mermaid 오류: ":"Mermaid error: ","EMM에 저장":"Save to EMM","EasyMindMap 첨부에 저장 (Ctrl+S)":"Save to EasyMindMap attachment (Ctrl+S)","더블클릭: 코드 편집":"Double-click: edit code","미리보기 준비 중…":"Preparing preview…","statusFormat":"Editing: {target} · {count} lines","tableFormat":"{rows} rows × {cols} columns","Language":"Language","아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시":"Outline · Click: select · Double-click/F2: edit · Enter: add row · Tab/Shift+Tab: indent/outdent · Shift+Enter: newline · Alt+↑↓: move · Drag: move · Delete: delete · Ctrl+Z/Y: undo/redo","커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸":"Current cell · Column alignment · Escape cell pipes with backslash · Enter: line break (<br>) · Tab: next cell",".md로 내려받기":"Download .md","<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.":"Editor libraries could not load. Check your connection. Your source is preserved below. Save an offline md.html while online for disconnected use.","다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)":"This attachment was modified elsewhere.\n\nOK: overwrite with my changes\nCancel: do not save; use Save as .md to preserve a local copy.","배경":"Background","기본 글자":"Default text","줄 번호":"Line numbers","선택 영역":"Selection","커서":"Cursor","제목 #":"Heading #","굵게 **":"Bold **","기울임 *":"Italic *","인라인 코드 `":"Inline code `","목록 기호 - 1.":"List marker - 1.","인용 기호 >":"Quote marker >","HTML 태그 이름":"HTML tag name","HTML 꺾쇠 < >":"HTML brackets < >","HTML 속성":"HTML attribute","코드: 키워드":"Code: keyword","코드: 문자열":"Code: string","코드: 숫자":"Code: number","코드: 주석":"Code: comment","코드: 함수 이름":"Code: function","코드: 변수·속성":"Code: variable/property","코드: 타입·클래스":"Code: type/class","코드: 연산자":"Code: operator","편집기 언어":"Editor language","<u>밑줄</u>, <mark>하이라이트</mark>":"<u>underline</u>, <mark>highlight</mark>","__밑줄__, ==하이라이트==":"__underline__, ==highlight==","문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.":"Your document is preserved, but the rendered pane’s undo history is reset."},"ja":{"마크다운 편집기":"マークダウンエディター","왼쪽 목차 접기/펼치기":"目次を開閉","☰ 목차":"☰ 目次","마크다운":"マークダウン","아웃라인":"アウトライン","렌더링":"プレビュー","분할":"分割","제목 단계 (커서가 있는 줄)":"見出しレベル（現在の行）","제목":"見出し","본문":"本文","굵게 (Ctrl+B)":"太字 (Ctrl+B)","기울임 (Ctrl+I)":"斜体 (Ctrl+I)","취소선":"取り消し線","밑줄 (Ctrl+U)":"下線 (Ctrl+U)","하이라이트 (다시 누르면 해제)":"ハイライト（切替）","글머리 기호 (다시 누르면 해제)":"箇条書き（切替）","번호 매기기 (다시 누르면 해제)":"番号リスト（切替）","체크박스 (- [ ] — 다시 누르면 해제)":"チェックボックス（切替）","링크 삽입 (Ctrl+K)":"リンク挿入 (Ctrl+K)","인라인 코드 (`…`)":"インラインコード","코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)":"コードブロックを挿入・編集","표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)":"カーソル位置の表を挿入・編集","색 테마·글꼴·문법 설정":"テーマ・フォント・構文","⚙ 설정":"⚙ 設定","파일 메뉴":"ファイルメニュー","파일 ▾":"ファイル ▾","새 문서":"新規文書","열기…":"開く…","예제 문서":"サンプル文書","저장":"保存","다른 이름으로 저장…":"名前を付けて保存…",".md로 저장…":".md で保存…","md.html(온라인)로 저장…":"md.html（オンライン）で保存…","md.html(오프라인)로 저장…":"md.html（オフライン）で保存…","닫기":"閉じる","저장 (Ctrl+S)":"保存 (Ctrl+S)","✕ 닫기":"✕ 閉じる","목차":"目次","모두 펼치기":"すべて展開","모두 접기":"すべて折りたたむ","마크다운 원문":"マークダウン原文","원문 줄 번호 끄기":"原文の行番号を非表示","줄 번호 On":"行番号 On","마크다운 원문 복사":"原文をコピー","복사":"コピー","아웃라인 창 내용 복사":"アウトラインをコピー","끌어서 좌우 크기 조절 · 더블클릭: 반반":"ドラッグで幅調整・ダブルクリックで均等","렌더링 (직접 편집 가능)":"プレビュー（編集可能）","렌더링 창 내용 복사":"プレビューをコピー","링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭":"リンク：新しいタブで開く・編集中は Ctrl/Cmd+クリック","표":"表","▦ 격자":"▦ グリッド","+ 행":"+ 行","− 행":"− 行","+ 열":"+ 列","− 열":"− 列","왼쪽 정렬":"左揃え","가운데 정렬":"中央揃え","오른쪽 정렬":"右揃え","취소 (Esc)":"キャンセル (Esc)","확인 (Ctrl+Enter)":"確認 (Ctrl+Enter)","코드 블록":"コードブロック","코드 블록 삽입":"コードブロックを挿入","줄 번호 끄기":"行番号を非表示","코드 복사":"コードをコピー","언어":"言語","예: bash, js, python — 비우면 code":"例: bash, js, python（空欄は code）","언어 목록에서 고르기":"言語一覧から選択","코드를 입력하세요 (여러 줄 가능)":"コードを入力（複数行可）","링크":"リンク","링크 삽입":"リンクを挿入","글자":"文字","보일 글자 (비우면 주소)":"表示文字（空欄は URL）","주소":"アドレス","링크 프로토콜":"リンクのプロトコル","클립보드 붙여넣기":"クリップボードから貼り付け","확인 (Enter)":"確認 (Enter)","설정":"設定","색 테마":"カラーテーマ","VS Code Light+ (기본 밝은 테마)":"VS Code Light+（既定の明色）","VS Code Dark+ (기본 어두운 테마)":"VS Code Dark+（既定の暗色）","적용 범위":"適用範囲","메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)":"メニュー・目次・アウトライン・プレビューにも適用","원문 글꼴 크기":"原文の文字サイズ","원문 줄바꿈":"原文の折り返し","긴 줄을 화면 폭에서 접어 보기":"長い行を画面幅で折り返す","밑줄·하이라이트 문법":"下線・ハイライト構文","(표준, VS Code·GitHub 미리보기와 호환)":"（標準・VS Code/GitHub 対応）","(EasyMindMap 노드와 같은 방식)":"（EasyMindMap ノードと同じ）","원문 색 직접 바꾸기":"原文の色をカスタマイズ","· 바꾼 색(•)은 테마를 바꿔도 유지됩니다":"・変更した色（•）はテーマ変更後も保持","색 기본값으로":"色を初期化","복사 권한을 확인해 주세요.":"コピー権限を確認してください。","복사됨":"コピー済み"," 완료":" 完了","복사 실패":"コピー失敗","복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.":"コピー失敗。クリップボード権限を確認してください。","원문":"原文","● 저장 안 됨 · ":"● 未保存 · ","제목(# ...)이 없습니다.":"見出し（# ...）がありません。","되돌릴 아웃라인 작업이 없습니다":"元に戻す操作がありません","원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다":"原文・プレビュー編集により履歴を消去しました","다시 실행할 작업이 없습니다":"やり直す操作がありません","그 위치로는 옮길 수 없습니다":"そこへ移動できません","제목과 목록만 들여쓸 수 있습니다":"見出しとリストのみインデント可能","바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다":"直前に同じレベルの項目がありません","더 내어쓸 수 없습니다":"これ以上アウトデントできません","삭제했습니다 (Ctrl+Z로 되돌리기)":"削除しました（Ctrl+Z で戻す）","내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.":"空です。クリックして Enter でノード追加。","더블클릭: 코드 블록 편집":"ダブルクリック: コード編集","더블클릭: 표 편집기":"ダブルクリック: 表編集","더 옮길 곳이 없습니다":"これ以上移動できません"," · 기존 표 편집":" ・既存の表を編集"," · 새 표":" ・新しい表","표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.":"表の形式が不正です。2 行目には | --- | --- | などの区切り線が必要です。","표 형식이 올바르지 않습니다.":"表の形式が不正です。","코드 블록 수정":"コードブロックを編集","줄 번호 켜기":"行番号を表示","목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다":"一覧にない言語です。入力名を使用します","복사했습니다":"コピーしました","복사하지 못했습니다":"コピー失敗","링크 수정":"リンクを編集","이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.":"クリップボードを読めません。URL 欄に貼り付けてください。","클립보드에서 웹 주소를 찾지 못했습니다.":"クリップボードに URL がありません。","주소를 채웠습니다.":"URL を入力しました。","클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.":"権限を許可するか URL 欄に貼り付けてください。","md.html 온라인":"md.html オンライン","md.html 오프라인":"md.html オフライン","EMM 첨부":"EMM 添付","오프라인 파일을 만드는 중… (라이브러리를 넣습니다)":"オフラインファイルを作成中…（ライブラリを含む）","저장 중…":"保存中…","파일을 만들지 못했습니다: ":"ファイルを作成できません: ","\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.":"\n初回のオフラインファイル作成には接続が必要です。","내려받기 폴더에 저장했습니다":"ダウンロードに保存しました","저장했습니다":"保存しました","로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.":"ログイン期限切れです。EasyMindMap から開き直してください。","이 첨부를 고칠 권한이 없습니다 (읽기 전용).":"編集権限がありません（読み取り専用）。","첨부를 찾을 수 없거나 볼 권한이 없습니다.":"添付がないか閲覧権限がありません。","용량 한도를 넘었습니다.":"容量制限を超えました。","이 형식의 첨부는 저장할 수 없습니다.":"この形式は保存できません。","서버 오류 (":"サーバーエラー (","불러왔습니다 (읽기 전용)":"読み込み完了（読み取り専用）","불러왔습니다: ":"読み込み完了: ","EasyMindMap 탭에서 내용을 받는 중…":"EasyMindMap から受信中…","불러오지 못했습니다":"読み込み失敗","EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.":"受信できません。EasyMindMap から添付を開き直してください。","이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.":"EasyMindMap タブが閉じています。.md 保存で保管してください。","EasyMindMap 탭이 응답하지 않습니다.":"EasyMindMap が応答しません。","저장하지 못했습니다.":"保存失敗。","EasyMindMap 첨부를 불러오는 중…":"EasyMindMap 添付を読み込み中…","첨부를 불러오지 못했습니다: ":"添付を読み込めません: ","읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.":"読み取り専用です。.md 保存で保管できます。","EasyMindMap에 저장 중…":"EasyMindMap に保存中…","EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)":"EasyMindMap に反映しました（マップ保存は元のタブで）","저장하지 못했습니다":"保存失敗","저장하지 못했습니다: ":"保存失敗: ","저장하지 않았습니다 (다른 곳에서 먼저 고침)":"未保存（別の場所で変更済み）","EasyMindMap 첨부에 저장했습니다":"EasyMindMap 添付に保存しました","이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.":"この HTML に md.html 形式の原文がありません。","저장하지 않은 변경이 있습니다. 버리고 계속할까요?":"未保存の変更を破棄して続行しますか？","저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?":"保存せずに閉じますか？","브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.":"ブラウザーが閉じる操作を拒否しました。Ctrl+W で閉じてください。","Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)":"Mermaid を読み込めません（接続が必要）","HTML 미리보기":"HTML プレビュー","Mermaid 오류: ":"Mermaid エラー: ","EMM에 저장":"EMM に保存","EasyMindMap 첨부에 저장 (Ctrl+S)":"EasyMindMap 添付に保存 (Ctrl+S)","더블클릭: 코드 편집":"ダブルクリック: コード編集","미리보기 준비 중…":"プレビュー準備中…","statusFormat":"編集対象: {target} · {count}行","tableFormat":"{rows}行 × {cols}列","Language":"言語","아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시":"アウトライン · クリック: 選択 · ダブルクリック/F2: 編集 · Enter: 行追加 · Tab/Shift+Tab: インデント · Shift+Enter: 改行 · Alt+↑↓: 移動 · ドラッグ: 移動 · Delete: 削除 · Ctrl+Z/Y: 元に戻す/やり直す","커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸":"現在のセル・列単位の配置・セル内のパイプはバックスラッシュで保存・Enter: 改行 (<br>)・Tab: 次のセル",".md로 내려받기":".md をダウンロード","<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.":"エディターを読み込めません。接続を確認してください。原文は下で保持されています。接続時にオフライン md.html を保存してください。","다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)":"別の場所で添付が変更されました。\n\n確認：自分の内容で上書き\nキャンセル：保存しない（.md 保存で保管できます）","배경":"背景","기본 글자":"基本文字","줄 번호":"行番号","선택 영역":"選択範囲","커서":"カーソル","제목 #":"見出し #","굵게 **":"太字 **","기울임 *":"斜体 *","인라인 코드 `":"インラインコード `","목록 기호 - 1.":"リスト記号 - 1.","인용 기호 >":"引用記号 >","HTML 태그 이름":"HTML タグ名","HTML 꺾쇠 < >":"HTML 括弧 < >","HTML 속성":"HTML 属性","코드: 키워드":"コード: キーワード","코드: 문자열":"コード: 文字列","코드: 숫자":"コード: 数値","코드: 주석":"コード: コメント","코드: 함수 이름":"コード: 関数","코드: 변수·속성":"コード: 変数・属性","코드: 타입·클래스":"コード: 型・クラス","코드: 연산자":"コード: 演算子","편집기 언어":"表示言語","<u>밑줄</u>, <mark>하이라이트</mark>":"<u>下線</u>, <mark>ハイライト</mark>","__밑줄__, ==하이라이트==":"__下線__, ==ハイライト==","문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.":"文書の内容は保持されますが、プレビューの操作履歴はリセットされます。"},"zh":{"마크다운 편집기":"Markdown 编辑器","왼쪽 목차 접기/펼치기":"切换目录","☰ 목차":"☰ 目录","마크다운":"Markdown","아웃라인":"大纲","렌더링":"渲染","분할":"分栏","제목 단계 (커서가 있는 줄)":"标题级别（当前行）","제목":"标题","본문":"正文","굵게 (Ctrl+B)":"加粗 (Ctrl+B)","기울임 (Ctrl+I)":"斜体 (Ctrl+I)","취소선":"删除线","밑줄 (Ctrl+U)":"下划线 (Ctrl+U)","하이라이트 (다시 누르면 해제)":"高亮（切换）","글머리 기호 (다시 누르면 해제)":"无序列表（切换）","번호 매기기 (다시 누르면 해제)":"有序列表（切换）","체크박스 (- [ ] — 다시 누르면 해제)":"任务列表（切换）","링크 삽입 (Ctrl+K)":"插入链接 (Ctrl+K)","인라인 코드 (`…`)":"行内代码","코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)":"插入或编辑代码块","표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)":"插入或编辑光标处的表格","색 테마·글꼴·문법 설정":"主题、字体和语法","⚙ 설정":"⚙ 设置","파일 메뉴":"文件菜单","파일 ▾":"文件 ▾","새 문서":"新建文档","열기…":"打开…","예제 문서":"示例文档","저장":"保存","다른 이름으로 저장…":"另存为…",".md로 저장…":"保存为 .md…","md.html(온라인)로 저장…":"保存 md.html（在线）…","md.html(오프라인)로 저장…":"保存 md.html（离线）…","닫기":"关闭","저장 (Ctrl+S)":"保存 (Ctrl+S)","✕ 닫기":"✕ 关闭","목차":"目录","모두 펼치기":"全部展开","모두 접기":"全部收起","마크다운 원문":"Markdown 源码","원문 줄 번호 끄기":"隐藏源码行号","줄 번호 On":"行号 On","마크다운 원문 복사":"复制 Markdown 源码","복사":"复制","아웃라인 창 내용 복사":"复制大纲窗格","끌어서 좌우 크기 조절 · 더블클릭: 반반":"拖动调整宽度 · 双击均分","렌더링 (직접 편집 가능)":"渲染（可编辑）","렌더링 창 내용 복사":"复制渲染窗格","링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭":"链接：单击新标签页打开 · 编辑时 Ctrl/Cmd+单击","표":"表格","▦ 격자":"▦ 网格","+ 행":"+ 行","− 행":"− 行","+ 열":"+ 列","− 열":"− 列","왼쪽 정렬":"左对齐","가운데 정렬":"居中","오른쪽 정렬":"右对齐","취소 (Esc)":"取消 (Esc)","확인 (Ctrl+Enter)":"确定 (Ctrl+Enter)","코드 블록":"代码块","코드 블록 삽입":"插入代码块","줄 번호 끄기":"隐藏行号","코드 복사":"复制代码","언어":"语言","예: bash, js, python — 비우면 code":"例如 bash、js、python；留空为 code","언어 목록에서 고르기":"选择语言","코드를 입력하세요 (여러 줄 가능)":"输入代码（可多行）","링크":"链接","링크 삽입":"插入链接","글자":"文字","보일 글자 (비우면 주소)":"显示文字（留空使用网址）","주소":"网址","링크 프로토콜":"链接协议","클립보드 붙여넣기":"从剪贴板粘贴","확인 (Enter)":"确定 (Enter)","설정":"设置","색 테마":"颜色主题","VS Code Light+ (기본 밝은 테마)":"VS Code Light+（默认浅色）","VS Code Dark+ (기본 어두운 테마)":"VS Code Dark+（默认深色）","적용 범위":"应用范围","메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)":"主题也应用于菜单、目录、大纲和渲染窗格","원문 글꼴 크기":"源码字体大小","원문 줄바꿈":"源码自动换行","긴 줄을 화면 폭에서 접어 보기":"按窗格宽度折叠长行","밑줄·하이라이트 문법":"下划线和高亮语法","(표준, VS Code·GitHub 미리보기와 호환)":"（标准，与 VS Code/GitHub 兼容）","(EasyMindMap 노드와 같은 방식)":"（与 EasyMindMap 节点相同）","원문 색 직접 바꾸기":"自定义源码颜色","· 바꾼 색(•)은 테마를 바꿔도 유지됩니다":"· 自定义颜色（•）在切换主题后保留","색 기본값으로":"重置颜色","복사 권한을 확인해 주세요.":"请检查剪贴板权限。","복사됨":"已复制"," 완료":" 完成","복사 실패":"复制失败","복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.":"复制失败。请检查浏览器剪贴板权限。","원문":"源码","● 저장 안 됨 · ":"● 未保存 · ","제목(# ...)이 없습니다.":"没有标题（# ...）。","되돌릴 아웃라인 작업이 없습니다":"没有可撤销的操作","원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다":"源码或渲染编辑后已清空大纲记录","다시 실행할 작업이 없습니다":"没有可重做的操作","그 위치로는 옮길 수 없습니다":"无法移至该位置","제목과 목록만 들여쓸 수 있습니다":"仅标题和列表可缩进","바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다":"前面没有同级项目","더 내어쓸 수 없습니다":"无法继续减少缩进","삭제했습니다 (Ctrl+Z로 되돌리기)":"已删除（Ctrl+Z 撤销）","내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.":"内容为空。单击此处并按 Enter 添加节点。","더블클릭: 코드 블록 편집":"双击：编辑代码块","더블클릭: 표 편집기":"双击：编辑表格","더 옮길 곳이 없습니다":"无法继续移动"," · 기존 표 편집":" · 编辑现有表格"," · 새 표":" · 新表格","표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.":"表格格式无效。第二行必须是 | --- | --- | 等分隔线。","표 형식이 올바르지 않습니다.":"表格格式无效。","코드 블록 수정":"编辑代码块","줄 번호 켜기":"显示行号","목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다":"列表中没有该语言，将使用输入的名称","복사했습니다":"已复制","복사하지 못했습니다":"复制失败","링크 수정":"编辑链接","이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.":"无法读取剪贴板。请直接粘贴到网址栏。","클립보드에서 웹 주소를 찾지 못했습니다.":"剪贴板中未找到网址。","주소를 채웠습니다.":"已填入网址。","클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.":"请允许剪贴板访问或直接粘贴到网址栏。","md.html 온라인":"md.html 在线","md.html 오프라인":"md.html 离线","EMM 첨부":"EMM 附件","오프라인 파일을 만드는 중… (라이브러리를 넣습니다)":"正在创建离线文件…（包含库）","저장 중…":"正在保存…","파일을 만들지 못했습니다: ":"无法创建文件：","\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.":"\n首次创建离线文件需要联网。","내려받기 폴더에 저장했습니다":"已保存到下载文件夹","저장했습니다":"已保存","로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.":"登录已过期。请从 EasyMindMap 重新打开。","이 첨부를 고칠 권한이 없습니다 (읽기 전용).":"没有编辑权限（只读）。","첨부를 찾을 수 없거나 볼 권한이 없습니다.":"附件不存在或无访问权限。","용량 한도를 넘었습니다.":"已超出大小限制。","이 형식의 첨부는 저장할 수 없습니다.":"无法保存该附件格式。","서버 오류 (":"服务器错误 (","불러왔습니다 (읽기 전용)":"已加载（只读）","불러왔습니다: ":"已加载：","EasyMindMap 탭에서 내용을 받는 중…":"正在从 EasyMindMap 接收内容…","불러오지 못했습니다":"加载失败","EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.":"未收到内容。请从 EasyMindMap 重新打开附件。","이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.":"EasyMindMap 标签页已关闭。请保存为 .md 保留本地副本。","EasyMindMap 탭이 응답하지 않습니다.":"EasyMindMap 未响应。","저장하지 못했습니다.":"保存失败。","EasyMindMap 첨부를 불러오는 중…":"正在加载 EasyMindMap 附件…","첨부를 불러오지 못했습니다: ":"附件加载失败：","읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.":"附件为只读。可保存为 .md 保留本地副本。","EasyMindMap에 저장 중…":"正在保存到 EasyMindMap…","EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)":"已更新 EasyMindMap（请在其标签页保存导图）","저장하지 못했습니다":"保存失败","저장하지 못했습니다: ":"保存失败：","저장하지 않았습니다 (다른 곳에서 먼저 고침)":"未保存（已在别处修改）","EasyMindMap 첨부에 저장했습니다":"已保存到 EasyMindMap 附件","이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.":"此 HTML 不含 md.html 格式的 Markdown 源码。","저장하지 않은 변경이 있습니다. 버리고 계속할까요?":"有未保存的更改。放弃并继续？","저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?":"有未保存的更改。是否不保存并关闭？","브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.":"浏览器阻止关闭。已显示空文档，请按 Ctrl+W 关闭。","Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)":"无法加载 Mermaid（需要联网）","HTML 미리보기":"HTML 预览","Mermaid 오류: ":"Mermaid 错误：","EMM에 저장":"保存到 EMM","EasyMindMap 첨부에 저장 (Ctrl+S)":"保存到 EasyMindMap 附件 (Ctrl+S)","더블클릭: 코드 편집":"双击：编辑代码","미리보기 준비 중…":"正在准备预览…","statusFormat":"编辑对象：{target} · {count}行","tableFormat":"{rows}行 × {cols}列","Language":"语言","아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시":"大纲 · 单击：选择 · 双击/F2：编辑 · Enter：添加行 · Tab/Shift+Tab：缩进/减少缩进 · Shift+Enter：换行 · Alt+↑↓：移动 · 拖动：移动 · Delete：删除 · Ctrl+Z/Y：撤销/重做","커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸":"当前单元格 · 按列对齐 · 用反斜杠转义竖线 · Enter：换行 (<br>) · Tab：下一格",".md로 내려받기":"下载 .md","<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.":"无法加载编辑器库。请检查网络。下方保留源码。联网时请保存离线 md.html。","다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)":"附件已在别处修改。\n\n确定：用我的内容覆盖\n取消：不保存（可保存为 .md 保留副本）","배경":"背景","기본 글자":"默认文字","줄 번호":"行号","선택 영역":"选区","커서":"光标","제목 #":"标题 #","굵게 **":"加粗 **","기울임 *":"斜体 *","인라인 코드 `":"行内代码 `","목록 기호 - 1.":"列表标记 - 1.","인용 기호 >":"引用标记 >","HTML 태그 이름":"HTML 标签名","HTML 꺾쇠 < >":"HTML 尖括号 < >","HTML 속성":"HTML 属性","코드: 키워드":"代码：关键字","코드: 문자열":"代码：字符串","코드: 숫자":"代码：数字","코드: 주석":"代码：注释","코드: 함수 이름":"代码：函数","코드: 변수·속성":"代码：变量和属性","코드: 타입·클래스":"代码：类型和类","코드: 연산자":"代码：运算符","편집기 언어":"界面语言","<u>밑줄</u>, <mark>하이라이트</mark>":"<u>下划线</u>, <mark>高亮</mark>","__밑줄__, ==하이라이트==":"__下划线__, ==高亮==","문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.":"文档内容会保留，但渲染窗格的撤销历史会被重置。"}};
+function normalizeLanguage(value) { const s=String(value||'').trim().replace(/_/g,'-').toLowerCase(); if(/^ko(?:-|$)/.test(s))return 'ko';if(/^en(?:-|$)/.test(s))return 'en';if(/^ja(?:-|$)/.test(s))return 'ja';if(s==='zh'||/^zh-(?:cn|hans)(?:-|$)/.test(s))return 'zh';return null; }
+function storedLanguage(key) { try { return normalizeLanguage(localStorage.getItem(key)); } catch { return null; } }
+function urlLanguage() { return normalizeLanguage(QS.get('lang')) || normalizeLanguage(QS.get('locale')); }
+function inheritedLanguage() { if(!EMM)return null;for(const w of [window.opener,window.parent!==window?window.parent:null]){try{if(w&&w.location.origin===location.origin){const l=normalizeLanguage(w.document.documentElement.lang);if(l)return l;}}catch{}}return storedLanguage('emm.lang'); }
+let uiLang = urlLanguage() || inheritedLanguage() || storedLanguage('mde.lang') || (navigator.languages||[navigator.language]).map(normalizeLanguage).find(Boolean) || 'ko';
+let manualLanguage=false;
+function tr(key,vars) { let s=I18N[uiLang][key] ?? I18N.ko[key] ?? key;for(const [k,v] of Object.entries(vars||{}))s=s.split('{'+k+'}').join(String(v));return s; }
+function toastLocale(){return {ko:'ko-KR',en:'en-US',ja:'ja-JP',zh:'zh-CN'}[uiLang];}
+function applyUiLanguage(){
+  document.documentElement.lang=uiLang==='zh'?'zh-Hans':uiLang;
+  const isUi=e=>!e.closest('#src,#ww,#outline,#tocTree,#mdData');
+  document.querySelectorAll('[data-i18n]').forEach(e=>{if(isUi(e))e.textContent=tr(decodeURIComponent(e.dataset.i18n));});
+  for(const a of ['title','placeholder','aria-label'])document.querySelectorAll('[data-i18n-'+a+']').forEach(e=>{if(isUi(e))e.setAttribute(a,tr(decodeURIComponent(e.getAttribute('data-i18n-'+a))));});
+  updateLanguagePicker(); const field=$('#sUiLanguage'); if(field)field.value=uiLang; const ln=$('#cLn'); if(ln)ln.title=tr(codeLn?'줄 번호 끄기':'줄 번호 켜기');
+}
+function setLanguage(value,persist=true){const next=normalizeLanguage(value);if(!next)return false;if(persist){manualLanguage=true;try{localStorage.setItem('mde.lang',next);}catch{}try{const u=new URL(location.href);u.searchParams.set('lang',next);u.searchParams.delete('locale');history.replaceState(history.state,'',u);}catch{}}if(next===uiLang){applyUiLanguage();return true;}
+// Flush a real pending rendered edit, never serialize untouched Markdown on language changes.
+const pendingSource=!!tSrc,pendingRendered=!!tWw;clearTimeout(tSrc);clearTimeout(tWw);tSrc=0;tWw=0;
+if(pendingRendered&&latestEditSource==='ww'){let text=fromWw(normalizeWw(ed.getMarkdown()));if(md.endsWith('\n')&&!text.endsWith('\n'))text+='\n';md=text;pushToSrc();afterChange();}else if(pendingSource){md=cm.getValue();afterChange();}
+const saved=DOC.saved, text=md, sels=cm.listSelections(), scroll=cm.getScrollInfo(), active=document.activeElement, focus=lastFocus;let selection=null;try{selection=ed.getSelection();}catch{}const wwScroll=$('#ww .toastui-editor-ww-container')?.scrollTop||0;
+uiLang=next;ed.destroy();ed=createEditor();bindEditorEvents();applySettings();try{if(selection)ed.setSelection(...selection);}catch{}wwSel=selection;wwFocused=false;wwStale=false;DOC.saved=saved;md=text;cm.setSelections(sels);cm.scrollTo(scroll.left,scroll.top);const container=$('#ww .toastui-editor-ww-container');if(container)container.scrollTop=wwScroll;lastFocus=focus;applyUiLanguage();updateSourceLineNumbers();if(!$('#sdlg').hidden)drawSettings();if(!$('#dlg').hidden)info();if(!$('#cdlg').hidden){$('#cTitle').textContent=tr(C.range?'코드 블록 수정':'코드 블록 삽입');}if(!$('#ldlg').hidden)$('#lTitle').textContent=tr(LK.range?'링크 수정':'링크 삽입');if(EMM){$('#saveBtn').textContent=tr('EMM에 저장');$('#saveBtn').title=tr('EasyMindMap 첨부에 저장 (Ctrl+S)');}updStatus();schedulePreviews();if(active&&active.isConnected)active.focus({preventScroll:true});return true;}
+const LANG_NAMES={ko:['한국어','KR'],en:['English','EN'],ja:['日本語','JP'],zh:['中文','CN']};
+function flagSvg(l){const base='<svg aria-hidden="true" viewBox="0 0 32 22" width="32" height="22" xmlns="http://www.w3.org/2000/svg">';let s='<rect width="32" height="22" fill="white"/>';if(l==='ja')s+='<circle cx="16" cy="11" r="6" fill="#bc002d"/>';else if(l==='zh')s='<rect width="32" height="22" fill="#de2910"/><path fill="#ffde00" d="m7 3 1.2 3.6H12L9 8.8l1.1 3.5L7 10.2l-3.1 2.1L5 8.8 2 6.6h3.8z"/><g fill="#ffde00"><circle cx="14" cy="3" r=".8"/><circle cx="17" cy="6" r=".8"/><circle cx="17" cy="10" r=".8"/><circle cx="14" cy="13" r=".8"/></g>';else if(l==='en'){for(let n=0;n<7;n++)s+='<rect y="'+(n*3.4)+'" width="32" height="1.7" fill="#b22234"/>';s+='<rect width="14" height="12" fill="#3c3b6e"/>';for(let n=0;n<15;n++)s+='<circle cx="'+(2+n%5*2.5)+'" cy="'+(2+Math.floor(n/5)*3.5)+'" r=".6" fill="white"/>';}else{s+='<path d="M10 11a6 6 0 0 1 12 0c-3 5-9-5-12 0" fill="#cd2e3a"/><path d="M10 11c3-5 9 5 12 0a6 6 0 0 1-12 0" fill="#0047a0"/><g stroke="#111" stroke-width="1.5"><path d="m3 3 5 3m-6-1 5 3m-6-1 5 3m18 6 5 3m-4-5 5 3m-4-5 5 3M25 3l5 3m-6-1 5 3M3 16l5 3m-6-1 5 3"/></g>';}return base+s+'</svg>';}
+function updateLanguagePicker(){const b=$('#langTrigger');if(!b)return;b.innerHTML=flagSvg(uiLang)+'<span>'+LANG_NAMES[uiLang][1]+'</span>';b.setAttribute('aria-label',tr('Language')+': '+LANG_NAMES[uiLang][0]);document.querySelectorAll('[data-ui-language]').forEach(e=>{const selected=e.dataset.uiLanguage===uiLang;e.setAttribute('aria-selected',String(selected));if(e.dataset.uiLanguage==='zh')e.title='简体中文';e.innerHTML=flagSvg(e.dataset.uiLanguage)+'<span>'+LANG_NAMES[e.dataset.uiLanguage][0]+'</span><small>'+(selected?'✓':LANG_NAMES[e.dataset.uiLanguage][1])+'</small>';});}
+function closeLanguagePicker(){ $('#langList').hidden=true;$('#langTrigger').setAttribute('aria-expanded','false'); }
+
 function libFail() { // libraries could not load (offline + online-type file): still let the user read and keep the text
   const text = EMB ? EMB.value : "";
   document.body.innerHTML = "";
   const box = document.createElement("div"); box.style.cssText = "padding:14px;font:14px sans-serif;display:flex;flex-direction:column;gap:8px;height:100vh;box-sizing:border-box";
   const msg = document.createElement("div");
-  msg.innerHTML = "<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.";
+  msg.innerHTML = tr("<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.");
   const ta = document.createElement("textarea"); ta.value = text; ta.style.cssText = "flex:1;font:13px Consolas,monospace;padding:8px";
-  const btn = document.createElement("button"); btn.textContent = ".md로 내려받기"; btn.style.cssText = "align-self:flex-start;padding:4px 12px";
+  const btn = document.createElement("button"); btn.textContent = tr(".md로 내려받기"); btn.style.cssText = "align-self:flex-start;padding:4px 12px";
   btn.onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([ta.value], { type: "text/markdown;charset=utf-8" })); a.download = (EMB && EMB.dataset.name ? EMB.dataset.name.replace(/\.html?$/i, "") : "document.md"); a.click(); };
   box.append(msg, btn, ta); document.body.append(box);
 }
@@ -509,6 +546,7 @@ graph LR
 <div style="padding:10px;border:1px solid #d97706;border-radius:8px;font-family:sans-serif">HTML <b>미리보기</b> — 별도 창(sandbox)에서 실행됩니다.</div>
 \`\`\`
 `;
+
 
 let md = EMM ? "" : EMBEDDED ? EMB.value : (localStorage.getItem("mde.md") ?? SAMPLE);
 let mode = localStorage.getItem("mde.mode") || "split";
@@ -613,7 +651,7 @@ const FENCE_LANG = /^\s*(?:`{3,}|~{3,})\s*([^\s`]+)/;
 const PREVIEW_LANGS = ["mermaid", "html"];
 const cbTokens = (lang, code) => [
   { type: "openTag", tagName: "div", outerNewLine: true, attributes: { class: "mde-cb", "data-lang": lang, "data-code": encodeURIComponent((code || "").replace(/\n$/, "")) } },
-  { type: "html", content: `<div class="mde-cb-hd"><span>${lang}</span><span>더블클릭: 코드 편집</span></div><div class="mde-cb-body">미리보기 준비 중…</div>` },
+  { type: "html", content: `<div class="mde-cb-hd"><span>${lang}</span><span>${tr("더블클릭: 코드 편집")}</span></div><div class="mde-cb-body">${tr("미리보기 준비 중…")}</div>` },
   { type: "closeTag", tagName: "div", outerNewLine: true },
 ];
 function fencesToCustom(text) {
@@ -656,15 +694,17 @@ function fromWw(text) {
   return mapOutsideCode(text, (s) => s.replace(/<mark>(.*?)<\/mark>/g, "==$1==").replace(/<u>(.*?)<\/u>/g, "__$1__"));
 }
 
+const TOAST_I18N = {"ko":{"Markdown":"마크다운","WYSIWYG":"위지윅","Write":"편집하기","Preview":"미리보기","Headings":"제목크기","Paragraph":"본문","Bold":"굵게","Italic":"기울임꼴","Strike":"취소선","Code":"인라인 코드","Line":"문단나눔","Blockquote":"인용구","Unordered list":"글머리 기호","Ordered list":"번호 매기기","Task":"체크박스","Indent":"들여쓰기","Outdent":"내어쓰기","Insert link":"링크 삽입","Insert CodeBlock":"코드블럭 삽입","Insert table":"표 삽입","Insert image":"이미지 삽입","Heading":"제목","Image URL":"이미지 주소","Select image file":"이미지 파일을 선택하세요.","Choose a file":"파일 선택","No file":"선택된 파일 없음","Description":"설명","OK":"확인","More":"더 보기","Cancel":"취소","File":"파일","URL":"주소","Link text":"링크 텍스트","Add row to up":"위에 행 추가","Add row to down":"아래에 행 추가","Add column to left":"왼쪽에 열 추가","Add column to right":"오른쪽에 열 추가","Remove row":"행 삭제","Remove column":"열 삭제","Align column to left":"열 왼쪽 정렬","Align column to center":"열 가운데 정렬","Align column to right":"열 오른쪽 정렬","Remove table":"표 삭제","Would you like to paste as table?":"표형태로 붙여 넣겠습니까?","Text color":"글자 색상","Auto scroll enabled":"자동 스크롤 켜짐","Auto scroll disabled":"자동 스크롤 꺼짐","Choose language":"언어 선택"},"en":{"Markdown":"Markdown","WYSIWYG":"WYSIWYG","Write":"Write","Preview":"Preview","Headings":"Headings","Paragraph":"Paragraph","Bold":"Bold","Italic":"Italic","Strike":"Strike","Code":"Code","Line":"Line","Blockquote":"Blockquote","Unordered list":"Unordered list","Ordered list":"Ordered list","Task":"Task","Indent":"Indent","Outdent":"Outdent","Insert link":"Insert link","Insert CodeBlock":"Insert CodeBlock","Insert table":"Insert table","Insert image":"Insert image","Heading":"Heading","Image URL":"Image URL","Select image file":"Select image file","Choose a file":"Choose a file","No file":"No file","Description":"Description","OK":"OK","More":"More","Cancel":"Cancel","File":"File","URL":"URL","Link text":"Link text","Add row to up":"Add row to up","Add row to down":"Add row to down","Add column to left":"Add column to left","Add column to right":"Add column to right","Remove row":"Remove row","Remove column":"Remove column","Align column to left":"Align column to left","Align column to center":"Align column to center","Align column to right":"Align column to right","Remove table":"Remove table","Would you like to paste as table?":"Would you like to paste as table?","Text color":"Text color","Auto scroll enabled":"Auto scroll enabled","Auto scroll disabled":"Auto scroll disabled","Choose language":"Choose language"},"ja":{"Markdown":"マークダウン","WYSIWYG":"WYSIWYG","Write":"編集","Preview":"プレビュー","Headings":"見出し","Paragraph":"本文","Bold":"太字","Italic":"斜体","Strike":"取り消し線","Code":"コード","Line":"区切り線","Blockquote":"引用","Unordered list":"箇条書き","Ordered list":"番号付きリスト","Task":"タスク","Indent":"インデント","Outdent":"アウトデント","Insert link":"リンクを挿入","Insert CodeBlock":"コードブロックを挿入","Insert table":"表を挿入","Insert image":"画像を挿入","Heading":"見出し","Image URL":"画像 URL","Select image file":"画像ファイルを選択","Choose a file":"ファイルを選択","No file":"ファイルなし","Description":"説明","OK":"確認","More":"もっと見る","Cancel":"キャンセル","File":"ファイル","URL":"URL","Link text":"リンク文字","Add row to up":"上に行を追加","Add row to down":"下に行を追加","Add column to left":"左に列を追加","Add column to right":"右に列を追加","Remove row":"行を削除","Remove column":"列を削除","Align column to left":"列を左揃え","Align column to center":"列を中央揃え","Align column to right":"列を右揃え","Remove table":"表を削除","Would you like to paste as table?":"表として貼り付けますか？","Text color":"文字色","Auto scroll enabled":"自動スクロール有効","Auto scroll disabled":"自動スクロール無効","Choose language":"言語を選択"},"zh":{"Markdown":"Markdown","WYSIWYG":"WYSIWYG","Write":"编辑","Preview":"预览","Headings":"标题","Paragraph":"正文","Bold":"加粗","Italic":"斜体","Strike":"删除线","Code":"代码","Line":"分隔线","Blockquote":"引用","Unordered list":"无序列表","Ordered list":"有序列表","Task":"任务","Indent":"缩进","Outdent":"减少缩进","Insert link":"插入链接","Insert CodeBlock":"插入代码块","Insert table":"插入表格","Insert image":"插入图片","Heading":"标题","Image URL":"图片 URL","Select image file":"选择图片文件","Choose a file":"选择文件","No file":"未选择文件","Description":"说明","OK":"确定","More":"更多","Cancel":"取消","File":"文件","URL":"URL","Link text":"链接文字","Add row to up":"向上添加行","Add row to down":"向下添加行","Add column to left":"向左添加列","Add column to right":"向右添加列","Remove row":"删除行","Remove column":"删除列","Align column to left":"列左对齐","Align column to center":"列居中","Align column to right":"列右对齐","Remove table":"删除表格","Would you like to paste as table?":"是否粘贴为表格？","Text color":"文字颜色","Auto scroll enabled":"启用自动滚动","Auto scroll disabled":"禁用自动滚动","Choose language":"选择语言"}};
+for(const [code,table] of Object.entries(TOAST_I18N))toastui.Editor.setLanguage({ko:["ko","ko-KR"],en:["en","en-US"],ja:["ja","ja-JP"],zh:["zh","zh-CN"]}[code],table);
 /* ---------- editors ---------- */
 let sourceLn = localStorage.getItem("mde.source.ln") !== "0";
 const cm = CodeMirror($("#src"), {
   value: md, mode: MD_MODE, lineNumbers: sourceLn, lineWrapping: !!S.wrap, tabSize: 2, indentUnit: 2,
   extraKeys: { "Ctrl-B": () => fmt("bold"), "Ctrl-I": () => fmt("italic"), "Ctrl-U": () => fmt("underline"), "Ctrl-K": () => fmt("link"), "Cmd-B": () => fmt("bold"), "Cmd-I": () => fmt("italic"), "Cmd-U": () => fmt("underline"), "Cmd-K": () => fmt("link") },
 });
-const ed = new toastui.Editor({
+function createEditor() { return new toastui.Editor({
   el: $("#ww"), height: "100%", initialEditType: "wysiwyg", previewStyle: "tab",
-  hideModeSwitch: true, usageStatistics: false, autofocus: false, language: "ko-KR", initialValue: toWw(md),
+  hideModeSwitch: true, usageStatistics: false, autofocus: false, language: toastLocale(), initialValue: toWw(md),
   linkAttributes: { target: "_blank", rel: "noopener" },
   toolbarItems: [], // all editing buttons live in the top toolbar
   customHTMLRenderer: { htmlInline: {
@@ -674,14 +714,15 @@ const ed = new toastui.Editor({
     mermaid: (node) => cbTokens("mermaid", node.literal),
     html: (node) => cbTokens("html", node.literal),
   },
-});
+}); }
+let ed = createEditor();
 
 /* ---------- pane controls ---------- */
 function updateSourceLineNumbers() {
   cm.setOption("lineNumbers", sourceLn);
-  $("#srcLn").textContent = "줄 번호 " + (sourceLn ? "On" : "Off");
+  $("#srcLn").textContent = tr("줄 번호") + " " + (sourceLn ? "On" : "Off");
   $("#srcLn").setAttribute("aria-pressed", String(sourceLn));
-  $("#srcLn").title = "원문 줄 번호 " + (sourceLn ? "끄기" : "켜기");
+  $("#srcLn").title = tr(sourceLn ? tr("원문 줄 번호 끄기") : tr("줄 번호 켜기"));
   cm.refresh();
 }
 $("#srcLn").onclick = () => { sourceLn = !sourceLn; localStorage.setItem("mde.source.ln", sourceLn ? "1" : "0"); updateSourceLineNumbers(); };
@@ -695,7 +736,7 @@ async function copyPlainText(text) {
   let ok = false;
   try { ta.select(); ok = document.execCommand("copy"); }
   finally { ta.remove(); active?.focus({ preventScroll: true }); if (selection) { selection.removeAllRanges(); ranges.forEach(r => selection.addRange(r)); } }
-  if (!ok) throw new Error("복사 권한을 확인해 주세요.");
+  if (!ok) throw new Error(tr("복사 권한을 확인해 주세요."));
 }
 const paneCopyTimers = new WeakMap();
 document.querySelectorAll("[data-copy-pane]").forEach(button => {
@@ -704,35 +745,44 @@ document.querySelectorAll("[data-copy-pane]").forEach(button => {
     const pane = button.dataset.copyPane;
     const text = pane === "src" ? cm.getValue() : pane === "outline" ? $("#outline").innerText : ($("#ww .toastui-editor-ww-container .ProseMirror")?.innerText || "");
     clearTimeout(paneCopyTimers.get(button));
-    try { await copyPlainText(text); button.textContent = "복사됨"; button.dataset.copied = "true"; $("#paneCopyStatus").textContent = button.getAttribute("aria-label") + " 완료"; }
-    catch { button.textContent = "복사 실패"; delete button.dataset.copied; $("#paneCopyStatus").textContent = "복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요."; }
-    paneCopyTimers.set(button, setTimeout(() => { button.textContent = "복사"; delete button.dataset.copied; }, 1500));
+    try { await copyPlainText(text); button.textContent = tr("복사됨"); button.dataset.copied = "true"; $("#paneCopyStatus").textContent = button.getAttribute("aria-label") + tr(" 완료"); }
+    catch { button.textContent = tr("복사 실패"); delete button.dataset.copied; $("#paneCopyStatus").textContent = tr("복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요."); }
+    paneCopyTimers.set(button, setTimeout(() => { button.textContent = tr("복사"); delete button.dataset.copied; }, 1500));
   });
 });
 
 /* ---------- sync ---------- */
 let tSrc = 0, tWw = 0, tPost = 0;
+let latestEditSource = "src";
 const wwVisible = () => mode === "rendered" || mode === "split";
 
 cm.on("focus", () => { lastFocus = "src"; updStatus(); });
 cm.on("change", () => {
   if (cm._silent) return;
+  latestEditSource = "src";
   md = cm.getValue();
   clearTimeout(tSrc);
-  tSrc = setTimeout(() => { pushToWw(); afterChange(); }, 350);
+  tSrc = setTimeout(() => { tSrc = 0; pushToWw(); afterChange(); }, 350);
 });
+let wwSel = null;
+function bindEditorEvents() {
 ed.on("focus", () => { lastFocus = "ww"; wwFocused = true; updStatus(); });
-let wwSel = null; // selection of the rendered editor at blur, restored before toolbar commands
+
 ed.on("blur", () => { wwSel = ed.getSelection(); wwFocused = false; });
 ed.on("change", () => {
   if (!wwFocused && !wwUserOp) return; // ignore changes caused by setMarkdown
+  latestEditSource = "ww";
   clearTimeout(tWw);
   tWw = setTimeout(() => {
+    tWw=0;
     let next = fromWw(normalizeWw(ed.getMarkdown()));
     if (md.endsWith("\n") && !next.endsWith("\n")) next += "\n";
     md = next; pushToSrc(); afterChange(); schedulePreviews();
   }, 250);
 });
+
+}
+bindEditorEvents();
 
 // Toast UI rewrites some syntax when it serializes ("- " -> "* ", "## 1." -> "## 1\.", 2-space -> 4-space list indent).
 // Bring it back to the common style so the source does not jump around while editing on the rendered side.
@@ -801,9 +851,9 @@ function target() {
   return lastFocus;
 }
 function updStatus() {
-  const t = mode === "outline" ? "아웃라인" : target() === "src" ? "원문" : "렌더링";
+  const t = mode === "outline" ? tr("아웃라인") : target() === "src" ? tr("원문") : tr("렌더링");
   const dirty = typeof DOC !== "undefined" && md !== DOC.saved;
-  $("#status").textContent = `${dirty ? "● 저장 안 됨 · " : ""}${fileName} (${KIND_LABEL[DOC.kind]}) · 편집 대상: ${t} · ${md.split("\n").length}줄`;
+  $("#status").textContent = `${dirty ? tr("● 저장 안 됨 · ") : ""}${fileName} (${tr(KIND_LABEL[DOC.kind])}) · ${tr("statusFormat", {target:t,count:md.split("\n").length})}`;
   document.title = (dirty ? "● " : "") + fileName;
   $("#srcPane").classList.toggle("tgt", mode === "split" && target() === "src");
   $("#wwPane").classList.toggle("tgt", mode === "split" && target() === "ww");
@@ -1092,7 +1142,7 @@ function toTableMd(rows, al) {
 function renderToc() {
   const root = buildTree(parseBlocks(md).filter((b) => b.type === "h"));
   const box = $("#tocTree"); box.innerHTML = "";
-  if (!root.children.length) { box.append(el("div", "hint", "제목(# ...)이 없습니다.")); return; }
+  if (!root.children.length) { box.append(el("div", "hint", tr("제목(# ...)이 없습니다."))); return; }
   const walk = (nodes, parent) => {
     for (const n of nodes) {
       const row = el("div", "ti");
@@ -1236,13 +1286,13 @@ function commitOutline(lines, focusLine, edit, isNew) {
   histTip = md;
 }
 function undo() {
-  if (!undoStack.length) return flash("되돌릴 아웃라인 작업이 없습니다");
-  if (md !== histTip) { undoStack.length = 0; redoStack.length = 0; return flash("원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다"); }
+  if (!undoStack.length) return flash(tr("되돌릴 아웃라인 작업이 없습니다"));
+  if (md !== histTip) { undoStack.length = 0; redoStack.length = 0; return flash(tr("원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다")); }
   redoStack.push(md); pendingSel = { line: selLine };
   setAll(undoStack.pop(), "outline"); histTip = md;
 }
 function redo() {
-  if (!redoStack.length || md !== histTip) return flash("다시 실행할 작업이 없습니다");
+  if (!redoStack.length || md !== histTip) return flash(tr("다시 실행할 작업이 없습니다"));
   undoStack.push(md); pendingSel = { line: selLine };
   setAll(redoStack.pop(), "outline"); histTip = md;
 }
@@ -1251,7 +1301,7 @@ function flash(msg) { $("#status").textContent = msg; $("#status").style.color =
 
 function doMove(n, t, pos, edit) {
   const plan = planMove(curO, n, t, pos);
-  if (!plan) return flash("그 위치로는 옮길 수 없습니다");
+  if (!plan) return flash(tr("그 위치로는 옮길 수 없습니다"));
   const lines = curO.lines.slice(), cnt = n.subEnd - n.start + 1;
   lines.splice(n.start, cnt);
   let at = plan.at; if (at > n.start) at -= cnt;
@@ -1260,14 +1310,14 @@ function doMove(n, t, pos, edit) {
   return true;
 }
 function opIndent(n, edit) {
-  if (n.type !== "h" && n.type !== "li") return flash("제목과 목록만 들여쓸 수 있습니다");
+  if (n.type !== "h" && n.type !== "li") return flash(tr("제목과 목록만 들여쓸 수 있습니다"));
   const s = sibling(n, -1);
-  if (!s) return flash("바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다");
+  if (!s) return flash(tr("바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다"));
   return doMove(n, s, "inside", edit);
 }
 function opOutdent(n, edit) {
   const p = n.parent;
-  if (!p || p.type === "root" || p.type !== n.type) return flash("더 내어쓸 수 없습니다");
+  if (!p || p.type === "root" || p.type !== n.type) return flash(tr("더 내어쓸 수 없습니다"));
   return doMove(n, p, "after", edit);
 }
 function opAdd(n, lines, delta) {
@@ -1288,7 +1338,7 @@ function opDelete(n) {
   const lines = md.split("\n");
   lines.splice(n.start, n.subEnd - n.start + 1);
   commitOutline(lines, n.start, false);
-  flash("삭제했습니다 (Ctrl+Z로 되돌리기)");
+  flash(tr("삭제했습니다 (Ctrl+Z로 되돌리기)"));
 }
 function replaceText(n, v, lines) {
   let rep;
@@ -1309,7 +1359,7 @@ function renderOutline() {
   const sn = nodeAt(curO, selLine);
   for (let p = sn && sn.parent; p && p.type !== "root"; p = p.parent) outFold.delete(p.key);
   box.innerHTML = "";
-  if (!curO.root.children.length) box.append(el("div", "hint", "내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다."));
+  if (!curO.root.children.length) box.append(el("div", "hint", tr("내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.")));
   curO.root.children.forEach((n) => box.append(outNode(n)));
   schedulePreviews();
   box.scrollTop = st;
@@ -1344,7 +1394,7 @@ function outNode(n) {
     const q = el("blockquote"); q.innerHTML = inl(n.text).replace(/\n/g, "<br>"); row.append(q);
   } else if (n.type === "code") {
     const codeTxt = md.split("\n").slice(n.start + 1, n.end).join("\n"), lg = ((md.split("\n")[n.start] || "").match(FENCE_LANG) || [])[1]?.toLowerCase();
-    const pre = lg === "mermaid" || lg === "html" ? cbBox(lg, codeTxt) : el("pre", null, codeTxt); pre.title = "더블클릭: 코드 블록 편집";
+    const pre = lg === "mermaid" || lg === "html" ? cbBox(lg, codeTxt) : el("pre", null, codeTxt); pre.title = tr("더블클릭: 코드 블록 편집");
     pre.ondblclick = () => openCode({ a: n.start, b: n.end });
     row.append(pre);
   } else if (n.type === "hr") {
@@ -1353,7 +1403,7 @@ function outNode(n) {
     const raw = md.split("\n").slice(n.start, n.end + 1).join("\n"), t = parseTable(raw);
     if (!t) row.append(el("pre", null, raw));
     else {
-      const tb = el("table", "mdtbl"); tb.title = "더블클릭: 표 편집기";
+      const tb = el("table", "mdtbl"); tb.title = tr("더블클릭: 표 편집기");
       const A = { l: "left", c: "center", r: "right" };
       t.rows.forEach((r, ri) => { const tr = el("tr"); r.forEach((c, ci) => { const td = el(ri ? "td" : "th"); td.innerHTML = inl(c.replace(/\n/g, "<br>")); if (A[t.al[ci]]) td.style.textAlign = A[t.al[ci]]; tr.append(td); }); tb.append(tr); });
       tb.ondblclick = () => openTable({ a: n.start, b: n.end });
@@ -1442,7 +1492,7 @@ $("#outline").addEventListener("keydown", (e) => {
   if (ctrl && (k.toLowerCase() === "y" || (k.toLowerCase() === "z" && e.shiftKey))) { e.preventDefault(); return redo(); }
   if (k === "ArrowUp" || k === "ArrowDown") {
     e.preventDefault();
-    if (e.altKey && n) { const s = sibling(n, k === "ArrowUp" ? -1 : 1); return s ? doMove(n, s, k === "ArrowUp" ? "before" : "after") : flash("더 옮길 곳이 없습니다"); }
+    if (e.altKey && n) { const s = sibling(n, k === "ArrowUp" ? -1 : 1); return s ? doMove(n, s, k === "ArrowUp" ? "before" : "after") : flash(tr("더 옮길 곳이 없습니다")); }
     return moveSel(k === "ArrowDown" ? 1 : -1);
   }
   if (k === "Enter") { e.preventDefault(); return opAdd(n); }
@@ -1477,7 +1527,7 @@ function openTable(range) {
   $("#dlg").hidden = false; drawGrid(); setView("grid"); setTimeout(focusCell, 30);
 }
 function closeTable() { $("#dlg").hidden = true; (T.tgt === "ww" ? ed : cm).focus(); }
-function info() { $("#dlgInfo").textContent = `${T.rows.length}행 × ${T.rows[0].length}열` + (T.replace ? " · 기존 표 편집" : " · 새 표"); }
+function info() { $("#dlgInfo").textContent = tr("tableFormat", {rows:T.rows.length,cols:T.rows[0].length}) + (T.replace ? tr(" · 기존 표 편집") : tr(" · 새 표")); }
 function autoH(t) { t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
 function drawGrid() {
   const g = $("#grid"); g.innerHTML = "";
@@ -1501,7 +1551,7 @@ function markAl() { document.querySelectorAll(".al").forEach((b) => b.classList.
 function setView(v) {
   if (v === "grid" && T.view === "md") {
     const p = parseTable($("#mdView").value);
-    if (!p) { alert("표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다."); return; }
+    if (!p) { alert(tr("표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.")); return; }
     T.rows = p.rows; T.al = p.al; T.r = Math.min(T.r, T.rows.length - 1); T.c = Math.min(T.c, T.rows[0].length - 1);
   }
   if (v === "md") $("#mdView").value = toTableMd(T.rows, T.al);
@@ -1525,7 +1575,7 @@ $("#dlg").addEventListener("keydown", (e) => {
   else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); applyTable(); }
 });
 function applyTable() {
-  if (T.view === "md") { const p = parseTable($("#mdView").value); if (!p) return alert("표 형식이 올바르지 않습니다."); T.rows = p.rows; T.al = p.al; }
+  if (T.view === "md") { const p = parseTable($("#mdView").value); if (!p) return alert(tr("표 형식이 올바르지 않습니다.")); T.rows = p.rows; T.al = p.al; }
   const tmd = toTableMd(T.rows, T.al);
   $("#dlg").hidden = true;
   if (T.replace) {
@@ -1567,7 +1617,7 @@ function openCode(range) {
     const closed = C.range.b > C.range.a && fm && new RegExp("^\\s*" + fm[1][0] + "{" + fm[1].length + ",}\\s*$").test(lines[C.range.b]);
     code = lines.slice(C.range.a + 1, closed ? C.range.b : C.range.b + 1).join("\n");
   }
-  $("#cTitle").textContent = C.range ? "코드 블록 수정" : "코드 블록 삽입";
+  $("#cTitle").textContent = C.range ? tr("코드 블록 수정") : tr("코드 블록 삽입");
   $("#cLang").value = lang; $("#cCode").value = code; $("#cMsg").textContent = "";
   closeLangList(); syncCode(); setLn(codeLn);
   $("#cdlg").hidden = false; $("#cCode").scrollTop = 0;
@@ -1583,14 +1633,14 @@ function syncCode() {
 function setLn(on) {
   codeLn = on; localStorage.setItem("mde.code.ln", on ? "1" : "0");
   $("#cGut").hidden = !on; $("#cLn").classList.toggle("off", !on);
-  $("#cLn").textContent = on ? "1≡ On" : "1≡ Off"; $("#cLn").title = on ? "줄 번호 끄기" : "줄 번호 켜기";
+  $("#cLn").textContent = on ? "1≡ On" : "1≡ Off"; $("#cLn").title = on ? tr("줄 번호 끄기") : tr("줄 번호 켜기");
 }
 function langId(v) { v = v.trim(); const hit = LANGS.find(([n, id]) => n.toLowerCase() === v.toLowerCase() || id === v.toLowerCase()); return hit ? hit[1] : v; }
 function showLangList(all) {
   const q = all ? "" : $("#cLang").value.trim().toLowerCase();
   C.items = LANGS.filter(([n, id]) => !q || n.toLowerCase().startsWith(q) || id.startsWith(q) || n.toLowerCase().includes(q));
   const box = $("#cList"); box.innerHTML = "";
-  if (!C.items.length) { box.append(el("div", "lnone", "목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다")); }
+  if (!C.items.length) { box.append(el("div", "lnone", tr("목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다"))); }
   C.items.forEach(([n, id], i) => {
     const o = el("div", "lopt"); o.setAttribute("role", "option"); o.append(el("span", null, n), el("small", null, id));
     o.onmousedown = (e) => { e.preventDefault(); pickLang(i); };
@@ -1629,7 +1679,7 @@ $("#cCode").addEventListener("keydown", (e) => {
   }
 });
 $("#cLn").onclick = () => setLn(!codeLn);
-$("#cCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#cCode").value); $("#cMsg").textContent = "복사했습니다"; } catch { $("#cMsg").textContent = "복사하지 못했습니다"; } setTimeout(() => ($("#cMsg").textContent = ""), 1500); };
+$("#cCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#cCode").value); $("#cMsg").textContent = tr("복사했습니다"); } catch { $("#cMsg").textContent = tr("복사하지 못했습니다"); } setTimeout(() => ($("#cMsg").textContent = ""), 1500); };
 $("#cX").onclick = $("#cCancel").onclick = closeCode;
 $("#cOk").onclick = applyCode;
 $("#cdlg").addEventListener("keydown", (e) => {
@@ -1710,7 +1760,7 @@ function openLink() {
     const a = window.getSelection()?.anchorNode, ae = a && (a.nodeType === 1 ? a : a.parentElement)?.closest?.("a");
     if (ae) url = ae.getAttribute("href") || "";
   }
-  $("#lTitle").textContent = LK.range || url ? "링크 수정" : "링크 삽입";
+  $("#lTitle").textContent = LK.range || url ? tr("링크 수정") : tr("링크 삽입");
   $("#lText").value = text; $("#lMsg").textContent = ""; setLinkAddress(url, true);
   $("#ldlg").hidden = false; setTimeout(() => (text ? $("#lUrl") : $("#lText")).focus(), 30); // after the editor's own focus handling
 }
@@ -1720,11 +1770,11 @@ $("#lProtocol").addEventListener("change", updateLinkState);
 $("#lPaste").onclick = async () => {
   const button = $("#lPaste"); button.disabled = true;
   try {
-    if (!navigator.clipboard?.readText) throw new Error("이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.");
+    if (!navigator.clipboard?.readText) throw new Error(tr("이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요."));
     const value = findClipboardLink(await navigator.clipboard.readText());
-    if (!value) throw new Error("클립보드에서 웹 주소를 찾지 못했습니다.");
-    setLinkAddress(value); $("#lMsg").textContent = "주소를 채웠습니다."; $("#lUrl").focus();
-  } catch (error) { $("#lMsg").textContent = error.name === "NotAllowedError" ? "클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요." : error.message; }
+    if (!value) throw new Error(tr("클립보드에서 웹 주소를 찾지 못했습니다."));
+    setLinkAddress(value); $("#lMsg").textContent = tr("주소를 채웠습니다."); $("#lUrl").focus();
+  } catch (error) { $("#lMsg").textContent = error.name === "NotAllowedError" ? tr("클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.") : error.message; }
   finally { button.disabled = false; }
 };
 $("#lX").onclick = $("#lCancel").onclick = closeLink;
@@ -1758,12 +1808,13 @@ function drawSettings() {
     const row = el("div", "crow2" + (S.custom[k] ? " mod" : "")), inp = el("input"); inp.type = "color"; inp.value = p[k];
     const hex = el("code", null, p[k]);
     inp.oninput = () => { S.custom[k] = inp.value; hex.textContent = inp.value; row.classList.add("mod"); saveSettings(); applySettings(); };
-    row.append(el("span", null, label), hex, inp); box.append(row);
+    row.append(el("span", null, tr(label)), hex, inp); box.append(row);
   });
 }
-$("#setBtn").onclick = () => { drawSettings(); $("#sdlg").hidden = false; $("#sTheme").focus(); };
+$("#setBtn").onclick = () => { drawSettings(); $("#sdlg").hidden = false; $("#sUiLanguage").focus(); };
 $("#sX").onclick = $("#sClose").onclick = () => { $("#sdlg").hidden = true; };
 $("#sdlg").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); $("#sdlg").hidden = true; } });
+$("#sUiLanguage").onchange = () => setLanguage($("#sUiLanguage").value);
 $("#sTheme").onchange = () => { S.theme = $("#sTheme").value; saveSettings(); applySettings(); drawSettings(); };
 $("#sApp").onchange = () => { S.appDark = $("#sApp").checked; saveSettings(); applySettings(); };
 $("#sFont").onchange = () => { S.fontSize = Math.min(24, Math.max(11, Number($("#sFont").value) || 14)); saveSettings(); applySettings(); };
@@ -1803,26 +1854,26 @@ async function buildHtml(offline) {
   const css = parts.filter((_, i) => libs[i].css).join("\n"), js = parts.filter((_, i) => !libs[i].css).join("\n");
   const name = esc(nameFor("online"));
   const body = APP_BODY.replace(/<textarea id="mdData"[^>]*>[\s\S]*?<\/textarea>/, () => `<textarea id="mdData" hidden data-name="${name}">\n${esc(md)}</textarea>`);
-  return `<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${name}</title>\n${css}\n<style id="appStyle">${APP_CSS}</style>\n</head>\n<body>${body}\n${js}\n<script id="appMain">${APP_JS}<\/script>\n</body>\n</html>\n`;
+  return `<!doctype html>\n<html lang="${uiLang==='zh'?'zh-Hans':uiLang}">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${name}</title>\n${css}\n<style id="appStyle">${APP_CSS}</style>\n</head>\n<body>${body}\n${js}\n<script id="appMain">${APP_JS}<\/script>\n</body>\n</html>\n`;
 }
 async function writeTo(kind, asNew) {
   let data;
-  try { flash(kind === "offline" ? "오프라인 파일을 만드는 중… (라이브러리를 넣습니다)" : "저장 중…"); data = kind === "md" ? md : await buildHtml(kind === "offline"); }
-  catch (e) { alert("파일을 만들지 못했습니다: " + e.message + (kind === "offline" ? "\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다." : "")); return false; }
+  try { flash(kind === "offline" ? tr("오프라인 파일을 만드는 중… (라이브러리를 넣습니다)") : tr("저장 중…")); data = kind === "md" ? md : await buildHtml(kind === "offline"); }
+  catch (e) { alert(tr("파일을 만들지 못했습니다: ") + e.message + (kind === "offline" ? tr("\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.") : "")); return false; }
   const type = kind === "md" ? "text/markdown" : "text/html";
-  let how = "내려받기 폴더에 저장했습니다";
+  let how = tr("내려받기 폴더에 저장했습니다");
   if (FS_OK) {
     try {
       let h = !asNew && DOC.handle && DOC.kind === kind ? DOC.handle : null;
       if (!h) h = await window.showSaveFilePicker({ suggestedName: nameFor(kind), types: [kind === "md"
         ? { description: "Markdown", accept: { "text/markdown": [".md"] } }
-        : { description: "md.html (" + KIND_LABEL[kind] + ")", accept: { "text/html": [".html"] } }] });
+        : { description: "md.html (" + tr(KIND_LABEL[kind]) + ")", accept: { "text/html": [".html"] } }] });
       const w = await h.createWritable(); await w.write(new Blob([data], { type })); await w.close();
-      DOC.handle = h; fileName = h.name; how = "저장했습니다";
+      DOC.handle = h; fileName = h.name; how = tr("저장했습니다");
     } catch (e) { if (e.name === "AbortError") { updStatus(); return false; } console.warn(e); downloadText(data, nameFor(kind), type); }
   } else downloadText(data, nameFor(kind), type);
   DOC.kind = kind; DOC.saved = md; DOC.fileBound = true;
-  updStatus(); flash(`${fileName} (${KIND_LABEL[kind]}) ${how}`);
+  updStatus(); flash(`${fileName} (${tr(KIND_LABEL[kind])}) ${how}`);
   return true;
 }
 const doSave = () => (DOC.kind === "emm" ? emmSave(false) : writeTo(DOC.kind, false));
@@ -1844,8 +1895,8 @@ async function sha256Hex(data) {
   return [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 function emmErr(s) {
-  return { 401: "로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.", 403: "이 첨부를 고칠 권한이 없습니다 (읽기 전용).", 404: "첨부를 찾을 수 없거나 볼 권한이 없습니다.",
-    413: "용량 한도를 넘었습니다.", 415: "이 형식의 첨부는 저장할 수 없습니다." }[s] || "서버 오류 (" + s + ")";
+  return { 401: tr("로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요."), 403: tr("이 첨부를 고칠 권한이 없습니다 (읽기 전용)."), 404: tr("첨부를 찾을 수 없거나 볼 권한이 없습니다."),
+    413: tr("용량 한도를 넘었습니다."), 415: tr("이 형식의 첨부는 저장할 수 없습니다.") }[s] || tr("서버 오류 (") + s + ")";
 }
 const emmUrl = (suffix) => EMM.api + "/v1/attachments/" + encodeURIComponent(EMM.att) + (suffix || "");
 // ---- opener protocol (same origin only) ----
@@ -1856,54 +1907,55 @@ function emmOpener() { try { return window.opener && !window.opener.closed ? win
 window.addEventListener("message", (e) => {
   if (!EMM || EMM.mode !== "opener" || e.origin !== location.origin) return; // same-origin windows only (the EasyMindMap app)
   const d = e.data || {};
-  if (d.key !== EMM.key) return;
+  if (d.key !== EMM.key || e.source !== emmOpener()) return;
   if (d.type === "mde:load" && typeof d.markdown === "string") {
+    if (!urlLanguage() && !manualLanguage && normalizeLanguage(d.lang || d.locale)) setLanguage(d.lang || d.locale, false);
     OP.loaded = true; EMM.readOnly = !!d.readOnly;
     setAll(d.markdown.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"), "file"); DOC.saved = md; updStatus();
-    flash(EMM.readOnly ? "불러왔습니다 (읽기 전용)" : "불러왔습니다: " + EMM.name);
+    flash(EMM.readOnly ? tr("불러왔습니다 (읽기 전용)") : tr("불러왔습니다: ") + EMM.name);
   } else if (d.type === "mde:saved" && OP.waiters.has(d.reqId)) { OP.waiters.get(d.reqId)(d); OP.waiters.delete(d.reqId); }
 });
 async function openerLoad() {
-  flash("EasyMindMap 탭에서 내용을 받는 중…");
+  flash(tr("EasyMindMap 탭에서 내용을 받는 중…"));
   for (let i = 0; i < 20 && !OP.loaded; i++) {
     const w = emmOpener();
     if (!w) break;
     w.postMessage({ type: "mde:hello", key: EMM.key }, location.origin);
     await new Promise((r) => setTimeout(r, 500));
   }
-  if (!OP.loaded) { flash("불러오지 못했습니다"); alert("EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요."); }
+  if (!OP.loaded) { flash(tr("불러오지 못했습니다")); alert(tr("EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.")); }
 }
 async function openerSave() {
   const w = emmOpener();
-  if (!w) throw new Error("이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.");
+  if (!w) throw new Error(tr("이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요."));
   const reqId = ++OP.seq;
   const res = await new Promise((resolve) => {
     OP.waiters.set(reqId, resolve);
     w.postMessage({ type: "mde:save", key: EMM.key, markdown: md, reqId }, location.origin);
-    setTimeout(() => { if (OP.waiters.has(reqId)) { OP.waiters.delete(reqId); resolve({ ok: false, error: "EasyMindMap 탭이 응답하지 않습니다." }); } }, 8000);
+    setTimeout(() => { if (OP.waiters.has(reqId)) { OP.waiters.delete(reqId); resolve({ ok: false, error: tr("EasyMindMap 탭이 응답하지 않습니다.") }); } }, 8000);
   });
-  if (!res.ok) throw new Error(res.error || "저장하지 못했습니다.");
+  if (!res.ok) throw new Error(res.error || tr("저장하지 못했습니다."));
 }
 async function emmLoad() {
   if (EMM.mode === "opener") return openerLoad();
-  flash("EasyMindMap 첨부를 불러오는 중…");
+  flash(tr("EasyMindMap 첨부를 불러오는 중…"));
   try {
     const r = await fetch(emmUrl(), { headers: { Authorization: "Bearer " + emmToken() } });
     if (!r.ok) throw new Error(emmErr(r.status));
     const buf = await r.arrayBuffer();
     EMM.base = await sha256Hex(buf);
     setAll(new TextDecoder("utf-8").decode(buf).replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"), "file");
-    DOC.saved = md; updStatus(); flash("불러왔습니다: " + EMM.name);
-  } catch (e) { flash("불러오지 못했습니다"); alert("첨부를 불러오지 못했습니다: " + e.message); }
+    DOC.saved = md; updStatus(); flash(tr("불러왔습니다: ") + EMM.name);
+  } catch (e) { flash(tr("불러오지 못했습니다")); alert(tr("첨부를 불러오지 못했습니다: ") + e.message); }
 }
 let emmSaving = false;
 async function emmSave(force) {
   if (emmSaving) return;
-  if (EMM.readOnly) return alert("읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.");
-  emmSaving = true; flash("EasyMindMap에 저장 중…");
+  if (EMM.readOnly) return alert(tr("읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다."));
+  emmSaving = true; flash(tr("EasyMindMap에 저장 중…"));
   if (EMM.mode === "opener") {
-    try { await openerSave(); DOC.saved = md; updStatus(); flash("EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)"); }
-    catch (e) { flash("저장하지 못했습니다"); alert("저장하지 못했습니다: " + e.message); }
+    try { await openerSave(); DOC.saved = md; updStatus(); flash(tr("EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)")); }
+    catch (e) { flash(tr("저장하지 못했습니다")); alert(tr("저장하지 못했습니다: ") + e.message); }
     finally { emmSaving = false; }
     return;
   }
@@ -1914,28 +1966,28 @@ async function emmSave(force) {
     const r = await fetch(emmUrl("/content"), { method: "PUT", headers, body });
     if (r.status === 409) {
       emmSaving = false;
-      if (confirm("다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)")) return emmSave(true);
-      return flash("저장하지 않았습니다 (다른 곳에서 먼저 고침)");
+      if (confirm(tr("다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)"))) return emmSave(true);
+      return flash(tr("저장하지 않았습니다 (다른 곳에서 먼저 고침)"));
     }
     if (r.status === 403) EMM.readOnly = true;
     if (!r.ok) throw new Error(emmErr(r.status));
     EMM.base = await sha256Hex(body);
-    DOC.saved = md; updStatus(); flash("EasyMindMap 첨부에 저장했습니다");
+    DOC.saved = md; updStatus(); flash(tr("EasyMindMap 첨부에 저장했습니다"));
     try { window.opener && window.opener.postMessage({ type: "mde:attachment-saved", att: EMM.att, sizeBytes: body.length }, location.origin); } catch {}
-  } catch (e) { flash("저장하지 못했습니다"); alert("저장하지 못했습니다: " + e.message); }
+  } catch (e) { flash(tr("저장하지 못했습니다")); alert(tr("저장하지 못했습니다: ") + e.message); }
   finally { emmSaving = false; }
 }
 async function loadFile(f, h) {
   let text = await f.text(), kind = "md";
   if (/\.html?$/i.test(f.name)) {
     const d = new DOMParser().parseFromString(text, "text/html"), ta = d.getElementById("mdData");
-    if (!ta) return alert("이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.");
+    if (!ta) return alert(tr("이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다."));
     text = ta.value || ta.textContent || ""; kind = d.querySelector("script[data-lib-url]:not([src])") ? "offline" : "online";
   }
   fileName = f.name; DOC.handle = h || null; DOC.kind = kind; DOC.fileBound = true;
   setAll(text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"), "file"); DOC.saved = md; updStatus();
 }
-const askDiscard = () => !isDirty() || !DOC.fileBound || confirm("저장하지 않은 변경이 있습니다. 버리고 계속할까요?");
+const askDiscard = () => !isDirty() || !DOC.fileBound || confirm(tr("저장하지 않은 변경이 있습니다. 버리고 계속할까요?"));
 async function doOpen() {
   if (!askDiscard()) return;
   if (typeof window.showOpenFilePicker === "function") {
@@ -1949,11 +2001,11 @@ async function doOpen() {
 $("#fileIn").onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) loadFile(f, null); };
 function newDoc(text, name) { fileName = name; DOC.handle = null; DOC.kind = "md"; DOC.fileBound = false; setAll(text, "file"); DOC.saved = md; updStatus(); }
 function doClose() {
-  if (isDirty() && !confirm("저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?")) return;
+  if (isDirty() && !confirm(tr("저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?"))) return;
   DOC.saved = md;
   if (window.parent !== window) return postToParent({ type: "mde:close" });
   window.close(); // works only for windows opened by script
-  setTimeout(() => { newDoc("", "새 문서.md"); flash("브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요."); }, 200);
+  setTimeout(() => { newDoc("", "새 문서.md"); flash(tr("브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.")); }, 200);
 }
 const ACTS = {
   new: () => askDiscard() && newDoc("", "새 문서.md"),
@@ -2001,14 +2053,14 @@ function loadMermaid() {
   if (!mmdP) mmdP = new Promise((res, rej) => {
     const s = document.createElement("script"); s.src = MERMAID_URL;
     s.onload = () => res(initMermaid());
-    s.onerror = () => { mmdP = null; rej(new Error("Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)")); };
+    s.onerror = () => { mmdP = null; rej(new Error(tr("Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)"))); };
     document.head.append(s);
   });
   return mmdP;
 }
 function cbBox(lang, code) { // outline uses the same box as the rendered pane
   const box = el("div", "mde-cb"); box.dataset.lang = lang; box.dataset.code = encodeURIComponent(code);
-  box.innerHTML = `<div class="mde-cb-hd"><span>${lang}</span><span>더블클릭: 코드 편집</span></div><div class="mde-cb-body">미리보기 준비 중…</div>`;
+  box.innerHTML = `<div class="mde-cb-hd"><span>${lang}</span><span>${tr("더블클릭: 코드 편집")}</span></div><div class="mde-cb-body">${tr("미리보기 준비 중…")}</div>`;
   return box;
 }
 function schedulePreviews() { clearTimeout(tPrev); tPrev = setTimeout(renderPreviews, 60); }
@@ -2018,14 +2070,14 @@ async function renderPreview(box) {
   const lang = box.dataset.lang, code = decodeURIComponent(box.dataset.code || ""), body = box.querySelector(".mde-cb-body") || box;
   if (lang === "html") {
     const id = "f" + ++mmdSeq, f = document.createElement("iframe");
-    f.className = "mde-html"; f.dataset.fid = id; f.setAttribute("sandbox", "allow-scripts"); f.title = "HTML 미리보기";
+    f.className = "mde-html"; f.dataset.fid = id; f.setAttribute("sandbox", "allow-scripts"); f.title = tr("HTML 미리보기");
     f.srcdoc = code + `<script>(function(){function s(){parent.postMessage({mdeFrame:"${id}",h:document.documentElement.scrollHeight},"*")}addEventListener("load",s);new ResizeObserver(s).observe(document.documentElement)})()<\/script>`;
     body.replaceChildren(f); return;
   }
   if (MMD_CACHE.has(code)) { body.innerHTML = MMD_CACHE.get(code); return; }
   const id = "mmd" + ++mmdSeq;
   try { await loadMermaid(); const { svg } = await window.mermaid.render(id, code); MMD_CACHE.set(code, svg); body.innerHTML = svg; body.classList.remove("err"); }
-  catch (e) { body.classList.add("err"); body.textContent = "Mermaid 오류: " + (e && e.message ? e.message : e); document.getElementById("d" + id)?.remove(); document.getElementById(id)?.remove(); }
+  catch (e) { body.classList.add("err"); body.textContent = tr("Mermaid 오류: ") + (e && e.message ? e.message : e); document.getElementById("d" + id)?.remove(); document.getElementById(id)?.remove(); }
 }
 window.addEventListener("message", (e) => {
   const d = e.data || {};
@@ -2046,13 +2098,16 @@ window.addEventListener("message", (e) => {
   else if (d.type === "mde:get") e.source?.postMessage({ type: "mde:markdown", id: d.id, markdown: md }, "*");
   else if (d.type === "mde:mode" && ["md", "outline", "rendered", "split"].includes(d.mode)) setMode(d.mode);
 });
-window.MDE = { openCode, openLink, fmt, settings: S, applySettings, outline: { get O() { return curO; }, get sel() { return selLine; }, nodeAt: (l) => nodeAt(curO, l), doMove, opIndent, opOutdent, opAdd, opDelete, undo, redo }, cm, ed, get markdown() { return md; }, setMarkdown: (t) => setAll(t, "api"), setMode, openTable };
+window.MDE = { openCode, openLink, fmt, settings: S, applySettings, outline: { get O() { return curO; }, get sel() { return selLine; }, nodeAt: (l) => nodeAt(curO, l), doMove, opIndent, opOutdent, opAdd, opDelete, undo, redo }, cm, get ed() { return ed; }, getLanguage: () => uiLang, setLanguage, getLocale: () => uiLang, setLocale: setLanguage, get markdown() { return md; }, setMarkdown: (t) => setAll(t, "api"), setMode, openTable };
+
+$('#langTrigger').onclick=()=>{const open=$('#langList').hidden;$('#langList').hidden=!open;$('#langTrigger').setAttribute('aria-expanded',String(open));if(open)document.querySelector('[data-ui-language="'+uiLang+'"]').focus();};document.querySelectorAll('[data-ui-language]').forEach(b=>b.onclick=()=>{setLanguage(b.dataset.uiLanguage);closeLanguagePicker();$('#langTrigger').focus();});document.addEventListener('pointerdown',e=>{if(!e.target.closest('.lang-picker'))closeLanguagePicker();});$('.lang-picker').addEventListener('keydown',e=>{const items=[...document.querySelectorAll('[data-ui-language]')];if(e.key==='Escape'){closeLanguagePicker();$('#langTrigger').focus();}else if(e.key==='Tab')closeLanguagePicker();else if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){e.preventDefault();$('#langList').hidden=false;$('#langTrigger').setAttribute('aria-expanded','true');let i=items.indexOf(document.activeElement);i=e.key==='Home'?0:e.key==='End'?3:(i+(e.key==='ArrowDown'?1:3)+4)%4;items[i].focus();}});
 
 /* ---------- start ---------- */
+applyUiLanguage();
 applySettings();
 setMode(mode);
 schedulePreviews();
-if (EMM) { $("#saveBtn").textContent = "EMM에 저장"; $("#saveBtn").title = "EasyMindMap 첨부에 저장 (Ctrl+S)"; emmLoad(); }
+if (EMM) { $("#saveBtn").textContent = tr("EMM에 저장"); $("#saveBtn").title = tr("EasyMindMap 첨부에 저장 (Ctrl+S)"); emmLoad(); }
 renderToc();
 updStatus();
 postToParent({ type: "mde:ready" });

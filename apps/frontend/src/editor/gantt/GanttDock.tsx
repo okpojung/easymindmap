@@ -44,7 +44,9 @@ export function openGantt(mode: 'dock' | 'tab' | 'window', onBlocked?: () => voi
   const ui = useEditorUiStore.getState();
   if (mode === 'dock') { ui.setGanttDock(true); return; }
   ui.setGanttRemote(true);
-  if (!openGanttWindow(mode)) onBlocked?.();
+  // 새 탭·새 창으로 열면 아래 칸은 닫는다 (2026-11-08) — 그 창의 [EMM 창에서 열기] 로 돌아온다
+  if (!openGanttWindow(mode)) { onBlocked?.(); return; }
+  ui.setGanttDock(false);
 }
 
 export function GanttDock({ t, onBlocked }: { t: ThemeTokens; onBlocked?: () => void }) {
@@ -121,6 +123,7 @@ export function GanttBroadcaster() {
       if (m?.type === 'hello') send();
       else if (m?.type === 'select' && typeof m.id === 'string') revealNode(m.id);
       else if (m?.type === 'setDates' && typeof m.id === 'string' && m.patch) applyGanttDates(m.id, m.patch);
+      else if (m?.type === 'dock') { useEditorUiStore.getState().setGanttDock(true); window.focus(); }
     };
     const u1 = useDocumentStore.subscribe((s, p) => { if (s.map !== p.map) schedule(); });
     const u2 = useInteractionStore.subscribe((s, p) => { if (s.selectedId !== p.selectedId) schedule(); });

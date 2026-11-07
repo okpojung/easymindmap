@@ -13,12 +13,12 @@
 //
 // 조각은 ` · ` 로 나누고 순서는 일정 → 담당자 → 진척율. 각 조각은 없어도 된다.
 //   일정    `📅 시작 ~ 끝` · `📅 시작`(하루) · `📅 ~ 끝`(마감만) — 날짜는 언제나 YYYY-MM-DD
-//   담당자  `@이름` 또는 `@이름 <이메일>`
+//   담당자  `@이름` 또는 `@이름 <이메일>` — 여럿이면 `, ` 로 잇는다(최대 3명, 2026-11-07): `@가 <a@x.kr>, @나`
 //   진척율  `35%` (앱 태그 모양인 `%35` 도 읽는다)
 // **줄 전체가 이 모양일 때만** 프로젝트 태그로 읽는다 — 한 조각이라도 어긋나면 보통 글이다.
 // 체크를 꺼 둔(노드에 안 보이는) 값은 MD 에 싣지 않는다(화면에 보이는 것만 나간다).
 // 일반 태그(`tags`)는 여전히 MD 에 싣지 않는다 — emm-spec.md §노드별 충실도.
-import type { ProjectTags } from './model';
+import { assigneeList, MAX_ASSIGNEES, type ProjectTags, type ProjectAssignee } from './model';
 
 const DATE = String.raw`\d{4}-\d{2}-\d{2}`;
 const DATE_SEG_RE = new RegExp(String.raw`^📅\s*(${DATE})?\s*(?:(~)\s*(${DATE})?)?$`, 'u');
@@ -50,10 +50,14 @@ export function projectLine(p: ProjectTags | undefined): string | null {
     else if (s) parts.push(`📅 ${s}`);
     else if (e) parts.push(`📅 ~ ${e}`);
   }
-  const name = p.assignee?.name?.replace(/[\s·<>@]+/g, ' ').trim();
-  if (p.assigneeOn && name) {
-    const email = p.assignee?.email?.trim();
-    parts.push(email && /^[^<>\s@]+@[^<>\s@]+$/.test(email) ? `@${name} <${email}>` : `@${name}`);
+  if (p.assigneeOn) {
+    const people = assigneeList(p).map((a) => {
+      const name = a.name.replace(/[\s·<>@,]+/g, ' ').trim();
+      if (!name) return null;
+      const email = a.email?.trim();
+      return email && /^[^<>\s@]+@[^<>\s@]+$/.test(email) ? `@${name} <${email}>` : `@${name}`;
+    }).filter((x): x is string => !!x);
+    if (people.length) parts.push(people.join(', '));
   }
   if (p.progressOn) {
     const v = progressOf(p.progress);
@@ -85,11 +89,19 @@ export function parseProjectLine(text: string): ProjectTags | null {
       stage = 1;
       continue;
     }
-    const a = seg.match(ASSIGNEE_SEG_RE);
-    if (a && stage < 2) {
-      const name = a[1].trim().slice(0, 60);
-      if (!name) return null;
-      out.assignee = a[2] ? { name, email: a[2] } : { name };
+    if (seg.startsWith('@') && stage < 2) {
+      // 여러 명은 `, @` 로 잇는다 — 하나라도 모양이 어긋나면 보통 글
+      const people: ProjectAssignee[] = [];
+      for (const one of seg.split(/\s*,\s*(?=@)/)) {
+        const a = one.match(ASSIGNEE_SEG_RE);
+        if (!a) return null;
+        const name = a[1].trim().slice(0, 60);
+        if (!name) return null;
+        people.push(a[2] ? { name, email: a[2] } : { name });
+      }
+      if (!people.length || people.length > MAX_ASSIGNEES) return null;
+      out.assignee = people[0];
+      if (people.length > 1) out.assignees = people;
       out.assigneeOn = true;
       stage = 2;
       continue;

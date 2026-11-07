@@ -4,7 +4,9 @@
 // `📅11-03~11-14` `@정제영` `%50` 순으로 붙는다. 체크를 끄면 태그만 빠지고 값은 남는다.
 // 값은 노드의 `project` 칸에 저장한다(일반 태그 `tags` 와 섞지 않는다). Redmine 연계 맵에서는
 // 이 값이 Redmine 일감의 시작일·마감일·담당자·진척도와 맞춰진다(연계 단계에서 붙인다).
+import { assigneeList, MAX_ASSIGNEES } from '@emm/model';
 import type { ProjectTags } from '@/editor/__samples__/types';
+export { assigneeList, MAX_ASSIGNEES };
 
 export type ProjectChipKind = 'date' | 'assignee' | 'progress';
 export interface ProjectChip { kind: ProjectChipKind; label: string }
@@ -52,7 +54,8 @@ export function projectChips(p: ProjectTags | undefined, year = new Date().getFu
     const range = formatDateRange(p.start, p.end, year);
     if (range) out.push({ kind: 'date', label: `📅${range}` });
   }
-  if (p.assigneeOn && p.assignee?.name?.trim()) out.push({ kind: 'assignee', label: `@${p.assignee.name.trim()}` });
+  // 담당자는 사람마다 태그 하나 (최대 3명, 2026-11-07)
+  if (p.assigneeOn) for (const a of assigneeList(p)) out.push({ kind: 'assignee', label: `@${a.name}` });
   if (p.progressOn) {
     const v = normalizeProgress(p.progress);
     if (v !== null) out.push({ kind: 'progress', label: `%${v}` });
@@ -67,11 +70,16 @@ export function cleanProject(p: ProjectTags | undefined): ProjectTags | undefine
   if (isValidDate(p.start)) out.start = p.start;
   if (isValidDate(p.end)) out.end = p.end;
   if (out.start && out.end && out.start > out.end) delete out.end;
-  const name = p.assignee?.name?.trim();
-  if (name) {
-    out.assignee = { name: name.slice(0, 60) };
-    if (p.assignee?.email) out.assignee.email = String(p.assignee.email).trim().slice(0, 254);
-    if (Number.isInteger(p.assignee?.redmineUserId) && p.assignee!.redmineUserId! > 0) out.assignee.redmineUserId = p.assignee!.redmineUserId;
+  // 담당자 — 최대 3명. 첫 사람은 assignee(예전 문서·Redmine 호환), 2명 이상이면 assignees 에 전부
+  const people = assigneeList(p).slice(0, MAX_ASSIGNEES).map((a) => {
+    const one: { name: string; email?: string; redmineUserId?: number } = { name: a.name.slice(0, 60) };
+    if (a.email) one.email = String(a.email).trim().slice(0, 254);
+    if (Number.isInteger(a.redmineUserId) && a.redmineUserId! > 0) one.redmineUserId = a.redmineUserId;
+    return one;
+  });
+  if (people.length) {
+    out.assignee = people[0];
+    if (people.length > 1) out.assignees = people;
   }
   const prog = normalizeProgress(p.progress);
   if (prog !== null) out.progress = prog;

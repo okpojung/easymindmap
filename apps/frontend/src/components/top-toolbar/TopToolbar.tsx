@@ -18,6 +18,7 @@ import { useAutosaveStore } from '@/stores/autosaveStore';
 import { useTr } from '@/i18n';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 import { MenuItem, MenuSep } from './OverflowMenu';
+import { openGantt } from '@/editor/gantt/GanttDock';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 
 // 'retrying' = 저장이 실패했고 **실제로 자동 재시도 중**,
@@ -168,6 +169,16 @@ export function TopToolbar({
   const coarse = useCoarse();
   const phone = phoneLayout || (coarse && barW < 960);
   const [moreOpen, setMoreOpen] = useState(false);
+  // 간트 메뉴 (2026-11-07) — 아래에 열기 · 새 탭 · 새 창
+  const [ganttOpen, setGanttOpen] = useState(false);
+  const ganttRef = useRef<HTMLDivElement | null>(null);
+  const ganttDock = useEditorUiStore((s) => s.ganttDock);
+  useEffect(() => {
+    if (!ganttOpen) return;
+    const off = (e: MouseEvent) => { if (!ganttRef.current?.contains(e.target as Node)) setGanttOpen(false); };
+    document.addEventListener('mousedown', off);
+    return () => document.removeEventListener('mousedown', off);
+  }, [ganttOpen]);
   const moreRef = useRef<HTMLDivElement | null>(null);
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
   // MapActions 가 메뉴 안에 항목(보관·다른 이름으로 저장·맵 닫기)을 넣는 자리
@@ -754,6 +765,47 @@ export function TopToolbar({
         <I.Globe size={15} />{!iconOnly && ` ${tr('shell.toolbar.publish')}`}
       </button>
       {publishDialog}
+
+      {/* 간트 차트 (2026-11-07) — 노드의 일정·담당자·진척으로 그린 일정표. 아래 칸 · 새 탭 · 새 창 */}
+      <div ref={ganttRef} style={{ position: 'relative', flexShrink: 0 }}>
+        <button
+          data-testid="gantt-toggle"
+          title={tr('editor.gantt.open')}
+          aria-label={tr('editor.gantt.title')}
+          onClick={() => setGanttOpen((v) => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2,
+            height: 32, padding: '0 7px', borderRadius: 8,
+            background: ganttDock || ganttOpen ? t.primarySoft : t.surfaceAlt,
+            color: ganttDock || ganttOpen ? t.primary : t.text,
+            border: `1px solid ${ganttDock || ganttOpen ? t.primaryBorder + '55' : t.border}`, cursor: 'pointer',
+          }}
+        >
+          <I.Gantt size={17} /><span style={{ fontSize: 8 }}>▼</span>
+        </button>
+        {ganttOpen && (
+          <div data-testid="gantt-menu" style={{
+            position: 'absolute', top: 38, right: 0, zIndex: 40, minWidth: 210, background: t.surface,
+            border: `1px solid ${t.border}`, borderRadius: 9, boxShadow: '0 8px 24px rgba(80,60,20,0.18)', padding: 5,
+          }}>
+            {([
+              ['dock', ganttDock ? '✓ ' + tr('editor.gantt.dock') : tr('editor.gantt.dock'), '▤'],
+              ['tab', tr('editor.gantt.newTab'), '↗'],
+              ['window', tr('editor.gantt.newWindow'), '⧉'],
+            ] as const).map(([mode, label, icon]) => (
+              <button key={mode} type="button" data-testid={`gantt-open-${mode}`}
+                onClick={() => {
+                  setGanttOpen(false);
+                  if (mode === 'dock' && ganttDock) { useEditorUiStore.getState().setGanttDock(false); return; }
+                  openGantt(mode, () => flash(tr('editor.gantt.popupBlocked')));
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', borderRadius: 6, background: 'transparent', color: t.text, cursor: 'pointer', fontSize: 12.5 }}>
+                <span style={{ width: 16, textAlign: 'center', color: t.textMuted }}>{icon}</span>{label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* 아웃라인 모드 / 맵 모드 전환 — 다크 토글과 같은 방식. 편집
           영역 전체를 아웃라인 전용/맵 전용으로 바꾼다. 분할 보기가

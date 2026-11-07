@@ -215,6 +215,15 @@ export const I = {
       <path d="M16 9v6m-2.5-2.5L16 15l2.5-2.5" />
     </Icon>
   ),
+  // 간트 (2026-11-07) — 들쭉날쭉한 가로 막대 셋
+  Gantt: (p: P = {}) => (
+    <Icon {...p}>
+      <line x1="3" y1="4" x2="3" y2="20" />
+      <rect x="5" y="5.5" width="8" height="3" rx="1" />
+      <rect x="9" y="10.5" width="10" height="3" rx="1" />
+      <rect x="13" y="15.5" width="7" height="3" rx="1" />
+    </Icon>
+  ),
   // 변수 {x} (2026-10-29 왼쪽 레일 '변수')
   Variable: (p: P = {}) => (
     <Icon {...p}>

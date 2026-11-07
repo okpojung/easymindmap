@@ -6,7 +6,8 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock as NoteBlockData, NoteBlockType } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
-import { InspectorSection } from './InspectorSection';
+import { InspectorSection, Toggle } from './InspectorSection';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
 import { rebuildRichHtml, remapImgSrcs } from '@/utils/richNoteEdit';
@@ -95,6 +96,10 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
   const removeNoteBlock = useDocumentStore((s) => s.removeNoteBlock);
 
   const [tagDraft, setTagDraft] = useState('');
+  // 노드에 태그 표시 켜기/끄기 — 태그 탭 맨 위 (2026-11-07 사용자 요청: "태그 표시 On/OFF 버튼이 없어졌다").
+  // 같은 스위치가 검색 패널에도 있다(둘은 같은 값). 노드를 고르지 않아도 누를 수 있다.
+  const showTags = useEditorUiStore((s) => s.showTags);
+  const setShowTags = useEditorUiStore((s) => s.setShowTags);
 
   const node = findNodeInMap(map, selectedId);
   const disabled = !selectedId || !node;
@@ -108,6 +113,16 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
   };
 
   return (
+    <>
+    {part !== 'note' && (
+      <label data-testid="tags-show-toggle" style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        padding: '8px 12px', margin: '0 0 2px', borderBottom: `1px solid ${t.divider}`, cursor: 'pointer',
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{tr('inspector.tags.showToggle')}</span>
+        <Toggle t={t} on={showTags} onChange={setShowTags} />
+      </label>
+    )}
     <div data-mm-touch="" style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
       {part !== 'note' && <>
       <InspectorSection t={t} title={tr('inspector.note.tags')}>
@@ -263,6 +278,7 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
         />
       )}
     </div>
+    </>
   );
 }
 

@@ -80,6 +80,12 @@ interface EditorUiState {
   // 나뉜다. ratio = 아웃라인 영역 비율 (0.2~0.75)
   outlineSplit: boolean;
   outlineSplitRatio: number;
+  /** 간트 차트를 편집 영역 아래에 붙여 보기 (2026-11-07) */
+  ganttDock: boolean;
+  /** 아래 간트 칸 높이(px) */
+  ganttDockH: number;
+  /** 새 탭·새 창으로 간트를 연 적이 있다 — 맵 상태를 그 창에 보낸다 */
+  ganttRemote: boolean;
   // 메인 편집 영역 전체 모드 — 'map'(맵 전체) / 'outline'(아웃라인 전체).
   // 분할 화면(outlineSplit)과 별개: 분할이 켜져 있으면 이 토글은 비활성.
   mainView: 'map' | 'outline';
@@ -118,6 +124,9 @@ interface EditorUiState {
   toggleOutlineSplit: () => void;
   setOutlineSplit: (v: boolean) => void;
   setOutlineSplitRatio: (v: number) => void;
+  setGanttDock: (v: boolean) => void;
+  setGanttDockH: (v: number) => void;
+  setGanttRemote: (v: boolean) => void;
   setMainView: (v: 'map' | 'outline') => void;
   setBrowserOpen: (v: boolean) => void;
   toggleMainView: () => void;
@@ -155,6 +164,9 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
   sidebarWidth: 300,
   outlineSplit: false,
   outlineSplitRatio: 0.42,
+  ganttDock: false,
+  ganttDockH: 300,
+  ganttRemote: false,
   mainView: 'map',
   outlineFocusId: null,
   browserOpen: false,
@@ -188,6 +200,9 @@ export const useEditorUiStore = create<EditorUiState>((set) => ({
     outlineFocusId: outlineSplit && !s.outlineSplit
       ? captureOutlineFocus() : s.outlineFocusId,
   })),
+  setGanttDock: (ganttDock) => set({ ganttDock }),
+  setGanttDockH: (v) => set({ ganttDockH: Math.max(140, Math.min(Math.round(v), Math.round(window.innerHeight * 0.75))) }),
+  setGanttRemote: (ganttRemote) => set({ ganttRemote }),
   setOutlineSplitRatio: (v) =>
     set({ outlineSplitRatio: Math.min(0.75, Math.max(0.2, v)) }),
   setMainView: (mainView) => set((s) => ({

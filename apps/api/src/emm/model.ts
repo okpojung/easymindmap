@@ -175,12 +175,34 @@ export interface NodeAttachment {
  * `*On` 은 노드에 태그로 보일지(체크), 값은 체크를 꺼도 남는다. Redmine 연계 맵에서는
  * 일감의 시작일·마감일·담당자·진척도와 맞춰진다.
  */
+export interface ProjectAssignee { name: string; email?: string; redmineUserId?: number }
+
+/** 담당자는 최대 3명 (2026-11-07 사용자 요청) */
+export const MAX_ASSIGNEES = 3;
+
+/** 담당자 목록 — assignees 가 있으면 그것, 없으면 assignee 하나. 이름 겹침은 뺀다, 최대 3명 */
+export function assigneeList(p: ProjectTags | undefined): ProjectAssignee[] {
+  if (!p) return [];
+  const src = Array.isArray(p.assignees) && p.assignees.length ? p.assignees : p.assignee ? [p.assignee] : [];
+  const out: ProjectAssignee[] = [];
+  for (const a of src) {
+    const name = typeof a?.name === 'string' ? a.name.trim() : '';
+    if (!name || out.some((x) => x.name === name)) continue;
+    out.push({ ...a, name });
+    if (out.length >= MAX_ASSIGNEES) break;
+  }
+  return out;
+}
+
 export interface ProjectTags {
   dateOn?: boolean;
   start?: string; // YYYY-MM-DD
   end?: string;   // YYYY-MM-DD
   assigneeOn?: boolean;
-  assignee?: { name: string; email?: string; redmineUserId?: number };
+  /** 첫 담당자 — 예전 문서·Redmine(담당자 1명) 호환을 위해 늘 목록의 첫 사람과 같다 */
+  assignee?: ProjectAssignee;
+  /** 담당자 목록 (최대 3명, 2026-11-07) — 2명 이상일 때만 둔다. 첫 사람 = assignee */
+  assignees?: ProjectAssignee[];
   progressOn?: boolean;
   progress?: number; // 0~100 정수
 }

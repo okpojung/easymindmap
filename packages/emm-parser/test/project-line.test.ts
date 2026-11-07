@@ -73,5 +73,12 @@ check('③ 두 번 왕복해도 같은 MD', buildEmmBody(back, []), md);
 const plain = parseEmm('# 루트\n\n## 가지\n\n일정은 다음 주 · 담당 미정\n', 'mindmap', OPT)!;
 check('④ 보통 문단은 자식 노드', [proj(plain.branches[0] as MindNode), (plain.branches[0] as MindNode).children?.map((c) => c.text)], [null, ['일정은 다음 주 · 담당 미정']]);
 
+// ⑨ 담당자 여러 명 (최대 3명, 2026-11-07)
+check('⑨ 여러 명 줄', projectLine({ assigneeOn: true, assignee: { name: '가' }, assignees: [{ name: '가', email: 'a@x.kr' }, { name: '나' }, { name: '다' }] }), '@가 <a@x.kr>, @나, @다');
+check('⑨ 여러 명 읽기', parseProjectLine('📅 2026-10-01 · @가 <a@x.kr>, @나 · 10%'), { start: '2026-10-01', dateOn: true, assignee: { name: '가', email: 'a@x.kr' }, assignees: [{ name: '가', email: 'a@x.kr' }, { name: '나' }], assigneeOn: true, progress: 10, progressOn: true });
+check('⑨ 4명 이상은 보통 글', parseProjectLine('@가, @나, @다, @라'), null);
+check('⑨ 한 명은 예전과 같다', parseProjectLine('@정미옥'), { assignee: { name: '정미옥' }, assigneeOn: true });
+check('⑨ 이름 속 쉼표는 공백으로', projectLine({ assigneeOn: true, assignees: [{ name: '가,나' }, { name: '다' }] }), '@가 나, @다');
+
 if (failed) { console.log(`\n${failed}개 실패`); process.exit(1); }
 console.log('\nproject-line: 모두 통과');

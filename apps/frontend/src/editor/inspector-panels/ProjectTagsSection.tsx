@@ -1,7 +1,7 @@
 // 노트·태그 탭 > 프로젝트 태그 — 일정·담당자·진척율 고정 입력란 (2026-10-23 사용자 결정).
 //
 //   ☑ 📅 일정    [시작일] ~ [끝일]
-//   ☑ @ 담당자   [이름 자동완성]
+//   ☑ @ 담당자   [이름 자동완성]  — 최대 3명, 고른 사람은 칩으로(× 로 빼기) (2026-11-07)
 //   ☑ % 진척율   [ 50 ] %  0 25 50 75 100
 //
 // 체크하면 노드 아래 태그 줄 맨 앞에 태그로 보이고, 끄면 태그만 빠진다(값은 남는다).
@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { ProjectTags } from '@/editor/__samples__/types';
 import { useDocumentStore } from '@/stores/documentStore';
-import { normalizeProgress, type ProjectChipKind } from '@/editor/node-renderer/projectTags';
+import { normalizeProgress, assigneeList, MAX_ASSIGNEES, type ProjectChipKind } from '@/editor/node-renderer/projectTags';
 import { searchAssignees, type AssigneeCandidate } from '@pro';
 import { InspectorSection } from './InspectorSection';
 import { useTr } from '@/i18n';
@@ -23,13 +23,16 @@ export function ProjectTagsSection({ t, nodeId, project }: { t: ThemeTokens; nod
   const update = useDocumentStore((s) => s.updateNodeProject);
   const p = project ?? {};
   const [progDraft, setProgDraft] = useState<string>(p.progress != null ? String(p.progress) : '');
-  const [nameDraft, setNameDraft] = useState<string>(p.assignee?.name ?? '');
+  const people0 = assigneeList(p);
+  const full = people0.length >= MAX_ASSIGNEES;
+  const [nameDraft, setNameDraft] = useState<string>('');
   const [openList, setOpenList] = useState(false);
   const [people, setPeople] = useState<AssigneeCandidate[] | null>(null);
   const refs = { date: useRef<HTMLInputElement>(null), assignee: useRef<HTMLInputElement>(null), progress: useRef<HTMLInputElement>(null) };
 
   // 다른 노드를 고르면 입력 초안도 그 노드 값으로
-  useEffect(() => { setProgDraft(p.progress != null ? String(p.progress) : ''); setNameDraft(p.assignee?.name ?? ''); setOpenList(false); }, [nodeId, p.progress, p.assignee?.name]);
+  useEffect(() => { setProgDraft(p.progress != null ? String(p.progress) : ''); setOpenList(false); }, [nodeId, p.progress]);
+  useEffect(() => { setNameDraft(''); }, [nodeId]);
   // 노드의 프로젝트 태그를 누르면 그 입력란으로
   useEffect(() => {
     const on = (e: Event) => { const k = (e as CustomEvent<ProjectChipKind>).detail; refs[k]?.current?.focus(); };
@@ -40,18 +43,28 @@ export function ProjectTagsSection({ t, nodeId, project }: { t: ThemeTokens; nod
   const loadPeople = () => { if (people === null) searchAssignees().then(setPeople).catch(() => setPeople([])); };
   const matches = useMemo(() => {
     const q = nameDraft.trim().toLowerCase();
-    return (people ?? []).filter((c) => !q || c.name.toLowerCase().includes(q) || (c.email ?? '').toLowerCase().includes(q)).slice(0, 8);
-  }, [people, nameDraft]);
+    return (people ?? []).filter((c) => !people0.some((a) => a.name === c.name) && (!q || c.name.toLowerCase().includes(q) || (c.email ?? '').toLowerCase().includes(q))).slice(0, 8);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [people, nameDraft, people0.map((a) => a.name).join('|')]);
 
   const setDate = (k: 'start' | 'end', v: string) => update(nodeId, { [k]: v || null, ...(v && !p.dateOn ? { dateOn: true } : {}) });
-  const pickPerson = (c: { name: string; email?: string }) => {
-    setNameDraft(c.name); setOpenList(false);
-    update(nodeId, { assignee: { name: c.name, ...(c.email ? { email: c.email } : {}) }, ...(p.assigneeOn ? {} : { assigneeOn: true }) });
+  // 담당자 목록을 통째로 쓴다 — 첫 사람은 assignee(호환), 2명 이상이면 assignees 에 전부
+  const setPeople2 = (list: { name: string; email?: string; redmineUserId?: number }[], turnOn: boolean) => {
+    update(nodeId, {
+      assignee: list[0] ?? null,
+      assignees: list.length > 1 ? list : null,
+      ...(turnOn && list.length && !p.assigneeOn ? { assigneeOn: true } : {}),
+    });
   };
+  const pickPerson = (c: { name: string; email?: string }) => {
+    setNameDraft(''); setOpenList(false);
+    if (people0.some((a) => a.name === c.name) || full) return;
+    setPeople2([...people0, { name: c.name, ...(c.email ? { email: c.email } : {}) }], true);
+  };
+  const removePerson = (name: string) => setPeople2(people0.filter((a) => a.name !== name), false);
   const commitName = () => {
     const v = nameDraft.trim();
-    if (v === (p.assignee?.name ?? '')) return;
-    if (!v) { update(nodeId, { assignee: null }); return; }
+    if (!v) return;
     const known = (people ?? []).find((c) => c.name === v);
     pickPerson(known ?? { name: v });
   };
@@ -93,20 +106,35 @@ export function ProjectTagsSection({ t, nodeId, project }: { t: ThemeTokens; nod
         <input type="date" data-testid="project-end" value={p.end ?? ''} min={p.start} onChange={(e) => setDate('end', e.target.value)} style={{ ...input, flex: 1 }} aria-label={tr('inspector.project.end')} />
       </div>
 
-      <div style={{ ...row, position: 'relative' }}>
+      <div style={{ ...row, position: 'relative', flexWrap: 'wrap' }}>
         {head('assignee', '@', tr('inspector.project.assignee'), p.assigneeOn)}
+        {/* 고른 담당자 — 칩, × 로 뺀다 (최대 3명) */}
+        {people0.map((a) => (
+          <span key={a.name} data-testid="project-assignee-chip" title={a.email ?? a.name} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 600,
+            padding: '2px 4px 2px 7px', borderRadius: 10, background: t.primarySoft, color: t.primary,
+            border: `1px solid ${t.primaryBorder}55`,
+          }}>
+            @{a.name}
+            <button type="button" aria-label={`${tr('common.delete')} @${a.name}`} title={tr('common.delete')}
+              onClick={() => removePerson(a.name)}
+              style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 2px', opacity: 0.7 }}>×</button>
+          </span>
+        ))}
         <input
           ref={refs.assignee}
           data-testid="project-assignee"
           value={nameDraft}
-          placeholder={tr('inspector.project.assigneePlaceholder')}
+          disabled={full}
+          title={full ? tr('inspector.project.assigneeMax', { n: MAX_ASSIGNEES }) : undefined}
+          placeholder={full ? tr('inspector.project.assigneeMax', { n: MAX_ASSIGNEES }) : people0.length ? tr('inspector.project.assigneeMore') : tr('inspector.project.assigneePlaceholder')}
           onFocus={() => { loadPeople(); setOpenList(true); }}
           onChange={(e) => { setNameDraft(e.target.value); setOpenList(true); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { (matches.length && nameDraft.trim() && matches[0].name.toLowerCase().startsWith(nameDraft.trim().toLowerCase()) ? pickPerson(matches[0]) : commitName()); } if (e.key === 'Escape') setOpenList(false); }}
           onBlur={() => setTimeout(() => { setOpenList(false); commitName(); }, 150)}
-          style={{ ...input, flex: 1 }}
+          style={{ ...input, flex: 1, minWidth: 90 }}
         />
-        {openList && matches.length > 0 && (
+        {openList && !full && matches.length > 0 && (
           <div role="listbox" style={{
             position: 'absolute', zIndex: 30, top: '100%', left: 80, right: 0, marginTop: 2,
             background: t.surface, border: `1px solid ${t.border}`, borderRadius: 6,

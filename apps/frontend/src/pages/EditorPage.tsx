@@ -11,6 +11,7 @@ import { UnifiedSidebar } from '@/components/unified-sidebar/UnifiedSidebar';
 import { BottomStatusBar } from '@/components/bottom-status-bar/BottomStatusBar';
 import { Canvas } from '@/editor/canvas/Canvas';
 import { OutlineEditorPane } from '@/editor/outline/OutlineEditorPane';
+import { GanttDock, GanttBroadcaster } from '@/editor/gantt/GanttDock';
 import { KanbanBoard } from '@/editor/canvas/KanbanBoard';
 import { MultiAddDialog } from '@/editor/dialogs/MultiAddDialog';
 import { SAMPLE_COLLABS } from '@/editor/__samples__';
@@ -173,6 +174,7 @@ export function EditorPage() {
   // 저장된 분할 설정(outlineSplit)은 지우지 않는다 — 넓은 화면으로 돌아오면 그대로.
   const phone = usePhoneLayout();
   const splitView = outlineSplit && !phone;
+  const ganttDock = useEditorUiStore((s) => s.ganttDock);
   // 아웃라인 전체 모드 = 분할이 아니고 mainView가 'outline'일 때
   const fullOutline = !splitView && mainView === 'outline';
 
@@ -545,7 +547,9 @@ export function EditorPage() {
         {/* 아웃라인 분할 보기: 왼쪽 = 아웃라인 편집, 오른쪽 = 맵/칸반.
             가운데 세로 스플리터로 비율(20~75%) 조절 — 칸반 모드에서도 동작 */}
         {(
-          <div style={{ flex: 1, display: 'flex', minWidth: 0, position: 'relative' }}>
+          // 간트 차트 아래 칸 (2026-11-07) — 편집 영역(맵·아웃라인·칸반) 아래에 붙는다. 문서함에서는 숨긴다.
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0, position: 'relative' }}>
             {/* 저장되지 않은 맵 복구 안내 (감사 R1·R2 — localDraft) */}
             <DraftRecoveryBanner t={t} />
             {/* 서버에 닿지 않아 자동저장이 대기 중 — 배포 중 안내 (B20 ⑧ⓑ) */}
@@ -623,6 +627,9 @@ export function EditorPage() {
                 collabs={SAMPLE_COLLABS}
               />
             )}
+          </div>
+          {ganttDock && !browserOpen && <GanttDock t={t} onBlocked={() => setBrowserMsg(trNow('editor.gantt.popupBlocked'))} />}
+          <GanttBroadcaster />
           </div>
         )}
       </div>

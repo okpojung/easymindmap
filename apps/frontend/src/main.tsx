@@ -8,6 +8,7 @@ import { isConsentPath } from '@/services/cloud/oauthConsentRules';
 import '@/styles/global.css';
 import { matchProRoute } from '@pro';
 import { captureEntryIntent } from '@/services/entryIntent';
+import { GanttWindowPage } from '@/pages/GanttWindowPage';
 
 // 화면 고르기 — 라우터를 들이지 않고 **주소만** 본다 (2026-08-13 · 08-14).
 //
@@ -51,12 +52,15 @@ const routePath = window.location.pathname.replace(/\/+$/, '') === '' && new URL
   ? '/board' : window.location.pathname;
 const ProRoute = matchProRoute({ pathname: routePath });
 
+// 간트 새 탭·새 창 `/?gantt=<편집 탭 id>` (2026-11-07) — 편집 탭이 보내 주는 간트만 그린다(로그인 화면을 띄우지 않는다)
+const ganttTab = window.location.pathname.replace(/\/+$/, '') === '' ? new URLSearchParams(window.location.search).get('gantt') : null;
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {isConsent
       ? <OAuthConsentPage />
       : publishId
         ? <PublicMapPage publishId={publishId} />
-        : isAdmin ? <AdminPage /> : ProRoute ? <ProRoute /> : <EditorPage />}
+        : isAdmin ? <AdminPage /> : ganttTab ? <GanttWindowPage tabId={ganttTab} /> : ProRoute ? <ProRoute /> : <EditorPage />}
   </React.StrictMode>,
 );

@@ -144,10 +144,10 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill }: {
               </div>
               <div style={{ position: 'relative', width: timelineW, flexShrink: 0 }}>
                 {ticks.top.map((k) => (
-                  <div key={`t${k.x}`} style={{ position: 'absolute', left: k.x, top: 0, width: k.w, height: 20, borderLeft: `1px solid ${t.border}`, fontSize: 11, fontWeight: 700, padding: '3px 5px', boxSizing: 'border-box', overflow: 'hidden', whiteSpace: 'nowrap' }}>{k.label}</div>
+                  <div key={`t${k.x}`} style={{ position: 'absolute', left: k.x, top: 0, width: k.w, height: 20, borderLeft: `1px solid ${t.border}`, fontSize: 11, fontWeight: 700, padding: '3px 5px', boxSizing: 'border-box', overflow: 'hidden', whiteSpace: 'nowrap' }}>{k.w >= 48 ? k.label : ''}</div>
                 ))}
                 {ticks.bottom.map((k) => (
-                  <div key={`b${k.x}`} style={{ position: 'absolute', left: k.x, top: 20, width: k.w || undefined, height: 24, borderLeft: `1px solid ${t.divider}`, fontSize: 10, textAlign: scale === 'day' ? 'center' : 'left', padding: scale === 'day' ? '5px 0' : '5px 4px', boxSizing: 'border-box', color: k.today ? '#fff' : k.weekend ? '#C0392B' : t.textMuted, background: k.today ? accent : undefined, fontWeight: k.today ? 700 : 400, whiteSpace: 'nowrap', overflow: 'hidden' }}>{k.label}</div>
+                  <div key={`b${k.x}`} style={{ position: 'absolute', left: k.x, top: 20, width: k.w || undefined, height: 24, borderLeft: `1px solid ${t.divider}`, fontSize: 10, textAlign: scale === 'day' ? 'center' : 'left', padding: scale === 'day' ? '5px 0' : '5px 4px', boxSizing: 'border-box', color: k.today ? '#fff' : k.weekend ? '#C0392B' : t.textMuted, background: k.today ? accent : undefined, fontWeight: k.today ? 700 : 400, whiteSpace: 'nowrap', overflow: 'hidden' }}>{scale === 'month' && k.w < 18 ? '' : k.label}</div>
                 ))}
               </div>
             </div>

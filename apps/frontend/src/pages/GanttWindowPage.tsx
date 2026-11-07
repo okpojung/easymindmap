@@ -9,7 +9,7 @@ import type { GanttData } from '@/editor/gantt/ganttModel';
 
 export function GanttWindowPage({ tabId }: { tabId: string }) {
   const tr = useTr();
-  const [state, setState] = useState<{ data: GanttData; title: string; selectedId: string | null; theme: 'light' | 'dark' } | null>(null);
+  const [state, setState] = useState<{ data: GanttData; title: string; selectedId: string | null; theme: 'light' | 'dark'; editable: boolean; me: { name?: string; email?: string } | null } | null>(null);
   const [lost, setLost] = useState(false);
   const chRef = useRef<BroadcastChannel | null>(null);
   const lastSeen = useRef(Date.now());
@@ -20,7 +20,7 @@ export function GanttWindowPage({ tabId }: { tabId: string }) {
     chRef.current = ch;
     ch.onmessage = (e: MessageEvent<GanttMsg>) => {
       const m = e.data;
-      if (m?.type === 'state') { lastSeen.current = Date.now(); setLost(false); setState({ data: m.data, title: m.title, selectedId: m.selectedId, theme: m.theme }); }
+      if (m?.type === 'state') { lastSeen.current = Date.now(); setLost(false); setState({ data: m.data, title: m.title, selectedId: m.selectedId, theme: m.theme, editable: m.editable !== false, me: m.me ?? null }); }
       else if (m?.type === 'bye') setLost(true);
     };
     const hello = () => ch.postMessage({ type: 'hello' } satisfies GanttMsg);
@@ -47,6 +47,8 @@ export function GanttWindowPage({ tabId }: { tabId: string }) {
       <div style={{ flex: 1, minHeight: 0 }}>
         {state ? (
           <GanttView t={t} data={state.data} selectedId={state.selectedId} fill
+            editable={state.editable && !lost} me={state.me}
+            onChangeDates={(id, patch) => chRef.current?.postMessage({ type: 'setDates', id, patch } satisfies GanttMsg)}
             onSelect={(id) => { chRef.current?.postMessage({ type: 'select', id } satisfies GanttMsg); setState((s) => (s ? { ...s, selectedId: id } : s)); }} />
         ) : !lost ? (
           <div style={{ padding: 18, fontSize: 12.5, color: t.textMuted }}>{tr('editor.gantt.waiting')}</div>

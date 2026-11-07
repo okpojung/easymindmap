@@ -5,6 +5,10 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useCloudStore } from '@/stores/cloudStore';
+import { useProfileStore } from '@/stores/profileStore';
+import { useAuthStore } from '@/stores/authStore';
+import { isValidDate } from '@/editor/node-renderer/projectTags';
 import { useTr } from '@/i18n';
 import { buildGanttRows } from './ganttModel';
 import { GanttView } from './GanttView';
@@ -16,6 +20,23 @@ export function revealNode(id: string): void {
   useDocumentStore.getState().expandAncestors(id);
   const vp = useViewportStore.getState();
   vp.requestCenterNode(id, vp.zoom);
+}
+
+/** 끌어서 바꾼 날짜를 노드의 프로젝트 태그에 쓴다 (읽기 전용 맵이면 아무것도 안 한다) */
+export function applyGanttDates(id: string, patch: { start?: string; end?: string }): void {
+  if (useCloudStore.getState().readOnlyInfo) return;
+  const clean: { start?: string; end?: string } = {};
+  if (isValidDate(patch.start)) clean.start = patch.start;
+  if (isValidDate(patch.end)) clean.end = patch.end;
+  if (!clean.start && !clean.end) return;
+  useDocumentStore.getState().updateNodeProject(id, clean);
+}
+
+/** 지금 계정 — 작업 목록의 [나] */
+function meNow(): { name?: string; email?: string } | null {
+  const name = useProfileStore.getState().profile?.fullName || undefined;
+  const email = useAuthStore.getState().session?.email || undefined;
+  return name || email ? { name, email } : null;
 }
 
 /** 간트 열기 메뉴의 세 가지 — 아래 칸 · 새 탭 · 새 창 */
@@ -34,6 +55,10 @@ export function GanttDock({ t, onBlocked }: { t: ThemeTokens; onBlocked?: () => 
   const setH = useEditorUiStore((s) => s.setGanttDockH);
   const setDock = useEditorUiStore((s) => s.setGanttDock);
   const data = useMemo(() => buildGanttRows(map), [map]);
+  const readOnly = useCloudStore((s) => !!s.readOnlyInfo);
+  const myName = useProfileStore((s) => s.profile?.fullName);
+  const myEmail = useAuthStore((s) => s.session?.email);
+  const me = useMemo(() => (myName || myEmail ? { name: myName || undefined, email: myEmail || undefined } : null), [myName, myEmail]);
   const drag = useRef<{ y: number; h: number } | null>(null);
 
   const smallBtn: React.CSSProperties = {
@@ -53,6 +78,7 @@ export function GanttDock({ t, onBlocked }: { t: ThemeTokens; onBlocked?: () => 
       <GanttView
         t={t} data={data} selectedId={selectedId} fill
         onSelect={revealNode}
+        editable={!readOnly} onChangeDates={applyGanttDates} me={me}
         toolbar={(
           <div style={{ display: 'flex', gap: 4 }}>
             <button type="button" data-testid="gantt-dock-newtab" style={smallBtn} onClick={() => openGantt('tab', onBlocked)}>↗ {tr('editor.gantt.newTab')}</button>
@@ -84,6 +110,8 @@ export function GanttBroadcaster() {
         type: 'state', data: cache.data, title: map.title ?? '',
         selectedId: useInteractionStore.getState().selectedId ?? null,
         theme: useEditorUiStore.getState().themeName,
+        editable: !useCloudStore.getState().readOnlyInfo,
+        me: meNow(),
       };
       ch.postMessage(msg);
     };
@@ -92,14 +120,16 @@ export function GanttBroadcaster() {
       const m = e.data;
       if (m?.type === 'hello') send();
       else if (m?.type === 'select' && typeof m.id === 'string') revealNode(m.id);
+      else if (m?.type === 'setDates' && typeof m.id === 'string' && m.patch) applyGanttDates(m.id, m.patch);
     };
     const u1 = useDocumentStore.subscribe((s, p) => { if (s.map !== p.map) schedule(); });
     const u2 = useInteractionStore.subscribe((s, p) => { if (s.selectedId !== p.selectedId) schedule(); });
     const u3 = useEditorUiStore.subscribe((s, p) => { if (s.themeName !== p.themeName) schedule(); });
+    const u4 = useCloudStore.subscribe((s, p) => { if (s.readOnlyInfo !== p.readOnlyInfo) schedule(); });
     const bye = () => { try { ch.postMessage({ type: 'bye' } satisfies GanttMsg); } catch { /* 닫히는 중 */ } };
     window.addEventListener('pagehide', bye);
     send();
-    return () => { u1(); u2(); u3(); window.removeEventListener('pagehide', bye); if (timer !== null) window.clearTimeout(timer); ch.close(); };
+    return () => { u1(); u2(); u3(); u4(); window.removeEventListener('pagehide', bye); if (timer !== null) window.clearTimeout(timer); ch.close(); };
   }, [remote]);
   return null;
 }

@@ -48,7 +48,7 @@ export function openMdWindow(t: MdTarget, mode: 'tab' | 'window'): boolean {
 
 /** iframe 편집기와 이야기하기 — 내용 넣기·렌더링 보기·고친 내용 받기 */
 export function useMdFrame(frame: React.RefObject<HTMLIFrameElement | null>, opts: {
-  content: string | null; rendered: boolean; onChange: (md: string) => void;
+  content: string | null; rendered: boolean; onChange: (md: string) => void; onClose?: () => void;
 }) {
   const echoed = useRef(false);
   const onChangeRef = useRef(opts.onChange); onChangeRef.current = opts.onChange;
@@ -58,6 +58,8 @@ export function useMdFrame(frame: React.RefObject<HTMLIFrameElement | null>, opt
       if (e.source !== frame.current?.contentWindow) return;
       const d = e.data as { type?: string; markdown?: unknown } | null;
       if (d?.type === 'mde:change' && typeof d.markdown === 'string') { echoed.current = true; onChangeRef.current(d.markdown); }
+      // 편집기 안의 [✕ 닫기] — 칸(또는 창)을 닫는다
+      else if (d?.type === 'mde:close') optsRef.current.onClose?.();
     };
     window.addEventListener('message', on);
     return () => window.removeEventListener('message', on);
@@ -105,6 +107,7 @@ export function MdEditorDock({ t, target, onBlocked }: { t: ThemeTokens; target:
   const { onLoad } = useMdFrame(frame, {
     content: loaded?.markdown ?? null, rendered: true,
     onChange: (md) => { if (!loaded?.readOnly) saver.current?.change(md); },
+    onClose: () => void close(),
   });
   // 내용을 받았을 때 iframe 이 이미 떠 있으면 바로 넣는다
   useEffect(() => {

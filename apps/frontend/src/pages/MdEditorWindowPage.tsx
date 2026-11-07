@@ -43,6 +43,8 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
   const { onLoad } = useMdFrame(frame, {
     content: content?.markdown ?? null, rendered: false,
     onChange: (md) => { latest.current = md; if (!content?.readOnly && !lost) chRef.current?.postMessage({ type: 'md-change', key: mdKey, markdown: md } satisfies MdMsg); },
+    // 편집기 안의 [✕ 닫기] — 이 창을 닫는다(고친 내용은 이미 보냈다)
+    onClose: () => window.setTimeout(() => window.close(), 300),
   });
   useEffect(() => {
     if (content && frame.current?.contentDocument?.readyState === 'complete') onLoad();

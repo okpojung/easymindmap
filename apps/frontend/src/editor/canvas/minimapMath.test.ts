@@ -3,7 +3,7 @@
 
 import {
   MINIMAP_MIN_VIEW, minimapGeometry, minimapPanelSize, miniToWorld, paddedBounds, panForCenter,
-  shiftOrigin, viewportWorldRect, worldBounds, worldToMini, clampCenterToBounds,
+  shiftOrigin, viewportWorldRect, worldBounds, worldToMini, clampCenterToBounds, withOverlayMargin, OVERLAY_MARGIN_PX,
 } from './minimapMath';
 
 let failed = 0;
@@ -115,6 +115,10 @@ check('⑧ 크기도 배율대로', [r2(mr.w), r2(mr.h)], [r2(300 * gs.scale), r
   check('⑨ 맵이 화면보다 작은 축은 중심이 맵 안에 (x: -100 → 0) · 큰 축은 사각형이 맵 안에 (y: 50 → 400)', clampCenterToBounds(-100, 50, { x: 0, y: 0, w: 600, h: 3000 }, v), { x: 0, y: 400 });
   check('⑨ 작은 축 안쪽은 그대로', clampCenterToBounds(450, 1500, { x: 0, y: 0, w: 600, h: 3000 }, v), { x: 450, y: 1500 });
   check('⑨ 경계 없음(노드 없음) → 그대로', clampCenterToBounds(7, 8, null, v), { x: 7, y: 8 });
+// ⑩ 화면 여백 — 100% 에서 위 110px · 50% 에서 위 220 world
+check('⑩ 100% 위 여백', withOverlayMargin({ x: 0, y: 0, w: 100, h: 100 }, 100), { x: -OVERLAY_MARGIN_PX.left, y: -OVERLAY_MARGIN_PX.top, w: 100 + OVERLAY_MARGIN_PX.left + OVERLAY_MARGIN_PX.right, h: 100 + OVERLAY_MARGIN_PX.top + OVERLAY_MARGIN_PX.bottom });
+check('⑩ 50% 는 world 로 두 배', withOverlayMargin({ x: 0, y: 0, w: 100, h: 100 }, 50)?.y, -OVERLAY_MARGIN_PX.top * 2);
+check('⑩ 맨 위로 올리면 노드 위 변이 화면 위에서 110px 아래', clampCenterToBounds(2000, -5000, withOverlayMargin(b, 100), v).y, 400 - OVERLAY_MARGIN_PX.top);
 }
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');

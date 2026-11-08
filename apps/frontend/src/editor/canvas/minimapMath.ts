@@ -168,6 +168,22 @@ export function panForCenter(
 }
 
 /**
+ * 화면 위에 떠 있는 것들(왼쪽 위 레이아웃 칩·오른쪽 위 도구막대, 아래 배율 막대)이
+ * 맵 가장자리 노드를 덮지 않게 **가두는 경계에 주는 여백** (화면 px, 2026-11-09 사용자 요청:
+ * "미니맵에서 맵 위 공간을 조금 주면"). 미니맵으로 맨 위까지 올려도 중심주제가 칩·도구막대
+ * 밑에 깔리지 않고 그 아래에 보인다.
+ */
+export const OVERLAY_MARGIN_PX = { top: 110, right: 40, bottom: 64, left: 40 };
+
+/** 노드 경계에 화면 여백(OVERLAY_MARGIN_PX)을 world 단위로 더한다 — zoom 은 % */
+export function withOverlayMargin(bounds: Rect | null, zoom: number, m = OVERLAY_MARGIN_PX): Rect | null {
+  if (!bounds) return null;
+  const s = (zoom || 100) / 100;
+  const t = m.top / s, r = m.right / s, b = m.bottom / s, l = m.left / s;
+  return { x: bounds.x - l, y: bounds.y - t, w: bounds.w + l + r, h: bounds.h + t + b };
+}
+
+/**
  * **미니맵으로 가는 자리를 맵 안으로 가둔다** (2026-10-02 사용자 요청: "미니맵 바깥 빈 영역은
  * 못 가게"). 창 모드에서는 상자에 맵 바깥의 빈 공간도 보이므로, 거기를 클릭하거나 사각형을
  * 끌면 아무것도 없는 곳으로 갔다. 화면 사각형(`view`)이 노드 경계(`bounds`) 밖으로 나가지

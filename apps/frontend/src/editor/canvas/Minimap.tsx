@@ -23,6 +23,7 @@ import {
   minimapGeometry, minimapPanelSize, miniToWorld, panForCenter, shiftOrigin, viewportWorldRect, worldBounds, worldToMini,
   type MinimapOriginMode,
   clampCenterToBounds,
+  withOverlayMargin,
 } from './minimapMath';
 
 interface Props {
@@ -92,7 +93,8 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   const centerAt = (mx: number, my: number) => {
     const w0 = miniToWorld(geom, mx, my);
     // 맵 바깥의 빈 공간으로는 가지 않는다 — 화면 사각형이 노드 경계 안에 머문다 (clampCenterToBounds)
-    const w = clampCenterToBounds(w0.x, w0.y, nodeBounds, viewWorld);
+    // 위·옆·아래에 화면 여백을 더해 가둔다 — 맨 위로 올려도 중심주제가 칩·도구막대 밑에 깔리지 않게
+    const w = clampCenterToBounds(w0.x, w0.y, withOverlayMargin(nodeBounds, zoom), viewWorld);
     const p = panForCenter(w.x, w.y, CX, CY, zoom);
     setPan(p.panX, p.panY);
   };

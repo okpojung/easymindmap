@@ -402,23 +402,43 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
   useLayoutEffect(() => {
     setAutoSize(null); // 노트·폰트가 바뀌면 다시 측정
   }, [notes, fs, family]);
+  // 팝업이 놓인 칸(아웃라인 분할 칸·좁은 맵 화면)의 폭 — 브라우저 전체가 아니라
+  // **그 칸**에 맞춘다 (2026-11-08: 분할 보기에서 왼쪽이 잘려 보이던 문제).
+  // 칸 크기가 바뀌면(분할 비율 끌기·창 크기) 다시 잰다.
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+  useLayoutEffect(() => {
+    const parent = rootRef.current?.offsetParent as HTMLElement | null;
+    if (!parent) return;
+    const read = () => setBox((prev) => {
+      const w = parent.clientWidth, h = parent.clientHeight;
+      return prev && prev.w === w && prev.h === h ? prev : { w, h };
+    });
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, []);
+  useLayoutEffect(() => { setAutoSize(null); }, [box?.w, box?.h]);
+  /** 최대 폭·높이 — 화면의 1/2 와 칸 크기(좌우 여백 14px) 중 작은 쪽 */
+  const capW = Math.max(160, Math.min(Math.floor(window.innerWidth / 2), (box?.w ?? window.innerWidth) - 28));
+  const capH = Math.max(120, Math.min(Math.floor(window.innerHeight / 2), (box?.h ?? window.innerHeight) - 74));
   useLayoutEffect(() => {
     if (autoSize) return;
     const body = bodyRef.current;
     const head = headRef.current;
     if (!body || !head) return;
-    const maxW = compact ? window.innerWidth - 24 : Math.floor(window.innerWidth / 2);
-    const maxH = Math.floor(window.innerHeight * (compact ? 0.6 : 0.5));
+    const maxW = compact ? window.innerWidth - 24 : capW;
+    const maxH = compact ? Math.floor(window.innerHeight * 0.6) : capH;
     // 자연 폭 측정 — 블록 요소는 컨테이너 폭을 다 차지하므로 잠시
     // max-content로 줄여 내용의 실제 폭을 잰다
     const prevW = body.style.width;
     body.style.width = 'max-content';
     const natW = body.offsetWidth;
     body.style.width = prevW;
-    const w = compact ? maxW : Math.min(maxW, Math.max(220, natW + 6));
+    const w = compact ? maxW : Math.min(maxW, Math.max(Math.min(220, maxW), natW + 6));
     const h = Math.min(maxH, Math.max(120, body.scrollHeight + head.offsetHeight + 8));
     setAutoSize({ w, h });
-  }, [autoSize]);
+  }, [autoSize, capW, capH]);
 
   return (
     <div
@@ -433,14 +453,16 @@ export function NoteViewerPopover({ t, nodeId, title, accent, notes, onClose }: 
       // docs/02-domain/db-schema.md §향후 관리 테이블, 32-settings.md 참조.
       style={{
         position: 'absolute',
-        ...(pos ? { left: pos.x, top: pos.y } : compact ? { left: 12, top: 60 } : { right: 14, top: 60 }),
+        // 끌어 옮긴 위치도 칸이 좁아지면 칸 안으로 당긴다
+        ...(pos ? { left: box ? Math.max(0, Math.min(pos.x, box.w - (autoSize?.w ?? capW) - 2)) : pos.x, top: pos.y } : compact ? { left: 12, top: 60 } : { right: 14, top: 60 }),
         // 자동 크기 — 측정 전 한 프레임은 최대 폭으로 그려 내용을 잰다
-        width: compact ? 'calc(100% - 24px)' : autoSize ? autoSize.w : Math.floor(window.innerWidth / 2),
+        width: compact ? 'calc(100% - 24px)' : autoSize ? autoSize.w : capW,
         ...(autoSize ? { height: autoSize.h } : {}),
         // 최대 = "화면 4분할 시 우측 상단" — 브라우저 화면의 1/2 × 1/2
-        maxWidth: compact ? 'calc(100% - 24px)' : Math.floor(window.innerWidth / 2),
-        maxHeight: compact ? '60dvh' : Math.floor(window.innerHeight / 2),
-        minWidth: compact ? 0 : 220, minHeight: 120,
+        // 칸이 좁으면 칸 폭에 맞춘다(왼쪽이 잘리지 않게)
+        maxWidth: compact ? 'calc(100% - 24px)' : capW,
+        maxHeight: compact ? '60dvh' : capH,
+        minWidth: compact ? 0 : Math.min(220, capW), minHeight: 120,
         boxSizing: compact ? 'border-box' : undefined,
         resize: compact ? 'none' : 'both', overflow: 'auto',
         background: t.surface,

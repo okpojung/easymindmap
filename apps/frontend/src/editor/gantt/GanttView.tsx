@@ -22,13 +22,22 @@ const DAY_W: Record<Scale, number> = { day: 26, week: 9, month: 3.2, year: 0.9 }
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3];
 const ROW_H = 30;
 const HEAD_H = 46;
-const COLS = { task: 240, assignee: 120, start: 78, end: 78, progress: 52 };
-const LEFT_W = COLS.task + COLS.assignee + COLS.start + COLS.end + COLS.progress;
+// 오른쪽 [개요] 칸의 열 — 폭은 개요 칸 폭에 비례해 나눈다 (ThinkWise·MS Project 의 표 칸과 같은 자리)
+const DETAIL_COLS = [
+  { key: 'assignee', weight: 1.5 },
+  { key: 'start', weight: 1 },
+  { key: 'finish', weight: 1 },
+  { key: 'duration', weight: 0.7 },
+  { key: 'complete', weight: 0.8 },
+] as const;
+const DETAIL_WEIGHT = DETAIL_COLS.reduce((a, c) => a + c.weight, 0);
+const TASK_W_MIN = 140;
+const DETAIL_W_MIN = 220;
 
-interface Prefs { scale: Scale; zoom: number; showAll: boolean; theme: GanttThemeKey }
+interface Prefs { scale: Scale; zoom: number; showAll: boolean; theme: GanttThemeKey; details: boolean; taskW: number; detailW: number }
 const PREF_KEY = 'emm.gantt.prefs';
 function loadPrefs(): Prefs {
-  const d: Prefs = { scale: 'day', zoom: 3, showAll: false, theme: 'vivid' };
+  const d: Prefs = { scale: 'day', zoom: 3, showAll: false, theme: 'vivid', details: true, taskW: 240, detailW: 400 };
   try {
     const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}') as Partial<Prefs>;
     return {
@@ -36,6 +45,9 @@ function loadPrefs(): Prefs {
       zoom: typeof p.zoom === 'number' && p.zoom >= 0 && p.zoom < ZOOMS.length ? p.zoom : d.zoom,
       showAll: typeof p.showAll === 'boolean' ? p.showAll : d.showAll,
       theme: GANTT_THEME_KEYS.includes(p.theme as GanttThemeKey) ? (p.theme as GanttThemeKey) : d.theme,
+      details: typeof p.details === 'boolean' ? p.details : d.details,
+      taskW: typeof p.taskW === 'number' && p.taskW >= TASK_W_MIN ? Math.min(700, p.taskW) : d.taskW,
+      detailW: typeof p.detailW === 'number' && p.detailW >= DETAIL_W_MIN ? Math.min(800, p.detailW) : d.detailW,
     };
   } catch { return d; }
 }
@@ -114,14 +126,27 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill, editab
     return { a, b, days: b - a + 1 };
   }, [data.min, data.max, scale, today]);
   const dw = DAY_W[scale] * ZOOMS[prefs.zoom];
-  const timelineW = range ? range.days * dw : 0;
+  const leftW = prefs.taskW;
+  const rightW = prefs.details ? prefs.detailW : 0;
+  // 스크롤 칸 폭 — 일정이 짧아도 [개요] 칸이 오른쪽 끝에 붙어 있게 일정 칸을 늘린다
+  const [viewW, setViewW] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setViewW(el.clientWidth));
+    ro.observe(el);
+    setViewW(el.clientWidth);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!range, view]);
+  const timelineW = range ? Math.max(range.days * dw, viewW - leftW - rightW) : 0;
 
   // 처음 열 때(와 눈금·배율을 바꿀 때) 오늘 근처로
   const scrollToDay = (d: string) => {
     const el = scrollRef.current;
     if (!el || !range) return;
     const x = (dayNum(d) - range.a) * dw;
-    el.scrollLeft = Math.max(0, x - (el.clientWidth - LEFT_W) / 3);
+    el.scrollLeft = Math.max(0, x - (el.clientWidth - leftW - rightW) / 3);
   };
   useEffect(() => {
     if (!range) return;
@@ -167,6 +192,28 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill, editab
     background: on ? alpha(theme.accent, 0.12) : t.surface, color: on ? theme.accent : t.text, fontWeight: on ? 700 : 500,
   });
   const iconBtn: React.CSSProperties = { ...btn(false), padding: '3px 8px', fontWeight: 700 };
+  // 테마 강조색을 옅게 얹은 **불투명** 배경 — 양옆 고정 칸 뒤로 날짜·막대가 비치지 않게
+  const solid = (a: number, base: string) => (a > 0 ? `linear-gradient(${alpha(theme.accent, a)}, ${alpha(theme.accent, a)}), ${base}` : base);
+  const colW = (weight: number) => Math.max(36, Math.floor((rightW - 2) * weight / DETAIL_WEIGHT));
+  // 칸 폭 조절 — [작업명] 오른쪽 경계, [개요] 왼쪽 경계를 끌어 넓히고 줄인다(기억한다)
+  const sizing = useRef<{ which: 'task' | 'detail'; x0: number; w0: number } | null>(null);
+  const resizeHandle = (which: 'task' | 'detail') => (
+    <span
+      data-testid={`gantt-resize-${which}`}
+      title={tr('editor.gantt.drag')}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => { e.stopPropagation(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); sizing.current = { which, x0: e.clientX, w0: which === 'task' ? prefs.taskW : prefs.detailW }; }}
+      onPointerMove={(e) => {
+        const z = sizing.current;
+        if (!z) return;
+        const dx = e.clientX - z.x0;
+        if (z.which === 'task') setPref({ taskW: Math.max(TASK_W_MIN, Math.min(700, Math.round(z.w0 + dx))) });
+        else setPref({ detailW: Math.max(DETAIL_W_MIN, Math.min(800, Math.round(z.w0 - dx))) });
+      }}
+      onPointerUp={() => { sizing.current = null; }}
+      style={{ position: 'absolute', top: 0, bottom: 0, width: 8, [which === 'task' ? 'right' : 'left']: -4, cursor: 'col-resize', zIndex: 5 }}
+    />
+  );
   const cell: React.CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 6px', fontSize: 11.5, flexShrink: 0 };
   const sep = <span style={{ width: 1, height: 18, background: t.border, margin: '0 3px' }} />;
 
@@ -192,6 +239,7 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill, editab
           <span data-testid="gantt-zoom" style={{ fontSize: 10.5, color: t.textMuted, minWidth: 34, textAlign: 'center' }}>{Math.round(ZOOMS[prefs.zoom] * 100)}%</span>
           <button type="button" data-testid="gantt-zoom-in" title={tr('editor.gantt.zoomIn')} aria-label={tr('editor.gantt.zoomIn')} style={iconBtn} disabled={prefs.zoom === ZOOMS.length - 1} onClick={() => setPref({ zoom: Math.min(ZOOMS.length - 1, prefs.zoom + 1) })}>＋</button>
           <button type="button" data-testid="gantt-today" style={btn(false)} onClick={() => scrollToDay(today)}>{tr('editor.gantt.today')}</button>
+          <button type="button" data-testid="gantt-details" title={tr('editor.gantt.detailsTip')} style={btn(prefs.details)} onClick={() => setPref({ details: !prefs.details })}>{tr('editor.gantt.details')}</button>
           {sep}
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <input type="checkbox" data-testid="gantt-show-all" checked={showAll} onChange={(e) => setPref({ showAll: e.target.checked })} />
@@ -219,17 +267,14 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill, editab
         <div data-testid="gantt-empty" style={{ padding: 18, fontSize: 12.5, color: t.textMuted, lineHeight: 1.6 }}>{tr('editor.gantt.empty')}</div>
       ) : (
         <div ref={scrollRef} data-testid="gantt-scroll" style={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative' }}>
-          <div style={{ width: LEFT_W + timelineW, position: 'relative' }}>
-            {/* 머리글 */}
+          <div style={{ width: leftW + timelineW + rightW, position: 'relative' }}>
+            {/* 머리글 — [작업명] [날짜 눈금] [개요 열]. 양옆 칸은 불투명하게(가로로 굴려도 날짜가 비치지 않게) */}
             <div style={{ position: 'sticky', top: 0, zIndex: 3, display: 'flex', height: HEAD_H, background: t.surfaceAlt, borderBottom: `2px solid ${alpha(theme.accent, 0.5)}` }}>
-              <div style={{ position: 'sticky', left: 0, zIndex: 4, display: 'flex', alignItems: 'flex-end', width: LEFT_W, flexShrink: 0, background: `linear-gradient(180deg, ${alpha(theme.accent, 0.10)}, ${t.surfaceAlt})`, borderRight: `1px solid ${t.border}`, paddingBottom: 7, fontWeight: 700, color: t.text }}>
-                <span style={{ ...cell, width: COLS.task }}>{tr('editor.gantt.task')}</span>
-                <span style={{ ...cell, width: COLS.assignee }}>{tr('editor.gantt.assignee')}</span>
-                <span style={{ ...cell, width: COLS.start }}>{tr('editor.gantt.start')}</span>
-                <span style={{ ...cell, width: COLS.end }}>{tr('editor.gantt.end')}</span>
-                <span style={{ ...cell, width: COLS.progress, textAlign: 'right' }}>{tr('editor.gantt.progress')}</span>
+              <div style={{ position: 'sticky', left: 0, zIndex: 4, display: 'flex', alignItems: 'flex-end', width: leftW, flexShrink: 0, background: solid(0.10, t.surfaceAlt), borderRight: `1px solid ${t.border}`, paddingBottom: 7, fontWeight: 700, color: t.text }}>
+                <span style={{ ...cell, width: leftW }}>{tr('editor.gantt.task')}</span>
+                {resizeHandle('task')}
               </div>
-              <div style={{ position: 'relative', width: timelineW, flexShrink: 0 }}>
+              <div style={{ position: 'relative', width: timelineW, flexShrink: 0, overflow: 'hidden' }}>
                 {ticks.top.map((k, i) => (
                   <div key={`t${k.x}`} style={{ position: 'absolute', left: k.x, top: 0, width: k.w, height: 22, borderLeft: `1px solid ${t.border}`, fontSize: 11.5, fontWeight: 800, padding: '4px 6px', boxSizing: 'border-box', overflow: 'hidden', whiteSpace: 'nowrap', color: theme.accent, background: i % 2 ? alpha(theme.accent, 0.05) : alpha(theme.accent, 0.11) }}>{k.w >= 48 ? k.label : ''}</div>
                 ))}
@@ -237,11 +282,19 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill, editab
                   <div key={`b${k.x}`} style={{ position: 'absolute', left: k.x, top: 22, width: k.w || undefined, height: 24, borderLeft: `1px solid ${t.divider}`, fontSize: 10, textAlign: scale === 'day' ? 'center' : 'left', padding: scale === 'day' ? '5px 0' : '5px 4px', boxSizing: 'border-box', color: k.today ? '#fff' : k.weekend ? theme.today : t.textMuted, background: k.today ? theme.today : undefined, borderRadius: k.today ? 4 : 0, fontWeight: k.today ? 800 : 500, whiteSpace: 'nowrap', overflow: 'hidden' }}>{(scale === 'month' || scale === 'year') && k.w < 18 ? '' : scale === 'day' && dw < 15 && !k.today && +k.label % 5 !== 1 ? '' : k.label}</div>
                 ))}
               </div>
+              {prefs.details && (
+                <div style={{ position: 'sticky', right: 0, zIndex: 4, display: 'flex', alignItems: 'flex-end', width: rightW, flexShrink: 0, background: solid(0.10, t.surfaceAlt), borderLeft: `1px solid ${t.border}`, paddingBottom: 7, fontWeight: 700, color: t.text, boxShadow: '-4px 0 8px rgba(0,0,0,0.06)' }}>
+                  {resizeHandle('detail')}
+                  {DETAIL_COLS.map((c) => (
+                    <span key={c.key} style={{ ...cell, width: colW(c.weight), textAlign: c.key === 'assignee' ? 'left' : 'center' }}>{tr(`editor.gantt.col.${c.key}`)}</span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* 본문 — 주말 음영·오늘 선은 한 번만 그린다 */}
             <div style={{ position: 'relative' }}>
-              <div aria-hidden="true" style={{ position: 'absolute', left: LEFT_W, top: 0, width: timelineW, height: visible.length * ROW_H, pointerEvents: 'none' }}>
+              <div aria-hidden="true" style={{ position: 'absolute', left: leftW, top: 0, width: timelineW, height: visible.length * ROW_H, pointerEvents: 'none', overflow: 'hidden' }}>
                 {scale === 'day' && ticks.bottom.filter((k) => k.weekend).map((k) => (
                   <div key={`w${k.x}`} style={{ position: 'absolute', left: k.x, top: 0, width: k.w, height: '100%', background: theme.weekend }} />
                 ))}
@@ -263,7 +316,7 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill, editab
                 const w = hasBar ? Math.max(dw, (dayNum(be!) - dayNum(bs!) + 1) * dw) : 0;
                 // 마감일만 있는 노드는 ◆ (마일스톤)
                 const milestone = r.dated && r.hasEnd && !r.hasStart;
-                // 끌기 — 막대 가운데는 통째로, 양끝 6px 은 시작·끝 (요약 막대는 하위에서 정해지므로 못 끈다)
+                // 끌기 — 막대 가운데는 통째로, 양끝 7px 은 시작·끝 (요약 막대는 하위에서 정해지므로 못 끈다)
                 const startDrag = (mode: DragMode) => (e: React.PointerEvent) => {
                   if (!canDrag || !r.dated || e.button !== 0) return;
                   e.stopPropagation();
@@ -299,14 +352,23 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill, editab
                   cursor: 'ew-resize', zIndex: 2,
                 });
                 const prog = r.progress ?? 0;
-                const rowBg = sel ? alpha(theme.accent, 0.14) : rowIdx % 2 ? alpha(theme.accent, 0.025) : undefined;
+                const tint = sel ? 0.16 : rowIdx % 2 ? 0.03 : 0;
+                const sideBg = solid(tint, t.surface);
                 const tip = `${r.text}${hasBar ? ` · ${bs}${be !== bs ? ' ~ ' + be : ''}` : ''}${r.assignees.length ? ' · @' + r.assignees.join(', @') : ''}${r.progress != null ? ' · ' + r.progress + '%' : ''}`;
+                const days = hasBar ? dayNum(be!) - dayNum(bs!) + 1 : 0;
+                const detail = (key: typeof DETAIL_COLS[number]['key']) => {
+                  if (key === 'assignee') return r.assignees.join(', ');
+                  if (key === 'start') return shortDate(r.summary ? r.barStart : r.start, year);
+                  if (key === 'finish') return shortDate(r.summary ? r.barEnd : r.end, year);
+                  if (key === 'duration') return hasBar && (r.dated || r.summary) ? tr('editor.gantt.durDays', { n: days }) : '';
+                  return r.progress != null ? `${r.progress}%` : '';
+                };
                 return (
                   <div key={r.id} data-testid="gantt-row" data-gantt-id={r.id}
                     onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } onSelect?.(r.id); }}
-                    style={{ display: 'flex', height: ROW_H, borderBottom: `1px solid ${t.divider}`, cursor: onSelect ? 'pointer' : 'default', background: rowBg, position: 'relative' }}>
-                    <div style={{ position: 'sticky', left: 0, zIndex: 2, display: 'flex', alignItems: 'center', width: LEFT_W, flexShrink: 0, background: sel ? alpha(theme.accent, 0.14) : t.surface, borderRight: `1px solid ${t.border}`, boxShadow: `inset 3px 0 0 ${r.dated || r.summary ? color : 'transparent'}` }}>
-                      <span style={{ ...cell, width: COLS.task, display: 'flex', alignItems: 'center', gap: 3, paddingLeft: 8 + r.shownDepth * 14, fontWeight: r.summary || r.depth === 0 ? 700 : 500, color: sel ? theme.accent : r.dated || r.summary ? t.text : t.textMuted }} title={r.text}>
+                    style={{ display: 'flex', height: ROW_H, borderBottom: `1px solid ${t.divider}`, cursor: onSelect ? 'pointer' : 'default', background: tint ? alpha(theme.accent, tint) : undefined, position: 'relative' }}>
+                    <div style={{ position: 'sticky', left: 0, zIndex: 2, display: 'flex', alignItems: 'center', width: leftW, flexShrink: 0, background: sideBg, borderRight: `1px solid ${t.border}`, boxShadow: `inset 3px 0 0 ${r.dated || r.summary ? color : 'transparent'}` }}>
+                      <span style={{ ...cell, width: leftW, display: 'flex', alignItems: 'center', gap: 3, paddingLeft: 8 + r.shownDepth * 14, fontWeight: r.summary || r.depth === 0 ? 700 : 500, color: sel ? theme.accent : r.dated || r.summary ? t.text : t.textMuted }} title={r.text}>
                         {showAll && r.hasChildren ? (
                           <button type="button" aria-label={folded.has(r.id) ? '+' : '-'}
                             onClick={(e) => { e.stopPropagation(); setFolded((f) => { const n = new Set(f); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; }); }}
@@ -314,10 +376,7 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill, editab
                         ) : <span style={{ width: 14, flexShrink: 0 }} />}
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.text}</span>
                       </span>
-                      <span style={{ ...cell, width: COLS.assignee, color: t.textMuted }} title={r.assignees.join(', ')}>{r.assignees.join(', ')}</span>
-                      <span style={{ ...cell, width: COLS.start, color: t.textMuted }}>{shortDate(r.summary ? r.barStart : r.start, year)}</span>
-                      <span style={{ ...cell, width: COLS.end, color: t.textMuted }}>{shortDate(r.summary ? r.barEnd : r.end, year)}</span>
-                      <span style={{ ...cell, width: COLS.progress, textAlign: 'right', color: prog === 100 ? '#2B8A3E' : t.textMuted, fontWeight: prog === 100 ? 700 : 400 }}>{r.progress != null ? `${r.progress}%` : ''}</span>
+                      {resizeHandle('task')}
                     </div>
                     <div style={{ position: 'relative', width: timelineW, flexShrink: 0 }}>
                       {!hasBar ? null : r.summary ? (
@@ -352,13 +411,22 @@ export function GanttView({ t, data, selectedId, onSelect, toolbar, fill, editab
                           {pv.start === pv.end ? pv.start : `${pv.start} ~ ${pv.end}`}
                         </span>
                       )}
-                      {/* 막대 오른쪽 이름표 — 일감 이름 · 담당자 */}
+                      {/* 막대 오른쪽 이름표 — 작업명 */}
                       {hasBar && !r.summary && !pv && (
                         <span style={{ position: 'absolute', left: x + Math.max(w, milestone ? 12 : 0) + 6, top: 8, fontSize: 10.5, color: t.textMuted, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
-                          {r.assignees.length > 0 ? r.assignees.map((a) => '@' + a).join(' ') : ''}
+                          {r.text}{!prefs.details && r.assignees.length ? ` · ${r.assignees.map((a) => '@' + a).join(' ')}` : ''}
                         </span>
                       )}
                     </div>
+                    {prefs.details && (
+                      <div style={{ position: 'sticky', right: 0, zIndex: 2, display: 'flex', alignItems: 'center', width: rightW, flexShrink: 0, background: sideBg, borderLeft: `1px solid ${t.border}`, boxShadow: '-4px 0 8px rgba(0,0,0,0.04)' }}>
+                        {resizeHandle('detail')}
+                        {DETAIL_COLS.map((c) => (
+                          <span key={c.key} data-gantt-col={c.key} title={c.key === 'assignee' ? r.assignees.join(', ') : undefined}
+                            style={{ ...cell, width: colW(c.weight), textAlign: c.key === 'assignee' ? 'left' : 'center', color: c.key === 'complete' && prog === 100 ? '#2B8A3E' : t.textMuted, fontWeight: c.key === 'complete' && prog === 100 ? 700 : 400 }}>{detail(c.key)}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}

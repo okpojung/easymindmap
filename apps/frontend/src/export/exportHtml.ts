@@ -47,6 +47,7 @@ import {
 } from './mapMeta';
 import { currentLang, tr } from '@/i18n';
 import { projectChips } from '@/editor/node-renderer/projectTags';
+import { shareViewerAssets, SHARED_VIEWER_ASSET_BOOTSTRAP } from './sharedViewerAssets';
 
 // 에디터가 계산한 노드의 최종 배치 좌표 — 뷰어는 이 좌표를 그대로 사용해
 // 에디터 화면과 100% 동일한 레이아웃을 재현한다 (자체 레이아웃은 좌표가
@@ -4821,8 +4822,6 @@ export function buildStandaloneHtml(
     connectors: map.connectors?.length ? map.connectors : undefined,
   };
 
-  // <-escape so node text like "</script>" cannot terminate the block.
-  const json = JSON.stringify(data).replace(/</g, '\\u003c');
   const exportedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
 
   // 맵 메타데이터 — EasyMindMap 생성 파일 표시 + 편집 가능한 원본 맵
@@ -4830,6 +4829,10 @@ export function buildStandaloneHtml(
   // 내보낸 맵을 그대로 복원한다 (mapMeta.ts / importMapFile.ts).
   const metaJson = JSON.stringify(buildMapMeta(metaSource, layoutType, spacing))
     .replace(/</g, '\\u003c');
+  // Keep the import-compatible original in metadata. The viewer references it
+  // instead of embedding the same attachment/image bytes a second time.
+  const shared = shareViewerAssets(data, metaJson);
+  const json = JSON.stringify(shared.data).replace(/</g, '\\u003c');
 
   // 뷰어 화면 문구 — 파일 안에서는 언어를 바꿀 수 없으니 지금 언어로 굳힌다
   const stringsJson = JSON.stringify(viewerStrings()).replace(/</g, '\\u003c');
@@ -4899,7 +4902,7 @@ export function buildStandaloneHtml(
 <!-- EasyMindMap 생성 파일 · 제목: ${escapeHtml(map.title)} · 내보낸 시각: ${exportedAt}
      아래 메타데이터(#easymindmap-map)로 '새 맵 > 불러오기'에서 편집 가능하게 복원됩니다 -->
 <script type="application/json" id="easymindmap-map">${metaJson}</script>
-<script>window.__MINDMAP__ = ${json};</script>
+<script>window.__MINDMAP__ = ${json};</script>${shared.sharedCount ? `\n<script>${SHARED_VIEWER_ASSET_BOOTSTRAP}</script>` : ''}
 <script>window.__MM_L__ = ${stringsJson};</script>
 <script>${VIEWER_JS}</script>${hostSlots ? `\n<script>${HOST_SLOTS_JS}</script>` : ''}
 </body>

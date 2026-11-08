@@ -235,11 +235,11 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck, onEditTable, onEdi
                   <th key={c} style={{
                     border: `1px solid ${t.border}`, padding: '4px 7px',
                     textAlign: 'left', background: t.surfaceAlt, fontWeight: 700,
-                  }}>{cellBody(t, cell)}</th>
+                  }}>{cell.trim() ? cellBody(t, cell) : '\u00a0'}</th>
                 ) : (
                   <td key={c} style={{
                     border: `1px solid ${t.border}`, padding: '4px 7px', textAlign: 'left',
-                  }}>{cellBody(t, cell)}</td>
+                  }}>{cell.trim() ? cellBody(t, cell) : '\u00a0'}</td>
                 ),
               )}
             </tr>

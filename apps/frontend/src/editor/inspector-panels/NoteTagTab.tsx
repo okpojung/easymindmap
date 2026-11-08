@@ -536,9 +536,10 @@ function NoteTableView({
     whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const,
   });
   // 셀 안 `<br>` = 줄바꿈 (2026-10-15) — 맵·뷰어·내보내기와 같은 규칙
-  const cellBody = (v: string) => cellLines(v).map((ln, i) => (
+  // 빈 칸도 한 줄 높이로 — 새로 넣은 빈 표의 행이 납작하게 붙어 안 보였다 (2026-11-08)
+  const cellBody = (v: string) => (v.trim() === '' ? '\u00a0' : cellLines(v).map((ln, i) => (
     <Fragment key={i}>{i > 0 ? <br /> : null}{ln}</Fragment>
-  ));
+  )));
   return (
     <div
       data-testid="note-table-view"

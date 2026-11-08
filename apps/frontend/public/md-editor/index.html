@@ -306,6 +306,7 @@
       <hr>
       <button data-act="md"><span data-i18n=".md%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">.md로 저장…</span></button>
       <button data-act="online"><span data-i18n="md.html(%EC%98%A8%EB%9D%BC%EC%9D%B8)%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">md.html(온라인)로 저장…</span></button>
+      <button data-act="encrypted">암호화 md.html로 저장…</button>
       <button data-act="offline"><span data-i18n="md.html(%EC%98%A4%ED%94%84%EB%9D%BC%EC%9D%B8)%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">md.html(오프라인)로 저장…</span></button>
       <hr>
       <button data-act="close"><span data-i18n="%EB%8B%AB%EA%B8%B0">닫기</span></button>
@@ -463,6 +464,180 @@
 <script id="appMain">
 "use strict";
 
+/* EMM_ENCRYPTED_HTML_SHARED_RUNTIME_START */
+function createHtmlCrypto() {
+    const MAX_PLAIN = 64 * 1024 * 1024;
+    const MAX_FILE = 92 * 1024 * 1024;
+    const ITERATIONS = 600000;
+    const FORMAT = 'emm-protected-html';
+    const FAILURE = '암호가 맞지 않거나 파일이 손상되었습니다.';
+    function passwordValidationError(password) {
+        if (typeof password !== 'string' || Array.from(password).length < 8)
+            return '암호는 8자 이상이어야 합니다.';
+        if (Array.from(password).length > 256)
+            return '암호는 256자 이내로 입력해 주세요.';
+        const kinds = Number(/\p{L}/u.test(password)) + Number(/\p{N}/u.test(password)) + Number(/[^\p{L}\p{N}\s]/u.test(password));
+        return kinds >= 2 ? null : '문자·숫자·특수문자 중 두 종류 이상을 조합해 주세요. 대소문자는 같은 종류입니다.';
+    }
+    function available() {
+        if (!globalThis.crypto?.subtle || !globalThis.crypto?.getRandomValues)
+            throw new Error('이 브라우저에서는 안전한 암호화를 사용할 수 없습니다. 최신 Chrome 또는 Edge에서 열어 주세요.');
+    }
+    function toBase64(bytes) {
+        const parts = [];
+        for (let i = 0; i < bytes.length; i += 0x6000)
+            parts.push(String.fromCharCode(...bytes.subarray(i, i + 0x6000)));
+        return btoa(parts.join(''));
+    }
+    function fromBase64(value, max) {
+        if (typeof value !== 'string' || value.length > Math.ceil(max / 3) * 4 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value))
+            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');
+        let binary;
+        try {
+            binary = atob(value);
+        }
+        catch {
+            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');
+        }
+        if (binary.length > max || btoa(binary) !== value)
+            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');
+        return Uint8Array.from(binary, c => c.charCodeAt(0));
+    }
+    function validate(raw) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');
+        const o = raw;
+        const keys = ['format', 'version', 'kind', 'kdf', 'cipher', 'iterations', 'salt', 'iv', 'data'];
+        if (Object.keys(o).length !== keys.length || keys.some(k => !Object.prototype.hasOwnProperty.call(o, k)) ||
+            o.format !== FORMAT || o.version !== 1 || (o.kind !== 'map' && o.kind !== 'markdown') ||
+            o.kdf !== 'PBKDF2-SHA256' || o.cipher !== 'AES-256-GCM' || o.iterations !== ITERATIONS ||
+            typeof o.salt !== 'string' || typeof o.iv !== 'string' || typeof o.data !== 'string')
+            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');
+        if (fromBase64(o.salt, 16).length !== 16 || fromBase64(o.iv, 12).length !== 12 || o.data.length < 24 || o.data.length > Math.ceil((MAX_PLAIN + 16) / 3) * 4 || o.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(o.data))
+            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');
+        return o;
+    }
+    function isEncryptedHtml(text) {
+        return typeof text === 'string' && (/<meta\s+name=["']emm-protected-html["']/i.test(text) || /<script\s+type=["']application\/json["']\s+id=["']emm-encrypted-payload["']/i.test(text));
+    }
+    function parse(text) {
+        if (typeof text !== 'string' || text.length > MAX_FILE)
+            throw new Error('암호화 파일의 크기 한도를 넘었습니다.');
+        const matches = [...text.matchAll(/<script type="application\/json" id="emm-encrypted-payload">([\s\S]*?)<\/script>/g)];
+        if (matches.length !== 1)
+            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');
+        try {
+            return validate(JSON.parse(matches[0][1]));
+        }
+        catch {
+            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');
+        }
+    }
+    function aad(kind) {
+        return new TextEncoder().encode(JSON.stringify([FORMAT, 1, kind, 'PBKDF2-SHA256', ITERATIONS, 'AES-256-GCM']));
+    }
+    async function key(password, salt, usage) {
+        available();
+        if (typeof password !== 'string' || Array.from(password).length > 256)
+            throw new Error(FAILURE);
+        const passwordBytes = new TextEncoder().encode(password);
+        try {
+            const material = await crypto.subtle.importKey('raw', passwordBytes, 'PBKDF2', false, ['deriveKey']);
+            return await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: salt, iterations: ITERATIONS }, material, { name: 'AES-GCM', length: 256 }, false, [usage]);
+        }
+        finally {
+            passwordBytes.fill(0);
+        }
+    }
+    async function encrypt(html, password, kind) {
+        available();
+        const invalid = passwordValidationError(password);
+        if (invalid)
+            throw new Error(invalid);
+        if (kind !== 'map' && kind !== 'markdown')
+            throw new Error('지원하지 않는 문서 종류입니다.');
+        const bytes = new TextEncoder().encode(html);
+        if (!bytes.length || bytes.length > MAX_PLAIN)
+            throw new Error('암호화할 HTML은 64MB 이내여야 합니다. 첨부파일을 줄이거나 맵을 나누어 주세요.');
+        const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+        try {
+            const derived = await key(password, salt, 'encrypt');
+            const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(kind), tagLength: 128 }, derived, bytes));
+            return { format: FORMAT, version: 1, kind, kdf: 'PBKDF2-SHA256', cipher: 'AES-256-GCM', iterations: ITERATIONS, salt: toBase64(salt), iv: toBase64(iv), data: toBase64(ciphertext) };
+        }
+        finally {
+            bytes.fill(0);
+        }
+    }
+    async function decrypt(envelope, password) {
+        available();
+        const e = validate(envelope);
+        const ciphertext = fromBase64(e.data, MAX_PLAIN + 16);
+        if (ciphertext.length < 17)
+            throw new Error(FAILURE);
+        try {
+            const derived = await key(password, fromBase64(e.salt, 16), 'decrypt');
+            const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromBase64(e.iv, 12), additionalData: aad(e.kind), tagLength: 128 }, derived, ciphertext));
+            try {
+                return { html: new TextDecoder('utf-8', { fatal: true }).decode(plain), kind: e.kind };
+            }
+            finally {
+                plain.fill(0);
+            }
+        }
+        catch {
+            throw new Error(FAILURE);
+        }
+    }
+    return { passwordValidationError, isEncryptedHtml, parse, validate, encrypt, decrypt, limits: { maxPlainBytes: MAX_PLAIN, maxFileChars: MAX_FILE } };
+}
+// Generated source is a literal, not function.toString(): production minifiers
+// may move closures. The offline decryptor must remain independent of bundling.
+/* EMM_CRYPTO_FACTORY_SOURCE_START */
+const CRYPTO_FACTORY_SOURCE = "function createHtmlCrypto() {\n    const MAX_PLAIN = 64 * 1024 * 1024;\n    const MAX_FILE = 92 * 1024 * 1024;\n    const ITERATIONS = 600000;\n    const FORMAT = 'emm-protected-html';\n    const FAILURE = '암호가 맞지 않거나 파일이 손상되었습니다.';\n    function passwordValidationError(password) {\n        if (typeof password !== 'string' || Array.from(password).length < 8)\n            return '암호는 8자 이상이어야 합니다.';\n        if (Array.from(password).length > 256)\n            return '암호는 256자 이내로 입력해 주세요.';\n        const kinds = Number(/\\p{L}/u.test(password)) + Number(/\\p{N}/u.test(password)) + Number(/[^\\p{L}\\p{N}\\s]/u.test(password));\n        return kinds >= 2 ? null : '문자·숫자·특수문자 중 두 종류 이상을 조합해 주세요. 대소문자는 같은 종류입니다.';\n    }\n    function available() {\n        if (!globalThis.crypto?.subtle || !globalThis.crypto?.getRandomValues)\n            throw new Error('이 브라우저에서는 안전한 암호화를 사용할 수 없습니다. 최신 Chrome 또는 Edge에서 열어 주세요.');\n    }\n    function toBase64(bytes) {\n        const parts = [];\n        for (let i = 0; i < bytes.length; i += 0x6000)\n            parts.push(String.fromCharCode(...bytes.subarray(i, i + 0x6000)));\n        return btoa(parts.join(''));\n    }\n    function fromBase64(value, max) {\n        if (typeof value !== 'string' || value.length > Math.ceil(max / 3) * 4 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value))\n            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');\n        let binary;\n        try {\n            binary = atob(value);\n        }\n        catch {\n            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');\n        }\n        if (binary.length > max || btoa(binary) !== value)\n            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');\n        return Uint8Array.from(binary, c => c.charCodeAt(0));\n    }\n    function validate(raw) {\n        if (!raw || typeof raw !== 'object' || Array.isArray(raw))\n            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');\n        const o = raw;\n        const keys = ['format', 'version', 'kind', 'kdf', 'cipher', 'iterations', 'salt', 'iv', 'data'];\n        if (Object.keys(o).length !== keys.length || keys.some(k => !Object.prototype.hasOwnProperty.call(o, k)) ||\n            o.format !== FORMAT || o.version !== 1 || (o.kind !== 'map' && o.kind !== 'markdown') ||\n            o.kdf !== 'PBKDF2-SHA256' || o.cipher !== 'AES-256-GCM' || o.iterations !== ITERATIONS ||\n            typeof o.salt !== 'string' || typeof o.iv !== 'string' || typeof o.data !== 'string')\n            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');\n        if (fromBase64(o.salt, 16).length !== 16 || fromBase64(o.iv, 12).length !== 12 || o.data.length < 24 || o.data.length > Math.ceil((MAX_PLAIN + 16) / 3) * 4 || o.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(o.data))\n            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');\n        return o;\n    }\n    function isEncryptedHtml(text) {\n        return typeof text === 'string' && (/<meta\\s+name=[\"']emm-protected-html[\"']/i.test(text) || /<script\\s+type=[\"']application\\/json[\"']\\s+id=[\"']emm-encrypted-payload[\"']/i.test(text));\n    }\n    function parse(text) {\n        if (typeof text !== 'string' || text.length > MAX_FILE)\n            throw new Error('암호화 파일의 크기 한도를 넘었습니다.');\n        const matches = [...text.matchAll(/<script type=\"application\\/json\" id=\"emm-encrypted-payload\">([\\s\\S]*?)<\\/script>/g)];\n        if (matches.length !== 1)\n            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');\n        try {\n            return validate(JSON.parse(matches[0][1]));\n        }\n        catch {\n            throw new Error('지원하지 않거나 손상된 암호화 파일입니다.');\n        }\n    }\n    function aad(kind) {\n        return new TextEncoder().encode(JSON.stringify([FORMAT, 1, kind, 'PBKDF2-SHA256', ITERATIONS, 'AES-256-GCM']));\n    }\n    async function key(password, salt, usage) {\n        available();\n        if (typeof password !== 'string' || Array.from(password).length > 256)\n            throw new Error(FAILURE);\n        const passwordBytes = new TextEncoder().encode(password);\n        try {\n            const material = await crypto.subtle.importKey('raw', passwordBytes, 'PBKDF2', false, ['deriveKey']);\n            return await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: salt, iterations: ITERATIONS }, material, { name: 'AES-GCM', length: 256 }, false, [usage]);\n        }\n        finally {\n            passwordBytes.fill(0);\n        }\n    }\n    async function encrypt(html, password, kind) {\n        available();\n        const invalid = passwordValidationError(password);\n        if (invalid)\n            throw new Error(invalid);\n        if (kind !== 'map' && kind !== 'markdown')\n            throw new Error('지원하지 않는 문서 종류입니다.');\n        const bytes = new TextEncoder().encode(html);\n        if (!bytes.length || bytes.length > MAX_PLAIN)\n            throw new Error('암호화할 HTML은 64MB 이내여야 합니다. 첨부파일을 줄이거나 맵을 나누어 주세요.');\n        const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));\n        try {\n            const derived = await key(password, salt, 'encrypt');\n            const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(kind), tagLength: 128 }, derived, bytes));\n            return { format: FORMAT, version: 1, kind, kdf: 'PBKDF2-SHA256', cipher: 'AES-256-GCM', iterations: ITERATIONS, salt: toBase64(salt), iv: toBase64(iv), data: toBase64(ciphertext) };\n        }\n        finally {\n            bytes.fill(0);\n        }\n    }\n    async function decrypt(envelope, password) {\n        available();\n        const e = validate(envelope);\n        const ciphertext = fromBase64(e.data, MAX_PLAIN + 16);\n        if (ciphertext.length < 17)\n            throw new Error(FAILURE);\n        try {\n            const derived = await key(password, fromBase64(e.salt, 16), 'decrypt');\n            const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromBase64(e.iv, 12), additionalData: aad(e.kind), tagLength: 128 }, derived, ciphertext));\n            try {\n                return { html: new TextDecoder('utf-8', { fatal: true }).decode(plain), kind: e.kind };\n            }\n            finally {\n                plain.fill(0);\n            }\n        }\n        catch {\n            throw new Error(FAILURE);\n        }\n    }\n    return { passwordValidationError, isEncryptedHtml, parse, validate, encrypt, decrypt, limits: { maxPlainBytes: MAX_PLAIN, maxFileChars: MAX_FILE } };\n}";
+/* EMM_CRYPTO_FACTORY_SOURCE_END */
+function passwordValidationError(password) { return createHtmlCrypto().passwordValidationError(password); }
+function isEncryptedHtml(text) { return createHtmlCrypto().isEncryptedHtml(text); }
+async function decryptStandaloneHtml(text, password) {
+    const codec = createHtmlCrypto();
+    return codec.decrypt(codec.parse(text), password);
+}
+function buildLockedHtml(envelope) {
+    const codec = createHtmlCrypto();
+    codec.validate(envelope);
+    const payload = JSON.stringify(envelope).replace(/</g, '\\u003c');
+    const runtime = CRYPTO_FACTORY_SOURCE.replace(/<\/script/gi, '<\\/script');
+    // No allow-same-origin: decrypted scripts must never inherit the EMM origin.
+    // The restrictive CSP also prevents remote images/scripts and background I/O.
+    return `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="emm-protected-html" content="1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; frame-src 'self' about: data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>암호로 보호된 문서</title><style>
+*{box-sizing:border-box}body{margin:0;font:15px/1.6 system-ui,sans-serif;color:#243b4c;background:#f4f6f7}.lock{max-width:440px;margin:12vh auto;padding:32px;background:#fff;border:1px solid #dce3e8;border-radius:16px}h1{font-size:24px;letter-spacing:-.03em;margin:0 0 12px}p{color:#5e6d78;margin:8px 0 20px}label{display:block;font-weight:600}input{display:block;width:100%;font:inherit;padding:11px;margin:8px 0 16px;border:1px solid #a7b5bf;border-radius:8px}button{font:inherit;padding:10px 16px;border:0;border-radius:8px;cursor:pointer;background:#24485e;color:white}button:disabled{opacity:.5}.error{color:#a52828;min-height:24px;margin-top:12px}.hint{font-size:12px;color:#657782;margin:18px 0 0}.bar{height:52px;padding:6px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border-bottom:1px solid #dce3e8}.bar span{font-size:12px}.bar button{padding:5px 12px}iframe{display:block;width:100%;height:calc(100vh - 52px);border:0;background:#fff}[hidden]{display:none!important}@media(max-width:480px){.lock{margin:6vh 16px;padding:24px}.bar{padding:6px 8px}.bar span{font-size:11px}}
+</style></head><body>
+<section class="lock" id="lock"><h1>암호로 보호된 문서</h1><p>본문과 포함된 첨부파일은 암호화되어 있습니다. 암호를 입력하면 이 브라우저에서만 복호화합니다.</p>
+<form id="unlock"><label for="password">암호</label><input id="password" type="password" autocomplete="off" maxlength="512" required><button id="open" type="submit">문서 열기</button><div class="error" id="error" role="alert"></div></form><p class="hint">암호를 잊으면 복구할 수 없습니다. 일반 웹 링크의 외부 사이트는 이 파일의 보호 대상이 아닙니다.</p></section>
+<div class="bar" id="bar" hidden><span>암호가 해제된 상태입니다. 화면 복사와 개별 첨부 저장은 암호화되지 않습니다.</span><button id="relock" type="button">다시 잠그기</button></div>
+<iframe id="viewer" title="복호화된 문서" sandbox="allow-scripts allow-downloads allow-popups allow-modals allow-forms" hidden></iframe>
+<script type="application/json" id="emm-encrypted-payload">${payload}<\/script>
+<script>(function(){'use strict';var codec=(${runtime})();var form=document.getElementById('unlock'),pass=document.getElementById('password'),error=document.getElementById('error'),button=document.getElementById('open'),frame=document.getElementById('viewer'),lock=document.getElementById('lock'),bar=document.getElementById('bar');
+form.addEventListener('submit',async function(event){event.preventDefault();if(button.disabled)return;button.disabled=true;error.textContent='복호화 중…';try{var envelope=codec.validate(JSON.parse(document.getElementById('emm-encrypted-payload').textContent));var result=await codec.decrypt(envelope,pass.value);pass.value='';frame.srcdoc=result.html;result.html='';frame.hidden=false;bar.hidden=false;lock.hidden=true;error.textContent='';}catch(e){error.textContent=e instanceof Error?e.message:'문서를 열지 못했습니다.';pass.value='';pass.focus();}finally{button.disabled=false;}});
+document.getElementById('relock').addEventListener('click',function(){frame.srcdoc='';frame.hidden=true;bar.hidden=true;lock.hidden=false;pass.value='';error.textContent='';pass.focus();});pass.focus();})();<\/script>
+</body></html>`;
+}
+async function encryptStandaloneHtml(html, password, kind) {
+    const envelope = await createHtmlCrypto().encrypt(html, password, kind);
+    return buildLockedHtml(envelope);
+}
+
+window.EmmEncryptedHtml = { createHtmlCrypto, encryptStandaloneHtml, decryptStandaloneHtml, isEncryptedHtml, passwordValidationError };
+/* EMM_ENCRYPTED_HTML_SHARED_RUNTIME_END */
+
+let PROTECTED_DOCUMENT = document.getElementById("mdData")?.dataset.encrypted === "1";
+const ISOLATED_PROTECTED = PROTECTED_DOCUMENT;
+const SAFE_STORAGE = { getItem(key) { try { return localStorage.getItem(key); } catch { return null; } }, setItem(key, value) { if (PROTECTED_DOCUMENT) return; try { localStorage.setItem(key, value); } catch {} } };
+
 /* ---------- page snapshot for md.html saving (taken before the editors change the DOM) ---------- */
 const APP_CSS = document.getElementById("appStyle").textContent;
 const APP_JS = document.getElementById("appMain").textContent;
@@ -477,8 +652,8 @@ const PAGE_OFFLINE = LIBS.some((l) => l.inline != null);
 // EasyMindMap attachment mode: /md-editor/?att=<attachment id>&api=<API origin>&name=<file name>
 const QS = new URLSearchParams(location.search);
 // Embedded (in-map) attachment: /md-editor/?src=opener&key=<attachment key>&name=<file name> — content comes from and goes back to the EMM tab that opened this one
-const EMM = QS.get("att") ? { mode: "server", att: QS.get("att"), api: (QS.get("api") || location.origin).replace(/\/+$/, ""), name: QS.get("name") || "첨부.md", base: null, readOnly: false }
-  : QS.get("src") === "opener" && QS.get("key") ? { mode: "opener", key: QS.get("key"), name: QS.get("name") || "첨부.md", readOnly: false } : null;
+const EMM = !ISOLATED_PROTECTED && QS.get("att") ? { mode: "server", att: QS.get("att"), api: (QS.get("api") || location.origin).replace(/\/+$/, ""), name: QS.get("name") || "첨부.md", base: null, readOnly: false }
+  : !ISOLATED_PROTECTED && QS.get("src") === "opener" && QS.get("key") ? { mode: "opener", key: QS.get("key"), name: QS.get("name") || "첨부.md", readOnly: false } : null;
 
 const IS_IFRAME = window.parent !== window;
 const FRAME_HOST = { active: false, origin: null, saveLabel: "", pending: null, lastSent: null };
@@ -486,7 +661,7 @@ const FRAME_HOST = { active: false, origin: null, saveLabel: "", pending: null, 
 /* v7 explicit UI dictionaries: never traverse or translate document content. */
 const I18N = {"ko":{"마크다운 편집기":"마크다운 편집기","왼쪽 목차 접기/펼치기":"왼쪽 목차 접기/펼치기","☰ 목차":"☰ 목차","마크다운":"마크다운","아웃라인":"아웃라인","렌더링":"렌더링","분할":"분할","제목 단계 (커서가 있는 줄)":"제목 단계 (커서가 있는 줄)","제목":"제목","본문":"본문","굵게 (Ctrl+B)":"굵게 (Ctrl+B)","기울임 (Ctrl+I)":"기울임 (Ctrl+I)","취소선":"취소선","밑줄 (Ctrl+U)":"밑줄 (Ctrl+U)","하이라이트 (다시 누르면 해제)":"하이라이트 (다시 누르면 해제)","글머리 기호 (다시 누르면 해제)":"글머리 기호 (다시 누르면 해제)","번호 매기기 (다시 누르면 해제)":"번호 매기기 (다시 누르면 해제)","체크박스 (- [ ] — 다시 누르면 해제)":"체크박스 (- [ ] — 다시 누르면 해제)","링크 삽입 (Ctrl+K)":"링크 삽입 (Ctrl+K)","인라인 코드 (`…`)":"인라인 코드 (`…`)","코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)":"코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)","표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)":"표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)","색 테마·글꼴·문법 설정":"색 테마·글꼴·문법 설정","⚙ 설정":"⚙ 설정","파일 메뉴":"파일 메뉴","파일 ▾":"파일 ▾","새 문서":"새 문서","열기…":"열기…","예제 문서":"예제 문서","저장":"저장","다른 이름으로 저장…":"다른 이름으로 저장…",".md로 저장…":".md로 저장…","md.html(온라인)로 저장…":"md.html(온라인)로 저장…","md.html(오프라인)로 저장…":"md.html(오프라인)로 저장…","닫기":"닫기","저장 (Ctrl+S)":"저장 (Ctrl+S)","✕ 닫기":"✕ 닫기","목차":"목차","모두 펼치기":"모두 펼치기","모두 접기":"모두 접기","마크다운 원문":"마크다운 원문","원문 줄 번호 끄기":"원문 줄 번호 끄기","줄 번호 On":"줄 번호 On","마크다운 원문 복사":"마크다운 원문 복사","복사":"복사","아웃라인 창 내용 복사":"아웃라인 창 내용 복사","끌어서 좌우 크기 조절 · 더블클릭: 반반":"끌어서 좌우 크기 조절 · 더블클릭: 반반","렌더링 (직접 편집 가능)":"렌더링 (직접 편집 가능)","렌더링 창 내용 복사":"렌더링 창 내용 복사","링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭":"링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭","표":"표","▦ 격자":"▦ 격자","+ 행":"+ 행","− 행":"− 행","+ 열":"+ 열","− 열":"− 열","왼쪽 정렬":"왼쪽 정렬","가운데 정렬":"가운데 정렬","오른쪽 정렬":"오른쪽 정렬","취소 (Esc)":"취소 (Esc)","확인 (Ctrl+Enter)":"확인 (Ctrl+Enter)","코드 블록":"코드 블록","코드 블록 삽입":"코드 블록 삽입","줄 번호 끄기":"줄 번호 끄기","코드 복사":"코드 복사","언어":"언어","예: bash, js, python — 비우면 code":"예: bash, js, python — 비우면 code","언어 목록에서 고르기":"언어 목록에서 고르기","코드를 입력하세요 (여러 줄 가능)":"코드를 입력하세요 (여러 줄 가능)","링크":"링크","링크 삽입":"링크 삽입","글자":"글자","보일 글자 (비우면 주소)":"보일 글자 (비우면 주소)","주소":"주소","링크 프로토콜":"링크 프로토콜","클립보드 붙여넣기":"클립보드 붙여넣기","확인 (Enter)":"확인 (Enter)","설정":"설정","색 테마":"색 테마","VS Code Light+ (기본 밝은 테마)":"VS Code Light+ (기본 밝은 테마)","VS Code Dark+ (기본 어두운 테마)":"VS Code Dark+ (기본 어두운 테마)","적용 범위":"적용 범위","메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)":"메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)","원문 글꼴 크기":"원문 글꼴 크기","원문 줄바꿈":"원문 줄바꿈","긴 줄을 화면 폭에서 접어 보기":"긴 줄을 화면 폭에서 접어 보기","밑줄·하이라이트 문법":"밑줄·하이라이트 문법","(표준, VS Code·GitHub 미리보기와 호환)":"(표준, VS Code·GitHub 미리보기와 호환)","(EasyMindMap 노드와 같은 방식)":"(EasyMindMap 노드와 같은 방식)","원문 색 직접 바꾸기":"원문 색 직접 바꾸기","· 바꾼 색(•)은 테마를 바꿔도 유지됩니다":"· 바꾼 색(•)은 테마를 바꿔도 유지됩니다","색 기본값으로":"색 기본값으로","복사 권한을 확인해 주세요.":"복사 권한을 확인해 주세요.","복사됨":"복사됨"," 완료":" 완료","복사 실패":"복사 실패","복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.":"복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.","원문":"원문","● 저장 안 됨 · ":"● 저장 안 됨 · ","제목(# ...)이 없습니다.":"제목(# ...)이 없습니다.","되돌릴 아웃라인 작업이 없습니다":"되돌릴 아웃라인 작업이 없습니다","원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다":"원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다","다시 실행할 작업이 없습니다":"다시 실행할 작업이 없습니다","그 위치로는 옮길 수 없습니다":"그 위치로는 옮길 수 없습니다","제목과 목록만 들여쓸 수 있습니다":"제목과 목록만 들여쓸 수 있습니다","바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다":"바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다","더 내어쓸 수 없습니다":"더 내어쓸 수 없습니다","삭제했습니다 (Ctrl+Z로 되돌리기)":"삭제했습니다 (Ctrl+Z로 되돌리기)","내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.":"내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.","더블클릭: 코드 블록 편집":"더블클릭: 코드 블록 편집","더블클릭: 표 편집기":"더블클릭: 표 편집기","더 옮길 곳이 없습니다":"더 옮길 곳이 없습니다"," · 기존 표 편집":" · 기존 표 편집"," · 새 표":" · 새 표","표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.":"표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.","표 형식이 올바르지 않습니다.":"표 형식이 올바르지 않습니다.","코드 블록 수정":"코드 블록 수정","줄 번호 켜기":"줄 번호 켜기","목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다":"목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다","복사했습니다":"복사했습니다","복사하지 못했습니다":"복사하지 못했습니다","링크 수정":"링크 수정","이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.":"이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.","클립보드에서 웹 주소를 찾지 못했습니다.":"클립보드에서 웹 주소를 찾지 못했습니다.","주소를 채웠습니다.":"주소를 채웠습니다.","클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.":"클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.","md.html 온라인":"md.html 온라인","md.html 오프라인":"md.html 오프라인","EMM 첨부":"EMM 첨부","오프라인 파일을 만드는 중… (라이브러리를 넣습니다)":"오프라인 파일을 만드는 중… (라이브러리를 넣습니다)","저장 중…":"저장 중…","파일을 만들지 못했습니다: ":"파일을 만들지 못했습니다: ","\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.":"\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.","내려받기 폴더에 저장했습니다":"내려받기 폴더에 저장했습니다","저장했습니다":"저장했습니다","로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.":"로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.","이 첨부를 고칠 권한이 없습니다 (읽기 전용).":"이 첨부를 고칠 권한이 없습니다 (읽기 전용).","첨부를 찾을 수 없거나 볼 권한이 없습니다.":"첨부를 찾을 수 없거나 볼 권한이 없습니다.","용량 한도를 넘었습니다.":"용량 한도를 넘었습니다.","이 형식의 첨부는 저장할 수 없습니다.":"이 형식의 첨부는 저장할 수 없습니다.","서버 오류 (":"서버 오류 (","불러왔습니다 (읽기 전용)":"불러왔습니다 (읽기 전용)","불러왔습니다: ":"불러왔습니다: ","EasyMindMap 탭에서 내용을 받는 중…":"EasyMindMap 탭에서 내용을 받는 중…","불러오지 못했습니다":"불러오지 못했습니다","EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.":"EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.","이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.":"이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.","EasyMindMap 탭이 응답하지 않습니다.":"EasyMindMap 탭이 응답하지 않습니다.","저장하지 못했습니다.":"저장하지 못했습니다.","EasyMindMap 첨부를 불러오는 중…":"EasyMindMap 첨부를 불러오는 중…","첨부를 불러오지 못했습니다: ":"첨부를 불러오지 못했습니다: ","읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.":"읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.","EasyMindMap에 저장 중…":"EasyMindMap에 저장 중…","EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)":"EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)","저장하지 못했습니다":"저장하지 못했습니다","저장하지 못했습니다: ":"저장하지 못했습니다: ","저장하지 않았습니다 (다른 곳에서 먼저 고침)":"저장하지 않았습니다 (다른 곳에서 먼저 고침)","EasyMindMap 첨부에 저장했습니다":"EasyMindMap 첨부에 저장했습니다","이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.":"이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.","저장하지 않은 변경이 있습니다. 버리고 계속할까요?":"저장하지 않은 변경이 있습니다. 버리고 계속할까요?","저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?":"저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?","브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.":"브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.","Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)":"Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)","HTML 미리보기":"HTML 미리보기","Mermaid 오류: ":"Mermaid 오류: ","EMM에 저장":"EMM에 저장","EasyMindMap 첨부에 저장 (Ctrl+S)":"EasyMindMap 첨부에 저장 (Ctrl+S)","더블클릭: 코드 편집":"더블클릭: 코드 편집","미리보기 준비 중…":"미리보기 준비 중…","statusFormat":"편집 대상: {target} · {count}줄","tableFormat":"{rows}행 × {cols}열","Language":"언어","아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시":"아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시","커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸":"커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸",".md로 내려받기":".md로 내려받기","<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.":"<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.","다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)":"다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)","배경":"배경","기본 글자":"기본 글자","줄 번호":"줄 번호","선택 영역":"선택 영역","커서":"커서","제목 #":"제목 #","굵게 **":"굵게 **","기울임 *":"기울임 *","인라인 코드 `":"인라인 코드 `","목록 기호 - 1.":"목록 기호 - 1.","인용 기호 >":"인용 기호 >","HTML 태그 이름":"HTML 태그 이름","HTML 꺾쇠 < >":"HTML 꺾쇠 < >","HTML 속성":"HTML 속성","코드: 키워드":"코드: 키워드","코드: 문자열":"코드: 문자열","코드: 숫자":"코드: 숫자","코드: 주석":"코드: 주석","코드: 함수 이름":"코드: 함수 이름","코드: 변수·속성":"코드: 변수·속성","코드: 타입·클래스":"코드: 타입·클래스","코드: 연산자":"코드: 연산자","편집기 언어":"편집기 언어","<u>밑줄</u>, <mark>하이라이트</mark>":"<u>밑줄</u>, <mark>하이라이트</mark>","__밑줄__, ==하이라이트==":"__밑줄__, ==하이라이트==","문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.":"문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.","표 삽입":"표 삽입","격자에서 크기를 고르세요":"격자에서 크기를 고르세요","첫 행은 머리글입니다.":"첫 행은 머리글입니다.","자세히 설정…":"자세히 설정…"},"en":{"마크다운 편집기":"Markdown Editor","왼쪽 목차 접기/펼치기":"Toggle contents","☰ 목차":"☰ Contents","마크다운":"Markdown","아웃라인":"Outline","렌더링":"Rendered","분할":"Split","제목 단계 (커서가 있는 줄)":"Heading level (current line)","제목":"Heading","본문":"Paragraph","굵게 (Ctrl+B)":"Bold (Ctrl+B)","기울임 (Ctrl+I)":"Italic (Ctrl+I)","취소선":"Strikethrough","밑줄 (Ctrl+U)":"Underline (Ctrl+U)","하이라이트 (다시 누르면 해제)":"Highlight (toggle)","글머리 기호 (다시 누르면 해제)":"Bullet list (toggle)","번호 매기기 (다시 누르면 해제)":"Numbered list (toggle)","체크박스 (- [ ] — 다시 누르면 해제)":"Task list (toggle)","링크 삽입 (Ctrl+K)":"Insert link (Ctrl+K)","인라인 코드 (`…`)":"Inline code","코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)":"Insert or edit code block","표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)":"Insert or edit table at cursor","색 테마·글꼴·문법 설정":"Theme, font and syntax","⚙ 설정":"⚙ Settings","파일 메뉴":"File menu","파일 ▾":"File ▾","새 문서":"New document","열기…":"Open…","예제 문서":"Sample document","저장":"Save","다른 이름으로 저장…":"Save as…",".md로 저장…":"Save as .md…","md.html(온라인)로 저장…":"Save md.html (online)…","md.html(오프라인)로 저장…":"Save md.html (offline)…","닫기":"Close","저장 (Ctrl+S)":"Save (Ctrl+S)","✕ 닫기":"✕ Close","목차":"Contents","모두 펼치기":"Expand all","모두 접기":"Collapse all","마크다운 원문":"Markdown source","원문 줄 번호 끄기":"Hide source line numbers","줄 번호 On":"Line numbers On","마크다운 원문 복사":"Copy Markdown source","복사":"Copy","아웃라인 창 내용 복사":"Copy outline pane","끌어서 좌우 크기 조절 · 더블클릭: 반반":"Drag to resize · Double-click: equal widths","렌더링 (직접 편집 가능)":"Rendered (editable)","렌더링 창 내용 복사":"Copy rendered pane","링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭":"Links: click for new tab · Ctrl/Cmd+click while editing","표":"Table","▦ 격자":"▦ Grid","+ 행":"+ Row","− 행":"− Row","+ 열":"+ Column","− 열":"− Column","왼쪽 정렬":"Align left","가운데 정렬":"Align center","오른쪽 정렬":"Align right","취소 (Esc)":"Cancel (Esc)","확인 (Ctrl+Enter)":"OK (Ctrl+Enter)","코드 블록":"Code block","코드 블록 삽입":"Insert code block","줄 번호 끄기":"Hide line numbers","코드 복사":"Copy code","언어":"Language","예: bash, js, python — 비우면 code":"e.g. bash, js, python; blank means code","언어 목록에서 고르기":"Choose language","코드를 입력하세요 (여러 줄 가능)":"Enter code (multiple lines allowed)","링크":"Link","링크 삽입":"Insert link","글자":"Text","보일 글자 (비우면 주소)":"Display text (blank uses URL)","주소":"URL","링크 프로토콜":"Link protocol","클립보드 붙여넣기":"Paste from clipboard","확인 (Enter)":"OK (Enter)","설정":"Settings","색 테마":"Color theme","VS Code Light+ (기본 밝은 테마)":"VS Code Light+ (default light)","VS Code Dark+ (기본 어두운 테마)":"VS Code Dark+ (default dark)","적용 범위":"Scope","메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)":"Apply theme to menus, contents, outline and rendered pane","원문 글꼴 크기":"Source font size","원문 줄바꿈":"Source line wrapping","긴 줄을 화면 폭에서 접어 보기":"Wrap long lines to pane width","밑줄·하이라이트 문법":"Underline and highlight syntax","(표준, VS Code·GitHub 미리보기와 호환)":"(standard, VS Code/GitHub preview compatible)","(EasyMindMap 노드와 같은 방식)":"(same as EasyMindMap nodes)","원문 색 직접 바꾸기":"Customize source colors","· 바꾼 색(•)은 테마를 바꿔도 유지됩니다":"· Custom colors (•) survive theme changes","색 기본값으로":"Reset colors","복사 권한을 확인해 주세요.":"Check clipboard permission.","복사됨":"Copied"," 완료":" complete","복사 실패":"Copy failed","복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.":"Copy failed. Check browser clipboard permission.","원문":"Source","● 저장 안 됨 · ":"● Unsaved · ","제목(# ...)이 없습니다.":"No headings (# ...).","되돌릴 아웃라인 작업이 없습니다":"Nothing to undo","원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다":"Outline history cleared after source/rendered edits","다시 실행할 작업이 없습니다":"Nothing to redo","그 위치로는 옮길 수 없습니다":"Cannot move there","제목과 목록만 들여쓸 수 있습니다":"Only headings and lists can be indented","바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다":"No preceding item at the same level","더 내어쓸 수 없습니다":"Cannot outdent further","삭제했습니다 (Ctrl+Z로 되돌리기)":"Deleted (Ctrl+Z to undo)","내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.":"Empty. Click here and press Enter to add a node.","더블클릭: 코드 블록 편집":"Double-click: edit code block","더블클릭: 표 편집기":"Double-click: edit table","더 옮길 곳이 없습니다":"Cannot move further"," · 기존 표 편집":" · Edit existing table"," · 새 표":" · New table","표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.":"Invalid table. The second line must be a separator such as | --- | --- |.","표 형식이 올바르지 않습니다.":"Invalid table format.","코드 블록 수정":"Edit code block","줄 번호 켜기":"Show line numbers","목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다":"Unknown language; entered name will be used","복사했습니다":"Copied","복사하지 못했습니다":"Copy failed","링크 수정":"Edit link","이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.":"Clipboard unavailable. Paste directly into the URL field.","클립보드에서 웹 주소를 찾지 못했습니다.":"No web address found in clipboard.","주소를 채웠습니다.":"URL filled.","클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.":"Allow clipboard access or paste into URL field.","md.html 온라인":"md.html online","md.html 오프라인":"md.html offline","EMM 첨부":"EMM attachment","오프라인 파일을 만드는 중… (라이브러리를 넣습니다)":"Creating offline file… (including libraries)","저장 중…":"Saving…","파일을 만들지 못했습니다: ":"Could not create file: ","\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.":"\nCreating an offline file initially requires Internet access.","내려받기 폴더에 저장했습니다":"Saved to downloads","저장했습니다":"Saved","로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.":"Session expired. Reopen from EasyMindMap.","이 첨부를 고칠 권한이 없습니다 (읽기 전용).":"No edit permission (read-only).","첨부를 찾을 수 없거나 볼 권한이 없습니다.":"Attachment not found or access denied.","용량 한도를 넘었습니다.":"Size limit exceeded.","이 형식의 첨부는 저장할 수 없습니다.":"Cannot save this attachment format.","서버 오류 (":"Server error (","불러왔습니다 (읽기 전용)":"Loaded (read-only)","불러왔습니다: ":"Loaded: ","EasyMindMap 탭에서 내용을 받는 중…":"Receiving content from EasyMindMap…","불러오지 못했습니다":"Load failed","EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.":"No content received. Reopen the attachment from EasyMindMap.","이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.":"The EasyMindMap tab is closed. Save as .md to keep a local copy.","EasyMindMap 탭이 응답하지 않습니다.":"EasyMindMap is not responding.","저장하지 못했습니다.":"Save failed.","EasyMindMap 첨부를 불러오는 중…":"Loading EasyMindMap attachment…","첨부를 불러오지 못했습니다: ":"Attachment load failed: ","읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.":"Read-only attachment. Save as .md to keep a local copy.","EasyMindMap에 저장 중…":"Saving to EasyMindMap…","EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)":"Updated in EasyMindMap (save the map in its tab)","저장하지 못했습니다":"Save failed","저장하지 못했습니다: ":"Save failed: ","저장하지 않았습니다 (다른 곳에서 먼저 고침)":"Not saved (modified elsewhere)","EasyMindMap 첨부에 저장했습니다":"Saved to EasyMindMap attachment","이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.":"This HTML contains no md.html Markdown source.","저장하지 않은 변경이 있습니다. 버리고 계속할까요?":"Unsaved changes. Discard and continue?","저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?":"Unsaved changes. Close without saving?","브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.":"Browser blocked closing. Empty document shown. Use Ctrl+W to close.","Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)":"Could not load Mermaid (Internet required)","HTML 미리보기":"HTML preview","Mermaid 오류: ":"Mermaid error: ","EMM에 저장":"Save to EMM","EasyMindMap 첨부에 저장 (Ctrl+S)":"Save to EasyMindMap attachment (Ctrl+S)","더블클릭: 코드 편집":"Double-click: edit code","미리보기 준비 중…":"Preparing preview…","statusFormat":"Editing: {target} · {count} lines","tableFormat":"{rows} rows × {cols} columns","Language":"Language","아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시":"Outline · Click: select · Double-click/F2: edit · Enter: add row · Tab/Shift+Tab: indent/outdent · Shift+Enter: newline · Alt+↑↓: move · Drag: move · Delete: delete · Ctrl+Z/Y: undo/redo","커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸":"Current cell · Column alignment · Escape cell pipes with backslash · Enter: line break (<br>) · Tab: next cell",".md로 내려받기":"Download .md","<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.":"Editor libraries could not load. Check your connection. Your source is preserved below. Save an offline md.html while online for disconnected use.","다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)":"This attachment was modified elsewhere.\n\nOK: overwrite with my changes\nCancel: do not save; use Save as .md to preserve a local copy.","배경":"Background","기본 글자":"Default text","줄 번호":"Line numbers","선택 영역":"Selection","커서":"Cursor","제목 #":"Heading #","굵게 **":"Bold **","기울임 *":"Italic *","인라인 코드 `":"Inline code `","목록 기호 - 1.":"List marker - 1.","인용 기호 >":"Quote marker >","HTML 태그 이름":"HTML tag name","HTML 꺾쇠 < >":"HTML brackets < >","HTML 속성":"HTML attribute","코드: 키워드":"Code: keyword","코드: 문자열":"Code: string","코드: 숫자":"Code: number","코드: 주석":"Code: comment","코드: 함수 이름":"Code: function","코드: 변수·속성":"Code: variable/property","코드: 타입·클래스":"Code: type/class","코드: 연산자":"Code: operator","편집기 언어":"Editor language","<u>밑줄</u>, <mark>하이라이트</mark>":"<u>underline</u>, <mark>highlight</mark>","__밑줄__, ==하이라이트==":"__underline__, ==highlight==","문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.":"Your document is preserved, but the rendered pane’s undo history is reset.","표 삽입":"Insert table","격자에서 크기를 고르세요":"Choose a size from the grid","첫 행은 머리글입니다.":"The first row is the header.","자세히 설정…":"More options…"},"ja":{"마크다운 편집기":"マークダウンエディター","왼쪽 목차 접기/펼치기":"目次を開閉","☰ 목차":"☰ 目次","마크다운":"マークダウン","아웃라인":"アウトライン","렌더링":"プレビュー","분할":"分割","제목 단계 (커서가 있는 줄)":"見出しレベル（現在の行）","제목":"見出し","본문":"本文","굵게 (Ctrl+B)":"太字 (Ctrl+B)","기울임 (Ctrl+I)":"斜体 (Ctrl+I)","취소선":"取り消し線","밑줄 (Ctrl+U)":"下線 (Ctrl+U)","하이라이트 (다시 누르면 해제)":"ハイライト（切替）","글머리 기호 (다시 누르면 해제)":"箇条書き（切替）","번호 매기기 (다시 누르면 해제)":"番号リスト（切替）","체크박스 (- [ ] — 다시 누르면 해제)":"チェックボックス（切替）","링크 삽입 (Ctrl+K)":"リンク挿入 (Ctrl+K)","인라인 코드 (`…`)":"インラインコード","코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)":"コードブロックを挿入・編集","표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)":"カーソル位置の表を挿入・編集","색 테마·글꼴·문법 설정":"テーマ・フォント・構文","⚙ 설정":"⚙ 設定","파일 메뉴":"ファイルメニュー","파일 ▾":"ファイル ▾","새 문서":"新規文書","열기…":"開く…","예제 문서":"サンプル文書","저장":"保存","다른 이름으로 저장…":"名前を付けて保存…",".md로 저장…":".md で保存…","md.html(온라인)로 저장…":"md.html（オンライン）で保存…","md.html(오프라인)로 저장…":"md.html（オフライン）で保存…","닫기":"閉じる","저장 (Ctrl+S)":"保存 (Ctrl+S)","✕ 닫기":"✕ 閉じる","목차":"目次","모두 펼치기":"すべて展開","모두 접기":"すべて折りたたむ","마크다운 원문":"マークダウン原文","원문 줄 번호 끄기":"原文の行番号を非表示","줄 번호 On":"行番号 On","마크다운 원문 복사":"原文をコピー","복사":"コピー","아웃라인 창 내용 복사":"アウトラインをコピー","끌어서 좌우 크기 조절 · 더블클릭: 반반":"ドラッグで幅調整・ダブルクリックで均等","렌더링 (직접 편집 가능)":"プレビュー（編集可能）","렌더링 창 내용 복사":"プレビューをコピー","링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭":"リンク：新しいタブで開く・編集中は Ctrl/Cmd+クリック","표":"表","▦ 격자":"▦ グリッド","+ 행":"+ 行","− 행":"− 行","+ 열":"+ 列","− 열":"− 列","왼쪽 정렬":"左揃え","가운데 정렬":"中央揃え","오른쪽 정렬":"右揃え","취소 (Esc)":"キャンセル (Esc)","확인 (Ctrl+Enter)":"確認 (Ctrl+Enter)","코드 블록":"コードブロック","코드 블록 삽입":"コードブロックを挿入","줄 번호 끄기":"行番号を非表示","코드 복사":"コードをコピー","언어":"言語","예: bash, js, python — 비우면 code":"例: bash, js, python（空欄は code）","언어 목록에서 고르기":"言語一覧から選択","코드를 입력하세요 (여러 줄 가능)":"コードを入力（複数行可）","링크":"リンク","링크 삽입":"リンクを挿入","글자":"文字","보일 글자 (비우면 주소)":"表示文字（空欄は URL）","주소":"アドレス","링크 프로토콜":"リンクのプロトコル","클립보드 붙여넣기":"クリップボードから貼り付け","확인 (Enter)":"確認 (Enter)","설정":"設定","색 테마":"カラーテーマ","VS Code Light+ (기본 밝은 테마)":"VS Code Light+（既定の明色）","VS Code Dark+ (기본 어두운 테마)":"VS Code Dark+（既定の暗色）","적용 범위":"適用範囲","메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)":"メニュー・目次・アウトライン・プレビューにも適用","원문 글꼴 크기":"原文の文字サイズ","원문 줄바꿈":"原文の折り返し","긴 줄을 화면 폭에서 접어 보기":"長い行を画面幅で折り返す","밑줄·하이라이트 문법":"下線・ハイライト構文","(표준, VS Code·GitHub 미리보기와 호환)":"（標準・VS Code/GitHub 対応）","(EasyMindMap 노드와 같은 방식)":"（EasyMindMap ノードと同じ）","원문 색 직접 바꾸기":"原文の色をカスタマイズ","· 바꾼 색(•)은 테마를 바꿔도 유지됩니다":"・変更した色（•）はテーマ変更後も保持","색 기본값으로":"色を初期化","복사 권한을 확인해 주세요.":"コピー権限を確認してください。","복사됨":"コピー済み"," 완료":" 完了","복사 실패":"コピー失敗","복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.":"コピー失敗。クリップボード権限を確認してください。","원문":"原文","● 저장 안 됨 · ":"● 未保存 · ","제목(# ...)이 없습니다.":"見出し（# ...）がありません。","되돌릴 아웃라인 작업이 없습니다":"元に戻す操作がありません","원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다":"原文・プレビュー編集により履歴を消去しました","다시 실행할 작업이 없습니다":"やり直す操作がありません","그 위치로는 옮길 수 없습니다":"そこへ移動できません","제목과 목록만 들여쓸 수 있습니다":"見出しとリストのみインデント可能","바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다":"直前に同じレベルの項目がありません","더 내어쓸 수 없습니다":"これ以上アウトデントできません","삭제했습니다 (Ctrl+Z로 되돌리기)":"削除しました（Ctrl+Z で戻す）","내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.":"空です。クリックして Enter でノード追加。","더블클릭: 코드 블록 편집":"ダブルクリック: コード編集","더블클릭: 표 편집기":"ダブルクリック: 表編集","더 옮길 곳이 없습니다":"これ以上移動できません"," · 기존 표 편집":" ・既存の表を編集"," · 새 표":" ・新しい表","표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.":"表の形式が不正です。2 行目には | --- | --- | などの区切り線が必要です。","표 형식이 올바르지 않습니다.":"表の形式が不正です。","코드 블록 수정":"コードブロックを編集","줄 번호 켜기":"行番号を表示","목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다":"一覧にない言語です。入力名を使用します","복사했습니다":"コピーしました","복사하지 못했습니다":"コピー失敗","링크 수정":"リンクを編集","이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.":"クリップボードを読めません。URL 欄に貼り付けてください。","클립보드에서 웹 주소를 찾지 못했습니다.":"クリップボードに URL がありません。","주소를 채웠습니다.":"URL を入力しました。","클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.":"権限を許可するか URL 欄に貼り付けてください。","md.html 온라인":"md.html オンライン","md.html 오프라인":"md.html オフライン","EMM 첨부":"EMM 添付","오프라인 파일을 만드는 중… (라이브러리를 넣습니다)":"オフラインファイルを作成中…（ライブラリを含む）","저장 중…":"保存中…","파일을 만들지 못했습니다: ":"ファイルを作成できません: ","\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.":"\n初回のオフラインファイル作成には接続が必要です。","내려받기 폴더에 저장했습니다":"ダウンロードに保存しました","저장했습니다":"保存しました","로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.":"ログイン期限切れです。EasyMindMap から開き直してください。","이 첨부를 고칠 권한이 없습니다 (읽기 전용).":"編集権限がありません（読み取り専用）。","첨부를 찾을 수 없거나 볼 권한이 없습니다.":"添付がないか閲覧権限がありません。","용량 한도를 넘었습니다.":"容量制限を超えました。","이 형식의 첨부는 저장할 수 없습니다.":"この形式は保存できません。","서버 오류 (":"サーバーエラー (","불러왔습니다 (읽기 전용)":"読み込み完了（読み取り専用）","불러왔습니다: ":"読み込み完了: ","EasyMindMap 탭에서 내용을 받는 중…":"EasyMindMap から受信中…","불러오지 못했습니다":"読み込み失敗","EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.":"受信できません。EasyMindMap から添付を開き直してください。","이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.":"EasyMindMap タブが閉じています。.md 保存で保管してください。","EasyMindMap 탭이 응답하지 않습니다.":"EasyMindMap が応答しません。","저장하지 못했습니다.":"保存失敗。","EasyMindMap 첨부를 불러오는 중…":"EasyMindMap 添付を読み込み中…","첨부를 불러오지 못했습니다: ":"添付を読み込めません: ","읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.":"読み取り専用です。.md 保存で保管できます。","EasyMindMap에 저장 중…":"EasyMindMap に保存中…","EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)":"EasyMindMap に反映しました（マップ保存は元のタブで）","저장하지 못했습니다":"保存失敗","저장하지 못했습니다: ":"保存失敗: ","저장하지 않았습니다 (다른 곳에서 먼저 고침)":"未保存（別の場所で変更済み）","EasyMindMap 첨부에 저장했습니다":"EasyMindMap 添付に保存しました","이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.":"この HTML に md.html 形式の原文がありません。","저장하지 않은 변경이 있습니다. 버리고 계속할까요?":"未保存の変更を破棄して続行しますか？","저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?":"保存せずに閉じますか？","브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.":"ブラウザーが閉じる操作を拒否しました。Ctrl+W で閉じてください。","Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)":"Mermaid を読み込めません（接続が必要）","HTML 미리보기":"HTML プレビュー","Mermaid 오류: ":"Mermaid エラー: ","EMM에 저장":"EMM に保存","EasyMindMap 첨부에 저장 (Ctrl+S)":"EasyMindMap 添付に保存 (Ctrl+S)","더블클릭: 코드 편집":"ダブルクリック: コード編集","미리보기 준비 중…":"プレビュー準備中…","statusFormat":"編集対象: {target} · {count}行","tableFormat":"{rows}行 × {cols}列","Language":"言語","아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시":"アウトライン · クリック: 選択 · ダブルクリック/F2: 編集 · Enter: 行追加 · Tab/Shift+Tab: インデント · Shift+Enter: 改行 · Alt+↑↓: 移動 · ドラッグ: 移動 · Delete: 削除 · Ctrl+Z/Y: 元に戻す/やり直す","커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸":"現在のセル・列単位の配置・セル内のパイプはバックスラッシュで保存・Enter: 改行 (<br>)・Tab: 次のセル",".md로 내려받기":".md をダウンロード","<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.":"エディターを読み込めません。接続を確認してください。原文は下で保持されています。接続時にオフライン md.html を保存してください。","다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)":"別の場所で添付が変更されました。\n\n確認：自分の内容で上書き\nキャンセル：保存しない（.md 保存で保管できます）","배경":"背景","기본 글자":"基本文字","줄 번호":"行番号","선택 영역":"選択範囲","커서":"カーソル","제목 #":"見出し #","굵게 **":"太字 **","기울임 *":"斜体 *","인라인 코드 `":"インラインコード `","목록 기호 - 1.":"リスト記号 - 1.","인용 기호 >":"引用記号 >","HTML 태그 이름":"HTML タグ名","HTML 꺾쇠 < >":"HTML 括弧 < >","HTML 속성":"HTML 属性","코드: 키워드":"コード: キーワード","코드: 문자열":"コード: 文字列","코드: 숫자":"コード: 数値","코드: 주석":"コード: コメント","코드: 함수 이름":"コード: 関数","코드: 변수·속성":"コード: 変数・属性","코드: 타입·클래스":"コード: 型・クラス","코드: 연산자":"コード: 演算子","편집기 언어":"表示言語","<u>밑줄</u>, <mark>하이라이트</mark>":"<u>下線</u>, <mark>ハイライト</mark>","__밑줄__, ==하이라이트==":"__下線__, ==ハイライト==","문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.":"文書の内容は保持されますが、プレビューの操作履歴はリセットされます。","표 삽입":"表を挿入","격자에서 크기를 고르세요":"グリッドでサイズを選択","첫 행은 머리글입니다.":"最初の行は見出しです。","자세히 설정…":"詳細設定…"},"zh":{"마크다운 편집기":"Markdown 编辑器","왼쪽 목차 접기/펼치기":"切换目录","☰ 목차":"☰ 目录","마크다운":"Markdown","아웃라인":"大纲","렌더링":"渲染","분할":"分栏","제목 단계 (커서가 있는 줄)":"标题级别（当前行）","제목":"标题","본문":"正文","굵게 (Ctrl+B)":"加粗 (Ctrl+B)","기울임 (Ctrl+I)":"斜体 (Ctrl+I)","취소선":"删除线","밑줄 (Ctrl+U)":"下划线 (Ctrl+U)","하이라이트 (다시 누르면 해제)":"高亮（切换）","글머리 기호 (다시 누르면 해제)":"无序列表（切换）","번호 매기기 (다시 누르면 해제)":"有序列表（切换）","체크박스 (- [ ] — 다시 누르면 해제)":"任务列表（切换）","링크 삽입 (Ctrl+K)":"插入链接 (Ctrl+K)","인라인 코드 (`…`)":"行内代码","코드 블록 (팝업에서 언어·코드 입력 · 코드 블록 안이면 수정)":"插入或编辑代码块","표 (원문·렌더링에서 표 안에 커서를 두면 그 표를 편집)":"插入或编辑光标处的表格","색 테마·글꼴·문법 설정":"主题、字体和语法","⚙ 설정":"⚙ 设置","파일 메뉴":"文件菜单","파일 ▾":"文件 ▾","새 문서":"新建文档","열기…":"打开…","예제 문서":"示例文档","저장":"保存","다른 이름으로 저장…":"另存为…",".md로 저장…":"保存为 .md…","md.html(온라인)로 저장…":"保存 md.html（在线）…","md.html(오프라인)로 저장…":"保存 md.html（离线）…","닫기":"关闭","저장 (Ctrl+S)":"保存 (Ctrl+S)","✕ 닫기":"✕ 关闭","목차":"目录","모두 펼치기":"全部展开","모두 접기":"全部收起","마크다운 원문":"Markdown 源码","원문 줄 번호 끄기":"隐藏源码行号","줄 번호 On":"行号 On","마크다운 원문 복사":"复制 Markdown 源码","복사":"复制","아웃라인 창 내용 복사":"复制大纲窗格","끌어서 좌우 크기 조절 · 더블클릭: 반반":"拖动调整宽度 · 双击均分","렌더링 (직접 편집 가능)":"渲染（可编辑）","렌더링 창 내용 복사":"复制渲染窗格","링크: 클릭하여 새 탭 열기 · 편집 중에는 Ctrl/Cmd+클릭":"链接：单击新标签页打开 · 编辑时 Ctrl/Cmd+单击","표":"表格","▦ 격자":"▦ 网格","+ 행":"+ 行","− 행":"− 行","+ 열":"+ 列","− 열":"− 列","왼쪽 정렬":"左对齐","가운데 정렬":"居中","오른쪽 정렬":"右对齐","취소 (Esc)":"取消 (Esc)","확인 (Ctrl+Enter)":"确定 (Ctrl+Enter)","코드 블록":"代码块","코드 블록 삽입":"插入代码块","줄 번호 끄기":"隐藏行号","코드 복사":"复制代码","언어":"语言","예: bash, js, python — 비우면 code":"例如 bash、js、python；留空为 code","언어 목록에서 고르기":"选择语言","코드를 입력하세요 (여러 줄 가능)":"输入代码（可多行）","링크":"链接","링크 삽입":"插入链接","글자":"文字","보일 글자 (비우면 주소)":"显示文字（留空使用网址）","주소":"网址","링크 프로토콜":"链接协议","클립보드 붙여넣기":"从剪贴板粘贴","확인 (Enter)":"确定 (Enter)","설정":"设置","색 테마":"颜色主题","VS Code Light+ (기본 밝은 테마)":"VS Code Light+（默认浅色）","VS Code Dark+ (기본 어두운 테마)":"VS Code Dark+（默认深色）","적용 범위":"应用范围","메뉴·목차·아웃라인·렌더링 화면도 테마에 맞춤 (어두운 테마면 전체가 어두워짐)":"主题也应用于菜单、目录、大纲和渲染窗格","원문 글꼴 크기":"源码字体大小","원문 줄바꿈":"源码自动换行","긴 줄을 화면 폭에서 접어 보기":"按窗格宽度折叠长行","밑줄·하이라이트 문법":"下划线和高亮语法","(표준, VS Code·GitHub 미리보기와 호환)":"（标准，与 VS Code/GitHub 兼容）","(EasyMindMap 노드와 같은 방식)":"（与 EasyMindMap 节点相同）","원문 색 직접 바꾸기":"自定义源码颜色","· 바꾼 색(•)은 테마를 바꿔도 유지됩니다":"· 自定义颜色（•）在切换主题后保留","색 기본값으로":"重置颜色","복사 권한을 확인해 주세요.":"请检查剪贴板权限。","복사됨":"已复制"," 완료":" 完成","복사 실패":"复制失败","복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.":"复制失败。请检查浏览器剪贴板权限。","원문":"源码","● 저장 안 됨 · ":"● 未保存 · ","제목(# ...)이 없습니다.":"没有标题（# ...）。","되돌릴 아웃라인 작업이 없습니다":"没有可撤销的操作","원문/렌더링에서 고친 뒤라 아웃라인 되돌리기 기록을 비웠습니다":"源码或渲染编辑后已清空大纲记录","다시 실행할 작업이 없습니다":"没有可重做的操作","그 위치로는 옮길 수 없습니다":"无法移至该位置","제목과 목록만 들여쓸 수 있습니다":"仅标题和列表可缩进","바로 위에 같은 단계 항목이 없어 들여쓸 수 없습니다":"前面没有同级项目","더 내어쓸 수 없습니다":"无法继续减少缩进","삭제했습니다 (Ctrl+Z로 되돌리기)":"已删除（Ctrl+Z 撤销）","내용이 없습니다. 여기를 클릭하고 Enter를 누르면 첫 노드가 생깁니다.":"内容为空。单击此处并按 Enter 添加节点。","더블클릭: 코드 블록 편집":"双击：编辑代码块","더블클릭: 표 편집기":"双击：编辑表格","더 옮길 곳이 없습니다":"无法继续移动"," · 기존 표 편집":" · 编辑现有表格"," · 새 표":" · 新表格","표 형식이 올바르지 않습니다. 둘째 줄은 | --- | --- | 같은 구분선이어야 합니다.":"表格格式无效。第二行必须是 | --- | --- | 等分隔线。","표 형식이 올바르지 않습니다.":"表格格式无效。","코드 블록 수정":"编辑代码块","줄 번호 켜기":"显示行号","목록에 없는 언어입니다 — 입력한 이름 그대로 씁니다":"列表中没有该语言，将使用输入的名称","복사했습니다":"已复制","복사하지 못했습니다":"复制失败","링크 수정":"编辑链接","이 브라우저에서는 클립보드를 읽을 수 없습니다. 주소칸에 직접 붙여 넣어 주세요.":"无法读取剪贴板。请直接粘贴到网址栏。","클립보드에서 웹 주소를 찾지 못했습니다.":"剪贴板中未找到网址。","주소를 채웠습니다.":"已填入网址。","클립보드 권한을 허용하거나 주소칸에 직접 붙여 넣어 주세요.":"请允许剪贴板访问或直接粘贴到网址栏。","md.html 온라인":"md.html 在线","md.html 오프라인":"md.html 离线","EMM 첨부":"EMM 附件","오프라인 파일을 만드는 중… (라이브러리를 넣습니다)":"正在创建离线文件…（包含库）","저장 중…":"正在保存…","파일을 만들지 못했습니다: ":"无法创建文件：","\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.":"\n首次创建离线文件需要联网。","내려받기 폴더에 저장했습니다":"已保存到下载文件夹","저장했습니다":"已保存","로그인이 만료되었습니다. EasyMindMap 탭에서 첨부를 다시 열어 주세요.":"登录已过期。请从 EasyMindMap 重新打开。","이 첨부를 고칠 권한이 없습니다 (읽기 전용).":"没有编辑权限（只读）。","첨부를 찾을 수 없거나 볼 권한이 없습니다.":"附件不存在或无访问权限。","용량 한도를 넘었습니다.":"已超出大小限制。","이 형식의 첨부는 저장할 수 없습니다.":"无法保存该附件格式。","서버 오류 (":"服务器错误 (","불러왔습니다 (읽기 전용)":"已加载（只读）","불러왔습니다: ":"已加载：","EasyMindMap 탭에서 내용을 받는 중…":"正在从 EasyMindMap 接收内容…","불러오지 못했습니다":"加载失败","EasyMindMap 탭에서 내용을 받지 못했습니다. EasyMindMap 탭에서 첨부를 다시 눌러 열어 주세요.":"未收到内容。请从 EasyMindMap 重新打开附件。","이 편집기를 연 EasyMindMap 탭이 닫혔습니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 저장하세요.":"EasyMindMap 标签页已关闭。请保存为 .md 保留本地副本。","EasyMindMap 탭이 응답하지 않습니다.":"EasyMindMap 未响应。","저장하지 못했습니다.":"保存失败。","EasyMindMap 첨부를 불러오는 중…":"正在加载 EasyMindMap 附件…","첨부를 불러오지 못했습니다: ":"附件加载失败：","읽기 전용 첨부입니다. 파일 메뉴의 '.md로 저장'으로 내 PC에 따로 저장할 수 있습니다.":"附件为只读。可保存为 .md 保留本地副本。","EasyMindMap에 저장 중…":"正在保存到 EasyMindMap…","EasyMindMap 맵에 반영했습니다 (맵 저장은 EasyMindMap 탭에서)":"已更新 EasyMindMap（请在其标签页保存导图）","저장하지 못했습니다":"保存失败","저장하지 못했습니다: ":"保存失败：","저장하지 않았습니다 (다른 곳에서 먼저 고침)":"未保存（已在别处修改）","EasyMindMap 첨부에 저장했습니다":"已保存到 EasyMindMap 附件","이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.":"此 HTML 不含 md.html 格式的 Markdown 源码。","저장하지 않은 변경이 있습니다. 버리고 계속할까요?":"有未保存的更改。放弃并继续？","저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?":"有未保存的更改。是否不保存并关闭？","브라우저가 이 탭을 닫지 못하게 해서 빈 문서로 바꿨습니다. 탭은 Ctrl+W로 닫으세요.":"浏览器阻止关闭。已显示空文档，请按 Ctrl+W 关闭。","Mermaid 라이브러리를 불러오지 못했습니다 (인터넷 연결 필요)":"无法加载 Mermaid（需要联网）","HTML 미리보기":"HTML 预览","Mermaid 오류: ":"Mermaid 错误：","EMM에 저장":"保存到 EMM","EasyMindMap 첨부에 저장 (Ctrl+S)":"保存到 EasyMindMap 附件 (Ctrl+S)","더블클릭: 코드 편집":"双击：编辑代码","미리보기 준비 중…":"正在准备预览…","statusFormat":"编辑对象：{target} · {count}行","tableFormat":"{rows}行 × {cols}列","Language":"语言","아웃라인 · 클릭: 선택 · 더블클릭/F2: 입력 · Enter: 아래 행 추가 · Tab/Shift+Tab: 들여쓰기/내어쓰기 · Shift+Enter: 줄바꿈 · Alt+↑↓: 위아래 이동 · 끌어서 이동 · Delete: 삭제 · Ctrl+Z/Y: 되돌리기/다시":"大纲 · 单击：选择 · 双击/F2：编辑 · Enter：添加行 · Tab/Shift+Tab：缩进/减少缩进 · Shift+Enter：换行 · Alt+↑↓：移动 · 拖动：移动 · Delete：删除 · Ctrl+Z/Y：撤销/重做","커서가 있는 셀 기준 · 정렬은 열 단위 · 셀 안 | 는 \\| 로 저장 · Enter는 셀 안 줄바꿈(&lt;br&gt;) · Tab으로 다음 칸":"当前单元格 · 按列对齐 · 用反斜杠转义竖线 · Enter：换行 (<br>) · Tab：下一格",".md로 내려받기":"下载 .md","<b>편집기 부품을 불러오지 못했습니다.</b> 인터넷 연결을 확인하세요. 아래에서 원문은 그대로 보고 고칠 수 있습니다. 인터넷이 될 때 <b>md.html(오프라인)로 저장</b>해 두면 연결 없이도 편집기가 열립니다.":"无法加载编辑器库。请检查网络。下方保留源码。联网时请保存离线 md.html。","다른 사람(또는 다른 탭)이 이 첨부를 먼저 고쳤습니다.\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장하지 않기 (파일 메뉴의 '.md로 저장'으로 내 내용을 따로 보관할 수 있습니다)":"附件已在别处修改。\n\n确定：用我的内容覆盖\n取消：不保存（可保存为 .md 保留副本）","배경":"背景","기본 글자":"默认文字","줄 번호":"行号","선택 영역":"选区","커서":"光标","제목 #":"标题 #","굵게 **":"加粗 **","기울임 *":"斜体 *","인라인 코드 `":"行内代码 `","목록 기호 - 1.":"列表标记 - 1.","인용 기호 >":"引用标记 >","HTML 태그 이름":"HTML 标签名","HTML 꺾쇠 < >":"HTML 尖括号 < >","HTML 속성":"HTML 属性","코드: 키워드":"代码：关键字","코드: 문자열":"代码：字符串","코드: 숫자":"代码：数字","코드: 주석":"代码：注释","코드: 함수 이름":"代码：函数","코드: 변수·속성":"代码：变量和属性","코드: 타입·클래스":"代码：类型和类","코드: 연산자":"代码：运算符","편집기 언어":"界面语言","<u>밑줄</u>, <mark>하이라이트</mark>":"<u>下划线</u>, <mark>高亮</mark>","__밑줄__, ==하이라이트==":"__下划线__, ==高亮==","문서 내용은 유지되지만 렌더링 창의 실행 취소 기록은 초기화됩니다.":"文档内容会保留，但渲染窗格的撤销历史会被重置。","표 삽입":"插入表格","격자에서 크기를 고르세요":"在网格中选择大小","첫 행은 머리글입니다.":"第一行是表头。","자세히 설정…":"更多设置…"}};
 function normalizeLanguage(value) { const s=String(value||'').trim().replace(/_/g,'-').toLowerCase(); if(/^ko(?:-|$)/.test(s))return 'ko';if(/^en(?:-|$)/.test(s))return 'en';if(/^ja(?:-|$)/.test(s))return 'ja';if(s==='zh'||/^zh-(?:cn|hans)(?:-|$)/.test(s))return 'zh';return null; }
-function storedLanguage(key) { try { return normalizeLanguage(localStorage.getItem(key)); } catch { return null; } }
+function storedLanguage(key) { try { return normalizeLanguage(SAFE_STORAGE.getItem(key)); } catch { return null; } }
 function urlLanguage() { return normalizeLanguage(QS.get('lang')) || normalizeLanguage(QS.get('locale')); }
 function inheritedLanguage() { if(!EMM)return null;for(const w of [window.opener,window.parent!==window?window.parent:null]){try{if(w&&w.location.origin===location.origin){const l=normalizeLanguage(w.document.documentElement.lang);if(l)return l;}}catch{}}return storedLanguage('emm.lang'); }
 let uiLang = urlLanguage() || inheritedLanguage() || storedLanguage('mde.lang') || (navigator.languages||[navigator.language]).map(normalizeLanguage).find(Boolean) || 'ko';
@@ -501,7 +676,7 @@ function applyUiLanguage(){
   updateSaveControls(); updateTableSizeLabels();
   updateLanguagePicker(); const field=$('#sUiLanguage'); if(field)field.value=uiLang; const ln=$('#cLn'); if(ln)ln.title=tr(codeLn?'줄 번호 끄기':'줄 번호 켜기');
 }
-function setLanguage(value,persist=true){const next=normalizeLanguage(value);if(!next)return false;if(persist){manualLanguage=true;try{localStorage.setItem('mde.lang',next);}catch{}try{const u=new URL(location.href);u.searchParams.set('lang',next);u.searchParams.delete('locale');history.replaceState(history.state,'',u);}catch{}}if(next===uiLang){applyUiLanguage();return true;}
+function setLanguage(value,persist=true){const next=normalizeLanguage(value);if(!next)return false;if(persist){manualLanguage=true;try{SAFE_STORAGE.setItem('mde.lang',next);}catch{}try{const u=new URL(location.href);u.searchParams.set('lang',next);u.searchParams.delete('locale');history.replaceState(history.state,'',u);}catch{}}if(next===uiLang){applyUiLanguage();return true;}
 // Flush a real pending rendered edit, never serialize untouched Markdown on language changes.
 const pendingSource=!!tSrc,pendingRendered=!!tWw;clearTimeout(tSrc);clearTimeout(tWw);tSrc=0;tWw=0;
 if(pendingRendered&&latestEditSource==='ww'){let text=fromWw(normalizeWw(ed.getMarkdown()));if(md.endsWith('\n')&&!text.endsWith('\n'))text+='\n';md=text;pushToSrc();afterChange();}else if(pendingSource){md=cm.getValue();afterChange();}
@@ -587,15 +762,15 @@ graph LR
 `;
 
 
-let md = EMM ? "" : EMBEDDED ? EMB.value : IS_IFRAME ? "" : (localStorage.getItem("mde.md") ?? SAMPLE);
-let mode = localStorage.getItem("mde.mode") || "split";
+let md = EMM ? "" : EMBEDDED ? EMB.value : IS_IFRAME ? "" : (SAFE_STORAGE.getItem("mde.md") ?? SAMPLE);
+let mode = SAFE_STORAGE.getItem("mde.mode") || "split";
 let lastFocus = "src";
 let wwFocused = false;
 let wwStale = false;
 let wwUserOp = false;
 let wwSyncing = false;
 let fileName = EMM ? EMM.name : EMBEDDED ? EMB.dataset.name : "document.md";
-const DOC = { kind: EMM ? "emm" : EMBEDDED ? (PAGE_OFFLINE ? "offline" : "online") : "md", handle: null, saved: md, fileBound: EMBEDDED || !!EMM };
+const DOC = { kind: PROTECTED_DOCUMENT ? "encrypted" : EMM ? "emm" : EMBEDDED ? (PAGE_OFFLINE ? "offline" : "online") : "md", handle: null, saved: md, fileBound: EMBEDDED || !!EMM };
 function updateSaveControls() {
   const label = FRAME_HOST.active ? FRAME_HOST.saveLabel || tr("EMM에 저장") : EMM ? tr("EMM에 저장") : tr("저장");
   $("#saveBtn").textContent = label;
@@ -630,11 +805,11 @@ const COLOR_KEYS = [
 ];
 const DEF_SETTINGS = { theme: "light-plus", appDark: true, fontSize: 14, wrap: true, syntax: "html", custom: {} };
 function loadSettings() {
-  try { const s = JSON.parse(localStorage.getItem("mde.settings") || "{}"); return { ...DEF_SETTINGS, ...s, custom: { ...(s.custom || {}) } }; }
+  try { const s = JSON.parse(SAFE_STORAGE.getItem("mde.settings") || "{}"); return { ...DEF_SETTINGS, ...s, custom: { ...(s.custom || {}) } }; }
   catch { return { ...DEF_SETTINGS, custom: {} }; }
 }
 const S = loadSettings();
-const saveSettings = () => localStorage.setItem("mde.settings", JSON.stringify(S));
+const saveSettings = () => SAFE_STORAGE.setItem("mde.settings", JSON.stringify(S));
 const palette = () => ({ ...(THEMES[S.theme] || THEMES["light-plus"]), ...S.custom });
 function themeCss(p) {
   return `
@@ -743,7 +918,7 @@ function fromWw(text) {
 const TOAST_I18N = {"ko":{"Markdown":"마크다운","WYSIWYG":"위지윅","Write":"편집하기","Preview":"미리보기","Headings":"제목크기","Paragraph":"본문","Bold":"굵게","Italic":"기울임꼴","Strike":"취소선","Code":"인라인 코드","Line":"문단나눔","Blockquote":"인용구","Unordered list":"글머리 기호","Ordered list":"번호 매기기","Task":"체크박스","Indent":"들여쓰기","Outdent":"내어쓰기","Insert link":"링크 삽입","Insert CodeBlock":"코드블럭 삽입","Insert table":"표 삽입","Insert image":"이미지 삽입","Heading":"제목","Image URL":"이미지 주소","Select image file":"이미지 파일을 선택하세요.","Choose a file":"파일 선택","No file":"선택된 파일 없음","Description":"설명","OK":"확인","More":"더 보기","Cancel":"취소","File":"파일","URL":"주소","Link text":"링크 텍스트","Add row to up":"위에 행 추가","Add row to down":"아래에 행 추가","Add column to left":"왼쪽에 열 추가","Add column to right":"오른쪽에 열 추가","Remove row":"행 삭제","Remove column":"열 삭제","Align column to left":"열 왼쪽 정렬","Align column to center":"열 가운데 정렬","Align column to right":"열 오른쪽 정렬","Remove table":"표 삭제","Would you like to paste as table?":"표형태로 붙여 넣겠습니까?","Text color":"글자 색상","Auto scroll enabled":"자동 스크롤 켜짐","Auto scroll disabled":"자동 스크롤 꺼짐","Choose language":"언어 선택"},"en":{"Markdown":"Markdown","WYSIWYG":"WYSIWYG","Write":"Write","Preview":"Preview","Headings":"Headings","Paragraph":"Paragraph","Bold":"Bold","Italic":"Italic","Strike":"Strike","Code":"Code","Line":"Line","Blockquote":"Blockquote","Unordered list":"Unordered list","Ordered list":"Ordered list","Task":"Task","Indent":"Indent","Outdent":"Outdent","Insert link":"Insert link","Insert CodeBlock":"Insert CodeBlock","Insert table":"Insert table","Insert image":"Insert image","Heading":"Heading","Image URL":"Image URL","Select image file":"Select image file","Choose a file":"Choose a file","No file":"No file","Description":"Description","OK":"OK","More":"More","Cancel":"Cancel","File":"File","URL":"URL","Link text":"Link text","Add row to up":"Add row to up","Add row to down":"Add row to down","Add column to left":"Add column to left","Add column to right":"Add column to right","Remove row":"Remove row","Remove column":"Remove column","Align column to left":"Align column to left","Align column to center":"Align column to center","Align column to right":"Align column to right","Remove table":"Remove table","Would you like to paste as table?":"Would you like to paste as table?","Text color":"Text color","Auto scroll enabled":"Auto scroll enabled","Auto scroll disabled":"Auto scroll disabled","Choose language":"Choose language"},"ja":{"Markdown":"マークダウン","WYSIWYG":"WYSIWYG","Write":"編集","Preview":"プレビュー","Headings":"見出し","Paragraph":"本文","Bold":"太字","Italic":"斜体","Strike":"取り消し線","Code":"コード","Line":"区切り線","Blockquote":"引用","Unordered list":"箇条書き","Ordered list":"番号付きリスト","Task":"タスク","Indent":"インデント","Outdent":"アウトデント","Insert link":"リンクを挿入","Insert CodeBlock":"コードブロックを挿入","Insert table":"表を挿入","Insert image":"画像を挿入","Heading":"見出し","Image URL":"画像 URL","Select image file":"画像ファイルを選択","Choose a file":"ファイルを選択","No file":"ファイルなし","Description":"説明","OK":"確認","More":"もっと見る","Cancel":"キャンセル","File":"ファイル","URL":"URL","Link text":"リンク文字","Add row to up":"上に行を追加","Add row to down":"下に行を追加","Add column to left":"左に列を追加","Add column to right":"右に列を追加","Remove row":"行を削除","Remove column":"列を削除","Align column to left":"列を左揃え","Align column to center":"列を中央揃え","Align column to right":"列を右揃え","Remove table":"表を削除","Would you like to paste as table?":"表として貼り付けますか？","Text color":"文字色","Auto scroll enabled":"自動スクロール有効","Auto scroll disabled":"自動スクロール無効","Choose language":"言語を選択"},"zh":{"Markdown":"Markdown","WYSIWYG":"WYSIWYG","Write":"编辑","Preview":"预览","Headings":"标题","Paragraph":"正文","Bold":"加粗","Italic":"斜体","Strike":"删除线","Code":"代码","Line":"分隔线","Blockquote":"引用","Unordered list":"无序列表","Ordered list":"有序列表","Task":"任务","Indent":"缩进","Outdent":"减少缩进","Insert link":"插入链接","Insert CodeBlock":"插入代码块","Insert table":"插入表格","Insert image":"插入图片","Heading":"标题","Image URL":"图片 URL","Select image file":"选择图片文件","Choose a file":"选择文件","No file":"未选择文件","Description":"说明","OK":"确定","More":"更多","Cancel":"取消","File":"文件","URL":"URL","Link text":"链接文字","Add row to up":"向上添加行","Add row to down":"向下添加行","Add column to left":"向左添加列","Add column to right":"向右添加列","Remove row":"删除行","Remove column":"删除列","Align column to left":"列左对齐","Align column to center":"列居中","Align column to right":"列右对齐","Remove table":"删除表格","Would you like to paste as table?":"是否粘贴为表格？","Text color":"文字颜色","Auto scroll enabled":"启用自动滚动","Auto scroll disabled":"禁用自动滚动","Choose language":"选择语言"}};
 for(const [code,table] of Object.entries(TOAST_I18N))toastui.Editor.setLanguage({ko:["ko","ko-KR"],en:["en","en-US"],ja:["ja","ja-JP"],zh:["zh","zh-CN"]}[code],table);
 /* ---------- editors ---------- */
-let sourceLn = localStorage.getItem("mde.source.ln") !== "0";
+let sourceLn = SAFE_STORAGE.getItem("mde.source.ln") !== "0";
 const cm = CodeMirror($("#src"), {
   value: md, mode: MD_MODE, lineNumbers: sourceLn, lineWrapping: !!S.wrap, tabSize: 2, indentUnit: 2,
   extraKeys: { "Ctrl-B": () => fmt("bold"), "Ctrl-I": () => fmt("italic"), "Ctrl-U": () => fmt("underline"), "Ctrl-K": () => fmt("link"), "Cmd-B": () => fmt("bold"), "Cmd-I": () => fmt("italic"), "Cmd-U": () => fmt("underline"), "Cmd-K": () => fmt("link") },
@@ -785,7 +960,7 @@ function updateSourceLineNumbers() {
   $("#srcLn").title = tr(sourceLn ? tr("원문 줄 번호 끄기") : tr("줄 번호 켜기"));
   cm.refresh();
 }
-$("#srcLn").onclick = () => { sourceLn = !sourceLn; localStorage.setItem("mde.source.ln", sourceLn ? "1" : "0"); updateSourceLineNumbers(); };
+$("#srcLn").onclick = () => { sourceLn = !sourceLn; SAFE_STORAGE.setItem("mde.source.ln", sourceLn ? "1" : "0"); updateSourceLineNumbers(); };
 updateSourceLineNumbers();
 async function copyPlainText(text) {
   if (navigator.clipboard?.writeText) { try { await navigator.clipboard.writeText(text); return; } catch {} }
@@ -885,7 +1060,7 @@ function setAll(text, origin) {
 function afterChange() {
   renderToc();
   if (mode === "outline") renderOutline();
-  if (!EMBEDDED && !EMM && !IS_IFRAME) localStorage.setItem("mde.md", md);
+  if (!PROTECTED_DOCUMENT && !EMBEDDED && !EMM && !IS_IFRAME) SAFE_STORAGE.setItem("mde.md", md);
   updStatus();
   clearTimeout(tPost);
   tPost = setTimeout(() => postToParent({ type: "mde:change", markdown: md }), 400);
@@ -895,7 +1070,7 @@ function afterChange() {
 function setMode(m) {
   mode = m;
   $("#main").dataset.mode = m;
-  localStorage.setItem("mde.mode", m);
+  SAFE_STORAGE.setItem("mde.mode", m);
   document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
   if (wwVisible() && wwStale) pushToWw();
   if (m === "outline") renderOutline();
@@ -1732,7 +1907,7 @@ function applyTable() {
 /* ---------- code block dialog (same layout and keys as EasyMindMap's popup) ---------- */
 const LANGS = [["Bash","bash"],["Batch","bat"],["C","c"],["C#","csharp"],["C++","cpp"],["Clojure","clojure"],["CMake","cmake"],["CSS","css"],["CSV","csv"],["Dart","dart"],["Diff","diff"],["Dockerfile","dockerfile"],["Elixir","elixir"],["Erlang","erlang"],["F#","fsharp"],["Fortran","fortran"],["Go","go"],["GraphQL","graphql"],["Groovy","groovy"],["Haskell","haskell"],["HCL (Terraform)","hcl"],["HTML","html"],["HTTP","http"],["INI","ini"],["Java","java"],["JavaScript","javascript"],["JSON","json"],["JSX","jsx"],["Julia","julia"],["Kotlin","kotlin"],["LaTeX","latex"],["Less","less"],["Lua","lua"],["Makefile","makefile"],["Markdown","markdown"],["MATLAB","matlab"],["Mermaid","mermaid"],["Nginx","nginx"],["Objective-C","objectivec"],["OCaml","ocaml"],["Perl","perl"],["PHP","php"],["Plain text","text"],["PlantUML","plantuml"],["PowerShell","powershell"],["Protocol Buffers","protobuf"],["Python","python"],["R","r"],["Ruby","ruby"],["Rust","rust"],["Sass","sass"],["Scala","scala"],["SCSS","scss"],["Shell","shell"],["Solidity","solidity"],["SQL","sql"],["Svelte","svelte"],["Swift","swift"],["TOML","toml"],["TSX","tsx"],["TypeScript","typescript"],["VB.NET","vbnet"],["Verilog","verilog"],["Vue","vue"],["XML","xml"],["YAML","yaml"],["Zig","zig"]];
 const C = { tgt: "src", range: null, wwSelAt: null, act: -1, items: [] };
-let codeLn = localStorage.getItem("mde.code.ln") !== "0";
+let codeLn = SAFE_STORAGE.getItem("mde.code.ln") !== "0";
 const FENCE_RE = /^\s*(`{3,}|~{3,})\s*([^\s`]*)/;
 function openCode(range) {
   C.range = range || null; C.tgt = range ? "range" : target(); C.wwSelAt = null;
@@ -1771,7 +1946,7 @@ function syncCode() {
   $("#cOk").disabled = !v.trim(); $("#cCopy").disabled = !v;
 }
 function setLn(on) {
-  codeLn = on; localStorage.setItem("mde.code.ln", on ? "1" : "0");
+  codeLn = on; SAFE_STORAGE.setItem("mde.code.ln", on ? "1" : "0");
   $("#cGut").hidden = !on; $("#cLn").classList.toggle("off", !on);
   $("#cLn").textContent = on ? "1≡ On" : "1≡ Off"; $("#cLn").title = on ? tr("줄 번호 끄기") : tr("줄 번호 켜기");
 }
@@ -1965,9 +2140,9 @@ $("#sReset").onclick = () => { S.custom = {}; saveSettings(); applySettings(); d
 
 /* ---------- file menu: open / save / save as / md.html (online, offline) / close ---------- */
 const FS_OK = typeof window.showSaveFilePicker === "function";
-const KIND_LABEL = { md: ".md", online: "md.html 온라인", offline: "md.html 오프라인", emm: "EMM 첨부" };
+const KIND_LABEL = { encrypted: "암호화 md.html", md: ".md", online: "md.html 온라인", offline: "md.html 오프라인", emm: "EMM 첨부" };
 const baseName = () => fileName.replace(/\.html?$/i, "").replace(/\.(md|markdown|txt)$/i, "") || "document";
-const nameFor = (kind) => baseName() + (kind === "md" ? ".md" : ".md.html");
+const nameFor = (kind) => kind === "encrypted" ? "보호된-문서.md.html" : baseName() + (kind === "md" ? ".md" : ".md.html");
 const isDirty = () => md !== DOC.saved;
 function downloadText(data, name, type) {
   const a = el("a"); a.href = URL.createObjectURL(new Blob([data], { type: type + ";charset=utf-8" }));
@@ -1982,8 +2157,9 @@ async function libText(url) {
   return r.text();
 }
 // build a self-contained page: this editor + the markdown text in <textarea id="mdData">
-async function buildHtml(offline) {
-  const needMermaid = /^ {0,3}(`{3,}|~{3,})\s*mermaid\b/im.test(md);
+async function buildHtml(offline, options = {}) {
+  const content = options.markdown === undefined ? md : options.markdown;
+  const needMermaid = /^ {0,3}(`{3,}|~{3,})\s*mermaid\b/im.test(content);
   const libs = LIBS.filter((l) => l.url !== MERMAID_URL);
   if (offline && needMermaid) libs.push({ url: MERMAID_URL, css: false });
   const parts = await Promise.all(libs.map(async (l) => {
@@ -1993,28 +2169,79 @@ async function buildHtml(offline) {
   }));
   const css = parts.filter((_, i) => libs[i].css).join("\n"), js = parts.filter((_, i) => !libs[i].css).join("\n");
   const name = esc(nameFor("online"));
-  const body = APP_BODY.replace(/<textarea id="mdData"[^>]*>[\s\S]*?<\/textarea>/, () => `<textarea id="mdData" hidden data-name="${name}">\n${esc(md)}</textarea>`);
-  return `<!doctype html>\n<html lang="${uiLang==='zh'?'zh-Hans':uiLang}">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${name}</title>\n${css}\n<style id="appStyle">${APP_CSS}</style>\n</head>\n<body>${body}\n${js}\n<script id="appMain">${APP_JS}<\/script>\n</body>\n</html>\n`;
+  const body = APP_BODY.replace(/<textarea id="mdData"[^>]*>[\s\S]*?<\/textarea>/, () => `<textarea id="mdData" hidden data-name="${name}"${options.encrypted ? ' data-encrypted="1"' : ""}>\n${esc(content)}</textarea>`);
+  return `<!doctype html>\n<html lang="${uiLang==='zh'?'zh-Hans':uiLang}">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>${name}</title>\n${css}\n<style id="appStyle">${APP_CSS}</style>\n</head>\n<body>${body}\n${js}\n<script id="appMain">${scriptSafe(APP_JS)}<\/script>\n</body>\n</html>\n`;
 }
+
+/* Protected exports contain this runtime inside APP_JS as well. Passwords live only
+   in this dialog and the current awaited crypto call, never settings or metadata. */
+function encryptedApi() {
+  const api = window.EmmEncryptedHtml;
+  if (!api || !['encryptStandaloneHtml','decryptStandaloneHtml','isEncryptedHtml','passwordValidationError'].every(k => typeof api[k] === 'function')) throw new Error('암호화 공통 런타임이 없습니다. 평문으로 대신 저장하지 않습니다.');
+  return api;
+}
+function askEncryptionPassword(unlock = false) {
+  const api = encryptedApi();
+  return new Promise(resolve => {
+    const dialog = document.createElement('dialog');
+    dialog.style.cssText = 'max-width:440px;width:90%;padding:24px;border:1px solid #888;border-radius:12px;color:CanvasText;background:Canvas';
+    const title = document.createElement('h3'); title.textContent = unlock ? '암호화 문서 열기' : '암호화 md.html로 저장';
+    const form = document.createElement('form'); form.method = 'dialog';
+    const note = document.createElement('p'); note.textContent = unlock ? '문서 암호를 입력하세요. 암호는 기억하거나 저장하지 않습니다.' : '최소 8 Unicode문자, 문자·숫자·특수문자 중 2종 이상. 공백은 특수문자에 포함되지 않습니다. 암호를 잃으면 복구할 수 없습니다. 일반 웹링크는 주소만 포함되며 목적지 내용은 보호되지 않습니다.';
+    const input = document.createElement('input'); input.type = 'password'; input.autocomplete = 'new-password'; input.setAttribute('aria-label','암호'); input.required = true; input.style.cssText='display:block;width:100%;box-sizing:border-box;margin:12px 0';
+    const repeat = document.createElement('input'); repeat.type='password'; repeat.autocomplete='new-password'; repeat.setAttribute('aria-label','암호 확인'); repeat.required=true; repeat.style.cssText=input.style.cssText;
+    const error = document.createElement('p'); error.setAttribute('role','alert');
+    const cancel = document.createElement('button'); cancel.type='button'; cancel.textContent='취소';
+    const submit = document.createElement('button'); submit.type='submit'; submit.textContent=unlock ? '열기' : '암호화 저장';
+    let finished = false;
+    const finish = value => { if (finished) return; finished=true; input.value=''; repeat.value=''; dialog.close(); dialog.remove(); resolve(value); };
+    cancel.onclick=()=>finish(null); dialog.addEventListener('cancel',e=>{e.preventDefault();finish(null);});
+    form.onsubmit=e=>{ e.preventDefault(); const value=input.value; const issue=unlock ? null : api.passwordValidationError(value); if(issue){error.textContent=issue;return;} if(!unlock && value!==repeat.value){error.textContent='암호가 일치하지 않습니다.';return;} finish(value); };
+    form.append(note,input); if(!unlock)form.append(repeat); form.append(error,cancel,submit);dialog.append(title,form); document.body.append(dialog);dialog.showModal();input.focus();
+  });
+}
+function assertProtectedImages(content) {
+  // Fail closed rather than silently exporting broken or network-backed images.
+  const inlineRaster = /^data:image\/(?:png|jpeg|gif|webp|avif);base64,[a-z0-9+/=\s]+$/i;
+  const rest = content.replace(/!\[[^\]\r\n]*\]\(\s*(data:image\/(?:png|jpeg|gif|webp|avif);base64,[a-z0-9+/=]+)\s*\)/gi, '');
+  if (/!\s*\[/.test(rest)) throw new Error('암호화 저장을 중단했습니다. 외부·상대·blob·참조형 이미지는 먼저 data:image PNG/JPEG/GIF/WebP/AVIF 원본으로 포함하세요. 평문 파일로 대체하지 않습니다.');
+  const parsed = new DOMParser().parseFromString(content, 'text/html');
+  for (const image of parsed.querySelectorAll('img')) {
+    if (!inlineRaster.test(image.getAttribute('src') || '') || image.hasAttribute('srcset') || image.hasAttribute('style')) throw new Error('암호화 저장을 중단했습니다. HTML img에는 포함된 data:image 원본만 사용할 수 있습니다 (srcset/style 제외).');
+  }
+  if (parsed.querySelector('picture,source,svg,image,object,embed,iframe,video') || /url\s*\(|@import/i.test(content)) throw new Error('암호화 저장을 중단했습니다. 외부 리소스를 포함할 수 있는 HTML/CSS는 지원하지 않습니다.');
+}
+
 async function writeTo(kind, asNew) {
-  let data;
-  try { flash(kind === "offline" ? tr("오프라인 파일을 만드는 중… (라이브러리를 넣습니다)") : tr("저장 중…")); data = kind === "md" ? md : await buildHtml(kind === "offline"); }
-  catch (e) { alert(tr("파일을 만들지 못했습니다: ") + e.message + (kind === "offline" ? tr("\n오프라인 파일은 처음 만들 때 인터넷 연결이 필요합니다.") : "")); return false; }
-  const type = kind === "md" ? "text/markdown" : "text/html";
-  let how = tr("내려받기 폴더에 저장했습니다");
-  if (FS_OK) {
+  flushPendingEdits();
+  const snapshot = md, protectedExport = kind === "encrypted";
+  const preserveDocument = FRAME_HOST.active || !!EMM || PROTECTED_DOCUMENT;
+  if (PROTECTED_DOCUMENT && !protectedExport && !confirm('이 문서는 암호화되어 있습니다. 계속하면 암호 없는 평문 파일로 내보내며 내용과 포함된 이미지가 노출됩니다. 평문 내보내기를 진행할까요?')) return false;
+  let data, password = null;
+  try {
+    if (protectedExport) {
+      assertProtectedImages(snapshot);
+      password = await askEncryptionPassword(false); if (password === null) return false;
+      flash('암호화 오프라인 파일을 만드는 중…');
+      const html = await buildHtml(true, { markdown: snapshot, encrypted: true });
+      data = await encryptedApi().encryptStandaloneHtml(html, password, 'markdown');
+    } else { flash(kind === 'offline' ? tr('오프라인 파일을 만드는 중… (라이브러리를 넣습니다)') : tr('저장 중…')); data = kind === 'md' ? snapshot : await buildHtml(kind === 'offline', {markdown:snapshot}); }
+  } catch (e) { alert(tr('파일을 만들지 못했습니다: ') + e.message + (protectedExport ? '\n암호화 파일을 만들지 못했으며 평문으로 대체하지 않았습니다.' : '')); return false; }
+  finally { password = null; }
+  const type = kind === 'md' ? 'text/markdown' : 'text/html';
+  let how = tr('내려받기 폴더에 저장했습니다'), savedHandle = null;
+  if (FS_OK && !ISOLATED_PROTECTED) {
     try {
       let h = !asNew && DOC.handle && DOC.kind === kind ? DOC.handle : null;
-      if (!h) h = await window.showSaveFilePicker({ suggestedName: nameFor(kind), types: [kind === "md"
-        ? { description: "Markdown", accept: { "text/markdown": [".md"] } }
-        : { description: "md.html (" + tr(KIND_LABEL[kind]) + ")", accept: { "text/html": [".html"] } }] });
-      const w = await h.createWritable(); await w.write(new Blob([data], { type })); await w.close();
-      if (!FRAME_HOST.active) { DOC.handle = h; fileName = h.name; } how = tr("저장했습니다");
-    } catch (e) { if (e.name === "AbortError") { updStatus(); return false; } console.warn(e); downloadText(data, nameFor(kind), type); }
-  } else downloadText(data, nameFor(kind), type);
-  if (!FRAME_HOST.active) { DOC.kind = kind; DOC.saved = md; DOC.fileBound = true; }
-  updStatus(); flash(`${fileName} (${tr(KIND_LABEL[kind])}) ${how}`);
-  return true;
+      if (!h) h = await window.showSaveFilePicker({ suggestedName: nameFor(kind), types: [kind === 'md' ? {description:'Markdown', accept:{'text/markdown':['.md']}} : {description:KIND_LABEL[kind] || 'md.html',accept:{'text/html':['.html']}}] });
+      const w = await h.createWritable(); await w.write(new Blob([data],{type})); await w.close(); savedHandle = h; how = tr('저장했습니다');
+    } catch (e) { if (e.name === 'AbortError') { updStatus(); return false; } console.warn(e); downloadText(data,nameFor(kind),type); }
+  } else downloadText(data,nameFor(kind),type);
+  if (!preserveDocument || (PROTECTED_DOCUMENT && protectedExport && !FRAME_HOST.active && !EMM)) {
+    DOC.handle = savedHandle; if(savedHandle)fileName=savedHandle.name;
+    DOC.kind=kind; DOC.saved=snapshot; DOC.fileBound=true; PROTECTED_DOCUMENT=protectedExport;
+  }
+  updStatus();flash(nameFor(kind) + ' (' + tr(KIND_LABEL[kind]) + ') ' + how);return true;
 }
 function flushPendingEdits() {
   const source = !!tSrc, rendered = !!tWw;
@@ -2032,12 +2259,12 @@ function frameSave() {
   postToParent({ type: "mde:save", markdown: md });
   flash(tr("저장 중…"));
 }
-const doSave = () => FRAME_HOST.active ? frameSave() : DOC.kind === "emm" ? emmSave(false) : writeTo(DOC.kind, false);
+const doSave = () => DOC.kind === "encrypted" ? writeTo("encrypted", false) : FRAME_HOST.active ? frameSave() : DOC.kind === "emm" ? emmSave(false) : writeTo(DOC.kind, false);
 
 /* ---------- EasyMindMap attachment: load and save back ---------- */
 function emmToken() { // same origin as the app: read the current session token the app keeps refreshed; fall back to #t=
   try {
-    const raw = localStorage.getItem("emm.auth");
+    const raw = SAFE_STORAGE.getItem("emm.auth");
     if (raw) {
       const find = (o, d) => { if (!o || typeof o !== "object" || d > 6) return null; for (const k of ["access_token", "accessToken"]) if (typeof o[k] === "string" && o[k]) return o[k]; for (const v of Object.values(o)) { const r = find(v, d + 1); if (r) return r; } return null; };
       const t = find(JSON.parse(raw), 0); if (t) return t;
@@ -2061,7 +2288,7 @@ const emmUrl = (suffix) => EMM.api + "/v1/attachments/" + encodeURIComponent(EMM
 const OP = { waiters: new Map(), seq: 0, loaded: false };
 function emmOpener() { try { return window.opener && !window.opener.closed ? window.opener : null; } catch { return null; } }
 window.addEventListener("message", (e) => {
-  if (!EMM || EMM.mode !== "opener" || e.origin !== location.origin) return; // same-origin windows only (the EasyMindMap app)
+  if (PROTECTED_DOCUMENT || !EMM || EMM.mode !== "opener" || e.origin !== location.origin) return; // same-origin windows only (the EasyMindMap app)
   const d = e.data || {};
   if (d.key !== EMM.key || e.source !== emmOpener()) return;
   if (d.type === "mde:load" && typeof d.markdown === "string") {
@@ -2134,14 +2361,27 @@ async function emmSave(force) {
   finally { emmSaving = false; }
 }
 async function loadFile(f, h) {
-  let text = await f.text(), kind = "md";
-  if (/\.html?$/i.test(f.name)) {
-    const d = new DOMParser().parseFromString(text, "text/html"), ta = d.getElementById("mdData");
-    if (!ta) return alert(tr("이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다."));
-    text = ta.value || ta.textContent || ""; kind = d.querySelector("script[data-lib-url]:not([src])") ? "offline" : "online";
+  if (typeof f.size === 'number' && f.size > 92 * 1024 * 1024) {
+    alert('파일을 열지 못했습니다: 파일 크기는 92MiB 이하여야 합니다. 내용을 읽거나 암호를 요청하지 않았습니다.');
+    return;
   }
-  fileName = f.name; DOC.handle = h || null; DOC.kind = kind; DOC.fileBound = true;
-  setAll(text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"), "file"); DOC.saved = md; updStatus();
+  let text = await f.text(), kind = 'md';
+  try {
+    const api = window.EmmEncryptedHtml;
+    const encrypted = api && typeof api.isEncryptedHtml === 'function' && api.isEncryptedHtml(text);
+    if (encrypted) {
+      let password = await askEncryptionPassword(true); if(password===null)return;
+      try { const result = await encryptedApi().decryptStandaloneHtml(text,password); if(result.kind!=='markdown')throw new Error('마크다운 암호화 문서가 아닙니다.');text=result.html;kind='encrypted'; }
+      finally {password=null;}
+    }
+    if (/\.html?$/i.test(f.name) || encrypted) {
+      const d = new DOMParser().parseFromString(text,'text/html'),ta=d.getElementById('mdData');
+      if(!ta)throw new Error('이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.');
+      text=ta.value || ta.textContent || ''; if(kind!=='encrypted')kind=ta.dataset.encrypted==='1' ? 'encrypted' : d.querySelector('script[data-lib-url]:not([src])') ? 'offline' : 'online';
+    }
+    fileName=f.name;DOC.handle=h||null;DOC.kind=kind;DOC.fileBound=true;PROTECTED_DOCUMENT=kind==='encrypted';if(PROTECTED_DOCUMENT){FRAME_HOST.active=false;FRAME_HOST.pending=null;FRAME_HOST.lastSent=null;}
+    setAll(text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n'),'file');DOC.saved=md;updStatus();
+  } catch(e) {alert('파일을 열지 못했습니다: '+e.message);}
 }
 const askDiscard = () => !isDirty() || !DOC.fileBound || confirm(tr("저장하지 않은 변경이 있습니다. 버리고 계속할까요?"));
 async function doOpen() {
@@ -2155,7 +2395,7 @@ async function doOpen() {
   $("#fileIn").click();
 }
 $("#fileIn").onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) loadFile(f, null); };
-function newDoc(text, name) { fileName = name; DOC.handle = null; DOC.kind = "md"; DOC.fileBound = false; setAll(text, "file"); DOC.saved = md; updStatus(); }
+function newDoc(text, name) { PROTECTED_DOCUMENT = false; fileName = name; DOC.handle = null; DOC.kind = "md"; DOC.fileBound = false; setAll(text, "file"); DOC.saved = md; updStatus(); }
 function doClose() {
   if (isDirty() && !confirm(tr("저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?"))) return;
   DOC.saved = md;
@@ -2172,9 +2412,23 @@ const ACTS = {
   md: () => writeTo("md", true),
   online: () => writeTo("online", true),
   offline: () => writeTo("offline", true),
+  encrypted: () => writeTo("encrypted", true),
   close: doClose,
 };
-$("#fileBtn").onclick = (e) => { e.stopPropagation(); $("#fileList").hidden = !$("#fileList").hidden; };
+$("#fileBtn").onclick = (e) => {
+  e.stopPropagation();
+  const menu = $("#fileList"); menu.hidden = !menu.hidden;
+  if (!menu.hidden) {
+    const button = $("#fileBtn").getBoundingClientRect();
+    const width = window.innerWidth, height = window.innerHeight;
+    menu.style.position = "fixed"; menu.style.right = "auto";
+    menu.style.maxHeight = Math.max(0, height - 16) + "px"; menu.style.overflowY = "auto";
+    menu.style.maxWidth = Math.max(0, width - 16) + "px"; menu.style.minWidth = Math.min(230, Math.max(0, width - 16)) + "px"; menu.style.boxSizing = "border-box";
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(button.left, width - rect.width - 8)) + "px";
+    menu.style.top = Math.max(8, Math.min(button.bottom + 6, height - rect.height - 8)) + "px";
+  }
+};
 $("#fileList").addEventListener("click", (e) => { const b = e.target.closest("[data-act]"); if (!b) return; $("#fileList").hidden = true; ACTS[b.dataset.act](); });
 document.addEventListener("click", (e) => { if (!e.target.closest("#fileMenu")) $("#fileList").hidden = true; });
 $("#saveBtn").onclick = doSave;
@@ -2188,8 +2442,8 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("beforeunload", (e) => { if (isDirty() && DOC.fileBound) { e.preventDefault(); e.returnValue = ""; } });
 
 /* ---------- split view: drag the bar to resize ---------- */
-function setSplit(p) { p = Math.min(85, Math.max(15, p)); $("#main").style.setProperty("--l", p); $("#main").style.setProperty("--r", 100 - p); localStorage.setItem("mde.split", String(p)); }
-setSplit(Number(localStorage.getItem("mde.split")) || 50);
+function setSplit(p) { p = Math.min(85, Math.max(15, p)); $("#main").style.setProperty("--l", p); $("#main").style.setProperty("--r", 100 - p); SAFE_STORAGE.setItem("mde.split", String(p)); }
+setSplit(Number(SAFE_STORAGE.getItem("mde.split")) || 50);
 $("#splitter").addEventListener("pointerdown", (e) => {
   e.preventDefault();
   const sp = $("#splitter"); sp.setPointerCapture(e.pointerId); sp.classList.add("drag"); document.body.classList.add("resizing");
@@ -2248,12 +2502,12 @@ window.addEventListener("message", (e) => {
 // Editor -> parent: mde:save {markdown}. Send mde:saved only after persistence succeeds.
 // Optional mde:saved {markdown} acknowledges that exact snapshot (recommended for async autosave).
 function postToParent(msg) {
-  if (!IS_IFRAME) return;
+  if (!IS_IFRAME || ISOLATED_PROTECTED || PROTECTED_DOCUMENT) return;
   if (FRAME_HOST.active && (msg.type === "mde:change" || msg.type === "mde:save")) FRAME_HOST.lastSent = msg.markdown;
   window.parent.postMessage(msg, FRAME_HOST.origin && FRAME_HOST.origin !== "null" ? FRAME_HOST.origin : "*");
 }
 window.addEventListener("message", (e) => {
-  if (!IS_IFRAME || EMM || e.source !== window.parent || (FRAME_HOST.active && e.origin !== FRAME_HOST.origin)) return;
+  if (!IS_IFRAME || ISOLATED_PROTECTED || PROTECTED_DOCUMENT || EMM || e.source !== window.parent || (FRAME_HOST.active && e.origin !== FRAME_HOST.origin)) return;
   const d = e.data;
   if (!d || typeof d !== "object" || Array.isArray(d)) return;
   if (d.type === "mde:config") {

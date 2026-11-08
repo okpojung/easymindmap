@@ -1,15 +1,16 @@
 # md-editor — 마크다운 첨부 웹 편집기 (외부 사본)
 
-이 폴더의 `index.html` 은 **외부 저장소의 파일을 그대로 복사한 것**이다.
-**여기서 고치지 않는다** — 고칠 것은 원본 저장소에서 고치고 아래 방법으로
-다시 가져온다(두 벌이 갈라지면 어느 쪽이 진짜인지 알 수 없게 된다).
+이 폴더의 `index.html`은 상위 원본에 **암호화 HTML 보안 패치**를 적용한 사본이다.
+일반 편집기 수정은 상위 저장소에서 먼저 진행한다. 현재 암호화 패치의 상위 반영은
+아직 확인되지 않았으므로, 단순 원본 복사로 덮어쓰면 암호화 기능이 사라진다.
+패치 범위와 제약은 `docs/04-extensions/import-export/23-encrypted-html.md`를 따른다.
 
 | 항목 | 값 |
 |---|---|
 | 출처 저장소 | <https://github.com/okpojung/markdown-editor> |
 | 파일 | `index.html` (단일 파일 편집기) |
-| 커밋 | `984ae333bb37482e9ed745eab872fd0f66ebeaf7` (2026-11-08 — v1.0.3: 새 표 격자 선택(10열×8행)·iframe 부모 저장 규약(mde:config → mde:save → mde:saved)·문서 끝 표/코드 아래 입력 보정. 이전 `51c7183`) |
-| sha256 | `db274843a901a78ce85c5bfb518537f830205bbfa35fd9b87ed8355dd39edcc8` |
+| 커밋 | `e4815cb63868932d614c463fa98ad9e073c5f334` (2026-11-08 상위 main 기준, 아래 로컬 보안 패치 포함) |
+| sha256 | `780f57c79381f5409a1b8d4b63519659ebf2c312a015de5efd1c5a70ad8360d4` |
 | 라이선스 | MIT — 아래 고지 |
 
 ## 어떻게 서빙되나
@@ -49,6 +50,15 @@ Vite 는 `public/` 을 빌드 결과(`dist/`) 루트로 그대로 복사한다. 
 
 편집 부품(Toast UI Editor·CodeMirror·Mermaid)은 **jsDelivr CDN** 에서 받는다.
 CDN 을 못 쓰는 환경에서는 편집기가 원문 텍스트 상자로 물러난다(편집기 자체 동작).
+
+## 암호화 런타임 동기화
+
+공통 원본은 `src/export/encryptedHtml.ts`다. 변경 후 `npm run sync:encrypted-runtime`으로
+오프라인 독립 실행용 literal과 이 편집기의 인라인 런타임을 함께 생성한다.
+`npm run check:encrypted-runtime`은 불일치를 검출하며 build/test에도 포함되어 있다.
+원본 편집기를 다시 가져올 때는 파일 메뉴·보호 저장·이미지 정책·스토리지/호스트 격리
+패치를 먼저 다시 적용하고 두 runtime marker를 보존한다. 상위 웹사이트/데스크톱 배포는
+이 사본 반영만으로 변경되지 않는다.
 
 ## 갱신 방법
 

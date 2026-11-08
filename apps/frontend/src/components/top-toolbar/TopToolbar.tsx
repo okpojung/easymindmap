@@ -12,6 +12,8 @@ import { PublishPanel } from '@/components/cloud/PublishPanel';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { downloadMapAsHtml } from '@/export/exportHtml';
+import { downloadMapAsEncryptedHtml } from '@/export/encryptedMap';
+import { withHtmlPassword } from '@/components/ui/htmlPasswordDialog';
 import { downloadMapAsMarkdown } from '@/export/exportMarkdown';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
@@ -216,6 +218,13 @@ export function TopToolbar({
         ? tr('shell.toolbar.exportHtmlOnly', { n: pkg.external })
         : tr('shell.toolbar.exportZipSkipped', { n: pkg.external }));
     }
+  };
+  const runExportEncryptedHtml = async () => {
+    await withHtmlPassword({
+      confirm: true,
+      run: (password) => downloadMapAsEncryptedHtml(
+        map, password, layoutType, { x: spacingX, y: spacingY }, themeName === 'dark'),
+    });
   };
   const runExportMd = async () => {
     const pkg = await downloadMapAsMarkdown(map, layoutType, { x: spacingX, y: spacingY });
@@ -503,6 +512,11 @@ export function TopToolbar({
               t={t} testId="m-export-html" icon={<I.Download size={16} />}
               label={tr('shell.toolbar.exportHtml')} desc={tr('shell.toolbar.exportHtmlDesc')}
               onClick={pickThen(() => void runExportHtml())}
+            />
+            <MenuItem
+              t={t} testId="m-export-encrypted-html" icon={<I.Download size={16} />}
+              label={tr('io.encrypted.export')} desc={tr('io.encrypted.desc')}
+              onClick={pickThen(() => void runExportEncryptedHtml())}
             />
             <MenuItem
               t={t} testId="m-export-md" icon={<I.Download size={16} />}
@@ -888,6 +902,13 @@ export function TopToolbar({
                 desc: tr('shell.toolbar.exportHtmlDesc'),
                 title: tr('shell.toolbar.exportHtmlTitle'),
                 run: runExportHtml,
+              },
+              {
+                id: 'encrypted-html',
+                label: tr('io.encrypted.export'),
+                desc: tr('io.encrypted.desc'),
+                title: tr('io.encrypted.protect'),
+                run: runExportEncryptedHtml,
               },
               {
                 id: 'md',

@@ -23,6 +23,9 @@ import { I } from '@/components/icons';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
 import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile, looksLikeHtmlFile } from '@/utils/importMapFile';
 import { resolveRemoteImages } from '@/utils/remoteImages';
+import { isEncryptedHtml, decryptStandaloneHtml } from '@/export/encryptedHtml';
+import { validateProtectedMapImport } from '@/export/protectedMapAssets';
+import { withHtmlPassword } from '@/components/ui/htmlPasswordDialog';
 import { isDocumentEmpty, NEW_MAP_TITLE, useDocumentStore } from '@/stores/documentStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { useAiSettingsStore } from '@/stores/aiSettingsStore';
@@ -372,26 +375,57 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
       return;
     }
     setNotice(null); // 새 파일을 고르면 이전 안내(특히 8초 오류)는 치운다
+    // Bound local HTML/MD input before FileReader allocates its text buffer.
+    // Keep the ordinary ZIP path above unchanged.
+    if (file.size > 92 * 1024 * 1024) {
+      flash(tr('io.encrypted.fileTooLarge'), true);
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = () => {
-      const text = String(reader.result ?? '');
-      const name = file.name.replace(/\.(md|markdown|txt|html?)$/i, '');
-      // HTML 판별은 확장자 + 내용의 **시작** — 확장자가 바뀐 파일도 인식하되, 본문
-      // 어딘가에 뷰어 문자열이 적힌 .md 를 HTML 로 오인하지 않는다 (looksLikeHtmlFile)
-      const isHtml = kind === 'html' || looksLikeHtmlFile(file.name, text);
-      const imported = isHtml
-        ? parseHtmlMapFile(text)
-        : parseMarkdownMapFile(text, name, parseOpts);
-      if (!imported) {
-        flash(isHtml
-          ? tr('panel.newMap.notViewerHtml', { file: file.name })
-          : tr('panel.newMap.noStructure', { file: file.name }),
-          true);
-        return;
+    reader.onerror = () => flash(tr('io.encrypted.importFailed'), true);
+    reader.onload = async () => {
+      try {
+        let text = String(reader.result ?? '');
+        let encrypted = false;
+        if (isEncryptedHtml(text)) {
+          encrypted = true;
+          const decrypted = await withHtmlPassword({
+            confirm: false,
+            run: (password) => decryptStandaloneHtml(text, password),
+          });
+          if (!decrypted) return;
+          if (decrypted.kind !== 'map') {
+            flash(tr('io.encrypted.markdown'), true);
+            return;
+          }
+          text = decrypted.html;
+        }
+        const name = file.name.replace(/\.(md|markdown|txt|html?)$/i, '');
+        // HTML 판별은 확장자 + 내용의 **시작** — 확장자가 바뀐 파일도 인식하되, 본문
+        // 어딘가에 뷰어 문자열이 적힌 .md 를 HTML 로 오인하지 않는다 (looksLikeHtmlFile)
+        const isHtml = encrypted || kind === 'html' || looksLikeHtmlFile(file.name, text);
+        const imported = isHtml
+          ? parseHtmlMapFile(text)
+          : parseMarkdownMapFile(text, name, parseOpts);
+        if (!imported) {
+          flash(isHtml
+            ? tr('panel.newMap.notViewerHtml', { file: file.name })
+            : tr('panel.newMap.noStructure', { file: file.name }),
+            true);
+          return;
+        }
+        if (encrypted) {
+          try { validateProtectedMapImport(imported.map); }
+          catch { flash(tr('io.encrypted.importFailed'), true); return; }
+        }
+        await applyImported(imported, stats.movedToNote);
+      } catch {
+        // FileReader does not consume rejected async event-handler promises.
+        flash(tr('io.encrypted.importFailed'), true);
       }
-      void applyImported(imported, stats.movedToNote);
     };
-    reader.readAsText(file);
+    try { reader.readAsText(file); }
+    catch { flash(tr('io.encrypted.importFailed'), true); }
   };
 
   // 상위 메뉴 행 (아코디언 헤더) — 아이콘 + 라벨 + 펼침 표시(▸/▾)

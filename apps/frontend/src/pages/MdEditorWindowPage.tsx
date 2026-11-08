@@ -18,6 +18,7 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
   const [lost, setLost] = useState(false);
   const [fail, setFail] = useState<string | null>(null);
   const latest = useRef<string | null>(null);
+  const frameApiRef = useRef<{ ack: (md: string) => void; fail: () => void } | null>(null);
   const kind = mdTargetFromKey(mdKey, name)?.kind ?? 'embedded';
 
   useEffect(() => {
@@ -33,23 +34,26 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
       if (m.key !== mdKey) return;
       if (m.type === 'md-load') { got = true; latest.current = m.markdown; setContent({ markdown: m.markdown, readOnly: m.readOnly }); if (m.readOnly) setState({ error: 'readonly' }); }
       else if (m.type === 'md-fail') { got = true; setFail(m.error); }
-      else if (m.type === 'md-state') setState(m.state);
+      else if (m.type === 'md-state') {
+        setState(m.state);
+        if (m.state === 'saved' && typeof m.markdown === 'string') frameApiRef.current?.ack(m.markdown);
+        else if (typeof m.state === 'object') frameApiRef.current?.fail();
+      }
     };
     ch.postMessage({ type: 'md-hello', key: mdKey } satisfies MdMsg);
     const tm = window.setTimeout(() => { if (!got) setLost(true); }, 6000);
     return () => { window.clearTimeout(tm); ch.close(); };
   }, [tabId, mdKey, name]);
 
-  const { onLoad } = useMdFrame(frame, {
-    content: content?.markdown ?? null, rendered: false,
+  const frameApi = useMdFrame(frame, {
+    content: content?.markdown ?? null, name, rendered: false,
     onChange: (md) => { latest.current = md; if (!content?.readOnly && !lost) chRef.current?.postMessage({ type: 'md-change', key: mdKey, markdown: md } satisfies MdMsg); },
+    onSave: (md) => { latest.current = md; if (content?.readOnly || lost) { frameApiRef.current?.fail(); return; } chRef.current?.postMessage({ type: 'md-change', key: mdKey, markdown: md, now: true } satisfies MdMsg); },
     // 편집기 안의 [✕ 닫기] — 이 창을 닫는다(고친 내용은 이미 보냈다)
     onClose: () => window.setTimeout(() => window.close(), 300),
   });
-  useEffect(() => {
-    if (content && frame.current?.contentDocument?.readyState === 'complete') onLoad();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content]);
+  frameApiRef.current = frameApi;
+  const onLoad = frameApi.onLoad;
 
   const backToEmm = () => {
     chRef.current?.postMessage({ type: 'md-dock', key: mdKey, name, ...(latest.current !== null ? { markdown: latest.current } : {}) } satisfies MdMsg);

@@ -86,7 +86,8 @@ export async function saveMd(t: MdTarget, markdown: string, base?: string): Prom
 }
 
 /** 오른쪽 칸·새 창이 함께 쓰는 '모아서 자동 저장' 도우미 */
-export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' | { error: string }) => void, initial: { markdown: string; base?: string }) {
+/** 저장 결과 — 'saved' 면 실제로 저장한 내용(savedMd)을 함께 넘긴다(편집기에 그 스냅샷으로 저장 완료를 알린다) */
+export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' | { error: string }, savedMd?: string) => void, initial: { markdown: string; base?: string }) {
   let last = initial.markdown;
   let base = initial.base;
   let pending: string | null = null;
@@ -97,12 +98,12 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
     if (busy || pending === null) return;
     const md = pending;
     pending = null;
-    if (md === last) return;
+    if (md === last) { onState('saved', md); return; }
     busy = true;
     onState('saving');
     const r = await saveMd(t, md, base);
     busy = false;
-    if ('error' in r) onState({ error: r.error }); else { last = md; base = r.base ?? base; onState('saved'); }
+    if ('error' in r) onState({ error: r.error }); else { last = md; base = r.base ?? base; onState('saved', md); }
     if (pending !== null && timer === null) timer = window.setTimeout(flush, 600);
   };
   return {

@@ -8,8 +8,8 @@
 |---|---|
 | 출처 저장소 | <https://github.com/okpojung/markdown-editor> |
 | 파일 | `index.html` (단일 파일 편집기) |
-| 커밋 | `51c7183858de207cf3ed01528b77a0baaf327268` (2026-11-01 — 편집기 4언어(한·영·중·일)·설정에서 언어 선택·홈페이지 언어 연결. 이전 `db4b579`) |
-| sha256 | `76e1291bfa795fee8ceaf6d9ce6971e275577c55c6e2addd29aaa969d8e155d1` |
+| 커밋 | `984ae333bb37482e9ed745eab872fd0f66ebeaf7` (2026-11-08 — v1.0.3: 새 표 격자 선택(10열×8행)·iframe 부모 저장 규약(mde:config → mde:save → mde:saved)·문서 끝 표/코드 아래 입력 보정. 이전 `51c7183`) |
+| sha256 | `db274843a901a78ce85c5bfb518537f830205bbfa35fd9b87ed8355dd39edcc8` |
 | 라이선스 | MIT — 아래 고지 |
 
 ## 어떻게 서빙되나

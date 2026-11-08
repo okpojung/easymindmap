@@ -18,8 +18,8 @@ export type MdMsg =
   | { type: 'md-hello'; key: string }
   | { type: 'md-load'; key: string; markdown: string; readOnly: boolean }
   | { type: 'md-fail'; key: string; error: string }
-  | { type: 'md-change'; key: string; markdown: string }
-  | { type: 'md-state'; key: string; state: MdSaveState }
+  | { type: 'md-change'; key: string; markdown: string; now?: boolean }
+  | { type: 'md-state'; key: string; state: MdSaveState; markdown?: string }
   | { type: 'md-dock'; key: string; name: string; markdown?: string }
   | { type: 'bye' };
 
@@ -46,38 +46,54 @@ export function openMdWindow(t: MdTarget, mode: 'tab' | 'window'): boolean {
   } catch { return false; }
 }
 
-/** iframe 편집기와 이야기하기 — 내용 넣기·렌더링 보기·고친 내용 받기 */
+/**
+ * iframe 편집기와 이야기하기 (편집기 원본 v1.0.3 의 부모 저장 규약, okpojung/markdown-editor docs/iframe-embed.md)
+ *   편집기 → 부모  mde:ready · mde:change {markdown} (자동저장용) · mde:save {markdown} ([EMM에 저장]·Ctrl+S) · mde:close
+ *   부모 → 편집기  mde:config {name, saveLabel} → mde:set {markdown} → mde:mode
+ *                  저장이 **실제로 끝난 뒤에만** mde:saved {markdown: 저장한 내용} (실패면 {ok:false})
+ * 같은 출처·이 iframe 이 보낸 것만 받는다.
+ */
 export function useMdFrame(frame: React.RefObject<HTMLIFrameElement | null>, opts: {
-  content: string | null; rendered: boolean; onChange: (md: string) => void; onClose?: () => void;
+  content: string | null; name: string; rendered: boolean;
+  onChange: (md: string) => void; onSave?: (md: string) => void; onClose?: () => void;
 }) {
-  const echoed = useRef(false);
-  const onChangeRef = useRef(opts.onChange); onChangeRef.current = opts.onChange;
+  const tr = useTr();
+  const ready = useRef(false);
+  const pushed = useRef<string | null>(null);
   const optsRef = useRef(opts); optsRef.current = opts;
+  const post = (msg: unknown) => frame.current?.contentWindow?.postMessage(msg, window.location.origin);
+  const push = () => {
+    const o = optsRef.current;
+    if (!frame.current?.contentWindow || o.content === null) return;
+    post({ type: 'mde:config', name: o.name, saveLabel: tr('editor.md.saveLabel') });
+    post({ type: 'mde:set', markdown: o.content });
+    if (o.rendered) post({ type: 'mde:mode', mode: 'rendered' });
+    pushed.current = o.content;
+  };
   useEffect(() => {
     const on = (e: MessageEvent) => {
-      if (e.source !== frame.current?.contentWindow) return;
+      if (e.source !== frame.current?.contentWindow || e.origin !== window.location.origin) return;
       const d = e.data as { type?: string; markdown?: unknown } | null;
-      if (d?.type === 'mde:change' && typeof d.markdown === 'string') { echoed.current = true; onChangeRef.current(d.markdown); }
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'mde:ready') { ready.current = true; push(); }
+      else if (d.type === 'mde:change' && typeof d.markdown === 'string') optsRef.current.onChange(d.markdown);
+      else if (d.type === 'mde:save' && typeof d.markdown === 'string') (optsRef.current.onSave ?? optsRef.current.onChange)(d.markdown);
       // 편집기 안의 [✕ 닫기] — 칸(또는 창)을 닫는다
-      else if (d?.type === 'mde:close') optsRef.current.onClose?.();
+      else if (d.type === 'mde:close') optsRef.current.onClose?.();
     };
     window.addEventListener('message', on);
     return () => window.removeEventListener('message', on);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame]);
-  const push = () => {
-    const w = frame.current?.contentWindow;
-    const o = optsRef.current;
-    if (!w || o.content === null) return;
-    w.postMessage({ type: 'mde:set', markdown: o.content }, window.location.origin);
-    if (o.rendered) w.postMessage({ type: 'mde:mode', mode: 'rendered' }, window.location.origin);
+  // 내용이 늦게 오면(편집기가 먼저 준비됨) 그때 넣는다
+  useEffect(() => { if (ready.current && opts.content !== null && pushed.current === null) push(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [opts.content]);
+  return {
+    /** iframe 새로 뜰 때 */
+    onLoad: () => { ready.current = false; pushed.current = null; },
+    /** 저장 성공 — 그 스냅샷으로 편집기의 '저장 안 됨' 을 지운다 */
+    ack: (markdown: string) => post({ type: 'mde:saved', markdown }),
+    fail: () => post({ type: 'mde:saved', ok: false }),
   };
-  // 편집기가 늦게 준비되면 한 번 더
-  const onLoad = () => {
-    echoed.current = false;
-    push();
-    window.setTimeout(() => { if (!echoed.current) push(); }, 1200);
-  };
-  return { onLoad };
 }
 
 export function MdEditorDock({ t, target, onBlocked }: { t: ThemeTokens; target: MdTarget; onBlocked?: () => void }) {
@@ -90,6 +106,7 @@ export function MdEditorDock({ t, target, onBlocked }: { t: ThemeTokens; target:
   const [err, setErr] = useState<string | null>(null);
   const [state, setState] = useState<MdSaveState | null>(null);
   const saver = useRef<ReturnType<typeof createMdAutosaver> | null>(null);
+  const frameApi = useRef<{ ack: (md: string) => void; fail: () => void } | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ x: number; w: number; total: number } | null>(null);
 
@@ -98,22 +115,25 @@ export function MdEditorDock({ t, target, onBlocked }: { t: ThemeTokens; target:
     loadMd(target).then((r) => {
       if (!alive) return;
       setLoaded(r);
-      saver.current = createMdAutosaver(target, setState, r);
+      saver.current = createMdAutosaver(target, (st, savedMd) => {
+        setState(st);
+        if (st === 'saved' && typeof savedMd === 'string') frameApi.current?.ack(savedMd);
+        else if (typeof st === 'object') frameApi.current?.fail();
+      }, r);
       if (r.readOnly) setState({ error: 'readonly' });
     }).catch((e: Error) => { if (alive) setErr(e.message || 'error'); });
     return () => { alive = false; void saver.current?.now(); };
   }, [target]);
 
-  const { onLoad } = useMdFrame(frame, {
-    content: loaded?.markdown ?? null, rendered: true,
+  const api = useMdFrame(frame, {
+    content: loaded?.markdown ?? null, name: target.name, rendered: true,
     onChange: (md) => { if (!loaded?.readOnly) saver.current?.change(md); },
+    // [EMM에 저장]·Ctrl+S — 바로 저장
+    onSave: (md) => { if (loaded?.readOnly) { frameApi.current?.fail(); return; } saver.current?.change(md); void saver.current?.now(); },
     onClose: () => void close(),
   });
-  // 내용을 받았을 때 iframe 이 이미 떠 있으면 바로 넣는다
-  useEffect(() => {
-    if (loaded && frame.current?.contentDocument?.readyState === 'complete') onLoad();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded]);
+  frameApi.current = api;
+  const onLoad = api.onLoad;
 
   const moveOut = async (mode: 'tab' | 'window') => {
     await saver.current?.now();
@@ -171,11 +191,13 @@ export function MdBroadcaster() {
         if (!tgt) { post({ type: 'md-fail', key, error: 'gone' }); return; }
         try {
           const r = await loadMd(tgt);
-          savers.set(key, createMdAutosaver(tgt, (state) => post({ type: 'md-state', key, state }), r));
+          savers.set(key, createMdAutosaver(tgt, (state, savedMd) => post({ type: 'md-state', key, state, ...(state === 'saved' && typeof savedMd === 'string' ? { markdown: savedMd } : {}) }), r));
           post({ type: 'md-load', key, markdown: r.markdown, readOnly: r.readOnly });
         } catch (er) { post({ type: 'md-fail', key, error: (er as Error).message || 'error' }); }
       } else if (m.type === 'md-change') {
-        savers.get(key)?.change(m.markdown);
+        const sv = savers.get(key);
+        sv?.change(m.markdown);
+        if (m.now) void sv?.now();
       } else if (m.type === 'md-dock') {
         const s = savers.get(key);
         if (s) { if (typeof m.markdown === 'string') s.change(m.markdown); await s.now(); }

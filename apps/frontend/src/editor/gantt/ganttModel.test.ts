@@ -17,7 +17,8 @@ const map = {
 } as never;
 
 const g = buildGanttRows(map);
-assert.deepEqual(g.rows.map((r) => r.id), ['root', 'a', 'a1', 'a2', 'b']);
+assert.deepEqual(g.rows.map((r) => r.id), ['root', 'a', 'a1', 'a2', 'a3', 'b', 'b1', 'c', 'c1']);
+assert.deepEqual(g.rows.filter((r) => r.dated).map((r) => r.id), ['a1', 'a2', 'b']);
 const byId = Object.fromEntries(g.rows.map((r) => [r.id, r]));
 assert.equal(byId.a.summary, true);
 assert.equal(byId.a.barStart, '2026-11-03');
@@ -27,13 +28,17 @@ assert.deepEqual(byId.a1.assignees, ['가', '나']);
 assert.equal(byId.a1.progress, 50);
 assert.equal(byId.a2.barStart, '2026-11-10');
 assert.equal(byId.b.barEnd, '2026-11-12');
-assert.equal(byId.b.hasChildren, false);
+assert.equal(byId.b.hasChildren, true);
+assert.equal(byId.a3.barStart, undefined);
+assert.equal(byId.c.summary, false);
+assert.equal(byId.b.branch, 1);
+assert.equal(byId.a2.branch, 0);
 assert.equal(byId.root.summary, true);
 assert.equal(byId.root.barEnd, '2026-11-12');
 assert.equal(g.min, '2026-11-03');
 assert.equal(g.max, '2026-11-12');
 assert.equal(dayStr(dayNum('2026-12-31') + 1), '2027-01-01');
-assert.deepEqual(buildGanttRows({ title: '', root: { id: 'root', text: 'x' }, branches: [] } as never).rows, []);
+assert.deepEqual(buildGanttRows({ title: '', root: { id: 'root', text: 'x' }, branches: [] } as never).rows.filter((r) => r.dated), []);
 // 끌기
 import { draggedDates, taskStatus, isMine } from './ganttModel';
 assert.deepEqual(draggedDates(byId.a1, 'move', 2), { start: '2026-11-05', end: '2026-11-09' });

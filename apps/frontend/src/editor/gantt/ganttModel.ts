@@ -18,16 +18,21 @@ export interface GanttRow {
   /** 이 노드에 적힌 일정 (YYYY-MM-DD) */
   start?: string;
   end?: string;
-  /** 그리는 막대 — 처음·끝(끝 포함). 요약 줄이면 하위 일정의 범위 */
-  barStart: string;
-  barEnd: string;
+  /** 그리는 막대 — 처음·끝(끝 포함). 요약 줄이면 하위 일정의 범위. 일정이 전혀 없는 줄이면 없다 */
+  barStart?: string;
+  barEnd?: string;
+  /** 자기 일정은 없고 아래에 일정이 있다 (요약 막대) */
   summary: boolean;
+  /** 이 노드에 일정이 적혀 있다 (📅) — 기본 보기는 이 줄만 보인다 */
+  dated: boolean;
+  /** 1레벨 가지 번호 (막대 색) */
+  branch: number;
   /** 노드에 시작일·끝일이 실제로 적혀 있나 — 끌어 옮길 때 없는 쪽은 만들지 않는다 */
   hasStart: boolean;
   hasEnd: boolean;
   progress?: number;
   assignees: string[];
-  /** 아래에 간트 줄이 있다 (접기 단추) */
+  /** 아래에 줄이 있다 (접기 단추) */
   hasChildren: boolean;
   parentId?: string;
 }
@@ -56,7 +61,8 @@ export function buildGanttRows(map: SampleMap): GanttData {
   const rows: (GanttRow | null)[] = [];
   let min: string | undefined;
   let max: string | undefined;
-  const walk = (n: MindNode, depth: number, parentId?: string): { s?: string; e?: string } => {
+  // ★ 모든 노드를 줄로 만든다 (2026-11-08) — 기본 보기는 일정 있는 줄만, [일정 없는 노드도 보기] 를 켜면 전부
+  const walk = (n: MindNode, depth: number, branch: number, parentId?: string): { s?: string; e?: string } => {
     const p = n.project;
     const hasStart = isValidDate(p?.start);
     const hasEnd = isValidDate(p?.end);
@@ -71,32 +77,33 @@ export function buildGanttRows(map: SampleMap): GanttData {
     let cs: string | undefined;
     let ce: string | undefined;
     let kids = 0;
-    for (const c of (n.children ?? []) as MindNode[]) {
+    ((n.children ?? []) as MindNode[]).forEach((c, k) => {
       const before = rows.length;
-      const r = walk(c, depth + 1, n.id);
+      const r = walk(c, depth + 1, depth === 0 ? k : branch, n.id);
       if (rows.length > before) kids++;
       if (r.s && (!cs || r.s < cs)) cs = r.s;
       if (r.e && (!ce || r.e > ce)) ce = r.e;
-    }
-    if (!s && !cs) { rows.splice(at, 1); return {}; }
-    const barStart = s ?? cs!;
-    const barEnd = e ?? ce!;
+    });
+    const barStart = s ?? cs;
+    const barEnd = e ?? ce;
     const prog = normalizeProgress(p?.progress);
     rows[at] = {
       id: n.id,
       text: plainTitle(n.text),
       depth,
       ...(s ? { start: s, end: e } : {}),
-      barStart, barEnd,
-      summary: !s,
+      ...(barStart && barEnd ? { barStart, barEnd } : {}),
+      summary: !s && !!cs,
+      dated: !!s,
+      branch,
       hasStart, hasEnd,
       ...(prog !== null ? { progress: prog } : {}),
       assignees: assigneeList(p).map((a) => a.name),
       hasChildren: kids > 0,
       ...(parentId ? { parentId } : {}),
     };
-    if (!min || barStart < min) min = barStart;
-    if (!max || barEnd > max) max = barEnd;
+    if (barStart && (!min || barStart < min)) min = barStart;
+    if (barEnd && (!max || barEnd > max)) max = barEnd;
     const lo = s && cs ? (s < cs ? s : cs) : s ?? cs;
     const hi = e && ce ? (e > ce ? e : ce) : e ?? ce;
     return { s: lo, e: hi };
@@ -122,7 +129,7 @@ export function buildGanttRows(map: SampleMap): GanttData {
   };
   for (const c of mapCenters(map)) {
     const root = { ...(c.root as MindNode), children: c.branches as MindNode[] };
-    walk(root, 0);
+    walk(root, 0, 0);
     collect(root, []);
   }
   return { rows: rows as GanttRow[], min, max, tasks };
@@ -142,6 +149,7 @@ export function weekday(n: number): number { return new Date(n * DAY).getUTCDay(
 
 /** 막대를 끌었을 때 바뀌는 날짜 — 'move' 통째로, 'start'·'end' 한쪽 끝. 날짜 수(delta)만큼 */
 export function draggedDates(r: Pick<GanttRow, 'barStart' | 'barEnd' | 'hasStart' | 'hasEnd'>, mode: 'move' | 'start' | 'end', delta: number): { start?: string; end?: string } {
+  if (!r.barStart || !r.barEnd) return {};
   const s = dayNum(r.barStart);
   const e = dayNum(r.barEnd);
   if (mode === 'move') {

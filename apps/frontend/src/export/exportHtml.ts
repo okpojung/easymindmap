@@ -3490,6 +3490,88 @@ const VIEWER_JS = String.raw`
     if (e.key === 'Escape' && document.body.classList.contains('mm-search-open')) setSearchOpen(false);
   });
 
+  // ── 맵 전체 첨부파일·하이퍼링크·MD 문서 목록 (2026-11-08 사용자 요청) ──
+  //   에디터의 첨부·링크·MD 목록과 같은 뜻. 줄을 누르면 그 항목을 열고,
+  //   [노드] 단추는 그 노드로 맵(또는 아웃라인)을 옮겨 강조한다.
+  var listsBtn = document.getElementById('mm-lists-btn');
+  var listsBody = document.getElementById('mm-lists-body');
+  var listsTabs = document.querySelector('#mm-lists .mm-lists-tabs');
+  var LIST_TAB = 'files';
+  var MD_RE = /\.(md|markdown)$/i;
+  function collectLists() {
+    var out = { files: [], links: [], md: [] };
+    var walk = function (n, path) {
+      var title = flattenText(String(n.text || '')).replace(/\s+/g, ' ').trim();
+      var p = path.concat([title]);
+      var where = p.join(' › ');
+      (n.attachments || []).forEach(function (a) {
+        (MD_RE.test(String(a.name || '')) ? out.md : out.files).push({ node: n, where: where, att: a });
+      });
+      (n.links || []).forEach(function (l) { out.links.push({ node: n, where: where, link: l }); });
+      (n.children || []).forEach(function (c) { walk(c, p); });
+    };
+    ROOTS().forEach(function (r) { if (r) walk(r, []); });
+    return out;
+  }
+  function liEl(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function renderLists() {
+    var L = collectLists();
+    listsTabs.textContent = '';
+    [['files', MML.listFiles, L.files.length], ['links', MML.listLinks, L.links.length], ['md', MML.listMd, L.md.length]].forEach(function (t) {
+      var b = liEl('button', LIST_TAB === t[0] ? 'on' : '', (t[1] || t[0]) + ' ' + t[2]);
+      b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('data-tab', t[0]);
+      b.setAttribute('aria-selected', LIST_TAB === t[0] ? 'true' : 'false');
+      b.addEventListener('click', function () { LIST_TAB = t[0]; renderLists(); });
+      listsTabs.appendChild(b);
+    });
+    listsBody.textContent = '';
+    var items = L[LIST_TAB];
+    if (!items.length) { listsBody.appendChild(liEl('div', 'mm-empty', MML.listEmpty || '—')); return; }
+    items.forEach(function (it) {
+      var row = liEl('div', 'mm-li'); row.setAttribute('data-testid', 'viewer-list-item');
+      var name, title, open = null, icon;
+      if (it.link) {
+        icon = '🔗'; name = it.link.label || it.link.url; title = it.link.url;
+        open = function () { window.open(it.link.url, '_blank', 'noopener'); };
+      } else {
+        var a = it.att;
+        icon = LIST_TAB === 'md' ? '📝' : (a.kind === 'audio' ? '🎵' : a.kind === 'video' ? '🎬' : a.kind === 'image' ? '🖼' : '📎');
+        name = a.name + (a.href ? (a.external ? ' ↗' : '') : ' ' + (MML.fileMissing || ''));
+        title = a.name; open = openAttachmentHref(a);
+      }
+      row.appendChild(liEl('span', 'ic', icon));
+      var tx = liEl('div', 'tx');
+      var nm = liEl('div', 'nm' + (open ? '' : ' missing'), name); nm.title = title || '';
+      tx.appendChild(nm); tx.appendChild(liEl('div', 'sub', it.where));
+      row.appendChild(tx);
+      var go = liEl('button', 'go', MML.listGoNode || '⌖'); go.type = 'button';
+      go.title = it.where;
+      go.addEventListener('click', function (e) { e.stopPropagation(); setListsOpen(false); focusNodeFromOutline(it.node.id); });
+      row.appendChild(go);
+      row.addEventListener('click', function () { if (open) open(); else focusNodeFromOutline(it.node.id); });
+      listsBody.appendChild(row);
+    });
+  }
+  function setListsOpen(on) {
+    document.body.classList.toggle('mm-lists-open', on);
+    listsBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    listsBtn.className = on ? 'icon active' : 'icon';
+    if (on) renderLists();
+  }
+  listsBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setListsOpen(!document.body.classList.contains('mm-lists-open'));
+  });
+  document.getElementById('mm-lists-close').addEventListener('click', function () { setListsOpen(false); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.body.classList.contains('mm-lists-open')) setListsOpen(false);
+  });
+  document.addEventListener('mousedown', function (e) {
+    if (!document.body.classList.contains('mm-lists-open')) return;
+    var box = document.getElementById('mm-lists');
+    if (!box.contains(e.target) && !listsBtn.contains(e.target)) setListsOpen(false);
+  });
+
   // ── 전체화면 모드 — 에디터 툴바와 동일 (F11식 토글, 아이콘·title 전환) ──
   var fsBtn = document.getElementById('mm-fullscreen');
   var FS_ENTER = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg>';
@@ -4197,6 +4279,43 @@ const VIEWER_CSS = `
   body.mm-dark #mm-search-results .hit.on { background: #3B2A0A; border-color: #8A6A24; }
   body.mm-dark #mm-search-results .hit .ttl { color: #D8D4CC; }
   body.mm-dark #mm-search-results .hit .sub { color: #8A8DA0; }
+  /* 맵 전체 첨부·링크·MD 목록 (2026-11-08) — 머리말 아래 오른쪽 패널 */
+  #mm-lists {
+    display: none; position: fixed; top: 52px; right: 12px; z-index: 70;
+    width: 380px; max-width: calc(100vw - 24px); max-height: min(70vh, calc(100vh - 70px));
+    flex-direction: column; background: #FFFDF8; border: 1px solid #D8CBB2; border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(80, 60, 20, 0.18); color: #3F3428;
+  }
+  body.mm-lists-open #mm-lists { display: flex; }
+  #mm-lists .mm-lists-head { display: flex; align-items: center; gap: 4px; padding: 8px 8px 6px; border-bottom: 1px solid #EDE3D0; }
+  #mm-lists .mm-lists-tabs { display: flex; gap: 4px; flex: 1; min-width: 0; flex-wrap: wrap; }
+  #mm-lists .mm-lists-tabs button {
+    border: 1px solid #E2D6BF; background: #F6F0E4; color: #6B6358; border-radius: 7px;
+    padding: 4px 9px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
+  #mm-lists .mm-lists-tabs button.on { background: #FDF0D5; border-color: #D8B25E; color: #8A5A00; }
+  #mm-lists-close { border: none; background: none; font-size: 14px; cursor: pointer; color: #958A78; padding: 4px 6px; }
+  #mm-lists-body { overflow: auto; padding: 6px; flex: 1; min-height: 60px; }
+  #mm-lists .mm-li { display: flex; align-items: flex-start; gap: 6px; padding: 7px 8px; border-radius: 7px; cursor: pointer; border: 1px solid transparent; }
+  #mm-lists .mm-li:hover { background: #F3ECDD; }
+  #mm-lists .mm-li .ic { flex-shrink: 0; width: 18px; text-align: center; }
+  #mm-lists .mm-li .tx { flex: 1; min-width: 0; }
+  #mm-lists .mm-li .nm { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #mm-lists .mm-li .nm.missing { color: #A8A090; }
+  #mm-lists .mm-li .sub { font-size: 11px; color: #958A78; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+  #mm-lists .mm-li .go {
+    flex-shrink: 0; border: 1px solid #E2D6BF; background: #FFFDF8; color: #6B6358; border-radius: 6px;
+    font-size: 11px; padding: 2px 6px; cursor: pointer; font-family: inherit;
+  }
+  #mm-lists .mm-li .go:hover { border-color: #D8B25E; color: #8A5A00; }
+  #mm-lists .mm-empty { font-size: 12.5px; color: #958A78; padding: 14px 8px; text-align: center; }
+  body.mm-dark #mm-lists { background: #20242B; border-color: #3A3E47; color: #D8D4CC; }
+  body.mm-dark #mm-lists .mm-lists-head { border-color: #3A3E47; }
+  body.mm-dark #mm-lists .mm-lists-tabs button { background: #262A31; border-color: #3A3E47; color: #A8ACB8; }
+  body.mm-dark #mm-lists .mm-lists-tabs button.on { background: #3B2A0A; border-color: #8A6A24; color: #F0C870; }
+  body.mm-dark #mm-lists .mm-li:hover { background: #262A31; }
+  body.mm-dark #mm-lists .mm-li .go { background: #20242B; border-color: #3A3E47; color: #A8ACB8; }
+  @media (max-width: 640px) { #mm-lists { top: 96px; left: 8px; right: 8px; width: auto; max-width: none; } }
   /* 커스텀 툴팁 — 커서가 설명을 가리지 않게 요소 "위쪽"에 표시 */
   #mm-tip {
     position: fixed; z-index: 99999; pointer-events: none; display: none;
@@ -4542,6 +4661,7 @@ const VIEWER_STRING_KEYS = [
   'fsExit', 'fsEnter', 'centerOff', 'centerOn', 'toLight', 'toDark', 'viewNote',
   'splitClose', 'splitOpen', 'splitBusy', 'toMap', 'toOutline',
   'searchOpen', 'searchClose',
+  'listsOpen', 'listsClose', 'listFiles', 'listLinks', 'listMd', 'listEmpty', 'listGoNode',
 ] as const;
 
 function viewerStrings(): Record<string, string> {
@@ -4745,6 +4865,7 @@ export function buildStandaloneHtml(
   <button id="mm-minimap-btn" class="icon" title="${A('minimap')}">▦</button>
   <button id="mm-expand" class="icon" title="${A('expandAll')}" aria-label="${A('expandAll')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>
   <button id="mm-collapse" class="icon" title="${A('collapseAll')}" aria-label="${A('collapseAll')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>
+  <button id="mm-lists-btn" class="icon" title="${A('listsOpen')}" aria-label="${A('listsOpen')}" aria-expanded="false" data-testid="viewer-lists-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
   <button id="mm-outline-split" class="icon" title="${A('splitOpen')}">◫</button>
   <button id="mm-view-toggle" class="icon" title="${A('toOutline')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg></button>
   <button id="mm-fullscreen" class="icon" title="${A('fsEnter')}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>
@@ -4756,6 +4877,10 @@ export function buildStandaloneHtml(
 <div id="mm-main">
   <div id="mm-outline"><div id="mm-outline-body"></div></div>
   <svg id="mm-svg"><g id="mm-world"></g></svg>
+</div>
+<div id="mm-lists" role="dialog" aria-label="${A('listsOpen')}" data-testid="viewer-lists">
+  <div class="mm-lists-head"><span class="mm-lists-tabs" role="tablist"></span><button id="mm-lists-close" type="button" title="${A('listsClose')}" aria-label="${A('listsClose')}">✕</button></div>
+  <div id="mm-lists-body"></div>
 </div>
 <div id="mm-note">
   <button id="mm-note-close">✕</button>

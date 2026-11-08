@@ -149,13 +149,40 @@ export function TableGridPicker({
   // 손가락이면 칸을 크게 — 16px 칸은 손끝으로 고를 수 없다 (모바일 웹, 2026-10-05)
   const CELL = coarse ? 24 : 16;
   const pick = (r: number, c: number) => onPick(Math.max(TABLE_MIN_ROWS, r), Math.max(TABLE_MIN_COLS, c));
+  // ★ 화면 맨 위 층(document.body)에 띄운다 (2026-11-08 사용자 보고: 노트 탭의 +표 격자가 좁은 왼쪽 패널에 잘려
+  //   왼쪽 칸들이 안 보였고, 보이는 칸을 3×3 으로 알고 눌러도 실제로는 더 큰 표가 들어갔다).
+  //   붙는 자리(단추 아래)는 그대로 계산하되, 화면 밖으로 나가면 화면 안으로 민다.
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const place = () => {
+      const a = anchorRef.current?.getBoundingClientRect();
+      const box = rootRef.current;
+      if (!a || !box) return;
+      const w = box.offsetWidth;
+      const h = box.offsetHeight;
+      let left = anchor === 'right' ? a.right - w : a.left;
+      left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+      let topPx = a.top;
+      if (topPx + h > window.innerHeight - 8) topPx = Math.max(8, window.innerHeight - h - 8);
+      setPos({ left, top: topPx });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
+  }, [anchor, top]);
   return (
+    <>
+    <span ref={anchorRef} aria-hidden="true" style={{ position: 'absolute', top, ...(anchor === 'right' ? { right: 0 } : { left: 0 }), width: 0, height: 0 }} />
+    {createPortal(
     <div
       ref={rootRef}
       data-testid="table-grid-picker"
       onMouseDown={(e) => e.preventDefault()}
       style={{
-        position: 'absolute', top, ...(anchor === 'right' ? { right: 0 } : { left: 0 }), zIndex: 5,
+        position: 'fixed', left: pos?.left ?? -9999, top: pos?.top ?? -9999, zIndex: 1000,
+        visibility: pos ? 'visible' : 'hidden',
         background: t.surface, border: `1.5px solid ${t.border}`, borderRadius: 9,
         padding: 8, boxShadow: '0 6px 18px rgba(60,45,15,0.28)',
         display: 'flex', flexDirection: 'column', gap: 6, whiteSpace: 'nowrap',
@@ -194,7 +221,10 @@ export function TableGridPicker({
           );
         })}
       </div>
-    </div>
+    </div>,
+    document.body,
+    )}
+    </>
   );
 }
 

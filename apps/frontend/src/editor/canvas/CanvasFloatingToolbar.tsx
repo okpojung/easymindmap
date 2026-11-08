@@ -2,7 +2,7 @@
 // (1) Node-scoped actions  (2) View controls
 // Spec: docs/03-editor-core/canvas/10-canvas.md § 21.2
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import { findNodeInMap, findParentId, getNodeDepth, isCenterRootId, useDocumentStore } from '@/stores/documentStore';
@@ -32,6 +32,9 @@ interface Props {
    */
   kanban?: boolean;
 }
+
+/** 이보다 좁은 맵 칸에서는 도구막대를 축약형(＋·휴지통·이동·맞추기·⋯)으로 접는다 */
+const NARROW_CANVAS_PX = 860;
 
 export function CanvasFloatingToolbar({
   t, hasSelection, focusActive, onFitView, onFocusSelected, kanban,
@@ -116,7 +119,22 @@ export function CanvasFloatingToolbar({
   }, [linkOpen]);
   // 폰 폭 — 자주 쓰는 단추 몇 개 + [더 보기] 메뉴로 접는다 (모바일 웹, 2026-10-05).
   // 390px 에 단추 13개(손가락 40px)를 한 줄로 두면 왼쪽으로 넘쳐 잘렸다.
-  const compact = usePhoneLayout();
+  const phone = usePhoneLayout();
+  // 맵 칸이 좁을 때(아웃라인 분할 보기·좁은 창)도 같은 축약형으로 접는다 (2026-11-08 사용자 보고:
+  // 긴 도구막대가 맵 위쪽을 덮어 중심주제의 문단노트 표시(T)를 누를 수 없었다).
+  // 기준은 브라우저가 아니라 **이 도구막대가 놓인 칸의 폭**이다.
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    const host = barRef.current?.parentElement;
+    if (!host || typeof ResizeObserver === 'undefined') return;
+    const read = () => setNarrow(host.clientWidth > 0 && host.clientWidth < NARROW_CANVAS_PX);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, []);
+  const compact = phone || narrow;
   const coarse = useCoarse();
   const [moreOpen, setMoreOpen] = useState(false);
   // 노드를 길게 누르면 캔버스가 요청한다 → 메뉴를 펼친다 (처음 값은 무시)
@@ -125,8 +143,8 @@ export function CanvasFloatingToolbar({
   useEffect(() => {
     if (nodeMenuSeq === seenMenuSeq) return;
     setSeenMenuSeq(nodeMenuSeq);
-    if (compact && !kanban) setMoreOpen(true);
-  }, [nodeMenuSeq, seenMenuSeq, compact, kanban]);
+    if (phone && !kanban) setMoreOpen(true);
+  }, [nodeMenuSeq, seenMenuSeq, phone, kanban]);
   useEffect(() => {
     if (!moreOpen) return;
     const onDown = (e: PointerEvent) => {
@@ -364,6 +382,7 @@ export function CanvasFloatingToolbar({
     ];
     return (
       <div
+        ref={barRef}
         data-testid="m-canvas-toolbar"
         style={{
           position: 'absolute', top: 8, right: 8, zIndex: 5,
@@ -448,7 +467,7 @@ export function CanvasFloatingToolbar({
                 </div>
               );
             })}
-            {!kanban && (
+            {!kanban && phone && (
               <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.45, padding: '6px 6px 0', borderTop: `1px solid ${t.divider}`, marginTop: 4 }}>
                 {tr('editor.toolbar.m.touchHint')}
               </div>
@@ -460,7 +479,7 @@ export function CanvasFloatingToolbar({
   }
 
   return (
-    <div style={{
+    <div ref={barRef} data-testid="canvas-toolbar" style={{
       position: 'absolute', top: 14, right: 14, zIndex: 5,
       display: 'flex', alignItems: 'center', gap: 4,
       // 좁은 창(태블릿 세로 등)에서는 왼쪽으로 넘치지 않고 줄을 바꾼다

@@ -72,7 +72,7 @@ export interface NodeBodyBlock {
   lines?: string[]; // check(정규화된 "- [x] …" 줄) / plain
 }
 
-const NODE_TABLE_SEP_RE = /^[\s|:\-]+$/;
+const NODE_TABLE_SEP_RE = /^(?=[^-]*-)[\s|:\-]+$/;
 // 구분선 행 → 열별 정렬 셀 (`---` · `:---` · `:---:` · `---:`) — 콜론이 없으면 ''
 function sepAligns(sepLine: string, cols: number): string[] {
   const cells = nodeRowCells(sepLine);

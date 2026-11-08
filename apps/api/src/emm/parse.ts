@@ -99,7 +99,7 @@ function attachmentKindOf(name: string): AttachmentKind {
 const MD_LINK_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 // 표 구분선 행 — | --- | :--: | 등
-const TABLE_SEP_RE = /^[\s|:\-]+$/;
+const TABLE_SEP_RE = /^(?=[^-]*-)[\s|:\-]+$/;
 
 // 파이프 행 → 셀. GFM 대로 `\\|` 는 열 구분이 아니라 셀 안의 `|` 이며, 원문
 // 그대로(`\\|`) 남긴다 — 앱의 표 파서가 표시할 때 `|` 로 되돌린다 (2026-09-17)

@@ -204,7 +204,7 @@ function NoteBlockView({ t, block, fs, family, onToggleCheck, onEditTable, onEdi
     // 인라인 마커(**굵게** 등)·링크는 서식으로 렌더링 — 마커 문자 숨김.
     // 셀 안 `<br>` 은 줄바꿈이다 (2026-10-15, 맵·뷰어와 같은 규칙).
     const rows = String(block.text || '').split('\n')
-      .filter((r) => r.trim() && !/^[\s|:\-]+$/.test(r))
+      .filter((r) => r.trim() && !/^(?=[^-]*-)[\s|:\-]+$/.test(r))
       .map((r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, ''));
     return (
       // paddingTop = 표 바깥 위 복사(⧉) 스트립 — 머리글과 겹치지 않음

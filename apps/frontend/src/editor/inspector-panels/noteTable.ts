@@ -11,7 +11,8 @@
 import { buildMdTable } from '@/editor/node-renderer/TableDialog';
 import { parseMdTable, splitPipeCells } from '@/editor/node-renderer/mdTable';
 
-const SEP_RE = /^[\s|:\-]+$/;
+// 구분선 행 — `-` 가 하나라도 있어야 한다(`|  |  |` 같은 빈 행은 구분선이 아니다, 2026-11-08)
+const SEP_RE = /^(?=[^-]*-)[\s|:\-]+$/;
 
 /** 팝업이 돌려준 GFM 표 → 노트 표 블록 원문 */
 export function noteTableFromMd(md: string): string {
@@ -19,9 +20,14 @@ export function noteTableFromMd(md: string): string {
   for (const raw of String(md ?? '').split('\n')) {
     const line = raw.trim();
     if (!line || !line.includes('|')) continue;
-    // 구분선: 정렬 콜론이 있을 때만 남긴다 (없으면 순수 장식)
-    if (SEP_RE.test(line) && !line.includes(':')) continue;
-    out.push(splitPipeCells(line, { keepEscape: true }).join(' | '));
+    // 구분선: 정렬 콜론이 있을 때만 남긴다 (없으면 순수 장식).
+    // ★ `-` 가 있어야 구분선이다 — `|  |  |` 같은 **빈 행**까지 구분선으로 보고 버려서, 3×3 표를 넣어도
+    //   머리글 한 줄만 남았다 (2026-11-08 사용자 보고).
+    const isSep = SEP_RE.test(line);
+    if (isSep && !line.includes(':')) continue;
+    const cells = splitPipeCells(line, { keepEscape: true });
+    // 칸이 모두 빈 행은 바깥 파이프까지 쓴다 — 2열 빈 행이 ` | ` 한 글자로 줄어 표 행으로 안 읽히던 것을 막는다
+    out.push(cells.every((c) => c === '') ? `| ${cells.join(' | ')} |` : cells.join(' | '));
   }
   return out.join('\n');
 }

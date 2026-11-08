@@ -69,7 +69,7 @@ export async function copyTable(headers: string[], rows: string[][]): Promise<bo
 // 노트 표 블록(원문이 파이프 줄)의 복사에 사용
 export function pipeTextToTable(text: string): { headers: string[]; rows: string[][] } | null {
   const lines = String(text || '').split('\n')
-    .filter((r) => r.trim() && !/^[\s|:\-]+$/.test(r))
+    .filter((r) => r.trim() && !/^(?=[^-]*-)[\s|:\-]+$/.test(r))
     .map((r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, ''));
   if (!lines.length) return null;
   const cells = (r: string) => splitPipeCells(r); // GFM `\\|` 이스케이프 존중

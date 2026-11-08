@@ -613,7 +613,7 @@ const VIEWER_JS = String.raw`
       if (inFence) continue;
       var t2 = ln.replace(/^\s+|\s+$/g, '');
       if (t2.length > 1 && t2.indexOf('|') >= 0 && t2.split('|').length >= 2) {
-        if (!/^[\s|:\-]+$/.test(t2) && !tableChip) { out.push(MML.chipTable); tableChip = true; }
+        if (!/^(?=[^-]*-)[\s|:\-]+$/.test(t2) && !tableChip) { out.push(MML.chipTable); tableChip = true; }
         continue;
       }
       var m3 = /^[ \t]*[-*+][ \t]+\[([ xX])\][ \t]?(.*)$/.exec(ln);
@@ -2788,7 +2788,7 @@ const VIEWER_JS = String.raw`
       var tblData = [];
       for (var r = 0; r < rows.length; r++) {
         if (!rows[r].trim()) continue;
-        if (/^[\s|:\-]+$/.test(rows[r])) continue; // 구분선 행 제외
+        if (/^(?=[^-]*-)[\s|:\-]+$/.test(rows[r])) continue; // 구분선 행 제외
         var tr = document.createElement('tr');
         var cells = splitPipeCells(rows[r]); // GFM '\|' 이스케이프 존중
         var rowCells = [];

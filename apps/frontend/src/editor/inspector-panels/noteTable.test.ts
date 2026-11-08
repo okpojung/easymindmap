@@ -48,5 +48,13 @@ check('⑥ 모자란 셀은 빈 칸', noteTableCells('a | b | c\n1 | 2')?.rows, 
   check('⑦ 왕복: 블록 → 팝업 MD → 블록 동일', noteTableFromMd(noteTableToMd(blk)!), blk);
 }
 
+// ⑧ 빈 행은 구분선이 아니다 — 3×3 빈 표가 머리글 한 줄로 줄던 문제 (2026-11-08)
+{
+  const blk = noteTableFromMd('| 열1 | 열2 | 열3 |\n|---|---|---|\n|  |  |  |\n|  |  |  |');
+  check('⑧ 빈 행 두 줄이 남는다', noteTableCells(blk)?.rows.length, 2);
+  check('⑧ 열 수 그대로', noteTableCells(blk)?.headers.length, 3);
+  check('⑧ 정렬 구분선은 여전히 정렬로', noteTableCells(noteTableFromMd('| a | b |\n|:---|---:|\n|  |  |'))?.aligns, ['left', 'right']);
+}
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 if (failed) process.exit(1);

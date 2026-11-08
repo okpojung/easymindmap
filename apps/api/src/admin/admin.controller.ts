@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
 import { AuthGuard } from '../common/auth/auth.guard';
 import { CurrentUser, type AuthUser } from '../common/auth/current-user.decorator';
 import { DatabaseService } from '../database/database.service';
@@ -34,6 +34,10 @@ class CodeLanguagesDto {
 class SetPlanDto {
   @IsIn(PLANS as unknown as string[], { message: '요금제 값이 올바르지 않습니다.' })
   plan!: string;
+}
+class DeleteUserDto {
+  @IsString() @MaxLength(320) confirm!: string;
+  @IsOptional() @IsBoolean() includeCollab?: boolean;
 }
 class ListQuery {
   @IsOptional() @IsString() @MaxLength(100) q?: string;
@@ -186,6 +190,27 @@ export class AdminController {
     @Req() req: Request & { admin?: AdminUser },
   ) {
     return this.admin.setPlan(id, dto.plan, req.admin?.email ?? '?');
+  }
+
+  /** 회원삭제 전 미리보기 — 맵·첨부·협업맵 (2026-11-08) */
+  @Get('users/:id/delete-preview')
+  @UseGuards(AdminGuard)
+  deleteUserPreview(@Param('id') id: string, @Req() req: Request & { admin?: AdminUser }) {
+    return this.admin.deleteUserPreview(id, req.admin?.email ?? '');
+  }
+
+  /**
+   * 회원삭제 — 회원탈퇴와 같은 처리(맵·첨부 파일·로그인 계정). 되돌릴 수 없다.
+   * body.confirm 은 그 계정의 이메일(없으면 id)과 같아야 한다.
+   */
+  @Delete('users/:id')
+  @UseGuards(AdminGuard)
+  deleteUser(
+    @Param('id') id: string,
+    @Body() dto: DeleteUserDto,
+    @Req() req: Request & { admin?: AdminUser },
+  ) {
+    return this.admin.deleteUser(id, dto.confirm, dto.includeCollab === true, req.admin?.email ?? '?');
   }
 
   /**

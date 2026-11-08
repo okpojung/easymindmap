@@ -114,6 +114,17 @@ export interface AdminUserRow {
   bannedUntil: string | null;
 }
 
+/** 회원삭제 미리보기 — 무엇이 함께 사라지는지 */
+export interface AdminDeletePreview {
+  id: string; email: string | null; fullName: string | null;
+  maps: number; attachments: number; usedBytes: number;
+  collabMaps: { mapId: string; title: string; memberCount: number | null }[];
+  memberTotal: number | null;
+  confirmValue: string;
+  /** 관리자·본인 계정 — 삭제할 수 없다 */
+  protected: boolean;
+}
+
 export interface SettingItem {
   key: string; label: string; value: string | number; unit?: string;
   source: 'env' | 'db' | 'code'; where: string; note?: string;
@@ -164,6 +175,12 @@ export const adminApi = {
     req<{ users: AdminUserRow[]; loginHistoryAvailable: boolean }>('GET', `/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   /** 한 회원의 로그인 이력 (관리자) */
   userLogins: (id: string) => req<LoginHistory>('GET', `/admin/users/${id}/logins`),
+  /** 회원삭제 전 미리보기 (2026-11-08) */
+  deletePreview: (id: string) => req<AdminDeletePreview>('GET', `/admin/users/${id}/delete-preview`),
+  /** 회원삭제 — 회원탈퇴와 같은 처리. confirm 은 그 계정의 이메일(없으면 id) */
+  deleteUser: (id: string, confirm: string, includeCollab: boolean) =>
+    req<{ deleted: true; maps: number; attachments: number; loginAccountRemoved: boolean; email: string | null }>(
+      'DELETE', `/admin/users/${id}`, { confirm, includeCollab }),
   setPlan: (id: string, plan: string) =>
     req<{ plan: string; quotaBytes: number; email: string | null }>(
       'PATCH', `/admin/users/${id}/plan`, { plan }),

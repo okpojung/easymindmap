@@ -425,6 +425,59 @@ export class AdminService {
     }
   }
 
+  // ── 회원삭제 (2026-11-08 사용자 요청) ────────────────────────
+  //
+  // 회원탈퇴와 **같은 길**(AccountService.deleteAccount)로 지운다 — 맵·첨부
+  // 파일·로그인 계정(GoTrue)·묘비까지 한 번에. 따로 DELETE 문을 쓰면 첨부
+  // 파일이나 로그인 계정이 남는다.
+  //
+  // 막는 것: 관리자 계정(ADMIN_EMAILS)·자기 자신, 이메일(없으면 id) 불일치.
+  // 협업맵 개설자는 includeCollab 을 고르지 않으면 409 로 목록을 돌려준다.
+
+  private static readonly UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  private async userIdentity(userId: string) {
+    if (!AdminService.UUID.test(userId)) throw new BadRequestException('계정 id 형식이 올바르지 않습니다.');
+    const { rows } = await this.db.query<{ email: string | null; full_name: string | null }>(
+      `SELECT a.email, u.full_name FROM public.users u
+         LEFT JOIN auth.users a ON a.id = u.id WHERE u.id = $1`,
+      [userId],
+    );
+    if (rows.length === 0) throw new NotFoundException('그 계정을 찾을 수 없습니다.');
+    return { email: rows[0].email, fullName: rows[0].full_name };
+  }
+
+  /** 지우기 전에 무엇이 사라지는지 — 맵·첨부·협업맵(참여자 수) */
+  async deleteUserPreview(userId: string, byEmail: string) {
+    const who = await this.userIdentity(userId);
+    const p = await this.account.deletePreview(userId);
+    const isAdmin = this.isAdminEmail(who.email);
+    const isSelf = !!who.email && who.email.trim().toLowerCase() === byEmail.trim().toLowerCase();
+    return {
+      id: userId, email: who.email, fullName: who.fullName,
+      maps: p.maps, attachments: p.attachments, usedBytes: p.usedBytes,
+      collabMaps: p.collabMaps, memberTotal: p.memberTotal,
+      /** 확인칸에 넣어야 하는 값 — 이메일, 없으면 id */
+      confirmValue: who.email ?? userId,
+      protected: isAdmin || isSelf,
+    };
+  }
+
+  async deleteUser(userId: string, confirmRaw: string, includeCollab: boolean, byEmail: string) {
+    const who = await this.userIdentity(userId);
+    if (this.isAdminEmail(who.email)) throw new ForbiddenException('관리자 계정은 회원관리에서 삭제할 수 없습니다.');
+    if (who.email && who.email.trim().toLowerCase() === byEmail.trim().toLowerCase()) {
+      throw new ForbiddenException('자기 계정은 여기서 삭제할 수 없습니다.');
+    }
+    const expected = (who.email ?? userId).trim().toLowerCase();
+    if (String(confirmRaw ?? '').trim().toLowerCase() !== expected) {
+      throw new BadRequestException('확인값이 그 계정의 이메일(또는 id)과 다릅니다.');
+    }
+    const r = await this.account.deleteAccount(userId, '', { by: byEmail, includeCollab });
+    this.log.log(`회원삭제: ${who.email ?? userId} (관리자 ${byEmail}) — 맵 ${r.maps} · 첨부 ${r.attachments}`);
+    return { ...r, id: userId, email: who.email };
+  }
+
   /** 요금제 변경 — quota_bytes 는 users_sync_quota 트리거가 따라온다 */
   async setPlan(userId: string, plan: string, byEmail: string) {
     if (!(PLANS as readonly string[]).includes(plan)) {

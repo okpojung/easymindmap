@@ -12,7 +12,7 @@
 
 import { Fragment, useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { adminApi, type AdminUserRow } from '@/services/cloud/adminApi';
+import { adminApi, type AdminDeletePreview, type AdminUserRow } from '@/services/cloud/adminApi';
 import { LoginHistoryList, type LoginHistory } from '@/components/auth/LoginHistoryList';
 import { CloudError } from '@/services/cloud/apiClient';
 
@@ -55,6 +55,11 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
    */
   const [histFor, setHistFor] = useState<string | null>(null);
   const [hist, setHist] = useState<LoginHistory | null>(null);
+  /** 회원삭제 (2026-11-08) — 고른 회원 id */
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [delOpen, setDelOpen] = useState<AdminUserRow[] | null>(null);
+  const toggleSel = (id: string) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const selectNameless = () => setSel(new Set((rows ?? []).filter((u) => !(u.fullName ?? '').trim()).map((u) => u.id)));
 
   const toggleHistory = (u: AdminUserRow) => {
     if (histFor === u.id) { setHistFor(null); return; }
@@ -141,6 +146,18 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
         >새로고침</button>
       </div>
 
+      {/* 회원삭제 (2026-11-08) — 고른 뒤 한 번에 지운다 */}
+      <div data-testid="admin-select-bar" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        <button data-testid="admin-select-nameless" onClick={selectNameless} style={smallBtn(t)}>성명 없는 회원 선택</button>
+        <button data-testid="admin-select-clear" onClick={() => setSel(new Set())} disabled={sel.size === 0} style={smallBtn(t)}>선택 해제</button>
+        <span style={{ fontSize: 12, color: t.textMuted }}>{sel.size}명 선택</span>
+        <button
+          data-testid="admin-delete-selected" disabled={sel.size === 0}
+          onClick={() => setDelOpen((rows ?? []).filter((u) => sel.has(u.id)))}
+          style={{ ...smallBtn(t), marginLeft: 'auto', color: sel.size ? '#fff' : t.textSubtle, background: sel.size ? t.danger : t.surfaceAlt, border: `1px solid ${sel.size ? t.danger : t.border}` }}
+        >선택한 회원 삭제{sel.size ? ` (${sel.size})` : ''}</button>
+      </div>
+
       {flash && (
         <div data-testid="admin-flash" style={{
           marginBottom: 10, padding: '8px 10px', borderRadius: 7, fontSize: 12.5,
@@ -160,6 +177,11 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', background: t.surface }}>
           <thead>
             <tr>
+              <th style={{ ...th, width: 28 }}>
+                <input type="checkbox" data-testid="admin-select-all" aria-label="모두 선택"
+                  checked={!!rows?.length && rows.every((u) => sel.has(u.id))}
+                  onChange={(e) => setSel(e.target.checked ? new Set((rows ?? []).map((u) => u.id)) : new Set())} />
+              </th>
               <th style={th}>이메일</th>
               <th style={th}>성명</th>
               <th style={th}>요금제</th>
@@ -175,15 +197,19 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
           </thead>
           <tbody>
             {rows === null && (
-              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={11}>불러오는 중…</td></tr>
+              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={12}>불러오는 중…</td></tr>
             )}
             {rows?.length === 0 && (
-              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={11}>해당하는 회원이 없습니다.</td></tr>
+              <tr><td style={{ ...td, color: t.textSubtle }} colSpan={12}>해당하는 회원이 없습니다.</td></tr>
             )}
             {rows?.map((u) => (
               // 한 회원이 두 줄(본문 + 펼친 이력)이 될 수 있어 묶는다
               <Fragment key={u.id}>
-              <tr data-testid="admin-user-row" data-email={u.email ?? ''}>
+              <tr data-testid="admin-user-row" data-email={u.email ?? ''} style={sel.has(u.id) ? { background: t.primarySoft } : undefined}>
+                <td style={td}>
+                  <input type="checkbox" data-testid="admin-user-select" aria-label={`${u.email ?? u.id} 선택`}
+                    checked={sel.has(u.id)} onChange={() => toggleSel(u.id)} />
+                </td>
                 <td style={td}>
                   {u.email ?? <span style={{ color: t.textSubtle }}>(이메일 없음)</span>}
                   {!u.emailVerifiedAt && (
@@ -254,7 +280,7 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
               </tr>
               {histFor === u.id && (
                 <tr data-testid="admin-history-panel">
-                  <td colSpan={11} style={{ padding: '10px 12px', background: t.surfaceAlt }}>
+                  <td colSpan={12} style={{ padding: '10px 12px', background: t.surfaceAlt }}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
                       {u.email ?? u.id} 의 로그인 이력
                     </div>
@@ -267,6 +293,16 @@ export function MembersPanel({ t }: { t: ThemeTokens }) {
           </tbody>
         </table>
       </div>
+
+      {delOpen && (
+        <DeleteMembersDialog
+          t={t} users={delOpen}
+          onClose={(changed) => {
+            setDelOpen(null);
+            if (changed) { setSel(new Set()); load(); }
+          }}
+        />
+      )}
 
       {!loginOk && (
         <div data-testid="admin-login-unavailable" style={{
@@ -302,6 +338,157 @@ function Card({ t, label, value, sub }: {
       <div style={{ fontSize: 10.5, color: t.textMuted, marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 800 }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 2 }}>첨부 {sub}</div>}
+    </div>
+  );
+}
+
+function smallBtn(t: ThemeTokens) {
+  return {
+    height: 30, padding: '0 12px', borderRadius: 7, cursor: 'pointer',
+    border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text,
+    fontSize: 12, fontWeight: 700,
+  } as const;
+}
+
+type DelItem = {
+  u: AdminUserRow;
+  preview: AdminDeletePreview | null;
+  error?: string;
+  status?: 'ok' | 'fail' | 'skip' | 'running';
+  note?: string;
+};
+
+/**
+ * 회원삭제 대화상자 (2026-11-08 사용자 요청).
+ * 고른 회원마다 **무엇이 함께 사라지는지**(맵·첨부·협업맵) 먼저 보여 주고,
+ * '삭제' 를 입력해야 실행한다. 한 명씩 차례로 지우고 결과를 줄마다 남긴다.
+ * 서버는 회원탈퇴와 같은 처리(맵·첨부 파일·로그인 계정)를 한다 — 되돌릴 수 없다.
+ */
+function DeleteMembersDialog({ t, users, onClose }: {
+  t: ThemeTokens; users: AdminUserRow[]; onClose: (changed: boolean) => void;
+}) {
+  const [items, setItems] = useState<DelItem[]>(() => users.map((u) => ({ u, preview: null })));
+  const [includeCollab, setIncludeCollab] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'running' | 'done'>('loading');
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all(users.map((u) => adminApi.deletePreview(u.id)
+      .then((p) => ({ u, preview: p }) as DelItem)
+      .catch((e: unknown) => ({ u, preview: null, error: e instanceof CloudError ? e.message : '미리보기를 불러오지 못했습니다.' }) as DelItem)))
+      .then((list) => { if (alive) { setItems(list); setPhase('ready'); } });
+    return () => { alive = false; };
+  }, [users]);
+
+  const ok = items.filter((i) => i.preview && !i.preview.protected);
+  const prot = items.filter((i) => i.preview?.protected);
+  const withCollab = ok.filter((i) => (i.preview?.collabMaps.length ?? 0) > 0);
+  const deletable = ok.filter((i) => includeCollab || (i.preview?.collabMaps.length ?? 0) === 0);
+  const totMaps = deletable.reduce((a, i) => a + (i.preview?.maps ?? 0), 0);
+  const totAtt = deletable.reduce((a, i) => a + (i.preview?.attachments ?? 0), 0);
+  const canRun = phase === 'ready' && typed.trim() === '삭제' && deletable.length > 0;
+
+  const run = async () => {
+    setPhase('running');
+    for (const it of items) {
+      const p = it.preview;
+      const skip = !p ? '미리보기 실패' : p.protected ? '관리자·본인 계정' : (!includeCollab && p.collabMaps.length > 0) ? '협업맵 개설자' : null;
+      if (skip) { setItems((prev) => prev.map((x) => x.u.id === it.u.id ? { ...x, status: 'skip', note: skip } : x)); continue; }
+      setItems((prev) => prev.map((x) => x.u.id === it.u.id ? { ...x, status: 'running' } : x));
+      try {
+        const r = await adminApi.deleteUser(it.u.id, p!.confirmValue, includeCollab);
+        const note = `맵 ${r.maps} · 첨부 ${r.attachments}${r.loginAccountRemoved ? '' : ' · 로그인 계정은 남음(재가입 막힘)'}`;
+        setItems((prev) => prev.map((x) => x.u.id === it.u.id ? { ...x, status: 'ok', note } : x));
+      } catch (e) {
+        const note = e instanceof CloudError ? e.message : '삭제하지 못했습니다.';
+        setItems((prev) => prev.map((x) => x.u.id === it.u.id ? { ...x, status: 'fail', note } : x));
+      }
+    }
+    setPhase('done');
+  };
+
+  const done = items.filter((i) => i.status === 'ok').length;
+  const mark = (i: DelItem) => i.status === 'ok' ? '✓ 삭제됨' : i.status === 'fail' ? '✗ 실패' : i.status === 'skip' ? '— 건너뜀' : i.status === 'running' ? '… 삭제 중' : '';
+  return (
+    <div data-testid="admin-delete-dialog" role="dialog" aria-modal="true"
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 'min(720px, 94vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', background: t.surface, color: t.text, borderRadius: 12, border: `1px solid ${t.border}`, boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${t.border}`, fontSize: 15, fontWeight: 800 }}>
+          회원 {users.length}명 삭제
+        </div>
+        <div style={{ padding: '12px 18px', overflowY: 'auto', flex: 1 }}>
+          <div style={{ fontSize: 12.5, color: t.danger, fontWeight: 700, marginBottom: 8, lineHeight: 1.6 }}>
+            되돌릴 수 없습니다. 회원탈퇴와 똑같이 그 회원의 맵·첨부 파일·로그인 계정이 모두 지워집니다.
+          </div>
+          {phase === 'loading' && <div style={{ fontSize: 12.5, color: t.textSubtle }}>무엇이 함께 지워지는지 확인하는 중…</div>}
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <tbody>
+              {items.map((i) => (
+                <tr key={i.u.id} data-testid="admin-delete-item" data-email={i.u.email ?? ''} data-status={i.status ?? ''}>
+                  <td style={{ padding: '5px 4px', borderBottom: `1px solid ${t.divider}`, verticalAlign: 'top' }}>
+                    <div style={{ fontWeight: 700 }}>{i.u.email ?? <span style={{ color: t.textSubtle }}>(이메일 없음) {i.u.id.slice(0, 8)}</span>}</div>
+                    {i.u.fullName && <div style={{ fontSize: 11, color: t.textMuted }}>{i.u.fullName}</div>}
+                  </td>
+                  <td style={{ padding: '5px 4px', borderBottom: `1px solid ${t.divider}`, verticalAlign: 'top', color: t.textMuted }}>
+                    {i.error ? <span style={{ color: t.danger }}>{i.error}</span>
+                      : !i.preview ? '…'
+                      : i.preview.protected ? <span style={{ color: t.danger }}>관리자·본인 계정 — 삭제하지 않음</span>
+                      : <>
+                          맵 {i.preview.maps} · 첨부 {i.preview.attachments}
+                          {i.preview.collabMaps.length > 0 && (
+                            <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
+                              협업맵 개설자: {i.preview.collabMaps.map((m) => `${m.title} (참여자 ${m.memberCount ?? '?'}명)`).join(', ')}
+                            </div>
+                          )}
+                        </>}
+                  </td>
+                  <td style={{ padding: '5px 4px', borderBottom: `1px solid ${t.divider}`, verticalAlign: 'top', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    <div style={{ fontWeight: 700, color: i.status === 'ok' ? t.primary : i.status === 'fail' ? t.danger : t.textMuted }}>{mark(i)}</div>
+                    {i.note && <div style={{ fontSize: 11, color: t.textMuted, whiteSpace: 'normal', maxWidth: 260 }}>{i.note}</div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: '12px 18px', borderTop: `1px solid ${t.border}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {phase !== 'done' && phase !== 'loading' && (
+            <>
+              {withCollab.length > 0 && (
+                <label style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                  <input type="checkbox" data-testid="admin-delete-include-collab" checked={includeCollab} disabled={phase !== 'ready'}
+                    onChange={(e) => setIncludeCollab(e.target.checked)} />
+                  <span>협업맵을 개설한 {withCollab.length}명은 그 협업맵(참여자 자리 포함)도 함께 삭제합니다. 고르지 않으면 이 {withCollab.length}명은 건너뜁니다.</span>
+                </label>
+              )}
+              <div style={{ fontSize: 12.5 }}>
+                삭제할 회원 <b>{deletable.length}명</b> · 맵 <b>{totMaps}개</b> · 첨부 <b>{totAtt}개</b>
+                {prot.length > 0 && <span style={{ color: t.danger }}> · 관리자·본인 {prot.length}명 제외</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input data-testid="admin-delete-typed" value={typed} onChange={(e) => setTyped(e.target.value)}
+                  placeholder="확인하려면 '삭제' 입력" disabled={phase !== 'ready'}
+                  style={{ flex: 1, height: 32, padding: '0 10px', borderRadius: 7, border: `1px solid ${t.border}`, background: t.surfaceAlt, color: t.text, fontSize: 13 }} />
+                <button data-testid="admin-delete-cancel" onClick={() => onClose(false)} disabled={phase === 'running'} style={smallBtn(t)}>취소</button>
+                <button data-testid="admin-delete-run" onClick={() => void run()} disabled={!canRun}
+                  style={{ ...smallBtn(t), color: '#fff', background: canRun ? t.danger : t.textSubtle, border: 'none', cursor: canRun ? 'pointer' : 'default' }}>
+                  {phase === 'running' ? '삭제 중…' : '영구 삭제'}
+                </button>
+              </div>
+            </>
+          )}
+          {phase === 'loading' && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button onClick={() => onClose(false)} style={smallBtn(t)}>취소</button></div>
+          )}
+          {phase === 'done' && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span data-testid="admin-delete-summary" style={{ fontSize: 12.5, flex: 1 }}>{done}명 삭제했습니다{items.length - done ? ` · 삭제하지 않음 ${items.length - done}명` : ''}.</span>
+              <button data-testid="admin-delete-close" onClick={() => onClose(done > 0)} style={smallBtn(t)}>닫기</button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -696,9 +696,17 @@ export class AccountService {
    * 협업맵 개설자면 **409** 와 함께 맵 목록·참여자 수를 돌려준다
    * (`DeleteBlockedBody`). 500 이 아니라 안내다 — 계획서 §2.4.
    */
-  async deleteAccount(userId: string, confirmRaw: string) {
+  async deleteAccount(
+    userId: string, confirmRaw: string,
+    /**
+     * 관리자 콘솔의 회원삭제 (2026-11-08) — 확인 문구 대신 관리자 쪽(AdminService)이
+     * 이메일 확인을 마치고 부른다. includeCollab 이면 이 사람이 개설한 협업맵도
+     * (참여자 자리와 함께) 지운다 — 관리자가 목록을 보고 고른 경우에만.
+     */
+    admin?: { by: string; includeCollab: boolean },
+  ) {
     const confirm = String(confirmRaw || '').trim();
-    if (!DELETE_CONFIRM_PHRASES.includes(confirm)) {
+    if (!admin && !DELETE_CONFIRM_PHRASES.includes(confirm)) {
       throw new BadRequestException(
         `확인을 위해 '${DELETE_CONFIRM_PHRASE}' (or 'DELETE') 를 정확히 입력해 주세요.`,
       );
@@ -731,7 +739,7 @@ export class AccountService {
         const blocked = await this.findOwnedCollabMaps(
           (sql, params) => c.query(sql, params), userId,
         );
-        if (blocked.maps.length > 0) {
+        if (blocked.maps.length > 0 && !admin?.includeCollab) {
           throw new ConflictException(this.blockedBody(blocked.maps, blocked.memberTotal));
         }
 
@@ -758,7 +766,10 @@ export class AccountService {
         //    (검증에서 확인). 판정은 ①과 같은 문장이어야 한다 — 두 곳이
         //    어긋나면 ①이 통과시킨 맵이 ②에 남아 모두가 탈퇴 불가가 된다.
         await c.query(
-          hasMembers
+          admin?.includeCollab
+            // 관리자가 협업맵까지 지우기로 고른 경우 — 이 사람 소유 맵 전부
+            ? `DELETE FROM public.maps WHERE owner_id = $1`
+            : hasMembers
             ? `DELETE FROM public.maps
                 WHERE owner_id = $1
                   AND (deleted_at IS NOT NULL
@@ -840,7 +851,7 @@ export class AccountService {
     forgetKnownUser(userId);
 
     this.log.log(
-      `회원탈퇴 완료 (id=${userId}) — 맵 ${before.maps}개 · 첨부 ${before.attachments}개 `
+      `${admin ? `관리자 회원삭제 (관리자 ${admin.by}${admin.includeCollab ? ', 협업맵 포함' : ''})` : '회원탈퇴'} 완료 (id=${userId}) — 맵 ${before.maps}개 · 첨부 ${before.attachments}개 `
       + `· 파일 ${removed}/${fileKeys.length}개 삭제`,
     );
     return {

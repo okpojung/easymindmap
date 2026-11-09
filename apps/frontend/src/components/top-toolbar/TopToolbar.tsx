@@ -11,9 +11,7 @@ import { ProPresenceBar, ProShareDialog } from '@pro';
 import { PublishPanel } from '@/components/cloud/PublishPanel';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
-import { downloadMapAsHtml } from '@/export/exportHtml';
-import { downloadMapAsEncryptedHtml } from '@/export/encryptedMap';
-import { withHtmlPassword } from '@/components/ui/htmlPasswordDialog';
+import { withHtmlAssetExport } from '@/components/ui/htmlAssetExportDialog';
 import { downloadMapAsMarkdown } from '@/export/exportMarkdown';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
@@ -207,23 +205,15 @@ export function TopToolbar({
 
   // 내보내기 — 데스크톱 메뉴와 폰 "⋯" 메뉴가 같은 동작을 쓴다
   const runExportHtml = async () => {
-    // 뷰어는 지금 에디터 모드(라이트/다크) 그대로 열린다
-    const pkg = await downloadMapAsHtml(
-      map, layoutType, { x: spacingX, y: spacingY }, themeName === 'dark');
-    // 원본을 가져오지 못한 첨부가 있으면 묵묵히 넘어가지
-    // 않는다 (2026-08-02: 저장 후 다시 연 맵의 blob: 첨부가
-    // 소리 없이 빠져 "ZIP이 안 나온다" 보고로 이어졌다)
-    if (pkg.external > 0) {
-      flash(pkg.packaged === 0
-        ? tr('shell.toolbar.exportHtmlOnly', { n: pkg.external })
-        : tr('shell.toolbar.exportZipSkipped', { n: pkg.external }));
-    }
+    await withHtmlAssetExport({ map,
+      view: { layoutType, spacing: { x: spacingX, y: spacingY }, dark: themeName === 'dark' },
+      protected: false,
+    });
   };
   const runExportEncryptedHtml = async () => {
-    await withHtmlPassword({
-      confirm: true,
-      run: (password) => downloadMapAsEncryptedHtml(
-        map, password, layoutType, { x: spacingX, y: spacingY }, themeName === 'dark'),
+    await withHtmlAssetExport({ map,
+      view: { layoutType, spacing: { x: spacingX, y: spacingY }, dark: themeName === 'dark' },
+      protected: true,
     });
   };
   const runExportMd = async () => {

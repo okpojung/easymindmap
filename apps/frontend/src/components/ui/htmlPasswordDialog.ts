@@ -4,6 +4,8 @@ import { passwordValidationError } from '@/export/encryptedHtml';
 /** Passwords are transient. Never store/log them or expose raw crypto errors. */
 export function withHtmlPassword<T>(options: {
   confirm: boolean;
+  title?: string;
+  protectText?: string;
   run: (password: string) => Promise<T>;
 }): Promise<T | null> {
   return new Promise((resolve) => {
@@ -16,12 +18,12 @@ export function withHtmlPassword<T>(options: {
     form.autocomplete = 'off';
     const title = document.createElement('h2');
     title.id = 'html-password-title';
-    title.textContent = tr(options.confirm ? 'io.encrypted.export' : 'io.encrypted.import');
+    title.textContent = options.title ?? tr(options.confirm ? 'io.encrypted.export' : 'io.encrypted.import');
     title.style.fontSize = '18px';
     form.append(title);
     for (const key of ['protect', 'links', 'lost', 'server']) {
       const note = document.createElement('p');
-      note.textContent = tr('io.encrypted.' + key);
+      note.textContent = key === 'protect' && options.protectText ? options.protectText : tr('io.encrypted.' + key);
       Object.assign(note.style, { fontSize: '12px', lineHeight: '1.55', margin: '6px 0' });
       form.append(note);
     }

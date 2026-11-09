@@ -21,10 +21,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
-import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile, looksLikeHtmlFile } from '@/utils/importMapFile';
+import { parseHtmlMapFile, parseMarkdownMapFile, parseZipMapFile, looksLikeHtmlFile, isProtectedArchiveViewerHtml } from '@/utils/importMapFile';
 import { resolveRemoteImages } from '@/utils/remoteImages';
 import { isEncryptedHtml, decryptStandaloneHtml } from '@/export/encryptedHtml';
 import { validateProtectedMapImport } from '@/export/protectedMapAssets';
+import { PROTECTED_ARCHIVE_PASSWORD_REQUIRED } from '@/export/protectedArchive';
+import { HTML_ALL_LIMIT, hasSeparatedHtmlAssets } from '@/export/htmlAssetPolicy';
 import { withHtmlPassword } from '@/components/ui/htmlPasswordDialog';
 import { isDocumentEmpty, NEW_MAP_TITLE, useDocumentStore } from '@/stores/documentStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
@@ -359,19 +361,37 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     const parseOpts = { blockPlacement, stats };
     // ZIP(맵 + files/) — 안의 맵 파일 + 첨부를 함께 복원
     if (kind === 'zip' || /\.zip$/i.test(file.name)) {
+      setNotice(null);
+      if (file.size > 144 * 1024 * 1024) { flash(tr('io.assets.zipTooLarge'), true); return; }
       const reader = new FileReader();
+      reader.onerror = () => flash(tr('io.assets.zipImportFailed'), true);
       reader.onload = () => {
         void (async () => {
-          const bytes = new Uint8Array(reader.result as ArrayBuffer);
-          const imported = await parseZipMapFile(bytes, parseOpts);
-          if (!imported) {
-            flash(tr('panel.newMap.zipNoMap', { file: file.name }), true);
-            return;
-          }
-          await applyImported(imported, stats.movedToNote);
+          try {
+            const bytes = new Uint8Array(reader.result as ArrayBuffer);
+            let imported;
+            try { imported = await parseZipMapFile(bytes, parseOpts); }
+            catch (error) {
+              if (!(error instanceof Error) || error.message !== PROTECTED_ARCHIVE_PASSWORD_REQUIRED) throw error;
+              imported = await withHtmlPassword({
+                confirm: false,
+                title: tr('io.assets.openProtectedZip'),
+                protectText: tr('io.assets.protectedHint'),
+                run: async password => {
+                  const result = await parseZipMapFile(bytes, parseOpts, password);
+                  if (!result) throw new Error('INVALID_PROTECTED_MAP');
+                  return result;
+                },
+              });
+              if (!imported) return;
+            }
+            if (!imported) { flash(tr('panel.newMap.zipNoMap', { file: file.name }), true); return; }
+            await applyImported(imported, stats.movedToNote);
+          } catch { flash(tr('io.assets.zipImportFailed'), true); }
         })();
       };
-      reader.readAsArrayBuffer(file);
+      try { reader.readAsArrayBuffer(file); }
+      catch { flash(tr('io.assets.zipImportFailed'), true); }
       return;
     }
     setNotice(null); // 새 파일을 고르면 이전 안내(특히 8초 오류)는 치운다
@@ -386,6 +406,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     reader.onload = async () => {
       try {
         let text = String(reader.result ?? '');
+        if (isProtectedArchiveViewerHtml(file.name, text)) { flash(tr('io.assets.zipRequired'), true); return; }
         let encrypted = false;
         if (isEncryptedHtml(text)) {
           encrypted = true;
@@ -414,8 +435,9 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
             true);
           return;
         }
+        if (isHtml && hasSeparatedHtmlAssets(imported.map)) { flash(tr('io.assets.zipRequired'), true); return; }
         if (encrypted) {
-          try { validateProtectedMapImport(imported.map); }
+          try { validateProtectedMapImport(imported.map, HTML_ALL_LIMIT); }
           catch { flash(tr('io.encrypted.importFailed'), true); return; }
         }
         await applyImported(imported, stats.movedToNote);

@@ -148,6 +148,40 @@ jobs:
       - name: 프로덕션 빌드
         run: npm run build
 
+      # Public core only. No deployment environment or private PRO overlay.
+      - name: 브라우저 검증용 프런트엔드 산출물
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-qa
+          path: apps/frontend/dist
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+          include-hidden-files: false
+
+      - name: 브라우저 시험 드라이버 (CI 전용)
+        run: npm install --no-save --ignore-scripts --package-lock=false playwright@1.56.1
+
+      - name: 한국어 검증 화면 폰트
+        run: |
+          if ! fc-list :lang=ko | grep -q .; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fi
+
+      - name: 실제 Chrome HTML 첨부 내보내기·복원 회귀
+        run: node scripts/html-assets.browser.mjs
+
+      - name: 브라우저 검증 결과와 화면 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-assets-browser-report
+          path: apps/frontend/.qa/report
+          retention-days: 1
+          if-no-files-found: warn
+          overwrite: true
+
   # 홈페이지(www.easymindmap.org) — 소개 + 퍼블리싱맵 목록 (2026-09-13).
   # 앱과 **다른 앱**이라 따로 빌드한다. 공개 API 만 읽는 정적 사이트라
   # DB 도 인증도 필요 없다 — 20초면 끝난다.

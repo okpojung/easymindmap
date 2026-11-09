@@ -24,7 +24,8 @@ function protectedNodes(map: SampleMap): MindNode[] {
 }
 
 /** Validate decoded assets before the normal importer accepts a protected map. */
-export function validateProtectedMapImport(map: SampleMap): void {
+export function validateProtectedMapImport(map: SampleMap, maxBytes = PROTECTED_ASSET_LIMIT): void {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || maxBytes > 100 * 1024 * 1024) throw new Error('지원하지 않는 보호된 원본 용량 한도입니다.');
   const nodes = protectedNodes(map), resources = new Set<string>();
   let references = 0, total = 0;
   const check = (src: string | undefined): void => {
@@ -33,18 +34,18 @@ export function validateProtectedMapImport(map: SampleMap): void {
     if (resources.has(src)) return;
     resources.add(src);
     const match = /^data:([a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+);base64,([A-Za-z0-9+/]*={0,2})$/i.exec(src);
-    if (!match || match[2].length % 4 !== 0 || match[2].length > Math.ceil(PROTECTED_ASSET_LIMIT / 3) * 4) throw new Error('보호된 첨부파일의 형식이 잘못되었습니다.');
+    if (!match || match[2].length % 4 !== 0 || match[2].length > Math.ceil(maxBytes / 3) * 4) throw new Error('보호된 첨부파일의 형식이 잘못되었습니다.');
     let raw: string;
     try { raw = atob(match[2]); } catch { throw new Error('보호된 첨부파일의 형식이 잘못되었습니다.'); }
     if (btoa(raw) !== match[2]) throw new Error('보호된 첨부파일의 형식이 잘못되었습니다.');
     total += raw.length;
-    if (total > PROTECTED_ASSET_LIMIT) throw new Error('보호된 첨부파일의 합계가 20MB를 넘었습니다.');
+    if (total > maxBytes) throw new Error(maxBytes === PROTECTED_ASSET_LIMIT ? '보호된 첨부파일의 합계가 20MB를 넘었습니다.' : '보호된 첨부파일의 합계가 허용 용량을 넘었습니다.');
   };
   for (const node of nodes) {
     for (const attachment of node.attachments ?? []) check(attachment.url);
     if (node.image) check(node.image.src);
     for (const image of node.images ?? []) check(image.src);
-    for (const note of node.notes ?? []) for (const src of collectNoteHtmlImageSrcs(note.html)) check(src);
+    rewriteNotesImages(node.notes, src => { check(src); return undefined; });
   }
 }
 

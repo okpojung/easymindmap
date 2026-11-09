@@ -14,6 +14,10 @@ import { applyDeclaredConnectors, resolveDeclaration } from './emmDeclaration';
 import { applyLevelLayouts } from './levelLayouts';
 import { parseMetaJson, type MapFileMeta } from '@/export/mapMeta';
 import { tr } from '@/i18n';
+import { collectNoteHtmlImageSrcs, rewriteNotesImages } from '@emm/note-images';
+import type { MindNode } from '@emm/model';
+import { isProtectedArchiveEntries, decryptProtectedArchiveEntries, PROTECTED_ARCHIVE_PASSWORD_REQUIRED } from '@/export/protectedArchive';
+import { validateProtectedMapImport } from '@/export/protectedMapAssets';
 
 export interface ImportedMap {
   map: SampleMap;
@@ -135,17 +139,23 @@ import { bytesToDataUrl } from '@/export/mapMeta';
 import { attachmentUrlForFile } from './attachmentFile';
 import { useUploadStore } from '@/stores/uploadStore';
 
-function relinkAttachments(
+export function relinkAttachments(
   map: SampleMap,
   files: { path: string; data: Uint8Array }[],
 ): { map: SampleMap; relinked: number } {
   // files/ 아래 항목을 "경로 끝부분(files/이름)" 기준으로 색인
   const byName = new Map<string, Uint8Array>();
+  const byPath = new Map<string, Uint8Array>();
+  const ambiguous = new Set<string>();
   for (const f of files) {
     const m = f.path.match(/(?:^|\/)files\/(.+)$/);
-    if (m) byName.set(m[1], f.data);
+    if (m) {
+      byName.set(m[1], f.data);
+      const key = `files/${m[1]}`;
+      if (byPath.has(key)) ambiguous.add(key);
+      else byPath.set(key, f.data);
+    }
   }
-  if (byName.size === 0) return { map, relinked: 0 };
 
   const safe = (s: string) =>
     String(s || '').trim().replace(/[\\/:*?"<>|]+/g, '-').slice(0, 60);
@@ -161,6 +171,14 @@ function relinkAttachments(
       // 이미 살아있는 URL(data:/http)은 그대로 — `files/…`(본문의 📎 줄)·
       // blob:·빈 URL 만 재연결
       if (a.url && (/^data:/.test(a.url) || /^https?:\/\//i.test(a.url))) return a;
+      const explicit = a.url?.replace(/^\.\//, '');
+      if (explicit?.startsWith('files/')) {
+        if (explicit.split('/').some(p => !p || p === '.' || p === '..') || /[\\\x00-\x1f]/.test(explicit) || ambiguous.has(explicit)) throw new Error('ZIP 첨부파일 경로가 잘못되었거나 중복되었습니다.');
+        const original = byPath.get(explicit);
+        if (!original) throw new Error('ZIP에 필요한 첨부파일 원본이 없습니다. 파일을 다시 내보내 주세요.');
+        relinked += 1;
+        return { ...a, url: bytesToDataUrl(original, a.name || explicit) };
+      }
       const want = safe(a.name || a.id);
       let data = byName.get(want);
       if (!data) {
@@ -205,6 +223,7 @@ const MIME_BY_EXT: Record<string, string> = {
 };
 
 interface ImgNodeLike {
+  notes?: MindNode['notes'];
   image?: { src: string; w?: number; h?: number };
   images?: { src: string; w?: number; h?: number }[];
   children?: ImgNodeLike[];
@@ -221,6 +240,7 @@ function collectFileImageSrcs(map: SampleMap): Set<string> {
     };
     push(n.image?.src);
     for (const im of n.images ?? []) push(im.src);
+    for (const note of n.notes ?? []) for (const src of collectNoteHtmlImageSrcs(note.html)) push(src);
     for (const c of n.children ?? []) walk(c);
   };
   walk(map.root as unknown as ImgNodeLike);
@@ -253,6 +273,7 @@ export interface ImageRelinkResult {
 export async function relinkImages(
   map: SampleMap,
   files: { path: string; data: Uint8Array }[],
+  options?: { preferServer?: boolean },
 ): Promise<ImageRelinkResult> {
   const wanted = collectFileImageSrcs(map);
   if (wanted.size === 0) return { map, relinkedImages: 0, fellBackToData: 0 };
@@ -288,6 +309,11 @@ export async function relinkImages(
         fellBackToData += 1;
         return bytesToDataUrl(data, name);
       };
+      if (options?.preferServer === false) {
+        bySrc.set(path, asData());
+        if (showProgress) useUploadStore.getState().progress(key, (i + 1) / targets.length);
+        continue;
+      }
       try {
         // Uint8Array → File. 판정은 attachmentUrlForFile 이 한다.
         const file = new File([data as BlobPart], name, { type: mime });
@@ -318,6 +344,7 @@ export async function relinkImages(
     ...n,
     ...(n.image ? { image: one(n.image) } : {}),
     ...(n.images ? { images: n.images.map(one) } : {}),
+    ...(n.notes ? { notes: rewriteNotesImages(n.notes, src => bySrc.get(src)) } : {}),
     children: (n.children ?? []).map(walk),
   });
 
@@ -352,8 +379,14 @@ export interface ImportedZipMap extends ImportedMap {
 export async function parseZipMapFile(
   bytes: Uint8Array,
   opts?: ParseEmmOptions,
+  password?: string,
 ): Promise<ImportedZipMap | null> {
-  const entries = await parseZip(bytes);
+  let entries = await parseZip(bytes);
+  const protectedArchive = isProtectedArchiveEntries(entries);
+  if (protectedArchive) {
+    if (password === undefined) throw new Error(PROTECTED_ARCHIVE_PASSWORD_REQUIRED);
+    entries = await decryptProtectedArchiveEntries(entries, password);
+  }
   if (entries.length === 0) return null;
 
   // ZIP 안의 맵 파일 — .html 우선, 없으면 .md
@@ -370,7 +403,8 @@ export async function parseZipMapFile(
   if (!inner) return null;
 
   const { map, relinked } = relinkAttachments(inner.map, entries);
-  const img = await relinkImages(map, entries);
+  const img = await relinkImages(map, entries, protectedArchive ? { preferServer: false } : undefined);
+  if (protectedArchive) validateProtectedMapImport(img.map, 100 * 1024 * 1024);
   return {
     ...inner,
     map: img.map,
@@ -378,4 +412,16 @@ export async function parseZipMapFile(
     relinkedImages: img.relinkedImages,
     imagesInDoc: img.fellBackToData,
   };
+}
+
+/** Marker detection is limited to a real HTML document head, never Markdown examples. */
+export function isProtectedArchiveViewerHtml(name: string, text: string): boolean {
+  if (!looksLikeHtmlFile(name, text)) return false;
+  const match = /<head(?:\s[^>]*)?>([\s\S]*?)<\/head\s*>/i.exec(text.slice(0, 65536));
+  if (!match) return false;
+  const head = match[1].replace(/<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script\s*>|<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '');
+  for (const tag of head.match(/<meta\b[^>]*>/gi) ?? []) {
+    if (/\sname\s*=\s*(["'])emm-protected-archive\1/i.test(tag) && /\scontent\s*=\s*(["'])1\1/i.test(tag)) return true;
+  }
+  return false;
 }

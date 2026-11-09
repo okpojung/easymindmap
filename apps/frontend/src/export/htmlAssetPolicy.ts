@@ -59,7 +59,11 @@ function nodesOf(map: SampleMap): MindNode[] {
 }
 
 function validateSource(source: unknown): asserts source is string {
-  if (typeof source !== 'string' || !/^(data:|blob:|https?:\/\/)/i.test(source)) throw new Error(MISSING);
+  if (typeof source !== 'string') throw new Error(MISSING);
+  // maps.service.extractDocImages stores canonical API-relative URLs. Keep the
+  // pure policy layer independent of apiClient; its loader authenticates these.
+  if (source.length <= 65536 && /^\/v1\/attachments\/[A-Za-z0-9_-]+(?:\/content)?(?:\?[^#\\\u0000-\u0020]*)?$/.test(source)) return;
+  if (!/^(data:|blob:|https?:\/\/)/i.test(source)) throw new Error(MISSING);
   // Native data/blob URLs need no URL object (which would copy huge data URIs).
   if (/^data:/i.test(source)) { if (source.indexOf(',') < 0) throw new Error(MISSING); return; }
   if (/^blob:/i.test(source)) { if (source.length <= 5) throw new Error(MISSING); return; }

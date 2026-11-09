@@ -148,6 +148,17 @@ jobs:
       - name: 프로덕션 빌드
         run: npm run build
 
+      # Public core only. No deployment environment or private PRO overlay.
+      - name: 브라우저 검증용 프런트엔드 산출물
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-qa
+          path: apps/frontend/dist
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+          include-hidden-files: false
+
   # 홈페이지(www.easymindmap.org) — 소개 + 퍼블리싱맵 목록 (2026-09-13).
   # 앱과 **다른 앱**이라 따로 빌드한다. 공개 API 만 읽는 정적 사이트라
   # DB 도 인증도 필요 없다 — 20초면 끝난다.

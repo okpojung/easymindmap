@@ -304,10 +304,9 @@
       <button data-act="save"><span data-i18n="%EC%A0%80%EC%9E%A5">저장</span> <kbd>Ctrl+S</kbd></button>
       <button data-act="saveas"><span data-i18n="%EB%8B%A4%EB%A5%B8%20%EC%9D%B4%EB%A6%84%EC%9C%BC%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">다른 이름으로 저장…</span></button>
       <hr>
-      <button data-act="md"><span data-i18n=".md%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">.md로 저장…</span></button>
-      <button data-act="online"><span data-i18n="md.html(%EC%98%A8%EB%9D%BC%EC%9D%B8)%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">md.html(온라인)로 저장…</span></button>
-      <button data-act="encrypted">암호화 md.html로 저장…</button>
-      <button data-act="offline"><span data-i18n="md.html(%EC%98%A4%ED%94%84%EB%9D%BC%EC%9D%B8)%EB%A1%9C%20%EC%A0%80%EC%9E%A5%E2%80%A6">md.html(오프라인)로 저장…</span></button>
+      <button data-act="md"><span data-i18n="md%20%ED%8C%8C%EC%9D%BC%20%EB%82%B4%EB%B3%B4%EB%82%B4%EA%B8%B0">md 파일 내보내기</span></button>
+      <button data-act="offline"><span data-i18n="md.html%20%ED%8C%8C%EC%9D%BC%20%EB%82%B4%EB%B3%B4%EB%82%B4%EA%B8%B0">md.html 파일 내보내기</span></button>
+      <button data-act="encrypted"><span data-i18n="md.html%20(%EC%95%94%ED%98%B8%ED%99%94)%20%ED%8C%8C%EC%9D%BC%20%EB%82%B4%EB%B3%B4%EB%82%B4%EA%B8%B0">md.html (암호화) 파일 내보내기</span></button>
       <hr>
       <button data-act="close"><span data-i18n="%EB%8B%AB%EA%B8%B0">닫기</span></button>
     </div>
@@ -680,8 +679,8 @@ function setLanguage(value,persist=true){const next=normalizeLanguage(value);if(
 // Flush a real pending rendered edit, never serialize untouched Markdown on language changes.
 const pendingSource=!!tSrc,pendingRendered=!!tWw;clearTimeout(tSrc);clearTimeout(tWw);tSrc=0;tWw=0;
 if(pendingRendered&&latestEditSource==='ww'){let text=fromWw(normalizeWw(ed.getMarkdown()));if(md.endsWith('\n')&&!text.endsWith('\n'))text+='\n';md=text;pushToSrc();afterChange();}else if(pendingSource){md=cm.getValue();afterChange();}
-const saved=DOC.saved, text=md, sels=cm.listSelections(), scroll=cm.getScrollInfo(), active=document.activeElement, focus=lastFocus;let selection=null;try{selection=ed.getSelection();}catch{}const wwScroll=$('#ww .toastui-editor-ww-container')?.scrollTop||0;
-uiLang=next;ed.destroy();ed=createEditor();bindEditorEvents();applySettings();try{if(selection)ed.setSelection(...selection);}catch{}wwSel=selection;wwFocused=false;wwStale=false;DOC.saved=saved;md=text;cm.setSelections(sels);cm.scrollTo(scroll.left,scroll.top);const container=$('#ww .toastui-editor-ww-container');if(container)container.scrollTop=wwScroll;lastFocus=focus;applyUiLanguage();updateSourceLineNumbers();if(!$('#sdlg').hidden)drawSettings();if(!$('#dlg').hidden)info();if(!$('#cdlg').hidden){$('#cTitle').textContent=tr(C.range?'코드 블록 수정':'코드 블록 삽입');}if(!$('#ldlg').hidden)$('#lTitle').textContent=tr(LK.range?'링크 수정':'링크 삽입');updStatus();schedulePreviews();if(active&&active.isConnected)active.focus({preventScroll:true});return true;}
+const saved=DOC.saved, text=md, sels=cm.listSelections(), scroll=cm.getScrollInfo(), active=document.activeElement, focus=lastFocus;let selection=null;try{selection=ed.getSelection();}catch{}const wwScroll=ed.wwEditor.view.dom.scrollTop||0;
+uiLang=next;ed.destroy();ed=createEditor();bindEditorEvents();applySettings();try{if(selection)ed.setSelection(...selection);}catch{}wwSel=selection;wwFocused=false;wwStale=false;DOC.saved=saved;md=text;cm.setSelections(sels);cm.scrollTo(scroll.left,scroll.top);const container=ed.wwEditor.view.dom;if(container)container.scrollTop=wwScroll;lastFocus=focus;applyUiLanguage();updateSourceLineNumbers();if(!$('#sdlg').hidden)drawSettings();if(!$('#dlg').hidden)info();if(!$('#cdlg').hidden){$('#cTitle').textContent=tr(C.range?'코드 블록 수정':'코드 블록 삽입');}if(!$('#ldlg').hidden)$('#lTitle').textContent=tr(LK.range?'링크 수정':'링크 삽입');updStatus();schedulePreviews();if(active&&active.isConnected)active.focus({preventScroll:true});return true;}
 const LANG_NAMES={ko:['한국어','KR'],en:['English','EN'],ja:['日本語','JP'],zh:['中文','CN']};
 function flagSvg(l){const base='<svg aria-hidden="true" viewBox="0 0 32 22" width="32" height="22" xmlns="http://www.w3.org/2000/svg">';let s='<rect width="32" height="22" fill="white"/>';if(l==='ja')s+='<circle cx="16" cy="11" r="6" fill="#bc002d"/>';else if(l==='zh')s='<rect width="32" height="22" fill="#de2910"/><path fill="#ffde00" d="m7 3 1.2 3.6H12L9 8.8l1.1 3.5L7 10.2l-3.1 2.1L5 8.8 2 6.6h3.8z"/><g fill="#ffde00"><circle cx="14" cy="3" r=".8"/><circle cx="17" cy="6" r=".8"/><circle cx="17" cy="10" r=".8"/><circle cx="14" cy="13" r=".8"/></g>';else if(l==='en'){for(let n=0;n<7;n++)s+='<rect y="'+(n*3.4)+'" width="32" height="1.7" fill="#b22234"/>';s+='<rect width="14" height="12" fill="#3c3b6e"/>';for(let n=0;n<15;n++)s+='<circle cx="'+(2+n%5*2.5)+'" cy="'+(2+Math.floor(n/5)*3.5)+'" r=".6" fill="white"/>';}else{s+='<path d="M10 11a6 6 0 0 1 12 0c-3 5-9-5-12 0" fill="#cd2e3a"/><path d="M10 11c3-5 9 5 12 0a6 6 0 0 1-12 0" fill="#0047a0"/><g stroke="#111" stroke-width="1.5"><path d="m3 3 5 3m-6-1 5 3m-6-1 5 3m18 6 5 3m-4-5 5 3m-4-5 5 3M25 3l5 3m-6-1 5 3M3 16l5 3m-6-1 5 3"/></g>';}return base+s+'</svg>';}
 function updateLanguagePicker(){const b=$('#langTrigger');if(!b)return;b.innerHTML=flagSvg(uiLang)+'<span>'+LANG_NAMES[uiLang][1]+'</span>';b.setAttribute('aria-label',tr('Language')+': '+LANG_NAMES[uiLang][0]);document.querySelectorAll('[data-ui-language]').forEach(e=>{const selected=e.dataset.uiLanguage===uiLang;e.setAttribute('aria-selected',String(selected));if(e.dataset.uiLanguage==='zh')e.title='简体中文';e.innerHTML=flagSvg(e.dataset.uiLanguage)+'<span>'+LANG_NAMES[e.dataset.uiLanguage][0]+'</span><small>'+(selected?'✓':LANG_NAMES[e.dataset.uiLanguage][1])+'</small>';});}
@@ -986,6 +985,241 @@ document.querySelectorAll("[data-copy-pane]").forEach(button => {
   });
 });
 
+/* Split panes follow semantic Markdown blocks, not whole-document scroll ratios.
+   View-only: never move the other editor's selection, focus, or saved document. */
+const splitFollow = { timer: 0, pending: null, applying: false, expected: {src:null,ww:null}, last: "src", cache: null, observer: null, selectionPane: null, selectionUntil: 0 };
+const splitClamp = (n,lo,hi) => Math.max(lo,Math.min(hi,n));
+function splitBlockMap() {
+  const doc = ed.wwEditor.view.state.doc, text = md;
+  if (splitFollow.cache?.editor === ed && splitFollow.cache.doc === doc && splitFollow.cache.text === text) return splitFollow.cache;
+  const lines = text.split("\n"), starts = [0];
+  for (let i=0;i<lines.length;i++) starts.push(starts[i]+lines[i].length+1);
+  // Map Toast's transformed syntax columns back to the canonical Markdown.
+  const transformed=toWw(text).split("\n");
+  const columns=lines.map((source,line)=>{
+    const target=transformed[line]??source,map=[];let i=0,j=0;
+    while(j<target.length){
+      map[j]=i;
+      if(source[i]===target[j]){i++;j++;continue;}
+      const replacement=[["__","<u>"],["__","</u>"],["==","<mark>"],["==","</mark>"]].find(([a,b])=>S.syntax==="emm"&&source.startsWith(a,i)&&target.startsWith(b,j));
+      if(replacement){const[a,b]=replacement;for(let k=0;k<b.length;k++)map[j+k]=i+Math.floor(k*a.length/b.length);i+=a.length;j+=b.length;continue;}
+      // Only the custom fenced-preview delimiters otherwise change toWw columns.
+      let si=source.length,tj=target.length;while(si>i&&tj>j&&source[si-1]===target[tj-1]){si--;tj--;}
+      if(tj===j){i=si;continue;}
+      for(let k=j;k<tj;k++)map[k]=i+Math.floor((k-j)*(si-i)/(tj-j));i=si;j=tj;
+    }
+    map[target.length]=source.length;return map;
+  });
+  const offset = p => { const l=splitClamp((p?.[0]||1)-1,0,lines.length-1),c=splitClamp((p?.[1]||1)-1,0,columns[l].length-1);return starts[l]+columns[l][c]; };
+  function inlinePairs(ast,node,pos){
+    let rendered="",positions=[];
+    node.forEach((child,childOffset)=>{const at=pos+1+childOffset;if(child.isText){for(let i=0;i<child.text.length;i++){rendered+=child.text[i];positions.push(at+i);}}else{rendered+=child.type.name==="hardBreak"?"\n":"\uFFFC";positions.push(at);}});
+    positions.push(pos+node.nodeSize-1);
+    let cursor=0;
+    function visit(a){
+      let first=null,last=null;
+      if(a.type==="image"){
+        const at=rendered.indexOf("\uFFFC",cursor);if(at>=0){first=at;last=at+1;cursor=last;}
+      }else if(a.type==="text"||a.type==="code"){
+        const literal=a.literal||"",at=literal?rendered.indexOf(literal,cursor):-1;
+        if(at>=0){first=at;last=at+literal.length;cursor=last;}
+      }else{
+        for(let c=a.firstChild;c;c=c.next){const range=visit(c);if(range){if(first===null)first=range[0];last=range[1];}}
+      }
+      if(first===null||!a.sourcepos)return null;
+      const start=offset(a.sourcepos[0]),end=offset([a.sourcepos[1][0],a.sourcepos[1][1]+1]),from=positions[first],to=positions[last];
+      if(from!==undefined&&to!==undefined&&end>=start)entries.push({start,end,from,to,min:from,max:to,pos,node});
+      return [first,last];
+    }
+    for(let a=ast.firstChild;a;a=a.next)visit(a);
+  }
+
+  const entries = [], syncing = wwSyncing, converter=ed.convertor, focused=converter.focusedNode, mapped=converter.mappedPosWhenConverting;
+  const kinds={list:["bulletList","orderedList"],item:["listItem"],tableCell:["tableCell","tableHeadCell","tableBodyCell"],thematicBreak:["thematicBreak"],htmlBlock:["htmlBlock","paragraph"]};
+  const fits=(a,p)=> (kinds[a.type]||[a.type]).includes(p.type.name);
+  function pair(a,p,pos) {
+    if (!a.sourcepos) return;
+    let start=offset(a.sourcepos[0]), end=offset([a.sourcepos[1][0],a.sourcepos[1][1]+1]);
+    let from=pos+(p.isLeaf?0:1), to=pos+p.nodeSize-(p.isLeaf?1:1);
+    if (a.type==="codeBlock" && /^(\s*)(`{3,}|~{3,}|\$\$)/.test(lines[a.sourcepos[0][0]-1]||"")) {
+      const first=a.sourcepos[0][0], last=a.sourcepos[1][0]-1;
+      if (first<=last) { start=starts[first]; end=starts[last]; if (/^\s*(`{3,}|~{3,}|\$\$)\s*$/.test(lines[last]||"")) end=Math.max(start,end-1); else end=starts[last]+lines[last].length; }
+    }
+    entries.push({start,end:Math.max(start,end),from,to:Math.max(from,to),min:pos,max:pos+p.nodeSize,pos,node:p,block:true});
+    if(a.type==="tableCell"&&p.firstChild?.type.name==="paragraph"){
+      const paragraph=p.firstChild,at=pos+1;
+      entries.push({start,end:Math.max(start,end),from:at+1,to:at+paragraph.nodeSize-1,min:at,max:at+paragraph.nodeSize,pos:at,node:paragraph,block:true});
+      inlinePairs(a,paragraph,at);return;
+    }
+    if(p.isTextblock&&a.type!=="codeBlock")inlinePairs(a,p,pos);
+    if (p.isTextblock || p.isLeaf || !a.firstChild) return;
+    let pi=0, pp=pos+1;
+    for(let child=a.firstChild;child;child=child.next) {
+      if(child.type==="tableDelimRow" || child.type==="tableDelimCell" || child.type==="referenceDef")continue;
+      while(pi<p.childCount && p.child(pi).type.name==="paragraph" && p.child(pi).childCount===0 && child.type!=="tableCell") {pp+=p.child(pi++).nodeSize;}
+      if(pi>=p.childCount || !fits(child,p.child(pi)))continue;
+      const current=p.child(pi);pair(child,current,pp);pp+=current.nodeSize;pi++;
+    }
+  }
+  try {
+    wwSyncing=true;
+    // Refresh only the hidden Markdown parser. The visible WW model is untouched.
+    ed.mdEditor.setMarkdown(toWw(text),false);
+    let pi=0, pos=0;
+    for(let a=ed.toastMark.getRootNode().firstChild;a;a=a.next) {
+      const converted=converter.toWysiwygModel(a);
+      if(!converted?.childCount)continue;
+      for(let j=0;j<converted.childCount;j++) {
+        const wanted=converted.child(j);
+        while(pi<doc.childCount && !wanted.eq(doc.child(pi)) && doc.child(pi).type.name==="paragraph" && doc.child(pi).childCount===0)pos+=doc.child(pi++).nodeSize;
+        if(pi>=doc.childCount || !wanted.eq(doc.child(pi)))continue;
+        pair(a,doc.child(pi),pos);pos+=doc.child(pi++).nodeSize;
+      }
+    }
+  } finally { wwSyncing=syncing;converter.focusedNode=focused;converter.mappedPosWhenConverting=mapped; }
+  if(splitFollow.observer){splitFollow.observer.disconnect();splitFollow.observer.observe(ed.wwEditor.view.dom);for(const child of ed.wwEditor.view.dom.children)splitFollow.observer.observe(child);}
+  const leaves=entries.filter(e=>e.block&&(e.node.isTextblock||e.node.isLeaf||["tableCell","customBlock"].includes(e.node.type.name))).sort((a,b)=>a.pos-b.pos);
+  const rows=entries.filter(e=>e.block&&e.node.type.name==="tableRow").sort((a,b)=>a.pos-b.pos);
+  return splitFollow.cache={editor:ed,doc,text,lines,starts,entries,leaves,rows};
+}
+function splitSourcePosition(map,pos) {
+  const line=splitClamp(pos.line,0,map.lines.length-1);
+  return map.starts[line]+splitClamp(pos.ch,0,map.lines[line].length);
+}
+function splitRenderedPosition(map,index) {
+  let candidates=map.entries.filter(e=>index>=e.start&&index<=e.end);
+  candidates.sort((a,b)=>(a.end-a.start)-(b.end-b.start));
+  const e=candidates[0]||map.entries.reduce((best,x)=>!best||Math.min(Math.abs(index-x.start),Math.abs(index-x.end))<Math.min(Math.abs(index-best.start),Math.abs(index-best.end))?x:best,null);
+  if(!e)return null;
+  const ratio=e.end>e.start?splitClamp((index-e.start)/(e.end-e.start),0,1):0;
+  return splitClamp(Math.round(e.from+ratio*(e.to-e.from)),0,map.doc.content.size);
+}
+function splitMarkdownPosition(map,position) {
+  let candidates=map.entries.filter(e=>position>=e.min&&position<=e.max);
+  candidates.sort((a,b)=>(a.max-a.min)-(b.max-b.min));
+  const e=candidates[0]||map.entries.at(-1);if(!e)return null;
+  const ratio=e.to>e.from?splitClamp((position-e.from)/(e.to-e.from),0,1):0;
+  const index=Math.round(e.start+ratio*(e.end-e.start));
+  let line=0;while(line+1<map.lines.length&&map.starts[line+1]<=index)line++;
+  return {line,ch:splitClamp(index-map.starts[line],0,map.lines[line].length)};
+}
+function splitSetScroll(pane,top) {
+  splitFollow.applying=true;
+  try {
+    if(pane==="src") { const s=cm.getScrollInfo();cm.scrollTo(s.left,top);splitFollow.expected.src=cm.getScrollInfo().top; }
+    else {const s=ed.wwEditor.view.dom;s.scrollTop=top;splitFollow.expected.ww=s.scrollTop;}
+  } finally {splitFollow.applying=false;}
+}
+// Locate the visible semantic block by geometry, not elementFromPoint hit testing.
+// This also works in off-screen Electron verification windows and between blocks.
+function splitViewportPosition(map,view,y) {
+  const leaves=map.leaves;if(!leaves.length)return null;
+  const rect=e=>{try{return view.nodeDOM(e.pos)?.getBoundingClientRect()||view.coordsAtPos(e.from);}catch{return null;}};
+  let chosen=null,distance=Infinity,low=0,high=map.rows.length-1;
+  while(low<high){const mid=(low+high)>>1,r=rect(map.rows[mid]);if(r&&r.bottom<y)low=mid+1;else high=mid;}
+  const row=map.rows[low],rowRect=row&&rect(row);
+  if(rowRect&&rowRect.top<=y&&rowRect.bottom>=y){
+    const x=view.dom.getBoundingClientRect().left+32;
+    for(const e of leaves){if(e.min<row.min||e.max>row.max)continue;const r=rect(e);if(!r)continue;
+      const dy=y<r.top?r.top-y:y>r.bottom?y-r.bottom:0,dx=x<r.left?r.left-x:x>r.right?x-r.right:0,gap=dy*100000+dx;
+      if(gap<distance){chosen=e;distance=gap;}
+    }
+    if(!chosen)chosen=row;
+  }
+  low=0;high=leaves.length-1;
+  while(low<high){const mid=(low+high)>>1,r=rect(leaves[mid]);if(r&&r.bottom<y)low=mid+1;else high=mid;}
+  const inRow=!!chosen;
+
+  for(let i=Math.max(0,low-1);!inRow&&i<=Math.min(leaves.length-1,low+1);i++){
+    const e=leaves[i],r=rect(e);if(!r)continue;
+    const gap=y<r.top?r.top-y:y>r.bottom?y-r.bottom:0;
+    if(gap<distance){chosen=e;distance=gap;}
+  }
+  if(!chosen)return null;
+  if(!chosen.node.isTextblock)return chosen.from;
+  low=chosen.from;high=chosen.to;
+  while(low<high){const mid=(low+high)>>1;let r;try{r=view.coordsAtPos(mid);}catch{high=mid;continue;}if(r.bottom<y)low=mid+1;else high=mid;}
+  return low;
+}
+
+function followSplitPane(pane,kind) {
+  if(mode!=="split"||splitFollow.applying)return;
+  const container=ed.wwEditor.view.dom, view=ed.wwEditor.view;
+  if(!container?.clientHeight || !cm.getScrollInfo().clientHeight)return;
+  const sourceRect=cm.getWrapperElement().getBoundingClientRect(), targetRect=container.getBoundingClientRect();
+  if(kind==="scroll") {
+    const s=pane==="src"?cm.getScrollInfo():{top:container.scrollTop,height:container.scrollHeight,clientHeight:container.clientHeight};
+    if(s.top<=1){splitSetScroll(pane==="src"?"ww":"src",0);return;}
+    if(s.height-s.clientHeight-s.top<=1){splitSetScroll(pane==="src"?"ww":"src",1e9);return;}
+  }
+  let map;try{map=splitBlockMap();}catch{return;}if(!map.entries.length)return;
+  if(pane==="src") {
+    const point=kind==="selection"?cm.getCursor("head"):cm.coordsChar({left:sourceRect.left+32,top:sourceRect.top+24},"window");
+    const position=splitRenderedPosition(map,splitSourcePosition(map,point));if(position===null)return;
+    const sourceY=cm.charCoords(point,"window").top-sourceRect.top;
+    const offset=splitClamp(sourceY,24,Math.max(24,Math.min(sourceRect.height,targetRect.height)-40));
+    try{const rect=view.coordsAtPos(position);splitSetScroll("ww",container.scrollTop+rect.top-targetRect.top-offset);}catch{}
+  } else {
+    let position;
+    if(kind==="selection"){
+      position=view.state.selection.head;
+      const selected=document.getSelection();
+      if(selected?.focusNode&&view.dom.contains(selected.focusNode)){try{position=view.posAtDOM(selected.focusNode,selected.focusOffset);}catch{}}
+    }
+    else position=splitViewportPosition(map,view,targetRect.top+24);
+    if(position===undefined||position===null)return;
+    const point=splitMarkdownPosition(map,position);if(!point)return;
+    let offset=24;
+    try{offset=view.coordsAtPos(position).top-targetRect.top;}catch{}
+    offset=splitClamp(offset,24,Math.max(24,Math.min(sourceRect.height,targetRect.height)-40));
+    // CodeMirror measures wrapped off-screen lines only after revealing them.
+    // Re-read the same anchor after that viewport measurement, without moving its cursor.
+    for(let pass=0;pass<3;pass++){const top=cm.charCoords(point,"local").top-offset;splitSetScroll("src",top);}
+  }
+}
+function requestSplitFollow(pane,kind="scroll") {
+  if(mode!=="split"||splitFollow.applying)return;
+  if(kind==="selection"){splitFollow.selectionPane=pane;splitFollow.selectionUntil=Date.now()+220;}
+  else if(splitFollow.selectionPane===pane&&Date.now()<splitFollow.selectionUntil)kind="selection";
+  splitFollow.last=pane;
+  if(kind==="scroll"&&splitFollow.pending?.pane===pane&&splitFollow.pending.kind==="selection")kind="selection";
+  splitFollow.pending={pane,kind};
+  if(splitFollow.timer)return;
+  const run=()=>{
+    splitFollow.timer=0;if(mode!=="split"){splitFollow.pending=null;return;}
+    if(tSrc||tWw||wwStale){splitFollow.timer=setTimeout(run,80);return;}
+    const pending=splitFollow.pending;splitFollow.pending=null;
+    if(pending)followSplitPane(pending.pane,pending.kind);
+  };
+  splitFollow.timer=-1;queueMicrotask(run);
+}
+function splitScrollChanged(pane) {
+  if(mode!=="split"||splitFollow.applying)return;
+  const top=pane==="src"?cm.getScrollInfo().top:ed.wwEditor.view.dom.scrollTop;
+  if(splitFollow.expected[pane]!==null&&Math.abs(top-splitFollow.expected[pane])<1)return;
+  splitFollow.expected[pane]=null;requestSplitFollow(pane);
+}
+function bindSplitRenderedEvents() {
+  const view=ed.wwEditor.view,container=ed.wwEditor.view.dom;
+  if(!container||container.dataset.splitFollowBound)return;
+  container.dataset.splitFollowBound="true";
+  ed.on("focus",()=>requestSplitFollow("ww","selection"));
+  container.addEventListener("scroll",()=>splitScrollChanged("ww"),{passive:true});
+  for(const event of ["wheel","pointerdown","touchstart"])container.addEventListener(event,()=>{splitFollow.expected.ww=null;splitFollow.pending=null;splitFollow.selectionUntil=0;},{passive:true});
+  for(const event of ["pointerup","keyup"])view.dom.addEventListener(event,()=>requestSplitFollow("ww","selection"));
+  splitFollow.observer?.disconnect();
+  if(typeof ResizeObserver!=="undefined"){splitFollow.observer=new ResizeObserver(()=>requestSplitFollow(splitFollow.last));splitFollow.observer.observe(view.dom);}
+}
+cm.on("scroll",()=>splitScrollChanged("src"));
+function splitSourceSelection(){requestSplitFollow("src","selection");}
+cm.on("focus",splitSourceSelection);
+cm.getWrapperElement().addEventListener("pointerup",splitSourceSelection);
+cm.getWrapperElement().addEventListener("keyup",splitSourceSelection);
+cm.on("cursorActivity",()=>{if(!cm._silent&&cm.hasFocus())requestSplitFollow("src","selection");});
+for(const event of ["wheel","pointerdown","touchstart"])cm.getScrollerElement().addEventListener(event,()=>{splitFollow.expected.src=null;splitFollow.pending=null;splitFollow.selectionUntil=0;},{passive:true});
+document.addEventListener("selectionchange",()=>{if(ed.wwEditor.view.hasFocus()&&ed.wwEditor.view.dom.contains(document.getSelection()?.anchorNode))requestSplitFollow("ww","selection");});
+window.addEventListener("resize",()=>requestSplitFollow(splitFollow.last));
+
 /* ---------- sync ---------- */
 let tSrc = 0, tWw = 0, tPost = 0;
 let latestEditSource = "src";
@@ -1001,6 +1235,7 @@ cm.on("change", () => {
 });
 let wwSel = null;
 function bindEditorEvents() {
+bindSplitRenderedEvents();
 ed.on("focus", () => { lastFocus = "ww"; wwFocused = true; updStatus(); });
 
 ed.on("blur", () => { wwSel = ed.getSelection(); wwFocused = false; });
@@ -1078,6 +1313,7 @@ function setMode(m) {
   const fmtOff = m === "outline";
   document.querySelectorAll("#tools button, #tools select").forEach((b) => (b.disabled = fmtOff));
   updStatus();
+  if(m==="split")setTimeout(()=>requestSplitFollow(lastFocus),0);
 }
 document.querySelectorAll("#modes button").forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
 $("#tocBtn").onclick = () => { $("#toc").classList.toggle("off"); $("#tocBtn").classList.toggle("on"); setTimeout(() => cm.refresh(), 0); };
@@ -2149,17 +2385,24 @@ function downloadText(data, name, type) {
   a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 const scriptSafe = (s) => s.replace(/<\/(script)/gi, "<\\/$1").replace(new RegExp("<" + "!--", "g"), "<\\!--");
-async function libText(url) {
-  const have = LIBS.find((l) => l.url === url && l.inline != null);
-  if (have) return have.inline;
+const LIB_TEXT_CACHE = new Map();
+async function loadLibText(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(url + " (" + r.status + ")");
   return r.text();
 }
+async function libText(url) {
+  const have = LIBS.find((l) => l.url === url && l.inline != null);
+  if (have) return have.inline;
+  if (!LIB_TEXT_CACHE.has(url)) LIB_TEXT_CACHE.set(url,loadLibText(url));
+  try { return await LIB_TEXT_CACHE.get(url); }
+  catch(error) { LIB_TEXT_CACHE.delete(url); throw error; }
+}
 // build a self-contained page: this editor + the markdown text in <textarea id="mdData">
-async function buildHtml(offline, options = {}) {
+async function buildHtml(offline = true, options = {}) {
+  offline = true; // Legacy online documents are re-saved fully offline.
   const content = options.markdown === undefined ? md : options.markdown;
-  const needMermaid = /^ {0,3}(`{3,}|~{3,})\s*mermaid\b/im.test(content);
+  const needMermaid = true; // Include Mermaid even before the first diagram edit.
   const libs = LIBS.filter((l) => l.url !== MERMAID_URL);
   if (offline && needMermaid) libs.push({ url: MERMAID_URL, css: false });
   const parts = await Promise.all(libs.map(async (l) => {
@@ -2212,36 +2455,39 @@ function assertProtectedImages(content) {
   if (parsed.querySelector('picture,source,svg,image,object,embed,iframe,video') || /url\s*\(|@import/i.test(content)) throw new Error('암호화 저장을 중단했습니다. 외부 리소스를 포함할 수 있는 HTML/CSS는 지원하지 않습니다.');
 }
 
-async function writeTo(kind, asNew) {
+// Inspect inert DOM markers: the shared runtime source itself contains marker literals.
+function isProtectedFile(text) {
+  const d=new DOMParser().parseFromString(text,"text/html");
+  return !!d.querySelector('meta[name="emm-protected-html"],script[type="application/json"]#emm-encrypted-payload') && encryptedApi().isEncryptedHtml(text);
+}
+let exportInProgress=false,exportDocumentEpoch=0;
+let documentLoadSequence=0;
+async function writeTo(kind,asNew){
+  if(exportInProgress)return false;
+  kind=kind==='online'?'offline':kind;
+  if(!['md','offline','encrypted'].includes(kind))return false;
   flushPendingEdits();
-  const snapshot = md, protectedExport = kind === "encrypted";
-  const preserveDocument = FRAME_HOST.active || !!EMM || PROTECTED_DOCUMENT;
-  if (PROTECTED_DOCUMENT && !protectedExport && !confirm('이 문서는 암호화되어 있습니다. 계속하면 암호 없는 평문 파일로 내보내며 내용과 포함된 이미지가 노출됩니다. 평문 내보내기를 진행할까요?')) return false;
-  let data, password = null;
+  const snapshot=md,encrypted=kind==='encrypted',preserve=FRAME_HOST.active||!!EMM||PROTECTED_DOCUMENT,epoch=exportDocumentEpoch,initialHandle=DOC.handle,initialKind=DOC.kind,suggestedName=nameFor(kind);
+  if(PROTECTED_DOCUMENT&&!encrypted&&!confirm('이 문서는 암호화되어 있습니다. 평문으로 내보내면 내용과 포함된 이미지가 노출됩니다. 계속할까요?'))return false;
+  exportInProgress=true;
   try {
-    if (protectedExport) {
-      assertProtectedImages(snapshot);
-      password = await askEncryptionPassword(false); if (password === null) return false;
-      flash('암호화 오프라인 파일을 만드는 중…');
-      const html = await buildHtml(true, { markdown: snapshot, encrypted: true });
-      data = await encryptedApi().encryptStandaloneHtml(html, password, 'markdown');
-    } else { flash(kind === 'offline' ? tr('오프라인 파일을 만드는 중… (라이브러리를 넣습니다)') : tr('저장 중…')); data = kind === 'md' ? snapshot : await buildHtml(kind === 'offline', {markdown:snapshot}); }
-  } catch (e) { alert(tr('파일을 만들지 못했습니다: ') + e.message + (protectedExport ? '\n암호화 파일을 만들지 못했으며 평문으로 대체하지 않았습니다.' : '')); return false; }
-  finally { password = null; }
-  const type = kind === 'md' ? 'text/markdown' : 'text/html';
-  let how = tr('내려받기 폴더에 저장했습니다'), savedHandle = null;
-  if (FS_OK && !ISOLATED_PROTECTED) {
-    try {
-      let h = !asNew && DOC.handle && DOC.kind === kind ? DOC.handle : null;
-      if (!h) h = await window.showSaveFilePicker({ suggestedName: nameFor(kind), types: [kind === 'md' ? {description:'Markdown', accept:{'text/markdown':['.md']}} : {description:KIND_LABEL[kind] || 'md.html',accept:{'text/html':['.html']}}] });
-      const w = await h.createWritable(); await w.write(new Blob([data],{type})); await w.close(); savedHandle = h; how = tr('저장했습니다');
-    } catch (e) { if (e.name === 'AbortError') { updStatus(); return false; } console.warn(e); downloadText(data,nameFor(kind),type); }
-  } else downloadText(data,nameFor(kind),type);
-  if (!preserveDocument || (PROTECTED_DOCUMENT && protectedExport && !FRAME_HOST.active && !EMM)) {
-    DOC.handle = savedHandle; if(savedHandle)fileName=savedHandle.name;
-    DOC.kind=kind; DOC.saved=snapshot; DOC.fileBound=true; PROTECTED_DOCUMENT=protectedExport;
-  }
-  updStatus();flash(nameFor(kind) + ' (' + tr(KIND_LABEL[kind]) + ') ' + how);return true;
+  let data,password=null;
+  try{
+    if(encrypted){assertProtectedImages(snapshot);password=await askEncryptionPassword();if(password===null)return false;flash(tr('오프라인 파일을 만드는 중… (라이브러리를 넣습니다)'));const html=await buildHtml(true, { markdown: snapshot, encrypted: true });data=await encryptedApi().encryptStandaloneHtml(html,password,'markdown');}
+    else{flash(kind==='offline'?tr('오프라인 파일을 만드는 중… (라이브러리를 넣습니다)'):tr('저장 중…'));data=kind==='md'?snapshot:await buildHtml(true,{markdown:snapshot});}
+  }catch(error){alert(tr('파일을 만들지 못했습니다: ')+error.message);return false;}
+  finally{password=null;}
+  const type=kind==='md'?'text/markdown':'text/html';let how=tr('내려받기 폴더에 저장했습니다'),savedHandle=null;
+  if(FS_OK&&!ISOLATED_PROTECTED){
+    try{
+      let h=!asNew&&initialHandle&&initialKind===kind?initialHandle:null;
+      if(!h)h=await window.showSaveFilePicker({suggestedName,types:[kind==='md'?{description:'Markdown',accept:{'text/markdown':['.md']}}:{description:encrypted?'암호화 md.html':'md.html',accept:{'text/html':['.html']}}]});
+      const writer=await h.createWritable();await writer.write(new Blob([data],{type}));await writer.close();savedHandle=h;how=tr('저장했습니다');
+    }catch(e){if(e.name==='AbortError'){updStatus();return false;}console.warn(e); downloadText(data, suggestedName, type);}
+  }else downloadText(data,suggestedName,type);
+  if(epoch===exportDocumentEpoch&&!FRAME_HOST.active&&((!EMM&&!preserve)||(PROTECTED_DOCUMENT&&encrypted))){DOC.handle=savedHandle;if(savedHandle)fileName=savedHandle.name;DOC.kind=kind;DOC.saved=snapshot;DOC.fileBound=true;PROTECTED_DOCUMENT=encrypted;}
+  updStatus();flash(suggestedName+' ('+tr(KIND_LABEL[kind])+') '+how);return true;
+  } finally { exportInProgress=false; }
 }
 function flushPendingEdits() {
   const source = !!tSrc, rendered = !!tWw;
@@ -2259,7 +2505,7 @@ function frameSave() {
   postToParent({ type: "mde:save", markdown: md });
   flash(tr("저장 중…"));
 }
-const doSave = () => DOC.kind === "encrypted" ? writeTo("encrypted", false) : FRAME_HOST.active ? frameSave() : DOC.kind === "emm" ? emmSave(false) : writeTo(DOC.kind, false);
+const doSave = () => PROTECTED_DOCUMENT ? writeTo("encrypted",false) : DOC.kind === "encrypted" ? writeTo("encrypted", false) : FRAME_HOST.active ? frameSave() : DOC.kind === "emm" ? emmSave(false) : writeTo(DOC.kind, false);
 
 /* ---------- EasyMindMap attachment: load and save back ---------- */
 function emmToken() { // same origin as the app: read the current session token the app keeps refreshed; fall back to #t=
@@ -2293,6 +2539,7 @@ window.addEventListener("message", (e) => {
   if (d.key !== EMM.key || e.source !== emmOpener()) return;
   if (d.type === "mde:load" && typeof d.markdown === "string") {
     if (!urlLanguage() && !manualLanguage && normalizeLanguage(d.lang || d.locale)) setLanguage(d.lang || d.locale, false);
+    exportDocumentEpoch++;
     OP.loaded = true; EMM.readOnly = !!d.readOnly;
     setAll(d.markdown.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"), "file"); DOC.saved = md; updStatus();
     flash(EMM.readOnly ? tr("불러왔습니다 (읽기 전용)") : tr("불러왔습니다: ") + EMM.name);
@@ -2320,13 +2567,16 @@ async function openerSave() {
   if (!res.ok) throw new Error(res.error || tr("저장하지 못했습니다."));
 }
 async function emmLoad() {
+  const epoch=exportDocumentEpoch;
   if (EMM.mode === "opener") return openerLoad();
   flash(tr("EasyMindMap 첨부를 불러오는 중…"));
   try {
     const r = await fetch(emmUrl(), { headers: { Authorization: "Bearer " + emmToken() } });
     if (!r.ok) throw new Error(emmErr(r.status));
     const buf = await r.arrayBuffer();
-    EMM.base = await sha256Hex(buf);
+    const loadedBase=await sha256Hex(buf);
+    if(PROTECTED_DOCUMENT||epoch!==exportDocumentEpoch)return;
+    EMM.base=loadedBase;
     setAll(new TextDecoder("utf-8").decode(buf).replace(/^\uFEFF/, "").replace(/\r\n/g, "\n"), "file");
     DOC.saved = md; updStatus(); flash(tr("불러왔습니다: ") + EMM.name);
   } catch (e) { flash(tr("불러오지 못했습니다")); alert(tr("첨부를 불러오지 못했습니다: ") + e.message); }
@@ -2360,29 +2610,34 @@ async function emmSave(force) {
   } catch (e) { flash(tr("저장하지 못했습니다")); alert(tr("저장하지 못했습니다: ") + e.message); }
   finally { emmSaving = false; }
 }
-async function loadFile(f, h) {
-  if (typeof f.size === 'number' && f.size > 92 * 1024 * 1024) {
-    alert('파일을 열지 못했습니다: 파일 크기는 92MiB 이하여야 합니다. 내용을 읽거나 암호를 요청하지 않았습니다.');
-    return;
-  }
-  let text = await f.text(), kind = 'md';
-  try {
-    const api = window.EmmEncryptedHtml;
-    const encrypted = api && typeof api.isEncryptedHtml === 'function' && api.isEncryptedHtml(text);
-    if (encrypted) {
-      let password = await askEncryptionPassword(true); if(password===null)return;
-      try { const result = await encryptedApi().decryptStandaloneHtml(text,password); if(result.kind!=='markdown')throw new Error('마크다운 암호화 문서가 아닙니다.');text=result.html;kind='encrypted'; }
-      finally {password=null;}
+async function loadFile(f,h){
+  flushPendingEdits();
+  const ticket=++documentLoadSequence,epoch=exportDocumentEpoch,initialMarkdown=md;
+  try{
+    if(f.size>92*1024*1024)throw new Error('파일 크기는 92MiB 이하여야 합니다.');
+    let text=await f.text(),kind='md',protectedFile=isProtectedFile(text),password=null;
+    if(protectedFile){
+      password=await askEncryptionPassword(true);if(password===null)return false;
+      try{const result=await encryptedApi().decryptStandaloneHtml(text,password);if(result.kind!=='markdown')throw new Error('마크다운 암호화 문서가 아닙니다.');text=result.html;kind='encrypted';}
+      finally{password=null;}
     }
-    if (/\.html?$/i.test(f.name) || encrypted) {
-      const d = new DOMParser().parseFromString(text,'text/html'),ta=d.getElementById('mdData');
-      if(!ta)throw new Error('이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.');
-      text=ta.value || ta.textContent || ''; if(kind!=='encrypted')kind=ta.dataset.encrypted==='1' ? 'encrypted' : d.querySelector('script[data-lib-url]:not([src])') ? 'offline' : 'online';
+    if(/\.html?$/i.test(f.name)||protectedFile){
+      const d=new DOMParser().parseFromString(text,'text/html'),ta=d.getElementById('mdData');
+      if(!ta)throw new Error(tr('이 HTML 파일에는 마크다운 원문(md.html 형식)이 들어 있지 않습니다.'));
+      text=ta.value||ta.textContent||'';
+      if(!protectedFile)kind=ta.dataset.encrypted==='1'?'encrypted':d.querySelector('script[data-lib-url]:not([src])')?'offline':'online';
     }
-    fileName=f.name;DOC.handle=h||null;DOC.kind=kind;DOC.fileBound=true;PROTECTED_DOCUMENT=kind==='encrypted';if(PROTECTED_DOCUMENT){FRAME_HOST.active=false;FRAME_HOST.pending=null;FRAME_HOST.lastSent=null;}
-    setAll(text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n'),'file');DOC.saved=md;updStatus();
-  } catch(e) {alert('파일을 열지 못했습니다: '+e.message);}
+    flushPendingEdits();
+    if(ticket!==documentLoadSequence||epoch!==exportDocumentEpoch||md!==initialMarkdown)throw new Error('파일을 읽는 동안 문서가 바뀌었습니다. 현재 문서를 유지합니다.');
+    // Set the protection flag before any change/autosave callback can run.
+    if(ISOLATED_PROTECTED)kind='encrypted';
+    PROTECTED_DOCUMENT=kind==='encrypted';
+    if(PROTECTED_DOCUMENT){FRAME_HOST.active=false;FRAME_HOST.pending=null;FRAME_HOST.lastSent=null;}
+    exportDocumentEpoch++;fileName=f.name;DOC.handle=h||null;DOC.kind=kind;DOC.fileBound=true;
+    setAll(text.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n'),'file');DOC.saved=md;updStatus();return true;
+  }catch(error){alert(error.message);return false;}
 }
+
 const askDiscard = () => !isDirty() || !DOC.fileBound || confirm(tr("저장하지 않은 변경이 있습니다. 버리고 계속할까요?"));
 async function doOpen() {
   if (!askDiscard()) return;
@@ -2395,7 +2650,7 @@ async function doOpen() {
   $("#fileIn").click();
 }
 $("#fileIn").onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) loadFile(f, null); };
-function newDoc(text, name) { PROTECTED_DOCUMENT = false; fileName = name; DOC.handle = null; DOC.kind = "md"; DOC.fileBound = false; setAll(text, "file"); DOC.saved = md; updStatus(); }
+function newDoc(text, name) { exportDocumentEpoch++; const keepProtected = PROTECTED_DOCUMENT || ISOLATED_PROTECTED; PROTECTED_DOCUMENT = keepProtected; fileName = name; DOC.handle = null; DOC.kind = keepProtected ? "encrypted" : "md"; DOC.fileBound = keepProtected; setAll(text, "file"); DOC.saved = md; updStatus(); }
 function doClose() {
   if (isDirty() && !confirm(tr("저장하지 않은 변경이 있습니다. 저장하지 않고 닫을까요?"))) return;
   DOC.saved = md;
@@ -2408,7 +2663,7 @@ const ACTS = {
   open: doOpen,
   sample: () => askDiscard() && newDoc(SAMPLE, "예제.md"),
   save: doSave,
-  saveas: () => writeTo(DOC.kind === "emm" ? "md" : DOC.kind, true),
+  saveas: () => writeTo(PROTECTED_DOCUMENT ? "encrypted" : DOC.kind === "emm" ? "md" : DOC.kind, true),
   md: () => writeTo("md", true),
   online: () => writeTo("online", true),
   offline: () => writeTo("offline", true),
@@ -2511,12 +2766,14 @@ window.addEventListener("message", (e) => {
   const d = e.data;
   if (!d || typeof d !== "object" || Array.isArray(d)) return;
   if (d.type === "mde:config") {
+    exportDocumentEpoch++;
     FRAME_HOST.active = true; FRAME_HOST.origin = e.origin;
     if (typeof d.name === "string" && d.name.trim()) fileName = d.name.trim();
     if (typeof d.saveLabel === "string") FRAME_HOST.saveLabel = d.saveLabel.trim();
     DOC.kind = "emm"; DOC.handle = null; DOC.fileBound = true;
     updateSaveControls(); updStatus();
   } else if (d.type === "mde:set" && typeof d.markdown === "string") {
+    exportDocumentEpoch++;
     clearTimeout(tSrc); clearTimeout(tWw); clearTimeout(tPost); tSrc = tWw = tPost = 0;
     FRAME_HOST.pending = FRAME_HOST.lastSent = null;
     setAll(d.markdown, "api"); DOC.saved = md; updStatus();

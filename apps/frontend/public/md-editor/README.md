@@ -10,7 +10,7 @@
 | 출처 저장소 | <https://github.com/okpojung/markdown-editor> |
 | 파일 | `index.html` (단일 파일 편집기) |
 | 커밋 | `e4815cb63868932d614c463fa98ad9e073c5f334` (2026-11-08 상위 main 기준, 아래 로컬 보안 패치 포함) |
-| sha256 | `780f57c79381f5409a1b8d4b63519659ebf2c312a015de5efd1c5a70ad8360d4` |
+| sha256 | `dda5d0442e7718255c0a0c8f7ed037c95f15f9ee09c71dde3a07c718d8b7f766` |
 | 라이선스 | MIT — 아래 고지 |
 
 ## 어떻게 서빙되나
@@ -105,3 +105,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+
+## 2026-11-10 독립 로컬 통합 (운영 미반영)
+
+- 기준 EMM 코어: `c93aa6dd7acd7a2d70764d54136e69bce602e652`. 공통 후보: `60b8310095183e016683e57cd82041138c2a15f0`.
+- 메뉴: MD / 완전 오프라인 md.html / EMM v1 암호화 md.html 3종. 온라인 파일 가져오기는 유지하며 다시 저장하면 오프라인입니다. Mermaid는 문서 내 사용 여부와 무관하게 포함합니다.
+- 공통 1.0.4 의미 블록 기반 분할 스크롤/선택 추종과 언어 전환 후 이벤트 재결선을 이식했습니다.
+- 공통 1.0.5 export 직렬화, 문서 epoch, 오래된 파일 열기 거부, 보호 로컬 저장 saved/handle 보완을 이식했습니다.
+- EMM 암호화 runtime marker 내부는 기준 원본과 바이트 동일합니다. 공유 알고리즘을 추가하지 않았습니다.
+- 공유 런타임의 문자열 표식 오탐을 피하려고 가져오기 경계의 isProtectedFile에서 비실행 DOM의 실제 meta/payload 요소를 확인합니다.
+- EMM Bearer/If-Match/403/409/opener 저장 본문, iframe ACK와 닫기 보호를 보존했습니다.
+- 새 검사: 작업본 루트 integration-check.cjs, tests/protected-export.emm.browser.js (공통 검사에 EMM API 이름만 어댑트), fixture-server.cjs.
+- 기존 암호화 실제 검사 통과. 기존 합성 검사는 함수 문자열/VM fixture가 이전 구조에 결합되어 별도 갱신이 필요합니다.
+- check:encrypted-runtime의 TypeScript 의존성이 없어 실행 불가. 의존성을 설치하지 않았습니다. 원본 runtime 바이트 동일성과 원본 TS/생성 스크립트 보존으로 제한 확인했습니다.
+- 운영 배포, pro CORE_SHA 상향, 실제 서버 첨부 PUT, 네이티브 파일 저장은 수행하지 않았습니다.

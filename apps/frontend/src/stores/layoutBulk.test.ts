@@ -96,5 +96,23 @@ st().updateNodeLayoutType('c2', 'kanban');
 st().updateNodesLayoutType(['root', 'A'], 'tree-down');
 check('⑦ unsupported per-center/ordinary root-only edits rejected atomically', [st().map === guarded, st().past.length === guardedPast], [true, true]);
 
+// ⑧ 하위노드 레이아웃 변경을 **끈** 경우 (2026-11-11 사용자 보고) — 고른 노드만 바뀌고,
+//    하위가 있는 자식은 바꾸기 전 실효 레이아웃으로 고정되어 손자부터는 예전 모양 그대로
+st().loadMap({
+  title: 't', root: { id: 'root', text: 'R', colorKey: 'root', layoutType: 'tree-right' },
+  branches: [{ ...N('P', [N('X', [N('Y', [N('Z')]), N('W')]), N('Q')]), colorKey: 'l1A', side: 'right' }],
+}, { resetHistory: true });
+useEditorUiStore.getState().setLayoutType('tree-right');
+st().updateNodeLayoutType('X', 'process-tree-right', false);
+check('⑧ 고른 노드 X 는 진행트리', g('X').layoutType, 'process-tree-right');
+check('⑧ 하위가 있는 자식 Y 는 예전 실효 레이아웃(tree-right)으로 고정', g('Y').layoutType, 'tree-right');
+check('⑧ 잎 자식 W 는 그대로(값 없음)', g('W').layoutType, undefined);
+check('⑧ 손자 Z 도 값 없음 — Y 를 물려받는다', g('Z').layoutType, undefined);
+st().updateNodeLayoutType('X', 'radial-right', true);
+check('⑧ 켠 경우는 하위 고정값을 지운다', [g('X').layoutType, g('Y').layoutType], ['radial-right', undefined]);
+// 새 노드는 글자 맞춤을 정하지 않는다 (레벨 기본 = 중앙)
+const newId = st().addChildNode('X');
+check('⑨ 새 노드는 textAlign 없음', newId ? g(newId).textAlign : 'no-node', undefined);
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 if (failed) process.exit(1);

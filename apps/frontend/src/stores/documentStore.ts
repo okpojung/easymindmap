@@ -466,11 +466,12 @@ function defaultFontSizeForDepth(depth: number): number {
 // New nodes have no layoutType of their own: they inherit the layout of
 // their parent / the map — **unless the level says otherwise** (아래
 // withLevelLayout). 그 경우에도 여기서는 비워 두고, 만드는 자리에서 채운다.
+// 글자 맞춤은 **정하지 않는다** — 비워 두면 레벨 기본(levelTextAlign, 없으면 중앙)을 따른다.
+// 예전에는 'left' 를 박아 새 노드만 왼쪽 맞춤이 됐다 (2026-11-11 사용자 보고).
 function createNewNode(): MindNode {
   return {
     id: createNodeId(),
     text: tr('editor.doc.newNode'),
-    textAlign: 'left',
     children: [],
   };
 }
@@ -932,6 +933,26 @@ function hierarchyFallback(map: SampleMap, globalLayout: LayoutType): LayoutType
   if (isHierarchyLayout(globalLayout)) return globalLayout;
   if (isHierarchyLayout(map.root.layoutType)) return map.root.layoutType!;
   return 'radial-right';
+}
+
+/** 노드의 실효 레이아웃 = 자기 값, 없으면 가까운 조상의 값, 없으면 중심 루트(→ fallback) */
+function effectiveLayoutInMap(map: SampleMap, nodeId: string, fallback: LayoutType): LayoutType {
+  const walk = (nodes: MindNode[], inherited: LayoutType): LayoutType | null => {
+    for (const node of nodes) {
+      const current = node.layoutType ?? inherited;
+      if (node.id === nodeId) return current;
+      const found = walk(node.children ?? [], current);
+      if (found) return found;
+    }
+    return null;
+  };
+  for (const c of mapCenters(map)) {
+    const start = c.root.layoutType ?? fallback;
+    if (c.root.id === nodeId) return start;
+    const found = walk(c.branches as MindNode[], start);
+    if (found) return found;
+  }
+  return fallback;
 }
 
 function clearLayoutTypeRecursive(nodes: MindNode[]): MindNode[] {
@@ -1944,6 +1965,23 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
           children: clear ? clearLayoutTypeRecursive(n.children ?? []) : n.children,
         }));
       };
+      // **하위노드 레이아웃 변경을 끈 경우** (2026-11-11 사용자 보고): 고른 노드의 레이아웃은
+      // 그 **자식들을 놓는 방식**만 바꿔야 한다. 자식에게 자기 레이아웃이 없으면 새 값을
+      // 물려받아 손자·증손까지 바뀌었다 — 그래서 하위가 있는 자식은 **바꾸기 전의 실효
+      // 레이아웃을 자기 값으로 고정**한다. 맵 전체(root)·중심주제는 예전처럼 둔다.
+      if (!descendants) {
+        for (const id of ids) {
+          if (isCenterRootId(before, id)) continue;
+          const prevOfSelected = effectiveLayoutInMap(before, id, priorHierarchy);
+          const node = findNodeInMap(before, id) as MindNode | null | undefined;
+          for (const ch of (node && 'children' in node ? node.children : undefined) ?? []) {
+            if (ch.layoutType || !(ch.children && ch.children.length)) continue;
+            map = mutateNode(map, ch.id, (n) => (n.layoutType ? n : {
+              ...n, layoutType: prevOfSelected, edgeType: resolveEdgeType(prevOfSelected),
+            }));
+          }
+        }
+      }
       // Clear first, then restore every explicitly selected node. This makes
       // ancestor+descendant selections independent of selection ordering.
       if (descendants) for (const id of ids) map = apply(map, id, true);

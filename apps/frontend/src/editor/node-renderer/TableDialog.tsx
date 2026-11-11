@@ -286,11 +286,25 @@ export function TableDialog({
   //    내용이 모두 안 보인다"). 예전엔 높이를 직접 넣은 줄바꿈 수로만 정해서, 칸
   //    폭에서 자동으로 접힌 긴 글은 overflow:hidden 에 잘렸다. 그리고 나서 재고,
   //    창 크기가 바뀌어도 다시 잰다
+  //    재는 동안 모든 칸이 잠깐 한 줄로 줄어 표가 짧아지면 브라우저가 스크롤을 위로 당긴다
+  //    → 마지막 행에서 줄바꿈하면 그 행이 위로 사라졌다 (2026-11-11 사용자 보고). 그래서
+  //    재기 전 스크롤 위치를 기억해 되돌리고, 입력 중인 칸의 끝에서 줄을 바꿨는데 칸 아래가
+  //    보이는 범위 밖이면 그만큼만 내린다
   const fitCells = () => {
+    const box = gridRef.current?.parentElement as HTMLElement | null;
+    const keepTop = box ? box.scrollTop : 0;
     gridRef.current?.querySelectorAll<HTMLTextAreaElement>('textarea[data-table-cell]').forEach((el) => {
       el.style.height = 'auto';
       el.style.height = `${el.scrollHeight}px`;
     });
+    if (!box) return;
+    box.scrollTop = keepTop;
+    const act = document.activeElement;
+    if (act instanceof HTMLTextAreaElement && gridRef.current?.contains(act)) {
+      const br = box.getBoundingClientRect(), ar = act.getBoundingClientRect();
+      const atEnd = (act.selectionEnd ?? 0) >= act.value.length - 1;
+      if (atEnd && ar.bottom > br.bottom) box.scrollTop += ar.bottom - br.bottom + 4;
+    }
   };
   useLayoutEffect(fitCells);
   useEffect(() => {

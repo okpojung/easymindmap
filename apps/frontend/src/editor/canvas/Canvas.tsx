@@ -401,6 +401,13 @@ export function Canvas({
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
   }, [stylePainter, tagPainter]);
+  // 태그 붙이기 모드는 왼쪽 태그 탭에서 켜므로 키보드 초점이 캔버스 밖일 수 있다 — Esc 는 어디서 눌러도 끈다
+  useEffect(() => {
+    if (!tagPainter) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setTagPainter(null); };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [tagPainter, setTagPainter]);
   const setMultiSelectedIds = useInteractionStore((s) => s.setMultiSelectedIds);
   const multiSet = useMemo(() => new Set(multiSelectedIds), [multiSelectedIds]);
 

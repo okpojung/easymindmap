@@ -12,6 +12,7 @@
 import { pageText, type FunctionGroupId } from '../i18n/pages';
 
 export interface FunctionGroup {
+  id: FunctionGroupId;
   icon: string;
   title: string;
   /** 한 줄 요약 */
@@ -35,12 +36,16 @@ const GROUPS: { id: FunctionGroupId; icon: string; moreTo?: string }[] = [
   { id: 'view', icon: '🗺️' },
   { id: 'attach', icon: '📎' },
   { id: 'io', icon: '🔄' },
+  { id: 'variables', icon: 'VAR' },
+  { id: 'markdown', icon: 'MD' },
+  { id: 'encrypted', icon: 'HTML' },
   { id: 'share', icon: '🌐' },
 ];
 
 export const FUNCTIONS: FunctionGroup[] = GROUPS.map(({ id, icon, moreTo }) => {
   const g = pageText().functions.groups[id];
   return {
+    id,
     icon,
     title: g.title,
     lead: g.lead,

@@ -26,7 +26,7 @@ import zh from './pages.zh';
 /** 링크가 든 문장 — 화면 쪽이 링크(주소·새 창 여부)를 만들고, 사전은 링크 글자만 정한다 */
 export type LinkFn = (text: string) => ReactNode;
 
-export type FunctionGroupId = 'ai' | 'edit' | 'view' | 'attach' | 'io' | 'share';
+export type FunctionGroupId = 'ai' | 'edit' | 'view' | 'attach' | 'io' | 'share' | 'variables' | 'markdown' | 'encrypted';
 export type AiToolName = 'create_map' | 'append_to_map' | 'get_map' | 'list_maps' | 'get_open_map' | 'check_items';
 export type MmdLevelId = 'L0' | 'L1' | 'L2';
 export type MmdRepoName = 'spec' | 'mindmapmd' | 'conformance' | 'adapters';

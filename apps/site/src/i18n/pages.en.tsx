@@ -24,13 +24,8 @@ const en: PageText = {
   functions: {
     eyebrow: 'Features',
     title: 'What you can do',
-    lead: (
-      <>
-        Create maps, view them in different ways, keep documents in nodes, export them as standard Markdown,
-        and share them by link. <b>Only features with a chapter in the user guide</b> are listed here.
-      </>
-    ),
-    guidePrefix: 'Guide',
+    lead: "Create maps, edit documents, reuse variables and protect exported files with a password. These descriptions follow the app’s implemented features and user guides.",
+    guidePrefix: "Reference",
     groups: {
       ai: {
         title: 'Create with AI',
@@ -93,6 +88,40 @@ const en: PageText = {
           'Version history and restore · keep versions longer (starred)',
         ],
         guide: '08. Export and import · 11. Version history',
+      },
+      variables: {
+        title: "Map variables",
+        lead: "Manage values and formulas reused across nodes in one place.",
+        items: [
+          "Reference variables in node text with [&name]",
+          "Set value types and display formats for text, numbers, dates and more",
+          "Calculate values with formulas; switch between references and resolved values",
+          "Optionally update references when renaming a variable"
+        ],
+        guide: "Variables panel in the app",
+      },
+      markdown: {
+        title: "Built-in Markdown editor",
+        lead: "Read and edit attached documents alongside your map.",
+        items: [
+          "Open a node’s Markdown (.md) attachment in the built-in editor",
+          "Use the right-hand split pane, a new tab or a new window",
+          "Embedded MD updates the map and still needs normal map saving; server attachments save to the server",
+          "Check save status and file-specific error messages"
+        ],
+        guide: "MD panel in the app · attachment editing",
+      },
+      encrypted: {
+        title: "Encrypted HTML export",
+        lead: "Protect an exported map and included originals with a password.",
+        items: [
+          "Export a map as an HTML viewer that requires a password to open",
+          "Encrypt photos and original attachments selected for inclusion",
+          "Save as HTML or ZIP depending on included assets; fully extract a ZIP and keep its viewer and data files together",
+          "Use at least 8 characters and two of: letters, numbers, special characters",
+          "A lost password cannot be recovered; send it separately from the file"
+        ],
+        guide: "Export > Encrypted HTML",
       },
       share: {
         title: 'Sharing',

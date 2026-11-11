@@ -13,13 +13,15 @@ import { fillText, varsInText } from './varSyntax';
 
 export type { MapVariable, VariableType };
 
-export const VARIABLE_TYPES: VariableType[] = ['number', 'currency', 'date', 'time', 'percent', 'text', 'phone', 'koreanNumber', 'email', 'formula', 'node'];
+export const VARIABLE_TYPES: VariableType[] = ['number', 'currency', 'date', 'time', 'percent', 'text', 'phone', 'koreanNumber', 'email', 'formula', 'node', 'count'];
+/** 앱이 계산하는 타입 — 사람이 값을 넣지 않고 DB 값도 쓰지 않는다 */
+export const COMPUTED_TYPES: readonly VariableType[] = ['formula', 'node', 'count'];
 
 /** 타입별 기본 서식 (엑셀 셀 서식) */
 export const DEFAULT_FORMAT: Record<VariableType, string> = {
   number: '#,##0', currency: '₩#,##0', date: 'yyyy-mm-dd', time: 'hh:mm', percent: '0%',
   text: '@', phone: '', koreanNumber: '[DBNum4]G/표준', email: '@', formula: 'G/표준',
-  node: 'first',
+  node: 'first', count: '#,##0',
 };
 /** 서식 고르기 목록 (자주 쓰는 것) — 직접 입력도 된다 */
 export const FORMAT_PRESETS: Record<VariableType, string[]> = {
@@ -34,6 +36,7 @@ export const FORMAT_PRESETS: Record<VariableType, string[]> = {
   email: ['@'],
   formula: ['G/표준', '#,##0', '#,##0.00', '₩#,##0', '0%', '0.0%', 'yyyy-mm-dd'],
   node: ['first', 'all'],
+  count: ['#,##0', '0', '#,##0"개"', '#,##0"명"'],
 };
 
 const isErr = (v: unknown): v is FErr => v instanceof FErr;
@@ -82,6 +85,10 @@ export function parseRaw(type: VariableType, raw: string | undefined | null): FV
 /** 값 검사 (입력 칸 아래 안내) — 문제가 있으면 i18n 키 */
 export function valueProblem(type: VariableType, raw: string): string | null {
   if (type === 'node') return raw.trim() ? null : 'var.err.nodePick';
+  if (type === 'count') {
+    const sp = parseCountSpec(raw);
+    return sp.kind && !sp.val.trim() ? (sp.kind === 'shape' ? 'var.err.countShape' : 'var.err.countFill') : null;
+  }
   if (!raw.trim() || type === 'formula') return null;
   if (type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.trim())) return 'var.err.email';
   if (type === 'phone' && raw.replace(/\D/g, '').length < 7) return 'var.err.phone';
@@ -90,7 +97,32 @@ export function valueProblem(type: VariableType, raw: string): string | null {
 }
 
 /** 노드 참조 계산에 쓰는 맵 — 노드 id → 노드 글 (없으면 노드 참조는 값 없음) */
-export interface VarContext { nodeText: (id: string) => string | undefined }
+export interface VarContext {
+  nodeText: (id: string) => string | undefined;
+  /** 노드 수 — 조건에 맞는 노드 수. 대상 노드가 없으면 null */
+  countNodes?: (spec: CountSpec) => number | null;
+}
+
+// ── 노드 수 (2026-11-11) ────────────────────────────────────────────────
+export type CountKind = '' | 'shape' | 'fill';
+export interface CountSpec { target: string; kind: CountKind; val: string }
+/** 'target|kind|val' → 조각. 모르는 조건은 '모든 노드' */
+export function parseCountSpec(raw: string | undefined | null): CountSpec {
+  const [target = '', kind = '', ...rest] = String(raw ?? '').split('|');
+  const k: CountKind = kind === 'shape' || kind === 'fill' ? kind : '';
+  return { target: target.trim(), kind: k, val: k ? rest.join('|').trim() : '' };
+}
+export function countSpecString(sp: CountSpec): string {
+  return sp.kind ? `${sp.target}|${sp.kind}|${sp.val}` : sp.target ? sp.target : '';
+}
+/** 배경색 비교용 — 대소문자·3자리 HEX 차이를 없앤다. 'transparent' 는 그대로 */
+export function normFill(c: string | undefined | null): string {
+  const s = String(c ?? '').trim().toLowerCase();
+  const m = /^#?([0-9a-f]{3})$/.exec(s);
+  if (m) return '#' + m[1].split('').map((x) => x + x).join('');
+  const m6 = /^#?([0-9a-f]{6})$/.exec(s);
+  return m6 ? '#' + m6[1] : s;
+}
 
 /** 노드 글에서 '첫 줄' — 제목·목록·체크·인용 표시는 떼고, 코드 펜스로 시작하면 빈 글 */
 export function nodeFirstLine(text: string): string {
@@ -162,6 +194,12 @@ export function evaluateVariables(vars: readonly MapVariable[] | undefined, ctx?
         }
         v = txt === '#REF!' ? new FErr('#REF!') : txt;
       }
+    } else if (def.type === 'count') {
+      // 노드 수 — 맵이 바뀌면 다시 센다. 대상 노드가 없어졌으면 #REF!
+      const sp = parseCountSpec(def.value);
+      if (!ctx?.countNodes) v = null;
+      else if (sp.kind && !sp.val) v = null;
+      else { const n = ctx.countNodes(sp); v = n === null ? new FErr('#REF!') : n; }
     } else v = parseRaw(def.type, def.value);
     computing.delete(name);
     out.set(name, { value: v, display: displayOf(def, v), ...(def.type === 'node' && typeof v === 'string' ? { raw: true } : {}) });
@@ -192,7 +230,7 @@ export function previewDisplay(def: MapVariable, all: readonly MapVariable[]): s
 /** 정의의 값을 DB 값으로 — 수식은 다른 변수로 계산하므로 덮지 않는다 (pro vars.ts renderDoc 과 같은 규칙) */
 export function withDbValues(defs: readonly MapVariable[], db?: Readonly<Record<string, string>>): MapVariable[] {
   if (!db) return [...defs];
-  return defs.map((d) => (d.type !== 'formula' && d.type !== 'node' && Object.prototype.hasOwnProperty.call(db, d.name) ? { ...d, value: db[d.name] } : d));
+  return defs.map((d) => (!COMPUTED_TYPES.includes(d.type) && Object.prototype.hasOwnProperty.call(db, d.name) ? { ...d, value: db[d.name] } : d));
 }
 
 /** 값으로 보기에 쓰는 결과 — 정의(DB 값 우선)를 계산하고, 정의 없이 DB 에만 있는 이름은 값 그대로 */
@@ -214,8 +252,49 @@ export function nodeContext(map: { root?: unknown }): VarContext | undefined {
   if (!m || !m.root || !Array.isArray(m.branches)) return undefined;
   const texts = new Map<string, string>();
   eachNode(m, (n) => { const id = (n as { id?: string }).id; if (id) texts.set(id, String(n.text ?? '')); });
-  return { nodeText: (id) => texts.get(id) };
+  // 노드 수 — 처음 쓸 때 한 번만 훑는다 (변수가 없으면 비용 없음)
+  let roots: CNode[] | null = null;
+  let byId: Map<string, CNode> | null = null;
+  const build = () => {
+    roots = []; byId = new Map();
+    const conv = (n: TNode, depth: number): CNode => {
+      const st = (n as { style?: { shapeType?: string; fillColor?: string } }).style;
+      const c: CNode = { depth, shape: st?.shapeType, fill: st?.fillColor, kids: [] };
+      const id = (n as { id?: string }).id;
+      if (id) byId!.set(id, c);
+      c.kids = (n.children ?? []).map((k) => conv(k, depth + 1));
+      return c;
+    };
+    const addCenter = (root: TNode, branches: TNode[]) => {
+      const r = conv({ ...root, children: [] } as TNode, 0);
+      r.kids = branches.map((b) => conv(b, 1));
+      roots!.push(r);
+    };
+    addCenter(m.root, m.branches);
+    for (const c of m.centers ?? []) addCenter(c.root, c.branches);
+  };
+  const countNodes = (sp: CountSpec): number | null => {
+    if (!roots) build();
+    const match = (c: CNode): boolean => {
+      if (sp.kind === 'shape') return (c.shape ?? countShapeDefault(c.depth)) === sp.val;
+      if (sp.kind === 'fill') return !!c.fill && normFill(c.fill) === normFill(sp.val);
+      return true;
+    };
+    let n = 0;
+    const walk = (c: CNode) => { if (match(c)) n++; c.kids.forEach(walk); };
+    if (!sp.target) { roots!.forEach(walk); return n; }
+    const t = byId!.get(sp.target);
+    if (!t) return null;
+    t.kids.forEach(walk); // 고른 노드 자신은 세지 않는다
+    return n;
+  };
+  return { nodeText: (id) => texts.get(id), countNodes };
 }
+interface CNode { depth: number; shape?: string; fill?: string; kids: CNode[] }
+/** 도형을 정하지 않은 노드의 도형 — 맵 설정의 레벨 기본 도형, 없으면 둥근 */
+let countShapeDefault: (depth: number) => string = () => 'rounded';
+/** 화면이 레벨 기본 도형을 알려 준다 (sizeNodeForText 의 levelShape) — 순수 모듈로 두려고 주입한다 */
+export function setCountShapeDefault(fn: (depth: number) => string): void { countShapeDefault = fn; }
 interface TNode { text?: string; children?: TNode[] }
 interface TMap { root: TNode; branches: TNode[]; centers?: { root: TNode; branches: TNode[] }[]; settings?: { variables?: MapVariable[] } }
 

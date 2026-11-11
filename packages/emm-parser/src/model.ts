@@ -343,7 +343,14 @@ export type VariableType =
   | 'number' | 'currency' | 'date' | 'time' | 'percent'
   | 'text' | 'phone' | 'koreanNumber' | 'email' | 'formula'
   /** 노드 참조 (2026-11-04) — value = 노드 id, format = 'first'(첫 줄, 기본) | 'all'(전체) */
-  | 'node';
+  | 'node'
+  /**
+   * 노드 수 (2026-11-11) — 앱이 세는 값. value = '대상|조건|조건값'
+   *   대상: '' = 맵 전체, 노드 id = 그 노드의 하위(그 노드는 빼고)
+   *   조건: '' = 모든 노드, 'shape' = 도형이 조건값인 노드, 'fill' = 배경색이 조건값인 노드
+   * format = 숫자 서식(기본 #,##0)
+   */
+  | 'count';
 
 /** 맵 변수 하나 — value 는 넣은 글자 그대로(수식은 수식), format 은 엑셀 셀 서식 */
 export interface MapVariable {

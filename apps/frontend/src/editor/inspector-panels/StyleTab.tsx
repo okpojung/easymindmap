@@ -81,6 +81,9 @@ const SHAPES: { key: ShapeType; label: string; shape: React.ReactNode }[] = [
 ];
 
 /** 도형 없음 미리보기의 글자 획 — 언어마다 그 언어의 글자 하나 */
+/** 도형 고르기 목록 (키·이름표 키) — 변수 '노드 수'의 도형 조건도 같은 목록을 쓴다 */
+export const SHAPE_OPTIONS: { key: ShapeType; label: string }[] = SHAPES.map(({ key, label }) => ({ key, label }));
+
 function NoneGlyph() {
   const tr = useTr();
   return <>{tr('inspector.style.shapeNoneGlyph')}</>;

@@ -113,5 +113,42 @@ check('사용처', [use.get('price'), use.get('qty')?.nodes], [{ nodes: 1, formu
   check('첫 줄 고르기', nodeFirstLine('\n- [x] 할 일\n다음'), '할 일');
   check('맵 없이 계산하면 노드 참조는 값 없음', evaluateVariables(ndefs).get('nd_1')?.display, undefined);
 }
+// 노드 수 (2026-11-11) — 맵 전체 / 노드 하위(그 노드 제외) × 모든 노드 / 도형 / 배경색
+{
+  const N = (id: string, kids: unknown[] = [], style?: Record<string, string>) => ({ id, text: id, children: kids, ...(style ? { style } : {}) });
+  const cmap = {
+    root: { id: 'root', text: 'R' },
+    branches: [
+      N('A', [N('A1', [N('A1a', [], { shapeType: 'star' }), N('A1b', [], { fillColor: '#FEF3C7' })]), N('A2', [], { shapeType: 'star', fillColor: '#fef3c7' })]),
+      N('B', [N('B1', [], { fillColor: 'transparent' })], { shapeType: 'star' }),
+    ],
+    centers: [{ root: { id: 'c2', text: 'C2' }, branches: [N('C', [], { fillColor: '#fff' })] }],
+    settings: { variables: [
+      { name: 'all', type: 'count' },
+      { name: 'underA', type: 'count', value: 'A' },
+      { name: 'starMap', type: 'count', value: '|shape|star' },
+      { name: 'starA', type: 'count', value: 'A|shape|star' },
+      { name: 'roundA', type: 'count', value: 'A|shape|rounded' },
+      { name: 'yellow', type: 'count', value: '|fill|#FEF3C7' },
+      { name: 'none', type: 'count', value: '|fill|transparent' },
+      { name: 'white', type: 'count', value: '|fill|#FFFFFF' },
+      { name: 'gone', type: 'count', value: 'xx' },
+      { name: 'pct', type: 'formula', value: 'starMap / all', format: '0%' },
+      { name: 'fmt', type: 'count', value: 'A', format: '#,##0"개"' },
+    ] },
+  };
+  const cr = variableResults(cmap as never);
+  check('노드 수 — 맵 전체(중심 둘 포함)', cr.get('all')?.display, '10');
+  check('노드 수 — A 하위(A 제외)', cr.get('underA')?.display, '4');
+  check('노드 수 — 맵 전체 별 도형', cr.get('starMap')?.display, '3');
+  check('노드 수 — A 하위 별 도형', cr.get('starA')?.display, '2');
+  check('노드 수 — 도형 없는 노드는 기본(둥근)으로', cr.get('roundA')?.display, '2');
+  check('노드 수 — 배경색(대소문자 무시)', cr.get('yellow')?.display, '2');
+  check('노드 수 — 배경색 없음', cr.get('none')?.display, '1');
+  check('노드 수 — 3자리 HEX 도 같은 색', cr.get('white')?.display, '1');
+  check('노드 수 — 없는 노드는 #REF!', cr.get('gone')?.display, '#REF!');
+  check('노드 수 — 수식에서 숫자', cr.get('pct')?.display, '30%');
+  check('노드 수 — 서식', cr.get('fmt')?.display, '4개');
+}
 if (failed) { console.log('\n' + failed + '개 실패'); process.exit(1); }
 console.log('\nvariables: 모두 통과');

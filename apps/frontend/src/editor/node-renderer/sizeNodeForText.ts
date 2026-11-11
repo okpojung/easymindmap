@@ -8,6 +8,7 @@
 // 계산 직전에 map.settings.levelFonts를 주입하므로 모든 레이아웃 전략의
 // 측정과 NodeRenderer의 그리기가 항상 같은 값을 쓴다.
 
+import { setCountShapeDefault } from '@/utils/variables/mapVariables';
 import type { LevelFontSetting } from '@/editor/__samples__/types';
 import { mediaKindsOf } from './mediaContent';
 import { MD_CODE_PAD_X } from './mdCode';
@@ -193,6 +194,8 @@ export function levelShape(depth: number): string | undefined {
   const v = levelShapeConfig[levelIndex(depth)];
   return v ?? undefined;
 }
+// 변수 '노드 수'의 도형 조건이 화면과 같은 규칙(노드 도형 → 레벨 기본 → 둥근)으로 세게 한다
+setCountShapeDefault((depth) => levelShape(depth) ?? 'rounded');
 
 const CJK_RE = /[\u3000-\u9FFF\uAC00-\uD7AF]/;
 

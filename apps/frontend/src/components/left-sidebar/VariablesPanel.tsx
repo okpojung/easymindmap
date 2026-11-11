@@ -13,9 +13,11 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useTr } from '@/i18n';
 import {
-  DEFAULT_FORMAT, FORMAT_PRESETS, VARIABLE_TYPES, evaluateVariables, nodeContext, valueProblem, variableResults, variableUsage, withDbValues,
-  type MapVariable, type VariableType,
+  COMPUTED_TYPES, DEFAULT_FORMAT, FORMAT_PRESETS, VARIABLE_TYPES, countSpecString, evaluateVariables, nodeContext, normFill, parseCountSpec, valueProblem, variableResults, variableUsage, withDbValues,
+  type CountKind, type MapVariable, type VariableType,
 } from '@/utils/variables/mapVariables';
+import { SHAPE_OPTIONS } from '@/editor/inspector-panels/StyleTab';
+import { ColorSwatchInput } from '@/editor/inspector-panels/InspectorSection';
 import { useVarDbStore } from '@/stores/varDbStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
@@ -26,7 +28,7 @@ import { nameProblem } from '@/utils/variables/varSyntax';
 import { FUNCTION_NAMES } from '@/utils/variables/formula';
 
 /** DB 값을 쓰는 타입 — 수식·노드 참조는 앱이 계산한다 */
-const dbType = (ty: VariableType) => ty !== 'formula' && ty !== 'node';
+const dbType = (ty: VariableType) => !COMPUTED_TYPES.includes(ty);
 /** 노드로 가기 — 고르고, 접힌 조상은 펴고, 지금 배율 그대로 가운데로 */
 function goToNode(id: string) {
   useInteractionStore.getState().setSelectedId(id);
@@ -62,6 +64,27 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
   const results = useMemo(() => variableResults(map, db), [map, db]);
   const selectedNodeId = useInteractionStore((st) => st.selectedId);
   const nodeTitle = (id?: string) => { const n = id ? findNodeInMap(map, id) : null; return n ? (flattenNodeText(n.text) || '—') : null; };
+  /** 이 맵에서 노드가 직접 고른 배경색들 (노드 수 변수의 배경색 조건 고르기) — 많이 쓴 순 */
+  const usedFills = useMemo(() => {
+    const cnt = new Map<string, number>();
+    const walk = (n: { style?: { fillColor?: string }; children?: unknown[] }) => {
+      const f = n.style?.fillColor; if (f) { const k = normFill(f); cnt.set(k, (cnt.get(k) ?? 0) + 1); }
+      (n.children as typeof n[] | undefined)?.forEach(walk);
+    };
+    walk(map.root as never); map.branches.forEach((b) => walk(b as never));
+    for (const c of map.centers ?? []) { walk(c.root as never); c.branches.forEach((b) => walk(b as never)); }
+    return [...cnt.entries()].sort((a, b) => b[1] - a[1]);
+  }, [map]);
+  const shapeLabel = (k: string) => { const o = SHAPE_OPTIONS.find((x) => x.key === k); return o ? tr(o.label) : k; };
+  const fillLabel = (c: string) => (c === 'transparent' ? tr('inspector.color.none') : c.toUpperCase());
+  /** 노드 수 설명 — '맵 전체 · 도형: 둥근' */
+  const countDesc = (raw?: string) => {
+    const sp = parseCountSpec(raw);
+    const scope = sp.target ? tr('editor.var.count.scopeOf', { name: nodeTitle(sp.target) ?? tr('editor.var.node.missing') }) : tr('editor.var.count.scopeMap');
+    const cond = sp.kind === 'shape' ? tr('editor.var.count.condShape', { v: shapeLabel(sp.val) })
+      : sp.kind === 'fill' ? tr('editor.var.count.condFill', { v: fillLabel(normFill(sp.val)) }) : tr('editor.var.count.condAll');
+    return scope + ' · ' + cond;
+  };
   /** 노드 참조 새 이름 — nd_1, nd_2 … 비어 있는 첫 번호 */
   const nextNodeName = () => { let i = 1; while (vars.some((v) => v.name === 'nd_' + i)) i++; return 'nd_' + i; };
   const [apiOpen, setApiOpen] = useState<string | null>(null);
@@ -182,7 +205,8 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
               onChange={(e) => {
                 const ty = e.target.value as VariableType;
                 if (ty === 'node') setDraft({ ...draft, type: ty, format: 'first', value: draft.type === 'node' ? draft.value : (selectedNodeId ?? ''), name: draft.name.trim() ? draft.name : nextNodeName() });
-                else setDraft({ ...draft, type: ty, format: DEFAULT_FORMAT[ty], value: draft.type === 'node' ? '' : draft.value });
+                else if (ty === 'count') setDraft({ ...draft, type: ty, format: DEFAULT_FORMAT.count, value: draft.type === 'count' ? draft.value : '' });
+                else setDraft({ ...draft, type: ty, format: DEFAULT_FORMAT[ty], value: draft.type === 'node' || draft.type === 'count' ? '' : draft.value });
               }} style={input}>
               {VARIABLE_TYPES.map((ty) => <option key={ty} value={ty}>{tr('editor.var.type.' + ty)}</option>)}
             </select>
@@ -198,8 +222,76 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
               placeholder={draft.type === 'phone' ? tr('editor.var.phoneAuto') : ''} style={{ ...input, fontFamily: MONO }} />
             <datalist id="var-format-presets">{FORMAT_PRESETS[draft.type].map((f) => <option key={f} value={f} />)}</datalist>
             </>}
-            <label style={label}>{draft.type === 'formula' ? tr('editor.var.formula') : draft.type === 'node' ? tr('editor.var.node.target') : tr('editor.var.value')}</label>
-            {draft.type === 'node' ? (
+            <label style={label}>{draft.type === 'formula' ? tr('editor.var.formula') : draft.type === 'node' ? tr('editor.var.node.target') : draft.type === 'count' ? tr('editor.var.count.scope') : tr('editor.var.value')}</label>
+            {draft.type === 'count' ? (() => {
+              const sp = parseCountSpec(draft.value);
+              const upd = (p: Partial<{ target: string; kind: CountKind; val: string }>) => setDraft({ ...draft, value: countSpecString({ ...sp, ...p }) });
+              const chip = (on: boolean) => ({ flex: 1, height: 28, borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                border: '1px solid ' + (on ? t.primaryBorder : t.border), background: on ? t.primarySoft : t.surface, color: on ? t.primary : t.text }) as CSSProperties;
+              return (
+                <div data-testid="var-count" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button type="button" data-testid="var-count-scope-map" onClick={() => upd({ target: '' })} style={chip(!sp.target)}>{tr('editor.var.count.scopeMap')}</button>
+                    <button type="button" data-testid="var-count-scope-node" disabled={!selectedNodeId && !sp.target}
+                      title={selectedNodeId ? '' : tr('editor.var.node.pickHint')}
+                      onClick={() => upd({ target: sp.target || selectedNodeId || '' })} style={chip(!!sp.target)}>{tr('editor.var.count.scopeNode')}</button>
+                  </div>
+                  {sp.target && (
+                    <>
+                      <div style={{ fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid ' + t.border, background: t.surfaceAlt ?? t.surface,
+                        color: nodeTitle(sp.target) !== null ? t.text : '#B45309', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {nodeTitle(sp.target) ?? tr('editor.var.node.missing')}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button type="button" data-testid="var-count-pick" disabled={!selectedNodeId}
+                          title={selectedNodeId ? '' : tr('editor.var.node.pickHint')}
+                          onClick={() => selectedNodeId && upd({ target: selectedNodeId })}
+                          style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid ' + t.primaryBorder, background: t.primarySoft, color: t.primary, fontWeight: 700, fontSize: 12, cursor: selectedNodeId ? 'pointer' : 'not-allowed', opacity: selectedNodeId ? 1 : 0.5 }}>
+                          {tr('editor.var.node.pick')}
+                        </button>
+                        {nodeTitle(sp.target) !== null && (
+                          <button type="button" onClick={() => goToNode(sp.target)} title={tr('editor.var.node.go')}
+                            style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid ' + t.border, background: t.surface, color: t.text, fontSize: 12, cursor: 'pointer' }}>↗</button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  <label style={label}>{tr('editor.var.count.cond')}</label>
+                  <select data-testid="var-count-kind" value={sp.kind}
+                    onChange={(e) => { const k = e.target.value as CountKind; upd({ kind: k, val: k === 'shape' ? (sp.kind === 'shape' ? sp.val : 'rounded') : k === 'fill' ? (sp.kind === 'fill' ? sp.val : (usedFills[0]?.[0] ?? '')) : '' }); }}
+                    style={input}>
+                    <option value="">{tr('editor.var.count.condAll')}</option>
+                    <option value="shape">{tr('editor.var.count.byShape')}</option>
+                    <option value="fill">{tr('editor.var.count.byFill')}</option>
+                  </select>
+                  {sp.kind === 'shape' && (
+                    <select data-testid="var-count-shape" value={sp.val} onChange={(e) => upd({ val: e.target.value })} style={input}>
+                      {SHAPE_OPTIONS.map((o) => <option key={o.key} value={o.key}>{tr(o.label)}</option>)}
+                    </select>
+                  )}
+                  {sp.kind === 'fill' && (
+                    <>
+                      <ColorSwatchInput t={t} value={sp.val || '#FEF3C7'} label={tr('editor.var.count.byFill')}
+                        onNone={() => upd({ val: 'transparent' })} onChange={(v) => upd({ val: normFill(v) })} />
+                      {usedFills.length > 0 && (
+                        <div data-testid="var-count-fills" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          <span style={{ width: '100%', fontSize: 11, color: t.textSubtle }}>{tr('editor.var.count.usedFills')}</span>
+                          {usedFills.slice(0, 16).map(([c, n]) => (
+                            <button key={c} type="button" title={fillLabel(c) + ' · ' + n} onClick={() => upd({ val: c })}
+                              style={{ display: 'flex', alignItems: 'center', gap: 4, height: 24, padding: '0 6px', borderRadius: 6, cursor: 'pointer', fontSize: 11,
+                                border: '1px solid ' + (normFill(sp.val) === c ? t.primary : t.border), background: t.surface, color: t.text }}>
+                              <span style={{ width: 12, height: 12, borderRadius: 3, border: '1px solid ' + t.border,
+                                background: c === 'transparent' ? 'repeating-conic-gradient(#d4d4d4 0% 25%, #fff 0% 50%) 50% / 6px 6px' : c }} />{n}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <div style={{ fontSize: 11, color: t.textSubtle, lineHeight: 1.5 }}>{tr('editor.var.count.help')}</div>
+                </div>
+              );
+            })() : draft.type === 'node' ? (
               <div data-testid="var-node" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <div style={{ fontSize: 12, padding: '5px 8px', borderRadius: 6, border: '1px solid ' + t.border, background: t.surfaceAlt ?? t.surface,
                   color: draft.value && nodeTitle(draft.value) !== null ? t.text : '#B45309', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -299,6 +391,7 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
                 <span style={{ padding: '0 6px', borderRadius: 8, background: t.surfaceAlt ?? t.surface, border: '1px solid ' + t.border }}>{tr('editor.var.type.' + v.type)}</span>
                 <span style={{ fontFamily: MONO }}>{v.type === 'node' ? tr(v.format === 'all' ? 'editor.var.node.all' : 'editor.var.node.first') : (v.format ?? DEFAULT_FORMAT[v.type])}</span>
               </div>
+              {v.type === 'count' && <div data-testid="var-count-row" style={{ marginTop: 3, fontSize: 11, color: t.textMuted }}>{countDesc(v.value)}</div>}
               <div style={{ marginTop: 4, fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'baseline' }}>
                 <b data-testid="var-display" style={{ color: r?.display?.startsWith('#') ? '#B91C1C' : t.text, wordBreak: 'break-all' }}>{r?.display ?? tr('editor.var.noValue')}</b>
                 {v.type === 'formula' && <span style={{ fontFamily: MONO, fontSize: 11, color: t.textSubtle, wordBreak: 'break-all' }}>= {v.value}</span>}

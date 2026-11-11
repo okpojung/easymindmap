@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from '../App';
 import { FUNCTIONS } from '../content/functions';
 import { pageText } from '../i18n/pages';
@@ -12,6 +13,10 @@ const T = pageText().functions;
  * 묶음이 7개가 되어도 격자가 그대로 접힌다.
  */
 export default function FunctionPage() {
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (FUNCTIONS.some(g => g.id === id)) document.getElementById(id)?.scrollIntoView({ block: 'start' });
+  }, []);
   return (
     <>
       <section className="wrap head">
@@ -23,7 +28,7 @@ export default function FunctionPage() {
       <section className="wrap">
         <div className="func">
           {FUNCTIONS.map((g) => (
-            <article key={g.title}>
+            <article id={g.id} key={g.id}>
               <span className="ico" aria-hidden="true">{g.icon}</span>
               <h3>{g.title}</h3>
               <p>{g.lead}</p>

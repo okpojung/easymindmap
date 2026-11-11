@@ -433,3 +433,16 @@ html[lang="zh-Hans"] body,html[lang="zh-Hans"] .emm-home{font-family:Pretendard,
 .emm-home .hero-video-note{margin:0;padding:10px 14px;font-size:12px;line-height:1.6;color:#52604b;overflow-wrap:anywhere}
 .emm-home .hero-video-note a{display:inline-flex;align-items:center;min-height:44px;font-weight:650;color:#254d38;text-decoration:underline;text-underline-offset:3px}
 .emm-home .hero-video-note a:focus-visible{outline:3px solid #b35325;outline-offset:3px}
+
+/* Homepage feature additions: isolated from the app and editor. */
+.emm-home .product-updates{background:#f3f6ef}
+.emm-home .product-update-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.emm-home .product-update-card{display:flex;flex-direction:column;min-width:0;padding:28px;border:1px solid #cbd7c7;border-radius:18px;background:#fff}
+.emm-home .product-update-tag{align-self:flex-start;padding:5px 10px;border-radius:6px;background:#e8eee1;color:#355541;font-size:12px;font-weight:700;overflow-wrap:anywhere}
+.emm-home .product-update-card h3{margin:20px 0 12px;font-size:22px;line-height:1.4;overflow-wrap:anywhere}
+.emm-home .product-update-card p{margin:0 0 22px;color:#53614e;line-height:1.8;overflow-wrap:anywhere}
+.emm-home .product-update-card a{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;min-height:44px;margin-top:auto;color:#254d38;font-weight:700;text-underline-offset:4px}
+.emm-home .product-update-card a:focus-visible{outline:3px solid #b35325;outline-offset:4px}
+.emm-home .product-update-note{margin:18px 0 0;color:#5d6856;font-size:13px;line-height:1.7}
+.func article[id]{scroll-margin-top:110px}
+@media(max-width:900px){.emm-home .product-update-grid{grid-template-columns:1fr}.emm-home .product-update-card{padding:24px}}

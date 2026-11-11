@@ -46,6 +46,9 @@ interface InteractionState {
    */
   stylePainter: { sourceId: string; snap: StyleSnapshot } | null;
   setStylePainter: (p: { sourceId: string; snap: StyleSnapshot } | null) => void;
+  /** 태그 붙이기(붓) 모드 (2026-11-11) — 태그 탭에서 이 맵의 태그를 고르면 켜진다. 켜진 동안 누르는 노드마다 그 태그가 붙는다 */
+  tagPainter: string | null;
+  setTagPainter: (tag: string | null) => void;
   /**
    * 선택된 연결선 (2026-09-22). 노드 선택과 배타 — 선을 고르면 노드 선택은 비우고,
    * 노드를 고르면 선 선택은 비운다. 스타일 탭이 이 값이 있으면 "연결" 패널을 보인다.
@@ -87,6 +90,8 @@ export const useInteractionStore = create<InteractionState>((set) => ({
   setEditingDraft: (editingDraft) => set({ editingDraft }),
   stylePainter: null,
   setStylePainter: (stylePainter) => set({ stylePainter }),
+  tagPainter: null,
+  setTagPainter: (tagPainter) => set({ tagPainter }),
   selectedConnectorId: null,
   setSelectedConnectorId: (selectedConnectorId) => set({ selectedConnectorId }),
   connectMode: null,

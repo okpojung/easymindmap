@@ -317,6 +317,8 @@ interface DocumentState {
 
   // Tags
   addNodeTag: (nodeId: string | null, tag: string) => void;
+  /** 여러 노드에 같은 태그 — 한 번에 (되돌리기 한 단계). 이미 있는 노드는 그대로 */
+  addTagToNodes: (nodeIds: string[], tag: string) => void;
   removeNodeTag: (nodeId: string | null, tag: string) => void;
   /** 태그 순서 바꾸기 — tag 를 toIndex 자리로 (2026-10-23) */
   moveNodeTag: (nodeId: string | null, tag: string, toIndex: number) => void;
@@ -2421,6 +2423,18 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
   setNodeIconSide: (nodeId, iconSide) => {
     if (!nodeId) return;
     set((state) => ({ map: mutateNode(state.map, nodeId, (n) => ({ ...n, iconSide })) }));
+  },
+
+  addTagToNodes: (nodeIds, tag) => {
+    const clean = tag.trim();
+    if (!nodeIds.length || !clean) return;
+    set((state) => ({
+      map: nodeIds.reduce((m, id) => mutateNode(m, id, (n) => {
+        const tags = n.tags ?? (n.tag ? [n.tag] : []);
+        if (tags.includes(clean)) return n;
+        return { ...n, tag: undefined, tags: [...tags, clean] };
+      }), state.map),
+    }));
   },
 
   addNodeTag: (nodeId, tag) => {

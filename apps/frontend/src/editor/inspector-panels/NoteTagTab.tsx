@@ -1,7 +1,8 @@
 // NoteTagTab — tag chips + structured note (paragraph/code_block/table/checklist)
 // editor, wired to the selected node via documentStore.
 
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useInteractionStore } from '@/stores/interactionStore';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock as NoteBlockData, NoteBlockType } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -112,6 +113,36 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
     setTagDraft('');
   };
 
+  // 이 맵에서 쓰는 태그 (2026-11-11 사용자 요청) — 한 번 쓴 태그를 고르고 노드를 누르면 그 노드에 붙는다.
+  // 많이 쓴 순. 입력란에 글을 치면 그 글이 든 태그만 보인다.
+  const mapTags = useMemo(() => {
+    if (part === 'note') return [] as [string, number][];
+    const cnt = new Map<string, number>();
+    const walk = (n: { tags?: string[]; tag?: string; children?: unknown[] }) => {
+      for (const g of n.tags ?? (n.tag ? [n.tag] : [])) cnt.set(g, (cnt.get(g) ?? 0) + 1);
+      (n.children as typeof n[] | undefined)?.forEach(walk);
+    };
+    walk(map.root as never); map.branches.forEach((b) => walk(b as never));
+    for (const c of map.centers ?? []) { walk(c.root as never); c.branches.forEach((b) => walk(b as never)); }
+    return [...cnt.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [map, part]);
+  const tagPainter = useInteractionStore((s) => s.tagPainter);
+  const setTagPainter = useInteractionStore((s) => s.setTagPainter);
+  const setStylePainter = useInteractionStore((s) => s.setStylePainter);
+  // 태그 탭을 닫으면 붙이기 모드도 끝낸다
+  useEffect(() => (part === 'note' ? undefined : () => setTagPainter(null)), [part, setTagPainter]);
+  // 고른 태그가 맵에서 모두 지워지면 모드 끝
+  useEffect(() => { if (tagPainter && !mapTags.some(([g]) => g === tagPainter)) setTagPainter(null); }, [mapTags, tagPainter, setTagPainter]);
+  const q = tagDraft.trim().toLowerCase();
+  const shownTags = q ? mapTags.filter(([g]) => g.toLowerCase().includes(q)) : mapTags;
+  const pickPainter = (g: string) => {
+    if (tagPainter === g) { setTagPainter(null); return; }
+    setStylePainter(null);
+    setTagPainter(g);
+    setTagDraft('');
+  };
+  const nodeDisabled = disabled ? { opacity: 0.5, pointerEvents: 'none' as const } : undefined;
+
   return (
     <>
     {part !== 'note' && (
@@ -123,9 +154,10 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
         <Toggle t={t} on={showTags} onChange={setShowTags} />
       </label>
     )}
-    <div data-mm-touch="" style={disabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
+    <div data-mm-touch="" style={part === 'tag' ? undefined : nodeDisabled}>
       {part !== 'note' && <>
       <InspectorSection t={t} title={tr('inspector.note.tags')}>
+        <div style={nodeDisabled}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
           {tags.map((tagName, idx) => {
             const tc = resolveTagColor(tagName, t);
@@ -185,10 +217,48 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
             color: t.primary, cursor: 'pointer', fontWeight: 600,
           }}>{tr('inspector.content.add')}</button>
         </div>
+        </div>
+        {mapTags.length > 0 && (
+          <div data-testid="map-tags" style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>{tr('inspector.tags.mapTags')}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {shownTags.map(([g, n]) => {
+                const tc = resolveTagColor(g, t);
+                const on = tagPainter === g;
+                const has = tags.includes(g);
+                return (
+                  <button key={g} type="button" data-testid="map-tag" aria-pressed={on}
+                    title={on ? tr('inspector.tags.painterOff') : tr('inspector.tags.painterPick', { tag: g })}
+                    onClick={() => pickPainter(g)}
+                    style={{
+                      fontSize: 11, fontWeight: 600, padding: '3px 7px', borderRadius: 3, cursor: 'pointer',
+                      background: tc.bg, color: tc.text, letterSpacing: 0.2,
+                      border: on ? `2px solid ${t.primary}` : `1px solid ${tc.border}`,
+                      margin: on ? -1 : 0, boxShadow: on ? `0 0 0 2px ${t.primarySoft}` : undefined,
+                      opacity: has && !on ? 0.55 : 1,
+                    }}>
+                    #{g} <span style={{ opacity: 0.6, fontWeight: 500 }}>{n}</span>
+                  </button>
+                );
+              })}
+              {!shownTags.length && <span style={{ fontSize: 11, color: t.textSubtle }}>{tr('inspector.tags.noMatch')}</span>}
+            </div>
+            <div data-testid="tag-painter-hint" style={{
+              marginTop: 6, fontSize: 11, lineHeight: 1.5, borderRadius: 4,
+              padding: tagPainter ? '5px 7px' : 0,
+              background: tagPainter ? t.primarySoft : 'transparent',
+              color: tagPainter ? t.primary : t.textSubtle, fontWeight: tagPainter ? 600 : 400,
+            }}>
+              {tagPainter ? tr('inspector.tags.painterOn', { tag: tagPainter }) : tr('inspector.tags.painterHint')}
+            </div>
+          </div>
+        )}
       </InspectorSection>
 
       {/* 프로젝트 태그 — 일정·담당자·진척율 (2026-10-23) */}
+      <div style={nodeDisabled}>
       <ProjectTagsSection t={t} nodeId={selectedId} project={node?.project} />
+      </div>
       </>}
 
       {part !== 'tag' && <>

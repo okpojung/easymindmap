@@ -384,9 +384,13 @@ export function Canvas({
   // 클릭·버튼 재클릭 = 해제. 규칙: docs/03-editor-core/node/05-node-style.md §20
   const stylePainter = useInteractionStore((s) => s.stylePainter);
   const setStylePainter = useInteractionStore((s) => s.setStylePainter);
+  // 태그 붙이기(붓) 모드 (2026-11-11) — 태그 탭에서 이 맵의 태그를 고르면 켜진다. 노드 클릭·러버밴드 = 붙이기, ESC·빈 곳 클릭 = 해제
+  const tagPainter = useInteractionStore((s) => s.tagPainter);
+  const setTagPainter = useInteractionStore((s) => s.setTagPainter);
+  const addTagToNodes = useDocumentStore((s) => s.addTagToNodes);
   const [brushPos, setBrushPos] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
-    if (!stylePainter) { setBrushPos(null); return; }
+    if (!stylePainter && !tagPainter) { setBrushPos(null); return; }
     const onMove = (e: PointerEvent) => {
       const el = containerRef.current;
       if (!el) return;
@@ -396,7 +400,7 @@ export function Canvas({
     };
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
-  }, [stylePainter]);
+  }, [stylePainter, tagPainter]);
   const setMultiSelectedIds = useInteractionStore((s) => s.setMultiSelectedIds);
   const multiSet = useMemo(() => new Set(multiSelectedIds), [multiSelectedIds]);
 
@@ -436,6 +440,10 @@ export function Canvas({
     if (activateClickTools && !isBasic() && !isReadOnly() && stylePainter) {
       if (id) applyStyleSnapshot([id], stylePainter.snap);
       else setStylePainter(null);
+    }
+    if (activateClickTools && !isBasic() && !isReadOnly() && tagPainter) {
+      if (id) addTagToNodes([id], tagPainter);
+      else setTagPainter(null);
     }
     // 연결 모드 — 시작 노드가 아닌 노드를 누르면 연결선이 생기고 모드는 끝난다.
     // 빈 곳을 누르면 취소. 시작 노드를 다시 누른 것은 무시(모드 유지).
@@ -1318,6 +1326,7 @@ export function Canvas({
         if (placingCenter) { setPlacingCenter(false); return; }
         // 스타일 복사(붓) 모드면 붓만 내려놓는다 — 선택은 그대로
         if (stylePainter) { setStylePainter(null); return; }
+        if (tagPainter) { setTagPainter(null); return; }
         // 연결 모드 취소 · 연결선 선택 해제 (2026-09-22)
         if (connectMode) { setConnectMode(null); return; }
         if (selectedConnectorId) { setSelectedConnectorId(null); return; }
@@ -1521,7 +1530,7 @@ export function Canvas({
       const isTap = e.type === 'pointerup' && !tap.moved && !tap.longFired;
       // 고른 노드를 다시 톡 = 편집 (두 번 톡도 이것 — 첫 톡이 고르고 둘째가 편집).
       // 붓·연결 모드에서는 톡이 칠하기·끝점이라 편집하지 않는다.
-      if (!isReadOnly() && isTap && tap.nodeId && tap.wasSelected && !stylePainter && !connectMode
+      if (!isReadOnly() && isTap && tap.nodeId && tap.wasSelected && !stylePainter && !tagPainter && !connectMode
           && editingNodeId !== tap.nodeId) {
         primeTouchKeyboard(); // 톡 처리 안에서 — iOS 가 키보드를 띄우게
         requestEdit(tap.nodeId);
@@ -1872,6 +1881,7 @@ export function Canvas({
         // 스타일 복사(붓) 모드 — 사각형에 걸린 노드 전부에 한 번에 칠한다
         // (undo 한 단계)
         if (stylePainter && hits.length) applyStyleSnapshot(hits.map((n) => n.id), stylePainter.snap);
+        if (tagPainter && hits.length && !isReadOnly()) addTagToNodes(hits.map((n) => n.id), tagPainter);
         // 스타일 탭이 열리도록 첫 노드를 대표 선택으로 지정
         onSelect(hits[0]?.id ?? null);
         suppressClickRef.current = true;
@@ -2050,6 +2060,21 @@ export function Canvas({
         >
           <I.Brush size={13} strokeWidth={2} />
           {tr('editor.canvas.stylePainter')}
+        </div>
+      )}
+      {tagPainter && !stylePainter && brushPos && (
+        <div
+          data-testid="tag-brush-cursor"
+          style={{
+            position: 'absolute', left: brushPos.x + 14, top: brushPos.y + 10,
+            zIndex: 25, pointerEvents: 'none', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            padding: '3px 8px', borderRadius: 12,
+            background: t.primary, color: '#fff',
+            fontSize: 11, fontWeight: 700, lineHeight: 1.2,
+            boxShadow: '0 3px 10px rgba(60,45,15,0.3)',
+          }}
+        >
+          {tr('editor.canvas.tagPainter', { tag: tagPainter })}
         </div>
       )}
 

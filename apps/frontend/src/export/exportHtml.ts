@@ -1895,7 +1895,7 @@ const VIEWER_JS = String.raw`
     // 도형 없음 (2026-08-08) — 테두리·채움 없이 글자만. 글자가 캔버스
     // 배경 위에 놓이므로 채움색에서 유도한 색이나 패밀리 색을 쓰면
     // 다크 모드에서 묻힌다. 본문 글자색(l2.text)이 두 모드 모두 안전하다.
-    var noShape = stPre.shapeType === 'none';
+    var noShape = stPre.shapeType === 'none' || stPre.fillColor === 'transparent';
     var nodeText2 = stPre.textColor ||
       (noShape ? SKIN.fam.l2.text
         : (stPre.fillColor ? readableOn(stPre.fillColor) : fam0.text));

@@ -43,7 +43,7 @@ interface Props {
 // 글자색 지정 = 그대로, 채움색만 지정 = 채움 밝기 기준 고정색, 없으면 테마색.
 function styledText(style: NodeStyle | undefined, fallback: string): string {
   if (style?.textColor) return style.textColor;
-  if (style?.fillColor) return readableTextOn(style.fillColor);
+  if (style?.fillColor && style.fillColor !== 'transparent') return readableTextOn(style.fillColor);
   return fallback;
 }
 

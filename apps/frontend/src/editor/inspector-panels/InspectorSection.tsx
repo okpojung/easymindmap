@@ -99,6 +99,8 @@ interface ColorSwatchProps {
   onReset?: () => void;
   /** 창 제목 (예: 채움색) */
   label?: string;
+  /** '배경색 없음' — 주면 창에 단추가 생기고 누르면 이 함수를 부른다 (값은 'transparent') */
+  onNone?: () => void;
 }
 
 /**
@@ -114,7 +116,10 @@ interface ColorSwatchProps {
  * 을 한 창에 둔다. 팔레트·HEX·스포이드는 한 번 = undo 한 단계다.
  * 기본 색 창의 슬라이더 끌기는 예전처럼 스로틀 + 히스토리 잠금으로 한 단계에 묶는다.
  */
-export function ColorSwatchInput({ t, value, onChange, contrastWith, onReset, label }: ColorSwatchProps) {
+export function ColorSwatchInput({ t, value, onChange, contrastWith, onReset, label, onNone }: ColorSwatchProps) {
+  /** 'transparent' = 배경색 없음 (2026-11-11) — 견본은 바둑판 무늬로 보여 준다 */
+  const isNone = value === 'transparent';
+  const CHECKER = 'repeating-conic-gradient(#d4d4d4 0% 25%, #ffffff 0% 50%) 50% / 8px 8px';
   const tr = useTr();
   const coarse = useCoarse();
   // 네이티브 색상 피커의 슬라이더 드래그는 input 이벤트를 초당 수십 번
@@ -265,7 +270,7 @@ export function ColorSwatchInput({ t, value, onChange, contrastWith, onReset, la
     } catch { el.click(); }
   };
 
-  const ratio = contrastWith ? contrastRatio(value, contrastWith) : null;
+  const ratio = contrastWith && !isNone && contrastWith !== 'transparent' ? contrastRatio(value, contrastWith) : null;
   const level = ratio == null ? null : ratio >= 4.5 ? 'good' : ratio >= 3 ? 'large' : 'bad';
   const levelColor = level === 'good' ? '#15803D' : level === 'large' ? '#B45309' : '#B91C1C';
   const levelBg = level === 'good' ? '#DCFCE7' : level === 'large' ? '#FEF3C7' : '#FEE2E2';
@@ -312,12 +317,12 @@ export function ColorSwatchInput({ t, value, onChange, contrastWith, onReset, la
         }}>
         <span style={{
           width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-          background: value, border: `1px solid ${t.border}`,
+          background: isNone ? CHECKER : value, border: `1px solid ${t.border}`,
         }} />
         <span style={{
-          fontSize: 11, fontFamily: 'ui-monospace, monospace',
+          fontSize: 11, fontFamily: isNone ? undefined : 'ui-monospace, monospace',
           color: t.textMuted,
-        }}>{value.toUpperCase()}</span>
+        }}>{isNone ? tr('inspector.color.none') : value.toUpperCase()}</span>
         <span style={{ marginLeft: 'auto', color: t.textMuted, fontSize: 10 }}>▾</span>
       </button>
       {onChange && (
@@ -393,6 +398,8 @@ export function ColorSwatchInput({ t, value, onChange, contrastWith, onReset, la
             <div style={{ fontSize: 10.5, color: '#B91C1C', marginTop: -4 }}>{tr('inspector.color.hexInvalid')}</div>
           )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {onNone && smallBtn(<><span style={{ width: 12, height: 12, borderRadius: 3, background: CHECKER, border: `1px solid ${t.border}` }} />{tr('inspector.color.none')}</>,
+              () => { onNone(); setOpen(false); }, tr('inspector.color.none'), 'color-none')}
             {onReset && smallBtn(tr('inspector.color.reset'), () => { onReset(); setOpen(false); }, tr('inspector.color.reset'), 'color-reset')}
             {smallBtn(tr('inspector.color.more'), openNative, tr('inspector.color.moreTitle'), 'color-more')}
           </div>

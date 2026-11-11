@@ -169,7 +169,8 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
           // 창 밖 노드는 그리지 않는다 (900 노드 맵에서도 가볍게)
           if (r.x + r.w < 0 || r.y + r.h < 0 || r.x > geom.panelW || r.y > geom.panelH) return null;
           // 대비 — 색 계열이 있는 노드는 그 계열의 진한 테두리색, 없는 하위 노드는 textSubtle
-          const fill = n.style?.fillColor ?? (c === t.nodeL2 ? t.textSubtle : c.border);
+          const own = n.style?.fillColor && n.style.fillColor !== 'transparent' ? n.style.fillColor : undefined;
+          const fill = own ?? (c === t.nodeL2 ? t.textSubtle : c.border);
           return (
             <rect
               key={n.id}

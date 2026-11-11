@@ -467,7 +467,8 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   const textColor = searchHit
     ? '#1F1B16'
     : (style.textColor ??
-       (noShape
+       // 배경색 없음('transparent')은 도형 없음처럼 캔버스 위 글자 — 본문 글자색
+       (noShape || style.fillColor === 'transparent'
          ? t.text
          : style.fillColor ? readableTextOn(style.fillColor) : colors.text));
 

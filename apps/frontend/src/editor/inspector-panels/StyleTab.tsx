@@ -159,6 +159,7 @@ export function StyleTab({ t, selectedId }: { t: ThemeTokens; selectedId: string
             label={tr('inspector.style.fill')}
             contrastWith={style.textColor ?? DEFAULT_COLORS.textColor}
             onReset={style.fillColor ? () => set({ fillColor: undefined }) : undefined}
+            onNone={() => set({ fillColor: 'transparent' })}
             onChange={(v) => set({ fillColor: v })} />
         </InspectorRow>
         <InspectorRow t={t} label={tr('inspector.style.border')}>

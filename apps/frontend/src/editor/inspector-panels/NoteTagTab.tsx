@@ -1,7 +1,14 @@
 // NoteTagTab — tag chips + structured note (paragraph/code_block/table/checklist)
 // editor, wired to the selected node via documentStore.
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { CodeBlockDialog } from '@/editor/node-renderer/CodeBlockDialog';
+import { collectMapNotes } from './mapNotes';
+import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
+import { useViewportStore } from '@/stores/viewportStore';
+import { useCloudStore } from '@/stores/cloudStore';
+import { DialogFrame } from '@/components/ui/DialogFrame';
 import { useInteractionStore } from '@/stores/interactionStore';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock as NoteBlockData, NoteBlockType } from '@/editor/__samples__/types';
@@ -23,30 +30,6 @@ import { useTr } from '@/i18n';
 import '@/components/ui/mobileCss';
 import { useCoarse } from '@/hooks/useViewport';
 import { ProjectTagsSection } from './ProjectTagsSection';
-// 맵 전체에서 노트 블록을 id로 찾는다 — 사진 내장(비동기) 완료 시점에
-// 블록이 아직 그 서식(html)을 갖고 있는지 확인하는 용도.
-function findBlockById(
-  map: { root: { notes?: NoteBlockData[] }; branches: MindNodeLike[] },
-  blockId: string,
-): NoteBlockData | undefined {
-  const inRoot = (map.root.notes ?? []).find((b) => b.id === blockId);
-  if (inRoot) return inRoot;
-  const walk = (nodes: MindNodeLike[]): NoteBlockData | undefined => {
-    for (const n of nodes) {
-      const hit = (n.notes ?? []).find((b) => b.id === blockId);
-      if (hit) return hit;
-      const deep = walk(n.children ?? []);
-      if (deep) return deep;
-    }
-    return undefined;
-  };
-  return walk(map.branches);
-}
-interface MindNodeLike {
-  notes?: NoteBlockData[];
-  children?: MindNodeLike[];
-}
-
 // 코드 블록 언어 목록.
 // [서버 연결 예정] Supabase 연동 시 이 하드코딩 목록은 code_languages
 // 테이블로 이관되어 시스템 관리자 설정 메뉴에서 추가·수정·삭제한다
@@ -85,17 +68,6 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
   const moveNodeTag = useDocumentStore((s) => s.moveNodeTag);
   const [dragTag, setDragTag] = useState<string | null>(null);
   const [overTag, setOverTag] = useState<string | null>(null);
-  const addNoteBlock = useDocumentStore((s) => s.addNoteBlock);
-  const updateNoteBlock = useDocumentStore((s) => s.updateNoteBlock);
-  // 표 블록은 노드 내용의 표와 같은 흐름 (2026-09-19 사용자 요청) —
-  // `+표` → 10×10 격자에서 크기 → 표 팝업(격자/MD)에서 채워 넣기. 기존 표
-  // 블록은 그려 보이고 ✎(또는 더블클릭)으로 같은 팝업에서 고친다.
-  const [tablePick, setTablePick] = useState(false);
-  const [tableDlg, setTableDlg] = useState<
-    { blockId?: string; md?: string; size?: { rows: number; cols: number } } | null
-  >(null);
-  const removeNoteBlock = useDocumentStore((s) => s.removeNoteBlock);
-
   const [tagDraft, setTagDraft] = useState('');
   // 노드에 태그 표시 켜기/끄기 — 태그 탭 맨 위 (2026-11-07 사용자 요청: "태그 표시 On/OFF 버튼이 없어졌다").
   // 같은 스위치가 검색 패널에도 있다(둘은 같은 값). 노드를 고르지 않아도 누를 수 있다.
@@ -105,7 +77,6 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
   const node = findNodeInMap(map, selectedId);
   const disabled = !selectedId || !node;
   const tags = node?.tags ?? (node?.tag ? [node.tag] : []);
-  const notes = node?.notes ?? [];
 
   const commitTag = () => {
     const v = tagDraft.trim();
@@ -154,7 +125,7 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
         <Toggle t={t} on={showTags} onChange={setShowTags} />
       </label>
     )}
-    <div data-mm-touch="" style={part === 'tag' ? undefined : nodeDisabled}>
+    <div data-mm-touch="" style={undefined}>
       {part !== 'note' && <>
       <InspectorSection t={t} title={tr('inspector.note.tags')}>
         <div style={nodeDisabled}>
@@ -261,95 +232,112 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
       </div>
       </>}
 
-      {part !== 'tag' && <>
+      {part !== 'tag' && <MapNotesPanel t={t} selectedId={selectedId} />}
 
-      <InspectorSection
-        t={t}
-        title={tr('inspector.note.title')}
-        action={
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-            {BLOCK_TYPES.map((b) => {
-              // 모든 종류를 여러 개 추가할 수 있다 (2026-09-22 사용자 요청 — 예전엔
-              // 문단/코드/표는 노드당 1개, 체크만 여러 개). 같은 종류가 여럿이면
-              // 노드 인디케이터에 개수 배지가 뜬다 (체크와 같은 규칙).
-              const have = notes.filter((n) => n.type === b.type).length;
-              const isTable = b.type === 'table';
-              return (
-                <span key={b.type} style={{ position: 'relative', display: 'inline-flex' }}>
-                <button
-                  data-testid={`note-add-${b.type}`}
-                  onClick={() => {
-                    if (!selectedId) return;
-                    if (isTable) setTablePick(true); else addNoteBlock(selectedId, b.type);
-                  }}
-                  title={isTable
-                    ? tr('inspector.note.addTableTitle') + (have ? tr('inspector.note.haveCount', { n: have }) : '')
-                    : tr('inspector.note.addBlockTitle', { label: tr(b.label) }) + (have ? tr('inspector.note.haveCount', { n: have }) : '')}
-                  style={{
-                    padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-                    background: t.primarySoft,
-                    color: t.primary,
-                    border: `1px solid ${t.primaryBorder}40`,
-                    cursor: 'pointer',
-                  }}>+{tr(b.label)}</button>
-                {isTable && tablePick && (
-                  <TableGridPicker
-                    t={t}
-                    anchor="right"
-                    onClose={() => setTablePick(false)}
-                    onPick={(rows, cols) => { setTablePick(false); setTableDlg({ size: { rows, cols } }); }}
-                  />
-                )}
-                </span>
-              );
-            })}
-          </div>
-        }
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {notes.length === 0 && (
-            <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>
-              {tr('inspector.note.empty')}
-            </div>
-          )}
-          {notes.map((block) => (
-            <NoteBlockEditor
-              key={block.id}
-              t={t}
-              block={block}
-              onChange={(patch) => selectedId && updateNoteBlock(selectedId, block.id, patch)}
-              onRemove={() => selectedId && removeNoteBlock(selectedId, block.id)}
-              // 체크리스트에서 Enter / Shift+Enter → 바로 아래에 다음 체크 항목
-              onEnterNext={() =>
-                selectedId && addNoteBlock(selectedId, 'checklist', '', undefined, block.id)
-              }
-              onEditTable={() => setTableDlg({ blockId: block.id, md: noteTableToMd(block.text) })}
-            />
-          ))}
-        </div>
-      </InspectorSection>
-
-      </>}
-
-      {tableDlg && (
-        <TableDialog
-          t={t}
-          initialMd={tableDlg.md}
-          initialSize={tableDlg.size}
-          onCancel={() => setTableDlg(null)}
-          onSave={(md) => {
-            const text = noteTableFromMd(md);
-            if (selectedId) {
-              if (tableDlg.blockId) updateNoteBlock(selectedId, tableDlg.blockId, { text });
-              else addNoteBlock(selectedId, 'table', text);
-            }
-            setTableDlg(null);
-          }}
-        />
-      )}
     </div>
     </>
   );
+}
+
+
+// 노트 메뉴: 맵 전체 목록. 편집은 로컬 초안에서 하고 확인할 때만 문서에 반영한다.
+type NoteDraft = { session: string; nodeId: string; epoch: number; existing: boolean; block: NoteBlockData; size?: { rows: number; cols: number } };
+function MapNotesPanel({ t, selectedId }: { t: ThemeTokens; selectedId: string | null }) {
+  const tr = useTr();
+  const map = useDocumentStore((s) => s.map);
+  const epoch = useDocumentStore((s) => s.docEpoch);
+  const readOnly = !!useCloudStore((s) => s.readOnlyInfo);
+  const [draft, setDraft] = useState<NoteDraft | null>(null);
+  const [pick, setPick] = useState<{ nodeId: string; epoch: number } | null>(null);
+  const rows = useMemo(() => collectMapNotes(map).map((r) => ({ ...r, nodeText: flattenNodeText(r.nodeText) || '—' })), [map]);
+  const selected = findNodeInMap(map, selectedId);
+  const canAdd = !!selected && !readOnly;
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { setDraft(null); setPick(null); }, [epoch]);
+  useEffect(() => {
+    const el = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-note-node]') ?? [])].find((e) => e.dataset.noteNode === selectedId);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [selectedId]);
+  const open = (type: NoteBlockType, nodeId: string, block?: NoteBlockData, size?: { rows: number; cols: number }) => {
+    setDraft({ session: crypto.randomUUID(), nodeId, epoch, existing: !!block, block: block ? { ...block } : { id: 'note-draft', type, text: '', ...(type === 'checklist' ? { checked: false } : {}) }, size });
+  };
+  const close = () => setDraft(null);
+  const save = (patch: Partial<NoteBlockData> = {}) => {
+    if (!draft || readOnly) return;
+    const st = useDocumentStore.getState();
+    if (st.docEpoch !== draft.epoch || !findNodeInMap(st.map, draft.nodeId)) { close(); return; }
+    const b = { ...draft.block, ...patch };
+    if (draft.existing) {
+      const owner = findNodeInMap(st.map, draft.nodeId);
+      if (owner?.notes?.some((n) => n.id === b.id)) st.updateNoteBlock(draft.nodeId, b.id, b);
+    } else st.addNoteBlock(draft.nodeId, b.type, b.text, { lang: b.lang, html: b.html, checked: b.checked });
+    close();
+  };
+  const go = (id: string) => {
+    useInteractionStore.getState().setSelectedId(id);
+    useDocumentStore.getState().expandAncestors(id);
+    const vp = useViewportStore.getState(); vp.requestCenterNode(id, vp.zoom);
+  };
+  const btn = { fontSize: 11, padding: '3px 6px', borderRadius: 4, border: '1px solid ' + t.border, background: t.surface, color: t.text, cursor: 'pointer' };
+  return <div data-testid="map-notes">
+    <InspectorSection t={t} title={tr('inspector.note.title')} action={<div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+      {BLOCK_TYPES.map((b) => <span key={b.type} style={{ position: 'relative', display: 'inline-flex' }}>
+        <button type="button" data-testid={'note-add-' + b.type} disabled={!canAdd}
+          onClick={() => { if (!selectedId || !canAdd) return; if (b.type === 'table') setPick({ nodeId: selectedId, epoch }); else open(b.type, selectedId); }}
+          style={{ ...btn, background: t.primarySoft, color: t.primary, opacity: canAdd ? 1 : 0.5 }}>+{tr(b.label)}</button>
+        {b.type === 'table' && pick && <TableGridPicker t={t} anchor="right" onClose={() => setPick(null)}
+          onPick={(rows, cols) => { const p = pick; setPick(null); if (p.epoch === useDocumentStore.getState().docEpoch) open('table', p.nodeId, undefined, { rows, cols }); }} />}
+      </span>)}
+    </div>}>
+      <div data-testid="notes-summary" style={{ fontSize: 11, color: t.textMuted, marginBottom: 8 }}>
+        {tr('inspector.notes.count', { all: rows.length, sel: rows.filter((r) => r.nodeId === selectedId).length })}
+      </div>
+      <div ref={listRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {!rows.length && <div style={{ fontSize: 11, color: t.textSubtle }}>{tr('inspector.notes.emptyMap')}</div>}
+        {rows.map(({ nodeId, nodeText, block }) => {
+          const meta = BLOCK_META[block.type] ?? BLOCK_META.paragraph;
+          return <div key={nodeId + '/' + block.id} data-testid="map-note-row" data-note-node={nodeId} data-note-type={block.type}
+            style={{ border: '1px solid ' + (selectedId === nodeId ? t.primaryBorder : t.border), borderRadius: 6, padding: 8, background: selectedId === nodeId ? t.primarySoft : t.surfaceAlt }}>
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 11 }}>
+              <b>{meta.icon} {tr(meta.label)}</b>
+              <span style={{ flex: 1 }} />
+              <button type="button" data-testid="map-note-edit" disabled={readOnly} style={btn} onClick={() => open(block.type, nodeId, block)}>{tr('common.edit')}</button>
+              <button type="button" data-testid="map-note-remove" disabled={readOnly} style={btn} onClick={() => { if (window.confirm(tr('inspector.notes.removeConfirm'))) useDocumentStore.getState().removeNoteBlock(nodeId, block.id); }}>{tr('common.delete')}</button>
+            </div>
+            <button type="button" data-testid="map-note-node" onClick={() => go(nodeId)} title={nodeText}
+              style={{ background: 'transparent', border: 0, padding: '5px 0', color: t.primary, cursor: 'pointer', fontSize: 11, width: '100%', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tr('inspector.notes.owner', { name: nodeText })}</button>
+            <div style={{ display: 'flex', gap: 5, alignItems: 'flex-start' }}>
+              {block.type === 'checklist' && <input type="checkbox" aria-label={tr('inspector.note.checklist')} data-testid="map-note-check" checked={!!block.checked} disabled={readOnly} onChange={(e) => useDocumentStore.getState().updateNoteBlock(nodeId, block.id, { checked: e.target.checked })} />}
+              <button type="button" data-testid="map-note-preview" disabled={readOnly} onClick={() => open(block.type, nodeId, block)}
+                style={{ background: 'transparent', border: 0, padding: 0, width: '100%', cursor: 'pointer', color: t.text, fontSize: 11, textAlign: 'left', whiteSpace: 'pre-wrap', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>{block.text || '—'}</button>
+            </div>
+          </div>;
+        })}
+      </div>
+    </InspectorSection>
+    {draft && draft.block.type === 'code_block' && <CodeBlockDialog t={t} initialLang={draft.block.lang} initialCode={draft.block.text} onCancel={close} onSave={(lang, text) => save({ lang: lang || undefined, text })} />}
+    {draft && draft.block.type === 'table' && <TableDialog t={t} initialMd={draft.existing ? noteTableToMd(draft.block.text) : undefined} initialSize={draft.size} onCancel={close} onSave={(md) => save({ text: noteTableFromMd(md) })} />}
+    {draft && draft.block.type !== 'code_block' && draft.block.type !== 'table' && <NoteTextDialog t={t} block={draft.block} onChange={(patch) => setDraft((d) => d && d.session === draft.session ? { ...d, block: { ...d.block, ...patch } } : d)} onCancel={close} onSave={() => save()} />}
+  </div>;
+}
+
+function NoteTextDialog({ t, block, onChange, onCancel, onSave }: { t: ThemeTokens; block: NoteBlockData; onChange: (p: Partial<NoteBlockData>) => void; onCancel: () => void; onSave: () => void }) {
+  const tr = useTr();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { ref.current?.querySelector<HTMLElement>('textarea, input')?.focus(); }, []);
+  return createPortal(<div ref={ref} onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); if (block.text.trim()) onSave(); }
+  }}>
+    <DialogFrame t={t} testId="note-text-dialog" title={tr(block.type === 'checklist' ? 'inspector.notes.checkTitle' : 'inspector.notes.paragraphTitle')} onClose={onCancel} width="min(680px, 94vw)" zIndex={1200}
+      footer={<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button type="button" data-testid="note-dialog-cancel" onClick={onCancel}>{tr('common.cancel')} (Esc)</button>
+        <button type="button" data-testid="note-dialog-save" disabled={!block.text.trim()} onClick={onSave}>{tr('common.save')} (Ctrl+Enter)</button>
+      </div>}>
+      <NoteBlockEditor t={t} block={block} onChange={onChange} onRemove={onCancel} />
+    </DialogFrame>
+  </div>, document.body);
 }
 
 // label 은 사전 키 — 렌더할 때 번역한다
@@ -381,6 +369,7 @@ function NoteBlockEditor({
   // 노트 사진이 **우리 저장소**에 있으면 그릴 때 토큰을 붙인다 (2026-08-20).
   // 토큰은 문서에 저장하지 않는다 — 저장하면 만료되는 날 사진이 전부 깨진다.
   const tr = useTr();
+  const currentBlock = useRef(block); currentBlock.current = block;
   const resolveNoteHtml = useNoteHtmlResolver();
   // 노트 글꼴·크기 (맵 설정) — 뷰어 팝업과 동일 규칙 (기본 13pt)
   const noteFont = useDocumentStore((st) => st.map.settings?.noteFont);
@@ -454,6 +443,8 @@ function NoteBlockEditor({
                 음수 margin으로 겉보기 배치는 그대로. */}
             <span
               data-testid="note-check-toggle"
+              role="checkbox" tabIndex={0} aria-checked={!!block.checked}
+              onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); onChange({ checked: !block.checked }); } }}
               // 다른 세 자리(맵 노드·아웃라인·팝업)와 같은 표식 —
               // 상태를 **취소선 같은 겉모습으로** 알아내려 하면, 표시
               // 규칙을 바꿀 때마다 검사가 함께 깨진다 (§5-1-6)
@@ -533,9 +524,7 @@ function NoteBlockEditor({
               // 텍스트를 수정해 서식이 제거됐으면 되살리지 않는다)
               void embedRichHtmlImages(clean.html).then((h2) => {
                 if (!h2) return;
-                const cur = findBlockById(
-                  useDocumentStore.getState().map, block.id,
-                );
+                const cur = currentBlock.current;
                 if (!cur?.html) return;
                 if (cur.html === clean.html) { onChange({ html: h2 }); return; }
                 // 그 사이 글을 고쳤어도(html 이 다시 짜였어도) 사진 주소는

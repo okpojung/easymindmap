@@ -1,3 +1,4 @@
+import { useBackdropDismiss } from '@/components/ui/useBackdropDismiss';
 // DialogFrame — 계정 메뉴 계열 **팝업의 공통 틀** (2026-09-08 사용자 결정).
 //
 // 규칙 (coding-conventions.md §5-1-7):
@@ -31,12 +32,13 @@ export function DialogFrame({
   closeDisabled?: boolean;
 }) {
   const close = () => { if (!closeDisabled) onClose(); };
+  const backdrop = useBackdropDismiss(close);
   // 폰(폭 < 768px)에서는 화면 폭 - 24px · 100dvh 안, 손가락이면 입력 16px·버튼 40px
   // — 규칙은 mobileCss 한 곳에 있다 (데스크톱은 그대로)
   ensureMobileCss();
   return (
     <div
-      onClick={close}
+      {...backdrop}
       data-mm-dialog-overlay=""
       style={{
         position: 'fixed', inset: 0, zIndex, background: 'rgba(0,0,0,0.35)',

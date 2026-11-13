@@ -1,0 +1,318 @@
+import { Fragment, useRef } from 'react';
+import type { ThemeTokens } from '@/components/design-tokens/theme';
+import type { NoteBlock as NoteBlockData } from '@/editor/__samples__/types';
+import { useDocumentStore } from '@/stores/documentStore';
+import { I } from '@/components/icons';
+import { useTr } from '@/i18n';
+import { sanitizeRichHtml } from '@/utils/sanitizeRichHtml';
+import { rebuildRichHtml, remapImgSrcs } from '@/utils/richNoteEdit';
+import { embedRichHtmlImages } from '@/utils/embedImage';
+import { useNoteHtmlResolver } from '@/utils/imageSrc';
+import { useCoarse } from '@/hooks/useViewport';
+import { noteTableCells } from './noteTable';
+import { cellLines } from '@/editor/node-renderer/mdTable';
+// 코드 블록 언어 목록.
+// [서버 연결 예정] Supabase 연동 시 이 하드코딩 목록은 code_languages
+// 테이블로 이관되어 시스템 관리자 설정 메뉴에서 추가·수정·삭제한다
+// (docs/02-domain/db-schema.md §향후 관리 테이블, 32-settings.md 참조).
+const CODE_LANGUAGES = [
+  'Shell', 'JavaScript', 'TypeScript', 'Node', 'Python', 'PHP', 'Java',
+  'C', 'C++', 'C#', 'Go', 'Rust', 'SQL', 'HTML', 'CSS', 'JSON', 'YAML',
+  'Markdown', '기타',
+];
+// '기타' 는 노트에 저장되는 값이라 그대로 두고, 보이는 이름만 번역한다
+const CODE_LANG_OTHER = '기타';
+
+// 노트 블록 입력창 높이(행 수) — 길이를 조절하려면 이 숫자만 바꾸면 된다.
+// (docs/03-editor-core/node/04-node-content.md §UI 조정 가이드 참조)
+const NOTE_INPUT_ROWS: Record<string, number> = {
+  paragraph: 15,
+  code_block: 15,
+};
+
+// label 은 사전 키 — 렌더할 때 번역한다
+const BLOCK_META: Record<string, { icon: string; label: string }> = {
+  paragraph: { icon: '¶', label: 'inspector.note.add.paragraph' },
+  code_block: { icon: '</>', label: 'inspector.note.add.code' },
+  table: { icon: '⊞', label: 'inspector.note.add.table' },
+  // ★ 아이콘을 ☑ 로 두면 **바로 아래 진짜 체크 상자와 헷갈린다** —
+  //   블록마다 늘 켜져 있는 ☑ 가 머리글에 붙어 있으니 "체크했는데
+  //   왜 위에도 체크가 있지"가 된다 (2026-08-09 보고). 목록 글리프로.
+  checklist: { icon: '☰', label: 'inspector.note.checklist' },
+  // 폐기된 옛 타입(warning/tip) 데이터 하위호환 — 문단으로 취급
+  warning: { icon: '¶', label: 'inspector.note.add.paragraph' },
+  tip: { icon: '¶', label: 'inspector.note.add.paragraph' },
+};
+
+export function NoteBlockEditor({
+  t, block, onChange, onRemove, onEnterNext, onEditTable, hideHeader,
+}: {
+  t: ThemeTokens;
+  hideHeader?: boolean;
+  block: NoteBlockData;
+  onChange: (patch: Partial<NoteBlockData>) => void;
+  onRemove: () => void;
+  // 체크리스트 전용 — Enter/Shift+Enter 로 다음 항목 추가
+  onEnterNext?: () => void;
+  // 표 전용 — 표 팝업(격자/MD)으로 고치기
+  onEditTable?: () => void;
+}) {
+  // 노트 사진이 **우리 저장소**에 있으면 그릴 때 토큰을 붙인다 (2026-08-20).
+  // 토큰은 문서에 저장하지 않는다 — 저장하면 만료되는 날 사진이 전부 깨진다.
+  const tr = useTr();
+  const currentBlock = useRef(block); currentBlock.current = block;
+  const resolveNoteHtml = useNoteHtmlResolver();
+  // 노트 글꼴·크기 (맵 설정) — 뷰어 팝업과 동일 규칙 (기본 13pt)
+  const noteFont = useDocumentStore((st) => st.map.settings?.noteFont);
+  const noteFs = noteFont?.size && noteFont.size > 0 ? noteFont.size : 13;
+  const noteFamily = noteFont?.family && noteFont.family.trim() ? noteFont.family : undefined;
+  const meta = BLOCK_META[block.type] ?? BLOCK_META.paragraph;
+  const accent =
+    block.type === 'code_block' ? t.accent
+    : block.type === 'table' ? t.primary
+    : block.type === 'checklist' ? t.success
+    : t.borderStrong;
+
+  return (
+    <div style={{
+      borderRadius: 6,
+      background: t.surfaceAlt,
+      border: `1px solid ${t.border}`,
+      borderLeft: `3px solid ${accent}`,
+      overflow: 'hidden',
+    }}>
+      {!hideHeader && <div style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        padding: '4px 8px',
+        fontSize: 9.5, fontWeight: 700, color: accent,
+        letterSpacing: 0.3, textTransform: 'uppercase',
+        borderBottom: `1px solid ${t.divider}`,
+      }}>
+        <span style={{ fontSize: 10 }}>{meta.icon}</span>
+        <span>{tr(meta.label)}</span>
+        {block.type === 'code_block' && (
+          <select
+            value={block.lang ?? ''}
+            onChange={(e) => onChange({ lang: e.target.value })}
+            style={{
+              width: 104, fontSize: 9.5, padding: '1px 3px', borderRadius: 3,
+              border: `1px solid ${t.border}`, background: t.surface,
+              color: t.text, outline: 'none', fontWeight: 500,
+              textTransform: 'none', letterSpacing: 0, cursor: 'pointer',
+            }}
+          >
+            <option value="">{tr('inspector.note.pickLang')}</option>
+            {CODE_LANGUAGES.map((lang) => (
+              <option key={lang} value={lang}>{lang === CODE_LANG_OTHER ? tr('inspector.note.langOther') : lang}</option>
+            ))}
+          </select>
+        )}
+        {block.type === 'table' && (
+          <button
+            data-testid="note-table-edit"
+            onClick={onEditTable}
+            title={tr('inspector.note.editTable')}
+            style={{
+              marginLeft: 'auto', background: 'transparent', border: 'none',
+              color: accent, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 4px',
+            }}
+          >✎</button>
+        )}
+        <button onClick={onRemove} title={tr('inspector.note.removeBlock')} style={{
+          marginLeft: block.type === 'table' ? 0 : 'auto', background: 'transparent', border: 'none',
+          color: t.textMuted, cursor: 'pointer', fontSize: 13, lineHeight: 1,
+        }}>×</button>
+      </div>}
+
+      <div style={{ padding: '6px 8px' }}>
+        {block.type === 'table' ? (
+          <NoteTableView t={t} text={block.text} fs={noteFs} family={noteFamily} onEdit={onEditTable} />
+        ) : block.type === 'checklist' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            {/* 클릭 판정은 6px 여유를 둔 래퍼가 받는다 — 14px 사각형만 노리면
+                빗나가기 쉽다 (docs/05-implementation/coding-conventions.md §5-1-5).
+                음수 margin으로 겉보기 배치는 그대로. */}
+            <span
+              data-testid="note-check-toggle"
+              role="checkbox" tabIndex={0} aria-checked={!!block.checked}
+              onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); onChange({ checked: !block.checked }); } }}
+              // 다른 세 자리(맵 노드·아웃라인·팝업)와 같은 표식 —
+              // 상태를 **취소선 같은 겉모습으로** 알아내려 하면, 표시
+              // 규칙을 바꿀 때마다 검사가 함께 깨진다 (§5-1-6)
+              data-checked={block.checked ? '1' : '0'}
+              onClick={() => onChange({ checked: !block.checked })}
+              style={{
+                padding: 6, margin: -6, cursor: 'pointer', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              {/* 체크 표시는 **✓ 자체가 크고 뚜렷해야** 한다 — 예전에는
+                  9px 짜리 ✓ 가 초록 칠 위에 묻혀 "녹색 네모"로만 보였다
+                  (2026-08-09 보고: "체크가 잘 인식이 안 된다").
+                  상자를 키우고(16) ✓ 도 키웠다(13, 굵기 3). */}
+              <span style={{
+                width: 16, height: 16, borderRadius: 4,
+                border: `1.5px solid ${block.checked ? t.success : t.borderStrong}`,
+                background: block.checked ? t.success : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                {block.checked && (
+                  <I.Check size={13} strokeWidth={3} style={{ color: '#fff' }} />
+                )}
+              </span>
+            </span>
+            <input
+              // 새로 추가된 빈 체크 항목은 바로 입력할 수 있게 자동 포커스
+              // (Enter로 다음 항목을 만들면 그 항목으로 커서가 넘어간다)
+              autoFocus={block.text === ''}
+              value={block.text}
+              onChange={(e) => onChange({ text: e.target.value })}
+              // Enter / Shift+Enter → 다음 체크 항목 추가. 내용이 비어 있으면
+              // 빈 항목이 쌓이지 않도록 아무 것도 하지 않는다.
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                if (block.text.trim()) onEnterNext?.();
+              }}
+              placeholder={tr('inspector.note.todo')}
+              // 완료해도 **취소선을 긋지 않는다** (2026-08-09 사용자 결정).
+              // 맵 노드 안의 체크(- [x])도 긋지 않는데 여기만 그어서
+              // 규칙이 갈렸고, 글자가 지워진 것처럼 보여 읽기도 나빴다.
+              // 완료 표시는 ✓ 하나로 충분하다.
+              style={{
+                flex: 1, fontSize: 12, border: 'none', outline: 'none',
+                background: 'transparent', color: t.text, minWidth: 0,
+              }}
+            />
+          </div>
+        ) : (
+          <textarea
+            // 새로 추가된 빈 블록은 바로 입력·붙여넣기할 수 있게 자동 포커스
+            // (포커스가 없으면 Ctrl+V가 노드 쪽으로 가는 혼동 방지)
+            autoFocus={block.text === ''}
+            value={block.text}
+            // 리치 붙여넣기 뒤 글을 고치면 — **사진은 버리지 않는다**
+            // (2026-09-11). 전에는 글자 하나(Enter 하나)에 html 을 통째로
+            // 버려 사진·서식이 함께 사라졌다. 글은 새 글로, 사진은 원래
+            // 자리에 다시 끼운다(`rebuildRichHtml`). 사진이 없는 서식은
+            // 전처럼 평문으로 돌아간다.
+            onChange={(e) => {
+              const v = e.target.value;
+              onChange({ text: v, html: block.html ? rebuildRichHtml(block.html, v) : undefined });
+            }}
+            onPaste={(e) => {
+              // 문단 블록: 웹 기사 등에서 복사한 내용(text/html)이 있으면
+              // 사진+텍스트를 서식째 살려 붙여넣는다 (sanitize 통과분만).
+              if (block.type !== 'paragraph') return;
+              const raw = e.clipboardData?.getData('text/html');
+              if (!raw) return;
+              const clean = sanitizeRichHtml(raw);
+              if (!clean.html) return;
+              e.preventDefault();
+              onChange({ html: clean.html, text: clean.text });
+              // 사진 다운로드 내장 — 기사 삭제·오프라인에도 보존.
+              // 완료 시 블록 html이 그대로일 때만 교체 (그 사이 사용자가
+              // 텍스트를 수정해 서식이 제거됐으면 되살리지 않는다)
+              void embedRichHtmlImages(clean.html).then((h2) => {
+                if (!h2) return;
+                const cur = currentBlock.current;
+                if (!cur?.html) return;
+                if (cur.html === clean.html) { onChange({ html: h2 }); return; }
+                // 그 사이 글을 고쳤어도(html 이 다시 짜였어도) 사진 주소는
+                // 옮긴다 — 안 옮기면 기사 원본 주소가 남는다 (2026-09-11)
+                const remapped = remapImgSrcs(cur.html, clean.html, h2);
+                if (remapped !== cur.html) onChange({ html: remapped });
+              });
+            }}
+            rows={NOTE_INPUT_ROWS[block.type] ?? 15}
+            placeholder={
+              block.type === 'code_block'
+                ? tr('inspector.note.codePlaceholder')
+                : tr('inspector.note.textPlaceholder')
+            }
+            style={{
+              width: '100%', resize: 'vertical', border: 'none', outline: 'none',
+              background: 'transparent', color: t.text,
+              // 노트 글꼴·크기 (맵 설정 — 기본 13pt, 코드/표는 고정폭 유지)
+              fontSize: block.type === 'code_block' ? Math.max(9, noteFs - 2) : noteFs,
+              lineHeight: 1.5,
+              fontFamily: block.type === 'code_block'
+                ? 'ui-monospace, SFMono-Regular, Menlo, monospace'
+                : (noteFamily ?? 'inherit'),
+              padding: 0,
+            }}
+          />
+        )}
+
+        {/* 리치 붙여넣기(사진+서식) 미리보기 — 문단 블록에 html이 있을 때.
+            배지·"서식 제거" 버튼 등 부가 UI는 두지 않는다(2026-07 사용자
+            피드백: 사진+텍스트만 깔끔하게). 위 텍스트를 수정하면 서식은
+            자연히 제거된다(onChange에서 html: undefined). */}
+        {block.type === 'paragraph' && block.html && (
+          <div style={{ marginTop: 6 }}>
+            <div
+              className="mm-rich-note"
+              style={{
+                maxHeight: 220, overflow: 'auto', fontSize: 11, lineHeight: 1.6,
+                border: `1px solid ${t.border}`, borderRadius: 5,
+                background: t.surface, color: t.text, padding: '6px 8px',
+              }}
+              // sanitizeRichHtml()을 통과한 안전한 HTML만 저장·표시된다
+              dangerouslySetInnerHTML={{ __html: resolveNoteHtml(block.html) ?? '' }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 노트 표 블록 — 그려 보이는 표 (2026-09-19). 원문 textarea 대신 노트 뷰어와
+ * 같은 모양으로 보여 주고, 더블클릭 또는 머리글 ✎ 로 표 팝업을 연다.
+ * 표로 읽히지 않는 원문(옛 데이터의 한 줄 등)은 그대로 글로 보인다.
+ */
+function NoteTableView({
+  t, text, fs, family, onEdit,
+}: {
+  t: ThemeTokens; text: string; fs: number; family?: string; onEdit?: () => void;
+}) {
+  const tr = useTr();
+  const cells = noteTableCells(text);
+  const cellStyle = (align: string | null, head: boolean) => ({
+    border: `1px solid ${t.border}`, padding: '3px 6px',
+    textAlign: (align ?? 'left') as 'left' | 'center' | 'right',
+    background: head ? t.surface : 'transparent', fontWeight: head ? 700 : 400,
+    whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const,
+  });
+  // 셀 안 `<br>` = 줄바꿈 (2026-10-15) — 맵·뷰어·내보내기와 같은 규칙
+  // 빈 칸도 한 줄 높이로 — 새로 넣은 빈 표의 행이 납작하게 붙어 안 보였다 (2026-11-08)
+  const cellBody = (v: string) => (v.trim() === '' ? '\u00a0' : cellLines(v).map((ln, i) => (
+    <Fragment key={i}>{i > 0 ? <br /> : null}{ln}</Fragment>
+  )));
+  return (
+    <div
+      data-testid="note-table-view"
+      onDoubleClick={onEdit}
+      title={tr('inspector.note.dblclickTable')}
+      style={{ cursor: 'pointer', fontSize: Math.max(9, fs - 1), fontFamily: family ?? 'inherit', color: t.text }}
+    >
+      {cells ? (
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>{cells.headers.map((h, c) => <th key={c} style={cellStyle(cells.aligns[c], true)}>{cellBody(h)}</th>)}</tr>
+          </thead>
+          <tbody>
+            {cells.rows.map((r, i) => (
+              <tr key={i}>{r.map((v, c) => <td key={c} style={cellStyle(cells.aligns[c], false)}>{cellBody(v)}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      ) : text.trim() ? (
+        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{text}</pre>
+      ) : (
+        <div style={{ fontSize: 10.5, color: t.textSubtle }}>{tr('inspector.note.emptyTable')}</div>
+      )}
+    </div>
+  );
+}

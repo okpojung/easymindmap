@@ -1,3 +1,4 @@
+import { useBackdropDismiss } from '@/components/ui/useBackdropDismiss';
 // TableDialog — 노드 본문 표(Markdown 파이프 표)를 팝업에서 편집하는
 // 공용 다이얼로그 (2026-09-17, 사용자 요청).
 //
@@ -246,6 +247,7 @@ export function TableDialog({
   onSave: (md: string) => void;
 }) {
   const tr = useTr();
+  const backdrop = useBackdropDismiss(onCancel);
   const init = useMemo(() => {
     const parsed = initialMd ? parseMdTable(initialMd) : null;
     // 셀 안 `<br>` 은 입력칸에서 **진짜 줄바꿈**으로 보여 준다 (2026-10-15)
@@ -487,7 +489,7 @@ export function TableDialog({
         background: 'rgba(15,14,10,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
-      onClick={onCancel}
+      {...backdrop}
     >
       <div
         ref={drag.panelRef}

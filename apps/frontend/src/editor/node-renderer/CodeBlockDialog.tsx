@@ -1,3 +1,4 @@
+import { useBackdropDismiss } from '@/components/ui/useBackdropDismiss';
 // CodeBlockDialog — 노드 코드 블록을 팝업에서 편집하는 공용 다이얼로그.
 //
 // 작은 노드 편집창(textarea) 안에서 여러 줄 코드를 직접 치는 것이 너무
@@ -34,6 +35,7 @@ export function CodeBlockDialog({
   onSave: (lang: string, code: string) => void;
 }) {
   const tr = useTr();
+  const backdrop = useBackdropDismiss(onCancel);
   const [lang, setLang] = useState(initialLang ?? '');
   const [code, setCode] = useState(initialCode ?? '');
   const codeRef = useRef<HTMLTextAreaElement | null>(null);
@@ -93,7 +95,7 @@ export function CodeBlockDialog({
         background: 'rgba(15,14,10,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
-      onClick={onCancel}
+      {...backdrop}
     >
       <div
         ref={drag.panelRef}

@@ -138,8 +138,8 @@ function ResourceTab({ t, selectedId, kind }: { t: ThemeTokens; selectedId: stri
     <div data-mm-touch="" data-testid={'res-' + kind}>
       <div style={head} data-testid="res-head">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <b style={{ fontSize: 12.5, color: t.text }}>{title}</b>
-          <span data-testid="res-count" style={{ fontSize: 11, color: t.textMuted }}>
+          <b style={{ fontSize: 12.5, color: t.text, whiteSpace: 'nowrap', flexShrink: 0 }}>{title}</b>
+          <span data-testid="res-count" style={{ fontSize: 11, color: t.textMuted, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {tr('inspector.res.count', { all: rows.length, sel: selRows.length })}
           </span>
           <span style={{ flex: 1 }} />
@@ -147,7 +147,7 @@ function ResourceTab({ t, selectedId, kind }: { t: ThemeTokens; selectedId: stri
             <button type="button" data-testid="md-new-open" disabled={!canAdd || creating}
               title={isGuest ? tr('inspector.res.guest') : canAdd ? tr('inspector.res.md.newTip') : tr('inspector.res.pickNode')}
               onClick={() => { void createMdAndOpen(); }}
-              style={{ ...addBtnStyle(t), padding: '4px 10px', fontSize: 11.5, opacity: canAdd ? 1 : 0.5, cursor: canAdd ? 'pointer' : 'not-allowed' }}>
+              style={{ ...addBtnStyle(t), padding: '4px 10px', fontSize: 11.5, whiteSpace: 'nowrap', flexShrink: 0, opacity: canAdd ? 1 : 0.5, cursor: canAdd ? 'pointer' : 'not-allowed' }}>
               {creating ? '…' : '＋ ' + tr('inspector.content.add')}
             </button>
           )}
@@ -156,7 +156,7 @@ function ResourceTab({ t, selectedId, kind }: { t: ThemeTokens; selectedId: stri
             title={isGuest ? tr('inspector.res.guest') : !canAdd ? tr('inspector.res.pickNode') : kind === 'md' ? tr('inspector.res.md.fileTip') : tr('inspector.res.addTip')}
             onClick={() => { setAddOpen((v) => !v); setErr(null); }}
             style={{
-              ...addBtnStyle(t), padding: '4px 10px', fontSize: 11.5,
+              ...addBtnStyle(t), padding: kind === 'md' && !addOpen ? '4px 8px' : '4px 10px', fontSize: 11.5, whiteSpace: 'nowrap', flexShrink: 0,
               opacity: !canAdd && !addOpen ? 0.5 : 1, cursor: !canAdd && !addOpen ? 'not-allowed' : 'pointer',
             }}>
             {addOpen ? '✕ ' + tr('inspector.res.closeAdd') : kind === 'md' ? '📎' : '＋ ' + tr('inspector.content.add')}

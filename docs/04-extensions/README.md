@@ -29,7 +29,7 @@ AI, 번역, 협업, 퍼블리시, 외부 연동 등 편집기 코어 위에 올�
 | 27 | `publish/27-publish-share.md` | PUBLISH | 공개 URL 게시 및 읽기 전용 공유 | MVP |
 | 28 | `project/28-wbs.md` | WBS | WBS 모드 (일정 / 마일스톤 / 진척률) | V1 |
 | 29 | `project/29-resource.md` | RESOURCE | 리소스 할당 (담당자 / 역할 / 공수) | V1 |
-| 30 | `integrations/30-obsidian-integration.md` | OBSIDIAN | Obsidian Vault 양방향 Markdown 동기화 | V1 |
+| 30 | `integrations/30-obsidian-integration.md` | OBSIDIAN | Obsidian 플러그인 — 같은 노트를 글과 맵 두 화면으로 (v2.0, 2026-10-23) | V1 |
 | 31 | `integrations/31-redmine-integration.md` | REDMINE | Redmine 이슈 양방향 동기화 | V1 |
 | 32 | `settings/32-settings.md` | SETTINGS | 사용자 설정 (테마 / 언어 / 레이아웃 / API Key) | MVP |
 
@@ -72,7 +72,7 @@ V3    ── Dashboard(22) / AI 협업 요약(18) / Chat DM(26)
 ## 📌 설계 방향
 
 - Editor Core와 분리된 확장 구조
-- API 기반 외부 연동 (Obsidian, Redmine)
+- 외부 연동 (Redmine — API 기반 / Obsidian — 공개 플러그인, 계정 기능만 서버)
 - 단계별 점진적 기능 확장 (MVP → V3)
 
 ---

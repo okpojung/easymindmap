@@ -107,6 +107,27 @@ function ResourceTab({ t, selectedId, kind }: { t: ThemeTokens; selectedId: stri
 
   const title = tr('inspector.res.' + kind + '.list');
   const canAdd = !!selNode && !isGuest;
+  // MD [＋ 추가] = 바로 새 문서를 만들어 오른쪽 칸 편집기로 연다 (2026-11-14 사용자 요청).
+  //   이름은 노드 글 첫 줄(10자까지), 같은 이름이 있으면 ' (2)' … 를 붙인다. 파일 붙이기는 옆의 [📎] 로.
+  const addFiles = useAddFiles(selectedId ?? '', setErr);
+  const [creating, setCreating] = useState(false);
+  const createMdAndOpen = async () => {
+    if (!selNode || !selectedId || creating) return;
+    const nodeId = selectedId;
+    const first = (flattenNodeText(selNode.text) || '').split('\n').map((x) => x.trim()).find(Boolean) ?? '';
+    const base = mdNameFromNodeText(first) || tr('inspector.res.md.untitled');
+    const taken = new Set((selNode.attachments ?? []).map((a) => a.name.toLowerCase()));
+    let name = base + '.md';
+    for (let i = 2; taken.has(name.toLowerCase()); i++) name = base + ' (' + i + ').md';
+    setCreating(true); setErr(null);
+    try {
+      const before = new Set((selNode.attachments ?? []).map((a) => a.id));
+      await addFiles([new File(['# ' + (first || base) + '\n\n'], name, { type: 'text/markdown' })]);
+      let made: NodeAttachment | undefined;
+      eachNode(useDocumentStore.getState().map, (n) => { if (n.id === nodeId) made = (n.attachments ?? []).find((a) => !before.has(a.id) && a.name === name); });
+      if (made?.url) openAttachment(made.name, made.url, { nodeId, attachmentId: made.id });
+    } finally { setCreating(false); }
+  };
 
   const head: CSSProperties = {
     position: 'sticky', top: 0, zIndex: 3, background: t.surface,
@@ -122,15 +143,23 @@ function ResourceTab({ t, selectedId, kind }: { t: ThemeTokens; selectedId: stri
             {tr('inspector.res.count', { all: rows.length, sel: selRows.length })}
           </span>
           <span style={{ flex: 1 }} />
+          {kind === 'md' && (
+            <button type="button" data-testid="md-new-open" disabled={!canAdd || creating}
+              title={isGuest ? tr('inspector.res.guest') : canAdd ? tr('inspector.res.md.newTip') : tr('inspector.res.pickNode')}
+              onClick={() => { void createMdAndOpen(); }}
+              style={{ ...addBtnStyle(t), padding: '4px 10px', fontSize: 11.5, opacity: canAdd ? 1 : 0.5, cursor: canAdd ? 'pointer' : 'not-allowed' }}>
+              {creating ? '…' : '＋ ' + tr('inspector.content.add')}
+            </button>
+          )}
           <button type="button" data-testid="res-add-toggle" aria-expanded={addOpen}
             disabled={!canAdd && !addOpen}
-            title={isGuest ? tr('inspector.res.guest') : canAdd ? tr('inspector.res.addTip') : tr('inspector.res.pickNode')}
+            title={isGuest ? tr('inspector.res.guest') : !canAdd ? tr('inspector.res.pickNode') : kind === 'md' ? tr('inspector.res.md.fileTip') : tr('inspector.res.addTip')}
             onClick={() => { setAddOpen((v) => !v); setErr(null); }}
             style={{
               ...addBtnStyle(t), padding: '4px 10px', fontSize: 11.5,
               opacity: !canAdd && !addOpen ? 0.5 : 1, cursor: !canAdd && !addOpen ? 'not-allowed' : 'pointer',
             }}>
-            {addOpen ? '✕ ' + tr('inspector.res.closeAdd') : '＋ ' + tr('inspector.content.add')}
+            {addOpen ? '✕ ' + tr('inspector.res.closeAdd') : kind === 'md' ? '📎' : '＋ ' + tr('inspector.content.add')}
           </button>
         </div>
         <div style={{ fontSize: 10.5, color: selNode ? t.primary : t.textSubtle, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -414,35 +443,18 @@ function AttachAdd({ t, nodeId, onError }: { t: ThemeTokens; nodeId: string; onE
 function MdAdd({ t, nodeId, onError }: { t: ThemeTokens; nodeId: string; onError: (m: string | null) => void }) {
   const tr = useTr();
   const add = useAddFiles(nodeId, onError);
-  const [name, setName] = useState('');
-  const [body, setBody] = useState('');
-  const [busy, setBusy] = useState(false);
-  const create = async () => {
-    const base = name.trim().replace(/\.(md|markdown)$/i, '') || tr('inspector.res.md.untitled');
-    setBusy(true);
-    try {
-      const text = body.trim() ? body : '# ' + base + '\n\n';
-      await add([new File([text], base + '.md', { type: 'text/markdown' })]);
-      setName(''); setBody('');
-    } finally { setBusy(false); }
-  };
+  // 새 문서는 머리의 [＋ 추가] 가 바로 만든다 — 여기는 가진 MD 파일 붙이기만
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.textMuted }}>{tr('inspector.res.md.newHead')}</div>
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        <input data-testid="md-add-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus
-          placeholder={tr('inspector.res.md.namePh')} style={{ ...inputStyle(t), flex: 1 }} />
-        <span style={{ fontSize: 11, color: t.textMuted }}>.md</span>
-      </div>
-      <textarea data-testid="md-add-body" value={body} onChange={(e) => setBody(e.target.value)} rows={4}
-        placeholder={tr('inspector.res.md.bodyPh')}
-        style={{ ...inputStyle(t), resize: 'vertical', fontFamily: "ui-monospace, 'Cascadia Mono', Consolas, monospace" }} />
-      <button type="button" data-testid="md-add-create" disabled={busy} onClick={() => { void create(); }} style={{ ...addBtnStyle(t), padding: '6px 10px' }}>
-        {busy ? '…' : tr('inspector.res.md.create')}
-      </button>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.textMuted, marginTop: 6 }}>{tr('inspector.res.md.fileHead')}</div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.textMuted }}>{tr('inspector.res.md.fileHead')}</div>
       <FilePickerButton t={t} label={tr('inspector.res.md.pick')} accept=".md,.markdown,text/markdown" onFiles={(files) => add(files.filter((f) => isMarkdownName(f.name)))} />
       <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>{tr('inspector.res.md.help')}</div>
     </div>
   );
+}
+
+/** 노드 글 → MD 문서 이름 — 파일 이름에 못 쓰는 글자를 빼고 10자까지 (2026-11-14 사용자 요청) */
+export function mdNameFromNodeText(text: string, max = 10): string {
+  const clean = text.replace(/[\\/:*?"<>|#\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '');
+  return Array.from(clean).slice(0, max).join('').trim();
 }

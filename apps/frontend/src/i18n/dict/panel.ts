@@ -5,6 +5,7 @@ import { defineDict } from '../define';
 
 export default defineDict({
   ko: {
+    "panel.search.openTagPanel": "태그 표시 설정 열기",
     'panel.template.noSpace': '저장 공간이 부족해 등록하지 못했습니다',
     'panel.template.registered': "'{name}' 템플릿으로 등록했습니다",
     'panel.template.applied': "'{name}' 템플릿의 스타일·설정을 현재 맵에 적용했습니다 (내용 유지 · Ctrl+Z로 되돌리기)",
@@ -264,6 +265,7 @@ export default defineDict({
     'panel.search.noTags': '맵에 정의된 태그가 없습니다.',
   },
   en: {
+    "panel.search.openTagPanel": "Open tag display settings",
     'panel.template.noSpace': 'Not enough storage space to save the template',
     'panel.template.registered': "Saved as template '{name}'",
     'panel.template.applied': "Applied the styles and settings of '{name}' to this map (content kept · Ctrl+Z to undo)",
@@ -523,6 +525,7 @@ export default defineDict({
     'panel.search.noTags': 'This map has no tags.',
   },
   zh: {
+    "panel.search.openTagPanel": "打开标签显示设置",
     'panel.template.noSpace': '存储空间不足，无法保存模板',
     'panel.template.registered': '已保存为模板“{name}”',
     'panel.template.applied': '已将模板“{name}”的样式和设置应用到当前导图（内容保留 · Ctrl+Z 撤销）',
@@ -782,6 +785,7 @@ export default defineDict({
     'panel.search.noTags': '此导图中没有标签。',
   },
   ja: {
+    "panel.search.openTagPanel": "タグの表示設定を開く",
     'panel.template.noSpace': '保存容量が足りず、登録できませんでした',
     'panel.template.registered': 'テンプレート「{name}」として登録しました',
     'panel.template.applied': 'テンプレート「{name}」のスタイルと設定を現在のマップに適用しました（内容はそのまま · Ctrl+Z で元に戻す）',

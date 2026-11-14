@@ -3,6 +3,12 @@ import { defineDict } from '../define';
 
 export default defineDict({
   ko: {
+    "editor.toolbar.chromeCollapse": "도구막대 접기",
+    "editor.toolbar.chromeExpand": "도구막대 펼치기",
+    "editor.toolbar.chromeMove": "도구막대 이동",
+    "editor.toolbar.chromeMoveHint": "드래그로 이동 · 방향키로 이동 · 두 번 클릭 또는 Home으로 위치 초기화",
+    "editor.toolbar.chromePin": "도구막대 고정",
+    "editor.toolbar.chromeUnpin": "도구막대 고정 해제",
     'editor.layout.treeRight': '트리 · 오른쪽 (직각선)',
     'editor.layout.treeDown': '트리 · 아래 (직각선)',
     'editor.layout.radialRight': '방사형 · 오른쪽 (곡선)',
@@ -462,6 +468,12 @@ export default defineDict({
     'editor.sample.b6_2': '대형맵 성능 — 가상화',
   },
   en: {
+    "editor.toolbar.chromeCollapse": "Collapse toolbar",
+    "editor.toolbar.chromeExpand": "Expand toolbar",
+    "editor.toolbar.chromeMove": "Move toolbar",
+    "editor.toolbar.chromeMoveHint": "Drag or use arrow keys to move · Double-click or press Home to reset position",
+    "editor.toolbar.chromePin": "Pin toolbar",
+    "editor.toolbar.chromeUnpin": "Unpin toolbar",
     'editor.layout.treeRight': 'Tree · right (elbow)',
     'editor.layout.treeDown': 'Tree · down (elbow)',
     'editor.layout.radialRight': 'Radial · right (curved)',
@@ -921,6 +933,12 @@ export default defineDict({
     'editor.sample.b6_2': 'Large-map performance — virtualization',
   },
   zh: {
+    "editor.toolbar.chromeCollapse": "折叠工具栏",
+    "editor.toolbar.chromeExpand": "展开工具栏",
+    "editor.toolbar.chromeMove": "移动工具栏",
+    "editor.toolbar.chromeMoveHint": "拖动或使用方向键移动 · 双击或按 Home 键重置位置",
+    "editor.toolbar.chromePin": "固定工具栏",
+    "editor.toolbar.chromeUnpin": "取消固定工具栏",
     'editor.layout.treeRight': '树形 · 向右（直角线）',
     'editor.layout.treeDown': '树形 · 向下（直角线）',
     'editor.layout.radialRight': '放射状 · 向右（曲线）',
@@ -1380,6 +1398,12 @@ export default defineDict({
     'editor.sample.b6_2': '大型导图性能 — 虚拟化',
   },
   ja: {
+    "editor.toolbar.chromeCollapse": "ツールバーを折りたたむ",
+    "editor.toolbar.chromeExpand": "ツールバーを展開",
+    "editor.toolbar.chromeMove": "ツールバーを移動",
+    "editor.toolbar.chromeMoveHint": "ドラッグまたは矢印キーで移動 · ダブルクリックまたは Home キーで位置をリセット",
+    "editor.toolbar.chromePin": "ツールバーを固定",
+    "editor.toolbar.chromeUnpin": "ツールバーの固定を解除",
     'editor.layout.treeRight': 'ツリー · 右（直角線）',
     'editor.layout.treeDown': 'ツリー · 下（直角線）',
     'editor.layout.radialRight': '放射型 · 右（曲線）',

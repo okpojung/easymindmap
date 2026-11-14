@@ -4,6 +4,11 @@ import { defineDict } from '../define';
 
 export default defineDict({
   ko: {
+    "inspector.tags.visibility": "#{tag} 노드에 표시",
+    "inspector.tags.hideTag": "#{tag} 숨기기",
+    "inspector.tags.showTag": "#{tag} 표시하기",
+    "inspector.tags.visibilityHint": "눈 버튼으로 태그를 표시하거나 숨깁니다. 태그를 누르면 붙이기 모드가 켜집니다.",
+    "inspector.tags.visibilityOff": "전체 태그 표시가 꺼져 있습니다. 다시 켜면 태그별 표시 설정이 유지됩니다.",
     'inspector.aiKey.saving': '계정에 저장 중…',
     'inspector.aiKey.failed': '계정 저장 실패',
     'inspector.aiKey.onAccount': '계정에 저장됨 {hint}',
@@ -422,6 +427,11 @@ export default defineDict({
     'inspector.web.copyExpand': '📋 확장 프롬프트 복사',
   },
   en: {
+    "inspector.tags.visibility": "Show #{tag} on nodes",
+    "inspector.tags.hideTag": "Hide #{tag}",
+    "inspector.tags.showTag": "Show #{tag}",
+    "inspector.tags.visibilityHint": "Use the eye buttons to show or hide tags. Select a tag to paint it onto nodes.",
+    "inspector.tags.visibilityOff": "All tags are hidden. Individual visibility settings are kept when you turn them back on.",
     'inspector.aiKey.saving': 'Saving to account…',
     'inspector.aiKey.failed': 'Account save failed',
     'inspector.aiKey.onAccount': 'Saved to account {hint}',
@@ -840,6 +850,11 @@ export default defineDict({
     'inspector.web.copyExpand': '📋 Copy expand prompt',
   },
   zh: {
+    "inspector.tags.visibility": "在节点上显示 #{tag}",
+    "inspector.tags.hideTag": "隐藏 #{tag}",
+    "inspector.tags.showTag": "显示 #{tag}",
+    "inspector.tags.visibilityHint": "使用眼睛按钮显示或隐藏标签。选择标签可进入节点贴标签模式。",
+    "inspector.tags.visibilityOff": "所有标签已隐藏。重新开启显示后，各标签的显示设置将保留。",
     'inspector.aiKey.saving': '正在保存到账户…',
     'inspector.aiKey.failed': '保存到账户失败',
     'inspector.aiKey.onAccount': '已保存到账户 {hint}',
@@ -1258,6 +1273,11 @@ export default defineDict({
     'inspector.web.copyExpand': '📋 复制扩展提示词',
   },
   ja: {
+    "inspector.tags.visibility": "#{tag} をノードに表示",
+    "inspector.tags.hideTag": "#{tag} を非表示",
+    "inspector.tags.showTag": "#{tag} を表示",
+    "inspector.tags.visibilityHint": "目のボタンでタグの表示を切り替えます。タグを選ぶとノードに付けるモードになります。",
+    "inspector.tags.visibilityOff": "すべてのタグが非表示です。再び表示すると、タグごとの設定が維持されます。",
     'inspector.aiKey.saving': 'アカウントに保存中…',
     'inspector.aiKey.failed': 'アカウントへの保存に失敗',
     'inspector.aiKey.onAccount': 'アカウントに保存済み {hint}',

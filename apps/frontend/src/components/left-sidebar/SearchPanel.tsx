@@ -3,9 +3,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { MindNode } from '@/editor/__samples__/types';
 import { mapCenters } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
-import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
-import { Toggle } from '@/editor/inspector-panels/InspectorSection';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
@@ -73,21 +71,9 @@ function searchMap(
   }
 }
 
-// Collect every distinct tag defined anywhere in the map.
-function collectTags(nodes: MindNode[], acc: Set<string>) {
-  for (const n of nodes) {
-    if (n.tag) acc.add(n.tag);
-    (n.tags ?? []).forEach((tg) => acc.add(tg));
-    if (n.children) collectTags(n.children, acc);
-  }
-}
-
 export function SearchPanel({ t }: { t: ThemeTokens }) {
   const tr = useTr();
-  const showTags = useEditorUiStore((s) => s.showTags);
-  const setShowTags = useEditorUiStore((s) => s.setShowTags);
-  const hiddenTags = useEditorUiStore((s) => s.hiddenTags);
-  const toggleTagHidden = useEditorUiStore((s) => s.toggleTagHidden);
+  const setInspectorTab = useEditorUiStore((s) => s.setInspectorTab);
   const map = useDocumentStore((s) => s.map);
   const expandAncestors = useDocumentStore((s) => s.expandAncestors);
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
@@ -110,13 +96,6 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
     return out.slice(0, 50);
   }, [map, query]);
 
-  const tagSet = new Set<string>();
-  for (const c of mapCenters(map)) {
-    if (c.root.tag) tagSet.add(c.root.tag);
-    (c.root.tags ?? []).forEach((tg) => tagSet.add(tg));
-    collectTags(c.branches, tagSet);
-  }
-  const mapTags = Array.from(tagSet);
 
   return (
     <div data-mm-touch="" style={{ padding: 12 }}>
@@ -214,58 +193,13 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
         </div>
       ))}
 
-      <div style={{
-        marginTop: 14, marginBottom: 6,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <span style={{
-          fontSize: 11, color: t.textSubtle,
-          textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
-        }}>{tr('panel.search.tagFilter')}</span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <span style={{ fontSize: 11, color: t.textMuted }}>{tr('panel.search.showTags')}</span>
-          <Toggle t={t} on={showTags} onChange={setShowTags} />
-        </label>
-      </div>
-
-      {/* Per-tag visibility filter — when "Tag 표시" is on, only checked tags
-          are shown on the canvas. */}
-      <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 6, lineHeight: 1.4 }}>
-        {tr('panel.search.tagHint')}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {mapTags.length === 0 && (
-          <div style={{ fontSize: 11.5, color: t.textSubtle }}>{tr('panel.search.noTags')}</div>
-        )}
-        {mapTags.map((tag) => {
-          const tc = resolveTagColor(tag, t);
-          const checked = !hiddenTags.includes(tag);
-          return (
-            <label
-              key={tag}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                cursor: showTags ? 'pointer' : 'default',
-                opacity: showTags ? 1 : 0.5,
-                padding: '3px 2px',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                disabled={!showTags}
-                onChange={() => toggleTagHidden(tag)}
-                style={{ accentColor: t.primary, cursor: 'inherit' }}
-              />
-              <span style={{
-                fontSize: 11, padding: '3px 7px', borderRadius: 3,
-                background: tc.bg, border: `1px solid ${tc.border}`,
-                color: tc.text, fontWeight: 600, letterSpacing: 0.2,
-              }}>#{tag}</span>
-            </label>
-          );
-        })}
-      </div>
+      <button type="button" data-testid="search-open-tags"
+        onClick={() => setInspectorTab('tag')}
+        style={{ marginTop: 14, minHeight: 40, width: '100%', padding: '8px 10px',
+          border: `1px solid ${t.border}`, borderRadius: 6,
+          background: t.surface, color: t.primary, cursor: 'pointer', fontSize: 12 }}>
+        {tr('panel.search.openTagPanel')}
+      </button>
     </div>
   );
 }

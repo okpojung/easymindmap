@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { clampToolbarPosition as clamp, readToolbarPreference as read } from './floatingToolbarPosition';
+const toolbar = { width: 180, height: 40 };
+assert.deepEqual(clamp({ x: -20, y: -10 }, toolbar, { width: 390, height: 600 }), { x: 8, y: 8 });
+assert.deepEqual(clamp({ x: 9999, y: 9999 }, toolbar, { width: 390, height: 600 }), { x: 202, y: 552 });
+assert.deepEqual(clamp({ x: 999, y: 999 }, { width: 400, height: 700 }, { width: 100, height: 100 }), { x: 0, y: 0 });
+assert.deepEqual(clamp({ x: NaN, y: Infinity }, toolbar, { width: 390, height: 600 }), { x: 8, y: 8 });
+assert.deepEqual(clamp({ x: 20, y: 20 }, toolbar, { width: 185, height: 45 }), { x: 2.5, y: 2.5 });
+assert.deepEqual(read('{broken'), { position: null, pinned: false, collapsed: false });
+assert.deepEqual(read('null'), { position: null, pinned: false, collapsed: false });
+assert.deepEqual(read('{"position":{"x":12,"y":20},"pinned":true,"collapsed":true}'), { position: { x: 12, y: 20 }, pinned: true, collapsed: true });
+assert.deepEqual(read('{"position":{"x":"12","y":20},"pinned":"true"}'), { position: null, pinned: false, collapsed: false });
+console.log('floatingToolbarPosition: 9 assertions passed');

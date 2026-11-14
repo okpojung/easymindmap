@@ -1,7 +1,10 @@
+import { TooltipButton } from '@/components/top-toolbar/Tooltip';
 // CanvasFloatingToolbar — top-right floating toolbar with two groups:
 // (1) Node-scoped actions  (2) View controls
 // Spec: docs/03-editor-core/canvas/10-canvas.md § 21.2
 
+import { FloatingToolbarFrame } from './FloatingToolbarFrame';
+import { useRegisterCanvasViewControls } from './canvasViewControls';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
@@ -36,6 +39,7 @@ interface Props {
 export function CanvasFloatingToolbar({
   t, hasSelection, focusActive, onFitView, onFocusSelected, kanban,
 }: Props) {
+  useRegisterCanvasViewControls({ hasSelection, focusActive, onFitView, onFocusSelected, kanban });
   const selectedId = useInteractionStore((state) => state.selectedId);
   const setSelectedId = useInteractionStore((state) => state.setSelectedId);
   const addChildNode = useDocumentStore((state) => state.addChildNode);
@@ -89,8 +93,6 @@ export function CanvasFloatingToolbar({
     if (mergeCentersInto(selectedId)) setSelectedId('root');
   };
 
-  const panMode = useViewportStore((state) => state.panMode);
-  const togglePanMode = useViewportStore((state) => state.togglePanMode);
   const requestCenterNode = useViewportStore((state) => state.requestCenterNode);
   // 선택이 있을 때의 +/− 뒤 화면: **맵 전체 맞추기가 아니라** 고른 노드를
   // 100% 로 화면 중앙에 (2026-09-21 사용자 보고: "노드를 선택하고 모두 펼치기
@@ -139,19 +141,6 @@ export function CanvasFloatingToolbar({
   }, [moreOpen]);
   useEffect(() => { if (!compact) setMoreOpen(false); }, [compact]);
   const requestEdit = useInteractionStore((state) => state.requestEdit);
-  // iPhone Safari 는 문서 전체화면을 지원하지 않는다 — 없는 기능의 단추는 숨긴다
-  const fullscreenSupported = typeof document !== 'undefined'
-    && (document.fullscreenEnabled ?? typeof document.documentElement?.requestFullscreen === 'function');
-  const [isFullscreen, setIsFullscreen] = useState(
-    typeof document !== 'undefined' && !!document.fullscreenElement,
-  );
-
-  useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', onChange);
-    return () => document.removeEventListener('fullscreenchange', onChange);
-  }, []);
-
   const handleAddNode = () => {
     const newNodeId = addChildNode(selectedId);
     setSelectedId(newNodeId);
@@ -238,13 +227,6 @@ export function CanvasFloatingToolbar({
     setStylePainter({ sourceId: selectedId, snap: snapshotNodeStyle(src, getNodeDepth(map, selectedId)) });
   };
 
-  const handleFullscreen = () => {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => { /* 무시 */ });
-    } else {
-      void document.documentElement.requestFullscreen?.()?.catch(() => { /* 지원 안 함 */ });
-    }
-  };
 
   // [+] 메뉴 — 데스크톱은 단추 바로 아래 왼쪽 정렬, 폰 폭은 도구 모음 오른쪽 끝에
   // 맞춰 화면 안에 들어오게 (단추 감싸개를 relative 로 두지 않아 도구 모음 기준이 된다)
@@ -340,11 +322,6 @@ export function CanvasFloatingToolbar({
         label: tr('editor.toolbar.groupView'),
         items: [
           {
-            key: 'focus', icon: focusActive ? <I.FocusOff size={16} /> : <I.Focus size={16} />,
-            label: kanban ? tr('editor.toolbar.m.scrollToCard') : focusActive ? tr('editor.toolbar.m.focusOff') : tr('editor.toolbar.m.focus'),
-            highlight: focusActive, disabled: !focusActive && !hasSelection, onClick: close(() => onFocusSelected?.()),
-          },
-          {
             key: 'expand', icon: <I.BranchExpand size={16} />, testId: 'expand-all', hidden: !!kanban,
             label: scope === 'all' ? tr('editor.toolbar.m.expandAll') : tr('editor.toolbar.m.expandSubtree'),
             onClick: close(() => { if (scope === 'all') expandAll(); else expandSubtree(scope); afterFold(scope); }),
@@ -354,26 +331,11 @@ export function CanvasFloatingToolbar({
             label: scope === 'all' ? tr('editor.toolbar.m.collapseAll') : tr('editor.toolbar.m.collapseSubtree'),
             onClick: close(() => { if (scope === 'all') collapseAll(); else collapseSubtree(scope); afterFold(scope); }),
           },
-          {
-            key: 'fullscreen', icon: isFullscreen ? <I.Shrink size={16} /> : <I.Expand size={16} />,
-            label: isFullscreen ? tr('editor.toolbar.m.fullscreenExit') : tr('editor.toolbar.m.fullscreen'),
-            highlight: isFullscreen, hidden: !fullscreenSupported, onClick: close(handleFullscreen),
-          },
         ],
       },
     ];
     return (
-      <div
-        data-testid="m-canvas-toolbar"
-        style={{
-          position: 'absolute', top: 8, right: 8, zIndex: 5,
-          display: 'flex', alignItems: 'center', gap: 2,
-          padding: 3, borderRadius: 10,
-          background: t.surface,
-          border: `1px solid ${t.border}`,
-          boxShadow: t.shadowSm,
-        }}
-      >
+      <FloatingToolbarFrame t={t} compact>
         <span style={{ display: 'inline-flex' }}>
           <ToolbarBtn
             t={t}
@@ -398,22 +360,7 @@ export function CanvasFloatingToolbar({
         >
           <I.Trash size={16} />
         </ToolbarBtn>
-        {/* Pan 모드 — 폰에서는 ⋯ 안이 아니라 늘 보이게 (2026-10-05 사용자 요청).
-            폰은 Pan 모드로 시작하므로 끄는 단추가 바로 보여야 한다 */}
-        {!kanban && (
-          <ToolbarBtn
-            t={t}
-            title={tr(panMode ? 'editor.toolbar.m.panOff' : 'editor.toolbar.m.pan')}
-            highlight={panMode}
-            onClick={() => { setMoreOpen(false); togglePanMode(); }}
-            testId="m-canvas-pan"
-          >
-            <I.Hand size={16} />
-          </ToolbarBtn>
-        )}
-        <ToolbarBtn t={t} title={kanban ? tr('editor.toolbar.boardHome') : tr('editor.toolbar.fit')} onClick={onFitView} testId="m-canvas-fit">
-          <I.FitMap size={17} />
-        </ToolbarBtn>
+
         <ToolbarBtn
           t={t}
           title={tr('editor.toolbar.m.more')}
@@ -442,7 +389,7 @@ export function CanvasFloatingToolbar({
               return (
                 <div key={g.label} style={{ marginBottom: 4 }}>
                   <div style={{ padding: '6px 6px 4px' }}><GroupLabel t={t}>{g.label}</GroupLabel></div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4 }}>
                     {items.map((it) => <MoreBtn key={it.key} t={t} item={it} />)}
                   </div>
                 </div>
@@ -455,21 +402,12 @@ export function CanvasFloatingToolbar({
             )}
           </div>
         )}
-      </div>
+      </FloatingToolbarFrame>
     );
   }
 
   return (
-    <div style={{
-      position: 'absolute', top: 14, right: 14, zIndex: 5,
-      display: 'flex', alignItems: 'center', gap: 4,
-      // 좁은 창(태블릿 세로 등)에서는 왼쪽으로 넘치지 않고 줄을 바꾼다
-      flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 'calc(100% - 28px)',
-      padding: 4, borderRadius: 8,
-      background: t.surface,
-      border: `1px solid ${t.border}`,
-      boxShadow: t.shadowSm,
-    }}>
+    <FloatingToolbarFrame t={t}>
       {/* 묶음 이름 글자(노드·중심·보기)는 뚜다 — 세로 구분선이 묶음을 나누고,
           이름은 단추 툴팁이 말한다 (2026-10-24 UI/UX 검토 ⑥). 폰 ⋯ 패널은 그대로. */}
       <span style={{ position: 'relative', display: 'inline-flex' }}>
@@ -573,12 +511,13 @@ export function CanvasFloatingToolbar({
             {linkOpen && (
               <div data-testid="link-menu-panel" role="menu" style={{
                 position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 20, minWidth: 230,
+                display: 'flex', flexDirection: 'column',
                 background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8,
                 boxShadow: '0 10px 30px rgba(60,45,15,0.22)', padding: 4,
               }}>
                 {linkMenu.items.map((it) => (
-                  <button key={it.key} type="button" role="menuitem" data-testid={it.testId}
-                    disabled={it.disabled} title={it.title}
+                  <TooltipButton key={it.key} type="button" role="menuitem" data-testid={it.testId}
+                    disabled={it.disabled} title={it.title || it.label} aria-label={it.label}
                     onClick={() => { setLinkOpen(false); it.onClick(); }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
@@ -588,7 +527,7 @@ export function CanvasFloatingToolbar({
                     }}>
                     <span style={{ display: 'flex', width: 16, justifyContent: 'center' }}>{it.icon}</span>
                     {it.label}
-                  </button>
+                  </TooltipButton>
                 ))}
               </div>
             )}
@@ -599,27 +538,6 @@ export function CanvasFloatingToolbar({
 
       <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
 
-      {!kanban && (
-        <ToolbarBtn
-          t={t}
-          title={tr('editor.toolbar.pan')}
-          highlight={panMode}
-          onClick={togglePanMode}
-        >
-          <I.Hand size={15} />
-        </ToolbarBtn>
-      )}
-      <ToolbarBtn
-        t={t}
-        title={kanban
-          ? tr('editor.toolbar.scrollToCard')
-          : focusActive ? tr('editor.toolbar.focusOff') : tr('editor.toolbar.focus')}
-        highlight={focusActive}
-        disabled={!focusActive && !hasSelection}
-        onClick={onFocusSelected}
-      >
-        {focusActive ? <I.FocusOff size={15} /> : <I.Focus size={15} />}
-      </ToolbarBtn>
       {/* 모두 펼치기/접기 — HTML 뷰어의 +/− 아이콘과 동일 동작
           (모두 접기 = 자식이 있는 2레벨 이하 노드를 전부 접는다).
           칸반은 접기 개념이 없어 숨긴다. */}
@@ -657,24 +575,7 @@ export function CanvasFloatingToolbar({
               있을 때만 도는 것도 그대로다. */}
         </>
       )}
-      <ToolbarBtn
-        t={t}
-        title={kanban ? tr('editor.toolbar.boardHome') : tr('editor.toolbar.fit')}
-        onClick={onFitView}
-      >
-        <I.FitMap size={16} />
-      </ToolbarBtn>
-      {fullscreenSupported && (
-        <ToolbarBtn
-          t={t}
-          title={isFullscreen ? tr('editor.toolbar.fullscreenExit') : tr('editor.toolbar.fullscreen')}
-          highlight={isFullscreen}
-          onClick={handleFullscreen}
-        >
-          {isFullscreen ? <I.Shrink size={15} /> : <I.Expand size={15} />}
-        </ToolbarBtn>
-      )}
-    </div>
+    </FloatingToolbarFrame>
   );
 }
 
@@ -720,7 +621,7 @@ function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick, 
   }
 
   return (
-    <button
+    <TooltipButton
       data-testid={testId}
       title={title}
       aria-label={title}
@@ -739,7 +640,7 @@ function ToolbarBtn({ t, title, children, highlight, danger, disabled, onClick, 
         transition: 'background 120ms, color 120ms',
       }}>
       {children}
-    </button>
+    </TooltipButton>
   );
 }
 
@@ -747,13 +648,15 @@ function MenuItem({ t, label, hint, onClick, testId, wrap }: { t: ThemeTokens; l
   const [h, setH] = useState(false);
   const coarse = useCoarse();
   return (
-    <button
+    <TooltipButton
       data-testid={testId}
+      title={label}
+      aria-label={label}
       onClick={onClick}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
       style={{
-        textAlign: 'left', border: 'none', borderRadius: 6, cursor: 'pointer',
+        width: '100%', minWidth: 0, textAlign: 'left', border: 'none', borderRadius: 6, cursor: 'pointer',
         padding: coarse ? '9px 12px' : '6px 10px', background: h ? t.surfaceAlt : 'transparent', color: t.text,
         display: 'flex', flexDirection: 'column', gap: 1,
         minHeight: coarse ? 44 : undefined, justifyContent: 'center',
@@ -762,7 +665,7 @@ function MenuItem({ t, label, hint, onClick, testId, wrap }: { t: ThemeTokens; l
       {/* 폰 폭(wrap)은 화면 안에서 줄을 바꾼다 */}
       <span style={{ fontSize: coarse ? 13.5 : 12.5, fontWeight: 600, whiteSpace: wrap ? 'normal' : 'nowrap' }}>{label}</span>
       <span style={{ fontSize: coarse ? 11.5 : 10.5, color: t.textMuted, whiteSpace: wrap ? 'normal' : 'nowrap' }}>{hint}</span>
-    </button>
+    </TooltipButton>
   );
 }
 
@@ -781,14 +684,16 @@ interface MoreItem {
 function MoreBtn({ t, item }: { t: ThemeTokens; item: MoreItem }) {
   const { disabled, highlight } = item;
   return (
-    <button
+    <TooltipButton
       type="button"
       role="menuitem"
+      title={item.label}
+      aria-label={item.label}
       data-testid={item.testId ? `m-more-${item.testId}` : `m-more-${item.key}`}
       disabled={disabled}
       onClick={item.onClick}
       style={{
-        display: 'flex', alignItems: 'center', gap: 8, minHeight: 44,
+        width: '100%', display: 'flex', alignItems: 'center', gap: 8, minHeight: 44,
         padding: '6px 8px', borderRadius: 8, textAlign: 'left',
         border: `1px solid ${highlight ? t.primary : 'transparent'}`,
         background: highlight ? t.primarySoft : t.surfaceAlt,
@@ -801,6 +706,6 @@ function MoreBtn({ t, item }: { t: ThemeTokens; item: MoreItem }) {
     >
       <span style={{ width: 20, display: 'inline-flex', justifyContent: 'center', flexShrink: 0 }}>{item.icon}</span>
       <span style={{ minWidth: 0 }}>{item.label}</span>
-    </button>
+    </TooltipButton>
   );
 }

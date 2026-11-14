@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { mdNameFromNodeText, newMdDocument } from './newMdDocument';
+assert.equal(mdNameFromNodeText('가나다라마바사아자차카타'), '가나다라마바사아자차');
+assert.equal(mdNameFromNodeText('..a/b:c*?"<>|#\u0001'), 'a b c');
+assert.equal(mdNameFromNodeText('😀😀😀😀😀😀😀😀😀😀😀'), '😀😀😀😀😀😀😀😀😀😀');
+assert.deepEqual(newMdDocument('\n\n선택한 노드의 문서입니다\n둘째 줄', [], '제목 없음'), { name: '선택한 노드의 문서.md', markdown: '# 선택한 노드의 문서입니다\n\n' });
+assert.deepEqual(newMdDocument('', [], '제목 없음'), { name: '제목 없음.md', markdown: '# 제목 없음\n\n' });
+assert.equal(newMdDocument('Node', ['NODE.MD','Node (2).md'], 'Untitled').name, 'Node (3).md');
+assert.equal(newMdDocument('###', [], 'Untitled').name, 'Untitled.md');
+const original=['Node.md']; newMdDocument('Node',original,'Untitled'); assert.deepEqual(original,['Node.md']);
+console.log('PASS shared MD creation: node label, 10 characters, filename safety, fallback and case-insensitive duplicate numbering');

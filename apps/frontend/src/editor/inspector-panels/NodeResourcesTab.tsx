@@ -20,6 +20,7 @@ import { attachmentKindFor, isImageFileName } from '@/utils/attachmentKind';
 import { cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { openAttachment } from '@/utils/openAttachment';
 import { isMarkdownName } from '@/utils/mdEditorUrl';
+import { newMdDocument } from '@/utils/newMdDocument';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
 import { ClipboardImageButton, FilePickerButton, addBtnStyle, inputStyle } from './ContentTab';
 import { useTr } from '@/i18n';
@@ -114,15 +115,11 @@ function ResourceTab({ t, selectedId, kind }: { t: ThemeTokens; selectedId: stri
   const createMdAndOpen = async () => {
     if (!selNode || !selectedId || creating) return;
     const nodeId = selectedId;
-    const first = (flattenNodeText(selNode.text) || '').split('\n').map((x) => x.trim()).find(Boolean) ?? '';
-    const base = mdNameFromNodeText(first) || tr('inspector.res.md.untitled');
-    const taken = new Set((selNode.attachments ?? []).map((a) => a.name.toLowerCase()));
-    let name = base + '.md';
-    for (let i = 2; taken.has(name.toLowerCase()); i++) name = base + ' (' + i + ').md';
+    const { name, markdown } = newMdDocument(flattenNodeText(selNode.text), (selNode.attachments ?? []).map((a) => a.name), tr('inspector.res.md.untitled'));
     setCreating(true); setErr(null);
     try {
       const before = new Set((selNode.attachments ?? []).map((a) => a.id));
-      await addFiles([new File(['# ' + (first || base) + '\n\n'], name, { type: 'text/markdown' })]);
+      await addFiles([new File([markdown], name, { type: 'text/markdown' })]);
       let made: NodeAttachment | undefined;
       eachNode(useDocumentStore.getState().map, (n) => { if (n.id === nodeId) made = (n.attachments ?? []).find((a) => !before.has(a.id) && a.name === name); });
       if (made?.url) openAttachment(made.name, made.url, { nodeId, attachmentId: made.id });
@@ -453,8 +450,4 @@ function MdAdd({ t, nodeId, onError }: { t: ThemeTokens; nodeId: string; onError
   );
 }
 
-/** 노드 글 → MD 문서 이름 — 파일 이름에 못 쓰는 글자를 빼고 10자까지 (2026-11-14 사용자 요청) */
-export function mdNameFromNodeText(text: string, max = 10): string {
-  const clean = text.replace(/[\\/:*?"<>|#\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '');
-  return Array.from(clean).slice(0, max).join('').trim();
-}
+export { mdNameFromNodeText } from '@/utils/newMdDocument';

@@ -339,7 +339,8 @@ export function TopToolbar({
         </div>
       </div>
       <div role="group" aria-label={copy.view} data-toolbar-group="view" style={groupStyle}>
-        {!phone && <>
+        {/* Bottom view controls use phoneLayout; keep these on larger touch tablets. */}
+        {!phoneLayout && <>
         <TooltipButton data-testid="view-toggle" title={copy[oppositeView]} onClick={() => selectView(oppositeView)} style={buttonStyle}>
           {oppositeView === 'map' ? <I.MindMap size={22} /> : <I.Outline size={22} />}
         </TooltipButton>

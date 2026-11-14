@@ -13,12 +13,12 @@ export const LAYOUT_STATUS_LABEL: Record<string, string> = {
   freeform: 'editor.layout.free', kanban: 'editor.layout.kanban',
   timeline: 'editor.layout.timeline', 'timeline-center': 'editor.layout.timelineCenter',
 };
-/** Status uses the same ancestor inheritance as subtree layout changes.
- * Full-canvas freeform/Kanban modes take precedence over dormant subtree settings. */
+/** Status reports layout, not canvas positioning mode. Free-positioned maps still
+ * retain per-node layout and ancestor inheritance. Kanban alone has no subtree layout. */
 export function layoutStatus(map: SampleMap, fallback: LayoutType, selectedId: string | null, multi: string[] = []) {
   const ids = [...new Set(multi.length > 1 ? multi : selectedId ? [selectedId] : [])].filter((id) => !!findNodeInMap(map, id));
-  const global = map.canvasMode === 'freeform' ? 'freeform' : normalizeLayoutType(fallback);
-  if (!ids.length || global === 'kanban' || global === 'freeform') return { count: ids.length, layout: global, mixed: false };
+  const global = normalizeLayoutType(fallback);
+  if (!ids.length || global === 'kanban') return { count: ids.length, layout: global, mixed: false };
   const layouts = new Set(ids.map((id) => normalizeLayoutType(effectiveLayoutInMap(map, id, fallback))));
   return { count: ids.length, layout: [...layouts][0], mixed: layouts.size > 1 };
 }

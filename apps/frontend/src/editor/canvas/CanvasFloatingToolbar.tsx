@@ -289,12 +289,12 @@ export function CanvasFloatingToolbar({
           { key: 'calendar', icon: <span style={{ fontSize: 14 }}>📅</span>, label: tr('editor.toolbar.addCalendar'), disabled: !hasSelection, onClick: () => { setMoreOpen(false); openCalendar(); } },
           {
             key: 'connect', icon: connectIcon, testId: 'connect-node', hidden: !!kanban,
-            label: connectMode ? tr('editor.toolbar.m.connectOff') : tr('editor.toolbar.m.connect'),
+            label: connectMode ? tr('editor.toolbar.m.connectOff') + ' (Esc)' : tr('editor.toolbar.m.connect'),
             highlight: !!connectMode, disabled: !connectMode && !hasSelection, onClick: close(handleConnect),
           },
           {
             key: 'style', icon: <I.Brush size={16} />, testId: 'style-copy', hidden: !!kanban,
-            label: stylePainter ? tr('editor.toolbar.m.stylePainterOff') : tr('editor.toolbar.m.stylePainter'),
+            label: stylePainter ? tr('editor.toolbar.m.stylePainterOff') + ' (Esc)' : tr('editor.toolbar.m.stylePainter'),
             highlight: !!stylePainter, disabled: !stylePainter && !hasSelection, onClick: close(handleStyleCopy),
           },
         ],
@@ -304,7 +304,7 @@ export function CanvasFloatingToolbar({
         items: [
           {
             key: 'center-add', icon: <I.Center size={16} />, testId: 'center-add',
-            label: placingCenter ? tr('editor.toolbar.m.placingCenter') : tr('editor.toolbar.m.addCenter'),
+            label: placingCenter ? tr('editor.toolbar.m.placingCenter') + ' (Esc)' : tr('editor.toolbar.m.addCenter'),
             highlight: placingCenter, onClick: close(handleAddCenter),
           },
           { key: 'promote', icon: <I.ArrowUp size={16} />, testId: 'center-promote', label: tr('editor.toolbar.m.promote'), disabled: !selectedIsLevel1, onClick: close(handlePromote) },
@@ -323,12 +323,12 @@ export function CanvasFloatingToolbar({
         items: [
           {
             key: 'expand', icon: <I.BranchExpand size={16} />, testId: 'expand-all', hidden: !!kanban,
-            label: scope === 'all' ? tr('editor.toolbar.m.expandAll') : tr('editor.toolbar.m.expandSubtree'),
+            label: scope === 'all' ? tr('editor.toolbar.m.expandAll') : tr('editor.toolbar.m.expandSubtree') + ' (Alt+=)',
             onClick: close(() => { if (scope === 'all') expandAll(); else expandSubtree(scope); afterFold(scope); }),
           },
           {
             key: 'collapse', icon: <I.BranchCollapse size={16} />, testId: 'collapse-all', hidden: !!kanban,
-            label: scope === 'all' ? tr('editor.toolbar.m.collapseAll') : tr('editor.toolbar.m.collapseSubtree'),
+            label: scope === 'all' ? tr('editor.toolbar.m.collapseAll') : tr('editor.toolbar.m.collapseSubtree') + ' (Alt+-)',
             onClick: close(() => { if (scope === 'all') collapseAll(); else collapseSubtree(scope); afterFold(scope); }),
           },
         ],
@@ -339,7 +339,7 @@ export function CanvasFloatingToolbar({
         <span style={{ display: 'inline-flex' }}>
           <ToolbarBtn
             t={t}
-            title={hasSelection ? tr('editor.toolbar.addNodeMenu') : tr('editor.toolbar.addCenterNode')}
+            title={hasSelection ? tr('editor.toolbar.addChild') : tr('editor.toolbar.m.addCenter')}
             highlight={hasSelection || addMenuOpen}
             onClick={() => { setMoreOpen(false); handleAddClick(); }}
             testId="add-node"
@@ -414,8 +414,8 @@ export function CanvasFloatingToolbar({
         <ToolbarBtn
           t={t}
           title={hasSelection
-            ? tr('editor.toolbar.addNodeMenu')
-            : tr('editor.toolbar.addCenterNode')}
+            ? tr('editor.toolbar.addChild')
+            : tr('editor.toolbar.m.addCenter')}
           highlight={hasSelection || addMenuOpen}
           onClick={handleAddClick}
           testId="add-node"
@@ -430,8 +430,8 @@ export function CanvasFloatingToolbar({
       <ToolbarBtn
         t={t}
         title={connectMode
-          ? tr('editor.toolbar.connectOff')
-          : tr('editor.toolbar.connect')}
+          ? tr('editor.toolbar.m.connectOff') + ' (Esc)'
+          : tr('editor.toolbar.m.connect')}
         highlight={!!connectMode}
         disabled={!connectMode && !hasSelection}
         onClick={handleConnect}
@@ -454,8 +454,8 @@ export function CanvasFloatingToolbar({
       <ToolbarBtn
         t={t}
         title={stylePainter
-          ? tr('editor.toolbar.stylePainterOff')
-          : tr('editor.toolbar.stylePainter')}
+          ? tr('editor.toolbar.m.stylePainterOff') + ' (Esc)'
+          : tr('editor.toolbar.m.stylePainter')}
         highlight={!!stylePainter}
         disabled={!stylePainter && !hasSelection}
         onClick={handleStyleCopy}
@@ -471,8 +471,8 @@ export function CanvasFloatingToolbar({
           <ToolbarBtn
             t={t}
             title={placingCenter
-              ? tr('editor.toolbar.placingCenter')
-              : tr('editor.toolbar.addCenter')}
+              ? tr('editor.toolbar.m.placingCenter') + ' (Esc)'
+              : tr('editor.toolbar.m.addCenter')}
             highlight={placingCenter}
             onClick={handleAddCenter}
             testId="center-add"
@@ -481,7 +481,7 @@ export function CanvasFloatingToolbar({
           </ToolbarBtn>
           <ToolbarBtn
             t={t}
-            title={tr('editor.toolbar.promote')}
+            title={tr('editor.toolbar.m.promote')}
             disabled={!selectedIsLevel1}
             onClick={handlePromote}
             testId="center-promote"
@@ -490,7 +490,7 @@ export function CanvasFloatingToolbar({
           </ToolbarBtn>
           <ToolbarBtn
             t={t}
-            title={tr('editor.toolbar.merge')}
+            title={tr('editor.toolbar.m.merge')}
             disabled={!selectedIsCenter || centerCount < 2}
             onClick={handleMerge}
             testId="center-merge"
@@ -501,7 +501,7 @@ export function CanvasFloatingToolbar({
           <span data-link-menu="" style={{ position: 'relative', display: 'inline-flex' }}>
             <ToolbarBtn
               t={t}
-              title={tr('cloud.linked.menu')}
+              title={tr('cloud.linked.group')}
               highlight={linkOpen}
               onClick={() => setLinkOpen((v) => !v)}
               testId="link-menu"
@@ -517,7 +517,7 @@ export function CanvasFloatingToolbar({
               }}>
                 {linkMenu.items.map((it) => (
                   <TooltipButton key={it.key} type="button" role="menuitem" data-testid={it.testId}
-                    disabled={it.disabled} title={it.title || it.label} aria-label={it.label}
+                    disabled={it.disabled} title={it.label} aria-label={it.label} aria-description={it.title}
                     onClick={() => { setLinkOpen(false); it.onClick(); }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
@@ -546,8 +546,8 @@ export function CanvasFloatingToolbar({
           <ToolbarBtn
             t={t}
             title={scope === 'all'
-              ? tr('editor.fold.expandAll')
-              : tr('editor.fold.expandSubtree')}
+              ? tr('editor.toolbar.m.expandAll')
+              : tr('editor.toolbar.m.expandSubtree') + ' (Alt+=)'}
             testId="expand-all"
             onClick={() => {
               if (scope === 'all') expandAll(); else expandSubtree(scope);
@@ -559,8 +559,8 @@ export function CanvasFloatingToolbar({
           <ToolbarBtn
             t={t}
             title={scope === 'all'
-              ? tr('editor.fold.collapseAll')
-              : tr('editor.fold.collapseSubtree')}
+              ? tr('editor.toolbar.m.collapseAll')
+              : tr('editor.toolbar.m.collapseSubtree') + ' (Alt+-)'}
             testId="collapse-all"
             onClick={() => {
               if (scope === 'all') collapseAll(); else collapseSubtree(scope);

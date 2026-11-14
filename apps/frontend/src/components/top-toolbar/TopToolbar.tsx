@@ -142,7 +142,10 @@ export function TopToolbar({
     ?? (readOnly && !readOnly.viewer ? readOnly.mapId : null);
   const [shareOpen, setShareOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
-  const saveState = collabDriving ? 'collab' : rawSaveState;
+  // A fresh local map has no persisted server copy, even before its first edit.
+  const saveState = collabDriving ? 'collab'
+    : rawSaveState === 'saved' && !shareMapId && !readOnly?.mapId ? 'unsaved'
+    : rawSaveState;
 
   // **좁은 폭 대응** (2026-09-02). 창을 좁히면(DevTools·창 분할) 배지와
   // 버튼 글자가 세로로 한 글자씩 쌓였다. 재는 것은 **툴바 자신의 폭**

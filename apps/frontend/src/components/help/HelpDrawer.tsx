@@ -17,6 +17,7 @@ const chapters = [
   ['connectors', '연결선'], ['redmine', 'Redmine'], ['save', '저장 / 내보내기'],
 ] as const;
 const shortcuts = [
+  ['저장 (단독 편집 맵)', 'Ctrl+S'],
   ['자식 노드 추가', 'Space / Tab'], ['다음 형제 노드 추가', 'Enter / Shift+Space'],
   ['이전 형제 노드 추가', 'Ctrl+Shift+Space'], ['부모 노드 추가', 'Ctrl+←'],
   ['다중 노드 추가', 'Ctrl+Space'], ['실행 취소', 'Ctrl+Z'],
@@ -104,6 +105,7 @@ export function HelpDrawer({ open, onClose, t = THEMES.light }: HelpDrawerProps)
         <section className="emm-help__section" id={sectionId('icons')} tabIndex={-1} aria-labelledby={sectionId('icons-title')}>
           <h3 id={sectionId('icons-title')}>01 · 아이콘 안내</h3>
           <p>아이콘의 이름은 마우스를 올려 확인하세요. 모바일에서는 화면의 메뉴 이름과 이 안내를 함께 참고하세요.</p>
+          <p>상단에서 맵·분할·아웃라인·간트 보기를 선택합니다. 캔버스 도구막대는 화살표로 접고, 점 손잡이를 끌어 이동하고, 핀으로 위치를 고정합니다. 손잡이를 두 번 누르거나 Home 키를 누르면 위치를 초기화합니다. 화면 이동(Pan)·초점·맞춤·전체화면은 하단에서 사용하며, 모바일 Pan은 항상 표시됩니다.</p>
           <dl className="emm-help__icons">{iconGuide.map(({ icon: Icon, name, detail, key }) => <div key={name}><dt><Icon size={18} aria-hidden="true" /><strong>{name}</strong>{key && <kbd>{key}</kbd>}</dt><dd>{detail}</dd></div>)}</dl>
         </section>
         <section className="emm-help__section" id={sectionId('shortcuts')} tabIndex={-1} aria-labelledby={sectionId('shortcuts-title')}>
@@ -134,6 +136,7 @@ export function HelpDrawer({ open, onClose, t = THEMES.light }: HelpDrawerProps)
           <h3 id={sectionId('project-title')}>06 · 프로젝트 태그 / 간트</h3>
           <p>노드를 선택하고 태그 패널의 <strong>프로젝트 태그</strong>에서 시작일·끝일, 담당자, 진척률(0~100)을 입력합니다. 담당자는 최대 3명이며, 후보 검색 지원은 서버에 따라 다릅니다.</p>
           <p>표시 체크를 끄면 노드의 태그만 숨겨지고 값은 남습니다. 일반 해시태그와 일정·담당자 같은 프로젝트 정보는 구분됩니다.</p>
+          <p>일반 태그의 표시 설정은 태그 패널 한 곳에서 관리합니다. 전체 표시 스위치나 각 태그 옆 눈 버튼을 사용하세요. 태그 이름을 누르면 표시 전환이 아니라 노드에 붙이는 모드가 켜집니다.</p>
           <p>간트 메뉴에서 화면 안에 붙이기, 새 탭, 새 창 중 원하는 보기를 고릅니다. 일정이 보이지 않으면 노드의 날짜를 확인하세요. 새 창이 안 열리면 브라우저의 팝업 차단을 확인하세요.</p>
         </section>
         <section className="emm-help__section" id={sectionId('connectors')} tabIndex={-1} aria-labelledby={sectionId('connectors-title')}>
@@ -149,6 +152,7 @@ export function HelpDrawer({ open, onClose, t = THEMES.light }: HelpDrawerProps)
         </section>
         <section className="emm-help__section" id={sectionId('save')} tabIndex={-1} aria-labelledby={sectionId('save-title')}>
           <h3 id={sectionId('save-title')}>09 · 저장 / 내보내기</h3>
+          <p>단독 편집 맵은 상단 저장 표시를 누르거나 Ctrl+S로 저장합니다. 입력 중인 노드 글자는 먼저 확정한 뒤 저장합니다. 별도 버전 저장은 더보기 메뉴에서 선택합니다. 협업맵은 ‘협업 중 · 자동 반영’ 상태만 표시하며, 게스트·읽기 전용·협업맵에서는 수동 저장 단축키가 실행되지 않습니다.</p>
           <p>상단의 저장 상태를 확인하세요. 저장 중, 미저장 변경, 재시도, 오류는 저장 완료와 다릅니다. 게스트 맵이나 아직 서버에 저장하지 않은 맵도 구분해 확인하세요.</p>
           <ul><li><strong>HTML:</strong> 브라우저에서 볼 수 있는 파일로 내보냅니다.</li><li><strong>암호화 HTML:</strong> 암호로 보호하는 내보내기입니다. 암호는 별도의 안전한 경로로 전달하세요.</li><li><strong>Markdown:</strong> 마인드맵 내용을 Markdown 형식으로 내려받습니다.</li></ul>
           <p>첨부파일 처리에 따라 ZIP으로 내려받을 수 있습니다. 내보내기 화면의 안내를 확인하고, 외부 링크나 첨부가 빠지지 않았는지 결과 파일을 열어 확인하세요. 파일 내보내기는 서버 저장이나 공유 설정 변경과 별개입니다.</p>

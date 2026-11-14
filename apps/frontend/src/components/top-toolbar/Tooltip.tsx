@@ -53,15 +53,17 @@ export const TooltipButton = forwardRef<HTMLButtonElement, Props>(function Toolt
 });
 
 /** Same API and dimensions as IconBtn, with shared focus/hover hints. */
-export function TooltipIconBtn({ t, title, children, disabled, active, testId, onClick }: {
+export function TooltipIconBtn({ t, title, children, disabled, active, testId, onClick, compactSize }: {
   t: ThemeTokens; title: string; children: ReactNode; disabled?: boolean; active?: boolean;
+  compactSize?: number;
   testId?: string; onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const [hover, setHover] = useState(false);
-  const size = useCoarse() ? 42 : 38;
+  const coarse = useCoarse();
+  const size = compactSize ?? (coarse ? 42 : 38);
   return <TooltipButton title={title} aria-label={title} data-testid={testId} disabled={disabled} onClick={onClick}
     onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-    style={{ width: size, height: size, borderRadius: 6, flexShrink: 0, background: active ? t.primarySoft : hover && !disabled ? t.surfaceAlt : 'transparent',
+    style={{ width: size, height: compactSize ? 40 : size, padding: 0, borderRadius: 6, flexShrink: 0, background: active ? t.primarySoft : hover && !disabled ? t.surfaceAlt : 'transparent',
       color: disabled ? t.textSubtle : active ? t.primary : t.text, border: 'none', cursor: disabled ? 'default' : 'pointer',
       display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: disabled ? .5 : 1, transition: 'background 120ms' }}>{children}</TooltipButton>;
 }

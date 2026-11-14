@@ -82,7 +82,7 @@ function fmtBytes(b: number): string {
   return `${Math.max(1, Math.round(b / 1024))}KB`;
 }
 
-export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string) => void }) {
+export function UserMenu({ t, onFlash, compactSize }: { t: ThemeTokens; onFlash?: (m: string) => void; compactSize?: number }) {
   const tr = useTr();
   // 폰 — 메뉴는 화면 오른쪽에 붙여 띄우고(넘치면 안에서 스크롤), 손가락
   // 입력이면 아바타·항목을 누르기 좋은 크기로 (모바일 웹 2026-10-05)
@@ -304,7 +304,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           : tr('shell.user.menu')}
         onClick={() => setOpen((v) => !v)}
         style={{
-          width: coarse ? 40 : 30, height: coarse ? 40 : 30, borderRadius: '50%', padding: 0,
+          width: compactSize ?? (coarse ? 40 : 30), height: compactSize ?? (coarse ? 40 : 30), borderRadius: '50%', padding: 0,
           flexShrink: 0,
           background: t.surface,
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -312,7 +312,7 @@ export function UserMenu({ t, onFlash }: { t: ThemeTokens; onFlash?: (m: string)
           border: `2px solid ${open ? t.primaryBorder : t.surface}`, cursor: 'pointer',
         }}
       >
-        <AvatarBadge t={t} avatar={profile?.avatar} fullName={profile?.fullName} email={session?.email} size={coarse ? 32 : 26} guest={isGuest} />
+        <AvatarBadge t={t} avatar={profile?.avatar} fullName={profile?.fullName} email={session?.email} size={compactSize ? compactSize - 4 : coarse ? 32 : 26} guest={isGuest} />
       </button>
 
       {open && (

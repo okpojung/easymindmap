@@ -50,10 +50,11 @@ export function MapActions(
   //   안내)는 저장 옵션에, 대시보드 전환은 공유 메뉴에 포털로 그린다.
   //   **이 컴포넌트는 메뉴가 닫혀도 계속 살아 있다** — 자동저장 훅과 저장
   //   대화상자가 여기 있기 때문이다. 그래서 메뉴 안에는 포털로 항목만 넣는다.
-  { t, flash, iconOnly = false, phone = false, saveMenuSlot = null, distributionSlot = null, onMenuPick, stateDot, closeSlot = null, saveStatus, saveTip, saveState }:
+  { t, flash, iconOnly = false, phone = false, compactSize, saveMenuSlot = null, distributionSlot = null, onMenuPick, stateDot, closeSlot = null, saveStatus, saveTip, saveState }:
   {
     t: ThemeTokens; flash: (m: string) => void; iconOnly?: boolean;
     phone?: boolean;
+    compactSize?: number;
     saveMenuSlot?: HTMLElement | null;
     distributionSlot?: HTMLElement | null;
     /** 메뉴 항목을 누른 뒤 — 메뉴를 닫는다 */
@@ -253,8 +254,9 @@ export function MapActions(
     </>
   );
 
-  const size = coarse ? 42 : 38;
-    const saveMenu = saveMenuSlot && createPortal(<>
+  const size = compactSize ?? (coarse ? 42 : 38);
+  const compact = compactSize !== undefined;
+  const saveMenu = saveMenuSlot && createPortal(<>
 
         {saveTip && <div data-testid="save-state-detail" role={saveState === 'error' ? 'alert' : 'status'} style={{ padding: '7px 10px', fontSize: 12, lineHeight: 1.5, color: saveState === 'error' ? t.danger : t.textMuted, overflowWrap: 'anywhere' }}>{saveTip}</div>}
         {readOnlyInfo && (
@@ -319,20 +321,22 @@ export function MapActions(
   const closeButton = <TooltipButton data-testid="map-close" aria-label={tr('shell.mapActions.close')}
     title={tr('shell.mapActions.close')}
     disabled={busy !== 'idle' || isGuest} onClick={() => void handleClose()}
-    style={{ ...btn, width: size, height: size, padding: 0, justifyContent: 'center', background: 'transparent', border: 'none', color: t.text, ...(isGuest ? guestOff : {}) }}>
+    style={{ ...btn, width: size, height: compact ? 40 : size, padding: 0, justifyContent: 'center', background: 'transparent', border: 'none', color: t.text, ...(isGuest ? guestOff : {}) }}>
     <I.X size={22} />
   </TooltipButton>;
-  const status = <><I.Cloud size={21} /><span style={{ width: 6, height: 6, borderRadius: '50%', background: stateDot ?? t.textMuted, flexShrink: 0 }} /><span>{readOnlyInfo?.viewer ? tr('shell.mapActions.readOnlyShort') : saveStatus ?? tr('common.save')}</span></>;
+  const statusLabel = readOnlyInfo?.viewer ? tr('shell.mapActions.readOnlyShort') : saveStatus ?? tr('common.save');
+  const status = <><I.Cloud size={compact ? 20 : 21} /><span data-testid="save-state-dot" aria-hidden="true" style={{ width: compact ? 7 : 6, height: compact ? 7 : 6, borderRadius: '50%', background: stateDot ?? t.textMuted, flexShrink: 0, ...(compact ? { position: 'absolute' as const, top: 7, right: 0, boxShadow: '0 0 0 1px ' + t.surface } : {}) }} />{!compact && <span>{statusLabel}</span>}</>;
+  const compactStyle = compact ? { position: 'relative' as const, width: size, height: 40, padding: 0, gap: 0, justifyContent: 'center', border: 'none', background: 'transparent' } : {};
   return <>
     <ProCollabSession mapId={cloudMapId ?? (readOnlyInfo?.viewer ? readOnlyInfo.mapId : null)} kind={cloudMapId ? cloudKind : readOnlyInfo?.kind} />
     <ProDashboardLive t={t} mapId={readOnlyInfo?.dashboard ? readOnlyInfo.mapId : null} />
     {collabDriving || readOnlyInfo?.viewer ?
-      <span data-testid="save-badge" data-save-state={saveState} role="status" title={saveTip ?? readOnlyInfo?.reason}
-        style={{ ...btn, cursor: 'default', background: t.surfaceAlt, color: t.textMuted, borderRadius: 9, fontSize: 12 }}>{status}</span> :
+      <span data-testid="save-badge" data-save-state={saveState} role="status" aria-label={statusLabel} title={saveTip ?? readOnlyInfo?.reason ?? statusLabel}
+        style={{ ...btn, cursor: 'default', background: t.surfaceAlt, color: t.textMuted, borderRadius: 9, fontSize: 12, ...compactStyle }}>{status}</span> :
       <TooltipButton data-testid="map-save" data-save-state={saveState} aria-label={tr('common.save') + ' · ' + (saveStatus ?? '')}
-        title={tr('common.save') + ' (Ctrl/⌘+S)'}
+        title={tr('common.save') + ' (Ctrl/⌘+S) · ' + statusLabel + (saveTip ? ' · ' + saveTip : '')}
         disabled={busy !== 'idle' || isGuest} onClick={() => void handleSave()}
-        style={{ ...btn, height: size, background: t.surfaceAlt, color: t.text, border: '1px solid ' + t.border, borderRadius: 20, fontSize: 11, ...(isGuest ? guestOff : {}) }}>{status}</TooltipButton>}
+        style={{ ...btn, height: size, background: t.surfaceAlt, color: t.text, border: '1px solid ' + t.border, borderRadius: 20, fontSize: 11, ...compactStyle, ...(isGuest ? guestOff : {}) }}>{status}</TooltipButton>}
     {closeSlot ? createPortal(closeButton, closeSlot) : !phone && closeButton}
     {saveMenu}{distributionMenu}{dialogs}
   </>;

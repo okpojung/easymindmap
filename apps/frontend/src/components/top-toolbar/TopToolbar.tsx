@@ -4,6 +4,7 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { TooltipButton, TooltipIconBtn as IconBtn } from './Tooltip';
 import { MapActions } from './MapActions';
+import { mobileSaveDot, mobileToolbarSize } from './toolbar-layout';
 import { UserMenu } from './UserMenu';
 import { ProShareDialog } from '@pro';
 import { PublishPanel } from '@/components/cloud/PublishPanel';
@@ -247,7 +248,7 @@ export function TopToolbar({
     collab: { text: copy.collab, short: copy.collab, color: t.textMuted, dot: t.success },
   } as const)[saveState];
   // 저장 배지의 설명 — 실패했을 때는 **왜** 실패했는지 보여 준다 (2026-08-05).
-  // 데스크톱은 마우스를 올려(title), 폰은 "⋯" 메뉴 맨 위에 글로 보여 준다.
+  // 데스크톱은 마우스를 올려(title), 폰은 저장 옵션 메뉴 맨 위에 글로 보여 준다.
   const saveStateTip = saveState === 'error' || saveState === 'retrying'
     ? (cloudError ?? tr('shell.toolbar.saveFailedTip'))
     // '저장 안 됨'도 이유가 있을 수 있다 — 편집권을 잃어 연결이
@@ -287,10 +288,10 @@ export function TopToolbar({
       {toast}
     </div>
   );
-  const size = coarse ? 42 : 38;
-  const groupStyle = { display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, padding: '3px 5px', border: '1px solid ' + t.border, borderRadius: 9, background: t.surfaceAlt } as const;
+  const size = phone ? mobileToolbarSize(Math.min(barW, typeof window === 'undefined' ? barW : window.innerWidth)) : coarse ? 42 : 38;
+  const groupStyle = { display: 'flex', alignItems: 'center', gap: phone ? 0 : 2, flexShrink: 0, padding: phone ? 0 : '3px 5px', border: phone ? 'none' : '1px solid ' + t.border, borderRadius: phone ? 0 : 9, background: phone ? 'transparent' : t.surfaceAlt } as const;
   const menuStyle = { position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 60, width: 270, maxWidth: 'calc(100vw - 16px)', maxHeight: '70vh', overflowY: 'auto', padding: 6, borderRadius: 10, border: '1px solid ' + t.border, background: t.surface, boxShadow: '0 8px 24px #0003' } as const;
-  const buttonStyle = { width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, border: 'none', borderRadius: 7, background: 'transparent', color: t.text, cursor: 'pointer' } as const;
+  const buttonStyle = { width: size, height: phone ? 40 : size, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, border: 'none', borderRadius: 7, background: 'transparent', color: t.text, cursor: 'pointer' } as const;
   const closeMenus = () => { setExportOpen(false); setGanttOpen(false); setSaveOpen(false); setDistributionOpen(false); };
   const selectView = (view: 'map' | 'split' | 'outline' | 'gantt') => {
     const ui = useEditorUiStore.getState();
@@ -303,23 +304,24 @@ export function TopToolbar({
     <div ref={barRef} data-testid="top-toolbar" data-layout={phone ? 'phone' : 'desktop'}
       style={{ position: 'relative', zIndex: 20, flexShrink: 0, background: t.surface, borderBottom: '1px solid ' + t.border,
         padding: 'calc(env(safe-area-inset-top, 0px) + 4px) max(6px, env(safe-area-inset-right, 0px)) 4px max(6px, env(safe-area-inset-left, 0px))',
-        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, minHeight: 56 }}>
+        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: phone ? 2 : 8, minHeight: 56 }}>
       <button data-testid="map-title" title={tr('shell.toolbar.crumbTitle')} onClick={openDocs}
         style={{ display: 'flex', alignItems: 'center', gap: 6, flex: phone || barW < 1100 ? '1 0 100%' : '1 1 100px', minWidth: 0,
           padding: '5px 4px', background: 'none', border: 'none', color: t.text, cursor: 'pointer', textAlign: 'left' }}>
         <I.Logo size={26} /><span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600 }}>{mapTitle}</span><I.ChevronDown size={14} />
       </button>
-      <div role="group" aria-label={copy.document} data-toolbar-group="document" style={{ ...groupStyle, maxWidth: '100%', boxSizing: 'border-box', flexWrap: 'wrap' }}>
-        <IconBtn t={t} testId="toolbar-undo" title={tr('shell.toolbar.undo')} disabled={!canUndo || !!readOnly} onClick={undo}><I.Undo size={22} /></IconBtn>
+      <div data-testid="toolbar-actions" style={{ display: phone ? 'flex' : 'contents', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: 2, width: '100%', minWidth: 0 }}>
+      <div role="group" aria-label={copy.document} data-toolbar-group="document" style={{ ...groupStyle, maxWidth: '100%', boxSizing: 'border-box', flexWrap: phone ? 'nowrap' : 'wrap' }}>
+        <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-undo" title={tr('shell.toolbar.undo')} disabled={!canUndo || !!readOnly} onClick={undo}><I.Undo size={22} /></IconBtn>
         <output data-testid="undo-depth" aria-label={tr('shell.toolbar.undoDepth', { n: undoDepth })} title={tr('shell.toolbar.undoDepth', { n: undoDepth })}
-          style={{ minWidth: 22, textAlign: 'center', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: undoDepth ? t.primary : t.textMuted }}>{undoDepth}</output>
-        <IconBtn t={t} testId="toolbar-redo" title={tr('shell.toolbar.redo')} disabled={!canRedo || !!readOnly} onClick={redo}><I.Redo size={22} /></IconBtn>
-        <MapActions t={t} flash={flash} phone iconOnly saveMenuSlot={saveSlot} distributionSlot={distributionSlot} closeSlot={closeSlot}
-          onMenuPick={closeMenus} stateDot={saveStateInfo.dot} saveStatus={saveStateInfo.short} saveTip={saveStateTip} saveState={saveState} />
+          style={{ minWidth: phone ? 20 : 22, width: phone ? 20 : undefined, textAlign: 'center', fontSize: phone ? 11 : 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: undoDepth ? t.primary : t.textMuted }}>{phone && undoDepth > 99 ? '99+' : undoDepth}</output>
+        <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-redo" title={tr('shell.toolbar.redo')} disabled={!canRedo || !!readOnly} onClick={redo}><I.Redo size={22} /></IconBtn>
+        <MapActions t={t} flash={flash} phone iconOnly compactSize={phone ? size : undefined} saveMenuSlot={saveSlot} distributionSlot={distributionSlot} closeSlot={closeSlot}
+          onMenuPick={closeMenus} stateDot={phone ? mobileSaveDot(saveState, guestMode || !!readOnly?.viewer) : saveStateInfo.dot} saveStatus={saveStateInfo.short} saveTip={guestMode ? saveStateInfo.text : saveStateTip ?? saveStateInfo.text} saveState={saveState} />
         <div ref={saveRef} style={{ position: phone ? 'static' : 'relative' }}>
           <TooltipButton data-testid="save-options-toggle" title={copy.saveOptions} aria-expanded={saveOpen} aria-haspopup="menu"
             onClick={() => { const next = !saveOpen; closeMenus(); setSaveOpen(next); }} style={{ ...buttonStyle, background: saveOpen ? t.primarySoft : 'transparent' }}>
-            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M5 3h12l3 3v13H5zM8 3v6h8V3M8 19v-6h9M2 7v15h14" /></svg><I.ChevronDown size={10} />
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M5 3h12l3 3v13H5zM8 3v6h8V3M8 19v-6h9M2 7v15h14" /></svg>{!phone && <I.ChevronDown size={10} />}
           </TooltipButton>
           <div data-testid="save-options-menu" role="menu" aria-label={copy.saveOptions} style={{ ...menuStyle, display: saveOpen ? 'block' : 'none', ...(phone ? { left: 8, right: 'auto' } : {}) }}><div ref={setSaveSlot} />
             {undoDepth > 0 && <MenuItem t={t} testId="undo-depth-reset" label={tr('shell.toolbar.undoDepth', { n: undoDepth })} onClick={() => { commitCurrentAsLatest(); closeMenus(); }} />}
@@ -327,7 +329,7 @@ export function TopToolbar({
         </div>
         <div ref={exportRef} style={{ position: phone ? 'static' : 'relative' }}>
           <TooltipButton title={tr('shell.toolbar.export')} aria-expanded={exportOpen} aria-haspopup="menu" data-testid="export-toggle"
-            onClick={() => { const next = !exportOpen; closeMenus(); setExportOpen(next); }} style={buttonStyle}><I.Download size={22} /><I.ChevronDown size={10} /></TooltipButton>
+            onClick={() => { const next = !exportOpen; closeMenus(); setExportOpen(next); }} style={buttonStyle}><I.Download size={22} />{!phone && <I.ChevronDown size={10} />}</TooltipButton>
           {exportOpen && <div data-testid="export-menu" role="menu" style={{ ...menuStyle, ...(phone ? { left: 8, right: 'auto' } : {}) }}>
             <MenuItem t={t} label={tr('shell.toolbar.exportHtml')} desc={tr('shell.toolbar.exportHtmlDesc')} onClick={() => { closeMenus(); void runExportHtml(); }} />
             <MenuItem t={t} label={tr('io.encrypted.export')} desc={tr('io.encrypted.desc')} onClick={() => { closeMenus(); void runExportEncryptedHtml(); }} />
@@ -337,6 +339,7 @@ export function TopToolbar({
         </div>
       </div>
       <div role="group" aria-label={copy.view} data-toolbar-group="view" style={groupStyle}>
+        {!phone && <>
         <TooltipButton data-testid="view-toggle" title={copy[oppositeView]} onClick={() => selectView(oppositeView)} style={buttonStyle}>
           {oppositeView === 'map' ? <I.MindMap size={22} /> : <I.Outline size={22} />}
         </TooltipButton>
@@ -344,29 +347,31 @@ export function TopToolbar({
           style={{ ...buttonStyle, background: outlineSplit && !ganttDock ? t.primarySoft : 'transparent', color: outlineSplit && !ganttDock ? t.primary : t.text }}>
           <svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2" /><path d="M9 3v14M4.5 7h2M4.5 10h2M4.5 13h2M12 8h3M12 12h3" /></svg>
         </TooltipButton>
-        <IconBtn t={t} testId="theme-toggle" title={tr(themeName === 'dark' ? 'shell.toolbar.toLight' : 'shell.toolbar.toDark')} onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}>
+        </>}
+        <IconBtn t={t} compactSize={phone ? size : undefined} testId="theme-toggle" title={tr(themeName === 'dark' ? 'shell.toolbar.toLight' : 'shell.toolbar.toDark')} onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}>
           {themeName === 'dark' ? <I.Sun size={22} /> : <I.Moon size={22} />}</IconBtn>
       </div>
       <div ref={ganttRef} role="group" aria-label={copy.gantt} data-toolbar-group="gantt" style={{ ...groupStyle, position: phone ? 'static' : 'relative' }}>
-        <TooltipButton data-testid="view-gantt" title={copy.gantt} aria-pressed={ganttDock} onClick={() => ganttDock ? selectView('map') : selectView('gantt')} style={{ ...buttonStyle, background: ganttDock ? t.primarySoft : 'transparent', color: ganttDock ? t.primary : t.text }}><I.Gantt size={22} /></TooltipButton>
-        <TooltipButton data-testid="gantt-toggle" title={copy.gantt + ' · ' + copy.more} aria-haspopup="menu" aria-expanded={ganttOpen} onClick={() => { const next = !ganttOpen; closeMenus(); setGanttOpen(next); }} style={{ ...buttonStyle, width: 22 }}><I.ChevronDown size={14} /></TooltipButton>
+        {!phone && <TooltipButton data-testid="view-gantt" title={copy.gantt} aria-pressed={ganttDock} onClick={() => ganttDock ? selectView('map') : selectView('gantt')} style={{ ...buttonStyle, background: ganttDock ? t.primarySoft : 'transparent', color: ganttDock ? t.primary : t.text }}><I.Gantt size={22} /></TooltipButton>}
+        <TooltipButton data-testid="gantt-toggle" title={phone ? copy.gantt : copy.gantt + ' · ' + copy.more} aria-haspopup="menu" aria-expanded={ganttOpen} onClick={() => { const next = !ganttOpen; closeMenus(); setGanttOpen(next); }} style={{ ...buttonStyle, width: phone ? size : 22, background: phone && ganttDock ? t.primarySoft : 'transparent' }}>{phone ? <I.Gantt size={22} /> : <I.ChevronDown size={14} />}</TooltipButton>
         {ganttOpen && <div data-testid="gantt-menu" role="menu" style={{ ...menuStyle, ...(phone ? { right: 8 } : { left: 0, right: 'auto' }) }}>
-          <MenuItem t={t} testId="gantt-open-dock" icon={<I.Gantt size={20} />} label={tr('editor.gantt.dock')} onClick={() => selectView('gantt')} />
+          <MenuItem t={t} testId="gantt-open-dock" icon={<I.Gantt size={20} />} label={phone && ganttDock ? copy.map : tr('editor.gantt.dock')} onClick={() => selectView(phone && ganttDock ? 'map' : 'gantt')} />
           <MenuItem t={t} testId="gantt-open-tab" label={tr('editor.gantt.newTab')} onClick={() => { closeMenus(); openGantt('tab', () => flash(tr('editor.gantt.popupBlocked'))); }} />
           <MenuItem t={t} testId="gantt-open-window" label={tr('editor.gantt.newWindow')} onClick={() => { closeMenus(); openGantt('window', () => flash(tr('editor.gantt.popupBlocked'))); }} />
         </div>}
       </div>
       <div ref={distributionRef} role="group" aria-label={copy.distribution} data-toolbar-group="distribution" style={{ ...groupStyle, position: phone ? 'static' : 'relative' }}>
-        <TooltipButton data-testid="distribution-toggle" title={copy.distribution} aria-expanded={distributionOpen} aria-haspopup="menu" onClick={() => { const next = !distributionOpen; closeMenus(); setDistributionOpen(next); }} style={buttonStyle}><I.Share size={22} /><I.ChevronDown size={10} /></TooltipButton>
+        <TooltipButton data-testid="distribution-toggle" title={copy.distribution} aria-expanded={distributionOpen} aria-haspopup="menu" onClick={() => { const next = !distributionOpen; closeMenus(); setDistributionOpen(next); }} style={buttonStyle}><I.Share size={22} />{!phone && <I.ChevronDown size={10} />}</TooltipButton>
         <div data-testid="distribution-menu" role="menu" aria-label={copy.distribution} style={{ ...menuStyle, display: distributionOpen ? 'block' : 'none' }}>
           <MenuItem t={t} testId="map-share" icon={<I.Share size={20} />} label={tr('shell.toolbar.share')} disabled={!shareMapId} onClick={() => { closeMenus(); setShareOpen(true); }} />
           <MenuItem t={t} testId="map-publish" icon={<I.Globe size={20} />} label={tr('shell.toolbar.publish')} disabled={!publishMapId} onClick={() => { closeMenus(); setPublishOpen(true); }} />
           <div ref={setDistributionSlot} />
         </div>
       </div>
-      <div role="group" aria-label={copy.other} data-toolbar-group="other" style={{ ...groupStyle, marginLeft: 'auto' }}>
-        <IconBtn t={t} testId="toolbar-help" title={copy.help + ' (?)'} onClick={() => { closeMenus(); setHelpOpen(true); }}><span aria-hidden="true" style={{ width: 22, height: 22, border: '1.8px solid currentColor', borderRadius: '50%', fontSize: 16, fontWeight: 700 }}>?</span></IconBtn>
-        <div ref={setCloseSlot} style={{ display: 'flex' }} /><UserMenu t={t} onFlash={flash} />
+      <div role="group" aria-label={copy.other} data-toolbar-group="other" style={{ ...groupStyle, marginLeft: phone ? 0 : 'auto' }}>
+        <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-help" title={copy.help + ' (?)'} onClick={() => { closeMenus(); setHelpOpen(true); }}><span aria-hidden="true" style={{ width: 22, height: 22, border: '1.8px solid currentColor', borderRadius: '50%', fontSize: 16, fontWeight: 700 }}>?</span></IconBtn>
+        <div ref={setCloseSlot} style={{ display: 'flex' }} /><UserMenu t={t} onFlash={flash} compactSize={phone ? size : undefined} />
+      </div>
       </div>
       {shareDialog}{publishDialog}{toastEl}
       {helpOpen && <HelpDrawer open={helpOpen} t={t} onClose={() => setHelpOpen(false)} />}

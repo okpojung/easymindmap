@@ -12,7 +12,8 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { NoteBlock as NoteBlockData, NoteBlockType } from '@/editor/__samples__/types';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
-import { InspectorSection, Toggle } from './InspectorSection';
+import { InspectorSection } from './InspectorSection';
+import { collectMapTags } from './mapTags';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { TableDialog, TableGridPicker } from '@/editor/node-renderer/TableDialog';
@@ -43,10 +44,11 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
   const [dragTag, setDragTag] = useState<string | null>(null);
   const [overTag, setOverTag] = useState<string | null>(null);
   const [tagDraft, setTagDraft] = useState('');
-  // 노드에 태그 표시 켜기/끄기 — 태그 탭 맨 위 (2026-11-07 사용자 요청: "태그 표시 On/OFF 버튼이 없어졌다").
-  // 같은 스위치가 검색 패널에도 있다(둘은 같은 값). 노드를 고르지 않아도 누를 수 있다.
+  // 표시 제어는 태그 패널에서만 제공한다. 선택 노드가 없어도 사용할 수 있다.
   const showTags = useEditorUiStore((s) => s.showTags);
   const setShowTags = useEditorUiStore((s) => s.setShowTags);
+  const hiddenTags = useEditorUiStore((s) => s.hiddenTags);
+  const toggleTagHidden = useEditorUiStore((s) => s.toggleTagHidden);
 
   const node = findNodeInMap(map, selectedId);
   const disabled = !selectedId || !node;
@@ -60,17 +62,7 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
 
   // 이 맵에서 쓰는 태그 (2026-11-11 사용자 요청) — 한 번 쓴 태그를 고르고 노드를 누르면 그 노드에 붙는다.
   // 많이 쓴 순. 입력란에 글을 치면 그 글이 든 태그만 보인다.
-  const mapTags = useMemo(() => {
-    if (part === 'note') return [] as [string, number][];
-    const cnt = new Map<string, number>();
-    const walk = (n: { tags?: string[]; tag?: string; children?: unknown[] }) => {
-      for (const g of n.tags ?? (n.tag ? [n.tag] : [])) cnt.set(g, (cnt.get(g) ?? 0) + 1);
-      (n.children as typeof n[] | undefined)?.forEach(walk);
-    };
-    walk(map.root as never); map.branches.forEach((b) => walk(b as never));
-    for (const c of map.centers ?? []) { walk(c.root as never); c.branches.forEach((b) => walk(b as never)); }
-    return [...cnt.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [map, part]);
+  const mapTags = useMemo(() => part === 'note' ? [] : collectMapTags(map), [map, part]);
   const tagPainter = useInteractionStore((s) => s.tagPainter);
   const setTagPainter = useInteractionStore((s) => s.setTagPainter);
   const setStylePainter = useInteractionStore((s) => s.setStylePainter);
@@ -91,12 +83,15 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
   return (
     <>
     {part !== 'note' && (
-      <label data-testid="tags-show-toggle" style={{
+      <label data-testid="tags-show-toggle" data-mm-touch="" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-        padding: '8px 12px', margin: '0 0 2px', borderBottom: `1px solid ${t.divider}`, cursor: 'pointer',
+        minHeight: 44, boxSizing: 'border-box', padding: '8px 12px', margin: '0 0 2px',
+        borderBottom: `1px solid ${t.divider}`, cursor: 'pointer',
       }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{tr('inspector.tags.showToggle')}</span>
-        <Toggle t={t} on={showTags} onChange={setShowTags} />
+        <input type="checkbox" role="switch" checked={showTags}
+          onChange={(e) => setShowTags(e.target.checked)}
+          style={{ width: 20, height: 20, flexShrink: 0, accentColor: t.primary, cursor: 'pointer' }} />
       </label>
     )}
     <div data-mm-touch="" style={undefined}>
@@ -166,17 +161,23 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
         {mapTags.length > 0 && (
           <div data-testid="map-tags" style={{ marginTop: 10 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>{tr('inspector.tags.mapTags')}</div>
+            <div style={{ fontSize: 11, color: t.textSubtle, marginBottom: 6, lineHeight: 1.5 }}>
+              {tr(showTags ? 'inspector.tags.visibilityHint' : 'inspector.tags.visibilityOff')}
+            </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {shownTags.map(([g, n]) => {
                 const tc = resolveTagColor(g, t);
                 const on = tagPainter === g;
                 const has = tags.includes(g);
+                const visible = !hiddenTags.includes(g);
                 return (
-                  <button key={g} type="button" data-testid="map-tag" aria-pressed={on}
+                  <div key={g} data-tag-name={g} style={{ display: 'inline-flex', alignItems: 'stretch', maxWidth: '100%', gap: 2 }}>
+                  <button type="button" data-testid="map-tag" aria-pressed={on}
                     title={on ? tr('inspector.tags.painterOff') : tr('inspector.tags.painterPick', { tag: g })}
                     onClick={() => pickPainter(g)}
                     style={{
                       fontSize: 11, fontWeight: 600, padding: '3px 7px', borderRadius: 3, cursor: 'pointer',
+                      minWidth: 0, overflowWrap: 'anywhere', textAlign: 'left',
                       background: tc.bg, color: tc.text, letterSpacing: 0.2,
                       border: on ? `2px solid ${t.primary}` : `1px solid ${tc.border}`,
                       margin: on ? -1 : 0, boxShadow: on ? `0 0 0 2px ${t.primarySoft}` : undefined,
@@ -184,6 +185,25 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
                     }}>
                     #{g} <span style={{ opacity: 0.6, fontWeight: 500 }}>{n}</span>
                   </button>
+                  <button type="button" data-testid="map-tag-visibility"
+                    aria-label={tr('inspector.tags.visibility', { tag: g })}
+                    aria-pressed={visible}
+                    title={tr(visible ? 'inspector.tags.hideTag' : 'inspector.tags.showTag', { tag: g })}
+                    disabled={!showTags}
+                    onClick={() => toggleTagHidden(g)}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      minWidth: coarse ? 44 : 32, minHeight: coarse ? 44 : 32, padding: 4, flexShrink: 0,
+                      border: `1px solid ${t.border}`, borderRadius: 4,
+                      background: t.surface, color: visible ? t.primary : t.textMuted,
+                      cursor: showTags ? 'pointer' : 'default', opacity: showTags ? 1 : 0.45 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                      <circle cx="12" cy="12" r="3" />
+                      {!visible && <path d="m3 3 18 18" />}
+                    </svg>
+                  </button>
+                  </div>
                 );
               })}
               {!shownTags.length && <span style={{ fontSize: 11, color: t.textSubtle }}>{tr('inspector.tags.noMatch')}</span>}

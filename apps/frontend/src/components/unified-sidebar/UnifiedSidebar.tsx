@@ -65,7 +65,6 @@ export function UnifiedSidebar({
   inspectorTab, onInspectorTabChange,
   activeSection, onActiveSectionChange,
   collapsed, onToggleCollapsed,
-  outlineSplit, onToggleOutlineSplit,
 }: Props) {
   const tr = useTr();
   // **폰에서는 겹쳐 뜨는 서랍** (모바일 웹 2026-10-05). 데스크톱처럼 레일(44px)과
@@ -74,8 +73,6 @@ export function UnifiedSidebar({
   // 레일+패널이 캔버스 **위에** 미끄러져 나온다 — 캔버스 크기는 그대로다.
   const phone = usePhoneLayout();
   const coarse = useCoarse();
-  const mainView = useEditorUiStore((s) => s.mainView);
-  const toggleMainView = useEditorUiStore((s) => s.toggleMainView);
   // 폰 배치로 바뀌는 순간 열려 있던 패널은 접는다 — 데스크톱에서 펼쳐 둔
   // 패널이 폰 화면을 통째로 덮은 채 시작하지 않게.
   useEffect(() => {
@@ -130,14 +127,7 @@ export function UnifiedSidebar({
 
   // 펼침은 setNavTab/setInspectorTab(store)이 담당한다 — 여기서 토글을
   // 또 부르면 store 가 이미 펼친 것을 도로 접는다 (2026-08-02 수정).
-  // 폰에는 분할 보기가 없다 — 그 자리의 단추는 아웃라인/맵을 한 화면씩 바꾼다
-  const splitActive = phone ? mainView === 'outline' : outlineSplit;
-  const splitTitle = phone
-    ? (mainView === 'outline' ? tr('shell.toolbar.toMapMode') : tr('shell.toolbar.toOutlineMode'))
-    : (outlineSplit ? tr('shell.sidebar.outlineSplitClose') : tr('shell.sidebar.outlineSplitOpen'));
-  const onSplitClick = phone
-    ? () => { toggleMainView(); onToggleCollapsed(); }
-    : onToggleOutlineSplit;
+  // 화면 보기 전환은 상단의 맵/분할/아웃라인/간트 4칸에서 담당한다.
 
   function handleRailClick(section: SidebarSection, key: string) {
     if (section === 'nav') onNavTabChange(key as NavTabKey);
@@ -183,24 +173,7 @@ export function UnifiedSidebar({
         </button>
 
         <div style={{ margin: '0 10px 6px', height: 1, background: t.divider }} />
-        {/* 아웃라인 — 사이드 패널이 아니라 메인 화면을 좌(아웃라인)/우(맵)로
-            나누는 분할 보기 토글. 아이콘도 분할 화면 모양. */}
-        <RailIcon t={t} title={splitTitle}
-                  active={splitActive}
-                  expanded={!collapsed}
-                  big={phone && coarse}
-                  testId="rail-outline"
-                  onClick={onSplitClick}>
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <rect x="3" y="4" width="18" height="16" rx="2" />
-            <line x1="12" y1="4" x2="12" y2="20" />
-            <line x1="6" y1="9" x2="9.5" y2="9" />
-            <line x1="6" y1="12.5" x2="9.5" y2="12.5" />
-            <line x1="6" y1="16" x2="9.5" y2="16" />
-            <circle cx="16.5" cy="12.5" r="1.7" fill="currentColor" stroke="none" />
-          </svg>
-        </RailIcon>
+
         {navItems.map(it => (
           <RailIcon key={it.key} t={t} title={it.label}
                     active={activeSection === 'nav' && navTab === it.key}

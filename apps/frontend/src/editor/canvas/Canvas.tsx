@@ -2415,7 +2415,7 @@ export function Canvas({
                   펼친 상태: 노드나 그 자리에 마우스를 올리면 (−) → 누르면 접는다.
                   접은 상태: 접은 내용 1개 칩 → 마우스를 잠깐 올리거나 누르면 펼친다. */}
               {!isReadOnly() && visibleNodes
-                .filter((n) => n._media && n.parent && isDrawn(n.id))
+                .filter((n) => (n._media || n._mediaFold) && n.parent && isDrawn(n.id))
                 .map((n) => {
                   const p = visibleById.get(n.parent as string);
                   if (!p) return null;

@@ -2578,6 +2578,7 @@ export function Canvas({
         if (filtered.length === 0) return null;
         return (
           <NoteViewerPopover
+            anchorView="canvas"
             key={`${popover.nodeId}:${popover.kind}`}
             t={t}
             nodeId={popover.nodeId}

@@ -9,8 +9,8 @@ import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
 import { stripInlineMarks } from '@/editor/node-renderer/inlineMarks';
 import { NotePopupShell, NoteTextDialog, NoteCopyButton } from './NotePopup';
 import { NoteBlockView } from './NoteBlockView';
-interface Props { t: ThemeTokens; nodeId?: string; title: string; accent?: string; notes: NoteBlock[]; onClose: () => void }
-export function NoteViewerPopover({ t, nodeId, title, notes, onClose }: Props) {
+interface Props { t: ThemeTokens; nodeId?: string; anchorView?: 'canvas' | 'outline'; title: string; accent?: string; notes: NoteBlock[]; onClose: () => void }
+export function NoteViewerPopover({ t, nodeId, anchorView, title, notes, onClose }: Props) {
   const tr = useTr();
   const epoch = useDocumentStore((s) => s.docEpoch);
   const [openedEpoch] = useState(epoch);
@@ -28,7 +28,7 @@ export function NoteViewerPopover({ t, nodeId, title, notes, onClose }: Props) {
     setEntry({ block, editing: false });
   };
   if (epoch !== openedEpoch) return null;
-  if (entry) return <NoteTextDialog key={entry.block.id} t={t} nodeId={nodeId} title={heading} block={entry.block} initialEditing={entry.editing} readOnly={readOnly}
+  if (entry) return <NoteTextDialog key={entry.block.id} t={t} nodeId={nodeId} anchorView={anchorView} title={heading} block={entry.block} initialEditing={entry.editing} readOnly={readOnly}
     onChange={(patch) => setEntry((v) => v && v.block.id === entry.block.id ? { ...v, block: { ...v.block, ...patch } } : v)}
     onSave={save} onCancel={() => { if (notes.length > 1) setEntry(null); else onClose(); }} />;
   return <NotePopupShell t={t} nodeId={nodeId} title={heading} onClose={onClose} actions={<NoteCopyButton t={t} blocks={notes} />}>

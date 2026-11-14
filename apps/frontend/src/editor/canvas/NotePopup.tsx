@@ -34,8 +34,8 @@ export function NoteCopyButton({ t, blocks }: { t: ThemeTokens; blocks: NoteBloc
     style={{ border: '1px solid ' + t.border, background: t.surface, color: t.text, borderRadius: 5, padding: '4px 7px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{copied ? tr('common.copied') : '⧉'}</button>;
 }
 
-export function NotePopupShell({ t, nodeId, title, actions, footer, children, onClose }: {
-  t: ThemeTokens; nodeId?: string; title: string; actions?: ReactNode; footer?: ReactNode; children: ReactNode; onClose: () => void;
+export function NotePopupShell({ t, nodeId, anchorView, title, actions, footer, children, onClose }: {
+  t: ThemeTokens; nodeId?: string; anchorView?: 'canvas' | 'outline'; title: string; actions?: ReactNode; footer?: ReactNode; children: ReactNode; onClose: () => void;
 }) {
   const tr = useTr(); const drag = useDialogDrag(); const backdrop = useBackdropDismiss(onClose);
   const [box, setBox] = useState<Box | null>(null);
@@ -43,7 +43,8 @@ export function NotePopupShell({ t, nodeId, title, actions, footer, children, on
     const fit = () => {
       const activeOutline = document.activeElement?.closest('[data-testid="outline-scroll"]');
       const all = [...document.querySelectorAll<HTMLElement>('[data-node-id], [data-outline-id]')].filter((e) => (e.getAttribute('data-node-id') || e.getAttribute('data-outline-id')) === nodeId);
-      const el = all.find((e) => activeOutline?.contains(e)) || all.find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight; });
+      const preferred = anchorView ? all.filter((e) => e.hasAttribute(anchorView === 'outline' ? 'data-outline-id' : 'data-node-id')) : all;
+      const el = preferred.find((e) => activeOutline?.contains(e)) || preferred.find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight; });
       const r = el?.getBoundingClientRect();
       const viewport = { left: 0, top: 44, width: innerWidth, height: innerHeight - 44 };
       const pane = el?.closest('svg, [data-testid="outline-scroll"]')?.getBoundingClientRect();
@@ -54,7 +55,7 @@ export function NotePopupShell({ t, nodeId, title, actions, footer, children, on
     };
     fit(); window.addEventListener('resize', fit); window.visualViewport?.addEventListener('resize', fit);
     return () => { window.removeEventListener('resize', fit); window.visualViewport?.removeEventListener('resize', fit); };
-  }, [nodeId]);
+  }, [nodeId, anchorView]);
   return createPortal(<div data-testid="note-popup-overlay" {...backdrop} onPointerDown={(e) => e.stopPropagation()}
     onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); onClose(); } }}
     style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.08)' }}>
@@ -77,8 +78,8 @@ export function NotePopupShell({ t, nodeId, title, actions, footer, children, on
 }
 
 /** New notes start in edit mode; existing notes use the same window in view mode. */
-export function NoteTextDialog({ t, nodeId, title, block, initialEditing = true, readOnly = false, onChange, onCancel, onSave }: {
-  t: ThemeTokens; nodeId?: string; title?: string; block: NoteBlock; initialEditing?: boolean; readOnly?: boolean;
+export function NoteTextDialog({ t, nodeId, anchorView, title, block, initialEditing = true, readOnly = false, onChange, onCancel, onSave }: {
+  t: ThemeTokens; nodeId?: string; anchorView?: 'canvas' | 'outline'; title?: string; block: NoteBlock; initialEditing?: boolean; readOnly?: boolean;
   onChange: (p: Partial<NoteBlock>) => void; onCancel: () => void; onSave: (patch?: Partial<NoteBlock>) => void;
 }) {
   const tr = useTr(); const [editing, setEditing] = useState(initialEditing && !readOnly);
@@ -90,7 +91,7 @@ export function NoteTextDialog({ t, nodeId, title, block, initialEditing = true,
   if (editing && block.type === 'table') return <TableDialog t={t} initialMd={noteTableToMd(block.text)} onCancel={onCancel} onSave={(md) => commit({ text: noteTableFromMd(md) })} />;
   const heading = title || tr(block.type === 'checklist' ? 'inspector.notes.checkTitle' : 'inspector.notes.paragraphTitle');
   const editButton = <button type="button" data-testid="note-popup-edit" disabled={readOnly || editing} onClick={() => setEditing(true)} style={{ padding: '4px 7px', borderRadius: 5, border: '1px solid ' + t.border, color: t.primary, background: t.surface, cursor: 'pointer' }}>{tr('common.edit')}</button>;
-  return <NotePopupShell t={t} nodeId={nodeId} title={heading} onClose={onCancel}
+  return <NotePopupShell t={t} nodeId={nodeId} anchorView={anchorView} title={heading} onClose={onCancel}
     actions={<>{editButton}<NoteCopyButton t={t} blocks={[block]} /></>}
     footer={editing ? <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
       <button type="button" data-testid="note-dialog-cancel" onClick={onCancel}>{tr('common.cancel')} (Esc)</button>

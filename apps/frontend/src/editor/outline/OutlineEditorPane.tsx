@@ -282,6 +282,7 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
       {/* 노트 뷰어 팝업 — 맵의 인디케이터 클릭과 동일한 창 (이동·크기 조절) */}
       {notePopup && noteNode && noteBlocks.length > 0 && (
         <NoteViewerPopover
+            anchorView="outline"
           key={`${notePopup.nodeId}:${notePopup.kind}`}
           t={t}
           title={noteNode.text}

@@ -1,5 +1,5 @@
 // npx tsx src/editor/node-renderer/mediaContent.test.ts
-import { mediaKindsOf, mediaLabel } from './mediaContent';
+import { mediaKindsOf, mediaLabel, mixedMediaOf, stripRenderBlocks } from './mediaContent';
 import { applyMediaView } from './mediaView';
 import { filterCodeLanguages, DEFAULT_CODE_LANGUAGES } from '../../services/cloud/codeLanguages';
 let failed = 0;
@@ -46,5 +46,26 @@ check('표기로도 찾는다 (cs → C# 먼저)', names('cs')[0], 'C#');
 check('빈 입력은 전체', names('').length, DEFAULT_CODE_LANGUAGES.length);
 const sorted = DEFAULT_CODE_LANGUAGES.map((x) => x.name).slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
 check('기본 목록은 알파벳 순', DEFAULT_CODE_LANGUAGES.map((x) => x.name), sorted);
+
+// 글과 그림이 섞인 노드 — 그림만 접는다 (2026-11-14)
+check('섞인 노드: 제목 + Mermaid', mixedMediaOf({ text: '새 노드\n' + mer }), { kinds: ['Mermaid'], rest: '새 노드' });
+check('그림만 담은 노드는 섞인 노드가 아님', mixedMediaOf({ text: mer }), null);
+check('그림 없는 글은 아님', mixedMediaOf({ text: '그냥 글' }), null);
+check('다른 언어 코드는 남긴다', stripRenderBlocks('제목\n' + F + 'js\nlet a\n' + F + '\n' + mer), '제목\n' + F + 'js\nlet a\n' + F);
+const mv = applyMediaView({ root: { text: 'r' }, branches: [
+  { text: '새 노드\n' + mer, tags: ['t'] },
+  { text: '새 노드\n' + mer, tags: ['t'], contentFolded: true },
+] } as never) as { branches: { text: string; tags?: string[]; _mediaFold?: string[]; _media?: string[]; _mediaFolded?: boolean }[] };
+check('섞인 노드 펼침 — _mediaFold 만, _media 없음', [mv.branches[0]._mediaFold, mv.branches[0]._media], [['Mermaid'], undefined]);
+check('섞인 노드 접힘 — 제목 + ▸ Mermaid, 태그 유지', [mv.branches[1].text, mv.branches[1].tags, mv.branches[1]._mediaFolded], ['새 노드\n▸ Mermaid', ['t'], true]);
+
+const mixedOriginal = { root: { text: 'root' }, branches: [{ text: '- [x] 완료\n' + mer, contentFolded: true, sizeW: 800, sizeH: 600 }] };
+const mixedBefore = JSON.stringify(mixedOriginal);
+const mixedFold = applyMediaView(mixedOriginal);
+check('접기 원문 불변', JSON.stringify(mixedOriginal), mixedBefore);
+check('접기 크기 초기화', [mixedFold.branches[0].sizeW, mixedFold.branches[0].sizeH], [undefined, undefined]);
+check('펼치기 원문 복원', applyMediaView(mixedOriginal, { fold: false }).branches[0].text, mixedOriginal.branches[0].text);
+check('빈 렌더 블록은 보존', stripRenderBlocks('제목\n' + F + 'mermaid\n' + F + '\n' + mer), '제목\n' + F + 'mermaid\n' + F);
+check('다른 코드의 펜스를 다시 해석하지 않음', stripRenderBlocks('제목\n' + F + 'js\nconst example = 1\n' + F + '\n' + mer), '제목\n' + F + 'js\nconst example = 1\n' + F);
 if (failed) { console.log(`\n${failed}개 실패`); process.exit(1); }
 console.log('\nmediaContent: 모두 통과');

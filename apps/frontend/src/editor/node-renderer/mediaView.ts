@@ -5,7 +5,7 @@
 //   · 두 경우 모두 `_media`(종류) 를 달아 둔다 — 밑줄 없이 가운데로 잇기·접기 단추가 본다
 // 배치(computeLayout)에 넣기 전에 한 번 거친다. 바뀐 노드만 새로 만든다.
 
-import { mediaKindsOf, mediaLabel } from './mediaContent';
+import { mediaKindsOf, mediaLabel, mixedMediaOf, mixedFoldedText } from './mediaContent';
 
 interface ViewNode {
   text?: string;
@@ -31,7 +31,20 @@ function viewNode<N extends ViewNode>(n: N, fold: boolean): N {
     if (next.some((c, i) => c !== kids![i])) kids = next;
   }
   const kinds = mediaKindsOf(n);
-  if (!kinds) return kids === n.children ? n : { ...n, children: kids };
+  if (!kinds) {
+    // 글과 그림이 섞인 노드 (2026-11-14) — 그림만 접는다. `_media` 는 달지 않는다
+    // (밑줄·가운데 잇기·자동 태그는 '그림만 담은 노드' 규칙이다). 접기 단추는 `_mediaFold` 를 본다.
+    const mixed = mixedMediaOf(n);
+    if (!mixed) return kids === n.children ? n : { ...n, children: kids };
+    if (fold && n.contentFolded) {
+      return {
+        ...n, children: kids, text: mixedFoldedText(mixed.rest, mixed.kinds),
+        image: undefined, images: undefined, sizeW: undefined, sizeH: undefined,
+        _mediaFold: mixed.kinds, _mediaFolded: true,
+      };
+    }
+    return { ...n, children: kids, _mediaFold: mixed.kinds };
+  }
   if (fold && n.contentFolded) {
     return {
       ...n, children: kids, text: mediaLabel(kinds),

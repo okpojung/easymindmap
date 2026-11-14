@@ -711,8 +711,8 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   return (
     <g
       data-node-id={n.id}
-      onClickCapture={(e) => { if (basic && !editing) { e.preventDefault(); e.stopPropagation(); onSelect(n.id); } }}
-      onDoubleClickCapture={(e) => { if (basic && !editing) { e.stopPropagation(); startEdit(); } }}
+      onClickCapture={(e) => { if (n._mediaFolded) { e.preventDefault(); e.stopPropagation(); onSelect(n.id); if (!readOnly) useDocumentStore.getState().setContentFolded(n.id, false); return; } if (basic && !editing) { e.preventDefault(); e.stopPropagation(); onSelect(n.id); } }}
+      onDoubleClickCapture={(e) => { if (n._mediaFolded) { e.preventDefault(); e.stopPropagation(); startEdit(); return; } if (basic && !editing) { e.stopPropagation(); startEdit(); } }}
       onContextMenu={(e) => { if (basic) { e.preventDefault(); e.stopPropagation(); } }}
       onClick={(e) => {
         e.stopPropagation();
@@ -811,6 +811,18 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           pointerEvents="none"
         />
       )}
+      {/* 도형 없음 — 누를 자리 (2026-11-14 사용자 보고). 도형을 그리지 않으면 글자만
+          눌리므로 **글이 빈 노드는 눌러 고를 곳도, 두 번 눌러 입력할 곳도 없었다**
+          (도형을 주면 그제야 입력됐다). 노드 박스만큼 투명한 자리를 깔고, 너무 작으면
+          최소 48×28 로 넓힌다. 보이지 않으니 모양은 그대로다. */}
+      {shape === 'none' && !editing && (() => {
+        const hw = Math.max(n.w, 48) / 2;
+        const hh = Math.max(n.h, 28) / 2;
+        return (
+          <rect data-testid="node-hit" x={n.x - hw} y={n.y - hh} width={hw * 2} height={hh * 2}
+                fill="transparent" pointerEvents="all" />
+        );
+      })()}
       {/* 편집 오버레이 위치 측정용 투명 rect (노드 박스와 동일 좌표) */}
       <rect ref={boxRef} x={n.x - n.w / 2} y={n.y - n.h / 2}
             width={n.w} height={n.h} fill="none" pointerEvents="none" />
@@ -1857,6 +1869,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
             if (editing) window.setTimeout(() => textareaRef.current?.focus(), 0);
           }}
           onSave={(lang, code) => {
+            if (n._mediaFolded) { useDocumentStore.getState().setContentFolded(n.id, false); setCodeDlg(null); return; }
             if (codeDlg.mode === 'insert') {
               // 편집 중 커서 위치에 새 블록 삽입 — 편집은 계속
               const next = spliceCodeBlock(draftText, codeDlg.cursor, lang, code);
@@ -1887,6 +1900,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
               if (editing) window.setTimeout(() => textareaRef.current?.focus(), 0);
             }}
             onSave={(md) => {
+              if (n._mediaFolded) { useDocumentStore.getState().setContentFolded(n.id, false); setTableDlg(null); return; }
               if (tableDlg.mode === 'insert') {
                 setDraftText(spliceMdTable(draftText, tableDlg.cursor, md));
                 window.setTimeout(() => textareaRef.current?.focus(), 0);

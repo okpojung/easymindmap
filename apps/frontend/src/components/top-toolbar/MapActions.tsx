@@ -47,15 +47,13 @@ export function MapActions(
   //
   // phone — 폰 상단 막대 (모바일 웹 2026-10-05). 막대에는 저장 단추(상태 점이
   //   붙은 아이콘)만 남기고, 나머지(보관·다른 이름으로 저장·맵 닫기·읽기 전용
-  //   안내·대시보드 전환)는 `menuSlot` 이 가리키는 "⋯" 메뉴 안에 그린다.
+  //   안내)는 저장 옵션에, 대시보드 전환은 공유 메뉴에 포털로 그린다.
   //   **이 컴포넌트는 메뉴가 닫혀도 계속 살아 있다** — 자동저장 훅과 저장
   //   대화상자가 여기 있기 때문이다. 그래서 메뉴 안에는 포털로 항목만 넣는다.
-  { t, flash, iconOnly = false, phone = false, menuSlot = null, saveMenuSlot = null, distributionSlot = null, onMenuPick, stateDot, closeSlot = null, saveStatus, saveTip, saveState }:
+  { t, flash, iconOnly = false, phone = false, saveMenuSlot = null, distributionSlot = null, onMenuPick, stateDot, closeSlot = null, saveStatus, saveTip, saveState }:
   {
     t: ThemeTokens; flash: (m: string) => void; iconOnly?: boolean;
     phone?: boolean;
-    /** "⋯" 메뉴가 열려 있을 때 항목을 넣을 자리 (닫혀 있으면 null) */
-    menuSlot?: HTMLElement | null;
     saveMenuSlot?: HTMLElement | null;
     distributionSlot?: HTMLElement | null;
     /** 메뉴 항목을 누른 뒤 — 메뉴를 닫는다 */
@@ -256,8 +254,8 @@ export function MapActions(
   );
 
   const size = coarse ? 42 : 38;
-    const menu = menuSlot && createPortal(
-      <>
+    const saveMenu = saveMenuSlot && createPortal(<>
+
         {saveTip && <div data-testid="save-state-detail" role={saveState === 'error' ? 'alert' : 'status'} style={{ padding: '7px 10px', fontSize: 12, lineHeight: 1.5, color: saveState === 'error' ? t.danger : t.textMuted, overflowWrap: 'anywhere' }}>{saveTip}</div>}
         {readOnlyInfo && (
           <div
@@ -290,11 +288,7 @@ export function MapActions(
           />
         )}
         <MenuSep t={t} />
-      </>,
-      menuSlot,
-    );
 
-  const saveMenu = saveMenuSlot && createPortal(<>
     <MenuItem t={t} testId="map-save-version" icon={<I.Cloud size={20} />}
       label={copy.saveVersion} disabled={!cloudMapId || !!readOnlyInfo || !!collabDriving || isGuest || busy !== 'idle'}
       onClick={pick(() => void handleSave(true))} />
@@ -340,7 +334,7 @@ export function MapActions(
         disabled={busy !== 'idle' || isGuest} onClick={() => void handleSave()}
         style={{ ...btn, height: size, background: t.surfaceAlt, color: t.text, border: '1px solid ' + t.border, borderRadius: 20, fontSize: 11, ...(isGuest ? guestOff : {}) }}>{status}</TooltipButton>}
     {closeSlot ? createPortal(closeButton, closeSlot) : !phone && closeButton}
-    {menu}{saveMenu}{distributionMenu}{dialogs}
+    {saveMenu}{distributionMenu}{dialogs}
   </>;
 }
 

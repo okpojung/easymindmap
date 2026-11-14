@@ -179,11 +179,10 @@ export function TopToolbar({
   const phoneLayout = usePhoneLayout();
   const coarse = useCoarse();
   const phone = phoneLayout || (coarse && barW < 960);
-  const [moreOpen, setMoreOpen] = useState(false);
   useEffect(() => {
     const closeMenus = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      setMoreOpen(false); setGanttOpen(false); setExportOpen(false);
+      setGanttOpen(false); setExportOpen(false);
     };
     window.addEventListener('keydown', closeMenus);
     return () => window.removeEventListener('keydown', closeMenus);
@@ -198,29 +197,9 @@ export function TopToolbar({
     document.addEventListener('mousedown', off);
     return () => document.removeEventListener('mousedown', off);
   }, [ganttOpen]);
-  const moreRef = useRef<HTMLDivElement | null>(null);
-  const moreBtnRef = useRef<HTMLButtonElement | null>(null);
-  // MapActions 가 메뉴 안에 항목(보관·다른 이름으로 저장·맵 닫기)을 넣는 자리
-  const [menuSlot, setMenuSlot] = useState<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!moreOpen) return;
-    const close = (e: PointerEvent) => {
-      const n = e.target as Node;
-      if (moreRef.current?.contains(n) || moreBtnRef.current?.contains(n)) return;
-      setMoreOpen(false);
-    };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', esc);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('keydown', esc);
-    };
-  }, [moreOpen]);
-  // 폭이 넉넉하면(400px 이상) 다시 실행도 막대에 — 아니면 "⋯" 메뉴 맨 위
   const openDocs = () => useEditorUiStore.getState().setBrowserOpen(true);
 
-  // 내보내기 — 데스크톱 메뉴와 폰 "⋯" 메뉴가 같은 동작을 쓴다
+  // 내보내기 — 데스크톱과 모바일에서 같은 메뉴 동작을 쓴다
   const runExportHtml = async () => {
     await withHtmlAssetExport({ map,
       view: { layoutType, spacing: { x: spacingX, y: spacingY }, dark: themeName === 'dark' },
@@ -312,7 +291,7 @@ export function TopToolbar({
   const groupStyle = { display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, padding: '3px 5px', border: '1px solid ' + t.border, borderRadius: 9, background: t.surfaceAlt } as const;
   const menuStyle = { position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 60, width: 270, maxWidth: 'calc(100vw - 16px)', maxHeight: '70vh', overflowY: 'auto', padding: 6, borderRadius: 10, border: '1px solid ' + t.border, background: t.surface, boxShadow: '0 8px 24px #0003' } as const;
   const buttonStyle = { width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, border: 'none', borderRadius: 7, background: 'transparent', color: t.text, cursor: 'pointer' } as const;
-  const closeMenus = () => { setMoreOpen(false); setExportOpen(false); setGanttOpen(false); setSaveOpen(false); setDistributionOpen(false); };
+  const closeMenus = () => { setExportOpen(false); setGanttOpen(false); setSaveOpen(false); setDistributionOpen(false); };
   const selectView = (view: 'map' | 'split' | 'outline' | 'gantt') => {
     const ui = useEditorUiStore.getState();
     if (view === 'gantt') openGantt('dock', () => flash(tr('editor.gantt.popupBlocked')));
@@ -335,14 +314,16 @@ export function TopToolbar({
         <output data-testid="undo-depth" aria-label={tr('shell.toolbar.undoDepth', { n: undoDepth })} title={tr('shell.toolbar.undoDepth', { n: undoDepth })}
           style={{ minWidth: 22, textAlign: 'center', fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: undoDepth ? t.primary : t.textMuted }}>{undoDepth}</output>
         <IconBtn t={t} testId="toolbar-redo" title={tr('shell.toolbar.redo')} disabled={!canRedo || !!readOnly} onClick={redo}><I.Redo size={22} /></IconBtn>
-        <MapActions t={t} flash={flash} phone iconOnly menuSlot={menuSlot} saveMenuSlot={saveSlot} distributionSlot={distributionSlot} closeSlot={closeSlot}
+        <MapActions t={t} flash={flash} phone iconOnly saveMenuSlot={saveSlot} distributionSlot={distributionSlot} closeSlot={closeSlot}
           onMenuPick={closeMenus} stateDot={saveStateInfo.dot} saveStatus={saveStateInfo.short} saveTip={saveStateTip} saveState={saveState} />
         <div ref={saveRef} style={{ position: phone ? 'static' : 'relative' }}>
           <TooltipButton data-testid="save-options-toggle" title={copy.saveOptions} aria-expanded={saveOpen} aria-haspopup="menu"
             onClick={() => { const next = !saveOpen; closeMenus(); setSaveOpen(next); }} style={{ ...buttonStyle, background: saveOpen ? t.primarySoft : 'transparent' }}>
             <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M5 3h12l3 3v13H5zM8 3v6h8V3M8 19v-6h9M2 7v15h14" /></svg><I.ChevronDown size={10} />
           </TooltipButton>
-          <div data-testid="save-options-menu" role="menu" aria-label={copy.saveOptions} style={{ ...menuStyle, display: saveOpen ? 'block' : 'none', ...(phone ? { left: 8, right: 'auto' } : {}) }}><div ref={setSaveSlot} /></div>
+          <div data-testid="save-options-menu" role="menu" aria-label={copy.saveOptions} style={{ ...menuStyle, display: saveOpen ? 'block' : 'none', ...(phone ? { left: 8, right: 'auto' } : {}) }}><div ref={setSaveSlot} />
+            {undoDepth > 0 && <MenuItem t={t} testId="undo-depth-reset" label={tr('shell.toolbar.undoDepth', { n: undoDepth })} onClick={() => { commitCurrentAsLatest(); closeMenus(); }} />}
+          </div>
         </div>
         <div ref={exportRef} style={{ position: phone ? 'static' : 'relative' }}>
           <TooltipButton title={tr('shell.toolbar.export')} aria-expanded={exportOpen} aria-haspopup="menu" data-testid="export-toggle"
@@ -384,15 +365,9 @@ export function TopToolbar({
         </div>
       </div>
       <div role="group" aria-label={copy.other} data-toolbar-group="other" style={{ ...groupStyle, marginLeft: 'auto' }}>
-        <TooltipButton ref={moreBtnRef} data-testid="toolbar-more" title={copy.more} aria-haspopup="menu" aria-expanded={moreOpen}
-          onClick={() => { const next = !moreOpen; closeMenus(); setMoreOpen(next); }} style={{ ...buttonStyle, fontSize: 24 }}>⋯</TooltipButton>
         <IconBtn t={t} testId="toolbar-help" title={copy.help + ' (?)'} onClick={() => { closeMenus(); setHelpOpen(true); }}><span aria-hidden="true" style={{ width: 22, height: 22, border: '1.8px solid currentColor', borderRadius: '50%', fontSize: 16, fontWeight: 700 }}>?</span></IconBtn>
         <div ref={setCloseSlot} style={{ display: 'flex' }} /><UserMenu t={t} onFlash={flash} />
       </div>
-      {moreOpen && <div ref={moreRef} data-testid="toolbar-more-menu" role="menu" style={menuStyle}>
-        <div ref={setMenuSlot} />
-        {undoDepth > 0 && <MenuItem t={t} testId="undo-depth-reset" label={tr('shell.toolbar.undoDepth', { n: undoDepth })} onClick={() => { commitCurrentAsLatest(); closeMenus(); }} />}
-      </div>}
       {shareDialog}{publishDialog}{toastEl}
       {helpOpen && <HelpDrawer open={helpOpen} t={t} onClose={() => setHelpOpen(false)} />}
     </div>

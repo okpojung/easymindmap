@@ -1,13 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
-import { IconBtn } from './IconBtn';
-import { CollabAvatars } from './CollabAvatars';
+import { TooltipButton, TooltipIconBtn as IconBtn } from './Tooltip';
 import { MapActions } from './MapActions';
 import { UserMenu } from './UserMenu';
-import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
-import { ProPresenceBar, ProShareDialog } from '@pro';
+import { ProShareDialog } from '@pro';
 import { PublishPanel } from '@/components/cloud/PublishPanel';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
@@ -15,9 +13,11 @@ import { withHtmlAssetExport } from '@/components/ui/htmlAssetExportDialog';
 import { downloadMapAsMarkdown } from '@/export/exportMarkdown';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useAutosaveStore } from '@/stores/autosaveStore';
-import { useTr } from '@/i18n';
+import { useLang, useTr } from '@/i18n';
+import { HelpDrawer, isHelpShortcut } from '@/components/help/HelpDrawer';
+import toolbarCopy from './toolbar-copy.json';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
-import { MenuItem, MenuSep } from './OverflowMenu';
+import { MenuItem } from './OverflowMenu';
 import { openGantt } from '@/editor/gantt/GanttDock';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 
@@ -49,17 +49,29 @@ interface Props {
  */
 export function TopToolbar({
   t,
-  collabs,
+  collabs: _collabs,
   mapTitle,
   saveState: rawSaveState = 'saved',
 }: Props) {
   const tr = useTr();
+  const lang = useLang();
+  const copy = toolbarCopy[lang] ?? toolbarCopy.en;
+  const [helpOpen, setHelpOpen] = useState(false);
+  useEffect(() => {
+    const onHelp = (event: KeyboardEvent) => {
+      if (!isHelpShortcut(event)) return;
+      event.preventDefault();
+      setHelpOpen(true);
+    };
+    window.addEventListener('keydown', onHelp);
+    return () => window.removeEventListener('keydown', onHelp);
+  }, []);
+  const [closeSlot, setCloseSlot] = useState<HTMLDivElement | null>(null);
   const map = useDocumentStore((s) => s.map);
   const layoutType = useEditorUiStore((s) => s.layoutType);
   const themeName = useEditorUiStore((s) => s.themeName);
   const mainView = useEditorUiStore((s) => s.mainView);
   const outlineSplit = useEditorUiStore((s) => s.outlineSplit);
-  const toggleMainView = useEditorUiStore((s) => s.toggleMainView);
   const setInspectorTab = useEditorUiStore((s) => s.setInspectorTab);
   const setThemeName = useEditorUiStore((s) => s.setThemeName);
   const spacingX = useEditorUiStore((s) => s.spacingX);
@@ -146,29 +158,18 @@ export function TopToolbar({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  // ★ **폭만 재면 모자란다** (2026-09-30). 같은 폭이라도 도구줄에 무엇이 붙었는지가
-  //   다르다 — 읽기 전용 배지·유료 자리(대시보드 자동 갱신 표시)가 붙으면 1400px 에서도
-  //   끝의 단추(되돌리기·저장·닫기)가 화면 밖으로 밀렸다(pro 화면 시험이 잡았다). 그래서
-  //   **실제로 넘치는지**(scrollWidth > clientWidth)를 그린 직후에 보고 한 단계씩 줄인다.
-  //   그리기 전(layout effect)이라 깜빡이지 않는다. 폭이나 읽기 전용 상태가 바뀌면
-  //   처음(0)부터 다시 잰다 — 넓어졌는데 줄인 채로 남지 않게.
-  const [squeeze, setSqueeze] = useState(0);
-  useEffect(() => { setSqueeze(0); }, [barW, readOnly]);
-  useLayoutEffect(() => {
-    const el = barRef.current;
-    if (!el || squeeze >= 2) return;
-    if (el.scrollWidth > el.clientWidth + 1) setSqueeze((v) => Math.min(2, v + 1));
-  });
-  const compact = barW < 1150 || squeeze >= 1;
-  const iconOnly = barW < 960 || squeeze >= 2;
-  // **폰 막대** (모바일 웹 2026-10-05). 폰 배치(세로 compact · 눕힌 폰)이거나,
-  // 손가락 입력인데 데스크톱 막대가 아이콘만 남길 만큼 좁으면(작은 태블릿)
-  // 로고·제목·핵심 단추만 남기고 나머지는 "⋯" 메뉴로 옮긴다. 아이콘만 남긴
-  // 데스크톱 막대는 손가락으로 누르기에 단추가 작고, 390px 에서는 그래도 넘쳤다.
   const phoneLayout = usePhoneLayout();
   const coarse = useCoarse();
   const phone = phoneLayout || (coarse && barW < 960);
   const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => {
+    const closeMenus = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setMoreOpen(false); setGanttOpen(false); setExportOpen(false);
+    };
+    window.addEventListener('keydown', closeMenus);
+    return () => window.removeEventListener('keydown', closeMenus);
+  }, []);
   // 간트 메뉴 (2026-11-07) — 아래에 열기 · 새 탭 · 새 창
   const [ganttOpen, setGanttOpen] = useState(false);
   const ganttRef = useRef<HTMLDivElement | null>(null);
@@ -198,9 +199,7 @@ export function TopToolbar({
       window.removeEventListener('keydown', esc);
     };
   }, [moreOpen]);
-  useEffect(() => { if (!phone) setMoreOpen(false); }, [phone]);
   // 폭이 넉넉하면(400px 이상) 다시 실행도 막대에 — 아니면 "⋯" 메뉴 맨 위
-  const redoInline = barW >= 400;
   const openDocs = () => useEditorUiStore.getState().setBrowserOpen(true);
 
   // 내보내기 — 데스크톱 메뉴와 폰 "⋯" 메뉴가 같은 동작을 쓴다
@@ -248,7 +247,7 @@ export function TopToolbar({
     // 협업이 몰고 있다 — 통째 저장 대신 **글자 단위로 서버에 합쳐진다**.
     // '저장됨' 이라고 쓰지 않는 이유: 배지는 저장 방식이 달라졌다는
     // 사실까지 말해야 한다(잠시 뒤 반영되는 것과 이미 반영된 것은 다르다).
-    collab: { text: tr('shell.toolbar.collab'), short: tr('shell.toolbar.collabShort'), color: t.textMuted, dot: t.success },
+    collab: { text: copy.collab, short: copy.collab, color: t.textMuted, dot: t.success },
   } as const)[saveState];
   // 저장 배지의 설명 — 실패했을 때는 **왜** 실패했는지 보여 준다 (2026-08-05).
   // 데스크톱은 마우스를 올려(title), 폰은 "⋯" 메뉴 맨 위에 글로 보여 준다.
@@ -291,657 +290,86 @@ export function TopToolbar({
       {toast}
     </div>
   );
-  // 모든 상단 막대가 같이 쓰는 틀 — 노치(safe-area)만큼 위·옆을 띄운다.
-  // 데스크톱에서는 env() 가 0 이라 예전과 같다.
-  const barStyle = {
-    height: 'calc(52px + env(safe-area-inset-top, 0px))',
-    paddingTop: 'env(safe-area-inset-top, 0px)',
-    background: t.surface,
-    borderBottom: `1px solid ${t.border}`,
-    display: 'flex',
-    alignItems: 'center',
-    position: 'relative',
-    zIndex: 20,
-    flexShrink: 0,
-  } as const;
-
-  if (phone) {
-    const pickThen = (fn: () => void) => () => { setMoreOpen(false); fn(); };
-    const btn = coarse ? 40 : 34;
-    return (
-      <div
-        ref={barRef}
-        data-testid="top-toolbar"
-        data-layout="phone"
-        style={{
-          ...barStyle,
-          paddingLeft: 'max(6px, env(safe-area-inset-left, 0px))',
-          paddingRight: 'max(6px, env(safe-area-inset-right, 0px))',
-          gap: 2,
-        }}
-      >
-        {/* 로고 + 맵 제목 — 누르면 문서함(데스크톱의 '내 문서' 와 같다) */}
-        <button
-          data-testid="crumb-docs"
-          title={tr('shell.toolbar.crumbTitle')}
-          onClick={openDocs}
-          style={{
-            flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6,
-            height: btn, padding: '0 4px 0 0', background: 'none', border: 'none',
-            cursor: 'pointer', textAlign: 'left', color: t.text,
-          }}
-        >
-          <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <I.Logo size={26} />
-          </span>
-          <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.2 }}>
-            <span style={{ fontSize: 10.5, color: t.textSubtle, fontWeight: 500 }}>
-              {tr('shell.toolbar.crumb')}
-            </span>
-            <span
-              data-testid="map-title"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 3, minWidth: 0,
-                fontSize: 13.5, fontWeight: 600,
-              }}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                {mapTitle}
-              </span>
-              <span style={{ opacity: 0.5, display: 'flex', flexShrink: 0 }}><I.ChevronDown size={13} /></span>
-            </span>
-          </span>
-        </button>
-
-        <IconBtn t={t} testId="m-undo" title={tr('shell.toolbar.undo')} disabled={!canUndo} onClick={undo}>
-          <I.Undo size={18} />
-        </IconBtn>
-        {redoInline && (
-          <IconBtn t={t} testId="m-redo" title={tr('shell.toolbar.redo')} disabled={!canRedo} onClick={redo}>
-            <I.Redo size={18} />
-          </IconBtn>
-        )}
-
-        <button
-          data-testid="m-ai"
-          onClick={() => setInspectorTab('ai')}
-          title={tr('shell.toolbar.aiTitle')}
-          aria-label={tr('shell.toolbar.ai')}
-          style={{
-            width: btn, height: btn, flexShrink: 0, borderRadius: 9,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
-            color: '#fff', border: 'none', cursor: 'pointer',
-            boxShadow: `0 1px 2px ${t.primary}60, 0 0 0 1px ${t.primary}80`,
-            margin: '0 2px',
-          }}
-        >
-          <I.Sparkles size={17} />
-        </button>
-
-        {/* 저장 — 단추에 저장 상태 점이 붙는다 (자세한 상태는 "⋯" 맨 위) */}
-        <MapActions
-          t={t}
-          flash={flash}
-          phone
-          menuSlot={moreOpen ? menuSlot : null}
-          onMenuPick={() => setMoreOpen(false)}
-          stateDot={saveStateInfo.dot}
-        />
-
-        <button
-          ref={moreBtnRef}
-          data-testid="m-more"
-          title={tr('shell.m.more')}
-          aria-label={tr('shell.m.more')}
-          aria-haspopup="menu"
-          aria-expanded={moreOpen}
-          onClick={() => setMoreOpen((v) => !v)}
-          style={{
-            width: btn, height: btn, flexShrink: 0, borderRadius: 8,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: moreOpen ? t.primarySoft : 'transparent',
-            color: moreOpen ? t.primary : t.text,
-            border: 'none', cursor: 'pointer',
-          }}
-        >
-          <I.MoreH size={20} />
-        </button>
-
-        <UserMenu t={t} onFlash={flash} />
-
-        {moreOpen && (
-          <div
-            ref={moreRef}
-            role="menu"
-            data-testid="m-more-menu"
-            style={{
-              position: 'fixed',
-              top: 'calc(52px + env(safe-area-inset-top, 0px))',
-              right: 'max(6px, env(safe-area-inset-right, 0px))',
-              width: 'min(320px, calc(100vw - 12px))',
-              maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
-              overflowY: 'auto', overscrollBehavior: 'contain',
-              zIndex: 60, background: t.surface,
-              border: `1px solid ${t.border}`, borderRadius: 12,
-              boxShadow: '0 12px 32px rgba(80,60,20,0.22)', padding: 6,
-            }}
-          >
-            {/* 저장 상태 — 폰에는 마우스를 올릴 일이 없으니 설명을 글로 */}
-            <div
-              data-testid="save-badge"
-              data-save-state={saveState}
-              style={{
-                display: 'flex', gap: 8, padding: '8px 10px 10px',
-                borderBottom: `1px solid ${t.divider}`, marginBottom: 4,
-              }}
-            >
-              <span style={{
-                width: 8, height: 8, borderRadius: '50%', background: saveStateInfo.dot,
-                flexShrink: 0, marginTop: 5, boxShadow: `0 0 0 3px ${saveStateInfo.dot}22`,
-              }} />
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: saveStateInfo.color }}>
-                  {saveStateInfo.text}
-                </span>
-                {saveStateTip && (
-                  <span style={{
-                    display: 'block', fontSize: 11, color: t.textMuted, marginTop: 3,
-                    lineHeight: 1.45, whiteSpace: 'pre-line',
-                  }}>{saveStateTip}</span>
-                )}
-              </span>
-            </div>
-            <ProPresenceBar t={t} />
-            {/* MapActions 가 포털로 채운다: 읽기 전용 안내·보관·다른 이름으로 저장·맵 닫기 */}
-            <div ref={setMenuSlot} />
-            {!redoInline && (
-              <MenuItem
-                t={t} testId="m-redo" icon={<I.Redo size={16} />}
-                label={tr('shell.m.redo')} disabled={!canRedo}
-                onClick={() => redo()}
-              />
-            )}
-            {undoDepth > 0 && (
-              <MenuItem
-                t={t} testId="undo-depth" icon={<span style={{ fontSize: 11, fontWeight: 800 }}>-{undoDepth}</span>}
-                label={tr('shell.m.commitLatest', { n: undoDepth })}
-                onClick={pickThen(commitCurrentAsLatest)}
-              />
-            )}
-            <MenuItem
-              t={t} testId="map-share" icon={<I.Share size={16} />}
-              label={tr('shell.toolbar.share')}
-              desc={shareMapId ? undefined : tr('shell.toolbar.shareNeedSave')}
-              disabled={!shareMapId}
-              onClick={pickThen(() => setShareOpen(true))}
-            />
-            <MenuItem
-              t={t} testId="map-publish" icon={<I.Globe size={16} />}
-              label={tr('shell.toolbar.publish')}
-              desc={publishMapId ? undefined : tr('shell.toolbar.publishNeedSave')}
-              disabled={!publishMapId}
-              onClick={pickThen(() => setPublishOpen(true))}
-            />
-            <MenuSep t={t} />
-            {/* 폰에는 분할 보기가 없다 — 아웃라인과 맵을 한 화면씩 바꿔 본다 */}
-            <MenuItem
-              t={t} testId="mainview-toggle"
-              icon={mainView === 'outline' ? <I.MindMap size={16} /> : <I.Outline size={16} />}
-              label={mainView === 'outline' ? tr('shell.m.mapView') : tr('shell.m.outlineView')}
-              onClick={pickThen(toggleMainView)}
-            />
-            <MenuItem
-              t={t} testId="theme-toggle"
-              icon={themeName === 'dark' ? <I.Sun size={16} /> : <I.Moon size={16} />}
-              label={themeName === 'dark' ? tr('shell.m.lightMode') : tr('shell.m.darkMode')}
-              onClick={pickThen(() => setThemeName(themeName === 'dark' ? 'light' : 'dark'))}
-            />
-            <MenuSep t={t} />
-            <MenuItem
-              t={t} testId="m-export-html" icon={<I.Download size={16} />}
-              label={tr('shell.toolbar.exportHtml')} desc={tr('shell.toolbar.exportHtmlDesc')}
-              onClick={pickThen(() => void runExportHtml())}
-            />
-            <MenuItem
-              t={t} testId="m-export-encrypted-html" icon={<I.Download size={16} />}
-              label={tr('io.encrypted.export')} desc={tr('io.encrypted.desc')}
-              onClick={pickThen(() => void runExportEncryptedHtml())}
-            />
-            <MenuItem
-              t={t} testId="m-export-md" icon={<I.Download size={16} />}
-              label={tr('shell.toolbar.exportMd')} desc={tr('shell.toolbar.exportMdDesc')}
-              onClick={pickThen(() => void runExportMd())}
-            />
-            <div style={{ fontSize: 10.5, color: t.textSubtle, padding: '4px 10px 6px 42px', lineHeight: 1.5 }}>
-              {tr('shell.toolbar.exportZipNote')}
-            </div>
-          </div>
-        )}
-        {shareDialog}
-        {publishDialog}
-        {toastEl}
-      </div>
-    );
-  }
-
+  const size = coarse ? 40 : 32;
+  const groupStyle = { display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, padding: '0 4px', borderRight: '1px solid ' + t.divider } as const;
+  const menuStyle = { position: 'absolute', top: '100%', right: 0, zIndex: 60, width: 260, maxWidth: 'calc(100vw - 16px)', maxHeight: '70vh', overflowY: 'auto', padding: 6, borderRadius: 10, border: '1px solid ' + t.border, background: t.surface, boxShadow: '0 8px 24px #0002' } as const;
+  const selectView = (view: 'map' | 'split' | 'outline' | 'gantt') => {
+    const ui = useEditorUiStore.getState();
+    if (view === 'gantt') { openGantt('dock', () => flash(tr('editor.gantt.popupBlocked'))); }
+    else { ui.setGanttDock(false); ui.setOutlineSplit(view === 'split'); ui.setMainView(view === 'outline' ? 'outline' : 'map'); }
+    setGanttOpen(false);
+  };
+  const currentView = ganttDock ? 'gantt' : outlineSplit ? 'split' : mainView;
   return (
-    <div
-      ref={barRef}
-      data-testid="top-toolbar"
-      data-layout="desktop"
-      style={{
-        ...barStyle,
-        paddingLeft: 'max(14px, env(safe-area-inset-left, 0px))',
-        paddingRight: 'max(14px, env(safe-area-inset-right, 0px))',
-        gap: 10,
-      }}
-    >
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        minWidth: iconOnly ? 0 : compact ? 180 : 280,
-      }}>
-        {/* EasyMindMap 로고 — H1 가로형, 높이만 맞추고 폭은 원본 비율 (2026-10-25) */}
-        <div
-          style={{
-            height: 32,
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-          }}
-          title="EasyMindMap"
-        >
-          <I.Logo size={30} />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, minWidth: 0 }}>
-          {/* '내 문서' 클릭 = 문서함 열기 (2026-08-03 — 왼쪽 '서버 맵
-              불러오기' 메뉴를 로그인 시 숨기는 대신 여기가 통로.
-              구 '제품팀'은 초기 시안의 하드코딩이라 제거) */}
-          <button
-            data-testid="crumb-docs"
-            title={tr('shell.toolbar.crumbTitle')}
-            onClick={() => useEditorUiStore.getState().setBrowserOpen(true)}
-            style={{
-              fontSize: 11, color: t.textSubtle, fontWeight: 500,
-              background: 'none', border: 'none', padding: 0,
-              cursor: 'pointer', textAlign: 'left',
-            }}
-          >
-            {tr('shell.toolbar.crumb')}
-          </button>
-
-          {/* 맵 제목 — ▾ 가 붙어 있는데 눌러도 아무 일이 없었다(고장으로 보인다).
-              '내 문서' 와 같이 문서함을 연다 — 다른 맵으로 갈아타는 문 (2026-10-05) */}
-          <button
-            data-testid="map-title"
-            title={tr('shell.toolbar.crumbTitle')}
-            onClick={openDocs}
-            style={{
-              fontSize: 14,
-              color: t.text,
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              maxWidth: iconOnly ? 120 : compact ? 180 : 260,
-              minWidth: 0,
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            {/* 긴 제목은 글자만 말줄임 — 예전에는 ▾ 까지 잘려 나갔다 */}
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-              {mapTitle}
-            </span>
-            <span style={{ opacity: 0.5, display: 'flex', flexShrink: 0 }}>
-              <I.ChevronDown size={14} />
-            </span>
-          </button>
+    <div ref={barRef} data-testid="top-toolbar" data-layout={phone ? 'phone' : 'desktop'}
+      style={{ position: 'relative', zIndex: 20, flexShrink: 0, background: t.surface, borderBottom: '1px solid ' + t.border,
+        padding: 'env(safe-area-inset-top, 0px) max(6px, env(safe-area-inset-right, 0px)) 0 max(6px, env(safe-area-inset-left, 0px))',
+        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, minHeight: 52 }}>
+      <button data-testid="map-title" title={tr('shell.toolbar.crumbTitle')} onClick={openDocs}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, flex: phone || barW < 900 ? '1 0 100%' : '1 1 100px', minWidth: 0,
+          padding: '5px 4px', background: 'none', border: 'none', color: t.text, cursor: 'pointer', textAlign: 'left' }}>
+        <I.Logo size={24} /><span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600 }}>{mapTitle}</span><I.ChevronDown size={12} />
+      </button>
+      <div role="group" aria-label={copy.document} data-toolbar-group="document" style={groupStyle}>
+        <IconBtn t={t} title={tr('shell.toolbar.undo')} disabled={!canUndo || !!readOnly} onClick={undo}><I.Undo size={17} /></IconBtn>
+        <IconBtn t={t} title={tr('shell.toolbar.redo')} disabled={!canRedo || !!readOnly} onClick={redo}><I.Redo size={17} /></IconBtn>
+        <MapActions t={t} flash={flash} phone iconOnly menuSlot={menuSlot} closeSlot={closeSlot} onMenuPick={() => setMoreOpen(false)}
+          stateDot={saveStateInfo.dot} saveStatus={saveStateInfo.short} saveTip={saveStateTip} saveState={saveState} />
+      </div>
+      <div ref={ganttRef} role="group" aria-label={copy.view} data-toolbar-group="view" style={{ ...groupStyle, position: phone ? 'static' : 'relative' }}>
+        {(['map', 'split', 'outline', 'gantt'] as const).map((view) => (
+          <div key={view} data-view-cell={view} style={{ display: 'flex', alignItems: 'center', borderRadius: 7, background: currentView === view ? t.primarySoft : 'transparent' }}>
+            <TooltipButton data-testid={'view-' + view} title={copy[view]} aria-label={copy[view]} aria-pressed={currentView === view}
+              onClick={() => { selectView(view); setMoreOpen(false); setExportOpen(false); }}
+              style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 7,
+                background: 'transparent', color: currentView === view ? t.primary : t.text, cursor: 'pointer' }}>
+              {view === 'gantt' ? <I.Gantt size={17} /> : view === 'map' ? <I.MindMap size={17} /> : view === 'outline' ? <I.Outline size={17} /> :
+                <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2" /><path d="M9 3v14M4.5 7h2M4.5 10h2M4.5 13h2M12 8h3M12 12h3" /></svg>}
+            </TooltipButton>
+            {view === 'gantt' && <TooltipButton data-testid="gantt-toggle" title={copy.gantt + ' · ' + copy.more} aria-label={copy.gantt + ' · ' + copy.more}
+              aria-haspopup="menu" aria-expanded={ganttOpen} onClick={() => { setGanttOpen(!ganttOpen); setMoreOpen(false); setExportOpen(false); }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: coarse ? 28 : 20, height: size, padding: 0, border: 'none', borderRadius: 5,
+                background: ganttOpen ? t.primarySoft : 'transparent', color: t.text, cursor: 'pointer' }}><I.ChevronDown size={12} /></TooltipButton>}
+          </div>
+        ))}
+        {ganttOpen && <div data-testid="gantt-menu" role="menu" style={{ ...menuStyle, left: phone ? 8 : 0, right: 'auto' }}>
+          <MenuItem t={t} testId="gantt-open-dock" icon={<I.Gantt size={16} />} label={tr('editor.gantt.dock')} onClick={() => selectView('gantt')} />
+          <MenuItem t={t} testId="gantt-open-tab" label={tr('editor.gantt.newTab')} onClick={() => { setGanttOpen(false); openGantt('tab', () => flash(tr('editor.gantt.popupBlocked'))); }} />
+          <MenuItem t={t} testId="gantt-open-window" label={tr('editor.gantt.newWindow')} onClick={() => { setGanttOpen(false); openGantt('window', () => flash(tr('editor.gantt.popupBlocked'))); }} />
+        </div>}
+      </div>
+      <div role="group" aria-label={copy.create} data-toolbar-group="create" style={groupStyle}>
+        <TooltipButton title={tr('shell.toolbar.ai')} aria-label={tr('shell.toolbar.ai')} data-testid="toolbar-ai" onClick={() => setInspectorTab('ai')}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: size, height: size, borderRadius: 8, background: '#EA580C', color: '#fff', border: 'none', cursor: 'pointer' }}><I.Sparkles size={17} /></TooltipButton>
+        <IconBtn t={t} testId="map-share" title={tr('shell.toolbar.share')} disabled={!shareMapId} onClick={() => setShareOpen(true)}><I.Share size={17} /></IconBtn>
+        <IconBtn t={t} testId="map-publish" title={tr('shell.toolbar.publish')} disabled={!publishMapId} onClick={() => setPublishOpen(true)}><I.Globe size={17} /></IconBtn>
+        <div ref={exportRef} style={{ position: phone ? 'static' : 'relative' }}>
+          <TooltipButton title={tr('shell.toolbar.export')} aria-label={tr('shell.toolbar.export')} aria-expanded={exportOpen} aria-haspopup="menu" data-testid="export-toggle"
+            onClick={() => { setExportOpen(!exportOpen); setMoreOpen(false); setGanttOpen(false); }} onKeyDown={(e) => { if (e.key === 'Escape') setExportOpen(false); }}
+            style={{ width: size, height: size, background: 'transparent', color: t.text, border: 'none', cursor: 'pointer' }}><I.Download size={17} /></TooltipButton>
+          {exportOpen && <div data-testid="export-menu" role="menu" style={menuStyle}>
+            <MenuItem t={t} label={tr('shell.toolbar.exportHtml')} desc={tr('shell.toolbar.exportHtmlDesc')} onClick={() => { setExportOpen(false); void runExportHtml(); }} />
+            <MenuItem t={t} label={tr('io.encrypted.export')} desc={tr('io.encrypted.desc')} onClick={() => { setExportOpen(false); void runExportEncryptedHtml(); }} />
+            <MenuItem t={t} label={tr('shell.toolbar.exportMd')} desc={tr('shell.toolbar.exportMdDesc')} onClick={() => { setExportOpen(false); void runExportMd(); }} />
+            <div style={{ fontSize: 11, padding: 8, color: t.textMuted }}>{tr('shell.toolbar.exportZipNote')}</div>
+          </div>}
         </div>
       </div>
-
-      <div style={{ width: 1, height: 28, background: t.divider }} />
-
-      <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-        <IconBtn t={t} title={tr('shell.toolbar.undo')} disabled={!canUndo} onClick={undo}>
-          <I.Undo size={17} />
-        </IconBtn>
-        {/* 되돌린 단계 표시 — 원본(최신 상태) = 0, 한 번 되돌릴 때마다
-            -1, -2, … (다시 실행하면 다시 줄어든다. 새 편집 = 0으로 복귀)
-            **클릭하면 지금 상태를 최신(0)으로 확정한다** (2026-08-06) —
-            원래는 아무 편집이나 하면 같은 일이 일어나지만, 편집할 것이
-            없는데 확정만 하고 싶을 때 방법이 "맵을 닫았다 열기"뿐이었다. */}
-        <span
-          data-testid="undo-depth"
-          role={undoDepth > 0 ? 'button' : undefined}
-          onClick={undoDepth > 0 ? commitCurrentAsLatest : undefined}
-          title={undoDepth === 0
-            ? tr('shell.toolbar.undoDepthZero')
-            : tr('shell.toolbar.undoDepth', { n: undoDepth })}
-          style={{
-            minWidth: 22, textAlign: 'center', fontSize: 10.5, fontWeight: 700,
-            fontFamily: 'ui-monospace, monospace',
-            color: undoDepth > 0 ? t.warning ?? '#D97706' : t.textSubtle,
-            userSelect: 'none',
-            cursor: undoDepth > 0 ? 'pointer' : 'default',
-          }}
-        >
-          {undoDepth > 0 ? `-${undoDepth}` : '0'}
-        </span>
-        <IconBtn t={t} title={tr('shell.toolbar.redo')} disabled={!canRedo} onClick={redo}>
-          <I.Redo size={17} />
-        </IconBtn>
+      <div role="group" aria-label={copy.other} data-toolbar-group="other" style={{ ...groupStyle, borderRight: 'none', marginLeft: 'auto' }}>
+        <IconBtn t={t} testId="theme-toggle" title={tr(themeName === 'dark' ? 'shell.toolbar.toLight' : 'shell.toolbar.toDark')} onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}>
+          {themeName === 'dark' ? <I.Sun size={17} /> : <I.Moon size={17} />}</IconBtn>
+        <TooltipButton ref={moreBtnRef} data-testid="toolbar-more" aria-label={copy.more} title={copy.more} aria-haspopup="menu" aria-expanded={moreOpen}
+          onClick={() => { setMoreOpen(!moreOpen); setGanttOpen(false); setExportOpen(false); }} style={{ width: size, height: size, background: 'transparent', color: t.text, border: 'none', cursor: 'pointer', fontSize: 22 }}>⋯</TooltipButton>
+        <IconBtn t={t} testId="toolbar-help" title={copy.help + ' (?)'} onClick={() => setHelpOpen(true)}><span aria-hidden="true" style={{ width: 17, height: 17, border: '1.5px solid currentColor', borderRadius: '50%', fontSize: 12, fontWeight: 700 }}>?</span></IconBtn>
+        <div ref={setCloseSlot} style={{ display: 'flex' }} />
+        <UserMenu t={t} onFlash={flash} />
       </div>
-
-      <div style={{ flex: 1 }} />
-
-      <div
-        data-testid="save-badge"
-        data-save-state={saveState}
-        // 실패했을 때는 **왜** 실패했는지 마우스를 올려 볼 수 있게 한다
-        title={saveStateTip ?? (compact ? saveStateInfo.text : undefined)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          fontSize: 12,
-          color: saveStateInfo.color,
-          fontWeight: 500,
-          padding: iconOnly ? '4px 7px' : '4px 10px',
-          borderRadius: 6,
-          background: t.surfaceAlt,
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
-        }}
-      >
-        <span
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: saveStateInfo.dot,
-            boxShadow: `0 0 0 3px ${saveStateInfo.dot}22`,
-          }}
-        />
-        {!iconOnly && (compact ? saveStateInfo.short : saveStateInfo.text)}
-      </div>
-
-      {/* [협업 UI 숨김 — MVP] 협업자 아바타 스택(지/민/J).
-          협업 기능(V2) 개발 시 featureFlags.ts의 COLLAB_PRESENCE_UI를 true로
-          바꾸면 다시 표시된다. 코드는 삭제하지 않고 보존. */}
-      {COLLAB_PRESENCE_UI && (
-        <>
-          <CollabAvatars t={t} collabs={collabs} />
-
-          <div style={{ width: 1, height: 28, background: t.divider }} />
-        </>
-      )}
-
-      {/* 진짜 접속자 자리 — 공개판에서는 아무것도 그리지 않는다.
-          위의 가짜 아바타(샘플 데이터)와 달리 **실제로 붙어 있는 사람**만
-          그린다. 둘을 한 화면에 함께 켜지 않는다. */}
-      <ProPresenceBar t={t} />
-
-      <button
-        onClick={() => setInspectorTab('ai')}
-        title={tr('shell.toolbar.aiTitle')}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '7px 12px',
-          borderRadius: 8,
-          background: `linear-gradient(135deg, ${t.primary}, ${t.primaryHover})`,
-          color: '#fff',
-          border: 'none',
-          cursor: 'pointer',
-          fontSize: 13,
-          fontWeight: 600,
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
-          boxShadow: `0 1px 2px ${t.primary}60, 0 0 0 1px ${t.primary}80`,
-        }}
-      >
-        <I.Sparkles size={15} />{!iconOnly && ` ${tr('shell.toolbar.ai')}`}
-      </button>
-
-      {/* **눌리는데 아무 일도 없는 버튼은 고장으로 보인다** (2026-08-18).
-          예전에는 onClick 이 없어 정말 아무 일도 일어나지 않았다. 이제
-          공유 대화상자를 연다 — 공개판에서는 그 대화상자가 "왜 못 쓰는지"를
-          서버가 준 문장 그대로 말한다(가짜 빨간 점을 지운 것과 같은 이유). */}
-      <button
-        data-testid="map-share"
-        onClick={() => setShareOpen(true)}
-        disabled={!shareMapId}
-        title={shareMapId
-          ? tr('shell.toolbar.shareTitle')
-          : tr('shell.toolbar.shareNeedSave')}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '7px 12px',
-          borderRadius: 8,
-          background: t.surfaceAlt,
-          color: shareMapId ? t.text : t.textSubtle,
-          border: `1px solid ${t.border}`,
-          cursor: shareMapId ? 'pointer' : 'not-allowed',
-          fontSize: 13,
-          fontWeight: 500,
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
-        }}
-      >
-        <I.Share size={15} />{!iconOnly && ` ${tr('shell.toolbar.share')}`}
-      </button>
-      {shareDialog}
-
-      {/* 퍼블리싱(무료) — 위의 [공유]와 **다른 일**이라 버튼을 나눴다.
-          [공유]는 사람을 불러 **함께 편집**하는 것이고(참가자·권한),
-          [퍼블리싱]은 링크를 가진 누구나 **로그인 없이 읽는** 것이다.
-          하나의 버튼에 넣으면 "공유했다"가 둘 중 무엇인지 알 수 없다. */}
-      <button
-        data-testid="map-publish"
-        onClick={() => setPublishOpen(true)}
-        disabled={!publishMapId}
-        title={publishMapId
-          ? tr('shell.toolbar.publishTitle')
-          : tr('shell.toolbar.publishNeedSave')}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '7px 12px',
-          borderRadius: 8,
-          background: t.surfaceAlt,
-          color: publishMapId ? t.text : t.textSubtle,
-          border: `1px solid ${t.border}`,
-          cursor: publishMapId ? 'pointer' : 'not-allowed',
-          fontSize: 13,
-          fontWeight: 500,
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
-        }}
-      >
-        <I.Globe size={15} />{!iconOnly && ` ${tr('shell.toolbar.publish')}`}
-      </button>
-      {publishDialog}
-
-      {/* 간트 차트 (2026-11-07) — 노드의 일정·담당자·진척으로 그린 일정표. 아래 칸 · 새 탭 · 새 창 */}
-      <div ref={ganttRef} style={{ position: 'relative', flexShrink: 0 }}>
-        <button
-          data-testid="gantt-toggle"
-          title={tr('editor.gantt.open')}
-          aria-label={tr('editor.gantt.title')}
-          onClick={() => setGanttOpen((v) => !v)}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2,
-            height: 32, padding: '0 7px', borderRadius: 8,
-            background: ganttDock || ganttOpen ? t.primarySoft : t.surfaceAlt,
-            color: ganttDock || ganttOpen ? t.primary : t.text,
-            border: `1px solid ${ganttDock || ganttOpen ? t.primaryBorder + '55' : t.border}`, cursor: 'pointer',
-          }}
-        >
-          <I.Gantt size={17} /><span style={{ fontSize: 8 }}>▼</span>
-        </button>
-        {ganttOpen && (
-          <div data-testid="gantt-menu" style={{
-            position: 'absolute', top: 38, right: 0, zIndex: 40, minWidth: 210, background: t.surface,
-            border: `1px solid ${t.border}`, borderRadius: 9, boxShadow: '0 8px 24px rgba(80,60,20,0.18)', padding: 5,
-          }}>
-            {([
-              ['dock', ganttDock ? '✓ ' + tr('editor.gantt.dock') : tr('editor.gantt.dock'), '▤'],
-              ['tab', tr('editor.gantt.newTab'), '↗'],
-              ['window', tr('editor.gantt.newWindow'), '⧉'],
-            ] as const).map(([mode, label, icon]) => (
-              <button key={mode} type="button" data-testid={`gantt-open-${mode}`}
-                onClick={() => {
-                  setGanttOpen(false);
-                  if (mode === 'dock' && ganttDock) { useEditorUiStore.getState().setGanttDock(false); return; }
-                  openGantt(mode, () => flash(tr('editor.gantt.popupBlocked')));
-                }}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', borderRadius: 6, background: 'transparent', color: t.text, cursor: 'pointer', fontSize: 12.5 }}>
-                <span style={{ width: 16, textAlign: 'center', color: t.textMuted }}>{icon}</span>{label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 아웃라인 모드 / 맵 모드 전환 — 다크 토글과 같은 방식. 편집
-          영역 전체를 아웃라인 전용/맵 전용으로 바꾼다. 분할 보기가
-          켜져 있으면 비활성(분할이 이미 아웃라인+맵이므로). */}
-      <button
-        title={outlineSplit
-          ? tr('shell.toolbar.splitBlocked')
-          : mainView === 'outline' ? tr('shell.toolbar.toMapMode') : tr('shell.toolbar.toOutlineMode')}
-        data-testid="mainview-toggle"
-        disabled={outlineSplit}
-        onClick={() => !outlineSplit && toggleMainView()}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 34, height: 32, borderRadius: 8,
-          background: mainView === 'outline' && !outlineSplit ? t.primarySoft : t.surfaceAlt,
-          color: outlineSplit ? t.textSubtle : (mainView === 'outline' ? t.primary : t.text),
-          border: `1px solid ${outlineSplit ? t.border : (mainView === 'outline' ? t.primaryBorder + '55' : t.border)}`,
-          cursor: outlineSplit ? 'default' : 'pointer',
-        }}
-      >
-        {mainView === 'outline' && !outlineSplit
-          ? <I.MindMap size={17} />
-          : <I.Outline size={17} />}
-      </button>
-
-      {/* 다크 모드 토글 — 라이트/다크 테마 전환 (브라우저에 저장) */}
-      <button
-        title={themeName === 'dark' ? tr('shell.toolbar.toLight') : tr('shell.toolbar.toDark')}
-        data-testid="theme-toggle"
-        onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 34, height: 32, borderRadius: 8,
-          background: t.surfaceAlt, color: t.text,
-          border: `1px solid ${t.border}`, cursor: 'pointer', fontSize: 15,
-        }}
-      >
-        {/* 이모지 대신 선 아이콘 — 막대의 다른 단추와 같은 표현 (2026-10-24 UI/UX 검토) */}
-        {themeName === 'dark' ? <I.Sun size={16} /> : <I.Moon size={16} />}
-      </button>
-
-      {/* 현재 맵 — 저장(히스토리 버전 남김) · 맵 닫기(저장 후 닫기).
-          여는 것은 좌측 '새 맵 > ☁ 서버 맵 불러오기'로 일원화됐다. */}
-      <MapActions t={t} flash={flash} iconOnly={iconOnly} />
-
-      {/* 내보내기 메뉴 — 하위 항목: HTML 파일 / MD 파일. 두 형식 모두
-          맵 메타데이터를 내장해 '새 맵 > 불러오기'로 편집 가능하게
-          복원되고, 사진·첨부가 있으면 ZIP(파일 + files/)으로 내려간다. */}
-      <div ref={exportRef} style={{ position: 'relative' }}>
-        <button
-          title={tr('shell.toolbar.export')}
-          onClick={() => setExportOpen((v) => !v)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            height: 32, padding: '0 10px', borderRadius: 7,
-            border: `1px solid ${exportOpen ? t.primaryBorder : t.border}`,
-            background: exportOpen ? t.primarySoft : t.surface,
-            color: exportOpen ? t.primary : t.text,
-            cursor: 'pointer', fontSize: 12, fontWeight: 600,
-            whiteSpace: 'nowrap', flexShrink: 0,
-          }}
-        >
-          <I.Download size={15} />{!iconOnly && ` ${tr('shell.toolbar.export')} `}
-          <span style={{ fontSize: 8 }}>▼</span>
-        </button>
-        {exportOpen && (
-          <div
-            data-testid="export-menu"
-            style={{
-              position: 'absolute', top: 38, right: 0, zIndex: 40,
-              minWidth: 250, background: t.surface,
-              border: `1px solid ${t.border}`, borderRadius: 9,
-              boxShadow: '0 8px 24px rgba(80,60,20,0.18)', padding: 5,
-            }}
-          >
-            {([
-              {
-                id: 'html',
-                label: tr('shell.toolbar.exportHtml'),
-                desc: tr('shell.toolbar.exportHtmlDesc'),
-                title: tr('shell.toolbar.exportHtmlTitle'),
-                run: runExportHtml,
-              },
-              {
-                id: 'encrypted-html',
-                label: tr('io.encrypted.export'),
-                desc: tr('io.encrypted.desc'),
-                title: tr('io.encrypted.protect'),
-                run: runExportEncryptedHtml,
-              },
-              {
-                id: 'md',
-                label: tr('shell.toolbar.exportMd'),
-                desc: tr('shell.toolbar.exportMdDesc'),
-                title: tr('shell.toolbar.exportMdTitle'),
-                run: runExportMd,
-              },
-            ] as const).map((item) => (
-              <button
-                key={item.id}
-                title={item.title}
-                onClick={() => { setExportOpen(false); void item.run(); }}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left',
-                  padding: '8px 10px', borderRadius: 6, border: 'none',
-                  background: 'transparent', cursor: 'pointer', color: t.text,
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = t.surfaceAlt;
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = 'transparent';
-                }}
-              >
-                <div style={{ fontSize: 12.5, fontWeight: 700 }}>{item.label}</div>
-                <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 1 }}>{item.desc}</div>
-              </button>
-            ))}
-            <div style={{
-              fontSize: 9.5, color: t.textSubtle, padding: '6px 10px 4px',
-              borderTop: `1px solid ${t.divider}`, marginTop: 4, lineHeight: 1.5,
-            }}>
-              {tr('shell.toolbar.exportZipNote')}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 계정 메뉴 — 개인 설정·계정 프로필·구독 상태·로그아웃 */}
-      <UserMenu t={t} onFlash={flash} />
-
-      {toastEl}
+      {moreOpen && <div ref={moreRef} data-testid="toolbar-more-menu" role="menu" style={menuStyle}>
+        <div ref={setMenuSlot} />
+        {undoDepth > 0 && <MenuItem t={t} testId="undo-depth" label={tr('shell.toolbar.undoDepth', { n: undoDepth })} onClick={() => { commitCurrentAsLatest(); setMoreOpen(false); }} />}
+      </div>}
+      {shareDialog}{publishDialog}{toastEl}
+      {helpOpen && <HelpDrawer open={helpOpen} t={t} onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }

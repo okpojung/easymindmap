@@ -11,7 +11,7 @@
 //     (저장하고 닫기 / 저장 없이 닫기 / 취소)
 // 닫은 뒤에는 편집 영역에 문서함(MapBrowser)을 연다.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
@@ -31,9 +31,12 @@ import { ProCollabSession, ProDashboardLive, ProDashboardToggle } from '@pro';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { LANG_LOCALE, useLang, useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
+import { useAutosaveStore } from '@/stores/autosaveStore';
 import { MenuItem, MenuSep } from './OverflowMenu';
 import { openGuestMap } from '@/services/guestMap';
 import { titleFromCenter } from '@/utils/centerTitle';
+import toolbarCopy from './toolbar-copy.json';
+import { TooltipButton } from './Tooltip';
 
 /** 저장 대화상자를 띄운 이유 — 저장만인지, 닫기까지 이어갈지 */
 type SaveIntent = null | 'save' | 'close' | 'saveAs';
@@ -47,7 +50,7 @@ export function MapActions(
   //   안내·대시보드 전환)는 `menuSlot` 이 가리키는 "⋯" 메뉴 안에 그린다.
   //   **이 컴포넌트는 메뉴가 닫혀도 계속 살아 있다** — 자동저장 훅과 저장
   //   대화상자가 여기 있기 때문이다. 그래서 메뉴 안에는 포털로 항목만 넣는다.
-  { t, flash, iconOnly = false, phone = false, menuSlot = null, onMenuPick, stateDot }:
+  { t, flash, iconOnly = false, phone = false, menuSlot = null, onMenuPick, stateDot, closeSlot = null, saveStatus, saveTip, saveState }:
   {
     t: ThemeTokens; flash: (m: string) => void; iconOnly?: boolean;
     phone?: boolean;
@@ -57,11 +60,17 @@ export function MapActions(
     onMenuPick?: () => void;
     /** 폰: 저장 단추에 얹을 저장 상태 점 색 */
     stateDot?: string;
+    closeSlot?: HTMLElement | null;
+    saveStatus?: string;
+    saveTip?: string;
+    saveState?: string;
   },
 ) {
   const coarse = useCoarse();
+  const collabDriving = useAutosaveStore((s) => s.collabDrivingMapId);
   const tr = useTr();
   const lang = useLang();
+  const copy = toolbarCopy[lang] ?? toolbarCopy.en;
   const cloudMapId = useCloudStore((s) => s.cloudMapId);
   // 협업맵인가 — 세션 자리에 그대로 넘긴다(판정은 서버가 내린 kind 다)
   const cloudKind = useCloudStore((s) => s.cloudKind);
@@ -93,7 +102,8 @@ export function MapActions(
     ? tr('shell.mapActions.savedAt', { time: new Date(lastSavedAt).toLocaleString(LANG_LOCALE[lang]) })
     : tr('shell.mapActions.neverSaved');
 
-  const handleSave = async () => {
+  const handleSave = async (keepVersion = false) => {
+    if (busy !== 'idle' || readOnlyInfo?.viewer || collabDriving) return;
     // 열려 있는 맵이 없으면 저장할 것도 없다 (맵 닫기와 같은 안내 —
     // 2026-08-02 사용자 보고: 빈 상태에서 저장 대화상자가 떴다)
     if (isCurrentMapEmpty()) { flash(tr('shell.mapActions.noMap')); return; }
@@ -105,16 +115,59 @@ export function MapActions(
     if (needLogin()) { flash(tr('shell.mapActions.needLogin')); return; }
     if (isUnsavedMap()) { setSaveIntent('save'); return; } // 폴더·이름 묻기
     try {
-      const r = await saveCurrentMap({ keepVersion: true });
+      const r = await saveCurrentMap({ keepVersion });
       flash(r.unchanged
         ? tr('shell.mapActions.unchanged', { title: cloudTitle ?? mapTitle })
-        : tr('shell.mapActions.savedKeep', { title: cloudTitle ?? mapTitle }));
+        : keepVersion ? tr('shell.mapActions.savedKeep', { title: cloudTitle ?? mapTitle }) : tr('shell.mapActions.savedNew', { title: cloudTitle ?? mapTitle }));
     } catch (err) {
       const m = err instanceof CloudError ? err.message : tr('shell.mapActions.saveError');
       useCloudStore.getState().setError(m);
       flash('⚠ ' + m);
     }
   };
+
+  // Keep one listener across blur-triggered renders. Read the latest callback
+  // after the editor commits its draft, never the pre-blur map closure.
+  const shortcutState = useRef({ save: handleSave, blocked: false });
+  shortcutState.current = {
+    save: handleSave,
+    blocked: isGuest || !!readOnlyInfo?.viewer || !!collabDriving || !!saveIntent || warnUnsaved,
+  };
+  useEffect(() => {
+    let disposed = false;
+    let pendingSave: ReturnType<typeof setTimeout> | undefined;
+    const hasModal = () => !!document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]');
+    const blockedNow = () => {
+      const cloud = useCloudStore.getState();
+      const auth = useAuthStore.getState();
+      return shortcutState.current.blocked || cloud.busy !== 'idle' || !!cloud.readOnlyInfo?.viewer
+        || !!useAutosaveStore.getState().collabDrivingMapId || (authEnabled && auth.guest) || hasModal();
+    };
+    const onSaveKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's' || event.defaultPrevented) return;
+      event.preventDefault();
+      if (event.isComposing || event.keyCode === 229 || event.repeat || pendingSave !== undefined || blockedNow()) return;
+      const epoch = useDocumentStore.getState().docEpoch;
+      const mapId = useCloudStore.getState().cloudMapId;
+      // Inline editors commit synchronously in onBlur.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && (active.matches('input, textarea, [role="textbox"]') || active.isContentEditable)) active.blur();
+      if (disposed) return;
+      // React's blur updates finish before this task; coalesce repeated presses.
+      pendingSave = setTimeout(() => {
+        pendingSave = undefined;
+        if (disposed || blockedNow() || useDocumentStore.getState().docEpoch !== epoch
+          || useCloudStore.getState().cloudMapId !== mapId) return;
+        void shortcutState.current.save();
+      }, 0);
+    };
+    window.addEventListener('keydown', onSaveKey);
+    return () => {
+      disposed = true;
+      clearTimeout(pendingSave);
+      window.removeEventListener('keydown', onSaveKey);
+    };
+  }, []);
 
   const handleClose = async () => {
     // 읽기 전용으로 보던 맵은 저장 없이 닫힌다 — 안내 문구 구분
@@ -200,11 +253,10 @@ export function MapActions(
     </>
   );
 
-  // ── 폰 막대 ─────────────────────────────────────────────────────────
-  if (phone) {
-    const size = coarse ? 40 : 34;
+  const size = coarse ? 40 : 32;
     const menu = menuSlot && createPortal(
       <>
+        {saveTip && <div role="status" style={{ padding: '7px 10px', fontSize: 12, lineHeight: 1.5, color: t.textMuted }}>{saveTip}</div>}
         {readOnlyInfo && (
           <div
             data-testid="readonly-badge"
@@ -233,6 +285,11 @@ export function MapActions(
             />
           </div>
         )}
+        {cloudMapId && !readOnlyInfo && !collabDriving && !isGuest && (
+          <MenuItem t={t} testId="map-save-version" icon={<I.Cloud size={15} />}
+            label={copy.saveVersion} disabled={busy !== 'idle'}
+            onClick={pick(() => void handleSave(true))} />
+        )}
         {cloudMapId && lastSavedVersion !== null && !readOnlyInfo && (
           <MenuItem
             t={t} testId="map-pin-last" icon="☆"
@@ -251,15 +308,6 @@ export function MapActions(
             onClick={pick(() => setSaveIntent('saveAs'))}
           />
         )}
-        <MenuItem
-          t={t} testId="map-close" icon={<I.X size={15} />}
-          label={tr('shell.mapActions.close')}
-          title={isGuest ? tr('shell.mapActions.guestDisabled') : isCurrentMapEmpty()
-            ? tr('shell.mapActions.noMapTitle')
-            : tr('shell.mapActions.closeTitle', { title: cloudTitle ?? mapTitle })}
-          disabled={busy !== 'idle' || isGuest}
-          onClick={pick(() => void handleClose())}
-        />
         {isGuest && (
           <MenuItem
             t={t} testId="map-guest-reset" icon="↺"
@@ -272,197 +320,27 @@ export function MapActions(
       </>,
       menuSlot,
     );
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        <ProCollabSession
-          mapId={cloudMapId ?? (readOnlyInfo?.viewer ? readOnlyInfo.mapId : null)}
-          kind={cloudMapId ? cloudKind : readOnlyInfo?.kind}
-        />
-        <ProDashboardLive t={t} mapId={readOnlyInfo?.dashboard ? readOnlyInfo.mapId : null} />
-        {/* 읽기 전용 — 막대에는 자물쇠만, 사유 전문은 "⋯" 메뉴 맨 위에 */}
-        {readOnlyInfo && (
-          <span
-            data-testid="m-readonly-lock"
-            title={readOnlyInfo.reason ?? tr('shell.mapActions.readOnlyReason')}
-            aria-label={readOnlyInfo.reason ?? tr('shell.mapActions.readOnlyReason')}
-            style={{ fontSize: 14, lineHeight: 1, padding: '0 2px' }}
-          >🔒</span>
-        )}
-        {!readOnlyInfo?.viewer && (
-          <button
-            data-testid="map-save"
-            title={tr('shell.mapActions.saveTitle', { hint: savedHint })}
-            aria-label={tr('common.save')}
-            disabled={busy !== 'idle' || isGuest}
-            onClick={() => void handleSave()}
-            style={{
-              position: 'relative',
-              width: size, height: size, borderRadius: 8, padding: 0, flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: t.surfaceAlt, color: t.text,
-              border: `1px solid ${cloudMapId ? t.primaryBorder + '66' : t.border}`,
-              cursor: busy === 'idle' ? 'pointer' : 'default',
-            }}
-          >
-            <I.Cloud size={17} />
-            {stateDot && (
-              <span style={{
-                position: 'absolute', right: 5, top: 5, width: 7, height: 7, borderRadius: '50%',
-                background: stateDot, boxShadow: `0 0 0 2px ${t.surfaceAlt}`,
-              }} />
-            )}
-          </button>
-        )}
-        {menu}
-        {dialogs}
-      </div>
-    );
-  }
 
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      {/* 협업 세션 — 공개판에서는 아무것도 그리지 않는다(정상 동작).
-          자동저장 훅과 **같은 자리**에 둔다: 맵이 열려 있는 동안만 살아
-          있어야 하고, 자동저장과 서로 비켜 줘야 하기 때문이다. */}
-      {/* **열람자도 붙는다 — 받기만 한다** (2026-08-20).
-          읽기 전용으로 연 맵은 링크(`cloudMapId`)가 없다(저장 경로 차단).
-          그렇다고 협업까지 끊으면, 열람자는 **초대받은 시점의 문서**를
-          보게 된다 — 주인이 고쳐도 모른다. 그건 공유가 반쯤 된 것이다.
-          보내지 않는 것은 서버가 막고(유료 게이트웨이), 화면도 잠겨 있다. */}
-      <ProCollabSession
-        mapId={cloudMapId ?? (readOnlyInfo?.viewer ? readOnlyInfo.mapId : null)}
-        kind={cloudMapId ? cloudKind : readOnlyInfo?.kind}
-      />
-      {/* **대시보드맵 자동 갱신 · 데이터 연결 패널** (2026-09-30, 22-dashboard.md §4.3 · §4.4).
-          대시보드맵은 읽기 전용으로 열리므로 링크(`cloudMapId`)가 없다 —
-          `readOnlyInfo.dashboard` 로 자리를 연다. 공개판(스텁)은 아무것도 하지 않는다. */}
-      <ProDashboardLive t={t} mapId={readOnlyInfo?.dashboard ? readOnlyInfo.mapId : null} />
-      {/* 읽기 전용 배너 — 다른 세션이 편집 중인 맵을 보는 상태임을
-          화면에 상시 표시 (2026-08-04 사용자 요청) */}
-      {readOnlyInfo && (
-        // ★ **폭을 묶는다** (2026-09-30). 이유 문장이 길면 배지 하나가 480px 을 먹어
-        //   도구줄 끝의 단추(되돌리기·저장·닫기)가 화면 밖으로 밀렸다(pro e2e 1400px 에서
-        //   실측). 넘치는 문장은 말줄임하고 **전문은 마우스를 올리면** 보인다.
-        <span
-          data-testid="readonly-badge"
-          title={`${readOnlyInfo.reason ?? tr('shell.mapActions.readOnlyReason')}\n`
-            + tr('shell.mapActions.readOnlyHint')}
-          style={{
-            display: 'inline-block', minWidth: 0, flexShrink: 1,
-            maxWidth: iconOnly ? 150 : 300,
-            overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle',
-            padding: '5px 10px', borderRadius: 7,
-            background: '#FEF3C7', border: '1px solid #F59E0B',
-            color: '#92400E', fontSize: 11.5, fontWeight: 700,
-            whiteSpace: 'nowrap',
-          }}
-        >{tr('shell.mapActions.readOnlyBadge', { reason: readOnlyInfo.reason ?? tr('shell.mapActions.readOnlyShort') })}</span>
-      )}
-      {/* 대시보드맵 전환·되돌리기 (2026-09-30, 22-dashboard.md §4.1) — 열려 있는 맵이
-          **내 맵**일 때만(링크가 있거나, 대시보드라서 읽기 전용으로 연 경우).
-          퍼블리싱·협업 판정은 서버가 하고, 막히면 그 문장을 그대로 보여 준다. */}
-      {(cloudMapId || readOnlyInfo?.dashboard) && !readOnlyInfo?.viewer && (
-        <ProDashboardToggle
-          t={t}
-          map={{
-            mapId: (cloudMapId ?? readOnlyInfo?.mapId) as string,
-            title: cloudTitle ?? mapTitle,
-            kind: cloudMapId ? cloudKind : readOnlyInfo?.kind,
-            viewMode: readOnlyInfo?.dashboard ? 'dashboard' : 'edit',
-            publishId: null,
-          }}
-          compact={iconOnly}
-        />
-      )}
-      {/* **열람자에게는 저장 자리를 아예 주지 않는다** (2026-08-19).
-          링크가 없으므로 누르면 **자기 문서함의 새 맵**으로 떨어진다 —
-          주인은 '읽기만' 을 준 것이지 문서를 가져가도 좋다고 한 적이 없다.
-          누를 수 있게 두고 거절하는 것보다, 없는 편이 정직하다. */}
-      {!readOnlyInfo?.viewer && (
-      <button
-        data-testid="map-save"
-        title={isGuest ? tr('shell.mapActions.guestDisabled') : tr('shell.mapActions.saveTitle', { hint: savedHint })}
-        disabled={busy !== 'idle' || isGuest}
-        onClick={() => void handleSave()}
-        style={{
-          ...btn,
-          background: t.surfaceAlt, color: t.text,
-          border: `1px solid ${cloudMapId ? t.primaryBorder + '66' : t.border}`,
-          ...(isGuest ? guestOff : {}),
-        }}
-      >
-        <I.Cloud size={15} />{!iconOnly && ` ${tr('common.save')}`}
-      </button>
-      )}
-      {/* 저장 직후 — "이 버전 보관" (13a §3.2 ②). 큰 작업을 마친 순간이 보관
-          의사가 생기는 자리다. 모달을 띄우지 않고 링크 하나만 둔다 — 누르면
-          히스토리 탭이 열리며 그 버전의 이름 입력창이 바로 뜬다. */}
-      {cloudMapId && lastSavedVersion !== null && !readOnlyInfo && (
-        <button
-          data-testid="map-pin-last"
-          title={tr('shell.mapActions.pinTitle', { v: lastSavedVersion })}
-          onClick={() => { setHistoryPinTarget(lastSavedVersion); setNavTab('history'); }}
-          style={{
-            ...btn, padding: '0 8px', cursor: 'pointer',
-            background: 'transparent', color: t.textMuted,
-            border: `1px dashed ${t.border}`, fontWeight: 500,
-          }}
-        >☆{!iconOnly && ` ${tr('shell.mapActions.pin')}`}</button>
-      )}
-
-      {/* 다른 이름으로 저장 (2026-08-03 요청) — 서버 맵과 연결된 상태에서만.
-          현재 내용을 새 폴더·이름의 **새 맵**으로 저장하고, 이 탭은 그
-          새 맵 편집으로 전환된다. 같은 폴더 같은 이름이면 409 안내. */}
-      {cloudMapId && !readOnlyInfo?.viewer && (
-        <button
-          data-testid="map-save-as"
-          title={tr('shell.mapActions.saveAsTitle')}
-          disabled={busy !== 'idle'}
-          onClick={() => setSaveIntent('saveAs')}
-          style={{
-            ...btn, padding: '0 7px',
-            background: t.surfaceAlt, color: t.textMuted,
-            border: `1px solid ${t.border}`,
-          }}
-        >
-          <I.Copy size={14} />
-        </button>
-      )}
-
-      <button
-        data-testid="map-close"
-        title={isGuest ? tr('shell.mapActions.guestDisabled') : isCurrentMapEmpty()
-          ? tr('shell.mapActions.noMapTitle')
-          : tr('shell.mapActions.closeTitle', { title: cloudTitle ?? mapTitle })}
-        disabled={busy !== 'idle' || isGuest}
-        onClick={() => void handleClose()}
-        style={{
-          ...btn,
-          background: t.surface, color: t.text,
-          border: `1px solid ${t.border}`,
-          ...(isGuest ? guestOff : {}),
-        }}
-      >
-        <I.X size={15} />{!iconOnly && ` ${tr('shell.mapActions.close')}`}
-      </button>
-      {isGuest && (
-        <button
-          data-testid="map-guest-reset"
-          title={tr('shell.mapActions.guestResetTitle')}
-          onClick={handleGuestReset}
-          style={{
-            ...btn, cursor: 'pointer',
-            background: t.primarySoft, color: t.primary,
-            border: `1px solid ${t.primaryBorder}`,
-          }}
-        >
-          <span aria-hidden="true" style={{ fontSize: 15, lineHeight: 1 }}>↺</span>{!iconOnly && ` ${tr('shell.mapActions.guestReset')}`}
-        </button>
-      )}
-
-      {dialogs}
-    </div>
-  );
+  const closeButton = <TooltipButton data-testid="map-close" aria-label={tr('shell.mapActions.close')}
+    title={tr('shell.mapActions.close')}
+    disabled={busy !== 'idle' || isGuest} onClick={() => void handleClose()}
+    style={{ ...btn, width: size, height: size, padding: 0, justifyContent: 'center', background: 'transparent', border: 'none', color: t.text, ...(isGuest ? guestOff : {}) }}>
+    <I.X size={17} />
+  </TooltipButton>;
+  const status = <><I.Cloud size={16} /><span style={{ width: 6, height: 6, borderRadius: '50%', background: stateDot ?? t.textMuted, flexShrink: 0 }} /><span>{readOnlyInfo?.viewer ? tr('shell.mapActions.readOnlyShort') : saveStatus ?? tr('common.save')}</span></>;
+  return <>
+    <ProCollabSession mapId={cloudMapId ?? (readOnlyInfo?.viewer ? readOnlyInfo.mapId : null)} kind={cloudMapId ? cloudKind : readOnlyInfo?.kind} />
+    <ProDashboardLive t={t} mapId={readOnlyInfo?.dashboard ? readOnlyInfo.mapId : null} />
+    {collabDriving || readOnlyInfo?.viewer ?
+      <span data-testid="save-badge" data-save-state={saveState} role="status" title={saveTip ?? readOnlyInfo?.reason}
+        style={{ ...btn, cursor: 'default', background: t.surfaceAlt, color: t.textMuted, borderRadius: 20, fontSize: 11 }}>{status}</span> :
+      <TooltipButton data-testid="map-save" data-save-state={saveState} aria-label={tr('common.save') + ' · ' + (saveStatus ?? '')}
+        title={tr('common.save') + ' (Ctrl/⌘+S)'}
+        disabled={busy !== 'idle' || isGuest} onClick={() => void handleSave()}
+        style={{ ...btn, height: size, background: t.surfaceAlt, color: t.text, border: '1px solid ' + t.border, borderRadius: 20, fontSize: 11, ...(isGuest ? guestOff : {}) }}>{status}</TooltipButton>}
+    {closeSlot ? createPortal(closeButton, closeSlot) : !phone && closeButton}
+    {menu}{dialogs}
+  </>;
 }
 
 /** 미저장 맵 닫기 경고 (규칙 4) — 막대 모양(데스크톱·폰)과 상관없이 같은 대화상자 */
@@ -485,6 +363,7 @@ function UnsavedWarning({ t, mapTitle, onCancel, onSaveClose, onCloseAnyway }: {
       <div
         onClick={(e) => e.stopPropagation()}
         data-testid="unsaved-warning"
+        role="dialog" aria-modal="true" aria-label={tr('shell.mapActions.unsavedTitle')}
         style={{
           position: 'relative',
           width: 'min(420px, calc(100vw - 24px))', background: t.surface, color: t.text,

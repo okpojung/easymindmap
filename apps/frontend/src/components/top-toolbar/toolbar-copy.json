@@ -1,0 +1,58 @@
+{
+  "ko": {
+    "document": "문서",
+    "view": "보기",
+    "create": "생성 및 배포",
+    "other": "기타",
+    "map": "맵",
+    "split": "분할",
+    "outline": "아웃라인",
+    "gantt": "간트",
+    "collab": "협업 중 · 자동 반영",
+    "more": "더보기",
+    "help": "도움말",
+    "saveVersion": "버전 저장"
+  },
+  "en": {
+    "document": "Document",
+    "view": "View",
+    "create": "Create and distribute",
+    "other": "Other",
+    "map": "Map",
+    "split": "Split",
+    "outline": "Outline",
+    "gantt": "Gantt",
+    "collab": "Collaborating · Auto sync",
+    "more": "More",
+    "help": "Help",
+    "saveVersion": "Save version"
+  },
+  "ja": {
+    "document": "文書",
+    "view": "表示",
+    "create": "作成と配布",
+    "other": "その他",
+    "map": "マップ",
+    "split": "分割",
+    "outline": "アウトライン",
+    "gantt": "ガント",
+    "collab": "共同編集中 · 自動同期",
+    "more": "その他の操作",
+    "help": "ヘルプ",
+    "saveVersion": "バージョンを保存"
+  },
+  "zh": {
+    "document": "文档",
+    "view": "视图",
+    "create": "创建与分发",
+    "other": "其他",
+    "map": "脑图",
+    "split": "分屏",
+    "outline": "大纲",
+    "gantt": "甘特图",
+    "collab": "协作中 · 自动同步",
+    "more": "更多",
+    "help": "帮助",
+    "saveVersion": "保存版本"
+  }
+}

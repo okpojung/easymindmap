@@ -256,7 +256,7 @@ export function MapActions(
   const size = coarse ? 40 : 32;
     const menu = menuSlot && createPortal(
       <>
-        {saveTip && <div role="status" style={{ padding: '7px 10px', fontSize: 12, lineHeight: 1.5, color: t.textMuted }}>{saveTip}</div>}
+        {saveTip && <div data-testid="save-state-detail" role={saveState === 'error' ? 'alert' : 'status'} style={{ padding: '7px 10px', fontSize: 12, lineHeight: 1.5, color: saveState === 'error' ? t.danger : t.textMuted, overflowWrap: 'anywhere' }}>{saveTip}</div>}
         {readOnlyInfo && (
           <div
             data-testid="readonly-badge"

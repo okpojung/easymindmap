@@ -50,12 +50,14 @@ export function MapActions(
   //   안내·대시보드 전환)는 `menuSlot` 이 가리키는 "⋯" 메뉴 안에 그린다.
   //   **이 컴포넌트는 메뉴가 닫혀도 계속 살아 있다** — 자동저장 훅과 저장
   //   대화상자가 여기 있기 때문이다. 그래서 메뉴 안에는 포털로 항목만 넣는다.
-  { t, flash, iconOnly = false, phone = false, menuSlot = null, onMenuPick, stateDot, closeSlot = null, saveStatus, saveTip, saveState }:
+  { t, flash, iconOnly = false, phone = false, menuSlot = null, saveMenuSlot = null, distributionSlot = null, onMenuPick, stateDot, closeSlot = null, saveStatus, saveTip, saveState }:
   {
     t: ThemeTokens; flash: (m: string) => void; iconOnly?: boolean;
     phone?: boolean;
     /** "⋯" 메뉴가 열려 있을 때 항목을 넣을 자리 (닫혀 있으면 null) */
     menuSlot?: HTMLElement | null;
+    saveMenuSlot?: HTMLElement | null;
+    distributionSlot?: HTMLElement | null;
     /** 메뉴 항목을 누른 뒤 — 메뉴를 닫는다 */
     onMenuPick?: () => void;
     /** 폰: 저장 단추에 얹을 저장 상태 점 색 */
@@ -253,7 +255,7 @@ export function MapActions(
     </>
   );
 
-  const size = coarse ? 40 : 32;
+  const size = coarse ? 42 : 38;
     const menu = menuSlot && createPortal(
       <>
         {saveTip && <div data-testid="save-state-detail" role={saveState === 'error' ? 'alert' : 'status'} style={{ padding: '7px 10px', fontSize: 12, lineHeight: 1.5, color: saveState === 'error' ? t.danger : t.textMuted, overflowWrap: 'anywhere' }}>{saveTip}</div>}
@@ -270,26 +272,6 @@ export function MapActions(
             <div style={{ fontWeight: 500, marginTop: 3 }}>{tr('shell.mapActions.readOnlyHint')}</div>
           </div>
         )}
-        {canDashboard && (
-          <div style={{ padding: '2px 6px' }}>
-            <ProDashboardToggle
-              t={t}
-              map={{
-                mapId: (cloudMapId ?? readOnlyInfo?.mapId) as string,
-                title: cloudTitle ?? mapTitle,
-                kind: cloudMapId ? cloudKind : readOnlyInfo?.kind,
-                viewMode: readOnlyInfo?.dashboard ? 'dashboard' : 'edit',
-                publishId: null,
-              }}
-              compact={false}
-            />
-          </div>
-        )}
-        {cloudMapId && !readOnlyInfo && !collabDriving && !isGuest && (
-          <MenuItem t={t} testId="map-save-version" icon={<I.Cloud size={15} />}
-            label={copy.saveVersion} disabled={busy !== 'idle'}
-            onClick={pick(() => void handleSave(true))} />
-        )}
         {cloudMapId && lastSavedVersion !== null && !readOnlyInfo && (
           <MenuItem
             t={t} testId="map-pin-last" icon="☆"
@@ -297,15 +279,6 @@ export function MapActions(
             desc={`v${lastSavedVersion}`}
             title={tr('shell.mapActions.pinTitle', { v: lastSavedVersion })}
             onClick={pick(() => { setHistoryPinTarget(lastSavedVersion); setNavTab('history'); })}
-          />
-        )}
-        {cloudMapId && !readOnlyInfo?.viewer && (
-          <MenuItem
-            t={t} testId="map-save-as" icon={<I.Copy size={15} />}
-            label={tr('shell.m.saveAs')}
-            title={tr('shell.mapActions.saveAsTitle')}
-            disabled={busy !== 'idle'}
-            onClick={pick(() => setSaveIntent('saveAs'))}
           />
         )}
         {isGuest && (
@@ -321,25 +294,53 @@ export function MapActions(
       menuSlot,
     );
 
+  const saveMenu = saveMenuSlot && createPortal(<>
+    <MenuItem t={t} testId="map-save-version" icon={<I.Cloud size={20} />}
+      label={copy.saveVersion} disabled={!cloudMapId || !!readOnlyInfo || !!collabDriving || isGuest || busy !== 'idle'}
+      onClick={pick(() => void handleSave(true))} />
+    <MenuItem t={t} testId="map-save-as" icon={<I.Copy size={20} />}
+      label={tr('shell.m.saveAs')} title={tr('shell.mapActions.saveAsTitle')}
+      disabled={!cloudMapId || !!readOnlyInfo?.viewer || isGuest || busy !== 'idle'}
+      onClick={pick(() => setSaveIntent('saveAs'))} />
+  </>, saveMenuSlot);
+  const distributionMenu = distributionSlot && createPortal(<>
+        {canDashboard && (
+          <div style={{ padding: '2px 6px' }}>
+            <ProDashboardToggle
+              t={t}
+              map={{
+                mapId: (cloudMapId ?? readOnlyInfo?.mapId) as string,
+                title: cloudTitle ?? mapTitle,
+                kind: cloudMapId ? cloudKind : readOnlyInfo?.kind,
+                viewMode: readOnlyInfo?.dashboard ? 'dashboard' : 'edit',
+                publishId: null,
+              }}
+              compact={false}
+            />
+          </div>
+        )}
+    {!canDashboard && <MenuItem t={t} testId="map-dashboard-unavailable" icon={<I.MindMap size={20} />} label={copy.dashboard} disabled onClick={() => {}} />}
+  </>, distributionSlot);
+
   const closeButton = <TooltipButton data-testid="map-close" aria-label={tr('shell.mapActions.close')}
     title={tr('shell.mapActions.close')}
     disabled={busy !== 'idle' || isGuest} onClick={() => void handleClose()}
     style={{ ...btn, width: size, height: size, padding: 0, justifyContent: 'center', background: 'transparent', border: 'none', color: t.text, ...(isGuest ? guestOff : {}) }}>
-    <I.X size={17} />
+    <I.X size={22} />
   </TooltipButton>;
-  const status = <><I.Cloud size={16} /><span style={{ width: 6, height: 6, borderRadius: '50%', background: stateDot ?? t.textMuted, flexShrink: 0 }} /><span>{readOnlyInfo?.viewer ? tr('shell.mapActions.readOnlyShort') : saveStatus ?? tr('common.save')}</span></>;
+  const status = <><I.Cloud size={21} /><span style={{ width: 6, height: 6, borderRadius: '50%', background: stateDot ?? t.textMuted, flexShrink: 0 }} /><span>{readOnlyInfo?.viewer ? tr('shell.mapActions.readOnlyShort') : saveStatus ?? tr('common.save')}</span></>;
   return <>
     <ProCollabSession mapId={cloudMapId ?? (readOnlyInfo?.viewer ? readOnlyInfo.mapId : null)} kind={cloudMapId ? cloudKind : readOnlyInfo?.kind} />
     <ProDashboardLive t={t} mapId={readOnlyInfo?.dashboard ? readOnlyInfo.mapId : null} />
     {collabDriving || readOnlyInfo?.viewer ?
       <span data-testid="save-badge" data-save-state={saveState} role="status" title={saveTip ?? readOnlyInfo?.reason}
-        style={{ ...btn, cursor: 'default', background: t.surfaceAlt, color: t.textMuted, borderRadius: 20, fontSize: 11 }}>{status}</span> :
+        style={{ ...btn, cursor: 'default', background: t.surfaceAlt, color: t.textMuted, borderRadius: 9, fontSize: 12 }}>{status}</span> :
       <TooltipButton data-testid="map-save" data-save-state={saveState} aria-label={tr('common.save') + ' · ' + (saveStatus ?? '')}
         title={tr('common.save') + ' (Ctrl/⌘+S)'}
         disabled={busy !== 'idle' || isGuest} onClick={() => void handleSave()}
         style={{ ...btn, height: size, background: t.surfaceAlt, color: t.text, border: '1px solid ' + t.border, borderRadius: 20, fontSize: 11, ...(isGuest ? guestOff : {}) }}>{status}</TooltipButton>}
     {closeSlot ? createPortal(closeButton, closeSlot) : !phone && closeButton}
-    {menu}{dialogs}
+    {menu}{saveMenu}{distributionMenu}{dialogs}
   </>;
 }
 

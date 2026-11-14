@@ -11,7 +11,9 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import { countMapNodes } from '@/export/mapMeta';
 import { layoutStatus, LAYOUT_STATUS_LABEL } from './layoutStatus';
 import { useEditorUiStore } from '@/stores/editorUiStore';
-import { useTr } from '@/i18n';
+import { useLang, useTr } from '@/i18n';
+import { TooltipButton } from '@/components/top-toolbar/Tooltip';
+import bottomCopy from './bottom-toolbar-copy.json';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 
 interface Props {
@@ -104,7 +106,9 @@ export function BottomStatusBar({
   // 손가락 입력이면 막대를 44px 로 키우고, 아래 홈 표시줄(safe-area)만큼 띄운다.
   const phone = usePhoneLayout();
   const coarse = useCoarse();
-  const barH = coarse ? 44 : 30;
+  const touchSize = coarse || phone;
+  const tight = barWidth < 370;
+  const barH = touchSize ? 48 : 42;
   const sideBtn = (testId: string, title: string, icon: React.ReactNode, onClick: () => void, active = false) => (
     <button
       data-testid={testId}
@@ -112,7 +116,7 @@ export function BottomStatusBar({
       aria-label={title}
       onClick={onClick}
       style={{
-        width: coarse ? 40 : 28, height: coarse ? 36 : 24, flexShrink: 0, borderRadius: 7,
+        width: tight ? 32 : touchSize ? 40 : 34, height: touchSize ? 40 : 34, flexShrink: 0, borderRadius: 7,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: active ? t.primarySoft : t.surface,
         color: active ? t.primary : t.text,
@@ -138,11 +142,11 @@ export function BottomStatusBar({
         minWidth: 0,
       }}
     >
-      {onOpenPanels && sideBtn('m-open-panels', tr('shell.m.panels'), <I.Sidebar size={17} />, onOpenPanels)}
+      {onOpenPanels && sideBtn('m-open-panels', tr('shell.m.panels'), <I.Sidebar size={20} strokeWidth={2} />, onOpenPanels)}
       {mainView && onToggleMainView && sideBtn(
         'm-mainview-toggle',
         mainView === 'outline' ? tr('shell.m.mapView') : tr('shell.m.outlineView'),
-        mainView === 'outline' ? <I.MindMap size={17} /> : <I.Outline size={17} />,
+        mainView === 'outline' ? <I.MindMap size={20} strokeWidth={2} /> : <I.Outline size={20} strokeWidth={2} />,
         onToggleMainView,
         mainView === 'outline',
       )}
@@ -192,89 +196,47 @@ export function BottomStatusBar({
         </>
       )}
 
-      {showZoom && <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} minimal={barWidth < 480} />}
-      {showZoom && <CanvasViewButtons t={t} narrow={barWidth < 760} />}
+      {showZoom && <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} tight={tight} touchSize={touchSize} />}
+      {showZoom && <CanvasViewButtons t={t} narrow={barWidth < 760} compact={tight} />}
     </div>
   );
 }
 
-function ZoomControl({ t, zoom, onZoomChange, minimal }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void; minimal?: boolean }) {
+/** The percentage is the reset action; no duplicate 1:1 button or hidden phone controls. */
+function ZoomControl({ t, zoom, onZoomChange, tight, touchSize }: {
+  t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void; tight: boolean; touchSize: boolean;
+}) {
   const tr = useTr();
-  // 손가락 입력이면 단추를 키운다 (32×36) — 데스크톱은 예전 22×20 그대로
-  const coarse = useCoarse();
-  const bw = coarse ? 32 : 22;
-  const bh = coarse ? 36 : 20;
-  // % 클릭 = 배율 직접 입력 (2~400, Enter 적용 / Esc 취소)
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState('');
-  // 미니맵 토글 (2026-09-21) — 100% 보기 다음 자리. Alt+M / Alt+H 도 같다
+  const lang = useLang();
+  const copy = bottomCopy[lang] ?? bottomCopy.en;
+  const bw = tight ? 32 : touchSize ? 40 : 34;
+  const bh = touchSize ? 40 : 34;
   const minimapOpen = useEditorUiStore((s) => s.minimapOpen);
   const toggleMinimap = useEditorUiStore((s) => s.toggleMinimap);
-
-  const commit = (apply: boolean) => {
-    setEditing(false);
-    if (!apply) return;
-    const v = parseInt(val, 10);
-    if (!Number.isNaN(v)) onZoomChange(Math.min(400, Math.max(2, v)));
-  };
-
-  const stepBtn = (children: React.ReactNode, onClick?: () => void, title?: string) => (
-    <button onClick={onClick} title={title} aria-label={title} style={{
-      width: bw, height: bh, flexShrink: 0, background: 'transparent', border: 'none',
-      color: t.text, cursor: 'pointer', borderRadius: 3,
+  const stepBtn = (testId: string, children: React.ReactNode, onClick: () => void, title: string) => (
+    <TooltipButton type="button" data-testid={testId} onClick={onClick} title={title} aria-label={title} style={{
+      width: bw, height: bh, flexShrink: 0, background: t.surface, border: '1px solid ' + t.border,
+      color: t.text, cursor: 'pointer', borderRadius: 7,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>{children}</button>
+    }}>{children}</TooltipButton>
   );
-
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: coarse ? 1 : 3, flexShrink: 0, marginLeft: 'auto' }}>
-      {/* 확대·축소는 돋보기 +/−, 100% 는 '1:1' — 노드 추가 + 와 그림이 겹치지 않게
-          (2026-10-24 UI/UX 검토 ⑤) */}
-      {!minimal && stepBtn(<I.ZoomOut size={14} />, () => onZoomChange(Math.max(2, zoom - 5)), tr('shell.status.zoomOut'))}
-      {editing ? (
-        <input
-          autoFocus
-          value={val}
-          onChange={(e) => setVal(e.target.value.replace(/[^0-9]/g, ''))}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit(true);
-            else if (e.key === 'Escape') commit(false);
-          }}
-          onBlur={() => commit(true)}
-          title={tr('shell.status.zoomInputTitle')}
-          style={{
-            width: 44, padding: '2px 4px', textAlign: 'center',
-            background: t.surface, border: `1px solid ${t.primary}`,
-            borderRadius: 4, color: t.text, fontSize: 11, fontWeight: 700,
-            fontFamily: 'ui-monospace, monospace', outline: 'none',
-          }} />
-      ) : (
-        <button
-          onClick={() => { setVal(String(Math.round(zoom))); setEditing(true); }}
-          title={tr('shell.status.zoomClickTitle')}
-          style={{
-            padding: '2px 10px', background: t.surface, height: coarse ? 32 : undefined,
-            border: `1px solid ${t.border}`, borderRadius: 4,
-            color: t.text, cursor: 'pointer', fontSize: 11, fontWeight: 600,
-            fontFamily: 'ui-monospace, monospace', minWidth: 44,
-          }}>{Math.round(zoom)}%</button>
-      )}
-      {!minimal && stepBtn(<I.ZoomIn size={14} />, () => onZoomChange(Math.min(400, zoom + 5)), tr('shell.status.zoomIn'))}
-      {!minimal && <span style={{ marginLeft: coarse ? 0 : 3, display: 'flex' }}>{stepBtn(
-        <span data-testid="zoom-1to1" style={{ fontSize: 10.5, fontWeight: 700, fontFamily: 'ui-monospace, monospace', letterSpacing: -0.3 }}>1:1</span>,
-        () => onZoomChange(100), tr('shell.status.zoom100'))}</span>}
-      {!minimal && <button
-        data-testid="minimap-toggle"
-        onClick={toggleMinimap}
-        title={minimapOpen ? tr('shell.status.minimapClose') : tr('shell.status.minimapOpen')}
-        aria-label={minimapOpen ? tr('shell.status.minimapClose') : tr('shell.status.minimapOpen')}
-        style={{
-          width: bw, height: bh, flexShrink: 0, border: 'none', borderRadius: 3, cursor: 'pointer',
-          background: minimapOpen ? t.primarySoft : 'transparent',
-          color: minimapOpen ? t.primary : t.text,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      ><I.Minimap size={13} /></button>}
+    <div data-testid="zoom-controls" onKeyDown={(e) => { if (e.key !== 'Escape') e.stopPropagation(); }}
+      style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, marginLeft: 'auto' }}>
+      {stepBtn('zoom-out', <I.Minus size={21} strokeWidth={2.2} />, () => onZoomChange(Math.max(2, zoom - 5)), tr('shell.status.zoomOut'))}
+      <TooltipButton type="button" data-testid="zoom-reset" onClick={() => onZoomChange(100)}
+        title={copy.zoomReset} aria-label={Math.round(zoom) + '% · ' + copy.zoomReset}
+        style={{ width: tight ? 48 : 54, height: bh, padding: '0 3px', flexShrink: 0,
+          background: t.surface, border: '1px solid ' + t.border, borderRadius: 7,
+          color: t.text, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+          fontFamily: 'ui-monospace, monospace' }}>{Math.round(zoom)}%</TooltipButton>
+      {stepBtn('zoom-in', <I.Plus size={21} strokeWidth={2.2} />, () => onZoomChange(Math.min(400, zoom + 5)), tr('shell.status.zoomIn'))}
+      <TooltipButton type="button" data-testid="minimap-toggle" onClick={toggleMinimap}
+        title={copy.minimapToggle} aria-label={copy.minimapToggle} aria-pressed={minimapOpen}
+        style={{ width: bw, height: bh, flexShrink: 0, border: '1px solid ' + (minimapOpen ? t.primaryBorder : t.border),
+          borderRadius: 7, cursor: 'pointer', background: minimapOpen ? t.primarySoft : t.surface,
+          color: minimapOpen ? t.primary : t.text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      ><I.Minimap size={21} strokeWidth={2} /></TooltipButton>
     </div>
   );
 }

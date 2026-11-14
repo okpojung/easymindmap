@@ -1,6 +1,6 @@
 {
   "ko": {
-    "document": "문서",
+    "document": "저장 관련",
     "view": "보기",
     "create": "생성 및 배포",
     "other": "기타",
@@ -11,10 +11,13 @@
     "collab": "협업 중 · 자동 반영",
     "more": "더보기",
     "help": "도움말",
-    "saveVersion": "버전 저장"
+    "saveVersion": "버전 저장",
+    "saveOptions": "저장 옵션",
+    "distribution": "공유 · 퍼블리싱 · 대시보드맵",
+    "dashboard": "대시보드맵"
   },
   "en": {
-    "document": "Document",
+    "document": "Save and export",
     "view": "View",
     "create": "Create and distribute",
     "other": "Other",
@@ -25,10 +28,13 @@
     "collab": "Collaborating · Auto sync",
     "more": "More",
     "help": "Help",
-    "saveVersion": "Save version"
+    "saveVersion": "Save version",
+    "saveOptions": "Save options",
+    "distribution": "Share · Publish · Dashboard",
+    "dashboard": "Dashboard map"
   },
   "ja": {
-    "document": "文書",
+    "document": "保存と書き出し",
     "view": "表示",
     "create": "作成と配布",
     "other": "その他",
@@ -39,10 +45,13 @@
     "collab": "共同編集中 · 自動同期",
     "more": "その他の操作",
     "help": "ヘルプ",
-    "saveVersion": "バージョンを保存"
+    "saveVersion": "バージョンを保存",
+    "saveOptions": "保存オプション",
+    "distribution": "共有・公開・ダッシュボード",
+    "dashboard": "ダッシュボードマップ"
   },
   "zh": {
-    "document": "文档",
+    "document": "保存与导出",
     "view": "视图",
     "create": "创建与分发",
     "other": "其他",
@@ -53,6 +62,9 @@
     "collab": "协作中 · 自动同步",
     "more": "更多",
     "help": "帮助",
-    "saveVersion": "保存版本"
+    "saveVersion": "保存版本",
+    "saveOptions": "保存选项",
+    "distribution": "共享 · 发布 · 仪表板",
+    "dashboard": "仪表板脑图"
   }
 }

@@ -328,7 +328,7 @@ export function Canvas({
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
 
   const spacingX = useEditorUiStore((s) => s.spacingX);
-  // 미니맵 (2026-09-21) — 상태바 버튼 · Alt+M / Alt+H
+  // 미니맵 — 상태바 버튼 · Alt+H
   const minimapOpen = useEditorUiStore((s) => s.minimapOpen);
   const toggleMinimap = useEditorUiStore((s) => s.toggleMinimap);
   const setMinimapOpen = useEditorUiStore((s) => s.setMinimapOpen);
@@ -1340,9 +1340,9 @@ export function Canvas({
         return;
       }
 
-      // 미니맵 토글 — Alt+M 또는 Alt+H (2026-09-21 사용자 요청). 한글 자판
-      // 상태의 같은 키(ㅡ · ㅗ)도 받는다. Alt 없는 H 는 아래 Pan 모드.
-      if (e.altKey && ['m', 'M', 'ㅡ', 'h', 'H', 'ㅗ'].includes(e.key)) {
+      // 미니맵 토글 — Alt+H만 사용. Alt+M은 다른 앱에 양보한다.
+      // 한글 자판의 같은 키(ㅗ)도 받는다. Alt 없는 H는 아래 Pan 모드.
+      if (e.altKey && ['h', 'H', 'ㅗ'].includes(e.key)) {
         e.preventDefault();
         toggleMinimap();
         return;

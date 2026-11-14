@@ -48,7 +48,7 @@ interface EditorUiState {
 
   // Display toggles (NODE-15 style)
   showTags: boolean;
-  // 미니맵 (2026-09-21) — 캔버스 우하단. 상태바 버튼 · Alt+M / Alt+H 로 토글
+  // 미니맵 (2026-09-21) — 캔버스 우하단. 상태바 버튼 · Alt+H 로 토글
   minimapOpen: boolean;
   // Tags hidden from the canvas when showTags is on (per-tag filter).
   hiddenTags: string[];

@@ -4,6 +4,7 @@ import { TooltipButton } from '@/components/top-toolbar/Tooltip';
 // Spec: docs/03-editor-core/canvas/10-canvas.md § 21.2
 
 import { FloatingToolbarFrame } from './FloatingToolbarFrame';
+import { AttachmentAddMenu } from './AttachmentAddMenu';
 import { useRegisterCanvasViewControls } from './canvasViewControls';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -348,6 +349,7 @@ export function CanvasFloatingToolbar({
           </ToolbarBtn>
           {addMenu}
         </span>
+        <AttachmentAddMenu t={t} compact onOpen={() => { setAddMenuOpen(false); setMoreOpen(false); }} />
         {calendarDlg}
         {linkMenu.dialog}
         <ToolbarBtn
@@ -425,6 +427,9 @@ export function CanvasFloatingToolbar({
         {addMenu}
       </span>
       {calendarDlg}
+      <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
+      <AttachmentAddMenu t={t} onOpen={() => { setAddMenuOpen(false); setLinkOpen(false); }} />
+      <div style={{ width: 1, background: t.divider, margin: '4px 4px', alignSelf: 'stretch' }} />
       
       {!kanban && (
       <ToolbarBtn

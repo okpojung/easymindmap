@@ -58,7 +58,7 @@ export function TooltipIconBtn({ t, title, children, disabled, active, testId, o
   testId?: string; onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const [hover, setHover] = useState(false);
-  const size = useCoarse() ? 40 : 32;
+  const size = useCoarse() ? 42 : 38;
   return <TooltipButton title={title} aria-label={title} data-testid={testId} disabled={disabled} onClick={onClick}
     onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
     style={{ width: size, height: size, borderRadius: 6, flexShrink: 0, background: active ? t.primarySoft : hover && !disabled ? t.surfaceAlt : 'transparent',

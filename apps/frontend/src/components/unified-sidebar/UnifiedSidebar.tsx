@@ -100,14 +100,14 @@ export function UnifiedSidebar({
   const railNewMap = authEnabled && guest && !session;
   const navItems = [
     // 새 맵 만들기 — 기본 맵 또는 등록된 템플릿에서 시작 (Guest 만)
-    ...(railNewMap ? [{ key: 'newMap' as NavTabKey, label: tr('shell.sidebar.newMap'), icon: <I.Plus size={17} /> }] : []),
-    { key: 'search'   as NavTabKey, label: tr('common.search'), icon: <I.Search size={17} /> },
-    { key: 'template' as NavTabKey, label: tr('shell.sidebar.template'), icon: <I.Template size={17} /> },
-    { key: 'history'  as NavTabKey, label: tr('shell.sidebar.history'), icon: <I.History size={17} /> },
+    ...(railNewMap ? [{ key: 'newMap' as NavTabKey, label: tr('shell.sidebar.newMap'), icon: <I.Plus size={21} /> }] : []),
+    { key: 'search'   as NavTabKey, label: tr('common.search'), icon: <I.Search size={21} /> },
+    { key: 'template' as NavTabKey, label: tr('shell.sidebar.template'), icon: <I.Template size={21} /> },
+    { key: 'history'  as NavTabKey, label: tr('shell.sidebar.history'), icon: <I.History size={21} /> },
     // 맵 변수 [&이름] — 등록·서식·수식·값으로 보기 (2026-10-29)
-    { key: 'variables' as NavTabKey, label: tr('shell.sidebar.variables'), icon: <I.Variable size={17} /> },
+    { key: 'variables' as NavTabKey, label: tr('shell.sidebar.variables'), icon: <I.Variable size={21} /> },
     // 맵 전체 설정 (레벨별 폰트 등) — 특정 노드가 아닌 맵 단위 설정 메뉴
-    { key: 'mapSettings' as NavTabKey, label: tr('shell.sidebar.mapSettings'), icon: <I.Settings size={17} /> },
+    { key: 'mapSettings' as NavTabKey, label: tr('shell.sidebar.mapSettings'), icon: <I.Settings size={21} /> },
   ];
   // 레일은 글자 제목 없이 구분선으로 세 묶음 (2026-10-24 UI/UX 검토 ①):
   //   위 = 맵 전체(아웃라인~맵 설정) · 가운데 = 선택 노드(스타일~노트·태그)
@@ -115,14 +115,14 @@ export function UnifiedSidebar({
   // Integrations 는 '탐색'이 아니라 맵 연결 설정이라 서비스 묶음으로 옮겼고,
   // 그림도 링크(링크·첨부와 같았던 것) 대신 플러그다.
   const inspectorItems = [
-    { key: 'style'   as InspectorTabKey, label: tr('shell.sidebar.style'), icon: <I.Palette size={17} /> },
-    { key: 'layout'  as InspectorTabKey, label: tr('shell.sidebar.layout'), icon: <I.Layout size={17} /> },
-    { key: 'icon'    as InspectorTabKey, label: tr('shell.sidebar.icon'), icon: <I.Smile size={17} /> },
-    { key: 'link'    as InspectorTabKey, label: tr('shell.sidebar.link'), icon: <I.Link size={17} /> },
-    { key: 'attach'  as InspectorTabKey, label: tr('shell.sidebar.attach'), icon: <I.Paperclip size={17} /> },
-    { key: 'md'      as InspectorTabKey, label: tr('shell.sidebar.md'), icon: <I.Markdown size={17} /> },
-    { key: 'note'    as InspectorTabKey, label: tr('shell.sidebar.note'), icon: <I.Note size={17} /> },
-    { key: 'tag'     as InspectorTabKey, label: tr('shell.sidebar.tag'), icon: <I.Tag size={17} /> },
+    { key: 'style'   as InspectorTabKey, label: tr('shell.sidebar.style'), icon: <I.Palette size={21} /> },
+    { key: 'layout'  as InspectorTabKey, label: tr('shell.sidebar.layout'), icon: <I.Layout size={21} /> },
+    { key: 'icon'    as InspectorTabKey, label: tr('shell.sidebar.icon'), icon: <I.Smile size={21} /> },
+    { key: 'link'    as InspectorTabKey, label: tr('shell.sidebar.link'), icon: <I.Link size={21} /> },
+    { key: 'attach'  as InspectorTabKey, label: tr('shell.sidebar.attach'), icon: <I.Paperclip size={21} /> },
+    { key: 'md'      as InspectorTabKey, label: tr('shell.sidebar.md'), icon: <span aria-hidden="true" style={{ fontSize: 16, fontWeight: 850, letterSpacing: -.7, lineHeight: 1 }}>MD</span> },
+    { key: 'note'    as InspectorTabKey, label: tr('shell.sidebar.note'), icon: <I.Note size={21} /> },
+    { key: 'tag'     as InspectorTabKey, label: tr('shell.sidebar.tag'), icon: <I.Tag size={21} /> },
   ];
 
   // 펼침은 setNavTab/setInspectorTab(store)이 담당한다 — 여기서 토글을
@@ -138,7 +138,7 @@ export function UnifiedSidebar({
   // 폰: 접혀 있으면 자리를 차지하지 않는다 (여는 문은 하단 막대의 ☰)
   if (phone && collapsed) return null;
 
-  const railW = phone && coarse ? 52 : 44;
+  const railW = phone && coarse ? 56 : 50;
   const body = (
     <>
       {/* Icon rail — 항목이 화면보다 많으면(낮은 창·눕힌 폰) 레일 안에서 스크롤 */}
@@ -161,7 +161,7 @@ export function UnifiedSidebar({
             : collapsed ? tr('shell.sidebar.expand') : tr('shell.sidebar.collapse')}
           onClick={onToggleCollapsed}
           style={{
-            margin: `0 ${(railW - (phone && coarse ? 40 : 30)) / 2}px 8px`,
+            margin: `0 ${(railW - (phone && coarse ? 44 : 36)) / 2}px 8px`,
             width: phone && coarse ? 40 : 30, height: phone && coarse ? 40 : 30, borderRadius: 6,
             flexShrink: 0,
             background: t.primarySoft, color: t.primary,
@@ -169,7 +169,7 @@ export function UnifiedSidebar({
             cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-          {collapsed ? <I.ChevronRight size={15} /> : <I.ChevronLeft size={15} />}
+          {collapsed ? <I.ChevronRight size={18} /> : <I.ChevronLeft size={18} />}
         </button>
 
         <div style={{ margin: '0 10px 6px', height: 1, background: t.divider }} />
@@ -205,9 +205,10 @@ export function UnifiedSidebar({
                   active={activeSection === 'inspector' && inspectorTab === 'ai'}
                   expanded={!collapsed}
                   big={phone && coarse}
+                  emphasis
                   testId="rail-ai"
                   onClick={() => handleRailClick('inspector', 'ai')}>
-          <I.Sparkles size={17} />
+          <span aria-hidden="true" style={{ fontSize: 16, fontWeight: 850, letterSpacing: -.5 }}>AI</span>
         </RailIcon>
         <RailIcon t={t} title="Integrations"
                   active={activeSection === 'nav' && navTab === 'plugins'}
@@ -215,7 +216,7 @@ export function UnifiedSidebar({
                   big={phone && coarse}
                   testId="rail-plugins"
                   onClick={() => handleRailClick('nav', 'plugins')}>
-          <I.Plug size={17} />
+          <I.Plug size={21} />
         </RailIcon>
 
         {/* 협업 — 유료 기능의 **자리**. 알맹이는 유료 모듈이 채운다
@@ -228,7 +229,7 @@ export function UnifiedSidebar({
                   big={phone && coarse}
                   testId="rail-collab"
                   onClick={() => handleRailClick('nav', 'collab')}>
-          <I.Users size={16} />
+          <I.Users size={21} />
         </RailIcon>
       </div>
 
@@ -326,7 +327,7 @@ export function UnifiedSidebar({
 
   return (
     <div style={{
-      width: collapsed ? 44 : 44 + sidebarWidth, flexShrink: 0,
+      width: collapsed ? railW : railW + sidebarWidth, flexShrink: 0,
       background: t.surfaceAlt,
       borderRight: `1px solid ${t.border}`,
       display: 'flex',
@@ -348,11 +349,12 @@ interface RailIconProps {
   /** 폰(손가락 입력) — 누를 자리 40px */
   big?: boolean;
   testId?: string;
+  emphasis?: boolean;
   onClick: () => void;
   children: ReactNode;
 }
 
-function RailIcon({ t, title, active, expanded, big, testId, onClick, children }: RailIconProps) {
+function RailIcon({ t, title, active, expanded, big, testId, emphasis, onClick, children }: RailIconProps) {
   const [h, setH] = useState(false);
   const showIndicator = active && expanded;
   return (
@@ -364,10 +366,10 @@ function RailIcon({ t, title, active, expanded, big, testId, onClick, children }
       onMouseLeave={() => setH(false)}
       style={{
         margin: big ? '2px 6px' : '1px 7px',
-        width: big ? 40 : 30, height: big ? 40 : 30, borderRadius: 6, flexShrink: 0,
-        background: showIndicator ? t.primarySoft : (h ? t.surfaceAlt : 'transparent'),
-        color:      showIndicator ? t.primary     : (h ? t.text      : t.textMuted),
-        border: 'none', cursor: 'pointer',
+        width: big ? 44 : 36, height: big ? 44 : 36, borderRadius: 6, flexShrink: 0,
+        background: emphasis ? (showIndicator || h ? '#C2410C' : '#9A3412') : showIndicator ? t.primarySoft : (h ? t.surfaceAlt : 'transparent'),
+        color: emphasis ? '#FFFFFF' : showIndicator ? t.primary : t.text,
+        border: emphasis ? '1px solid #C2410C' : showIndicator ? `1px solid ${t.primaryBorder}` : '1px solid transparent', cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         position: 'relative',
         transition: 'background 120ms, color 120ms',

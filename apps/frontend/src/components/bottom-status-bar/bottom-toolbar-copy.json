@@ -1,0 +1,18 @@
+{
+  "ko": {
+    "zoomReset": "현재 배율 · 누르면 100%로 보기",
+    "minimapToggle": "미니맵 표시/숨기기 (Alt+H)"
+  },
+  "en": {
+    "zoomReset": "Current zoom · click to reset to 100%",
+    "minimapToggle": "Show/hide minimap (Alt+H)"
+  },
+  "ja": {
+    "zoomReset": "現在の倍率 · クリックで100%に戻す",
+    "minimapToggle": "ミニマップの表示/非表示 (Alt+H)"
+  },
+  "zh": {
+    "zoomReset": "当前缩放 · 点击恢复100%",
+    "minimapToggle": "显示/隐藏小地图 (Alt+H)"
+  }
+}

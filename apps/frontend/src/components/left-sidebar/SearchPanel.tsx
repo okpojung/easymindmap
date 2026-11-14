@@ -4,7 +4,6 @@ import type { MindNode } from '@/editor/__samples__/types';
 import { mapCenters } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
-import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
@@ -73,7 +72,6 @@ function searchMap(
 
 export function SearchPanel({ t }: { t: ThemeTokens }) {
   const tr = useTr();
-  const setInspectorTab = useEditorUiStore((s) => s.setInspectorTab);
   const map = useDocumentStore((s) => s.map);
   const expandAncestors = useDocumentStore((s) => s.expandAncestors);
   const setSelectedId = useInteractionStore((s) => s.setSelectedId);
@@ -193,13 +191,7 @@ export function SearchPanel({ t }: { t: ThemeTokens }) {
         </div>
       ))}
 
-      <button type="button" data-testid="search-open-tags"
-        onClick={() => setInspectorTab('tag')}
-        style={{ marginTop: 14, minHeight: 40, width: '100%', padding: '8px 10px',
-          border: `1px solid ${t.border}`, borderRadius: 6,
-          background: t.surface, color: t.primary, cursor: 'pointer', fontSize: 12 }}>
-        {tr('panel.search.openTagPanel')}
-      </button>
+
     </div>
   );
 }

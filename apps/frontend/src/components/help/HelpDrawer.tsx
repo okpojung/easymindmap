@@ -23,7 +23,7 @@ const shortcuts = [
   ['다중 노드 추가', 'Ctrl+Space'], ['실행 취소', 'Ctrl+Z'],
   ['다시 실행', 'Ctrl+Y / Ctrl+Shift+Z'], ['노드 복사 / 잘라내기 / 붙여넣기', 'Ctrl+C / X / V'],
   ['선택 노드 또는 연결선 삭제', 'Delete'], ['확대 / 축소', '+ / −'],
-  ['보기 초기화', '0'], ['화면 이동 모드', 'H'], ['미니맵 표시', 'Alt+M / Alt+H'],
+  ['보기 초기화', '0'], ['화면 이동 모드', 'H'], ['미니맵 표시 / 숨기기', 'Alt+H'],
   ['선택 노드에 초점', 'Alt+F'], ['선택 하위 모두 펼치기 / 접기', 'Alt++ / Alt+−'],
   ['도움말 열기 (입력 중 제외)', '?'], ['모드 취소 / 도움말 닫기', 'Esc'],
 ];
@@ -38,7 +38,7 @@ const iconGuide = [
   { icon: I.Share, name: '공유', detail: '저장된 맵의 공유 설정을 엽니다. 계정·서버에 따라 제공 범위가 다릅니다.' },
   { icon: I.Globe, name: '퍼블리싱', detail: '맵의 공개 설정을 엽니다. 공개 범위를 먼저 확인하세요.' },
   { icon: I.Download, name: '내보내기', detail: 'HTML 또는 Markdown 파일로 내려받습니다.' },
-  { icon: I.Minimap, name: '미니맵', detail: '전체 맵에서 현재 위치를 확인합니다.', key: 'Alt+M' },
+  { icon: I.Minimap, name: '미니맵', detail: '전체 맵에서 현재 위치를 확인합니다.', key: 'Alt+H' },
   { icon: I.Hand, name: '화면 이동', detail: '맵을 편집하지 않고 화면을 이동합니다.', key: 'H' },
 ];
 
@@ -105,7 +105,7 @@ export function HelpDrawer({ open, onClose, t = THEMES.light }: HelpDrawerProps)
         <section className="emm-help__section" id={sectionId('icons')} tabIndex={-1} aria-labelledby={sectionId('icons-title')}>
           <h3 id={sectionId('icons-title')}>01 · 아이콘 안내</h3>
           <p>아이콘의 이름은 마우스를 올려 확인하세요. 모바일에서는 화면의 메뉴 이름과 이 안내를 함께 참고하세요.</p>
-          <p>상단에서 맵·분할·아웃라인·간트 보기를 선택합니다. 캔버스 도구막대는 화살표로 접고, 점 손잡이를 끌어 이동하고, 핀으로 위치를 고정합니다. 손잡이를 두 번 누르거나 Home 키를 누르면 위치를 초기화합니다. 화면 이동(Pan)·초점·맞춤·전체화면은 하단에서 사용하며, 모바일 Pan은 항상 표시됩니다.</p>
+          <p>상단은 저장·보기·간트·공유/공개 그룹으로 구분됩니다. 보기 그룹의 첫 아이콘은 현재 화면과 반대인 맵 또는 아웃라인으로 전환하며, 분할 화면과 테마는 옆에서 선택합니다. 공유·퍼블리싱·대시보드맵은 공유/공개 메뉴에 있습니다. 캔버스 도구막대는 화살표로 접고, 점 손잡이를 끌어 이동하고, 핀으로 위치를 고정합니다. 손잡이를 두 번 누르거나 Home 키를 누르면 위치를 초기화합니다. 화면 이동(Pan)·초점·맞춤·전체화면은 하단에서 사용하며, 모바일 Pan은 항상 표시됩니다. 하단의 현재 배율을 누르면 100%로 돌아갑니다. 미니맵 표시·숨기기는 Alt+H입니다.</p>
           <dl className="emm-help__icons">{iconGuide.map(({ icon: Icon, name, detail, key }) => <div key={name}><dt><Icon size={18} aria-hidden="true" /><strong>{name}</strong>{key && <kbd>{key}</kbd>}</dt><dd>{detail}</dd></div>)}</dl>
         </section>
         <section className="emm-help__section" id={sectionId('shortcuts')} tabIndex={-1} aria-labelledby={sectionId('shortcuts-title')}>
@@ -116,13 +116,14 @@ export function HelpDrawer({ open, onClose, t = THEMES.light }: HelpDrawerProps)
         </section>
         <section className="emm-help__section" id={sectionId('notes')} tabIndex={-1} aria-labelledby={sectionId('notes-title')}>
           <h3 id={sectionId('notes-title')}>03 · 메모</h3>
+          <p>노드를 선택한 뒤 플로팅 도구막대의 첨부 추가 메뉴에서 MD 파일, 노트 문단, 코드블록, 표를 추가할 수 있습니다. MD 파일은 첨부로, 나머지는 노트로 관리합니다.</p>
           <ol><li>메모를 붙일 노드를 선택합니다.</li><li>왼쪽 메뉴의 <strong>노트</strong>를 엽니다.</li><li>문단, 코드, 표, 체크리스트 중 필요한 유형을 추가하고 저장합니다.</li></ol>
           <p>노트 목록에서 내용을 미리 보거나 편집하고, 해당 노드로 이동할 수 있습니다. 체크리스트는 항목의 완료 여부를 표시합니다.</p>
           <p className="emm-help__callout">메모 추가 전용 단축키는 현재 기본 편집기에 없습니다. 노트 메뉴의 추가 버튼을 사용하세요.</p>
         </section>
         <section className="emm-help__section" id={sectionId('ai')} tabIndex={-1} aria-labelledby={sectionId('ai-title')}>
           <h3 id={sectionId('ai-title')}>04 · AI / MCP</h3>
-          <p>앱의 AI 버튼과 외부 AI를 연결하는 MCP는 서로 다른 진입점입니다.</p>
+          <p>왼쪽 메뉴의 AI 버튼과 외부 AI를 연결하는 MCP는 서로 다른 진입점입니다.</p>
           <ol><li><strong>계정 메뉴 → AI 커넥터(MCP)</strong>를 엽니다.</li><li>그 화면에 표시된 연결 주소를 복사합니다. 주소는 서버마다 다르며, 브라우저의 앱 주소와 같다고 가정하면 안 됩니다.</li><li>알아보기 쉬운 이름으로 토큰을 발급합니다. 원문은 발급 직후 한 번만 표시되므로 안전하게 보관합니다.</li><li>MCP를 지원하는 AI 도구의 커넥터 설정에서 주소와 토큰을 등록합니다. 입력 방식은 AI 도구의 안내를 따르세요.</li><li>연결 후 먼저 읽기 요청으로 시험하고, 수정 요청 전에는 대상 맵과 범위를 확인합니다.</li></ol>
           <p className="emm-help__callout">토큰은 비밀번호처럼 취급하세요. 공개 맵이나 채팅에 붙이지 마세요. 분실하거나 더 이상 필요 없으면 같은 화면에서 폐기하세요. 서버가 MCP를 지원하지 않으면 연결할 수 없습니다.</p>
         </section>
@@ -152,7 +153,7 @@ export function HelpDrawer({ open, onClose, t = THEMES.light }: HelpDrawerProps)
         </section>
         <section className="emm-help__section" id={sectionId('save')} tabIndex={-1} aria-labelledby={sectionId('save-title')}>
           <h3 id={sectionId('save-title')}>09 · 저장 / 내보내기</h3>
-          <p>단독 편집 맵은 상단 저장 표시를 누르거나 Ctrl+S로 저장합니다. 입력 중인 노드 글자는 먼저 확정한 뒤 저장합니다. 별도 버전 저장은 더보기 메뉴에서 선택합니다. 협업맵은 ‘협업 중 · 자동 반영’ 상태만 표시하며, 게스트·읽기 전용·협업맵에서는 수동 저장 단축키가 실행되지 않습니다.</p>
+          <p>단독 편집 맵은 상단 저장 표시를 누르거나 Ctrl+S로 저장합니다. 입력 중인 노드 글자는 먼저 확정한 뒤 저장합니다. 버전 저장과 다른 이름으로 저장은 저장 옆의 저장 옵션 아이콘에서 선택합니다. 되돌리기와 다시 실행 사이 숫자는 되돌린 단계 수입니다. 협업맵은 ‘협업 중 · 자동 반영’ 상태만 표시하며, 게스트·읽기 전용·협업맵에서는 수동 저장 단축키가 실행되지 않습니다.</p>
           <p>상단의 저장 상태를 확인하세요. 저장 중, 미저장 변경, 재시도, 오류는 저장 완료와 다릅니다. 게스트 맵이나 아직 서버에 저장하지 않은 맵도 구분해 확인하세요.</p>
           <ul><li><strong>HTML:</strong> 브라우저에서 볼 수 있는 파일로 내보냅니다.</li><li><strong>암호화 HTML:</strong> 암호로 보호하는 내보내기입니다. 암호는 별도의 안전한 경로로 전달하세요.</li><li><strong>Markdown:</strong> 마인드맵 내용을 Markdown 형식으로 내려받습니다.</li></ul>
           <p>첨부파일 처리에 따라 ZIP으로 내려받을 수 있습니다. 내보내기 화면의 안내를 확인하고, 외부 링크나 첨부가 빠지지 않았는지 결과 파일을 열어 확인하세요. 파일 내보내기는 서버 저장이나 공유 설정 변경과 별개입니다.</p>

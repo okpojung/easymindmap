@@ -18,7 +18,8 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { resolveTagColor } from '@/editor/node-renderer/resolveTagColor';
 import { TableDialog, TableGridPicker } from '@/editor/node-renderer/TableDialog';
 import { noteTableFromMd, noteTableToMd } from './noteTable';
-import { useTr } from '@/i18n';
+import { useLang, useTr } from '@/i18n';
+import { tagVisibilityCopy } from './tagVisibilityCopy';
 
 // 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
 import '@/components/ui/mobileCss';
@@ -36,6 +37,8 @@ const BLOCK_TYPES: { type: NoteBlockType; label: string }[] = [
 export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; selectedId: string | null; part?: 'all' | 'note' | 'tag' }) {
   const tr = useTr();
   const coarse = useCoarse();
+  const lang = useLang();
+  const visibilityCopy = tagVisibilityCopy[lang === 'ko' || lang === 'ja' || lang === 'zh' ? lang : 'en'];
   const map = useDocumentStore((s) => s.map);
   const addNodeTag = useDocumentStore((s) => s.addNodeTag);
   const removeNodeTag = useDocumentStore((s) => s.removeNodeTag);
@@ -63,6 +66,8 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
   // 이 맵에서 쓰는 태그 (2026-11-11 사용자 요청) — 한 번 쓴 태그를 고르고 노드를 누르면 그 노드에 붙는다.
   // 많이 쓴 순. 입력란에 글을 치면 그 글이 든 태그만 보인다.
   const mapTags = useMemo(() => part === 'note' ? [] : collectMapTags(map), [map, part]);
+  const visibilityTags = useMemo(() => part === 'note' ? [] : collectMapTags(map, { includeAuto: true }), [map, part]);
+  const manualTagNames = useMemo(() => new Set(mapTags.map(([name]) => name)), [mapTags]);
   const tagPainter = useInteractionStore((s) => s.tagPainter);
   const setTagPainter = useInteractionStore((s) => s.setTagPainter);
   const setStylePainter = useInteractionStore((s) => s.setStylePainter);
@@ -70,8 +75,8 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
   useEffect(() => (part === 'note' ? undefined : () => setTagPainter(null)), [part, setTagPainter]);
   // 고른 태그가 맵에서 모두 지워지면 모드 끝
   useEffect(() => { if (tagPainter && !mapTags.some(([g]) => g === tagPainter)) setTagPainter(null); }, [mapTags, tagPainter, setTagPainter]);
-  const q = tagDraft.trim().toLowerCase();
-  const shownTags = q ? mapTags.filter(([g]) => g.toLowerCase().includes(q)) : mapTags;
+  // Adding a tag must never filter or hide the independent visibility list.
+  const shownTags = mapTags;
   const pickPainter = (g: string) => {
     if (tagPainter === g) { setTagPainter(null); return; }
     setStylePainter(null);
@@ -88,12 +93,36 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
         minHeight: 44, boxSizing: 'border-box', padding: '8px 12px', margin: '0 0 2px',
         borderBottom: `1px solid ${t.divider}`, cursor: 'pointer',
       }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{tr('inspector.tags.showToggle')}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{visibilityCopy.all}</span>
         <input type="checkbox" role="switch" checked={showTags}
           onChange={(e) => setShowTags(e.target.checked)}
           style={{ width: 20, height: 20, flexShrink: 0, accentColor: t.primary, cursor: 'pointer' }} />
       </label>
     )}
+    {part !== 'note' && <InspectorSection t={t} title={visibilityCopy.title}>
+      <div data-testid="tag-visibility-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <p style={{ margin: '0 0 4px', fontSize: 12, lineHeight: 1.5, color: t.textMuted }}>{showTags ? visibilityCopy.hint : visibilityCopy.off}</p>
+        {visibilityTags.map(([name, count]) => {
+          const visible = !hiddenTags.includes(name);
+          const tc = resolveTagColor(name, t);
+          return <div key={name} data-tag-name={name} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 36 }}>
+            <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', fontSize: 12, fontWeight: 600, color: t.text }}>
+              <span style={{ background: tc.bg, color: tc.text, border: '1px solid ' + tc.border, padding: '3px 6px', borderRadius: 4 }}>{name}</span>
+              <span style={{ marginLeft: 6, color: t.textMuted, fontWeight: 400 }}>{count}{!manualTagNames.has(name) ? ' · ' + visibilityCopy.auto : ''}</span>
+            </span>
+            <button type="button" data-testid="map-tag-visibility" aria-pressed={visible}
+              aria-label={tr(visible ? 'inspector.tags.hideTag' : 'inspector.tags.showTag', { tag: name })}
+              title={tr(visible ? 'inspector.tags.hideTag' : 'inspector.tags.showTag', { tag: name })}
+              onClick={() => toggleTagHidden(name)}
+              style={{ minWidth: 84, minHeight: coarse ? 44 : 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, border: '1px solid ' + (visible ? t.primaryBorder : t.border), borderRadius: 5, background: visible ? t.primarySoft : t.surface, color: visible ? t.primary : t.textMuted, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>{!visible && <path d="m3 3 18 18"/>}</svg>
+              {visible ? visibilityCopy.shown : visibilityCopy.hidden}
+            </button>
+          </div>;
+        })}
+        {!visibilityTags.length && <p data-testid="tag-visibility-empty" style={{ margin: 0, fontSize: 12, color: t.textMuted, lineHeight: 1.5 }}>{visibilityCopy.empty}</p>}
+      </div>
+    </InspectorSection>}
     <div data-mm-touch="" style={undefined}>
       {part !== 'note' && <>
       <InspectorSection t={t} title={tr('inspector.note.tags')}>
@@ -160,16 +189,13 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
         </div>
         {mapTags.length > 0 && (
           <div data-testid="map-tags" style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>{tr('inspector.tags.mapTags')}</div>
-            <div style={{ fontSize: 11, color: t.textSubtle, marginBottom: 6, lineHeight: 1.5 }}>
-              {tr(showTags ? 'inspector.tags.visibilityHint' : 'inspector.tags.visibilityOff')}
-            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>{visibilityCopy.paint}</div>
+
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {shownTags.map(([g, n]) => {
                 const tc = resolveTagColor(g, t);
                 const on = tagPainter === g;
                 const has = tags.includes(g);
-                const visible = !hiddenTags.includes(g);
                 return (
                   <div key={g} data-tag-name={g} style={{ display: 'inline-flex', alignItems: 'stretch', maxWidth: '100%', gap: 2 }}>
                   <button type="button" data-testid="map-tag" aria-pressed={on}
@@ -185,24 +211,7 @@ export function NoteTagTab({ t, selectedId, part = 'all' }: { t: ThemeTokens; se
                     }}>
                     #{g} <span style={{ opacity: 0.6, fontWeight: 500 }}>{n}</span>
                   </button>
-                  <button type="button" data-testid="map-tag-visibility"
-                    aria-label={tr('inspector.tags.visibility', { tag: g })}
-                    aria-pressed={visible}
-                    title={tr(visible ? 'inspector.tags.hideTag' : 'inspector.tags.showTag', { tag: g })}
-                    disabled={!showTags}
-                    onClick={() => toggleTagHidden(g)}
-                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      minWidth: coarse ? 44 : 32, minHeight: coarse ? 44 : 32, padding: 4, flexShrink: 0,
-                      border: `1px solid ${t.border}`, borderRadius: 4,
-                      background: t.surface, color: visible ? t.primary : t.textMuted,
-                      cursor: showTags ? 'pointer' : 'default', opacity: showTags ? 1 : 0.45 }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
-                      <circle cx="12" cy="12" r="3" />
-                      {!visible && <path d="m3 3 18 18" />}
-                    </svg>
-                  </button>
+
                   </div>
                 );
               })}

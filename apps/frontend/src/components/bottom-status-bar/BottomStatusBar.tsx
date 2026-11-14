@@ -1,6 +1,7 @@
 // Bottom bar: current selection layout + whole-map node count + storage + a single zoom control.
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useLayoutEffect } from 'react';
+import { CanvasViewButtons } from './CanvasViewButtons';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -84,6 +85,9 @@ function measureDocument(map: unknown): {
 export function BottomStatusBar({
   t, collabs, zoom, onZoomChange, showZoom = true, onOpenPanels, mainView, onToggleMainView,
 }: Props) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barWidth, setBarWidth] = useState(1000);
+  useLayoutEffect(() => { const el = barRef.current; if (!el) return; const observer = new ResizeObserver(() => setBarWidth(el.clientWidth)); observer.observe(el); setBarWidth(el.clientWidth); return () => observer.disconnect(); }, []);
   const tr = useTr();
   const activeCount = collabs.filter((c) => c.active).length;
   const map = useDocumentStore((s) => s.map);
@@ -119,6 +123,7 @@ export function BottomStatusBar({
 
   return (
     <div
+      ref={barRef}
       data-testid="bottom-status-bar"
       style={{
         height: `calc(${barH}px + env(safe-area-inset-bottom, 0px))`, flexShrink: 0,
@@ -128,7 +133,7 @@ export function BottomStatusBar({
         background: t.surfaceAlt,
         borderTop: `1px solid ${t.border}`,
         display: 'flex', alignItems: 'center',
-        gap: phone ? 6 : 14,
+        gap: barWidth < 480 ? 3 : phone ? 6 : 14,
         fontSize: 11, color: t.textMuted, fontWeight: 500,
         minWidth: 0,
       }}
@@ -151,7 +156,7 @@ export function BottomStatusBar({
             : '')
         }
         style={{
-          display: 'flex', alignItems: 'center', gap: 5,
+          display: barWidth < 480 ? 'none' : 'flex', alignItems: 'center', gap: 5,
           // 좁으면 글자만 줄인다 — 확대/축소 단추를 밀어내지 않게
           minWidth: 0, overflowX: 'auto', overflowY: 'hidden', whiteSpace: 'nowrap', scrollbarWidth: 'none',
         }}
@@ -187,12 +192,13 @@ export function BottomStatusBar({
         </>
       )}
 
-      {showZoom && <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} />}
+      {showZoom && <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} minimal={barWidth < 480} />}
+      {showZoom && <CanvasViewButtons t={t} narrow={barWidth < 760} />}
     </div>
   );
 }
 
-function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void }) {
+function ZoomControl({ t, zoom, onZoomChange, minimal }: { t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void; minimal?: boolean }) {
   const tr = useTr();
   // 손가락 입력이면 단추를 키운다 (32×36) — 데스크톱은 예전 22×20 그대로
   const coarse = useCoarse();
@@ -224,7 +230,7 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
     <div style={{ display: 'flex', alignItems: 'center', gap: coarse ? 1 : 3, flexShrink: 0, marginLeft: 'auto' }}>
       {/* 확대·축소는 돋보기 +/−, 100% 는 '1:1' — 노드 추가 + 와 그림이 겹치지 않게
           (2026-10-24 UI/UX 검토 ⑤) */}
-      {stepBtn(<I.ZoomOut size={14} />, () => onZoomChange(Math.max(2, zoom - 5)), tr('shell.status.zoomOut'))}
+      {!minimal && stepBtn(<I.ZoomOut size={14} />, () => onZoomChange(Math.max(2, zoom - 5)), tr('shell.status.zoomOut'))}
       {editing ? (
         <input
           autoFocus
@@ -253,11 +259,11 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
             fontFamily: 'ui-monospace, monospace', minWidth: 44,
           }}>{Math.round(zoom)}%</button>
       )}
-      {stepBtn(<I.ZoomIn size={14} />, () => onZoomChange(Math.min(400, zoom + 5)), tr('shell.status.zoomIn'))}
-      <span style={{ marginLeft: coarse ? 0 : 3, display: 'flex' }}>{stepBtn(
+      {!minimal && stepBtn(<I.ZoomIn size={14} />, () => onZoomChange(Math.min(400, zoom + 5)), tr('shell.status.zoomIn'))}
+      {!minimal && <span style={{ marginLeft: coarse ? 0 : 3, display: 'flex' }}>{stepBtn(
         <span data-testid="zoom-1to1" style={{ fontSize: 10.5, fontWeight: 700, fontFamily: 'ui-monospace, monospace', letterSpacing: -0.3 }}>1:1</span>,
-        () => onZoomChange(100), tr('shell.status.zoom100'))}</span>
-      <button
+        () => onZoomChange(100), tr('shell.status.zoom100'))}</span>}
+      {!minimal && <button
         data-testid="minimap-toggle"
         onClick={toggleMinimap}
         title={minimapOpen ? tr('shell.status.minimapClose') : tr('shell.status.minimapOpen')}
@@ -268,7 +274,7 @@ function ZoomControl({ t, zoom, onZoomChange }: { t: ThemeTokens; zoom: number; 
           color: minimapOpen ? t.primary : t.text,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
-      ><I.Minimap size={13} /></button>
+      ><I.Minimap size={13} /></button>}
     </div>
   );
 }

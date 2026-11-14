@@ -24,6 +24,7 @@ import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/_
 import { contentIndicatorCount } from '@/editor/node-renderer/nodeContent';
 import { applyVariableView } from '@/utils/variables/mapVariables';
 import { applyMediaView } from '@/editor/node-renderer/mediaView';
+import { mixedMediaOf, mixedFoldedText } from '@/editor/node-renderer/mediaContent';
 import { collectCodeRenders, prepareCodeRenders } from '@/editor/node-renderer/codeRender';
 // 내보낸 HTML 의 파비콘·제목 옆 아이콘은 20px 정사각형 — 가로형 로고 대신 정사각형 마크 (2026-10-25)
 import brandLogoRaw from '@/assets/brand-favicon.svg?raw';
@@ -207,6 +208,18 @@ function toExportNode(
         mf: { w: Math.round(sz.w * 10) / 10, h: Math.round(sz.h * 10) / 10, lines: sz.lines, lh: sz.lineHeight, label },
         cf: node.contentFolded ? 1 : undefined,
       };
+    })() : (node as { _mediaFold?: string[] })._mediaFold ? (() => {
+      // 글과 그림이 섞인 노드 (2026-11-14) — 그림만 접는다: 접힌 글 = 제목 글 + "▸ Mermaid"
+      const mixed = mixedMediaOf(node);
+      if (!mixed) return {};
+      const label = mixedFoldedText(mixed.rest, mixed.kinds);
+      const plain = splitNodeParts(label).filter((p) => p.kind === 'text').map((p) => (p as { body: string }).body).join('\n');
+      const sz = sizeNodeForText(label, depth, { shape: shapeType, hasIcon: !!node.icon, indicators: contentIndicatorCount(node) });
+      return {
+        mf: { w: Math.round(sz.w * 10) / 10, h: Math.round(sz.h * 10) / 10, lines: sz.lines, lh: sz.lineHeight, label, ms: sz.manualStarts, ck: computeNodeChecks(plain.split('\n'), sz.manualStarts, sz.lines.length).map((c) => ({ a: c.at, e: c.end, c: c.checked ? 1 : 0, s: c.seq })) },
+        mx: 1,
+        cf: node.contentFolded ? 1 : undefined,
+      };
     })() : {}),
     children: (node.children ?? []).map((c) =>
       toExportNode(c, resolveHref, resolvePos, resolveSide, depth + 1)),
@@ -341,8 +354,8 @@ const VIEWER_JS = String.raw`
       n._mfold = true;
       n._mfSave = { text: n.text, image: n.image, images: n.images, tags: n.tags, pos: n.pos };
       var p0 = n.pos || {};
-      n.pos = { x: p0.x, y: p0.y, w: n.mf.w, h: n.mf.h, lines: n.mf.lines, lh: n.mf.lh, fs: p0.fs, ff: p0.ff };
-      n.text = n.mf.label; n.image = null; n.images = null; n.tags = null;
+      n.pos = { x: p0.x, y: p0.y, w: n.mf.w, h: n.mf.h, lines: n.mf.lines, ms: n.mf.ms, ck: n.mf.ck, lh: n.mf.lh, fs: p0.fs, ff: p0.ff };
+      n.text = n.mf.label; n.image = null; n.images = null; if (!n.mx) n.tags = null;
     } else if (!fold && n._mfold) {
       var sv = n._mfSave || {};
       n.text = sv.text; n.image = sv.image; n.images = sv.images; n.tags = sv.tags; n.pos = sv.pos;
@@ -1091,7 +1104,7 @@ const VIEWER_JS = String.raw`
   }
   // 내용이 사진·Mermaid·HTML 뿐인 노드 (에디터 mediaContent.mediaKindsOf 와 같은 판정)
   function mediaOnly(n) {
-    if (n.mf) return true; // 접혀서 글이 종류 이름이어도 그림 노드다
+    if (n.mf) return !n.mx; // 접혀서 글이 종류 이름이어도 그림 노드다 (mx = 글과 섞인 노드는 아님)
     if (n._mo !== undefined) return n._mo;
     var any = !!n.image || !!(n.images && n.images.length);
     var lines = String(n.text || '').split('\n'), i = 0, ok = true;

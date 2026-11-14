@@ -73,27 +73,6 @@ import { tr, useLang } from '@/i18n';
 import { usePhoneLayout, isCoarseNow } from '@/hooks/useViewport';
 import { primeTouchKeyboard } from './touchKeyboard';
 
-// 레이아웃 이름 — 사전 키 (렌더 때 tr 로 옮긴다)
-const LAYOUT_LABEL_KEY: Record<string, string> = {
-  tree: 'editor.layout.treeRight',
-  radial: 'editor.layout.radialRight',
-  'both-radial': 'editor.layout.radialBoth',
-  hierarchy: 'editor.layout.hierarchyRight',
-  'progress-tree': 'editor.layout.processTreeRight',
-  free: 'editor.layout.free',
-  kanban: 'editor.layout.kanban',
-  'radial-bidirectional': 'editor.layout.radialBoth',
-  'radial-right': 'editor.layout.radialRight',
-  'radial-left': 'editor.layout.radialLeft',
-  'tree-right': 'editor.layout.treeRight',
-  'tree-down': 'editor.layout.treeDown',
-  'hierarchy-right': 'editor.layout.hierarchyRight',
-  'process-tree-right': 'editor.layout.processTreeRight',
-  freeform: 'editor.layout.free',
-  timeline: 'editor.layout.timeline',
-  'timeline-center': 'editor.layout.timelineCenter',
-};
-
 export interface CanvasEditingPolicy { mode: 'basic'; readOnly: boolean }
 
 interface Props {
@@ -1924,43 +1903,6 @@ export function Canvas({
         }px ${24 * scale}px repeat`,
       }}
     >
-      <div
-        data-testid="canvas-info-chip"
-        style={{
-          position: 'absolute',
-          top: compact ? 10 : 14,
-          left: compact ? 8 : 14,
-          zIndex: 5,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: compact ? '4px 8px' : '5px 10px',
-          borderRadius: 20,
-          background: t.surface,
-          border: `1px solid ${t.border}`,
-          boxShadow: t.shadowSm,
-          fontSize: 11,
-          color: t.textMuted,
-          fontWeight: 500,
-        }}
-      >
-        <span
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: t.primary,
-          }}
-        />
-        {/* 폰 폭(compact)은 배율만 — 레이아웃 이름·노드 수까지 쓰면 오른쪽 도구 모음과
-            겹친다 (모바일 웹, 2026-10-05). Pan 모드는 위 가운데 배지가 따로 알린다. */}
-        {!compact && <>{tr(LAYOUT_LABEL_KEY[layoutType] ?? 'editor.canvas.mindmap')} · {tr('editor.canvas.statusAuto', { n: nodes.length })}{' '}</>}
-        {Math.round(zoom || 100)}%
-        {panMode && !compact && (
-          <span style={{ color: t.primary, fontWeight: 600 }}>{tr('editor.canvas.panBadge')}</span>
-        )}
-      </div>
-
       {!basic && <CanvasFloatingToolbar
         t={t}
         hasSelection={!!selectedNode}

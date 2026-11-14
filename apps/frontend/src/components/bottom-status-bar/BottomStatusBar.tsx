@@ -1,18 +1,4 @@
-// BottomStatusBar — **이 맵이 얼마나 무거운가** + 확대/축소.
-//
-// 2026-08-07 정리 (사용자 보고: "정보가 반영되지 않음"):
-//   · `20 노드 · depth 2` 와 `x: 742, y: 358` 은 **하드코딩된 가짜 값**이었다.
-//     화면이 바뀌어도 그대로라 사용자에게는 고장으로 보였다.
-//   · 노드 수·레이아웃은 **상단 맵 정보 줄에 이미 있다** — 중복이라 뺐다.
-//   · 좌표는 지금 쓰는 기능이 없어 뺐다. 필요해지면(자유 배치 수동 좌표
-//     확인 등) **실제 값**으로 되살린다 — 가짜 숫자를 다시 넣지는 않는다.
-//   · `Supabase 동기화됨` 도 뺐다. 저장 상태는 **상단 저장 배지**가
-//     사실대로 말한다("저장됨 · N분 전" / "미저장 편집 N개").
-//
-// 대신 **이 맵의 무게**를 보여 준다 (사용자 요청):
-//   문서 46.1KB · 첨부 3개 · 26.7MB
-// 요금제 쿼터가 문서+첨부 합산이라(§8), 어느 맵이 용량을 먹는지 여기서
-// 바로 보인다.
+// Bottom bar: current selection layout + whole-map node count + storage + a single zoom control.
 
 import { useMemo, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -20,6 +6,9 @@ import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useInteractionStore } from '@/stores/interactionStore';
+import { countMapNodes } from '@/export/mapMeta';
+import { layoutStatus, LAYOUT_STATUS_LABEL } from './layoutStatus';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useTr } from '@/i18n';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
@@ -99,6 +88,14 @@ export function BottomStatusBar({
   const activeCount = collabs.filter((c) => c.active).length;
   const map = useDocumentStore((s) => s.map);
   const m = useMemo(() => measureDocument(map), [map]);
+  const layoutType = useEditorUiStore((s) => s.layoutType);
+  const selectedId = useInteractionStore((s) => s.selectedId);
+  const multi = useInteractionStore((s) => s.multiSelectedIds);
+  const layout = useMemo(() => layoutStatus(map, layoutType, selectedId, multi), [map, layoutType, selectedId, multi]);
+  const nodeCount = useMemo(() => countMapNodes(map), [map]);
+  const scope = tr(layout.count > 1 ? 'shell.status.layoutSelection' : layout.count === 1 ? 'shell.status.layoutNode' : 'shell.status.layoutMap', { n: layout.count });
+  const layoutText = scope + ': ' + (layout.mixed ? tr('shell.status.layoutMixed') : tr(LAYOUT_STATUS_LABEL[layout.layout] ?? 'editor.canvas.mindmap'));
+  const countText = tr('shell.status.nodesAll', { n: nodeCount });
   // 폰 — 엄지가 닿는 자리라 패널 서랍·아웃라인 전환 문을 여기 둔다.
   // 손가락 입력이면 막대를 44px 로 키우고, 아래 홈 표시줄(safe-area)만큼 띄운다.
   const phone = usePhoneLayout();
@@ -148,7 +145,7 @@ export function BottomStatusBar({
       <span
         data-testid="status-map-weight"
         title={
-          tr('shell.status.weightTip')
+          layoutText + '\n' + countText + '\n' + tr('shell.status.weightTip')
           + (m.unknown
             ? `\n${tr('shell.status.weightUnknown', { n: m.unknown })}`
             : '')
@@ -156,16 +153,20 @@ export function BottomStatusBar({
         style={{
           display: 'flex', alignItems: 'center', gap: 5,
           // 좁으면 글자만 줄인다 — 확대/축소 단추를 밀어내지 않게
-          minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap',
+          minWidth: 0, overflowX: 'auto', overflowY: 'hidden', whiteSpace: 'nowrap', scrollbarWidth: 'none',
         }}
       >
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary, flexShrink: 0 }} />
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+        <span style={{ flexShrink: 0 }}>
+          <span data-testid="status-layout">{layoutText}</span>
+          {' · '}<span data-testid="status-node-count">{countText}</span>{' · '}
+          <span data-testid="status-storage">
           {/* 폰은 짧게 — "115B · 📎2" (전문은 데스크톱과 같은 툴팁에) */}
           {phone
             ? `${fmtBytes(m.docBytes)}${m.attachCount > 0 ? ` · 📎${m.attachCount}` : ''}`
             : tr('shell.status.weight', { doc: fmtBytes(m.docBytes), n: m.attachCount })}
           {!phone && m.attachCount > 0 && ` · ${fmtBytes(m.attachBytes)}${m.unknown ? '+' : ''}`}
+          </span>
         </span>
       </span>
 

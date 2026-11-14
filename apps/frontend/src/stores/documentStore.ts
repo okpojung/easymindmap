@@ -938,7 +938,7 @@ function hierarchyFallback(map: SampleMap, globalLayout: LayoutType): LayoutType
 }
 
 /** 노드의 실효 레이아웃 = 자기 값, 없으면 가까운 조상의 값, 없으면 중심 루트(→ fallback) */
-function effectiveLayoutInMap(map: SampleMap, nodeId: string, fallback: LayoutType): LayoutType {
+export function effectiveLayoutInMap(map: SampleMap, nodeId: string, fallback: LayoutType): LayoutType {
   const walk = (nodes: MindNode[], inherited: LayoutType): LayoutType | null => {
     for (const node of nodes) {
       const current = node.layoutType ?? inherited;

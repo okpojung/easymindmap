@@ -1340,7 +1340,7 @@ export function Canvas({
         return;
       }
 
-      // 미니맵 토글 — Alt+H만 사용. Alt+M은 다른 앱에 양보한다.
+      // 미니맵 토글 — Alt+H만 사용. 다른 Alt 조합은 가로채지 않는다.
       // 한글 자판의 같은 키(ㅗ)도 받는다. Alt 없는 H는 아래 Pan 모드.
       if (e.altKey && ['h', 'H', 'ㅗ'].includes(e.key)) {
         e.preventDefault();

@@ -14,7 +14,7 @@ import { LINK_PARENT_KEYS } from '@/utils/linkNode';
 import type { MapVariable } from '@emm/model';
 import { renameInText } from '@/utils/variables/varSyntax';
 import { renameInFormula } from '@/utils/variables/formula';
-import { mediaKindsOf } from '@/editor/node-renderer/mediaContent';
+import { mediaKindsOf, mixedMediaOf } from '@/editor/node-renderer/mediaContent';
 import { create } from 'zustand';
 import { mapCenters } from '@emm/model';
 // 트리 규칙의 **단일 원본** — 화면·협업·DB 가 같은 판정을 써야 한다
@@ -1799,7 +1799,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       nodes.map((n) => ({
         ...n,
         collapsed: (n.children?.length ?? 0) > 0 ? true : n.collapsed,
-        contentFolded: mediaKindsOf(n) ? true : n.contentFolded,
+        contentFolded: mediaKindsOf(n) || mixedMediaOf(n) ? true : n.contentFolded,
         children: walk(n.children ?? []),
       }));
     asViewOnly(() => set((state) => ({

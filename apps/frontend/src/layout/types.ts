@@ -55,6 +55,8 @@ export interface LaidOutNode {
   project?: ProjectTags;
   /** 그림만 담은 노드의 종류 (mediaView, 2026-10-28) — 밑줄 없이 가운데로 잇고, 내용 접기 단추가 난다 */
   _media?: string[];
+  /** 글과 그림이 섞인 노드의 그림 종류 (mediaView, 2026-11-14) — 그림만 접는 단추가 난다 */
+  _mediaFold?: string[];
   /** 내용을 접어 종류 이름만 보이는 중 */
   _mediaFolded?: boolean;
   /** '값으로 보기'에서 [&변수] 를 값으로 바꾸기 전 원문 — 편집·저장은 이것으로 (2026-10-29) */

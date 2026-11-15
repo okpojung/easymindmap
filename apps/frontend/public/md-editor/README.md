@@ -1,17 +1,24 @@
 # md-editor — 마크다운 첨부 웹 편집기 (외부 사본)
 
-이 폴더의 `index.html`은 상위 원본에 **암호화 HTML 보안 패치**를 적용한 사본이다.
-일반 편집기 수정은 상위 저장소에서 먼저 진행한다. 현재 암호화 패치의 상위 반영은
-아직 확인되지 않았으므로, 단순 원본 복사로 덮어쓰면 암호화 기능이 사라진다.
+이 폴더의 `index.html`은 공통 편집기 **v1.0.6** UI와 EMM 전용 저장·보안 처리를 3-way 통합한 사본이다.
+일반 편집기 수정은 상위 저장소에서 먼저 진행한다. 상위에도 보호 HTML 기능이 있으나,
+EMM은 자체 공통 암호화 생성 런타임을 사용하므로 원본 전체 복사는 금지한다.
 패치 범위와 제약은 `docs/04-extensions/import-export/23-encrypted-html.md`를 따른다.
 
 | 항목 | 값 |
 |---|---|
 | 출처 저장소 | <https://github.com/okpojung/markdown-editor> |
 | 파일 | `index.html` (단일 파일 편집기) |
-| 커밋 | `e4815cb63868932d614c463fa98ad9e073c5f334` (2026-11-08 상위 main 기준, 아래 로컬 보안 패치 포함) |
-| sha256 | `dda5d0442e7718255c0a0c8f7ed037c95f15f9ee09c71dde3a07c718d8b7f766` |
+| 커밋 | `ed82e81e42c4ced80625e6b8348a7dbbfae7239a` (v1.0.6 공통 UI, EMM 확장 보존) |
+| sha256 | `eaa7d04463cc46ff13f758345e061d93b34dcc38b35f6dbcf7e85d92c098e1e0` |
 | 라이선스 | MIT — 아래 고지 |
+
+## v1.0.6 통합 기준
+
+- 실제 EMM 사본의 README 기준 원본 `e4815cb63868932d614c463fa98ad9e073c5f334`와 위 v1.0.6을 3-way 병합했다. `7fe6223`는 공통 1.0.5 비교점이며 EMM 기준본은 아니다.
+- 공통 한 줄·모바일 그룹 메뉴, 글머리 토글, 분할 왼쪽 MD/아웃라인 선택·닫기를 반영했다. 내부 `#closeBtn`은 제거하고 파일 메뉴 닫기와 EMM 호스트 닫기는 유지한다.
+- EMM 암호화 shared-runtime marker, 보호 저장·이미지·스토리지 격리, 서버 ETag 충돌 처리, opener reqId ACK, iframe source/origin 검사 및 정확한 저장 스냅샷 ACK를 보존했다.
+- 독립 웹 서비스의 EMM 연결 차단 보호 코드는 포함하지 않는다. EMM 호스트 TS 계약은 변경하지 않았다.
 
 ## 어떻게 서빙되나
 
@@ -62,23 +69,9 @@ CDN 을 못 쓰는 환경에서는 편집기가 원문 텍스트 상자로 물�
 
 ## 갱신 방법
 
-```bash
-SHA=<가져올 커밋 40자리>
-curl -fsSL -o apps/frontend/public/md-editor/index.html \
-  "https://raw.githubusercontent.com/okpojung/markdown-editor/$SHA/index.html"
-sha256sum apps/frontend/public/md-editor/index.html
-```
+상위 `index.html`은 임시 경로로 다운로드하고, 위 기록의 상위 커밋을 기준으로 현재 EMM 사본과 새 상위 소스를 3-way 병합한다. 원본 전체를 덮어쓰지 않는다. 충돌은 EMM 인증·저장·암호화·iframe 보안 계약을 보존하여 해결한다.
 
-`raw.githubusercontent.com` 이 막힌 환경이면 git 으로 같은 커밋을 받는다.
-
-```bash
-git init -q /tmp/mde && git -C /tmp/mde fetch -q --depth 1 https://github.com/okpojung/markdown-editor "$SHA" \
-  && git -C /tmp/mde show FETCH_HEAD:index.html > apps/frontend/public/md-editor/index.html
-```
-
-그다음 위 표의 **커밋·sha256** 을 고치고, 편집기의 계약(쿼리 이름·저장 경로·
-메시지 이름)이 바뀌었으면 `src/utils/mdEditorUrl.ts` · `src/utils/mdEmbedBridge.ts` 와
-`docs/04-extensions/attachment-storage.md` §7.4 · §7.5 도 함께 고친다.
+LF 줄바꿈으로 `npm run sync:encrypted-runtime`을 실행하고 출처·sha256을 갱신한다. `test-md-encryption.cjs`, `test-md-encryption-actual.cjs`, 포함형 브리지/URL 검사와 실제 EMM 개발 서버의 저장·재열기·실패/충돌 검증을 실행한다. 공통 toolbar 152개와 격리 iframe 19개는 실제 서버 검증을 대체하지 않는다.
 
 ## MIT 라이선스 고지
 

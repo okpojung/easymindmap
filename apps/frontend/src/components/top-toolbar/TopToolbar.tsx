@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
-import brandFavicon from '@/assets/brand-favicon.svg';
+import { appFaviconUrl } from '@/utils/brandFavicon';
 import { TooltipButton, TooltipIconBtn as IconBtn } from './Tooltip';
 import { MapActions } from './MapActions';
 import { mobileSaveDot, mobileToolbarSize } from './toolbar-layout';
@@ -299,7 +299,7 @@ export function TopToolbar({
         <TooltipButton data-testid="map-title" title={copy.documentMenu} aria-label={mapTitle + ' · ' + copy.documentMenu} aria-haspopup="menu" aria-expanded={documentOpen}
           onClick={() => { const next = !documentOpen; closeMenus(); setDocumentOpen(next); }}
           style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, padding: '5px 4px', background: 'none', border: 'none', color: t.text, cursor: 'pointer', textAlign: 'left' }}>
-          <img src={brandFavicon} width={24} height={24} alt="EasyMindMap" style={{ flexShrink: 0 }} /><span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600 }}>{mapTitle}</span><I.ChevronDown size={14} />
+          <img src={appFaviconUrl()} width={24} height={24} alt="EasyMindMap" style={{ flexShrink: 0 }} /><span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600 }}>{mapTitle}</span><I.ChevronDown size={14} />
         </TooltipButton>
         <div data-testid="document-menu" role="menu" aria-label={copy.documentMenu} style={{ ...menuStyle, display: documentOpen ? 'block' : 'none', left: phone ? 8 : 0, right: 'auto', width: 300 }}>
           <MenuItem t={t} testId="document-open-browser" icon={<I.MindMap size={20} />} label={tr('shell.toolbar.crumb')} onClick={() => { closeMenus(); openDocs(); }} />

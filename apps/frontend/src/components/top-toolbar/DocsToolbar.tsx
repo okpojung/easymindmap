@@ -16,7 +16,7 @@ import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
-import brandFaviconUrl from '@/assets/brand-favicon.svg';
+import { appFaviconUrl } from '@/utils/brandFavicon';
 import { setDocsHeaderHost, useDocsCompactHeader } from '@/components/cloud/docsHeaderHost';
 
 
@@ -66,7 +66,7 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexShrink: phone ? 1 : 0 }}>
         <img
-          src={brandFaviconUrl}
+          src={appFaviconUrl()}
           alt="EasyMindMap"
           title="EasyMindMap"
           data-testid="docs-brand-favicon"

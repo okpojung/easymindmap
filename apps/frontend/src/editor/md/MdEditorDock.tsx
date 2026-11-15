@@ -132,7 +132,7 @@ export function MdEditorDock({ t, target, onBlocked }: { t: ThemeTokens; target:
       setLoaded(r);
       const boundFrame = frame.current;
       saver.current = createMdAutosaver(target, (st, savedMd) => {
-        if (!alive) return;
+        if (!alive || frame.current !== boundFrame) return;
         setState(st);
         if (st === 'saved' && typeof savedMd === 'string') frameApi.current?.ack(savedMd);
         else if (typeof st === 'object') frameApi.current?.fail();

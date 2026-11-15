@@ -1,3 +1,4 @@
+import { flushMdExits, hasPendingMdEdits } from '@/utils/mdExitGuard';
 // mapSession — "지금 편집 중인 맵"의 세션 동작 모음 (저장 / 닫기 / 열기).
 //
 // 2026-08-02 로그인 UI 정리에서 도입. 그 전에는 같은 저장·닫기 로직이
@@ -318,6 +319,7 @@ export function clearCurrentMap(): void {
 export async function saveAndCloseMap(
   flash: (msg: string) => void,
 ): Promise<'closed' | 'unsaved' | 'failed' | 'empty'> {
+  if (!await flushMdExits()) { flash(tr('cloud.session.saveFailedNotClosed')); return 'failed'; }
   if (isCurrentMapEmpty()) {
     flash(tr('cloud.session.noOpenMap'));
     return 'empty';
@@ -441,6 +443,7 @@ export function openMapInNewTab(mapId: string): boolean {
 export async function refreshFromServer(
   mapId: string, who?: string | null,
 ): Promise<boolean> {
+  if (hasPendingMdEdits()) return false; // Background refresh must not discard or retry an MD draft.
   const cloud = useCloudStore.getState();
   if (cloud.cloudMapId !== mapId || cloud.busy !== 'idle') return false;
   // ★ **협업이 몰고 있으면 다시 읽지 않는다** (2026-09-08). 정본은 협업
@@ -484,6 +487,7 @@ export async function refreshFromServer(
 
     const shownMap = kind === 'collab' ? loadedMap
       : await expandLinkedMaps(loadedMap, { lock: true, selfId: mapId });
+    if (hasPendingMdEdits()) return false;
     suppressCloudAutosave();
     useDocumentStore.getState().loadMap(shownMap as never,
       { resetHistory: true, serverMapId: mapId });
@@ -518,6 +522,7 @@ export async function refreshFromServer(
 export async function openMapHere(
   mapId: string,
 ): Promise<{ readOnly: boolean; reason?: string; viewer?: boolean }> {
+  if (!await flushMdExits()) throw new CloudError(0, tr('cloud.session.saveFailedNotClosed'));
   const cloud = useCloudStore.getState();
   cloud.setBusy('opening');
   // "여는 중" 안내 — 내려받는 동안도, 큰 맵을 그리는 동안도 (utils/opening.ts, 2026-09-30)
@@ -541,6 +546,7 @@ export async function openMapHere(
     const editable = readOnlyCause === null;
     const shown = kind === 'collab' ? loadedMap as SampleMap
       : await expandLinkedMaps(loadedMap as SampleMap, { lock: editable, selfId: mapId });
+    if (!await flushMdExits()) throw new CloudError(0, tr('cloud.session.saveFailedNotClosed'));
     suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
     setViewerLocked(!editable); // lock before the loaded document can be painted or edited
     // 열기는 **문서 경계** — 되돌리기가 '열기 이전' 문서로 넘어가면

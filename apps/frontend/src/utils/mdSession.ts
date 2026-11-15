@@ -1,3 +1,4 @@
+import { registerMdExitGuard } from './mdExitGuard';
 // 마크다운 첨부 편집 자리 (2026-11-08) — 편집 영역 오른쪽 칸 · 새 탭 · 새 창이 함께 쓴다.
 //
 // 편집기(/md-editor/)는 **iframe 끼워 넣기 규약**으로 띄운다 — 편집기 쪽을 고치지 않는다:
@@ -90,7 +91,8 @@ export async function saveMd(t: MdTarget, markdown: string, base?: string): Prom
 
 /** 오른쪽 칸·새 창이 함께 쓰는 '모아서 자동 저장' 도우미 */
 /** 저장 결과 — 'saved' 면 실제로 저장한 내용(savedMd)을 함께 넘긴다(편집기에 그 스냅샷으로 저장 완료를 알린다) */
-export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' | { error: string }, savedMd?: string) => void, initial: { markdown: string; base?: string }) {
+export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' | { error: string }, savedMd?: string) => void, initial: { markdown: string; base?: string }, capture?: () => string | null) {
+  const epoch = useDocumentStore.getState().docEpoch;
   let last = initial.markdown;
   let base = initial.base;
   let pending: string | null = null;
@@ -113,7 +115,7 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
       try {
         onState('saving');
         let r: Awaited<ReturnType<typeof saveMd>>;
-        try { r = await saveMd(t, md, base); }
+        try { r = useDocumentStore.getState().docEpoch === epoch ? await saveMd(t, md, base) : { ok: false, error: 'gone' }; }
         catch { r = { ok: false, error: 'error' }; }
         if ('error' in r) {
           // Keep newer input if it arrived during this request. Never retry failures
@@ -136,7 +138,7 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
     });
     return inFlight;
   };
-  return {
+  const api = {
     change(md: string) { pending = md; schedule(1000); },
     /** Wait for in-flight work and the newest queued snapshot; false keeps a failed draft retryable. */
     async now(): Promise<boolean> {
@@ -147,5 +149,17 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
       }
     },
     get latest() { return pending ?? active ?? last; },
+    dispose() { clearTimer(); unregister(); unsubscribe(); },
   };
+  const unregister = registerMdExitGuard({
+    prepare: () => {
+      if (useDocumentStore.getState().docEpoch !== epoch) return;
+      const markdown = capture?.();
+      if (typeof markdown === 'string' && markdown !== api.latest) api.change(markdown);
+    },
+    pending: () => useDocumentStore.getState().docEpoch === epoch && (pending !== null || active !== null),
+    flush: () => api.now(),
+  });
+  const unsubscribe = useDocumentStore.subscribe((state) => { if (state.docEpoch !== epoch) api.dispose(); });
+  return api;
 }

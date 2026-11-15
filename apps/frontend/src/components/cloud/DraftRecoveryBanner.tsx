@@ -1,3 +1,4 @@
+import { flushMdExits } from '@/utils/mdExitGuard';
 // DraftRecoveryBanner — "저장되지 않은 맵이 있습니다 — 복구할까요?"
 //
 // 앱을 열 때 브라우저(IndexedDB)에 남아 있는 초안을 확인해 알린다.
@@ -146,7 +147,8 @@ export function DraftRecoveryBanner({ t }: { t: ThemeTokens }) {
 
   const next = () => setQueue((q) => q.slice(1));
 
-  const restore = () => {
+  const restore = async () => {
+    if (!await flushMdExits()) return;
     const snap = draft.snapshot as { map?: unknown };
     if (snap?.map) {
       // 복구한 문서는 **서버와 연결하지 않는다** — 어느 맵에 넣을지는

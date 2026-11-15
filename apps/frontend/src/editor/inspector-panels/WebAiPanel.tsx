@@ -1,3 +1,4 @@
+import { flushMdExits } from '@/utils/mdExitGuard';
 // WebAiPanel — 웹 AI로 맵 만들기 (방법 A: 클립보드 왕복).
 //
 //   ① 프롬프트 복사 → AI 웹(Claude·ChatGPT·Gemini…)에 붙여넣고 실행
@@ -161,7 +162,8 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
     );
   };
 
-  const runOpenAsNewMap = (res: AnswerMapOk) => {
+  const runOpenAsNewMap = async (res: AnswerMapOk) => {
+    if (!await flushMdExits()) return;
     detachFromServer();
     setBrowserOpen(false);
     // 새 문서다 — 되돌리기가 이전 맵으로 넘어가면 안 된다 (2026-08-06)

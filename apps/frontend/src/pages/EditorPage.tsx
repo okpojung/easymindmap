@@ -1,3 +1,4 @@
+import { hasPendingMdEdits } from '@/utils/mdExitGuard';
 // File: src/pages/EditorPage.tsx
 // Version: MVP-Layout-Kanban-Fix-v1
 
@@ -460,8 +461,8 @@ export function EditorPage() {
       // 손대지 않은 새 맵 골격까지 붙잡지는 않는다(편집 이력이 있을 때만).
       || (saveState === 'unsaved'
           && useDocumentStore.getState().past.length > 0);
-    if (!risky) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!risky && !hasPendingMdEdits()) return;
       e.preventDefault();
       e.returnValue = ''; // 크롬은 브라우저 기본 문구를 쓴다
     };

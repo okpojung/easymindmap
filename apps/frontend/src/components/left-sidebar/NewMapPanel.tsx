@@ -1,3 +1,4 @@
+import { flushMdExits } from '@/utils/mdExitGuard';
 // NewMapPanel — 좌측 '새 맵' 메뉴 (2026-07 2차 재편 — 깔끔한 3단 구성).
 //
 //   · 새 맵 만들기        → 만든 직후 "적용할 템플릿 선택" 단계가 뜬다.
@@ -137,7 +138,8 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
   // 부른다 (2026-08-05 보고: 선택 단계에서 취소할 수 있어야 한다).
   // 예전에는 '새 맵 만들기'를 누른 순간 곧바로 갈아 끼우고 나서 템플릿을
   // 물었기 때문에, 그 단계의 취소는 "이미 지운 맵을 되살리기"가 됐다.
-  const replaceWithBlankDoc = () => {
+  const replaceWithBlankDoc = async () => {
+    if (!await flushMdExits()) { flash(tr('panel.newMap.saveFailed'), true); return false; }
     // 기본 새 맵은 방사형-오른쪽. 선택을 확정하기 전에는 문서를 바꾸지 않는다.
     // 2026-08-02: **여기서 제목을 묻지 않는다.** 항상 'NEW_MAP_TITLE'로
     // 시작하고, 편집을 마치고 ☁ 저장할 때 폴더와 이름을 정한다(규칙 3).
@@ -149,6 +151,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     setLayoutType('radial-right');
     resetSpacing();
     setSelectedId('root');
+    return true;
   };
 
   // 확인 게이트 — 현재 맵을 닫는 것을 사용자가 승인한 뒤 실행.
@@ -194,6 +197,7 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
    */
   const closeThenRun = async () => {
     if (!pending) return;
+    if (!await flushMdExits()) { flash(tr('panel.newMap.saveFailed'), true); return; }
     const run = pending.run;
     if (!savableServerMap()) { setPending(null); run(); return; }
     setClosing(true);
@@ -211,7 +215,8 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     run();
   };
 
-  const confirmThen = (label: string, run: () => void) => {
+  const confirmThen = async (label: string, run: () => void) => {
+    if (!await flushMdExits()) { flash(tr('panel.newMap.saveFailed'), true); return; }
     setChooseTpl(null);
     if (isDocumentEmpty(useDocumentStore.getState().map)) {
       run();
@@ -241,9 +246,9 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
   //   'new'   : 템플릿 골격(4레벨 자리 표시)+속성으로 시작 — 기존
   //             '등록된 템플릿에서 시작' 기능이 이 단계로 통합됐다
   //   'import': 불러온 내용은 유지, 속성(레이아웃·스타일·맵 설정)만
-  const applyChosenTpl = (tpl: TplChoice) => {
+  const applyChosenTpl = async (tpl: TplChoice) => {
     if (chooseTpl?.mode === 'new') {
-      replaceWithBlankDoc(); // 고른 순간에 비로소 새 문서로 갈아 끼운다
+      if (!await replaceWithBlankDoc()) return; // 고른 순간에 비로소 새 문서로 갈아 끼운다
       const curTitle = useDocumentStore.getState().map.title;
       // Only the built-in empty diagram bypasses skeleton conversion. User templates retain their own content/centers contract.
       const map = tpl.key === 'lib-freeform'
@@ -314,7 +319,8 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
     const { map: resolvedMap, stats: img } = await resolveRemoteImages(imported.map);
     // 큰 맵은 그리는 데 수 초~수십 초 걸린다 — "여는 중" 안내를 먼저 그린 뒤
     // 무거운 일을 시작하고, 다 그려진 뒤에 지운다 (utils/opening.ts, 2026-09-30)
-    await withOpening(openingLabelFor(tr('panel.newMap.opening', { title: imported.map.title }), countMapNodes(resolvedMap)), () => {
+    await withOpening(openingLabelFor(tr('panel.newMap.opening', { title: imported.map.title }), countMapNodes(resolvedMap)), async () => {
+      if (!await flushMdExits()) throw new Error(tr('panel.newMap.saveFailed'));
       // 불러온 파일도 새 문서다 — 서버 맵 연결을 끊는다 (위 doStartBlank 주석)
       detachFromServer();
       setBrowserOpen(false);
@@ -612,9 +618,9 @@ export function NewMapPanel({ t, inBrowser = false, onDone }: {
               기본 골격으로 문서를 갈아 끼운다 (취소 ✕ 와 다른 동작) */}
           <button
             data-testid="tpl-skip"
-            onClick={() => {
+            onClick={async () => {
               if (chooseTpl.mode === 'new') {
-                replaceWithBlankDoc();
+                if (!await replaceWithBlankDoc()) return;
                 setChooseTpl(null);
                 flash(tr('panel.newMap.startedBlank'));
                 onDone?.();

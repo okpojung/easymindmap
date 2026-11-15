@@ -1,3 +1,4 @@
+import { useDocumentStore } from '@/stores/documentStore';
 // 마크다운 첨부 편집기 — 편집 영역 오른쪽 칸 + 새 탭·새 창 (2026-11-08 사용자 요청).
 //
 //   [📝 회의록.md · 맵에 반영됨]          [↗ 새 탭] [⧉ 새 창] [✕]
@@ -99,6 +100,9 @@ export function useMdFrame(frame: React.RefObject<HTMLIFrameElement | null>, opt
 export function MdEditorDock({ t, target, onBlocked }: { t: ThemeTokens; target: MdTarget; onBlocked?: () => void }) {
   const tr = useTr();
   const setDock = useEditorUiStore((s) => s.setMdDock);
+  const epoch = useDocumentStore((s) => s.docEpoch);
+  const openedEpoch = useRef(epoch);
+  useEffect(() => { if (epoch !== openedEpoch.current) setDock(null); }, [epoch, setDock]);
   const ratio = useEditorUiStore((s) => s.mdDockRatio);
   const setRatio = useEditorUiStore((s) => s.setMdDockRatio);
   const frame = useRef<HTMLIFrameElement | null>(null);
@@ -119,10 +123,14 @@ export function MdEditorDock({ t, target, onBlocked }: { t: ThemeTokens; target:
         setState(st);
         if (st === 'saved' && typeof savedMd === 'string') frameApi.current?.ack(savedMd);
         else if (typeof st === 'object') frameApi.current?.fail();
-      }, r);
+      }, r, () => {
+        const child = frame.current?.contentWindow as (Window & { flushPendingEdits?: () => void; MDE?: { markdown: string } }) | null;
+        child?.flushPendingEdits?.();
+        return child?.MDE?.markdown ?? null;
+      });
       if (r.readOnly) setState({ error: 'readonly' });
     }).catch((e: Error) => { if (alive) setErr(e.message || 'error'); });
-    return () => { alive = false; void saver.current?.now(); };
+    return () => { alive = false; const s = saver.current; if (s) void s.now().then(ok => { if (ok) s.dispose(); }); };
   }, [target]);
 
   const api = useMdFrame(frame, {
@@ -177,6 +185,7 @@ export function MdEditorDock({ t, target, onBlocked }: { t: ThemeTokens; target:
  */
 export function MdBroadcaster() {
   const remote = useEditorUiStore((s) => s.mdRemote);
+  const epoch = useDocumentStore((s) => s.docEpoch);
   useEffect(() => {
     if (!remote || typeof BroadcastChannel === 'undefined') return;
     const ch = new BroadcastChannel(mdChannelName(GANTT_TAB_ID));
@@ -203,13 +212,14 @@ export function MdBroadcaster() {
         if (s) { if (typeof m.markdown === 'string') s.change(m.markdown); if (!await s.now()) return; }
         const tgt = mdTargetFromKey(key, m.name || 'md');
         if (tgt) useEditorUiStore.getState().setMdDock(tgt);
+        s?.dispose();
         savers.delete(key);
         window.focus();
       }
     };
     const bye = () => { try { post({ type: 'bye' }); } catch { /* 닫히는 중 */ } };
     window.addEventListener('pagehide', bye);
-    return () => { window.removeEventListener('pagehide', bye); for (const s of savers.values()) void s.now(); ch.close(); };
-  }, [remote]);
+    return () => { window.removeEventListener('pagehide', bye); for (const s of savers.values()) void s.now().then(ok => { if (ok) s.dispose(); }); ch.close(); };
+  }, [remote, epoch]);
   return null;
 }

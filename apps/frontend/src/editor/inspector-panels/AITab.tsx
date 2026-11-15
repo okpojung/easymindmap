@@ -1,3 +1,4 @@
+import { flushMdExits } from '@/utils/mdExitGuard';
 // AITab — AI 마인드맵 생성 (실동작).
 //
 // [생성] 프롬프트 입력 → 등록된 API 키의 AI(Anthropic/OpenAI/Gemini)에게
@@ -187,7 +188,8 @@ function GenerateView({ t, onNeedKey }: {
     // 아니게 됐는데 문구만 남아 있었다.
     askConfirm(
       tr('inspector.ai.confirmNewMap', { n: result.nodeCount }),
-      () => {
+      async () => {
+        if (!await flushMdExits()) return;
         // **서버 맵 연결을 먼저 끊는다** — 끊지 않으면 자동저장이 조금 전까지
         // 열어 두었던 서버 맵을 이 AI 맵으로 덮어쓴다 (2026-08-05 저장 감사).
         detachFromServer();

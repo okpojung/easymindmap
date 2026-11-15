@@ -1,5 +1,7 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const html=fs.readFileSync(process.argv[2],'utf8');
+// Checkout line endings are not part of the security contract. Normalize before
+// extracting VM snippets and removing the single-line SAFE_STORAGE declaration.
+const html=fs.readFileSync(process.argv[2],'utf8').replace(/\r\n/g,'\n');
 const start=html.indexOf('<script id="appMain">')+'<script id="appMain">'.length;
 const source=html.slice(start,html.indexOf('</script>',start));new vm.Script(source);console.log('PASS APP_JS syntax');
 assert(source.includes('DOC.kind === "encrypted" ? writeTo("encrypted", false)'));assert(source.includes('buildHtml(true, { markdown: snapshot, encrypted: true })'));assert(source.includes('scriptSafe(APP_JS)'));assert(source.includes('ISOLATED_PROTECTED || PROTECTED_DOCUMENT'));assert(!/localStorage\.(?:getItem|setItem)\(/g.test(source.replace(/const SAFE_STORAGE = .*?;\n/,'')));console.log('PASS encrypted routing/offline/host guards/storage');

@@ -2797,6 +2797,7 @@ window.addEventListener("message", (e) => {
     clearTimeout(tSrc); clearTimeout(tWw); clearTimeout(tPost); tSrc = tWw = tPost = 0;
     FRAME_HOST.pending = FRAME_HOST.lastSent = null;
     setAll(d.markdown, "api"); DOC.saved = md; updStatus();
+    if (typeof d.loadNonce === "string") postToParent({ type: "mde:loaded", loadNonce: d.loadNonce, markdown: md });
   } else if (d.type === "mde:saved" && FRAME_HOST.active) {
     flushPendingEdits();
     if (d.ok === false) { FRAME_HOST.pending = null; flash(tr("저장하지 못했습니다")); return; }

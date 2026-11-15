@@ -3,6 +3,9 @@ import { setImmediate as turn } from 'node:timers/promises';
 import { createMdAutosaver, saveMd, type MdTarget } from './mdSession';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useDocumentStore } from '@/stores/documentStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
+import { openAttachment, setMdDockAvailable } from './openAttachment';
+import { createMdFrameLoadGate, readMdFrameSnapshot } from './mdFrameLoad';
 
 // No real attachments, credentials, clocks, or HTTP endpoints are used.
 const target: MdTarget = { kind: 'server', att: 'synthetic-md-autosave', name: 'synthetic.md' };
@@ -46,6 +49,49 @@ globalThis.fetch = async (input, init) => {
   return respond();
 };
 try {
+  {
+    requests = []; respond = async () => ok();
+    const gate = createMdFrameLoadGate();
+    const child = { MDE: { markdown: 'DEFAULT SAMPLE' } };
+    const saver = createMdAutosaver(target, () => {}, { markdown: 'original attachment' }, () => readMdFrameSnapshot(gate, child));
+    assert.equal(await saver.now(), true); assert.equal(requests.length, 0);
+    const nonce = gate.begin('original attachment');
+    assert.equal(await saver.now(), true); assert.equal(requests.length, 0);
+    child.MDE.markdown = 'original attachment';
+    assert.equal(gate.accept({ loadNonce: nonce, markdown: 'original attachment' }), true);
+    assert.equal(await saver.now(), true); assert.equal(requests.length, 0);
+    child.MDE.markdown = 'first real edit';
+    assert.equal(await saver.now(), true); assert.deepEqual(requests.map(r => r.body), ['first real edit']);
+    saver.dispose();
+    console.log('PASS no sample/default capture is saved before exact initialization ACK');
+  }
+  {
+    requests = []; respond = async () => ok();
+    const saver = createMdAutosaver(target, () => {}, { markdown: 'baseline' }, () => 'typed before 400ms message');
+    assert.equal(await saver.now(), true);
+    assert.deepEqual(requests.map(r => r.body), ['typed before 400ms message']);
+    saver.dispose();
+    console.log('PASS direct now captures the latest iframe draft before close/move without waiting for change debounce');
+  }
+  {
+    requests = []; respond = async () => { throw new TypeError('synthetic MD1 failure'); };
+    const first = { kind: 'server' as const, att: 'synthetic-md-autosave', name: 'MD1.md' };
+    useEditorUiStore.getState().setMdDock(first); setMdDockAvailable(true);
+    let captureText = 'MD1 unsaved draft';
+    const saver = createMdAutosaver(first, () => {}, { markdown: 'baseline' }, () => captureText);
+    openAttachment('MD2.md', '/v1/attachments/synthetic-md2');
+    await waitFor(() => requests.length === 1); await turn();
+    assert.deepEqual(useEditorUiStore.getState().mdDock, first);
+    assert.equal(saver.latest, 'MD1 unsaved draft');
+    captureText = 'MD1 newest draft'; respond = async () => ok();
+    openAttachment('MD2.md', '/v1/attachments/synthetic-md2');
+    await waitFor(() => useEditorUiStore.getState().mdDock?.name === 'MD2.md');
+    assert.deepEqual(requests.map(r => r.body), ['MD1 unsaved draft', 'MD1 newest draft']);
+    assert.equal(requests.length, 2);
+    saver.dispose(); setMdDockAvailable(false); useEditorUiStore.getState().setMdDock(null);
+    console.log('PASS failed MD1 blocks MD2 target switch; restored retry saves MD1 newest text before switching');
+  }
+  requests = []; sizes = 0;
   respond = async () => { throw new TypeError('synthetic network rejection'); };
   assert.deepEqual(await saveMd(target, 'network'), { ok: false, error: 'network' });
   assert.equal(sizes, 0);

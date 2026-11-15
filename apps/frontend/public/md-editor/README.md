@@ -10,7 +10,7 @@ EMM은 자체 공통 암호화 생성 런타임을 사용하므로 원본 전체
 | 출처 저장소 | <https://github.com/okpojung/markdown-editor> |
 | 파일 | `index.html` (단일 파일 편집기) |
 | 커밋 | `ed82e81e42c4ced80625e6b8348a7dbbfae7239a` (v1.0.6 공통 UI, EMM 확장 보존) |
-| sha256 | `eaa7d04463cc46ff13f758345e061d93b34dcc38b35f6dbcf7e85d92c098e1e0` |
+| sha256 | `4c5a4df9cf4868b8f9a4b47667cc2df0bdfe14e86f26036cbf151345d4594c05` |
 | 라이선스 | MIT — 아래 고지 |
 
 ## v1.0.6 통합 기준

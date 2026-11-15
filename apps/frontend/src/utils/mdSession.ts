@@ -138,13 +138,20 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
     });
     return inFlight;
   };
+  const prepare = () => {
+    if (useDocumentStore.getState().docEpoch !== epoch) return;
+    const markdown = capture?.();
+    if (typeof markdown === 'string' && markdown !== api.latest) api.change(markdown);
+  };
   const api = {
     change(md: string) { pending = md; schedule(1000); },
     /** Wait for in-flight work and the newest queued snapshot; false keeps a failed draft retryable. */
     async now(): Promise<boolean> {
       clearTimer();
       for (;;) {
+        try { prepare(); } catch { onState({ error: 'error' }); return false; }
         if (!await flush()) return false;
+        try { prepare(); } catch { onState({ error: 'error' }); return false; }
         if (inFlight === null && pending === null) return true;
       }
     },
@@ -152,11 +159,7 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
     dispose() { clearTimer(); unregister(); unsubscribe(); },
   };
   const unregister = registerMdExitGuard({
-    prepare: () => {
-      if (useDocumentStore.getState().docEpoch !== epoch) return;
-      const markdown = capture?.();
-      if (typeof markdown === 'string' && markdown !== api.latest) api.change(markdown);
-    },
+    prepare,
     pending: () => useDocumentStore.getState().docEpoch === epoch && (pending !== null || active !== null),
     flush: () => api.now(),
   });

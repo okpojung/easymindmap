@@ -19,7 +19,7 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
   const [fail, setFail] = useState<string | null>(null);
   const latest = useRef<string | null>(null);
   const closing = useRef<'close' | 'dock' | null>(null);
-  const frameApiRef = useRef<{ ack: (md: string) => void; fail: () => void } | null>(null);
+  const frameApiRef = useRef<Pick<ReturnType<typeof useMdFrame>, 'ack' | 'fail' | 'capture'> | null>(null);
   const kind = mdTargetFromKey(mdKey, name)?.kind ?? 'embedded';
 
   useEffect(() => {
@@ -35,13 +35,14 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
       if (m.key !== mdKey) return;
       if (m.type === 'md-load') { got = true; latest.current = m.markdown; setContent({ markdown: m.markdown, readOnly: m.readOnly }); if (m.readOnly) setState({ error: 'readonly' }); }
       else if (m.type === 'md-fail') { got = true; setFail(m.error); }
-      else if (m.type === 'md-state') {
+      else if (m.type === 'md-docked' && closing.current === 'dock') {
+        closing.current = null; try { window.opener?.focus(); } catch { /* other window */ } window.close();
+      } else if (m.type === 'md-state') {
         setState(m.state);
         if (m.state === 'saved' && typeof m.markdown === 'string') {
           frameApiRef.current?.ack(m.markdown);
-          if (closing.current && m.markdown === latest.current) {
-            const action = closing.current; closing.current = null;
-            if (action === 'dock') { try { window.opener?.focus(); } catch { /* other window */ } }
+          if (closing.current === 'close' && m.markdown === latest.current) {
+            closing.current = null;
             window.close();
           }
         } else if (typeof m.state === 'object') { closing.current = null; frameApiRef.current?.fail(); }
@@ -60,6 +61,9 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
     onClose: () => {
       if (content?.readOnly) { window.close(); return; }
       if (lost || latest.current === null || !chRef.current) { frameApiRef.current?.fail(); return; }
+      const snapshot = frameApiRef.current?.capture();
+      if (typeof snapshot !== 'string') return;
+      latest.current = snapshot;
       closing.current = 'close';
       chRef.current.postMessage({ type: 'md-change', key: mdKey, markdown: latest.current, now: true } satisfies MdMsg);
     },
@@ -69,6 +73,9 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
 
   const backToEmm = () => {
     if (!chRef.current || lost || latest.current === null) return;
+    const snapshot = frameApiRef.current?.capture();
+    if (typeof snapshot !== 'string') return;
+    latest.current = snapshot;
     closing.current = 'dock';
     chRef.current.postMessage({ type: 'md-dock', key: mdKey, name, ...(latest.current !== null ? { markdown: latest.current } : {}) } satisfies MdMsg);
     // The successful md-state snapshot closes this window; failures keep its draft open.
@@ -89,7 +96,7 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
         <div style={{ padding: 16, fontSize: 12.5, color: '#B42318' }}>{fail === 'gone' ? tr('editor.md.gone') : tr('editor.md.loadFail', { error: fail })}</div>
       ) : (
         <iframe ref={frame} data-testid="md-window-frame" title={name} src={mdEmbedSrc()} onLoad={onLoad}
-          style={{ flex: 1, minHeight: 0, width: '100%', border: 'none', background: '#fff', visibility: content ? 'visible' : 'hidden' }} />
+          style={{ flex: 1, minHeight: 0, width: '100%', border: 'none', background: '#fff', visibility: content && frameApi.initialized ? 'visible' : 'hidden', pointerEvents: frameApi.initialized ? 'auto' : 'none' }} />
       )}
     </div>
   );

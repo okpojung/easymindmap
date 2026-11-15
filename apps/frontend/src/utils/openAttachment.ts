@@ -1,3 +1,4 @@
+import { flushMdExits } from './mdExitGuard';
 // 첨부파일 열기 정책 (2026-07 사용자 요청):
 //   · 브라우저가 표시할 수 있는 형식(PDF·사진·텍스트·오디오·비디오)은
 //     **새 탭에서 바로 열기** — data URL은 Chrome이 탭 이동을 막고,
@@ -204,6 +205,13 @@ function openEmbeddedMarkdown(nodeId: string, attachmentId: string, name: string
 
 // 편집 화면이 오른쪽 편집기 칸을 그릴 수 있나 (EditorPage 가 켠다) — 아니면 예전처럼 새 탭 (2026-11-08)
 let mdDockHost = false;
+let mdDockRequest = 0;
+function requestMdDock(target: Parameters<ReturnType<typeof useEditorUiStore.getState>['setMdDock']>[0]): void {
+  const request = ++mdDockRequest, epoch = useDocumentStore.getState().docEpoch;
+  void flushMdExits().then(ok => {
+    if (ok && request === mdDockRequest && useDocumentStore.getState().docEpoch === epoch) useEditorUiStore.getState().setMdDock(target);
+  });
+}
 export function setMdDockAvailable(v: boolean): void { mdDockHost = v; }
 
 export function openAttachment(name: string, url?: string, ref?: AttachmentRef): void {
@@ -214,10 +222,10 @@ export function openAttachment(name: string, url?: string, ref?: AttachmentRef):
   if (mdDockHost && isMarkdownName(name)) {
     if (url.startsWith('data:')) {
       const hit = findAttachment(ref, url);
-      if (hit) { useEditorUiStore.getState().setMdDock({ kind: 'embedded', nodeId: hit.nodeId, attachmentId: hit.att.id, name }); return; }
+      if (hit) { requestMdDock({ kind: 'embedded', nodeId: hit.nodeId, attachmentId: hit.att.id, name }); return; }
     } else {
       const sid = serverAttachmentId(url);
-      if (sid) { useEditorUiStore.getState().setMdDock({ kind: 'server', att: sid, name }); return; }
+      if (sid) { requestMdDock({ kind: 'server', att: sid, name }); return; }
     }
   }
 

@@ -6,6 +6,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { openAttachment, setMdDockAvailable } from './openAttachment';
 import { createMdFrameLoadGate, readMdFrameSnapshot } from './mdFrameLoad';
+import { hasPendingMdEdits, flushMdExits } from './mdExitGuard';
 
 // No real attachments, credentials, clocks, or HTTP endpoints are used.
 const target: MdTarget = { kind: 'server', att: 'synthetic-md-autosave', name: 'synthetic.md' };
@@ -49,6 +50,17 @@ globalThis.fetch = async (input, init) => {
   return respond();
 };
 try {
+  {
+    requests = []; timers.clear(); let captures = 0;
+    const saver = createMdAutosaver(target, () => {}, { markdown: 'readonly original', readOnly: true }, () => { captures++; return 'readonly iframe draft'; });
+    saver.change('readonly external change');
+    assert.equal(await saver.now(), true);
+    assert.equal(hasPendingMdEdits(), false);
+    assert.equal(await flushMdExits(), true);
+    assert.equal(captures, 0); assert.equal(requests.length, 0); assert.equal(timers.size, 0);
+    assert.equal(saver.latest, 'readonly original'); saver.dispose();
+    console.log('PASS readonly saver ignores change/capture, performs zero fetches and permits exit');
+  }
   {
     requests = []; respond = async () => ok();
     const gate = createMdFrameLoadGate();

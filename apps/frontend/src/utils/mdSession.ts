@@ -91,7 +91,7 @@ export async function saveMd(t: MdTarget, markdown: string, base?: string): Prom
 
 /** 오른쪽 칸·새 창이 함께 쓰는 '모아서 자동 저장' 도우미 */
 /** 저장 결과 — 'saved' 면 실제로 저장한 내용(savedMd)을 함께 넘긴다(편집기에 그 스냅샷으로 저장 완료를 알린다) */
-export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' | { error: string }, savedMd?: string) => void, initial: { markdown: string; base?: string }, capture?: () => string | null) {
+export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' | { error: string }, savedMd?: string) => void, initial: { markdown: string; base?: string; readOnly?: boolean }, capture?: () => string | null) {
   const epoch = useDocumentStore.getState().docEpoch;
   let last = initial.markdown;
   let base = initial.base;
@@ -139,12 +139,12 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
     return inFlight;
   };
   const prepare = () => {
-    if (useDocumentStore.getState().docEpoch !== epoch) return;
+    if (initial.readOnly || useDocumentStore.getState().docEpoch !== epoch) return;
     const markdown = capture?.();
     if (typeof markdown === 'string' && markdown !== api.latest) api.change(markdown);
   };
   const api = {
-    change(md: string) { pending = md; schedule(1000); },
+    change(md: string) { if (initial.readOnly) return; pending = md; schedule(1000); },
     /** Wait for in-flight work and the newest queued snapshot; false keeps a failed draft retryable. */
     async now(): Promise<boolean> {
       clearTimer();
@@ -160,7 +160,7 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
   };
   const unregister = registerMdExitGuard({
     prepare,
-    pending: () => useDocumentStore.getState().docEpoch === epoch && (pending !== null || active !== null),
+    pending: () => !initial.readOnly && useDocumentStore.getState().docEpoch === epoch && (pending !== null || active !== null),
     flush: () => api.now(),
   });
   const unsubscribe = useDocumentStore.subscribe((state) => { if (state.docEpoch !== epoch) api.dispose(); });

@@ -7,3 +7,11 @@
   .docs-hdr-newmap .docs-hdr-label { display: none; }
   .docs-hdr-newmap { padding: 0 !important; width: var(--docs-tap, 40px) !important; }
 }
+
+/* Keep the merged desktop header a single row, including tablet-width windows. */
+@media (min-width: 768px) and (max-width: 1120px) {
+  [data-testid="browser-toolbar"] .docs-hdr-secondary-label { display: none; }
+  [data-testid="browser-toolbar"] > button { padding-left: 6px !important; padding-right: 6px !important; }
+  [data-testid="browser-toolbar"] [data-testid="browser-search-box"] { min-width: 96px !important; }
+  [data-testid="browser-selected-folder"] { max-width: 82px !important; }
+}

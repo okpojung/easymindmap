@@ -8,6 +8,11 @@ import { useAutosaveStore } from '@/stores/autosaveStore';
 import type { SampleMap } from '@/editor/__samples__/types';
 const sample = (): SampleMap => ({ title:'snapshot title', root:{id:'root',text:'Root',colorKey:'root'}, branches:[{id:'a',text:'A',colorKey:'l1A',side:'right',children:[{id:'aa',text:'AA'}]},{id:'b',text:'B',colorKey:'l1B',side:'right',children:[]}] });
 const originalGet=cloudApi.getDocument;
+const originalRelease=cloudApi.editRelease;
+const previousWindow=(globalThis as any).window;
+const sessionValues=new Map<string,string>();
+(globalThis as any).window={ setTimeout,clearTimeout,setInterval,clearInterval,crypto:globalThis.crypto, location:{href:'http://test.local/',search:''},history:{replaceState(){}},sessionStorage:{getItem:(k:string)=>sessionValues.get(k)??null,setItem:(k:string,v:string)=>sessionValues.set(k,v)} };
+cloudApi.editRelease=async()=>({ok:true});
 let response: any;
 cloudApi.getDocument = async () => response;
 const answer = (extra: object) => ({ doc:{v:2,map:sample(),editor:{layoutType:'tree-right',spacingX:100,spacingY:100}}, updatedAt:'2026-11-15T00:00:00Z',title:'Server title',folderId:null,kind:'solo',role:'owner',editLock:'acquired',...extra });
@@ -39,4 +44,4 @@ try {
   assert.equal(findNodeInMap(useDocumentStore.getState().map,'a')?.text,'editable again');
   detachFromServer(); assert.equal(isViewerLocked(),false);
   console.log('PASS busy/viewer/published/dashboard sessions block data edits while preserving view folds, server title, document epoch and next-map editing');
-} finally { cloudApi.getDocument=originalGet; clearCurrentMap(); useEditorUiStore.getState().setOpeningLabel(null); }
+} finally { cloudApi.getDocument=originalGet; clearCurrentMap(); cloudApi.editRelease=originalRelease; useEditorUiStore.getState().setOpeningLabel(null); if(previousWindow===undefined)delete (globalThis as any).window;else (globalThis as any).window=previousWindow; }

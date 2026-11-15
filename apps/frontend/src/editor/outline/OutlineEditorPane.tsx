@@ -44,13 +44,13 @@ import { MarkToolbar } from '@/editor/node-renderer/MarkToolbar';
 import { extractClipboardImage } from '@/utils/clipboardImage';
 import type { LaidOutNode } from '@/layout/types';
 import { useImageSrcResolver } from '@/utils/imageSrc';
-import { useTr } from '@/i18n';
+import { useTr, useLang } from '@/i18n';
 import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
 import { primeTouchKeyboard } from '@/editor/canvas/touchKeyboard';
 import { isViewerLocked } from '@/stores/documentStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { planOutlineDrop, nearestGap, canDragOutlineRow, type OutlineFlatRow, type OutlineDropPlan } from './outlineDrop';
-import { outlineDropCopy } from './outlineDropCopy';
+import { outlineDropCopyFor } from './outlineDropCopy';
 
 interface PaneProps {
   t: ThemeTokens;
@@ -78,6 +78,7 @@ function miniBtn(t: ThemeTokens, coarse = false) {
 
 export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps) {
   const tr = useTr();
+  const outlineDropCopy = outlineDropCopyFor(useLang());
   // 폰 폭·손가락 (모바일 웹, 2026-10-05) — 머리말 안내는 손가락용으로, 단추는 40px
   const compact = usePhoneLayout();
   const coarse = useCoarse();
@@ -522,6 +523,9 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDr
   dragging?: boolean;
 }) {
   const tr = useTr();
+  const outlineDropCopy = outlineDropCopyFor(useLang());
+  const readOnly = useCloudStore((s) => !!s.readOnlyInfo);
+  const editingBlocked = () => readOnly || isViewerLocked();
   const [hover, setHover] = useState(false);
   // 우리 저장소 사진은 그릴 때 토큰을 붙여야 한다 (B16 ② 슬라이스 2)
   const resolveImgSrc = useImageSrcResolver();
@@ -556,6 +560,7 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDr
   useEffect(() => {
     if (editRequestId === node.id) {
       editRequestId = null;
+      if (editingBlocked()) return;
       setDraft(node.text);
       setEditing(true);
     }
@@ -567,12 +572,14 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDr
   const indicators = rawNode ? nodeContentIndicators(rawNode as unknown as LaidOutNode) : [];
 
   const startEdit = () => {
+    if (editingBlocked()) return;
     setDraft(node.text);
     setEditing(true);
     setSelectedId(node.id);
   };
 
   const commitEdit = () => {
+    if (editingBlocked()) { setEditing(false); return; }
     const v = draft.trim();
     if (v && v !== node.text) updateNodeText(node.id, v);
     setEditing(false);
@@ -588,6 +595,7 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDr
   const [tableDlg, setTableDlg] = useState<
     { mode: 'insert'; cursor: number; rows: number; cols: number } | { mode: 'edit' } | null
   >(null);
+  useEffect(() => { if (readOnly) { setEditing(false); setCodeDlgCursor(null); setTableDlg(null); } }, [readOnly]);
   const tableDlgRef = useRef<boolean>(false);
   useEffect(() => { tableDlgRef.current = tableDlg !== null; }, [tableDlg]);
   const wrapSelection = (mark: string, size?: { rows: number; cols: number }) => {
@@ -638,6 +646,7 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDr
 
   const isCenter = node.depth === 0; // 어느 중심주제의 루트든 (아웃라인 최상위 행)
   const indent = () => {
+    if (editingBlocked()) return;
     if (isCenter) return;
     const sibs = siblingsOf();
     const idx = sibs.findIndex((s) => s.id === node.id);
@@ -647,6 +656,7 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDr
   };
 
   const outdent = () => {
+    if (editingBlocked()) return;
     if (isCenter || node.depth <= 1) return;
     const map = useDocumentStore.getState().map;
     const parentId = findParentId(map, node.id);
@@ -656,6 +666,7 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDr
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (editingBlocked() && ['Enter', 'F2', 'Tab', 'Delete', 'Backspace'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); return; }
     if (e.key === 'Tab') {
       e.preventDefault();
       e.stopPropagation();
@@ -696,7 +707,8 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDr
 
   const btn = (label: string, title: string, onClick: () => void) => (
     <button
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      disabled={readOnly || isViewerLocked()}
+      onClick={(e) => { e.stopPropagation(); if (!editingBlocked()) onClick(); }}
       title={title}
       tabIndex={-1}
       style={{
@@ -868,6 +880,7 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDr
               if (codeDlgRef.current || tableDlgRef.current) return;
               commitEdit();
             }}
+            readOnly={readOnly || isViewerLocked()}
             onKeyDown={(e) => {
               e.stopPropagation();
               // 부분 강조 단축키 (Ctrl+B/I/U)

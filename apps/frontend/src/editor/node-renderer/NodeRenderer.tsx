@@ -645,6 +645,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
   // 편집 중 선택한 텍스트에 인라인 마커 토글 (부분 강조 — 미니 툴바/
   // Ctrl+B·I·U). 이미 그 마커가 적용돼 있으면 해제한다. inlineMarks.ts 참조.
   const wrapSelection = (mark: string, size?: { rows: number; cols: number }) => {
+    if (readOnly) return;
     const ta = textareaRef.current;
     if (!ta) return;
     const s0 = ta.selectionStart ?? 0;
@@ -1088,10 +1089,10 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                   onDoubleClick={(e) => {
                     // 표 더블클릭 = 팝업 편집기 (코드 패널과 같은 규칙)
                     e.stopPropagation();
-                    setTableDlg({ mode: 'edit', inDraft: false, index: ti });
+                    if (!readOnly) setTableDlg({ mode: 'edit', inDraft: false, index: ti });
                   }}
                 >
-                  <title>{tr('editor.node.tableDblClick')}</title>
+                  <title>{readOnly ? undefined : tr('editor.node.tableDblClick')}</title>
                   {/* 히트 영역 — 격자선·글자 사이 빈 곳도 더블클릭이 표에 닿게
                       (없으면 아래 노드 박스가 받아 텍스트 편집으로 들어간다) */}
                   <rect x={tX} y={tY} width={tW} height={tH} fill="transparent" />
@@ -1208,7 +1209,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                   onDoubleClick={(e) => {
                     // 패널 더블클릭 = 팝업 편집기 (노드 텍스트 편집 대신)
                     e.stopPropagation();
-                    setCodeDlg({ mode: 'edit', index: ci0 });
+                    if (!readOnly) setCodeDlg({ mode: 'edit', index: ci0 });
                   }}
                 >
                   <title>{tr('editor.node.codeDblClick')}</title>
@@ -1236,13 +1237,13 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
                     textAnchor="start"
                     fontSize={headFs}
                     fill="#64748B"
-                    style={{ fontFamily: CODE_FONT, cursor: 'pointer', userSelect: 'none' }}
+                    style={{ fontFamily: CODE_FONT, cursor: readOnly ? 'default' : 'pointer', userSelect: 'none' }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setCodeDlg({ mode: 'edit', index: ci0 });
+                      if (!readOnly) setCodeDlg({ mode: 'edit', index: ci0 });
                     }}
                   >
-                    {(mdCode.lang || 'code') + ' ✎'}
+                    {(mdCode.lang || 'code') + (readOnly ? '' : ' ✎')}
                   </text>
                   {/* ⧉ 복사 버튼 — 클릭 시 코드 원문 복사 */}
                   <text
@@ -1479,7 +1480,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
           {/* 부분 강조 툴바 (공용 MarkToolbar) — 선택 구간에 마커 토글.
               코드 블록 창이 떠 있는 동안에는 감춘다: 창 밖(노드 위)에
               떠 있어 창을 가리고, 그때는 쓸 수도 없다 (2026-08-09 보고) */}
-          {!basic && !codeDlg && !tableDlg && <MarkToolbar
+          {!readOnly && !basic && !codeDlg && !tableDlg && <MarkToolbar
             t={t}
             onApply={wrapSelection}
             style={isPhoneLayoutNow() ? {
@@ -1660,6 +1661,10 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
             }}
             onDragStart={(e) => e.preventDefault()}
             onKeyDown={(e) => {
+              if (readOnly) {
+                if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+                return;
+              }
               // [& 자동완성 목록이 떠 있으면 화살표·Enter·Tab·Esc 는 목록 조작
               if (varAc && !(e.nativeEvent as KeyboardEvent).isComposing) {
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -1859,7 +1864,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
       )}
 
       {/* 코드 블록 팝업 편집기 — { } 버튼(삽입) / 패널 더블클릭·언어 라벨(수정) */}
-      {codeDlg && (
+      {!readOnly && codeDlg && (
         <CodeBlockDialog
           t={t}
           initialLang={codeDlg.mode === 'edit' ? parseMdCodes(String(srcText || ''))[codeDlg.index]?.lang : undefined}
@@ -1885,7 +1890,7 @@ function NodeRendererImpl({ n, t, selected, searchHit, dropTarget, onSelect, onH
       )}
 
       {/* 표 팝업 편집기 — ⊞ 버튼(격자 크기 → 삽입) / 표 더블클릭(수정) */}
-      {tableDlg && (() => {
+      {!readOnly && tableDlg && (() => {
         const src = tableDlg.mode === 'edit' ? (tableDlg.inDraft ? draftText : String(srcText || '')) : '';
         const parsed = tableDlg.mode === 'edit' ? (parseMdTables(src)[tableDlg.index] ?? null) : null;
         const initialMd = parsed ? buildMdTable(parsed.headers, parsed.rows, parsed.aligns) : undefined;

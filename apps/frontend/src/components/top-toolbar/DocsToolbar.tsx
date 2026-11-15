@@ -15,9 +15,9 @@ import { UserMenu } from './UserMenu';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useTr } from '@/i18n';
-import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
+import { useCoarse } from '@/hooks/useViewport';
 import brandFaviconUrl from '@/assets/brand-favicon.svg';
-import { setDocsHeaderHost } from '@/components/cloud/docsHeaderHost';
+import { setDocsHeaderHost, useDocsCompactHeader } from '@/components/cloud/docsHeaderHost';
 
 
 export function DocsToolbar({ t }: { t: ThemeTokens }) {
@@ -25,7 +25,7 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
   const themeName = useEditorUiStore((s) => s.themeName);
   const setThemeName = useEditorUiStore((s) => s.setThemeName);
   // 폰 — 노치(safe-area)만큼 띄우고, 손가락 입력이면 단추를 40px 로
-  const phone = usePhoneLayout();
+  const phone = useDocsCompactHeader();
   const coarse = useCoarse();
 
   // 우측 상단 토스트 — 편집 툴바와 같은 모양. 계정 메뉴(로그아웃 등)와
@@ -81,10 +81,8 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
       </div>
 
       {/* 문서함 도구 자리 — MapBrowser 가 포탈로 검색·새 맵·폴더 도구를 그린다 (폰에서는 자리 없음) */}
-      {phone ? <div style={{ flex: 1 }} /> : (
-        <div ref={setDocsHeaderHost} className="docs-hdr-slot" data-testid="docs-header-slot"
-          style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }} />
-      )}
+      <div ref={setDocsHeaderHost} className="docs-hdr-slot" data-testid="docs-header-slot"
+        style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }} />
 
       {/* 다크 모드 토글 — 편집 툴바와 같은 버튼 */}
       <button

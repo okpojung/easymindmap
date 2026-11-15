@@ -51,7 +51,7 @@ import { useTr, useLang, tr as trNow, currentLocale, LANG_LOCALE } from '@/i18n'
 import { rich } from '@/i18n/rich';
 import { createPortal } from 'react-dom';
 import { HelpDrawer } from '@/components/help/HelpDrawer';
-import { useDocsHeaderHost } from './docsHeaderHost';
+import { useDocsHeaderHost, useDocsCompactHeader, DOCS_TABLE_MIN_WIDTH } from './docsHeaderHost';
 import docsHeaderCopy from './docsHeaderCopy.json';
 import './docsHeader.css';
 import { useProFeature } from '@/pro/contract';
@@ -63,25 +63,7 @@ type SortKey = 'title' | 'createdAt' | 'updatedAt'
  * 데스크톱 표가 잘리지 않는 최소 폭 — 아래 `rowStyle` 의 열 폭 합
  * (24+140+76+108+108+58+76+54+86+196) + 간격 9×8 + 좌우 여백 20.
  */
-const TABLE_MIN_WIDTH = 1020;
-/** 도움말 펼침을 기억하는 자리 (브라우저마다) */
-
-/** 손가락 기기 + 표가 들어가지 않는 폭 — 카드 배치를 쓴다 */
-function useNarrowTouch(): boolean {
-  const q = `(pointer: coarse) and (max-width: ${TABLE_MIN_WIDTH - 1}px)`;
-  const get = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    && window.matchMedia(q).matches;
-  const [v, setV] = useState(get);
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const mq = window.matchMedia(q);
-    const on = () => setV(mq.matches);
-    on();
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, [q]);
-  return v;
-}
+const TABLE_MIN_WIDTH = DOCS_TABLE_MIN_WIDTH;
 
 /** 한 번에 받아 오는 맵 수 상한 — 서버 list() 의 limit 최대값과 같다 */
 const MAP_FETCH_LIMIT = 500;
@@ -316,8 +298,7 @@ export function MapBrowser({
    */
   // 손가락 기기인데 표가 들어가지 않는 폭(가로로 든 폰 등)도 카드로 — 26px 아이콘
   // 여섯 개를 옆으로 굴려 가며 누르게 하지 않는다. 마우스면 표를 옆으로 굴린다.
-  const narrowTouch = useNarrowTouch();
-  const compact = usePhoneLayout() || narrowTouch;
+  const compact = useDocsCompactHeader();
   const coarse = useCoarse();
   /** 폰의 아래 시트 — 맵 줄 · 폴더 줄 · 머리의 [⋯] */
   const [sheet, setSheet] = useState<
@@ -1486,7 +1467,7 @@ export function MapBrowser({
         onChange={(e) => setQuery(e.target.value)}
         /* Esc = 검색어 지우기 — window 핸들러가 계층으로 처리한다 */
         aria-label={dCopy.search}
-        placeholder={tr('cloud.browser.searchPh')}
+        placeholder={tr('cloud.browser.searchPh').replace(/^🔍\s*/, '')}
         title={tr('cloud.browser.searchTip')}
         enterKeyHint="search"
         style={{
@@ -1515,7 +1496,7 @@ export function MapBrowser({
   );
   const desktopTools = (
     <div data-testid="browser-toolbar" style={{
-      display: 'flex', alignItems: 'center', gap: 8, rowGap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0,
+      display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap', flex: 1, minWidth: 0,
     }}>
       {/* 새 맵 = 의도된 주 행동(채움 강조색). 나머지는 중립 */}
       <button
@@ -1527,33 +1508,33 @@ export function MapBrowser({
           setNewMapTarget(selFolder?.folderId ?? null, useDocumentStore.getState().docEpoch);
         }}
         title={tr('cloud.browser.newMapTip')}
-        style={{ ...dBtn, fontWeight: 700, color: '#fff', background: t.primary, borderColor: t.primary }}
-      ><I.Plus size={15} /><span className="docs-hdr-label">{tr('cloud.browser.newMap')}</span></button>
+        style={{ ...dBtn, fontWeight: 700, color: t.primary === '#D97706' ? '#fff' : '#1F2937', background: t.primary === '#D97706' ? t.primaryHover : t.primary, borderColor: t.primary }}
+      ><I.Plus size={15} /><span className="docs-hdr-label">{tr('cloud.browser.newMap').replace(/^[＋+]\s*/, '')}</span></button>
       <button
-        data-testid="browser-new-folder"
+        data-testid="browser-new-folder" aria-label={tr('cloud.browser.newFolder')}
         onClick={() => newFolderHere()}
         title={selFolder ? tr('cloud.browser.newFolderInTip', { name: selFolder.name }) : tr('cloud.browser.newFolderTip')}
         style={dBtn}
-      >{tr('cloud.browser.newFolder')}</button>
+      ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 7V5h7l2 3h9v12H3zM8 14h8m-4-4v8"/></svg><span className="docs-hdr-secondary-label">{tr('cloud.browser.newFolder').replace(/^[＋+]\s*/, '')}</span></button>
       <button
-        data-testid="browser-expand-all"
+        data-testid="browser-expand-all" aria-label={tr('cloud.browser.expandAll')}
         onClick={expandAll}
         title={tr('cloud.browser.expandAllTip')}
         style={dBtn}
-      ><I.BranchExpand size={16} />{tr('cloud.browser.expandAll')}</button>
+      ><I.BranchExpand size={16} /><span className="docs-hdr-secondary-label">{tr('cloud.browser.expandAll')}</span></button>
       <button
-        data-testid="browser-collapse-all"
+        data-testid="browser-collapse-all" aria-label={tr('cloud.browser.collapseAll')}
         onClick={collapseAll}
         title={tr('cloud.browser.collapseAllTip')}
         style={dBtn}
-      ><I.BranchCollapse size={16} />{tr('cloud.browser.collapseAll')}</button>
+      ><I.BranchCollapse size={16} /><span className="docs-hdr-secondary-label">{tr('cloud.browser.collapseAll')}</span></button>
       <button
-        data-testid="browser-refresh"
+        data-testid="browser-refresh" aria-label={tr('cloud.browser.refresh')}
         onClick={() => { void load(); }}
         disabled={refreshing}
         title={tr('cloud.browser.refreshTip')}
         style={{ ...dBtn, color: t.textMuted, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? 'default' : 'pointer' }}
-      >{refreshing ? tr('cloud.browser.refreshing') : tr('cloud.browser.refresh')}</button>
+      ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></svg><span className="docs-hdr-secondary-label">{refreshing ? tr('cloud.browser.refreshing') : tr('cloud.browser.refresh').replace(/^↻\s*/, '')}</span></button>
       {selFolder && (
         <span data-testid="browser-selected-folder" title={tr('cloud.browser.selectedTip')}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 28, padding: '0 4px 0 8px',
@@ -1647,7 +1628,7 @@ export function MapBrowser({
                 ...mIconBtn, width: 'auto', padding: '0 12px', gap: 4, fontSize: 13.5,
                 color: '#fff', background: t.primary, borderColor: t.primary, whiteSpace: 'nowrap',
               }}
-            ><I.Plus size={16} /><span className="docs-hdr-label">{tr('cloud.browser.newMap')}</span></button>
+            ><I.Plus size={16} /><span className="docs-hdr-label">{tr('cloud.browser.newMap').replace(/^[＋+]\s*/, '')}</span></button>
             <button
               data-testid="browser-help-toggle"
               aria-haspopup="dialog"
@@ -1727,7 +1708,12 @@ export function MapBrowser({
         flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
         minWidth: compact ? 0 : TABLE_MIN_WIDTH,
       }}>
-      {compact ? (
+      {compact && docsHost && createPortal(
+        <div data-testid="m-browser-summary" style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, gap: 3, color: t.textMuted }}>
+          <span title={tr('cloud.m.summary', { maps: totals.maps.toLocaleString(locale), folders: folderCount.toLocaleString(locale), size: fmtBytes(totals.docBytes) })} style={{ flex: 1, minWidth: 0, fontSize: 10.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'right' }}>{tr('cloud.m.summary', { maps: totals.maps.toLocaleString(locale), folders: folderCount.toLocaleString(locale), size: fmtBytes(totals.docBytes) })}</span>
+          <button data-testid="m-browser-sort" aria-label={sortLabel(sort)} title={sortLabel(sort)} onClick={() => setSheet({ kind: 'header' })} style={{ width: 30, height: 40, flexShrink: 0, padding: 0, background: 'transparent', border: 0, color: t.textMuted, cursor: 'pointer' }}>{order === 'asc' ? '▲' : '▼'}</button>
+        </div>, docsHost)}
+      {compact ? (!docsHost && (
         /* 폰 — 표 머리글·합계 줄 대신 한 줄 요약. 오른쪽은 지금 정렬(누르면 시트) */
         <div data-testid="m-browser-summary" style={{
           display: 'flex', alignItems: 'center', gap: 8,
@@ -1751,7 +1737,7 @@ export function MapBrowser({
             }}
           >{sortLabel(sort)} {order === 'asc' ? '▲' : '▼'}</button>
         </div>
-      ) : (
+      )) : (
         <>
       {/* 열 머리글 — **한 줄**. 합계는 아래 별도 줄로 내렸다
           (2026-08-09 3차 요청). 예전에는 숫자 4열만 이름 위에 합계를

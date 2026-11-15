@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { registerMdExitGuard, hasPendingMdEdits, flushMdExits } from './mdExitGuard';
+import { registerMdExitGuard, hasPendingMdEdits, flushMdExits, afterMdExit } from './mdExitGuard';
 import { saveAndCloseMap, openMapHere, refreshFromServer } from '@/services/cloud/mapSession';
 import { cloudApi } from '@/services/cloud/apiClient';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -42,3 +42,12 @@ try {
   console.log('PASS failed MD exit leaves map, document epoch and cloud linkage unchanged on close/current-tab open');
 } finally { cloudApi.getDocument = originalGet; preventExit(); }
 assert.equal(hasPendingMdEdits(), false);
+
+let browserOpens = 0;
+const keepEditor = registerMdExitGuard({ pending: () => true, flush: async () => false });
+assert.equal(await afterMdExit(() => { browserOpens++; }), false);
+assert.equal(browserOpens, 0);
+keepEditor();
+assert.equal(await afterMdExit(() => { browserOpens++; }), true);
+assert.equal(browserOpens, 1);
+console.log('PASS document library cannot hide an editor with a failed draft; clean exits still open it');

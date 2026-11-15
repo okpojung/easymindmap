@@ -30,3 +30,10 @@ export async function flushMdExits(): Promise<boolean> {
     if (!flushed || !hasPendingMdEdits()) return true;
   }
 }
+
+/** Hiding/unmounting the editor is also an exit, even when the map stays open. */
+export async function afterMdExit(action: () => void): Promise<boolean> {
+  if (!await flushMdExits()) return false;
+  action();
+  return true;
+}

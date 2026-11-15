@@ -3,6 +3,7 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { appFaviconUrl } from '@/utils/brandFavicon';
+import { afterMdExit } from '@/utils/mdExitGuard';
 import { TooltipButton, TooltipIconBtn as IconBtn } from './Tooltip';
 import { MapActions } from './MapActions';
 import { mobileSaveDot, mobileToolbarSize } from './toolbar-layout';
@@ -187,7 +188,7 @@ export function TopToolbar({
     document.addEventListener('mousedown', off);
     return () => document.removeEventListener('mousedown', off);
   }, [ganttOpen]);
-  const openDocs = () => useEditorUiStore.getState().setBrowserOpen(true);
+  const openDocs = () => { void afterMdExit(() => useEditorUiStore.getState().setBrowserOpen(true)); };
 
   // 내보내기 — 데스크톱과 모바일에서 같은 메뉴 동작을 쓴다
   const runExportHtml = async () => {

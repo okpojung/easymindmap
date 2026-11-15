@@ -362,7 +362,7 @@ export function EditorPage() {
         // **갈 곳을 준다.** 예전에는 '문서 없음' 빈 화면에 안내만 떠 있었고,
         // '맵 닫기' 는 "열려 있는 맵이 없습니다" 만 되풀이해 이 탭에서
         // 빠져나갈 길이 없었다(2026-09-04 사용자 보고). 문서함을 연다.
-        useEditorUiStore.getState().setBrowserOpen(true);
+        if (!hasPendingMdEdits()) useEditorUiStore.getState().setBrowserOpen(true);
       })
       .finally(() => setHistoryPaused(false));
     return () => { alive = false; };

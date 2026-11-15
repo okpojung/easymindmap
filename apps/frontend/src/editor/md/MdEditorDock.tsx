@@ -99,7 +99,7 @@ export function useMdFrame(frame: React.RefObject<HTMLIFrameElement | null>, opt
   useEffect(() => { if (ready.current && opts.content !== null && pushed.current === null) push(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [opts.content]);
   return {
     /** iframe 새로 뜰 때 */
-    onLoad: () => { ready.current = false; pushed.current = null; gate.current.reset(); setInitialized(false); },
+    onLoad: () => { ready.current = true; pushed.current = null; gate.current.reset(); setInitialized(false); push(); },
     initialized,
     capture: () => readMdFrameSnapshot(gate.current, frame.current?.contentWindow as (Window & { flushPendingEdits?: () => void; MDE?: { markdown: string } }) | null),
     /** 저장 성공 — 그 스냅샷으로 편집기의 '저장 안 됨' 을 지운다 */

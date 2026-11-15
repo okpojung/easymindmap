@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { setImmediate as turn } from 'node:timers/promises';
+import { setTimeout as watchdog, clearTimeout as cancelWatchdog } from 'node:timers';
+import { useAuthStore, authEnabled } from '@/stores/authStore';
 import { createMdAutosaver, saveMd, type MdTarget } from './mdSession';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -11,6 +13,9 @@ import { hasPendingMdEdits, flushMdExits } from './mdExitGuard';
 // No real attachments, credentials, clocks, or HTTP endpoints are used.
 const target: MdTarget = { kind: 'server', att: 'synthetic-md-autosave', name: 'synthetic.md' };
 const originalFetch = globalThis.fetch;
+const originalAuth = { session: useAuthStore.getState().session, guest: useAuthStore.getState().guest };
+const authPersistence = useAuthStore.persist;
+const originalAuthStorage = authPersistence?.getOptions().storage;
 const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
 const originalReadOnly = useCloudStore.getState().readOnlyInfo;
 const originalSize = useDocumentStore.getState().setServerAttachmentSize;
@@ -33,20 +38,43 @@ const fixture = () => {
   const saver = createMdAutosaver(target, (state, markdown) => events.push({ state, markdown }), { markdown: 'baseline', base: 'initial-sha' });
   return { saver, events, acks: () => events.filter(e => e.state === 'saved').map(e => e.markdown) };
 };
-const waitFor = async (predicate: () => boolean) => {
-  for (let i = 0; i < 100 && !predicate(); i++) await turn();
-  assert(predicate(), 'synthetic asynchronous operation should start');
+// Signals determine readiness. The real timer only diagnoses a deadlocked fixture;
+// it is not a polling interval or a success criterion, and is separate from fake UI timers.
+const observe = <T>(promise: Promise<T>, label: string): Promise<T> => new Promise((resolve, reject) => {
+  const timer = watchdog(() => reject(new Error('Missing synthetic signal: ' + label)), 5000);
+  promise.then(value => { cancelWatchdog(timer); resolve(value); }, error => { cancelWatchdog(timer); reject(error); });
+});
+const requestWaiters = new Set<{ count: number; resolve: () => void }>();
+const requestStarted = (count: number): Promise<void> => {
+  if (requests.length >= count) return Promise.resolve();
+  const signal = deferred<void>();
+  const waiter = { count, resolve: () => signal.resolve(undefined) };
+  requestWaiters.add(waiter);
+  return observe(signal.promise, 'attachment PUT ' + count).finally(() => requestWaiters.delete(waiter));
+};
+const targetChanged = (name: string): Promise<void> => {
+  const signal = deferred<void>();
+  const unsubscribe = useEditorUiStore.subscribe(state => { if (state.mdDock?.name === name) signal.resolve(undefined); });
+  if (useEditorUiStore.getState().mdDock?.name === name) signal.resolve(undefined);
+  return observe(signal.promise, 'MD target ' + name).finally(unsubscribe);
 };
 Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: {
   setTimeout(fn: () => void) { const id = ++timerId; timers.set(id, fn); return id; },
   clearTimeout(id: number) { timers.delete(id); },
 } });
+// Explicitly isolate auth bootstrap even when VITE_SUPABASE_* is enabled in image builds.
+// Node versions differ in browser storage availability; never use real persisted credentials.
+authPersistence?.setOptions({ storage: { getItem: () => null, setItem() {}, removeItem() {} } });
+useAuthStore.setState({ session: null, guest: false });
+assert.equal(useAuthStore.getState().session, null);
+console.log('PASS isolated auth fixture (' + (authEnabled ? 'enabled' : 'disabled') + ')');
 useCloudStore.getState().setReadOnlyInfo(null);
 useDocumentStore.setState({ setServerAttachmentSize: () => { sizes++; } });
 globalThis.fetch = async (input, init) => {
   assert(String(input).endsWith('/v1/attachments/synthetic-md-autosave/content'));
   assert.equal(init?.method, 'PUT');
   requests.push({ body: new TextDecoder().decode(init?.body as Uint8Array), base: new Headers(init?.headers).get('If-Match') });
+  for (const waiter of requestWaiters) if (requests.length >= waiter.count) waiter.resolve();
   return respond();
 };
 try {
@@ -90,14 +118,16 @@ try {
     const first = { kind: 'server' as const, att: 'synthetic-md-autosave', name: 'MD1.md' };
     useEditorUiStore.getState().setMdDock(first); setMdDockAvailable(true);
     let captureText = 'MD1 unsaved draft';
-    const saver = createMdAutosaver(first, () => {}, { markdown: 'baseline' }, () => captureText);
+    const failed = deferred<void>();
+    const saver = createMdAutosaver(first, state => { if (typeof state === 'object') failed.resolve(undefined); }, { markdown: 'baseline' }, () => captureText);
     openAttachment('MD2.md', '/v1/attachments/synthetic-md2');
-    await waitFor(() => requests.length === 1); await turn();
+    await requestStarted(1); await observe(failed.promise, 'failed MD1 save settled');
     assert.deepEqual(useEditorUiStore.getState().mdDock, first);
     assert.equal(saver.latest, 'MD1 unsaved draft');
     captureText = 'MD1 newest draft'; respond = async () => ok();
+    const switched = targetChanged('MD2.md');
     openAttachment('MD2.md', '/v1/attachments/synthetic-md2');
-    await waitFor(() => useEditorUiStore.getState().mdDock?.name === 'MD2.md');
+    await switched;
     assert.deepEqual(requests.map(r => r.body), ['MD1 unsaved draft', 'MD1 newest draft']);
     assert.equal(requests.length, 2);
     saver.dispose(); setMdDockAvailable(false); useEditorUiStore.getState().setMdDock(null);
@@ -133,7 +163,7 @@ try {
   {
     const f = fixture(), blocked = deferred<Response>(); respond = () => blocked.promise;
     f.saver.change('older'); const first = f.saver.now();
-    await waitFor(() => requests.length === 1);
+    await requestStarted(1);
     assert.equal(f.saver.latest, 'older');
     f.saver.change('newest');
     blocked.reject(new TypeError('synthetic failure during newer input'));
@@ -171,11 +201,11 @@ try {
     const f = fixture(), a = deferred<Response>(), b = deferred<Response>();
     respond = () => requests.length === 1 ? a.promise : b.promise;
     f.saver.change('A'); const n1 = f.saver.now();
-    await waitFor(() => requests.length === 1);
+    await requestStarted(1);
     f.saver.change('B'); let completed = false;
     const n2 = f.saver.now().then(result => { completed = true; return result; });
     await turn(); assert.equal(completed, false); assert.equal(requests.length, 1);
-    a.resolve(ok()); await waitFor(() => requests.length === 2);
+    a.resolve(ok()); await requestStarted(2);
     assert.equal(completed, false); assert.equal(f.saver.latest, 'B');
     assert.deepEqual(f.acks(), ['A']);
     assert.notEqual(requests[1].base, '"sha256:initial-sha"');
@@ -188,7 +218,7 @@ try {
   {
     const f = fixture(), blocked = deferred<Response>(); respond = () => blocked.promise;
     f.saver.change('will fail'); const first = f.saver.now();
-    await waitFor(() => requests.length === 1);
+    await requestStarted(1);
     f.saver.change('baseline'); blocked.reject(new TypeError('synthetic rejection'));
     assert.equal(await first, false); assert.equal(f.saver.latest, 'baseline');
     assert.equal(await f.saver.now(), true); assert.equal(requests.length, 1);
@@ -197,6 +227,8 @@ try {
   }
 } finally {
   globalThis.fetch = originalFetch;
+  useAuthStore.setState(originalAuth);
+  authPersistence?.setOptions({ storage: originalAuthStorage });
   if (windowDescriptor) Object.defineProperty(globalThis, 'window', windowDescriptor);
   else Reflect.deleteProperty(globalThis, 'window');
   useCloudStore.getState().setReadOnlyInfo(originalReadOnly);

@@ -1,0 +1,162 @@
+{
+  "ko": {
+    "eyebrow": "EasyMindMap 문서함 안내",
+    "title": "문서함 도움말",
+    "close": "도움말 닫기 (Esc)",
+    "intro": "내 문서를 찾고, 폴더로 정리하고, 맵을 여는 방법입니다. 기능은 계정 권한과 서버 설정에 따라 달라질 수 있습니다.",
+    "toc": "문서함 도움말 목차",
+    "back": "문서함으로 돌아가기",
+    "closeLabel": "닫기",
+    "sections": [
+      {
+        "t": "폴더와 목록",
+        "p": [
+          "폴더 이름을 누르면 그 자리에서 펼쳐지고 선택됩니다. 선택한 폴더는 새 맵·새 폴더를 만들 위치가 됩니다.",
+          "머리의 펼치기/접기 버튼은 모든 폴더를 한 번에 펼치거나 접습니다. 폴더는 비어 있을 때만 삭제할 수 있습니다."
+        ]
+      },
+      {
+        "t": "검색",
+        "p": [
+          "검색은 문서함 전체에서 맵 이름과 맵 안의 내용(노드·노트·태그·링크·첨부 이름)을 함께 찾습니다.",
+          "이름이 맞으면 글자가 강조되고, 내용이 맞으면 맵(N건)으로 표시됩니다. 맞는 파일이 든 폴더는 자동으로 펼쳐지며, Esc로 검색어를 지울 수 있습니다."
+        ]
+      },
+      {
+        "t": "맵 만들기와 열기",
+        "o": [
+          "새 맵을 눌러 만들 맵의 종류를 고릅니다.",
+          "맵 이름을 눌러 엽니다. 편집 중인 맵이 있으면 다른 맵은 브라우저 새 탭에서 열립니다.",
+          "맵 줄의 아이콘(폰에서는 ⋯)으로 공유·퍼블리싱·이름 변경·이동·삭제를 합니다."
+        ]
+      },
+      {
+        "t": "주소록·계정",
+        "p": [
+          "주소록은 협업과 공유에 쓰는 사람 목록입니다. 제공 여부는 서버에 따라 다릅니다.",
+          "게시판, 개인 설정, AI 커넥터(MCP), 로그아웃은 오른쪽 위 계정 메뉴에 있습니다. 해와 달 버튼으로 밝은/어두운 테마를 바꿉니다."
+        ]
+      }
+    ]
+  },
+  "en": {
+    "eyebrow": "EasyMindMap library guide",
+    "title": "Library help",
+    "close": "Close help (Esc)",
+    "intro": "How to find, organize and open your maps. Available features depend on your account permissions and server settings.",
+    "toc": "Library help contents",
+    "back": "Back to My maps",
+    "closeLabel": "Close",
+    "sections": [
+      {
+        "t": "Folders and list",
+        "p": [
+          "Click a folder name to expand it in place and select it. The selected folder is where new maps and new folders are created.",
+          "The expand / collapse buttons in the header open or close every folder at once. A folder can be deleted only when it is empty."
+        ]
+      },
+      {
+        "t": "Search",
+        "p": [
+          "Search looks through all of My maps for names and content inside maps (nodes, notes, tags, links, attachment names).",
+          "Matching names are highlighted and content matches show as Map (N). Folders with matches expand automatically; press Esc to clear the search."
+        ]
+      },
+      {
+        "t": "Create and open maps",
+        "o": [
+          "Press New map and choose the kind of map to create.",
+          "Click a map name to open it. While you are editing a map, other maps open in a new browser tab.",
+          "Use the row icons (the ⋯ menu on phones) to share, publish, rename, move or delete."
+        ]
+      },
+      {
+        "t": "Address book and account",
+        "p": [
+          "The address book is the people list used for collaboration and sharing. Availability depends on the server.",
+          "Board, personal settings, AI connector (MCP) and sign out are in the account menu at the top right. The sun/moon button switches light and dark theme."
+        ]
+      }
+    ]
+  },
+  "zh": {
+    "eyebrow": "EasyMindMap 文档库指南",
+    "title": "文档库帮助",
+    "close": "关闭帮助 (Esc)",
+    "intro": "介绍如何查找、整理和打开导图。可用功能取决于账号权限和服务器设置。",
+    "toc": "文档库帮助目录",
+    "back": "返回我的导图",
+    "closeLabel": "关闭",
+    "sections": [
+      {
+        "t": "文件夹与列表",
+        "p": [
+          "点击文件夹名称即可就地展开并选中。选中的文件夹就是新建导图和新建文件夹的位置。",
+          "顶部的展开/折叠按钮可一次展开或折叠所有文件夹。文件夹仅在为空时才能删除。"
+        ]
+      },
+      {
+        "t": "搜索",
+        "p": [
+          "搜索会在全部导图中同时查找名称和导图内的内容（节点、备注、标签、链接、附件名称）。",
+          "名称匹配时文字高亮，内容匹配时显示为导图(N处)。包含匹配文件的文件夹会自动展开，按 Esc 可清除搜索词。"
+        ]
+      },
+      {
+        "t": "新建与打开导图",
+        "o": [
+          "点击“新建导图”，选择要创建的导图类型。",
+          "点击导图名称即可打开。正在编辑导图时，其他导图会在浏览器新标签页中打开。",
+          "使用每行的图标（手机上为 ⋯ 菜单）进行分享、发布、重命名、移动或删除。"
+        ]
+      },
+      {
+        "t": "通讯录与账号",
+        "p": [
+          "通讯录是用于协作和分享的人员列表，是否提供取决于服务器。",
+          "公告板、个人设置、AI 连接器(MCP)和退出登录位于右上角的账号菜单。太阳/月亮按钮可切换浅色/深色主题。"
+        ]
+      }
+    ]
+  },
+  "ja": {
+    "eyebrow": "EasyMindMap ライブラリ案内",
+    "title": "ライブラリのヘルプ",
+    "close": "ヘルプを閉じる (Esc)",
+    "intro": "マップの探し方・整理・開き方です。利用できる機能はアカウント権限とサーバー設定によって異なります。",
+    "toc": "ライブラリヘルプの目次",
+    "back": "マイマップに戻る",
+    "closeLabel": "閉じる",
+    "sections": [
+      {
+        "t": "フォルダと一覧",
+        "p": [
+          "フォルダ名を押すとその場で展開され、選択されます。選択中のフォルダが新しいマップ・フォルダの作成先になります。",
+          "ヘッダーの展開/折りたたみボタンで、すべてのフォルダを一度に開閉できます。フォルダは空のときだけ削除できます。"
+        ]
+      },
+      {
+        "t": "検索",
+        "p": [
+          "検索はマイマップ全体から名前とマップ内の内容（ノード・ノート・タグ・リンク・添付名）を探します。",
+          "名前が一致すると強調表示され、内容が一致するとマップ(N件)と表示されます。一致したフォルダは自動で展開され、Escで検索語を消せます。"
+        ]
+      },
+      {
+        "t": "マップの作成と開き方",
+        "o": [
+          "「新しいマップ」を押して作成する種類を選びます。",
+          "マップ名を押して開きます。編集中のマップがあるときは、他のマップはブラウザの新しいタブで開きます。",
+          "各行のアイコン（スマホでは ⋯ メニュー）で共有・公開・名前変更・移動・削除を行います。"
+        ]
+      },
+      {
+        "t": "アドレス帳とアカウント",
+        "p": [
+          "アドレス帳は共同編集や共有に使う人のリストです。提供の有無はサーバーによります。",
+          "掲示板・個人設定・AIコネクタ(MCP)・ログアウトは右上のアカウントメニューにあります。太陽/月ボタンでライト/ダークを切り替えます。"
+        ]
+      }
+    ]
+  }
+}

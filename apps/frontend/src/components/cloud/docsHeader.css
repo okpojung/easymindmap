@@ -1,0 +1,9 @@
+/* 문서함 머리 — 검색 포커스, 좁은 폭 규칙 */
+.docs-hdr-search:focus-within { box-shadow: 0 0 0 3px var(--docs-focus, rgba(249, 115, 22, 0.25)); }
+.docs-hdr-search input::placeholder { opacity: 0.8; }
+.docs-hdr-search input:focus { outline: none; }
+.docs-hdr-slot { min-width: 0; }
+@media (max-width: 379px) {
+  .docs-hdr-newmap .docs-hdr-label { display: none; }
+  .docs-hdr-newmap { padding: 0 !important; width: var(--docs-tap, 40px) !important; }
+}

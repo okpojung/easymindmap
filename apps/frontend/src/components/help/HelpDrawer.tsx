@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { I } from '@/components/icons';
 import { THEMES, type ThemeTokens } from '@/components/design-tokens/theme';
+import { useLang } from '@/i18n';
+import { DocsHelpBody, docsHelpCopy } from './DocsHelpBody';
 import './HelpDrawer.css';
 
 export interface HelpDrawerProps {
@@ -9,6 +11,8 @@ export interface HelpDrawerProps {
   onClose: () => void;
   /** 부모의 현재 테마 토큰. 생략하면 밝은 테마. */
   t?: ThemeTokens;
+  /** 'docs' = 문서함(내 문서) 안내. 생략하면 편집기 도움말(기존 동작). */
+  mode?: 'editor' | 'docs';
 }
 
 const chapters = [
@@ -51,7 +55,10 @@ export function isHelpShortcut(event: KeyboardEvent): boolean {
 }
 
 /** Native modal dialog provides an inert background and keyboard focus containment. */
-export function HelpDrawer({ open, onClose, t = THEMES.light }: HelpDrawerProps) {
+export function HelpDrawer({ open, onClose, t = THEMES.light, mode = 'editor' }: HelpDrawerProps) {
+  const lang = useLang();
+  const docs = mode === 'docs';
+  const dc = docsHelpCopy(lang);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const closeCallback = useRef(onClose);
@@ -90,14 +97,15 @@ export function HelpDrawer({ open, onClose, t = THEMES.light }: HelpDrawerProps)
   } as CSSProperties;
   const sectionId = (key: string) => id + '-' + key;
   return createPortal(
-    <dialog ref={dialogRef} className="emm-help" style={colors} lang="ko" aria-modal="true"
-      aria-labelledby={id + '-title'} aria-describedby={id + '-intro'} data-testid="help-drawer"
+    <dialog ref={dialogRef} className="emm-help" style={colors} lang={docs ? lang : 'ko'} aria-modal="true"
+      aria-labelledby={id + '-title'} aria-describedby={id + '-intro'} data-testid={docs ? 'docs-help-drawer' : 'help-drawer'} data-help-mode={mode}
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <header className="emm-help__header">
-        <div><span className="emm-help__eyebrow">EasyMindMap 사용 안내</span><h2 id={id + '-title'}>도움말</h2></div>
-        <button ref={closeRef} className="emm-help__close" type="button" aria-label="도움말 닫기 (Esc)" onClick={onClose}><I.X size={20} aria-hidden="true" /></button>
+        <div><span className="emm-help__eyebrow">{docs ? dc.eyebrow : 'EasyMindMap 사용 안내'}</span><h2 id={id + '-title'}>{docs ? dc.title : '도움말'}</h2></div>
+        <button ref={closeRef} className="emm-help__close" type="button" aria-label={docs ? dc.close : '도움말 닫기 (Esc)'} onClick={onClose}><I.X size={20} aria-hidden="true" /></button>
       </header>
       <div className="emm-help__body">
+        {docs ? <DocsHelpBody c={dc} id={id} /> : <>
         <p id={id + '-intro'} className="emm-help__intro">아이콘부터 저장까지, 필요한 내용을 골라 보세요. 기능은 서버·계정 권한·보기 모드에 따라 달라질 수 있습니다.</p>
         <nav className="emm-help__toc" aria-label="도움말 목차">{chapters.map(([key, title], index) => <a key={key} href={'#' + sectionId(key)} onClick={(event) => {
           event.preventDefault(); const target = document.getElementById(sectionId(key)); target?.scrollIntoView({ block: 'start' }); target?.focus({ preventScroll: true });
@@ -158,8 +166,9 @@ export function HelpDrawer({ open, onClose, t = THEMES.light }: HelpDrawerProps)
           <ul><li><strong>HTML:</strong> 브라우저에서 볼 수 있는 파일로 내보냅니다.</li><li><strong>암호화 HTML:</strong> 암호로 보호하는 내보내기입니다. 암호는 별도의 안전한 경로로 전달하세요.</li><li><strong>Markdown:</strong> 마인드맵 내용을 Markdown 형식으로 내려받습니다.</li></ul>
           <p>첨부파일 처리에 따라 ZIP으로 내려받을 수 있습니다. 내보내기 화면의 안내를 확인하고, 외부 링크나 첨부가 빠지지 않았는지 결과 파일을 열어 확인하세요. 파일 내보내기는 서버 저장이나 공유 설정 변경과 별개입니다.</p>
         </section>
+        </>}
       </div>
-      <footer className="emm-help__footer">닫기: <kbd>Esc</kbd><button type="button" onClick={onClose}>편집기로 돌아가기</button></footer>
+      <footer className="emm-help__footer">{docs ? dc.closeLabel : '닫기'}: <kbd>Esc</kbd><button type="button" onClick={onClose}>{docs ? dc.back : '편집기로 돌아가기'}</button></footer>
     </dialog>, document.body,
   );
 }

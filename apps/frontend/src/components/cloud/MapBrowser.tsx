@@ -44,11 +44,16 @@ import { MapFileIcon, mapTone } from './MapFileIcon';
 import { folderSubtreeIds } from './folderTree';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { ActionSheet, type SheetItem } from '@/components/ui/ActionSheet';
-import { usePhoneLayout, useCoarse, isPhoneLayoutNow, isCoarseNow } from '@/hooks/useViewport';
+import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
 import { clampLeft, clampTop } from '@/utils/popupPosition';
 // 컴포넌트 안은 useTr() 의 tr, 컴포넌트 밖 함수·useCallback 안은 부르는 순간의 언어(trNow)
 import { useTr, useLang, tr as trNow, currentLocale, LANG_LOCALE } from '@/i18n';
 import { rich } from '@/i18n/rich';
+import { createPortal } from 'react-dom';
+import { HelpDrawer } from '@/components/help/HelpDrawer';
+import { useDocsHeaderHost } from './docsHeaderHost';
+import docsHeaderCopy from './docsHeaderCopy.json';
+import './docsHeader.css';
 import { useProFeature } from '@/pro/contract';
 
 type SortKey = 'title' | 'createdAt' | 'updatedAt'
@@ -60,7 +65,6 @@ type SortKey = 'title' | 'createdAt' | 'updatedAt'
  */
 const TABLE_MIN_WIDTH = 1020;
 /** 도움말 펼침을 기억하는 자리 (브라우저마다) */
-const HELP_PREF = 'emm.browser.help';
 
 /** 손가락 기기 + 표가 들어가지 않는 폭 — 카드 배치를 쓴다 */
 function useNarrowTouch(): boolean {
@@ -322,22 +326,11 @@ export function MapBrowser({
     | { kind: 'header' }
     | null
   >(null);
-  /**
-   * 도움말 문단을 펼쳤는가 — [?] 로 접고 편다 (2026-10-05). 처음에는 마우스
-   * 화면이면 펼침(예전과 같다), 폰·손가락 기기면 접힘. 고른 것은 기억한다.
-   */
-  const [helpOpen, setHelpOpenRaw] = useState<boolean>(() => {
-    try {
-      const v = window.localStorage.getItem(HELP_PREF);
-      if (v === '1' || v === '0') return v === '1';
-    } catch { /* 저장소를 못 쓰면 기본값 */ }
-    return !isPhoneLayoutNow() && !isCoarseNow();
-  });
-  const setHelpOpen = (f: (v: boolean) => boolean) => setHelpOpenRaw((v) => {
-    const next = f(v);
-    try { window.localStorage.setItem(HELP_PREF, next ? '1' : '0'); } catch { /* 무시 */ }
-    return next;
-  });
+  /** 도움말 모달(HelpDrawer mode="docs") — [?] 가 편집 화면과 같은 별도 창을 연다 */
+  const [helpOpen, setHelpOpen] = useState(false);
+  const docsHost = useDocsHeaderHost();
+  const dLang = useLang();
+  const dCopy = (docsHeaderCopy as Record<string, { search: string; help: string }>)[dLang] ?? docsHeaderCopy.ko;
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [maps, setMaps] = useState<MapListItem[] | null>(null);
   /** 나에게 공유된 맵 — 공유가 없거나 서버가 아직 모르면 빈 배열 */
@@ -1262,10 +1255,12 @@ export function MapBrowser({
       return [
         { key: 'refresh', label: refreshing ? tr('cloud.browser.refreshing') : tr('cloud.browser.refresh'),
           testId: 'browser-refresh', onSelect: () => { void load(); }, disabled: refreshing },
-        { key: 'expand', label: tr('cloud.browser.expandAll'), testId: 'browser-expand-all', onSelect: expandAll },
-        { key: 'collapse', label: tr('cloud.browser.collapseAll'), testId: 'browser-collapse-all', onSelect: collapseAll },
+        { key: 'expand', icon: <I.BranchExpand size={18} />, label: tr('cloud.browser.expandAll'), testId: 'browser-expand-all', onSelect: expandAll },
+        { key: 'collapse', icon: <I.BranchCollapse size={18} />, label: tr('cloud.browser.collapseAll'), testId: 'browser-collapse-all', onSelect: collapseAll },
         { key: 'newFolder', label: tr('cloud.browser.newFolder'), testId: 'browser-new-folder',
           onSelect: () => newFolderHere() },
+        ...(addressBookEnabled ? [{ key: 'addressBook', label: tr('cloud.browser.addressBook'), testId: 'browser-addressbook',
+          onSelect: () => setAddressBookOpen(true) } as SheetItem] : []),
         { key: 'sortHead', heading: tr('cloud.m.sortBy') },
         ...sortKeys.map((k): SheetItem => ({
           key: `sort-${k}`, testId: `browser-sort-${k}`,
@@ -1464,6 +1459,159 @@ export function MapBrowser({
     );
   };
 
+  // ── 문서함 머리 — 검색창(눈에 띄게)과 데스크톱 도구 묶음 ──
+  const dBtn: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, flexShrink: 0,
+    height: 32, padding: '0 10px', borderRadius: 8, cursor: 'pointer',
+    border: `1px solid ${t.border}`, background: t.surface, color: t.text,
+    fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
+  };
+  const renderSearch = (mobile: boolean) => (
+    <div
+      className="docs-hdr-search"
+      data-testid="browser-search-box"
+      style={{
+        position: 'relative', display: 'flex', alignItems: 'center', borderRadius: 8,
+        flex: mobile ? '1 1 0' : '1 1 280px', minWidth: mobile ? 0 : 180, maxWidth: mobile ? undefined : 520,
+        ['--docs-focus' as string]: t.primarySoft,
+      } as React.CSSProperties}
+    >
+      <span aria-hidden="true" style={{
+        position: 'absolute', left: 10, display: 'flex', pointerEvents: 'none',
+        color: query ? t.primary : t.textMuted,
+      }}><I.Search size={mobile ? 18 : 16} /></span>
+      <input
+        data-testid="browser-search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        /* Esc = 검색어 지우기 — window 핸들러가 계층으로 처리한다 */
+        aria-label={dCopy.search}
+        placeholder={tr('cloud.browser.searchPh')}
+        title={tr('cloud.browser.searchTip')}
+        enterKeyHint="search"
+        style={{
+          width: '100%', boxSizing: 'border-box', height: mobile ? 40 : 32,
+          padding: `0 ${query ? 34 : 10}px 0 ${mobile ? 36 : 32}px`, borderRadius: 8,
+          // 16px — iOS 는 그보다 작은 칸에 들어가면 화면을 확대한다
+          fontSize: mobile ? 16 : 13,
+          border: `1.5px solid ${query ? t.primary : t.textSubtle}`,
+          background: t.surfaceAlt, color: t.text, outline: 'none',
+        }}
+      />
+      {query && (
+        <button
+          data-testid="browser-search-clear"
+          onClick={() => setQuery('')}
+          aria-label={tr('cloud.browser.clearSearch')}
+          title={tr('cloud.browser.clearSearch')}
+          style={{
+            position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
+            width: 28, height: 28, border: 'none', background: 'transparent',
+            color: t.textMuted, fontSize: 14, cursor: 'pointer', padding: 0,
+          }}
+        >✕</button>
+      )}
+    </div>
+  );
+  const desktopTools = (
+    <div data-testid="browser-toolbar" style={{
+      display: 'flex', alignItems: 'center', gap: 8, rowGap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0,
+    }}>
+      {/* 새 맵 = 의도된 주 행동(채움 강조색). 나머지는 중립 */}
+      <button
+        data-testid="browser-new-map"
+        className="docs-hdr-newmap"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setNewMapAt((cur) => (cur ? null : { x: r.left, y: r.bottom + 6 }));
+          setNewMapTarget(selFolder?.folderId ?? null, useDocumentStore.getState().docEpoch);
+        }}
+        title={tr('cloud.browser.newMapTip')}
+        style={{ ...dBtn, fontWeight: 700, color: '#fff', background: t.primary, borderColor: t.primary }}
+      ><I.Plus size={15} /><span className="docs-hdr-label">{tr('cloud.browser.newMap')}</span></button>
+      <button
+        data-testid="browser-new-folder"
+        onClick={() => newFolderHere()}
+        title={selFolder ? tr('cloud.browser.newFolderInTip', { name: selFolder.name }) : tr('cloud.browser.newFolderTip')}
+        style={dBtn}
+      >{tr('cloud.browser.newFolder')}</button>
+      <button
+        data-testid="browser-expand-all"
+        onClick={expandAll}
+        title={tr('cloud.browser.expandAllTip')}
+        style={dBtn}
+      ><I.BranchExpand size={16} />{tr('cloud.browser.expandAll')}</button>
+      <button
+        data-testid="browser-collapse-all"
+        onClick={collapseAll}
+        title={tr('cloud.browser.collapseAllTip')}
+        style={dBtn}
+      ><I.BranchCollapse size={16} />{tr('cloud.browser.collapseAll')}</button>
+      <button
+        data-testid="browser-refresh"
+        onClick={() => { void load(); }}
+        disabled={refreshing}
+        title={tr('cloud.browser.refreshTip')}
+        style={{ ...dBtn, color: t.textMuted, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? 'default' : 'pointer' }}
+      >{refreshing ? tr('cloud.browser.refreshing') : tr('cloud.browser.refresh')}</button>
+      {selFolder && (
+        <span data-testid="browser-selected-folder" title={tr('cloud.browser.selectedTip')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 28, padding: '0 4px 0 8px',
+            borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: t.primarySoft, color: t.primary,
+            border: `1px solid ${t.primaryBorder}`, maxWidth: 180, whiteSpace: 'nowrap' }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>📁 {selFolder.name}</span>
+          <button type="button" data-testid="browser-selected-folder-clear" aria-label={tr('cloud.browser.selectedClear')}
+            title={tr('cloud.browser.selectedClear')} onClick={() => setSelFolderId(null)}
+            style={{ border: 'none', background: 'transparent', color: t.primary, cursor: 'pointer', fontSize: 12, padding: '0 2px' }}>✕</button>
+        </span>
+      )}
+      {/* **전체 검색** (2026-08-07 요청) — 문서함 전체를 훑는다. 맞는 파일이 든 폴더는 자동으로 펼쳐진다. */}
+      <div data-testid="browser-search-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 280px', minWidth: 0 }}>
+        {renderSearch(false)}
+        {finding && (
+          <span data-testid="browser-search-busy" style={{ fontSize: 11, color: t.textMuted, whiteSpace: 'nowrap' }}>
+            {tr('cloud.browser.searching')}
+          </span>
+        )}
+      </div>
+      {/* 주소록 — 중립(채움 없음, 점선 아님) 보조 행동 */}
+      {addressBookEnabled && (
+        <button ref={addressBookTrigger} type="button" data-testid="browser-addressbook"
+          aria-haspopup="dialog" aria-expanded={addressBookOpen}
+          title={tr('cloud.browser.addressBookTip')}
+          onClick={() => setAddressBookOpen(true)}
+          style={{ ...dBtn, background: t.surfaceAlt, borderColor: t.textSubtle }}
+        >{tr('cloud.browser.addressBook')}</button>
+      )}
+      {/* 게시판 (2026-10-25 사용자 지시) — 계정 메뉴의 '게시판'과 같은 화면 */}
+      {BOARD_ENABLED && (
+        <button type="button" data-testid="browser-board"
+          title={tr('cloud.browser.boardTip')}
+          onClick={() => { window.location.href = '/?board=notice'; }}
+          style={dBtn}
+        >{tr('cloud.browser.board')}</button>
+      )}
+      <button
+        data-testid="browser-help-toggle"
+        aria-haspopup="dialog"
+        title={dCopy.help}
+        aria-label={dCopy.help}
+        onClick={() => setHelpOpen(true)}
+        style={{ ...dBtn, width: 32, padding: 0, borderRadius: 16, color: t.textMuted, fontSize: 15, fontWeight: 700 }}
+      >?</button>
+      {/* **열린 맵이 없으면 닫기를 감춘다** (2026-08-20) — 돌아갈 맵이 있을 때만 보여 준다(Esc 는 그대로). */}
+      {hasOpenMap && (
+        <button
+          data-testid="browser-close"
+          onClick={onClose}
+          aria-label={tr('cloud.browser.closeTip')}
+          title={tr('cloud.browser.closeTip')}
+          style={{ ...dBtn, width: 32, padding: 0, fontSize: 17, color: t.textMuted }}
+        >✕</button>
+      )}
+    </div>
+  );
+
   return (
     <div
       data-testid="map-browser"
@@ -1473,19 +1621,22 @@ export function MapBrowser({
       }}
     >
       {compact ? (
-        /* 폰 머리 — 첫 줄: 제목 · [＋ 새 맵] · [?] · [⋯] · [✕], 둘째 줄: 검색창 · 주소록.
-           데스크톱의 단추 다섯 개가 세 줄로 접히던 것을 시트로 옮겼다. */
+        /* 폰 머리 — **둘째 줄 하나**: 검색창 · [＋ 새 맵] · [?] · [⋯] · [✕]. 첫 줄은 DocsToolbar
+           (로고·제목·테마·계정). 주소록·새 폴더·정렬·새로고침은 [⋯] 시트에 있고, 게시판 단추는 폰에서
+           숨긴다(계정 메뉴의 게시판은 그대로). */
         <div data-testid="m-browser-header" style={{
-          display: 'flex', flexDirection: 'column', gap: 8,
-          padding: '10px 12px', borderBottom: `1px solid ${t.border}`,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <strong style={{
-              fontSize: 16, flex: 1, minWidth: 0,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{tr('cloud.browser.heading')}</strong>
+          display: 'flex', flexDirection: 'column', gap: 6,
+          padding: '8px 8px', borderBottom: `1px solid ${t.border}`,
+          ['--docs-tap' as string]: `${mTap}px`,
+        } as React.CSSProperties}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <div data-testid="browser-search-actions" style={{ display: 'flex', flex: '1 1 0', minWidth: 0 }}>
+              {renderSearch(true)}
+            </div>
             <button
               data-testid="browser-new-map"
+              className="docs-hdr-newmap"
+              aria-label={tr('cloud.browser.newMap')}
               onClick={(e) => {
                 const r = e.currentTarget.getBoundingClientRect();
                 setNewMapAt((cur) => (cur ? null : { x: 8, y: r.bottom + 6 }));
@@ -1493,18 +1644,17 @@ export function MapBrowser({
               }}
               title={tr('cloud.browser.newMapTip')}
               style={{
-                ...mIconBtn, width: 'auto', padding: '0 12px', fontSize: 13.5,
-                color: t.primary, borderColor: t.primaryBorder, whiteSpace: 'nowrap',
+                ...mIconBtn, width: 'auto', padding: '0 12px', gap: 4, fontSize: 13.5,
+                color: '#fff', background: t.primary, borderColor: t.primary, whiteSpace: 'nowrap',
               }}
-            >{tr('cloud.browser.newMap')}</button>
+            ><I.Plus size={16} /><span className="docs-hdr-label">{tr('cloud.browser.newMap')}</span></button>
             <button
               data-testid="browser-help-toggle"
-              aria-pressed={helpOpen}
-              aria-label={tr('cloud.m.help')}
-              title={tr('cloud.m.help')}
-              onClick={() => setHelpOpen((v) => !v)}
-              style={{ ...mIconBtn, color: helpOpen ? t.primary : t.textMuted,
-                borderColor: helpOpen ? t.primaryBorder : t.border }}
+              aria-haspopup="dialog"
+              aria-label={dCopy.help}
+              title={dCopy.help}
+              onClick={() => setHelpOpen(true)}
+              style={mIconBtn}
             >?</button>
             <button
               data-testid="m-browser-header-menu"
@@ -1523,200 +1673,21 @@ export function MapBrowser({
               >✕</button>
             )}
           </div>
-          <div data-testid="browser-search-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-            <input
-              data-testid="browser-search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={tr('cloud.browser.searchPh')}
-              enterKeyHint="search"
-              style={{
-                width: '100%', boxSizing: 'border-box', height: 40,
-                padding: query ? '0 44px 0 12px' : '0 12px', borderRadius: 8,
-                // 16px — iOS 는 그보다 작은 칸에 들어가면 화면을 확대한다
-                fontSize: 16,
-                border: `1px solid ${query ? t.primaryBorder : t.border}`,
-                background: t.surfaceAlt, color: t.text, outline: 'none',
-              }}
-            />
-            {query && (
-              <button
-                data-testid="browser-search-clear"
-                onClick={() => setQuery('')}
-                aria-label={tr('cloud.browser.clearSearch')}
-                style={{
-                  position: 'absolute', right: 2, top: 2, width: 36, height: 36,
-                  border: 'none', background: 'transparent', color: t.textMuted,
-                  fontSize: 16, cursor: 'pointer',
-                }}
-              >✕</button>
-            )}
-          </div>
-          {addressBookEnabled && (
-            <button ref={addressBookTrigger} type="button" data-testid="browser-addressbook"
-              aria-haspopup="dialog" aria-expanded={addressBookOpen}
-              title={tr('cloud.browser.addressBookTip')}
-              onClick={() => setAddressBookOpen(true)}
-              style={{ ...mIconBtn, width: 'auto', minHeight: 40, padding: '0 12px', fontSize: 13.5,
-                flexShrink: 0, whiteSpace: 'nowrap', color: t.primary, borderColor: t.primaryBorder }}
-            >{tr('cloud.browser.addressBook')}</button>
-          )}
-          {/* 게시판 (2026-10-25 사용자 지시: 주소록·도움말 옆에) — 계정 메뉴의 '게시판'과 같은 화면 */}
-          {BOARD_ENABLED && (
-            <button type="button" data-testid="browser-board"
-              title={tr('cloud.browser.boardTip')}
-              onClick={() => { window.location.href = '/?board=notice'; }}
-              style={{ ...mIconBtn, width: 'auto', minHeight: 40, padding: '0 12px', fontSize: 13.5,
-                flexShrink: 0, whiteSpace: 'nowrap' }}
-            >{tr('cloud.browser.board')}</button>
-          )}
-          </div>
           {finding && (
             <span data-testid="browser-search-busy" style={{ fontSize: 12, color: t.textMuted }}>
               {tr('cloud.browser.searching')}
             </span>
           )}
-          {helpOpen && (
-            <div data-testid="browser-help" style={{
-              padding: '8px 10px', borderRadius: 8, background: t.surfaceAlt,
-              border: `1px solid ${t.border}`, color: t.textMuted, fontSize: 12.5, lineHeight: 1.6,
-            }}>
-              {rich(tr('cloud.browser.footer'))}
-            </div>
-          )}
         </div>
-      ) : (
-        /* 헤더 — 제목 + 도구.
-          트리가 되면서 **경로(breadcrumb)가 사라졌다** — 폴더로 들어가지
-          않으니 돌아 나올 길도 필요 없다. 대신 모두 펼치기/접기가 왔다. */
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '12px 14px', borderBottom: `1px solid ${t.border}`,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+      ) : docsHost ? createPortal(desktopTools, docsHost) : (
+        /* 문서함 막대(DocsToolbar)가 없을 때의 대비 — 예전처럼 제자리에 제목과 함께 그린다 */
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 14px', borderBottom: `1px solid ${t.border}`,
+        }}>
           <strong style={{ fontSize: 15, marginRight: 4 }}>{tr('cloud.browser.heading')}</strong>
-          <button
-            data-testid="browser-refresh"
-            onClick={() => { void load(); }}
-            disabled={refreshing}
-            title={tr('cloud.browser.refreshTip')}
-            style={{ ...toolBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? 'default' : 'pointer' }}
-          >{refreshing ? tr('cloud.browser.refreshing') : tr('cloud.browser.refresh')}</button>
-          <button
-            data-testid="browser-expand-all"
-            onClick={expandAll}
-            title={tr('cloud.browser.expandAllTip')}
-            style={toolBtn}
-          >{tr('cloud.browser.expandAll')}</button>
-          <button
-            data-testid="browser-collapse-all"
-            onClick={collapseAll}
-            title={tr('cloud.browser.collapseAllTip')}
-            style={toolBtn}
-          >{tr('cloud.browser.collapseAll')}</button>
-          <button
-            data-testid="browser-new-map"
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              setNewMapAt((cur) => (cur ? null : { x: r.left, y: r.bottom + 6 }));
-              setNewMapTarget(selFolder?.folderId ?? null, useDocumentStore.getState().docEpoch);
-            }}
-            title={tr('cloud.browser.newMapTip')}
-            style={{ ...toolBtn, marginLeft: 2, fontWeight: 700, color: t.primary, borderColor: t.primaryBorder }}
-          >{tr('cloud.browser.newMap')}</button>
-          <button
-            data-testid="browser-new-folder"
-            onClick={() => newFolderHere()}
-            title={selFolder ? tr('cloud.browser.newFolderInTip', { name: selFolder.name }) : tr('cloud.browser.newFolderTip')}
-            style={{ ...toolBtn, marginLeft: 2 }}
-          >{tr('cloud.browser.newFolder')}</button>
-          {selFolder && (
-            <span data-testid="browser-selected-folder" title={tr('cloud.browser.selectedTip')}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 24, padding: '0 4px 0 8px', marginLeft: 2,
-                borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: t.primarySoft, color: t.primary,
-                border: `1px solid ${t.primaryBorder}`, maxWidth: 180, whiteSpace: 'nowrap' }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>📁 {selFolder.name}</span>
-              <button type="button" data-testid="browser-selected-folder-clear" aria-label={tr('cloud.browser.selectedClear')}
-                title={tr('cloud.browser.selectedClear')} onClick={() => setSelFolderId(null)}
-                style={{ border: 'none', background: 'transparent', color: t.primary, cursor: 'pointer', fontSize: 12, padding: '0 2px' }}>✕</button>
-            </span>
-          )}
-          {/* **전체 검색** (2026-08-07 요청) — 지금 폴더가 아니라
-              **문서함 전체**를 훑는다. 맞는 파일이 든 폴더는 자동으로
-              펼쳐지고, 그 안에서도 맞는 파일만 남는다. */}
-          <div data-testid="browser-search-actions" style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%' }}>
-          <input
-            data-testid="browser-search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            /* Esc = 검색어 지우기 — window 핸들러가 계층으로 처리한다 */
-            placeholder={tr('cloud.browser.searchPh')}
-            title={tr('cloud.browser.searchTip')}
-            style={{
-              height: 24, width: 210, minWidth: 0, padding: '0 8px', borderRadius: 6,
-              marginLeft: 4, fontSize: 11.5,
-              border: `1px solid ${query ? t.primaryBorder : t.border}`,
-              background: t.surfaceAlt, color: t.text, outline: 'none',
-            }}
-          />
-          {addressBookEnabled && (
-            <button ref={addressBookTrigger} type="button" data-testid="browser-addressbook"
-              aria-haspopup="dialog" aria-expanded={addressBookOpen}
-              title={tr('cloud.browser.addressBookTip')}
-              onClick={() => setAddressBookOpen(true)}
-              style={{ ...toolBtn, flexShrink: 0, whiteSpace: 'nowrap', color: t.primary, borderColor: t.primaryBorder }}
-            >{tr('cloud.browser.addressBook')}</button>
-          )}
-          {/* 게시판 (2026-10-25 사용자 지시: 주소록·도움말 옆에) — 계정 메뉴의 '게시판'과 같은 화면 */}
-          {BOARD_ENABLED && (
-            <button type="button" data-testid="browser-board"
-              title={tr('cloud.browser.boardTip')}
-              onClick={() => { window.location.href = '/?board=notice'; }}
-              style={{ ...toolBtn, flexShrink: 0, whiteSpace: 'nowrap' }}
-            >{tr('cloud.browser.board')}</button>
-          )}
-          </div>
-          {finding && (
-            <span
-              data-testid="browser-search-busy"
-              style={{ fontSize: 11, color: t.textMuted, marginLeft: 2 }}
-            >{tr('cloud.browser.searching')}</span>
-          )}
-          {query && (
-            <button
-              data-testid="browser-search-clear"
-              onClick={() => setQuery('')}
-              title={tr('cloud.browser.clearSearch')}
-              style={{ ...toolBtn, padding: '0 7px' }}
-            >✕</button>
-          )}
-          <button
-            data-testid="browser-help-toggle"
-            aria-pressed={helpOpen}
-            title={tr('cloud.m.help')}
-            aria-label={tr('cloud.m.help')}
-            onClick={() => setHelpOpen((v) => !v)}
-            style={{
-              ...toolBtn, width: 24, padding: 0, marginLeft: 2,
-              color: helpOpen ? t.primary : t.textMuted,
-              borderColor: helpOpen ? t.primaryBorder : t.border,
-            }}
-          >?</button>
+          {desktopTools}
         </div>
-        {/* **열린 맵이 없으면 닫기를 감춘다** (2026-08-20 사용자 지적).
-            닫아 봐야 '문서 없음' 빈 화면만 남는다 — 갈 곳이 없는 문을
-            열어 두면 사용자는 자기가 뭘 잘못 눌렀다고 생각한다.
-            돌아갈 맵이 있을 때만 보여 준다(Esc 는 그대로 동작한다). */}
-        {hasOpenMap && (
-          <button
-            data-testid="browser-close"
-            onClick={onClose}
-            title={tr('cloud.browser.closeTip')}
-            style={{ ...iconBtn, fontSize: 17 }}
-          >✕</button>
-        )}
-      </div>
       )}
 
       {err && !searching && (
@@ -2536,16 +2507,7 @@ export function MapBrowser({
         />
       )}
 
-      {/* 도움말 — 데스크톱은 늘 아래에. 폰은 머리의 [?] 로 펼친다(좁은 화면에서
-          다섯 줄이 목록 자리를 늘 먹고 있었다) */}
-      {!compact && helpOpen && (
-        <div data-testid="browser-help" style={{
-          padding: '8px 14px', borderTop: `1px solid ${t.border}`,
-          color: t.textSubtle, fontSize: 11, lineHeight: 1.6,
-        }}>
-          {rich(tr('cloud.browser.footer'))}
-        </div>
-      )}
+      <HelpDrawer open={helpOpen} mode="docs" t={t} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

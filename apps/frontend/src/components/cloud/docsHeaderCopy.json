@@ -1,0 +1,18 @@
+{
+  "ko": {
+    "search": "문서함 검색",
+    "help": "문서함 도움말"
+  },
+  "en": {
+    "search": "Search my maps",
+    "help": "Library help"
+  },
+  "zh": {
+    "search": "搜索我的导图",
+    "help": "文档库帮助"
+  },
+  "ja": {
+    "search": "マイマップを検索",
+    "help": "ライブラリのヘルプ"
+  }
+}

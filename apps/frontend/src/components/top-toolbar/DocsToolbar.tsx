@@ -11,12 +11,13 @@
 
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { I } from '@/components/icons';
 import { UserMenu } from './UserMenu';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useTr } from '@/i18n';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
+import brandFaviconUrl from '@/assets/brand-favicon.svg';
+import { setDocsHeaderHost } from '@/components/cloud/docsHeaderHost';
 
 
 export function DocsToolbar({ t }: { t: ThemeTokens }) {
@@ -46,8 +47,11 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
     <div
       data-testid="docs-toolbar"
       style={{
-        height: 'calc(52px + env(safe-area-inset-top, 0px))',
+        // 데스크톱: 로고·제목·문서함 도구·테마·계정이 **한 줄**. 폰: 이 줄 + MapBrowser 의 검색 줄 = 두 줄.
+        minHeight: phone ? 'calc(48px + env(safe-area-inset-top, 0px))' : 'calc(52px + env(safe-area-inset-top, 0px))',
+        boxSizing: 'border-box',
         paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: phone ? 0 : 4,
         paddingLeft: `max(${phone ? 8 : 14}px, env(safe-area-inset-left, 0px))`,
         paddingRight: `max(${phone ? 8 : 14}px, env(safe-area-inset-right, 0px))`,
         flexShrink: 0,
@@ -60,20 +64,27 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
         zIndex: 20,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-        <div
-          style={{ height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexShrink: phone ? 1 : 0 }}>
+        <img
+          src={brandFaviconUrl}
+          alt="EasyMindMap"
           title="EasyMindMap"
-        >
-          <I.Logo size={30} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
-          <span style={{ fontSize: 11, color: t.textSubtle, fontWeight: 500 }}>EasyMindMap</span>
-          <span data-testid="docs-title" style={{ fontSize: 14, color: t.text, fontWeight: 600 }}>{tr('shell.toolbar.crumb')}</span>
-        </div>
+          data-testid="docs-brand-favicon"
+          width={28}
+          height={28}
+          style={{ width: 28, height: 28, borderRadius: 6, flexShrink: 0, display: 'block' }}
+        />
+        <span data-testid="docs-title" style={{
+          fontSize: 15, color: t.text, fontWeight: 700, whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
+        }}>{tr('shell.toolbar.crumb')}</span>
       </div>
 
-      <div style={{ flex: 1 }} />
+      {/* 문서함 도구 자리 — MapBrowser 가 포탈로 검색·새 맵·폴더 도구를 그린다 (폰에서는 자리 없음) */}
+      {phone ? <div style={{ flex: 1 }} /> : (
+        <div ref={setDocsHeaderHost} className="docs-hdr-slot" data-testid="docs-header-slot"
+          style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }} />
+      )}
 
       {/* 다크 모드 토글 — 편집 툴바와 같은 버튼 */}
       <button

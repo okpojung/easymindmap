@@ -78,7 +78,10 @@ export async function saveMd(t: MdTarget, markdown: string, base?: string): Prom
   const headers: Record<string, string> = { 'Content-Type': 'text/markdown; charset=utf-8' };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (base) headers['If-Match'] = `"sha256:${base}"`;
-  const r = await fetch(`${cloudApiBase}/v1/attachments/${encodeURIComponent(t.att)}/content`, { method: 'PUT', headers, body });
+  let r: Response;
+  try {
+    r = await fetch(`${cloudApiBase}/v1/attachments/${encodeURIComponent(t.att)}/content`, { method: 'PUT', headers, body });
+  } catch { return { ok: false, error: 'network' }; }
   if (r.status === 409 || r.status === 412) return { ok: false, error: 'conflict' };
   if (!r.ok) return { ok: false, error: String(r.status) };
   useDocumentStore.getState().setServerAttachmentSize(t.att, body.byteLength);
@@ -92,24 +95,57 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
   let base = initial.base;
   let pending: string | null = null;
   let timer: number | null = null;
-  let busy = false;
-  const flush = async () => {
-    timer = null;
-    if (busy || pending === null) return;
+  let active: string | null = null;
+  let inFlight: Promise<boolean> | null = null;
+  const clearTimer = () => { if (timer !== null) window.clearTimeout(timer); timer = null; };
+  const schedule = (delay: number) => { clearTimer(); timer = window.setTimeout(() => { void flush(); }, delay); };
+  const flush = (): Promise<boolean> => {
+    clearTimer();
+    if (inFlight) return inFlight;
+    if (pending === null) return Promise.resolve(true);
     const md = pending;
     pending = null;
-    if (md === last) { onState('saved', md); return; }
-    busy = true;
-    onState('saving');
-    const r = await saveMd(t, md, base);
-    busy = false;
-    if ('error' in r) onState({ error: r.error }); else { last = md; base = r.base ?? base; onState('saved', md); }
-    if (pending !== null && timer === null) timer = window.setTimeout(flush, 600);
+    if (md === last) { onState('saved', md); return Promise.resolve(true); }
+    active = md;
+    // Defer execution so the shared promise is installed before any callback runs.
+    inFlight = Promise.resolve().then(async () => {
+      let saved = false;
+      try {
+        onState('saving');
+        let r: Awaited<ReturnType<typeof saveMd>>;
+        try { r = await saveMd(t, md, base); }
+        catch { r = { ok: false, error: 'error' }; }
+        if ('error' in r) {
+          // Keep newer input if it arrived during this request. Never retry failures
+          // or conflicts on a timer: only new input or an explicit now() may retry.
+          pending ??= md;
+          clearTimer();
+          onState({ error: r.error });
+          return false;
+        }
+        last = md;
+        base = r.base ?? base;
+        onState('saved', md); // ACK only the snapshot that actually completed.
+        saved = true;
+        return true;
+      } finally {
+        active = null;
+        inFlight = null;
+        if (saved && pending !== null) schedule(600);
+      }
+    });
+    return inFlight;
   };
   return {
-    change(md: string) { pending = md; if (timer !== null) window.clearTimeout(timer); timer = window.setTimeout(flush, 1000); },
-    /** 지금 바로 (닫거나 새 창으로 옮기기 전에) */
-    async now() { if (timer !== null) { window.clearTimeout(timer); timer = null; } await flush(); },
-    get latest() { return pending ?? last; },
+    change(md: string) { pending = md; schedule(1000); },
+    /** Wait for in-flight work and the newest queued snapshot; false keeps a failed draft retryable. */
+    async now(): Promise<boolean> {
+      clearTimer();
+      for (;;) {
+        if (!await flush()) return false;
+        if (inFlight === null && pending === null) return true;
+      }
+    },
+    get latest() { return pending ?? active ?? last; },
   };
 }

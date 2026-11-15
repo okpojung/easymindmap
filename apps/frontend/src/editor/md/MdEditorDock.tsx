@@ -136,11 +136,11 @@ export function MdEditorDock({ t, target, onBlocked }: { t: ThemeTokens; target:
   const onLoad = api.onLoad;
 
   const moveOut = async (mode: 'tab' | 'window') => {
-    await saver.current?.now();
+    if (saver.current && !await saver.current.now()) return;
     if (!openMdWindow(target, mode)) { onBlocked?.(); return; }
     setDock(null);
   };
-  const close = async () => { await saver.current?.now(); setDock(null); };
+  const close = async () => { if (saver.current && !await saver.current.now()) return; setDock(null); };
 
   const smallBtn: React.CSSProperties = { fontSize: 11.5, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', border: `1px solid ${t.border}`, background: t.surface, color: t.text, whiteSpace: 'nowrap' };
   return (
@@ -200,7 +200,7 @@ export function MdBroadcaster() {
         if (m.now) void sv?.now();
       } else if (m.type === 'md-dock') {
         const s = savers.get(key);
-        if (s) { if (typeof m.markdown === 'string') s.change(m.markdown); await s.now(); }
+        if (s) { if (typeof m.markdown === 'string') s.change(m.markdown); if (!await s.now()) return; }
         const tgt = mdTargetFromKey(key, m.name || 'md');
         if (tgt) useEditorUiStore.getState().setMdDock(tgt);
         savers.delete(key);

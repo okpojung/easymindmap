@@ -18,6 +18,7 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
   const [lost, setLost] = useState(false);
   const [fail, setFail] = useState<string | null>(null);
   const latest = useRef<string | null>(null);
+  const closing = useRef<'close' | 'dock' | null>(null);
   const frameApiRef = useRef<{ ack: (md: string) => void; fail: () => void } | null>(null);
   const kind = mdTargetFromKey(mdKey, name)?.kind ?? 'embedded';
 
@@ -36,8 +37,14 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
       else if (m.type === 'md-fail') { got = true; setFail(m.error); }
       else if (m.type === 'md-state') {
         setState(m.state);
-        if (m.state === 'saved' && typeof m.markdown === 'string') frameApiRef.current?.ack(m.markdown);
-        else if (typeof m.state === 'object') frameApiRef.current?.fail();
+        if (m.state === 'saved' && typeof m.markdown === 'string') {
+          frameApiRef.current?.ack(m.markdown);
+          if (closing.current && m.markdown === latest.current) {
+            const action = closing.current; closing.current = null;
+            if (action === 'dock') { try { window.opener?.focus(); } catch { /* other window */ } }
+            window.close();
+          }
+        } else if (typeof m.state === 'object') { closing.current = null; frameApiRef.current?.fail(); }
       }
     };
     ch.postMessage({ type: 'md-hello', key: mdKey } satisfies MdMsg);
@@ -49,16 +56,22 @@ export function MdEditorWindowPage({ tabId, mdKey, name }: { tabId: string; mdKe
     content: content?.markdown ?? null, name, rendered: false,
     onChange: (md) => { latest.current = md; if (!content?.readOnly && !lost) chRef.current?.postMessage({ type: 'md-change', key: mdKey, markdown: md } satisfies MdMsg); },
     onSave: (md) => { latest.current = md; if (content?.readOnly || lost) { frameApiRef.current?.fail(); return; } chRef.current?.postMessage({ type: 'md-change', key: mdKey, markdown: md, now: true } satisfies MdMsg); },
-    // 편집기 안의 [✕ 닫기] — 이 창을 닫는다(고친 내용은 이미 보냈다)
-    onClose: () => window.setTimeout(() => window.close(), 300),
+    // Keep the editor alive until the owner acknowledges this exact snapshot.
+    onClose: () => {
+      if (content?.readOnly) { window.close(); return; }
+      if (lost || latest.current === null || !chRef.current) { frameApiRef.current?.fail(); return; }
+      closing.current = 'close';
+      chRef.current.postMessage({ type: 'md-change', key: mdKey, markdown: latest.current, now: true } satisfies MdMsg);
+    },
   });
   frameApiRef.current = frameApi;
   const onLoad = frameApi.onLoad;
 
   const backToEmm = () => {
-    chRef.current?.postMessage({ type: 'md-dock', key: mdKey, name, ...(latest.current !== null ? { markdown: latest.current } : {}) } satisfies MdMsg);
-    try { window.opener?.focus(); } catch { /* 다른 창 */ }
-    window.setTimeout(() => window.close(), 150);
+    if (!chRef.current || lost || latest.current === null) return;
+    closing.current = 'dock';
+    chRef.current.postMessage({ type: 'md-dock', key: mdKey, name, ...(latest.current !== null ? { markdown: latest.current } : {}) } satisfies MdMsg);
+    // The successful md-state snapshot closes this window; failures keep its draft open.
   };
 
   const btn: React.CSSProperties = { fontSize: 12, padding: '4px 10px', borderRadius: 7, cursor: 'pointer', border: `1px solid ${t.primaryBorder}`, background: t.primarySoft, color: t.primary, fontWeight: 700, whiteSpace: 'nowrap' };

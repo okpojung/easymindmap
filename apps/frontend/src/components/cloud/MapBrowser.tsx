@@ -42,6 +42,9 @@ import { canReuseThisTab, openMapHere, openMapInNewTab } from '@/services/cloud/
 import { FolderPickerDialog } from './FolderPickerDialog';
 import { MapFileIcon, mapTone } from './MapFileIcon';
 import { folderSubtreeIds } from './folderTree';
+import { folderTotals } from './folderTotals';
+import { useAuthStore } from '@/stores/authStore';
+import { readLibraryView, saveLibraryView, pruneLibraryView, libraryEdgeScroll } from './libraryViewState';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { ActionSheet, type SheetItem } from '@/components/ui/ActionSheet';
 import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
@@ -276,15 +279,29 @@ type Row =
   // 아니라 제 구역에 모인다. 연결 주소는 줄의 🌐(퍼블리싱 창)에서 본다.
   | { kind: 'dashboardHead'; depth: 0; count: number; linked: number };
 
-export function MapBrowser({
-  t, onClose, onFlash, onOpened,
+type BrowserProps = {
+  t: ThemeTokens; onClose: () => void; onFlash: (msg: string) => void; onOpened?: () => void;
+};
+export function MapBrowser(props: BrowserProps) {
+  const account = useAuthStore(s => s.session?.userId ?? (s.guest ? 'guest' : 'local'));
+  return <AccountMapBrowser key={account} {...props} account={account} />;
+}
+function AccountMapBrowser({
+  t, onClose, onFlash, onOpened, account,
 }: {
+  account: string;
   t: ThemeTokens;
   onClose: () => void;
   onFlash: (msg: string) => void;
   /** 이 탭에 문서를 실제로 열었을 때 (호출부가 브라우저를 닫는다) */
   onOpened?: () => void;
 }) {
+  const [initialView] = useState(() => readLibraryView(account));
+  const listRef = useRef<HTMLDivElement>(null);
+  const scrollRestored = useRef(false);
+  const scrollPosition = useRef({ top: initialView.scrollTop, left: initialView.scrollLeft });
+  const [foldersReady, setFoldersReady] = useState(false);
+  const requestVersion = useRef(0);
   const tr = useTr();
   const locale = LANG_LOCALE[useLang()];
   /**
@@ -324,16 +341,16 @@ export function MapBrowser({
   /** 새 폴더를 만드는 중 — parentId 는 만들 위치(null = 홈) */
   const [newFolder, setNewFolder] = useState<{ parentId: string | null; name: string } | null>(null);
   /**
-   * **고른 폴더** (2026-10-26 사용자 요청) — 폴더 이름을 누르면 펼치면서 고른다.
+   * **고른 폴더** (2026-10-26 사용자 요청) — 폴더 이름은 선택만 하고, 화살표는 펼침만 바꾼다.
    * 머리의 [＋ 새 폴더] 는 그 아래에, [＋ 새 맵] 은 첫 저장 때 그 폴더를 기본 위치로 쓴다.
    * 머리의 '📁 이름 ✕' 로 풀면 다시 홈.
    */
-  const [selFolderId, setSelFolderId] = useState<string | null>(null);
+  const [selFolderId, setSelFolderId] = useState<string | null>(initialView.selected);
   /**
    * 검색어 — **문서함 전체**를 훑는다. 2026-08-08 부터 이름뿐 아니라
    * **맵 안(노드 텍스트·노트·태그)** 까지 서버에서 찾는다.
    */
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialView.query);
   /** 서버 내용 검색 결과 — 검색 중일 때 맵 목록을 이걸로 갈아 끼운다 */
   const [found, setFound] = useState<MapListItem[] | null>(null);
   /** 검색에 걸린 총 개수 — 상한(500)에 잘렸는지 알린다 */
@@ -351,7 +368,7 @@ export function MapBrowser({
    */
   const [foundShared, setFoundShared] = useState<MapListItem[] | null>(null);
   /** 펼쳐 둔 폴더 — 기본은 비어 있다(= 모두 접기) */
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initialView.expanded));
   // 폴더 이동 대상 — 눌러서 고르는 창 (window.prompt 대체, 2026-08-02)
   const [moving, setMoving] = useState<MapListItem | null>(null);
   /** 옮기려는 폴더 — 안의 맵·하위 폴더는 parent 를 따라 함께 간다 */
@@ -433,6 +450,7 @@ export function MapBrowser({
   // 눌렀다") — 같은 load() 를 다시 부른다. 읽는 동안 버튼을 잠근다.
   const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
+    const version = ++requestVersion.current;
     setErr(null);
     setRefreshing(true);
     try {
@@ -443,6 +461,11 @@ export function MapBrowser({
         cloudApi.listMaps({ sort, order, limit: MAP_FETCH_LIMIT }),
         cloudApi.listSharedMaps({ limit: 100 }).catch(() => ({ maps: [], total: 0 })),
       ]);
+      if (version !== requestVersion.current) return;
+      const ids = new Set(f.folders.map(folder => folder.folderId));
+      setExpanded(previous => new Set(pruneLibraryView({ ...initialView, expanded: [...previous] }, ids).expanded));
+      setSelFolderId(previous => previous && ids.has(previous) ? previous : null);
+      setFoldersReady(true);
       setFolders(f.folders);
       setMaps(m.maps);
       setShared(sh.maps);
@@ -450,18 +473,19 @@ export function MapBrowser({
         setErr(trNow('cloud.browser.truncated', { total: m.total, shown: m.maps.length }));
       }
     } catch (e) {
+      if (version !== requestVersion.current) return;
       setMaps([]);
       setErr(e instanceof CloudError ? e.message : trNow('cloud.browser.loadFailed'));
     } finally {
-      setRefreshing(false);
+      if (version === requestVersion.current) setRefreshing(false);
     }
-  }, [sort, order]);
+  }, [sort, order, initialView]);
 
   // 저장·맵 닫기가 일어나면(lastSavedAt 변화) 목록을 다시 읽는다 —
   // 문서함을 연 채로 저장한 경우에도 크기·수정일이 곧바로 반영된다
   // (2026-08-05 보고: 새로고침해야 반영됐다).
   const lastSavedAt = useCloudStore((s) => s.lastSavedAt);
-  useEffect(() => { void load(); }, [load, lastSavedAt]);
+  useEffect(() => { void load(); return () => { requestVersion.current++; }; }, [load, lastSavedAt]);
 
   // Esc 는 **안쪽부터** 닫는다 (2026-08-08 사용자 보고에서 함께 발견).
   // 예전에는 무조건 문서함을 닫아서, 새 폴더 이름을 입력하다 Esc 로
@@ -633,11 +657,14 @@ export function MapBrowser({
     // 새 폴더 입력은 **만들어질 자리**에 그대로 끼워 넣는다 — 홈이면 맨
     // 위, 폴더 안이면 그 폴더 바로 아래에 한 단계 들여써서.
     const newAt = newFolder?.parentId ?? null;
+    const visited = new Set<string>();
     const walk = (parentId: string, depth: number) => {
       if (newFolder && parentId === '' && newAt === null) {
         out.push({ kind: 'newFolder', depth });
       }
       for (const f of foldersByParent.get(parentId) ?? []) {
+        if (visited.has(f.folderId)) continue;
+        visited.add(f.folderId);
         if (searching && !keepFolder(f)) continue;
         out.push({ kind: 'folder', depth, folder: f });
         if (newFolder && newAt === f.folderId) {
@@ -682,6 +709,25 @@ export function MapBrowser({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foldersByParent, mapsByFolder, expanded, searching, keepFolder, q, serverFound,
       newFolder, shared, foundShared, publishedMaps, dashboardMaps]);
+
+  const subtreeTotals = useMemo(() => folderTotals(folders), [folders]);
+  // Wait for actual rows, not loading placeholders. StrictMode cleanup must not save zero.
+  useLayoutEffect(() => {
+    if (!foldersReady || maps === null || (searching && (finding || (found === null && !findErr)))) return;
+    if (!scrollRestored.current && listRef.current) {
+      listRef.current.scrollTop = scrollPosition.current.top;
+      listRef.current.scrollLeft = scrollPosition.current.left;
+      scrollRestored.current = true;
+    }
+    saveLibraryView(account, { expanded: [...expanded], selected: selFolderId,
+      query, scrollTop: scrollPosition.current.top, scrollLeft: scrollPosition.current.left });
+  }, [account, foldersReady, maps, expanded, selFolderId, query, rows, searching, finding, found, findErr]);
+  const rememberScroll = () => {
+    if (!scrollRestored.current || !listRef.current) return;
+    scrollPosition.current = { top: listRef.current.scrollTop, left: listRef.current.scrollLeft };
+    saveLibraryView(account, { expanded: [...expanded], selected: selFolderId, query,
+      scrollTop: scrollPosition.current.top, scrollLeft: scrollPosition.current.left });
+  };
 
   const shownMaps = useMemo(
     // **공유받은 맵은 합계에서 뺀다.** 합계는 "내 문서함이 얼마나 되나"를
@@ -930,6 +976,9 @@ export function MapBrowser({
   /** 놓을 자리 위에 있다 — 강조하고, 접힌 폴더면 잠깐 머물 때 펼친다(더 깊은 하위로 놓게) */
   const hoverDrop = (target: string | null) => {
     if (dropAt !== (target ?? '')) setDropAt(target ?? '');
+    if (dragOpenTimer.current && dragOpenTimer.current.id !== target) {
+      window.clearTimeout(dragOpenTimer.current.t); dragOpenTimer.current = null;
+    }
     if (target && !expanded.has(target) && dragOpenTimer.current?.id !== target) {
       if (dragOpenTimer.current) window.clearTimeout(dragOpenTimer.current.t);
       dragOpenTimer.current = {
@@ -949,7 +998,8 @@ export function MapBrowser({
   /** 놓을 자리 하나에 붙이는 끌기 핸들러 — target: 폴더 id, null = 홈 */
   const dropProps = (target: string | null) => ({
     onDragOver: (e: React.DragEvent) => {
-      if (!canDropAt(target)) return;
+      e.stopPropagation();
+      if (!canDropAt(target)) { e.dataTransfer.dropEffect = 'none'; return; }
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       hoverDrop(target);
@@ -960,6 +1010,7 @@ export function MapBrowser({
     },
     onDrop: (e: React.DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       const d = drag;
       endDrag();
       if (!d || !canDropAt(target)) return;
@@ -989,7 +1040,25 @@ export function MapBrowser({
    *   · 놓을 수 있는지 · 접힌 폴더 펼침 · 실제 이동은 데스크톱과 같은 함수를 쓴다
    *   · 끝난 직후의 click 은 삼킨다 — 맵 줄이면 놓자마자 그 맵이 열린다
    */
-  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!drag) return;
+    let pointer: { x: number; y: number } | null = null;
+    const over = (event: DragEvent) => { pointer = { x: event.clientX, y: event.clientY }; };
+    const leave = (event: DragEvent) => { if (!event.relatedTarget) pointer = null; };
+    const timer = window.setInterval(() => {
+      const list = listRef.current;
+      if (!pointer || !list) return;
+      const hit = document.elementFromPoint(pointer.x, pointer.y);
+      const dy = libraryEdgeScroll(pointer.x, pointer.y, list.getBoundingClientRect(), !!hit?.closest('[data-drop-home]'));
+      if (dy) list.scrollTop += dy;
+    }, 16);
+    // Folder/root targets stop bubbling so a drop cannot also hit an ancestor.
+    // Observe pointer positions in capture phase to keep edge scrolling alive there.
+    window.addEventListener('dragover', over, true);
+    window.addEventListener('dragleave', leave);
+    return () => { window.clearInterval(timer); window.removeEventListener('dragover', over, true); window.removeEventListener('dragleave', leave); };
+  }, [drag]);
+  useEffect(() => () => { if (dragOpenTimer.current) window.clearTimeout(dragOpenTimer.current.t); }, []);
   const [ghost, setGhost] = useState<{ x: number; y: number; label: string } | null>(null);
   const live = useRef({ canDropAt, hoverDrop, leaveDrop, moveMapTo, moveFolderTo, endDrag });
   live.current = { canDropAt, hoverDrop, leaveDrop, moveMapTo, moveFolderTo, endDrag };
@@ -1053,7 +1122,8 @@ export function MapBrowser({
         st.scroll = window.setInterval(() => {
           const box = listRef.current?.getBoundingClientRect();
           if (!box) return;
-          const dy = st.y < box.top + 56 ? -10 : st.y > box.bottom - 56 ? 10 : 0;
+          const rootDrop = !!document.elementFromPoint(st.x, st.y)?.closest('[data-drop-home]');
+          const dy = libraryEdgeScroll(st.x, st.y, box, rootDrop);
           if (dy) { listRef.current!.scrollTop += dy; pick(); }
         }, 16);
       }, 450);
@@ -1309,7 +1379,7 @@ export function MapBrowser({
     return items;
   };
 
-  /** 폰 — 폴더 줄: 이름(누르면 펼침) + 맵 수 + [⋯] */
+  /** 폰 — 화살표(펼침)와 이름(선택)을 분리한다. */
   /** 폰 줄 — 길게 누를 때 글자 선택·iOS 말풍선이 뜨지 않게 */
   const mDragRowStyle: React.CSSProperties = {
     userSelect: 'none', WebkitUserSelect: 'none',
@@ -1334,26 +1404,33 @@ export function MapBrowser({
         ['--row-hover' as string]: t.primarySoft,
         ['--row-hover-bd' as string]: t.primaryBorder,
       } as React.CSSProperties}>
-      <button
-        data-testid="browser-folder-toggle"
+      <button type="button" data-testid="browser-folder-toggle"
+        aria-label={tr(expanded.has(r.folder.folderId) ? 'cloud.browser.folderCollapse' : 'cloud.browser.folderExpand') + ': ' + r.folder.name}
         aria-expanded={expanded.has(r.folder.folderId) || searching}
-        onClick={() => { toggleFolder(r.folder.folderId); setSelFolderId(r.folder.folderId); }}
+        disabled={searching} onClick={() => toggleFolder(r.folder.folderId)}
+        style={{ border: 'none', background: 'transparent', color: t.textMuted, cursor: 'pointer', minWidth: 40, minHeight: 44, marginLeft: r.depth * 14 }}>
+        {expanded.has(r.folder.folderId) || searching ? '▼' : '▶'}
+      </button>
+      <button
+        data-testid="browser-folder-select"
+        aria-label={r.folder.name} aria-pressed={selFolderId === r.folder.folderId}
+        title={tr('cloud.browser.selectedTip')}
+        onClick={() => setSelFolderId(r.folder.folderId)}
         style={{
           flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8,
-          minHeight: 50, padding: 0, paddingLeft: r.depth * 14,
+          minHeight: 50, padding: 0,
           textAlign: 'left', background: 'transparent', border: 'none',
           color: t.text, cursor: 'pointer', fontSize: 14.5, fontWeight: 600,
         }}
       >
-        <span style={{ fontSize: 9, color: t.textSubtle, width: 9, flexShrink: 0 }}>
-          {expanded.has(r.folder.folderId) || searching ? '▼' : '▶'}
-        </span>
+
         <span style={{ fontSize: 17, flexShrink: 0 }}>📁</span>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           <Mark text={r.folder.name} q={searching ? qRaw : ''} />
         </span>
         <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 500, color: t.textMuted }}>
-          {tr('cloud.browser.folderMapCount', { n: r.folder.mapCount })}
+          {tr('cloud.browser.folderMapCount', { n: subtreeTotals.get(r.folder.folderId)?.maps ?? 0 })}
+          {' · '}{tr('cloud.browser.folderDescendantCount', { n: subtreeTotals.get(r.folder.folderId)?.folders ?? 0 })}
         </span>
       </button>
       <button
@@ -1786,7 +1863,7 @@ export function MapBrowser({
         }}
       >
         {drag && !compact && (
-          <div data-testid="browser-drop-home" {...dropProps(null)}
+          <div data-testid="browser-drop-home" data-drop-home="" {...dropProps(null)}
             style={{
               // 합계 줄 위에 **덮어** 그린다 — 목록 안에 끼우면 끌기를 시작하는 순간
               // 모든 줄이 한 칸 밀려 손 아래 줄이 바뀐다 (e2e341 에서 잡았다)
@@ -1834,7 +1911,7 @@ export function MapBrowser({
       {/* 목록 (트리) — 새 폴더 이름을 입력하는 동안에는 hover 강조를
           끈다(mm-rows-editing). 커서가 다른 줄 위에 남아 그 줄이 강조되면
           "어디에 만들어지나"를 화면이 두 가지로 말하게 된다. */}
-      <div ref={listRef} className={newFolder ? 'mm-rows-editing' : undefined}
+      <div ref={listRef} data-testid="browser-list" onScroll={rememberScroll} className={newFolder ? 'mm-rows-editing' : undefined}
         style={{ flex: 1, overflowY: 'auto' }}>
         {/* 받은함 자리 (2026-09-05, collaboration/29 §4·§8.2) — 받은 소유권
             제안과 새로 공유된 맵. 유료 모듈이 채우고 공개판은 비어 있다.
@@ -1976,7 +2053,7 @@ export function MapBrowser({
           </div>
         ) : r.kind === 'folder' ? (
           <div key={`f:${r.folder.folderId}`} data-testid="browser-folder"
-            className="mm-list-row"
+            className="mm-list-row" data-drop-folder={r.folder.folderId}
             {...dragProps({ kind: 'folder', folder: r.folder })}
             {...dropProps(r.folder.folderId)}
             data-drop={dropAt === r.folder.folderId ? 'on' : undefined}
@@ -2000,9 +2077,18 @@ export function MapBrowser({
                 한 화면에서 같이 보려는 것이 이 목록의 요점이다. */}
             {/* 툴팁 없음 — ▶/▼ 삼각형이 이미 상태를 말한다. 이름 버튼에
                 툴팁까지 뜨면 화면만 어수선해진다 (2026-08-05 규칙) */}
+            <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+            <button type="button" data-testid="browser-folder-toggle"
+              aria-label={tr(expanded.has(r.folder.folderId) ? 'cloud.browser.folderCollapse' : 'cloud.browser.folderExpand') + ': ' + r.folder.name}
+              aria-expanded={expanded.has(r.folder.folderId) || searching}
+              disabled={searching} onClick={() => toggleFolder(r.folder.folderId)}
+              style={{ border: 'none', background: 'transparent', color: t.textMuted, cursor: 'pointer', minWidth: 28, minHeight: 28 }}>
+              {expanded.has(r.folder.folderId) || searching ? '▼' : '▶'}
+            </button>
             <button
-              data-testid="browser-folder-toggle"
-              onClick={() => { toggleFolder(r.folder.folderId); setSelFolderId(r.folder.folderId); }}
+              data-testid="browser-folder-select" aria-label={r.folder.name} aria-pressed={selFolderId === r.folder.folderId}
+              title={tr('cloud.browser.selectedTip')}
+              onClick={() => setSelFolderId(r.folder.folderId)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 textAlign: 'left', background: 'transparent', border: 'none',
@@ -2010,13 +2096,12 @@ export function MapBrowser({
                 overflow: 'hidden', padding: 0,
               }}
             >
-              <span style={{ fontSize: 9, color: t.textSubtle, width: 9 }}>
-                {expanded.has(r.folder.folderId) || searching ? '▼' : '▶'}
-              </span>
+
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <Mark text={r.folder.name} q={searching ? qRaw : ''} />
               </span>
             </button>
+            </div>
             {/* 유형·생성일 자리 — 머리글과 같은 오른쪽 선에 세운다
                 (2026-08-09 요청) */}
             {/* 같은 줄의 **폴더 이름과 같은 색** (2026-08-09 2차 요청) */}
@@ -2025,9 +2110,11 @@ export function MapBrowser({
                 차지하면(span 2) 오른쪽 맞춤이 수정일 선까지 밀려 머리글과
                 어긋난다 (2026-08-09) */}
             <span style={{ color: t.textMuted, fontSize: 11.5, textAlign: 'right' }}>
-              {tr('cloud.browser.folderMapCount', { n: r.folder.mapCount })}
+              {tr('cloud.browser.folderMapCount', { n: subtreeTotals.get(r.folder.folderId)?.maps ?? 0 })}
             </span>
-            <span />
+            <span style={{ color: t.textMuted, fontSize: 11.5, textAlign: 'right' }}>
+              {tr('cloud.browser.folderDescendantCount', { n: subtreeTotals.get(r.folder.folderId)?.folders ?? 0 })}
+            </span>
             <span /><span /><span /><span />
             <span style={actionCell}>
               <button style={iconBtn} title={tr('cloud.browser.subfolderTip')} aria-label={tr('cloud.browser.subfolderAria')}
@@ -2417,7 +2504,7 @@ export function MapBrowser({
           손가락을 따라오는 이름표. 이름표는 pointer-events 를 끄므로 손가락 아래
           줄을 찾는 elementFromPoint 를 가리지 않는다 */}
       {drag && compact && (
-        <div data-testid="m-browser-drop-home" data-drop-home=""
+        <div data-testid="m-browser-drop-home" data-drop-home="" {...dropProps(null)}
           style={{
             position: 'fixed', left: 12, right: 12,
             bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', zIndex: 300,

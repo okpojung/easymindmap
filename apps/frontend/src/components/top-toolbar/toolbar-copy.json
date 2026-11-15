@@ -15,7 +15,9 @@
     "saveOptions": "저장 옵션",
     "distribution": "공유 · 퍼블리싱 · 대시보드맵",
     "dashboard": "대시보드맵",
-    "documentMenu": "문서 메뉴"
+    "documentMenu": "파일 메뉴",
+    "file": "파일",
+    "mapTitle": "맵 제목"
   },
   "en": {
     "document": "Save and export",
@@ -33,7 +35,9 @@
     "saveOptions": "Save options",
     "distribution": "Share · Publish · Dashboard",
     "dashboard": "Dashboard map",
-    "documentMenu": "Document menu"
+    "documentMenu": "File menu",
+    "file": "File",
+    "mapTitle": "Map title"
   },
   "ja": {
     "document": "保存と書き出し",
@@ -51,7 +55,9 @@
     "saveOptions": "保存オプション",
     "distribution": "共有・公開・ダッシュボード",
     "dashboard": "ダッシュボードマップ",
-    "documentMenu": "文書メニュー"
+    "documentMenu": "ファイルメニュー",
+    "file": "ファイル",
+    "mapTitle": "マップ名"
   },
   "zh": {
     "document": "保存与导出",
@@ -69,6 +75,8 @@
     "saveOptions": "保存选项",
     "distribution": "共享 · 发布 · 仪表板",
     "dashboard": "仪表板脑图",
-    "documentMenu": "文档菜单"
+    "documentMenu": "文件菜单",
+    "file": "文件",
+    "mapTitle": "脑图标题"
   }
 }

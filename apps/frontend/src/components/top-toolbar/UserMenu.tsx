@@ -27,7 +27,7 @@ import { useProfileStore } from '@/stores/profileStore';
 import { AccountProfileForm } from '@/components/account/AccountProfileForm';
 import { displayNameOf, formatPhone } from '@/utils/profileName';
 import { AvatarBadge } from '@/components/account/AvatarBadge';
-import { DialogCloseButton, DialogFrame } from '@/components/ui/DialogFrame';
+import { DialogCloseButton, DialogFrame, DialogXButton } from '@/components/ui/DialogFrame';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
 import { useLang, useTr } from '@/i18n';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
@@ -91,6 +91,9 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
   const [open, setOpen] = useState(false);
   const [soon, setSoon] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dismissAccountMenu = () => { setOpen(false); setSoon(null); triggerRef.current?.focus(); };
+  const closeProfile = () => { setProfileOpen(false); triggerRef.current?.focus(); };
   const session = useAuthStore((s) => s.session);
   const guest = useAuthStore((s) => s.guest);
   const isGuest = authEnabled && guest && !session;
@@ -106,6 +109,12 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
   const myPhone = formatPhone(profile?.phoneCountry, profile?.phoneNumber);
   /** 계정 프로필 창 (2026-09-08) */
   const [profileOpen, setProfileOpen] = useState(false);
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closeProfile(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [profileOpen]);
   /** 개인 설정 창 — 언어 (B10 i18n, 2026-10-05) */
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -130,7 +139,7 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
       if (!ref.current?.contains(e.target as Node)) { setOpen(false); setSoon(null); }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setOpen(false); setSoon(null); }
+      if (e.key === 'Escape') dismissAccountMenu();
     };
     document.addEventListener('pointerdown', onDoc);
     window.addEventListener('keydown', onKey);
@@ -299,6 +308,11 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button
+        ref={triggerRef}
+        type="button"
+        aria-label={tr('shell.user.menu')}
+        aria-expanded={open}
+        aria-haspopup="dialog"
         data-testid="user-menu"
         title={session
           ? [myName, session.email !== myName ? session.email : null, myPhone, tr('shell.user.menu')]
@@ -320,6 +334,8 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
       {open && (
         <div
           data-testid="user-menu-panel"
+          role="dialog"
+          aria-label={tr('shell.user.menu')}
           style={{
             ...(phone
               ? {
@@ -330,15 +346,18 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
                 maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
                 overflowY: 'auto', overscrollBehavior: 'contain',
               } as const
-              : { position: 'absolute', top: 38, right: 0, width: 240 } as const),
+              : { position: 'absolute', top: 38, right: 0, width: 240, maxHeight: 'calc(100dvh - 100px)' } as const),
+            boxSizing: 'border-box', maxWidth: 'calc(100vw - 12px)',
+            overflowY: 'auto', overscrollBehavior: 'contain',
             zIndex: 60,
             background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10,
             boxShadow: '0 10px 28px rgba(0,0,0,0.20)', padding: 6,
           }}
         >
           <div style={{
-            padding: '8px 10px 9px', borderBottom: `1px solid ${t.divider}`, marginBottom: 5,
+            position: 'sticky', top: -6, zIndex: 1, background: t.surface, minHeight: 48, boxSizing: 'border-box', padding: '8px 44px 9px 10px', borderBottom: `1px solid ${t.divider}`, marginBottom: 5,
           }}>
+            <DialogXButton t={t} testId="user-menu-panel-x" onClose={dismissAccountMenu} />
             <div
               data-testid="user-menu-name"
               title={session ? [session.email, myPhone].filter(Boolean).join(' · ') : undefined}
@@ -721,9 +740,9 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
           t={t}
           testId="profile-dialog"
           width="min(430px, 92vw)"
-          onClose={() => setProfileOpen(false)}
+          onClose={closeProfile}
           title={`👤 ${tr('shell.user.profile')}`}
-          footer={<DialogCloseButton t={t} onClick={() => setProfileOpen(false)} testId="profile-close" />}
+          footer={<DialogCloseButton t={t} onClick={closeProfile} testId="profile-close" />}
         >
             <AccountProfileForm
               t={t}

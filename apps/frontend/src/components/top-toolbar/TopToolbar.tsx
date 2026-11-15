@@ -3,11 +3,11 @@ import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { appFaviconUrl } from '@/utils/brandFavicon';
-import { afterMdExit } from '@/utils/mdExitGuard';
 import { TooltipButton, TooltipIconBtn as IconBtn } from './Tooltip';
 import { MapActions } from './MapActions';
-import { mobileSaveDot, mobileToolbarSize } from './toolbar-layout';
+import { mobileSaveDot, mobileToolbarSize, editorToolbarLayout } from './toolbar-layout';
 import { UserMenu } from './UserMenu';
+import { DialogXButton } from '@/components/ui/DialogFrame';
 import { ProShareDialog } from '@pro';
 import { PublishPanel } from '@/components/cloud/PublishPanel';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -76,13 +76,19 @@ export function TopToolbar({
   const [distributionOpen, setDistributionOpen] = useState(false);
   const documentRef = useRef<HTMLDivElement>(null);
   const distributionRef = useRef<HTMLDivElement>(null);
+  const fileButtonRef = useRef<HTMLButtonElement>(null);
+  const dismissFileMenu = () => { setDocumentOpen(false); fileButtonRef.current?.focus(); };
   useEffect(() => {
     const outside = (event: PointerEvent) => {
       if (document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) return;
       if (!documentRef.current?.contains(event.target as Node)) setDocumentOpen(false);
       if (!distributionRef.current?.contains(event.target as Node)) setDistributionOpen(false);
     };
-    const esc = (event: KeyboardEvent) => { if (event.key === 'Escape') { setDocumentOpen(false); setDistributionOpen(false); } };
+    const esc = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) return;
+      if (documentRef.current?.contains(document.activeElement)) fileButtonRef.current?.focus();
+      setDocumentOpen(false); setDistributionOpen(false);
+    };
     window.addEventListener('pointerdown', outside); window.addEventListener('keydown', esc);
     return () => { window.removeEventListener('pointerdown', outside); window.removeEventListener('keydown', esc); };
   }, []);
@@ -188,7 +194,6 @@ export function TopToolbar({
     document.addEventListener('mousedown', off);
     return () => document.removeEventListener('mousedown', off);
   }, [ganttOpen]);
-  const openDocs = () => { void afterMdExit(() => useEditorUiStore.getState().setBrowserOpen(true)); };
 
   // 내보내기 — 데스크톱과 모바일에서 같은 메뉴 동작을 쓴다
   const runExportHtml = async () => {
@@ -280,6 +285,7 @@ export function TopToolbar({
     </div>
   );
   const size = phone ? mobileToolbarSize(Math.min(barW, typeof window === 'undefined' ? barW : window.innerWidth)) : coarse ? 42 : 38;
+  const headerLayout = editorToolbarLayout(barW, phone);
   const groupStyle = { display: 'flex', alignItems: 'center', gap: phone ? 0 : 2, flexShrink: 0, padding: phone ? 0 : '3px 5px', border: phone ? 'none' : '1px solid ' + t.border, borderRadius: phone ? 0 : 9, background: phone ? 'transparent' : t.surfaceAlt } as const;
   const menuStyle = { position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 60, width: 270, maxWidth: 'calc(100vw - 16px)', maxHeight: '70vh', overflowY: 'auto', padding: 6, borderRadius: 10, border: '1px solid ' + t.border, background: t.surface, boxShadow: '0 8px 24px #0003' } as const;
   const buttonStyle = { width: size, height: phone ? 40 : size, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, border: 'none', borderRadius: 7, background: 'transparent', color: t.text, cursor: 'pointer' } as const;
@@ -295,15 +301,20 @@ export function TopToolbar({
     <div ref={barRef} data-testid="top-toolbar" data-layout={phone ? 'phone' : 'desktop'}
       style={{ position: 'relative', zIndex: 20, flexShrink: 0, background: t.surface, borderBottom: '1px solid ' + t.border,
         padding: 'calc(env(safe-area-inset-top, 0px) + 4px) max(6px, env(safe-area-inset-right, 0px)) 4px max(6px, env(safe-area-inset-left, 0px))',
-        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: phone ? 2 : 8, minHeight: 56 }}>
-      <div ref={documentRef} data-testid="document-menu-anchor" style={{ position: phone ? 'static' : 'relative', flex: phone || barW < 1100 ? '1 0 100%' : '1 1 100px', minWidth: 0 }}>
-        <TooltipButton data-testid="map-title" title={copy.documentMenu} aria-label={mapTitle + ' · ' + copy.documentMenu} aria-haspopup="menu" aria-expanded={documentOpen}
+        display: 'grid', gridTemplateColumns: headerLayout.columns, alignItems: 'center', gap: phone ? 2 : 8, minWidth: 0, minHeight: 56 }}>
+      <div ref={documentRef} data-testid="document-menu-anchor" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+        <img src={appFaviconUrl()} width={24} height={24} alt="EasyMindMap" style={{ flexShrink: 0 }} />
+        <TooltipButton ref={fileButtonRef} data-testid="file-menu-toggle" title={copy.documentMenu} aria-label={copy.file} aria-haspopup="menu" aria-expanded={documentOpen}
           onClick={() => { const next = !documentOpen; closeMenus(); setDocumentOpen(next); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, padding: '5px 4px', background: 'none', border: 'none', color: t.text, cursor: 'pointer', textAlign: 'left' }}>
-          <img src={appFaviconUrl()} width={24} height={24} alt="EasyMindMap" style={{ flexShrink: 0 }} /><span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600 }}>{mapTitle}</span><I.ChevronDown size={14} />
+          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 6px', minHeight: 36, whiteSpace: 'nowrap', background: 'none', border: 'none', color: t.text, cursor: 'pointer', fontSize: 13 }}>
+          {copy.file}<I.ChevronDown size={14} />
         </TooltipButton>
-        <div data-testid="document-menu" role="menu" aria-label={copy.documentMenu} style={{ ...menuStyle, display: documentOpen ? 'block' : 'none', left: phone ? 8 : 0, right: 'auto', width: 300 }}>
-          <MenuItem t={t} testId="document-open-browser" icon={<I.MindMap size={20} />} label={tr('shell.toolbar.crumb')} onClick={() => { closeMenus(); openDocs(); }} />
+        <div data-testid="document-menu" role="menu" aria-label={copy.documentMenu} style={{ ...menuStyle, display: documentOpen ? 'flex' : 'none', flexDirection: 'column', overflowY: 'hidden', boxSizing: 'border-box', maxHeight: 'min(70dvh, calc(100dvh - 120px))', left: 0, right: 'auto', width: 300 }}>
+          <div style={{ position: 'relative', flexShrink: 0, minHeight: 48, boxSizing: 'border-box', padding: '14px 48px 10px 10px', fontSize: 13, fontWeight: 700 }}>
+            {copy.file}
+            <DialogXButton t={t} testId="document-menu-x" onClose={dismissFileMenu} />
+          </div>
+          <div data-testid="document-menu-body" style={{ minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain' }}>
           <div role="group" aria-label={copy.saveOptions} data-testid="save-options-menu">
             <div style={{ padding: '9px 10px 3px', fontSize: 11, color: t.textSubtle, fontWeight: 700, borderTop: '1px solid ' + t.divider }}>{copy.saveOptions}</div>
             <div ref={setSaveSlot} />
@@ -316,9 +327,12 @@ export function TopToolbar({
             <MenuItem t={t} label={tr('shell.toolbar.exportMd')} desc={tr('shell.toolbar.exportMdDesc')} onClick={() => { closeMenus(); void runExportMd(); }} />
             <div style={{ fontSize: 11, padding: 8, color: t.textMuted }}>{tr('shell.toolbar.exportZipNote')}</div>
           </div>
+          </div>
         </div>
       </div>
-      <div data-testid="toolbar-actions" style={{ display: phone ? 'flex' : 'contents', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: 2, width: '100%', minWidth: 0 }}>
+      <input data-testid="map-title" type="text" readOnly value={mapTitle} title={mapTitle} aria-label={copy.mapTitle}
+        style={{ gridColumn: headerLayout.stacked ? '2 / -1' : undefined, width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '5px 8px', height: 34, border: '1px solid ' + t.border, borderRadius: 7, background: t.surfaceAlt, color: t.text, fontSize: 14, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} />
+      <div data-testid="toolbar-actions" style={{ display: 'flex', gridColumn: headerLayout.stacked ? '1 / -1' : undefined, flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: phone ? 2 : 8, width: '100%', minWidth: 0 }}>
       <div role="group" aria-label={copy.document} data-toolbar-group="document" style={{ ...groupStyle, maxWidth: '100%', boxSizing: 'border-box', flexWrap: phone ? 'nowrap' : 'wrap' }}>
         <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-undo" title={tr('shell.toolbar.undo')} disabled={!canUndo || !!readOnly} onClick={undo}><I.Undo size={22} /></IconBtn>
         <output data-testid="undo-depth" aria-label={tr('shell.toolbar.undoDepth', { n: undoDepth })} title={tr('shell.toolbar.undoDepth', { n: undoDepth })}
@@ -346,6 +360,9 @@ export function TopToolbar({
         {!phone && <TooltipButton data-testid="view-gantt" title={copy.gantt} aria-pressed={ganttDock} onClick={() => ganttDock ? selectView('map') : selectView('gantt')} style={{ ...buttonStyle, background: ganttDock ? t.primarySoft : 'transparent', color: ganttDock ? t.primary : t.text }}><I.Gantt size={22} /></TooltipButton>}
         <TooltipButton data-testid="gantt-toggle" title={phone ? copy.gantt : copy.gantt + ' · ' + copy.more} aria-haspopup="menu" aria-expanded={ganttOpen} onClick={() => { const next = !ganttOpen; closeMenus(); setGanttOpen(next); }} style={{ ...buttonStyle, width: phone ? size : 22, background: phone && ganttDock ? t.primarySoft : 'transparent' }}>{phone ? <I.Gantt size={22} /> : <I.ChevronDown size={14} />}</TooltipButton>
         {ganttOpen && <div data-testid="gantt-menu" role="menu" style={{ ...menuStyle, ...(phone ? { right: 8 } : { left: 0, right: 'auto' }) }}>
+          <div style={{ position: 'sticky', top: -6, zIndex: 1, background: t.surface, minHeight: 44, padding: '12px 48px 8px 10px', boxSizing: 'border-box', fontSize: 13, fontWeight: 700 }}>
+            {copy.gantt}<DialogXButton t={t} testId="gantt-menu-x" onClose={() => { setGanttOpen(false); ganttRef.current?.querySelector<HTMLButtonElement>('[data-testid="gantt-toggle"]')?.focus(); }} />
+          </div>
           <MenuItem t={t} testId="gantt-open-dock" icon={<I.Gantt size={20} />} label={phone && ganttDock ? copy.map : tr('editor.gantt.dock')} onClick={() => selectView(phone && ganttDock ? 'map' : 'gantt')} />
           <MenuItem t={t} testId="gantt-open-tab" label={tr('editor.gantt.newTab')} onClick={() => { closeMenus(); openGantt('tab', () => flash(tr('editor.gantt.popupBlocked'))); }} />
           <MenuItem t={t} testId="gantt-open-window" label={tr('editor.gantt.newWindow')} onClick={() => { closeMenus(); openGantt('window', () => flash(tr('editor.gantt.popupBlocked'))); }} />
@@ -354,6 +371,9 @@ export function TopToolbar({
       <div ref={distributionRef} role="group" aria-label={copy.distribution} data-toolbar-group="distribution" style={{ ...groupStyle, position: phone ? 'static' : 'relative' }}>
         <TooltipButton data-testid="distribution-toggle" title={copy.distribution} aria-expanded={distributionOpen} aria-haspopup="menu" onClick={() => { const next = !distributionOpen; closeMenus(); setDistributionOpen(next); }} style={buttonStyle}><I.Share size={22} />{!phone && <I.ChevronDown size={10} />}</TooltipButton>
         <div data-testid="distribution-menu" role="menu" aria-label={copy.distribution} style={{ ...menuStyle, display: distributionOpen ? 'block' : 'none' }}>
+          <div style={{ position: 'sticky', top: -6, zIndex: 1, background: t.surface, minHeight: 44, padding: '12px 48px 8px 10px', boxSizing: 'border-box', fontSize: 13, fontWeight: 700 }}>
+            {copy.distribution}<DialogXButton t={t} testId="distribution-menu-x" onClose={() => { setDistributionOpen(false); distributionRef.current?.querySelector<HTMLButtonElement>('[data-testid="distribution-toggle"]')?.focus(); }} />
+          </div>
           <MenuItem t={t} testId="map-share" icon={<I.Share size={20} />} label={tr('shell.toolbar.share')} disabled={!shareMapId} onClick={() => { closeMenus(); setShareOpen(true); }} />
           <MenuItem t={t} testId="map-publish" icon={<I.Globe size={20} />} label={tr('shell.toolbar.publish')} disabled={!publishMapId} onClick={() => { closeMenus(); setPublishOpen(true); }} />
           <div ref={setDistributionSlot} />

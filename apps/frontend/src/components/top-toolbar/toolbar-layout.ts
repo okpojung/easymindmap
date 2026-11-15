@@ -18,3 +18,9 @@ const saveDots = {
 export function mobileSaveDot(state: keyof typeof saveDots, nonSaving = false): string {
   return nonSaving ? '#64748B' : saveDots[state];
 }
+
+/** Keep phone actions on their existing second row; let only the title shrink. */
+export function editorToolbarLayout(width: number, phone: boolean) {
+  const stacked = phone || width < 1100;
+  return { stacked, columns: 'auto minmax(0, 1fr) auto' } as const;
+}

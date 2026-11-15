@@ -77,7 +77,7 @@ export function DocsToolbar({ t }: { t: ThemeTokens }) {
         <span data-testid="docs-title" style={{
           fontSize: 15, color: t.text, fontWeight: 700, whiteSpace: 'nowrap',
           overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
-        }}>{tr('shell.toolbar.crumb')}</span>
+        }}>{tr('cloud.browser.heading')}</span>
       </div>
 
       {/* 문서함 도구 자리 — MapBrowser 가 포탈로 검색·새 맵·폴더 도구를 그린다 (폰에서는 자리 없음) */}

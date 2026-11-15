@@ -47,6 +47,10 @@ import { useImageSrcResolver } from '@/utils/imageSrc';
 import { useTr } from '@/i18n';
 import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
 import { primeTouchKeyboard } from '@/editor/canvas/touchKeyboard';
+import { isViewerLocked } from '@/stores/documentStore';
+import { useCloudStore } from '@/stores/cloudStore';
+import { planOutlineDrop, nearestGap, canDragOutlineRow, type OutlineFlatRow, type OutlineDropPlan } from './outlineDrop';
+import { outlineDropCopy } from './outlineDropCopy';
 
 interface PaneProps {
   t: ThemeTokens;
@@ -215,6 +219,102 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
     el.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
+  // ── 행 사이 드롭 이동 (손잡이 ⠿ 로만 시작 — 글자 선택·스크롤과 섞이지 않는다) ──
+  // 규칙: 놓은 틈 바로 위 행이 언제나 새 부모 (outlineDrop.ts). 가로 위치는 쓰지 않는다.
+  const readOnlyInfo = useCloudStore((s) => s.readOnlyInfo);
+  const dragBlocked = () => isViewerLocked() || !!useCloudStore.getState().readOnlyInfo;
+  const [drag, setDrag] = useState<{ id: string; gap: number; plan: OutlineDropPlan } | null>(null);
+  const [dropMsg, setDropMsg] = useState<string | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+  const flatRowsRef = useRef<OutlineFlatRow[]>([]);
+  flatRowsRef.current = flat.map((r) => ({
+    id: r.node.id, depth: r.node.depth, expanded: r.expanded,
+    childIds: (r.node.children ?? []).map((ch) => ch.id),
+  }));
+  const startRowDrag = useCallback((e: React.PointerEvent, id: string) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (dragBlocked() || !canDragOutlineRow(flatRowsRef.current, id)) return;
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragCleanupRef.current?.();
+    const startEpoch = useDocumentStore.getState().docEpoch;
+    const sx = e.clientX, sy = e.clientY, pid = e.pointerId;
+    const threshold = e.pointerType === 'touch' ? 8 : 5;
+    const prevSel = document.body.style.userSelect, prevCur = document.body.style.cursor;
+    let active = false, lastY = sy, lastGap = -1, timer: number | null = null;
+    const env = () => ({ locked: dragBlocked(), startEpoch, currentEpoch: useDocumentStore.getState().docEpoch });
+    const plan = (): { gap: number; plan: OutlineDropPlan } => {
+      const rect = scroller.getBoundingClientRect();
+      const rows = flatRowsRef.current;
+      const gap = nearestGap(layoutRef.current.tops, rows.length, lastY - rect.top + scroller.scrollTop);
+      return { gap, plan: planOutlineDrop(rows, id, gap, env()) };
+    };
+    const refresh = () => {
+      const p = plan();
+      if (p.gap !== lastGap || !p.plan.ok) { lastGap = p.gap; setDrag({ id, ...p }); }
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+      window.removeEventListener('keydown', onKey, true);
+      if (timer !== null) window.clearInterval(timer);
+      document.body.style.userSelect = prevSel; document.body.style.cursor = prevCur;
+      dragCleanupRef.current = null;
+      setDrag(null);
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      lastY = ev.clientY;
+      if (!active) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < threshold) return;
+        if (dragBlocked()) { stop(); return; }
+        active = true;
+        document.body.style.userSelect = 'none'; document.body.style.cursor = 'grabbing';
+        // 가장자리에서 자동 스크롤
+        timer = window.setInterval(() => {
+          const r = scroller.getBoundingClientRect();
+          if (lastY < r.top + 28) scroller.scrollTop -= 12;
+          else if (lastY > r.bottom - 28) scroller.scrollTop += 12;
+          refresh();
+        }, 32);
+      }
+      ev.preventDefault();
+      if (dragBlocked()) { stop(); return; }
+      refresh();
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      if (active) lastY = ev.clientY;
+      const p = active ? plan() : null; // 놓는 순간 다시 판정 (잠금·문서 바뀜 포함)
+      stop();
+      if (!p || !p.plan.ok || !p.plan.parentId) return;
+      const st = useDocumentStore.getState();
+      if (dragBlocked() || st.docEpoch !== startEpoch || !findNodeInMap(st.map, id) || !findNodeInMap(st.map, p.plan.parentId)) return;
+      const ok = p.plan.beforeId
+        ? st.moveNodeRelative(id, p.plan.beforeId, 'before')
+        : st.moveNodeRelative(id, p.plan.parentId, 'child');
+      if (!ok) { setDropMsg(outlineDropCopy.failed); window.setTimeout(() => setDropMsg(null), 2500); return; }
+      // 접힌 새 부모는 아웃라인에서 펼쳐 옮긴 행이 보이게 한다
+      const parentRow = flatRef.current.find((r) => r.node.id === p.plan.parentId);
+      if (parentRow && !parentRow.expanded) toggleExpand(parentRow.node);
+      useInteractionStore.getState().setSelectedId(id);
+    };
+    const onCancel = (ev: PointerEvent) => { if (ev.pointerId === pid) stop(); };
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === 'Escape') { ev.preventDefault(); stop(); } };
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    window.addEventListener('keydown', onKey, true);
+    dragCleanupRef.current = stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toggleExpand]);
+  const dragEnabled = !readOnlyInfo && !isViewerLocked();
+  const dragParentRow = drag?.plan.ok && drag.plan.parentId ? flat.findIndex((r) => r.node.id === drag.plan.parentId) : -1;
+
   return (
     <div style={{
       height: '100%', display: 'flex', flexDirection: 'column',
@@ -272,12 +372,49 @@ export function OutlineEditorPane({ t, outline, onClose, closeTitle }: PaneProps
             return (
               <VRow key={r.node.id} id={r.node.id} top={layout.tops[i]} ro={roRef.current}>
                 <PaneRow t={t} node={r.node} expanded={r.expanded} onToggle={toggleExpand}
-                  onOpenNote={openNote} onOpenList={openList} />
+                  onOpenNote={openNote} onOpenList={openList}
+                  onDragStart={dragEnabled ? startRowDrag : null} dragging={drag?.id === r.node.id} />
               </VRow>
             );
           })}
+          {drag && drag.gap > 0 && drag.gap <= flat.length && (() => {
+            const ok = drag.plan.ok && dragParentRow >= 0;
+            const ri = drag.gap - 1;
+            const lineTop = layout.tops[drag.gap];
+            const left = 8 + (flat[ri].node.depth + 1) * (compact ? 12 : 16);
+            return (
+              <>
+                {ok && (
+                  <div data-testid="outline-drop-parent" style={{
+                    position: 'absolute', left: 0, right: 0, top: layout.tops[dragParentRow],
+                    height: layout.tops[dragParentRow + 1] - layout.tops[dragParentRow],
+                    border: `1.5px dashed ${t.primary}`, borderRadius: 6, pointerEvents: 'none', zIndex: 4,
+                  }} />
+                )}
+                <div data-testid="outline-drop-line" data-valid={ok ? '1' : '0'} style={{
+                  position: 'absolute', left, right: 4, top: lineTop - 1, height: 3, borderRadius: 2,
+                  background: ok ? t.primary : 'transparent',
+                  borderTop: ok ? 'none' : `2px dashed ${t.borderStrong}`,
+                  pointerEvents: 'none', zIndex: 5,
+                }} />
+                {ok && (
+                  <div style={{
+                    position: 'absolute', right: 8, top: lineTop + 3, zIndex: 6, pointerEvents: 'none',
+                    maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    fontSize: 10.5, padding: '1px 6px', borderRadius: 4, background: t.primary, color: t.surface,
+                  }}>{outlineDropCopy.target(flat[dragParentRow].node.text)}</div>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
+      {dropMsg && (
+        <div role="status" style={{
+          position: 'absolute', left: 12, right: 12, bottom: 10, zIndex: 31, fontSize: 11.5, padding: '6px 10px',
+          borderRadius: 6, background: t.surfaceAlt, border: `1px solid ${t.border}`, color: t.text,
+        }}>{dropMsg}</div>
+      )}
 
       {/* 노트 뷰어 팝업 — 맵의 인디케이터 클릭과 동일한 창 (이동·크기 조절) */}
       {notePopup && noteNode && noteBlocks.length > 0 && (
@@ -374,13 +511,15 @@ function VRow({ id, top, ro, children }: {
 
 // 행은 memo — 바뀐 노드(같은 객체가 아닌 행)·선택이 바뀐 행만 다시 그린다 (2026-11-05 성능)
 const PaneRow = memo(PaneRowImpl);
-function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList }: {
+function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList, onDragStart, dragging }: {
   t: ThemeTokens;
   node: OutlineNodeData;
   expanded: boolean;
   onToggle: (n: OutlineNodeData) => void;
   onOpenNote: (nodeId: string, kind: NoteKind) => void;
   onOpenList: (p: ListPopup) => void;
+  onDragStart?: ((e: React.PointerEvent, id: string) => void) | null;
+  dragging?: boolean;
 }) {
   const tr = useTr();
   const [hover, setHover] = useState(false);
@@ -608,8 +747,28 @@ function PaneRowImpl({ t, node, expanded, onToggle, onOpenNote, onOpenList }: {
           fontSize: 13,
           fontWeight: node.depth === 0 ? 600 : selected ? 600 : 400,
           cursor: 'pointer', position: 'relative', marginBottom: 1, outline: 'none',
+          opacity: dragging ? 0.45 : 1,
         }}
       >
+        {onDragStart && node.depth > 0 && !editing && (
+          // 끌기 손잡이 — 글 입력칸 밖. 이 요소에서만 touch-action 을 막아 스크롤·글 편집은 그대로다.
+          <span
+            data-testid="outline-drag-handle"
+            role="button"
+            aria-label={outlineDropCopy.handle}
+            title={outlineDropCopy.handle}
+            onPointerDown={(e) => onDragStart(e, node.id)}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute', left: 8 + (node.depth - 1) * (compactRow ? 12 : 16), top: coarse ? 9 : 5,
+              width: compactRow ? 12 : 16, height: coarse ? 28 : 16, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 11, lineHeight: 1, color: t.textSubtle, cursor: 'grab',
+              touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none',
+              opacity: hover || selected || coarse || dragging ? 0.9 : 0,
+            }}
+          >⠿</span>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); onToggle(node); }}
           tabIndex={-1}

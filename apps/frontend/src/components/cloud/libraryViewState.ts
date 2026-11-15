@@ -1,10 +1,14 @@
 /** Tab-local UI state only. No document data or credentials are retained. */
+export type LibrarySortKey = 'title' | 'createdAt' | 'updatedAt' | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
+const sortKeys: readonly string[] = ['title', 'createdAt', 'updatedAt', 'nodeCount', 'docBytes', 'attachCount', 'attachBytes'];
 export interface LibraryViewState {
   expanded: string[];
   selected: string | null;
   scrollTop: number;
   scrollLeft: number;
   query: string;
+  sort?: LibrarySortKey;
+  order?: 'asc' | 'desc';
 }
 const views = new Map<string, LibraryViewState>();
 const storageKey = (account: string) => 'emm.library-view.v1:' + encodeURIComponent(account);
@@ -17,6 +21,9 @@ function storedView(account: string): LibraryViewState | undefined {
       || !(value.selected === null || typeof value.selected === 'string')
       || typeof value.query !== 'string' || !Number.isFinite(value.scrollTop) || value.scrollTop < 0
       || !Number.isFinite(value.scrollLeft) || value.scrollLeft < 0) return;
+    // Older tab snapshots have no sort fields. Keep their expansion/scroll data.
+    if (value.sort !== undefined && !sortKeys.includes(value.sort)) delete value.sort;
+    if (value.order !== undefined && value.order !== 'asc' && value.order !== 'desc') delete value.order;
     return value;
   } catch { return; } // private mode, denied storage, malformed values, and non-browser tests
 }

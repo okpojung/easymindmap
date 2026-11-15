@@ -44,7 +44,7 @@ import { MapFileIcon, mapTone } from './MapFileIcon';
 import { folderSubtreeIds } from './folderTree';
 import { folderTotals } from './folderTotals';
 import { useAuthStore } from '@/stores/authStore';
-import { readLibraryView, saveLibraryView, pruneLibraryView, libraryEdgeScroll } from './libraryViewState';
+import { readLibraryView, saveLibraryView, pruneLibraryView, libraryEdgeScroll, type LibrarySortKey } from './libraryViewState';
 import { DialogXButton } from '@/components/ui/DialogFrame';
 import { ActionSheet, type SheetItem } from '@/components/ui/ActionSheet';
 import { usePhoneLayout, useCoarse } from '@/hooks/useViewport';
@@ -59,8 +59,7 @@ import docsHeaderCopy from './docsHeaderCopy.json';
 import './docsHeader.css';
 import { useProFeature } from '@/pro/contract';
 
-type SortKey = 'title' | 'createdAt' | 'updatedAt'
-  | 'nodeCount' | 'docBytes' | 'attachCount' | 'attachBytes';
+type SortKey = LibrarySortKey;
 
 /**
  * 데스크톱 표가 잘리지 않는 최소 폭 — 아래 `rowStyle` 의 열 폭 합
@@ -335,8 +334,8 @@ function AccountMapBrowser({
   const [shared, setShared] = useState<MapListItem[]>([]);
   // 기본 정렬 = **이름 오름차순** (2026-08-05 보고 — 사람이 찾는 순서는
   // '최근 고친 것'보다 '이름 가나다순'이다)
-  const [sort, setSort] = useState<SortKey>('title');
-  const [order, setOrder] = useState<SortOrder>('asc');
+  const [sort, setSort] = useState<SortKey>(initialView.sort ?? 'title');
+  const [order, setOrder] = useState<SortOrder>(initialView.order ?? 'asc');
   const [err, setErr] = useState<string | null>(null);
   /** 새 폴더를 만드는 중 — parentId 는 만들 위치(null = 홈) */
   const [newFolder, setNewFolder] = useState<{ parentId: string | null; name: string } | null>(null);
@@ -720,12 +719,12 @@ function AccountMapBrowser({
       scrollRestored.current = true;
     }
     saveLibraryView(account, { expanded: [...expanded], selected: selFolderId,
-      query, scrollTop: scrollPosition.current.top, scrollLeft: scrollPosition.current.left });
-  }, [account, foldersReady, maps, expanded, selFolderId, query, rows, searching, finding, found, findErr]);
+      query, sort, order, scrollTop: scrollPosition.current.top, scrollLeft: scrollPosition.current.left });
+  }, [account, foldersReady, maps, expanded, selFolderId, query, sort, order, rows, searching, finding, found, findErr]);
   const rememberScroll = () => {
     if (!scrollRestored.current || !listRef.current) return;
     scrollPosition.current = { top: listRef.current.scrollTop, left: listRef.current.scrollLeft };
-    saveLibraryView(account, { expanded: [...expanded], selected: selFolderId, query,
+    saveLibraryView(account, { expanded: [...expanded], selected: selFolderId, query, sort, order,
       scrollTop: scrollPosition.current.top, scrollLeft: scrollPosition.current.left });
   };
 

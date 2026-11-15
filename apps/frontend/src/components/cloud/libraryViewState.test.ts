@@ -13,6 +13,9 @@ assert.equal(pruned.scrollTop, 745);
 assert.equal(pruneLibraryView(pruned, new Set()).selected, null, 'deleted selection resets to root');
 // Simulated loading and StrictMode re-read do not write or prune anything.
 assert.deepEqual(readLibraryView('A'), original);
+const sortedView = { ...original, sort: 'updatedAt' as const, order: 'desc' as const };
+saveLibraryView('sorted', sortedView);
+assert.deepEqual(readLibraryView('sorted'), sortedView, 'sort direction and criterion survive return navigation');
 const box = { left: 100, right: 500, top: 200, bottom: 600 };
 assert.ok(libraryEdgeScroll(300, 201, box) < 0);
 assert.ok(libraryEdgeScroll(300, 599, box) > 0);
@@ -33,6 +36,11 @@ try {
   assert.deepEqual(readLibraryView('reload'), original, 'a fresh module can restore tab storage');
   readLibraryView('reload').expanded.push('mutation');
   assert.deepEqual(readLibraryView('reload'), original, 'stored reads are isolated copies');
+  stored.set(key('sorted-reload'), JSON.stringify(sortedView));
+  assert.deepEqual(readLibraryView('sorted-reload'), sortedView, 'tab reload preserves sorted-list scroll identity');
+  stored.set(key('invalid-sort'), JSON.stringify({ ...original, sort: 'wrong', order: 'sideways' }));
+  assert.equal(readLibraryView('invalid-sort').sort, undefined);
+  assert.equal(readLibraryView('invalid-sort').order, undefined);
   stored.set(key('bad-json'), '{bad');
   assert.deepEqual(readLibraryView('bad-json').expanded, []);
   stored.set(key('bad-shape'), JSON.stringify({ ...original, expanded: [123] }));
@@ -49,4 +57,4 @@ try {
   if (storageDescriptor) Object.defineProperty(globalThis, 'sessionStorage', storageDescriptor);
   else Reflect.deleteProperty(globalThis, 'sessionStorage');
 }
-console.log('PASS library view restore/account/pruning/storage/edge-scroll (22 assertions)');
+console.log('PASS library view restore/account/pruning/storage/edge-scroll (26 assertions)');

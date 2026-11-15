@@ -25,6 +25,7 @@ import type { SampleMap } from '@/editor/__samples__/types';
 import { mergeServerAppends } from '@/utils/mergeAppends';
 import { cloudApi, CloudError, type MapKind } from '@/services/cloud/apiClient';
 import { editSessionKey } from '@/services/cloud/editSession';
+import { mapReadOnlyCause } from './mapAccess';
 import { expandLinkedMaps, releaseLinkedLocks, saveLinkedChildren, splitLinkedMaps, useLinkedMapStore } from '@/services/cloud/linkedMaps';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 
@@ -284,6 +285,7 @@ export async function saveNewMap(opts: {
  * 서버 맵을 덮어써 남의 내용을 지운다 (2026-08-02 e2e82에서 실측).
  */
 export function detachFromServer(): void {
+  setViewerLocked(false);
   suppressCloudAutosave();
   useDocumentStore.getState().setDocOrigin(null); // 출처도 끊는다
   releaseEditLock(); // 편집권 반납 — 다른 세션이 곧바로 열 수 있게
@@ -485,7 +487,7 @@ export async function refreshFromServer(
     suppressCloudAutosave();
     useDocumentStore.getState().loadMap(shownMap as never,
       { resetHistory: true, serverMapId: mapId });
-    useDocumentStore.getState().setMapTitle(title);
+
     applySnapshotEditor(doc);
     // 이 뷰는 **의도한 것**(갱신 전 화면 유지) — 첫 화면 보호가 덮어쓰지 않게 끈다
     logViewport('keepView(refreshFromServer)', keepView);
@@ -507,8 +509,8 @@ export async function refreshFromServer(
  *
  * 단일 세션 편집 잠금 (2026-08-04): 다른 세션(브라우저·탭·PC)이 이 맵을
  * 편집 중이면 서버가 editLock='busy' 를 준다 → **읽기 전용으로 연다**:
- * 서버 링크를 만들지 않아 자동저장·저장이 이 맵에 쓰지 않고(사본 저장은
- * 가능), readOnlyInfo 배너로 안내한다.
+ * 서버 링크를 만들지 않고 문서 변경도 차단한다. readOnlyInfo 배너로
+ * 이유를 안내한다.
  *
  * @returns readOnly — 읽기 전용으로 열렸는가. `reason` 은 **왜** 그런지
  *   (다른 세션이 편집 중 / 읽기만 권한) — 부르는 쪽이 안내 문장을 가른다.
@@ -535,13 +537,15 @@ export async function openMapHere(
     // ★ 연결 맵(2026-10-14) — 연결 노드 아래에 그 맵의 내용을 붙여 보인다. 이 맵을
     //   **편집하려고** 열 때만 그 맵들의 편집 잠금도 쥔다(그동안 그 맵은 다른 곳에서
     //   읽기 전용). 협업맵에는 붙이지 않는다 — 정본이 방이라 떼어 저장할 자리가 없다.
-    const editable = !dashboard && !published && editLock !== 'busy' && role !== 'viewer';
+    const readOnlyCause = mapReadOnlyCause({ dashboard, published, editLock, role });
+    const editable = readOnlyCause === null;
     const shown = kind === 'collab' ? loadedMap as SampleMap
       : await expandLinkedMaps(loadedMap as SampleMap, { lock: editable, selfId: mapId });
     suppressCloudAutosave(); // 방금 불러온 문서를 곧바로 재저장하지 않도록
+    setViewerLocked(!editable); // lock before the loaded document can be painted or edited
     // 열기는 **문서 경계** — 되돌리기가 '열기 이전' 문서로 넘어가면
     // 안 된다 (그 상태로 저장하면 이 맵이 비워진다, §7.4)
-    useDocumentStore.getState().loadMap(shown as never,
+    useDocumentStore.getState().loadMap({ ...shown, title } as never,
       { resetHistory: true, serverMapId: mapId });
     // 서버의 맵 이름을 문서 제목으로도 맞춘다 — 이후 저장은 이 이름 그대로
     useDocumentStore.getState().setMapTitle(title);
@@ -549,20 +553,19 @@ export async function openMapHere(
     applySnapshotEditor(doc);
     useInteractionStore.getState().setSelectedId(null);
     // 여기까지가 한 동기 블록 — React 는 이 뒤에 한 번 그린다. 그려진 뒤에 안내를 지운다
-    if (showOpening) { await afterPaint(); useEditorUiStore.getState().setOpeningLabel(null); }
+
     // **읽기 전용으로 여는 두 갈래** — 이유가 다르므로 문장도 다르다.
     //   ⑴ editLock='busy' : 다른 세션이 편집 중이다(내 권한은 있다)
     //   ⑵ role='viewer'   : '읽기만' 으로 초대받았다(권한 자체가 없다)
     // ⑵ 를 안 막으면 화면이 **편집을 허용하는 것처럼** 보이고, 사용자는
     // 한참 고친 뒤 저장할 때에야 403 을 만난다. 그 편집은 갈 곳이 없다
     // (2026-08-19 실사용에서 그대로 겪었다).
-    // 열람자면 **화면 편집 자체를 막는다**(#306 이후). 다른 세션 잠금은
-    // 내 권한은 있는 것이므로 사본 저장을 열어 둔다 — 그 갈래가 다르다.
+    // 열람 권한·다른 세션의 잠금 모두 화면 편집과 저장을 막는다.
     // ★ **대시보드맵도 화면 편집을 막는다** (2026-09-30, 22-dashboard.md §4.3).
     //   사람이 고친 것은 저장되지 않고(서버 403), 다음 자동 갱신이 서버 문서로
     //   덮는다 — 고치게 두면 "사라지는 편집" 이 된다. 서버발 교체
     //   (`applyRemoteMap`)는 이 잠금을 지나간다.
-    setViewerLocked(role === 'viewer' || dashboard === true);
+    // Every read-only cause, including a busy edit session, blocks document mutations.
     // ★ **공개 중인 맵은 읽기 전용으로 연다** (2026-09-05). 완성본이라
     //   고칠 수 없다 — 고치려면 **비공개(보관)로 바꿔야** 한다(주소는
     //   그대로다). 세 갈래가 되었으므로 이유도 셋이다. 이유가 다르면
@@ -572,13 +575,7 @@ export async function openMapHere(
     //   등록만 해 둔 보관 상태는 false 라 그대로 편집된다.
     // ★ 대시보드맵이 **먼저**다 (2026-09-30) — 링크로 퍼블리싱한 대시보드맵은
     //   비공개로 바꿔도 여전히 못 고친다. "비공개로 바꾸세요" 는 틀린 안내가 된다.
-    const readOnlyReason = dashboard
-      ? tr('cloud.readOnly.dashboard')
-      : published
-        ? tr('cloud.readOnly.published')
-      : editLock === 'busy'
-        ? tr('cloud.readOnly.otherSession')
-        : role === 'viewer' ? tr('cloud.readOnly.viewer') : null;
+    const readOnlyReason = readOnlyCause ? tr('cloud.readOnly.' + readOnlyCause) : null;
     if (readOnlyReason) {
       // 읽기 전용 — 링크 없음(저장 경로 차단) + 배너 정보만
       useCloudStore.getState().unlink();
@@ -592,7 +589,8 @@ export async function openMapHere(
     } else {
       useCloudStore.getState().link(mapId, updatedAt, { title, folderId, kind });
     }
-    useAutosaveStore.getState().setSaveState('saved');
+    useAutosaveStore.getState().setSaveState(readOnlyReason ? 'readonly' : 'saved');
+    if (showOpening) { await afterPaint(); useEditorUiStore.getState().setOpeningLabel(null); }
     return {
       readOnly: readOnlyReason !== null,
       reason: readOnlyReason ?? undefined,

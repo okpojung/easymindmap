@@ -14,7 +14,8 @@
     "saveVersion": "버전 저장",
     "saveOptions": "저장 옵션",
     "distribution": "공유 · 퍼블리싱 · 대시보드맵",
-    "dashboard": "대시보드맵"
+    "dashboard": "대시보드맵",
+    "documentMenu": "문서 메뉴"
   },
   "en": {
     "document": "Save and export",
@@ -31,7 +32,8 @@
     "saveVersion": "Save version",
     "saveOptions": "Save options",
     "distribution": "Share · Publish · Dashboard",
-    "dashboard": "Dashboard map"
+    "dashboard": "Dashboard map",
+    "documentMenu": "Document menu"
   },
   "ja": {
     "document": "保存と書き出し",
@@ -48,7 +50,8 @@
     "saveVersion": "バージョンを保存",
     "saveOptions": "保存オプション",
     "distribution": "共有・公開・ダッシュボード",
-    "dashboard": "ダッシュボードマップ"
+    "dashboard": "ダッシュボードマップ",
+    "documentMenu": "文書メニュー"
   },
   "zh": {
     "document": "保存与导出",
@@ -65,6 +68,7 @@
     "saveVersion": "保存版本",
     "saveOptions": "保存选项",
     "distribution": "共享 · 发布 · 仪表板",
-    "dashboard": "仪表板脑图"
+    "dashboard": "仪表板脑图",
+    "documentMenu": "文档菜单"
   }
 }

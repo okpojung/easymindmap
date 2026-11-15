@@ -1289,7 +1289,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     const next = typeof partial === 'function'
       ? (partial as (s: DocumentState) => Partial<DocumentState>)(get())
       : partial as Partial<DocumentState>;
-    if (viewerLocked && !serverDriven && next && typeof next === 'object' && 'map' in next) {
+    if (viewerLocked && !serverDriven && !viewOnlyChange && next && typeof next === 'object' && 'map' in next) {
       return undefined;
     }
     return (rawSet as (p: unknown, r?: unknown) => void)(next, replace);

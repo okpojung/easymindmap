@@ -82,7 +82,7 @@ function fmtBytes(b: number): string {
   return `${Math.max(1, Math.round(b / 1024))}KB`;
 }
 
-export function UserMenu({ t, onFlash, compactSize }: { t: ThemeTokens; onFlash?: (m: string) => void; compactSize?: number }) {
+export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: ThemeTokens; onFlash?: (m: string) => void; compactSize?: number; hideLogout?: boolean }) {
   const tr = useTr();
   // 폰 — 메뉴는 화면 오른쪽에 붙여 띄우고(넘치면 안에서 스크롤), 손가락
   // 입력이면 아바타·항목을 누르기 좋은 크기로 (모바일 웹 2026-10-05)
@@ -203,6 +203,7 @@ export function UserMenu({ t, onFlash, compactSize }: { t: ThemeTokens; onFlash?
   };
 
   const doLogout = () => {
+    if (hideLogout) return;
     setWarnDrafts(null);
     if (isGuest) {
       // Guest 종료 → 로그인/가입 화면. 초안 삭제는 exitGuest 안에서 한다.
@@ -282,6 +283,7 @@ export function UserMenu({ t, onFlash, compactSize }: { t: ThemeTokens; onFlash?
   };
 
   const logout = () => {
+    if (hideLogout) return;
     setOpen(false);
     // 화면의 최신 편집까지 초안에 반영한 뒤 세어야 정확하다 —
     // 마지막 1초(디바운스) 안의 편집이 빠지면 "잃을 것 없음"으로 오판한다.
@@ -464,7 +466,7 @@ export function UserMenu({ t, onFlash, compactSize }: { t: ThemeTokens; onFlash?
 
           {/* Guest 도 일반 회원과 같은 '로그아웃' 항목 (2026-08-04 사용자
               결정 — 동작 = Guest 종료 → 로그인/가입 화면) */}
-          {isGuest && (
+          {isGuest && !hideLogout && (
             <>
               <div style={{ height: 1, background: t.divider, margin: '5px 0' }} />
               <button
@@ -485,7 +487,7 @@ export function UserMenu({ t, onFlash, compactSize }: { t: ThemeTokens; onFlash?
             </>
           )}
 
-          {authEnabled && session && (
+          {authEnabled && session && !hideLogout && (
             <>
               <div style={{ height: 1, background: t.divider, margin: '5px 0' }} />
               <button

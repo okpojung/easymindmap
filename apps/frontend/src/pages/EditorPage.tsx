@@ -52,7 +52,7 @@ import {
   useInteractionStore,
   useAutosaveStore,
 } from '@/stores';
-import { isDocumentEmpty, setHistoryPaused } from '@/stores/documentStore';
+import { isDocumentEmpty, setHistoryPaused, setViewerLocked } from '@/stores/documentStore';
 // effect 안에서는 부르는 순간의 언어로(trNow), 렌더에서는 useTr
 import { tr as trNow, useTr } from '@/i18n';
 import { isCoarseNow, usePhoneLayout } from '@/hooks/useViewport';
@@ -408,19 +408,17 @@ export function EditorPage() {
           // held=false = 편집권을 잃었다 (TTL 만료 후 다른 세션이 가져감).
           // 이 상태로 계속 편집하면 저장이 409 로 막혀 그 편집분이 사라진다.
           // 예전에는 응답을 아무도 보지 않았다 (2026-08-05 감사).
-          if (r && r.held === false) {
-            // **① 지금 화면의 내용을 먼저 브라우저에 적는다** — 이 뒤로는
-            //    이 맵에 저장할 수 없으므로, 여기서 놓치면 유실이다.
+          if (r && r.held === false && useCloudStore.getState().cloudMapId === cloudMapIdForLock) {
+            // Preserve pending work, then stop edits. Never silently turn a lost lock into a copy.
+            const cloud = useCloudStore.getState();
+            const title = cloud.cloudTitle ?? useDocumentStore.getState().map.title;
+            const kind = cloud.cloudKind;
             void writeLocalDraftNow();
-            // **② 그 맵과의 연결을 끊는다.** 예전에는 연결을 남겨 둬서
-            //    자동저장이 409 로 계속 튕겼고, 배지만 '저장 실패'로
-            //    굳은 채 사용자는 계속 편집했다 — 그 편집분이 사라졌다.
-            //    끊어 두면 이후 편집은 '저장 안 됨'으로 표시되고 초안에
-            //    쌓이며, ☁ 저장을 누르면 **새 이름의 새 맵**으로 간다.
             detachFromServer();
-            useCloudStore.getState().setError(trNow('shell.editor.lostLock'));
-            // detachFromServer 가 'saved' 로 되돌리므로 그 뒤에 세운다
-            useAutosaveStore.getState().setSaveState('unsaved');
+            setViewerLocked(true);
+            useCloudStore.getState().setReadOnlyInfo({ mapId: cloudMapIdForLock, title, kind, reason: trNow('cloud.readOnly.otherSession') });
+            useCloudStore.getState().setNotice(trNow('shell.editor.lostLock'));
+            useAutosaveStore.getState().setSaveState('readonly');
           }
         })
         .catch(() => { /* 일시 오류 — 다음 주기·저장이 하트비트를 겸한다 */ });

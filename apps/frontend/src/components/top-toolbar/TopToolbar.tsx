@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
+import brandFavicon from '@/assets/brand-favicon.svg';
 import { TooltipButton, TooltipIconBtn as IconBtn } from './Tooltip';
 import { MapActions } from './MapActions';
 import { mobileSaveDot, mobileToolbarSize } from './toolbar-layout';
@@ -31,7 +32,7 @@ export type SaveState =
   // 서버에 연결되지 않은 문서(미저장 새 맵·불러온 파일·읽기 전용)를
   // 편집한 상태 — 자동저장 대상이 아니라서 **어디에도 저장돼 있지 않다**.
   // 예전에는 이 상태에서도 배지가 '저장됨'이라고 말했다 (2026-08-05 감사).
-  | 'unsaved'
+  | 'unsaved' | 'readonly'
   // 협업 세션이 이 맵을 몰고 있다 — 스냅샷 자동저장 대신 소켓으로
   // 합쳐진다 (2026-08-18). 자리는 코어, 켜는 것은 협업 모듈.
   | 'collab';
@@ -70,17 +71,17 @@ export function TopToolbar({
   const [closeSlot, setCloseSlot] = useState<HTMLDivElement | null>(null);
   const [saveSlot, setSaveSlot] = useState<HTMLDivElement | null>(null);
   const [distributionSlot, setDistributionSlot] = useState<HTMLDivElement | null>(null);
-  const [saveOpen, setSaveOpen] = useState(false);
+  const [documentOpen, setDocumentOpen] = useState(false);
   const [distributionOpen, setDistributionOpen] = useState(false);
-  const saveRef = useRef<HTMLDivElement>(null);
+  const documentRef = useRef<HTMLDivElement>(null);
   const distributionRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const outside = (event: PointerEvent) => {
       if (document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) return;
-      if (!saveRef.current?.contains(event.target as Node)) setSaveOpen(false);
+      if (!documentRef.current?.contains(event.target as Node)) setDocumentOpen(false);
       if (!distributionRef.current?.contains(event.target as Node)) setDistributionOpen(false);
     };
-    const esc = (event: KeyboardEvent) => { if (event.key === 'Escape') { setSaveOpen(false); setDistributionOpen(false); } };
+    const esc = (event: KeyboardEvent) => { if (event.key === 'Escape') { setDocumentOpen(false); setDistributionOpen(false); } };
     window.addEventListener('pointerdown', outside); window.addEventListener('keydown', esc);
     return () => { window.removeEventListener('pointerdown', outside); window.removeEventListener('keydown', esc); };
   }, []);
@@ -106,18 +107,6 @@ export function TopToolbar({
     setToast(m);
     window.setTimeout(() => setToast((cur) => (cur === m ? null : cur)), 3500);
   };
-
-  // 내보내기 메뉴 — HTML/MD를 하위 항목으로 구분 (바깥 클릭 시 닫힘)
-  const [exportOpen, setExportOpen] = useState(false);
-  const exportRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!exportOpen) return;
-    const close = (e: PointerEvent) => {
-      if (!exportRef.current?.contains(e.target as Node)) setExportOpen(false);
-    };
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
-  }, [exportOpen]);
 
   // 저장 실패 사유 — 배지 툴팁에 그대로 보여 준다 (2026-08-05)
   const cloudError = useCloudStore((s) => s.error);
@@ -159,7 +148,7 @@ export function TopToolbar({
   const [shareOpen, setShareOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   // A fresh local map has no persisted server copy, even before its first edit.
-  const saveState = collabDriving ? 'collab'
+  const saveState = readOnly ? 'readonly' : collabDriving ? 'collab'
     : rawSaveState === 'saved' && !shareMapId && !readOnly?.mapId ? 'unsaved'
     : rawSaveState;
 
@@ -183,7 +172,7 @@ export function TopToolbar({
   useEffect(() => {
     const closeMenus = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      setGanttOpen(false); setExportOpen(false);
+      setGanttOpen(false); setDocumentOpen(false);
     };
     window.addEventListener('keydown', closeMenus);
     return () => window.removeEventListener('keydown', closeMenus);
@@ -222,6 +211,7 @@ export function TopToolbar({
 
   const guestMode = useAuthStore((s) => s.guest && !s.session) && authEnabled;
   const saveStateInfo = ({
+    readonly: { text: tr('shell.mapActions.readOnlyShort'), short: tr('shell.mapActions.readOnlyShort'), color: t.textMuted, dot: t.textMuted },
     saved: { text: savedText, short: tr('shell.toolbar.saved'), color: t.textMuted, dot: t.success },
     saving: { text: tr('common.saving'), short: tr('shell.toolbar.savingShort'), color: t.accent, dot: t.accent },
     dirty: {
@@ -249,7 +239,7 @@ export function TopToolbar({
   } as const)[saveState];
   // 저장 배지의 설명 — 실패했을 때는 **왜** 실패했는지 보여 준다 (2026-08-05).
   // 데스크톱은 마우스를 올려(title), 폰은 저장 옵션 메뉴 맨 위에 글로 보여 준다.
-  const saveStateTip = saveState === 'error' || saveState === 'retrying'
+  const saveStateTip = readOnly ? readOnly.reason ?? tr('shell.mapActions.readOnlyHint') : saveState === 'error' || saveState === 'retrying'
     ? (cloudError ?? tr('shell.toolbar.saveFailedTip'))
     // '저장 안 됨'도 이유가 있을 수 있다 — 편집권을 잃어 연결이
     // 끊긴 경우가 그렇다 (2026-08-06 R3)
@@ -292,7 +282,7 @@ export function TopToolbar({
   const groupStyle = { display: 'flex', alignItems: 'center', gap: phone ? 0 : 2, flexShrink: 0, padding: phone ? 0 : '3px 5px', border: phone ? 'none' : '1px solid ' + t.border, borderRadius: phone ? 0 : 9, background: phone ? 'transparent' : t.surfaceAlt } as const;
   const menuStyle = { position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 60, width: 270, maxWidth: 'calc(100vw - 16px)', maxHeight: '70vh', overflowY: 'auto', padding: 6, borderRadius: 10, border: '1px solid ' + t.border, background: t.surface, boxShadow: '0 8px 24px #0003' } as const;
   const buttonStyle = { width: size, height: phone ? 40 : size, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, border: 'none', borderRadius: 7, background: 'transparent', color: t.text, cursor: 'pointer' } as const;
-  const closeMenus = () => { setExportOpen(false); setGanttOpen(false); setSaveOpen(false); setDistributionOpen(false); };
+  const closeMenus = () => { setDocumentOpen(false); setGanttOpen(false); setDistributionOpen(false); };
   const selectView = (view: 'map' | 'split' | 'outline' | 'gantt') => {
     const ui = useEditorUiStore.getState();
     if (view === 'gantt') openGantt('dock', () => flash(tr('editor.gantt.popupBlocked')));
@@ -305,11 +295,28 @@ export function TopToolbar({
       style={{ position: 'relative', zIndex: 20, flexShrink: 0, background: t.surface, borderBottom: '1px solid ' + t.border,
         padding: 'calc(env(safe-area-inset-top, 0px) + 4px) max(6px, env(safe-area-inset-right, 0px)) 4px max(6px, env(safe-area-inset-left, 0px))',
         display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: phone ? 2 : 8, minHeight: 56 }}>
-      <button data-testid="map-title" title={tr('shell.toolbar.crumbTitle')} onClick={openDocs}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, flex: phone || barW < 1100 ? '1 0 100%' : '1 1 100px', minWidth: 0,
-          padding: '5px 4px', background: 'none', border: 'none', color: t.text, cursor: 'pointer', textAlign: 'left' }}>
-        <I.Logo size={26} /><span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600 }}>{mapTitle}</span><I.ChevronDown size={14} />
-      </button>
+      <div ref={documentRef} data-testid="document-menu-anchor" style={{ position: phone ? 'static' : 'relative', flex: phone || barW < 1100 ? '1 0 100%' : '1 1 100px', minWidth: 0 }}>
+        <TooltipButton data-testid="map-title" title={copy.documentMenu} aria-label={mapTitle + ' · ' + copy.documentMenu} aria-haspopup="menu" aria-expanded={documentOpen}
+          onClick={() => { const next = !documentOpen; closeMenus(); setDocumentOpen(next); }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', minWidth: 0, padding: '5px 4px', background: 'none', border: 'none', color: t.text, cursor: 'pointer', textAlign: 'left' }}>
+          <img src={brandFavicon} width={24} height={24} alt="EasyMindMap" style={{ flexShrink: 0 }} /><span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 600 }}>{mapTitle}</span><I.ChevronDown size={14} />
+        </TooltipButton>
+        <div data-testid="document-menu" role="menu" aria-label={copy.documentMenu} style={{ ...menuStyle, display: documentOpen ? 'block' : 'none', left: phone ? 8 : 0, right: 'auto', width: 300 }}>
+          <MenuItem t={t} testId="document-open-browser" icon={<I.MindMap size={20} />} label={tr('shell.toolbar.crumb')} onClick={() => { closeMenus(); openDocs(); }} />
+          <div role="group" aria-label={copy.saveOptions} data-testid="save-options-menu">
+            <div style={{ padding: '9px 10px 3px', fontSize: 11, color: t.textSubtle, fontWeight: 700, borderTop: '1px solid ' + t.divider }}>{copy.saveOptions}</div>
+            <div ref={setSaveSlot} />
+            {undoDepth > 0 && <MenuItem t={t} testId="undo-depth-reset" label={tr('shell.toolbar.undoDepth', { n: undoDepth })} disabled={!!readOnly} onClick={() => { commitCurrentAsLatest(); closeMenus(); }} />}
+          </div>
+          <div role="group" aria-label={tr('shell.toolbar.export')} data-testid="export-menu">
+            <div style={{ padding: '9px 10px 3px', fontSize: 11, color: t.textSubtle, fontWeight: 700, borderTop: '1px solid ' + t.divider }}>{tr('shell.toolbar.export')}</div>
+            <MenuItem t={t} label={tr('shell.toolbar.exportHtml')} desc={tr('shell.toolbar.exportHtmlDesc')} onClick={() => { closeMenus(); void runExportHtml(); }} />
+            <MenuItem t={t} label={tr('io.encrypted.export')} desc={tr('io.encrypted.desc')} onClick={() => { closeMenus(); void runExportEncryptedHtml(); }} />
+            <MenuItem t={t} label={tr('shell.toolbar.exportMd')} desc={tr('shell.toolbar.exportMdDesc')} onClick={() => { closeMenus(); void runExportMd(); }} />
+            <div style={{ fontSize: 11, padding: 8, color: t.textMuted }}>{tr('shell.toolbar.exportZipNote')}</div>
+          </div>
+        </div>
+      </div>
       <div data-testid="toolbar-actions" style={{ display: phone ? 'flex' : 'contents', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: 2, width: '100%', minWidth: 0 }}>
       <div role="group" aria-label={copy.document} data-toolbar-group="document" style={{ ...groupStyle, maxWidth: '100%', boxSizing: 'border-box', flexWrap: phone ? 'nowrap' : 'wrap' }}>
         <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-undo" title={tr('shell.toolbar.undo')} disabled={!canUndo || !!readOnly} onClick={undo}><I.Undo size={22} /></IconBtn>
@@ -317,26 +324,8 @@ export function TopToolbar({
           style={{ minWidth: phone ? 20 : 22, width: phone ? 20 : undefined, textAlign: 'center', fontSize: phone ? 11 : 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: undoDepth ? t.primary : t.textMuted }}>{phone && undoDepth > 99 ? '99+' : undoDepth}</output>
         <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-redo" title={tr('shell.toolbar.redo')} disabled={!canRedo || !!readOnly} onClick={redo}><I.Redo size={22} /></IconBtn>
         <MapActions t={t} flash={flash} phone iconOnly compactSize={phone ? size : undefined} saveMenuSlot={saveSlot} distributionSlot={distributionSlot} closeSlot={closeSlot}
-          onMenuPick={closeMenus} stateDot={phone ? mobileSaveDot(saveState, guestMode || !!readOnly?.viewer) : saveStateInfo.dot} saveStatus={saveStateInfo.short} saveTip={guestMode ? saveStateInfo.text : saveStateTip ?? saveStateInfo.text} saveState={saveState} />
-        <div ref={saveRef} style={{ position: phone ? 'static' : 'relative' }}>
-          <TooltipButton data-testid="save-options-toggle" title={copy.saveOptions} aria-expanded={saveOpen} aria-haspopup="menu"
-            onClick={() => { const next = !saveOpen; closeMenus(); setSaveOpen(next); }} style={{ ...buttonStyle, background: saveOpen ? t.primarySoft : 'transparent' }}>
-            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M5 3h12l3 3v13H5zM8 3v6h8V3M8 19v-6h9M2 7v15h14" /></svg>{!phone && <I.ChevronDown size={10} />}
-          </TooltipButton>
-          <div data-testid="save-options-menu" role="menu" aria-label={copy.saveOptions} style={{ ...menuStyle, display: saveOpen ? 'block' : 'none', ...(phone ? { left: 8, right: 'auto' } : {}) }}><div ref={setSaveSlot} />
-            {undoDepth > 0 && <MenuItem t={t} testId="undo-depth-reset" label={tr('shell.toolbar.undoDepth', { n: undoDepth })} onClick={() => { commitCurrentAsLatest(); closeMenus(); }} />}
-          </div>
-        </div>
-        <div ref={exportRef} style={{ position: phone ? 'static' : 'relative' }}>
-          <TooltipButton title={tr('shell.toolbar.export')} aria-expanded={exportOpen} aria-haspopup="menu" data-testid="export-toggle"
-            onClick={() => { const next = !exportOpen; closeMenus(); setExportOpen(next); }} style={buttonStyle}><I.Download size={22} />{!phone && <I.ChevronDown size={10} />}</TooltipButton>
-          {exportOpen && <div data-testid="export-menu" role="menu" style={{ ...menuStyle, ...(phone ? { left: 8, right: 'auto' } : {}) }}>
-            <MenuItem t={t} label={tr('shell.toolbar.exportHtml')} desc={tr('shell.toolbar.exportHtmlDesc')} onClick={() => { closeMenus(); void runExportHtml(); }} />
-            <MenuItem t={t} label={tr('io.encrypted.export')} desc={tr('io.encrypted.desc')} onClick={() => { closeMenus(); void runExportEncryptedHtml(); }} />
-            <MenuItem t={t} label={tr('shell.toolbar.exportMd')} desc={tr('shell.toolbar.exportMdDesc')} onClick={() => { closeMenus(); void runExportMd(); }} />
-            <div style={{ fontSize: 11, padding: 8, color: t.textMuted }}>{tr('shell.toolbar.exportZipNote')}</div>
-          </div>}
-        </div>
+          onMenuPick={closeMenus} stateDot={phone ? mobileSaveDot(saveState, guestMode || !!readOnly) : saveStateInfo.dot} saveStatus={saveStateInfo.short} saveTip={guestMode ? saveStateInfo.text : saveStateTip ?? saveStateInfo.text} saveState={saveState} />
+
       </div>
       <div role="group" aria-label={copy.view} data-toolbar-group="view" style={groupStyle}>
         {/* Bottom view controls use phoneLayout; keep these on larger touch tablets. */}
@@ -371,7 +360,7 @@ export function TopToolbar({
       </div>
       <div role="group" aria-label={copy.other} data-toolbar-group="other" style={{ ...groupStyle, marginLeft: phone ? 0 : 'auto' }}>
         <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-help" title={copy.help + ' (?)'} onClick={() => { closeMenus(); setHelpOpen(true); }}><span aria-hidden="true" style={{ width: 22, height: 22, border: '1.8px solid currentColor', borderRadius: '50%', fontSize: 16, fontWeight: 700 }}>?</span></IconBtn>
-        <div ref={setCloseSlot} style={{ display: 'flex' }} /><UserMenu t={t} onFlash={flash} compactSize={phone ? size : undefined} />
+        <div ref={setCloseSlot} style={{ display: 'flex' }} /><UserMenu t={t} onFlash={flash} compactSize={phone ? size : undefined} hideLogout />
       </div>
       </div>
       {shareDialog}{publishDialog}{toastEl}

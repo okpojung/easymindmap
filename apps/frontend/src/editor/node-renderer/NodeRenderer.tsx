@@ -82,7 +82,7 @@ type RenderableNode = LaidOutNode & {
 };
 
 interface Props {
-  editingPolicy?: { mode: 'basic'; readOnly: boolean };
+  editingPolicy?: { mode: 'basic' | 'full'; readOnly: boolean };
   n: RenderableNode;
   t: ThemeTokens;
   selected: boolean;

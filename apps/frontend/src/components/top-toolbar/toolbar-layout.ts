@@ -4,6 +4,7 @@ export function mobileToolbarSize(width: number): number {
 }
 
 const saveDots = {
+  readonly: '#64748B',
   saved: '#2563EB',
   saving: '#D97706',
   retrying: '#D97706',

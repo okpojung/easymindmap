@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { mapReadOnlyCause } from './mapAccess';
+assert.equal(mapReadOnlyCause({ role: 'owner', editLock: 'acquired' }), null);
+assert.equal(mapReadOnlyCause({ role: 'editor', editLock: 'busy' }), 'otherSession');
+assert.equal(mapReadOnlyCause({ role: 'owner', editLock: 'busy' }), 'otherSession');
+assert.equal(mapReadOnlyCause({ role: 'viewer' }), 'viewer');
+assert.equal(mapReadOnlyCause({ dashboard: true, published: true, editLock: 'busy' }), 'dashboard');
+assert.equal(mapReadOnlyCause({ published: true, editLock: 'busy' }), 'published');
+assert.equal(mapReadOnlyCause({}), null);
+console.log('PASS map access causes: acquired, busy owner/editor, viewer, dashboard and published priority');

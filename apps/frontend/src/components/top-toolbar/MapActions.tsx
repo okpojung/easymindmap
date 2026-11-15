@@ -104,7 +104,7 @@ export function MapActions(
     : tr('shell.mapActions.neverSaved');
 
   const handleSave = async (keepVersion = false) => {
-    if (busy !== 'idle' || readOnlyInfo?.viewer || collabDriving) return;
+    if (busy !== 'idle' || readOnlyInfo || collabDriving) return;
     // 열려 있는 맵이 없으면 저장할 것도 없다 (맵 닫기와 같은 안내 —
     // 2026-08-02 사용자 보고: 빈 상태에서 저장 대화상자가 떴다)
     if (isCurrentMapEmpty()) { flash(tr('shell.mapActions.noMap')); return; }
@@ -132,7 +132,7 @@ export function MapActions(
   const shortcutState = useRef({ save: handleSave, blocked: false });
   shortcutState.current = {
     save: handleSave,
-    blocked: isGuest || !!readOnlyInfo?.viewer || !!collabDriving || !!saveIntent || warnUnsaved,
+    blocked: isGuest || !!readOnlyInfo || !!collabDriving || !!saveIntent || warnUnsaved,
   };
   useEffect(() => {
     let disposed = false;
@@ -141,7 +141,7 @@ export function MapActions(
     const blockedNow = () => {
       const cloud = useCloudStore.getState();
       const auth = useAuthStore.getState();
-      return shortcutState.current.blocked || cloud.busy !== 'idle' || !!cloud.readOnlyInfo?.viewer
+      return shortcutState.current.blocked || cloud.busy !== 'idle' || !!cloud.readOnlyInfo
         || !!useAutosaveStore.getState().collabDrivingMapId || (authEnabled && auth.guest) || hasModal();
     };
     const onSaveKey = (event: KeyboardEvent) => {
@@ -296,7 +296,7 @@ export function MapActions(
       onClick={pick(() => void handleSave(true))} />
     <MenuItem t={t} testId="map-save-as" icon={<I.Copy size={20} />}
       label={tr('shell.m.saveAs')} title={tr('shell.mapActions.saveAsTitle')}
-      disabled={!cloudMapId || !!readOnlyInfo?.viewer || isGuest || busy !== 'idle'}
+      disabled={!cloudMapId || !!readOnlyInfo || isGuest || busy !== 'idle'}
       onClick={pick(() => setSaveIntent('saveAs'))} />
   </>, saveMenuSlot);
   const distributionMenu = distributionSlot && createPortal(<>
@@ -324,14 +324,14 @@ export function MapActions(
     style={{ ...btn, width: size, height: compact ? 40 : size, padding: 0, justifyContent: 'center', background: 'transparent', border: 'none', color: t.text, ...(isGuest ? guestOff : {}) }}>
     <I.X size={22} />
   </TooltipButton>;
-  const statusLabel = readOnlyInfo?.viewer ? tr('shell.mapActions.readOnlyShort') : saveStatus ?? tr('common.save');
-  const status = <><I.Cloud size={compact ? 20 : 21} /><span data-testid="save-state-dot" aria-hidden="true" style={{ width: compact ? 7 : 6, height: compact ? 7 : 6, borderRadius: '50%', background: stateDot ?? t.textMuted, flexShrink: 0, ...(compact ? { position: 'absolute' as const, top: 7, right: 0, boxShadow: '0 0 0 1px ' + t.surface } : {}) }} />{!compact && <span>{statusLabel}</span>}</>;
+  const statusLabel = readOnlyInfo ? tr('shell.mapActions.readOnlyShort') : saveStatus ?? tr('common.save');
+  const status = <>{readOnlyInfo ? <I.Lock size={compact ? 20 : 21} /> : <I.Cloud size={compact ? 20 : 21} />}<span data-testid="save-state-dot" aria-hidden="true" style={{ width: compact ? 7 : 6, height: compact ? 7 : 6, borderRadius: '50%', background: stateDot ?? t.textMuted, flexShrink: 0, ...(compact ? { position: 'absolute' as const, top: 7, right: 0, boxShadow: '0 0 0 1px ' + t.surface } : {}) }} />{!compact && <span>{statusLabel}</span>}</>;
   const compactStyle = compact ? { position: 'relative' as const, width: size, height: 40, padding: 0, gap: 0, justifyContent: 'center', border: 'none', background: 'transparent' } : {};
   return <>
     <ProCollabSession mapId={cloudMapId ?? (readOnlyInfo?.viewer ? readOnlyInfo.mapId : null)} kind={cloudMapId ? cloudKind : readOnlyInfo?.kind} />
     <ProDashboardLive t={t} mapId={readOnlyInfo?.dashboard ? readOnlyInfo.mapId : null} />
-    {collabDriving || readOnlyInfo?.viewer ?
-      <span data-testid="save-badge" data-save-state={saveState} role="status" aria-label={statusLabel} title={saveTip ?? readOnlyInfo?.reason ?? statusLabel}
+    {collabDriving || readOnlyInfo ?
+      <span data-testid="save-badge" data-save-state={readOnlyInfo ? 'readonly' : saveState} role="status" aria-label={statusLabel} title={saveTip ?? readOnlyInfo?.reason ?? statusLabel}
         style={{ ...btn, cursor: 'default', background: t.surfaceAlt, color: t.textMuted, borderRadius: 9, fontSize: 12, ...compactStyle }}>{status}</span> :
       <TooltipButton data-testid="map-save" data-save-state={saveState} aria-label={tr('common.save') + ' · ' + (saveStatus ?? '')}
         title={tr('common.save') + ' (Ctrl/⌘+S) · ' + statusLabel + (saveTip ? ' · ' + saveTip : '')}

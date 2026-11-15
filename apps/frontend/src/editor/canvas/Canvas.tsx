@@ -73,7 +73,7 @@ import { tr, useLang } from '@/i18n';
 import { usePhoneLayout, isCoarseNow } from '@/hooks/useViewport';
 import { primeTouchKeyboard } from './touchKeyboard';
 
-export interface CanvasEditingPolicy { mode: 'basic'; readOnly: boolean }
+export interface CanvasEditingPolicy { mode: 'basic' | 'full'; readOnly: boolean }
 
 interface Props {
   editingPolicy?: CanvasEditingPolicy;
@@ -123,9 +123,13 @@ export function Canvas({
   collabs,
   editingPolicy,
 }: Props) {
-  const policyRef = useRef(editingPolicy);
-  policyRef.current = editingPolicy;
-  const basic = editingPolicy?.mode === 'basic';
+  const storedReadOnly = useCloudStore((s) => !!s.readOnlyInfo);
+  const effectivePolicy = useMemo<CanvasEditingPolicy | undefined>(() => editingPolicy
+    ? { ...editingPolicy, readOnly: editingPolicy.readOnly || storedReadOnly }
+    : storedReadOnly ? { mode: 'full', readOnly: true } : undefined, [editingPolicy, storedReadOnly]);
+  const policyRef = useRef(effectivePolicy);
+  policyRef.current = effectivePolicy;
+  const basic = effectivePolicy?.mode === 'basic';
   const isReadOnly = () => policyRef.current?.readOnly === true;
   const isBasic = () => policyRef.current?.mode === 'basic';
   // 언어가 바뀌면 다시 그린다 — 화면 문자열은 tr() 로 (콜백 안에서도 부르는 순간의 언어)
@@ -1903,7 +1907,7 @@ export function Canvas({
         }px ${24 * scale}px repeat`,
       }}
     >
-      {!basic && <CanvasFloatingToolbar
+      {!basic && !effectivePolicy?.readOnly && <CanvasFloatingToolbar
         t={t}
         hasSelection={!!selectedNode}
         focusActive={!!focusedId}
@@ -2246,7 +2250,7 @@ export function Canvas({
                 onHover={setHoverNodeId}
                 onOpenPopover={onOpenPopover}
                 collabs={collabs}
-                editingPolicy={editingPolicy}
+                editingPolicy={effectivePolicy}
               />
             ))}
           </g>

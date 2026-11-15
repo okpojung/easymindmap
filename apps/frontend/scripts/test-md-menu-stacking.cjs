@@ -1,0 +1,14 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const html = fs.readFileSync(process.argv[2] || 'public/md-editor/index.html', 'utf8');
+const styles = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map(m => m[1]).join('\n');
+const bars = [...styles.matchAll(/#bar,\s*body\.mde-embedded\s+#bar\s*\{([^}]+)\}/g)];
+const bar = bars.find(m => /z-index\s*:/.test(m[1]));
+assert.ok(bar, 'shared standalone/embedded toolbar stacking rule');
+const z = Number(/z-index\s*:\s*(\d+)/.exec(bar[1])?.[1]);
+assert.ok(z > 20 && z < 50, 'menus must cover rendered ProseMirror content (20), but stay below dialogs (50)');
+assert.match(styles, /#bar\s+\.mlist\s*\{[^}]*background\s*:\s*var\(--panel\)/);
+assert.match(styles, /\.tool-items\s*\{[^}]*position\s*:\s*fixed[^}]*background\s*:\s*var\(--panel\)/);
+assert.match(styles, /--panel\s*:\s*#fff(?:fff)?\b/i);
+assert.match(styles, /--panel\s*:\s*#1e1e1e\b/i);
+console.log('PASS MD menu stacking: shared host rule, above document/below dialogs, opaque light/dark menu panels');

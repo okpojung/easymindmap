@@ -17,7 +17,9 @@ import { useViewportStore } from '@/stores/viewportStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { attachFileWithProgress } from '@/utils/attachmentFile';
 import { attachmentKindFor, isImageFileName } from '@/utils/attachmentKind';
-import { cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
+import { attachmentFetchUrl, cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
+import { downloadAttachment } from '@/utils/downloadAttachment';
+import { flushMdExits } from '@/utils/mdExitGuard';
 import { openAttachment } from '@/utils/openAttachment';
 import { isMarkdownName } from '@/utils/mdEditorUrl';
 import { newMdDocument } from '@/utils/newMdDocument';
@@ -205,6 +207,43 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
   const [dp, setDp] = useState<UrlProto>('https://');
   // 링크 주소 복사 (2026-11-02 사용자 요청) — 누르면 잠깐 ✓
   const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const downloadController = useRef<AbortController | null>(null);
+  const docEpoch = useDocumentStore((s) => s.docEpoch);
+  useEffect(() => {
+    setDownloading(false);
+    return () => { downloadController.current?.abort(); downloadController.current = null; };
+  }, [docEpoch]);
+  const download = async () => {
+    if (!att || downloadController.current) return;
+    const controller = new AbortController();
+    downloadController.current = controller;
+    const unsubscribe = useDocumentStore.subscribe((state) => {
+      if (state.docEpoch !== docEpoch) controller.abort();
+    });
+    setDownloading(true); onError(null);
+    try {
+      // Download the newest saved MD snapshot, never a stale pre-autosave URL.
+      if (kind === 'md' && !await flushMdExits()) {
+        if (!controller.signal.aborted) onError(tr('inspector.res.downloadSaveFailed'));
+        return;
+      }
+      if (controller.signal.aborted || useDocumentStore.getState().docEpoch !== docEpoch) return;
+      let current: NodeAttachment | undefined;
+      eachNode(useDocumentStore.getState().map, (n) => {
+        if (n.id === row.nodeId) current = n.attachments?.find((a) => a.id === att.id);
+      });
+      if (!current) throw new Error('gone');
+      await downloadAttachment(current.name, current.url, { resolveUrl: attachmentFetchUrl, signal: controller.signal });
+    } catch {
+      if (!controller.signal.aborted) onError(tr('inspector.res.downloadFailed'));
+    } finally {
+      unsubscribe();
+      if (downloadController.current === controller) {
+        downloadController.current = null; setDownloading(false);
+      }
+    }
+  };
   const copyUrl = () => {
     if (!link) return;
     const done = () => { setCopied(true); window.setTimeout(() => setCopied(false), 1400); };
@@ -276,6 +315,15 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
             {kind === 'md' ? '✍' : '↗'}
           </button>
           {selected && <>
+            {att && (
+              <button type="button" data-testid="res-download"
+                style={{ ...icoBtn, opacity: downloading || !att.url ? 0.5 : 1, cursor: downloading || !att.url ? 'not-allowed' : 'pointer' }}
+                disabled={downloading || !att.url} aria-busy={downloading}
+                aria-label={tr(downloading ? 'inspector.res.downloading' : 'inspector.res.download')}
+                title={tr(downloading ? 'inspector.res.downloading' : 'inspector.res.download')} onClick={() => { void download(); }}>
+                {downloading ? '…' : <I.Download size={12} />}
+              </button>
+            )}
             {link && (
               <button type="button" data-testid="res-copy" style={{ ...icoBtn, color: copied ? '#15803D' : t.text }}
                 title={copied ? tr('common.copied') : tr('inspector.res.copyUrl')} onClick={copyUrl}>

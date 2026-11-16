@@ -23,7 +23,8 @@
     "test:search-term": "node test/search-term.test.mjs",
     "test:dashboard": "node test/dashboard-rules.test.mjs",
     "test:trim": "node test/trim-for-preview.test.mjs",
-    "test:attachment-content": "node test/attachment-content.test.mjs"
+    "test:attachment-content": "node test/attachment-content.test.mjs",
+    "test:proxy-addr": "node --test test/proxy-addr-security.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",
@@ -41,7 +42,8 @@
     "rxjs": "^7.8.1"
   },
   "overrides": {
-    "multer": "^2.3.0"
+    "multer": "^2.3.0",
+    "proxy-addr": "2.0.8"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",

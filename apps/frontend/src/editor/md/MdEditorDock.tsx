@@ -1,5 +1,5 @@
 import { flushMdExits } from '@/utils/mdExitGuard';
-import { createMdFrameLoadGate, readMdFrameSnapshot } from '@/utils/mdFrameLoad';
+import { createMdFrameLoadGate, readMdFrameSnapshot, type MdFrameSnapshotWindow } from '@/utils/mdFrameLoad';
 import { useDocumentStore } from '@/stores/documentStore';
 // 마크다운 첨부 편집기 — 편집 영역 오른쪽 칸 + 새 탭·새 창 (2026-11-08 사용자 요청).
 //
@@ -86,6 +86,8 @@ export function useMdFrame(frame: React.RefObject<HTMLIFrameElement | null>, opt
       if (d.type === 'mde:ready') { ready.current = true; push(); }
       else if (d.type === 'mde:loaded') { if (gate.current.accept(d)) setInitialized(true); }
       else if (!gate.current.ready) return;
+      else if (d.type !== 'mde:close' && d.loadNonce !== gate.current.nonce) return;
+      else if (d.type === 'mde:close' && typeof d.loadNonce === 'string' && d.loadNonce !== gate.current.nonce) return;
       else if (d.type === 'mde:change' && typeof d.markdown === 'string') optsRef.current.onChange(d.markdown);
       else if (d.type === 'mde:save' && typeof d.markdown === 'string') (optsRef.current.onSave ?? optsRef.current.onChange)(d.markdown);
       // 편집기 안의 [✕ 닫기] — 칸(또는 창)을 닫는다
@@ -101,10 +103,10 @@ export function useMdFrame(frame: React.RefObject<HTMLIFrameElement | null>, opt
     /** iframe 새로 뜰 때 */
     onLoad: () => { ready.current = true; pushed.current = null; gate.current.reset(); setInitialized(false); push(); },
     initialized,
-    capture: () => readMdFrameSnapshot(gate.current, frame.current?.contentWindow as (Window & { flushPendingEdits?: () => void; MDE?: { markdown: string } }) | null),
+    capture: () => readMdFrameSnapshot(gate.current, frame.current?.contentWindow as (Window & MdFrameSnapshotWindow) | null),
     /** 저장 성공 — 그 스냅샷으로 편집기의 '저장 안 됨' 을 지운다 */
-    ack: (markdown: string) => post({ type: 'mde:saved', markdown }),
-    fail: () => post({ type: 'mde:saved', ok: false }),
+    ack: (markdown: string) => post({ type: 'mde:saved', markdown, loadNonce: gate.current.nonce }),
+    fail: () => post({ type: 'mde:saved', ok: false, loadNonce: gate.current.nonce }),
   };
 }
 

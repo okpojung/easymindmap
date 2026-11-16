@@ -11,12 +11,20 @@ export function createMdFrameLoadGate() {
     },
     reset() { ready = false; expected = null; },
     get ready() { return ready; },
+    get nonce() { return ready ? expected?.nonce ?? null : null; },
   };
 }
-export function readMdFrameSnapshot(gate: { ready: boolean }, child: {
-  flushPendingEdits?: () => void; MDE?: { markdown: string };
-} | null | undefined): string | null {
-  if (!gate.ready || !child) return null;
-  child.flushPendingEdits?.();
-  return typeof child.MDE?.markdown === 'string' ? child.MDE.markdown : null;
+export interface MdFrameSnapshotWindow {
+  MDE?: { getHostSnapshot?: (loadNonce: string) => unknown };
+}
+export function readMdFrameSnapshot(gate: { ready: boolean; nonce?: string | null }, child: MdFrameSnapshotWindow | null | undefined): string | null {
+  if (!gate.ready || typeof gate.nonce !== 'string') return null;
+  if (!child) throw new Error('MD_FRAME_SNAPSHOT_UNAVAILABLE');
+  // Never fall back to raw Markdown: a local/protected document may have
+  // replaced the attachment after the initialization ACK.
+  const read = child.MDE?.getHostSnapshot;
+  if (typeof read !== 'function') throw new Error('MD_FRAME_SNAPSHOT_UNAVAILABLE');
+  const markdown = read.call(child.MDE, gate.nonce);
+  if (markdown === null || typeof markdown === 'string') return markdown;
+  throw new Error('MD_FRAME_SNAPSHOT_UNAVAILABLE');
 }

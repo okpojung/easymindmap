@@ -183,13 +183,19 @@ export async function saveCurrentMap(
   const cloud = useCloudStore.getState();
   const id = cloud.cloudMapId;
   if (!id) throw new CloudError(0, tr('cloud.session.needFolderName'));
-  // 가지 0개 문서로 서버 맵을 덮어쓰려는 저장은 **먼저 묻는다** (§7.4)
-  const allowEmpty = confirmEmptyOverwrite();
-  if (allowEmpty === 'cancel') {
-    throw new CloudError(0, tr('cloud.session.saveCanceled'));
-  }
+  if (cloud.busy !== 'idle') throw new CloudError(0, tr('shell.mapActions.saveError'));
+  const epoch = useDocumentStore.getState().docEpoch;
   cloud.setBusy('saving');
   try {
+    // Explicit save captures focused iframe drafts without relying on blur.
+    if (!await flushMdExits() || useDocumentStore.getState().docEpoch !== epoch ||
+        useCloudStore.getState().cloudMapId !== id) {
+      throw new CloudError(0, tr('shell.mapActions.saveError'));
+    }
+    if (isViewerLocked()) throw new CloudError(403, tr('cloud.session.viewerCannotSave'));
+    // Confirm against the committed MD, not the pre-flush document.
+    const allowEmpty = confirmEmptyOverwrite();
+    if (allowEmpty === 'cancel') throw new CloudError(0, tr('cloud.session.saveCanceled'));
     const title = cloud.cloudTitle ?? undefined;
     let res: Awaited<ReturnType<typeof cloudApi.saveDocument>>;
     try {
@@ -218,7 +224,7 @@ export async function saveCurrentMap(
     // unchanged: 내용이 그대로라 서버가 저장·히스토리 생성을 생략했다
     return { mapId: id, unchanged: res.unchanged === true };
   } finally {
-    useCloudStore.getState().setBusy('idle');
+    if (useCloudStore.getState().busy === 'saving') useCloudStore.getState().setBusy('idle');
   }
 }
 
@@ -242,8 +248,18 @@ export async function saveNewMap(opts: {
     throw new CloudError(0, tr('cloud.session.nothingToSave'));
   }
   const cloud = useCloudStore.getState();
+  if (cloud.busy !== 'idle') throw new CloudError(0, tr('shell.mapActions.saveError'));
+  const epoch = useDocumentStore.getState().docEpoch;
+  const id = cloud.cloudMapId;
   cloud.setBusy('saving');
   try {
+    if (!await flushMdExits() || useDocumentStore.getState().docEpoch !== epoch ||
+        useCloudStore.getState().cloudMapId !== id) {
+      throw new CloudError(0, tr('shell.mapActions.saveError'));
+    }
+    if (isDocumentEmpty(useDocumentStore.getState().map)) {
+      throw new CloudError(0, tr('cloud.session.nothingToSave'));
+    }
     const created = await cloudApi.createMap(opts.title, {
       folderId: opts.folderId,
       kind: opts.kind,
@@ -274,7 +290,7 @@ export async function saveNewMap(opts: {
     notifyExplicitSave(res.mapId);
     return { mapId: created.mapId };
   } finally {
-    useCloudStore.getState().setBusy('idle');
+    if (useCloudStore.getState().busy === 'saving') useCloudStore.getState().setBusy('idle');
   }
 }
 

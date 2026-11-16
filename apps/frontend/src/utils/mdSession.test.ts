@@ -19,6 +19,8 @@ const originalAuthStorage = authPersistence?.getOptions().storage;
 const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
 const originalReadOnly = useCloudStore.getState().readOnlyInfo;
 const originalSize = useDocumentStore.getState().setServerAttachmentSize;
+const originalEpoch = useDocumentStore.getState().docEpoch;
+const nextDocument = () => useDocumentStore.setState(state => ({ docEpoch: state.docEpoch + 1 }));
 const timers = new Map<number, () => void>();
 let timerId = 0;
 let sizes = 0;
@@ -92,7 +94,7 @@ try {
   {
     requests = []; respond = async () => ok();
     const gate = createMdFrameLoadGate();
-    const child = { MDE: { markdown: 'DEFAULT SAMPLE' } };
+    const child = { MDE: { markdown: 'DEFAULT SAMPLE', getHostSnapshot(nonce: string) { return nonce === gate.nonce ? this.markdown : null; } } };
     const saver = createMdAutosaver(target, () => {}, { markdown: 'original attachment' }, () => readMdFrameSnapshot(gate, child));
     assert.equal(await saver.now(), true); assert.equal(requests.length, 0);
     const nonce = gate.begin('original attachment');
@@ -105,6 +107,34 @@ try {
     saver.dispose();
     console.log('PASS no sample/default capture is saved before exact initialization ACK');
   }
+  {
+    requests = []; respond = async () => ok();
+    const gate = createMdFrameLoadGate();
+    const nonce = gate.begin('original attachment');
+    assert.equal(gate.accept({ loadNonce: nonce, markdown: 'original attachment' }), true);
+    const child = { MDE: { getHostSnapshot: () => null, get markdown(): string { throw new Error('Protected plaintext must not be captured'); } }, flushPendingEdits() { throw new Error('Protected frame must not be directly flushed'); } };
+    const saver = createMdAutosaver(target, () => {}, { markdown: 'original attachment' }, () => readMdFrameSnapshot(gate, child));
+    assert.equal(await saver.now(), true);
+    assert.equal(await flushMdExits(), true);
+    assert.equal(requests.length, 0);
+    assert.equal(saver.latest, 'original attachment');
+    saver.dispose();
+    console.log('PASS protected/detached frame capture never reads plaintext or PUTs it into the previous attachment');
+  }
+
+  for (const kind of ['dirty-protected', 'cached-without-safe-api'] as const) {
+    requests = []; respond = async () => ok();
+    const gate = createMdFrameLoadGate();
+    const nonce = gate.begin('original attachment'); gate.accept({ loadNonce: nonce, markdown: 'original attachment' });
+    const child = { MDE: { getHostSnapshot: kind === 'dirty-protected' ? () => { throw new Error('MD_FRAME_DETACHED_DIRTY'); } : undefined,
+      get markdown(): string { throw new Error('Raw plaintext must not be read'); } }, flushPendingEdits() { throw new Error('Unsafe direct flush'); } };
+    const events: State[] = [];
+    const saver = createMdAutosaver(target, state => events.push(state), { markdown: 'original attachment' }, () => readMdFrameSnapshot(gate, child));
+    assert.equal(await saver.now(), false); assert.equal(hasPendingMdEdits(), true); assert.equal(await flushMdExits(), false);
+    assert.equal(requests.length, 0); assert.equal(saver.latest, 'original attachment'); assert.equal(events.includes('saved'), false);
+    saver.dispose(); console.log('PASS ' + kind + ' preserves draft, blocks parent save/exit, reads no plaintext and performs zero PUTs');
+  }
+
   {
     requests = []; respond = async () => ok();
     const saver = createMdAutosaver(target, () => {}, { markdown: 'baseline' }, () => 'typed before 400ms message');
@@ -132,6 +162,106 @@ try {
     assert.equal(requests.length, 2);
     saver.dispose(); setMdDockAvailable(false); useEditorUiStore.getState().setMdDock(null);
     console.log('PASS failed MD1 blocks MD2 target switch; restored retry saves MD1 newest text before switching');
+  }
+  {
+    requests = []; sizes = 0; respond = async () => ok();
+    // Even the isolated null-token helper yields at await. Switch documents
+    // before its continuation, without real auth credentials or refresh calls.
+    const saving = saveMd(target, 'old document before token', 'initial-sha');
+    nextDocument();
+    assert.deepEqual(await saving, { ok: false, error: 'gone' });
+    assert.equal(requests.length, 0); assert.equal(sizes, 0);
+    console.log('PASS document switch during token await prevents a late PUT and size update');
+  }
+  {
+    requests = []; sizes = 0; timers.clear(); respond = async () => ok();
+    const started = deferred<void>();
+    const events: { state: State; markdown?: string }[] = [];
+    const saver = createMdAutosaver(target, (state, markdown) => {
+      events.push({ state, markdown });
+      if (state === 'saving') started.resolve(undefined);
+    }, { markdown: 'baseline' });
+    saver.change('old token draft'); const saving = saver.now();
+    await observe(started.promise, 'save entering token await');
+    nextDocument();
+    assert.equal(await saving, false);
+    assert.equal(requests.length, 0); assert.equal(sizes, 0);
+    assert.equal(saver.latest, 'old token draft');
+    assert.deepEqual(events.filter(e => e.state === 'saved'), []);
+    assert.deepEqual(events.at(-1)?.state, { error: 'gone' });
+    assert.equal(timers.size, 0); assert.equal(await saver.now(), false);
+    saver.dispose();
+    console.log('PASS token-boundary abort keeps draft/error and never emits saved or retries');
+  }
+  for (const result of ['success', 'conflict', 'network'] as const) {
+    const f = fixture(), blocked = deferred<Response>(); respond = () => blocked.promise;
+    f.saver.change('old PUT draft'); const saving = f.saver.now();
+    await requestStarted(1);
+    assert.equal(requests[0].base, '"sha256:initial-sha"');
+    f.saver.change('newest old document draft');
+    nextDocument();
+    if (result === 'network') blocked.reject(new TypeError('synthetic stale PUT rejection'));
+    else blocked.resolve(result === 'success' ? ok() : new Response('', { status: 412 }));
+    assert.equal(await saving, false);
+    assert.equal(sizes, 0); assert.deepEqual(f.acks(), []);
+    assert.equal(f.saver.latest, 'newest old document draft');
+    assert.deepEqual(f.events.at(-1)?.state, { error: 'gone' });
+    assert.equal(timers.size, 0);
+    assert.equal(await f.saver.now(), false);
+    f.saver.change('late old frame message');
+    await turn(); assert.equal(requests.length, 1); assert.equal(timers.size, 0);
+    assert.equal(f.saver.latest, 'newest old document draft');
+    f.saver.dispose();
+  }
+  console.log('PASS late PUT success/failure cannot ACK or resize the next document, and preserves the newest failed draft');
+  {
+    const f = fixture(); respond = async () => ok();
+    const hashing = deferred<void>(), blocked = deferred<ArrayBuffer>();
+    const digestDescriptor = Object.getOwnPropertyDescriptor(crypto.subtle, 'digest');
+    Object.defineProperty(crypto.subtle, 'digest', { configurable: true, value: () => {
+      hashing.resolve(undefined); return blocked.promise;
+    } });
+    try {
+      f.saver.change('old hash draft'); const saving = f.saver.now();
+      await observe(hashing.promise, 'SHA-256 after successful PUT');
+      nextDocument(); blocked.resolve(new ArrayBuffer(32));
+      assert.equal(await saving, false);
+      assert.equal(sizes, 0); assert.deepEqual(f.acks(), []);
+      assert.equal(f.saver.latest, 'old hash draft');
+      assert.deepEqual(f.events.at(-1)?.state, { error: 'gone' });
+      assert.equal(await f.saver.now(), false);
+      assert.equal(requests.length, 1); assert.equal(timers.size, 0);
+    } finally {
+      if (digestDescriptor) Object.defineProperty(crypto.subtle, 'digest', digestDescriptor);
+      else Reflect.deleteProperty(crypto.subtle, 'digest');
+      f.saver.dispose();
+    }
+    console.log('PASS document switch during deferred hash blocks size mutation and saved ACK');
+  }
+  {
+    const f = fixture(); respond = async () => ok();
+    // A synchronous store subscriber can change the epoch just as saveMd
+    // finishes. The autosaver must also validate after awaiting saveMd.
+    useDocumentStore.setState({ setServerAttachmentSize: () => { nextDocument(); } });
+    try {
+      f.saver.change('completion boundary');
+      assert.equal(await f.saver.now(), false);
+      assert.deepEqual(f.acks(), []); assert.equal(f.saver.latest, 'completion boundary');
+      assert.deepEqual(f.events.at(-1)?.state, { error: 'gone' });
+      assert.equal(timers.size, 0);
+    } finally {
+      useDocumentStore.setState({ setServerAttachmentSize: () => { sizes++; } });
+      f.saver.dispose();
+    }
+    console.log('PASS autosaver rechecks epoch after saveMd before acknowledging its snapshot');
+  }
+  {
+    const f = fixture(); f.saver.change('baseline'); nextDocument();
+    assert.equal(await f.saver.now(), false);
+    assert.deepEqual(f.acks(), []); assert.equal(requests.length, 0); assert.equal(sizes, 0);
+    assert.deepEqual(f.events.at(-1)?.state, { error: 'gone' });
+    assert.equal(timers.size, 0); f.saver.dispose();
+    console.log('PASS old-document baseline shortcut cannot emit a fake clean ACK');
   }
   requests = []; sizes = 0;
   respond = async () => { throw new TypeError('synthetic network rejection'); };
@@ -232,5 +362,5 @@ try {
   if (windowDescriptor) Object.defineProperty(globalThis, 'window', windowDescriptor);
   else Reflect.deleteProperty(globalThis, 'window');
   useCloudStore.getState().setReadOnlyInfo(originalReadOnly);
-  useDocumentStore.setState({ setServerAttachmentSize: originalSize });
+  useDocumentStore.setState({ setServerAttachmentSize: originalSize, docEpoch: originalEpoch });
 }

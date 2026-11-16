@@ -64,6 +64,8 @@ export async function loadMd(t: MdTarget): Promise<MdLoaded> {
 
 /** 첨부에 저장 — 성공하면 새 base(서버 첨부) */
 export async function saveMd(t: MdTarget, markdown: string, base?: string): Promise<{ ok: true; base?: string } | { ok: false; error: string }> {
+  const epoch = useDocumentStore.getState().docEpoch;
+  const isCurrent = () => useDocumentStore.getState().docEpoch === epoch;
   if (useCloudStore.getState().readOnlyInfo) return { ok: false, error: 'readonly' };
   if (t.kind === 'embedded') {
     const att = findAttachment({ nodeId: t.nodeId, attachmentId: t.attachmentId }, '')?.att as { url?: string } | undefined;
@@ -76,6 +78,9 @@ export async function saveMd(t: MdTarget, markdown: string, base?: string): Prom
   }
   const body = enc.encode(markdown);
   const token = await getFreshAccessToken().catch(() => null);
+  // Token refresh may outlive the document that owns this attachment.
+  if (!isCurrent()) return { ok: false, error: 'gone' };
+  if (useCloudStore.getState().readOnlyInfo) return { ok: false, error: 'readonly' };
   const headers: Record<string, string> = { 'Content-Type': 'text/markdown; charset=utf-8' };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (base) headers['If-Match'] = `"sha256:${base}"`;
@@ -83,10 +88,14 @@ export async function saveMd(t: MdTarget, markdown: string, base?: string): Prom
   try {
     r = await fetch(`${cloudApiBase}/v1/attachments/${encodeURIComponent(t.att)}/content`, { method: 'PUT', headers, body });
   } catch { return { ok: false, error: 'network' }; }
+  if (!isCurrent()) return { ok: false, error: 'gone' };
   if (r.status === 409 || r.status === 412) return { ok: false, error: 'conflict' };
   if (!r.ok) return { ok: false, error: String(r.status) };
+  const nextBase = await sha256Hex(body);
+  if (!isCurrent()) return { ok: false, error: 'gone' };
+  // A sent PUT cannot be undone, but must never update the next document.
   useDocumentStore.getState().setServerAttachmentSize(t.att, body.byteLength);
-  return { ok: true, base: await sha256Hex(body) };
+  return { ok: true, base: nextBase };
 }
 
 /** 오른쪽 칸·새 창이 함께 쓰는 '모아서 자동 저장' 도우미 */
@@ -104,6 +113,10 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
   const flush = (): Promise<boolean> => {
     clearTimer();
     if (inFlight) return inFlight;
+    if (useDocumentStore.getState().docEpoch !== epoch) {
+      onState({ error: 'gone' });
+      return Promise.resolve(false);
+    }
     if (pending === null) return Promise.resolve(true);
     const md = pending;
     pending = null;
@@ -117,6 +130,7 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
         let r: Awaited<ReturnType<typeof saveMd>>;
         try { r = useDocumentStore.getState().docEpoch === epoch ? await saveMd(t, md, base) : { ok: false, error: 'gone' }; }
         catch { r = { ok: false, error: 'error' }; }
+        if (useDocumentStore.getState().docEpoch !== epoch) r = { ok: false, error: 'gone' };
         if ('error' in r) {
           // Keep newer input if it arrived during this request. Never retry failures
           // or conflicts on a timer: only new input or an explicit now() may retry.
@@ -144,7 +158,7 @@ export function createMdAutosaver(t: MdTarget, onState: (s: 'saving' | 'saved' |
     if (typeof markdown === 'string' && markdown !== api.latest) api.change(markdown);
   };
   const api = {
-    change(md: string) { if (initial.readOnly) return; pending = md; schedule(1000); },
+    change(md: string) { if (initial.readOnly || useDocumentStore.getState().docEpoch !== epoch) return; pending = md; schedule(1000); },
     /** Wait for in-flight work and the newest queued snapshot; false keeps a failed draft retryable. */
     async now(): Promise<boolean> {
       clearTimer();

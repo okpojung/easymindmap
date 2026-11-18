@@ -2,13 +2,18 @@ import { TooltipButton } from '@/components/top-toolbar/Tooltip';
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { I } from '@/components/icons';
-import { useTr } from '@/i18n';
+import { useLang, useTr } from '@/i18n';
+import bottomCopy from './bottom-toolbar-copy.json';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 import { useViewportStore } from '@/stores/viewportStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCanvasViewControls } from '@/editor/canvas/canvasViewControls';
-export function CanvasViewButtons({ t, narrow, compact = false }: { t: ThemeTokens; narrow: boolean; compact?: boolean }) {
+export function CanvasViewButtons({ t, narrow, compact = false, minimapInMenu = false }: { t: ThemeTokens; narrow: boolean; compact?: boolean; minimapInMenu?: boolean }) {
   const controls = useCanvasViewControls();
   const tr = useTr(); const coarse = useCoarse(); const phone = usePhoneLayout();
+  const lang = useLang(); const copy = bottomCopy[lang] ?? bottomCopy.en;
+  const minimapOpen = useEditorUiStore(s => s.minimapOpen);
+  const toggleMinimap = useEditorUiStore(s => s.toggleMinimap);
   const touchSize = coarse || phone;
   const buttonWidth = compact ? 32 : touchSize ? 40 : 34;
   const buttonHeight = touchSize ? 40 : 34;
@@ -20,6 +25,7 @@ export function CanvasViewButtons({ t, narrow, compact = false }: { t: ThemeToke
   if (!controls) return null;
   const button = (id: string, title: string, icon: React.ReactNode, action?: () => void, active = false, disabled = false) => <TooltipButton type="button" data-testid={id} title={title} aria-label={title} aria-pressed={active} disabled={disabled} onClick={() => { action?.(); setOpen(false); }} style={{ width: buttonWidth, height: buttonHeight, flexShrink: 0, border: '1px solid ' + t.border, borderRadius: 7, background: active ? t.primarySoft : t.surface, color: active ? t.primary : t.text, opacity: disabled ? .4 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: disabled ? 'default' : 'pointer' }}>{icon}</TooltipButton>;
   const extras = <>
+    {minimapInMenu && button('minimap-toggle', copy.minimapToggle, <I.Minimap size={20} strokeWidth={2}/>, toggleMinimap, minimapOpen)}
     {button('canvas-view-focus', (controls.kanban ? tr('editor.toolbar.m.scrollToCard') : tr(controls.focusActive ? 'editor.toolbar.m.focusOff' : 'editor.toolbar.m.focus') + ' (Alt+F)'), controls.focusActive ? <I.FocusOff size={20} strokeWidth={2}/> : <I.Focus size={20} strokeWidth={2}/>, controls.onFocusSelected, controls.focusActive, !controls.onFocusSelected || (!controls.hasSelection && !controls.focusActive))}
     {button('canvas-view-fit', tr(controls.kanban ? 'editor.toolbar.boardHome' : 'editor.toolbar.fit'), <I.FitMap size={20} strokeWidth={2}/>, controls.onFitView, false, !controls.onFitView)}
     {typeof document !== 'undefined' && (document.fullscreenEnabled ?? typeof document.documentElement.requestFullscreen === 'function') && button('canvas-view-fullscreen', tr(fullscreen ? 'editor.toolbar.m.fullscreenExit' : 'editor.toolbar.m.fullscreen'), fullscreen ? <I.Shrink size={20} strokeWidth={2}/> : <I.Expand size={20} strokeWidth={2}/>, () => { if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); else void document.documentElement.requestFullscreen?.()?.catch(() => {}); }, fullscreen)}

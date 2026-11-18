@@ -5,6 +5,7 @@ import { I } from '@/components/icons';
 import { appFaviconUrl } from '@/utils/brandFavicon';
 import { TooltipButton, TooltipIconBtn as IconBtn } from './Tooltip';
 import { MapActions } from './MapActions';
+import { MapSearch } from './MapSearch';
 import { mobileSaveDot, mobileToolbarSize, editorToolbarLayout } from './toolbar-layout';
 import { UserMenu } from './UserMenu';
 import { DialogXButton } from '@/components/ui/DialogFrame';
@@ -330,8 +331,11 @@ export function TopToolbar({
           </div>
         </div>
       </div>
-      <input data-testid="map-title" type="text" readOnly value={mapTitle} title={mapTitle} aria-label={copy.mapTitle}
-        style={{ gridColumn: headerLayout.stacked ? '2 / -1' : undefined, width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '5px 8px', height: 34, border: '1px solid ' + t.border, borderRadius: 7, background: t.surfaceAlt, color: t.text, fontSize: 14, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} />
+      <div data-testid="map-title-search" style={{ gridColumn: headerLayout.stacked ? '2 / -1' : undefined, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <input data-testid="map-title" type="text" readOnly value={mapTitle} title={mapTitle} aria-label={copy.mapTitle}
+          style={{ width: '100%', flex: '1 1 160px', maxWidth: phoneLayout ? undefined : 'min(45%, 320px)', minWidth: 0, boxSizing: 'border-box', padding: '5px 8px', height: 34, border: '1px solid ' + t.border, borderRadius: 7, background: t.surfaceAlt, color: t.text, fontSize: 14, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} />
+        {!phoneLayout && <MapSearch t={t} />}
+      </div>
       <div data-testid="toolbar-actions" style={{ display: 'flex', gridColumn: headerLayout.stacked ? '1 / -1' : undefined, flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: phone ? 2 : 8, width: '100%', minWidth: 0 }}>
       <div role="group" aria-label={copy.document} data-toolbar-group="document" style={{ ...groupStyle, maxWidth: '100%', boxSizing: 'border-box', flexWrap: phone ? 'nowrap' : 'wrap' }}>
         <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-undo" title={tr('shell.toolbar.undo')} disabled={!canUndo || !!readOnly} onClick={undo}><I.Undo size={22} /></IconBtn>
@@ -353,8 +357,10 @@ export function TopToolbar({
           <svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2" /><path d="M9 3v14M4.5 7h2M4.5 10h2M4.5 13h2M12 8h3M12 12h3" /></svg>
         </TooltipButton>
         </>}
-        <IconBtn t={t} compactSize={phone ? size : undefined} testId="theme-toggle" title={tr(themeName === 'dark' ? 'shell.toolbar.toLight' : 'shell.toolbar.toDark')} onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}>
-          {themeName === 'dark' ? <I.Sun size={22} /> : <I.Moon size={22} />}</IconBtn>
+        {phoneLayout ? <IconBtn t={t} compactSize={size} testId="mobile-search-toggle" title={tr('common.search')}
+          onClick={() => { closeMenus(); useEditorUiStore.getState().setNavTab('search'); }}><I.Search size={22} /></IconBtn>
+          : <IconBtn t={t} compactSize={phone ? size : undefined} testId="theme-toggle" title={tr(themeName === 'dark' ? 'shell.toolbar.toLight' : 'shell.toolbar.toDark')} onClick={() => setThemeName(themeName === 'dark' ? 'light' : 'dark')}>
+            {themeName === 'dark' ? <I.Sun size={22} /> : <I.Moon size={22} />}</IconBtn>}
       </div>
       <div ref={ganttRef} role="group" aria-label={copy.gantt} data-toolbar-group="gantt" style={{ ...groupStyle, position: phone ? 'static' : 'relative' }}>
         {!phone && <TooltipButton data-testid="view-gantt" title={copy.gantt} aria-pressed={ganttDock} onClick={() => ganttDock ? selectView('map') : selectView('gantt')} style={{ ...buttonStyle, background: ganttDock ? t.primarySoft : 'transparent', color: ganttDock ? t.primary : t.text }}><I.Gantt size={22} /></TooltipButton>}

@@ -410,7 +410,7 @@ function NavContent({ t, tab, onClose }: {
   return (
     <>
       <ContentHeader t={t} title={title} subtitle={subtitle} onClose={onClose} />
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <div style={{ flex: 1, overflow: tab === 'search' ? 'hidden' : 'auto', minHeight: 0 }}>
         {tab === 'newMap'      && <NewMapPanel t={t} />}
         {tab === 'search'      && <SearchPanel t={t} />}
         {tab === 'template'    && <TemplatePanel t={t} />}

@@ -1,214 +1,39 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import type { MindNode } from '@/editor/__samples__/types';
-import { mapCenters } from '@/editor/__samples__/types';
-import { I } from '@/components/icons';
-import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
-import { useDocumentStore } from '@/stores/documentStore';
-import { useInteractionStore } from '@/stores/interactionStore';
-import { useViewportStore } from '@/stores/viewportStore';
-import { useTr } from '@/i18n';
-
-// 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
+import { useMapSearchStore } from '@/stores/mapSearchStore';
+import { useEditorUiStore } from '@/stores/editorUiStore';
+import { useMapSearch } from './useMapSearch';
+import { optionId, SearchField, SearchResults } from './SearchResults';
 import '@/components/ui/mobileCss';
-// 실시간 검색 — 노드 텍스트·태그·노트 본문·링크(라벨/URL)를 대상으로
-// 대소문자 무시 부분 일치. 결과 클릭 = 캔버스 노드 선택.
-interface SearchHit {
-  id: string;
-  title: string;
-  path: string; // 상위 노드 경로
-  kinds: string[]; // 일치한 위치 (노드/태그/노트/링크)
-}
-
-// 일치 위치 배지 — 제목 "앞"에 붙는 색 칩 (라이트/다크 공통 고정색,
-// 다크에서 흐릿하던 꼬리표 텍스트를 대체한다). HTML 뷰어와 동일 색.
-export const SEARCH_KIND_BADGE: Record<string, { bg: string; fg: string }> = {
-  노드: { bg: '#3B82F6', fg: '#FFFFFF' },
-  태그: { bg: '#F59E0B', fg: '#1F1B16' },
-  노트: { bg: '#10B981', fg: '#FFFFFF' },
-  링크: { bg: '#8B5CF6', fg: '#FFFFFF' },
-};
-
-// 일치 위치의 화면 표기 — kinds 값(한국어)은 내부 식별자(data-search-kind)로
-// 그대로 두고, 보이는 글자만 사전에서 고른다 (i18n)
-const SEARCH_KIND_LABEL: Record<string, string> = {
-  노드: 'panel.search.kind.node',
-  태그: 'panel.search.kind.tag',
-  노트: 'panel.search.kind.note',
-  링크: 'panel.search.kind.link',
-};
-
-/** 노드 하나가 검색어와 맞는 자리(노드/태그/노트/링크). 없으면 빈 배열. */
-function matchKinds(n: MindNode, hay: string): string[] {
-  const inText = (n.text || '').toLowerCase().includes(hay);
-  const inTags = [...(n.tags ?? []), ...(n.tag ? [n.tag] : [])]
-    .some((tg) => tg.toLowerCase().includes(hay));
-  const inNotes = (n.notes ?? []).some((b) => (b.text || '').toLowerCase().includes(hay));
-  const inLinks = (n.links ?? []).some(
-    (l) => (l.label ?? '').toLowerCase().includes(hay) || l.url.toLowerCase().includes(hay),
-  );
-  return [
-    inText ? '노드' : '',
-    inTags ? '태그' : '',
-    inNotes ? '노트' : '',
-    inLinks ? '링크' : '',
-  ].filter(Boolean);
-}
-
-function searchMap(
-  nodes: MindNode[],
-  q: string,
-  path: string[],
-  out: SearchHit[],
-): void {
-  for (const n of nodes) {
-    const kinds = matchKinds(n, q.toLowerCase());
-    if (kinds.length) {
-      out.push({ id: n.id, title: n.text, path: path.join(' › '), kinds });
-    }
-    searchMap(n.children ?? [], q, [...path, flattenNodeText(n.text)], out);
-  }
-}
+export { SEARCH_KIND_BADGE } from './SearchResults';
 
 export function SearchPanel({ t }: { t: ThemeTokens }) {
-  const tr = useTr();
-  const map = useDocumentStore((s) => s.map);
-  const expandAncestors = useDocumentStore((s) => s.expandAncestors);
-  const setSelectedId = useInteractionStore((s) => s.setSelectedId);
-  const selectedId = useInteractionStore((s) => s.selectedId);
-  const setSearchHitId = useInteractionStore((s) => s.setSearchHitId);
-  const requestCenterNode = useViewportStore((s) => s.requestCenterNode);
-
-  const [query, setQuery] = useState('');
-  const results = useMemo<SearchHit[]>(() => {
-    const q = query.trim();
-    if (!q) return [];
-    const out: SearchHit[] = [];
-    // 중심주제마다 — 루트 포함, 경로는 그 중심의 이름에서 (2026-09-16, 3단계)
-    // 중심 루트도 가지와 같은 기준(노드·태그·노트·링크)으로 맞춘다
-    for (const c of mapCenters(map)) {
-      const kinds = matchKinds(c.root as MindNode, q.toLowerCase());
-      if (kinds.length) out.push({ id: c.root.id, title: c.root.text, path: '', kinds });
-      searchMap(c.branches, q, [c.root.text], out);
+  const model = useMapSearch();
+  const listId = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const scroll = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(-1);
+  useLayoutEffect(() => {
+    const s = useMapSearchStore.getState();
+    if (scroll.current) scroll.current.scrollTop = s.docEpoch === model.epoch ? s.scrollTop : 0;
+  }, [model.epoch, model.query]);
+  const keyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Escape') { e.stopPropagation(); useEditorUiStore.setState({ sidebarCollapsed: true }); input.current?.blur(); }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation();
+      const count = model.results.length;
+      setActive(i => count ? (i < 0 ? (e.key === 'ArrowDown' ? 0 : count - 1) : (i + (e.key === 'ArrowDown' ? 1 : -1) + count) % count) : -1);
     }
-    return out.slice(0, 50);
-  }, [map, query]);
-
-
-  return (
-    <div data-mm-touch="" style={{ padding: 12 }}>
-      <div style={{ position: 'relative', marginBottom: 12 }}>
-        <div style={{
-          position: 'absolute', left: 10, top: '50%',
-          transform: 'translateY(-50%)',
-          color: t.textMuted, display: 'flex',
-        }}>
-          <I.Search size={14} />
-        </div>
-        <input
-          placeholder={tr('panel.search.placeholder')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            padding: '8px 10px 8px 30px',
-            borderRadius: 7,
-            border: `1px solid ${t.border}`,
-            background: t.surface, color: t.text,
-            fontSize: 13, outline: 'none',
-            fontFamily: 'inherit',
-          }} />
-      </div>
-
-      {query.trim() !== '' && (
-        <div style={{
-          fontSize: 11, color: t.textSubtle, marginBottom: 6,
-          textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 600,
-        }}>{tr('panel.search.resultsN', { n: results.length })}</div>
-      )}
-
-      {/* 처음 쓰는 사람을 위한 안내는 **목록 위 한 줄**로 한 번만 —
-          행마다 따라다니는 툴팁을 대신한다 (2026-08-05 보고) */}
-      {results.length > 0 && (
-        <div style={{ fontSize: 10.5, color: t.textSubtle, marginBottom: 6 }}>
-          {tr('panel.search.clickHint')}
-        </div>
-      )}
-
-      {results.map((r) => (
-        <div key={r.id}
-          data-search-hit={r.id}
-          onClick={() => {
-            setSelectedId(r.id);
-            // 캔버스에서 노란 채움 + 붉은 테두리로 또렷하게 표시
-            setSearchHitId(r.id);
-            // 접힌 조상은 펼치고, 해당 노드를 화면 중앙 + 100% 보기
-            // (HTML 뷰어 검색과 동일 동작)
-            expandAncestors(r.id);
-            requestCenterNode(r.id, 100);
-          }}
-          // 툴팁 없음 — 행 호버 강조로 "이 줄을 고르는 중"이 보이고,
-          // 클릭 결과는 한 번 써 보면 바로 익힌다. 결과를 훑을 때마다
-          // 같은 문장이 따라다니면 오히려 목록을 가린다 (2026-08-05)
-          className="mm-list-row"
-          aria-selected={selectedId === r.id}
-          style={{
-            padding: '8px 10px', marginBottom: 4, cursor: 'pointer',
-            // 목록 행 공통 강조 (global.css .mm-list-row) — 올린 줄이
-            // 또렷하게 보이도록 (2026-08-05 보고)
-            ['--row-hover' as string]: t.primarySoft,
-            ['--row-hover-bd' as string]: t.primaryBorder,
-          } as CSSProperties}>
-          <div style={{
-            fontSize: 13, fontWeight: 500, color: t.text, marginBottom: 2,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {/* 일치 위치 배지 — 제목 앞 색 칩 ([태그] [노드] …) */}
-            {r.kinds.map((k) => {
-              const b = SEARCH_KIND_BADGE[k] ?? { bg: t.border, fg: t.text };
-              return (
-                <span
-                  key={k}
-                  data-search-kind={k}
-                  style={{
-                    display: 'inline-block',
-                    fontSize: 9.5, fontWeight: 700, lineHeight: '14px',
-                    padding: '0 5px', borderRadius: 4, marginRight: 4,
-                    background: b.bg, color: b.fg,
-                    verticalAlign: 'text-bottom', letterSpacing: 0.3,
-                  }}
-                >
-                  {SEARCH_KIND_LABEL[k] ? tr(SEARCH_KIND_LABEL[k]) : k}
-                </span>
-              );
-            })}
-            {/* 블록 마커(```·- [x]·파이프)는 접어 표시 — ⧉코드·☑/☐·⊞표 (P4) */}
-            {highlight(flattenNodeText(r.title), query, t.primary)}
-          </div>
-          <div style={{ fontSize: 11, color: t.textSubtle }}>
-            {r.path || tr('panel.search.root')}
-          </div>
-        </div>
-      ))}
-
-
-    </div>
-  );
-}
-
-
-// 일치 구간을 <mark> 스타일로 강조 (innerHTML 없이 안전하게 분할 렌더)
-function highlight(text: string, q: string, color: string) {
-  const idx = text.toLowerCase().indexOf(q.trim().toLowerCase());
-  if (idx < 0 || !q.trim()) return text;
-  const end = idx + q.trim().length;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark style={{ background: `${color}44`, borderRadius: 2, padding: '0 2px', color: 'inherit' }}>
-        {text.slice(idx, end)}
-      </mark>
-      {text.slice(end)}
-    </>
-  );
+    if (e.key === 'Enter' && model.results.length) { e.preventDefault(); e.stopPropagation(); model.choose(model.results[Math.max(0, active)]?.id ?? model.results[0].id); }
+  };
+  return <div ref={scroll} data-testid="map-search-panel" data-mm-touch=""
+    onScroll={e => useMapSearchStore.getState().setScrollTop(model.epoch, e.currentTarget.scrollTop)}
+    style={{ padding: 12, height: '100%', overflowY: 'auto', boxSizing: 'border-box', overscrollBehavior: 'contain' }}>
+    <div style={{ marginBottom: 12 }}><SearchField t={t} query={model.query} onChange={v => { model.setQuery(v); setActive(-1); }}
+      inputRef={input} listId={listId} expanded={model.results.length > 0}
+      activeId={active >= 0 && model.results[active] ? optionId(listId, model.results[active].id) : undefined}
+      onKeyDown={keyDown} testId="map-search-panel-input" /></div>
+    <SearchResults t={t} {...model} listId={listId} activeIndex={active} onActive={setActive} onChoose={id => model.choose(id)} />
+  </div>;
 }

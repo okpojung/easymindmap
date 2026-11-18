@@ -95,6 +95,8 @@ export function BottomStatusBar({
   const map = useDocumentStore((s) => s.map);
   const m = useMemo(() => measureDocument(map), [map]);
   const layoutType = useEditorUiStore((s) => s.layoutType);
+  const themeName = useEditorUiStore((s) => s.themeName);
+  const setThemeName = useEditorUiStore((s) => s.setThemeName);
   const selectedId = useInteractionStore((s) => s.selectedId);
   const multi = useInteractionStore((s) => s.multiSelectedIds);
   const layout = useMemo(() => layoutStatus(map, layoutType, selectedId, multi), [map, layoutType, selectedId, multi]);
@@ -107,7 +109,8 @@ export function BottomStatusBar({
   const phone = usePhoneLayout();
   const coarse = useCoarse();
   const touchSize = coarse || phone;
-  const tight = barWidth < 370;
+  const tight = barWidth < 420;
+  const minimapInMenu = barWidth < 350 && mainView !== 'outline';
   const barH = touchSize ? 48 : 42;
   const sideBtn = (testId: string, title: string, icon: React.ReactNode, onClick: () => void, active = false) => (
     <button
@@ -149,6 +152,11 @@ export function BottomStatusBar({
         mainView === 'outline' ? <I.MindMap size={20} strokeWidth={2} /> : <I.Outline size={20} strokeWidth={2} />,
         onToggleMainView,
         mainView === 'outline',
+      )}
+      {mainView && sideBtn('m-theme-toggle',
+        tr(themeName === 'dark' ? 'shell.toolbar.toLight' : 'shell.toolbar.toDark'),
+        themeName === 'dark' ? <I.Sun size={20} /> : <I.Moon size={20} />,
+        () => setThemeName(themeName === 'dark' ? 'light' : 'dark'),
       )}
 
       <span
@@ -196,15 +204,15 @@ export function BottomStatusBar({
         </>
       )}
 
-      {showZoom && <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} tight={tight} touchSize={touchSize} />}
-      {showZoom && <CanvasViewButtons t={t} narrow={barWidth < 760} compact={tight} />}
+      {showZoom && <ZoomControl t={t} zoom={zoom} onZoomChange={onZoomChange} tight={tight} touchSize={touchSize} showMinimap={!minimapInMenu} />}
+      {showZoom && <CanvasViewButtons t={t} narrow={barWidth < 760} compact={tight} minimapInMenu={minimapInMenu} />}
     </div>
   );
 }
 
 /** The percentage is the reset action; no duplicate 1:1 button or hidden phone controls. */
-function ZoomControl({ t, zoom, onZoomChange, tight, touchSize }: {
-  t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void; tight: boolean; touchSize: boolean;
+function ZoomControl({ t, zoom, onZoomChange, tight, touchSize, showMinimap }: {
+  t: ThemeTokens; zoom: number; onZoomChange: (v: number) => void; tight: boolean; touchSize: boolean; showMinimap: boolean;
 }) {
   const tr = useTr();
   const lang = useLang();
@@ -231,12 +239,12 @@ function ZoomControl({ t, zoom, onZoomChange, tight, touchSize }: {
           color: t.text, cursor: 'pointer', fontSize: 13, fontWeight: 700,
           fontFamily: 'ui-monospace, monospace' }}>{Math.round(zoom)}%</TooltipButton>
       {stepBtn('zoom-in', <I.Plus size={21} strokeWidth={2.2} />, () => onZoomChange(Math.min(400, zoom + 5)), tr('shell.status.zoomIn'))}
-      <TooltipButton type="button" data-testid="minimap-toggle" onClick={toggleMinimap}
+      {showMinimap && <TooltipButton type="button" data-testid="minimap-toggle" onClick={toggleMinimap}
         title={copy.minimapToggle} aria-label={copy.minimapToggle} aria-pressed={minimapOpen}
         style={{ width: bw, height: bh, flexShrink: 0, border: '1px solid ' + (minimapOpen ? t.primaryBorder : t.border),
           borderRadius: 7, cursor: 'pointer', background: minimapOpen ? t.primarySoft : t.surface,
           color: minimapOpen ? t.primary : t.text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      ><I.Minimap size={21} strokeWidth={2} /></TooltipButton>
+      ><I.Minimap size={21} strokeWidth={2} /></TooltipButton>}
     </div>
   );
 }

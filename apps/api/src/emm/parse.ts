@@ -81,6 +81,12 @@ export interface ParseEmmOptions {
    * 여러 줄 노드를 "제목 + 노트" 로 바꿔 버린다.
    */
   adjacentQuoteIsBody?: boolean;
+  /**
+   * **노드마다 원문 줄 번호를 남긴다** (`_srcLine`, 머리말을 걷은 본문 기준 0부터).
+   * 맵에서 고친 것을 원문의 바뀐 줄에만 쓰려는 편집기(Obsidian 플러그인)가 쓴다.
+   * 켜지 않으면 출력은 예전과 같다. sourceLines (2026-10-23)
+   */
+  sourceLines?: boolean;
 }
 
 // "A4 한 장" 근사 — 노드 본문 제한 (텍스트 글자 수, 이미지 1장 = 600자)
@@ -232,6 +238,9 @@ export function parseMarkdownToMap(
   };
   let seq = 0;
   const nid = () => `md-${Date.now()}-${seq++}`;
+  let curLine = -1; // sourceLines (2026-10-23) 지금 읽는 줄 (본문 기준)
+  let paraStart = -1; // sourceLines (2026-10-23) 모으는 문단이 시작한 줄
+  let lineOverride: number | null = null; // sourceLines (2026-10-23) 문단 노드는 시작 줄로
 
   // 노드 텍스트에서 [라벨](url)을 라벨로 바꾸고 URL은 링크로 모은다.
   // 이미지 문법(![..](..))은 대체 텍스트만 남기고, 원격(http) 이미지는
@@ -328,7 +337,13 @@ export function parseMarkdownToMap(
   // 내보냈다 다시 읽을 때 그 노드가 사라지거나 하위가 한 단계 올라가면
   // 구조가 망가진다. 문단·인용 등 다른 자리에서는 예전처럼 빈 글자를
   // 무시한다.
+  // sourceLines (2026-10-23) 노드마다 원문 줄 번호(_srcLine, 머리말 뒤 본문 기준 0부터)를 남긴다.
   const attach = (depth: number, rawText: string, allowEmpty = false): MindNode | null => {
+    const made = attach0(depth, rawText, allowEmpty);
+    if (opts.sourceLines && made && (made as { _srcLine?: number })._srcLine === undefined) (made as { _srcLine?: number })._srcLine = lineOverride ?? curLine;
+    return made;
+  };
+  const attach0 = (depth: number, rawText: string, allowEmpty = false): MindNode | null => {
     if (depth < 1) return null;
     if (!allowEmpty && !rawText.trim()) return null;
     const { text, links, images } = stripLinks(rawText);
@@ -567,7 +582,10 @@ export function parseMarkdownToMap(
     // 순번 문단 섹션이 열려 있으면 그 하위로 (아니면 견출 하위)
     lastBlockNode = null;
     const depth = sectionDepth !== null ? sectionDepth + 1 : lastHeadingDepth + 1;
-    if (attach(depth, text)) {
+    lineOverride = paraStart; // sourceLines (2026-10-23) 문단 노드는 시작 줄로
+    const paraNode = attach(depth, text);
+    lineOverride = null;
+    if (paraNode) {
       paraDepth = depth;
       paraNodes.add(stack[stack.length - 1].node); // 문단 노드 — 노트 주인이 되지 않는다
     }
@@ -657,6 +675,7 @@ export function parseMarkdownToMap(
   };
 
   for (const raw of lines) {
+    curLine++; // sourceLines (2026-10-23)
     const line = raw.replace(/\s+$/, '');
     const prevWasHead: boolean = lastLineWasHead;
     lastLineWasHead = false;
@@ -746,6 +765,7 @@ export function parseMarkdownToMap(
           // 파일 첫 H1 = 제목(첫 중심주제)
           rootText = stripLinks(text).text;
           title = rootText;
+          if (opts.sourceLines) (firstRoot as { _srcLine?: number })._srcLine = curLine; // sourceLines (2026-10-23)
         } else {
           // 두 번째 이후의 `#` = **새 중심주제** (2026-09-15). 그 아래
           // `##`·문단·리스트는 새 중심의 가지가 되고, 첫 `##` 전의
@@ -753,6 +773,7 @@ export function parseMarkdownToMap(
           // 규칙. `##` 로 시작한 문서 뒤의 `#` 도 새 중심이다(첫 중심은
           // 파일 이름을 제목으로 가진다).
           startCenter(stripLinks(text).text);
+          if (opts.sourceLines) (curCenter as unknown as { _srcLine?: number })._srcLine = curLine; // sourceLines (2026-10-23)
           sawHeading = false;
         }
         stack.length = 0;
@@ -832,6 +853,7 @@ export function parseMarkdownToMap(
     if (lastItem && paraBuf.length === 0) lastItem = null;
 
     // 일반 문단 — 연속 줄을 모아 한 노드로
+    if (!paraBuf.length) paraStart = curLine; // sourceLines (2026-10-23)
     paraBuf.push(line.trim());
   }
   flushAll();
@@ -877,6 +899,7 @@ export function parseMarkdownToMap(
       text: rootText || title,
       colorKey: 'root',
       side: 'center',
+      ...((firstRoot as { _srcLine?: number })._srcLine !== undefined ? { _srcLine: (firstRoot as { _srcLine?: number })._srcLine } : {}), // sourceLines (2026-10-23)
       ...(firstRoot.links?.length ? { links: firstRoot.links } : {}),
       ...(first.rootNotes.length ? { notes: first.rootNotes } : {}),
       ...(first.rootAttachments.length ? { attachments: first.rootAttachments } : {}),

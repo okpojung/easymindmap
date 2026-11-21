@@ -47,7 +47,7 @@ interface ViewportState {
   homeArmed: boolean;
 
   setZoom: (v: number) => void;
-  setPan: (x: number, y: number) => void;
+  setPan: (x: number, y: number, captureStack?: boolean) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   setPanMode: (v: boolean) => void;
@@ -68,11 +68,13 @@ interface ViewportState {
  */
 export interface ViewportLogEntry { t: number; what: string; args?: unknown; stack?: string[] }
 const viewportLog: ViewportLogEntry[] = [];
-export function logViewport(what: string, args?: unknown): void {
+export function logViewport(what: string, args?: unknown, captureStack = true): void {
   let stack: string[] | undefined;
-  try {
-    stack = (new Error().stack ?? '').split('\n').slice(2, 7).map((l) => l.trim().replace(/^at /, '').slice(0, 120));
-  } catch { /* 무시 */ }
+  if (captureStack) {
+    try {
+      stack = (new Error().stack ?? '').split('\n').slice(2, 7).map((l) => l.trim().replace(/^at /, '').slice(0, 120));
+    } catch { /* 무시 */ }
+  }
   viewportLog.push({ t: Math.round(performance.now()), what, args, stack });
   if (viewportLog.length > 60) viewportLog.splice(0, viewportLog.length - 60);
 }
@@ -91,7 +93,9 @@ export const useViewportStore = create<ViewportState>((set) => ({
 
   // 사용자(또는 맞추기·센터 같은 명시적 이동)가 화면을 바꾸면 첫 화면은 끝난다
   setZoom: (zoom) => { logViewport('setZoom', zoom); set({ zoom: clamp(zoom, ZOOM_MIN, ZOOM_MAX), homeArmed: false }); },
-  setPan: (panX, panY) => { logViewport('setPan', [panX, panY]); set({ panX, panY, homeArmed: false }); },
+  // Continuous pointer frames retain coordinates, but not a fresh Error stack.
+  // Buttons/search/programmatic calls keep their diagnostic stack by default.
+  setPan: (panX, panY, captureStack = true) => { logViewport('setPan', [panX, panY], captureStack); set({ panX, panY, homeArmed: false }); },
   setHomePan: (panX, panY) => { logViewport('setHomePan', [panX, panY]); set({ panX, panY }); },
   // 버튼·단축키 줌 스텝 5% — 하단 상태바 ±버튼과 동일 (10-canvas.md §17)
   zoomIn:  () => { logViewport('zoomIn'); set((s) => ({ zoom: clamp(s.zoom + 5, ZOOM_MIN, ZOOM_MAX), homeArmed: false })); },

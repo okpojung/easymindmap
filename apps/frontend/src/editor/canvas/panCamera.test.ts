@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { cameraTransform, needsPanRender, outsidePanCoverage } from './usePanRenderSnapshot';
+import { readViewportLog, useViewportStore } from '@/stores/viewportStore';
+
+const a = { panX: 0, panY: 0 };
+assert.equal(needsPanRender(a, { panX: 319, panY: 199 }, 1280, 800), false);
+assert.equal(needsPanRender(a, { panX: 320, panY: 0 }, 1280, 800), true);
+assert.equal(needsPanRender(a, { panX: -320, panY: 0 }, 1280, 800), true);
+assert.equal(needsPanRender(a, { panX: 0, panY: 200 }, 1280, 800), true);
+assert.equal(needsPanRender(a, { panX: 0, panY: -200 }, 1280, 800), true);
+assert.equal(needsPanRender({ panX: 800, panY: 500 }, { panX: 800, panY: 500 }, 320, 740), false);
+assert.equal(needsPanRender(a, { panX: 16, panY: 0 }, 0, 0), true);
+assert.equal(outsidePanCoverage(a, { panX: 639, panY: 399 }, 1280, 800), false);
+assert.equal(outsidePanCoverage(a, { panX: 640, panY: 0 }, 1280, 800), true);
+assert.equal(outsidePanCoverage(a, { panX: 0, panY: -400 }, 1280, 800), true);
+assert.equal(cameraTransform(640, 400, 0, 0, 100), 'translate(640 400) scale(1) translate(-640 -400)');
+assert.equal(cameraTransform(640, 400, 80, -40, 50), 'translate(720 360) scale(0.5) translate(-640 -400)');
+
+const v = useViewportStore.getState();
+v.reset();
+v.setHomePan(15, 20);
+assert.equal(useViewportStore.getState().homeArmed, true);
+v.setPan(120, -75, false);
+assert.equal(useViewportStore.getState().homeArmed, false);
+assert.equal(useViewportStore.getState().panX, 120);
+assert.equal(useViewportStore.getState().panY, -75);
+assert.equal(readViewportLog().at(-1)?.stack, undefined);
+v.setPan(121, -74);
+assert.ok(readViewportLog().at(-1)?.stack?.length);
+for (let i = 0; i < 100; i++) v.setPan(i, -i, false);
+assert.equal(readViewportLog().length, 60);
+console.log('panCamera tests passed (bounds, camera math, authoritative store, diagnostic policy)');

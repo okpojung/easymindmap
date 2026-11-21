@@ -13,6 +13,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -46,11 +47,9 @@ import { useVarDbStore } from '@/stores/varDbStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { treeEdgePath } from '@/editor/edge-renderer/edgePaths';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
-import { CollabCursor } from '@/editor/collaboration/CollabCursor';
+import { CanvasCursorLayer } from './CanvasCursorLayer';
 import { Minimap } from './Minimap';
 import { readableTextOn } from '@/editor/node-renderer/resolveNodeColors';
-import { COLLAB_PRESENCE_UI } from '@/config/featureFlags';
-import { ProCursorLayer } from '@pro';
 import { zoneAxesFor, zoneAt } from './dropGeometry';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useViewportStore, logViewport, readViewportLog } from '@/stores/viewportStore';
@@ -72,6 +71,8 @@ import { extractArticleContent, probeArticleImages } from '@/utils/articleConten
 import { tr, useLang } from '@/i18n';
 import { usePhoneLayout, isCoarseNow } from '@/hooks/useViewport';
 import { primeTouchKeyboard } from './touchKeyboard';
+import { createLatestFrameQueue, type LatestFrameQueue } from './panFrame';
+import { cameraTransform, usePanRenderSnapshot, type PanPoint } from './usePanRenderSnapshot';
 
 export interface CanvasEditingPolicy { mode: 'basic' | 'full'; readOnly: boolean; nodeIndicators?: boolean; stylePainter?: boolean }
 
@@ -169,9 +170,20 @@ export function Canvas({
   const setCenterPos = useDocumentStore((state) => state.setCenterPos);
   const setMultiAddOpen = useEditorUiStore((state) => state.setMultiAddOpen);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const worldRef = useRef<SVGGElement | null>(null);
+  const endPanRef = useRef<(flush?: boolean, clientX?: number, clientY?: number) => void>(() => {});
+  const cancelCameraRef = useRef<(flush?: boolean) => void>(() => {});
+  const ownCameraWrite = useRef(false);
   const zoom = useViewportStore((s) => s.zoom);
-  const storePanX = useViewportStore((s) => s.panX);
-  const storePanY = useViewportStore((s) => s.panY);
+  const panRender = usePanRenderSnapshot(W, H, (x, y, z) => {
+    const value = cameraTransform(CX, CY, x, y, z);
+    if (worldRef.current?.getAttribute('transform') !== value) worldRef.current?.setAttribute('transform', value);
+    if (containerRef.current) containerRef.current.style.backgroundPosition = `${x}px ${y}px`;
+  });
+  const storePanX = panRender.panX;
+  const storePanY = panRender.panY;
   const panMode = useViewportStore((s) => s.panMode);
   /**
    * Pan 모드 안내는 **켜는 순간 4초만** 보인다 (2026-10-05 사용자 요청 — 폰
@@ -225,15 +237,13 @@ export function Canvas({
   const requestFit = useViewportStore((s) => s.requestFit);
   const resetView = useViewportStore((s) => s.reset);
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
-
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect();
       if (r.width > 50 && r.height > 50) {
+        cancelCameraRef.current();
         setVpSize({ w: Math.round(r.width), h: Math.round(r.height) });
       }
     });
@@ -248,6 +258,8 @@ export function Canvas({
     panX0: number;
     panY0: number;
     moved: boolean;
+    viewScale?: number;
+    buttonMask?: number;
     /** 아직 포인터를 잡지 않았다 — 움직이기 시작하면 그때 잡는다 (Pan 모드에서
      *  노드를 눌렀을 때. 바로 잡으면 click 이 노드가 아니라 svg 로 간다) */
     needsCapture: boolean;
@@ -303,6 +315,72 @@ export function Canvas({
   const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   // Pan 드래그 중 여부 — 커서 grab → grabbing 전환용
   const [panning, setPanning] = useState(false);
+  const [panMoved, setPanMoved] = useState(false);
+  const panFrames = useRef<LatestFrameQueue<PanPoint> | null>(null);
+  if (!panFrames.current) panFrames.current = createLatestFrameQueue<PanPoint>({
+    requestFrame: cb => window.requestAnimationFrame(cb),
+    cancelFrame: id => window.cancelAnimationFrame(id),
+    apply: p => {
+      if (!dragRef.current) return;
+      ownCameraWrite.current = true;
+      try { useViewportStore.getState().setPan(p.panX, p.panY, false); }
+      finally { ownCameraWrite.current = false; }
+    },
+  });
+  const endPan = useCallback((flush = true, clientX?: number, clientY?: number) => {
+    const d = dragRef.current;
+    if (!d) { panFrames.current?.cancel(); panRender.end(); setPanning(false); setPanMoved(false); return; }
+    if (flush) {
+      if (clientX !== undefined && clientY !== undefined) {
+        const k = d.viewScale || 1;
+        const dx = (clientX - d.startX) / k, dy = (clientY - d.startY) / k;
+        if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
+        if (dx || dy || d.moved) panFrames.current?.push({ panX: d.panX0 + dx, panY: d.panY0 + dy });
+      }
+      panFrames.current?.flush();
+    } else panFrames.current?.cancel();
+    dragRef.current = null;
+    panRender.end();
+    setPanning(false);
+    setPanMoved(false);
+    if (d.moved) {
+      suppressClickRef.current = true;
+      logViewport('panEnd', [useViewportStore.getState().panX, useViewportStore.getState().panY]);
+    }
+  }, [panRender.end]);
+  endPanRef.current = endPan;
+  useLayoutEffect(() => {
+    const blur = () => cancelCameraRef.current();
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') cancelCameraRef.current(); };
+    const up = (e: globalThis.MouseEvent) => {
+      const mask = dragRef.current?.buttonMask;
+      if (mask === (e.button === 2 ? 2 : e.button === 1 ? 4 : 1)) endPanRef.current(true, e.clientX, e.clientY);
+    };
+    window.addEventListener('blur', blur);
+    window.addEventListener('keydown', key);
+    window.addEventListener('mouseup', up);
+    const docOff = useDocumentStore.subscribe((s, old) => {
+      if (s.docEpoch !== old.docEpoch || s.docOrigin !== old.docOrigin) cancelCameraRef.current(false);
+    });
+    const viewOff = useViewportStore.subscribe((s, old) => {
+      if (ownCameraWrite.current) return;
+      if (s.zoom !== old.zoom || s.panX !== old.panX || s.panY !== old.panY
+          || s.homeSeq !== old.homeSeq || s.fitRequestId !== old.fitRequestId || s.centerRequest !== old.centerRequest) cancelCameraRef.current(false);
+    });
+    return () => {
+      window.removeEventListener('blur', blur);
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('mouseup', up);
+      docOff(); viewOff();
+      panFrames.current?.cancel();
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = undefined;
+      touchTapRef.current = null;
+      pinchRef.current = null;
+      touchPtsRef.current.clear();
+      dragRef.current = null;
+    };
+  }, []);
 
   // Multi-item content chooser popover (link/file/media), rendered on the TOP
   // overlay so other nodes never cover it.
@@ -663,7 +741,7 @@ export function Canvas({
         const rr = rootEl?.getBoundingClientRect();
         return {
           store: { zoom: vp.zoom, panX: vp.panX, panY: vp.panY, homeArmed: vp.homeArmed, homeSeq: vp.homeSeq },
-          effective: { panX, panY, homeGuard, gestureSinceHome, homeWantY },
+          effective: { panX: panRender.active.current ? vp.panX : panX, panY: panRender.active.current ? vp.panY : panY, homeGuard, gestureSinceHome, homeWantY },
           canvas: { W, H, CX, CY, rect: sr ? [Math.round(sr.width), Math.round(sr.height)] : null },
           layoutType, root: root ? { id: root.id, x: root.x, y: root.y, w: root.w, h: root.h } : null,
           rootScreenTop: rr && sr ? Math.round(rr.top - sr.top) : null,
@@ -703,8 +781,8 @@ export function Canvas({
     const vp = useViewportStore.getState();
     const s = (vp.zoom || 100) / 100;
     return {
-      x: (v.x - CX - panX) / s + CX,
-      y: (v.y - CY - panY) / s + CY,
+      x: (v.x - CX - (panRender.active.current ? vp.panX : panX)) / s + CX,
+      y: (v.y - CY - (panRender.active.current ? vp.panY : panY)) / s + CY,
     };
   };
 
@@ -836,6 +914,7 @@ export function Canvas({
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
+      endPanRef.current();
       e.preventDefault();
 
       const state = useViewportStore.getState();
@@ -1408,6 +1487,14 @@ export function Canvas({
     longPressTimer.current = undefined;
   };
 
+  cancelCameraRef.current = (flush = true) => {
+    cancelLongPress();
+    pinchRef.current = null;
+    touchPtsRef.current.clear();
+    touchTapRef.current = null;
+    endPanRef.current(flush);
+  };
+
   /** 두 번째 손가락 — 한 손가락 조작을 모두 거두고 핀치를 시작한다 */
   const startPinch = (svg: SVGSVGElement) => {
     cancelLongPress();
@@ -1420,8 +1507,12 @@ export function Canvas({
       setCenterGuides([]);
     }
     if (marqueeRef.current) { marqueeRef.current = null; setMarquee(null); }
+    panFrames.current?.flush();
+    const livePan = panRender.active.current ? useViewportStore.getState() : { panX, panY };
     dragRef.current = null;
+    panRender.end();
     setPanning(false);
+    setPanMoved(false);
     const [[a, pa], [b, pb]] = Array.from(touchPtsRef.current.entries());
     for (const id of [a, b]) {
       try { svg.setPointerCapture(id); } catch { /* 이미 떨어진 손가락 */ }
@@ -1432,7 +1523,7 @@ export function Canvas({
       mid0: clientToViewBox((pa.x + pb.x) / 2, (pa.y + pb.y) / 2),
       zoom0: useViewportStore.getState().zoom,
       // 화면에 실제로 쓰인 pan (첫 화면 보호 중이면 그 값) — 마우스 끌기와 같은 기준
-      panX0: panX, panY0: panY,
+      panX0: livePan.panX, panY0: livePan.panY,
     };
     suppressClickRef.current = true;
   };
@@ -1451,11 +1542,15 @@ export function Canvas({
     const s2 = zoomNext / 100;
     // screen = (w − C)·s + C + pan  ⇒  pan' = mid − C − (mid0 − C − pan0)·s2/s1
     const st = useViewportStore.getState();
-    st.setZoom(zoomNext);
-    st.setPan(
-      mid.x - CX - ((p.mid0.x - CX - p.panX0) / s1) * s2,
-      mid.y - CY - ((p.mid0.y - CY - p.panY0) / s1) * s2,
-    );
+    ownCameraWrite.current = true;
+    try {
+      st.setZoom(zoomNext);
+      st.setPan(
+        mid.x - CX - ((p.mid0.x - CX - p.panX0) / s1) * s2,
+        mid.y - CY - ((p.mid0.y - CY - p.panY0) / s1) * s2,
+        false,
+      );
+    } finally { ownCameraWrite.current = false; }
   };
 
   /** 손가락이 닿았다 — 이 손가락의 처리가 여기서 끝났으면 true */
@@ -1507,9 +1602,11 @@ export function Canvas({
         const vp = useViewportStore.getState();
         dragRef.current = {
           pointerId: restId, startX: rest.x, startY: rest.y,
-          panX0: vp.panX, panY0: vp.panY, moved: true, needsCapture: false,
+          panX0: vp.panX, panY0: vp.panY, moved: true, needsCapture: false, viewScale: getViewScale(),
         };
+        panRender.begin();
         setPanning(true);
+        setPanMoved(true);
       }
       return true;
     }
@@ -1531,6 +1628,7 @@ export function Canvas({
 
   const handlePointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     const isTouch = e.pointerType === 'touch';
+    if (!isTouch || e.isPrimary) cancelCameraRef.current();
     // A new pointer gesture is intentional, even if the previous browser
     // emitted no native click after capture/release.
     if (centerDragClickRef.current) suppressClickRef.current = false;
@@ -1625,16 +1723,25 @@ export function Canvas({
     // 톡한 것이 선택되도록 같은 이유로 캡처를 미룬다
     const deferCapture = !isMiddleButton && (panMode || isTouch) && !!nodeEl;
     if (!deferCapture) e.currentTarget.setPointerCapture(e.pointerId);
+    const latestPan = useViewportStore.getState();
+    const startPanX = homeGuard ? panX : latestPan.panX;
+    const startPanY = homeGuard ? panY : latestPan.panY;
+    ownCameraWrite.current = true;
+    try { panRender.begin(homeGuard ? panX : undefined, homeGuard ? panY : undefined); }
+    finally { ownCameraWrite.current = false; }
     setPanning(true);
+    setPanMoved(false);
 
     dragRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
-      panX0: panX,
-      panY0: panY,
+      panX0: startPanX,
+      panY0: startPanY,
       moved: false,
       needsCapture: deferCapture,
+      viewScale: getViewScale(),
+      buttonMask: isTouch ? undefined : e.button === 2 ? 2 : e.button === 1 ? 4 : 1,
     };
   };
 
@@ -1724,11 +1831,16 @@ export function Canvas({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
 
-    const k = getViewScale() || 1;
+    if (!isTouch && drag.buttonMask && !(e.buttons & drag.buttonMask)) {
+      endPanRef.current(true, e.clientX, e.clientY);
+      return;
+    }
+    const k = drag.viewScale || 1;
     const dx = (e.clientX - drag.startX) / k;
     const dy = (e.clientY - drag.startY) / k;
 
     if (Math.abs(dx) + Math.abs(dy) > 3) {
+      if (!drag.moved) setPanMoved(true);
       drag.moved = true;
       // 진짜 끌기 시작했다 — 이제 잡는다 (노드 밖으로 나가도 놓치지 않게)
       if (drag.needsCapture) {
@@ -1737,7 +1849,7 @@ export function Canvas({
       }
     }
 
-    setPan(drag.panX0 + dx, drag.panY0 + dy);
+    panFrames.current?.push({ panX: drag.panX0 + dx, panY: drag.panY0 + dy });
   };
 
   const handlePointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -1883,10 +1995,11 @@ export function Canvas({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
 
-    dragRef.current = null;
-    setPanning(false);
-    if (drag.moved) suppressClickRef.current = true;
+    endPanRef.current(true, e.clientX, e.clientY);
   };
+
+  // Live edit/popover UI keeps its existing camera-driven React updates.
+  panRender.deferAllowed.current = !editingNodeId && !popover;
 
   return (
     <div
@@ -2051,16 +2164,18 @@ export function Canvas({
         </div>
       )}
 
+      <style>{'[data-testid="canvas-svg"][data-pan-cursor] * { cursor: inherit !important; }'}</style>
       <svg
         ref={svgRef}
         data-testid="canvas-svg"
+        data-pan-cursor={panning ? (panMoved ? 'grabbing' : 'grab') : undefined}
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMid meet"
         style={{
           width: '100%',
           height: '100%',
           display: 'block',
-          cursor: panMode ? (panning ? 'grabbing' : 'grab') : placingCenter ? 'crosshair' : 'default',
+          cursor: panning ? (panMoved ? 'grabbing' : 'grab') : panMode ? 'grab' : placingCenter ? 'crosshair' : 'default',
           touchAction: 'none',
           // 드래그 시 SVG 글자가 브라우저 '텍스트 선택'으로 잡혀 주황
           // 선택 배경이 그려지는 문제 방지 — 캔버스 글자는 선택 대상이
@@ -2080,8 +2195,14 @@ export function Canvas({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={(e) => { handleTouchUp(e); cancelLongPress(); touchTapRef.current = null; pinchRef.current = null; dragRef.current = null; setPanning(false); cancelNodeDrag(); }}
-        onLostPointerCapture={cancelNodeDrag}
+        onPointerCancel={(e) => { handleTouchUp(e); cancelLongPress(); touchTapRef.current = null; pinchRef.current = null; endPanRef.current(false); cancelNodeDrag(); }}
+        onLostPointerCapture={(e) => {
+          // Capture transferred from a touched descendant is not a lost root
+          // gesture. Only react to loss of capture actually held by this SVG.
+          if (e.target !== e.currentTarget) return;
+          if (dragRef.current?.pointerId === e.pointerId || pinchRef.current?.a === e.pointerId || pinchRef.current?.b === e.pointerId) cancelCameraRef.current();
+          if (nodeDragRef.current?.pointerId === e.pointerId) cancelNodeDrag();
+        }}
         onClickCapture={(e: MouseEvent<SVGSVGElement>) => {
           if (!centerDragClickRef.current) return;
           centerDragClickRef.current = false;
@@ -2101,7 +2222,8 @@ export function Canvas({
         }}
       >
         <g
-          transform={`translate(${CX + panX} ${CY + panY}) scale(${scale}) translate(${-CX} ${-CY})`}
+          ref={worldRef}
+          transform={cameraTransform(CX, CY, panX, panY, zoom)}
         >
           {/* 시간배치 — 수평 시간축 화살표.
               · 타임라인: 시작점 오른쪽 변 → 마지막 주제 너머 한 줄. 주제는
@@ -2536,39 +2658,11 @@ export function Canvas({
         );
       })()}
 
-      {/* [협업 UI 숨김 — MVP] 캔버스 위 협업자 커서/이름 말풍선("박민호" 화살표).
-          협업자의 수정위치 표시는 협업 기능(V2) 개발 시 적용 예정.
-          featureFlags.ts의 COLLAB_PRESENCE_UI를 true로 바꾸면 다시 표시된다.
-          코드는 삭제하지 않고 보존. */}
-      {COLLAB_PRESENCE_UI && (
-        <CollabCursor
-          t={t}
-          collab={editingCollab}
-          W={W}
-          H={H}
-          nodes={nodes}
-          scale={scale}
-          CX={CX}
-          CY={CY}
-          panX={panX}
-          panY={panY}
-        />
-      )}
-
-      {/* 진짜 협업 커서 자리 — 공개판에서는 아무것도 그리지 않는다.
-          좌표 변환에 필요한 값을 **그대로** 넘긴다: 유료 모듈이 화면
-          기하를 다시 계산하면 확대·이동할 때 커서만 어긋난다. */}
-      {!basic && <ProCursorLayer
-        t={t}
-        W={W}
-        H={H}
-        nodes={nodes}
-        scale={scale}
-        CX={CX}
-        CY={CY}
-        panX={panX}
-        panY={panY}
-      />}
+      {/* Presence has its own live camera subscription. Map contents can keep
+          the overscanned render snapshot without leaving cursors behind. */}
+      <CanvasCursorLayer t={t} collab={editingCollab} W={W} H={H} nodes={nodes}
+        CX={CX} CY={CY} basic={basic} homeGuard={homeGuard}
+        guardedPanX={panX} guardedPanY={panY} />
     </div>
   );
 }

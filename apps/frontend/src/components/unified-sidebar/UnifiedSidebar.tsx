@@ -38,7 +38,7 @@ import { ProFeaturePanel } from '@pro';
 import { useTr } from '@/i18n';
 import { useCoarse, usePhoneLayout } from '@/hooks/useViewport';
 
-export type NavTabKey       = 'newMap' | 'search' | 'template' | 'history' | 'mapSettings' | 'collab';
+export type NavTabKey       = 'newMap' | 'search' | 'template' | 'history' | 'mapSettings' | 'collab' | 'plugins';
 export type InspectorTabKey = 'style' | 'layout' | 'icon' | 'content' | 'note' | 'ai';
 export type SidebarSection  = 'nav' | 'inspector';
 
@@ -108,6 +108,7 @@ export function UnifiedSidebar({
     // 맵 전체 설정 (레벨별 폰트 등) — 특정 노드가 아닌 맵 단위 설정 메뉴
     { key: 'mapSettings' as NavTabKey, label: tr('shell.sidebar.mapSettings'), icon: <I.Settings size={17} /> },
   ];
+  navItems.push({ key: 'plugins' as NavTabKey, label: 'Integrations', icon: <I.Link size={17} /> });
   const inspectorItems = [
     { key: 'style'   as InspectorTabKey, label: tr('shell.sidebar.style'), icon: <I.Palette size={17} /> },
     { key: 'layout'  as InspectorTabKey, label: tr('shell.sidebar.layout'), icon: <I.Layout size={17} /> },
@@ -397,7 +398,7 @@ function NavContent({ t, tab, onClose }: {
   t: ThemeTokens; tab: NavTabKey; onClose: () => void;
 }) {
   const tr = useTr();
-  const title = tr(({
+  const title = tab === 'plugins' ? 'Integrations' : tr(({
     newMap:      'shell.sidebar.newMap',
     search:      'common.search',
     template:    'shell.sidebar.template',
@@ -422,6 +423,7 @@ function NavContent({ t, tab, onClose }: {
         {tab === 'history'     && <HistoryPanel t={t} />}
         {tab === 'mapSettings' && <MapSettingsPanel t={t} />}
         {tab === 'collab'      && <ProFeaturePanel t={t} featureId="collab" />}
+        {tab === 'plugins'     && <ProFeaturePanel t={t} featureId="plugins" />}
       </div>
     </>
   );

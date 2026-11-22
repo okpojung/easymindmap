@@ -31,10 +31,15 @@ interface Props {
    * 스크롤로 구현한다. 노드 추가·삭제·전체화면은 동일.
    */
   kanban?: boolean;
+  /**
+   * Memory-only hosts (/try). Hides server-linked map actions and multi-add
+   * (an import dialog the host does not mount). All local tools stay.
+   */
+  localOnly?: boolean;
 }
 
 export function CanvasFloatingToolbar({
-  t, hasSelection, focusActive, onFitView, onFocusSelected, kanban,
+  t, hasSelection, focusActive, onFitView, onFocusSelected, kanban, localOnly,
 }: Props) {
   const selectedId = useInteractionStore((state) => state.selectedId);
   const setSelectedId = useInteractionStore((state) => state.setSelectedId);
@@ -262,7 +267,7 @@ export function CanvasFloatingToolbar({
       }}
     >
       <MenuItem t={t} wrap={compact} testId="add-menu-child" label={tr('editor.toolbar.addChild')} hint={tr('editor.toolbar.addChildHint')} onClick={() => { setAddMenuOpen(false); handleAddNode(); }} />
-      <MenuItem t={t} wrap={compact} testId="add-menu-multi" label={tr('editor.toolbar.addMulti')} hint={tr('editor.toolbar.addMultiHint')} onClick={() => { setAddMenuOpen(false); setMultiAddOpen(true); }} />
+      {!localOnly && <MenuItem t={t} wrap={compact} testId="add-menu-multi" label={tr('editor.toolbar.addMulti')} hint={tr('editor.toolbar.addMultiHint')} onClick={() => { setAddMenuOpen(false); setMultiAddOpen(true); }} />}
       <MenuItem t={t} wrap={compact} testId="add-menu-calendar" label={tr('editor.toolbar.addCalendar')} hint={tr('editor.toolbar.addCalendarHint')} onClick={openCalendar} />
     </div>
   );
@@ -303,7 +308,7 @@ export function CanvasFloatingToolbar({
             hidden: !!kanban,
           },
           { key: 'child', icon: <I.Plus size={16} />, label: tr('editor.toolbar.addChild'), disabled: !hasSelection, onClick: close(handleAddNode) },
-          { key: 'multi', icon: <span style={{ fontWeight: 700, fontSize: 13 }}>≡+</span>, label: tr('editor.toolbar.addMulti'), disabled: !hasSelection, onClick: close(() => setMultiAddOpen(true)) },
+          ...(localOnly ? [] : [{ key: 'multi', icon: <span style={{ fontWeight: 700, fontSize: 13 }}>≡+</span>, label: tr('editor.toolbar.addMulti'), disabled: !hasSelection, onClick: close(() => setMultiAddOpen(true)) }]),
           { key: 'calendar', icon: <span style={{ fontSize: 14 }}>📅</span>, label: tr('editor.toolbar.addCalendar'), disabled: !hasSelection, onClick: () => { setMoreOpen(false); openCalendar(); } },
           {
             key: 'connect', icon: connectIcon, testId: 'connect-node', hidden: !!kanban,
@@ -329,7 +334,7 @@ export function CanvasFloatingToolbar({
           { key: 'merge', icon: <I.FolderMove size={16} />, testId: 'center-merge', label: tr('editor.toolbar.m.merge'), disabled: !selectedIsCenter || centerCount < 2, onClick: close(handleMerge) },
         ] as MoreItem[],
       }]),
-      ...(kanban ? [] : [{
+      ...(kanban || localOnly ? [] : [{
         label: tr('cloud.linked.group'),
         items: linkMenu.items.map((it) => ({
           key: it.key, icon: it.icon, label: it.label, testId: it.testId, disabled: it.disabled,
@@ -387,7 +392,7 @@ export function CanvasFloatingToolbar({
           {addMenu}
         </span>
         {calendarDlg}
-        {linkMenu.dialog}
+        {!localOnly && linkMenu.dialog}
         <ToolbarBtn
           t={t}
           title={selectedConnectorId ? tr('editor.toolbar.deleteConnector') : tr('editor.toolbar.deleteNode')}
@@ -560,7 +565,7 @@ export function CanvasFloatingToolbar({
             <I.FolderMove size={15} />
           </ToolbarBtn>
           {/* 연결 맵 (2026-10-14) — 단추 하나에 메뉴 4개(새 맵으로 저장·붙이기·열기·끊기) */}
-          <span data-link-menu="" style={{ position: 'relative', display: 'inline-flex' }}>
+          {!localOnly && <span data-link-menu="" style={{ position: 'relative', display: 'inline-flex' }}>
             <ToolbarBtn
               t={t}
               title={tr('cloud.linked.menu')}
@@ -592,8 +597,8 @@ export function CanvasFloatingToolbar({
                 ))}
               </div>
             )}
-          </span>
-          {linkMenu.dialog}
+          </span>}
+          {!localOnly && linkMenu.dialog}
         </>
       )}
 

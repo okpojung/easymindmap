@@ -20,6 +20,7 @@
 import type { MindNode, SampleMap } from './model';
 import { fenceFor, fencedBlock, isClosingFence, openFence } from './fence';
 import { buildDeclaration, type EmmDeclaration } from './declaration';
+import { isLocalAttachmentUrl } from './localAttachmentUrl';
 import { projectLine } from './project-line';
 
 export interface EmmImageFile {
@@ -285,7 +286,7 @@ export function buildEmmBody(
   const pushAttachments = (node: { attachments?: { id: string; name: string; url?: string }[] }) => {
     for (const a of node.attachments ?? []) {
       const path = opts.attachmentPaths?.get(a.id)
-        ?? (a.url && /^https?:\/\//i.test(a.url) ? a.url : undefined);
+        ?? (a.url && (/^https?:\/\//i.test(a.url) || isLocalAttachmentUrl(a.url)) ? a.url : undefined);
       if (!path) continue;
       lines.push('');
       lines.push(`📎 [${oneLine(a.name) || a.id}](${path})`);

@@ -1,17 +1,28 @@
-import { fetchServerImageDataUrls } from '@/export/serverImages';
-import { buildMarkdownExportPackage } from '@/export/exportMarkdown';
 import assert from 'node:assert/strict';
-import * as local from './localAttachments';
-import { useAuthStore } from '@/stores/authStore';
-import { localPreviewMime, openAttachment } from './openAttachment';
-import { downloadAttachment } from './downloadAttachment';
-import { loadHtmlExportResource } from '@/export/htmlAssetExport';
-import { parseHtmlMapFile } from '@/utils/importMapFile';
-import { inlineProtectedMapAssets } from '@/export/protectedMapAssets';
-import { downloadMapAsEncryptedHtml } from '@/export/encryptedMap';
-import { buildPreparedHtmlExport } from '@/export/htmlAssetExport';
-import { buildExportPackage, buildStandaloneHtml } from '@/export/exportHtml';
-import { prepareHtmlAssets, layoutHtmlAssets } from '@/export/htmlAssetPolicy';
+
+// Node 22 has no default Web Storage. Install the isolated browser fixture
+// before app modules create Zustand persist stores, regardless of Node version.
+const persistedTestStrings = new Map<string, string>();
+Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: (key: string) => persistedTestStrings.get(key) ?? null,
+    setItem: (key: string, value: string) => { persistedTestStrings.set(key, String(value)); },
+    removeItem: (key: string) => { persistedTestStrings.delete(key); },
+    clear: () => { persistedTestStrings.clear(); },
+    key: (index: number) => [...persistedTestStrings.keys()][index] ?? null,
+    get length() { return persistedTestStrings.size; },
+} satisfies Storage });
+const { fetchServerImageDataUrls } = await import('@/export/serverImages');
+const { buildMarkdownExportPackage } = await import('@/export/exportMarkdown');
+const local = await import('./localAttachments');
+const { useAuthStore } = await import('@/stores/authStore');
+const { localPreviewMime, openAttachment } = await import('./openAttachment');
+const { downloadAttachment } = await import('./downloadAttachment');
+const { loadHtmlExportResource, buildPreparedHtmlExport } = await import('@/export/htmlAssetExport');
+const { parseHtmlMapFile } = await import('@/utils/importMapFile');
+const { inlineProtectedMapAssets } = await import('@/export/protectedMapAssets');
+const { downloadMapAsEncryptedHtml } = await import('@/export/encryptedMap');
+const { buildExportPackage, buildStandaloneHtml } = await import('@/export/exportHtml');
+const { prepareHtmlAssets, layoutHtmlAssets } = await import('@/export/htmlAssetPolicy');
 const stored = new Map(), logs: string[] = [];
 let onPut: (() => void) | undefined;
 const db = { createObjectStore() {

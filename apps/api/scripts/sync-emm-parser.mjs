@@ -35,8 +35,10 @@ const DEST = join(here, '..', 'src', 'emm');
 // 의존 닫힘 — parseMarkdownToMap: parse.ts → { model, frontMatter, setext }
 // (1단계 create_map), buildEmmBody: serialize.ts → { declaration }
 // (2단계 get_map), readDeclaration: declaration.ts (create_map 의 template —
-// 문서의 ```emm 선언). 이 여덟 말고는 아무것도 필요 없다(런타임 의존도 없다).
-const FILES = ['model.ts', 'table-wrap.ts', 'frontMatter.ts', 'setext.ts', 'fence.ts', 'parse.ts', 'serialize.ts', 'meta.ts', 'note-images.ts', 'declaration.ts', 'project-line.ts'];
+// 문서의 ```emm 선언).
+// localAttachmentUrl.ts 는 parse/serialize 의 순수 상대경로 참조 검증기다.
+// 이 목록이 런타임 의존 닫힘이다(외부 런타임 의존성은 없다).
+const FILES = ['model.ts', 'localAttachmentUrl.ts', 'table-wrap.ts', 'frontMatter.ts', 'setext.ts', 'fence.ts', 'parse.ts', 'serialize.ts', 'meta.ts', 'note-images.ts', 'declaration.ts', 'project-line.ts'];
 
 const BANNER = (name) =>
   `// ⚠️ 자동 복사본 — 직접 고치지 마세요.\n` +

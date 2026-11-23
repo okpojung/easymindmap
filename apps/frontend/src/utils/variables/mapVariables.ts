@@ -13,7 +13,7 @@ import { fillText, varsInText } from './varSyntax';
 
 export type { MapVariable, VariableType };
 
-export const VARIABLE_TYPES: VariableType[] = ['number', 'currency', 'date', 'time', 'percent', 'text', 'phone', 'koreanNumber', 'email', 'formula', 'node', 'count'];
+export const VARIABLE_TYPES: VariableType[] = ['number', 'currency', 'date', 'time', 'percent', 'text', 'phone', 'koreanNumber', 'email', 'formula', 'node', 'count', 'api', 'sql'];
 /** 앱이 계산하는 타입 — 사람이 값을 넣지 않고 DB 값도 쓰지 않는다 */
 export const COMPUTED_TYPES: readonly VariableType[] = ['formula', 'node', 'count'];
 
@@ -21,7 +21,7 @@ export const COMPUTED_TYPES: readonly VariableType[] = ['formula', 'node', 'coun
 export const DEFAULT_FORMAT: Record<VariableType, string> = {
   number: '#,##0', currency: '₩#,##0', date: 'yyyy-mm-dd', time: 'hh:mm', percent: '0%',
   text: '@', phone: '', koreanNumber: '[DBNum4]G/표준', email: '@', formula: 'G/표준',
-  node: 'first', count: '#,##0',
+  node: 'first', count: '#,##0', api: 'G/표준', sql: 'G/표준',
 };
 /** 서식 고르기 목록 (자주 쓰는 것) — 직접 입력도 된다 */
 export const FORMAT_PRESETS: Record<VariableType, string[]> = {
@@ -35,11 +35,25 @@ export const FORMAT_PRESETS: Record<VariableType, string[]> = {
   koreanNumber: ['[DBNum4]G/표준', '"일금 "[DBNum4]G/표준"원정"', '[DBNum1]G/표준', '[DBNum2]G/표준'],
   email: ['@'],
   formula: ['G/표준', '#,##0', '#,##0.00', '₩#,##0', '0%', '0.0%', 'yyyy-mm-dd'],
+  api: ['G/표준', '#,##0', '#,##0.00', '₩#,##0', '0%', 'yyyy-mm-dd', '@'],
+  sql: ['G/표준', '#,##0', '#,##0.00', '₩#,##0', '0%', 'yyyy-mm-dd', '@'],
   node: ['first', 'all'],
   count: ['#,##0', '0', '#,##0"개"', '#,##0"명"'],
 };
 
 const isErr = (v: unknown): v is FErr => v instanceof FErr;
+
+/** Number 왕복으로 값이 바뀌는 외부 숫자 문자열은 글자로 보존한다. */
+function decimalKey(value: string): string {
+  const m = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(value);
+  if (!m) return value;
+  let digits = (m[2] + (m[3] ?? '')).replace(/^0+/, '');
+  if (!digits) return '0';
+  const zeros = /0+$/.exec(digits)?.[0].length ?? 0;
+  if (zeros) digits = digits.slice(0, -zeros);
+  const exponent = Number(m[4] ?? 0) - (m[3]?.length ?? 0) + zeros;
+  return `${m[1]}${digits}e${exponent}`;
+}
 
 function parseNumber(raw: string): number | null {
   const t = raw.trim().replace(/[,\s₩$원]/g, '');
@@ -67,6 +81,13 @@ export function parseRaw(type: VariableType, raw: string | undefined | null): FV
   const s = String(raw ?? '');
   if (!s.trim()) return null;
   switch (type) {
+    case 'api': case 'sql': {
+      // 정규 십진수만 숫자로 읽는다. 00123 같은 식별자·수식·비유한값은 원문 그대로.
+      const v = s.trim();
+      const n = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(v) ? Number(v) : NaN;
+      return Number.isFinite(n) && (!Number.isInteger(n) || Number.isSafeInteger(n))
+        && decimalKey(v) === decimalKey(String(n)) ? n : s;
+    }
     case 'number': case 'currency': case 'koreanNumber': {
       const n = parseNumber(s); return n === null ? new FErr('#VALUE!') : n;
     }

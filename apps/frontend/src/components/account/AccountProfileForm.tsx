@@ -10,31 +10,43 @@
 // 지워진다) 언제나 둘 다 실어 보낸다. 읽기가 실패했으면 "등록되지 않음"이
 // 아니라 **실패한 이유**를 보여 준다 — 둘은 다른 상황이다.
 
+import { ProPhoneVerification } from '@pro';
 import { useEffect, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
-import { useAuthStore } from '@/stores/authStore';
-import { useProfileStore } from '@/stores/profileStore';
+import { isAuthIdentityCurrent, useAuthStore, type AuthIdentity } from '@/stores/authStore';
+import { profileOwner, useProfileStore } from '@/stores/profileStore';
 import { COUNTRIES, DEFAULT_COUNTRY, countryName, formatPhone as formatPhoneInput } from '@/utils/countryCodes';
 import { AVATAR_EMOJIS, nameProblem } from '@/utils/profileName';
 import { fileToAvatarDataUrl } from '@/utils/avatarImage';
 import { AvatarBadge } from './AvatarBadge';
 import { useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
+import { LocalFolderSettings } from '@/components/attachments/LocalFolderSettings';
 
-export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
+interface FormProps {
   t: ThemeTokens;
   onSaved?: (m: string) => void;
   /** 회원탈퇴 흐름을 여는 것 — 계정 메뉴에서 이 창으로 옮겼다 (2026-09-08) */
   onDeleteAccount?: () => void;
-}) {
+}
+export function AccountProfileForm(props: FormProps) {
+  const generation = useAuthStore(s => s.generation);
+  const userId = useAuthStore(s => s.session?.userId ?? null);
+  return <AccountFormFields key={generation + ':' + userId} {...props} identity={{ generation, userId }} />;
+}
+function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps & { identity: AuthIdentity }) {
   const session = useAuthStore((s) => s.session);
-  const profile = useProfileStore((s) => s.profile);
-  const loaded = useProfileStore((s) => s.loaded);
-  const loadError = useProfileStore((s) => s.error);
+  const owner = profileOwner(identity);
+  const current = () => isAuthIdentityCurrent(identity);
+  const profile = useProfileStore((s) => s.forUser === owner ? s.profile : null);
+  const loaded = useProfileStore((s) => s.loaded && s.forUser === owner && !!s.profile);
+  const loadError = useProfileStore((s) => s.forUser === owner ? s.error : null);
   const load = useProfileStore((s) => s.load);
   const setProfile = useProfileStore((s) => s.setProfile);
-  const [name, setName] = useState(profile?.fullName ?? '');
+  const [phoneBusy,setPhoneBusy]=useState(false);
+  const [editedName, setName] = useState<string | null>(null);
+  const name = editedName ?? profile?.fullName ?? '';
   const [dial, setDial] = useState((profile?.phoneCountry ?? '').replace(/\D/g, '') || DEFAULT_COUNTRY.dial);
   const [phone, setPhone] = useState(profile?.phoneNumber ?? '');
   const [busy, setBusy] = useState(false);
@@ -50,12 +62,10 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
   useEffect(() => { void load(); }, [load]);
   // 서버에서 읽어 오면 입력칸을 그 값으로
   useEffect(() => {
-    setAvatar(undefined);
-    setName(profile?.fullName ?? '');
     const cc = (profile?.phoneCountry ?? '').replace(/\D/g, '');
     setDial(cc || DEFAULT_COUNTRY.dial);
     setPhone(profile?.phoneNumber ? formatPhoneInput(cc || DEFAULT_COUNTRY.dial, profile.phoneNumber) : '');
-  }, [profile?.fullName, profile?.phoneCountry, profile?.phoneNumber]);
+  }, [profile?.phoneCountry, profile?.phoneNumber]);
 
   const phoneDigits = phone.replace(/\D/g, '');
   const savedDigits = (profile?.phoneNumber ?? '').replace(/\D/g, '');
@@ -67,6 +77,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
     || avatarDirty;
 
   const save = async () => {
+    if (!current() || !canSave) return;
     const fullName = name.trim();
     { const bad = nameProblem(fullName); if (bad) { setError(bad); return; } }
     if (phoneDigits && phoneDigits.length < 6) { setError(tr('auth.profile.phoneTooShort')); return; }
@@ -78,12 +89,16 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
         phoneNumber: phoneDigits || undefined,
         ...(avatarDirty ? { avatar: avatar ?? null } : {}),
       });
-      setProfile(p);
-      onSaved?.(tr('auth.profile.saved'));
+      if (!current()) return;
+      setProfile(p, identity);
+      if (!current()) return;
+      setName(null);
+      setAvatar(undefined);
+      if (current()) onSaved?.(tr('auth.profile.saved'));
     } catch (err) {
-      setError(err instanceof CloudError ? err.message : tr('auth.profile.saveFailed'));
+      if (current()) setError(err instanceof CloudError ? err.message : tr('auth.profile.saveFailed'));
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   };
 
@@ -93,17 +108,19 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
     borderRadius: 7, border: `1px solid ${t.border}`, fontSize: 13, color: t.text, background: t.surface,
   };
   const ro = { ...box, width: '100%', display: 'flex', alignItems: 'center', background: t.surfaceAlt, color: t.textMuted };
-  const canSave = loaded && !busy && dirty;
+  const changedVerified = !!profile?.phoneVerifiedAt && (phoneDigits !== savedDigits || dial !== savedDial);
+  const canSave = loaded && !busy && !phoneBusy && !changedVerified && dirty;
 
   const pickFile = async (f: File | undefined) => {
     if (!f) return;
     setError(null);
     try {
-      setAvatar(await fileToAvatarDataUrl(f));
+      const image = await fileToAvatarDataUrl(f);
+      if (current()) setAvatar(image);
     } catch (err) {
-      setError(err instanceof Error ? err.message : tr('auth.profile.photoReadFailed'));
+      if (current()) setError(err instanceof Error ? err.message : tr('auth.profile.photoReadFailed'));
     } finally {
-      if (fileRef.current) fileRef.current.value = '';
+      if (current() && fileRef.current) fileRef.current.value = '';
     }
   };
   const chip = (active: boolean) => ({
@@ -167,7 +184,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
         }}>
           {tr('auth.profile.loadError', { why: loadError })}
           <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 2 }}>
-            {tr('auth.profile.loadErrorHint')}
+            {tr('auth.profile.loadErrorHint')} <button type="button" onClick={() => { if (current()) void load({ force: true }); }}>{tr('common.retry')}</button>
           </div>
         </div>
       )}
@@ -219,6 +236,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
           />
         </div>
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 4 }}>
+          <ProPhoneVerification key={[session?.userId,dial,phoneDigits].join(':')} mode="profile" country={dial} phone={phoneDigits} verified={!!profile?.phoneVerifiedAt && !changedVerified} disabled={busy || !loaded} onBusy={setPhoneBusy} onSuccess={async () => { if (current()) await load({ force: true }); }} />
           {loaded && !savedDigits && !loadError ? tr('auth.profile.phoneEmpty') : tr('auth.profile.phoneNote')}
         </div>
       </div>
@@ -235,6 +253,7 @@ export function AccountProfileForm({ t, onSaved, onDeleteAccount }: {
           cursor: canSave ? 'pointer' : 'default', opacity: canSave ? 1 : 0.55,
         }}
       >{busy ? tr('common.saving') : tr('common.save')}</button>
+      <LocalFolderSettings t={t} />
       {onDeleteAccount && (
         <div style={{ borderTop: `1px solid ${t.divider}`, paddingTop: 8, textAlign: 'right' }}>
           {/* 회원탈퇴 — 계정 메뉴의 로그아웃 밑에서 여기로 (2026-09-08 사용자 요청:

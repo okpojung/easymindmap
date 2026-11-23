@@ -34,6 +34,7 @@ import { WelcomeScreen } from '@/components/auth/WelcomeScreen';
 import { GuestBrowserNotice } from '@/components/auth/GuestBrowserNotice';
 import { MapBrowser } from '@/components/cloud/MapBrowser';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
+import { LocalAttachmentAccessHost } from '@/components/attachments/LocalAttachmentAccessHost';
 import {
   clearCurrentMap, detachFromServer, editSessionKey, forgetUrlMapId, initialMapId, openMapHere,
   refreshFromServer,
@@ -764,6 +765,7 @@ export function EditorPage() {
       )}
 
       <MultiAddDialog t={t} />
+      <LocalAttachmentAccessHost t={t} />
     </div>
   );
 }

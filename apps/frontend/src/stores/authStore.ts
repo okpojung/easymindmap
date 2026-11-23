@@ -14,7 +14,34 @@ import {
 } from '@/services/cloud/supabaseAuth';
 import { clearAllLocalDrafts, pauseLocalDrafts } from '@/hooks/useLocalDraft';
 
+import { clearAiKeysOnLogout } from '@/services/cloud/aiKeysSync';
+
+export interface AuthIdentity { readonly generation: number; readonly userId: string | null }
+export function captureAuthIdentity(): AuthIdentity {
+  const {generation, session} = useAuthStore.getState();
+  return { generation, userId: session?.userId ?? null };
+}
+export function isAuthIdentityCurrent(id: AuthIdentity): boolean {
+  const s = useAuthStore.getState();
+  return s.generation === id.generation && (s.session?.userId ?? null) === id.userId;
+}
+
+// A later account may open before IndexedDB has finished clearing the old drafts.
+// Keep draft writes paused through that cleanup, including guest transitions.
+let clearingDrafts: Promise<void> | null = null;
+function discardDrafts(): Promise<void> {
+  if (clearingDrafts) return clearingDrafts;
+  clearingDrafts = clearAllLocalDrafts().finally(() => {
+    clearingDrafts = null;
+    const s = useAuthStore.getState();
+    if (s.session || s.guest) pauseLocalDrafts(false);
+  });
+  return clearingDrafts;
+}
+function resumeDrafts(): void { if (!clearingDrafts) pauseLocalDrafts(false); }
+
 interface AuthState {
+  generation: number;
   session: AuthSession | null;
   /**
    * Guest 체험 모드 (2026-08-04) — 가입 없이 로컬 에디터만 쓴다.
@@ -25,7 +52,7 @@ interface AuthState {
   guest: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   /** 가입 — 세션이 곧바로 오면 로그인까지 완료. false = 이메일 확인 필요 */
-  signUp: (email: string, password: string) => Promise<boolean>;
+  signUp: (email: string, password: string) => Promise<{ signedIn: boolean; identity: AuthIdentity }>;
   signOut: () => Promise<void>;
   setSession: (s: AuthSession | null) => void;
   enterGuest: () => void;
@@ -42,9 +69,9 @@ interface AuthState {
  * **실패해도 로그인은 성공이다.** 기록은 곁들이지 로그인의 조건이 아니다 —
  * 그래서 await 하지 않고, 오류도 삼킨다(서버가 낡아 404 여도 마찬가지).
  */
-function noteLogin(): void {
+function noteLogin(id: AuthIdentity): void {
   void import('@/services/cloud/apiClient')
-    .then((m) => m.cloudApi.recordLogin())
+    .then((m) => isAuthIdentityCurrent(id) ? m.cloudApi.recordLogin() : undefined)
     .catch(() => { /* 기록 실패가 로그인을 막지 않는다 */ });
 }
 
@@ -53,49 +80,46 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       session: null,
       guest: false,
+      generation: 0,
 
       signIn: async (email, password) => {
+        const generation = get().generation + 1;
+        set({ generation });
         const s = await supabaseAuth.signIn(email, password);
-        set({ session: s, guest: false });
-        pauseLocalDrafts(false); // 주인이 생겼다 — 초안 보관 재개
-        noteLogin();
+        if (get().generation !== generation) throw new Error('Session changed');
+        get().setSession(s);
+        noteLogin({ generation: generation + 1, userId: s.userId });
       },
 
       signUp: async (email, password) => {
+        const generation = get().generation + 1;
+        set({ generation });
         const s = await supabaseAuth.signUp(email, password);
-        if (s) {
-          set({ session: s, guest: false });
-          pauseLocalDrafts(false);
-          noteLogin();
-          return true;
-        }
-        return false;
+        if (get().generation !== generation) throw new Error('Session changed');
+        if (!s) return { signedIn: false, identity: captureAuthIdentity() };
+        get().setSession(s);
+        const identity = { generation: generation + 1, userId: s.userId };
+        noteLogin(identity);
+        return { signedIn: true, identity };
       },
 
       signOut: async () => {
         const cur = get().session;
-        set({ session: null, guest: false });
-        // **이 브라우저에 남은 로컬 초안을 지운다** (2026-08-07 사용자 결정).
-        // 초안은 계정이 아니라 브라우저에 붙어 있어서, 남겨 두면 공용 PC
-        // 에서 다음 사람이 로그인했을 때 앞사람 문서가 복구 배너로 뜬다.
-        // 서버 로그아웃이 실패해도 이건 반드시 해야 하므로 먼저 한다.
-        await clearAllLocalDrafts();
-        // 계정에서 받아 온 AI API 키도 지운다 — 공용 PC 에 남기지 않는다
-        // (동적 import: aiKeysSync → apiClient → 이 스토어 순환을 끊는다)
-        await import('@/services/cloud/aiKeysSync')
-          .then((m) => m.clearAiKeysOnLogout())
-          .catch(() => { /* 정리 실패가 로그아웃을 막지 않는다 */ });
-        if (cur) await supabaseAuth.signOut(cur.accessToken);
+        const generation = get().generation + 1;
+        const drafts = discardDrafts();
+        set({ generation, session: null, guest: false });
+        if (get().generation === generation) {
+          try { clearAiKeysOnLogout(); } catch { /* best-effort local cleanup */ }
+        }
+        await Promise.all([drafts, cur && supabaseAuth.signOut(cur.accessToken)]);
       },
 
       setSession: (s) => {
-        set({ session: s, ...(s ? { guest: false } : {}) });
-        // 주인이 생겼으면 초안 보관을 다시 켠다 (로그아웃 중엔 꺼 둔다).
-        if (s) pauseLocalDrafts(false);
+        set({ generation: get().generation + 1, session: s, ...(s ? { guest: false } : {}) });
+        if (s && get().session === s) resumeDrafts();
       },
-      enterGuest: () => { set({ guest: true, session: null }); pauseLocalDrafts(false); },
-      // Guest 종료도 로그아웃이다 — 같은 이유로 초안을 지운다.
-      exitGuest: () => { set({ guest: false }); void clearAllLocalDrafts(); },
+      enterGuest: () => { set({ generation: get().generation + 1, guest: true, session: null }); resumeDrafts(); },
+      exitGuest: () => { void discardDrafts(); set({ generation: get().generation + 1, guest: false }); },
     }),
     {
       name: 'emm.auth',
@@ -111,24 +135,25 @@ export { authEnabled };
  * 만료(60초 여유)면 refresh 토큰으로 갱신을 시도하고, 갱신 실패 시
  * 세션을 지우고 null(= 재로그인 필요)을 반환한다.
  */
+let refreshing: { generation: number; result: Promise<string | null> } | null = null;
 export async function getFreshAccessToken(): Promise<string | null> {
   if (!authEnabled) return null;
   const st = useAuthStore.getState();
   const s = st.session;
   if (!s) return null;
   if (Date.now() < s.expiresAt - 60_000) return s.accessToken;
-  try {
-    const next = await supabaseAuth.refresh(s.refreshToken);
-    // refresh 응답에는 user 가 없을 수 있다 — 기존 식별 정보 유지
-    const merged = {
-      ...next,
-      userId: next.userId || s.userId,
-      email: next.email || s.email,
-    };
-    st.setSession(merged);
-    return merged.accessToken;
-  } catch {
-    st.setSession(null);
+  const id = captureAuthIdentity();
+  if (refreshing?.generation === id.generation) return refreshing.result;
+  const result = supabaseAuth.refresh(s.refreshToken).then(next => {
+    if (!isAuthIdentityCurrent(id)) return null;
+    if (next.userId && next.userId !== s.userId) throw new Error('Unexpected refresh identity');
+    const session = { ...next, userId: s.userId, email: next.email || s.email };
+    useAuthStore.setState({ session }); // credential rotation, not an account transition
+    return isAuthIdentityCurrent(id) ? session.accessToken : null;
+  }).catch(() => {
+    if (isAuthIdentityCurrent(id)) st.setSession(null);
     return null;
-  }
+  }).finally(() => { if (refreshing?.result === result) refreshing = null; });
+  refreshing = { generation: id.generation, result };
+  return result;
 }

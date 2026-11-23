@@ -26,6 +26,10 @@ import { newMdDocument } from '@/utils/newMdDocument';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
 import { ClipboardImageButton, FilePickerButton, addBtnStyle, inputStyle } from './ContentTab';
 import { useTr } from '@/i18n';
+import { AttachmentBadge } from '@/components/attachments/AttachmentBadge';
+import { attachFromThisPc } from '@/components/attachments/attachFromThisPc';
+import { useLocalFolderState } from '@/components/attachments/useLocalFolderState';
+import '@/components/attachments/register';
 import '@/components/ui/mobileCss';
 
 type Kind = 'link' | 'attach' | 'md';
@@ -109,7 +113,8 @@ function ResourceTab({ t, selectedId, kind }: { t: ThemeTokens; selectedId: stri
   useEffect(() => { setErr(null); }, [selectedId, kind]);
 
   const title = tr('inspector.res.' + kind + '.list');
-  const canAdd = !!selNode && !isGuest;
+  // 게스트는 서버 업로드만 막힌다 — 이 PC 파일 연결(첨부 탭)은 가능하다
+  const canAdd = !!selNode && (!isGuest || kind === 'attach');
   // MD [＋ 추가] = 바로 새 문서를 만들어 오른쪽 칸 편집기로 연다 (2026-11-14 사용자 요청).
   //   이름은 노드 글 첫 줄(10자까지), 같은 이름이 있으면 ' (2)' … 를 붙인다. 파일 붙이기는 옆의 [📎] 로.
   const addFiles = useAddFiles(selectedId ?? '', setErr);
@@ -167,7 +172,7 @@ function ResourceTab({ t, selectedId, kind }: { t: ThemeTokens; selectedId: stri
         {addOpen && canAdd && selectedId && (
           <div data-testid="res-add" style={{ marginTop: 8 }}>
             {kind === 'link' && <LinkAdd t={t} nodeId={selectedId} onDone={() => setAddOpen(false)} />}
-            {kind === 'attach' && <AttachAdd t={t} nodeId={selectedId} onError={setErr} />}
+            {kind === 'attach' && <AttachAdd t={t} nodeId={selectedId} onError={setErr} serverBlocked={isGuest} />}
             {kind === 'md' && <MdAdd t={t} nodeId={selectedId} onError={setErr} />}
           </div>
         )}
@@ -307,7 +312,7 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div data-testid="res-name" title={main} style={{ fontSize: 11.5, fontWeight: 600, color: link ? t.accent : t.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{main}</div>
             <div style={{ fontSize: 10, color: t.textSubtle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {sub ? sub + ' · ' : ''}{tr('inspector.res.inNode', { name: row.nodeText })}
+              {att && <><AttachmentBadge url={att.url} />{' '}</>}{sub ? sub + ' · ' : ''}{tr('inspector.res.inNode', { name: row.nodeText })}
             </div>
           </div>
           <button type="button" data-testid="res-open" style={icoBtn} disabled={!!att && !att.url}
@@ -471,16 +476,40 @@ function useAddFiles(nodeId: string, onError: (m: string | null) => void) {
   };
 }
 
-function AttachAdd({ t, nodeId, onError }: { t: ThemeTokens; nodeId: string; onError: (m: string | null) => void }) {
+function AttachAdd({ t, nodeId, onError, serverBlocked }: { t: ThemeTokens; nodeId: string; onError: (m: string | null) => void; serverBlocked?: boolean }) {
   const tr = useTr();
   const add = useAddFiles(nodeId, onError);
+  const folder = useLocalFolderState();
+  const unsupported = folder.status === 'unsupported';
+  const [localBusy, setLocalBusy] = useState(false);
+  // 클릭 핸들러에서 동기로 선택창을 연다 — 서버 업로드와 완전히 다른 경로
+  const linkLocal = () => {
+    if (localBusy || unsupported) return;
+    onError(null); setLocalBusy(true);
+    void attachFromThisPc(nodeId).then((r) => {
+      if (r === 'changed') onError(tr('localAtt.changed'));
+      else if (r === 'connected') onError(tr('localAtt.connected'));
+      else if (r === 'loading') onError(tr('localAtt.loading'));
+      else if (r === 'unsupported') onError(tr('localAtt.menu.unsupported'));
+      else if (r === 'failed') onError(tr('localAtt.failed'));
+    }).finally(() => setLocalBusy(false));
+  };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      <FilePickerButton t={t} label={tr('inspector.res.attach.pick')}
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.hwp,.hwpx,.zip,audio/*,video/*,image/*"
-        onFiles={(files) => add(files)} />
-      <ClipboardImageButton t={t} onFiles={(files) => add(files)} onError={(m) => onError(m)} />
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.textMuted, marginBottom: 2 }}>{tr('localAtt.res.serverHead')}</div>
+      <div data-testid="res-attach-server" style={{ opacity: serverBlocked ? 0.45 : 1, pointerEvents: serverBlocked ? 'none' : undefined }} aria-disabled={serverBlocked || undefined}>
+        <FilePickerButton t={t} label={tr('inspector.res.attach.pick')} disabled={serverBlocked}
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.hwp,.hwpx,.zip,audio/*,video/*,image/*"
+          onFiles={(files) => add(files)} />
+        {!serverBlocked && <ClipboardImageButton t={t} onFiles={(files) => add(files)} onError={(m) => onError(m)} />}
+      </div>
       <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>{tr('inspector.res.attach.help')}</div>
+      <button type="button" data-testid="res-attach-local" disabled={localBusy || unsupported} onClick={linkLocal}
+        title={unsupported ? tr('localAtt.menu.unsupported') : tr('localAtt.menu.localTip')}
+        style={{ ...addBtnStyle(t), marginTop: 8, padding: '6px 10px', opacity: unsupported ? 0.5 : 1, cursor: unsupported ? 'not-allowed' : 'pointer' }}>
+        {tr('localAtt.res.pickLocal')}
+      </button>
+      <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>{unsupported ? tr('localAtt.menu.unsupported') : tr('localAtt.res.localHelp')}</div>
     </div>
   );
 }

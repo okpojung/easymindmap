@@ -11,7 +11,7 @@
 //     `<!-- easymindmap:v1:BASE64(JSON) -->` 는 쓰지도 읽지도 않는다 —
 //     MD 는 본문(순수 GFM) + ```emm 선언 블록(declaration.ts)뿐이다.
 
-import { mapCenters, type EditorSpacing, type LayoutType, type SampleMap } from './model';
+import { publicMapVariables, mapCenters, type EditorSpacing, type LayoutType, type SampleMap } from './model';
 import { rewriteNotesImages, type NoteHtmlLike } from './note-images';
 
 export const MAP_FILE_FORMAT = 'easymindmap-map';
@@ -58,7 +58,7 @@ export function buildMapMeta(
       spacingX: spacing?.x,
       spacingY: spacing?.y,
     },
-    map,
+    map: publicMapVariables(map),
   };
 }
 
@@ -67,7 +67,7 @@ export function parseMetaJson(json: string): MapFileMeta | null {
   try {
     const meta = JSON.parse(json) as MapFileMeta;
     if (meta?.format !== MAP_FILE_FORMAT || !meta.map?.root) return null;
-    return meta;
+    return { ...meta, map: publicMapVariables(meta.map) };
   } catch {
     return null;
   }

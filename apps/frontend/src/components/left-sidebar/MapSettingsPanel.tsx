@@ -99,7 +99,7 @@ const SHAPE_OPTIONS: { key: ShapeType | ''; labelKey: string }[] = [
   { key: 'star',          labelKey: 'panel.settings.shape.star' },
 ];
 
-export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
+export function MapSettingsPanel({ t, embedded = false }: { t: ThemeTokens; embedded?: boolean }) {
   const tr = useTr();
   const levelFonts = useDocumentStore((s) => s.map.settings?.levelFonts);
   const levelLayouts = useDocumentStore((s) => s.map.settings?.levelLayouts);
@@ -134,6 +134,7 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
           맵이 아니라 **이 브라우저**의 설정이다. 2026-08-06 저장 모델
           개편 — 실시간 저장(디바운스)을 없애고 이 주기로만 서버에 올린다.
           그 사이 편집은 브라우저(IndexedDB)가 지킨다. */}
+      {!embedded && <>
       <div style={{
         fontSize: 11, fontWeight: 700, color: t.textSubtle,
         textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6,
@@ -159,6 +160,7 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
         {rich(tr('panel.settings.saveHelp'))}
       </div>
 
+      </>}
       <div style={{
         display: 'flex', alignItems: 'center', marginBottom: 6,
       }}>
@@ -305,6 +307,7 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
         })}
       </div>
 
+      {!embedded && <>
       <div style={{
         fontSize: 11, fontWeight: 700, color: t.textSubtle,
         textTransform: 'uppercase', letterSpacing: 0.5,
@@ -340,6 +343,7 @@ export function MapSettingsPanel({ t }: { t: ThemeTokens }) {
         </select>
       </div>
 
+      </>}
       <div style={{
         fontSize: 11, fontWeight: 700, color: t.textSubtle,
         textTransform: 'uppercase', letterSpacing: 0.5,

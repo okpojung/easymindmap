@@ -17,7 +17,8 @@ import { flushMdExits } from './mdExitGuard';
 //     저장을 받아 맵에 되쓴다 (mdEmbedBridge.ts, 같은 문서 §7.5).
 
 import { attachmentFetchUrl, cloudApiBase, serverAttachmentId } from '@/services/cloud/apiClient';
-import { getFreshAccessToken } from '@/stores/authStore';
+import { hasLocalScheme, isLocalAttachmentUrl, readLocalAttachment, notifyLocalAttachmentError } from './localAttachments';
+import { captureAuthIdentity, isAuthIdentityCurrent, useAuthStore, getFreshAccessToken } from '@/stores/authStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
@@ -45,17 +46,19 @@ function extOf(name: string): string {
 }
 
 function dataUrlToBlob(dataUrl: string, fallbackMime: string): Blob | null {
-  const m = /^data:([^;,]*)?(;base64)?,(.*)$/s.exec(dataUrl);
-  if (!m) return null;
-  const mime = m[1] || fallbackMime || 'application/octet-stream';
+  const comma = dataUrl.indexOf(',');
+  if (comma < 5) return null;
+  const head = dataUrl.slice(5,comma).split(';');
+  const mime = head[0] || fallbackMime || 'application/octet-stream';
+  const body = dataUrl.slice(comma+1);
   try {
-    if (m[2]) {
-      const bin = atob(m[3]);
+    if (head.length > 1 && head[head.length-1].toLowerCase() === 'base64') {
+      const bin = atob(body);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       return new Blob([bytes], { type: mime });
     }
-    return new Blob([decodeURIComponent(m[3])], { type: mime });
+    return new Blob([decodeURIComponent(body)], { type: mime });
   } catch {
     return null;
   }
@@ -72,12 +75,9 @@ function download(url: string, name: string) {
 
 // blob의 MIME이 비어 있거나 generic이면 파일 확장자로 보정한 Blob URL 생성
 function typedObjectUrl(blob: Blob, name: string): { url: string; mime: string } {
-  const extMime = EXT_MIME[extOf(name)] || '';
-  const mime = VIEWABLE_MIME.test(blob.type)
-    ? blob.type
-    : (extMime && VIEWABLE_MIME.test(extMime) ? extMime : blob.type || extMime || 'application/octet-stream');
-  const typed = mime === blob.type ? blob : new Blob([blob], { type: mime });
-  const url = URL.createObjectURL(typed);
+  // Only a positive filename + explicit MIME match may be navigated to.
+  const mime = localPreviewMime({name,type:blob.type}) || 'application/octet-stream';
+  const url = URL.createObjectURL(blob.slice(0,blob.size,mime));
   // 새 탭이 로드를 마칠 때까지 URL 유지 (1분 뒤 해제)
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   return { url, mime };
@@ -214,13 +214,43 @@ function requestMdDock(target: Parameters<ReturnType<typeof useEditorUiStore.get
 }
 export function setMdDockAvailable(v: boolean): void { mdDockHost = v; }
 
+export function localPreviewMime(file: Pick<File,'name'|'type'>): string | undefined {
+  const safe: Record<string,string> = {pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',mp3:'audio/mpeg',wav:'audio/wav',m4a:'audio/mp4',ogg:'audio/ogg',mp4:'video/mp4',webm:'video/webm',md:'text/plain',markdown:'text/plain',txt:'text/plain',log:'text/plain',csv:'text/plain',bmp:'image/bmp'};
+  const mime = safe[extOf(file.name)];
+  if (typeof mime === 'string' && (file.type.split(';',1)[0].trim().toLowerCase() === mime || (mime === 'text/plain' && file.type === 'text/markdown'))) return mime;
+}
+function openLocal(url:string, retry:()=>void) {
+  const id = captureAuthIdentity(), win = window.open('','_blank');
+  if (win) win.opener = null;
+  let blobUrl:string|undefined, closedTimer:number|undefined;
+  const revoke = () => { if (blobUrl) URL.revokeObjectURL(blobUrl); blobUrl = undefined; };
+  const dispose = () => { stop(); if (closedTimer !== undefined) window.clearInterval(closedTimer); };
+  const stop = useAuthStore.subscribe(()=>{if (!isAuthIdentityCurrent(id)) { win?.close(); revoke(); dispose(); }});
+  void readLocalAttachment(url).then(file=>{
+    if (!isAuthIdentityCurrent(id)) return;
+    const mime = localPreviewMime(file);
+    blobUrl = URL.createObjectURL(file.slice(0,file.size,mime || 'application/octet-stream'));
+    if (mime && win && !win.closed) {
+      win.location.href = blobUrl;
+      closedTimer = window.setInterval(()=>{if (win.closed) { revoke(); dispose(); }},1000);
+    } else { win?.close(); download(blobUrl,file.name); dispose(); }
+    // Object URL expiry must not end account ownership of the open window.
+    window.setTimeout(revoke,60000);
+  }).catch(err=>{win?.close();dispose();revoke();if(isAuthIdentityCurrent(id))notifyLocalAttachmentError(err,url,retry);});
+}
+
 export function openAttachment(name: string, url?: string, ref?: AttachmentRef): void {
   if (!url) return;
+  if (hasLocalScheme(url)) {
+    if (isLocalAttachmentUrl(url)) openLocal(url, () => openAttachment(name, url, ref));
+    else notifyLocalAttachmentError(new Error('INVALID_LOCAL_REFERENCE'), url);
+    return;
+  }
 
   // ★ 마크다운 첨부는 편집 영역 **오른쪽 칸**에서 렌더링 보기로 연다 (2026-11-08 사용자 요청).
   //   칸 머리의 [새 탭]·[새 창] 으로 옮길 수 있다(utils/mdSession.ts · editor/md/MdEditorDock.tsx).
   if (mdDockHost && isMarkdownName(name)) {
-    if (url.startsWith('data:')) {
+    if (/^data:text\/(?:plain|markdown)(?:[;,])/i.test(url)) {
       const hit = findAttachment(ref, url);
       if (hit) { requestMdDock({ kind: 'embedded', nodeId: hit.nodeId, attachmentId: hit.att.id, name }); return; }
     } else {
@@ -230,7 +260,7 @@ export function openAttachment(name: string, url?: string, ref?: AttachmentRef):
   }
 
   // 맵 내장 마크다운 → 웹 편집기 (opener 다리)
-  if (url.startsWith('data:') && isMarkdownName(name)) {
+  if (/^data:text\/(?:plain|markdown)(?:[;,])/i.test(url) && isMarkdownName(name)) {
     const hit = findAttachment(ref, url);
     if (hit) { openEmbeddedMarkdown(hit.nodeId, hit.att.id, name); return; }
   }
@@ -279,7 +309,7 @@ export function openAttachment(name: string, url?: string, ref?: AttachmentRef):
   }
 
   if (url.startsWith('data:')) {
-    const blob = dataUrlToBlob(url, EXT_MIME[extOf(name)] || '');
+    const blob = dataUrlToBlob(url, 'application/octet-stream');
     if (blob) openTyped(blob, name);
     return;
   }
@@ -292,11 +322,11 @@ export function openAttachment(name: string, url?: string, ref?: AttachmentRef):
       .then((r) => r.blob())
       .then((b) => openTyped(b, name, win))
       .catch(() => {
-        if (win) win.location.href = url;
+        win?.close();
       });
     return;
   }
 
   // 외부(https 등) — 브라우저 기본 동작
-  window.open(url, '_blank', 'noopener');
+  if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener');
 }

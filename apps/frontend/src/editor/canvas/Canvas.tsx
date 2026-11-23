@@ -74,7 +74,7 @@ import { primeTouchKeyboard } from './touchKeyboard';
 import { createLatestFrameQueue, type LatestFrameQueue } from './panFrame';
 import { cameraTransform, usePanRenderSnapshot, type PanPoint } from './usePanRenderSnapshot';
 
-export interface CanvasEditingPolicy { mode: 'basic' | 'full'; readOnly: boolean }
+export interface CanvasEditingPolicy { mode: 'basic' | 'full'; readOnly: boolean; nodeIndicators?: boolean; stylePainter?: boolean }
 
 interface Props {
   editingPolicy?: CanvasEditingPolicy;
@@ -505,7 +505,7 @@ export function Canvas({
     // 스타일 복사(붓) 모드 — 노드를 누르면 선택과 함께 붓에 든 겉모습을
     // 입힌다. 모드는 그대로 남아 다음 노드도 이어서 칠할 수 있다
     // (2026-09-19). 빈 곳 클릭(id=null)은 모드 해제.
-    if (activateClickTools && !isBasic() && !isReadOnly() && stylePainter) {
+    if (activateClickTools && (!isBasic() || policyRef.current?.stylePainter === true) && !isReadOnly() && stylePainter) {
       if (id) applyStyleSnapshot([id], stylePainter.snap);
       else setStylePainter(null);
     }
@@ -2441,7 +2441,7 @@ export function Canvas({
             onSelect={basic ? () => {} : selectConnector}
           />
 
-          {!basic && selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
+          {(!basic || effectivePolicy?.nodeIndicators === true) && !isReadOnly() && selectedNode && !dropZone && editingNodeId !== selectedNode.id &&
             multiSelectedIds.length <= 1 && (
             <g className="mm-overlay-controls">
               <NodeIndicators

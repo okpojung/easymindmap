@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import { parseEmm } from '../src/parse';
+import { buildEmmBody } from '../src/serialize';
+import { buildMapMeta, parseMetaJson } from '../src/meta';
+import { isLocalAttachmentUrl } from '../src/localAttachmentUrl';
+
+const map = parseEmm('# Root\n\n## Branch\n\n### Child\n','test')!;
+const base = 'emm-local://12345678-1234-4123-8123-123456789abc/';
+const root = {id:'r',kind:'file' as const,name:'준비 [1](a).md',url:base+encodeURIComponent('자료')+'/'+encodeURIComponent('준비 [1](a).md')};
+const child = {id:'c',kind:'audio' as const,name:'file (2).mp3',url:base+'file%20(2).mp3'};
+const bad = [base+'../secret',base+'%252e%252e/secret',base+'x%2Fy',base+'x//y',base+'?query','EMM-LOCAL://X/foo','file:///drive/secret','javascript:prompt(1)'];
+map.root.attachments = [root,...bad.map((url,i)=>({...root,id:`bad${i}`,name:`invalid-${i}`,url}))];
+map.branches[0].children![0].attachments = [child];
+const md = buildEmmBody(map,[],{declaration:{map:'source'}});
+assert.ok(md.includes(root.url)); assert.ok(md.includes(child.url)); assert.ok(!md.includes('invalid-'));
+for (const url of bad) assert.equal(isLocalAttachmentUrl(url),false);
+const restored = parseEmm(md,'test')!;
+const get = (a: typeof root|typeof child) => [a.name,a.url,a.kind];
+assert.deepEqual(restored.root.attachments?.map(get),[get(root)]);
+assert.deepEqual(restored.branches[0].children![0].attachments?.map(get),[get(child)]);
+assert.deepEqual(parseMetaJson(JSON.stringify(buildMapMeta(restored)))?.map,JSON.parse(JSON.stringify(restored)));
+console.log('PASS local Markdown refs: root/child, Unicode, brackets, parentheses, invalid paths and schemes, metadata round-trip');

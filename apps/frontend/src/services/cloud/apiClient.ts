@@ -247,6 +247,7 @@ export interface AccountProfile {
   plan: string;
   emailVerifiedAt: string | null;
   /** 휴대폰 인증은 아직 없다 — 항상 null */
+  /** Server-assigned verification time for this exact stored phone; null means unverified. */
   phoneVerifiedAt: string | null;
   /** 가입 정보를 다 채웠는가 (성명이 기준) */
   complete: boolean;

@@ -23,11 +23,12 @@ import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { findNodeInMap } from '@/stores/documentStore';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
-import { ProVariableApi } from '@pro';
+import { ProVariableApi, ProVariableSource } from '@pro';
 import { nameProblem } from '@/utils/variables/varSyntax';
 import { FUNCTION_NAMES } from '@/utils/variables/formula';
 
 /** DB 값을 쓰는 타입 — 수식·노드 참조는 앱이 계산한다 */
+const sourceType = (ty: VariableType): ty is 'api' | 'sql' => ty === 'api' || ty === 'sql';
 const dbType = (ty: VariableType) => !COMPUTED_TYPES.includes(ty);
 /** 노드로 가기 — 고르고, 접힌 조상은 펴고, 지금 배율 그대로 가운데로 */
 function goToNode(id: string) {
@@ -133,35 +134,39 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
     return { name: d.name.trim(), type: d.type, ...(fmt && fmt !== DEFAULT_FORMAT[d.type] ? { format: fmt } : {}), ...(d.value !== '' ? { value: d.value } : {}) };
   };
   const preview = draft && !nameErr
-    ? evaluateVariables([...withDbValues(vars.filter((x) => x.name !== draft.orig), db), asDef(draft)], nodeContext(map)).get(asDef(draft).name)?.display ?? ''
+    ? evaluateVariables([...withDbValues(vars.filter((x) => x.name !== draft.orig), db), { ...asDef(draft), ...(sourceType(draft.type) ? { value: draft.value } : {}) }], nodeContext(map)).get(asDef(draft).name)?.display ?? ''
     : '';
   const save = async (withRename: boolean, toDb = false) => {
-    if (!draft || nameErr) return;
+    if (!draft || nameErr || dbBusy) return false;
     const def = asDef(draft);
     const oldName = draft.orig;
-    if (!dbOnly) {
-      if (oldName && withRename && renamed) {
-        renameVariable(oldName, def.name, def); // 이름·쓰는 곳·정의를 한 번에 (되돌리기 한 번)
-      } else {
-        const base = useDocumentStore.getState().map.settings?.variables ?? [];
-        setVariables(oldName ? base.map((x) => (x.name === oldName ? def : x)) : [...base, def]);
-      }
-    }
-    // DB 값 — [DB 저장] 이면 넣고, 이름을 바꿨으면 DB 의 옛 이름 값도 새 이름으로 옮긴다
-    if (mapId && dbOn) {
+    const oldDef = vars.find((v) => v.name === oldName);
+    // 서버 소스는 이름이 키다. DB 행이 없어도 바인딩을 먼저 원자적으로 옮긴다.
+    const sourceRename = oldName && renamed && (sourceType(draft.type) || (oldDef && sourceType(oldDef.type)));
+    setDbBusy(true);
+    try {
       const st = useVarDbStore.getState();
-      setDbBusy(true);
-      try {
+      if (mapId && sourceRename && !(await st.rename(mapId, oldName, def.name))) return false;
+      if (mapId && dbOn && !sourceRename) {
         if (oldName && renamed && dbRows[oldName]) {
           const moved = toDb ? draft.value : dbRows[oldName].value;
-          if (await st.save(mapId, { [def.name]: moved })) await st.remove(mapId, oldName);
-        } else if (toDb) {
-          if (!(await st.save(mapId, { [def.name]: draft.value }))) return; // 실패 — 칸을 열어 둔 채 문장을 보인다
+          if (!(await st.save(mapId, { [def.name]: moved }))) return false;
+          if (!(await st.remove(mapId, oldName))) return false;
+        } else if (toDb && !sourceType(draft.type)) {
+          if (!(await st.save(mapId, { [def.name]: draft.value }))) return false;
         }
-      } finally { setDbBusy(false); }
-    }
-    setDraft(null);
-    setMsg(tr(toDb ? 'editor.var.dbSaved' : oldName ? 'editor.var.saved' : 'editor.var.added', { name: def.name }));
+      }
+      if (!dbOnly) {
+        if (oldName && withRename && renamed) renameVariable(oldName, def.name, def);
+        else {
+          const base = useDocumentStore.getState().map.settings?.variables ?? [];
+          setVariables(oldName ? base.map((x) => (x.name === oldName ? def : x)) : [...base, def]);
+        }
+      }
+      setDraft(null);
+      setMsg(tr(toDb ? 'editor.var.dbSaved' : oldName ? 'editor.var.saved' : 'editor.var.added', { name: def.name }));
+      return true;
+    } finally { setDbBusy(false); }
   };
 
   const box: CSSProperties = { border: '1px solid ' + t.border, borderRadius: 8, background: t.surface };
@@ -206,7 +211,7 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
                 const ty = e.target.value as VariableType;
                 if (ty === 'node') setDraft({ ...draft, type: ty, format: 'first', value: draft.type === 'node' ? draft.value : (selectedNodeId ?? ''), name: draft.name.trim() ? draft.name : nextNodeName() });
                 else if (ty === 'count') setDraft({ ...draft, type: ty, format: DEFAULT_FORMAT.count, value: draft.type === 'count' ? draft.value : '' });
-                else setDraft({ ...draft, type: ty, format: DEFAULT_FORMAT[ty], value: draft.type === 'node' || draft.type === 'count' ? '' : draft.value });
+                else setDraft({ ...draft, type: ty, format: DEFAULT_FORMAT[ty], value: sourceType(ty) || sourceType(draft.type) || draft.type === 'node' || draft.type === 'count' ? '' : draft.value });
               }} style={input}>
               {VARIABLE_TYPES.map((ty) => <option key={ty} value={ty}>{tr('editor.var.type.' + ty)}</option>)}
             </select>
@@ -311,6 +316,11 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
                 </div>
                 <div style={{ fontSize: 11, color: t.textSubtle, lineHeight: 1.5 }}>{tr('editor.var.node.help')}</div>
               </div>
+            ) : sourceType(draft.type) ? (
+              <div>
+                <input data-testid="var-value" value={draft.value} readOnly style={input} />
+                <div style={{ fontSize: 11, color: t.textMuted }}>{tr(mapId ? 'editor.var.source.readOnly' : 'editor.var.source.serverMap')}</div>
+              </div>
             ) : draft.type === 'formula' ? (
               <textarea data-testid="var-value" value={draft.value} rows={3} onChange={(e) => setDraft({ ...draft, value: e.target.value })}
                 placeholder={tr('editor.var.ph.formula')} style={{ ...input, height: 'auto', padding: 8, fontFamily: MONO, resize: 'vertical' }} />
@@ -319,7 +329,7 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
                 placeholder={tr('editor.var.ph.' + draft.type)} style={input} />
             )}
             {/* DB 값 (유료 모듈) — 저장된 값 · 시각, 없으면 [DB 저장] 으로 넣으라고 (2026-10-30) */}
-            {dbOn && dbType(draft.type) && (() => {
+            {dbOn && dbType(draft.type) && !sourceType(draft.type) && (() => {
               const row = draft.orig ? dbRows[draft.orig] : dbRows[draft.name.trim()];
               return (
                 <div data-testid="var-db-state" style={{ fontSize: 11, marginTop: 3, lineHeight: 1.5, color: row ? '#15803D' : '#B45309' }}>
@@ -342,7 +352,7 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
             {dbError && <div data-testid="var-db-error" style={{ fontSize: 11.5, color: '#B91C1C', marginTop: 6, lineHeight: 1.5 }}>{dbError}</div>}
             <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
               {/* [DB 저장] — 값을 DB(dashboard_vars)에 넣는다. 정의(이름·타입·서식)도 함께 저장한다 */}
-              {dbOn && dbType(draft.type) && (
+              {dbOn && dbType(draft.type) && !sourceType(draft.type) && (
                 <button type="button" data-testid="var-save-db" disabled={!!nameErr || !!valErr || !draft.value.trim() || dbBusy}
                   title={tr(renameBlocked ? 'editor.var.saveDbRenameTip' : 'editor.var.saveDbTip')}
                   onClick={() => void save(true, true)}
@@ -351,12 +361,12 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
                 </button>
               )}
               {dbOnly ? null : renameBlocked ? (
-                <button type="button" data-testid="var-rename-all" disabled={!!nameErr} onClick={() => void save(true)}
+                <button type="button" data-testid="var-rename-all" disabled={!!nameErr || dbBusy} onClick={() => void save(true)}
                   style={{ flex: 1, height: 30, borderRadius: 7, border: 'none', background: t.primary, color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: nameErr ? 0.5 : 1 }}>
                   {tr('editor.var.renameAll')}
                 </button>
               ) : (
-                <button type="button" data-testid="var-save" disabled={!!nameErr} onClick={() => void save(true)}
+                <button type="button" data-testid="var-save" disabled={!!nameErr || dbBusy} onClick={() => void save(true)}
                   style={{ flex: 1, height: 30, borderRadius: 7, border: 'none', background: t.primary, color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', opacity: nameErr ? 0.5 : 1 }}>
                   {tr('editor.var.save')}
                 </button>
@@ -418,6 +428,9 @@ export function VariablesPanel({ t }: { t: ThemeTokens }) {
                 </div>
               )}
               {used && <div style={{ marginTop: 3, fontSize: 11, color: t.textSubtle }}>{usedText(v.name)}</div>}
+              {sourceType(v.type) && (mapId
+                ? <ProVariableSource t={t} mapId={mapId} name={v.name} kind={v.type} disabled={dbBusy || (readOnly && !dbOnly)} onRefreshed={() => { void useVarDbStore.getState().load(mapId, true); }} />
+                : <div data-testid="var-source-server-map" style={{ fontSize: 11, color: t.textMuted }}>{tr('editor.var.source.serverMap')}</div>)}
               {apiOpen === v.name && mapId && (
                 <ProVariableApi t={t} mapId={mapId} name={v.name} value={dbRows[v.name]?.value ?? v.value ?? ''} />
               )}

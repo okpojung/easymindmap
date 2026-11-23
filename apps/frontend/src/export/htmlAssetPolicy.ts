@@ -1,3 +1,4 @@
+import { captureExportGuard, isLocalAttachmentUrl } from '@/utils/localAttachments';
 // Immutable, fail-closed asset preparation shared by plain/protected HTML export.
 import { mapCenters, type MindNode, type SampleMap } from '@emm/model';
 import { collectNoteHtmlImageSrcs, rewriteNotesImages } from '@emm/note-images';
@@ -13,6 +14,9 @@ const NODE_LIMIT = 50000;
 const MISSING = '첨부파일 또는 사진 원본을 가져오지 못했습니다. 원본을 확인한 뒤 다시 시도해 주세요. 내보내기를 중단했습니다.';
 const TOTAL_LIMIT = '첨부파일과 사진 원본의 합계는 100MiB 이내여야 합니다.';
 const MIME_RE = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i;
+export function assertHtmlAssetIdentity(prepared: PreparedHtmlAssets): void {
+  captureExportGuard(prepared);
+}
 const released = new WeakSet<PreparedHtmlAssets>();
 
 export interface HtmlAsset {
@@ -58,8 +62,9 @@ function nodesOf(map: SampleMap): MindNode[] {
   return out;
 }
 
-function validateSource(source: unknown): asserts source is string {
+function validateSource(source: unknown, attachment = false): asserts source is string {
   if (typeof source !== 'string') throw new Error(MISSING);
+  if (attachment && isLocalAttachmentUrl(source)) return;
   // maps.service.extractDocImages stores canonical API-relative URLs. Keep the
   // pure policy layer independent of apiClient; its loader authenticates these.
   if (source.length <= 65536 && /^\/v1\/attachments\/[A-Za-z0-9_-]+(?:\/content)?(?:\?[^#\\\u0000-\u0020]*)?$/.test(source)) return;
@@ -113,6 +118,7 @@ export async function prepareHtmlAssets(
   onProgress?: (done: number, total: number) => void,
 ): Promise<PreparedHtmlAssets> {
   // Snapshot before the first await; edits/collaboration cannot alter this export.
+  const inherited = captureExportGuard(map0);
   const map = structuredClone(map0);
   const nodes = nodesOf(map);
   interface Pending { source: string; name?: string; imageNumber: number; references: number }
@@ -120,7 +126,7 @@ export async function prepareHtmlAssets(
   const attachmentSources = new Map<string, string>();
   let attachmentCount = 0, references = 0, imageNumber = 0;
   const register = (source: unknown, name?: string): Pending => {
-    validateSource(source);
+    validateSource(source, name !== undefined);
     let item = bySource.get(source);
     if (!item) {
       if (bySource.size >= REFERENCE_LIMIT - 1) throw new Error('분리 보관할 수 있는 원본은 최대 4095종류입니다. 맵을 나누어 주세요.');
@@ -137,7 +143,7 @@ export async function prepareHtmlAssets(
   for (const n of nodes) {
     for (const a of n.attachments ?? []) {
       if (!a || typeof a.id !== 'string' || !a.id || typeof a.name !== 'string') throw new Error('첨부파일 식별자 또는 이름이 잘못되었습니다.');
-      validateSource(a.url);
+      validateSource(a.url, true);
       const existing = attachmentSources.get(a.id);
       if (existing !== undefined && existing !== a.url) throw new Error('동일한 첨부파일 식별자가 서로 다른 원본을 가리킵니다.');
       attachmentSources.set(a.id, a.url);
@@ -159,6 +165,7 @@ export async function prepareHtmlAssets(
   try {
     onProgress?.(0, bySource.size);
     for (const item of bySource.values()) {
+      inherited();
       // Bound native base64 data URLs before fetch can eagerly decode them.
       if (/^data:/i.test(item.source)) {
         const comma = item.source.indexOf(',');
@@ -175,6 +182,7 @@ export async function prepareHtmlAssets(
         if (e instanceof Error && e.message === 'PROTECTED_ASSET_LIMIT') throw new Error(TOTAL_LIMIT);
         throw new Error(MISSING);
       }
+      inherited();
       if (!(resource?.bytes instanceof Uint8Array)) throw new Error(MISSING);
       if (resource.bytes.byteLength > HTML_ASSET_LIMIT - totalBytes || resource.bytes.length > HTML_ASSET_LIMIT - totalBytes) throw new Error(TOTAL_LIMIT);
       if (resource.bytes.byteLength !== resource.bytes.length) throw new Error(MISSING);
@@ -190,7 +198,10 @@ export async function prepareHtmlAssets(
       });
       onProgress?.(assets.length, bySource.size);
     }
-    return { map, assets, attachmentCount, totalBytes };
+    inherited();
+    const result = { map, assets, attachmentCount, totalBytes };
+    inherited(map); inherited(result);
+    return result;
   } catch (e) {
     for (const a of assets) a.bytes.fill(0);
     throw e;
@@ -198,6 +209,7 @@ export async function prepareHtmlAssets(
 }
 
 function checkedAssets(prepared: PreparedHtmlAssets): Map<string, HtmlAsset> {
+  assertHtmlAssetIdentity(prepared);
   if (!prepared || released.has(prepared) || !Array.isArray(prepared.assets)) throw new Error('내보내기 준비 자료가 해제되었거나 잘못되었습니다.');
   const index = new Map<string, HtmlAsset>();
   const sources = new Set<string>();
@@ -207,7 +219,7 @@ function checkedAssets(prepared: PreparedHtmlAssets): Map<string, HtmlAsset> {
     if (!a || typeof a.id !== 'string' || !/^asset-[1-9]\d*$/.test(a.id) || index.has(a.id) ||
       sources.has(a.source) || !(a.bytes instanceof Uint8Array) || typeof a.name !== 'string' ||
       (a.kind !== 'attachment' && a.kind !== 'image') || !Number.isSafeInteger(a.references) || a.references < 1) throw new Error('내보내기 자산 자료가 잘못되었습니다.');
-    validateSource(a.source);
+    validateSource(a.source, a.kind === 'attachment');
     if (normalizedMime(a.mime) !== a.mime || a.bytes.length !== a.bytes.byteLength) throw new Error('내보내기 자산 자료가 잘못되었습니다.');
     bytes += a.bytes.byteLength;
     if (bytes > HTML_ASSET_LIMIT) throw new Error(TOTAL_LIMIT);
@@ -230,6 +242,7 @@ export function defaultSelectedHtmlAssets(prepared: PreparedHtmlAssets): string[
 export function layoutHtmlAssets(prepared: PreparedHtmlAssets, policy: HtmlAssetPolicy): {
   map: SampleMap; hrefById: Map<string, string>; files: ZipEntry[]; embedded: number; embeddedBytes: number;
 } {
+  const guard = captureExportGuard(prepared);
   const index = checkedAssets(prepared);
   if (!policy || typeof policy !== 'object' || Array.isArray(policy) ||
     !['all', 'selected', 'none'].includes(policy.mode) ||
@@ -279,6 +292,7 @@ export function layoutHtmlAssets(prepared: PreparedHtmlAssets, policy: HtmlAsset
     for (const im of n.images ?? []) im.src = resolve(im.src);
     n.notes = rewriteNotesImages(n.notes, source => resolve(source));
   }
+  guard(map);
   return { map, hrefById, files, embedded: selected.size, embeddedBytes };
 }
 

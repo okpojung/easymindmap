@@ -18,11 +18,13 @@
 // 결정이고, 나중에 SMS 인증을 붙일 때 국가를 되짚지 않아도 된다.
 // 지금은 저장만 하고 인증은 하지 않는다.
 
+import { ProPhoneVerification, claimSignupPhone } from '@pro';
 import { useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
-import { useAuthStore } from '@/stores/authStore';
-import { stashPendingProfile, useProfileStore } from '@/stores/profileStore';
+import { captureAuthIdentity, isAuthIdentityCurrent, useAuthStore } from '@/stores/authStore';
+import { CLAIM_TTL_MS, readPendingProfile, stashPendingProfile, type PendingProfile } from '@/stores/pendingProfile';
+import { reconcileSignupPhone, useProfileStore } from '@/stores/profileStore';
 import { nameProblem } from '@/utils/profileName';
 import { AuthError } from '@/services/cloud/supabaseAuth';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
@@ -56,6 +58,10 @@ export function SignupForm({
   const [countryQuery, setCountryQuery] = useState('');
   const [phone, setPhone] = useState('');
 
+  const [phoneBusy,setPhoneBusy]=useState(false);
+  const [proof,setProof]=useState<{key:string;id:string;expiresAt:number}|null>(null);
+  const intentKey=[email.trim().toLowerCase(),country.dial,phone].join(':');
+  const proofId=proof?.key===intentKey?proof.id:undefined;
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -76,9 +82,10 @@ export function SignupForm({
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
   const countryList = useMemo(() => findCountries(countryQuery), [countryQuery, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const phoneDigits = phone.replace(/\D/g, '');
+  const phoneOk = phoneDigits === '' || /^\d{6,20}$/.test(phoneDigits);
   const canSubmit =
-    !!emailToken && !nameProblem(fullName)
-    && pw.length >= MIN_PW && pw === pw2 && ageOk && !busy;
+    !!emailToken && phoneOk && !nameProblem(fullName)
+    && pw.length >= MIN_PW && pw === pw2 && ageOk && !busy && !phoneBusy;
 
   const fail = (e: unknown, fallback: string) => {
     setErr(e instanceof CloudError || e instanceof AuthError ? e.message : fallback);
@@ -123,38 +130,54 @@ export function SignupForm({
   const submit = async () => {
     if (!emailToken) { setErr(tr('auth.signup.verifyFirst')); return; }
     { const bad = nameProblem(fullName); if (bad) { setErr(bad); return; } }
+    if (!phoneOk) { setErr(tr('auth.signup.phoneLength')); return; }
+    if (!ageOk || busy || phoneBusy) return;
     if (pw.length < MIN_PW) { setErr(tr('auth.signup.pwTooShort', { n: MIN_PW })); return; }
     if (pw !== pw2) { setErr(tr('auth.signup.pwMismatch')); return; }
     setBusy('signup'); setErr(null);
+    const pendingBefore = readPendingProfile(email)?.key;
+    const operation = useAuthStore.getState().signUp(email.trim(), pw);
+    let identity = captureAuthIdentity(); // operation started synchronously
+    const current = () => isAuthIdentityCurrent(identity);
     try {
-      // 계정 생성 + 로그인 (GoTrue). 메일 확인이 켜진 서버면 세션이 없다.
-      const signedIn = await useAuthStore.getState().signUp(email.trim(), pw);
-      if (!signedIn) {
-        // 세션이 없으면 프로필을 지금 저장할 수 없다 — 적어 두었다가 첫
-        // 로그인 때 넣는다(profileStore). 예전에는 여기서 성명·휴대폰이 사라졌다.
-        stashPendingProfile({
-          email: email.trim(),
-          fullName: fullName.trim(),
-          phoneCountry: phoneDigits ? `+${country.dial}` : undefined,
-          phoneNumber: phoneDigits || undefined,
-        });
+      const signup = await operation;
+      identity = signup.identity;
+      if (!current()) return;
+      const data: PendingProfile = {
+        email: email.trim(), fullName: fullName.trim(), phoneIntent: proofId,
+        expiresAt: proofId ? proof.expiresAt : undefined,
+        phoneCountry: phoneDigits ? `+${country.dial}` : undefined,
+        phoneNumber: proofId && /^10\d{8}$/.test(phoneDigits) ? '0' + phoneDigits : phoneDigits || undefined,
+      };
+      if (!signup.signedIn) {
+        if (readPendingProfile(email)?.key === pendingBefore) stashPendingProfile(data);
         onDone?.(tr('auth.signup.confirmMailSent'));
         return;
       }
-      // 프로필 저장 — 여기서 성명·휴대폰이 계정에 붙는다
-      const saved = await cloudApi.saveProfile({
-        fullName: fullName.trim(),
-        phoneCountry: phoneDigits ? `+${country.dial}` : undefined,
-        phoneNumber: phoneDigits || undefined,
-        emailToken,
-      });
-      // 아바타 글자·협업 이름표가 곧바로 새 이름을 쓰게 (세션이 먼저 생겨
-      // 프로필 스토어가 빈 성명을 읽어 둔 상태일 수 있다)
-      useProfileStore.getState().setProfile(saved);
-      onDone?.(tr('auth.signup.done'));
+      let saved = await cloudApi.saveProfile({ fullName: data.fullName, phoneCountry: data.phoneCountry,
+        phoneNumber: data.phoneNumber, emailToken });
+      if (!current()) return;
+      let message = tr('auth.signup.done');
+      if (proofId) {
+        const r = await reconcileSignupPhone(data, current, () => claimSignupPhone(proofId));
+        if (!current()) return;
+        if (!r) {
+          if (data.expiresAt > Date.now() && readPendingProfile(email)?.key === pendingBefore) {
+            stashPendingProfile({ ...data, readOnly: true });
+          }
+          message = tr('auth.signup.phoneUnknown');
+          useProfileStore.getState().setProfile(null, identity, message);
+          if (current()) onDone?.(message);
+          return;
+        }
+        saved = r.profile;
+        if (!r.verified) message = tr('auth.signup.phoneFallback');
+      }
+      useProfileStore.getState().setProfile(saved, identity);
+      if (current()) onDone?.(message);
     } catch (e) {
-      fail(e, tr('auth.signup.failed'));
-    } finally { setBusy(null); }
+      if (current()) fail(e, tr('auth.signup.failed'));
+    } finally { if (current()) setBusy(null); }
   };
 
   // ── 스타일 ──────────────────────────────────────────────────
@@ -334,7 +357,8 @@ export function SignupForm({
           </div>
         )}
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 5, lineHeight: 1.5 }}>
-          {tr('auth.signup.phoneNote')}
+          {phoneOk ? tr('auth.signup.phoneNote') : tr('auth.signup.phoneLength')}
+          <ProPhoneVerification key={intentKey} mode="signup" country={country.dial} phone={phoneDigits} email={email.trim()} emailProof={emailToken ?? undefined} disabled={!emailToken || !!busy} onBusy={setPhoneBusy} onSuccess={id=>setProof({key:intentKey,id,expiresAt:Date.now()+CLAIM_TTL_MS})} />
         </div>
       </div>
 

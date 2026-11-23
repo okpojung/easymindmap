@@ -81,11 +81,31 @@ function collectSrcs(n: MindNode | undefined, out: Set<string>): void {
  * 같은 사진이 여러 노드에 있으면 **한 번만 받는다**(src 로 모은다) —
  * 큰 사진이 여러 번 흐르면 내보내기가 그만큼 느려진다.
  */
+export async function boundedExportBytes(response: Response, remaining: number, guard: () => void) {
+  if (Number(response.headers.get('content-length')) > remaining) throw new Error('PROTECTED_ASSET_LIMIT');
+  if (!response.body) throw new Error('RESOURCE_UNAVAILABLE');
+  const reader = response.body.getReader(), chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const next = await reader.read(); guard(); if (next.done) break;
+      if ((size += next.value.length) > remaining) throw new Error('PROTECTED_ASSET_LIMIT');
+      chunks.push(next.value);
+    }
+  } catch (err) { void reader.cancel().catch(()=>{}); throw err; }
+  finally { reader.releaseLock(); }
+  const out = new Uint8Array(size); let offset = 0;
+  for (const chunk of chunks) { out.set(chunk,offset); offset += chunk.length; }
+  return out;
+}
+
 export async function fetchServerImageDataUrls(
   map: SampleMap,
   /** 주어지면 **이 길로** 받는다 (산 사람의 열쇠 등) */
   fetchBytes?: AttachmentBytesFetcher,
+  strict?: {remaining:number; guard:()=>void},
 ): Promise<ServerImageResult> {
+  if (strict && fetchBytes) throw new Error('LOCAL_EXPORT_REQUIRES_BOUNDED_LOADER');
   const srcs = new Set<string>();
   // **둘째 이후 중심주제도 훑는다** (2026-09-16, 3단계). 첫 중심만 보면
   // 둘째 중심의 사진은 서버 주소로 남아 내보낸 파일에서 그 사진만 깨진다.
@@ -102,19 +122,23 @@ export async function fetchServerImageDataUrls(
       let mime: string;
       const id = serverAttachmentId(src);
       if (fetchBytes && id) {
-        const got = await fetchBytes(id);
-        if (!got) { failed += 1; continue; }
+        const got = await fetchBytes(id); strict?.guard();
+        if (!got) throw new Error('RESOURCE_UNAVAILABLE');
         bytes = got.bytes;
         mime = (got.mime || 'image/png').split(';')[0].trim();
       } else {
-        const res = await fetch(await attachmentFetchUrl(src));
+        const url = await attachmentFetchUrl(src); strict?.guard();
+        const res = await fetch(url); strict?.guard();
         if (!res.ok) throw new Error(String(res.status));
-        bytes = new Uint8Array(await res.arrayBuffer());
+        bytes = strict ? await boundedExportBytes(res,strict.remaining,strict.guard) : new Uint8Array(await res.arrayBuffer());
+        strict?.guard();
         mime = (res.headers.get('content-type') || 'image/png').split(';')[0].trim();
       }
-      if (!PACKABLE.test(mime)) { failed += 1; continue; }
+      if (strict && (strict.remaining -= bytes.length) < 0) throw new Error('PROTECTED_ASSET_LIMIT');
+      if (!PACKABLE.test(mime)) throw new Error('RESOURCE_UNAVAILABLE');
       bySrc.set(src, toDataUrl(bytes, mime.toLowerCase()));
-    } catch {
+    } catch (err) {
+      if (strict) throw err;
       // **못 받아도 사진을 지우지 않는다.** 원래 src 가 그대로 남아
       // 온라인에서는 보인다. 대신 몇 장이 그렇게 됐는지 알린다 —
       // 조용히 넘어가면 사용자는 반쪽 파일을 온전한 줄 안다.

@@ -2,6 +2,8 @@
 // tsconfig 의 paths 로 해결되지만, 유료 UI 로 바꿔 끼워도 화면 쪽 코드가
 // 그대로 돌아야 하므로 **기대하는 모양을 여기 적어 둔다.**
 declare module '@pro' {
+  export function ProPhoneVerification(p: import('@/pro/phone').PhoneVerificationProps): JSX.Element | null;
+  export function claimSignupPhone(id:string):Promise<void>;
   import type { ComponentType } from 'react';
   export function matchProRoute(location: { pathname: string }): ComponentType | null;
   import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -171,7 +173,10 @@ declare module '@pro' {
     load(mapId: string): Promise<VarDbRow[]>;
     save(mapId: string, vars: Record<string, string>): Promise<void>;
     remove(mapId: string, name: string): Promise<void>;
+    /** 값과 서버 소스 바인딩을 원자적으로 함께 이름 변경한다. */
+    rename?(mapId: string, from: string, to: string): Promise<void>;
     errorText(e: unknown): string;
   };
+  export function ProVariableSource(p: { t: ThemeTokens; mapId: string; name: string; kind: 'api' | 'sql'; disabled?: boolean; onRefreshed?: () => void }): JSX.Element | null;
   export function ProVariableApi(p: { t: ThemeTokens; mapId: string; name: string; value: string }): JSX.Element | null;
 }

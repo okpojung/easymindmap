@@ -342,6 +342,8 @@ export interface MapSettings {
 export type VariableType =
   | 'number' | 'currency' | 'date' | 'time' | 'percent'
   | 'text' | 'phone' | 'koreanNumber' | 'email' | 'formula'
+  /** 서버에만 보관한 소스 설정에서 DB 값을 가져오는 타입. 설정은 문서에 넣지 않는다. */
+  | 'api' | 'sql'
   /** 노드 참조 (2026-11-04) — value = 노드 id, format = 'first'(첫 줄, 기본) | 'all'(전체) */
   | 'node'
   /**
@@ -453,4 +455,16 @@ export type EmmNode = MindNode;
 export interface EditorSpacing {
   x: number; // 가로 간격 배율 (1 = 기본)
   y: number; // 세로 간격 배율
+}
+
+/** 문서 변수는 공개 필드만 보관한다. 연결 설정은 서버 전용이며 확장 필드를 왕복시키지 않는다. */
+export function publicMapVariables<T extends SampleMap>(map: T): T {
+  const defs = map.settings?.variables;
+  if (!Array.isArray(defs)) return map;
+  const variables = defs.map((v) => ({
+    name: v.name, type: v.type,
+    ...(typeof v.format === 'string' ? { format: v.format } : {}),
+    ...(typeof v.value === 'string' ? { value: v.value } : {}),
+  }));
+  return { ...map, settings: { ...map.settings, variables } };
 }

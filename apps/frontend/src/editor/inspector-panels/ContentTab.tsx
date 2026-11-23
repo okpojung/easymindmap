@@ -9,6 +9,7 @@ import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
 import { attachFileWithProgress } from '@/utils/attachmentFile';
+import { AttachmentBadge } from '@/components/attachments/AttachmentBadge';
 import { attachmentKindFor, isImageFileName } from '@/utils/attachmentKind';
 import {
   CLIPBOARD_NO_IMAGE, CLIPBOARD_UNSUPPORTED, clipboardImageFiles, clipboardReadErrorMessage,
@@ -377,6 +378,7 @@ function AttachmentRow({ t, icon, name, url, attRef, onRemove }: {
           background: 'none', border: 'none', padding: 0, textAlign: 'left',
           fontFamily: 'inherit', cursor: url ? 'pointer' : 'default',
         }}>{name}</button>
+      <AttachmentBadge url={url} style={{ fontSize: 9.5, color: t.textMuted }} />
       <button onClick={onRemove} title={tr('inspector.content.removeAttachment')} style={{
         background: 'none', border: 'none', cursor: 'pointer',
         color: t.textMuted, padding: 2, display: 'flex',

@@ -25,7 +25,7 @@ import type { SampleMap, LayoutType } from '@/editor/__samples__/types';
 
 // 손가락 기기의 입력칸 16px·누를 자리 40px (data-mm-touch) — 불러오기만 하면 CSS 가 들어간다
 import '@/components/ui/mobileCss';
-export function TemplatePanel({ t }: { t: ThemeTokens }) {
+export function TemplatePanel({ t, embedded = false }: { t: ThemeTokens; embedded?: boolean }) {
   const map = useDocumentStore((s) => s.map);
   const loadMap = useDocumentStore((s) => s.loadMap);
   const layoutType = useEditorUiStore((s) => s.layoutType);
@@ -126,7 +126,7 @@ export function TemplatePanel({ t }: { t: ThemeTokens }) {
           }}>{tr('panel.template.register')}</button>
       </div>
       <div style={{ fontSize: 10, color: t.textSubtle, lineHeight: 1.5, marginBottom: 8 }}>
-        {tr('panel.template.registerHelp')}
+        {!embedded && tr('panel.template.registerHelp')}
       </div>
       {notice && (
         <div style={{

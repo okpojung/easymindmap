@@ -11,6 +11,7 @@ import { useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
 import type { ContentIndicator } from '@/editor/node-renderer/nodeContent';
+import { AttachmentBadge } from '@/components/attachments/AttachmentBadge';
 import { openAttachment } from '@/utils/openAttachment';
 import { isMarkdownName } from '@/utils/mdEditorUrl';
 import { MarkdownFileIcon } from '@/components/icons/MarkdownFileIcon';
@@ -81,7 +82,7 @@ export function ChooserPopover({
               }}
             >
               {ind.kind !== 'link' && isMarkdownName(it.label)
-                ? <MarkdownFileIcon size={14} /> : ind.icon} {it.label}{on ? ' ↗' : ''}
+                ? <MarkdownFileIcon size={14} /> : ind.icon} {it.label}{ind.kind !== 'link' ? <> <AttachmentBadge url={it.url} style={{ fontSize: 9.5, fontWeight: 500 }} /></> : null}{on ? ' ↗' : ''}
             </button>
           );
         })}

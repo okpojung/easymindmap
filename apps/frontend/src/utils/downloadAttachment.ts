@@ -1,3 +1,5 @@
+import { hasLocalScheme, notifyLocalAttachmentError, readLocalAttachment } from './localAttachments';
+import { captureAuthIdentity, isAuthIdentityCurrent } from '@/stores/authStore';
 // Explicit download is separate from openAttachment: PDF, text and MD must
 // download, not open a viewer/editor. Resolve server authorization at click time;
 // never persist the resolved URL or use it as a filename/error message.
@@ -23,15 +25,25 @@ export async function downloadAttachment(
   let anchor: HTMLAnchorElement | undefined;
   try {
     signal?.throwIfAborted();
-    if (!url || !allowedUrl(url)) throw new Error('ATTACHMENT_DOWNLOAD_FAILED');
-    const resolved = await resolveUrl(url);
-    signal?.throwIfAborted();
-    if (!allowedUrl(resolved)) throw new Error('ATTACHMENT_DOWNLOAD_FAILED');
-    const response = await fetch(resolved, {
-      signal, credentials: 'same-origin', cache: 'no-store', referrerPolicy: 'no-referrer',
-    });
-    if (!response.ok) throw new Error('ATTACHMENT_DOWNLOAD_FAILED');
-    const blob = await response.blob();
+    let blob: Blob;
+    if (hasLocalScheme(url)) {
+      const id = captureAuthIdentity();
+      try {
+        blob = await readLocalAttachment(url!);
+        if (!isAuthIdentityCurrent(id)) throw new Error('SESSION_CHANGED');
+      } catch (err) {
+        if (!signal?.aborted && isAuthIdentityCurrent(id)) notifyLocalAttachmentError(err,url!,()=>{void downloadAttachment(name,url,{resolveUrl,signal}).catch(()=>{});});
+        throw err;
+      }
+    } else {
+      if (!url || !allowedUrl(url)) throw new Error('ATTACHMENT_DOWNLOAD_FAILED');
+      const resolved = await resolveUrl(url);
+      signal?.throwIfAborted();
+      if (!allowedUrl(resolved)) throw new Error('ATTACHMENT_DOWNLOAD_FAILED');
+      const response = await fetch(resolved, {signal, credentials:'same-origin',cache:'no-store',referrerPolicy:'no-referrer'});
+      if (!response.ok) throw new Error('ATTACHMENT_DOWNLOAD_FAILED');
+      blob = await response.blob();
+    }
     signal?.throwIfAborted();
     objectUrl = URL.createObjectURL(blob);
     anchor = document.createElement('a');

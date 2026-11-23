@@ -437,7 +437,7 @@ export class AccountService {
       phoneNumber: r?.phone_number ?? null,
       plan: r?.plan ?? 'free',
       emailVerifiedAt: r?.email_verified_at ?? null,
-      // 휴대폰 인증은 나중 — 지금은 항상 null 이다
+      // 서버가 기록한 값만 내보낸다. 가입 메타데이터는 읽지 않는다.
       phoneVerifiedAt: r?.phone_verified_at ?? null,
       /** 가입 정보를 다 채웠는가 (성명이 기준) */
       complete: !!r?.full_name,
@@ -518,18 +518,19 @@ export class AccountService {
     const res = await this.db.query(
       `UPDATE public.users
           SET full_name = $2,
+              phone_verified_at = CASE WHEN phone_country IS NOT DISTINCT FROM $3 AND phone_number IS NOT DISTINCT FROM $4 THEN phone_verified_at ELSE NULL END,
               phone_country = $3,
               phone_number = $4,
               email_verified_at = CASE WHEN $5 THEN COALESCE(email_verified_at, NOW())
                                        ELSE email_verified_at END,
               updated_at = NOW()
-        WHERE id = $1`,
+        WHERE id = $1 AND (phone_verified_at IS NULL OR
+              (phone_country IS NOT DISTINCT FROM $3 AND phone_number IS NOT DISTINCT FROM $4))`,
       [userId, fullName, country, phone, verified],
     );
-    // 없는 사용자에 조용히 성공하지 않는다 — 저장된 줄 알고 넘어가면
-    // 다음 화면에서 "성명이 비어 있다"로 나타나 원인을 찾기 어렵다.
+    // 동시 변경도 DB에서 막는다. 인증 번호는 새 인증 완료 뒤에만 교체한다.
     if (res.rowCount === 0) {
-      throw new BadRequestException('계정을 찾을 수 없습니다. 다시 로그인해 주세요.');
+      throw new ConflictException('프로필을 새로 읽고 변경할 휴대폰 번호를 인증해 주세요.');
     }
     // 프로필 사진/아바타 (2026-09-08) — 생략이면 손대지 않는다
     if (dto.avatar !== undefined) {

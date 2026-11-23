@@ -10,119 +10,119 @@
 //   · 다른 계정으로 바뀌면 비운다(앞사람 이름이 남지 않게).
 
 import { create } from 'zustand';
-import { cloudApi, CloudError, type AccountProfile } from '@/services/cloud/apiClient';
-import { authEnabled, useAuthStore } from '@/stores/authStore';
+import { cloudApi, type AccountProfile } from '@/services/cloud/apiClient';
+import { authEnabled, captureAuthIdentity, isAuthIdentityCurrent, useAuthStore, type AuthIdentity } from '@/stores/authStore';
 import { LANGS, tr, useLangStore, type Lang, takeUrlLangChoice } from '@/i18n';
+import { clearPendingProfile, markClaimAttempted, readPendingProfile, type PendingProfile } from './pendingProfile';
 
-/**
- * **가입 때 적은 성명·휴대폰을 잃지 않는다** (2026-09-08 실사용 보고: 계정
- * 프로필에 가입 때 넣은 이름·휴대폰이 비어 있었다).
- *
- * 가입 흐름은 "계정 생성 → 세션 → 프로필 저장" 인데, 메일 확인이 켜진
- * 서버는 계정 생성 뒤 **세션을 주지 않는다.** 그러면 프로필 저장 차례가
- * 오지 않아 성명·휴대폰이 어디에도 남지 않았다. 그래서 그때는 이 브라우저에
- * 적어 두고, 그 이메일로 처음 로그인해 프로필을 읽을 때 성명이 비어 있으면
- * 여기 적어 둔 것을 서버에 넣는다.
- */
-const PENDING_KEY = 'emm.pendingProfile';
-export interface PendingProfile {
-  email: string;
-  fullName: string;
-  phoneCountry?: string;
-  phoneNumber?: string;
+export function profileOwner(id: AuthIdentity): string | null {
+  return id.userId || (authEnabled ? null : 'dev');
 }
-export function stashPendingProfile(p: PendingProfile): void {
-  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ ...p, email: p.email.trim().toLowerCase() })); } catch { /* 보관 못 해도 가입은 진행 */ }
+function expectedPhone(p: AccountProfile, expected: PendingProfile): boolean {
+  return !!expected.phoneNumber && p.phoneCountry === expected.phoneCountry && p.phoneNumber === expected.phoneNumber;
 }
-export function readPendingProfile(): PendingProfile | null {
+
+// The claim can commit even if its response was lost. Only a fresh GET proves status.
+export async function reconcileSignupPhone(expected: PendingProfile, current: () => boolean, claim: () => Promise<void>) {
+  if (!current()) return null;
+  let ambiguous = false;
+  try { await claim(); } catch { ambiguous = true; }
+  if (!current()) return null;
   try {
-    const raw = localStorage.getItem(PENDING_KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as PendingProfile;
-    if (!p || typeof p.email !== 'string' || typeof p.fullName !== 'string') return null;
-    return { ...p, email: p.email.trim().toLowerCase() };
+    const profile = await cloudApi.getProfile();
+    const verified = expectedPhone(profile, expected) && !!profile.phoneVerifiedAt;
+    // A timeout can precede COMMIT: a different connection may still read the old row.
+    return current() && (!ambiguous || verified) ? { profile, verified } : null;
   } catch { return null; }
-}
-export function clearPendingProfile(): void {
-  try { localStorage.removeItem(PENDING_KEY); } catch { /* 없어도 그만 */ }
 }
 
 interface ProfileState {
   profile: AccountProfile | null;
-  /** 어느 사용자의 것인가 */
   forUser: string | null;
-  /** 읽기 시도가 끝났다(실패 포함) */
   loaded: boolean;
-  /** 마지막 읽기가 실패했으면 그 이유 — 화면이 "등록되지 않음"과 구분해 보여 준다 */
   error: string | null;
   load: (opts?: { force?: boolean }) => Promise<AccountProfile | null>;
-  setProfile: (p: AccountProfile | null) => void;
+  setProfile: (p: AccountProfile | null, identity: AuthIdentity, error?: string) => void;
   clear: () => void;
 }
-
-let inflight: Promise<AccountProfile | null> | null = null;
-
-function currentUserId(): string | null {
-  const s = useAuthStore.getState().session;
-  if (s?.userId) return s.userId;
-  return authEnabled ? null : 'dev';
-}
-
+let inflight: { id: AuthIdentity; result: Promise<AccountProfile | null> } | null = null;
+let revision = 0;
 export const useProfileStore = create<ProfileState>((set, get) => ({
-  profile: null,
-  forUser: null,
-  loaded: false,
-  error: null,
-
+  profile: null, forUser: null, loaded: false, error: null,
   load: async ({ force } = {}) => {
-    const uid = currentUserId();
-    if (!uid) {
-      set({ profile: null, forUser: null, loaded: true });
-      return null;
+    const id = captureAuthIdentity();
+    const uid = profileOwner(id);
+    if (!uid) { set({ profile: null, forUser: null, loaded: true, error: null }); return null; }
+    if (inflight && isAuthIdentityCurrent(inflight.id)) {
+      if (!force) return inflight.result;
+      // A post-verification refresh must read AFTER any older snapshot or claim.
+      await inflight.result;
+      return isAuthIdentityCurrent(id) ? get().load({ force: true }) : null;
     }
     if (!force && get().loaded && get().forUser === uid) return get().profile;
-    if (inflight && !force) return inflight;
-    inflight = cloudApi.getProfile()
-      .then(async (p) => {
-        // 기다리는 사이 계정이 바뀌었으면 버린다
-        if (currentUserId() !== uid) return null;
-        // 가입 때 적어 둔 성명이 있고 서버가 비어 있으면 지금 넣는다
-        const pending = readPendingProfile();
-        const email = (useAuthStore.getState().session?.email ?? '').trim().toLowerCase();
-        if (pending && email && pending.email === email) {
-          if (!p.fullName) {
-            try {
-              p = await cloudApi.saveProfile({
-                fullName: pending.fullName,
-                phoneCountry: pending.phoneCountry,
-                phoneNumber: pending.phoneNumber,
-              });
-              clearPendingProfile();
-            } catch { /* 다음 로그인 때 다시 시도한다 */ }
-          } else {
-            clearPendingProfile();
+    const version = ++revision;
+    const current = () => isAuthIdentityCurrent(id) && revision === version;
+    const result = (async () => {
+      const email = (useAuthStore.getState().session?.email ?? '').trim().toLowerCase();
+      const own = email ? readPendingProfile(email) : null;
+      let unknown = !!own?.data.readOnly && Number(own.data.expiresAt) > Date.now();
+      try {
+        let p = await cloudApi.getProfile();
+        if (!current()) return null;
+        let error: string | null = null;
+        if (own && readPendingProfile(email)?.key === own.key) {
+          const data = own.data;
+          if (!p.fullName && !data.readOnly) {
+            p = await cloudApi.saveProfile({ fullName: data.fullName, phoneCountry: data.phoneCountry, phoneNumber: data.phoneNumber });
+            if (!current()) return null;
           }
+          if (data.phoneIntent && !(expectedPhone(p, data) && p.phoneVerifiedAt)) {
+            if (unknown) throw new Error(); // read-only pending: only a positive GET settles it before expiry
+            if (!data.readOnly && Number(data.expiresAt) > Date.now() && expectedPhone(p, data)) {
+              const pro = await import('@pro');
+              if (!current()) return null;
+              if (markClaimAttempted(own)) {
+                unknown = true;
+                const r = await reconcileSignupPhone(data, current, () => pro.claimSignupPhone(data.phoneIntent!));
+                if (!current()) return null;
+                if (!r) throw new Error();
+                p = r.profile;
+              } else if (readPendingProfile(email)?.key === own.key && readPendingProfile(email)?.data.readOnly) {
+                unknown = true; // another tab already started this claim
+                throw new Error();
+              }
+            }
+            if (!(expectedPhone(p, data) && p.phoneVerifiedAt)) error = tr('auth.signup.phoneFallback');
+          }
+          if (current()) clearPendingProfile(own);
         }
-        set({ profile: p, forUser: uid, loaded: true, error: null });
-        syncLanguageFromProfile(p);
+        if (!current()) return null;
+        set({ profile: p, forUser: uid, loaded: true, error });
+        if (current()) syncLanguageFromProfile(p, id);
         return p;
-      })
-      .catch((err: unknown) => {
-        const why = err instanceof CloudError ? err.message : (err instanceof Error ? err.message : tr('auth.profile.readFailed'));
+      } catch (err) {
+        if (!current()) return null;
+        if (own?.data.readOnly && Number(own.data.expiresAt) <= Date.now()) clearPendingProfile(own);
+        const why = unknown ? tr('auth.signup.phoneUnknown') : err instanceof Error ? err.message : tr('auth.profile.readFailed');
         set({ profile: null, forUser: uid, loaded: true, error: why });
         return null;
-      })
-      .finally(() => { inflight = null; });
-    return inflight;
+      }
+    })().finally(() => { if (inflight?.result === result) inflight = null; });
+    inflight = { id, result };
+    return result;
   },
-
-  setProfile: (profile) => set({ profile, error: null }),
-  clear: () => set({ profile: null, forUser: null, loaded: false, error: null }),
+  setProfile: (profile, id, error = null) => {
+    if (!isAuthIdentityCurrent(id)) return;
+    ++revision; inflight = null;
+    set({ profile, forUser: profileOwner(id), loaded: true, error });
+  },
+  clear: () => {
+    ++revision; inflight = null;
+    set({ profile: null, forUser: null, loaded: false, error: null });
+  },
 }));
-
-// 계정이 바뀌면(로그아웃·다른 계정 로그인) 비운다
 useAuthStore.subscribe((s, prev) => {
-  if (s.session?.userId !== prev.session?.userId) useProfileStore.getState().clear();
+  if (s.generation !== prev.generation || s.session?.userId !== prev.session?.userId) useProfileStore.getState().clear();
 });
 
 // ── 화면 언어를 계정에 (2026-10-05, i18n.md P3) ─────────────────────────
@@ -141,23 +141,26 @@ function isLang(v: unknown): v is Lang {
   return typeof v === 'string' && (LANGS as readonly string[]).includes(v);
 }
 
-function pushLanguage(lang: Lang): void {
+function pushLanguage(lang: Lang, id: AuthIdentity): void {
+  if (!isAuthIdentityCurrent(id)) return;
   void cloudApi.saveLanguage(lang)
     .then((r) => {
       const st = useProfileStore.getState();
-      if (r.saved && st.profile) st.setProfile({ ...st.profile, language: lang });
+      if (r.saved && isAuthIdentityCurrent(id) && st.forUser === profileOwner(id) && st.profile) {
+        useProfileStore.setState({ profile: { ...st.profile, language: lang } });
+      }
     })
     .catch(() => { /* 못 올려도 이 브라우저에는 기억돼 있다 — 다음 변경 때 다시 */ });
 }
 
-export function syncLanguageFromProfile(p: AccountProfile): void {
-  if (!p.languageReady) return;
+function syncLanguageFromProfile(p: AccountProfile, id: AuthIdentity): void {
+  if (!isAuthIdentityCurrent(id) || !p.languageReady) return;
   const local = useLangStore.getState().lang;
   // 주소로 언어를 골라 들어왔다(홈페이지 'EMM 로그인' ?lang=, 2026-10-28) — 방금 고른 것이 이긴다.
   // 계정 언어를 따르지 않고, 계정을 그 언어로 바꾼다
   const urlChoice = takeUrlLangChoice();
   if (urlChoice) {
-    if (p.language !== urlChoice) pushLanguage(urlChoice);
+    if (p.language !== urlChoice) pushLanguage(urlChoice, id);
     return;
   }
   if (isLang(p.language)) {
@@ -166,7 +169,7 @@ export function syncLanguageFromProfile(p: AccountProfile): void {
       try { useLangStore.getState().setLang(p.language); } finally { applyingFromServer = false; }
     }
   } else {
-    pushLanguage(local);
+    pushLanguage(local, id);
   }
 }
 
@@ -175,5 +178,5 @@ useLangStore.subscribe((s, prev) => {
   if (!useAuthStore.getState().session) return; // 게스트·로그인 전 — 브라우저에만
   const st = useProfileStore.getState();
   if (!st.profile?.languageReady) return;
-  pushLanguage(s.lang);
+  pushLanguage(s.lang, captureAuthIdentity());
 });

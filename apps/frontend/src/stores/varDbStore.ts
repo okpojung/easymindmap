@@ -18,6 +18,7 @@ interface VarDbState {
   load: (mapId: string, force?: boolean) => Promise<void>;
   save: (mapId: string, vars: Record<string, string>) => Promise<boolean>;
   remove: (mapId: string, name: string) => Promise<boolean>;
+  rename: (mapId: string, from: string, to: string) => Promise<boolean>;
   clearError: () => void;
 }
 
@@ -55,6 +56,16 @@ export const useVarDbStore = create<VarDbState>((set, get) => ({
     if (!proVarDb) return false;
     try {
       await proVarDb.remove(mapId, name);
+      set({ error: null });
+      await get().load(mapId, true);
+      return true;
+    } catch (e) { set({ error: errOf(e) }); return false; }
+  },
+  rename: async (mapId, from, to) => {
+    if (!proVarDb) return true; // 공개판에는 서버 바인딩이 없다
+    try {
+      if (!proVarDb.rename) throw new Error('Source rename unavailable');
+      await proVarDb.rename(mapId, from, to);
       set({ error: null });
       await get().load(mapId, true);
       return true;

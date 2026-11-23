@@ -312,6 +312,15 @@ export const proVarDb: null | {
   load(mapId: string): Promise<VarDbRow[]>;
   save(mapId: string, vars: Record<string, string>): Promise<void>;
   remove(mapId: string, name: string): Promise<void>;
+  rename?(mapId: string, from: string, to: string): Promise<void>;
   errorText(e: unknown): string;
 } = null;
 export function ProVariableApi(_p: { t: ThemeTokens; mapId: string; name: string; value: string }) { return null; }
+
+/** 공개판에서는 연결이 동작하는 것처럼 보이지 않는다. */
+export function ProVariableSource(p: { t: ThemeTokens; mapId: string; name: string; kind: 'api' | 'sql'; disabled?: boolean; onRefreshed?: () => void }) {
+  const tr = useTr();
+  return <div data-testid="var-source-unavailable" style={{ color: p.t.textMuted, fontSize: 11 }}>{tr('editor.var.source.unavailable')}</div>;
+}
+export function ProPhoneVerification(_p:import('./phone').PhoneVerificationProps) { return null; }
+export async function claimSignupPhone(_id:string):Promise<void> { /* no provider */ }

@@ -1,3 +1,4 @@
+import { hasLocalScheme } from '@emm/localAttachmentUrl';
 // exportMarkdown — 맵을 Markdown(EMM) 파일로 내보낸다 ('내보내기 (MD)').
 //
 // 본문 직렬화는 EMM 레퍼런스 파서(@easymindmap/emm-parser, serialize.ts)가
@@ -60,6 +61,8 @@ export async function buildMarkdownExportPackage(
   let externalCount = srvImg.failed;
   for (const att of attachments) {
     if (!att.url) continue;
+    // Source Markdown carries the reference only, never custom-scheme fetches.
+    if (hasLocalScheme(att.url)) { externalCount++; continue; }
     try {
       // 서버 첨부(B9)는 인증 토큰을 붙여 받아온다 — 그 외 URL 은 그대로
       const res = await fetch(await attachmentFetchUrl(att.url));

@@ -1,3 +1,4 @@
+import { isLocalAttachmentUrl, hasLocalScheme } from './localAttachmentUrl';
 // parse — EMM(Markdown) 문서를 맵 JSON 모델로 변환한다.
 // (EasyMindMap 앱의 importMarkdown이 이 모듈을 재수출해 사용한다)
 // docs/04-extensions/import-export/20-export.md의 Basic 포맷 + 완전 변환:
@@ -211,7 +212,14 @@ export function parseMarkdownToMap(
     if (!/^📎\s*\[/.test(text)) return null;
     const ls = text.split('\n').map((l) => l.trim()).filter(Boolean);
     const found = ls
-      .map((l) => l.match(/^📎\s*\[([^\]]*)\]\(([^)\s]+)\)/))
+      .map((l) => {
+        // A local filename may contain ']' and a canonical URL may contain
+        // parentheses. Consume the complete line, not the first closing ')'.
+        const local = l.match(/^📎\s*\[(.*)\]\((emm-local:[^\s]*)\)$/i);
+        if (local) return isLocalAttachmentUrl(local[2]) ? local : null;
+        const ordinary = l.match(/^📎\s*\[([^\]]*)\]\(([^)\s]+)\)/);
+        return ordinary && !hasLocalScheme(ordinary[2]) ? ordinary : null;
+      })
       .filter((m): m is RegExpMatchArray => !!m);
     if (found.length !== ls.length) return null;
     return found.map((m) => {

@@ -1,4 +1,6 @@
+import { hasLocalScheme, readLocalAttachmentBytes } from '@/utils/localAttachments';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
+import { emmHtmlFileName } from './emmHtmlName';
 import type { LayoutSpacing } from '@/layout/LayoutEngine';
 import { attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClient';
 import { prepareCodeRenders } from '@/editor/node-renderer/codeRender';
@@ -7,7 +9,7 @@ import { encryptStandaloneHtml } from './encryptedHtml';
 import { enableProtectedAttachmentOpening } from './encryptedMap';
 import type { ProtectedResource } from './protectedMapAssets';
 import type { AttachmentBytesFetcher } from './serverImages';
-import { layoutHtmlAssets, defaultSelectedHtmlAssets, HTML_ASSET_LIMIT, type HtmlAssetPolicy, type PreparedHtmlAssets } from './htmlAssetPolicy';
+import { assertHtmlAssetIdentity, layoutHtmlAssets, defaultSelectedHtmlAssets, HTML_ASSET_LIMIT, type HtmlAssetPolicy, type PreparedHtmlAssets } from './htmlAssetPolicy';
 import { buildProtectedArchiveViewer, encryptProtectedArchive } from './protectedArchive';
 import { buildZip, type ZipEntry } from './zip';
 
@@ -16,6 +18,7 @@ export async function loadHtmlExportResource(
   src: string, remaining: number, signal?: AbortSignal, fetchBytes?: AttachmentBytesFetcher,
 ): Promise<ProtectedResource> {
   if (signal?.aborted) throw new Error('내보내기가 취소되었습니다.');
+  if (hasLocalScheme(src)) return readLocalAttachmentBytes(src,remaining,signal);
   const serverId = serverAttachmentId(src);
   if (serverId && fetchBytes) {
     const got = await fetchBytes(serverId);
@@ -96,24 +99,27 @@ export async function buildPreparedHtmlExport(
   }
   const plan = layoutHtmlAssets(prepared, policy);
   await prepareCodeRenders(plan.map);
+  assertHtmlAssetIdentity(prepared);
   const html = buildStandaloneHtml(
     plan.map, view.layoutType, id => plan.hrefById.get(id), view.spacing, plan.map, view.dark,
   );
   const htmlBytes = new TextEncoder().encode(html);
   if (htmlBytes.length > 64 * 1024 * 1024) throw new Error('HTML 본문은 최대 64MiB입니다. 첨부를 분리하거나 맵을 나누어 주세요.');
   const title = fileStem(plan.map.title);
-  const entries: ZipEntry[] = [{ path: `${title}.html`, data: htmlBytes }, ...plan.files];
+  const entries: ZipEntry[] = [{ path: emmHtmlFileName(title), data: htmlBytes }, ...plan.files];
   if (password !== undefined) {
     if (plan.files.length === 0) {
       try {
         const locked = await encryptStandaloneHtml(enableProtectedAttachmentOpening(html), password, 'map');
-        return { fileName: '보호된-맵.html', blob: new Blob([locked], { type: 'text/html;charset=utf-8' }), packaged: prepared.attachmentCount, external: 0 };
+        assertHtmlAssetIdentity(prepared);
+        return { fileName: emmHtmlFileName('보호된-맵'), blob: new Blob([locked], { type: 'text/html;charset=utf-8' }), packaged: prepared.attachmentCount, external: 0 };
       } finally { htmlBytes.fill(0); }
     }
     let inner: Uint8Array | undefined;
     try {
       inner = buildZip(entries);
       const encrypted = await encryptProtectedArchive(inner, password);
+      assertHtmlAssetIdentity(prepared);
       const outer = buildZip([
         { path: 'viewer.html', data: new TextEncoder().encode(buildProtectedArchiveViewer()) },
         { path: 'files/content.emmenc', data: encrypted },
@@ -122,7 +128,7 @@ export async function buildPreparedHtmlExport(
     } finally { inner?.fill(0); htmlBytes.fill(0); }
   }
   if (plan.files.length === 0) {
-    return { fileName: `${title}.html`, blob: new Blob([htmlBytes as BlobPart], { type: 'text/html;charset=utf-8' }), packaged: prepared.attachmentCount, external: 0 };
+    return { fileName: emmHtmlFileName(title), blob: new Blob([htmlBytes as BlobPart], { type: 'text/html;charset=utf-8' }), packaged: prepared.attachmentCount, external: 0 };
   }
   return {
     fileName: `${title}.zip`,
@@ -135,6 +141,7 @@ export async function downloadPreparedHtmlExport(
   prepared: PreparedHtmlAssets, policy: HtmlAssetPolicy, view: HtmlExportView, password?: string,
 ): Promise<ExportPackage> {
   const pkg = await buildPreparedHtmlExport(prepared, policy, view, password);
+  assertHtmlAssetIdentity(prepared);
   const href = URL.createObjectURL(pkg.blob);
   const anchor = document.createElement('a');
   anchor.href = href; anchor.download = pkg.fileName;

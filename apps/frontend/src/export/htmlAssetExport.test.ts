@@ -32,7 +32,7 @@ const savedFetch = globalThis.fetch;
 globalThis.fetch = async () => { throw Error('NO_NETWORK_IN_EXPORT_RESTORE_TEST'); };
 try {
   const all = await buildPreparedHtmlExport(prepared, { mode: 'all' }, view);
-  assert.ok(all.fileName.endsWith('.html'));
+  assert.equal(all.fileName, '정책 왕복 합성 자료.emm.html');
   const allHtml = await all.blob.text();
   originals(parseHtmlMapFile(allHtml)!.map);
   assert.equal(allHtml.split(a).length - 1, 1, 'viewer and restoration metadata share one embedded attachment');
@@ -67,7 +67,7 @@ try {
   originals((await parseZipMapFile(protectedBytes, undefined, secret))!.map);
 
   const protectedHtml = await buildPreparedHtmlExport(prepared, { mode: 'all' }, view, secret);
-  assert.equal(protectedHtml.fileName, '보호된-맵.html');
+  assert.equal(protectedHtml.fileName, '보호된-맵.emm.html');
   const decrypted = await decryptStandaloneHtml(await protectedHtml.blob.text(), secret);
   originals(parseHtmlMapFile(decrypted.html)!.map);
   assert.equal(JSON.stringify(map), original, 'all export modes leave the active map and its originals unchanged');

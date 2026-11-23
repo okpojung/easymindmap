@@ -1,3 +1,4 @@
+import { captureExportGuard, isLocalAttachmentUrl, readLocalAttachmentBytes } from '@/utils/localAttachments';
 // Strict, immutable asset snapshot for protected export. A missing resource is
 // an error, never an external-link/ZIP/plaintext fallback.
 import { mapCenters, type MindNode, type SampleMap } from '@emm/model';
@@ -50,17 +51,18 @@ export function validateProtectedMapImport(map: SampleMap, maxBytes = PROTECTED_
 }
 
 export async function inlineProtectedMapAssets(map0: SampleMap, load: ProtectedResourceLoader): Promise<{ map: SampleMap; attachments: number; assetBytes: number }> {
+  const guard = captureExportGuard(map0);
   const map = structuredClone(map0);
   const nodes = protectedNodes(map);
   const urls = new Set<string>();
   let attachments = 0, references = 0;
-  const need = (src: string | undefined): void => {
-    if (!src || !/^(data:|blob:|https?:\/\/)/i.test(src)) throw new Error(MISSING);
+  const need = (src: string | undefined, attachment = false): void => {
+    if (!src || (!/^(data:|blob:|https?:\/\/)/i.test(src) && !(attachment && isLocalAttachmentUrl(src)))) throw new Error(MISSING);
     urls.add(src); references += 1;
     if (references > PROTECTED_RESOURCE_LIMIT) throw new Error('첨부파일과 사진이 너무 많습니다. 맵을 나누어 주세요.');
   };
   for (const n of nodes) {
-    for (const a of n.attachments ?? []) { need(a.url); attachments += 1; }
+    for (const a of n.attachments ?? []) { need(a.url,true); attachments += 1; }
     if (n.image) need(n.image.src);
     for (const image of n.images ?? []) need(image.src);
     for (const note of n.notes ?? []) for (const src of collectNoteHtmlImageSrcs(note.html)) need(src);
@@ -69,11 +71,13 @@ export async function inlineProtectedMapAssets(map0: SampleMap, load: ProtectedR
   let assetBytes = 0;
   for (const src of urls) {
     let resource: ProtectedResource;
-    try { resource = await load(src, PROTECTED_ASSET_LIMIT - assetBytes); }
+    try { resource = await (isLocalAttachmentUrl(src) ? readLocalAttachmentBytes : load)(src, PROTECTED_ASSET_LIMIT - assetBytes); }
     catch (e) {
+      guard();
       if (e instanceof Error && e.message === 'PROTECTED_ASSET_LIMIT') throw new Error('첨부파일과 사진의 원본 합계는 20MB 이내여야 합니다. 큰 파일은 제외하거나 맵을 나누어 주세요.');
       throw new Error(MISSING);
     }
+    guard();
     if (!(resource?.bytes instanceof Uint8Array) || resource.bytes.length > PROTECTED_ASSET_LIMIT - assetBytes) throw new Error('첨부파일과 사진의 원본 합계는 20MB 이내여야 합니다. 큰 파일은 제외하거나 맵을 나누어 주세요.');
     assetBytes += resource.bytes.length;
     const mime = (resource.mime || 'application/octet-stream').split(';')[0].trim().toLowerCase();
@@ -92,5 +96,6 @@ export async function inlineProtectedMapAssets(map0: SampleMap, load: ProtectedR
     for (const image of n.images ?? []) image.src = resolved.get(image.src)!;
     n.notes = rewriteNotesImages(n.notes, src => resolved.get(src));
   }
+  guard(map);
   return { map, attachments, assetBytes };
 }

@@ -1,4 +1,6 @@
+import { captureExportGuard } from '@/utils/localAttachments';
 import type { LayoutType, SampleMap } from '@/editor/__samples__/types';
+import { emmHtmlFileName } from './emmHtmlName';
 import type { LayoutSpacing } from '@/layout/LayoutEngine';
 import { attachmentFetchUrl } from '@/services/cloud/apiClient';
 import { prepareCodeRenders } from '@/editor/node-renderer/codeRender';
@@ -48,20 +50,26 @@ export async function buildEncryptedMapPackage(
   map: SampleMap, password: string, mapLayoutType?: LayoutType,
   spacing?: LayoutSpacing, dark?: boolean,
 ): Promise<ExportPackage> {
+  const guard = captureExportGuard(map);
   const invalid = passwordValidationError(password);
   if (invalid) throw new Error(invalid);
   const snapshot = await inlineProtectedMapAssets(map, loadResource);
+  guard();
   await prepareCodeRenders(snapshot.map);
+  guard();
   const html = enableProtectedAttachmentOpening(buildStandaloneHtml(snapshot.map, mapLayoutType, undefined, spacing, snapshot.map, dark));
   const locked = await encryptStandaloneHtml(html, password, 'map');
-  return { fileName: '보호된-맵.html', blob: new Blob([locked], { type: 'text/html;charset=utf-8' }), packaged: snapshot.attachments, external: 0 };
+  guard();
+  return { fileName: emmHtmlFileName('보호된-맵'), blob: new Blob([locked], { type: 'text/html;charset=utf-8' }), packaged: snapshot.attachments, external: 0 };
 }
 
 export async function downloadMapAsEncryptedHtml(
   map: SampleMap, password: string, mapLayoutType?: LayoutType,
   spacing?: LayoutSpacing, dark?: boolean,
 ): Promise<ExportPackage> {
+  const guard = captureExportGuard(map);
   const pkg = await buildEncryptedMapPackage(map, password, mapLayoutType, spacing, dark);
+  guard();
   const url = URL.createObjectURL(pkg.blob);
   const link = document.createElement('a');
   link.href = url; link.download = pkg.fileName;

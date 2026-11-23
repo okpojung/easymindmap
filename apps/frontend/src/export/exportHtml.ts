@@ -1,3 +1,4 @@
+import { captureExportGuard, hasLocalScheme, readLocalAttachmentBytes } from '@/utils/localAttachments';
 // File: src/export/exportHtml.ts
 // Version: MVP-ExportHtml-LayoutPreserving-v2.0.0
 // Spec: docs/04-extensions/import-export/20-export.md — EXPORT-02 (Standalone HTML)
@@ -20,6 +21,7 @@
 // - The map data is embedded as JSON; '<' is escaped so closing tags inside
 //   node text can never break out of the <script> block.
 
+import { emmHtmlFileName } from './emmHtmlName';
 import type { LayoutType, MindNode, NodeAttachment, SampleMap } from '@/editor/__samples__/types';
 import { contentIndicatorCount } from '@/editor/node-renderer/nodeContent';
 import { applyVariableView } from '@/utils/variables/mapVariables';
@@ -38,7 +40,7 @@ import { splitNodeParts } from '@/editor/node-renderer/nodeBlocks';
 import { computeNodeChecks } from '@/editor/node-renderer/mdCheck';
 import { buildZip, type ZipEntry } from './zip';
 import { attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClient';
-import { fetchServerImageDataUrls, type AttachmentBytesFetcher } from './serverImages';
+import { boundedExportBytes, fetchServerImageDataUrls, type AttachmentBytesFetcher } from './serverImages';
 import {
   buildMapMeta,
   bytesToDataUrl,
@@ -83,6 +85,7 @@ interface ExportAttachment {
   href?: string;
   kind: string;
   external?: boolean;
+  localOnly?: boolean;
 }
 
 interface ExportNode {
@@ -164,10 +167,11 @@ function toExportNode(
       // blob: 원본은 이 브라우저 세션에서만 유효하다 — 패키징하지 못한
       // blob: 을 href 로 내보내면 죽은 링크가 되므로 비워서 뷰어가
       // "(파일 없음)" 으로 표시하게 한다. http(s) 는 외부 링크로 유지.
-      const live = packaged ?? (a.url && !a.url.startsWith('blob:') ? a.url : undefined);
+      const live = packaged ?? (a.url && !hasLocalScheme(a.url) && !a.url.startsWith('blob:') ? a.url : undefined);
       return {
         name: a.name,
         href: live,
+        localOnly: !live && hasLocalScheme(a.url) || undefined,
         kind: a.kind,
         external: packaged || !live ? undefined : true,
       };
@@ -2525,7 +2529,7 @@ const VIEWER_JS = String.raw`
       for (var i2 = 0; i2 < arr.length; i2++) {
         rows.push({
           icon: icon,
-          label: arr[i2].name + (arr[i2].href ? (arr[i2].external ? ' ↗' : '') : ' ' + MML.fileMissing),
+          label: arr[i2].name + (arr[i2].href ? (arr[i2].external ? ' ↗' : '') : ' ' + (arr[i2].localOnly ? MML.localOnly : MML.fileMissing)),
           title: arr[i2].name,
           act: openAttachmentHref(arr[i2])
         });
@@ -2903,7 +2907,7 @@ const VIEWER_JS = String.raw`
       if (!att.external) a.setAttribute('download', att.name);
       row.appendChild(a);
     } else {
-      row.textContent = icon + ' ' + att.name + ' ' + MML.fileMissing;
+      row.textContent = icon + ' ' + att.name + ' ' + (att.localOnly ? MML.localOnly : MML.fileMissing);
     }
     return row;
   }
@@ -3550,7 +3554,7 @@ const VIEWER_JS = String.raw`
       } else {
         var a = it.att;
         icon = LIST_TAB === 'md' ? '📝' : (a.kind === 'audio' ? '🎵' : a.kind === 'video' ? '🎬' : a.kind === 'image' ? '🖼' : '📎');
-        name = a.name + (a.href ? (a.external ? ' ↗' : '') : ' ' + (MML.fileMissing || ''));
+        name = a.name + (a.href ? (a.external ? ' ↗' : '') : ' ' + (a.localOnly ? MML.localOnly : MML.fileMissing || ''));
         title = a.name; open = openAttachmentHref(a);
       }
       row.appendChild(liEl('span', 'ic', icon));
@@ -4681,6 +4685,7 @@ const VIEWER_STRING_KEYS = [
 function viewerStrings(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const k of VIEWER_STRING_KEYS) out[k] = tr(`io.viewer.${k}`);
+  out.localOnly = {en:'(Local file not included. Open this map in EMM and reconnect its folder.)',ko:'(로컬 파일 미포함: EMM에서 맵을 열고 폴더를 다시 연결하세요.)',zh:'（未包含本地文件。在 EMM 中打开地图并重新连接文件夹。）',ja:'（ローカルファイルは含まれていません。EMM でマップを開き、フォルダーを再接続してください。）'}[currentLang()];
   out.copied = tr('common.copied');
   return out;
 }
@@ -4711,8 +4716,10 @@ export function buildStandaloneHtml(
   //   DOM 을 읽을 수 없어 위치를 이렇게 받는다. 내보내기 파일에는 쓰지 않는다.
   hostSlots?: { center: number; right: number },
 ): string {
+  captureExportGuard(map);
   // 다시 불러올 원본(메타)은 손대지 않은 맵 — 아래 화면용 사본의 자동 태그가 문서에 섞이지 않게
   const metaSource = metaMap ?? map;
+  if (metaMap) captureExportGuard(metaMap);
   // 그림만 담은 노드: 자동 태그 Image·Mermaid·HTML (에디터 mediaView 와 같음, 2026-10-28).
   // 뷰어에서는 접을 수 없으니 늘 펼친다(fold:false).
   // 맵 변수 [&이름] 은 값으로 (2026-10-29) — 공개 화면·HTML 파일은 '값으로 보기'와 같다.
@@ -4942,6 +4949,44 @@ export interface ExportPackage {
   external: number;
 }
 
+// fetch(data:...) may decode and allocate before exposing a response stream.
+// Count decoded bytes first, without constructing a URL, decoded string or buffer.
+function preflightMixedSource(source: string, remaining: number): void {
+  if (!/^data:/i.test(source)) {
+    // Do not let the URL parser normalize whitespace/control characters in a
+    // disguised data scheme into an eager inline decode.
+    if (!/^(?:https?:\/\/|blob:|\/(?!\/))/i.test(source)) throw new Error('RESOURCE_UNAVAILABLE');
+    return;
+  }
+  const comma = source.indexOf(',');
+  if (comma < 5 || comma > 512) throw new Error('RESOURCE_UNAVAILABLE');
+  const header = source.slice(5,comma);
+  if (/[^\x21-\x7e]/.test(header)) throw new Error('RESOURCE_UNAVAILABLE');
+  const length = source.length - comma - 1;
+  if (/;base64$/i.test(header)) {
+    // Strict padded base64 in mixed packages. The size test comes before
+    // slicing or validating a potentially enormous payload.
+    if (length > Math.ceil(remaining/3)*4) throw new Error('PROTECTED_ASSET_LIMIT');
+    if (length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(source.slice(comma+1))) throw new Error('RESOURCE_UNAVAILABLE');
+    const bytes = length/4*3 - (source.endsWith('==') ? 2 : source.endsWith('=') ? 1 : 0);
+    if (bytes > remaining) throw new Error('PROTECTED_ASSET_LIMIT');
+    return;
+  }
+  if (length > remaining*3) throw new Error('PROTECTED_ASSET_LIMIT');
+  let bytes = 0;
+  for (let i=comma+1; i<source.length; i++) {
+    const c = source.charCodeAt(i);
+    if (c === 37) {
+      if (i+2 >= source.length || !/^[0-9a-f]{2}$/i.test(source.slice(i+1,i+3))) throw new Error('RESOURCE_UNAVAILABLE');
+      i += 2; bytes++;
+    } else if (c < 128) bytes++;
+    else if (c < 2048) bytes += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && source.charCodeAt(i+1) >= 0xdc00 && source.charCodeAt(i+1) <= 0xdfff) { bytes += 4; i++; }
+    else bytes += 3;
+    if (bytes > remaining) throw new Error('PROTECTED_ASSET_LIMIT');
+  }
+}
+
 // Builds the export payload. With no attachments this is the single
 // standalone .html; with attachments it is a .zip whose unzipped layout is
 //   맵제목.html
@@ -4970,27 +5015,36 @@ export async function buildExportPackage(
   // 우리 저장소 사진을 **먼저** 되받아 data URL 로 되돌린다 (B16 ② 슬라이스 1).
   // **첨부가 하나도 없는 경로(아래 조기 반환)에서도** 사진은 있을 수 있으므로
   // 여기서 한다 — 그 아래에 두면 사진만 있는 맵이 서버 URL 로 나간다.
-  const srvImg = await fetchServerImageDataUrls(map0, fetchBytes);
-  // Mermaid·HTML 코드 블록을 먼저 그려 둔다 — 그래야 크기와 그림이 파일에 실린다 (2026-10-28)
-  await prepareCodeRenders(map0);
-  const map = srvImg.inlined ? withInlinedImages(map0, (s) => srvImg.bySrc.get(s)) : map0;
-
-  const title = safeName(map.title, 'mindmap');
-
+  const guard = captureExportGuard(map0);
+  map0 = structuredClone(map0);
   const attachments: NodeAttachment[] = [];
   // 루트 노드의 첨부도 패키징한다 (2026-08-02: branches만 걷어 루트 첨부가
   // files/ 에 안 들어가고 세션이 끝나면 죽는 blob: URL로 남던 버그)
-  if (map.root.attachments) attachments.push(...map.root.attachments);
-  collectAttachments(map.branches, attachments);
-  for (const c of map.centers ?? []) {
+  if (map0.root.attachments) attachments.push(...map0.root.attachments);
+  collectAttachments(map0.branches, attachments);
+  for (const c of map0.centers ?? []) {
     if (c.root.attachments) attachments.push(...c.root.attachments);
     collectAttachments(c.branches, attachments);
   }
 
+  const hasLocal = attachments.some(a => hasLocalScheme(a.url));
+  // This legacy callback returns an already-materialized byte array and has no
+  // budget parameter. Mixed exports require the bounded default reader.
+  if (hasLocal && fetchBytes) throw new Error('LOCAL_EXPORT_REQUIRES_BOUNDED_LOADER');
+  const budget = {remaining:20*1024*1024, guard};
+  const srvImg = await fetchServerImageDataUrls(map0, fetchBytes, hasLocal ? budget : undefined);
+  guard();
+  // Mermaid·HTML 코드 블록을 먼저 그려 둔다 — 그래야 크기와 그림이 파일에 실린다 (2026-10-28)
+  await prepareCodeRenders(map0);
+  guard();
+  const map = srvImg.inlined ? withInlinedImages(map0, (s) => srvImg.bySrc.get(s)) : map0;
+
+  const title = safeName(map.title, 'mindmap');
+
   if (attachments.length === 0) {
     const html = buildStandaloneHtml(map, mapLayoutType, undefined, spacing, undefined, dark);
     return {
-      fileName: `${title}.html`,
+      fileName: emmHtmlFileName(title),
       blob: new Blob([html], { type: 'text/html;charset=utf-8' }),
       packaged: 0,
       external: srvImg.failed,
@@ -5004,23 +5058,29 @@ export async function buildExportPackage(
   const inlineById = new Map<string, string>();
   const files: ZipEntry[] = [];
   const usedNames = new Set<string>();
-
+  let remaining = budget.remaining;
   for (const att of attachments) {
     if (!att.url) continue;
     try {
       let bytes: Uint8Array;
       const srvId = serverAttachmentId(att.url);
-      if (fetchBytes && srvId) {
+      if (hasLocalScheme(att.url)) { bytes = (await readLocalAttachmentBytes(att.url, remaining)).bytes; guard(); }
+      else if (fetchBytes && srvId) {
         // 산 사람의 길 — 열쇠로 연다 (위 `fetchBytes` 주석)
         const got = await fetchBytes(srvId);
+        guard();
         if (!got) throw new Error('열쇠로 받지 못했다');
         bytes = got.bytes;
       } else {
         // 서버 첨부(B9)는 인증 토큰을 붙여 받아온다 — 그 외 URL 은 그대로
-        const res = await fetch(await attachmentFetchUrl(att.url));
+        const source = await attachmentFetchUrl(att.url); guard();
+        if (hasLocal) preflightMixedSource(source, remaining);
+        const res = await fetch(source); guard();
         if (!res.ok) throw new Error(String(res.status));
-        bytes = new Uint8Array(await res.arrayBuffer());
+        bytes = hasLocal ? await boundedExportBytes(res,remaining,guard) : new Uint8Array(await res.arrayBuffer());
+        guard();
       }
+      if (hasLocal && (remaining -= bytes.length) < 0) throw new Error('PROTECTED_ASSET_LIMIT');
       if (bytes.length <= INLINE_ATTACHMENT_LIMIT) {
         inlineById.set(att.id, bytesToDataUrl(bytes, att.name));
       }
@@ -5038,11 +5098,14 @@ export async function buildExportPackage(
 
       files.push({ path: `files/${name}`, data: bytes });
       hrefById.set(att.id, `files/${name}`);
-    } catch {
+    } catch (error) {
+      guard();
+      if (hasLocal) throw error; // No partial mixed/local archive on any failure.
       // leave as external link (original URL) in the HTML
     }
   }
 
+  guard();
   const metaMap = withInlinedAttachments(map, (id) => inlineById.get(id));
   const html = buildStandaloneHtml(
     map, mapLayoutType, (id) => hrefById.get(id), spacing, metaMap, dark);
@@ -5050,7 +5113,7 @@ export async function buildExportPackage(
   if (files.length === 0) {
     // nothing could be packaged — fall back to the single HTML
     return {
-      fileName: `${title}.html`,
+      fileName: emmHtmlFileName(title),
       blob: new Blob([html], { type: 'text/html;charset=utf-8' }),
       packaged: 0,
       // 사진을 못 받아 온 것도 함께 센다 (B16 ②)
@@ -5059,7 +5122,7 @@ export async function buildExportPackage(
   }
 
   const entries: ZipEntry[] = [
-    { path: `${title}.html`, data: new TextEncoder().encode(html) },
+    { path: emmHtmlFileName(title), data: new TextEncoder().encode(html) },
     ...files,
   ];
 
@@ -5080,7 +5143,9 @@ export async function downloadMapAsHtml(
   // 내보낼 때의 에디터 테마가 다크인지 — 뷰어가 이 모드로 열린다
   dark?: boolean,
 ): Promise<ExportPackage> {
+  const guard = captureExportGuard(map);
   const pkg = await buildExportPackage(map, mapLayoutType, spacing, dark);
+  guard();
   const url = URL.createObjectURL(pkg.blob);
 
   const a = document.createElement('a');

@@ -4,6 +4,7 @@ import { I } from '@/components/icons';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
 import type { SearchHit } from '@/utils/mapSearch';
 import { useLang, useTr } from '@/i18n';
+import './SearchResults.css';
 
 export const SEARCH_KIND_BADGE: Record<string, { bg: string; fg: string }> = {
   노드: { bg: '#3B82F6', fg: '#FFFFFF' }, 태그: { bg: '#F59E0B', fg: '#1F1B16' },
@@ -19,18 +20,19 @@ export function SearchField({ t, query, onChange, onFocus, onKeyDown, inputRef, 
 }) {
   const tr = useTr(); const lang = useLang();
   return <div data-mm-touch="" style={{ position: 'relative', width: '100%', minWidth: 0 }}>
-    <span aria-hidden="true" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: t.textMuted, display: 'flex', pointerEvents: 'none' }}><I.Search size={16} /></span>
-    <input ref={inputRef} data-testid={testId} data-map-search-input={testId === 'map-search-input' ? 'header' : 'panel'}
+    <span aria-hidden="true" style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: t.text, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: t.primarySoft, pointerEvents: 'none' }}><I.Search size={20} strokeWidth={2} /></span>
+    <input ref={inputRef} className="mm-map-search-input" data-testid={testId} data-map-search-input={testId === 'map-search-input' ? 'header' : 'panel'}
       type="text" inputMode="search" enterKeyHint="search" role="combobox" aria-label={tr('common.search')} aria-autocomplete="list"
       aria-expanded={expanded} aria-controls={expanded ? listId : undefined} aria-activedescendant={expanded ? activeId : undefined}
       placeholder={tr('panel.search.placeholder')} value={query} onChange={e => onChange(e.target.value)}
       onFocus={onFocus} onClick={onFocus} onKeyDown={onKeyDown} autoComplete="off"
-      style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 36, padding: '7px 34px 7px 32px', borderRadius: 7,
-        border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, outlineOffset: 2, fontFamily: 'inherit', WebkitAppearance: 'none' }} />
+      style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 38, padding: '7px 34px 7px 42px', borderRadius: 7,
+        border: `1px solid ${t.textMuted}`, background: t.surface, color: t.text, fontSize: 14, fontWeight: 500, boxShadow: t.shadowSm, outlineOffset: 2, fontFamily: 'inherit', WebkitAppearance: 'none',
+        '--search-placeholder': t.textMuted, '--search-focus': t.name === 'light' ? t.primaryHover : t.primary } as CSSProperties} />
     {query !== '' && <button type="button" data-testid={`${testId ?? 'search'}-clear`}
       aria-label={lang === 'ko' ? '검색어 지우기' : 'Clear search'}
       onClick={() => { onChange(''); inputRef?.current?.focus(); }}
-      style={{ position: 'absolute', right: 2, top: 2, width: 32, height: 32, border: 0, background: 'transparent', color: t.textMuted, cursor: 'pointer', borderRadius: 5, fontSize: 20 }}>×</button>}
+      style={{ position: 'absolute', right: 3, top: 3, width: 32, height: 32, border: 0, background: 'transparent', color: t.textMuted, cursor: 'pointer', borderRadius: 5, fontSize: 20 }}>×</button>}
   </div>;
 }
 export function SearchResults({ t, query, results, selectedId, onChoose, listId, activeIndex = -1, onActive }: {

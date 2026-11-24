@@ -1,0 +1,9 @@
+.mm-map-search-input::placeholder {
+  color: var(--search-placeholder);
+  opacity: 1;
+  font-weight: 500;
+}
+.mm-map-search-input:focus-visible {
+  outline: 2px solid var(--search-focus);
+  outline-offset: 2px;
+}

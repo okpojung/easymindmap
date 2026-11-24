@@ -3,11 +3,11 @@ import { createPortal } from 'react-dom';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { useCoarse } from '@/hooks/useViewport';
 
-type Props = ButtonHTMLAttributes<HTMLButtonElement> & { title?: string };
+type Props = ButtonHTMLAttributes<HTMLButtonElement> & { title?: string; tooltipDisabled?: boolean };
 
 /** Short single-line hints. Omit native title to avoid duplicate browser hints. */
 export const TooltipButton = forwardRef<HTMLButtonElement, Props>(function TooltipButton(
-  { title, children, 'aria-label': ariaLabel, 'aria-describedby': describedBy, ...props }, forwardedRef,
+  { title, children, tooltipDisabled = false, 'aria-label': ariaLabel, 'aria-describedby': describedBy, ...props }, forwardedRef,
 ) {
   const id = useId();
   const anchor = useRef<HTMLSpanElement>(null);
@@ -17,7 +17,7 @@ export const TooltipButton = forwardRef<HTMLButtonElement, Props>(function Toolt
   const hide = () => { clearTimeout(timer.current); setPoint(null); };
   const show = () => {
     clearTimeout(timer.current);
-    if (!label) return;
+    if (!label || tooltipDisabled) return;
     timer.current = setTimeout(() => {
       const box = anchor.current?.getBoundingClientRect();
       if (!box) return;
@@ -26,6 +26,9 @@ export const TooltipButton = forwardRef<HTMLButtonElement, Props>(function Toolt
     }, 400);
   };
   useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (tooltipDisabled) { clearTimeout(timer.current); setPoint(null); }
+  }, [tooltipDisabled]);
   useEffect(() => {
     if (!point) return;
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') hide(); };
@@ -39,7 +42,7 @@ export const TooltipButton = forwardRef<HTMLButtonElement, Props>(function Toolt
     onFocus={show} onBlur={hide} onPointerDown={hide}>
     <button {...props} ref={forwardedRef} aria-label={ariaLabel ?? label}
       aria-describedby={[describedBy, point ? id : null].filter(Boolean).join(' ') || undefined}>{children}</button>
-    {point && createPortal(<span id={id} role="tooltip" data-testid="toolbar-tooltip"
+    {point && !tooltipDisabled && createPortal(<span id={id} role="tooltip" data-testid="toolbar-tooltip"
       ref={(element) => {
         if (!element) return;
         const width = element.getBoundingClientRect().width;

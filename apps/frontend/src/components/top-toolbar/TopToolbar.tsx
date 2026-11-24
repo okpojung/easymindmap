@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { Collaborator } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
@@ -78,6 +78,7 @@ export function TopToolbar({
   const documentRef = useRef<HTMLDivElement>(null);
   const distributionRef = useRef<HTMLDivElement>(null);
   const fileButtonRef = useRef<HTMLButtonElement>(null);
+  const fileMenuId = useId();
   const dismissFileMenu = () => { setDocumentOpen(false); fileButtonRef.current?.focus(); };
   useEffect(() => {
     const outside = (event: PointerEvent) => {
@@ -287,7 +288,7 @@ export function TopToolbar({
   );
   const size = phone ? mobileToolbarSize(Math.min(barW, typeof window === 'undefined' ? barW : window.innerWidth)) : coarse ? 42 : 38;
   const headerLayout = editorToolbarLayout(barW, phone);
-  const groupStyle = { display: 'flex', alignItems: 'center', gap: phone ? 0 : 2, flexShrink: 0, padding: phone ? 0 : '3px 5px', border: phone ? 'none' : '1px solid ' + t.border, borderRadius: phone ? 0 : 9, background: phone ? 'transparent' : t.surfaceAlt } as const;
+  const groupStyle = { display: 'flex', alignItems: 'center', gap: phone ? 0 : 2, flexShrink: 0, padding: phone ? 0 : headerLayout.stacked ? '3px 3px' : '3px 5px', border: phone ? 'none' : '1px solid ' + t.border, borderRadius: phone ? 0 : 9, background: phone ? 'transparent' : t.surfaceAlt } as const;
   const menuStyle = { position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 60, width: 270, maxWidth: 'calc(100vw - 16px)', maxHeight: '70vh', overflowY: 'auto', padding: 6, borderRadius: 10, border: '1px solid ' + t.border, background: t.surface, boxShadow: '0 8px 24px #0003' } as const;
   const buttonStyle = { width: size, height: phone ? 40 : size, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, border: 'none', borderRadius: 7, background: 'transparent', color: t.text, cursor: 'pointer' } as const;
   const closeMenus = () => { setDocumentOpen(false); setGanttOpen(false); setDistributionOpen(false); };
@@ -303,14 +304,24 @@ export function TopToolbar({
       style={{ position: 'relative', zIndex: 20, flexShrink: 0, background: t.surface, borderBottom: '1px solid ' + t.border,
         padding: 'calc(env(safe-area-inset-top, 0px) + 4px) max(6px, env(safe-area-inset-right, 0px)) 4px max(6px, env(safe-area-inset-left, 0px))',
         display: 'grid', gridTemplateColumns: headerLayout.columns, alignItems: 'center', gap: phone ? 2 : 8, minWidth: 0, minHeight: 56 }}>
-      <div ref={documentRef} data-testid="document-menu-anchor" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-        <img src={appFaviconUrl()} width={24} height={24} alt="EasyMindMap" style={{ flexShrink: 0 }} />
-        <TooltipButton ref={fileButtonRef} data-testid="file-menu-toggle" title={copy.documentMenu} aria-label={copy.file} aria-haspopup="menu" aria-expanded={documentOpen}
+      <div data-testid="toolbar-brand" style={{ display: 'flex', alignItems: 'center' }}>
+        <img src={appFaviconUrl()} width={24} height={24} alt="EasyMindMap" />
+      </div>
+      <div data-testid="map-title-search" style={{ gridColumn: headerLayout.stacked ? '2 / -1' : undefined, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <input data-testid="map-title" type="text" readOnly value={mapTitle} title={mapTitle} aria-label={copy.mapTitle}
+          style={{ width: '100%', flex: '1 1 160px', maxWidth: phoneLayout ? undefined : 'min(45%, 320px)', minWidth: 0, boxSizing: 'border-box', padding: '5px 8px', height: 34, border: '1px solid ' + t.border, borderRadius: 7, background: t.surfaceAlt, color: t.text, fontSize: 14, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} />
+        {!phoneLayout && <MapSearch t={t} />}
+      </div>
+      <div data-testid="toolbar-actions" style={{ display: 'flex', gridColumn: headerLayout.stacked ? '1 / -1' : undefined, flexWrap: headerLayout.stacked && !phone ? 'wrap' : 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: phone ? 2 : headerLayout.stacked ? 4 : 8, width: '100%', minWidth: 0 }}>
+      <div ref={documentRef} role="group" aria-label={copy.documentMenu} data-toolbar-group="file" data-testid="document-menu-anchor" style={{ ...groupStyle, position: 'relative', border: '1px solid ' + t.primaryBorder, background: t.primarySoft, borderRadius: 9 }}>
+        <TooltipButton ref={fileButtonRef} data-testid="file-menu-toggle" title={copy.documentMenu} tooltipDisabled={documentOpen} aria-label={copy.documentMenu} aria-haspopup="menu" aria-expanded={documentOpen} aria-controls={fileMenuId}
           onClick={() => { const next = !documentOpen; closeMenus(); setDocumentOpen(next); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 6px', minHeight: 36, whiteSpace: 'nowrap', background: 'none', border: 'none', color: t.text, cursor: 'pointer', fontSize: 13 }}>
-          {copy.file}<I.ChevronDown size={14} />
+          style={{ display: 'flex', alignItems: 'center', gap: phone ? 3 : 6, padding: phone ? '0 4px' : '0 8px', height: phone ? 38 : size, whiteSpace: 'nowrap', background: 'transparent', border: 'none', borderRadius: 6, color: t.text, cursor: 'pointer', fontSize: phone ? 12 : 14, fontWeight: 700 }}>
+          {!phone && <I.Menu size={18} strokeWidth={2} aria-hidden="true" />}
+          <span style={{ maxWidth: phone ? 32 : undefined, overflow: 'hidden', textOverflow: 'ellipsis' }}>{copy.file}</span>
+          <I.ChevronDown size={phone ? 12 : 16} strokeWidth={2} aria-hidden="true" style={{ transform: documentOpen ? 'rotate(180deg)' : undefined }} />
         </TooltipButton>
-        <div data-testid="document-menu" role="menu" aria-label={copy.documentMenu} style={{ ...menuStyle, display: documentOpen ? 'flex' : 'none', flexDirection: 'column', overflowY: 'hidden', boxSizing: 'border-box', maxHeight: 'min(70dvh, calc(100dvh - 120px))', left: 0, right: 'auto', width: 300 }}>
+        <div id={fileMenuId} data-testid="document-menu" role="menu" aria-label={copy.documentMenu} style={{ ...menuStyle, display: documentOpen ? 'flex' : 'none', flexDirection: 'column', overflowY: 'hidden', boxSizing: 'border-box', maxHeight: 'min(70dvh, calc(100dvh - 120px))', left: 0, right: 'auto', width: 300 }}>
           <div style={{ position: 'relative', flexShrink: 0, minHeight: 48, boxSizing: 'border-box', padding: '14px 48px 10px 10px', fontSize: 13, fontWeight: 700 }}>
             {copy.file}
             <DialogXButton t={t} testId="document-menu-x" onClose={dismissFileMenu} />
@@ -331,20 +342,15 @@ export function TopToolbar({
           </div>
         </div>
       </div>
-      <div data-testid="map-title-search" style={{ gridColumn: headerLayout.stacked ? '2 / -1' : undefined, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <input data-testid="map-title" type="text" readOnly value={mapTitle} title={mapTitle} aria-label={copy.mapTitle}
-          style={{ width: '100%', flex: '1 1 160px', maxWidth: phoneLayout ? undefined : 'min(45%, 320px)', minWidth: 0, boxSizing: 'border-box', padding: '5px 8px', height: 34, border: '1px solid ' + t.border, borderRadius: 7, background: t.surfaceAlt, color: t.text, fontSize: 14, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} />
-        {!phoneLayout && <MapSearch t={t} />}
+      <div role="group" aria-label={copy.saveStatus} data-toolbar-group="save" style={groupStyle}>
+        <MapActions t={t} flash={flash} phone iconOnly compactSize={phone ? size : undefined} saveMenuSlot={saveSlot} distributionSlot={distributionSlot} closeSlot={closeSlot}
+          onMenuPick={closeMenus} stateDot={phone ? mobileSaveDot(saveState, guestMode || !!readOnly) : saveStateInfo.dot} saveStatus={saveStateInfo.short} saveTip={guestMode ? saveStateInfo.text : saveStateTip ?? saveStateInfo.text} saveState={saveState} />
       </div>
-      <div data-testid="toolbar-actions" style={{ display: 'flex', gridColumn: headerLayout.stacked ? '1 / -1' : undefined, flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: phone ? 2 : 8, width: '100%', minWidth: 0 }}>
-      <div role="group" aria-label={copy.document} data-toolbar-group="document" style={{ ...groupStyle, maxWidth: '100%', boxSizing: 'border-box', flexWrap: phone ? 'nowrap' : 'wrap' }}>
+      <div role="group" aria-label={copy.history} data-toolbar-group="history" style={groupStyle}>
         <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-undo" title={tr('shell.toolbar.undo')} disabled={!canUndo || !!readOnly} onClick={undo}><I.Undo size={22} /></IconBtn>
         <output data-testid="undo-depth" aria-label={tr('shell.toolbar.undoDepth', { n: undoDepth })} title={tr('shell.toolbar.undoDepth', { n: undoDepth })}
           style={{ minWidth: phone ? 20 : 22, width: phone ? 20 : undefined, textAlign: 'center', fontSize: phone ? 11 : 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: undoDepth ? t.primary : t.textMuted }}>{phone && undoDepth > 99 ? '99+' : undoDepth}</output>
         <IconBtn t={t} compactSize={phone ? size : undefined} testId="toolbar-redo" title={tr('shell.toolbar.redo')} disabled={!canRedo || !!readOnly} onClick={redo}><I.Redo size={22} /></IconBtn>
-        <MapActions t={t} flash={flash} phone iconOnly compactSize={phone ? size : undefined} saveMenuSlot={saveSlot} distributionSlot={distributionSlot} closeSlot={closeSlot}
-          onMenuPick={closeMenus} stateDot={phone ? mobileSaveDot(saveState, guestMode || !!readOnly) : saveStateInfo.dot} saveStatus={saveStateInfo.short} saveTip={guestMode ? saveStateInfo.text : saveStateTip ?? saveStateInfo.text} saveState={saveState} />
-
       </div>
       <div role="group" aria-label={copy.view} data-toolbar-group="view" style={groupStyle}>
         {/* Bottom view controls use phoneLayout; keep these on larger touch tablets. */}

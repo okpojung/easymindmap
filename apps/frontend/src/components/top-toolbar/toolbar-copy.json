@@ -17,7 +17,9 @@
     "dashboard": "대시보드맵",
     "documentMenu": "파일 메뉴",
     "file": "파일",
-    "mapTitle": "맵 제목"
+    "mapTitle": "맵 제목",
+    "saveStatus": "저장상태",
+    "history": "히스토리"
   },
   "en": {
     "document": "Save and export",
@@ -37,7 +39,9 @@
     "dashboard": "Dashboard map",
     "documentMenu": "File menu",
     "file": "File",
-    "mapTitle": "Map title"
+    "mapTitle": "Map title",
+    "saveStatus": "Save status",
+    "history": "History"
   },
   "ja": {
     "document": "保存と書き出し",
@@ -57,7 +61,9 @@
     "dashboard": "ダッシュボードマップ",
     "documentMenu": "ファイルメニュー",
     "file": "ファイル",
-    "mapTitle": "マップ名"
+    "mapTitle": "マップ名",
+    "saveStatus": "保存状態",
+    "history": "履歴"
   },
   "zh": {
     "document": "保存与导出",
@@ -77,6 +83,8 @@
     "dashboard": "仪表板脑图",
     "documentMenu": "文件菜单",
     "file": "文件",
-    "mapTitle": "脑图标题"
+    "mapTitle": "脑图标题",
+    "saveStatus": "保存状态",
+    "history": "历史记录"
   }
 }

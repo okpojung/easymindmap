@@ -59,7 +59,7 @@ export function MapSearch({ t }: { t: ThemeTokens }) {
     if (e.key === 'Enter' && open && model.results.length) { e.preventDefault(); e.stopPropagation(); choose(model.results[Math.max(0, active)]?.id ?? model.results[0].id); }
   };
   return <div ref={root} data-testid="map-search-header" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false); }}
-    style={{ position: 'relative', flex: '1 1 220px', maxWidth: 320, minWidth: 100 }}>
+    style={{ position: 'relative', flex: '1 1 220px', maxWidth: 360, minWidth: 220 }}>
     <SearchField t={t} inputRef={input} query={model.query} onChange={v => { model.setQuery(v); setActive(-1); setOpen(true); }}
       onFocus={() => setOpen(true)} onKeyDown={keyDown} listId={listId} expanded={open && !!model.query.trim()}
       activeId={open && active >= 0 && model.results[active] ? optionId(listId, model.results[active].id) : undefined}

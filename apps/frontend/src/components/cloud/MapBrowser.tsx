@@ -31,6 +31,7 @@ import {
 import {
   BOARD_ENABLED, ProAddressBookDialog, ProDashboardToggle, ProInbox, ProMapMembersTip, ProShareDialog, ProSharedMapActions,
 } from '@pro';
+import { LibrarySettingsDialog } from './LibrarySettingsDialog';
 import { PublishPanel } from '@/components/cloud/PublishPanel';
 import { NewMapPanel } from '@/components/left-sidebar/NewMapPanel';
 import { setNewMapTarget } from '@/services/cloud/newMapTarget';
@@ -122,7 +123,7 @@ type SortOrder = 'asc' | 'desc';
  * 다크 어느 쪽에서도 묻히지 않는다.
  */
 /**
- * 이 행에 **지식창고 토글을 세울 수 있는가** (2026-09-18).
+ * 이 행에 **지식창고 설정을 세울 수 있는가** (2026-09-18).
  *
  * 조건 둘을 **한 곳에서** 본다 — 행의 아이콘 셋이 서로 어긋나면 빈 칸이
  * 생기기 때문이다.
@@ -399,6 +400,8 @@ function AccountMapBrowser({
     addressBookTrigger.current?.focus();
   }, []);
   /** 문서함 행에서 연 퍼블리싱 창 — 같은 요청. 협업맵은 게시할 수 없어 버튼이 없다 */
+  const [libraryMap, setLibraryMap] = useState<MapListItem | null>(null);
+  const [libraryRevision, refreshLibrarySearch] = useState(0);
   const [publishMap, setPublishMap] = useState<MapListItem | null>(null);
   /**
    * [＋ 새 맵 ▾] 팝오버 (2026-09-07 사용자 결정) — 새 맵은 **문서함에서만**
@@ -496,7 +499,7 @@ function AccountMapBrowser({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       // 폴더 고르는 창(맵·폴더 이동)은 제 Esc 로 스스로 닫는다 — 여기서는 비켜선다
-      if (moving || movingFolder || addressBookOpen) return;
+      if (moving || movingFolder || addressBookOpen || libraryMap) return;
       if (sheet) { setSheet(null); return; }
       if (newMapAt) { setNewMapAt(null); return; }
       if (info) { setInfo(null); return; }
@@ -506,7 +509,7 @@ function AccountMapBrowser({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, newFolder, query, info, newMapAt, sheet, moving, movingFolder, addressBookOpen]);
+  }, [onClose, newFolder, query, info, newMapAt, sheet, moving, movingFolder, addressBookOpen, libraryMap]);
 
   // ── 내용 검색 ───────────────────────────────────────────────
   // 서버가 제목 + 맵 안(노드·노트·태그)을 찾아 **맞은 맵만** 돌려준다.
@@ -543,7 +546,7 @@ function AccountMapBrowser({
         .finally(() => { if (alive) setFinding(false); });
     }, 250);
     return () => { alive = false; window.clearTimeout(timer); };
-  }, [qRaw, searching, sort, order]);
+  }, [qRaw, searching, sort, order, libraryRevision]);
 
   // ── 트리 계산 ───────────────────────────────────────────────
   const q = qRaw.toLowerCase();
@@ -899,35 +902,7 @@ function AccountMapBrowser({
     }
   };
 
-  /**
-   * **지식창고에 올리기 / 내리기** (2026-09-18).
-   *
-   * 올릴 때 퍼블리싱 등록·공개가 아직이면 **서버가 함께 처리한다**
-   * (`publish.service` setListed) — 화면이 "먼저 퍼블리싱하세요" 를
-   * 안내하지 않는 이유다. 사용자가 우리 내부 순서를 외울 이유가 없다.
-   *
-   * ★ **올리기에는 확인을 받는다.** 공개 범위가 넓어지는 쪽이고, 게다가
-   *   비공개(보관)였다면 여기서 열린다 — 누른 사람이 그 사실을 알아야 한다.
-   *   내리기는 목록에서 빠질 뿐이라(링크는 살아 있다) 묻지 않는다.
-   */
-  const toggleListed = async (m: MapListItem) => {
-    const on = !m.listed;
-    // ★ 카드에는 **미리보기 그림이 함께 나간다.** 여기(행)에는 그 그림을
-    //   볼 자리가 없으므로, 보고 나서 올리고 싶은 사람에게 길을 알려 준다
-    //   (퍼블리싱 창은 미리보기를 보여 주고 [올리기] 단추로 반영한다).
-    if (on && !window.confirm(
-      tr('cloud.browser.listConfirm', { title: m.title || tr('cloud.untitled') }),
-    )) return;
-    try {
-      await cloudApi.setMapListed(m.mapId, on);
-      onFlash(on
-        ? tr('cloud.browser.listedOn')
-        : tr('cloud.browser.listedOff'));
-      void load();
-    } catch (e) {
-      onFlash('⚠ ' + (e instanceof CloudError ? e.message : tr('cloud.browser.listFailed')));
-    }
-  };
+  const refreshLibrary = () => { void load(); refreshLibrarySearch(n => n + 1); };
 
   const moveMapTo = async (m: MapListItem, folderId: string | null) => {
     setMoving(null);
@@ -1353,10 +1328,10 @@ function AccountMapBrowser({
     if (m.shared) return items;
     items.push('divider');
     if (m.viewMode !== 'dashboard') {
-      if (knowsListed(m)) {
+      if (knowsListed(m) && m.kind !== 'collab') {
         items.push({ key: 'listed', icon: <I.Library size={18} />, checked: m.listed, testId: 'browser-map-listed',
-          label: m.listed ? tr('cloud.browser.unlistAria') : tr('cloud.browser.listAria'),
-          onSelect: () => void toggleListed(m) });
+          label: tr('publish.library.settings'),
+          onSelect: () => setLibraryMap(m) });
       } else {
         items.push({ key: 'share', icon: <I.Share size={18} />, label: tr('cloud.browser.shareAria'),
           testId: 'browser-map-share', onSelect: () => setShareMap(m) });
@@ -2287,20 +2262,18 @@ function AccountMapBrowser({
                       · 폴더 이동 — 등록된 맵은 어느 폴더에도 안 보이고
                         [퍼블리싱] 자리에 있다. 눌러도 화면이 그대로라
                         "안 먹었나" 를 겪는다. 취소하면 원래 폴더로 돌아간다.
-                      그 자리에는 **지식창고 토글**이 선다. */}
+                      그 자리에는 **지식창고 설정**이 선다. */}
                   {r.map.viewMode === 'dashboard' ? (
                     // 대시보드맵은 협업맵도, 지식창고 진열도 안 된다(서버가 막는다) — 자리를 비워 둔다
                     <span aria-hidden style={actionGap} />
-                  ) : knowsListed(r.map) ? (
+                  ) : knowsListed(r.map) && r.map.kind !== 'collab' ? (
                     <button
                       data-testid="browser-map-listed"
-                      aria-pressed={r.map.listed}
+                      aria-haspopup="dialog"
                       style={{ ...iconBtn, color: r.map.listed ? t.primary : undefined }}
-                      title={r.map.listed
-                        ? tr('cloud.browser.unlistTip')
-                        : tr('cloud.browser.listTip')}
-                      aria-label={r.map.listed ? tr('cloud.browser.unlistAria') : tr('cloud.browser.listAria')}
-                      onClick={() => void toggleListed(r.map)}
+                      title={tr('publish.library.settings')}
+                      aria-label={tr('publish.library.settings')}
+                      onClick={() => setLibraryMap(r.map)}
                     ><I.Library size={15} /></button>
                   ) : (
                     <button data-testid="browser-map-share" style={iconBtn}
@@ -2486,6 +2459,9 @@ function AccountMapBrowser({
           />
         </div>
       )}
+
+      {libraryMap && <LibrarySettingsDialog t={t} mapId={libraryMap.mapId} mapTitle={libraryMap.title} flash={onFlash}
+        onSaved={refreshLibrary} onClose={() => { setLibraryMap(null); refreshLibrary(); }} />}
 
       {publishMap && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>

@@ -13,6 +13,9 @@
 // 좌표 계산은 minimapMath.ts (단위 테스트), 사양은 10-canvas.md §6.8.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { MinimapHelp } from './MinimapHelp';
+import { loadMinimapWindow, saveMinimapWindow, minimapWindowPosition, moveMinimapWindow, nextMinimapPin, type MinimapWindowState } from './minimapWindow';
+import './Minimap.css';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { LaidOutNode } from '@/layout/types';
@@ -45,6 +48,11 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   const panY = useViewportStore((s) => s.panY);
   const setPan = useViewportStore((s) => s.setPan);
 
+  const [windowState, setWindowState] = useState(loadMinimapWindow);
+  const windowRef = useRef(windowState); windowRef.current = windowState;
+  const [panelMoving, setPanelMoving] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const panelDrag = useRef<{ pointerId: number; clientX: number; clientY: number; x: number; y: number; before: MinimapWindowState } | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   // 끄는 중 — 포인터와 화면 사각형 중심의 간격(mini px)을 유지한다
   const dragRef = useRef<{ pointerId: number; dx: number; dy: number } | null>(null);
@@ -59,8 +67,29 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   const mode: MinimapOriginMode = dragging ? 'follow' : hold ? 'hold' : 'auto';
   // 폰 폭에서는 화면의 40% × 20% 안쪽 — 데스크톱 최소 200×150 은 390px 화면의 절반을 가린다
   const full = minimapPanelSize(W, H);
-  const panelW = compact ? Math.round(Math.min(160, W * 0.42)) : full.panelW;
-  const panelH = compact ? Math.round(Math.min(120, H * 0.2)) : full.panelH;
+  const margin = compact ? 8 : 14;
+  const panelW = Math.max(1, Math.min(compact ? Math.round(Math.min(160, W * 0.42)) : full.panelW, W - margin * 2 - 10));
+  const panelH = Math.max(1, Math.min(compact ? Math.round(Math.min(120, H * 0.2)) : full.panelH, H - margin * 2 - 10));
+  const position = minimapWindowPosition(windowState, W, H, panelW + 10, panelH + 10, margin);
+  const commitWindow = (s: MinimapWindowState) => { windowRef.current = s; setWindowState(s); saveMinimapWindow(s); };
+  const movePanel = (x: number, y: number) => {
+    const s = moveMinimapWindow(windowRef.current, x, y, W, H, panelW + 10, panelH + 10, margin);
+    windowRef.current = s; setWindowState(s);
+  };
+  const startPanelDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    if (e.button !== 0 || windowRef.current.pin !== 'user' || (e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    panelDrag.current = { pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY, x: position.x, y: position.y, before: windowRef.current };
+    e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); setPanelMoving(true);
+  };
+  const endPanelDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = panelDrag.current; if (!d || d.pointerId !== e.pointerId) return;
+    panelDrag.current = null; setPanelMoving(false);
+    if (e.type === 'pointercancel') { windowRef.current = d.before; setWindowState(d.before); }
+    else saveMinimapWindow(windowRef.current);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
   const geom = minimapGeometry(nodeBounds, viewWorld, panelW, panelH, originRef.current, mode);
   originRef.current = { x: geom.bounds.x, y: geom.bounds.y, scale: geom.scale };
   const view = worldToMini(geom, viewWorld);
@@ -127,26 +156,50 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   };
 
   return (
+    <>
     <div
       data-testid="minimap"
-      className="mm-overlay-controls"
+      data-pin={windowState.pin}
+      data-panel-moving={panelMoving}
+      data-help-open={helpOpen}
+      className="mm-overlay-controls mm-minimap"
+      onPointerDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      onDoubleClick={e => e.stopPropagation()}
+      onWheel={e => e.stopPropagation()}
       style={{
-        position: 'absolute', right: compact ? 8 : 14, bottom: compact ? 8 : 14, zIndex: 6,
+        position: 'absolute', left: position.x, top: position.y, zIndex: 6, width: panelW, boxSizing: 'content-box',
         background: t.surface, border: `1px solid ${t.border}`, borderRadius: 8,
         boxShadow: t.shadowSm, padding: 4, userSelect: 'none',
       }}
     >
-      <button
-        data-testid="minimap-close"
-        onClick={onClose}
-        title={tr('editor.minimap.close')}
-        style={{
-          position: 'absolute', top: 2, right: 4, zIndex: 1,
-          width: compact ? 28 : 18, height: compact ? 28 : 18, border: 'none', borderRadius: 4,
-          background: 'transparent', color: t.textMuted, cursor: 'pointer',
-          fontSize: 13, lineHeight: 1, padding: 0,
-        }}
-      >×</button>
+      <div className="mm-minimap-top">
+        <div className="mm-minimap-bar" data-testid="minimap-titlebar" role="group" tabIndex={0}
+          aria-label={tr('editor.minimap.move')} title={tr(windowState.pin === 'user' ? 'editor.minimap.move' : 'editor.minimap.pinned')}
+          onPointerDown={startPanelDrag}
+          onPointerMove={e => { const d = panelDrag.current; if (d?.pointerId === e.pointerId) { e.stopPropagation(); movePanel(d.x + e.clientX - d.clientX, d.y + e.clientY - d.clientY); } }}
+          onPointerUp={endPanelDrag} onPointerCancel={endPanelDrag} onLostPointerCapture={endPanelDrag}
+          onKeyDown={e => {
+            if (e.target !== e.currentTarget) return;
+            const directions: Record<string, number[]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+            const delta = directions[e.key];
+            if (!delta) return;
+            e.preventDefault(); e.stopPropagation();
+            const step = e.shiftKey ? 50 : 10;
+            movePanel(position.x + delta[0] * step, position.y + delta[1] * step); saveMinimapWindow(windowRef.current);
+          }}>
+          <button type="button" data-testid="minimap-pin" aria-pressed={windowState.pin !== 'user'}
+            aria-label={tr('editor.minimap.pin.' + windowState.pin)} title={tr('editor.minimap.pin.' + windowState.pin)}
+            onPointerDown={e => e.stopPropagation()} onClick={() => commitWindow({ ...windowRef.current, pin: nextMinimapPin(windowRef.current.pin) })}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M8 3h8l-1 6 4 4v2H5v-2l4-4-1-6ZM12 15v7" /></svg>
+          </button>
+          <span className="mm-minimap-title">{tr('editor.minimap.title')}</span>
+          <button type="button" data-testid="minimap-help" aria-haspopup="dialog" aria-label={tr('editor.minimap.help')} title={tr('editor.minimap.help')}
+            onPointerDown={e => e.stopPropagation()} onClick={() => setHelpOpen(true)}>?</button>
+          <button type="button" data-testid="minimap-close" aria-label={tr('editor.minimap.close')} title={tr('editor.minimap.close')}
+            onPointerDown={e => e.stopPropagation()} onClick={onClose}>×</button>
+        </div>
+      </div>
       <svg
         ref={svgRef}
         width={geom.panelW}
@@ -159,6 +212,7 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onLostPointerCapture={onPointerUp}
         onClick={(e) => e.stopPropagation()}
         // touchAction none — 손가락으로 표시창을 끌 때 페이지가 스크롤되지 않게
         style={{ display: 'block', cursor: dragging ? 'grabbing' : 'grab', overflow: 'hidden', borderRadius: 5, background: t.surfaceAlt, touchAction: 'none' }}
@@ -190,5 +244,7 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
         />
       </svg>
     </div>
+    {helpOpen && <MinimapHelp t={t} onClose={() => setHelpOpen(false)} />}
+    </>
   );
 }

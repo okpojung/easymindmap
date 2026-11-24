@@ -80,12 +80,15 @@ export class PublishController {
   setListed(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { listed?: unknown },
+    @Body() body: { listed?: unknown; expectedPublishId?: unknown },
   ) {
     if (typeof body?.listed !== 'boolean') {
       throw new BadRequestException('listed 를 true 또는 false 로 주세요.');
     }
-    return this.publish.setListed(user.id, id, body.listed);
+    if (body.expectedPublishId !== undefined && (typeof body.expectedPublishId !== 'string' || !body.expectedPublishId || body.expectedPublishId.length > 256)) {
+      throw new BadRequestException('expectedPublishId 가 올바르지 않습니다.');
+    }
+    return this.publish.setListed(user.id, id, body.listed, body.expectedPublishId as string | undefined);
   }
 
   /**

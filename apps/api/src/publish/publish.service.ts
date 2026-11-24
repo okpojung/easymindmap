@@ -72,6 +72,8 @@ export const VISIBILITY_LABEL: Record<PublishVisibility, string> = {
 };
 
 export interface PublishStatus {
+  /** Map ownership, separate from the publishing capability/schema checks. */
+  canManageLibrary?: boolean;
   /** 이 서버에 퍼블리싱 기능이 켜져 있는가 (표가 없으면 false) */
   available: boolean;
   publishId: string | null;
@@ -462,7 +464,7 @@ export class PublishService {
    *   살아 있고 링크를 가진 사람은 그대로 읽는다. 내린 것은 "목록에서
    *   빼 달라" 이지 "주소를 죽여 달라" 가 아니다 — 그건 [퍼블리싱 취소] 다.
    */
-  async setListed(userId: string, mapId: string, listed: boolean): Promise<PublishStatus> {
+  async setListed(userId: string, mapId: string, listed: boolean, expectedPublishId?: string): Promise<PublishStatus> {
     await this.requireReady();
     await this.requireOwner(userId, mapId);
     if (!(await this.hasListed())) {
@@ -474,6 +476,24 @@ export class PublishService {
 
     if (listed && await this.isDashboard(mapId)) {
       throw new ConflictException({ code: 'DASHBOARD_NO_LISTING', message: DASHBOARD_NO_LISTING });
+    }
+
+    // New settings saves are bound to the registration reviewed by the user.
+    // A conditional UPDATE changes visibility and listing together; it can never
+    // recreate a registration that another tab just withdrew. Legacy callers retain their API.
+    if (expectedPublishId !== undefined) {
+      if (!expectedPublishId || expectedPublishId.length > 256) throw new BadRequestException('expectedPublishId 가 올바르지 않습니다.');
+      if (listed) await this.requirePublishable(userId, mapId);
+      const canPrice = await this.hasPrice();
+      const { rows } = await this.db.query<PublishedRow>(
+        `UPDATE public.published_maps
+            SET listed = $2${listed && canSet ? ", visibility = CASE WHEN visibility = 'private' THEN 'public' ELSE visibility END" : ''}
+          WHERE map_id = $1 AND publish_id = $3 AND unpublished_at IS NULL
+      RETURNING publish_id, published_at, storage_path, listed${canSet ? ', visibility' : ''}${canPrice ? ', price_krw' : ''}`,
+        [mapId, listed, expectedPublishId],
+      );
+      if (!rows[0]) throw new ConflictException({ code: 'PUBLISH_STATE_CHANGED', message: '퍼블리싱 상태가 변경되었습니다. 설정을 다시 확인해 주세요.' });
+      return this.withDash(mapId, this.toStatus(rows[0], canSet, true, canPrice));
     }
 
     if (listed) {
@@ -834,13 +854,13 @@ export class PublishService {
     // 설명문·태그·댓글 허용 (2026-10-26) — 칸이 없는 서버는 canSetMeta:false
     const meta = cur ? await this.social.metaFor(mapId) : null;
     const metaOk = await this.social.metaReady();
-    const metaFields = { canSetMeta: metaOk, description: meta?.description ?? null, tags: meta?.tags ?? [], commentsEnabled: meta?.commentsEnabled ?? false };
+    const metaFields = { canManageLibrary: map.access_role === 'owner', canSetMeta: metaOk, description: meta?.description ?? null, tags: meta?.tags ?? [], commentsEnabled: meta?.commentsEnabled ?? false };
     return cur
       ? { ...this.toStatus(cur, canSet, canList, canPrice), ...gate, dashboard, ...metaFields }
       : {
         available: true, publishId: null, publishedAt: null,
         canSetVisibility: canSet, listed: false, canSetListed: canList,
-        priceKrw: null, canSetPrice: canPrice, ...gate, dashboard,
+        priceKrw: null, canSetPrice: canPrice, ...gate, dashboard, ...metaFields,
       };
   }
 

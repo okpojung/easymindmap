@@ -336,6 +336,8 @@ export const VISIBILITY_LABEL: Record<PublishVisibility, string> = {
 
 /** 퍼블리싱 상태 (PUBL). available:false = 이 서버에 퍼블리싱 기능이 없다 */
 export interface PublishStatus {
+  /** Authoritative owner permission for knowledge-library settings. Missing on older APIs. */
+  canManageLibrary?: boolean;
   available: boolean;
   /** 설명문·태그·댓글 허용 (2026-10-26) — canSetMeta 가 false 면 그 칸을 그리지 않는다 */
   canSetMeta?: boolean;
@@ -794,8 +796,8 @@ export const cloudApi = {
    * 올릴 때 퍼블리싱 등록·공개가 아직이면 **서버가 함께 처리한다** — 화면이
    * "먼저 퍼블리싱하세요" 를 안내할 필요가 없다(`publish.service` setListed).
    */
-  setMapListed: (mapId: string, listed: boolean) =>
-    req<PublishStatus>('PATCH', `/maps/${mapId}/publish/listed`, { listed }),
+  setMapListed: (mapId: string, listed: boolean, expectedPublishId?: string) =>
+    req<PublishStatus>('PATCH', `/maps/${mapId}/publish/listed`, { listed, ...(expectedPublishId === undefined ? {} : { expectedPublishId }) }),
   /**
    * **값 매기기 · 값 내리기** (2026-09-21, 27b §4.1).
    *

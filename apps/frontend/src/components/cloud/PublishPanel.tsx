@@ -10,7 +10,7 @@
 //   ③ 주소는 **등록**에 붙는다 — 상태를 오가도 그대로다. 주소가 죽는 것은
 //      **[퍼블리싱 취소]** 하나뿐이고, 그때는 다시 등록해도 새 주소다
 
-import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import {
   cloudApi, CloudError,
@@ -22,6 +22,8 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useEditorUiStore } from '@/stores/editorUiStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import { DialogXButton } from '@/components/ui/DialogFrame';
+import { LibrarySettingsDialog } from './LibrarySettingsDialog';
+import { captureAuthIdentity, isAuthIdentityCurrent } from '@/stores/authStore';
 import { useProFeature } from '@/pro/contract';
 import { ProSalesGate } from '@pro';
 import { LANG_LOCALE, tr as trNow, useLang, useTr } from '@/i18n';
@@ -100,21 +102,8 @@ export function PublishPanel(
   const [previewBusy, setPreviewBusy] = useState(false);
   /** 미리보기가 **왜** 안 만들어졌나 — 화면에도 남긴다(안내는 사라진다) */
   const [previewError, setPreviewError] = useState<string | null>(null);
-  /**
-   * ★ **지식창고는 체크만으로 반영하지 않는다** (2026-09-21 사용자 결정).
-   *
-   * 전에는 체크하는 순간 서버로 갔다. 그런데 이 대화상자의 다른 것들은
-   * *누르면 곧 일어나는 단추*(비공개/링크 공개)인데 체크만 **예약처럼**
-   * 보여, 사용자가 *"저 상태에서 닫기를 하면 올라가는 건가?"* 를 물어야
-   * 했다. 규칙이 둘이면 어느 쪽도 못 믿는다.
-   *
-   * 더 중요한 이유가 있다 — **미리보기를 보고 나서 올리고 싶다.** 진열은
-   * 남들에게 그림이 함께 나가는 일이라, 그림이 맞는지 확인한 뒤 누르는
-   * 단추가 있어야 한다(2026-09-21 에 엉뚱한 그림이 올라간 일도 있었다).
-   *
-   * `null` 이면 서버 상태 그대로, 아니면 **아직 반영 안 된 내 뜻**이다.
-   */
-  const [listedWant, setListedWant] = useState<boolean | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const dialogScope = useRef({ mapId, alive: true });
   /**
    * ★ 미리보기는 **주인 경로로 받아 blob 으로 그린다** (2026-09-05).
    *
@@ -126,14 +115,34 @@ export function PublishPanel(
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
 
   useEffect(() => {
-    let alive = true;
+    const scope = { mapId, alive: true };
+    dialogScope.current = scope;
+    const identity = captureAuthIdentity();
+    setStatus(null); setError(null); setLibraryOpen(false);
     cloudApi.publishStatus(mapId)
-      .then((s) => { if (alive) setStatus(s); })
+      .then((s) => { if (scope.alive && dialogScope.current === scope && isAuthIdentityCurrent(identity)) setStatus(s); })
       .catch((err) => {
-        if (alive) setError(err instanceof CloudError ? err.message : trNow('publish.err.status'));
+        if (scope.alive && dialogScope.current === scope && isAuthIdentityCurrent(identity)) {
+          setError(err instanceof CloudError ? err.message : trNow('publish.err.status'));
+        }
       });
-    return () => { alive = false; };
+    return () => { scope.alive = false; };
   }, [mapId]);
+
+  // Refresh even after Cancel: an interrupted save can have safely unlisted or
+  // privately registered the map before a later metadata request failed.
+  const closeLibrarySettings = () => {
+    setLibraryOpen(false);
+    const scope = dialogScope.current;
+    const identity = captureAuthIdentity();
+    void cloudApi.publishStatus(mapId).then((s) => {
+      if (scope.alive && scope.mapId === mapId && dialogScope.current === scope && isAuthIdentityCurrent(identity)) setStatus(s);
+    }).catch((err) => {
+      if (scope.alive && scope.mapId === mapId && dialogScope.current === scope && isAuthIdentityCurrent(identity)) {
+        setError(err instanceof CloudError ? err.message : trNow('publish.err.status'));
+      }
+    });
+  };
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -249,23 +258,6 @@ export function PublishPanel(
   });
 
   /**
-   * **지식창고에 올린다 / 내린다** (2026-09-18).
-   *
-   * 켤 때 등록·공개가 아직이면 **서버가 함께 처리한다**(setListed) — 여기
-   * 화면에서 순서를 안내하지 않는 이유다. 켜면 공개 상태가 되므로
-   * `lockThisTab(true)` 로 편집 잠금도 따라간다.
-   */
-  const doSetListed = (on: boolean) => run(async () => {
-    const s = await cloudApi.setMapListed(mapId, on);
-    setStatus(s);
-    setListedWant(null);          // 반영됐으니 "아직 안 된 뜻" 은 없다
-    if (on) lockThisTab(true);
-    flash(on
-      ? tr('publish.flash.listed')
-      : tr('publish.flash.unlisted'));
-  });
-
-  /**
    * 값 매기기 · 값 내리기 (2026-09-21, 27b §4.1).
    *
    * 값과 상태가 **함께** 움직인다 — 서버의 `setPrice` 한 문이 둘 다 한다.
@@ -345,6 +337,7 @@ export function PublishPanel(
   } as const;
 
   return (
+    <>
     <div
       onClick={onClose}
       data-mm-dialog-overlay=""
@@ -435,6 +428,21 @@ export function PublishPanel(
             {status.blockedReason}
             <br />{rich(tr('publish.blockedHint'))}
           </div>
+        )}
+
+        {status?.available && !status.dashboard && (status.publishId || status.publishable !== false) && (
+          <section data-testid="publish-library-settings" style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceAlt }}>
+            <b style={{ fontSize: 12.5 }}>{tr('publish.library.settings')}</b>
+            <div data-testid="publish-library-status" style={{ fontSize: 12, color: t.textMuted, marginTop: 5 }}>
+              {status.listed ? tr('publish.listed.on') : tr('publish.listed.off')}
+            </div>
+            <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, margin: '5px 0 8px' }}>{tr('publish.library.manageHint')}</div>
+            <button data-testid="publish-library-open" type="button" aria-haspopup="dialog" disabled={busy || previewBusy}
+              onClick={() => setLibraryOpen(true)}
+              style={{ ...btn, width: '100%', height: 34, border: `1px solid ${t.border}`, background: t.surface, color: t.text }}>
+              {tr('publish.library.settings')}
+            </button>
+          </section>
         )}
 
         {/* ★ **대시보드맵은 한 단계로 링크를 만든다** (2026-10-02 사용자 요청: 비공개/링크 공개 단추가
@@ -537,8 +545,10 @@ export function PublishPanel(
                   {(status.visibility ?? 'public') === 'private'
                     ? tr('publish.vis.privateHint')
                     : tr('publish.vis.publicHint')}
-                  <br />{rich(tr('publish.notListedLine'))}
-                  {' '}{rich(tr('publish.vis.listedTip'))}
+                  {status.listed ? <><br />{tr('publish.listed.on')}</> : <>
+                    <br />{rich(tr('publish.notListedLine'))}
+                    {' '}{tr('publish.library.manageHint')}
+                  </>}
                 </div>
               </div>
             )}
@@ -553,92 +563,6 @@ export function PublishPanel(
                 지식창고·값 줄 대신 이것을 보여 준다(서버도 진열·판매를 막는다).
                 `?embed=1` 은 머리말 없이 맵만 — 사내 페이지 안 iframe 에 맞다. */}
             {status.dashboard && <DashboardEmbed t={t} url={url} flash={flash} />}
-
-            {status.canSetListed && !status.dashboard && (() => {
-              const on = !!status.listed;                 // 서버가 아는 상태
-              const want = listedWant ?? on;              // 내가 고른 상태
-              const pending = want !== on;                // 아직 반영 안 됐다
-              return (
-              <div data-testid="publish-listed" style={{
-                marginBottom: 10, padding: '10px 12px', borderRadius: 8,
-                border: `1px solid ${pending ? t.warning : on ? t.primary : t.border}`,
-                background: on ? t.primarySoft ?? t.surfaceAlt : t.surfaceAlt,
-              }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
-                  <input
-                    data-testid="publish-listed-check"
-                    type="checkbox"
-                    checked={want}
-                    disabled={busy}
-                    onChange={(e) => setListedWant(e.target.checked)}
-                    style={{ marginTop: 2 }}
-                  />
-                  {/* ★ 켜져 있을 때는 **지시문이 아니라 상태**로 적는다
-                      (2026-09-21 사용자 물음: "저 상태에서 닫기를 하면
-                      지식창고에 올라가는 건가?"). "올린다" 라고만 적혀
-                      있으면 지금 어떤 상태인지 읽어 낼 수가 없다. */}
-                  <span>
-                    <b style={{ fontSize: 12.5 }}>
-                      {on ? tr('publish.listed.on') : tr('publish.listed.off')}
-                    </b>
-                    <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, marginTop: 2 }}>
-                      {on
-                        ? tr('publish.listed.onHint')
-                        : tr('publish.listed.offHint')}
-                    </div>
-                  </span>
-                </label>
-
-                {/* ★ **체크는 뜻이고, 반영은 이 단추다** (2026-09-21 사용자 결정:
-                    "체크하고 미리보기가 다 만들어진 것을 확인하고 지식창고
-                    저장하기 버튼을 별도로"). 진열은 그림이 함께 나가는 일이라,
-                    아래 미리보기를 **보고 나서** 누를 자리가 있어야 한다. */}
-                <div style={{ marginTop: 8 }}>
-                  <button
-                    data-testid="publish-listed-apply"
-                    disabled={!pending || busy}
-                    onClick={() => void doSetListed(want)}
-                    style={{
-                      ...btn, width: '100%', height: 32, fontSize: 12.5, fontWeight: 700,
-                      border: `1px solid ${pending ? t.primary : t.border}`,
-                      background: pending ? t.primary : t.surfaceAlt,
-                      color: pending ? '#fff' : t.textSubtle,
-                      cursor: pending && !busy ? 'pointer' : 'default',
-                    }}
-                  >
-                    {pending
-                      ? (want ? tr('publish.listed.applyOn') : tr('publish.listed.applyOff'))
-                      : (on ? tr('publish.listed.isOn') : tr('publish.listed.idle'))}
-                  </button>
-                  <div
-                    data-testid="publish-listed-hint"
-                    style={{ fontSize: 11.5, lineHeight: 1.6, marginTop: 6,
-                      color: pending ? t.warning : t.textSubtle }}
-                  >
-                    {pending
-                      ? (want
-                        ? rich(tr('publish.listed.pendingOn'))
-                        : rich(tr('publish.listed.pendingOff')))
-                      : rich(tr('publish.listed.idleHint'))}
-                  </div>
-                </div>
-              </div>
-              );
-            })()}
-
-            {/* 설명문 · 태그 · 댓글 허용 (2026-10-26, 지식창고 단계 3) — 지식창고 카드와 공개 화면에 나온다 */}
-            {status.canSetMeta && status.publishId && !status.dashboard && (
-              <MetaRow
-                t={t}
-                status={status}
-                busy={busy}
-                onSave={(m) => void run(async () => {
-                  const r = await cloudApi.setPublishMeta(mapId, m);
-                  setStatus({ ...status, ...r });
-                  flash(tr('publish.meta.saved'));
-                })}
-              />
-            )}
 
             {/* ★ **유료공개의 값** (2026-09-21, 27b §8.1).
                 칸이 없는 서버에서는 그리지 않고(`canSetPrice`), **판매가
@@ -801,6 +725,17 @@ export function PublishPanel(
         >{tr('common.close')}</button>
       </div>
     </div>
+    {libraryOpen && (
+      <LibrarySettingsDialog key={mapId} t={t} mapId={mapId} mapTitle={mapTitle} flash={flash}
+        onClose={closeLibrarySettings}
+        onSaved={(s) => {
+          if (dialogScope.current.alive && dialogScope.current.mapId === mapId) {
+            setStatus(s); setPreviewV(Date.now());
+          }
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -829,61 +764,6 @@ export function PublishPanel(
  *     반려돼 잠긴 저자도 자기 맵의 값은 내릴 수 있어야 한다 — 잠그면
  *     팔리지도 내려지지도 않는 맵이 남는다.
  */
-/** 태그 입력값 → 목록 (쉼표·줄바꿈으로 나눈다. 정규화는 서버가 다시 한다) */
-function splitTags(v: string): string[] {
-  return v.split(/[,\n]/).map((x) => x.replace(/^#+/, '').trim()).filter(Boolean).slice(0, 10);
-}
-
-function MetaRow({ t, status, busy, onSave }: {
-  t: ThemeTokens;
-  status: PublishStatus;
-  busy: boolean;
-  onSave: (m: { description: string | null; tags: string[]; commentsEnabled: boolean }) => void;
-}) {
-  const tr = useTr();
-  const [desc, setDesc] = useState(status.description ?? '');
-  const [tags, setTags] = useState((status.tags ?? []).join(', '));
-  const [comments, setComments] = useState(!!status.commentsEnabled);
-  useEffect(() => {
-    setDesc(status.description ?? ''); setTags((status.tags ?? []).join(', ')); setComments(!!status.commentsEnabled);
-  }, [status.description, status.tags, status.commentsEnabled]);
-  const tagList = splitTags(tags);
-  const dirty = desc.trim() !== (status.description ?? '') || tagList.join('|') !== (status.tags ?? []).join('|') || comments !== !!status.commentsEnabled;
-  const input = { width: '100%', boxSizing: 'border-box' as const, padding: '6px 8px', borderRadius: 6, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 12.5, fontFamily: 'inherit' };
-  return (
-    <div data-testid="publish-meta" style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surfaceAlt }}>
-      <b style={{ fontSize: 12.5 }}>{tr('publish.meta.title')}</b>
-      <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6, margin: '2px 0 8px' }}>{tr('publish.meta.hint')}</div>
-      <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, marginBottom: 3 }}>{tr('publish.meta.desc')}</label>
-      <textarea data-testid="publish-meta-desc" value={desc} maxLength={500} rows={3} disabled={busy}
-        onChange={(e) => setDesc(e.target.value)} placeholder={tr('publish.meta.descPh')} style={{ ...input, resize: 'vertical' }} />
-      <div style={{ fontSize: 10.5, color: t.textSubtle, textAlign: 'right' }}>{desc.length}/500</div>
-      <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, margin: '4px 0 3px' }}>{tr('publish.meta.tags')}</label>
-      <input data-testid="publish-meta-tags" value={tags} disabled={busy} onChange={(e) => setTags(e.target.value)}
-        placeholder={tr('publish.meta.tagsPh')} style={input} />
-      {tagList.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-          {tagList.map((x) => <span key={x} style={{ fontSize: 11, padding: '1px 7px', borderRadius: 10, background: t.primarySoft ?? t.surface, color: t.primary }}>#{x.toLowerCase()}</span>)}
-        </div>
-      )}
-      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginTop: 8 }}>
-        <input data-testid="publish-meta-comments" type="checkbox" checked={comments} disabled={busy} onChange={(e) => setComments(e.target.checked)} style={{ marginTop: 2 }} />
-        <span>
-          <b style={{ fontSize: 12.5 }}>{tr('publish.meta.comments')}</b>
-          <div style={{ fontSize: 11.5, color: t.textSubtle, lineHeight: 1.6 }}>{tr('publish.meta.commentsHint')}</div>
-        </span>
-      </label>
-      <button data-testid="publish-meta-save" disabled={!dirty || busy}
-        onClick={() => onSave({ description: desc.trim() || null, tags: tagList, commentsEnabled: comments })}
-        style={{ width: '100%', height: 32, marginTop: 8, borderRadius: 7, fontSize: 12.5, fontWeight: 700,
-          border: `1px solid ${dirty ? t.primary : t.border}`, background: dirty ? t.primary : t.surfaceAlt,
-          color: dirty ? '#fff' : t.textSubtle, cursor: dirty && !busy ? 'pointer' : 'default' }}>
-        {dirty ? tr('publish.meta.save') : tr('publish.meta.savedIdle')}
-      </button>
-    </div>
-  );
-}
-
 function PriceRow({ t, status, busy, onApply }: {
   t: ThemeTokens;
   status: PublishStatus;

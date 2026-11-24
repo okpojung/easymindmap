@@ -1,0 +1,17 @@
+import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+const source = readFileSync(new URL('./PublishPanel.tsx', import.meta.url), 'utf8');
+assert.ok(source.includes("import { LibrarySettingsDialog } from './LibrarySettingsDialog'"));
+assert.ok(source.indexOf('data-testid="publish-library-settings"') < source.indexOf('data-testid="publish-create"'), 'settings entry exists before initial publishing');
+assert.ok(source.includes('status.publishId || status.publishable !== false'));
+assert.ok(source.includes('!status.dashboard'));
+assert.ok(source.includes('data-testid="publish-library-open"'));
+assert.ok(source.includes('<LibrarySettingsDialog key={mapId} t={t} mapId={mapId} mapTitle={mapTitle}'));
+assert.ok(source.includes('onClose={closeLibrarySettings}'));
+assert.ok(source.includes('dialogScope.current === scope && isAuthIdentityCurrent(identity)'));
+assert.ok(!source.includes('cloudApi.setMapListed('), 'one shared listing mutation path');
+assert.ok(!source.includes('function MetaRow'), 'no competing metadata form');
+assert.ok(!source.includes('publish-listed-check'), 'no checkbox-only flow');
+assert.ok(source.includes("status.listed ? <><br />{tr('publish.listed.on')}</>"), 'listed maps must not show the not-listed explanation');
+assert.ok(!source.includes("rich(tr('publish.vis.listedTip'))"), 'no stale reference to a checkbox below the moved settings entry');
+console.log('publish library entry: 13 source-contract assertions PASS');

@@ -1,0 +1,13 @@
+.mm-minimap-top { position:absolute; top:4px; left:4px; right:4px; height:28px; z-index:2; }
+.mm-minimap-bar { display:flex; align-items:center; gap:2px; height:28px; border-radius:4px; background:#dedede; color:#292929; opacity:0; transition:opacity 120ms ease; cursor:grab; touch-action:none; outline-offset:2px; }
+.mm-minimap-top:hover .mm-minimap-bar, .mm-minimap-top:focus-within .mm-minimap-bar,
+.mm-minimap[data-panel-moving="true"] .mm-minimap-bar, .mm-minimap[data-help-open="true"] .mm-minimap-bar { opacity:1; }
+.mm-minimap[data-panel-moving="true"] .mm-minimap-bar { cursor:grabbing; }
+.mm-minimap[data-pin="right"] .mm-minimap-bar, .mm-minimap[data-pin="left"] .mm-minimap-bar { cursor:default; }
+.mm-minimap-bar button { display:flex; align-items:center; justify-content:center; flex:0 0 24px; width:24px; height:24px; border:0; border-radius:3px; padding:0; background:transparent; color:inherit; cursor:pointer; font-size:15px; line-height:1; }
+.mm-minimap-bar button:hover { background:rgba(0,0,0,.1); }
+.mm-minimap-bar button[aria-pressed="true"] { background:#bcc6d3; color:#172d49; }
+.mm-minimap-bar button:focus-visible, .mm-minimap-bar:focus-visible { outline:2px solid #216ac0; }
+.mm-minimap-title { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; font-size:11px; font-weight:600; pointer-events:none; }
+@media (hover:none), (pointer:coarse) { .mm-minimap-bar { opacity:1; } }
+@media (prefers-reduced-motion:reduce) { .mm-minimap-bar { transition:none; } }

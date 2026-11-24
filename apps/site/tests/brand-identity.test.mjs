@@ -33,20 +33,21 @@ test('favicon is emitted as a cache-busted asset and shared with the footer', ()
  assert.ok(controller.includes("all<HTMLImageElement>('[data-brand-icon]').forEach(image => { image.src = BRAND_FAVICON_URL; })"));
 });
 for (const lang of ['ko','en','ja','zh']) {
- test(lang + ': brand story leads with a large accessible A symbol and preserves the full logo', () => {
+ test(lang + ': brand story keeps its original full logo first and a modestly enlarged A only at the bottom', () => {
   const body = story(lang);
   const first = body.match(/^`(<figure[\s\S]*?<\/figure>)/)?.[1];
-  assert.ok(first); assert.match(first, /class="brand-story-visual brand-story-symbol"/);
-  assert.ok(first.includes('src="${BRAND_FAVICON_URL}"'));
-  assert.match(first, /width="192" height="192" alt="[^"]+" decoding="async"/);
+  assert.ok(first); assert.match(first, /class="brand-story-visual"/);
+  assert.ok(first.includes('src="${BRAND_LOGO_URL}"'));
+  assert.match(first, /width="670" height="410" alt="[^"]+" decoding="async"/);
   assert.match(first, /<figcaption>[^<]+<\/figcaption>/);
-  assert.equal((body.match(/class="brand-story-visual brand-story-symbol"/g) || []).length, 1);
+  assert.doesNotMatch(body, /brand-story-symbol/);
   assert.ok(body.includes('src="${BRAND_LOGO_URL}" width="670" height="410"'));
   assert.match(body, /brand-story-person/); assert.match(body, /brand-palette/);
   const sourceLine = body.match(/<p class="source-line">([\s\S]*?)<\/p>/)?.[1];
   assert.ok(sourceLine); assert.match(sourceLine, /정식 로고|full logo|正式なロゴ|完整标志/); assert.match(sourceLine, /SVG/);
   const compact = body.split('<div class="brand-icon-example">')[1]?.split('</div>')[0];
-  assert.ok(compact); assert.doesNotMatch(compact, /순환 화살표|circular arrow|循環する矢印|循环箭头/);
+  assert.ok(compact); assert.ok(compact.includes('src="${BRAND_FAVICON_URL}" width="72" height="72"'));
+  assert.doesNotMatch(compact, /순환 화살표|circular arrow|循環する矢印|循环箭头/);
   assert.match(compact, /원형|ring|円形|圆环/);
  });
  test(lang + ': homepage footer uses the same compact icon at its existing small size', () => {
@@ -56,10 +57,11 @@ for (const lang of ['ko','en','ja','zh']) {
   assert.match(footer, /<img data-brand-icon width="28" height="28" alt="">/);
  });
 }
-test('large symbol stays square and shrinks inside narrow brand-story panels', () => {
+test('original full-logo sizing is preserved without an added large compact-symbol panel', () => {
  const css = read('src/redesign/redesign.css');
- assert.match(css, /brand-story-symbol img\{width:min\(100%,320px\);aspect-ratio:1\}/);
- assert.match(css, /brand-story-visual img\{[^}]*height:auto/);
+ assert.doesNotMatch(css, /brand-story-symbol/);
+ assert.match(css, /brand-story-visual img\{display:block;width:min\(100%,480px\);height:auto/);
+ assert.match(css, /brand-icon-example img\{flex-shrink:0;object-fit:contain\}/);
  assert.match(css, /@media\(max-width:800px\)\{\.emm-home \.brand-story-visual\{padding:12px\}/);
 });
 test('touch icon is a correctly sized PNG from the same approved symbol', () => {

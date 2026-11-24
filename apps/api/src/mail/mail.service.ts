@@ -85,7 +85,7 @@ export class MailService {
    */
   async send(to: string, subject: string, text: string, html?: string): Promise<void> {
     await this.tx().sendMail({ from: this.from(), to, subject, text, html });
-    this.log.log(`메일 발송: ${subject} → ${to}`);
+    this.log.log('메일 발송 완료');
   }
 
   /**

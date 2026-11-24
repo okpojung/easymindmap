@@ -49,7 +49,7 @@ export interface AuthSession {
 }
 
 export class AuthError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public code?: string) {
     super(message);
     this.name = 'AuthError';
   }
@@ -77,13 +77,18 @@ async function goTrue<T>(
   }
   if (!res.ok) {
     let msg = tr('auth.error.failed', { status: res.status });
+    let errorCode: string | undefined;
     try {
-      const j = (await res.json()) as { msg?: string; message?: string; error_description?: string };
+      const j = (await res.json()) as { msg?: string; message?: string; error_description?: string; error_code?: string };
+      errorCode = j.error_code;
       msg = j.error_description || j.msg || j.message || msg;
     } catch { /* 본문 없음 */ }
     // GoTrue 의 대표 오류를 사용자 언어로
     if (/invalid login credentials/i.test(msg)) msg = tr('auth.error.badCredentials');
-    if (/already registered/i.test(msg)) msg = tr('auth.error.alreadyRegistered');
+    if (path === '/signup' && (errorCode === 'user_already_exists' || errorCode === 'email_exists'
+        || /^(?:user already registered|email (?:address )?already (?:registered|exists))\.?$/i.test(msg))) {
+      throw new AuthError(res.status, tr('auth.error.alreadyRegistered'), 'EMAIL_ALREADY_REGISTERED');
+    }
     throw new AuthError(res.status, msg);
   }
   return (res.status === 204 ? undefined : res.json()) as Promise<T>;
@@ -102,9 +107,17 @@ function toSession(r: GoTrueTokenResponse, fallbackEmail: string): AuthSession {
 export const supabaseAuth = {
   /** 가입 — 이메일 확인이 꺼진 셀프호스팅 기본값에선 곧바로 세션이 온다 */
   async signUp(email: string, password: string): Promise<AuthSession | null> {
-    const r = await goTrue<GoTrueTokenResponse & { id?: string }>('/signup', { email, password });
+    const r = await goTrue<GoTrueTokenResponse & { id?: string; identities?: unknown[] }>('/signup', { email, password });
     // 이메일 확인이 켜져 있으면 세션 없이 사용자만 온다 → null (안내 필요)
-    if (!r.access_token) return null;
+    if (!r.access_token) {
+      // GoTrue can obscure an already-confirmed signup with a synthetic user
+      // and an explicitly empty identities array. Missing identities alone is not proof.
+      if (r.id && Array.isArray(r.identities) && r.identities.length === 0) {
+        throw new AuthError(409, tr('auth.error.alreadyRegistered'), 'EMAIL_ALREADY_REGISTERED');
+      }
+      if (!r.id) throw new AuthError(502, tr('auth.signup.failed'));
+      return null;
+    }
     return toSession(r, email);
   },
 

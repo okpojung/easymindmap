@@ -3,11 +3,10 @@ import { useState } from 'react';
 // Version: MVP-LayoutTab-RootOnlyRules-v3.0.0
 // Description:
 // - Left inspector layout tab.
-// - Selection-scope rules (no "맵 전체" toggle — the ROOT node IS the whole
-//   map):
-//   · Root selected OR nothing selected → every layout is selectable and
-//     applies to the whole map. (2026-07: 선택 없음도 맵 전체 스코프 —
-//     큰 맵에서 중심 노드를 찾아가지 않아도 전체 레이아웃 변경 가능)
+// - Selection-scope rules for hierarchical layouts:
+//   · Main center selected: arrange level 2 only, or the whole map if
+//     descendants is checked. Secondary centers only affect their own tree.
+//   · No selection changes the map default (not a selected-center edit).
 //   · A depth ≥ 1 node selected → the layout applies to that node's subtree,
 //     and root-only layouts (방사형·양쪽 / 트리·아래 / Kanban / 자유배치) are
 //     shown disabled.
@@ -159,7 +158,6 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
   // 선택 없음(또는 사라진 id) = "맵 전체" 스코프 (2026-07 사용성 개선):
   // 큰 맵에서 중심 노드를 찾아 선택하지 않아도, 아무것도 선택하지 않은
   // 상태에서 레이아웃을 고르면 맵 전체 레이아웃이 바뀐다.
-  // (메인 노드 선택 = 동일하게 맵 전체, 하위 노드 선택 = 그 서브트리)
   const hasSelection = !!selectedId && !!findNodeInMap(map, selectedId);
 
   // 둘째 이후의 **중심주제 루트** 선택 = 그 중심의 레이아웃 (2026-09-15).
@@ -213,15 +211,14 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
       return;
     }
 
-    if (!subtreeScope && !centerScope) {
-      // 맵을 먼저 바꾼다 — 히스토리 스냅샷이 "이전 레이아웃"과 함께
-      // 기록되어 Ctrl+Z 한 번으로 레이아웃까지 되돌아간다.
-      updateNodeLayoutType('root', option.key, descendants);
-      setLayoutType(option.key);
+    if (!hasSelection || (mapIsKanban && selectedId !== 'root')) {
+      // No selected center: keep the existing map-default / board action.
+      // An unchecked default leaves branches free to inherit the new layout.
+      updateNodesLayoutType(['root'], option.key, descendants || undefined);
       return;
     }
 
-    // 서브트리 또는 둘째 이후의 중심주제 — 그 노드/중심만
+    // The document action updates the global render layout after recording undo.
     updateNodeLayoutType(selectedId, option.key, descendants);
   };
 
@@ -302,7 +299,11 @@ export function LayoutTab({ t }: { t: ThemeTokens }) {
               ? tr('inspector.layout.scopeKanban')
               : !hasSelection
                 ? tr('inspector.layout.scopeNone')
-                : tr('inspector.layout.scopeRoot')}
+                : !descendants
+                  ? tr('panel.settings.level2')
+                  : centerScope
+                    ? tr('editor.var.count.scopeOf', { name: centerRoot?.text ?? selectedId })
+                    : tr('editor.var.count.scopeMap')}
         </div>
       </InspectorSection>
 

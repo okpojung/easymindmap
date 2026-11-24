@@ -35,9 +35,9 @@ export class AccountController {
 
   @Post('email-code')
   @HttpCode(200)
-  sendEmailCode(@Body() dto: SendEmailCodeDto) {
+  sendEmailCode(@Body() dto: SendEmailCodeDto, @Req() req: Request) {
     const devMode = this.config.get('AUTH_MODE', { infer: true }) === 'dev';
-    return this.account.sendEmailCode(dto.email, devMode);
+    return this.account.sendEmailCode(dto.email, devMode, 'signup', clientIpOf(req));
   }
 
   @Post('email-code/verify')

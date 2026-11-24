@@ -215,8 +215,8 @@ interface DocumentState {
   /**
    * 러버밴드로 고른 여러 노드의 **하위 서브트리 레이아웃**을 한 번에 (2026-09-21
    * 사용자 보고: "3개를 드래그해 골라 레이아웃을 바꾸면 첫 노드만 바뀐다").
-   * set() 한 번 = undo 한 단계. 'root'·중심주제 루트는 건너뛴다 — 그건 맵/중심
-   * 전체 레이아웃이라 단일 선택 경로(updateNodeLayoutType)로만 바꾼다.
+   * set() 한 번 = undo 한 단계. 중심 루트도 고를 수 있지만, 다중 선택은
+   * 고른 중심/노드만 대상으로 한다.
    */
   updateNodesLayoutType: (nodeIds: string[], layoutType: LayoutType, descendants?: boolean) => void;
 
@@ -1930,11 +1930,16 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
 
   setCanvasMode: (canvasMode) => { set((state) => ({ map: { ...state.map, canvasMode } })); },
 
-  updateNodeLayoutType: (nodeId, layoutType, descendants = false) => {
-    if (nodeId) get().updateNodesLayoutType([nodeId], layoutType, descendants);
+  updateNodeLayoutType: (nodeId, layoutType, descendants) => {
+    if (!nodeId) return;
+    // Only the single, explicitly cascading main center means the whole map.
+    // Bulk edits and secondary centers remain confined to the selected trees.
+    const ids = nodeId === 'root' && descendants && isHierarchyLayout(layoutType)
+      ? centerViews(get().map).map((c) => c.rootId) : [nodeId];
+    get().updateNodesLayoutType(ids, layoutType, descendants);
   },
 
-  updateNodesLayoutType: (nodeIds, layoutType, descendants = false) => {
+  updateNodesLayoutType: (nodeIds, layoutType, descendants) => {
     const before = get().map;
     const ids = [...new Set(nodeIds)].filter((id) => !!id && !!findNodeInMap(before, id));
     if (!ids.length) return;
@@ -1946,7 +1951,8 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
     if ((normalized === 'radial-bidirectional' || normalized === 'tree-down')
         && ids.some((id) => !isCenterRootId(before, id))) return;
     const changesFirst = ids.includes('root');
-    const priorHierarchy = hierarchyFallback(before, useEditorUiStore.getState().layoutType);
+    const globalLayout = useEditorUiStore.getState().layoutType;
+    const priorHierarchy = hierarchyFallback(before, globalLayout);
     set((state) => {
       let map = state.map;
       if (changesFirst) {
@@ -1956,11 +1962,23 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
           ...c.root, layoutType: isHierarchyLayout(c.root.layoutType) ? c.root.layoutType : priorHierarchy,
         } })) };
       }
+      // Center children live in `branches`, not `root.children`. When the
+      // checkbox is explicitly off, pin only branches that lay out children
+      // and would otherwise inherit a different hierarchy. No checkbox (map
+      // defaults), or a board-mode transition, keeps the existing inheritance.
+      const preserveCenterBranches = (cv: CenterView): SampleBranch[] => {
+        if (descendants !== false || !hierarchy || !isHierarchyLayout(globalLayout)) return cv.branches;
+        // The engine renders the first center using the UI layout, even if
+        // the imported root has a different value. Extras can override it.
+        const old = cv.index === 0 ? globalLayout : cv.root.layoutType ?? globalLayout;
+        if (!isHierarchyLayout(old) || normalizeLayoutType(old) === normalized) return cv.branches;
+        return cv.branches.map((b) => b.layoutType || !b.children?.length ? b : { ...b, layoutType: old });
+      };
       const apply = (current: SampleMap, id: string, clear: boolean): SampleMap => {
         const cv = centerOfNode(current, id);
         if (cv && cv.rootId === id) return withCenter(current, cv, {
           root: { ...cv.root, layoutType },
-          branches: clear ? clearLayoutTypeRecursive(cv.branches) as SampleBranch[] : cv.branches,
+          branches: clear ? clearLayoutTypeRecursive(cv.branches) as SampleBranch[] : preserveCenterBranches(cv),
         });
         return mutateNode(current, id, (n) => ({
           ...n, layoutType, edgeType: resolveEdgeType(layoutType),
@@ -1970,7 +1988,7 @@ export const useDocumentStore = create<DocumentState>((rawSet, get) => {
       // **하위노드 레이아웃 변경을 끈 경우** (2026-11-11 사용자 보고): 고른 노드의 레이아웃은
       // 그 **자식들을 놓는 방식**만 바꿔야 한다. 자식에게 자기 레이아웃이 없으면 새 값을
       // 물려받아 손자·증손까지 바뀌었다 — 그래서 하위가 있는 자식은 **바꾸기 전의 실효
-      // 레이아웃을 자기 값으로 고정**한다. 맵 전체(root)·중심주제는 예전처럼 둔다.
+      // 레이아웃을 자기 값으로 고정**한다. 중심주제의 가지는 위에서 별도로 처리한다.
       if (!descendants) {
         for (const id of ids) {
           if (isCenterRootId(before, id)) continue;

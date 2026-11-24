@@ -19,6 +19,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 // ⚠️ CJS 전용 패키지만 쓸 것 — auth.guard.ts 와 같은 이유(ERR_REQUIRE_ESM)
 import { sign as jwtSign } from 'jsonwebtoken';
+import { SignupCodeBudget } from './signup-code-budget';
 import { DatabaseService } from '../database/database.service';
 import { MailService, type CodePurpose } from '../mail/mail.service';
 import { StorageService } from '../storage/storage.service';
@@ -65,6 +66,8 @@ const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 @Injectable()
 export class AccountService {
   private readonly log = new Logger('AccountService');
+  private readonly signupBudget = new SignupCodeBudget();
+  private readonly signupAdminReady: boolean;
   /**
    * 인증표 서명 키. 운영에서는 JWT 비밀키를 쓰고(서버가 여럿이어도 같다),
    * 개발(AUTH_MODE=dev)에서는 프로세스마다 임의 값이면 충분하다 —
@@ -84,12 +87,12 @@ export class AccountService {
     private readonly storage: StorageService,
     config: ConfigService<AppEnv, true>,
   ) {
-    this.tokenKey =
-      String(config.get('SUPABASE_JWT_SECRET', { infer: true }) || '')
-      || randomBytes(32).toString('hex');
+    const configuredKey = String(config.get('SUPABASE_JWT_SECRET', { infer: true }) || '');
+    this.tokenKey = configuredKey || randomBytes(32).toString('hex');
     this.goTrueUrl =
       String(config.get('GOTRUE_URL', { infer: true }) || '').trim().replace(/\/+$/, '');
     this.authExternal = config.get('AUTH_MODE', { infer: true }) === 'supabase';
+    this.signupAdminReady = this.authExternal && !!this.goTrueUrl && configuredKey.trim().length >= 16;
     this.aiKeySecret = String(config.get('AI_KEY_SECRET', { infer: true }) || '').trim();
     // 기동할 때 한 번 알린다 — 탈퇴가 일어난 뒤에 알면 이미 늦다.
     if (!this.goTrueUrl && this.authExternal) {
@@ -110,13 +113,47 @@ export class AccountService {
     return v;
   }
 
+  // Same short-lived single-user admin credentials already used by reset/deletion.
+  private adminHeaders(userId: string) {
+    const token = jwtSign({ role: 'service_role', aud: 'authenticated', sub: userId },
+      this.tokenKey, { algorithm: 'HS256', expiresIn: '2m' });
+    return { Authorization: 'Bearer ' + token, apikey: token };
+  }
+
+  private async confirmedSignupEmail(email: string): Promise<boolean> {
+    if (!this.signupAdminReady) return false;
+    try {
+      // The app DB can be a stale mirror. Use it only to find one candidate UUID;
+      // never search the GoTrue admin list or put an email in its URL or logs.
+      const { rows } = await this.db.query<{ id: string }>(
+        'SELECT id::text AS id FROM auth.users WHERE lower(email) = $1 LIMIT 2', [email],
+      );
+      if (rows.length !== 1) return false;
+      const id = rows[0].id;
+      if (typeof id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id)) return false;
+      const r = await fetch(this.goTrueUrl + '/admin/users/' + id, {
+        method: 'GET', headers: this.adminHeaders(id), redirect: 'error',
+        cache: 'no-store', signal: AbortSignal.timeout(2000),
+      });
+      if (!r.ok) return false;
+      const user = await r.json();
+      return user?.id === id && typeof user.email === 'string' && user.email.trim().toLowerCase() === email
+        && !user.deleted_at && typeof user.email_confirmed_at === 'string' && Number.isFinite(Date.parse(user.email_confirmed_at));
+    } catch {
+      // Missing mirror access, deleted/stale ID, timeout or malformed response: no disclosure.
+      // GoTrue still decides the final signup. Do not log provider responses or request data.
+      return false;
+    }
+  }
+
   /**
    * ① 인증번호 발송. 같은 이메일로 다시 부르면 **앞의 코드는 무효**가 된다.
    * devCode 는 AUTH_MODE=dev + 메일 미설정일 때만 채워진다 — 메일 없이도
    * 가입 흐름 전체를 시험할 수 있게 (운영에서는 절대 나가지 않는다).
    */
-  async sendEmailCode(emailRaw: string, devMode: boolean, purpose: CodePurpose = 'signup') {
+  async sendEmailCode(emailRaw: string, devMode: boolean, purpose: CodePurpose = 'signup', signupIp?: string) {
     const email = this.norm(emailRaw);
+    if (purpose === 'signup') this.signupBudget.take(signupIp, email);
 
     // 재발송 제한 — 남의 메일함을 두드리는 데 쓰이지 않게
     const { rows: cur } = await this.db.query<{
@@ -139,6 +176,10 @@ export class AccountService {
           '인증번호를 너무 자주 요청했습니다. 1시간 뒤에 다시 시도해 주세요.',
         );
       }
+    }
+
+    if (purpose === 'signup' && await this.confirmedSignupEmail(email)) {
+      throw new ConflictException({ code: 'EMAIL_ALREADY_REGISTERED', message: '이미 가입된 이메일입니다' });
     }
 
     // 앞자리 0 도 나오게 — 문자열로 다룬다
@@ -171,7 +212,7 @@ export class AccountService {
         //   보내지 못한 번호는 쓸모가 없으니 재발송 대기도 풀어 준다(곧바로 다시 누를 수 있게).
         const why = String((err as { response?: string; message?: string })?.response
           ?? (err as Error)?.message ?? err).slice(0, 200);
-        this.log.error(`인증번호 메일 실패 (${purpose}) → ${email}: ${why}`);
+        this.log.error(purpose === 'signup' ? '가입 인증번호 메일 발송 실패' : `인증번호 메일 실패 (${purpose}) → ${email}: ${why}`);
         await this.db.query(
           `UPDATE public.email_verifications
               SET sent_at = NOW() - INTERVAL '1 hour', expires_at = NOW()
@@ -187,7 +228,7 @@ export class AccountService {
 
     // 메일 설정이 없다 — 거짓으로 "보냈다"고 하지 않는다.
     if (devMode) {
-      this.log.warn(`[개발] 메일 미설정 — ${email} 인증번호 = ${code}`);
+      this.log.warn(purpose === 'signup' ? '[개발] 가입 메일 미설정' : `[개발] 메일 미설정 — ${email} 인증번호 = ${code}`);
       return {
         sent: false as const, expiresInMin: CODE_TTL_MIN, devCode: code,
         message: '메일 발송이 설정되지 않아 화면에 인증번호를 표시합니다 (개발 모드).',
@@ -943,17 +984,12 @@ export class AccountService {
       throw new BadRequestException('이미 사용한 인증입니다. 처음부터 다시 해 주세요.');
     }
 
-    const token = jwtSign(
-      { role: 'service_role', aud: 'authenticated', sub: rows[0].id },
-      this.tokenKey, { algorithm: 'HS256', expiresIn: '2m' },
-    );
     let res: Response;
     try {
       res = await fetch(`${this.goTrueUrl}/admin/users/${rows[0].id}`, {
         method: 'PUT',
         headers: {
-          Authorization: `Bearer ${token}`, apikey: token,
-          'Content-Type': 'application/json',
+          ...this.adminHeaders(rows[0].id), 'Content-Type': 'application/json',
         },
         body: JSON.stringify({ password }),
         signal: AbortSignal.timeout(10_000),
@@ -992,14 +1028,9 @@ export class AccountService {
 
     if (this.goTrueUrl) {
       try {
-        const token = jwtSign(
-          { role: 'service_role', aud: 'authenticated', sub: userId },
-          this.tokenKey,
-          { algorithm: 'HS256', expiresIn: '2m' },
-        );
         const res = await fetch(`${this.goTrueUrl}/admin/users/${userId}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}`, apikey: token },
+          headers: this.adminHeaders(userId),
           signal: AbortSignal.timeout(10_000),
         });
         // 404 = 이미 없다 — 우리가 원하는 결과와 같다

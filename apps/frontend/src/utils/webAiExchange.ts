@@ -243,21 +243,17 @@ export const AI_SHORTCUTS: {
     tip: 'inspector.webx.tip.gemini',
   },
   {
-    key: 'copilot',
-    // 화면 이름은 'EasyMindMap ChatGPT 앱' (2026-08-05 지정) — 사용자가
-    // ChatGPT 안에서 쓰는 우리 앱이라는 뜻이 바로 읽힌다. 스토어에
-    // 등록된 GPT 이름('EasyMindMap Copilot')과는 별개다.
-    label: 'inspector.webx.copilotLabel',
-    kind: 'gpt',
-    // 커스텀 GPT (2026-08-04 등록 — easymindmap-copilot-gpt.md).
-    // EMM 템플릿이 GPT 안에 내장돼 있어 주제만 보내면 EMM 코드블록이
-    // 나온다. ChatGPT 로그인 필요.
-    url: 'https://chatgpt.com/g/g-6a713796a3a48191b6099a674f0d80d2-easymindmap-copilot',
-    // 전용 GPT 페이지(chatgpt.com/g/…)는 ?q= 를 무시한다 — 실사용에서
-    // 주소로 넘긴 질문이 채팅창에 들어가지 않는 것을 확인했다
-    // (2026-08-05). 그래서 프리필을 걸지 않고 **주제를 클립보드에**
-    // 넣어 준다 (열린 창에서 Ctrl+V 한 번).
-    tip: 'inspector.webx.tip.copilot',
+    key: 'deepseek',
+    label: 'DeepSeek',
+    kind: 'plain',
+    // 공식 채팅 — 주소 프리필 가정 없음, 클립보드 + 붙여넣기로 진행.
+    url: 'https://chat.deepseek.com/',
+  },
+  {
+    key: 'grok',
+    label: 'Grok',
+    kind: 'plain',
+    url: 'https://grok.com/',
   },
 ];
 
@@ -270,4 +266,9 @@ export function aiShortcutUrl(
     : s.prefill === 'prompt' ? prompt : '';
   if (!text.trim() || text.length > PREFILL_MAX_LEN) return s.url;
   return `${s.url}${s.url.includes('?') ? '&' : '?'}q=${encodeURIComponent(text)}`;
+}
+
+/** AI 메뉴 진입 시 로컬 모드의 초기값 — 저장된 genMode·API 키와 무관하게 항상 웹 AI. */
+export function initialAiGenMode(): 'web' | 'api' {
+  return 'web';
 }

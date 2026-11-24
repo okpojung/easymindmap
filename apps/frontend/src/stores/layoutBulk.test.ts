@@ -114,5 +114,70 @@ check('⑧ 켠 경우는 하위 고정값을 지운다', [g('X').layoutType, g('
 const newId = st().addChildNode('X');
 check('⑨ 새 노드는 textAlign 없음', newId ? g(newId).textAlign : 'no-node', undefined);
 
+// Selected centers own `branches` rather than `children`. Exercise the same
+// single-node action as the inspector and also check the resulting geometry.
+const scopeMap = multiCenter();
+scopeMap.root.layoutType = undefined; // Main center renders using the UI default.
+scopeMap.branches[0].children = [N('P', [N('P1', [N('P2')])]), N('Q')];
+scopeMap.branches[1].layoutType = 'hierarchy-right';
+scopeMap.branches[1].children = [N('B1', [N('B2')], { layoutType: 'radial-right' })];
+scopeMap.branches[2].children = []; // Do not pin leaf branches.
+scopeMap.centers![1].branches = [{ ...N('T', [N('T1')]), colorKey: 'l1A', side: 'right' }];
+scopeMap.settings = { levelLayouts: [null, 'tree-right'] };
+const ui = () => useEditorUiStore.getState();
+ui().setLayoutType('process-tree-right');
+st().loadMap(scopeMap, { resetHistory: true });
+const original = st().map;
+const positions = () => new Map(computeLayout(st().map, ui().layoutType, 800, 500).map((n) => [n.id, n]));
+const old = positions();
+st().updateNodeLayoutType('root', 'tree-right', false);
+const local = st().map, laid = positions();
+check('root unchecked: level 2 changes from a row to a vertical outline',
+  [old.get('A')!.y === old.get('B')!.y, laid.get('A')!.y < laid.get('B')!.y], [true, true]);
+check('root unchecked: level 3 remains a process row, level 4 inherits it',
+  [laid.get('P')!.y === laid.get('Q')!.y, laid.get('P')!.x < laid.get('Q')!.x, laid.get('P1')!.layoutType], [true, true, 'process-tree-right']);
+check('root unchecked: pin inherited parent only, retain explicit and nested overrides',
+  ['root', 'A', 'P', 'P1', 'B', 'B1', 'C'].map((id) => g(id).layoutType),
+  ['tree-right', 'process-tree-right', undefined, undefined, 'hierarchy-right', 'radial-right', undefined]);
+check('root unchecked: inherited and explicit secondary centers keep their effective layouts',
+  [g('c2').layoutType, g('c3').layoutType, local.settings?.levelLayouts], ['process-tree-right', 'timeline', [null, 'tree-right']]);
+check('root unchecked: one history entry', st().past.length, 1);
+st().undo();
+check('root unchecked: undo restores the entire original document and render layout', [st().map === original, ui().layoutType], [true, 'process-tree-right']);
+st().redo();
+check('root unchecked: redo restores scoped change', [st().map === local, ui().layoutType], [true, 'tree-right']);
+
+// An ordinary unchecked edit below the newly pinned branch must still use
+// the nearest ancestor's preserved hierarchy, not the new main-center layout.
+st().updateNodeLayoutType('P', 'hierarchy-right', false);
+check('non-root unchecked after root edit: inherited deep layout stays local',
+  [g('P').layoutType, g('P1').layoutType, g('P2').layoutType, ui().layoutType],
+  ['hierarchy-right', 'process-tree-right', undefined, 'tree-right']);
+st().undo();
+
+st().updateNodeLayoutType('root', 'tree-down', true);
+const whole = st().map;
+check('root checked: every rendered node in every center uses the new layout', [...new Set([...positions().values()].map((n) => n.layoutType))], ['tree-down']);
+check('root checked: explicit branch overrides and level defaults cleared',
+  [g('A').layoutType, g('B1').layoutType, g('X').layoutType, g('X1').layoutType, whole.settings?.levelLayouts], Array(5).fill(undefined));
+check('root checked: one additional history entry', st().past.length, 2);
+st().undo();
+check('root checked: undo restores all centers and render layout together', [st().map === local, ui().layoutType], [true, 'tree-right']);
+st().redo();
+check('root checked: redo restores whole-map change', [st().map === whole, ui().layoutType], [true, 'tree-down']);
+
+st().loadMap(scopeMap, { resetHistory: true });
+ui().setLayoutType('process-tree-right');
+st().updateNodeLayoutType('c3', 'tree-right', false);
+check('secondary center unchecked: pin its own prior layout, not the main default',
+  [g('c3').layoutType, g('T').layoutType, g('T1').layoutType, g('A').layoutType, ui().layoutType],
+  ['tree-right', 'timeline', undefined, undefined, 'process-tree-right']);
+st().updateNodeLayoutType('c3', 'radial-right', true);
+check('secondary center checked: only its own descendants cascade',
+  [g('c3').layoutType, g('T').layoutType, g('X1').layoutType, g('B').layoutType, ui().layoutType],
+  ['radial-right', undefined, 'timeline', 'hierarchy-right', 'process-tree-right']);
+st().updateNodesLayoutType(['root'], 'tree-right');
+check('map default without selected root: inherited branch remains unpinned', g('A').layoutType, undefined);
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 if (failed) process.exit(1);

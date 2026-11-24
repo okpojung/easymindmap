@@ -14,12 +14,10 @@
 // 메일 발송이 아직 설정되지 않은 서버에서는 개발 모드에 한해 인증번호를
 // 화면에 보여 주고 그 사실을 밝힌다(운영에서는 나오지 않는다).
 //
-// 휴대폰은 **국가번호와 번호를 나눠** 받는다 — 글로벌 서비스를 염두에 둔
-// 결정이고, 나중에 SMS 인증을 붙일 때 국가를 되짚지 않아도 된다.
-// 지금은 저장만 하고 인증은 하지 않는다.
+// 휴대폰 인증은 선택 사항이다. Pro에서만 이메일 인증 후 한국 010 번호를 확인한다.
 
 import { ProPhoneVerification, claimSignupPhone } from '@pro';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { captureAuthIdentity, isAuthIdentityCurrent, useAuthStore } from '@/stores/authStore';
@@ -29,8 +27,9 @@ import { nameProblem } from '@/utils/profileName';
 import { AuthError } from '@/services/cloud/supabaseAuth';
 import { cloudApi, CloudError } from '@/services/cloud/apiClient';
 import {
-  COUNTRIES, DEFAULT_COUNTRY, countryName, findCountries, formatPhone, type Country,
+  COUNTRIES, DEFAULT_COUNTRY, countryName, findCountries, type Country,
 } from '@/utils/countryCodes';
+import { formatSignupPhone } from './signupPhoneInput';
 import { useLang, useTr } from '@/i18n';
 import { rich } from '@/i18n/rich';
 
@@ -74,10 +73,24 @@ export function SignupForm({
 
   const [busy, setBusy] = useState<'code' | 'verify' | 'signup' | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [duplicateEmail, setDuplicateEmail] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const codeRef = useRef<HTMLInputElement | null>(null);
   const tr = useTr();
   const lang = useLang(); // 나라 이름 검색이 지금 언어를 따르도록
+
+  // The backend validates the HMAC. The timestamp here only lets an expired form
+  // request a new code instead of leaving an unusable token locked in the UI.
+  useEffect(() => {
+    if (!emailToken) return;
+    const expiresAt = Number(emailToken.split('.')[1]) * 1000;
+    if (!Number.isFinite(expiresAt)) return;
+    const timer = window.setTimeout(() => {
+      setEmailToken(null); setProof(null); setCodeSent(false); setCode(''); setDevCode(null);
+      setNote(null); setErr(tr('auth.signup.proofExpired'));
+    }, Math.max(0, expiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [emailToken, tr]);
 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
   const countryList = useMemo(() => findCountries(countryQuery), [countryQuery, lang]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -88,11 +101,17 @@ export function SignupForm({
     && pw.length >= MIN_PW && pw === pw2 && ageOk && !busy && !phoneBusy;
 
   const fail = (e: unknown, fallback: string) => {
+    if ((e instanceof CloudError || e instanceof AuthError) && e.code === 'EMAIL_ALREADY_REGISTERED') {
+      setDuplicateEmail(true); setCodeSent(false); setEmailToken(null); setProof(null);
+      setDevCode(null); setNote(null); setErr(null);
+      return;
+    }
     setErr(e instanceof CloudError || e instanceof AuthError ? e.message : fallback);
   };
 
   // ① 인증번호 발송
   const sendCode = async () => {
+    if (busy || emailToken || duplicateEmail) return;
     if (!emailOk) { setErr(tr('auth.signup.badEmail')); return; }
     setBusy('code'); setErr(null); setNote(null); setDevCode(null);
     try {
@@ -115,6 +134,7 @@ export function SignupForm({
 
   // ② 인증번호 확인
   const verifyCode = async () => {
+    if (busy || emailToken || !codeSent) return;
     if (!code.trim()) { setErr(tr('auth.signup.needCode')); return; }
     setBusy('verify'); setErr(null);
     try {
@@ -213,22 +233,30 @@ export function SignupForm({
             data-testid="signup-email"
             type="email" value={email} placeholder="name@example.com"
             autoComplete="username"
-            disabled={!!emailToken}
-            onChange={(e) => { setEmail(e.target.value); setEmailToken(null); setCodeSent(false); }}
+            disabled={!!emailToken || !!busy} maxLength={254}
+            aria-invalid={duplicateEmail} aria-describedby={duplicateEmail ? 'signup-email-error' : undefined}
+            onChange={(e) => { setEmail(e.target.value); setDuplicateEmail(false); setEmailToken(null); setCodeSent(false); setCode(''); setDevCode(null); setErr(null); setNote(null); }}
             style={{ ...input, flex: 1, opacity: emailToken ? 0.7 : 1 }}
           />
           <button
             data-testid="signup-send-code"
             type="button" onClick={() => void sendCode()}
-            disabled={!emailOk || !!emailToken || busy === 'code'}
+            disabled={!emailOk || !!emailToken || duplicateEmail || !!busy}
             style={{
               ...smallBtn,
-              opacity: !emailOk || emailToken || busy === 'code' ? 0.55 : 1,
+              opacity: !emailOk || emailToken || duplicateEmail || busy ? 0.55 : 1,
               cursor: !emailOk || emailToken ? 'default' : 'pointer',
             }}
           >{busy === 'code' ? tr('auth.code.sending') : codeSent ? tr('auth.signup.resend') : tr('auth.signup.verifyEmail')}</button>
         </div>
       </div>
+
+      {duplicateEmail && (
+        <div id="signup-email-error" role="alert" style={{ color: '#d9534f', fontSize: 13, marginBottom: 12 }}>
+          {tr('auth.error.alreadyRegistered')}{' '}
+          {onCancel && <button type="button" onClick={onCancel}>{tr('auth.backToLogin')}</button>}
+        </div>
+      )}
 
       {/* ② 인증번호 — 발송한 뒤에만 보인다 */}
       {codeSent && (
@@ -250,7 +278,7 @@ export function SignupForm({
             <button
               data-testid="signup-verify-code"
               type="button" onClick={() => void verifyCode()}
-              disabled={!!emailToken || busy === 'verify'}
+              disabled={!!emailToken || !!busy}
               style={{
                 ...smallBtn,
                 ...(emailToken
@@ -306,7 +334,7 @@ export function SignupForm({
           <input
             data-testid="signup-phone"
             value={phone} placeholder="010-1234-5678" inputMode="tel" autoComplete="tel"
-            onChange={(e) => setPhone(formatPhone(country.dial, e.target.value))}
+            onChange={(e) => setPhone(formatSignupPhone(country.dial, e.target.value))}
             style={{ ...input, flex: 1 }}
           />
         </div>
@@ -340,7 +368,7 @@ export function SignupForm({
                 onClick={() => {
                   setCountry(c);
                   setCountryOpen(false);
-                  setPhone((p) => formatPhone(c.dial, p));
+                  setPhone((p) => formatSignupPhone(c.dial, p));
                 }}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 8,
@@ -358,7 +386,7 @@ export function SignupForm({
         )}
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 5, lineHeight: 1.5 }}>
           {phoneOk ? tr('auth.signup.phoneNote') : tr('auth.signup.phoneLength')}
-          <ProPhoneVerification key={intentKey} mode="signup" country={country.dial} phone={phoneDigits} email={email.trim()} emailProof={emailToken ?? undefined} disabled={!emailToken || !!busy} onBusy={setPhoneBusy} onSuccess={id=>setProof({key:intentKey,id,expiresAt:Date.now()+CLAIM_TTL_MS})} />
+          <ProPhoneVerification key={intentKey + ':' + !!emailToken} mode="signup" country={country.dial} phone={phoneDigits} email={email.trim()} emailProof={emailToken ?? undefined} disabled={!emailToken || !!busy} onBusy={setPhoneBusy} onSuccess={id=>setProof({key:intentKey,id,expiresAt:Date.now()+CLAIM_TTL_MS})} />
         </div>
       </div>
 

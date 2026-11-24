@@ -24,7 +24,8 @@
     "test:dashboard": "node test/dashboard-rules.test.mjs",
     "test:trim": "node test/trim-for-preview.test.mjs",
     "test:attachment-content": "node test/attachment-content.test.mjs",
-    "test:proxy-addr": "node --test test/proxy-addr-security.test.mjs"
+    "test:proxy-addr": "node --test test/proxy-addr-security.test.mjs",
+    "test:signup-email-code": "node --test test/signup-email-code.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

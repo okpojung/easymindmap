@@ -70,6 +70,7 @@ function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps 
   const phoneDigits = phone.replace(/\D/g, '');
   const savedDigits = (profile?.phoneNumber ?? '').replace(/\D/g, '');
   const savedDial = (profile?.phoneCountry ?? '').replace(/\D/g, '') || DEFAULT_COUNTRY.dial;
+  const shownCountry = COUNTRIES.find((country) => country.dial === dial) ?? DEFAULT_COUNTRY;
   const avatarDirty = avatar !== undefined && (avatar ?? null) !== (profile?.avatar ?? null);
   const dirty = name.trim() !== (profile?.fullName ?? '').trim()
     || phoneDigits !== savedDigits
@@ -211,16 +212,18 @@ function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps 
       </div>
       <div>
         <div style={label}>{tr('auth.profile.phone')}</div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div data-testid="profile-phone-fields" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           <select
             data-testid="profile-dial"
+            aria-label={`${countryName(shownCountry)} +${dial}`}
+            title={`${countryName(shownCountry)} +${dial}`}
             value={dial}
             disabled={busy || !loaded}
             onChange={(e) => { setDial(e.target.value); setPhone((p) => formatPhoneInput(e.target.value, p)); setError(null); }}
-            style={{ ...box, width: 118, padding: '0 6px' }}
+            style={{ ...box, width: 160, flex: '0 0 160px', maxWidth: '100%', padding: '0 6px' }}
           >
             {COUNTRIES.map((c) => (
-              <option key={c.iso} value={c.dial}>{c.flag} {countryName(c)} +{c.dial}</option>
+              <option key={c.iso} value={c.dial}>+{c.dial} {c.flag} {countryName(c)}</option>
             ))}
           </select>
           <input
@@ -232,7 +235,7 @@ function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps 
             disabled={busy || !loaded}
             onChange={(e) => { setPhone(formatPhoneInput(dial, e.target.value)); setError(null); }}
             onKeyDown={(e) => { if (e.key === 'Enter' && canSave) void save(); }}
-            style={{ ...box, flex: 1, minWidth: 0 }}
+            style={{ ...box, flex: '1 1 150px', minWidth: 0 }}
           />
         </div>
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 4 }}>

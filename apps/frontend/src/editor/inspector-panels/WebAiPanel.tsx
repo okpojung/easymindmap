@@ -302,9 +302,9 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
           {copied === 'prompt' ? tr('inspector.web.copiedPaste') : tr('inspector.web.copyPrompt')}
         </button>
         <div style={{
-          display: 'flex', gap: 5, marginTop: 6, alignItems: 'center',
+          display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 5, marginTop: 6, alignItems: 'center',
         }}>
-          <span style={{ fontSize: 10.5, color: t.textSubtle, flexShrink: 0 }}>{tr('inspector.web.openAi')}</span>
+          <span style={{ gridColumn: '1 / -1', fontSize: 10.5, color: t.textSubtle }}>{tr('inspector.web.openAi')}</span>
           {AI_SHORTCUTS.filter((s) => s.kind === 'plain').map((s) => (
             <button
               key={s.key}
@@ -312,27 +312,12 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
               onClick={() => openAiSite(s)}
               title={s.tip ? tr(s.tip) : tr('inspector.web.openTab', { name: tr(s.label) })}
               style={{
-                flex: 1, padding: '5px 0', borderRadius: 6,
+                gridColumn: s.key === 'deepseek' || s.key === 'grok' ? 'span 3' : 'span 2', minWidth: 0, padding: '5px 0', borderRadius: 6,
                 border: `1px solid ${t.border}`, background: t.surface,
                 color: t.text, fontSize: 11, fontWeight: 600, cursor: 'pointer',
               }}>{tr(s.label)}</button>
           ))}
         </div>
-        {/* 전용 GPT 는 위의 일반 채팅과 **다른 것** — ① 프롬프트 없이
-            주제만으로 동작한다 (2026-08-05 지적으로 분리) */}
-        {AI_SHORTCUTS.filter((s) => s.kind === 'gpt').map((s) => (
-          <button
-            key={s.key}
-            data-webai-open={s.key}
-            onClick={() => openAiSite(s)}
-            title={s.tip ? tr(s.tip) : undefined}
-            style={{
-              width: '100%', marginTop: 5, padding: '6px 8px', borderRadius: 6,
-              border: `1px solid ${t.primaryBorder}`, background: t.primarySoft,
-              color: t.primary, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>⚡ {tr(s.label)}</button>
-        ))}
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 3, lineHeight: 1.5 }}>
           {topic.trim()
             ? tr('inspector.web.openHelp')

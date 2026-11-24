@@ -39,6 +39,7 @@ import { LANG_LOCALE, useLang, useTr } from '@/i18n';
 import { parseEmm } from '@/utils/importMarkdown';
 import { countMapNodes } from '@/export/mapMeta';
 import { WebAiPanel } from './WebAiPanel';
+import { initialAiGenMode } from '@/utils/webAiExchange';
 import { AiConfirmPopover, type ConfirmRequest } from './AiConfirmPopover';
 import { rich } from '@/i18n/rich';
 
@@ -100,10 +101,11 @@ function GenerateView({ t, onNeedKey }: {
   const keys = useAiSettingsStore((s) => s.keys);
   // 생성 모드 (방법 A — web-ai-clipboard.md): 'web' = 클립보드 왕복,
   // 'api' = 기존 API 키 호출. 미선택(null)이면 키 등록 여부로 기본 결정
-  const genMode = useAiSettingsStore((s) => s.genMode);
   const setGenMode = useAiSettingsStore((s) => s.setGenMode);
-  const anyKey = Object.values(keys).some((k) => k?.trim());
-  const mode = genMode ?? (anyKey ? 'api' : 'web');
+  // 진입(마운트)마다 저장된 과거 모드·키와 무관하게 웹 AI 로 시작한다.
+  // 지연 초기화라 첫 렌더부터 web — effect 로 고치지 않아 API 화면이 깜박이지 않는다.
+  // 수동 전환은 이 로컬 상태로만 유지(리렌더에 살아남고, 메뉴를 떠났다 오면 초기화).
+  const [mode, setMode] = useState<'web' | 'api'>(() => initialAiGenMode());
   const models = useAiSettingsStore((s) => s.models);
   const systemPrompt = useAiSettingsStore((s) => s.systemPrompt);
   const history = useAiSettingsStore((s) => s.history);
@@ -303,7 +305,7 @@ function GenerateView({ t, onNeedKey }: {
         <button
           key={k}
           data-ai-mode={k}
-          onClick={() => setGenMode(k)}
+          onClick={() => { setMode(k); setGenMode(k); }}
           title={k === 'web'
             ? tr('inspector.ai.modeWebTitle')
             : tr('inspector.ai.modeApiTitle')}

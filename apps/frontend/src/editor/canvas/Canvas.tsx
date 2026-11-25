@@ -67,7 +67,8 @@ import {
   collectSubtrees, isNodeClipToken, stashNodes, takeStashed,
 } from '@/utils/nodeClipboard';
 import { reassignIds } from '@/utils/aiProjectContext';
-import { attachFileWithProgress } from '@/utils/attachmentFile';
+import { beginAttachBatch } from '@/components/attachments/attachTarget';
+import { captureDropHandles } from '@/utils/localAttachments';
 import { extractArticleContent, probeArticleImages } from '@/utils/articleContent';
 import { tr, useLang } from '@/i18n';
 import { usePhoneLayout, isCoarseNow } from '@/hooks/useViewport';
@@ -866,20 +867,25 @@ export function Canvas({
     if (files.length) {
       // 같은 문서인지 — 업로드 중에 다른 맵을 열면 붙이지 않는다 (2026-10-01)
       const epoch = useDocumentStore.getState().docEpoch;
+      // 폴더 안 파일 판별용 핸들 — 드롭 이벤트 안에서 동기로 (2026-11-25)
+      const handles = captureDropHandles(dt);
       void (async () => {
-        for (const f of files) {
+        // Cloud / 이 PC 폴더 — PC 폴더가 연결돼 있을 때만 묻는다
+        const one = await beginAttachBatch(files, handles);
+        if (!one) return;
+        for (const [i, f] of files.entries()) {
           const kind = attachmentKindFor(f);
           try {
             // ≤2MB 는 data URL 내장, 초과는 서버 업로드 — 저장 후에도 유지.
             // 8MB 초과는 **청크 업로드**로 가고 진행률 줄이 뜬다 (§12).
-            const url = await attachFileWithProgress(f);
+            const { url, name } = await one(f, i);
             if (useDocumentStore.getState().docEpoch !== epoch) {
               notifyPaste(tr('editor.canvas.attachSkippedOtherMap', { name: f.name }));
               return;
             }
             addNodeAttachment(target.id, {
               // 크기도 함께 (하단 상태바의 첨부 용량 집계용, 2026-08-07)
-              name: f.name, kind, size: f.size, url,
+              name, kind, size: f.size, url,
             });
           } catch (err) {
             // 사용자가 [취소]를 누른 것은 오류가 아니다 — 조용히 넘어간다.
@@ -1222,13 +1228,16 @@ export function Canvas({
         const epoch = useDocumentStore.getState().docEpoch;
         void (async () => {
           try {
-            const url = await attachFileWithProgress(f);
+            const named = new File([f], name, { type: f.type });
+            const one = await beginAttachBatch([named]);
+            if (!one) return;
+            const r = await one(named, 0);
             if (useDocumentStore.getState().docEpoch !== epoch) {
               notifyPaste(tr('editor.canvas.attachSkippedOtherMap', { name }));
               return;
             }
-            addNodeAttachment(targetId, { name, kind: 'file', size: f.size, url });
-            notifyPaste(tr('editor.canvas.attachedPasted', { name }));
+            addNodeAttachment(targetId, { name: r.name, kind: 'file', size: f.size, url: r.url });
+            notifyPaste(tr('editor.canvas.attachedPasted', { name: r.name }));
           } catch (err) {
             if ((err as Error)?.name === 'UploadAborted') return;
             const why = err instanceof Error ? err.message : tr('editor.canvas.unknownError');

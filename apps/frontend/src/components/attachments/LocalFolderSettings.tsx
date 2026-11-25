@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { connectLocalFolder, disconnectLocalFolder, getLocalFolderState } from '@/utils/localAttachments';
 import { checkFolderPath, readFolderPath, writeFolderPath } from '@/utils/localFolderPath';
+import { readAttachPref, writeAttachPref, type AttachPref } from './attachTarget';
 import { useTr } from '@/i18n';
 import { useLocalFolderState } from './useLocalFolderState';
 import './register';
@@ -28,6 +29,18 @@ export function LocalFolderSettings({ t }: { t: ThemeTokens }) {
     writeFolderPath(state.rootId, r.path); setFullPath(r.path); setEditing(false); setPathErr(null);
   };
   const startEdit = () => { setDraft(fullPath ?? ''); setPathErr(null); setEditing(true); };
+  // 가장 쉬운 길 (2026-11-25): 탐색기에서 폴더 우클릭 → '경로로 복사'(Ctrl+Shift+C) 후 [붙여넣기] 한 번.
+  const applyPath = (text: string) => {
+    if (!state.rootId) return;
+    const r = checkFolderPath(text, folderName);
+    if (r.ok === false) { setDraft(text.trim()); setEditing(true); setPathErr(tr('localAtt.profile.pathBad.' + r.reason, { name: folderName })); return; }
+    writeFolderPath(state.rootId, r.path); setFullPath(r.path); setEditing(false); setPathErr(null);
+  };
+  const pasteFromClipboard = () => {
+    if (!navigator.clipboard?.readText) { setDraft(''); setEditing(true); setPathErr(tr('localAtt.profile.pasteUnsupported')); return; }
+    navigator.clipboard.readText().then(applyPath, () => { setEditing(true); setPathErr(tr('localAtt.profile.pasteDenied')); });
+  };
+  const [pref, setPref] = useState<AttachPref>(() => readAttachPref());
   const btn = { height: 30, padding: '0 10px', borderRadius: 7, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 12, fontWeight: 600, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.55 : 1 } as const;
 
   // 선택창/권한 요청은 클릭 핸들러에서 동기로 시작해야 한다(첫 await 전에 호출).
@@ -36,7 +49,7 @@ export function LocalFolderSettings({ t }: { t: ThemeTokens }) {
     setBusy(true); setError(null);
     let p: Promise<unknown>;
     try { p = connectLocalFolder(state.rootId); } catch { setBusy(false); setError(tr('localAtt.profile.failed')); return; }
-    p.then(() => { if (!readFolderPath(getLocalFolderState().rootId)) { setDraft(''); setPathErr(null); setEditing(true); } })
+    p.then(() => { if (!readFolderPath(getLocalFolderState().rootId)) { setDraft(''); setPathErr(null); setEditing(false); } })
      .catch((e: unknown) => { if ((e as { name?: string })?.name !== 'AbortError') setError(tr('localAtt.profile.failed')); })
       .finally(() => setBusy(false));
   };
@@ -62,7 +75,14 @@ export function LocalFolderSettings({ t }: { t: ThemeTokens }) {
             <span data-testid="local-folder-status" data-status={state.status} role="status" style={{ fontSize: 11.5, color: state.status === 'disconnected' ? '#B45309' : t.textMuted }}>[{statusText}]</span>
           </div>
           {hasFolder && (
-            <div data-testid="local-folder-path-box" style={{ display: 'grid', gap: 5, padding: '8px 10px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface }}>
+            <div data-testid="local-folder-path-box" style={{ display: 'grid', gap: 5, padding: '8px 10px', borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface }}
+              onPaste={(e) => {
+                // 캠버스의 문서 붙여넣기(노드 만들기)로 새지 않게 여기서 멈춘다
+                e.stopPropagation();
+                if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                const text = e.clipboardData.getData('text');
+                if (text) { e.preventDefault(); applyPath(text); }
+              }}>
               <div style={{ fontSize: 12, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
                 <span style={{ color: t.textMuted }}>{tr('localAtt.profile.path')}:</span>
                 {fullPath
@@ -80,8 +100,18 @@ export function LocalFolderSettings({ t }: { t: ThemeTokens }) {
                   <button type="button" data-testid="local-folder-path-save" onClick={savePath} style={btn}>{tr('localAtt.profile.pathSave')}</button>
                   {fullPath && <button type="button" onClick={() => { setEditing(false); setPathErr(null); }} style={btn}>{tr('localAtt.profile.pathCancel')}</button>}
                 </div>
-              ) : (
-                <div><button type="button" data-testid="local-folder-path-edit" onClick={startEdit} style={btn}>{tr('localAtt.profile.pathEdit')}</button></div>
+              ) : null}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button type="button" data-testid="local-folder-path-paste" onClick={pasteFromClipboard}
+                  style={{ ...btn, border: `1px solid ${t.primaryBorder}`, background: t.primarySoft, color: t.primary }}>📋 {tr('localAtt.profile.pastePath')}</button>
+                {!editing && <button type="button" data-testid="local-folder-path-edit" onClick={startEdit} style={btn}>{tr('localAtt.profile.pathEdit')}</button>}
+              </div>
+              {!fullPath && (
+                <ol data-testid="local-folder-path-guide" style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, lineHeight: 1.6, color: t.text }}>
+                  <li>{tr('localAtt.profile.guide1', { name: folderName })}</li>
+                  <li>{tr('localAtt.profile.guide2')}</li>
+                  <li>{tr('localAtt.profile.guide3')}</li>
+                </ol>
               )}
               {pathErr && <div data-testid="local-folder-path-error" role="alert" style={{ fontSize: 11.5, color: t.danger }}>{pathErr}</div>}
               <div style={{ fontSize: 10.5, lineHeight: 1.5, color: t.textSubtle }}>{tr('localAtt.profile.pathHelp')}</div>
@@ -101,6 +131,19 @@ export function LocalFolderSettings({ t }: { t: ThemeTokens }) {
         </>
       )}
       {error && <div data-testid="local-folder-error" role="alert" style={{ fontSize: 12, color: t.danger }}>{error}</div>}
+      {!unsupported && (
+        <fieldset data-testid="attach-pref" style={{ border: `1px solid ${t.border}`, borderRadius: 8, padding: '8px 10px', margin: 0, display: 'grid', gap: 4 }}>
+          <legend style={{ fontSize: 11.5, fontWeight: 700, color: t.textMuted, padding: '0 4px' }}>{tr('localAtt.pref.title')}</legend>
+          {(['ask', 'cloud', 'local'] as const).map((v) => (
+            <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: t.text }}>
+              <input type="radio" name="attach-pref" value={v} checked={pref === v} data-testid={'attach-pref-' + v}
+                onChange={() => { writeAttachPref(v); setPref(v); }} />
+              {tr('localAtt.pref.' + v)}
+            </label>
+          ))}
+          <div style={{ fontSize: 10.5, color: t.textSubtle, lineHeight: 1.5 }}>{tr('localAtt.pref.help')}</div>
+        </fieldset>
+      )}
       <div style={{ fontSize: 10.5, color: t.textSubtle }}>{tr('localAtt.profile.privacy')}</div>
     </div>
   );

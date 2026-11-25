@@ -3,10 +3,11 @@ import { captureAuthIdentity, isAuthIdentityCurrent } from '@/stores/authStore';
 import { findNodeInMap, useDocumentStore } from '@/stores/documentStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import type { NodeAttachment } from '@/editor/__samples__/types';
-import { connectLocalFolder, getLocalFolderState, pickLocalAttachments } from '@/utils/localAttachments';
+import { connectLocalFolder, getLocalFolderState, localErrorReason, pickLocalAttachments } from '@/utils/localAttachments';
+import { mapFolderName } from './attachTarget';
 import { decideLocalPickAction } from './attachmentSource';
 
-export type LocalPickResult = 'added' | 'cancelled' | 'changed' | 'failed' | 'empty' | 'connected' | 'loading' | 'unsupported';
+export type LocalPickResult = 'added' | 'cancelled' | 'changed' | 'failed' | 'empty' | 'connected' | 'loading' | 'unsupported' | 'permission';
 
 /**
  * 반드시 사용자 클릭 핸들러에서 동기로 부른다(첫 await 전에 pickLocalAttachments 시작).
@@ -33,7 +34,8 @@ export function attachFromThisPc(nodeId: string): Promise<LocalPickResult> {
     }, (e: unknown): LocalPickResult => ((e as { name?: string })?.name === 'AbortError' ? 'cancelled' : !still() ? 'changed' : 'failed'));
   }
   let picking: ReturnType<typeof pickLocalAttachments>;
-  try { picking = pickLocalAttachments(); } catch { return Promise.resolve('failed'); }
+  // 연결 폴더 밖에서 고른 파일은 `<맵 이름>/` 에 복사한다(쓰기 권한이 있을 때, 2026-11-25)
+  try { picking = pickLocalAttachments(mapFolderName()); } catch { return Promise.resolve('failed'); }
   return picking.then((items): LocalPickResult => {
     if (!items?.length) return 'empty';
     if (!still()) return 'changed';
@@ -42,5 +44,5 @@ export function attachFromThisPc(nodeId: string): Promise<LocalPickResult> {
       useDocumentStore.getState().addNodeAttachment(nodeId, { name: it.name, kind: it.kind as NodeAttachment['kind'], size: it.size, url: it.url });
     }
     return 'added';
-  }, (e: unknown): LocalPickResult => ((e as { name?: string })?.name === 'AbortError' ? 'cancelled' : 'failed'));
+  }, (e: unknown): LocalPickResult => ((e as { name?: string })?.name === 'AbortError' ? 'cancelled' : localErrorReason(e) === 'permission' ? 'permission' : 'failed'));
 }

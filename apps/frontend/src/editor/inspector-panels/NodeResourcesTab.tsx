@@ -15,7 +15,10 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useInteractionStore } from '@/stores/interactionStore';
 import { useViewportStore } from '@/stores/viewportStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
-import { attachFileWithProgress } from '@/utils/attachmentFile';
+import { beginAttachBatch, mapFolderName, moveAttachmentToCloud, moveAttachmentToPc } from '@/components/attachments/attachTarget';
+import { classifyAttachmentSource } from '@/components/attachments/attachmentSource';
+import { isLocalAttachmentUrl, requestLocalWritePermission } from '@/utils/localAttachments';
+import { readFolderPath } from '@/utils/localFolderPath';
 import { attachmentKindFor, isImageFileName } from '@/utils/attachmentKind';
 import { attachmentFetchUrl, cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { downloadAttachment } from '@/utils/downloadAttachment';
@@ -275,6 +278,36 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
     }
     onEdit(false);
   };
+  // Cloud ↔ 이 PC 폴더 옮기기 (2026-11-25 사용자 승인 설계) — 첨부 탭의 일반 파일만(MD 는 서버 편집기가 저장한다)
+  const folder = useLocalFolderState();
+  const [moving, setMoving] = useState(false);
+  const source = att ? classifyAttachmentSource(att.url, { isLocal: isLocalAttachmentUrl }) : null;
+  const canToPc = kind === 'attach' && !!att?.url && (source === 'server' || source === 'embedded') && folder.status === 'connected';
+  const canToCloud = kind === 'attach' && !!att?.url && source === 'local' && !(authEnabled && useAuthStore.getState().guest);
+  const toPc = () => {
+    if (!att || moving) return;
+    // 쓰기 허용 창은 클릭과 같은 순간에 — 확인은 그 다음
+    const perm = requestLocalWritePermission();
+    setMoving(true); onError(null);
+    void perm.then(async (ok) => {
+      if (!ok) { onError(tr('localAtt.ask.denied')); return; }
+      const base = readFolderPath(folder.rootId) ?? folder.name ?? '';
+      const dest = (base ? base.replace(/[\\/]+$/, '') + '\\' : '') + mapFolderName() + '\\';
+      if (!window.confirm(tr(source === 'server' ? 'localAtt.move.toPcConfirm' : 'localAtt.move.toPcConfirmEmbedded', { name: att.name, dest }))) return;
+      await moveAttachmentToPc(row.nodeId, att.id);
+      onError(null);
+    }).catch((e: unknown) => onError(e instanceof Error ? e.message : tr('localAtt.store.failed')))
+      .finally(() => setMoving(false));
+  };
+  const toCloud = () => {
+    if (!att || moving) return;
+    if (!window.confirm(tr('localAtt.move.toCloudConfirm', { name: att.name }))) return;
+    setMoving(true); onError(null);
+    void moveAttachmentToCloud(row.nodeId, att.id)
+      .then(() => onError(null))
+      .catch((e: unknown) => { if ((e as Error)?.name !== 'UploadAborted') onError(e instanceof Error ? e.message : tr('localAtt.store.failed')); })
+      .finally(() => setMoving(false));
+  };
   const remove = () => {
     if (link) { removeNodeLink(row.nodeId, link.id); return; }
     if (!att) return;
@@ -334,6 +367,14 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
                 title={copied ? tr('common.copied') : tr('inspector.res.copyUrl')} onClick={copyUrl}>
                 {copied ? <I.Check size={12} /> : <I.Copy size={12} />}
               </button>
+            )}
+            {canToPc && (
+              <button type="button" data-testid="res-to-pc" style={{ ...icoBtn, opacity: moving ? 0.5 : 1 }} disabled={moving}
+                title={tr('localAtt.move.toPc')} aria-label={tr('localAtt.move.toPc')} onClick={toPc}>{moving ? '…' : '💻'}</button>
+            )}
+            {canToCloud && (
+              <button type="button" data-testid="res-to-cloud" style={{ ...icoBtn, opacity: moving ? 0.5 : 1 }} disabled={moving}
+                title={tr('localAtt.move.toCloud')} aria-label={tr('localAtt.move.toCloud')} onClick={toCloud}>{moving ? '…' : '☁'}</button>
             )}
             <button type="button" data-testid="res-edit" style={icoBtn} title={tr('inspector.res.edit')} onClick={startEdit}><I.Pencil size={12} /></button>
             <button type="button" data-testid="res-remove" style={{ ...icoBtn, color: '#B91C1C' }} title={tr('inspector.res.remove')} onClick={remove}><I.Trash size={12} /></button>
@@ -460,14 +501,17 @@ function LinkAdd({ t, nodeId, onDone }: { t: ThemeTokens; nodeId: string; onDone
 function useAddFiles(nodeId: string, onError: (m: string | null) => void) {
   const tr = useTr();
   const addNodeAttachment = useDocumentStore((s) => s.addNodeAttachment);
-  return async (files: File[]) => {
+  return async (files: File[], handles?: Promise<(FileSystemHandle | null)[]>) => {
     onError(null);
     const epoch = useDocumentStore.getState().docEpoch;
-    for (const f of files) {
+    // Cloud / 이 PC 폴더 — PC 폴더가 연결돼 있을 때만 묻는다(MD 는 항상 Cloud, 2026-11-25)
+    const one = await beginAttachBatch(files, handles);
+    if (!one) return;
+    for (const [i, f] of files.entries()) {
       try {
-        const url = await attachFileWithProgress(f);
+        const { url, name } = await one(f, i);
         if (useDocumentStore.getState().docEpoch !== epoch) { onError(tr('inspector.content.switchedMap', { name: f.name })); return; }
-        addNodeAttachment(nodeId, { name: f.name, kind: attachmentKindFor(f), size: f.size, url });
+        addNodeAttachment(nodeId, { name, kind: attachmentKindFor(f), size: f.size, url });
       } catch (err) {
         if ((err as Error)?.name === 'UploadAborted') continue;
         onError(err instanceof Error ? err.message : tr('inspector.content.attachFailed'));
@@ -491,6 +535,7 @@ function AttachAdd({ t, nodeId, onError, serverBlocked }: { t: ThemeTokens; node
       else if (r === 'connected') onError(tr('localAtt.connected'));
       else if (r === 'loading') onError(tr('localAtt.loading'));
       else if (r === 'unsupported') onError(tr('localAtt.menu.unsupported'));
+      else if (r === 'permission') onError(tr('localAtt.store.permissionPick'));
       else if (r === 'failed') onError(tr('localAtt.failed'));
     }).finally(() => setLocalBusy(false));
   };
@@ -500,7 +545,7 @@ function AttachAdd({ t, nodeId, onError, serverBlocked }: { t: ThemeTokens; node
       <div data-testid="res-attach-server" style={{ opacity: serverBlocked ? 0.45 : 1, pointerEvents: serverBlocked ? 'none' : undefined }} aria-disabled={serverBlocked || undefined}>
         <FilePickerButton t={t} label={tr('inspector.res.attach.pick')} disabled={serverBlocked}
           accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.hwp,.hwpx,.zip,audio/*,video/*,image/*"
-          onFiles={(files) => add(files)} />
+          onFiles={(files, handles) => add(files, handles)} />
         {!serverBlocked && <ClipboardImageButton t={t} onFiles={(files) => add(files)} onError={(m) => onError(m)} />}
       </div>
       <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>{tr('inspector.res.attach.help')}</div>

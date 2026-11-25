@@ -6,7 +6,7 @@ export type LocalFolderState = Readonly<{
     rootId?: string;
     name?: string;
 }>;
-type Reason = 'disconnected' | 'missing' | 'unsupported' | 'changed' | 'unapproved' | 'failed';
+type Reason = 'disconnected' | 'missing' | 'unsupported' | 'changed' | 'unapproved' | 'failed' | 'permission';
 type Dir = FileSystemDirectoryHandle & {
     queryPermission(o: {
         mode: 'read';
@@ -302,7 +302,7 @@ export async function approveLocalAttachment(url: string): Promise<void> {
     if (actual?.length !== ref.path.length || !actual.every((part,i) => part === ref.path[i])) throw new LocalError('unapproved',id);
     await grantPaths(id,key,root,[ref.path.join('/')]); bound(id,root);
 }
-export async function pickLocalAttachments(): Promise<Array<{
+export async function pickLocalAttachments(folder = 'EasyMindMap'): Promise<Array<{
     name: string;
     url: string;
     size: number;
@@ -319,7 +319,16 @@ export async function pickLocalAttachments(): Promise<Array<{
     for (const h of handles) {
         const path = await root.handle.resolve(h);
         bound(id, root);
-        if (!path?.length || !path.every(validLocalSegment))
+        if (!path?.length) {
+            // 연결 폴더 밖의 파일 — `<맵 이름>/` 에 복사해 둔다(쓰기 권한이 있을 때만, 2026-11-25).
+            if (!(await hasLocalWritePermission())) throw new LocalError('permission', id);
+            bound(id, root);
+            const copied = await storeFileInLocalFolder(await h.getFile(), folder);
+            bound(id, root);
+            result.push({ name: copied.name, url: copied.url, size: copied.size, kind: copied.kind } as const);
+            continue;
+        }
+        if (!path.every(validLocalSegment))
             throw new LocalError('failed', id);
         const f = await h.getFile();
         bound(id, root);
@@ -410,4 +419,114 @@ export function notifyLocalAttachmentError(error: unknown, url: string, retry?: 
                 if (isAuthIdentityCurrent(id))
                     retry();
             } : undefined } }));
+}
+
+// ── PC 폴더에 두기 (2026-11-25 사용자 승인 설계) ──────────────────────────────
+// · 연결 폴더 **안의** 파일(드래그·선택 핸들로 판별)은 복사하지 않고 상대경로만 등록한다.
+// · 폴더 **밖의** 파일은 연결 폴더의 `<맵 이름>/` 하위 폴더에 복사하고 상대경로만 등록한다.
+//   같은 이름이 있으면 `이름 (2).확장자` … 원본은 그대로 둔다.
+// · 복사·Cloud→PC 옮기기는 쓰기 권한이 필요하다. 권한 요청은 반드시 클릭 핸들러에서 동기로 시작한다.
+type WDir = FileSystemDirectoryHandle & {
+    queryPermission(o: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
+    requestPermission(o: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
+    resolve(h: FileSystemHandle): Promise<string[] | null>;
+};
+type WFile = FileSystemFileHandle & { createWritable(): Promise<{ write(d: Blob): Promise<void>; close(): Promise<void>; abort(): Promise<void> }> };
+export type LocalStoreResult = { name: string; url: string; size: number; kind: 'file' | 'audio' | 'video'; copied: boolean };
+const connectedDefault = () => {
+    const r = find(record.defaultId);
+    return r?.handle && getLocalFolderState(r.id).status === 'connected' ? r : undefined;
+};
+const fileKind = (f: File): LocalStoreResult['kind'] => f.type.startsWith('audio/') ? 'audio' : f.type.startsWith('video/') ? 'video' : 'file';
+/** 파일·폴더 이름을 PC 와 첨부 주소 둘 다에 안전하게 — 원래 이름을 최대한 살린다 */
+export function safeLocalName(name: string, fallback = 'file'): string {
+    let s = String(name ?? '').normalize('NFC').replace(/[\\/:*?"<>|\x00-\x1f\x7f]/g, '_').replace(/%(?=[0-9a-f]{2})/gi, '\uFF05').trim().replace(/[. ]+$/, '');
+    if (!s || s === '.' || s === '..') s = fallback;
+    if (/^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(s)) s = '_' + s;
+    if (s.length > 120) { const dot = s.lastIndexOf('.'); const ext = dot > 0 && s.length - dot <= 12 ? s.slice(dot) : ''; s = s.slice(0, 120 - ext.length) + ext; }
+    return s;
+}
+export async function hasLocalWritePermission(): Promise<boolean> {
+    const r = connectedDefault();
+    if (!r) return false;
+    try { return await (r.handle as unknown as WDir).queryPermission({ mode: 'readwrite' }) === 'granted'; } catch { return false; }
+}
+/** 클릭 핸들러에서 **첫 await 전에** 부른다 — 브라우저가 쓰기 허용을 묻는다 */
+export function requestLocalWritePermission(): Promise<boolean> {
+    const r = connectedDefault();
+    if (!r) return Promise.resolve(false);
+    try { return (r.handle as unknown as WDir).requestPermission({ mode: 'readwrite' }).then(s => s === 'granted', () => false); }
+    catch { return Promise.resolve(false); }
+}
+export async function storeFileInLocalFolder(file: File, folder: string, handle?: FileSystemHandle | null): Promise<LocalStoreResult> {
+    const { id, key } = editable();
+    await initializeLocalFolders();
+    check(id);
+    const root = connectedDefault();
+    if (!root) throw new LocalError('disconnected', id);
+    const dirH = root.handle as unknown as WDir;
+    const make = (path: string[]) => localScheme + root.id + '/' + path.map(encodeURIComponent).join('/');
+    if (handle && handle.kind === 'file') {
+        let path: string[] | null = null;
+        try { path = await dirH.resolve(handle); } catch { path = null; }
+        bound(id, root);
+        if (path?.length && path.every(validLocalSegment) && isLocalAttachmentUrl(make(path))) {
+            await grantPaths(id, key, root, [path.join('/')]);
+            bound(id, root);
+            return { name: path[path.length - 1], url: make(path), size: file.size, kind: fileKind(file), copied: false };
+        }
+    }
+    let perm: PermissionState = 'denied';
+    try { perm = await dirH.queryPermission({ mode: 'readwrite' }); } catch { perm = 'denied'; }
+    bound(id, root);
+    if (perm !== 'granted') throw new LocalError('permission', id);
+    const sub = safeLocalName(folder, 'EasyMindMap');
+    try {
+        const dir = await root.handle!.getDirectoryHandle(sub, { create: true });
+        bound(id, root);
+        const base = safeLocalName(file.name);
+        const dot = base.lastIndexOf('.');
+        const stem = dot > 0 ? base.slice(0, dot) : base, ext = dot > 0 ? base.slice(dot) : '';
+        let name = base;
+        for (let n = 2; ; n++) {
+            try { await dir.getFileHandle(name); }
+            catch (e) {
+                const why = (e as DOMException)?.name;
+                if (why === 'NotFoundError') break;
+                if (why !== 'TypeMismatchError') throw e;
+            }
+            bound(id, root);
+            if (n > 999) throw new LocalError('failed', id);
+            name = `${stem} (${n})${ext}`;
+        }
+        const path = [sub, name];
+        if (!path.every(validLocalSegment) || !isLocalAttachmentUrl(make(path))) throw new LocalError('failed', id);
+        const fh = await dir.getFileHandle(name, { create: true }) as WFile;
+        bound(id, root);
+        const w = await fh.createWritable();
+        try { await w.write(file); await w.close(); }
+        catch (e) { try { await w.abort(); } catch { /* already closed */ } throw e; }
+        bound(id, root);
+        await grantPaths(id, key, root, [path.join('/')]);
+        bound(id, root);
+        return { name, url: make(path), size: file.size, kind: fileKind(file), copied: true };
+    }
+    catch (e) {
+        if (e instanceof LocalError) throw e;
+        const why = (e as DOMException)?.name;
+        if (why === 'NotAllowedError' || why === 'SecurityError') throw new LocalError('permission', id);
+        throw new LocalError('failed', id);
+    }
+}
+export function localErrorReason(e: unknown): Reason | null {
+    return e instanceof LocalError ? e.reason : null;
+}
+/** 드롭 이벤트 안에서 **동기로** 부른다 — 핸들은 이벤트가 끝나면 얻을 수 없다 */
+export function captureDropHandles(dt: DataTransfer | null | undefined): Promise<(FileSystemHandle | null)[]> {
+    if (!dt?.items) return Promise.resolve([]);
+    const ps = Array.from(dt.items).filter(i => i.kind === 'file').map(i => {
+        const get = (i as DataTransferItem & { getAsFileSystemHandle?: () => Promise<FileSystemHandle | null> }).getAsFileSystemHandle;
+        try { return get ? get.call(i).catch(() => null) : Promise.resolve(null); } catch { return Promise.resolve(null); }
+    });
+    return Promise.all(ps);
 }

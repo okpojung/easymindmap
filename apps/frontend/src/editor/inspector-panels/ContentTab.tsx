@@ -8,7 +8,8 @@ import type { AttachmentKind } from '@/editor/__samples__/types';
 import { I } from '@/components/icons';
 import { useDocumentStore, findNodeInMap } from '@/stores/documentStore';
 import { authEnabled, useAuthStore } from '@/stores/authStore';
-import { attachFileWithProgress } from '@/utils/attachmentFile';
+import { beginAttachBatch } from '@/components/attachments/attachTarget';
+import { captureDropHandles } from '@/utils/localAttachments';
 import { AttachmentBadge } from '@/components/attachments/AttachmentBadge';
 import { attachmentKindFor, isImageFileName } from '@/utils/attachmentKind';
 import {
@@ -62,23 +63,27 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
   // 메시지가 표시된다").
   const addFiles = async (
     files: File[], kindOf: (f: File) => AttachmentKind, where: 'doc' | 'media',
+    handles?: Promise<(FileSystemHandle | null)[]>,
   ) => {
     if (!selectedId) return;
     setAttErr(null);
     // 같은 문서인지 — 업로드 중에 다른 맵을 열면 붙이지 않는다 (2026-10-01)
     const epoch = useDocumentStore.getState().docEpoch;
-    for (const f of files) {
+    // Cloud / 이 PC 폴더 — PC 폴더가 연결돼 있을 때만 묻는다 (2026-11-25)
+    const one = await beginAttachBatch(files, handles);
+    if (!one) return;
+    for (const [i, f] of files.entries()) {
       try {
         // 8MB 초과는 **청크 업로드**로 간다 — 진행률은 화면 아래 줄에
         // 뜨고, 사용자가 고를 것은 없다 (§12.7 — 경로를 나누지 않는다).
         // **크기를 함께 적어 둔다** (2026-08-07) — 서버 저장소 첨부는
         // URL 만으로 크기를 알 수 없어 하단 상태바가 셀 수 없었다.
-        const url = await attachFileWithProgress(f);
+        const { url, name } = await one(f, i);
         if (useDocumentStore.getState().docEpoch !== epoch) {
           setAttErr({ where, msg: tr('inspector.content.switchedMap', { name: f.name }) });
           return;
         }
-        addNodeAttachment(selectedId, { name: f.name, kind: kindOf(f), size: f.size, url });
+        addNodeAttachment(selectedId, { name, kind: kindOf(f), size: f.size, url });
       } catch (err) {
         // 사용자가 [취소]를 누른 것은 오류가 아니다 — 빨간 줄을 띄우지 않는다.
         if ((err as Error)?.name === 'UploadAborted') continue;
@@ -192,7 +197,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         </div>
         <FilePickerButton t={t} label={tr('inspector.content.pickDocs')} accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md"
           disabled={!selectedId}
-          onFiles={(files) => addFiles(files, () => 'file', 'doc')} />
+          onFiles={(files, handles) => addFiles(files, () => 'file', 'doc', handles)} />
         <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>
           {rich(tr('inspector.content.docsHelp'), { b: <b>{tr('inspector.content.docsHelpWhere')}</b> })}
         </div>
@@ -215,7 +220,7 @@ export function ContentTab({ t, selectedId }: { t: ThemeTokens; selectedId: stri
         </div>
         <FilePickerButton t={t} label={tr('inspector.content.pickMedia')} accept="audio/*,video/*,image/*"
           disabled={!selectedId}
-          onFiles={(files) => addFiles(files, attachmentKindFor, 'media')} />
+          onFiles={(files, handles) => addFiles(files, attachmentKindFor, 'media', handles)} />
         <ClipboardImageButton t={t} disabled={!selectedId}
           onFiles={(files) => addFiles(files, attachmentKindFor, 'media')}
           onError={(msg) => setAttErr({ where: 'media', msg })} />
@@ -247,7 +252,7 @@ export function FilePickerButton({ t, label, accept, disabled, onFiles }: {
   label: string;
   accept: string;
   disabled?: boolean;
-  onFiles: (files: File[]) => void | Promise<void>;
+  onFiles: (files: File[], handles?: Promise<(FileSystemHandle | null)[]>) => void | Promise<void>;
 }) {
   const tr = useTr();
   return (
@@ -257,7 +262,9 @@ export function FilePickerButton({ t, label, accept, disabled, onFiles }: {
         if (disabled) return;
         e.preventDefault();
         const files = Array.from(e.dataTransfer.files ?? []);
-        if (files.length) onFiles(files);
+        // 폴더 안 파일 판별용 핸들 — 이벤트 안에서 동기로 얻는다
+        const handles = captureDropHandles(e.dataTransfer);
+        if (files.length) onFiles(files, handles);
       }}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,

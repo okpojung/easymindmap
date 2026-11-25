@@ -146,7 +146,8 @@ assert.equal(local.isLocalAttachmentUrl('emm-local://not-uuid/name'), false);
 assert.equal(local.isLocalAttachmentUrl('https://' + rid + '/filename'), false);
 path = null;
 const before = reads;
-await assert.rejects(local.pickLocalAttachments(), /FAILED/);
+// 2026-11-25: outside-folder picks are copied only with write permission; without it, nothing is read.
+await assert.rejects(local.pickLocalAttachments(), /PERMISSION/);
 assert.equal(reads, before);
 assert.equal(await local.readLocalAttachment(att.url), file);
 missing = true;

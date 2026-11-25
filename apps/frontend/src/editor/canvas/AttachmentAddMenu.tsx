@@ -17,7 +17,7 @@ import { CodeBlockDialog } from '@/editor/node-renderer/CodeBlockDialog';
 import { TableDialog, TableGridPicker } from '@/editor/node-renderer/TableDialog';
 import { noteTableFromMd } from '@/editor/inspector-panels/noteTable';
 import { flattenNodeText } from '@/editor/node-renderer/RichTextHtml';
-import { attachFileWithProgress } from '@/utils/attachmentFile';
+import { beginAttachBatch } from '@/components/attachments/attachTarget';
 import { attachmentKindFor } from '@/utils/attachmentKind';
 import { isMarkdownName } from '@/utils/mdEditorUrl';
 import { openAttachment } from '@/utils/openAttachment';
@@ -88,14 +88,17 @@ export function AttachmentAddMenu({ t, compact, onOpen }: { t: ThemeTokens; comp
     if (!files.length) return;
     setBusy(true); setNotice(null);
     try {
-      for (const f of files) {
+      // Cloud / 이 PC 폴더 — PC 폴더가 연결돼 있을 때만 묻는다(MD 는 항상 Cloud, 2026-11-25)
+      const one = await beginAttachBatch(files);
+      if (!one) return;
+      for (const [i, f] of files.entries()) {
         if (!writable(target) || (authEnabled && useAuthStore.getState().guest)) throw new Error(copy.targetChanged);
-        const url = await attachFileWithProgress(f);
+        const { url, name } = await one(f, i);
         if (!writable(target) || (authEnabled && useAuthStore.getState().guest)) throw new Error(copy.targetChanged);
         const before = new Set((findNodeInMap(useDocumentStore.getState().map, target.nodeId)?.attachments ?? []).map((a) => a.id));
-        useDocumentStore.getState().addNodeAttachment(target.nodeId, { name: f.name, kind: attachmentKindFor(f), size: f.size, url });
+        useDocumentStore.getState().addNodeAttachment(target.nodeId, { name, kind: attachmentKindFor(f), size: f.size, url });
         if (editMd && writable(target)) {
-          const made = findNodeInMap(useDocumentStore.getState().map, target.nodeId)?.attachments?.find((a) => !before.has(a.id) && a.name === f.name);
+          const made = findNodeInMap(useDocumentStore.getState().map, target.nodeId)?.attachments?.find((a) => !before.has(a.id) && a.name === name);
           if (!made?.url) throw new Error(copy.failed);
           openAttachment(made.name, made.url, { nodeId: target.nodeId, attachmentId: made.id });
         }
@@ -116,6 +119,7 @@ export function AttachmentAddMenu({ t, compact, onOpen }: { t: ThemeTokens; comp
       else if (r === 'loading') setNotice({ error: false, text: tr('localAtt.loading') });
       else if (r === 'unsupported') setNotice({ error: true, text: tr('localAtt.menu.unsupported') });
       else if (r === 'changed') setNotice({ error: true, text: tr('localAtt.changed') });
+      else if (r === 'permission') setNotice({ error: true, text: tr('localAtt.store.permissionPick') });
       else if (r === 'failed') setNotice({ error: true, text: tr('localAtt.failed') });
     }).finally(() => setBusy(false));
   };

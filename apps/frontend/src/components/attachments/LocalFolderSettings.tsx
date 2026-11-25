@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import { connectLocalFolder, disconnectLocalFolder, getLocalFolderState } from '@/utils/localAttachments';
-import { checkFolderPath, readFolderPath, writeFolderPath } from '@/utils/localFolderPath';
+import { checkFolderPath, isRootFolderName, readFolderPath, writeFolderPath } from '@/utils/localFolderPath';
 import { readAttachPref, writeAttachPref, type AttachPref } from './attachTarget';
 import { useTr } from '@/i18n';
 import { useLocalFolderState } from './useLocalFolderState';
@@ -44,11 +44,13 @@ export function LocalFolderSettings({ t }: { t: ThemeTokens }) {
   const btn = { height: 30, padding: '0 10px', borderRadius: 7, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 12, fontWeight: 600, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.55 : 1 } as const;
 
   // 선택창/권한 요청은 클릭 핸들러에서 동기로 시작해야 한다(첫 await 전에 호출).
+  // 연결·다시 연결·다른 폴더로 변경 모두 같은 길 — 다른 폴더를 고르면 그 폴더로 바꾼다 (2026-11-25 사용자 보고:
+  // 드라이브 전체(\)를 연결한 뒤 H:\home\dev 를 골라도 '다시 연결'이 같은 폴더만 받아 바뀔 길이 없었다).
   const connect = () => {
     if (busy || unsupported) return;
     setBusy(true); setError(null);
     let p: Promise<unknown>;
-    try { p = connectLocalFolder(state.rootId); } catch { setBusy(false); setError(tr('localAtt.profile.failed')); return; }
+    try { p = connectLocalFolder(state.rootId, { replace: true }); } catch { setBusy(false); setError(tr('localAtt.profile.failed')); return; }
     p.then(() => { if (!readFolderPath(getLocalFolderState().rootId)) { setDraft(''); setPathErr(null); setEditing(false); } })
      .catch((e: unknown) => { if ((e as { name?: string })?.name !== 'AbortError') setError(tr('localAtt.profile.failed')); })
       .finally(() => setBusy(false));
@@ -106,6 +108,9 @@ export function LocalFolderSettings({ t }: { t: ThemeTokens }) {
                   style={{ ...btn, border: `1px solid ${t.primaryBorder}`, background: t.primarySoft, color: t.primary }}>📋 {tr('localAtt.profile.pastePath')}</button>
                 {!editing && <button type="button" data-testid="local-folder-path-edit" onClick={startEdit} style={btn}>{tr('localAtt.profile.pathEdit')}</button>}
               </div>
+              {isRootFolderName(folderName) && (
+                <div data-testid="local-folder-root-note" role="note" style={{ fontSize: 11.5, lineHeight: 1.5, color: '#B45309' }}>{tr('localAtt.profile.rootNote')}</div>
+              )}
               {!fullPath && (
                 <ol data-testid="local-folder-path-guide" style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, lineHeight: 1.6, color: t.text }}>
                   <li>{tr('localAtt.profile.guide1', { name: folderName })}</li>
@@ -123,6 +128,9 @@ export function LocalFolderSettings({ t }: { t: ThemeTokens }) {
             )}
             {hasFolder && state.status === 'disconnected' && (
               <button type="button" data-testid="local-folder-reconnect" disabled={busy} onClick={connect} style={btn}>{tr('localAtt.profile.reconnect')}</button>
+            )}
+            {hasFolder && state.status === 'connected' && (
+              <button type="button" data-testid="local-folder-change" disabled={busy} onClick={connect} style={btn}>{tr('localAtt.profile.change')}</button>
             )}
             {hasFolder && state.status !== 'loading' && (
               <button type="button" data-testid="local-folder-unlink" disabled={busy} onClick={unlink} style={btn}>{tr('localAtt.profile.unlink')}</button>

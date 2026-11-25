@@ -62,8 +62,9 @@ class FakeDir {
 const root = new FakeDir('EMM첨부');
 const inside = new FakeFile('계약서.pdf', new Blob(['INSIDE']));
 root.entries.set('계약서.pdf', inside);
+let picked: FakeDir = root;
 const win = Object.assign(new EventTarget(), {
-  showDirectoryPicker: async () => root,
+  showDirectoryPicker: async () => picked,
   showOpenFilePicker: async () => [],
   setTimeout, clearTimeout,
 });
@@ -115,4 +116,18 @@ const c = await local.storeFileInLocalFolder(new File(['3'], 'x.txt'), 'A/B: 회
 assert.ok(root.entries.has('A_B_ 회의_'));
 assert.equal(await (await local.readLocalAttachment(c.url)).text(), '3');
 
-console.log('PASS local attach store: permission gate, link-in-place without copy, copy into map folder, (2) names, safe names, read-back');
+// 다른 폴더로 변경 (2026-11-25 사용자 보고: 드라이브 전체 연결 뒤 하위 폴더로 바꿀 길이 없었다)
+const firstId = local.getLocalFolderState().rootId!;
+picked = new FakeDir('dev');
+await assert.rejects(local.connectLocalFolder(firstId), (e) => local.localErrorReason(e) === 'changed', 'per-attachment reconnect still requires the same folder');
+await local.connectLocalFolder(firstId, { replace: true });
+const now = local.getLocalFolderState();
+assert.equal(now.status, 'connected');
+assert.equal(now.name, 'dev');
+assert.notEqual(now.rootId, firstId, 'a different folder gets its own root id');
+assert.equal(local.getLocalFolderState(firstId).name, 'EMM첨부', 'old folder record is kept for its attachments');
+picked = root;
+await local.connectLocalFolder(now.rootId, { replace: true });
+assert.equal(local.getLocalFolderState().rootId, firstId, 'picking the original folder again reuses its id');
+
+console.log('PASS local attach store: folder change (replace), permission gate, link-in-place without copy, copy into map folder, (2) names, safe names, read-back');

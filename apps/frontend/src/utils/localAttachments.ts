@@ -218,7 +218,11 @@ function editable() {
         throw new LocalError('disconnected');
     return { id: captureAuthIdentity(), key };
 }
-export async function connectLocalFolder(rootId?: string): Promise<LocalFolderState> {
+/**
+ * `replace` (첫 폴더 창에서만, 2026-11-25): 다른 폴더를 고르면 새 폴더를 기본으로 삼는다.
+ * 예전 폴더는 기록에 남겨 그쪽 첨부가 '연결 끊김'으로 보이게 한다. 첨부별 다시 연결은 여전히 같은 폴더만.
+ */
+export async function connectLocalFolder(rootId?: string, opts?: { replace?: boolean }): Promise<LocalFolderState> {
     const { id, key } = editable();
     if (rootId !== undefined && !validLocalRootId(rootId))
         throw new LocalError('failed', id);
@@ -238,11 +242,24 @@ export async function connectLocalFolder(rootId?: string): Promise<LocalFolderSt
         if (old) {
             const same = old.handle ? await old.handle.isSameEntry(dir) : old.name === dir.name;
             check(id);
-            if (rid && !same)
-                throw new LocalError('changed', id);
-            if (same) {
+            if (rid && !same) {
+                if (!opts?.replace)
+                    throw new LocalError('changed', id);
+                rid = undefined;
+            }
+            else if (same) {
                 rid = old.id;
                 if (old.handle) approvedPaths = old.approvedPaths ?? [];
+            }
+        }
+        if (!rid && opts?.replace) {
+            // 예전에 연결했던 폴더로 돌아가면 그 id 를 다시 쓴다 — 그 폴더의 예전 첨부가 다시 열린다
+            for (const other of record.roots) {
+                if (!other.handle) continue;
+                let same = false;
+                try { same = await other.handle.isSameEntry(dir); } catch { same = false; }
+                check(id);
+                if (same) { rid = other.id; approvedPaths = other.approvedPaths ?? []; break; }
             }
         }
         rid ??= crypto.randomUUID();

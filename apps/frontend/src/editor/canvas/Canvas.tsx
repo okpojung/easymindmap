@@ -49,7 +49,7 @@ import { treeEdgePath } from '@/editor/edge-renderer/edgePaths';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
 import { CanvasCursorLayer } from './CanvasCursorLayer';
 import { Minimap } from './Minimap';
-import { canvasWheelScroll } from './canvasWheel';
+import { canvasWheelScroll, canvasWheelZoomFactor } from './canvasWheel';
 import { readableTextOn } from '@/editor/node-renderer/resolveNodeColors';
 import { zoneAxesFor, zoneAt } from './dropGeometry';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -934,7 +934,7 @@ export function Canvas({
 
       const cursor = toVB(e.clientX, e.clientY);
       const s1 = state.zoom / 100;
-      const factor = Math.exp(-e.deltaY * 0.01);
+      const factor = canvasWheelZoomFactor(e);
       const zoomNext = clampZoom(Math.round(state.zoom * factor));
       const s2 = zoomNext / 100;
 

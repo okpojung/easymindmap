@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { canvasWheelScroll } from './canvasWheel';
+import { canvasWheelScroll, canvasWheelZoomFactor } from './canvasWheel';
 const w = (deltaX: number, deltaY: number, shiftKey = false, deltaMode = 0) => canvasWheelScroll({ deltaX, deltaY, shiftKey, deltaMode }, 1000, 800);
 assert.deepEqual(w(0, 100), { dx: 0, dy: 100 }, 'plain wheel scrolls vertically');
 assert.deepEqual(w(0, -100), { dx: 0, dy: -100 });
@@ -8,4 +8,11 @@ assert.deepEqual(w(100, 0, true), { dx: 100, dy: 0 }, 'browsers that already swa
 assert.deepEqual(w(30, 40), { dx: 30, dy: 40 }, 'trackpad two-axis scroll');
 assert.deepEqual(w(0, 3, false, 1), { dx: 0, dy: 48 }, 'line mode');
 assert.deepEqual(w(0, 1, false, 2), { dx: 0, dy: 800 }, 'page mode');
-console.log('canvas wheel: vertical, Shift horizontal, trackpad, line/page PASS');
+const z = (deltaY: number, deltaMode = 0) => canvasWheelZoomFactor({ deltaY, deltaMode });
+const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+assert.ok(near(z(-120), Math.exp(0.2)) && near(z(120), Math.exp(-0.2)), 'one mouse notch zooms about 20%, never 3x');
+assert.ok(near(z(-1200), Math.exp(0.2)), 'large bursts are capped per event');
+assert.ok(near(z(-5), Math.exp(0.05)), 'trackpad pinch stays proportional');
+assert.ok(near(z(-3, 1), Math.exp(0.2)), 'line-mode wheel is capped too');
+assert.equal(z(NaN), 1);
+console.log('canvas wheel: vertical, Shift horizontal, trackpad, line/page, capped Ctrl zoom PASS');

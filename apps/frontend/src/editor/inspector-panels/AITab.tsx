@@ -371,6 +371,10 @@ function GenerateView({ t, onNeedKey }: {
             </select>
           </div>
         </div>
+        {/* 고른 유형이 무엇을 바꾸는지 한 줄 (2026-11-25 사용자 요청) */}
+        <div data-testid="ai-gentype-desc" style={{ fontSize: 11, lineHeight: 1.45, color: t.textMuted, margin: '-2px 0 8px' }}>
+          {tr((GENERATION_TYPES.find((g) => g.key === genType)?.label ?? 'inspector.gen.basic') + '.desc')}
+        </div>
 
         <textarea
           value={prompt}

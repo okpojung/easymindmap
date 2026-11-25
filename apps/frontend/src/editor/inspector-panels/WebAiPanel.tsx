@@ -266,7 +266,7 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
             border: `1px solid ${t.border}`, fontFamily: 'inherit',
           }} />
         <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
-          <span style={{ fontSize: 10.5, color: t.textSubtle }}>{tr('inspector.web.type')}</span>
+          <span style={{ fontSize: 10.5, color: t.textSubtle }}>{tr('inspector.ai.genType')}</span>
           <select
             value={genType}
             data-webai-type
@@ -283,6 +283,10 @@ export function WebAiPanel({ t }: { t: ThemeTokens }) {
               <option key={g.key} value={g.key}>{tr(g.label)}</option>
             ))}
           </select>
+        </div>
+        {/* 고른 유형이 무엇을 바꾸는지 한 줄 (2026-11-25 사용자 요청) */}
+        <div data-testid="webai-gentype-desc" style={{ fontSize: 11, lineHeight: 1.45, color: t.textMuted, marginTop: 4 }}>
+          {tr((GENERATION_TYPES.find((g) => g.key === genType)?.label ?? 'inspector.gen.basic') + '.desc')}
         </div>
         <button
           onClick={copyPrompt}

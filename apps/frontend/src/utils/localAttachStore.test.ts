@@ -70,6 +70,9 @@ const win = Object.assign(new EventTarget(), {
 Object.defineProperty(globalThis, 'window', { configurable: true, value: win });
 
 const local = await import('./localAttachments');
+// Release builds set VITE_SUPABASE_URL (auth on): folders are scoped to a signed-in account.
+const { useAuthStore } = await import('@/stores/authStore');
+useAuthStore.setState((s) => ({ generation: s.generation + 1, session: { userId: '00000000-0000-4000-8000-0000000000aa' } as never, guest: false }));
 
 assert.equal(local.safeLocalName('a/b:c*?.pdf'), 'a_b_c__.pdf');
 assert.equal(local.safeLocalName('  보고서.  '), '보고서');

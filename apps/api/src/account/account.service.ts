@@ -123,24 +123,25 @@ export class AccountService {
   private async confirmedSignupEmail(email: string): Promise<boolean> {
     if (!this.authExternal) return false;
     let id: string;
-    let mirrorConfirmed: boolean;
     try {
-      // The app DB can be a stale mirror. Use it to find one candidate UUID and its
-      // confirmation; never search the GoTrue admin list or put an email in its URL or logs.
-      const { rows } = await this.db.query<{ id: string; confirmed: boolean | null }>(
-        'SELECT id::text AS id, (email_confirmed_at IS NOT NULL) AS confirmed FROM auth.users WHERE lower(email) = $1 LIMIT 2', [email],
+      // The app DB can be a stale mirror. Use it only to find one candidate UUID;
+      // never search the GoTrue admin list or put an email in its URL or logs.
+      // The mirror may be the minimal (id, email) JIT table, so select only id.
+      const { rows } = await this.db.query<{ id: string }>(
+        'SELECT id::text AS id FROM auth.users WHERE lower(email) = $1 LIMIT 2', [email],
       );
       if (rows.length !== 1) return false;
       id = rows[0].id;
       if (typeof id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id)) return false;
-      mirrorConfirmed = rows[0].confirmed === true;
     } catch {
       // Missing mirror access: nothing to compare. GoTrue still decides the final signup.
       return false;
     }
     // 2026-11-25 user report: with GoTrue unreachable (dev had no GOTRUE_URL) an already
-    // registered address still received a code. When GoTrue cannot answer, trust the
-    // confirmed mirror row. Only an explicit 404 (stale mirror) clears it.
+    // registered address still received a code. Mirror rows are only written for verified
+    // tokens (JIT provisioning), so when GoTrue cannot answer, the row itself blocks a new
+    // code. Only an explicit GoTrue 404 (stale mirror) clears it.
+    const mirrorConfirmed = true;
     if (!this.signupAdminReady) return mirrorConfirmed;
     try {
       const r = await fetch(this.goTrueUrl + '/admin/users/' + id, {

@@ -46,10 +46,6 @@ for (const [name,opts,want] of [
   ['ambiguous mirror',{mirror:[{id},{id}]},['cooldown','mirror']],
   ['invalid mirror ID',{mirror:[{id:'invalid'}]},['cooldown','mirror']],
   ['missing mirror access',{mirrorFailure:true},['cooldown','mirror']],
-  ['no trusted admin URL',{config:{GOTRUE_URL:''}},['cooldown','mirror']],
-  ['no trusted admin secret',{config:{SUPABASE_JWT_SECRET:''}},['cooldown','mirror']],
-  ['unconfirmed mirror while admin is offline',{failure:true,mirror:[{id,confirmed:false}]},['cooldown','mirror','get']],
-  ['confirmed but stale mirror (404)',{status:404,mirror:[{id,confirmed:true}]},['cooldown','mirror','get']],
   ['dev auth',{config:{AUTH_MODE:'dev'}},['cooldown']],
   ['pending email, even if phone is confirmed',{user:{...registered,email_confirmed_at:null,confirmed_at:'2026-01-01T00:00:00Z'}},['cooldown','mirror','get']],
   ['changed email',{user:{...registered,email:'different@example.invalid'}},['cooldown','mirror','get']],
@@ -57,7 +53,6 @@ for (const [name,opts,want] of [
   ['soft-deleted account',{user:{...registered,deleted_at:'2026-01-02T00:00:00Z'}},['cooldown','mirror','get']],
   ['invalid confirmation date',{user:{...registered,email_confirmed_at:'invalid'}},['cooldown','mirror','get']],
   ['stale mirror: 404',{status:404},['cooldown','mirror','get']],
-  ['admin offline',{failure:true},['cooldown','mirror','get']],
 ]) test(name+' leaves ordinary email-code flow available', async t => {
   const h=fixture(t,opts);assert.equal((await h.send()).sent,true);assert.deepEqual(h.trace,[...want,'code','mail']);
   assert.equal(h.mail.length,1);assert.equal(h.mail[0][0],email);
@@ -67,8 +62,8 @@ for (const [name,opts,want] of [
   ['no admin secret',{config:{SUPABASE_JWT_SECRET:''}},['cooldown','mirror']],
   ['admin offline',{failure:true},['cooldown','mirror','get']],
   ['admin 500',{status:500},['cooldown','mirror','get']],
-]) test('confirmed mirror row blocks the code when GoTrue cannot answer: '+name, async t => {
-  const h=fixture(t,{...opts,mirror:[{id,confirmed:true}]});
+]) test('mirror row blocks the code when GoTrue cannot answer: '+name, async t => {
+  const h=fixture(t,opts);
   await assert.rejects(h.send(), e => e.getStatus()===409 && e.getResponse().code==='EMAIL_ALREADY_REGISTERED');
   assert.deepEqual(h.trace,want); assert.deepEqual(h.mail,[]);
 });

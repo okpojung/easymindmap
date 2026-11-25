@@ -19,6 +19,7 @@ import { beginAttachBatch, mapFolderName, moveAttachmentToCloud, moveAttachmentT
 import { classifyAttachmentSource } from '@/components/attachments/attachmentSource';
 import { isLocalAttachmentUrl, requestLocalWritePermission } from '@/utils/localAttachments';
 import { readFolderPath } from '@/utils/localFolderPath';
+import { useCloudStore } from '@/stores/cloudStore';
 import { attachmentKindFor, isImageFileName } from '@/utils/attachmentKind';
 import { attachmentFetchUrl, cloudApi, serverAttachmentId } from '@/services/cloud/apiClient';
 import { downloadAttachment } from '@/utils/downloadAttachment';
@@ -282,7 +283,8 @@ function ResRow({ t, kind, row, selected, editing, onEdit, onError }: {
   const folder = useLocalFolderState();
   const [moving, setMoving] = useState(false);
   const source = att ? classifyAttachmentSource(att.url, { isLocal: isLocalAttachmentUrl }) : null;
-  const canToPc = kind === 'attach' && !!att?.url && (source === 'server' || source === 'embedded') && folder.status === 'connected';
+  const collabMap = useCloudStore((s) => s.cloudKind) === 'collab';
+  const canToPc = kind === 'attach' && !!att?.url && (source === 'server' || source === 'embedded') && folder.status === 'connected' && !collabMap;
   const canToCloud = kind === 'attach' && !!att?.url && source === 'local' && !(authEnabled && useAuthStore.getState().guest);
   const toPc = () => {
     if (!att || moving) return;
@@ -524,7 +526,9 @@ function AttachAdd({ t, nodeId, onError, serverBlocked }: { t: ThemeTokens; node
   const tr = useTr();
   const add = useAddFiles(nodeId, onError);
   const folder = useLocalFolderState();
-  const unsupported = folder.status === 'unsupported';
+  // 협업맵은 PC 폴더 첨부를 쓰지 않는다 — 다른 참여자가 열 수 없다 (2026-11-26)
+  const collab = useCloudStore((s) => s.cloudKind) === 'collab';
+  const unsupported = folder.status === 'unsupported' || collab;
   const [localBusy, setLocalBusy] = useState(false);
   // 클릭 핸들러에서 동기로 선택창을 연다 — 서버 업로드와 완전히 다른 경로
   const linkLocal = () => {
@@ -536,6 +540,7 @@ function AttachAdd({ t, nodeId, onError, serverBlocked }: { t: ThemeTokens; node
       else if (r === 'loading') onError(tr('localAtt.loading'));
       else if (r === 'unsupported') onError(tr('localAtt.menu.unsupported'));
       else if (r === 'permission') onError(tr('localAtt.store.permissionPick'));
+      else if (r === 'collab') onError(tr('localAtt.collabBlocked'));
       else if (r === 'failed') onError(tr('localAtt.failed'));
     }).finally(() => setLocalBusy(false));
   };
@@ -550,11 +555,11 @@ function AttachAdd({ t, nodeId, onError, serverBlocked }: { t: ThemeTokens; node
       </div>
       <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>{tr('inspector.res.attach.help')}</div>
       <button type="button" data-testid="res-attach-local" disabled={localBusy || unsupported} onClick={linkLocal}
-        title={unsupported ? tr('localAtt.menu.unsupported') : tr('localAtt.menu.localTip')}
+        title={collab ? tr('localAtt.collabBlocked') : unsupported ? tr('localAtt.menu.unsupported') : tr('localAtt.menu.localTip')}
         style={{ ...addBtnStyle(t), marginTop: 8, padding: '6px 10px', opacity: unsupported ? 0.5 : 1, cursor: unsupported ? 'not-allowed' : 'pointer' }}>
         {tr('localAtt.res.pickLocal')}
       </button>
-      <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>{unsupported ? tr('localAtt.menu.unsupported') : tr('localAtt.res.localHelp')}</div>
+      <div style={{ fontSize: 10, color: t.textSubtle, marginTop: 5, lineHeight: 1.45 }}>{collab ? tr('localAtt.collabBlocked') : unsupported ? tr('localAtt.menu.unsupported') : tr('localAtt.res.localHelp')}</div>
     </div>
   );
 }

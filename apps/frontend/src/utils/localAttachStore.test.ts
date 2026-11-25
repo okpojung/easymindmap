@@ -130,4 +130,16 @@ picked = root;
 await local.connectLocalFolder(now.rootId, { replace: true });
 assert.equal(local.getLocalFolderState().rootId, firstId, 'picking the original folder again reuses its id');
 
-console.log('PASS local attach store: folder change (replace), permission gate, link-in-place without copy, copy into map folder, (2) names, safe names, read-back');
+// 협업맵은 PC 폴더가 연결돼 있어도 묻지 않고 Cloud (2026-11-26 사용자 보고)
+const target = await import('@/components/attachments/attachTarget');
+const { useCloudStore } = await import('@/stores/cloudStore');
+assert.equal(local.getLocalFolderState().status, 'connected');
+useCloudStore.setState({ cloudKind: 'collab' } as never);
+target.writeAttachPref('local');
+assert.equal(await target.chooseAttachTarget([new File(['x'], 'a.pdf')]), 'cloud');
+assert.equal(target.getAttachAsk(), null, 'no Cloud/PC question on collaborative maps');
+useCloudStore.setState({ cloudKind: 'solo' } as never);
+assert.equal(await target.chooseAttachTarget([new File(['x'], 'a.pdf')]), 'local', 'solo maps keep the remembered PC choice');
+target.writeAttachPref('ask');
+
+console.log('PASS local attach store: collab maps always Cloud, folder change (replace), permission gate, link-in-place without copy, copy into map folder, (2) names, safe names, read-back');

@@ -4,10 +4,10 @@ import { findNodeInMap, useDocumentStore } from '@/stores/documentStore';
 import { useCloudStore } from '@/stores/cloudStore';
 import type { NodeAttachment } from '@/editor/__samples__/types';
 import { connectLocalFolder, getLocalFolderState, localErrorReason, pickLocalAttachments } from '@/utils/localAttachments';
-import { mapFolderName } from './attachTarget';
+import { isCollabMap, mapFolderName } from './attachTarget';
 import { decideLocalPickAction } from './attachmentSource';
 
-export type LocalPickResult = 'added' | 'cancelled' | 'changed' | 'failed' | 'empty' | 'connected' | 'loading' | 'unsupported' | 'permission';
+export type LocalPickResult = 'added' | 'cancelled' | 'changed' | 'failed' | 'empty' | 'connected' | 'loading' | 'unsupported' | 'permission' | 'collab';
 
 /**
  * 반드시 사용자 클릭 핸들러에서 동기로 부른다(첫 await 전에 pickLocalAttachments 시작).
@@ -21,6 +21,7 @@ export function attachFromThisPc(nodeId: string): Promise<LocalPickResult> {
     && useDocumentStore.getState().docEpoch === epoch
     && !!findNodeInMap(useDocumentStore.getState().map, nodeId);
   if (!still()) return Promise.resolve('changed');
+  if (isCollabMap()) return Promise.resolve('collab');
   const action = decideLocalPickAction(getLocalFolderState().status);
   if (action === 'wait') return Promise.resolve('loading');
   if (action === 'unsupported') return Promise.resolve('unsupported');

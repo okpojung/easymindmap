@@ -41,7 +41,9 @@ export function AttachmentAddMenu({ t, compact, onOpen }: { t: ThemeTokens; comp
   const copy = copyByLang[lang] ?? copyByLang.en;
   const tr = useTr();
   const localState = useLocalFolderState();
-  const localUnsupported = localState.status === 'unsupported';
+  // 협업맵은 PC 폴더 첨부를 쓰지 않는다 (2026-11-26)
+  const localCollab = useCloudStore((s) => s.cloudKind) === 'collab';
+  const localUnsupported = localState.status === 'unsupported' || localCollab;
   const coarse = useCoarse();
   const nodeId = useInteractionStore((s) => s.selectedId);
   const epoch = useDocumentStore((s) => s.docEpoch);
@@ -120,6 +122,7 @@ export function AttachmentAddMenu({ t, compact, onOpen }: { t: ThemeTokens; comp
       else if (r === 'unsupported') setNotice({ error: true, text: tr('localAtt.menu.unsupported') });
       else if (r === 'changed') setNotice({ error: true, text: tr('localAtt.changed') });
       else if (r === 'permission') setNotice({ error: true, text: tr('localAtt.store.permissionPick') });
+      else if (r === 'collab') setNotice({ error: true, text: tr('localAtt.collabBlocked') });
       else if (r === 'failed') setNotice({ error: true, text: tr('localAtt.failed') });
     }).finally(() => setBusy(false));
   };
@@ -145,7 +148,7 @@ export function AttachmentAddMenu({ t, compact, onOpen }: { t: ThemeTokens; comp
         if (['ArrowDown','ArrowUp','Home','End'].includes(e.key)) { e.preventDefault(); const items = [...(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]; const i = items.indexOf(document.activeElement as HTMLButtonElement); const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length; items[next]?.focus(); }
       }} style={{ position: 'absolute', top: 'calc(100% + 6px)', ...(compact ? { right: 0 } : { left: 0 }), zIndex: 30, width: 'min(250px, calc(100vw - 20px))', padding: 5, background: t.surface, color: t.text, border: '1px solid ' + t.border, borderRadius: 8, boxShadow: t.shadowSm }}>
       <button type="button" role="menuitem" data-testid="attachment-add-file" disabled={fileBlocked} title={fileBlocked ? copy.guest : copy.md} style={{ ...itemStyle, opacity: fileBlocked ? .45 : 1 }} onClick={() => { if (!nodeId || fileBlocked) return; fileTarget.current = { nodeId, epoch }; setOpen(false); fileInput.current?.click(); }}><span style={{ width: 24, display: 'inline-flex', justifyContent: 'center' }}><I.Paperclip size={18} /></span>{tr('localAtt.menu.server')}</button>
-      <button type="button" role="menuitem" data-testid="attachment-add-local" disabled={localUnsupported} title={localUnsupported ? tr('localAtt.menu.unsupported') : tr('localAtt.menu.localTip')} style={{ ...itemStyle, opacity: localUnsupported ? .45 : 1 }} onClick={linkFromPc}><span style={{ width: 24, display: 'inline-flex', justifyContent: 'center' }}><I.Paperclip size={18} /></span>{tr('localAtt.menu.local')}</button>
+      <button type="button" role="menuitem" data-testid="attachment-add-local" disabled={localUnsupported} title={localCollab ? tr('localAtt.collabBlocked') : localUnsupported ? tr('localAtt.menu.unsupported') : tr('localAtt.menu.localTip')} style={{ ...itemStyle, opacity: localUnsupported ? .45 : 1 }} onClick={linkFromPc}><span style={{ width: 24, display: 'inline-flex', justifyContent: 'center' }}><I.Paperclip size={18} /></span>{tr('localAtt.menu.local')}</button>
       <button type="button" role="menuitem" data-testid="attachment-add-md-editor" disabled={fileBlocked} title={fileBlocked ? copy.guest : copy.mdEditor} style={{ ...itemStyle, opacity: fileBlocked ? .45 : 1 }} onClick={createMdAndOpen}><span style={{ width: 24, display: 'inline-flex', justifyContent: 'center' }}><MarkdownFileIcon size={18} /></span>{copy.mdEditor}</button>
       <button type="button" role="menuitem" data-testid="attachment-add-paragraph" style={itemStyle} onClick={() => { if (nodeId) start('paragraph', { nodeId, epoch }); }}><b style={{ width: 24 }}>¶</b>{copy.paragraph}</button>
       <button type="button" role="menuitem" data-testid="attachment-add-code" style={itemStyle} onClick={() => { if (nodeId) start('code_block', { nodeId, epoch }); }}><b style={{ width: 24 }}>&lt;/&gt;</b>{copy.code}</button>

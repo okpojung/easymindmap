@@ -51,7 +51,11 @@ export function mapFolderName(): string {
   return safeLocalName(title.replace(/\s+/g, ' ').slice(0, 60), 'EasyMindMap');
 }
 
+/** 협업맵 — 다른 참여자가 열 수 있어야 하므로 PC 폴더 첨부를 쓰지 않는다 (2026-11-26 사용자 요청) */
+export function isCollabMap(): boolean { return useCloudStore.getState().cloudKind === 'collab'; }
+
 export async function chooseAttachTarget(files: File[]): Promise<AttachTarget | null> {
+  if (isCollabMap()) return 'cloud';
   if (!files.length || files.every((f) => isMarkdownName(f.name))) return 'cloud';
   if (getLocalFolderState().status !== 'connected') return 'cloud';
   const pref = readAttachPref();

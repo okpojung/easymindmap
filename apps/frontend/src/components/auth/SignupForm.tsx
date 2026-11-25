@@ -386,7 +386,7 @@ export function SignupForm({
         )}
         <div style={{ fontSize: 10.5, color: t.textSubtle, marginTop: 5, lineHeight: 1.5 }}>
           {phoneOk ? tr('auth.signup.phoneNote') : tr('auth.signup.phoneLength')}
-          <ProPhoneVerification key={intentKey + ':' + !!emailToken} mode="signup" country={country.dial} phone={phoneDigits} email={email.trim()} emailProof={emailToken ?? undefined} disabled={!emailToken || !!busy} onBusy={setPhoneBusy} onSuccess={id=>setProof({key:intentKey,id,expiresAt:Date.now()+CLAIM_TTL_MS})} />
+          <ProPhoneVerification key={intentKey + ':' + !!emailToken} mode="signup" country={country.dial} phone={phoneDigits} email={email.trim()} emailProof={emailToken ?? undefined} disabled={!!busy} onBusy={setPhoneBusy} onSuccess={id=>setProof({key:intentKey,id,expiresAt:Date.now()+CLAIM_TTL_MS})} />
         </div>
       </div>
 

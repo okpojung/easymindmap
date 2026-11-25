@@ -121,28 +121,40 @@ export class AccountService {
   }
 
   private async confirmedSignupEmail(email: string): Promise<boolean> {
-    if (!this.signupAdminReady) return false;
+    if (!this.authExternal) return false;
+    let id: string;
+    let mirrorConfirmed: boolean;
     try {
-      // The app DB can be a stale mirror. Use it only to find one candidate UUID;
-      // never search the GoTrue admin list or put an email in its URL or logs.
-      const { rows } = await this.db.query<{ id: string }>(
-        'SELECT id::text AS id FROM auth.users WHERE lower(email) = $1 LIMIT 2', [email],
+      // The app DB can be a stale mirror. Use it to find one candidate UUID and its
+      // confirmation; never search the GoTrue admin list or put an email in its URL or logs.
+      const { rows } = await this.db.query<{ id: string; confirmed: boolean | null }>(
+        'SELECT id::text AS id, (email_confirmed_at IS NOT NULL) AS confirmed FROM auth.users WHERE lower(email) = $1 LIMIT 2', [email],
       );
       if (rows.length !== 1) return false;
-      const id = rows[0].id;
+      id = rows[0].id;
       if (typeof id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id)) return false;
+      mirrorConfirmed = rows[0].confirmed === true;
+    } catch {
+      // Missing mirror access: nothing to compare. GoTrue still decides the final signup.
+      return false;
+    }
+    // 2026-11-25 user report: with GoTrue unreachable (dev had no GOTRUE_URL) an already
+    // registered address still received a code. When GoTrue cannot answer, trust the
+    // confirmed mirror row. Only an explicit 404 (stale mirror) clears it.
+    if (!this.signupAdminReady) return mirrorConfirmed;
+    try {
       const r = await fetch(this.goTrueUrl + '/admin/users/' + id, {
         method: 'GET', headers: this.adminHeaders(id), redirect: 'error',
         cache: 'no-store', signal: AbortSignal.timeout(2000),
       });
-      if (!r.ok) return false;
+      if (r.status === 404) return false;
+      if (!r.ok) return mirrorConfirmed;
       const user = await r.json();
       return user?.id === id && typeof user.email === 'string' && user.email.trim().toLowerCase() === email
         && !user.deleted_at && typeof user.email_confirmed_at === 'string' && Number.isFinite(Date.parse(user.email_confirmed_at));
     } catch {
-      // Missing mirror access, deleted/stale ID, timeout or malformed response: no disclosure.
-      // GoTrue still decides the final signup. Do not log provider responses or request data.
-      return false;
+      // Timeout or malformed response: fall back to the mirror. Never log provider data.
+      return mirrorConfirmed;
     }
   }
 

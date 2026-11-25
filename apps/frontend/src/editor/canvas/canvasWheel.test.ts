@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { canvasWheelScroll } from './canvasWheel';
+const w = (deltaX: number, deltaY: number, shiftKey = false, deltaMode = 0) => canvasWheelScroll({ deltaX, deltaY, shiftKey, deltaMode }, 1000, 800);
+assert.deepEqual(w(0, 100), { dx: 0, dy: 100 }, 'plain wheel scrolls vertically');
+assert.deepEqual(w(0, -100), { dx: 0, dy: -100 });
+assert.deepEqual(w(0, 100, true), { dx: 100, dy: 0 }, 'Shift+wheel scrolls horizontally');
+assert.deepEqual(w(100, 0, true), { dx: 100, dy: 0 }, 'browsers that already swap Shift to deltaX');
+assert.deepEqual(w(30, 40), { dx: 30, dy: 40 }, 'trackpad two-axis scroll');
+assert.deepEqual(w(0, 3, false, 1), { dx: 0, dy: 48 }, 'line mode');
+assert.deepEqual(w(0, 1, false, 2), { dx: 0, dy: 800 }, 'page mode');
+console.log('canvas wheel: vertical, Shift horizontal, trackpad, line/page PASS');

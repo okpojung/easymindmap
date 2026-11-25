@@ -49,6 +49,7 @@ import { treeEdgePath } from '@/editor/edge-renderer/edgePaths';
 import { collapseAnchor, type FallbackDir } from '@/editor/canvas/collapseAnchor';
 import { CanvasCursorLayer } from './CanvasCursorLayer';
 import { Minimap } from './Minimap';
+import { canvasWheelScroll } from './canvasWheel';
 import { readableTextOn } from '@/editor/node-renderer/resolveNodeColors';
 import { zoneAxesFor, zoneAt } from './dropGeometry';
 import { useDocumentStore } from '@/stores/documentStore';
@@ -919,10 +920,21 @@ export function Canvas({
 
       const state = useViewportStore.getState();
       const { clientToViewBox: toVB, CX, CY } = wheelGeomRef.current;
-      const cursor = toVB(e.clientX, e.clientY);
 
+      // 2026-11-25 user request: plain wheel scrolls, Shift+wheel scrolls sideways,
+      // only Ctrl/Cmd+wheel (and trackpad pinch, which sets ctrlKey) zooms.
+      if (!e.ctrlKey && !e.metaKey) {
+        const rect = el.getBoundingClientRect();
+        const { dx, dy } = canvasWheelScroll(e, rect.width, rect.height);
+        if (!dx && !dy) return;
+        const a = toVB(e.clientX, e.clientY), b = toVB(e.clientX + dx, e.clientY + dy);
+        state.setPan(state.panX - (b.x - a.x), state.panY - (b.y - a.y));
+        return;
+      }
+
+      const cursor = toVB(e.clientX, e.clientY);
       const s1 = state.zoom / 100;
-      const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      const factor = Math.exp(-e.deltaY * 0.01);
       const zoomNext = clampZoom(Math.round(state.zoom * factor));
       const s2 = zoomNext / 100;
 

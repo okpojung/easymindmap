@@ -24,7 +24,7 @@ export function MinimapHelp({ t, onClose }: { t: ThemeTokens; onClose: () => voi
     window.addEventListener('keydown', key, true);
     return () => { window.removeEventListener('keydown', key, true); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
   }, []);
-  const rows = ['bar', 'move', 'pin', 'navigate', 'wheel', 'shortcut'] as const;
+  const rows = ['bar', 'move', 'resize', 'pin', 'navigate', 'wheel', 'shortcut'] as const;
   return createPortal(<div ref={root} onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
     <DialogFrame t={t} testId="minimap-help-dialog" title={<span id="minimap-help-heading">{tr('editor.minimap.help')}</span>} onClose={onClose}
       footer={<DialogCloseButton t={t} testId="minimap-help-close" onClick={onClose} />}>

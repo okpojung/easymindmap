@@ -3,7 +3,7 @@
 //   · 노드는 자리·색만 작은 사각형으로 (연결선·글자는 그리지 않는다)
 //   · 지금 보이는 영역이 사각형으로 — 크기 = 캔버스 창 px ÷ 배율, 최소 60×45
 //   · 사각형을 끌면 화면이 따라 움직이고, 빈 곳을 누르면 그 자리가 중앙
-//   · 패널은 항상 같은 크기. 맵이 크면 화면 주변만 보이는 창이 된다
+//   · 패널은 우하단 모서리로 크기를 조절한다(로컬 UI 설정). 맵이 크면 화면 주변만 보이는 창이 된다
 //     (2026-09-21 "창과 표시창이 너무 작다" 보고 뒤) — 가만히 있을 땐 사각형이
 //     가장자리에 닿을 때만 창이 옮겨 가고, **끄는 동안은 사각형을 가장자리로
 //     미는 만큼 창이 흐른다**(2026-09-21 "끝으로 옮기면 전체 맵이 빨리 안
@@ -14,7 +14,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MinimapHelp } from './MinimapHelp';
-import { loadMinimapWindow, saveMinimapWindow, minimapWindowPosition, moveMinimapWindow, nextMinimapPin, type MinimapWindowState } from './minimapWindow';
+import { loadMinimapWindow, saveMinimapWindow, minimapWindowPosition, minimapWindowSize, moveMinimapWindow, resizeMinimapWindow, nextMinimapPin, type MinimapWindowState } from './minimapWindow';
+import { minimapWheelDelta } from './minimapWheel';
 import './Minimap.css';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -51,6 +52,9 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   const [windowState, setWindowState] = useState(loadMinimapWindow);
   const windowRef = useRef(windowState); windowRef.current = windowState;
   const [panelMoving, setPanelMoving] = useState(false);
+  const [panelResizing, setPanelResizing] = useState(false);
+  const resizeHandle = useRef<HTMLButtonElement | null>(null);
+  const panelResize = useRef<{ pointerId: number; clientX: number; clientY: number; w: number; h: number; anchor: { x: number; y: number }; before: MinimapWindowState; origin: { x: number; y: number; scale: number } | null; hold: boolean } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const panelDrag = useRef<{ pointerId: number; clientX: number; clientY: number; x: number; y: number; before: MinimapWindowState } | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -68,8 +72,11 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   // 폰 폭에서는 화면의 40% × 20% 안쪽 — 데스크톱 최소 200×150 은 390px 화면의 절반을 가린다
   const full = minimapPanelSize(W, H);
   const margin = compact ? 8 : 14;
-  const panelW = Math.max(1, Math.min(compact ? Math.round(Math.min(160, W * 0.42)) : full.panelW, W - margin * 2 - 10));
-  const panelH = Math.max(1, Math.min(compact ? Math.round(Math.min(120, H * 0.2)) : full.panelH, H - margin * 2 - 10));
+  const panelSize = minimapWindowSize(windowState, {
+    w: compact ? Math.round(Math.min(160, W * 0.42)) : full.panelW,
+    h: compact ? Math.round(Math.min(120, H * 0.2)) : full.panelH,
+  }, W, H, margin);
+  const panelW = panelSize.w, panelH = panelSize.h;
   const position = minimapWindowPosition(windowState, W, H, panelW + 10, panelH + 10, margin);
   const commitWindow = (s: MinimapWindowState) => { windowRef.current = s; setWindowState(s); saveMinimapWindow(s); };
   const movePanel = (x: number, y: number) => {
@@ -78,7 +85,7 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   };
   const startPanelDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
-    if (e.button !== 0 || windowRef.current.pin !== 'user' || (e.target as HTMLElement).closest('button')) return;
+    if (e.button !== 0 || panelResize.current || windowRef.current.pin !== 'user' || (e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
     panelDrag.current = { pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY, x: position.x, y: position.y, before: windowRef.current };
     e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); setPanelMoving(true);
@@ -90,6 +97,14 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
     else saveMinimapWindow(windowRef.current);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
+  const finishResize = (pointerId: number, commit: boolean, target: HTMLButtonElement) => {
+    const d = panelResize.current; if (!d || d.pointerId !== pointerId) return;
+    panelResize.current = null; setPanelResizing(false);
+    if (commit) saveMinimapWindow(windowRef.current);
+    else { originRef.current = d.origin; setHold(d.hold); windowRef.current = d.before; setWindowState(d.before); }
+    if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+  };
+  const endResize = (e: ReactPointerEvent<HTMLButtonElement>) => finishResize(e.pointerId, e.type === 'pointerup', e.currentTarget);
   const geom = minimapGeometry(nodeBounds, viewWorld, panelW, panelH, originRef.current, mode);
   originRef.current = { x: geom.bounds.x, y: geom.bounds.y, scale: geom.scale };
   const view = worldToMini(geom, viewWorld);
@@ -103,11 +118,11 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       const g = geomRef.current;
-      if (g.fits) return;
       e.preventDefault(); e.stopPropagation();
-      const dx = e.shiftKey ? e.deltaY : e.deltaX;
-      const dy = e.shiftKey ? 0 : e.deltaY;
+      if (g.fits || panelResize.current || panelDrag.current) return;
+      const { dx, dy } = minimapWheelDelta(e, g.panelW, g.panelH);
       const o = shiftOrigin(g, boundsRef.current, dx, dy);
+      if (o.x === g.bounds.x && o.y === g.bounds.y) return;
       originRef.current = { x: o.x, y: o.y, scale: g.scale };
       setHold(true); bump((n) => n + 1);
     };
@@ -129,7 +144,7 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   };
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || panelResize.current || panelDrag.current) return;
     e.stopPropagation();
     setHold(false);
     const m = miniPoint(e);
@@ -161,6 +176,7 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
       data-testid="minimap"
       data-pin={windowState.pin}
       data-panel-moving={panelMoving}
+      data-panel-resizing={panelResizing}
       data-help-open={helpOpen}
       className="mm-overlay-controls mm-minimap"
       onPointerDown={e => e.stopPropagation()}
@@ -188,13 +204,13 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
             const step = e.shiftKey ? 50 : 10;
             movePanel(position.x + delta[0] * step, position.y + delta[1] * step); saveMinimapWindow(windowRef.current);
           }}>
-          <button type="button" data-testid="minimap-pin" aria-pressed={windowState.pin !== 'user'}
+          <button type="button" data-testid="minimap-pin" disabled={panelResizing} aria-pressed={windowState.pin !== 'user'}
             aria-label={tr('editor.minimap.pin.' + windowState.pin)} title={tr('editor.minimap.pin.' + windowState.pin)}
             onPointerDown={e => e.stopPropagation()} onClick={() => commitWindow({ ...windowRef.current, pin: nextMinimapPin(windowRef.current.pin) })}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M8 3h8l-1 6 4 4v2H5v-2l4-4-1-6ZM12 15v7" /></svg>
           </button>
           <span className="mm-minimap-title">{tr('editor.minimap.title')}</span>
-          <button type="button" data-testid="minimap-help" aria-haspopup="dialog" aria-label={tr('editor.minimap.help')} title={tr('editor.minimap.help')}
+          <button type="button" data-testid="minimap-help" disabled={panelResizing} aria-haspopup="dialog" aria-label={tr('editor.minimap.help')} title={tr('editor.minimap.help')}
             onPointerDown={e => e.stopPropagation()} onClick={() => setHelpOpen(true)}>?</button>
           <button type="button" data-testid="minimap-close" aria-label={tr('editor.minimap.close')} title={tr('editor.minimap.close')}
             onPointerDown={e => e.stopPropagation()} onClick={onClose}>×</button>
@@ -243,6 +259,34 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
           rx={2}
         />
       </svg>
+      <button ref={resizeHandle} type="button" className="mm-minimap-resize" data-testid="minimap-resize"
+        aria-label={tr('editor.minimap.resize')} title={tr('editor.minimap.resize')}
+        style={{ color: t.textMuted }}
+        onPointerDown={e => {
+          e.preventDefault(); e.stopPropagation();
+          if (e.button !== 0 || panelResize.current || panelDrag.current || dragRef.current) return;
+          panelResize.current = { pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY, w: panelW, h: panelH, anchor: position, before: windowRef.current, origin: originRef.current, hold };
+          e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); setPanelResizing(true);
+        }}
+        onPointerMove={e => {
+          const d = panelResize.current; if (!d || d.pointerId !== e.pointerId) return;
+          e.stopPropagation();
+          const s = resizeMinimapWindow(d.before, { w: d.w + e.clientX - d.clientX, h: d.h + e.clientY - d.clientY }, d.anchor, W, H, margin);
+          windowRef.current = s; setWindowState(s);
+        }}
+        onPointerUp={endResize} onPointerCancel={endResize} onLostPointerCapture={endResize}
+        onKeyDown={e => {
+          if (e.key === 'Escape' && panelResize.current) {
+            e.preventDefault(); e.stopPropagation(); finishResize(panelResize.current.pointerId, false, e.currentTarget); return;
+          }
+          if (panelResize.current) return;
+          const directions: Record<string, number[]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+          const delta = directions[e.key]; if (!delta) return;
+          e.preventDefault(); e.stopPropagation(); const step = e.shiftKey ? 50 : 10;
+          commitWindow(resizeMinimapWindow(windowRef.current, { w: panelW + delta[0] * step, h: panelH + delta[1] * step }, position, W, H, margin));
+        }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M4 12 12 4M8 12l4-4M12 12h.01" /></svg>
+      </button>
     </div>
     {helpOpen && <MinimapHelp t={t} onClose={() => setHelpOpen(false)} />}
     </>

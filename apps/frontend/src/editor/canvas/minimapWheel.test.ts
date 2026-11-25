@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { minimapWheelDelta as delta } from './minimapWheel';
+const wheel = (deltaX: number, deltaY: number, shiftKey = false, deltaMode = 0) => delta({ deltaX, deltaY, shiftKey, deltaMode }, 300, 200);
+assert.deepEqual(wheel(0, 120, true), { dx: 120, dy: 0 });
+assert.deepEqual(wheel(120, 0, true), { dx: 120, dy: 0 });
+assert.deepEqual(wheel(-120, 0, true), { dx: -120, dy: 0 });
+assert.deepEqual(wheel(120, 120, true), { dx: 120, dy: 0 });
+assert.deepEqual(wheel(1, -80, true), { dx: -80, dy: 0 });
+assert.deepEqual(wheel(4, -3), { dx: 4, dy: -3 });
+assert.deepEqual(wheel(0, 3, true, 1), { dx: 48, dy: 0 });
+assert.deepEqual(wheel(2, 0, true, 2), { dx: 600, dy: 0 });
+assert.deepEqual(wheel(0, 2, true, 2), { dx: 600, dy: 0 });
+assert.deepEqual(wheel(1, -1, false, 2), { dx: 300, dy: -200 });
+assert.deepEqual(wheel(NaN, Infinity, true), { dx: 0, dy: 0 });
+console.log('minimap wheel: Shift deltaX/deltaY, dominant-axis, signs, diagonal, lines/pages and invalid values PASS');

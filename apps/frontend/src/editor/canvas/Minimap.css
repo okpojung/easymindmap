@@ -1,7 +1,7 @@
 .mm-minimap-top { position:absolute; top:4px; left:4px; right:4px; height:28px; z-index:2; }
 .mm-minimap-bar { display:flex; align-items:center; gap:2px; height:28px; border-radius:4px; background:#dedede; color:#292929; opacity:0; transition:opacity 120ms ease; cursor:grab; touch-action:none; outline-offset:2px; }
 .mm-minimap-top:hover .mm-minimap-bar, .mm-minimap-top:focus-within .mm-minimap-bar,
-.mm-minimap[data-panel-moving="true"] .mm-minimap-bar, .mm-minimap[data-help-open="true"] .mm-minimap-bar { opacity:1; }
+.mm-minimap[data-panel-moving="true"] .mm-minimap-bar, .mm-minimap[data-panel-resizing="true"] .mm-minimap-bar, .mm-minimap[data-help-open="true"] .mm-minimap-bar { opacity:1; }
 .mm-minimap[data-panel-moving="true"] .mm-minimap-bar { cursor:grabbing; }
 .mm-minimap[data-pin="right"] .mm-minimap-bar, .mm-minimap[data-pin="left"] .mm-minimap-bar { cursor:default; }
 .mm-minimap-bar button { display:flex; align-items:center; justify-content:center; flex:0 0 24px; width:24px; height:24px; border:0; border-radius:3px; padding:0; background:transparent; color:inherit; cursor:pointer; font-size:15px; line-height:1; }
@@ -9,5 +9,8 @@
 .mm-minimap-bar button[aria-pressed="true"] { background:#bcc6d3; color:#172d49; }
 .mm-minimap-bar button:focus-visible, .mm-minimap-bar:focus-visible { outline:2px solid #216ac0; }
 .mm-minimap-title { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; font-size:11px; font-weight:600; pointer-events:none; }
+.mm-minimap-resize { position:absolute; right:0; bottom:0; z-index:3; width:24px; height:24px; display:flex; align-items:center; justify-content:center; border:0; border-radius:0 0 7px 0; padding:0; background:linear-gradient(135deg,transparent,rgba(128,128,128,.22)); cursor:nwse-resize; touch-action:none; }
+.mm-minimap-resize:hover { background:rgba(128,128,128,.24); }
+.mm-minimap-resize:focus-visible { outline:2px solid #216ac0; outline-offset:-2px; }
 @media (hover:none), (pointer:coarse) { .mm-minimap-bar { opacity:1; } }
 @media (prefers-reduced-motion:reduce) { .mm-minimap-bar { transition:none; } }

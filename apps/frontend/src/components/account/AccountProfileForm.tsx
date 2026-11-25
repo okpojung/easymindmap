@@ -22,7 +22,6 @@ import { fileToAvatarDataUrl } from '@/utils/avatarImage';
 import { AvatarBadge } from './AvatarBadge';
 import { useTr } from '@/i18n';
 import { useCoarse } from '@/hooks/useViewport';
-import { LocalFolderSettings } from '@/components/attachments/LocalFolderSettings';
 
 interface FormProps {
   t: ThemeTokens;
@@ -256,7 +255,6 @@ function AccountFormFields({ t, onSaved, onDeleteAccount, identity }: FormProps 
           cursor: canSave ? 'pointer' : 'default', opacity: canSave ? 1 : 0.55,
         }}
       >{busy ? tr('common.saving') : tr('common.save')}</button>
-      <LocalFolderSettings t={t} />
       {onDeleteAccount && (
         <div style={{ borderTop: `1px solid ${t.divider}`, paddingTop: 8, textAlign: 'right' }}>
           {/* 회원탈퇴 — 계정 메뉴의 로그아웃 밑에서 여기로 (2026-09-08 사용자 요청:

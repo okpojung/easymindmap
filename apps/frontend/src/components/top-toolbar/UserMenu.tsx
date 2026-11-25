@@ -25,6 +25,7 @@ import { ProShareDialog, ProSalesPanel, ProPurchasesPanel } from '@pro';
 import { useProFeature } from '@/pro/contract';
 import { useProfileStore } from '@/stores/profileStore';
 import { AccountProfileForm } from '@/components/account/AccountProfileForm';
+import { LocalFolderSettings } from '@/components/attachments/LocalFolderSettings';
 import { displayNameOf, formatPhone } from '@/utils/profileName';
 import { AvatarBadge } from '@/components/account/AvatarBadge';
 import { DialogCloseButton, DialogFrame, DialogXButton } from '@/components/ui/DialogFrame';
@@ -43,8 +44,12 @@ interface MenuEntry {
   soonKey?: string;
 }
 
+// 순서 (2026-11-25 사용자 요청): 계정 프로필 → 언어 설정 → 게시판(켜진 배포) → 나머지.
+// 게시판은 BOARD_ENABLED 일 때만 언어 설정 뒤에 끼운다(아래 base).
 const ENTRIES: MenuEntry[] = [
-  // 개인 설정 — 언어 고르기 (B10 i18n, 2026-10-05). 더는 '준비 중' 이 아니다.
+  // 계정 프로필 — 이름·이메일·휴대폰, 이름 수정 (2026-09-08 사용자 요청)
+  { id: 'profile', icon: '👤', labelKey: 'shell.user.profile' },
+  // 언어 설정(예전 '개인 설정') — 언어 고르기 (B10 i18n, 2026-10-05).
   { id: 'settings', icon: '⚙', labelKey: 'shell.user.settings' },
   // 비밀번호 변경은 **'준비 중'이 아니라 실제로 동작한다** — soon 이 없으면
   // 클릭이 안내가 아니라 기능으로 간다 (2026-08-13 사용자 요청).
@@ -57,8 +62,8 @@ const ENTRIES: MenuEntry[] = [
   { id: 'mcp', icon: '🔌', labelKey: 'shell.user.mcp' },
   // 내 로그인 기록 — 남의 것은 볼 수 없다(서버가 토큰 주인만 조회한다)
   { id: 'logins', icon: '🕘', labelKey: 'shell.user.logins' },
-  // 계정 프로필 — 이름·이메일·휴대폰, 이름 수정 (2026-09-08 사용자 요청)
-  { id: 'profile', icon: '👤', labelKey: 'shell.user.profile' },
+  // 첨부 폴더 — 이 PC 폴더 연결. 계정 프로필에서 분리 (2026-11-25 사용자 요청)
+  { id: 'attachFolder', icon: '📁', labelKey: 'shell.user.attachFolder' },
   { id: 'subscription', icon: '💳', labelKey: 'shell.user.subscription', soonKey: 'shell.user.subscriptionSoon' },
 ];
 
@@ -109,6 +114,15 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
   const myPhone = formatPhone(profile?.phoneCountry, profile?.phoneNumber);
   /** 계정 프로필 창 (2026-09-08) */
   const [profileOpen, setProfileOpen] = useState(false);
+  const [attachFolderOpen, setAttachFolderOpen] = useState(false);
+  const closeAttachFolder = () => { setAttachFolderOpen(false); triggerRef.current?.focus(); };
+  useEffect(() => {
+    if (!attachFolderOpen) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closeAttachFolder(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachFolderOpen]);
   useEffect(() => {
     if (!profileOpen) return;
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closeProfile(); };
@@ -190,7 +204,9 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
    *   한 줄에 묶으면 맵을 사기만 한 사람이 '판매·정산' 을 열어 자기와
    *   상관없는 정산 얘기를 읽게 된다. 줄을 갈라 각자 자기 것만 본다.
    */
-  const base = BOARD_ENABLED ? [{ id: 'board', icon: '📋', labelKey: 'shell.user.board' } as MenuEntry, ...ENTRIES] : ENTRIES;
+  const base = BOARD_ENABLED
+    ? ENTRIES.flatMap<MenuEntry>((e) => (e.id === 'settings' ? [e, { id: 'board', icon: '📋', labelKey: 'shell.user.board' }] : [e]))
+    : ENTRIES;
   const entries = salesOn
     ? base.flatMap<MenuEntry>((e) => (e.id === 'subscription'
       ? [
@@ -443,6 +459,7 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
                 if (e.id === 'mcp') { setOpen(false); setMcpOpen(true); return; }
                 if (e.id === 'logins') { openLogins(); return; }
                 if (e.id === 'profile') { setOpen(false); setProfileOpen(true); return; }
+                if (e.id === 'attachFolder') { setOpen(false); setAttachFolderOpen(true); return; }
                 if (e.id === 'sales') { setOpen(false); setSalesOpen(true); return; }
                 if (e.id === 'purchases') { setOpen(false); setBuysOpen(true); return; }
                 setSoon(soon === e.id ? null : e.id);
@@ -749,6 +766,19 @@ export function UserMenu({ t, onFlash, compactSize, hideLogout = false }: { t: T
               onSaved={(m) => onFlash?.(m)}
               onDeleteAccount={authEnabled && session ? () => { setProfileOpen(false); openDelete(); } : undefined}
             />
+        </DialogFrame>
+      )}
+
+      {attachFolderOpen && (
+        <DialogFrame
+          t={t}
+          testId="attach-folder-dialog"
+          width="min(480px, 92vw)"
+          onClose={closeAttachFolder}
+          title={`📁 ${tr('shell.user.attachFolder')}`}
+          footer={<DialogCloseButton t={t} onClick={closeAttachFolder} testId="attach-folder-close" />}
+        >
+          <LocalFolderSettings t={t} />
         </DialogFrame>
       )}
 

@@ -19,6 +19,12 @@ export function isValidDate(v: unknown): v is string {
   return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === v;
 }
 
+const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+/** HH:mm (24시간) 인가 — 일정의 시간 (2026-11-26) */
+export function isValidTime(v: unknown): v is string {
+  return typeof v === 'string' && TIME_RE.test(v);
+}
+
 /** 진척율 — 0~100 정수만 (자유 입력, 소수는 반올림). 아니면 null */
 export function normalizeProgress(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
@@ -33,16 +39,24 @@ function shortDate(v: string, year: number): string {
 }
 
 /** 일정 글자 — 시작~끝, 하루짜리(같거나 끝이 없음)는 하나만, 끝만 있으면 ~끝 */
-export function formatDateRange(start: string | undefined, end: string | undefined, year = new Date().getFullYear()): string {
+export function formatDateRange(
+  start: string | undefined, end: string | undefined, year = new Date().getFullYear(),
+  startTime?: string, endTime?: string,
+): string {
   const s = isValidDate(start) ? start : undefined;
   const e = isValidDate(end) ? end : undefined;
-  if (s && e && s !== e) {
+  // 시간은 그 날짜가 있을 때만 붙는다 (2026-11-26)
+  const st = s && isValidTime(startTime) ? ' ' + startTime : '';
+  const et = e && isValidTime(endTime) ? ' ' + endTime : '';
+  if (s && e && (s !== e || (et && et !== st))) {
     // 해를 넘기면 둘 다 연도를 적는다
     const y = Number(s.slice(0, 4)) === Number(e.slice(0, 4)) ? year : NaN;
-    return `${shortDate(s, y)}~${shortDate(e, y)}`;
+    // 같은 날 안의 시간 범위는 날짜를 한 번만: 11-03 09:00~18:00
+    if (s === e) return `${shortDate(s, y)}${st}~${et.trim()}`;
+    return `${shortDate(s, y)}${st}~${shortDate(e, y)}${et}`;
   }
-  if (s) return shortDate(s, year);
-  if (e) return `~${shortDate(e, year)}`;
+  if (s) return shortDate(s, year) + st;
+  if (e) return `~${shortDate(e, year)}${et}`;
   return '';
 }
 
@@ -51,7 +65,9 @@ export function projectChips(p: ProjectTags | undefined, year = new Date().getFu
   if (!p) return [];
   const out: ProjectChip[] = [];
   if (p.dateOn) {
-    const range = formatDateRange(p.start, p.end, year);
+    const range = p.timeOn
+      ? formatDateRange(p.start, p.end, year, p.startTime, p.endTime)
+      : formatDateRange(p.start, p.end, year);
     if (range) out.push({ kind: 'date', label: `📅${range}` });
   }
   // 담당자는 사람마다 태그 하나 (최대 3명, 2026-11-07)
@@ -70,6 +86,11 @@ export function cleanProject(p: ProjectTags | undefined): ProjectTags | undefine
   if (isValidDate(p.start)) out.start = p.start;
   if (isValidDate(p.end)) out.end = p.end;
   if (out.start && out.end && out.start > out.end) delete out.end;
+  // 시간 — 그 날짜가 있을 때만 남긴다. 체크를 꺼도 값은 남는다(다른 칸들과 같은 규칙)
+  if (out.start && isValidTime(p.startTime)) out.startTime = p.startTime;
+  if (out.end && isValidTime(p.endTime)) out.endTime = p.endTime;
+  if (out.start && out.end && out.start === out.end && out.startTime && out.endTime && out.endTime < out.startTime) delete out.endTime;
+  if (p.timeOn) out.timeOn = true;
   // 담당자 — 최대 3명. 첫 사람은 assignee(예전 문서·Redmine 호환), 2명 이상이면 assignees 에 전부
   const people = assigneeList(p).slice(0, MAX_ASSIGNEES).map((a) => {
     const one: { name: string; email?: string; redmineUserId?: number } = { name: a.name.slice(0, 60) };

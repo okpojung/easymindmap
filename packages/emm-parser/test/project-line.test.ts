@@ -80,5 +80,22 @@ check('⑨ 4명 이상은 보통 글', parseProjectLine('@가, @나, @다, @라'
 check('⑨ 한 명은 예전과 같다', parseProjectLine('@정미옥'), { assignee: { name: '정미옥' }, assigneeOn: true });
 check('⑨ 이름 속 쉼표는 공백으로', projectLine({ assigneeOn: true, assignees: [{ name: '가,나' }, { name: '다' }] }), '@가 나, @다');
 
+// ⑪ 시간까지 (2026-11-26) — 날짜 칸은 그대로, 시간은 따로
+check('⑪ 시작·끝 모두 시간', projectLine({ dateOn: true, start: '2026-10-01', end: '2026-10-31', timeOn: true, startTime: '09:00', endTime: '18:30' }), '📅 2026-10-01 09:00 ~ 2026-10-31 18:30');
+check('⑪ 시작일만 — 시작 시간만', projectLine({ dateOn: true, start: '2026-10-01', timeOn: true, startTime: '14:05' }), '📅 2026-10-01 14:05');
+check('⑪ 같은 날 다른 시간은 범위', projectLine({ dateOn: true, start: '2026-10-01', end: '2026-10-01', timeOn: true, startTime: '09:00', endTime: '11:00' }), '📅 2026-10-01 09:00 ~ 2026-10-01 11:00');
+check('⑪ 시간을 끄면 날짜만', projectLine({ dateOn: true, start: '2026-10-01', end: '2026-10-31', timeOn: false, startTime: '09:00', endTime: '18:00' }), '📅 2026-10-01 ~ 2026-10-31');
+check('⑪ 날짜 없는 시간은 싣지 않음', projectLine({ dateOn: true, end: '2026-10-31', timeOn: true, startTime: '09:00', endTime: '18:00' }), '📅 ~ 2026-10-31 18:00');
+check('⑪ 시간 읽기', parseProjectLine('📅 2026-10-01 09:00 ~ 2026-10-31 18:30 · 50%'), { start: '2026-10-01', end: '2026-10-31', timeOn: true, startTime: '09:00', endTime: '18:30', dateOn: true, progress: 50, progressOn: true });
+check('⑪ 시작 시간만 읽기', parseProjectLine('📅 2026-10-01 14:05'), { start: '2026-10-01', timeOn: true, startTime: '14:05', dateOn: true });
+check('⑪ 잘못된 시간은 보통 글', [parseProjectLine('📅 2026-10-01 25:00'), parseProjectLine('📅 2026-10-01 18:00 ~ 2026-10-01 09:00')], [null, null]);
+check('⑪ 예전 줄은 그대로', parseProjectLine('📅 2026-10-01 ~ 2026-10-31'), { start: '2026-10-01', end: '2026-10-31', dateOn: true });
+{
+  const node = { id: 'n', text: '가지', project: { dateOn: true, start: '2026-10-01', end: '2026-10-02', timeOn: true, startTime: '09:00', endTime: '17:00' } } as unknown as MindNode;
+  const doc = { root: { id: 'r', text: '루트' }, branches: [node] } as unknown as SampleMap;
+  const back = parseEmm(buildEmmBody(doc, OPT), 'mindmap', OPT)!;
+  check('⑪ MD 왕복', (back.branches[0] as MindNode).project, { start: '2026-10-01', end: '2026-10-02', timeOn: true, startTime: '09:00', endTime: '17:00', dateOn: true });
+}
+
 if (failed) { console.log(`\n${failed}개 실패`); process.exit(1); }
 console.log('\nproject-line: 모두 통과');

@@ -29,3 +29,13 @@ assert.deepEqual(projectChips({ dateOn: true, progressOn: true }, 2026), []);
 assert.equal(cleanProject({ start: '2026-11-10', end: '2026-11-01' })?.end, undefined);
 assert.equal(cleanProject({ progress: 300 }), undefined);
 console.log('projectTags.test: PASS');
+// 시간까지 (2026-11-26)
+assert.equal(formatDateRange('2026-11-03', '2026-11-14', 2026, '09:00', '18:00'), '11-03 09:00~11-14 18:00');
+assert.equal(formatDateRange('2026-11-03', undefined, 2026, '14:05'), '11-03 14:05');
+assert.equal(formatDateRange('2026-11-03', '2026-11-03', 2026, '09:00', '11:00'), '11-03 09:00~11:00');
+assert.equal(formatDateRange(undefined, '2026-11-14', 2026, '09:00', '18:00'), '~11-14 18:00');
+assert.deepEqual(projectChips({ dateOn: true, start: '2026-11-03', end: '2026-11-14', timeOn: true, startTime: '09:00', endTime: '18:00' }, 2026).map((c) => c.label), ['📅11-03 09:00~11-14 18:00']);
+assert.deepEqual(projectChips({ dateOn: true, start: '2026-11-03', end: '2026-11-14', timeOn: false, startTime: '09:00', endTime: '18:00' }, 2026).map((c) => c.label), ['📅11-03~11-14'], 'time box off: dates only, times kept');
+assert.deepEqual(cleanProject({ dateOn: true, start: '2026-11-03', timeOn: true, startTime: '09:00', endTime: '18:00' }), { start: '2026-11-03', startTime: '09:00', timeOn: true, dateOn: true }, 'a time without its date is dropped');
+assert.equal(cleanProject({ start: '2026-11-03', startTime: '25:00' })?.startTime, undefined);
+console.log('projectTags time PASS');

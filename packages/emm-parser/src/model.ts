@@ -193,6 +193,13 @@ export interface ProjectTags {
   dateOn?: boolean;
   start?: string; // YYYY-MM-DD
   end?: string;   // YYYY-MM-DD
+  /**
+   * 시간까지 쓴다 (2026-11-26 사용자 요청). 날짜 칸은 그대로 YYYY-MM-DD — 간트·Redmine·예전 문서가
+   * 날짜만 보므로 시간은 따로 둔다. 시간은 그 날짜가 있을 때만 뜻이 있다.
+   */
+  timeOn?: boolean;
+  startTime?: string; // HH:mm (24시간)
+  endTime?: string;   // HH:mm
   assigneeOn?: boolean;
   /** 첫 담당자 — 예전 문서·Redmine(담당자 1명) 호환을 위해 늘 목록의 첫 사람과 같다 */
   assignee?: ProjectAssignee;

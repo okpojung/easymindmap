@@ -13,6 +13,7 @@
 //
 // 조각은 ` · ` 로 나누고 순서는 일정 → 담당자 → 진척율. 각 조각은 없어도 된다.
 //   일정    `📅 시작 ~ 끝` · `📅 시작`(하루) · `📅 ~ 끝`(마감만) — 날짜는 언제나 YYYY-MM-DD
+//           시간을 켜 두면 날짜 뒤에 ` HH:mm` (2026-11-26): `📅 2026-10-01 09:00 ~ 2026-10-31 18:00`
 //   담당자  `@이름` 또는 `@이름 <이메일>` — 여럿이면 `, ` 로 잇는다(최대 3명, 2026-11-07): `@가 <a@x.kr>, @나`
 //   진척율  `35%` (앱 태그 모양인 `%35` 도 읽는다)
 // **줄 전체가 이 모양일 때만** 프로젝트 태그로 읽는다 — 한 조각이라도 어긋나면 보통 글이다.
@@ -21,7 +22,9 @@
 import { assigneeList, MAX_ASSIGNEES, type ProjectTags, type ProjectAssignee } from './model';
 
 const DATE = String.raw`\d{4}-\d{2}-\d{2}`;
-const DATE_SEG_RE = new RegExp(String.raw`^📅\s*(${DATE})?\s*(?:(~)\s*(${DATE})?)?$`, 'u');
+const TIME = String.raw`(?:[01]\d|2[0-3]):[0-5]\d`;
+const DATE_SEG_RE = new RegExp(String.raw`^📅\s*(${DATE})?(?:\s+(${TIME}))?\s*(?:(~)\s*(${DATE})?(?:\s+(${TIME}))?)?$`, 'u');
+const realTime = (v: string | undefined): v is string => !!v && new RegExp(`^${TIME}$`).test(v);
 const ASSIGNEE_SEG_RE = /^@([^\s<>·@][^<>·]*?)(?:\s*<([^<>\s@]+@[^<>\s@]+)>)?$/u;
 const PROGRESS_SEG_RE = /^(?:(\d{1,3})\s*%|%\s*(\d{1,3}))$/;
 
@@ -46,9 +49,13 @@ export function projectLine(p: ProjectTags | undefined): string | null {
     const s = realDate(p.start) ? p.start : undefined;
     let e = realDate(p.end) ? p.end : undefined;
     if (s && e && e < s) e = undefined;
-    if (s && e && s !== e) parts.push(`📅 ${s} ~ ${e}`);
-    else if (s) parts.push(`📅 ${s}`);
-    else if (e) parts.push(`📅 ~ ${e}`);
+    const st = p.timeOn && s && realTime(p.startTime) ? p.startTime : undefined;
+    let et = p.timeOn && e && realTime(p.endTime) ? p.endTime : undefined;
+    if (s && e && s === e && st && et && et < st) et = undefined;
+    const S = s ? s + (st ? ' ' + st : '') : '', E = e ? e + (et ? ' ' + et : '') : '';
+    if (s && e && (s !== e || (et && et !== st))) parts.push(`📅 ${S} ~ ${E}`);
+    else if (s) parts.push(`📅 ${S}`);
+    else if (e) parts.push(`📅 ~ ${E}`);
   }
   if (p.assigneeOn) {
     const people = assigneeList(p).map((a) => {
@@ -77,14 +84,21 @@ export function parseProjectLine(text: string): ProjectTags | null {
   for (const seg of segs) {
     const d = seg.match(DATE_SEG_RE);
     if (d && stage < 1) {
-      const [, s, tilde, e] = d;
+      const [, s, st, tilde, e, et] = d;
       if (!s && !e) return null;
+      if ((st && !s) || (et && !e)) return null;
       if (s && !realDate(s)) return null;
       if (e && !realDate(e)) return null;
       if (s && e && e < s) return null;
+      if (s && e && s === e && st && et && et < st) return null;
       if (s && tilde && !e) return null; // `📅 2026-10-01 ~` — 끝이 빠진 줄은 보통 글로 둔다
       if (s) out.start = s;
       if (e) out.end = e;
+      if (st || et) {
+        out.timeOn = true;
+        if (st) out.startTime = st;
+        if (et) out.endTime = et;
+      }
       out.dateOn = true;
       stage = 1;
       continue;

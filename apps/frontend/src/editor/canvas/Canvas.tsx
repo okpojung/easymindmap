@@ -2025,6 +2025,7 @@ export function Canvas({
   return (
     <div
       ref={containerRef}
+      data-mm-canvas-root=""
       onDragOver={(e) => {
         // allow dropping external links / files onto a node
         if (e.dataTransfer.types.includes('Files') || e.dataTransfer.types.includes('text/uri-list') || e.dataTransfer.types.includes('text/plain')) {

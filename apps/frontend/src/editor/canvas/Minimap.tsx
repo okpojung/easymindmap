@@ -7,7 +7,7 @@
 //     (2026-09-21 "창과 표시창이 너무 작다" 보고 뒤) — 가만히 있을 땐 사각형이
 //     가장자리에 닿을 때만 창이 옮겨 가고, **끄는 동안은 사각형을 가장자리로
 //     미는 만큼 창이 흐른다**(2026-09-21 "끝으로 옮기면 전체 맵이 빨리 안
-//     보인다" 보고). 휠을 굴리면 창만 움직여 다른 곳을 볼 수 있다(클릭하면 이동).
+//     보인다" 보고). 휠은 메인 캔버스와 같다(휠=위아래, Shift=좌우, Ctrl=확대, 2026-11-26).
 //   · 노드는 팔레트의 **테두리색(진한 색)** 으로 칠한다 — 채움색은 캔버스와
 //     비슷해 구분이 안 됐다(2026-09-21 보고). 색이 없는 하위 노드는 textSubtle.
 // 좌표 계산은 minimapMath.ts (단위 테스트), 사양은 10-canvas.md §6.8.
@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MinimapHelp } from './MinimapHelp';
 import { loadMinimapWindow, saveMinimapWindow, minimapWindowPosition, minimapWindowSize, moveMinimapWindow, resizeMinimapWindow, nextMinimapPin, type MinimapWindowState } from './minimapWindow';
-import { minimapWheelDelta } from './minimapWheel';
+import { minimapForwardWheelInit } from './minimapWheel';
 import './Minimap.css';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
@@ -24,7 +24,7 @@ import { resolveNodeColors } from '@/editor/node-renderer/resolveNodeColors';
 import { useViewportStore } from '@/stores/viewportStore';
 import { useTr } from '@/i18n';
 import {
-  minimapGeometry, minimapPanelSize, miniToWorld, panForCenter, shiftOrigin, viewportWorldRect, worldBounds, worldToMini,
+  minimapGeometry, minimapPanelSize, miniToWorld, panForCenter, viewportWorldRect, worldBounds, worldToMini,
   type MinimapOriginMode,
   clampCenterToBounds,
   withOverlayMargin,
@@ -108,23 +108,21 @@ export function Minimap({ t, nodes, W, H, CX, CY, compact, onClose }: Props) {
   const geom = minimapGeometry(nodeBounds, viewWorld, panelW, panelH, originRef.current, mode);
   originRef.current = { x: geom.bounds.x, y: geom.bounds.y, scale: geom.scale };
   const view = worldToMini(geom, viewWorld);
-  const geomRef = useRef(geom); geomRef.current = geom;
-  const boundsRef = useRef(nodeBounds); boundsRef.current = nodeBounds;
-  const [, bump] = useState(0);
-
-  // 휠 = 창 옮기기 (맵이 창보다 클 때). preventDefault 가 필요해 non-passive 로 단다.
+  // 휠 = 메인 캔버스와 똑같이 (2026-11-26 "미니맵 안에서도 휠 동작" 요청):
+  //   휠 = 위아래 · Shift+휠 = 좌우 · Ctrl/Cmd+휠 = 확대/축소.
+  // 캔버스의 휠 처리기에 그대로 넘기되 확대 기준점은 미니맵 뒤가 아닌 화면 가운데로.
+  // 맵이 창보다 크면 자동 따라가기(auto)로 표시창을 계속 보여 준다.
+  // preventDefault 가 필요해 non-passive 로 단다.
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      const g = geomRef.current;
       e.preventDefault(); e.stopPropagation();
-      if (g.fits || panelResize.current || panelDrag.current) return;
-      const { dx, dy } = minimapWheelDelta(e, g.panelW, g.panelH);
-      const o = shiftOrigin(g, boundsRef.current, dx, dy);
-      if (o.x === g.bounds.x && o.y === g.bounds.y) return;
-      originRef.current = { x: o.x, y: o.y, scale: g.scale };
-      setHold(true); bump((n) => n + 1);
+      if (panelResize.current || panelDrag.current) return;
+      const canvas = el.closest<HTMLElement>('[data-mm-canvas-root]');
+      if (!canvas) return;
+      setHold(false);
+      canvas.dispatchEvent(new WheelEvent('wheel', minimapForwardWheelInit(e, canvas.getBoundingClientRect())));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { minimapWheelDelta as delta } from './minimapWheel';
+import { minimapWheelDelta as delta, minimapForwardWheelInit as fwd } from './minimapWheel';
 const wheel = (deltaX: number, deltaY: number, shiftKey = false, deltaMode = 0) => delta({ deltaX, deltaY, shiftKey, deltaMode }, 300, 200);
 assert.deepEqual(wheel(0, 120, true), { dx: 120, dy: 0 });
 assert.deepEqual(wheel(120, 0, true), { dx: 120, dy: 0 });
@@ -13,3 +13,9 @@ assert.deepEqual(wheel(0, 2, true, 2), { dx: 600, dy: 0 });
 assert.deepEqual(wheel(1, -1, false, 2), { dx: 300, dy: -200 });
 assert.deepEqual(wheel(NaN, Infinity, true), { dx: 0, dy: 0 });
 console.log('minimap wheel: Shift deltaX/deltaY, dominant-axis, signs, diagonal, lines/pages and invalid values PASS');
+const f = fwd({ deltaX: 3, deltaY: -120, shiftKey: true, deltaMode: 1, ctrlKey: true, metaKey: false, altKey: false }, { left: 100, top: 50, width: 800, height: 600 });
+assert.deepEqual([f.deltaX, f.deltaY, f.deltaMode, f.shiftKey, f.ctrlKey, f.metaKey], [3, -120, 1, true, true, false]);
+assert.deepEqual([f.clientX, f.clientY, f.bubbles, f.cancelable], [500, 350, false, true]);
+const g = fwd({ deltaX: NaN, deltaY: Infinity, shiftKey: false, deltaMode: 0, ctrlKey: false, metaKey: true, altKey: false }, { left: 0, top: 0, width: 10, height: 20 });
+assert.deepEqual([g.deltaX, g.deltaY, g.metaKey, g.clientX, g.clientY], [0, 0, true, 5, 10]);
+console.log('minimap wheel forward: deltas/modifiers kept, aimed at canvas centre, invalid deltas zeroed PASS');

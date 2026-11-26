@@ -43,6 +43,7 @@ import { attachmentFetchUrl, serverAttachmentId } from '@/services/cloud/apiClie
 import { boundedExportBytes, fetchServerImageDataUrls, type AttachmentBytesFetcher } from './serverImages';
 import {
   buildMapMeta,
+  countMapNodes,
   bytesToDataUrl,
   withInlinedAttachments,
   withInlinedImages,
@@ -51,6 +52,21 @@ import {
 import { currentLang, tr } from '@/i18n';
 import { projectChips } from '@/editor/node-renderer/projectTags';
 import { shareViewerAssets, SHARED_VIEWER_ASSET_BOOTSTRAP } from './sharedViewerAssets';
+import { viewerIcons } from './viewerIcons';
+import { fmtBytes, measureDocument } from '@/utils/mapWeight';
+import bottomCopy from '@/components/bottom-status-bar/bottom-toolbar-copy.json';
+
+// 앱 하단 상태바(layoutStatus.ts)와 같은 레이아웃 이름 표 — 뷰어 상태줄이 앱과 같은 글을 보인다
+const STATUS_LAYOUT_LABEL: Record<string, string> = {
+  'radial-bidirectional': 'editor.layout.radialBoth', 'radial-right': 'editor.layout.radialRight',
+  'radial-left': 'editor.layout.radialLeft', 'tree-right': 'editor.layout.treeRight',
+  'tree-down': 'editor.layout.treeDown', 'hierarchy-right': 'editor.layout.hierarchyRight',
+  'process-tree-right': 'editor.layout.processTreeRight', freeform: 'editor.layout.free',
+  kanban: 'editor.layout.kanban', timeline: 'editor.layout.timeline', 'timeline-center': 'editor.layout.timelineCenter',
+};
+// 앱과 같은 글꼴 (index.html 의 Pretendard) — 설치 안 된 PC 에서 더 넓은 대체 글꼴로 그려
+// 글이 노드 밖·아이콘 밑으로 넘치던 것(2026-11-27 보고). 막힌 곳(암호 HTML)은 뷰어가 줄을 줄여 맞춘다.
+const PRETENDARD_CSS = 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css';
 
 // 에디터가 계산한 노드의 최종 배치 좌표 — 뷰어는 이 좌표를 그대로 사용해
 // 에디터 화면과 100% 동일한 레이아웃을 재현한다 (자체 레이아웃은 좌표가
@@ -251,6 +267,8 @@ const VIEWER_JS = String.raw`
   var DATA = window.__MINDMAP__;
   // 화면 문구 — 내보내는 순간의 언어로 굳힌 표 (buildStandaloneHtml 의 viewerStrings)
   var MML = window.__MM_L__ || {};
+  // 앱 아이콘을 구운 SVG 문자열 (buildStandaloneHtml 의 viewerIcons) — 단추 그림을 앱과 같게
+  var IC = window.__MM_IC__ || {};
   function mmFmt(s, v) {
     return String(s).replace(/\{(\w+)\}/g, function (m, k) { return k in v ? String(v[k]) : m; });
   }
@@ -387,7 +405,7 @@ const VIEWER_JS = String.raw`
       if (!_mCtx) _mCtx = document.createElement('canvas').getContext('2d');
       if (!_mCtx) return measureText(text, fontSize);
       _mCtx.font = (italic ? 'italic ' : '') + (weight || 500) + ' ' + fontSize + 'px ' +
-        (family || "'Pretendard Variable',Pretendard,'Malgun Gothic',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif");
+        (family || "'Pretendard Variable',Pretendard,'Inter',-apple-system,BlinkMacSystemFont,system-ui,'Malgun Gothic',sans-serif");
       return _mCtx.measureText(text).width;
     } catch (e) { return measureText(text, fontSize); }
   }
@@ -2182,6 +2200,18 @@ const VIEWER_JS = String.raw`
       }
       var ckw2 = ck0 ? CKW : 0;
       lw2 += ckw2;
+      // ★ 줄이 칸보다 넓으면 그 줄만 눌러 맞춘다 (2026-11-27 사용자 보고: 노드 아이콘이 글과 겹치고
+      //   긴 글이 박스 밖으로 넘친다). 줄바꿈은 앱이 Pretendard 로 잰 것인데, 이 PC 에 그 글꼴이
+      //   없거나(오프라인·암호 HTML 은 웹 글꼴 차단) 대체 글꼴이 더 넓으면 줄이 아이콘 밑·박스 밖으로
+      //   밀린다. 칸 = 박스 폭 − 좌우 여백 − 아이콘 − 오른쪽 표시(마커) 자리.
+      var availW = node._w - padXv * 2 - (node.icon ? node._fs + 6 : 0) -
+        (node._marksW != null ? node._marksW : (markerCount(node) ? markerCount(node) * (node._fs + 1 + 3) + 5 : 0));
+      var squeeze = 0;
+      if (availW > 8 && lw2 > availW + 0.5 && lw2 - ckw2 > 0) {
+        squeeze = Math.max(0.5, (availW - ckw2) / (lw2 - ckw2));
+        for (si = 0; si < segWs.length; si++) segWs[si] *= squeeze;
+        lw2 = ckw2 + (lw2 - ckw2) * squeeze;
+      }
       // 표(tAt)·코드 패널(cAt) 뒤 줄은 그 높이만큼 아래로 (원문 순서 보존)
       var baseY = stacked
         ? topY + (flowTops ? flowTops[li] : li * node._lineH) +
@@ -2267,6 +2297,10 @@ const VIEWER_JS = String.raw`
         if (st.underline || segs[si].u) deco.push('underline');
         if (deco.length) sp.setAttribute('text-decoration', deco.join(' '));
         sp.textContent = segs[si].t;
+        if (squeeze && segs[si].t) {
+          sp.setAttribute('textLength', String(Math.max(0.1, segWs[si])));
+          sp.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+        }
       }
     }
     var bAcc = 0; // 앞선 블록들의 높이 누적
@@ -3038,16 +3072,44 @@ const VIEWER_JS = String.raw`
     applyView();
   }
 
-  svg.addEventListener('wheel', function (e) {
-    e.preventDefault();
+  // 휠 — 앱과 같다 (2026-11-27): 휠 = 위아래 · Shift+휠 = 좌우 · Ctrl/Cmd+휠(트랙패드 핀치) = 확대/축소.
+  //   계산은 앱 canvasWheel.ts / minimapWheel.ts 와 같다 (줄·쪽 단위, Shift 는 큰 축 하나만).
+  function wheelDelta(e, w, h) {
+    var x = isFinite(e.deltaX) ? e.deltaX : 0, y = isFinite(e.deltaY) ? e.deltaY : 0;
+    var ux = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? w : 1;
+    var uy = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? h : 1;
+    var hz = Math.abs(x) >= Math.abs(y) ? x : y;
+    return e.shiftKey ? { dx: hz * ux, dy: 0 } : { dx: x * ux, dy: y * uy };
+  }
+  function wheelZoomFactor(e) {
+    var y = isFinite(e.deltaY) ? e.deltaY : 0;
+    var unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
+    return Math.exp(Math.max(-0.2, Math.min(0.2, -y * unit * 0.01)));
+  }
+  // atCenter = 미니맵 위 휠 — 확대 기준점을 미니맵 뒤가 아닌 화면 가운데로 (앱과 같다)
+  function canvasWheel(e, atCenter) {
     var rect = svg.getBoundingClientRect();
-    var px = e.clientX - rect.left, py = e.clientY - rect.top;
-    var factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    var k2 = Math.min(4, Math.max(0.02, view.k * factor)); // 에디터와 동일 (2%~400%)
+    if (!e.ctrlKey && !e.metaKey) {
+      var d = wheelDelta(e, rect.width, rect.height);
+      if (!d.dx && !d.dy) return;
+      view.x -= d.dx; view.y -= d.dy;
+      applyView();
+      return;
+    }
+    var px = atCenter ? rect.width / 2 : e.clientX - rect.left;
+    var py = atCenter ? rect.height / 2 : e.clientY - rect.top;
+    var pctNext = Math.min(400, Math.max(2, Math.round(view.k * 100 * wheelZoomFactor(e))));
+    if (pctNext === Math.round(view.k * 100)) return;
+    var k2 = pctNext / 100;
     view.x = px - ((px - view.x) / view.k) * k2;
     view.y = py - ((py - view.y) / view.k) * k2;
     view.k = k2;
     applyView();
+  }
+  svg.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    closeChooser && closeChooser();
+    canvasWheel(e, false);
   }, { passive: false });
 
   // Pan은 에디터와 동일 규칙: 기본은 꺼짐 — Pan 모드(✋ 토글)일 때의 왼쪽
@@ -3193,13 +3255,18 @@ const VIEWER_JS = String.raw`
   // ---- 미니맵 (2026-09-30 사용자 요청: "HTML 파일에서도 미니맵") ---------------
   // 에디터의 미니맵과 같은 자리·같은 뜻: 맵 전체를 작은 상자에, 지금 보는 영역을
   // 사각형으로. 상자 클릭 = 그 자리가 화면 가운데로, 사각형 끌기 = 화면 이동.
+  // 2026-11-27: 앱 Minimap 과 같은 창 — 마우스를 올리면 나오는 회색 타이틀바(끌어서 이동·방향키),
+  //   핀(사용자 위치 → 우측 하단 → 좌측 하단), ? 도움말, × 닫기, 우하단 모서리 크기 조절,
+  //   휠은 메인 화면과 같다(휠 위아래 · Shift 좌우 · Ctrl 확대). 위치·크기는 이 브라우저에만 저장.
   var MM_W = 220, MM_H = 150, MM_PAD = 6;
   var mmBox = document.getElementById('mm-minimap');
   var mmSvg = document.getElementById('mm-minimap-svg');
   var mmNodes = document.getElementById('mm-minimap-nodes');
   var mmView = document.getElementById('mm-minimap-view');
+  var mmMain = document.getElementById('mm-main');
   var mmGeom = null; // { x, y, s }: mini = (world - x) * s + MM_PAD
   var MM_KEY = 'emm.viewer.minimap';
+  var MMW_KEY = 'easymindmap.minimap.window.v1'; // 앱과 같은 열쇠·형식 (minimapWindow.ts)
   function minimapOn() { return document.body.classList.contains('mm-minimap-on'); }
   function eachDrawn(n, depth, cb) {
     cb(n, depth);
@@ -3207,8 +3274,78 @@ const VIEWER_JS = String.raw`
     var kids = n.children || [];
     for (var i = 0; i < kids.length; i++) eachDrawn(kids[i], depth + 1, cb);
   }
+  // ── 창 상태 (앱 minimapWindow.ts 와 같은 규칙) ──
+  function mmParse(raw) {
+    try {
+      var o = JSON.parse(raw || 'null');
+      if (!o || ['user', 'right', 'left'].indexOf(o.pin) < 0) return { pin: 'user', point: null };
+      var p = o.point;
+      var r = { pin: o.pin, point: p && isFinite(p.x) && isFinite(p.y)
+        ? { x: Math.max(0, Math.min(1e7, p.x)), y: Math.max(0, Math.min(1e7, p.y)) } : null };
+      if (o.size && isFinite(o.size.w) && isFinite(o.size.h) && o.size.w > 0 && o.size.h > 0) {
+        r.size = { w: Math.round(Math.max(132, Math.min(640, o.size.w))), h: Math.round(Math.max(96, Math.min(480, o.size.h))) };
+      }
+      return r;
+    } catch (e) { return { pin: 'user', point: null }; }
+  }
+  var mmWin = (function () { try { return mmParse(localStorage.getItem(MMW_KEY)); } catch (e) { return { pin: 'user', point: null }; } })();
+  function mmSave() { try { localStorage.setItem(MMW_KEY, JSON.stringify(mmWin)); } catch (e) {} }
+  function mmCopy(s) { var c = { pin: s.pin, point: s.point ? { x: s.point.x, y: s.point.y } : null }; if (s.size) c.size = { w: s.size.w, h: s.size.h }; return c; }
+  function mmMargin() { return isCompact() ? 8 : 14; }
+  // 캔버스 영역 (분할 보기면 아웃라인 오른쪽) — #mm-main 안의 좌표
+  function mmArea() {
+    var mr = mmMain.getBoundingClientRect(), sr = svg.getBoundingClientRect();
+    return { ox: sr.left - mr.left, oy: sr.top - mr.top, W: sr.width, H: sr.height };
+  }
+  function mmFallback(W, H) {
+    return isCompact()
+      ? { w: Math.round(Math.min(160, W * 0.42)), h: Math.round(Math.min(120, H * 0.2)) }
+      : { w: Math.round(Math.min(360, Math.max(200, W * 0.24))), h: Math.round(Math.min(320, Math.max(150, H * 0.36))) };
+  }
+  function mmSizeOf(s, W, H, m) {
+    var want = s.size || mmFallback(W, H);
+    var maxW = Math.max(1, Math.min(640, W - 2 * m - 10)), maxH = Math.max(1, Math.min(480, H - 2 * m - 10));
+    return { w: Math.min(maxW, Math.max(s.size ? Math.min(132, maxW) : 1, want.w)),
+      h: Math.min(maxH, Math.max(s.size ? Math.min(96, maxH) : 1, want.h)) };
+  }
+  function mmPosOf(s, W, H, width, height, m) {
+    var maxX = Math.max(0, W - width - m), maxY = Math.max(0, H - height - m);
+    var minX = Math.min(m, maxX), minY = Math.min(m, maxY);
+    var x = s.pin === 'left' ? minX : s.pin === 'right' ? maxX : (s.point ? s.point.x : maxX);
+    var y = s.pin === 'user' ? (s.point ? s.point.y : maxY) : maxY;
+    return { x: Math.max(minX, Math.min(maxX, x)), y: Math.max(minY, Math.min(maxY, y)) };
+  }
+  var mmPos = { x: 0, y: 0 };
+  var mmPinBtn = document.getElementById('mm-mm-pin');
+  var mmBar = document.getElementById('mm-mm-bar');
+  function mmLayout() {
+    if (!mmBox || !minimapOn()) return;
+    var A = mmArea(), m = mmMargin();
+    var sz = mmSizeOf(mmWin, A.W, A.H, m);
+    MM_W = Math.max(1, Math.floor(sz.w)); MM_H = Math.max(1, Math.floor(sz.h));
+    mmPos = mmPosOf(mmWin, A.W, A.H, MM_W + 10, MM_H + 10, m);
+    mmBox.style.left = (A.ox + mmPos.x) + 'px';
+    mmBox.style.top = (A.oy + mmPos.y) + 'px';
+    mmBox.style.width = MM_W + 'px';
+    mmSvg.setAttribute('width', MM_W); mmSvg.setAttribute('height', MM_H);
+    mmSvg.setAttribute('viewBox', '0 0 ' + MM_W + ' ' + MM_H);
+    mmSvg.style.width = MM_W + 'px'; mmSvg.style.height = MM_H + 'px';
+    mmBox.setAttribute('data-pin', mmWin.pin);
+    var pinTip = MML['mm.pin.' + mmWin.pin] || '';
+    mmPinBtn.setAttribute('aria-pressed', mmWin.pin !== 'user' ? 'true' : 'false');
+    mmPinBtn.setAttribute('title', pinTip); mmPinBtn.setAttribute('aria-label', pinTip);
+    mmBar.setAttribute('title', mmWin.pin === 'user' ? (MML['mm.move'] || '') : (MML['mm.pinned'] || ''));
+  }
+  function mmMoveTo(x, y) {
+    if (mmWin.pin !== 'user' || !isFinite(x) || !isFinite(y)) return;
+    var A = mmArea(), m = mmMargin();
+    mmWin = mmCopy(mmWin);
+    mmWin.point = mmPosOf({ pin: 'user', point: { x: x, y: y } }, A.W, A.H, MM_W + 10, MM_H + 10, m);
+    mmLayout();
+  }
   function syncMinimap() {
     if (!mmBox || !minimapOn()) return;
+    mmLayout();
     var bb = world.getBBox();
     if (!bb.width || !bb.height) return;
     var innerW = MM_W - MM_PAD * 2, innerH = MM_H - MM_PAD * 2;
@@ -3272,18 +3409,60 @@ const VIEWER_JS = String.raw`
   function setMinimap(on) {
     document.body.classList.toggle('mm-minimap-on', on);
     var b = document.getElementById('mm-minimap-btn');
-    if (b) b.classList.toggle('on', on);
+    if (b) { b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
     try { localStorage.setItem(MM_KEY, on ? '1' : '0'); } catch (e) {}
     if (on) syncMinimap();
+    else if (mmHelpOpen()) mmHelpClose();
   }
-  if (mmSvg) {
+  // ── 도움말 (앱 MinimapHelp 과 같은 내용) ──
+  var mmHelpDlg = document.getElementById('mm-mm-helpdlg');
+  var mmHelpPrev = null;
+  function mmHelpOpen() { return !!mmHelpDlg && !mmHelpDlg.hidden; }
+  function mmHelpShow() {
+    if (!mmHelpDlg) return;
+    mmHelpPrev = document.activeElement;
+    mmHelpDlg.hidden = false;
+    document.body.classList.add('mm-mm-help-open');
+    var x = mmHelpDlg.querySelector('.mm-dlg-close'); if (x) x.focus();
+  }
+  function mmHelpClose() {
+    if (!mmHelpDlg || mmHelpDlg.hidden) return;
+    mmHelpDlg.hidden = true;
+    document.body.classList.remove('mm-mm-help-open');
+    if (mmHelpPrev && mmHelpPrev.focus && document.contains(mmHelpPrev)) mmHelpPrev.focus();
+  }
+  if (mmHelpDlg) {
+    mmHelpDlg.addEventListener('click', function (e) {
+      if (e.target === mmHelpDlg || (e.target.closest && e.target.closest('[data-close]'))) mmHelpClose();
+    });
+    window.addEventListener('keydown', function (e) {
+      if (!mmHelpOpen()) return;
+      e.stopImmediatePropagation();
+      if (e.key === 'Escape') { e.preventDefault(); mmHelpClose(); return; }
+      if (e.key !== 'Tab') return;
+      var ctl = Array.prototype.slice.call(mmHelpDlg.querySelectorAll('button'));
+      var first = ctl[0], last = ctl[ctl.length - 1];
+      if (ctl.indexOf(document.activeElement) < 0 || (e.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+        e.preventDefault(); (e.shiftKey ? last : first).focus();
+      }
+    }, true);
+  }
+  if (mmSvg && mmBox) {
+    // 패널 안의 누름·휠은 맵으로 새지 않는다
+    ['pointerdown', 'click', 'dblclick'].forEach(function (t) { mmBox.addEventListener(t, function (e) { e.stopPropagation(); }); });
+    // 휠 = 메인 화면과 같다 (2026-11-26 앱 수정과 같은 동작) — 확대 기준점은 화면 가운데
+    mmBox.addEventListener('wheel', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (mmPanel.drag || mmPanel.resize) return;
+      canvasWheel(e, true);
+    }, { passive: false });
     var mmDrag = null; // { id, dx, dy } — 사각형 안에서 시작하면 그 간격을 유지하며 끈다
     var mmPoint = function (e) {
       var r = mmSvg.getBoundingClientRect();
-      return { x: (e.clientX - r.left) * (MM_W / r.width), y: (e.clientY - r.top) * (MM_H / r.height) };
+      return { x: (e.clientX - r.left) * (MM_W / Math.max(1, r.width)), y: (e.clientY - r.top) * (MM_H / Math.max(1, r.height)) };
     };
     mmSvg.addEventListener('pointerdown', function (e) {
-      if (e.button !== 0 || !mmGeom) return;
+      if (e.button !== 0 || !mmGeom || mmPanel.drag || mmPanel.resize) return;
       e.preventDefault(); e.stopPropagation();
       var m = mmPoint(e);
       var vx = parseFloat(mmView.getAttribute('x')), vy = parseFloat(mmView.getAttribute('y'));
@@ -3292,17 +3471,103 @@ const VIEWER_JS = String.raw`
       mmDrag = { id: e.pointerId, dx: inside ? m.x - (vx + vw / 2) : 0, dy: inside ? m.y - (vy + vh / 2) : 0 };
       if (!inside) minimapCenterAt(m.x, m.y);
       mmSvg.setPointerCapture(e.pointerId);
+      mmBox.classList.add('mm-mm-dragging');
     });
     mmSvg.addEventListener('pointermove', function (e) {
       if (!mmDrag || mmDrag.id !== e.pointerId) return;
       var m = mmPoint(e);
       minimapCenterAt(m.x - mmDrag.dx, m.y - mmDrag.dy);
     });
-    mmSvg.addEventListener('pointerup', function (e) { if (mmDrag && mmDrag.id === e.pointerId) mmDrag = null; });
-    mmSvg.addEventListener('wheel', function (e) { e.preventDefault(); e.stopPropagation(); }, { passive: false });
+    var mmDragEnd = function (e) { if (mmDrag && mmDrag.id === e.pointerId) { mmDrag = null; mmBox.classList.remove('mm-mm-dragging'); } };
+    mmSvg.addEventListener('pointerup', mmDragEnd);
+    mmSvg.addEventListener('pointercancel', mmDragEnd);
+    // ── 타이틀바 끌기 · 방향키 (사용자 위치 모드에서만) ──
+    var mmPanel = { drag: null, resize: null };
+    mmBar.addEventListener('pointerdown', function (e) {
+      e.stopPropagation();
+      if (e.button !== 0 || mmPanel.resize || mmWin.pin !== 'user' || (e.target.closest && e.target.closest('button'))) return;
+      e.preventDefault();
+      mmPanel.drag = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x: mmPos.x, y: mmPos.y, before: mmCopy(mmWin) };
+      mmBar.focus(); mmBar.setPointerCapture(e.pointerId);
+      mmBox.classList.add('mm-mm-moving');
+    });
+    mmBar.addEventListener('pointermove', function (e) {
+      var d = mmPanel.drag; if (!d || d.id !== e.pointerId) return;
+      e.stopPropagation();
+      mmMoveTo(d.x + e.clientX - d.cx, d.y + e.clientY - d.cy);
+    });
+    var mmBarEnd = function (e) {
+      var d = mmPanel.drag; if (!d || d.id !== e.pointerId) return;
+      mmPanel.drag = null; mmBox.classList.remove('mm-mm-moving');
+      if (e.type === 'pointercancel') { mmWin = d.before; mmLayout(); } else mmSave();
+      if (mmBar.hasPointerCapture && mmBar.hasPointerCapture(e.pointerId)) mmBar.releasePointerCapture(e.pointerId);
+    };
+    mmBar.addEventListener('pointerup', mmBarEnd);
+    mmBar.addEventListener('pointercancel', mmBarEnd);
+    mmBar.addEventListener('keydown', function (e) {
+      if (e.target !== mmBar) return;
+      var dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (!dir) return;
+      e.preventDefault(); e.stopPropagation();
+      var step = e.shiftKey ? 50 : 10;
+      mmMoveTo(mmPos.x + dir[0] * step, mmPos.y + dir[1] * step); mmSave();
+    });
+    mmPinBtn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    mmPinBtn.addEventListener('click', function () {
+      mmWin = mmCopy(mmWin);
+      mmWin.pin = mmWin.pin === 'user' ? 'right' : mmWin.pin === 'right' ? 'left' : 'user';
+      mmSave(); syncMinimap();
+    });
+    var helpBtn = document.getElementById('mm-mm-help');
+    helpBtn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    helpBtn.addEventListener('click', mmHelpShow);
+    var closeBtn = document.getElementById('mm-mm-close');
+    closeBtn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    closeBtn.addEventListener('click', function () { setMinimap(false); });
+    // ── 우하단 모서리 크기 조절 (Esc·취소 = 조절 전으로) ──
+    var mmRz = document.getElementById('mm-mm-resize');
+    var mmResizeTo = function (base, w, h, anchor) {
+      if (!isFinite(w) || !isFinite(h)) return;
+      var A = mmArea(), m = mmMargin();
+      var next = mmCopy(base);
+      var sz = mmSizeOf({ pin: base.pin, point: base.point, size: { w: w, h: h } }, A.W, A.H, m);
+      next.size = { w: Math.floor(sz.w), h: Math.floor(sz.h) };
+      if (base.pin === 'user') next.point = mmPosOf({ pin: 'user', point: anchor }, A.W, A.H, next.size.w + 10, next.size.h + 10, m);
+      mmWin = next; syncMinimap();
+    };
+    mmRz.addEventListener('pointerdown', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (e.button !== 0 || mmPanel.resize || mmPanel.drag || mmDrag) return;
+      mmPanel.resize = { id: e.pointerId, cx: e.clientX, cy: e.clientY, w: MM_W, h: MM_H, anchor: { x: mmPos.x, y: mmPos.y }, before: mmCopy(mmWin) };
+      mmRz.focus(); mmRz.setPointerCapture(e.pointerId);
+      mmBox.classList.add('mm-mm-resizing');
+    });
+    mmRz.addEventListener('pointermove', function (e) {
+      var d = mmPanel.resize; if (!d || d.id !== e.pointerId) return;
+      e.stopPropagation();
+      mmResizeTo(d.before, d.w + e.clientX - d.cx, d.h + e.clientY - d.cy, d.anchor);
+    });
+    var mmRzEnd = function (commit, id) {
+      var d = mmPanel.resize; if (!d || (id != null && d.id !== id)) return;
+      mmPanel.resize = null; mmBox.classList.remove('mm-mm-resizing');
+      if (commit) mmSave(); else { mmWin = d.before; syncMinimap(); }
+      if (mmRz.hasPointerCapture && mmRz.hasPointerCapture(d.id)) mmRz.releasePointerCapture(d.id);
+    };
+    mmRz.addEventListener('pointerup', function (e) { mmRzEnd(true, e.pointerId); });
+    mmRz.addEventListener('pointercancel', function (e) { mmRzEnd(false, e.pointerId); });
+    mmRz.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && mmPanel.resize) { e.preventDefault(); e.stopPropagation(); mmRzEnd(false); return; }
+      var dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (!dir) return;
+      e.preventDefault(); e.stopPropagation();
+      var step = e.shiftKey ? 50 : 10;
+      mmResizeTo(mmWin, MM_W + dir[0] * step, MM_H + dir[1] * step, { x: mmPos.x, y: mmPos.y }); mmSave();
+    });
     var mmBtn = document.getElementById('mm-minimap-btn');
     if (mmBtn) mmBtn.addEventListener('click', function () { setMinimap(!minimapOn()); });
-    window.addEventListener('resize', syncMinimapView);
+    window.addEventListener('resize', function () { if (minimapOn()) syncMinimap(); });
+    // 분할 보기·전체화면처럼 캔버스 크기만 바뀔 때도 창 자리·크기를 다시 맞춘다
+    if (window.ResizeObserver) new ResizeObserver(function () { if (minimapOn()) syncMinimap(); }).observe(svg);
   }
 
   function setAll(node, collapsed) {
@@ -3321,8 +3586,9 @@ const VIEWER_JS = String.raw`
       'timeline-center': MML.layoutTimelineCenter
     };
     var eff = normalize(DATA.mapLayout) || normalize(DATA.root.layoutType) || 'radial-bidirectional';
-    document.getElementById('mm-count').textContent =
-      mmFmt(MML.nodeCount, { n: countAllNodes(), layout: layoutLabels[eff] || eff });
+    // 상태줄 글은 내보낼 때 앱 하단 상태바와 같은 문구로 구워 둔다 (2026-11-27) — 여기서는 덮지 않는다
+    var cnt = document.getElementById('mm-count');
+    if (cnt && !cnt.textContent) cnt.textContent = mmFmt(MML.nodeCount, { n: countAllNodes(), layout: layoutLabels[eff] || eff });
   }
 
   document.getElementById('mm-fit').addEventListener('click', fit);
@@ -3511,13 +3777,16 @@ const VIEWER_JS = String.raw`
   // ── 맵 전체 첨부파일·하이퍼링크·MD 문서 목록 (2026-11-08 사용자 요청) ──
   //   에디터의 첨부·링크·MD 목록과 같은 뜻. 줄을 누르면 그 항목을 열고,
   //   [노드] 단추는 그 노드로 맵(또는 아웃라인)을 옮겨 강조한다.
-  var listsBtn = document.getElementById('mm-lists-btn');
+  // 머리말 목록 묶음 (2026-11-27) — 앱 왼쪽 레일과 같은 순서: 링크 · 첨부 · MD · 노트
+  var listBtns = { links: document.getElementById('mm-list-links'), files: document.getElementById('mm-list-files'),
+    md: document.getElementById('mm-list-md'), notes: document.getElementById('mm-list-notes') };
+  var listsBtn = listBtns.files;
   var listsBody = document.getElementById('mm-lists-body');
   var listsTabs = document.querySelector('#mm-lists .mm-lists-tabs');
   var LIST_TAB = 'files';
   var MD_RE = /\.(md|markdown)$/i;
   function collectLists() {
-    var out = { files: [], links: [], md: [] };
+    var out = { files: [], links: [], md: [], notes: [] };
     var walk = function (n, path) {
       var title = flattenText(String(n.text || '')).replace(/\s+/g, ' ').trim();
       var p = path.concat([title]);
@@ -3526,6 +3795,7 @@ const VIEWER_JS = String.raw`
         (MD_RE.test(String(a.name || '')) ? out.md : out.files).push({ node: n, where: where, att: a });
       });
       (n.links || []).forEach(function (l) { out.links.push({ node: n, where: where, link: l }); });
+      if (n.notes && n.notes.length) out.notes.push({ node: n, where: where, note: n.notes[0] });
       (n.children || []).forEach(function (c) { walk(c, p); });
     };
     ROOTS().forEach(function (r) { if (r) walk(r, []); });
@@ -3535,11 +3805,11 @@ const VIEWER_JS = String.raw`
   function renderLists() {
     var L = collectLists();
     listsTabs.textContent = '';
-    [['files', MML.listFiles, L.files.length], ['links', MML.listLinks, L.links.length], ['md', MML.listMd, L.md.length]].forEach(function (t) {
+    [['links', MML.listLinks, L.links.length], ['files', MML.listFiles, L.files.length], ['md', MML.listMd, L.md.length], ['notes', MML.listNotes, L.notes.length]].forEach(function (t) {
       var b = liEl('button', LIST_TAB === t[0] ? 'on' : '', (t[1] || t[0]) + ' ' + t[2]);
       b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('data-tab', t[0]);
       b.setAttribute('aria-selected', LIST_TAB === t[0] ? 'true' : 'false');
-      b.addEventListener('click', function () { LIST_TAB = t[0]; renderLists(); });
+      b.addEventListener('click', function () { setListsOpen(true, t[0]); });
       listsTabs.appendChild(b);
     });
     listsBody.textContent = '';
@@ -3548,7 +3818,10 @@ const VIEWER_JS = String.raw`
     items.forEach(function (it) {
       var row = liEl('div', 'mm-li'); row.setAttribute('data-testid', 'viewer-list-item');
       var name, title, open = null, icon;
-      if (it.link) {
+      if (it.note) {
+        icon = '🗒'; name = it.where.split(' › ').pop() || '—'; title = name;
+        open = function () { setListsOpen(false); showDetail(it.node, 'notes'); };
+      } else if (it.link) {
         icon = '🔗'; name = it.link.label || it.link.url; title = it.link.url;
         open = function () { window.open(it.link.url, '_blank', 'noopener'); };
       } else {
@@ -3557,7 +3830,10 @@ const VIEWER_JS = String.raw`
         name = a.name + (a.href ? (a.external ? ' ↗' : '') : ' ' + (a.localOnly ? MML.localOnly : MML.fileMissing || ''));
         title = a.name; open = openAttachmentHref(a);
       }
-      row.appendChild(liEl('span', 'ic', icon));
+      var icEl = liEl('span', 'ic', it.note ? null : icon);
+      // 노트 줄은 앱의 노트 아이콘 (🗒 는 글꼴에 따라 빈 네모로 보였다)
+      if (it.note && IC.note) icEl.innerHTML = IC.note.replace(/width="21" height="21"/, 'width="15" height="15"');
+      row.appendChild(icEl);
       var tx = liEl('div', 'tx');
       var nm = liEl('div', 'nm' + (open ? '' : ' missing'), name); nm.title = title || '';
       tx.appendChild(nm); tx.appendChild(liEl('div', 'sub', it.where));
@@ -3570,15 +3846,22 @@ const VIEWER_JS = String.raw`
       listsBody.appendChild(row);
     });
   }
-  function setListsOpen(on) {
+  function setListsOpen(on, tab) {
+    if (tab) LIST_TAB = tab;
     document.body.classList.toggle('mm-lists-open', on);
-    listsBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
-    listsBtn.className = on ? 'icon active' : 'icon';
+    for (var k in listBtns) {
+      if (!listBtns[k]) continue;
+      listBtns[k].setAttribute('aria-expanded', on && LIST_TAB === k ? 'true' : 'false');
+    }
     if (on) renderLists();
   }
-  listsBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    setListsOpen(!document.body.classList.contains('mm-lists-open'));
+  Object.keys(listBtns).forEach(function (k) {
+    if (!listBtns[k]) return;
+    listBtns[k].addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = document.body.classList.contains('mm-lists-open');
+      setListsOpen(!(open && LIST_TAB === k), k);
+    });
   });
   document.getElementById('mm-lists-close').addEventListener('click', function () { setListsOpen(false); });
   document.addEventListener('keydown', function (e) {
@@ -3587,18 +3870,20 @@ const VIEWER_JS = String.raw`
   document.addEventListener('mousedown', function (e) {
     if (!document.body.classList.contains('mm-lists-open')) return;
     var box = document.getElementById('mm-lists');
-    if (!box.contains(e.target) && !listsBtn.contains(e.target)) setListsOpen(false);
+    var onBtn = false;
+    for (var k in listBtns) if (listBtns[k] && listBtns[k].contains(e.target)) onBtn = true;
+    if (!box.contains(e.target) && !onBtn) setListsOpen(false);
   });
 
   // ── 전체화면 모드 — 에디터 툴바와 동일 (F11식 토글, 아이콘·title 전환) ──
   var fsBtn = document.getElementById('mm-fullscreen');
-  var FS_ENTER = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg>';
-  var FS_EXIT = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="13 9 13 11 15 11"/><polyline points="11 15 11 13 9 13"/><line x1="16" y1="8" x2="13" y2="11"/><line x1="8" y1="16" x2="11" y2="13"/></svg>';
   function syncFsBtn() {
     var on = !!document.fullscreenElement;
-    fsBtn.innerHTML = on ? FS_EXIT : FS_ENTER;
-    fsBtn.className = on ? 'icon active' : 'icon';
-    fsBtn.setAttribute('title', on ? MML.fsExit : MML.fsEnter);
+    fsBtn.innerHTML = on ? IC.fsExit : IC.fsEnter;
+    fsBtn.className = on ? 'bb active' : 'bb';
+    fsBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    fsBtn.setAttribute('title', on ? MML.fsExitApp : MML.fsEnterApp);
+    fsBtn.setAttribute('aria-label', on ? MML.fsExitApp : MML.fsEnterApp);
   }
   fsBtn.addEventListener('click', function () {
     if (document.fullscreenElement) {
@@ -3616,31 +3901,8 @@ const VIEWER_JS = String.raw`
   document.getElementById('mm-zoom-in').addEventListener('click', function () {
     zoomTo((Math.round(view.k * 100) + 5) / 100);
   });
-  // % 클릭 = 직접 입력 (2~400 사이 숫자, Enter 적용 / Esc 취소)
-  var zoomPctBtn = document.getElementById('mm-zoom-pct');
-  var zoomInput = document.getElementById('mm-zoom-input');
-  zoomPctBtn.addEventListener('click', function () {
-    zoomInput.value = String(Math.round(view.k * 100));
-    zoomPctBtn.style.display = 'none';
-    zoomInput.style.display = 'inline-block';
-    zoomInput.focus();
-    zoomInput.select();
-  });
-  function commitZoomInput(apply) {
-    zoomInput.style.display = 'none';
-    zoomPctBtn.style.display = '';
-    if (!apply) return;
-    var v = parseInt(zoomInput.value, 10);
-    if (!isNaN(v)) zoomTo(Math.min(400, Math.max(2, v)) / 100);
-  }
-  zoomInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') commitZoomInput(true);
-    else if (e.key === 'Escape') commitZoomInput(false);
-  });
-  zoomInput.addEventListener('blur', function () { commitZoomInput(true); });
-  document.getElementById('mm-zoom-100').addEventListener('click', function () {
-    zoomTo(1);
-  });
+  // 배율 숫자 클릭 = 100% 로 (앱 하단 상태바와 같다 — 따로 돋보기 단추를 두지 않는다)
+  document.getElementById('mm-zoom-pct').addEventListener('click', function () { zoomTo(1); });
   // 선택 노드 화면 중앙 보기 — 배치 좌표(_cx/_cy)를 현재 줌 유지한 채 중앙에
   // ⌖ 선택 노드 화면 중앙 보기 — 에디터(Alt+F)와 동일한 토글:
   // 켜면 선택 노드(없으면 중심 주제)의 서브트리만 표시하고 화면에 맞추고,
@@ -3648,13 +3910,11 @@ const VIEWER_JS = String.raw`
   // 전환(FocusOff)으로 표시한다.
   var centerBtn = document.getElementById('mm-center');
   function setCenterIcon(on) {
-    centerBtn.innerHTML = on
-      ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/><line x1="8.6" y1="8.6" x2="13.4" y2="13.4"/><line x1="13.4" y1="8.6" x2="8.6" y2="13.4"/></svg>'
-      : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg>';
-    centerBtn.className = on ? 'icon active' : 'icon';
-    centerBtn.setAttribute('title', on
-      ? MML.centerOff
-      : MML.centerOn);
+    centerBtn.innerHTML = on ? IC.focusOff : IC.focus;
+    centerBtn.className = on ? 'bb active' : 'bb';
+    centerBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    centerBtn.setAttribute('title', on ? MML.focusOffApp : MML.focusApp);
+    centerBtn.setAttribute('aria-label', on ? MML.focusOffApp : MML.focusApp);
   }
   centerBtn.addEventListener('click', function () {
     if (FOCUS) {
@@ -3672,7 +3932,8 @@ const VIEWER_JS = String.raw`
   var panBtn = document.getElementById('mm-pan');
   panBtn.addEventListener('click', function () {
     panMode = !panMode;
-    panBtn.className = panMode ? 'icon active' : 'icon';
+    panBtn.className = panMode ? 'bb active' : 'bb';
+    panBtn.setAttribute('aria-pressed', panMode ? 'true' : 'false');
     document.body.classList.toggle('mm-panmode', panMode);
     svg.style.cursor = panMode ? 'grab' : 'default';
   });
@@ -3739,8 +4000,9 @@ const VIEWER_JS = String.raw`
   var DARK_KEY = 'easymindmap.viewer.dark:' + (location.pathname || '');
   function setDark(on) {
     document.body.classList.toggle('mm-dark', on);
-    darkBtn.textContent = on ? '☀' : '🌙';
-    darkBtn.setAttribute('title', on ? MML.toLight : MML.toDark);
+    darkBtn.innerHTML = on ? IC.sun : IC.moon;
+    darkBtn.setAttribute('title', on ? MML.toLightApp : MML.toDarkApp);
+    darkBtn.setAttribute('aria-label', on ? MML.toLightApp : MML.toDarkApp);
     SKIN = on ? SKIN_DARK : SKIN_LIGHT;
     render(); // 노드 카드·글자·연결선까지 스킨 교체 (에디터 다크와 파리티)
     try { localStorage.setItem(DARK_KEY, on ? '1' : '0'); } catch (e) {}
@@ -4053,12 +4315,12 @@ const VIEWER_JS = String.raw`
   var olSplitBtn = document.getElementById('mm-outline-split');
   var viewToggleBtn = document.getElementById('mm-view-toggle');
   // 아웃라인 모드(불릿 목록) / 맵 모드(마인드맵 노드) 아이콘 — 에디터와 동일 도안.
-  var OUTLINE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg>';
-  var MINDMAP_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.1 10.9 16.9 6"/><line x1="7.3" y1="12" x2="17" y2="12"/><path d="M7.1 13.1 16.9 18"/><circle cx="5" cy="12" r="2.4" fill="currentColor" stroke="none"/><circle cx="19" cy="5.5" r="1.9"/><circle cx="19" cy="12" r="1.9"/><circle cx="19" cy="18.5" r="1.9"/></svg>';
+  var OUTLINE_ICON = IC.outline, MINDMAP_ICON = IC.mindmap;
   function syncViewToggle() {
     var split = document.body.classList.contains('mm-outline-split');
     var full = document.body.classList.contains('mm-outline-full');
     olSplitBtn.className = split ? 'icon active' : 'icon';
+    olSplitBtn.setAttribute('aria-pressed', split ? 'true' : 'false');
     olSplitBtn.setAttribute('title', split ? MML.splitClose : MML.splitOpen);
     // 분할 중에는 전체 토글 비활성 (에디터와 동일 규칙)
     viewToggleBtn.disabled = split;
@@ -4083,6 +4345,23 @@ const VIEWER_JS = String.raw`
     if (outlineVisible()) buildOutline();
   });
 
+  // 단축키 — 앱과 같다: Alt+H 미니맵 · Alt+F 선택 노드 보기 · H Pan 모드 (글 입력 중에는 쓰지 않는다)
+  document.addEventListener('keydown', function (e) {
+    var t = e.target, tag = t && t.tagName ? t.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || (t && t.isContentEditable)) return;
+    if (mmHelpOpen()) return;
+    var isH = e.code === 'KeyH' || e.key === 'h' || e.key === 'H';
+    var isF = e.code === 'KeyF' || e.key === 'f' || e.key === 'F';
+    if (e.altKey && !e.ctrlKey && !e.metaKey && isH) { e.preventDefault(); setMinimap(!minimapOn()); }
+    else if (e.altKey && !e.ctrlKey && !e.metaKey && isF) { e.preventDefault(); centerBtn.click(); }
+    else if (!e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && isH && !e.repeat) { panBtn.click(); }
+  });
+  // 앱 글꼴(Pretendard)이 늦게 도착하면 다시 그린다 — 처음 그림은 대체 글꼴로 잰 폭이다
+  if (document.fonts && document.fonts.ready) {
+    var fontRedraw = function () { render(); };
+    document.fonts.ready.then(fontRedraw);
+    if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', fontRedraw);
+  }
   render();
   // 첫 화면은 에디터와 같은 규칙(100% · 트리는 중심 주제 위쪽) — 전체 맞추기는 ⛶
   //
@@ -4648,6 +4927,177 @@ const VIEWER_CSS = `
     #mm-search-results { max-height: 70vh; max-height: calc(100dvh - 70px); }
     #mm-note { max-height: 78vh; max-height: calc(100dvh - 70px); }
   }
+  /* ════ 앱과 같은 배치·모양 (2026-11-27 사용자 요청) ════════════════════════════
+     위: 로고 · 맵 제목 상자 · 검색 | 보기 묶음 · 목록 묶음 · 펼치기/접기 묶음
+     아래: 왼쪽 상태줄(앱 하단 상태바와 같은 글 + 내보내기 정보) | 오른쪽 화면 단추.
+     색은 앱 테마 토큰(surface/surfaceAlt/border/primary…)과 같다. 앞의 규칙을 덮는다. */
+  body { font-family: 'Pretendard Variable', Pretendard, 'Inter', -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', sans-serif; -webkit-font-smoothing: antialiased; }
+  header {
+    height: auto; min-height: 56px; gap: 8px; padding: 4px 6px;
+    background: #FFFFFF; border-bottom: 1px solid #E8E0D2; color: #1F1B16;
+  }
+  #mm-brand { display: flex; align-items: center; flex-shrink: 0; }
+  #mm-title-search { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+  header h1#mm-title {
+    flex: 1 1 160px; max-width: min(45%, 320px); min-width: 0; box-sizing: border-box;
+    height: 34px; padding: 5px 8px; border: 1px solid #E8E0D2; border-radius: 7px;
+    background: #FBF8F3; color: #1F1B16; font-size: 14px; font-weight: 600; line-height: 22px;
+    text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #mm-search-wrap { position: relative; display: block; flex: 1 1 220px; max-width: 360px; min-width: 220px; }
+  #mm-search-ic {
+    position: absolute; left: 6px; top: 50%; transform: translateY(-50%); z-index: 1;
+    display: flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+    border-radius: 6px; background: #FEF3C7; color: #1F1B16; pointer-events: none;
+  }
+  #mm-search {
+    width: 100%; min-width: 0; box-sizing: border-box; height: 38px; padding: 7px 12px 7px 42px;
+    border-radius: 7px; border: 1px solid #6B6358; background: #FFFFFF; color: #1F1B16;
+    font-size: 14px; font-weight: 500; box-shadow: 0 1px 2px rgba(31,27,22,0.06); -webkit-appearance: none;
+  }
+  #mm-search::placeholder { color: #6B6358; }
+  #mm-search:focus { border-color: #B45309; outline: 2px solid #F59E0B55; outline-offset: 1px; }
+  #mm-search-results { top: 42px; width: 100%; min-width: 320px; }
+  #mm-tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .mm-group {
+    display: flex; align-items: center; gap: 2px; flex-shrink: 0; padding: 3px 5px;
+    border: 1px solid #E8E0D2; border-radius: 9px; background: #FBF8F3;
+  }
+  header .mm-group button.icon {
+    width: 38px; height: 38px; padding: 0; border: none; border-radius: 7px;
+    background: transparent; color: #1F1B16; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 15px; cursor: pointer;
+  }
+  header .mm-group button.icon:hover { background: #F3ECDD; }
+  header .mm-group button.icon.active, header .mm-group button.icon[aria-pressed="true"], header .mm-group button.icon[aria-expanded="true"] {
+    background: #FEF3C7; color: #D97706; border: none;
+  }
+  header .mm-group button.mm-md span { font-size: 16px; font-weight: 850; letter-spacing: -0.7px; line-height: 1; }
+  header .mm-group button:disabled { opacity: 0.4; cursor: default; }
+  /* 아래 막대 — 앱 BottomStatusBar 와 같은 높이·색·단추 */
+  #mm-bottombar {
+    height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 14px;
+    padding: 0 12px; background: #FBF8F3; border-top: 1px solid #E8E0D2;
+    font-size: 11px; color: #6B6358; font-weight: 500; min-width: 0;
+  }
+  #mm-bottombar .spacer { flex: 1; }
+  #mm-status { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; white-space: nowrap; }
+  #mm-status .mm-dot { width: 6px; height: 6px; border-radius: 50%; background: #D97706; flex-shrink: 0; }
+  #mm-status .mm-status-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #mm-export-info, #mm-status .mm-status-sep { color: #958A78; }
+  #mm-zoombar {
+    position: static; display: flex; align-items: center; gap: 2px; flex-shrink: 0;
+    background: none; border: none; padding: 0; box-shadow: none; border-radius: 0;
+  }
+  #mm-viewbtns { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+  #mm-bottombar button.bb {
+    width: 34px; height: 34px; min-width: 0; padding: 0; flex-shrink: 0; box-sizing: border-box;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid #E8E0D2; border-radius: 7px; background: #FFFFFF; color: #1F1B16; cursor: pointer;
+    font-size: 13px;
+  }
+  #mm-bottombar button.bb:hover { background: #F3ECDD; }
+  #mm-bottombar button#mm-zoom-pct { width: 54px; padding: 0 3px; font-size: 13px; font-weight: 700; font-family: ui-monospace, monospace; }
+  #mm-bottombar button.bb.active, #mm-bottombar button.bb[aria-pressed="true"] {
+    background: #FEF3C7; color: #D97706; border-color: #F59E0B66;
+  }
+  #mm-bottombar button#mm-minimap-btn[aria-pressed="true"] { border-color: #F59E0B; }
+  /* 미니맵 창 — 앱 Minimap 과 같은 타이틀바·핀·도움말·크기 조절 (위치·크기는 JS 가 놓는다) */
+  #mm-main { position: relative; }
+  #mm-minimap {
+    position: absolute; right: auto; bottom: auto; left: 0; top: 0; width: auto; height: auto;
+    box-sizing: content-box; padding: 4px; z-index: 6; overflow: visible;
+    background: #FFFFFF; border: 1px solid #E8E0D2; border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(31,27,22,0.08); user-select: none; -webkit-user-select: none;
+  }
+  #mm-minimap svg#mm-minimap-svg { display: block; width: auto; height: auto; border-radius: 5px; background: #FBF8F3; cursor: grab; touch-action: none; overflow: hidden; }
+  #mm-minimap.mm-mm-dragging svg#mm-minimap-svg { cursor: grabbing; }
+  #mm-minimap .mm-minimap-top { position: absolute; top: 4px; left: 4px; right: 4px; height: 28px; z-index: 2; }
+  #mm-minimap .mm-minimap-bar { display: flex; align-items: center; gap: 2px; height: 28px; border-radius: 4px; background: #dedede; color: #292929; opacity: 0; transition: opacity 120ms ease; cursor: grab; touch-action: none; outline-offset: 2px; }
+  #mm-minimap .mm-minimap-top:hover .mm-minimap-bar, #mm-minimap .mm-minimap-top:focus-within .mm-minimap-bar,
+  #mm-minimap.mm-mm-moving .mm-minimap-bar, #mm-minimap.mm-mm-resizing .mm-minimap-bar, body.mm-mm-help-open #mm-minimap .mm-minimap-bar { opacity: 1; }
+  #mm-minimap.mm-mm-moving .mm-minimap-bar { cursor: grabbing; }
+  #mm-minimap[data-pin="right"] .mm-minimap-bar, #mm-minimap[data-pin="left"] .mm-minimap-bar { cursor: default; }
+  #mm-minimap .mm-minimap-bar button { display: flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; height: 24px; border: 0; border-radius: 3px; padding: 0; background: transparent; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; font-family: inherit; }
+  #mm-minimap .mm-minimap-bar button:hover { background: rgba(0,0,0,.1); }
+  #mm-minimap .mm-minimap-bar button[aria-pressed="true"] { background: #bcc6d3; color: #172d49; }
+  #mm-minimap .mm-minimap-bar button:focus-visible, #mm-minimap .mm-minimap-bar:focus-visible { outline: 2px solid #216ac0; }
+  #mm-minimap .mm-minimap-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 11px; font-weight: 600; pointer-events: none; }
+  #mm-minimap .mm-minimap-resize { position: absolute; right: 0; bottom: 0; z-index: 3; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 0 0 7px 0; padding: 0; background: linear-gradient(135deg, transparent, rgba(128,128,128,.22)); cursor: nwse-resize; touch-action: none; }
+  #mm-minimap .mm-minimap-resize:hover { background: rgba(128,128,128,.24); }
+  #mm-minimap .mm-minimap-resize:focus-visible { outline: 2px solid #216ac0; outline-offset: -2px; }
+  @media (hover: none), (pointer: coarse) { #mm-minimap .mm-minimap-bar { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #mm-minimap .mm-minimap-bar { transition: none; } }
+  /* 미니맵 도움말 — 앱 DialogFrame 과 같은 모양 */
+  #mm-mm-helpdlg { position: fixed; inset: 0; z-index: 130; display: flex; align-items: center; justify-content: center; background: rgba(20,16,10,0.32); }
+  #mm-mm-helpdlg[hidden] { display: none; }
+  #mm-mm-helpdlg .mm-dlg { width: min(520px, calc(100vw - 32px)); max-height: min(80vh, calc(100dvh - 32px)); display: flex; flex-direction: column; background: #FFFFFF; color: #1F1B16; border: 1px solid #E8E0D2; border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,0.22); }
+  #mm-mm-helpdlg .mm-dlg-head { position: relative; padding: 14px 48px 8px 18px; }
+  #mm-mm-helpdlg .mm-dlg-head h2 { font-size: 15px; font-weight: 700; }
+  #mm-mm-helpdlg .mm-dlg-x { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border: 0; border-radius: 7px; background: transparent; color: #6B6358; font-size: 20px; cursor: pointer; }
+  #mm-mm-helpdlg .mm-dlg-x:hover { background: #F3ECDD; }
+  #mm-mm-helpdlg .mm-dlg-body { padding: 0 18px 8px; overflow: auto; }
+  #mm-mm-helpdlg .mm-dlg-body p { font-size: 13px; line-height: 1.7; margin: 4px 0 8px; }
+  #mm-mm-helpdlg dl { margin: 0; font-size: 12.5px; line-height: 1.7; }
+  #mm-mm-helpdlg dl > div { padding: 9px 0; border-top: 1px solid #E8E0D2; }
+  #mm-mm-helpdlg dt { font-weight: 700; }
+  #mm-mm-helpdlg dd { margin: 3px 0 0; color: #6B6358; }
+  #mm-mm-helpdlg .mm-dlg-foot { padding: 10px 18px 14px; display: flex; justify-content: flex-end; border-top: 1px solid #E8E0D2; }
+  #mm-mm-helpdlg .mm-dlg-close { height: 34px; padding: 0 16px; border: 1px solid #E8E0D2; border-radius: 7px; background: #FBF8F3; color: #1F1B16; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  #mm-mm-helpdlg .mm-dlg-close:hover { background: #F3ECDD; }
+  #mm-lists { top: 64px; }
+  #mm-note { top: 68px; }
+  /* 다크 — 앱 다크 토큰 */
+  body.mm-dark header { background: #181A20; border-color: #2A2E38; color: #E8E6E3; }
+  body.mm-dark header h1#mm-title { background: #1C1F26; border-color: #2A2E38; color: #E8E6E3; }
+  body.mm-dark #mm-search-ic { background: #3B2A0A; color: #E8E6E3; }
+  body.mm-dark #mm-search { background: #181A20; border-color: #A09A90; color: #E8E6E3; }
+  body.mm-dark #mm-search::placeholder { color: #A09A90; }
+  body.mm-dark .mm-group { background: #1C1F26; border-color: #2A2E38; }
+  body.mm-dark header .mm-group button.icon { background: transparent; color: #E8E6E3; }
+  body.mm-dark header .mm-group button.icon:hover { background: #2E333C; }
+  body.mm-dark header .mm-group button.icon.active, body.mm-dark header .mm-group button.icon[aria-pressed="true"], body.mm-dark header .mm-group button.icon[aria-expanded="true"] { background: #3B2A0A; color: #F59E0B; }
+  body.mm-dark #mm-bottombar { background: #1C1F26; border-color: #2A2E38; color: #A09A90; }
+  body.mm-dark #mm-export-info, body.mm-dark #mm-status .mm-status-sep { color: #6B6558; }
+  body.mm-dark #mm-status .mm-dot { background: #F59E0B; }
+  body.mm-dark #mm-bottombar button.bb { background: #181A20; border-color: #2A2E38; color: #E8E6E3; }
+  body.mm-dark #mm-bottombar button.bb:hover { background: #2E333C; }
+  body.mm-dark #mm-bottombar button.bb.active, body.mm-dark #mm-bottombar button.bb[aria-pressed="true"] { background: #3B2A0A; color: #F59E0B; border-color: #F59E0B66; }
+  body.mm-dark #mm-minimap { background: #181A20; border-color: #2A2E38; }
+  body.mm-dark #mm-minimap svg#mm-minimap-svg { background: #1C1F26; }
+  body.mm-dark #mm-mm-helpdlg .mm-dlg { background: #181A20; color: #E8E6E3; border-color: #2A2E38; }
+  body.mm-dark #mm-mm-helpdlg dl > div, body.mm-dark #mm-mm-helpdlg .mm-dlg-foot { border-color: #2A2E38; }
+  body.mm-dark #mm-mm-helpdlg dd, body.mm-dark #mm-mm-helpdlg .mm-dlg-x { color: #A09A90; }
+  body.mm-dark #mm-mm-helpdlg .mm-dlg-close { background: #1C1F26; border-color: #2A2E38; color: #E8E6E3; }
+  /* 손가락 — 앱처럼 누르는 자리 40px */
+  @media (pointer: coarse) {
+    header .mm-group button.icon { width: 42px; height: 42px; }
+    #mm-bottombar { height: calc(48px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
+    #mm-bottombar button.bb { width: 40px; height: 40px; }
+    #mm-bottombar button#mm-zoom-pct { width: 54px; }
+  }
+  /* 좁은 화면 — 앱처럼 상태 글을 먼저 줄이고, 단추는 밀어내지 않는다 */
+  @media (max-width: 960px) { #mm-export-info, #mm-status .mm-status-sep { display: none; } }
+  @media (max-width: 760px) { #mm-bottombar { gap: 6px; } }
+  @media (max-width: 480px) {
+    #mm-status { display: none; }
+    #mm-bottombar { gap: 3px; padding: 0 8px; }
+    #mm-bottombar button.bb { width: 32px; }
+    #mm-bottombar button#mm-zoom-pct { width: 48px; }
+  }
+  @media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+    header { min-height: 0; padding: calc(4px + env(safe-area-inset-top)) calc(6px + env(safe-area-inset-right)) 4px calc(6px + env(safe-area-inset-left)); }
+    #mm-brand { order: 0; }
+    #mm-title-search { order: 1; flex: 1 1 0; }
+    header h1#mm-title { flex: 1 1 auto; max-width: none; line-height: 22px; font-size: 14px; }
+    #mm-search-wrap { flex: 0 0 auto; min-width: 0; max-width: none; }
+    #mm-search-ic { display: none; }
+    #mm-search-toggle { width: 38px; height: 38px; border: 1px solid #E8E0D2; border-radius: 7px; background: #FBF8F3; color: #1F1B16; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+    body.mm-dark #mm-search-toggle { background: #1C1F26; border-color: #2A2E38; color: #E8E6E3; }
+    body.mm-search-open #mm-search { padding: 0 10px; }
+    #mm-tools { order: 6; flex: 1 1 100%; gap: 6px; }
+    #mm-outline-split { display: none; }
+  }
 `;
 
 function escapeHtml(s: string): string {
@@ -4687,6 +5137,38 @@ function viewerStrings(): Record<string, string> {
   for (const k of VIEWER_STRING_KEYS) out[k] = tr(`io.viewer.${k}`);
   out.localOnly = {en:'(Local file not included. Open this map in EMM and reconnect its folder.)',ko:'(로컬 파일 미포함: EMM에서 맵을 열고 폴더를 다시 연결하세요.)',zh:'（未包含本地文件。在 EMM 中打开地图并重新连接文件夹。）',ja:'（ローカルファイルは含まれていません。EMM でマップを開き、フォルダーを再接続してください。）'}[currentLang()];
   out.copied = tr('common.copied');
+  // 앱과 같은 자리·같은 뜻의 단추 문구 (2026-11-27 뷰어를 앱 배치와 같게)
+  const lang = currentLang() as keyof typeof bottomCopy;
+  const copy = bottomCopy[lang] ?? bottomCopy.en;
+  out.zoomReset = copy.zoomReset;
+  out.minimapToggle = copy.minimapToggle;
+  out.zoomOutApp = tr('shell.status.zoomOut');
+  out.zoomInApp = tr('shell.status.zoomIn');
+  out.panApp = tr('editor.toolbar.m.pan') + ' (H)';
+  out.focusApp = tr('editor.toolbar.m.focus') + ' (Alt+F)';
+  out.focusOffApp = tr('editor.toolbar.m.focusOff') + ' (Alt+F)';
+  out.fitApp = tr('editor.toolbar.fit');
+  out.fsEnterApp = tr('editor.toolbar.m.fullscreen');
+  out.fsExitApp = tr('editor.toolbar.m.fullscreenExit');
+  out.toDarkApp = tr('shell.toolbar.toDark');
+  out.toLightApp = tr('shell.toolbar.toLight');
+  out.sideLink = tr('shell.sidebar.link');
+  out.sideAttach = tr('shell.sidebar.attach');
+  out.sideMd = tr('shell.sidebar.md');
+  out.sideNote = tr('shell.sidebar.note');
+  out.listNotes = { en: 'Notes', ko: '노트', zh: '笔记', ja: 'ノート' }[currentLang()] ?? 'Notes';
+  out.groupView = tr('editor.toolbar.groupView');
+  out.groupLists = { en: 'Lists', ko: '목록', zh: '列表', ja: '一覧' }[currentLang()] ?? 'Lists';
+  out.groupFold = { en: 'Expand/collapse', ko: '펼치기/접기', zh: '展开/折叠', ja: '展開/折りたたみ' }[currentLang()] ?? 'Expand/collapse';
+  // 미니맵 창 (타이틀바·핀·도움말·크기 조절 — 앱 Minimap 과 같은 문구)
+  for (const k of ['title', 'move', 'pinned', 'pin.user', 'pin.right', 'pin.left', 'help', 'close', 'resize', 'help.intro']) {
+    out['mm.' + k] = tr('editor.minimap.' + k);
+  }
+  for (const row of ['bar', 'move', 'resize', 'pin', 'navigate', 'wheel', 'shortcut']) {
+    out['mm.help.' + row + '.title'] = tr(`editor.minimap.help.${row}.title`);
+    out['mm.help.' + row + '.body'] = tr(`editor.minimap.help.${row}.body`);
+  }
+  out.closeApp = tr('common.close');
   return out;
 }
 
@@ -4717,6 +5199,9 @@ export function buildStandaloneHtml(
   hostSlots?: { center: number; right: number },
 ): string {
   captureExportGuard(map);
+  // 왼쪽 아래 상태줄 — 앱 하단 상태바와 같은 글 (2026-11-27). 문서 무게는 화면용 사본이 아닌 원본으로 죨다.
+  const statusWeight = measureDocument(map);
+  const statusNodes = countMapNodes(map);
   // 다시 불러올 원본(메타)은 손대지 않은 맵 — 아래 화면용 사본의 자동 태그가 문서에 섞이지 않게
   const metaSource = metaMap ?? map;
   if (metaMap) captureExportGuard(metaMap);
@@ -4858,6 +5343,17 @@ export function buildStandaloneHtml(
   const stringsJson = JSON.stringify(viewerStrings()).replace(/</g, '\\u003c');
   const A = (key: string) => escapeHtml(tr(`io.viewer.${key}`)); // 속성·본문용 (이스케이프)
 
+  // 앱과 같은 아이콘·문구 (2026-11-27) — 단추 그림은 앱 아이콘을 그대로 구워 싣는다
+  const IC = viewerIcons();
+  const VS = viewerStrings();
+  const icJson = JSON.stringify(IC).replace(/</g, '\\u003c');
+  const statusLayout = tr('shell.status.layoutMap', { n: 0 }) + ': '
+    + (STATUS_LAYOUT_LABEL[layoutType] ? tr(STATUS_LAYOUT_LABEL[layoutType]) : String(layoutType));
+  const statusText = statusLayout + ' · ' + tr('shell.status.nodesAll', { n: statusNodes }) + ' · '
+    + tr('shell.status.weight', { doc: fmtBytes(statusWeight.docBytes), n: statusWeight.attachCount })
+    + (statusWeight.attachCount > 0 ? ' · ' + fmtBytes(statusWeight.attachBytes) + (statusWeight.unknown ? '+' : '') : '');
+  const footerText = tr('io.viewer.footer', { at: exportedAt });
+
   return `<!DOCTYPE html>
 <html lang="${currentLang()}">
 <head>
@@ -4865,41 +5361,70 @@ export function buildStandaloneHtml(
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>${escapeHtml(map.title)} — EasyMindMap</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent(LOGO_SVG)}">
+<link rel="stylesheet" href="${PRETENDARD_CSS}">
 <style>${VIEWER_CSS}</style>
 </head>
 <body>
 <header>
-  <h1>${LOGO_SVG.replace('<svg ', '<svg width="20" height="20" style="vertical-align:-4px;margin-right:6px" ')}${escapeHtml(map.title)}</h1>
-  <span class="meta" id="mm-count"></span>
+  <span id="mm-brand" aria-hidden="true">${LOGO_SVG.replace('<svg ', '<svg width="24" height="24" ')}</span>
+  <span id="mm-title-search">
+  <h1 id="mm-title" title="${escapeHtml(map.title)}">${escapeHtml(map.title)}</h1>
+  <span id="mm-search-wrap">
+    <button id="mm-search-toggle" class="icon" type="button" title="${A('searchOpen')}" aria-label="${A('searchOpen')}" aria-expanded="false" data-testid="m-viewer-search-toggle"><svg class="ic-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg><svg class="ic-close" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <span id="mm-search-ic">${IC.search}</span>
+    <input id="mm-search" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder="${escapeHtml(tr('panel.search.placeholder'))}"
+      title="${A('searchTitle')}" aria-label="${A('searchOpen')}" />
+    <div id="mm-search-results"></div>
+  </span>
+  </span>
   <span class="spacer"></span>${hostSlots
     ? `\n  <span id="mm-host-center" aria-hidden="true" style="--slot-w:${Math.round(hostSlots.center)}px;flex:0 0 var(--slot-w);height:28px"></span>\n  <span class="spacer"></span>`
     : ''}
-  <span id="mm-search-wrap">
-    <button id="mm-search-toggle" class="icon" type="button" title="${A('searchOpen')}" aria-label="${A('searchOpen')}" aria-expanded="false" data-testid="m-viewer-search-toggle"><svg class="ic-open" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg><svg class="ic-close" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
-    <svg id="mm-search-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
-    <input id="mm-search" type="search" placeholder="${A('searchPlaceholder')}"
-      title="${A('searchTitle')}" />
-    <div id="mm-search-results"></div>
-  </span>
   <span id="mm-tools">
-  <button id="mm-center" class="icon" title="${A('centerOn')}"><svg id="mm-center-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></button>
-  <button id="mm-pan" class="icon" title="${A('pan')}">✋</button>
-  <button id="mm-fit" class="icon" title="${A('fit')}">⛶</button>
-  <button id="mm-minimap-btn" class="icon" title="${A('minimap')}">▦</button>
-  <button id="mm-expand" class="icon" title="${A('expandAll')}" aria-label="${A('expandAll')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>
-  <button id="mm-collapse" class="icon" title="${A('collapseAll')}" aria-label="${A('collapseAll')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="8" y1="12" x2="16" y2="12"/></svg></button>
-  <button id="mm-lists-btn" class="icon" title="${A('listsOpen')}" aria-label="${A('listsOpen')}" aria-expanded="false" data-testid="viewer-lists-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
-  <button id="mm-outline-split" class="icon" title="${A('splitOpen')}">◫</button>
-  <button id="mm-view-toggle" class="icon" title="${A('toOutline')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/></svg></button>
-  <button id="mm-fullscreen" class="icon" title="${A('fsEnter')}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><polyline points="14 8 16 8 16 10"/><polyline points="10 16 8 16 8 14"/><line x1="16" y1="8" x2="12.5" y2="11.5"/><line x1="8" y1="16" x2="11.5" y2="12.5"/></svg></button>
+  <span class="mm-group" role="group" aria-label="${escapeHtml(VS.groupView)}" data-group="view">
+    <button id="mm-view-toggle" class="icon" type="button" title="${A('toOutline')}" aria-label="${A('toOutline')}">${IC.outline}</button>
+    <button id="mm-outline-split" class="icon" type="button" title="${A('splitOpen')}" aria-label="${A('splitOpen')}" aria-pressed="false">${IC.split}</button>
+    <button id="mm-dark" class="icon" type="button" title="${escapeHtml(VS.toDarkApp)}" aria-label="${escapeHtml(VS.toDarkApp)}">${IC.moon}</button>
   </span>
-  <button id="mm-dark" class="icon" title="${A('toDark')}">🌙</button>${hostSlots
+  <span class="mm-group" role="group" aria-label="${escapeHtml(VS.groupLists)}" data-group="lists">
+    <button id="mm-list-links" class="icon" type="button" data-list="links" title="${escapeHtml(VS.sideLink)}" aria-label="${escapeHtml(VS.sideLink)}" aria-expanded="false">${IC.link}</button>
+    <button id="mm-list-files" class="icon" type="button" data-list="files" title="${escapeHtml(VS.sideAttach)}" aria-label="${escapeHtml(VS.sideAttach)}" aria-expanded="false" data-testid="viewer-lists-btn">${IC.attach}</button>
+    <button id="mm-list-md" class="icon mm-md" type="button" data-list="md" title="${escapeHtml(VS.sideMd)}" aria-label="${escapeHtml(VS.sideMd)}" aria-expanded="false"><span aria-hidden="true">MD</span></button>
+    <button id="mm-list-notes" class="icon" type="button" data-list="notes" title="${escapeHtml(VS.sideNote)}" aria-label="${escapeHtml(VS.sideNote)}" aria-expanded="false">${IC.note}</button>
+  </span>
+  <span class="mm-group" role="group" aria-label="${escapeHtml(VS.groupFold)}" data-group="fold">
+    <button id="mm-expand" class="icon" type="button" title="${A('expandAll')}" aria-label="${A('expandAll')}">${IC.expandAll}</button>
+    <button id="mm-collapse" class="icon" type="button" title="${A('collapseAll')}" aria-label="${A('collapseAll')}">${IC.collapseAll}</button>
+  </span>
+  </span>${hostSlots
     ? `\n  <span id="mm-host-right" aria-hidden="true" style="flex:0 0 ${Math.round(hostSlots.right)}px;height:28px"></span>`
     : ''}
 </header>
 <div id="mm-main">
   <div id="mm-outline"><div id="mm-outline-body"></div></div>
   <svg id="mm-svg"><g id="mm-world"></g></svg>
+  <div id="mm-minimap" data-pin="user" data-testid="viewer-minimap">
+    <div class="mm-minimap-top">
+      <div class="mm-minimap-bar" id="mm-mm-bar" role="group" tabindex="0" aria-label="${escapeHtml(VS['mm.move'])}" title="${escapeHtml(VS['mm.move'])}">
+        <button type="button" id="mm-mm-pin" aria-pressed="false" title="${escapeHtml(VS['mm.pin.user'])}" aria-label="${escapeHtml(VS['mm.pin.user'])}">${IC.pin}</button>
+        <span class="mm-minimap-title">${escapeHtml(VS['mm.title'])}</span>
+        <button type="button" id="mm-mm-help" aria-haspopup="dialog" title="${escapeHtml(VS['mm.help'])}" aria-label="${escapeHtml(VS['mm.help'])}">?</button>
+        <button type="button" id="mm-mm-close" title="${escapeHtml(VS['mm.close'])}" aria-label="${escapeHtml(VS['mm.close'])}">×</button>
+      </div>
+    </div>
+    <svg id="mm-minimap-svg" viewBox="0 0 220 150"><g id="mm-minimap-nodes"></g><rect id="mm-minimap-view" x="0" y="0" width="0" height="0" rx="2"/></svg>
+    <button type="button" id="mm-mm-resize" class="mm-minimap-resize" title="${escapeHtml(VS['mm.resize'])}" aria-label="${escapeHtml(VS['mm.resize'])}"></button>
+  </div>
+</div>
+<div id="mm-mm-helpdlg" role="dialog" aria-modal="true" aria-labelledby="mm-mm-help-h" hidden>
+  <div class="mm-dlg">
+    <div class="mm-dlg-head"><h2 id="mm-mm-help-h">${escapeHtml(VS['mm.help'])}</h2><button type="button" class="mm-dlg-x" data-close="1" aria-label="${escapeHtml(VS.closeApp)}">×</button></div>
+    <div class="mm-dlg-body">
+      <p>${escapeHtml(VS['mm.help.intro'])}</p>
+      <dl>${['bar', 'move', 'resize', 'pin', 'navigate', 'wheel', 'shortcut'].map((row) => `<div><dt>${escapeHtml(VS['mm.help.' + row + '.title'])}</dt><dd>${escapeHtml(VS['mm.help.' + row + '.body'])}</dd></div>`).join('')}</dl>
+    </div>
+    <div class="mm-dlg-foot"><button type="button" class="mm-dlg-close" data-close="1">${escapeHtml(VS.closeApp)}</button></div>
+  </div>
 </div>
 <div id="mm-lists" role="dialog" aria-label="${A('listsOpen')}" data-testid="viewer-lists">
   <div class="mm-lists-head"><span class="mm-lists-tabs" role="tablist"></span><button id="mm-lists-close" type="button" title="${A('listsClose')}" aria-label="${A('listsClose')}">✕</button></div>
@@ -4910,20 +5435,31 @@ export function buildStandaloneHtml(
   <h2 id="mm-note-title"></h2>
   <div id="mm-note-body"></div>
 </div>
-<div id="mm-minimap"><svg id="mm-minimap-svg" viewBox="0 0 220 150"><g id="mm-minimap-nodes"></g><rect id="mm-minimap-view" x="0" y="0" width="0" height="0" rx="2"/></svg></div>
-<div id="mm-zoombar">
-  <button id="mm-zoom-out" title="${A('zoomOut')}">−</button>
-  <button id="mm-zoom-pct" title="${A('zoomPct')}">100%</button>
-  <input id="mm-zoom-input" type="number" min="2" max="400" style="display:none" title="${A('zoomInput')}" />
-  <button id="mm-zoom-in" title="${A('zoomIn')}">+</button>
-  <button id="mm-zoom-100" title="${A('zoom100')}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><line x1="20" y1="20" x2="15" y2="15"/><text x="10" y="12.3" font-size="6.3" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">100</text></svg></button>
-</div>
-<footer>${escapeHtml(tr('io.viewer.footer', { at: exportedAt }))}</footer>
+<footer id="mm-bottombar">
+  <span id="mm-status" title="${escapeHtml(statusText + '\n' + tr('shell.status.weightTip') + '\n' + footerText)}">
+    <span class="mm-dot" aria-hidden="true"></span>
+    <span class="mm-status-txt"><span id="mm-count">${escapeHtml(statusText)}</span><span class="mm-status-sep"> · </span><span id="mm-export-info">${escapeHtml(footerText)}</span></span>
+  </span>
+  <span class="spacer"></span>
+  <span id="mm-zoombar" data-testid="viewer-zoom-controls">
+    <button id="mm-zoom-out" class="bb" type="button" title="${escapeHtml(VS.zoomOutApp)}" aria-label="${escapeHtml(VS.zoomOutApp)}">${IC.minus}</button>
+    <button id="mm-zoom-pct" class="bb" type="button" title="${escapeHtml(VS.zoomReset)}" aria-label="100% · ${escapeHtml(VS.zoomReset)}">100%</button>
+    <button id="mm-zoom-in" class="bb" type="button" title="${escapeHtml(VS.zoomInApp)}" aria-label="${escapeHtml(VS.zoomInApp)}">${IC.plus}</button>
+    <button id="mm-minimap-btn" class="bb" type="button" title="${escapeHtml(VS.minimapToggle)}" aria-label="${escapeHtml(VS.minimapToggle)}" aria-pressed="false">${IC.minimap}</button>
+  </span>
+  <span id="mm-viewbtns">
+    <button id="mm-pan" class="bb" type="button" title="${escapeHtml(VS.panApp)}" aria-label="${escapeHtml(VS.panApp)}" aria-pressed="false">${IC.hand}</button>
+    <button id="mm-center" class="bb" type="button" title="${escapeHtml(VS.focusApp)}" aria-label="${escapeHtml(VS.focusApp)}" aria-pressed="false">${IC.focus}</button>
+    <button id="mm-fit" class="bb" type="button" title="${escapeHtml(VS.fitApp)}" aria-label="${escapeHtml(VS.fitApp)}">${IC.fit}</button>
+    <button id="mm-fullscreen" class="bb" type="button" title="${escapeHtml(VS.fsEnterApp)}" aria-label="${escapeHtml(VS.fsEnterApp)}" aria-pressed="false">${IC.fsEnter}</button>
+  </span>
+</footer>
 <!-- EasyMindMap 생성 파일 · 제목: ${escapeHtml(map.title)} · 내보낸 시각: ${exportedAt}
      아래 메타데이터(#easymindmap-map)로 '새 맵 > 불러오기'에서 편집 가능하게 복원됩니다 -->
 <script type="application/json" id="easymindmap-map">${metaJson}</script>
 <script>window.__MINDMAP__ = ${json};</script>${shared.sharedCount ? `\n<script>${SHARED_VIEWER_ASSET_BOOTSTRAP}</script>` : ''}
 <script>window.__MM_L__ = ${stringsJson};</script>
+<script>window.__MM_IC__ = ${icJson};</script>
 <script>${VIEWER_JS}</script>${hostSlots ? `\n<script>${HOST_SLOTS_JS}</script>` : ''}
 </body>
 </html>`;

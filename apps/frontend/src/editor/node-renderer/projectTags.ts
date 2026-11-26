@@ -25,6 +25,10 @@ export function isValidTime(v: unknown): v is string {
   return typeof v === 'string' && TIME_RE.test(v);
 }
 
+/** 시간을 켜 둔 일정에서 시각이 없는 날짜의 기본값 — 시작 09:00, 끝 18:00 */
+export const DEFAULT_START_TIME = '09:00';
+export const DEFAULT_END_TIME = '18:00';
+
 /** 진척율 — 0~100 정수만 (자유 입력, 소수는 반올림). 아니면 null */
 export function normalizeProgress(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
@@ -66,7 +70,8 @@ export function projectChips(p: ProjectTags | undefined, year = new Date().getFu
   const out: ProjectChip[] = [];
   if (p.dateOn) {
     const range = p.timeOn
-      ? formatDateRange(p.start, p.end, year, p.startTime, p.endTime)
+      ? formatDateRange(p.start, p.end, year,
+        isValidTime(p.startTime) ? p.startTime : DEFAULT_START_TIME, isValidTime(p.endTime) ? p.endTime : DEFAULT_END_TIME)
       : formatDateRange(p.start, p.end, year);
     if (range) out.push({ kind: 'date', label: `📅${range}` });
   }
@@ -89,7 +94,15 @@ export function cleanProject(p: ProjectTags | undefined): ProjectTags | undefine
   // 시간 — 그 날짜가 있을 때만 남긴다. 체크를 꺼도 값은 남는다(다른 칸들과 같은 규칙)
   if (out.start && isValidTime(p.startTime)) out.startTime = p.startTime;
   if (out.end && isValidTime(p.endTime)) out.endTime = p.endTime;
-  if (out.start && out.end && out.start === out.end && out.startTime && out.endTime && out.endTime < out.startTime) delete out.endTime;
+  // 시간을 켜 두었으면 시각 없는 날짜에 기본 시각을 넣는다 (2026-11-26 사용자 보고: 간트에서 막대를
+  // 끌어 끝일을 만들면 끝 시각이 비어 태그에 안 보였다). 입력란·간트·불러오기 어느 길이든 여기를 거친다.
+  if (p.timeOn) {
+    if (out.start && !out.startTime) out.startTime = DEFAULT_START_TIME;
+    if (out.end && !out.endTime) out.endTime = DEFAULT_END_TIME;
+  }
+  if (out.start && out.end && out.start === out.end && out.startTime && out.endTime && out.endTime < out.startTime) {
+    if (p.timeOn) out.endTime = out.startTime; else delete out.endTime;
+  }
   if (p.timeOn) out.timeOn = true;
   // 담당자 — 최대 3명. 첫 사람은 assignee(예전 문서·Redmine 호환), 2명 이상이면 assignees 에 전부
   const people = assigneeList(p).slice(0, MAX_ASSIGNEES).map((a) => {

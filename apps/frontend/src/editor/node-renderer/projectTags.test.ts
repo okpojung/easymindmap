@@ -39,3 +39,10 @@ assert.deepEqual(projectChips({ dateOn: true, start: '2026-11-03', end: '2026-11
 assert.deepEqual(cleanProject({ dateOn: true, start: '2026-11-03', timeOn: true, startTime: '09:00', endTime: '18:00' }), { start: '2026-11-03', startTime: '09:00', timeOn: true, dateOn: true }, 'a time without its date is dropped');
 assert.equal(cleanProject({ start: '2026-11-03', startTime: '25:00' })?.startTime, undefined);
 console.log('projectTags time PASS');
+// 간트에서 끝일을 끌어 만들면 끝 시각도 붙는다 (2026-11-26 사용자 보고)
+{ const g = cleanProject({ dateOn: true, timeOn: true, start: '2022-03-22', startTime: '12:00', end: '2022-03-24' }); assert.equal(g?.startTime, '12:00'); assert.equal(g?.endTime, '18:00'); assert.equal(g?.end, '2022-03-24'); }
+assert.equal(cleanProject({ timeOn: true, start: '2022-03-22', end: '2022-03-24' })?.startTime, '09:00', 'start without time gets 09:00');
+assert.equal(cleanProject({ timeOn: false, start: '2022-03-22', end: '2022-03-24' })?.endTime, undefined, 'time box off: no default times');
+assert.equal(cleanProject({ timeOn: true, start: '2022-03-22', startTime: '19:00', end: '2022-03-22' })?.endTime, '19:00', 'same day: default end never before start');
+assert.deepEqual(projectChips({ dateOn: true, timeOn: true, start: '2022-03-22', startTime: '12:00', end: '2022-03-24' }, 2022).map((c) => c.label), ['📅03-22 12:00~03-24 18:00'], 'already-saved node without end time shows the default');
+console.log('projectTags gantt end-time PASS');

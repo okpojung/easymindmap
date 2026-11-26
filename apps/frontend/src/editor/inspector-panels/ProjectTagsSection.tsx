@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ThemeTokens } from '@/components/design-tokens/theme';
 import type { ProjectTags } from '@/editor/__samples__/types';
 import { useDocumentStore } from '@/stores/documentStore';
-import { normalizeProgress, assigneeList, isValidTime, MAX_ASSIGNEES, type ProjectChipKind } from '@/editor/node-renderer/projectTags';
+import { normalizeProgress, assigneeList, isValidTime, DEFAULT_START_TIME, DEFAULT_END_TIME, MAX_ASSIGNEES, type ProjectChipKind } from '@/editor/node-renderer/projectTags';
 import { searchAssignees, type AssigneeCandidate } from '@pro';
 import { InspectorSection } from './InspectorSection';
 import { useTr } from '@/i18n';
@@ -50,7 +50,7 @@ export function ProjectTagsSection({ t, nodeId, project }: { t: ThemeTokens; nod
   const setDate = (k: 'start' | 'end', v: string) => update(nodeId, { [k]: v || null, ...(v && !p.dateOn ? { dateOn: true } : {}) });
   // 시간 체크 (2026-11-26 사용자 요청) — 켜면 년/월/일 시:분 입력. 입력한 날짜에만 시간이 붙는다.
   const timeOn = !!p.timeOn;
-  const dtValue = (d: string | undefined, tm: string | undefined) => (d ? `${d}T${isValidTime(tm) ? tm : '00:00'}` : '');
+  const dtValue = (d: string | undefined, tm: string | undefined, fallback: string) => (d ? `${d}T${isValidTime(tm) ? tm : fallback}` : '');
   const setDateTime = (k: 'start' | 'end', v: string) => {
     const tk = k === 'start' ? 'startTime' : 'endTime';
     if (!v) { update(nodeId, { [k]: null, [tk]: null }); return; }
@@ -60,8 +60,8 @@ export function ProjectTagsSection({ t, nodeId, project }: { t: ThemeTokens; nod
   const toggleTime = (on: boolean) => update(nodeId, {
     timeOn: on || null,
     // 켜는 순간 입력돼 있던 날짜에 기본 시각을 넣는다(시작 09:00, 끝 18:00) — 빈 시각은 입력란에 보이지 않는다
-    ...(on && p.start && !isValidTime(p.startTime) ? { startTime: '09:00' } : {}),
-    ...(on && p.end && !isValidTime(p.endTime) ? { endTime: '18:00' } : {}),
+    ...(on && p.start && !isValidTime(p.startTime) ? { startTime: DEFAULT_START_TIME } : {}),
+    ...(on && p.end && !isValidTime(p.endTime) ? { endTime: DEFAULT_END_TIME } : {}),
   });
   // 담당자 목록을 통째로 쓴다 — 첫 사람은 assignee(호환), 2명 이상이면 assignees 에 전부
   const setPeople2 = (list: { name: string; email?: string; redmineUserId?: number }[], turnOn: boolean) => {
@@ -123,9 +123,9 @@ export function ProjectTagsSection({ t, nodeId, project }: { t: ThemeTokens; nod
       </div>
       {timeOn ? (
         <div style={{ ...row, paddingLeft: 22, marginTop: -3, flexWrap: 'wrap' }}>
-          <input ref={refs.date} type="datetime-local" data-testid="project-start" value={dtValue(p.start, p.startTime)} onChange={(e) => setDateTime('start', e.target.value)} style={{ ...input, flex: '1 1 140px' }} aria-label={tr('inspector.project.start')} />
+          <input ref={refs.date} type="datetime-local" data-testid="project-start" value={dtValue(p.start, p.startTime, DEFAULT_START_TIME)} onChange={(e) => setDateTime('start', e.target.value)} style={{ ...input, flex: '1 1 140px' }} aria-label={tr('inspector.project.start')} />
           <span style={{ color: t.textMuted, fontSize: 11 }}>~</span>
-          <input type="datetime-local" data-testid="project-end" value={dtValue(p.end, p.endTime)} min={p.start ? dtValue(p.start, p.startTime) : undefined} onChange={(e) => setDateTime('end', e.target.value)} style={{ ...input, flex: '1 1 140px' }} aria-label={tr('inspector.project.end')} />
+          <input type="datetime-local" data-testid="project-end" value={dtValue(p.end, p.endTime, DEFAULT_END_TIME)} min={p.start ? dtValue(p.start, p.startTime, DEFAULT_START_TIME) : undefined} onChange={(e) => setDateTime('end', e.target.value)} style={{ ...input, flex: '1 1 140px' }} aria-label={tr('inspector.project.end')} />
         </div>
       ) : (
         <div style={{ ...row, paddingLeft: 22, marginTop: -3 }}>

@@ -10,6 +10,10 @@ export const PATHS: Record<string, string> = {
   "travel": "/stories/travel",
   "brand": "/about/brand",
   "publishing": "/about/content",
+  "solo": "/products/solo",
+  "server": "/products/server",
+  "cloud": "/products/cloud",
+  "plugins": "/products/plugins",
   "solo-privacy": "/solo/privacy"
 };
 /** Curated approved public copy, not automatically synced account data. */
@@ -77,7 +81,35 @@ export const GUIDES: Record<string, Guide> = {
     "description": "다음 내용은 운영 설계 제안입니다. 이 시안에 실제 글 저장, 로그인, 게시판이나 자동 발행 기능은 구현되어 있지 않습니다.",
     "body": "<h2>문서함의 homepage 맵을 콘텐츠 원본으로.</h2><p>기존 “easymindmap homepage” 맵의 Markdown·Mindmap·EasyMindmap 가지를 교육 콘텐츠의 뼈대로 사용합니다. 첫 화면에는 편집한 짧은 요약을, 하위 상세 페이지에는 충분한 설명을 담는 방식입니다.</p><h2>전체 맵을 첫 화면에 그대로 넣지 않는 이유.</h2><p>마인드맵에 익숙하지 않은 방문자에게 큰 맵과 긴 기사 목록은 또 다른 학습 과제가 될 수 있습니다. 홈페이지 자체가 맵 사용법을 요구하지 않도록, 기본 화면은 읽기 쉬운 웹 콘텐츠로 제공합니다. 맵 보기는 원한다면 보조 링크로 연결합니다.</p><h2>권장 발행 흐름</h2><ol><li>별도로 지정한 홈페이지용 맵에서 초안을 편집합니다.</li><li>AI가 공개 대상 노드만 추출하고 문구·링크·개인 정보를 검토합니다.</li><li>미리보기에서 내용과 디자인을 확인합니다.</li><li>승인한 스냅샷만 버전을 남겨 배포합니다.</li></ol><div class=\"callout\">문서함 전체를 공개 API로 열거나 개인 계정 토큰을 브라우저에 넣지 않습니다. 인증된 서버 측 또는 빌드 단계에서 허용된 노드만 추출하고, 실패하면 마지막 승인본을 유지하도록 설계합니다.</div><h2>게시글 작성과 홈페이지 수정은 분리합니다.</h2><p>공지·활용 팁처럼 운영자만 글을 쓰는 영역이면 간단한 글 작성 화면을 붙이는 방식을 먼저 검토합니다. 방문자 회원가입·댓글·첨부·검색까지 포함한 공개 게시판은 별도 기능입니다. 스팸 방지, 권한, 파일 검사, 백업, 삭제 정책을 설계한 뒤 연결해야 합니다.</p><p>운영자에게는 “새 글 쓰기 → 미리보기 → 발행”만 보이게 하고, 코드·테마·배포 설정은 노출하지 않는 구성을 권합니다.</p>"
   },
-  "solo-privacy": {
+  "solo": {
+    "category": "제품",
+    "eyebrow": "File-based Personal Edition",
+    "title": "EasyMindMap Solo",
+    "description": "설치 부담 없이 가볍게 사용하는 개인용 맵 편집기. Chrome·웨일 확장앱, Google Workspace 연동.",
+    "body": "<h2>파일로 관리하는 나만의 생각 맵</h2><p>별도 서버 설치 없이 브라우저에서 바로 실행합니다. 작성한 맵은 로컬 파일 또는 Google Drive에 보관하며, 파일 단위로 관리합니다.</p><h2>어떻게 시작하나요?</h2><ul><li><strong>Chrome 웹 스토어</strong> 또는 <strong>네이버 웨일 스토어</strong>에서 확장앱을 설치합니다.</li><li><strong>Google Workspace Marketplace</strong>를 통해 Google Drive와 연동된 웹앱으로 사용할 수 있습니다.</li><li>설치 후 바로 맵을 작성하고, 로컬 또는 Drive에 저장합니다.</li></ul><h2>주요 특징</h2><ul><li><strong>빠른 편집:</strong> 메모리 + IndexedDB/OPFS 자동 저장으로 편집 중 끊김 없이 작업합니다.</li><li><strong>파일 기반:</strong> .mmd 또는 .md 파일로 내보내고 가져옵니다. 버전 관리는 파일 단위로 할 수 있습니다.</li><li><strong>Google Drive 연동:</strong> Workspace 버전은 Drive 파일을 직접 열고 저장합니다.</li><li><strong>설치 간편:</strong> 별도 서버 없이 확장앱 또는 웹앱만 설치하면 사용할 수 있습니다.</li></ul><div class=\"callout\">실시간 협업 기능은 제공되지 않습니다. 같은 파일을 여러 사람이 동시에 편집하면 나중에 저장한 내용이 이전 내용을 덮어쓸 수 있습니다.</div><h2>이런 분께 적합합니다</h2><ul><li>서버 설치 부담 없이 개인 맵을 작성하고 싶은 사용자</li><li>Google Drive로 파일을 관리하는 사용자</li><li>간단한 메모와 아이디어 정리가 주 용도인 사용자</li></ul><h2>시작하기</h2><p><a class=\"textlink\" href=\"https://chromewebstore.google.com\" target=\"_blank\" rel=\"noopener noreferrer\">Chrome 웹 스토어에서 설치하기 ↗</a></p><p><a class=\"textlink\" href=\"https://workspace.google.com/marketplace\" target=\"_blank\" rel=\"noopener noreferrer\">Google Workspace Marketplace에서 설치하기 ↗</a></p><p class=\"source-line\">네이버 웨일 스토어 링크는 준비 중입니다.</p>"
+  },
+  "server": {
+    "category": "제품",
+    "eyebrow": "Self-hosted Knowledge System",
+    "title": "EasyMindMap Server",
+    "description": "Docker 기반 개인 지식관리 시스템. 자체 PC·NAS·서버에 구축하여 많은 맵과 대형 첨부를 관리합니다.",
+    "body": "<h2>나만의 서버에서 운영하는 지식 허브</h2><p>Obsidian처럼 개인 지식관리 시스템으로 활용할 수 있는 서버 구성입니다. Docker 이미지를 내려받아 자신의 PC, NAS, 서버에 설치합니다.</p><h2>어떻게 시작하나요?</h2><ul><li><strong>Docker Hub</strong> 또는 <strong>GitHub Container Registry(GHCR)</strong>에서 EasyMindMap Server 이미지를 내려받습니다.</li><li>제공된 docker-compose.yml 파일로 웹앱, API, 데이터베이스를 함께 실행합니다.</li><li>설치 후 브라우저에서 <code>http://localhost:포트번호</code>로 접속하여 사용합니다.</li></ul><h2>주요 특징</h2><ul><li><strong>데이터베이스 기반:</strong> PostgreSQL로 많은 맵, 대형 첨부파일, 장기 편집 이력을 체계적으로 관리합니다.</li><li><strong>검색과 관리:</strong> 여러 맵을 한곳에서 검색하고, 태그·폴더로 분류할 수 있습니다.</li><li><strong>자체 호스팅:</strong> 데이터가 외부 클라우드에 올라가지 않고 내 서버에만 보관됩니다.</li><li><strong>앱 카탈로그 지원:</strong> CasaOS, ZimaOS, Umbrel 같은 홈서버 앱스토어에서 간편 설치 경로를 제공할 예정입니다.</li></ul><div class=\"callout\">서버 설치와 Docker 기본 지식이 필요합니다. 외부 접속을 열려면 도메인, HTTPS 인증서, 방화벽 설정을 별도로 구성해야 합니다.</div><h2>이런 분께 적합합니다</h2><ul><li>많은 맵과 대형 첨부파일을 체계적으로 관리하고 싶은 사용자</li><li>Obsidian, Notion처럼 개인 지식관리 시스템을 구축하려는 사용자</li><li>데이터를 외부 클라우드가 아닌 자신의 서버에 보관하고 싶은 사용자</li><li>NAS나 홈서버를 운영 중인 사용자</li></ul><h2>시작하기</h2><p><a class=\"textlink\" href=\"https://hub.docker.com\" target=\"_blank\" rel=\"noopener noreferrer\">Docker Hub에서 이미지 받기 ↗</a></p><p><a class=\"textlink\" href=\"https://github.com/okpojung/easymindmap\" target=\"_blank\" rel=\"noopener noreferrer\">GitHub에서 설치 가이드 보기 ↗</a></p><p class=\"source-line\">CasaOS, ZimaOS, Umbrel 앱 카탈로그 등록은 준비 중입니다.</p>"
+  },
+  "cloud": {
+    "category": "제품",
+    "eyebrow": "Hosted Cloud Service",
+    "title": "EasyMindMap Cloud",
+    "description": "언제 어디서나 인터넷만 되면 사용할 수 있는 호스팅 클라우드 서비스. 설치·관리 걱정 없이 편리하게.",
+    "body": "<h2>설치 없이, 언제 어디서나</h2><p>서버 설치나 파일 관리 걱정 없이 웹 브라우저만으로 맵을 작성하고 저장합니다. 계정만 만들면 모든 기기에서 같은 맵을 이어서 편집할 수 있습니다.</p><h2>어떻게 시작하나요?</h2><ul><li><strong><a href=\"https://web.easymindmap.org/\" target=\"_blank\" rel=\"noopener noreferrer\">web.easymindmap.org</a></strong>에 접속합니다.</li><li>계정을 만들거나 로그인합니다.</li><li>바로 맵을 작성하고, 클라우드에 자동 저장됩니다.</li></ul><h2>주요 특징</h2><ul><li><strong>자동 동기화:</strong> 작성한 맵이 클라우드에 자동 저장되며, 다른 기기에서도 같은 내용을 볼 수 있습니다.</li><li><strong>설치 불필요:</strong> 웹 브라우저만 있으면 PC, 태블릿, 스마트폰 어디서나 사용할 수 있습니다.</li><li><strong>협업 준비:</strong> 공개 링크 퍼블리싱, 맵 공유 기능을 제공합니다.</li><li><strong>안정적인 운영:</strong> 서버 관리, 백업, 보안 업데이트를 운영팀이 처리합니다.</li></ul><div class=\"callout\">클라우드 서비스는 인터넷 연결이 필요합니다. 오프라인에서는 편집할 수 없으며, 데이터는 서비스 제공사의 서버에 보관됩니다.</div><h2>이런 분께 적합합니다</h2><ul><li>설치·관리 부담 없이 바로 사용하고 싶은 사용자</li><li>여러 기기에서 같은 맵을 이어서 편집하고 싶은 사용자</li><li>팀과 맵을 공유하거나 공개 링크로 퍼블리싱하고 싶은 사용자</li></ul><h2>시작하기</h2><p><a class=\"textlink\" href=\"https://web.easymindmap.org/\" target=\"_blank\" rel=\"noopener noreferrer\">EasyMindMap Cloud 시작하기 ↗</a></p><p class=\"source-line\">현재 무료로 제공 중이며, 향후 유료 플랜이 추가될 수 있습니다.</p>"
+  },
+  "plugins": {
+    "category": "제품",
+    "eyebrow": "External Tool Integration",
+    "title": "Plug-ins",
+    "description": "Obsidian, Redmine 등 외부 도구와 연동하여 기존 워크플로우에 맵 기능을 추가합니다.",
+    "body": "<h2>이미 사용 중인 도구에 맵을 더하세요</h2><p>별도 앱을 열지 않고, 현재 사용하는 도구 안에서 마인드맵을 작성하고 볼 수 있습니다. Obsidian, Redmine 플러그인을 제공합니다.</p><h2>Obsidian 플러그인</h2><p>Obsidian 노트에 마인드맵 블록을 삽입하여 Markdown 문서와 맵을 함께 관리할 수 있습니다.</p><ul><li><strong>설치:</strong> Obsidian Community Plugins에서 'EasyMindMap' 검색 후 설치</li><li><strong>사용:</strong> 노트에 <code>```mmd</code> 코드 블록을 추가하면 맵이 렌더링됩니다.</li><li><strong>연동:</strong> Obsidian 노트의 제목과 링크를 맵 노드에서 참조할 수 있습니다.</li></ul><h2>Redmine 플러그인</h2><p>Redmine 이슈와 프로젝트를 마인드맵으로 시각화하여 전체 구조를 한눈에 파악할 수 있습니다.</p><ul><li><strong>설치:</strong> Redmine 플러그인 디렉토리에 복사 후 재시작</li><li><strong>사용:</strong> 프로젝트 페이지에서 'Mindmap' 탭을 클릭하면 이슈 구조가 맵으로 표시됩니다.</li><li><strong>연동:</strong> 맵 노드를 클릭하면 해당 이슈 상세 페이지로 이동합니다.</li></ul><div class=\"callout\">플러그인은 각 도구의 버전과 설정에 따라 동작이 다를 수 있습니다. 설치 전 호환성을 확인하세요.</div><h2>이런 분께 적합합니다</h2><ul><li>Obsidian으로 개인 지식관리를 하며 맵도 함께 보고 싶은 사용자</li><li>Redmine으로 프로젝트를 관리하며 이슈 구조를 시각화하고 싶은 사용자</li><li>기존 워크플로우를 유지하면서 맵 기능만 추가하고 싶은 사용자</li></ul><h2>시작하기</h2><p><a class=\"textlink\" href=\"https://github.com/okpojung/easymindmap-obsidian\" target=\"_blank\" rel=\"noopener noreferrer\">Obsidian 플러그인 GitHub ↗</a></p><p><a class=\"textlink\" href=\"https://github.com/okpojung/easymindmap-redmine\" target=\"_blank\" rel=\"noopener noreferrer\">Redmine 플러그인 GitHub ↗</a></p><p class=\"source-line\">플러그인 개발 상태와 설치 가이드는 각 GitHub 저장소에서 확인하세요.</p>"
+  },
+    "solo-privacy": {
     "category": "EasyMindMap Solo",
     "eyebrow": "Privacy Policy",
     "title": "EasyMindMap Solo 개인정보처리방침",
@@ -85,4 +117,5 @@ export const GUIDES: Record<string, Guide> = {
     "body": "<p class=\"source-line\">시행일: 2026-11-27 · 운영: (주)에이치앤지라이프 (HNGLife) · 문의: <a class=\"textlink\" href=\"mailto:ok@baro.pro\">ok@baro.pro</a></p><h2>1. 요약</h2><p>EasyMindMap Solo(이하 \"Solo\")는 사용자의 PC에서만 동작하는 Chrome 확장 프로그램입니다. Solo는 사용자의 개인정보나 맵 내용을 수집하거나 서버로 전송하지 않습니다.</p><h2>2. 처리하는 정보와 저장 위치</h2><ul><li><strong>사용자가 만든 맵 내용</strong>(노드·노트·사진·첨부): 사용자가 직접 고른 파일(.emm.html 등)에만 저장됩니다.</li><li><strong>편집 중 기기 복구본</strong>: 비정상 종료에 대비해 이 브라우저의 IndexedDB(사용자 기기 안)에 저장됩니다. 암호화 HTML에서 풀어 연 문서는 복구본을 만들지 않습니다.</li><li><strong>화면 설정</strong>(웹 AI 패널 설정, 미니맵 위치 등): 이 브라우저의 localStorage에 저장됩니다.</li></ul><p>위 정보는 사용자 기기 밖으로 전송되지 않으며, 회사는 이에 접근할 수 없습니다. 암호는 저장하지 않습니다.</p><h2>3. 외부 전송·제3자 제공</h2><ul><li>Solo 확장 프로그램은 네트워크 통신을 하지 않습니다(외부 연결 차단 보안 정책 적용). Solo가 저장·내보내는 HTML 파일도 외부 자원을 불러오지 않습니다.</li><li>웹 AI 기능은 질문을 클립보드에 복사할 뿐이며, AI 사이트에 붙여넣는 것은 사용자가 직접 합니다. 붙여넣은 내용은 해당 AI 서비스의 정책을 따릅니다. 'AI 열기' 버튼은 해당 사이트를 새 탭으로 열기만 합니다.</li><li>광고·분석·추적 도구를 사용하지 않으며, 정보를 판매하거나 제3자에게 제공하지 않습니다.</li></ul><h2>4. 삭제 방법</h2><ul><li>맵 파일: 사용자가 저장한 파일을 삭제하면 됩니다.</li><li>기기 복구본: 맵을 파일로 저장하면 해당 복구본은 자동으로 지워집니다.</li><li>복구본·설정 전체: 확장 프로그램을 삭제하거나 브라우저의 사이트 데이터를 삭제하면 함께 삭제됩니다.</li></ul><h2>5. 변경</h2><p>이 방침이 바뀌면 이 페이지에 시행일과 함께 게시합니다.</p><h2>EasyMindMap Solo Privacy Policy (English)</h2><p>Effective 2026-11-27 · Operator: HNG Life Co., Ltd. (HNGLife) · Contact: <a class=\"textlink\" href=\"mailto:ok@baro.pro\">ok@baro.pro</a></p><ul><li><strong>Summary</strong> — EasyMindMap Solo is a Chrome extension that runs only on your computer. It does not collect your personal information or map content and does not send it to any server.</li><li><strong>Data and storage</strong> — Map content is stored only in files you choose. An editing recovery copy is kept in this browser's IndexedDB (documents opened from encrypted HTML are never kept). UI preferences are kept in this browser's localStorage. None of this leaves your device, and we cannot access it. Passwords are never stored.</li><li><strong>Transfers</strong> — The extension makes no network requests, and HTML files it saves or exports load no external resources. The web AI feature only copies a question to your clipboard; what you paste into an AI site is governed by that service's policy. No ads, analytics or tracking; no sale or sharing of data.</li><li><strong>Deletion</strong> — Delete your saved files. A recovery copy is cleared when you save the map to a file; all recovery copies and preferences are removed when you uninstall the extension or clear the browser's site data.</li><li><strong>Changes</strong> — Updates will be posted on this page with a new effective date.</li></ul>"
   }
 };
+
 
